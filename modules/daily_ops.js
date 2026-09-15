@@ -356,7 +356,13 @@ const _OPS_STYLE=`<style>
   .do-st-wait{color:var(--text);font-weight:700}
   .do-st-done{color:var(--ok);font-weight:600}
   .do-st-moved{color:var(--warn);font-weight:400;font-size:var(--text-xs)}
-  .do-slots{display:flex;align-items:center;gap:4px}
+  /* Owner 15/9 (via coordinator): the buttons sit on the table's right
+     edge, the same in every section — the eye finds them in one place. */
+  .do-slots{display:flex;align-items:center;justify-content:flex-end;gap:4px}
+  .do-t td.do-acts{text-align:right}
+  /* Stamp under the status word: «από Παντελής · 07:12» from the stop's
+     Completed By/At (owner 15/9). Nothing when there is no stamp — not «—». */
+  .do-t td.do-st .do-sl{margin-top:2px}
   /* min-width, όχι width: το «Αλλαγή ημέρας» είναι φαρδύτερο από 104px και
      θα ξεχείλιζε πάνω στη διπλανή θυρίδα. Ίδιο σχήμα σε όλες τις γραμμές
      της ενότητας ⇒ η στήλη διαβάζεται κάθετα. */
@@ -542,7 +548,7 @@ function _opsSec(type,label,items,isToday,emptyTxt,start) {
             : isL       ? '<th>ΦΟΡΤΩΣΗ</th><th>ΑΝΑΘΕΣΗ</th><th colspan="2">ΩΡΑ</th>'
                         : '<th>ΠΑΡΑΔΟΣΗ</th><th>ΑΝΑΘΕΣΗ</th><th colspan="2">ΕΚΤ. ΑΦΙΞΗ</th>';
   const cols=`<th>#</th><th>ΠΕΛΑΤΗΣ</th>${mid}<th>ΚΑΤΑΣΤΑΣΗ</th><th style="text-align:right">ΕΝΕΡΓΕΙΕΣ</th>`;
-  const colg='<colgroup><col style="width:32px"><col><col><col style="width:200px"><col style="width:56px"><col style="width:96px"><col style="width:190px"><col style="width:320px"></colgroup>';
+  const colg='<colgroup><col style="width:32px"><col><col><col style="width:200px"><col style="width:56px"><col style="width:80px"><col style="width:206px"><col style="width:320px"></colgroup>';
   const done=items.filter(r=>isL?['In Transit','Delivered'].includes(r.fields['Status']||''):(r.fields['Status']||'')==='Delivered').length;
   const head=`<div class="do-sec-h">${label}<span>${items.length?`${items.length} · ${done} ${done===1?'δηλωμένη':'δηλωμένες'}`:`— καμία ${when}`}</span></div>`;
   if(!items.length) return `<div class="do-sec">${head}<div class="do-empty">${emptyTxt} ${when}</div></div>`;
@@ -594,8 +600,10 @@ function _opsGroupRow(key,g,from,to,isToday,open){
   const pal=nums.length?nums.reduce((a,b)=>a+b,0):'—';
   const done=g.filter(m=>['In Transit','Delivered'].includes(m.fields['Status']||'')).length;
   const all=done===g.length;
-  const st=all?`<span class="do-st-done">Φορτώθηκαν ✓</span>`
-    :`<span class="do-pill" onclick="event.stopPropagation();_opsToggleStops('${id}')" title="Κλικ: οι φορτώσεις μία-μία — δηλώνεις όποια έγινε, οι άλλες περιμένουν">${done}/${g.length} φορτώθηκαν ${open?'▾':'▸'}</span>`;
+  const gStamp=_opsStamp(g.flatMap(m=>_opsStopsOf(m.id,'Loading')),_opsTgt());
+  const by=gStamp?`<span class="do-sl">${gStamp}</span>`:'';
+  const st=(all?`<span class="do-st-done">Φορτώθηκαν ✓</span>`
+    :`<span class="do-pill" onclick="event.stopPropagation();_opsToggleStops('${id}')" title="Κλικ: οι φορτώσεις μία-μία — δηλώνεις όποια έγινε, οι άλλες περιμένουν">${done}/${g.length} φορτώθηκαν ${open?'▾':'▸'}</span>`)+by;
   // ΠΡΟΚ. € and «Αλλαγή ημέρας» belong to one order each — not on the summary.
   const act=isToday&&!all?`<div class="do-slots"><span class="do-slot"><button class="do-btn" onclick="event.stopPropagation();_opsToggleStops('${id}')">Φορτώθηκε</button></span></div>`:'';
   return `<tr id="r_${id}" class="do-hover do-grp${open?' do-open':''}" style="cursor:pointer" onclick="if(!event.target.closest('button,input,select,a'))_opsToggleStops('${id}')"><td class="do-num">${from}–${to}</td><td class="do-wrap"><span class="do-main">${g.length} φορτώσεις</span><span class="do-sl">${clients}</span></td><td class="do-wrap"><span class="do-main">${locs||'—'}</span></td>${_opsAsgCell(f0,_TT(f0),_D(f0),_P(f0))}<td>${pal}</td><td>—</td><td class="do-st">${st}</td><td class="do-acts">${act}</td></tr>`;
@@ -612,16 +620,29 @@ function _opsGroupRow(key,g,from,to,isToday,open){
 // ✓» εννοώντας κι εκείνο «τελείωσε». Το λεξιλόγιο της ΒΑΣΗΣ (Pending/Assigned/
 // In Transit/Delivered) ΔΕΝ αγγίζεται — αλλάζει μόνο η λέξη στην οθόνη.
 // Το εκκρεμές είναι το εντονότερο της στήλης: είναι η δουλειά που μένει.
-function _opsStatusWord(f, multiPill, isL) {
+function _opsStatusWord(f, multiPill, isL, stamp) {
   const st=f['Status']||'';
   const done=isL ? (st==='In Transit'||st==='Delivered') : st==='Delivered';
-  if(done) return `<span class="do-st-done">${isL?'Φορτώθηκε':'Παραδόθηκε'} ✓</span>`;
+  const by=stamp?`<span class="do-sl">${stamp}</span>`:'';
+  if(done) return `<span class="do-st-done">${isL?'Φορτώθηκε':'Παραδόθηκε'} ✓</span>${by}`;
   // «μετατέθηκε»: το Postponed To κρατά τη ΝΕΑ ημέρα — η γραμμή είναι ενεργή
   // εκείνη τη μέρα, με τα κουμπιά της. Μένει ως δευτερεύουσα σημείωση, όχι ως
   // τρίτη κατάσταση. Το «από 30/8» ΔΕΝ δείχνεται: θέλει write-once
   // original_loading_date ή audit_log — κανένα εγκεκριμένο (ΑΝΟΙΧΤΟ).
   const moved=f['Postponed To']?' <span class="do-st-moved">μετατέθηκε</span>':'';
-  return `<span class="do-st-wait">Εκκρεμεί</span>${moved}${multiPill?' '+multiPill:''}`;
+  return `<span class="do-st-wait">Εκκρεμεί</span>${moved}${multiPill?' '+multiPill:''}${by}`;
+}
+// Latest stamp among the given stops: «από <Completed By> · HH:MM». Completed
+// By holds the header name (_opsUser writes tms_user.name), so it is shown as
+// stored. A stamp from another day than the one on screen carries its date,
+// so a Tuesday «07:12» is never mistaken for Monday's.
+function _opsStamp(stops, dayIso){
+  const done=stops.filter(s=>s.fields['Completed At']).sort((a,b)=>String(b.fields['Completed At']).localeCompare(String(a.fields['Completed At'])));
+  if(!done.length) return '';
+  const f=done[0].fields, at=f['Completed At'];
+  let when=_HM(at); try{ if(toLocalDate(at)!==dayIso) when=_DMY(toLocalDate(at))+(when?' '+when:''); }catch(_){}
+  const who=escapeHtml(String(f['Completed By']||''));
+  return `${who?'από '+who:''}${who&&when?' · ':''}${when}`;
 }
 
 // ΕΝΕΡΓΕΙΕΣ: κύριο κουμπί, «Καθυστέρησε» στις παραδόσεις, «Αλλαγή ημέρας»
@@ -701,7 +722,7 @@ function _opsRow(rec,num,type,isToday,cls) {
   // the generic word «συνεργάτης» told the phone caller nothing.
   const asgCell=_opsAsgCell(f, truck, driver, partner);
   const pill=_opsStopsBadge(id,_stype);
-  const stCell=`<td class="do-st">${_opsStatusWord(f,pill,isL)}</td>`;
+  const stCell=`<td class="do-st">${_opsStatusWord(f,pill,isL,_opsStamp(_mStops,_opsTgt()))}</td>`;
   const actCell=`<td class="do-acts">${_opsSlots(rec,type)}</td>`;
 
   let mid='';
