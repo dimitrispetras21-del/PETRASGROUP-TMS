@@ -41,6 +41,7 @@ function _opsBlockReadOnly(){
 }
 
 async function renderDailyOps() {
+  _opsNormDate();
   document.getElementById('content').innerHTML = showLoading('Φόρτωση…');
   try { await _opsLoad(); _opsDraw(); }
   // Failure ≠ empty (DESIGN.md #7): say what happened, what it does NOT mean,
@@ -55,9 +56,7 @@ async function _opsLoad() {
     OPS.drivers=getRefDrivers().filter(r=>r.fields['Active']).map(r=>({id:r.id,lb:r.fields['Full Name']||''}));
     OPS.locs=getRefLocations(); OPS.clients=getRefClients();
   }
-  const today=localToday();
-  const tmrw=localTomorrow();
-  const tgt=OPS.date==='tomorrow'?tmrw:OPS.date==='today'?today:OPS.date; // DO-7: δέχεται και ISO ημερομηνία
+  const tgt=_opsTgt();
   // VS (owner 10/8): το διεθνές σκέλος εμφανίζεται τη μέρα του Cross-Dock
   // (VS CD Date, αλλιώς Loading+1) — φέρε και τα χθεσινά-Loading VS.
   const prev=toLocalDate(new Date(new Date(tgt).getTime()-86400000));
@@ -183,6 +182,11 @@ function _opsStopLoc(orderId, stopType) {
 const _L=id=>getLocationName(id);
 const _C=f=>{const raw=f['Client'];const id=Array.isArray(raw)?raw[0]:raw;return getClientName(id);};
 const _T=f=>getTruckPlate(getLinkedId(f['Truck']))||'';
+// No getTrailerPlate in data-helpers (only trucks/drivers); same shape here.
+const _TR=f=>{ const id=getLinkedId(f['Trailer']); if(!id) return ''; const t=getRefTrailers().find(r=>r.id===id); return t?escapeHtml(t.fields['License Plate']||''):''; };
+// «CB5871TT / P59498» as the Weekly shows it (Παντελής 15/9: «δεν φαίνεται ο
+// θάλαμος»). 'Trailer' was already fetched and pair-inherited, never drawn.
+const _TT=f=>[_T(f),_TR(f)].filter(Boolean).join(' / ');
 const _D=f=>getDriverName(getLinkedId(f['Driver']))||'';
 const _DM=(dt,d)=>dt?toLocalDate(dt)===d:false;
 const _P=f=>f['Is Partner Trip']===true||f['Is Partner Trip']==='Yes';
@@ -204,11 +208,17 @@ const _DMY=d=>{ if(!d) return ''; const p=String(d).slice(0,10).split('-'); retu
 const _DMYFull=d=>{ if(!d) return ''; const p=String(d).slice(0,10).split('-'); return p.length===3?`${p[2]}/${p[1]}/${p[0]}`:d; };
 const _daysAgo=d=>{ try{ const a=new Date(toLocalDate(d)+'T12:00:00'), b=new Date(localToday()+'T12:00:00'); return Math.round((b-a)/864e5); }catch(_){ return null; } };
 const _agoTxt=n=>n==null?'':n===1?'πριν 1 ημέρα':`πριν ${n} ημέρες`;
+// One resolver for OPS.date (Παντελής 15/9, «Χθες»): 'today' | 'tomorrow' |
+// 'yesterday' | ISO. Until now the same ternary lived in _opsLoad, _opsCats
+// and _opsDraw — a third keyword would have had to be added three times.
+const _opsTgt=()=>OPS.date==='today'?localToday():OPS.date==='tomorrow'?localTomorrow():OPS.date==='yesterday'?_plus(localToday(),-1):OPS.date;
+// The date input hands over an ISO string; fold it back to the keyword so the
+// segmented control lights the right button and the day words stay correct.
+const _opsNormDate=()=>{ const d=OPS.date; if(d===localToday()) OPS.date='today'; else if(d===localTomorrow()) OPS.date='tomorrow'; else if(d===_plus(localToday(),-1)) OPS.date='yesterday'; };
+const _opsDayWord=()=>OPS.date==='today'?'σήμερα':OPS.date==='tomorrow'?'αύριο':OPS.date==='yesterday'?'χθες':'';
 
 function _opsCats() {
-  const today=localToday();
-  const tmrw=localTomorrow();
-  const tgt=OPS.date==='tomorrow'?tmrw:OPS.date==='today'?today:OPS.date; // DO-7: δέχεται και ISO ημερομηνία
+  const tgt=_opsTgt();
   const c={el:[],ed:[],il:[],id:[]};
   // Apply user filters: text search, direction, status
   const q = (OPS.filters?.q||'').trim().toLowerCase();
@@ -315,7 +325,13 @@ const _OPS_STYLE=`<style>
   .do-sec{margin-top:12px}
   .do-sec-h{display:flex;align-items:baseline;gap:8px;padding:0 0 4px;font-size:var(--text-xs);font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--text-mid)}
   .do-sec-h span{font-weight:400;letter-spacing:0;text-transform:none;color:var(--text-dim);font-size:var(--text-xs)}
-  .do-t{width:100%;border-collapse:collapse;background:var(--surface-card);border:1px solid var(--border);border-radius:var(--radius)}
+  /* One grid for all four sections (Παντελής 15/9): fixed layout + the same
+     <colgroup> in every table, so ΦΟΡΤΩΣΗ/ΠΑΡΑΔΟΣΗ, ΑΝΑΘΕΣΗ, ΠΑΛ., ΠΡΟΚ.,
+     ΚΑΤΑΣΤΑΣΗ and ΕΝΕΡΓΕΙΕΣ sit on one vertical. With auto layout the
+     deliveries' three action slots (~320px) and the loadings' two (~212px)
+     pushed every column of each table to a different x. min-width keeps the
+     two fluid columns readable on a laptop; the wrapper already scrolls. */
+  .do-t{width:100%;min-width:1040px;table-layout:fixed;border-collapse:collapse;background:var(--surface-card);border:1px solid var(--border);border-radius:var(--radius)}
   .do-t th{padding:0 8px;height:32px;text-align:left;font-size:var(--text-xs);font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--text-mid);background:var(--surface-sunken);white-space:nowrap}
   .do-t td{padding:0 8px;height:40px;border-top:1px solid var(--border);white-space:nowrap;vertical-align:middle;font-size:var(--text-body)}
   .do-t td.do-wrap{white-space:normal}
@@ -330,11 +346,10 @@ const _OPS_STYLE=`<style>
   .do-tag.own{background:var(--surface-dark)}
   .do-tag.prt{background:var(--ok)}
   .do-tag.none{background:var(--unassigned)}
-  .do-st{width:170px;white-space:nowrap}
+  .do-st{white-space:normal}
   .do-st-wait{color:var(--text);font-weight:700}
   .do-st-done{color:var(--ok);font-weight:600}
   .do-st-moved{color:var(--warn);font-weight:400;font-size:var(--text-xs)}
-  .do-acts{width:252px}
   .do-slots{display:flex;align-items:center;gap:4px}
   /* min-width, όχι width: το «Αλλαγή ημέρας» είναι φαρδύτερο από 104px και
      θα ξεχείλιζε πάνω στη διπλανή θυρίδα. Ίδιο σχήμα σε όλες τις γραμμές
@@ -379,10 +394,8 @@ const _OPS_STYLE=`<style>
 
 /* ── DRAW ─────────────────────────────────────────────────────── */
 function _opsDraw() {
-  const today=localToday();
-  const tmrw=localTomorrow();
   const isToday=OPS.date==='today';
-  const tgt=OPS.date==='tomorrow'?tmrw:isToday?today:OPS.date;
+  const tgt=_opsTgt();
   const fD=d=>{try{const dt=new Date(d);
     const ds=['Κυριακή','Δευτέρα','Τρίτη','Τετάρτη','Πέμπτη','Παρασκευή','Σάββατο'];
     const ms=['Ιαν','Φεβ','Μαρ','Απρ','Μαϊ','Ιουν','Ιουλ','Αυγ','Σεπ','Οκτ','Νοε','Δεκ'];
@@ -422,7 +435,7 @@ function _opsDraw() {
     `${OPS.overdueLoads.length} ${OPS.overdueLoads.length===1?'εκκρεμής φόρτωση':'εκκρεμείς φορτώσεις'} από προηγούμενες ημέρες`,
     'δεν φορτώθηκε και δεν μετατέθηκε',
     r=>{const f=r.fields, n=_daysAgo(f['Loading DateTime']);
-      return `<div class="do-zrow" id="r_${r.id}"><span class="do-cl">${escapeHtml(_C(f))}</span><span class="do-rt">${route(r)}${_T(f)?' · '+escapeHtml(_T(f)):''}${_D(f)?' · '+escapeHtml(_D(f)):''}</span>
+      return `<div class="do-zrow" id="r_${r.id}"><span class="do-cl">${escapeHtml(_C(f))}</span><span class="do-rt">${route(r)}${_TT(f)?' · '+_TT(f):''}${_D(f)?' · '+escapeHtml(_D(f)):''}</span>
         <span class="do-late">φόρτωση ${_DMY(f['Loading DateTime'])} · ${_agoTxt(n)}</span>
         ${_opsSlots(r,'ovl')}</div>${OPS._expanded?.has(r.id)?_opsSubRows(r,'Loading',true):''}`;}):'';
   const ovLErr=isToday&&OPS.overdueLoadsErr?`<div class="do-err"><span>Η ζώνη εκκρεμών φορτώσεων δεν φορτώθηκε — δεν σημαίνει ότι δεν υπάρχουν εκκρεμείς φορτώσεις. Οι υπόλοιπες ενότητες είναι ενημερωμένες.</span><button class="do-btn" onclick="renderDailyOps()">Ξαναδοκίμασε</button></div>`:'';
@@ -440,12 +453,13 @@ function _opsDraw() {
     <div class="do-page">
     <div class="do-top">
       <h1 class="do-h1">Ημερήσιο Πλάνο</h1>
-      <span class="do-sub">${fD(tgt)} · ${total} ${total===1?'παραγγελία':'παραγγελίες'} ${isToday?'σήμερα':OPS.date==='tomorrow'?'αύριο':''}${pendN?` · <b>${pendN} ${pendN===1?'εκκρεμής':'εκκρεμείς'}</b>`:''}</span>
+      <span class="do-sub">${fD(tgt)} · ${total} ${total===1?'παραγγελία':'παραγγελίες'} ${_opsDayWord()}${pendN?` · <b>${pendN} ${pendN===1?'εκκρεμής':'εκκρεμείς'}</b>`:''}</span>
       <div class="do-seg">
+        <button class="${OPS.date==='yesterday'?'on':''}" onclick="OPS.date='yesterday';renderDailyOps()">Χθες</button>
         <button class="${isToday?'on':''}" onclick="OPS.date='today';renderDailyOps()">Σήμερα</button>
         <button class="${OPS.date==='tomorrow'?'on':''}" onclick="OPS.date='tomorrow';renderDailyOps()">Αύριο</button>
         <input type="date" value="${tgt}" title="Άλλη ημερομηνία"
-          onchange="OPS.date=this.value===localToday()?'today':this.value===localTomorrow()?'tomorrow':this.value;renderDailyOps()">
+          onchange="OPS.date=this.value;renderDailyOps()">
       </div>
       <select class="do-sel" onchange="_opsSetFilter('direction', this.value)">
         <option value="">Κατεύθυνση: Όλες</option>
@@ -501,23 +515,25 @@ function _opsToggleZone(key) {
 // στο τηλέφωνο — ο αριθμός δεν ταυτοποιούσε τίποτα (3/9).
 function _opsSec(type,label,items,isToday,emptyTxt,start) {
   const isL=type==='el'||type==='il', isExp=type==='el'||type==='ed';
-  const isTmrw=OPS.date==='tomorrow';
-  const when=isToday?'σήμερα':isTmrw?'αύριο':'';
+  const when=_opsDayWord();
   // Στήλες ανά ενότητα (Figma 169:699): ΘΕΡΜ./ΕΓΓΡΑΦΑ/ΦΩΤΟ CMR/ΕΝΗΜΕΡΩΣΗ
   // ΠΕΛΑΤΗ/2Η ΚΑΡΤΑ αφαιρέθηκαν (owner 2/9)· ΚΑΤΑΣΤΑΣΗ = νέα στήλη λέξης.
   // ΦΟΡΤΗΓΟ + ΟΔΗΓΟΣ became one ΑΝΑΘΕΣΗ column (owner 4/9, DESIGN.md E): the
   // dispatcher reads WHO carries the load — «ΙΔ.» plate + driver, «ΣΥΝ.» +
   // partner name, or «ΠΡΟΣ ΑΝΑΘΕΣΗ». Two columns showed «—» and «χωρίς
   // οδηγό» for the same fact, and an own-fleet plate carried no marker at all.
+  // Same 8 columns in every section (Παντελής 15/9): where a section has one
+  // field instead of ΠΑΛ.+ΠΡΟΚ. it spans the two, so nothing shifts.
   const mid = isL&&isExp ? '<th>ΦΟΡΤΩΣΗ</th><th>ΑΝΑΘΕΣΗ</th><th>ΠΑΛ.</th><th>ΠΡΟΚ. €</th>'
-            : isL       ? '<th>ΦΟΡΤΩΣΗ</th><th>ΑΝΑΘΕΣΗ</th><th>ΩΡΑ</th>'
-                        : '<th>ΠΑΡΑΔΟΣΗ</th><th>ΑΝΑΘΕΣΗ</th><th>ΕΚΤ. ΑΦΙΞΗ</th>';
+            : isL       ? '<th>ΦΟΡΤΩΣΗ</th><th>ΑΝΑΘΕΣΗ</th><th colspan="2">ΩΡΑ</th>'
+                        : '<th>ΠΑΡΑΔΟΣΗ</th><th>ΑΝΑΘΕΣΗ</th><th colspan="2">ΕΚΤ. ΑΦΙΞΗ</th>';
   const cols=`<th>#</th><th>ΠΕΛΑΤΗΣ</th>${mid}<th>ΚΑΤΑΣΤΑΣΗ</th><th style="text-align:right">ΕΝΕΡΓΕΙΕΣ</th>`;
+  const colg='<colgroup><col style="width:32px"><col><col><col style="width:200px"><col style="width:56px"><col style="width:96px"><col style="width:190px"><col style="width:320px"></colgroup>';
   const done=items.filter(r=>isL?['In Transit','Delivered'].includes(r.fields['Status']||''):(r.fields['Status']||'')==='Delivered').length;
   const head=`<div class="do-sec-h">${label}<span>${items.length?`${items.length} · ${done} ${done===1?'δηλωμένη':'δηλωμένες'}`:`— καμία ${when}`}</span></div>`;
   if(!items.length) return `<div class="do-sec">${head}<div class="do-empty">${emptyTxt} ${when}</div></div>`;
   return `<div class="do-sec">${head}
-    <div style="overflow-x:auto"><table class="do-t"><thead><tr>${cols}</tr></thead><tbody>${items.map((r,i)=>_opsRow(r,start+i,type,isToday)).join('')}</tbody></table></div>
+    <div style="overflow-x:auto"><table class="do-t">${colg}<thead><tr>${cols}</tr></thead><tbody>${items.map((r,i)=>_opsRow(r,start+i,type,isToday)).join('')}</tbody></table></div>
   </div>`;
 }
 
@@ -590,7 +606,7 @@ function _opsRow(rec,num,type,isToday) {
   const client=_C(f), sub=_CSub(f);
   const loadL=_L(_opsStopLoc(id,'Loading'));
   const delivL=_L(_opsStopLoc(id,'Unloading'));
-  const truck=_T(f), driver=_D(f), partner=_P(f);
+  const truck=_TT(f), driver=_D(f), partner=_P(f);
   // Missing is not zero and not blank (DESIGN.md #3): a dash.
   const pal=f['Total Pallets']!=null&&f['Total Pallets']!==''?f['Total Pallets']:'—';
   const st=f['Status']||'';
@@ -626,8 +642,8 @@ function _opsRow(rec,num,type,isToday) {
 
   let mid='';
   if(isL&&isExp) mid=`${locCell(loadL,f['Loading DateTime'])}${asgCell}<td>${pal}</td><td>${!partner?amtInp('Advance Paid',f['Advance Paid']):''}</td>`;
-  else if(isL)   mid=`${locCell(loadL,f['Loading DateTime'])}${asgCell}<td>${timeSelect('ETA',f['ETA'])}</td>`;
-  else           mid=`${locCell(delivL,f['Delivery DateTime'])}${asgCell}<td>${timeSelect('ETA',f['ETA'])}</td>`;
+  else if(isL)   mid=`${locCell(loadL,f['Loading DateTime'])}${asgCell}<td colspan="2">${timeSelect('ETA',f['ETA'])}</td>`;
+  else           mid=`${locCell(delivL,f['Delivery DateTime'])}${asgCell}<td colspan="2">${timeSelect('ETA',f['ETA'])}</td>`;
 
   // Multi: κλικ στη γραμμή (όχι σε κουμπί/πεδίο) ανοίγει τα σημεία· οι
   // υπο-γραμμές ακολουθούν το tr ώστε να ζουν στο ίδιο tbody. Η ανοιχτή
@@ -649,7 +665,8 @@ function _opsAsgCell(f, truck, driver, partner) {
     return `<td class="do-asg do-wrap"><span class="do-main"><span class="do-tag prt">ΣΥΝ.</span>${name}</span>${sub([plates,escapeHtml(driver)].filter(Boolean).join(' · '))}</td>`;
   }
   if(truck||driver){
-    return `<td class="do-asg do-wrap"><span class="do-main"><span class="do-tag own">ΙΔ.</span>${escapeHtml(truck)||'—'}</span>${sub(escapeHtml(driver))}</td>`;
+    // `truck` is already «plate / trailer», escaped by the ref helpers.
+    return `<td class="do-asg do-wrap"><span class="do-main"><span class="do-tag own">ΙΔ.</span>${truck||'—'}</span>${sub(escapeHtml(driver))}</td>`;
   }
   return `<td class="do-asg do-wrap"><span class="do-main"><span class="do-tag none">ΠΡΟΣ ΑΝΑΘΕΣΗ</span></span></td>`;
 }

@@ -147,16 +147,22 @@ function renderNav() {
       if (item.perm && can(item.perm) === 'none') continue;
       // An item without its own perm inherits the section's (13/9).
       if (!item.perm && can(group.perm) === 'none') continue;
-      itemsHtml += '<div class="nav-item" tabindex="0" data-tooltip="' + item.label
-            + '" onclick="navigate(\'' + item.id + '\')"'
-            + ' onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();navigate(\'' + item.id + '\')}"'
+      // A real <a href> (Παντελής 15/9): the browser's own right-click «open
+      // in new tab» / middle-click work, and the hash it carries is what
+      // init() reads. Left click stays in-app (preventDefault → navigate).
+      // .nav-item already sets colour and text-decoration in style.css, so
+      // the anchor renders exactly like the old div. Enter activates a link
+      // natively; only Space still needs the keydown.
+      itemsHtml += '<a class="nav-item" href="app.html#' + item.id + '" data-tooltip="' + item.label
+            + '" onclick="event.preventDefault();navigate(\'' + item.id + '\')"'
+            + ' onkeydown="if(event.key===\' \'){event.preventDefault();navigate(\'' + item.id + '\')}"'
             + ' id="nav_' + item.id + '">'
             + '<div class="nav-icon">' + _navIcon(item.icon) + '</div>'
             + '<span class="nav-label">' + item.label + '</span>'
             // PR-1/CO-4: unbuilt pages get a pill, not "(soon)" baked into the
             // label — one convention, visually distinct from working entries.
             + (item.soon ? '<span style="font-size:9px;color:var(--text-dim);border:1px solid var(--border-mid);border-radius:8px;padding:1px 6px;margin-left:6px;flex-shrink:0">σύντομα</span>' : '')
-            + '</div>';
+            + '</a>';
     }
     if (!itemsHtml) return;
     // The group of the CURRENT page always renders open — a collapsed default
@@ -256,6 +262,11 @@ function navigate(page) {
   }
   currentPage = page;
   localStorage.setItem('tms_page', page);
+  // The hash mirrors the page (Παντελής 15/9) so F5 and a link opened in a
+  // new tab land on the same screen. replaceState, not location.hash: no
+  // hashchange round-trip and no history entry per click — Back keeps
+  // leaving the app exactly as it did before.
+  try { if (location.hash !== '#' + page) history.replaceState(null, '', '#' + page); } catch (_) {}
 
   // Auto-close mobile drawer after navigation so the user sees the new page.
   if (window.matchMedia('(max-width: 768px)').matches) {

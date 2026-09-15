@@ -1190,8 +1190,12 @@ async function _openModal(recId, f, _clientLabelOverride, _scanPrefill) {
       </div>
       <div class="form-field">
         <label class="form-label">Τύπος παλέτας *</label>
+        <!-- 'Euro' removed (coordinator 15/9, Παντελής: «EUR και Euro — ποιο
+             είναι για ευρωπαλέτες;»): one value, 'EUR' (148 rows vs 1 'Euro',
+             fixed by the owner's SQL). An order still holding 'Euro' shows
+             «— Επιλογή —» here and the save skips the field — nothing erased. -->
         <select class="form-select" id="f_PalletType"><option value="">— Επιλογή —</option>
-          ${opt(['EUR','CHEP','Industrial','Euro'],'Pallet Type')}</select>
+          ${opt(['EUR','CHEP','Industrial'],'Pallet Type')}</select>
       </div>
       <div class="form-field" style="padding-top:24px">
         <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer">

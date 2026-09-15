@@ -122,7 +122,7 @@
 <script src="core/scan-helpers.js?v=1788432189"></script>
 <script src="core/stops-helpers.js?v=1788432189"></script>
 <script src="core/pa-helpers.js?v=1789315579"></script>
-<script src="core/router.js?v=1789319193"></script>
+<script src="core/router.js?v=1789487405"></script>
 <script src="core/icons.js?v=1788432189"></script>
 <script src="core/command-palette.js?v=1788600711"></script>
 <script src="core/metrics.js?v=1788720070"></script>
@@ -142,12 +142,12 @@
   <script src="modules/expenses.js?v=1789372079"></script>
   <script src="modules/expenses_import.js?v=1788866930"></script>
   <script src="modules/maintenance.js?v=1789313316"></script>
-  <script src="modules/orders_intl.js?v=1789388621"></script>
+  <script src="modules/orders_intl.js?v=1789487405"></script>
 <script src="modules/orders_natl.js?v=1789387831"></script>
 
 <script src="modules/locations.js?v=1789328870"></script>
 <script src="modules/locations_map.js?v=1788704486"></script>
-<script src="modules/daily_ops.js?v=1789328870"></script>
+<script src="modules/daily_ops.js?v=1789487405"></script>
 <script src="modules/pallet_upload.js?v=1788600711"></script>
 <script src="modules/pallet_ledger.js?v=1789328870"></script>
 <script src="modules/invoicing.js?v=1788788433"></script>
@@ -202,7 +202,13 @@ function init() {
   initModal();
   renderNav();
   restoreSidebar();
-  navigate(localStorage.getItem('tms_page') || 'dashboard');
+  // Hash first (a nav link opened in a new tab, or F5), then the last page.
+  // A hash the role may not open is refused by navigate() (toast, currentPage
+  // stays empty) and the boot falls through to the stored page — never a
+  // blank screen.
+  const _hashPage = (location.hash || '').slice(1).replace(/[^a-z_]/g, '');
+  if (_hashPage) navigate(_hashPage);
+  if (!currentPage) navigate(localStorage.getItem('tms_page') || 'dashboard');
   atPresenceStart(); // Multi-user presence tracking
 }
 init();
