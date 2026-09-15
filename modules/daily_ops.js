@@ -579,7 +579,10 @@ function _opsGroupedRows(items,start,type,isToday){
 function _opsGroupRow(key,g,from,to,isToday,open){
   const id='g:'+key, f0=g[0].fields;
   const clients=[...new Set(g.map(m=>_C(m.fields)).filter(Boolean))].map(s=>escapeHtml(String(s)).toUpperCase()).join(' · ');
-  const locs=[...new Set(g.map(m=>_L(_opsStopLoc(m.id,'Loading'))).filter(Boolean))].map(s=>escapeHtml(String(s))).join(' · ');
+  // Owner 15/9 (via coordinator): less noise on the summary — more than two
+  // distinct loading points read as a count, the names live in the members.
+  const locList=[...new Set(g.map(m=>_L(_opsStopLoc(m.id,'Loading'))).filter(Boolean))];
+  const locs=locList.length>2?`${locList.length} σημεία`:locList.map(s=>escapeHtml(String(s))).join(' · ');
   // Sum only what is a number; no numbers at all = «—», never 0 (DESIGN.md #3).
   const nums=g.map(m=>m.fields['Total Pallets']).filter(v=>v!=null&&v!=='').map(Number).filter(v=>!isNaN(v));
   const pal=nums.length?nums.reduce((a,b)=>a+b,0):'—';
