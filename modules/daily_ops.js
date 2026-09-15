@@ -425,7 +425,10 @@ function _opsDraw() {
     <div class="do-kpi-bar"><div class="do-kpi-fill" style="width:${n?Math.round(done/n*100):0}%"></div></div></div>`;
 
   // Ζώνες εκκρεμών από προηγούμενες ημέρες — παραδόσεις ΚΑΙ φορτώσεις (2/9)
-  const route=r=>`${escapeHtml(_L(_opsStopLoc(r.id,'Loading'))||'—')} → ${escapeHtml(_L(_opsStopLoc(r.id,'Unloading'))||'—')}`;
+  // _L/_C/_D come back escaped from data-helpers (getLocationName & co) — a
+  // second escapeHtml printed «&amp;» on screen (seen live 15/9: «K. & N.
+  // EFTHYMIADIS», «FRESH TRADE & TRANSPORTS»). Only raw fields get escaped here.
+  const route=r=>`${_L(_opsStopLoc(r.id,'Loading'))||'—'} → ${_L(_opsStopLoc(r.id,'Unloading'))||'—'}`;
   const zone=(key,rows,title,note,rowHtml)=>{
     if(!rows.length) return '';
     const open=OPS._zoneOpen?.[key]!==false;
@@ -436,14 +439,14 @@ function _opsDraw() {
   const ovH=isToday?zone('ovL',OPS.overdue,
     `${OPS.overdue.length} ${OPS.overdue.length===1?'εκκρεμής παράδοση':'εκκρεμείς παραδόσεις'} από προηγούμενες ημέρες`,'',
     r=>{const f=r.fields, n=_daysAgo(f['Delivery DateTime']);
-      return `<div class="do-zrow" id="r_${r.id}"><span class="do-cl">${escapeHtml(_C(f))}</span><span class="do-rt">${route(r)}</span>
+      return `<div class="do-zrow" id="r_${r.id}"><span class="do-cl">${_C(f)}</span><span class="do-rt">${route(r)}</span>
         <span class="do-late">παράδοση ${_DMY(f['Delivery DateTime'])} · ${_agoTxt(n)}</span>
         ${_opsSlots(r,'ovd')}</div>${OPS._expanded?.has(r.id)?_opsSubRows(r,'Unloading',true):''}`;}):'';
   const ovLH=isToday?zone('ovLoad',OPS.overdueLoads,
     `${OPS.overdueLoads.length} ${OPS.overdueLoads.length===1?'εκκρεμής φόρτωση':'εκκρεμείς φορτώσεις'} από προηγούμενες ημέρες`,
     'δεν φορτώθηκε και δεν μετατέθηκε',
     r=>{const f=r.fields, n=_daysAgo(f['Loading DateTime']);
-      return `<div class="do-zrow" id="r_${r.id}"><span class="do-cl">${escapeHtml(_C(f))}</span><span class="do-rt">${route(r)}${_TT(f)?' · '+_TT(f):''}${_D(f)?' · '+escapeHtml(_D(f)):''}</span>
+      return `<div class="do-zrow" id="r_${r.id}"><span class="do-cl">${_C(f)}</span><span class="do-rt">${route(r)}${_TT(f)?' · '+_TT(f):''}${_D(f)?' · '+_D(f):''}</span>
         <span class="do-late">φόρτωση ${_DMY(f['Loading DateTime'])} · ${_agoTxt(n)}</span>
         ${_opsSlots(r,'ovl')}</div>${OPS._expanded?.has(r.id)?_opsSubRows(r,'Loading',true):''}`;}):'';
   const ovLErr=isToday&&OPS.overdueLoadsErr?`<div class="do-err"><span>Η ζώνη εκκρεμών φορτώσεων δεν φορτώθηκε — δεν σημαίνει ότι δεν υπάρχουν εκκρεμείς φορτώσεις. Οι υπόλοιπες ενότητες είναι ενημερωμένες.</span><button class="do-btn" onclick="renderDailyOps()">Ξαναδοκίμασε</button></div>`:'';
@@ -578,11 +581,11 @@ function _opsGroupedRows(items,start,type,isToday){
 }
 function _opsGroupRow(key,g,from,to,isToday,open){
   const id='g:'+key, f0=g[0].fields;
-  const clients=[...new Set(g.map(m=>_C(m.fields)).filter(Boolean))].map(s=>escapeHtml(String(s)).toUpperCase()).join(' · ');
+  const clients=[...new Set(g.map(m=>_C(m.fields)).filter(Boolean))].map(s=>String(s).toUpperCase()).join(' · ');
   // Owner 15/9 (via coordinator): less noise on the summary — more than two
   // distinct loading points read as a count, the names live in the members.
   const locList=[...new Set(g.map(m=>_L(_opsStopLoc(m.id,'Loading'))).filter(Boolean))];
-  const locs=locList.length>2?`${locList.length} σημεία`:locList.map(s=>escapeHtml(String(s))).join(' · ');
+  const locs=locList.length>2?`${locList.length} σημεία`:locList.join(' · ');
   // Sum only what is a number; no numbers at all = «—», never 0 (DESIGN.md #3).
   const nums=g.map(m=>m.fields['Total Pallets']).filter(v=>v!=null&&v!=='').map(Number).filter(v=>!isNaN(v));
   const pal=nums.length?nums.reduce((a,b)=>a+b,0):'—';
@@ -681,14 +684,14 @@ function _opsRow(rec,num,type,isToday,cls) {
   };
   const amtInp=(fld,v)=>`<input class="do-tinp" type="number" step="1" value="${v||''}" placeholder="—" style="width:64px" onblur="_opsSvF('${id}','${fld}',parseFloat(this.value)||null)">`;
 
-  const cl=`<td class="do-wrap"><span class="do-main">${escapeHtml(client)}</span>${sub?`<span class="do-sl">${sub}</span>`:''}</td>`;
+  const cl=`<td class="do-wrap"><span class="do-main">${client}</span>${sub?`<span class="do-sl">${sub}</span>`:''}</td>`;
   // Χωρίς ώρα δεν αποδίδεται ΤΙΠΟΤΑ — όπως ήδη κάνει η υπογραμμή πελάτη.
   // Οι στήλες loading_datetime/delivery_datetime είναι `date` στη βάση, άρα
   // το `_HM` γυρίζει πάντα κενό: το «—» κρεμόταν κάτω από ΚΑΘΕ τοποθεσία σε
   // κάθε γραμμή και διαβαζόταν ως «η ώρα είναι άγνωστη» ενώ ώρα δεν υπάρχει
   // καν ως έννοια (κανόνας #3: «—» σημαίνει άγνωστο).
   const locCell=(name,dt)=>{const hm=_HM(dt);
-    return `<td class="do-wrap"><span class="do-main">${escapeHtml(name||'—')}</span>${hm?`<span class="do-sl">${hm}</span>`:''}</td>`;};
+    return `<td class="do-wrap"><span class="do-main">${name||'—'}</span>${hm?`<span class="do-sl">${hm}</span>`:''}</td>`;};
   // Assignment cell — colour AND word (DESIGN.md E, owner 4/9). «ΠΡΟΣ
   // ΑΝΑΘΕΣΗ», not «χωρίς οδηγό»: the empty cell means the dispatcher owes an
   // action, not that a driver is missing. Partner trips name the company —
@@ -720,11 +723,11 @@ function _opsAsgCell(f, truck, driver, partner) {
   if(partner){
     const name=getPartnerName(getLinkedId(f['Partner']))||'—';
     const plates=escapeHtml(String(f['Partner Truck Plates']||''));
-    return `<td class="do-asg do-wrap"><span class="do-main"><span class="do-tag prt">ΣΥΝ.</span>${name}</span>${sub([plates,escapeHtml(driver)].filter(Boolean).join(' · '))}</td>`;
+    return `<td class="do-asg do-wrap"><span class="do-main"><span class="do-tag prt">ΣΥΝ.</span>${name}</span>${sub([plates,driver].filter(Boolean).join(' · '))}</td>`;
   }
   if(truck||driver){
     // `truck` is already «plate / trailer», escaped by the ref helpers.
-    return `<td class="do-asg do-wrap"><span class="do-main"><span class="do-tag own">ΙΔ.</span>${truck||'—'}</span>${sub(escapeHtml(driver))}</td>`;
+    return `<td class="do-asg do-wrap"><span class="do-main"><span class="do-tag own">ΙΔ.</span>${truck||'—'}</span>${sub(driver)}</td>`;
   }
   return `<td class="do-asg do-wrap"><span class="do-main"><span class="do-tag none">ΠΡΟΣ ΑΝΑΘΕΣΗ</span></span></td>`;
 }
@@ -781,7 +784,8 @@ function _opsSubRows(rec, stype, asDiv){
   const isDel=stype==='Unloading';
   return _opsStopsOf(id, stype).map((s,i)=>{
     const f=s.fields;
-    const loc=_L((f[F.STOP_LOCATION]||[])[0])||f['Stop Label']||'—';
+    // _L is already escaped; the raw 'Stop Label' fallback is escaped here.
+    const loc=_L((f[F.STOP_LOCATION]||[])[0])||escapeHtml(String(f['Stop Label']||'—'));
     const dt=f['DateTime']?fmtDate(f['DateTime']):'—';
     const pal=f['Pallets']!=null?f['Pallets']+'p':'';
     const perf=f['Performance'];
@@ -794,7 +798,7 @@ function _opsSubRows(rec, stype, asDiv){
          </span>`;
     const inner=`<div class="do-srow">
         <span class="do-sn">${'①②③④⑤⑥⑦⑧⑨'[i]||(i+1)}</span>
-        <span class="do-sloc">${escapeHtml(String(loc))}</span>
+        <span class="do-sloc">${loc}</span>
         <span style="color:var(--text-dim);font-variant-numeric:tabular-nums">${dt}</span>
         <span style="color:var(--text-dim);width:40px">${pal}</span>
         ${right}
@@ -937,7 +941,7 @@ function _opsChangeDay(ev, id, kind){
   OPS._pop={id,kind,base,choice:tmrw,moveDel:hasDel};
   const p=document.createElement('div'); p.className='do-pop';
   p.innerHTML=`<h4>Αλλαγή ημέρας ${kind==='load'?'φόρτωσης':'παράδοσης'}</h4>
-    <div class="do-psub">${escapeHtml(_C(f))}${loc?' · '+escapeHtml(loc):''}${f['Total Pallets']?' · '+f['Total Pallets']+'p':''} · τώρα ${_DMY(base)}</div>
+    <div class="do-psub">${_C(f)}${loc?' · '+loc:''}${f['Total Pallets']?' · '+f['Total Pallets']+'p':''} · τώρα ${_DMY(base)}</div>
     <div class="do-opts">
       <button class="do-opt on" data-v="${tmrw}" onclick="_opsPopPick(this)"><b>Αύριο</b><span>${_dowShort(tmrw)} ${_DMY(tmrw)}</span></button>
       <button class="do-opt" data-v="${mon}" onclick="_opsPopPick(this)"><b>Δευτέρα</b><span>${_DMY(mon)}</span></button>
