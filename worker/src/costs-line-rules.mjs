@@ -10,7 +10,13 @@ export const CT_FUEL_SOURCE_CATEGORIES = ["fuel", "reefer_fuel", "adblue"];
 export const CT_FUEL_SOURCES = ["DKV", "DADI", "BG_STATION", "OWN_STATION", "THIRD_PARTY"];
 // How a line was PAID (migration 032, owner 13/9): DKV account, driver cash, or
 // the Revolut business account. Orthogonal to fuel_source (who sold the fuel).
-export const CT_PAY_SOURCES = ["DKV", "CASH", "REVOLUT"];
+// 'CREDIT' (ΠΙΣΤΩΣΗ — paid later, on account; migration 035, owner 16/9) is a
+// general choice for every category, not a per-supplier flag. This list is
+// ALSO what GET /costs/lookups returns as `pay_sources`: the screen's dropdown
+// shows only what is listed here, so adding a value here (after the matching
+// CHECK migration ran) is the one step that makes it appear — never a second
+// copy in the front end.
+export const CT_PAY_SOURCES = ["DKV", "CASH", "REVOLUT", "CREDIT"];
 
 // body: the EFFECTIVE line after merge — for POST, the new row; for PATCH,
 // the existing row with the patch applied on top (a PATCH that only touches

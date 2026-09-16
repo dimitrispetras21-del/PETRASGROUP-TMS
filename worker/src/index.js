@@ -4,7 +4,7 @@ import puppeteer from "@cloudflare/puppeteer";
 import { validateNewEntry, validatePatch } from "./ledger-rules.mjs";
 import { monthRange, aggregateMonth } from "./ledger-month.mjs";
 import { validateRtBody, planRtUpsert, canRemoveLeg } from "./rt-rules.mjs";
-import { validateLineBody } from "./costs-line-rules.mjs";
+import { validateLineBody, CT_PAY_SOURCES } from "./costs-line-rules.mjs";
 import { buildImportKey, findDuplicateImportKeys, applyRules, splitByPassages, matchRoundTrip, allocateFees, reconcile, sumGrossEur, isMissingRelationError, toCostLineRow } from "./import-rules.mjs";
 // core/dkv-parser.js is a plain CJS/UMD file (module.exports = api — see its
 // header), also loaded by app.html in the browser. esbuild (wrangler's
@@ -2964,7 +2964,12 @@ async function handleCosts(request, url, origin, env) {
         dbSelect(env, "drivers", { select: "id,legacy_id,full_name,active", order: "full_name.asc", limit: 300 }),
         dbSelect(env, "partners", { select: "id,legacy_id,company_name,active", order: "company_name.asc", limit: 500 })
       ]);
-      return jsonOk({ trucks, trailers, drivers, partners }, origin, env);
+      // pay_sources (owner 16/9, E8): the payment vocabulary the Worker
+      // actually accepts on POST/PATCH /costs/lines — the screen builds its
+      // «Πληρωμή» dropdown from THIS list (modules/expenses.js exPaySources),
+      // so a value the Worker would 400 on can never be offered, and a newly
+      // accepted one appears the moment this deploy is live (αρχή 3).
+      return jsonOk({ trucks, trailers, drivers, partners, pay_sources: CT_PAY_SOURCES }, origin, env);
     }
     // ---- GET /costs/settings ----
     if (resource === "settings" && method === "GET") {
