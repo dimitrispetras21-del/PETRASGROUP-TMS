@@ -215,6 +215,16 @@ const _agoTxt=n=>n==null?'':n===1?'πριν 1 ημέρα':`πριν ${n} ημέ�
 // 'yesterday' | ISO. Until now the same ternary lived in _opsLoad, _opsCats
 // and _opsDraw — a third keyword would have had to be added three times.
 const _opsTgt=()=>OPS.date==='today'?localToday():OPS.date==='tomorrow'?localTomorrow():OPS.date==='yesterday'?_plus(localToday(),-1):OPS.date;
+// Owner 16/9: the «declare only today» rule is CANCELLED. Weekend loads and
+// deliveries are declared on Monday, so every past day accepts declarations.
+// Only the future stays closed — nothing has happened there yet. Each write
+// stamps the VIEWED day (not today), otherwise a Monday click would claim a
+// Saturday delivery happened on Monday.
+const _opsIsFuture=()=>_opsTgt()>localToday();
+// ISO timestamp for «now» on the viewed day: today = real now; a past day =
+// that date with the current wall-clock time (the minute is not a fact we
+// have, the day is).
+const _opsNowOnTgt=()=>{ const t=_opsTgt(); if(t===localToday()) return new Date().toISOString(); return new Date(t+'T'+new Date().toTimeString().slice(0,8)).toISOString(); };
 // The date input hands over an ISO string; fold it back to the keyword so the
 // segmented control lights the right button and the day words stay correct.
 const _opsNormDate=()=>{ const d=OPS.date; if(d===localToday()) OPS.date='today'; else if(d===localTomorrow()) OPS.date='tomorrow'; else if(d===_plus(localToday(),-1)) OPS.date='yesterday'; };
@@ -605,7 +615,7 @@ function _opsGroupRow(key,g,from,to,isToday,open){
   const st=(all?`<span class="do-st-done">Φορτώθηκαν ✓</span>`
     :`<span class="do-pill" onclick="event.stopPropagation();_opsToggleStops('${id}')" title="Κλικ: οι φορτώσεις μία-μία — δηλώνεις όποια έγινε, οι άλλες περιμένουν">${done}/${g.length} φορτώθηκαν ${open?'▾':'▸'}</span>`)+by;
   // ΠΡΟΚ. € and «Αλλαγή ημέρας» belong to one order each — not on the summary.
-  const act=isToday&&!all?`<div class="do-slots"><span class="do-slot"><button class="do-btn" onclick="event.stopPropagation();_opsToggleStops('${id}')">Φορτώθηκε</button></span></div>`:'';
+  const act=!_opsIsFuture()&&!all?`<div class="do-slots"><span class="do-slot"><button class="do-btn" onclick="event.stopPropagation();_opsToggleStops('${id}')">Φορτώθηκε</button></span></div>`:'';
   return `<tr id="r_${id}" class="do-hover do-grp${open?' do-open':''}" style="cursor:pointer" onclick="if(!event.target.closest('button,input,select,a'))_opsToggleStops('${id}')"><td class="do-num">${from}–${to}</td><td class="do-wrap"><span class="do-main">${g.length} φορτώσεις</span><span class="do-sl">${clients}</span></td><td class="do-wrap"><span class="do-main">${locs||'—'}</span></td>${_opsAsgCell(f0,_TT(f0),_D(f0),_P(f0))}<td>${pal}</td><td>—</td><td class="do-st">${st}</td><td class="do-acts">${act}</td></tr>`;
 }
 
@@ -660,15 +670,16 @@ function _opsSlots(rec, ctx) {
   const isOv=ctx==='ovd'||ctx==='ovl';
   const stype=isL?'Loading':'Unloading';
   const multi=_opsStopsOf(id,stype).length>1;
-  // Η δήλωση γράφει ΣΗΜΕΡΙΝΗ ημερομηνία (`Actual Delivery Date`=localToday())
-  // και «On Time». Σε άλλη μέρα αυτό είναι ψέμα στη βάση για γεγονός που δεν
-  // έγινε. Ο παλιός κώδικας το φύλαγε με isToday· στο κύμα 3 ο φρουρός έγινε
-  // `!isTmrw` και τα κουμπιά εμφανίστηκαν σε ΚΑΘΕ ημερομηνία. Επαναφορά 3/9.
-  const isToday=OPS.date==='today';
+  // 3/9: buttons only on «today», because the declaration wrote today's date
+  // and on any other day that was a lie in the database. 16/9 (owner): the
+  // rule is cancelled — retroactive declarations are the norm (weekend work
+  // entered on Monday). The date lie is removed at the source instead: every
+  // writer stamps the viewed day (_opsTgt / _opsNowOnTgt). Only a future day
+  // has no buttons.
   const done=st==='Delivered'||(isL&&st==='In Transit');
   if(done) return '';
   const slots=[];
-  if(isToday){
+  if(!_opsIsFuture()){
     if(isL){
       // Multi: το κουμπί της σύνοψης ΔΕΝ δηλώνει — ανοίγει τα σημεία (owner 26/8)
       slots.push(multi?`<button class="do-btn" onclick="event.stopPropagation();_opsToggleStops('${id}')">Φορτώθηκε</button>`
@@ -775,7 +786,7 @@ function _opsUser(){ try{ return JSON.parse(localStorage.getItem('tms_user')||'{
 function _opsErrWord(e){ const m=String(e&&e.message||e||''); return /403|forbidden|permission/i.test(m)?'χωρίς δικαίωμα':m.slice(0,40)||'σφάλμα'; }
 async function _opsMarkStop(stop, perf){
   if(_opsBlockReadOnly()) return;
-  const patch={'Completed At': new Date().toISOString(), 'Completed By': _opsUser()};
+  const patch={'Completed At': _opsNowOnTgt(), 'Completed By': _opsUser()};
   if(perf) patch['Performance']=perf;
   await atSafePatch(TABLES.ORDER_STOPS, stop.id, patch);
   Object.assign(stop.fields, patch);
@@ -882,7 +893,7 @@ async function _opsStatFinal(id,st){ if(_opsBlockReadOnly()) return; try{
   const patch={'Status':st};
   // VS: το «Σε μεταφορά» σφραγίζει την πραγματική ημέρα αναχώρησης από CD
   if(st==='In Transit'&&r0?.fields['Veroia Switch']&&r0?.fields['Direction']==='Export'&&!r0?.fields['VS CD Date']){
-    patch['VS CD Date']=localToday();
+    patch['VS CD Date']=_opsTgt();
   }
   // Η αναβολή τελειώνει μόλις το φορτίο κινηθεί — αλλιώς το σήμα επιβιώνει για πάντα,
   // γιατί ΚΑΝΕΙΣ δεν καθάριζε ποτέ το πεδίο. Η πληροφορία ΔΕΝ χάνεται: κάθε PATCH
@@ -906,7 +917,7 @@ async function _opsDel(id,perf){
   if(dels.length===1){ try{ await _opsMarkStop(dels[0], perf); }catch(e){ if(typeof logError==='function') logError(e,'daily-ops: single delivery stamp'); toast('Η σφραγίδα παράδοσης ΔΕΝ γράφτηκε ('+_opsErrWord(e)+') — η παραγγελία έμεινε ως έχει','danger'); return; } }
   return _opsDelFinal(id,perf);
 }
-async function _opsDelFinal(id,perf){ if(_opsBlockReadOnly()) return; const d=localToday();
+async function _opsDelFinal(id,perf){ if(_opsBlockReadOnly()) return; const d=_opsTgt();
   // Ίδιος λόγος με το _opsStat: παραδομένη παραγγελία δεν είναι «αναβεβλημένη».
   const _r0=OPS.intl.find(x=>x.id===id);
   const _p={'Status':'Delivered','Delivery Performance':perf,'Actual Delivery Date':d};
@@ -973,7 +984,7 @@ function _opsChangeDay(ev, id, kind){
     <div class="do-opts">
       <button class="do-opt on" data-v="${tmrw}" onclick="_opsPopPick(this)"><b>Αύριο</b><span>${_dowShort(tmrw)} ${_DMY(tmrw)}</span></button>
       <button class="do-opt" data-v="${mon}" onclick="_opsPopPick(this)"><b>Δευτέρα</b><span>${_DMY(mon)}</span></button>
-      <button class="do-opt" data-v="" onclick="_opsPopPick(this)"><b>Άλλη…</b><input type="date" min="${localToday()}" onclick="event.stopPropagation()" onchange="_opsPopOther(this)"></button>
+      <button class="do-opt" data-v="" onclick="_opsPopPick(this)"><b>Άλλη…</b><input type="date" onclick="event.stopPropagation()" onchange="_opsPopOther(this)"></button>
     </div>
     ${hasDel?`<label><input type="checkbox" checked onchange="OPS._pop.moveDel=this.checked;_opsPopHint()"><span>Μετακίνηση και της παράδοσης<small id="doPopHint"></small></span></label>`:''}
     <div class="do-pfoot"><span>Γράφεται στην παραγγελία · ιστορικό στο audit log</span><span class="sp"></span>
