@@ -737,6 +737,34 @@ async function runStickyCheck(browser) {
   return { consoleErrors };
 }
 
+// Owner 16/9 night: «δεν υπάρχει κουμπί για να καταχωρήσει η Αλεξία» — a «+»
+// on every trip row (and in the frame header) opens the frame and lands on
+// the CATEGORY select; the entry row announces itself as «Νέο έξοδο».
+async function runAddButton(browser) {
+  console.log('\n== «+» ανά δρομολόγιο → κάδρο + Κατηγορία ==');
+  const { context, page, consoleErrors } = await newPage(browser, 'accountant');
+  installCostsMocks(page, { rt: RT_FIXTURE, lookups: LOOKUPS_FIXTURE, lines: LINES_FIXTURE_EDIT });
+  await gotoPage(page, 'expenses', BASE_URL);
+  await page.waitForSelector('.ex-page .ex-seg', { timeout: 15000 });
+  await openWeek(page, WEEK_START);
+  const trips = await page.locator('.ex-trip').count();
+  const plus = await page.locator('.ex-trip .ex-gr .ex-add').count();
+  assert(trips > 0 && plus === trips, 'every trip row carries a visible «+» (' + plus + ' / ' + trips + ')');
+  assert(await page.locator('.ex-trip .ex-gr .ex-add').first().evaluate(el => getComputedStyle(el).visibility === 'visible' && el.getBoundingClientRect().width > 0), 'the «+» is visible without hover');
+  assert(await page.locator('.ex-frame').count() === 0, 'no frame open before the click');
+  await page.locator('.ex-trip[data-trip="701"] .ex-gr .ex-add').click();
+  await page.waitForSelector('.ex-frame[data-frame="701"]', { timeout: 5000 });
+  // .ex-row.qe.expm is the «Μετρητά Μ» field — the entry row is the other one.
+  assert(await page.locator('.ex-frame[data-frame="701"] .ex-row.qe:not(.expm)').count() === 1, '«+» opens the frame of that trip with its entry row');
+  assert(await page.evaluate(() => document.activeElement && document.activeElement.id) === 'exQeCategory', '«+» lands on the Κατηγορία select (not the amount)');
+  // textContent, not innerText: the title is uppercased by CSS (text-transform).
+  assert((await page.locator('.ex-frame .ex-qe-title').evaluate(el => el.textContent)).trim() === 'Νέο έξοδο', 'the entry row is titled «Νέο έξοδο»');
+  assert(await page.locator('.ex-frame .ex-gp-actions .ex-add.wide').count() === 1, 'the frame header has its own «+ Έξοδο»');
+  await page.screenshot({ path: shot('14-add-button-1440'), fullPage: true });
+  await context.close();
+  return { consoleErrors };
+}
+
 async function runVehicleTab(browser) {
   console.log('\n== accountant · tab Όχημα ==');
   const { context, page, consoleErrors } = await newPage(browser, 'accountant');
@@ -1047,6 +1075,7 @@ async function runDispatcherFlow(browser) {
     const acct = await runAccountantFlow(browser);
     const credit = await runCreditGate(browser);
     const sticky = await runStickyCheck(browser);
+    const addBtn = await runAddButton(browser);
     const veh = await runVehicleTab(browser);
     const shotW = await runScreenshotWidths(browser);
     const wide = await runWideColumnsCheck(browser);

@@ -292,7 +292,11 @@ function exStyles() {
      the owner's correction (measured to fit both 1440 and 1280 without card
      scroll). A custom property can hold several space-separated tracks, so
      var(--ex-fixed) expands to all 5 fixed tracks at once. */
-  .ex-page{--ex-fixed:24px 84px 116px 72px minmax(120px,1fr);--ex-amtcol:56px;--ex-tail:70px 72px}
+  /* Κατάσταση track: 72 → 90px so the status word AND the «+» (owner 16/9
+     night) fit side by side; the route track's minimum drops 120 → 104 so
+     the grid still fits at 1440 without a horizontal scroll (rig-measured:
+     17px over with +28/−0). */
+  .ex-page{--ex-fixed:24px 84px 116px 72px minmax(104px,1fr);--ex-amtcol:56px;--ex-tail:70px 90px}
   .ex-gh,.ex-gr,.ex-gt{display:grid;gap:4px;align-items:center;padding:0 10px}
   /* Sticky header/totals (note 7): #content is the app's own scrolling
      element (assets/style.css .content{overflow-y:auto}, not the document),
@@ -360,7 +364,9 @@ function exStyles() {
   .ex-vehcell{line-height:1.25;display:flex;flex-direction:column;gap:1px}
   .ex-plate.trailer{color:var(--text-dim);font-size:10px}
   .ex-route{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--text-mid);cursor:pointer}
-  .ex-st{font-size:11.5px;font-weight:500;color:var(--text-mid);white-space:nowrap;overflow:hidden;text-overflow:ellipsis} .ex-st.att{color:var(--warn)} .ex-st.ok{color:var(--ok)}
+  .ex-st{font-size:11.5px;font-weight:500;color:var(--text-mid);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:flex;align-items:center;justify-content:space-between;gap:4px;min-width:0} .ex-st.att{color:var(--warn)} .ex-st.ok{color:var(--ok)}
+  /* The word may ellipsize; the «+» never shrinks or hides (flex:none). */
+  .ex-st-w{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0} .ex-st .ex-add{flex:none}
   .ex-cell{display:flex;flex-direction:column;align-items:flex-end;gap:1px;padding:2px 4px;border-radius:3px;border:1.5px solid transparent;min-height:26px;justify-content:center}
   .ex-cell.can{cursor:pointer} .ex-cell.can:hover{background:var(--surface-card);border-color:var(--border)}
   .ex-cell.open{border-color:var(--navy);background:var(--surface-card)}
@@ -439,6 +445,12 @@ function exStyles() {
   .ex-row.qe{display:flex;flex-wrap:wrap;align-items:flex-end;gap:8px;padding:10px 16px 12px;background:transparent;border-bottom:0}
   .ex-row.edit{box-shadow:inset 3px 0 var(--navy);background:var(--surface-card);border-bottom:1px solid var(--border)}
   .ex-qe-break{flex-basis:100%;height:0}
+  /* «+» per trip (owner 16/9 night): always visible, never hover-only — the
+     row is the only place a first-time user looks for «how do I add». */
+  .ex-add{display:inline-flex;align-items:center;justify-content:center;min-width:22px;height:22px;margin-left:6px;padding:0 6px;border:1px solid var(--navy,#0B1929);border-radius:4px;background:#fff;color:var(--navy,#0B1929);font:inherit;font-size:13px;font-weight:600;line-height:1;cursor:pointer;vertical-align:middle}
+  .ex-add:hover{background:var(--navy,#0B1929);color:#fff}
+  .ex-add.wide{height:26px;padding:0 10px;font-size:12px;margin-left:0}
+  .ex-qe-title{flex-basis:100%;font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--navy,#0B1929);padding-bottom:2px}
   .ex-qe-cat{width:170px;max-width:100%} .ex-qe-date{width:140px;max-width:100%} .ex-qe-amt{width:100px} .ex-qe-note{flex:1;min-width:160px}
   .ex-qe-hint{font-size:11px;color:var(--text-dim);white-space:nowrap;padding-bottom:8px}
   .ex-qe-fuel{display:flex;flex-wrap:wrap;gap:8px}
@@ -470,7 +482,7 @@ function exStyles() {
      squeezing the amount tracks at 1280 (owner correction 13/9 #3 — exact
      numbers given by the owner for both breakpoints). */
   @media (max-width:1320px){
-    .ex-page{padding:10px 16px 32px;--ex-fixed:22px 76px 100px 66px minmax(96px,1fr);--ex-amtcol:50px;--ex-tail:62px 66px}
+    .ex-page{padding:10px 16px 32px;--ex-fixed:22px 76px 100px 66px minmax(80px,1fr);--ex-amtcol:50px;--ex-tail:62px 84px}
     .ex-gh,.ex-gr,.ex-gt{gap:3px;padding:0 8px}
     .ex-gr{padding-top:3px;padding-bottom:3px}
     .ex-cell .a{font-size:10.5px}
@@ -1230,8 +1242,21 @@ function exTripRowHtml(r, visCols, tmpl) {
       <div class="ex-route" onclick="exToggleExpand(${r.id})" title="${escapeHtml(routeSummary)}">${escapeHtml(routeSummary)}</div>
       ${cells}
       <div class="r n" style="font-weight:600">${hasAny ? exNum(rowTotal) : ''}</div>
-      <div class="ex-st ${st.cls}">${st.word}</div>
+      <div class="ex-st ${st.cls}"><span class="ex-st-w">${st.word}</span>${_ex.canWrite ? `<button type="button" class="ex-add" onclick="event.stopPropagation();exAddExpense(${r.id})" title="Νέο έξοδο σε αυτό το δρομολόγιο">+</button>` : ''}</div>
     </div>${isExpanded && legsHtml ? `<div class="ex-legs">${legsHtml}</div>` : ''}${isOpen ? exFrameHtml(r) : ''}</div>`;
+}
+
+// «+» on every trip row and in the frame header (owner 16/9 night: «δεν
+// υπάρχει κουμπί στο οποίο να κάνει κλικ η Αλεξία για να καταχωρήσει»). The
+// entry row already existed inside the frame, but the only way in was to
+// click a cell or the vehicle — an affordance nobody can guess. This opens
+// the frame (if needed) and lands on the CATEGORY select, not the amount:
+// the accountant first says WHAT the expense is, then how much.
+function exAddExpense(rtId) {
+  if (!_ex.canWrite) return;
+  if (!(_ex.open && _ex.open.rtId === rtId)) exOpenFrame(rtId, EX_COL_ORDER[0]);
+  const sel = document.getElementById('exQeCategory');
+  if (sel) { sel.scrollIntoView({ block: 'center' }); sel.focus(); }
 }
 
 // «Χωρίς δρομολόγιο»: unallocated lines dated inside the week (week tab
@@ -1381,7 +1406,7 @@ function exFrameHtml(r) {
   return `<div class="ex-frame" data-frame="${r.id}">
     <div class="ex-fr-head">
       <div class="ex-fr-title"><div class="t">${title}</div><div class="s">${sub}</div></div>
-      <div class="ex-fr-right"><div class="ex-fr-total"><span class="k">Σύνολο δρομολογίου</span><b>${exEur(totalAmt)}</b></div><div class="ex-gp-actions">${exNextTripHtml()}<button type="button" class="ex-link" onclick="exCloseCell()">Κλείσιμο ▲</button></div></div>
+      <div class="ex-fr-right"><div class="ex-fr-total"><span class="k">Σύνολο δρομολογίου</span><b>${exEur(totalAmt)}</b></div><div class="ex-gp-actions">${_ex.canWrite ? `<button type="button" class="ex-add wide" onclick="exAddExpense(${r.id})">+ Έξοδο</button>` : ''}${exNextTripHtml()}<button type="button" class="ex-link" onclick="exCloseCell()">Κλείσιμο ▲</button></div></div>
     </div>
     ${sections || '<div class="ex-row" style="padding:10px 16px;color:var(--text-mid)">Καμία γραμμή εξόδων.</div>'}${exExpMSectionHtml(r)}${totalsHtml}${_ex.canWrite ? exQeRowHtml(EX_CATEGORIES) : ''}
   </div>`;
@@ -1648,6 +1673,7 @@ function exQeRowHtml(cats) {
   // Alexia's own word — never «Αποθήκευση» here), «+ Ίδια κατηγορία» (outline
   // navy; = Enter), «Άκυρο» (faint; = Esc). See exQeSubmit for what each keeps.
   return `<div class="ex-row qe">
+    <div class="ex-qe-title">Νέο έξοδο</div>
     <div class="ex-field ex-qe-cat"><label class="ex-flabel">Κατηγορία</label><select class="ex-ei" id="exQeCategory" onchange="exQeCategoryChange(this)">${opts}</select></div>
     ${exPaySourceSelectHtml('exQePaySource', _ex.qe.paySource || exPaySourceDefault(cat))}
     ${fuelSourceOn ? exFuelSourceSelectHtml('exQeFuelSource', _ex.qe.fuelSource) : ''}
