@@ -877,18 +877,20 @@ function exBrandImgFallback(img, key) {
   const tpl = document.createElement('template'); tpl.innerHTML = svg;
   img.replaceWith(tpl.content.firstChild);
 }
-// opts.lower (amount-cell sub-label): the mark-less words go lowercase and
-// grey («μετρητά», «πίστωση»); a brand name beside its mark is never
-// lowercased («DKV» stays «DKV»). An unknown key still prints as itself (an
-// old/odd value reads as what it is — αρχή 1), never as nothing.
+// Owner 16/9 late («μόνο το σήμα, χωρίς τη λέξη — υπερβολή»): a brand with a
+// mark shows the MARK ALONE, its word only in title= (hover) — DKV, Revolut,
+// DADI, Revoil, Nikolai's flag, the neutral Τρίτος badge. A method with no
+// mark (Μετρητά, Πίστωση) keeps its word; opts.lower renders that word
+// lowercase and grey in the amount-cell sub-label. An unknown key still
+// prints as itself (an old/odd value reads as what it is — αρχή 1).
 function exBrandTag(key, opts) {
   if (!key) return '';
   const word = EX_BRAND_WORD[key];
   if (!word) return escapeHtml(String(key));
   const mark = exBrandMark(key);
-  const lower = !!(opts && opts.lower) && !mark;
-  const txt = escapeHtml(lower ? word.toLowerCase() : word);
-  return `<span class="ex-brand" data-brand="${key}">${mark}<span class="${lower ? 'dim' : ''}">${txt}</span></span>`;
+  if (mark) return `<span class="ex-brand" data-brand="${key}" title="${escapeHtml(word)}">${mark}</span>`;
+  const lower = !!(opts && opts.lower);
+  return `<span class="ex-brand" data-brand="${key}"><span class="${lower ? 'dim' : ''}">${escapeHtml(lower ? word.toLowerCase() : word)}</span></span>`;
 }
 function exFuelSourceTag(fuelSource) { return exBrandTag(EX_FUEL_SOURCE_BRAND[fuelSource] || fuelSource); }
 // A line's effective pay_source — falls back to DKV for an imported line
@@ -921,11 +923,17 @@ function exCellPayTag(lines) {
 // (hidden on error, so the code alone remains — never a broken box). Adding a
 // country = drop the SVG in assets/flags and list it here, nothing else.
 const EX_LOCAL_FLAGS = new Set('GR BG AT HU DE IT CZ SK PL RO RS NL ES FR MK SI HR TR BE CH LU DK SE'.split(' '));
+// Owner 16/9 late: the flag ALONE — no visible code beside it («δεν χρειάζεται
+// σημαία ΚΑΙ κωδικός»); the country name + code live in title= for hover and
+// in alt= for screen readers. Only the combobox option list still prints the
+// name next to the flag (that is where one picks).
 function exFlag(cc) {
   if (!cc) return '';
   const up = String(cc).toUpperCase(), lc = up.toLowerCase();
-  if (EX_LOCAL_FLAGS.has(up)) return `<img class="ex-flag" src="assets/flags/${lc}.svg" width="16" height="12" alt="${escapeHtml(up)}">`;
-  return `<img class="ex-flag" src="https://flagcdn.com/w20/${lc}.png" width="16" height="12" alt="${escapeHtml(up)}" onerror="this.style.display='none'">`;
+  const name = (typeof countryName === 'function' && countryName(up)) || up;
+  const t = escapeHtml(name + ' (' + up + ')');
+  if (EX_LOCAL_FLAGS.has(up)) return `<img class="ex-flag" src="assets/flags/${lc}.svg" width="16" height="12" alt="${escapeHtml(up)}" title="${t}">`;
+  return `<img class="ex-flag" src="https://flagcdn.com/w20/${lc}.png" width="16" height="12" alt="${escapeHtml(up)}" title="${t}" onerror="this.style.display='none'">`;
 }
 
 // ═══════════════════ RENDER ═══════════════════
@@ -1117,7 +1125,7 @@ function exCountryParts(lines) {
   const byCountry = {};
   lines.forEach(l => { const c = l.toll_country || '—'; byCountry[c] = (byCountry[c] || 0) + exLineAmt(l); });
   return Object.entries(byCountry).sort((a, b) => b[1] - a[1])
-    .map(([c, amt]) => (c !== '—' ? exFlag(c) : '') + escapeHtml(c) + ' ' + exNum(amt));
+    .map(([c, amt]) => (c !== '—' ? exFlag(c) : escapeHtml(c)) + ' ' + exNum(amt));
 }
 
 // «Διόδια ανά χώρα» quiet line under the totals row (spec §2.Γ point 1) —
@@ -1831,7 +1839,7 @@ function exLineRowHtml(line, opts) {
   const litersHtml = line.liters != null ? escapeHtml(Number(line.liters).toLocaleString('el-GR', { maximumFractionDigits: 2 })) : '';
   // Owner 14/9: «Χώρα» shows on a fuel/reefer/adblue line too, whenever one
   // was picked at entry (optional there) — flag + code (correction 13/9 #6).
-  const countryHtml = line.toll_country ? exFlag(line.toll_country) + escapeHtml(String(line.toll_country).toUpperCase()) : '';
+  const countryHtml = line.toll_country ? exFlag(line.toll_country) : '';
   // No partner branch in the option label (correction #1) — every _ex.rts
   // entry is own-fleet, filtered at load time.
   const assignHtml = (opts && opts.unallocated && _ex.canWrite)

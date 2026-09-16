@@ -347,7 +347,9 @@ async function runAccountantFlow(browser) {
   const tollsCell701 = cell(page, 701, 'tolls');
   assert(await tollsCell701.locator('img.ex-src[alt="DKV"]').count() === 1, 'the 701/tolls amount cell shows the DKV pay-source logo (img.ex-src[alt="DKV"])');
   // Owner 16/9 evening: mark + WORD everywhere, the amount cell included.
-  assert(/DKV/.test(await tollsCell701.locator('.b .ex-brand[data-brand="DKV"]').innerText()), 'the cell sub-label is the DKV badge + the word «DKV» (owner 16/9 evening)');
+  // Owner 16/9 late: the MARK alone, the word only in title= (hover).
+  const cellBrand = tollsCell701.locator('.b .ex-brand[data-brand="DKV"]');
+  assert(await cellBrand.count() === 1 && (await cellBrand.innerText()).trim() === '' && await cellBrand.getAttribute('title') === 'DKV', 'the cell sub-label is the DKV mark ALONE (no visible word), «DKV» only in title');
   const logoResp = await page.request.get(BASE_URL + 'assets/logos/dkv.png');
   assert(logoResp.status() === 200, 'assets/logos/dkv.png is served (HTTP ' + logoResp.status() + ')');
   assert(await page.request.get(BASE_URL + 'assets/logos/revolut.png').then(r => r.status()) === 404, 'assets/logos/revolut.png is GONE (Revolut is an inline «R» badge now, αρχή 8)');
@@ -393,7 +395,7 @@ async function runAccountantFlow(browser) {
   assert(/ΗΜΕΡΟΜΗΝΙΑ.*ΚΑΤΗΓΟΡΙΑ.*ΠΛΗΡΩΜΗ.*ΠΑΡΑΣΤΑΤΙΚΟ.*ΛΙΤΡΑ.*ΧΩΡΑ.*ΠΟΣΟ.*ΠΟΙΟΣ/.test(thTxt), 'frame column header = Ημερομηνία · Κατηγορία · Πληρωμή · Παραστατικό/σημείωση · Λίτρα · Χώρα · Ποσό € · Ποιος: ' + thTxt);
   assert(await page.locator('.ex-frame .ex-th').first().evaluate(el => getComputedStyle(el).position) === 'sticky', 'E7: the frame\'s column header is position:sticky');
   const ovText = (await frame(page, 701).innerText()).replace(/\s+/g, ' ');
-  assert(/Σύνολο λίτρων/.test(ovText) && /Πληρωμή:/.test(ovText) && /DKV/.test(ovText) && /Διόδια ανά χώρα:/.test(ovText), 'frame totals: total liters, per-payment breakdown naming DKV, per-country tolls');
+  assert(/Σύνολο λίτρων/.test(ovText) && /Πληρωμή:/.test(ovText) && await page.locator('.ex-frame .ex-ov-totals .ex-brand[data-brand="DKV"] img.ex-src').count() === 1 && /Διόδια ανά χώρα:/.test(ovText), 'frame totals: total liters, per-payment breakdown naming DKV, per-country tolls');
   assert(await page.locator('.ex-frame .ex-ov-totals img.ex-flag').count() >= 1, 'the per-country tolls line carries a flag');
   assert(await page.locator('.ex-frame .ex-line-grid.ex-row').count() === 2, 'frame lists the 2 lines of RT 701 as detailed rows (ex-line-grid)');
   // Line 9101 (fuel, 412 L, note «Α», no pay_source) — one value per column.
@@ -465,7 +467,7 @@ async function runAccountantFlow(browser) {
   assert(await page.evaluate(() => document.activeElement && document.activeElement.id) === 'exQeAmt', 'E9: focus lands on Ποσό');
   assert(/Διόδια · 2 γραμμές · 42,00 €/.test((await page.locator('.ex-frame .ex-ov-sechead', { hasText: 'Διόδια' }).evaluate(el => el.textContent)).replace(/\s+/g, ' ')), 'the Διόδια section now reads «2 γραμμές · 42,00 €» (refetched, not incremented)');
   const revBrand = page.locator('.ex-frame .ex-row[data-line] .ex-pay .ex-brand[data-brand="REVOLUT"]');
-  assert(await revBrand.count() === 1 && await revBrand.locator('svg.ex-brand-svg').count() === 1 && /Revolut/.test(await revBrand.innerText()), 'the new REVOLUT line shows the inline black «R» badge + the word «Revolut» in its Πληρωμή column');
+  assert(await revBrand.count() === 1 && await revBrand.locator('svg.ex-brand-svg').count() === 1 && await revBrand.locator('> span').count() === 0 && await revBrand.getAttribute('title') === 'Revolut', 'the new REVOLUT line shows the inline black «R» badge ALONE in its Πληρωμή column («Revolut» only in title)');
   assert(await page.locator('.ex-frame .ex-line-grid img.ex-flag[alt="DE"]').count() >= 1, 'the new line shows the DE flag in its Χώρα column');
   assert(/182,00 €/.test((await page.locator('.ex-frame .ex-fr-total').innerText())), 'frame «Σύνολο δρομολογίου» is now 182,00 € (170 + 12)');
   // Enter = the same «+ Ίδια κατηγορία» (unchanged since 13/9).
@@ -892,7 +894,7 @@ async function runWideColumnsCheck(browser) {
     assert(secHeads.some(t => /^Πρόστιμα · 1 γραμμή · 15,00 € · μπαίνει στο σύνολο$/.test(t)), `[${width}] E4: the Πρόστιμα strip says «· μπαίνει στο σύνολο»: ${JSON.stringify(secHeads)}`);
     assert(/255,00 €/.test(await page.locator('.ex-frame .ex-fr-total').innerText()), `[${width}] E4: «Σύνολο δρομολογίου 255,00 €» — same number as the grid row`);
     const payLine = (await page.locator('.ex-frame .ex-ov-totals').innerText()).replace(/\s+/g, ' ');
-    assert(/Πληρωμή:.*DKV 130,00 €.*Revolut 50,00 €.*Μετρητά 35,00 €/.test(payLine), `[${width}] payment breakdown DKV 130 · Revolut 50 · Μετρητά 35 (fines counted under Μετρητά): ${payLine}`);
+    assert(/Πληρωμή:.*130,00 €.*50,00 €.*Μετρητά 35,00 €/.test(payLine) && !/DKV 130|Revolut 50/.test(payLine), `[${width}] payment breakdown [DKV mark] 130 · [R mark] 50 · Μετρητά 35 — words only where there is no mark (fines counted under Μετρητά): ${payLine}`);
     assert(await page.locator('.ex-frame .ex-ov-totals .ex-brand[data-brand="DKV"] img.ex-src').count() === 1 && await page.locator('.ex-frame .ex-ov-totals .ex-brand[data-brand="REVOLUT"] svg').count() === 1, `[${width}] the payment summary carries the SAME source badges as the lines (DKV logo, Revolut R) — coordinator note on shot 02b`);
     await assertNoPageScrollX(page, width + ' (wide, frame open)');
     await assertGridFits(page, width + ' (9 amount cols)');
@@ -936,16 +938,16 @@ async function runBrandBadges(browser) {
   await page.waitForSelector('.ex-page .ex-seg', { timeout: 15000 });
   await openWeek(page, WEEK_START);
   const tollsB = cell(page, 701, 'tolls').locator('.b .ex-brand[data-brand="DKV"]');
-  assert(await tollsB.count() === 1 && await tollsB.locator('img.ex-src').count() === 1 && /DKV/.test(await tollsB.innerText()), 'closed grid: tolls cell shows DKV logo + «DKV»');
+  assert(await tollsB.count() === 1 && await tollsB.locator('img.ex-src').count() === 1 && (await tollsB.innerText()).trim() === '', 'closed grid: tolls cell shows the DKV logo alone');
   assert(await cell(page, 701, 'fuel').locator('.ex-brand').count() === 0, 'closed grid: the mixed-payment fuel cell shows no badge (never a misleading one)');
   const rowH = await page.locator('.ex-gr[data-rt="701"]').evaluate(el => el.getBoundingClientRect().height);
   assert(rowH <= 46, 'the badge in the cell sub-label keeps the collapsed row ≤46px (12px mark there, 16–18px elsewhere): ' + rowH.toFixed(1));
   await openFrame(page, 701);
   const brand = (id, key) => page.locator(`.ex-frame .ex-row[data-line="${id}"] .ex-brand[data-brand="${key}"]`);
-  assert(await brand(9401, 'DADI').locator('img.ex-src[alt="DADI"]').count() === 1 && /DADI/.test(await brand(9401, 'DADI').innerText()), 'line 9401: Προμηθευτής = DADI logo + «DADI»');
-  assert(await brand(9402, 'NIKOLAI').locator('img.ex-flag[alt="BG"]').count() === 1 && /Nikolai/.test(await brand(9402, 'NIKOLAI').innerText()), 'line 9402: Προμηθευτής = Bulgarian flag + «Nikolai» (BG_STATION)');
+  assert(await brand(9401, 'DADI').locator('img.ex-src[alt="DADI"]').count() === 1 && (await brand(9401, 'DADI').innerText()).trim() === '' && await brand(9401, 'DADI').getAttribute('title') === 'DADI', 'line 9401: Προμηθευτής = DADI logo alone (title «DADI»)');
+  assert(await brand(9402, 'NIKOLAI').locator('img.ex-flag[alt="BG"]').count() === 1 && (await brand(9402, 'NIKOLAI').innerText()).trim() === '' && await brand(9402, 'NIKOLAI').getAttribute('title') === 'Nikolai', 'line 9402: Προμηθευτής = Bulgarian flag alone (title «Nikolai», BG_STATION)');
   const revoilImg = brand(9403, 'REVOIL').locator('img.ex-src.revoil');
-  assert(await revoilImg.count() === 1 && /Revoil Petras/.test(await brand(9403, 'REVOIL').innerText()), 'line 9403: Προμηθευτής = Revoil PNG + «Revoil Petras» (OWN_STATION)');
+  assert(await revoilImg.count() === 1 && (await brand(9403, 'REVOIL').innerText()).trim() === '' && await brand(9403, 'REVOIL').getAttribute('title') === 'Revoil Petras', 'line 9403: Προμηθευτής = Revoil PNG alone (title «Revoil Petras», OWN_STATION)');
   // Images load asynchronously after innerHTML — wait for the actual load
   // (not a sleep) before reading naturalWidth, or a fast run reads 0.
   await page.waitForFunction(() => Array.from(document.querySelectorAll('.ex-frame img')).every(i => i.complete), null, { timeout: 5000 });
@@ -953,15 +955,15 @@ async function runBrandBadges(browser) {
   assert(rv.src === 'assets/brands/revoil.png' && rv.nw > 0 && rv.h >= 17.5 && rv.h <= 18.5, 'Revoil mark = the local PNG, actually loaded, 18px tall: ' + JSON.stringify(rv));
   await revoilImg.evaluate(img => exBrandImgFallback(img, 'REVOIL'));
   const fb = brand(9403, 'REVOIL').locator('svg.ex-brand-svg');
-  assert(await fb.count() === 1 && await fb.locator('rect').first().getAttribute('fill') === '#0072BC' && await fb.locator('circle').first().getAttribute('fill') === '#8DC63F' && /Revoil Petras/.test(await brand(9403, 'REVOIL').innerText()), 'if the PNG fails to load, the inline SVG twin (blue #0072BC plate, green #8DC63F dot) takes its place and the word stays');
+  assert(await fb.count() === 1 && await fb.locator('rect').first().getAttribute('fill') === '#0072BC' && await fb.locator('circle').first().getAttribute('fill') === '#8DC63F' && await brand(9403, 'REVOIL').getAttribute('title') === 'Revoil Petras', 'if the PNG fails to load, the inline SVG twin (blue #0072BC plate, green #8DC63F dot) takes its place, title kept');
   const dadiH = await brand(9401, 'DADI').locator('img.ex-src').evaluate(el => el.getBoundingClientRect().height);
   assert(dadiH >= 15.5 && dadiH <= 18.5, 'marks in the lines are 16–18px tall: ' + dadiH.toFixed(1));
-  assert(await brand(9404, 'THIRD_PARTY').locator('.ex-badge-neutral').count() === 1 && /Τρίτος/.test(await brand(9404, 'THIRD_PARTY').innerText()), 'line 9404: Προμηθευτής = neutral badge + «Τρίτος»');
-  assert(await brand(9403, 'REVOLUT').locator('svg.ex-brand-svg').count() === 1 && /Revolut/.test(await brand(9403, 'REVOLUT').innerText()), 'line 9403: Πληρωμή = black «R» badge + «Revolut»');
+  assert(await brand(9404, 'THIRD_PARTY').locator('.ex-badge-neutral').count() === 1 && await brand(9404, 'THIRD_PARTY').getAttribute('title') === 'Τρίτος', 'line 9404: Προμηθευτής = neutral badge alone (title «Τρίτος»)');
+  assert(await brand(9403, 'REVOLUT').locator('svg.ex-brand-svg').count() === 1 && await brand(9403, 'REVOLUT').locator('> span').count() === 0 && await brand(9403, 'REVOLUT').getAttribute('title') === 'Revolut', 'line 9403: Πληρωμή = black «R» badge alone (no word span, title «Revolut»)');
   assert(await brand(9404, 'DKV').locator('img.ex-src[alt="DKV"]').count() === 1, 'line 9404: Πληρωμή = DKV logo + word');
   assert(/Μετρητά/.test(await page.locator('.ex-frame .ex-row[data-line="9401"] .ex-pay').innerText()), 'line 9401: Πληρωμή = the word «Μετρητά» (cash is not a brand)');
   for (const [id, cc] of [[9401, 'MK'], [9402, 'BG'], [9403, 'GR'], [9404, 'AT'], [9405, 'HU']]) {
-    assert(await page.locator(`.ex-frame .ex-row[data-line="${id}"] .ex-plate img.ex-flag[alt="${cc}"]`).count() === 1 && new RegExp(cc).test(await page.locator(`.ex-frame .ex-row[data-line="${id}"] .ex-plate`).innerText()), `line ${id}: Χώρα column keeps flag + code «${cc}» (point 1)`);
+    assert(await page.locator(`.ex-frame .ex-row[data-line="${id}"] .ex-plate img.ex-flag[alt="${cc}"]`).count() === 1 && (await page.locator(`.ex-frame .ex-row[data-line="${id}"] .ex-plate`).innerText()).trim() === '' && new RegExp('\\(' + cc + '\\)$').test(await page.locator(`.ex-frame .ex-row[data-line="${id}"] .ex-plate img.ex-flag`).getAttribute('title')), `line ${id}: Χώρα column = the flag ALONE, «${cc}» only in title (owner 16/9 late)`);
   }
   // Owner 16/9 evening: flags are LOCAL SVGs and must really render — every
   // flag in the frame is loaded (naturalWidth > 0), from assets/flags, offline.
