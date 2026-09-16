@@ -258,6 +258,13 @@ function navigate(page) {
   if (reqPerm && typeof can === 'function' && can(reqPerm) === 'none') {
     if (typeof toast === 'function') toast('Δεν έχετε πρόσβαση σε αυτή τη σελίδα', 'error');
     if (typeof logError === 'function') logError(new Error('Permission denied: ' + page), 'navigate');
+    // A remembered page must never outlive the role that could open it
+    // (Cursor audit 16/9: pantelis booted into `payroll` left behind by an
+    // owner session on the same browser → 6× denied in 31s, white screen,
+    // F5, again). Forget it, and at boot (no page drawn yet) land on the
+    // dashboard instead of returning into nothing.
+    try { if (localStorage.getItem('tms_page') === page) localStorage.removeItem('tms_page'); } catch (_) {}
+    if (!currentPage && page !== 'dashboard') navigate('dashboard');
     return;
   }
   currentPage = page;

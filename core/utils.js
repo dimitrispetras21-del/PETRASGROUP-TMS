@@ -575,6 +575,11 @@ function _postAppError(entry) {
   try {
     if (typeof USE_PROXY === 'undefined' || !USE_PROXY) return;      // direct-Airtable mode: no backend to send to
     if (typeof PROXY_URL !== 'string' || !PROXY_URL) return;
+    // Local rigs (python http.server on 127.0.0.1/localhost) replay HARs with
+    // synthetic ids and were posting «recZZZfake: 403» into the PRODUCTION
+    // error log under the owner's name (Cursor audit 16/9). The log must
+    // stay true; the console keeps the entry locally.
+    try { if (/^(localhost|127\.0\.0\.1)$/.test(location.hostname)) return; } catch (_) {}
     if (_appErrorsPosted >= MAX_APP_ERROR_POSTS) return;
     _appErrorsPosted++;
 
