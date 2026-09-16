@@ -235,7 +235,7 @@ function pRowHtml(e) {
 function buildCardDoc(driverRow, entries, year, month) {
   const p = dlPeriod(entries, year, month);
   const liveRows = p.rows.filter(e => !e.cancelled);
-  const rowsHtml = p.rows.map(pRowHtml).join('');
+  const rowsHtml = p.desc.map(pRowHtml).join('');
   const openingDateTxt = p.from ? dlDateRange(p.from, null) : '—';
   const closingDateTxt = p.to ? ' (' + fmtDMY(p.to) + ')' : '';
   const closingAbs = Math.abs(Number(p.closing || 0)).toLocaleString('el-GR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });

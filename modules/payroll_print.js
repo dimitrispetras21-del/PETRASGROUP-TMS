@@ -84,7 +84,9 @@ function dlCsvExpenses(e) { return dlCsvAmt(dlEntryAmounts(e).expenses); }
 // λογιστική/έλεγχο δεν έχει νόημα μια κίνηση που ποτέ δεν μέτρησε στο υπόλοιπο.
 function dlCsvCard(driverName, entries, year, month) {
   var p = dlPeriod(entries, year, month);
-  var live = p.rows.filter(function (e) { return !e.cancelled; });
+  // Newest first, like the card and the A4 (owner 16/9); opening/closing still
+  // come from the chronological pass inside dlPeriod.
+  var live = p.desc.filter(function (e) { return !e.cancelled; });
   var lines = [
     ['Ημερομηνία', 'Κίνηση', 'Αξία', 'Έλαβε', 'Έξοδα', 'Μεταβολή', 'Υπόλοιπο'],
     ['', 'Υπόλοιπο έναρξης περιόδου', '', '', '', '', dlNum(p.opening)]

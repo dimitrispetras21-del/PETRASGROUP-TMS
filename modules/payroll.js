@@ -162,7 +162,12 @@ function dlPeriod(entries, year, month) {
   // Column sums of the live rows exactly as dlEntryAmounts places them — the
   // totals row of the ledger (screen, A4, CSV) adds up column by column.
   const columns = live.reduce((c, e) => { const a = dlEntryAmounts(e); return { value: c.value + Number(a.value || 0), received: c.received + Number(a.received || 0), expenses: c.expenses + Number(a.expenses || 0) }; }, { value: 0, received: 0, expenses: 0 });
-  return { from, to, rows, opening, closing, totals, columns };
+  // `rows` stays chronological — opening/closing and the running balance are
+  // computed forward. `desc` is what every ledger LIST prints (owner 16/9:
+  // «από το νεότερο στο παλαιότερο μόλις κάνεις κλικ σε οδηγό, γενικά»): the
+  // newest movement first on the card, the A4 statement and the CSV alike.
+  const desc = rows.slice().reverse();
+  return { from, to, rows, desc, opening, closing, totals, columns };
 }
 
 // _dl.view: which of the three v2 screens is on screen. _dl.selected: driver
@@ -992,8 +997,8 @@ function dlRenderDriverCard() {
   const firstEntry = _dl.entries.length ? _dl.entries[_dl.entries.length - 1].entry_date : null;
   const bw = dlBalanceWord(b.balance);
   const period = dlPeriod(_dl.entries, _dl.year, _dl.month);
-  const rows = period.rows.length
-    ? period.rows.map(e => dlEntryRowHtml(e)).join('')
+  const rows = period.desc.length
+    ? period.desc.map(e => dlEntryRowHtml(e)).join('')
     : showEmpty({ title: 'Καμία κίνηση στην περίοδο', description: '' });
   // ΕΛΑΒΕ column mixes trip advances and payment/adjustment amounts (same
   // three entry types dlEntryRowHtml puts in that column) — its period total
