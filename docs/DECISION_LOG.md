@@ -1585,6 +1585,6 @@ trigger σε `national_loads` με κατώφλι την ανάθεση (όπω�
 **(στ) Προσθήκη owner 16/9 βράδυ — σήματα πηγών:** ένας renderer (`exBrandTag`) για κάθε εμφάνιση πηγής πληρωμής/προμηθευτή
 = σήμα 16px + λέξη· DKV/DADI τα τοπικά PNG, Revolut inline SVG «R» (το gradient wordmark PNG αφαιρέθηκε), OWN_STATION =
 «Revoil Petras» με το PNG του owner (`assets/brands/revoil.png`, 18px) και SVG δίδυμο σε onerror, BG_STATION = «Nikolai» +
-σημαία BG, Τρίτος ουδέτερο badge· οι σημαίες χωρών μένουν. **Απορρίφθηκε:** 16px σήμα μέσα στο κελί ποσού (γραμμή 48px > όριο
+σημαία BG, Τρίτος ουδέτερο badge· **οι σημαίες χωρών γίνονται τοπικά SVG** (`assets/flags/`, 23 χώρες — owner: «εννοώ με τις σημαίες τους», όχι προαιρετικό degrade· flagcdn μόνο fallback). **Απορρίφθηκε:** 16px σήμα μέσα στο κελί ποσού (γραμμή 48px > όριο
 ≤46 του 13/9 — εκεί 12px)· εικόνες σε native `<select>` (αδύνατο). Τιμές βάσης αμετάβλητες.
 **Ποιος:** owner (μέσω συντονιστή petrasgroup-tms-2e), Claude Fable 5.1 (session «Έξοδα w8»), 1 agent ελέγχου migration/Worker.

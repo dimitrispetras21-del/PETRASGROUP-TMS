@@ -913,10 +913,19 @@ function exCellPayTag(lines) {
 // the bare code, never a broken-image box.
 // No loading="lazy": the panel is injected via innerHTML and Chrome left every
 // lazy flag unfetched (live 13/9: 19 <img>, 0 complete); 16×12 PNGs are cheap.
+// Owner 16/9 evening («όταν λέω να βάζεις τις χώρες, εννοώ με τις σημαίες
+// τους»): a flag is NOT optional, so it is a LOCAL file (assets/flags/<cc>.svg,
+// 4:3, the countries the sheet actually meets — measured 16/9: RS GR HU BG CZ
+// RO SK PL SI AT MK DE HR, plus the rest of the coordinator's list) that loads
+// offline and under CSP. flagcdn stays ONLY for a code with no local file
+// (hidden on error, so the code alone remains — never a broken box). Adding a
+// country = drop the SVG in assets/flags and list it here, nothing else.
+const EX_LOCAL_FLAGS = new Set('GR BG AT HU DE IT CZ SK PL RO RS NL ES FR MK SI HR TR BE CH LU DK SE'.split(' '));
 function exFlag(cc) {
   if (!cc) return '';
-  const up = String(cc).toUpperCase();
-  return `<img class="ex-flag" src="https://flagcdn.com/w20/${up.toLowerCase()}.png" width="16" height="12" alt="${escapeHtml(up)}" onerror="this.style.display='none'">`;
+  const up = String(cc).toUpperCase(), lc = up.toLowerCase();
+  if (EX_LOCAL_FLAGS.has(up)) return `<img class="ex-flag" src="assets/flags/${lc}.svg" width="16" height="12" alt="${escapeHtml(up)}">`;
+  return `<img class="ex-flag" src="https://flagcdn.com/w20/${lc}.png" width="16" height="12" alt="${escapeHtml(up)}" onerror="this.style.display='none'">`;
 }
 
 // ═══════════════════ RENDER ═══════════════════

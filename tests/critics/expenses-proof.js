@@ -946,6 +946,9 @@ async function runBrandBadges(browser) {
   assert(await brand(9402, 'NIKOLAI').locator('img.ex-flag[alt="BG"]').count() === 1 && /Nikolai/.test(await brand(9402, 'NIKOLAI').innerText()), 'line 9402: Προμηθευτής = Bulgarian flag + «Nikolai» (BG_STATION)');
   const revoilImg = brand(9403, 'REVOIL').locator('img.ex-src.revoil');
   assert(await revoilImg.count() === 1 && /Revoil Petras/.test(await brand(9403, 'REVOIL').innerText()), 'line 9403: Προμηθευτής = Revoil PNG + «Revoil Petras» (OWN_STATION)');
+  // Images load asynchronously after innerHTML — wait for the actual load
+  // (not a sleep) before reading naturalWidth, or a fast run reads 0.
+  await page.waitForFunction(() => Array.from(document.querySelectorAll('.ex-frame img')).every(i => i.complete), null, { timeout: 5000 });
   const rv = await revoilImg.evaluate(img => ({ src: img.getAttribute('src'), h: img.getBoundingClientRect().height, complete: img.complete, nw: img.naturalWidth }));
   assert(rv.src === 'assets/brands/revoil.png' && rv.nw > 0 && rv.h >= 17.5 && rv.h <= 18.5, 'Revoil mark = the local PNG, actually loaded, 18px tall: ' + JSON.stringify(rv));
   await revoilImg.evaluate(img => exBrandImgFallback(img, 'REVOIL'));
@@ -959,6 +962,15 @@ async function runBrandBadges(browser) {
   assert(/Μετρητά/.test(await page.locator('.ex-frame .ex-row[data-line="9401"] .ex-pay').innerText()), 'line 9401: Πληρωμή = the word «Μετρητά» (cash is not a brand)');
   for (const [id, cc] of [[9401, 'MK'], [9402, 'BG'], [9403, 'GR'], [9404, 'AT'], [9405, 'HU']]) {
     assert(await page.locator(`.ex-frame .ex-row[data-line="${id}"] .ex-plate img.ex-flag[alt="${cc}"]`).count() === 1 && new RegExp(cc).test(await page.locator(`.ex-frame .ex-row[data-line="${id}"] .ex-plate`).innerText()), `line ${id}: Χώρα column keeps flag + code «${cc}» (point 1)`);
+  }
+  // Owner 16/9 evening: flags are LOCAL SVGs and must really render — every
+  // flag in the frame is loaded (naturalWidth > 0), from assets/flags, offline.
+  await page.waitForFunction(() => Array.from(document.querySelectorAll('.ex-frame img.ex-flag')).every(i => i.complete), null, { timeout: 5000 });
+  const flagsLoaded = await page.locator('.ex-frame img.ex-flag').evaluateAll(imgs => imgs.map(i => ({ alt: i.alt, src: i.getAttribute('src'), ok: i.complete && i.naturalWidth > 0, shown: getComputedStyle(i).display !== 'none' })));
+  assert(flagsLoaded.length >= 6 && flagsLoaded.every(f => f.ok && f.shown && /^assets\/flags\/[a-z]{2}\.svg$/.test(f.src)), 'every country flag in the frame is a LOCAL assets/flags SVG that actually loaded (BG/MK/GR/AT/HU + Nikolai + tolls-by-country): ' + JSON.stringify(flagsLoaded));
+  for (const cc of 'GR BG AT HU DE IT CZ SK PL RO RS NL ES FR MK SI HR TR BE CH LU DK SE'.split(' ')) {
+    const st = await page.request.get(BASE_URL + 'assets/flags/' + cc.toLowerCase() + '.svg').then(r => r.status());
+    assert(st === 200, 'assets/flags/' + cc.toLowerCase() + '.svg is served (HTTP ' + st + ')');
   }
   const sum = page.locator('.ex-frame .ex-ov-totals');
   assert(await sum.locator('.ex-brand[data-brand="DKV"] img.ex-src').count() === 1 && await sum.locator('.ex-brand[data-brand="REVOLUT"] svg').count() === 1 && await sum.locator('.ex-brand[data-brand="CASH"]').count() === 1, 'payment summary: DKV logo, Revolut R and «Μετρητά» via the same renderer');
