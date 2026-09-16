@@ -1582,4 +1582,9 @@ trigger σε `national_loads` με κατώφλι την ανάθεση (όπω�
 **Απόδειξη:** rig 796/796 (`tests/critics/expenses-proof.js`), Worker test 3/3, 12 screenshots, μέτρηση παραγωγής
 (SELECT): 1 RT με πρόστιμο για ζωντανό έλεγχο E4 μετά το push, CHECK ακόμη 3 τιμών. Πλήρες:
 `docs/data-audit/2026-09/2026-09-16-w8-expenses.md`.
+**(στ) Προσθήκη owner 16/9 βράδυ — σήματα πηγών:** ένας renderer (`exBrandTag`) για κάθε εμφάνιση πηγής πληρωμής/προμηθευτή
+= σήμα 16px + λέξη· DKV/DADI τα τοπικά PNG, Revolut inline SVG «R» (το gradient wordmark PNG αφαιρέθηκε), OWN_STATION =
+«Revoil Petras» με το PNG του owner (`assets/brands/revoil.png`, 18px) και SVG δίδυμο σε onerror, BG_STATION = «Nikolai» +
+σημαία BG, Τρίτος ουδέτερο badge· οι σημαίες χωρών μένουν. **Απορρίφθηκε:** 16px σήμα μέσα στο κελί ποσού (γραμμή 48px > όριο
+≤46 του 13/9 — εκεί 12px)· εικόνες σε native `<select>` (αδύνατο). Τιμές βάσης αμετάβλητες.
 **Ποιος:** owner (μέσω συντονιστή petrasgroup-tms-2e), Claude Fable 5.1 (session «Έξοδα w8»), 1 agent ελέγχου migration/Worker.

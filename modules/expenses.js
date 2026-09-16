@@ -35,9 +35,14 @@ const EX_FUEL_CATEGORIES = ['fuel', 'reefer_fuel', 'adblue'];
 // never asked for a source, and adding one nobody asked for would be the
 // «configurability that wasn't requested» CLAUDE.md warns against.
 const EX_FUEL_SOURCE_CATEGORIES = ['fuel', 'reefer_fuel'];
+// Labels (owner 16/9 evening, via coordinator): OWN_STATION is the company's
+// own station «Revoil Petras», BG_STATION is «Nikolai» — named, not generic,
+// so the accountant picks the place she knows. The stored values are
+// unchanged (Worker CT_FUEL_SOURCES, migration 030). A native <select> cannot
+// carry the brand marks; they show everywhere else via exBrandTag.
 const EX_FUEL_SOURCES = [
-  { v: 'DKV', l: 'DKV' }, { v: 'DADI', l: 'DADI' }, { v: 'BG_STATION', l: 'BG πρατήριο' },
-  { v: 'OWN_STATION', l: 'Ιδιόκτητο' }, { v: 'THIRD_PARTY', l: 'Τρίτος' }
+  { v: 'DKV', l: 'DKV' }, { v: 'DADI', l: 'DADI' }, { v: 'BG_STATION', l: 'Nikolai' },
+  { v: 'OWN_STATION', l: 'Revoil Petras' }, { v: 'THIRD_PARTY', l: 'Τρίτος' }
 ];
 // How a line was PAID (migration 032, owner 13/9 «σε όλα πρόσθεσε το πηγή,
 // για να επιλέγει αν είναι μετρητά ή Revolut ή τράπεζα») — orthogonal to the
@@ -374,7 +379,19 @@ function exStyles() {
      name for hover and screen readers. Sized to the taller DKV mark (857×637
      → ~16×12) so the shorter Dadi logo (173×67 → ~31×12) sits on the same
      baseline. */
-  .ex-src{height:12px;width:auto;vertical-align:middle;border-radius:2px}
+  .ex-src{height:16px;width:auto;vertical-align:middle;border-radius:2px}
+  /* Brand badge = mark + word (owner 16/9 evening): one inline-flex so the
+     16px mark and its word never split across lines or baselines. */
+  .ex-brand{display:inline-flex;align-items:center;gap:4px;vertical-align:middle;white-space:nowrap}
+  .ex-brand-svg{height:16px;width:auto;vertical-align:middle;flex:none}
+  .ex-src.revoil{height:18px}
+  .ex-badge-neutral{display:inline-block;width:16px;height:16px;border-radius:3px;background:var(--surface-sunken);border:1px solid var(--border-mid,var(--border));font-size:9.5px;font-weight:600;line-height:14px;text-align:center;color:var(--text-mid);flex:none}
+  .ex-brand .ex-flag{margin-right:0}
+  /* Amount cells keep the 12px mark of 13/9: the collapsed row budget is
+     ≤46px (owner correction 13/9 #2) and a 16px mark in the sub-label measured
+     48px. Everywhere else the mark is 16px (owner 16/9 evening). */
+  .ex-cell .b .ex-src,.ex-cell .b .ex-src.revoil,.ex-cell .b .ex-brand-svg{height:12px}
+  .ex-cell .b .ex-badge-neutral{width:12px;height:12px;line-height:10px;font-size:8px}
   /* Country flags (owner correction 13/9 #6 «σε κάθε χώρα θέλω να προσθέσεις
      τη σημαία της») — fixed 16×12 next to the ISO-2 code everywhere a
      country appears (exFlag). onerror hides the <img> itself (see exFlag),
@@ -644,7 +661,7 @@ function exImportDocRowHtml(d) {
   // Leading «DKV ·» becomes the logo (point 11c) — the rest of the label is
   // plain text, escaped as before; the logo itself carries alt="DKV".
   const rest = (d.invoice_no || d.zip_name || '—') + ' · ' + period + (d.lines_total != null ? ' · ' + d.lines_total + ' γραμμές' : '') + ' · ' + statusTxt + ' · ' + (d.created_by ? exUserDisplay(d.created_by) : '—') + (when ? ' ' + when : '');
-  return `<div class="ex-idoc-row"><span class="s">${exSourceTag('DKV')} · ${escapeHtml(rest)}</span><button class="ex-link" onclick='exOpenImportZip(${JSON.stringify(String(d.id))})'>ZIP</button></div>`;
+  return `<div class="ex-idoc-row"><span class="s">${exBrandTag('DKV')} · ${escapeHtml(rest)}</span><button class="ex-link" onclick='exOpenImportZip(${JSON.stringify(String(d.id))})'>ZIP</button></div>`;
 }
 
 async function exOpenImportZip(id) {
@@ -823,51 +840,71 @@ function exToggleExpand(rtId) {
   exRenderPage();
 }
 
-// Supplier logo tag (point 11, owner 13/9 — replaces the plain-text source
-// label so DKV/Dadi read as their own mark, not a generic word). Only the
-// two categories with an actual logo asset get an <img>; the other sources
-// (BG πρατήριο/Ιδιόκτητο/Τρίτος) keep plain text — no placeholder logo was
-// asked for, and inventing one would be the «configurability nobody
-// requested» CLAUDE.md warns against.
-const EX_SOURCE_LOGOS = { DKV: 'assets/logos/dkv.png', DADI: 'assets/logos/dadi.jpg' };
-function exSourceTag(source) {
-  const src = EX_SOURCE_LOGOS[source];
-  if (src) return `<img class="ex-src" src="${src}" alt="${escapeHtml(source)}" title="${escapeHtml(source)}">`;
-  const found = EX_FUEL_SOURCES.find(s => s.v === source);
-  return escapeHtml(found ? found.l : (source || ''));
+// ═══════════════════ ΣΗΜΑΤΑ ΠΗΓΩΝ (owner 16/9 evening, via coordinator) ═══
+// ONE helper for every place a payment method or a fuel supplier is shown —
+// line rows, the frame's payment summary, amount cells, DKV import rows — so
+// a brand always looks the same (αρχή 3): a small 16px mark + the word.
+// Marks: DKV/DADI are the real logos already in assets/logos (LOCAL files,
+// never an external URL — CSP/offline); Revolut is an inline black «R» badge
+// (the owner asked for the R, not the gradient wordmark PNG that used to be
+// here — that file is gone, αρχή 8); Revoil Petras (OWN_STATION — the
+// company's own station) is the owner's PNG (assets/brands/revoil.png, cropped
+// to the blue plate, 18px tall) with an inline SVG copy of the mark (blue
+// plate #0072BC, white lowercase «revoil», green dot #8DC63F top-left) as the
+// onerror fallback — never a broken-image box (αρχή 1); Nikolai (BG_STATION)
+// is the Bulgarian flag + the name; THIRD_PARTY a neutral grey badge;
+// CASH/CREDIT are words, not brands.
+const EX_BRAND_FILES = { DKV: 'assets/logos/dkv.png', DADI: 'assets/logos/dadi.jpg', REVOIL: 'assets/brands/revoil.png' };
+const EX_BRAND_WORD = { DKV: 'DKV', DADI: 'DADI', REVOLUT: 'Revolut', REVOIL: 'Revoil Petras', NIKOLAI: 'Nikolai', THIRD_PARTY: 'Τρίτος', CASH: 'Μετρητά', CREDIT: 'Πίστωση' };
+// fuel_source value → brand key (pay_source values already ARE brand keys).
+const EX_FUEL_SOURCE_BRAND = { DKV: 'DKV', DADI: 'DADI', BG_STATION: 'NIKOLAI', OWN_STATION: 'REVOIL', THIRD_PARTY: 'THIRD_PARTY' };
+const EX_BRAND_SVG = {
+  REVOLUT: '<svg class="ex-brand-svg" viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><rect width="16" height="16" rx="3" fill="#191C1F"/><text x="8" y="12.3" text-anchor="middle" font-family="DM Sans,Arial,sans-serif" font-weight="700" font-size="11.5" fill="#fff">R</text></svg>',
+  REVOIL: '<svg class="ex-brand-svg" viewBox="0 0 46 16" width="46" height="16" aria-hidden="true"><rect width="46" height="16" rx="3" fill="#0072BC"/><circle cx="6" cy="5" r="2.6" fill="#8DC63F"/><text x="25" y="12" text-anchor="middle" font-family="Nunito,Arial Rounded MT Bold,DM Sans,sans-serif" font-weight="800" font-size="11" fill="#fff">revoil</text></svg>',
+  THIRD_PARTY: '<span class="ex-badge-neutral" aria-hidden="true">Τ</span>'
+};
+function exBrandMark(key) {
+  const file = EX_BRAND_FILES[key];
+  const word = EX_BRAND_WORD[key] || key;
+  if (file) return `<img class="ex-src${key === 'REVOIL' ? ' revoil' : ''}" src="${file}" alt="${escapeHtml(word)}" title="${escapeHtml(word)}"${EX_BRAND_SVG[key] ? ` onerror="exBrandImgFallback(this,'${key}')"` : ''}>`;
+  if (key === 'NIKOLAI') return exFlag('BG');
+  return EX_BRAND_SVG[key] || '';
 }
-
-// Payment-method tag (owner correction 13/9 #5 «σε όλα πρόσθεσε το πηγή …
-// στο Revolut βάλε και το logo») — a SECOND, separate tag from exSourceTag
-// above: that one is the fuel SUPPLIER (who sold it), this one is HOW it was
-// paid (DKV account / driver cash / the Revolut business account). Reuses
-// `.ex-src` sizing per the correction's own instruction. `lower` renders
-// «μετρητά» lowercase for the amount-cell sub-label; the lines list keeps the
-// capitalised «Μετρητά».
-const EX_PAY_LOGOS = { DKV: 'assets/logos/dkv.png', REVOLUT: 'assets/logos/revolut.png' };
-function exPayTag(source, lower) {
-  const src = EX_PAY_LOGOS[source];
-  const word = EX_PAY_WORD[source];
-  if (src) return `<img class="ex-src" src="${src}" alt="${word}" title="${word}">`;
-  // No logo for cash/credit (owner 16/9: ΠΙΣTΩΣΗ is a word, not a brand) —
-  // grey text, lowercase in the amount-cell sub-label.
-  if (word) return `<span class="dim">${lower ? word.toLowerCase() : word}</span>`;
-  return '';
+// A brand file that fails to load (offline, missing) is replaced by its
+// inline SVG twin in place — the word beside it never loses its mark.
+function exBrandImgFallback(img, key) {
+  const svg = EX_BRAND_SVG[key]; if (!svg || !img) return;
+  const tpl = document.createElement('template'); tpl.innerHTML = svg;
+  img.replaceWith(tpl.content.firstChild);
 }
+// opts.lower (amount-cell sub-label): the mark-less words go lowercase and
+// grey («μετρητά», «πίστωση»); a brand name beside its mark is never
+// lowercased («DKV» stays «DKV»). An unknown key still prints as itself (an
+// old/odd value reads as what it is — αρχή 1), never as nothing.
+function exBrandTag(key, opts) {
+  if (!key) return '';
+  const word = EX_BRAND_WORD[key];
+  if (!word) return escapeHtml(String(key));
+  const mark = exBrandMark(key);
+  const lower = !!(opts && opts.lower) && !mark;
+  const txt = escapeHtml(lower ? word.toLowerCase() : word);
+  return `<span class="ex-brand" data-brand="${key}">${mark}<span class="${lower ? 'dim' : ''}">${txt}</span></span>`;
+}
+function exFuelSourceTag(fuelSource) { return exBrandTag(EX_FUEL_SOURCE_BRAND[fuelSource] || fuelSource); }
 // A line's effective pay_source — falls back to DKV for an imported line
 // (doc_id set) that predates migration 032 (spec: «πριν εκτελεστεί … treat
 // doc_id lines as DKV, fallback so the sheet never looks broken»). Returns
 // null (no tag) for an old manual line with neither field — never guesses
 // CASH/REVOLUT for money nobody recorded a source for.
 function exLinePaySource(line) { return line.pay_source || (line.doc_id ? 'DKV' : null); }
-// Amount-cell tag (spec §5): the method's tag when EVERY line in the cell
-// was paid the same way, nothing when the cell mixes sources — a single logo
-// must never misrepresent a mixed cell.
+// Amount-cell tag (spec §5): the method's badge when EVERY line in the cell
+// was paid the same way, nothing when the cell mixes sources — a single
+// badge must never misrepresent a mixed cell.
 function exCellPayTag(lines) {
   if (!lines.length) return '';
   const sources = lines.map(exLinePaySource);
   const first = sources[0];
-  return (first && sources.every(s => s === first)) ? exPayTag(first, true) : '';
+  return (first && sources.every(s => s === first)) ? exBrandTag(first, { lower: true }) : '';
 }
 
 // Country flag (owner correction 13/9 #6 «σε κάθε χώρα θέλω να προσθέσεις τη
@@ -1286,7 +1323,8 @@ function exOpenFrame(rtId, groupKey) {
 function exFramePaySummary(lines) {
   const sums = {};
   lines.forEach(l => { const src = exLinePaySource(l); if (src && EX_PAY_WORD[src]) sums[src] = (sums[src] || 0) + exLineAmt(l); });
-  return Object.keys(EX_PAY_WORD).filter(k => sums[k] > 0).map(k => EX_PAY_WORD[k] + ' ' + exEur(sums[k])).join(' · ');
+  // Badge + word per method (owner 16/9 evening), same renderer as the lines.
+  return Object.keys(EX_PAY_WORD).filter(k => sums[k] > 0).map(k => exBrandTag(k) + ' ' + exEur(sums[k])).join(' · ');
 }
 
 function exFrameHtml(r) {
@@ -1770,14 +1808,13 @@ function exLineRowHtml(line, opts) {
   // 13/9: «Διόδια · [DKV] · [DKV]»).
   const isFuelCat = EX_FUEL_CATEGORIES.includes(line.category);
   const paySrc = exLinePaySource(line);
-  const payHtml = paySrc
-    ? ((EX_PAY_LOGOS[paySrc] ? exPayTag(paySrc) + ' ' : '') + escapeHtml(EX_PAY_WORD[paySrc] || paySrc))
-    : '<span class="dim">—</span>';
+  // Badge + word for both (owner 16/9 evening) — exBrandTag is the one
+  // renderer, so the payment column and the supplier detail use the same marks.
+  const payHtml = paySrc ? exBrandTag(paySrc) : '<span class="dim">—</span>';
   const supplier = isFuelCat ? (line.fuel_source || (line.doc_id ? 'DKV' : null)) : null;
-  const supplierLabel = { DKV: 'DKV', DADI: 'DADI', BG_STATION: 'BG πρατήριο', OWN_STATION: 'Ιδιόκτητο', THIRD_PARTY: 'Τρίτος' };
   const kv = (label, value) => value ? `<span class="s dim">${label}</span> ${value}` : '';
   const detailBits = [
-    isFuelCat ? kv('Προμηθευτής', (supplier && (supplier === 'DKV' || supplier === 'DADI') ? exSourceTag(supplier) + ' ' : '') + escapeHtml(supplier ? (supplierLabel[supplier] || supplier) : '—')) : '',
+    isFuelCat ? kv('Προμηθευτής', supplier ? exFuelSourceTag(supplier) : '—') : '',
     isFuelCat && line.km_reading != null ? kv('Χλμ', escapeHtml(Number(line.km_reading).toLocaleString('el-GR'))) : '',
     isFuelCat && line.station ? kv('Πρατήριο', escapeHtml(line.station)) : '',
     line.category === 'reefer_fuel' && line.trailer_id ? kv('Ρυμούλκα', escapeHtml(exResolveTrailerName(line.trailer_id) || ('#' + line.trailer_id))) : ''
