@@ -115,12 +115,13 @@ function _plvLoc(m) {
   const l = ((PLV.lookups && PLV.lookups.locations) || []).find(x => x.id === m.location_id);
   return l ? l.name : '';
 }
-// Ελληνική εμφάνιση (17/08/26) ΜΟΝΟ στην οθόνη — το CSV μένει ISO ώστε το
+// Ελληνική εμφάνιση (17/08/2026) ΜΟΝΟ στην οθόνη — το CSV μένει ISO ώστε το
 // Excel να ταξινομεί σωστά. Το nowrap στο κελί: το «2026-08-17» έσπαγε στη μέση.
+// Πλήρες έτος από 16/9 (w8, P6: τίποτα κομμένο — το «/26» διαβαζόταν ως ημέρα).
 function _plvFmtDate(d) {
   if (!d) return '';
   const p = String(d).slice(0, 10).split('-');
-  return p.length === 3 ? p[2] + '/' + p[1] + '/' + p[0].slice(2) : d;
+  return p.length === 3 ? p[2] + '/' + p[1] + '/' + p[0] : d;
 }
 
 // Κατάσταση = outline pill με κουκκίδα ΚΑΙ λέξη (owner 2/9: το ισοζύγιο κρατά
@@ -157,9 +158,20 @@ function _plvRows() {
   if (PLV.from) rows = rows.filter(m => m.movement_date >= PLV.from);
   if (PLV.to)   rows = rows.filter(m => m.movement_date <= PLV.to);
   const q = PLV.q.trim().toLowerCase();
-  if (q) rows = rows.filter(m =>
-    (m.code + ' ' + _plvName(m) + ' ' + _plvLoc(m) + ' ' + (m.notes || '')).toLowerCase().includes(q));
+  if (q) rows = rows.filter(m => _plvSearchText(m).includes(q));
   return rows;
+}
+
+// Ό,τι ψάχνει η αναζήτηση (P5, 16/9): κωδικός/αντισυμβαλλόμενος/σημείο/σημείωση
+// όπως πριν, ΣΥΝ Reference και μεταφορικό (από τον εμπλουτισμό — κενά μέχρι να
+// έρθει) και η ημερομηνία σε ΚΑΙ τις δύο γραφές: ISO όπως αποθηκεύεται και
+// dd/mm/yyyy όπως τη βλέπει η λογίστρια στο δελτίο (και dd/mm/yy, όπως τη
+// γράφει με το χέρι). Υποσυμβολοσειρά, ώστε «16/09» να πιάνει όλη τη μέρα.
+function _plvSearchText(m) {
+  const x = _plvRowExtras(m);
+  const gr = _plvFmtDate(m.movement_date);
+  return [m.code, _plvName(m), _plvLoc(m), m.notes || '', x.ref, x.carrier,
+    m.movement_date || '', gr, gr.replace(/\/20(\d\d)$/, '/$1')].join(' ').toLowerCase();
 }
 
 // Σύνολο γραμμών του τρέχοντος tab ΧΩΡΙΣ φίλτρα q/ημερομηνιών — ο παρονομαστής
@@ -215,8 +227,10 @@ function plvExportCSV() {
   } else {
     const rows = _plvRows();
     if (!rows.length) { toast('Καμία κίνηση για εξαγωγή', 'error'); return; }
-    head = ['Κωδικός', 'Ημερομηνία', 'Είδος', 'Αντισυμβαλλόμενος', 'Σημείο', 'Πήραμε', 'Δώσαμε', 'Καθαρό', 'Κατάσταση', 'Σημείωση'];
-    body = rows.map(m => [m.code, m.movement_date, PLV_EVENT_GR[m.event_type] || m.event_type,
+    // Reference πρώτη και εδώ (P1, 16/9): ίδια σειρά με την οθόνη, η λογίστρια
+    // ταυτοποιεί την κίνηση από το reference της παραγγελίας, όχι από το PM-.
+    head = ['Reference', 'Κωδικός', 'Ημερομηνία', 'Είδος', 'Αντισυμβαλλόμενος', 'Σημείο', 'Πήραμε', 'Δώσαμε', 'Καθαρό', 'Κατάσταση', 'Σημείωση'];
+    body = rows.map(m => [_plvRowExtras(m).ref, m.code, m.movement_date, PLV_EVENT_GR[m.event_type] || m.event_type,
       _plvName(m), _plvLoc(m), m.taken, m.given, m.given - m.taken, m.status, m.notes || ''].map(esc).join(','));
     fname = 'paletes-' + new Date().toISOString().slice(0, 10) + '.csv';
   }
@@ -341,7 +355,9 @@ function _plvTabsHtml() {
 // not one per column (DESIGN.md Γ).
 const _PLV_STYLE = `<style>
   #plvModal{font-size:var(--text-sm)}
-  .plv-page{padding:16px 24px;max-width:1280px;margin:0 auto;font-size:var(--text-sm);color:var(--text);font-variant-numeric:tabular-nums}
+  /* Πλήρες πλάτος (owner 16/9, w8 P6): το max-width:1280px άφηνε ~30% της οθόνης
+     κενό στα 1920 ενώ οι στήλες Reference/Μεταφορικό κόβονταν. */
+  .plv-page{padding:16px 28px;font-size:var(--text-sm);color:var(--text);font-variant-numeric:tabular-nums}
   .plv-top{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
   .plv-h1{font-family:Syne;font-size:28px;font-weight:700;margin:0;line-height:1.2}
   .plv-right{margin-left:auto;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
@@ -352,7 +368,7 @@ const _PLV_STYLE = `<style>
   .plv-tab:disabled,.plv-tab:disabled:hover{color:var(--text-dim);border-color:var(--border);background:var(--surface-page);cursor:not-allowed}
   .plv-badge{display:inline-block;margin-left:4px;padding:0 6px;border-radius:var(--radius-full);background:var(--warn-bg);color:var(--warn);font-weight:700;font-size:var(--text-xs)}
   .plv-search{position:relative;display:flex;align-items:center}
-  .plv-search input{width:210px;padding:4px 24px 4px 8px;font-size:var(--text-sm);border:1px solid var(--border);border-radius:var(--radius);background:var(--surface-card);color:var(--text);font-family:inherit}
+  .plv-search input{width:min(560px,36vw);padding:6px 24px 6px 10px;font-size:var(--text-body);border:1px solid var(--border);border-radius:var(--radius);background:var(--surface-card);color:var(--text);font-family:inherit}
   .plv-x{position:absolute;right:8px;cursor:pointer;color:var(--text-dim);font-size:var(--text-base);line-height:1}
   .plv-count,.plv-date,.plv-seg{font-size:var(--text-xs);color:var(--text-mid);white-space:nowrap}
   .plv-date input{padding:4px;font-size:var(--text-xs);border:1px solid var(--border);border-radius:var(--radius);font-family:inherit;color:var(--text)}
@@ -370,21 +386,36 @@ const _PLV_STYLE = `<style>
   .plv-card-row{display:flex;justify-content:space-between;gap:8px;font-size:var(--text-xs);margin-top:4px;color:var(--text-mid)}
   .plv-card-row:hover span{text-decoration:underline}
   .plv-strip{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:12px 0 0;padding:8px 12px;background:var(--surface-sunken);border-radius:var(--radius);font-size:var(--text-xs);color:var(--text-mid)}
-  .plv-tbl{width:100%;border-collapse:collapse;font-size:var(--text-sm)}
-  .plv-tbl th{padding:8px;text-align:left;font-size:var(--text-xs);font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--text-mid);background:var(--surface-sunken);white-space:nowrap}
-  .plv-tbl td{padding:0 8px;height:32px;border-top:1px solid var(--border);white-space:nowrap;vertical-align:middle}
-  .plv-tbl td.plv-wrap{white-space:normal}
+  /* Πίνακας 15px, γραμμή 46px, κενά 14px (w8 P6, Figma 659:1011). Τα κελιά
+     κειμένου ΤΥΛΙΓΟΥΝ (καμία κομμένη λέξη)· nowrap μόνο σε κωδικό/ημερομηνία/
+     ποσότητες/κατάσταση· ellipsis ΜΟΝΟ στο Σημείο πάνω από 300px (.plv-ell). */
+  .plv-tbl{width:100%;border-collapse:collapse;font-size:var(--text-md)}
+  .plv-tbl th{padding:10px 14px;text-align:left;font-size:var(--text-sm);font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--text-mid);background:var(--surface-sunken);white-space:nowrap}
+  .plv-tbl td{padding:6px 14px;height:46px;box-sizing:border-box;border-top:1px solid var(--border);white-space:normal;vertical-align:middle}
+  .plv-tbl td.plv-code,.plv-tbl td.plv-date,.plv-tbl td.plv-num,.plv-tbl td.plv-st{white-space:nowrap}
+  .plv-tbl td.plv-ell{max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .plv-tbl tr.plv-row{cursor:pointer}.plv-tbl tr.plv-row:hover td{background:var(--surface-sunken)}
-  .plv-code{font-weight:600}.plv-dim{color:var(--text-dim)}.plv-loc{color:var(--text-mid);text-transform:uppercase;font-size:var(--text-xs)}
+  .plv-ref{font-weight:500}
+  .plv-code{font-weight:600}.plv-dim{color:var(--text-dim)}.plv-loc{color:var(--text-mid);text-transform:uppercase;font-size:var(--text-body)}
+  .plv-st{display:flex;align-items:center;gap:8px}
+  /* Υπο-κεφαλίδα τετραμήνου (μόνο OGL, P3): navy λωρίδα αριστερά, ΟΧΙ γραμμή δεδομένων
+     (colspan — ο collapseEmptyColumns την αγνοεί επειδή δεν έχει όσα κελιά η κεφαλίδα). */
+  .plv-qhead td{padding:0 14px;height:36px;background:var(--surface-sunken);border-left:4px solid var(--surface-dark)}
+  .plv-qhead td>div{display:flex;align-items:center;gap:24px}
+  .plv-qlbl{font-size:var(--text-sm);font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--surface-dark)}
+  .plv-qsum{font-size:var(--text-body);font-weight:500;color:var(--text)}
+  .plv-qnow{margin-left:auto;font-size:var(--text-sm);color:var(--text-dim)}
+  .plv-foot{margin-top:12px;font-size:var(--text-sm);color:var(--text-dim)}
   .plv-num{text-align:right}
   .plv-in{color:var(--ok);font-weight:600}.plv-out{color:var(--danger);font-weight:600}.plv-zero{color:var(--text-dim)}
   .plv-pill{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:var(--radius-full);border:1px solid var(--border);font-size:var(--text-xs);font-weight:500;white-space:nowrap;color:var(--text-mid);line-height:1.4}
   .plv-pill i{width:6px;height:6px;border-radius:50%;background:var(--text-dim)}
   .plv-pill-pending i{background:var(--warn)}.plv-pill-ok i{background:var(--ok)}
   .plv-clip{color:var(--text-dim);text-decoration:none}.plv-clip:hover{color:var(--text)}
-  .plv-ghead{display:flex;align-items:center;gap:8px;background:var(--surface-sunken);border-radius:var(--radius);padding:4px 12px;margin:8px 0 0;cursor:pointer;user-select:none}
-  .plv-gname{font-size:var(--text-body);font-weight:700}
-  .plv-gsum{margin-left:auto;font-size:var(--text-xs);color:var(--text-mid);white-space:nowrap}
+  .plv-ghead{display:flex;align-items:center;gap:12px;min-height:46px;background:var(--surface-sunken);border-radius:var(--radius);padding:0 14px;margin:8px 0 0;cursor:pointer;user-select:none}
+  .plv-gname{font-family:Syne;font-size:16px;font-weight:600;color:var(--surface-dark)}
+  .plv-gsum{font-size:var(--text-body);color:var(--text-mid);white-space:nowrap}
+  .plv-gcard{margin-left:auto;font-size:var(--text-body);color:var(--text-mid);white-space:nowrap}.plv-gcard:hover{color:var(--text);text-decoration:underline}
   .plv-empty{padding:32px;text-align:center;color:var(--text-mid);font-size:var(--text-sm)}
   /* Failure state — amber, never the grey dashed «empty» (DESIGN.md #7) */
   .plv-fail{margin:16px auto;max-width:56ch;padding:16px;border:1px solid var(--warn-border);background:var(--warn-bg);border-radius:var(--radius);color:var(--warn);font-size:var(--text-body)}
@@ -429,7 +460,7 @@ function _plvDraw() {
   const rows = isBalanceTab ? [] : _plvRows();
   const filters = isBalanceTab ? '' : `
       <div class="plv-search">
-        <input id="plvQ" placeholder="Αναζήτηση (κωδικός, όνομα, σημείο)" value="${escapeHtml(PLV.q)}" oninput="plvFilter('q',this.value)">
+        <input id="plvQ" placeholder="Αναζήτηση: reference, πελάτης, όχημα, ημερομηνία…" value="${escapeHtml(PLV.q)}" oninput="plvFilter('q',this.value)">
         <span id="plvQClear" class="plv-x" onclick="plvClearQ()" title="Καθαρισμός αναζήτησης" style="display:${PLV.q ? '' : 'none'}">×</span>
       </div>
       <span id="plvCount" class="plv-count">${rows.length} από ${_plvTabTotal()}</span>
@@ -439,6 +470,7 @@ function _plvDraw() {
         ${[['client', 'Ανά πελάτη'], ['location', 'Ανά σημείο'], ['none', 'Χωρίς']].map(([v, l]) =>
           `<button class="${PLV.groupBy === v ? 'on' : ''}" onclick="plvGroupBy('${v}')">${l}</button>`).join('')}
       </div>
+      <span class="plv-count" title="Οι κινήσεις έρχονται ταξινομημένες από τον διακομιστή (movement_date φθίνουσα)· οι ομάδες κατά την πιο πρόσφατη κίνησή τους">Νεότερο πρώτα</span>
       ${PLV.enrichFail ? '<span style="color:var(--warn)" title="Η ανάγνωση των παραγγελιών απέτυχε — οι στήλες Reference/Μεταφορικό είναι προσωρινά κενές. Οι κινήσεις εμφανίζονται κανονικά.">⚠ στοιχεία παραγγελιών μη διαθέσιμα</span>' : ''}`;
   const actions = `<button class="plv-link" onclick="plvExportCSV()">Εξαγωγή CSV</button>
       ${(typeof can!=='function'||can('costs')==='full')?'<button class="btn-new-order" onclick="plvNewMovement()">+ Νέα κίνηση</button>':''}`;
@@ -454,6 +486,7 @@ function _plvDraw() {
   <div class="plv-page">
     ${head}
     <div id="plvTbl" style="margin-top:8px">${isBalanceTab ? _plvBalanceTable(PLV.tab) : _plvListHtml(rows)}</div>
+    ${isBalanceTab ? '' : '<div class="plv-foot">Ταξινόμηση: νεότερο πρώτα, οι ομάδες κατά πιο πρόσφατη κίνηση · Τετράμηνα μόνο για την OGL: οπτική ομαδοποίηση, το ισοζύγιο μένει συνεχές</div>'}
   </div>
   <div id="plvModal"></div>`;
   // Όλο το #plvTbl ως ΕΝΑ σύνολο: στην ομαδοποιημένη όψη κάθε ομάδα είναι δικός
@@ -493,23 +526,27 @@ function _plvMovementRow(m, grouped) {
   const x = _plvRowExtras(m);
   const clip = m.sheet_url
     ? `<a href="#" class="plv-clip" title="Προβολή δελτίου" onclick="plvViewSheet('${String(m.sheet_url).replace(/'/g, '')}');return false">${typeof icon === 'function' ? icon('file_check', 14) : 'δελτίο'}</a>` : '';
+  // Reference ΠΡΩΤΗ (owner 16/9, w8 P1 — ήταν 8η): η λογίστρια ταυτοποιεί την
+  // κίνηση από το reference της παραγγελίας. Ο κωδικός PM- μένει, τελευταίος
+  // πριν την Κατάσταση (είναι πεδίο του συμβολαίου pallets.json). Το εικονίδιο
+  // δελτίου κάθεται δίπλα στο pill — δική του στήλη 4% έμενε σχεδόν πάντα κενή.
+  const loc = escapeHtml(_plvLoc(m));
   return `
-      <tr class="plv-row" title="Λεπτομέρειες κίνησης" onclick="if(!event.target.closest('a'))plvOpenPanel(${m.id})">
-        <td class="plv-code">${m.code}</td>
-        <td class="plv-dim">${_plvFmtDate(m.movement_date)}</td>
+      <tr class="plv-row" title="Λεπτομέρειες κίνησης ${m.code}" onclick="if(!event.target.closest('a'))plvOpenPanel(${m.id})">
+        <td class="plv-ref">${x.ref ? escapeHtml(x.ref) : ''}</td>
+        <td class="plv-date plv-dim">${_plvFmtDate(m.movement_date)}</td>
         <td>${PLV_EVENT_GR[m.event_type] || m.event_type}</td>
         ${grouped ? '' : `<td class="plv-wrap">${escapeHtml(_plvName(m))}</td>`}
         ${grouped && PLV.groupBy === 'location'
           // Ομαδοποίηση ανά σημείο: η επικεφαλίδα είναι το σημείο, άρα η
           // γραμμή δείχνει τον αντισυμβαλλόμενο — αλλιώς θα εξαφανιζόταν.
-          ? `<td class="plv-loc plv-wrap">${escapeHtml(_plvName(m))}</td>`
-          : `<td class="plv-loc plv-wrap">${escapeHtml(_plvLoc(m)) || '<span class="plv-dim">—</span>'}</td>`}
+          ? `<td class="plv-wrap">${escapeHtml(_plvName(m))}</td>`
+          : `<td class="plv-loc plv-ell" title="${loc}">${loc || '<span class="plv-dim">—</span>'}</td>`}
         <td class="plv-num">${_plvQty(m.taken, 'in')}</td>
         <td class="plv-num">${_plvQty(m.given, 'out')}</td>
-        <td class="plv-dim">${x.ref ? escapeHtml(x.ref) : ''}</td>
-        <td class="plv-dim">${x.carrier ? escapeHtml(x.carrier) : ''}</td>
-        <td style="text-align:center">${clip}</td>
-        <td>${_plvPill(m.status)}</td>
+        <td class="plv-wrap">${x.carrier ? escapeHtml(x.carrier) : ''}</td>
+        <td class="plv-code plv-dim">${m.code}</td>
+        <td class="plv-st">${_plvPill(m.status)}${clip}</td>
       </tr>`;
 }
 
@@ -521,7 +558,8 @@ const _PLV_EMPTY = (cols) => `<tr><td colspan="${cols}" class="plv-empty" style=
       </td></tr>`;
 
 // Ίδια πλάτη σε ΟΛΑ τα τμήματα ώστε οι στήλες να ευθυγραμμίζονται μεταξύ ομάδων.
-const _PLV_COLS_G = `<colgroup><col style="width:8%"><col style="width:7%"><col style="width:13%"><col style="width:20%"><col style="width:7%"><col style="width:7%"><col style="width:11%"><col style="width:14%"><col style="width:4%"><col style="width:9%"></colgroup>`;
+// 9 στήλες: Reference · Ημ/νία · Είδος · Σημείο/Αντισυμβ. · Πήραμε · Δώσαμε · Μεταφορικό · Κωδ. · Κατάσταση
+const _PLV_COLS_G = `<colgroup><col style="width:12%"><col style="width:9%"><col style="width:12%"><col style="width:22%"><col style="width:6%"><col style="width:6%"><col style="width:16%"><col style="width:7%"><col style="width:10%"></colgroup>`;
 
 // Κεφαλίδα της ΟΜΑΔΟΠΟΙΗΜΕΝΗΣ όψης (owner 3/9). Μέχρι σήμερα κεφαλίδες είχε
 // ΜΟΝΟ η ομαδοποίηση «Χωρίς» — δηλαδή η μόνη που ΔΕΝ είναι η προεπιλογή. Η
@@ -540,10 +578,10 @@ const _PLV_COLS_G = `<colgroup><col style="width:8%"><col style="width:7%"><col 
 // έλεγε ψέματα.
 const _plvGroupHead = () => `<div style="overflow-x:auto"><table class="plv-tbl" style="table-layout:fixed">${_PLV_COLS_G}
       <tr>
-        <th>Κωδ.</th><th>Ημ/νία</th><th>Είδος</th>
+        <th>Reference</th><th>Ημ/νία</th><th>Είδος</th>
         <th>${PLV.groupBy === 'location' ? 'Αντισυμβαλλόμενος' : 'Σημείο'}</th>
         <th class="plv-num">Πήραμε</th><th class="plv-num">Δώσαμε</th>
-        <th>Reference</th><th>Μεταφορικό</th><th title="Δελτίο"></th><th>Κατάσταση</th>
+        <th>Μεταφορικό</th><th>Κωδ.</th><th>Κατάσταση</th>
       </tr>
     </table></div>`;
 
@@ -552,18 +590,20 @@ function _plvTableHtml(rows) {
     <div style="overflow-x:auto">
     <table class="plv-tbl">
       <tr>
-        <th>Κωδ.</th><th>Ημ/νία</th><th>Είδος</th><th>Αντισυμβαλλόμενος</th><th>Σημείο</th>
+        <th>Reference</th><th>Ημ/νία</th><th>Είδος</th><th>Αντισυμβαλλόμενος</th><th>Σημείο</th>
         <th class="plv-num">Πήραμε</th><th class="plv-num">Δώσαμε</th>
-        <th>Reference</th><th>Μεταφορικό</th><th title="Δελτίο"></th><th>Κατάσταση</th>
+        <th>Μεταφορικό</th><th>Κωδ.</th><th>Κατάσταση</th>
       </tr>
-      ${rows.map(m => _plvMovementRow(m, false)).join('') || _PLV_EMPTY(11)}
+      ${rows.map(m => _plvMovementRow(m, false)).join('') || _PLV_EMPTY(10)}
     </table>
     </div>`;
 }
 
-// Ομάδες από τις ΦΙΛΤΡΑΡΙΣΜΕΝΕΣ γραμμές: πελάτες πρώτα (κατά πλήθος), μετά
-// «Συνεργάτες» (υπο-ομάδα ανά partner) και «Χωρίς αντισυμβαλλόμενο» — πάντα
-// ορατές στο τέλος, ποτέ κρυμμένες.
+// Ομάδες από τις ΦΙΛΤΡΑΡΙΣΜΕΝΕΣ γραμμές: πελάτες πρώτα, μετά «Συνεργάτες»
+// (υπο-ομάδα ανά partner) και «Χωρίς αντισυμβαλλόμενο» — πάντα ορατές στο
+// τέλος, ποτέ κρυμμένες. Σειρά ΜΕΣΑ στο κάθε επίπεδο: η πιο ΠΡΟΣΦΑΤΗ κίνηση
+// πρώτη (owner 16/9, w8 P2) — το «κατά πλήθος» του 27/8 έφερνε πάνω τον πελάτη
+// με τις περισσότερες παλιές κινήσεις ενώ η λογίστρια δουλεύει το σήμερα.
 function _plvBuildGroups(rows) {
   const mode = PLV.groupBy;
   const tops = new Map();
@@ -582,16 +622,70 @@ function _plvBuildGroups(rows) {
       t = { k: '_NONE', label: 'Χωρίς αντισυμβαλλόμενο', order: 2 };
       s = { k: 'x', label: '—' };
     }
-    if (!tops.has(t.k)) tops.set(t.k, { key: t.k, label: t.label, order: t.order, subs: new Map(), count: 0, tk: 0, gv: 0 });
+    const d = String(m.movement_date || '');
+    if (!tops.has(t.k)) tops.set(t.k, { key: t.k, label: t.label, order: t.order, subs: new Map(), count: 0, tk: 0, gv: 0, last: '' });
     const T = tops.get(t.k);
-    T.count++; T.tk += m.taken || 0; T.gv += m.given || 0;
-    if (!T.subs.has(s.k)) T.subs.set(s.k, { key: s.k, label: s.label, rows: [], tk: 0, gv: 0 });
+    T.count++; T.tk += m.taken || 0; T.gv += m.given || 0; if (d > T.last) T.last = d;
+    if (!T.subs.has(s.k)) T.subs.set(s.k, { key: s.k, label: s.label, rows: [], tk: 0, gv: 0, last: '' });
     const S = T.subs.get(s.k);
-    S.rows.push(m); S.tk += m.taken || 0; S.gv += m.given || 0;
+    S.rows.push(m); S.tk += m.taken || 0; S.gv += m.given || 0; if (d > S.last) S.last = d;
   });
+  // ISO strings compare as dates; ισοπαλία → όνομα, ώστε η σειρά να είναι σταθερή.
+  const byLast = (a, b) => (a.last < b.last ? 1 : a.last > b.last ? -1 : 0) || String(a.label).localeCompare(b.label);
   return Array.from(tops.values())
-    .sort((a, b) => a.order - b.order || b.count - a.count || String(a.label).localeCompare(b.label))
-    .map(T => ({ ...T, subs: Array.from(T.subs.values()).sort((a, b) => b.rows.length - a.rows.length) }));
+    .sort((a, b) => a.order - b.order || byLast(a, b))
+    .map(T => ({ ...T, subs: Array.from(T.subs.values()).sort(byLast) }));
+}
+
+/* ── P3 (owner 16/9): η OGL FOOD TRADE GmbH (client 837) κάνει τον λογαριασμό
+   παλετών ανά ΤΕΤΡΑΜΗΝΟ (1/10–31/1, 1/2–31/5, 1/6–30/9). Είναι ΜΟΝΟ οπτική
+   ομαδοποίηση: το ισοζύγιο ΔΕΝ μηδενίζει, τίποτα δεν μεταφέρεται, και το
+   τιμολόγιο παλετών της OGL καταχωρείται ως κανονική κίνηση. Γι' αυτό είναι
+   σταθερά ΕΔΩ και όχι στήλη ή κανόνας Worker: ένας πελάτης, ένας κανόνας
+   εμφάνισης — αν γίνει δεύτερος, τότε στήλη στους clients. Απορρίφθηκε: νέα
+   στήλη «settlement_period» (θα υπονοούσε ότι το ισοζύγιο κλείνει). */
+const PLV_QUAD_CLIENT_ID = 837;
+
+// Τετράμηνο μιας ISO ημερομηνίας: {key, from, to} σε ISO. Ο Οκτώβριος ξεκινά
+// περίοδο που τελειώνει τον Ιανουάριο του ΕΠΟΜΕΝΟΥ έτους.
+function _plvQuad(iso) {
+  const y = +String(iso).slice(0, 4), mo = +String(iso).slice(5, 7);
+  let fy = y, fm, ty, tm, td;
+  if (mo >= 10 || mo <= 1) { fm = 10; if (mo <= 1) fy = y - 1; ty = fy + 1; tm = 1; td = 31; }
+  else if (mo <= 5) { fm = 2; ty = y; tm = 5; td = 31; }
+  else { fm = 6; ty = y; tm = 9; td = 30; }
+  const p2 = n => String(n).padStart(2, '0');
+  const from = `${fy}-${p2(fm)}-01`;
+  return { key: from, from, to: `${ty}-${p2(tm)}-${td}` };
+}
+
+// Γραμμές της ομάδας OGL με υπο-κεφαλίδα ανά τετράμηνο, νεότερη περίοδος πρώτη,
+// νεότερη κίνηση πρώτη μέσα της. Τα τρία νούμερα βγαίνουν από τις γραμμές ΠΟΥ
+// ΒΛΕΠΕΙΣ (ίδιος κανόνας με το «N κινήσεις» της κεφαλίδας ομάδας)·
+// «Ανεπίστρεπτες» = Πήραμε − Δώσαμε ΜΟΝΟ των οριστικών: πόσες δικές της
+// κρατάμε ακόμη (Figma 659:1011: «Πήραμε 120 · Δώσαμε 96 · Ανεπίστρεπτες 24»).
+// Είναι το ΑΝΤΙΘΕΤΟ πρόσημο από το «υπόλοιπο» της κεφαλίδας (given − taken,
+// θετικό = μας χρωστά) — σκόπιμα: η λέξη μετρά παλέτες που οφείλουμε πίσω,
+// όχι θέση λογαριασμού. Οι εκκρεμείς δεν μετρούν πουθενά στο ισοζύγιο.
+function _plvQuadRows(T) {
+  const all = [];
+  T.subs.forEach(S => S.rows.forEach(m => all.push(m)));
+  all.sort((a, b) => a.movement_date === b.movement_date ? b.id - a.id : (a.movement_date < b.movement_date ? 1 : -1));
+  const today = new Date().toISOString().slice(0, 10);
+  const periods = new Map();
+  all.forEach(m => {
+    const q = _plvQuad(m.movement_date);
+    if (!periods.has(q.key)) periods.set(q.key, { ...q, rows: [], tk: 0, gv: 0, net: 0, pend: 0 });
+    const P = periods.get(q.key);
+    P.rows.push(m); P.tk += m.taken || 0; P.gv += m.given || 0;
+    if (m.status === 'confirmed') P.net += (m.taken || 0) - (m.given || 0); else if (m.status === 'pending') P.pend++;
+  });
+  return Array.from(periods.values()).sort((a, b) => (a.key < b.key ? 1 : -1)).map(P => `
+      <tr class="plv-qhead"><td colspan="9"><div>
+        <span class="plv-qlbl">Τετράμηνο ${_plvFmtDate(P.from)} – ${_plvFmtDate(P.to)}</span>
+        <span class="plv-qsum" title="Από τις κινήσεις που βλέπεις στην περίοδο· ανεπίστρεπτες = Πήραμε − Δώσαμε μόνο των οριστικών (θετικό = κρατάμε δικές της)">Πήραμε ${P.tk} · Δώσαμε ${P.gv} · Ανεπίστρεπτες στην περίοδο <b class="${P.net > 0 ? 'plv-out' : P.net < 0 ? 'plv-in' : ''}">${P.net}</b>${P.pend ? ` · <span class="plv-dim">${P.pend} εκκρεμείς εκτός</span>` : ''}</span>
+        ${today >= P.from && today <= P.to ? '<span class="plv-qnow">τρέχον</span>' : ''}
+      </div></td></tr>` + P.rows.map(m => _plvMovementRow(m, true)).join('')).join('');
 }
 
 // Υπόλοιπο πελάτη από ΟΛΕΣ τις φορτωμένες κινήσεις του (όχι τις φιλτραρισμένες)
@@ -645,17 +739,24 @@ function _plvListHtml(rows) {
       // Αν το τοπικό άθροισμα αποκλίνει από την όψη, το ⚠ το ΔΕΙΧΝΕΙ αντί να
       // διαλέξει σιωπηλά πλευρά (αρχή 1) — δύο πηγές αλήθειας = καμία.
       const mismatch = vb && vb.balance !== bal;
-      balHtml = ` · υπόλοιπο <b class="${bal > 0 ? 'plv-in' : bal < 0 ? 'plv-out' : ''}">${bal > 0 ? '+' : ''}${bal}</b>${mismatch ? ` <span title="Απόκλιση από την όψη pl_v_balance_clients: όψη=${vb.balance}, υπολογισμένο=${bal}" style="color:var(--danger);cursor:help">⚠</span>` : ''}`;
+      balHtml = ` · υπόλοιπο <b class="${bal > 0 ? 'plv-in' : bal < 0 ? 'plv-out' : ''}">${bal > 0 ? '+' : ''}${bal}</b> παλέτες${mismatch ? ` <span title="Απόκλιση από την όψη pl_v_balance_clients: όψη=${vb.balance}, υπολογισμένο=${bal}" style="color:var(--danger);cursor:help">⚠</span>` : ''}`;
     }
+    // Κεφαλίδα ομάδας (Figma 659:1011): πλήθος · τελευταία κίνηση (εξηγεί τη
+    // σειρά P2) · υπόλοιπο, και «Καρτέλα →» για πελάτες. Τα ↓/↑ της ομάδας
+    // έφυγαν — τα ίδια νούμερα ζουν στις γραμμές από κάτω, ανοιχτές εξ ορισμού.
+    const card = T.key[0] === 'C' ? `<span class="plv-gcard" onclick="event.stopPropagation();plvDrill('clients',${parseInt(T.key.slice(1), 10)})" title="Άνοιγμα καρτέλας πελάτη">Καρτέλα →</span>` : '';
     html += `<div class="plv-ghead" onclick="plvToggleGroup('${T.key}')">${arrow(o)}<span class="plv-gname">${escapeHtml(T.label)}</span>
-      <span class="plv-gsum">${T.count} ${T.count === 1 ? 'κίνηση' : 'κινήσεις'} · <span class="plv-in">↓ ${T.tk}</span> · <span class="plv-out">↑ ${T.gv}</span>${balHtml}</span></div>`;
+      <span class="plv-gsum">${T.count} ${T.count === 1 ? 'κίνηση' : 'κινήσεις'}${T.last ? ' · τελευταία ' + _plvFmtDate(T.last) : ''}${balHtml}</span>${card}</div>`;
     // Ένα επίπεδο κάτω από την επικεφαλίδα (Figma 2/9): η δεύτερη διάσταση
     // (σημείο ή αντισυμβαλλόμενος) είναι στήλη της γραμμής, όχι ενδιάμεση
     // ετικέτα — οι ετικέτες των 27/8 έτρωγαν 24px ανά σημείο (12 σε έναν
     // πελάτη) και άφηναν 15 γραμμές ορατές στα 1080p αντί για ≥20.
     if (o) {
+      // Μόνο η OGL, και μόνο στην ομαδοποίηση ανά πελάτη (στο «ανά σημείο» η
+      // ομάδα είναι το σημείο και οι πελάτες ανακατεύονται).
+      const quad = PLV.groupBy === 'client' && T.key === 'C' + PLV_QUAD_CLIENT_ID;
       html += `<div style="overflow-x:auto"><table class="plv-tbl" style="table-layout:fixed">${_PLV_COLS_G}
-          ${T.subs.map(S => S.rows.map(m => _plvMovementRow(m, true)).join('')).join('')}
+          ${quad ? _plvQuadRows(T) : T.subs.map(S => S.rows.map(m => _plvMovementRow(m, true)).join('')).join('')}
         </table></div>`;
     }
   });
@@ -707,7 +808,7 @@ async function plvDrill(kind, id) {
     const locRows = (locs.records || []).filter(l => l.balance !== 0);
     const balCls = bal && bal.balance > 0 ? 'plv-in' : bal && bal.balance < 0 ? 'plv-out' : '';
     c.innerHTML = `${_PLV_STYLE}
-    <div class="plv-page" style="max-width:1100px">
+    <div class="plv-page">
       <div class="plv-top">
         <button class="plv-tab" onclick="_plvDraw()">← Επιστροφή</button>
         <h1 class="plv-h1">${escapeHtml(name)}</h1>
@@ -724,11 +825,12 @@ async function plvDrill(kind, id) {
       </table>` : ''}
       <div style="overflow-x:auto;margin-top:12px">
       <table class="plv-tbl">
-        <tr><th>Ημ/νία</th><th>Κωδ.</th><th>Είδος</th><th>Σημείο</th>
+        <tr><th>Reference</th><th>Ημ/νία</th><th>Κωδ.</th><th>Είδος</th><th>Σημείο</th>
           <th class="plv-num">Πήραμε</th><th class="plv-num">Δώσαμε</th><th>Κατάσταση</th>
           <th class="plv-num">Τρεχούμενο</th></tr>
         ${rows.map(({ m, run }) => `<tr style="${m.status === 'pending' ? 'opacity:.75' : ''}">
-          <td class="plv-dim">${_plvFmtDate(m.movement_date)}</td>
+          <td class="plv-ref">${escapeHtml(_plvRowExtras(m).ref)}</td>
+          <td class="plv-date plv-dim">${_plvFmtDate(m.movement_date)}</td>
           <td class="plv-code">${m.code}</td>
           <td>${PLV_EVENT_GR[m.event_type] || m.event_type}</td>
           <td class="plv-loc plv-wrap">${escapeHtml(_plvLoc(m))}</td>
@@ -736,7 +838,7 @@ async function plvDrill(kind, id) {
           <td class="plv-num">${_plvQty(m.given, 'out')}</td>
           <td>${_plvPill(m.status)}</td>
           <td class="plv-num" style="font-weight:700">${run == null ? '<span class="plv-dim">—</span>' : (run > 0 ? '+' : '') + run}</td>
-        </tr>`).join('') || '<tr><td colspan="8" class="plv-empty" style="height:auto">Καμία κίνηση</td></tr>'}
+        </tr>`).join('') || '<tr><td colspan="9" class="plv-empty" style="height:auto">Καμία κίνηση</td></tr>'}
       </table>
       </div>
     </div>
@@ -751,8 +853,8 @@ function plvStmtCSV() {
   const s = PLV._stmt;
   if (!s || !s.rows.length) { toast('Κενή καρτέλα — τίποτα για εξαγωγή', 'error'); return; }
   const esc = (v) => '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"';
-  const head = ['Ημερομηνία', 'Κωδικός', 'Είδος', 'Σημείο', 'Πήραμε', 'Δώσαμε', 'Κατάσταση', 'Τρεχούμενο'];
-  const body = s.rows.map(({ m, run }) => [m.movement_date, m.code,
+  const head = ['Reference', 'Ημερομηνία', 'Κωδικός', 'Είδος', 'Σημείο', 'Πήραμε', 'Δώσαμε', 'Κατάσταση', 'Τρεχούμενο'];
+  const body = s.rows.map(({ m, run }) => [_plvRowExtras(m).ref, m.movement_date, m.code,
     PLV_EVENT_GR[m.event_type] || m.event_type, _plvLoc(m), m.taken, m.given,
     m.status, run == null ? '' : run].map(esc).join(','));
   const blob = new Blob(['﻿' + [head.map(esc).join(','), ...body].join('\n')], { type: 'text/csv;charset=utf-8' });
