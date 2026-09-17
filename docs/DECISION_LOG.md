@@ -1643,3 +1643,33 @@ dashboard (χωρίς δικαίωμα, άρα χωρίς βρόχο). (2) `_pos
 εγγραφή. **Απορρίφθηκε:** ξεχωριστός actor για το rig (θα χρειαζόταν αλλαγή Worker και θα κρατούσε θόρυβο στον πίνακα).
 **Απόδειξη:** Playwright ως dispatcher με `tms_page=payroll` → `#dashboard`, tms_page=dashboard, περιεχόμενο 131 χαρ., nav ενεργό·
 node --check ΟΚ· bump utils/router + SW_VERSION 1789592875.
+
+### 2026-09-17 · costs · Εισαγωγή DKV, δεύτερη οντότητα (BG): E-SUMMARY τριών στηλών, reverse charge ⇒ ΦΠΑ 0, επιστροφή ΦΠΑ = απαίτηση στο έγγραφο, T4E ως δεύτερη πύλη
+
+**Πηγή:** το draft `ct_cost_docs` id 2 (11/9, βουλγαρική οντότητα) έμεινε με 0 γραμμές και `total_gross NULL` — το E-SUMMARY
+της BG έχει τρίτη στήλη «VAT refund in payment currency» και το regex (parser 1.1.0) δεν διάβαζε καμία γραμμή του (0/19), άρα η
+πύλη έπεφτε σε όλα τα έγγραφα. Διάγνωση σε Node πάνω στο πραγματικό σετ (35 PDF, gitignored), αναφορά
+`docs/data-audit/2026-09/2026-09-17-w9-dkv-import.md`.
+**Επιλογές (owner 17/9 μέσω συντονιστή):** (1) **Reverse charge ⇒ vat 0, net = πληρωτέο** — οι στήλες του RC είναι «Base net ·
+Discount net · Service fee net · Total net», χωρίς ΦΠΑ· το net+vat≈gross διάβαζε έκπτωση/fee ως ΦΠΑ. Παράδειγμα: Analytics
+19,95 − 15,04 (έκπτωση) = 4,91 → ήταν net 19,95 / vat −15,04, σωστό net 4,91 / vat 0 (και 1 γραμμή του doc 1 στην παραγωγή
+διορθώνεται με SQL του owner, το gross δεν αλλάζει). (2) **Επιστροφή ΦΠΑ REMOBIS (statement -900) = απαίτηση**, «σε γενικά»,
+ΠΟΤΕ γραμμή κόστους: μένει στο έγγραφο ως `ct_cost_docs.vat_refund` (migration 036, DRAFT), `total_gross` = Σ γραμμών (όπως
+doc 1), πληρωτέο = total_gross − vat_refund μόνο στην οθόνη. **Απορρίφθηκε:** αρνητική γραμμή 'dkv' (θα μείωνε το κόστος
+δρομολογίου/εβδομάδας) και νέα κατηγορία `vat_refund` στο CHECK (κάθε view/οθόνη που αθροίζει γραμμές θα έπρεπε να θυμάται
+την εξαίρεση — αρχή 3). Το τέλος REMOBIS (-901) = γραμμή 'dkv' χωρίς όχημα, επιμερίζεται όπως τα άλλα τέλη. (3) 0605
+Kombiverkehr → Γέφυρες/Τρένα· 0096 λιπαντικά και 0088 πάρκινγκ → «Λοιπά» με όνομα («ας πάνε Λοιπά»)· αν θελήσει νέα
+κατηγορία, μεταγενέστερο migration. (4) Παλιά πινακίδα = alias υπάρχοντος φορτηγού → `ct_plate_aliases` (SQL owner), ο Worker
+το εφαρμόζει ήδη στο applyRules. (5) **T4E (Toll4Europe) ως δεύτερη πύλη:** η περίοδος της γραμμής statement από το «Billing
+Period» του T4E (όχι εικασία από την ημερομηνία), ποσό ανά όχημα == γραμμή (νόμισμα statement), διαφωνία = πορτοκαλί
+ειδοποίηση με πινακίδα. (6) E-SUMMARY footer ως πύλη: Σ γραμμών == τυπωμένο σύνολο, Σ refund docs == «VAT Refund total»,
+σύνολο − επιστροφή == πληρωτέο — τιμή που λείπει αποτυγχάνει. (7) Γραμμή διοδίων χωρίς όχημα (IT/HR, ένα ποσό για τον
+μήνα) σπάει στις διελεύσεις του ίδιου τιμολογίου με πύλη Σ διελεύσεων == base gross (τιμή μονάδας × ποσότητα)· κάρτα→πινακίδα
+από όλα τα VEHICLE headers του ZIP για την HR λίστα που ονομάζει μόνο κάρτα.
+**Απόδειξη:** parser 1.2.0· run-synthetic 194/194, run-import-rules 193/193, run.js GR 17/17 + BG 19/19 (footer/refund/T4E OK
+και στα δύο), run-import-keys 0 διπλά· rig expenses-import-proof 123/123 (μαζί με το πραγματικό BG σετ μέσα από pdf.js στον
+browser: 35/35, 19/19), expenses-proof 853/853· screenshots `shots/w9-dkv-01..05`. Εύρημα rig: από 13/9 το `_ex.rts` είναι
+μόνο η τρέχουσα εβδομάδα → η οθόνη εισαγωγής ζητά τώρα τα RT της περιόδου του παραστατικού. **Εκκρεμεί owner:** migration
+036 + Worker deploy (πηγή index.js/import-rules.mjs), SQL επισκευής (alias, 1 γραμμή RC, κενό draft μόνο αν αλλάξει hash).
+**Ποιος:** owner (αποφάσεις 1–4), συντονιστής Fable (petrasgroup-tms-2e), Claude Fable 5.1 (διάγνωση/υλοποίηση/rig), Sonnet
+(λογιστική κριτική, read-only).

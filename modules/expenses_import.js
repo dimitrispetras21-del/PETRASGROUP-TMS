@@ -22,13 +22,15 @@ const _ei = {
   error: null,
   doc: null,                 // { id, zip_name, period_from, period_to, n_files, files_count }
   extractedFileCount: null,  // fallback for doc.files_count when the browser already knows (spec round 2 point 3)
-  reconcile: null,           // { ok, per_doc:[{doc_no,country,diff,ok}], summary_total, lines_total }
+  reconcile: null,           // { ok, per_doc:[{doc_no,country,diff,ok}], summary_total, lines_total, totals? }
   metrics: null,
+  notices: null,             // w9: { refunds, t4e_mismatch, unparsed, split_errors, unknown_codes, vat_refund_unavailable }
   lines: [],                 // working copy: parser line + { id, selected, corrected, match }
   rules: [],                 // corrections marked «να ισχύει στο εξής»
   filter: 'all',             // category chip
   reviewMode: 'all',         // 'all' | 'decide' (round 2 point 2 — suggest+none only)
   groupOpen: {},             // plate (or '__NOVEHICLE__') → explicit open/collapsed override
+  rts: null,                 // w9: round trips of the IMPORT's own period (not the expenses week strip)
   rtEditingId: null,         // line id whose round-trip cell is open for editing
   plateEditingId: null,      // line id whose «Σύνδεση με φορτηγό…» select is open (round 2 point 1)
   committing: false,
@@ -83,11 +85,15 @@ function eiStyles() {
   .ei-progress-bar{width:240px;height:6px;border-radius:3px;background:var(--surface-sunken);margin:12px auto 0;overflow:hidden}
   .ei-progress-fill{height:100%;background:var(--accent);transition:width .15s}
 
-  .ei-headrow{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:16px 24px;border-bottom:1px solid var(--border)}
+  /* Sticky against #content (the app's own scroller, assets/style.css
+     .content{overflow-y:auto}) — same mechanism as .ex-gh in modules/expenses.js.
+     Fixed height so the column header row below can pin right under it. */
+  .ei-headrow{position:sticky;top:0;z-index:6;display:flex;align-items:center;justify-content:space-between;gap:16px;height:60px;box-sizing:border-box;padding:0 24px;border-bottom:1px solid var(--border);background:var(--surface-card)}
   .ei-headtitle{font-family:'Syne',sans-serif;font-size:18px;font-weight:700;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .ei-headbtns{display:flex;gap:8px;flex:none}
   .ei-btn{height:36px;padding:0 16px;border-radius:6px;border:1px solid var(--border);background:var(--surface-card);font:inherit;font-size:13px;font-weight:600;cursor:pointer;color:var(--text)}
-  .ei-btn-primary{background:var(--accent);border-color:var(--accent);color:#fff}
+  /* Navy only on the primary action (owner 8/9: formal financial screens). */
+  .ei-btn-primary{background:var(--navy);border-color:var(--navy);color:#fff}
   .ei-btn-primary:disabled{background:var(--surface-sunken);border-color:var(--border);color:var(--text-dim);cursor:not-allowed}
 
   .ei-band{display:flex;align-items:stretch;padding:16px 24px;border-bottom:1px solid var(--border);gap:24px;flex-wrap:wrap}
@@ -105,6 +111,14 @@ function eiStyles() {
   .ei-metric.ei-m-warn .v{color:var(--warn)}
 
   .ei-none-summary{padding:0 24px 12px;font-size:11px;color:var(--warn)}
+  /* w9 notices: the refund receivable (grey, informational) and every gate
+     that did not pass silently — T4E disagreement, unparsed lines, passages
+     split refused, new product code (amber, αρχή 1). */
+  .ei-notices{padding:0 24px 8px;display:flex;flex-direction:column;gap:4px}
+  .ei-notice{font-size:11.5px;color:var(--text-mid);padding:6px 10px;border:1px solid var(--border);border-radius:4px;background:var(--surface-sunken)}
+  .ei-notice.warn{color:var(--warn);border-color:var(--warn);background:var(--warn-bg)}
+  .ei-notice b{color:var(--text)}
+  .ei-flag{width:16px;height:12px;vertical-align:-1px;border:1px solid var(--border);border-radius:1px}
   .ei-reviewrow{display:flex;gap:8px;padding:0 24px 12px}
 
   .ei-chiprow{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:12px 24px;flex-wrap:wrap}
@@ -120,8 +134,13 @@ function eiStyles() {
   .ei-dot-ok{background:var(--ok)} .ei-dot-suggest{background:var(--accent)} .ei-dot-warn{background:var(--warn)}
   .ei-dot-amber{background:var(--warn)} .ei-dot-blue{background:var(--accent)} .ei-dot-green{background:var(--ok)} .ei-dot-gray{background:var(--text-dim)}
 
-  .ei-card{margin:0 24px;border:1px solid var(--border);border-radius:8px;overflow:hidden;background:var(--surface-card)}
-  .ei-grouphead{display:flex;align-items:center;gap:10px;padding:10px 16px;background:var(--surface-sunken);border-bottom:1px solid var(--border);font-size:12px;color:var(--text-mid);flex-wrap:wrap}
+  /* No overflow:hidden on the card: it would become the containing block of
+     every position:sticky inside and nothing would pin against #content
+     (owner 16/9, E7 — measured on the expenses sheet). Rounded corners live
+     on the first/last child instead. */
+  .ei-card{margin:0 24px;border:1px solid var(--border);border-radius:8px;background:var(--surface-card)}
+  .ei-th{position:sticky;top:60px;z-index:5;display:grid;grid-template-columns:24px 52px 130px 44px minmax(140px,1.4fr) 56px 76px 68px minmax(150px,1fr) 64px;gap:8px;align-items:center;padding:0 16px;height:30px;border-radius:8px 8px 0 0;background:var(--surface-sunken);border-bottom:2px solid var(--border-mid,var(--border));font-size:9px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--text-mid);white-space:nowrap}
+  .ei-grouphead{position:sticky;top:90px;z-index:4;display:flex;align-items:center;gap:10px;padding:10px 16px;background:var(--surface-sunken);border-bottom:1px solid var(--border);font-size:12px;color:var(--text-mid);flex-wrap:wrap}
   .ei-grouphead-none{color:var(--warn)}
   .ei-plate{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-weight:700;letter-spacing:.02em;background:var(--navy);color:var(--text-on-dark);border-radius:4px;padding:2px 8px;font-size:13px}
   .ei-gname{font-weight:700;color:var(--text)}
@@ -329,7 +348,15 @@ async function eiSendParse(file, files) {
     res = await ctFetch('/costs/import/parse', { method: 'POST', body });
   } catch (e) {
     _ei.step = 'upload';
-    _ei.error = (e && e.message) || String(e);
+    // 409 «already imported»: the Worker says WHO and WHEN (spec §5) — ctFetch
+    // keeps the body on the error (e.data) so the message can repeat it.
+    const d = e && e.data;
+    if (e && e.status === 409 && d && d.error === 'already imported') {
+      _ei.error = 'Αυτό το ZIP έχει ήδη εισαχθεί' + (d.invoice_no ? ' (παραστατικό ' + d.invoice_no + ')' : '') +
+        (d.created_by ? ' από ' + d.created_by : '') + (d.created_at ? ' στις ' + exDate(String(d.created_at).slice(0, 10)) : '') + '. Δεν δημιουργούνται διπλές γραμμές.';
+    } else {
+      _ei.error = (e && e.message) || String(e);
+    }
     eiRenderShell();
     return;
   }
@@ -340,6 +367,16 @@ function eiLoadParseResult(res) {
   _ei.doc = (res && res.doc) || null;
   _ei.reconcile = (res && res.reconcile) || { ok: false, summary_total: null, lines_total: 0, per_doc: [] };
   _ei.metrics = (res && res.metrics) || {};
+  // w9: everything the Worker reports besides the lines — shown, never dropped.
+  _ei.notices = {
+    totals: (res && res.totals) || (res && res.reconcile && res.reconcile.totals) || null,
+    refunds: (res && res.refunds) || [],
+    t4e_mismatch: (res && res.t4e_mismatch) || [],
+    unparsed: (res && res.unparsed) || [],
+    split_errors: (res && res.split && res.split.errors) || [],
+    unknown_codes: (res && res.unknown_product_codes) || [],
+    vat_refund_unavailable: !!(res && res.vat_refund_unavailable),
+  };
   // Ids είναι ΠΑΝΤΑ ακέραιοι δείκτες (idx), όχι ό,τι στείλει ο server: κάθε
   // onclick="...(${l.id})" παρακάτω γράφει τον αριθμό σκέτο μέσα στο HTML
   // (π.χ. onclick="eiToggleLine(3)") — ένα string id θα γινόταν αδήλωτο
@@ -366,11 +403,45 @@ function eiLoadParseResult(res) {
   _ei.plateEditingId = null;
   _ei.step = 'preview';
   eiRenderShell();
+  eiLoadRtsForPeriod();
+}
+
+// The round trips this screen labels, lists and re-suggests against. NOT
+// _ex.rts: since 13/9 that is only the expenses screen's CURRENT week (the
+// strip fetches from/to around today), so an August statement imported in
+// September saw an empty list — «RT #96» labels, no candidates under «άλλο»,
+// no re-suggest after a plate link (found 17/9 by the rig, RT_FIXTURE dated
+// 30/08–05/09). The import asks for its own period, ±7 days for DKV's
+// billing cut, and falls back to whatever the expenses screen holds until
+// that answer arrives.
+function eiRts() {
+  return _ei.rts || _ex.stripRts || _ex.rts || [];
+}
+function eiShiftDay(iso, days) {
+  const [y, m, d] = String(iso).slice(0, 10).split('-').map(Number);
+  return new Date(Date.UTC(y, m - 1, d + days)).toISOString().slice(0, 10);
+}
+async function eiLoadRtsForPeriod() {
+  const doc = _ei.doc || {};
+  const dates = _ei.lines.flatMap((l) => [l.service_date, l.period_from, l.period_to]).filter(Boolean).sort();
+  const from = doc.period_from || dates[0];
+  const to = doc.period_to || dates[dates.length - 1];
+  if (!from || !to) return;
+  try {
+    const res = await ctFetch('/costs/rt?from=' + eiShiftDay(from, -7) + '&to=' + eiShiftDay(to, 7));
+    _ei.rts = (res.records || []).filter((r) => r.status !== 'cancelled');
+  } catch (e) {
+    // Labels fall back to «RT #id»; the picker keeps the strip's list. Said, not hidden.
+    showErrorToast('Τα δρομολόγια της περιόδου δεν φορτώθηκαν: ' + ((e && e.message) || e), 'error');
+    return;
+  }
+  if (_ei.step === 'preview') eiRenderShell();
 }
 
 // ═══════════════════ ΠΡΟΕΠΙΣΚΟΠΗΣΗ ═══════════════════
 
 function eiSelectedCount() { return _ei.lines.filter((l) => l.selected).length; }
+function eiUnselectedGross() { return Math.abs(_ei.lines.filter((l) => !l.selected).reduce((a, l) => a + eiLineGross(l), 0)); }
 function eiLineGross(l) { return Number(l.gross_eur != null ? l.gross_eur : (l.gross || 0)); }
 
 function eiPreviewHtml() {
@@ -385,7 +456,10 @@ function eiPreviewHtml() {
   const period = doc.period_from && doc.period_to ? (exDate(doc.period_from) + '–' + exDate(doc.period_to)) : '';
   const titleLine = 'Εισαγωγή DKV · ' + (_ei.zipName || doc.zip_name || '—') + ' · ' + nFiles + ' αρχεία' + (period ? ' · περίοδος ' + period : '');
   const selCount = eiSelectedCount();
-  const commitDisabled = !rec.ok || selCount === 0 || _ei.committing;
+  // Every euro of the statement is booked or nothing is (owner; the Worker's
+  // commit refuses Σ sent ≠ total_gross with a 409) — say it BEFORE the POST:
+  // an unticked line locks the button and names the missing amount.
+  const commitDisabled = !rec.ok || selCount === 0 || _ei.committing || eiUnselectedGross() > 0.005;
   return `<div class="ei-page">
     <div class="ei-headrow">
       <div class="ei-headtitle" title="${escapeHtml(titleLine)}">${escapeHtml(titleLine)}</div>
@@ -395,10 +469,11 @@ function eiPreviewHtml() {
       </div>
     </div>
     ${eiReconcileBandHtml()}
+    ${eiNoticesHtml()}
     ${eiNoneReasonSummaryHtml()}
     ${eiReviewToggleHtml()}
     ${eiChipsRowHtml()}
-    <div class="ei-card">${eiGroupsHtml()}</div>
+    <div class="ei-card">${eiColumnHeaderHtml()}${eiGroupsHtml()}</div>
     ${eiFooterHtml()}
   </div>`;
 }
@@ -408,10 +483,27 @@ function eiReconcileBandHtml() {
   const perDoc = rec.per_doc || [];
   const total = _ei.lines.filter((l) => l.selected).reduce((a, l) => a + eiLineGross(l), 0);
   const ok = !!rec.ok;
+  const bandOk = ok && eiUnselectedGross() <= 0.005;
   const okCount = perDoc.filter((d) => d.ok).length;
-  const statusText = ok
-    ? ('ταυτίζεται με το E-SUMMARY της DKV — ' + okCount + '/' + perDoc.length + ' έγγραφα')
-    : ('Δεν συμφωνεί: ' + (perDoc.filter((d) => !d.ok).map((d) => (d.doc_no || '—') + ' ' + exEur(d.diff)).join(', ') || 'δείτε παραστατικά'));
+  // w9: the E-SUMMARY footer is part of the gate (Σ rows, VAT refund,
+  // payable). Named when it fails; the payable is shown when it passes so the
+  // accountant sees what DKV will actually collect, not only Σ of the lines.
+  const totals = (_ei.notices && _ei.notices.totals) || rec.totals || null;
+  const footerFails = [];
+  if (totals) {
+    if (totals.rows_ok === false) footerFails.push('σύνολο E-SUMMARY (' + exEur(totals.rows_sum_eur) + ' ≠ ' + exEur(totals.rows_total_eur) + ')');
+    if (totals.refund_ok === false) footerFails.push('επιστροφή ΦΠΑ (έγγραφα ' + exEur(totals.refund_docs_eur) + ' ≠ E-SUMMARY ' + exEur(totals.vat_refund_eur) + ')');
+    if (totals.payable_ok === false) footerFails.push('πληρωτέο (' + exEur(totals.payable_eur) + ' ≠ σύνολο − επιστροφή)');
+  }
+  const payableTxt = totals && totals.payable_eur != null
+    ? ' · πληρωτέο ' + exEur(totals.payable_eur) + (totals.vat_refund_eur ? ' (επιστροφή ΦΠΑ −' + exEur(totals.vat_refund_eur) + ')' : '')
+    : '';
+  const unselected = eiUnselectedGross();
+  const statusText = ok && unselected > 0.005
+    ? ('Δεν καταχωρείται με αποεπιλεγμένες γραμμές (' + exEur(unselected) + ' εκτός) — κάθε ευρώ του παραστατικού γράφεται ή τίποτα')
+    : ok
+      ? ('ταυτίζεται με το E-SUMMARY της DKV — ' + okCount + '/' + perDoc.length + ' έγγραφα' + payableTxt)
+      : ('Δεν συμφωνεί: ' + ([...perDoc.filter((d) => !d.ok).map((d) => (d.doc_no || '—') + ' ' + exEur(d.diff)), ...footerFails].join(', ') || 'δείτε παραστατικά'));
   const vehicles = new Set(_ei.lines.map((l) => l.plate).filter(Boolean)).size;
   const sure = _ei.lines.filter((l) => l.match.status === 'sure').length;
   const suggest = _ei.lines.filter((l) => l.match.status === 'suggest').length;
@@ -419,7 +511,7 @@ function eiReconcileBandHtml() {
   return `<div class="ei-band">
     <div class="ei-band-total">
       <div class="v">${exEur(total)}</div>
-      <div class="ei-band-status ${ok ? 'ok' : 'bad'}"><span class="ei-dot ${ok ? 'ei-dot-ok' : 'ei-dot-warn'}" style="${ok ? '' : 'background:var(--danger)'}"></span>${escapeHtml(statusText)}</div>
+      <div class="ei-band-status ${bandOk ? 'ok' : 'bad'}"><span class="ei-dot ${bandOk ? 'ei-dot-ok' : 'ei-dot-warn'}" style="${bandOk ? '' : 'background:var(--danger)'}"></span>${escapeHtml(statusText)}</div>
     </div>
     <div class="ei-metrics">
       <div class="ei-metric"><div class="v">${_ei.lines.length}</div><div class="k">γραμμές</div></div>
@@ -431,6 +523,55 @@ function eiReconcileBandHtml() {
   </div>`;
 }
 
+// w9 (17/9/2026). Two kinds of notice, both under the band:
+//  · the VAT refund — a receivable REMOBIS nets on the statement (owner 17/9:
+//    «σε γενικά», never a trip cost, never a line): grey, informational;
+//  · every gate that did not pass — Toll4Europe disagreeing with a statement
+//    line, lines the parser could not read (spec §6.3), a half-month line
+//    whose passages did not add up (left whole, not guessed), a product code
+//    the seed map has never seen (spec §6.4): amber. None of these locks the
+//    commit by itself (the E-SUMMARY gate does), but none is allowed to be
+//    invisible either (αρχή 1).
+function eiNoticesHtml() {
+  const n = _ei.notices || {};
+  const out = [];
+  const totals = n.totals;
+  if (totals && totals.vat_refund_eur) {
+    const country = [...new Set((n.refunds || []).flatMap((r) => (r.claims || []).map((c) => c.country)).filter(Boolean))].join(', ');
+    out.push(`<div class="ei-notice">Επιστροφή ΦΠΑ${country ? ' ' + escapeHtml(country) : ''} <b>${exEur(totals.vat_refund_eur)}</b> (γενικά, όχι δρομολόγιο — δεν γίνεται γραμμή εξόδου)${n.vat_refund_unavailable ? ' · <span class="ei-gnote">δεν αποθηκεύεται ακόμη στο παραστατικό (migration 036)</span>' : ''}</div>`);
+  }
+  if ((n.t4e_mismatch || []).length) {
+    const items = n.t4e_mismatch.map((e) => escapeHtml((e.plate || '—') + ' ' + (e.ref || '') + ': γραμμή ' + Number(e.line_gross).toLocaleString('el-GR', { minimumFractionDigits: 2 }) + ' ≠ Toll4Europe ' + Number(e.t4e_amount).toLocaleString('el-GR', { minimumFractionDigits: 2 }) + ' ' + (e.currency || ''))).join(' · ');
+    out.push(`<div class="ei-notice warn">Διαφωνία με Toll4Europe (${n.t4e_mismatch.length}): ${items}</div>`);
+  }
+  if ((n.unparsed || []).length) {
+    const items = n.unparsed.slice(0, 5).map((e) => escapeHtml((e.doc_no || e.doc || '—') + (e.reason ? ' · ' + e.reason : ''))).join(' · ');
+    out.push(`<div class="ei-notice warn">Δεν διαβάστηκαν (${n.unparsed.length}): ${items}${n.unparsed.length > 5 ? ' …' : ''}</div>`);
+  }
+  if ((n.split_errors || []).length) {
+    out.push(`<div class="ei-notice warn">Διελεύσεις που δεν αθροίζουν στη γραμμή του statement (${n.split_errors.length}) — οι γραμμές έμειναν ολόκληρες στην περίοδό τους: ${escapeHtml(n.split_errors.map((e) => (e.doc_no || '—') + '#' + (e.seq != null ? e.seq : '?')).join(', '))}</div>`);
+  }
+  if ((n.unknown_codes || []).length) {
+    out.push(`<div class="ei-notice warn">Νέος κωδικός προϊόντος (${n.unknown_codes.length}): ${escapeHtml(n.unknown_codes.join(', '))} — κατηγορία «Λοιπά» μέχρι να διορθωθεί (και τότε γίνεται κανόνας)</div>`);
+  }
+  return out.length ? `<div class="ei-notices">${out.join('')}</div>` : '';
+}
+
+// One sticky column header for the whole card (formal table, owner 8/9) —
+// same tracks as .ei-row so the words sit over their column.
+function eiColumnHeaderHtml() {
+  return `<div class="ei-th"><div></div><div>Ημ/νία</div><div>Κατηγορία</div><div>Χώρα</div><div>Περιγραφή</div><div class="r">Λίτρα</div><div class="r">Καθαρό</div><div class="r">ΦΠΑ</div><div>Δρομολόγιο</div><div></div></div>`;
+}
+
+// Country as a flag (local assets/flags, owner 16/9 «όταν λέω χώρες, εννοώ
+// σημαίες») — exFlag lives in modules/expenses.js, which is always loaded
+// before this screen (it opens from there); the code alone is the fallback.
+function eiCountryHtml(cc) {
+  if (!cc) return '—';
+  if (typeof exFlag === 'function') return exFlag(cc) || escapeHtml(cc);
+  return escapeHtml(cc);
+}
+
 // «47 χωρίς δρομολόγιο: 18 γενικά τέλη · 1 άγνωστη πινακίδα · 28 χωρίς
 // διαδρομή εκείνη την ημέρα» (spec round 2 point 1) — counted client-side
 // from the flat `none_reason` field so the reason is visible ΠΡΙΝ ανοίξει
@@ -439,7 +580,7 @@ function eiReconcileBandHtml() {
 // falls out of all four buckets and the sentence quietly shows 0 reasons,
 // never crashes.
 function eiNoneReasonCounts() {
-  const counts = { general_fee: 0, unknown_plate: 0, no_rt_on_date: 0, no_plate: 0 };
+  const counts = { general_fee: 0, unknown_plate: 0, no_rt_on_date: 0, no_plate: 0, fee_no_rt: 0 };
   for (const l of _ei.lines) {
     if (l.match.status !== 'none') continue;
     const r = l.none_reason;
@@ -457,6 +598,7 @@ function eiNoneReasonSummaryHtml() {
   if (c.unknown_plate) parts.push(c.unknown_plate + ' άγνωστ' + (c.unknown_plate === 1 ? 'η πινακίδα' : 'ες πινακίδες'));
   if (c.no_rt_on_date) parts.push(c.no_rt_on_date + ' χωρίς διαδρομή εκείνη την ημέρα');
   if (c.no_plate) parts.push(c.no_plate + ' χωρίς όχημα στο παραστατικό');
+  if (c.fee_no_rt) parts.push(c.fee_no_rt + (c.fee_no_rt === 1 ? ' τέλος DKV χωρίς δρομολόγιο στην περίοδο' : ' τέλη DKV χωρίς δρομολόγιο στην περίοδο'));
   if (!parts.length) return ''; // none_reason absent for all of them — nothing specific to say yet
   return `<div class="ei-none-summary">${noneTotal} χωρίς δρομολόγιο: ${escapeHtml(parts.join(' · '))}</div>`;
 }
@@ -558,7 +700,7 @@ function eiVehicleGroupHtml(plate, allLines, visibleLines) {
   const allSure = eiGroupAllSure(allLines);
   const open = eiGroupIsOpen(plate);
   const sureLine = allLines.find((l) => l.match.status === 'sure' && l.match.rt_id);
-  const rt = sureLine ? _ex.rts.find((r) => r.id === sureLine.match.rt_id) : null;
+  const rt = sureLine ? eiRts().find((r) => r.id === sureLine.match.rt_id) : null;
   const driver = rt ? exPersonName(rt) : '';
   const dates = rt ? exDateRange(rt.date_start, rt.date_end) : '';
   const head = `<div class="ei-grouphead" onclick="eiToggleGroup('${eiJsStr(plate)}')" style="cursor:pointer">
@@ -631,7 +773,7 @@ function eiLineRowHtml(l) {
     <input type="checkbox" ${l.selected ? 'checked' : ''} onchange="eiToggleLine(${l.id})">
     <div class="s"${dateTitle}>${dateTxt}</div>
     <div class="ei-cat"><span class="ei-dot ${eiCatDotClass(l.category)}"></span>${eiCategorySelectHtml(l)}</div>
-    <div class="s">${escapeHtml(l.country || '—')}</div>
+    <div class="s">${eiCountryHtml(l.country)}</div>
     <div class="s ei-desc">${eiDescription(l)}</div>
     <div class="n r">${litersTxt}</div>
     <div class="n r">${exEur(l.net_eur != null ? l.net_eur : l.net)}</div>
@@ -649,7 +791,7 @@ function eiLineRowHtml(l) {
 function eiRtCellHtml(l) {
   const m = l.match || { status: 'none' };
   if (m.status === 'sure' && m.rt_id) {
-    const rt = _ex.rts.find((r) => r.id === m.rt_id);
+    const rt = eiRts().find((r) => r.id === m.rt_id);
     const label = rt ? (exDateRange(rt.date_start, rt.date_end) + ' · ' + exPersonName(rt)) : ('RT #' + m.rt_id);
     return `<span class="ei-dot ei-dot-ok"></span><span class="s">${escapeHtml(label)}</span>`;
   }
@@ -669,7 +811,15 @@ function eiRtCellHtml(l) {
     return `<span class="ei-dot ei-dot-warn"></span><span class="s">Καμία διαδρομή του ${escapeHtml(l.plate || '—')} την ${escapeHtml(exDate(l.service_date))}<br><span class="ei-gnote">Πιθανό δρομολόγιο που δεν καταχωρήθηκε</span></span>`;
   }
   if (reason === 'no_plate') {
+    // A passages list that named only a DKV card no VEHICLE header in the ZIP
+    // resolves (HR «Card N.»): say which card, so the owner can link it.
+    if (l.plate_source === 'passages' && l.card_no && !l.plate) return `<span class="ei-dot ei-dot-warn"></span><span class="s">Κάρτα ${escapeHtml(l.card_no)} χωρίς γνωστό όχημα</span>`;
     return `<span class="ei-dot ei-dot-warn"></span><span class="s dim">Χωρίς όχημα στο παραστατικό</span>`;
+  }
+  if (reason === 'fee_no_rt') {
+    // Δ2 (13/9): a DKV fee is spread over the RTs that had DKV charges in the
+    // period; none found → stays a fleet cost, nothing to pick here.
+    return `<span class="ei-dot ei-dot-warn"></span><span class="s dim">Τέλος DKV · κανένα δρομολόγιο με χρεώσεις DKV στην περίοδο</span>`;
   }
   return `<span class="ei-dot ei-dot-warn"></span><span class="s dim">Χωρίς δρομολόγιο</span>`;
 }
@@ -682,7 +832,7 @@ function eiActionLabel(l) {
   if (m.status === 'sure') return 'Αλλαγή';
   if (m.status === 'suggest') return 'Επιλογή';
   const reason = l.none_reason || (m.general ? 'general_fee' : null);
-  if (reason === 'general_fee') return null;
+  if (reason === 'general_fee' || reason === 'fee_no_rt') return null;
   if (reason === 'unknown_plate') return 'Σύνδεση με φορτηγό…';
   if (reason === 'no_rt_on_date') return 'Επιλογή δρομολογίου…';
   return 'Επιλογή';
@@ -724,7 +874,7 @@ function eiPlateEditorHtml(l) {
 // «re-suggest RTs from _ex.rts for that truck/date client-side»).
 function eiResuggestRtForLine(line) {
   const day = line.service_date || line.period_from;
-  const cands = (_ex.rts || []).filter((r) => r.truck_id === line.truck_id && day && r.date_start <= day && (r.date_end || r.date_start) >= day);
+  const cands = eiRts().filter((r) => r.truck_id === line.truck_id && day && r.date_start <= day && (r.date_end || r.date_start) >= day);
   if (cands.length === 1) {
     line.match = { status: 'sure', rt_id: cands[0].id, candidates: [] };
     line.none_reason = null;
@@ -764,7 +914,7 @@ function eiNormalizeMatch(l) {
   if (l.match && typeof l.match === 'object') return l.match;
   const status = typeof l.match === 'string' ? l.match : 'none';
   const rtInfo = (id) => {
-    const r = (_ex.rts || []).find((x) => x.id === id);
+    const r = eiRts().find((x) => x.id === id);
     if (!r) return { rt_id: id };
     return {
       rt_id: id,
@@ -798,7 +948,7 @@ function eiFilterRtOther(lineId, q) {
   const sel = document.getElementById('eiRtOtherSel_' + lineId);
   if (!sel) return;
   const query = (q || '').trim().toLowerCase();
-  const rows = _ex.rts.filter((r) => {
+  const rows = eiRts().filter((r) => {
     if (!query) return true;
     return exTruckName(r.truck_id).toLowerCase().includes(query) || exPersonName(r).toLowerCase().includes(query);
   });
@@ -893,8 +1043,10 @@ async function eiCommit() {
   };
   try {
     const res = await ctFetch('/costs/import/commit', { method: 'POST', body });
-    const n = (res && res.inserted != null) ? res.inserted : selected.length;
-    const invoiceNo = res && res.invoice_no;
+    // Worker 201 body is {doc, lines, rules_written…} — count what was
+    // actually inserted, not what was sent (αρχή 2: the table, not the toast).
+    const n = (res && res.inserted != null) ? res.inserted : (res && Array.isArray(res.lines) ? res.lines.length : selected.length);
+    const invoiceNo = (res && res.invoice_no) || (res && res.doc && res.doc.invoice_no);
     showErrorToast('Καταχωρήθηκαν ' + n + ' γραμμές' + (invoiceNo ? ' · παραστατικό ' + invoiceNo : ''), 'info');
     renderExpenses();
   } catch (e) {

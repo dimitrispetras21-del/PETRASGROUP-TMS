@@ -1,0 +1,19 @@
+E- INVOICE according to the reverse charge procedure
+For Refunds / Services of
+EXAMPLE REFUND SERVICE C.V.
+Example Country Customer details
+EXAMPLE FRESH OOD Customer number: 9999998
+Cust. VAT Id/Nat.Tax.No.: EX000000001
+Invoice number: 99/000000002/901
+Invoice date: 30.09.2026
+Page: 1 / 1
+Invoice date/ Invoice number/ Service country Reimburse- Amount Fees Basic charge Payment in Payment in
+Settlement quarter Claim number SCY ment/ SCY currency % amount SCY currency payment
+Charge currency
+EUR EUR EUR EUR
+Y 2025 0000000001 Other Country Refund XXX 7.525,31 * 125,00 125,00 125,00
+» Total 125,00 125,00 125,00
+Total 125,00 125,00 125,00
+* The minimum fee is applied.
+The services are subject to the reverse charge procedure.
+Invoicing of the fees, including any incurred VAT, is on behalf of and on the account of REMOBIS REFUND SERVICE C.V., Example City,

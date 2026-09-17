@@ -3585,8 +3585,27 @@ async function handleCosts(request, url, origin, env) {
 
       // (e) reconcile (spec §6 gate #1) — passages are excluded automatically:
       // they never enter parsed.lines, only parsed.passages.
-      const reconcileResult = reconcile(lines, (parsed.summary && parsed.summary.docs) || []);
+      // w9 (17/9/2026): the E-SUMMARY footer, the REMOBIS VAT-refund statement
+      // and the T4E operator statements gate the import too — see
+      // import-rules reconcile(meta) and core/dkv-parser.js errors.t4e. The
+      // BG entity's summary carried a third column the old regex never
+      // matched: 0/19 rows → gate failed on every document → draft id 2 sat
+      // with total_gross NULL and 0 lines for a week.
+      const reconcileResult = reconcile(lines, (parsed.summary && parsed.summary.docs) || [], { summary: parsed.summary, refunds: parsed.refunds });
       const unknown_plates = [...new Set(lines.filter((l) => l.plate && l.truck_id == null).map((l) => l.plate))];
+
+      // ct_cost_docs.vat_refund (migration 036, DRAFT — owner runs it): the
+      // foreign VAT REMOBIS refunds against this statement. A receivable, never
+      // a cost line (owner 17/9) — kept on the document so «πληρωτέο» can be
+      // shown as total_gross − vat_refund. Same 42703 guard as migration 024
+      // above: the preview still works before the column exists, and says so.
+      let vat_refund_unavailable = false;
+      try {
+        await dbSelectRaw(env, "ct_cost_docs", new URLSearchParams({ select: "vat_refund", limit: "1" }));
+      } catch (e) {
+        if (isMissingRelationError(e.message)) vat_refund_unavailable = true;
+        else throw e;
+      }
 
       // (f)/(g) upsert ct_cost_docs draft. entity is left null on purpose: the
       // Φ1 parser (core/dkv-parser.js) does not extract a customer/entity name
@@ -3638,6 +3657,7 @@ async function handleCosts(request, url, origin, env) {
       // each time (no dedupe key to match on) instead of updating one — an
       // accepted, named degradation while rules_unavailable is true.
       if (!rules_unavailable) docPatch.zip_sha256 = body.zip_sha256;
+      if (!vat_refund_unavailable) docPatch.vat_refund = reconcileResult.totals && reconcileResult.totals.vat_refund_eur > 0 ? reconcileResult.totals.vat_refund_eur : null;
       if (fileUrlPath) docPatch.file_url = fileUrlPath;
       const draftExisting = existingDocs.rows.find((d) => d.status === "draft");
       const doc = draftExisting
@@ -3654,6 +3674,15 @@ async function handleCosts(request, url, origin, env) {
         unknown_plates,
         unparsed: parsed.errors.unparsed,
         rules_unavailable,
+        vat_refund_unavailable,
+        // w9: footer/refund/payable checks (null when the ZIP has no E-SUMMARY),
+        // the refund documents themselves, the T4E operator statements and any
+        // per-vehicle disagreement between a statement line and its T4E row —
+        // reported to the screen, never rounded away.
+        totals: reconcileResult.totals || null,
+        refunds: parsed.refunds,
+        t4e: parsed.t4e.map((t) => ({ ref: t.ref, country: t.country, period_from: t.period_from, period_to: t.period_to, vehicles: t.vehicles.length, total: t.total })),
+        t4e_mismatch: parsed.errors.t4e,
         split: { lines_split: split.stats.lines_split, lines_created: split.stats.lines_created, errors: split.errors.split },
         // Δ2 (spec §Δ 13/9): how many DKV fee lines got spread across RTs vs
         // left with no candidate — the screen uses fees_no_rt to explain why
@@ -3846,21 +3875,28 @@ async function handleCosts(request, url, origin, env) {
     if (resource === "import" && recId === "docs" && method === "GET") {
       const q = url.searchParams;
       const params = new URLSearchParams();
-      params.set("select", "id,source,invoice_no,period_from,period_to,total_gross,status,lines_total,lines_sure,lines_corrected,lines_unallocated,parser_version,file_url,created_at,created_by");
+      // Column sets in order of migration: 036 (vat_refund) → 024 (lines_*,
+      // parser_version) → base. A missing column (42703) falls back one step,
+      // still answering the request instead of a blanket 500.
+      const SELECTS = [
+        "id,source,invoice_no,period_from,period_to,total_gross,vat_refund,status,lines_total,lines_sure,lines_corrected,lines_unallocated,parser_version,file_url,created_at,created_by",
+        "id,source,invoice_no,period_from,period_to,total_gross,status,lines_total,lines_sure,lines_corrected,lines_unallocated,parser_version,file_url,created_at,created_by",
+        "id,source,invoice_no,period_from,period_to,total_gross,status,file_url,created_at,created_by"
+      ];
       params.set("order", "created_at.desc");
       params.set("limit", "200");
       // ?id= narrows to one document so ?signed=1 can sign it — without this the
       // signed URL only ever worked while the table held a single row (finding 5).
       if (q.get("id") && /^\d+$/.test(q.get("id"))) params.set("id", `eq.${q.get("id")}`);
-      let rows;
-      try {
-        ({ rows } = await dbSelectRaw(env, "ct_cost_docs", params));
-      } catch (e) {
-        // migration 024 columns missing → retry with the pre-024 column set,
-        // still answering the request instead of a blanket 500.
-        if (!isMissingRelationError(e.message)) throw e;
-        const fallbackParams = new URLSearchParams({ select: "id,source,invoice_no,period_from,period_to,total_gross,status,file_url,created_at,created_by", order: "created_at.desc", limit: "200" });
-        rows = (await dbSelectRaw(env, "ct_cost_docs", fallbackParams)).rows;
+      let rows = null;
+      for (const sel of SELECTS) {
+        params.set("select", sel);
+        try {
+          ({ rows } = await dbSelectRaw(env, "ct_cost_docs", params));
+          break;
+        } catch (e) {
+          if (!isMissingRelationError(e.message) || sel === SELECTS[SELECTS.length - 1]) throw e;
+        }
       }
       if (q.get("signed") === "1" && rows.length === 1 && rows[0].file_url) {
         const sg = await fetch(`${env.SUPABASE_URL}/storage/v1/object/sign/cost-docs/${rows[0].file_url}`, {

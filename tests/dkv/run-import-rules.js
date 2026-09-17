@@ -547,6 +547,99 @@ async function main() {
   const fallbackReconcile = reconcile([], []);
   assertDeepEqual(fallbackReconcile, { ok: true, per_doc: [] }, 'fallback shape: reconcile with no lines and no summary → vacuously ok, empty per_doc');
 
+  // ── w9 (17/9/2026): invoice-level passages join for a toll line WITHOUT a
+  // vehicle (IT «Pedaggio», HR «Cestarina»): the invoice prints one aggregate
+  // line, the passages list says which plate drove on which day. Join key =
+  // the passages doc's «Reference to the invoice» (DKV ticket) or its invoice
+  // number; amount gate = the line's base gross (Price/Unit × qty) — the only
+  // figure that equals Σ «Imp. lordo» (fake amounts, XX plates).
+  {
+    const itLine = { doc_no: 'D_IT', ticket_no: 'T_IT', seq: 1, ref: null, plate: null, country: 'IT', category: 'tolls', product_code: '0914',
+      service_date: '2026-09-30', quantity: 1, unit_price: 100, base_gross: 100, net: 90, vat: 19.8, gross: 109.8, currency: 'EUR', net_eur: 90, vat_eur: 19.8, gross_eur: 109.8 };
+    const itGroups = [
+      { plate: 'XX1234', country: 'IT', invoice_ref: 'T_IT', invoice_no: 'D_IT', service_date: '2026-09-18', net: 60, gross: 60, passages: [{}, {}] },
+      { plate: 'XX1234', country: 'IT', invoice_ref: 'T_IT', invoice_no: 'D_IT', service_date: '2026-09-19', net: 10, gross: 10, passages: [{}] },
+      { plate: 'XX5678', country: 'IT', invoice_ref: 'T_IT', invoice_no: 'D_IT', service_date: '2026-09-18', net: 30, gross: 30, passages: [{}] },
+      { plate: 'XX9012', country: 'IT', invoice_ref: 'T_OTHER', invoice_no: 'D_OTHER', service_date: '2026-09-18', net: 5, gross: 5, passages: [{}] },
+    ];
+    const sp = splitByPassages([itLine], itGroups);
+    assertEqual(sp.lines.length, 3, 'no-plate join: one child per passages group of THIS invoice (the other invoice\'s group is ignored)');
+    assertEqual(sp.errors.split.length, 0, 'no-plate join: base gross 100 == Σ groups 100 → gate passes');
+    assertDeepEqual(sp.lines.map((l) => l.plate), ['XX1234', 'XX5678', 'XX1234'], 'no-plate join: children take the plate from the passages group (day first, then plate)');
+    assertDeepEqual(sp.lines.map((l) => l.service_date), ['2026-09-18', '2026-09-18', '2026-09-19'], 'no-plate join: children take the passage day (sorted by day, then plate)');
+    assertDeepEqual(sp.lines.map((l) => l.sub), [1, 2, 3], 'no-plate join: children numbered 1..n');
+    assertEqual(Math.round(sp.lines.reduce((s, l) => s + l.gross_eur, 0) * 100) / 100, 109.8, 'no-plate join: Σ children gross_eur == parent gross_eur exactly');
+    assertEqual(Math.round(sp.lines.reduce((s, l) => s + l.net_eur, 0) * 100) / 100, 90, 'no-plate join: Σ children net_eur == parent net_eur exactly');
+    assertEqual(Math.round(sp.lines.reduce((s, l) => s + l.vat_eur, 0) * 100) / 100, 19.8, 'no-plate join: Σ children vat_eur == parent vat_eur exactly');
+    assertEqual(sp.lines[0].gross_eur, 65.88, 'no-plate join: child share is proportional (60/100 of 109,80)');
+    assert(sp.lines.every((l) => l.service_date_source === 'passages' && l.plate_source === 'passages'), 'no-plate join: children tagged service_date_source/plate_source = passages');
+    assertEqual(sp.stats.lines_split, 1, 'no-plate join: counted as one split line');
+    const keys = new Set(sp.lines.map((l) => buildImportKey(l)));
+    assertEqual(keys.size, 3, 'no-plate join: three distinct import keys (plate + day + sub differ)');
+
+    // Gate: Σ groups ≠ base gross → left untouched, reported, still no plate.
+    const spBad = splitByPassages([{ ...itLine, base_gross: 101 }], itGroups);
+    assertEqual(spBad.lines.length, 1, 'no-plate join: amount mismatch → line untouched');
+    assertEqual(spBad.lines[0].plate, null, 'no-plate join: mismatch → still no plate (never guessed)');
+    assertEqual(spBad.errors.split[0].reason, 'passages-sum-mismatch', 'no-plate join: mismatch reason reported');
+    assertEqual(spBad.errors.split[0].groups, 3, 'no-plate join: mismatch report counts the candidate groups');
+
+    // A group whose plate could not be resolved (HR card unknown) still splits
+    // — the child has the day but no plate, and says so.
+    const hrLine = { doc_no: 'D_HR', ticket_no: null, seq: 2, ref: null, plate: null, country: 'HR', category: 'tolls', product_code: '0533',
+      service_date: '2026-09-30', quantity: 1, unit_price: 30.1, base_gross: 30.1, net: 25.28, vat: 6.32, gross: 31.6, currency: 'EUR', net_eur: 25.28, vat_eur: 6.32, gross_eur: 31.6 };
+    const hrGroups = [{ plate: null, card_no: '00000000.0000000009', country: 'HR', invoice_ref: 'D_HR', invoice_no: null, service_date: '2026-09-26', net: 24.08, vat: 6.02, gross: 30.1, passages: [{}] }];
+    const spHr = splitByPassages([hrLine], hrGroups);
+    assertEqual(spHr.lines.length, 1, 'no-plate join (HR): one child for the one passage day');
+    assertEqual(spHr.lines[0].service_date, '2026-09-26', 'no-plate join (HR): the passage day replaces the invoice date');
+    assertEqual(spHr.lines[0].plate, null, 'no-plate join (HR): unknown card → child still has no plate');
+    assertEqual(spHr.lines[0].card_no, '00000000.0000000009', 'no-plate join (HR): the card number is carried so the screen can say which card');
+    assertEqual(spHr.lines[0].gross_eur, 31.6, 'no-plate join (HR): single child carries the whole EUR amount');
+
+    // A no-plate line that is NOT tolls (a general fee) never joins.
+    const feeLine = { doc_no: 'D_IT', ticket_no: 'T_IT', seq: 0, plate: null, category: 'dkv', product_code: '0949', service_date: '2026-09-30', base_gross: 100, net: 100, vat: 0, gross: 100, gross_eur: 100 };
+    const spFee = splitByPassages([feeLine], itGroups);
+    assertEqual(spFee.lines.length, 1, 'no-plate join: a general fee line is never split by passages');
+    assertEqual(spFee.errors.split.length, 0, 'no-plate join: a general fee line is not reported as a mismatch either');
+  }
+
+  // ── w9: reconcile totals (E-SUMMARY footer, REMOBIS VAT refund) ─────────
+  {
+    const docs = [{ doc_no: 'D1', total_eur: 100 }, { doc_no: 'D2', total_eur: 50.5 }];
+    const lines = [{ doc_no: 'D1', gross: 100 }, { doc_no: 'D2', gross: 50.5 }];
+    const ok = reconcile(lines, docs, { summary: { rows_total_eur: 150.5, vat_refund_eur: -20.25, payable_eur: 130.25 }, refunds: [{ doc_no: 'D900', total_eur: 20.25 }] });
+    assertEqual(ok.ok, true, 'reconcile totals: rows Σ, refund docs and payable all agree → ok');
+    assertEqual(ok.totals.ok, true, 'reconcile totals: totals.ok');
+    assertEqual(ok.totals.rows_total_eur, 150.5, 'reconcile totals: rows total reported');
+    assertEqual(ok.totals.vat_refund_eur, 20.25, 'reconcile totals: refund reported as a positive amount');
+    assertEqual(ok.totals.payable_eur, 130.25, 'reconcile totals: payable reported');
+    assertEqual(ok.totals.refund_docs_eur, 20.25, 'reconcile totals: Σ refund documents reported');
+
+    const badRefund = reconcile(lines, docs, { summary: { rows_total_eur: 150.5, vat_refund_eur: -20.25, payable_eur: 130.25 }, refunds: [{ doc_no: 'D900', total_eur: 19 }] });
+    assertEqual(badRefund.ok, false, 'reconcile totals: refund document ≠ E-SUMMARY «VAT Refund total» → gate fails');
+    assertEqual(badRefund.totals.refund_ok, false, 'reconcile totals: refund_ok false names the failing check');
+    assertEqual(badRefund.totals.rows_ok, true, 'reconcile totals: rows_ok still true');
+
+    const badPayable = reconcile(lines, docs, { summary: { rows_total_eur: 150.5, vat_refund_eur: -20.25, payable_eur: 131 }, refunds: [{ doc_no: 'D900', total_eur: 20.25 }] });
+    assertEqual(badPayable.ok, false, 'reconcile totals: payable ≠ rows − refund → gate fails');
+    assertEqual(badPayable.totals.payable_ok, false, 'reconcile totals: payable_ok false');
+
+    const badRows = reconcile(lines, docs, { summary: { rows_total_eur: 150.52, vat_refund_eur: 0, payable_eur: 150.52 }, refunds: [] });
+    assertEqual(badRows.ok, false, 'reconcile totals: Σ rows ≠ printed rows total → gate fails');
+    assertEqual(badRows.totals.rows_ok, false, 'reconcile totals: rows_ok false');
+
+    const noRefund = reconcile(lines, docs, { summary: { rows_total_eur: 150.5, vat_refund_eur: 0, payable_eur: 150.5 }, refunds: [] });
+    assertEqual(noRefund.ok, true, 'reconcile totals: GR-style summary (no refund) → ok');
+    assertEqual(noRefund.totals.vat_refund_eur, 0, 'reconcile totals: refund 0 when absent');
+
+    const noFooter = reconcile(lines, docs, { summary: { rows_total_eur: null, vat_refund_eur: 0, payable_eur: null }, refunds: [] });
+    assertEqual(noFooter.ok, false, 'reconcile totals: footer totals missing from the summary → not silently ok (αρχή 1)');
+    assertEqual(noFooter.totals.rows_ok, false, 'reconcile totals: missing rows total → rows_ok false');
+
+    const legacy = reconcile(lines, docs);
+    assertEqual(legacy.totals, undefined, 'reconcile totals: no meta passed → no totals key (old callers unchanged)');
+  }
+
   console.log(`\n${passed} passed, ${failed} failed`);
   process.exit(failed > 0 ? 1 : 0);
 }

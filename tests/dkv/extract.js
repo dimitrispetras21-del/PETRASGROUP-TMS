@@ -73,17 +73,34 @@ async function extractZip(zipPath) {
   return out;
 }
 
+// A directory of loose PDFs (the BG entity's statement arrived unzipped,
+// .local/dkv/bg-2026-08/) — same output shape as extractZip.
+async function extractDir(dirPath) {
+  const names = fs.readdirSync(dirPath).filter((n) => /\.pdf$/i.test(n)).sort((a, b) => a.localeCompare(b));
+  const out = [];
+  for (const name of names) {
+    const { text, lines } = await extractPdfText(fs.readFileSync(path.join(dirPath, name)));
+    out.push({ name, text, lines });
+  }
+  return out;
+}
+
+// ZIP file or directory of PDFs — whichever the path is.
+async function extractAny(p) {
+  return fs.statSync(p).isDirectory() ? extractDir(p) : extractZip(p);
+}
+
 async function main() {
   const args = process.argv.slice(2);
   const zipPath = args[0];
   if (!zipPath) {
-    console.error('Usage: node extract.js <zip-path> [--dump <out-dir>]');
+    console.error('Usage: node extract.js <zip-path|pdf-dir> [--dump <out-dir>]');
     process.exit(1);
   }
   const dumpIdx = args.indexOf('--dump');
   const dumpDir = dumpIdx !== -1 ? args[dumpIdx + 1] : null;
 
-  const files = await extractZip(zipPath);
+  const files = await extractAny(zipPath);
   console.log(`Extracted ${files.length} PDF(s) from ${path.basename(zipPath)}`);
 
   if (dumpDir) {
@@ -107,4 +124,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { extractZip, extractPdfText };
+module.exports = { extractZip, extractDir, extractAny, extractPdfText };

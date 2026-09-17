@@ -45,7 +45,14 @@ async function ctFetch(path, opts = {}) {
     throw new Error('δεν υπήρξε απάντηση από τον διακομιστή (δίκτυο ή διακομιστής εκτός)');
   }
   const data = await res.json().catch(() => null);
-  if (!res.ok) throw new Error((data && data.error) || ('HTTP ' + res.status));
+  if (!res.ok) {
+    // Status + body travel with the error so a caller can say more than the
+    // one-line reason (the DKV import's 409 carries who/when — spec §5).
+    const err = new Error((data && data.error) || ('HTTP ' + res.status));
+    err.status = res.status;
+    err.data = data;
+    throw err;
+  }
   // 200 με μη-JSON σώμα (edge error page, λάθος proxy) ΔΕΝ είναι «κενή βάση» —
   // χωρίς αυτό, το onboarding «δεν έχει γραφτεί τίποτα» θα έκρυβε το σφάλμα.
   if (data === null) throw new Error('Μη αναγνώσιμη απάντηση διακομιστή');

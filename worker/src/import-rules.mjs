@@ -162,6 +162,66 @@ function localAmount(obj, useGross) {
   return typeof v === 'number' ? v : 0;
 }
 
+// Proportional EUR split of `line` over `groups` (one child per group), the
+// child's share = its local amount / `lineLocal`. 2dp per child, the LAST
+// child absorbs the rounding so Σ children EUR == parent EUR exactly (spec
+// §4). `extra(g, idx)` adds per-child fields (day, plate …).
+function splitChildren(line, groups, lineLocal, useGross, extra) {
+  const n = groups.length;
+  const parentNetEur = line.net_eur || 0;
+  const parentGrossEur = line.gross_eur || 0;
+  let runNet = 0;
+  let runGross = 0;
+  return groups.map((g, idx) => {
+    const num = localAmount(g, useGross);
+    const ratio = lineLocal ? num / lineLocal : (n ? 1 / n : 0);
+    let netEur;
+    let vatEur;
+    let grossEur;
+    if (idx < n - 1) {
+      netEur = round2(parentNetEur * ratio);
+      grossEur = round2(parentGrossEur * ratio);
+      runNet = round2(runNet + netEur);
+      runGross = round2(runGross + grossEur);
+    } else {
+      netEur = round2(parentNetEur - runNet);
+      grossEur = round2(parentGrossEur - runGross);
+    }
+    // vat = gross − net on EVERY child (not its own proportional rounding):
+    // the table stores net and vat only, so each row's net+vat must be the
+    // gross the gate certified; Σ children vat still equals the parent's
+    // (parent vat = parent gross − parent net, parser rule 17/9).
+    vatEur = round2(grossEur - netEur);
+    return {
+      ...line,
+      service_date: g.service_date,
+      period_from: null,
+      period_to: null,
+      net: g.net,
+      vat: g.vat,
+      gross: g.gross,
+      net_eur: netEur,
+      vat_eur: vatEur,
+      gross_eur: grossEur,
+      sub: idx + 1,
+      split_from_seq: line.seq,
+      passages_count: (g.passages || []).length,
+      note: 'από λίστα διελεύσεων',
+      service_date_source: 'passages',
+      ...(extra ? extra(g, idx) : {}),
+    };
+  });
+}
+
+// Tolerance in the DOCUMENT currency: dozens of per-passage amounts each
+// rounded to 2 decimals (0,1576 → 0,16) drift by more than 0,01 in CZK/HUF
+// (7 Czech lines matched to 3 decimals and were still refused). 0,1% of
+// the line, floor 0,05. The EUR side is exact regardless: children are
+// scaled from the parent's EUR and the last day absorbs the remainder.
+function amountTolerance(lineLocal) {
+  return Math.max(0.05, Math.abs(lineLocal || 0) * 0.001);
+}
+
 export function splitByPassages(lines, passages) {
   const passagesList = passages || [];
   const errors = { split: [] };
@@ -170,6 +230,42 @@ export function splitByPassages(lines, passages) {
   let lines_created = 0;
 
   for (const line of lines || []) {
+    // w9 (17/9/2026): a toll line WITHOUT a vehicle (IT «Pedaggio», HR
+    // «Cestarina» — the invoice prints one aggregate for the whole month and
+    // every truck) is split over the passages list of THAT invoice: joined by
+    // the passages doc's «Reference to the invoice» (the DKV ticket the
+    // invoice prints as ticket_no) or its invoice number. The amount gate is
+    // the line's base gross (Price/Unit × qty) — the only figure equal to Σ
+    // «Imp. lordo»/«Bruto» of the passages (the line's net/gross also carry
+    // DKV's service fee and VAT). Children take the group's plate and day, so
+    // applyRules/matchRoundTrip downstream see a normal per-vehicle line.
+    const isNoPlateTolls = !line.plate && line.category === 'tolls' && !!(line.doc_no || line.ticket_no);
+    if (isNoPlateTolls) {
+      const groups = passagesList
+        .filter((g) => (line.ticket_no && g.invoice_ref === line.ticket_no) ||
+          (line.doc_no && (g.invoice_no === line.doc_no || g.invoice_ref === line.doc_no)))
+        .sort((a, b) => (a.service_date < b.service_date ? -1 : a.service_date > b.service_date ? 1 : String(a.plate || '').localeCompare(String(b.plate || ''))));
+      const groupsSum = round2(groups.reduce((s, g) => s + localAmount(g, true), 0));
+      // First of base gross / net / gross that the passages add up to.
+      const candidates = [line.base_gross, line.net, line.gross].filter((v) => typeof v === 'number');
+      const lineLocal = candidates.find((v) => Math.abs(groupsSum - v) <= amountTolerance(v));
+      if (!groups.length || lineLocal === undefined) {
+        errors.split.push({ doc_no: line.doc_no, seq: line.seq, reason: 'passages-sum-mismatch', line_net: line.net, line_base_gross: line.base_gross, passages_net: groupsSum, groups: groups.length });
+        out.push({ ...line, service_date_source: 'invoice' });
+        continue;
+      }
+      lines_split++;
+      const children = splitChildren(line, groups, lineLocal, true, (g) => ({
+        plate: g.plate || null,
+        vehicle_raw: g.vehicle_raw || null,
+        card_no: g.card_no || line.card_no || null,
+        plate_source: 'passages',
+      }));
+      out.push(...children);
+      lines_created += children.length;
+      continue;
+    }
+
     const isHalfMonthTolls = !!(line.period_from && line.period_to && line.category === 'tolls');
     if (!isHalfMonthTolls) {
       out.push(joinRefToPassages(line, passagesList));
@@ -192,12 +288,7 @@ export function splitByPassages(lines, passages) {
     const useGross = line.net == null && line.gross != null;
     const lineLocal = useGross ? line.gross : line.net;
     const groupsSum = round2(groups.reduce((s, g) => s + localAmount(g, useGross), 0));
-    // Tolerance in the DOCUMENT currency: dozens of per-passage amounts each
-    // rounded to 2 decimals (0,1576 → 0,16) drift by more than 0,01 in CZK/HUF
-    // (7 Czech lines matched to 3 decimals and were still refused). 0,1% of
-    // the line, floor 0,05. The EUR side is exact regardless: children are
-    // scaled from the parent's EUR and the last day absorbs the remainder.
-    const tolerance = Math.max(0.05, Math.abs(lineLocal || 0) * 0.001);
+    const tolerance = amountTolerance(lineLocal);
     const gateOk = lineLocal != null && groups.length > 0 && Math.abs(groupsSum - lineLocal) <= tolerance;
 
     if (!gateOk) {
@@ -214,52 +305,9 @@ export function splitByPassages(lines, passages) {
     }
 
     lines_split++;
-    const n = groups.length;
-    const parentNetEur = line.net_eur || 0;
-    const parentVatEur = line.vat_eur || 0;
-    const parentGrossEur = line.gross_eur || 0;
-    let runNet = 0;
-    let runVat = 0;
-    let runGross = 0;
-    groups.forEach((g, idx) => {
-      const num = localAmount(g, useGross);
-      const ratio = lineLocal ? num / lineLocal : (n ? 1 / n : 0);
-      let netEur;
-      let vatEur;
-      let grossEur;
-      if (idx < n - 1) {
-        netEur = round2(parentNetEur * ratio);
-        vatEur = round2(parentVatEur * ratio);
-        grossEur = round2(parentGrossEur * ratio);
-        runNet = round2(runNet + netEur);
-        runVat = round2(runVat + vatEur);
-        runGross = round2(runGross + grossEur);
-      } else {
-        // LAST day (chronologically) absorbs whatever rounding left behind,
-        // so Σ children EUR == parent EUR exactly (spec §4).
-        netEur = round2(parentNetEur - runNet);
-        vatEur = round2(parentVatEur - runVat);
-        grossEur = round2(parentGrossEur - runGross);
-      }
-      out.push({
-        ...line,
-        service_date: g.service_date,
-        period_from: null,
-        period_to: null,
-        net: g.net,
-        vat: g.vat,
-        gross: g.gross,
-        net_eur: netEur,
-        vat_eur: vatEur,
-        gross_eur: grossEur,
-        sub: idx + 1,
-        split_from_seq: line.seq,
-        passages_count: (g.passages || []).length,
-        note: 'από λίστα διελεύσεων',
-        service_date_source: 'passages',
-      });
-      lines_created++;
-    });
+    const children = splitChildren(line, groups, lineLocal, useGross, null);
+    out.push(...children);
+    lines_created += children.length;
   }
 
   return { lines: out, errors, stats: { lines_split, lines_created } };
@@ -527,6 +575,9 @@ export function allocateFees(lines, rts, statementPeriod) {
         const share = splitByField[field][idx];
         if (share !== null) child[field] = share;
       }
+      // Same remainder rule as splitChildren: a child's vat is its gross − net.
+      if (typeof child.gross_eur === 'number' && typeof child.net_eur === 'number') child.vat_eur = round2(child.gross_eur - child.net_eur);
+      if (typeof child.gross === 'number' && typeof child.net === 'number') child.vat = round2(child.gross - child.net);
       out.push(child);
       fee_children++;
     });
@@ -548,7 +599,13 @@ function round2(n) {
 // §6.1 "passages docs are not gated" holds automatically here because passage
 // groups are never in this array, they live in parsed.passages instead).
 // summaryDocs: parsed.summary.docs ({doc_no, total_eur, ...}).
-export function reconcile(lines, summaryDocs) {
+// meta (optional, w9 17/9): { summary: parsed.summary, refunds: parsed.refunds }
+// adds the E-SUMMARY footer checks — Σ rows == printed rows total, Σ REMOBIS
+// refund documents == «VAT Refund total», rows − refund == «» Total» (what
+// DKV collects). A footer figure that is missing fails its check: the gate
+// never passes on silence (αρχή 1). Callers that pass no meta get the old
+// per-document result unchanged (no `totals` key).
+export function reconcile(lines, summaryDocs, meta) {
   const byDoc = new Map();
   for (const l of lines || []) {
     if (!l.doc_no) continue;
@@ -566,7 +623,32 @@ export function reconcile(lines, summaryDocs) {
     if (!docOk) ok = false;
     per_doc.push({ doc_no, parsed_gross, summary_total, diff, ok: docOk });
   }
-  return { ok, per_doc };
+  if (!meta) return { ok, per_doc };
+
+  const summary = meta.summary || {};
+  const num = (v) => (typeof v === 'number' && Number.isFinite(v) ? v : null);
+  const rowsSum = round2((summaryDocs || []).reduce((s, d) => s + (num(d.total_eur) || 0), 0));
+  const rowsTotal = num(summary.rows_total_eur);
+  // DKV prints the refund negative on the BG layout («VAT Refund total −1.395,21»);
+  // reported as a positive receivable everywhere downstream.
+  const vatRefund = Math.abs(num(summary.vat_refund_eur) || 0);
+  const payable = num(summary.payable_eur);
+  const refundDocs = round2((meta.refunds || []).reduce((s, r) => s + (num(r.total_eur) || 0), 0));
+  const rows_ok = rowsTotal !== null && Math.abs(rowsSum - rowsTotal) <= 0.01;
+  const refund_ok = Math.abs(refundDocs - vatRefund) <= 0.01;
+  const payable_ok = payable !== null && rowsTotal !== null && Math.abs(round2(rowsTotal - vatRefund) - payable) <= 0.01;
+  const totals = {
+    rows_sum_eur: rowsSum,
+    rows_total_eur: rowsTotal,
+    vat_refund_eur: vatRefund,
+    refund_docs_eur: refundDocs,
+    payable_eur: payable,
+    rows_ok,
+    refund_ok,
+    payable_ok,
+    ok: rows_ok && refund_ok && payable_ok,
+  };
+  return { ok: ok && totals.ok, per_doc, totals };
 }
 
 export function sumGrossEur(lines) {

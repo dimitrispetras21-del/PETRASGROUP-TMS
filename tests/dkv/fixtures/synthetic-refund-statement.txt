@@ -1,0 +1,18 @@
+E-STATEMENT OF ACCOUNT
+For Refunds / Services of
+REMOBIS REFUND SERVICE C.V.
+Customer details
+EXAMPLE FRESH OOD Customer number: 9999998
+Cust. VAT Id/Nat.Tax.No.: EX000000001
+Invoice number: 99/000000002/900
+Invoice date: 30.09.2026
+Page: 1 / 1
+Invoice date/ Invoice number/ Service country Reimburse- Amount Payment in Payment in
+Settlement quarter Claim number SCY ment/ SCY currency SCY currency payment
+Charge currency
+EUR
+Third-party receipts standard refund
+Y 2025 0000000001 Other Country Refund XXX 7.525,31 7.525,31 1.395,21
+» Total 1.395,21
+Total 1.395,21
+Original DKV invoices will be forwarded directly to REMOBIS REFUND SERVICE C.V. for VAT reclamation.

@@ -1,0 +1,16 @@
+E-STATEMENT OF ACCOUNT
+For services and deliveries in
+Example Country
+EXAMPLE FRESH OOD Customer number: 9999998
+Cust. VAT Id/Nat.Tax.No.: EX000000001
+Document number: 99/000000002/004
+Document date: 30.09.2026
+Currency: EUR
+Page: 1 / 1
+Delivery Service station Transaction Product Unit Quantity Price/Unit Total Total
+date name city number number net gross
+VEHICLE: XX1234 CARD NO.: 00000000.0000000001
+17.09.2026 EXAMPLE BOX EUROPE EX 2500099 2026-EXA-0000000001 Tolls EX - EXAMPLE BOX 0925 PC 1 115,63 115,63 115,63
+VEHICLE: XX5678 CARD NO.: 00000000.0000000002
+17.09.2026 EXAMPLE BOX EUROPE EX 2500099 2026-EXA-0000000001 Tolls EX - EXAMPLE BOX 0925 PC 1 253,30 253,30 253,30
+» 368,93 368,93

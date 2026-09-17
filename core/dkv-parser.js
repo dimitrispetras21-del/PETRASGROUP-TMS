@@ -21,7 +21,7 @@
   // table) so "διορθώσεις ανά 100 γραμμές" can be tracked per parser build,
   // not guessed from a git commit the accountant never sees. Bump on any
   // change to the line-shape or matching rules below.
-  var VERSION = '1.1.0';
+  var VERSION = '1.2.0';
 
   // ─── pdf.js text-item → line grouping ────────────────────────────
   /**
@@ -125,11 +125,13 @@
     return Math.round((n + Number.EPSILON) * 100) / 100;
   }
 
-  /** "17.08.2026" → "2026-08-17" */
+  /** "17.08.2026" → "2026-08-17". A 2-digit year ("26.08.26", the HR
+   *  passages list) is read as 20yy — DKV prints no other century. */
   function toIsoDate(ddmmyyyy) {
-    const m = /^(\d{2})\.(\d{2})\.(\d{4})$/.exec(ddmmyyyy || '');
+    const m = /^(\d{2})\.(\d{2})\.(\d{2}|\d{4})$/.exec(ddmmyyyy || '');
     if (!m) return null;
-    return `${m[3]}-${m[2]}-${m[1]}`;
+    const yyyy = m[3].length === 2 ? '20' + m[3] : m[3];
+    return `${yyyy}-${m[2]}-${m[1]}`;
   }
 
   function pad2(n) { return String(n).padStart(2, '0'); }
@@ -208,6 +210,17 @@
     '0920': 'dkv',         // DKV BOX EU central
     '0922': 'dkv',         // Increased DKV BOX
     '01AP': 'dkv',         // DKV Analytics
+    // w9 (17/9/2026, second entity — BG ZIP 31/08): codes the GR ZIP never
+    // carried. 0096/0088 are seeded as 'other' ON PURPOSE (owner 17/9: «ας πάνε
+    // Λοιπά») so they are named, not flagged «unknown» on every import.
+    '0914': 'tolls',       // Pedaggio (IT motorway toll)
+    '0605': 'ferry_train', // Kombiverkehr (rail-cargo combined transport)
+    '0096': 'other',       // LUBRICANTS
+    '0088': 'other',       // Parkolási szolgáltatás (HU parking)
+    // DKV prints NO product code on the REMOBIS refund-service fee invoice
+    // (RC «…-901»); this synthetic code keeps the line in the seed map and out
+    // of the «unknown code» report. Never a trip cost (category dkv).
+    'REMOBIS': 'dkv',
   };
 
   function categoryForProduct(code) {
@@ -266,10 +279,26 @@
     return null;
   }
 
+  // "Ticket number DKV:" — DKV's own document number, printed on invoices whose
+  // "Invoice number" is the local issuer's (AT/HU/IT/RO/BG). The "List of
+  // passages" for such an invoice references THIS number ("Reference to the
+  // invoice: 26/…/012"), not the invoice number — it is the join key between
+  // an invoice line without a vehicle and its passages (IT/HR, w9 17/9).
+  function extractTicketNo(lines) {
+    const m = /Ticket number DKV:\s*(\S+)/.exec(lines.join(' '));
+    return m ? m[1] : null;
+  }
+
+  function extractInvoiceDate(lines) {
+    const m = /Invoice date:\s*(\d{2}\.\d{2}\.\d{4})/.exec(lines.join(' '));
+    return m ? toIsoDate(m[1]) : null;
+  }
+
   // ─── transaction-line parsing ──────────────────────────────────────
   // ST/LTR/PC/KUS/DB (AT/DE/GR/PL/SK/HU…) plus locale variants seen on the
   // real ZIP: KOM. (HR/RS "komad"), бр./л. (BG Cyrillic "pieces"/"liters").
-  const UNIT_TOKENS = new Set(['ST', 'LTR', 'PC', 'KUS', 'DB', 'KOM.', 'бр.', 'л.']);
+  // PZ = Italian «pezzi» (pieces), seen on the BG entity's IT invoices (w9 17/9).
+  const UNIT_TOKENS = new Set(['ST', 'LTR', 'PC', 'KUS', 'DB', 'KOM.', 'бр.', 'л.', 'PZ']);
   const DATE_RE = /^\d{2}\.\d{2}\.\d{4}$/;
   const TIME_RE = /^\d{2}:\d{2}$/;
   const HALFMONTH_REF_RE = /^\d{4}-[A-Z]{2,4}-\d+$/; // "2026-CZE-0000187207"
@@ -336,7 +365,23 @@
       net = gross;
       vat = 0;
     }
+    // Reverse-charge documents have NO VAT column at all — their amount
+    // columns are «Base net · Discount net · Service fee net · Total net»
+    // (header verified on the real GR and BG RC PDFs). The net+vat≈gross
+    // heuristic above read a discount (−15,04) or a service fee (8,83) as VAT
+    // (production doc 1, Analytics line: net 19,95 / vat −15,04 for a 4,91
+    // charge). Owner 17/9: reverse charge ⇒ vat 0, net = the payable total.
+    if (ctx.docType === 'reverse_charge') {
+      net = gross;
+      vat = 0;
+    }
     const unitPrice = remaining.length ? remaining[0] : null;
+    // «Price/Unit gross × Quantity» = the base gross BEFORE DKV's service fee
+    // and VAT. It is the only figure of an invoice line that equals the Σ of
+    // its "List of passages" rows (IT/HR: 544,50 = Σ Imp. lordo, while the
+    // line's net is 476,20 and its gross 580,96) — kept so the passages join
+    // has something exact to compare against instead of a ratio guess.
+    const baseGross = quantity !== null && unitPrice !== null ? round2(quantity * unitPrice) : null;
 
     // Everything between the date and the product name's start is
     // station/city/transaction-number/time/(kilometer reading) — we don't
@@ -376,6 +421,9 @@
     let period_from = null;
     let period_to = null;
     if (isHalfMonth) {
+      // Provisional: parseDkv replaces this with the T4E operator statement's
+      // own «Billing Period» when that document is in the ZIP (period_source
+      // becomes 't4e'); the date rule is only the fallback.
       const bounds = halfMonthBounds(date);
       period_from = bounds.from;
       period_to = bounds.to;
@@ -388,7 +436,12 @@
     if (isForeign && gross_eur !== null && gross) {
       const fx = gross !== 0 ? gross_eur / gross : null;
       net_eur = fx !== null && net !== null ? round2(net * fx) : null;
-      vat_eur = fx !== null && vat !== null ? round2(vat * fx) : null;
+      // vat_eur is the REMAINDER, not its own rounding: ct_cost_lines stores
+      // net and vat only, so Σ(net+vat) in the table must equal the gross_eur
+      // the E-SUMMARY gate certified. Two independent round2() drifted by
+      // 0,01 per foreign line (accountant critic 17/9; production doc 1 already
+      // sums to total_gross + 0,01).
+      vat_eur = net_eur !== null ? round2(gross_eur - net_eur) : null;
     } else if (!isForeign) {
       net_eur = net;
       vat_eur = vat;
@@ -404,6 +457,9 @@
       service_date,
       period_from,
       period_to,
+      period_ref: halfMonthRef,
+      period_source: isHalfMonth ? 'date' : null,
+      ticket_no: ctx.ticketNo || null,
       product_code: productCode,
       product,
       category,
@@ -417,6 +473,7 @@
       net,
       vat,
       gross,
+      base_gross: baseGross,
       currency: ctx.currency,
       net_eur,
       vat_eur,
@@ -442,9 +499,16 @@
 
   const VEHICLE_RE = /^VEHICLE:\s*(.+?)\s+(?:CARD NO\.?|DKV Box No)\s*:\s*(\S+)/i;
 
+  // REMOBIS refund-service fee (reverse-charge invoice «…-901», BG entity):
+  // «Y <year> <claim no> <country> Refund <cur> <claim amount> * <fee> <fee>
+  // <fee>» — no date at the start, no product code, no vehicle. The «*» marks
+  // «minimum fee applied». The last number is what is charged (w9 17/9).
+  const REMOBIS_FEE_RE = /^Y\s+(\d{4})\s+(\d+)\s+(.+?)\s+Refund\s+([A-Z]{3})\s+([\d.,-]+)\s+\*?\s*([\d.,-]+)\s+([\d.,-]+)\s+([\d.,-]+)$/;
+
   function parseInvoiceLike(lines, docType, country) {
     const currency = detectCurrency(lines);
-    const ctx = { docType, country, currency, vehicle: null };
+    const ctx = { docType, country, currency, vehicle: null, ticketNo: extractTicketNo(lines) };
+    const invoiceDate = extractInvoiceDate(lines);
     const outLines = [];
     const errors = [];
 
@@ -453,6 +517,24 @@
       if (vm) {
         ctx.vehicle = { raw: vm[1], plate: normalizePlate(vm[1]), card_no: vm[2] };
         continue;
+      }
+      if (docType === 'reverse_charge') {
+        const rm = REMOBIS_FEE_RE.exec(line);
+        if (rm) {
+          const fee = parseNum(rm[8]);
+          outLines.push({
+            source: 'DKV', doc_type: docType, country, vehicle_raw: null, plate: null, card_no: null,
+            // The invoice date is the only date on this document.
+            service_date: invoiceDate, period_from: null, period_to: null, period_ref: null, period_source: null,
+            ticket_no: ctx.ticketNo || null,
+            product_code: 'REMOBIS', product: 'REMOBIS refund service fee ' + rm[1] + ' ' + rm[3], category: categoryForProduct('REMOBIS'),
+            station: 'REMOBIS REFUND SERVICE', city: null, time: null, ref: rm[2],
+            quantity: 1, unit: 'ST', unit_price: fee,
+            net: fee, vat: 0, gross: fee, base_gross: fee, currency,
+            net_eur: fee, vat_eur: 0, gross_eur: fee, fx_rate: 1,
+          });
+          continue;
+        }
       }
       if (DATE_RE.test((line.split(/\s+/)[0] || ''))) {
         const parsed = parseTransactionLine(line, ctx);
@@ -504,6 +586,24 @@
   const PASSAGE_ROW_RE = /^(\d{2}:\d{2})\s+(\S+)\s+(.+?)\s+([\d.,-]+)\s+([\d.,-]+)\s+([\d.,-]+)\s+([\d.,-]+)\s+([A-Z]{3})$/;
   const PASSAGE_TOTAL_RE = /^»\s*(?:Total|Celkem|Общо|Skupaj|Celkovo|Ukupno|Összesen)\s+([\d.,-]+)\s+([\d.,-]+)\s+([\d.,-]+)\s+([\d.,-]+)\s+([A-Z]{3})$/i;
   const ENTRY_EXIT_ROW_RE = /^(\d{2}\.\d{2}\.\d{4})\s+(\d{2}:\d{2})\s+\d{2}\.\d{2}\.\d{4}\s+\d{2}:\d{2}\s+(.*)$/;
+  //  (c) Italian (w9 17/9, BG entity): header «PAN <pan>, Targa N. <plate>,
+  //      ID OBU <obu>,…»; rows carry seconds and end with «<operator> <class>
+  //      <VAT code> <gross> <transaction no>». «DIREZIONE ENTRATA/USCITA» rows
+  //      have only an exit date/time (open-system gantries) — that is the day.
+  //      Amounts are «Imp. lordo» (gross incl. IVA 22%).
+  const IT_HEADER_RE = /^PAN\s+(\S+),\s*Targa N\.\s*([A-Z0-9 ]+?),\s*ID OBU\s+(\S+)/;
+  const IT_ROW_RE = /^(\d{2}\.\d{2}\.\d{4})\s+(\d{2}:\d{2}):\d{2}\s+(.+?)\s+(\d{2}\.\d{2}\.\d{4})\s+(\d{2}:\d{2}):\d{2}\s+(.+?)\s+(\S+)\s+(\d)\s+(\d{2})\s+([\d.,]+)\s+(\d+)$/;
+  const IT_DIREZIONE_RE = /^DIREZIONE\s+(\S+)\s+(\d{2}\.\d{2}\.\d{4})\s+(\d{2}:\d{2}):\d{2}\s+(.+?)\s+(\S+)\s+(\d)\s+(\d{2})\s+([\d.,]+)\s+(\d+)$/;
+  //  (d) Croatian (w9 17/9): header «Card N. <card>,» — no plate at all; the
+  //      plate is resolved through the card→plate map parseDkv builds from
+  //      every VEHICLE header in the ZIP. Rows «dd.mm.yy hh:mm net vat gross».
+  const CARD_HEADER_RE = /^Card N\.\s*(\S+?),?\s*$/;
+  const CARD_ROW_RE = /^(\d{2}\.\d{2}\.\d{2,4})\s+(\d{2}:\d{2})\s+([\d.,-]+)\s+([\d.,-]+)\s+([\d.,-]+)$/;
+  // «Reference to the invoice: <DKV ticket no>» — printed on every passages
+  // page; the line above it («Riferimento alla fattura / <no>», «Bezug zur
+  // Rechnung / <no>») carries the issuer's invoice number when it differs.
+  const INVOICE_REF_RE = /Reference to the invoice:\s*(\S+)/;
+  const INVOICE_NO_LINE_RE = /\s\/\s+(\d{2}\/\d+\/\d{3})$/;
 
   function isNumericToken(tok) {
     return parseNum(tok) !== null;
@@ -525,14 +625,48 @@
     return { entryDate: m[1], time: m[2], section, net };
   }
 
-  function parsePassages(lines, country) {
+  function parsePassages(lines, country, cardMap) {
     const docCurrency = detectCurrency(lines);
     const groups = [];
     const dayGroupIndex = new Map(); // "plate|isoDate" -> group, for entry/exit-style
     let current = null;   // active AT-style group
     let panCtx = null;    // active entry/exit-style PAN header (no fixed date)
+    let invoiceRef = null;
+    let invoiceNo = null;
+    for (const line of lines) {
+      if (!invoiceRef) { const m = INVOICE_REF_RE.exec(line); if (m) invoiceRef = m[1]; }
+      if (!invoiceNo) { const m = INVOICE_NO_LINE_RE.exec(line); if (m) invoiceNo = m[1]; }
+    }
+
+    // One (plate × day) group per key, shared by the entry/exit, IT and card
+    // layouts — each row adds to its day, the group's gross is Σ rows.
+    function dayGroup(key, plate, isoDate, extra) {
+      let g = dayGroupIndex.get(key);
+      if (!g) {
+        g = Object.assign({
+          source: 'DKV', doc_type: 'passages', country, pan: null, vehicle_raw: null, plate,
+          ref: null, service_date: isoDate, passages: [], net: 0, vat: 0, gross: 0, currency: docCurrency,
+        }, extra || {});
+        dayGroupIndex.set(key, g);
+        groups.push(g);
+      }
+      return g;
+    }
 
     for (const line of lines) {
+      const im = IT_HEADER_RE.exec(line);
+      if (im) {
+        panCtx = { pan: im[1], plate: normalizePlate(im[2]), layout: 'it' };
+        current = null;
+        continue;
+      }
+      const cm = CARD_HEADER_RE.exec(line);
+      if (cm) {
+        const card = cm[1];
+        panCtx = { pan: null, card_no: card, plate: (cardMap && cardMap[card]) || null, layout: 'card' };
+        current = null;
+        continue;
+      }
       const hm = PASSAGES_HEADER_RE.exec(line);
       if (hm) {
         const plate = normalizePlate(hm[2]);
@@ -587,31 +721,50 @@
         }
       }
 
+      if (panCtx && panCtx.layout === 'it') {
+        let rm = IT_ROW_RE.exec(line);
+        let entryDate, time, section, gross, ref;
+        if (rm) {
+          entryDate = rm[1]; time = rm[2]; section = rm[3] + ' → ' + rm[6] + ' (' + rm[7] + ')'; gross = parseNum(rm[10]); ref = rm[11];
+        } else {
+          rm = IT_DIREZIONE_RE.exec(line);
+          if (rm) { entryDate = rm[2]; time = rm[3]; section = rm[1] + ' ' + rm[4] + ' (' + rm[5] + ')'; gross = parseNum(rm[8]); ref = rm[9]; }
+        }
+        if (rm) {
+          const isoDate = toIsoDate(entryDate);
+          const g = dayGroup(panCtx.plate + '|' + isoDate, panCtx.plate, isoDate, { pan: panCtx.pan, invoice_ref: invoiceRef, invoice_no: invoiceNo });
+          // «Imp. lordo» is the only amount printed; it is the base gross the
+          // invoice line's Price/Unit carries (before DKV's fee) — see base_gross.
+          g.passages.push({ time, road: null, section, net: gross, vat: 0, gross, ref });
+          g.net = round2(g.net + (gross || 0));
+          g.gross = g.net;
+        }
+        continue;
+      }
+
+      if (panCtx && panCtx.layout === 'card') {
+        const cr = CARD_ROW_RE.exec(line);
+        if (cr) {
+          const isoDate = toIsoDate(cr[1]);
+          const key = (panCtx.plate || ('card:' + panCtx.card_no)) + '|' + isoDate;
+          const g = dayGroup(key, panCtx.plate, isoDate, { card_no: panCtx.card_no, invoice_ref: invoiceRef, invoice_no: invoiceNo });
+          const net = parseNum(cr[3]);
+          const vat = parseNum(cr[4]);
+          const gross = parseNum(cr[5]);
+          g.passages.push({ time: cr[2], road: null, section: null, net, vat, gross });
+          g.net = round2(g.net + (net || 0));
+          g.vat = round2(g.vat + (vat || 0));
+          g.gross = round2(g.gross + (gross || 0));
+        }
+        continue;
+      }
+
       if (panCtx) {
         const er = parseEntryExitRow(line);
         if (er) {
           const isoDate = toIsoDate(er.entryDate);
-          const key = panCtx.plate + '|' + isoDate;
-          let g = dayGroupIndex.get(key);
-          if (!g) {
-            g = {
-              source: 'DKV',
-              doc_type: 'passages',
-              country,
-              pan: panCtx.pan,
-              vehicle_raw: null,
-              plate: panCtx.plate,
-              ref: null, // entry/exit-style docs carry no per-transaction ref (spec: these countries bill half-month aggregates instead)
-              service_date: isoDate,
-              passages: [],
-              net: 0,
-              vat: 0,
-              gross: 0,
-              currency: docCurrency,
-            };
-            dayGroupIndex.set(key, g);
-            groups.push(g);
-          }
+          // entry/exit-style docs carry no per-transaction ref (spec: these countries bill half-month aggregates instead)
+          const g = dayGroup(panCtx.plate + '|' + isoDate, panCtx.plate, isoDate, { pan: panCtx.pan, invoice_ref: invoiceRef, invoice_no: invoiceNo });
           g.passages.push({ time: er.time, road: null, section: er.section, net: er.net, vat: 0, gross: er.net });
           g.net = round2(g.net + (er.net || 0));
           g.gross = g.net;
@@ -619,27 +772,114 @@
       }
     }
 
+    for (const g of groups) {
+      if (g.invoice_ref === undefined) g.invoice_ref = invoiceRef;
+      if (g.invoice_no === undefined) g.invoice_no = invoiceNo;
+    }
     return groups;
   }
 
   // ─── E-SUMMARY (reconciliation gate) ──────────────────────────────
-  const SUMMARY_ROW_RE = /^(.+?)\s+(Invoice|Statement of account|Reverse Charge)\s+(\S+)\s+([A-Z]{3})\s+([\d.,-]+)\s+([\d.,-]+)\s+EUR$/;
+  // Two real column layouts (w9 17/9): the GR entity prints «Total in service
+  // country currency · Total in payment currency», the BG entity adds a third
+  // «VAT refund in payment currency» (0,00 on most rows, the refunded foreign
+  // VAT on the rest). The old 2-column regex matched 0 of 19 BG rows → the
+  // gate failed on every document and the draft could never be committed.
+  const SUMMARY_ROW_RE = /^(.+?)\s+(Invoice|Statement of account|Reverse Charge)\s+(\S+)\s+([A-Z]{3})\s+([\d.,-]+)\s+([\d.,-]+)(?:\s+([\d.,-]+))?\s+EUR$/;
+  const SUMMARY_ROWS_TOTAL_RE = /^»\s+([\d.,-]+)(?:\s+EUR)?$/;
+  const SUMMARY_REFUND_RE = /^VAT Refund total\s+([\d.,-]+)/;
+  const SUMMARY_PAYABLE_RE = /^»\s*Total\s+([\d.,-]+)/;
 
   function parseSummary(lines) {
     const docs = [];
+    let rows_total_eur = null;
+    let vat_refund_eur = 0;
+    let payable_eur = null;
     for (const line of lines) {
       const m = SUMMARY_ROW_RE.exec(line);
-      if (!m) continue;
-      docs.push({
-        country_label: m[1].trim(),
-        doc_type_label: m[2],
-        doc_no: m[3],
-        currency: m[4],
-        total_native: parseNum(m[5]),
-        total_eur: parseNum(m[6]),
-      });
+      if (m) {
+        docs.push({
+          country_label: m[1].trim(),
+          doc_type_label: m[2],
+          doc_no: m[3],
+          currency: m[4],
+          total_native: parseNum(m[5]),
+          total_eur: parseNum(m[6]),
+          vat_refund_eur: m[7] !== undefined ? parseNum(m[7]) : null,
+        });
+        continue;
+      }
+      let t = SUMMARY_ROWS_TOTAL_RE.exec(line);
+      if (t && rows_total_eur === null) { rows_total_eur = parseNum(t[1]); continue; }
+      t = SUMMARY_REFUND_RE.exec(line);
+      if (t) { vat_refund_eur = parseNum(t[1]); continue; }
+      t = SUMMARY_PAYABLE_RE.exec(line);
+      if (t) { payable_eur = parseNum(t[1]); continue; }
     }
-    return { docs };
+    // «» Total» = Σ rows − VAT refund: the amount DKV actually collects. The
+    // refund is a receivable (owner 17/9), never a cost line — it is kept on
+    // the document so the screen can say «πληρωτέο X (επιστροφή ΦΠΑ −Y)».
+    return { docs, rows_total_eur, vat_refund_eur, payable_eur };
+  }
+
+  // ─── REMOBIS VAT-refund statement («E-STATEMENT OF ACCOUNT …-900») ────
+  // A credit note: the foreign VAT REMOBIS bought from us, netted against the
+  // month's DKV total. Generates NO cost lines (owner 17/9) — the amount is
+  // reported on the document and checked against the E-SUMMARY's «VAT Refund
+  // total» in the Worker's reconcile.
+  const REFUND_ROW_RE = /^Y\s+(\d{4})\s+(\d+)\s+(.+?)\s+Refund\s+([A-Z]{3})\s+([\d.,-]+)\s+([\d.,-]+)\s+([\d.,-]+)$/;
+  const REFUND_TOTAL_RE = /^»\s*Total\s+([\d.,-]+)/;
+
+  function parseRefund(lines) {
+    const claims = [];
+    let total_eur = null;
+    for (const line of lines) {
+      const m = REFUND_ROW_RE.exec(line);
+      if (m) {
+        claims.push({ year: m[1], claim_no: m[2], country: m[3], currency: m[4], amount_native: parseNum(m[5]), amount_eur: parseNum(m[7]) });
+        continue;
+      }
+      const t = REFUND_TOTAL_RE.exec(line);
+      if (t && total_eur === null) total_eur = parseNum(t[1]);
+    }
+    return { claims, total_eur };
+  }
+
+  // ─── Toll4Europe operator statement (T4E) ─────────────────────────
+  // «Toll Statement <ref>» / «Mautaufstellung <ref>» (DE), «Billing Period
+  // dd.mm.yyyy - dd.mm.yyyy» / «Abrechnungszeitraum …», one row per vehicle
+  // «<pos> <cc> <plate> <obu> <contract> <amount> [<external costs>]». The
+  // matching STATEMENT OF ACCOUNT line carries the same <ref> — so this is
+  // (a) the authoritative half-month period for that line and (b) a second
+  // gate: the operator's per-vehicle amount must equal the statement line.
+  // Amounts are in the statement's own currency (CZK for CZ), not always EUR.
+  const T4E_REF_RE = /(?:Toll Statement|Mautaufstellung)\s+(\S+)/;
+  const T4E_PERIOD_RE = /(?:Billing Period|Abrechnungszeitraum)\s+(\d{2}\.\d{2}\.\d{4})\s*-\s*(\d{2}\.\d{2}\.\d{4})/;
+  const T4E_ROW_RE = /^\d{5}\s+([A-Z]{2})\s+(\S+)\s+(\d+)\s+(\d+)\s+([\d.,]+)(?:\s+([\d.,]+))?$/;
+  const T4E_TOTAL_RE = /^(?:Total amount|Gesamtsumme)\s+([\d.,]+)/;
+
+  function parseT4e(lines) {
+    const text = lines.join(' ');
+    const rm = T4E_REF_RE.exec(text);
+    const pm = T4E_PERIOD_RE.exec(text);
+    const vehicles = [];
+    let total = null;
+    for (const line of lines) {
+      const m = T4E_ROW_RE.exec(line);
+      if (m) {
+        vehicles.push({ plate_country: m[1], vehicle_raw: m[2], plate: normalizePlate(m[2]), obu: m[3], contract: m[4], amount: parseNum(m[5]), external_costs: m[6] !== undefined ? parseNum(m[6]) : null });
+        continue;
+      }
+      const t = T4E_TOTAL_RE.exec(line);
+      if (t) total = parseNum(t[1]);
+    }
+    return {
+      ref: rm ? rm[1] : null,
+      period_from: pm ? toIsoDate(pm[1]) : null,
+      period_to: pm ? toIsoDate(pm[2]) : null,
+      vehicles,
+      total,
+    };
   }
 
   // ─── top level ─────────────────────────────────────────────────────
@@ -649,16 +889,33 @@
       lines: [],
       passages: [],
       summary: null,
-      errors: { unparsed: [], unknownProductCodes: [], unknownPlates: [] },
+      refunds: [],
+      t4e: [],
+      errors: { unparsed: [], unknownProductCodes: [], unknownPlates: [], t4e: [] },
     };
     const seenProductCodes = new Set();
 
-    for (const f of files) {
+    // Card → plate, from every «VEHICLE: <plate> CARD NO.: <card>» header in
+    // the ZIP. The HR passages list names only the card (w9 17/9); the same
+    // card appears with its plate on the RO/BG/GR invoices of the same month.
+    const cardMap = {};
+    const prepared = files.map((f) => {
       const lines = f.lines || (f.text ? f.text.split('\n') : []);
-      const docType = detectDocType(f.name, lines);
+      for (const line of lines) {
+        const vm = VEHICLE_RE.exec(line);
+        if (vm) cardMap[vm[2]] = normalizePlate(vm[1]);
+      }
+      return { f, lines };
+    });
+
+    for (const { f, lines } of prepared) {
+      let docType = detectDocType(f.name, lines);
       const country = detectCountry(f.name);
       const docNo = extractDocNo(lines);
-      const docEntry = { name: f.name, doc_type: docType, country, doc_no: docNo, currency: null, lines_count: 0 };
+      // The REMOBIS VAT-refund statement shares the «E-STATEMENT OF ACCOUNT»
+      // filename with the toll statements; only its text tells them apart.
+      if (docType === 'statement' && /REMOBIS REFUND SERVICE/i.test(lines.join(' '))) docType = 'refund';
+      const docEntry = { name: f.name, doc_type: docType, country, doc_no: docNo, ticket_no: extractTicketNo(lines), currency: null, lines_count: 0 };
       result.docs.push(docEntry);
 
       if (docType === 'summary') {
@@ -666,13 +923,21 @@
         continue;
       }
       if (docType === 'passages') {
-        const groups = parsePassages(lines, country);
+        const groups = parsePassages(lines, country, cardMap);
         for (const g of groups) { g.doc_no = docNo; }
         result.passages.push(...groups);
         continue;
       }
+      if (docType === 'refund') {
+        const rf = parseRefund(lines);
+        result.refunds.push({ name: f.name, doc_no: docNo, total_eur: rf.total_eur, claims: rf.claims });
+        continue;
+      }
       if (docType === 't4e') {
-        continue; // operator invoice, covered by the matching STATEMENT (spec §1)
+        // Operator invoice: no cost lines (covered by the matching STATEMENT,
+        // spec §1) — but its period and per-vehicle amounts gate those lines below.
+        result.t4e.push({ name: f.name, country, ...parseT4e(lines) });
+        continue;
       }
       if (docType === 'invoice' || docType === 'statement' || docType === 'reverse_charge') {
         const parsed = parseInvoiceLike(lines, docType, country);
@@ -706,6 +971,27 @@
       result.errors.unparsed.push({ doc: f.name, doc_no: docNo, reason: 'unknown-doc-type' });
     }
 
+    // T4E post-pass: a half-month statement line takes its period from the
+    // operator statement with the same reference, and its amount must match
+    // the operator's per-vehicle figure (0,01) — a mismatch is reported by
+    // vehicle, never rounded away (αρχή 1). Lines whose T4E is not in the ZIP
+    // keep the date-rule period (period_source 'date').
+    const t4eByRef = new Map(result.t4e.filter((t) => t.ref).map((t) => [t.ref, t]));
+    for (const ln of result.lines) {
+      if (!ln.period_ref || !ln.period_from) continue;
+      const t = t4eByRef.get(ln.period_ref);
+      if (!t) continue;
+      if (t.period_from && t.period_to) {
+        ln.period_from = t.period_from;
+        ln.period_to = t.period_to;
+        ln.period_source = 't4e';
+      }
+      const v = ln.plate ? t.vehicles.find((x) => x.plate === ln.plate) : null;
+      if (v && v.amount !== null && ln.gross !== null && Math.abs(v.amount - ln.gross) > 0.01) {
+        result.errors.t4e.push({ doc_no: ln.doc_no, seq: ln.seq, plate: ln.plate, ref: ln.period_ref, line_gross: ln.gross, t4e_amount: v.amount, currency: ln.currency });
+      }
+    }
+
     return result;
   }
 
@@ -724,6 +1010,10 @@
     detectCountry,
     detectCurrency,
     extractDocNo,
+    extractTicketNo,
+    extractInvoiceDate,
+    parseRefund,
+    parseT4e,
     parseTransactionLine,
     parseInvoice,
     parseStatement,

@@ -26,7 +26,12 @@ const fs = require('fs');
 async function main() {
   const rules = await import(path.join(__dirname, '..', '..', 'worker', 'src', 'import-rules.mjs'));
   const DkvParser = require(path.join(__dirname, '..', '..', 'core', 'dkv-parser.js'));
-  const { extractZip } = require('./extract.js');
+  const { extractZip, extractAny } = require('./extract.js');
+  // w9: an explicit path (ZIP or a directory of PDFs) wins over the .local search.
+  if (process.argv[2]) {
+    if (!fs.existsSync(process.argv[2])) { console.log('SKIP: path not found ' + process.argv[2]); return; }
+    return run(await extractAny(process.argv[2]), rules, DkvParser);
+  }
   // A worktree checkout has no .local/dkv of its own (gitignored, never
   // copied) — the real ZIP only exists under the main repo. Try relative to
   // this file first (works when the script itself lives in the main repo),
@@ -46,7 +51,10 @@ async function main() {
   }
   if (!zip) { console.log('SKIP: no .local/dkv/*.ZIP (real statement not present on this machine)'); return; }
 
-  const files = await extractZip(zip);
+  return run(await extractZip(zip), rules, DkvParser);
+}
+
+function run(files, rules, DkvParser) {
   const parsed = DkvParser.parseDkv(files);
 
   let failed = 0;
@@ -88,7 +96,11 @@ async function main() {
   const otherLines = split.lines.filter((l) => l.category === 'other');
   const otherCodes = [...new Set(otherLines.map((l) => l.product_code))];
   console.log(`\nlines in category 'other': ${otherLines.length}${otherCodes.length ? ' — codes: ' + otherCodes.join(', ') : ''}`);
-  check(otherLines.length === 0, `0 lines in 'other' (round 2 seed covers every code seen in the real ZIP)`);
+  // w9 (owner 17/9): 'other' is a legitimate, NAMED destination for codes the
+  // seed map lists as such (0096 lubricants, 0088 parking) — what must never
+  // happen is a code the seed map does not know at all landing there silently.
+  const unseededOther = otherCodes.filter((c) => !DkvParser.PRODUCT_CATEGORY[c]);
+  check(unseededOther.length === 0, `0 'other' lines from an UNSEEDED product code (unseeded: ${unseededOther.join(', ') || 'none'})`);
 
   // ── row mapping (toCostLineRow) on the post-split lines ──────────────────
   let missingNet = 0, missingDate = 0, foreign = 0, foreignMapped = 0, litersOk = 0, litersExpected = 0;

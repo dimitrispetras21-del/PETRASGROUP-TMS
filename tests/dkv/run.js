@@ -7,7 +7,7 @@
  * against its E-SUMMARY line (spec §6 gate #1, tolerance 0,01).
  *
  * Usage:
- *   NODE_PATH=/path/to/main-repo/node_modules node tests/dkv/run.js [zip-path]
+ *   NODE_PATH=/path/to/main-repo/node_modules node tests/dkv/run.js [zip-path | pdf-dir]
  *
  * Exit code 1 if any (non-excluded) document's parsed total differs from
  * its E-SUMMARY total by more than 0,01.
@@ -15,7 +15,7 @@
 
 const path = require('path');
 const fs = require('fs');
-const { extractZip } = require('./extract');
+const { extractAny } = require('./extract');
 const DkvParser = require('../../core/dkv-parser.js');
 
 // Public repo: the real statement is never committed; default = first *.ZIP under .local/dkv (gitignored).
@@ -42,12 +42,12 @@ function fmtMoney(n) {
 
 async function main() {
   const zipPath = process.argv[2] || DEFAULT_ZIP;
-  if (!fs.existsSync(zipPath)) {
+  if (!zipPath || !fs.existsSync(zipPath)) {
     console.log(`No local DKV ZIP at ${zipPath} — skipping real-data run (expected on CI / public clones; the file is gitignored, see .local/ in .gitignore).`);
     process.exit(0);
   }
 
-  const files = await extractZip(zipPath);
+  const files = await extractAny(zipPath);
   const result = DkvParser.parseDkv(files);
 
   const summaryByDocNo = new Map();
@@ -63,6 +63,7 @@ async function main() {
   }
 
   const reconcilable = result.docs.filter((d) => ['invoice', 'statement', 'reverse_charge'].includes(d.doc_type));
+  console.log(`Parser ${DkvParser.VERSION} · ${path.basename(zipPath)} · ${files.length} PDF(s)`);
 
   console.log('=== DKV Φ1 — per-document reconciliation ===');
   console.log('doc_no | type | country | vehicles | lines | parsed_gross | summary_total | status');
@@ -134,6 +135,24 @@ async function main() {
     console.log(`- ${e.doc} (${e.doc_no || '—'}): ${e.reason}${e.line ? ' :: ' + e.line : ''}`);
   }
 
+  // w9 (17/9/2026): the E-SUMMARY footer, the REMOBIS refund statement and
+  // the T4E operator statements are gates too (import-rules reconcile meta +
+  // parser errors.t4e). A footer figure that is missing fails, never passes.
+  console.log('\n=== E-SUMMARY footer / refund / T4E ===');
+  const sum = result.summary || {};
+  const rowsSum = round2(((sum.docs) || []).reduce((s, d) => s + (d.total_eur || 0), 0));
+  const refundDocs = round2(result.refunds.reduce((s, r) => s + (r.total_eur || 0), 0));
+  const vatRefund = Math.abs(sum.vat_refund_eur || 0);
+  const rowsOk = sum.rows_total_eur != null && Math.abs(rowsSum - sum.rows_total_eur) <= 0.01;
+  const refundOk = Math.abs(refundDocs - vatRefund) <= 0.01;
+  const payableOk = sum.payable_eur != null && sum.rows_total_eur != null && Math.abs(round2(sum.rows_total_eur - vatRefund) - sum.payable_eur) <= 0.01;
+  console.log(`Σ summary rows ${fmtMoney(rowsSum)} vs printed rows total ${fmtMoney(sum.rows_total_eur)} → ${rowsOk ? 'OK' : 'FAIL'}`);
+  console.log(`Refund documents (${result.refunds.length}) ${fmtMoney(refundDocs)} vs summary «VAT Refund total» ${fmtMoney(vatRefund)} → ${refundOk ? 'OK' : 'FAIL'}`);
+  console.log(`Payable ${fmtMoney(sum.payable_eur)} == rows − refund → ${payableOk ? 'OK' : 'FAIL'}`);
+  console.log(`T4E operator statements: ${result.t4e.length} · statement lines with period from T4E: ${result.lines.filter((l) => l.period_source === 't4e').length} · per-vehicle mismatches: ${result.errors.t4e.length}`);
+  for (const e of result.errors.t4e) console.log(`- ${e.doc_no} ${e.plate} ${e.ref}: line ${fmtMoney(e.line_gross)} ≠ T4E ${fmtMoney(e.t4e_amount)} ${e.currency || ''}`);
+  if (!rowsOk || !refundOk || !payableOk || result.errors.t4e.length) anyDiff = true;
+
   console.log('\n=== Unknown product codes ===');
   console.log(result.errors.unknownProductCodes.length ? result.errors.unknownProductCodes.join(', ') : '(none)');
 
@@ -158,6 +177,10 @@ async function main() {
   const fuelLines = result.lines.filter((l) => l.category === 'fuel');
   const fuelOk = fuelLines.filter((l) => LITER_UNITS.has(l.unit) && l.quantity && l.unit_price);
   console.log(`Fuel lines with liters+unit price: ${fuelOk.length} / ${fuelLines.length}`);
+  const noPlateTolls = result.lines.filter((l) => !l.plate && l.category === 'tolls');
+  const noPlateJoinable = noPlateTolls.filter((l) => result.passages.some((g) => (l.ticket_no && g.invoice_ref === l.ticket_no) || g.invoice_no === l.doc_no || g.invoice_ref === l.doc_no));
+  console.log(`Toll lines without a vehicle: ${noPlateTolls.length} · with a passages list to split over: ${noPlateJoinable.length}`);
+  console.log(`Lines in category 'other': ${result.lines.filter((l) => l.category === 'other').length} (seeded codes: ${[...new Set(result.lines.filter((l) => l.category === 'other').map((l) => l.product_code))].join(', ') || '—'})`);
 
   process.exitCode = anyDiff ? 1 : 0;
 }

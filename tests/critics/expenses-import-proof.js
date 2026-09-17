@@ -27,11 +27,20 @@ const { preparePage, gotoPage } = require(path.join(MAIN_REPO, 'tests', 'critics
 const DkvParser = require(path.join(WORKTREE, 'core', 'dkv-parser.js'));
 
 const BASE_URL = process.env.PW_BASE_URL || 'http://127.0.0.1:8794/';
-const SCRATCH = '/private/tmp/claude-501/-Users-dimitrispetras-PETRASGROUP-TMS--claude-worktrees-keen-hamilton-ab77a6/caa94f70-bf92-45c5-98d4-ff74de01e316/scratchpad';
-const SCREENSHOT_1280 = path.join(SCRATCH, 'dkv-import-r2-1280.png');
-const SCREENSHOT_1440 = path.join(SCRATCH, 'dkv-import-r2-1440.png');
+// Screenshots: synthetic-fixture shots go to the repo's audit folder (public
+// repo — fake company, XX plates, invented amounts only); anything rendered
+// from a REAL statement goes to SHOTS_PRIVATE (scratchpad / gitignored) and
+// never into docs/. PW_SHOTS_PRIVATE overrides the private location.
+const SHOTS_DIR = path.join(WORKTREE, 'docs', 'data-audit', '2026-09', 'shots');
+const SHOTS_PRIVATE = process.env.PW_SHOTS_PRIVATE || path.join(MAIN_REPO, '.local', 'dkv', 'shots');
+const SCREENSHOT_1280 = path.join(SHOTS_DIR, 'w9-dkv-01-preview-1280.png');
+const SCREENSHOT_1440 = path.join(SHOTS_DIR, 'w9-dkv-02-preview-1440.png');
 const REAL_ZIP = fs.readdirSync(path.join(MAIN_REPO, '.local', 'dkv')).find((n) => /\.zip$/i.test(n));
 const REAL_ZIP_PATH = REAL_ZIP ? path.join(MAIN_REPO, '.local', 'dkv', REAL_ZIP) : null;
+// w9: the BG entity's statement (35 PDFs) — a ZIP built from .local/dkv/bg-2026-08/
+// (PW_BG_ZIP), exercised through the real JSZip + pdf.js path like (b).
+const BG_ZIP_PATH = process.env.PW_BG_ZIP || null;
+let importRules = null; // worker/src/import-rules.mjs (ESM), loaded in main()
 
 function assert(cond, msg) {
   if (!cond) throw new Error('ΑΠΟΤΥΧΙΑ: ' + msg);
@@ -91,7 +100,12 @@ const RT_MATCH_FIXTURE = [
 ];
 
 function installBaseMocks(page) {
-  page.route('**/costs/rt', (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ records: RT_FIXTURE }) }));
+  // '**/costs/rt**' — since 13/9 the expenses screen asks /costs/rt?from=…&to=…
+  // (week strip); the old exact pattern let the HAR-abort baseline win, the
+  // Promise.all in exLoad rejected and _ex.lookups was never set (found 17/9:
+  // the plate-link select had no options). Same pattern expenses-proof.js uses.
+  page.route('**/costs/rt**', (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ records: RT_FIXTURE }) }));
+  page.route('**/costs/pallet-gate', (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ records: [] }) }));
   page.route('**/costs/lookups', (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(LOOKUPS_FIXTURE) }));
   page.route('**/costs/lines**', (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ records: [] }) }));
   // core/auth.js:46 fires atPreload() 100ms after every page load, independent
@@ -123,6 +137,12 @@ function matchLineFixture(l) {
 
 function buildParseEnvelope(files, zipName) {
   const parsed = DkvParser.parseDkv(files);
+  // w9: the footer/refund/payable checks the Worker now adds (import-rules
+  // reconcile meta) — same function, same inputs, so the mocked envelope
+  // carries exactly the `totals` shape the live Worker sends.
+  const w9 = importRules
+    ? importRules.reconcile(parsed.lines, (parsed.summary && parsed.summary.docs) || [], { summary: parsed.summary, refunds: parsed.refunds })
+    : null;
   const linesByDoc = new Map();
   for (const l of parsed.lines) { if (!linesByDoc.has(l.doc_no)) linesByDoc.set(l.doc_no, []); linesByDoc.get(l.doc_no).push(l); }
   const summaryByDocNo = new Map();
@@ -141,7 +161,12 @@ function buildParseEnvelope(files, zipName) {
   return {
     doc: { id: 'doc-' + Date.now(), zip_name: zipName, n_files: files.length, period_from: null, period_to: null },
     lines,
-    reconcile: { ok, summary_total: perDoc.reduce((a, d) => a + (d.summary_total || 0), 0), lines_total: lines.length, per_doc: perDoc },
+    reconcile: { ok: ok && (!w9 || w9.ok), summary_total: perDoc.reduce((a, d) => a + (d.summary_total || 0), 0), lines_total: lines.length, per_doc: perDoc, totals: w9 ? w9.totals : null },
+    totals: w9 ? w9.totals : null,
+    refunds: parsed.refunds,
+    t4e_mismatch: parsed.errors.t4e,
+    unparsed: parsed.errors.unparsed,
+    unknown_product_codes: parsed.errors.unknownProductCodes,
     metrics: {
       lines_total: lines.length,
       lines_sure: lines.filter((l) => l.match.status === 'sure').length,
@@ -332,11 +357,19 @@ async function runCorrectionsAndCommitFlow(browser) {
   assert(dialogs.some((m) => /Να ισχύει στο εξής/.test(m) && /0009/.test(m)), 'category correction opened a «να ισχύει στο εξής» confirm naming the product code');
   assert((await row2.getAttribute('class') || '').includes('corrected'), 'the category-corrected row carries the .corrected style hook');
 
-  // ── untick line 1 — must drop out of the commit body ──
+  // ── untick line 1 — the commit LOCKS (w9: every euro is booked or nothing;
+  // the Worker's commit refuses Σ sent ≠ total_gross with a 409, so the screen
+  // says so before the POST instead of after it — accountant critic 17/9). ──
   await row1.locator('input[type=checkbox]').uncheck();
   await page.waitForTimeout(100);
   const footSum = await page.locator('.ei-footsum').innerText();
   assert(footSum.startsWith('1 '), 'footer «επιλεγμένες» count drops to 1 after unticking a line');
+  assert(await page.locator('#eiCommitBtn').isDisabled(), 'commit button locks while a line is unticked');
+  const lockText = await page.locator('.ei-band').innerText();
+  assert(/αποεπιλεγμένες γραμμές/.test(lockText) && /12,00/.test(lockText.replace(/\u00a0/g, ' ')), 'band names the unticked amount (12,00) and why the commit is locked');
+  await row1.locator('input[type=checkbox]').check();
+  await page.waitForTimeout(100);
+  assert(!(await page.locator('#eiCommitBtn').isDisabled()), 'commit button unlocks once every line is ticked again');
 
   // ── commit: body shape (ticked lines only, both rules, doc_id) ──
   let commitBody = null;
@@ -350,9 +383,10 @@ async function runCorrectionsAndCommitFlow(browser) {
 
   assert(!!commitBody, 'commit POST captured');
   assert(commitBody.doc_id === 'doc-c-1', 'commit body carries doc_id from the parse response');
-  assert(Array.isArray(commitBody.lines) && commitBody.lines.length === 1, 'commit body carries ONLY the ticked line (line 1 was unticked)');
-  assert(commitBody.lines[0].id === undefined, 'committed line has no client-only "id" field');
-  assert(commitBody.lines[0].rt_id === 703, 'committed line carries the resolved rt_id (line 2, sure match)');
+  assert(Array.isArray(commitBody.lines) && commitBody.lines.length === 2, 'commit body carries both lines (the whole statement, never a partial one)');
+  assert(commitBody.lines.every((l) => l.id === undefined), 'committed lines have no client-only "id" field');
+  assert(commitBody.lines[0].rt_id === 704, 'line 1 carries the CORRECTED rt_id (704, picked over the suggested 703)');
+  assert(commitBody.lines[1].rt_id === 703, 'line 2 carries the resolved rt_id (703, sure match)');
   assert(Array.isArray(commitBody.rules) && commitBody.rules.length === 2, 'commit body carries both correction rules (rt_pref + category)');
   assert(commitBody.rules.some((r) => r.kind === 'rt_pref' && r.key.plate === 'ZZ9999'), 'rt_pref rule keyed by plate ZZ9999 present');
   assert(commitBody.rules.some((r) => r.kind === 'category' && r.key === '0009'), 'category rule keyed by product_code 0009 present');
@@ -635,7 +669,8 @@ async function runImportDocsFlow(browser) {
   const idocsText = await page.locator('.ex-idocs').innerText();
   assert(idocsText.includes('INV-1001'), 'import docs list shows the invoice number');
   assert(idocsText.includes('269 γραμμές'), 'import docs list shows the line count');
-  assert(idocsText.includes('demo_accountant'), 'import docs list shows created_by');
+  // exUserDisplay (W8, 16/9) renders a display name (userDisplayName / capitalized) — match case-insensitively.
+  assert(/Demo/.test(idocsText), 'import docs list shows created_by as its roster display name («Demo» for demo_accountant)');
   assert(idocsText.includes('πρόχειρο'), 'draft doc shows «πρόχειρο» instead of a raw status code');
   assert(idocsText.includes('draft-sep.zip'), 'draft doc without an invoice_no falls back to the zip name');
 
@@ -647,6 +682,207 @@ async function runImportDocsFlow(browser) {
   assert(popup.url() === 'https://example.com/signed/doc-1001.zip', 'ZIP click opens the signed_url in a new tab');
   assert(!!signedRequestUrl && signedRequestUrl.includes('id=') && signedRequestUrl.includes('signed=1'), 'the signed-URL request carries both id= and signed=1');
 
+  await context.close();
+  return { consoleErrors };
+}
+
+// ═══════════════════ (g) w9 — BG-entity shapes on synthetic fixtures ═══════
+// The second DKV entity's documents (17/9/2026): 3-column E-SUMMARY with a
+// VAT refund, REMOBIS refund statement + fee, reverse charge, IT invoice with
+// PZ units, T4E operator statement. All fake (EXAMPLE FRESH OOD, XX plates).
+// The envelope is built exactly as the Worker builds it (parseDkv +
+// import-rules reconcile with meta), then the screen must: pass the gate,
+// show «πληρωτέο … (επιστροφή ΦΠΑ …)», show the refund notice as «γενικά»,
+// keep the refund OUT of the line total, render flags, pin the headers.
+function w9FixtureFiles() {
+  const dir = path.join(WORKTREE, 'tests', 'dkv', 'fixtures');
+  const f = (n) => fs.readFileSync(path.join(dir, n), 'utf8');
+  return [
+    { name: '9999998_2026-09-30_E-SUMMARY_99-000000002-000.pdf', text: f('synthetic-summary-refund.txt') },
+    { name: '9999998_2026-09-30_EX_Reverse Charge_99-000000002-003.pdf', text: f('synthetic-reverse-charge.txt') },
+    { name: '9999998_2026-09-30_EX_Reverse Charge_99-000000002-901.pdf', text: f('synthetic-remobis-fee.txt') },
+    { name: '9999998_2026-09-30_E-STATEMENT OF ACCOUNT_99-000000002-900.pdf', text: f('synthetic-refund-statement.txt') },
+    { name: '9999998_2026-09-30_IT_E-INVOICE_99-000000002-012.pdf', text: f('synthetic-invoice-it.txt') },
+    { name: '9999998_2026-09-30_IT_E-List of passages_99-000000002-012.pdf', text: f('synthetic-passages-it.txt') },
+  ];
+}
+// The synthetic refund summary lists a foreign-currency row (…/014) and the
+// invoice fixture …/999 that are not among the files above — the per-doc
+// gate only checks doc_nos that produced lines, so the envelope still
+// reconciles; the totals gate reads the printed footer.
+async function runW9SyntheticFlow(browser) {
+  console.log('\n== (g) w9 — BG-entity shapes on synthetic fixtures ==');
+  // 420px tall on purpose: the 7-line synthetic preview must be TALLER than
+  // the viewport for the sticky measurement below to actually scroll past
+  // the column header (at 900px it scrolled 64px and proved nothing).
+  const context = await browser.newContext({ baseURL: BASE_URL, viewport: { width: 1280, height: 420 } });
+  const page = await context.newPage();
+  const consoleErrors = [];
+  page.on('console', (m) => { if (m.type() === 'error') consoleErrors.push(m.text()); });
+
+  await openImportScreen(page);
+  await page.evaluate((f) => { window.__eiInjectFiles = f; }, w9FixtureFiles());
+  let env = null;
+  await page.route('**/costs/import/parse', async (route) => {
+    const body = route.request().postDataJSON();
+    env = buildParseEnvelope(body.files, body.zip_name);
+    const { _parsed, ...resp } = env;
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(resp) });
+  });
+  await page.setInputFiles('#eiFileInput', { name: 'w9.zip', mimeType: 'application/zip', buffer: Buffer.from('PK\x03\x04dummy') });
+  await page.waitForSelector('.ei-band', { timeout: 15000 });
+
+  assert(env && env.totals && env.totals.ok === true, 'envelope: footer totals gate passes on the synthetic BG-entity set (rows Σ, refund docs, payable)');
+  assert(env._parsed.refunds.length === 1 && env._parsed.lines.length === 7, 'envelope: 1 refund document, 7 cost lines (RC 4 + REMOBIS fee 1 + IT 2)');
+  const bandText = await page.locator('.ei-band').innerText();
+  assert(/ταυτίζεται με το E-SUMMARY/.test(bandText), 'band: gate green');
+  assert(/πληρωτέο 1\.202,98/.test(bandText.replace(/\u00a0/g, ' ')), 'band: «πληρωτέο 1.202,98» = Σ rows − VAT refund');
+  assert(/επιστροφή ΦΠΑ −1\.395,21/.test(bandText.replace(/\u00a0/g, ' ')), 'band: the refund is named next to the payable');
+  const noticeText = await page.locator('.ei-notices').innerText();
+  assert(/Επιστροφή ΦΠΑ Other Country 1\.395,21/.test(noticeText.replace(/\u00a0/g, ' ')), 'notice: refund shown with its claim country');
+  assert(/γενικά, όχι δρομολόγιο/.test(noticeText), 'notice: refund is «γενικά, όχι δρομολόγιο» — never a cost line');
+  assert(await page.locator('.ei-notice.warn').count() === 0, 'no amber notice: no T4E mismatch, nothing unparsed, no unknown code on this set');
+  const footSum = (await page.locator('.ei-footsum').innerText()).replace(/\u00a0/g, ' ');
+  assert(/7 επιλεγμένες/.test(footSum), 'footer: 7 lines selected — the refund is not among them');
+  assert(/1\.147,34/.test(footSum), 'footer: Σ selected gross 1.147,34 (434,74 + 125,00 + 587,60) — refund excluded from every line total');
+  await expandAllGroups(page);
+  const remobisRow = page.locator('.ei-row', { hasText: 'REMOBIS' });
+  assert(await remobisRow.count() === 1, 'REMOBIS fee renders as one line');
+  assert((await remobisRow.locator('.ei-rtcell').innerText()).includes('Γενικό τέλος DKV'), 'REMOBIS fee is a general DKV fee (no round trip)');
+  // Reverse charge: VAT column shows 0 on every RC line (the discount is not VAT).
+  // The row shows station + unit price (19,95 EUR/бр.), not the product name.
+  const rcVat = await page.locator('.ei-row', { hasText: '19,95' }).first().locator('.n.r.dim').innerText();
+  assert(/^0,00/.test(rcVat.trim()), 'reverse charge: Analytics line VAT column is 0,00 (−15,04 was a discount, net 4,91)');
+  // Flags (local assets) in the country column.
+  assert(await page.locator('.ei-row img.ex-flag').count() >= 1, 'country column renders a flag image (assets/flags) for a known country');
+  // Sticky headers: scroll #content and check the head row is still at the top.
+  const sticky = await page.evaluate(() => {
+    const c = document.getElementById('content');
+    const top = c.getBoundingClientRect().top;
+    const thBefore = Math.round(document.querySelector('.ei-th').getBoundingClientRect().top - top);
+    c.scrollTop = 1000;
+    const head = document.querySelector('.ei-headrow').getBoundingClientRect();
+    const th = document.querySelector('.ei-th').getBoundingClientRect();
+    return { head: Math.round(head.top - top), th: Math.round(th.top - top), thBefore, scrolled: c.scrollTop };
+  });
+  assert(sticky.scrolled > sticky.thBefore, 'the content area scrolled past the column header (' + sticky.scrolled + 'px > ' + sticky.thBefore + 'px)');
+  assert(sticky.head === 0, 'header row pinned at the top of #content after scrolling (offset ' + sticky.head + 'px)');
+  assert(sticky.th === 60, 'column header row pinned right under the 60px header row (offset ' + sticky.th + 'px)');
+  const noScroll = await page.locator('.ei-page').evaluate((el) => el.scrollWidth <= el.clientWidth);
+  assert(noScroll, 'no horizontal scroll at 1280 with the w9 set');
+  await page.evaluate(() => { document.getElementById('content').scrollTop = 0; });
+  await page.screenshot({ path: path.join(SHOTS_DIR, 'w9-dkv-03-bg-entity-synthetic-1280.png'), fullPage: true });
+  console.log('  screenshot: ' + path.join(SHOTS_DIR, 'w9-dkv-03-bg-entity-synthetic-1280.png'));
+
+  await context.close();
+  return { consoleErrors };
+}
+
+// ═══════════════════ (g-2) w9 — gates that fail must be loud ══════════════
+// Same fixtures, but the envelope is tampered the way a bad statement would
+// look: a T4E disagreement, an unparsed line, a new product code, and a
+// payable that does not add up. The commit must lock on the payable, and
+// every other problem must be on screen.
+async function runW9LoudGatesFlow(browser) {
+  console.log('\n== (g-2) w9 — failing gates are shown and lock the commit ==');
+  const context = await browser.newContext({ baseURL: BASE_URL, viewport: { width: 1280, height: 900 } });
+  const page = await context.newPage();
+  const consoleErrors = [];
+  page.on('console', (m) => { if (m.type() === 'error') consoleErrors.push(m.text()); });
+
+  await openImportScreen(page);
+  await page.evaluate((f) => { window.__eiInjectFiles = f; }, w9FixtureFiles());
+  await page.route('**/costs/import/parse', async (route) => {
+    const body = route.request().postDataJSON();
+    const env = buildParseEnvelope(body.files, body.zip_name);
+    const { _parsed, ...resp } = env;
+    resp.t4e_mismatch = [{ doc_no: '99/000000002/004', seq: 0, plate: 'XX1234', ref: '2026-EXA-0000000001', line_gross: 115.63, t4e_amount: 115.64, currency: 'EUR' }];
+    resp.unparsed = [{ doc: 'x.pdf', doc_no: '99/000000002/999', reason: 'unrecognized-transaction-line', line: '01.09.2026 …' }];
+    resp.unknown_product_codes = ['ZZ99'];
+    resp.totals = { ...resp.totals, payable_eur: 700, payable_ok: false, ok: false };
+    resp.reconcile = { ...resp.reconcile, ok: false, totals: resp.totals };
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(resp) });
+  });
+  await page.setInputFiles('#eiFileInput', { name: 'w9bad.zip', mimeType: 'application/zip', buffer: Buffer.from('PK\x03\x04dummy') });
+  await page.waitForSelector('.ei-band', { timeout: 15000 });
+
+  const bandText = (await page.locator('.ei-band').innerText()).replace(/\u00a0/g, ' ');
+  assert(/Δεν συμφωνεί/.test(bandText) && /πληρωτέο/.test(bandText), 'band names the failing footer check («πληρωτέο») — not a bare «Δεν συμφωνεί»');
+  assert(await page.locator('#eiCommitBtn').isDisabled(), 'commit locked while the payable does not add up');
+  const warn = page.locator('.ei-notice.warn');
+  assert(await warn.count() === 3, 'three amber notices: T4E disagreement, unparsed line, new product code');
+  const warnText = await page.locator('.ei-notices').innerText();
+  assert(/Toll4Europe/.test(warnText) && /XX1234/.test(warnText), 'T4E notice names the vehicle');
+  assert(/Δεν διαβάστηκαν \(1\)/.test(warnText), 'unparsed notice counts the line');
+  assert(/Νέος κωδικός προϊόντος \(1\): ZZ99/.test(warnText), 'unknown product code notice names the code');
+  await page.screenshot({ path: path.join(SHOTS_DIR, 'w9-dkv-04-gates-fail-1280.png'), fullPage: false });
+  console.log('  screenshot: ' + path.join(SHOTS_DIR, 'w9-dkv-04-gates-fail-1280.png'));
+
+  await context.close();
+  return { consoleErrors };
+}
+
+// ═══════════════════ (g-3) w9 — parse 409 «already imported» says who/when ═
+async function runW9Parse409Flow(browser) {
+  console.log('\n== (g-3) w9 — same ZIP again: parse 409 with who/when, no preview ==');
+  const context = await browser.newContext({ baseURL: BASE_URL });
+  const page = await context.newPage();
+  const consoleErrors = [];
+  page.on('console', (m) => { if (m.type() === 'error') consoleErrors.push(m.text()); });
+  await openImportScreen(page);
+  await page.evaluate(() => { window.__eiInjectFiles = [{ name: 'dummy.pdf', text: '' }]; });
+  await page.route('**/costs/import/parse', (route) => route.fulfill({ status: 409, contentType: 'application/json', body: JSON.stringify({ error: 'already imported', doc_id: 77, invoice_no: '99/000000002/000', created_at: '2026-09-11T07:53:05Z', created_by: 'demo_accountant' }) }));
+  await page.setInputFiles('#eiFileInput', { name: 'again.zip', mimeType: 'application/zip', buffer: Buffer.from('PK\x03\x04dummy') });
+  await page.waitForTimeout(600);
+  assert(await page.locator('.ei-band').count() === 0, 'no preview is rendered on a 409 parse');
+  const pageText = await page.locator('.ei-page').innerText();
+  assert(/έχει ήδη εισαχθεί/.test(pageText), '409: the upload screen says the ZIP was already imported');
+  assert(/99\/000000002\/000/.test(pageText) && /demo_accountant/.test(pageText) && /11\/09/.test(pageText), '409: message carries invoice no, who and when');
+  assert(/Δεν δημιουργούνται διπλές γραμμές/.test(pageText), '409: message says no duplicate lines are created');
+  await page.screenshot({ path: path.join(SHOTS_DIR, 'w9-dkv-05-parse-409.png'), fullPage: false });
+  console.log('  screenshot: ' + path.join(SHOTS_DIR, 'w9-dkv-05-parse-409.png'));
+  await context.close();
+  return { consoleErrors };
+}
+
+// ═══════════════════ (h) w9 — the real BG statement through the browser ═══
+// Real ZIP (built from the loose PDFs, PW_BG_ZIP): JSZip + pdf.js in the
+// browser, the parse mocked with the real parser + real reconcile. Counts
+// only in the log; the screenshot goes to the PRIVATE folder (real plates).
+async function runRealBgZipFlow(browser) {
+  if (!BG_ZIP_PATH || !fs.existsSync(BG_ZIP_PATH)) {
+    console.log('\n== (h) real BG ZIP — SKIPPED (set PW_BG_ZIP) ==');
+    return { consoleErrors: [], skipped: true };
+  }
+  console.log('\n== (h) real BG ZIP: ' + path.basename(BG_ZIP_PATH) + ' ==');
+  const context = await browser.newContext({ baseURL: BASE_URL, viewport: { width: 1440, height: 900 } });
+  const page = await context.newPage();
+  const consoleErrors = [];
+  page.on('console', (m) => { if (m.type() === 'error') consoleErrors.push(m.text()); });
+  await openImportScreen(page);
+  let captured = null;
+  let env = null;
+  await page.route('**/costs/import/parse', async (route) => {
+    captured = route.request().postDataJSON();
+    env = buildParseEnvelope(captured.files, captured.zip_name);
+    const { _parsed, ...resp } = env;
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(resp) });
+  });
+  await page.setInputFiles('#eiFileInput', BG_ZIP_PATH);
+  await page.waitForSelector('.ei-band', { timeout: 240000 });
+  assert(captured && captured.files.length === 35, 'browser extracted all 35 PDFs of the BG statement via pdf.js');
+  assert(captured.files.every((f) => f.text.length > 0), 'every BG PDF yielded text in the browser');
+  const perDocOk = env.reconcile.per_doc.filter((d) => d.ok).length;
+  assert(perDocOk === 19 && env.reconcile.per_doc.length === 19, 'browser-extracted text reconciles 19/19 documents against the E-SUMMARY (same as Node)');
+  assert(env.totals && env.totals.ok, 'footer totals gate passes on the browser-extracted text');
+  assert(env._parsed.errors.unparsed.length === 0 && env._parsed.errors.unknownProductCodes.length === 0, 'no unparsed lines and no unknown product codes from the browser extraction');
+  const bandText = (await page.locator('.ei-band').innerText()).replace(/\u00a0/g, ' ');
+  assert(/ταυτίζεται με το E-SUMMARY της DKV — 19\/19/.test(bandText), 'band: 19/19 documents green for the real BG statement');
+  assert(/πληρωτέο/.test(bandText) && /επιστροφή ΦΠΑ/.test(bandText), 'band: payable and refund shown for the real BG statement');
+  fs.mkdirSync(SHOTS_PRIVATE, { recursive: true });
+  const shot = path.join(SHOTS_PRIVATE, 'w9-dkv-bg-real-1440.png');
+  await page.screenshot({ path: shot, fullPage: false });
+  console.log('  private screenshot (real data, not for the repo): ' + shot);
   await context.close();
   return { consoleErrors };
 }
@@ -699,6 +935,8 @@ function reportConsoleErrors(label, errors) {
 }
 
 (async () => {
+  importRules = await import(path.join(WORKTREE, 'worker', 'src', 'import-rules.mjs'));
+  fs.mkdirSync(SHOTS_DIR, { recursive: true });
   const browser = await chromium.launch();
   try {
     const a = await runSyntheticInjectFlow(browser);
@@ -708,6 +946,10 @@ function reportConsoleErrors(label, errors) {
     const c3 = await runAlreadyImportedFlow(browser);
     const e = await runNoneReasonAndReviewFlow(browser);
     const f = await runImportDocsFlow(browser);
+    const g = await runW9SyntheticFlow(browser);
+    const g2 = await runW9LoudGatesFlow(browser);
+    const g3 = await runW9Parse409Flow(browser);
+    const h = await runRealBgZipFlow(browser);
     const shot1280 = await runScreenshotFlow(browser, 1280, 900, SCREENSHOT_1280, true);
     const shot1440 = await runScreenshotFlow(browser, 1440, 900, SCREENSHOT_1440, false);
 
@@ -720,6 +962,10 @@ function reportConsoleErrors(label, errors) {
     unknownTotal += reportConsoleErrors('c3-409', c3.consoleErrors).length;
     unknownTotal += reportConsoleErrors('e-none-reason', e.consoleErrors).length;
     unknownTotal += reportConsoleErrors('f-import-docs', f.consoleErrors).length;
+    unknownTotal += reportConsoleErrors('g-w9-synthetic', g.consoleErrors).length;
+    unknownTotal += reportConsoleErrors('g2-w9-loud-gates', g2.consoleErrors).length;
+    unknownTotal += reportConsoleErrors('g3-w9-parse-409', g3.consoleErrors).length;
+    if (!h.skipped) unknownTotal += reportConsoleErrors('h-real-bg-zip', h.consoleErrors).length;
     unknownTotal += reportConsoleErrors('shot-1280', shot1280.consoleErrors).length;
     unknownTotal += reportConsoleErrors('shot-1440', shot1440.consoleErrors).length;
 

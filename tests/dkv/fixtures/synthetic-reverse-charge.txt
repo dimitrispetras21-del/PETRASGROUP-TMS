@@ -1,0 +1,25 @@
+E- INVOICE according to the reverse charge procedure
+For services in
+Example Country Customer details
+EXAMPLE FRESH OOD Customer number: 9999998
+Cust. VAT Id/Nat.Tax.No.: EX000000001
+Invoice number: 99/000000002/003
+Invoice date: 30.09.2026
+Page: 1 / 1
+Currency: EUR
+Service date Service station Transaction Country Product Currency Unit Quantity Price/Unit Base Discount Service Total
+name city number number service net value net net fee net
+country net
+EUR
+Customer-related data
+14.09.2026 EXAMPLE EURO S 0000001 324869341 GERMANY Steuerungsentgelt DK 0920 EUR бр. 11 4,0000 44,00 44,00
+30.09.2026 EXAMPLE EURO S 0000001 1 GERMANY Analytics Premium Co 01AP EUR бр. 1 19,95 19,95 -15,04 4,91
+Total: 12 -15,04 48,91
+CARD NO.: 00000000.0000000009
+30.09.2026 EXAMPLE EURO S 0000001 1 GERMANY DKV LIVE Advanced FM LI05 EUR бр. 1 9,00 9,00 9,00
+Total: 1 9,00
+VEHICLE: XX1234 CARD NO.: 00000000.0000000001
+17.09.2026 EXAMPLE RAIL CARGO 1653011 364435401 Austria Kombiverkehr 0605 EUR бр. 1 368,00 368,00 8,83 376,83
+Total: 1 8,83 376,83
+-15,04 8,83 434,74
+Fixed exchange rate of lev to euro: 1 euro = 1.95583 Bulgarian lev

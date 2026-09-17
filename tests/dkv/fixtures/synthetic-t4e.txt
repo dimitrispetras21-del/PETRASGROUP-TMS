@@ -1,0 +1,18 @@
+Example Toll Operator GmbH Example Toll Operator GmbH
+Example Str. 3c, 00000 Example City
+EXAMPLE FRESH OOD
+EXAMPLE STREET 1
+0000 EXAMPLE CITY
+16.09.2026
+Toll Statement 2026-EXA-0000000001
+Billing Period 01.09.2026 - 15.09.2026
+Customer Number 1000000
+Payment Mean Toll-Service-Partner
+Toll charges
+Vehicle Amount Share of External
+Position Licence Plate OBU Contract
+Country [EUR] Costs [EUR]
+00001 EX XX1234 000000000000001 16006077 115,63 37,24
+00002 EX XX5678 000000000000002 6728778 253,30 88,92
+Total amount 368,93 126,16
+We wish you a good trip!

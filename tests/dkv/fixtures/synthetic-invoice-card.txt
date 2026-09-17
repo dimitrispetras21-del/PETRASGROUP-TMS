@@ -1,0 +1,13 @@
+E-INVOICE
+For services and deliveries in
+Hrvatska
+EXAMPLE FRESH OOD Customer number: 9999998
+Cust. VAT Id/Nat.Tax.No.: EX000000001
+Invoice number: 99/000000002/009
+Invoice date: 30.09.2026
+Currency: EUR
+Page: 1 / 1
+Delivery Service station Transaction Kilometer Product Unit Quantity Price/Unit Base Base Service Total VAT Total
+date name city number number reading gross net value gross value net fee net gross
+26.09.2026 0326071 60 Cestarina Hrvatska / 0533 KOM. 1 30,10 24,08 30,10 24,08 1,20 25,28 6,32 31,60
+» TOTAL: 1 30,10 24,08 30,10 24,08 1,20 25,28 6,32 31,60

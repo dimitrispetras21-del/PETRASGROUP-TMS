@@ -1,0 +1,20 @@
+E-ispis dionica /
+E-List of passages
+Hrvatska
+Podaci o korisnicima
+EXAMPLE FRESH OOD Korisnički broj /
+Customer number: 9999998
+Cust. VAT Id/Nat.Tax.No.: EX000000001
+Referenca za račun /
+Reference to the invoice: 99/000000002/009
+Datum izdavanja računa /
+DPH (%): 25,00 Invoice date: 30.09.2026
+Valuta: EUR
+Stranica / Page: 1 / 1
+Datum Vrijeme Cl. Neto PDV Bruto
+Ulaz Izlaz iznos iznos
+Date Time Cl. Net VAT Gross
+Entry Exit amount amount
+Card N. 00000000.0000000001,
+26.09.26 22:30 24,08 6,02 30,10
+» ukupan broj prolaza 1 Iznos 24,08 6,02 30,10

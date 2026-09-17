@@ -158,6 +158,32 @@ before grouping by y — that's what turns the raw stream into the actual
 on-screen reading order. Both `extract.js` (Node) and the future browser
 loader (Φ3) must pass the page's viewport, not just its text content.
 
+## w9 (17/9/2026) — the second entity (BG)
+
+`run.js` and `run-import-keys.js` also take a **directory of loose PDFs**
+(`extractAny`): the BG statement arrived unzipped, `.local/dkv/bg-2026-08/`.
+`run.js` now prints the E-SUMMARY footer / refund / T4E gates too and fails
+on any of them. Real-set results, both entities (counts only):
+
+| | GR ZIP (31 PDF) | BG folder (35 PDF) |
+|---|---|---|
+| reconcilable docs OK | 17/17 | 19/19 |
+| lines / passages groups | 269 / 105 | 226 / 106 |
+| unparsed · unknown codes | 0 · 0 | 0 · 0 |
+| footer Σ / refund / payable | OK / OK (0) / OK | OK / OK (1 doc) / OK |
+| T4E statements · lines with T4E period · mismatches | 4 · 19 · 0 | 4 · 14 · 0 |
+
+New synthetic fixtures (all fake): `synthetic-summary-refund.txt` (3-column
+E-SUMMARY with a VAT refund and payable footer), `synthetic-reverse-charge.txt`
+(discount + service-fee lines, vat must be 0), `synthetic-remobis-fee.txt`
+(RC «-901», no date-first line), `synthetic-refund-statement.txt` (statement
+«-900» → doc_type `refund`, no lines), `synthetic-invoice-it.txt` (unit PZ,
+code 0914, no VEHICLE), `synthetic-passages-it.txt` («Targa N.» header, rows
+with seconds, DIREZIONE rows), `synthetic-passages-card.txt` +
+`synthetic-invoice-card.txt` (HR «Card N.» → plate through the card map),
+`synthetic-statement.txt` + `synthetic-t4e.txt` (period from the operator's
+Billing Period wins over the date rule; per-vehicle amount gate).
+
 ## Known unparsed / uncertain areas going into Φ2
 
 - **T4E operator invoices** (BALM/CZE/PLE/BGR) are detected (`doc_type:

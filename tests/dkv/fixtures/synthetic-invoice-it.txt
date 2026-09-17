@@ -1,0 +1,21 @@
+E-FATTURA /
+E-INVOICE
+Per forniture e prestazioni in
+For services and deliveries in Dati cliente
+Italia
+EXAMPLE FRESH OOD Codice cliente /
+Customer number: 9999998
+Cust. VAT Id/Nat.Tax.No.: EX000000001
+Ticket number DKV: 99/000000002/012
+Numero fattura /
+Invoice number: 99/000000012/991
+Data fattura /
+IVA (%): 22,00 Invoice date: 30.09.2026
+Valuta: EUR
+Pagina / Page: 1 / 1
+Delivery Service station Transaction Kilometer Product Unit Quantity Price/Unit Base Base Service Total VAT Total
+date name city number number reading gross net value gross value net fee net gross
+net
+30.09.2026 Corrispettivo per se 0949 PZ 1 6,64 5,44 6,64 5,44 5,44 1,20 6,64
+30.09.2026 61 Pedaggio (soggetto a 0914 PZ 1 544,50 446,31 544,50 446,31 29,89 476,20 104,76 580,96
+» TOTALE: 2 551,14 451,75 551,14 451,75 29,89 481,64 105,96 587,60

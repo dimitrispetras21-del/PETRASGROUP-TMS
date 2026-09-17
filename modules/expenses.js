@@ -672,7 +672,11 @@ function exImportDocRowHtml(d) {
   const when = d.created_at ? exDate(d.created_at) : '';
   // Leading «DKV ·» becomes the logo (point 11c) — the rest of the label is
   // plain text, escaped as before; the logo itself carries alt="DKV".
-  const rest = (d.invoice_no || d.zip_name || '—') + ' · ' + period + (d.lines_total != null ? ' · ' + d.lines_total + ' γραμμές' : '') + ' · ' + statusTxt + ' · ' + (d.created_by ? exUserDisplay(d.created_by) : '—') + (when ? ' ' + when : '');
+  // w9 (owner 17/9): the VAT refund REMOBIS nets on a statement is a
+  // receivable kept on the document (ct_cost_docs.vat_refund, migration 036)
+  // — shown here as «επιστροφή ΦΠΑ», never summed into any line total.
+  const refund = d.vat_refund != null && Number(d.vat_refund) > 0 ? ' · επιστροφή ΦΠΑ ' + exEur(d.vat_refund) : '';
+  const rest = (d.invoice_no || d.zip_name || '—') + ' · ' + period + (d.lines_total != null ? ' · ' + d.lines_total + ' γραμμές' : '') + refund + ' · ' + statusTxt + ' · ' + (d.created_by ? exUserDisplay(d.created_by) : '—') + (when ? ' ' + when : '');
   return `<div class="ex-idoc-row"><span class="s">${exBrandTag('DKV')} · ${escapeHtml(rest)}</span><button class="ex-link" onclick='exOpenImportZip(${JSON.stringify(String(d.id))})'>ZIP</button></div>`;
 }
 
