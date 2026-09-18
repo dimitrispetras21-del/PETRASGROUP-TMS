@@ -3774,9 +3774,22 @@ async function handleCosts(request, url, origin, env) {
       if (!migration024Missing) {
         const keys = rows.map((r) => r.import_key).filter(Boolean);
         if (keys.length) {
-          const dupCheck = await dbSelectRaw(env, "ct_cost_lines", new URLSearchParams({ select: "import_key", import_key: `in.(${keys.join(",")})` }));
-          if (dupCheck.rows.length) {
-            return jsonOk({ error: "duplicate import keys (already imported)", duplicate_keys: dupCheck.rows.map((r) => r.import_key) }, origin, env, 409);
+          // One `in.(…)` with every key broke the BG entity's August 2026
+          // import (18/9: 472 keys ≈ 33 KB of URL → the REST gateway answered
+          // a bare 400 «Bad Request» and the screen showed nothing). The GR
+          // statement's 302 keys (≈19 KB) had passed, so nobody saw the cliff.
+          // Chunks of 60 keys stay under ~5 KB per URL, and every value is
+          // double-quoted so a ref/card number with a comma, space or
+          // parenthesis (IT «Targa N.», HR «Card N.» lines) cannot break the
+          // list syntax. 472 keys = 8 subrequests, far below the 50 budget.
+          const already = [];
+          for (let i = 0; i < keys.length; i += 60) {
+            const chunk = keys.slice(i, i + 60).map((k) => `"${String(k).replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`);
+            const dupCheck = await dbSelectRaw(env, "ct_cost_lines", new URLSearchParams({ select: "import_key", import_key: `in.(${chunk.join(",")})` }));
+            for (const r of dupCheck.rows) already.push(r.import_key);
+          }
+          if (already.length) {
+            return jsonOk({ error: "duplicate import keys (already imported)", duplicate_keys: already }, origin, env, 409);
           }
         }
       }
