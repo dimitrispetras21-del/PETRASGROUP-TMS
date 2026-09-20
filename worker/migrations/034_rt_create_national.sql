@@ -1,10 +1,32 @@
 -- 034 — Round-trip CREATION for NATIONAL LOADS (owner 15/9/2026, via coordinator)
 --
--- DRAFT — ΔΕΝ ΕΚΤΕΛΕΙΤΑΙ ΑΚΟΜΗ. Ενεργοποιείται όταν ο Σωτήρης αρχίσει να
--- καταχωρεί εθνικά φορτία· τρέχει μετά τις 15:00· εκτελεί ΜΟΝΟ ο owner, στο
--- Supabase SQL editor, αφού πρώτα τρέξει (ΔΕΝ αλλάξει) τα SELECT του παρακάτω
--- block «ΥΠΟΘΕΣΕΙΣ» και επιβεβαιώσει ότι backfill_from (πιο κάτω) είναι η
--- σωστή ημερομηνία.
+-- ⛔ ΔΕΝ ΕΓΚΡΙΘΗΚΕ — owner 20/9/2026 (μέσω συντονιστή): «εθνικά δρομολόγια /
+-- έξοδα Μ ακόμα περιμένουν, δεν είμαστε έτοιμοι». Μένει DRAFT, ΔΕΝ τρέχει.
+-- Η έγκριση της 19/9 ανακλήθηκε την επομένη· κρατιούνται οι βελτιώσεις της
+-- 19/9 (backfill_from 30/8, διακόπτης attach_to_source_rt) ώστε να τρέξει
+-- σωστά όταν ο owner ξαναπεί «τώρα». Τότε: μόνο ο owner, Supabase SQL editor,
+-- μετά τις 15:00, αφού ξανατρέξει (ΔΕΝ αλλάξει) τα SELECT του block
+-- «ΥΠΟΘΕΣΕΙΣ» και τα «ΠΡΙΝ» της απόδειξης — τα νούμερα θα έχουν αλλάξει.
+--
+-- ΑΝΑΘΕΩΡΗΣΗ 19/9/2026 (session «Έξοδα w10», docs/data-audit/2026-09/
+-- 2026-09-19-w10-expenses.md §1) — δύο ευρήματα που θα έκαναν το run ψεύτικο:
+--   1. backfill_from ήταν '2026-09-15' ενώ ΚΑΜΙΑ από τις 14 φορτώσεις με
+--      φορτηγό δεν είναι μετά τις 14/9 (εύρος 30/8–14/9): η migration θα
+--      «πετύχαινε» και θα έφτιαχνε 0 RT. Προεπιλογή τώρα 2026-08-30 — ο owner
+--      επιβεβαιώνει.
+--   2. Ένα εθνικό φορτίο (VS σκέλος, source_order_id) τρέχει στο ΙΔΙΟ φορτηγό
+--      και τον ίδιο οδηγό με το διεθνές RT της παραγγελίας-πηγής (RT-1122):
+--      νέο NATL RT = δεύτερο RT για το ίδιο φυσικό ταξίδι = δεύτερη γραμμή
+--      μισθοδοσίας. 1/14 σήμερα, ο κανόνας όποτε το ίδιο φορτηγό συνεχίζει από
+--      Βέροια. Λύση: ΔΙΑΚΟΠΤΗΣ attach_to_source_rt (στην κορυφή της
+--      συνάρτησης· owner 19/9: true = προσάρτηση· όλη η 034 σε αναμονή 20/9):
+--        true  → το εθνικό φορτίο γίνεται ένα ακόμη σκέλος (KATHODOS/ANODOS)
+--                του διεθνούς RT όταν αυτό τρέχει το ίδιο φορτηγό (μία γραμμή
+--                μισθοδοσίας, ένα παράθυρο, τα έξοδα σε ένα RT)·
+--        false → χωριστό NATL RT όπως πριν, ΑΛΛΑ με audit row που το λέει
+--                («separate although …», αρχή 1) — ποτέ σιωπηλό διπλό.
+--      Και στις δύο τιμές ο περίπατος σχέσεων (matched_load / cons load) και
+--      το conflict-audit μένουν όπως ήταν.
 --
 -- ═══════════════════════════════════════════════════════════════════════
 -- ΥΠΟΘΕΣΕΙΣ — ΕΠΑΛΗΘΕΥΘΗΚΕ 15/9/2026 (SELECT read-only, coordinator). Τα
@@ -97,6 +119,10 @@ begin;
 create or replace function rt_create_from_national_load() returns trigger
 language plpgsql security definer set search_path = public as $$
 declare
+  -- ΔΙΑΚΟΠΤΗΣ — ΑΠΟΦΑΣΗ owner 19/9: true. Το VS εθνικό σκέλος προσαρτάται
+  -- στο διεθνές RT της παραγγελίας-πηγής όταν τρέχει το ίδιο φορτηγό·
+  -- false = χωριστό NATL RT, με audit που το λέει (κρατιέται ως επιλογή).
+  attach_to_source_rt constant boolean := true;
   new_type    text;
   dir         text;
   d_start     date;
@@ -109,6 +135,7 @@ declare
   target_ids  text;
   next_seq    smallint;
   reason      text;
+  src_rt      ct_round_trips%rowtype;
 begin
   if new.deleted_at is not null or new.status = 'Cancelled' then
     return null;
@@ -140,6 +167,43 @@ begin
   -- Οτιδήποτε δεν είναι ρητά 'South→North' πέφτει σε KATHODOS — ίδιο ύφος
   -- fallback με το `else 'EXPORT'` του 031/033 για τα orders.
   dir := case when new.direction = 'South→North' then 'ANODOS' else 'KATHODOS' end;
+
+  -- VS σκέλος στο ΙΔΙΟ φορτηγό με το διεθνές RT της παραγγελίας-πηγής (19/9):
+  -- ένα φυσικό ταξίδι, ένα RT. Μόνο OWNED↔OWNED και μόνο ίδιο truck_id —
+  -- διαφορετικό φορτηγό ή partner = άλλο ταξίδι, πέφτει στη συνηθισμένη ροή.
+  if new.source_order_id is not null and new_type = 'OWNED' then
+    select r.* into src_rt
+    from ct_rt_legs l join ct_round_trips r on r.id = l.rt_id
+    where l.order_id = new.source_order_id and r.status <> 'cancelled'
+      and r.trip_type = 'OWNED' and r.truck_id = new.truck_id
+    limit 1;
+    if src_rt.id is not null then
+      if attach_to_source_rt then
+        select coalesce(max(seq), 0) + 1 into next_seq from ct_rt_legs where rt_id = src_rt.id;
+        insert into ct_rt_legs (rt_id, direction, nat_load_id, seq)
+        values (src_rt.id, dir, new.id, next_seq)
+        on conflict (nat_load_id) where nat_load_id is not null do nothing;
+        get diagnostics leg_rows = row_count;
+        if leg_rows = 0 then return null; end if;
+        perform rt_sync_audit('update', 'ct_round_trips', src_rt.id::text, null,
+          jsonb_build_object('leg_nat_load', new.id, 'direction', dir, 'seq', next_seq, 'source_order', new.source_order_id,
+                             'reason', 'VS national leg attached to the international round trip of its source order — same truck (034)'));
+        if src_rt.status in ('closed', 'complete') and new.status <> 'Delivered' then
+          update ct_round_trips set status = 'planned', closed_at = null, updated_at = now() where id = src_rt.id;
+          perform rt_sync_audit('update', 'ct_round_trips', src_rt.id::text,
+            jsonb_build_object('status', src_rt.status),
+            jsonb_build_object('status', 'planned', 'reason', 'reopened: national leg ' || new.id || ' not yet delivered (034)'));
+        end if;
+        perform rt_recompute(src_rt.id);
+        return null;
+      else
+        -- owner option «χωριστό RT»: γίνεται, αλλά ΑΚΟΥΓΕΤΑΙ (αρχή 1)
+        perform rt_sync_audit('update', 'national_loads', new.id::text, null,
+          jsonb_build_object('source_rt', src_rt.id, 'source_order', new.source_order_id,
+                             'reason', 'separate national round trip although ' || src_rt.code || ' runs the same truck for the source order (034, owner option attach_to_source_rt=false)'));
+      end if;
+    end if;
+  end if;
 
   -- Ζωντανές RT των σχετικών φορτίων: ζευγάρι Veroia Switch (matched_load ⇄
   -- legacy_id, και οι δύο κατευθύνσεις) + groupage φορτία στο ίδιο
@@ -256,10 +320,14 @@ create trigger rt_create_from_national_load
 -- που ακολουθεί δεν βρίσκει τίποτα να αλλάξει (η RT γεννήθηκε ήδη με τις ίδιες
 -- τιμές) — καμία διπλή εγγραφή audit.
 --
--- Μια round trip δεν αναμιγνύει ποτέ order-legs και nat-legs σήμερα: το
--- 031/033 γεννούν/προσαρτούν ΜΟΝΟ μέσω σχέσεων πάνω στο orders, το 034 ΜΟΝΟ
--- μέσω σχέσεων πάνω στο national_loads (Δ, Ε πιο πάνω) — άρα δεν χρειάζεται
--- συγχρονισμός «αδελφών» ανάμεσα στους δύο τύπους leg εδώ.
+-- Μικτές round trips (order-legs + nat-legs) ΥΠΑΡΧΟΥΝ από 19/9 μόνο μέσω του
+-- attach_to_source_rt (το VS σκέλος πάνω στο διεθνές RT του ίδιου φορτηγού).
+-- Η αλλαγή οχήματος/οδηγού φτάνει και στους δύο τύπους σκέλους: όποια πλευρά
+-- αλλάξει (order → rt_sync_from_order 013, national_load → rt_sync_from_
+-- national_load εδώ) ξαναγράφει τη γραμμή του ct_round_trips, και πάνω σε αυτή
+-- πυροδοτούν ΚΑΙ το rt_sync_to_orders (013) ΚΑΙ το rt_sync_to_national_loads
+-- (πιο κάτω). Οι βρόχοι «αδέλφια» κάθε συνάρτησης μένουν στον δικό τους
+-- τύπο σκέλους — δεν χρειάζεται να διασχίσουν τον άλλο.
 create or replace function rt_sync_from_national_load() returns trigger
 language plpgsql security definer set search_path = public as $$
 declare leg record; rt ct_round_trips%rowtype; sib record; new_type text;
@@ -388,7 +456,7 @@ create trigger rt_sync_to_national_loads
 -- `not exists (... ζωντανό leg)` παραλείπει ό,τι έχει ήδη RT.
 do $$
 declare
-  backfill_from date := '2026-09-15';  -- ⚠ ΑΛΛΑΞΕ ΕΔΩ πριν το run — owner
+  backfill_from date := '2026-08-30';  -- ΑΠΟΦΑΣΗ owner 19/9 (πιάνει και τα 14· το '2026-09-15' έπιανε 0)
   nl record;
 begin
   for nl in
@@ -409,11 +477,14 @@ end $$;
 commit;
 
 -- ═══════════════════════════════════════════════════════════════════════
--- Απόδειξη (τρέξε ΜΕΤΑ) — αναμενόμενα 15/9/2026 (μετρημένο πριν το run:
--- 45 ζωντανά national_loads, 14 ΜΕ οδηγό, 0 με scope NATL στο ct_round_trips).
--- Αν backfill_from καλύπτει και τα 14, τα δύο νούμερα του σημείου 1 πρέπει να
--- καταλήξουν ΙΣΑ (14=14)· αν ο owner βάλει μεταγενέστερη ημερομηνία, το δεύτερο
--- νούμερο θα είναι μικρότερο — αναμενόμενο, όχι σφάλμα.
+-- Απόδειξη (τρέξε ΜΕΤΑ) — αναμενόμενα, ξαναμετρημένα 19/9/2026 πριν το run:
+-- 52 ζωντανά national_loads, 14 ΜΕ οδηγό (= τα 14 με φορτηγό), φορτώσεις
+-- 30/8–14/9, 0 με scope NATL στο ct_round_trips. Με backfill_from 2026-08-30
+-- τα δύο νούμερα του σημείου 1 καταλήγουν ΙΣΑ (14=14).
+-- Σημείο 1β εξαρτάται από τον διακόπτη: attach_to_source_rt=true → 12 νέα NATL
+-- RT + 1 σκέλος στο RT-1122 (φορτίο 87)· false → 13 νέα NATL RT + 1 audit row
+-- «separate national round trip although …». Και στα δύο: το ζεύγος VS 73+74
+-- (ίδιο φορτηγό) = 1 RT.
 -- ═══════════════════════════════════════════════════════════════════════
 --
 -- 1. national_loads με οδηγό, φόρτωση >= backfill_from, ζωντανά, όχι
@@ -421,17 +492,20 @@ commit;
 -- select count(*) as loads_with_driver
 -- from national_loads
 -- where deleted_at is null and status <> 'Cancelled' and driver_id is not null
---   and coalesce(loading_datetime::date, actual_delivery_date, delivery_datetime::date) >= '2026-09-15'; -- ίδια ημερομηνία με backfill_from· 14 μετρήθηκαν σύνολο πριν το φίλτρο ημερομηνίας
+--   and coalesce(loading_datetime::date, actual_delivery_date, delivery_datetime::date) >= '2026-08-30'; -- ίδια ημερομηνία με backfill_from· 14 μετρήθηκαν 19/9
 --
 -- select count(distinct l.nat_load_id) as loads_with_live_leg
 -- from ct_rt_legs l join ct_round_trips r on r.id = l.rt_id
 -- join national_loads nl on nl.id = l.nat_load_id
 -- where r.status <> 'cancelled' and nl.deleted_at is null and nl.status <> 'Cancelled'
 --   and nl.driver_id is not null
---   and coalesce(nl.loading_datetime::date, nl.actual_delivery_date, nl.delivery_datetime::date) >= '2026-09-15';
+--   and coalesce(nl.loading_datetime::date, nl.actual_delivery_date, nl.delivery_datetime::date) >= '2026-08-30';
 --
--- 1β. Νέες NATL round trips (0 σήμερα, πριν το run).
+-- 1β. Νέες NATL round trips (0 σήμερα, πριν το run) — 12 (attach) ή 13 (separate).
 -- select count(*) from ct_round_trips where scope = 'NATL';
+-- 1γ. Το VS σκέλος του ίδιου φορτηγού: attach → 1 γραμμή (nat_load 87 στο RT-1122)· separate → 0 γραμμές ΚΑΙ 1 audit row.
+-- select l.rt_id, r.code from ct_rt_legs l join ct_round_trips r on r.id = l.rt_id where l.nat_load_id = 87;
+-- select count(*) from audit_log where actor = 'trigger:rt_sync' and after_data->>'reason' like 'separate national round trip%';
 --
 -- 2. Καμία διπλοεγγραφή: κάθε national_load σε ΤΟ ΠΟΛΥ ένα leg (η μοναδική
 --    μερική ευρετηρίαση το επιβάλλει ήδη — sanity check, όχι δοκιμή).
