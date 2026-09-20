@@ -2,7 +2,13 @@
 --        (export on one, its matched import on the other) becomes one.
 --        + audit of every such split the moment it appears (rt_link_split).
 --
--- ΕΓΚΕΚΡΙΜΕΝΗ 19/9/2026, ΕΠΙΒΕΒΑΙΩΣΗ owner 20/9/2026 (μέσω συντονιστή):
+-- ✅ ΕΚΤΕΛΕΣΤΗΚΕ 20/9/2026 ~07:20 UTC από τον owner (Supabase SQL editor) και
+-- επαληθεύτηκε με τα SELECT «ΜΕΤΑ» (owner + session w10 ανεξάρτητα): RT-1133
+-- closed 08/09→14/09 με σκέλη 282 EXPORT 1 + 339 IMPORT 2, 6 γραμμές εξόδων·
+-- RT-1159 cancelled με notes «συγχωνεύθηκε στο RT-1133 …»· #11204 ζωντανή,
+-- #11211 soft-deleted «RT RT-1159 ακυρώθηκε»· audit (037) = 2· dl_v_rt_gap 0·
+-- trigger rt_link_split + rt_merge/rt_link_split υπάρχουν. Ο φρουρός πέρασε.
+-- (Ιστορικό κεφαλής:) ΕΓΚΕΚΡΙΜΕΝΗ 19/9/2026, ΕΠΙΒΕΒΑΙΩΣΗ owner 20/9/2026:
 -- αυτόματη συγχώνευση ΜΟΝΟ στη στενή περίπτωση (ίδιο όχημα + δεσμός + ένα RT
 -- μόνο-EXPORT / άλλο μόνο-IMPORT), κάθε άλλη περίπτωση audit «split»·
 -- backfill rt_merge(133,159). ΔΕΝ ΕΧΕΙ ΤΡΕΞΕΙ — εκτελεί ΜΟΝΟ ο owner, Supabase
