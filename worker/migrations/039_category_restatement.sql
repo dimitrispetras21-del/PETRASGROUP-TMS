@@ -2,7 +2,8 @@
 --        (owner 21/9/2026, Alexia's request 1 — a CATEGORY, not a flag; the
 --        19/9 flag proposal was rejected by the owner).
 --
--- ΕΓΚΕΚΡΙΜΕΝΗ 21/9 (owner μέσω συντονιστή) — ΔΕΝ ΕΧΕΙ ΤΡΕΞΕΙ. Εκτελεί ΜΟΝΟ ο
+-- ✅ ΕΚΤΕΛΕΣΤΗΚΕ 21/9/2026 ~15:00 UTC (owner): το CHECK περιέχει 'restatement'.
+-- (Ιστορικό:) ΕΓΚΕΚΡΙΜΕΝΗ 21/9 (owner μέσω συντονιστή). Εκτελεί ΜΟΝΟ ο
 -- owner, μετά τις 15:00. Σειρά w11: Worker deploy → 038 → 039 → 040 → 041 →
 -- 042 → push. Ο Worker (CT_CATEGORIES) και η οθόνη (EX_CATEGORIES,
 -- CT_CATEGORY_LABELS) γνωρίζουν την τιμή από το ίδιο commit· χωρίς αυτή τη

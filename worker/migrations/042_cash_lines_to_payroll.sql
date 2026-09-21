@@ -2,8 +2,13 @@
 --        option 1, deferred 20/9, RE-APPROVED 21/9 as «παραλλαγή Α» — Alexia's
 --        request 3 of w11: Σ μετρητών RT → ΕΞΟΔΑ καρτέλας οδηγού).
 --
--- ΕΓΚΕΚΡΙΜΕΝΗ 21/9 (owner μέσω συντονιστή: «ΠΑΡΑΛΛΑΓΗ Α — Σ ΟΛΩΝ των CASH του
--- RT»). ΔΕΝ ΕΧΕΙ ΤΡΕΞΕΙ. Εκτελεί ΜΟΝΟ ο owner, Supabase SQL editor, μετά τις
+-- ✅ ΕΚΤΕΛΕΣΤΗΚΕ 21/9/2026 ~15:00 UTC (owner): triggers dl_cash_lock /
+-- dl_cash_sync_entry / dl_cash_sync_line υπάρχουν· 9 RT με CASH (το 119 μπήκε
+-- επειδή η 040 έκανε τη γραμμή 311 CASH → trigger), όλα expenses = Σ,
+-- expenses_auto true, needs_review στα 5 διαφωνίας (123: 97→77, 124: 15→158,
+-- 161: 85→28, 166: 39→15, 167: 71→15) με review_note, audit (042) 9, dl_v_rt_gap 0.
+-- (Ιστορικό:) ΕΓΚΕΚΡΙΜΕΝΗ 21/9 (owner: «ΠΑΡΑΛΛΑΓΗ Α — Σ ΟΛΩΝ των CASH του
+-- RT»). Εκτελεί ΜΟΝΟ ο owner, Supabase SQL editor, μετά τις
 -- 15:00. Σειρά w11: Worker deploy → 038 → 039 → 040 → 041 → 042 → push front end.
 -- Ιστορικό: γράφτηκε 19/9 ως 038, αναβλήθηκε 20/9 («Έξοδα Μ ⊂ CASH»), ο owner
 -- επέλεξε 21/9 ρητά το Σ ΟΛΩΝ των μετρητών του RT (παραλλαγή Α).

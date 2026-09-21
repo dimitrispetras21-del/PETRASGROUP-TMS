@@ -2,7 +2,12 @@
 --        statements: ONE toll line per RT × country × document, ONE «Τέλη DKV»
 --        line per RT × document (owner 21/9/2026, Alexia's request 9).
 --
--- ΕΓΚΕΚΡΙΜΕΝΗ 21/9 (owner μέσω συντονιστή, αποφάσεις i–iv) — ΔΕΝ ΕΧΕΙ ΤΡΕΞΕΙ.
+-- ✅ ΕΚΤΕΛΕΣΤΗΚΕ 21/9/2026 ~15:00 UTC (owner, μετά το deploy Worker 826e33c1) και
+-- επαληθεύτηκε (owner + session w11 ανεξάρτητα): doc 1 302→175, doc 2 489→140,
+-- doc 3 634→149 γραμμές, net/vat ΤΑΥΤΟΣΗΜΑ (13.972,53/2.226,82 · 13.865,47/
+-- 2.001,57 · 15.621,85/2.603,06), τέλη χωρίς φορτηγό 531→0, details 162 = audit
+-- 162, lines_total ενημερωμένα.
+-- (Ιστορικό:) ΕΓΚΕΚΡΙΜΕΝΗ 21/9 (owner μέσω συντονιστή, αποφάσεις i–iv).
 -- Εκτελεί ΜΟΝΟ ο owner, Supabase SQL editor, μετά τις 15:00, ΜΕΤΑ το deploy
 -- του Worker w11 (ο νέος Worker γράφει `details` μόνο αν η στήλη υπάρχει —
 -- guard 42703 όπως το import_key· ο παλιός Worker αγνοεί τη στήλη). Σειρά

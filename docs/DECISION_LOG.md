@@ -1806,3 +1806,8 @@ JWT αν ο owner πει «όχι», αλλιώς μένει ο κοινός ρ�
 eirini ΕΚΚΡΕΜΕΙ (παραγγελία-δοκιμή + Chrome από owner). Πλήρες:
 `docs/data-audit/2026-09/2026-09-21-eirini-readiness.md`. **Ποιος:** Fable 5.1 (session Ειρήνη
 go-live) · συντονιστής petrasgroup-tms-2e · αποφάσεις 7.1 → owner.
+
+### 2026-09-21 · costs · w11 ΕΚΤΕΛΕΣΤΗΚΕ ~15:00 UTC — deploy 826e33c1 + 038→042, επαληθευμένα (owner + session)
+**Απόδειξη:** 038 302/489/634 → 175/140/149 με ταυτόσημα net/vat, τέλη χωρίς φορτηγό 0, details 162 = audit 162· 039 CHECK
+restatement· 040 NULL 0 / NOT NULL / audit 8· 041 lines_deleted 0· 042 9 RT με CASH = Σ, needs_review 5, audit 9, gap 0.
+Πλήρες: audit doc w11 §10 ΜΕΤΑ. **Ποιος:** owner (εκτέλεση), Claude Fable 5.1 «Έξοδα w11» (επαλήθευση, docs).

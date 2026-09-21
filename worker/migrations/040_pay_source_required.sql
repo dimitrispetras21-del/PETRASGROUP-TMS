@@ -1,7 +1,9 @@
 -- 040 — ct_cost_lines.pay_source NOT NULL (owner 21/9/2026, Alexia's request 2:
 --        «πάλι τρόπος πληρωμής» — every expense line says how it was paid).
 --
--- ΕΓΚΕΚΡΙΜΕΝΗ 21/9 (owner μέσω συντονιστή) — ΔΕΝ ΕΧΕΙ ΤΡΕΞΕΙ. Εκτελεί ΜΟΝΟ ο
+-- ✅ ΕΚΤΕΛΕΣΤΗΚΕ 21/9/2026 ~15:00 UTC (owner): NULL 0, ids 1/306–310 CREDIT, 311
+-- CASH, 312 REVOLUT, is_nullable NO, audit 8.
+-- (Ιστορικό:) ΕΓΚΕΚΡΙΜΕΝΗ 21/9 (owner μέσω συντονιστή). Εκτελεί ΜΟΝΟ ο
 -- owner, Supabase SQL editor, μετά τις 15:00. Σειρά w11: Worker deploy → 038 →
 -- 039 → 040 → 041 → 042 → push front end. Η σειρά Worker↔040 είναι αδιάφορη:
 -- ο νέος Worker απορρίπτει POST χωρίς pay_source και PATCH με null πριν τη
