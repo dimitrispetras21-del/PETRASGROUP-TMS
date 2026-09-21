@@ -380,12 +380,8 @@ function exStyles() {
   .ex-restsub{color:var(--text-mid)}
   .ex-expm-locked{padding:8px 16px;color:var(--text-mid);font-size:12px}
   .ex-expm-diff{color:var(--warn);font-weight:600;margin-left:6px}
-  /* w11 θέμα 7: foreign-country flags in front of the route, «/» between them,
-     a wider gap before the text — flags only (no code) on the RT row, as decided
-     16/9 for lines/stations; the code sits next to each stop in the text. */
-  .ex-rflags{display:inline-flex;align-items:center;gap:3px;margin-right:6px;vertical-align:middle}
-  .ex-rflags .ex-flag{width:16px;height:12px}
-  .ex-rsep{color:var(--text-dim);font-size:11px;margin:0 2px}
+  /* w11 θέμα 7 (owner 21/9 βράδυ): the flag follows each foreign stop inline. */
+  .ex-route .ex-flag,.ex-fr-title .s .ex-flag{width:14px;height:10px;vertical-align:-1px;margin-left:1px}
   .ex-fr-rest{margin-left:10px;font-size:11px;color:var(--text-mid);font-weight:500}
   .ex-locked-note{width:100%;color:var(--text-mid);font-size:11px;font-weight:500}
   .ex-payhint{width:100%;font-size:11px;line-height:1.3;color:var(--warn);margin:2px 0 4px}
@@ -884,12 +880,16 @@ function exTripTotal(r, lines) { return exAmt(lines) + Number((r.ledger_entry &&
 // one «/» per order (leg), Greece written as text like every other country.
 // locations.country holds both names («Greece», «Czech Republic») and codes
 // («GR», «ES») — normalised here once; unknown names stay as they are.
-const EX_COUNTRY_ISO = { GREECE: 'GR', ITALY: 'IT', AUSTRIA: 'AT', HUNGARY: 'HU', GERMANY: 'DE', 'CZECH REPUBLIC': 'CZ', CZECHIA: 'CZ', POLAND: 'PL', BULGARIA: 'BG', SLOVENIA: 'SI', SLOVAKIA: 'SK', SPAIN: 'ES', CROATIA: 'HR', SERBIA: 'RS', ROMANIA: 'RO', NETHERLANDS: 'NL', 'THE NETHERLANDS': 'NL', HOLLAND: 'NL', BELGIUM: 'BE', FRANCE: 'FR', SWITZERLAND: 'CH', 'NORTH MACEDONIA': 'MK', MACEDONIA: 'MK', TURKEY: 'TR', TÜRKIYE: 'TR', DENMARK: 'DK', SWEDEN: 'SE', LUXEMBOURG: 'LU', PORTUGAL: 'PT', 'UNITED KINGDOM': 'GB', ΕΛΛΑΔΑ: 'GR', ΙΤΑΛΙΑ: 'IT', ΑΥΣΤΡΙΑ: 'AT', ΟΥΓΓΑΡΙΑ: 'HU', ΓΕΡΜΑΝΙΑ: 'DE', ΒΟΥΛΓΑΡΙΑ: 'BG', ΡΟΥΜΑΝΙΑ: 'RO', ΣΕΡΒΙΑ: 'RS' };
+const EX_COUNTRY_ISO = { GREECE: 'GR', ITALY: 'IT', AUSTRIA: 'AT', HUNGARY: 'HU', GERMANY: 'DE', 'CZECH REPUBLIC': 'CZ', CZECHIA: 'CZ', POLAND: 'PL', BULGARIA: 'BG', SLOVENIA: 'SI', SLOVAKIA: 'SK', SPAIN: 'ES', CROATIA: 'HR', SERBIA: 'RS', ROMANIA: 'RO', NETHERLANDS: 'NL', 'THE NETHERLANDS': 'NL', HOLLAND: 'NL', BELGIUM: 'BE', FRANCE: 'FR', SWITZERLAND: 'CH', 'NORTH MACEDONIA': 'MK', MACEDONIA: 'MK', TURKEY: 'TR', TÜRKIYE: 'TR', DENMARK: 'DK', SWEDEN: 'SE', LUXEMBOURG: 'LU', PORTUGAL: 'PT', 'UNITED KINGDOM': 'GB', LATVIA: 'LV', LITHUANIA: 'LT', 'BOSNIA AND HERZEGOVINA': 'BA', BOSNIA: 'BA', ΕΛΛΑΔΑ: 'GR', ΙΤΑΛΙΑ: 'IT', ΑΥΣΤΡΙΑ: 'AT', ΟΥΓΓΑΡΙΑ: 'HU', ΓΕΡΜΑΝΙΑ: 'DE', ΒΟΥΛΓΑΡΙΑ: 'BG', ΡΟΥΜΑΝΙΑ: 'RO', ΣΕΡΒΙΑ: 'RS' };
+// Exact match only (never substring): the 21/9 live check showed «Ολλανδία
+// Καραϊβικής (BQ)» on an Arnhem stop — the location row itself holds
+// country 'BQ' (data, not the map); the screen must keep saying so until the
+// row is repaired (αρχή 1). A 2-letter code passes through unchanged.
 function exCountryIso(c) {
   if (!c) return '';
   const up = String(c).trim().toUpperCase();
   if (/^[A-Z]{2}$/.test(up)) return up;
-  return EX_COUNTRY_ISO[up] || up;
+  return Object.prototype.hasOwnProperty.call(EX_COUNTRY_ISO, up) ? EX_COUNTRY_ISO[up] : up;
 }
 function exRouteStops(r) {
   const legs = Array.isArray(r.route_legs) ? r.route_legs : [];
@@ -900,9 +900,17 @@ function exRouteCountries(r) {
   exRouteStops(r).forEach(stops => stops.forEach(p => { if (p.cc && p.cc !== 'GR' && !seen.includes(p.cc)) seen.push(p.cc); }));
   return seen;
 }
-function exRouteFlagsHtml(r) {
-  const ccs = exRouteCountries(r);
-  return ccs.length ? `<span class="ex-rflags">${ccs.map(cc => exFlag(cc)).join('<span class="ex-rsep">/</span>')}</span>` : '';
+// Owner 21/9 βράδυ («δεν μου αρέσουν αρκετά όπως είναι»): the flag sits AFTER
+// each FOREIGN stop — «Βέροια, GR → Modena, IT 🇮🇹 / Vienna, AT 🇦🇹 → Βέροια, GR»
+// — never in front, never for GR; «/» stays one per order. The row uses the
+// short stop («Modena 🇮🇹»), the frame title the full «Πόλη, CC 🇮🇹».
+function exRouteHtml(r, opts) {
+  const legs = exRouteStops(r);
+  if (!legs.length) return escapeHtml(r.route_text || '');
+  const short = !!(opts && opts.short);
+  const stop = p => escapeHtml(p.city) + (!short && p.cc ? ', ' + escapeHtml(p.cc) : '') + (p.cc && p.cc !== 'GR' ? ' ' + exFlag(p.cc) : '');
+  const parts = legs.map(stops => stops.map(stop).join(' → ')).filter(Boolean);
+  return parts.length ? parts.join(' / ') : escapeHtml(r.route_text || '');
 }
 function exRouteSummary(r, opts) {
   const legs = exRouteStops(r);
@@ -1326,7 +1334,7 @@ function exTripRowHtml(r, visCols, tmpl) {
       ${vehicleCell}
       ${driverCell}
       <div class="mid n">${exShortRange(r.date_start, r.date_end || r.date_start)}</div>
-      <div class="ex-route" onclick="exToggleExpand(${r.id})" title="${escapeHtml(routeSummary)}">${exRouteFlagsHtml(r)}${escapeHtml(exRouteSummary(r, { short: true }))}</div>
+      <div class="ex-route" onclick="exToggleExpand(${r.id})" title="${escapeHtml(routeSummary)}">${exRouteHtml(r, { short: true })}</div>
       ${cells}
       <div class="r n" style="font-weight:600">${hasAny ? exNum(rowTotal) : ''}</div>
       <div class="ex-st ${st.cls}"><span class="ex-st-w">${st.word}</span>${_ex.canWrite ? `<button type="button" class="ex-add" onclick="event.stopPropagation();exAddExpense(${r.id})" title="Νέο έξοδο σε αυτό το δρομολόγιο">+</button>` : ''}</div>
@@ -1469,7 +1477,7 @@ function exFrameHtml(r) {
   const docIdsHere = [...new Set(lines.map(l => l.doc_id).filter(v => v != null))];
   const docsTouched = (_ex.importDocs || []).filter(d => docIdsHere.includes(d.id) && Number(d.lines_deleted) > 0);
   const docNote = docsTouched.length ? `<span class="ex-idoc-del">κατάσταση DKV ${escapeHtml(docsTouched.map(d => (d.invoice_no || d.id) + ': ' + d.lines_deleted).join(', '))} γραμμές σβησμένες μετά την καταχώρηση</span>` : '';
-  const sub = [exRouteFlagsHtml(r) + escapeHtml(exRouteSummary(r) || '—'), exIsDone(r) ? 'RT κλειστό' : 'RT σε εξέλιξη', missing.length ? 'λείπουν: ' + escapeHtml(missing.join(', ')) : '', docNote].filter(Boolean).join(' · ');
+  const sub = [exRouteHtml(r) || '—', exIsDone(r) ? 'RT κλειστό' : 'RT σε εξέλιξη', missing.length ? 'λείπουν: ' + escapeHtml(missing.join(', ')) : '', docNote].filter(Boolean).join(' · ');
   // Column order (Καύσιμα … Λοιπά, spec) minus «expm» — that slot is not a
   // cost-line category (see EX_COL_ORDER's own comment) and gets its own
   // section with the ledger field below instead.
@@ -2053,7 +2061,7 @@ function exEditLineRowHtml(line) {
     <div class="ex-field ex-qe-cat"><label class="ex-flabel">Κατηγορία</label><select class="ex-ei" id="${p('exEdCategory')}" onchange="exEdCategoryChange(${line.id}, this)">${opts}</select></div>
     ${exPaySourceSelectHtml(p('exEdPaySource'), exLinePaySource(line) || exPaySourceDefault(line.category), !!line.doc_id)}
     <div class="ex-field ex-qe-date"><label class="ex-flabel">Ημερομηνία</label><input class="ex-ei" type="date" id="${p('exEdDate')}" value="${line.line_date || ''}"${lk}></div>
-    <div class="ex-field ex-qe-amt"><label class="ex-flabel">Ποσό €</label><input class="ex-ei" type="number" step="0.01" id="${p('exEdAmt')}" value="${line.net != null || line.vat != null ? exLineAmt(line) : ''}"${lk}></div>
+    <div class="ex-field ex-qe-amt"><label class="ex-flabel">Ποσό €</label><input class="ex-ei" type="number" step="0.01" id="${p('exEdAmt')}" value="${line.net != null || line.vat != null ? Number(exLineAmt(line)).toFixed(2) : ''}"${lk}></div>
     <div class="ex-field ex-qe-note"><label class="ex-flabel">Παραστατικό / σημείωση</label><input class="ex-ei" type="text" id="${p('exEdNote')}" value="${escapeHtml(line.note || '')}"></div>
     ${line.doc_id ? '' : exPayHintHtml(p('exEdPaySource'), exLinePaySource(line) || exPaySourceDefault(line.category))}
     <div class="ex-qe-break"></div>

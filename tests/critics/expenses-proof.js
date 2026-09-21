@@ -515,7 +515,7 @@ async function runAccountantFlow(browser) {
   for (const l of ['Κατηγορία', 'Πληρωμή', 'Ημερομηνία', 'Ποσό €', 'Παραστατικό / σημείωση', 'Προμηθευτής', 'Λίτρα', 'Χιλιόμετρα', 'Πρατήριο', 'Χώρα']) assert(edLabels.includes(l), 'E5: correction row label above field: «' + l + '»');
   const edFields = await page.locator('.ex-row.edit[data-line="9104"] .ex-field').evaluateAll(fs => fs.map(f => ({ label: (f.querySelector('.ex-flabel') || {}).textContent, hasInput: !!f.querySelector('input,select'), labelFirst: f.firstElementChild && f.firstElementChild.classList.contains('ex-flabel') })));
   assert(edFields.length >= 9 && edFields.every(f => f.hasInput && f.labelFirst), 'E5: every correction field is label-ABOVE-input (' + edFields.length + ' fields)');
-  assert(await page.locator('#exEdAmt_9104').inputValue() === '80' && await page.locator('#exEdPaySource_9104').inputValue() === 'CASH' && await page.locator('#exEdLiters_9104').inputValue() === '200', 'E5: correction row prefills amount 80, payment CASH, liters 200');
+  assert(await page.locator('#exEdAmt_9104').inputValue() === '80.00' && await page.locator('#exEdPaySource_9104').inputValue() === 'CASH' && await page.locator('#exEdLiters_9104').inputValue() === '200', 'E5: correction row prefills amount 80.00 (2 decimals since 21/9), payment CASH, liters 200');
   await page.screenshot({ path: shot('04-edit-labels-1440'), fullPage: true });
   await page.fill('#exEdAmt_9104', '85');
   await waitLines(page, 'PATCH', () => page.locator('.ex-row.edit[data-line="9104"] .ex-btn', { hasText: 'Αποθήκευση' }).click());
@@ -1084,6 +1084,7 @@ async function runW11ImportedLineFlow(browser) {
     assert(await page.locator('#' + id).isDisabled(), 'w11-6: ' + id + ' is disabled on an imported line («από κατάσταση DKV»)');
   }
   assert(!(await page.locator('#exEdCategory_9102').isDisabled()) && !(await page.locator('#exEdNote_9102').isDisabled()), 'w11-6: category and note stay editable');
+  assert(await page.locator('#exEdAmt_9102').inputValue() === '30.00', 'w11-6: the locked amount is formatted with 2 decimals (live 21/9 showed 112,2899999): ' + (await page.locator('#exEdAmt_9102').inputValue()));
   assert(/Εισαγόμενη από κατάσταση DKV/.test(await page.locator('.ex-frame .ex-locked-note').evaluate((el) => el.textContent)), 'w11-6: the edit row says why the amounts are locked (textContent — the title strip is CSS-uppercased)');
   await waitImages(page);
   await page.locator('.ex-frame .ex-row.edit').scrollIntoViewIfNeeded();
@@ -1198,14 +1199,15 @@ async function runW11RouteFlow(browser) {
   await page.waitForSelector('.ex-page .ex-seg', { timeout: 15000 });
   await openWeek(page, WEEK_START, 951);
   const routeCell = page.locator('.ex-gr[data-rt="951"] .ex-route');
-  const flags = await routeCell.locator('.ex-rflags img.ex-flag').evaluateAll(els => els.map(e => e.getAttribute('alt')));
-  assert(flags.join('/') === 'IT/AT', 'w11-7: flags = foreign countries only, in trip order, Greece omitted: ' + flags.join('/'));
-  assert(await routeCell.locator('.ex-rsep').count() === 1, 'w11-7: a «/» separator between the two flags');
+  // owner 21/9 βράδυ: the flag FOLLOWS each foreign stop, none for GR, none in front
+  const rowHtml = await routeCell.evaluate(el => el.innerHTML);
+  assert(/^Βέροια → Modena <img[^>]*alt="IT"[^>]*> \/ Vienna <img[^>]*alt="AT"[^>]*> → Βέροια$/.test(rowHtml.replace(/\s+/g, ' ').trim()), 'w11-7: the ROW reads «Βέροια → Modena 🇮🇹 / Vienna 🇦🇹 → Βέροια» — flag after each foreign stop, short form: ' + rowHtml);
+  assert(await routeCell.locator('img.ex-flag[alt="GR"]').count() === 0 && await routeCell.locator('img.ex-flag').count() === 2, 'w11-7: no GR flag, exactly two foreign flags');
   const txt = (await routeCell.evaluate(el => el.textContent)).replace(/\s+/g, ' ').trim();
-  assert(txt === '/Βέροια → Modena / Vienna → Βέροια', 'w11-7: the ROW carries the short route «Βέροια → Modena / Vienna → Βέροια» (no «, CC» — the flags say the countries): «' + txt + '»');
+  assert(txt === 'Βέροια → Modena / Vienna → Βέροια', 'w11-7: the ROW text is the short route: «' + txt + '»');
   assert((await routeCell.getAttribute('title')) === 'Βέροια, GR → Modena, IT / Vienna, AT → Βέροια, GR', 'w11-7: the tooltip carries the full «Πόλη, CC» form');
   await waitImages(page);
-  const flagW = await routeCell.locator('.ex-rflags img.ex-flag').evaluateAll(els => els.map(e => e.naturalWidth));
+  const flagW = await routeCell.locator('img.ex-flag').evaluateAll(els => els.map(e => e.naturalWidth));
   assert(flagW.length === 2 && flagW.every(w => w > 0), 'w11-7: both flag <img> (local SVG assets/flags/it.svg, at.svg) decoded, naturalWidth > 0: ' + JSON.stringify(flagW));
   // 1440: the two-leg short route fits the row without an ellipsis (measured)
   // two-line clamp: «fits» = nothing clipped vertically (scrollHeight ≤ clientHeight)
@@ -1213,11 +1215,20 @@ async function runW11RouteFlow(browser) {
   assert(fits, 'w11-7: at 1440 the short two-leg route fits the Διαδρομή column in ≤3 lines, nothing clipped (scrollHeight ≤ clientHeight): ' + (await routeCell.evaluate(el => el.scrollHeight + '/' + el.clientHeight + ' · width ' + el.clientWidth)));
   const rowH = await page.locator('.ex-gr[data-rt="951"]').evaluate(el => el.getBoundingClientRect().height);
   assert(rowH <= 46.5, 'w11-7: the RT row stays within the 46px limit of 13/9 with the three-line route: ' + rowH);
+  // 21/9 live fix: every country NAME the locations table holds today maps to
+  // its ISO code by EXACT match (select distinct country from locations, 21/9);
+  // codes pass through; an unknown name stays visible as it is (never guessed).
+  const isoTable = { Greece: 'GR', Italy: 'IT', Poland: 'PL', Germany: 'DE', Netherlands: 'NL', Austria: 'AT', 'Czech Republic': 'CZ', Hungary: 'HU', Bulgaria: 'BG', Romania: 'RO', Spain: 'ES', Slovakia: 'SK', Croatia: 'HR', Slovenia: 'SI', Belgium: 'BE', Serbia: 'RS', France: 'FR', 'North Macedonia': 'MK', Switzerland: 'CH', Latvia: 'LV', Portugal: 'PT', 'Bosnia and Herzegovina': 'BA', Lithuania: 'LT', GR: 'GR', ES: 'ES', IT: 'IT', DE: 'DE', NL: 'NL', RS: 'RS', PL: 'PL', HU: 'HU', CZ: 'CZ', AT: 'AT', BQ: 'BQ', Ruritania: 'RURITANIA' };
+  const isoGot = await page.evaluate((t) => Object.fromEntries(Object.keys(t).map(k => [k, exCountryIso(k)])), isoTable);
+  const isoBad = Object.keys(isoTable).filter(k => isoGot[k] !== isoTable[k]);
+  assert(isoBad.length === 0, 'w11-7: every distinct locations.country of 21/9 maps to its ISO by exact match (BQ stays BQ — a data error must stay visible): ' + JSON.stringify(isoBad.map(k => [k, isoGot[k]])));
   await openFrame(page, 951);
   await waitImages(page);
   const sub = (await page.locator('.ex-frame .ex-fr-title .s').evaluate(el => el.textContent)).replace(/\s+/g, ' ').trim();
   assert(/Βέροια, GR → Modena, IT \/ Vienna, AT → Βέροια, GR · RT κλειστό/.test(sub), 'w11-7: the frame title line carries the FULL «Πόλη, CC» route: «' + sub + '»');
-  const frameFlagW = await page.locator('.ex-frame .ex-fr-title .ex-rflags img.ex-flag').evaluateAll(els => els.map(e => e.naturalWidth));
+  const subHtml = (await page.locator('.ex-frame .ex-fr-title .s').evaluate(el => el.innerHTML)).replace(/\s+/g, ' ');
+  assert(/Modena, IT <img[^>]*alt="IT"[^>]*> \/ Vienna, AT <img[^>]*alt="AT"[^>]*> → Βέροια, GR ·/.test(subHtml), 'w11-7: in the frame the flag follows «Modena, IT» and «Vienna, AT», none after GR: ' + subHtml);
+  const frameFlagW = await page.locator('.ex-frame .ex-fr-title .s img.ex-flag').evaluateAll(els => els.map(e => e.naturalWidth));
   assert(frameFlagW.length === 2 && frameFlagW.every(w => w > 0), 'w11-7: the frame title flags decoded too: ' + JSON.stringify(frameFlagW));
   await page.screenshot({ path: path.join(SHOT_DIR, 'w11-expenses-route-flags-1440.png'), fullPage: false });
   await context.close();
