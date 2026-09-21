@@ -364,7 +364,7 @@ async function runAccountantFlow(browser) {
   assert(await assignSelect.locator('option').count() === 3, '«Χωρίς δρομολόγιο» assign select has exactly 3 options (placeholder + 701 + 702)');
   assert(!/Meta-Cargo/.test(await assignSelect.innerText()), 'the assign select never lists the partner (Meta-Cargo ΕΠΕ)');
   const noneCats = await page.locator('#exQeCategory option').evaluateAll(os => os.map(o => o.value));
-  assert(noneCats.join(',') === 'other,accommodation,partner_rate', 'none-row entry row stays scoped to its own group (Λοιπά): ' + noneCats.join(','));
+  assert(noneCats.join(',') === 'other,accommodation,partner_rate,restatement', 'none-row entry row stays scoped to its own group (Λοιπά, incl. Αναμόρφωση since w11): ' + noneCats.join(','));
   assert(await page.locator('.ex-gp[data-panel="none"] .ex-th').count() === 1 && /ΠΛΗΡΩΜΗ/.test((await page.locator('.ex-gp[data-panel="none"] .ex-th').innerText()).toUpperCase()), 'the none-row lines list uses the same 9-column header (with ΠΛΗΡΩΜΗ)');
   await page.locator('.ex-gp .ex-link', { hasText: 'Κλείσιμο' }).click();
 
@@ -407,7 +407,7 @@ async function runAccountantFlow(browser) {
   // ── entry row inside the frame: full category list, labels above every
   // field (E5 pattern), three buttons (E6/E9) ──
   const frameCats = await page.locator('#exQeCategory option').evaluateAll(os => os.map(o => o.value));
-  assert(frameCats.length === 11 && frameCats[0] === 'fuel' && frameCats.includes('fines') && frameCats.includes('other'), 'frame entry row offers ALL 11 postable categories (owner 16/9): ' + frameCats.join(','));
+  assert(frameCats.length === 12 && frameCats[0] === 'fuel' && frameCats.includes('fines') && frameCats.includes('other') && frameCats.includes('restatement'), 'frame entry row offers ALL 12 postable categories (owner 16/9 + «Αναμόρφωση» w11): ' + frameCats.join(','));
   assert(await page.locator('#exQeCategory').inputValue() === 'fuel', 'entry row starts on Καύσιμα (the row was opened from the vehicle cell → first column)');
   const qeLabels = await flabels(page, '.ex-frame .ex-row.qe');
   for (const l of ['Κατηγορία', 'Πληρωμή', 'Προμηθευτής', 'Ημερομηνία', 'Ποσό €', 'Παραστατικό / σημείωση', 'Λίτρα', 'Χιλιόμετρα', 'Πρατήριο', 'Χώρα']) assert(qeLabels.includes(l), 'entry row label above field: «' + l + '»');
@@ -522,7 +522,7 @@ async function runAccountantFlow(browser) {
   await page.locator('.ex-frame .ex-link', { hasText: 'σε παράθυρο' }).click();
   await page.waitForSelector('.ex-modal-box', { timeout: 5000 });
   const modalCats = await page.locator('#exMdCategory option').evaluateAll(os => os.map(o => o.value));
-  assert(modalCats.length === 11, 'modal opened from the frame offers all 11 categories, like the inline row: ' + modalCats.join(','));
+  assert(modalCats.length === 12, 'modal opened from the frame offers all 12 categories (incl. Αναμόρφωση, w11), like the inline row: ' + modalCats.join(','));
   await page.selectOption('#exMdCategory', 'fuel');
   await page.waitForTimeout(50);
   assert(await page.locator('#exMdFuelSourceWrap select').count() === 1, 'modal shows its own Προμηθευτής select for a fuel category');
@@ -1049,6 +1049,106 @@ async function runFoldCheck(browser) {
   return { consoleErrors };
 }
 
+// w11 θέμα 6 (owner 21/9): the accountant corrects AND deletes every line —
+// including imported ones created by someone else (fixture 9102: doc_id 5,
+// created_by «alexia» ≠ the rig's demo_accountant, which the old created_by
+// gate hid). On an imported line the edit row greys out amount / date /
+// liters / km / station / payment and the PATCH carries only category (+
+// note, + toll_country) — the Worker refuses the rest with a 400.
+async function runW11ImportedLineFlow(browser) {
+  console.log('\n== accountant · w11-6: imported line editable (locked amounts), deletable ==');
+  const { context, page, consoleErrors } = await newPage(browser, 'accountant');
+  const captured = installCostsMocks(page, { rt: RT_FIXTURE, lookups: LOOKUPS_FIXTURE, lines: LINES_FIXTURE_EDIT });
+  await gotoPage(page, 'expenses', BASE_URL);
+  await page.waitForSelector('.ex-page .ex-seg', { timeout: 15000 });
+  await openWeek(page, WEEK_START, 701);
+  await openFrame(page, 701);
+  const imported = page.locator('.ex-frame .ex-row[data-line="9102"]');
+  assert(await imported.count() === 1, 'w11-6: the imported toll line 9102 (doc_id 5, created by another user) is in the frame');
+  assert(await imported.locator('.ex-link', { hasText: 'Διόρθωση' }).count() === 1 && await imported.locator('.ex-link', { hasText: 'Διαγραφή' }).count() === 1, 'w11-6: accountant sees Διόρθωση AND Διαγραφή on a line she did not create (created_by gate gone)');
+  await imported.locator('.ex-link', { hasText: 'Διόρθωση' }).click();
+  await page.waitForSelector('#exEdAmt_9102', { timeout: 5000 });
+  for (const id of ['exEdAmt_9102', 'exEdDate_9102', 'exEdPaySource_9102']) {
+    assert(await page.locator('#' + id).isDisabled(), 'w11-6: ' + id + ' is disabled on an imported line («από κατάσταση DKV»)');
+  }
+  assert(!(await page.locator('#exEdCategory_9102').isDisabled()) && !(await page.locator('#exEdNote_9102').isDisabled()), 'w11-6: category and note stay editable');
+  assert(/Εισαγόμενη από κατάσταση DKV/.test(await page.locator('.ex-frame .ex-locked-note').evaluate((el) => el.textContent)), 'w11-6: the edit row says why the amounts are locked (textContent — the title strip is CSS-uppercased)');
+  await page.selectOption('#exEdCategory_9102', 'other');
+  await page.fill('#exEdNote_9102', 'DKV BOX · διορθωμένη κατηγορία');
+  await waitLines(page, 'PATCH', () => page.locator('.ex-frame .ex-row.edit .ex-btn.primary', { hasText: 'Αποθήκευση' }).click());
+  const patch = captured.patches[captured.patches.length - 1];
+  assert(patch && patch.id === 9102 && patch.body.category === 'other' && patch.body.note === 'DKV BOX · διορθωμένη κατηγορία' && patch.body.reason === 'proof: test reason' && !('net' in patch.body) && !('line_date' in patch.body) && !('pay_source' in patch.body) && !('liters' in patch.body), 'w11-6: PATCH /costs/lines/9102 carries category + note + reason only — never amounts/date/payment/liters: ' + JSON.stringify(patch && patch.body));
+  await page.screenshot({ path: path.join(SHOT_DIR, 'w11-expenses-imported-line-edit-1440.png'), fullPage: false });
+  await context.close();
+  return { consoleErrors, captured };
+}
+
+// w11 θέμα 1 (owner 21/9): «Αναμόρφωση» is a category inside «Λοιπά» — the
+// cell shows «X αναμ.» on its second line, the week totals «αναμ. X» under
+// Λοιπά, the frame «εκ των οποίων αναμόρφωση X €»; the entry row offers the
+// category and defaults its payment to CASH (the «other» bucket).
+const LINES_FIXTURE_REST = [
+  line({ id: 9701, rt_id: 701, category: 'other', net: 40.88, vat: 0, line_date: '2026-09-06', pay_source: 'REVOLUT', note: 'ΠΑΡΚΙΝΓΚ' }),
+  line({ id: 9702, rt_id: 701, category: 'restatement', net: 4.83, vat: 0, line_date: '2026-09-06', pay_source: 'CASH', note: 'ΠΑΡΚΙΝΓΚ-ΧΩΡΙΣ ΑΠΟΔΕΙΞΗ' }),
+  line({ id: 9703, rt_id: 701, category: 'restatement', net: 76.69, vat: 0, line_date: '2026-09-07', pay_source: 'CASH', note: 'ΒΟΥΛΓΑΡΙΑ ΧΩΡΙΣ ΑΠΟΔΕΙΞΗ-ΚΤΕΟ' }),
+];
+async function runW11RestatementFlow(browser) {
+  console.log('\n== accountant · w11-1: «Αναμόρφωση» inside Λοιπά with its own sub-total ==');
+  const { context, page, consoleErrors } = await newPage(browser, 'accountant');
+  const captured = installCostsMocks(page, { rt: RT_FIXTURE, lookups: LOOKUPS_FIXTURE, lines: LINES_FIXTURE_REST });
+  await gotoPage(page, 'expenses', BASE_URL);
+  await page.waitForSelector('.ex-page .ex-seg', { timeout: 15000 });
+  await openWeek(page, WEEK_START, 701);
+  const cellTxt = (await cell(page, 701, 'other').innerText()).replace(/\s+/g, ' ');
+  assert(/122,40/.test(cellTxt) && /81,52 αναμ\./.test(cellTxt), 'w11-1: Λοιπά cell = 122,40 with second line «81,52 αναμ.»: ' + cellTxt);
+  const gt = (await page.locator('.ex-gt').innerText()).replace(/\s+/g, ' ');
+  assert(/122,40 αναμ\. 81,52/.test(gt), 'w11-1: week totals carry «αναμ. 81,52» under Λοιπά: ' + gt);
+  await openFrame(page, 701);
+  assert(/εκ των οποίων αναμόρφωση 81,52 €/.test((await page.locator('.ex-frame .ex-fr-total').innerText()).replace(/\s+/g, ' ')), 'w11-1: the frame total says «εκ των οποίων αναμόρφωση 81,52 €»');
+  const sec = (await page.locator('.ex-frame .ex-ov-section[data-section="other"]').innerText()).replace(/\s+/g, ' ');
+  assert(/Αναμόρφωση/.test(sec) && /ΒΟΥΛΓΑΡΙΑ ΧΩΡΙΣ ΑΠΟΔΕΙΞΗ-ΚΤΕΟ/.test(sec), 'w11-1: the Λοιπά section lists the two restated lines with their category label');
+  await cell(page, 701, 'other').click();
+  await page.waitForTimeout(150);
+  assert(await page.locator('#exQeCategory option[value="restatement"]').count() === 1, 'w11-1: the entry row offers «Αναμόρφωση» in the category select');
+  await page.selectOption('#exQeCategory', 'restatement');
+  await page.waitForTimeout(100);
+  assert(await page.locator('#exQePaySource').inputValue() === 'CASH', 'w11-1: payment defaults to CASH for Αναμόρφωση (the «other» bucket): got «' + (await page.locator('#exQePaySource').inputValue()) + '», category «' + (await page.locator('#exQeCategory').inputValue()) + '»');
+  await page.screenshot({ path: path.join(SHOT_DIR, 'w11-expenses-restatement-1440.png'), fullPage: false });
+  await context.close();
+  return { consoleErrors, captured };
+}
+
+// w11 θέμα 7 (owner 21/9, exact form): flags of the FOREIGN countries only,
+// «/» between them; route «Πόλη, CC → Πόλη, CC / …» per order, Greece as
+// text. Same in the RT row and the frame title line.
+const RT_FIXTURE_ROUTE = [
+  rt({ id: 951, truck_id: 11, driver_id: 11, trailer_id: 21, date_start: '2026-09-05', date_end: '2026-09-09', status: 'closed', route_text: 'Βέροια → Modena',
+    route_legs: [
+      { dir: 'EXPORT', load: '2026-09-05', deliv: '2026-09-07', from: { name: 'Petras Veria', city: 'Βέροια', country: 'Greece' }, to: { name: 'Modena DC', city: 'Modena', country: 'Italy' }, extra_stops: 0 },
+      { dir: 'IMPORT', load: '2026-09-07', deliv: '2026-09-09', from: { name: 'Wien Markt', city: 'Vienna', country: 'AT' }, to: { name: 'Petras Veria', city: 'Βέροια', country: 'GR' }, extra_stops: 0 },
+    ], ledger_entry: { id: 851, expenses: null } }),
+];
+async function runW11RouteFlow(browser) {
+  console.log('\n== accountant · w11-7: flags of foreign countries + «Πόλη, CC» route per order ==');
+  const { context, page, consoleErrors } = await newPage(browser, 'accountant');
+  installCostsMocks(page, { rt: RT_FIXTURE_ROUTE, lookups: LOOKUPS_FIXTURE, lines: [] });
+  await gotoPage(page, 'expenses', BASE_URL);
+  await page.waitForSelector('.ex-page .ex-seg', { timeout: 15000 });
+  await openWeek(page, WEEK_START, 951);
+  const routeCell = page.locator('.ex-gr[data-rt="951"] .ex-route');
+  const flags = await routeCell.locator('.ex-rflags img.ex-flag').evaluateAll(els => els.map(e => e.getAttribute('alt')));
+  assert(flags.join('/') === 'IT/AT', 'w11-7: flags = foreign countries only, in trip order, Greece omitted: ' + flags.join('/'));
+  assert(await routeCell.locator('.ex-rsep').count() === 1, 'w11-7: a «/» separator between the two flags');
+  const txt = (await routeCell.evaluate(el => el.textContent)).replace(/\s+/g, ' ').trim();
+  assert(txt === '/Βέροια, GR → Modena, IT / Vienna, AT → Βέροια, GR', 'w11-7: route text «Βέροια, GR → Modena, IT / Vienna, AT → Βέροια, GR» (names→ISO normalised, «/» per order): «' + txt + '»');
+  await openFrame(page, 951);
+  const sub = (await page.locator('.ex-frame .ex-fr-title .s').evaluate(el => el.textContent)).replace(/\s+/g, ' ').trim();
+  assert(/Βέροια, GR → Modena, IT \/ Vienna, AT → Βέροια, GR · RT κλειστό/.test(sub) && await page.locator('.ex-frame .ex-fr-title .ex-rflags img.ex-flag').count() === 2, 'w11-7: the frame title line carries the same flags + route: «' + sub + '»');
+  await page.screenshot({ path: path.join(SHOT_DIR, 'w11-expenses-route-flags-1440.png'), fullPage: false });
+  await context.close();
+  return { consoleErrors };
+}
+
 async function runManagementFlow(browser) {
   console.log('\n== management (read-only) ==');
   const { context, page, consoleErrors } = await newPage(browser, 'management');
@@ -1097,9 +1197,12 @@ async function runDispatcherFlow(browser) {
     const fold = await runFoldCheck(browser);
     const mgmt = await runManagementFlow(browser);
     const disp = await runDispatcherFlow(browser);
-    const all = [...acct.consoleErrors, ...credit.consoleErrors, ...sticky.consoleErrors, ...veh.consoleErrors, ...shotW.consoleErrors, ...wide.consoleErrors, ...brands.consoleErrors, ...fold.consoleErrors, ...mgmt.consoleErrors, ...disp.consoleErrors];
+    const imp6 = await runW11ImportedLineFlow(browser);
+    const rest1 = await runW11RestatementFlow(browser);
+    const route7 = await runW11RouteFlow(browser);
+    const all = [...rest1.consoleErrors, ...route7.consoleErrors, ...acct.consoleErrors, ...credit.consoleErrors, ...sticky.consoleErrors, ...veh.consoleErrors, ...shotW.consoleErrors, ...wide.consoleErrors, ...brands.consoleErrors, ...fold.consoleErrors, ...mgmt.consoleErrors, ...disp.consoleErrors, ...imp6.consoleErrors];
     console.log('\n== console errors ==');
-    console.log('accountant:', acct.consoleErrors.length, 'credit:', credit.consoleErrors.length, 'sticky:', sticky.consoleErrors.length, 'vehicle:', veh.consoleErrors.length, 'widths:', shotW.consoleErrors.length, 'wide-cols:', wide.consoleErrors.length, 'brands:', brands.consoleErrors.length, 'fold:', fold.consoleErrors.length, 'management:', mgmt.consoleErrors.length, 'dispatcher:', disp.consoleErrors.length);
+    console.log('accountant:', acct.consoleErrors.length, 'credit:', credit.consoleErrors.length, 'sticky:', sticky.consoleErrors.length, 'vehicle:', veh.consoleErrors.length, 'widths:', shotW.consoleErrors.length, 'wide-cols:', wide.consoleErrors.length, 'brands:', brands.consoleErrors.length, 'fold:', fold.consoleErrors.length, 'management:', mgmt.consoleErrors.length, 'dispatcher:', disp.consoleErrors.length, 'w11-6:', imp6.consoleErrors.length);
     if (all.length) all.forEach(e => console.log('  ! ' + e));
     console.log('\n== captured request bodies (accountant) ==');
     console.log(JSON.stringify({ posts: acct.captured.posts, patches: acct.captured.patches, ledgerPatches: acct.captured.ledgerPatches }, null, 2));

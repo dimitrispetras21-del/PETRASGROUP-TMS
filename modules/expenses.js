@@ -25,7 +25,9 @@
 // future Tier-2 allocator. driver_pay/cash_m excluded: gone since 5/9/2026.
 // partner_rate stays a postable category (its lines live under «Λοιπά» now,
 // spec §0.8α «τίποτα δεν κρύβεται») even though it has no column of its own.
-const EX_CATEGORIES = ['fuel', 'reefer_fuel', 'tolls', 'dkv', 'adblue', 'spedition', 'accommodation', 'ferry_train', 'fines', 'partner_rate', 'other'];
+// w11 θέμα 1 (owner 21/9): 'restatement' («Αναμόρφωση») lives inside «Λοιπά»
+// with its own sub-total — no tenth column (1280 has no room, measured 16/9).
+const EX_CATEGORIES = ['fuel', 'reefer_fuel', 'tolls', 'dkv', 'adblue', 'spedition', 'accommodation', 'ferry_train', 'fines', 'partner_rate', 'other', 'restatement'];
 // Categories whose entry row/modal show Λίτρα/Χιλιόμετρα/Πρατήριο — adblue is
 // a liquid too and has always used these fields (v3), kept unchanged here.
 const EX_FUEL_CATEGORIES = ['fuel', 'reefer_fuel', 'adblue'];
@@ -80,7 +82,7 @@ const EX_GROUPS = [
   { key: 'spedition', label: 'Spedition', cats: ['spedition'] },
   { key: 'fines', label: 'Πρόστιμα', cats: ['fines'] },
   { key: 'ferry', label: 'Καράβια/Τρένα', cats: ['ferry_train'] },
-  { key: 'other', label: 'Λοιπά', cats: ['other', 'accommodation', 'partner_rate'] }
+  { key: 'other', label: 'Λοιπά', cats: ['other', 'accommodation', 'partner_rate', 'restatement'] }
 ];
 // Column order (spec §2, point 2, exact): the synthetic «expm» slot between
 // Spedition and Πρόστιμα is «Έξοδα Μ» — NOT a cost-line category, so it is a
@@ -372,7 +374,17 @@ function exStyles() {
      (correction #1). Stays inside the same ≤46px collapsed row budget. */
   .ex-vehcell{line-height:1.25;display:flex;flex-direction:column;gap:1px}
   .ex-plate.trailer{color:var(--text-dim);font-size:10px}
-  .ex-payhint{display:block;font-size:10px;line-height:1.2;color:var(--warn);margin-top:3px;max-width:140px}
+  .ex-idoc-del{color:var(--warn);font-weight:600}
+  .ex-restsub{color:var(--text-mid)}
+  /* w11 θέμα 7: foreign-country flags in front of the route, «/» between them,
+     a wider gap before the text — flags only (no code) on the RT row, as decided
+     16/9 for lines/stations; the code sits next to each stop in the text. */
+  .ex-rflags{display:inline-flex;align-items:center;gap:4px;margin-right:12px;vertical-align:middle}
+  .ex-rflags .ex-flag{width:16px;height:12px}
+  .ex-rsep{color:var(--text-dim);font-size:11px;margin:0 2px}
+  .ex-fr-rest{margin-left:10px;font-size:11px;color:var(--text-mid);font-weight:500}
+  .ex-locked-note{width:100%;color:var(--text-mid);font-size:11px;font-weight:500}
+  .ex-payhint{width:100%;font-size:11px;line-height:1.3;color:var(--warn);margin:2px 0 4px}
   .ex-route{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--text-mid);cursor:pointer}
   .ex-st{font-size:11.5px;font-weight:500;color:var(--text-mid);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:flex;align-items:center;justify-content:space-between;gap:4px;min-width:0} .ex-st.att{color:var(--warn)} .ex-st.ok{color:var(--ok)}
   /* The word may ellipsize; the «+» never shrinks or hides (flex:none). */
@@ -699,7 +711,11 @@ function exImportDocRowHtml(d) {
   // — shown here as «επιστροφή ΦΠΑ», never summed into any line total.
   const refund = d.vat_refund != null && Number(d.vat_refund) > 0 ? ' · επιστροφή ΦΠΑ ' + exEur(d.vat_refund) : '';
   const rest = (d.invoice_no || d.zip_name || '—') + ' · ' + period + (d.lines_total != null ? ' · ' + d.lines_total + ' γραμμές' : '') + refund + ' · ' + statusTxt + ' · ' + (d.created_by ? exUserDisplay(d.created_by) : '—') + (when ? ' ' + when : '');
-  return `<div class="ex-idoc-row"><span class="s">${exBrandTag('DKV')} · ${escapeHtml(rest)}</span><button class="ex-link" onclick='exOpenImportZip(${JSON.stringify(String(d.id))})'>ZIP</button></div>`;
+  // w11 θέμα 6: a document whose imported lines were deleted afterwards no
+  // longer agrees 1:1 with its statement — said on the row (ct_cost_docs.
+  // lines_deleted, migration 041), never hidden (αρχή 1).
+  const deleted = Number(d.lines_deleted) > 0 ? `<span class="ex-idoc-del"> · ${d.lines_deleted} ${Number(d.lines_deleted) === 1 ? 'γραμμή σβήστηκε' : 'γραμμές σβήστηκαν'} μετά την καταχώρηση — δεν συμφωνεί πλέον 1:1 με την κατάσταση</span>` : '';
+  return `<div class="ex-idoc-row"><span class="s">${exBrandTag('DKV')} · ${escapeHtml(rest)}${deleted}</span><button class="ex-link" onclick='exOpenImportZip(${JSON.stringify(String(d.id))})'>ZIP</button></div>`;
 }
 
 async function exOpenImportZip(id) {
@@ -852,13 +868,38 @@ function exTripTotal(r, lines) { return exAmt(lines) + Number((r.ledger_entry &&
 // dates) still renders below the row, but only once expanded. Falls back to
 // route_text for a trip with no parsed legs, and to the previous city when a
 // leg's start repeats the last leg's end (never «Βέροια → Βέροια → Wien»).
-function exRouteSummary(r) {
+// w11 θέμα 7 (owner 21/9, exact form): «🇮🇹 / 🇦🇹    Βέροια, GR → Modena, IT /
+// Vienna, AT → Βέροια, GR» — flags = the FOREIGN countries only, in the order
+// the trip touched them, separated by «/»; the route = «Πόλη, CC» per stop,
+// one «/» per order (leg), Greece written as text like every other country.
+// locations.country holds both names («Greece», «Czech Republic») and codes
+// («GR», «ES») — normalised here once; unknown names stay as they are.
+const EX_COUNTRY_ISO = { GREECE: 'GR', ITALY: 'IT', AUSTRIA: 'AT', HUNGARY: 'HU', GERMANY: 'DE', 'CZECH REPUBLIC': 'CZ', CZECHIA: 'CZ', POLAND: 'PL', BULGARIA: 'BG', SLOVENIA: 'SI', SLOVAKIA: 'SK', SPAIN: 'ES', CROATIA: 'HR', SERBIA: 'RS', ROMANIA: 'RO', NETHERLANDS: 'NL', 'THE NETHERLANDS': 'NL', HOLLAND: 'NL', BELGIUM: 'BE', FRANCE: 'FR', SWITZERLAND: 'CH', 'NORTH MACEDONIA': 'MK', MACEDONIA: 'MK', TURKEY: 'TR', TÜRKIYE: 'TR', DENMARK: 'DK', SWEDEN: 'SE', LUXEMBOURG: 'LU', PORTUGAL: 'PT', 'UNITED KINGDOM': 'GB', ΕΛΛΑΔΑ: 'GR', ΙΤΑΛΙΑ: 'IT', ΑΥΣΤΡΙΑ: 'AT', ΟΥΓΓΑΡΙΑ: 'HU', ΓΕΡΜΑΝΙΑ: 'DE', ΒΟΥΛΓΑΡΙΑ: 'BG', ΡΟΥΜΑΝΙΑ: 'RO', ΣΕΡΒΙΑ: 'RS' };
+function exCountryIso(c) {
+  if (!c) return '';
+  const up = String(c).trim().toUpperCase();
+  if (/^[A-Z]{2}$/.test(up)) return up;
+  return EX_COUNTRY_ISO[up] || up;
+}
+function exRouteStops(r) {
   const legs = Array.isArray(r.route_legs) ? r.route_legs : [];
+  return legs.map(l => [l.from, l.to].map(p => p ? { city: p.city || p.name || '', cc: exCountryIso(p.country) } : null).filter(Boolean));
+}
+function exRouteCountries(r) {
+  const seen = [];
+  exRouteStops(r).forEach(stops => stops.forEach(p => { if (p.cc && p.cc !== 'GR' && !seen.includes(p.cc)) seen.push(p.cc); }));
+  return seen;
+}
+function exRouteFlagsHtml(r) {
+  const ccs = exRouteCountries(r);
+  return ccs.length ? `<span class="ex-rflags">${ccs.map(cc => exFlag(cc)).join('<span class="ex-rsep">/</span>')}</span>` : '';
+}
+function exRouteSummary(r) {
+  const legs = exRouteStops(r);
   if (!legs.length) return r.route_text || '';
-  const cities = [];
-  const push = c => { if (c && cities[cities.length - 1] !== c) cities.push(c); };
-  legs.forEach(l => { push(l.from && (l.from.city || l.from.name)); push(l.to && (l.to.city || l.to.name)); });
-  return cities.length ? cities.join(' → ') : (r.route_text || '');
+  const stop = p => p.city + (p.cc ? ', ' + p.cc : '');
+  const parts = legs.map(stops => stops.map(stop).join(' → ')).filter(Boolean);
+  return parts.length ? parts.join(' / ') : (r.route_text || '');
 }
 
 // Expand/collapse (note 3) — a Set on _ex so it survives exRenderPage; NOT
@@ -1139,8 +1180,10 @@ function exGridHtml() {
   // above it, so the two numbers describe the same set of rows.
   const fuelGroupTt = EX_GROUPS.find(g => g.key === 'fuel');
   const fuelLitersTt = exGroupLines(trips.flatMap(r => exRtLines(r.id)), fuelGroupTt).reduce((a, l) => a + Number(l.liters || 0), 0);
+  // w11 θέμα 1: «εκ των οποίων αναμόρφωση» under the Λοιπά total (same trips)
+  const restTt = exAmt(trips.flatMap(r => exRtLines(r.id)).filter(l => l.category === 'restatement'));
   const totalsHtml = visCols.map((k, i) => {
-    const cell = `<div class="r n">${exNum(totals[i])}${k === 'fuel' && fuelLitersTt > 0 ? `<span class="ex-litersub">Σ ${exLiters(fuelLitersTt)}</span>` : ''}</div>`;
+    const cell = `<div class="r n">${exNum(totals[i])}${k === 'fuel' && fuelLitersTt > 0 ? `<span class="ex-litersub">Σ ${exLiters(fuelLitersTt)}</span>` : ''}${k === 'other' && restTt > 0 ? `<span class="ex-litersub">αναμ. ${exNum(restTt)}</span>` : ''}</div>`;
     return cell;
   }).join('');
   const tt = `<div class="ex-gt" style="grid-template-columns:${tmpl}"><div class="r" style="grid-column:1/6">${label}</div>${totalsHtml}<div class="r n grand">${exNum(stats.total)}</div><div></div></div>`;
@@ -1204,6 +1247,11 @@ function exCellHtml(rtKey, group, lines, missing) {
   } else if (lines.length > 1) {
     bParts.push(lines.length + ' γρ.');
   }
+  // w11 θέμα 1: the restated part of «Λοιπά», said on the cell's second line
+  if (group.key === 'other') {
+    const restAmt = exAmt(lines.filter(l => l.category === 'restatement'));
+    if (restAmt > 0) bParts.push(`<span class="ex-restsub">${exNum(restAmt)} αναμ.</span>`);
+  }
   const payTag = exCellPayTag(lines);
   if (payTag) bParts.push(payTag);
   const b = bParts.join(' ');
@@ -1265,7 +1313,7 @@ function exTripRowHtml(r, visCols, tmpl) {
       ${vehicleCell}
       ${driverCell}
       <div class="mid n">${exShortRange(r.date_start, r.date_end || r.date_start)}</div>
-      <div class="ex-route" onclick="exToggleExpand(${r.id})" title="${escapeHtml(routeSummary)}">${escapeHtml(routeSummary)}</div>
+      <div class="ex-route" onclick="exToggleExpand(${r.id})" title="${escapeHtml(routeSummary)}">${exRouteFlagsHtml(r)}${escapeHtml(routeSummary)}</div>
       ${cells}
       <div class="r n" style="font-weight:600">${hasAny ? exNum(rowTotal) : ''}</div>
       <div class="ex-st ${st.cls}"><span class="ex-st-w">${st.word}</span>${_ex.canWrite ? `<button type="button" class="ex-add" onclick="event.stopPropagation();exAddExpense(${r.id})" title="Νέο έξοδο σε αυτό το δρομολόγιο">+</button>` : ''}</div>
@@ -1403,7 +1451,12 @@ function exFrameHtml(r) {
   // ημερομηνίες», a faint line «διαδρομή · RT κλειστό · λείπουν: …», and on
   // the right «Σύνολο δρομολογίου» in Syne 24 with «Κλείσιμο ▲».
   const title = escapeHtml(exTruckName(r.truck_id)) + ' / ' + escapeHtml(exResolveTrailerName(r.trailer_id) || '—') + ' · ' + escapeHtml(exPersonName(r)) + ' · ' + escapeHtml(exDateRange(r.date_start, r.date_end));
-  const sub = [escapeHtml(exRouteSummary(r) || '—'), exIsDone(r) ? 'RT κλειστό' : 'RT σε εξέλιξη', missing.length ? 'λείπουν: ' + escapeHtml(missing.join(', ')) : ''].filter(Boolean).join(' · ');
+  // w11 θέμα 6: if any imported line of this trip belongs to a statement that
+  // lost lines after its commit, the frame says so next to the route.
+  const docIdsHere = [...new Set(lines.map(l => l.doc_id).filter(v => v != null))];
+  const docsTouched = (_ex.importDocs || []).filter(d => docIdsHere.includes(d.id) && Number(d.lines_deleted) > 0);
+  const docNote = docsTouched.length ? `<span class="ex-idoc-del">κατάσταση DKV ${escapeHtml(docsTouched.map(d => (d.invoice_no || d.id) + ': ' + d.lines_deleted).join(', '))} γραμμές σβησμένες μετά την καταχώρηση</span>` : '';
+  const sub = [exRouteFlagsHtml(r) + escapeHtml(exRouteSummary(r) || '—'), exIsDone(r) ? 'RT κλειστό' : 'RT σε εξέλιξη', missing.length ? 'λείπουν: ' + escapeHtml(missing.join(', ')) : '', docNote].filter(Boolean).join(' · ');
   // Column order (Καύσιμα … Λοιπά, spec) minus «expm» — that slot is not a
   // cost-line category (see EX_COL_ORDER's own comment) and gets its own
   // section with the ledger field below instead.
@@ -1432,7 +1485,7 @@ function exFrameHtml(r) {
   return `<div class="ex-frame" data-frame="${r.id}">
     <div class="ex-fr-head">
       <div class="ex-fr-title"><div class="t">${title}</div><div class="s">${sub}</div></div>
-      <div class="ex-fr-right"><div class="ex-fr-total"><span class="k">Σύνολο δρομολογίου</span><b>${exEur(totalAmt)}</b></div><div class="ex-gp-actions">${_ex.canWrite ? `<button type="button" class="ex-add wide" onclick="exAddExpense(${r.id})">+ Έξοδο</button>` : ''}${exNextTripHtml()}<button type="button" class="ex-link" onclick="exCloseCell()">Κλείσιμο ▲</button></div></div>
+      <div class="ex-fr-right"><div class="ex-fr-total"><span class="k">Σύνολο δρομολογίου</span><b>${exEur(totalAmt)}</b>${(() => { const ra = exAmt(lines.filter(l => l.category === 'restatement')); return ra > 0 ? `<span class="ex-fr-rest">εκ των οποίων αναμόρφωση ${exEur(ra)}</span>` : ''; })()}</div><div class="ex-gp-actions">${_ex.canWrite ? `<button type="button" class="ex-add wide" onclick="exAddExpense(${r.id})">+ Έξοδο</button>` : ''}${exNextTripHtml()}<button type="button" class="ex-link" onclick="exCloseCell()">Κλείσιμο ▲</button></div></div>
     </div>
     ${sections || '<div class="ex-row" style="padding:10px 16px;color:var(--text-mid)">Καμία γραμμή εξόδων.</div>'}${exExpMSectionHtml(r)}${totalsHtml}${_ex.canWrite ? exQeRowHtml(EX_CATEGORIES) : ''}
   </div>`;
@@ -1663,7 +1716,7 @@ function exFuelSourceSelectHtml(id, value) {
 // (exPaySources) — a line whose stored value is not in that list (should
 // never happen; αρχή 1) is still shown as its own option so the edit row
 // never silently swaps it for the first entry.
-function exPaySourceSelectHtml(id, value) {
+function exPaySourceSelectHtml(id, value, disabled) {
   const list = exPaySources();
   const known = list.some(o => o.v === value);
   const opts = list.map(o => `<option value="${o.v}"${value === o.v ? ' selected' : ''}>${escapeHtml(o.l)}</option>`).join('')
@@ -1672,7 +1725,13 @@ function exPaySourceSelectHtml(id, value) {
   // will bring anyway — say so under the select (the Worker refuses it only
   // when the statement already holds the same fill; before that it is
   // allowed, and the import's twin check cleans up).
-  return `<div class="ex-field" style="width:140px"><label class="ex-flabel">Πληρωμή</label><select class="ex-ei" id="${id}" onchange="exPayHint(this)">${opts}</select><span class="ex-payhint" id="${id}_hint"${value === 'DKV' ? '' : ' hidden'}>Οι πληρωμές DKV έρχονται από την κατάσταση — μόνο αν δεν έχει έρθει ακόμη</span></div>`;
+  return `<div class="ex-field" style="width:140px"><label class="ex-flabel">Πληρωμή</label><select class="ex-ei" id="${id}" onchange="exPayHint(this)"${disabled ? ' disabled title="Από κατάσταση DKV"' : ''}>${opts}</select></div>`;
+}
+// The hint lives on its own full-width line under the fields (exPayHintHtml),
+// not inside the 140px field — inside it stretched the field and broke the
+// row's baseline (seen on the w11 rig shot).
+function exPayHintHtml(id, value) {
+  return `<div class="ex-qe-break"></div><div class="ex-payhint" id="${id}_hint"${value === 'DKV' ? '' : ' hidden'}>Οι πληρωμές DKV έρχονται από την κατάσταση DKV — καταχώρησε χειροκίνητα μόνο αν η κατάσταση δεν έχει έρθει ακόμη· η εισαγωγή θα εντοπίσει το διπλό.</div>`;
 }
 function exPayHint(sel) {
   const h = document.getElementById(sel.id + '_hint');
@@ -1712,10 +1771,11 @@ function exQeRowHtml(cats) {
     ${exPaySourceSelectHtml('exQePaySource', _ex.qe.paySource || exPaySourceDefault(cat))}
     ${fuelSourceOn ? exFuelSourceSelectHtml('exQeFuelSource', _ex.qe.fuelSource) : ''}
     <div class="ex-field ex-qe-date"><label class="ex-flabel">Ημερομηνία</label><input class="ex-ei" type="date" id="exQeDate" value="${_ex.qe.date || ''}" onchange="exQeDateChange(this)"></div>
-    ${isTolls ? exCountryFieldHtml('exQeCountry', 170) : ''}
+    ${isTolls ? exCountryFieldHtml('exQeCountry', 170) : ''}${'' /* payment hint follows the first break, see below */}
     <div class="ex-field ex-qe-amt"><label class="ex-flabel">Ποσό €</label><input class="ex-ei" type="number" step="0.01" id="exQeAmt" placeholder="0,00" onkeydown="exQeKeydown(event)"></div>
     <div class="ex-field ex-qe-note"><label class="ex-flabel">Παραστατικό / σημείωση</label><input class="ex-ei" type="text" id="exQeNote" placeholder="αρ. απόδειξης" onkeydown="exQeKeydown(event)"></div>
     <div class="ex-qe-break"></div>
+    ${exPayHintHtml('exQePaySource', _ex.qe.paySource || exPaySourceDefault(cat))}
     <span id="exQeReeferWrap">${isReefer ? exTrailerFieldHtml(rt, _ex.qe, 'qe') : ''}</span>
     ${isReefer ? '<div class="ex-qe-break"></div>' : ''}
     <span id="exQeFuelFields" class="ex-qe-fuel" style="display:${fuelOn ? 'flex' : 'none'}">
@@ -1742,9 +1802,15 @@ function exQeSetCategory(cat, focus) {
   const g = id => document.getElementById(id);
   const val = id => { const el = g(id); return el ? el.value : ''; };
   const keep = { amt: val('exQeAmt'), note: val('exQeNote'), pay: val('exQePaySource'), fuelSource: val('exQeFuelSource'), liters: val('exQeLiters'), km: val('exQeKm'), station: val('exQeStation') };
+  const prevCat = _ex.qe.category;
   _ex.qe.category = cat;
   _ex.qe.trailerOverride = false; _ex.qe.trailerId = null;
-  if (keep.pay) _ex.qe.paySource = keep.pay;
+  // The payment follows the receipt KIND (E9, 16/9): fuel/tolls keep their
+  // value across each other, and so do the «other» categories — but crossing
+  // the two buckets takes the bucket's default (w11 θέμα 1, owner 21/9:
+  // «Αναμόρφωση» must start on CASH, not inherit DKV from a fuel row).
+  if (keep.pay && prevCat && exPaySourceBucket(prevCat) === exPaySourceBucket(cat)) _ex.qe.paySource = keep.pay;
+  else _ex.qe.paySource = exPaySourceDefault(cat);
   if (keep.fuelSource) _ex.qe.fuelSource = keep.fuelSource;
   // A picked country survives a switch between categories that both carry
   // one (fuel ⇄ reefer ⇄ tolls); it is dropped when the new category has no
@@ -1839,6 +1905,9 @@ async function exQeSubmit(mode) {
   const rt = rtId != null ? exActiveRts().find(r => r.id === rtId) : null;
   const category = g('exQeCategory').value;
   const paySource = g('exQePaySource') ? g('exQePaySource').value : '';
+  // w11 θέμα 2 (owner 21/9): payment is mandatory — the select is pre-filled
+  // per category, an empty value here means the vocabulary failed to load.
+  if (!paySource) { showErrorToast('Χρειάζεται τρόπος πληρωμής.', 'error'); if (g('exQePaySource')) g('exQePaySource').focus(); return; }
   const fuelSource = g('exQeFuelSource') ? g('exQeFuelSource').value : '';
   const body = exBuildLineBody(rtId, {
     category, date: g('exQeDate').value, amount: g('exQeAmt').value, note: g('exQeNote').value,
@@ -1872,7 +1941,13 @@ async function exQeSubmit(mode) {
 function exLineRowHtml(line, opts) {
   if (_ex.editId === line.id) return exEditLineRowHtml(line);
   const mine = typeof user !== 'undefined' && user && line.created_by === user.username;
-  const canEditThis = _ex.canWrite && (mine || ROLE === 'owner');
+  // w11 θέμα 6 (owner 21/9: «η Αλεξία μπορεί να διορθώνει ΚΑΙ να διαγράφει»):
+  // the created_by gate hid every imported line from the accountant (all
+  // 1.425 imported rows were created by the owner's commits) while the
+  // Worker never had such a rule — a screen-only refusal, i.e. a false one.
+  // accountant/owner act on every line; the Worker decides WHICH fields of an
+  // imported line may change (amounts/liters/date/payment never).
+  const canEditThis = _ex.canWrite && (mine || ROLE === 'owner' || ROLE === 'accountant');
   // Nine columns (owner 16/9 via coordinator, Figma 659:1013): payment, note,
   // liters and country each have a column of their own now; what has no
   // column (supplier, km, station, trailer) stays as a faint second line
@@ -1939,21 +2014,27 @@ function exEditLineRowHtml(line) {
   // pattern as the entry row (exQeRowHtml), so a correction reads exactly
   // like an entry; before this the bare inputs left «which box is the
   // amount» to guesswork.
+  // w11 θέμα 6: an imported line (doc_id) keeps its amounts, liters, date and
+  // payment as the statement says (the Worker refuses them with a 400) —
+  // greyed out here with the reason; category / country / note / RT change.
+  const lk = line.doc_id ? ' disabled title="Από κατάσταση DKV — αλλάζει μόνο κατηγορία, χώρα, σημείωση, δρομολόγιο"' : '';
   return `<div class="ex-row edit qe" data-line="${line.id}">
+    ${line.doc_id ? '<div class="ex-qe-title ex-locked-note">Εισαγόμενη από κατάσταση DKV · ποσό, λίτρα, ημερομηνία και πληρωμή δεν αλλάζουν εδώ</div>' : ''}
     <div class="ex-field ex-qe-cat"><label class="ex-flabel">Κατηγορία</label><select class="ex-ei" id="${p('exEdCategory')}" onchange="exEdCategoryChange(${line.id}, this)">${opts}</select></div>
-    ${exPaySourceSelectHtml(p('exEdPaySource'), exLinePaySource(line) || exPaySourceDefault(line.category))}
-    <div class="ex-field ex-qe-date"><label class="ex-flabel">Ημερομηνία</label><input class="ex-ei" type="date" id="${p('exEdDate')}" value="${line.line_date || ''}"></div>
-    <div class="ex-field ex-qe-amt"><label class="ex-flabel">Ποσό €</label><input class="ex-ei" type="number" step="0.01" id="${p('exEdAmt')}" value="${line.net != null || line.vat != null ? exLineAmt(line) : ''}"></div>
+    ${exPaySourceSelectHtml(p('exEdPaySource'), exLinePaySource(line) || exPaySourceDefault(line.category), !!line.doc_id)}
+    <div class="ex-field ex-qe-date"><label class="ex-flabel">Ημερομηνία</label><input class="ex-ei" type="date" id="${p('exEdDate')}" value="${line.line_date || ''}"${lk}></div>
+    <div class="ex-field ex-qe-amt"><label class="ex-flabel">Ποσό €</label><input class="ex-ei" type="number" step="0.01" id="${p('exEdAmt')}" value="${line.net != null || line.vat != null ? exLineAmt(line) : ''}"${lk}></div>
     <div class="ex-field ex-qe-note"><label class="ex-flabel">Παραστατικό / σημείωση</label><input class="ex-ei" type="text" id="${p('exEdNote')}" value="${escapeHtml(line.note || '')}"></div>
+    ${line.doc_id ? '' : exPayHintHtml(p('exEdPaySource'), exLinePaySource(line) || exPaySourceDefault(line.category))}
     <div class="ex-qe-break"></div>
     <span id="${p('exEdFuelSourceWrap')}">${fuelSourceOn ? exFuelSourceSelectHtml(p('exEdFuelSource'), line.fuel_source || 'DKV') : ''}</span>
     <span id="${p('exEdCountryWrap')}">${isTolls ? exCountryFieldHtml(cns, 170) : ''}</span>
     <span id="${p('exEdTrailerWrap')}">${isReefer ? `<div class="ex-field" style="width:170px"><label class="ex-flabel">Ρυμούλκα</label><select class="ex-ei" id="${p('exEdTrailerId')}">${trailerOptsHtml}</select></div>` : ''}</span>
     <div class="ex-qe-break"></div>
     <span id="${p('exEdFuelFields')}" class="ex-qe-fuel" style="display:${fuelOn ? 'flex' : 'none'}">
-      <div class="ex-field" style="width:90px"><label class="ex-flabel">Λίτρα</label><input class="ex-ei" type="number" step="0.01" id="${p('exEdLiters')}" value="${line.liters ?? ''}"></div>
-      <div class="ex-field" style="width:100px"><label class="ex-flabel">Χιλιόμετρα</label><input class="ex-ei" type="number" step="1" min="0" id="${p('exEdKm')}" value="${line.km_reading ?? ''}"></div>
-      <div class="ex-field" style="width:120px"><label class="ex-flabel">Πρατήριο</label><input class="ex-ei" type="text" id="${p('exEdStation')}" value="${escapeHtml(line.station || '')}"></div>
+      <div class="ex-field" style="width:90px"><label class="ex-flabel">Λίτρα</label><input class="ex-ei" type="number" step="0.01" id="${p('exEdLiters')}" value="${line.liters ?? ''}"${lk}></div>
+      <div class="ex-field" style="width:100px"><label class="ex-flabel">Χιλιόμετρα</label><input class="ex-ei" type="number" step="1" min="0" id="${p('exEdKm')}" value="${line.km_reading ?? ''}"${lk}></div>
+      <div class="ex-field" style="width:120px"><label class="ex-flabel">Πρατήριο</label><input class="ex-ei" type="text" id="${p('exEdStation')}" value="${escapeHtml(line.station || '')}"${lk}></div>
       <span id="${p('exEdFuelCountryWrap')}">${fuelOn ? exCountryFieldHtml(cns, 140) : ''}</span>
     </span>
     <div class="ex-qe-break"></div>
@@ -2022,9 +2103,24 @@ async function exSaveEdit(id) {
   // net = the typed amount and zeroes vat, even for a line whose vat used to
   // be split (a DKV-imported line's own numbers are untouched unless a human
   // deliberately edits them here).
-  const body = { category, line_date, reason: reason.trim(), net: Number(amtStr), vat: 0, pay_source: paySource };
+  const editLine = exFindLine(id) || {};
+  // w11 θέμα 6: for an imported line only what the Worker accepts is sent —
+  // category, country, note (rt_id changes through «Ανάθεση»); the locked
+  // inputs above are disabled and would be refused with a 400 anyway.
+  const body = editLine.doc_id
+    ? { category, reason: reason.trim() }
+    : { category, line_date, reason: reason.trim(), net: Number(amtStr), vat: 0, pay_source: paySource };
   const note = g('exEdNote').value.trim();
   if (note) body.note = note;
+  if (editLine.doc_id) {
+    if (tollCountry !== undefined) body.toll_country = tollCountry;
+    try {
+      await ctFetch('/costs/lines/' + id, { method: 'PATCH', body });
+      _ex.editId = null;
+      await exAfterMutation();
+    } catch (e) { exShowError(e); }
+    return;
+  }
   if (EX_FUEL_CATEGORIES.includes(category)) {
     const liters = g('exEdLiters').value, km = g('exEdKm').value, station = g('exEdStation').value.trim();
     if (liters !== '') body.liters = Number(liters);

@@ -2927,7 +2927,9 @@ function ctPick(body, fields) {
 // driver_pay and cash_m left this list on 2026-09-05 (migration 011): driver
 // money lives in the ledger (dl_entries) and TRIP PnL reads it from there.
 // Writing them here again would be the second source of truth T1 forbids.
-var CT_CATEGORIES = ["fuel", "reefer_fuel", "tolls", "dkv", "adblue", "spedition", "accommodation", "ferry_train", "fines", "partner_rate", "fixed_alloc", "other"];
+// w11 θέμα 1 (owner 21/9): 'restatement' = «Έξοδα αναμόρφωσης» (migration 039
+// widens the CHECK the same way — the two lists must move together, αρχή 3).
+var CT_CATEGORIES = ["fuel", "reefer_fuel", "tolls", "dkv", "adblue", "spedition", "accommodation", "ferry_train", "fines", "partner_rate", "fixed_alloc", "other", "restatement"];
 var COSTS_PERMS = {
   // lines PATCH/DELETE: ΣΗΜΑΔΕΜΕΝΗ ΠΡΟΣΘΗΚΗ (owner 24/8) πάνω στην πιστή
   // μεταφορά — μόνο owner, με υποχρεωτικό reason στο audit (βλ. handlers).
@@ -3142,8 +3144,20 @@ async function handleCosts(request, url, origin, env) {
       params.set("select", "*,ct_rt_legs(id,direction,order_id,nat_load_id,seq)");
       params.set("order", "date_start.desc");
       params.set("limit", "200");
-      if (q.get("from")) params.append("date_start", `gte.${q.get("from")}`);
-      if (q.get("to")) params.append("date_start", `lte.${q.get("to")}`);
+      // w11 θέμα 4 (owner 21/9): the DKV import needs every trip that RUNS in
+      // the period, not only those that started in it — a trip that began 8+
+      // days before the statement and was still on the road was missing from
+      // the dropdown (doc 3: two of them). overlap=1 = date_start ≤ to AND
+      // (date_end ≥ from OR date_end NULL); from/to mandatory then, limit 500.
+      if (q.get("overlap") === "1") {
+        if (!q.get("from") || !q.get("to")) return jsonError("overlap=1 needs from and to", 400, origin, env);
+        params.append("date_start", `lte.${q.get("to")}`);
+        params.set("or", `(date_end.gte.${q.get("from")},date_end.is.null)`);
+        params.set("limit", "500");
+      } else {
+        if (q.get("from")) params.append("date_start", `gte.${q.get("from")}`);
+        if (q.get("to")) params.append("date_start", `lte.${q.get("to")}`);
+      }
       if (q.get("truck_id")) params.append("truck_id", `eq.${q.get("truck_id")}`);
       if (q.get("status")) params.append("status", `eq.${q.get("status")}`);
       const { rows } = await dbSelectRaw(env, "ct_round_trips", params);
@@ -3244,6 +3258,11 @@ async function handleCosts(request, url, origin, env) {
       if (typeof row.net !== "number" && typeof row.vat !== "number") {
         return jsonError("net or vat amount required", 400, origin, env);
       }
+      // w11 θέμα 2 (owner 21/9): «πάλι τρόπος πληρωμής» — every line says how
+      // it was paid; the column becomes NOT NULL in migration 040 after the
+      // 8 NULL rows are backfilled. The screen defaults it per category, so a
+      // missing value here is a bug on the caller's side, named as such.
+      if (!row.pay_source) return jsonError("pay_source required (DKV/CASH/REVOLUT/CREDIT)", 400, origin, env);
       // isImport: false — this endpoint never accepts doc_id (that column is
       // only ever set by the DKV importer's /costs/import/commit path below),
       // so every line POSTed here is manual by definition (fuel-collection-
@@ -3294,8 +3313,18 @@ async function handleCosts(request, url, origin, env) {
       const patch = ctPick(body, ["rt_id", "category", "toll_country", "net", "vat", "line_date", "truck_id", "trailer_id", "km_reading", "liters", "station", "note", "fuel_source", "pay_source"]);
       if (!Object.keys(patch).length) return jsonError("Nothing to update", 400, origin, env);
       if (patch.category && !CT_CATEGORIES.includes(patch.category)) return jsonError("Unknown category", 400, origin, env);
+      if ("pay_source" in patch && !patch.pay_source) return jsonError("pay_source required (DKV/CASH/REVOLUT/CREDIT)", 400, origin, env);
       const before = await dbSelectRaw(env, "ct_cost_lines", new URLSearchParams({ id: `eq.${recId}`, select: "*" }));
       if (!before.rows.length) return jsonError("Not found", 404, origin, env);
+      // w11 θέμα 6 (owner 21/9): an imported line (doc_id) may be re-assigned
+      // and re-labelled — rt_id, category, toll_country, note — but its
+      // amounts, liters, date and payment follow the statement the E-SUMMARY
+      // gate reconciled; changing them here would break the document's
+      // agreement silently. Named 400, the screen greys those fields out.
+      if (before.rows[0].doc_id != null) {
+        const locked = Object.keys(patch).filter((k) => !["rt_id", "category", "toll_country", "note"].includes(k));
+        if (locked.length) return jsonError(`imported line: ${locked.join(", ")} follow the DKV statement — correct the ZIP, not the line (rt_id/category/toll_country/note may change)`, 400, origin, env);
+      }
       // Validate the EFFECTIVE line (existing row + this patch merged) — a
       // PATCH that only touches net/vat must not let an already-broken
       // category/fuel_source/toll_country combination slide through
@@ -3342,8 +3371,25 @@ async function handleCosts(request, url, origin, env) {
         console.error("COSTS line delete", res.status, d.slice(0, 200));
         return jsonError(`Delete failed (${res.status})`, 500, origin, env);
       }
-      await audit(env, { actor: caller.sub, role: caller.role, action: "delete", table: "ct_cost_lines", recordId: String(recId), before: before.rows[0], after: { reason: String(body.reason).trim() } });
-      return jsonOk({ deleted: true }, origin, env);
+      // w11 θέμα 6 (owner 21/9): an imported line can be deleted (reason
+      // mandatory, as for every line) — but the document must not pretend it
+      // still agrees 1:1 with its statement: ct_cost_docs.lines_deleted
+      // (migration 041, guarded until it exists) counts what left after the
+      // commit, the audit row names the statement and the imported key.
+      let docLinesDeleted = null;
+      if (before.rows[0].doc_id != null) {
+        try {
+          const d = await dbSelectRaw(env, "ct_cost_docs", new URLSearchParams({ id: `eq.${before.rows[0].doc_id}`, select: "id,lines_deleted" }));
+          if (d.rows.length) {
+            docLinesDeleted = (d.rows[0].lines_deleted || 0) + 1;
+            await ctDbPatch(env, "ct_cost_docs", `id=eq.${before.rows[0].doc_id}`, { lines_deleted: docLinesDeleted });
+          }
+        } catch (e) {
+          if (!isMissingRelationError(e.message)) console.error("COSTS line delete: lines_deleted update failed", e.message);
+        }
+      }
+      await audit(env, { actor: caller.sub, role: caller.role, action: "delete", table: "ct_cost_lines", recordId: String(recId), before: before.rows[0], after: { reason: String(body.reason).trim(), doc_id: before.rows[0].doc_id || null, import_key: before.rows[0].import_key || null, doc_lines_deleted: docLinesDeleted } });
+      return jsonOk({ deleted: true, doc_lines_deleted: docLinesDeleted }, origin, env);
     }
     // ---- LEDGER (Μισθοδοσία Οδηγών) — spec 2026-09-05 §4 ----
     // ---- GET /costs/ledger : one row per driver + reconciliation gap ----
@@ -3642,7 +3688,7 @@ async function handleCosts(request, url, origin, env) {
       // «Τέλη DKV» per RT. The commit re-runs the same function on what the
       // accountant sends, so a toll she assigns in the preview joins its group.
       const summaryDocNoEarly = (parsed.docs.find((d) => d.doc_type === "summary") || {}).doc_no || null;
-      const aggregation = aggregateLines(lines, { statementDocNo: summaryDocNoEarly, rts });
+      const aggregation = aggregateLines(lines, { statementDocNo: summaryDocNoEarly, rts, trucks });
       lines = aggregation.lines;
 
       // w11 θέμα 0 (owner 21/9): manual lines the statement repeats — the

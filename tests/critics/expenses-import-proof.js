@@ -301,7 +301,7 @@ const W11_PREVIEW = (() => {
       L({ id: 'w2', seq: 8, service_date: '2026-09-12', product_code: '0949', product: 'Diesel', category: 'fuel', station: 'OMV', city: 'Niš', time: '08:00', quantity: 100, unit: 'LTR', unit_price: 1.9278,
         net: 192.78, vat: 38.55, gross: 231.33, net_eur: 192.78, vat_eur: 38.55, gross_eur: 231.33, import_key: '99/000000001/015|8||XX1234|2026-09-12|0949|',
         match: { status: 'sure', rt_id: 701, candidates: [] } }),
-      L({ id: 'w3', seq: 0, plate: null, vehicle_raw: null, doc_no: '99/000000001/970', country: null, service_date: '2026-09-15', product_code: '0GRS', product: 'Τέλη DKV', category: 'dkv', quantity: null, unit: null,
+      L({ id: 'w3', seq: 0, plate: 'XX1234', vehicle_raw: null, doc_no: '99/000000001/970', country: null, truck_id: 11, general: false, service_date: '2026-09-15', product_code: '0GRS', product: 'Τέλη DKV', category: 'dkv', quantity: null, unit: null,
         net: 6.42, vat: 0, gross: 6.42, net_eur: 6.42, vat_eur: 0, gross_eur: 6.42, note: 'Τέλη DKV · κατάσταση 99/000000001/000 · 3 πηγές · επιμερισμός κατά καθαρό', import_key: '99/000000001/000|AGG|701|dkv',
         details: [{ date: '2026-09-15', seq: 0, doc_no: '99/000000001/970', product: 'Service charge', net_eur: 4.4, vat_eur: 0, gross_eur: 4.4 }, { date: '2026-09-15', seq: 5, doc_no: '99/000000001/970', product: 'Card fee', net_eur: 1.52, vat_eur: 0, gross_eur: 1.52 }, { date: '2026-09-15', seq: 7, doc_no: '99/000000001/987', product: 'Toll box fee', net_eur: 0.5, vat_eur: 0, gross_eur: 0.5 }],
         agg: { kind: 'fees', count: 3, from: '2026-09-15', to: '2026-09-15' }, match: { status: 'sure', rt_id: 701, candidates: [] } }),
@@ -337,6 +337,9 @@ async function runW11PreviewFlow(browser) {
 
   // 9 — aggregated toll line + members, «Τέλη DKV»
   assert(await page.locator('.ei-agg').count() === 2, 'w11b-9: two aggregated rows (tolls RS ×5, fees ×3) show the «▸ N» button');
+  // coordinator review 21/9: a fee line WITH a round trip files under its
+  // vehicle (plate from the RT's truck), never under «Χωρίς όχημα»
+  assert(await page.locator('.ei-grouphead').count() === 1 && (await page.locator('.ei-grouphead').innerText()).includes('XX1234') && (await page.locator('.ei-grouphead').innerText()).includes('3 γραμμές'), 'w11b-9: ONE vehicle group (XX1234) holding all 3 lines — the «Τέλη DKV» line sits under its vehicle, no «Χωρίς όχημα» group: ' + (await page.locator('.ei-grouphead').allInnerTexts()).join(' | '));
   const tollBtn = page.locator('.ei-agg', { hasText: 'διελεύσεις' });
   assert((await tollBtn.innerText()).trim() === '▸ 5 διελεύσεις', 'w11b-9: the toll row reads «▸ 5 διελεύσεις»: ' + (await tollBtn.innerText()));
   assert(/Διόδια RS · 11\/09–13\/09 · 5 διελεύσεις/.test(await page.locator('.ei-row', { has: tollBtn }).innerText()) || true, 'w11b-9: (note shown in the frame later, not the preview row)');
@@ -459,8 +462,17 @@ async function runCorrectionsAndCommitFlow(browser) {
   const row1 = page.locator('.ei-row').nth(0);
   assert((await row1.locator('.ei-link').innerText()) === 'Επιλογή', 'suggest-status line shows «Επιλογή» (not «Αλλαγή»)');
   await row1.locator('.ei-link').click();
-  await page.waitForSelector('#eiRtCandSel_0', { timeout: 5000 });
-  await page.selectOption('#eiRtCandSel_0', '704');
+  // w11 θέμα 4 (owner 21/9): two levels — truck first, then that truck's trips
+  await page.waitForSelector('#eiRtTruckSel_0', { timeout: 5000 });
+  assert(await page.locator('#eiRtTruckSel_0 option').count() >= 1 && await page.locator('#eiRtOtherSel_0').count() === 1 && await page.locator('#eiRtSearch_0').count() === 1, 'w11-4: the RT editor shows Φορτηγό → Δρομολόγιο with a search box');
+  await page.selectOption('#eiRtTruckSel_0', '3');
+  await page.waitForTimeout(100);
+  const rtOptsTxt = (await page.locator('#eiRtOtherSel_0 option').allInnerTexts()).join(' | ');
+  assert(/RT-704/.test(rtOptsTxt) && !/RT-701/.test(rtOptsTxt), 'w11-4: choosing truck ZZ9999 lists only its trips (RT-704 yes, RT-701 no): ' + rtOptsTxt);
+  await page.fill('#eiRtSearch_0', 'RT-704');
+  await page.waitForTimeout(100);
+  assert(await page.locator('#eiRtOtherSel_0 option').count() === 3, 'w11-4: the search narrows the trips (placeholder + 1 hit + «Χωρίς δρομολόγιο»)');
+  await page.selectOption('#eiRtOtherSel_0', '704');
   await page.waitForTimeout(150);
   assert(dialogs.some((m) => /Να ισχύει στο εξής/.test(m) && m.includes('ZZ9999')), 'RT correction opened a «να ισχύει στο εξής» confirm naming the plate');
   assert((await row1.getAttribute('class') || '').includes('corrected'), 'the corrected row carries the .corrected style hook');

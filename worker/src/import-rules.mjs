@@ -727,6 +727,10 @@ function isoDayDiff(a, b) {
 export function aggregateLines(lines, opts = {}) {
   const statementDocNo = opts.statementDocNo || null;
   const rtById = new Map((opts.rts || []).map((r) => [r.id, r]));
+  // opts.trucks [{id, plate}] (parse only): the fee line takes the plate of its
+  // RT's truck, so the preview files it under that vehicle — a fee that has a
+  // round trip is not «χωρίς όχημα» any more (coordinator review 21/9).
+  const plateByTruck = new Map((opts.trucks || []).map((t) => [t.id, t.plate]));
   const out = [];
   const tollGroups = new Map();
   const feeGroups = new Map();
@@ -784,6 +788,9 @@ export function aggregateLines(lines, opts = {}) {
       agg.country = null;
       agg.product = 'Τέλη DKV';
       if (rt && rt.truck_id != null && agg.truck_id == null) agg.truck_id = rt.truck_id;
+      if (agg.truck_id != null && !agg.plate && plateByTruck.has(agg.truck_id)) agg.plate = plateByTruck.get(agg.truck_id);
+      agg.general = false;
+      agg.none_reason = null;
       agg.note = `Τέλη DKV · κατάσταση ${docNo} · ${sources.size} ${sources.size === 1 ? 'πηγή' : 'πηγές'} · επιμερισμός κατά καθαρό`;
       agg.import_key = `${docNo}|AGG|${first.rt_id}|dkv`;
       fee_members += members.length;

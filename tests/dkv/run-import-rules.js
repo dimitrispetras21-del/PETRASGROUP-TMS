@@ -658,7 +658,7 @@ async function main() {
     ];
     lines.forEach((l) => { l.import_key = buildImportKey(l); });
     const before = lines.reduce((a, l) => a + l.gross_eur, 0);
-    const agg = aggregateLines(lines, { statementDocNo: 'E-2026-09', rts });
+    const agg = aggregateLines(lines, { statementDocNo: 'E-2026-09', rts, trucks: [{ id: 11, plate: 'XX1234' }, { id: 12, plate: 'XX5678' }] });
     const after = agg.lines.reduce((a, l) => a + (l.gross_eur || 0), 0);
     assertEqual(Math.round(after * 100), Math.round(before * 100), 'aggregate: Σ gross_eur unchanged (E-SUMMARY gate untouched)');
     assertEqual(agg.stats.toll_groups, 3, 'aggregate: 3 toll groups (RT501×RS, RT501×HU, RT502×RS)');
@@ -675,6 +675,8 @@ async function main() {
     const fee501 = agg.lines.find((l) => l.category === 'dkv' && l.rt_id === 501);
     assert(fee501 && fee501.details.length === 2 && Math.round(fee501.net_eur * 100) === 8 && fee501.truck_id === 11 && fee501.toll_country === null, 'aggregate: «Τέλη DKV» RT501 = 2 sources, net 0,08, truck from the RT, no toll country: ' + JSON.stringify(fee501 && [fee501.details.length, fee501.net_eur, fee501.truck_id, fee501.toll_country]));
     assertEqual(fee501.import_key, 'E-2026-09|AGG|501|dkv', 'aggregate: fee key = statement|AGG|rt|dkv');
+    assertEqual(fee501.plate, 'XX1234', 'aggregate: the fee line takes the plate of its RT\'s truck (files under the vehicle in the preview)');
+    assert(fee501.general === false && fee501.none_reason === null, 'aggregate: a fee with a round trip is not «general» any more');
     // idempotent: aggregating the output again yields the same groups and sums
     const again = aggregateLines(agg.lines, { statementDocNo: 'E-2026-09', rts });
     assertEqual(again.lines.length, agg.lines.length, 'aggregate: idempotent (same line count)');

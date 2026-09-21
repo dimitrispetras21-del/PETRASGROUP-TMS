@@ -124,7 +124,7 @@ commit;
 
 -- ═══ ΠΡΙΝ (μόνο ανάγνωση) — 21/9: doc 1: 302 γραμμές, doc 2: 489, doc 3: 634 ═══
 -- select doc_id, count(*), round(sum(net)::numeric,2) net, round(sum(coalesce(vat,0))::numeric,2) vat from ct_cost_lines where doc_id is not null group by 1 order by 1;
--- select count(*) from ct_cost_lines where category='dkv' and rt_id is not null and truck_id is null;   -- 531
+-- select count(*) from ct_cost_lines where category='dkv' and rt_id is not null and truck_id is null;   -- 531 (owner 21/9: αναμενόμενο ΜΕΤΑ = 0, παίρνουν το φορτηγό του RT)
 -- select count(*) from ct_cost_lines where category='dkv' and net = 0;                                  -- 220
 -- ═══ ΜΕΤΑ ═══
 -- 1. ίδιο SELECT Σ ανά έγγραφο: net και vat ΙΔΙΑ με το ΠΡΙΝ, πλήθος γραμμών μικρότερο (αναμενόμενο ≈ 110 / ≈ 250 / ≈ 320).

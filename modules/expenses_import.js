@@ -86,6 +86,10 @@ function eiStyles() {
   .ei-twin-choice{display:flex;gap:16px;justify-content:flex-end}
   .ei-twin-choice label{cursor:pointer;display:flex;align-items:center;gap:4px}
   .ei-agg{font-weight:600}
+  .ei-rtedit2{display:flex;flex-wrap:wrap;align-items:center;gap:6px 8px}
+  .ei-rtedit2 label.s{font-size:10px;text-transform:uppercase;letter-spacing:.04em;color:var(--text-mid)}
+  .ei-rtedit2 select{max-width:420px}
+  .ei-rtedit2 .ei-rtsearch{width:180px}
   .ei-details{display:grid;gap:2px;padding:4px 12px 8px 48px;background:var(--surface-sunken);font-size:11.5px}
   .ei-detail{display:grid;grid-template-columns:70px 1fr 80px 70px;gap:8px;align-items:center}
   `;
@@ -450,8 +454,13 @@ async function eiLoadRtsForPeriod() {
   const to = doc.period_to || dates[dates.length - 1];
   if (!from || !to) return;
   try {
-    const res = await ctFetch('/costs/rt?from=' + eiShiftDay(from, -7) + '&to=' + eiShiftDay(to, 7));
-    _ei.rts = (res.records || []).filter((r) => r.status !== 'cancelled');
+    // w11 θέμα 4 (owner 21/9): every OWN-fleet trip that RUNS in the period
+    // ±30 days (overlap on both ends, Worker overlap=1), not only trips that
+    // started in it — two trips of statement 3 were missing that way. Partner
+    // trips carry no plate and no DKV card: out.
+    const res = await ctFetch('/costs/rt?overlap=1&from=' + eiShiftDay(from, -30) + '&to=' + eiShiftDay(to, 30));
+    _ei.rts = (res.records || []).filter((r) => r.status !== 'cancelled' && r.trip_type !== 'PARTNER' && r.truck_id != null)
+      .sort((a, b) => String(a.date_start).localeCompare(String(b.date_start)) || a.id - b.id);
   } catch (e) {
     // Labels fall back to «RT #id»; the picker keeps the strip's list. Said, not hidden.
     showErrorToast('Τα δρομολόγια της περιόδου δεν φορτώθηκαν: ' + ((e && e.message) || e), 'error');
@@ -999,31 +1008,66 @@ function eiNormalizeMatch(l) {
   return { status, rt_id: l.rt_id != null ? l.rt_id : null, candidates: ids.map(rtInfo), general: !!l.general };
 }
 
+// w11 θέμα 4 (owner 21/9): two levels — ΦΟΡΤΗΓΟ first (the line's own truck
+// pre-selected; every truck that has a trip in the period is offered), then
+// the trips of that truck in the period, dated, newest last; a search box
+// narrows the trips by driver / code / dates. «Άλλο φορτηγό…» is just the
+// first select. The suggestions the matcher made still come first.
+function eiRtTruckOptions(l) {
+  const trucksSeen = new Map();
+  for (const r of eiRts()) if (r.truck_id != null) trucksSeen.set(r.truck_id, exTruckName(r.truck_id));
+  const own = l.truck_id != null ? l.truck_id : null;
+  const ids = [...trucksSeen.keys()].sort((a, b) => (a === own ? -1 : b === own ? 1 : 0) || String(trucksSeen.get(a)).localeCompare(String(trucksSeen.get(b))));
+  return ids.map((id) => ({ id, label: trucksSeen.get(id) || ('#' + id) }));
+}
+function eiRtOptionLabel(r) {
+  return (r.code ? r.code + ' · ' : '') + exTruckName(r.truck_id) + ' · ' + exPersonName(r) + ' · ' + exDateRange(r.date_start, r.date_end);
+}
 function eiRtEditorHtml(l) {
   const cands = (l.match && l.match.candidates) || [];
-  const candOpts = cands.map((c) => `<option value="${c.rt_id}">${escapeHtml((c.plate || l.plate || '') + ' · ' + (c.driver || '') + ' · ' + (c.date_start || ''))}</option>`).join('');
-  return `<div class="ei-rtedit">
-    <select id="eiRtCandSel_${l.id}" onchange="eiConfirmRtChange(${l.id}, this.value)">
-      <option value="" disabled selected>— διάλεξε δρομολόγιο —</option>
-      ${candOpts}
+  const candIds = new Set(cands.map((c) => c.rt_id));
+  const trucks = eiRtTruckOptions(l);
+  const truckSel = l.truck_id != null && trucks.some((t) => t.id === l.truck_id) ? l.truck_id : (trucks[0] ? trucks[0].id : '');
+  const truckOpts = trucks.map((t) => `<option value="${t.id}"${t.id === truckSel ? ' selected' : ''}>${escapeHtml(t.label)}${t.id === l.truck_id ? ' (της γραμμής)' : ''}</option>`).join('');
+  const rtsOfTruck = eiRts().filter((r) => r.truck_id === truckSel);
+  const rtOpts = rtsOfTruck.sort((a, b) => (candIds.has(b.id) ? 1 : 0) - (candIds.has(a.id) ? 1 : 0) || String(a.date_start).localeCompare(String(b.date_start)))
+    .map((r) => `<option value="${r.id}">${candIds.has(r.id) ? '★ ' : ''}${escapeHtml(eiRtOptionLabel(r))}</option>`).join('');
+  return `<div class="ei-rtedit ei-rtedit2">
+    <label class="s">Φορτηγό</label>
+    <select id="eiRtTruckSel_${l.id}" onchange="eiRtTruckChange(${l.id}, this.value)">${truckOpts}</select>
+    <label class="s">Δρομολόγιο</label>
+    <input type="text" class="ei-rtsearch" id="eiRtSearch_${l.id}" placeholder="οδηγός / RT / ημερομηνία…" oninput="eiFilterRtOther(${l.id}, this.value)">
+    <select id="eiRtOtherSel_${l.id}" onchange="eiConfirmRtChange(${l.id}, this.value)">
+      <option value="" disabled selected>— διάλεξε δρομολόγιο (${rtsOfTruck.length}) —</option>
+      ${rtOpts}
       <option value="none">Χωρίς δρομολόγιο</option>
-      <option value="__other__">— άλλο (αναζήτηση) —</option>
     </select>
-    <input type="text" class="ei-rtsearch" id="eiRtSearch_${l.id}" placeholder="Αναζήτηση πινακίδα/οδηγό…" style="display:none" oninput="eiFilterRtOther(${l.id}, this.value)">
-    <select id="eiRtOtherSel_${l.id}" style="display:none" onchange="eiConfirmRtChange(${l.id}, this.value)"></select>
   </div>`;
+}
+function eiRtTruckChange(lineId, truckIdStr) {
+  const sel = document.getElementById('eiRtOtherSel_' + lineId);
+  const search = document.getElementById('eiRtSearch_' + lineId);
+  if (search) search.value = '';
+  if (!sel) return;
+  const truckId = Number(truckIdStr);
+  const line = _ei.lines.find((l) => l.id === lineId) || {};
+  const candIds = new Set(((line.match && line.match.candidates) || []).map((c) => c.rt_id));
+  const rows = eiRts().filter((r) => r.truck_id === truckId).sort((a, b) => (candIds.has(b.id) ? 1 : 0) - (candIds.has(a.id) ? 1 : 0) || String(a.date_start).localeCompare(String(b.date_start)));
+  sel.innerHTML = `<option value="" disabled selected>— διάλεξε δρομολόγιο (${rows.length}) —</option>`
+    + rows.map((r) => `<option value="${r.id}">${candIds.has(r.id) ? '★ ' : ''}${escapeHtml(eiRtOptionLabel(r))}</option>`).join('')
+    + '<option value="none">Χωρίς δρομολόγιο</option>';
 }
 
 function eiFilterRtOther(lineId, q) {
   const sel = document.getElementById('eiRtOtherSel_' + lineId);
+  const truckSel = document.getElementById('eiRtTruckSel_' + lineId);
   if (!sel) return;
+  const truckId = truckSel ? Number(truckSel.value) : null;
   const query = (q || '').trim().toLowerCase();
-  const rows = eiRts().filter((r) => {
-    if (!query) return true;
-    return exTruckName(r.truck_id).toLowerCase().includes(query) || exPersonName(r).toLowerCase().includes(query);
-  });
-  sel.innerHTML = '<option value="" disabled selected>— επίλεξε —</option>'
-    + rows.map((r) => `<option value="${r.id}">${escapeHtml(exTruckName(r.truck_id) + ' · ' + exPersonName(r) + ' · ' + exDateRange(r.date_start, r.date_end))}</option>`).join('')
+  const rows = eiRts().filter((r) => (truckId == null || r.truck_id === truckId) && (!query || eiRtOptionLabel(r).toLowerCase().includes(query)))
+    .sort((a, b) => String(a.date_start).localeCompare(String(b.date_start)));
+  sel.innerHTML = `<option value="" disabled selected>— διάλεξε δρομολόγιο (${rows.length}) —</option>`
+    + rows.map((r) => `<option value="${r.id}">${escapeHtml(eiRtOptionLabel(r))}</option>`).join('')
     + '<option value="none">Χωρίς δρομολόγιο</option>';
 }
 
@@ -1032,13 +1076,6 @@ function eiFilterRtOther(lineId, q) {
 // — ο κανόνας ΔΕΝ εφαρμόζεται ξανά μέσα σε αυτή την προεπισκόπηση, μόνο
 // καταγράφεται για τον Worker να τον χρησιμοποιήσει στην επόμενη εισαγωγή.
 function eiConfirmRtChange(lineId, val) {
-  if (val === '__other__') {
-    const s = document.getElementById('eiRtSearch_' + lineId);
-    const sel = document.getElementById('eiRtOtherSel_' + lineId);
-    if (s) s.style.display = '';
-    if (sel) { sel.style.display = ''; eiFilterRtOther(lineId, ''); }
-    return;
-  }
   const line = _ei.lines.find((l) => l.id === lineId);
   if (!line) return;
   const newRtId = (val === '' || val === 'none') ? null : Number(val);

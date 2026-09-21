@@ -13,6 +13,10 @@ const CT_CATEGORY_LABELS = {
   fuel: 'Καύσιμα φορτηγού', reefer_fuel: 'Καύσιμα θαλάμου', tolls: 'Διόδια', dkv: 'DKV κάρτα',
   adblue: 'AdBlue', spedition: 'Spedition',
   accommodation: 'Διαμονή', ferry_train: 'Ferry/Τρένα', fines: 'Πρόστιμα',
+  // w11 θέμα 1 (owner 21/9): «Έξοδα αναμόρφωσης» = a CATEGORY (the 19/9 flag
+  // proposal was rejected) — an expense without a valid document, which the
+  // accountant restates for tax; counts in the trip total like any line.
+  restatement: 'Αναμόρφωση',
   partner_rate: 'Κόμιστρο συνεργάτη', fixed_alloc: 'Πάγια (Tier-2)', other: 'Λοιπά'
 };
 

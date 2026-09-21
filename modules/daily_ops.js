@@ -448,6 +448,10 @@ function _opsDraw() {
   // second escapeHtml printed «&amp;» on screen (seen live 15/9: «K. & N.
   // EFTHYMIADIS», «FRESH TRADE & TRANSPORTS»). Only raw fields get escaped here.
   const route=r=>`${_L(_opsStopLoc(r.id,'Loading'))||'—'} → ${_L(_opsStopLoc(r.id,'Unloading'))||'—'}`;
+  // w11 θέμα 8 (Παντελής/owner 21/9): WHO carries the load — plates + driver —
+  // on the overdue DELIVERIES exactly as on the overdue LOADINGS (2/9 wrote
+  // it only there), both in bold parentheses so the eye finds it at once.
+  const _opsWho=f=>{ const who=[_TT(f),_D(f)].filter(Boolean).join(' · '); return who?` <b class="do-who">(${who})</b>`:''; };
   const zone=(key,rows,title,note,rowHtml)=>{
     if(!rows.length) return '';
     const open=OPS._zoneOpen?.[key]!==false;
@@ -458,14 +462,14 @@ function _opsDraw() {
   const ovH=isToday?zone('ovL',OPS.overdue,
     `${OPS.overdue.length} ${OPS.overdue.length===1?'εκκρεμής παράδοση':'εκκρεμείς παραδόσεις'} από προηγούμενες ημέρες`,'',
     r=>{const f=r.fields, n=_daysAgo(f['Delivery DateTime']);
-      return `<div class="do-zrow" id="r_${r.id}"><span class="do-cl">${_C(f)}</span><span class="do-rt">${route(r)}</span>
+      return `<div class="do-zrow" id="r_${r.id}"><span class="do-cl">${_C(f)}</span><span class="do-rt">${route(r)}${_opsWho(f)}</span>
         <span class="do-late">παράδοση ${_DMY(f['Delivery DateTime'])} · ${_agoTxt(n)}</span>
         ${_opsSlots(r,'ovd')}</div>${OPS._expanded?.has(r.id)?_opsSubRows(r,'Unloading',true):''}`;}):'';
   const ovLH=isToday?zone('ovLoad',OPS.overdueLoads,
     `${OPS.overdueLoads.length} ${OPS.overdueLoads.length===1?'εκκρεμής φόρτωση':'εκκρεμείς φορτώσεις'} από προηγούμενες ημέρες`,
     'δεν φορτώθηκε και δεν μετατέθηκε',
     r=>{const f=r.fields, n=_daysAgo(f['Loading DateTime']);
-      return `<div class="do-zrow" id="r_${r.id}"><span class="do-cl">${_C(f)}</span><span class="do-rt">${route(r)}${_TT(f)?' · '+_TT(f):''}${_D(f)?' · '+_D(f):''}</span>
+      return `<div class="do-zrow" id="r_${r.id}"><span class="do-cl">${_C(f)}</span><span class="do-rt">${route(r)}${_opsWho(f)}</span>
         <span class="do-late">φόρτωση ${_DMY(f['Loading DateTime'])} · ${_agoTxt(n)}</span>
         ${_opsSlots(r,'ovl')}</div>${OPS._expanded?.has(r.id)?_opsSubRows(r,'Loading',true):''}`;}):'';
   const ovLErr=isToday&&OPS.overdueLoadsErr?`<div class="do-err"><span>Η ζώνη εκκρεμών φορτώσεων δεν φορτώθηκε — δεν σημαίνει ότι δεν υπάρχουν εκκρεμείς φορτώσεις. Οι υπόλοιπες ενότητες είναι ενημερωμένες.</span><button class="do-btn" onclick="renderDailyOps()">Ξαναδοκίμασε</button></div>`:'';
