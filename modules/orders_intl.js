@@ -486,7 +486,6 @@ function _renderIntlLayout(c) {
             <option value="Assigned"${_dis('Status','Assigned')}>Ανατεθειμένη</option>
             <option value="In Transit"${_dis('Status','In Transit')}>Σε μεταφορά</option>
             <option value="Delivered"${_dis('Status','Delivered')}>Παραδόθηκε</option>
-            <option value="Invoiced"${_dis('Status','Invoiced')}>Τιμολογήθηκε</option>
             <option value="Cancelled"${_dis('Status','Cancelled')}>Ακυρώθηκε</option>
           </select>
           <select class="svc-filter" onchange="intlFilter('Brand',this.value)">
@@ -935,8 +934,9 @@ function _oiCardHtml(rec, opts) {
       ${kv('Ανταλλαγή παλετών', peV, peCls)}
       ${f['Carrier Type'] ? kv('Μεταφορέας', escapeHtml(f['Carrier Type'])) : ''}
       ${kvm('Τιμή', hasPrice ? _oiMoney(f['Price']) : '')}
-      ${f['Invoice Status'] ? kv('Κατάσταση τιμολόγησης', escapeHtml(f['Invoice Status'])) : ''}
-      ${kv('Τιμολογήθηκε', f['Invoiced'] ? 'Ναι' : 'Όχι')}
+      ${kv('Τιμολογήθηκε', f['Invoiced']
+        ? ['Ναι', f['Invoice Number'] ? 'ΤΠΥ ' + escapeHtml(f['Invoice Number']) : '', f['Invoice Date'] ? new Date(f['Invoice Date']).toLocaleDateString('el-GR') : ''].filter(Boolean).join(' · ')
+        : 'Όχι')}
     </div>
     <div class="oi-sect oi-sect-alt"><div class="oi-sect-t">Διαδρομή</div>${route}</div>
     ${pe ? `<div class="oi-sect"><div class="oi-sect-t">Δελτία παλετών</div>

@@ -446,7 +446,6 @@ var PERMISSIONS = {
   management: {
     "*": ["GET"],
     orders: ["GET", "POST", "PATCH"],
-    invoices: ["GET", "POST", "PATCH"],
     // clients:'full' + drivers:'full' + maintenance:'full'
     clients: ["GET", "POST", "PATCH", "DELETE"],
     partners: ["GET", "POST", "PATCH", "DELETE"],
@@ -489,7 +488,6 @@ var PERMISSIONS = {
     // fuel: cost/P&L data the accountant should see (read-only, via '*': GET,
     // listed for clarity). Same NOTE as management: no interactive writer today.
     fuel: ["GET"],
-    invoices: ["GET", "POST", "PATCH"],
     // clients:'full' + drivers:'full'; maintenance:'view' (read via '*': GET).
     clients: ["GET", "POST", "PATCH", "DELETE"],
     partners: ["GET", "POST", "PATCH", "DELETE"],
@@ -2741,6 +2739,27 @@ async function handleFacadeGetOne(request, tableId, recId, origin, env) {
   return jsonOk(record, origin, env);
 }
 __name(handleFacadeGetOne, "handleFacadeGetOne");
+// Invoicing guard (owner 21/9/2026, Eirini readiness §7.1 decisions 2+3): an
+// order is marked invoiced ONLY with a price and the ERP's invoice number —
+// the TMS never issues invoices (locked 23/8), it records the ERP's. The rule
+// lives in the base (migration 043, trigger on the transition); it is
+// repeated here so the accountant gets a 422 in her own words instead of a
+// 500 from Postgres. Fires only when a row BECOMES invoiced, or when an
+// invoiced row's number/price is edited — never on the two 21/8 rows that
+// were marked without a number (§7.1.9, owner decision pending).
+function invoiceMarkError(table, patch, before) {
+  if (table !== "orders" && table !== "national_orders") return null;
+  if (!before) return null; // not found → the 404 below says so
+  const becomes = patch.invoiced === true && before.invoiced !== true;
+  const edits = before.invoiced === true && patch.invoiced !== false && ("invoice_number" in patch || "price" in patch);
+  if (!becomes && !edits) return null;
+  const number = "invoice_number" in patch ? patch.invoice_number : before.invoice_number;
+  const price = "price" in patch ? patch.price : before.price;
+  if (!String(number ?? "").trim()) return "Δεν σημαίνεται τιμολογημένη χωρίς αριθμό τιμολογίου (ΤΠΥ) του ERP";
+  if (!(Number(price) > 0)) return "Δεν σημαίνεται τιμολογημένη χωρίς τιμή";
+  return null;
+}
+__name(invoiceMarkError, "invoiceMarkError");
 async function handleFacadeUpdate(request, tableId, recId, origin, env, ctx) {
   const { res, caller, cfg } = await authorizeWrite(request, tableId, "PATCH", origin, env);
   if (res) return res;
@@ -2768,6 +2787,8 @@ async function handleFacadeUpdate(request, tableId, recId, origin, env, ctx) {
   }
   // Διαβάζεται ΠΡΙΝ το dbUpdate — μετά δεν υπάρχει τρόπος να ανακτηθεί.
   const before = await readRowBefore(env, cfg.pg, recId);
+  const invErr = invoiceMarkError(cfg.pg, patch, before);
+  if (invErr) return jsonError(invErr, 422, origin, env);
   let updated;
   try {
     updated = await dbUpdate(env, cfg.pg, "legacy_id", recId, patch);

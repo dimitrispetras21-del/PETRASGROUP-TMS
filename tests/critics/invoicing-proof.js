@@ -1,12 +1,12 @@
 // Proof script for «Τιμολόγηση» as the accountant role (Eirini go-live, 21/9/2026).
 // Audit: docs/data-audit/2026-09/2026-09-21-eirini-readiness.md §5.
 //
-// Proves the EXISTING behaviour of modules/invoicing.js — it changes nothing.
-// Where the screen does something the audit flags as a decision for the owner
-// (TMS-generated invoice numbers, no-price rows still selectable, week filter
-// dropping national rows), the assertion pins the CURRENT behaviour and says
-// so in its message, so the day the owner decides otherwise this file goes
-// red on purpose and gets rewritten with the decision.
+// Version 2 (owner decisions 21/9, §7.1): the number is the ERP's (ΤΠΥ),
+// typed every time — no pre-fill, no bulk marking, no marking without a
+// price; national orders get their week from the delivery date; the order
+// card shows number + date read-only. Version 1 pinned the OLD behaviour
+// (INV-YYYY-NNNN, bulk, checkbox) and went red the moment it changed — as
+// intended (git history has it).
 //
 // Run from the MAIN repo's node_modules, against a server that serves the
 // WORKTREE root (the code under test):
@@ -18,13 +18,17 @@
 // from tests/critics/auth.js (fake session + HAR replay), then page.route mocks
 // registered AFTER preparePage so they win over the HAR for the five backend
 // calls the screen makes (orders, national orders, clients, /pallets/gate,
-// /pallets/balances). Static assets load LIVE from PW_BASE_URL.
+// /pallets/balances). Static assets load LIVE from PW_BASE_URL. The PATCH
+// bodies are CAPTURED — the proof is the payload, not the toast. The Worker's
+// own refusal (422 without number/price) is unit-tested in
+// worker/test/invoice-mark-guard.test.mjs; here we prove the screen never
+// sends such a PATCH in the first place.
 //
 // Fixture (synthetic, no production data):
 //   recO1  Delivered, price, no pallet exchange, 10 days old        → ready
 //   recO2  Delivered, price, pallet exchange, gate ok, 40 days old  → ready + overdue (>30)
 //   recO3  Delivered, price, pallet exchange, gate 1/2 covered      → blocked
-//   recO4  Delivered, NO price, no pallet exchange, 5 days old      → ready, «χωρίς τιμή»
+//   recO4  Delivered, NO price, no pallet exchange, 5 days old      → ready list, no form
 //   recO5  Delivered, Invoiced=true, ERP number + date              → invoiced
 //   recO6  leg of recO2 (Parent Order) — must never appear (FEATURES.ORDER_SPLIT)
 //   recN1  national order, no Status, delivery date in the past     → ready (natl)
@@ -57,7 +61,7 @@ const ORDERS_FIXTURE = [
   order('recO2', { Reference: 'R-1002', Price: 2000, 'Pallet Exchange': true, 'Delivery DateTime': daysAgo(40) }),
   order('recO3', { Reference: 'R-1003', Price: 1500, 'Pallet Exchange': true, 'Delivery DateTime': daysAgo(12), Client: ['recC2'] }),
   order('recO4', { Reference: 'R-1004', 'Pallet Exchange': false, 'Delivery DateTime': daysAgo(5) }),
-  order('recO5', { Reference: 'R-1005', Price: 900, 'Pallet Exchange': false, 'Delivery DateTime': daysAgo(20), Invoiced: true, 'Invoice Number': 'ERP-77', 'Invoice Date': daysAgo(3) }),
+  order('recO5', { Reference: 'R-1005', Price: 900, 'Pallet Exchange': false, 'Delivery DateTime': daysAgo(20), Invoiced: true, 'Invoice Number': 'ΤΠΥ-77', 'Invoice Date': daysAgo(3) }),
   order('recO6', { Reference: 'R-1002', 'Pallet Exchange': false, 'Delivery DateTime': daysAgo(40), 'Parent Order': ['recO2'], 'Leg No': 1 }),
 ];
 const NAT_FIXTURE = [
@@ -124,6 +128,7 @@ const tabCount = async (page, label) => {
 };
 const rowsText = page => page.locator('#invBody tr').allInnerTexts();
 const rowFor = (page, ref) => page.locator('#invBody tr', { hasText: ref });
+const invoicedIs = n => document.querySelectorAll('#invTabs button')[2].innerText.includes('(' + n + ')');
 
 async function runAccountant(browser) {
   const captured = [];
@@ -134,7 +139,7 @@ async function runAccountant(browser) {
   // ── NAV: what the role sees ──
   const nav = await page.locator('.sidebar, nav, #sidebar').first().innerText().catch(() => '');
   assert(/Τιμολόγηση/.test(nav) && /Ισοζύγιο Παλετών/.test(nav), 'NAV: Τιμολόγηση + Ισοζύγιο Παλετών visible');
-  assert(/Έξοδα Δρομολογίων/.test(nav) && /Μισθοδοσία/.test(nav), 'NAV: Έξοδα Δρομολογίων + Μισθοδοσία visible (shared accountant role — owner decision §7.1)');
+  assert(/Έξοδα Δρομολογίων/.test(nav) && /Μισθοδοσία/.test(nav), 'NAV: Έξοδα Δρομολογίων + Μισθοδοσία visible (shared accountant role stays — owner 21/9 decision 1)');
   assert(!/TRIP PnL/.test(nav) && !/Ρυθμίσεις/.test(nav) && !/Πίνακας Διοίκησης/.test(nav), 'NAV: TRIP PnL / Ρυθμίσεις / Πίνακας Διοίκησης hidden');
 
   // ── tabs + counts (default tab = Έτοιμες) ──
@@ -142,83 +147,91 @@ async function runAccountant(browser) {
   assert(await tabCount(page, 'Μπλοκαρισμένες') === 1, 'Μπλοκαρισμένες = 1 (recO3, gate 1/2)');
   assert(await tabCount(page, 'Τιμολογημένες') === 1, 'Τιμολογημένες = 1 (recO5)');
   assert(await tabCount(page, 'Όλες') === 6, 'Όλες = 6 — the split leg recO6 is NOT a row (parent billed once)');
-  const overdueBtn = page.locator('#invTabs button', { hasText: 'καθυστερημένες' });
-  assert(/^1 καθυστερημένες/.test((await overdueBtn.innerText()).trim()), 'overdue toggle = 1 (recO2, 40 days — fixed 30-day rule, not payment_terms_days)');
+  assert(/^1 καθυστερημένες/.test((await page.locator('#invTabs button', { hasText: 'καθυστερημένες' }).innerText()).trim()), 'overdue toggle = 1 (recO2, 40 days — fixed 30-day rule, owner 21/9 decision 6: stays)');
   const rows = await rowsText(page);
   assert(rows.length === 4 && rows.some(t => t.includes('N-2001')), 'Έτοιμες tab lists 4 rows incl. the national one');
   assert(!rows.some(t => t.includes('R-1003')), 'blocked recO3 not in Έτοιμες');
 
-  // ── no-price row: «—», never 0; excluded from the KPI total; checkbox STILL enabled ──
-  const r4 = rowFor(page, 'R-1004');
-  const r4txt = await r4.innerText();
+  // ── no bulk, no checkboxes (owner 21/9 decision 2) ──
+  assert(await page.locator('#invBody input[type=checkbox]').count() === 0 && await page.locator('#invThead input[type=checkbox]').count() === 0, 'no checkbox column');
+  assert(await page.locator('#invBatchBtn').count() === 0 && !/Σήμανση επιλεγμένων/.test(await page.locator('body').innerText()), 'no «Σήμανση επιλεγμένων» button');
+  assert(await page.locator('#invThead th').count() === 9, 'table has 9 columns');
+
+  // ── no-price row: «—», never 0; excluded from the KPI total ──
+  const r4txt = await rowFor(page, 'R-1004').innerText();
   assert(/—/.test(r4txt) && !/0,00/.test(r4txt), 'no-price row shows «—», not 0,00');
   const kpi = await page.locator('#invKPI').innerText();
   assert(/3\.300,00/.test(kpi), 'KPI ready total = 3.300,00 € (1000+2000+300; no-price row excluded)');
   assert(/1 χωρίς τιμή/.test(kpi), 'KPI shows «1 χωρίς τιμή» warning');
-  assert(!(await r4.locator('.inv-cb').isDisabled()), 'CURRENT BEHAVIOUR: no-price row checkbox is enabled — can be marked invoiced without a price (audit §3.3.2, owner decision)');
   await page.screenshot({ path: shot('01-ready-1440'), fullPage: true });
 
-  // ── detail panel on a ready order: TMS pre-fills INV-YYYY-NNNN ──
+  // ── no-price order: no form, no button, a message (owner 21/9 decision 3) ──
+  await rowFor(page, 'R-1004').click();
+  await page.waitForFunction(() => document.getElementById('invDetail').style.display !== 'none', null, { timeout: 5000 });
+  let det = page.locator('#invDetail');
+  assert(/Χωρίς τιμή — ζήτησέ την από τον dispatcher/.test(await det.innerText()), 'no-price: «Χωρίς τιμή — ζήτησέ την από τον dispatcher»');
+  assert(await det.locator('#invNumInput').count() === 0 && await det.locator('#invMarkBtn').count() === 0, 'no-price: no number box, no button');
+  assert(!/Καθαρή τιμή/.test(await det.innerText()), 'panel has no «Καθαρή τιμή» row (Net Price is a locked deferral)');
+  const z = await det.locator('> div').first().evaluate(el => getComputedStyle(el).zIndex);
+  assert(Number(z) > 2, 'panel card paints above the sticky thead (z-index ' + z + ' > --z-sticky 2)');
+  await page.screenshot({ path: shot('02-no-price-1440'), fullPage: true });
+
+  // ── ready order: empty ERP number box, button disabled until typed ──
   await rowFor(page, 'R-1001').click();
   await page.waitForSelector('#invNumInput');
-  const prefilled = await page.inputValue('#invNumInput');
-  assert(/^INV-\d{4}-0001$/.test(prefilled), 'CURRENT BEHAVIOUR: invoice number pre-filled by the TMS (' + prefilled + ') — audit §3.3.3, owner decision');
+  assert(await page.inputValue('#invNumInput') === '', 'number box is EMPTY — nothing pre-filled by the TMS');
   assert(await page.inputValue('#invDateInput') === today(), 'invoice date pre-filled with today');
-  await page.screenshot({ path: shot('02-detail-form-1440'), fullPage: true });
+  assert(await page.locator('#invMarkBtn').isDisabled(), 'button disabled while the number is empty');
+  await page.fill('#invNumInput', '   ');
+  assert(await page.locator('#invMarkBtn').isDisabled(), 'button stays disabled on whitespace only');
+  // Even if the button were forced, the handler refuses blanks: no PATCH.
+  await page.evaluate(() => _invMarkInvoiced('recO1'));
+  assert(captured.length === 0, 'forced _invMarkInvoiced with a blank number → no PATCH at all');
+  await page.fill('#invNumInput', 'ΤΠΥ-1042');
+  assert(!(await page.locator('#invMarkBtn').isDisabled()), 'button enabled once a number is typed');
+  assert(/καταχ.ρηση τιμολογ.ου erp/i.test(await page.locator('#invDetail').innerText()), 'form title «Καταχώρηση τιμολογίου ERP»');
+  await page.screenshot({ path: shot('03-form-1440'), fullPage: true });
 
-  // ── single mark: type the ERP number → exactly one PATCH orders with the 3 fields, no Status ──
-  await page.fill('#invNumInput', 'ERP-2026-0001');
-  await page.locator('#invDetail button', { hasText: 'Σήμανση ως τιμολογημένη' }).click();
-  await page.waitForFunction(() => document.querySelectorAll('#invTabs button')[2].innerText.includes('(2)'), null, { timeout: 5000 });
+  // ── single mark with the ERP number → exactly one PATCH orders with the 3 fields, no Status ──
+  await page.click('#invMarkBtn');
+  await page.waitForFunction(invoicedIs, 2, { timeout: 5000 });
   const p1 = captured.filter(c => c.id === 'recO1');
-  assert(p1.length === 1 && p1[0].table === 'orders', 'single mark → exactly one PATCH on ORDERS/recO1');
-  assert(p1[0] && p1[0].fields && p1[0].fields.Invoiced === true && p1[0].fields['Invoice Number'] === 'ERP-2026-0001' && p1[0].fields['Invoice Date'] === today(), 'PATCH body = {Invoiced:true, Invoice Number:ERP-2026-0001, Invoice Date:today}');
+  assert(p1.length === 1 && p1[0].table === 'orders', 'mark → exactly one PATCH on ORDERS/recO1');
+  assert(p1[0] && p1[0].fields && p1[0].fields.Invoiced === true && p1[0].fields['Invoice Number'] === 'ΤΠΥ-1042' && p1[0].fields['Invoice Date'] === today(), 'PATCH body = {Invoiced:true, Invoice Number:ΤΠΥ-1042, Invoice Date:today}');
   assert(p1[0] && !('Status' in p1[0].fields) && Object.keys(p1[0].fields).length === 3, 'no Status write, no extra fields (locked 23/8)');
+  assert(await page.getByText('καταχωρήθηκε').count() > 0 && await page.getByText('εκδόθηκε').count() === 0, 'toast says «καταχωρήθηκε», never «εκδόθηκε»');
   assert(await tabCount(page, 'Τιμολογημένες') === 2 && await tabCount(page, 'Έτοιμες') === 3, 'after the write: Τιμολογημένες 2, Έτοιμες 3');
 
   // ── blocked order: disabled button with stop counts, NO override for accountant ──
   await page.locator('#invTabs button', { hasText: 'Μπλοκαρισμένες' }).click();
   await rowFor(page, 'R-1003').click();
   await page.waitForFunction(() => /Λείπει δελτίο/.test(document.getElementById('invDetail').innerText), null, { timeout: 5000 });
-  const det = page.locator('#invDetail');
+  det = page.locator('#invDetail');
   assert(await det.locator('button:disabled', { hasText: 'Λείπει δελτίο σε 1 από 2 φορτώσεις' }).count() === 1, 'blocked: «Λείπει δελτίο σε 1 από 2 φορτώσεις — δεν τιμολογείται» (disabled)');
   assert(await det.locator('button', { hasText: 'παράκαμψη' }).count() === 0, 'blocked: no «Τιμολόγηση με παράκαμψη» for accountant (owner-only)');
   assert(await det.locator('#invNumInput').count() === 0, 'blocked: no invoice form');
-  assert(await rowFor(page, 'R-1003').locator('.inv-cb').isDisabled(), 'blocked: row checkbox disabled');
-  await page.screenshot({ path: shot('03-blocked-1440'), fullPage: true });
+  await page.screenshot({ path: shot('04-blocked-1440'), fullPage: true });
 
   // ── national order: same form, PATCH goes to NATIONAL ORDERS ──
   await page.locator('#invTabs button', { hasText: 'Έτοιμες' }).click();
   await rowFor(page, 'N-2001').click();
   await page.waitForSelector('#invNumInput');
-  await page.fill('#invNumInput', 'ERP-2026-0002');
-  await page.locator('#invDetail button', { hasText: 'Σήμανση ως τιμολογημένη' }).click();
-  await page.waitForFunction(() => document.querySelectorAll('#invTabs button')[2].innerText.includes('(3)'), null, { timeout: 5000 });
+  assert(!/Εβδομάδα\s*—/.test(await page.locator('#invDetail').innerText()), 'national order shows a week derived from its delivery date (Γ4), not «—»');
+  await page.fill('#invNumInput', 'ΤΠΥ-1043');
+  await page.click('#invMarkBtn');
+  await page.waitForFunction(invoicedIs, 3, { timeout: 5000 });
   const pn = captured.filter(c => c.id === 'recN1');
-  assert(pn.length === 1 && pn[0].table === 'national_orders' && pn[0].fields['Invoice Number'] === 'ERP-2026-0002', 'national mark → one PATCH on NATIONAL ORDERS/recN1 with the typed number');
+  assert(pn.length === 1 && pn[0].table === 'national_orders' && pn[0].fields['Invoice Number'] === 'ΤΠΥ-1043', 'national mark → one PATCH on NATIONAL ORDERS/recN1 with the typed number');
 
-  // ── bulk: checkboxes → confirm modal → one PATCH per order with TMS-generated numbers ──
-  await page.locator('#invTabs button', { hasText: 'Έτοιμες' }).click();
-  await rowFor(page, 'R-1002').locator('.inv-cb').check();
-  await rowFor(page, 'R-1004').locator('.inv-cb').check();
-  assert(await page.locator('#invBatchBtn').isVisible(), 'bulk button appears once rows are checked');
-  await page.click('#invBatchBtn');
-  await page.waitForSelector('#_cfaOk', { timeout: 5000 });
-  const modalTxt = await page.locator('#modalOverlay').innerText();
-  assert(/Σήμανση 2 παραγγελιών/.test(modalTxt) && /Αυτόματη αρίθμηση/.test(modalTxt), 'bulk confirm modal says 2 orders + «Αυτόματη αρίθμηση τιμολογίων»');
-  await page.click('#_cfaOk');
-  await page.waitForFunction(() => document.querySelectorAll('#invTabs button')[2].innerText.includes('(5)'), null, { timeout: 8000 });
-  const bulk = captured.filter(c => c.id === 'recO2' || c.id === 'recO4');
-  assert(bulk.length === 2, 'bulk → 2 PATCHes (recO2, recO4)');
-  assert(bulk.every(c => /^INV-\d{4}-\d{4}$/.test(c.fields['Invoice Number'])), 'CURRENT BEHAVIOUR: bulk writes TMS-generated numbers ' + bulk.map(c => c.fields['Invoice Number']).join(', ') + ' — nobody typed an ERP number (audit §3.3.3)');
-  assert(bulk.some(c => c.id === 'recO4'), 'CURRENT BEHAVIOUR: the no-price order recO4 got marked invoiced in bulk (audit §3.3.2)');
-  assert(!captured.some(c => c.id === 'recO3'), 'blocked recO3 was never PATCHed');
-  assert(!captured.some(c => c.id === 'recO6'), 'hidden leg recO6 was never PATCHed');
+  // ── invoiced order: number + date read-only ──
   await page.locator('#invTabs button', { hasText: 'Τιμολογημένες' }).click();
-  await page.waitForFunction(() => document.querySelectorAll('#invBody tr').length === 5, null, { timeout: 5000 });
-  await page.screenshot({ path: shot('04-invoiced-1440'), fullPage: true });
+  await page.waitForFunction(() => document.querySelectorAll('#invBody tr').length === 3, null, { timeout: 5000 });
+  await rowFor(page, 'R-1005').click();
+  await page.waitForFunction(() => /ΤΠΥ-77/.test(document.getElementById('invDetail').innerText), null, { timeout: 5000 });
+  assert(/τιμολ.γιο τπυ/i.test(await page.locator('#invDetail').innerText()) && await page.locator('#invNumInput').count() === 0, 'invoiced: «Τιμολόγιο ΤΠΥ» ΤΠΥ-77 shown, no form');
+  await page.screenshot({ path: shot('05-invoiced-1440'), fullPage: true });
 
-  // ── week filter silently drops national rows (audit §3.3.5) ──
+  // ── week filter keeps national rows now (Γ4) ──
   await page.locator('#invTabs button', { hasText: 'Όλες' }).click();
   const before = (await rowsText(page)).length;
   await page.fill('input[placeholder="Εβδομάδα από"]', '1');
@@ -226,10 +239,31 @@ async function runAccountant(browser) {
   await page.locator('input[placeholder="Εβδομάδα από"]').dispatchEvent('change');
   await page.waitForTimeout(300);
   const after = await rowsText(page);
-  assert(before === 6 && after.length === 5 && after.every(t => /R-100\d/.test(t)) && !after.some(t => t.includes('N-2001')), 'CURRENT BEHAVIOUR: week filter «από 1» keeps the 5 international rows (Week Number computed on ORDERS) and silently drops the national one — ' + before + ' → ' + after.length);
+  assert(before === 6 && after.length === 6 && after.some(t => t.includes('N-2001')), 'week filter «από 1» keeps all 6 rows incl. the national one — ' + before + ' → ' + after.length);
 
   assert(page._errors.length === 0, 'no page errors / native dialogs: ' + JSON.stringify(page._errors));
-  assert(captured.length === 4, 'total PATCHes = 4 (single intl, single natl, bulk ×2) — nothing else wrote');
+  assert(captured.length === 2, 'total PATCHes = 2 (intl + natl) — nothing else wrote');
+
+  // ── order card (Διεθνείς Παραγγελίες): number + date read-only, no «Τιμολογήθηκε» status option ──
+  console.log('\n[accountant] Διεθνείς Παραγγελίες — καρτέλα');
+  await gotoPage(page, 'orders_intl', BASE_URL);
+  await page.waitForSelector('#irow_recO5', { timeout: 20000 });
+  await page.click('#irow_recO5');
+  await page.waitForFunction(() => /Τιμολογήθηκε/.test((document.getElementById('intlDetail') || {}).innerText || ''), null, { timeout: 5000 });
+  const card = await page.locator('#intlDetail').innerText();
+  assert(/Τιμολογήθηκε\s*Ναι · ΤΠΥ ΤΠΥ-77 · \d{1,2}\/\d{1,2}\/\d{4}/.test(card), 'order card: «Τιμολογήθηκε  Ναι · ΤΠΥ ΤΠΥ-77 · ημερομηνία»: ' + (card.match(/Τιμολογήθηκε[^\n]*/) || [''])[0]);
+  assert(!/Κατάσταση τιμολόγησης/.test(card), 'order card: no «Κατάσταση τιμολόγησης» (invoice_status is not read any more)');
+  assert(await page.locator('option[value="Invoiced"]').count() === 0, 'status filter has no «Τιμολογήθηκε» option');
+  // The panel slides/fades in; a shot taken the instant the text exists paints it blank (21/9, twice).
+  await page.waitForFunction(() => {
+    const p = document.getElementById('intlDetail'); if (!p || !p.firstElementChild) return false;
+    const r = p.firstElementChild.getBoundingClientRect();
+    return r.width > 100 && r.height > 50 && getComputedStyle(p).opacity === '1' && p.getAnimations({ subtree: true }).every(a => a.playState === 'finished');
+  }, null, { timeout: 5000 });
+  await page.waitForTimeout(500);
+  await page.locator('#intlDetail').scrollIntoViewIfNeeded();
+  await page.screenshot({ path: shot('06-order-card-1440') }); // viewport, not fullPage: fullPage re-lays out the sticky panel and paints it blank
+  assert(page._errors.length === 0, 'order card: no page errors');
   await page.context().close();
 }
 

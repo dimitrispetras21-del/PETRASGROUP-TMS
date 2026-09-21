@@ -51,10 +51,9 @@ function _invClientName(rec) {
   const f = rec.fields;
   const id = Array.isArray(f['Client']) ? f['Client'][0] : null;
   if (id) return getClientName(id);   // already HTML-escaped (core/data-helpers.js)
-  // Escaped here too, so the result is HTML-safe on every branch and callers
-  // print it as-is. Escaping AGAIN at the call site printed «&amp;» on screen
-  // (FRESH TRADE &amp; TRANSPORTS) — the name is what the accountant reads.
-  return escapeHtml(f['Client Summary'] || f['Client Name'] || '—');
+  // No fallback label: «Client Summary»/«Client Name» never existed in the
+  // Worker map (audit 21/9 §4.6) — a missing link is shown as «—», not guessed.
+  return '—';
 }
 
 // Raw (un-escaped) client company name, for name-matching against the
@@ -84,7 +83,7 @@ function _invOrderNo(rec) {
   // See docs/design/DEEP_AUDIT_2026-08-04/invoicing.md IN-2.
   // 'Reference', ΟΧΙ 'Order Number': το δεύτερο δεν υπάρχει στον χάρτη του
   // Worker (CLAUDE.md, παγίδες ονομάτων) — έδειχνε «(χωρίς αριθμό)» παντού.
-  return rec.fields['Reference'] || rec.fields['National Order ID'] || '(χωρίς αριθμό)';
+  return rec.fields['Reference'] || '(χωρίς αριθμό)';
 }
 
 function _invPallets(rec) {
@@ -97,25 +96,31 @@ function _invPalletsDisplay(rec) {
   return (v === undefined || v === null || v === '') ? '—' : escapeHtml(String(v));
 }
 
-// H5 fix: defensive fallback chain — older records may use 'Price', newer 'Net Price'.
-// If field is renamed in Airtable, revenue calculations shouldn't silently become 0.
+// Only «Price»: «Net Price» is a locked deferral (23/8, nothing in the map),
+// «Total Price»/«Amount»/«Revenue» never existed — the old fallback chain was
+// dead code that made a reader assume a second price could appear (audit 21/9).
 function _invPrice(rec) {
-  const f = rec.fields;
-  const v = parseFloat(f['Price']);
-  if (Number.isFinite(v)) return v;
-  const v2 = parseFloat(f['Net Price']);
-  if (Number.isFinite(v2)) return v2;
-  const v3 = parseFloat(f['Total Price'] || f['Amount'] || f['Revenue']);
-  return Number.isFinite(v3) ? v3 : null;   // null = δεν καταχωρήθηκε· ΟΧΙ 0
+  const v = parseFloat(rec.fields['Price']);
+  return Number.isFinite(v) ? v : null;   // null = δεν καταχωρήθηκε· ΟΧΙ 0
 }
-function _invNetPrice(rec) {
-  const f = rec.fields;
-  const v = parseFloat(f['Net Price']);
-  if (Number.isFinite(v)) return v;
-  const v2 = parseFloat(f['Price']);
-  return Number.isFinite(v2) ? v2 : null;   // null = δεν καταχωρήθηκε· ΟΧΙ 0 (DESIGN.md #3)
+// «Week Number» is computed by the Worker on ORDERS only. National orders
+// have no such column, so until 21/9 they showed «—» and the week filter
+// silently dropped every one of them (parseInt('—') → NaN). Owner 21/9 (Γ4):
+// derive their week from the delivery date instead.
+function _invWeek(rec) {
+  if (rec.fields['Week Number']) return rec.fields['Week Number'];
+  const dt = _invDeliveredAt(rec);
+  return dt ? _invIsoWeek(dt) : '—';
 }
-function _invWeek(rec) { return rec.fields['Week Number'] || '—'; }
+function _invIsoWeek(dateStr) {
+  const d = new Date(dateStr);
+  if (isNaN(d.getTime())) return '—';
+  const u = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+  const day = u.getUTCDay() || 7;
+  u.setUTCDate(u.getUTCDate() + 4 - day);
+  const y0 = new Date(Date.UTC(u.getUTCFullYear(), 0, 1));
+  return Math.ceil(((u - y0) / 864e5 + 1) / 7);
+}
 
 function _invPERequired(rec) { return !!rec.fields['Pallet Exchange']; }
 
@@ -189,7 +194,7 @@ function _invIsBlocked(rec) {
 }
 
 function _invDeliveredAt(rec) {
-  return rec.fields['Delivery DateTime'] || rec.fields['Delivery Date'] || null;
+  return rec.fields['Delivery DateTime'] || null;
 }
 
 function _invDaysSinceDelivery(rec) {
@@ -225,20 +230,6 @@ function _fmtEuro(v) {
 }
 
 // Auto-suggest next invoice number: INV-YYYY-NNNN
-function _invNextNumber() {
-  const yr = new Date().getFullYear();
-  const prefix = `INV-${yr}-`;
-  let max = 0;
-  INV.data.forEach(r => {
-    const n = (r.fields['Invoice Number']||'').toString();
-    if (n.startsWith(prefix)) {
-      const num = parseInt(n.slice(prefix.length), 10);
-      if (!isNaN(num) && num > max) max = num;
-    }
-  });
-  return prefix + String(max + 1).padStart(4, '0');
-}
-
 // ─── Φ4 — pallet gate + balances loaders ──────────
 // One call for the whole page (chunked at 300 recs, the worker's cap) rather
 // than one call per row — the same reasoning as the natl-orders fetch above:
@@ -384,7 +375,6 @@ function _renderInvLayout(c) {
       <div style="display:flex;gap:8px;align-items:center">
         <button class="btn btn-ghost btn-sm" onclick="_invShowOutstandingModal()">${_i('users')} Υπόλοιπα ανά πελάτη</button>
         <button class="btn btn-secondary btn-sm" onclick="_invExportPDF()">${_i('file_text')} PDF για λογιστή</button>
-        <button class="btn btn-primary btn-sm" onclick="_invBatchInvoice()" id="invBatchBtn" style="display:none">${_i('check')} Σήμανση επιλεγμένων ως τιμολογημένες</button>
         <button class="btn btn-ghost btn-sm" onclick="_invExportCSV()">${_i('file_text')} Εξαγωγή CSV</button>
       </div>
     </div>
@@ -559,7 +549,6 @@ function _renderInvHead() {
   const head = document.getElementById('invThead');
   if (!head) return;
   const cols = [
-    { key: '_check', label: '<input type="checkbox" onchange="_invToggleAll(this.checked)" title="Επιλογή όλων των έτοιμων" style="cursor:pointer;margin:0;vertical-align:middle">', sortable: false, w: '30px' },
     { key: 'order',  label: 'ΑΡ. ΠΑΡΑΓΓΕΛΙΑΣ' },
     { key: 'type',   label: 'ΤΥΠΟΣ' },
     { key: 'client', label: 'ΠΕΛΑΤΗΣ', mw: '200px' },
@@ -646,7 +635,7 @@ function _renderInvTable() {
     const msg = INV.data.length
       ? 'Καμία παραγγελία με τα τρέχοντα φίλτρα'
       : 'Καμία παραδομένη ή τιμολογημένη παραγγελία — δεν υπάρχει τίποτα προς τιμολόγηση';
-    tbody.innerHTML = `<tr><td colspan="10" style="text-align:center;color:var(--text-dim);padding:32px;font-size:13px">${msg}</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="9" style="text-align:center;color:var(--text-dim);padding:32px;font-size:13px">${msg}</td></tr>`;
     return;
   }
 
@@ -687,13 +676,8 @@ function _renderInvTable() {
     const bucket = _invAgingBucket(days);
     const agingBadge = _invBadge(bucket.label, bucket.color, { title: days == null ? 'Χωρίς ημερομηνία παράδοσης' : `${days} ημέρες από την παράδοση` });
 
-    const isReady = _invIsReady(r);
-    const cb = isReady
-      ? `<input type="checkbox" class="inv-cb" data-id="${r.id}" onchange="_invCheckChanged()" style="cursor:pointer;margin:0;vertical-align:middle">`
-      : `<input type="checkbox" class="inv-cb" data-id="${r.id}" disabled title="Δεν επιλέγεται: μπλοκαρισμένη ή ήδη τιμολογημένη" style="opacity:0.3;margin:0;vertical-align:middle">`;
     return `<tr onclick="_invSelect('${r.id}')" style="cursor:pointer;${sel}transition:background 0.15s">
-      <td onclick="event.stopPropagation()" style="${_INV_TD}${overdueBar}">${cb}</td>
-      <td style="${_INV_TD}${_INV_NUM}"><strong style="color:var(--text)">${escapeHtml(_invOrderNo(r))}</strong></td>
+      <td style="${_INV_TD}${_INV_NUM}${overdueBar}"><strong style="color:var(--text)">${escapeHtml(_invOrderNo(r))}</strong></td>
       <td style="${_INV_TD}">${_invTypeBadge(r)}</td>
       <td onclick="event.stopPropagation();_invShowClientHistory(${JSON.stringify(_invClientName(r)).replace(/"/g,'&quot;')})" style="${_INV_TD}cursor:pointer" title="Δες ιστορικό πελάτη"><span style="color:var(--text);font-weight:500;text-decoration:underline dotted;text-underline-offset:3px">${_invClientName(r)}</span></td>
       <td style="${_INV_TD}max-width:340px" title="${escapeHtml(_invRoute(r))}">${
@@ -756,19 +740,26 @@ function _renderInvDetail() {
         border:1px solid var(--warn-border);background:var(--warn-bg);color:var(--warn);cursor:pointer;margin-top:8px">
         ⚠ Τιμολόγηση με παράκαμψη</button>`;
     }
+  } else if (!isInvoiced && canInvoice && _invPrice(rec) === null) {
+    // Owner 21/9 (decision 3): price first, then the invoice. The accountant
+    // asks the dispatcher for the price — she never types prices here.
+    invoiceBlock = `<div style="margin-top:12px;padding:10px 12px;border-radius:6px;border:1px solid var(--border);background:var(--surface-sunken);color:var(--text-mid);font-size:12px">
+      Χωρίς τιμή — ζήτησέ την από τον dispatcher. Χωρίς τιμή δεν καταχωρείται τιμολόγιο.</div>`;
   } else if (!isInvoiced && canInvoice) {
-    const nextNum = _invNextNumber();
+    // The number is the ERP's (ΤΠΥ) — the TMS never issues invoices (locked
+    // 23/8, owner 21/9 decision 2). No pre-filled value: an empty box is the
+    // only honest default, and the button stays disabled until she types one.
     const today = localToday();
     const INPUT = 'width:100%;padding:8px;border-radius:6px;background:var(--surface-card);border:1px solid var(--border-dark);color:var(--text);font-size:13px;font-family:\'DM Sans\',sans-serif;' + _INV_NUM;
     invoiceBlock = `
       <div style="margin-top:12px;padding:12px;background:var(--surface-sunken);border-radius:6px;border:1px solid var(--border)">
-        <div style="font-size:11px;color:var(--text-mid);margin-bottom:8px;text-transform:uppercase;letter-spacing:0.5px">Έκδοση τιμολογίου</div>
-        <input id="invNumInput" value="${nextNum}" style="${INPUT}margin-bottom:8px" placeholder="Αριθμός τιμολογίου">
+        <div style="font-size:11px;color:var(--text-mid);margin-bottom:8px;text-transform:uppercase;letter-spacing:0.5px">Καταχώρηση τιμολογίου ERP</div>
+        <input id="invNumInput" value="" autocomplete="off" oninput="_invNumChanged()" style="${INPUT}margin-bottom:8px" placeholder="Αριθμός ΤΠΥ (ERP)">
         <input id="invDateInput" type="date" value="${today}" style="${INPUT}margin-bottom:12px">
-        <button onclick="_invMarkInvoiced('${rec.id}')" style="${BTN}
-          border:none;background:var(--accent);color:var(--surface-card);cursor:pointer;transition:background 0.15s"
+        <button id="invMarkBtn" disabled onclick="_invMarkInvoiced('${rec.id}')" style="${BTN}
+          border:none;background:var(--accent);color:var(--surface-card);cursor:pointer;transition:background 0.15s;opacity:0.5;cursor:not-allowed"
           onmouseenter="this.style.background='var(--accent-hover)'" onmouseleave="this.style.background='var(--accent)'">
-          Σήμανση ως τιμολογημένη</button>
+          Καταχώρηση τιμολογίου</button>
       </div>`;
   } else if (isInvoiced) {
     const num = f['Invoice Number'] || '—';
@@ -776,7 +767,7 @@ function _renderInvDetail() {
     invoiceBlock = `
       <div style="margin-top:12px;padding:12px;border-radius:6px;border:1px solid var(--ok)">
         <div style="display:flex;justify-content:space-between;margin-bottom:4px">
-          <span style="font-size:11px;color:var(--text-mid);text-transform:uppercase;letter-spacing:0.5px">Τιμολόγιο</span>
+          <span style="font-size:11px;color:var(--text-mid);text-transform:uppercase;letter-spacing:0.5px">Τιμολόγιο ΤΠΥ</span>
           <span style="font-size:11px;font-weight:600;color:var(--ok)">✓ Τιμολογήθηκε</span>
         </div>
         <div style="font-size:13px;color:var(--text);font-weight:600;${_INV_NUM}">${escapeHtml(num)}</div>
@@ -795,7 +786,7 @@ function _renderInvDetail() {
 
   panel.style.display = 'block';
   panel.innerHTML = `
-    <div style="background:var(--surface-card);border:1px solid var(--border);border-radius:6px;padding:16px;position:sticky;top:16px;max-height:calc(100vh - 32px);overflow-y:auto">
+    <div style="background:var(--surface-card);border:1px solid var(--border);border-radius:6px;padding:16px;position:sticky;top:16px;z-index:calc(var(--z-sticky, 5) + 1);max-height:calc(100vh - 32px);overflow-y:auto">
       <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:12px">
         <span style="font-family:'Syne',sans-serif;font-size:18px;font-weight:700;color:var(--text);${_INV_NUM}">${escapeHtml(_invOrderNo(rec))}</span>
         ${_invTypeBadge(rec)}
@@ -806,7 +797,6 @@ function _renderInvDetail() {
       ${row('Εβδομάδα', escapeHtml(String(_invWeek(rec))))}
       ${row('Παλέτες', _invPalletsDisplay(rec))}
       ${row('Τιμή', _fmtEuro(_invPrice(rec)))}
-      ${row('Καθαρή τιμή', _fmtEuro(_invNetPrice(rec)))}
       ${rec._type === 'intl' ? row('Ανταλλαγή παλετών', _invPERequired(rec) ? 'Ναι' : 'Όχι') : ''}
       ${rec._type === 'intl' && _invPERequired(rec) ? row('Δελτία παλετών', _invPESheetsOK(rec) ? '<span style="color:var(--ok)">✓ ανέβηκαν</span>' : '<span style="color:var(--warn)">✗ λείπουν</span>') : ''}
       ${row('Κατάσταση', escapeHtml(f['Status'] || '—'))}
@@ -851,16 +841,21 @@ async function _invMarkInvoiced(recId) {
     return;
   }
 
+  if (_invPrice(rec) === null) {
+    toast('Χωρίς τιμή δεν καταχωρείται τιμολόγιο', 'error');
+    return;
+  }
+
   const numInput  = document.getElementById('invNumInput');
   const dateInput = document.getElementById('invDateInput');
   const invNumber = numInput ? numInput.value.trim() : '';
   const invDate   = dateInput ? dateInput.value : localToday();
 
-  if (!invNumber) { toast('Συμπλήρωσε αριθμό τιμολογίου', 'error'); return; }
+  if (!invNumber) { toast('Συμπλήρωσε τον αριθμό ΤΠΥ του ERP', 'error'); return; }
 
   try {
     await _invWriteInvoice(rec, invNumber, invDate);
-    toast(`Τιμολόγιο ${invNumber} εκδόθηκε`);
+    toast(`Τιμολόγιο ΤΠΥ ${invNumber} καταχωρήθηκε`);
     _applyInvFilters();
     _renderInvDetail();
   } catch (e) {
@@ -884,11 +879,16 @@ async function _invOverrideInvoice(recId) {
   if (!reason || !reason.trim()) { toast('Η παράκαμψη χρειάζεται αιτιολογία', 'error'); return; }
 
   try {
+    // Same rule as the normal path (owner 21/9): the ERP's number, typed —
+    // the override skips the pallet-sheet gate, never the invoice number or
+    // the price (Worker 422 / migration 043 would refuse it anyway).
+    if (_invPrice(rec) === null) { toast('Χωρίς τιμή δεν καταχωρείται τιμολόγιο', 'error'); return; }
+    const invNumber = (prompt('Αριθμός ΤΠΥ του ERP (υποχρεωτικός):') || '').trim();
+    if (!invNumber) { toast('Συμπλήρωσε τον αριθμό ΤΠΥ του ERP', 'error'); return; }
     await plFetch('/pallets/override', { method: 'POST', body: { order_rec: rec.id, reason: reason.trim() } });
-    const invNumber = _invNextNumber();
     const invDate = localToday();
     await _invWriteInvoice(rec, invNumber, invDate);
-    toast(`Τιμολόγιο ${invNumber} εκδόθηκε με παράκαμψη`, 'warn');
+    toast(`Τιμολόγιο ΤΠΥ ${invNumber} καταχωρήθηκε με παράκαμψη`, 'warn');
     _applyInvFilters();
     _renderInvDetail();
   } catch (e) {
@@ -896,75 +896,20 @@ async function _invOverrideInvoice(recId) {
   }
 }
 
-// ─── Batch Operations ───────────────────────────
-function _invCheckChanged() {
-  const checked = document.querySelectorAll('.inv-cb:checked');
-  const btn = document.getElementById('invBatchBtn');
-  if (btn) btn.style.display = checked.length > 0 ? '' : 'none';
+// The «Καταχώρηση» button follows the number box: empty = disabled.
+function _invNumChanged() {
+  const btn = document.getElementById('invMarkBtn');
+  const inp = document.getElementById('invNumInput');
+  if (!btn || !inp) return;
+  const ok = inp.value.trim().length > 0;
+  btn.disabled = !ok;
+  btn.style.opacity = ok ? '1' : '0.5';
+  btn.style.cursor = ok ? 'pointer' : 'not-allowed';
 }
 
-function _invToggleAll(checked) {
-  document.querySelectorAll('.inv-cb:not(:disabled)').forEach(cb => cb.checked = checked);
-  _invCheckChanged();
-}
-
-async function _invBatchInvoice() {
-  const ids = [...document.querySelectorAll('.inv-cb:checked')].map(cb => cb.dataset.id);
-  if (!ids.length) return;
-  if (!(await confirmAction(`Σήμανση ${ids.length} παραγγελιών ως τιμολογημένες;\n(Αυτόματη αρίθμηση τιμολογίων, σημερινή ημερομηνία)`, { confirmLabel: 'Τιμολόγηση' }))) return;
-
-  // H4 fix: track failures in detail + show detailed report instead of silent fail count.
-  let ok = 0;
-  let skipped = 0; // Φ4: re-checked below despite the checkbox being disabled for blocked rows — see comment on the check.
-  const failures = []; // [{id, msg, client}]
-  const today = localToday();
-  for (const id of ids) {
-    const rec = INV.data.find(r => r.id === id);
-    if (!rec) continue;
-    // Φ4: the checkbox is already disabled for blocked orders (_renderInvTable),
-    // but batch invoicing must not just trust that UI state — re-checking here
-    // closes the gap where gate data changed between render and click, or a
-    // future caller stops going through the checkbox at all.
-    if (!_invPESheetsOK(rec)) { skipped++; continue; }
-    try {
-      const tbl = rec._type === 'intl' ? TABLES.ORDERS : TABLES.NAT_ORDERS;
-      const num = _invNextNumber();
-      // Same payload as _invWriteInvoice — no Status write, see the note there.
-      const fields = {
-        'Invoiced': true,
-        'Invoice Number': num,
-        'Invoice Date': today,
-      };
-      await atPatch(tbl, id, fields);
-      Object.assign(rec.fields, fields);
-      ok++;
-    } catch(e) {
-      const clientName = (rec.fields['Client Name'] || rec.fields['Client Summary'] || '').slice(0, 30);
-      failures.push({ id, msg: e.message || String(e), client: clientName });
-      if (typeof logError === 'function') logError(e, 'invBatchInvoice ' + id);
-    }
-  }
-  invalidateCache(TABLES.ORDERS);
-  invalidateCache(TABLES.NAT_ORDERS);
-  const skippedWord = skipped === 1 ? 'παραλείφθηκε' : 'παραλείφθηκαν';
-  const skippedTxt = skipped ? ` · ${skipped} ${skippedWord} (λείπει δελτίο)` : '';
-  if (failures.length) {
-    // Show detailed failure report via modal so user knows exactly which orders to retry
-    const body = `
-      <p style="margin-bottom:12px;${_INV_NUM}">Τιμολογήθηκαν <strong style="color:var(--ok)">${ok}</strong>, Απέτυχαν <strong style="color:var(--danger)">${failures.length}</strong>${skipped ? `, Παραλείφθηκαν <strong style="color:var(--warn)">${skipped}</strong> (λείπει δελτίο παλετών)` : ''}:</p>
-      <div style="max-height:300px;overflow-y:auto;border:1px solid var(--border);border-radius:6px;padding:8px">
-        ${failures.map(f => `<div style="padding:4px 0;border-bottom:1px solid var(--border);font-size:12px">
-          <strong>${escapeHtml(f.client || f.id)}</strong><br>
-          <span style="color:var(--danger);font-size:11px">${escapeHtml(f.msg)}</span>
-        </div>`).join('')}
-      </div>`;
-    if (typeof openModal === 'function') openModal('Αναφορά μαζικής τιμολόγησης', body);
-    else toast(`${ok} τιμολόγια εκδόθηκαν, ${failures.length} απέτυχαν${skippedTxt}`, 'warn');
-  } else {
-    toast(`${ok} τιμολογήθηκαν${skippedTxt}`, skipped ? 'warn' : 'success');
-  }
-  _applyInvFilters();
-}
+// No bulk invoicing any more (owner 21/9, decision 2): every order gets the
+// ERP's own number, typed by the accountant — a loop that invents
+// INV-YYYY-NNNN for N orders at once was the opposite of that.
 
 // ─── Outstanding by Client modal ─────────────────
 function _invShowOutstandingModal() {
@@ -1013,7 +958,7 @@ function _invShowOutstandingModal() {
 function _invExportCSV() {
   // Greek headers: the file goes to the accountant's Excel, not to a machine.
   // Blank (not 0) for a price nobody entered — DESIGN.md #3 holds in exports too.
-  const rows = [['Αρ. παραγγελίας','Τύπος','Πελάτης','Διαδρομή','Ημέρες από παράδοση','Παλέτες','Τιμή','Καθαρή τιμή','Αρ. τιμολογίου','Ημ. τιμολογίου','Δελτία PE','Κατάσταση']];
+  const rows = [['Αρ. παραγγελίας','Τύπος','Πελάτης','Διαδρομή','Ημέρες από παράδοση','Παλέτες','Τιμή','Αρ. τιμολογίου','Ημ. τιμολογίου','Δελτία PE','Κατάσταση']];
   INV.filtered.forEach(r => {
     rows.push([
       _invOrderNo(r),
@@ -1023,7 +968,6 @@ function _invExportCSV() {
       _invDaysSinceDelivery(r) ?? '',
       _invPallets(r),
       _invPrice(r) ?? '',
-      _invNetPrice(r) ?? '',
       r.fields['Invoice Number'] || '',
       r.fields['Invoice Date'] || '',
       _invPESheetsOK(r) ? 'Εντάξει' : 'Λείπουν',
@@ -1067,7 +1011,6 @@ function _invExportPDF() {
   });
 
   const totalPrice = sorted.reduce((s,r) => s + (_invPrice(r)||0), 0);
-  const totalNet = sorted.reduce((s,r) => s + (_invNetPrice(r)||0), 0);
   const totalPallets = sorted.reduce((s,r) => s + (_invPallets(r)||0), 0);
 
   const rows = sorted.map(r => {
@@ -1082,7 +1025,6 @@ function _invExportPDF() {
       <td style="text-align:center">${dtStr}</td>
       <td style="text-align:right">${_invPalletsDisplay(r)}</td>
       <td style="text-align:right">${_fmtEuro(_invPrice(r))}</td>
-      <td style="text-align:right">${_fmtEuro(_invNetPrice(r))}</td>
       <td>${escapeHtml(f['Invoice Number']||'—')}</td>
       <td style="text-align:center">${escapeHtml(f['Invoice Date']||'—')}</td>
     </tr>`;
@@ -1134,8 +1076,7 @@ function _invExportPDF() {
       <div class="stats">
         <div class="stat"><b>${sorted.length}</b>Παραγγελίες</div>
         <div class="stat"><b>${totalPallets}</b>Σύνολο παλετών</div>
-        <div class="stat"><b>${_fmtEuro(totalPrice)}</b>Μικτός τζίρος</div>
-        <div class="stat"><b>${_fmtEuro(totalNet)}</b>Καθαρός τζίρος</div>
+        <div class="stat"><b>${_fmtEuro(totalPrice)}</b>Τζίρος</div>
       </div>
       <table>
         <thead><tr>
@@ -1143,7 +1084,6 @@ function _invExportPDF() {
           <th style="text-align:center">Παράδοση</th>
           <th style="text-align:right">Παλέτες</th>
           <th style="text-align:right">Τιμή</th>
-          <th style="text-align:right">Καθαρή</th>
           <th>Αρ. τιμ.</th><th style="text-align:center">Ημ. τιμ.</th>
         </tr></thead>
         <tbody>${rows}</tbody>
@@ -1151,7 +1091,6 @@ function _invExportPDF() {
           <td colspan="5">ΣΥΝΟΛΟ</td>
           <td style="text-align:right">${totalPallets}</td>
           <td style="text-align:right">${_fmtEuro(totalPrice)}</td>
-          <td style="text-align:right">${_fmtEuro(totalNet)}</td>
           <td colspan="2"></td>
         </tr></tfoot>
       </table>

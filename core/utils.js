@@ -1354,8 +1354,7 @@ async function _refreshNotifs() {
       orders.filter(r => {
         const f = r.fields;
         if (f['Status'] !== 'Delivered') return false;
-        const inv = (f['Invoice Status']||'').toLowerCase();
-        if (f['Invoiced'] || inv === 'invoiced' || inv === 'paid') return false;
+        if (f['Invoiced']) return false;
         const dd = toLocalDate(f['Delivery DateTime']);
         if (!dd) return false;
         const dayDiff = Math.floor((new Date(today) - new Date(dd)) / 864e5);
