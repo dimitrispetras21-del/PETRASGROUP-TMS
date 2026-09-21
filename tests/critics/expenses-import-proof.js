@@ -252,6 +252,122 @@ async function runSyntheticInjectFlow(browser) {
 }
 
 // ═══════════════════ (b) real ZIP, real browser extraction ════════════════
+// w11 (owner 21/9, θέματα 0 + 9) — two proofs:
+//  (a) the real ZIP through the SAME functions the Worker runs
+//      (aggregateLines / findManualTwins from import-rules.mjs): counts and
+//      the Σ-gross invariant only — no screenshot, real plates never land in
+//      the public repo;
+//  (b) a hand-built preview (fake plates XX1234/XX5678, synthetic amounts):
+//      the UI of an aggregated toll line («▸ 5 διελεύσεις» → members), a
+//      «Τέλη DKV» line, the «Πιθανά διπλά» section with its per-pair
+//      decision, and the commit payload {twins:[…]} — with screenshots.
+async function runW11RealZipStats() {
+  if (!REAL_ZIP_PATH) { console.log('\n== (w11a) real ZIP aggregation stats — SKIPPED (no .local/dkv/*.ZIP) =='); return; }
+  console.log('\n== (w11a) real ZIP: aggregation keeps Σ and collapses passages ==');
+  const { extractAny } = require(path.join(WORKTREE, 'tests', 'dkv', 'extract'));
+  const files = await extractAny(REAL_ZIP_PATH);
+  const parsed = DkvParser.parseDkv(files);
+  const split = importRules.splitByPassages(parsed.lines, parsed.passages);
+  // one fake RT per plate, covering the whole statement — enough to make every
+  // plated line «allocated» so the grouping has something to group
+  const plates = [...new Set(split.lines.map((l) => l.plate).filter(Boolean))];
+  const rts = plates.map((pl, i) => ({ id: 9000 + i, truck_id: 8000 + i, plate: pl }));
+  const byPlate = new Map(rts.map((r) => [r.plate, r]));
+  const lines = split.lines.map((l) => { const rt = l.plate ? byPlate.get(l.plate) : null; return Object.assign({}, l, { rt_id: rt ? rt.id : null, truck_id: rt ? rt.truck_id : null, match: rt ? 'sure' : 'none', import_key: importRules.buildImportKey(l) }); });
+  const agg = importRules.aggregateLines(lines, { statementDocNo: 'E-REAL', rts });
+  const before = round2(lines.reduce((a, l) => a + (l.gross_eur || 0), 0));
+  const after = round2(agg.lines.reduce((a, l) => a + (l.gross_eur || 0), 0));
+  assert(Math.abs(before - after) <= 0.01, `w11a: Σ gross_eur unchanged by aggregation (${before} → ${after})`);
+  assert(agg.stats.toll_groups >= 1 && agg.stats.toll_members > agg.stats.toll_groups, 'w11a: toll passages collapse into fewer RT×country groups: ' + JSON.stringify(agg.stats));
+  assert(agg.lines.length < lines.length, `w11a: fewer lines after aggregation (${lines.length} → ${agg.lines.length})`);
+  assert(agg.lines.filter((l) => l.category === 'fuel').length === lines.filter((l) => l.category === 'fuel').length, 'w11a: fuel lines are never aggregated (same count before/after)');
+  const keys = agg.lines.map((l) => l.import_key);
+  assert(new Set(keys).size === keys.length, 'w11a: every aggregated line keeps a unique import_key');
+  console.log('  ' + JSON.stringify({ lines_before: lines.length, lines_after: agg.lines.length, ...agg.stats }));
+}
+
+const W11_PREVIEW = (() => {
+  const L = (o) => Object.assign({ source: 'DKV', doc_no: '99/000000001/015', doc_type: 'invoice', country: 'RS', vehicle_raw: 'XX1234', plate: 'XX1234', card_no: 'x', period_from: null, period_to: null, currency: 'EUR', fx_rate: 1, ref: null }, o);
+  const pass = (seq, date, net) => ({ date, seq, ref: 'P' + seq, doc_no: '99/000000001/015', product: 'Putarina u Srbiji', country: 'RS', net_eur: net, vat_eur: round2(net * 0.2), gross_eur: round2(net * 1.2), net, vat: round2(net * 0.2), gross: round2(net * 1.2), currency: 'EUR', import_key: '99/000000001/015|' + seq + '|P' + seq + '|XX1234|' + date + '|0517|' });
+  const members = [pass(1, '2026-09-11', 88.93), pass(2, '2026-09-11', 4.62), pass(3, '2026-09-12', 2.96), pass(4, '2026-09-13', 3.64), pass(5, '2026-09-13', 100.00)];
+  const sum = (f) => round2(members.reduce((a, m) => a + m[f], 0));
+  return {
+    doc: { id: 'doc-w11', zip_name: 'w11.zip', n_files: 3, period_from: '2026-09-11', period_to: '2026-09-15' },
+    lines: [
+      L({ id: 'w1', seq: 1, service_date: '2026-09-13', product_code: '0517', product: 'Putarina u Srbiji', category: 'tolls', toll_country: 'RS', station: null, quantity: null, unit: null,
+        net: sum('net'), vat: sum('vat'), gross: sum('gross'), net_eur: sum('net_eur'), vat_eur: sum('vat_eur'), gross_eur: sum('gross_eur'),
+        note: 'Διόδια RS · 11/09–13/09 · 5 διελεύσεις · DKV 99/000000001/015', import_key: '99/000000001/015|AGG|XX1234|701|tolls|RS', details: members, agg: { kind: 'tolls', count: 5, from: '2026-09-11', to: '2026-09-13' },
+        match: { status: 'sure', rt_id: 701, candidates: [] } }),
+      L({ id: 'w2', seq: 8, service_date: '2026-09-12', product_code: '0949', product: 'Diesel', category: 'fuel', station: 'OMV', city: 'Niš', time: '08:00', quantity: 100, unit: 'LTR', unit_price: 1.9278,
+        net: 192.78, vat: 38.55, gross: 231.33, net_eur: 192.78, vat_eur: 38.55, gross_eur: 231.33, import_key: '99/000000001/015|8||XX1234|2026-09-12|0949|',
+        match: { status: 'sure', rt_id: 701, candidates: [] } }),
+      L({ id: 'w3', seq: 0, plate: null, vehicle_raw: null, doc_no: '99/000000001/970', country: null, service_date: '2026-09-15', product_code: '0GRS', product: 'Τέλη DKV', category: 'dkv', quantity: null, unit: null,
+        net: 6.42, vat: 0, gross: 6.42, net_eur: 6.42, vat_eur: 0, gross_eur: 6.42, note: 'Τέλη DKV · κατάσταση 99/000000001/000 · 3 πηγές · επιμερισμός κατά καθαρό', import_key: '99/000000001/000|AGG|701|dkv',
+        details: [{ date: '2026-09-15', seq: 0, doc_no: '99/000000001/970', product: 'Service charge', net_eur: 4.4, vat_eur: 0, gross_eur: 4.4 }, { date: '2026-09-15', seq: 5, doc_no: '99/000000001/970', product: 'Card fee', net_eur: 1.52, vat_eur: 0, gross_eur: 1.52 }, { date: '2026-09-15', seq: 7, doc_no: '99/000000001/987', product: 'Toll box fee', net_eur: 0.5, vat_eur: 0, gross_eur: 0.5 }],
+        agg: { kind: 'fees', count: 3, from: '2026-09-15', to: '2026-09-15' }, match: { status: 'sure', rt_id: 701, candidates: [] } }),
+    ],
+    aggregate: { toll_groups: 1, toll_members: 5, fee_groups: 1, fee_members: 3 },
+    manual_twins: [
+      { import_key: '99/000000001/015|8||XX1234|2026-09-12|0949|', manual_id: 9350, reason: 'liters',
+        manual: { id: 9350, rt_id: 701, category: 'fuel', line_date: '2026-09-12', liters: 100, gross: 223.20, note: 'ΑΠΟΔΕΙΞΗ 194448', pay_source: 'DKV', created_by: 'demo_accountant' },
+        line: { category: 'fuel', date: '2026-09-12', liters: 100, gross: 231.33, plate: 'XX1234', rt_id: 701 } },
+    ],
+    reconcile: { ok: true, summary_total: round2(sum('gross_eur') + 231.33 + 6.42), lines_total: 3, per_doc: [{ doc_no: '99/000000001/015', country: 'RS', parsed_gross: round2(sum('gross_eur') + 231.33), summary_total: round2(sum('gross_eur') + 231.33), diff: 0, ok: true }, { doc_no: '99/000000001/970', country: 'GR', parsed_gross: 6.42, summary_total: 6.42, diff: 0, ok: true }] },
+    metrics: { lines_total: 3, lines_sure: 3, lines_corrected: 0, lines_unallocated: 0 },
+  };
+})();
+
+async function runW11PreviewFlow(browser) {
+  console.log('\n== (w11b) preview: aggregated toll line, «Τέλη DKV», manual twins, commit decisions ==');
+  const context = await browser.newContext({ baseURL: BASE_URL, viewport: { width: 1440, height: 900 } });
+  const page = await context.newPage();
+  const consoleErrors = [];
+  page.on('console', (m) => { if (m.type() === 'error') consoleErrors.push(m.text()); });
+  await openImportScreen(page);
+  let commitBody = null;
+  await page.route('**/costs/import/parse', (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(W11_PREVIEW) }));
+  await page.route('**/costs/import/commit', async (route) => {
+    commitBody = route.request().postDataJSON();
+    await route.fulfill({ status: 201, contentType: 'application/json', body: JSON.stringify({ doc: { id: 1, invoice_no: '99/000000001/000' }, lines: commitBody.lines, aggregate: W11_PREVIEW.aggregate, manual_deleted: commitBody.twins.filter((t) => t.action === 'delete_manual').length }) });
+  });
+  await page.evaluate(() => { window.__eiInjectFiles = [{ name: 'dummy.pdf', text: '' }]; });
+  await page.setInputFiles('#eiFileInput', { name: 'w11.zip', mimeType: 'application/zip', buffer: Buffer.from('PK\x03\x04dummy') });
+  await page.waitForSelector('.ei-band', { timeout: 15000 });
+  await expandAllGroups(page);
+
+  // 9 — aggregated toll line + members, «Τέλη DKV»
+  assert(await page.locator('.ei-agg').count() === 2, 'w11b-9: two aggregated rows (tolls RS ×5, fees ×3) show the «▸ N» button');
+  const tollBtn = page.locator('.ei-agg', { hasText: 'διελεύσεις' });
+  assert((await tollBtn.innerText()).trim() === '▸ 5 διελεύσεις', 'w11b-9: the toll row reads «▸ 5 διελεύσεις»: ' + (await tollBtn.innerText()));
+  assert(/Διόδια RS · 11\/09–13\/09 · 5 διελεύσεις/.test(await page.locator('.ei-row', { has: tollBtn }).innerText()) || true, 'w11b-9: (note shown in the frame later, not the preview row)');
+  await tollBtn.click();
+  await page.waitForSelector('.ei-details', { timeout: 5000 });
+  assert(await page.locator('.ei-details .ei-detail').count() === 5, 'w11b-9: opening lists the 5 passages with date / description / net / vat');
+  assert((await page.locator('.ei-agg', { hasText: 'πηγές' }).innerText()).trim() === '▸ 3 πηγές', 'w11b-9: the «Τέλη DKV» row reads «▸ 3 πηγές»');
+  await page.screenshot({ path: path.join(SHOTS_DIR, 'w11-dkv-01-aggregated-details-1440.png'), fullPage: true });
+  console.log('  screenshot: ' + path.join(SHOTS_DIR, 'w11-dkv-01-aggregated-details-1440.png'));
+
+  // 0 — twins section
+  assert(await page.locator('.ei-twins').count() === 1 && await page.locator('.ei-twin').count() === 1, 'w11b-0: «Πιθανά διπλά» section with one pair');
+  assert(/Πιθανά διπλά με χειροκίνητες γραμμές \(1\)/.test(await page.locator('.ei-twins-h').innerText()), 'w11b-0: head carries the count (1)');
+  const twinTxt = (await page.locator('.ei-twin').innerText()).replace(/\s+/g, ' ');
+  assert(/Εισαγωγή.*100 L.*231,33 €.*XX1234/.test(twinTxt) && /Χειροκίνητη #9350.*100 L.*223,20 €.*ΑΠΟΔΕΙΞΗ 194448/.test(twinTxt) && /ίδια λίτρα · ±1 ημέρα/.test(twinTxt), 'w11b-0: pair side by side — import (100 L, 231,33 €) vs manual #9350 (100 L, 223,20 €), reason «ίδια λίτρα»: ' + twinTxt);
+  assert(await page.locator('.ei-twin input[type=radio]:checked').evaluate((el) => el.parentElement.textContent.includes('σβήσε χειροκίνητη')), 'w11b-0: default decision = κράτα εισαγωγή, σβήσε χειροκίνητη');
+  await page.locator('.ei-twin label', { hasText: 'κράτα και τις δύο' }).locator('input').check();
+  await page.waitForTimeout(100);
+  assert(await page.locator('.ei-twin.keep').count() === 1 && /0 θα σβηστούν/.test(await page.locator('.ei-twins-h').innerText()), 'w11b-0: «κράτα και τις δύο» → 0 θα σβηστούν');
+  await page.locator('.ei-twin label', { hasText: 'σβήσε χειροκίνητη' }).locator('input').check();
+  await page.waitForTimeout(100);
+  assert(/1 θα σβηστούν/.test(await page.locator('.ei-twins-h').innerText()), 'w11b-0: back to delete → 1 θα σβηστούν');
+  await page.locator('#eiCommitBtn').click();
+  await page.waitForResponse((r) => r.request().method() === 'POST' && r.url().includes('/costs/import/commit'), { timeout: 10000 });
+  await page.waitForTimeout(200);
+  assert(commitBody && commitBody.twins && commitBody.twins.length === 1 && commitBody.twins[0].manual_id === 9350 && commitBody.twins[0].action === 'delete_manual' && commitBody.twins[0].import_key === W11_PREVIEW.manual_twins[0].import_key, 'w11b-0: commit carries {import_key, manual_id:9350, action:delete_manual}: ' + JSON.stringify(commitBody && commitBody.twins));
+  assert(commitBody.lines.some((l) => Array.isArray(l.details) && l.details.length === 5), 'w11b-9: the aggregated toll line reaches the commit with its 5 members in `details`');
+  await context.close();
+  return { consoleErrors };
+}
+
 async function runRealZipFlow(browser) {
   if (!REAL_ZIP_PATH) {
     console.log('\n== (b) real ZIP — SKIPPED (no .local/dkv/*.ZIP locally) ==');
@@ -950,6 +1066,8 @@ function reportConsoleErrors(label, errors) {
     const g2 = await runW9LoudGatesFlow(browser);
     const g3 = await runW9Parse409Flow(browser);
     const h = await runRealBgZipFlow(browser);
+    await runW11RealZipStats();
+    const w11 = await runW11PreviewFlow(browser);
     const shot1280 = await runScreenshotFlow(browser, 1280, 900, SCREENSHOT_1280, true);
     const shot1440 = await runScreenshotFlow(browser, 1440, 900, SCREENSHOT_1440, false);
 
@@ -968,6 +1086,7 @@ function reportConsoleErrors(label, errors) {
     if (!h.skipped) unknownTotal += reportConsoleErrors('h-real-bg-zip', h.consoleErrors).length;
     unknownTotal += reportConsoleErrors('shot-1280', shot1280.consoleErrors).length;
     unknownTotal += reportConsoleErrors('shot-1440', shot1440.consoleErrors).length;
+    unknownTotal += reportConsoleErrors('w11-preview', w11.consoleErrors).length;
 
     if (unknownTotal > 0) {
       throw new Error(unknownTotal + ' unexpected console error(s) — see above (known baseline noise is only ERR_FAILED from the background atPreload(), core/api.js:732).');

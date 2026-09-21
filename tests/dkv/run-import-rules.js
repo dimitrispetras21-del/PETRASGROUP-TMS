@@ -640,6 +640,75 @@ async function main() {
     assertEqual(legacy.totals, undefined, 'reconcile totals: no meta passed → no totals key (old callers unchanged)');
   }
 
+  // ── w11 θέμα 9: aggregateLines ─────────────────────────────────────────
+  {
+    const { aggregateLines, findManualTwins, buildImportKey } = mod;
+    const rts = [{ id: 501, truck_id: 11 }, { id: 502, truck_id: 12 }];
+    const toll = (seq, date, net, rt, cc, extra) => Object.assign({ doc_no: '26/1/015', seq, ref: 'R' + seq, plate: 'XX1234', truck_id: 11, service_date: date, product_code: '0517', product: 'Putarina', category: 'tolls', country: cc, toll_country: cc, currency: 'EUR', net, vat: Math.round(net * 20) / 100, gross: Math.round(net * 120) / 100, net_eur: net, vat_eur: Math.round(net * 20) / 100, gross_eur: Math.round(net * 120) / 100, rt_id: rt, match: 'sure', sub: '' }, extra || {});
+    const lines = [
+      toll(1, '2026-09-11', 88.93, 501, 'RS'), toll(2, '2026-09-11', 4.62, 501, 'RS'), toll(3, '2026-09-12', 2.96, 501, 'RS'),
+      toll(4, '2026-09-13', 3.64, 501, 'RS', { match: 'suggest' }),
+      toll(5, '2026-09-12', 12.5, 501, 'HU'),                       // other country, same RT → own group
+      toll(6, '2026-09-12', 7.1, 502, 'RS'),                        // other RT → own group
+      toll(7, '2026-09-14', 9.9, null, 'RS', { match: 'none' }),    // unallocated → passes through
+      { doc_no: '26/1/015', seq: 8, plate: 'XX1234', truck_id: 11, service_date: '2026-09-11', product_code: '0949', product: 'Diesel', category: 'fuel', country: 'RS', currency: 'EUR', net: 100, vat: 20, gross: 120, net_eur: 100, vat_eur: 20, gross_eur: 120, rt_id: 501, match: 'sure', quantity: 100, unit: 'LTR', sub: '' },
+      { doc_no: '26/1/970', seq: 0, ref: '0000001', plate: null, truck_id: null, service_date: '2026-09-15', product_code: '0949', product: 'Service charge', category: 'dkv', country: 'GR', currency: 'EUR', net: 0.01, vat: 0, gross: 0.01, net_eur: 0.01, vat_eur: 0, gross_eur: 0.01, rt_id: 501, match: 'sure', sub: 1, note: 'επιμερισμός · ' },
+      { doc_no: '26/1/970', seq: 5, ref: '0000001', plate: null, truck_id: null, service_date: '2026-09-15', product_code: '0GRS', product: 'Card fee', category: 'dkv', country: 'AT', currency: 'EUR', net: 0.07, vat: 0, gross: 0.07, net_eur: 0.07, vat_eur: 0, gross_eur: 0.07, rt_id: 501, match: 'sure', sub: 1 },
+      { doc_no: '26/1/970', seq: 0, ref: '0000001', plate: null, truck_id: null, service_date: '2026-09-15', product_code: '0949', product: 'Service charge', category: 'dkv', country: 'GR', currency: 'EUR', net: 0.02, vat: 0, gross: 0.02, net_eur: 0.02, vat_eur: 0, gross_eur: 0.02, rt_id: 502, match: 'sure', sub: 2 },
+    ];
+    lines.forEach((l) => { l.import_key = buildImportKey(l); });
+    const before = lines.reduce((a, l) => a + l.gross_eur, 0);
+    const agg = aggregateLines(lines, { statementDocNo: 'E-2026-09', rts });
+    const after = agg.lines.reduce((a, l) => a + (l.gross_eur || 0), 0);
+    assertEqual(Math.round(after * 100), Math.round(before * 100), 'aggregate: Σ gross_eur unchanged (E-SUMMARY gate untouched)');
+    assertEqual(agg.stats.toll_groups, 3, 'aggregate: 3 toll groups (RT501×RS, RT501×HU, RT502×RS)');
+    assertEqual(agg.stats.toll_members, 6, 'aggregate: 6 allocated toll lines became members');
+    assertEqual(agg.stats.fee_groups, 2, 'aggregate: one «Τέλη DKV» per RT (501, 502)');
+    const rs501 = agg.lines.find((l) => l.category === 'tolls' && l.rt_id === 501 && l.toll_country === 'RS');
+    assert(rs501 && rs501.details.length === 4 && Math.round(rs501.net_eur * 100) === 10015, 'aggregate: RT501×RS = 4 passages, net 100,15: ' + JSON.stringify(rs501 && [rs501.details.length, rs501.net_eur]));
+    assertEqual(rs501.service_date, '2026-09-13', 'aggregate: line_date = last passage');
+    assertEqual(rs501.import_key, '26/1/015|AGG|XX1234|501|tolls|RS', 'aggregate: stable AGG import_key per doc/plate/RT/country');
+    assertEqual(rs501.match, 'suggest', 'aggregate: one suggest member → the group needs review');
+    assert(/Διόδια RS · 11\/09–13\/09 · 4 διελεύσεις/.test(rs501.note), 'aggregate: note carries country, span and count: ' + rs501.note);
+    assert(agg.lines.some((l) => l.category === 'tolls' && l.rt_id == null && !l.details), 'aggregate: the unallocated toll passes through untouched');
+    assert(agg.lines.some((l) => l.category === 'fuel' && !l.details), 'aggregate: fuel is never aggregated');
+    const fee501 = agg.lines.find((l) => l.category === 'dkv' && l.rt_id === 501);
+    assert(fee501 && fee501.details.length === 2 && Math.round(fee501.net_eur * 100) === 8 && fee501.truck_id === 11 && fee501.toll_country === null, 'aggregate: «Τέλη DKV» RT501 = 2 sources, net 0,08, truck from the RT, no toll country: ' + JSON.stringify(fee501 && [fee501.details.length, fee501.net_eur, fee501.truck_id, fee501.toll_country]));
+    assertEqual(fee501.import_key, 'E-2026-09|AGG|501|dkv', 'aggregate: fee key = statement|AGG|rt|dkv');
+    // idempotent: aggregating the output again yields the same groups and sums
+    const again = aggregateLines(agg.lines, { statementDocNo: 'E-2026-09', rts });
+    assertEqual(again.lines.length, agg.lines.length, 'aggregate: idempotent (same line count)');
+    assertEqual(Math.round(again.lines.reduce((a, l) => a + (l.gross_eur || 0), 0) * 100), Math.round(before * 100), 'aggregate: idempotent (same Σ)');
+    const rsAgain = again.lines.find((l) => l.import_key === rs501.import_key);
+    assertEqual(rsAgain.details.length, 4, 'aggregate: re-run does not duplicate members');
+    // a re-assigned single line merges into the existing group at commit time
+    const merged = aggregateLines(agg.lines.map((l) => (l.rt_id == null && l.category === 'tolls' ? { ...l, rt_id: 501, match: 'sure' } : l)), { statementDocNo: 'E-2026-09', rts });
+    const rsMerged = merged.lines.find((l) => l.import_key === rs501.import_key);
+    assertEqual(rsMerged.details.length, 5, 'aggregate: an unallocated toll assigned to RT501 joins the RT501×RS group at commit');
+
+    // ── w11 θέμα 0: findManualTwins ──────────────────────────────────────
+    const imp = [
+      { import_key: 'k1', rt_id: 501, truck_id: 11, category: 'fuel', service_date: '2026-09-12', quantity: 100, unit: 'LTR', net_eur: 192.78, vat_eur: 38.55, gross_eur: 231.33 },
+      { import_key: 'k2', rt_id: 502, truck_id: 12, category: 'adblue', service_date: '2026-09-15', quantity: 29.57, unit: 'LTR', gross_eur: 34.11 },
+      { import_key: 'k3', rt_id: 501, truck_id: 11, category: 'tolls', service_date: '2026-09-12', gross_eur: 28.54 },
+      { import_key: 'k4', rt_id: 501, truck_id: 11, category: 'dkv', service_date: '2026-09-15', gross_eur: 0.07 },
+    ];
+    const manual = [
+      { id: 350, doc_id: null, rt_id: 501, truck_id: 11, category: 'fuel', line_date: '2026-09-12', liters: 100, net: 180, vat: 43.2, note: 'ΠΕΤΡΕΛΑΙΟ' },        // liters twin, amount +3,6 %
+      { id: 352, doc_id: null, rt_id: 501, truck_id: 11, category: 'reefer_fuel', line_date: '2026-09-13', liters: 100, net: 90, vat: 21.45 },                  // family + ±1 day → twin
+      { id: 404, doc_id: null, rt_id: 502, truck_id: 12, category: 'adblue', line_date: '2026-09-15', liters: 29.57, net: 26.05, vat: 6.26 },
+      { id: 310, doc_id: null, rt_id: 501, truck_id: 11, category: 'tolls', line_date: '2026-09-11', liters: null, net: 28.54, vat: 0 },                     // gross ±0,02, ±1 day → twin
+      { id: 311, doc_id: null, rt_id: 501, truck_id: 11, category: 'tolls', line_date: '2026-09-12', liters: null, net: 30, vat: 0 },                        // gross differs → no
+      { id: 999, doc_id: null, rt_id: 777, truck_id: 99, category: 'fuel', line_date: '2026-09-12', liters: 100, net: 180, vat: 43.2 },                      // other vehicle → no
+      { id: 1267, doc_id: 3, rt_id: 501, truck_id: 11, category: 'fuel', line_date: '2026-09-12', liters: 100, net: 192.78, vat: 38.55 },                     // imported → never a twin
+    ];
+    const twins = findManualTwins(imp, manual);
+    const pairs = twins.map((t) => t.import_key + '↔' + t.manual_id + ':' + t.reason).sort();
+    assertDeepEqual(pairs, ['k1↔350:liters', 'k1↔352:liters', 'k2↔404:liters', 'k3↔310:gross'], 'twins: liters key for the fuel family (any family member, ±1 day), gross ±0,02 for the rest, same vehicle only, never an imported row, never a fee');
+    const t350 = twins.find((t) => t.manual_id === 350);
+    assertEqual(Math.round(t350.manual.gross * 100), 22320, 'twins: the manual side carries its gross for the side-by-side row');
+  }
+
   console.log(`\n${passed} passed, ${failed} failed`);
   process.exit(failed > 0 ? 1 : 0);
 }

@@ -5,7 +5,7 @@ import { validateNewEntry, validatePatch } from "./ledger-rules.mjs";
 import { monthRange, aggregateMonth } from "./ledger-month.mjs";
 import { validateRtBody, planRtUpsert, canRemoveLeg } from "./rt-rules.mjs";
 import { validateLineBody, CT_PAY_SOURCES } from "./costs-line-rules.mjs";
-import { buildImportKey, findDuplicateImportKeys, applyRules, splitByPassages, matchRoundTrip, allocateFees, reconcile, sumGrossEur, isMissingRelationError, toCostLineRow } from "./import-rules.mjs";
+import { buildImportKey, findDuplicateImportKeys, applyRules, splitByPassages, matchRoundTrip, allocateFees, reconcile, sumGrossEur, isMissingRelationError, toCostLineRow, aggregateLines, findManualTwins } from "./import-rules.mjs";
 // core/dkv-parser.js is a plain CJS/UMD file (module.exports = api — see its
 // header), also loaded by app.html in the browser. esbuild (wrangler's
 // bundler) wraps a CommonJS file's module.exports as the default export of
@@ -2874,6 +2874,27 @@ __name(handleOrderCascadeDelete, "handleOrderCascadeDelete");
 // Shared PostgREST helpers, carried over from the parked branch together
 // with the pallets transfer (24/8/2026). ctDbPatch/ctPick are shared by
 // design: the future costs transfer must NOT redeclare them.
+// w11 θέμα 0 (owner 21/9): the manual lines (doc_id IS NULL) a statement may
+// repeat — same vehicles, ±1 day around the lines' dates. One query per
+// import (in.(...) over the RT ids and truck ids of the batch), never per line.
+async function dlManualCandidates(env, lines) {
+  const rtIds = [...new Set((lines || []).map((l) => l.rt_id).filter((v) => v != null))];
+  const truckIds = [...new Set((lines || []).map((l) => l.truck_id).filter((v) => v != null))];
+  if (!rtIds.length && !truckIds.length) return [];
+  const dates = (lines || []).map((l) => l.line_date || l.service_date).filter(Boolean).sort();
+  if (!dates.length) return [];
+  const shift = (iso, d) => new Date(Date.parse(String(iso).slice(0, 10)) + d * 86400000).toISOString().slice(0, 10);
+  const params = new URLSearchParams({ select: "id,rt_id,truck_id,category,line_date,liters,net,vat,note,pay_source,created_by,doc_id", doc_id: "is.null" });
+  params.append("line_date", `gte.${shift(dates[0], -1)}`);
+  params.append("line_date", `lte.${shift(dates[dates.length - 1], 1)}`);
+  const ors = [];
+  if (rtIds.length) ors.push(`rt_id.in.(${rtIds.join(",")})`);
+  if (truckIds.length) ors.push(`truck_id.in.(${truckIds.join(",")})`);
+  params.set("or", `(${ors.join(",")})`);
+  params.set("limit", "2000");
+  return (await dbSelectRaw(env, "ct_cost_lines", params)).rows;
+}
+
 async function ctDbPatch(env, table, filter, patch) {
   const res = await fetch(`${env.SUPABASE_URL}/rest/v1/${table}?${filter}`, {
     method: "PATCH",
@@ -3192,6 +3213,28 @@ async function handleCosts(request, url, origin, env) {
     }
     // ---- POST /costs/lines  (Shape B/C — net + VAT ΧΩΡΙΣΤΑ) ----
     if (resource === "lines" && method === "POST") {
+      // w11 θέμα 0β (owner 21/9): a manual DKV-paid line is refused when the
+      // statement ALREADY holds the same fill/toll (same RT or truck, ±1 day,
+      // same liters for the fuel family / same gross otherwise). Before the
+      // statement arrives it is allowed — the screen only warns — and the
+      // import's twin check cleans up afterwards.
+      {
+        const bodyPeek = await request.clone().json().catch(() => null);
+        if (bodyPeek && bodyPeek.pay_source === "DKV" && (bodyPeek.rt_id != null || bodyPeek.truck_id != null) && bodyPeek.line_date) {
+          const probe = { import_key: "manual", rt_id: bodyPeek.rt_id != null ? Number(bodyPeek.rt_id) : null, truck_id: bodyPeek.truck_id != null ? Number(bodyPeek.truck_id) : null, category: bodyPeek.category, line_date: bodyPeek.line_date, liters: bodyPeek.liters, net: Number(bodyPeek.net || 0), vat: Number(bodyPeek.vat || 0) };
+          const params = new URLSearchParams({ select: "id,rt_id,truck_id,category,line_date,liters,net,vat,note,pay_source,created_by,doc_id", doc_id: "not.is.null" });
+          const shift = (iso, d) => new Date(Date.parse(String(iso).slice(0, 10)) + d * 86400000).toISOString().slice(0, 10);
+          params.append("line_date", `gte.${shift(bodyPeek.line_date, -1)}`);
+          params.append("line_date", `lte.${shift(bodyPeek.line_date, 1)}`);
+          const ors = [];
+          if (probe.rt_id != null) ors.push(`rt_id.eq.${probe.rt_id}`);
+          if (probe.truck_id != null) ors.push(`truck_id.eq.${probe.truck_id}`);
+          params.set("or", `(${ors.join(",")})`);
+          const imported = (await dbSelectRaw(env, "ct_cost_lines", params)).rows.map((r) => ({ ...r, doc_id: null }));
+          const hit = findManualTwins([probe], imported)[0];
+          if (hit) return jsonError(`Οι πληρωμές DKV έρχονται από την κατάσταση — υπάρχει ήδη εισαγόμενη γραμμή #${hit.manual_id} (${hit.reason === "liters" ? "ίδια λίτρα" : "ίδιο ποσό"}, ${hit.manual.line_date}) στο ίδιο δρομολόγιο`, 400, origin, env);
+        }
+      }
       const body = await request.json().catch(() => null);
       if (!body) return jsonError("Invalid request", 400, origin, env);
       if (!CT_CATEGORIES.includes(body.category)) {
@@ -3594,6 +3637,24 @@ async function handleCosts(request, url, origin, env) {
       const reconcileResult = reconcile(lines, (parsed.summary && parsed.summary.docs) || [], { summary: parsed.summary, refunds: parsed.refunds });
       const unknown_plates = [...new Set(lines.filter((l) => l.plate && l.truck_id == null).map((l) => l.plate))];
 
+      // w11 θέμα 9 (owner 21/9): AFTER the gate (sums are unchanged by it) —
+      // tolls become one line per RT × country × statement, account fees one
+      // «Τέλη DKV» per RT. The commit re-runs the same function on what the
+      // accountant sends, so a toll she assigns in the preview joins its group.
+      const summaryDocNoEarly = (parsed.docs.find((d) => d.doc_type === "summary") || {}).doc_no || null;
+      const aggregation = aggregateLines(lines, { statementDocNo: summaryDocNoEarly, rts });
+      lines = aggregation.lines;
+
+      // w11 θέμα 0 (owner 21/9): manual lines the statement repeats — the
+      // preview shows them side by side; the commit refuses to run while a
+      // pair has no decision (see /costs/import/commit).
+      let manual_twins = [];
+      try {
+        manual_twins = findManualTwins(lines, await dlManualCandidates(env, lines));
+      } catch (e) {
+        console.error("IMPORT parse manual twins lookup failed", e.message);
+      }
+
       // ct_cost_docs.vat_refund (migration 036, DRAFT — owner runs it): the
       // foreign VAT REMOBIS refunds against this statement. A receivable, never
       // a cost line (owner 17/9) — kept on the document so «πληρωτέο» can be
@@ -3688,6 +3749,8 @@ async function handleCosts(request, url, origin, env) {
         // left with no candidate — the screen uses fees_no_rt to explain why
         // those lines are excluded from "προς ανάθεση" (none_reason fee_no_rt).
         fee_alloc: { fees_allocated: feeAlloc.stats.fees_allocated, fee_children: feeAlloc.stats.fee_children, fees_no_rt: feeAlloc.stats.fees_no_rt },
+        aggregate: aggregation.stats,
+        manual_twins,
         metrics: {
           lines_total: lines.length,
           lines_sure: lines.filter((l) => l.match === "sure").length,
@@ -3734,11 +3797,35 @@ async function handleCosts(request, url, origin, env) {
       // rather than fail the whole commit (spec §5 step 3, "migration_024_missing: true").
       let migration024Missing = false;
       let migration032Missing = false;
+      let migration038Missing = false; // ct_cost_lines.details (w11 θέμα 9)
       try {
         await dbSelectRaw(env, "ct_cost_lines", new URLSearchParams({ select: "pay_source", limit: "1" }));
       } catch (e) {
         if (isMissingRelationError(e.message)) migration032Missing = true; else throw e;
       }
+      try {
+        await dbSelectRaw(env, "ct_cost_lines", new URLSearchParams({ select: "details", limit: "1" }));
+      } catch (e) {
+        if (isMissingRelationError(e.message)) migration038Missing = true; else throw e;
+      }
+
+      // w11 θέμα 9: the server aggregates what it stores — never trusts the
+      // preview's grouping. Same function as parse; a toll the accountant
+      // re-assigned joins the group of its new RT here.
+      const rtIdsForAgg = [...new Set(body.lines.map((l) => l.rt_id).filter((v) => v != null))];
+      const rtsForAgg = rtIdsForAgg.length ? (await dbSelectRaw(env, "ct_round_trips", new URLSearchParams({ select: "id,truck_id", id: `in.(${rtIdsForAgg.join(",")})` }))).rows : [];
+      const aggregatedCommit = aggregateLines(body.lines, { statementDocNo: doc.invoice_no || null, rts: rtsForAgg });
+      body.lines = aggregatedCommit.lines;
+
+      // w11 θέμα 0: every manual twin needs a decision — recomputed here from
+      // the database, not read from the screen (αρχή 1: the rule lives low).
+      const twinDecisions = new Map((Array.isArray(body.twins) ? body.twins : []).map((t) => [`${t.import_key}|${t.manual_id}`, t.action]));
+      const twinsNow = findManualTwins(body.lines, await dlManualCandidates(env, body.lines));
+      const undecided = twinsNow.filter((t) => !["delete_manual", "keep_both"].includes(twinDecisions.get(`${t.import_key}|${t.manual_id}`)));
+      if (undecided.length) {
+        return jsonOk({ error: "open duplicate pairs with manual lines — decide each pair first", manual_twins: undecided }, origin, env, 409);
+      }
+      const manualToDelete = [...new Set(twinsNow.filter((t) => twinDecisions.get(`${t.import_key}|${t.manual_id}`) === "delete_manual").map((t) => t.manual_id))];
       try {
         await dbSelectRaw(env, "ct_cost_lines", new URLSearchParams({ select: "import_key", limit: "1" }));
       } catch (e) {
@@ -3762,6 +3849,7 @@ async function handleCosts(request, url, origin, env) {
         // commit must not 500 on a column that is not there yet; the line
         // simply lands without the field until 032 runs.
         if (migration032Missing) delete row.pay_source;
+        if (migration038Missing) delete row.details;
         rows.push(row);
       }
 
@@ -3825,6 +3913,32 @@ async function handleCosts(request, url, origin, env) {
       }
       const insertedLines = await insertRes.json();
 
+      // w11 θέμα 0: the manual twins the accountant chose to drop go AFTER the
+      // insert succeeded (a failed insert must never delete anything), each
+      // with its own audit row naming the statement and the imported key.
+      let manualDeleted = 0;
+      const manualDeleteErrors = [];
+      if (manualToDelete.length) {
+        const twinByManual = new Map(twinsNow.map((t) => [t.manual_id, t]));
+        for (const mid of manualToDelete) {
+          try {
+            const beforeM = await dbSelectRaw(env, "ct_cost_lines", new URLSearchParams({ id: `eq.${mid}`, select: "*" }));
+            if (!beforeM.rows.length || beforeM.rows[0].doc_id != null) continue;
+            const del = await fetch(`${env.SUPABASE_URL}/rest/v1/ct_cost_lines?id=eq.${encodeURIComponent(mid)}`, {
+              method: "DELETE",
+              headers: { apikey: env.SUPABASE_SERVICE_KEY, Authorization: `Bearer ${env.SUPABASE_SERVICE_KEY}` }
+            });
+            if (!del.ok) { manualDeleteErrors.push(mid); continue; }
+            const t = twinByManual.get(mid);
+            await audit(env, { actor: caller.sub, role: caller.role, action: "delete", table: "ct_cost_lines", recordId: String(mid), before: beforeM.rows[0], after: { reason: `διπλή με εισαγωγή DKV doc ${body.doc_id} (${t ? t.import_key : "?"}), ${t ? t.reason : ""} — επιλογή στην εισαγωγή`, doc_id: body.doc_id, import_key: t ? t.import_key : null } });
+            manualDeleted++;
+          } catch (e) {
+            console.error("IMPORT commit manual twin delete failed", mid, e.message);
+            manualDeleteErrors.push(mid);
+          }
+        }
+      }
+
       // Rules (the accountant's «ναι, στο εξής») — best-effort: same 42P01
       // guard, never blocks the commit that already wrote the actual lines.
       let rulesWritten = 0;
@@ -3880,7 +3994,11 @@ async function handleCosts(request, url, origin, env) {
         lines: insertedLines,
         rules_written: rulesWritten,
         rules_unavailable: rulesUnavailable,
-        migration_024_missing: migration024Missing
+        migration_024_missing: migration024Missing,
+        migration_038_missing: migration038Missing,
+        aggregate: aggregatedCommit.stats,
+        manual_deleted: manualDeleted,
+        manual_delete_errors: manualDeleteErrors
       }, origin, env, 201);
     }
 

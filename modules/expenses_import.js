@@ -73,7 +73,23 @@ function eiCategoryLabel(cat) {
 // εξωτερικής γραμματοσειράς είναι infra αλλαγή έξω από το αίτημα (CLAUDE.md
 // PRIME DIRECTIVE), και το app έχει ήδη ΕΝΑ σχήμα «πινακίδα» (αρχή 3).
 function eiStyles() {
-  return `<style>
+  /* w11 (21/9): twins section + aggregated-line details */
+  const w11 = `
+  .ei-twins{margin:10px 0;border:1px solid var(--warn);border-left:3px solid var(--warn);border-radius:6px;background:var(--surface-card)}
+  .ei-twins-h{padding:8px 12px;font-size:12px;font-weight:600;color:var(--warn);border-bottom:1px solid var(--border)}
+  .ei-twins-h .s{font-weight:400;color:var(--text-mid)}
+  .ei-twin{display:grid;grid-template-columns:1fr 1fr;gap:4px 16px;padding:8px 12px;border-bottom:1px solid var(--border);font-size:12px}
+  .ei-twin:last-child{border-bottom:0}
+  .ei-twin.keep{opacity:.75}
+  .ei-twin-side b{margin-right:6px}
+  .ei-twin-why{color:var(--text-mid);font-size:11px}
+  .ei-twin-choice{display:flex;gap:16px;justify-content:flex-end}
+  .ei-twin-choice label{cursor:pointer;display:flex;align-items:center;gap:4px}
+  .ei-agg{font-weight:600}
+  .ei-details{display:grid;gap:2px;padding:4px 12px 8px 48px;background:var(--surface-sunken);font-size:11.5px}
+  .ei-detail{display:grid;grid-template-columns:70px 1fr 80px 70px;gap:8px;align-items:center}
+  `;
+  return `<style>${w11}
   .ei-page{font-family:'DM Sans',sans-serif;font-size:14px;color:var(--text);background:var(--surface-card);min-height:100%;padding-bottom:24px}
   .ei-head{display:flex;align-items:center;gap:12px;padding:0 24px;height:58px;border-bottom:1px solid var(--border)}
   .ei-back{background:none;border:0;color:var(--accent);font:inherit;font-size:13px;cursor:pointer;padding:0}
@@ -389,6 +405,12 @@ function eiLoadParseResult(res) {
     corrected: false,
     match: eiNormalizeMatch(l),
   }));
+  // w11 θέμα 0 (owner 21/9): manual lines the statement repeats — one entry
+  // per pair, default «κράτα εισαγωγή, σβήσε χειροκίνητη»; the commit sends
+  // every decision and the Worker refuses to run with an undecided pair.
+  _ei.twins = ((res && res.manual_twins) || []).map((t, i) => Object.assign({ idx: i, action: 'delete_manual' }, t));
+  _ei.aggregate = (res && res.aggregate) || null;
+  _ei.detailsOpen = new Set();
   _ei.rules = [];
   _ei.filter = 'all';
   _ei.reviewMode = 'all';
@@ -470,6 +492,7 @@ function eiPreviewHtml() {
     </div>
     ${eiReconcileBandHtml()}
     ${eiNoticesHtml()}
+    ${eiTwinsHtml()}
     ${eiNoneReasonSummaryHtml()}
     ${eiReviewToggleHtml()}
     ${eiChipsRowHtml()}
@@ -754,10 +777,57 @@ function eiDescription(l) {
       parts.push('→ EUR ισοτιμία ' + Number(l.fx_rate).toLocaleString('el-GR', { maximumFractionDigits: 6 }));
     }
   }
-  if (l.sub != null) {
+  if (l.agg) {
+    // w11 θέμα 9: one line per RT × country (tolls) / per RT (fees) — the
+    // members open under the row, the table never holds them as rows.
+    const n = l.agg.count;
+    const word = l.agg.kind === 'fees' ? (n === 1 ? 'πηγή' : 'πηγές') : (n === 1 ? 'διέλευση' : 'διελεύσεις');
+    const open = _ei.detailsOpen && _ei.detailsOpen.has(l.id);
+    parts.push(`<button type="button" class="ei-link ei-agg" onclick="eiToggleDetails(${l.id})">${open ? '▾' : '▸'} ${n} ${word}</button>`);
+  } else if (l.sub != null && l.sub !== '') {
     parts.push('↳ από λίστα διελεύσεων · ' + (l.passages_count != null ? l.passages_count : '—') + ' διελεύσεις');
   }
   return parts.join(' · ') || '—';
+}
+function eiToggleDetails(id) {
+  if (!_ei.detailsOpen) _ei.detailsOpen = new Set();
+  if (_ei.detailsOpen.has(id)) _ei.detailsOpen.delete(id); else _ei.detailsOpen.add(id);
+  eiRenderShell();
+}
+function eiDetailsHtml(l) {
+  const rows = (l.details || []).map((m) => `<div class="ei-detail"><span class="s">${m.date ? exDate(m.date) : '—'}</span><span class="s ei-desc">${escapeHtml([m.product, m.doc_no, m.ref].filter(Boolean).join(' · '))}</span><span class="n r">${exEur(m.net_eur)}</span><span class="n r dim">${exEur(m.vat_eur)}</span></div>`).join('');
+  return `<div class="ei-details">${rows}</div>`;
+}
+// w11 θέμα 0: side-by-side pairs, one decision each
+function eiTwinsHtml() {
+  const twins = _ei.twins || [];
+  if (!twins.length) return '';
+  const byKey = new Map(_ei.lines.map((l) => [l.import_key, l]));
+  const rows = twins.map((t) => {
+    const l = byKey.get(t.import_key) || {};
+    const lit = (v) => (v != null ? Number(v).toLocaleString('el-GR', { maximumFractionDigits: 2 }) + ' L' : '');
+    const left = `<div class="ei-twin-side"><b>Εισαγωγή</b> ${escapeHtml(eiCategoryLabel(l.category || t.line.category))} · ${t.line.date ? exDate(t.line.date) : '—'} · ${lit(t.line.liters)} · ${exEur(t.line.gross)} · ${escapeHtml(l.plate || t.line.plate || '')}</div>`;
+    const right = `<div class="ei-twin-side"><b>Χειροκίνητη #${t.manual_id}</b> ${escapeHtml(eiCategoryLabel(t.manual.category))} · ${t.manual.line_date ? exDate(t.manual.line_date) : '—'} · ${lit(t.manual.liters)} · ${exEur(t.manual.gross)} · ${escapeHtml(t.manual.note || '')} · ${escapeHtml(t.manual.created_by || '')}</div>`;
+    const why = t.reason === 'liters' ? 'ίδια λίτρα' : 'ίδιο ποσό';
+    return `<div class="ei-twin${t.action === 'keep_both' ? ' keep' : ''}">
+      ${left}${right}
+      <div class="ei-twin-why">${why} · ±1 ημέρα</div>
+      <div class="ei-twin-choice">
+        <label><input type="radio" name="eiTwin_${t.idx}" ${t.action === 'delete_manual' ? 'checked' : ''} onchange="eiSetTwin(${t.idx},'delete_manual')"> κράτα εισαγωγή, σβήσε χειροκίνητη</label>
+        <label><input type="radio" name="eiTwin_${t.idx}" ${t.action === 'keep_both' ? 'checked' : ''} onchange="eiSetTwin(${t.idx},'keep_both')"> κράτα και τις δύο</label>
+      </div>
+    </div>`;
+  }).join('');
+  const nDel = twins.filter((t) => t.action === 'delete_manual').length;
+  return `<div class="ei-twins">
+    <div class="ei-twins-h">Πιθανά διπλά με χειροκίνητες γραμμές (${twins.length}) <span class="s">— ${nDel} θα σβηστούν με την καταχώρηση, με αυτόματη αιτιολογία</span></div>
+    ${rows}
+  </div>`;
+}
+function eiSetTwin(idx, action) {
+  const t = (_ei.twins || []).find((x) => x.idx === idx);
+  if (t) t.action = action;
+  eiRenderShell();
 }
 
 function eiLineRowHtml(l) {
@@ -781,7 +851,7 @@ function eiLineRowHtml(l) {
     <div class="ei-rtcell">${eiRtCellHtml(l)}</div>
     <div class="ei-rowlink">${linkLabel ? `<button class="ei-link" onclick="${linkOnclick}(${l.id})">${escapeHtml(linkLabel)}</button>` : ''}</div>
   </div>`;
-  return row + (_ei.rtEditingId === l.id ? eiRtEditorHtml(l) : '') + (_ei.plateEditingId === l.id ? eiPlateEditorHtml(l) : '');
+  return row + (l.agg && _ei.detailsOpen && _ei.detailsOpen.has(l.id) ? eiDetailsHtml(l) : '') + (_ei.rtEditingId === l.id ? eiRtEditorHtml(l) : '') + (_ei.plateEditingId === l.id ? eiPlateEditorHtml(l) : '');
 }
 
 // Κείμενο ΓΙΑΤΙ + σωστή ενέργεια ανά none_reason (spec round 2 point 1) —
@@ -1040,6 +1110,9 @@ async function eiCommit() {
     lines: selected.map(eiFinalLineForCommit),
     rules: _ei.rules,
     examples: [],
+    // w11 θέμα 0: one decision per pair — the Worker recomputes the pairs
+    // and refuses (409) any it finds without a decision.
+    twins: (_ei.twins || []).map((t) => ({ import_key: t.import_key, manual_id: t.manual_id, action: t.action })),
   };
   try {
     const res = await ctFetch('/costs/import/commit', { method: 'POST', body });
@@ -1047,7 +1120,8 @@ async function eiCommit() {
     // actually inserted, not what was sent (αρχή 2: the table, not the toast).
     const n = (res && res.inserted != null) ? res.inserted : (res && Array.isArray(res.lines) ? res.lines.length : selected.length);
     const invoiceNo = (res && res.invoice_no) || (res && res.doc && res.doc.invoice_no);
-    showErrorToast('Καταχωρήθηκαν ' + n + ' γραμμές' + (invoiceNo ? ' · παραστατικό ' + invoiceNo : ''), 'info');
+    const del = res && res.manual_deleted ? ' · σβήστηκαν ' + res.manual_deleted + ' χειροκίνητες διπλές' : '';
+    showErrorToast('Καταχωρήθηκαν ' + n + ' γραμμές' + (invoiceNo ? ' · παραστατικό ' + invoiceNo : '') + del, 'info');
     renderExpenses();
   } catch (e) {
     _ei.committing = false;

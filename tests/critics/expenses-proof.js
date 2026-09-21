@@ -925,6 +925,20 @@ async function runWideColumnsCheck(browser) {
     assert(/Πληρωμή:.*130,00 €.*50,00 €.*Μετρητά 35,00 €/.test(payLine) && !/DKV 130|Revolut 50/.test(payLine), `[${width}] payment breakdown [DKV mark] 130 · [R mark] 50 · Μετρητά 35 — words only where there is no mark (fines counted under Μετρητά): ${payLine}`);
     assert(await page.locator('.ex-frame .ex-ov-totals .ex-brand[data-brand="DKV"] img.ex-src').count() === 1 && await page.locator('.ex-frame .ex-ov-totals .ex-brand[data-brand="REVOLUT"] svg').count() === 1, `[${width}] the payment summary carries the SAME source badges as the lines (DKV logo, Revolut R) — coordinator note on shot 02b`);
     await assertNoPageScrollX(page, width + ' (wide, frame open)');
+    // w11 θέμα 5 (21/9): header, RT row and totals share ONE grid origin —
+    // the RT row lives inside .ex-trip (3px left rule), the other two got the
+    // same invisible rule. Measured before the fix: every amount column of
+    // the row sat 3px right of its header at ≤1440 (absorbed by the flexible
+    // Διαδρομή column at 1920, so the widest shot never showed it).
+    const edges = await page.evaluate(() => {
+      const cols = el => [...el.children].map(c => Math.round(c.getBoundingClientRect().left));
+      return { gh: cols(document.querySelector('.ex-gh')), gr: cols(document.querySelector('.ex-gr[data-rt="801"]')), gt: cols(document.querySelector('.ex-gt')) };
+    });
+    const offCols = edges.gh.map((x, i) => [i, x, edges.gr[i]]).filter(([, a, b]) => a !== b);
+    assert(offCols.length === 0, `[${width}] every header column starts where the RT row column starts (3px .ex-trip rule compensated): ${JSON.stringify(offCols)}`);
+    // totals: the label spans columns 1–5, so gt child i ↔ header column i+4
+    const offTot = edges.gt.slice(1).map((x, i) => [i + 5, edges.gh[i + 5], x]).filter(([, a, b]) => a !== b);
+    assert(offTot.length === 0, `[${width}] every totals column starts where its header column starts: ${JSON.stringify(offTot)}`);
     await assertGridFits(page, width + ' (9 amount cols)');
     await assertHeaderCellsFit(page, width + ' (9 amount cols)');
     await assertLineHeaderFits(page, width + ' (wide frame)');

@@ -54,6 +54,10 @@ export function toCostLineRow(ln) {
     station: ln.station || null,
     note: ln.note || noteParts.join(' · ')
   };
+  // w11 (owner 21/9, θέμα 9): an aggregated line keeps its members in
+  // `details` (jsonb, migration 038) — per passage / per fee source — so the
+  // frame can open «11 διελεύσεις ▸» without the table holding 11 rows.
+  if (Array.isArray(ln.details) && ln.details.length) row.details = ln.details;
   // A line that reaches the table without a euro amount or a date would be the
   // «green toast, wrong data» failure — refuse it by name instead.
   const missing = [];
@@ -662,3 +666,203 @@ export function isMissingRelationError(message) {
   const s = String(message || '');
   return MISSING_RELATION_CODES.some((code) => s.includes(`"code":"${code}"`));
 }
+
+// ─── w11 θέμα 9 (owner 21/9): ONE line per RT × country × statement for tolls,
+// ONE «Τέλη DKV» line per RT × statement for account fees ────────────────────
+//
+// WHY (measured 21/9 on the three imported statements): the Serbian toll
+// statement lists every PASSAGE (115 / 75 / 118 lines → 18 / 11 / 19
+// rt-day groups, up to 10 a day); allocateFees split every general fee into
+// every RT of the period (374 children on doc 3, shares of 0,00–0,07 €,
+// 531 rows without a truck, 220 with net 0). The accountant reads a trip as
+// «Διόδια RS 250 €», not as eleven 4,62 € rows. Fuel / AdBlue / reefer are
+// NEVER aggregated (Κ2 odometer per refuel, liters per fill, and the manual
+// twin check below works per fill).
+//
+// Idempotent: a member of an earlier aggregation (a line carrying `details`)
+// contributes its members again, so the commit can re-run the same function
+// on lines the accountant re-assigned in the preview and still end with one
+// line per key. Sums are exact: every member already has 2 decimals, so the
+// sum of members == round2(sum) and the E-SUMMARY gate is untouched.
+const AGG_TOLL_CATEGORIES = new Set(['tolls']);
+const AGG_AMOUNT_FIELDS = ['net', 'vat', 'gross', 'net_eur', 'vat_eur', 'gross_eur'];
+
+function memberOf(line) {
+  return {
+    date: line.service_date || line.line_date || null,
+    seq: line.seq != null ? line.seq : null,
+    ref: line.ref || null,
+    doc_no: line.doc_no || null,
+    product: line.product || null,
+    country: line.toll_country || line.country || null,
+    net_eur: typeof line.net_eur === 'number' ? line.net_eur : (typeof line.net === 'number' ? line.net : null),
+    vat_eur: typeof line.vat_eur === 'number' ? line.vat_eur : (typeof line.vat === 'number' ? line.vat : null),
+    gross_eur: typeof line.gross_eur === 'number' ? line.gross_eur : (typeof line.gross === 'number' ? line.gross : null),
+    net: typeof line.net === 'number' ? line.net : null,
+    vat: typeof line.vat === 'number' ? line.vat : null,
+    gross: typeof line.gross === 'number' ? line.gross : null,
+    currency: line.currency || null,
+    import_key: line.import_key || buildImportKey(line),
+  };
+}
+
+function sumField(members, field) {
+  let any = false; let total = 0;
+  for (const m of members) { if (typeof m[field] === 'number') { any = true; total += m[field]; } }
+  return any ? round2(total) : null;
+}
+
+function isoDayDiff(a, b) {
+  if (!a || !b) return null;
+  return Math.round((Date.parse(String(b).slice(0, 10)) - Date.parse(String(a).slice(0, 10))) / 86400000);
+}
+
+/**
+ * aggregateLines(lines, { statementDocNo, rts })
+ *   - tolls with an rt_id: key = doc_no|rt_id|country → one line
+ *   - fee children (category 'dkv', rt_id set): key = rt_id → one «Τέλη DKV» line per RT
+ *   - everything else (fuel family, unallocated tolls, ferries, fines, other) passes through
+ * Returns { lines, stats:{ toll_groups, toll_members, fee_groups, fee_members } }.
+ */
+export function aggregateLines(lines, opts = {}) {
+  const statementDocNo = opts.statementDocNo || null;
+  const rtById = new Map((opts.rts || []).map((r) => [r.id, r]));
+  const out = [];
+  const tollGroups = new Map();
+  const feeGroups = new Map();
+  const order = []; // first-seen order of group keys, to keep the preview stable
+
+  for (const line of lines || []) {
+    const members = Array.isArray(line.details) && line.details.length ? line.details : [memberOf(line)];
+    if (AGG_TOLL_CATEGORIES.has(line.category) && line.rt_id != null) {
+      const cc = line.toll_country || line.country || '';
+      const key = `${line.doc_no || ''}|${line.rt_id}|${cc}`;
+      if (!tollGroups.has(key)) { tollGroups.set(key, { first: line, members: [] }); order.push(['toll', key]); }
+      tollGroups.get(key).members.push(...members);
+      continue;
+    }
+    if (line.category === 'dkv' && line.rt_id != null) {
+      const key = String(line.rt_id);
+      if (!feeGroups.has(key)) { feeGroups.set(key, { first: line, members: [] }); order.push(['fee', key]); }
+      feeGroups.get(key).members.push(...members);
+      continue;
+    }
+    out.push(line);
+  }
+
+  let toll_members = 0; let fee_members = 0;
+  for (const [kind, key] of order) {
+    const g = kind === 'toll' ? tollGroups.get(key) : feeGroups.get(key);
+    const first = g.first;
+    const members = g.members.slice().sort((a, b) => String(a.date || '').localeCompare(String(b.date || '')) || (a.seq || 0) - (b.seq || 0));
+    const dates = members.map((m) => m.date).filter(Boolean).sort();
+    const from = dates[0] || first.service_date || null;
+    const to = dates[dates.length - 1] || first.service_date || null;
+    const agg = { ...first, details: members, agg: { kind: kind === 'toll' ? 'tolls' : 'fees', count: members.length, from, to } };
+    for (const f of AGG_AMOUNT_FIELDS) agg[f] = sumField(members, f);
+    // a single-member group is still «aggregated» (same shape, same key) — the
+    // preview shows it plainly, the commit treats it identically
+    agg.service_date = to;
+    agg.line_date = to;
+    agg.sub = '';
+    // the worst member status wins: a group with one «suggest» member still
+    // needs the accountant's eye
+    const statuses = (lines || []).filter((l) => l.rt_id === first.rt_id && (kind === 'toll' ? AGG_TOLL_CATEGORIES.has(l.category) : l.category === 'dkv')).map((l) => l.match);
+    agg.match = statuses.includes('none') ? 'none' : statuses.includes('suggest') ? 'suggest' : (first.match || 'sure');
+    const span = from && to && from !== to ? `${fmtDM(from)}–${fmtDM(to)}` : fmtDM(to);
+    if (kind === 'toll') {
+      const cc = first.toll_country || first.country || '';
+      agg.toll_country = cc || null;
+      agg.note = `Διόδια ${cc} · ${span} · ${members.length} ${members.length === 1 ? 'διέλευση' : 'διελεύσεις'} · DKV ${first.doc_no || ''}`.trim();
+      agg.import_key = `${first.doc_no || ''}|AGG|${first.plate || ''}|${first.rt_id}|tolls|${cc}`;
+      toll_members += members.length;
+    } else {
+      const rt = rtById.get(first.rt_id);
+      const docNo = statementDocNo || first.doc_no || '';
+      const sources = new Set(members.map((m) => `${m.doc_no || ''}/${m.seq != null ? m.seq : ''}`));
+      agg.toll_country = null;
+      agg.country = null;
+      agg.product = 'Τέλη DKV';
+      if (rt && rt.truck_id != null && agg.truck_id == null) agg.truck_id = rt.truck_id;
+      agg.note = `Τέλη DKV · κατάσταση ${docNo} · ${sources.size} ${sources.size === 1 ? 'πηγή' : 'πηγές'} · επιμερισμός κατά καθαρό`;
+      agg.import_key = `${docNo}|AGG|${first.rt_id}|dkv`;
+      fee_members += members.length;
+    }
+    out.push(agg);
+  }
+  return { lines: out, stats: { toll_groups: tollGroups.size, toll_members, fee_groups: feeGroups.size, fee_members } };
+}
+
+function fmtDM(iso) {
+  if (!iso) return '';
+  const s = String(iso).slice(0, 10);
+  return `${s.slice(8, 10)}/${s.slice(5, 7)}`;
+}
+
+// ─── w11 θέμα 0 (owner 21/9): manual lines that the statement now repeats ───
+//
+// Measured 21/9: the accountant enters a refuel from the receipt (pay_source
+// DKV) days before the DKV statement arrives; when the statement is imported
+// the same fill appears again. The three real pairs matched on LITERS exactly
+// (100 / 200 / 29,57 L) while the amounts differed 3–6 % (receipt price vs
+// statement price + VAT) — so the key is liters for the fuel family and the
+// gross ±0,02 for everything else, same vehicle (truck or RT), ±1 day.
+// The category may differ inside the fuel family (a manual «reefer» fill that
+// the statement files under diesel), so the family, not the exact category.
+const FUEL_FAMILY = new Set(['fuel', 'reefer_fuel', 'adblue']);
+
+function grossOf(line) {
+  if (typeof line.gross_eur === 'number') return line.gross_eur;
+  const n = typeof line.net === 'number' ? line.net : Number(line.net || 0);
+  const v = typeof line.vat === 'number' ? line.vat : Number(line.vat || 0);
+  return round2(n + v);
+}
+function litersOf(line) {
+  if (line.liters != null) return Number(line.liters);
+  if (line.unit && LITRE_UNITS.has(String(line.unit).toUpperCase()) && line.quantity != null) return Number(line.quantity);
+  return null;
+}
+
+/**
+ * findManualTwins(importLines, manualRows)
+ *   importLines: preview/commit lines (import_key, rt_id, truck_id, category, service_date/line_date, liters/quantity, amounts)
+ *   manualRows:  ct_cost_lines rows with doc_id IS NULL (id, rt_id, truck_id, category, line_date, liters, net, vat, note, pay_source, created_by)
+ * Returns [{ import_key, manual_id, reason:'liters'|'gross', manual:{…}, line:{…} }] — one entry per (import line, manual row) pair.
+ */
+export function findManualTwins(importLines, manualRows) {
+  const twins = [];
+  for (const line of importLines || []) {
+    if (line.category === 'dkv') continue; // account fees never have a receipt
+    const lineDate = line.line_date || line.service_date || null;
+    if (!lineDate) continue;
+    const lineLiters = litersOf(line);
+    const lineGross = grossOf(line);
+    const fuel = FUEL_FAMILY.has(line.category);
+    for (const m of manualRows || []) {
+      if (m.doc_id != null) continue;
+      const sameVehicle = (line.rt_id != null && m.rt_id != null && Number(m.rt_id) === Number(line.rt_id))
+        || (line.truck_id != null && m.truck_id != null && Number(m.truck_id) === Number(line.truck_id));
+      if (!sameVehicle) continue;
+      const dd = isoDayDiff(lineDate, m.line_date);
+      if (dd == null || Math.abs(dd) > 1) continue;
+      let reason = null;
+      if (fuel && FUEL_FAMILY.has(m.category)) {
+        const ml = m.liters != null ? Number(m.liters) : null;
+        if (lineLiters != null && ml != null && Math.abs(lineLiters - ml) < 0.005) reason = 'liters';
+      } else if (!fuel && m.category === line.category) {
+        const mg = round2(Number(m.net || 0) + Number(m.vat || 0));
+        if (Math.abs(mg - lineGross) <= 0.02) reason = 'gross';
+      }
+      if (!reason) continue;
+      twins.push({
+        import_key: line.import_key || buildImportKey(line),
+        manual_id: m.id,
+        reason,
+        manual: { id: m.id, rt_id: m.rt_id, category: m.category, line_date: m.line_date, liters: m.liters, gross: round2(Number(m.net || 0) + Number(m.vat || 0)), note: m.note || null, pay_source: m.pay_source || null, created_by: m.created_by || null },
+        line: { category: line.category, date: lineDate, liters: lineLiters, gross: lineGross, plate: line.plate || null, rt_id: line.rt_id != null ? line.rt_id : null }
+      });
+    }
+  }
+  return twins;
+}
+

@@ -311,6 +311,15 @@ function exStyles() {
   .ex-gr{min-height:40px;padding-top:4px;padding-bottom:4px}
   .ex-chevron{cursor:pointer;color:var(--text-dim);font-size:13px;text-align:center;user-select:none}
   .ex-trip{border-bottom:1px solid var(--border);border-left:3px solid transparent}
+  /* w11 θέμα 5 (owner 21/9 «ευθυγράμμιση»): every RT row sits inside .ex-trip
+     whose 3px left rule (amber when something is missing) pushed its grid 3px
+     to the right of the header and the totals rows, which have no such rule.
+     At ≤1440 the fixed-width amount columns carried the whole 3px (every
+     figure 3px off its header); at 1920 the flexible Διαδρομή column absorbed
+     it, which is why it never showed on the rig's widest shot. Measured 21/9:
+     header ΚΑΥΣΙΜΑ [629,679] vs row [632,682] at 1280. Same invisible rule on
+     header and totals = same grid origin. */
+  .ex-gh,.ex-gt{border-left:3px solid transparent}
   /* Hover/open tint on the grid ROW only (not the whole .ex-trip): the trip
      frame (owner 16/9) now lives inside .ex-trip too, and its 16px gaps must
      stay the page colour, not light up with the row. */
@@ -324,7 +333,7 @@ function exStyles() {
      μπερδεύεται»). Navy stays reserved for the frame border, the primary
      button and the selected chip (formal style, owner 8/9). */
   .ex-grid.has-frame .ex-trip:not(.open){opacity:.5}
-  .ex-frame{margin:16px 10px;background:var(--surface-card);border:2px solid var(--navy);border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.18)}
+  .ex-frame{margin:16px 10px 16px 7px;background:var(--surface-card);border:2px solid var(--navy);border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.18)}
   .ex-fr-head{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;padding:14px 18px 12px;border-bottom:1px solid var(--border)}
   .ex-fr-title{min-width:0}
   .ex-fr-title .t{font-family:'Syne',sans-serif;font-size:18px;font-weight:600;line-height:1.2}
@@ -363,6 +372,7 @@ function exStyles() {
      (correction #1). Stays inside the same ≤46px collapsed row budget. */
   .ex-vehcell{line-height:1.25;display:flex;flex-direction:column;gap:1px}
   .ex-plate.trailer{color:var(--text-dim);font-size:10px}
+  .ex-payhint{display:block;font-size:10px;line-height:1.2;color:var(--warn);margin-top:3px;max-width:140px}
   .ex-route{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--text-mid);cursor:pointer}
   .ex-st{font-size:11.5px;font-weight:500;color:var(--text-mid);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:flex;align-items:center;justify-content:space-between;gap:4px;min-width:0} .ex-st.att{color:var(--warn)} .ex-st.ok{color:var(--ok)}
   /* The word may ellipsize; the «+» never shrinks or hides (flex:none). */
@@ -434,7 +444,12 @@ function exStyles() {
      Ποσό € · Ποιος · actions. Payment, note, liters and country each get
      their own column now instead of hiding in the category cell's second
      line — the ledger reads column by column, like the owner's own sheet. */
-  .ex-th.ex-line-grid,.ex-row.ex-line-grid{display:grid;grid-template-columns:78px minmax(110px,1.1fr) 88px minmax(140px,1fr) 60px 60px 84px 76px minmax(96px,auto);gap:8px;align-items:center}
+  /* w11 θέμα 5γ (owner 21/9): the last track was minmax(96px,auto) — on a
+     1920 screen 'auto' swallowed ~200px, so ΠΟΣΟ €/ΠΟΙΟΣ ended 130px left of
+     the RT row's ΣΥΝΟΛΟ with ΛΙΤΡΑ/ΧΩΡΑ floating in a gap. Fixed 96px: the two
+     flexible tracks (Κατηγορία, Παραστατικό) absorb the width and the amount
+     columns land at the frame's right edge, under ΣΥΝΟΛΟ/ΚΑΤΑΣΤΑΣΗ. */
+  .ex-th.ex-line-grid,.ex-row.ex-line-grid{display:grid;grid-template-columns:78px minmax(110px,1.1fr) 88px minmax(140px,1fr) 60px 60px 84px 76px 96px;gap:8px;align-items:center}
   .ex-line-grid>div{min-width:0;overflow-wrap:break-word;word-break:break-word}
   .ex-user{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .m{font-size:13px;font-weight:700} .s{font-size:12px;color:var(--text-mid)}
@@ -481,6 +496,13 @@ function exStyles() {
      set below 1320px, or the same fixed columns that fit 1440 start
      squeezing the amount tracks at 1280 (owner correction 13/9 #3 — exact
      numbers given by the owner for both breakpoints). */
+  /* w11 θέμα 5δ (owner 21/9): at 1920 the nine amount columns were squeezed
+     into 56px each while Διαδρομή took ~700px — a week total like 22.930,59
+     (9 glyphs, tabular 13px ≈ 63px) overflowed its track. Wider tracks only
+     where the width exists; Διαδρομή stays the flexible column. */
+  @media (min-width:1800px){
+    .ex-page{--ex-amtcol:68px;--ex-tail:84px 96px}
+  }
   @media (max-width:1320px){
     .ex-page{padding:10px 16px 32px;--ex-fixed:22px 76px 100px 66px minmax(80px,1fr);--ex-amtcol:50px;--ex-tail:62px 84px}
     .ex-gh,.ex-gr,.ex-gt{gap:3px;padding:0 8px}
@@ -1646,7 +1668,15 @@ function exPaySourceSelectHtml(id, value) {
   const known = list.some(o => o.v === value);
   const opts = list.map(o => `<option value="${o.v}"${value === o.v ? ' selected' : ''}>${escapeHtml(o.l)}</option>`).join('')
     + (value && !known ? `<option value="${escapeHtml(value)}" selected>${escapeHtml(value)}</option>` : '');
-  return `<div class="ex-field" style="width:140px"><label class="ex-flabel">Πληρωμή</label><select class="ex-ei" id="${id}">${opts}</select></div>`;
+  // w11 θέμα 0β (owner 21/9): a DKV-paid manual line is what the statement
+  // will bring anyway — say so under the select (the Worker refuses it only
+  // when the statement already holds the same fill; before that it is
+  // allowed, and the import's twin check cleans up).
+  return `<div class="ex-field" style="width:140px"><label class="ex-flabel">Πληρωμή</label><select class="ex-ei" id="${id}" onchange="exPayHint(this)">${opts}</select><span class="ex-payhint" id="${id}_hint"${value === 'DKV' ? '' : ' hidden'}>Οι πληρωμές DKV έρχονται από την κατάσταση — μόνο αν δεν έχει έρθει ακόμη</span></div>`;
+}
+function exPayHint(sel) {
+  const h = document.getElementById(sel.id + '_hint');
+  if (h) h.hidden = sel.value !== 'DKV';
 }
 
 // ═══════════════════ ΓΡΗΓΟΡΗ ΚΑΤΑΧΩΡΗΣΗ ═══════════════════
