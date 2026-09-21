@@ -298,7 +298,9 @@ function exStyles() {
      night) fit side by side; the route track's minimum drops 120 → 104 so
      the grid still fits at 1440 without a horizontal scroll (rig-measured:
      17px over with +28/−0). */
-  .ex-page{--ex-fixed:24px 84px 116px 72px minmax(104px,1fr);--ex-amtcol:56px;--ex-tail:70px 90px}
+  /* w11 θέμα 7: Όχημα 84→80, Οδηγός 110→96, Ημ/νίες 72→64 — every px goes to
+     the one flexible track (Διαδρομή), so a two-leg route fits two lines at 1440 */
+  .ex-page{--ex-fixed:24px 80px 96px 64px minmax(104px,1fr);--ex-amtcol:56px;--ex-tail:70px 90px}
   .ex-gh,.ex-gr,.ex-gt{display:grid;gap:4px;align-items:center;padding:0 10px}
   /* Sticky header/totals (note 7): #content is the app's own scrolling
      element (assets/style.css .content{overflow-y:auto}, not the document),
@@ -376,16 +378,24 @@ function exStyles() {
   .ex-plate.trailer{color:var(--text-dim);font-size:10px}
   .ex-idoc-del{color:var(--warn);font-weight:600}
   .ex-restsub{color:var(--text-mid)}
+  .ex-expm-locked{padding:8px 16px;color:var(--text-mid);font-size:12px}
+  .ex-expm-diff{color:var(--warn);font-weight:600;margin-left:6px}
   /* w11 θέμα 7: foreign-country flags in front of the route, «/» between them,
      a wider gap before the text — flags only (no code) on the RT row, as decided
      16/9 for lines/stations; the code sits next to each stop in the text. */
-  .ex-rflags{display:inline-flex;align-items:center;gap:4px;margin-right:12px;vertical-align:middle}
+  .ex-rflags{display:inline-flex;align-items:center;gap:3px;margin-right:6px;vertical-align:middle}
   .ex-rflags .ex-flag{width:16px;height:12px}
   .ex-rsep{color:var(--text-dim);font-size:11px;margin:0 2px}
   .ex-fr-rest{margin-left:10px;font-size:11px;color:var(--text-mid);font-weight:500}
   .ex-locked-note{width:100%;color:var(--text-mid);font-size:11px;font-weight:500}
   .ex-payhint{width:100%;font-size:11px;line-height:1.3;color:var(--warn);margin:2px 0 4px}
   .ex-route{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--text-mid);cursor:pointer}
+  /* w11 θέμα 7 (coordinator 21/9): the row route may take TWO lines instead of
+     clipping to «Βέρ…» — at 1440 the flexible Διαδρομή track is ~117px and a
+     two-leg short route breaks at the arrows into three short lines; three
+     11px lines (≈38px) still fit the ≤46px row of 13/9. Beyond that it clips
+     (title = the full «Πόλη, CC» form). Measured on the rig at 1440. */
+  .ex-route{white-space:normal;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;line-height:1.1;font-size:11px}
   .ex-st{font-size:11.5px;font-weight:500;color:var(--text-mid);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:flex;align-items:center;justify-content:space-between;gap:4px;min-width:0} .ex-st.att{color:var(--warn)} .ex-st.ok{color:var(--ok)}
   /* The word may ellipsize; the «+» never shrinks or hides (flex:none). */
   .ex-st-w{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0} .ex-st .ex-add{flex:none}
@@ -516,7 +526,7 @@ function exStyles() {
     .ex-page{--ex-amtcol:68px;--ex-tail:84px 96px}
   }
   @media (max-width:1320px){
-    .ex-page{padding:10px 16px 32px;--ex-fixed:22px 76px 100px 66px minmax(80px,1fr);--ex-amtcol:50px;--ex-tail:62px 84px}
+    .ex-page{padding:10px 16px 32px;--ex-fixed:22px 76px 96px 60px minmax(80px,1fr);--ex-amtcol:50px;--ex-tail:62px 84px}
     .ex-gh,.ex-gr,.ex-gt{gap:3px;padding:0 8px}
     .ex-gr{padding-top:3px;padding-bottom:3px}
     .ex-cell .a{font-size:10.5px}
@@ -894,10 +904,13 @@ function exRouteFlagsHtml(r) {
   const ccs = exRouteCountries(r);
   return ccs.length ? `<span class="ex-rflags">${ccs.map(cc => exFlag(cc)).join('<span class="ex-rsep">/</span>')}</span>` : '';
 }
-function exRouteSummary(r) {
+function exRouteSummary(r, opts) {
   const legs = exRouteStops(r);
   if (!legs.length) return r.route_text || '';
-  const stop = p => p.city + (p.cc ? ', ' + p.cc : '');
+  // short (RT row, coordinator 21/9): «Βέροια → Modena / Vienna → Βέροια» —
+  // the flags already say the countries and the row is the only flexible
+  // column; full «Πόλη, CC» in the frame title and the tooltip.
+  const stop = p => p.city + (!(opts && opts.short) && p.cc ? ', ' + p.cc : '');
   const parts = legs.map(stops => stops.map(stop).join(' → ')).filter(Boolean);
   return parts.length ? parts.join(' / ') : (r.route_text || '');
 }
@@ -1156,7 +1169,7 @@ function exGridHtml() {
   // footer legend below says the amounts are in €). «Όχημα/Ρυμούλκα» (owner
   // correction #2) is the second header cell to carry a hard <br>, same
   // technique as Καράβια/Τρένα below.
-  const th = `<div class="ex-gh" style="grid-template-columns:${tmpl}"><div></div><div>Όχημα<br>Ρυμούλκα</div><div>Οδηγός</div><div>Ημερομηνίες</div><div>Διαδρομή</div>${visCols.map(k => `<div class="r">${exColHeaderHtml(k)}</div>`).join('')}<div class="r">Σύνολο</div><div>Κατάσταση</div></div>`;
+  const th = `<div class="ex-gh" style="grid-template-columns:${tmpl}"><div></div><div>Όχημα<br>Ρυμούλκα</div><div>Οδηγός</div><div title="Ημερομηνίες">Ημ/νίες</div><div>Διαδρομή</div>${visCols.map(k => `<div class="r">${exColHeaderHtml(k)}</div>`).join('')}<div class="r">Σύνολο</div><div>Κατάσταση</div></div>`;
   const emptyMsg = exActiveRts().length
     ? 'Κανένα δρομολόγιο για αυτή την αναζήτηση.'
     : (tab === 'vehicle' ? 'Κανένα δρομολόγιο σε αυτό το εύρος.' : 'Κανένα δρομολόγιο σε αυτή την εβδομάδα.');
@@ -1313,7 +1326,7 @@ function exTripRowHtml(r, visCols, tmpl) {
       ${vehicleCell}
       ${driverCell}
       <div class="mid n">${exShortRange(r.date_start, r.date_end || r.date_start)}</div>
-      <div class="ex-route" onclick="exToggleExpand(${r.id})" title="${escapeHtml(routeSummary)}">${exRouteFlagsHtml(r)}${escapeHtml(routeSummary)}</div>
+      <div class="ex-route" onclick="exToggleExpand(${r.id})" title="${escapeHtml(routeSummary)}">${exRouteFlagsHtml(r)}${escapeHtml(exRouteSummary(r, { short: true }))}</div>
       ${cells}
       <div class="r n" style="font-weight:600">${hasAny ? exNum(rowTotal) : ''}</div>
       <div class="ex-st ${st.cls}"><span class="ex-st-w">${st.word}</span>${_ex.canWrite ? `<button type="button" class="ex-add" onclick="event.stopPropagation();exAddExpense(${r.id})" title="Νέο έξοδο σε αυτό το δρομολόγιο">+</button>` : ''}</div>
@@ -1536,12 +1549,28 @@ function exGoNextTrip() {
 // rendered inside a trip frame (a trip may have no ledger entry yet — said
 // out loud, αρχή 1). oninput keeps the draft in _ex.expmAmount so a line
 // save in the same frame (which re-renders) never wipes a half-typed value.
+// 042 (owner 21/9, w11 θέμα 3 — παραλλαγή Α): the CASH lines of the trip ARE
+// its Μετρητά Μ — the DB writes dl_entries.expenses from them and refuses a
+// hand-typed value (dl_cash_lock). Computed from the lines already loaded
+// for the frame, so no second request; the ledger figure shown stays the DB's.
+function exCashLines(rtId) {
+  const ls = exRtLines(rtId).filter(l => l.pay_source === 'CASH');
+  return { n: ls.length, sum: ls.reduce((a, l) => a + Number(l.net || 0) + Number(l.vat || 0), 0) };
+}
 function exExpMSectionHtml(rt) {
   const entry = rt.ledger_entry;
   const amt = entry && entry.expenses != null ? Number(entry.expenses) : null;
   const head = `<div class="ex-ov-sechead">Μετρητά Μ${amt != null ? ' · ' + exEur(amt) : ''}</div>`;
+  const cash = exCashLines(rt.id);
   let body = '';
   if (!entry) body = '<div class="ex-row" style="padding:8px 16px;color:var(--text-mid)">Το δρομολόγιο δεν έχει εγγραφή Μισθοδοσίας.</div>';
+  else if (cash.n > 0) {
+    // Read-only for every role: the field is the lines' sum. A ledger figure
+    // that still differs (042 not yet run, or a review pending) is said out
+    // loud, never smoothed over (αρχή 1).
+    const diff = Math.abs(Number(amt || 0) - cash.sum) >= 0.005;
+    body = `<div class="ex-row ex-expm-locked">Από ${cash.n} ${cash.n === 1 ? 'γραμμή' : 'γραμμές'} μετρητών του δρομολογίου (${exEur(cash.sum)}) — διόρθωση μόνο μέσω των γραμμών${diff ? '<b class="ex-expm-diff">≠ ποσό Μισθοδοσίας</b>' : ''}</div>`;
+  }
   else if (_ex.canWrite) body = `<div class="ex-row qe expm">
       <div class="ex-field ex-qe-amt"><label class="ex-flabel">Ποσό €</label><input class="ex-ei" type="number" step="0.01" id="exExpMAmt" value="${escapeHtml(_ex.expmAmount || '')}" oninput="_ex.expmAmount=this.value" onkeydown="exExpMKeydown(event)"></div>
       <span class="ex-qe-hint">Enter = καταχώρηση · η τιμή της καρτέλας Μισθοδοσίας</span>
@@ -1564,6 +1593,7 @@ async function exExpMSubmit() {
   if (!_ex.open || _ex.open.rtId === 'none') return;
   const rt = exActiveRts().find(r => r.id === _ex.open.rtId);
   if (!rt || !rt.ledger_entry) return;
+  if (exCashLines(rt.id).n > 0) return;   // 042: no field is rendered — nothing to send
   const el = document.getElementById('exExpMAmt');
   const raw = el ? el.value : '';
   if (raw === '') { showErrorToast('Χρειάζεται ποσό.', 'error'); return; }

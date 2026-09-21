@@ -2895,6 +2895,19 @@ async function dlManualCandidates(env, lines) {
   return (await dbSelectRaw(env, "ct_cost_lines", params)).rows;
 }
 
+// 042 (owner 21/9/2026, w11 request 3 — variant A): «Μετρητά Μ» of a round
+// trip = Σ of its CASH cost lines, written by the DB trigger dl_cash_sync. The
+// DB trigger dl_cash_lock refuses a hand-typed `expenses` on such an RT on
+// EVERY path; this lookup lets the two ledger routes answer with a 400 that
+// says why, instead of the generic 500 the trigger's exception would become.
+async function dlCashLines(env, rtId) {
+  const { rows } = await dbSelectRaw(env, "ct_cost_lines", new URLSearchParams({ select: "net,vat", rt_id: `eq.${rtId}`, pay_source: "eq.CASH" }));
+  return { n: rows.length, sum: rows.reduce((a, l) => a + Number(l.net || 0) + Number(l.vat || 0), 0) };
+}
+function dlCashLockError(cash, origin, env) {
+  return jsonError(`expenses: Μετρητά Μ = γραμμές μετρητών του δρομολογίου (${cash.n} ${cash.n === 1 ? "γραμμή" : "γραμμές"}, ${cash.sum.toFixed(2)} €) — καταχώρησε ή διόρθωσε τη γραμμή στα Έξοδα Δρομολογίων`, 400, origin, env);
+}
+
 async function ctDbPatch(env, table, filter, patch) {
   const res = await fetch(`${env.SUPABASE_URL}/rest/v1/${table}?${filter}`, {
     method: "PATCH",
@@ -3467,6 +3480,10 @@ async function handleCosts(request, url, origin, env) {
         const rt = await dbSelectRaw(env, "ct_round_trips", new URLSearchParams({ select: "id,driver_id,trip_type", id: `eq.${v.row.rt_id}` }));
         if (!rt.rows.length) return jsonError("rt_id: unknown round trip", 400, origin, env);
         if (rt.rows[0].driver_id !== v.row.driver_id) return jsonError("rt_id: the round trip belongs to another driver", 400, origin, env);
+        if (v.row.expenses != null) {
+          const cash = await dlCashLines(env, v.row.rt_id);
+          if (cash.n > 0) return dlCashLockError(cash, origin, env);
+        }
       }
       v.row.created_by = caller.sub;
       let created;
@@ -3504,6 +3521,10 @@ async function handleCosts(request, url, origin, env) {
         if (v.error) return jsonError(v.error, 400, origin, env);
         if (v.needsReason && !String((body || {}).reason || "").trim()) return jsonError("reason required to change a written value", 400, origin, env);
         patch = v.patch;
+        if ("expenses" in patch && before.rows[0].rt_id) {
+          const cash = await dlCashLines(env, before.rows[0].rt_id);
+          if (cash.n > 0) return dlCashLockError(cash, origin, env);
+        }
       }
       patch.updated_at = new Date().toISOString();
       let updated;
@@ -3516,6 +3537,7 @@ async function handleCosts(request, url, origin, env) {
         // of the 409/400 the equivalent POST conflict already gets (verify-worker §4).
         if (/23505|dl_rt_live/.test(e.message)) return jsonError("rt_id: this round trip already has a ledger line", 409, origin, env);
         if (/23503/.test(e.message)) return jsonError("rt_id: unknown round trip", 400, origin, env);
+        if (/dl_cash_lock/.test(e.message)) return jsonError("expenses: Μετρητά Μ = γραμμές μετρητών του δρομολογίου — καταχώρησε ή διόρθωσε τη γραμμή στα Έξοδα Δρομολογίων (dl_cash_lock)", 400, origin, env);
         throw e;
       }
       await audit(env, { actor: caller.sub, role: caller.role, action: "update", table: "dl_entries", recordId: String(recId), before: before.rows[0], after: { ...updated, reason: String((body || {}).reason || "").trim() || null } });

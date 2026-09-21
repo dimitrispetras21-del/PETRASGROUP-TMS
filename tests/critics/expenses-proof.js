@@ -195,6 +195,7 @@ function installCostsMocks(page, fx) {
     }
     return json(route, {}, 404);
   });
+  captured.store = store;   // w11: the cash-lock proofs read the live store (lines posted during the flow)
   return captured;
 }
 
@@ -241,6 +242,11 @@ async function waitLines(page, method, action) {
   await p;
   await page.waitForTimeout(150);
 }
+// every <img> (flags, brand marks) decoded — a screenshot taken before that
+// showed the «/» between two blank flag boxes (coordinator review 21/9)
+async function waitImages(page) {
+  await page.waitForFunction(() => [...document.images].every((i) => !i.getAttribute('src') || (i.complete && (i.naturalWidth > 0 || i.style.display === 'none'))), null, { timeout: 10000 }).catch(() => {});
+}
 async function waitLedger(page, action) {
   const p = page.waitForResponse(r => r.request().method() === 'PATCH' && r.url().includes('/costs/ledger/'), { timeout: 10000 });
   await action();
@@ -256,7 +262,7 @@ async function flabels(page, scope) {
 // describe — ALL nine amount columns are always in the header now, no matter
 // how few of them have data in the fixture below. «Ρυμούλκα» is correction
 // #2's second line on the Όχημα header cell. «ΜΕΤΡΗΤΑ Μ» is E1 (16/9).
-const EXPECTED_HEADER_RE = /ΟΧΗΜΑ[\s\S]*ΡΥΜΟΥΛΚΑ[\s\S]*ΟΔΗΓΟΣ[\s\S]*ΗΜΕΡΟΜΗΝΙΕΣ[\s\S]*ΔΙΑΔΡΟΜΗ[\s\S]*ΚΑΥΣΙΜΑ[\s\S]*ΔΙΟΔΙΑ[\s\S]*ADBLUE[\s\S]*ΤΕΛΗ DKV[\s\S]*SPEDITION[\s\S]*ΜΕΤΡΗΤΑ Μ[\s\S]*ΠΡΟΣΤΙΜΑ[\s\S]*ΚΑΡΑΒΙΑ[\s\S]*ΤΡΕΝΑ[\s\S]*ΛΟΙΠΑ[\s\S]*ΣΥΝΟΛΟ[\s\S]*ΚΑΤΑΣΤΑΣΗ/i;
+const EXPECTED_HEADER_RE = /ΟΧΗΜΑ[\s\S]*ΡΥΜΟΥΛΚΑ[\s\S]*ΟΔΗΓΟΣ[\s\S]*ΗΜ\/ΝΙΕΣ[\s\S]*ΔΙΑΔΡΟΜΗ[\s\S]*ΚΑΥΣΙΜΑ[\s\S]*ΔΙΟΔΙΑ[\s\S]*ADBLUE[\s\S]*ΤΕΛΗ DKV[\s\S]*SPEDITION[\s\S]*ΜΕΤΡΗΤΑ Μ[\s\S]*ΠΡΟΣΤΙΜΑ[\s\S]*ΚΑΡΑΒΙΑ[\s\S]*ΤΡΕΝΑ[\s\S]*ΛΟΙΠΑ[\s\S]*ΣΥΝΟΛΟ[\s\S]*ΚΑΤΑΣΤΑΣΗ/i;
 
 async function runAccountantFlow(browser) {
   console.log('\n== accountant · εβδομαδιαίο φύλλο ==');
@@ -273,7 +279,7 @@ async function runAccountantFlow(browser) {
   // ── column headers, now with Ρυμούλκα + ALL nine amount groups (owner
   // correction 13/9 #2/#3) + «Μετρητά Μ» (E1) ──
   const headerText = (await page.locator('.ex-gh').innerText()).replace(/\s+/g, ' ');
-  assert(EXPECTED_HEADER_RE.test(headerText), 'grid header (no Α/Α, Ρυμούλκα second line, all 9 amount columns, «Μετρητά Μ») = Όχημα·Ρυμούλκα·Οδηγός·Ημερομηνίες·Διαδρομή·9 κατηγορίες·Σύνολο·Κατάσταση: ' + headerText);
+  assert(EXPECTED_HEADER_RE.test(headerText), 'grid header (no Α/Α, Ρυμούλκα second line, all 9 amount columns, «Μετρητά Μ», «Ημ/νίες» since w11 — 64px track) = Όχημα·Ρυμούλκα·Οδηγός·Ημ/νίες·Διαδρομή·9 κατηγορίες·Σύνολο·Κατάσταση: ' + headerText);
   assert(!/ΕΞΟΔΑ Μ/i.test(headerText), 'E1: the old «Έξοδα Μ» label is gone from the header');
   assert(!/Α\/Α/.test(headerText), 'the Α/Α header column is gone (point 10): ' + headerText);
   assert(!/€/.test(headerText), 'no header text contains «€» (point 4): ' + headerText);
@@ -584,24 +590,25 @@ async function runAccountantFlow(browser) {
   assert(await page.locator('.ex-frame .ex-line-grid img.ex-flag[alt="AT"]').count() >= 1, 'the tolls lines list shows img.ex-flag[alt="AT"] for the new AT line');
   assert(await page.locator('#exQeCountryFlagIcon img.ex-flag[alt="AT"]').count() === 1, 'the selected-value flag icon next to the combobox input also shows AT');
 
-  // ── «Μετρητά Μ» (E1): the expm cell opens the frame and focuses its own
-  // field; fill an empty entry (no reason), then correct a written one ──
+  // ── «Μετρητά Μ» (E1 → 042, owner 21/9 παραλλαγή Α): RT 702 carries the CASH
+  // fuel line 9104 (80 €) → the section is READ-ONLY: no input, the lines' sum,
+  // and «≠ ποσό Μισθοδοσίας» because the fixture's ledger figure is still
+  // empty (the DB trigger has not written it — the pre-migration state). The
+  // editable path (empty → fill, written → reason) lives in runW11CashLockFlow
+  // on an RT with no CASH lines.
   await cell(page, 702, 'expm').click();
   await page.waitForSelector('.ex-frame[data-frame="702"]', { timeout: 5000 });
-  assert(await page.evaluate(() => document.activeElement && document.activeElement.id) === 'exExpMAmt', 'the Μετρητά Μ cell opens the frame with focus on the ledger field');
-  await page.fill('#exExpMAmt', '18');
-  await waitLedger(page, () => page.locator('#exExpMAmt').press('Enter'));
-  const lp1 = captured.ledgerPatches[captured.ledgerPatches.length - 1];
-  assert(lp1.id === 502 && lp1.body.expenses === 18 && !('reason' in lp1.body), 'PATCH /costs/ledger/502 {expenses:18} — no reason (entry was empty)');
+  assert(await page.locator('#exExpMAmt').count() === 0, '042: RT 702 has a CASH line → no Μετρητά Μ input in the frame');
+  const lockTxt = (await page.locator('.ex-frame .ex-expm-locked').innerText()).replace(/\s+/g, ' ');
+  const cash702 = captured.store.lines.filter(l => l.rt_id === 702 && l.pay_source === 'CASH');
+  const cash702Sum = cash702.reduce((a, l) => a + Number(l.net || 0) + Number(l.vat || 0), 0);
+  const expectStrip = 'Από ' + cash702.length + (cash702.length === 1 ? ' γραμμή' : ' γραμμές') + ' μετρητών του δρομολογίου (' + cash702Sum.toFixed(2).replace('.', ',') + ' €)';
+  assert(cash702.length >= 1 && lockTxt.startsWith(expectStrip), '042: the locked strip names the lines\' count and sum «' + expectStrip + '»: ' + lockTxt);
+  assert(await page.locator('.ex-frame .ex-expm-diff').count() === 1, '042: ledger figure (empty) ≠ lines → «≠ ποσό Μισθοδοσίας» is shown');
   await cell(page, 701, 'expm').click();
   await page.waitForSelector('.ex-frame[data-frame="701"]', { timeout: 5000 });
-  assert(await page.locator('#exExpMAmt').inputValue() === '40', 'Μετρητά Μ field prefills the current ledger value (40)');
-  await page.fill('#exExpMAmt', '55');
-  await waitLedger(page, () => page.locator('#exExpMAmt').press('Enter'));
-  const lp2 = captured.ledgerPatches[captured.ledgerPatches.length - 1];
-  assert(lp2.id === 501 && lp2.body.expenses === 55 && lp2.body.reason === 'proof: test reason', 'PATCH /costs/ledger/501 {expenses:55, reason} — reason required (entry already had 40)');
-  assert(/55,00/.test(await cell(page, 701, 'expm').innerText()), 'Μετρητά Μ cell reflects the new value after refetch');
-  assert(/Μετρητά Μ · 55,00 €/.test((await page.locator('.ex-frame .ex-ov-sechead', { hasText: 'Μετρητά Μ' }).evaluate(el => el.textContent)).replace(/\s+/g, ' ')), 'the frame\'s Μετρητά Μ section shows 55,00 € too');
+  assert(await page.locator('#exExpMAmt').count() === 0 && await page.locator('.ex-frame .ex-expm-locked').count() === 1, '042: RT 701 (CASH lines posted in this run) is locked too');
+  assert(captured.ledgerPatches.length === 0, '042: no PATCH /costs/ledger was sent for a locked trip: ' + JSON.stringify(captured.ledgerPatches));
 
   // ── Addition A (owner 14/9): fuel entry carries an OPTIONAL toll_country ──
   await cell(page, 701, 'fuel').click();
@@ -1059,10 +1066,15 @@ async function runW11ImportedLineFlow(browser) {
   console.log('\n== accountant · w11-6: imported line editable (locked amounts), deletable ==');
   const { context, page, consoleErrors } = await newPage(browser, 'accountant');
   const captured = installCostsMocks(page, { rt: RT_FIXTURE, lookups: LOOKUPS_FIXTURE, lines: LINES_FIXTURE_EDIT });
+  // the statement of line 9102 (doc 5) lost one line after its commit (041)
+  await page.route('**/costs/import/docs**', (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ records: [{ id: 5, invoice_no: '99/000000005/000', status: 'confirmed', period_from: '2026-09-01', period_to: '2026-09-15', lines_total: 2, lines_deleted: 1, created_by: 'demo_accountant', created_at: '2026-09-16T08:00:00Z' }] }) }));
   await gotoPage(page, 'expenses', BASE_URL);
   await page.waitForSelector('.ex-page .ex-seg', { timeout: 15000 });
   await openWeek(page, WEEK_START, 701);
+  await page.waitForSelector('.ex-idoc-row', { timeout: 10000 });
+  assert(/1 γραμμή σβήστηκε μετά την καταχώρηση — δεν συμφωνεί πλέον 1:1/.test(await page.locator('.ex-idoc-row .ex-idoc-del').innerText()), 'w11-6: the document row says «1 γραμμή σβήστηκε μετά την καταχώρηση — δεν συμφωνεί πλέον 1:1»');
   await openFrame(page, 701);
+  assert(/κατάσταση DKV 99\/000000005\/000: 1 γραμμές σβησμένες/.test((await page.locator('.ex-frame .ex-fr-title .s').evaluate(el => el.textContent)).replace(/\s+/g, ' ')), 'w11-6: the frame title line carries the same notice for the trip that holds a line of that statement');
   const imported = page.locator('.ex-frame .ex-row[data-line="9102"]');
   assert(await imported.count() === 1, 'w11-6: the imported toll line 9102 (doc_id 5, created by another user) is in the frame');
   assert(await imported.locator('.ex-link', { hasText: 'Διόρθωση' }).count() === 1 && await imported.locator('.ex-link', { hasText: 'Διαγραφή' }).count() === 1, 'w11-6: accountant sees Διόρθωση AND Διαγραφή on a line she did not create (created_by gate gone)');
@@ -1073,12 +1085,61 @@ async function runW11ImportedLineFlow(browser) {
   }
   assert(!(await page.locator('#exEdCategory_9102').isDisabled()) && !(await page.locator('#exEdNote_9102').isDisabled()), 'w11-6: category and note stay editable');
   assert(/Εισαγόμενη από κατάσταση DKV/.test(await page.locator('.ex-frame .ex-locked-note').evaluate((el) => el.textContent)), 'w11-6: the edit row says why the amounts are locked (textContent — the title strip is CSS-uppercased)');
+  await waitImages(page);
+  await page.locator('.ex-frame .ex-row.edit').scrollIntoViewIfNeeded();
+  await page.screenshot({ path: path.join(SHOT_DIR, 'w11-expenses-imported-line-edit-1440.png'), fullPage: false });
   await page.selectOption('#exEdCategory_9102', 'other');
   await page.fill('#exEdNote_9102', 'DKV BOX · διορθωμένη κατηγορία');
   await waitLines(page, 'PATCH', () => page.locator('.ex-frame .ex-row.edit .ex-btn.primary', { hasText: 'Αποθήκευση' }).click());
   const patch = captured.patches[captured.patches.length - 1];
   assert(patch && patch.id === 9102 && patch.body.category === 'other' && patch.body.note === 'DKV BOX · διορθωμένη κατηγορία' && patch.body.reason === 'proof: test reason' && !('net' in patch.body) && !('line_date' in patch.body) && !('pay_source' in patch.body) && !('liters' in patch.body), 'w11-6: PATCH /costs/lines/9102 carries category + note + reason only — never amounts/date/payment/liters: ' + JSON.stringify(patch && patch.body));
-  await page.screenshot({ path: path.join(SHOT_DIR, 'w11-expenses-imported-line-edit-1440.png'), fullPage: false });
+  await context.close();
+  return { consoleErrors, captured };
+}
+
+// 042 (owner 21/9, w11 θέμα 3 — παραλλαγή Α): one RT with CASH lines is locked
+// (no field, the lines' sum, «≠» while the ledger differs); one RT with no
+// CASH lines keeps the editable path — empty → fill without reason, written →
+// reason.
+const RT_FIXTURE_CASH = [
+  rt({ id: 901, truck_id: 11, driver_id: 11, trailer_id: 21, date_start: '2026-09-05', date_end: '2026-09-09', status: 'closed', route_text: 'Βέροια → Rotterdam', ledger_entry: { id: 751, expenses: 40 } }),
+  rt({ id: 902, truck_id: 12, driver_id: 11, trailer_id: null, date_start: '2026-09-07', date_end: '2026-09-08', status: 'closed', route_text: 'Νάουσα → Wien', ledger_entry: { id: 752, expenses: null } }),
+];
+const LINES_FIXTURE_CASH = [
+  line({ id: 9601, rt_id: 901, category: 'tolls', net: 25, vat: 0, toll_country: 'HU', line_date: '2026-09-06', pay_source: 'CASH' }),
+  line({ id: 9602, rt_id: 901, category: 'fuel', net: 100, vat: 0, line_date: '2026-09-05', pay_source: 'DKV', liters: 300 }),
+];
+async function runW11CashLockFlow(browser) {
+  console.log('\n== accountant · 042 Μετρητά Μ κλειδωμένο από γραμμές μετρητών (θέμα 3, Α) ==');
+  const { context, page, consoleErrors } = await newPage(browser, 'accountant');
+  const captured = installCostsMocks(page, { rt: RT_FIXTURE_CASH, lookups: LOOKUPS_FIXTURE, lines: LINES_FIXTURE_CASH });
+  await gotoPage(page, 'expenses', BASE_URL);
+  await page.waitForSelector('.ex-page .ex-seg', { timeout: 15000 });
+  await openWeek(page, WEEK_START, 901);
+  await cell(page, 901, 'expm').click();
+  await page.waitForSelector('.ex-frame[data-frame="901"]', { timeout: 5000 });
+  assert(await page.locator('#exExpMAmt').count() === 0, '042: RT 901 (CASH toll 25) → no Μετρητά Μ input');
+  const t901 = (await page.locator('.ex-frame .ex-expm-locked').innerText()).replace(/\s+/g, ' ');
+  assert(/Από 1 γραμμή μετρητών του δρομολογίου \(25,00 €\)/.test(t901) && await page.locator('.ex-frame .ex-expm-diff').count() === 1, '042: locked strip = lines\' sum 25,00 € and «≠» (ledger still 40): ' + t901);
+  const head901 = (await page.locator('.ex-frame .ex-ov-section[data-section="expm"] .ex-ov-sechead').evaluate(el => el.textContent)).replace(/\s+/g, ' ').trim();
+  assert(/^Μετρητά Μ · 40,00 €$/.test(head901), 'the section head still shows the DB figure (40,00 €) — never a computed stand-in: «' + head901 + '»');
+  await waitImages(page);
+  await page.screenshot({ path: path.join(SHOT_DIR, 'w11-expenses-cash-lock-1440.png'), fullPage: false });
+  await closeFrame(page);
+  await cell(page, 902, 'expm').click();
+  await page.waitForSelector('.ex-frame[data-frame="902"]', { timeout: 5000 });
+  assert(await page.evaluate(() => document.activeElement && document.activeElement.id) === 'exExpMAmt', 'the Μετρητά Μ cell opens the frame with focus on the ledger field (no CASH lines → editable)');
+  await page.fill('#exExpMAmt', '18');
+  await waitLedger(page, () => page.locator('#exExpMAmt').press('Enter'));
+  const lp1 = captured.ledgerPatches[captured.ledgerPatches.length - 1];
+  assert(lp1.id === 752 && lp1.body.expenses === 18 && !('reason' in lp1.body), 'PATCH /costs/ledger/752 {expenses:18} — no reason (entry was empty): ' + JSON.stringify(lp1));
+  await page.waitForSelector('.ex-frame[data-frame="902"] #exExpMAmt', { timeout: 5000 });
+  assert(await page.locator('#exExpMAmt').inputValue() === '18', 'Μετρητά Μ field prefills the current ledger value (18) after the refetch');
+  await page.fill('#exExpMAmt', '55');
+  await waitLedger(page, () => page.locator('#exExpMAmt').press('Enter'));
+  const lp2 = captured.ledgerPatches[captured.ledgerPatches.length - 1];
+  assert(lp2.id === 752 && lp2.body.expenses === 55 && lp2.body.reason === 'proof: test reason', 'PATCH /costs/ledger/752 {expenses:55, reason} — reason required (entry already had 18): ' + JSON.stringify(lp2));
+  assert(/55,00/.test(await cell(page, 902, 'expm').innerText()), 'Μετρητά Μ cell reflects the new value after refetch');
   await context.close();
   return { consoleErrors, captured };
 }
@@ -1113,6 +1174,7 @@ async function runW11RestatementFlow(browser) {
   await page.selectOption('#exQeCategory', 'restatement');
   await page.waitForTimeout(100);
   assert(await page.locator('#exQePaySource').inputValue() === 'CASH', 'w11-1: payment defaults to CASH for Αναμόρφωση (the «other» bucket): got «' + (await page.locator('#exQePaySource').inputValue()) + '», category «' + (await page.locator('#exQeCategory').inputValue()) + '»');
+  await waitImages(page);
   await page.screenshot({ path: path.join(SHOT_DIR, 'w11-expenses-restatement-1440.png'), fullPage: false });
   await context.close();
   return { consoleErrors, captured };
@@ -1140,10 +1202,23 @@ async function runW11RouteFlow(browser) {
   assert(flags.join('/') === 'IT/AT', 'w11-7: flags = foreign countries only, in trip order, Greece omitted: ' + flags.join('/'));
   assert(await routeCell.locator('.ex-rsep').count() === 1, 'w11-7: a «/» separator between the two flags');
   const txt = (await routeCell.evaluate(el => el.textContent)).replace(/\s+/g, ' ').trim();
-  assert(txt === '/Βέροια, GR → Modena, IT / Vienna, AT → Βέροια, GR', 'w11-7: route text «Βέροια, GR → Modena, IT / Vienna, AT → Βέροια, GR» (names→ISO normalised, «/» per order): «' + txt + '»');
+  assert(txt === '/Βέροια → Modena / Vienna → Βέροια', 'w11-7: the ROW carries the short route «Βέροια → Modena / Vienna → Βέροια» (no «, CC» — the flags say the countries): «' + txt + '»');
+  assert((await routeCell.getAttribute('title')) === 'Βέροια, GR → Modena, IT / Vienna, AT → Βέροια, GR', 'w11-7: the tooltip carries the full «Πόλη, CC» form');
+  await waitImages(page);
+  const flagW = await routeCell.locator('.ex-rflags img.ex-flag').evaluateAll(els => els.map(e => e.naturalWidth));
+  assert(flagW.length === 2 && flagW.every(w => w > 0), 'w11-7: both flag <img> (local SVG assets/flags/it.svg, at.svg) decoded, naturalWidth > 0: ' + JSON.stringify(flagW));
+  // 1440: the two-leg short route fits the row without an ellipsis (measured)
+  // two-line clamp: «fits» = nothing clipped vertically (scrollHeight ≤ clientHeight)
+  const fits = await routeCell.evaluate(el => el.scrollHeight <= el.clientHeight + 1);
+  assert(fits, 'w11-7: at 1440 the short two-leg route fits the Διαδρομή column in ≤3 lines, nothing clipped (scrollHeight ≤ clientHeight): ' + (await routeCell.evaluate(el => el.scrollHeight + '/' + el.clientHeight + ' · width ' + el.clientWidth)));
+  const rowH = await page.locator('.ex-gr[data-rt="951"]').evaluate(el => el.getBoundingClientRect().height);
+  assert(rowH <= 46.5, 'w11-7: the RT row stays within the 46px limit of 13/9 with the three-line route: ' + rowH);
   await openFrame(page, 951);
+  await waitImages(page);
   const sub = (await page.locator('.ex-frame .ex-fr-title .s').evaluate(el => el.textContent)).replace(/\s+/g, ' ').trim();
-  assert(/Βέροια, GR → Modena, IT \/ Vienna, AT → Βέροια, GR · RT κλειστό/.test(sub) && await page.locator('.ex-frame .ex-fr-title .ex-rflags img.ex-flag').count() === 2, 'w11-7: the frame title line carries the same flags + route: «' + sub + '»');
+  assert(/Βέροια, GR → Modena, IT \/ Vienna, AT → Βέροια, GR · RT κλειστό/.test(sub), 'w11-7: the frame title line carries the FULL «Πόλη, CC» route: «' + sub + '»');
+  const frameFlagW = await page.locator('.ex-frame .ex-fr-title .ex-rflags img.ex-flag').evaluateAll(els => els.map(e => e.naturalWidth));
+  assert(frameFlagW.length === 2 && frameFlagW.every(w => w > 0), 'w11-7: the frame title flags decoded too: ' + JSON.stringify(frameFlagW));
   await page.screenshot({ path: path.join(SHOT_DIR, 'w11-expenses-route-flags-1440.png'), fullPage: false });
   await context.close();
   return { consoleErrors };
@@ -1200,7 +1275,8 @@ async function runDispatcherFlow(browser) {
     const imp6 = await runW11ImportedLineFlow(browser);
     const rest1 = await runW11RestatementFlow(browser);
     const route7 = await runW11RouteFlow(browser);
-    const all = [...rest1.consoleErrors, ...route7.consoleErrors, ...acct.consoleErrors, ...credit.consoleErrors, ...sticky.consoleErrors, ...veh.consoleErrors, ...shotW.consoleErrors, ...wide.consoleErrors, ...brands.consoleErrors, ...fold.consoleErrors, ...mgmt.consoleErrors, ...disp.consoleErrors, ...imp6.consoleErrors];
+    const cash3 = await runW11CashLockFlow(browser);
+    const all = [...rest1.consoleErrors, ...route7.consoleErrors, ...cash3.consoleErrors, ...acct.consoleErrors, ...credit.consoleErrors, ...sticky.consoleErrors, ...veh.consoleErrors, ...shotW.consoleErrors, ...wide.consoleErrors, ...brands.consoleErrors, ...fold.consoleErrors, ...mgmt.consoleErrors, ...disp.consoleErrors, ...imp6.consoleErrors];
     console.log('\n== console errors ==');
     console.log('accountant:', acct.consoleErrors.length, 'credit:', credit.consoleErrors.length, 'sticky:', sticky.consoleErrors.length, 'vehicle:', veh.consoleErrors.length, 'widths:', shotW.consoleErrors.length, 'wide-cols:', wide.consoleErrors.length, 'brands:', brands.consoleErrors.length, 'fold:', fold.consoleErrors.length, 'management:', mgmt.consoleErrors.length, 'dispatcher:', disp.consoleErrors.length, 'w11-6:', imp6.consoleErrors.length);
     if (all.length) all.forEach(e => console.log('  ! ' + e));

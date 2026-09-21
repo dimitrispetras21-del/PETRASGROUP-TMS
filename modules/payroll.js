@@ -280,6 +280,13 @@ function dlStyles() {
   .dl-btn.primary{background:var(--navy);border-color:var(--navy);color:var(--text-on-dark)}
   .dl-btn.primary:hover{background:var(--navy-hover)}
   .dl-word{font-size:12px;color:var(--warn);font-weight:500;margin-left:6px}
+  /* 042 (owner 21/9, w11 θέμα 3 — παραλλαγή Α): Μετρητά Μ that comes from the
+     CASH lines of the trip's Έξοδα Δρομολογίων — a dot after the amount, amber
+     when the ledger amount still differs from the lines (pre-migration, or a
+     review pending). */
+  .dl-cash{display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--accent);margin-left:6px;vertical-align:middle;cursor:default}
+  .dl-cash.diff{background:var(--warn)}
+  .dl-ei-locked{display:inline-block;min-width:60px;text-align:right;font-variant-numeric:tabular-nums;color:var(--text-mid)}
   /* Year chips + month select + «Όλο το έτος» reset (Figma 600:1011 note 3,
      owner correction 14/9: chips, not a <select>, for the year). */
   .dl-period{display:flex;align-items:center;gap:8px;padding:12px 24px;flex-wrap:wrap}
@@ -426,6 +433,15 @@ function dlEntryRowHtml(e) {
       : 'Προσαρμογή' + (e.note ? ' — ' + escapeHtml(e.note) : ''));
   // RT link: icon only, no visible code (v2 rule #2) — the code sits in title.
   const rtIcon = (isTrip && e.rt_id) ? `<span class="dl-rt" title="${escapeHtml(e.rt_code || '')}">↗</span>` : '';
+  // 042 (owner 21/9, w11 θέμα 3): when the trip has CASH lines in Έξοδα
+  // Δρομολογίων, Μετρητά Μ is THEIR sum — the DB writes it and refuses a
+  // hand-typed value (dl_cash_lock), so the cell is read-only here too.
+  // e.cash_lines/cash_sum come from dl_v_entries (042); an older view has
+  // neither → undefined → editable, and the Worker answers the 400.
+  const cashLocked = isTrip && Number(e.cash_lines) > 0;
+  const cashDiff = cashLocked && Number(e.expenses || 0) !== Number(e.cash_sum || 0);
+  const cashTitle = cashLocked ? `Από τα Έξοδα Δρομολογίων: ${e.cash_lines} ${Number(e.cash_lines) === 1 ? 'γραμμή' : 'γραμμές'} μετρητών, ${dlNumP(e.cash_sum)} €${cashDiff ? ' — διαφέρει από το ποσό της γραμμής, έλεγξε' : ''}` : '';
+  const cashDot = cashLocked ? `<span class="dl-cash${cashDiff ? ' diff' : ''}" title="${escapeHtml(cashTitle)}"></span>` : '';
   // v3 #9: a valueless trip carries a visible word on the card, not only the
   // amber bar and the ΑΞΙΑ dash.
   const pendingWord = (isTrip && e.pending) ? ` <span class="dl-word">χωρίς αξία</span>` : '';
@@ -451,7 +467,9 @@ function dlEntryRowHtml(e) {
       <div style="flex:1"><span class="m">${routeText}</span></div>
       <div style="width:110px" class="r"><input class="dl-ei" type="number" step="0.01" id="dlEiValue" value="${e.trip_value ?? ''}" onkeydown="dlEiKeydown(event,${e.id})"></div>
       <div style="width:110px" class="r"><input class="dl-ei" type="number" step="0.01" id="dlEiAdvance" value="${e.advance ?? ''}" onkeydown="dlEiKeydown(event,${e.id})"></div>
-      <div style="width:110px" class="r"><input class="dl-ei" type="number" step="0.01" id="dlEiExpenses" value="${e.expenses ?? ''}" onkeydown="dlEiKeydown(event,${e.id})"></div>
+      <div style="width:110px" class="r">${cashLocked
+        ? `<span class="dl-ei-locked" id="dlEiExpensesLocked" title="${escapeHtml(cashTitle)}">${dlNumP(e.expenses)}</span>${cashDot}`
+        : `<input class="dl-ei" type="number" step="0.01" id="dlEiExpenses" value="${e.expenses ?? ''}" onkeydown="dlEiKeydown(event,${e.id})">`}</div>
       <div style="width:120px" class="r"><span class="n dim">—</span></div>
       <div style="width:130px" class="r"><span class="n dim">—</span></div>
       <div style="width:32px"></div>
@@ -466,7 +484,7 @@ function dlEntryRowHtml(e) {
     ? `<span class="n" style="color:var(--warn)">—</span>`
     : `<span class="n${ea.value == null ? ' dim' : ''}">${amt(ea.value)}</span>`;
   const advCell = `<span class="n${ea.received == null ? ' dim' : ''}">${amt(ea.received)}</span>`;
-  const expCell = `<span class="n${ea.expenses == null ? ' dim' : ''}">${amt(ea.expenses)}</span>`;
+  const expCell = `<span class="n${ea.expenses == null ? ' dim' : ''}">${amt(ea.expenses)}</span>${cashDot}`;
   const balCell = (isTrip && e.pending)
     ? `<span class="n" style="color:var(--warn)">—</span>`
     : `<span class="n ${Number(e.balance_delta) < 0 ? 'dl-owed' : 'dl-owe'}">${dlDelta(e)}</span>`;
@@ -1166,6 +1184,9 @@ async function dlSaveInlineEdit(id) {
   const g = k => { const el = document.getElementById(k); return el && el.value !== '' ? Number(el.value) : null; };
   const body = {};
   for (const [k, dom] of [['trip_value', 'dlEiValue'], ['advance', 'dlEiAdvance'], ['expenses', 'dlEiExpenses']]) {
+    // 042: no input is rendered for a CASH-locked Μετρητά Μ — reading the
+    // missing element as null would send expenses:null and hit the DB lock
+    if (k === 'expenses' && Number(e.cash_lines) > 0) continue;
     const v = g(dom);
     const orig = e[k] == null ? null : Number(e[k]);
     if (v !== orig) body[k] = v;

@@ -82,6 +82,8 @@ const { preparePage, gotoPage } = require(path.join(MAIN_REPO, 'tests', 'critics
 const BASE_URL = process.env.PW_BASE_URL || 'http://127.0.0.1:8797/';
 const SHOT_DIR = process.env.PW_SHOT_DIR || '/private/tmp/claude-501/-Users-dimitrispetras-PETRASGROUP-TMS--claude-worktrees-sleepy-mendeleev/e4fdae99-8903-4cca-a916-8e5d7709734e/scratchpad';
 const SHOT_1440 = path.join(SHOT_DIR, 'payroll-v3-card-1440.png');
+// w11 (21/9, θέμα 3): the 042 cash-lock proof shot goes next to the other audit shots.
+const SHOT_CASH_LOCK = path.join(process.env.PW_SHOT_DIR || path.join(__dirname, '..', '..', 'docs', 'data-audit', '2026-09', 'shots'), 'w11-payroll-cash-lock-1440.png');
 const SHOT_1280 = path.join(SHOT_DIR, 'payroll-v3-card-1280.png');
 const SHOT_HOME_1440 = path.join(SHOT_DIR, 'payroll-v3-home-1440.png');
 const SHOT_HOME_1280 = path.join(SHOT_DIR, 'payroll-v3-home-1280.png');
@@ -173,7 +175,8 @@ function balanceRow(chrono, type) {
 // «τύπος οδηγού» fixture, passed straight through to balanceRow.
 function installPayrollMocks(page, opts) {
   opts = opts || {};
-  const store = { entries: freshEntries(), nextId: 100, rts: (opts.rts || []).slice() };
+  // w11 (042): opts.extraEntries appends rows carrying cash_lines/cash_sum (dl_v_entries 042 columns).
+  const store = { entries: freshEntries().concat(opts.extraEntries || []), nextId: 100, rts: (opts.rts || []).slice() };
   const captured = { balanceGets: 0, ledgerGets: [], posts: [], patches: [] };
   const json = (route, body, status = 200) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) });
 
@@ -1211,6 +1214,53 @@ async function runDriverCardFlow(browser) {
 }
 
 // ═══════════════════════════════ ΚΑΡΤΕΛΑ — RTs χωρίς γραμμή (.dl-rts, v3β) ═══════════════════════════════
+// w11 (owner 21/9, θέμα 3 — παραλλαγή Α, migration 042): Μετρητά Μ of a trip
+// is the sum of its CASH cost lines (dl_v_entries.cash_lines/cash_sum): the
+// card shows a dot after the amount (amber when the ledger figure still
+// differs), and Διόρθωση renders the figure locked instead of an input, so
+// the PATCH can never carry `expenses` for such a trip (the DB lock would
+// refuse it).
+async function runCashLockFlow(browser) {
+  console.log('\n== accountant · 042 Μετρητά Μ από γραμμές μετρητών (θέμα 3) ==');
+  const { context, page, consoleErrors } = await newPage(browser, 'accountant');
+  const extra = [
+    baseEntry({ id: 7, entry_type: 'trip', entry_date: '2026-08-20', trip_value: null, expenses: 158, rt_id: 9007, rt_code: 'RT-9007', cash_lines: 2, cash_sum: 158, route_text: 'Βέροια → Βουδαπέστη' }),
+    baseEntry({ id: 8, entry_type: 'trip', entry_date: '2026-08-22', trip_value: 300, expenses: 15, rt_id: 9008, rt_code: 'RT-9008', cash_lines: 1, cash_sum: 40, route_text: 'Βέροια → Βιέννη' }),
+  ];
+  const { captured } = installPayrollMocks(page, { extraEntries: extra });
+  await gotoPage(page, 'payroll', BASE_URL);
+  await page.waitForSelector('.dl-page', { timeout: 15000 });
+  await page.evaluate(id => renderPayrollDriver(id), DRIVER_ID);
+  await page.waitForSelector('.dl-ledger', { timeout: 15000 });
+  await page.locator('.dl-ychip[data-year="2026"]').click();
+  await page.waitForTimeout(100);
+  await page.selectOption('#dlMonth', '08');
+  await page.waitForTimeout(150);
+  const row7 = page.locator('.dl-row[data-entry="7"]'), row8 = page.locator('.dl-row[data-entry="8"]'), row3 = page.locator('.dl-row[data-entry="3"]');
+  assert(await row7.locator('.dl-cash').count() === 1 && await row7.locator('.dl-cash.diff').count() === 0, 'id 7: expenses 158 = cash_sum 158 → accent .dl-cash dot, no .diff');
+  assert(await row8.locator('.dl-cash.diff').count() === 1, 'id 8: expenses 15 ≠ cash_sum 40 → .dl-cash.diff (amber)');
+  assert(await row3.locator('.dl-cash').count() === 0, 'id 3 (no CASH lines) carries no dot');
+  assert(/2 γραμμές μετρητών, 158,00 €/.test(await row7.locator('.dl-cash').getAttribute('title')), 'id 7 dot title names the lines and their sum: ' + await row7.locator('.dl-cash').getAttribute('title'));
+  assert(/διαφέρει/.test(await row8.locator('.dl-cash').getAttribute('title')), 'id 8 dot title says the amounts differ');
+  await row7.locator('.dl-more').click();
+  await page.waitForSelector('.dl-menu', { timeout: 5000 });
+  await page.locator('.dl-menu-edit').click();
+  await page.waitForSelector('#dlEiValue', { timeout: 5000 });
+  assert(await page.locator('#dlEiExpenses').count() === 0 && await page.locator('#dlEiExpensesLocked').count() === 1, '042: the edit row has NO expenses input — a locked figure instead');
+  assert((await page.locator('#dlEiExpensesLocked').innerText()).trim() === '158,00', 'the locked figure shows the ledger amount 158,00: ' + (await page.locator('#dlEiExpensesLocked').innerText()));
+  await page.screenshot({ path: SHOT_CASH_LOCK, fullPage: true }); console.log('  screenshot: ' + SHOT_CASH_LOCK);
+  await page.fill('#dlEiValue', '222');
+  await Promise.all([
+    page.waitForResponse(r => r.request().method() === 'PATCH' && r.url().includes('/costs/ledger/'), { timeout: 10000 }),
+    page.locator('#dlEiValue').press('Enter'),
+  ]);
+  await page.waitForTimeout(150);
+  const p = captured.patches[captured.patches.length - 1];
+  assert(p.id === 7 && Number(p.body.trip_value) === 222 && !('expenses' in p.body), 'PATCH /costs/ledger/7 carries trip_value only — never expenses: ' + JSON.stringify(p.body));
+  await context.close();
+  return { consoleErrors, captured };
+}
+
 async function runDriverRtsFlow(browser) {
   console.log('\n== accountant · καρτέλα · RTs χωρίς γραμμή (.dl-rts) ==');
   const { context, page, consoleErrors } = await newPage(browser, 'accountant');
@@ -1446,17 +1496,18 @@ async function runDispatcherFlow(browser) {
     const mgmt = await runManagementFlow(browser);
     const ownerRestore = await runOwnerRestoreFlow(browser);
     const disp = await runDispatcherFlow(browser);
+    const cashLock = await runCashLockFlow(browser);
     const all = [
       ...home.consoleErrors, ...homeGap.consoleErrors, ...bulk.consoleErrors,
       ...card.consoleErrors, ...rts.consoleErrors, ...typeLink.consoleErrors,
       ...vp.consoleErrors, ...print.consoleErrors,
-      ...mgmt.consoleErrors, ...ownerRestore.consoleErrors, ...disp.consoleErrors,
+      ...mgmt.consoleErrors, ...ownerRestore.consoleErrors, ...disp.consoleErrors, ...cashLock.consoleErrors,
     ];
     console.log('\n== console errors ==');
     console.log('home:', home.consoleErrors.length, 'homeGap:', homeGap.consoleErrors.length, 'bulk:', bulk.consoleErrors.length,
       'card:', card.consoleErrors.length, 'rts:', rts.consoleErrors.length, 'typeLink:', typeLink.consoleErrors.length,
       'viewport:', vp.consoleErrors.length, 'print:', print.consoleErrors.length,
-      'management:', mgmt.consoleErrors.length, 'ownerRestore:', ownerRestore.consoleErrors.length, 'dispatcher:', disp.consoleErrors.length);
+      'management:', mgmt.consoleErrors.length, 'ownerRestore:', ownerRestore.consoleErrors.length, 'dispatcher:', disp.consoleErrors.length, 'cashLock:', cashLock.consoleErrors.length);
     if (all.length) all.forEach(e => console.log('  ! ' + e));
     console.log('\n== captured request bodies (accountant) ==');
     console.log(JSON.stringify({ posts: card.captured.posts, patches: card.captured.patches }, null, 2));
