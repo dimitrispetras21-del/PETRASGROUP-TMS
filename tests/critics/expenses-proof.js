@@ -1201,10 +1201,10 @@ async function runW11RouteFlow(browser) {
   const routeCell = page.locator('.ex-gr[data-rt="951"] .ex-route');
   // owner 21/9 βράδυ: the flag FOLLOWS each foreign stop, none for GR, none in front
   const rowHtml = await routeCell.evaluate(el => el.innerHTML);
-  assert(/^Βέροια → Modena <img[^>]*alt="IT"[^>]*> \/ Vienna <img[^>]*alt="AT"[^>]*> → Βέροια$/.test(rowHtml.replace(/\s+/g, ' ').trim()), 'w11-7: the ROW reads «Βέροια → Modena 🇮🇹 / Vienna 🇦🇹 → Βέροια» — flag after each foreign stop, short form: ' + rowHtml);
+  assert(/^Βέροια, GR → Modena, IT <img[^>]*alt="IT"[^>]*> \/ Vienna, AT <img[^>]*alt="AT"[^>]*> → Βέροια, GR$/.test(rowHtml.replace(/\s+/g, ' ').trim()), 'w11-7 (owner 21/9 night): the ROW reads the FULL «Βέροια, GR → Modena, IT 🇮🇹 / Vienna, AT 🇦🇹 → Βέροια, GR» — flag after each foreign stop: ' + rowHtml);
   assert(await routeCell.locator('img.ex-flag[alt="GR"]').count() === 0 && await routeCell.locator('img.ex-flag').count() === 2, 'w11-7: no GR flag, exactly two foreign flags');
   const txt = (await routeCell.evaluate(el => el.textContent)).replace(/\s+/g, ' ').trim();
-  assert(txt === 'Βέροια → Modena / Vienna → Βέροια', 'w11-7: the ROW text is the short route: «' + txt + '»');
+  assert(txt === 'Βέροια, GR → Modena, IT / Vienna, AT → Βέροια, GR', 'w11-7: the ROW text is the full «Πόλη, CC» route: «' + txt + '»');
   assert((await routeCell.getAttribute('title')) === 'Βέροια, GR → Modena, IT / Vienna, AT → Βέροια, GR', 'w11-7: the tooltip carries the full «Πόλη, CC» form');
   await waitImages(page);
   const flagW = await routeCell.locator('img.ex-flag').evaluateAll(els => els.map(e => e.naturalWidth));
@@ -1212,7 +1212,7 @@ async function runW11RouteFlow(browser) {
   // 1440: the two-leg short route fits the row without an ellipsis (measured)
   // two-line clamp: «fits» = nothing clipped vertically (scrollHeight ≤ clientHeight)
   const fits = await routeCell.evaluate(el => el.scrollHeight <= el.clientHeight + 1);
-  assert(fits, 'w11-7: at 1440 the short two-leg route fits the Διαδρομή column in ≤3 lines, nothing clipped (scrollHeight ≤ clientHeight): ' + (await routeCell.evaluate(el => el.scrollHeight + '/' + el.clientHeight + ' · width ' + el.clientWidth)));
+  assert(fits, 'w11-7: at 1440 the full two-leg route fits the Διαδρομή column in ≤3 lines, nothing clipped (scrollHeight ≤ clientHeight): ' + (await routeCell.evaluate(el => el.scrollHeight + '/' + el.clientHeight + ' · width ' + el.clientWidth)));
   const rowH = await page.locator('.ex-gr[data-rt="951"]').evaluate(el => el.getBoundingClientRect().height);
   assert(rowH <= 46.5, 'w11-7: the RT row stays within the 46px limit of 13/9 with the three-line route: ' + rowH);
   // 21/9 live fix: every country NAME the locations table holds today maps to

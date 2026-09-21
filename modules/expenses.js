@@ -902,8 +902,10 @@ function exRouteCountries(r) {
 }
 // Owner 21/9 βράδυ («δεν μου αρέσουν αρκετά όπως είναι»): the flag sits AFTER
 // each FOREIGN stop — «Βέροια, GR → Modena, IT 🇮🇹 / Vienna, AT 🇦🇹 → Βέροια, GR»
-// — never in front, never for GR; «/» stays one per order. The row uses the
-// short stop («Modena 🇮🇹»), the frame title the full «Πόλη, CC 🇮🇹».
+// — never in front, never for GR; «/» stays one per order. Row AND frame title
+// carry the full «Πόλη, CC 🇮🇹» (owner 21/9 night: the short «Modena 🇮🇹» row
+// form was rejected — he wants the country code next to every stop even in
+// the narrow column; the 3-line clamp below absorbs the extra width).
 function exRouteHtml(r, opts) {
   const legs = exRouteStops(r);
   if (!legs.length) return escapeHtml(r.route_text || '');
@@ -1334,7 +1336,7 @@ function exTripRowHtml(r, visCols, tmpl) {
       ${vehicleCell}
       ${driverCell}
       <div class="mid n">${exShortRange(r.date_start, r.date_end || r.date_start)}</div>
-      <div class="ex-route" onclick="exToggleExpand(${r.id})" title="${escapeHtml(routeSummary)}">${exRouteHtml(r, { short: true })}</div>
+      <div class="ex-route" onclick="exToggleExpand(${r.id})" title="${escapeHtml(routeSummary)}">${exRouteHtml(r)}</div>
       ${cells}
       <div class="r n" style="font-weight:600">${hasAny ? exNum(rowTotal) : ''}</div>
       <div class="ex-st ${st.cls}"><span class="ex-st-w">${st.word}</span>${_ex.canWrite ? `<button type="button" class="ex-add" onclick="event.stopPropagation();exAddExpense(${r.id})" title="Νέο έξοδο σε αυτό το δρομολόγιο">+</button>` : ''}</div>
