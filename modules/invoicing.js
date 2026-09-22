@@ -103,6 +103,15 @@ function _invPrice(rec) {
   const v = parseFloat(rec.fields['Price']);
   return Number.isFinite(v) ? v : null;   // null = δεν καταχωρήθηκε· ΟΧΙ 0
 }
+// «Has a price» for the invoice gate = price > 0, the SAME rule the Worker
+// (invoiceMarkError) and migration 043 enforce. Until 22/9 the screen gated on
+// «=== null», so an order saved with Price 0 (14 rows measured 22/9, Grok
+// flow review) showed the ΤΠΥ form and then failed with 422 «χωρίς τιμή».
+// _invPrice stays as is for display/totals (0 € is a real amount to print).
+function _invHasPrice(rec) {
+  const v = _invPrice(rec);
+  return v !== null && v > 0;
+}
 // «Week Number» is computed by the Worker on ORDERS only. National orders
 // have no such column, so until 21/9 they showed «—» and the week filter
 // silently dropped every one of them (parseInt('—') → NaN). Owner 21/9 (Γ4):
@@ -498,7 +507,7 @@ function _renderInvKPI() {
 
   const readyTotal = ready.reduce((s, r) => s + (_invPrice(r) || 0), 0);
   // Το άθροισμα αγνοεί όσες δεν έχουν τιμή — άρα ΥΠΟτιμά τον τζίρο. Λέγεται.
-  const readyNoPrice = ready.filter(r => _invPrice(r) === null).length;
+  const readyNoPrice = ready.filter(r => !_invHasPrice(r)).length;
   const invTotal   = invoiced.reduce((s, r) => s + (_invPrice(r) || 0), 0);
 
   // Report the tab and card counts. These deliberately sum to MORE than total:
@@ -740,7 +749,7 @@ function _renderInvDetail() {
         border:1px solid var(--warn-border);background:var(--warn-bg);color:var(--warn);cursor:pointer;margin-top:8px">
         ⚠ Τιμολόγηση με παράκαμψη</button>`;
     }
-  } else if (!isInvoiced && canInvoice && _invPrice(rec) === null) {
+  } else if (!isInvoiced && canInvoice && !_invHasPrice(rec)) {
     // Owner 21/9 (decision 3): price first, then the invoice. The accountant
     // asks the dispatcher for the price — she never types prices here.
     invoiceBlock = `<div style="margin-top:12px;padding:10px 12px;border-radius:6px;border:1px solid var(--border);background:var(--surface-sunken);color:var(--text-mid);font-size:12px">
@@ -841,7 +850,7 @@ async function _invMarkInvoiced(recId) {
     return;
   }
 
-  if (_invPrice(rec) === null) {
+  if (!_invHasPrice(rec)) {
     toast('Χωρίς τιμή δεν καταχωρείται τιμολόγιο', 'error');
     return;
   }
