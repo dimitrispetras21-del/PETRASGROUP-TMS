@@ -3593,24 +3593,69 @@ function _wiPanelSetBusy(busy){
 // Ρότα: search + radio-select over the SAME candidate list _wiCtx/_wiImpCtx
 // used to dump straight into the menu (_wiRotCands, unchanged) — confirm
 // hands off to the existing _wiRotAdd, unchanged.
+// Ρότα, αντίστροφη κατεύθυνση (owner 22/9, ζωντανά: ο Παντελής έκανε δεξί κλικ
+// στη MyDay 367 και ήθελε να την προσαρτήσει ΑΥΤΗ μετά τη Stryama 364 — το
+// πάνελ έψαχνε μόνο το ΕΠΟΜΕΝΟ φορτίο μετά τη δική της παράδοση). Υποψήφιοι
+// ΓΟΝΕΙΣ = γραμμές του ίδιου Weekly με ανάθεση (φορτηγό ή συνεργάτης), χωρίς
+// Rotation ID, με παράδοση ≤ φόρτωση αυτού + 1 ημέρα (ίδιο lag με _wiRotCands,
+// αντίστροφα), κατά παράδοση desc. Ταιριασμένες εισαγωγές μετρούν (έχουν γραμμή
+// στο WINTL.rows κι ας ζωγραφίζονται μέσα στην εξαγωγή) — εκεί ελευθερώνεται
+// το φορτηγό. Επιστρέφει [{rowId,lbl}]· stats.parentsCut = πόσοι κόπηκαν από
+// την ημερομηνία.
+function _wiRotParents(row,stats){
+  const oid=row.type==='import'?row.orderId:row.orderIds?.[0];
+  const o=WINTL.data.exports.find(x=>x.id===oid)||WINTL.data.imports.find(x=>x.id===oid);
+  if(!o) return [];
+  const myLoad=String(o.fields['Loading DateTime']||'');
+  const maxDeliv=myLoad?toLocalDate(new Date(new Date(myLoad).getTime()+86400000)):'';
+  if(stats){ stats.maxDeliv=maxDeliv; stats.parentsCut=0; }
+  const excludeIds=new Set([...(row.orderIds||[]),oid,row.importId,row.matchedTo].filter(Boolean));
+  const out=[];
+  for(const r of WINTL.rows){
+    if(r.id===row.id||r.legOf||r.adj) continue;
+    if(!(r.truckId||r.partnerId)) continue;
+    const pOid=r.type==='import'?r.orderId:r.orderIds?.[0];
+    if(!pOid||excludeIds.has(pOid)) continue;
+    const po=WINTL.data.exports.find(x=>x.id===pOid)||WINTL.data.imports.find(x=>x.id===pOid);
+    if(!po||po.fields['Rotation ID']) continue;
+    const pDeliv=String(po.fields['Delivery DateTime']||po.fields['Loading DateTime']||'');
+    if(!pDeliv||pDeliv>maxDeliv){ if(stats) stats.parentsCut++; continue; }
+    const who=[r.truckLabel||r.partnerLabel,r.driverLabel].filter(Boolean).join(' · ');
+    out.push({rowId:r.id,pDeliv,lbl:`${who||'—'} · παράδοση ${_wk3D(_wiFmt(pDeliv))} ${_wk3Loc(po.fields['Delivery Summary']||'—')}`});
+  }
+  out.sort((a,b)=>b.pDeliv.localeCompare(a.pDeliv));
+  return out;
+}
 function _wiPanelRota(rowId){
   const row=WINTL.rows.find(r=>r.id===rowId); if(!row) return;
   const stats={};
   const cands=_wiRotCands(row,stats);
+  const parents=_wiRotParents(row,stats);
   // The panel says what it left out and why — a dispatcher who KNOWS a load
   // exists must not read «none» (Παντελής 22/9, αρχή 1).
   const why=[stats.beforeDate?`${stats.beforeDate} που φορτώνουν πριν τις ${stats.minLoad?_wk3D(_wiFmt(stats.minLoad)):'—'}`:'',
              stats.inRota?`${stats.inRota} ήδη σε άλλη ρότα`:''].filter(Boolean).join(' · ');
   const note=why?`<div class="wi-panel-note dim" style="margin-top:6px">Εκτός λίστας: ${why}</div>`:'';
-  const body=cands.length
+  // One radio group, two directions: «leg:<oid>» = that load follows THIS
+  // row· «par:<rowId>» = THIS row follows that parent (_wiRotAdd reversed).
+  const legs=cands.length
     ? `<input class="form-input" id="wiRotaSearch" placeholder="Αναζήτηση…" oninput="_wiPanelRotaFilter(this.value)" style="margin-bottom:8px">
        <div class="wi-panel-list" id="wiRotaList">${cands.map((c,i)=>`
         <label class="wi-panel-opt" data-txt="${escapeHtml(c.lbl.toLowerCase())}">
-          <input type="radio" name="wiRotaPick" value="${c.oid}" ${i===0?'checked':''}>
+          <input type="radio" name="wiRotaPick" value="leg:${c.oid}" ${i===0?'checked':''}>
           <span>${c.lbl}</span>
         </label>`).join('')}</div>${note}`
     : `<div class="wi-panel-empty">Κανένα διαθέσιμο φορτίο${why?` — εκτός λίστας: ${why}`:' από την προηγούμενη της παράδοσης και μετά'}</div>`;
-  const footer=cands.length
+  const parNote=stats.parentsCut?`<div class="wi-panel-note dim" style="margin-top:6px">Εκτός λίστας: ${stats.parentsCut} με παράδοση μετά τις ${stats.maxDeliv?_wk3D(_wiFmt(stats.maxDeliv)):'—'}</div>`:'';
+  const pars=`<div class="wi-panel-note" style="margin-top:12px;font-weight:600">Ή: προσάρτηση αυτού ως σκέλος ΜΕΤΑ από…</div>`+(parents.length
+    ? `<div class="wi-panel-list" id="wiRotaParents">${parents.map(p=>`
+        <label class="wi-panel-opt" data-txt="${escapeHtml(p.lbl.toLowerCase())}">
+          <input type="radio" name="wiRotaPick" value="par:${p.rowId}" ${!cands.length?'checked':''}>
+          <span>${p.lbl}</span>
+        </label>`).join('')}</div>${parNote}`
+    : `<div class="wi-panel-empty">Καμία ανατεθειμένη γραμμή με παράδοση ως ${stats.maxDeliv?_wk3D(_wiFmt(stats.maxDeliv)):'—'}${parNote}</div>`);
+  const body=legs+pars;
+  const footer=(cands.length||parents.length)
     ? `<button class="btn btn-ghost" onclick="_wiPanelClose()">Άκυρο</button>
        <button class="btn btn-primary" onclick="_wiPanelRotaGo(${rowId})">Σύνδεση</button>`
     : `<button class="btn btn-ghost" onclick="_wiPanelClose()">Κλείσιμο</button>`;
@@ -3628,9 +3673,15 @@ function _wiPanelRotaFilter(q){
 function _wiPanelRotaGo(rowId){
   const sel=document.querySelector('input[name="wiRotaPick"]:checked');
   if(!sel){ toast('Επίλεξε ένα φορτίο','warn'); return; }
-  const legOid=sel.value;
+  const [dir,val]=[sel.value.slice(0,4),sel.value.slice(4)];
   _wiPanelClose();
-  _wiRotAdd(rowId,legOid);
+  if(dir==='par:'){
+    const row=WINTL.rows.find(r=>r.id===rowId); if(!row) return;
+    const thisOid=row.type==='import'?row.orderId:row.orderIds?.[0];
+    _wiRotAdd(parseInt(val,10),thisOid);   // reversed: the chosen parent, THIS as its leg
+  } else {
+    _wiRotAdd(rowId,val);
+  }
 }
 
 // Ομαδοποίηση (exports) / Groupage εισαγωγών (imports): same candidate
@@ -4506,18 +4557,22 @@ function _wiMatchedImpCtx(e,exportRowId){
   const exp=WINTL.rows.find(r=>r.id===exportRowId); if(!exp||!exp.importId) return;
   const impRow=WINTL.rows.find(r=>r.type==='import'&&r.orderId===exp.importId);
   if(!impRow){ e.preventDefault();e.stopPropagation(); toast('Η ταιριασμένη εισαγωγή δεν βρέθηκε στις γραμμές της εβδομάδας — άνοιξέ την από τη φόρμα','warn'); return; }
-  _wiImpCtx(e,impRow.id,true);
+  _wiImpCtx(e,impRow.id,exportRowId);
 }
-// `matched` = opened from the cards inside an export row: only the items that
-// act on the import ALONE (print, rota, local move). Assignment, grouping,
-// week shift and split belong to the pair's row — offering them here would
-// write on the import while the board shows the pair as one unit (αρχή 3).
-function _wiImpCtx(e,rowId,matched){
+// `matchedExportRowId` = opened from the cards inside an export row: the
+// pair's assignment (via the export row) plus the items that act on the import
+// ALONE (print, rota, local move). Grouping, week shift and split belong to
+// the pair's row — offering them here would write on the import while the
+// board shows the pair as one unit (αρχή 3).
+function _wiImpCtx(e,rowId,matchedExportRowId){
   e.preventDefault();e.stopPropagation();
   if(_wiBlockReadOnly()) return;
   const row=WINTL.rows.find(r=>r.id===rowId);if(!row) return;
-  if(matched){
+  if(matchedExportRowId){
     let html='';
+    // Assignment is the PAIR's (one truck moves export+import) — open the
+    // export row's assign panel, exactly what the row's own menu opens.
+    html+=_wiCtxBtn('Ανάθεση…',`_wiPanelAssign(${matchedExportRowId},false)`);
     html+=_wiCtxBtn('Εκτύπωση…',`_wiMenuPrint(${rowId},true)`);
     html+=_wiCtxBtn('⤷ Σκέλος προώθησης (ρότα)…',`_wiPanelRota(${rowId})`);
     if(row.orderId) html+=_wiCtxBtn('Τοπική κίνηση (Βέροια)…',`_wiAddLocal('${row.orderId}')`);

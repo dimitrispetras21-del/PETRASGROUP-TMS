@@ -5,9 +5,11 @@
 const fs=require('fs');
 const src=fs.readFileSync(require('path').join(__dirname,'../../modules/weekly_intl.js'),'utf8');
 const m=src.match(/function _wiRotCands\(parentRow,stats\)\{[\s\S]*?\n\}\n/); if(!m) throw new Error('fn not found');
+const m2=src.match(/function _wiRotParents\(row,stats\)\{[\s\S]*?\n\}\n/); if(!m2) throw new Error('parents fn not found');
 const _wk3D=s=>s, _wiFmt=s=>s, _wk3Loc=s=>s;
 const toLocalDate=d=>{const x=new Date(d);return x.getFullYear()+'-'+String(x.getMonth()+1).padStart(2,'0')+'-'+String(x.getDate()).padStart(2,'0');};
 // [id, legacy, dir, loading, delivery, matchedImportLegacy, summaryL, summaryD]
+const TRUCK={361:['IAB2108','Eksuzyan'],364:['IAB2108','Eksuzyan'],366:['IAB2108','Eksuzyan'],365:['T23','']};
 const O=[
  [361,'recWf1H51TfREdMPr','Export','2026-09-17','2026-09-20','recZZboddvxqUGmVs','Veroia','Stubenberg'],
  [364,'recZZboddvxqUGmVs','Import','2026-09-20','2026-09-22',null,'Stubenberg AT','Stryama BG'],
@@ -24,11 +26,12 @@ const rec=o=>({id:o[1],pg:o[0],fields:{'Direction':o[2],'Loading DateTime':o[3],
 const exports_=O.filter(o=>o[2]==='Export').map(rec).sort((a,b)=>(a.fields['Delivery DateTime']||a.fields['Loading DateTime']).localeCompare(b.fields['Delivery DateTime']||b.fields['Loading DateTime']));
 const imports_=O.filter(o=>o[2]==='Import').map(rec).sort((a,b)=>a.fields['Loading DateTime'].localeCompare(b.fields['Loading DateTime']));
 const ws='2026-09-19', we='2026-09-25'; let seq=0; const rows=[];
-for(const e of exports_) rows.push({id:++seq,type:'export',orderId:e.id,orderIds:[e.id],importId:e.fields['Matched Import ID']||null});
+for(const e of exports_){ const t=TRUCK[e.pg]||[]; rows.push({id:++seq,type:'export',orderId:e.id,orderIds:[e.id],importId:e.fields['Matched Import ID']||null,truckId:t[0]||'',truckLabel:t[0]||'',driverLabel:t[1]||''}); }
 const matchedMap={}; exports_.forEach(e=>{ if(e.fields['Matched Import ID']) matchedMap[e.fields['Matched Import ID']]=e.id; });
-for(const i of imports_){ const ld=i.fields['Loading DateTime']; rows.push({id:++seq,type:'import',orderId:i.id,orderIds:[i.id],importId:null,matchedTo:matchedMap[i.id]||null,adj:!(ld>=ws&&ld<=we)}); }
+for(const i of imports_){ const ld=i.fields['Loading DateTime']; const t=TRUCK[i.pg]||[]; rows.push({id:++seq,type:'import',orderId:i.id,orderIds:[i.id],importId:null,matchedTo:matchedMap[i.id]||null,adj:!(ld>=ws&&ld<=we),truckId:t[0]||'',truckLabel:t[0]||'',driverLabel:t[1]||''}); }
 const WINTL={rows,data:{exports:exports_,imports:imports_}};
 const _wiRotCands=new Function('WINTL','_wk3D','_wiFmt','_wk3Loc','toLocalDate', m[0]+'; return _wiRotCands;')(WINTL,_wk3D,_wiFmt,_wk3Loc,toLocalDate);
+const _wiRotParents=new Function('WINTL','_wk3D','_wiFmt','_wk3Loc','toLocalDate', m2[0]+'; return _wiRotParents;')(WINTL,_wk3D,_wiFmt,_wk3Loc,toLocalDate);
 const pgOf=lid=>O.find(o=>o[1]===lid)[0];
 const RESULTS={};
 for(const parentPg of [364,366,361]){
@@ -38,11 +41,18 @@ for(const parentPg of [364,366,361]){
   console.log(`parent ${parentPg} (${row.type}) → ${c.length} cands: [${c.map(x=>pgOf(x.oid)).join(', ')}]  367 ${c.some(x=>pgOf(x.oid)===367)?'ΝΑΙ':'ΟΧΙ'}  stats ${JSON.stringify(stats)}`);
   RESULTS[parentPg]={n:c.length,has367:c.some(x=>pgOf(x.oid)===367)};
 }
+// (iii) reversed: right-click on 367 → parents section lists 364 (IAB2108 · Eksuzyan · 22/9)
+{ const row=rows.find(r=>r.orderId==='recWuez1l9317v4F4'); const st={}; const par=_wiRotParents(row,st);
+  const ids=par.map(p=>{ const r=rows.find(x=>x.id===p.rowId); return O.find(o=>o[1]===r.orderId)[0]; });
+  console.log(`parents of 367 → [${ids.join(', ')}]  stats ${JSON.stringify(st)}  labels: ${par.map(p=>p.lbl).join(' | ')}`);
+  RESULTS.par367=ids; }
 // ASSERTIONS (Παντελής 22/9, πρόταση α+β): γονέας 366 → η 367 μέσα (23/9 ≥ 24/9−1)· γονέας 364 → και οι 8, όχι 6.
 const fails=[];
 if(!RESULTS[366].has367) fails.push('366 → 367 λείπει');
 if(RESULTS[364].n!==8) fails.push('364 → '+RESULTS[364].n+' αντί 8');
-if(fails.length){ console.error('✗ '+fails.join(' · ')); process.exit(1); } else console.log('✓ assertions: 366→367 μέσα, 364→8');
+if(!RESULTS.par367.includes(364)) fails.push('367 → γονείς χωρίς 364');
+if(RESULTS.par367[0]!==366&&RESULTS.par367[0]!==365) fails.push('γονείς όχι κατά παράδοση desc');
+if(fails.length){ console.error('✗ '+fails.join(' · ')); process.exit(1); } else console.log('✓ assertions: 366→367 μέσα, 364→8, 367→γονείς περιέχουν 364, desc');
 // without slice: how many pass the date filter per parent
 for(const parentPg of [364,366]){
   const p=O.find(o=>o[0]===parentPg); const pDeliv=p[4];
