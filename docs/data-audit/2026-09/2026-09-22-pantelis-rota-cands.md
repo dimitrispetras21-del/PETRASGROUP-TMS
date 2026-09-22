@@ -103,3 +103,29 @@ popover: ο ελεγκτής δεν βρήκε keydown handler — ΔΕΝ αγγ
 **Merge (συντονιστής, go 22/9):** ζωντανή δοκιμή από το branch σε τοπικό server **αδύνατη** — ο Worker δέχεται μόνο το
 Origin του Pages (`ALLOWED_ORIGIN`, σωστός φραγμός, δεν παρακάμπτεται). Η ζωντανή δοκιμή 367→364 γίνεται στο Pages
 **μετά το merge**, με την αναστροφή του P3 ενσωματωμένη (αν το σκέλος δεν μπει στο RT, το Rotation ID αναιρείται).
+
+---
+
+## Μετά το merge (ζωντανά στο Pages 55f101c, 13:4x–13:49) — δύο ευρήματα, branch `fix/rota-cands-myday`
+
+**Αντίστροφη σύνδεση ΕΓΙΝΕ** (owner 13:49:08, audit 6469): 367 `rotation_id` = 364, trigger rt_sync έδωσε φορτηγό 19·
+`ct_rt_legs` RT-1171: 361 seq 1, 364 seq 2, 367 seq 3.
+
+**[1] P2 — το RT-1171 έκλεισε (planned → closed, audit 6473/6474 από το front) ενώ η 367 είναι Pending.** Αιτία:
+`rt-feed.js` `shouldClose` κρίνει ΜΟΝΟ από το ζεύγος-άγκυρα (solo export → Delivered του export· ζεύγος → Delivered
+του import) και αγνοεί τα σκέλη ρότας/ομάδας που το ίδιο μόλις συγκέντρωσε (`legsInfo`). Η `_wiRotAdd` καλεί
+`rtOnOrderSaved(364)` → άγκυρα η 361 → η 364 Delivered → closed. **Διόρθωση:** `_rtOpenLegs(legsInfo, gathered)` —
+κλείσιμο μόνο αν ΚΑΝΕΝΑ σκέλος δεν είναι ανοιχτό (Delivered/Cancelled = κλειστό, άγνωστη εγγραφή = ανοιχτό, αρχή 1).
+Rig `tests/critics/rt-close-sim.js` (γνήσια συνάρτηση): ζεύγος Delivered + 367 Pending → ανοιχτό [367]· όλα Delivered →
+κλείνει· Cancelled δεν μπλοκάρει· άγνωστη → ανοιχτή. 4/4 ✓. **Εκκρεμεί για owner:** το RT-1171 είναι ΗΔΗ closed με
+ανοιχτό 3ο σκέλος — θέλει ξανάνοιγμα (Μισθοδοσία ή SQL owner: `UPDATE ct_round_trips SET status='planned',
+closed_at=NULL WHERE code='RT-1171'`), δεν το αγγίζω.
+
+**[2] Η MyDay «έλειπε» από την ευθεία λίστα της 364 (7 + «2 εκτός» ενώ επιλέξιμες 10–12).** Από SELECT: υποψήφια ≥ 21/9
+κατά φόρτωση = 368 (21/9) · 360, 369, 370, 371, 365, 366 (22/9) = **ακριβώς 7**, μετά 356, 357, **367** (23/9), 358, 359.
+Η λίστα `.wi-panel-list` έχει `max-height:220px` + κύλιση (~7 γραμμές) και στο macOS η μπάρα είναι αόρατη — τα υπόλοιπα
+5 ήταν κάτω από την πτυχή. Το sim με τα ίδια δεδομένα επιστρέφει 8 υποψήφια για γονέα 364 (η συνάρτηση τη δίνει, το DOM
+την έκρυβε). **Διόρθωση:** λεζάντα «N υποψήφια φορτία — κύλισε ή αναζήτησε» (>8), λίστα ρότας `max-height:min(320px,45vh)`,
+γονείς με πλήθος στην επικεφαλίδα. Rig: DOM `#wiRotaList .wi-panel-opt` = πλήθος cands, λεζάντα = πλήθος
+(`shots/rota-list-count-after-1440.png`). Επιβεβαίωση κονσόλας από συντονιστή εκκρεμεί
+(`document.querySelectorAll('#wiRotaList .wi-panel-opt').length`).

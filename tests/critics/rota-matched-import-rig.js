@@ -62,7 +62,7 @@ function recordedIndex(){ const idx=new Map(); for(const e of JSON.parse(fs.read
   let found=await page.locator(sel).count(), week=36;
   const leg=page.locator('.wk3-row:not(.impr) .wk3-leg.imp:has(.wi2-card)').first();
   const hasHandler=found?await leg.evaluate(el=>!!el.getAttribute('oncontextmenu')):null;
-  let menu='',panelTitle='',panelBody='';
+  let menu='',panelTitle='',panelBody='',listCheck=null;
   if(found){
     await leg.scrollIntoViewIfNeeded();
     await leg.click({button:'right'}); await page.waitForTimeout(400);
@@ -74,6 +74,11 @@ function recordedIndex(){ const idx=new Map(); for(const e of JSON.parse(fs.read
       await rota.click(); await page.waitForTimeout(600);
       panelTitle=await page.locator('#wi-panel .wi-panel-title').innerText().catch(()=>'');
       panelBody=(await page.locator('#wi-panel .wi-panel-body').innerText().catch(()=>'')).replace(/\n/g,' | ').slice(0,400);
+      // MyDay 22/9: the DOM must hold EVERY candidate the function returned,
+      // and the caption must state the count (the list scrolls silently).
+      listCheck=await page.evaluate(()=>{ const row=WINTL.rows.find(r=>r.type==='import'&&r.matchedTo)||WINTL.rows.find(r=>r.type==='import');
+        const n=document.querySelectorAll('#wiRotaList .wi-panel-opt').length; const cap=(document.querySelector('#wi-panel .wi-panel-body .wi-panel-note')||{}).textContent||'';
+        const el=document.getElementById('wiRotaList'); return {domOpts:n, caption:cap.trim(), maxHeight:el&&getComputedStyle(el).maxHeight, scrolls:el?el.scrollHeight>el.clientHeight:null}; });
     }
   }
   // P3 (ελεγκτής 22/9): _wiRotAdd with the backend stubbed — (a) parent has a
@@ -100,6 +105,6 @@ function recordedIndex(){ const idx=new Map(); for(const e of JSON.parse(fs.read
     return {fail,ok};
   });
   await page.screenshot({path:out});
-  console.log(JSON.stringify({week,PAIR,paired,p3,matchedCards:found,hasHandler,menu,panelTitle,panelBody,errors:errs.slice(0,3)},null,1));
+  console.log(JSON.stringify({week,PAIR,paired,listCheck,p3,matchedCards:found,hasHandler,menu,panelTitle,panelBody,errors:errs.slice(0,3)},null,1));
   await browser.close();
 })().catch(e=>{console.error('✗',e.message);process.exit(1);});

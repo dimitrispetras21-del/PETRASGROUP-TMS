@@ -3638,17 +3638,22 @@ function _wiPanelRota(rowId){
   const note=why?`<div class="wi-panel-note dim" style="margin-top:6px">Εκτός λίστας: ${why}</div>`:'';
   // One radio group, two directions: «leg:<oid>» = that load follows THIS
   // row· «par:<rowId>» = THIS row follows that parent (_wiRotAdd reversed).
+  // Live 22/9: 12 candidates, the list's 220px showed the first 7 and the
+  // scrollbar is invisible on macOS until you scroll — the dispatcher read
+  // «MyDay is not offered». The count in the caption and a taller list make
+  // the hidden rest a stated fact, not a surprise (αρχή 1).
   const legs=cands.length
-    ? `<input class="form-input" id="wiRotaSearch" placeholder="Αναζήτηση…" oninput="_wiPanelRotaFilter(this.value)" style="margin-bottom:8px">
-       <div class="wi-panel-list" id="wiRotaList">${cands.map((c,i)=>`
+    ? `<div class="wi-panel-note" style="margin-bottom:4px;font-weight:600">${cands.length} υποψήφια φορτία${cands.length>8?' — κύλισε ή αναζήτησε':''}</div>
+       <input class="form-input" id="wiRotaSearch" placeholder="Αναζήτηση…" oninput="_wiPanelRotaFilter(this.value)" style="margin-bottom:8px">
+       <div class="wi-panel-list" id="wiRotaList" style="max-height:min(320px,45vh)">${cands.map((c,i)=>`
         <label class="wi-panel-opt" data-txt="${escapeHtml(c.lbl.toLowerCase())}">
           <input type="radio" name="wiRotaPick" value="leg:${c.oid}" ${i===0?'checked':''}>
           <span>${c.lbl}</span>
         </label>`).join('')}</div>${note}`
     : `<div class="wi-panel-empty">Κανένα διαθέσιμο φορτίο${why?` — εκτός λίστας: ${why}`:' από την προηγούμενη της παράδοσης και μετά'}</div>`;
   const parNote=stats.parentsCut?`<div class="wi-panel-note dim" style="margin-top:6px">Εκτός λίστας: ${stats.parentsCut} με παράδοση μετά τις ${stats.maxDeliv?_wk3D(_wiFmt(stats.maxDeliv)):'—'}</div>`:'';
-  const pars=`<div class="wi-panel-note" style="margin-top:12px;font-weight:600">Ή: προσάρτηση αυτού ως σκέλος ΜΕΤΑ από…</div>`+(parents.length
-    ? `<div class="wi-panel-list" id="wiRotaParents">${parents.map(p=>`
+  const pars=`<div class="wi-panel-note" style="margin-top:12px;font-weight:600">Ή: προσάρτηση αυτού ως σκέλος ΜΕΤΑ από…${parents.length?` (${parents.length})`:''}</div>`+(parents.length
+    ? `<div class="wi-panel-list" id="wiRotaParents" style="max-height:min(240px,30vh)">${parents.map(p=>`
         <label class="wi-panel-opt" data-txt="${escapeHtml(p.lbl.toLowerCase())}">
           <input type="radio" name="wiRotaPick" value="par:${p.rowId}" ${!cands.length?'checked':''}>
           <span>${p.lbl}</span>

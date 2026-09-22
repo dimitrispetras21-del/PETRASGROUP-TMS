@@ -197,6 +197,18 @@ if (typeof module !== 'undefined' && module.exports) module.exports = { rtLegsFo
 // off any of those — targeted filters, not a full ORDERS scan (CLAUDE.md
 // «κάθε αντίγραφο αποκλίνει» applies to queries too: a full-table read here
 // would be slow AND would still miss nothing rtLegsForOrder needs).
+// Legs of the trip whose order is neither Delivered nor Cancelled — the
+// gate for closing (P2 above). Pure: (legsInfo from rtLegsForOrder, gathered
+// order records) → the open legs' order ids. Unknown records count as open:
+// «don't know» must never read as «delivered» (αρχή 1).
+function _rtOpenLegs(legsInfo, gathered) {
+  const byId = {};
+  (gathered || []).forEach(o => { if (o && o.id) byId[o.id] = o; });
+  return (legsInfo || []).filter(l => {
+    const st = ((byId[l.orderId] || {}).fields || {})['Status'];
+    return st !== 'Delivered' && st !== 'Cancelled';
+  }).map(l => l.orderId);
+}
 async function _rtGatherOrders(rec) {
   const byId = { [rec.id]: rec };
   const filterIn = async (formula) => {
@@ -420,6 +432,11 @@ async function rtOnOrderSaved(orderId) {
     let shouldClose = false;
     if (pgI == null) shouldClose = status === 'Delivered';
     else { const imp = await atGetOne(TABLES.ORDERS, importRec); shouldClose = !!imp && imp.fields['Status'] === 'Delivered'; }
+    // P2 (owner/ελεγκτής 22/9, RT-1171): the pair was Delivered, a rotation leg
+    // (MyDay 367, Pending) was attached, and the trip closed on the pair's
+    // status alone — a closed trip with an open leg never closes right and
+    // its costs stick. Every gathered leg has a say: any open one keeps it.
+    if (shouldClose && _rtOpenLegs(legsInfo, gathered).length) shouldClose = false;
     if (shouldClose && rtRef && !_rtClosed(rtRef)) {
       await plFetch('/costs/rt/' + rtRef.id, { method: 'PATCH', body: { status: 'closed' } });
     }
