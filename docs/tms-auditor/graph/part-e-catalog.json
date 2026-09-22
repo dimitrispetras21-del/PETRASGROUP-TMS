@@ -1,0 +1,1384 @@
+{
+ "part": "e",
+ "queried_at_utc": [
+  "2026-09-22T19:09:52.045071+00:00",
+  "2026-09-22T19:10:09.99637+00:00",
+  "2026-09-22T19:10:22.545741+00:00"
+ ],
+ "queried_at_local": "2026-09-22 22:09:52–22:10:22 Europe/Athens",
+ "method": "mcp__supabase__execute_sql, 3 batched SELECTs on system catalogs only (pg_trigger, pg_proc/pg_get_functiondef, pg_get_triggerdef, pg_class, pg_depend/pg_rewrite, pg_constraint, pg_extension, pg_namespace, pg_roles, pg_views, pg_policy); no TMS function called, no table data read",
+ "triggers": [
+  {
+   "table": "ct_cost_lines",
+   "name": "dl_cash_sync_line",
+   "enabled": "O",
+   "fn": "dl_cash_sync_line",
+   "timing": "AFTER INSERT OR DELETE OR UPDATE OF rt_id, pay_source, net, vat"
+  },
+  {
+   "table": "ct_round_trips",
+   "name": "dl_sync_from_rt",
+   "enabled": "O",
+   "fn": "dl_sync_from_rt",
+   "timing": "AFTER INSERT OR UPDATE"
+  },
+  {
+   "table": "ct_round_trips",
+   "name": "rt_sync_to_orders",
+   "enabled": "O",
+   "fn": "rt_sync_to_orders",
+   "timing": "AFTER UPDATE OF driver_id, truck_id, trailer_id, partner_id, trip_type WHEN distinct"
+  },
+  {
+   "table": "ct_rt_legs",
+   "name": "rt_reopen_on_leg",
+   "enabled": "O",
+   "fn": "rt_reopen_on_leg",
+   "timing": "AFTER INSERT OR UPDATE OF order_id"
+  },
+  {
+   "table": "ct_rt_legs",
+   "name": "rt_sync_legs",
+   "enabled": "O",
+   "fn": "rt_sync_legs",
+   "timing": "AFTER INSERT OR DELETE"
+  },
+  {
+   "table": "dl_entries",
+   "name": "dl_cash_lock",
+   "enabled": "O",
+   "fn": "dl_cash_lock",
+   "timing": "BEFORE UPDATE OF expenses"
+  },
+  {
+   "table": "dl_entries",
+   "name": "dl_cash_sync_entry",
+   "enabled": "O",
+   "fn": "dl_cash_sync_entry",
+   "timing": "AFTER INSERT OR UPDATE OF rt_id, deleted_at"
+  },
+  {
+   "table": "national_loads",
+   "name": "national_load_soft_delete_unlink",
+   "enabled": "O",
+   "fn": "national_load_soft_delete_unlink",
+   "timing": "AFTER UPDATE OF deleted_at WHEN null->not null"
+  },
+  {
+   "table": "national_loads",
+   "name": "trg_national_loads_soft_delete_cascade",
+   "enabled": "O",
+   "fn": "national_loads_soft_delete_cascade",
+   "timing": "AFTER UPDATE OF deleted_at"
+  },
+  {
+   "table": "national_orders",
+   "name": "national_orders_invoice_mark_guard",
+   "enabled": "O",
+   "fn": "invoice_mark_guard",
+   "timing": "BEFORE INSERT OR UPDATE OF invoiced, invoice_number, price"
+  },
+  {
+   "table": "national_orders",
+   "name": "trg_national_orders_soft_delete_cascade",
+   "enabled": "O",
+   "fn": "national_orders_soft_delete_cascade",
+   "timing": "AFTER UPDATE OF deleted_at"
+  },
+  {
+   "table": "orders",
+   "name": "national_load_follow_order",
+   "enabled": "O",
+   "fn": "national_load_follow_order",
+   "timing": "AFTER UPDATE OF status WHEN distinct"
+  },
+  {
+   "table": "orders",
+   "name": "order_dates_follow",
+   "enabled": "O",
+   "fn": "order_dates_follow",
+   "timing": "AFTER UPDATE OF loading_datetime, delivery_datetime WHEN distinct"
+  },
+  {
+   "table": "orders",
+   "name": "order_leg_depth",
+   "enabled": "O",
+   "fn": "order_leg_depth",
+   "timing": "BEFORE INSERT OR UPDATE OF parent_order_id"
+  },
+  {
+   "table": "orders",
+   "name": "order_leg_inherit",
+   "enabled": "O",
+   "fn": "order_leg_inherit",
+   "timing": "BEFORE INSERT WHEN parent_order_id not null"
+  },
+  {
+   "table": "orders",
+   "name": "order_leg_status_sync",
+   "enabled": "O",
+   "fn": "order_leg_status_sync",
+   "timing": "AFTER INSERT OR DELETE OR UPDATE OF status, truck_id, partner_id, deleted_at, parent_order_id"
+  },
+  {
+   "table": "orders",
+   "name": "order_legs_to_parent",
+   "enabled": "O",
+   "fn": "order_legs_to_parent",
+   "timing": "AFTER UPDATE OF loading/unloading loc 1, loading/delivery datetime WHEN leg"
+  },
+  {
+   "table": "orders",
+   "name": "order_parent_to_legs",
+   "enabled": "O",
+   "fn": "order_parent_to_legs",
+   "timing": "AFTER UPDATE OF client/reference/goods/temp/pallets/locations/dates (49 cols) WHEN parent"
+  },
+  {
+   "table": "orders",
+   "name": "order_soft_delete_unlink",
+   "enabled": "O",
+   "fn": "order_soft_delete_unlink",
+   "timing": "AFTER UPDATE OF deleted_at WHEN null->not null"
+  },
+  {
+   "table": "orders",
+   "name": "orders_invoice_mark_guard",
+   "enabled": "O",
+   "fn": "invoice_mark_guard",
+   "timing": "BEFORE INSERT OR UPDATE OF invoiced, invoice_number, price"
+  },
+  {
+   "table": "orders",
+   "name": "rt_create_from_order",
+   "enabled": "O",
+   "fn": "rt_create_from_order",
+   "timing": "AFTER INSERT OR UPDATE OF status, truck_id, partner_id, driver_id, trailer_id, loading_datetime, delivery_datetime, group_id, matched_import_id, rotation_id, is_partner_trip"
+  },
+  {
+   "table": "orders",
+   "name": "rt_link_split",
+   "enabled": "O",
+   "fn": "rt_link_split",
+   "timing": "AFTER UPDATE OF matched_import_id, group_id, rotation_id WHEN distinct"
+  },
+  {
+   "table": "orders",
+   "name": "rt_sync_from_order",
+   "enabled": "O",
+   "fn": "rt_sync_from_order",
+   "timing": "AFTER UPDATE OF driver_id, truck_id, trailer_id, partner_id, is_partner_trip, loading/delivery/actual_delivery date, deleted_at, status WHEN distinct"
+  }
+ ],
+ "functions": [
+  {
+   "name": "ct_setting",
+   "secdef": false,
+   "lang": "sql",
+   "writes_from_text": [],
+   "refs_in_text": []
+  },
+  {
+   "name": "delete_order_cascade",
+   "secdef": true,
+   "lang": "plpgsql",
+   "writes_from_text": [
+    "cons_load_source_orders",
+    "consolidated_loads",
+    "groupage_lines",
+    "national_loads",
+    "national_orders",
+    "order_stops",
+    "orders",
+    "pallet_ledger_partners",
+    "pallet_ledger_suppliers",
+    "ramp"
+   ],
+   "refs_in_text": []
+  },
+  {
+   "name": "dl_cancel_batch",
+   "secdef": true,
+   "lang": "plpgsql",
+   "writes_from_text": [
+    "dl_entries"
+   ],
+   "refs_in_text": []
+  },
+  {
+   "name": "dl_cash_lock",
+   "secdef": true,
+   "lang": "plpgsql",
+   "writes_from_text": [],
+   "refs_in_text": []
+  },
+  {
+   "name": "dl_cash_sync",
+   "secdef": true,
+   "lang": "plpgsql",
+   "writes_from_text": [
+    "dl_entries"
+   ],
+   "refs_in_text": [
+    "rt_sync_audit"
+   ]
+  },
+  {
+   "name": "dl_cash_sync_entry",
+   "secdef": true,
+   "lang": "plpgsql",
+   "writes_from_text": [],
+   "refs_in_text": [
+    "dl_cash_sync"
+   ]
+  },
+  {
+   "name": "dl_cash_sync_line",
+   "secdef": true,
+   "lang": "plpgsql",
+   "writes_from_text": [],
+   "refs_in_text": [
+    "dl_cash_sync"
+   ]
+  },
+  {
+   "name": "dl_import",
+   "secdef": true,
+   "lang": "plpgsql",
+   "writes_from_text": [
+    "dl_entries",
+    "dl_import_batches"
+   ],
+   "refs_in_text": []
+  },
+  {
+   "name": "dl_sync_from_rt",
+   "secdef": true,
+   "lang": "plpgsql",
+   "writes_from_text": [
+    "dl_entries"
+   ],
+   "refs_in_text": []
+  },
+  {
+   "name": "invoice_mark_guard",
+   "secdef": false,
+   "lang": "plpgsql",
+   "writes_from_text": [],
+   "refs_in_text": []
+  },
+  {
+   "name": "log_unknown_field",
+   "secdef": false,
+   "lang": "sql",
+   "writes_from_text": [
+    "facade_unknown_fields"
+   ],
+   "refs_in_text": []
+  },
+  {
+   "name": "national_load_follow_order",
+   "secdef": true,
+   "lang": "plpgsql",
+   "writes_from_text": [
+    "audit_log",
+    "national_loads"
+   ],
+   "refs_in_text": []
+  },
+  {
+   "name": "national_load_soft_delete_unlink",
+   "secdef": true,
+   "lang": "plpgsql",
+   "writes_from_text": [
+    "audit_log",
+    "national_loads"
+   ],
+   "refs_in_text": []
+  },
+  {
+   "name": "national_loads_soft_delete_cascade",
+   "secdef": false,
+   "lang": "plpgsql",
+   "writes_from_text": [
+    "local_moves",
+    "order_stops",
+    "ramp"
+   ],
+   "refs_in_text": []
+  },
+  {
+   "name": "national_orders_soft_delete_cascade",
+   "secdef": false,
+   "lang": "plpgsql",
+   "writes_from_text": [
+    "national_loads",
+    "order_stops"
+   ],
+   "refs_in_text": []
+  },
+  {
+   "name": "order_dates_follow",
+   "secdef": true,
+   "lang": "plpgsql",
+   "writes_from_text": [
+    "audit_log",
+    "national_loads",
+    "order_stops",
+    "orders"
+   ],
+   "refs_in_text": []
+  },
+  {
+   "name": "order_last_unloading",
+   "secdef": false,
+   "lang": "sql",
+   "writes_from_text": [],
+   "refs_in_text": []
+  },
+  {
+   "name": "order_leg_depth",
+   "secdef": true,
+   "lang": "plpgsql",
+   "writes_from_text": [],
+   "refs_in_text": []
+  },
+  {
+   "name": "order_leg_inherit",
+   "secdef": true,
+   "lang": "plpgsql",
+   "writes_from_text": [],
+   "refs_in_text": []
+  },
+  {
+   "name": "order_leg_status_sync",
+   "secdef": true,
+   "lang": "plpgsql",
+   "writes_from_text": [],
+   "refs_in_text": [
+    "order_parent_status"
+   ]
+  },
+  {
+   "name": "order_legs_audit",
+   "secdef": true,
+   "lang": "sql",
+   "writes_from_text": [
+    "audit_log"
+   ],
+   "refs_in_text": []
+  },
+  {
+   "name": "order_legs_to_parent",
+   "secdef": true,
+   "lang": "plpgsql",
+   "writes_from_text": [
+    "orders"
+   ],
+   "refs_in_text": [
+    "order_legs_audit"
+   ]
+  },
+  {
+   "name": "order_parent_status",
+   "secdef": true,
+   "lang": "plpgsql",
+   "writes_from_text": [
+    "audit_log",
+    "orders"
+   ],
+   "refs_in_text": []
+  },
+  {
+   "name": "order_parent_to_legs",
+   "secdef": true,
+   "lang": "plpgsql",
+   "writes_from_text": [
+    "orders"
+   ],
+   "refs_in_text": [
+    "order_legs_audit"
+   ]
+  },
+  {
+   "name": "order_soft_delete_unlink",
+   "secdef": true,
+   "lang": "plpgsql",
+   "writes_from_text": [
+    "audit_log",
+    "ct_round_trips",
+    "ct_rt_legs",
+    "orders",
+    "partner_assignments"
+   ],
+   "refs_in_text": []
+  },
+  {
+   "name": "rt_create_from_order",
+   "secdef": true,
+   "lang": "plpgsql",
+   "writes_from_text": [
+    "ct_round_trips",
+    "ct_rt_legs"
+   ],
+   "refs_in_text": [
+    "rt_sync_audit"
+   ]
+  },
+  {
+   "name": "rt_link_split",
+   "secdef": true,
+   "lang": "plpgsql",
+   "writes_from_text": [],
+   "refs_in_text": [
+    "rt_merge",
+    "rt_sync_audit"
+   ]
+  },
+  {
+   "name": "rt_merge",
+   "secdef": true,
+   "lang": "plpgsql",
+   "writes_from_text": [
+    "ct_cost_lines",
+    "ct_round_trips",
+    "ct_rt_legs",
+    "dl_entries"
+   ],
+   "refs_in_text": [
+    "dl_sync_from_rt",
+    "rt_recompute",
+    "rt_sync_audit",
+    "rt_sync_legs"
+   ]
+  },
+  {
+   "name": "rt_recompute",
+   "secdef": true,
+   "lang": "plpgsql",
+   "writes_from_text": [
+    "ct_round_trips"
+   ],
+   "refs_in_text": [
+    "rt_sync_audit"
+   ]
+  },
+  {
+   "name": "rt_reopen_on_leg",
+   "secdef": true,
+   "lang": "plpgsql",
+   "writes_from_text": [
+    "ct_round_trips"
+   ],
+   "refs_in_text": [
+    "rt_sync_audit"
+   ]
+  },
+  {
+   "name": "rt_sync_audit",
+   "secdef": true,
+   "lang": "sql",
+   "writes_from_text": [
+    "audit_log"
+   ],
+   "refs_in_text": []
+  },
+  {
+   "name": "rt_sync_from_order",
+   "secdef": true,
+   "lang": "plpgsql",
+   "writes_from_text": [
+    "ct_round_trips",
+    "ct_rt_legs",
+    "orders"
+   ],
+   "refs_in_text": [
+    "rt_recompute",
+    "rt_sync_audit"
+   ]
+  },
+  {
+   "name": "rt_sync_legs",
+   "secdef": true,
+   "lang": "plpgsql",
+   "writes_from_text": [
+    "ct_round_trips",
+    "orders"
+   ],
+   "refs_in_text": [
+    "rt_recompute",
+    "rt_sync_audit"
+   ]
+  },
+  {
+   "name": "rt_sync_to_orders",
+   "secdef": true,
+   "lang": "plpgsql",
+   "writes_from_text": [
+    "orders"
+   ],
+   "refs_in_text": [
+    "rt_sync_audit"
+   ]
+  },
+  {
+   "name": "upsert_user",
+   "secdef": true,
+   "lang": "sql",
+   "writes_from_text": [
+    "users"
+   ],
+   "refs_in_text": []
+  },
+  {
+   "name": "verify_login",
+   "secdef": true,
+   "lang": "sql",
+   "writes_from_text": [],
+   "refs_in_text": []
+  }
+ ],
+ "public_tables": [
+  "app_errors",
+  "audit_log",
+  "clients",
+  "cons_load_source_orders",
+  "consolidated_loads",
+  "ct_cost_docs",
+  "ct_cost_lines",
+  "ct_import_rules",
+  "ct_plate_aliases",
+  "ct_round_trips",
+  "ct_rt_legs",
+  "ct_settings",
+  "dl_entries",
+  "dl_import_batches",
+  "drivers",
+  "facade_unknown_fields",
+  "groupage_lines",
+  "local_moves",
+  "locations",
+  "maint_history",
+  "maint_plan",
+  "maint_req",
+  "national_loads",
+  "national_orders",
+  "order_stops",
+  "orders",
+  "pallet_ledger_partners",
+  "pallet_ledger_suppliers",
+  "partner_assignments",
+  "partners",
+  "pl_movements",
+  "ramp",
+  "scan_examples",
+  "trailers",
+  "trucks",
+  "users",
+  "workshops"
+ ],
+ "rls": "all 37 public tables relrowsecurity=true, 0 policies each",
+ "views": {
+  "ct_v_consumption": [
+   "ct_cost_lines",
+   "ct_round_trips"
+  ],
+  "ct_v_fuel": [
+   "ct_cost_lines",
+   "ct_round_trips",
+   "trailers",
+   "trucks"
+  ],
+  "ct_v_rt_costs": [
+   "ct_cost_lines",
+   "ct_round_trips",
+   "ct_rt_legs",
+   "ct_v_wear_rate",
+   "dl_entries",
+   "orders",
+   "partner_assignments"
+  ],
+  "ct_v_rt_pallet_gate": [
+   "ct_rt_legs",
+   "orders",
+   "pl_movements"
+  ],
+  "ct_v_rt_pnl": [
+   "ct_round_trips",
+   "ct_v_rt_costs",
+   "ct_v_rt_revenue"
+  ],
+  "ct_v_rt_revenue": [
+   "ct_round_trips",
+   "ct_rt_legs",
+   "national_loads",
+   "orders"
+  ],
+  "ct_v_wear_rate": [
+   "ct_round_trips",
+   "maint_history",
+   "trucks"
+  ],
+  "dl_v_balance": [
+   "ct_round_trips",
+   "dl_entries",
+   "dl_v_rt_route",
+   "drivers"
+  ],
+  "dl_v_entries": [
+   "ct_cost_lines",
+   "ct_round_trips",
+   "dl_entries",
+   "dl_v_rt_route"
+  ],
+  "dl_v_rt_gap": [
+   "ct_round_trips",
+   "dl_entries"
+  ],
+  "dl_v_rt_route": [
+   "ct_rt_legs",
+   "locations",
+   "national_loads",
+   "orders"
+  ],
+  "maint_plan_status": [
+   "maint_plan",
+   "trucks"
+  ],
+  "orders_with_derived": [
+   "orders",
+   "orders_with_derived_old3"
+  ],
+  "orders_with_derived_old": [
+   "orders"
+  ],
+  "orders_with_derived_old2": [
+   "orders",
+   "orders_with_derived_old"
+  ],
+  "orders_with_derived_old3": [
+   "orders",
+   "orders_with_derived_old2"
+  ],
+  "partner_assignments_computed": [
+   "orders",
+   "partner_assignments"
+  ],
+  "pl_v_balance_clients": [
+   "clients",
+   "pl_movements"
+  ],
+  "pl_v_balance_partners": [
+   "partners",
+   "pl_movements"
+  ],
+  "pl_v_client_locations": [
+   "locations",
+   "pl_movements"
+  ],
+  "pl_v_order_gate": [
+   "order_stops",
+   "orders",
+   "pl_movements"
+  ],
+  "v_client_delivery": [
+   "orders"
+  ],
+  "v_driver_delivery": [
+   "orders"
+  ],
+  "v_partner_delivery": [
+   "orders"
+  ]
+ },
+ "fks": [
+  {
+   "table": "cons_load_source_orders",
+   "ref": "consolidated_loads",
+   "on_delete": "CASCADE",
+   "count": 1,
+   "columns": "cons_load_id"
+  },
+  {
+   "table": "cons_load_source_orders",
+   "ref": "orders",
+   "on_delete": "RESTRICT",
+   "count": 1,
+   "columns": "order_id"
+  },
+  {
+   "table": "consolidated_loads",
+   "ref": "clients",
+   "on_delete": "NO ACTION",
+   "count": 1,
+   "columns": "client_id"
+  },
+  {
+   "table": "consolidated_loads",
+   "ref": "locations",
+   "on_delete": "NO ACTION",
+   "count": 20,
+   "columns": "loading_location_1..10_id, delivery_location_1..10_id"
+  },
+  {
+   "table": "consolidated_loads",
+   "ref": "drivers",
+   "on_delete": "NO ACTION",
+   "count": 1,
+   "columns": "driver_id"
+  },
+  {
+   "table": "consolidated_loads",
+   "ref": "partners",
+   "on_delete": "NO ACTION",
+   "count": 1,
+   "columns": "partner_id"
+  },
+  {
+   "table": "consolidated_loads",
+   "ref": "trailers",
+   "on_delete": "NO ACTION",
+   "count": 1,
+   "columns": "trailer_id"
+  },
+  {
+   "table": "consolidated_loads",
+   "ref": "trucks",
+   "on_delete": "NO ACTION",
+   "count": 1,
+   "columns": "truck_id"
+  },
+  {
+   "table": "ct_cost_lines",
+   "ref": "ct_cost_docs",
+   "on_delete": "CASCADE",
+   "count": 1,
+   "columns": "doc_id"
+  },
+  {
+   "table": "ct_cost_lines",
+   "ref": "ct_round_trips",
+   "on_delete": "NO ACTION",
+   "count": 1,
+   "columns": "rt_id"
+  },
+  {
+   "table": "ct_cost_lines",
+   "ref": "trailers",
+   "on_delete": "NO ACTION",
+   "count": 1,
+   "columns": "trailer_id"
+  },
+  {
+   "table": "ct_cost_lines",
+   "ref": "trucks",
+   "on_delete": "NO ACTION",
+   "count": 1,
+   "columns": "truck_id"
+  },
+  {
+   "table": "ct_plate_aliases",
+   "ref": "trailers",
+   "on_delete": "NO ACTION",
+   "count": 1,
+   "columns": "trailer_id"
+  },
+  {
+   "table": "ct_plate_aliases",
+   "ref": "trucks",
+   "on_delete": "NO ACTION",
+   "count": 1,
+   "columns": "truck_id"
+  },
+  {
+   "table": "ct_round_trips",
+   "ref": "drivers",
+   "on_delete": "NO ACTION",
+   "count": 1,
+   "columns": "driver_id"
+  },
+  {
+   "table": "ct_round_trips",
+   "ref": "partners",
+   "on_delete": "NO ACTION",
+   "count": 1,
+   "columns": "partner_id"
+  },
+  {
+   "table": "ct_round_trips",
+   "ref": "trailers",
+   "on_delete": "NO ACTION",
+   "count": 1,
+   "columns": "trailer_id"
+  },
+  {
+   "table": "ct_round_trips",
+   "ref": "trucks",
+   "on_delete": "NO ACTION",
+   "count": 1,
+   "columns": "truck_id"
+  },
+  {
+   "table": "ct_rt_legs",
+   "ref": "national_loads",
+   "on_delete": "NO ACTION",
+   "count": 1,
+   "columns": "nat_load_id"
+  },
+  {
+   "table": "ct_rt_legs",
+   "ref": "orders",
+   "on_delete": "NO ACTION",
+   "count": 1,
+   "columns": "order_id"
+  },
+  {
+   "table": "ct_rt_legs",
+   "ref": "ct_round_trips",
+   "on_delete": "CASCADE",
+   "count": 1,
+   "columns": "rt_id"
+  },
+  {
+   "table": "dl_entries",
+   "ref": "drivers",
+   "on_delete": "NO ACTION",
+   "count": 1,
+   "columns": "driver_id"
+  },
+  {
+   "table": "dl_entries",
+   "ref": "ct_round_trips",
+   "on_delete": "NO ACTION",
+   "count": 1,
+   "columns": "rt_id"
+  },
+  {
+   "table": "dl_import_batches",
+   "ref": "drivers",
+   "on_delete": "NO ACTION",
+   "count": 1,
+   "columns": "driver_id"
+  },
+  {
+   "table": "groupage_lines",
+   "ref": "consolidated_loads",
+   "on_delete": "NO ACTION",
+   "count": 1,
+   "columns": "cons_load_id"
+  },
+  {
+   "table": "groupage_lines",
+   "ref": "locations",
+   "on_delete": "NO ACTION",
+   "count": 2,
+   "columns": "loading_location_id, delivery_location_id"
+  },
+  {
+   "table": "groupage_lines",
+   "ref": "national_orders",
+   "on_delete": "RESTRICT",
+   "count": 1,
+   "columns": "national_order_id"
+  },
+  {
+   "table": "groupage_lines",
+   "ref": "orders",
+   "on_delete": "RESTRICT",
+   "count": 1,
+   "columns": "order_id"
+  },
+  {
+   "table": "local_moves",
+   "ref": "drivers",
+   "on_delete": "NO ACTION",
+   "count": 1,
+   "columns": "driver_id"
+  },
+  {
+   "table": "local_moves",
+   "ref": "locations",
+   "on_delete": "NO ACTION",
+   "count": 2,
+   "columns": "from_location_id, to_location_id"
+  },
+  {
+   "table": "local_moves",
+   "ref": "national_loads",
+   "on_delete": "NO ACTION",
+   "count": 1,
+   "columns": "parent_nat_load_id"
+  },
+  {
+   "table": "local_moves",
+   "ref": "orders",
+   "on_delete": "NO ACTION",
+   "count": 1,
+   "columns": "parent_order_id"
+  },
+  {
+   "table": "local_moves",
+   "ref": "partners",
+   "on_delete": "NO ACTION",
+   "count": 1,
+   "columns": "partner_id"
+  },
+  {
+   "table": "local_moves",
+   "ref": "trailers",
+   "on_delete": "NO ACTION",
+   "count": 1,
+   "columns": "trailer_id"
+  },
+  {
+   "table": "local_moves",
+   "ref": "trucks",
+   "on_delete": "NO ACTION",
+   "count": 1,
+   "columns": "truck_id"
+  },
+  {
+   "table": "maint_history",
+   "ref": "trailers",
+   "on_delete": "NO ACTION",
+   "count": 1,
+   "columns": "trailer_id"
+  },
+  {
+   "table": "maint_history",
+   "ref": "trucks",
+   "on_delete": "NO ACTION",
+   "count": 1,
+   "columns": "truck_id"
+  },
+  {
+   "table": "maint_history",
+   "ref": "workshops",
+   "on_delete": "NO ACTION",
+   "count": 1,
+   "columns": "workshop_id"
+  },
+  {
+   "table": "maint_plan",
+   "ref": "trucks",
+   "on_delete": "NO ACTION",
+   "count": 1,
+   "columns": "truck_id"
+  },
+  {
+   "table": "national_loads",
+   "ref": "locations",
+   "on_delete": "NO ACTION",
+   "count": 20,
+   "columns": "pickup_location_1..10_id, delivery_location_1..10_id"
+  },
+  {
+   "table": "national_loads",
+   "ref": "drivers",
+   "on_delete": "NO ACTION",
+   "count": 1,
+   "columns": "driver_id"
+  },
+  {
+   "table": "national_loads",
+   "ref": "partners",
+   "on_delete": "NO ACTION",
+   "count": 1,
+   "columns": "partner_id"
+  },
+  {
+   "table": "national_loads",
+   "ref": "consolidated_loads",
+   "on_delete": "NO ACTION",
+   "count": 1,
+   "columns": "source_cons_load_id"
+  },
+  {
+   "table": "national_loads",
+   "ref": "national_orders",
+   "on_delete": "NO ACTION",
+   "count": 1,
+   "columns": "source_national_order_id"
+  },
+  {
+   "table": "national_loads",
+   "ref": "orders",
+   "on_delete": "NO ACTION",
+   "count": 1,
+   "columns": "source_order_id"
+  },
+  {
+   "table": "national_loads",
+   "ref": "trailers",
+   "on_delete": "NO ACTION",
+   "count": 1,
+   "columns": "trailer_id"
+  },
+  {
+   "table": "national_loads",
+   "ref": "trucks",
+   "on_delete": "NO ACTION",
+   "count": 1,
+   "columns": "truck_id"
+  },
+  {
+   "table": "national_orders",
+   "ref": "clients",
+   "on_delete": "NO ACTION",
+   "count": 1,
+   "columns": "client_id"
+  },
+  {
+   "table": "national_orders",
+   "ref": "locations",
+   "on_delete": "NO ACTION",
+   "count": 20,
+   "columns": "pickup_location_1..10_id, delivery_location_1..10_id"
+  },
+  {
+   "table": "national_orders",
+   "ref": "drivers",
+   "on_delete": "NO ACTION",
+   "count": 1,
+   "columns": "driver_id"
+  },
+  {
+   "table": "national_orders",
+   "ref": "partners",
+   "on_delete": "NO ACTION",
+   "count": 1,
+   "columns": "partner_id"
+  },
+  {
+   "table": "national_orders",
+   "ref": "orders",
+   "on_delete": "NO ACTION",
+   "count": 1,
+   "columns": "source_order_id"
+  },
+  {
+   "table": "national_orders",
+   "ref": "trailers",
+   "on_delete": "NO ACTION",
+   "count": 1,
+   "columns": "trailer_id"
+  },
+  {
+   "table": "national_orders",
+   "ref": "trucks",
+   "on_delete": "NO ACTION",
+   "count": 1,
+   "columns": "truck_id"
+  },
+  {
+   "table": "order_stops",
+   "ref": "clients",
+   "on_delete": "NO ACTION",
+   "count": 1,
+   "columns": "client_at_stop_id"
+  },
+  {
+   "table": "order_stops",
+   "ref": "locations",
+   "on_delete": "NO ACTION",
+   "count": 1,
+   "columns": "location_id"
+  },
+  {
+   "table": "order_stops",
+   "ref": "national_loads",
+   "on_delete": "RESTRICT",
+   "count": 1,
+   "columns": "national_load_id"
+  },
+  {
+   "table": "order_stops",
+   "ref": "national_orders",
+   "on_delete": "RESTRICT",
+   "count": 1,
+   "columns": "national_order_id"
+  },
+  {
+   "table": "order_stops",
+   "ref": "orders",
+   "on_delete": "RESTRICT",
+   "count": 1,
+   "columns": "order_id"
+  },
+  {
+   "table": "orders",
+   "ref": "clients",
+   "on_delete": "NO ACTION",
+   "count": 1,
+   "columns": "client_id"
+  },
+  {
+   "table": "orders",
+   "ref": "drivers",
+   "on_delete": "NO ACTION",
+   "count": 1,
+   "columns": "driver_id"
+  },
+  {
+   "table": "orders",
+   "ref": "locations",
+   "on_delete": "NO ACTION",
+   "count": 21,
+   "columns": "loading_location_1..10_id, unloading_location_1..10_id, veroia_crossdock_id"
+  },
+  {
+   "table": "orders",
+   "ref": "orders",
+   "on_delete": "NO ACTION",
+   "count": 1,
+   "columns": "parent_order_id"
+  },
+  {
+   "table": "orders",
+   "ref": "partners",
+   "on_delete": "NO ACTION",
+   "count": 1,
+   "columns": "partner_id"
+  },
+  {
+   "table": "orders",
+   "ref": "trailers",
+   "on_delete": "NO ACTION",
+   "count": 1,
+   "columns": "trailer_id"
+  },
+  {
+   "table": "orders",
+   "ref": "trucks",
+   "on_delete": "NO ACTION",
+   "count": 1,
+   "columns": "truck_id"
+  },
+  {
+   "table": "pallet_ledger_partners",
+   "ref": "partners",
+   "on_delete": "NO ACTION",
+   "count": 1,
+   "columns": "partner_id"
+  },
+  {
+   "table": "pallet_ledger_suppliers",
+   "ref": "clients",
+   "on_delete": "NO ACTION",
+   "count": 1,
+   "columns": "client_id"
+  },
+  {
+   "table": "pallet_ledger_suppliers",
+   "ref": "locations",
+   "on_delete": "NO ACTION",
+   "count": 1,
+   "columns": "loading_supplier_id"
+  },
+  {
+   "table": "pallet_ledger_suppliers",
+   "ref": "partners",
+   "on_delete": "NO ACTION",
+   "count": 1,
+   "columns": "partner_id"
+  },
+  {
+   "table": "partner_assignments",
+   "ref": "orders",
+   "on_delete": "NO ACTION",
+   "count": 1,
+   "columns": "order_id"
+  },
+  {
+   "table": "partner_assignments",
+   "ref": "partners",
+   "on_delete": "NO ACTION",
+   "count": 1,
+   "columns": "partner_id"
+  },
+  {
+   "table": "pl_movements",
+   "ref": "clients",
+   "on_delete": "NO ACTION",
+   "count": 1,
+   "columns": "client_id"
+  },
+  {
+   "table": "pl_movements",
+   "ref": "consolidated_loads",
+   "on_delete": "SET NULL",
+   "count": 1,
+   "columns": "cons_load_id"
+  },
+  {
+   "table": "pl_movements",
+   "ref": "locations",
+   "on_delete": "NO ACTION",
+   "count": 1,
+   "columns": "location_id"
+  },
+  {
+   "table": "pl_movements",
+   "ref": "orders",
+   "on_delete": "SET NULL",
+   "count": 1,
+   "columns": "order_id"
+  },
+  {
+   "table": "pl_movements",
+   "ref": "order_stops",
+   "on_delete": "SET NULL",
+   "count": 1,
+   "columns": "order_stop_id"
+  },
+  {
+   "table": "pl_movements",
+   "ref": "partners",
+   "on_delete": "NO ACTION",
+   "count": 1,
+   "columns": "partner_id"
+  },
+  {
+   "table": "pl_movements",
+   "ref": "pl_movements",
+   "on_delete": "NO ACTION",
+   "count": 1,
+   "columns": "reversal_of"
+  },
+  {
+   "table": "ramp",
+   "ref": "drivers",
+   "on_delete": "NO ACTION",
+   "count": 1,
+   "columns": "driver_id"
+  },
+  {
+   "table": "ramp",
+   "ref": "national_loads",
+   "on_delete": "NO ACTION",
+   "count": 1,
+   "columns": "national_load_id"
+  },
+  {
+   "table": "ramp",
+   "ref": "national_orders",
+   "on_delete": "NO ACTION",
+   "count": 1,
+   "columns": "national_order_id"
+  },
+  {
+   "table": "ramp",
+   "ref": "orders",
+   "on_delete": "NO ACTION",
+   "count": 1,
+   "columns": "order_id"
+  },
+  {
+   "table": "ramp",
+   "ref": "trucks",
+   "on_delete": "NO ACTION",
+   "count": 1,
+   "columns": "truck_id"
+  }
+ ],
+ "fk_total": 163,
+ "extensions": [
+  {
+   "name": "pg_stat_statements",
+   "version": "1.11",
+   "schema": "extensions"
+  },
+  {
+   "name": "pgcrypto",
+   "version": "1.3",
+   "schema": "extensions"
+  },
+  {
+   "name": "plpgsql",
+   "version": "1.0",
+   "schema": "pg_catalog"
+  },
+  {
+   "name": "supabase_vault",
+   "version": "0.3.1",
+   "schema": "vault"
+  },
+  {
+   "name": "uuid-ossp",
+   "version": "1.1",
+   "schema": "extensions"
+  }
+ ],
+ "schemas": [
+  "auth",
+  "extensions",
+  "graphql",
+  "graphql_public",
+  "information_schema",
+  "pg_catalog",
+  "pgbouncer",
+  "public",
+  "realtime",
+  "storage",
+  "supabase_migrations",
+  "vault"
+ ],
+ "roles": {
+  "rolsuper_true": [
+   "supabase_admin"
+  ],
+  "rolbypassrls_true": [
+   "postgres",
+   "service_role",
+   "supabase_admin",
+   "supabase_etl_admin",
+   "supabase_read_only_user"
+  ],
+  "all": [
+   "anon",
+   "authenticated",
+   "authenticator",
+   "cli_login_postgres",
+   "dashboard_user",
+   "pg_checkpoint",
+   "pg_create_subscription",
+   "pg_database_owner",
+   "pg_execute_server_program",
+   "pg_maintain",
+   "pg_monitor",
+   "pg_read_all_data",
+   "pg_read_all_settings",
+   "pg_read_all_stats",
+   "pg_read_server_files",
+   "pg_signal_backend",
+   "pg_stat_scan_tables",
+   "pg_use_reserved_connections",
+   "pg_write_all_data",
+   "pg_write_server_files",
+   "pgbouncer",
+   "postgres",
+   "service_role",
+   "supabase_admin",
+   "supabase_auth_admin",
+   "supabase_etl_admin",
+   "supabase_privileged_role",
+   "supabase_read_only_user",
+   "supabase_realtime_admin",
+   "supabase_replication_admin",
+   "supabase_storage_admin"
+  ]
+ },
+ "vault": {
+  "schema_vault_exists": true,
+  "view_decrypted_secrets_exists": true,
+  "supabase_vault_ext": "0.3.1",
+  "note": "metadata only (pg_namespace, pg_views, pg_extension); vault.secrets / vault.decrypted_secrets were NOT selected from"
+ },
+ "cron_net": {
+  "pg_cron": false,
+  "pg_net": false,
+  "schema_cron": false,
+  "schema_net": false
+ },
+ "withheld": "anon/authenticated table privileges and per-view security_invoker options were collected and are NOT written to this public-repo file (CLAUDE.md: security findings are not published before they are closed); reported to the coordinator in the session reply."
+}

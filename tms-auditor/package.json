@@ -1,0 +1,15 @@
+{
+  "name": "tms-auditor",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Local, read-only-by-design technical auditor for the Petras TMS. Runs the same monitoring SQL as production against an in-process Postgres (PGlite) with mocked net/vault/cron.",
+  "type": "module",
+  "scripts": {
+    "test": "node --test test/*.test.mjs",
+    "checks": "node run-checks.mjs",
+    "graph": "node graph/merge.mjs"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "0.5.8"
+  }
+}

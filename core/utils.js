@@ -526,6 +526,7 @@ function logError(error, context = '') {
     user: (function() { try { return JSON.parse(localStorage.getItem('tms_user') || '{}').name || 'unknown'; } catch { return 'unknown'; } })(),
     page: localStorage.getItem('tms_page') || 'dashboard',
     count: 1,
+    req: (error && typeof error === 'object' && typeof error._req === 'string') ? error._req : null,   // Level A
   };
   if (!_maybeDedup(entry)) {
     _errorLog.push(entry);
@@ -597,6 +598,9 @@ function _postAppError(entry) {
         stack: entry.stack || undefined,
         page: (function() { try { return location.href; } catch(_) { return undefined; } })(),
         user_agent: (function() { try { return navigator.userAgent; } catch(_) { return undefined; } })(),
+        // Level A: the id of the failed user action — joins this row to audit_log.req_id and the Worker
+        // request line. The Worker keeps it only if it matches its strict pattern.
+        req: entry.req || undefined,
         // sw_version deliberately not sent: no page-visible source for it exists
         // today, and reading a made-up localStorage key would be the same dead-
         // name bug class as the old window.SENTRY_DSN. Nullable server-side.

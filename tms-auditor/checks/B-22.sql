@@ -1,0 +1,16 @@
+-- id: B-22
+-- title: Γραμμές κόστους χωρίς δρομολόγιο > 14 ημέρες
+-- flows: F-33,F-34
+-- severity: P3
+-- schedule: daily
+-- red: > 0
+-- baseline: 
+-- queue: yes
+-- entity: 
+-- impact: 
+-- next: 
+-- exceptions: Τέλη DKV χωρίς φορτηγό — θέλει ανάλυση ανά κατηγορία.
+-- tolerance: 
+-- source: 02b Β-22 · 22/9 = 160
+-- enabled: yes
+SELECT count(*) FROM ct_cost_lines WHERE rt_id IS NULL AND line_date < current_date-14;

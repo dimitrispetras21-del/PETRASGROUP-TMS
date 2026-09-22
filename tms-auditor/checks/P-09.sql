@@ -1,0 +1,16 @@
+-- id: P-09
+-- title: Μετρητά → μισθοδοσία (ίχνος)
+-- flows: F-33
+-- severity: P3
+-- schedule: hourly
+-- red: > 0
+-- baseline: 
+-- queue: no
+-- entity: 
+-- impact: 
+-- next: 
+-- exceptions: 
+-- tolerance: 
+-- source: 02a §2 ζεύγος 9
+-- enabled: no: Ίδιο σήμα με B-07: ο trigger 042 δεν γράφει audit, άρα η ΚΑΤΑΣΤΑΣΗ (B-07) είναι η απόδειξη — διπλός συναγερμός αποφεύγεται.
+SELECT 0;

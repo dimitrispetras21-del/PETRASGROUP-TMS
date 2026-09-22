@@ -1,0 +1,16 @@
+-- id: B-20
+-- title: Γραμμή κόστους χωρίς τρόπο πληρωμής
+-- flows: F-33
+-- severity: P1
+-- schedule: daily
+-- red: > 0
+-- baseline: 
+-- queue: no
+-- entity: 
+-- impact: Το NOT NULL της 040 έπεσε — η μισθοδοσία μετρητών δεν είναι αξιόπιστη.
+-- next: 
+-- exceptions: 
+-- tolerance: 
+-- source: 02b Β-20 · 22/9 = 0
+-- enabled: yes
+SELECT count(*) FROM ct_cost_lines WHERE pay_source IS NULL;

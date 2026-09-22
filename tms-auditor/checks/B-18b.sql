@@ -1,0 +1,16 @@
+-- id: B-18b
+-- title: Βιβλίο παλετών: το πλήθος ΔΕΝ μειώνεται ποτέ
+-- flows: F-31
+-- severity: P1
+-- schedule: daily
+-- red: decrease
+-- baseline: 
+-- queue: no
+-- entity: 
+-- impact: Σβήστηκε επιβεβαιωμένη κίνηση παλετών — το βιβλίο δεν είναι πια αξιόπιστο.
+-- next: 
+-- exceptions: 
+-- tolerance: 
+-- source: 02b Β-18 συμπλήρωμα
+-- enabled: yes
+SELECT count(*) FROM pl_movements;

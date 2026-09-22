@@ -1,0 +1,16 @@
+-- id: B-37
+-- title: Εκρήξεις 401 / αποτυχημένα login
+-- flows: F-01,F-02
+-- severity: P2
+-- schedule: hourly
+-- red: > 0
+-- baseline: 
+-- queue: no
+-- entity: 
+-- impact: 
+-- next: 
+-- exceptions: 
+-- tolerance: 
+-- source: 02b Β-37
+-- enabled: no: ΚΕΝΟ: καμία πηγή — ο Worker δεν καταγράφει αιτήματα/αποτυχίες login. Ξεκλειδώνει με το Επίπεδο Α (γραμμή kind:"req") ΜΟΝΟ αν διαβαστούν τα Workers Logs, ή με πίνακα auth_events (νέα έγκριση).
+SELECT 0;

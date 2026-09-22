@@ -1,0 +1,14 @@
+{
+ "analysed": "42/42",
+ "with_check": 31,
+ "tested_locally_full_chain": 1,
+ "tested_locally_logic": 6,
+ "active_automatic": 0,
+ "verified_delivery": 0,
+ "by_status": {
+  "ακάλυπτη": 10,
+  "μερικώς": 20,
+  "καλυμμένη (σχέδιο)": 11,
+  "ανεξερεύνητη": 1
+ }
+}

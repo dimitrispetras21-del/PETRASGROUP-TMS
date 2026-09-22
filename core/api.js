@@ -92,7 +92,9 @@ function _queueOffline(method, url, body, recordId) {
     if (typeof logError === 'function') logError(new Error('Offline queue overflow'), '_queueOffline');
     return;
   }
-  _offlineQueue.push({ method, url, body, timestamp: Date.now(), recordId: recordId || null });
+  // req: the id of the user action that queued this (Level A); replayed as <req>-q so the Worker/audit line
+  // of the eventual write can be joined to the moment the user pressed the button.
+  _offlineQueue.push({ method, url, body, timestamp: Date.now(), recordId: recordId || null, req: _newReqId() });
   _saveOfflineQueue();
   if (typeof showErrorToast === 'function') {
     showErrorToast('\u0391\u03C0\u03BF\u03B8\u03B7\u03BA\u03B5\u03CD\u03C4\u03B7\u03BA\u03B5 \u03C4\u03BF\u03C0\u03B9\u03BA\u03AC \u2014 \u03B8\u03B1 \u03C3\u03C4\u03B1\u03BB\u03B5\u03AF \u03BC\u03CC\u03BB\u03B9\u03C2 \u03B3\u03C5\u03C1\u03AF\u03C3\u03B5\u03B9 \u03C4\u03BF internet', 'warn');
@@ -123,7 +125,7 @@ async function _flushOfflineQueue() {
       // For PATCH operations, check if record was modified since we queued
       if (item.method === 'PATCH' && item.recordId) {
         try {
-          const chkRes = await _atRetry(() => fetch(item.url.replace(/\?.*/, ''), { headers: _apiHeaders('GET') }));
+          const chkRes = await _atRetry((_r) => fetch(item.url.replace(/\?.*/, ''), { headers: _apiHeaders('GET', _r) }));
           const currentData = await chkRes.json();
           if (currentData && currentData.fields) {
             const lastMod = currentData.fields['Last Modified'] || currentData.fields['lastModifiedTime'];
@@ -146,7 +148,7 @@ async function _flushOfflineQueue() {
       }
       await fetch(item.url, {
         method: item.method,
-        headers: _apiHeaders(item.method),
+        headers: _apiHeaders(item.method, item.req ? item.req + '-q' : null),
         body: item.body ? JSON.stringify(item.body) : undefined,
       });
     } catch(e) {
@@ -157,6 +159,12 @@ async function _flushOfflineQueue() {
   }
   _saveOfflineQueue();
   const synced = batch.length - failed - conflicts;
+  // «Αποθηκεύτηκε τοπικά» must leave a trace centrally (principle 1): one summary line per flush, excluded
+  // from the error-rate checks by its prefix (B-34/B-34b), with the ids of the replayed actions.
+  if (batch.length && typeof logError === 'function') {
+    const _fl = new Error(`offline flush synced ${synced}, conflicts ${conflicts}, failed ${failed} · ${batch.map((b) => b.req).filter(Boolean).slice(0, 10).join(',')}`);
+    logError(_fl, 'queue');
+  }
   if (synced > 0 && typeof showErrorToast === 'function') {
     showErrorToast(`${synced} \u03B1\u03BB\u03BB\u03B1\u03B3\u03AD\u03C2 \u03C3\u03C5\u03B3\u03C7\u03C1\u03BF\u03BD\u03AF\u03C3\u03C4\u03B7\u03BA\u03B1\u03BD${conflicts ? `, ${conflicts} conflicts` : ''}`, 'info');
   }
@@ -240,9 +248,11 @@ function _fetchWithTimeout(url, opts = {}, ms = 30000) {
 }
 
 async function _atRetry(fn, retries = 3) {
+  const reqId = _newReqId();
   for (let i = 0; i < retries; i++) {
     try {
-      const res = await fn();
+      const res = await fn(reqId + '-' + (i + 1));
+      _noteWorkerCaps(res);
       if (res.status === 401) {
         localStorage.removeItem('tms_user');
         localStorage.removeItem('tms_jwt');
@@ -252,7 +262,7 @@ async function _atRetry(fn, retries = 3) {
         // throw έπεφτε στο κοινό catch παρακάτω, που ξαναδοκίμαζε δύο φορές
         // (1s+2s) με το ίδιο ληγμένο token, ενώ η σελίδα ήδη έφευγε.
         const _e401 = new Error('Unauthorized');
-        _e401._noRetry = true;
+        _e401._noRetry = true; _e401._req = reqId;
         throw _e401;
       }
       // 403 = ο RBAC του Worker είπε όχι. Η ίδια αίτηση παίρνει την ίδια
@@ -266,10 +276,11 @@ async function _atRetry(fn, retries = 3) {
         const errData403 = await res.json().catch(() => ({}));
         const raw403 = _atErrMsg(errData403.error, 'Forbidden');
         const msg403 = 'Δεν έχετε δικαίωμα για αυτή την ενέργεια';
-        if (typeof logError === 'function') logError(new Error(`${msg403} — ${raw403}`), '_atRetry 403');
+        const _l403 = new Error(`${msg403} — ${raw403}`); _l403._req = reqId;
+        if (typeof logError === 'function') logError(_l403, '_atRetry 403');
         if (typeof showErrorToast === 'function') showErrorToast(msg403, 'error');
         const _e403 = new Error(msg403);
-        _e403._noRetry = true;
+        _e403._noRetry = true; _e403._req = reqId;
         throw _e403;
       }
       if (res.status === 429) {
@@ -308,7 +319,8 @@ async function _atRetry(fn, retries = 3) {
           const flt = u.searchParams.get('filterByFormula') || '';
           where = ` · ${tname}${flt ? ' · ' + flt.slice(0, 160) : ''}`;
         } catch (_) { /* diagnostics must never break the error path */ }
-        if (typeof logError === 'function') logError(new Error(mapped + where), `_atRetry ${res.status}`);
+        const _lv = new Error(mapped + where); _lv._req = reqId;
+        if (typeof logError === 'function') logError(_lv, `_atRetry ${res.status}`);
         if (typeof showErrorToast === 'function') showErrorToast(mapped, 'error');
         // Deterministic: the same body will be rejected identically on every
         // attempt, so this throw must escape the retry loop, not feed it. It fell
@@ -316,7 +328,7 @@ async function _atRetry(fn, retries = 3) {
         // (Error Log 4–12/8) into 190 log entries and firing THREE red toasts per
         // failure. The flag is read in the catch; nothing else consumes it.
         const _e = new Error(mapped);
-        _e._noRetry = true;
+        _e._noRetry = true; _e._req = reqId;
         throw _e;
       }
       if (res.status >= 500 && i < retries - 1) {
@@ -336,6 +348,7 @@ async function _atRetry(fn, retries = 3) {
       // untouched keeps the caller's error identical while skipping the retries.
       if (e && e._noRetry) throw e;
       if (i === retries - 1) {
+        try { if (e && typeof e === 'object' && !e._req) e._req = reqId; } catch (_) {}
         if (typeof logError === 'function') logError(e, 'API retry exhausted');
         if (typeof showErrorToast === 'function') {
           showErrorToast('\u03A3\u03C6\u03AC\u03BB\u03BC\u03B1 \u03C3\u03CD\u03BD\u03B4\u03B5\u03C3\u03B7\u03C2 \u2014 \u03B4\u03BF\u03BA\u03B9\u03BC\u03AC\u03C3\u03C4\u03B5 \u03BE\u03B1\u03BD\u03AC', 'error');
@@ -355,8 +368,32 @@ function _apiUrl(path) {
   return `https://api.airtable.com${path}`;
 }
 
-function _apiHeaders(method) {
+// ── Level A (feat/tms-auditor): one correlation id per USER ACTION ────────────
+// _atRetry creates the id; every attempt sends x-tms-req: <id>-<attempt> (retries share the id, so «one click
+// = 3 lines in the Worker» becomes visible as one action). The header is sent ONLY after this page load has
+// seen x-tms-worker-req on a response: a Worker without Level A (or a rollback) does not allow the header in
+// CORS, and sending it would fail the preflight of EVERY request. Never persisted — a rollback must not be
+// able to break the app through a cached flag. The id carries no user data (26 random [a-z0-9]).
+let _tmsReqOk = false;
+const _TMS_APP_V = (function () {
+  try { const s = document.currentScript && document.currentScript.src; return s ? new URL(s).searchParams.get('v') : null; }
+  catch (_) { return null; }
+})();
+function _newReqId() {
+  const a = new Uint8Array(16);
+  try { crypto.getRandomValues(a); } catch (_) { for (let i = 0; i < 16; i++) a[i] = Math.floor(Math.random() * 256); }
+  return Array.from(a, (b) => (b % 36).toString(36)).join('') + Date.now().toString(36).slice(-10);
+}
+function _noteWorkerCaps(res) {
+  try { if (!_tmsReqOk && res && res.headers && res.headers.get('x-tms-worker-req')) _tmsReqOk = true; } catch (_) {}
+}
+
+function _apiHeaders(method, req) {
   const h = {};
+  if (req && _tmsReqOk) {
+    h['x-tms-req'] = req;
+    if (_TMS_APP_V) h['x-tms-app'] = _TMS_APP_V;
+  }
   if (typeof USE_PROXY !== 'undefined' && USE_PROXY) {
     // Proxy mode: send JWT token (worker swaps it for the real Airtable PAT)
     const jwt = localStorage.getItem('tms_jwt');
@@ -377,10 +414,10 @@ async function _atFetch(tableId, paramStr = '') {
   do {
     let url = _apiUrl(`/v0/${AT_BASE}/${tableId}`) + `?pageSize=100${paramStr ? '&' + paramStr : ''}`;
     if (offset) url += `&offset=${offset}`;
-    const res  = await _enqueue(() => _atRetry(() => {
+    const res  = await _enqueue(() => _atRetry((_r) => {
       const ctrl = new AbortController();
       const to = setTimeout(() => ctrl.abort(), 30000);
-      return fetch(url, { headers: _apiHeaders('GET'), signal: ctrl.signal })
+      return fetch(url, { headers: _apiHeaders('GET', _r), signal: ctrl.signal })
         .finally(() => clearTimeout(to));
     }));
     const data = await res.json();
@@ -510,9 +547,9 @@ async function atPatch(tableId, recId, fields) {
     _queueOffline('PATCH', _apiUrl(`/v0/${AT_BASE}/${tableId}/${recId}`), { fields }, recId);
     return { id: recId, fields, _offline: true };
   }
-  const res = await _enqueue(() => _atRetry(() => _fetchWithTimeout(_apiUrl(`/v0/${AT_BASE}/${tableId}/${recId}`), {
+  const res = await _enqueue(() => _atRetry((_r) => _fetchWithTimeout(_apiUrl(`/v0/${AT_BASE}/${tableId}/${recId}`), {
     method: 'PATCH',
-    headers: _apiHeaders('PATCH'),
+    headers: _apiHeaders('PATCH', _r),
     body: JSON.stringify({ fields, typecast: true })
   })));
   const data = await res.json();
@@ -544,9 +581,9 @@ async function atCreate(tableId, fields) {
     _queueOffline('POST', _apiUrl(`/v0/${AT_BASE}/${tableId}`), { fields });
     return { id: 'offline_' + Date.now(), fields, _offline: true };
   }
-  const res = await _enqueue(() => _atRetry(() => _fetchWithTimeout(_apiUrl(`/v0/${AT_BASE}/${tableId}`), {
+  const res = await _enqueue(() => _atRetry((_r) => _fetchWithTimeout(_apiUrl(`/v0/${AT_BASE}/${tableId}`), {
     method: 'POST',
-    headers: _apiHeaders('POST'),
+    headers: _apiHeaders('POST', _r),
     body: JSON.stringify({ fields, typecast: true })
   })));
   const data = await res.json();
@@ -578,9 +615,9 @@ async function atDelete(tableId, recId) {
     _queueOffline('DELETE', _apiUrl(`/v0/${AT_BASE}/${tableId}/${recId}`), null, recId);
     return { id: recId, deleted: true, _offline: true };
   }
-  const res = await _enqueue(() => _atRetry(() => _fetchWithTimeout(_apiUrl(`/v0/${AT_BASE}/${tableId}/${recId}`), {
+  const res = await _enqueue(() => _atRetry((_r) => _fetchWithTimeout(_apiUrl(`/v0/${AT_BASE}/${tableId}/${recId}`), {
     method: 'DELETE',
-    headers: _apiHeaders('DELETE')
+    headers: _apiHeaders('DELETE', _r)
   })));
   const data = await res.json();
   if (data.error) {
@@ -601,9 +638,9 @@ async function atDelete(tableId, recId) {
  * @returns {Promise<{id:string, fields:Object}>} Single Airtable record
  */
 async function atGetOne(tableId, recId) {
-  const res = await _enqueue(() => _atRetry(() => fetch(
+  const res = await _enqueue(() => _atRetry((_r) => fetch(
     _apiUrl(`/v0/${AT_BASE}/${tableId}/${recId}`),
-    { headers: _apiHeaders('GET') }
+    { headers: _apiHeaders('GET', _r) }
   )));
   const data = await res.json();
   if (data.error) {
@@ -631,11 +668,11 @@ async function atCreateBatch(tableId, recordsArr) {
     // and the 3 retries (1s+2s) wrote the same stops three times (order 335,
     // 18 stops for 6 — dispatcher 14/9 11:47). The Worker fix makes the batch
     // atomic; until it is deployed, one attempt only.
-    const res = await _enqueue(() => _atRetry(() => _fetchWithTimeout(
+    const res = await _enqueue(() => _atRetry((_r) => _fetchWithTimeout(
       _apiUrl(`/v0/${AT_BASE}/${tableId}`),
       {
         method: 'POST',
-        headers: _apiHeaders('POST'),
+        headers: _apiHeaders('POST', _r),
         body: JSON.stringify({ records: batch, typecast: true })
       }
     ), 1));
@@ -672,11 +709,11 @@ async function atPatchBatch(tableId, recordsArr) {
   for (let i = 0; i < recordsArr.length; i += 10) {
     const batch = recordsArr.slice(i, i + 10);
     _auditLog('PATCH_BATCH', tableId, null, { count: batch.length });
-    const res = await _enqueue(() => _atRetry(() => _fetchWithTimeout(
+    const res = await _enqueue(() => _atRetry((_r) => _fetchWithTimeout(
       _apiUrl(`/v0/${AT_BASE}/${tableId}`),
       {
         method: 'PATCH',
-        headers: _apiHeaders('PATCH'),
+        headers: _apiHeaders('PATCH', _r),
         body: JSON.stringify({ records: batch, typecast: true })
       }
     )));
@@ -926,9 +963,9 @@ async function atSafePatch(tableId, recId, fields) {
   const tracked = _recordVersions[recId];
   if (tracked) {
     try {
-      const res = await _enqueue(() => _atRetry(() =>
+      const res = await _enqueue(() => _atRetry((_r) =>
         fetch(_apiUrl(`/v0/${AT_BASE}/${tableId}/${recId}`), {
-          headers: _apiHeaders('GET')
+          headers: _apiHeaders('GET', _r)
         })
       ));
       const current = await res.json();

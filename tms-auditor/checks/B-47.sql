@@ -1,0 +1,16 @@
+-- id: B-47
+-- title: Τοπικές κινήσεις: καμία εγγραφή σε 30 ημέρες (νεκρή οθόνη;)
+-- flows: F-22
+-- severity: P4
+-- schedule: weekly
+-- red: = 0
+-- baseline: 
+-- queue: no
+-- entity: 
+-- impact: 
+-- next: 
+-- exceptions: 
+-- tolerance: 
+-- source: 04 ΝΕΟΣ Β-47 (ασάφεια Α14)
+-- enabled: yes
+SELECT count(*) FROM local_moves WHERE created_at>now()-interval '30 days';

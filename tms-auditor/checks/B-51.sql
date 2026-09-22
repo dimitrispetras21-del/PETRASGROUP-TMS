@@ -1,0 +1,16 @@
+-- id: B-51
+-- title: Ζωντάνεψε νεκρή διαδρομή (metrics_snapshots)
+-- flows: F-42
+-- severity: P4
+-- schedule: weekly
+-- red: > 0
+-- baseline: 
+-- queue: no
+-- entity: 
+-- impact: 
+-- next: 
+-- exceptions: 
+-- tolerance: 
+-- source: 04 ΝΕΟΣ Β-51
+-- enabled: yes
+SELECT count(*) FROM audit_log WHERE table_name='metrics_snapshots' AND created_at>now()-interval '8 days';

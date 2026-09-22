@@ -1,0 +1,123 @@
+{
+ "check": {
+  "id": "B-01",
+  "sql": "SELECT count(*) FROM orders o WHERE o.deleted_at IS NULL AND o.status IN ('Assigned','In Transit','Delivered') AND o.parent_order_id IS NULL\n AND (o.truck_id IS NOT NULL OR (coalesce(o.is_partner_trip,false) AND o.partner_id IS NOT NULL))\n AND NOT EXISTS (SELECT 1 FROM orders c WHERE c.parent_order_id=o.id AND c.deleted_at IS NULL)\n AND NOT EXISTS (SELECT 1 FROM ct_rt_legs l JOIN ct_round_trips r ON r.id=l.rt_id WHERE l.order_id=o.id AND r.status<>'cancelled')\n AND coalesce(o.assigned_at,o.created_at) < now()-interval '15 minutes'",
+  "flows": [
+   "F-14",
+   "F-13"
+  ],
+  "title": "Ανάθεση χωρίς ζωντανό γύρο (RT)",
+  "impact": "Ο οδηγός δεν πληρώνεται για το δρομολόγιο και το κόστος δεν προσγειώνεται σε κανένα γύρο.",
+  "tolerance": "15′ (το front γράφει σε δύο PATCH)",
+  "exceptions": "Γονείς split (τα σκέλη έχουν το RT)· Cancelled.",
+  "entity_table": "orders",
+  "sha_verified": null,
+  "code_pointers": []
+ },
+ "history": [
+  {
+   "value": 2,
+   "run_at": "2026-09-22T21:43:05.243+02:00",
+   "status": "red"
+  },
+  {
+   "value": 1,
+   "run_at": "2026-09-22T21:43:05.239+02:00",
+   "status": "red"
+  }
+ ],
+ "incident": {
+  "id": 1,
+  "key": "B-01",
+  "state": "new",
+  "value": 2,
+  "expected": "κόκκινο αν > 0",
+  "severity": "P1",
+  "last_seen": "2026-09-22T21:43:05.244+02:00",
+  "entity_ids": [
+   "recTEST0001",
+   "recTEST0002"
+  ],
+  "first_seen": "2026-09-22T21:43:05.241+02:00",
+  "occurrences": 2
+ },
+ "audit_last20": [],
+ "not_in_package": [
+  "usernames/actors",
+  "audit before/after data",
+  "names of clients/drivers",
+  "Worker request logs (none exist before Level A)",
+  "what the user saw on screen"
+ ],
+ "app_errors_window": [],
+ "code_pointers": [
+  {
+   "src": "worker/migrations/033_rt_create_related.sql:229",
+   "edge": "tbl:orders -[fires]-> trg:orders.rt_create_from_order",
+   "status": "confirmed"
+  },
+  {
+   "src": "worker/migrations/013_rt_sync.sql:145",
+   "edge": "tbl:orders -[fires]-> trg:orders.rt_sync_from_order",
+   "status": "confirmed"
+  },
+  {
+   "src": "worker/migrations/018_order_legs.sql:36",
+   "edge": "tbl:orders -[fires]-> trg:orders.order_leg_depth",
+   "status": "confirmed"
+  },
+  {
+   "src": "worker/migrations/018_order_legs.sql:53",
+   "edge": "tbl:orders -[fires]-> trg:orders.order_leg_inherit",
+   "status": "confirmed"
+  },
+  {
+   "src": "worker/migrations/018_order_legs.sql:96",
+   "edge": "tbl:orders -[fires]-> trg:orders.order_leg_status_sync",
+   "status": "confirmed"
+  },
+  {
+   "src": "worker/migrations/020_order_legs_sync.sql:148",
+   "edge": "tbl:orders -[fires]-> trg:orders.order_legs_to_parent",
+   "status": "confirmed"
+  },
+  {
+   "src": "worker/migrations/020_order_legs_sync.sql:102",
+   "edge": "tbl:orders -[fires]-> trg:orders.order_parent_to_legs",
+   "status": "confirmed"
+  },
+  {
+   "src": "worker/migrations/037_rt_merge_split_pairs.sql:189",
+   "edge": "tbl:orders -[fires]-> trg:orders.rt_link_split",
+   "status": "confirmed"
+  },
+  {
+   "src": "worker/migrations/033_rt_create_related.sql:83-228",
+   "edge": "trg:orders.rt_create_from_order -[syncs]-> tbl:ct_round_trips",
+   "status": "confirmed"
+  },
+  {
+   "src": "worker/migrations/013_rt_sync.sql:85-144",
+   "edge": "trg:orders.rt_sync_from_order -[syncs]-> tbl:ct_round_trips",
+   "status": "confirmed"
+  },
+  {
+   "src": "worker/migrations/037_rt_merge_split_pairs.sql:61-133",
+   "edge": "trg:orders.rt_link_split -[syncs]-> tbl:ct_round_trips",
+   "status": "confirmed"
+  },
+  {
+   "src": "worker/migrations/013_rt_sync.sql:197-233",
+   "edge": "trg:ct_rt_legs.rt_sync_legs -[syncs]-> tbl:orders",
+   "status": "confirmed"
+  }
+ ],
+ "repo": {
+  "sha": "549a2a4",
+  "note": "code pointers are from the graph at this SHA; production may differ (deployed ≠ main until verified)"
+ },
+ "times_athens": [
+  "22/09 22:43"
+ ],
+ "size_bytes": 3367
+}

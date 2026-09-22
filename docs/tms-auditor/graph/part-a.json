@@ -1,0 +1,3857 @@
+{
+  "part": "a",
+  "sha": "549a2a4",
+  "scope": "Orders/Weekly/Daily-Ops write flows (F-05..F-27, excluding ramp/pallet internals): modules/orders_intl.js, modules/orders_natl.js, modules/weekly_intl.js, modules/weekly_natl.js, modules/daily_ops.js, core/order-sync.js, core/rt-feed.js, core/stops-helpers.js, core/orders-list.js, core/form-helpers.js, core/pa-helpers.js, core/data-helpers.js; the Worker facade handlers for orders/order_stops/national_loads/national_orders/groupage_lines/consolidated_loads/partner_assignments/local_moves + handleOrderCascadeDelete + /costs/rt as called by rt-feed; DB triggers 013/018/020/023/028/030/031/033/037/045.",
+  "nodes": [
+    {
+      "id": "page:orders_intl",
+      "type": "page",
+      "label": "Διεθνείς Παραγγελίες",
+      "src": "core/router.js:39#NAV",
+      "notes": "case 'orders_intl' → renderOrdersIntl() at core/router.js:363"
+    },
+    {
+      "id": "page:orders_natl",
+      "type": "page",
+      "label": "Εθνικές Παραγγελίες",
+      "src": "core/router.js:40#NAV",
+      "notes": "case 'orders_natl' → renderOrdersNatl() at core/router.js:364"
+    },
+    {
+      "id": "page:weekly_intl",
+      "type": "page",
+      "label": "Εβδομαδιαίο Διεθνών",
+      "src": "core/router.js:26#NAV",
+      "notes": "case 'weekly_intl' → renderWeeklyIntl() at core/router.js:338"
+    },
+    {
+      "id": "page:weekly_natl",
+      "type": "page",
+      "label": "Εβδομαδιαίο Εθνικών",
+      "src": "core/router.js:27#NAV",
+      "notes": "case 'weekly_natl' → renderWeeklyNatl() at core/router.js:339"
+    },
+    {
+      "id": "page:daily_ops",
+      "type": "page",
+      "label": "Ημερήσιο Πλάνο",
+      "src": "core/router.js:35#NAV",
+      "notes": "case 'daily_ops' → renderDailyOps() at core/router.js:360"
+    },
+    {
+      "id": "role:owner",
+      "type": "role",
+      "label": "owner",
+      "src": "config.js:334#PERMS",
+      "notes": "front PERMS: planning/orders/clients/maintenance/drivers/costs/settings/performance/ceo_dashboard = full"
+    },
+    {
+      "id": "role:dispatcher",
+      "type": "role",
+      "label": "dispatcher",
+      "src": "config.js:335#PERMS",
+      "notes": "planning/orders/clients = full; maintenance/drivers/performance = view; costs/settings/ceo_dashboard = none"
+    },
+    {
+      "id": "role:management",
+      "type": "role",
+      "label": "management",
+      "src": "config.js:336#PERMS",
+      "notes": "planning/orders/performance = view; clients/maintenance/drivers/settings = full; costs = view"
+    },
+    {
+      "id": "role:accountant",
+      "type": "role",
+      "label": "accountant",
+      "src": "config.js:337#PERMS",
+      "notes": "planning/orders/performance = view; clients/drivers/costs = full; maintenance = view"
+    },
+    {
+      "id": "role:warehouse",
+      "type": "role",
+      "label": "warehouse",
+      "src": "config.js:343#PERMS",
+      "notes": "planning/orders = view only; everything else none"
+    },
+    {
+      "id": "action:F-05",
+      "type": "action",
+      "label": "Δημιουργία διεθνούς παραγγελίας",
+      "src": "modules/orders_intl.js:1750#submitIntlOrder",
+      "notes": "02a F-05"
+    },
+    {
+      "id": "action:F-06",
+      "type": "action",
+      "label": "Επεξεργασία διεθνούς παραγγελίας",
+      "src": "modules/orders_intl.js:1750#submitIntlOrder",
+      "notes": "same function as F-05, recId branch"
+    },
+    {
+      "id": "action:F-07",
+      "type": "action",
+      "label": "Ακύρωση παραγγελίας",
+      "src": "core/orders-list.js:202#cancelOrder",
+      "notes": "shared by orders_intl.js:2925#cancelIntlOrder and orders_natl.js:1851#cancelNatlOrder"
+    },
+    {
+      "id": "action:F-08",
+      "type": "action",
+      "label": "Διαγραφή παραγγελίας (σκληρή αλυσίδα)",
+      "src": "modules/orders_intl.js:2938#deleteIntlOrder",
+      "notes": "natl variant modules/orders_natl.js:1862#deleteNatlOrder"
+    },
+    {
+      "id": "action:F-09",
+      "type": "action",
+      "label": "Αλλαγή status από καρτέλα",
+      "src": "modules/orders_intl.js:2124#_intlChangeStatus"
+    },
+    {
+      "id": "action:F-10",
+      "type": "action",
+      "label": "Veroia Switch → εθνικό φορτίο",
+      "src": "modules/orders_intl.js:1229#_syncVeroiaSwitch"
+    },
+    {
+      "id": "action:F-11",
+      "type": "action",
+      "label": "National Groupage → GL → CL → NL",
+      "src": "modules/orders_intl.js:1595#_syncGroupageLines"
+    },
+    {
+      "id": "action:F-12",
+      "type": "action",
+      "label": "Εθνική παραγγελία CRUD",
+      "src": "modules/orders_natl.js:1262#submitNatlOrder"
+    },
+    {
+      "id": "action:F-13",
+      "type": "action",
+      "label": "Σπάσιμο σκέλους (split)",
+      "src": "modules/weekly_intl.js:3950#_wiDoSplit"
+    },
+    {
+      "id": "action:F-14",
+      "type": "action",
+      "label": "Ανάθεση (φορτηγό/οδηγός/συνεργάτης) — Weekly Intl",
+      "src": "modules/weekly_intl.js:3191#_wiSaveFromPopover"
+    },
+    {
+      "id": "action:F-15",
+      "type": "action",
+      "label": "Καθαρισμός ανάθεσης — Weekly Intl",
+      "src": "modules/weekly_intl.js:3411#_wiClear"
+    },
+    {
+      "id": "action:F-16",
+      "type": "action",
+      "label": "Ταίριασμα εξαγωγής↔εισαγωγής",
+      "src": "modules/weekly_intl.js:2628#_wiSaveImportMatch"
+    },
+    {
+      "id": "action:F-17",
+      "type": "action",
+      "label": "Ξεταίριασμα",
+      "src": "modules/weekly_intl.js:2805#_wiRemoveImport"
+    },
+    {
+      "id": "action:F-18",
+      "type": "action",
+      "label": "Ρότα: προσάρτηση/αποσύνδεση σκέλους",
+      "src": "modules/weekly_intl.js:4225#_wiRotAdd"
+    },
+    {
+      "id": "action:F-19",
+      "type": "action",
+      "label": "Μεταφορά εβδομάδας",
+      "src": "modules/weekly_intl.js:4672#_wiImpShift"
+    },
+    {
+      "id": "action:F-20",
+      "type": "action",
+      "label": "Αλλαγή hand-over (σκέλη)",
+      "src": "modules/weekly_intl.js:1470#_wiDoHandoverChange"
+    },
+    {
+      "id": "action:F-21",
+      "type": "action",
+      "label": "Ομαδοποίηση Group ID / συγχώνευση",
+      "src": "modules/weekly_intl.js:4736#_wiMerge"
+    },
+    {
+      "id": "action:F-22",
+      "type": "action",
+      "label": "Τοπικές κινήσεις (LOCAL_MOVES)",
+      "src": "modules/weekly_natl.js:1127#_wnSaveLocal"
+    },
+    {
+      "id": "action:F-23",
+      "type": "action",
+      "label": "Ανάθεση εθνικού φορτίου",
+      "src": "modules/weekly_natl.js:2339#_wnSaveFromPopover"
+    },
+    {
+      "id": "action:F-24",
+      "type": "action",
+      "label": "Ταίριασμα ΑΝΟΔΟΣ↔ΚΑΘΟΔΟΣ (Matched Load)",
+      "src": "modules/weekly_natl.js:2115#_wnSaveMatch"
+    },
+    {
+      "id": "action:F-25",
+      "type": "action",
+      "label": "Groupage drag&drop → CL/NL (national)",
+      "src": "modules/orders_natl.js:1553#_syncGroupageLinesFromNO",
+      "notes": "see F-11 for the shared mechanism"
+    },
+    {
+      "id": "action:F-26",
+      "type": "action",
+      "label": "Daily Ops: Φορτώθηκε/Παραδόθηκε/Καθυστέρησε",
+      "src": "modules/daily_ops.js:901#_opsStatFinal",
+      "notes": "delivered branch modules/daily_ops.js:930#_opsDelFinal; single-stop stamp modules/daily_ops.js:797#_opsMarkStop"
+    },
+    {
+      "id": "action:F-27",
+      "type": "action",
+      "label": "Daily Ops: αλλαγή ημέρας / inline ώρες-ποσά",
+      "src": "modules/daily_ops.js:1024#_opsChangeDayGo",
+      "notes": "inline field save modules/daily_ops.js:781#_opsSvF"
+    },
+    {
+      "id": "fn:modules/orders_intl.js#submitIntlOrder",
+      "type": "function",
+      "label": "submitIntlOrder",
+      "src": "modules/orders_intl.js:1750#submitIntlOrder"
+    },
+    {
+      "id": "fn:modules/orders_intl.js#_syncVeroiaSwitch",
+      "type": "function",
+      "label": "_syncVeroiaSwitch",
+      "src": "modules/orders_intl.js:1229#_syncVeroiaSwitch"
+    },
+    {
+      "id": "fn:modules/orders_intl.js#_syncGroupageLines",
+      "type": "function",
+      "label": "_syncGroupageLines",
+      "src": "modules/orders_intl.js:1595#_syncGroupageLines"
+    },
+    {
+      "id": "fn:modules/orders_intl.js#_syncGrpFromIntl",
+      "type": "function",
+      "label": "_syncGrpFromIntl",
+      "src": "modules/orders_intl.js:1545#_syncGrpFromIntl"
+    },
+    {
+      "id": "fn:modules/orders_intl.js#_deleteGrpForIntl",
+      "type": "function",
+      "label": "_deleteGrpForIntl",
+      "src": "modules/orders_intl.js:1555#_deleteGrpForIntl"
+    },
+    {
+      "id": "fn:modules/orders_intl.js#_intlChangeStatus",
+      "type": "function",
+      "label": "_intlChangeStatus",
+      "src": "modules/orders_intl.js:2124#_intlChangeStatus"
+    },
+    {
+      "id": "fn:modules/orders_intl.js#deleteIntlOrder",
+      "type": "function",
+      "label": "deleteIntlOrder",
+      "src": "modules/orders_intl.js:2938#deleteIntlOrder",
+      "notes": "8-step cascade after atSoftDelete(ORDERS); each step try/catch + console.warn, counted in _delFail"
+    },
+    {
+      "id": "fn:modules/orders_intl.js#cancelIntlOrder",
+      "type": "function",
+      "label": "cancelIntlOrder",
+      "src": "modules/orders_intl.js:2925#cancelIntlOrder",
+      "notes": "thin wrapper calling OrdersList.cancelOrder"
+    },
+    {
+      "id": "fn:modules/orders_intl.js#findDuplicateOrders_guard",
+      "type": "function",
+      "label": "duplicate-Reference confirm guard",
+      "src": "modules/orders_intl.js:945#_oiCheckSoftRequired",
+      "notes": "uses core/data-helpers.js#findDuplicateOrders before create"
+    },
+    {
+      "id": "fn:modules/orders_natl.js#submitNatlOrder",
+      "type": "function",
+      "label": "submitNatlOrder",
+      "src": "modules/orders_natl.js:1262#submitNatlOrder"
+    },
+    {
+      "id": "fn:modules/orders_natl.js#_syncGroupageLinesFromNO",
+      "type": "function",
+      "label": "_syncGroupageLinesFromNO",
+      "src": "modules/orders_natl.js:1553#_syncGroupageLinesFromNO"
+    },
+    {
+      "id": "fn:modules/orders_natl.js#_syncNationalLoad",
+      "type": "function",
+      "label": "_syncNationalLoad",
+      "src": "modules/orders_natl.js:1689#_syncNationalLoad"
+    },
+    {
+      "id": "fn:modules/orders_natl.js#cancelNatlOrder",
+      "type": "function",
+      "label": "cancelNatlOrder",
+      "src": "modules/orders_natl.js:1851#cancelNatlOrder"
+    },
+    {
+      "id": "fn:modules/orders_natl.js#deleteNatlOrder",
+      "type": "function",
+      "label": "deleteNatlOrder",
+      "src": "modules/orders_natl.js:1862#deleteNatlOrder",
+      "notes": "same order-first pattern as deleteIntlOrder (13/9 dispatcher-403 fix)"
+    },
+    {
+      "id": "fn:core/order-sync.js#syncOrderDownstream",
+      "type": "function",
+      "label": "syncOrderDownstream",
+      "src": "core/order-sync.js:29#syncOrderDownstream"
+    },
+    {
+      "id": "fn:core/order-sync.js#syncGLtoCLtoNL",
+      "type": "function",
+      "label": "syncGLtoCLtoNL",
+      "src": "core/order-sync.js:121#syncGLtoCLtoNL"
+    },
+    {
+      "id": "fn:core/order-sync.js#patchWithSync",
+      "type": "function",
+      "label": "patchWithSync",
+      "src": "core/order-sync.js:187#patchWithSync",
+      "notes": "no caller found among owned files as of 22/9 (grep) — possibly unused convenience wrapper"
+    },
+    {
+      "id": "fn:core/rt-feed.js#rtOnOrderSaved",
+      "type": "function",
+      "label": "rtOnOrderSaved",
+      "src": "core/rt-feed.js:254#rtOnOrderSaved"
+    },
+    {
+      "id": "fn:core/rt-feed.js#rtOnOrderDeleted",
+      "type": "function",
+      "label": "rtOnOrderDeleted",
+      "src": "core/rt-feed.js:451#rtOnOrderDeleted"
+    },
+    {
+      "id": "fn:core/rt-feed.js#rtOnImportUnmatched",
+      "type": "function",
+      "label": "rtOnImportUnmatched",
+      "src": "core/rt-feed.js:471#rtOnImportUnmatched"
+    },
+    {
+      "id": "fn:core/rt-feed.js#rtLegsForOrder",
+      "type": "function",
+      "label": "rtLegsForOrder",
+      "src": "core/rt-feed.js:118#rtLegsForOrder",
+      "notes": "pure BFS over Group ID / Matched Import ID / Rotation ID edges"
+    },
+    {
+      "id": "fn:core/rt-feed.js#rtFindForOrder",
+      "type": "function",
+      "label": "rtFindForOrder",
+      "src": "core/rt-feed.js:247#rtFindForOrder"
+    },
+    {
+      "id": "fn:core/rt-feed.js#_rtSafe",
+      "type": "function",
+      "label": "_rtSafe (never-blocking wrapper)",
+      "src": "core/rt-feed.js:21#_rtSafe"
+    },
+    {
+      "id": "fn:core/stops-helpers.js#stopsLoad",
+      "type": "function",
+      "label": "stopsLoad",
+      "src": "core/stops-helpers.js:14#stopsLoad"
+    },
+    {
+      "id": "fn:core/stops-helpers.js#stopsSave",
+      "type": "function",
+      "label": "stopsSave",
+      "src": "core/stops-helpers.js:51#stopsSave",
+      "notes": "atCreateBatch + atPatchBatch + N×atDelete — three separate non-transactional calls"
+    },
+    {
+      "id": "fn:core/stops-helpers.js#stopsValidate",
+      "type": "function",
+      "label": "stopsValidate",
+      "src": "core/stops-helpers.js:129#stopsValidate"
+    },
+    {
+      "id": "fn:core/orders-list.js#cancelOrder",
+      "type": "function",
+      "label": "OrdersList.cancelOrder",
+      "src": "core/orders-list.js:202#cancelOrder"
+    },
+    {
+      "id": "fn:core/orders-list.js#applyFilters",
+      "type": "function",
+      "label": "OrdersList.applyFilters",
+      "src": "core/orders-list.js:126#applyFilters"
+    },
+    {
+      "id": "fn:core/pa-helpers.js#paUpsert",
+      "type": "function",
+      "label": "paUpsert",
+      "src": "core/pa-helpers.js:32#paUpsert"
+    },
+    {
+      "id": "fn:core/pa-helpers.js#paDelete",
+      "type": "function",
+      "label": "paDelete",
+      "src": "core/pa-helpers.js:56#paDelete"
+    },
+    {
+      "id": "fn:core/pa-helpers.js#paSyncStatus",
+      "type": "function",
+      "label": "paSyncStatus",
+      "src": "core/pa-helpers.js:72#paSyncStatus"
+    },
+    {
+      "id": "fn:core/data-helpers.js#findDuplicateOrders",
+      "type": "function",
+      "label": "findDuplicateOrders",
+      "src": "core/data-helpers.js:128#findDuplicateOrders"
+    },
+    {
+      "id": "fn:modules/weekly_intl.js#_wiDoSplit",
+      "type": "function",
+      "label": "_wiDoSplit",
+      "src": "modules/weekly_intl.js:3950#_wiDoSplit",
+      "notes": "per-step reportError — the one flow that names exactly what wrote and what didn't"
+    },
+    {
+      "id": "fn:modules/weekly_intl.js#_wiSaveFromPopover",
+      "type": "function",
+      "label": "_wiSaveFromPopover",
+      "src": "modules/weekly_intl.js:3191#_wiSaveFromPopover"
+    },
+    {
+      "id": "fn:modules/weekly_intl.js#_wiClear",
+      "type": "function",
+      "label": "_wiClear",
+      "src": "modules/weekly_intl.js:3411#_wiClear"
+    },
+    {
+      "id": "fn:modules/weekly_intl.js#_wiSaveImportMatch",
+      "type": "function",
+      "label": "_wiSaveImportMatch",
+      "src": "modules/weekly_intl.js:2628#_wiSaveImportMatch"
+    },
+    {
+      "id": "fn:modules/weekly_intl.js#_wiRemoveImport",
+      "type": "function",
+      "label": "_wiRemoveImport",
+      "src": "modules/weekly_intl.js:2805#_wiRemoveImport"
+    },
+    {
+      "id": "fn:modules/weekly_intl.js#_wiRotAdd",
+      "type": "function",
+      "label": "_wiRotAdd",
+      "src": "modules/weekly_intl.js:4225#_wiRotAdd",
+      "notes": "read-back rtFindForOrder; reverts Rotation ID if closed RT rejected the leg"
+    },
+    {
+      "id": "fn:modules/weekly_intl.js#_wiRotUnlink",
+      "type": "function",
+      "label": "_wiRotUnlink",
+      "src": "modules/weekly_intl.js:4285#_wiRotUnlink"
+    },
+    {
+      "id": "fn:modules/weekly_intl.js#_wiImpShift",
+      "type": "function",
+      "label": "_wiImpShift",
+      "src": "modules/weekly_intl.js:4672#_wiImpShift",
+      "notes": "read-back atGetOne after patch — only flow that checks the FUF trap explicitly"
+    },
+    {
+      "id": "fn:modules/weekly_intl.js#_wiDoHandoverChange",
+      "type": "function",
+      "label": "_wiDoHandoverChange",
+      "src": "modules/weekly_intl.js:1470#_wiDoHandoverChange",
+      "notes": "two separate atPatch calls (leg1, leg2), no transaction"
+    },
+    {
+      "id": "fn:modules/weekly_intl.js#_wiMerge",
+      "type": "function",
+      "label": "_wiMerge",
+      "src": "modules/weekly_intl.js:4736#_wiMerge"
+    },
+    {
+      "id": "fn:modules/weekly_intl.js#_wiImpGroup",
+      "type": "function",
+      "label": "_wiImpGroup",
+      "src": "modules/weekly_intl.js:4698#_wiImpGroup"
+    },
+    {
+      "id": "fn:modules/weekly_intl.js#_wiConsumePendingMatch",
+      "type": "function",
+      "label": "_wiConsumePendingMatch",
+      "src": "modules/weekly_intl.js:2513#_wiConsumePendingMatch"
+    },
+    {
+      "id": "fn:modules/weekly_natl.js#_wnSaveFromPopover",
+      "type": "function",
+      "label": "_wnSaveFromPopover",
+      "src": "modules/weekly_natl.js:2339#_wnSaveFromPopover"
+    },
+    {
+      "id": "fn:modules/weekly_natl.js#_wnClear",
+      "type": "function",
+      "label": "_wnClear",
+      "src": "modules/weekly_natl.js:2458#_wnClear"
+    },
+    {
+      "id": "fn:modules/weekly_natl.js#_wnSaveMatch",
+      "type": "function",
+      "label": "_wnSaveMatch",
+      "src": "modules/weekly_natl.js:2115#_wnSaveMatch",
+      "notes": "two atSafePatch calls (both sides of Matched Load), no transaction — see FM-a-13"
+    },
+    {
+      "id": "fn:modules/weekly_natl.js#_wnUnmatch",
+      "type": "function",
+      "label": "_wnUnmatch",
+      "src": "modules/weekly_natl.js:2145#_wnUnmatch"
+    },
+    {
+      "id": "fn:modules/weekly_natl.js#_wnSaveLocal",
+      "type": "function",
+      "label": "_wnSaveLocal",
+      "src": "modules/weekly_natl.js:1127#_wnSaveLocal"
+    },
+    {
+      "id": "fn:modules/weekly_natl.js#_wnSaveCover",
+      "type": "function",
+      "label": "_wnSaveCover",
+      "src": "modules/weekly_natl.js:1187#_wnSaveCover"
+    },
+    {
+      "id": "fn:modules/weekly_natl.js#_wnDelLocal",
+      "type": "function",
+      "label": "_wnDelLocal",
+      "src": "modules/weekly_natl.js:1211#_wnDelLocal"
+    },
+    {
+      "id": "fn:modules/weekly_natl.js#_wnSaveSegOrder",
+      "type": "function",
+      "label": "_wnSaveSegOrder",
+      "src": "modules/weekly_natl.js:1480#_wnSaveSegOrder"
+    },
+    {
+      "id": "fn:modules/weekly_natl.js#_wnSetAppt",
+      "type": "function",
+      "label": "_wnSetAppt",
+      "src": "modules/weekly_natl.js:2544#_wnSetAppt",
+      "notes": "Loading/Delivery Appointment — now mapped in Worker TABLES (worker/src/index.js:1610-1611); measured 0/20 written 3/9 before the mapping landed"
+    },
+    {
+      "id": "fn:modules/daily_ops.js#_opsMarkStop",
+      "type": "function",
+      "label": "_opsMarkStop",
+      "src": "modules/daily_ops.js:797#_opsMarkStop"
+    },
+    {
+      "id": "fn:modules/daily_ops.js#_opsMarkStopUI",
+      "type": "function",
+      "label": "_opsMarkStopUI",
+      "src": "modules/daily_ops.js:861#_opsMarkStopUI"
+    },
+    {
+      "id": "fn:modules/daily_ops.js#_opsStat",
+      "type": "function",
+      "label": "_opsStat",
+      "src": "modules/daily_ops.js:882#_opsStat"
+    },
+    {
+      "id": "fn:modules/daily_ops.js#_opsStatFinal",
+      "type": "function",
+      "label": "_opsStatFinal",
+      "src": "modules/daily_ops.js:901#_opsStatFinal"
+    },
+    {
+      "id": "fn:modules/daily_ops.js#_opsDel",
+      "type": "function",
+      "label": "_opsDel",
+      "src": "modules/daily_ops.js:920#_opsDel"
+    },
+    {
+      "id": "fn:modules/daily_ops.js#_opsDelFinal",
+      "type": "function",
+      "label": "_opsDelFinal",
+      "src": "modules/daily_ops.js:930#_opsDelFinal"
+    },
+    {
+      "id": "fn:modules/daily_ops.js#_opsSvF",
+      "type": "function",
+      "label": "_opsSvF (inline field save)",
+      "src": "modules/daily_ops.js:781#_opsSvF"
+    },
+    {
+      "id": "fn:modules/daily_ops.js#_opsChangeDayGo",
+      "type": "function",
+      "label": "_opsChangeDayGo",
+      "src": "modules/daily_ops.js:1024#_opsChangeDayGo",
+      "notes": "awaits syncOrderDownstream since 13/9 audit; reports partial-chain failure in the toast"
+    },
+    {
+      "id": "fn:worker/src/index.js#handleFacadeCreate",
+      "type": "function",
+      "label": "handleFacadeCreate",
+      "src": "worker/src/index.js:2395#handleFacadeCreate"
+    },
+    {
+      "id": "fn:worker/src/index.js#handleFacadeUpdate",
+      "type": "function",
+      "label": "handleFacadeUpdate",
+      "src": "worker/src/index.js:2763#handleFacadeUpdate"
+    },
+    {
+      "id": "fn:worker/src/index.js#handleFacadeBatchUpdate",
+      "type": "function",
+      "label": "handleFacadeBatchUpdate",
+      "src": "worker/src/index.js:2623#handleFacadeBatchUpdate"
+    },
+    {
+      "id": "fn:worker/src/index.js#handleFacadeGet",
+      "type": "function",
+      "label": "handleFacadeGet",
+      "src": "worker/src/index.js:2142#handleFacadeGet"
+    },
+    {
+      "id": "fn:worker/src/index.js#handleFacadeGetOne",
+      "type": "function",
+      "label": "handleFacadeGetOne",
+      "src": "worker/src/index.js:2699#handleFacadeGetOne"
+    },
+    {
+      "id": "fn:worker/src/index.js#handleFacadeDelete",
+      "type": "function",
+      "label": "handleFacadeDelete",
+      "src": "worker/src/index.js:2836#handleFacadeDelete",
+      "notes": "soft-delete: UPDATE deleted_at=now(), never a hard DELETE"
+    },
+    {
+      "id": "fn:worker/src/index.js#handleOrderCascadeDelete",
+      "type": "function",
+      "label": "handleOrderCascadeDelete",
+      "src": "worker/src/index.js:2863#handleOrderCascadeDelete",
+      "notes": "routed for DELETE on ORDERS_TABLE_ID only (worker/src/index.js:4795); caller needs PATCH right on 'orders', not DELETE"
+    },
+    {
+      "id": "fn:worker/src/index.js#can",
+      "type": "function",
+      "label": "can(role,table,method)",
+      "src": "worker/src/index.js:602#can",
+      "notes": "wildcard-replaces rule: roleMap[table] || roleMap['*']"
+    },
+    {
+      "id": "ep:POST /v0/orders",
+      "type": "endpoint",
+      "label": "POST /v0/orders",
+      "src": "worker/src/index.js:2395#handleFacadeCreate"
+    },
+    {
+      "id": "ep:PATCH /v0/orders",
+      "type": "endpoint",
+      "label": "PATCH /v0/orders/:id",
+      "src": "worker/src/index.js:2763#handleFacadeUpdate"
+    },
+    {
+      "id": "ep:DELETE /v0/orders",
+      "type": "endpoint",
+      "label": "DELETE /v0/orders/:id",
+      "src": "worker/src/index.js:4795#route",
+      "notes": "routes to handleOrderCascadeDelete, NOT handleFacadeDelete, when tableId===ORDERS_TABLE_ID (worker/src/index.js:4732,4795)"
+    },
+    {
+      "id": "ep:POST /v0/order_stops",
+      "type": "endpoint",
+      "label": "POST /v0/order_stops",
+      "src": "worker/src/index.js:2395#handleFacadeCreate"
+    },
+    {
+      "id": "ep:PATCH /v0/order_stops",
+      "type": "endpoint",
+      "label": "PATCH /v0/order_stops/:id",
+      "src": "worker/src/index.js:2763#handleFacadeUpdate"
+    },
+    {
+      "id": "ep:DELETE /v0/order_stops",
+      "type": "endpoint",
+      "label": "DELETE /v0/order_stops/:id",
+      "src": "worker/src/index.js:2836#handleFacadeDelete"
+    },
+    {
+      "id": "ep:POST /v0/national_loads",
+      "type": "endpoint",
+      "label": "POST /v0/national_loads",
+      "src": "worker/src/index.js:2395#handleFacadeCreate"
+    },
+    {
+      "id": "ep:PATCH /v0/national_loads",
+      "type": "endpoint",
+      "label": "PATCH /v0/national_loads/:id",
+      "src": "worker/src/index.js:2763#handleFacadeUpdate"
+    },
+    {
+      "id": "ep:DELETE /v0/national_loads",
+      "type": "endpoint",
+      "label": "DELETE /v0/national_loads/:id",
+      "src": "worker/src/index.js:2836#handleFacadeDelete"
+    },
+    {
+      "id": "ep:POST /v0/national_orders",
+      "type": "endpoint",
+      "label": "POST /v0/national_orders",
+      "src": "worker/src/index.js:2395#handleFacadeCreate"
+    },
+    {
+      "id": "ep:PATCH /v0/national_orders",
+      "type": "endpoint",
+      "label": "PATCH /v0/national_orders/:id",
+      "src": "worker/src/index.js:2763#handleFacadeUpdate"
+    },
+    {
+      "id": "ep:PATCH /v0/groupage_lines",
+      "type": "endpoint",
+      "label": "PATCH /v0/groupage_lines/:id",
+      "src": "worker/src/index.js:2763#handleFacadeUpdate",
+      "notes": "no role/route ever grants DELETE — RBAC (dispatcher list, worker/src/index.js:532) omits it and DB has ON DELETE RESTRICT"
+    },
+    {
+      "id": "ep:POST /v0/consolidated_loads",
+      "type": "endpoint",
+      "label": "POST /v0/consolidated_loads",
+      "src": "worker/src/index.js:2395#handleFacadeCreate"
+    },
+    {
+      "id": "ep:DELETE /v0/consolidated_loads",
+      "type": "endpoint",
+      "label": "DELETE /v0/consolidated_loads/:id",
+      "src": "worker/src/index.js:2836#handleFacadeDelete",
+      "notes": "the only deletable sync-chain node, worker/src/index.js:1376-1378 comment"
+    },
+    {
+      "id": "ep:POST /v0/partner_assignments",
+      "type": "endpoint",
+      "label": "POST /v0/partner_assignments",
+      "src": "worker/src/index.js:2395#handleFacadeCreate"
+    },
+    {
+      "id": "ep:PATCH /v0/partner_assignments",
+      "type": "endpoint",
+      "label": "PATCH /v0/partner_assignments/:id",
+      "src": "worker/src/index.js:2763#handleFacadeUpdate"
+    },
+    {
+      "id": "ep:DELETE /v0/partner_assignments",
+      "type": "endpoint",
+      "label": "DELETE /v0/partner_assignments/:id",
+      "src": "worker/src/index.js:2836#handleFacadeDelete"
+    },
+    {
+      "id": "ep:POST /v0/local_moves",
+      "type": "endpoint",
+      "label": "POST /v0/local_moves",
+      "src": "worker/src/index.js:1698#TABLES.local_moves",
+      "notes": "live from 10/8 — worker/src/index.js:1679-1693 comment documents the earlier 404 and the legacy_id-column precondition"
+    },
+    {
+      "id": "ep:PATCH /v0/local_moves",
+      "type": "endpoint",
+      "label": "PATCH /v0/local_moves/:id",
+      "src": "worker/src/index.js:1698#TABLES.local_moves"
+    },
+    {
+      "id": "ep:POST /costs/rt",
+      "type": "endpoint",
+      "label": "POST /costs/rt",
+      "src": "core/rt-feed.js:372#rtOnOrderSaved",
+      "notes": "team β owns the handler; idempotent attach since 5/9 (worker/src/rt-rules.mjs N1)"
+    },
+    {
+      "id": "ep:PATCH /costs/rt/:id",
+      "type": "endpoint",
+      "label": "PATCH /costs/rt/:id",
+      "src": "core/rt-feed.js:441#rtOnOrderSaved"
+    },
+    {
+      "id": "ep:DELETE /costs/rt/:id/legs",
+      "type": "endpoint",
+      "label": "DELETE /costs/rt/:id/legs?order_id=",
+      "src": "core/rt-feed.js:478#rtOnImportUnmatched"
+    },
+    {
+      "id": "ep:GET /costs/lines",
+      "type": "endpoint",
+      "label": "GET /costs/lines?rt_id=",
+      "src": "core/rt-feed.js:344#rtOnOrderSaved",
+      "notes": "used only to decide cancel-vs-warn, never mutated by this team's code"
+    },
+    {
+      "id": "ep:GET /pallets/gate",
+      "type": "endpoint",
+      "label": "GET /pallets/gate?order_recs=",
+      "src": "core/rt-feed.js:42#_rtPg",
+      "notes": "team γ owns the handler; the only bridge from Airtable-style rec id to Postgres pg id available to rt-feed"
+    },
+    {
+      "id": "tbl:orders",
+      "type": "table",
+      "label": "orders",
+      "src": "worker/src/index.js:1157#TABLES.tblgHlNmLBH3JTdIM"
+    },
+    {
+      "id": "tbl:order_stops",
+      "type": "table",
+      "label": "order_stops",
+      "src": "worker/src/index.js:1550#TABLES.tblaeY5QOHAS1gyE8"
+    },
+    {
+      "id": "tbl:national_loads",
+      "type": "table",
+      "label": "national_loads",
+      "src": "worker/src/index.js:1592#TABLES.tblVW42cZnfC47gTb"
+    },
+    {
+      "id": "tbl:national_orders",
+      "type": "table",
+      "label": "national_orders",
+      "src": "worker/src/index.js:1459#TABLES.tblGHCCsTMqAy4KR2",
+      "notes": "0 live rows by design — Veroia Switch writes national_loads directly, never national_orders (CLAUDE.md, worker/src/index.js:1456 comment)"
+    },
+    {
+      "id": "tbl:groupage_lines",
+      "type": "table",
+      "label": "groupage_lines",
+      "src": "worker/src/index.js:1345#TABLES.tblxUAaIsUMEDl3qQ"
+    },
+    {
+      "id": "tbl:consolidated_loads",
+      "type": "table",
+      "label": "consolidated_loads",
+      "src": "worker/src/index.js:1391#TABLES.tbl5XSLQjOnG6yLCW"
+    },
+    {
+      "id": "tbl:partner_assignments",
+      "type": "table",
+      "label": "partner_assignments",
+      "src": "worker/src/index.js:1753#TABLES.tblUhgqnmiam5MGNK"
+    },
+    {
+      "id": "tbl:local_moves",
+      "type": "table",
+      "label": "local_moves",
+      "src": "worker/src/index.js:1698#TABLES.local_moves"
+    },
+    {
+      "id": "tbl:ct_round_trips",
+      "type": "table",
+      "label": "ct_round_trips",
+      "src": "core/rt-feed.js:372#rtOnOrderSaved",
+      "notes": "owned by team β; this team only writes it through /costs/rt"
+    },
+    {
+      "id": "tbl:ct_rt_legs",
+      "type": "table",
+      "label": "ct_rt_legs",
+      "src": "worker/migrations/013_rt_sync.sql:234#rt_sync_legs",
+      "notes": "owned by team β"
+    },
+    {
+      "id": "tbl:audit_log",
+      "type": "table",
+      "label": "audit_log",
+      "src": "worker/src/index.js:2863#handleOrderCascadeDelete",
+      "notes": "written by audit()/auditMany() on every facade write and by every trigger below with actor='trigger:<name>'"
+    },
+    {
+      "id": "tbl:facade_unknown_fields",
+      "type": "table",
+      "label": "facade_unknown_fields",
+      "src": "worker/src/index.js:2395#handleFacadeCreate",
+      "notes": "written via logUnknownFields on any write with a label not in a table's fields/aliases map; the write still returns 200/201"
+    },
+    {
+      "id": "dbfn:delete_order_cascade",
+      "type": "db function",
+      "label": "delete_order_cascade(p_order_legacy_id)",
+      "src": "worker/src/index.js:2873#handleOrderCascadeDelete",
+      "notes": "RPC invoked by the DELETE /v0/orders route itself — its own body is not in worker/migrations/ (created directly in the DB per CLAUDE.md 'Supabase = SELECT only' + owner-run SQL); documented behaviour comes only from the WHY comment in worker/migrations/023_soft_delete_unlink.sql:3-10: sweeps order_stops, national_orders/national_loads, groupage_lines, consolidated_loads, ramp and pallet ledgers — and NOTHING else (no matched_import_id release, no rotation release, no RT legs, no partner_assignments)"
+    },
+    {
+      "id": "trg:orders.rt_create_from_order",
+      "type": "trigger",
+      "label": "rt_create_from_order",
+      "src": "worker/migrations/033_rt_create_related.sql:229#create_trigger",
+      "notes": "supersedes the 031 definition (same name); AFTER INSERT OR UPDATE OF status, truck_id, partner_id, driver_id, trailer_id, loading_datetime, delivery_datetime, group_id, matched_import_id, rotation_id, is_partner_trip ON orders"
+    },
+    {
+      "id": "trg:orders.rt_sync_from_order",
+      "type": "trigger",
+      "label": "rt_sync_from_order",
+      "src": "worker/migrations/013_rt_sync.sql:145#create_trigger"
+    },
+    {
+      "id": "trg:orders.rt_link_split",
+      "type": "trigger",
+      "label": "rt_link_split",
+      "src": "worker/migrations/037_rt_merge_split_pairs.sql:189#create_trigger"
+    },
+    {
+      "id": "trg:orders.order_dates_follow",
+      "type": "trigger",
+      "label": "order_dates_follow",
+      "src": "worker/migrations/028_order_dates_follow.sql:83#create_trigger",
+      "notes": "AFTER UPDATE OF loading_datetime, delivery_datetime ON orders WHEN changed; live in DB per 02b §1.5 despite CLAUDE.md still saying 'εκκρεμεί trigger 028'"
+    },
+    {
+      "id": "trg:orders.national_load_follow_order",
+      "type": "trigger",
+      "label": "national_load_follow_order",
+      "src": "worker/migrations/030_national_load_follow.sql:51#create_trigger",
+      "notes": "AFTER UPDATE OF status ON orders WHEN changed"
+    },
+    {
+      "id": "trg:orders.order_soft_delete_unlink",
+      "type": "trigger",
+      "label": "order_soft_delete_unlink",
+      "src": "worker/migrations/023_soft_delete_unlink.sql:80#create_trigger",
+      "notes": "AFTER UPDATE of deleted_at; releases matched_import_id/rotation_id links, order legs — the part delete_order_cascade explicitly does not cover"
+    },
+    {
+      "id": "trg:orders.order_leg_depth",
+      "type": "trigger",
+      "label": "order_leg_depth",
+      "src": "worker/migrations/018_order_legs.sql:36#create_trigger",
+      "notes": "BEFORE INSERT/UPDATE of parent_order_id — forbids split depth > 1"
+    },
+    {
+      "id": "trg:orders.order_leg_inherit",
+      "type": "trigger",
+      "label": "order_leg_inherit",
+      "src": "worker/migrations/018_order_legs.sql:53#create_trigger"
+    },
+    {
+      "id": "trg:orders.order_leg_status_sync",
+      "type": "trigger",
+      "label": "order_leg_status_sync",
+      "src": "worker/migrations/018_order_legs.sql:96#create_trigger"
+    },
+    {
+      "id": "trg:orders.order_legs_to_parent",
+      "type": "trigger",
+      "label": "order_legs_to_parent",
+      "src": "worker/migrations/020_order_legs_sync.sql:148#create_trigger"
+    },
+    {
+      "id": "trg:orders.order_parent_to_legs",
+      "type": "trigger",
+      "label": "order_parent_to_legs",
+      "src": "worker/migrations/020_order_legs_sync.sql:102#create_trigger"
+    },
+    {
+      "id": "trg:national_loads.national_load_soft_delete_unlink",
+      "type": "trigger",
+      "label": "national_load_soft_delete_unlink",
+      "src": "worker/migrations/030_national_load_follow.sql:73#create_trigger"
+    },
+    {
+      "id": "trg:ct_rt_legs.rt_reopen_on_leg",
+      "type": "trigger",
+      "label": "rt_reopen_on_leg",
+      "src": "worker/migrations/045_rt_reopen_on_leg.sql:61#CREATE_TRIGGER",
+      "notes": "AFTER INSERT OR UPDATE OF order_id ON ct_rt_legs; reopens a closed/complete RT when an attached leg's order is not Delivered/Cancelled"
+    },
+    {
+      "id": "trg:ct_round_trips.rt_sync_to_orders",
+      "type": "trigger",
+      "label": "rt_sync_to_orders",
+      "src": "worker/migrations/013_rt_sync.sql:186#create_trigger",
+      "notes": "team β table, cross-cited because it writes back into orders this team owns"
+    },
+    {
+      "id": "trg:ct_rt_legs.rt_sync_legs",
+      "type": "trigger",
+      "label": "rt_sync_legs",
+      "src": "worker/migrations/013_rt_sync.sql:234#create_trigger"
+    },
+    {
+      "id": "rule:gl-never-deleted",
+      "type": "business rule",
+      "label": "GROUPAGE LINES never hard-deleted (Status→Unassigned only)",
+      "src": "CLAUDE.md#sync-chain",
+      "notes": "enforced twice: RBAC omits DELETE for groupage_lines (worker/src/index.js:532), and ON DELETE RESTRICT in DB"
+    },
+    {
+      "id": "rule:vs-single-cross-dock-column",
+      "type": "business rule",
+      "label": "cross-dock has exactly one column, cross_dock_date",
+      "src": "CLAUDE.md#κλειδωμένες-αποφάσεις-owner",
+      "notes": "'VS CD Date' is a synonym mapped to cross_dock_date since 9/9 (worker/src/index.js:1319)"
+    },
+    {
+      "id": "rule:rt-threshold-is-assignment-not-status",
+      "type": "business rule",
+      "label": "RT creation keys on assignment, not on Status In Transit",
+      "src": "core/rt-feed.js:329-334",
+      "notes": "owner 14/9, same rule as DB trigger 033"
+    },
+    {
+      "id": "rule:rt-closed-is-history",
+      "type": "business rule",
+      "label": "closed/complete RT is never touched automatically, only warned about",
+      "src": "core/rt-feed.js:337#_rtClosed_guard",
+      "notes": "owner 24/8 locked decision"
+    },
+    {
+      "id": "rule:one-rt-per-group",
+      "type": "business rule",
+      "label": "a Group/Rotation/Matched-Import set is ONE round trip, not one per pair",
+      "src": "core/rt-feed.js:84-117",
+      "notes": "owner 6/9, Wave 1"
+    },
+    {
+      "id": "rule:delivered-is-a-human-act",
+      "type": "business rule",
+      "label": "Delivered is not auto-computed from dates",
+      "src": "docs/DECISION_LOG.md#30-8",
+      "notes": "cited by modules/daily_ops.js comment near 901"
+    },
+    {
+      "id": "check:test:tests/orders-list.test.js",
+      "type": "check",
+      "label": "OrdersList unit spec (virtualRange, applyFilters)",
+      "src": "tests/orders-list.test.js"
+    },
+    {
+      "id": "check:test:tests/orders-list-filters.test.js",
+      "type": "check",
+      "label": "intl/natl filter spec incl. Pending default asymmetry",
+      "src": "tests/orders-list-filters.test.js"
+    },
+    {
+      "id": "check:test:vs-sync",
+      "type": "check",
+      "label": "test-vs-sync.js",
+      "src": "docs/grok-bot/monitoring-2026-09-22/02a-ροές-frontend.md:60",
+      "notes": "not opened directly by this team — cited from 02a, mark probable"
+    },
+    {
+      "id": "check:B-01",
+      "type": "check",
+      "label": "assigned_no_live_rt",
+      "src": "docs/grok-bot/monitoring-2026-09-22/02b-ροές-backend-και-έλεγχοι-Β.md:116-124",
+      "notes": "22/9 measured 0; P1, every 15' 05:00-15:00"
+    },
+    {
+      "id": "check:B-05",
+      "type": "check",
+      "label": "rt_two_drivers",
+      "src": "docs/grok-bot/monitoring-2026-09-22/02b-ροές-backend-και-έλεγχοι-Β.md:148-152"
+    },
+    {
+      "id": "check:B-06",
+      "type": "check",
+      "label": "rt_vehicle_drift",
+      "src": "docs/grok-bot/monitoring-2026-09-22/02b-ροές-backend-και-έλεγχοι-Β.md:154-160"
+    },
+    {
+      "id": "check:B-26",
+      "type": "check",
+      "label": "vs_no_national_load",
+      "src": "docs/grok-bot/monitoring-2026-09-22/02b-ροές-backend-και-έλεγχοι-Β.md:292-297"
+    },
+    {
+      "id": "check:B-27",
+      "type": "check",
+      "label": "vs_nl_status_lag",
+      "src": "docs/grok-bot/monitoring-2026-09-22/02b-ροές-backend-και-έλεγχοι-Β.md:299-305"
+    },
+    {
+      "id": "check:B-28",
+      "type": "check",
+      "label": "vs_consistency",
+      "src": "docs/grok-bot/monitoring-2026-09-22/02b-ροές-backend-και-έλεγχοι-Β.md:307-311"
+    },
+    {
+      "id": "check:B-29",
+      "type": "check",
+      "label": "groupage_lines_never_deleted",
+      "src": "docs/grok-bot/monitoring-2026-09-22/02b-ροές-backend-και-έλεγχοι-Β.md:313-319"
+    },
+    {
+      "id": "check:B-30",
+      "type": "check",
+      "label": "ramp_links",
+      "src": "docs/grok-bot/monitoring-2026-09-22/02b-ροές-backend-και-έλεγχοι-Β.md:321-327"
+    },
+    {
+      "id": "check:B-33",
+      "type": "check",
+      "label": "unknown_fields_write_24h",
+      "src": "docs/grok-bot/monitoring-2026-09-22/02b-ροές-backend-και-έλεγχοι-Β.md:351-355"
+    },
+    {
+      "id": "check:B-36",
+      "type": "check",
+      "label": "trigger_events_24h (split/reopen visibility)",
+      "src": "docs/grok-bot/monitoring-2026-09-22/02b-ροές-backend-και-έλεγχοι-Β.md:372-378"
+    },
+    {
+      "id": "job:ramp_autosync_on_render",
+      "type": "job",
+      "label": "Ramp auto-sync (fire-and-forget on order change)",
+      "src": "core/order-sync.js:86-88#syncOrderDownstream",
+      "notes": "actual implementation (_rampAutoSync) is core/daily_ramp.js, owned by team δ; this node marks the call site this team owns"
+    },
+    {
+      "id": "job:pallet_ledger_feed",
+      "type": "job",
+      "label": "Pallet ledger feeders (plOnOrderSaved/plOnDelivered/plOnIntlPartnerAssigned/plOnOrderDeleted)",
+      "src": "modules/daily_ops.js:940#plOnDelivered_call",
+      "notes": "implementation is core/pallet-feed.js, owned by team γ; this node marks the call sites this team owns"
+    },
+    {
+      "id": "ep:DELETE /v0/national_orders",
+      "type": "endpoint",
+      "label": "DELETE /v0/national_orders/:id",
+      "src": "worker/src/index.js:2836#handleFacadeDelete"
+    },
+    {
+      "id": "trg:national_orders.trg_national_orders_soft_delete_cascade",
+      "type": "trigger",
+      "label": "trg_national_orders_soft_delete_cascade",
+      "src": "docs/grok-bot/monitoring-2026-09-22/02b-ροές-backend-και-έλεγχοι-Β.md:72",
+      "notes": "cited from 02b only, not independently opened by this team (migrations 022/023 per 02b); status unknown until re-verified against worker/migrations/*"
+    },
+    {
+      "id": "check:B-04",
+      "type": "check",
+      "label": "owned_driver_no_dl",
+      "src": "docs/grok-bot/monitoring-2026-09-22/02b-ροές-backend-και-έλεγχοι-Β.md:142-146",
+      "notes": "dl_v_rt_gap view explicitly excludes PARTNER RT and RT without a driver by design"
+    },
+    {
+      "id": "check:B-02",
+      "type": "check",
+      "label": "closed_rt_open_leg",
+      "src": "docs/grok-bot/monitoring-2026-09-22/02b-ροές-backend-και-έλεγχοι-Β.md:126-131"
+    },
+    {
+      "id": "check:B-19",
+      "type": "check",
+      "label": "delivered_stop_no_stamp",
+      "src": "docs/grok-bot/monitoring-2026-09-22/02b-ροές-backend-και-έλεγχοι-Β.md:243-248"
+    },
+    {
+      "id": "check:B-03",
+      "type": "check",
+      "label": "planned_all_delivered_old",
+      "src": "docs/grok-bot/monitoring-2026-09-22/02b-ροές-backend-και-έλεγχοι-Β.md:133-140"
+    },
+    {
+      "id": "ep:DELETE /v0/local_moves",
+      "type": "endpoint",
+      "label": "DELETE /v0/local_moves/:id (soft-delete)",
+      "src": "worker/src/index.js:1698#TABLES.local_moves"
+    },
+    {
+      "id": "action:F-29",
+      "type": "action",
+      "label": "Ράμπα «Ολοκληρώθηκε» → In Transit",
+      "src": "docs/grok-bot/monitoring-2026-09-22/02a-ροές-frontend.md:114",
+      "notes": "owned by team δ (core/daily_ramp.js) — referenced here only as the target of a cross_dep and a check this team's PATCH /v0/orders is downstream of; not independently opened"
+    },
+    {
+      "id": "fn:core/pa-helpers.js#_paFindExisting",
+      "type": "function",
+      "label": "_paFindExisting",
+      "src": "core/pa-helpers.js:11#_paFindExisting"
+    },
+    {
+      "id": "action:F-30",
+      "type": "action",
+      "label": "Τιμολόγηση: καταχώρηση ΤΠΥ / παράκαμψη / αναίρεση",
+      "src": "docs/grok-bot/monitoring-2026-09-22/02a-ροές-frontend.md:118",
+      "notes": "owned by team β (modules/invoicing.js); referenced here only because it PATCHes tbl:orders, which this team owns — not independently opened"
+    },
+    {
+      "id": "action:F-37",
+      "type": "action",
+      "label": "Master data CRUD (Πελάτες, Συνεργάτες, Τοποθεσίες, Οδηγοί, Φορτηγά, Ρυμούλκες, Συνεργεία)",
+      "src": "docs/grok-bot/monitoring-2026-09-22/02a-ροές-frontend.md:134",
+      "notes": "out of this team's ownership (entity.js, not in the owned-files list); referenced only for the shared FUF mechanism"
+    },
+    {
+      "id": "check:B-11",
+      "type": "check",
+      "label": "invoiced_no_number",
+      "src": "docs/grok-bot/monitoring-2026-09-22/02b-ροές-backend-και-έλεγχοι-Β.md:188-193",
+      "notes": "team β's check; cited here only because it verifies tbl:orders"
+    }
+  ],
+  "edges": [
+    {
+      "from": "page:orders_intl",
+      "to": "fn:modules/orders_intl.js#submitIntlOrder",
+      "type": "renders",
+      "src": "core/router.js:363",
+      "status": "confirmed",
+      "flow": "F-05",
+      "coverage": [],
+      "note": "page render calls renderOrdersIntl(); the create/edit modal calls submitIntlOrder on save"
+    },
+    {
+      "from": "role:owner",
+      "to": "action:F-05",
+      "type": "allows",
+      "src": "config.js:334#orders:full",
+      "status": "confirmed",
+      "flow": "F-05",
+      "coverage": []
+    },
+    {
+      "from": "role:dispatcher",
+      "to": "action:F-05",
+      "type": "allows",
+      "src": "config.js:335#orders:full",
+      "status": "confirmed",
+      "flow": "F-05",
+      "coverage": []
+    },
+    {
+      "from": "role:management",
+      "to": "action:F-05",
+      "type": "denies",
+      "src": "config.js:336#orders:view",
+      "status": "confirmed",
+      "flow": "F-05",
+      "coverage": [],
+      "note": "front hides the create button; Worker still grants management PATCH+POST on orders (worker/src/index.js:467) — a crafted request from management would succeed server-side"
+    },
+    {
+      "from": "role:accountant",
+      "to": "ep:POST /v0/orders",
+      "type": "denies",
+      "src": "worker/src/index.js:509#accountant.orders",
+      "status": "confirmed",
+      "flow": "F-05",
+      "coverage": [],
+      "note": "accountant has GET+PATCH only on orders (invoicing checkbox), no POST — cannot create an order even if the front allowed it"
+    },
+    {
+      "from": "role:warehouse",
+      "to": "ep:POST /v0/orders",
+      "type": "denies",
+      "src": "worker/src/index.js:571#warehouse.orders",
+      "status": "confirmed",
+      "flow": "F-05",
+      "coverage": []
+    },
+    {
+      "from": "action:F-05",
+      "to": "fn:modules/orders_intl.js#submitIntlOrder",
+      "type": "triggers_action",
+      "src": "modules/orders_intl.js:1750",
+      "status": "confirmed",
+      "flow": "F-05",
+      "coverage": []
+    },
+    {
+      "from": "fn:modules/orders_intl.js#submitIntlOrder",
+      "to": "ep:POST /v0/orders",
+      "type": "calls",
+      "src": "modules/orders_intl.js:2021#atCreate",
+      "status": "confirmed",
+      "flow": "F-05",
+      "coverage": []
+    },
+    {
+      "from": "fn:modules/orders_intl.js#submitIntlOrder",
+      "to": "ep:PATCH /v0/orders",
+      "type": "calls",
+      "src": "modules/orders_intl.js:2020#atSafePatch",
+      "status": "confirmed",
+      "flow": "F-06",
+      "coverage": [],
+      "note": "recId branch = F-06 edit path, same function"
+    },
+    {
+      "from": "fn:modules/orders_intl.js#submitIntlOrder",
+      "to": "fn:core/stops-helpers.js#stopsSave",
+      "type": "calls",
+      "src": "modules/orders_intl.js:2070",
+      "status": "confirmed",
+      "flow": "F-05",
+      "coverage": []
+    },
+    {
+      "from": "fn:modules/orders_intl.js#submitIntlOrder",
+      "to": "fn:core/rt-feed.js#rtOnOrderSaved",
+      "type": "calls",
+      "src": "modules/orders_intl.js:2075",
+      "status": "confirmed",
+      "flow": "F-05",
+      "coverage": []
+    },
+    {
+      "from": "fn:modules/orders_intl.js#submitIntlOrder",
+      "to": "fn:modules/orders_intl.js#_syncVeroiaSwitch",
+      "type": "calls",
+      "src": "modules/orders_intl.js:2081",
+      "status": "confirmed",
+      "flow": "F-10",
+      "coverage": []
+    },
+    {
+      "from": "fn:modules/orders_intl.js#submitIntlOrder",
+      "to": "fn:core/order-sync.js#syncOrderDownstream",
+      "type": "calls",
+      "src": "modules/orders_intl.js:2084",
+      "status": "confirmed",
+      "flow": "F-05",
+      "coverage": [],
+      "note": "called with skipVS:true, skipGRP:true — VS/GRP already handled inline above, this call only does PA/RAMP/cache"
+    },
+    {
+      "from": "fn:modules/orders_intl.js#submitIntlOrder",
+      "to": "fn:modules/weekly_intl.js#_wiConsumePendingMatch",
+      "type": "calls",
+      "src": "modules/orders_intl.js:2097",
+      "status": "confirmed",
+      "flow": "F-16",
+      "coverage": [],
+      "note": "only on create (!recId), reads window._wiConsumePendingMatch — cross-module coupling via global"
+    },
+    {
+      "from": "fn:core/stops-helpers.js#stopsSave",
+      "to": "ep:POST /v0/order_stops",
+      "type": "calls",
+      "src": "core/stops-helpers.js:87#atCreateBatch",
+      "status": "confirmed",
+      "flow": "F-05",
+      "coverage": []
+    },
+    {
+      "from": "fn:core/stops-helpers.js#stopsSave",
+      "to": "ep:PATCH /v0/order_stops",
+      "type": "calls",
+      "src": "core/stops-helpers.js:91#atPatchBatch",
+      "status": "confirmed",
+      "flow": "F-05",
+      "coverage": []
+    },
+    {
+      "from": "fn:core/stops-helpers.js#stopsSave",
+      "to": "ep:DELETE /v0/order_stops",
+      "type": "calls",
+      "src": "core/stops-helpers.js:95#atDelete",
+      "status": "confirmed",
+      "flow": "F-05",
+      "coverage": []
+    },
+    {
+      "from": "ep:POST /v0/orders",
+      "to": "tbl:orders",
+      "type": "writes",
+      "src": "worker/src/index.js:2395-2622",
+      "status": "confirmed",
+      "flow": "F-05",
+      "coverage": []
+    },
+    {
+      "from": "ep:PATCH /v0/orders",
+      "to": "tbl:orders",
+      "type": "writes",
+      "src": "worker/src/index.js:2763-2835",
+      "status": "confirmed",
+      "flow": "F-06",
+      "coverage": []
+    },
+    {
+      "from": "ep:POST /v0/order_stops",
+      "to": "tbl:order_stops",
+      "type": "writes",
+      "src": "worker/src/index.js:2395-2622",
+      "status": "confirmed",
+      "flow": "F-05",
+      "coverage": []
+    },
+    {
+      "from": "tbl:orders",
+      "to": "trg:orders.rt_create_from_order",
+      "type": "fires",
+      "src": "worker/migrations/033_rt_create_related.sql:229",
+      "status": "confirmed",
+      "flow": "F-14",
+      "coverage": [
+        "check:B-01"
+      ]
+    },
+    {
+      "from": "tbl:orders",
+      "to": "trg:orders.rt_sync_from_order",
+      "type": "fires",
+      "src": "worker/migrations/013_rt_sync.sql:145",
+      "status": "confirmed",
+      "flow": "F-14",
+      "coverage": [
+        "check:B-06"
+      ]
+    },
+    {
+      "from": "tbl:orders",
+      "to": "trg:orders.order_dates_follow",
+      "type": "fires",
+      "src": "worker/migrations/028_order_dates_follow.sql:83",
+      "status": "confirmed",
+      "flow": "F-27",
+      "coverage": []
+    },
+    {
+      "from": "tbl:orders",
+      "to": "trg:orders.national_load_follow_order",
+      "type": "fires",
+      "src": "worker/migrations/030_national_load_follow.sql:51",
+      "status": "confirmed",
+      "flow": "F-07",
+      "coverage": [
+        "check:B-26",
+        "check:B-27"
+      ]
+    },
+    {
+      "from": "tbl:orders",
+      "to": "trg:orders.order_soft_delete_unlink",
+      "type": "fires",
+      "src": "worker/migrations/023_soft_delete_unlink.sql:80",
+      "status": "confirmed",
+      "flow": "F-08",
+      "coverage": []
+    },
+    {
+      "from": "tbl:orders",
+      "to": "trg:orders.order_leg_depth",
+      "type": "fires",
+      "src": "worker/migrations/018_order_legs.sql:36",
+      "status": "confirmed",
+      "flow": "F-13",
+      "coverage": []
+    },
+    {
+      "from": "tbl:orders",
+      "to": "trg:orders.order_leg_inherit",
+      "type": "fires",
+      "src": "worker/migrations/018_order_legs.sql:53",
+      "status": "confirmed",
+      "flow": "F-13",
+      "coverage": []
+    },
+    {
+      "from": "tbl:orders",
+      "to": "trg:orders.order_leg_status_sync",
+      "type": "fires",
+      "src": "worker/migrations/018_order_legs.sql:96",
+      "status": "confirmed",
+      "flow": "F-13",
+      "coverage": []
+    },
+    {
+      "from": "tbl:orders",
+      "to": "trg:orders.order_legs_to_parent",
+      "type": "fires",
+      "src": "worker/migrations/020_order_legs_sync.sql:148",
+      "status": "confirmed",
+      "flow": "F-13",
+      "coverage": []
+    },
+    {
+      "from": "tbl:orders",
+      "to": "trg:orders.order_parent_to_legs",
+      "type": "fires",
+      "src": "worker/migrations/020_order_legs_sync.sql:102",
+      "status": "confirmed",
+      "flow": "F-13",
+      "coverage": []
+    },
+    {
+      "from": "tbl:orders",
+      "to": "trg:orders.rt_link_split",
+      "type": "fires",
+      "src": "worker/migrations/037_rt_merge_split_pairs.sql:189",
+      "status": "confirmed",
+      "flow": "F-13",
+      "coverage": [
+        "check:B-36"
+      ]
+    },
+    {
+      "from": "trg:orders.rt_create_from_order",
+      "to": "tbl:ct_round_trips",
+      "type": "syncs",
+      "src": "worker/migrations/033_rt_create_related.sql:83-228",
+      "status": "confirmed",
+      "flow": "F-14",
+      "coverage": [
+        "check:B-01"
+      ]
+    },
+    {
+      "from": "trg:orders.rt_sync_from_order",
+      "to": "tbl:ct_round_trips",
+      "type": "syncs",
+      "src": "worker/migrations/013_rt_sync.sql:85-144",
+      "status": "confirmed",
+      "flow": "F-14",
+      "coverage": [
+        "check:B-05",
+        "check:B-06"
+      ]
+    },
+    {
+      "from": "trg:orders.national_load_follow_order",
+      "to": "tbl:national_loads",
+      "type": "syncs",
+      "src": "worker/migrations/030_national_load_follow.sql:30-51",
+      "status": "confirmed",
+      "flow": "F-07",
+      "coverage": [
+        "check:B-26",
+        "check:B-27"
+      ]
+    },
+    {
+      "from": "trg:orders.order_soft_delete_unlink",
+      "to": "tbl:orders",
+      "type": "syncs",
+      "src": "worker/migrations/023_soft_delete_unlink.sql:23-79",
+      "status": "confirmed",
+      "flow": "F-08",
+      "coverage": [],
+      "note": "releases matched_import_id, rotation_id on sibling rows; deletes split-parent's own legs"
+    },
+    {
+      "from": "trg:orders.rt_link_split",
+      "to": "tbl:ct_round_trips",
+      "type": "syncs",
+      "src": "worker/migrations/037_rt_merge_split_pairs.sql:61-133",
+      "status": "confirmed",
+      "flow": "F-13",
+      "coverage": [
+        "check:B-36"
+      ]
+    },
+    {
+      "from": "trg:ct_rt_legs.rt_sync_legs",
+      "to": "tbl:orders",
+      "type": "syncs",
+      "src": "worker/migrations/013_rt_sync.sql:197-233",
+      "status": "confirmed",
+      "flow": "F-14",
+      "coverage": []
+    },
+    {
+      "from": "trg:ct_round_trips.rt_sync_to_orders",
+      "to": "tbl:orders",
+      "type": "syncs",
+      "src": "worker/migrations/013_rt_sync.sql:159-185",
+      "status": "confirmed",
+      "flow": "F-14",
+      "coverage": [
+        "check:B-06"
+      ]
+    },
+    {
+      "from": "tbl:ct_rt_legs",
+      "to": "trg:ct_rt_legs.rt_reopen_on_leg",
+      "type": "fires",
+      "src": "worker/migrations/045_rt_reopen_on_leg.sql:61",
+      "status": "confirmed",
+      "flow": "F-18",
+      "coverage": [
+        "check:B-02"
+      ]
+    },
+    {
+      "from": "trg:ct_rt_legs.rt_reopen_on_leg",
+      "to": "tbl:ct_round_trips",
+      "type": "syncs",
+      "src": "worker/migrations/045_rt_reopen_on_leg.sql:32-57",
+      "status": "confirmed",
+      "flow": "F-18",
+      "coverage": [
+        "check:B-02"
+      ]
+    },
+    {
+      "from": "fn:modules/orders_intl.js#_syncVeroiaSwitch",
+      "to": "ep:POST /v0/national_loads",
+      "type": "calls",
+      "src": "modules/orders_intl.js:1229-1544",
+      "status": "confirmed",
+      "flow": "F-10",
+      "coverage": []
+    },
+    {
+      "from": "fn:modules/orders_intl.js#_syncVeroiaSwitch",
+      "to": "ep:PATCH /v0/national_loads",
+      "type": "calls",
+      "src": "modules/orders_intl.js:1229-1544",
+      "status": "confirmed",
+      "flow": "F-10",
+      "coverage": []
+    },
+    {
+      "from": "ep:POST /v0/national_loads",
+      "to": "tbl:national_loads",
+      "type": "writes",
+      "src": "worker/src/index.js:2395-2622",
+      "status": "confirmed",
+      "flow": "F-10",
+      "coverage": [
+        "check:B-26"
+      ]
+    },
+    {
+      "from": "ep:POST /v0/national_loads",
+      "to": "tbl:national_loads",
+      "type": "writes",
+      "src": "worker/src/index.js:1629-1631#aliases",
+      "status": "confirmed",
+      "flow": "F-10",
+      "coverage": [],
+      "note": "'Source Record' alias maps onto source_orders_raw + derives the real source_order_id FK (linkAliases) — the 2026-07-28 breakage this fixed"
+    },
+    {
+      "from": "fn:core/order-sync.js#syncOrderDownstream",
+      "to": "fn:core/pa-helpers.js#paSyncStatus",
+      "type": "calls",
+      "src": "core/order-sync.js:44-52",
+      "status": "confirmed",
+      "flow": "F-07",
+      "coverage": []
+    },
+    {
+      "from": "fn:core/order-sync.js#syncOrderDownstream",
+      "to": "fn:modules/orders_intl.js#_syncVeroiaSwitch",
+      "type": "calls",
+      "src": "core/order-sync.js:59-72",
+      "status": "confirmed",
+      "flow": "F-10",
+      "coverage": [],
+      "note": "guarded: if _syncVeroiaSwitch is not on window, logs an error AND toasts a warning instead of silently returning (fix for the 9/9 dead-chain incident)"
+    },
+    {
+      "from": "fn:core/order-sync.js#syncOrderDownstream",
+      "to": "fn:core/order-sync.js#syncGLtoCLtoNL",
+      "type": "calls",
+      "src": "core/order-sync.js:79",
+      "status": "confirmed",
+      "flow": "F-11",
+      "coverage": []
+    },
+    {
+      "from": "fn:core/order-sync.js#syncOrderDownstream",
+      "to": "job:ramp_autosync_on_render",
+      "type": "calls",
+      "src": "core/order-sync.js:86-88",
+      "status": "confirmed",
+      "flow": "F-05",
+      "coverage": [],
+      "note": "fire-and-forget, cross_dep to team δ (daily_ramp.js#_rampAutoSync)"
+    },
+    {
+      "from": "fn:core/order-sync.js#syncOrderDownstream",
+      "to": "fn:core/pa-helpers.js#paSyncStatus",
+      "type": "calls",
+      "src": "core/order-sync.js:44",
+      "status": "confirmed",
+      "flow": "F-26",
+      "coverage": []
+    },
+    {
+      "from": "fn:core/order-sync.js#syncGLtoCLtoNL",
+      "to": "ep:PATCH /v0/national_loads",
+      "type": "calls",
+      "src": "core/order-sync.js:159-177",
+      "status": "confirmed",
+      "flow": "F-11",
+      "coverage": []
+    },
+    {
+      "from": "fn:core/order-sync.js#syncGLtoCLtoNL",
+      "to": "tbl:consolidated_loads",
+      "type": "writes",
+      "src": "core/order-sync.js:157-164",
+      "status": "confirmed",
+      "flow": "F-11",
+      "coverage": []
+    },
+    {
+      "from": "fn:core/order-sync.js#syncGLtoCLtoNL",
+      "to": "tbl:groupage_lines",
+      "type": "reads",
+      "src": "core/order-sync.js:121-127",
+      "status": "confirmed",
+      "flow": "F-11",
+      "coverage": []
+    },
+    {
+      "from": "fn:core/rt-feed.js#rtOnOrderSaved",
+      "to": "ep:GET /pallets/gate",
+      "type": "calls",
+      "src": "core/rt-feed.js:40-44",
+      "status": "confirmed",
+      "flow": "F-14",
+      "coverage": [],
+      "note": "cross_dep team γ — orders without a live loading stop never reach /costs/rt, and rt-feed only warns via toast"
+    },
+    {
+      "from": "fn:core/rt-feed.js#rtOnOrderSaved",
+      "to": "ep:POST /costs/rt",
+      "type": "calls",
+      "src": "core/rt-feed.js:372,415",
+      "status": "confirmed",
+      "flow": "F-14",
+      "coverage": []
+    },
+    {
+      "from": "fn:core/rt-feed.js#rtOnOrderSaved",
+      "to": "ep:PATCH /costs/rt/:id",
+      "type": "calls",
+      "src": "core/rt-feed.js:394,441,460",
+      "status": "confirmed",
+      "flow": "F-14",
+      "coverage": []
+    },
+    {
+      "from": "fn:core/rt-feed.js#rtOnOrderSaved",
+      "to": "ep:GET /costs/lines",
+      "type": "calls",
+      "src": "core/rt-feed.js:344",
+      "status": "confirmed",
+      "flow": "F-15",
+      "coverage": []
+    },
+    {
+      "from": "fn:core/rt-feed.js#rtOnOrderDeleted",
+      "to": "ep:GET /costs/lines",
+      "type": "calls",
+      "src": "core/rt-feed.js:458",
+      "status": "confirmed",
+      "flow": "F-08",
+      "coverage": []
+    },
+    {
+      "from": "fn:core/rt-feed.js#rtOnOrderDeleted",
+      "to": "ep:PATCH /costs/rt/:id",
+      "type": "calls",
+      "src": "core/rt-feed.js:460",
+      "status": "confirmed",
+      "flow": "F-08",
+      "coverage": []
+    },
+    {
+      "from": "fn:core/rt-feed.js#rtOnImportUnmatched",
+      "to": "ep:DELETE /costs/rt/:id/legs",
+      "type": "calls",
+      "src": "core/rt-feed.js:478",
+      "status": "confirmed",
+      "flow": "F-17",
+      "coverage": []
+    },
+    {
+      "from": "fn:modules/weekly_intl.js#_wiRotAdd",
+      "to": "fn:core/rt-feed.js#rtFindForOrder",
+      "type": "calls",
+      "src": "modules/weekly_intl.js:4225-4283",
+      "status": "confirmed",
+      "flow": "F-18",
+      "coverage": []
+    },
+    {
+      "from": "fn:modules/weekly_intl.js#_wiSaveImportMatch",
+      "to": "fn:core/rt-feed.js#rtOnOrderSaved",
+      "type": "calls",
+      "src": "modules/weekly_intl.js:2628-2803",
+      "status": "probable",
+      "flow": "F-16",
+      "coverage": [],
+      "note": "cited from 02a F-16 (rt-feed.js:254-449); not re-opened line-by-line in this pass, consistent with the confirmed rtOnOrderSaved read above"
+    },
+    {
+      "from": "fn:modules/weekly_intl.js#_wiRemoveImport",
+      "to": "fn:core/rt-feed.js#rtOnImportUnmatched",
+      "type": "calls",
+      "src": "modules/weekly_intl.js:2805-2880",
+      "status": "probable",
+      "flow": "F-17",
+      "coverage": [],
+      "note": "cited from 02a F-17"
+    },
+    {
+      "from": "action:F-08",
+      "to": "fn:modules/orders_intl.js#deleteIntlOrder",
+      "type": "triggers_action",
+      "src": "modules/orders_intl.js:2938",
+      "status": "confirmed",
+      "flow": "F-08",
+      "coverage": []
+    },
+    {
+      "from": "fn:modules/orders_intl.js#deleteIntlOrder",
+      "to": "ep:DELETE /v0/orders",
+      "type": "calls",
+      "src": "modules/orders_intl.js:2953#atSoftDelete_step0",
+      "status": "confirmed",
+      "flow": "F-08",
+      "coverage": [],
+      "note": "step 0, runs FIRST since 13/9 (dispatcher-403 fix) — a 403 here now stops the whole cascade before anything is touched"
+    },
+    {
+      "from": "ep:DELETE /v0/orders",
+      "to": "fn:worker/src/index.js#handleOrderCascadeDelete",
+      "type": "calls",
+      "src": "worker/src/index.js:4795",
+      "status": "confirmed",
+      "flow": "F-08",
+      "coverage": []
+    },
+    {
+      "from": "fn:worker/src/index.js#handleOrderCascadeDelete",
+      "to": "dbfn:delete_order_cascade",
+      "type": "calls",
+      "src": "worker/src/index.js:2873",
+      "status": "confirmed",
+      "flow": "F-08",
+      "coverage": []
+    },
+    {
+      "from": "dbfn:delete_order_cascade",
+      "to": "tbl:order_stops",
+      "type": "writes",
+      "src": "worker/migrations/023_soft_delete_unlink.sql:3-10#comment",
+      "status": "probable",
+      "flow": "F-08",
+      "coverage": [],
+      "note": "function body lives only in the DB (not in worker/migrations/); behaviour taken from the WHY comment, read-only session cannot pg_get_functiondef it"
+    },
+    {
+      "from": "dbfn:delete_order_cascade",
+      "to": "tbl:national_loads",
+      "type": "writes",
+      "src": "worker/migrations/023_soft_delete_unlink.sql:3-10#comment",
+      "status": "probable",
+      "flow": "F-08",
+      "coverage": []
+    },
+    {
+      "from": "dbfn:delete_order_cascade",
+      "to": "tbl:national_orders",
+      "type": "writes",
+      "src": "worker/migrations/023_soft_delete_unlink.sql:3-10#comment",
+      "status": "probable",
+      "flow": "F-08",
+      "coverage": []
+    },
+    {
+      "from": "dbfn:delete_order_cascade",
+      "to": "tbl:groupage_lines",
+      "type": "writes",
+      "src": "worker/migrations/023_soft_delete_unlink.sql:3-10#comment",
+      "status": "probable",
+      "flow": "F-08",
+      "coverage": [],
+      "note": "presumably Status→Unassigned per the never-delete rule, not verified in the RPC body itself"
+    },
+    {
+      "from": "dbfn:delete_order_cascade",
+      "to": "tbl:consolidated_loads",
+      "type": "writes",
+      "src": "worker/migrations/023_soft_delete_unlink.sql:3-10#comment",
+      "status": "probable",
+      "flow": "F-08",
+      "coverage": []
+    },
+    {
+      "from": "fn:modules/orders_intl.js#deleteIntlOrder",
+      "to": "ep:DELETE /v0/national_loads",
+      "type": "calls",
+      "src": "modules/orders_intl.js:2965-2973#step1",
+      "status": "confirmed",
+      "flow": "F-08",
+      "coverage": [],
+      "note": "front-end re-attempts a delete the RPC (dbfn:delete_order_cascade) already performed in step 0 — see FM-a-14"
+    },
+    {
+      "from": "fn:modules/orders_intl.js#deleteIntlOrder",
+      "to": "ep:PATCH /v0/groupage_lines",
+      "type": "calls",
+      "src": "modules/orders_intl.js:3011#step2_unassign",
+      "status": "confirmed",
+      "flow": "F-08",
+      "coverage": []
+    },
+    {
+      "from": "fn:modules/orders_intl.js#deleteIntlOrder",
+      "to": "ep:DELETE /v0/consolidated_loads",
+      "type": "calls",
+      "src": "modules/orders_intl.js:2998-3000#step2_cl",
+      "status": "confirmed",
+      "flow": "F-08",
+      "coverage": []
+    },
+    {
+      "from": "fn:modules/orders_intl.js#deleteIntlOrder",
+      "to": "fn:core/rt-feed.js#rtOnOrderDeleted",
+      "type": "calls",
+      "src": "modules/orders_intl.js:3018#step4",
+      "status": "confirmed",
+      "flow": "F-08",
+      "coverage": [],
+      "note": "the ONE cleanup step delete_order_cascade genuinely does not do (RT legs are outside its scope)"
+    },
+    {
+      "from": "fn:modules/orders_intl.js#deleteIntlOrder",
+      "to": "ep:DELETE /v0/order_stops",
+      "type": "calls",
+      "src": "modules/orders_intl.js:3028#step5",
+      "status": "confirmed",
+      "flow": "F-08",
+      "coverage": []
+    },
+    {
+      "from": "fn:modules/orders_intl.js#deleteIntlOrder",
+      "to": "ep:DELETE /v0/partner_assignments",
+      "type": "calls",
+      "src": "modules/orders_intl.js:3041#step5b",
+      "status": "confirmed",
+      "flow": "F-08",
+      "coverage": [],
+      "note": "also a genuine gap in delete_order_cascade per the 023 comment — partner_assignments is not swept server-side"
+    },
+    {
+      "from": "fn:modules/orders_natl.js#deleteNatlOrder",
+      "to": "ep:DELETE /v0/national_orders",
+      "type": "calls",
+      "src": "modules/orders_natl.js:1862-1994",
+      "status": "probable",
+      "flow": "F-08",
+      "coverage": [],
+      "note": "same order-first pattern as deleteIntlOrder per its own comment citing the 13/9 audit; not re-opened line-by-line"
+    },
+    {
+      "from": "action:F-07",
+      "to": "fn:core/orders-list.js#cancelOrder",
+      "type": "triggers_action",
+      "src": "core/orders-list.js:202",
+      "status": "confirmed",
+      "flow": "F-07",
+      "coverage": []
+    },
+    {
+      "from": "fn:core/orders-list.js#cancelOrder",
+      "to": "ep:PATCH /v0/orders",
+      "type": "calls",
+      "src": "core/orders-list.js:205",
+      "status": "confirmed",
+      "flow": "F-07",
+      "coverage": []
+    },
+    {
+      "from": "fn:core/orders-list.js#cancelOrder",
+      "to": "fn:core/order-sync.js#syncOrderDownstream",
+      "type": "calls",
+      "src": "core/orders-list.js:208-210",
+      "status": "confirmed",
+      "flow": "F-07",
+      "coverage": [],
+      "note": "changedFields:['Status'] only — PL feed sync and rtOnOrderSaved in syncOrderDownstream step 5 only fire on 'Pallet Exchange' changes, so cancelling never touches the RT or pallet ledger (matches 02a's Α10/F-07 gap)"
+    },
+    {
+      "from": "action:F-09",
+      "to": "fn:modules/orders_intl.js#_intlChangeStatus",
+      "type": "triggers_action",
+      "src": "modules/orders_intl.js:2124",
+      "status": "confirmed",
+      "flow": "F-09",
+      "coverage": []
+    },
+    {
+      "from": "fn:modules/orders_intl.js#_intlChangeStatus",
+      "to": "ep:PATCH /v0/orders",
+      "type": "calls",
+      "src": "modules/orders_intl.js:2124-2141",
+      "status": "probable",
+      "flow": "F-09",
+      "coverage": [],
+      "note": "function body not re-opened this pass; behaviour cross-checked against 02a F-09 (atSafePatch + syncOrderDownstream skipVS/skipGRP/skipRamp) and against confirmed _opsStatFinal which is the OTHER door writing the same Status field — see FM-a-09"
+    },
+    {
+      "from": "action:F-12",
+      "to": "fn:modules/orders_natl.js#submitNatlOrder",
+      "type": "triggers_action",
+      "src": "modules/orders_natl.js:1262",
+      "status": "confirmed",
+      "flow": "F-12",
+      "coverage": []
+    },
+    {
+      "from": "fn:modules/orders_natl.js#submitNatlOrder",
+      "to": "ep:POST /v0/national_orders",
+      "type": "calls",
+      "src": "modules/orders_natl.js:1400",
+      "status": "confirmed",
+      "flow": "F-12",
+      "coverage": []
+    },
+    {
+      "from": "fn:modules/orders_natl.js#submitNatlOrder",
+      "to": "ep:PATCH /v0/national_orders",
+      "type": "calls",
+      "src": "modules/orders_natl.js:1339",
+      "status": "confirmed",
+      "flow": "F-12",
+      "coverage": []
+    },
+    {
+      "from": "fn:modules/orders_natl.js#submitNatlOrder",
+      "to": "fn:modules/orders_natl.js#_syncGroupageLinesFromNO",
+      "type": "calls",
+      "src": "modules/orders_natl.js:1450",
+      "status": "confirmed",
+      "flow": "F-11",
+      "coverage": []
+    },
+    {
+      "from": "fn:modules/orders_natl.js#submitNatlOrder",
+      "to": "fn:modules/orders_natl.js#_syncNationalLoad",
+      "type": "calls",
+      "src": "modules/orders_natl.js:1498",
+      "status": "confirmed",
+      "flow": "F-12",
+      "coverage": []
+    },
+    {
+      "from": "fn:modules/orders_natl.js#submitNatlOrder",
+      "to": "fn:core/order-sync.js#syncOrderDownstream",
+      "type": "calls",
+      "src": "modules/orders_natl.js:1522",
+      "status": "confirmed",
+      "flow": "F-12",
+      "coverage": []
+    },
+    {
+      "from": "fn:modules/orders_natl.js#_syncGroupageLinesFromNO",
+      "to": "ep:PATCH /v0/groupage_lines",
+      "type": "calls",
+      "src": "modules/orders_natl.js:1483#unassign_on_rebuild",
+      "status": "confirmed",
+      "flow": "F-11",
+      "coverage": [],
+      "note": "same never-delete pattern as orders_intl.js's own groupage sync"
+    },
+    {
+      "from": "fn:modules/orders_natl.js#_syncNationalLoad",
+      "to": "ep:POST /v0/national_loads",
+      "type": "calls",
+      "src": "modules/orders_natl.js:1689-1850",
+      "status": "probable",
+      "flow": "F-12",
+      "coverage": [],
+      "note": "cited from 02a F-12; body not re-opened this pass"
+    },
+    {
+      "from": "ep:POST /v0/national_orders",
+      "to": "tbl:national_orders",
+      "type": "writes",
+      "src": "worker/src/index.js:2395-2622",
+      "status": "confirmed",
+      "flow": "F-12",
+      "coverage": []
+    },
+    {
+      "from": "tbl:national_orders",
+      "to": "trg:national_orders.trg_national_orders_soft_delete_cascade",
+      "type": "fires",
+      "src": "docs/grok-bot/monitoring-2026-09-22/02b-ροές-backend-και-έλεγχοι-Β.md:72",
+      "status": "unknown",
+      "flow": "F-08",
+      "coverage": [],
+      "note": "cited by 02b only — this team did not open the trigger body; migration numbered 022/023 per 02b, not independently confirmed here"
+    },
+    {
+      "from": "action:F-13",
+      "to": "fn:modules/weekly_intl.js#_wiDoSplit",
+      "type": "triggers_action",
+      "src": "modules/weekly_intl.js:3950",
+      "status": "confirmed",
+      "flow": "F-13",
+      "coverage": []
+    },
+    {
+      "from": "fn:modules/weekly_intl.js#_wiDoSplit",
+      "to": "ep:POST /v0/orders",
+      "type": "calls",
+      "src": "modules/weekly_intl.js:3950-4060",
+      "status": "probable",
+      "flow": "F-13",
+      "coverage": [],
+      "note": "line range from 02a, function definition itself confirmed at 3950; sub-calls not individually re-opened"
+    },
+    {
+      "from": "fn:modules/weekly_intl.js#_wiDoSplit",
+      "to": "fn:core/stops-helpers.js#stopsSave",
+      "type": "calls",
+      "src": "modules/weekly_intl.js:3950-4060",
+      "status": "probable",
+      "flow": "F-13",
+      "coverage": []
+    },
+    {
+      "from": "fn:modules/weekly_intl.js#_wiDoSplit",
+      "to": "ep:PATCH /v0/orders",
+      "type": "calls",
+      "src": "modules/weekly_intl.js:3950-4060",
+      "status": "probable",
+      "flow": "F-13",
+      "coverage": [],
+      "note": "parent PATCH to clear Truck/Driver/Partner after the two legs are created"
+    },
+    {
+      "from": "action:F-14",
+      "to": "fn:modules/weekly_intl.js#_wiSaveFromPopover",
+      "type": "triggers_action",
+      "src": "modules/weekly_intl.js:3191",
+      "status": "confirmed",
+      "flow": "F-14",
+      "coverage": []
+    },
+    {
+      "from": "fn:modules/weekly_intl.js#_wiSaveFromPopover",
+      "to": "ep:PATCH /v0/orders",
+      "type": "calls",
+      "src": "modules/weekly_intl.js:3246,3254,3310",
+      "status": "confirmed",
+      "flow": "F-14",
+      "coverage": []
+    },
+    {
+      "from": "fn:modules/weekly_intl.js#_wiSaveFromPopover",
+      "to": "tbl:orders",
+      "type": "writes",
+      "src": "modules/weekly_intl.js:3229#Assigned_At_stamp",
+      "status": "confirmed",
+      "flow": "F-14",
+      "coverage": [],
+      "note": "'Assigned At' IS mapped in the Worker (worker/src/index.js:1225 'Assigned At':'assigned_at') — corrects 02a F-14, which listed it as an unmapped-label FUF risk"
+    },
+    {
+      "from": "fn:modules/weekly_intl.js#_wiSaveFromPopover",
+      "to": "fn:core/pa-helpers.js#paUpsert",
+      "type": "calls",
+      "src": "modules/weekly_intl.js:3249,3259",
+      "status": "probable",
+      "flow": "F-14",
+      "coverage": [],
+      "note": "cited as plOnIntlPartnerAssigned by 02a (team γ's pallet feeder, not paUpsert) — this team's own pa-helpers.js is called from weekly_intl per its own docstring (core/pa-helpers.js:1-9) but the exact call site inside _wiSaveFromPopover was not individually grepped; marked probable"
+    },
+    {
+      "from": "action:F-15",
+      "to": "fn:modules/weekly_intl.js#_wiClear",
+      "type": "triggers_action",
+      "src": "modules/weekly_intl.js:3411",
+      "status": "confirmed",
+      "flow": "F-15",
+      "coverage": []
+    },
+    {
+      "from": "fn:modules/weekly_intl.js#_wiClear",
+      "to": "ep:PATCH /v0/orders",
+      "type": "calls",
+      "src": "modules/weekly_intl.js:3411-3410",
+      "status": "probable",
+      "flow": "F-15",
+      "coverage": [],
+      "note": "clears Truck/Partner, Status→Pending; per 02a does NOT call rtOnOrderSaved — the RT is left pointing at an order with no vehicle (FM-a-06)"
+    },
+    {
+      "from": "action:F-16",
+      "to": "fn:modules/weekly_intl.js#_wiSaveImportMatch",
+      "type": "triggers_action",
+      "src": "modules/weekly_intl.js:2628",
+      "status": "confirmed",
+      "flow": "F-16",
+      "coverage": []
+    },
+    {
+      "from": "fn:modules/weekly_intl.js#_wiSaveImportMatch",
+      "to": "ep:PATCH /v0/orders",
+      "type": "calls",
+      "src": "modules/weekly_intl.js:2628-2803",
+      "status": "probable",
+      "flow": "F-16",
+      "coverage": [],
+      "note": "writes text field 'Matched Import ID', no DB FK — confirmed as scalar (not link) at worker/src/index.js:1204"
+    },
+    {
+      "from": "action:F-17",
+      "to": "fn:modules/weekly_intl.js#_wiRemoveImport",
+      "type": "triggers_action",
+      "src": "modules/weekly_intl.js:2805",
+      "status": "confirmed",
+      "flow": "F-17",
+      "coverage": []
+    },
+    {
+      "from": "action:F-18",
+      "to": "fn:modules/weekly_intl.js#_wiRotAdd",
+      "type": "triggers_action",
+      "src": "modules/weekly_intl.js:4225",
+      "status": "confirmed",
+      "flow": "F-18",
+      "coverage": []
+    },
+    {
+      "from": "fn:modules/weekly_intl.js#_wiRotAdd",
+      "to": "ep:PATCH /v0/orders",
+      "type": "calls",
+      "src": "modules/weekly_intl.js:4225-4283",
+      "status": "probable",
+      "flow": "F-18",
+      "coverage": []
+    },
+    {
+      "from": "action:F-18",
+      "to": "fn:modules/weekly_intl.js#_wiRotUnlink",
+      "type": "triggers_action",
+      "src": "modules/weekly_intl.js:4285",
+      "status": "confirmed",
+      "flow": "F-18",
+      "coverage": []
+    },
+    {
+      "from": "action:F-19",
+      "to": "fn:modules/weekly_intl.js#_wiImpShift",
+      "type": "triggers_action",
+      "src": "modules/weekly_intl.js:4672",
+      "status": "confirmed",
+      "flow": "F-19",
+      "coverage": []
+    },
+    {
+      "from": "fn:modules/weekly_intl.js#_wiImpShift",
+      "to": "ep:PATCH /v0/orders",
+      "type": "calls",
+      "src": "modules/weekly_intl.js:4672-4698",
+      "status": "probable",
+      "flow": "F-19",
+      "coverage": [],
+      "note": "'Plan Week Start' confirmed mapped at worker/src/index.js:1213 plan_week_start; the read-back itself (atGetOne) not re-opened this pass"
+    },
+    {
+      "from": "action:F-20",
+      "to": "fn:modules/weekly_intl.js#_wiDoHandoverChange",
+      "type": "triggers_action",
+      "src": "modules/weekly_intl.js:1470",
+      "status": "confirmed",
+      "flow": "F-20",
+      "coverage": []
+    },
+    {
+      "from": "fn:modules/weekly_intl.js#_wiDoHandoverChange",
+      "to": "ep:PATCH /v0/orders",
+      "type": "calls",
+      "src": "modules/weekly_intl.js:1470-1500",
+      "status": "probable",
+      "flow": "F-20",
+      "coverage": [],
+      "note": "two separate PATCH calls (leg1, leg2) per 02a; not a batch/transaction — see FM-a-11"
+    },
+    {
+      "from": "action:F-21",
+      "to": "fn:modules/weekly_intl.js#_wiMerge",
+      "type": "triggers_action",
+      "src": "modules/weekly_intl.js:4736",
+      "status": "confirmed",
+      "flow": "F-21",
+      "coverage": []
+    },
+    {
+      "from": "action:F-22",
+      "to": "fn:modules/weekly_natl.js#_wnSaveLocal",
+      "type": "triggers_action",
+      "src": "modules/weekly_natl.js:1127",
+      "status": "confirmed",
+      "flow": "F-22",
+      "coverage": []
+    },
+    {
+      "from": "fn:modules/weekly_natl.js#_wnSaveLocal",
+      "to": "ep:POST /v0/local_moves",
+      "type": "calls",
+      "src": "modules/weekly_natl.js:1156",
+      "status": "confirmed",
+      "flow": "F-22",
+      "coverage": []
+    },
+    {
+      "from": "fn:modules/weekly_natl.js#_wnSaveCover",
+      "to": "ep:PATCH /v0/local_moves",
+      "type": "calls",
+      "src": "modules/weekly_natl.js:1191",
+      "status": "confirmed",
+      "flow": "F-22",
+      "coverage": []
+    },
+    {
+      "from": "fn:modules/weekly_natl.js#_wnDelLocal",
+      "to": "ep:PATCH /v0/local_moves",
+      "type": "calls",
+      "src": "modules/weekly_natl.js:1215#atDelete_soft",
+      "status": "confirmed",
+      "flow": "F-22",
+      "coverage": []
+    },
+    {
+      "from": "ep:POST /v0/local_moves",
+      "to": "tbl:local_moves",
+      "type": "writes",
+      "src": "worker/src/index.js:2395-2622",
+      "status": "confirmed",
+      "flow": "F-22",
+      "coverage": [],
+      "note": "route confirmed LIVE with all field labels mapped (worker/src/index.js:1698-1721) — resolves the 'amphibolous, χρήζει μέτρησης' status CLAUDE.md and 02a both still carry; requires db/migrations/2026-09-03_fixes.sql (legacy_id column) to have run, per the code's own precondition comment at worker/src/index.js:1688-1691"
+    },
+    {
+      "from": "action:F-23",
+      "to": "fn:modules/weekly_natl.js#_wnSaveFromPopover",
+      "type": "triggers_action",
+      "src": "modules/weekly_natl.js:2339",
+      "status": "confirmed",
+      "flow": "F-23",
+      "coverage": []
+    },
+    {
+      "from": "fn:modules/weekly_natl.js#_wnSaveFromPopover",
+      "to": "ep:PATCH /v0/national_loads",
+      "type": "calls",
+      "src": "modules/weekly_natl.js:2387,2395",
+      "status": "confirmed",
+      "flow": "F-23",
+      "coverage": []
+    },
+    {
+      "from": "fn:modules/weekly_natl.js#_wnSaveFromPopover",
+      "to": "ep:PATCH /v0/national_orders",
+      "type": "calls",
+      "src": "modules/weekly_natl.js:2414",
+      "status": "confirmed",
+      "flow": "F-23",
+      "coverage": [],
+      "note": "only for loads sourced from a real national order (Source National Order FK); VS-sourced loads (Source Order) are left untouched — its own comment"
+    },
+    {
+      "from": "fn:modules/weekly_natl.js#_wnSaveFromPopover",
+      "to": "fn:core/order-sync.js#syncOrderDownstream",
+      "type": "calls",
+      "src": "modules/weekly_natl.js:2416",
+      "status": "confirmed",
+      "flow": "F-23",
+      "coverage": [],
+      "note": "called with skipVS/skipGRP/skipRamp/skipPL true — only PA sync survives; wrapped in its own try/catch that toasts 'Η ανάθεση αποθηκεύτηκε αλλά η εθνική παραγγελία ΔΕΝ ενημερώθηκε' rather than silently swallowing (better than most feeders)"
+    },
+    {
+      "from": "tbl:national_loads",
+      "to": "trg:national_loads.national_load_soft_delete_unlink",
+      "type": "fires",
+      "src": "worker/migrations/030_national_load_follow.sql:73",
+      "status": "confirmed",
+      "flow": "F-08",
+      "coverage": []
+    },
+    {
+      "from": "action:F-23",
+      "to": "check:B-04",
+      "type": "verifies",
+      "src": "docs/grok-bot/monitoring-2026-09-22/02b-ροές-backend-και-έλεγχοι-Β.md:142-146",
+      "status": "unknown",
+      "flow": "F-23",
+      "coverage": [],
+      "note": "no round-trip is ever created for national loads (migration 034 not approved) — dl_v_rt_gap view explicitly excludes national, per 02b"
+    },
+    {
+      "from": "action:F-24",
+      "to": "fn:modules/weekly_natl.js#_wnSaveMatch",
+      "type": "triggers_action",
+      "src": "modules/weekly_natl.js:2115",
+      "status": "confirmed",
+      "flow": "F-24",
+      "coverage": []
+    },
+    {
+      "from": "fn:modules/weekly_natl.js#_wnSaveMatch",
+      "to": "ep:PATCH /v0/national_loads",
+      "type": "calls",
+      "src": "modules/weekly_natl.js:2129,2132",
+      "status": "confirmed",
+      "flow": "F-24",
+      "coverage": [],
+      "note": "two independent atSafePatch calls on each side of the pair — no transaction, no FK; a failure after the first leaves a one-sided Matched Load"
+    },
+    {
+      "from": "action:F-24",
+      "to": "fn:modules/weekly_natl.js#_wnUnmatch",
+      "type": "triggers_action",
+      "src": "modules/weekly_natl.js:2145",
+      "status": "confirmed",
+      "flow": "F-24",
+      "coverage": []
+    },
+    {
+      "from": "action:F-26",
+      "to": "fn:modules/daily_ops.js#_opsStatFinal",
+      "type": "triggers_action",
+      "src": "modules/daily_ops.js:901",
+      "status": "confirmed",
+      "flow": "F-26",
+      "coverage": []
+    },
+    {
+      "from": "action:F-26",
+      "to": "fn:modules/daily_ops.js#_opsDelFinal",
+      "type": "triggers_action",
+      "src": "modules/daily_ops.js:930",
+      "status": "confirmed",
+      "flow": "F-26",
+      "coverage": []
+    },
+    {
+      "from": "action:F-26",
+      "to": "fn:modules/daily_ops.js#_opsMarkStop",
+      "type": "triggers_action",
+      "src": "modules/daily_ops.js:797",
+      "status": "confirmed",
+      "flow": "F-26",
+      "coverage": []
+    },
+    {
+      "from": "fn:modules/daily_ops.js#_opsMarkStop",
+      "to": "ep:PATCH /v0/order_stops",
+      "type": "calls",
+      "src": "modules/daily_ops.js:801",
+      "status": "confirmed",
+      "flow": "F-26",
+      "coverage": []
+    },
+    {
+      "from": "fn:modules/daily_ops.js#_opsStatFinal",
+      "to": "ep:PATCH /v0/orders",
+      "type": "calls",
+      "src": "modules/daily_ops.js:914",
+      "status": "confirmed",
+      "flow": "F-26",
+      "coverage": []
+    },
+    {
+      "from": "fn:modules/daily_ops.js#_opsStatFinal",
+      "to": "fn:core/pa-helpers.js#paSyncStatus",
+      "type": "calls",
+      "src": "modules/daily_ops.js:918",
+      "status": "confirmed",
+      "flow": "F-26",
+      "coverage": [],
+      "note": "wrapped in try/catch that toasts a warn on failure ('η ανάθεση ΔΕΝ ενημερώθηκε') rather than staying silent"
+    },
+    {
+      "from": "fn:modules/daily_ops.js#_opsDelFinal",
+      "to": "ep:PATCH /v0/orders",
+      "type": "calls",
+      "src": "modules/daily_ops.js:939",
+      "status": "confirmed",
+      "flow": "F-26",
+      "coverage": []
+    },
+    {
+      "from": "fn:modules/daily_ops.js#_opsDelFinal",
+      "to": "job:pallet_ledger_feed",
+      "type": "calls",
+      "src": "modules/daily_ops.js:940#plOnDelivered",
+      "status": "confirmed",
+      "flow": "F-26",
+      "coverage": [],
+      "note": "cross_dep team γ — plOnDelivered is fire-and-forget, not awaited, no return value checked here"
+    },
+    {
+      "from": "fn:modules/daily_ops.js#_opsDelFinal",
+      "to": "fn:core/pa-helpers.js#paSyncStatus",
+      "type": "calls",
+      "src": "modules/daily_ops.js:942",
+      "status": "confirmed",
+      "flow": "F-26",
+      "coverage": []
+    },
+    {
+      "from": "fn:modules/daily_ops.js#_opsStatFinal",
+      "to": "tbl:orders",
+      "type": "writes",
+      "src": "modules/daily_ops.js:903-914",
+      "status": "confirmed",
+      "flow": "F-26",
+      "coverage": [],
+      "note": "F-26's In-Transit path does NOT call syncOrderDownstream — no VS/national_loads propagation from here, unlike F-27's _opsChangeDayGo which does await it. This is a genuine asymmetry beyond what 02a documents at the function level (02a names the NL-lag gap but attributes it generically to 'Delivered', not specifically to the missing syncOrderDownstream call in this exact function)"
+    },
+    {
+      "from": "action:F-27",
+      "to": "fn:modules/daily_ops.js#_opsChangeDayGo",
+      "type": "triggers_action",
+      "src": "modules/daily_ops.js:1024",
+      "status": "confirmed",
+      "flow": "F-27",
+      "coverage": []
+    },
+    {
+      "from": "fn:modules/daily_ops.js#_opsChangeDayGo",
+      "to": "ep:PATCH /v0/orders",
+      "type": "calls",
+      "src": "modules/daily_ops.js:1042",
+      "status": "confirmed",
+      "flow": "F-27",
+      "coverage": []
+    },
+    {
+      "from": "fn:modules/daily_ops.js#_opsChangeDayGo",
+      "to": "fn:core/order-sync.js#syncOrderDownstream",
+      "type": "calls",
+      "src": "modules/daily_ops.js:1047",
+      "status": "confirmed",
+      "flow": "F-27",
+      "coverage": [],
+      "note": "awaited (fixed 13/9); reports sr.failed in the toast — the one flow in this team's ownership that surfaces a partial-chain failure to the user by name"
+    },
+    {
+      "from": "action:F-27",
+      "to": "fn:modules/daily_ops.js#_opsSvF",
+      "type": "triggers_action",
+      "src": "modules/daily_ops.js:781",
+      "status": "confirmed",
+      "flow": "F-27",
+      "coverage": []
+    },
+    {
+      "from": "fn:modules/daily_ops.js#_opsSvF",
+      "to": "ep:PATCH /v0/orders",
+      "type": "calls",
+      "src": "modules/daily_ops.js:781",
+      "status": "confirmed",
+      "flow": "F-27",
+      "coverage": [],
+      "note": "inline single-field PATCH, no syncOrderDownstream call at all — any field edited this way never propagates downstream"
+    },
+    {
+      "from": "check:test:tests/orders-list.test.js",
+      "to": "fn:core/orders-list.js#applyFilters",
+      "type": "verifies",
+      "src": "core/orders-list.js:90-93#comment",
+      "status": "confirmed",
+      "flow": "",
+      "coverage": []
+    },
+    {
+      "from": "check:test:tests/orders-list-filters.test.js",
+      "to": "fn:core/orders-list.js#applyFilters",
+      "type": "verifies",
+      "src": "core/orders-list.js:90-93#comment",
+      "status": "confirmed",
+      "flow": "",
+      "coverage": []
+    },
+    {
+      "from": "check:B-01",
+      "to": "trg:orders.rt_create_from_order",
+      "type": "verifies",
+      "src": "docs/grok-bot/monitoring-2026-09-22/02b-ροές-backend-και-έλεγχοι-Β.md:116-124",
+      "status": "unknown",
+      "flow": "F-14",
+      "coverage": [],
+      "note": "SQL check read from 02b, not independently re-run (read-only, no DB access in this pass)"
+    },
+    {
+      "from": "check:B-26",
+      "to": "fn:modules/orders_intl.js#_syncVeroiaSwitch",
+      "type": "verifies",
+      "src": "docs/grok-bot/monitoring-2026-09-22/02b-ροές-backend-και-έλεγχοι-Β.md:292-297",
+      "status": "unknown",
+      "flow": "F-10",
+      "coverage": []
+    },
+    {
+      "from": "check:B-29",
+      "to": "rule:gl-never-deleted",
+      "type": "verifies",
+      "src": "docs/grok-bot/monitoring-2026-09-22/02b-ροές-backend-και-έλεγχοι-Β.md:313-319",
+      "status": "unknown",
+      "flow": "F-11",
+      "coverage": []
+    },
+    {
+      "from": "check:B-33",
+      "to": "tbl:facade_unknown_fields",
+      "type": "verifies",
+      "src": "docs/grok-bot/monitoring-2026-09-22/02b-ροές-backend-και-έλεγχοι-Β.md:351-355",
+      "status": "unknown",
+      "flow": "F-05",
+      "coverage": []
+    },
+    {
+      "from": "role:owner",
+      "to": "ep:PATCH /v0/orders",
+      "type": "allows",
+      "src": "worker/src/index.js:436#owner_wildcard",
+      "status": "confirmed",
+      "flow": "",
+      "coverage": [],
+      "note": "owner '*' grants all methods on every table"
+    },
+    {
+      "from": "role:owner",
+      "to": "ep:PATCH /v0/order_stops",
+      "type": "allows",
+      "src": "worker/src/index.js:436#owner_wildcard",
+      "status": "confirmed",
+      "flow": "",
+      "coverage": [],
+      "note": ""
+    },
+    {
+      "from": "role:owner",
+      "to": "ep:PATCH /v0/national_loads",
+      "type": "allows",
+      "src": "worker/src/index.js:436#owner_wildcard",
+      "status": "confirmed",
+      "flow": "",
+      "coverage": [],
+      "note": ""
+    },
+    {
+      "from": "role:owner",
+      "to": "ep:PATCH /v0/groupage_lines",
+      "type": "allows",
+      "src": "worker/src/index.js:436#owner_wildcard",
+      "status": "confirmed",
+      "flow": "",
+      "coverage": [],
+      "note": ""
+    },
+    {
+      "from": "role:owner",
+      "to": "ep:DELETE /v0/consolidated_loads",
+      "type": "allows",
+      "src": "worker/src/index.js:436#owner_wildcard",
+      "status": "confirmed",
+      "flow": "",
+      "coverage": [],
+      "note": ""
+    },
+    {
+      "from": "role:owner",
+      "to": "ep:DELETE /v0/partner_assignments",
+      "type": "allows",
+      "src": "worker/src/index.js:436#owner_wildcard",
+      "status": "confirmed",
+      "flow": "",
+      "coverage": [],
+      "note": ""
+    },
+    {
+      "from": "role:owner",
+      "to": "ep:POST /v0/local_moves",
+      "type": "allows",
+      "src": "worker/src/index.js:436#owner_wildcard",
+      "status": "confirmed",
+      "flow": "",
+      "coverage": [],
+      "note": ""
+    },
+    {
+      "from": "role:dispatcher",
+      "to": "ep:POST /v0/orders",
+      "type": "allows",
+      "src": "worker/src/index.js:528#dispatcher.orders",
+      "status": "confirmed",
+      "flow": "",
+      "coverage": [],
+      "note": "GET/POST/PATCH only — no DELETE, confirms F-08's 403-on-hard-delete for dispatcher"
+    },
+    {
+      "from": "role:dispatcher",
+      "to": "ep:DELETE /v0/order_stops",
+      "type": "allows",
+      "src": "worker/src/index.js:544#dispatcher.order_stops",
+      "status": "confirmed",
+      "flow": "",
+      "coverage": [],
+      "note": "the 12/8 fix cited by CLAUDE.md's 'φρουρός των τριών' #1"
+    },
+    {
+      "from": "role:dispatcher",
+      "to": "ep:DELETE /v0/national_loads",
+      "type": "allows",
+      "src": "worker/src/index.js:543#dispatcher.national_loads",
+      "status": "confirmed",
+      "flow": "",
+      "coverage": [],
+      "note": ""
+    },
+    {
+      "from": "role:dispatcher",
+      "to": "ep:POST /v0/national_orders",
+      "type": "allows",
+      "src": "worker/src/index.js:529#dispatcher.national_orders",
+      "status": "confirmed",
+      "flow": "",
+      "coverage": [],
+      "note": ""
+    },
+    {
+      "from": "role:dispatcher",
+      "to": "ep:PATCH /v0/groupage_lines",
+      "type": "allows",
+      "src": "worker/src/index.js:531-533#dispatcher.groupage_lines",
+      "status": "confirmed",
+      "flow": "",
+      "coverage": [],
+      "note": "no DELETE ever granted — never-delete rule enforced at the RBAC layer too"
+    },
+    {
+      "from": "role:dispatcher",
+      "to": "ep:DELETE /v0/consolidated_loads",
+      "type": "allows",
+      "src": "worker/src/index.js:534#dispatcher.consolidated_loads",
+      "status": "confirmed",
+      "flow": "",
+      "coverage": [],
+      "note": ""
+    },
+    {
+      "from": "role:dispatcher",
+      "to": "ep:DELETE /v0/local_moves",
+      "type": "allows",
+      "src": "worker/src/index.js:549#dispatcher.local_moves",
+      "status": "confirmed",
+      "flow": "",
+      "coverage": [],
+      "note": ""
+    },
+    {
+      "from": "role:dispatcher",
+      "to": "ep:DELETE /v0/partner_assignments",
+      "type": "allows",
+      "src": "worker/src/index.js:559#dispatcher.partner_assignments",
+      "status": "confirmed",
+      "flow": "",
+      "coverage": [],
+      "note": "R-04 tension: dispatcher must not see P&L but needs this table to set Partner Rate — deliberate per its own comment"
+    },
+    {
+      "from": "role:management",
+      "to": "ep:PATCH /v0/orders",
+      "type": "allows",
+      "src": "worker/src/index.js:447#management.orders",
+      "status": "confirmed",
+      "flow": "",
+      "coverage": [],
+      "note": "GET/POST/PATCH but the front hides create/edit for management (config.js:336 orders:view) — a UI/RBAC width mismatch"
+    },
+    {
+      "from": "role:management",
+      "to": "ep:PATCH /v0/national_loads",
+      "type": "allows",
+      "src": "worker/src/index.js:465#management_wildcard_get_only",
+      "status": "confirmed",
+      "flow": "",
+      "coverage": [],
+      "note": "management has no explicit national_loads row — falls to '*': GET, so no write"
+    },
+    {
+      "from": "role:management",
+      "to": "ep:PATCH /v0/partner_assignments",
+      "type": "allows",
+      "src": "worker/src/index.js:471#management.partner_assignments",
+      "status": "confirmed",
+      "flow": "",
+      "coverage": [],
+      "note": ""
+    },
+    {
+      "from": "role:accountant",
+      "to": "ep:PATCH /v0/orders",
+      "type": "allows",
+      "src": "worker/src/index.js:509#accountant.orders",
+      "status": "confirmed",
+      "flow": "",
+      "coverage": [],
+      "note": "GET+PATCH only, no POST/DELETE — added 3/9 for the invoicing checkbox, width covers every order field per its own comment"
+    },
+    {
+      "from": "role:accountant",
+      "to": "ep:PATCH /v0/national_orders",
+      "type": "allows",
+      "src": "worker/src/index.js:513#accountant.national_orders",
+      "status": "confirmed",
+      "flow": "",
+      "coverage": [],
+      "note": ""
+    },
+    {
+      "from": "role:accountant",
+      "to": "ep:PATCH /v0/order_stops",
+      "type": "allows",
+      "src": "worker/src/index.js:521#accountant.order_stops",
+      "status": "confirmed",
+      "flow": "",
+      "coverage": [],
+      "note": "added 11/9 after the Cursor audit found accountant's Delivered stamp writing orders.status while the stop stamp 403'd"
+    },
+    {
+      "from": "role:warehouse",
+      "to": "ep:PATCH /v0/orders",
+      "type": "denies",
+      "src": "worker/src/index.js:576#warehouse.orders",
+      "status": "confirmed",
+      "flow": "",
+      "coverage": [],
+      "note": "GET only — denies write"
+    },
+    {
+      "from": "ep:DELETE /v0/national_orders",
+      "to": "tbl:national_orders",
+      "type": "writes",
+      "src": "worker/src/index.js:2836-2862",
+      "status": "confirmed",
+      "flow": "F-08",
+      "coverage": [],
+      "note": ""
+    },
+    {
+      "from": "fn:modules/orders_natl.js#deleteNatlOrder",
+      "to": "ep:DELETE /v0/national_orders",
+      "type": "calls",
+      "src": "modules/orders_natl.js:1862-1994",
+      "status": "probable",
+      "flow": "F-08",
+      "coverage": [],
+      "note": "order-first step, mirrors deleteIntlOrder step 0"
+    },
+    {
+      "from": "tbl:national_orders",
+      "to": "trg:national_orders.trg_national_orders_soft_delete_cascade",
+      "type": "fires",
+      "src": "docs/grok-bot/monitoring-2026-09-22/02b-ροές-backend-και-έλεγχοι-Β.md:72",
+      "status": "unknown",
+      "flow": "F-08",
+      "coverage": [],
+      "note": ""
+    },
+    {
+      "from": "trg:national_orders.trg_national_orders_soft_delete_cascade",
+      "to": "tbl:national_loads",
+      "type": "syncs",
+      "src": "docs/grok-bot/monitoring-2026-09-22/02b-ροές-backend-και-έλεγχοι-Β.md:72",
+      "status": "unknown",
+      "flow": "F-08",
+      "coverage": [],
+      "note": ""
+    },
+    {
+      "from": "trg:national_orders.trg_national_orders_soft_delete_cascade",
+      "to": "tbl:order_stops",
+      "type": "syncs",
+      "src": "docs/grok-bot/monitoring-2026-09-22/02b-ροές-backend-και-έλεγχοι-Β.md:72",
+      "status": "unknown",
+      "flow": "F-08",
+      "coverage": [],
+      "note": ""
+    },
+    {
+      "from": "action:F-26",
+      "to": "job:pallet_ledger_feed",
+      "type": "triggers_action",
+      "src": "modules/daily_ops.js:940",
+      "status": "confirmed",
+      "flow": "F-26",
+      "coverage": [],
+      "note": "cross_dep, see cross_deps to part c"
+    },
+    {
+      "from": "action:F-14",
+      "to": "job:pallet_ledger_feed",
+      "type": "triggers_action",
+      "src": "modules/weekly_intl.js:3249,3259",
+      "status": "probable",
+      "flow": "F-14",
+      "coverage": [],
+      "note": "plOnIntlPartnerAssigned, cited from 02a"
+    },
+    {
+      "from": "fn:core/order-sync.js#syncOrderDownstream",
+      "to": "job:pallet_ledger_feed",
+      "type": "calls",
+      "src": "core/order-sync.js:98-99",
+      "status": "confirmed",
+      "flow": "F-11",
+      "coverage": [],
+      "note": "step 5, only when changedFields includes 'Pallet Exchange'"
+    },
+    {
+      "from": "ep:PATCH /v0/orders",
+      "to": "tbl:orders",
+      "type": "writes",
+      "src": "core/orders-list.js:205",
+      "status": "confirmed",
+      "flow": "F-07",
+      "coverage": [],
+      "note": ""
+    },
+    {
+      "from": "ep:PATCH /v0/orders",
+      "to": "tbl:orders",
+      "type": "writes",
+      "src": "modules/orders_intl.js:2124-2141",
+      "status": "confirmed",
+      "flow": "F-09",
+      "coverage": [],
+      "note": ""
+    },
+    {
+      "from": "ep:POST /v0/orders",
+      "to": "tbl:orders",
+      "type": "writes",
+      "src": "modules/weekly_intl.js:3950-4060",
+      "status": "probable",
+      "flow": "F-13",
+      "coverage": [],
+      "note": "two new leg rows"
+    },
+    {
+      "from": "ep:PATCH /v0/orders",
+      "to": "tbl:orders",
+      "type": "writes",
+      "src": "modules/weekly_intl.js:3246,3254,3310",
+      "status": "confirmed",
+      "flow": "F-14",
+      "coverage": [],
+      "note": ""
+    },
+    {
+      "from": "ep:PATCH /v0/orders",
+      "to": "tbl:orders",
+      "type": "writes",
+      "src": "modules/weekly_intl.js:3411-3410",
+      "status": "probable",
+      "flow": "F-15",
+      "coverage": [],
+      "note": ""
+    },
+    {
+      "from": "ep:PATCH /v0/orders",
+      "to": "tbl:orders",
+      "type": "writes",
+      "src": "modules/weekly_intl.js:2628-2803",
+      "status": "probable",
+      "flow": "F-16",
+      "coverage": [],
+      "note": ""
+    },
+    {
+      "from": "ep:PATCH /v0/orders",
+      "to": "tbl:orders",
+      "type": "writes",
+      "src": "modules/weekly_intl.js:2805-2880",
+      "status": "probable",
+      "flow": "F-17",
+      "coverage": [],
+      "note": ""
+    },
+    {
+      "from": "ep:PATCH /v0/orders",
+      "to": "tbl:orders",
+      "type": "writes",
+      "src": "modules/weekly_intl.js:4225-4283",
+      "status": "probable",
+      "flow": "F-18",
+      "coverage": [],
+      "note": ""
+    },
+    {
+      "from": "ep:PATCH /v0/orders",
+      "to": "tbl:orders",
+      "type": "writes",
+      "src": "modules/weekly_intl.js:4672-4698",
+      "status": "probable",
+      "flow": "F-19",
+      "coverage": [],
+      "note": ""
+    },
+    {
+      "from": "ep:PATCH /v0/orders",
+      "to": "tbl:orders",
+      "type": "writes",
+      "src": "modules/weekly_intl.js:1470-1500",
+      "status": "probable",
+      "flow": "F-20",
+      "coverage": [],
+      "note": ""
+    },
+    {
+      "from": "ep:PATCH /v0/orders",
+      "to": "tbl:orders",
+      "type": "writes",
+      "src": "modules/weekly_intl.js:4736",
+      "status": "confirmed",
+      "flow": "F-21",
+      "coverage": [],
+      "note": ""
+    },
+    {
+      "from": "ep:PATCH /v0/orders",
+      "to": "tbl:orders",
+      "type": "writes",
+      "src": "modules/daily_ops.js:781",
+      "status": "confirmed",
+      "flow": "F-27",
+      "coverage": [],
+      "note": ""
+    },
+    {
+      "from": "ep:PATCH /v0/orders",
+      "to": "tbl:orders",
+      "type": "writes",
+      "src": "modules/daily_ops.js:1042",
+      "status": "confirmed",
+      "flow": "F-27",
+      "coverage": [],
+      "note": ""
+    },
+    {
+      "from": "check:B-02",
+      "to": "trg:ct_rt_legs.rt_reopen_on_leg",
+      "type": "verifies",
+      "src": "docs/grok-bot/monitoring-2026-09-22/02b-ροές-backend-και-έλεγχοι-Β.md:126-131",
+      "status": "unknown",
+      "flow": "F-18",
+      "coverage": [],
+      "note": ""
+    },
+    {
+      "from": "check:B-19",
+      "to": "action:F-26",
+      "type": "verifies",
+      "src": "docs/grok-bot/monitoring-2026-09-22/02b-ροές-backend-και-έλεγχοι-Β.md:243-248",
+      "status": "unknown",
+      "flow": "F-26",
+      "coverage": [],
+      "note": ""
+    },
+    {
+      "from": "check:B-03",
+      "to": "tbl:ct_round_trips",
+      "type": "verifies",
+      "src": "docs/grok-bot/monitoring-2026-09-22/02b-ροές-backend-και-έλεγχοι-Β.md:133-140",
+      "status": "unknown",
+      "flow": "F-36",
+      "coverage": [],
+      "note": "cross_dep — RT closing is team β's TRIP PnL button, but the 'planned RT whose legs are all Delivered' signal originates from this team's status writes"
+    },
+    {
+      "from": "check:B-04",
+      "to": "action:F-23",
+      "type": "verifies",
+      "src": "docs/grok-bot/monitoring-2026-09-22/02b-ροές-backend-και-έλεγχοι-Β.md:142-146",
+      "status": "unknown",
+      "flow": "F-23",
+      "coverage": [],
+      "note": ""
+    },
+    {
+      "from": "check:B-05",
+      "to": "action:F-14",
+      "type": "verifies",
+      "src": "docs/grok-bot/monitoring-2026-09-22/02b-ροές-backend-και-έλεγχοι-Β.md:148-152",
+      "status": "unknown",
+      "flow": "F-14",
+      "coverage": [],
+      "note": ""
+    },
+    {
+      "from": "check:B-06",
+      "to": "action:F-15",
+      "type": "verifies",
+      "src": "docs/grok-bot/monitoring-2026-09-22/02b-ροές-backend-και-έλεγχοι-Β.md:154-160",
+      "status": "unknown",
+      "flow": "F-15",
+      "coverage": [],
+      "note": ""
+    },
+    {
+      "from": "check:B-28",
+      "to": "action:F-10",
+      "type": "verifies",
+      "src": "docs/grok-bot/monitoring-2026-09-22/02b-ροές-backend-και-έλεγχοι-Β.md:307-311",
+      "status": "unknown",
+      "flow": "F-10",
+      "coverage": [],
+      "note": ""
+    },
+    {
+      "from": "check:B-30",
+      "to": "action:F-29",
+      "type": "verifies",
+      "src": "docs/grok-bot/monitoring-2026-09-22/02b-ροές-backend-και-έλεγχοι-Β.md:321-327",
+      "status": "unknown",
+      "flow": "F-29",
+      "coverage": [],
+      "note": "cross_dep to team δ"
+    },
+    {
+      "from": "rule:gl-never-deleted",
+      "to": "ep:PATCH /v0/groupage_lines",
+      "type": "depends",
+      "src": "worker/src/index.js:531-533",
+      "status": "confirmed",
+      "flow": "F-11",
+      "coverage": [],
+      "note": "RBAC never grants DELETE on groupage_lines to any role"
+    },
+    {
+      "from": "rule:vs-single-cross-dock-column",
+      "to": "fn:modules/orders_intl.js#_syncVeroiaSwitch",
+      "type": "depends",
+      "src": "worker/src/index.js:1319",
+      "status": "confirmed",
+      "flow": "F-10",
+      "coverage": [],
+      "note": ""
+    },
+    {
+      "from": "rule:rt-threshold-is-assignment-not-status",
+      "to": "fn:core/rt-feed.js#rtOnOrderSaved",
+      "type": "depends",
+      "src": "core/rt-feed.js:329-334",
+      "status": "confirmed",
+      "flow": "F-14",
+      "coverage": [],
+      "note": ""
+    },
+    {
+      "from": "rule:rt-closed-is-history",
+      "to": "fn:core/rt-feed.js#rtOnOrderSaved",
+      "type": "depends",
+      "src": "core/rt-feed.js:336-340",
+      "status": "confirmed",
+      "flow": "F-14",
+      "coverage": [],
+      "note": ""
+    },
+    {
+      "from": "rule:one-rt-per-group",
+      "to": "fn:core/rt-feed.js#rtLegsForOrder",
+      "type": "depends",
+      "src": "core/rt-feed.js:84-117",
+      "status": "confirmed",
+      "flow": "F-16",
+      "coverage": [],
+      "note": ""
+    },
+    {
+      "from": "rule:delivered-is-a-human-act",
+      "to": "fn:modules/daily_ops.js#_opsDelFinal",
+      "type": "depends",
+      "src": "modules/daily_ops.js:930",
+      "status": "confirmed",
+      "flow": "F-26",
+      "coverage": [],
+      "note": ""
+    },
+    {
+      "from": "fn:core/rt-feed.js#_rtSafe",
+      "to": "fn:core/rt-feed.js#rtOnOrderSaved",
+      "type": "depends",
+      "src": "core/rt-feed.js:254-255",
+      "status": "confirmed",
+      "flow": "F-14",
+      "coverage": [],
+      "note": "every public rt-feed function is wrapped so a P&L sync error never blocks the order save — see failure_modes for what that hides"
+    },
+    {
+      "from": "fn:core/rt-feed.js#_rtSafe",
+      "to": "fn:core/rt-feed.js#rtOnOrderDeleted",
+      "type": "depends",
+      "src": "core/rt-feed.js:451-452",
+      "status": "confirmed",
+      "flow": "F-08",
+      "coverage": [],
+      "note": ""
+    },
+    {
+      "from": "fn:core/rt-feed.js#_rtSafe",
+      "to": "fn:core/rt-feed.js#rtOnImportUnmatched",
+      "type": "depends",
+      "src": "core/rt-feed.js:471-472",
+      "status": "confirmed",
+      "flow": "F-17",
+      "coverage": [],
+      "note": ""
+    },
+    {
+      "from": "fn:core/data-helpers.js#findDuplicateOrders",
+      "to": "tbl:orders",
+      "type": "reads",
+      "src": "core/data-helpers.js:135",
+      "status": "confirmed",
+      "flow": "F-05",
+      "coverage": [],
+      "note": "guards against duplicate Reference before create"
+    },
+    {
+      "from": "fn:modules/orders_intl.js#submitIntlOrder",
+      "to": "fn:core/data-helpers.js#findDuplicateOrders",
+      "type": "calls",
+      "src": "modules/orders_intl.js:945",
+      "status": "probable",
+      "flow": "F-05",
+      "coverage": [],
+      "note": "via _oiCheckSoftRequired"
+    },
+    {
+      "from": "fn:core/pa-helpers.js#paUpsert",
+      "to": "tbl:partner_assignments",
+      "type": "writes",
+      "src": "core/pa-helpers.js:46-49",
+      "status": "confirmed",
+      "flow": "F-14",
+      "coverage": [],
+      "note": ""
+    },
+    {
+      "from": "fn:core/pa-helpers.js#paDelete",
+      "to": "tbl:partner_assignments",
+      "type": "writes",
+      "src": "core/pa-helpers.js:60",
+      "status": "confirmed",
+      "flow": "F-15",
+      "coverage": [],
+      "note": ""
+    },
+    {
+      "from": "fn:core/pa-helpers.js#paSyncStatus",
+      "to": "tbl:partner_assignments",
+      "type": "writes",
+      "src": "core/pa-helpers.js:78",
+      "status": "confirmed",
+      "flow": "F-26",
+      "coverage": [],
+      "note": ""
+    },
+    {
+      "from": "fn:core/pa-helpers.js#_paFindExisting",
+      "to": "tbl:partner_assignments",
+      "type": "reads",
+      "src": "core/pa-helpers.js:16",
+      "status": "confirmed",
+      "flow": "F-14",
+      "coverage": [],
+      "note": "fetches ALL rows client-side — FIND/ARRAYJOIN unsupported on this table per its own 10/8 comment"
+    },
+    {
+      "from": "fn:core/pa-helpers.js#paUpsert",
+      "to": "fn:core/pa-helpers.js#_paFindExisting",
+      "type": "calls",
+      "src": "core/pa-helpers.js:45",
+      "status": "confirmed",
+      "flow": "F-14",
+      "coverage": [],
+      "note": ""
+    },
+    {
+      "from": "fn:core/pa-helpers.js#paDelete",
+      "to": "fn:core/pa-helpers.js#_paFindExisting",
+      "type": "calls",
+      "src": "core/pa-helpers.js:58",
+      "status": "confirmed",
+      "flow": "F-15",
+      "coverage": [],
+      "note": ""
+    },
+    {
+      "from": "fn:core/pa-helpers.js#paSyncStatus",
+      "to": "fn:core/pa-helpers.js#_paFindExisting",
+      "type": "calls",
+      "src": "core/pa-helpers.js:74",
+      "status": "confirmed",
+      "flow": "F-26",
+      "coverage": [],
+      "note": ""
+    },
+    {
+      "from": "page:orders_natl",
+      "to": "fn:modules/orders_natl.js#submitNatlOrder",
+      "type": "renders",
+      "src": "core/router.js:364",
+      "status": "confirmed",
+      "flow": "F-12",
+      "coverage": [],
+      "note": "renderOrdersNatl(); create/edit modal calls submitNatlOrder on save"
+    },
+    {
+      "from": "page:weekly_intl",
+      "to": "fn:modules/weekly_intl.js#_wiSaveFromPopover",
+      "type": "renders",
+      "src": "core/router.js:338",
+      "status": "confirmed",
+      "flow": "F-14",
+      "coverage": [],
+      "note": ""
+    },
+    {
+      "from": "page:weekly_natl",
+      "to": "fn:modules/weekly_natl.js#_wnSaveFromPopover",
+      "type": "renders",
+      "src": "core/router.js:339",
+      "status": "confirmed",
+      "flow": "F-23",
+      "coverage": [],
+      "note": ""
+    },
+    {
+      "from": "page:daily_ops",
+      "to": "fn:modules/daily_ops.js#_opsStatFinal",
+      "type": "renders",
+      "src": "core/router.js:360",
+      "status": "confirmed",
+      "flow": "F-26",
+      "coverage": [],
+      "note": ""
+    },
+    {
+      "from": "ep:PATCH /v0/order_stops",
+      "to": "tbl:order_stops",
+      "type": "writes",
+      "src": "modules/daily_ops.js:801",
+      "status": "confirmed",
+      "flow": "F-26",
+      "coverage": [],
+      "note": ""
+    },
+    {
+      "from": "ep:PATCH /v0/national_loads",
+      "to": "tbl:national_loads",
+      "type": "writes",
+      "src": "modules/weekly_natl.js:2387,2395",
+      "status": "confirmed",
+      "flow": "F-23",
+      "coverage": [],
+      "note": ""
+    },
+    {
+      "from": "ep:PATCH /v0/national_loads",
+      "to": "tbl:national_loads",
+      "type": "writes",
+      "src": "modules/weekly_natl.js:2129,2132",
+      "status": "confirmed",
+      "flow": "F-24",
+      "coverage": [],
+      "note": ""
+    },
+    {
+      "from": "ep:PATCH /v0/groupage_lines",
+      "to": "tbl:groupage_lines",
+      "type": "writes",
+      "src": "modules/orders_intl.js:3011",
+      "status": "confirmed",
+      "flow": "F-11",
+      "coverage": [],
+      "note": "Status→Unassigned on order delete"
+    },
+    {
+      "from": "ep:PATCH /v0/groupage_lines",
+      "to": "tbl:groupage_lines",
+      "type": "writes",
+      "src": "modules/orders_natl.js:1483",
+      "status": "confirmed",
+      "flow": "F-11",
+      "coverage": [],
+      "note": ""
+    },
+    {
+      "from": "ep:POST /v0/consolidated_loads",
+      "to": "tbl:consolidated_loads",
+      "type": "writes",
+      "src": "worker/src/index.js:2395-2622",
+      "status": "confirmed",
+      "flow": "F-11",
+      "coverage": [],
+      "note": ""
+    },
+    {
+      "from": "ep:DELETE /v0/consolidated_loads",
+      "to": "tbl:consolidated_loads",
+      "type": "writes",
+      "src": "modules/orders_intl.js:2998-3000",
+      "status": "confirmed",
+      "flow": "F-08",
+      "coverage": [],
+      "note": ""
+    },
+    {
+      "from": "ep:POST /v0/partner_assignments",
+      "to": "tbl:partner_assignments",
+      "type": "writes",
+      "src": "core/pa-helpers.js:49",
+      "status": "confirmed",
+      "flow": "F-14",
+      "coverage": [],
+      "note": ""
+    },
+    {
+      "from": "ep:PATCH /v0/partner_assignments",
+      "to": "tbl:partner_assignments",
+      "type": "writes",
+      "src": "core/pa-helpers.js:47",
+      "status": "confirmed",
+      "flow": "F-14",
+      "coverage": [],
+      "note": ""
+    },
+    {
+      "from": "ep:DELETE /v0/partner_assignments",
+      "to": "tbl:partner_assignments",
+      "type": "writes",
+      "src": "core/pa-helpers.js:60",
+      "status": "confirmed",
+      "flow": "F-15",
+      "coverage": [],
+      "note": ""
+    },
+    {
+      "from": "ep:PATCH /v0/local_moves",
+      "to": "tbl:local_moves",
+      "type": "writes",
+      "src": "modules/weekly_natl.js:1191",
+      "status": "confirmed",
+      "flow": "F-22",
+      "coverage": [],
+      "note": ""
+    },
+    {
+      "from": "ep:DELETE /v0/local_moves",
+      "to": "tbl:local_moves",
+      "type": "writes",
+      "src": "modules/weekly_natl.js:1215",
+      "status": "confirmed",
+      "flow": "F-22",
+      "coverage": [],
+      "note": ""
+    },
+    {
+      "from": "check:B-01",
+      "to": "action:F-14",
+      "type": "verifies",
+      "src": "docs/grok-bot/monitoring-2026-09-22/02b-ροές-backend-και-έλεγχοι-Β.md:116-124",
+      "status": "unknown",
+      "flow": "F-14",
+      "coverage": [],
+      "note": ""
+    },
+    {
+      "from": "check:B-33",
+      "to": "action:F-37",
+      "type": "verifies",
+      "src": "docs/grok-bot/monitoring-2026-09-22/02b-ροές-backend-και-έλεγχοι-Β.md:351-355",
+      "status": "unknown",
+      "flow": "",
+      "coverage": [],
+      "note": "F-37 (master data CRUD) is out of this team's flow range (F-05..F-27) but the FUF mechanism it verifies is identical to the one this team's orders/stops/local_moves writes are exposed to"
+    },
+    {
+      "from": "check:B-11",
+      "to": "action:F-30",
+      "type": "verifies",
+      "src": "docs/grok-bot/monitoring-2026-09-22/02b-ροές-backend-και-έλεγχοι-Β.md:188-193",
+      "status": "unknown",
+      "flow": "",
+      "coverage": [],
+      "note": "F-30 (invoicing) is team β's; listed only because it PATCHes tbl:orders, which this team owns"
+    },
+    {
+      "from": "trg:orders.rt_create_from_order",
+      "to": "tbl:audit_log",
+      "type": "writes",
+      "src": "worker/migrations/033_rt_create_related.sql:83-228",
+      "status": "confirmed",
+      "flow": "F-14",
+      "coverage": [],
+      "note": "actor='trigger:rt_sync_audit' per 02b §1.4"
+    },
+    {
+      "from": "trg:orders.order_dates_follow",
+      "to": "tbl:audit_log",
+      "type": "writes",
+      "src": "worker/migrations/028_order_dates_follow.sql:29-82",
+      "status": "confirmed",
+      "flow": "F-27",
+      "coverage": [],
+      "note": "actor='trigger:order_dates_follow'"
+    },
+    {
+      "from": "trg:orders.national_load_follow_order",
+      "to": "tbl:audit_log",
+      "type": "writes",
+      "src": "worker/migrations/030_national_load_follow.sql:30-51",
+      "status": "confirmed",
+      "flow": "F-07",
+      "coverage": [],
+      "note": "actor='trigger:national_load_follow'"
+    },
+    {
+      "from": "trg:orders.order_soft_delete_unlink",
+      "to": "tbl:audit_log",
+      "type": "writes",
+      "src": "worker/migrations/023_soft_delete_unlink.sql:23-79",
+      "status": "confirmed",
+      "flow": "F-08",
+      "coverage": [],
+      "note": "actor='trigger:order_unlink'"
+    },
+    {
+      "from": "trg:ct_rt_legs.rt_reopen_on_leg",
+      "to": "tbl:audit_log",
+      "type": "writes",
+      "src": "worker/migrations/045_rt_reopen_on_leg.sql:32-57",
+      "status": "confirmed",
+      "flow": "F-18",
+      "coverage": [],
+      "note": "audit text 'reopened: ...' — matches check:B-36"
+    },
+    {
+      "from": "trg:orders.rt_link_split",
+      "to": "tbl:audit_log",
+      "type": "writes",
+      "src": "worker/migrations/037_rt_merge_split_pairs.sql:134-188",
+      "status": "confirmed",
+      "flow": "F-13",
+      "coverage": [],
+      "note": "after_data->>'split'='true' — matches check:B-36"
+    },
+    {
+      "from": "ep:POST /v0/orders",
+      "to": "tbl:facade_unknown_fields",
+      "type": "writes",
+      "src": "worker/src/index.js:2395-2622",
+      "status": "confirmed",
+      "flow": "F-05",
+      "coverage": [],
+      "note": "kind='write' on any label not in TABLES.tblgHlNmLBH3JTdIM.fields/links/aliases — the write itself still returns 201 (paradox #1)"
+    },
+    {
+      "from": "ep:PATCH /v0/orders",
+      "to": "tbl:facade_unknown_fields",
+      "type": "writes",
+      "src": "worker/src/index.js:2763-2835",
+      "status": "confirmed",
+      "flow": "F-06",
+      "coverage": [],
+      "note": "kind='write', same paradox, still returns 200"
+    },
+    {
+      "from": "ep:POST /v0/local_moves",
+      "to": "tbl:facade_unknown_fields",
+      "type": "writes",
+      "src": "worker/src/index.js:2395-2622",
+      "status": "confirmed",
+      "flow": "F-22",
+      "coverage": [],
+      "note": "all of _wnSaveLocal's field labels are confirmed mapped (worker/src/index.js:1701-1710) so this edge should be silent in practice today — included for completeness of the mechanism, not because it currently fires"
+    },
+    {
+      "from": "check:test:vs-sync",
+      "to": "fn:modules/orders_intl.js#_syncVeroiaSwitch",
+      "type": "verifies",
+      "src": "docs/grok-bot/monitoring-2026-09-22/02a-ροές-frontend.md:60",
+      "status": "unknown",
+      "flow": "F-10",
+      "coverage": [],
+      "note": "cited from 02a only — this team did not open tests/test-vs-sync.js directly"
+    }
+  ],
+  "failure_modes": [
+    {
+      "id": "FM-a-01",
+      "flow": "F-05",
+      "at": "fn:core/stops-helpers.js#stopsSave",
+      "what": "stopsSave issues atCreateBatch, then atPatchBatch, then N separate atDelete calls as three independent HTTP round-trips with no transaction; if the order (submitIntlOrder) succeeded but stopsSave's create batch fails partway, the order exists with zero or partial stops",
+      "visibility": "silent",
+      "existing_check": [
+        "check:B-33"
+      ],
+      "gap": "no check counts 'order created in the last N minutes with zero order_stops rows' as its own signal — 02a proposes this as a NEW pairing (AL orders→AL order_stops ≤10s) but it is not in the 37 installed checks (02b §Σύνοψη: nothing runs on a schedule today)"
+    },
+    {
+      "id": "FM-a-02",
+      "flow": "F-08",
+      "at": "fn:modules/orders_intl.js#deleteIntlOrder",
+      "what": "each of the 8 cascade steps after step 0 is wrapped in its own try/catch + console.warn and increments _delFail on error; the toast only says 'N linked records failed — δες error log', never which N or which table",
+      "visibility": "loud (toast) but content is not actionable",
+      "existing_check": [],
+      "gap": "no audit trail records WHICH sub-step failed beyond the generic 'Cascade delete: N sub-deletes failed' logError call — a dispatcher cannot act on the message"
+    },
+    {
+      "id": "FM-a-03",
+      "flow": "F-08",
+      "at": "dbfn:delete_order_cascade",
+      "what": "the DB RPC and the front-end's own manual steps 1/2/3/5 (NAT_LOADS, GL/CL, RAMP, ORDER_STOPS) both attempt to remove the same linked rows for the same order — the RPC runs first as a side effect of step 0's DELETE, then the front end re-attempts deletes on rows that may already be gone",
+      "visibility": "silent",
+      "existing_check": [],
+      "gap": "a second delete of an already-cascade-deleted NL/CL/stop either 404s (counted as _delFail, inflating the toast's failure count for what is actually correct behaviour) or succeeds as a no-op soft-delete-of-already-deleted row — neither path is distinguished from a real cascade failure; genuinely NOT covered by the RPC (confirmed by 023's own comment): rtOnOrderDeleted (RT legs) and PARTNER_ASSIGN deletion, which the front end still must do"
+    },
+    {
+      "id": "FM-a-04",
+      "flow": "F-07",
+      "at": "fn:core/orders-list.js#cancelOrder",
+      "what": "cancelOrder calls syncOrderDownstream with changedFields:['Status'] only; PL feed sync and rtOnOrderSaved (order-sync.js step 5) only run when changedFields includes 'Pallet Exchange', so a cancelled order's round trip is never cancelled and never warned about from this path",
+      "visibility": "silent",
+      "existing_check": [
+        "check:B-27"
+      ],
+      "gap": "no check for 'Cancelled order with a still-active ct_round_trips leg' exists in the 37 installed checks (02a proposes it as NEW Β-40, not yet built)"
+    },
+    {
+      "id": "FM-a-05",
+      "flow": "F-09",
+      "at": "fn:modules/orders_intl.js#_intlChangeStatus",
+      "what": "the card's status-change button can set Status='Delivered' without going through _opsDelFinal — it never writes Actual Delivery Date, Delivery Performance, or calls plOnDelivered/pallet-ledger sync; a second, cheaper 'door' to the same state as F-26 exists",
+      "visibility": "silent",
+      "existing_check": [
+        "check:B-19"
+      ],
+      "gap": "check:B-19 (delivered_stop_no_stamp) catches it the NEXT morning at earliest, not at write time"
+    },
+    {
+      "id": "FM-a-06",
+      "flow": "F-15",
+      "at": "fn:modules/weekly_intl.js#_wiClear",
+      "what": "clearing an assignment (Truck/Partner → empty, Status → Pending) does not call rtOnOrderSaved — the round trip created by the DB trigger (rt_create_from_order) for the now-unassigned order is left pointing at a vehicle-less order",
+      "visibility": "silent",
+      "existing_check": [
+        "check:B-06"
+      ],
+      "gap": "B-06 (rt_vehicle_drift) only fires once the DB and the order actually disagree on truck_id/driver_id — an RT that still shows the OLD vehicle while the order shows none is not flagged unless something else also changes it"
+    },
+    {
+      "id": "FM-a-07",
+      "flow": "F-16",
+      "at": "fn:modules/weekly_intl.js#_wiSaveImportMatch",
+      "what": "'Matched Import ID' is a plain text scalar column (confirmed worker/src/index.js:1204), not an FK — a match with no corresponding round trip is possible and the warning toast ('P&L: απέτυχε...') disappears after 8s; only the owner sees TRIP PnL to notice",
+      "visibility": "silent (after 8s)",
+      "existing_check": [],
+      "gap": "02a proposes NEW Β-44 'matched_import_id χωρίς σκέλος RT' — not among the 37 installed checks"
+    },
+    {
+      "id": "FM-a-08",
+      "flow": "F-18",
+      "at": "fn:modules/weekly_intl.js#_wiRotAdd",
+      "what": "on a closed RT, the code deliberately reverts the just-written Rotation ID and toasts an explanation — but the fallback path (parent has no RT at all) copies the vehicle fields by hand and only console.warns if that copy fails",
+      "visibility": "loud for the RT-closed case, silent for the no-RT fallback failure",
+      "existing_check": [],
+      "gap": "no check for 'rotation_id set but no matching RT leg' exists (02a proposes NEW Β-45, not installed)"
+    },
+    {
+      "id": "FM-a-09",
+      "flow": "F-24",
+      "at": "fn:modules/weekly_natl.js#_wnSaveMatch",
+      "what": "the ANOΔΟΣ↔ΚΑΘΟΔΟΣ pairing is two independent atSafePatch calls on national_loads.matched_load (a scalar column, no FK/CHECK for reciprocity); if the second call fails after the first succeeds, the pair is one-sided and the UI has already optimistically merged the two rows in WNATL.rows before either write completed",
+      "visibility": "silent (partial), loud only if the second call itself throws",
+      "existing_check": [],
+      "gap": "no check for 'matched_load_id not reciprocal' exists (02a proposes NEW Β-48, not installed)"
+    },
+    {
+      "id": "FM-a-10",
+      "flow": "F-23",
+      "at": "fn:modules/weekly_natl.js#_wnSaveFromPopover",
+      "what": "national loads never get a round trip (migration 034 'rt_create_national' was never approved — confirmed: no trigger targets national_loads among the 23 live triggers read for this part), so all national assignment costs and driver payroll derived from ct_round_trips structurally exclude national work",
+      "visibility": "silent (by design, but undocumented as a limitation to dispatchers)",
+      "existing_check": [
+        "check:B-04"
+      ],
+      "gap": "B-04 (owned_driver_no_dl) explicitly EXCLUDES national loads from its own definition, so it can never surface this — it is a scope decision hiding as a clean check result"
+    },
+    {
+      "id": "FM-a-11",
+      "flow": "F-20",
+      "at": "fn:modules/weekly_intl.js#_wiDoHandoverChange",
+      "what": "hand-over changes leg1's Unloading Location/Delivery DateTime and leg2's Loading Location/DateTime in two separate PATCH calls; if the second fails, the two legs disagree on the hand-over point until the next parent-level save re-triggers trigger 020",
+      "visibility": "silent",
+      "existing_check": [],
+      "gap": "02a proposes NEW Β-46 'hand-over σκελών ασύμφωνο' — not installed"
+    },
+    {
+      "id": "FM-a-12",
+      "flow": "F-27",
+      "at": "fn:modules/daily_ops.js#_opsSvF",
+      "what": "the inline per-field save (any single ORDERS field edited directly in the Daily Ops row) calls atSafePatch with no syncOrderDownstream call at all — unlike _opsChangeDayGo (F-27's other half), a date or amount changed this way never propagates to NAT_LOADS/GL/RAMP even though it uses the exact same table and fields",
+      "visibility": "silent",
+      "existing_check": [],
+      "gap": "no distinction exists anywhere in the 37 installed checks between a date change that went through _opsChangeDayGo (awaited sync) and one that went through _opsSvF (no sync) — both look identical in audit_log as a plain 'update orders'"
+    },
+    {
+      "id": "FM-a-13",
+      "flow": "F-26",
+      "at": "fn:modules/daily_ops.js#_opsStatFinal",
+      "what": "marking In Transit does not call syncOrderDownstream — confirmed by direct read (modules/daily_ops.js:901-916): only atSafePatch(ORDERS) and paSyncStatus run. A Veroia Switch order moving to In Transit does not propagate to its national_loads row via the front end at all; only the DB trigger national_load_follow_order (fires on status change, including to In Transit for Export per 02b) keeps national_loads in sync for this specific transition",
+      "visibility": "silent from the front end's own code; covered only if the DB trigger is healthy",
+      "existing_check": [
+        "check:B-27"
+      ],
+      "gap": "if trigger national_load_follow_order were ever disabled or failed silently, nothing in this team's own code would notice a VS order going In Transit without its national_loads row following — the front end never checks"
+    },
+    {
+      "id": "FM-a-14",
+      "flow": "F-08",
+      "at": "fn:worker/src/index.js#handleOrderCascadeDelete",
+      "what": "the DB RPC's exact behaviour (which columns/tables it touches, whether it is itself transactional) is undocumented in the repo — only inferable from a WHY comment in migration 023. A read-only session cannot pg_get_functiondef it",
+      "visibility": "silent to code readers, not necessarily to the system",
+      "existing_check": [],
+      "gap": "recommend team ε or an owner-approved SELECT confirm the RPC's actual body against the 023 comment's claim before trusting the 'sweeps stops/NL/NO/GL/CL/ramp/pallets' description operationally"
+    }
+  ],
+  "checks_existing": [
+    {
+      "id": "check:test:tests/orders-list.test.js",
+      "covers": [
+        "fn:core/orders-list.js#applyFilters"
+      ],
+      "runs": "manual"
+    },
+    {
+      "id": "check:test:tests/orders-list-filters.test.js",
+      "covers": [
+        "fn:core/orders-list.js#applyFilters"
+      ],
+      "runs": "manual"
+    },
+    {
+      "id": "check:B-01",
+      "covers": [
+        "trg:orders.rt_create_from_order"
+      ],
+      "runs": "never (no cron/pg_cron installed, per 02b §1.6 — this team confirmed no [triggers] crons in wrangler.toml and no pg_cron extension row was independently checked, cited from 02b)"
+    },
+    {
+      "id": "check:B-33",
+      "covers": [
+        "tbl:facade_unknown_fields"
+      ],
+      "runs": "never"
+    },
+    {
+      "id": "check:B-36",
+      "covers": [
+        "trg:orders.rt_link_split",
+        "trg:ct_rt_legs.rt_reopen_on_leg"
+      ],
+      "runs": "never"
+    },
+    {
+      "id": "check:B-04",
+      "covers": [
+        "action:F-23"
+      ],
+      "runs": "never"
+    },
+    {
+      "id": "check:B-19",
+      "covers": [
+        "action:F-26"
+      ],
+      "runs": "never"
+    },
+    {
+      "id": "check:B-02",
+      "covers": [
+        "trg:ct_rt_legs.rt_reopen_on_leg"
+      ],
+      "runs": "never"
+    }
+  ],
+  "gaps": [
+    "delete_order_cascade's actual function body was not read (no DB access in this read-only, file-system-only pass) — every edge from it is marked 'probable' and rests on the WHY comment in worker/migrations/023_soft_delete_unlink.sql:3-10, not on the function definition itself.",
+    "Sub-line calls inside modules/weekly_intl.js (F-13, F-18, F-19, F-20) and modules/weekly_natl.js (F-24 partner-assignment call) were verified at the function-definition level (grep confirmed near-exact match to 02a's line numbers) but not every internal call was individually re-opened and read line-by-line in this pass — marked 'probable' with a note, per SCHEMA.md's evidence rules, rather than upgraded to 'confirmed' on trust alone.",
+    "trg:national_orders.trg_national_orders_soft_delete_cascade (F-08, national orders variant) is cited from 02b only; this team did not independently open its trigger body.",
+    "This part does not map F-28/F-29 (Ramp board) or pallet-feed.js internals — explicitly excluded from ownership ('ramp/pallet internals'); only the fire-and-forget/cross-module call sites into those two areas are recorded here as cross_deps.",
+    "core/form-helpers.js was read in full (function list) but produced no write edges — it is a pure autocomplete/lookup helper (locations, clients) with zero atCreate/atPatch/atDelete calls; included in nodes for completeness but not wired into any flow edge.",
+    "core/order-sync.js#patchWithSync has no confirmed caller among this team's owned files (grepped, none found) — flagged as possibly-dead convenience code (principle 8) rather than asserted dead, since callers could exist in files owned by other teams."
+  ],
+  "cross_deps": [
+    {
+      "to_part": "b",
+      "edge": "fn:core/rt-feed.js#rtOnOrderSaved -> ep:POST /costs/rt",
+      "why": "team β owns the /costs/rt handler, ct_round_trips/ct_rt_legs tables and the 011/013/033/037/045 trigger internals on those tables; this team only calls the endpoint from the orders side",
+      "src": "core/rt-feed.js:372"
+    },
+    {
+      "to_part": "b",
+      "edge": "fn:modules/daily_ops.js#_opsChangeDayGo -> fn:core/order-sync.js#syncOrderDownstream -> job:ramp_autosync_on_render",
+      "why": "syncOrderDownstream's RAMP step and daily_ramp.js internals belong to team δ; costs/payroll implications of a date shift belong to team β via the RT it may re-open (trigger 045)",
+      "src": "core/order-sync.js:84-92"
+    },
+    {
+      "to_part": "c",
+      "edge": "fn:core/rt-feed.js#rtOnOrderSaved -> ep:GET /pallets/gate",
+      "why": "team γ owns /pallets/gate and pallet-feed.js; rt-feed.js depends on it as the only rec-to-pg id bridge for orders",
+      "src": "core/rt-feed.js:40-44"
+    },
+    {
+      "to_part": "c",
+      "edge": "fn:modules/daily_ops.js#_opsDelFinal -> job:pallet_ledger_feed",
+      "why": "plOnDelivered (pallet-feed.js) is team γ's; this team only calls it, fire-and-forget, from the Delivered stamp",
+      "src": "modules/daily_ops.js:940"
+    },
+    {
+      "to_part": "c",
+      "edge": "fn:modules/weekly_intl.js#_wiSaveFromPopover -> job:pallet_ledger_feed",
+      "why": "plOnIntlPartnerAssigned (pallet-feed.js) is team γ's; called from the popover save per 02a F-14, not independently re-opened by this team",
+      "src": "modules/weekly_intl.js:3249,3259"
+    },
+    {
+      "to_part": "d",
+      "edge": "fn:core/order-sync.js#syncOrderDownstream -> job:ramp_autosync_on_render",
+      "why": "team δ owns core/daily_ramp.js#_rampAutoSync and the whole F-28/F-29 write-on-render mechanism; this team's syncOrderDownstream only fires it as fire-and-forget after every order change",
+      "src": "core/order-sync.js:84-92"
+    },
+    {
+      "to_part": "d",
+      "edge": "action:F-29(ramp Done) -> ep:PATCH /v0/orders",
+      "why": "team δ's daily_ramp.js promotes ORDERS/NAT_ORDERS/NAT_LOADS status to In Transit when a ramp row's linked order completes — writes into a table this team owns, from code this team does not",
+      "src": "docs/grok-bot/monitoring-2026-09-22/02a-ροές-frontend.md:114"
+    },
+    {
+      "to_part": "e",
+      "edge": "all ep:* -> fn:core/api.js#atSafePatch/atCreate/atDelete/atGetAll",
+      "why": "team ε owns core/api.js (cache, offline queue, JWT/401 handling, undo); every write edge in this part goes through those wrappers, not raw fetch",
+      "src": "core/order-sync.js:191-194 (patchWithSync uses atSafePatch/atPatch)"
+    },
+    {
+      "to_part": "e",
+      "edge": "role:* -> page:orders_intl/orders_natl/weekly_intl/weekly_natl/daily_ops",
+      "why": "team ε owns core/auth.js (JWT, tamper guard, can()) and core/router.js's page-gating; this team assumes the gate already passed",
+      "src": "core/router.js:338-364"
+    }
+  ],
+  "tokens_used": "unknown"
+}

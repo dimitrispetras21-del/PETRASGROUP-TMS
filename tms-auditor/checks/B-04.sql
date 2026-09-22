@@ -1,0 +1,16 @@
+-- id: B-04
+-- title: Ιδιόκτητος γύρος με οδηγό χωρίς γραμμή μισθοδοσίας
+-- flows: F-35
+-- severity: P2
+-- schedule: daily
+-- red: > 0
+-- baseline: 
+-- queue: no
+-- entity: 
+-- impact: Οδηγός χωρίς γραμμή μισθοδοσίας για δρομολόγιο που έκανε.
+-- next: Μισθοδοσία → καρτέλα οδηγού του RT (ανάγνωση).
+-- exceptions: PARTNER RT και RT χωρίς οδηγό (by design 011).
+-- tolerance: 
+-- source: 02b Β-04 · 22/9 = 0
+-- enabled: yes
+SELECT count(*) FROM dl_v_rt_gap;

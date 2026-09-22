@@ -1,0 +1,16 @@
+-- id: B-29a
+-- title: Γραμμές groupage: το πλήθος ΔΕΝ μειώνεται ποτέ
+-- flows: F-11
+-- severity: P1
+-- schedule: daily
+-- red: decrease
+-- baseline: 
+-- queue: no
+-- entity: 
+-- impact: Σβήστηκε γραμμή groupage — ο κανόνας never-delete (RESTRICT) παρακάμφθηκε.
+-- next: 
+-- exceptions: 
+-- tolerance: 
+-- source: 02b Β-29 · 22/9 total = 2
+-- enabled: yes
+SELECT count(*) FROM groupage_lines;

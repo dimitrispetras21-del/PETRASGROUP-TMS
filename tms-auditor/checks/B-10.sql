@@ -1,0 +1,16 @@
+-- id: B-10
+-- title: Προγραμματισμένοι γύροι ξεχασμένοι > 14 ημέρες
+-- flows: F-36
+-- severity: P3
+-- schedule: weekly
+-- red: > 0
+-- baseline: 
+-- queue: yes
+-- entity: 
+-- impact: 
+-- next: 
+-- exceptions: 
+-- tolerance: 
+-- source: 02b Β-10 · 22/9 = 6
+-- enabled: yes
+SELECT count(*) FROM ct_round_trips WHERE status='planned' AND date_end < current_date-14;

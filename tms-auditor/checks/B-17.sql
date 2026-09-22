@@ -1,0 +1,16 @@
+-- id: B-17
+-- title: Εκκρεμείς κινήσεις παλετών > 7 ημέρες
+-- flows: F-31,F-32
+-- severity: P3
+-- schedule: daily
+-- red: > 0
+-- baseline: 
+-- queue: yes
+-- entity: 
+-- impact: 
+-- next: 
+-- exceptions: 
+-- tolerance: 
+-- source: 02b Β-17 · 22/9 = 44
+-- enabled: yes
+SELECT count(*) FROM pl_movements WHERE status='pending' AND movement_date < current_date-7;

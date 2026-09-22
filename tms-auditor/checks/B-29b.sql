@@ -1,0 +1,16 @@
+-- id: B-29b
+-- title: Groupage Assigned σε νεκρό φορτίο
+-- flows: F-11
+-- severity: P2
+-- schedule: daily
+-- red: > 0
+-- baseline: 
+-- queue: no
+-- entity: 
+-- impact: Γραμμή groupage δηλώνει ανατεθειμένη σε φορτίο που δεν υπάρχει — ο προμηθευτής δεν θα παραληφθεί.
+-- next: 
+-- exceptions: 
+-- tolerance: 
+-- source: 02b Β-29 · 22/9 = 0
+-- enabled: yes
+SELECT count(*) FROM groupage_lines g LEFT JOIN consolidated_loads c ON c.id=g.cons_load_id WHERE g.deleted_at IS NULL AND g.status='Assigned' AND (g.cons_load_id IS NULL OR c.deleted_at IS NOT NULL);

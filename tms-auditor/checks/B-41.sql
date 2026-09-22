@@ -1,0 +1,16 @@
+-- id: B-41
+-- title: Παραδομένη χωρίς ημερομηνία παράδοσης (δεύτερη πόρτα)
+-- flows: F-09,F-26
+-- severity: P3
+-- schedule: daily
+-- red: > 0
+-- baseline: 
+-- queue: no
+-- entity: 
+-- impact: 
+-- next: 
+-- exceptions: Πριν 6/9.
+-- tolerance: 
+-- source: 04 ΝΕΟΣ Β-41 (ασάφεια Α1)
+-- enabled: yes
+SELECT count(*) FROM orders WHERE deleted_at IS NULL AND status='Delivered' AND actual_delivery_date IS NULL AND delivery_datetime >= date '2026-09-06';

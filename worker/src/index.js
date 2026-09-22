@@ -23,7 +23,11 @@ function corsHeaders(origin, env) {
   return {
     "Access-Control-Allow-Origin": allowed,
     "Access-Control-Allow-Methods": "GET, POST, PATCH, DELETE, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type, Authorization",
+    // x-tms-req / x-tms-app: Level A correlation (feat/tms-auditor). The front only sends them after it
+    // has SEEN x-tms-worker-req on a response of this page load, so an older Worker (or a rollback) never
+    // receives a header it does not allow — a preflight failure would block EVERY request.
+    "Access-Control-Allow-Headers": "Content-Type, Authorization, x-tms-req, x-tms-app",
+    "Access-Control-Expose-Headers": "x-tms-worker-req",
     "Access-Control-Max-Age": "86400",
     "Vary": "Origin"
   };
@@ -296,7 +300,7 @@ async function auditMany(env, entries) {
   if (!entries || !entries.length) return;
   try {
     const now = (/* @__PURE__ */ new Date()).toISOString();
-    await dbInsertMany(env, "audit_log", entries.map((entry) => ({
+    await insertWithReqId(env, "audit_log", entries.map((entry) => ({
       actor: entry.actor,
       role: entry.role,
       action: entry.action,
@@ -305,7 +309,7 @@ async function auditMany(env, entries) {
       before_data: entry.before ? JSON.stringify(entry.before) : null,
       after_data: entry.after ? JSON.stringify(entry.after) : null,
       created_at: now
-    })));
+    })), true);
   } catch (e) {
     console.error("AUDIT BATCH WRITE FAILED", entries[0]?.action, entries[0]?.table, e.message);
   }
@@ -390,8 +394,10 @@ async function handleAppErrorPost(request, origin, env) {
     user_agent: clampStr(body.user_agent, CLAMPS.user_agent),
     sw_version: clampStr(body.sw_version, CLAMPS.sw_version)
   };
+  const reqOf = sanitizeReqId(body.req);
+  const extra = reqOf || caller ? { req_id: reqOf, role: caller ? caller.role || null : null } : null;
   try {
-    await dbInsert(env, "app_errors", row);
+    await insertWithReqId(env, "app_errors", [row], false, extra);
     return jsonOk({ ok: true }, origin, env, 201);
   } catch (e) {
     console.error("APP ERROR INSERT FAILED", e.message);
@@ -608,9 +614,24 @@ function can(role, table, method) {
 __name(can, "can");
 
 // src/middleware/audit.js
+// Level A: env.__tmsReq is set per request by the fetch wrapper (Object.create(env)), so the 32 audit()
+// call sites need no change. If migration 049 has not run yet PostgREST rejects the unknown column: retry
+// WITHOUT it and say so loudly — the correlation id must never cost us the audit row itself (principle 1).
+async function insertWithReqId(env, table, rows, many, extra) {
+  const add = extra || (env.__tmsReq ? { req_id: env.__tmsReq } : null);
+  const withReq = add ? rows.map((r) => ({ ...r, ...add })) : rows;
+  try {
+    return many ? await dbInsertMany(env, table, withReq) : await dbInsert(env, table, withReq[0]);
+  } catch (e) {
+    if (!add || !/req_id|'role'/.test(String(e && e.message))) throw e;
+    console.error("REQ_ID COLUMN MISSING — run migration 049", table);
+    return many ? await dbInsertMany(env, table, rows) : await dbInsert(env, table, rows[0]);
+  }
+}
+__name(insertWithReqId, "insertWithReqId");
 async function audit(env, entry) {
   try {
-    await dbInsert(env, "audit_log", {
+    await insertWithReqId(env, "audit_log", [{
       actor: entry.actor,
       role: entry.role,
       action: entry.action,
@@ -619,7 +640,7 @@ async function audit(env, entry) {
       before_data: entry.before ? JSON.stringify(entry.before) : null,
       after_data: entry.after ? JSON.stringify(entry.after) : null,
       created_at: (/* @__PURE__ */ new Date()).toISOString()
-    });
+    }], false);
   } catch (e) {
     console.error("AUDIT WRITE FAILED", entry.action, entry.table, e.message);
   }
@@ -4741,12 +4762,62 @@ async function handlePrintPdf(request, url, origin, env, ctx) {
 __name(handlePrintPdf, "handlePrintPdf");
 
 var FACADE_PATH = /^\/v0\/[^/]+\/([^/]+)(?:\/([^/]+))?\/?$/;
+// Level A helpers. A req id is 8–32 [a-z0-9] + "-" + attempt (1..99) or "q" (offline replay). Anything else
+// is dropped: the header is client-controlled and ends up in logs and in audit_log.
+function sanitizeReqId(v) {
+  return typeof v === "string" && /^[a-z0-9]{8,32}-(?:[0-9]{1,2}|q)$/i.test(v) ? v : null;
+}
+__name(sanitizeReqId, "sanitizeReqId");
+var REQ_ACTION = { GET: "read", POST: "create", PATCH: "update", DELETE: "delete" };
+function reqLineOf(request, req, status, t0, role, err) {
+  const url = new URL(request.url);
+  const m = url.pathname.match(FACADE_PATH);
+  const cfg = m ? TABLES[m[1]] : null;
+  const app = request.headers.get("x-tms-app");
+  const line = {
+    kind: "req", v: 1, req, method: request.method, path: url.pathname, status, ms: Date.now() - t0, role,
+    table: cfg ? cfg.pg : (url.pathname.match(/^\/(costs|pallets|print|performance|app-errors|auth|audit|health|api|v1)\b/) || [])[1] || null,
+    action: REQ_ACTION[request.method] || null,
+    rec: m && m[2] ? m[2].slice(0, 40) : null,
+    app: typeof app === "string" && /^[0-9a-z._-]{1,20}$/i.test(app) ? app : null
+  };
+  if (err && status >= 500) line.err = err;
+  return line;
+}
+__name(reqLineOf, "reqLineOf");
+function logReqLine(request, req, status, t0, role, err) {
+  try { console.log(JSON.stringify(reqLineOf(request, req, status, t0, role, err))); } catch (_) { /* logging never breaks a request */ }
+}
+__name(logReqLine, "logReqLine");
 var ORDERS_TABLE_ID = "tblgHlNmLBH3JTdIM";
 var index_default = {
   // ctx was never declared here — the runtime always passes it. It carries
   // waitUntil, which the unknown-field logger needs so its RPC survives the
   // response without ever blocking it.
+  // Level A (feat/tms-auditor): ONE JSON line per request — kind:"req". Written AFTER routing, never on the
+  // user's path. NEVER logged: Authorization, cookies, bodies, query strings, usernames, client names.
+  // The first such line in Workers Logs is also the proof that console.* reaches Cloudflare after
+  // invocation_logs=false (22/9: 0 cf-worker-log in 24h — unverified until this line appears).
   async fetch(request, env, ctx) {
+    const t0 = Date.now();
+    const req = sanitizeReqId(request.headers.get("x-tms-req"));
+    const renv = Object.create(env, { __tmsReq: { value: req } });
+    let res;
+    try {
+      res = await index_default._route(request, renv, ctx);
+    } catch (e) {
+      logReqLine(request, req, 500, t0, null, String(e && e.message || e).slice(0, 120));
+      throw e;
+    }
+    if (request.method === "OPTIONS") return res;
+    const out = new Response(res.body, res);
+    out.headers.set("x-tms-worker-req", "1");
+    let role = null;
+    try { const c = await getCaller(request, env); role = c ? c.role || null : null; } catch (_) { role = null; }
+    logReqLine(request, req, out.status, t0, role, null);
+    return out;
+  },
+  async _route(request, env, ctx) {
     const origin = request.headers.get("Origin") || "";
     const cors = corsHeaders(origin, env);
     const url = new URL(request.url);

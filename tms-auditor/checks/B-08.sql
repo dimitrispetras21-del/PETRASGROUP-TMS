@@ -1,0 +1,16 @@
+-- id: B-08
+-- title: Μισθοδοσία: γραμμές «θέλει έλεγχο»
+-- flows: F-35
+-- severity: P3
+-- schedule: daily
+-- red: > 0
+-- baseline: 
+-- queue: yes
+-- entity: 
+-- impact: 
+-- next: 
+-- exceptions: 
+-- tolerance: 
+-- source: 02b Β-08 · 22/9 = 5
+-- enabled: yes
+SELECT count(*) FROM dl_entries WHERE needs_review AND deleted_at IS NULL;

@@ -1,0 +1,16 @@
+-- id: B-32c
+-- title: Τοποθεσίες με ελληνικούς χαρακτήρες (αύξηση)
+-- flows: F-37
+-- severity: P3
+-- schedule: weekly
+-- red: increase
+-- baseline: 
+-- queue: no
+-- entity: 
+-- impact: 
+-- next: 
+-- exceptions: 23 ιστορικές (9/8)· κόκκινο μόνο σε αύξηση.
+-- tolerance: 
+-- source: 02b Β-32 · 22/9 = 23
+-- enabled: yes
+SELECT count(*) FROM locations WHERE deleted_at IS NULL AND (name ~ '[Α-Ωα-ωΆ-ώ]' OR city ~ '[Α-Ωα-ωΆ-ώ]');

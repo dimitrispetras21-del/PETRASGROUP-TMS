@@ -1,0 +1,16 @@
+-- id: B-32a
+-- title: Παραγγελίες με φόρτωση μετά την παράδοση
+-- flows: F-05,F-27
+-- severity: P3
+-- schedule: weekly
+-- red: > 0
+-- baseline: 
+-- queue: no
+-- entity: 
+-- impact: 
+-- next: 
+-- exceptions: 
+-- tolerance: 
+-- source: 02b Β-32 · 22/9 = 0
+-- enabled: yes
+SELECT count(*) FROM orders WHERE deleted_at IS NULL AND loading_datetime>delivery_datetime;

@@ -1,0 +1,69 @@
+{
+ "parts": {
+  "a": {
+   "nodes": 187,
+   "edges": 247,
+   "sha": "549a2a4",
+   "tokens": "unknown"
+  },
+  "b": {
+   "nodes": 147,
+   "edges": 153,
+   "sha": "549a2a4",
+   "tokens": "unknown"
+  },
+  "c": {
+   "nodes": 84,
+   "edges": 69,
+   "sha": "549a2a4",
+   "tokens": "unknown"
+  },
+  "d": {
+   "nodes": 158,
+   "edges": 129,
+   "sha": "549a2a4",
+   "tokens": "unknown"
+  },
+  "e": {
+   "nodes": 463,
+   "edges": 1520,
+   "sha": "549a2a4",
+   "tokens": "unknown"
+  },
+  "z": {
+   "nodes": 16,
+   "edges": 32,
+   "sha": "549a2a4",
+   "tokens": "unknown"
+  }
+ },
+ "nodes": 758,
+ "edges": 1974,
+ "dangling_endpoints": 0,
+ "by_status": {
+  "confirmed": 1906,
+  "probable": 49,
+  "unknown": 19
+ },
+ "by_node_type": {
+  "page": 34,
+  "role": 5,
+  "action": 26,
+  "fn": 263,
+  "ep": 194,
+  "tbl": 38,
+  "dbfn": 40,
+  "trg": 26,
+  "rule": 25,
+  "check": 62,
+  "job": 2,
+  "view": 24,
+  "ext": 9,
+  "ls": 10
+ },
+ "cross_part_edges": 1091,
+ "failure_modes": 59,
+ "conflicts": 11,
+ "final_outcomes_without_check": 3,
+ "problems": []
+}

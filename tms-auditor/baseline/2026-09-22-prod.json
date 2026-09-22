@@ -1,0 +1,182 @@
+{
+ "measured_at_utc": "2026-09-22T19:33:19Z",
+ "how": "ONE read-only SELECT (64 scalar subqueries, counts only) via Supabase MCP as postgres; no rows, no ids, no TMS functions",
+ "catalog_sha": "549a2a4 + feat/tms-auditor checks",
+ "errors": 0,
+ "values": {
+  "B-01": 0,
+  "B-02": 0,
+  "B-03": 0,
+  "B-04": 0,
+  "B-05": 0,
+  "B-06": 0,
+  "B-07": 0,
+  "B-08": 5,
+  "B-09": 0,
+  "B-10": 0,
+  "B-11": 2,
+  "B-12": 0,
+  "B-13": 24,
+  "B-14": 0,
+  "B-15": 58,
+  "B-16": 63,
+  "B-17": 44,
+  "B-18": 0,
+  "B-18b": 135,
+  "B-19": 2,
+  "B-20": 0,
+  "B-21": 0,
+  "B-22": 160,
+  "B-23": 0,
+  "B-24": 0,
+  "B-25": 2,
+  "B-26": 0,
+  "B-27": 1,
+  "B-28": 0,
+  "B-29a": 2,
+  "B-29b": 0,
+  "B-30": 0,
+  "B-31": 2,
+  "B-32a": 0,
+  "B-32b": 0,
+  "B-32c": 23,
+  "B-33": 0,
+  "B-34": 11,
+  "B-34b": 0,
+  "B-35": 0,
+  "B-36": 0,
+  "B-38": 0,
+  "B-39": 0,
+  "B-40": 0,
+  "B-41": 2,
+  "B-42": 0,
+  "B-43": 0,
+  "B-44": 0,
+  "B-45": 0,
+  "B-46": 0,
+  "B-47": 0,
+  "B-48": 0,
+  "B-49": 49,
+  "B-50": 21,
+  "B-50b": 36,
+  "B-51": 0,
+  "P-01": 0,
+  "P-02": 0,
+  "P-03": 0,
+  "P-04": 0,
+  "P-05": 0,
+  "P-06": 0,
+  "P-07": 0,
+  "P-08": 0,
+  "B-27_after_fix": 0
+ },
+ "first_run_red_prediction": {
+  "B-19": "P3",
+  "B-27": "P2",
+  "B-34": "P2",
+  "B-41": "P3",
+  "B-47": "P4",
+  "B-50": "P2"
+ },
+ "first_run_note": "no P1 expected; B-49 disabled after this measurement (definition wrong); decrease/increase checks (B-18b, B-29a, B-32c) are green on the first run by construction (no previous value)",
+ "public_triggers_after_046": [
+  "ct_cost_lines.dl_cash_sync_line",
+  "ct_round_trips.dl_sync_from_rt",
+  "ct_round_trips.rt_status_guard",
+  "ct_round_trips.rt_sync_to_orders",
+  "ct_rt_legs.rt_sync_legs",
+  "ct_rt_legs.rt_z_auto_close_legs",
+  "dl_entries.dl_cash_lock",
+  "dl_entries.dl_cash_sync_entry",
+  "national_loads.national_load_soft_delete_unlink",
+  "national_loads.trg_national_loads_soft_delete_cascade",
+  "national_orders.national_orders_invoice_mark_guard",
+  "national_orders.trg_national_orders_soft_delete_cascade",
+  "orders.national_load_follow_order",
+  "orders.order_dates_follow",
+  "orders.order_leg_depth",
+  "orders.order_leg_inherit",
+  "orders.order_leg_status_sync",
+  "orders.order_legs_to_parent",
+  "orders.order_parent_to_legs",
+  "orders.order_soft_delete_unlink",
+  "orders.orders_invoice_mark_guard",
+  "orders.rt_create_from_order",
+  "orders.rt_link_split",
+  "orders.rt_sync_from_order",
+  "orders.rt_z_auto_close_order"
+ ],
+ "remeasured_2026-09-22T19:45:53Z": {
+  "B-01": 0,
+  "B-02": 0,
+  "B-03": 0,
+  "note": "after widening B-01 to owned-fleet split legs (mirror of trigger 033:99-118) and treating NULL status as open (as 046); owned split legs with truck = 2, both covered by a live RT"
+ },
+ "findings_detail_2026-09-22T19:55:02Z": {
+  "B-27": {
+   "value": 1,
+   "rows": [
+    {
+     "order_id": 309,
+     "direction": "Import",
+     "order_status": "Delivered",
+     "actual_delivery_date": "2026-09-13",
+     "delivery_datetime": "2026-09-11",
+     "nl_id": 87,
+     "nl_status": "Assigned"
+    }
+   ],
+   "verdict": "HISTORICAL (one of the 5 of 02b: 275/281/302/306/309) — slipped the date filter; check now excludes the 5 ids explicitly"
+  },
+  "B-50": {
+   "vehicles": 21,
+   "documents": 26,
+   "by_type": {
+    "truck.kek": 10,
+    "truck.kteo": 4,
+    "trailer.kteo": 6,
+    "trailer.insurance": 5,
+    "trailer.frc_atp": 1
+   },
+   "oldest5": [
+    [
+     "truck",
+     6,
+     "kteo",
+     "2025-05-18",
+     492
+    ],
+    [
+     "truck",
+     9,
+     "kek",
+     "2026-03-11",
+     195
+    ],
+    [
+     "truck",
+     21,
+     "kek",
+     "2026-03-25",
+     181
+    ],
+    [
+     "truck",
+     3,
+     "kek",
+     "2026-04-09",
+     166
+    ],
+    [
+     "truck",
+     3,
+     "kteo",
+     "2026-04-15",
+     160
+    ]
+   ],
+   "documents_not_registered": 31,
+   "verdict": "REAL current state — expired date on an ACTIVE vehicle: either stale active flag / not updated renewal (data) or a real expiry; owner decides per vehicle"
+  }
+ }
+}

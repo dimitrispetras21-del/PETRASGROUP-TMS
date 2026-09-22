@@ -1,0 +1,2990 @@
+{
+  "part": "z",
+  "sha": "549a2a4",
+  "scope": "interconnections: cross-part edges nobody drew, all writers per table, conflicting rules, interruptible cross-module chains, final-outcome proof, check-catalog impact of 046 (origin/main 5cfee82)",
+  "nodes": [
+    {
+      "id": "trg:orders.rt_z_auto_close_order",
+      "type": "trigger",
+      "label": "AFTER UPDATE OF status ON orders WHEN distinct (046)",
+      "src": "worker/migrations/046_rt_auto_close.sql@origin/main:278-282",
+      "notes": "executed 22/9 ~23:05 (046 header l.1) — AFTER the part-e catalog (19:10 UTC). Fires alphabetically last on orders (rt_z_ prefix, 046:100-104)."
+    },
+    {
+      "id": "trg:ct_rt_legs.rt_z_auto_close_legs",
+      "type": "trigger",
+      "label": "AFTER INSERT OR DELETE OR UPDATE OF rt_id, order_id ON ct_rt_legs (046)",
+      "src": "worker/migrations/046_rt_auto_close.sql@origin/main:273-276",
+      "notes": "replaces 045 rt_reopen_on_leg (dropped 046:338-339); runs after rt_sync_legs"
+    },
+    {
+      "id": "trg:ct_round_trips.rt_status_guard",
+      "type": "trigger",
+      "label": "BEFORE UPDATE OF status ON ct_round_trips (046)",
+      "src": "worker/migrations/046_rt_auto_close.sql@origin/main:328-331",
+      "notes": "RAISE P0001 when new status closed/complete and ≥1 open leg; does NOT guard INSERT and does NOT guard cancelled"
+    },
+    {
+      "id": "dbfn:rt_auto_close",
+      "type": "db function",
+      "label": "rt_auto_close(p_rt) — RT status derived from order legs",
+      "src": "worker/migrations/046_rt_auto_close.sql@origin/main:141-228",
+      "notes": "open leg = live order AND status IS DISTINCT FROM Delivered/Cancelled (NULL counts as open). Ignores nat_load legs. Skips cancelled RT and RT with 0 live legs. OWNED without truck: no close, one audit row per 7 days."
+    },
+    {
+      "id": "dbfn:rt_auto_close_legs",
+      "type": "db function",
+      "label": "trigger fn for rt_z_auto_close_legs",
+      "src": "worker/migrations/046_rt_auto_close.sql@origin/main:234-251",
+      "notes": ""
+    },
+    {
+      "id": "dbfn:rt_auto_close_order",
+      "type": "db function",
+      "label": "trigger fn for rt_z_auto_close_order",
+      "src": "worker/migrations/046_rt_auto_close.sql@origin/main:255-271",
+      "notes": "loops RTs of the order with status <> cancelled"
+    },
+    {
+      "id": "dbfn:rt_status_guard",
+      "type": "db function",
+      "label": "trigger fn for rt_status_guard",
+      "src": "worker/migrations/046_rt_auto_close.sql@origin/main:304-326",
+      "notes": ""
+    },
+    {
+      "id": "rule:rt-status-derived-from-legs",
+      "type": "business rule",
+      "label": "RT status = function of its legs (owner 22/9, replaces 24/8 «closed = never touched»)",
+      "src": "worker/migrations/046_rt_auto_close.sql@origin/main:12-17",
+      "notes": "also origin/main core/rt-feed.js header l.8-12"
+    },
+    {
+      "id": "rule:closed-rt-never-auto-cancelled",
+      "type": "business rule",
+      "label": "A closed RT is history and is never cancelled automatically",
+      "src": "core/rt-feed.js@origin/main:12 · worker/migrations/023_soft_delete_unlink.sql:56-57",
+      "notes": "contradicted by 013 rt_sync_from_order + rt_recompute — see conflict K-02"
+    },
+    {
+      "id": "check:NEW-z1",
+      "type": "check",
+      "label": "PROPOSED: trigger inventory = orders 13 · ct_rt_legs 2 · ct_round_trips 3 (post-046)",
+      "src": "worker/migrations/046_rt_auto_close.sql@origin/main:344-367",
+      "notes": "the 046 DO-block guard runs once at install; nothing re-asserts it"
+    },
+    {
+      "id": "check:NEW-z2",
+      "type": "check",
+      "label": "PROPOSED: closed RT auto-cancelled (audit reason «no live legs», before.status=closed)",
+      "src": "worker/migrations/013_rt_sync.sql:65-71",
+      "notes": ""
+    },
+    {
+      "id": "check:NEW-z3",
+      "type": "check",
+      "label": "PROPOSED: PE order past loading without any pl_movements row",
+      "src": "docs/tms-auditor/graph/part-c.md (FM-c-04)",
+      "notes": ""
+    },
+    {
+      "id": "check:NEW-z4",
+      "type": "check",
+      "label": "PROPOSED: VS national_load with cross_dock_date ≤ today+1 and no truck_id/partner_id",
+      "src": "worker/src/index.js@origin/main NAT_LOADS links Truck/Partner (~1651-1655)",
+      "notes": ""
+    },
+    {
+      "id": "check:NEW-z5",
+      "type": "check",
+      "label": "PROPOSED: invoiced PE order whose gate is not ok and no invoice_override audit row",
+      "src": "docs/tms-auditor/graph/part-c.md (FM-c-05)",
+      "notes": ""
+    },
+    {
+      "id": "check:NEW-z6",
+      "type": "check",
+      "label": "PROPOSED: closed OWNED RT whose live trip dl_entries row has trip_value NULL > 14 days",
+      "src": "worker/migrations/011_driver_ledger.sql:182-186",
+      "notes": ""
+    },
+    {
+      "id": "check:NEW-z7",
+      "type": "check",
+      "label": "PROPOSED: live trip dl_entries.driver_id ≠ ct_round_trips.driver_id",
+      "src": "worker/migrations/011_driver_ledger.sql:200-210",
+      "notes": ""
+    }
+  ],
+  "edges": [
+    {
+      "from": "tbl:orders",
+      "to": "trg:orders.rt_z_auto_close_order",
+      "type": "fires",
+      "src": "worker/migrations/046_rt_auto_close.sql@origin/main:278-282",
+      "status": "confirmed",
+      "flow": "F-26",
+      "coverage": [
+        "B-02",
+        "B-03"
+      ],
+      "note": "every orders.status writer in parts a/c/d/e now reaches ct_round_trips (part b) through this"
+    },
+    {
+      "from": "trg:orders.rt_z_auto_close_order",
+      "to": "dbfn:rt_auto_close_order",
+      "type": "calls",
+      "src": "worker/migrations/046_rt_auto_close.sql@origin/main:279-282",
+      "status": "confirmed",
+      "flow": "F-26",
+      "coverage": [],
+      "note": ""
+    },
+    {
+      "from": "dbfn:rt_auto_close_order",
+      "to": "dbfn:rt_auto_close",
+      "type": "calls",
+      "src": "worker/migrations/046_rt_auto_close.sql@origin/main:263-269",
+      "status": "confirmed",
+      "flow": "F-26",
+      "coverage": [],
+      "note": ""
+    },
+    {
+      "from": "tbl:ct_rt_legs",
+      "to": "trg:ct_rt_legs.rt_z_auto_close_legs",
+      "type": "fires",
+      "src": "worker/migrations/046_rt_auto_close.sql@origin/main:273-276",
+      "status": "confirmed",
+      "flow": "F-18",
+      "coverage": [],
+      "note": "attach/detach/merge (037 UPDATE OF rt_id)"
+    },
+    {
+      "from": "trg:ct_rt_legs.rt_z_auto_close_legs",
+      "to": "dbfn:rt_auto_close_legs",
+      "type": "calls",
+      "src": "worker/migrations/046_rt_auto_close.sql@origin/main:275-276",
+      "status": "confirmed",
+      "flow": "F-18",
+      "coverage": [],
+      "note": ""
+    },
+    {
+      "from": "dbfn:rt_auto_close_legs",
+      "to": "dbfn:rt_auto_close",
+      "type": "calls",
+      "src": "worker/migrations/046_rt_auto_close.sql@origin/main:241-249",
+      "status": "confirmed",
+      "flow": "F-18",
+      "coverage": [],
+      "note": "also old rt_id when a leg moved"
+    },
+    {
+      "from": "dbfn:rt_auto_close",
+      "to": "tbl:ct_round_trips",
+      "type": "writes",
+      "src": "worker/migrations/046_rt_auto_close.sql@origin/main:173-175,220-222",
+      "status": "confirmed",
+      "flow": "F-36",
+      "coverage": [],
+      "note": "status planned⇄closed, closed_at"
+    },
+    {
+      "from": "dbfn:rt_auto_close",
+      "to": "tbl:dl_entries",
+      "type": "writes",
+      "src": "worker/migrations/046_rt_auto_close.sql@origin/main:184-194",
+      "status": "confirmed",
+      "flow": "F-35",
+      "coverage": [
+        "B-08"
+      ],
+      "note": "needs_review=true + review_note «(046)» on reopen when amounts exist"
+    },
+    {
+      "from": "dbfn:rt_auto_close",
+      "to": "dbfn:rt_sync_audit",
+      "type": "calls",
+      "src": "worker/migrations/046_rt_auto_close.sql@origin/main:176,212,223",
+      "status": "confirmed",
+      "flow": "F-36",
+      "coverage": [
+        "B-36"
+      ],
+      "note": "reasons: «reopened: …(046)», «auto-closed: …(046)», blocked=true"
+    },
+    {
+      "from": "dbfn:rt_auto_close",
+      "to": "tbl:orders",
+      "type": "reads",
+      "src": "worker/migrations/046_rt_auto_close.sql@origin/main:160-167",
+      "status": "confirmed",
+      "flow": "F-36",
+      "coverage": [],
+      "note": "orders owned by part a"
+    },
+    {
+      "from": "tbl:ct_round_trips",
+      "to": "trg:ct_round_trips.rt_status_guard",
+      "type": "fires",
+      "src": "worker/migrations/046_rt_auto_close.sql@origin/main:328-331",
+      "status": "confirmed",
+      "flow": "F-36",
+      "coverage": [
+        "B-02"
+      ],
+      "note": "BEFORE — runs before dl_sync_from_rt/rt_sync_to_orders"
+    },
+    {
+      "from": "trg:ct_round_trips.rt_status_guard",
+      "to": "dbfn:rt_status_guard",
+      "type": "calls",
+      "src": "worker/migrations/046_rt_auto_close.sql@origin/main:329-331",
+      "status": "confirmed",
+      "flow": "F-36",
+      "coverage": [],
+      "note": ""
+    },
+    {
+      "from": "dbfn:rt_status_guard",
+      "to": "tbl:orders",
+      "type": "reads",
+      "src": "worker/migrations/046_rt_auto_close.sql@origin/main:315-319",
+      "status": "confirmed",
+      "flow": "F-36",
+      "coverage": [],
+      "note": ""
+    },
+    {
+      "from": "fn:modules/costs.js#ctCloseRt",
+      "to": "trg:ct_round_trips.rt_status_guard",
+      "type": "depends",
+      "src": "modules/costs.js@origin/main:812-823 · worker/src/index.js@origin/main:3258-3270",
+      "status": "confirmed",
+      "flow": "F-36",
+      "coverage": [],
+      "note": "manual close now refused by the DB; Worker maps P0001 → 409 with the Greek reason (supersedes FM-b-01)"
+    },
+    {
+      "from": "dbfn:rt_auto_close",
+      "to": "trg:ct_round_trips.dl_sync_from_rt",
+      "type": "depends",
+      "src": "worker/migrations/046_rt_auto_close.sql@origin/main:45-61 · worker/migrations/011_driver_ledger.sql",
+      "status": "confirmed",
+      "flow": "F-35",
+      "coverage": [
+        "B-04",
+        "B-09"
+      ],
+      "note": "every auto close/reopen UPDATE fires dl_sync_from_rt (no column list): may INSERT a resurrected auto line (046 header, measured 0/30)"
+    },
+    {
+      "from": "fn:core/rt-feed.js#rtOnOrderSaved",
+      "to": "fn:core/pallet-feed.js#plFetch",
+      "type": "calls",
+      "src": "core/rt-feed.js:33,77,344,349,372,379,394,415,441",
+      "status": "confirmed",
+      "flow": "F-14",
+      "coverage": [],
+      "note": "the whole RT chain (part a→b) rides on part c's plFetch: no 401 redirect, throws data.error — the 046 409 reason arrives here and is swallowed by _rtSafe (core/rt-feed.js:21)"
+    },
+    {
+      "from": "fn:core/rt-feed.js#rtOnOrderDeleted",
+      "to": "fn:core/pallet-feed.js#plFetch",
+      "type": "calls",
+      "src": "core/rt-feed.js:458-460",
+      "status": "confirmed",
+      "flow": "F-08",
+      "coverage": [],
+      "note": ""
+    },
+    {
+      "from": "fn:core/order-sync.js#syncOrderDownstream",
+      "to": "fn:core/rt-feed.js#rtOnOrderSaved",
+      "type": "calls",
+      "src": "core/order-sync.js:96-99",
+      "status": "confirmed",
+      "flow": "F-32",
+      "coverage": [],
+      "note": "ONLY when changedFields includes «Pallet Exchange» and source=intl — the RT sync is nested inside the pallet block"
+    },
+    {
+      "from": "trg:orders.rt_sync_from_order",
+      "to": "tbl:ct_rt_legs",
+      "type": "syncs",
+      "src": "worker/migrations/013_rt_sync.sql:91-100",
+      "status": "confirmed",
+      "flow": "F-07",
+      "coverage": [
+        "B-40"
+      ],
+      "note": "deletes the leg on Cancelled/deleted for ANY RT with status <> cancelled — closed included"
+    },
+    {
+      "from": "dbfn:rt_recompute",
+      "to": "tbl:ct_round_trips",
+      "type": "syncs",
+      "src": "worker/migrations/013_rt_sync.sql:53-71",
+      "status": "confirmed",
+      "flow": "F-07",
+      "coverage": [],
+      "note": "n=0 legs → status cancelled, even from closed (only cancelled is skipped)"
+    },
+    {
+      "from": "trg:orders.rt_sync_from_order",
+      "to": "tbl:orders",
+      "type": "syncs",
+      "src": "worker/migrations/013_rt_sync.sql:117-131",
+      "status": "confirmed",
+      "flow": "F-15",
+      "coverage": [],
+      "note": "siblings of the RT copy driver/truck/trailer/partner — including NULL when one order is un-assigned (_wiClear)"
+    },
+    {
+      "from": "fn:modules/weekly_intl.js#_wiClear",
+      "to": "trg:orders.rt_sync_from_order",
+      "type": "depends",
+      "src": "modules/weekly_intl.js:3411-3425 · worker/migrations/013_rt_sync.sql:104-131",
+      "status": "probable",
+      "flow": "F-15",
+      "coverage": [
+        "B-43"
+      ],
+      "note": "clearing Truck on one leg clears the RT vehicle AND every sibling order's vehicle in the same DB transaction; front board not re-rendered for siblings (execution not observed)"
+    },
+    {
+      "from": "trg:ct_round_trips.rt_sync_to_orders",
+      "to": "tbl:ramp",
+      "type": "depends",
+      "src": "worker/migrations/013_rt_sync.sql:159-183 · modules/daily_ramp.js:302,324",
+      "status": "probable",
+      "flow": "F-28",
+      "coverage": [],
+      "note": "RT vehicle edits rewrite orders.truck_id in DB but ramp.truck_id is copied only at ramp-row creation (daily_ramp.js:302) and never re-synced; partner_assignments likewise only via front paSyncStatus"
+    },
+    {
+      "from": "trg:orders.order_soft_delete_unlink",
+      "to": "tbl:partner_assignments",
+      "type": "syncs",
+      "src": "worker/migrations/023_soft_delete_unlink.sql:69-75",
+      "status": "confirmed",
+      "flow": "F-08",
+      "coverage": [],
+      "note": "DB already retires PA and RT legs on soft delete — front steps 4/5b in deleteIntlOrder are redundant belts"
+    },
+    {
+      "from": "trg:orders.order_soft_delete_unlink",
+      "to": "tbl:ct_rt_legs",
+      "type": "syncs",
+      "src": "worker/migrations/023_soft_delete_unlink.sql:56-66",
+      "status": "confirmed",
+      "flow": "F-08",
+      "coverage": [],
+      "note": "keeps legs of CLOSED RTs — but rt_sync_from_order (fires after, alphabetical) deletes them anyway"
+    },
+    {
+      "from": "trg:orders.rt_create_from_order",
+      "to": "trg:ct_rt_legs.rt_z_auto_close_legs",
+      "type": "depends",
+      "src": "worker/migrations/033_rt_create_related.sql:167-183 · worker/migrations/046_rt_auto_close.sql@origin/main:273-276",
+      "status": "confirmed",
+      "flow": "F-18",
+      "coverage": [
+        "B-36"
+      ],
+      "note": "attach to a closed RT: 046 reopens during the leg INSERT, then 033 (stale target.status) reopens again → two «reopened:» audit rows for one event"
+    },
+    {
+      "from": "dbfn:rt_merge",
+      "to": "tbl:ct_round_trips",
+      "type": "syncs",
+      "src": "worker/migrations/037_rt_merge_split_pairs.sql:113-119",
+      "status": "confirmed",
+      "flow": "F-16",
+      "coverage": [
+        "B-03"
+      ],
+      "note": "reopens keep RT AFTER the 046 leg trigger ran → can leave planned with all legs delivered (046:94-97 known residue)"
+    },
+    {
+      "from": "fn:core/api.js#_flushOfflineQueue",
+      "to": "tbl:orders",
+      "type": "depends",
+      "src": "core/api.js:147 · core/order-sync.js:29",
+      "status": "probable",
+      "flow": "F-03",
+      "coverage": [],
+      "note": "replayed orders PATCH fires every DB trigger (RT, VS follow, 046) but none of the front-only derivations of syncOrderDownstream (VS create, GL/CL, PA, pallets, ramp)"
+    },
+    {
+      "from": "fn:core/ai-chat.js#_aicExecTool",
+      "to": "trg:orders.rt_z_auto_close_order",
+      "type": "depends",
+      "src": "core/ai-chat.js:574-579 · worker/migrations/046_rt_auto_close.sql@origin/main:278-282",
+      "status": "probable",
+      "flow": "F-40",
+      "coverage": [],
+      "note": "AI update_record on orders.Status (free fields, FM-d-07) closes/reopens RTs and flags payroll in DB with no syncOrderDownstream"
+    },
+    {
+      "from": "fn:modules/daily_ramp.js#_rampDone",
+      "to": "trg:orders.rt_create_from_order",
+      "type": "depends",
+      "src": "modules/daily_ramp.js:722 · worker/migrations/033_rt_create_related.sql:98-104",
+      "status": "confirmed",
+      "flow": "F-29",
+      "coverage": [],
+      "note": "ramp «Done» (part d) → orders In Transit → RT creation / attach in DB (part b), plus national_load_follow_order"
+    },
+    {
+      "from": "fn:modules/daily_ops.js#_opsStatFinal",
+      "to": "trg:orders.rt_z_auto_close_order",
+      "type": "depends",
+      "src": "modules/daily_ops.js:901-916 · worker/migrations/046_rt_auto_close.sql@origin/main:278-282",
+      "status": "confirmed",
+      "flow": "F-26",
+      "coverage": [],
+      "note": "Delivered click now closes the RT and, through dl_sync_from_rt, touches payroll in the SAME DB transaction; pallets (plOnDelivered, no await) stay a separate request"
+    },
+    {
+      "from": "trg:orders.rt_create_from_order",
+      "to": "tbl:ct_round_trips",
+      "type": "writes",
+      "src": "worker/migrations/033_rt_create_related.sql:194-205",
+      "status": "confirmed",
+      "flow": "F-14",
+      "coverage": [],
+      "note": "INSERT with status closed when the order is already Delivered — a 4th copy of the close rule; rt_status_guard (UPDATE only) never sees it"
+    }
+  ],
+  "failure_modes": [
+    {
+      "id": "FM-z-01",
+      "flow": "F-07",
+      "at": "trg:orders.rt_sync_from_order",
+      "what": "Cancelling or deleting an order whose RT is CLOSED deletes the leg (013:91-100); if it was the last leg rt_recompute sets the closed RT to cancelled (013:65-71); dl_sync_from_rt then flags (amounts) or soft-deletes (no amounts) the payroll line (011:190-196). 023 tried to keep closed legs but fires first and is overridden. The front meanwhile only warns «είναι κλεισμένο» (rt-feed.js@origin/main:341-345).",
+      "visibility": "silent",
+      "existing_check": [
+        "B-09",
+        "B-08"
+      ],
+      "gap": "B-09 sees it only while the auto line with amounts stays alive; a line without amounts is soft-deleted and nobody sees the closed→cancelled transition (no check reads audit reason «no live legs» with before.status=closed)"
+    },
+    {
+      "id": "FM-z-02",
+      "flow": "F-15",
+      "at": "fn:modules/weekly_intl.js#_wiClear",
+      "what": "Un-assigning ONE order of a round trip propagates NULL vehicle to the RT and to every sibling order (013:104-131). The sibling (e.g. matched import) loses its truck in DB while the board shows only the cleared row changing.",
+      "visibility": "silent",
+      "existing_check": [
+        "B-43"
+      ],
+      "gap": "B-43 flags the vehicle-less active RT but not that the sibling assignment was erased by someone else's click; audit actor is trigger:rt_sync"
+    },
+    {
+      "id": "FM-z-03",
+      "flow": "F-05",
+      "at": "fn:modules/orders_intl.js#submitIntlOrder",
+      "what": "Order save is 6+ independent requests: orders → stopsSave (3 phases) → rtOnOrderSaved → _syncVeroiaSwitch → syncOrderDownstream (PA, GL/CL/NL, ramp bg, pallets only on PE change) → pending match. Only the DB-trigger parts (RT create 033, dates 028, 046) are atomic with the order row.",
+      "visibility": "silent",
+      "existing_check": [
+        "B-39",
+        "P-01",
+        "B-26",
+        "P-02",
+        "B-01",
+        "B-31"
+      ],
+      "gap": "no check for: PE order without pallet movement; ramp missing outside the 3-day VS window; PA missing for partner-assigned order"
+    },
+    {
+      "id": "FM-z-04",
+      "flow": "F-26",
+      "at": "fn:modules/daily_ops.js#_opsStatFinal",
+      "what": "After 046 a Delivered click closes the RT and touches dl_entries in the same transaction as orders.status, but plOnDelivered (daily_ops.js:936, no await) and paSyncStatus are separate requests. Result on failure: RT closed + payroll ready, pallets movement missing → invoicing gate later blocked for a reason nobody links to the delivery click.",
+      "visibility": "silent",
+      "existing_check": [
+        "B-16",
+        "B-17"
+      ],
+      "gap": "B-16/B-17 see only movements that exist; a missing movement is invisible (FM-c-04 population gap)"
+    },
+    {
+      "id": "FM-z-05",
+      "flow": "F-28",
+      "at": "tbl:ramp",
+      "what": "ramp.truck_id/driver_id are copied from the order only when the ramp row is created (daily_ramp.js:302). Any later vehicle change — front, rt_sync_to_orders from a TRIP PnL edit, rt_sync_from_order sibling propagation — leaves the ramp board showing the old truck.",
+      "visibility": "silent",
+      "existing_check": [],
+      "gap": "B-30 checks links, not vehicle agreement"
+    },
+    {
+      "id": "FM-z-06",
+      "flow": "F-03",
+      "at": "fn:core/api.js#_flushOfflineQueue",
+      "what": "Offline replay (and AI update_record, undo-restore) write orders through the facade without syncOrderDownstream: DB triggers fire (RT, VS status follow, 046 close) but VS creation, GL/CL, PA, pallets and ramp never run. Spans parts a/b/c/d from a part-e mechanism.",
+      "visibility": "silent",
+      "existing_check": [
+        "B-26",
+        "B-01"
+      ],
+      "gap": "B-26 catches the missing VS load after 15′; nothing catches missing PA/pallet/ramp"
+    },
+    {
+      "id": "FM-z-07",
+      "flow": "F-18",
+      "at": "trg:orders.rt_create_from_order",
+      "what": "Attach of an open order to a closed RT via 033 yields two «reopened:» audit rows (046 inside the leg INSERT, then 033 with stale target.status). 046 dropped 045 precisely to avoid a second row for one event.",
+      "visibility": "loud",
+      "existing_check": [
+        "B-36"
+      ],
+      "gap": "B-36 counts rows, so it double-counts reopen events"
+    },
+    {
+      "id": "FM-z-08",
+      "flow": "F-36",
+      "at": "dbfn:rt_auto_close",
+      "what": "Mixed RT (≥1 order leg + ≥1 national leg) auto-closes as soon as the order legs are Delivered — the national leg is not counted (046:160-169). The 046 header (l.78-81) says such an RT «δεν κλείνει αυτόματα»; only a pure-national RT is untouched. rt_status_guard also ignores national legs.",
+      "visibility": "silent",
+      "existing_check": [],
+      "gap": "latent (0 RTs with national legs on 22/9); becomes live if 034 rt_create_national is ever approved"
+    },
+    {
+      "id": "FM-z-09",
+      "flow": "F-36",
+      "at": "trg:ct_round_trips.rt_status_guard",
+      "what": "The 046 guard and triggers are verified only once, by the DO block at install (046:344-367). A later DROP/disable (or SQL with session_replication_role=replica) silently returns the system to front-side closing that no longer exists: RTs would then never close.",
+      "visibility": "silent",
+      "existing_check": [
+        "B-03",
+        "B-02"
+      ],
+      "gap": "B-03 would notice only after 3 days; no catalog assertion check exists"
+    }
+  ],
+  "checks_existing": [
+    {
+      "id": "B-02",
+      "covers": [
+        "trg:ct_round_trips.rt_status_guard",
+        "dbfn:rt_auto_close"
+      ],
+      "runs": "manual"
+    },
+    {
+      "id": "B-03",
+      "covers": [
+        "dbfn:rt_auto_close"
+      ],
+      "runs": "manual"
+    },
+    {
+      "id": "B-36",
+      "covers": [
+        "dbfn:rt_auto_close",
+        "trg:orders.rt_create_from_order"
+      ],
+      "runs": "manual"
+    },
+    {
+      "id": "B-09",
+      "covers": [
+        "trg:orders.rt_sync_from_order",
+        "dbfn:rt_recompute"
+      ],
+      "runs": "manual"
+    },
+    {
+      "id": "trigger",
+      "covers": [
+        "trg:ct_round_trips.rt_status_guard"
+      ],
+      "runs": "db-constraint"
+    }
+  ],
+  "gaps": [
+    "Nothing was executed: every trigger-ordering claim (023 before 013, 046 inside 033 INSERT) is from Postgres semantics + SQL text, not an observed run.",
+    "Worker line numbers @origin/main (5cfee82) differ from base 549a2a4 by the 046 409 block (+12 lines after 3255); the builder's uncommitted edit on feat/tms-auditor was not read.",
+    "delete_order_cascade body still not read (catalog lists tables only); whether it sets orders.deleted_at (→ 023/013 fire) is inferred from 023:14-16.",
+    "Whether _rampAutoSync ever re-patches an existing ramp row's Truck was checked only by grep of atCreate/atSafePatch sites (FM-z-05 probable).",
+    "Part-e catalog predates 046 by ~1 h: functions rt_auto_close*, rt_status_guard absent there; 033/037 bodies read from repo files, assumed equal to DB."
+  ],
+  "cross_deps": [
+    {
+      "to_part": "a",
+      "edge": "trg:orders.rt_z_auto_close_order -> dbfn:rt_auto_close",
+      "why": "every orders.status writer of part a now writes ct_round_trips + dl_entries",
+      "src": "worker/migrations/046_rt_auto_close.sql@origin/main:278-282"
+    },
+    {
+      "to_part": "b",
+      "edge": "dbfn:rt_auto_close -> tbl:dl_entries",
+      "why": "payroll needs_review from a status click",
+      "src": "worker/migrations/046_rt_auto_close.sql@origin/main:184-194"
+    },
+    {
+      "to_part": "c",
+      "edge": "fn:core/rt-feed.js#rtOnOrderSaved -> fn:core/pallet-feed.js#plFetch",
+      "why": "RT chain error handling is plFetch's",
+      "src": "core/rt-feed.js:33-441"
+    },
+    {
+      "to_part": "d",
+      "edge": "trg:ct_round_trips.rt_sync_to_orders -> tbl:ramp",
+      "why": "ramp vehicle never re-synced",
+      "src": "modules/daily_ramp.js:302"
+    },
+    {
+      "to_part": "e",
+      "edge": "fn:core/api.js#_flushOfflineQueue -> tbl:orders",
+      "why": "offline replay bypasses front-only derivations",
+      "src": "core/api.js:147"
+    }
+  ],
+  "writers": [
+    {
+      "table": "tbl:app_errors",
+      "independent_writers": 1,
+      "flag_ge3": false,
+      "independent": [
+        "ep:POST /app-errors"
+      ],
+      "writers": [
+        {
+          "kind": "endpoint",
+          "id": "ep:POST /app-errors",
+          "src": "e:worker/src/index.js:394#handleAppErrorPost"
+        }
+      ]
+    },
+    {
+      "table": "tbl:audit_log",
+      "independent_writers": 20,
+      "flag_ge3": true,
+      "independent": [
+        "db:dl_cash_sync_entry",
+        "db:dl_cash_sync_line",
+        "db:national_load_follow_order",
+        "db:national_load_soft_delete_unlink",
+        "db:order_dates_follow",
+        "db:order_leg_status_sync",
+        "db:order_legs_audit",
+        "db:order_legs_to_parent",
+        "db:order_parent_status",
+        "db:order_parent_to_legs",
+        "db:order_soft_delete_unlink",
+        "db:rt_create_from_order",
+        "db:rt_link_split",
+        "db:rt_sync_audit",
+        "db:rt_sync_from_order",
+        "db:rt_sync_legs",
+        "db:rt_sync_to_orders",
+        "ep:POST /pallets/override",
+        "worker:fn:worker/src/index.js#audit",
+        "worker:fn:worker/src/index.js#auditMany"
+      ],
+      "writers": [
+        {
+          "kind": "trigger",
+          "id": "trg:orders.rt_create_from_order",
+          "src": "e:db:pg_get_functiondef public.rt_sync_audit"
+        },
+        {
+          "kind": "trigger",
+          "id": "trg:orders.order_dates_follow",
+          "src": "e:db:pg_get_functiondef public.order_dates_follow"
+        },
+        {
+          "kind": "trigger",
+          "id": "trg:orders.national_load_follow_order",
+          "src": "e:db:pg_get_functiondef public.national_load_follow_order"
+        },
+        {
+          "kind": "trigger",
+          "id": "trg:orders.order_soft_delete_unlink",
+          "src": "e:db:pg_get_functiondef public.order_soft_delete_unlink"
+        },
+        {
+          "kind": "trigger",
+          "id": "trg:ct_rt_legs.rt_reopen_on_leg",
+          "src": "e:db:pg_get_functiondef public.rt_sync_audit [DROPPED by 046:338-339]"
+        },
+        {
+          "kind": "trigger",
+          "id": "trg:orders.rt_link_split",
+          "src": "e:db:pg_get_functiondef public.rt_sync_audit"
+        },
+        {
+          "kind": "endpoint",
+          "id": "ep:POST /pallets/override",
+          "src": "e:worker/src/index.js:4529#handlePallets"
+        },
+        {
+          "kind": "db function",
+          "id": "dbfn:national_load_follow_order",
+          "src": "e:db:pg_get_functiondef public.national_load_follow_order"
+        },
+        {
+          "kind": "db function",
+          "id": "dbfn:national_load_soft_delete_unlink",
+          "src": "e:db:pg_get_functiondef public.national_load_soft_delete_unlink"
+        },
+        {
+          "kind": "db function",
+          "id": "dbfn:order_dates_follow",
+          "src": "e:db:pg_get_functiondef public.order_dates_follow"
+        },
+        {
+          "kind": "db function",
+          "id": "dbfn:order_legs_audit",
+          "src": "e:db:pg_get_functiondef public.order_legs_audit"
+        },
+        {
+          "kind": "db function",
+          "id": "dbfn:order_parent_status",
+          "src": "e:db:pg_get_functiondef public.order_parent_status"
+        },
+        {
+          "kind": "db function",
+          "id": "dbfn:order_soft_delete_unlink",
+          "src": "e:db:pg_get_functiondef public.order_soft_delete_unlink"
+        },
+        {
+          "kind": "db function",
+          "id": "dbfn:rt_sync_audit",
+          "src": "e:db:pg_get_functiondef public.rt_sync_audit"
+        },
+        {
+          "kind": "trigger",
+          "id": "trg:ct_cost_lines.dl_cash_sync_line",
+          "src": "e:db:pg_get_functiondef public.rt_sync_audit"
+        },
+        {
+          "kind": "trigger",
+          "id": "trg:ct_round_trips.rt_sync_to_orders",
+          "src": "e:db:pg_get_functiondef public.rt_sync_audit"
+        },
+        {
+          "kind": "trigger",
+          "id": "trg:ct_rt_legs.rt_sync_legs",
+          "src": "e:db:pg_get_functiondef public.rt_sync_audit"
+        },
+        {
+          "kind": "trigger",
+          "id": "trg:dl_entries.dl_cash_sync_entry",
+          "src": "e:db:pg_get_functiondef public.rt_sync_audit"
+        },
+        {
+          "kind": "trigger",
+          "id": "trg:national_loads.national_load_soft_delete_unlink",
+          "src": "e:db:pg_get_functiondef public.national_load_soft_delete_unlink"
+        },
+        {
+          "kind": "trigger",
+          "id": "trg:orders.order_leg_status_sync",
+          "src": "e:db:pg_get_functiondef public.order_parent_status"
+        },
+        {
+          "kind": "trigger",
+          "id": "trg:orders.order_legs_to_parent",
+          "src": "e:db:pg_get_functiondef public.order_legs_audit"
+        },
+        {
+          "kind": "trigger",
+          "id": "trg:orders.order_parent_to_legs",
+          "src": "e:db:pg_get_functiondef public.order_legs_audit"
+        },
+        {
+          "kind": "trigger",
+          "id": "trg:orders.rt_sync_from_order",
+          "src": "e:db:pg_get_functiondef public.rt_sync_audit"
+        },
+        {
+          "kind": "worker fn",
+          "id": "fn:worker/src/index.js#audit",
+          "src": "e:worker/src/index.js:613#audit"
+        },
+        {
+          "kind": "worker fn",
+          "id": "fn:worker/src/index.js#auditMany",
+          "src": "e:worker/src/index.js:299#auditMany"
+        }
+      ]
+    },
+    {
+      "table": "tbl:clients",
+      "independent_writers": 2,
+      "flag_ge3": false,
+      "independent": [
+        "facade:any-caller",
+        "front:core/entity.js"
+      ],
+      "writers": [
+        {
+          "kind": "front fn",
+          "id": "fn:core/entity.js#saveEntityRecord → ep:POST /v0/clients",
+          "src": "d:core/entity.js:2940"
+        },
+        {
+          "kind": "endpoint",
+          "id": "ep:POST /v0/clients",
+          "src": "e:worker/src/index.js:828#TABLES.tblFWKAQVUzAM8mCE"
+        },
+        {
+          "kind": "endpoint",
+          "id": "ep:PATCH /v0/clients",
+          "src": "e:worker/src/index.js:828#TABLES.tblFWKAQVUzAM8mCE"
+        },
+        {
+          "kind": "endpoint",
+          "id": "ep:DELETE /v0/clients",
+          "src": "e:worker/src/index.js:828#TABLES.tblFWKAQVUzAM8mCE"
+        }
+      ]
+    },
+    {
+      "table": "tbl:cons_load_source_orders",
+      "independent_writers": 1,
+      "flag_ge3": false,
+      "independent": [
+        "db:delete_order_cascade"
+      ],
+      "writers": [
+        {
+          "kind": "db function",
+          "id": "dbfn:delete_order_cascade",
+          "src": "e:db:pg_get_functiondef public.delete_order_cascade"
+        }
+      ]
+    },
+    {
+      "table": "tbl:consolidated_loads",
+      "independent_writers": 4,
+      "flag_ge3": true,
+      "independent": [
+        "db:delete_order_cascade",
+        "facade:any-caller",
+        "front:core/order-sync.js",
+        "front:modules/orders_intl.js"
+      ],
+      "writers": [
+        {
+          "kind": "front fn",
+          "id": "fn:core/order-sync.js#syncGLtoCLtoNL",
+          "src": "a:core/order-sync.js:157-164"
+        },
+        {
+          "kind": "db function",
+          "id": "dbfn:delete_order_cascade",
+          "src": "e:db:pg_get_functiondef public.delete_order_cascade"
+        },
+        {
+          "kind": "front fn",
+          "id": "fn:modules/orders_intl.js#deleteIntlOrder → ep:DELETE /v0/consolidated_loads",
+          "src": "a:modules/orders_intl.js:2998-3000#step2_cl"
+        },
+        {
+          "kind": "endpoint",
+          "id": "ep:POST /v0/consolidated_loads",
+          "src": "e:worker/src/index.js:1391#TABLES.tbl5XSLQjOnG6yLCW"
+        },
+        {
+          "kind": "endpoint",
+          "id": "ep:DELETE /v0/consolidated_loads",
+          "src": "e:worker/src/index.js:1391#TABLES.tbl5XSLQjOnG6yLCW"
+        },
+        {
+          "kind": "endpoint",
+          "id": "ep:PATCH /v0/consolidated_loads",
+          "src": "e:worker/src/index.js:1391#TABLES.tbl5XSLQjOnG6yLCW"
+        }
+      ]
+    },
+    {
+      "table": "tbl:ct_cost_docs",
+      "independent_writers": 1,
+      "flag_ge3": false,
+      "independent": [
+        "front:modules/expenses_import.js"
+      ],
+      "writers": [
+        {
+          "kind": "front fn",
+          "id": "fn:modules/expenses_import.js#eiSendParse → ep:POST /costs/import/parse",
+          "src": "b:modules/expenses_import.js:368"
+        },
+        {
+          "kind": "front fn",
+          "id": "fn:modules/expenses_import.js#eiCommit → ep:POST /costs/import/commit",
+          "src": "b:modules/expenses_import.js:1155"
+        },
+        {
+          "kind": "endpoint",
+          "id": "ep:POST /costs/import/parse",
+          "src": "b:worker/src/index.js:~3766-3858 (upsert draft doc, not directly re-opened past 3766)"
+        },
+        {
+          "kind": "endpoint",
+          "id": "ep:POST /costs/import/commit",
+          "src": "b:worker/src/index.js:4078"
+        }
+      ]
+    },
+    {
+      "table": "tbl:ct_cost_lines",
+      "independent_writers": 5,
+      "flag_ge3": true,
+      "independent": [
+        "db:rt_link_split",
+        "db:rt_merge",
+        "front:modules/expenses.js",
+        "front:modules/expenses_import.js",
+        "sql:migration 038 aggregate (hard DELETE)"
+      ],
+      "writers": [
+        {
+          "kind": "front fn",
+          "id": "fn:modules/expenses.js#exQeSubmit → ep:POST /costs/lines",
+          "src": "b:modules/expenses.js:1961"
+        },
+        {
+          "kind": "front fn",
+          "id": "fn:modules/expenses.js#exSaveEdit → ep:PATCH /costs/lines/:id",
+          "src": "b:modules/expenses.js:2157,2178"
+        },
+        {
+          "kind": "front fn",
+          "id": "fn:modules/expenses.js#exDeleteLine → ep:DELETE /costs/lines/:id",
+          "src": "b:modules/expenses.js:2190"
+        },
+        {
+          "kind": "front fn",
+          "id": "fn:modules/expenses.js#exAssignLine → ep:PATCH /costs/lines/:id",
+          "src": "b:modules/expenses.js:2201"
+        },
+        {
+          "kind": "front fn",
+          "id": "fn:modules/expenses_import.js#eiCommit → ep:POST /costs/import/commit",
+          "src": "b:modules/expenses_import.js:1155"
+        },
+        {
+          "kind": "endpoint",
+          "id": "ep:POST /costs/lines",
+          "src": "b:worker/src/index.js:3319"
+        },
+        {
+          "kind": "endpoint",
+          "id": "ep:PATCH /costs/lines/:id",
+          "src": "b:worker/src/index.js:3390"
+        },
+        {
+          "kind": "endpoint",
+          "id": "ep:DELETE /costs/lines/:id",
+          "src": "b:worker/src/index.js:3394-3429"
+        },
+        {
+          "kind": "endpoint",
+          "id": "ep:POST /costs/import/commit",
+          "src": "b:worker/src/index.js:4009-4029"
+        },
+        {
+          "kind": "db function",
+          "id": "dbfn:rt_merge",
+          "src": "e:db:pg_get_functiondef public.rt_merge"
+        },
+        {
+          "kind": "trigger",
+          "id": "trg:orders.rt_link_split",
+          "src": "e:db:pg_get_functiondef public.rt_merge"
+        },
+        {
+          "kind": "direct SQL / migration",
+          "id": "migration 038 aggregate (hard DELETE)",
+          "src": "worker/migrations/038_cost_line_details_aggregate.sql:67-106"
+        }
+      ]
+    },
+    {
+      "table": "tbl:ct_import_rules",
+      "independent_writers": 1,
+      "flag_ge3": false,
+      "independent": [
+        "front:modules/expenses_import.js"
+      ],
+      "writers": [
+        {
+          "kind": "front fn",
+          "id": "fn:modules/expenses_import.js#eiCommit → ep:POST /costs/import/commit",
+          "src": "b:modules/expenses_import.js:1155"
+        },
+        {
+          "kind": "endpoint",
+          "id": "ep:POST /costs/import/commit",
+          "src": "b:worker/src/index.js:4033-4051"
+        }
+      ]
+    },
+    {
+      "table": "tbl:ct_round_trips",
+      "independent_writers": 11,
+      "flag_ge3": true,
+      "independent": [
+        "db:order_soft_delete_unlink",
+        "db:rt_auto_close",
+        "db:rt_create_from_order",
+        "db:rt_link_split",
+        "db:rt_merge",
+        "db:rt_recompute",
+        "db:rt_sync_from_order",
+        "db:rt_sync_legs",
+        "front:core/rt-feed.js",
+        "front:modules/costs.js",
+        "sql:migration 046 backfill (30 RTs)"
+      ],
+      "writers": [
+        {
+          "kind": "trigger",
+          "id": "trg:orders.rt_create_from_order",
+          "src": "z:worker/migrations/033_rt_create_related.sql:194-205"
+        },
+        {
+          "kind": "trigger",
+          "id": "trg:orders.rt_sync_from_order",
+          "src": "e:db:pg_get_functiondef public.rt_sync_from_order"
+        },
+        {
+          "kind": "trigger",
+          "id": "trg:orders.rt_link_split",
+          "src": "e:db:pg_get_functiondef public.rt_merge"
+        },
+        {
+          "kind": "trigger",
+          "id": "trg:ct_rt_legs.rt_reopen_on_leg",
+          "src": "e:db:pg_get_functiondef public.rt_reopen_on_leg [DROPPED by 046:338-339]"
+        },
+        {
+          "kind": "front fn",
+          "id": "fn:core/rt-feed.js#rtOnOrderSaved → ep:POST /costs/rt",
+          "src": "a:core/rt-feed.js:372,415"
+        },
+        {
+          "kind": "front fn",
+          "id": "fn:core/rt-feed.js#rtOnOrderSaved → ep:PATCH /costs/rt/:id",
+          "src": "a:core/rt-feed.js:394,441,460"
+        },
+        {
+          "kind": "front fn",
+          "id": "fn:core/rt-feed.js#rtOnOrderDeleted → ep:PATCH /costs/rt/:id",
+          "src": "a:core/rt-feed.js:460"
+        },
+        {
+          "kind": "front fn",
+          "id": "fn:modules/costs.js#ctCreateRt → ep:POST /costs/rt",
+          "src": "b:modules/costs.js:883"
+        },
+        {
+          "kind": "front fn",
+          "id": "fn:modules/costs.js#ctCloseRt → ep:PATCH /costs/rt/:id",
+          "src": "b:modules/costs.js:814"
+        },
+        {
+          "kind": "endpoint",
+          "id": "ep:POST /costs/rt",
+          "src": "b:worker/src/index.js:3135,3125"
+        },
+        {
+          "kind": "endpoint",
+          "id": "ep:PATCH /costs/rt/:id",
+          "src": "b:worker/src/index.js:3258"
+        },
+        {
+          "kind": "db function",
+          "id": "dbfn:order_soft_delete_unlink",
+          "src": "e:db:pg_get_functiondef public.order_soft_delete_unlink"
+        },
+        {
+          "kind": "db function",
+          "id": "dbfn:rt_create_from_order",
+          "src": "e:db:pg_get_functiondef public.rt_create_from_order"
+        },
+        {
+          "kind": "db function",
+          "id": "dbfn:rt_merge",
+          "src": "z:worker/migrations/037_rt_merge_split_pairs.sql:113-119"
+        },
+        {
+          "kind": "db function",
+          "id": "dbfn:rt_recompute",
+          "src": "z:worker/migrations/013_rt_sync.sql:53-71"
+        },
+        {
+          "kind": "db function",
+          "id": "dbfn:rt_reopen_on_leg",
+          "src": "e:db:pg_get_functiondef public.rt_reopen_on_leg [DROPPED by 046:338-339]"
+        },
+        {
+          "kind": "db function",
+          "id": "dbfn:rt_sync_from_order",
+          "src": "e:db:pg_get_functiondef public.rt_sync_from_order"
+        },
+        {
+          "kind": "db function",
+          "id": "dbfn:rt_sync_legs",
+          "src": "e:db:pg_get_functiondef public.rt_sync_legs"
+        },
+        {
+          "kind": "trigger",
+          "id": "trg:ct_rt_legs.rt_sync_legs",
+          "src": "e:db:pg_get_functiondef public.rt_sync_legs"
+        },
+        {
+          "kind": "trigger",
+          "id": "trg:orders.order_soft_delete_unlink",
+          "src": "e:db:pg_get_functiondef public.order_soft_delete_unlink"
+        },
+        {
+          "kind": "db function",
+          "id": "dbfn:rt_auto_close",
+          "src": "z:worker/migrations/046_rt_auto_close.sql@origin/main:173-175,220-222"
+        },
+        {
+          "kind": "direct SQL / migration",
+          "id": "migration 046 backfill (30 RTs)",
+          "src": "worker/migrations/046_rt_auto_close.sql@origin/main:445-460"
+        }
+      ]
+    },
+    {
+      "table": "tbl:ct_rt_legs",
+      "independent_writers": 7,
+      "flag_ge3": true,
+      "independent": [
+        "db:order_soft_delete_unlink",
+        "db:rt_create_from_order",
+        "db:rt_link_split",
+        "db:rt_merge",
+        "db:rt_sync_from_order",
+        "front:core/rt-feed.js",
+        "front:modules/costs.js"
+      ],
+      "writers": [
+        {
+          "kind": "front fn",
+          "id": "fn:core/rt-feed.js#rtOnOrderSaved → ep:POST /costs/rt",
+          "src": "a:core/rt-feed.js:372,415"
+        },
+        {
+          "kind": "front fn",
+          "id": "fn:core/rt-feed.js#rtOnImportUnmatched → ep:DELETE /costs/rt/:id/legs",
+          "src": "a:core/rt-feed.js:478"
+        },
+        {
+          "kind": "front fn",
+          "id": "fn:modules/costs.js#ctCreateRt → ep:POST /costs/rt",
+          "src": "b:modules/costs.js:883"
+        },
+        {
+          "kind": "endpoint",
+          "id": "ep:POST /costs/rt",
+          "src": "b:worker/src/index.js:3110,3138"
+        },
+        {
+          "kind": "endpoint",
+          "id": "ep:DELETE /costs/rt/:id/legs",
+          "src": "b:worker/src/index.js:3162-3165"
+        },
+        {
+          "kind": "db function",
+          "id": "dbfn:order_soft_delete_unlink",
+          "src": "e:db:pg_get_functiondef public.order_soft_delete_unlink"
+        },
+        {
+          "kind": "db function",
+          "id": "dbfn:rt_create_from_order",
+          "src": "e:db:pg_get_functiondef public.rt_create_from_order"
+        },
+        {
+          "kind": "db function",
+          "id": "dbfn:rt_merge",
+          "src": "e:db:pg_get_functiondef public.rt_merge"
+        },
+        {
+          "kind": "db function",
+          "id": "dbfn:rt_sync_from_order",
+          "src": "e:db:pg_get_functiondef public.rt_sync_from_order"
+        },
+        {
+          "kind": "trigger",
+          "id": "trg:orders.order_soft_delete_unlink",
+          "src": "z:worker/migrations/023_soft_delete_unlink.sql:56-66"
+        },
+        {
+          "kind": "trigger",
+          "id": "trg:orders.rt_create_from_order",
+          "src": "e:db:pg_get_functiondef public.rt_create_from_order"
+        },
+        {
+          "kind": "trigger",
+          "id": "trg:orders.rt_link_split",
+          "src": "e:db:pg_get_functiondef public.rt_merge"
+        },
+        {
+          "kind": "trigger",
+          "id": "trg:orders.rt_sync_from_order",
+          "src": "z:worker/migrations/013_rt_sync.sql:91-100"
+        }
+      ]
+    },
+    {
+      "table": "tbl:dl_entries",
+      "independent_writers": 12,
+      "flag_ge3": true,
+      "independent": [
+        "db:dl_cancel_batch",
+        "db:dl_cash_sync",
+        "db:dl_cash_sync_entry",
+        "db:dl_cash_sync_line",
+        "db:dl_import",
+        "db:dl_sync_from_rt",
+        "db:rt_auto_close",
+        "db:rt_link_split",
+        "db:rt_merge",
+        "front:modules/expenses.js",
+        "front:modules/payroll.js",
+        "sql:migration 042 cash backfill"
+      ],
+      "writers": [
+        {
+          "kind": "front fn",
+          "id": "fn:modules/expenses.js#exExpMSubmit → ep:PATCH /costs/ledger/:id",
+          "src": "b:modules/expenses.js:1623"
+        },
+        {
+          "kind": "front fn",
+          "id": "fn:modules/payroll.js#dlLinkRt → ep:POST /costs/ledger",
+          "src": "b:modules/payroll.js:744"
+        },
+        {
+          "kind": "front fn",
+          "id": "fn:modules/payroll.js#dlCardPaySave → ep:POST /costs/ledger",
+          "src": "b:modules/payroll.js:890"
+        },
+        {
+          "kind": "front fn",
+          "id": "fn:modules/payroll.js#dlQeSubmit → ep:POST /costs/ledger",
+          "src": "b:modules/payroll.js:1156"
+        },
+        {
+          "kind": "front fn",
+          "id": "fn:modules/payroll.js#dlPatchEntry → ep:PATCH /costs/ledger/:id",
+          "src": "b:modules/payroll.js:1211"
+        },
+        {
+          "kind": "front fn",
+          "id": "fn:modules/payroll.js#dlSavePayment → ep:POST /costs/ledger",
+          "src": "b:modules/payroll.js:1331"
+        },
+        {
+          "kind": "front fn",
+          "id": "fn:modules/payroll.js#dlSaveAdjust → ep:POST /costs/ledger",
+          "src": "b:modules/payroll.js:1364"
+        },
+        {
+          "kind": "front fn",
+          "id": "fn:modules/payroll.js#dlBulkSubmit → ep:POST /costs/ledger",
+          "src": "b:modules/payroll.js:1515"
+        },
+        {
+          "kind": "endpoint",
+          "id": "ep:POST /costs/ledger",
+          "src": "b:worker/src/index.js:3511"
+        },
+        {
+          "kind": "endpoint",
+          "id": "ep:PATCH /costs/ledger/:id",
+          "src": "b:worker/src/index.js:3553"
+        },
+        {
+          "kind": "db function",
+          "id": "dbfn:dl_import",
+          "src": "e:db:pg_get_functiondef public.dl_import"
+        },
+        {
+          "kind": "trigger",
+          "id": "trg:ct_round_trips.dl_sync_from_rt",
+          "src": "e:db:pg_get_functiondef public.dl_sync_from_rt"
+        },
+        {
+          "kind": "db function",
+          "id": "dbfn:dl_cash_sync",
+          "src": "e:db:pg_get_functiondef public.dl_cash_sync"
+        },
+        {
+          "kind": "db function",
+          "id": "dbfn:dl_cancel_batch",
+          "src": "e:db:pg_get_functiondef public.dl_cancel_batch"
+        },
+        {
+          "kind": "db function",
+          "id": "dbfn:dl_sync_from_rt",
+          "src": "e:db:pg_get_functiondef public.dl_sync_from_rt"
+        },
+        {
+          "kind": "db function",
+          "id": "dbfn:rt_merge",
+          "src": "e:db:pg_get_functiondef public.rt_merge"
+        },
+        {
+          "kind": "trigger",
+          "id": "trg:ct_cost_lines.dl_cash_sync_line",
+          "src": "e:db:pg_get_functiondef public.dl_cash_sync"
+        },
+        {
+          "kind": "trigger",
+          "id": "trg:dl_entries.dl_cash_sync_entry",
+          "src": "e:db:pg_get_functiondef public.dl_cash_sync"
+        },
+        {
+          "kind": "trigger",
+          "id": "trg:orders.rt_link_split",
+          "src": "e:db:pg_get_functiondef public.rt_merge"
+        },
+        {
+          "kind": "db function",
+          "id": "dbfn:rt_auto_close",
+          "src": "z:worker/migrations/046_rt_auto_close.sql@origin/main:184-194"
+        },
+        {
+          "kind": "direct SQL / migration",
+          "id": "migration 042 cash backfill",
+          "src": "worker/migrations/042_cash_lines_to_payroll.sql:79-95"
+        }
+      ]
+    },
+    {
+      "table": "tbl:dl_import_batches",
+      "independent_writers": 1,
+      "flag_ge3": false,
+      "independent": [
+        "db:dl_import"
+      ],
+      "writers": [
+        {
+          "kind": "db function",
+          "id": "dbfn:dl_import",
+          "src": "e:db:pg_get_functiondef public.dl_import"
+        }
+      ]
+    },
+    {
+      "table": "tbl:drivers",
+      "independent_writers": 2,
+      "flag_ge3": false,
+      "independent": [
+        "facade:any-caller",
+        "front:core/entity.js"
+      ],
+      "writers": [
+        {
+          "kind": "front fn",
+          "id": "fn:core/entity.js#saveEntityRecord → ep:POST /v0/drivers",
+          "src": "d:core/entity.js:2940"
+        },
+        {
+          "kind": "endpoint",
+          "id": "ep:POST /v0/drivers",
+          "src": "e:worker/src/index.js:866#TABLES.tbl7UGmYhc2Y82pPs"
+        },
+        {
+          "kind": "endpoint",
+          "id": "ep:PATCH /v0/drivers",
+          "src": "e:worker/src/index.js:866#TABLES.tbl7UGmYhc2Y82pPs"
+        },
+        {
+          "kind": "endpoint",
+          "id": "ep:DELETE /v0/drivers",
+          "src": "e:worker/src/index.js:866#TABLES.tbl7UGmYhc2Y82pPs"
+        }
+      ]
+    },
+    {
+      "table": "tbl:facade_unknown_fields",
+      "independent_writers": 3,
+      "flag_ge3": true,
+      "independent": [
+        "db:log_unknown_field",
+        "facade:any-caller",
+        "worker:fn:worker/src/index.js#logUnknownFields"
+      ],
+      "writers": [
+        {
+          "kind": "endpoint",
+          "id": "ep:POST /v0/orders",
+          "src": "a:worker/src/index.js:2395-2622"
+        },
+        {
+          "kind": "endpoint",
+          "id": "ep:PATCH /v0/orders",
+          "src": "a:worker/src/index.js:2763-2835"
+        },
+        {
+          "kind": "endpoint",
+          "id": "ep:POST /v0/local_moves",
+          "src": "a:worker/src/index.js:2395-2622"
+        },
+        {
+          "kind": "worker fn",
+          "id": "fn:worker/src/index.js#logUnknownFields",
+          "src": "d:worker/src/index.js:658-659#dbRpc(env,'log_unknown_field',...)"
+        },
+        {
+          "kind": "db function",
+          "id": "dbfn:log_unknown_field",
+          "src": "e:db:pg_get_functiondef public.log_unknown_field"
+        }
+      ]
+    },
+    {
+      "table": "tbl:groupage_lines",
+      "independent_writers": 5,
+      "flag_ge3": true,
+      "independent": [
+        "db:delete_order_cascade",
+        "facade:any-caller",
+        "front:modules/orders_intl.js",
+        "front:modules/orders_natl.js",
+        "worker:fn:worker/src/index.js#handleFacadeDelete"
+      ],
+      "writers": [
+        {
+          "kind": "db function",
+          "id": "dbfn:delete_order_cascade",
+          "src": "e:db:pg_get_functiondef public.delete_order_cascade"
+        },
+        {
+          "kind": "front fn",
+          "id": "fn:modules/orders_intl.js#deleteIntlOrder → ep:PATCH /v0/groupage_lines",
+          "src": "a:modules/orders_intl.js:3011#step2_unassign"
+        },
+        {
+          "kind": "front fn",
+          "id": "fn:modules/orders_natl.js#_syncGroupageLinesFromNO → ep:PATCH /v0/groupage_lines",
+          "src": "a:modules/orders_natl.js:1483#unassign_on_rebuild"
+        },
+        {
+          "kind": "endpoint",
+          "id": "ep:PATCH /v0/groupage_lines",
+          "src": "e:worker/src/index.js:1345#TABLES.tblxUAaIsUMEDl3qQ"
+        },
+        {
+          "kind": "endpoint",
+          "id": "ep:POST /v0/groupage_lines",
+          "src": "e:worker/src/index.js:1345#TABLES.tblxUAaIsUMEDl3qQ"
+        },
+        {
+          "kind": "endpoint",
+          "id": "ep:DELETE /v0/groupage_lines",
+          "src": "e:worker/src/index.js:1345#TABLES.tblxUAaIsUMEDl3qQ"
+        },
+        {
+          "kind": "worker fn",
+          "id": "fn:worker/src/index.js#handleFacadeDelete",
+          "src": "e:worker/src/index.js:2840#handleFacadeDelete"
+        }
+      ]
+    },
+    {
+      "table": "tbl:local_moves",
+      "independent_writers": 3,
+      "flag_ge3": true,
+      "independent": [
+        "db:national_loads_soft_delete_cascade",
+        "facade:any-caller",
+        "front:modules/weekly_natl.js"
+      ],
+      "writers": [
+        {
+          "kind": "front fn",
+          "id": "fn:modules/weekly_natl.js#_wnSaveLocal → ep:POST /v0/local_moves",
+          "src": "a:modules/weekly_natl.js:1156"
+        },
+        {
+          "kind": "front fn",
+          "id": "fn:modules/weekly_natl.js#_wnSaveCover → ep:PATCH /v0/local_moves",
+          "src": "a:modules/weekly_natl.js:1191"
+        },
+        {
+          "kind": "front fn",
+          "id": "fn:modules/weekly_natl.js#_wnDelLocal → ep:PATCH /v0/local_moves",
+          "src": "a:modules/weekly_natl.js:1215#atDelete_soft"
+        },
+        {
+          "kind": "endpoint",
+          "id": "ep:POST /v0/local_moves",
+          "src": "e:worker/src/index.js:1698#TABLES.local_moves"
+        },
+        {
+          "kind": "endpoint",
+          "id": "ep:PATCH /v0/local_moves",
+          "src": "e:worker/src/index.js:1698#TABLES.local_moves"
+        },
+        {
+          "kind": "endpoint",
+          "id": "ep:DELETE /v0/local_moves",
+          "src": "e:worker/src/index.js:1698#TABLES.local_moves"
+        },
+        {
+          "kind": "db function",
+          "id": "dbfn:national_loads_soft_delete_cascade",
+          "src": "e:db:pg_get_functiondef public.national_loads_soft_delete_cascade"
+        },
+        {
+          "kind": "trigger",
+          "id": "trg:national_loads.trg_national_loads_soft_delete_cascade",
+          "src": "e:db:pg_get_functiondef public.national_loads_soft_delete_cascade"
+        }
+      ]
+    },
+    {
+      "table": "tbl:locations",
+      "independent_writers": 3,
+      "flag_ge3": true,
+      "independent": [
+        "facade:any-caller",
+        "front:modules/locations.js",
+        "worker:fn:worker/src/index.js#handleCreateLocation"
+      ],
+      "writers": [
+        {
+          "kind": "front fn",
+          "id": "fn:modules/locations.js#_locSave → ep:POST /v0/locations",
+          "src": "d:modules/locations.js:505"
+        },
+        {
+          "kind": "front fn",
+          "id": "fn:modules/locations.js#_locSave → ep:PATCH /v0/locations/:id",
+          "src": "d:modules/locations.js:504"
+        },
+        {
+          "kind": "front fn",
+          "id": "fn:modules/locations.js#_locDoDelete → ep:DELETE /v0/locations/:id",
+          "src": "d:modules/locations.js:573"
+        },
+        {
+          "kind": "endpoint",
+          "id": "ep:POST /v0/locations",
+          "src": "e:worker/src/index.js:805#TABLES.tblxu8DRfTQOFRCzS"
+        },
+        {
+          "kind": "worker fn",
+          "id": "fn:worker/src/index.js#handleCreateLocation",
+          "src": "d:worker/src/index.js:715"
+        },
+        {
+          "kind": "endpoint",
+          "id": "ep:PATCH /v0/locations",
+          "src": "e:worker/src/index.js:805#TABLES.tblxu8DRfTQOFRCzS"
+        },
+        {
+          "kind": "endpoint",
+          "id": "ep:DELETE /v0/locations",
+          "src": "e:worker/src/index.js:805#TABLES.tblxu8DRfTQOFRCzS"
+        }
+      ]
+    },
+    {
+      "table": "tbl:maint_history",
+      "independent_writers": 2,
+      "flag_ge3": false,
+      "independent": [
+        "facade:any-caller",
+        "front:modules/maintenance.js"
+      ],
+      "writers": [
+        {
+          "kind": "front fn",
+          "id": "fn:modules/maintenance.js#_svcSave → ep:POST /v0/maint_history",
+          "src": "d:modules/maintenance.js:1158"
+        },
+        {
+          "kind": "front fn",
+          "id": "fn:modules/maintenance.js#_svcSave → ep:PATCH /v0/maint_history/:id",
+          "src": "d:modules/maintenance.js:1155"
+        },
+        {
+          "kind": "endpoint",
+          "id": "ep:POST /v0/maint_history",
+          "src": "e:worker/src/index.js:945#TABLES.tbllPbPPd6N3zEZF1"
+        },
+        {
+          "kind": "endpoint",
+          "id": "ep:PATCH /v0/maint_history",
+          "src": "e:worker/src/index.js:945#TABLES.tbllPbPPd6N3zEZF1"
+        },
+        {
+          "kind": "endpoint",
+          "id": "ep:DELETE /v0/maint_history",
+          "src": "e:worker/src/index.js:945#TABLES.tbllPbPPd6N3zEZF1"
+        }
+      ]
+    },
+    {
+      "table": "tbl:maint_req",
+      "independent_writers": 3,
+      "flag_ge3": true,
+      "independent": [
+        "facade:any-caller",
+        "front:core/ai-chat.js",
+        "front:modules/maintenance.js"
+      ],
+      "writers": [
+        {
+          "kind": "front fn",
+          "id": "fn:modules/maintenance.js#_mreqSave → ep:POST /v0/maint_req",
+          "src": "d:modules/maintenance.js:1954"
+        },
+        {
+          "kind": "front fn",
+          "id": "fn:modules/maintenance.js#_mreqSave → ep:PATCH /v0/maint_req/:id",
+          "src": "d:modules/maintenance.js:1949"
+        },
+        {
+          "kind": "endpoint",
+          "id": "ep:POST /v0/maint_req",
+          "src": "e:worker/src/index.js:981#TABLES.tbl3vhUmzKDWhJynR"
+        },
+        {
+          "kind": "front fn",
+          "id": "fn:modules/maintenance.js#_mreqDismissExpiry → ep:POST /v0/maint_req",
+          "src": "d:modules/maintenance.js:1847"
+        },
+        {
+          "kind": "front fn",
+          "id": "fn:core/ai-chat.js#_aicExecTool → ep:POST /v0/maint_req",
+          "src": "d:core/ai-chat.js:570#create_work_order"
+        },
+        {
+          "kind": "endpoint",
+          "id": "ep:PATCH /v0/maint_req",
+          "src": "e:worker/src/index.js:981#TABLES.tbl3vhUmzKDWhJynR"
+        },
+        {
+          "kind": "endpoint",
+          "id": "ep:DELETE /v0/maint_req",
+          "src": "e:worker/src/index.js:981#TABLES.tbl3vhUmzKDWhJynR"
+        }
+      ]
+    },
+    {
+      "table": "tbl:metrics_snapshots",
+      "independent_writers": 1,
+      "flag_ge3": false,
+      "independent": [
+        "front:core/metrics.js"
+      ],
+      "writers": [
+        {
+          "kind": "front fn",
+          "id": "fn:core/metrics.js#captureMetricSnapshot",
+          "src": "d:core/metrics.js:543"
+        },
+        {
+          "kind": "front fn",
+          "id": "fn:core/metrics.js#captureMetricSnapshotBatch",
+          "src": "d:core/metrics.js:574"
+        }
+      ]
+    },
+    {
+      "table": "tbl:national_loads",
+      "independent_writers": 11,
+      "flag_ge3": true,
+      "independent": [
+        "db:delete_order_cascade",
+        "db:national_load_follow_order",
+        "db:national_load_soft_delete_unlink",
+        "db:national_orders_soft_delete_cascade",
+        "db:order_dates_follow",
+        "facade:any-caller",
+        "front:core/order-sync.js",
+        "front:modules/daily_ramp.js",
+        "front:modules/orders_intl.js",
+        "front:modules/orders_natl.js",
+        "front:modules/weekly_natl.js"
+      ],
+      "writers": [
+        {
+          "kind": "trigger",
+          "id": "trg:orders.national_load_follow_order",
+          "src": "e:db:pg_get_functiondef public.national_load_follow_order"
+        },
+        {
+          "kind": "front fn",
+          "id": "fn:modules/orders_intl.js#_syncVeroiaSwitch → ep:POST /v0/national_loads",
+          "src": "a:modules/orders_intl.js:1229-1544"
+        },
+        {
+          "kind": "front fn",
+          "id": "fn:modules/orders_intl.js#_syncVeroiaSwitch → ep:PATCH /v0/national_loads",
+          "src": "a:modules/orders_intl.js:1229-1544"
+        },
+        {
+          "kind": "endpoint",
+          "id": "ep:POST /v0/national_loads",
+          "src": "e:worker/src/index.js:1592#TABLES.tblVW42cZnfC47gTb"
+        },
+        {
+          "kind": "front fn",
+          "id": "fn:core/order-sync.js#syncGLtoCLtoNL → ep:PATCH /v0/national_loads",
+          "src": "a:core/order-sync.js:159-177"
+        },
+        {
+          "kind": "db function",
+          "id": "dbfn:delete_order_cascade",
+          "src": "e:db:pg_get_functiondef public.delete_order_cascade"
+        },
+        {
+          "kind": "front fn",
+          "id": "fn:modules/orders_intl.js#deleteIntlOrder → ep:DELETE /v0/national_loads",
+          "src": "a:modules/orders_intl.js:2965-2973#step1"
+        },
+        {
+          "kind": "front fn",
+          "id": "fn:modules/orders_natl.js#_syncNationalLoad → ep:POST /v0/national_loads",
+          "src": "a:modules/orders_natl.js:1689-1850"
+        },
+        {
+          "kind": "front fn",
+          "id": "fn:modules/weekly_natl.js#_wnSaveFromPopover → ep:PATCH /v0/national_loads",
+          "src": "a:modules/weekly_natl.js:2387,2395"
+        },
+        {
+          "kind": "front fn",
+          "id": "fn:modules/weekly_natl.js#_wnSaveMatch → ep:PATCH /v0/national_loads",
+          "src": "a:modules/weekly_natl.js:2129,2132"
+        },
+        {
+          "kind": "trigger",
+          "id": "trg:national_orders.trg_national_orders_soft_delete_cascade",
+          "src": "e:db:pg_get_functiondef public.national_orders_soft_delete_cascade"
+        },
+        {
+          "kind": "endpoint",
+          "id": "ep:PATCH /v0/national_loads",
+          "src": "e:worker/src/index.js:1592#TABLES.tblVW42cZnfC47gTb"
+        },
+        {
+          "kind": "front fn",
+          "id": "fn:modules/daily_ramp.js#_rampDone",
+          "src": "d:modules/daily_ramp.js:762"
+        },
+        {
+          "kind": "db function",
+          "id": "dbfn:national_load_follow_order",
+          "src": "e:db:pg_get_functiondef public.national_load_follow_order"
+        },
+        {
+          "kind": "db function",
+          "id": "dbfn:national_load_soft_delete_unlink",
+          "src": "e:db:pg_get_functiondef public.national_load_soft_delete_unlink"
+        },
+        {
+          "kind": "db function",
+          "id": "dbfn:national_orders_soft_delete_cascade",
+          "src": "e:db:pg_get_functiondef public.national_orders_soft_delete_cascade"
+        },
+        {
+          "kind": "db function",
+          "id": "dbfn:order_dates_follow",
+          "src": "e:db:pg_get_functiondef public.order_dates_follow"
+        },
+        {
+          "kind": "trigger",
+          "id": "trg:national_loads.national_load_soft_delete_unlink",
+          "src": "e:db:pg_get_functiondef public.national_load_soft_delete_unlink"
+        },
+        {
+          "kind": "trigger",
+          "id": "trg:orders.order_dates_follow",
+          "src": "e:db:pg_get_functiondef public.order_dates_follow"
+        },
+        {
+          "kind": "endpoint",
+          "id": "ep:DELETE /v0/national_loads",
+          "src": "e:worker/src/index.js:1592#TABLES.tblVW42cZnfC47gTb"
+        }
+      ]
+    },
+    {
+      "table": "tbl:national_orders",
+      "independent_writers": 6,
+      "flag_ge3": true,
+      "independent": [
+        "db:delete_order_cascade",
+        "facade:any-caller",
+        "front:modules/daily_ramp.js",
+        "front:modules/invoicing.js",
+        "front:modules/orders_natl.js",
+        "front:modules/weekly_natl.js"
+      ],
+      "writers": [
+        {
+          "kind": "db function",
+          "id": "dbfn:delete_order_cascade",
+          "src": "e:db:pg_get_functiondef public.delete_order_cascade"
+        },
+        {
+          "kind": "front fn",
+          "id": "fn:modules/orders_natl.js#deleteNatlOrder → ep:DELETE /v0/national_orders",
+          "src": "a:modules/orders_natl.js:1862-1994"
+        },
+        {
+          "kind": "front fn",
+          "id": "fn:modules/orders_natl.js#submitNatlOrder → ep:POST /v0/national_orders",
+          "src": "a:modules/orders_natl.js:1400"
+        },
+        {
+          "kind": "front fn",
+          "id": "fn:modules/orders_natl.js#submitNatlOrder → ep:PATCH /v0/national_orders",
+          "src": "a:modules/orders_natl.js:1339"
+        },
+        {
+          "kind": "endpoint",
+          "id": "ep:POST /v0/national_orders",
+          "src": "e:worker/src/index.js:1459#TABLES.tblGHCCsTMqAy4KR2"
+        },
+        {
+          "kind": "front fn",
+          "id": "fn:modules/weekly_natl.js#_wnSaveFromPopover → ep:PATCH /v0/national_orders",
+          "src": "a:modules/weekly_natl.js:2414"
+        },
+        {
+          "kind": "endpoint",
+          "id": "ep:DELETE /v0/national_orders",
+          "src": "e:worker/src/index.js:1459#TABLES.tblGHCCsTMqAy4KR2"
+        },
+        {
+          "kind": "front fn",
+          "id": "fn:modules/invoicing.js#_invWriteInvoice → ep:PATCH /v0/national_orders",
+          "src": "c:modules/invoicing.js:847#atPatch(TABLES.NAT_ORDERS,...)"
+        },
+        {
+          "kind": "front fn",
+          "id": "fn:modules/daily_ramp.js#_rampDone",
+          "src": "d:modules/daily_ramp.js:738,774"
+        },
+        {
+          "kind": "endpoint",
+          "id": "ep:PATCH /v0/national_orders",
+          "src": "e:worker/src/index.js:1459#TABLES.tblGHCCsTMqAy4KR2"
+        }
+      ]
+    },
+    {
+      "table": "tbl:order_stops",
+      "independent_writers": 9,
+      "flag_ge3": true,
+      "independent": [
+        "db:delete_order_cascade",
+        "db:national_loads_soft_delete_cascade",
+        "db:national_orders_soft_delete_cascade",
+        "db:order_dates_follow",
+        "facade:any-caller",
+        "front:core/stops-helpers.js",
+        "front:modules/daily_ops.js",
+        "front:modules/orders_intl.js",
+        "sql:migration 029 stop stamps backfill"
+      ],
+      "writers": [
+        {
+          "kind": "front fn",
+          "id": "fn:core/stops-helpers.js#stopsSave → ep:POST /v0/order_stops",
+          "src": "a:core/stops-helpers.js:87#atCreateBatch"
+        },
+        {
+          "kind": "front fn",
+          "id": "fn:core/stops-helpers.js#stopsSave → ep:PATCH /v0/order_stops",
+          "src": "a:core/stops-helpers.js:91#atPatchBatch"
+        },
+        {
+          "kind": "front fn",
+          "id": "fn:core/stops-helpers.js#stopsSave → ep:DELETE /v0/order_stops",
+          "src": "a:core/stops-helpers.js:95#atDelete"
+        },
+        {
+          "kind": "endpoint",
+          "id": "ep:POST /v0/order_stops",
+          "src": "e:worker/src/index.js:1550#TABLES.tblaeY5QOHAS1gyE8"
+        },
+        {
+          "kind": "db function",
+          "id": "dbfn:delete_order_cascade",
+          "src": "e:db:pg_get_functiondef public.delete_order_cascade"
+        },
+        {
+          "kind": "front fn",
+          "id": "fn:modules/orders_intl.js#deleteIntlOrder → ep:DELETE /v0/order_stops",
+          "src": "a:modules/orders_intl.js:3028#step5"
+        },
+        {
+          "kind": "front fn",
+          "id": "fn:modules/daily_ops.js#_opsMarkStop → ep:PATCH /v0/order_stops",
+          "src": "a:modules/daily_ops.js:801"
+        },
+        {
+          "kind": "trigger",
+          "id": "trg:national_orders.trg_national_orders_soft_delete_cascade",
+          "src": "e:db:pg_get_functiondef public.national_orders_soft_delete_cascade"
+        },
+        {
+          "kind": "endpoint",
+          "id": "ep:PATCH /v0/order_stops",
+          "src": "e:worker/src/index.js:1550#TABLES.tblaeY5QOHAS1gyE8"
+        },
+        {
+          "kind": "db function",
+          "id": "dbfn:national_loads_soft_delete_cascade",
+          "src": "e:db:pg_get_functiondef public.national_loads_soft_delete_cascade"
+        },
+        {
+          "kind": "db function",
+          "id": "dbfn:national_orders_soft_delete_cascade",
+          "src": "e:db:pg_get_functiondef public.national_orders_soft_delete_cascade"
+        },
+        {
+          "kind": "db function",
+          "id": "dbfn:order_dates_follow",
+          "src": "e:db:pg_get_functiondef public.order_dates_follow"
+        },
+        {
+          "kind": "trigger",
+          "id": "trg:national_loads.trg_national_loads_soft_delete_cascade",
+          "src": "e:db:pg_get_functiondef public.national_loads_soft_delete_cascade"
+        },
+        {
+          "kind": "trigger",
+          "id": "trg:orders.order_dates_follow",
+          "src": "e:db:pg_get_functiondef public.order_dates_follow"
+        },
+        {
+          "kind": "endpoint",
+          "id": "ep:DELETE /v0/order_stops",
+          "src": "e:worker/src/index.js:1550#TABLES.tblaeY5QOHAS1gyE8"
+        },
+        {
+          "kind": "direct SQL / migration",
+          "id": "migration 029 stop stamps backfill",
+          "src": "worker/migrations/029_stop_stamps_backfill.sql:13"
+        }
+      ]
+    },
+    {
+      "table": "tbl:orders",
+      "independent_writers": 23,
+      "flag_ge3": true,
+      "independent": [
+        "db:delete_order_cascade",
+        "db:order_dates_follow",
+        "db:order_leg_status_sync",
+        "db:order_legs_to_parent",
+        "db:order_parent_status",
+        "db:order_parent_to_legs",
+        "db:order_soft_delete_unlink",
+        "db:rt_link_split",
+        "db:rt_sync_from_order",
+        "db:rt_sync_legs",
+        "db:rt_sync_to_orders",
+        "facade:any-caller",
+        "front:core/ai-chat.js",
+        "front:core/orders-list.js",
+        "front:modules/daily_ops.js",
+        "front:modules/daily_ramp.js",
+        "front:modules/invoicing.js",
+        "front:modules/orders_intl.js",
+        "front:modules/pallet_upload.js",
+        "front:modules/weekly_intl.js",
+        "sql:migration 023 backfill",
+        "sql:migration 026 group vehicle backfill",
+        "worker:fn:worker/src/index.js#handleFacadeUpdate"
+      ],
+      "writers": [
+        {
+          "kind": "front fn",
+          "id": "fn:modules/orders_intl.js#submitIntlOrder → ep:POST /v0/orders",
+          "src": "a:modules/orders_intl.js:2021#atCreate"
+        },
+        {
+          "kind": "front fn",
+          "id": "fn:modules/orders_intl.js#submitIntlOrder → ep:PATCH /v0/orders",
+          "src": "a:modules/orders_intl.js:2020#atSafePatch"
+        },
+        {
+          "kind": "endpoint",
+          "id": "ep:POST /v0/orders",
+          "src": "e:worker/src/index.js:1157#TABLES.tblgHlNmLBH3JTdIM"
+        },
+        {
+          "kind": "endpoint",
+          "id": "ep:PATCH /v0/orders",
+          "src": "e:worker/src/index.js:1157#TABLES.tblgHlNmLBH3JTdIM"
+        },
+        {
+          "kind": "trigger",
+          "id": "trg:orders.order_soft_delete_unlink",
+          "src": "e:db:pg_get_functiondef public.order_soft_delete_unlink"
+        },
+        {
+          "kind": "trigger",
+          "id": "trg:ct_rt_legs.rt_sync_legs",
+          "src": "e:db:pg_get_functiondef public.rt_sync_legs"
+        },
+        {
+          "kind": "trigger",
+          "id": "trg:ct_round_trips.rt_sync_to_orders",
+          "src": "e:db:pg_get_functiondef public.rt_sync_to_orders"
+        },
+        {
+          "kind": "front fn",
+          "id": "fn:modules/orders_intl.js#deleteIntlOrder → ep:DELETE /v0/orders",
+          "src": "a:modules/orders_intl.js:2953#atSoftDelete_step0"
+        },
+        {
+          "kind": "front fn",
+          "id": "fn:core/orders-list.js#cancelOrder → ep:PATCH /v0/orders",
+          "src": "a:core/orders-list.js:205"
+        },
+        {
+          "kind": "front fn",
+          "id": "fn:modules/orders_intl.js#_intlChangeStatus → ep:PATCH /v0/orders",
+          "src": "a:modules/orders_intl.js:2124-2141"
+        },
+        {
+          "kind": "front fn",
+          "id": "fn:modules/weekly_intl.js#_wiDoSplit → ep:POST /v0/orders",
+          "src": "a:modules/weekly_intl.js:3950-4060"
+        },
+        {
+          "kind": "front fn",
+          "id": "fn:modules/weekly_intl.js#_wiDoSplit → ep:PATCH /v0/orders",
+          "src": "a:modules/weekly_intl.js:3950-4060"
+        },
+        {
+          "kind": "front fn",
+          "id": "fn:modules/weekly_intl.js#_wiSaveFromPopover → ep:PATCH /v0/orders",
+          "src": "a:modules/weekly_intl.js:3246,3254,3310"
+        },
+        {
+          "kind": "front fn",
+          "id": "fn:modules/weekly_intl.js#_wiSaveFromPopover",
+          "src": "a:modules/weekly_intl.js:3229#Assigned_At_stamp"
+        },
+        {
+          "kind": "front fn",
+          "id": "fn:modules/weekly_intl.js#_wiClear → ep:PATCH /v0/orders",
+          "src": "a:modules/weekly_intl.js:3411-3410"
+        },
+        {
+          "kind": "front fn",
+          "id": "fn:modules/weekly_intl.js#_wiSaveImportMatch → ep:PATCH /v0/orders",
+          "src": "a:modules/weekly_intl.js:2628-2803"
+        },
+        {
+          "kind": "front fn",
+          "id": "fn:modules/weekly_intl.js#_wiRotAdd → ep:PATCH /v0/orders",
+          "src": "a:modules/weekly_intl.js:4225-4283"
+        },
+        {
+          "kind": "front fn",
+          "id": "fn:modules/weekly_intl.js#_wiImpShift → ep:PATCH /v0/orders",
+          "src": "a:modules/weekly_intl.js:4672-4698"
+        },
+        {
+          "kind": "front fn",
+          "id": "fn:modules/weekly_intl.js#_wiDoHandoverChange → ep:PATCH /v0/orders",
+          "src": "a:modules/weekly_intl.js:1470-1500"
+        },
+        {
+          "kind": "front fn",
+          "id": "fn:modules/daily_ops.js#_opsStatFinal → ep:PATCH /v0/orders",
+          "src": "a:modules/daily_ops.js:914"
+        },
+        {
+          "kind": "front fn",
+          "id": "fn:modules/daily_ops.js#_opsDelFinal → ep:PATCH /v0/orders",
+          "src": "a:modules/daily_ops.js:939"
+        },
+        {
+          "kind": "front fn",
+          "id": "fn:modules/daily_ops.js#_opsStatFinal",
+          "src": "a:modules/daily_ops.js:903-914"
+        },
+        {
+          "kind": "front fn",
+          "id": "fn:modules/daily_ops.js#_opsChangeDayGo → ep:PATCH /v0/orders",
+          "src": "a:modules/daily_ops.js:1042"
+        },
+        {
+          "kind": "front fn",
+          "id": "fn:modules/daily_ops.js#_opsSvF → ep:PATCH /v0/orders",
+          "src": "a:modules/daily_ops.js:781"
+        },
+        {
+          "kind": "front fn",
+          "id": "fn:modules/invoicing.js#renderInvoicing → ep:PATCH /v0/orders",
+          "src": "c:modules/invoicing.js:306#atGet (read side; write side below)"
+        },
+        {
+          "kind": "front fn",
+          "id": "fn:modules/invoicing.js#_invWriteInvoice → ep:PATCH /v0/orders",
+          "src": "c:modules/invoicing.js:847#atPatch(TABLES.ORDERS,...)"
+        },
+        {
+          "kind": "worker fn",
+          "id": "fn:worker/src/index.js#handleFacadeUpdate",
+          "src": "c:worker/src/index.js:2794#dbUpdate"
+        },
+        {
+          "kind": "front fn",
+          "id": "fn:modules/invoicing.js#_invUndoInvoice → ep:PATCH /v0/orders",
+          "src": "c:modules/invoicing.js:908#atPatch"
+        },
+        {
+          "kind": "front fn",
+          "id": "fn:modules/pallet_upload.js#openPalletUpload",
+          "src": "c:modules/pallet_upload.js:573-580#atPatch"
+        },
+        {
+          "kind": "front fn",
+          "id": "fn:modules/daily_ramp.js#_rampDone",
+          "src": "d:modules/daily_ramp.js:722"
+        },
+        {
+          "kind": "front fn",
+          "id": "fn:core/ai-chat.js#_aicExecTool → ep:PATCH /v0/orders/:id",
+          "src": "d:core/ai-chat.js:577; _TABLE_MAP orders->ORDERS (core/ai-chat.js:469)"
+        },
+        {
+          "kind": "db function",
+          "id": "dbfn:delete_order_cascade",
+          "src": "e:db:pg_get_functiondef public.delete_order_cascade"
+        },
+        {
+          "kind": "db function",
+          "id": "dbfn:order_dates_follow",
+          "src": "e:db:pg_get_functiondef public.order_dates_follow"
+        },
+        {
+          "kind": "db function",
+          "id": "dbfn:order_legs_to_parent",
+          "src": "e:db:pg_get_functiondef public.order_legs_to_parent"
+        },
+        {
+          "kind": "db function",
+          "id": "dbfn:order_parent_status",
+          "src": "e:db:pg_get_functiondef public.order_parent_status"
+        },
+        {
+          "kind": "db function",
+          "id": "dbfn:order_parent_to_legs",
+          "src": "e:db:pg_get_functiondef public.order_parent_to_legs"
+        },
+        {
+          "kind": "db function",
+          "id": "dbfn:order_soft_delete_unlink",
+          "src": "e:db:pg_get_functiondef public.order_soft_delete_unlink"
+        },
+        {
+          "kind": "db function",
+          "id": "dbfn:rt_sync_from_order",
+          "src": "e:db:pg_get_functiondef public.rt_sync_from_order"
+        },
+        {
+          "kind": "db function",
+          "id": "dbfn:rt_sync_legs",
+          "src": "e:db:pg_get_functiondef public.rt_sync_legs"
+        },
+        {
+          "kind": "db function",
+          "id": "dbfn:rt_sync_to_orders",
+          "src": "e:db:pg_get_functiondef public.rt_sync_to_orders"
+        },
+        {
+          "kind": "trigger",
+          "id": "trg:orders.order_dates_follow",
+          "src": "e:db:pg_get_functiondef public.order_dates_follow"
+        },
+        {
+          "kind": "trigger",
+          "id": "trg:orders.order_leg_status_sync",
+          "src": "e:db:pg_get_functiondef public.order_parent_status"
+        },
+        {
+          "kind": "trigger",
+          "id": "trg:orders.order_legs_to_parent",
+          "src": "e:db:pg_get_functiondef public.order_legs_to_parent"
+        },
+        {
+          "kind": "trigger",
+          "id": "trg:orders.order_parent_to_legs",
+          "src": "e:db:pg_get_functiondef public.order_parent_to_legs"
+        },
+        {
+          "kind": "trigger",
+          "id": "trg:orders.rt_link_split",
+          "src": "e:db:pg_get_functiondef public.rt_sync_legs"
+        },
+        {
+          "kind": "trigger",
+          "id": "trg:orders.rt_sync_from_order",
+          "src": "z:worker/migrations/013_rt_sync.sql:117-131"
+        },
+        {
+          "kind": "endpoint",
+          "id": "ep:DELETE /v0/orders",
+          "src": "e:worker/src/index.js:1157#TABLES.tblgHlNmLBH3JTdIM"
+        },
+        {
+          "kind": "direct SQL / migration",
+          "id": "migration 023 backfill",
+          "src": "worker/migrations/023_soft_delete_unlink.sql:86-91"
+        },
+        {
+          "kind": "direct SQL / migration",
+          "id": "migration 026 group vehicle backfill",
+          "src": "worker/migrations/026_group_vehicle_backfill.sql:31"
+        }
+      ]
+    },
+    {
+      "table": "tbl:pallet_ledger_partners",
+      "independent_writers": 2,
+      "flag_ge3": false,
+      "independent": [
+        "db:delete_order_cascade",
+        "facade:any-caller"
+      ],
+      "writers": [
+        {
+          "kind": "db function",
+          "id": "dbfn:delete_order_cascade",
+          "src": "e:db:pg_get_functiondef public.delete_order_cascade"
+        },
+        {
+          "kind": "endpoint",
+          "id": "ep:POST /v0/pallet_ledger_partners",
+          "src": "e:worker/src/index.js:1125#TABLES.tblAUixdjwpgnJ1hK"
+        },
+        {
+          "kind": "endpoint",
+          "id": "ep:PATCH /v0/pallet_ledger_partners",
+          "src": "e:worker/src/index.js:1125#TABLES.tblAUixdjwpgnJ1hK"
+        },
+        {
+          "kind": "endpoint",
+          "id": "ep:DELETE /v0/pallet_ledger_partners",
+          "src": "e:worker/src/index.js:1125#TABLES.tblAUixdjwpgnJ1hK"
+        }
+      ]
+    },
+    {
+      "table": "tbl:pallet_ledger_suppliers",
+      "independent_writers": 3,
+      "flag_ge3": true,
+      "independent": [
+        "db:delete_order_cascade",
+        "facade:any-caller",
+        "front:modules/pallet_upload.js"
+      ],
+      "writers": [
+        {
+          "kind": "front fn",
+          "id": "fn:modules/pallet_upload.js#openPalletUpload",
+          "src": "c:modules/pallet_upload.js (OCR extraction target, per orders_intl.js:2163-2165 comment)"
+        },
+        {
+          "kind": "db function",
+          "id": "dbfn:delete_order_cascade",
+          "src": "e:db:pg_get_functiondef public.delete_order_cascade"
+        },
+        {
+          "kind": "endpoint",
+          "id": "ep:POST /v0/pallet_ledger_suppliers",
+          "src": "e:worker/src/index.js:1089#TABLES.tblAAH3N1bIcBRPXi"
+        },
+        {
+          "kind": "endpoint",
+          "id": "ep:PATCH /v0/pallet_ledger_suppliers",
+          "src": "e:worker/src/index.js:1089#TABLES.tblAAH3N1bIcBRPXi"
+        },
+        {
+          "kind": "endpoint",
+          "id": "ep:DELETE /v0/pallet_ledger_suppliers",
+          "src": "e:worker/src/index.js:1089#TABLES.tblAAH3N1bIcBRPXi"
+        }
+      ]
+    },
+    {
+      "table": "tbl:partner_assignments",
+      "independent_writers": 5,
+      "flag_ge3": true,
+      "independent": [
+        "db:order_soft_delete_unlink",
+        "facade:any-caller",
+        "front:core/pa-helpers.js",
+        "front:modules/orders_intl.js",
+        "sql:migration 023 backfill"
+      ],
+      "writers": [
+        {
+          "kind": "front fn",
+          "id": "fn:modules/orders_intl.js#deleteIntlOrder → ep:DELETE /v0/partner_assignments",
+          "src": "a:modules/orders_intl.js:3041#step5b"
+        },
+        {
+          "kind": "front fn",
+          "id": "fn:core/pa-helpers.js#paUpsert",
+          "src": "a:core/pa-helpers.js:46-49"
+        },
+        {
+          "kind": "front fn",
+          "id": "fn:core/pa-helpers.js#paDelete",
+          "src": "a:core/pa-helpers.js:60"
+        },
+        {
+          "kind": "front fn",
+          "id": "fn:core/pa-helpers.js#paSyncStatus",
+          "src": "a:core/pa-helpers.js:78"
+        },
+        {
+          "kind": "endpoint",
+          "id": "ep:POST /v0/partner_assignments",
+          "src": "e:worker/src/index.js:1753#TABLES.tblUhgqnmiam5MGNK"
+        },
+        {
+          "kind": "endpoint",
+          "id": "ep:PATCH /v0/partner_assignments",
+          "src": "e:worker/src/index.js:1753#TABLES.tblUhgqnmiam5MGNK"
+        },
+        {
+          "kind": "endpoint",
+          "id": "ep:DELETE /v0/partner_assignments",
+          "src": "e:worker/src/index.js:1753#TABLES.tblUhgqnmiam5MGNK"
+        },
+        {
+          "kind": "db function",
+          "id": "dbfn:order_soft_delete_unlink",
+          "src": "e:db:pg_get_functiondef public.order_soft_delete_unlink"
+        },
+        {
+          "kind": "trigger",
+          "id": "trg:orders.order_soft_delete_unlink",
+          "src": "z:worker/migrations/023_soft_delete_unlink.sql:69-75"
+        },
+        {
+          "kind": "direct SQL / migration",
+          "id": "migration 023 backfill",
+          "src": "worker/migrations/023_soft_delete_unlink.sql:92-93"
+        }
+      ]
+    },
+    {
+      "table": "tbl:partners",
+      "independent_writers": 2,
+      "flag_ge3": false,
+      "independent": [
+        "facade:any-caller",
+        "front:core/entity.js"
+      ],
+      "writers": [
+        {
+          "kind": "front fn",
+          "id": "fn:core/entity.js#saveEntityRecord → ep:POST /v0/partners",
+          "src": "d:core/entity.js:2940"
+        },
+        {
+          "kind": "endpoint",
+          "id": "ep:POST /v0/partners",
+          "src": "e:worker/src/index.js:850#TABLES.tblLHl5m8bqONfhWv"
+        },
+        {
+          "kind": "endpoint",
+          "id": "ep:PATCH /v0/partners",
+          "src": "e:worker/src/index.js:850#TABLES.tblLHl5m8bqONfhWv"
+        },
+        {
+          "kind": "endpoint",
+          "id": "ep:DELETE /v0/partners",
+          "src": "e:worker/src/index.js:850#TABLES.tblLHl5m8bqONfhWv"
+        }
+      ]
+    },
+    {
+      "table": "tbl:pl_movements",
+      "independent_writers": 2,
+      "flag_ge3": false,
+      "independent": [
+        "front:core/pallet-feed.js",
+        "front:modules/pallet_ledger.js"
+      ],
+      "writers": [
+        {
+          "kind": "front fn",
+          "id": "fn:modules/pallet_ledger.js#plvDoConfirm → ep:PATCH /pallets/movements/:id",
+          "src": "c:modules/pallet_ledger.js:1026"
+        },
+        {
+          "kind": "front fn",
+          "id": "fn:modules/pallet_ledger.js#plvDoConfirm → ep:POST /pallets/movements/:id/confirm",
+          "src": "c:modules/pallet_ledger.js:1027"
+        },
+        {
+          "kind": "endpoint",
+          "id": "ep:PATCH /pallets/movements/:id",
+          "src": "c:worker/src/index.js:4423#ctDbPatch"
+        },
+        {
+          "kind": "endpoint",
+          "id": "ep:POST /pallets/movements/:id/confirm",
+          "src": "c:worker/src/index.js:4463-4468#ctDbPatch"
+        },
+        {
+          "kind": "front fn",
+          "id": "fn:modules/pallet_ledger.js#plvPanelReverse → ep:POST /pallets/movements/:id/reverse",
+          "src": "c:modules/pallet_ledger.js:1108"
+        },
+        {
+          "kind": "endpoint",
+          "id": "ep:POST /pallets/movements/:id/reverse",
+          "src": "c:worker/src/index.js:4489-4497#ctDbPatch,dbInsert"
+        },
+        {
+          "kind": "front fn",
+          "id": "fn:modules/pallet_ledger.js#plvDoFix → ep:POST /pallets/movements/:id/reverse",
+          "src": "c:modules/pallet_ledger.js:1145"
+        },
+        {
+          "kind": "front fn",
+          "id": "fn:modules/pallet_ledger.js#plvDoFix → ep:POST /pallets/movements/:id/confirm",
+          "src": "c:modules/pallet_ledger.js:1154"
+        },
+        {
+          "kind": "front fn",
+          "id": "fn:core/pallet-feed.js#plOnOrderSaved → ep:POST /pallets/movements",
+          "src": "c:core/pallet-feed.js:69,76"
+        },
+        {
+          "kind": "front fn",
+          "id": "fn:core/pallet-feed.js#plOnDelivered → ep:POST /pallets/movements",
+          "src": "c:core/pallet-feed.js:113,121#body.confirm=true"
+        },
+        {
+          "kind": "front fn",
+          "id": "fn:core/pallet-feed.js#plOnIntlPartnerAssigned → ep:POST /pallets/movements",
+          "src": "c:core/pallet-feed.js:164"
+        },
+        {
+          "kind": "endpoint",
+          "id": "ep:POST /pallets/movements",
+          "src": "c:worker/src/index.js:4400#dbInsert"
+        }
+      ]
+    },
+    {
+      "table": "tbl:ramp",
+      "independent_writers": 4,
+      "flag_ge3": true,
+      "independent": [
+        "db:delete_order_cascade",
+        "db:national_loads_soft_delete_cascade",
+        "facade:any-caller",
+        "front:modules/daily_ramp.js"
+      ],
+      "writers": [
+        {
+          "kind": "front fn",
+          "id": "fn:modules/daily_ramp.js#_rampAutoSync → ep:POST /v0/ramp",
+          "src": "d:modules/daily_ramp.js:324"
+        },
+        {
+          "kind": "endpoint",
+          "id": "ep:POST /v0/ramp",
+          "src": "e:worker/src/index.js:1009#TABLES.tblT8W5WcuToBQNiY"
+        },
+        {
+          "kind": "front fn",
+          "id": "fn:modules/daily_ramp.js#_rampDone → ep:PATCH /v0/ramp/:id",
+          "src": "d:modules/daily_ramp.js:701"
+        },
+        {
+          "kind": "db function",
+          "id": "dbfn:delete_order_cascade",
+          "src": "e:db:pg_get_functiondef public.delete_order_cascade"
+        },
+        {
+          "kind": "db function",
+          "id": "dbfn:national_loads_soft_delete_cascade",
+          "src": "e:db:pg_get_functiondef public.national_loads_soft_delete_cascade"
+        },
+        {
+          "kind": "trigger",
+          "id": "trg:national_loads.trg_national_loads_soft_delete_cascade",
+          "src": "e:db:pg_get_functiondef public.national_loads_soft_delete_cascade"
+        },
+        {
+          "kind": "endpoint",
+          "id": "ep:PATCH /v0/ramp",
+          "src": "e:worker/src/index.js:1009#TABLES.tblT8W5WcuToBQNiY"
+        },
+        {
+          "kind": "endpoint",
+          "id": "ep:DELETE /v0/ramp",
+          "src": "e:worker/src/index.js:1009#TABLES.tblT8W5WcuToBQNiY"
+        }
+      ]
+    },
+    {
+      "table": "tbl:scan_examples",
+      "independent_writers": 2,
+      "flag_ge3": false,
+      "independent": [
+        "facade:any-caller",
+        "front:core/scan-helpers.js"
+      ],
+      "writers": [
+        {
+          "kind": "front fn",
+          "id": "fn:core/scan-helpers.js#scanSaveCorrection → ep:POST /v0/scan_examples",
+          "src": "d:core/scan-helpers.js:353,360"
+        },
+        {
+          "kind": "endpoint",
+          "id": "ep:POST /v0/scan_examples",
+          "src": "e:worker/src/index.js:1743#TABLES.tblScanTraining000"
+        },
+        {
+          "kind": "endpoint",
+          "id": "ep:PATCH /v0/scan_examples",
+          "src": "e:worker/src/index.js:1743#TABLES.tblScanTraining000"
+        },
+        {
+          "kind": "endpoint",
+          "id": "ep:DELETE /v0/scan_examples",
+          "src": "e:worker/src/index.js:1743#TABLES.tblScanTraining000"
+        }
+      ]
+    },
+    {
+      "table": "tbl:trailers",
+      "independent_writers": 4,
+      "flag_ge3": true,
+      "independent": [
+        "facade:any-caller",
+        "front:core/ai-chat.js",
+        "front:core/entity.js",
+        "front:modules/maintenance.js"
+      ],
+      "writers": [
+        {
+          "kind": "front fn",
+          "id": "fn:core/entity.js#saveEntityRecord → ep:POST /v0/trailers",
+          "src": "d:core/entity.js:2940"
+        },
+        {
+          "kind": "endpoint",
+          "id": "ep:POST /v0/trailers",
+          "src": "e:worker/src/index.js:902#TABLES.tblDcrqRJXzPrtYLm"
+        },
+        {
+          "kind": "front fn",
+          "id": "fn:modules/maintenance.js#_expInlineEdit → ep:PATCH /v0/trailers/:id",
+          "src": "d:modules/maintenance.js:489"
+        },
+        {
+          "kind": "front fn",
+          "id": "fn:core/ai-chat.js#_aicExecTool → ep:PATCH /v0/trailers/:id",
+          "src": "d:core/ai-chat.js:577"
+        },
+        {
+          "kind": "endpoint",
+          "id": "ep:PATCH /v0/trailers",
+          "src": "e:worker/src/index.js:902#TABLES.tblDcrqRJXzPrtYLm"
+        },
+        {
+          "kind": "endpoint",
+          "id": "ep:DELETE /v0/trailers",
+          "src": "e:worker/src/index.js:902#TABLES.tblDcrqRJXzPrtYLm"
+        }
+      ]
+    },
+    {
+      "table": "tbl:trucks",
+      "independent_writers": 4,
+      "flag_ge3": true,
+      "independent": [
+        "facade:any-caller",
+        "front:core/ai-chat.js",
+        "front:core/entity.js",
+        "front:modules/maintenance.js"
+      ],
+      "writers": [
+        {
+          "kind": "front fn",
+          "id": "fn:core/entity.js#saveEntityRecord → ep:POST /v0/trucks",
+          "src": "d:core/entity.js:2940"
+        },
+        {
+          "kind": "endpoint",
+          "id": "ep:POST /v0/trucks",
+          "src": "e:worker/src/index.js:878#TABLES.tblEAPExIAjiA3asD"
+        },
+        {
+          "kind": "front fn",
+          "id": "fn:modules/maintenance.js#_expInlineEdit → ep:PATCH /v0/trucks/:id",
+          "src": "d:modules/maintenance.js:489"
+        },
+        {
+          "kind": "front fn",
+          "id": "fn:core/ai-chat.js#_aicExecTool → ep:PATCH /v0/trucks/:id",
+          "src": "d:core/ai-chat.js:577"
+        },
+        {
+          "kind": "endpoint",
+          "id": "ep:PATCH /v0/trucks",
+          "src": "e:worker/src/index.js:878#TABLES.tblEAPExIAjiA3asD"
+        },
+        {
+          "kind": "endpoint",
+          "id": "ep:DELETE /v0/trucks",
+          "src": "e:worker/src/index.js:878#TABLES.tblEAPExIAjiA3asD"
+        }
+      ]
+    },
+    {
+      "table": "tbl:users",
+      "independent_writers": 1,
+      "flag_ge3": false,
+      "independent": [
+        "db:upsert_user"
+      ],
+      "writers": [
+        {
+          "kind": "db function",
+          "id": "dbfn:upsert_user",
+          "src": "e:db:pg_get_functiondef public.upsert_user"
+        }
+      ]
+    },
+    {
+      "table": "tbl:workshops",
+      "independent_writers": 2,
+      "flag_ge3": false,
+      "independent": [
+        "facade:any-caller",
+        "front:core/entity.js"
+      ],
+      "writers": [
+        {
+          "kind": "front fn",
+          "id": "fn:core/entity.js#saveEntityRecord → ep:POST /v0/workshops",
+          "src": "d:core/entity.js:2940"
+        },
+        {
+          "kind": "endpoint",
+          "id": "ep:POST /v0/workshops",
+          "src": "e:worker/src/index.js:923#TABLES.tblMiFxbm9ky8PCQi"
+        },
+        {
+          "kind": "endpoint",
+          "id": "ep:PATCH /v0/workshops",
+          "src": "e:worker/src/index.js:923#TABLES.tblMiFxbm9ky8PCQi"
+        },
+        {
+          "kind": "endpoint",
+          "id": "ep:DELETE /v0/workshops",
+          "src": "e:worker/src/index.js:923#TABLES.tblMiFxbm9ky8PCQi"
+        }
+      ]
+    }
+  ],
+  "conflicts": [
+    {
+      "topic": "RT legs & partner assignment on order delete",
+      "parts": [
+        "a",
+        "e"
+      ],
+      "primary_source": "worker/migrations/023_soft_delete_unlink.sql:3-19,56-75 · 013_rt_sync.sql:91-100",
+      "resolution": "DB triggers (023 order_soft_delete_unlink, 013 rt_sync_from_order) remove RT legs and retire PA on ANY soft delete; front steps in deleteIntlOrder are redundant belts, not the only mechanism",
+      "wrong_part": "a (FM-a-03 gap text / part-a.md §1)"
+    },
+    {
+      "topic": "Cancelled order → round trip",
+      "parts": [
+        "a"
+      ],
+      "primary_source": "worker/migrations/013_rt_sync.sql:91-100,65-71",
+      "resolution": "rt_sync_from_order deletes the leg on status Cancelled and rt_recompute cancels an RT left with 0 legs — independent of cancelOrder/changedFields",
+      "wrong_part": "a (FM-a-04 «round trip is never cancelled»)"
+    },
+    {
+      "topic": "Un-assign (_wiClear) and the RT vehicle",
+      "parts": [
+        "a"
+      ],
+      "primary_source": "worker/migrations/013_rt_sync.sql:104-131",
+      "resolution": "the RT does NOT keep the old vehicle: DB copies NULL to the RT and to all sibling orders",
+      "wrong_part": "a (FM-a-06)"
+    },
+    {
+      "topic": "Closed RT is history (never auto-cancelled, keeps its legs)",
+      "parts": [
+        "e",
+        "b"
+      ],
+      "primary_source": "worker/migrations/013_rt_sync.sql:91-100 + 53-71 vs 023:56-66 and core/rt-feed.js@origin/main:12",
+      "resolution": "code-vs-code: 013 fires after 023 (alphabetical) and deletes closed legs; closed RT with no legs becomes cancelled. Rule holds only in the front. Needs owner decision (FM-z-01)",
+      "wrong_part": "none of the parts — 023 intent and rt-feed rule are ineffective; part-e drew both triggers without noticing the clash"
+    },
+    {
+      "topic": "Manual close of RT with open leg (ctCloseRt)",
+      "parts": [
+        "b"
+      ],
+      "primary_source": "worker/migrations/046_rt_auto_close.sql@origin/main:304-331 · worker/src/index.js@origin/main:3258-3270",
+      "resolution": "guarded since 22/9 23:05: rt_status_guard raises, Worker returns 409 with reason",
+      "wrong_part": "b (FM-b-01 true at 549a2a4, superseded on origin/main; «046 unknown» gap closed)"
+    },
+    {
+      "topic": "Front closes RTs (rt-feed close, _rtOpenLegs, _wiRotAdd closed-RT revert)",
+      "parts": [
+        "a",
+        "b"
+      ],
+      "primary_source": "git diff 549a2a4 origin/main -- core/rt-feed.js modules/weekly_intl.js",
+      "resolution": "removed on origin/main; front only attaches legs, DB derives status",
+      "wrong_part": "a (edges rtOnOrderSaved→PATCH /costs/rt {status:closed} at rt-feed.js:441 and FM-a-08 are stale vs main)"
+    },
+    {
+      "topic": "Trigger inventory after 046",
+      "parts": [
+        "a",
+        "b",
+        "e",
+        "coordinator brief"
+      ],
+      "primary_source": "worker/migrations/046_rt_auto_close.sql@origin/main:273-282,328-339,352-363",
+      "resolution": "046 adds THREE triggers (rt_status_guard, rt_z_auto_close_legs AND rt_z_auto_close_order on orders) and drops rt_reopen_on_leg: 25 triggers in 7 tables (orders 13, ct_rt_legs 2, ct_round_trips 3). Edges to trg:ct_rt_legs.rt_reopen_on_leg in a/b/e are dead",
+      "wrong_part": "coordinator brief (listed 2 triggers); a/b/e stale by time, not by error"
+    },
+    {
+      "topic": "Accountant write on orders (invoiced)",
+      "parts": [
+        "c",
+        "e",
+        "CLAUDE.md"
+      ],
+      "primary_source": "worker/src/index.js@origin/main PERMISSIONS accountant orders:[GET,PATCH], national_orders:[GET,PATCH] (~l.486-517)",
+      "resolution": "accountant CAN PATCH orders/national_orders; CLAUDE.md «Invoiced 0/89 … accountant `*`:GET → 403» and «Χτισμένα … Invoicing» lines are stale",
+      "wrong_part": "CLAUDE.md (parts c/e are right)"
+    },
+    {
+      "topic": "National legs and auto close",
+      "parts": [
+        "046 header"
+      ],
+      "primary_source": "worker/migrations/046_rt_auto_close.sql@origin/main:160-169,199-222 vs 78-81",
+      "resolution": "code counts only order legs: a mixed RT closes; only pure-national RTs are untouched",
+      "wrong_part": "046 header comment (latent, FM-z-08)"
+    },
+    {
+      "topic": "NULL order status = open?",
+      "parts": [
+        "checks catalog",
+        "046"
+      ],
+      "primary_source": "worker/migrations/046_rt_auto_close.sql@origin/main:161-163,318-319 vs tms-auditor/checks/B-02.sql, B-03.sql",
+      "resolution": "046 uses IS DISTINCT FROM (NULL = open). B-02/B-03 use NOT IN (NULL = not open) → B-02 misses, B-03 false-positives on NULL-status legs",
+      "wrong_part": "checks B-02/B-03"
+    },
+    {
+      "topic": "RT sync from syncOrderDownstream",
+      "parts": [
+        "a",
+        "c"
+      ],
+      "primary_source": "core/order-sync.js:96-99",
+      "resolution": "rtOnOrderSaved runs from syncOrderDownstream only on a Pallet Exchange change (nested in the pallet block); part a lists it as a general step 5, part c as a pallet-only feeder — both partial; RT creation is really owned by DB 033",
+      "wrong_part": "neither fully; recorded for the merger"
+    }
+  ],
+  "final_outcomes": [
+    {
+      "outcome": "Driver paid correctly for every executed own-fleet trip",
+      "chain": [
+        "tbl:orders",
+        "trg:orders.rt_create_from_order",
+        "tbl:ct_round_trips",
+        "trg:ct_round_trips.dl_sync_from_rt",
+        "tbl:dl_entries",
+        "ep:PATCH /costs/ledger/:id",
+        "dbfn:dl_cash_sync",
+        "ep:POST /costs/ledger"
+      ],
+      "proving_checks": [],
+      "gap": "B-01/B-04/B-05/B-06/B-07/B-09 prove intermediate stages (RT exists, line exists, cash equals). Nothing proves trip_value was entered for a closed RT (0/17 on 5/9), that dl_entries.driver_id equals the RT driver, or that payments settle the balance → proposed NEW-z6, NEW-z7"
+    },
+    {
+      "outcome": "Round trip closed exactly when all its order legs are done",
+      "chain": [
+        "tbl:orders",
+        "trg:orders.rt_z_auto_close_order",
+        "dbfn:rt_auto_close",
+        "tbl:ct_round_trips",
+        "trg:ct_round_trips.rt_status_guard"
+      ],
+      "proving_checks": [
+        "B-02",
+        "B-03"
+      ],
+      "gap": "proved post-046 modulo exceptions (OWNED without truck, 037 merge residue, NULL status). The closed→cancelled path (FM-z-01) and guard removal (FM-z-09) are unproven → NEW-z1, NEW-z2"
+    },
+    {
+      "outcome": "Order invoiced exactly once, with number and price, through the pallet gate",
+      "chain": [
+        "tbl:orders",
+        "view:pl_v_order_gate",
+        "fn:modules/invoicing.js#_invWriteInvoice",
+        "ep:PATCH /v0/orders",
+        "trg:orders.orders_invoice_mark_guard"
+      ],
+      "proving_checks": [
+        "B-11",
+        "B-12",
+        "B-15"
+      ],
+      "gap": "B-11/B-12 prove well-formed marks, B-15 proves nothing forgotten after 30d. Nobody proves invoiced ⇒ gate passed or owner override (FM-c-05), nor that an un-mark came from owner (FM-c-02, Δ10 pending) → NEW-z5 + audit-role check"
+    },
+    {
+      "outcome": "Pallet balance per counterparty is right",
+      "chain": [
+        "fn:core/pallet-feed.js#plOnOrderSaved",
+        "fn:core/pallet-feed.js#plOnDelivered",
+        "ep:POST /pallets/movements",
+        "fn:modules/pallet_ledger.js#plvDoConfirm",
+        "tbl:pl_movements"
+      ],
+      "proving_checks": [],
+      "gap": "B-17/B-18/B-18b/B-49/P-08 check movements that EXIST. No population check that every PE order has its movements → NEW-z3; balance itself never reconciled to sheets"
+    },
+    {
+      "outcome": "Cross-dock (VS) load planned on a truck before its cross-dock date",
+      "chain": [
+        "fn:modules/orders_intl.js#_syncVeroiaSwitch",
+        "tbl:national_loads",
+        "trg:orders.national_load_follow_order",
+        "fn:modules/weekly_natl.js#_wnSaveFromPopover",
+        "tbl:ramp"
+      ],
+      "proving_checks": [],
+      "gap": "B-26 (load exists), B-27 (status follows), B-28 (cd date), B-31 (ramp row) are stages; none proves the national load got truck_id/partner_id in time → NEW-z4"
+    },
+    {
+      "outcome": "Cancelled/deleted order leaves nothing live behind",
+      "chain": [
+        "tbl:orders",
+        "trg:orders.order_soft_delete_unlink",
+        "trg:orders.rt_sync_from_order",
+        "dbfn:delete_order_cascade",
+        "fn:core/pallet-feed.js#plOnExchangeOff"
+      ],
+      "proving_checks": [
+        "B-40",
+        "B-27",
+        "B-28",
+        "B-30"
+      ],
+      "gap": "pending pl_movements of a deleted/cancelled order are front-only (plOnExchangeOff) — only B-17 after 7 days, undifferentiated; PA of a cancelled (not deleted) order unchecked"
+    },
+    {
+      "outcome": "Cash expense reaches the driver's payroll",
+      "chain": [
+        "ep:POST /costs/lines",
+        "tbl:ct_cost_lines",
+        "trg:ct_cost_lines.dl_cash_sync_line",
+        "dbfn:dl_cash_sync",
+        "tbl:dl_entries"
+      ],
+      "proving_checks": [
+        "B-07",
+        "B-23",
+        "B-04"
+      ],
+      "gap": "together they prove it for OWNED RTs with driver; CASH on an OWNED RT without driver never reaches payroll and no check lists it (FM-b-04)"
+    }
+  ],
+  "check_updates": [
+    {
+      "check_id": "B-02",
+      "change": "severity P2 → P1; expectation «always 0»; condition NOT IN → IS DISTINCT FROM (NULL status = open)",
+      "why": "rt_status_guard refuses every close with an open leg and rt_auto_close reopens on leg/status events, so >0 means the 046 triggers were dropped/disabled or bypassed",
+      "src": "worker/migrations/046_rt_auto_close.sql@origin/main:304-331,161-163"
+    },
+    {
+      "check_id": "B-03",
+      "change": "expectation 0 except named exceptions; exclude OWNED truck_id IS NULL (report separately), align NULL semantics, add n_live>0 (deleted-order legs); threshold 3 days → same day; severity P3 → P2",
+      "why": "rt_auto_close closes at the event; remaining planned-all-done = blocked OWNED without truck (046:203-218), 037 merge residue (046:94-97), or trigger failure",
+      "src": "worker/migrations/046_rt_auto_close.sql@origin/main:169,199-218"
+    },
+    {
+      "check_id": "B-36",
+      "change": "count distinct (record_id, date) for reopen instead of rows; add «auto-closed:» and blocked=true counts",
+      "why": "033 path writes a second «reopened:» row after 046 (FM-z-07); 046 introduces new reasons",
+      "src": "worker/migrations/033_rt_create_related.sql:178-183 · worker/migrations/046_rt_auto_close.sql@origin/main:178-179,214-215,225-226"
+    },
+    {
+      "check_id": "B-08",
+      "change": "meaning widened: split by review_note LIKE '%(046)%' (reopen after amounts) vs 011/037",
+      "why": "rt_auto_close is a new needs_review writer",
+      "src": "worker/migrations/046_rt_auto_close.sql@origin/main:184-194"
+    },
+    {
+      "check_id": "B-09",
+      "change": "note that it is the only (partial) detector of closed→cancelled (FM-z-01)",
+      "why": "dl_sync_from_rt keeps an auto line with amounts alive and flagged when its RT is cancelled",
+      "src": "worker/migrations/011_driver_ledger.sql:190-196"
+    },
+    {
+      "check_id": "P-05",
+      "change": "exception text obsolete: the front no longer reverts a rota on a closed RT",
+      "why": "origin/main weekly_intl.js _wiRotAdd: closed RT accepts the leg and reopens in DB",
+      "src": "modules/weekly_intl.js@origin/main:4236-4264"
+    },
+    {
+      "check_id": "B-10",
+      "change": "no rule change; expect drop after the 30-RT backfill — remaining rows have genuinely open legs",
+      "why": "046 backfill closed 30 planned-all-delivered RTs",
+      "src": "worker/migrations/046_rt_auto_close.sql@origin/main:427-460"
+    },
+    {
+      "check_id": "NEW-z1",
+      "change": "add catalog assertion (pg_trigger counts per table + rt_reopen_on_leg absent)",
+      "why": "guard presence is not proven by B-02 (0 until damage happens)",
+      "src": "worker/migrations/046_rt_auto_close.sql@origin/main:344-367"
+    },
+    {
+      "check_id": "NEW-z2",
+      "change": "add: audit_log table ct_round_trips reason «no live legs» where the RT had closed_at not null / was closed",
+      "why": "FM-z-01",
+      "src": "worker/migrations/013_rt_sync.sql:65-71"
+    },
+    {
+      "check_id": "NEW-z3..z7",
+      "change": "add final-outcome checks (pallet population, VS load assigned, invoiced-through-gate, trip_value entered, ledger driver = RT driver)",
+      "why": "final outcomes without a proving check",
+      "src": "this file final_outcomes[]"
+    }
+  ],
+  "tokens_used": "unknown"
+}

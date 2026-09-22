@@ -1,0 +1,16 @@
+-- id: B-34
+-- title: Σφάλματα εφαρμογής (24 ώρες)
+-- flows: 
+-- severity: P2
+-- schedule: hourly
+-- red: > 5
+-- baseline: 
+-- queue: no
+-- entity: 
+-- impact: 
+-- next: 
+-- exceptions: Timeouts/abort ενός browser (22/9: 11).
+-- tolerance: 
+-- source: 02b Β-34 · 22/9 = 11
+-- enabled: yes
+SELECT count(*) FROM app_errors WHERE created_at>now()-interval '24 hours' AND message NOT LIKE 'queue: offline flush%';
