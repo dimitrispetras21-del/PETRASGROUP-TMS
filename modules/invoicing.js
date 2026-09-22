@@ -891,7 +891,7 @@ async function _invOverrideInvoice(recId) {
     // Same rule as the normal path (owner 21/9): the ERP's number, typed —
     // the override skips the pallet-sheet gate, never the invoice number or
     // the price (Worker 422 / migration 043 would refuse it anyway).
-    if (_invPrice(rec) === null) { toast('Χωρίς τιμή δεν καταχωρείται τιμολόγιο', 'error'); return; }
+    if (!_invHasPrice(rec)) { toast('Χωρίς τιμή δεν καταχωρείται τιμολόγιο', 'error'); return; }
     const invNumber = (prompt('Αριθμός ΤΠΥ του ERP (υποχρεωτικός):') || '').trim();
     if (!invNumber) { toast('Συμπλήρωσε τον αριθμό ΤΠΥ του ERP', 'error'); return; }
     await plFetch('/pallets/override', { method: 'POST', body: { order_rec: rec.id, reason: reason.trim() } });
