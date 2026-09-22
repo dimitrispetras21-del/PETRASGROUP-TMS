@@ -2017,3 +2017,12 @@ status κρατά (άγνωστο = ανοιχτό, αρχή 1). **Επόμεν�
 Επιβεβαίωση από βάση 21:00: trigger ενεργός, RT-1171 planned, κλειστά με ανοιχτό σκέλος 0, RT-1004 closed (το ROLLBACK
 κράτησε). Το αρχείο μεταφέρθηκε από `drafts/` στο `worker/migrations/045_rt_reopen_on_leg.sql`. Εντοπίστηκε από τον
 Grok ότι ήταν ζωντανό ενώ το αρχείο έλεγε DRAFT — η σήμανση γίνεται εδώ.
+
+
+### 2026-09-22 · worker · P1 Workers Logs: invocation logs ΚΛΕΙΣΤΑ στην παραγωγή (owner deploy 21:08, έκδοση 8cb4f167)
+
+**Επιλογή:** `08` επιλογή (i), μία ρύθμιση wrangler.toml, καμία αλλαγή κώδικα. Branch fix/p1-invocation-logs, δύο ανεξάρτητες
+αξιολογήσεις (Claude ded595a 0/0/2/3 — σχόλιο δημόσιου repo γενικεύθηκε, αναστροφή = ρητό `invocation_logs = true`· Grok
+ίδια ετυμηγορία, +εύρημα `redact_query_string`). **Απόδειξη:** settings API `logs.invocation_logs=false`· cf-worker-event
+327/ώρα πριν → 0 μετά· φρουρός 12/1/1 ίδιος· secrets 3/3. **Ανοιχτό:** απόδειξη ότι console.* φτάνει (P3)· επιλογή (ii)·
+`redact_query_string` (query strings με filterByFormula) ως επόμενο βήμα. **Ποιος:** owner, συντονιστής, δύο ελεγκτές.
