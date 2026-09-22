@@ -2,14 +2,13 @@
   "unit": "orders_natl",
   "tier": 3,
   "fields": [
-    "ΔΡΟΜΟΛΟΓΙΟ",
-    "ΗΜ. ΠΑΡΑΔΟΣΗΣ",
-    "ΗΜ. ΦΟΡΤΩΣΗΣ",
+    "ΑΝΑΘΕΣΗ",
+    "ΑΝΑΦΟΡΑ",
+    "ΔΙΑΔΡΟΜΗ",
+    "ΗΜ. ΠΑΡΑΔ.",
+    "ΗΜ. ΦΟΡΤ.",
     "ΚΑΤΕΥΘ.",
-    "ΟΝΟΜΑ",
     "ΠΑΛ.",
-    "ΠΑΡΑΔΟΣΗ",
-    "ΠΑΡΑΛΑΒΗ",
     "ΠΕΛΑΤΗΣ",
     "ΤΙΜ."
   ],
@@ -38,5 +37,6 @@
     "GET tblLHl5m8bqONfhWv",
     "GET tblgHlNmLBH3JTdIM",
     "GET tblxu8DRfTQOFRCzS"
-  ]
+  ],
+  "reapproved": "2026-09-22 owner: re-approved with today's column headers (from live DOM th via Playwright probe); CAPTURE=1 cannot render the orders screens with the 28/8 HAR — refresh the HAR to re-capture automatically"
 }

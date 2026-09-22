@@ -331,14 +331,7 @@ async function renderOrdersIntl() {
   _oiLoadWarns.length = 0;
   try {
     // Date range filter based on period dropdown
-    let _intlDateFormula = '';
-    if (_intlPeriod !== 'all') {
-      const days = _intlPeriod === '180' ? 180 : 60;
-      const _intlCutoff = new Date();
-      _intlCutoff.setDate(_intlCutoff.getDate() - days);
-      const _intlCutoffStr = _intlCutoff.toISOString().split('T')[0];
-      _intlDateFormula = `IS_AFTER({Loading DateTime}, '${_intlCutoffStr}')`;
-    }
+    const _intlDateFormula = OrdersList.periodFormula(_intlPeriod);
     const [, records] = await Promise.all([
       _loadLocations(),
       atGet(TABLES.ORDERS, _intlDateFormula || '', false),
@@ -624,42 +617,14 @@ function _oiRowHtml(r) {
   </tr>`;
 }
 
+// Virtual scroll — the painter and its rAF throttle live in core/orders-list.js
+// (step 1 of the unification, 22/9): identical in both order lists, so it is
+// written once. The state object `_oiVS` and the row renderer stay here.
 function _oiVirtualPaint() {
-  const scroller = document.getElementById('oiVScroll');
-  if (!scroller) return;
-  const tbody = scroller.querySelector('tbody');
-  const topSp = document.getElementById('oiTopSpacer');
-  const botSp = document.getElementById('oiBottomSpacer');
-  if (!tbody || !topSp || !botSp) return;
-
-  const total = _oiVS.sortedRecs.length;
-  const scrollTop = scroller.scrollTop;
-  const visH = scroller.clientHeight;
-  const startIdx = Math.max(0, Math.floor(scrollTop / _OI_ROW_H) - _OI_BUFFER);
-  const endIdx = Math.min(total, Math.ceil((scrollTop + visH) / _OI_ROW_H) + _OI_BUFFER);
-
-  // Skip if range unchanged
-  if (startIdx === _oiVS.lastStart && endIdx === _oiVS.lastEnd) return;
-  _oiVS.lastStart = startIdx;
-  _oiVS.lastEnd = endIdx;
-
-  topSp.style.height = (startIdx * _OI_ROW_H) + 'px';
-  botSp.style.height = ((total - endIdx) * _OI_ROW_H) + 'px';
-
-  const html = [];
-  for (let i = startIdx; i < endIdx; i++) {
-    html.push(_oiRowHtml(_oiVS.sortedRecs[i]));
-  }
-  tbody.innerHTML = html.join('');
+  OrdersList.virtualPaint(_oiVS, { scrollerId: 'oiVScroll', topSpacerId: 'oiTopSpacer', bottomSpacerId: 'oiBottomSpacer', rowH: _OI_ROW_H, buffer: _OI_BUFFER, rowHtml: _oiRowHtml });
 }
 
-function _oiOnScroll() {
-  if (_oiVS.rafId) return;
-  _oiVS.rafId = requestAnimationFrame(() => {
-    _oiVS.rafId = null;
-    _oiVirtualPaint();
-  });
-}
+function _oiOnScroll() { OrdersList.virtualOnScroll(_oiVS, _oiVirtualPaint); }
 
 // OI-6: one source of truth for «which filters are narrowing the list» —
 // shared by the empty state (OI-4) and the always-visible strip above the
@@ -3016,25 +2981,11 @@ function _intlPrint() {
 // remain visible). Use this for client-cancelled orders.
 // ═══════════════════════════════════════════════════════════════
 async function cancelIntlOrder(recId) {
-  if (!(await confirmAction('Ακύρωση αυτής της παραγγελίας;\n\nΘα μαρκαριστεί ως Cancelled αλλά τα linked records (NL/GL/CL/Ramp/Pallet Ledger) παραμένουν.\n\nΓια ολική διαγραφή χρησιμοποίησε το Delete.', { title: 'Ακύρωση παραγγελίας', confirmLabel: 'Ακύρωσέ την', danger: true }))) return;
-  try {
-    await atPatch(TABLES.ORDERS, recId, { 'Status': 'Cancelled' });
-    invalidateCache(TABLES.ORDERS);
-    // Propagate Cancelled status to downstream NL records (so Weekly Natl etc reflect it)
-    try {
-      if (typeof syncOrderDownstream === 'function') {
-        await syncOrderDownstream(recId, { source: 'intl', changedFields: ['Status'] });
-      }
-    } catch(e) { console.warn('Cancel: downstream sync warning:', e.message); }
-    toast('Παραγγελία ακυρώθηκε', 'success');
-    document.getElementById('intlDetail')?.classList.add('hidden');
-    await renderOrdersIntl();
-  } catch(e) {
-    // User sees a clean message; full error goes to the persistent error log
-    // (with call-site + recId context), not dumped raw into the toast.
-    reportError('Η ακύρωση απέτυχε — δοκιμάστε ξανά');
-    if (typeof logError === 'function') logError(e, 'cancelIntlOrder ' + recId);
-  }
+  return OrdersList.cancelOrder({
+    recId, table: TABLES.ORDERS, source: 'intl', detailId: 'intlDetail', rerender: renderOrdersIntl,
+    confirmText: 'Ακύρωση αυτής της παραγγελίας;\n\nΘα μαρκαριστεί ως Cancelled αλλά τα linked records (NL/GL/CL/Ramp/Pallet Ledger) παραμένουν.\n\nΓια ολική διαγραφή χρησιμοποίησε το Delete.',
+    errorText: 'Η ακύρωση απέτυχε — δοκιμάστε ξανά', logTag: 'cancelIntlOrder',
+  });
 }
 
 // ═══════════════════════════════════════════════════════════════

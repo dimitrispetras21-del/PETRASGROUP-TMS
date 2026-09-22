@@ -31,14 +31,7 @@ async function renderOrdersNatl() {
   c.innerHTML = showLoading('Φόρτωση εθνικών παραγγελιών…');
   try {
     // Date range filter based on period dropdown
-    let _natlDateFormula = '';
-    if (_natlPeriod !== 'all') {
-      const days = _natlPeriod === '180' ? 180 : 60;
-      const _natlCutoff = new Date();
-      _natlCutoff.setDate(_natlCutoff.getDate() - days);
-      const _natlCutoffStr = _natlCutoff.toISOString().split('T')[0];
-      _natlDateFormula = `IS_AFTER({Loading DateTime}, '${_natlCutoffStr}')`;
-    }
+    const _natlDateFormula = OrdersList.periodFormula(_natlPeriod);
     const [, records] = await Promise.all([
       _loadLocations(),
       atGet(TABLES.NAT_ORDERS, _natlDateFormula || '', false),
@@ -492,41 +485,13 @@ function _onRowHtml(r) {
   </tr>`;
 }
 
+// Virtual scroll — shared painter in core/orders-list.js (step 1, 22/9); state
+// `_onVS` and the row renderer stay here.
 function _onVirtualPaint() {
-  const scroller = document.getElementById('onVScroll');
-  if (!scroller) return;
-  const tbody = scroller.querySelector('tbody');
-  const topSp = document.getElementById('onTopSpacer');
-  const botSp = document.getElementById('onBottomSpacer');
-  if (!tbody || !topSp || !botSp) return;
-
-  const total = _onVS.sortedRecs.length;
-  const scrollTop = scroller.scrollTop;
-  const visH = scroller.clientHeight;
-  const startIdx = Math.max(0, Math.floor(scrollTop / _ON_ROW_H) - _ON_BUFFER);
-  const endIdx = Math.min(total, Math.ceil((scrollTop + visH) / _ON_ROW_H) + _ON_BUFFER);
-
-  if (startIdx === _onVS.lastStart && endIdx === _onVS.lastEnd) return;
-  _onVS.lastStart = startIdx;
-  _onVS.lastEnd = endIdx;
-
-  topSp.style.height = (startIdx * _ON_ROW_H) + 'px';
-  botSp.style.height = ((total - endIdx) * _ON_ROW_H) + 'px';
-
-  const html = [];
-  for (let i = startIdx; i < endIdx; i++) {
-    html.push(_onRowHtml(_onVS.sortedRecs[i]));
-  }
-  tbody.innerHTML = html.join('');
+  OrdersList.virtualPaint(_onVS, { scrollerId: 'onVScroll', topSpacerId: 'onTopSpacer', bottomSpacerId: 'onBottomSpacer', rowH: _ON_ROW_H, buffer: _ON_BUFFER, rowHtml: _onRowHtml });
 }
 
-function _onOnScroll() {
-  if (_onVS.rafId) return;
-  _onVS.rafId = requestAnimationFrame(() => {
-    _onVS.rafId = null;
-    _onVirtualPaint();
-  });
-}
+function _onOnScroll() { OrdersList.virtualOnScroll(_onVS, _onVirtualPaint); }
 
 function _renderNatlTable(records) {
   const wrap = document.getElementById('natlTable');
@@ -1940,22 +1905,11 @@ async function _syncNationalLoad(noId, noFields, isDelete) {
 // records intact for audit/reporting. Use for client-cancelled orders.
 // ═══════════════════════════════════════════════
 async function cancelNatlOrder(recId) {
-  if (!(await confirmAction('Ακύρωση αυτής της National Order;\n\nΘα μαρκαριστεί ως Cancelled αλλά τα linked records (NL/GL/CL/Ramp/Pallet Ledger) παραμένουν.\n\nΓια ολική διαγραφή χρησιμοποίησε το Delete.', { title: 'Ακύρωση παραγγελίας', confirmLabel: 'Ακύρωσέ την', danger: true }))) return;
-  try {
-    await atPatch(TABLES.NAT_ORDERS, recId, { 'Status': 'Cancelled' });
-    invalidateCache(TABLES.NAT_ORDERS);
-    try {
-      if (typeof syncOrderDownstream === 'function') {
-        await syncOrderDownstream(recId, { source: 'natl', changedFields: ['Status'] });
-      }
-    } catch(e) { console.warn('Cancel: downstream sync warning:', e.message); }
-    toast('Παραγγελία ακυρώθηκε', 'success');
-    document.getElementById('natlDetail')?.classList.add('hidden');
-    await renderOrdersNatl();
-  } catch(e) {
-    reportError('Η ακύρωση απέτυχε, δοκιμάστε ξανά');
-    if (typeof logError === 'function') logError(e, 'cancelNatlOrder ' + recId);
-  }
+  return OrdersList.cancelOrder({
+    recId, table: TABLES.NAT_ORDERS, source: 'natl', detailId: 'natlDetail', rerender: renderOrdersNatl,
+    confirmText: 'Ακύρωση αυτής της National Order;\n\nΘα μαρκαριστεί ως Cancelled αλλά τα linked records (NL/GL/CL/Ramp/Pallet Ledger) παραμένουν.\n\nΓια ολική διαγραφή χρησιμοποίησε το Delete.',
+    errorText: 'Η ακύρωση απέτυχε, δοκιμάστε ξανά', logTag: 'cancelNatlOrder',
+  });
 }
 
 // ═══════════════════════════════════════════════

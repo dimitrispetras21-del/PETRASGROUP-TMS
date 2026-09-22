@@ -3,10 +3,11 @@
   "tier": 3,
   "fields": [
     "ΑΝΑΘΕΣΗ",
-    "ΑΡ. ΠΑΡ.",
+    "ΑΝΑΦΟΡΑ",
+    "ΑΡ.",
     "ΕΒΔ.",
-    "ΗΜ. ΠΑΡΑΔΟΣΗΣ",
-    "ΗΜ. ΦΟΡΤΩΣΗΣ",
+    "ΗΜ. ΠΑΡΑΔ.",
+    "ΗΜ. ΦΟΡΤ.",
     "ΚΑΤΑΣΤΑΣΗ",
     "ΚΑΤΕΥΘ.",
     "ΠΑΛ.",
@@ -42,5 +43,6 @@
     "GET tblaeY5QOHAS1gyE8",
     "GET tblgHlNmLBH3JTdIM",
     "GET tblxu8DRfTQOFRCzS"
-  ]
+  ],
+  "reapproved": "2026-09-22 owner: re-approved with today's column headers (from live DOM th via Playwright probe); CAPTURE=1 cannot render the orders screens with the 28/8 HAR — refresh the HAR to re-capture automatically"
 }
