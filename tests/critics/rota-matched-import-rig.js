@@ -76,7 +76,30 @@ function recordedIndex(){ const idx=new Map(); for(const e of JSON.parse(fs.read
       panelBody=(await page.locator('#wi-panel .wi-panel-body').innerText().catch(()=>'')).replace(/\n/g,' | ').slice(0,400);
     }
   }
+  // P3 (ελεγκτής 22/9): _wiRotAdd with the backend stubbed — (a) parent has a
+  // CLOSED round trip and the leg does not attach → Rotation ID reverted, warn
+  // toast, no «✓»; (b) leg attaches → «✓». Pure in-page: atSafePatch/toast/
+  // rtOnOrderSaved/rtFindForOrder/renderWeeklyIntl replaced for the call only.
+  const p3=await page.evaluate(async()=>{
+    const keep={atSafePatch:window.atSafePatch,toast:window.toast,rtOnOrderSaved:window.rtOnOrderSaved,rtFindForOrder:window.rtFindForOrder,renderWeeklyIntl:window.renderWeeklyIntl,reportError:window.reportError};
+    const run=async(attach)=>{
+      const patches=[],toasts=[];
+      window.atSafePatch=async(t,id,f)=>{patches.push({id,f});return {};};
+      window.toast=(m,ty)=>toasts.push((ty||'success')+': '+m);
+      window.reportError=(m,e)=>toasts.push('error: '+m);
+      window.rtOnOrderSaved=async()=>null;
+      window.renderWeeklyIntl=async()=>{};
+      const parent=WINTL.rows.find(r=>r.type==='import');
+      const legOid='recLEGTEST00000001';
+      window.rtFindForOrder=async(id)=>id===legOid?{pg:1,rt:attach?{id:9,code:'RT-9',status:'planned'}:null}:{pg:2,rt:{id:9,code:'RT-9',status:'closed'}};
+      await _wiRotAdd(parent.id,legOid);
+      return {patches:patches.map(x=>x.f),toasts};
+    };
+    const fail=await run(false); const ok=await run(true);
+    Object.assign(window,keep);
+    return {fail,ok};
+  });
   await page.screenshot({path:out});
-  console.log(JSON.stringify({week,PAIR,paired,matchedCards:found,hasHandler,menu,panelTitle,panelBody,errors:errs.slice(0,3)},null,1));
+  console.log(JSON.stringify({week,PAIR,paired,p3,matchedCards:found,hasHandler,menu,panelTitle,panelBody,errors:errs.slice(0,3)},null,1));
   await browser.close();
 })().catch(e=>{console.error('✗',e.message);process.exit(1);});

@@ -4228,12 +4228,34 @@ async function _wiRotAdd(parentRowId, legOid){
     // parent already has (or is getting) one, the Worker attaches this leg
     // and migration 013's rt_sync_legs trigger copies truck/trailer/driver
     // onto it on its own. Only the fallback path below still copies by hand.
-    let attached=null;
+    let attached=null, parentRt=null;
     if(typeof rtOnOrderSaved==='function'){
       await rtOnOrderSaved(pOid).catch(e=>console.warn('[wi rota add] rt sync:',e&&e.message));
     }
     if(typeof rtFindForOrder==='function'){
       attached=(await rtFindForOrder(legOid).catch(()=>({rt:null}))).rt;
+      parentRt=(await rtFindForOrder(pOid).catch(()=>({rt:null}))).rt;
+    }
+    // P3 (ελεγκτής 22/9): rtOnOrderSaved never throws — _rtSafe swallows and a
+    // closed round trip only warns — so the «✓» below used to show even when
+    // the leg never reached the RT (a rota in ORDERS with no leg in the trip:
+    // the same orphan shape _wiRotUnlink guards against). The parents section
+    // leads exactly here (leg after a Delivered parent). Signal = the parent
+    // HAS a round trip and the leg is NOT on it: revert the Rotation ID we
+    // just wrote and say why, never a green toast.
+    if(parentRt&&!attached){
+      const closed=parentRt.status==='closed'||parentRt.status==='complete';
+      const why=closed
+        ?`Ο γύρος ${parentRt.code||''} είναι κλειστός — ξανάνοιγμα από Μισθοδοσία`
+        :`Το σκέλος δεν μπήκε στο δρομολόγιο ${parentRt.code||''}`;
+      const undo=await atSafePatch(TABLES.ORDERS,legOid,{'Rotation ID':''});
+      if(undo?.error){
+        reportError('Η ρότα γράφτηκε, αλλά το σκέλος ΔΕΝ μπήκε στο δρομολόγιο και η αναίρεση απέτυχε — άνοιξε την παραγγελία: '+why,new Error(undo.error.message||undo.error.type));
+      } else {
+        toast(why+' · η ρότα ΔΕΝ γράφτηκε','warn');
+      }
+      renderWeeklyIntl();
+      return;
     }
     // Fallback: the parent has no round trip yet (unassigned) — nothing could
     // attach, so copy the vehicle by hand as before or the leg sits without
