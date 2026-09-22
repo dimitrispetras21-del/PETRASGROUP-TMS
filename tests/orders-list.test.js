@@ -52,6 +52,7 @@ test('chunk + countLabel', () => {
   assert.deepStrictEqual(OrdersList.chunk([], 90), []);
   assert.strictEqual(OrdersList.countLabel(1), '1 παραγγελία');
   assert.strictEqual(OrdersList.countLabel(3), '3 παραγγελίες');
+  assert.strictEqual(OrdersList.countLabel(0), '0 παραγγελίες');   // reviewer P4 on 5d8250f
 });
 
 // ── step 2a, reviewer P3 (22/9): csvDownload and the OR() batching union ──
@@ -91,4 +92,6 @@ test('tableShell: one colgroup in both tables, ids, arrows, nosort, spacer heigh
   assert.ok(html.includes('id="sc"') && html.includes('id="tp" style="height:0"') && html.includes('id="bt" style="height:120px"'));
   assert.ok(html.includes('<div class="lg">LEG</div>') && html.includes('<div class="ft">3 παραγγελίες</div>'));
   assert.ok(html.includes('overflow-anchor:none') && html.includes('table-layout:fixed'));
+  assert.ok(!html.includes('scrollbar-'));   // scrollbar look belongs to each module's CSS, not the shell
+  assert.ok(OrdersList.tableShell({ colDefs: cols, sortCol: null, sortDir: 0, sortToggle: '_xSort', ids: { scroller: 'sc', top: 'tp', bottom: 'bt' }, rowH: 40, total: 0, legend: '', legendClass: 'lg', footClass: 'ft' }).includes('<div class="ft">0 παραγγελίες</div>'));
 });

@@ -258,6 +258,9 @@ function _oiCss() { return `
 .oi-chk.on{border-color:var(--text-mid)}
 /* Δ3: the ring carries the alarm so the box inside can keep carrying the state. */
 /* Δ4: the marks must be readable without hunting for a tooltip. */
+/* Scrollbar of the list — was inline on the scroller until 2b-b; the shell no
+   longer sets it, each list's CSS does (the national one uses --border). */
+.oi-layout #oiVScroll{scrollbar-width:thin;scrollbar-color:var(--border-dark) transparent}
 .oi-foot{padding:8px 16px;color:var(--text-mid);font-size:12px;text-align:center}
 .oi-legend{padding:4px 16px;color:var(--text-mid);font-size:12px;border-bottom:1px solid var(--border)}
 .oi-legend b{font-weight:700;color:var(--text)}

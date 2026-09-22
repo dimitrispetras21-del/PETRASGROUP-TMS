@@ -146,6 +146,8 @@ const OrdersList = {
   // fold at 1440×900, measured 3/9). overflow-anchor:none (owner 6/9: Chrome's
   // scroll anchoring + spacer growth = runaway scroll loop). Sort arrows are
   // plain text: accent is reserved for the primary action (DESIGN ΜΕΡΟΣ Β).
+  // Scrollbar look is NOT set here — each module's CSS owns it (reviewer P4 on
+  // 5d8250f: an inline colour beat the national rule; one source, principle 3).
   // The row renderer, the empty state and the strips stay in each module.
   tableShell({ colDefs, sortCol, sortDir, sortToggle, ids, rowH, total, legend, legendClass, footClass }) {
     const ths = colDefs.map(c => {
@@ -156,7 +158,7 @@ const OrdersList = {
     const colgroup = `<colgroup>${colDefs.map(c => `<col style="width:${c.w}px">`).join('')}</colgroup>`;
     return `
     <div class="${legendClass}">${legend}</div>
-    <div id="${ids.scroller}" style="height:calc(100vh - 280px);overflow-y:auto;overflow-anchor:none;scrollbar-width:thin;scrollbar-color:var(--border-dark) transparent">
+    <div id="${ids.scroller}" style="height:calc(100vh - 280px);overflow-y:auto;overflow-anchor:none">
       <table style="table-layout:fixed;width:100%">${colgroup}
         <thead><tr>${ths}</tr></thead>
       </table>
