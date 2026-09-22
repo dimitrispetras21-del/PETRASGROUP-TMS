@@ -3595,15 +3595,21 @@ function _wiPanelSetBusy(busy){
 // hands off to the existing _wiRotAdd, unchanged.
 function _wiPanelRota(rowId){
   const row=WINTL.rows.find(r=>r.id===rowId); if(!row) return;
-  const cands=_wiRotCands(row);
+  const stats={};
+  const cands=_wiRotCands(row,stats);
+  // The panel says what it left out and why — a dispatcher who KNOWS a load
+  // exists must not read «none» (Παντελής 22/9, αρχή 1).
+  const why=[stats.beforeDate?`${stats.beforeDate} που φορτώνουν πριν τις ${stats.minLoad?_wk3D(_wiFmt(stats.minLoad)):'—'}`:'',
+             stats.inRota?`${stats.inRota} ήδη σε άλλη ρότα`:''].filter(Boolean).join(' · ');
+  const note=why?`<div class="wi-panel-note dim" style="margin-top:6px">Εκτός λίστας: ${why}</div>`:'';
   const body=cands.length
     ? `<input class="form-input" id="wiRotaSearch" placeholder="Αναζήτηση…" oninput="_wiPanelRotaFilter(this.value)" style="margin-bottom:8px">
        <div class="wi-panel-list" id="wiRotaList">${cands.map((c,i)=>`
         <label class="wi-panel-opt" data-txt="${escapeHtml(c.lbl.toLowerCase())}">
           <input type="radio" name="wiRotaPick" value="${c.oid}" ${i===0?'checked':''}>
           <span>${c.lbl}</span>
-        </label>`).join('')}</div>`
-    : `<div class="wi-panel-empty">Κανένα διαθέσιμο φορτίο μετά την παράδοση</div>`;
+        </label>`).join('')}</div>${note}`
+    : `<div class="wi-panel-empty">Κανένα διαθέσιμο φορτίο${why?` — εκτός λίστας: ${why}`:' από την προηγούμενη της παράδοσης και μετά'}</div>`;
   const footer=cands.length
     ? `<button class="btn btn-ghost" onclick="_wiPanelClose()">Άκυρο</button>
        <button class="btn btn-primary" onclick="_wiPanelRotaGo(${rowId})">Σύνδεση</button>`
@@ -4113,11 +4119,20 @@ async function _wiRejoinLegs(rowId){
 // όταν ο γονέας έχει ήδη παραδώσει — η παλιά σύγκριση με τη ΔΙΚΗ ΤΟΥ φόρτωση
 // άφηνε μέσα υποψήφια που φορτώνουν ΠΡΙΝ ο γονέας καν παραδώσει). Επιστρέφει
 // [{oid,lbl}], ταξινομημένα κατά ημερομηνία φόρτωσης.
-function _wiRotCands(parentRow){
+// Παντελής 22/9 (MyDay 367 απέναντι στη 366): η «παράδοση» του γονέα είναι το
+// πεδίο που μένει πίσω (owner 14/9 — statuses/ημερομηνίες διορθώνονται εκ των
+// υστέρων), οπότε ένα φορτίο που φορτώνει την ΠΡΟΗΓΟΥΜΕΝΗ της παράδοσης είναι
+// ρεαλιστικό σκέλος: κατώφλι = παράδοση − 1 ημέρα. Το παλιό `slice(0,6)` ήταν
+// για το inline μενού — το πάνελ έχει αναζήτηση, και έκοβε σιωπηλά (η 367 ήταν
+// 6η/6 για γονέα 364). `stats` (προαιρετικό) γεμίζει με το ΓΙΑΤΙ αποκλείστηκε
+// ό,τι αποκλείστηκε, ώστε το πάνελ να το πει (αρχή 1) αντί για «κανένα».
+function _wiRotCands(parentRow,stats){
   const pOid=parentRow.type==='import'?parentRow.orderId:parentRow.orderIds?.[0];
   const po=WINTL.data.exports.find(x=>x.id===pOid)||WINTL.data.imports.find(x=>x.id===pOid);
   if(!po) return [];
   const pDeliv=String(po.fields['Delivery DateTime']||po.fields['Loading DateTime']||'');
+  const minLoad=pDeliv?toLocalDate(new Date(new Date(pDeliv).getTime()-86400000)):'';
+  if(stats){ stats.minLoad=minLoad; stats.beforeDate=0; stats.inRota=0; }
   const excludeIds=new Set([...(parentRow.orderIds||[]),pOid,parentRow.importId,parentRow.matchedTo].filter(Boolean));
   const cands=[];
   for(const r of WINTL.rows){
@@ -4125,13 +4140,14 @@ function _wiRotCands(parentRow){
     const oid=r.type==='import'?r.orderId:r.orderIds?.[0];
     if(!oid||excludeIds.has(oid)) continue;
     const o=WINTL.data.exports.find(x=>x.id===oid)||WINTL.data.imports.find(x=>x.id===oid);
-    if(!o||o.fields['Rotation ID']) continue;
+    if(!o) continue;
+    if(o.fields['Rotation ID']){ if(stats) stats.inRota++; continue; }
     const oLoad=String(o.fields['Loading DateTime']||'');
-    if(oLoad<pDeliv) continue;
+    if(oLoad<minLoad){ if(stats) stats.beforeDate++; continue; }
     cands.push({oid,oLoad,f:o.fields});
   }
   cands.sort((a,b)=>a.oLoad.localeCompare(b.oLoad));
-  return cands.slice(0,6).map(c=>({
+  return cands.map(c=>({
     oid:c.oid,
     // full label: the menu wraps, a cut hides the destination
     lbl:`${_wk3D(_wiFmt(c.f['Loading DateTime']))} · ${_wk3Loc(c.f['Loading Summary']||'—')} → ${_wk3Loc(c.f['Delivery Summary']||'—')}`,
