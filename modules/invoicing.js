@@ -782,6 +782,15 @@ function _renderInvDetail() {
         <div style="font-size:13px;color:var(--text);font-weight:600;${_INV_NUM}">${escapeHtml(num)}</div>
         <div style="font-size:11px;color:var(--text-dim);margin-top:2px;${_INV_NUM}">${escapeHtml(date)}</div>
       </div>`;
+    // Undo is the owner's alone (owner 22/9, Grok flow review finding 5): the
+    // accountant has no way back after a wrong ΤΠΥ, and «fix it in the DB»
+    // hides the mistake from the audit trail. Owner-only because the ERP
+    // invoice already exists — undoing here must be a conscious, rare act.
+    if (typeof ROLE !== 'undefined' && ROLE === 'owner') {
+      invoiceBlock += `<button onclick="_invUndoInvoice('${rec.id}')" style="${BTN}
+        border:1px solid var(--warn-border);background:var(--warn-bg);color:var(--warn);cursor:pointer;margin-top:8px">
+        ↶ Αναίρεση σήμανσης (owner)</button>`;
+    }
   }
 
   // Values wrap instead of truncating: company names and routes are what the
@@ -880,6 +889,35 @@ async function _invMarkInvoiced(recId) {
 // and why"), not a transactional lock — recording an override that was
 // then not used is harmless, silently invoicing without a recorded reason
 // is not.
+// The fields an undo writes. Pure, so the shape is testable: Invoiced off and
+// the ERP number/date cleared — nothing else. Worker invoiceMarkError lets
+// invoiced=false through; migration 043 only guards the transition TO true.
+function _invUndoFields() {
+  return { 'Invoiced': false, 'Invoice Number': null, 'Invoice Date': null };
+}
+
+async function _invUndoInvoice(recId) {
+  const rec = INV.data.find(r => r.id === recId);
+  if (!rec) return;
+  if (typeof ROLE === 'undefined' || ROLE !== 'owner') { toast('Η αναίρεση σήμανσης επιτρέπεται μόνο στον owner', 'error'); return; }
+  const num = rec.fields['Invoice Number'] || '—';
+  if (!confirm(`Αναίρεση σήμανσης «τιμολογήθηκε» (ΤΠΥ ${num});\nΗ παραγγελία ξαναγίνεται «προς τιμολόγηση». Το τιμολόγιο στο ERP ΔΕΝ ακυρώνεται από εδώ.`)) return;
+  try {
+    const table = rec._type === 'intl' ? TABLES.ORDERS : TABLES.NAT_ORDERS;
+    const fields = _invUndoFields();
+    await atPatch(table, rec.id, fields);
+    invalidateCache(table);
+    rec.fields['Invoiced'] = false;
+    delete rec.fields['Invoice Number'];
+    delete rec.fields['Invoice Date'];
+    toast(`Η σήμανση ΤΠΥ ${num} αναιρέθηκε — η παραγγελία είναι ξανά προς τιμολόγηση`, 'warn');
+    _applyInvFilters();
+    _renderInvDetail();
+  } catch (e) {
+    reportError('Η αναίρεση σήμανσης απέτυχε', e);
+  }
+}
+
 async function _invOverrideInvoice(recId) {
   const rec = INV.data.find(r => r.id === recId);
   if (!rec) return;

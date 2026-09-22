@@ -8,7 +8,8 @@ const assert = require('node:assert');
 const fs = require('fs'), path = require('path');
 const src = fs.readFileSync(path.join(__dirname, '../modules/invoicing.js'), 'utf8');
 const grab = name => { const m = src.match(new RegExp(`function ${name}\\(rec\\) \\{[\\s\\S]*?\\n\\}\\n`)); if (!m) throw new Error(name + ' not found'); return m[0]; };
-const { _invPrice, _invHasPrice } = new Function(grab('_invPrice') + grab('_invHasPrice') + '; return { _invPrice, _invHasPrice };')();
+const grab0 = name => { const m = src.match(new RegExp(`function ${name}\\(\\) \\{[\\s\\S]*?\\n\\}\\n`)); if (!m) throw new Error(name + ' not found'); return m[0]; };
+const { _invPrice, _invHasPrice, _invUndoFields } = new Function(grab('_invPrice') + grab('_invHasPrice') + grab0('_invUndoFields') + '; return { _invPrice, _invHasPrice, _invUndoFields };')();
 const rec = p => ({ fields: p === undefined ? {} : { Price: p } });
 
 test('_invHasPrice: only a positive price opens the ΤΠΥ form', () => {
@@ -26,4 +27,12 @@ test('_invPrice stays a display value: 0 is 0 €, not «missing»', () => {
   assert.strictEqual(_invPrice(rec(0)), 0);
   assert.strictEqual(_invPrice(rec(null)), null);
   assert.strictEqual(_invPrice(rec('abc')), null);
+});
+
+test('_invUndoFields: undo clears exactly the three invoice fields, never Status/Price', () => {
+  const f = _invUndoFields();
+  assert.deepStrictEqual(Object.keys(f).sort(), ['Invoice Date', 'Invoice Number', 'Invoiced']);
+  assert.strictEqual(f['Invoiced'], false);
+  assert.strictEqual(f['Invoice Number'], null);
+  assert.strictEqual(f['Invoice Date'], null);
 });
