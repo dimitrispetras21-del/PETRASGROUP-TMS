@@ -1,4 +1,4 @@
--- DRAFT (ΔΕΝ ΕΚΤΕΛΕΣΤΗΚΕ) — ξανάνοιγμα RT-1171 (owner, μετά τις 15:00, μετά το merge του fix/rota-cands-myday).
+-- ΕΚΤΕΛΕΣΤΗΚΕ 22/9/2026 (owner· ΜΕΤΑ-SELECT 21:00: RT-1171 planned / closed_at NULL, closed_with_open_leg 0). Αρχικά DRAFT — ξανάνοιγμα RT-1171 (owner, μετά τις 15:00, μετά το merge του fix/rota-cands-myday).
 --
 -- WHY (22/9, docs/data-audit/2026-09/2026-09-22-pantelis-rota-cands.md «Μετά το merge»): στις 13:49 η MyDay (367,
 -- Pending) προσαρτήθηκε ως 3ο σκέλος στο RT-1171 (361 Delivered + 364 Delivered) και το rt-feed έκλεισε το RT κρίνοντας

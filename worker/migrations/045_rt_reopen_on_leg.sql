@@ -1,4 +1,6 @@
--- 045 — DRAFT (ΔΕΝ ΕΚΤΕΛΕΣΤΗΚΕ) — Round trip που είναι closed/complete ΞΑΝΑΝΟΙΓΕΙ όταν του προσαρτάται σκέλος
+-- 045 — ΕΚΤΕΛΕΣΤΗΚΕ 22/9/2026 (owner, απόγευμα· επιβεβαίωση pg_trigger + pg_get_functiondef από δύο ανεξάρτητους
+--        ελέγχους 20:45 και 21:00: trigger rt_reopen_on_leg ενεργός, RT-1171 planned, κλειστά με ανοιχτό σκέλος = 0,
+--        σενάριο ROLLBACK έδειξε reason «(045)» και RT-1004 έμεινε closed). Αρχικά DRAFT — Round trip που είναι closed/complete ΞΑΝΑΝΟΙΓΕΙ όταν του προσαρτάται σκέλος
 --        με παραγγελία όχι Delivered/Cancelled — από ΟΠΟΙΑ διαδρομή (front, Worker POST /costs/rt attach, SQL).
 --        Απόφαση owner 22/9: «Το πρόβλημα πρέπει να λυθεί ΕΠ' ΑΟΡΙΣΤΟΝ» — αρχή 4: ο κανόνας όσο πιο χαμηλά αντέχει.
 --        Τρέχει ο owner μετά τις 15:00 (Supabase SQL editor). Ελεγκτής: «μεγάλη» αλλαγή (migration).
