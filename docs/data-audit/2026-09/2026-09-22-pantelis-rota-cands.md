@@ -129,3 +129,22 @@ closed_at=NULL WHERE code='RT-1171'`), δεν το αγγίζω.
 γονείς με πλήθος στην επικεφαλίδα. Rig: DOM `#wiRotaList .wi-panel-opt` = πλήθος cands, λεζάντα = πλήθος
 (`shots/rota-list-count-after-1440.png`). Επιβεβαίωση κονσόλας από συντονιστή εκκρεμεί
 (`document.querySelectorAll('#wiRotaList .wi-panel-opt').length`).
+
+**Ετυμηγορία ελεγκτή (b6ab95b): ΕΓΚΡΙΝΕΤΑΙ ΜΕ ΠΑΡΑΤΗΡΗΣΕΙΣ, 0 P1/P2** (`docs/grok-bot/reviews/2026-09-22-b6ab95b.md`).
+Merge στο main **696bb9d** (rebase πάνω στο cfbb3e5, fast-forward). Rigs πριν το merge: `rt-close-sim` 4/4 ·
+`rot-cands-sim` 4/4 assertions · weekly rig: μενού 4 στοιχείων, DOM 5/5 υποψήφια + λεζάντα «5 υποψήφια φορτία» (max-height
+320px), P3 αποτυχία 2 PATCH + warn χωρίς ✓, επιτυχία ✓, 0 σφάλματα console.
+Επιβεβαίωση κύλισης στο Pages (συντονιστής, πριν το merge): 9 στοιχεία DOM, scrollHeight 313 / clientHeight 220 — οι 2
+τελευταίες κρυμμένες· πριν τη σύνδεση ήταν 10 και η κρυμμένη ήταν η MyDay.
+
+**Παρατηρήσεις ελεγκτή που ΔΕΝ αλλάζουν κώδικα τώρα (καταγραφή):**
+- P3 [3] η πύλη `_rtOpenLegs` κρίνει από το γράφημα Group/Matched/Rotation (`legsInfo`), όχι από τα `ct_rt_legs` της βάσης —
+  σκέλος RT εκτός γράφου (θεωρητικό, δεν παράγεται από τον κώδικα) δεν θα εμπόδιζε κλείσιμο.
+- P3 [2] ο Worker `POST /costs/rt` (attach) **δεν ξανανοίγει** κλειστό RT (προϋπάρχον) — θέλει απόφαση owner:
+  reopen-on-attach στον Worker, ή το σημερινό (μήνυμα + αναίρεση από το front, P3 του 5b8206b).
+- P4 ×2 PATCH `status closed` σε ταυτόχρονες κλήσεις (`_wiRotAdd` + επόμενο save) — αβλαβές, ίδιο αποτέλεσμα.
+- **Ερώτημα για τον σταθερό έλεγχο 02 (Grok session):** «κλειστά/complete RT με σκέλος όχι Delivered/Cancelled» — SQL όπως στο
+  `2026-09-22_reopen_rt1171_DRAFT.sql` (ΜΕΤΑ-SELECT), αναμενόμενο 0. Μετρήθηκε 22/9: 1/69 (μόνο RT-1171).
+
+**Ξανάνοιγμα RT-1171:** DRAFT `worker/migrations/drafts/2026-09-22_reopen_rt1171_DRAFT.sql` (owner, μετά τις 15:00, μετά
+το merge — που έγινε). Εκκρεμεί απάντηση owner.
