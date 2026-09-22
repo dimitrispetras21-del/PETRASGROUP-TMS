@@ -719,35 +719,20 @@ function _intlClearFilters() {
   intlPeriodChange('all');
 }
 
+// What the free-text search looks into (Δ2: 'Order Number' is derived and
+// never reaches the browser; 'Order No' (7/9/2026) is real). The selects are
+// literal matches; a missing Status counts as Pending on this list.
+const _OI_FILTER_SPEC = {
+  search: f => [_clientName(f), String(f['Reference']||''), String(f['Order No']||''),
+                _cleanSummary(f['Loading Summary']), _cleanSummary(f['Delivery Summary']), f['Goods']||''],
+  eq: ['Direction', 'Brand'],
+  statusDefault: 'Pending',
+};
 function _applyIntlFilters() {
-  let recs = INTL_ORDERS.data;
-  if (_intlFilters._q) {
-    const q = _intlFilters._q;
-    recs = recs.filter(r => {
-      const f = r.fields;
-      return _clientName(f).toLowerCase().includes(q)
-        // Δ2: 'Order Number' is derived and never reaches the browser — this
-        // clause could never match. Reference is what the list now shows.
-        || String(f['Reference']||'').toLowerCase().includes(q)
-        // 'Order No' (7/9/2026) IS a real read-only field from the Worker —
-        // unlike the legacy 'Order Number' above, this one reaches the browser.
-        || String(f['Order No']||'').toLowerCase().includes(q)
-        || _cleanSummary(f['Loading Summary']).toLowerCase().includes(q)
-        || _cleanSummary(f['Delivery Summary']).toLowerCase().includes(q)
-        || (f['Goods']||'').toLowerCase().includes(q);
-    });
-  }
-  if (_intlFilters['Direction']) recs = recs.filter(r => r.fields['Direction'] === _intlFilters['Direction']);
-  if (_intlFilters['Status'])    recs = recs.filter(r => (r.fields['Status']||'Pending') === _intlFilters['Status']);
-  if (_intlFilters['Brand'])     recs = recs.filter(r => r.fields['Brand']     === _intlFilters['Brand']);
-  if (_intlFilters['_week'])     recs = recs.filter(r => String(r.fields['Week Number']) === String(_intlFilters['_week']));
-  if (_intlFilters['_status']) {
-    const sv = _intlFilters['_status'];
-    recs = recs.filter(r => (r.fields['Status']||'Pending') === sv);
-  }
+  const recs = OrdersList.applyFilters(INTL_ORDERS.data, _intlFilters, _OI_FILTER_SPEC);
   INTL_ORDERS.filtered = recs;
   _renderIntlTable(recs);
-  const n = recs.length + (recs.length===1?' παραγγελία':' παραγγελίες');
+  const n = OrdersList.countLabel(recs.length);
   document.getElementById('intlCount').textContent = n;
   document.getElementById('intlSub').textContent   = `${n} · ${_oiPeriodLabel()}`;
 

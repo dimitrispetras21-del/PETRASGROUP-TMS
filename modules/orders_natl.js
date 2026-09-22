@@ -565,37 +565,24 @@ function natlClearFilters() {
   natlPeriodChange('all');
 }
 
+// Δ2: 'Name' is not a NATIONAL ORDERS field — searching it matched nothing,
+// ever; the list shows Reference, so search does too. Status is compared
+// literally here (no Pending default — unlike orders_intl; owner decision
+// pending, kept explicit in tests/orders-list-filters.test.js).
+const _ON_FILTER_SPEC = {
+  search: f => {
+    const cId = Array.isArray(f['Client']) ? f['Client'][0] : '';
+    const pId = (f['Pickup Location 1']||[])[0]||'';
+    const dId = (f['Delivery Location 1']||f['Delivery Location']||[])[0]||'';
+    return [String(f['Reference']||''), _fhClientsMap[cId]||'', _fhLocationsMap[pId]||'', _fhLocationsMap[dId]||'', f['Goods']||''];
+  },
+  eq: ['Direction', 'Type'],
+};
 function _applyNatlFilters() {
-  let recs = NATL_ORDERS.data;
-  if (_natlFilters._q) {
-    const q = _natlFilters._q;
-    recs = recs.filter(r => {
-      const f = r.fields;
-      const cId = Array.isArray(f['Client']) ? f['Client'][0] : '';
-      const pId = (f['Pickup Location 1']||[])[0]||'';
-      const dId = (f['Delivery Location 1']||f['Delivery Location']||[])[0]||'';
-      // Δ2: 'Name' is not a NATIONAL ORDERS field — searching it matched
-      // nothing, ever. The list shows Reference, so search must too.
-      return String(f['Reference']||'').toLowerCase().includes(q)
-        || (_fhClientsMap[cId]||'').toLowerCase().includes(q)
-        || (_fhLocationsMap[pId]||'').toLowerCase().includes(q)
-        || (_fhLocationsMap[dId]||'').toLowerCase().includes(q)
-        || (f['Goods']||'').toLowerCase().includes(q);
-    });
-  }
-  if (_natlFilters['Direction']) recs = recs.filter(r => r.fields['Direction'] === _natlFilters['Direction']);
-  if (_natlFilters['Type'])      recs = recs.filter(r => r.fields['Type']      === _natlFilters['Type']);
-  if (_natlFilters['Status'])    recs = recs.filter(r => r.fields['Status']    === _natlFilters['Status']);
-  if (_natlFilters['_groupage']) recs = recs.filter(r => r.fields['National Groupage']);
-  if (_natlFilters['_trip']==='unassigned') recs = recs.filter(r => {
-    const f=r.fields; return !f['Linked Trip']?.length && !f['NATIONAL TRIPS']?.length && !f['NATIONAL TRIPS 2']?.length;
-  });
-  if (_natlFilters['_trip']==='assigned') recs = recs.filter(r => {
-    const f=r.fields; return f['Linked Trip']?.length>0 || f['NATIONAL TRIPS']?.length>0 || f['NATIONAL TRIPS 2']?.length>0;
-  });
+  const recs = OrdersList.applyFilters(NATL_ORDERS.data, _natlFilters, _ON_FILTER_SPEC);
   NATL_ORDERS.filtered = recs;
   _renderNatlTable(recs);
-  const n = recs.length + (recs.length===1?' παραγγελία':' παραγγελίες');
+  const n = OrdersList.countLabel(recs.length);
   document.getElementById('natlCount').textContent = n;
   const period = _ON_PERIOD_LABEL[_natlPeriod] || '';
   document.getElementById('natlSub').textContent   = period ? `${n} · ${period}` : n;

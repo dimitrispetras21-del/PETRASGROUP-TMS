@@ -87,6 +87,32 @@ const OrdersList = {
     });
   },
 
+  // Step 2b-a (22/9): the two _applyFilters bodies as one pure function. The
+  // spec is tests/orders-list-filters.test.js — it describes TODAY, including
+  // the asymmetry that intl treats a missing Status as Pending (statusDefault)
+  // while natl compares it literally (owner decision pending, not fixed here).
+  //   search(f, rec) → strings the free-text search looks into (module-specific);
+  //   eq → fields compared literally to the select value (no case folding;
+  //        Status is NOT listed there — it is handled with statusDefault);
+  //   _q arrives lowercased + trimmed from intlSearch/natlSearch.
+  tripState(f) {
+    return (f['Linked Trip']?.length > 0 || f['NATIONAL TRIPS']?.length > 0 || f['NATIONAL TRIPS 2']?.length > 0) ? 'assigned' : 'unassigned';
+  },
+  applyFilters(recs, filters, { search, eq = [], statusDefault }) {
+    const F = filters || {};
+    const status = f => f['Status'] || statusDefault;
+    if (F._q) { const q = F._q; recs = recs.filter(r => search(r.fields, r).some(s => String(s).toLowerCase().includes(q))); }
+    for (const k of eq) if (F[k]) recs = recs.filter(r => r.fields[k] === F[k]);
+    // Both lists have a Status select ('Status'); intl also has the header
+    // '_status' pills — same test, same default.
+    if (F.Status)    recs = recs.filter(r => status(r.fields) === F.Status);
+    if (F._status)   recs = recs.filter(r => status(r.fields) === F._status);
+    if (F._week)     recs = recs.filter(r => String(r.fields['Week Number']) === String(F._week));
+    if (F._groupage) recs = recs.filter(r => r.fields['National Groupage']);
+    if (F._trip === 'assigned' || F._trip === 'unassigned') recs = recs.filter(r => OrdersList.tripState(r.fields) === F._trip);
+    return recs;
+  },
+
   // «N παραγγελία / παραγγελίες» — the count both lists print in the header.
   countLabel(n) { return n + (n === 1 ? ' παραγγελία' : ' παραγγελίες'); },
 
