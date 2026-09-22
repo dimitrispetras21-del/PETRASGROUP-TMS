@@ -5,7 +5,11 @@
 // Κανόνες-κλειδιά:
 //  • RT γεννιέται όταν Status ∈ {In Transit, Delivered} ΚΑΙ υπάρχει ανάθεση —
 //    όχι στην καταχώρηση: τα πλάνα αλλάζουν (owner 24/8).
-//  • Κλεισμένο (closed/complete) RT ΔΕΝ αγγίζεται ποτέ αυτόματα — μόνο toast.
+//  • Το status του RT ΔΕΝ γράφεται από εδώ (owner 22/9, migration 046): είναι
+//    παράγωγο των σκελών του και το βγάζει η βάση — «αν RT ΚΛΕΙΣΤΟ, προσθέτω
+//    νέο σκέλος, ΑΝΟΙΓΕΙ, ξανά κλείνει μόλις είναι όλα Delivered/Cancelled».
+//    Το front προσαρτά σκέλη· δεν κλείνει και δεν ξανανοίγει γύρους.
+//  • Κλεισμένο RT ΔΕΝ ακυρώνεται ποτέ αυτόματα (ιστορικό) — μόνο toast.
 //    Το cost-complete είναι άλλος άξονας: γραμμές κόστους μπαίνουν κι αργότερα.
 //  • RT με γραμμές κόστους δεν ακυρώνεται ποτέ αυτόματα (ποτέ ορφανά κόστη).
 //  • Μοναδικότητα: unique index ct_leg_order στη βάση — όχι έλεγχοι κώδικα.
@@ -192,23 +196,17 @@ function _rtLegSeq(legsInfo, byId) {
 }
 if (typeof module !== 'undefined' && module.exports) module.exports = { rtLegsForOrder, _rtLegSeq };
 
+// _rtOpenLegs ΕΦΥΓΕ από εδώ (owner 22/9, migration 046): μετρούσε τα ανοιχτά
+// σκέλη για να αποφασίσει το front αν κλείνει ο γύρος. Ο ορισμός του «ανοιχτού
+// σκέλους» ζει πλέον ΜΟΝΟ στη βάση (rt_auto_close) — ένα αντίγραφο εδώ θα
+// απέκλινε. Το tests/critics/rt-close-sim.js φρουρεί τη νέα σύμβαση: το front
+// δεν γράφει ΠΟΤΕ status σε round trip.
+
 // Fetch the small set of orders that could be leg-mates of `rec`: Group ID
 // siblings, each one's matched import/export counterpart, and rotation legs
 // off any of those — targeted filters, not a full ORDERS scan (CLAUDE.md
 // «κάθε αντίγραφο αποκλίνει» applies to queries too: a full-table read here
 // would be slow AND would still miss nothing rtLegsForOrder needs).
-// Legs of the trip whose order is neither Delivered nor Cancelled — the
-// gate for closing (P2 above). Pure: (legsInfo from rtLegsForOrder, gathered
-// order records) → the open legs' order ids. Unknown records count as open:
-// «don't know» must never read as «delivered» (αρχή 1).
-function _rtOpenLegs(legsInfo, gathered) {
-  const byId = {};
-  (gathered || []).forEach(o => { if (o && o.id) byId[o.id] = o; });
-  return (legsInfo || []).filter(l => {
-    const st = ((byId[l.orderId] || {}).fields || {})['Status'];
-    return st !== 'Delivered' && st !== 'Cancelled';
-  }).map(l => l.orderId);
-}
 async function _rtGatherOrders(rec) {
   const byId = { [rec.id]: rec };
   const filterIn = async (formula) => {
@@ -333,9 +331,16 @@ async function rtOnOrderSaved(orderId) {
     // «lost the vehicle / cancelled», which is what its toast says.
     const exec = assigned && !gone;
 
-    if (_rtClosed(rt)) {
-      // ΚΛΕΙΔΩΜΕΝΟΣ ΚΑΝΟΝΑΣ (owner 24/8): κλεισμένο = ιστορικό. Μόνο φωνή.
-      if (gone) _rtWarn('P&L: η ' + (f['Reference'] || orderId) + ' ακυρώθηκε αλλά το ' + rt.code + ' είναι κλεισμένο — δες το στο TRIP PnL');
+    // Owner 22/9 (migration 046) ΑΝΤΙΚΑΘΙΣΤΑ τον κανόνα της 24/8 «κλεισμένο = μη
+    // αγγίζεται»: ένα κλειστό RT που αποκτά ανοιχτό σκέλος ΞΑΝΑΝΟΙΓΕΙ, και η
+    // απόφαση αυτή ανήκει στη βάση. Άρα το exec μονοπάτι παρακάτω τρέχει
+    // κανονικά και για κλειστό RT — προσαρτά το σκέλος, ο trigger ξανανοίγει.
+    // Αυτό που ΜΕΝΕΙ κλειδωμένο είναι η αντίστροφη κατεύθυνση: κλεισμένος γύρος
+    // δεν ακυρώνεται ποτέ αυτόματα (πραγματικό οικονομικό ιστορικό) — φωνή, όχι
+    // γράψιμο, όπως και στα RT με γραμμές κόστους παρακάτω.
+    if (_rtClosed(rt) && (gone || !exec)) {
+      _rtWarn('P&L: η ' + (f['Reference'] || orderId) + (gone ? ' ακυρώθηκε' : ' έχασε την ανάθεση') +
+              ' αλλά το ' + rt.code + ' είναι κλεισμένο — δες το στο TRIP PnL');
       return;
     }
 
@@ -426,20 +431,15 @@ async function rtOnOrderSaved(orderId) {
       }
       if ((partnerTrip ? 'PARTNER' : 'OWNED') !== rt.trip_type) _rtWarn('P&L: αλλαγή ιδιόκτητο↔συνεργάτης στο ' + rt.code + ' δεν συγχρονίζεται αυτόματα — δες το στο TRIP PnL');
     }
-    // Κλείσιμο = γεγονός δεδομένων (κλειδωμένο 10/8): solo export → Delivered
-    // του export· ζεύγος → Delivered του import (στο VS αυτό είναι η άφιξη
-    // Βέροια — εκεί παραδίδεται το VS import).
-    let shouldClose = false;
-    if (pgI == null) shouldClose = status === 'Delivered';
-    else { const imp = await atGetOne(TABLES.ORDERS, importRec); shouldClose = !!imp && imp.fields['Status'] === 'Delivered'; }
-    // P2 (owner/ελεγκτής 22/9, RT-1171): the pair was Delivered, a rotation leg
-    // (MyDay 367, Pending) was attached, and the trip closed on the pair's
-    // status alone — a closed trip with an open leg never closes right and
-    // its costs stick. Every gathered leg has a say: any open one keeps it.
-    if (shouldClose && _rtOpenLegs(legsInfo, gathered).length) shouldClose = false;
-    if (shouldClose && rtRef && !_rtClosed(rtRef)) {
-      await plFetch('/costs/rt/' + rtRef.id, { method: 'PATCH', body: { status: 'closed' } });
-    }
+    // ΤΟ ΚΛΕΙΣΙΜΟ ΕΦΥΓΕ ΑΠΟ ΕΔΩ (owner 22/9, migration 046 rt_auto_close).
+    // Ήταν: «solo export → Delivered του export· ζεύγος → Delivered του import»,
+    // συν ο μετρητής ανοιχτών σκελών της 22/9 (_rtOpenLegs). Δύο λόγοι που
+    // έφυγε, και οι δύο μετρημένοι: (α) έκλεινε ΜΟΝΟ τη στιγμή που περνούσε από
+    // εδώ μια αποθήκευση — 30 γύροι έμειναν planned με όλα τα σκέλη Delivered,
+    // κάποιοι επί εβδομάδες· (β) ο ίδιος κανόνας ζούσε σε δύο μέρη (εδώ και στη
+    // βάση) και τα δύο αντίγραφα είχαν ήδη αποκλίνει (αρχές 3 και 4).
+    // Τώρα: το front προσαρτά το σκέλος, η βάση βγάζει το status από ΟΛΑ τα
+    // σκέλη σε κάθε διαδρομή (front, Worker, SQL, Ημερήσιο) — και αναδρομικά.
     // Returned for callers that need to know whether a round trip exists now
     // (weekly_intl.js C1, Ρότα add — 6/9): undefined on every early return
     // above (not exec, cancelled, closed, gone) means "no RT to attach to".

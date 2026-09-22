@@ -1,21 +1,45 @@
-// P2 (22/9): a round trip closes only when EVERY leg is Delivered/Cancelled.
-// Runs the REAL _rtOpenLegs (extracted from core/rt-feed.js) over the RT-1171
-// shape: pair 361 (Export, Delivered) + 364 (Import, Delivered) + rotation leg
-// 367 (Import, Pending) — before the fix the pair alone closed the trip.
+// Η ΣΥΜΒΑΣΗ ΜΕΤΑ ΤΗΝ 046 (owner 22/9): το status ενός round trip είναι παράγωγο
+// των σκελών του και το βγάζει Η ΒΑΣΗ. Ο αυτόματος feed (core/rt-feed.js) ΔΕΝ
+// κλείνει και ΔΕΝ ξανανοίγει γύρους — προσαρτά σκέλη και μιλάει.
+//
+// Μέχρι τις 22/9 ο ίδιος έλεγχος έτρεχε τον _rtOpenLegs (τον μετρητή ανοιχτών
+// σκελών του front, RT-1171). Ο μετρητής έφυγε: ο ορισμός του «ανοιχτού
+// σκέλους» ζει τώρα ΜΟΝΟ στην rt_auto_close (046). Ένα δεύτερο αντίγραφο εδώ
+// θα απέκλινε — αρχή 3. Άρα ο έλεγχος αλλάζει στόχο: φρουρεί ότι το front δεν
+// ξαναποκτά εξουσία πάνω στο status, και ότι κρατά όσα ΔΕΝ άλλαξαν.
 const fs=require('fs'),path=require('path');
-const src=fs.readFileSync(path.join(__dirname,'../../core/rt-feed.js'),'utf8');
-const m=src.match(/function _rtOpenLegs\(legsInfo, gathered\) \{[\s\S]*?\n\}\n/); if(!m) throw new Error('fn not found');
-const _rtOpenLegs=new Function(m[0]+'; return _rtOpenLegs;')();
-const rec=(id,st)=>({id,fields:{Status:st}});
-const legs=[{orderId:'e361',direction:'EXPORT'},{orderId:'i364',direction:'IMPORT'},{orderId:'i367',direction:'IMPORT'}];
-const before=_rtOpenLegs(legs,[rec('e361','Delivered'),rec('i364','Delivered'),rec('i367','Pending')]);
-const after =_rtOpenLegs(legs,[rec('e361','Delivered'),rec('i364','Delivered'),rec('i367','Delivered')]);
-const cancelled=_rtOpenLegs(legs,[rec('e361','Delivered'),rec('i364','Delivered'),rec('i367','Cancelled')]);
-const unknown=_rtOpenLegs(legs,[rec('e361','Delivered'),rec('i364','Delivered')]);
-console.log(JSON.stringify({before,after,cancelled,unknown}));
+const rtFeed=fs.readFileSync(path.join(__dirname,'../../core/rt-feed.js'),'utf8');
+const weekly=fs.readFileSync(path.join(__dirname,'../../modules/weekly_intl.js'),'utf8');
+// σχόλια εκτός: μιλάμε για ΚΩΔΙΚΑ που τρέχει, όχι για κείμενο που τον εξηγεί
+const code=s=>s.replace(/\/\*[\s\S]*?\*\//g,'').split('\n').filter(l=>!/^\s*\/\//.test(l)).join('\n');
+const feedCode=code(rtFeed), weeklyCode=code(weekly);
+
 const fails=[];
-if(JSON.stringify(before)!=='["i367"]') fails.push('Pending leg must keep the trip open');
-if(after.length) fails.push('all Delivered must close');
-if(cancelled.length) fails.push('Cancelled leg must not block closing');
-if(JSON.stringify(unknown)!=='["i367"]') fails.push('unknown record must count as open');
-if(fails.length){ console.error('✗ '+fails.join(' · ')); process.exit(1); } console.log('✓ rt-close-sim: 4/4');
+const checks={};
+
+// 1. Καμία εγγραφή status σε round trip από τον feed (ούτε closed, ούτε planned).
+checks.noStatusWrite=!/\/costs\/rt\/[^\n]*status:\s*'(closed|complete|planned)'/.test(feedCode);
+if(!checks.noStatusWrite) fails.push('ο feed ξαναγράφει status σε round trip — η 046 το δίνει στη βάση');
+
+// 2. Ο μετρητής ανοιχτών σκελών δεν ξαναγεννιέται στο front.
+checks.noOpenLegsCounter=!/function\s+_rtOpenLegs/.test(feedCode);
+if(!checks.noOpenLegsCounter) fails.push('ο _rtOpenLegs επέστρεψε στο front — ένας ορισμός, στη βάση');
+
+// 3. Η ΑΚΥΡΩΣΗ κλεισμένου γύρου μένει απαγορευμένη: _rtClosed ζει ακόμη και
+//    φρουρεί το cancelled-μονοπάτι (πραγματικό οικονομικό ιστορικό).
+checks.closedStillGuarded=/_rtClosed\(rt\)\s*&&\s*\(gone\s*\|\|\s*!exec\)/.test(feedCode)
+  && /_rtClosed\s*=\s*rt\s*=>/.test(feedCode);
+if(!checks.closedStillGuarded) fails.push('έφυγε ο φρουρός: κλεισμένος γύρος δεν ακυρώνεται/δεν πειράζεται αυτόματα');
+
+// 4. Weekly Διεθνών: η ρότα ΔΕΝ αναιρεί πια το Rotation ID επειδή ο γονέας
+//    είναι κλειστός (η βάση ξανανοίγει) — δεν υπάρχει τέτοιο μήνυμα.
+checks.weeklyNoClosedRevert=!/κλειστός\s*—\s*ξανάνοιγμα από Μισθοδοσία/.test(weeklyCode);
+if(!checks.weeklyNoClosedRevert) fails.push('το weekly_intl αναιρεί ακόμη τη ρότα σε κλειστό γύρο');
+
+// 5. …αλλά ο φρουρός ορφανής ρότας (γονέας έχει RT, το σκέλος δεν μπήκε) μένει.
+checks.weeklyOrphanGuard=/if\(parentRt&&!attached\)/.test(weeklyCode);
+if(!checks.weeklyOrphanGuard) fails.push('έφυγε ο φρουρός ορφανής ρότας του _wiRotAdd');
+
+console.log(JSON.stringify(checks));
+if(fails.length){ console.error('✗ '+fails.join(' · ')); process.exit(1); }
+console.log('✓ rt-close-sim: 5/5 — το front δεν κλείνει γύρους, η βάση τους κλείνει');

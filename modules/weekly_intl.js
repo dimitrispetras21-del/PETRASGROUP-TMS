@@ -4233,7 +4233,14 @@ async function _wiRotAdd(parentRowId, legOid){
     // parent already has (or is getting) one, the Worker attaches this leg
     // and migration 013's rt_sync_legs trigger copies truck/trailer/driver
     // onto it on its own. Only the fallback path below still copies by hand.
-    let attached=null, parentRt=null;
+    let attached=null, parentRt=null, wasClosed=false;
+    // Το status ΠΡΙΝ το attach: η 046 ξανανοίγει τον γύρο μέσα στη βάση, οπότε
+    // μετά το attach δεν φαίνεται πια ότι ήταν κλειστός — και ο χρήστης πρέπει
+    // να το μάθει (αρχή 1: αλλαγή σε κλεισμένο βιβλίο δεν γίνεται σιωπηλά).
+    if(typeof rtFindForOrder==='function'){
+      const pre=(await rtFindForOrder(pOid).catch(()=>({rt:null}))).rt;
+      wasClosed=!!pre&&(pre.status==='closed'||pre.status==='complete');
+    }
     if(typeof rtOnOrderSaved==='function'){
       await rtOnOrderSaved(pOid).catch(e=>console.warn('[wi rota add] rt sync:',e&&e.message));
     }
@@ -4241,18 +4248,20 @@ async function _wiRotAdd(parentRowId, legOid){
       attached=(await rtFindForOrder(legOid).catch(()=>({rt:null}))).rt;
       parentRt=(await rtFindForOrder(pOid).catch(()=>({rt:null}))).rt;
     }
-    // P3 (ελεγκτής 22/9): rtOnOrderSaved never throws — _rtSafe swallows and a
-    // closed round trip only warns — so the «✓» below used to show even when
-    // the leg never reached the RT (a rota in ORDERS with no leg in the trip:
-    // the same orphan shape _wiRotUnlink guards against). The parents section
-    // leads exactly here (leg after a Delivered parent). Signal = the parent
-    // HAS a round trip and the leg is NOT on it: revert the Rotation ID we
-    // just wrote and say why, never a green toast.
+    // P3 (ελεγκτής 22/9): rtOnOrderSaved never throws — _rtSafe swallows every
+    // failure — so the «✓» below used to show even when the leg never reached
+    // the RT (a rota in ORDERS with no leg in the trip: the same orphan shape
+    // _wiRotUnlink guards against). Signal = the parent HAS a round trip and
+    // the leg is NOT on it: revert the Rotation ID we just wrote and say why,
+    // never a green toast.
+    // 22/9 (owner, migration 046): ΕΦΥΓΕ το ειδικό σκέλος «ο γύρος είναι
+    // κλειστός → αναίρεση + ξανάνοιγμα από Μισθοδοσία». Δεν ισχύει πια: ο
+    // κλειστός γύρος δέχεται το σκέλος και ξανανοίγει μόνος του στη βάση.
+    // Μένει ΜΟΝΟ ο φρουρός ορφανής ρότας: ο γονέας ΕΧΕΙ γύρο και το σκέλος
+    // ΔΕΝ μπήκε σε αυτόν — τότε η ρότα στα ORDERS θα έδειχνε σύνδεση που δεν
+    // υπάρχει στο δρομολόγιο, οπότε αναιρείται και λέγεται (ποτέ πράσινο ✓).
     if(parentRt&&!attached){
-      const closed=parentRt.status==='closed'||parentRt.status==='complete';
-      const why=closed
-        ?`Ο γύρος ${parentRt.code||''} είναι κλειστός — ξανάνοιγμα από Μισθοδοσία`
-        :`Το σκέλος δεν μπήκε στο δρομολόγιο ${parentRt.code||''}`;
+      const why=`Το σκέλος δεν μπήκε στο δρομολόγιο ${parentRt.code||''}`;
       const undo=await atSafePatch(TABLES.ORDERS,legOid,{'Rotation ID':''});
       if(undo?.error){
         reportError('Η ρότα γράφτηκε, αλλά το σκέλος ΔΕΝ μπήκε στο δρομολόγιο και η αναίρεση απέτυχε — άνοιξε την παραγγελία: '+why,new Error(undo.error.message||undo.error.type));
@@ -4273,7 +4282,9 @@ async function _wiRotAdd(parentRowId, legOid){
       const res2=await atSafePatch(TABLES.ORDERS,legOid,fallback);
       if(res2?.error) console.warn('[wi rota add] fallback vehicle copy failed:',res2.error.message||res2.error.type);
     }
-    toast('⤷ Σκέλος συνδέθηκε στη ρότα ✓');
+    toast(wasClosed&&attached
+      ?`⤷ Σκέλος προσαρτήθηκε — το ${attached.code||'δρομολόγιο'} ξανάνοιξε ✓`
+      :'⤷ Σκέλος συνδέθηκε στη ρότα ✓');
     renderWeeklyIntl();
   }catch(e){ reportError('Η σύνδεση σκέλους απέτυχε',e); }
 }
