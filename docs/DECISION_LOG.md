@@ -1893,3 +1893,13 @@ invoicing δεν μοιράζεται state/renderer/write/πύλη δικαιώ
 pg_trigger)· μόνο daily_ramp γράφει στο άνοιγμα· κανένα script για conflict markers/node --check· εβδομάδα TMS =
 Σάββατο–Παρασκευή· κριτής-subagent: 1 κρίσιμο + 3 σημαντικά ευρήματα διορθώθηκαν πριν το commit.
 **Ποιος:** owner (μέσω petrasgroup-tms-2e), Claude Fable 5.1 (session Grok Bot ελεγκτής).
+
+### 2026-09-22 · monitoring · Benchmark ελεγκτή αλλαγών: μηχανικά 2/2, κρίση ~1/3, εγχειρίδια δεν αποδείχθηκε ότι βοηθούν την ανίχνευση (n=3) → ρόλος 1 μόνο σε μεγάλες αλλαγές, βήμα 4 προτεραιότητα
+**Απόδειξη:** `docs/grok-bot/06-benchmark-2026-09-22.md` — 12 commits (7 ιστορικά περιστατικά + 5 «καθαρά») + 3 baseline
+χωρίς εγχειρίδια, 15 Sonnet subagents σε detached worktrees, χωρίς τη γνωστή λύση. Μηχανικά (markers, bump) πιάστηκαν
+πάντα — και ένα «καθαρό» (a6c0aa8) αποδείχθηκε χωρίς SW_VERSION bump. Κρίση χωρίς υπόδειξη 0,5/2, baseline 2/3·
+~109k tokens/αξιολόγηση· ψευδείς 0 σε γεγονότα, 1 σε βαθμό. **Επιλογή (συντονιστής):** ο ρόλος 1 τρέχει μόνο σε
+αλλαγές που αγγίζουν worker/src, migrations, φόρμες παραγγελιών/weekly, δικαιώματα, ή >150 γραμμές· αξιολόγηση ανά
+push/branch, όχι ανά commit (Ε1)· `node --check` επιτρέπεται (Ε6)· τα μικρά μόνο από μηχανικούς ελέγχους —
+**βήμα 4 (script χωρίς μοντέλο) γίνεται προτεραιότητα**, DRAFT σε branch `draft/check-change`. Ε2–Ε5, Ε7 = προτάσεις,
+δεν εφαρμόστηκαν. **Ποιος:** συντονιστής (petrasgroup-tms-2e), Claude Fable 5.1 (session Grok Bot ελεγκτής).
