@@ -100,6 +100,8 @@ test('A1: a bad sql_text fails IN THE DATABASE (statement, DML in WITH, function
     tms_function: "SELECT monitoring.raise_incident('x','x','P1',1,'x')",
     set_config: "SELECT set_config('role','postgres',false)",
     not_select: "DELETE FROM orders",
+    // review A 23/9 P4: a dollar-quoted string must not hide a second statement from the «;» check
+    dollar_hide: "SELECT $q$'$q$; DELETE FROM orders; SELECT '",
   };
   for (const [k, sql] of Object.entries(bad)) {
     await db.query("UPDATE monitoring.checks SET sql_text = $1 WHERE id = 'B-01'", [sql]);

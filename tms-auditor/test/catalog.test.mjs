@@ -25,6 +25,7 @@ test('lint rejects writes, TMS functions and multiple statements', async () => {
   assert.ok(lintSql("SELECT delete_order_cascade('rec1')", 'x').some((e) => e.includes('not in allowlist')));
   assert.ok(lintSql("SELECT set_config('a','b',false)", 'x').length > 0);
   assert.deepEqual(lintSql("SELECT count(*) FROM orders WHERE status='Deleted; DROP'", 'x'), []);
+  assert.ok(lintSql("SELECT $q$'$q$; DELETE FROM orders; SELECT '", 'x').length > 0, 'dollar quote cannot hide a statement');
 });
 
 test('committed seed (047b) and fixture schema are regenerated, never hand-edited', () => {

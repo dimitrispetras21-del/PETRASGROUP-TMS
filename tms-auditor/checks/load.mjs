@@ -18,7 +18,8 @@ const KEYWORDS = new Set(['select', 'from', 'where', 'and', 'or', 'not', 'on', '
   'interval', 'case', 'when', 'then', 'else', 'end', 'between', 'is', 'having', 'by']);
 const FORBIDDEN = /\b(insert|update|delete|merge|alter|drop|create|grant|revoke|truncate|copy|call|do|vacuum|analyze|lock|listen|notify|set|reset|execute|prepare|refresh|comment|security|pg_sleep|dblink|lo_\w+|set_config|nextval|setval)\b/i;
 
-function stripStrings(sql) { return sql.replace(/'(?:[^']|'')*'/g, "''"); }
+// Dollar-quoted strings FIRST, then '…' — same order as monitoring.check_sql_guard (047).
+function stripStrings(sql) { return sql.replace(/\$([A-Za-z_]*)\$[\s\S]*?\$\1\$/g, "''").replace(/'(?:[^']|'')*'/g, "''"); }
 
 export function lintSql(sql, where) {
   const errs = [];

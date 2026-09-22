@@ -200,7 +200,10 @@ DECLARE body text; fn text;
     'select','from','where','and','or','not','on','as','join','filter','over','values','interval',
     'case','when','then','else','end','between','is','having','by'];
 BEGIN
-  body := regexp_replace(p_sql, '''([^'']|'''')*''', '''''', 'g');      -- string literals out
+  -- dollar-quoted strings FIRST (review A 23/9 P4): stripping '…' first lets «$q$'$q$; DELETE …; SELECT '»
+  -- hide a second statement inside what looks like a quoted string
+  body := regexp_replace(p_sql, '\$([A-Za-z_]*)\$.*?\$\1\$', '''''', 'g');
+  body := regexp_replace(body, '''([^'']|'''')*''', '''''', 'g');      -- string literals out
   body := regexp_replace(body, '--[^\n]*', ' ', 'g');                   -- comments out
   body := regexp_replace(body, ';\s*$', '');
   IF body !~* '^\s*(select|with)\s' THEN RAISE EXCEPTION 'check sql refused: must start with SELECT/WITH'; END IF;

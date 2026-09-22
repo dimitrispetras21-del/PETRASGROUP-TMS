@@ -17,8 +17,13 @@ var __defProp = Object.defineProperty;
 var __name = (target, value) => __defProp(target, "name", { value, configurable: true });
 
 // src/lib/cors.js
+// ONE source for the CORS allow-lists (review B 23/9 P4): corsHeaders and preflightRefusal read these.
+var CORS_ALLOWED_HEADERS = ["Content-Type", "Authorization", "x-tms-req", "x-tms-app"];
+function allowedOrigins(env) {
+  return (env.ALLOWED_ORIGIN || "").split(",").map((s) => s.trim()).filter(Boolean);
+}
 function corsHeaders(origin, env) {
-  const allowlist = (env.ALLOWED_ORIGIN || "").split(",").map((s) => s.trim()).filter(Boolean);
+  const allowlist = allowedOrigins(env);
   const allowed = allowlist.includes(origin) ? origin : "";
   return {
     "Access-Control-Allow-Origin": allowed,
@@ -26,7 +31,7 @@ function corsHeaders(origin, env) {
     // x-tms-req / x-tms-app: Level A correlation (feat/tms-auditor). The front only sends them after it
     // has SEEN x-tms-worker-req on a response of this page load, so an older Worker (or a rollback) never
     // receives a header it does not allow — a preflight failure would block EVERY request.
-    "Access-Control-Allow-Headers": "Content-Type, Authorization, x-tms-req, x-tms-app",
+    "Access-Control-Allow-Headers": CORS_ALLOWED_HEADERS.join(", "),
     "Access-Control-Expose-Headers": "x-tms-worker-req",
     "Access-Control-Max-Age": "86400",
     "Vary": "Origin"
@@ -4771,13 +4776,12 @@ function sanitizeReqId(v) {
 }
 __name(sanitizeReqId, "sanitizeReqId");
 var REQ_ACTION = { GET: "read", POST: "create", PATCH: "update", DELETE: "delete" };
-var REQ_ALLOWED_HEADERS = ["content-type", "authorization", "x-tms-req", "x-tms-app"];
 function preflightRefusal(request, env) {
   const origin = request.headers.get("Origin") || "";
-  const allowlist = (env.ALLOWED_ORIGIN || "").split(",").map((s) => s.trim()).filter(Boolean);
-  if (origin && !allowlist.includes(origin)) return "preflight-refused: origin";
+  if (origin && !allowedOrigins(env).includes(origin)) return "preflight-refused: origin";
   const asked = (request.headers.get("Access-Control-Request-Headers") || "").toLowerCase().split(",").map((s) => s.trim()).filter(Boolean);
-  const bad = asked.filter((h) => !REQ_ALLOWED_HEADERS.includes(h));
+  const allowedLc = CORS_ALLOWED_HEADERS.map((h) => h.toLowerCase());
+  const bad = asked.filter((h) => !allowedLc.includes(h));
   // header NAMES only (they are protocol tokens, not user data), at most 5
   return bad.length ? "preflight-refused: headers " + bad.slice(0, 5).join(",").slice(0, 80) : null;
 }
