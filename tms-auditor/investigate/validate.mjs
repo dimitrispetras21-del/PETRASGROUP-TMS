@@ -23,7 +23,11 @@ export function resolveEvidence(pkg, ref) {
   if (typeof ref !== 'string' || !ref) return false;
   // Code evidence: the FILE must be one of the package's code_pointers (the line may differ: a reader may
   // cite the relevant range inside a pointed file — the first real diagnosis did exactly that, correctly).
-  if (ref.startsWith('code:')) { const file = ref.slice(5).split(':')[0]; return (pkg.code_pointers || []).some((c) => c.src && c.src.split(':')[0] === file); }
+  if (ref.startsWith('code:')) {
+    const file = ref.slice(5).split(':')[0];
+    return (pkg.code_pointers || []).some((c) => c.src && c.src.split(':')[0] === file)
+        || (pkg.code_excerpts || []).some((e) => e.file === file);
+  }
   let cur = pkg;
   for (const part of ref.replace(/\[(\d+)\]/g, '.$1').split('.')) {
     if (cur == null || !(part in Object(cur))) return false;

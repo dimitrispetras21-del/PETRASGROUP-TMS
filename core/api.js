@@ -163,6 +163,7 @@ async function _flushOfflineQueue() {
   // from the error-rate checks by its prefix (B-34/B-34b), with the ids of the replayed actions.
   if (batch.length && typeof logError === 'function') {
     const _fl = new Error(`offline flush synced ${synced}, conflicts ${conflicts}, failed ${failed} · ${batch.map((b) => b.req).filter(Boolean).slice(0, 10).join(',')}`);
+    _fl._kind = 'offline';                     // informational: stored with app_errors.kind='offline', not an error
     logError(_fl, 'queue');
   }
   if (synced > 0 && typeof showErrorToast === 'function') {
@@ -384,9 +385,26 @@ function _newReqId() {
   try { crypto.getRandomValues(a); } catch (_) { for (let i = 0; i < 16; i++) a[i] = Math.floor(Math.random() * 256); }
   return Array.from(a, (b) => (b % 36).toString(36)).join('') + Date.now().toString(36).slice(-10);
 }
+// The Worker announces Level A with a UNIX TIMESTAMP (review B 23/9 #4): accepted only if within ±10′ of this
+// browser's clock, so a stale or cached response can never switch the header on. A badly skewed clock fails
+// SAFE (no header, only the correlation is lost).
 function _noteWorkerCaps(res) {
-  try { if (!_tmsReqOk && res && res.headers && res.headers.get('x-tms-worker-req')) _tmsReqOk = true; } catch (_) {}
+  try {
+    if (_tmsReqOk || !res || !res.headers) return;
+    const ts = Number(res.headers.get('x-tms-worker-req'));
+    if (ts && Math.abs(ts - Date.now() / 1000) <= 600) _tmsReqOk = true;
+  } catch (_) {}
 }
+// For the hand-written fetches outside _atRetry (/costs, /pallets, /print, /audit, /app-errors — review B
+// 23/9 #1): one id per action, headers only once the Worker has announced Level A (else {} — identical to
+// before), and the response teaches the capability too.
+function tmsNewAction() { return _newReqId(); }
+function tmsReqHeaders(req) {
+  const h = {};
+  if (req && _tmsReqOk) { h['x-tms-req'] = req; if (_TMS_APP_V) h['x-tms-app'] = _TMS_APP_V; }
+  return h;
+}
+function tmsNoteResponse(res) { _noteWorkerCaps(res); }
 
 function _apiHeaders(method, req) {
   const h = {};

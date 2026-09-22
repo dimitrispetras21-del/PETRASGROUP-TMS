@@ -56,6 +56,8 @@ beforeEach(() => {
 });
 const restore = () => { console.log = realLog; console.error = realErr; };
 
+// Workers ctx: collect waitUntil promises so a test can await the (deliberately deferred) request line.
+const mkCtx = () => { const p = []; return { waitUntil: (x) => p.push(x), flush: () => Promise.all(p) }; };
 const reqLines = () => lines.filter((l) => l.startsWith('{')).map((l) => JSON.parse(l)).filter((j) => j.kind === 'req');
 
 test('CORS preflight allows the correlation headers and exposes the capability flag', async () => {
@@ -70,10 +72,14 @@ test('CORS preflight allows the correlation headers and exposes the capability f
 
 test('one request line, capability header, and nothing sensitive in the line', async () => {
   const token = await jwt({ sub: 'someuser', role: 'owner', exp: Math.floor(Date.now() / 1000) + 600 });
+  const ctx = mkCtx();
   const res = await worker.fetch(new Request(`https://w.invalid/v0/appX/${LOCATIONS}?filterByFormula=SECRETQUERY&pageSize=1`, {
-    headers: { Origin: ORIGIN, Authorization: `Bearer ${token}`, 'x-tms-req': 'abcdef0123456789abcdef0123-2', 'x-tms-app': '1790105400' } }), env, { waitUntil() {} });
+    headers: { Origin: ORIGIN, Authorization: `Bearer ${token}`, 'x-tms-req': 'abcdef0123456789abcdef0123-2', 'x-tms-app': '1790105400' } }), env, ctx);
+  assert.equal(reqLines().length, 0, 'the line is NOT written before the response is returned (waitUntil)');
+  await ctx.flush();
   restore();
-  assert.equal(res.headers.get('x-tms-worker-req'), '1');
+  const ts = Number(res.headers.get('x-tms-worker-req'));
+  assert.ok(Math.abs(ts - Date.now() / 1000) < 5, 'capability header is a fresh unix timestamp');
   const ls = reqLines();
   assert.equal(ls.length, 1, 'exactly one kind:"req" line');
   const l = ls[0];
@@ -85,8 +91,9 @@ test('one request line, capability header, and nothing sensitive in the line', a
 
 test('audit_log carries req_id; without migration 049 the audit row is still written and it is loud', async () => {
   const token = await jwt({ sub: 'someuser', role: 'owner', exp: Math.floor(Date.now() / 1000) + 600 });
+  const dctx = mkCtx();
   const doDelete = () => worker.fetch(new Request(`https://w.invalid/v0/appX/${LOCATIONS}/recLOC7`, {
-    method: 'DELETE', headers: { Origin: ORIGIN, Authorization: `Bearer ${token}`, 'x-tms-req': 'aaaabbbbccccdddd0000-1' } }), env, { waitUntil() {} });
+    method: 'DELETE', headers: { Origin: ORIGIN, Authorization: `Bearer ${token}`, 'x-tms-req': 'aaaabbbbccccdddd0000-1' } }), env, dctx);
 
   let res = await doDelete();
   const withCol = calls.filter((c) => c.method === 'POST' && c.path.endsWith('/audit_log'));
@@ -96,6 +103,7 @@ test('audit_log carries req_id; without migration 049 the audit row is still wri
 
   calls = []; errs = []; missingReqColumn = true;
   res = await doDelete();
+  await dctx.flush();                               // deferred request lines must not leak into the next test
   restore();
   const posts = calls.filter((c) => c.method === 'POST' && c.path.endsWith('/audit_log'));
   assert.equal(posts.length, 2, 'first with req_id (rejected), then without');
@@ -124,4 +132,40 @@ test('app_errors gets the failed action req + role, never the username', async (
   const line = reqLines()[0];
   assert.equal(line.table, 'app-errors');
   assert.ok(!JSON.stringify(line).includes('someuser'));
+});
+
+test('preflight: logged ONLY when refused (header not allowed / foreign origin), never when it succeeds', async () => {
+  let res = await worker.fetch(new Request('https://w.invalid/costs/rt', { method: 'OPTIONS',
+    headers: { Origin: ORIGIN, 'Access-Control-Request-Headers': 'content-type, authorization, x-tms-req' } }), env, mkCtx());
+  assert.equal(reqLines().length, 0, 'a successful preflight writes nothing');
+  res = await worker.fetch(new Request('https://w.invalid/costs/rt', { method: 'OPTIONS',
+    headers: { Origin: ORIGIN, 'Access-Control-Request-Headers': 'content-type, x-evil-header' } }), env, mkCtx());
+  res = await worker.fetch(new Request('https://w.invalid/costs/rt', { method: 'OPTIONS', headers: { Origin: 'https://evil.invalid' } }), env, mkCtx());
+  restore();
+  const ls = reqLines();
+  assert.deepEqual(ls.map((l) => [l.method, l.err]), [['OPTIONS', 'preflight-refused: headers x-evil-header'], ['OPTIONS', 'preflight-refused: origin']]);
+});
+
+test('every route family gets a line: /costs, /pallets, /print, /audit, /app-errors, /health', async () => {
+  const token = await jwt({ sub: 'someuser', role: 'owner', exp: Math.floor(Date.now() / 1000) + 600 });
+  const ctx = mkCtx();
+  for (const [m, p] of [['GET', '/costs/rt?from=2026-09-01&to=2026-09-07'], ['GET', '/pallets/gate?order_recs=recA'], ['GET', '/audit'],
+                        ['GET', '/print/pdf?x=1'], ['GET', '/health']]) {
+    await worker.fetch(new Request('https://w.invalid' + p, { method: m, headers: { Origin: ORIGIN, Authorization: `Bearer ${token}`, 'x-tms-req': 'ffffeeeeddddcccc0000-1' } }), env, ctx);
+  }
+  await ctx.flush(); restore();
+  const t = reqLines().map((l) => [l.table, l.req]);
+  assert.deepEqual(t.map((x) => x[0]), ['costs', 'pallets', 'audit', 'print', 'health']);
+  assert.ok(t.every((x) => x[1] === 'ffffeeeeddddcccc0000-1'));
+  assert.ok(!lines.join('\n').includes('order_recs'), 'no query string in any line');
+});
+
+test('app_errors kind=offline is stored as a non-error; unknown kind is ignored', async () => {
+  await worker.fetch(new Request('https://w.invalid/app-errors', { method: 'POST', headers: { Origin: ORIGIN, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ message: 'queue: offline flush synced 1', kind: 'offline' }) }), env, mkCtx());
+  await worker.fetch(new Request('https://w.invalid/app-errors', { method: 'POST', headers: { Origin: ORIGIN, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ message: 'boom', kind: 'drop table' }) }), env, mkCtx());
+  restore();
+  const ins = calls.filter((c) => c.method === 'POST' && c.path.endsWith('/app_errors')).map((c) => c.body.kind ?? null);
+  assert.deepEqual(ins, ['offline', null]);
 });

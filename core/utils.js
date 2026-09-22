@@ -527,6 +527,7 @@ function logError(error, context = '') {
     page: localStorage.getItem('tms_page') || 'dashboard',
     count: 1,
     req: (error && typeof error === 'object' && typeof error._req === 'string') ? error._req : null,   // Level A
+    kind: (error && typeof error === 'object' && error._kind === 'offline') ? 'offline' : undefined,
   };
   if (!_maybeDedup(entry)) {
     _errorLog.push(entry);
@@ -588,6 +589,8 @@ function _postAppError(entry) {
     try {
       const jwt = localStorage.getItem('tms_jwt');
       if (jwt) headers['Authorization'] = `Bearer ${jwt}`;
+      // Level A: the POST gets its own line id; body.req (below) names the action that failed
+      if (typeof tmsReqHeaders === 'function' && typeof tmsNewAction === 'function') Object.assign(headers, tmsReqHeaders(tmsNewAction() + '-1'));
     } catch(_) {}
 
     fetch(`${PROXY_URL}/app-errors`, {
@@ -601,6 +604,7 @@ function _postAppError(entry) {
         // Level A: the id of the failed user action — joins this row to audit_log.req_id and the Worker
         // request line. The Worker keeps it only if it matches its strict pattern.
         req: entry.req || undefined,
+        kind: entry.kind,                       // 'offline' = informational line, excluded from error counts
         // sw_version deliberately not sent: no page-visible source for it exists
         // today, and reading a made-up localStorage key would be the same dead-
         // name bug class as the old window.SENTRY_DSN. Nullable server-side.

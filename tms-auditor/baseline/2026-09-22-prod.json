@@ -178,5 +178,13 @@
    "documents_not_registered": 31,
    "verdict": "REAL current state — expired date on an ACTIVE vehicle: either stale active flag / not updated renewal (data) or a real expiry; owner decides per vehicle"
   }
- }
+ },
+ "measured_2026-09-22T20:27:11Z": {
+  "B-27": 0,
+  "B-52": 0,
+  "B-53": 0,
+  "B-54": 25,
+  "note": "first production run of B-52/B-53/B-54 and of B-27 with the explicit 5-id exclusion (review B 23/9 #5)"
+ },
+ "coverage_of_current_sql": "66/66 enabled checks have run in production with their CURRENT sql: 63 at 19:33 (unchanged since) + B-01/B-02/B-03 at 19:45 + B-27/B-52/B-53/B-54 at 20:27. 0 errors."
 }

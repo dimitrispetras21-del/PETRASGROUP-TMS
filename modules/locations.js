@@ -670,8 +670,9 @@ async function _locGateIds(recs) {
   const jwt = localStorage.getItem('tms_jwt');
   for (let i = 0; i < recs.length; i += 250) {
     const res = await fetch(PROXY_URL + '/pallets/gate?order_recs=' + recs.slice(i, i + 250).join(','), {
-      headers: jwt ? { Authorization: 'Bearer ' + jwt } : {}
+      headers: { ...(jwt ? { Authorization: 'Bearer ' + jwt } : {}), ...(typeof tmsReqHeaders === 'function' ? tmsReqHeaders(typeof tmsNewAction === 'function' ? tmsNewAction() + '-1' : null) : {}) }   // Level A id
     });
+    if (typeof tmsNoteResponse === 'function') tmsNoteResponse(res);
     if (!res.ok) return; // χωρίς ORD-κωδικούς η κάρτα στέκεται — δεν είναι λόγος αποτυχίας
     const g = await res.json().catch(() => ({}));
     (g.records || []).forEach(r => { LOCC.pgByRec[r.order_rec] = r.order_id; });

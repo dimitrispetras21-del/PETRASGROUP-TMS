@@ -10,10 +10,11 @@
 ALTER TABLE public.audit_log  ADD COLUMN IF NOT EXISTS req_id text;
 ALTER TABLE public.app_errors ADD COLUMN IF NOT EXISTS req_id text;
 ALTER TABLE public.app_errors ADD COLUMN IF NOT EXISTS role   text;   -- role of the verified JWT (never username)
+ALTER TABLE public.app_errors ADD COLUMN IF NOT EXISTS kind   text;   -- NULL = error · 'offline' = queue flush (not an error)
 CREATE INDEX IF NOT EXISTS audit_log_req_id_idx  ON public.audit_log  (req_id) WHERE req_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS app_errors_req_id_idx ON public.app_errors (req_id) WHERE req_id IS NOT NULL;
 
--- Verify (read-only), expected 3 rows:
+-- Verify (read-only), expected 4 rows:
 -- SELECT table_name, column_name, data_type FROM information_schema.columns
 --  WHERE table_schema='public' AND ((table_name='audit_log' AND column_name='req_id')
---     OR (table_name='app_errors' AND column_name IN ('req_id','role')));
+--     OR (table_name='app_errors' AND column_name IN ('req_id','role','kind')));

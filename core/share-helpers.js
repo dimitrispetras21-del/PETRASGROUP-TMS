@@ -32,7 +32,8 @@
   // της σελίδας εκτύπωσης. Αποτυχία = μήνυμα με τον λόγο, ποτέ σιωπή.
   async function _fetchPdfBlob(opts) {
     const jwt = localStorage.getItem('tms_jwt');
-    const res = await fetch(opts.pdfUrl(), { headers: jwt ? { Authorization: 'Bearer ' + jwt } : {} });
+    const res = await fetch(opts.pdfUrl(), { headers: { ...(jwt ? { Authorization: 'Bearer ' + jwt } : {}), ...(typeof tmsReqHeaders === 'function' ? tmsReqHeaders(typeof tmsNewAction === 'function' ? tmsNewAction() + '-1' : null) : {}) } });   // Level A id
+    if (typeof tmsNoteResponse === 'function') tmsNoteResponse(res);
     if (!res.ok) {
       let msg = 'HTTP ' + res.status;
       try { msg = (await res.json()).error || msg; } catch (_) {}

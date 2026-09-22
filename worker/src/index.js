@@ -395,7 +395,9 @@ async function handleAppErrorPost(request, origin, env) {
     sw_version: clampStr(body.sw_version, CLAMPS.sw_version)
   };
   const reqOf = sanitizeReqId(body.req);
-  const extra = reqOf || caller ? { req_id: reqOf, role: caller ? caller.role || null : null } : null;
+  // kind: 'offline' = an informational line (the offline queue was flushed), NOT an error — review B 23/9 #5.
+  const kind = body.kind === "offline" ? "offline" : null;
+  const extra = reqOf || caller || kind ? { req_id: reqOf, role: caller ? caller.role || null : null, ...(kind ? { kind } : {}) } : null;
   try {
     await insertWithReqId(env, "app_errors", [row], false, extra);
     return jsonOk({ ok: true }, origin, env, 201);
@@ -623,7 +625,7 @@ async function insertWithReqId(env, table, rows, many, extra) {
   try {
     return many ? await dbInsertMany(env, table, withReq) : await dbInsert(env, table, withReq[0]);
   } catch (e) {
-    if (!add || !/req_id|'role'/.test(String(e && e.message))) throw e;
+    if (!add || !/req_id|'role'|'kind'/.test(String(e && e.message))) throw e;
     console.error("REQ_ID COLUMN MISSING — run migration 049", table);
     return many ? await dbInsertMany(env, table, rows) : await dbInsert(env, table, rows[0]);
   }
@@ -4769,7 +4771,18 @@ function sanitizeReqId(v) {
 }
 __name(sanitizeReqId, "sanitizeReqId");
 var REQ_ACTION = { GET: "read", POST: "create", PATCH: "update", DELETE: "delete" };
-function reqLineOf(request, req, status, t0, role, err) {
+var REQ_ALLOWED_HEADERS = ["content-type", "authorization", "x-tms-req", "x-tms-app"];
+function preflightRefusal(request, env) {
+  const origin = request.headers.get("Origin") || "";
+  const allowlist = (env.ALLOWED_ORIGIN || "").split(",").map((s) => s.trim()).filter(Boolean);
+  if (origin && !allowlist.includes(origin)) return "preflight-refused: origin";
+  const asked = (request.headers.get("Access-Control-Request-Headers") || "").toLowerCase().split(",").map((s) => s.trim()).filter(Boolean);
+  const bad = asked.filter((h) => !REQ_ALLOWED_HEADERS.includes(h));
+  // header NAMES only (they are protocol tokens, not user data), at most 5
+  return bad.length ? "preflight-refused: headers " + bad.slice(0, 5).join(",").slice(0, 80) : null;
+}
+__name(preflightRefusal, "preflightRefusal");
+function reqLineOf(request, req, status, t0, role, err, alwaysErr) {
   const url = new URL(request.url);
   const m = url.pathname.match(FACADE_PATH);
   const cfg = m ? TABLES[m[1]] : null;
@@ -4781,12 +4794,12 @@ function reqLineOf(request, req, status, t0, role, err) {
     rec: m && m[2] ? m[2].slice(0, 40) : null,
     app: typeof app === "string" && /^[0-9a-z._-]{1,20}$/i.test(app) ? app : null
   };
-  if (err && status >= 500) line.err = err;
+  if (err && (status >= 500 || alwaysErr)) line.err = err;
   return line;
 }
 __name(reqLineOf, "reqLineOf");
-function logReqLine(request, req, status, t0, role, err) {
-  try { console.log(JSON.stringify(reqLineOf(request, req, status, t0, role, err))); } catch (_) { /* logging never breaks a request */ }
+function logReqLine(request, req, status, t0, role, err, alwaysErr) {
+  try { console.log(JSON.stringify(reqLineOf(request, req, status, t0, role, err, alwaysErr))); } catch (_) { /* logging never breaks a request */ }
 }
 __name(logReqLine, "logReqLine");
 var ORDERS_TABLE_ID = "tblgHlNmLBH3JTdIM";
@@ -4794,14 +4807,19 @@ var index_default = {
   // ctx was never declared here — the runtime always passes it. It carries
   // waitUntil, which the unknown-field logger needs so its RPC survives the
   // response without ever blocking it.
-  // Level A (feat/tms-auditor): ONE JSON line per request — kind:"req". Written AFTER routing, never on the
-  // user's path. NEVER logged: Authorization, cookies, bodies, query strings, usernames, client names.
-  // The first such line in Workers Logs is also the proof that console.* reaches Cloudflare after
-  // invocation_logs=false (22/9: 0 cf-worker-log in 24h — unverified until this line appears).
+  // Level A (feat/tms-auditor): ONE JSON line per request — kind:"req" — for EVERY route (facade, /costs,
+  // /pallets, /print, /audit, /app-errors…). The role lookup (a second JWT verify) and the line itself run in
+  // ctx.waitUntil, i.e. AFTER the response is returned — review B 23/9 #3: the first version did both before
+  // returning, contrary to its own comment. NEVER logged: Authorization, cookies, bodies, query strings,
+  // usernames, client names. The first such line in Workers Logs is also the proof that console.* reaches
+  // Cloudflare after invocation_logs=false (22/9: 0 cf-worker-log in 24h — unverified until it appears).
+  // OPTIONS: logged ONLY when the preflight would be refused (origin or requested header not allowed) —
+  // successful preflights are ~half the volume and say nothing; a refused one blocks EVERY request of a page.
   async fetch(request, env, ctx) {
     const t0 = Date.now();
     const req = sanitizeReqId(request.headers.get("x-tms-req"));
     const renv = Object.create(env, { __tmsReq: { value: req } });
+    const later = (p) => { if (ctx && typeof ctx.waitUntil === "function") ctx.waitUntil(p); else return p; };
     let res;
     try {
       res = await index_default._route(request, renv, ctx);
@@ -4809,12 +4827,22 @@ var index_default = {
       logReqLine(request, req, 500, t0, null, String(e && e.message || e).slice(0, 120));
       throw e;
     }
-    if (request.method === "OPTIONS") return res;
+    if (request.method === "OPTIONS") {
+      const refused = preflightRefusal(request, env);
+      if (refused) logReqLine(request, req, res.status, t0, null, refused, true);
+      return res;
+    }
     const out = new Response(res.body, res);
-    out.headers.set("x-tms-worker-req", "1");
-    let role = null;
-    try { const c = await getCaller(request, env); role = c ? c.role || null : null; } catch (_) { role = null; }
-    logReqLine(request, req, out.status, t0, role, null);
+    // Capability announcement for the front (core/api.js): a TIMESTAMP, not a flag — the front accepts it only
+    // if fresh (±10′), so a stale/cached response can never switch the header on (review B 23/9 #4).
+    out.headers.set("x-tms-worker-req", String(Math.floor(Date.now() / 1e3)));
+    const status = out.status;
+    const logged = later((async () => {
+      let role = null;
+      try { const c = await getCaller(request, env); role = c ? c.role || null : null; } catch (_) { role = null; }
+      logReqLine(request, req, status, t0, role, null);
+    })());
+    if (logged) await logged;                                   // no ctx (tests/local): log inline
     return out;
   },
   async _route(request, env, ctx) {

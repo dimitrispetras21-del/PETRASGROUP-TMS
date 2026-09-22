@@ -35,11 +35,12 @@ const _ct = { pnl: [], rts: {}, lookups: null, veh: 'ALL', scope: 'ALL', group: 
 
 async function ctFetch(path, opts = {}) {
   const jwt = localStorage.getItem('tms_jwt');
+  const _rq = (typeof tmsNewAction === 'function' ? tmsNewAction() : null);   // Level A: one id per action
   let res;
   try {
     res = await fetch(PROXY_URL + path, {
       method: opts.method || 'GET',
-      headers: { 'Content-Type': 'application/json', ...(jwt ? { Authorization: 'Bearer ' + jwt } : {}) },
+      headers: { 'Content-Type': 'application/json', ...(jwt ? { Authorization: 'Bearer ' + jwt } : {}), ...(typeof tmsReqHeaders === 'function' ? tmsReqHeaders(_rq ? _rq + '-1' : null) : {}) },
       body: opts.body ? JSON.stringify(opts.body) : undefined
     });
   } catch (e) {
@@ -48,6 +49,7 @@ async function ctFetch(path, opts = {}) {
     // error card and alert says what actually happened.
     throw new Error('δεν υπήρξε απάντηση από τον διακομιστή (δίκτυο ή διακομιστής εκτός)');
   }
+  if (typeof tmsNoteResponse === 'function') tmsNoteResponse(res);
   const data = await res.json().catch(() => null);
   if (!res.ok) {
     // Status + body travel with the error so a caller can say more than the
@@ -55,6 +57,7 @@ async function ctFetch(path, opts = {}) {
     const err = new Error((data && data.error) || ('HTTP ' + res.status));
     err.status = res.status;
     err.data = data;
+    err._req = _rq;                            // Level A: the id reaches /app-errors if a caller logs it
     throw err;
   }
   // 200 με μη-JSON σώμα (edge error page, λάθος proxy) ΔΕΝ είναι «κενή βάση» —

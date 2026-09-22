@@ -37,12 +37,47 @@ export function codePointers(check, max = 12) {
   return out;
 }
 
+// Code EXCERPTS (review B 23/9 #2): the measured diagnosis cost 131k tokens because the model had to read 4
+// files, i.e. 5 model turns each re-reading the whole context. The package now carries the code itself —
+// ±40 lines around each pointer, merged per file, under a total budget — so a diagnosis is ONE turn.
+export const EXCERPT_WINDOW = 40;
+export const EXCERPT_BUDGET_CHARS = 75000;           // ≈ 25k tokens of code at ~3 chars/token
+export function codeExcerpts(pointers, { window = EXCERPT_WINDOW, budget = EXCERPT_BUDGET_CHARS } = {}) {
+  const byFile = new Map();
+  for (const p of pointers || []) {
+    const m = String(p.src || '').match(/^([^:#]+):(\d+)(?:-(\d+))?/);
+    if (!m) continue;
+    const file = m[1]; const a = Number(m[2]); const b = m[3] ? Number(m[3]) : a;
+    if (!fs.existsSync(path.join(ROOT, file))) continue;
+    if (!byFile.has(file)) byFile.set(file, []);
+    // a pointed RANGE (e.g. «83-228») is kept whole up to 160 lines; a single line gets ±window
+    byFile.get(file).push(b - a <= 160 ? [Math.max(1, a - window), b + window] : [Math.max(1, a - window), a + window]);
+  }
+  const out = []; let used = 0; let dropped = 0;
+  for (const [file, ranges] of byFile) {
+    const lines = fs.readFileSync(path.join(ROOT, file), 'utf8').split('\n');
+    ranges.sort((a, b) => a[0] - b[0]);
+    const merged = [];
+    for (const r of ranges) { const last = merged[merged.length - 1]; if (last && r[0] <= last[1] + 1) last[1] = Math.max(last[1], r[1]); else merged.push([...r]); }
+    for (const [from, to0] of merged) {
+      const to = Math.min(to0, lines.length);
+      const text = lines.slice(from - 1, to).map((l, i) => `${from + i}: ${l}`).join('\n');
+      if (used + text.length > budget) { dropped++; continue; }
+      used += text.length; out.push({ file, from, to, text });
+    }
+  }
+  return { excerpts: out, dropped, chars: used };
+}
+
 const fmt = new Intl.DateTimeFormat('el-GR', { timeZone: 'Europe/Athens', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false });
 function athens(ts) { const p = Object.fromEntries(fmt.formatToParts(new Date(ts)).map((x) => [x.type, x.value])); return `${p.day}/${p.month} ${p.hour}:${p.minute}`; }
 
 export function enrich(sqlPkg, { sha } = {}) {
   const pkg = structuredClone(sqlPkg);
   pkg.code_pointers = codePointers(pkg.check ? { id: pkg.check.id, flows: pkg.check.flows } : null);
+  const ex = codeExcerpts(pkg.code_pointers);
+  pkg.code_excerpts = ex.excerpts;
+  if (ex.dropped) pkg.code_excerpts_truncated = `[περικόπηκε: ${ex.dropped} απόσπασμα(τα) εκτός προϋπολογισμού — ζήτα τα με «ζήτα: αρχείο:γραμμές»]`;
   let head = sha;
   if (!head) { try { head = execFileSync('git', ['rev-parse', '--short', 'HEAD'], { cwd: ROOT }).toString().trim(); } catch (_) { head = 'unknown'; } }
   pkg.repo = { sha: head, note: 'code pointers are from the graph at this SHA; production may differ (deployed ≠ main until verified)' };

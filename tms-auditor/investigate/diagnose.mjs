@@ -20,7 +20,18 @@ export function selectModel(severity) {
 
 // Hard limits (brief §Γ). Over a limit the adapter returns NO diagnosis (never a fake one): the alert keeps
 // «διάγνωση: εκκρεμεί — όριο …» and the incident is still notified (alerts never wait for the model).
-export const LIMITS = { per_day: 5, max_package_bytes: 24000, max_extra_reads: 10, max_tokens_in: 60000 };
+// max_tokens_in is ENFORCED (review B 23/9 #2): estimated from the brief (~3 chars/token, conservative for
+// Greek + code); over it, code excerpts are dropped from the end WITH a visible marker, and if the brief is
+// still too big the adapter refuses (no diagnosis) instead of sending it.
+export const LIMITS = { per_day: 5, max_extra_reads: 0, max_tokens_in: 60000, chars_per_token: 3 };
+export const estimateTokens = (text) => Math.ceil(String(text).length / LIMITS.chars_per_token);
+
+export function fitToBudget(pkg) {
+  const p = structuredClone(pkg); let dropped = 0;
+  while (estimateTokens(brief(p)) > LIMITS.max_tokens_in && (p.code_excerpts || []).length) { p.code_excerpts.pop(); dropped++; }
+  if (dropped) p.code_excerpts_truncated = `[περικόπηκε: ${dropped} απόσπασμα(τα) για το όριο ${LIMITS.max_tokens_in} tokens — ζήτα τα με «ζήτα: αρχείο:γραμμές»]`;
+  return { pkg: p, tokens: estimateTokens(brief(p)), fits: estimateTokens(brief(p)) <= LIMITS.max_tokens_in };
+}
 
 export function brief(pkg) {
   return `${PROMPT}\n\n<package>\n${JSON.stringify(pkg, null, 1)}\n</package>\n`;
@@ -61,7 +72,9 @@ export const PROVIDERS = {
 export async function diagnose(pkg, opts = {}) {
   const provider = opts.provider || 'claude-routine';
   if ((opts.usedToday || 0) >= LIMITS.per_day) return { provider, valid: false, report: null, errs: [`ΕΚΚΡΕΜΕΙ — όριο ημέρας (${LIMITS.per_day})`] };
-  if (JSON.stringify(pkg).length > LIMITS.max_package_bytes) return { provider, valid: false, report: null, errs: ['πακέτο μεγαλύτερο από το όριο — ζητείται περικοπή, όχι αυτόματη'] };
+  const fit = fitToBudget(pkg);
+  if (!fit.fits) return { provider, valid: false, report: null, errs: [`brief ≈ ${fit.tokens} tokens > όριο ${LIMITS.max_tokens_in} — δεν στάλθηκε`] };
+  pkg = fit.pkg;
   const fn = PROVIDERS[provider];
   if (!fn) return { provider, valid: false, report: null, errs: [`unknown provider ${provider}`] };
   const out = await fn(pkg, { ...opts, model: opts.model || selectModel(pkg.incident.severity) });

@@ -106,8 +106,9 @@ async function _auditFetch() {
     if (!token) throw _auditFail('No session token. Sign in again.');
 
     const res = await fetch(`${PROXY_URL}/audit?${qs.toString()}`, {
-      headers: { Authorization: `Bearer ${token}` },
+      headers: { Authorization: `Bearer ${token}`, ...(typeof tmsReqHeaders === 'function' ? tmsReqHeaders(typeof tmsNewAction === 'function' ? tmsNewAction() + '-1' : null) : {}) },   // Level A id
     });
+    if (typeof tmsNoteResponse === 'function') tmsNoteResponse(res);
 
     if (res.status === 403) throw _auditFail('Ο ρόλος σου δεν έχει πρόσβαση στο ιστορικό ενεργειών.');
     if (res.status === 401) throw _auditFail('Session expired. Sign in again.');

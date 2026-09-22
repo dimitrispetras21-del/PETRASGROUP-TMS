@@ -125,3 +125,22 @@ test('push not delivered (no Remote Control) ⇒ e-mail still carries it; both l
   assert.equal((await all(db2, 'SELECT * FROM monitoring.v_alerts_due')).length, 1, 'nothing delivered ⇒ still due (never marked)');
   assert.equal((await one(db2, "SELECT count(*)::int n FROM monitoring.notifications WHERE status='failed'")).n, 2, 'failures are recorded');
 });
+
+test('B2: the package carries the code (excerpts around graph pointers); the token cap is enforced', async () => {
+  const { enrich } = await import('../investigate/package.mjs');
+  const { fitToBudget, LIMITS, estimateTokens, brief } = await import('../investigate/diagnose.mjs');
+  const base = JSON.parse(fs.readFileSync(`${HERE}fixtures/package-B-01.json`, 'utf8'));
+  const pkg = enrich({ ...base, code_pointers: undefined, code_excerpts: undefined });
+  const e033 = pkg.code_excerpts.filter((e) => e.file === 'worker/migrations/033_rt_create_related.sql');
+  assert.ok(e033.some((e) => e.text.includes('\n229: ') && e.text.includes('\n107: ')), 'the pointed lines (229, and 107 inside the range 83-228) are in the package, with numbers');
+  assert.ok(estimateTokens(brief(pkg)) <= LIMITS.max_tokens_in, 'the real B-01 brief fits in one turn under the cap');
+  // oversized: 10 fat excerpts ⇒ trimmed from the end WITH a marker, never silently
+  const fat = { ...pkg, code_excerpts: Array.from({ length: 10 }, (_, i) => ({ file: `f${i}.js`, from: 1, to: 2, text: 'x'.repeat(40000) })) };
+  const f = fitToBudget(fat);
+  assert.ok(f.fits && f.pkg.code_excerpts.length < 10);
+  assert.match(f.pkg.code_excerpts_truncated, /^\[περικόπηκε: \d+ απόσπασμα/);
+  // impossible even without excerpts ⇒ refused, nothing sent
+  const huge = { ...pkg, code_excerpts: [], app_errors_window: [{ message: 'y'.repeat(400000) }] };
+  const d = await diagnose(huge, { provider: 'mock' });
+  assert.equal(d.valid, false); assert.match(d.errs[0], /δεν στάλθηκε/);
+});

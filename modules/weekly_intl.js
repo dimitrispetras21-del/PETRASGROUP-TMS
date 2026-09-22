@@ -4217,8 +4217,9 @@ async function _wiRtLegDelete(rtId, pgOrderId){
   const jwt=localStorage.getItem('tms_jwt');
   const res=await fetch(PROXY_URL+'/costs/rt/'+rtId+'/legs?order_id='+pgOrderId,{
     method:'DELETE',
-    headers:{'Content-Type':'application/json', ...(jwt?{Authorization:'Bearer '+jwt}:{})},
+    headers:{'Content-Type':'application/json', ...(jwt?{Authorization:'Bearer '+jwt}:{}), ...(typeof tmsReqHeaders === 'function' ? tmsReqHeaders(typeof tmsNewAction === 'function' ? tmsNewAction() + '-1' : null) : {})},   // Level A id
   });
+  if (typeof tmsNoteResponse === 'function') tmsNoteResponse(res);
   const data=await res.json().catch(()=>({}));
   return {ok:res.ok, status:res.status, error:data.error};
 }
@@ -5296,7 +5297,8 @@ if (typeof shareMenuDelegate === 'function') {
       pdfUrl: () => PROXY_URL + '/print/pdf?' + q,
       getText: async () => {
         const r = await fetch(PROXY_URL + '/print/pdf?' + q + '&format=text',
-          { headers: { Authorization: 'Bearer ' + localStorage.getItem('tms_jwt') } });
+          { headers: { Authorization: 'Bearer ' + localStorage.getItem('tms_jwt'), ...(typeof tmsReqHeaders === 'function' ? tmsReqHeaders(typeof tmsNewAction === 'function' ? tmsNewAction() + '-1' : null) : {}) } });   // Level A id
+        if (typeof tmsNoteResponse === 'function') tmsNoteResponse(r);
         if (!r.ok) throw new Error('HTTP ' + r.status);
         return await r.text();
       },

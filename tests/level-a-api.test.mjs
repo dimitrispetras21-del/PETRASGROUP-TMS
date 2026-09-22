@@ -32,13 +32,16 @@ function sandbox(script) {
   vm.runInContext(fs.readFileSync(path.join(ROOT, 'core/constants.js'), 'utf8'), ctx, { filename: 'constants.js' });   // app.html order
   vm.runInContext(fs.readFileSync(path.join(ROOT, 'core/utils.js'), 'utf8'), ctx, { filename: 'utils.js' });
   vm.runInContext(fs.readFileSync(path.join(ROOT, 'core/api.js'), 'utf8'), ctx, { filename: 'api.js' });
+  vm.runInContext(fs.readFileSync(path.join(ROOT, 'core/pallet-feed.js'), 'utf8'), ctx, { filename: 'pallet-feed.js' });
   // wrap logError to observe it, keeping the real forwarding to /app-errors
   ctx.__errors = errors;
   vm.runInContext('showErrorToast = function () {};', ctx);   // utils.js brings a DOM toast; no DOM here
   vm.runInContext('const __realLog = logError; logError = function (e, c) { __errors.push({ msg: e && e.message, ctx: c, req: e && e._req }); return __realLog(e, c); };', ctx);
   return { ctx, calls, errors, run: (code) => vm.runInContext(code, ctx), online: () => Promise.all(onlineHandlers.map((f) => f())) };
 }
-const ok = (withCap) => new Response(JSON.stringify({ id: 'recA', fields: {} }), { status: 200, headers: withCap ? { 'x-tms-worker-req': '1' } : {} });
+// The Worker announces Level A with a unix timestamp; `ageS` simulates an old (cached/stale) response.
+const cap = (ageS = 0) => ({ 'x-tms-worker-req': String(Math.floor(Date.now() / 1000) - ageS) });
+const ok = (withCap, ageS = 0) => new Response(JSON.stringify({ id: 'recA', fields: {} }), { status: 200, headers: withCap ? cap(ageS) : {} });
 const facade = (calls) => calls.filter((c) => c.url.includes('/v0/'));
 
 test('no header until the Worker announces Level A; then one id per action with -attempt', async () => {
@@ -84,6 +87,7 @@ test('offline write is queued with its id and replayed as <id>-q; the flush leav
   assert.match(flush.msg, /^offline flush synced 1, conflicts 0, failed 0/);
   const post = s.calls.find((c) => c.url.endsWith('/app-errors') && c.body.includes('offline flush'));
   assert.ok(JSON.parse(post.body).message.startsWith('queue: offline flush'), 'B-34 excludes this prefix');
+  assert.equal(JSON.parse(post.body).kind, 'offline', 'stored as a non-error (app_errors.kind)');
 });
 
 test('a 403 carries the action id into logError and the /app-errors body', async () => {
@@ -96,4 +100,20 @@ test('a 403 carries the action id into logError and the /app-errors body', async
   assert.equal(`${e.req}-1`, sent, 'the logged error names the same action id the Worker saw');
   const post = s.calls.find((c) => c.url.endsWith('/app-errors'));
   assert.equal(JSON.parse(post.body).req, e.req);
+});
+
+test('a STALE capability timestamp (cached/old response, > 10′) never switches the header on', async () => {
+  const s = sandbox(() => ok(true, 3600));
+  for (let i = 0; i < 3; i++) await s.run(`atPatch('tblT', 'recA', { Notes: '${i}' })`);
+  assert.ok(s.calls.every((c) => c.req === null));
+});
+
+test('hand-written fetches (plFetch → /pallets/*) carry an id once the capability is known; errors keep it', async () => {
+  const s = sandbox((i, url) => { if (url.endsWith('/app-errors')) return new Response('{}', { status: 201 });
+    return url.includes('/confirm') ? new Response(JSON.stringify({ error: 'nope' }), { status: 409, headers: cap() }) : ok(true); });
+  await s.run("plFetch('/pallets/gate?order_recs=recA')");                       // learns the capability
+  await assert.rejects(s.run("plFetch('/pallets/movements/1/confirm', { method: 'POST' })"), (e) => /^[a-z0-9]{8,32}$/.test(e._req));
+  const pl = s.calls.filter((c) => c.url.includes('/pallets/'));
+  assert.equal(pl[0].req, null, 'first call: capability not yet known');
+  assert.match(pl[1].req, /^[a-z0-9]{8,32}-1$/);
 });

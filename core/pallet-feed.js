@@ -9,13 +9,15 @@
 
 async function plFetch(path, opts = {}) {
   const jwt = localStorage.getItem('tms_jwt');
+  const _rq = (typeof tmsNewAction === 'function' ? tmsNewAction() : null);   // Level A: one id per action
   const res = await fetch(PROXY_URL + path, {
     method: opts.method || 'GET',
-    headers: { 'Content-Type': 'application/json', ...(jwt ? { Authorization: 'Bearer ' + jwt } : {}) },
+    headers: { 'Content-Type': 'application/json', ...(jwt ? { Authorization: 'Bearer ' + jwt } : {}), ...(typeof tmsReqHeaders === 'function' ? tmsReqHeaders(_rq ? _rq + '-1' : null) : {}) },
     body: opts.body ? JSON.stringify(opts.body) : undefined
   });
+  if (typeof tmsNoteResponse === 'function') tmsNoteResponse(res);
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
+  if (!res.ok) { const e = new Error(data.error || ('HTTP ' + res.status)); e._req = _rq; throw e; }
   return data;
 }
 
