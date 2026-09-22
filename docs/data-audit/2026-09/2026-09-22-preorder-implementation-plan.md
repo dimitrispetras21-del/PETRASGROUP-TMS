@@ -49,6 +49,9 @@
 
 ## Ε. Βάση / Worker
 - Worker: 0. Βάση: DRAFT 044 CHECK (`worker/migrations/drafts/044_ops_status_provisional_check.sql`) — owner.
+- **Σειρά (συντονιστής 22/9, αρχή 5 «ό,τι γεννιέται, γεννιέται κλειστό»):** το 044 ΕΚΤΕΛΕΙΤΑΙ από τον owner ΠΡΙΝ γραφτεί η
+  πρώτη γραμμή με `'Provisional'` — δηλαδή πριν τη ζωντανή δοκιμή ΣΤ.3, άρα πριν το push του `feat/preorder`. Το DRAFT
+  ταξιδεύει μαζί με το branch (ίδιο PR/έλεγχος), όχι ξεχωριστά. Αν το 044 δεν έχει τρέξει, η ΣΤ.3 ΔΕΝ ξεκινά.
 
 ## ΣΤ. Rig / απόδειξη (πριν το push)
 1. `tests/critics/preorder.spec.js` (νέος, στο EXPECTED_LIVE του run.js + playwright.config): HAR replay + stub POST
@@ -57,9 +60,14 @@
    Ημερήσιο γραμμή `do-pre` χωρίς κουμπί «Φορτώθηκε», μετρητής εκτός.
 2. Contract baselines: `docs/redesign/contracts/{orders_intl,daily_ops}.json` + `weekly_intl` (kanban) — νέα labels
    («Pre-order», «Μετατροπή σε παραγγελία», «Ακύρωση pre-order»).
-3. **Ζωντανά, σε παραγγελία-δοκιμή (owner):** 2 pre-orders → SELECT `ops_status='Provisional'`, `status='Pending'`,
-   `loading_location_1_id IS NULL`, 0 ORDER_STOPS, 0 ct_rt_legs → μετατροπή της μίας → SELECT `ops_status IS NULL` +
-   στάσεις → ακύρωση της άλλης → `Cancelled`. Καθάρισμα με έγκριση owner.
+3. **Ζωντανά, σε παραγγελία-δοκιμή ΠΕΛΑΤΗ-ΔΟΚΙΜΗΣ (όχι ΦΑΓΕ ή άλλον πραγματικό πελάτη), μετά το 044:** 2 pre-orders →
+   SELECT `ops_status='Provisional'`, `status='Pending'`, `loading_location_1_id IS NULL`, 0 ORDER_STOPS, 0 ct_rt_legs →
+   μετατροπή της μίας → SELECT `ops_status IS NULL` + στάσεις → ακύρωση της άλλης → `Cancelled`.
+   **Τι μένει πίσω:** η ακύρωση ΔΕΝ διαγράφει — μένουν 1 Cancelled (η ακυρωμένη) + 1 κανονική παραγγελία-δοκιμή (η
+   μετατραπείσα, που πρέπει κι αυτή να ακυρωθεί → 2 Cancelled). Καθάρισμα: SQL του owner (soft delete `deleted_at`, με
+   audit όπως στο DECISION_LOG 15/9 για την 340) — ΟΧΙ από το session. Μέχρι τότε, επιβεβαίωση ότι οι 2 Cancelled ΔΕΝ
+   φαίνονται πουθενά: Weekly (φίλτρο Cancelled), Ημερήσιο (`ovLF`/`dayF` εξαιρούν Cancelled), Τιμολόγηση (Delivered μόνο),
+   dashboard `_open` (εξαιρεί Cancelled), και rt-feed (Cancelled = gone, κανένα RT).
 4. Session-έλεγχος (CLAUDE.md): `count(*) WHERE ops_status='Provisional' AND status='Pending' AND loading_datetime < current_date`.
 
 ## Ζ. Ρίσκα / σειρά
