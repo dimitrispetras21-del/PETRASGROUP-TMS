@@ -354,10 +354,15 @@ const _OPS_STYLE=`<style>
   .do-main{font-weight:600;line-height:1.15}
   .do-sl{display:block;font-size:var(--text-xs);color:var(--text-dim);font-weight:400;letter-spacing:.02em}
   /* Assignment: colour AND word (DESIGN.md E). Text on the tag is the card
-     white — --text-on-dark on --ok measures 4.1:1, white 5.1:1. */
+     white — --text-on-dark on --ok measures 4.1:1, white 5.1:1.
+     Own fleet carries NO tag (Παντελής 22/9, owner): a plate + driver already
+     says «ours» — the word «ΙΔ.» added nothing. Partner keeps the word AND the
+     design-system partner green (--chip-partner, the Weekly's carrier chip),
+     on the tag and on the company name, so the row reads as «another colour»
+     at a glance rather than by a 16px pill. */
   .do-tag{display:inline-block;height:16px;line-height:16px;padding:0 8px;border-radius:var(--radius-full);font-size:var(--text-xs);font-weight:700;letter-spacing:.04em;color:var(--surface-card);vertical-align:1px;margin-right:4px}
-  .do-tag.own{background:var(--surface-dark)}
-  .do-tag.prt{background:var(--ok)}
+  .do-tag.prt{background:var(--chip-partner)}
+  .do-asg.prt .do-main{color:var(--chip-partner)}
   .do-tag.none{background:var(--unassigned)}
   /* td.do-st, not .do-st: «.do-t td{nowrap}» outranks a bare class, so the
      status never wrapped and «Εκκρεμεί · μετατέθηκε · 0/3 παραδόθηκαν» ran
@@ -553,9 +558,9 @@ function _opsSec(type,label,items,isToday,emptyTxt,start) {
   // Στήλες ανά ενότητα (Figma 169:699): ΘΕΡΜ./ΕΓΓΡΑΦΑ/ΦΩΤΟ CMR/ΕΝΗΜΕΡΩΣΗ
   // ΠΕΛΑΤΗ/2Η ΚΑΡΤΑ αφαιρέθηκαν (owner 2/9)· ΚΑΤΑΣΤΑΣΗ = νέα στήλη λέξης.
   // ΦΟΡΤΗΓΟ + ΟΔΗΓΟΣ became one ΑΝΑΘΕΣΗ column (owner 4/9, DESIGN.md E): the
-  // dispatcher reads WHO carries the load — «ΙΔ.» plate + driver, «ΣΥΝ.» +
-  // partner name, or «ΠΡΟΣ ΑΝΑΘΕΣΗ». Two columns showed «—» and «χωρίς
-  // οδηγό» for the same fact, and an own-fleet plate carried no marker at all.
+  // dispatcher reads WHO carries the load — plate + driver (own fleet, no
+  // tag since 22/9), green «ΣΥΝ.» + partner name, or «ΠΡΟΣ ΑΝΑΘΕΣΗ». Two
+  // columns showed «—» and «χωρίς οδηγό» for the same fact.
   // Same 8 columns in every section (Παντελής 15/9): where a section has one
   // field instead of ΠΑΛ.+ΠΡΟΚ. it spans the two, so nothing shifts.
   const mid = isL&&isExp ? '<th>ΦΟΡΤΩΣΗ</th><th>ΑΝΑΘΕΣΗ</th><th>ΠΑΛ.</th><th>ΠΡΟΚ. €</th>'
@@ -753,7 +758,8 @@ function _opsRow(rec,num,type,isToday,cls) {
 }
 
 // Own fleet = a plate or a driver on a non-partner trip. A plate without a
-// driver is still «ΙΔ.» — the truck is ours, the driver line just stays empty.
+// driver is still own fleet — the truck is ours, the driver line just stays
+// empty. No «ΙΔ.» tag (Παντελής 22/9): own is the default, the plate says it.
 // «Partner Truck Plates» is NOT requested in OPS_FIELDS (the request must stay
 // byte-identical to the 28/8 recording), so the partner line shows only the
 // company; when the pair-inherit above brought plates in memory, they appear.
@@ -762,11 +768,11 @@ function _opsAsgCell(f, truck, driver, partner) {
   if(partner){
     const name=getPartnerName(getLinkedId(f['Partner']))||'—';
     const plates=escapeHtml(String(f['Partner Truck Plates']||''));
-    return `<td class="do-asg do-wrap"><span class="do-main"><span class="do-tag prt">ΣΥΝ.</span>${name}</span>${sub([plates,driver].filter(Boolean).join(' · '))}</td>`;
+    return `<td class="do-asg do-wrap prt"><span class="do-main"><span class="do-tag prt">ΣΥΝ.</span>${name}</span>${sub([plates,driver].filter(Boolean).join(' · '))}</td>`;
   }
   if(truck||driver){
     // `truck` is already «plate / trailer», escaped by the ref helpers.
-    return `<td class="do-asg do-wrap"><span class="do-main"><span class="do-tag own">ΙΔ.</span>${truck||'—'}</span>${sub(driver)}</td>`;
+    return `<td class="do-asg do-wrap"><span class="do-main">${truck||'—'}</span>${sub(driver)}</td>`;
   }
   return `<td class="do-asg do-wrap"><span class="do-main"><span class="do-tag none">ΠΡΟΣ ΑΝΑΘΕΣΗ</span></span></td>`;
 }
