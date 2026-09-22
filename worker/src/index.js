@@ -3255,7 +3255,19 @@ async function handleCosts(request, url, origin, env) {
       patch.updated_at = (/* @__PURE__ */ new Date()).toISOString();
       const before = await dbSelectRaw(env, "ct_round_trips", new URLSearchParams({ id: `eq.${recId}`, select: "*" }));
       if (!before.rows.length) return jsonError("Not found", 404, origin, env);
-      const updated = await ctDbPatch(env, "ct_round_trips", `id=eq.${encodeURIComponent(recId)}`, patch);
+      let updated;
+      try {
+        updated = await ctDbPatch(env, "ct_round_trips", `id=eq.${encodeURIComponent(recId)}`, patch);
+      } catch (e) {
+        // 046 rt_status_guard raises a Greek P0001 when someone closes a round trip that still has an
+        // open leg. Without this the generic handleCosts catch answers «Costs request failed» (500) and
+        // the reason dies in the logs — the refusal must reach the person who clicked (αρχή 1).
+        let dbMsg = null;
+        const braced = /\{[\s\S]*\}/.exec(e.message || "");
+        if (braced) { try { dbMsg = JSON.parse(braced[0]).message || null; } catch (_) { dbMsg = null; } }
+        if (dbMsg) return jsonError(dbMsg, 409, origin, env);
+        throw e;
+      }
       await audit(env, { actor: caller.sub, role: caller.role, action: "update", table: "ct_round_trips", recordId: String(recId), before: before.rows[0], after: updated });
       return jsonOk({ record: updated }, origin, env);
     }

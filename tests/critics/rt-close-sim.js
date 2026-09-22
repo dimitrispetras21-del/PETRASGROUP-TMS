@@ -10,6 +10,7 @@
 const fs=require('fs'),path=require('path');
 const rtFeed=fs.readFileSync(path.join(__dirname,'../../core/rt-feed.js'),'utf8');
 const weekly=fs.readFileSync(path.join(__dirname,'../../modules/weekly_intl.js'),'utf8');
+const costs=fs.readFileSync(path.join(__dirname,'../../modules/costs.js'),'utf8');
 // σχόλια εκτός: μιλάμε για ΚΩΔΙΚΑ που τρέχει, όχι για κείμενο που τον εξηγεί
 const code=s=>s.replace(/\/\*[\s\S]*?\*\//g,'').split('\n').filter(l=>!/^\s*\/\//.test(l)).join('\n');
 const feedCode=code(rtFeed), weeklyCode=code(weekly);
@@ -40,6 +41,14 @@ if(!checks.weeklyNoClosedRevert) fails.push('το weekly_intl αναιρεί α�
 checks.weeklyOrphanGuard=/if\(parentRt&&!attached\)/.test(weeklyCode);
 if(!checks.weeklyOrphanGuard) fails.push('έφυγε ο φρουρός ορφανής ρότας του _wiRotAdd');
 
+// 6. Η ΜΟΝΗ χειροκίνητη διαδρομή (TRIP PnL «Κλείσιμο δρομολογίου») είναι ρητή
+//    εξαίρεση, όχι λησμονημένο υπόλειμμα: το κουμπί μένει, αλλά η επιβεβαίωση
+//    λέει τον κανόνα που επιβάλλει η βάση (046 rt_status_guard). Αν κάποιος
+//    ξαναγράψει το κείμενο χωρίς τον κανόνα, αυτό κοκκινίζει.
+checks.costsCloseSaysRule=/ctCloseRt/.test(costs)
+  && /Delivered[^\n]*Cancelled/.test(costs.slice(costs.indexOf('function ctCloseRt')-900, costs.indexOf('function ctCloseRt')+600));
+if(!checks.costsCloseSaysRule) fails.push('το χειροκίνητο κλείσιμο του TRIP PnL δεν λέει πια τον κανόνα «όλα Delivered/Cancelled»');
+
 console.log(JSON.stringify(checks));
 if(fails.length){ console.error('✗ '+fails.join(' · ')); process.exit(1); }
-console.log('✓ rt-close-sim: 5/5 — το front δεν κλείνει γύρους, η βάση τους κλείνει');
+console.log('✓ rt-close-sim: 6/6 — το front δεν κλείνει γύρους, η βάση τους κλείνει');

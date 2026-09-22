@@ -38,7 +38,24 @@
 --     όταν ΤΟ ΝΕΟ σκέλος είναι ανοιχτό. Μόνο ξανάνοιγμα, μόνο για το ένα σκέλος, ποτέ κλείσιμο.
 --   • 011 dl_sync_from_rt (ct_round_trips): μισθοδοσία. ΕΧΕΙ έτοιμο μηχανισμό needs_review + review_note
 --     (στήλες dl_entries.needs_review boolean not null default false, review_note text) — τον ξαναχρησιμοποιώ,
---     δεν φτιάχνω δεύτερο. Σε αλλαγή status closed→planned δεν κάνει τίποτα από μόνο του.
+--     δεν φτιάχνω δεύτερο.
+--     ⚠ ΔΙΟΡΘΩΣΗ (ελεγκτής 22/9, εύρημα 2): η προηγούμενη διατύπωση εδώ έλεγε «σε αλλαγή status δεν κάνει
+--     τίποτα από μόνο του» — ΑΝΑΚΡΙΒΕΣ. Ο trigger είναι `AFTER INSERT OR UPDATE ON ct_round_trips` ΧΩΡΙΣ
+--     στήλη-λίστα και ΧΩΡΙΣ WHEN, άρα τρέχει σε ΚΑΘΕ UPDATE — και της 046. Τι κάνει τότε:
+--       – RT όχι OWNED ή χωρίς οδηγό → flag/soft-delete της γραμμής (δεν μας αφορά: η 046 δεν αγγίζει όχημα)
+--       – RT cancelled → flag/soft-delete (η 046 δεν βάζει ποτέ 'cancelled')
+--       – **δεν υπάρχει ζωντανή γραμμή** και RT OWNED με οδηγό → **INSERT** νέας γραμμής `source='auto'`,
+--         δηλαδή μπορεί να ΑΝΑΣΤΗΣΕΙ γραμμή που κάποιος είχε σβήσει σκόπιμα
+--       – αλλιώς → driver/entry_date/date_end ακολουθούν το RT (η κύρια δουλειά του)
+--     ΑΠΟΦΑΣΗ: **αφήνουμε την 011 ως έχει.** Γιατί: (i) ένα `WHEN (old.status is distinct from new.status)`
+--     θα σκότωνε ακριβώς τη δουλειά για την οποία υπάρχει ο trigger — «driver and dates ALWAYS follow the RT»
+--     (η rt_recompute αλλάζει ημερομηνίες χωρίς να αλλάζει status)· θα ήταν χειρότερο σφάλμα από αυτό που
+--     διορθώνει· (ii) η ανάσταση ΔΕΝ είναι συνέπεια της 046 — πυροδοτείται ήδη σήμερα από κάθε UPDATE
+--     (037 rt_merge, 013 rt_recompute)· (iii) μετρήθηκε 22/9 με SELECT: RT του backfill χωρίς ζωντανή γραμμή
+--     και OWNED με οδηγό = **0/30**· κλειστά RT που θα ανάσταιναν γραμμή σε μελλοντικό ξανάνοιγμα = **0/70**·
+--     soft-deleted γραμμές σε OWNED RT με οδηγό = **9**, αλλά όλες σε RT που ΕΧΕΙ ήδη ζωντανή γραμμή.
+--     Αν ο owner θέλει να κλείσει και αυτό, το σωστό σημείο είναι ο κλάδος INSERT της ΙΔΙΑΣ της 011
+--     («μην ξαναφτιάχνεις auto γραμμή όταν υπάρχει soft-deleted για το ίδιο rt_id») — ξεχωριστή migration.
 --
 -- ⇒ ΑΠΟΦΑΣΗ: ΜΙΑ συνάρτηση `rt_auto_close(p_rt)` που παράγει το status από ΟΛΑ τα σκέλη, και στις δύο
 --   κατευθύνσεις (κλείσιμο + ξανάνοιγμα), + δύο λεπτές trigger-συναρτήσεις που της λένε «ξανακοίτα αυτό το RT».
@@ -82,9 +99,12 @@
 --   orders     : … → rt_create_from_order → rt_link_split → rt_sync_from_order → rt_z_auto_close_order
 --                (η rt_sync_from_order έχει ήδη σβήσει το σκέλος της Cancelled· η 033 έχει ήδη φτιάξει το
 --                 σκέλος της νέας ανάθεσης — η 046 βλέπει ΤΕΛΙΚΟ σύνολο σκελών)
+--   ct_round_trips : rt_status_guard (BEFORE — τρέχει πάντα πριν από κάθε AFTER, ανεξάρτητα από όνομα)
+--                    → dl_sync_from_rt, rt_sync_to_orders (AFTER, ως έχουν)
 --
 -- ΑΝΑΣΤΡΕΨΙΜΟ:
 --   DROP TRIGGER rt_z_auto_close_order ON orders; DROP TRIGGER rt_z_auto_close_legs ON ct_rt_legs;
+--   DROP TRIGGER rt_status_guard ON ct_round_trips; DROP FUNCTION rt_status_guard();
 --   DROP FUNCTION rt_auto_close_order(); DROP FUNCTION rt_auto_close_legs(); DROP FUNCTION rt_auto_close(bigint);
 --   -- και, αν θέλουμε πίσω την 045, ξανατρέχουμε το worker/migrations/045_rt_reopen_on_leg.sql
 --   -- (ο φρουρός της περιμένει 2 triggers — θα δει 2: rt_sync_legs + rt_z_auto_close_legs — προσοχή).
@@ -102,7 +122,7 @@ with legs as (
                           and o.status is distinct from 'Cancelled') as n_open
   from ct_round_trips r
   join ct_rt_legs l on l.rt_id = r.id
-  left join orders o on o.id = l.order_id
+  join orders o on o.id = l.order_id          -- join, ΟΧΙ left join: ίδιος ορισμός με την rt_auto_close
   group by 1, 2)
 select (select count(*) from legs where status in ('planned','in_progress') and n_live > 0 and n_open = 0) as planned_all_delivered,
        (select count(*) from legs where status in ('closed','complete') and n_open > 0)                    as closed_with_open_leg,
@@ -178,10 +198,19 @@ begin
     -- Letting the UPDATE fail here would abort the dispatcher's «Delivered» click at 06:30 — loud in
     -- the wrong place (αρχή 7). Say it in the audit instead and leave the trip open.
     if r.trip_type = 'OWNED' and r.truck_id is null then
-      perform rt_sync_audit('update', 'ct_round_trips', p_rt::text,
-        jsonb_build_object('status', r.status),
-        jsonb_build_object('status', r.status, 'blocked', true,
-                           'reason', 'not auto-closed: OWNED round trip without a truck (owned_needs_truck) — assign a truck (046)'));
+      -- ΜΙΑ γραμμή audit ανά RT, όχι μία ανά άγγιγμα (ελεγκτής 22/9, εύρημα 3): χωρίς αυτόν τον έλεγχο
+      -- ένα τέτοιο RT θα έγραφε νέα γραμμή σε κάθε αλλαγή status οποιασδήποτε παραγγελίας του, και το
+      -- Ιστορικό Ενεργειών θα γέμιζε θόρυβο. Θόρυβος που επαναλαμβάνεται παύει να ακούγεται (αρχή 1).
+      if not exists (
+        select 1 from audit_log
+         where actor = 'trigger:rt_sync' and table_name = 'ct_round_trips' and record_id = p_rt::text
+           and after_data->>'blocked' = 'true'
+           and created_at > now() - interval '7 days') then
+        perform rt_sync_audit('update', 'ct_round_trips', p_rt::text,
+          jsonb_build_object('status', r.status),
+          jsonb_build_object('status', r.status, 'blocked', true,
+                             'reason', 'not auto-closed: OWNED round trip without a truck (owned_needs_truck) — assign a truck (046)'));
+      end if;
       return;
     end if;
 
@@ -250,6 +279,55 @@ CREATE TRIGGER rt_z_auto_close_order
   EXECUTE FUNCTION public.rt_auto_close_order();
 
 
+-- ═══ 2β. Ο ΦΡΟΥΡΟΣ ΤΗΣ ΧΕΙΡΟΚΙΝΗΤΗΣ ΔΙΑΔΡΟΜΗΣ ════════════════════════════════════════════════
+-- Ελεγκτής 22/9, εύρημα 1: το front ΔΕΝ είχε χάσει κάθε εξουσία. Το κουμπί «Κλείσιμο δρομολογίου»
+-- του TRIP PnL (modules/costs.js ctCloseRt) στέλνει PATCH /costs/rt/:id {status:'closed'} και ο Worker
+-- το δέχεται (ctPick whitelist). Η 046 ΔΕΝ πυροδοτείται από UPDATE στο ct_round_trips, άρα η οθόνη
+-- μπορούσε να κλείσει γύρο με ανοιχτό σκέλος — ακριβώς το «πρέπει 0» που ελέγχει η ίδια η migration.
+--
+-- ΕΠΙΛΟΓΗ: **RAISE**, όχι σιωπηλή διόρθωση σε 'planned'.
+--   Σιωπηλή διόρθωση μετά από ρητό κλικ του owner = ψέμα στην οθόνη: πάτησε «κλείσε», πήρε πράσινο,
+--   και ο γύρος έμεινε ανοιχτός. Η άρνηση με αιτία είναι η μόνη απάντηση που δεν χρειάζεται audit για
+--   να τη βρει κανείς αργότερα (αρχή 1). Η αυτόματη διαδρομή δεν επηρεάζεται: η rt_auto_close βάζει
+--   'closed' ΜΟΝΟ όταν n_open = 0, οπότε περνά τον φρουρό χωρίς να τον «ξέρει».
+--   Δεν φρουρείται το 'cancelled' — η ακύρωση είναι απόφαση ανθρώπου (rt-feed γρ. 354/384/460) και η
+--   046 δεν τη διεκδικεί ποτέ.
+--
+-- ⚠️ ΤΙ ΒΛΕΠΕΙ Ο ΧΡΗΣΤΗΣ ΣΗΜΕΡΑ: ο Worker πιάνει το σφάλμα στο γενικό catch του handleCosts και
+--    επιστρέφει «Costs request failed» (500) — το ελληνικό μήνυμα μένει μόνο στα logs. Στο ίδιο branch
+--    μπαίνει μικρή αλλαγή στο worker/src/index.js (PATCH /costs/rt) που προωθεί το μήνυμα της βάσης ως
+--    409. ΧΩΡΙΣ deploy του Worker ο φρουρός ΔΟΥΛΕΥΕΙ (η εγγραφή απορρίπτεται) αλλά το alert λέει το
+--    γενικό μήνυμα. Ο deploy γίνεται από τον owner, μετά τις 15:00 (CLAUDE.md, ΠΑΓΙΔΑ DEPLOY).
+CREATE OR REPLACE FUNCTION public.rt_status_guard()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path TO 'public'
+AS $function$
+declare n_open int;
+begin
+  if new.status is not distinct from old.status then return new; end if;
+  if new.status not in ('closed', 'complete') then return new; end if;
+
+  select count(*) into n_open
+  from ct_rt_legs l
+  join orders o on o.id = l.order_id
+  where l.rt_id = new.id and o.deleted_at is null
+    and o.status is distinct from 'Delivered' and o.status is distinct from 'Cancelled';
+
+  if n_open > 0 then
+    raise exception 'Ο γύρος % δεν κλείνει: έχει % σκέλος/σκέλη που δεν είναι Delivered/Cancelled. Κλείνει μόνος του μόλις παραδοθούν όλα (046).',
+      new.code, n_open using errcode = 'P0001';
+  end if;
+  return new;
+end $function$;
+
+DROP TRIGGER IF EXISTS rt_status_guard ON public.ct_round_trips;
+CREATE TRIGGER rt_status_guard
+  BEFORE UPDATE OF status ON public.ct_round_trips
+  FOR EACH ROW EXECUTE FUNCTION public.rt_status_guard();
+
+
 -- ═══ 3. Η 045 διπλώνεται μέσα — ΕΝΑΣ κανόνας, ΕΝΑ σημείο ═══════════════════════════════════════
 -- Η rt_reopen_on_leg έκανε ΜΟΝΟ ξανάνοιγμα και ΜΟΝΟ με βάση το ένα νέο σκέλος. Το κατηγόρημα της 046
 -- είναι υπερσύνολο (κάθε σκέλος, και οι δύο κατευθύνσεις): ίδιο αποτέλεσμα στο attach, χωρίς δεύτερη
@@ -261,12 +339,17 @@ DROP FUNCTION IF EXISTS public.rt_reopen_on_leg();
 -- ═══ 4. ΦΡΟΥΡΟΣ (μοτίβο 037/043/045): αν ο αριθμός triggers δεν είναι ο αναμενόμενος, όλη η
 --        συναλλαγή γυρίζει πίσω μόνη της — τίποτα δεν μένει μισό ═══════════════════════════════
 DO $$
-DECLARE n_legs int; n_orders int; n_reopen int;
+DECLARE n_legs int; n_orders int; n_rts int; n_reopen int;
 BEGIN
   SET LOCAL search_path = public;
-  SELECT count(*) INTO n_legs   FROM pg_trigger WHERE tgrelid = 'public.ct_rt_legs'::regclass AND NOT tgisinternal;
-  SELECT count(*) INTO n_orders FROM pg_trigger WHERE tgrelid = 'public.orders'::regclass     AND NOT tgisinternal;
+  SELECT count(*) INTO n_legs   FROM pg_trigger WHERE tgrelid = 'public.ct_rt_legs'::regclass     AND NOT tgisinternal;
+  SELECT count(*) INTO n_orders FROM pg_trigger WHERE tgrelid = 'public.orders'::regclass         AND NOT tgisinternal;
+  SELECT count(*) INTO n_rts    FROM pg_trigger WHERE tgrelid = 'public.ct_round_trips'::regclass AND NOT tgisinternal;
   SELECT count(*) INTO n_reopen FROM pg_trigger WHERE tgrelid = 'public.ct_rt_legs'::regclass AND tgname = 'rt_reopen_on_leg';
+  -- ct_round_trips: dl_sync_from_rt + rt_sync_to_orders (2 μετρημένα 22/9) + rt_status_guard = 3
+  IF n_rts <> 3 THEN
+    RAISE EXCEPTION '046: αναμενόταν 3 triggers στο ct_round_trips (dl_sync_from_rt, rt_sync_to_orders, rt_status_guard), βρέθηκαν %', n_rts;
+  END IF;
   -- ct_rt_legs: rt_sync_legs + rt_z_auto_close_legs (η 045 έφυγε) = 2
   IF n_legs <> 2 THEN
     RAISE EXCEPTION '046: αναμενόταν 2 triggers στο ct_rt_legs (rt_sync_legs + rt_z_auto_close_legs), βρέθηκαν %', n_legs;
@@ -328,7 +411,13 @@ SELECT code, status, closed_at FROM ct_round_trips WHERE id = 113;  -- ΠΡΟΣ�
 SELECT action, table_name, record_id, after_data->>'reason' AS reason
   FROM audit_log WHERE actor = 'trigger:rt_sync' ORDER BY id DESC LIMIT 12;
 
-ROLLBACK;   -- ← ΥΠΟΧΡΕΩΤΙΚΟ
+-- Δ) ο φρουρός της χειροκίνητης διαδρομής (2β): το RT 4 έχει τώρα ανοιχτό σκέλος (την 369).
+--    ΠΡΟΣΔΟΚΙΑ: EXCEPTION P0001 «Ο γύρος RT-1004 δεν κλείνει: έχει 1 σκέλος/σκέλη που δεν είναι
+--    Delivered/Cancelled…». Στον SQL editor το σφάλμα ακυρώνει τη συναλλαγή — τρέξε αυτή τη γραμμή
+--    ΤΕΛΕΥΤΑΙΑ, ή σε δικό της BEGIN…ROLLBACK, γιατί μετά από exception τα προηγούμενα SELECT δεν τρέχουν.
+UPDATE ct_round_trips SET status = 'closed' WHERE id = 4;   -- ΠΡΕΠΕΙ ΝΑ ΣΚΑΣΕΙ
+
+ROLLBACK;   -- ← ΥΠΟΧΡΕΩΤΙΚΟ (και ούτως ή άλλως μετά το exception)
 
 
 -- ═════════════════════════════════════════════════════════════════════════════════════════════════
@@ -376,7 +465,7 @@ with legs as (
          count(*) filter (where o.deleted_at is null
                           and o.status is distinct from 'Delivered'
                           and o.status is distinct from 'Cancelled') as n_open
-  from ct_round_trips r join ct_rt_legs l on l.rt_id = r.id left join orders o on o.id = l.order_id
+  from ct_round_trips r join ct_rt_legs l on l.rt_id = r.id join orders o on o.id = l.order_id   -- join: εθνικά σκέλη εκτός, όπως στη συνάρτηση
   group by 1, 2)
 select (select count(*) from legs where status in ('planned','in_progress') and n_live > 0 and n_open = 0) as planned_all_delivered,
        (select count(*) from legs where status in ('closed','complete') and n_open > 0)                    as closed_with_open_leg;
