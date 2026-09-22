@@ -129,3 +129,13 @@ weekly callers (`openIntlCreate/openIntlEditWith/openIntlReadOnlyCard/openNatl*`
 
 Ροή από το βήμα 0: branch `unify/orders-list-1` → push μόνο branch → SHA + diff --stat + rigs στον
 συντονιστή → ανεξάρτητος ελεγκτής → go → main.
+
+## §6 Παρατηρήσεις 22/9 βράδυ (κατά τα βήματα 2α/2β)
+
+- **[6]/[3] `node --test tests/` (ολόκληρος ο φάκελος) αποτυγχάνει 1** — άσχετο με τα `tests/orders-list*.test.js`
+  (τρέχουν καθαρά, 17/17)· μάλλον Playwright spec του `tests/critics/` που δεν έχει runner κάτω από το node:test.
+  Δεν αγγίχτηκε. Το σωστό κάλεσμα είναι ανά αρχείο (`node --test tests/orders-list.test.js tests/orders-list-filters.test.js`).
+- **[4] Ασυμμετρία φίλτρου κατάστασης**: διεθνή = κενό Status μετράει ως Pending (και στο select και στα pills «_status»)·
+  εθνικά = σύγκριση κατά γράμμα, άρα εγγραφή χωρίς Status δεν ταιριάζει ποτέ σε «Pending». Μετρήθηκε στο HAR 28/8:
+  intl «Status Pending» → 5, natl «Status Pending» → 0 ενώ οι 3 εθνικές δεν έχουν Status. Το spec
+  (`tests/orders-list-filters.test.js`) την κρατά ρητή· απόφαση owner αν θα ευθυγραμμιστεί στο 2β-b.
