@@ -53,8 +53,11 @@ module.exports = [
   { unit: 'daily_ops',   tier: 3, routes: ['daily_ops'],    files: ['modules/daily_ops.js'], fixture: { date: '2026-08-28' } },
   { unit: 'weekly_intl', tier: 3, routes: ['weekly_intl'],  files: ['modules/weekly_intl.js'] },
   { unit: 'weekly_natl', tier: 3, routes: ['weekly_natl'],  files: ['modules/weekly_natl.js'] },
-  { unit: 'orders_intl', tier: 3, routes: ['orders_intl'],  files: ['modules/orders_intl.js'] },
-  { unit: 'orders_natl', tier: 3, routes: ['orders_natl'],  files: ['modules/orders_natl.js'] },
+  // core/orders-list.js (22/9/2026) is the shared engine of both lists — it is
+  // listed under each so the static ratchet (hex/κοπή) sees it as part of the
+  // screen instead of as an invisible file (reviewer P3 on c4a9c69).
+  { unit: 'orders_intl', tier: 3, routes: ['orders_intl'],  files: ['modules/orders_intl.js', 'core/orders-list.js'] },
+  { unit: 'orders_natl', tier: 3, routes: ['orders_natl'],  files: ['modules/orders_natl.js', 'core/orders-list.js'] },
   // Κύμα 5 (5/9/2026): η Μισθοδοσία Οδηγών γεννιέται μέσα στη σουίτα, όχι
   // μετά — αλλιώς είναι η επόμενη «αόρατη» οθόνη (βλ. maint_trucks 30/8).
   { unit: 'payroll',     tier: 3, routes: ['payroll'],      files: ['modules/payroll.js'] },
