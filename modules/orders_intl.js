@@ -82,7 +82,7 @@ const _OI_STATUS = {
 // Δ4 (3/9): the badges and the ⚠ only explained themselves in a `title`, i.e.
 // only to someone who already suspected something. One line under the table
 // spells them out — cheaper than a tooltip nobody hovers.
-const _OI_LEGEND = '<b>VS</b> Veroia Switch · <b>GRP</b> ομαδοποίηση · <b>PE</b> ανταλλαγή παλετών · <b>HR</b> υψηλό ρίσκο · <b>⚠</b> η τιμολόγηση ΔΕΝ γράφτηκε — δοκίμασε ξανά';
+const _OI_LEGEND = '<b>VS</b> Veroia Switch · <b>GRP</b> ομαδοποίηση · <b>PE</b> ανταλλαγή παλετών · <b>HR</b> υψηλό ρίσκο';
 const _OI_DIR    = { Export: '↑ Εξαγωγή', Import: '↓ Εισαγωγή' };
 const _OI_DIR_W  = { Export: 'Εξαγωγή',   Import: 'Εισαγωγή' };
 const _OI_REEFER = { 'Continuous': 'Συνεχής', 'Start-Stop': 'Start-Stop', 'No temp': 'Χωρίς ψύξη' };
@@ -253,12 +253,10 @@ function _oiCss() { return `
 .oi-st{color:var(--text-mid);font-size:12px}
 /* 4px, not 8px: the error ring below is ~34px wide and the column is 40px. */
 .oi-layout .entity-table-wrap tbody td.oi-inv{padding:0 4px}
-.oi-inv{cursor:pointer;text-align:center}
+.oi-inv{text-align:center}
 .oi-chk{display:inline-block;width:18px;height:18px;border:1px solid var(--border-dark);border-radius:6px;background:var(--surface-card);vertical-align:middle;line-height:16px;font-size:11px;font-weight:700;color:var(--text-mid)}
 .oi-chk.on{border-color:var(--text-mid)}
 /* Δ3: the ring carries the alarm so the box inside can keep carrying the state. */
-.oi-inv-ring{display:inline-flex;align-items:center;gap:4px;padding:0 4px;border:1px solid var(--danger);border-radius:6px}
-.oi-inv-err{color:var(--danger);font-weight:700;font-size:11px;line-height:1}
 /* Δ4: the marks must be readable without hunting for a tooltip. */
 .oi-legend{padding:4px 16px;color:var(--text-mid);font-size:12px;border-bottom:1px solid var(--border)}
 .oi-legend b{font-weight:700;color:var(--text)}

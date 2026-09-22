@@ -50,7 +50,6 @@ async function renderOrdersNatl() {
     Object.keys(_natlFilters).forEach(k => delete _natlFilters[k]);
     // Δ3: a stale ⚠ from a previous visit would claim a write failed in THIS
     // list. The map is module-level, so it survives navigation unless wiped.
-    Object.keys(_onInvErr).forEach(k => delete _onInvErr[k]);
     _onPage = 1;
 
     // Pre-resolve all client names — batch fetches in parallel (not N+1)
@@ -173,13 +172,11 @@ const _ON_CSS = `
 /* 4px, not var(--space-2): the error ring below is ~42px wide and the column is
    44px — the default padding clipped its right edge (measured 3/9). */
 .on-v2 .entity-table-wrap tbody td.on-inv{padding:0 4px}
-.on-inv{cursor:pointer;text-align:center}
+.on-inv{text-align:center}
 .on-inv-box{display:inline-block;width:16px;height:16px;border:1px solid var(--border-dark);border-radius:var(--radius);background:var(--surface-card);vertical-align:middle}
 .on-inv-on{font-weight:700;color:var(--ok)}
 /* Δ3: the ring carries the alarm so the ✓/box inside can keep carrying the
    state. Red outline + ⚠ side by side — never one instead of the other. */
-.on-inv-ring{display:inline-flex;align-items:center;gap:4px;padding:0 4px;border:1px solid var(--danger);border-radius:var(--radius)}
-.on-inv-fail{font-weight:700;font-size:11px;line-height:1;color:var(--danger)}
 /* Δ4: the symbols must be readable without hovering for a tooltip. */
 .on-legend{padding:8px 16px;color:var(--text-mid);font-size:12px;border-bottom:1px solid var(--border)}
 .on-legend b{font-weight:700;color:var(--text)}
@@ -240,7 +237,7 @@ const _ON_CSS = `
 // Δ4 (3/9): the badges and the ⚠ only explained themselves in a `title`, i.e.
 // only to someone who already suspected something. One line under the table
 // spells them out — cheaper than a tooltip nobody hovers.
-const _ON_LEGEND = '<b>VS</b> Veroia Switch · <b>GRP</b> ομαδοποίηση · <b>⚠</b> η τιμολόγηση ΔΕΝ γράφτηκε — δοκίμασε ξανά';
+const _ON_LEGEND = '<b>VS</b> Veroia Switch · <b>GRP</b> ομαδοποίηση';
 
 // Esc closes the card (spec §1). One listener, installed once, checks that the
 // card is on screen so it does nothing on other pages.
@@ -437,15 +434,11 @@ function _onLeg(key, label) {
 // answering the only question it exists to answer. The error also lives in a
 // module map, not in the DOM: the virtual scroller rewrites tbody.innerHTML on
 // the first scroll and the old in-place patch vanished with it.
-const _onInvErr = {};   // recId → error text; cleared by a write that succeeds
 function _onInvCell(r) {
-  const err = _onInvErr[r.id];
-  const state = r.fields['Invoiced']
-    ? '<span class="on-inv-on">✓</span>'
-    : '<span class="on-inv-box"></span>';
-  return err
-    ? `<span class="on-inv-ring" title="${escapeHtml(err)}">${state}<span class="on-inv-fail">⚠</span></span>`
-    : state;
+  // Read-only since 22/9 (owner): «τιμολογήθηκε» is written only from the
+  // Τιμολόγηση screen (ERP number + date) — see the intl list for the reason.
+  const on = !!r.fields['Invoiced'];
+  return on ? '<span class="on-inv-box on-inv-on">✓</span>' : '<span class="on-inv-box"></span>';
 }
 
 function _onRowHtml(r) {
