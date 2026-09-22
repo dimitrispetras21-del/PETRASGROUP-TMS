@@ -14,6 +14,33 @@
 -- Reverse: DROP SCHEMA monitoring CASCADE;  (touches no TMS table, no TMS data)
 
 CREATE SCHEMA IF NOT EXISTS monitoring;
+-- Born closed (principle 5, review A 23/9 #2): nothing in this schema is usable by PUBLIC — not even the
+-- functions created further down in THIS file (default privileges apply to them) — until 050 grants the two
+-- monitoring roles explicitly. Running 047/048 without 050 therefore exposes nothing.
+REVOKE ALL ON SCHEMA monitoring FROM PUBLIC;
+ALTER DEFAULT PRIVILEGES IN SCHEMA monitoring REVOKE EXECUTE ON FUNCTIONS FROM PUBLIC;
+ALTER DEFAULT PRIVILEGES IN SCHEMA monitoring REVOKE ALL ON TABLES FROM PUBLIC;
+
+-- A1 (review A 23/9 #1): the check SQL is stored text executed dynamically. Three guards INSIDE the DB, so a
+-- bad row fails here and not only in the repo lint: (1) one SELECT/WITH statement, (2) only allow-listed
+-- functions (an old SECURITY DEFINER function granted to PUBLIC could otherwise write on the check's behalf),
+-- (3) executed as tms_check_runner, a NOLOGIN role with SELECT only — DML fails on privileges.
+-- The function allow-list below is the SAME list as tms-auditor/checks/load.mjs (catalog.test.mjs fails on drift).
+DO $do$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'tms_check_runner') THEN
+    CREATE ROLE tms_check_runner NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS;
+  END IF;
+END $do$;
+GRANT tms_check_runner TO CURRENT_USER;          -- PG ≥16: the creator needs membership to SET ROLE to it
+-- SELECT only, explicit list = every table/view the catalog reads (catalog.test.mjs checks the coverage).
+GRANT SELECT ON
+  public.orders, public.order_stops, public.national_orders, public.national_loads,
+  public.groupage_lines, public.consolidated_loads, public.ramp,
+  public.ct_round_trips, public.ct_rt_legs, public.ct_cost_lines, public.ct_cost_docs,
+  public.dl_entries, public.pl_movements, public.app_errors, public.facade_unknown_fields,
+  public.trucks, public.trailers, public.drivers, public.locations, public.local_moves,
+  public.dl_v_rt_gap, public.pl_v_order_gate, public.audit_log
+TO tms_check_runner;
 
 CREATE TABLE monitoring.checks (
   id            text PRIMARY KEY,                    -- 'B-01', 'P-03', 'TEST-01'
@@ -48,7 +75,8 @@ CREATE TABLE monitoring.runs (
   expected_n  int NOT NULL DEFAULT 0,
   ran_n       int NOT NULL DEFAULT 0,
   error_n     int NOT NULL DEFAULT 0,
-  complete    boolean NOT NULL DEFAULT false            -- ran_n = expected_n AND error_n = 0
+  complete    boolean NOT NULL DEFAULT false,           -- ran_n = expected_n AND error_n = 0
+  source_cron boolean NOT NULL DEFAULT false            -- true only when pg_cron started it (schedule drift check)
 );
 
 CREATE TABLE monitoring.results (
@@ -164,15 +192,33 @@ RETURNS void LANGUAGE sql AS $fn$
   -- 'confirmed' (a human said "real") is NOT auto-closed by one green run: a human closes it.
 $fn$;
 
+CREATE OR REPLACE FUNCTION monitoring.check_sql_guard(p_sql text)
+RETURNS void LANGUAGE plpgsql IMMUTABLE AS $fn$
+DECLARE body text; fn text;
+  allowed text[] := ARRAY['count','sum','max','min','abs','coalesce','left','btrim','round','extract',
+    'array_agg','now','exists','in','any','date','greatest','least','lower','upper','length',
+    'select','from','where','and','or','not','on','as','join','filter','over','values','interval',
+    'case','when','then','else','end','between','is','having','by'];
+BEGIN
+  body := regexp_replace(p_sql, '''([^'']|'''')*''', '''''', 'g');      -- string literals out
+  body := regexp_replace(body, '--[^\n]*', ' ', 'g');                   -- comments out
+  body := regexp_replace(body, ';\s*$', '');
+  IF body !~* '^\s*(select|with)\s' THEN RAISE EXCEPTION 'check sql refused: must start with SELECT/WITH'; END IF;
+  IF position(';' IN body) > 0 THEN RAISE EXCEPTION 'check sql refused: exactly one statement'; END IF;
+  FOR fn IN SELECT lower(m[1]) FROM regexp_matches(body, '([a-z_][a-z0-9_]*)\s*\(', 'gi') AS m LOOP
+    IF fn <> ALL (allowed) THEN RAISE EXCEPTION 'check sql refused: function %() not allowed', fn; END IF;
+  END LOOP;
+END $fn$;
+
 -- ---------------------------------------------------------------------------------------------
 -- The runner. Writes a result for EVERY enabled check of the tag — also on error (principle 1).
-CREATE OR REPLACE FUNCTION monitoring.run_checks(p_tag text)
+CREATE OR REPLACE FUNCTION monitoring.run_checks(p_tag text, p_from_cron boolean DEFAULT false)
 RETURNS uuid LANGUAGE plpgsql AS $fn$
 DECLARE r monitoring.checks%ROWTYPE; v numeric; prev numeric; ids text[]; t0 timestamptz;
         st text; red boolean; g_run uuid; n_exp int := 0; n_ran int := 0; n_err int := 0; lim numeric;
 BEGIN
   SELECT count(*) INTO n_exp FROM monitoring.checks WHERE enabled AND schedule_tag = p_tag;
-  INSERT INTO monitoring.runs (tag, expected_n) VALUES (p_tag, n_exp) RETURNING run_id INTO g_run;
+  INSERT INTO monitoring.runs (tag, expected_n, source_cron) VALUES (p_tag, n_exp, p_from_cron) RETURNING run_id INTO g_run;
 
   FOR r IN SELECT * FROM monitoring.checks WHERE enabled AND schedule_tag = p_tag ORDER BY id LOOP
     t0 := clock_timestamp(); v := NULL; ids := NULL; st := 'error';
@@ -180,8 +226,12 @@ BEGIN
      WHERE check_id = r.id AND value IS NOT NULL ORDER BY run_at DESC, id DESC LIMIT 1;
     BEGIN
       PERFORM set_config('statement_timeout', '10000', true);          -- one slow check cannot stall the run
+      PERFORM monitoring.check_sql_guard(r.sql_text);
+      IF r.ids_sql IS NOT NULL THEN PERFORM monitoring.check_sql_guard(r.ids_sql); END IF;
+      SET LOCAL ROLE tms_check_runner;                                  -- SELECT-only for the check itself
       EXECUTE r.sql_text INTO v;
       IF r.ids_sql IS NOT NULL THEN EXECUTE r.ids_sql INTO ids; END IF;
+      RESET ROLE;                                                       -- (an error rolls the role back too)
       IF v IS NULL THEN
         RAISE EXCEPTION 'check returned NULL — absence is not green';
       END IF;
@@ -260,6 +310,11 @@ BEGIN
     ELSE
       PERFORM monitoring.resolve_incident('MECH:stale:' || c.id, 'self_check');
     END IF;
+  END LOOP;
+
+  FOR c IN SELECT problem, detail FROM monitoring.v_health WHERE problem LIKE 'schedule:%' LOOP
+    PERFORM monitoring.raise_incident('MECH:' || c.problem, 'MECH', 'MECH', NULL, c.detail);
+    n := n + 1;
   END LOOP;
 
   -- Mutual watch (owner 22/9 23:15): the p1 routine and the watchdog routine each beat hourly; either one
@@ -348,6 +403,19 @@ CREATE OR REPLACE VIEW monitoring.v_health AS
   SELECT 'incident:' || i.incident_key, 'MECH', 'ανοιχτό περιστατικό μηχανισμού από '
          || to_char(i.first_seen AT TIME ZONE 'Europe/Athens','DD/MM HH24:MI')
     FROM monitoring.incidents i WHERE i.severity = 'MECH' AND i.state IN ('new','confirmed','recurred')
+  UNION ALL
+  -- A3 (review A 23/9 #4): pg_cron runs in UTC; at the DST change (25/10) the shift-bound jobs silently move
+  -- one hour. The first complete run of today, in Athens time, must be within 30′ of its planned time.
+  SELECT 'schedule:' || x.tag, 'MECH', 'ο πρώτος κύκλος ' || x.tag || ' σήμερα έτρεξε ' || to_char(x.first_athens, 'HH24:MI')
+         || ' Αθήνα αντί ' || to_char(x.planned, 'HH24:MI') || ' — πιθανή αλλαγή ώρας (UTC cron)'
+    FROM (SELECT r.tag, min(r.started_at AT TIME ZONE 'Europe/Athens') AS first_athens,
+                 CASE r.tag WHEN 'fast' THEN time '05:00' WHEN 'half' THEN time '06:00' WHEN 'daily' THEN time '05:10' END AS planned
+            FROM monitoring.runs r
+           WHERE r.tag IN ('fast','half','daily')
+             AND (r.started_at AT TIME ZONE 'Europe/Athens')::date = (clock_timestamp() AT TIME ZONE 'Europe/Athens')::date
+             AND r.source_cron
+           GROUP BY r.tag) x
+   WHERE abs(extract(epoch FROM (x.first_athens::time - x.planned))) > 1800
   UNION ALL
   SELECT 'undelivered:' || d.incident_key, 'MECH', 'ειδοποίηση ' || d.severity || ' εκκρεμεί > 90′ (από '
          || to_char(d.first_seen AT TIME ZONE 'Europe/Athens','DD/MM HH24:MI') || ')'
@@ -488,3 +556,16 @@ RETURNS text LANGUAGE sql STABLE AS $fn$
     (SELECT 'ΚΕΝΑ (έλεγχοι εκτός λειτουργίας): ' || string_agg(id, ', ' ORDER BY id)
        FROM monitoring.checks WHERE NOT enabled));
 $fn$;
+
+-- Born closed, explicitly (the default privileges above cover functions created later by the same owner).
+REVOKE EXECUTE ON ALL FUNCTIONS IN SCHEMA monitoring FROM PUBLIC;
+REVOKE ALL ON ALL TABLES IN SCHEMA monitoring FROM PUBLIC;
+DO $do$ DECLARE r text; BEGIN
+  FOREACH r IN ARRAY ARRAY['anon','authenticated','service_role'] LOOP     -- Supabase API roles, if present
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = r) THEN
+      EXECUTE format('REVOKE ALL ON SCHEMA monitoring FROM %I', r);
+      EXECUTE format('REVOKE ALL ON ALL TABLES IN SCHEMA monitoring FROM %I', r);
+      EXECUTE format('REVOKE EXECUTE ON ALL FUNCTIONS IN SCHEMA monitoring FROM %I', r);
+    END IF;
+  END LOOP;
+END $do$;

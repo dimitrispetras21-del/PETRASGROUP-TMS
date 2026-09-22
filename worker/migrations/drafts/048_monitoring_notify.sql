@@ -89,12 +89,15 @@ BEGIN
 END $fn$;
 
 -- Schedule (UTC; Athens = UTC+3 until 25/10, then UTC+2 — the shift-bound jobs must be re-set on 25/10).
+-- If they are not, v_health reports «schedule:fast/half/daily» the same morning (047, review A 23/9 #4).
+REVOKE EXECUTE ON ALL FUNCTIONS IN SCHEMA monitoring FROM PUBLIC;   -- born closed (047 default privileges too)
+REVOKE ALL ON ALL TABLES IN SCHEMA monitoring FROM PUBLIC;
 -- @prod-only-begin
-SELECT cron.schedule('tms-fast',    '*/15 2-11 * * 1-6', $$SELECT monitoring.run_checks('fast')$$);    -- 05:00–14:45 Athens
-SELECT cron.schedule('tms-half',    '*/30 3-11 * * 1-6', $$SELECT monitoring.run_checks('half')$$);
-SELECT cron.schedule('tms-hourly',  '7 * * * *',         $$SELECT monitoring.run_checks('hourly')$$);
-SELECT cron.schedule('tms-daily',   '10 2 * * *',        $$SELECT monitoring.run_checks('daily')$$);   -- 05:10 Athens
-SELECT cron.schedule('tms-weekly',  '20 2 * * 6',        $$SELECT monitoring.run_checks('weekly')$$);  -- Saturday = TMS week
+SELECT cron.schedule('tms-fast',    '*/15 2-11 * * 1-6', $$SELECT monitoring.run_checks('fast', true)$$);    -- 05:00–14:45 Athens
+SELECT cron.schedule('tms-half',    '*/30 3-11 * * 1-6', $$SELECT monitoring.run_checks('half', true)$$);
+SELECT cron.schedule('tms-hourly',  '7 * * * *',         $$SELECT monitoring.run_checks('hourly', true)$$);
+SELECT cron.schedule('tms-daily',   '10 2 * * *',        $$SELECT monitoring.run_checks('daily', true)$$);   -- 05:10 Athens
+SELECT cron.schedule('tms-weekly',  '20 2 * * 6',        $$SELECT monitoring.run_checks('weekly', true)$$);  -- Saturday = TMS week
 SELECT cron.schedule('tms-fire',    '*/5 * * * *',       $$SELECT monitoring.fire_due(); SELECT monitoring.fire_verify()$$);
 SELECT cron.schedule('tms-self',    '*/15 * * * *',      $$SELECT monitoring.self_check()$$);  -- stale checks/routines ⇒ MECH ⇒ fire
 -- @prod-only-end

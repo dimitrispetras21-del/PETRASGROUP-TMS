@@ -53,6 +53,19 @@ test('050 verification SELECTs (as postgres, no writes): 0 writable tables, only
       AND n.nspname NOT IN ('pg_catalog','information_schema') AND has_function_privilege(r.rolname, p.oid, 'EXECUTE') ORDER BY 1, 2`);
   assert.deepEqual(fns, [{ rolname: 'tms_monitor_writer', fn: 'monitoring.beat' }, { rolname: 'tms_monitor_writer', fn: 'monitoring.record_diagnosis' },
                          { rolname: 'tms_monitor_writer', fn: 'monitoring.record_notification' }]);
-  const roles = await all(db, "SELECT rolname, rolsuper, rolbypassrls, rolcreaterole FROM pg_roles WHERE rolname LIKE 'tms\\_%' ORDER BY 1");
-  assert.ok(roles.length === 2 && roles.every((r) => !r.rolsuper && !r.rolbypassrls && !r.rolcreaterole));
+  const roles = await all(db, "SELECT rolname, rolsuper, rolbypassrls, rolcreaterole, rolcanlogin FROM pg_roles WHERE rolname LIKE 'tms\\_%' ORDER BY 1");
+  assert.deepEqual(roles.map((r) => r.rolname), ['tms_check_runner', 'tms_monitor_writer', 'tms_reader']);
+  assert.ok(roles.every((r) => !r.rolsuper && !r.rolbypassrls && !r.rolcreaterole));
+  assert.equal(roles.find((r) => r.rolname === 'tms_check_runner').rolcanlogin, false, 'the check runner can never log in');
+});
+
+test('born closed (047): a role that was granted nothing cannot touch schema monitoring', async () => {
+  const db = await freshDb({ roles: false });                      // 047 + 048 WITHOUT 050
+  await db.exec('CREATE ROLE someone NOLOGIN');
+  for (const sql of ['SELECT count(*) FROM monitoring.incidents', 'SELECT monitoring.render_alert(1)',
+                     "SELECT monitoring.beat('x','y','z')", "SELECT monitoring.record_notification(NULL,'test','mock','x','sent','t')",
+                     "SELECT monitoring.record_diagnosis(1, '{}')", "SELECT monitoring.run_checks('fast')"]) {
+    const r = await as(db, 'someone', sql);
+    assert.equal(r.ok, false, `PUBLIC must not be able to: ${sql}`);
+  }
 });

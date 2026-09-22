@@ -47,8 +47,11 @@ REVOKE ALL ON FUNCTION monitoring.record_notification(bigint,text,text,text,text
 GRANT EXECUTE ON FUNCTION monitoring.record_notification(bigint,text,text,text,text,text,text),
                           monitoring.beat(text,text,text),
                           monitoring.record_diagnosis(bigint,jsonb) TO tms_monitor_writer;
+-- Read-only functions the routines call (047 creates everything closed; views call render_alert AS THE CALLER).
+GRANT EXECUTE ON FUNCTION monitoring.render_alert(bigint), monitoring.build_package(bigint),
+                          monitoring.digest(timestamptz), monitoring.deadman_ok(timestamptz) TO tms_reader;
 -- run_checks/self_check/raise_incident/resolve_incident: cron (postgres) only
-REVOKE ALL ON FUNCTION monitoring.run_checks(text), monitoring.self_check(timestamptz),
+REVOKE ALL ON FUNCTION monitoring.run_checks(text, boolean), monitoring.self_check(timestamptz),
                        monitoring.raise_incident(text,text,text,numeric,text,text[]),
                        monitoring.resolve_incident(text,text) FROM PUBLIC;
 

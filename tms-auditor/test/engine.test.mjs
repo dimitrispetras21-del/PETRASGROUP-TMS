@@ -89,3 +89,41 @@ test('storm control and render_alert (≤ 8 lines, what/extent/impact/evidence/c
   for (const k of ['🔴 P1', 'Έκταση:', 'Επίπτωση:', 'Αποδεικτικά:', 'Βεβαιότητα:', 'Επόμενο:', 'Διάγνωση: εκκρεμεί']) assert.ok(body.includes(k), `missing ${k}`);
   assert.ok(body.includes(a.legacy_id), 'the affected id is in the alert');
 });
+
+test('A1: a bad sql_text fails IN THE DATABASE (statement, DML in WITH, function) — and writes nothing', async () => {
+  const db = await freshDb(); await onlyChecks(db, ['B-01']);
+  const a = await assignedOrder(db, { minutesAgo: 30 });
+  const bad = {
+    two_statements: "SELECT count(*) FROM orders; DELETE FROM orders",
+    dml_in_with: "WITH d AS (DELETE FROM orders RETURNING 1) SELECT count(*) FROM d",
+    update_in_with: "WITH u AS (UPDATE orders SET price = 0 RETURNING 1) SELECT count(*) FROM u",
+    tms_function: "SELECT monitoring.raise_incident('x','x','P1',1,'x')",
+    set_config: "SELECT set_config('role','postgres',false)",
+    not_select: "DELETE FROM orders",
+  };
+  for (const [k, sql] of Object.entries(bad)) {
+    await db.query("UPDATE monitoring.checks SET sql_text = $1 WHERE id = 'B-01'", [sql]);
+    await db.query("SELECT monitoring.run_checks('fast')");
+    const r = await one(db, "SELECT status, err FROM monitoring.results WHERE check_id='B-01' ORDER BY id DESC LIMIT 1");
+    assert.equal(r.status, 'error', `${k} must be refused`);
+  }
+  assert.equal((await one(db, 'SELECT count(*)::int n FROM orders WHERE id = $1', [a.id])).n, 1, 'the order is still there');
+  assert.equal((await one(db, "SELECT count(*)::int n FROM monitoring.incidents WHERE incident_key = 'x'")).n, 0);
+  assert.equal((await one(db, 'SELECT current_user AS u')).u, 'postgres', 'the role is back after the check');
+});
+
+test('A3: schedule drift — first cron run of the day 1h off plan ⇒ v_health + MECH (DST 25/10)', async () => {
+  const db = await freshDb(); await onlyChecks(db, ['B-01']);
+  // a cron-started 'fast' run at 04:02 Athens today (planned 05:00): what an un-shifted UTC cron does after 25/10
+  await db.query(`INSERT INTO monitoring.runs (tag, started_at, finished_at, expected_n, ran_n, complete, source_cron)
+     VALUES ('fast', ((clock_timestamp() AT TIME ZONE 'Europe/Athens')::date + time '04:02') AT TIME ZONE 'Europe/Athens',
+             ((clock_timestamp() AT TIME ZONE 'Europe/Athens')::date + time '04:02') AT TIME ZONE 'Europe/Athens', 1, 1, true, true)`);
+  const h = await all(db, "SELECT problem, detail FROM monitoring.v_health WHERE problem LIKE 'schedule:%'");
+  assert.equal(h.length, 1); assert.match(h[0].detail, /04:02 Αθήνα αντί 05:00/);
+  await db.query('SELECT monitoring.self_check()');
+  assert.ok(await one(db, "SELECT 1 FROM monitoring.incidents WHERE incident_key = 'MECH:schedule:fast'"));
+  // a MANUAL run at a random hour is not a drift
+  const db2 = await freshDb(); await onlyChecks(db2, ['B-01']);
+  await db2.query("SELECT monitoring.run_checks('fast')");
+  assert.equal((await all(db2, "SELECT 1 FROM monitoring.v_health WHERE problem LIKE 'schedule:%'")).length, 0);
+});
