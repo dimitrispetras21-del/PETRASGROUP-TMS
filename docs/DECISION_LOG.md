@@ -1977,3 +1977,13 @@ RT έκλεισε (rt-feed `shouldClose` = μόνο το ζεύγος-άγκυρ
 rot-cands-sim 4/4, weekly rig ALL_OK, ελεγκτής 0 P1/P2. **Εκκρεμεί:** RT-1171 ξανάνοιγμα (DRAFT, owner)· απόφαση owner
 για reopen-on-attach στον Worker· ερώτημα νέου σταθερού ελέγχου 02 (1/69 σήμερα). Από 69 κλειστά RT μόνο το RT-1171
 είχε ανοιχτό σκέλος — το ελάττωμα χτύπησε πρώτη φορά. **Ποιος:** owner, συντονιστής, ελεγκτής, Claude Fable 5.1.
+
+### 2026-09-22 · costs/db · Κλειστό round trip ξανανοίγει όταν του προσαρτάται μη παραδομένο σκέλος — DRAFT 045 `rt_reopen_on_leg` (owner: «επ' αόριστον»)
+
+**Αφορμή:** RT-1171 (22/9). Το front διορθώθηκε (696bb9d) αλλά είναι μία διαδρομή· ο Worker attach κάνει σκέτο
+INSERT στο ct_rt_legs χωρίς ξανάνοιγμα, η 033 ξανανοίγει μόνο στο δικό της insert. **Επιλογή (αρχή 4):** trigger
+AFTER INSERT OR UPDATE OF order_id στο ct_rt_legs: closed/complete + παραγγελία όχι Delivered/Cancelled → planned +
+audit. **Απορρίφθηκαν:** αλλαγή στον Worker attach (μία διαδρομή, όχι SQL/033)· επέκταση της 033 (τρέχει στα orders,
+όχι στο σκέλος — θα έχανε τον Worker). Εκτός πεδίου: σκέλη national_loads. **Απόδειξη:** μόνο ανάγνωση των 013/033/
+Worker· σενάριο ROLLBACK με πραγματικά ids στο DRAFT· χωρίς parser τοπικά (psql απών). **Ποιος:** owner (απόφαση),
+συντονιστής, Claude Fable 5.1 — εκτέλεση από owner μετά τις 15:00, ελεγκτής πριν.

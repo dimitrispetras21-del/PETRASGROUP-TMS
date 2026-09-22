@@ -148,3 +148,28 @@ Merge στο main **696bb9d** (rebase πάνω στο cfbb3e5, fast-forward). Ri
 
 **Ξανάνοιγμα RT-1171:** DRAFT `worker/migrations/drafts/2026-09-22_reopen_rt1171_DRAFT.sql` (owner, μετά τις 15:00, μετά
 το merge — που έγινε). Εκκρεμεί απάντηση owner.
+
+---
+
+## Απόφαση owner 22/9: «να λυθεί επ' αόριστον» → DRAFT 045 `rt_reopen_on_leg` (branch `fix/rt-reopen-on-leg`)
+
+**Ερώτημα του συντονιστή, απάντηση από τον κώδικα:** ο Worker attach (`index.js` ~3104, `plan.action === "attach"`)
+κάνει **σκέτο INSERT** (`dbInsert(env, "ct_rt_legs", …)`) — όχι UPSERT/UPDATE· τα seq διορθώνονται με PATCH που
+αλλάζει ΜΟΝΟ `seq` (όχι `order_id`)· το RT παίρνει μόνο `date_end` (extend). Η `_wiRotAdd` χρησιμοποιεί: (1) PATCH
+`Rotation ID` στο σκέλος → trigger 033 στα orders, που στην περίπτωση 22/9 επέστρεψε νωρίς (η 367 δεν είχε truck_id)·
+(2) `rtOnOrderSaved(γονέας)` → `POST /costs/rt` → Worker attach → INSERT στο `ct_rt_legs`. Άρα το σκέλος της 367 το
+έγραψε ο Worker με INSERT, χωρίς κανένα ξανάνοιγμα (η 033 ξανανοίγει μόνο στη δική της διαδρομή insert).
+
+**Τι υπάρχει ήδη (πηγή: pg_get_functiondef 22/9):** `rt_sync_legs` (013, AFTER INSERT/DELETE στο ct_rt_legs) — όχημα +
+`rt_recompute` (αλλάζει status μόνο σε cancelled με 0 σκέλη)· `rt_sync_from_order` (013) — δεν αγγίζει status·
+`rt_create_from_order` (033) — ξανανοίγει μόνο όταν η ίδια προσαρτά. Κανένας trigger δεν ξανανοίγει σε ξένο INSERT.
+
+**Το 045:** `AFTER INSERT OR UPDATE OF order_id ON ct_rt_legs` → αν RT closed/complete ΚΑΙ η παραγγελία του σκέλους
+όχι Delivered/Cancelled (και όχι deleted) → `status='planned', closed_at=NULL` + `rt_sync_audit` «reopened … (045)».
+Σκέλη national (`nat_load_id`) εκτός πεδίου. Φρουρός pg_trigger (2 triggers στο ct_rt_legs), σενάριο δοκιμής σε
+BEGIN…ROLLBACK με πραγματικά ids (RT-1004 id 4 closed/όλα Delivered + 369 Pending χωρίς σκέλος), ΜΕΤΑ-SELECT
+«κλειστά με ανοιχτό σκέλος = 0». Αρχείο: `worker/migrations/drafts/045_rt_reopen_on_leg_DRAFT.sql`. **ΔΕΝ εκτελέστηκε.**
+**Έλεγχος σύνταξης:** `psql`/`pg_dump` δεν υπάρχουν τοπικά και η Supabase είναι SELECT-only για το session — η σύνταξη
+δεν επαληθεύτηκε με parser· μόνο ανάγνωση κατά τα μοτίβα της 033 (ίδια `rt_sync_audit`, ίδιο `%rowtype`, SECURITY
+DEFINER + search_path). Το σενάριο ROLLBACK είναι η δοκιμή του owner τη στιγμή της εκτέλεσης.
+**Σειρά:** πρώτα 045, μετά το ξανάνοιγμα του RT-1171 (ή ανάποδα — ανεξάρτητα)· ΜΕΤΑ-SELECT 0 και στα δύο.
