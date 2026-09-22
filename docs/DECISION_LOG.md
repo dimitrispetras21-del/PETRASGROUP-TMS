@@ -2073,3 +2073,12 @@ INSERT της ίδιας της 011, ξεχωριστή migration.
 **Έλεγχοι:** node --check 6/6 · rt-close-sim **6/6** (νέος έλεγχος: η εξαίρεση του TRIP PnL λέει τον κανόνα) ·
 node --test 11/11. **Ανοιχτά:** deploy Worker· έγκριση owner για `needs_review` στο ξανάνοιγμα· γραμμή κύκλου
 ζωής status στο `skill-tms-knowledge.md` §5 (εκτός branch). **Ποιος:** owner, συντονιστής, ελεγκτής.
+
+### 2026-09-22 · costs/db/worker · 046 rt_auto_close ΖΩΝΤΑΝΟ σε βάση + οθόνη + Worker (owner 23:05 SQL, 23:27 deploy 7f09c517)
+
+**Σειρά που τηρήθηκε:** 046 SQL (4 μπλοκ, δοκιμή ROLLBACK με τον φρουρό να σκάει σωστά, backfill 30) → κώδικας στο main db86147
+(front δεν γράφει status RT, `_wiRotAdd` χωρίς αναστροφή, κουμπί TRIP PnL με κανόνα) → Worker deploy 7f09c517 (409 passthrough
+του μηνύματος της βάσης). **Απόδειξη:** ΜΕΤΑ-SELECT 0/0, RT closed 100 / planned 10 / cancelled 6, audit auto-closed 30, needs_review
+5 αμετάβλητο· φρουρός των τριών 12/1/1 πριν/μετά, secrets 3/3, invocation_logs false, bundle περιέχει το νέο κώδικα (dbMsg), /health OK,
+smoke Εβδομαδιαίο OK. **Δύο ανεξάρτητες αξιολογήσεις** (Claude 53f2e62 → ef09dcd, 4/4 ευρήματα έκλεισαν). Η 045 απορροφήθηκε.
+**Ανοιχτό P4:** όριο 200 chars στο `ctDbPatch` για το μήνυμα 409 (15 chars περιθώριο). **Ποιος:** owner, συντονιστής, ελεγκτής.
