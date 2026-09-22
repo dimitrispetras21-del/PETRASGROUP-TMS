@@ -61,9 +61,14 @@ async function renderOrdersNatl() {
     try {
       const cand = records.filter(r => !r.fields['National Groupage']);
       if (cand.length) {
-        const ff = `OR(${cand.map(r => `FIND("${r.id}",ARRAYJOIN({Source National Order},","))>0`).join(',')})`;
-        const nls = await atGetAll(TABLES.NAT_LOADS, { filterByFormula: ff, fields: ['Source National Order'] }, false);
-        const have = new Set(nls.map(n => getLinkedId(n.fields['Source National Order'])).filter(Boolean));
+        // Batches of 90 like the international ORDER_STOPS fetch: one OR()
+        // over every candidate of «όλες» blew past the formula limit (22/9).
+        const have = new Set();
+        for (const part of OrdersList.chunk(cand, 90)) {
+          const ff = `OR(${part.map(r => `FIND("${r.id}",ARRAYJOIN({Source National Order},","))>0`).join(',')})`;
+          const nls = await atGetAll(TABLES.NAT_LOADS, { filterByFormula: ff, fields: ['Source National Order'] }, false);
+          nls.forEach(n => { const id = getLinkedId(n.fields['Source National Order']); if (id) have.add(id); });
+        }
         cand.forEach(r => { if (!have.has(r.id)) NATL_ORDERS.noLoad.add(r.id); });
       }
     } catch(e) { if (typeof logError === 'function') logError(e, 'orders_natl: load presence check'); }
@@ -336,13 +341,14 @@ function _renderNatlLayout(c) {
 // 1129 so the fixed layout keeps scaling like orders_intl.
 const _natlColDefs = [
   { key: 'name',     label: 'ΑΝΑΦΟΡΑ',    type: 'text',   w: 110, get: (f) => f['Reference']||'' },
-  { key: 'dir',      label: 'ΚΑΤΕΥΘ.',       type: 'text',   w: 80,  get: (f) => f['Direction']||'' },
+  { key: 'dir',      label: 'ΚΑΤΕΥΘ.',       type: 'text',   w: 96,  get: (f) => f['Direction']||'' },
   { key: 'client',   label: 'ΠΕΛΑΤΗΣ',    type: 'text',   w: 280, get: (f) => { const id=(f['Client']||[])[0]; return id?(_fhClientsMap[id]||''):''; } },
   { key: 'route',    label: 'ΔΙΑΔΡΟΜΗ',  type: 'text',   w: 290, get: (f) => { const id=(f['Pickup Location 1']||[])[0]; return id?(_fhLocationsMap[id]||''):''; } },
   // Same short keys as the route legs («ΦΟΡΤ.» / «ΠΑΡΑΔ.») so the date reads
-  // as the date OF that leg; the long titles overran the 72/76px columns.
-  { key: 'loadDate', label: 'ΗΜ. ΦΟΡΤ.', type: 'date',   w: 72,  get: (f) => f['Loading DateTime']||'' },
-  { key: 'delDate',  label: 'ΗΜ. ΠΑΡΑΔ.',  type: 'date',   w: 76,  get: (f) => f['Delivery DateTime']||'' },
+  // as the date OF that leg; the long titles overran the 72/76px columns
+  // (widened to 84/90 on 22/9 — the short titles were still clipped).
+  { key: 'loadDate', label: 'ΗΜ. ΦΟΡΤ.', type: 'date',   w: 84,  get: (f) => f['Loading DateTime']||'' },
+  { key: 'delDate',  label: 'ΗΜ. ΠΑΡΑΔ.',  type: 'date',   w: 90,  get: (f) => f['Delivery DateTime']||'' },
   { key: 'pal',      label: 'ΠΑΛ.',       type: 'number', w: 44,  get: (f) => f['Pallets']||0 },
   { key: 'trip',     label: 'ΑΝΑΘΕΣΗ',      type: 'text',   w: 133, get: (f) => _onHasTrip(f)?'Assigned':'Pending' },
   { key: 'inv',      label: 'ΤΙΜ.',       type: 'text',   w: 44,  get: (f) => f['Invoiced']?'1':'0' },
@@ -359,18 +365,7 @@ function _natlSortToggle(key) {
   _applyNatlFilters();
 }
 
-function _natlSortRecords(recs) {
-  if (!_natlSortCol || _natlSortDir === 0) return recs;
-  const col = _natlColDefs.find(c => c.key === _natlSortCol);
-  if (!col) return recs;
-  const dir = _natlSortDir === 1 ? 1 : -1;
-  return [...recs].sort((a, b) => {
-    let va = col.get(a.fields), vb = col.get(b.fields);
-    if (col.type === 'number') return ((parseFloat(va)||0) - (parseFloat(vb)||0)) * dir;
-    if (col.type === 'date') return (va||'').localeCompare(vb||'') * dir;
-    return String(va).toLowerCase().localeCompare(String(vb).toLowerCase()) * dir;
-  });
-}
+function _natlSortRecords(recs) { return OrdersList.sortRecords(recs, _natlColDefs, _natlSortCol, _natlSortDir); }
 
 // ─── Table (Virtual Scroll) ─────────────────────
 // Two-line cell (DESIGN.md ΜΕΡΟΣ Ζ.1): the main part stays on line one, the
@@ -564,8 +559,10 @@ function natlPeriodChange(v) { _natlPeriod = v; _onVS.lastStart = -1; _onVS.last
 function natlClearFilters() {
   Object.keys(_natlFilters).forEach(k => delete _natlFilters[k]);
   NATL_ORDERS.selectedId = null;
-  _renderNatlLayout(document.getElementById('content'));
-  _applyNatlFilters();
+  // Same as the international list (22/9): clearing must also widen the
+  // period back to «όλες», which needs a REFETCH — the toolbar is rebuilt by
+  // the render, so the selects return to their defaults too.
+  natlPeriodChange('all');
 }
 
 function _applyNatlFilters() {
@@ -2444,22 +2441,19 @@ function _natlPrefillFromScan(fields) {
 // Expose functions used from onclick/onchange handlers
 function _natlExportCSV() {
   const recs = NATL_ORDERS.filtered;
-  if (!recs.length) { toast('No records to export', 'error'); return; }
-  const rows = [['Name','Direction','Client','Pickup','Delivery','Load Date','Del Date','Pallets','Goods','Type','Trip','Invoiced','Price']];
+  if (!recs.length) { toast('Καμία παραγγελία για εξαγωγή — η λίστα είναι κενή', 'error'); return; }
+  const rows = [['Reference','Direction','Client','Pickup','Delivery','Load Date','Del Date','Pallets','Goods','Type','Trip','Invoiced','Price']];
   recs.forEach(r => { const f = r.fields;
     const cId = (f['Client']||[])[0]; const pId = (f['Pickup Location 1']||[])[0];
     const dId = (f['Delivery Location 1']||f['Delivery Location']||[])[0];
     const trip = ((f['Linked Trip']?.length||0)+(f['NATIONAL TRIPS']?.length||0)+(f['NATIONAL TRIPS 2']?.length||0))>0?'Assigned':'Pending';
-    rows.push([f['Name']||'', f['Direction']||'', cId?(_fhClientsMap[cId]||''):'',
+    // 'Name' was never a NATIONAL ORDERS field — the first column exported empty (22/9).
+    rows.push([f['Reference']||'', f['Direction']||'', cId?(_fhClientsMap[cId]||''):'',
       pId?(_fhLocationsMap[pId]||''):'', dId?(_fhLocationsMap[dId]||''):'',
       f['Loading DateTime']||'', f['Delivery DateTime']||'', f['Pallets']||0,
       f['Goods']||'', f['Type']||'', trip, f['Invoiced']?'Yes':'No', f['Price']||0,
     ]); });
-  const csv = rows.map(r => r.map(c => `"${String(c).replace(/"/g,'""')}"`).join(',')).join('\n');
-  const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8' });
-  const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
-  a.download = `orders_natl_${localToday()}.csv`; a.click(); URL.revokeObjectURL(a.href);
-  toast('CSV exported');
+  OrdersList.csvDownload(rows, `orders_natl_${localToday()}.csv`);
 }
 
 // Print-friendly view of National Orders. Opens new tab with A4 layout.
@@ -2526,10 +2520,7 @@ function _natlPrint() {
     </div>
     <script>window.addEventListener('load',()=>setTimeout(()=>window.print(),300));<\/script>
   </body></html>`;
-  const w = window.open('', '_blank');
-  if (!w) { toast('Pop-up blocked — allow pop-ups for this site', 'warn'); return; }
-  w.document.write(html);
-  w.document.close();
+  OrdersList.printOpen(html);
 }
 
 window.renderOrdersNatl = renderOrdersNatl;

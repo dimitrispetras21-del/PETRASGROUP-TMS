@@ -534,7 +534,7 @@ const _intlColDefs = [
   // 'Order No' is a read-only field the Worker now exposes on ORDERS records
   // (the Postgres row id, e.g. 165) — added 7/9/2026 so the team has a stable
   // internal number distinct from the client's own Reference in the next column.
-  { key: 'no',       label: 'ΑΡ.',            t: 'Εσωτερικός αριθμός παραγγελίας', type: 'number', w: 52, get: (f) => f['Order No'] || 0 },
+  { key: 'no',       label: 'ΑΡ.',            t: 'Εσωτερικός αριθμός παραγγελίας', type: 'number', w: 64, get: (f) => f['Order No'] || 0 },
   { key: 'orderNo',  label: 'ΑΝΑΦΟΡΑ',       t: 'Αναφορά πελάτη',       type: 'text',   w: 104, get: (f) => f['Reference']||'' },
   { key: 'week',     label: 'ΕΒΔ.',           type: 'number', w: 44,  get: (f) => f['Week Number']||0 },
   { key: 'dir',      label: 'ΚΑΤΕΥΘ.',        type: 'text',   w: 88,  get: (f) => f['Direction']||'' },
@@ -561,18 +561,7 @@ function _intlSortToggle(key) {
   _applyIntlFilters();
 }
 
-function _intlSortRecords(recs) {
-  if (!_intlSortCol || _intlSortDir === 0) return recs;
-  const col = _intlColDefs.find(c => c.key === _intlSortCol);
-  if (!col) return recs;
-  const dir = _intlSortDir === 1 ? 1 : -1;
-  return [...recs].sort((a, b) => {
-    let va = col.get(a.fields, a), vb = col.get(b.fields, b);
-    if (col.type === 'number') return ((parseFloat(va)||0) - (parseFloat(vb)||0)) * dir;
-    if (col.type === 'date') return (va||'').localeCompare(vb||'') * dir;
-    return String(va).toLowerCase().localeCompare(String(vb).toLowerCase()) * dir;
-  });
-}
+function _intlSortRecords(recs) { return OrdersList.sortRecords(recs, _intlColDefs, _intlSortCol, _intlSortDir); }
 
 // ─── Table (Virtual Scroll) ─────────────────────
 // Column widths come from the shared <colgroup> (both the thead table and the
@@ -2887,11 +2876,7 @@ function _intlExportCSV() {
     f['Loading DateTime']||'', f['Delivery DateTime']||'', f['Total Pallets']||0,
     f['Goods']||'', f['Status']||'Pending', f['Invoiced']?'Yes':'No', f['Price']||0,
   ]); });
-  const csv = rows.map(r => r.map(c => `"${String(c).replace(/"/g,'""')}"`).join(',')).join('\n');
-  const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8' });
-  const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
-  a.download = `orders_intl_${localToday()}.csv`; a.click(); URL.revokeObjectURL(a.href);
-  toast('Το CSV αποθηκεύτηκε');
+  OrdersList.csvDownload(rows, `orders_intl_${localToday()}.csv`);
 }
 
 // Print-friendly view of the currently filtered orders.
@@ -2969,10 +2954,7 @@ function _intlPrint() {
     </div>
     <script>window.addEventListener('load',()=>setTimeout(()=>window.print(),300));<\/script>
   </body></html>`;
-  const w = window.open('', '_blank');
-  if (!w) { toast('Το αναδυόμενο παράθυρο μπλοκαρίστηκε — επίτρεψε τα pop-ups για αυτόν τον ιστότοπο', 'warn'); return; }
-  w.document.write(html);
-  w.document.close();
+  OrdersList.printOpen(html);
 }
 
 // ═══════════════════════════════════════════════════════════════

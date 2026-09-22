@@ -36,3 +36,20 @@ test('virtualRange: buffer above/below, clamped to [0, total]', () => {
 test('virtualRange: partial rows round outward (floor start, ceil end)', () => {
   assert.deepStrictEqual(OrdersList.virtualRange(410, 405, 1000, 40, 0), { startIdx: 10, endIdx: 21 });
 });
+
+test('sortRecords: number / date / text, asc + desc, untouched when no sort', () => {
+  const cols = [{ key: 'n', type: 'number', get: f => f.n }, { key: 'd', type: 'date', get: f => f.d }, { key: 't', type: 'text', get: f => f.t }];
+  const recs = [{ fields: { n: '10', d: '2026-09-02', t: 'b' } }, { fields: { n: '2', d: '2026-09-10', t: 'A' } }, { fields: { n: '', d: '', t: 'c' } }];
+  assert.strictEqual(OrdersList.sortRecords(recs, cols, null, 0), recs);
+  assert.deepStrictEqual(OrdersList.sortRecords(recs, cols, 'n', 1).map(r => r.fields.n), ['', '2', '10']);
+  assert.deepStrictEqual(OrdersList.sortRecords(recs, cols, 'd', 2).map(r => r.fields.d), ['2026-09-10', '2026-09-02', '']);
+  assert.deepStrictEqual(OrdersList.sortRecords(recs, cols, 't', 1).map(r => r.fields.t), ['A', 'b', 'c']);
+  assert.strictEqual(OrdersList.sortRecords(recs, cols, 'missing', 1), recs);
+});
+
+test('chunk + countLabel', () => {
+  assert.deepStrictEqual(OrdersList.chunk([1, 2, 3, 4, 5], 2), [[1, 2], [3, 4], [5]]);
+  assert.deepStrictEqual(OrdersList.chunk([], 90), []);
+  assert.strictEqual(OrdersList.countLabel(1), '1 παραγγελία');
+  assert.strictEqual(OrdersList.countLabel(3), '3 παραγγελίες');
+});
