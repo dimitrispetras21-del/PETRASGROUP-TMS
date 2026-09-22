@@ -8,6 +8,8 @@
 //     '_status' select); natl compares Status literally, so an unset one
 //     never matches — kept as-is here, to be decided in 2b, not silently fixed;
 //   · natl has Type / _groupage / _trip; intl has Brand / _week / _status.
+// The specs are the real OrdersList.filterSpecs.* objects (reviewer P4) —
+// only the module-owned helpers/maps are stubbed.
 // The queries reach the engine already lowercased + trimmed (intlSearch /
 // natlSearch do that at the input) — the engine must not trim again.
 //
@@ -31,18 +33,11 @@ const ids = recs => recs.map(r => r.id);
 
 // ── international ───────────────────────────────────────────────────────
 const CLIENTS = { c1: 'ALPHA FRUITS', c2: 'Beta Logistics' };
-const INTL = {
-  search: f => [
-    CLIENTS[(f['Client'] || [])[0]] || '',
-    String(f['Reference'] || ''),
-    String(f['Order No'] || ''),
-    String(f['Loading Summary'] || ''),
-    String(f['Delivery Summary'] || ''),
-    f['Goods'] || '',
-  ],
-  eq: ['Direction', 'Brand'],
-  statusDefault: 'Pending',
-};
+// The REAL spec (reviewer P4): only the module helpers are stubbed.
+const INTL = OrdersList.filterSpecs.intl({
+  clientName: f => CLIENTS[(f['Client'] || [])[0]] || '',
+  cleanSummary: s => s || '',
+});
 const intlRecs = [
   rec('a', { Client: ['c1'], Reference: 'REF-100', 'Order No': 165, Direction: 'Export', Brand: 'DPS', 'Week Number': 36, Status: 'Assigned', Goods: 'Kiwi', 'Loading Summary': 'Veria / Skydra' }),
   rec('b', { Client: ['c2'], Reference: 'ref-200', 'Order No': 166, Direction: 'Import', Brand: 'PETRAS', 'Week Number': 35, Goods: 'Cherries', 'Delivery Summary': 'Berlin' }),
@@ -88,16 +83,7 @@ test('intl: empty/falsy filter values are ignored (intlFilter deletes them)', op
 
 // ── national ────────────────────────────────────────────────────────────
 const LOCS = { l1: 'Veria Cross-Dock', l2: 'Athens Market', l3: 'Thessaloniki Port' };
-const NATL = {
-  search: f => [
-    String(f['Reference'] || ''),
-    CLIENTS[(f['Client'] || [])[0]] || '',
-    LOCS[(f['Pickup Location 1'] || [])[0]] || '',
-    LOCS[(f['Delivery Location 1'] || f['Delivery Location'] || [])[0]] || '',
-    f['Goods'] || '',
-  ],
-  eq: ['Direction', 'Type', 'Status'],
-};
+const NATL = OrdersList.filterSpecs.natl({ clientsMap: CLIENTS, locationsMap: LOCS });
 const natlRecs = [
   rec('n1', { Reference: 'N-1', Client: ['c1'], 'Pickup Location 1': ['l1'], 'Delivery Location 1': ['l2'], Direction: 'North→South', Type: 'FTL', Status: 'Pending', 'Linked Trip': ['t1'] }),
   rec('n2', { Reference: 'N-2', Client: ['c2'], 'Pickup Location 1': ['l3'], 'Delivery Location': ['l1'], Direction: 'South→North', Type: 'Groupage', 'National Groupage': true, Goods: 'Apples' }),
@@ -132,4 +118,11 @@ test('natl: _trip assigned/unassigned from Linked Trip, NATIONAL TRIPS, NATIONAL
 
 test('natl: filters AND together in any combination', opts, () => {
   assert.deepStrictEqual(ids(OrdersList.applyFilters(natlRecs, { _q: 'alpha', Type: 'FTL', _trip: 'assigned', Status: 'Assigned' }, NATL)), ['n3']);
+});
+
+test('specs are the real ones: eq lists and the Status asymmetry', () => {
+  assert.deepStrictEqual(INTL.eq, ['Direction', 'Brand']);
+  assert.strictEqual(INTL.statusDefault, 'Pending');
+  assert.deepStrictEqual(NATL.eq, ['Direction', 'Type']);
+  assert.strictEqual(NATL.statusDefault, undefined);
 });

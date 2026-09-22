@@ -565,19 +565,9 @@ function natlClearFilters() {
   natlPeriodChange('all');
 }
 
-// Δ2: 'Name' is not a NATIONAL ORDERS field — searching it matched nothing,
-// ever; the list shows Reference, so search does too. Status is compared
-// literally here (no Pending default — unlike orders_intl; owner decision
-// pending, kept explicit in tests/orders-list-filters.test.js).
-const _ON_FILTER_SPEC = {
-  search: f => {
-    const cId = Array.isArray(f['Client']) ? f['Client'][0] : '';
-    const pId = (f['Pickup Location 1']||[])[0]||'';
-    const dId = (f['Delivery Location 1']||f['Delivery Location']||[])[0]||'';
-    return [String(f['Reference']||''), _fhClientsMap[cId]||'', _fhLocationsMap[pId]||'', _fhLocationsMap[dId]||'', f['Goods']||''];
-  },
-  eq: ['Direction', 'Type'],
-};
+// Spec in core/orders-list.js (filterSpecs.natl) — shared with the unit spec;
+// the lookup maps are passed by reference (form-helpers fills them later).
+const _ON_FILTER_SPEC = OrdersList.filterSpecs.natl({ clientsMap: _fhClientsMap, locationsMap: _fhLocationsMap });
 function _applyNatlFilters() {
   const recs = OrdersList.applyFilters(NATL_ORDERS.data, _natlFilters, _ON_FILTER_SPEC);
   NATL_ORDERS.filtered = recs;

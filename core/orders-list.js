@@ -98,6 +98,31 @@ const OrdersList = {
   tripState(f) {
     return (f['Linked Trip']?.length > 0 || f['NATIONAL TRIPS']?.length > 0 || f['NATIONAL TRIPS 2']?.length > 0) ? 'assigned' : 'unassigned';
   },
+  // The two lists' filter specs live HERE so the unit spec runs the real
+  // objects, not copies (reviewer P4 on 0f2f7f3). The modules only inject
+  // their name resolvers — the lookup maps and helpers they already own.
+  filterSpecs: {
+    // Δ2: 'Order Number' is derived and never reaches the browser; 'Order No'
+    // (7/9/2026) is real. A missing Status counts as Pending on this list.
+    intl: ({ clientName, cleanSummary }) => ({
+      search: f => [clientName(f), String(f['Reference'] || ''), String(f['Order No'] || ''),
+                    cleanSummary(f['Loading Summary']), cleanSummary(f['Delivery Summary']), f['Goods'] || ''],
+      eq: ['Direction', 'Brand'],
+      statusDefault: 'Pending',
+    }),
+    // Δ2: 'Name' is not a NATIONAL ORDERS field — the list shows Reference, so
+    // search does too. Status is compared literally (no Pending default —
+    // unlike intl; owner decision pending, locked as-is by the tests).
+    natl: ({ clientsMap, locationsMap }) => ({
+      search: f => {
+        const cId = Array.isArray(f['Client']) ? f['Client'][0] : '';
+        const pId = (f['Pickup Location 1'] || [])[0] || '';
+        const dId = (f['Delivery Location 1'] || f['Delivery Location'] || [])[0] || '';
+        return [String(f['Reference'] || ''), clientsMap[cId] || '', locationsMap[pId] || '', locationsMap[dId] || '', f['Goods'] || ''];
+      },
+      eq: ['Direction', 'Type'],
+    }),
+  },
   applyFilters(recs, filters, { search, eq = [], statusDefault }) {
     const F = filters || {};
     const status = f => f['Status'] || statusDefault;

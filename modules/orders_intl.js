@@ -719,15 +719,9 @@ function _intlClearFilters() {
   intlPeriodChange('all');
 }
 
-// What the free-text search looks into (Δ2: 'Order Number' is derived and
-// never reaches the browser; 'Order No' (7/9/2026) is real). The selects are
-// literal matches; a missing Status counts as Pending on this list.
-const _OI_FILTER_SPEC = {
-  search: f => [_clientName(f), String(f['Reference']||''), String(f['Order No']||''),
-                _cleanSummary(f['Loading Summary']), _cleanSummary(f['Delivery Summary']), f['Goods']||''],
-  eq: ['Direction', 'Brand'],
-  statusDefault: 'Pending',
-};
+// Spec in core/orders-list.js (filterSpecs.intl) — shared with the unit spec;
+// only the two helpers this module owns are injected.
+const _OI_FILTER_SPEC = OrdersList.filterSpecs.intl({ clientName: _clientName, cleanSummary: _cleanSummary });
 function _applyIntlFilters() {
   const recs = OrdersList.applyFilters(INTL_ORDERS.data, _intlFilters, _OI_FILTER_SPEC);
   INTL_ORDERS.filtered = recs;
