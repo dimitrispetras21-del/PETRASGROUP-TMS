@@ -258,6 +258,7 @@ function _oiCss() { return `
 .oi-chk.on{border-color:var(--text-mid)}
 /* Δ3: the ring carries the alarm so the box inside can keep carrying the state. */
 /* Δ4: the marks must be readable without hunting for a tooltip. */
+.oi-foot{padding:8px 16px;color:var(--text-mid);font-size:12px;text-align:center}
 .oi-legend{padding:4px 16px;color:var(--text-mid);font-size:12px;border-bottom:1px solid var(--border)}
 .oi-legend b{font-weight:700;color:var(--text)}
 .oi-strip{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:4px 16px;font-size:12px;color:var(--text-mid);border-bottom:1px solid var(--border)}
@@ -657,15 +658,6 @@ function _renderIntlTable(records) {
   _oiVS.lastStart = -1;
   _oiVS.lastEnd = -1;
 
-  const ths = _intlColDefs.map(c => {
-    const arrow = _intlSortCol===c.key ? (_intlSortDir===1?' <span style="color: var(--accent-text)">▲</span>':_intlSortDir===2?' <span style="color: var(--accent-text)">▼</span>':'') : '';
-    const click = c.nosort ? '' : ` onclick="_intlSortToggle('${c.key}')"`;
-    const cursor = c.nosort ? 'default' : 'pointer';
-    return `<th style="cursor:${cursor};user-select:none"${click}${c.t ? ` title="${c.t}"` : ''}>${c.label}${arrow}</th>`;
-  }).join('');
-  const colgroup = `<colgroup>${_intlColDefs.map(c => `<col style="width:${c.w}px">`).join('')}</colgroup>`;
-
-  const totalH = sortedRecs.length * _OI_ROW_H;
   // OI-6: with results SHOWING, active filters were invisible — the page could
   // land on «0 orders» (or 21 of 124) with nothing saying why. Slim strip
   // above the table names them and offers the existing clear action.
@@ -675,26 +667,12 @@ function _renderIntlTable(records) {
       <button type="button" class="oi-strip-clear" onclick="_intlClearFilters()">Καθαρισμός</button>
     </div>` : '';
   const warnStrips = _oiLoadWarns.map(w => `<div class="oi-strip-warn">⚠ ${escapeHtml(w)}</div>`).join('');
-  // The legend goes ABOVE the table, not under it: the scroller is
-  // «calc(100vh - 280px)», so at 1440×900 — the team's screen — anything after
-  // it falls below the fold and is never seen. Measured 3/9.
-  // overflow-anchor:none on the scroller (owner 6/9/2026: «η κύλιση από ένα σημείο
-  // και μετά πάει τρομερά γρήγορα χωρίς να σταματάει»). Chrome's scroll anchoring
-  // picks a row as anchor; the virtual paint replaces tbody and grows the top
-  // spacer, the browser «compensates» scrollTop, that fires scroll → paint again:
-  // a runaway loop that froze the tab in the repro. Anchoring is meaningless for
-  // a list whose rows are recycled, so it is switched off.
-  wrap.innerHTML = warnStrips + filterStrip + `
-    <div class="oi-legend">${_OI_LEGEND}</div>
-    <div id="oiVScroll" style="height:calc(100vh - 280px);overflow-y:auto;overflow-anchor:none;scrollbar-width:thin;scrollbar-color:var(--border-dark) transparent">
-      <table style="table-layout:fixed;width:100%">${colgroup}
-        <thead><tr>${ths}</tr></thead>
-      </table>
-      <div id="oiTopSpacer" style="height:0"></div>
-      <table style="table-layout:fixed;width:100%">${colgroup}<tbody></tbody></table>
-      <div id="oiBottomSpacer" style="height:${totalH}px"></div>
-    </div>
-    <div style="padding:8px 16px;color:var(--text-mid);font-size:12px;text-align:center">${sortedRecs.length} παραγγελίες</div>`;
+  // Table shell (head/colgroup/spacers/legend/count) is shared — step 2b-b.
+  wrap.innerHTML = warnStrips + filterStrip + OrdersList.tableShell({
+    colDefs: _intlColDefs, sortCol: _intlSortCol, sortDir: _intlSortDir, sortToggle: '_intlSortToggle',
+    ids: { scroller: 'oiVScroll', top: 'oiTopSpacer', bottom: 'oiBottomSpacer' }, rowH: _OI_ROW_H,
+    total: sortedRecs.length, legend: _OI_LEGEND, legendClass: 'oi-legend', footClass: 'oi-foot',
+  });
 
   const scroller = document.getElementById('oiVScroll');
   scroller.addEventListener('scroll', _oiOnScroll, { passive: true });

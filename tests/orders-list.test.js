@@ -80,3 +80,15 @@ test('chunk: batches of 90 cover every id exactly once — the union equals the 
   assert.deepStrictEqual(parts.flat(), ids);            // order preserved, no duplicates
   assert.deepStrictEqual(OrdersList.chunk(ids.slice(0, 90), 90), [ids.slice(0, 90)]);  // exact multiple → one batch
 });
+
+// ── step 2b-b: the shared table shell ──
+test('tableShell: one colgroup in both tables, ids, arrows, nosort, spacer height, count', () => {
+  const cols = [{ key: 'a', label: 'A', w: 40, t: 'tip' }, { key: 'b', label: 'B', w: 60, nosort: true }];
+  const html = OrdersList.tableShell({ colDefs: cols, sortCol: 'a', sortDir: 2, sortToggle: '_xSort', ids: { scroller: 'sc', top: 'tp', bottom: 'bt' }, rowH: 40, total: 3, legend: 'LEG', legendClass: 'lg', footClass: 'ft' });
+  assert.strictEqual((html.match(/<colgroup><col style="width:40px"><col style="width:60px"><\/colgroup>/g) || []).length, 2);
+  assert.ok(html.includes(`<th style="cursor:pointer;user-select:none" onclick="_xSort('a')" title="tip">A ▼</th>`));
+  assert.ok(html.includes('<th style="cursor:default;user-select:none">B</th>'));   // nosort: no onclick, no arrow
+  assert.ok(html.includes('id="sc"') && html.includes('id="tp" style="height:0"') && html.includes('id="bt" style="height:120px"'));
+  assert.ok(html.includes('<div class="lg">LEG</div>') && html.includes('<div class="ft">3 παραγγελίες</div>'));
+  assert.ok(html.includes('overflow-anchor:none') && html.includes('table-layout:fixed'));
+});

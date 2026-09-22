@@ -508,42 +508,12 @@ function _renderNatlTable(records) {
   _onVS.lastStart = -1;
   _onVS.lastEnd = -1;
 
-  const ths = _natlColDefs.map(c => {
-    // Plain text arrow: accent is reserved for the primary action (ΜΕΡΟΣ Β).
-    const arrow = _natlSortCol===c.key ? (_natlSortDir===1?' ▲':_natlSortDir===2?' ▼':'') : '';
-    return `<th style="cursor:pointer;user-select:none" onclick="_natlSortToggle('${c.key}')">${c.label}${arrow}</th>`;
-  }).join('');
-
-  // Δ1 (3/9): head and body are two SEPARATE <table>s (the virtual scroller
-  // needs the head to stay put while the body is repainted). Two auto-layout
-  // tables size themselves independently — one to its titles, one to its data —
-  // so every column drifted: ΠΑΡΑΛΑΒΗ +430px, ΗΜ. ΦΟΡΤΩΣΗΣ +566px measured at
-  // 1920. The user read «ΠΑΛ.» and saw a date. The fix is the orders_intl one:
-  // the SAME <colgroup> in both tables + table-layout:fixed, which makes the
-  // declared widths — not the content — decide.
-  const colgroup = `<colgroup>${_natlColDefs.map(c => `<col style="width:${c.w}px">`).join('')}</colgroup>`;
-
-  const totalH = sortedRecs.length * _ON_ROW_H;
-  // The legend goes ABOVE the table, not under it: the scroller is
-  // «calc(100vh - 280px)», so at 1440×900 — the team's screen — anything after
-  // it falls below the fold and is never seen. Measured 3/9.
-  // overflow-anchor:none on the scroller (owner 6/9/2026: «η κύλιση από ένα σημείο
-  // και μετά πάει τρομερά γρήγορα χωρίς να σταματάει»). Chrome's scroll anchoring
-  // picks a row as anchor; the virtual paint replaces tbody and grows the top
-  // spacer, the browser «compensates» scrollTop, that fires scroll → paint again:
-  // a runaway loop that froze the tab in the repro. Anchoring is meaningless for
-  // a list whose rows are recycled, so it is switched off.
-  wrap.innerHTML = `
-    <div class="on-legend">${_ON_LEGEND}</div>
-    <div id="onVScroll" style="height:calc(100vh - 280px);overflow-y:auto;overflow-anchor:none">
-      <table style="table-layout:fixed;width:100%">${colgroup}
-        <thead><tr>${ths}</tr></thead>
-      </table>
-      <div id="onTopSpacer" style="height:0"></div>
-      <table style="table-layout:fixed;width:100%">${colgroup}<tbody></tbody></table>
-      <div id="onBottomSpacer" style="height:${totalH}px"></div>
-    </div>
-    <div class="on-foot">${sortedRecs.length} ${sortedRecs.length===1?'παραγγελία':'παραγγελίες'}</div>`;
+  // Table shell (head/colgroup/spacers/legend/count) is shared — step 2b-b.
+  wrap.innerHTML = OrdersList.tableShell({
+    colDefs: _natlColDefs, sortCol: _natlSortCol, sortDir: _natlSortDir, sortToggle: '_natlSortToggle',
+    ids: { scroller: 'onVScroll', top: 'onTopSpacer', bottom: 'onBottomSpacer' }, rowH: _ON_ROW_H,
+    total: sortedRecs.length, legend: _ON_LEGEND, legendClass: 'on-legend', footClass: 'on-foot',
+  });
 
   const scroller = document.getElementById('onVScroll');
   scroller.addEventListener('scroll', _onOnScroll, { passive: true });

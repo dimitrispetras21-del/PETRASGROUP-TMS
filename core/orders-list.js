@@ -138,6 +138,35 @@ const OrdersList = {
     return recs;
   },
 
+  // Step 2b-b: the table shell around the virtual scroller. Head and body are
+  // two SEPARATE <table>s (the head must stay put while tbody is repainted)
+  // sharing ONE <colgroup> + table-layout:fixed, so the declared widths — not
+  // the content — decide (Δ1 3/9: two auto-layout tables drifted +566px).
+  // Legend ABOVE the table (below the 100vh-280px scroller it fell under the
+  // fold at 1440×900, measured 3/9). overflow-anchor:none (owner 6/9: Chrome's
+  // scroll anchoring + spacer growth = runaway scroll loop). Sort arrows are
+  // plain text: accent is reserved for the primary action (DESIGN ΜΕΡΟΣ Β).
+  // The row renderer, the empty state and the strips stay in each module.
+  tableShell({ colDefs, sortCol, sortDir, sortToggle, ids, rowH, total, legend, legendClass, footClass }) {
+    const ths = colDefs.map(c => {
+      const arrow = sortCol === c.key ? (sortDir === 1 ? ' ▲' : sortDir === 2 ? ' ▼' : '') : '';
+      const click = c.nosort ? '' : ` onclick="${sortToggle}('${c.key}')"`;
+      return `<th style="cursor:${c.nosort ? 'default' : 'pointer'};user-select:none"${click}${c.t ? ` title="${c.t}"` : ''}>${c.label}${arrow}</th>`;
+    }).join('');
+    const colgroup = `<colgroup>${colDefs.map(c => `<col style="width:${c.w}px">`).join('')}</colgroup>`;
+    return `
+    <div class="${legendClass}">${legend}</div>
+    <div id="${ids.scroller}" style="height:calc(100vh - 280px);overflow-y:auto;overflow-anchor:none;scrollbar-width:thin;scrollbar-color:var(--border-dark) transparent">
+      <table style="table-layout:fixed;width:100%">${colgroup}
+        <thead><tr>${ths}</tr></thead>
+      </table>
+      <div id="${ids.top}" style="height:0"></div>
+      <table style="table-layout:fixed;width:100%">${colgroup}<tbody></tbody></table>
+      <div id="${ids.bottom}" style="height:${total * rowH}px"></div>
+    </div>
+    <div class="${footClass}">${OrdersList.countLabel(total)}</div>`;
+  },
+
   // «N παραγγελία / παραγγελίες» — the count both lists print in the header.
   countLabel(n) { return n + (n === 1 ? ' παραγγελία' : ' παραγγελίες'); },
 
