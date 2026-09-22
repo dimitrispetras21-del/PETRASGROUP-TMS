@@ -2363,7 +2363,7 @@ function _wiRowHTML(row,i){
       ${row.importId?`<button class="wk3-prt r" title="Εκτύπωση εντολής (import) — δεξί κλικ: κοινή χρήση" data-shq="${printSheetQuery(row.importId,'import',!!(row.partnerId||row.partnerLabel))}" data-shtitle="Εντολή εισαγωγής — W${WINTL.week}" onclick="event.stopPropagation();_wiPrint(${row.id},'import')">⎙<sup>I</sup></button>`:''}
     </div>`}
     <div class="wk3-leg imp${gapCell?' gap':''}${parCell?' bgap':''}" id="wi-ci-${row.id}"
-         ${imp?'style="cursor:pointer"':''}
+         ${imp?`style="cursor:pointer" title="Κλικ: φόρμα εισαγωγής · δεξί κλικ: μενού εισαγωγής (ρότα, εκτύπωση)" oncontextmenu="_wiMatchedImpCtx(event,${row.id})"`:''}
          onclick="event.stopPropagation();${imp?`_wk3Edit('${row.importId}')`:parCell?``:`_wiNewImport(${row.id})`}"
          ondragover="event.preventDefault();document.getElementById('wi-ci-${row.id}').classList.add('dh')"
          ondragleave="document.getElementById('wi-ci-${row.id}').classList.remove('dh')"
@@ -3608,7 +3608,10 @@ function _wiPanelRota(rowId){
     ? `<button class="btn btn-ghost" onclick="_wiPanelClose()">Άκυρο</button>
        <button class="btn btn-primary" onclick="_wiPanelRotaGo(${rowId})">Σύνδεση</button>`
     : `<button class="btn btn-ghost" onclick="_wiPanelClose()">Κλείσιμο</button>`;
-  _wiPanelOpen(_wiAnchorFor(rowId),'⤷ Σκέλος προώθησης (ρότα)',_wiPanelCtxLine(row),body,footer);
+  // A matched import has no row element (it renders inside the export row):
+  // anchor the panel on the pair's row instead of falling to screen centre.
+  const anchor=_wiAnchorFor(rowId)||(row.matchedTo?_wiAnchorForOrder(row.matchedTo):null);
+  _wiPanelOpen(anchor,'⤷ Σκέλος προώθησης (ρότα)',_wiPanelCtxLine(row),body,footer);
 }
 function _wiPanelRotaFilter(q){
   q=(q||'').toLowerCase();
@@ -4476,10 +4479,42 @@ function _wiPanelConfirmDelLocal(moveId){
 
 // Owner (10/8): δεξί κλικ σε ΕΙΣΑΓΩΓΗ → Groupage με άλλη εισαγωγή + Μεταφορά
 // σε προηγούμενη/επόμενη εβδομάδα (μετακινεί τις ημερομηνίες ±7 ημέρες).
-function _wiImpCtx(e,rowId){
+// Παντελής 22/9 (live in the owner's Chrome, W39): right-clicking the matched
+// import's cards («Kaufland Stryama», inside the export row) opened NOTHING —
+// the cards had no oncontextmenu, only the export row's own menu around them.
+// The rota starts where the truck becomes free, i.e. at the IMPORT's delivery,
+// so the dispatcher looked exactly there and found no door. Every import has a
+// row in WINTL.rows (_wiBuildRows builds it, _wiImpRowHTML just never renders a
+// matched one), so the standalone import menu can serve the matched card too.
+function _wiMatchedImpCtx(e,exportRowId){
+  const exp=WINTL.rows.find(r=>r.id===exportRowId); if(!exp||!exp.importId) return;
+  const impRow=WINTL.rows.find(r=>r.type==='import'&&r.orderId===exp.importId);
+  if(!impRow){ e.preventDefault();e.stopPropagation(); toast('Η ταιριασμένη εισαγωγή δεν βρέθηκε στις γραμμές της εβδομάδας — άνοιξέ την από τη φόρμα','warn'); return; }
+  _wiImpCtx(e,impRow.id,true);
+}
+// `matched` = opened from the cards inside an export row: only the items that
+// act on the import ALONE (print, rota, local move). Assignment, grouping,
+// week shift and split belong to the pair's row — offering them here would
+// write on the import while the board shows the pair as one unit (αρχή 3).
+function _wiImpCtx(e,rowId,matched){
   e.preventDefault();e.stopPropagation();
   if(_wiBlockReadOnly()) return;
   const row=WINTL.rows.find(r=>r.id===rowId);if(!row) return;
+  if(matched){
+    let html='';
+    html+=_wiCtxBtn('Εκτύπωση…',`_wiMenuPrint(${rowId},true)`);
+    html+=_wiCtxBtn('⤷ Σκέλος προώθησης (ρότα)…',`_wiPanelRota(${rowId})`);
+    if(row.orderId) html+=_wiCtxBtn('Τοπική κίνηση (Βέροια)…',`_wiAddLocal('${row.orderId}')`);
+    const ctx=document.getElementById('wi-ctx');
+    ctx.innerHTML=html;
+    ctx._returnFocus=e.currentTarget;
+    Object.assign(ctx.style,{display:'block',
+      left:`${Math.min(e.clientX,window.innerWidth-220)}px`,
+      top:`${Math.min(e.clientY,window.innerHeight-220)}px`});
+    requestAnimationFrame(()=>{ const f=ctx.querySelector('.wi-ctx-i:not([disabled])'); if(f) f.focus(); });
+    setTimeout(()=>document.addEventListener('click',_wiCtxClose,{once:true}),10);
+    return;
+  }
   const myPals=_wiRowPals(row);
   const others=WINTL.rows.filter(r=>r.type==='import'&&r.id!==rowId&&!r.adj&&!r.matchedTo
     &&(myPals+_wiRowPals(r))<=33);
@@ -5196,6 +5231,7 @@ document.addEventListener('dragover',function(e){
 });
 window._wk3Edit = _wk3Edit;
 window._wiImpCtx = _wiImpCtx;
+window._wiMatchedImpCtx = _wiMatchedImpCtx;
 window._wiRotAdd = _wiRotAdd;
 window._wiRotUnlink = _wiRotUnlink;
 window._wiPanelSplit = _wiPanelSplit;
