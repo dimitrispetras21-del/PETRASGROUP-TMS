@@ -36,14 +36,15 @@ binding = "BROWSER"
 [observability]
 enabled = true
 
-  # P1 (owner 22/9/2026, docs/grok-bot/08): the automatic invocation logs carry
-  # every request header — including the caller's Authorization bearer (8h JWT).
-  # Anyone who can read Workers Logs can act as any user for 8 hours. Switching
-  # invocation logs off stops that at the source; the Worker's own console.*
-  # lines keep flowing. Cost: no per-request status/path/timing in CF (never
-  # used operationally — checks Α4/Α5/Β4/Β5 of docs/grok-bot/02 go grey until
-  # the Worker writes its own header-free request line, option (ii) in 08).
-  # Reversible with the opposite deploy. Existing logs expire on their own in 7 days.
+  # Owner 22/9/2026 (docs/grok-bot/08, option i): the automatic per-request
+  # invocation logs record the full request, including headers that must not
+  # be readable by third parties. They are switched off at the source; the
+  # Worker's own console.* lines keep flowing (to be confirmed after deploy:
+  # one cf-worker-log line must appear). Cost: no per-request status/path/timing
+  # in CF (never used operationally; checks Α4/Α5/Β4/Β5 of docs/grok-bot/02 stay
+  # grey until the Worker writes its own request line, option ii in 08).
+  # Reverse with an explicit `invocation_logs = true` + deploy (deleting the
+  # lines is not the same: wrangler only sends the field when it is set).
   [observability.logs]
   invocation_logs = false
 
