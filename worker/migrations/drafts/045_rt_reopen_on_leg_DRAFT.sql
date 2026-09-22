@@ -60,9 +60,20 @@ CREATE TRIGGER rt_reopen_on_leg
   AFTER INSERT OR UPDATE OF order_id ON public.ct_rt_legs
   FOR EACH ROW EXECUTE FUNCTION public.rt_reopen_on_leg();
 
--- ΦΡΟΥΡΟΣ: 2 triggers στο ct_rt_legs (rt_reopen_on_leg + rt_sync_legs) — αν όχι 2, ΣΤΑΜΑΤΑ.
+-- ΦΡΟΥΡΟΣ (ελεγκτής P3 [3], μοτίβο 037/043): ακριβώς 2 triggers στο ct_rt_legs (rt_reopen_on_leg + rt_sync_legs) —
+-- αλλιώς η συναλλαγή γυρίζει πίσω μόνη της, τίποτα δεν μένει μισό.
+DO $$
+DECLARE n int;
+BEGIN
+  SET LOCAL search_path = public;
+  SELECT count(*) INTO n FROM pg_trigger
+   WHERE tgrelid = 'public.ct_rt_legs'::regclass AND NOT tgisinternal;
+  IF n <> 2 THEN
+    RAISE EXCEPTION '045: αναμενόταν 2 triggers στο ct_rt_legs (rt_reopen_on_leg + rt_sync_legs), βρέθηκαν %', n;
+  END IF;
+END $$;
 SELECT tgname FROM pg_trigger
- WHERE tgrelid = 'public.ct_rt_legs'::regclass AND NOT tgisinternal ORDER BY tgname;
+ WHERE tgrelid = 'public.ct_rt_legs'::regclass AND NOT tgisinternal ORDER BY tgname;   -- πρέπει: rt_reopen_on_leg, rt_sync_legs
 
 COMMIT;
 
@@ -78,9 +89,14 @@ SELECT r.code, r.status AS rt_status_before,
 INSERT INTO ct_rt_legs (rt_id, direction, order_id, seq) VALUES (4, 'EXPORT', 369, 99);
 
 -- ΠΡΟΣΔΟΚΙΑ: status = 'planned', closed_at NULL, 1 γραμμή audit «reopened … (045)» για το RT 4.
+-- ΤΙ ΑΛΛΟ ΘΑ ΔΕΙΣ (ελεγκτής P4 [5] — αλυσίδα, όλα γυρίζουν πίσω): ο rt_sync_legs (013) τρέχει στο ίδιο INSERT και
+-- αντιγράφει το όχημα του RT-1004 στην 369 → +1 audit γραμμή στα orders (record 369, «leg attached»)· το rt_recompute
+-- μπορεί να αλλάξει date_start/date_end του RT 4 → +1 audit γραμμή ct_round_trips (dates). Άρα ως 3 γραμμές audit,
+-- όχι 1 — αυτό είναι φυσιολογικό. Το ΜΟΝΟ που ελέγχεις: status planned + η γραμμή με reason «(045)».
 SELECT code, status AS rt_status_after, closed_at FROM ct_round_trips WHERE id = 4;
-SELECT actor, action, after_data->>'reason' AS reason FROM audit_log
- WHERE table_name = 'ct_round_trips' AND record_id = '4' ORDER BY created_at DESC LIMIT 2;
+SELECT actor, action, table_name, record_id, after_data->>'reason' AS reason FROM audit_log
+ WHERE (table_name = 'ct_round_trips' AND record_id = '4') OR (table_name = 'orders' AND record_id = '369')
+ ORDER BY created_at DESC LIMIT 4;
 
 ROLLBACK;   -- ← ΥΠΟΧΡΕΩΤΙΚΟ: το σκέλος-δοκιμή και το ξανάνοιγμα ΔΕΝ μένουν
 
