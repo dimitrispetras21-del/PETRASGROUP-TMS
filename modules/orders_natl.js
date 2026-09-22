@@ -495,8 +495,7 @@ function _onRowHtml(r) {
     <td class="on-num">${_onDate(f['Delivery DateTime'])}</td>
     <td class="on-num">${pal}</td>
     <td class="on-trip${hasTrip ? '' : ' unassigned'}">${tripT}</td>
-    <td class="on-inv" id="ninv_${r.id}" onclick="event.stopPropagation();toggleNatlInvoiced('${r.id}',${!!f['Invoiced']})"
-      title="${f['Invoiced']?'Αφαίρεση σήμανσης τιμολόγησης':'Σήμανση ως τιμολογημένη'}">${_onInvCell(r)}</td>
+    <td class="on-inv" id="ninv_${r.id}" title="${f['Invoiced'] ? 'Τιμολογήθηκε' + (f['Invoice Number'] ? ' · ΤΠΥ ' + escapeHtml(f['Invoice Number']) : '') : 'Δεν έχει τιμολογηθεί — καταχώρηση από την Τιμολόγηση'}">${_onInvCell(r)}</td>
   </tr>`;
 }
 
@@ -1642,31 +1641,6 @@ async function submitNatlOrder(recId) {
 }
 
 // ─── Inline toggle ───────────────────────────────
-async function toggleNatlInvoiced(recId, current) {
-  const newVal = !current;
-  try {
-    const res = await atSafePatch(TABLES.NAT_ORDERS, recId, { 'Invoiced': newVal });
-    if (res?.conflict) { toast('Η εγγραφή άλλαξε από άλλον χρήστη — η τιμολόγηση ΔΕΝ γράφτηκε. Ανανέωσε και ξαναδοκίμασε.','warn'); return; }
-    delete _onInvErr[recId];
-    const rec = NATL_ORDERS.data.find(r => r.id === recId);
-    if(rec) rec.fields['Invoiced'] = newVal;
-    // Central sync
-    if (typeof syncOrderDownstream === 'function') {
-      syncOrderDownstream(recId, { source: 'natl', changedFields: ['Invoiced'], skipVS: true, skipGRP: true, skipRamp: true, skipPA: true })
-        .catch(e => console.warn('[natl invoice sync]', e));
-    }
-    _applyNatlFilters();
-    toast(newVal ? 'Marked as Invoiced' : 'Invoice removed');
-  } catch(e) {
-    // Δ3: the failure goes in the MAP, not straight into the cell. The old
-    // in-place innerHTML patch was erased by the virtual scroller's first
-    // tbody repaint, and it replaced the ✓ instead of joining it. Cleared only
-    // by a write that succeeds.
-    _onInvErr[recId] = 'Δεν γράφτηκε: ' + (e && e.message ? e.message : 'σφάλμα');
-    _applyNatlFilters();
-    reportError('Η τιμολόγηση ΔΕΝ γράφτηκε — η ένδειξη ⚠ μένει στη γραμμή', e);
-  }
-}
 
 // ═══════════════════════════════════════════════
 // _syncGroupageLinesFromNO
@@ -2616,7 +2590,6 @@ window.openNatlCreate = openNatlCreate;
 window.openNatlCreateWith = f => _openNatlModal(null, f || {}); // 9/9: Weekly National «νέα άνοδος» prefill
 window.openNatlEdit = openNatlEdit;
 window.selectNatlOrder = selectNatlOrder;
-window.toggleNatlInvoiced = toggleNatlInvoiced;
 // The card's «×» is an inline onclick, so it resolves in the global scope; the
 // Esc handler lives inside the module and never needed this. Without it the ×
 // threw «closeNatlDetail is not defined» (app_errors 5/9 17:40, 6/9 16:35).

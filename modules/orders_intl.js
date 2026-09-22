@@ -65,7 +65,6 @@ const _oiLocMeta = {};   // locId → {name, city, country} for the two-line cel
 // A failed «Invoiced» write stays visible IN the cell until a write succeeds.
 // A toast alone let the checkbox read as success while 0/89 rows were written
 // (accountant → 403, ten days of production). Spec §2.
-const _oiInvErr  = {};   // recId → error text
 // Partial loads speak (DESIGN #7): each secondary fetch that fails adds one
 // line above the table saying what is missing and what that does NOT mean.
 const _oiLoadWarns = [];
@@ -174,19 +173,14 @@ function _oiFlags(f) {
   if (f['High Risk Flag'])    out.push('<span class="oi-flag oi-flag-hr" title="Υψηλό ρίσκο">HR</span>');
   return out.join('');
 }
-// Δ3 (3/9): the ⚠ is ADDED to the state, never PUT IN ITS PLACE. The accountant
-// is refused on every click (403 on `orders`), so the substituting ⚠ wiped the
-// ✓ off every invoiced order after one morning of retries — the column stopped
-// answering the only question it exists to answer. Ring + ⚠ = "the last write
-// failed"; the box inside still says whether the order IS invoiced.
 function _oiInvCell(r) {
-  const on = !!r.fields['Invoiced'], err = _oiInvErr[r.id];
-  const box = on ? '<span class="oi-chk on" title="Τιμολογήθηκε — κλικ για αναίρεση">✓</span>'
-                 : '<span class="oi-chk" title="Σήμανση ως τιμολογημένη"></span>';
-  const inner = err
-    ? `<span class="oi-inv-ring" title="${escapeHtml(err)}">${box}<span class="oi-inv-err">⚠</span></span>`
-    : box;
-  return `<td class="oi-inv" onclick="event.stopPropagation();toggleIntlInvoiced('${r.id}',${on})">${inner}</td>`;
+  // Read-only since 22/9 (owner): the ONE door for «τιμολογήθηκε» is the
+  // Τιμολόγηση screen (ERP number + date). A bare Invoiced=true from here is
+  // refused by the Worker (422) and by migration 043 — the click only produced
+  // a ⚠ for every role, so the click is gone; the tick stays as information.
+  const on = !!r.fields['Invoiced'];
+  const tip = on ? 'Τιμολογήθηκε' + (r.fields['Invoice Number'] ? ' · ΤΠΥ ' + escapeHtml(r.fields['Invoice Number']) : '') : 'Δεν έχει τιμολογηθεί — καταχώρηση από την Τιμολόγηση';
+  return `<td class="oi-inv" title="${tip}">${on ? '<span class="oi-chk on">✓</span>' : '<span class="oi-chk"></span>'}</td>`;
 }
 function _oiPeriodLabel() {
   return _intlPeriod === '60' ? 'τελευταίες 60 ημέρες' : _intlPeriod === '180' ? 'τελευταίοι 6 μήνες' : 'όλες οι ημερομηνίες';
@@ -379,10 +373,6 @@ async function renderOrdersIntl() {
     INTL_ORDERS.filtered = _oiVisible;
     INTL_ORDERS.selectedId = null;
     Object.keys(_intlFilters).forEach(k => delete _intlFilters[k]);
-    // Δ3 (3/9): _oiInvErr is module-level, so a ⚠ from an earlier visit
-    // survived navigation and claimed a write had failed in THIS list. It must
-    // describe the session on screen, not every session since page load.
-    Object.keys(_oiInvErr).forEach(k => delete _oiInvErr[k]);
     _oiPage = 1;
     // Apply dashboard nav filter if coming from KPI click
     if (window._dashNav) {
@@ -2217,36 +2207,6 @@ async function submitIntlOrder(recId) {
 }
 
 // ─── Inline toggle ───────────────────────────────
-async function toggleIntlInvoiced(recId, current) {
-  const newVal = !current;
-  // Block invoice if PE sheets missing
-  if (newVal && !(await _checkPalletSheets(recId))) return;
-  try {
-    const res = await atSafePatch(TABLES.ORDERS, recId, { 'Invoiced': newVal });
-    if (res?.conflict) { toast('Η εγγραφή άλλαξε από άλλον χρήστη — ανανέωσε', 'warn'); return; }
-    if (res?.error) throw new Error(res.error.message || JSON.stringify(res.error));
-    delete _oiInvErr[recId];
-    // Update local data
-    const rec = INTL_ORDERS.data.find(r => r.id === recId);
-    if (rec) rec.fields['Invoiced'] = newVal;
-    // Central sync (Invoiced flag affects NAT_LOADS mirror status)
-    if (typeof syncOrderDownstream === 'function') {
-      syncOrderDownstream(recId, { source: 'intl', changedFields: ['Invoiced'], skipVS: true, skipGRP: true, skipRamp: true, skipPA: true })
-        .catch(e => console.warn('[intl invoice sync]', e));
-    }
-    // Re-render table only (no full reload); the open card must follow too
-    _applyIntlFilters();
-    if (INTL_ORDERS.selectedId === recId) selectIntlOrder(recId);
-    toast(newVal ? 'Σημειώθηκε ως τιμολογημένη' : 'Αφαιρέθηκε η τιμολόγηση');
-  } catch(e) {
-    // The failure stays IN the cell (spec §2), not only in a toast: the
-    // accountant gets 403 on orders and «Invoiced» read as success for ten
-    // days with 0/89 rows written. Cleared only by a write that succeeds.
-    _oiInvErr[recId] = 'Δεν γράφτηκε: ' + (e && e.message ? e.message : 'σφάλμα');
-    _applyIntlFilters();
-    reportError('Η τιμολόγηση ΔΕΝ γράφτηκε — η ένδειξη ⚠ μένει στη γραμμή', e);
-  }
-}
 
 // ─── Status Change ─────────────────────────────
 async function _intlChangeStatus(recId, newStatus) {
@@ -3455,7 +3415,6 @@ window.selectIntlOrder = selectIntlOrder;
 window._oiCloseCard = _oiCloseCard;
 window.openIntlReadOnlyCard = openIntlReadOnlyCard;
 window._oiBalanceUpdate = _oiBalanceUpdate;
-window.toggleIntlInvoiced = toggleIntlInvoiced;
 window._intlSortToggle = _intlSortToggle;
 window._applyIntlFilters = _applyIntlFilters;
 window.intlSearch = intlSearch;
