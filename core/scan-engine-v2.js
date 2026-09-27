@@ -76,7 +76,7 @@ STOPS
 - ref = the stop's own loading/delivery reference if printed, else "".
 
 FIELDS  (each: v = value, c = confidence 0..1, q = the shortest exact quote from the document that proves v, max 60 chars; v "" and c 0 when the document does not state it)
-- reference: the order/transport/booking number the customer uses for this transport (labels like Transport number, Order No, Auftragsnr., Objednávka, Αρ. παραγγελίας, or an SAP field code). Value only, as printed, keep leading zeros. Not a VAT, customer or tax number.
+- reference: the order/transport/booking number the customer uses for this transport (labels like Transport number, Order No, Auftragsnr., Objednávka, Αρ. παραγγελίας). SAP print-outs may show raw field codes instead of labels: the transport order is the code containing TANUM or TKNUM; BKK/BANK codes are bank references. The file name often repeats the reference. Value only, as printed, keep leading zeros. Not a VAT, customer, bank or tax number.
 - goods: short description of the cargo, in the document's language.
 - gross_weight_kg: total gross weight in kg, digits only (22.500 kg -> 22500; 21 t -> 21000). Prefer the value labelled gross weight / weight section over a weight inside a loading instruction. Placeholders such as 0, 1, 1,00 mean "not stated".
 - pallets: total pallets loaded on the truck, digits only; count pallets, never crates, boxes or cartons. A cargo line whose article IS pallets (EP, Europaletten, Ευρωπαλέτες) gives the pallet count, whatever unit code follows the number (normally = the sum of the loading stops = the sum of the delivery stops). "Number:" printed next to the weight is the pallet count. Placeholders (1, 1,00) mean "not stated".
@@ -459,6 +459,7 @@ function scanV2BuildRequest(input, clientCands, locCands, opts = {}) {
   } else {
     content.push({ type: input.kind === 'pdf' ? 'document' : 'image', source: { type: 'base64', media_type: input.mediaType, data: input.base64 } });
   }
+  if (opts.fileName) parts.push(`FILE NAME: ${opts.fileName}`);
   parts.push('Extract the transport order(s).');
   content.push({ type: 'text', text: parts.join('\n\n') });
   const req = {
@@ -489,7 +490,7 @@ async function scanV2Extract(file, opts = {}) {
   const clientCands = input.kind === 'text' ? scanV2Candidates(input.text, clients, 'client', o.maxClientCandidates) : [];
   const locCands = input.kind === 'text' ? scanV2Candidates(input.text, locations, 'location', o.maxLocationCandidates) : [];
 
-  const req = scanV2BuildRequest(input, clientCands, locCands, o);
+  const req = scanV2BuildRequest(input, clientCands, locCands, { ...o, fileName: file.name || '' });
   const t0 = Date.now();
   // One attempt at the Worker level retry policy of scanCallAnthropic (5xx/timeout
   // retried there); a 4xx (bad request, credit exhausted) surfaces at once.
