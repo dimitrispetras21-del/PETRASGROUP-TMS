@@ -14,6 +14,13 @@
 //                       so production has no shared examples — each browser only has its own.
 //   --refresh-ref       re-download clients/locations instead of using the 24h cache
 //   --confirm-cost      required for a live run: every live run spends Anthropic credit
+//   --engine v2         run the round-2 engine (core/scan-engine-v2.js) through the SAME app
+//                       flow (gate → extract → preview/match → form); default 'current'
+//   --model/--mode/--effort/--thinking   override SCAN_V2 settings for this run (v2 only)
+//   --replay <results.json>  no model calls: reuse the answers recorded in an earlier v2 run
+//                       (matching / preview / form changes measured at zero cost)
+//   --budget <usd>      stop before a document if the ledger total would pass this
+//                       (ledger = <golden dir>/results/ledger.jsonl, one line per live run)
 //
 // The token is read from TMS_JWT and only ever placed in the Authorization
 // header. It is never printed or written. An expired token stops the run
@@ -36,6 +43,7 @@ export const PRICES = {
   'claude-opus-5':             { in: 5, out: 25 },
   'claude-sonnet-5':           { in: 2, out: 10 },
   'claude-haiku-4-5-20251001': { in: 1, out: 5 },
+  'claude-haiku-4-5':          { in: 1, out: 5 },
 };
 
 export function callCost(model, u = {}) {
@@ -84,7 +92,7 @@ export function recordingFetch(inner) {
     const t0 = Date.now();
     const rec = { method: init.method || 'GET', path: new URL(url).pathname };
     if (rec.path === '/v1/ai/messages' && init.body) {
-      try { const b = JSON.parse(init.body); rec.model = b.model; rec.max_tokens = b.max_tokens; rec.tools = (b.tools || []).length; rec.messages = b.messages.length; } catch {}
+      try { const b = JSON.parse(init.body); rec.model = b.model; rec.max_tokens = b.max_tokens; rec.tools = (b.tools || []).length; rec.messages = b.messages.length; rec.structured = !!b.output_config?.format; } catch {}
     }
     calls.push(rec);
     const res = await inner(url, { ...init, headers });
@@ -92,6 +100,9 @@ export function recordingFetch(inner) {
     if (rec.model && res.ok) {
       const body = await res.clone().json().catch(() => null);
       if (body) { rec.usage = body.usage || null; rec.stop_reason = body.stop_reason || null; rec.cost = callCost(rec.model, body.usage); }
+      // v2 answers are kept (results live under .local/ only) so --replay can
+      // re-run matching/prefill changes on the same answers at zero cost.
+      if (body && rec.structured) rec.output = (body.content || []).filter(c => c.type === 'text').map(c => c.text).join('');
     }
     return res;
   };
@@ -137,11 +148,14 @@ function estimateUsd(pages) {
 
 async function main() {
   const dry = flag('dry-run');
+  const engine = arg('engine', 'current');
+  const v2 = { model: arg('model'), mode: arg('mode'), effort: arg('effort'), thinking: arg('thinking') };
+  const budget = arg('budget') ? Number(arg('budget')) : null;
   const goldenDir = findGoldenDir();
   const goldenPath = arg('golden', path.join(goldenDir, 'golden.json'));
   const docsDir = arg('docs', path.join(path.dirname(goldenPath), 'docs'));
   const stamp = new Date().toISOString().replace(/[:.]/g, '-');
-  const outPath = arg('out', path.join(path.dirname(goldenPath), 'results', `${dry ? 'dryrun' : 'current'}-${stamp}.json`));
+  const outPath = arg('out', path.join(path.dirname(goldenPath), 'results', `${dry ? 'dryrun-' : arg('replay') ? 'replay-' : ''}${engine}${v2.model ? '-' + v2.model : ''}${v2.mode ? '-' + v2.mode : ''}-${stamp}.json`));
   assertLocal(outPath, '--out');
 
   const golden = JSON.parse(fs.readFileSync(goldenPath, 'utf8'));
@@ -150,10 +164,27 @@ async function main() {
   const examples = arg('examples') ? JSON.parse(fs.readFileSync(arg('examples'), 'utf8')) : [];
 
   let fetchFn, refData, jwt;
-  if (dry) {
+  const replay = arg('replay') ? JSON.parse(fs.readFileSync(arg('replay'), 'utf8')) : null;
+  let currentDoc = null;
+  if (replay) {
+    // No model calls: each document gets the answer recorded for it in an
+    // earlier live run; everything after the model (matching, preview, form)
+    // runs from the current code.
+    const byDoc = new Map(replay.docs.map(d => [d.doc_id, d.calls.find(c => c.output)]));
+    const inner = async (url, init) => {
+      if (new URL(url).pathname !== '/v1/ai/messages') throw new Error('replay: unexpected ' + url);
+      const c = byDoc.get(currentDoc);
+      if (!c) return new Response(JSON.stringify({ error: 'replay: no recorded answer for ' + currentDoc }), { status: 400 });
+      return new Response(JSON.stringify({ model: c.model, content: [{ type: 'text', text: c.output }], stop_reason: c.stop_reason, usage: c.usage }), { status: 200 });
+    };
+    fetchFn = recordingFetch(inner);
+    refData = JSON.parse(fs.readFileSync(path.join(path.dirname(goldenPath), 'ref-cache.json'), 'utf8'));
+    jwt = 'replay.token';
+  } else if (dry) {
     const fixture = JSON.parse(fs.readFileSync(path.join(HERE, 'fixtures', 'synthetic-ref.json'), 'utf8'));
     const extraction = JSON.parse(fs.readFileSync(path.join(HERE, 'fixtures', 'synthetic-extraction.json'), 'utf8'));
-    fetchFn = recordingFetch(createMockFetch({ refData: fixture, extraction }));
+    const extractionV2 = JSON.parse(fs.readFileSync(path.join(HERE, 'fixtures', 'synthetic-extraction-v2.json'), 'utf8'));
+    fetchFn = recordingFetch(createMockFetch({ refData: fixture, extraction, extractionV2 }));
     refData = fixture;
     jwt = 'dry.run.token';
   } else {
@@ -171,7 +202,7 @@ async function main() {
   // Reference lists: the same fields the app preloads, via the same Worker.
   const bootstrap = createScannerSandbox({ repoRoot: REPO, fetch: fetchFn, jwt, refData: { clients: [], locations: [] } });
   const consts = bootstrap.constants();
-  if (!dry) {
+  if (!dry && !replay) {
     const cachePath = path.join(path.dirname(goldenPath), 'ref-cache.json');
     const fresh = fs.existsSync(cachePath) && Date.now() - fs.statSync(cachePath).mtimeMs < 24 * 3600e3;
     if (fresh && !flag('refresh-ref')) refData = JSON.parse(fs.readFileSync(cachePath, 'utf8'));
@@ -179,11 +210,23 @@ async function main() {
     console.log(`reference data: ${refData.clients.length} clients, ${refData.locations.length} locations`);
   }
 
-  const sandbox = createScannerSandbox({ repoRoot: REPO, fetch: fetchFn, jwt, refData, examples });
-  const out = { schema: 'scan-results/v1', engine: 'current', dry_run: dry, commit: gitHead(), run_at: new Date().toISOString(),
-    models: consts.MODELS, max_tokens: consts.SCAN_MAX_TOKENS, examples: examples.length, docs: [] };
+  const sandbox = createScannerSandbox({ repoRoot: REPO, fetch: fetchFn, jwt, refData, examples, engine, v2 });
+  const settings = sandbox.constants();
+  const out = { schema: 'scan-results/v1', engine, dry_run: dry, commit: gitHead(), run_at: new Date().toISOString(),
+    models: consts.MODELS, max_tokens: consts.SCAN_MAX_TOKENS, examples: examples.length,
+    v2_settings: engine === 'v2' ? settings.SCAN_V2 : null, docs: [] };
+  const ledgerPath = path.join(path.dirname(goldenPath), 'results', 'ledger.jsonl');
+  const spentBefore = fs.existsSync(ledgerPath)
+    ? fs.readFileSync(ledgerPath, 'utf8').split('\n').filter(Boolean).reduce((s, l) => s + (JSON.parse(l).cost_usd || 0), 0) : 0;
+  if (!dry && !replay && budget != null) console.log(`ledger: $${spentBefore.toFixed(2)} spent before this run, budget $${budget.toFixed(2)}`);
 
   for (const d of docs) {
+    const runSoFar = out.docs.reduce((s, x) => s + x.cost_usd, 0);
+    if (!dry && !replay && budget != null && spentBefore + runSoFar + 0.15 > budget) {
+      console.log(`STOP: budget $${budget} would be exceeded (spent ${(spentBefore + runSoFar).toFixed(2)})`);
+      break;
+    }
+    currentDoc = d.doc_id;
     const buf = fs.readFileSync(path.join(docsDir, d.file));
     const file = new File([buf], d.file, { type: browserMimeType(d.file) });
     const before = fetchFn.calls.length;
@@ -193,11 +236,13 @@ async function main() {
     const calls = fetchFn.calls.slice(before).filter(c => c.path === '/v1/ai/messages');
     const row = {
       doc_id: d.doc_id, file: d.file, status: r.status, error: r.error || null, ms: Date.now() - t0,
-      calls: calls.map(({ model, status, ms, usage, stop_reason, cost, tools, messages }) => ({ model, status, ms, usage, stop_reason, cost, tools, messages })),
+      calls: calls.map(({ model, status, ms, usage, stop_reason, cost, tools, messages, output }) => ({ model, status, ms, usage, stop_reason, cost, tools, messages, output })),
       cost_usd: calls.reduce((s, c) => s + (c.cost || 0), 0),
       truncated: calls.some(c => c.stop_reason === 'max_tokens'),
       orders: r.status === 'ok' ? [toPrediction(r, consts.F)] : [],
       raw: r.parsed || null,
+      v2: r.parsed?._v2 ? { input: r.parsed._v2.input, why: r.parsed._v2.why, orders: r.parsed._v2.orders,
+        client_candidates: r.parsed._v2.client_candidates, location_candidates: r.parsed._v2.location_candidates } : null,
     };
     out.docs.push(row);
     console.log(`${d.doc_id} ${row.status.padEnd(8)} ${String(calls.length).padStart(2)} calls ${(row.ms / 1000).toFixed(1).padStart(5)}s $${row.cost_usd.toFixed(3)}${row.truncated ? ' TRUNCATED(max_tokens)' : ''}${row.error ? ' — ' + row.error.slice(0, 80) : ''}`);
@@ -205,6 +250,8 @@ async function main() {
   out.total_cost_usd = out.docs.reduce((s, x) => s + x.cost_usd, 0);
   fs.mkdirSync(path.dirname(outPath), { recursive: true });
   fs.writeFileSync(outPath, JSON.stringify(out, null, 2));
+  if (replay) out.replay_of = path.basename(arg('replay'));   // costs = the recorded run's, nothing spent now
+  if (!dry && !replay) fs.appendFileSync(ledgerPath, JSON.stringify({ at: out.run_at, file: path.basename(outPath), engine, v2, docs: out.docs.length, cost_usd: out.total_cost_usd }) + '\n');
   console.log(`\n${out.docs.filter(x => x.status === 'ok').length}/${out.docs.length} ok · total $${out.total_cost_usd.toFixed(2)} · ${outPath}`);
   console.log(`score: node tools/scan-eval/score.mjs --golden ${goldenPath} --results ${outPath}`);
 }

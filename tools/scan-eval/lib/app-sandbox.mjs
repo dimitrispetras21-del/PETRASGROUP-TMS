@@ -13,6 +13,9 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import vm from 'node:vm';
+import { createRequire } from 'node:module';
+
+const require = createRequire(import.meta.url);
 
 // Scan path of modules/orders_intl.js, in call order (batch flow = _scanExtract).
 export const INTL_SCAN_FUNCTIONS = [
@@ -74,16 +77,19 @@ export function browserMimeType(fileName) {
  * @param {string} o.jwt                goes to localStorage.tms_jwt, as in the app
  * @param {{clients:Array, locations:Array}} o.refData  facade records {id, fields}
  * @param {Array} [o.examples]          localStorage 'tms_scan_training' (few-shot); [] = fresh browser
+ * @param {'current'|'v2'} [o.engine]   'v2' flips the app's own switch (localStorage tms_scan_engine)
+ * @param {object} [o.v2]               overrides for the app's SCAN_V2 settings (model, mode, effort, thinking)
  */
-export function createScannerSandbox({ repoRoot, fetch, jwt, refData, examples = [] }) {
+export function createScannerSandbox({ repoRoot, fetch, jwt, refData, examples = [], engine = 'current', v2 = {} }) {
   const events = { toasts: [], errors: [], logs: [] };
   const store = new Map([['tms_jwt', jwt || ''], ['tms_scan_training', JSON.stringify(examples)]]);
+  if (engine === 'v2') store.set('tms_scan_engine', 'v2');
   const elements = new Map();
   let captured = null;
 
   const ctx = {
     console: { log: (...a) => events.logs.push(a.join(' ')), warn: (...a) => events.logs.push(a.join(' ')), error: (...a) => events.logs.push(a.join(' ')), info() {}, debug() {} },
-    setTimeout, clearTimeout, AbortController, URL, Blob, File, TextEncoder, TextDecoder, Intl, structuredClone,
+    setTimeout, clearTimeout, AbortController, URL, Blob, File, TextEncoder, TextDecoder, Intl, structuredClone, btoa, atob, WeakMap,
     fetch,
     FileReader: FileReaderPolyfill,
     localStorage: {
@@ -120,18 +126,25 @@ export function createScannerSandbox({ repoRoot, fetch, jwt, refData, examples =
   const utils = fs.readFileSync(path.join(repoRoot, 'core/utils.js'), 'utf8');
   load('core/utils.js#escapeHtml', extractFunction(utils, 'escapeHtml'));
   load('core/scan-helpers.js');
+  load('core/doc-text.js');
+  load('core/scan-engine-v2.js');
   load('core/form-helpers.js');
   const intl = fs.readFileSync(path.join(repoRoot, 'modules/orders_intl.js'), 'utf8');
   for (const fn of INTL_SCAN_FUNCTIONS) load(`modules/orders_intl.js#${fn}`, extractFunction(intl, fn));
   // The PDF thumbnail loads pdf.js from a CDN <script>; irrelevant to extraction.
   vm.runInContext('scanRenderPDFPreview = async () => null;', ctx);
+  // Engine v2 reads the PDF text layer with pdf.js; the browser loads the same
+  // version (3.11.174) from the CDN, here it comes from node_modules.
+  ctx.__pdfjs = require('pdfjs-dist/legacy/build/pdf.js');
+  vm.runInContext('_scanLoadPdfJs = async () => __pdfjs;', ctx);
+  for (const [k, v] of Object.entries(v2)) if (v != null) vm.runInContext(`SCAN_V2[${JSON.stringify(k)}] = ${JSON.stringify(v)};`, ctx);
 
   const run = code => vm.runInContext(code, ctx);
   const ready = run('fhLoadLocations()');
 
   return {
     events,
-    constants: () => run('({ MODELS, PROXY_URL, AT_BASE, TABLES: { CLIENTS: TABLES.CLIENTS, LOCATIONS: TABLES.LOCATIONS }, SCAN_MAX_TOKENS, F })'),
+    constants: () => run('({ MODELS, PROXY_URL, AT_BASE, TABLES: { CLIENTS: TABLES.CLIENTS, LOCATIONS: TABLES.LOCATIONS }, SCAN_MAX_TOKENS, F, SCAN_V2: { ...SCAN_V2 } })'),
     /**
      * One file through the batch flow: gate → extract → preview/match → form prefill.
      * @returns {{status:'ok'|'rejected'|'error', error?:string, parsed?:object, form?:object, matched?:object}}

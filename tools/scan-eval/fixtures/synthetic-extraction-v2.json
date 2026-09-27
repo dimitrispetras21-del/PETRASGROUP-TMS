@@ -1,0 +1,23 @@
+{
+  "_note": "INVENTED structured-output answer (engine v2) the mock Worker returns. No real client, location or document.",
+  "orders": [{
+    "client_name": { "v": "Acme Frozen Foods GmbH", "c": 0.95, "q": "Acme Frozen Foods GmbH" },
+    "client_candidate": "",
+    "reference": { "v": "SYN-0001", "c": 0.95, "q": "Order No SYN-0001" },
+    "goods": { "v": "frozen peas", "c": 0.9, "q": "frozen peas" },
+    "gross_weight_kg": { "v": "12000", "c": 0.9, "q": "12.000 kg" },
+    "pallets": { "v": "20", "c": 0.9, "q": "20 EUR pallets" },
+    "pallet_type": { "v": "EUR", "c": 0.9, "q": "20 EUR pallets" },
+    "temperature_c": { "v": "-18", "c": 0.95, "q": "-18 C" },
+    "price": { "v": "1500", "c": 0.9, "q": "1.500,00 EUR" },
+    "currency": "EUR",
+    "stops": [
+      { "type": "loading", "company": "Alpha Cold Store", "address": "Musterweg 1", "postcode": "99999", "city": "Testdorf", "country": "DE",
+        "date": "2031-01-10", "time": "08:00", "pallets": "20", "ref": "", "candidate": "", "c": 0.9, "q": "Alpha Cold Store, Testdorf" },
+      { "type": "delivery", "company": "Gamma Warehouse", "address": "Odos 2", "postcode": "00000", "city": "Samplepolis", "country": "GR",
+        "date": "2031-01-13", "time": "", "pallets": "", "ref": "", "candidate": "", "c": 0.85, "q": "Gamma Warehouse Samplepolis" }
+    ],
+    "notes": "driver prints thermograph",
+    "warnings": []
+  }]
+}
