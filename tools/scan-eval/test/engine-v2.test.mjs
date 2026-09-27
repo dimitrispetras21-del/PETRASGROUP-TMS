@@ -115,3 +115,14 @@ test('credit exhausted (Worker 402): the dispatcher reads the Worker message, no
   assert.match(r.error, /πίστωση AI/);
   assert.equal(aiCalls(fetch).length, 1);
 });
+
+test('v2 number parsing: European separators, signs incl. Unicode minus', async () => {
+  const vm = await import('node:vm');
+  const ctx = {}; vm.createContext(ctx);
+  vm.runInContext(fs.readFileSync(path.join(REPO, 'core/scan-engine-v2.js'), 'utf8') + ';globalThis.__n = _sv2Num;', ctx);
+  const n = ctx.__n;
+  for (const [inp, out] of [['22.500', 22500], ['2.200,00', 2200], ['21,000', 21000], ['8.5', 8.5], ['-18', -18], ['+4', 4],
+    ['\u221218', -18], ['\u201318 C', -18], ['0', 0], ['', null], ['abc', null], ['3 500,00 kg', 3500]]) {
+    assert.equal(n(inp), out, JSON.stringify(inp));
+  }
+});

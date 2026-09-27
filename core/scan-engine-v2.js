@@ -425,7 +425,9 @@ function _sv2PickClient(order, cands, clients) {
 // ─── Value parsing ──────────────────────────────────────────────────
 function _sv2Num(v) {
   if (v == null) return null;
-  let s = String(v).trim().replace(/[^\d,.\-+]/g, '');
+  // Unicode minus / dashes ("−18", "–18") must stay a minus: stripped, a
+  // frozen load would be prefilled as +18 °C.
+  let s = String(v).trim().replace(/[\u2212\u2013\u2014]/g, '-').replace(/[^\d,.\-+]/g, '');
   if (!s || s === '-' || s === '+') return null;
   // "22.500" / "2.200,00" / "21,000" / "8.5"
   if (s.includes(',') && s.includes('.')) s = s.lastIndexOf(',') > s.lastIndexOf('.') ? s.replace(/\./g, '').replace(',', '.') : s.replace(/,/g, '');
@@ -492,8 +494,8 @@ async function scanV2Extract(file, opts = {}) {
 
   const req = scanV2BuildRequest(input, clientCands, locCands, { ...o, fileName: file.name || '' });
   const t0 = Date.now();
-  // One attempt at the Worker level retry policy of scanCallAnthropic (5xx/timeout
-  // retried there); a 4xx (bad request, credit exhausted) surfaces at once.
+  // One logical call. scanCallAnthropic still retries 5xx/timeouts up to 2× (the
+  // Worker gives up at 60 s → worst case ~3 min); a 4xx (credit exhausted) surfaces at once.
   const res = await scanCallAnthropic(req, { timeoutMs: 90000 });
   const ms = Date.now() - t0;
   if (res.stop_reason === 'max_tokens') throw new Error('Η απάντηση του AI κόπηκε (max_tokens) — το έγγραφο είναι πολύ μεγάλο για αυτόματη ανάγνωση.');
@@ -540,9 +542,10 @@ function _sv2ToV1(ord, clientCands, locCands, clients, locations, meta) {
   const delSum = delivery.every(s => s.pallets != null) ? delivery.reduce((a, s) => a + s.pallets, 0) : null;
   if (delSum && loading.length === 1 && loading[0].pallets != null && loading[0].pallets !== delSum
       && (loading[0].pallets === 2 * delSum || (loading[0].pallets > 34 && delSum <= 34))) {
-    warnings.push(`Παλέτες φόρτωσης ${loading[0].pallets} ≠ άθροισμα παραδόσεων ${delSum} — κρατήθηκε ${delSum}, έλεγξε.`);
+    const was = loading[0].pallets;
+    warnings.push(`Παλέτες φόρτωσης ${was} ≠ άθροισμα παραδόσεων ${delSum} — κρατήθηκε ${delSum}, έλεγξε.`);
     loading[0].pallets = delSum;
-    if (pallets === loading[0].pallets || pallets > 34 || pallets === 2 * delSum) pallets = delSum;
+    if (pallets === was || pallets > 34 || pallets === 2 * delSum) pallets = delSum;
   }
   if (pallets && pallets > 34) warnings.push(`${pallets} παλέτες σε ένα φορτηγό — έλεγξε (μέγιστο ~33-34).`);
   if (pallets && loading.length === 1 && loading[0].pallets == null) loading[0].pallets = pallets;

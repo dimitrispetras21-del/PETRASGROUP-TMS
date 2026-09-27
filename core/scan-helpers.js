@@ -440,15 +440,6 @@ function scanGetTrainingExamples(docType, limit = 3, hintClientId = null) {
  * On app boot, hydrate localStorage cache from the canonical Airtable
  * _SCAN_TRAINING table. Best-effort — fails silently if table missing.
  */
-// Called at login (core/auth.js). It used to read Airtable-era labels
-// ('Created', 'AI Output', 'Summary', 'Client') that the Worker map for
-// scan_examples does not have ("Doc Type", "Client ID", Corrected,
-// "Created At") — the sort by 'Created' could never succeed, and on success
-// it would have OVERWRITTEN each browser's own corrections. One reader only
-// (principle 3): the merge in scanSyncTrainingFromServer.
-async function scanHydrateTrainingCache() {
-  return scanSyncTrainingFromServer();
-}
 
 // ─── Aliases dictionary — common abbreviations & misspellings ──
 // Edit/extend in core/scan-helpers.js. Used both at AI prompt-injection time
@@ -988,7 +979,6 @@ if (typeof window !== 'undefined') {
   window.scanGetReferenceData = scanGetReferenceData;
   window.SCAN_ALIASES = SCAN_ALIASES;
   // Phase 3: active learning
-  window.scanHydrateTrainingCache = scanHydrateTrainingCache;
   // Phase 4: tool use
   window.SCAN_TOOLS = SCAN_TOOLS;
   window.scanExtractWithTools = scanExtractWithTools;

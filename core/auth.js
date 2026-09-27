@@ -46,5 +46,6 @@ function can(section) {
 setTimeout(() => { if (typeof atPreload === 'function') atPreload(); }, 100);
 // Preload normalized reference data (single fetch per table, shared across modules)
 setTimeout(() => { if (typeof preloadReferenceData === 'function') preloadReferenceData(); }, 200);
-// Hydrate scan training cache from Airtable (best-effort, fails silently if table missing)
-setTimeout(() => { if (typeof scanHydrateTrainingCache === 'function') scanHydrateTrainingCache(); }, 1500);
+// Shared scan examples are synced when the scan dialog opens (openIntlScan →
+// scanSyncTrainingFromServer), not here: at login every role would read
+// scan_examples, and warehouse has no right to it (403 toast), 27/9/2026.
