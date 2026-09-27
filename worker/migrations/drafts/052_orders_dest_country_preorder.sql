@@ -3,9 +3,11 @@
 --        τόπο προορισμού»). Branch feat/preorder. Τρέχει ο owner, μετά τις 15:00.
 --
 -- ΣΕΙΡΑ (υποχρεωτική): 044 → 052 → deploy Worker (label "Destination Country" → dest_country).
---   Αν γίνει deploy ΠΡΙΝ το 052: το Ημερήσιο ζητά ρητά «Destination Country» στο fields[] και η
---   ανάγνωση από τη view θα σκάσει (στήλη που δεν υπάρχει) — όλη η σελίδα. Αντίστροφα (052 χωρίς
---   deploy) είναι ακίνδυνο: η φόρμα pre-order λέει ρητά «η χώρα δεν αποθηκεύτηκε» (αρχή 1).
+--   Αν γίνει deploy ΠΡΙΝ το 052: pre-order ΜΕ χώρα αποτυγχάνει δυνατά («Save failed», 500 για
+--   στήλη που δεν υπάρχει)· χωρίς χώρα και οι μετατροπές δουλεύουν (η μετατροπή στέλνει null μόνο
+--   όταν η εγγραφή έχει χώρα). Καμία οθόνη δεν ζητά ρητά το label στο fields[] (το Ημερήσιο
+--   σκόπιμα όχι) — άρα καμία σελίδα δεν πέφτει. Αντίστροφα (052 χωρίς deploy) είναι ακίνδυνο: η
+--   φόρμα pre-order λέει ρητά «η χώρα δεν αποθηκεύτηκε» (αρχή 1).
 --
 -- WHY μια στήλη και όχι κάτι υπάρχον (μετρημένο στον χάρτη ORDERS 27/9):
 --   * Τα orders ΔΕΝ έχουν στήλη χώρας — η χώρα ζει μόνο στις locations (locations.country).
@@ -31,7 +33,7 @@
 --    δεν βλάπτει — φεύγει μόνο το label από τον Worker και οι CHECK)
 --   alter table public.orders drop constraint orders_dest_country_preorder_only,
 --                             drop constraint orders_dest_country_iso2, drop column dest_country;
---   (ΠΡΩΤΑ Worker χωρίς το label, αλλιώς το Ημερήσιο σκάει — ίδιος λόγος με τη ΣΕΙΡΑ πάνω.)
+--   (ΠΡΩΤΑ Worker χωρίς το label — αλλιώς κάθε pre-order με χώρα αποτυγχάνει.)
 
 -- ΠΡΙΝ (εκτός συναλλαγής, μόνο ανάγνωση): ο ορισμός της view = 019;
 --   select pg_get_viewdef('public.orders_with_derived'::regclass, true);
