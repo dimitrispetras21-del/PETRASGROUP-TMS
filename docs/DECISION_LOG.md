@@ -2092,3 +2092,22 @@ smoke Εβδομαδιαίο OK. **Δύο ανεξάρτητες αξιολογ�
    routine· dead-man = δεύτερο Claude routine (watchdog) με αμοιβαίο heartbeat· χωρίς healthchecks/Telegram/ntfy.
 3. **Δ10 (Worker φραγμός «αναίρεση ΤΠΥ μόνο owner»): ΟΧΙ.** Ο φραγμός μένει στην οθόνη· το audit δείχνει ποιος το έκανε.
 **Ποιος:** owner (απαντήσεις «1 όπως σήμερα, 2 ναι, 3 όχι»), συντονιστής.
+
+### 2026-09-27 · db/monitoring · Ο τεχνικός ελεγκτής ΖΩΝΤΑΝΟΣ μέσα στη βάση (047/047b/048/050) + κλείσιμο 7 συναρτήσεων SECURITY DEFINER
+
+**Σειρά (Κυριακή βράδυ, εκτός ωραρίου, owner στον SQL editor, κάθε αρχείο σε BEGIN…COMMIT):** έλεγχος πριν 0/0 → 047 → 047b →
+χειροκίνητος πρώτος γύρος όλων των tags → **69 έλεγχοι · 66 ενεργοί · 0 error · 0 P1 · B-50 = 21 · B-54 = 25** (όπως η μέτρηση 22/9) →
+048 → **7 cron jobs `tms-*` active** → 050 (ρόλοι `tms_reader`/`tms_monitor_writer` **χωρίς κωδικό**).
+**Το βήμα 9 (επαλήθευση ρόλων) σταμάτησε σωστά:** 7 καλέσιμες SECURITY DEFINER συναρτήσεις του `public` (`dl_cash_sync`,
+`order_legs_audit`, `order_parent_status`, `rt_auto_close`, `rt_merge`, `rt_recompute`, `rt_sync_audit`) ήταν εκτελέσιμες από κάθε
+ρόλο (PUBLIC + τα `anon`/`authenticated` της Supabase) — υπήρχε πριν από τον ελεγκτή, ο ελεγκτής το μέτρησε. Οι 21 trigger functions
+δεν καλούνται απευθείας → εκτός. **Γράφος καλούντων** (agent χαρτογράφησης): όλοι οι καλούντες SECURITY DEFINER με owner `postgres`
+(επιβεβαίωση στη βάση), κανένα RPC από Worker/οθόνες, κανένα cron. **Ανεξάρτητος ελεγκτής βάσης:** ΕΓΚΡΙΝΕΤΑΙ ΜΕ ΠΑΡΑΤΗΡΗΣΕΙΣ
+(P2 ψευδές — ο `tms_reader` υπήρχε ήδη· P4 περιττό GRANT σε postgres → αφαιρέθηκε). **Εκτέλεση (owner):** GRANT EXECUTE στον
+`service_role` πρώτα, μετά REVOKE από PUBLIC/anon/authenticated, μία συναλλαγή. **Απόδειξη:** 7/7 anon·authenticated·tms_reader = false,
+service_role = true· βήμα 9 ξανά: writable 0 · reader callable secdef 0 · writer = μόνο τα 3 `monitoring.*` · super/bypass 0 · users false ·
+before_data false. Επαναφορά: `GRANT EXECUTE ON FUNCTION <ίδιες 7> TO PUBLIC, anon, authenticated`.
+**Σημείωση:** ο αυτόματος φύλακας του Claude Code αρνήθηκε στον συντονιστή την εκτέλεση DDL/GRANT μέσω MCP· όλα τα έτρεξε ο owner.
+**Ανοιχτά:** τεστ `pg_isready` από cloud περιβάλλον (τα routines περνούν από HTTP proxy — το `psql` ίσως δεν φτάνει) → κωδικός
+μόνο για `tms_monitor_writer` → 3 routines → TEST-01 (email ≤ 30′) → 049 + Worker (Επίπεδο Α). Μέχρι τότε ο ελεγκτής **καταγράφει,
+δεν ειδοποιεί**. **Ποιος:** owner, συντονιστής, 2 subagents (χαρτογράφηση, ελεγκτής βάσης).

@@ -1,4 +1,4 @@
--- 047_monitoring_schema.sql — DRAFT · NOT EXECUTED · owner runs after 15:00 (principle 7)
+-- 047_monitoring_schema.sql — ΕΚΤΕΛΕΣΤΗΚΕ 27/9/2026 ~19:20 (owner, SQL editor, BEGIN…COMMIT) — ζωντανό
 -- Branch feat/tms-auditor. Supersedes the 047 sketch in docs/grok-bot/monitoring-2026-09-22/05 §1.1
 -- (same numbering, same schema name). Deviations from that sketch, and why:
 --   1. incident_key stays per check, BUT each incident tracks entity_ids; a NEW entity appearing under an

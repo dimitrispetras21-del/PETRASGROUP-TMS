@@ -1,4 +1,4 @@
--- 048_monitoring_notify.sql — DRAFT · NOT EXECUTED · owner runs after 15:00, AFTER 047
+-- 048_monitoring_notify.sql — ΕΚΤΕΛΕΣΤΗΚΕ 27/9/2026 (owner, SQL editor) — 7 cron jobs active
 -- Wake-up and dead-man. Replaces the Telegram-first sketch of 05 §1.3 after the owner's 22/9 22:30 decision:
 -- the alert channel is a Claude Code cloud ROUTINE (push + Gmail). Verified 22/9 at
 -- code.claude.com/docs/en/routines.md: "The minimum interval is one hour" ⇒ the DB wakes the routine through

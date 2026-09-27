@@ -1,4 +1,4 @@
--- 050_monitor_roles.sql — DRAFT · NOT EXECUTED · owner runs after 15:00, AFTER 047/048
+-- 050_monitor_roles.sql — ΕΚΤΕΛΕΣΤΗΚΕ 27/9/2026 (owner, SQL editor) — ρόλοι ΧΩΡΙΣ κωδικό ακόμη
 -- Two database roles so that "read-only" is a PRIVILEGE, not a sentence in a prompt (today the auditors
 -- connect as postgres: rolsuper/rolbypassrls = true — 01 §6).
 --   tms_reader         : SELECT on an explicit list. Used by any interactive auditor session.
