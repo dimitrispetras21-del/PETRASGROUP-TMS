@@ -90,7 +90,9 @@ function _wi2QuickMatch(row, qk) {
     case 'partner': return row.saved && !!row.partnerId;
     case 'matched': return row.type === 'export' && !!row.importId;
     // Pre-order counter (owner 27/9): the rows still waiting for their points.
-    case 'pre':     return (row.orderIds || [row.orderId]).some(id => isPreorder((WINTL.data.exports.find(r => r.id === id) || WINTL.data.imports.find(r => r.id === id))?.fields));
+    // A matched import (row.importId) counts too: an assigned import pre-order
+    // lives inside its truck's export row (owner 28/9, order 394).
+    case 'pre':     return [...(row.orderIds || [row.orderId]), row.importId].filter(Boolean).some(id => isPreorder((WINTL.data.exports.find(r => r.id === id) || WINTL.data.imports.find(r => r.id === id))?.fields));
     default: return true;
   }
 }
@@ -419,7 +421,7 @@ const _WI2_CSS=`
 .wi2-gapbox.urg{border-color:var(--danger-strong);color:var(--danger-strong)}
 .wi2-gapbox small{font:500 11px 'DM Sans',sans-serif;letter-spacing:0}
 .wi2-void{flex:1;min-height:24px;border-radius:var(--radius);background:var(--surface-page)}
-.wk3.wi2 .wk3-leg>.wi2-gapbox,.wk3.wi2 .wk3-leg>.wi2-void{grid-column:1/-1}
+.wk3.wi2 .wk3-leg>.wi2-gapbox,.wk3.wi2 .wk3-leg>.wi2-void,.wk3.wi2 .wk3-leg>.pre-span{grid-column:1/-1}
 .wi2-void.navy{background:var(--surface-dark)}
 .wi2-dash{width:100%;text-align:center;color:var(--text-dim);font-size:12px;cursor:help}
 .wk3.wi2 .wk3-feed{background:transparent;padding:0 4px;display:flex;flex-direction:column;justify-content:center;align-items:stretch;gap:1px;height:auto;min-height:24px;white-space:normal;align-self:stretch;font-size:11px}
@@ -1020,7 +1022,7 @@ function _wiPaint(){
     <!-- KPI band (frame 319:906): replaces the Command Center — same numbers
          (gaps, unmatched, free fleet), once, every fraction with its denominator. -->
     <div class="wi2-band">
-      ${preorderCounterHtml(preFields,"_wi2Quick('pre');preorderJump('#wi-rows .wi2-pre')",WINTL.quick==='pre')}
+      ${preorderCounterHtml(preFields,"_wi2Quick('pre');preorderJump('#wi-rows .pre-span')",WINTL.quick==='pre')}
       <!-- ΘΟΡΥΒΟΣ ΚΑΤΩ, ΓΡΑΜΜΕΣ ΠΑΝΩ (owner 3/9): «θέλω απλά το badge με το 8 και
            το ΚΕΝΑ ΓΥΡΙΣΜΑΤΑ 8 επείγοντα». Η αναλυτική πρόταση, η φάση της
            εβδομάδας και ολόκληρο το «ΕΛΕΥΘΕΡΑ ΣΗΜΕΡΑ» έφυγαν — ο στόχος είναι
@@ -1325,7 +1327,7 @@ function _wiImpRowHTML(row,impNo){
     const de=_wi2Loc(toStr,'Παράδοση',f._stopsD); const dIso=f['Delivery DateTime']||'';
     delCard=_wi2Card({cls:stR.late?'late':stR.delivered?'ok':'', date:_wi2Date(imp.id,'Delivery DateTime',dIso,dIso?_wk3D(_wiFmt(dIso)):'—',(stR.delivered?' done':'')+(stR.late?' late':''),'Ημ. παράδοσης'+(stR.delivered?' — παραδόθηκε ✓':'')+(stR.late?' — ΚΑΘΥΣΤΕΡΗΣΕ':'')), name:de.name+(stR.late?'<span class="wi2-late" title="Καθυστέρησε (Delivery Performance)">! καθυστέρηση</span>':''), sub:de.sub, extra:_wk3MoreStops(toStr,f._stopsD,'del'), right});
   }
-  if(isPre){ const pc=_wiPreCards(imp); loadCard=pc.load; delCard=pc.del; }
+  if(isPre) loadCard=_wiPreLeg(imp);
   // Right feed: VS import → national distribution from Veroia (final destination)
   const feedR=impVS2?(()=>{ const de=_wi2Loc(toStr,'Παράδοση',f._stopsD); const dIso=f['Delivery DateTime']||'';
     return _wi2Card({date:_wi2Date(imp.id,'Delivery DateTime',dIso,dIso?_wk3D(_wiFmt(dIso)):'—','','Εθνικό σκέλος: ημ. τελικής διανομής'), name:de.name, sub:de.sub, extra:_wk3MoreStops(toStr,f._stopsD,'del')}); })()
@@ -1347,7 +1349,7 @@ function _wiImpRowHTML(row,impNo){
         ? `<button class="wk3-prt r" title="Εκτύπωση ομάδας (import) — ${row.orderIds.length} έγγραφα σε ένα πακέτο" onclick="event.stopPropagation();_wiPrintImpGroup(${row.id})">⎙<sup>I</sup></button>`
         : `<button class="wk3-prt r" title="Εκτύπωση εντολής (import) — δεξί κλικ: κοινή χρήση" data-shq="${printSheetQuery(imp.id,'import',!!row.partnerId)}" data-shtitle="Εντολή εισαγωγής — W${WINTL.week}" onclick="event.stopPropagation();_wiPrintImp('${imp.id}',${row.partnerId?'true':'false'})">⎙<sup>I</sup></button>`}
     </div>`}
-    <div class="wk3-leg imp${segOn?' wk3-tiled':''}"${segOn?` data-seg-n="${members.length}"`:''} style="cursor:pointer" title="Κλικ: άνοιγμα φόρμας παραγγελίας — σύρε για ταίριασμα" onclick="event.stopPropagation();_wk3Edit('${imp.id}')">${loadCard}<span class="wi2-arrow">→</span>${delCard}</div>
+    <div class="wk3-leg imp${segOn?' wk3-tiled':''}"${segOn?` data-seg-n="${members.length}"`:''} style="cursor:pointer" title="Κλικ: άνοιγμα φόρμας παραγγελίας — σύρε για ταίριασμα" onclick="event.stopPropagation();_wk3Edit('${imp.id}')">${isPre?loadCard:`${loadCard}<span class="wi2-arrow">→</span>${delCard}`}</div>
     <div class="wk3-feed r" title="${impVS2?'Εθνική διανομή από Βέροια — τελικός προορισμός. Ο μεταφορέας συμπληρώνεται στο Weekly National.':'Χωρίς εθνικό σκέλος'}">${feedR}${(typeof impVS2!=="undefined"?impVS2:(imp&&impVS))?_wi2Carrier(imp.id):''}</div>
   </div>`;
 }
@@ -1362,7 +1364,7 @@ function _wiLegRowHTML(legRow){
   const dir=(f['Direction']==='Import')?'import':'export';
   const lo=_wi2Loc(f['Loading Summary']||f['Client Name']||'—','Φόρτωση',f._stopsL);
   const de=_wi2Loc(f['Delivery Summary']||'—','Παράδοση',f._stopsD);
-  const cards=`${_wi2Card({date:`<span class="wi2-date">${ld!=='—'?_wk3D(ld):'—'}</span>`,name:lo.name,sub:lo.sub})}<span class="wi2-arrow">→</span>${_wi2Card({date:dd!=='—'?`<span class="wi2-date">${_wk3D(dd)}</span>`:'',name:de.name,sub:de.sub,right:`<span class="wi2-legnote">σκέλος ρότας · ίδιο φορτηγό</span>${f['Reference']?`<span class="wi2-ref">${escapeHtml(String(f['Reference']))}</span>`:''}${_wi2Pal(f)}<button class="wk3-prt" title="Εκτύπωση σκέλους — δεξί κλικ: κοινή χρήση" data-shq="${printSheetQuery(o.id,dir,!!(f['Partner']||[]).length)}" data-shtitle="Εντολή — W${WINTL.week}" onclick="event.stopPropagation();printOrderSheet('${o.id}','${dir}',${(f['Partner']||[]).length?'true':'false'})">⎙</button>`})}`;
+  const cards=isPreorder(f)?_wiPreLeg(o):`${_wi2Card({date:`<span class="wi2-date">${ld!=='—'?_wk3D(ld):'—'}</span>`,name:lo.name,sub:lo.sub})}<span class="wi2-arrow">→</span>${_wi2Card({date:dd!=='—'?`<span class="wi2-date">${_wk3D(dd)}</span>`:'',name:de.name,sub:de.sub,right:`<span class="wi2-legnote">σκέλος ρότας · ίδιο φορτηγό</span>${f['Reference']?`<span class="wi2-ref">${escapeHtml(String(f['Reference']))}</span>`:''}${_wi2Pal(f)}<button class="wk3-prt" title="Εκτύπωση σκέλους — δεξί κλικ: κοινή χρήση" data-shq="${printSheetQuery(o.id,dir,!!(f['Partner']||[]).length)}" data-shtitle="Εντολή — W${WINTL.week}" onclick="event.stopPropagation();printOrderSheet('${o.id}','${dir}',${(f['Partner']||[]).length?'true':'false'})">⎙</button>`})}`;
   // Σωστή στήλη ανά κατεύθυνση (owner 12/8): σκέλος εξαγωγής στη στήλη
   // διαδρομής (3/4), σκέλος εισαγωγής στη στήλη εισαγωγών (5/6).
   const legCell=`<div class="wk3-leg" style="grid-column:${dir==='import'?'5/6':'3/4'};cursor:pointer" onclick="event.stopPropagation();_wk3Edit('${o.id}')">${cards}</div>`;
@@ -2368,7 +2370,7 @@ function _wiRowHTML(row,i){
       right:`${refs?`<span class="wi2-ref" title="Κωδικός αναφοράς">${escapeHtml(String(refs))}</span>`:''}${_wiCrossChip(pf)}${_wiExecChip(pf,row.saved)}<span class="wi2-flags">${_wiBadges(pf)}</span>${isGroup?_wi2PalGroup(exps):_wi2Pal(pf)}`});
   }
 
-  if(isPre){ const pc=_wiPreCards(primary); loadCard=pc.load; delCard=pc.del; }
+  if(isPre) loadCard=_wiPreLeg(primary);
 
   // Import side: matched preview · «ΚΕΝΟ ΓΥΡΙΣΜΑ» (own, no import) · navy
   // (partner — nothing expected back, owner 9/8) · open drop target.
@@ -2452,7 +2454,9 @@ function _wiRowHTML(row,i){
       const id2=_wi2Loc(f2['Delivery Summary']||_wiFlatLocName(f2['Unloading Location 1'])||_wiClientName(f2)||'—','Παράδοση',f2._stopsD); const idIso=f2['Delivery DateTime']||'';
       idel=_wi2Card({cls:stI.late?'late':stI.delivered?'ok':'', date:_wi2Date(imp.id,'Delivery DateTime',idIso,idIso?_wk3D(_wiFmt(idIso)):'—',(stI.delivered?' done':'')+(stI.late?' late':''),'Ημ. παράδοσης εισαγωγής'+(stI.delivered?' — παραδόθηκε ✓':'')+(stI.late?' — ΚΑΘΥΣΤΕΡΗΣΕ':'')), name:id2.name+(stI.late?'<span class="wi2-late">! καθυστέρηση</span>':''), sub:id2.sub, extra:_wk3MoreStops(f2['Delivery Summary']||'',f2._stopsD,'del'), right:iright});
     }
-    impInner=`${iload}<span class="wi2-arrow">→</span>${idel}`;
+    impInner=isPreorder(f2)
+      ? _wiPreLeg(imp,`<button class="wk3-unm" title="Αφαίρεση ταιριάσματος" onclick="event.stopPropagation();_wiUnmatch('${imp.id}')">×</button>`)
+      : `${iload}<span class="wi2-arrow">→</span>${idel}`;
   } else if(gapCell){
     impInner=`<div class="wi2-gapbox${urg?' urg':''}" title="Κενό γυρισμού — ιδιόκτητος γύρος χωρίς φορτίο επιστροφής${urg?` · ΕΠΕΙΓΟΝ: παράδοση ${_wi2When(pf,today)}, χωρίς εισαγωγή`:''}. Κλικ: νέα παραγγελία εισαγωγής (ή σύρε υπάρχουσα εισαγωγή εδώ)">ΚΕΝΟ IMPORT${urg?`<small>ΕΠΕΙΓΟΝ</small>`:''}</div>`;
   } else if(parCell){
@@ -2475,7 +2479,7 @@ function _wiRowHTML(row,i){
   <div id="wi-row-${row.id}" data-row-id="${row.id}" class="${rowCls}">
     <div class="wk3-num">${isPre?'P':i+1}${isGroup?`<button class="wk3-grpb" title="Groupage ×${exps.length} — κλικ: μέλη ομάδας (βάση: το πρώτο-παραδιδόμενο)" onclick="event.stopPropagation();_wiToggleGroup(${row.id})">×${exps.length}</button>`:''}<span class="wi-sync" id="wi-sync-${row.id}"></span></div>
     <div class="wk3-feed l" title="${vsExp?'Εθνικό σκέλος προς Βέροια — φόρτωση από τον αρχικό πελάτη. Ο μεταφορέας συμπληρώνεται στο Weekly National.':'Χωρίς εθνικό σκέλος — δεν είναι Veroia Switch'}">${feedL}${vsExp?_wi2Carrier(pid):''}</div>
-    <div class="wk3-leg${isGroup?' grp':''}${segOn?' wk3-tiled':''}"${segOn?` data-seg-n="${exps.length}"`:''} style="cursor:pointer" title="${isGroup?'Κλικ: καρτέλα ρότας ομάδας · δεξί κλικ: groupage/ρότα':'Κλικ: άνοιγμα φόρμας παραγγελίας · δεξί κλικ: groupage/ρότα'}" oncontextmenu="_wiCtx(event,${row.id})" onclick="event.stopPropagation();${isGroup?`_wiRota(${row.id})`:`_wk3Edit('${pid}')`}">${loadCard}<span class="wi2-arrow">→</span>${delCard}</div>
+    <div class="wk3-leg${isGroup?' grp':''}${segOn?' wk3-tiled':''}"${segOn?` data-seg-n="${exps.length}"`:''} style="cursor:pointer" title="${isGroup?'Κλικ: καρτέλα ρότας ομάδας · δεξί κλικ: groupage/ρότα':'Κλικ: άνοιγμα φόρμας παραγγελίας · δεξί κλικ: groupage/ρότα'}" oncontextmenu="_wiCtx(event,${row.id})" onclick="event.stopPropagation();${isGroup?`_wiRota(${row.id})`:`_wk3Edit('${pid}')`}">${isPre?loadCard:`${loadCard}<span class="wi2-arrow">→</span>${delCard}`}</div>
     ${row.hasSplitLegs
       // Wave 3: the parent no longer executes — no assign popover, no print
       // (nothing to hand a driver for a row that is not itself moving). The
@@ -3937,19 +3941,26 @@ function _wiCtx(e,rowId){
   setTimeout(()=>document.addEventListener('click',_wiCtxClose,{once:true}),10);
 }
 
-// Pre-order cards (Figma 709:1097): one dashed card «PRE-ORDER · client» /
-// «date · export · 1/2 · notes», an empty dashed card for the unknown end
-// (the destination country when known — owner 27/9). The dash colour carries
-// the urgency (owner 27/9): grey ≥4 days, amber 2–3, red ≤1 / past.
-function _wiPreCards(rec){
-  const f=rec.fields||{}, lvl=preorderLevel(f);
+// Pre-order leg (Figma 709:1097, owner 28/9 «καθόλου ωραία»): ONE dashed card
+// spanning the whole leg — export or import column, own row or inside a
+// truck's row — never the normal load→delivery pair, which printed the client
+// twice (no points: both ends fall back to the client), a «—» date and «0 p».
+// «PRE-ORDER · client» / «date · export · → country · k/n · notes». The
+// country is the unknown FOREIGN end: destination for an export, loading
+// country for an import (hence «από»). Dash colour = urgency (owner 27/9):
+// grey ≥4 days, amber 2–3, red ≤1 / past / no date.
+function _wiPreLeg(rec,extra){
+  const f=rec.fields||{}, lvl=preorderLevel(f), imp=f['Direction']==='Import';
   const seq=preorderSeq(rec,[...WINTL.data.exports,...WINTL.data.imports]);
-  const meta=[f['Loading DateTime']?_wk3D(_wiFmt(f['Loading DateTime'])):'—',String(f['Direction']||'').toLowerCase(),seq,f['Notes']||''].filter(Boolean).join(' · ');
-  const tip=escapeHtml(preorderTip(f));
-  return {
-    load:`<div class="wi2-card pre-card pre-${lvl}" title="${tip}"><div class="wi2-name"><span class="pre-cw">PRE-ORDER · ${escapeHtml(_wiClientName(f)||'—')}</span></div><div class="wi2-meta"><span class="wi2-sub">${escapeHtml(meta)}</span></div></div>`,
-    del:`<div class="wi2-card pre-empty" title="${tip}"><div class="wi2-name">${escapeHtml(preorderDest(f)||'—')}</div></div>`,
-  };
+  const notes=String(f['Notes']||'').trim();
+  const meta=[
+    f['Loading DateTime']?_wk3D(_wiFmt(f['Loading DateTime'])):'χωρίς ημ. φόρτωσης',
+    imp?'import':'export',
+    preorderCountryText(f),
+    seq,
+    notes.length>40?notes.slice(0,39)+'…':notes,
+  ].filter(Boolean).join(' · ');
+  return `<div class="wi2-card pre-card pre-span pre-${lvl}" data-oid="${escapeHtml(String(rec.id))}" title="${escapeHtml(preorderTip(f))}"><div class="wi2-name"><span class="pre-cw">PRE-ORDER · ${escapeHtml(_wiClientName(f)||'—')}</span></div><div class="wi2-meta"><span class="wi2-sub">${escapeHtml(meta)}</span>${extra?`<span class="wi2-right">${extra}</span>`:''}</div></div>`;
 }
 
 // Pre-order menu (Figma 709:1097): header, conversion (blue), the small form,
@@ -4504,6 +4515,7 @@ async function _wiRotUnlink(e,legOid,skipConfirm){
 function _wiLegCtx(e,legOid){
   e.preventDefault(); e.stopPropagation();
   if(_wiBlockReadOnly()) return;
+  if(_wiPreCtx(e,{orderIds:[legOid]},false)) return;
   const ctx=document.getElementById('wi-ctx');
   let html='';
   html+=_wiCtxBtn('Επεξεργασία…',`_wk3Edit('${legOid}')`);
@@ -4777,6 +4789,8 @@ function _wiImpCtx(e,rowId,matchedExportRowId){
   e.preventDefault();e.stopPropagation();
   if(_wiBlockReadOnly()) return;
   const row=WINTL.rows.find(r=>r.id===rowId);if(!row) return;
+  // A pre-order gets its own menu wherever it sits — own row or a truck's row.
+  if(_wiPreCtx(e,row,true)) return;
   if(matchedExportRowId){
     let html='';
     // Assignment is the PAIR's (one truck moves export+import) — open the
@@ -4795,7 +4809,6 @@ function _wiImpCtx(e,rowId,matchedExportRowId){
     setTimeout(()=>document.addEventListener('click',_wiCtxClose,{once:true}),10);
     return;
   }
-  if(_wiPreCtx(e,row,true)) return;
   const myPals=_wiRowPals(row);
   const others=WINTL.rows.filter(r=>r.type==='import'&&r.id!==rowId&&!r.adj&&!r.matchedTo
     &&(myPals+_wiRowPals(r))<=33);

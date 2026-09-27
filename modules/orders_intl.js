@@ -604,8 +604,8 @@ function _oiRowHtml(r) {
     <td class="oi-dim oi-num">W${escapeHtml(f['Week Number']||'—')}</td>
     <td class="oi-dim oi-nowrap">${escapeHtml(_OI_DIR[f['Direction']] || f['Direction'] || '—')}</td>
     <td><span class="oi-name" title="${client}">${client}</span></td>
-    <td>${pre ? '—' : _oiLocCell(r, 'Loading', 'Loading Summary')}</td>
-    <td>${pre ? '—' : _oiLocCell(r, 'Unloading', 'Delivery Summary')}</td>
+    <td>${pre ? escapeHtml((f['Direction'] === 'Import' && preorderCountryText(f)) || '—') : _oiLocCell(r, 'Loading', 'Loading Summary')}</td>
+    <td>${pre ? escapeHtml((f['Direction'] !== 'Import' && preorderCountryText(f)) || '—') : _oiLocCell(r, 'Unloading', 'Delivery Summary')}</td>
     <td class="oi-num">${_oiDate(f['Loading DateTime'])}</td>
     <td class="oi-num">${_oiDate(f['Delivery DateTime'])}</td>
     <td class="oi-num oi-med">${pal ? escapeHtml(String(pal)) : '—'}</td>

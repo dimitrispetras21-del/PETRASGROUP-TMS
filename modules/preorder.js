@@ -90,6 +90,13 @@ function preorderTip(f) {
   if (f['Notes']) bits.push('«' + String(f['Notes']) + '»');
   return bits.join(' · ');
 }
+/** The unknown FOREIGN end in words (plain text, caller escapes):
+ *  export → «→ Ιταλία (IT)», import → «από Ολλανδία (NL)», '' without one. */
+function preorderCountryText(f) {
+  const cc = f && f['Destination Country'] ? String(f['Destination Country']) : '';
+  if (!cc) return '';
+  return (f['Direction'] === 'Import' ? 'από ' : '→ ') + (preorderDest(f) || cc) + ' (' + cc + ')';
+}
 /** Orders list status (Figma 709:1144): dashed «PRE k/n», urgency colour. */
 function preorderPillHtml(f, seq) {
   _preEnsureStyles();
@@ -284,7 +291,7 @@ function _preEnsureStyles() {
 .do-t tr.do-pre.pre-amber td:first-child{box-shadow:inset 3px 0 0 var(--warn)}
 .do-t tr.do-pre.pre-red td:first-child{box-shadow:inset 4px 0 0 var(--danger)}
 .do-zrow.do-pre{color:var(--text-dim)}
-.pre-flash td,.wk3-row.pre-flash,.do-zrow.pre-flash{outline:2px solid var(--accent);outline-offset:-2px}
+.pre-flash td,.wk3-row.pre-flash,.do-zrow.pre-flash,.wi2-card.pre-flash{outline:2px solid var(--accent);outline-offset:-2px}
 .pre-f{margin-bottom:12px;flex:1;min-width:0}
 .pre-lbl{display:block;font:700 10px 'DM Sans',sans-serif;letter-spacing:.06em;color:var(--text-mid);margin-bottom:6px}
 .pre-row{display:flex;gap:12px}
@@ -332,7 +339,7 @@ function preorderJump(selector) {
 
 if (typeof window !== 'undefined') {
   Object.assign(window, { isPreorder, preorderLevel, preorderDest, preorderChipHtml, preorderCounterHtml, preorderConvertBand,
-    preorderJump, openPreorder, editPreorder, submitPreorder, cancelPreorder, convertPreorder, _preBtnLabel, _preClose, _preDir, _preStep, preorderSeq, preorderTip, preorderPillHtml });
+    preorderJump, openPreorder, editPreorder, submitPreorder, cancelPreorder, convertPreorder, _preBtnLabel, _preClose, _preDir, _preStep, preorderSeq, preorderTip, preorderPillHtml, preorderCountryText });
   // The page buttons («Pre-order», blue outline) render before any chip does.
   if (document.head) _preEnsureStyles();
 }
