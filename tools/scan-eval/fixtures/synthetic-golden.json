@@ -1,0 +1,59 @@
+{
+  "schema": "scan-golden/v1",
+  "_note": "INVENTED golden set for the harness tests. Real golden sets live only in .local/scan-golden/.",
+  "docs": [
+    {
+      "doc_id": "s01", "file": "synthetic-order.pdf", "doc_type": "pdf", "pages": 1, "orders_in_doc": 1,
+      "orders": [{
+        "client_id": { "v": "recSynthClient0001", "src": "saved" },
+        "reference": { "v": "SYN-0001", "src": "doc" },
+        "direction": { "v": "Import", "src": "doc" },
+        "goods": { "v": "Frozen peas", "src": "doc" },
+        "gross_weight_kg": { "v": "12.000 kg", "src": "doc" },
+        "pallets": { "v": 20, "src": "doc" },
+        "pallet_type": { "v": null, "src": "doc" },
+        "temperature_c": { "v": -18, "src": "doc" },
+        "price": { "v": "1.500,00 EUR", "src": "doc" },
+        "stops": [
+          { "type": "loading", "location_ids": ["recSynthLoc000001"], "country": { "v": "Germany" }, "date": { "v": "10.01.2031" }, "pallets": { "v": 20 } },
+          { "type": "delivery", "location_ids": ["recSynthLoc000002"], "country": { "v": "GR" }, "date": { "v": "13/01/2031" }, "pallets": { "v": null } }
+        ]
+      }]
+    },
+    {
+      "doc_id": "s02", "file": "synthetic-order.doc", "doc_type": "doc-legacy", "orders_in_doc": 1,
+      "orders": [{
+        "client_id": { "v": "recSynthClient0002", "src": "saved" },
+        "reference": { "v": null, "src": "doc" },
+        "pallets": { "v": 5, "src": "doc" },
+        "temperature_c": { "v": 4, "src": "doc" },
+        "stops": [
+          { "type": "loading", "location_ids": ["recSynthLoc000002"], "date": { "v": "2031-02-01" } },
+          { "type": "delivery", "location_ids": [], "date": { "v": "2031-02-04" } }
+        ]
+      }]
+    },
+    {
+      "doc_id": "s03", "file": "synthetic-two-orders.pdf", "doc_type": "pdf", "pages": 2, "orders_in_doc": 2,
+      "orders": [
+        {
+          "client_id": { "v": "recSynthClient0002", "any_of": ["recSynthClient0002", "recSynthClient0001"], "src": "saved" },
+          "reference": { "v": "B-77", "src": "doc" },
+          "pallets": { "v": 33, "src": "doc" },
+          "temperature_c": { "v": 2, "src": "doc", "contested": true, "note": "doc says 2, saved order says 4" },
+          "stops": [
+            { "type": "loading", "location_ids": ["recSynthLoc000002"], "date": { "v": "2031-03-01" }, "pallets": { "v": 33 } },
+            { "type": "delivery", "location_ids": ["recSynthLoc000003"], "date": { "v": "2031-03-04" }, "pallets": { "v": 13 } },
+            { "type": "delivery", "location_ids": ["recSynthLoc000001"], "date": { "v": "2031-03-05" }, "pallets": { "v": 20 } }
+          ]
+        },
+        {
+          "client_id": { "v": "recSynthClient0002", "src": "saved" },
+          "reference": { "v": "B-78", "src": "doc" },
+          "pallets": { "v": 10, "src": "doc" },
+          "stops": [ { "type": "loading", "location_ids": ["recSynthLoc000002"], "date": { "v": "2031-03-02" } } ]
+        }
+      ]
+    }
+  ]
+}
