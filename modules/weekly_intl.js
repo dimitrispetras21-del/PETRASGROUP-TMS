@@ -513,7 +513,7 @@ const _WI2_CSS=`
    τα κρυμμένα κελιά δεν πιάνουν στήλη, οπότε η εξαγωγή έπεφτε στα 18px.
    minmax(0,…) όπως και στο πλήρες πλάτος, για να μην εξαρτώνται τα πλάτη
    από το περιεχόμενο της κάθε γραμμής. */
-@media (max-width:1360px){.wk3.wi2 .wk3-cols,.wk3.wi2 .wk3-row{grid-template-columns:36px minmax(0,1.1fr) 200px minmax(0,0.9fr)}
+@media (max-width:1360px){.wk3.wi2 .wk3-cols,.wk3.wi2 .wk3-row{grid-template-columns:36px minmax(0,1.1fr) 224px minmax(0,0.9fr)}
 /* 27/9: the style.css:2948 hide never won — «.wk3.wi2 .wk3-feed{display:flex}»
    above out-ranks its bare «.wk3-feed{display:none}», so both feed cells
    still took grid slots in the 4-column grid: every row wrapped to ~94px
@@ -1791,6 +1791,7 @@ function _wi2FitStops(){
     // room needed. Marks after it: every margin counts — the line's own
     // ellipsis measures them and would cut the ✓.
     const avail=Math.floor(others?line.clientWidth-mx(box)-others:line.clientWidth-(parseFloat(getComputedStyle(box).marginLeft)||0)), w=()=>box.getBoundingClientRect().width;
+    box.style.maxWidth='';        // a cap from an earlier layout would beat .fit (inline wins)
     box.classList.add('fit');
     xs.forEach(x=>x.classList.remove('off')); chip.classList.add('off');
     let hidden=0;
