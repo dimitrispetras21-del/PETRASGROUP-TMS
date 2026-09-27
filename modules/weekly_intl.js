@@ -73,6 +73,10 @@ function _wiApplyFilter() {
     el.style.display = show ? '' : 'none';
   });
   document.querySelectorAll('.wi2-chip').forEach(c => c.classList.toggle('on', (c.dataset.q || '') === qk));
+  // Rows hidden at paint time were skipped by the stops fit pass (no layout);
+  // re-run it now that some may be visible again, or they would show every
+  // stop plus «+N» and get cut mid-name by the line's ellipsis.
+  _wi2FitStops();
 }
 // Quick filters of the v2 band. «Χωρίς ανάθεση» = neither own truck nor partner
 // (DECISION_LOG 2/9). «Κενά» = own round trip without import — a partner row is
@@ -1676,14 +1680,13 @@ function _wk3Arr(str,arr){
   return L.map((x,i)=>({...x,_i:i}))
     .sort((a,b)=>(String(a.dt||'').localeCompare(String(b.dt||'')))||(a._i-b._i));
 }
-// Splits the stops into same-day-as-the-1st and other-day ones; the other-day
-// ones keep their own (highlighted) date in the tooltip and the unfolded list.
+// Stops on another day than the 1st keep their own (highlighted) date in the
+// tooltip and the unfolded list.
 function _wk3SideCalc(str,arr){
   const L=_wk3Arr(str,arr);
   const d0=L.length&&L[0].dt?toLocalDate(L[0].dt):'';
-  const same=[],diff=[];
-  L.forEach(x=>{ const dd=x.dt?toLocalDate(x.dt):''; (dd&&d0&&dd!==d0?diff:same).push(x); });
-  return {L,same,diff};
+  const diff=L.filter(x=>{ const dd=x.dt?toLocalDate(x.dt):''; return dd&&d0&&dd!==d0; });
+  return {L,diff};
 }
 // ΠΟΛΛΑΠΛΑ ΣΗΜΕΙΑ (owner 27/9, επιλογή α + «αν χωράνε, γιατί +2;»). Πριν,
 // 2-3 σημεία ίδιας μέρας γράφονταν ΟΛΑ στη σειρά του ονόματος ΚΑΙ μετρούσαν
