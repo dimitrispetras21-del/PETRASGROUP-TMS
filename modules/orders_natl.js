@@ -1152,11 +1152,9 @@ async function _openNatlModal(recId, f) {
         <label class="form-label">Θερμοκρασία °C</label>
         <input class="form-input" type="number" id="nf_Temp" value="${f['Temperature °C']!=null?f['Temperature °C']:''}">
       </div>
-      <div class="form-field" style="padding-top:24px">
-        <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer">
-          <input type="checkbox" id="nf_PalletExch" ${f['Pallet Exchange']?'checked':''} style="width:15px;height:15px">
-          Ανταλλαγή παλετών (PE)</label>
-      </div>
+      <!-- No pallet type on this form, so only the «no default» half of the
+           27/9 PE rule applies here (core/form-helpers.js peChoiceHtml). -->
+      ${peChoiceHtml('nf', f, isEdit)}
     </div>
     <input type="checkbox" id="nf_Groupage" ${f['National Groupage']?'checked':''} style="display:none">
     ${isEdit ? '' : `
@@ -1290,7 +1288,10 @@ async function submitNatlOrder(recId) {
     const pallets = _stops.reduce((a, s) => a + s.pal, 0);
     if (pallets > 0) fields['Pallets'] = pallets;
 
-    fields['Pallet Exchange']  = ck('nf_PalletExch');
+    // ΝΑΙ/ΟΧΙ, not a checkbox (owner 27/9): unanswered blocks a new order
+    // below; on an edit it is left out so a legacy NULL is not written as «No».
+    const _pe = peRead('nf');
+    if (_pe !== null) fields['Pallet Exchange'] = _pe;
     fields['National Groupage']= ck('nf_Groupage');
 
     const clientId  = document.getElementById('lv_nclient')?.value;
@@ -1314,6 +1315,7 @@ async function submitNatlOrder(recId) {
     if(!delivId)                      _vErrors.push('Χρειάζεται τουλάχιστον ένα σημείο παράδοσης');
     if(!fields['Loading DateTime'])   _vErrors.push('Η ημερομηνία φόρτωσης είναι υποχρεωτική');
     if(!fields['Delivery DateTime'])  _vErrors.push('Χρειάζεται ημερομηνία σε ένα τουλάχιστον σημείο');
+    if(_pe === null && !recId)        _vErrors.push(peMarkMissing('nf'));
 
     // Date cross-validation
     if (fields['Loading DateTime'] && fields['Delivery DateTime']) {

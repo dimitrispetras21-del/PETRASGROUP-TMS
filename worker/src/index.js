@@ -592,13 +592,24 @@ var PERMISSIONS = {
     partners: ["GET", "POST", "PATCH", "DELETE"],
     locations: ["GET", "POST", "PATCH", "DELETE"],
     scan_examples: ["GET", "POST"],
-    // drivers:'view' + maintenance:'view' -> read-only.
+    // drivers:'view' -> read-only: drivers, trucks, trailers, workshops.
     drivers: ["GET"],
     trucks: ["GET"],
     trailers: ["GET"],
     workshops: ["GET"],
-    maint_history: ["GET"],
-    maint_req: ["GET"]
+    // Service history + requests: WRITE, no DELETE (owner decision «Β», 27/9).
+    // Until 27/9 both were GET-only (maintenance:'view'), but maintenance.js
+    // shows the forms to every role: on 26/9 10:07–10:08 a dispatcher pressed
+    // save 5 times, got 403 each time, and the service record was lost (0 new
+    // maint_history rows since 24/9 — audit 2026-09-24-27, P2). The owner chose
+    // to let dispatchers record service rather than hide the form. DELETE stays
+    // with owner/management — the 23/8 lock keeps DELETE narrow.
+    // NOTE: config.js keeps maintenance:'view' for dispatcher. There it gates
+    // only the fleet entity pages (core/entity.js canEdit → trucks, trailers,
+    // workshops), which stay read-only here too. maintenance.js gates nothing,
+    // so its «Διαγραφή» buttons still show to a dispatcher and still 403.
+    maint_history: ["GET", "POST", "PATCH"],
+    maint_req: ["GET", "POST", "PATCH"]
   },
   warehouse: {
     orders: ["GET"],

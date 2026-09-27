@@ -257,3 +257,73 @@ function fhPickLinked(id, recId, label) {
   const d = document.getElementById('ls_' + id + '_d');
   if (d) d.style.display = 'none';
 }
+
+// ─── Pallet Exchange: explicit ΝΑΙ / ΟΧΙ (owner 27/9) ─────────────────────
+// Was a checkbox, where «not ticked» and «forgot to tick» both saved as
+// Pallet Exchange = false. PE drives the pallet-ledger feeders and the
+// invoicing gate, so a forgotten tick silently became a wrong answer. Now:
+//   · a NEW order has no default — save is refused until ΝΑΙ or ΟΧΙ is chosen;
+//   · an existing order opens on its stored value and is not asked again
+//     (a legacy NULL opens unchosen and, if left so, the field is not written);
+//   · Industrial / CHEP never exchange (production 27/9: 19/19 and 9/9 = No),
+//     so those types force ΟΧΙ and lock the control. Switching back to EUR
+//     restores what was there before the lock — nothing for a new order, the
+//     stored value for an edit — so the lock never leaves a choice behind.
+// Shared by the international and the national form: one rule, one place.
+const PE_NO_EXCHANGE_TYPES = ['Industrial', 'CHEP'];
+
+function peChoiceHtml(pfx, f, isEdit) {
+  const v = f['Pallet Exchange'];
+  const orig = isEdit && v === true ? 'yes' : isEdit && v === false ? 'no' : '';
+  const radio = (val, lbl) => `<label style="display:flex;align-items:center;gap:6px;cursor:pointer">
+            <input type="radio" name="${pfx}_PalletExch" value="${val}" ${orig === val ? 'checked' : ''} onchange="pePicked('${pfx}')" style="width:15px;height:15px;margin:0">${lbl}</label>`;
+  return `<div class="form-field">
+        <label class="form-label">Ανταλλαγή παλετών (PE) *</label>
+        <div class="form-input" id="${pfx}_PalletExch" data-orig="${orig}" style="display:flex;align-items:center;gap:24px">
+          ${radio('yes', 'ΝΑΙ')}${radio('no', 'ΟΧΙ')}</div>
+        <div id="${pfx}_PalletExchHint" style="font-size:11px;line-height:1.3;color:var(--text-dim)"></div>
+      </div>`;
+}
+
+// null = nothing chosen. The caller decides: null blocks a new order, and is
+// simply not written on an edit.
+function peRead(pfx) {
+  const on = document.querySelector(`input[name="${pfx}_PalletExch"]:checked`);
+  return on ? on.value === 'yes' : null;
+}
+
+function pePicked(pfx) {
+  const box = document.getElementById(pfx + '_PalletExch');
+  if (box) box.style.borderColor = '';
+  const h = document.getElementById(pfx + '_PalletExchHint');
+  if (h && h.dataset.err) { h.textContent = ''; h.style.color = 'var(--text-dim)'; delete h.dataset.err; }
+}
+
+// Runs on every pallet-type change and once when the form opens.
+function peSyncPalletType(pfx, palletType) {
+  const box = document.getElementById(pfx + '_PalletExch'); if (!box) return;
+  const radios = box.querySelectorAll('input[type="radio"]');
+  const h = document.getElementById(pfx + '_PalletExchHint');
+  if (PE_NO_EXCHANGE_TYPES.includes(palletType)) {
+    radios.forEach(r => { r.checked = r.value === 'no'; r.disabled = true; });
+    box.style.opacity = '.6';
+    pePicked(pfx);
+    if (h) h.textContent = 'Industrial/CHEP: χωρίς ανταλλαγή';
+    box.dataset.locked = '1';
+  } else if (box.dataset.locked) {
+    const orig = box.dataset.orig || '';
+    radios.forEach(r => { r.disabled = false; r.checked = r.value === orig; });
+    box.style.opacity = '';
+    if (h) h.textContent = '';
+    delete box.dataset.locked;
+  }
+}
+
+// Paints the unanswered control in place; returns the line for the toast.
+function peMarkMissing(pfx) {
+  const box = document.getElementById(pfx + '_PalletExch');
+  if (box) { box.style.borderColor = 'var(--danger)'; box.scrollIntoView({ block: 'center' }); }
+  const h = document.getElementById(pfx + '_PalletExchHint');
+  if (h) { h.textContent = 'Υποχρεωτικό — διάλεξε ΝΑΙ ή ΟΧΙ'; h.style.color = 'var(--danger)'; h.dataset.err = '1'; }
+  return 'Ανταλλαγή παλετών (PE): διάλεξε ΝΑΙ ή ΟΧΙ';
+}

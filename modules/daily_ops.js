@@ -408,12 +408,15 @@ const _OPS_STYLE=`<style>
   .do-foot{margin-top:16px;font-size:var(--text-xs);color:var(--text-dim);text-align:right}
   /* Popover «Αλλαγή ημέρας» — στη γραμμή, Enter = Αύριο. Floats above the
      page, so it is the one element here allowed a shadow (D). */
-  .do-pop{position:absolute;z-index:var(--z-float,50);width:360px;background:var(--surface-card);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow-md);padding:12px 16px;text-align:left;white-space:normal}
+  /* 440px (was 360) since 27/9: a fourth option «Μεθαύριο» — at 360 the
+     date input inside «Άλλη…» shrank below its readable width. */
+  .do-pop{position:absolute;z-index:var(--z-float,50);width:440px;background:var(--surface-card);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow-md);padding:12px 16px;text-align:left;white-space:normal}
   .do-pop h4{font-family:inherit;font-size:var(--text-base);font-weight:700;margin:0 0 4px}
   .do-pop .do-psub{font-size:var(--text-xs);color:var(--text-dim);margin-bottom:8px}
   .do-pop .do-opts{display:flex;gap:8px;margin-bottom:8px}
   .do-pop .do-opt{flex:1;border:1px solid var(--border);border-radius:var(--radius);padding:4px 8px;background:var(--surface-card);cursor:pointer;font-family:inherit;text-align:left}
   .do-pop .do-opt:hover{border-color:var(--border-dark)}
+  .do-pop .do-opt:last-child{flex:1.3}
   .do-pop .do-opt b{display:block;font-size:var(--text-sm);color:var(--text)}
   .do-pop .do-opt span{font-size:var(--text-xs);color:var(--text-dim)}
   .do-pop .do-opt.on{background:var(--surface-dark);border-color:var(--surface-dark)} .do-pop .do-opt.on b,.do-pop .do-opt.on span{color:var(--text-on-dark)}
@@ -523,9 +526,9 @@ function _opsDraw() {
     ${ovH}${ovLH}${ovLErr}
     <div class="ops-sections" style="gap:0">
       ${_opsSec('el','ΦΟΡΤΩΣΕΙΣ ΕΞΑΓΩΓΗΣ',cats.el,isToday,'Καμία παραγγελία εξαγωγής για φόρτωση',1)}
-      ${_opsSec('ed','ΠΑΡΑΔΟΣΕΙΣ ΕΞΑΓΩΓΗΣ',cats.ed,isToday,'Καμία παραγγελία εξαγωγής για παράδοση',1+cats.el.length)}
-      ${_opsSec('il','ΦΟΡΤΩΣΕΙΣ ΕΙΣΑΓΩΓΗΣ',cats.il,isToday,'Καμία παραγγελία εισαγωγής για φόρτωση',1+cats.el.length+cats.ed.length)}
-      ${_opsSec('id','ΠΑΡΑΔΟΣΕΙΣ ΕΙΣΑΓΩΓΗΣ',cats.id,isToday,'Καμία παραγγελία εισαγωγής για παράδοση',1+cats.el.length+cats.ed.length+cats.il.length)}
+      ${_opsSec('ed','ΠΑΡΑΔΟΣΕΙΣ ΕΞΑΓΩΓΗΣ',cats.ed,isToday,'Καμία παραγγελία εξαγωγής για παράδοση',1)}
+      ${_opsSec('il','ΦΟΡΤΩΣΕΙΣ ΕΙΣΑΓΩΓΗΣ',cats.il,isToday,'Καμία παραγγελία εισαγωγής για φόρτωση',1)}
+      ${_opsSec('id','ΠΑΡΑΔΟΣΕΙΣ ΕΙΣΑΓΩΓΗΣ',cats.id,isToday,'Καμία παραγγελία εισαγωγής για παράδοση',1)}
     </div>
     <div class="do-foot">ORDERS · φίλτρο ημέρας ${_DMYFull(tgt)} · ${OPS.intl.length} ${OPS.intl.length===1?'εγγραφή':'εγγραφές'}${pendN?` + ${pendN} ${pendN===1?'εκκρεμής':'εκκρεμείς'}`:''}${upd?` · ενημερώθηκε ${upd}`:''}</div>
     </div>`;
@@ -549,9 +552,12 @@ function _opsToggleZone(key) {
   if (btn) { btn.setAttribute('aria-expanded', willOpen ? 'true' : 'false'); const t = btn.querySelector('.do-tog'); if (t) t.textContent = willOpen ? '▲ Απόκρυψη' : '▼ Εμφάνιση'; }
 }
 
-// `start`: η αρίθμηση συνεχίζεται από ενότητα σε ενότητα. Με `i+1` σε κάθε
-// ενότητα η οθόνη είχε τέσσερα «#1» και κανείς δεν μπορούσε να πει «το 7»
-// στο τηλέφωνο — ο αριθμός δεν ταυτοποιούσε τίποτα (3/9).
+// `start`: numbering restarts at 1 in EVERY section (owner 27/9, on dispatcher
+// Παντελής's request). 3/9 had made it run on across sections so «το 7» named
+// a single row on the phone; the dispatchers asked for the opposite — exports
+// 1–5 followed by imports 7–10 did not match how they read the day, section
+// by section. A row is now named by section + number. Callers pass 1; the
+// parameter stays because the grouped export rows count from it.
 function _opsSec(type,label,items,isToday,emptyTxt,start) {
   const isL=type==='el'||type==='il', isExp=type==='el'||type==='ed';
   const when=_opsDayWord();
@@ -982,8 +988,14 @@ function _opsChangeDay(ev, id, kind){
   // εκκρεμών η παλιά ημέρα είναι ήδη περασμένη, οπότε το «Αύριο» μετέθετε στο
   // ΠΑΡΕΛΘΟΝ και η γραμμή ξαναγύριζε εκκρεμής. Το `base` μένει ως το «τώρα …»
   // και ως αφετηρία του delta που μετακινεί μαζί την παράδοση.
+  // «Μεθαύριο» (27/9, dispatcher Παντελής): after «Αύριο» the only quick pick
+  // was Monday, so a two-day postponement mid-week needed the date picker.
+  // «Δευτέρα» is shown only when it is a date NOT already offered: on Saturday
+  // Μεθαύριο is Monday, on Sunday Αύριο is Monday. The relative button stays
+  // (its label carries «Δευ»), so the popover never offers two buttons that
+  // write the same date.
   const _tdy=localToday();
-  const tmrw=_plus(_tdy,1), mon=_nextMonday(_tdy);
+  const tmrw=_plus(_tdy,1), day2=_plus(_tdy,2), mon=_nextMonday(_tdy);
   const stype=kind==='load'?'Loading':'Unloading';
   const loc=_L(_opsStopLoc(id,stype))||'';
   const hasDel=kind==='load'&&!!f['Delivery DateTime'];
@@ -993,7 +1005,8 @@ function _opsChangeDay(ev, id, kind){
     <div class="do-psub">${_C(f)}${loc?' · '+loc:''}${f['Total Pallets']?' · '+f['Total Pallets']+'p':''} · τώρα ${_DMY(base)}</div>
     <div class="do-opts">
       <button class="do-opt on" data-v="${tmrw}" onclick="_opsPopPick(this)"><b>Αύριο</b><span>${_dowShort(tmrw)} ${_DMY(tmrw)}</span></button>
-      <button class="do-opt" data-v="${mon}" onclick="_opsPopPick(this)"><b>Δευτέρα</b><span>${_DMY(mon)}</span></button>
+      <button class="do-opt" data-v="${day2}" onclick="_opsPopPick(this)"><b>Μεθαύριο</b><span>${_dowShort(day2)} ${_DMY(day2)}</span></button>
+      ${mon!==tmrw&&mon!==day2?`<button class="do-opt" data-v="${mon}" onclick="_opsPopPick(this)"><b>Δευτέρα</b><span>${_DMY(mon)}</span></button>`:''}
       <button class="do-opt" data-v="" onclick="_opsPopPick(this)"><b>Άλλη…</b><input type="date" onclick="event.stopPropagation()" onchange="_opsPopOther(this)"></button>
     </div>
     ${hasDel?`<label><input type="checkbox" checked onchange="OPS._pop.moveDel=this.checked;_opsPopHint()"><span>Μετακίνηση και της παράδοσης<small id="doPopHint"></small></span></label>`:''}
