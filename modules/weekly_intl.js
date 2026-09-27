@@ -432,6 +432,8 @@ const _WI2_CSS=`
 .wk3.wi2 .wi2-s1{min-width:0;overflow:hidden;text-overflow:ellipsis}
 .wk3.wi2 .wi2-sx{flex:none;margin-left:6px}
 .wk3.wi2 .wi2-sx.diff .wk3-stopn{background:var(--warn)}
+.wk3.wi2 .wi2-dsep{margin:0 4px;color:var(--text-dim)}
+.wk3.wi2 .wi2-dday{font:700 11px 'DM Sans',sans-serif;line-height:12px;padding:0 4px;border-radius:var(--radius);background:var(--warn-bg);color:var(--warn);font-variant-numeric:tabular-nums}
 .wk3.wi2 .wi2-sx.off,.wk3.wi2 .wi2-more.off{display:none}
 .wk3.wi2 .wi2-stops.fit{max-width:none}
 .wk3.wi2 .wi2-stops.fit .wi2-s1{flex:none;overflow:visible}
@@ -1713,7 +1715,10 @@ function _wk3LocHTML(str,label,arr,title){
   const circ=i=>`<span class="wk3-stopn${kind==='load'?' ln':''}">${i+1}</span>`;
   const rest=L.slice(1).map((x,k)=>{
     const d=diff.includes(x);
-    return `<span class="wi2-sx${d?' diff':''}"${d&&x.dt?` title="Άλλη ημέρα: ${escapeHtml(_wk3D(_wiFmt(x.dt)))}"`:''}>${circ(k+1)}${escapeHtml(x.n)}</span>`;
+    // Other-day stop (owner 27/9): its date is shown INLINE as an orange chip —
+    // no hover needed, no extra row. data-wd feeds «+N · Τετ» when it folds.
+    const dd=d&&x.dt?_wk3D(_wiFmt(x.dt)):'';
+    return `<span class="wi2-sx${d?' diff':''}"${dd?` data-wd="${escapeHtml(dd.split(' ')[0])}"`:''}>${circ(k+1)}${escapeHtml(x.n)}${dd?`<span class="wi2-dsep">·</span><span class="wi2-dday" title="Άλλη ημέρα από το 1ο σημείο">${escapeHtml(dd)}</span>`:''}</span>`;
   }).join('');
   return `<span class="wi2-stops" title="${L.length} σημεία${dayNote}&#10;${tip}"><span class="wi2-s1">${circ(0)}${escapeHtml(title||L[0].n)}</span>${rest}`+
     `<button type="button" class="wi2-more" title="Κλικ: όλα τα σημεία${dayNote}&#10;${tip}" onclick="event.stopPropagation();const f=this.closest('.wi2-card')&&this.closest('.wi2-card').querySelector('.wk3-xfold');if(f)f.classList.toggle('open')">+${L.length-1}</button></span>`;
@@ -1740,8 +1745,11 @@ function _wi2FitStops(){
       for(let i=xs.length-1;i>=0&&w()>avail;i--){ xs[i].classList.add('off'); hidden++; }
     }
     box.classList.remove('fit');
-    chip.textContent='+'+hidden;
-    chip.classList.toggle('diff',xs.some(x=>x.classList.contains('off')&&x.classList.contains('diff')));
+    // Folded other-day stops still show their day on the chip (owner 27/9):
+    // stops are in date order, so the first hidden one is the earliest.
+    const hd=xs.find(x=>x.classList.contains('off')&&x.dataset.wd);
+    chip.textContent='+'+hidden+(hd?' · '+hd.dataset.wd:'');
+    chip.classList.toggle('diff',!!hd);
   });
 }
 // The folded full list behind «+N»: every stop, in order, with its date when
