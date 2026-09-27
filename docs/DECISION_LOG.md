@@ -2196,3 +2196,20 @@ contract daily_ops/weekly_intl/orders_intl κόκκινοι ΚΑΙ στο origin
 το Figma:** η στήλη ΑΝΑΘΕΣΗ του Weekly μένει «ΠΡΟΣ ΑΝΑΘΕΣΗ» και πατιέται (owner 27/9: όχι φραγμός ανάθεσης· το Figma
 δείχνει παύλα)· η κενή κάρτα παράδοσης δείχνει τη χώρα όταν υπάρχει (νέο πεδίο 27/9)· πλαίσιο/χρώμα κατά επείγον
 (πίεση 27/9). Σύγκριση: `docs/data-audit/2026-09/shots/preorder-vs-figma-709.png`.
+
+### 2026-09-27 (23:10) · front/db/worker · ΖΩΝΤΑΝΑ: γρήγορα Παντελή + Weekly πυκνότερο + Pre-order (owner «και τα 3 go τώρα»)
+
+**Front:** main `a2a71d4` (ενοποίηση 3 branches με cherry-pick· 2 συγκρούσεις κώδικα λύθηκαν συνδυάζοντας τις δύο πλευρές:
+orders_intl.js τίτλος/ζώνη μετατροπής + `peSyncPalletType` + προσυμπλήρωση ημερομηνίας· weekly_intl.js `.pre-count` + `_wi2FitStops()`)·
+ενιαία σφραγίδα `1790534881` (?v + SW_VERSION)· `node --check` 0 σφάλματα, markers 0, tests 83/84 (η προϋπάρχουσα static.test)·
+Pages σερβίρει 1790534881. Push από τον owner (ο φύλακας του Claude Code αρνείται push στο main).
+**Βάση (owner, SQL editor):** 044 ✓ (`orders_ops_status_values` validated) · 052 ✓ (`dest_country` + 2 CHECK validated, view
+`orders_with_derived` με parent_order_id/leg_no/dest_country, 242 = 242 γραμμές). Το 052 διορθώθηκε πριν τρέξει: το αρχικό
+σχέδιο θα έσβηνε 2 στήλες της view (βρέθηκε με SELECT συντονιστή).
+**Worker (owner, deploy 6ab7e7d0 / έκδοση 1692d0da, 20:05 UTC):** από το branch `deploy/worker-2709` = παραγωγή `db86147` +
+dispatcher `maint_history`/`maint_req` GET·POST·PATCH + label `"Destination Country"`. **Σκόπιμα ΧΩΡΙΣ το Επίπεδο Α** του main
+(θέλει 049 πρώτα). Επαλήθευση στον ζωντανό κώδικα: φρουρός των τριών 3/3, οι 2 αλλαγές παρούσες, x-tms-req απών, dbMsg (046)
+παρών, secrets 3/3, invocation_logs false, /health 200 (92 ms). **Γνωστή απόκλιση repo↔παραγωγής:** το `worker/src/index.js`
+του main έχει επιπλέον το Επίπεδο Α (ανενεργό). Επόμενο deploy από main μόνο μαζί με 049.
+**Ανοιχτό:** ζωντανή δοκιμή σε παραγγελία-δοκιμή (Pre-order → μετατροπή → ακύρωση, PE ΝΑΙ/ΟΧΙ) — θέλει έγκριση owner (εγγραφή).
+**Ποιος:** owner, συντονιστής, 7 subagents (3 υλοποίησης, 4 ελεγκτές).
