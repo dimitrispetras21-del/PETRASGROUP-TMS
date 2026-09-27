@@ -348,6 +348,11 @@ async function renderOrdersIntl() {
       // cache is warm. A failure is reported above the table, never swallowed.
       (typeof preloadReferenceData === 'function' ? preloadReferenceData() : Promise.resolve())
         .catch(e => { console.warn('orders_intl: ref data', e); _oiLoadWarns.push(_OI_WARN_REF); }),
+      // Scan round 3: paperclip badge index. Never rejects (core/order-docs.js
+      // logs its own warning and returns an empty index) — nothing here needs
+      // its own .catch, but the array slot is intentional so the list never
+      // waits on it twice (virtual-scroll rows read the already-settled index).
+      (typeof OrderDocs !== 'undefined' ? OrderDocs.preloadIndex() : Promise.resolve()),
     ]);
     records.sort((a,b) => (b.fields['Loading DateTime']||'').localeCompare(a.fields['Loading DateTime']||''));
     // Wave 3 (owner 6/9, FEATURES.ORDER_SPLIT): a leg is the parent's own
@@ -600,7 +605,7 @@ function _oiRowHtml(r) {
     ? `<div class="pre-acts"><button type="button" class="pre-act" onclick="event.stopPropagation();openIntlEdit('${r.id}')">Μετατροπή</button><button type="button" class="pre-act cancel" onclick="event.stopPropagation();cancelPreorder('${r.id}')">Ακύρωση</button></div>` : '';
   return `<tr onclick="selectIntlOrder('${r.id}')" id="irow_${r.id}" class="oi-row${sel}${pre ? ' oi-pre' : ''}" style="height:${_OI_ROW_H}px">
     <td class="oi-dim oi-num">${orderNoCell}</td>
-    <td>${refCell}${legChip}${_oiFlags(f)}</td>
+    <td>${refCell}${legChip}${_oiFlags(f)}${typeof OrderDocs !== 'undefined' ? OrderDocs.badge(r.id) : ''}</td>
     <td class="oi-dim oi-num">W${escapeHtml(f['Week Number']||'—')}</td>
     <td class="oi-dim oi-nowrap">${escapeHtml(_OI_DIR[f['Direction']] || f['Direction'] || '—')}</td>
     <td><span class="oi-name" title="${client}">${client}</span></td>
@@ -861,6 +866,7 @@ function _oiCardHtml(rec, opts) {
       <div class="oi-links"><button type="button" class="oi-link" onclick="navigate('weekly_intl')">άνοιγμα στο Εβδομαδιαίο Διεθνών →</button></div>
     </div>
     ${f['Notes'] ? `<div class="oi-sect oi-sect-alt"><div class="oi-sect-t">Σημειώσεις</div><div class="oi-text">${escapeHtml(f['Notes'])}</div></div>` : ''}
+    <div class="oi-sect"><div class="oi-sect-t">Έγγραφα</div><div class="oi-links">${typeof OrderDocs !== 'undefined' ? OrderDocs.sectionHtml(recId, { canEdit }) : ''}</div></div>
     ${actions ? `<div class="oi-sect"><div class="oi-sect-t">Ενέργειες</div><div class="oi-links">${actions}</div></div>` : ''}`;
 }
 
@@ -2066,6 +2072,14 @@ async function submitIntlOrder(recId) {
 
     invalidateCache(TABLES.ORDERS);
 
+    // Scan round 3: the review UI stashes the scanned file on window._scanPendingDoc
+    // when it opened THIS form; only fires on the create path (order_documents
+    // needs a real order id). Fire-and-forget — a failed upload never blocks the
+    // save flow above, it shows its own persistent warning (core/order-docs.js).
+    if (!recId && result?.id && typeof OrderDocs !== 'undefined' && window._scanPendingDoc) {
+      OrderDocs.handleOrderSaved(result.id);
+    }
+
     // ── Active learning: persist scan correction (Phase 3) ──
     // If this submission was prefilled from a scan, save the user-corrected
     // values as a few-shot example for future scans of the same doc type.
@@ -2524,6 +2538,10 @@ async function _scanExtract() {
   if (!files.length) return;
   if (files.length === 1) {
     const parsed = await _scanExtractCore(files[0]);
+    // Carried through _scanResult/_scanQueue to _scanOpen (round 3): the
+    // side-by-side review needs the ORIGINAL file, not just the AI's reading
+    // of it — nothing upstream of this point keeps a reference otherwise.
+    if (parsed) parsed._scanFile = files[0];
     if (parsed) await _scanPreview(parsed);
     return;
   }
@@ -2537,6 +2555,7 @@ async function _scanExtract() {
     try {
       window._scanResult = null;
       const parsed = await _scanExtractCore(files[i]);
+      if (parsed) parsed._scanFile = files[i];   // see single-file branch above
       if (parsed) { await _scanPreview(parsed);
         if (window._scanResult) window._scanQueue.push({ ...window._scanResult, _fileName: files[i].name }); }
     } catch(e) { console.warn('[batch scan]', files[i].name, e.message); }
@@ -2890,6 +2909,53 @@ async function _scanOpen(matched, data) {
   closeModal();
   // Pass scan-derived stops via 4th arg so _openModal can render them
   await _openModal(null, f, matched.clientLabel, { loadStops, unloadStops });
+
+  // Side-by-side review (round 3): v2 only — v1 never kept the original file,
+  // so core/scan-review.js has nothing to show it next to.
+  if (data._engine === 'v2' && data._scanFile && typeof ScanReview !== 'undefined') {
+    _scanAttachReview(data, ls, ds);
+  }
+}
+
+// Confidence a location match deserves, mirroring _sv2ToV1's own matchConf
+// (core/scan-engine-v2.js) — reading its pre-computed score, not re-scoring.
+function _scanMatchConf(m) { return (m && m.id) ? Math.min(1, (m.score || 0) + 0.2) : 0; }
+
+function _scanAttachReview(data, ls, ds) {
+  const fieldMeta = {};
+  const add = (id, confidence, quote, label) => {
+    if (document.getElementById(id)) fieldMeta[id] = { confidence: confidence || 0, quote: quote || '', label };
+  };
+  const fc = data.field_confidence || {};
+  const vf = data._v2 && data._v2.fields || {};
+  const q  = k => (vf[k] && vf[k].q) || '';
+  const qc = k => (vf[k] && vf[k].c) || 0;
+  add('ls_client',   fc.client_name,    q('client_name'),    'Πελάτης');
+  add('f_Reference', fc.reference,      q('reference'),      'Reference');
+  add('f_Goods',     qc('goods'),       q('goods'),          'Εμπόρευμα');
+  add('f_GrossWeight', qc('gross_weight_kg'), q('gross_weight_kg'), 'Μικτό βάρος');
+  add('f_Temp',      fc.temperature_c,  q('temperature_c'),  'Θερμοκρασία');
+  add('f_PalletType', fc.pallet_type,   q('pallet_type'),    'Τύπος παλέτας');
+  add('f_Price',     qc('price'),       q('price'),          'Τιμή');
+  ls.forEach((s, i) => {
+    const n = i + 1;
+    add(`ls_l_${n}`,  Math.min(s._c || 0, _scanMatchConf(s._match)), s._q, `Τοποθεσία φόρτωσης ${n}`);
+    add(`pal_l_${n}`, s._c, s._q, `Παλέτες φόρτωσης ${n}`);
+    add(`dt_l_${n}`,  s._c, s._q, `Ημερομηνία φόρτωσης ${n}`);
+  });
+  ds.forEach((s, i) => {
+    const n = i + 1;
+    add(`ls_u_${n}`,  Math.min(s._c || 0, _scanMatchConf(s._match)), s._q, `Τοποθεσία παράδοσης ${n}`);
+    add(`pal_u_${n}`, s._c, s._q, `Παλέτες παράδοσης ${n}`);
+    add(`dt_u_${n}`,  s._c, s._q, `Ημερομηνία παράδοσης ${n}`);
+  });
+  ScanReview.attach({
+    formRoot: document.getElementById('modalBody'),
+    file: data._scanFile,
+    fieldMeta,
+    modelLabel: data._modelLabel,
+    warnings: (data._v2 && data._v2.warnings) || [],
+  });
 }
 
 function _intlExportCSV() {

@@ -81,6 +81,13 @@ const TABLES = {
   // placeholder) further down silently won and switched shared learning off.
   SCAN_TRAINING:'tblScanTraining000',
   METRICS_SNAPSHOTS: 'tblakFiR37kf4uQXy',
+  // Scan round 3 (core/order-docs.js): GET-only facade table backing the
+  // paperclip badge index — one atGetAll(fields:['Order']) tells the list/
+  // weekly/daily screens which orders have a stored document. The actual
+  // file bytes never go through this Airtable-style path (upload/list/file
+  // are their own /docs/* Worker routes) — this id exists only so 'Order'
+  // resolves through the normal facade cache (2 min, same as ORDERS).
+  ORDER_DOCS: 'tblOrderDocuments',
 };
 
 // ── Claude model IDs ───────────────────────────────────────────────────
