@@ -310,16 +310,15 @@ const _WI2_CSS=`
 .wi2-none{font-size:11px;color:var(--text-dim);padding:4px 4px 0;font-style:italic}
 /* ΠΥΚΝΟΤΗΤΑ (owner 27/9, «dense»): περισσότερες γραμμές ανά οθόνη — οι
    οθόνες των dispatchers είναι φαρδιές, όχι ψηλές. Γραμμή 44→29px: γραμμή 1px
-   + κάρτα 1px + .5px padding πάνω/κάτω, περιεχόμενο 24px = όνομα 12.5px
-   (11.5px γράμματα + 1px ώστε οι ουρές ρ φ χ ψ να μην κόβονται από το
-   overflow:hidden) + σειρά μεταδεδομένων 11.5px (10.5px γράμματα). ΔΥΟ σειρές
-   παραμένουν (owner): η μία σειρά θα έκοβε πόλη/ημερομηνία/παλέτες. Μετρήθηκε
-   στο rig: 1440×900 7→11 πλήρεις γραμμές, 1920×1080 9→15.
-   «Στριμωγμένο» (owner 27/9 βράδυ, στη ζωντανή): με 12/11px το πλακίδιο
-   ημερομηνίας ακουμπούσε το περίγραμμα της κάρτας (μετρήθηκε −1px). Τα
-   γράμματα κατέβηκαν μισό pixel και τα πλακίδια της 2ης σειράς κόντυναν, ώστε
-   να μένει αέρας — το ύψος γραμμής ΔΕΝ άλλαξε (29px). Τίποτα κάτω από 10.5px,
-   ούτε στην κλιμάκωση ονόματος της _wi2Balance. Κάθε padding εδώ είναι μετρημένο. */
+   + κάρτα 1px + 1px padding πάνω/κάτω, περιεχόμενο 23px = όνομα 12px
+   (11px γράμματα + 1px ώστε οι ουρές ρ φ χ ψ να μην κόβονται από το
+   overflow:hidden) + σειρά μεταδεδομένων 11px (10px γράμματα). ΔΥΟ σειρές
+   παραμένουν (owner): η μία σειρά θα έκοβε πόλη/ημερομηνία/παλέτες.
+   «Στριμωγμένο» (owner 27/9 βράδυ και 28/9, στη ζωντανή): με 12/11px το
+   πλακίδιο ημερομηνίας ακουμπούσε το περίγραμμα της κάρτας (μετρήθηκε −1px)·
+   τα γράμματα μίκρυναν σε 11/10px και τα πλακίδια της 2ης σειράς σε 9.5px.
+   Κατώτατο 9.5px (owner 28/9), και στην κλιμάκωση ονόματος της _wi2Balance.
+   Κάθε padding εδώ είναι μετρημένο. */
 .wk3.wi2 .wk3-row{min-height:26px;margin-top:2px;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface-card);align-items:center}
 .wk3.wi2 .wk3-row.alt{background:var(--surface-card)}
 .wk3.wi2 .wk3-row:hover{background:var(--surface-sunken)}
@@ -344,7 +343,7 @@ const _WI2_CSS=`
 /* ΚΑΡΤΑ ΔΥΟ ΣΕΙΡΩΝ (owner 4/9): το όνομα παίρνει ΟΛΟ το πλάτος σε δική του
    σειρά· ημερομηνία, πόλη, σήματα και παλέτες στη δεύτερη. Πριν, το πλακίδιο
    ημερομηνίας και οι παλέτες έτρωγαν ~110px από το όνομα στην ίδια σειρά. */
-.wi2-card{flex:1 1 0;min-width:0;display:flex;flex-direction:column;justify-content:center;gap:0;min-height:24px;padding:.5px 6px;background:var(--surface-card);border:1px solid var(--border);border-radius:var(--radius);box-sizing:border-box;transition:border-color var(--duration-fast) var(--ease-out),background var(--duration-fast) var(--ease-out),box-shadow var(--duration-fast) var(--ease-out),transform var(--duration-fast) var(--ease-out)}
+.wi2-card{flex:1 1 0;min-width:0;display:flex;flex-direction:column;justify-content:center;gap:0;min-height:23px;padding:1px 6px;background:var(--surface-card);border:1px solid var(--border);border-radius:var(--radius);box-sizing:border-box;transition:border-color var(--duration-fast) var(--ease-out),background var(--duration-fast) var(--ease-out),box-shadow var(--duration-fast) var(--ease-out),transform var(--duration-fast) var(--ease-out)}
 .wk3-leg:hover>.wi2-card{border-color:var(--text-dim);transform:translateY(-1px);box-shadow:var(--shadow-lift)}
 @media (prefers-reduced-motion:reduce){.wi2-card{transition:none}.wk3-leg:hover>.wi2-card{transform:none}}
 .wk3.wi2 .wk3-pill,.wk3.wi2 .wi2-gapbox,.wk3.wi2 .wi2-void,.wk3.wi2 .wi2-date,.wk3.wi2 .wi2-carrier{transition:box-shadow var(--duration-fast) var(--ease-out),transform var(--duration-fast) var(--ease-out),border-color var(--duration-fast) var(--ease-out),background var(--duration-fast) var(--ease-out)}
@@ -365,19 +364,19 @@ const _WI2_CSS=`
 .wi2-card.late{background:var(--danger-bg);border-color:var(--danger)}
 .wi2-meta{display:flex;align-items:center;gap:8px;min-width:0;height:16px}
 /* Leg cards only (27/9 density) — the single-line feed cards keep their own 18px rhythm. */
-.wk3.wi2 .wk3-leg .wi2-meta{height:11.5px;gap:6px;font-size:10.5px}
-/* Line-2 chips are SHORTER than their 11.5px line (owner 27/9: the date chip
+.wk3.wi2 .wk3-leg .wi2-meta{height:11px;gap:6px;font-size:10px}
+/* Line-2 chips are SHORTER than their 11px line (owner 27/9: the date chip
    touched the card border) — centred by the meta flex, so air stays above and
    below the chip and the row height does not move. */
-.wk3.wi2 .wk3-leg .wi2-date{line-height:10px;padding:0 4px}
-.wk3.wi2 .wk3-leg .wi2-date.estd{line-height:8px}
-.wk3.wi2 .wk3-leg .wi-badge,.wk3.wi2 .wk3-leg .wi-cross,.wk3.wi2 .wk3-leg .wi-exec,.wk3.wi2 .wk3-leg .wk3-vsb{font-size:10.5px;line-height:10px;padding:0 3px}
-.wk3.wi2 .wk3-leg .wi2-pal,.wk3.wi2 .wk3-leg .wi2-sub{font-size:10.5px}
+.wk3.wi2 .wk3-leg .wi2-date{line-height:9.5px;padding:0 4px}
+.wk3.wi2 .wk3-leg .wi2-date.estd{line-height:7.5px}
+.wk3.wi2 .wk3-leg .wi-badge,.wk3.wi2 .wk3-leg .wi-cross,.wk3.wi2 .wk3-leg .wi-exec,.wk3.wi2 .wk3-leg .wk3-vsb{font-size:9.5px;line-height:9.5px;padding:0 3px}
+.wk3.wi2 .wk3-leg .wi2-pal,.wk3.wi2 .wk3-leg .wi2-sub{font-size:10px}
 /* Marks that ride on a line (✓ after the date / the name, «! καθυστέρηση»)
    carry their own font size and a raised ✓ (style.css vertical-align:2px):
    each grew its line box by 1-2px, which pushed the chip back onto the card
    border and the row to 30px. line-height:0 = drawn, but not measured. */
-.wk3.wi2 .wk3-leg .wi2-date.wk3-ld.done::after{font-size:10.5px;line-height:0}
+.wk3.wi2 .wk3-leg .wi2-date.wk3-ld.done::after{font-size:9.5px;line-height:0}
 .wk3.wi2 .wk3-leg .wi2-name .wk3-okc,.wk3.wi2 .wk3-leg .wi2-name .wi2-late{line-height:0}
 .wi2-right{margin-left:auto;display:inline-flex;align-items:center;gap:4px;flex-shrink:0}
 .wi2-right>*{flex-shrink:0}
@@ -387,17 +386,17 @@ const _WI2_CSS=`
    πελάτη ξεκινούσε σε έξι διαφορετικά x μέσα στην ίδια στήλη (560..577).
    min-width αντί για width: τα κοντά πλακίδια γεμίζουν ως το κοινό όριο,
    ένα μελλοντικό πιο μακρύ σπρώχνει αντί να κοπεί. */
-.wk3.wi2 .wi2-date.wk3-ld{width:auto;min-width:70px;box-sizing:border-box;text-align:left;margin:0;font-size:10.5px}
+.wk3.wi2 .wi2-date.wk3-ld{width:auto;min-width:70px;box-sizing:border-box;text-align:left;margin:0;font-size:9.5px}
 .wk3.wi2 .wi2-date.wk3-ld.done::after{font-size:11px}
 /* style.css pins these two with !important and hex; same weight, token value */
 .wk3.wi2 .wk3-ld.done{color:var(--ok) !important}
 .wk3.wi2 .wk3-ld.late{color:var(--warn) !important}
 .wi2-date.estd{font-style:italic;border:1px dashed var(--accent-text);background:transparent;line-height:14px}
-/* ΚΛΙΜΑΚΩΣΗ ΟΝΟΜΑΤΟΣ (owner 4/9· 11.5px από 27/9): μία σειρά. Αν δεν χωρά, η
-   _wi2Balance κατεβάζει ΜΟΝΟ αυτό το όνομα ως 10.5px· αν ούτε έτσι, .clamp
+/* ΚΛΙΜΑΚΩΣΗ ΟΝΟΜΑΤΟΣ (owner 4/9· 11px από 28/9): μία σειρά. Αν δεν χωρά, η
+   _wi2Balance κατεβάζει ΜΟΝΟ αυτό το όνομα ως 10px· αν ούτε έτσι, .clamp
    (δύο σειρές με ορατό «…» + title). Το ellipsis εδώ είναι δίχτυ, όχι
    σχέδιο: ποτέ σιωπηλή κοπή (Κ6), ακόμη και πριν προλάβει η μέτρηση. */
-.wi2-name{font-size:11.5px;line-height:12.5px;font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.wi2-name{font-size:11px;line-height:12px;font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .wi2-name>*{margin-right:4px}
 .wi2-name.clamp{white-space:normal;overflow-wrap:break-word;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;line-height:1.1}
 .wk3.wi2.wi2-measure .wi2-name,.wk3.wi2.wi2-measure .wi2-sub{white-space:nowrap;display:block;overflow:visible}
@@ -1988,9 +1987,9 @@ function _wi2Balance(){
       sheet.style.setProperty('--sR',(1-r).toFixed(3)+'fr');
     }
   }
-  // ΚΛΙΜΑΚΩΣΗ ΑΝΑ ΟΝΟΜΑ (owner 4/9· βάση 11.5px από 27/9): 11.5 → 11 → 10.5
-  // (όχι κάτω από 10.5, owner 27/9), μετρημένο με scrollWidth ΜΟΝΟ για το
-  // όνομα που δεν χωρά. Αν ούτε στα 10.5px
+  // ΚΛΙΜΑΚΩΣΗ ΑΝΑ ΟΝΟΜΑ (owner 4/9· βάση 11px από 28/9): 11 → 10.5 → 10
+  // (κατώτατο 9.5px, owner 28/9), μετρημένο με scrollWidth ΜΟΝΟ για το
+  // όνομα που δεν χωρά. Αν ούτε στα 10px
   // χωρά: δύο σειρές με ορατό «…» και το πλήρες κείμενο σε title — τίποτα
   // δεν κόβεται σιωπηλά (Κ6). Οι μαζεμένες εθνικές στήλες (18px) εξαιρούνται:
   // εκεί δεν χωρά τίποτα και η μέτρηση θα «μίκραινε» κάθε όνομα άσκοπα.
@@ -1999,10 +1998,10 @@ function _wi2Balance(){
   names.forEach(e=>{
     if(e.clientWidth<40||e.querySelector('.wi2-stops')) return;   // multi-stop: _wi2FitStops below
     if(!fits(e)){
-      for(const px of [11,10.5]){ e.style.fontSize=px+'px'; if(fits(e)) break; }
+      for(const px of [10.5,10]){ e.style.fontSize=px+'px'; if(fits(e)) break; }
       // National-leg (feed) cards are single-line: a 2-line clamp there grew
-      // the whole row to 57px once the 10px step was dropped (owner 27/9: never
-      // below 10.5px). They keep the visible «…» + full name in the title.
+      // the whole row (measured 57px on 27/9) — they keep the visible «…» +
+      // the full name in the title instead.
       if(!fits(e)){ if(!e.closest('.wk3-feed')) e.classList.add('clamp'); e.title=e.innerText.trim(); cut++; return; }
     }
     if(e.title) e.removeAttribute('title');
