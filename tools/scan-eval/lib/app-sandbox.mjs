@@ -79,13 +79,22 @@ export function browserMimeType(fileName) {
  * @param {Array} [o.examples]          localStorage 'tms_scan_training' (few-shot); [] = fresh browser
  * @param {'current'|'v2'} [o.engine]   'v2' flips the app's own switch (localStorage tms_scan_engine)
  * @param {object} [o.v2]               overrides for the app's SCAN_V2 settings (model, mode, effort, thinking)
+ * @param {object} [o.clientHistory]    offline snapshot for scanV2ClientHistoryLocations/scanV2LocationAddressMap
+ *   (round 3): { byClient: { [clientId]: [{id, fields}] }, address: { [locationId]: string } }. Built read-only
+ *   from the real Worker by build-client-history.mjs. Omitted = atGetAll(ORDERS by Client) returns [] (today's
+ *   default — no history signal), matching every test written before round 3.
  */
-export function createScannerSandbox({ repoRoot, fetch, jwt, refData, examples = [], engine = 'current', v2 = {} }) {
+export function createScannerSandbox({ repoRoot, fetch, jwt, refData, examples = [], engine = 'current', v2 = {}, clientHistory = null }) {
   const events = { toasts: [], errors: [], logs: [] };
   const store = new Map([['tms_jwt', jwt || ''], ['tms_scan_training', JSON.stringify(examples)]]);
   if (engine === 'v2') store.set('tms_scan_engine', 'v2');
   const elements = new Map();
   let captured = null;
+  // Set per scanFile() call (run-current.mjs): the golden doc's OWN saved
+  // order id, so a client's order history never includes the very answer
+  // being scored — see the leakage note in build-client-history.mjs.
+  let excludeOrderId = null;
+  let excludeCreatedAtOrAfter = null;
 
   const ctx = {
     console: { log: (...a) => events.logs.push(a.join(' ')), warn: (...a) => events.logs.push(a.join(' ')), error: (...a) => events.logs.push(a.join(' ')), info() {}, debug() {} },
@@ -109,9 +118,34 @@ export function createScannerSandbox({ repoRoot, fetch, jwt, refData, examples =
     closeModal: () => {},
     openIntlScan: () => {},
     _searchClients: async () => [],
-    // Duplicate-reference check in _scanPreview reads ORDERS: stubbed empty so
-    // a baseline run never depends on (or reads) production orders.
-    atGetAll: async () => [],
+    // Duplicate-reference check in _scanPreview, and (round 3) scanV2ClientHistoryLocations
+    // / scanV2LocationAddressMap in core/scan-engine-v2.js, all go through this one stub.
+    // Without a clientHistory snapshot everything still returns [] — the pre-round-3
+    // behaviour, so old tests that don't pass the option are unaffected.
+    atGetAll: async (tableId, opts = {}) => {
+      // TABLES is a `const` inside the loaded vm scripts, so it never becomes
+      // an own property of the plain `ctx` object this closure was defined on
+      // (that's only true for `var`/function declarations) — `run(...)` reads
+      // it the same way `constants()` below does.
+      const filter = opts.filterByFormula || '';
+      if (clientHistory && tableId === run('TABLES.ORDERS') && /^FIND\(/.test(filter)) {
+        const m = /FIND\("([^"]+)"/.exec(filter);
+        const clientId = m && m[1];
+        const recs = (clientHistory.byClient && clientHistory.byClient[clientId]) || [];
+        // Leakage guard (docs/scan/04 task 3): the golden truth for a document
+        // was built FROM its own saved order, so that exact record — and
+        // anything saved after it — must never come back as "history" while
+        // scoring THAT document. Two independent checks (id, timestamp)
+        // because either alone could miss an edge case silently.
+        return recs.filter(r => r.id !== excludeOrderId
+          && (!excludeCreatedAtOrAfter || !r.fields || !r.fields['Created At'] || r.fields['Created At'] < excludeCreatedAtOrAfter));
+      }
+      if (clientHistory && tableId === run('TABLES.LOCATIONS') && (opts.fields || []).includes('Address')) {
+        const addr = clientHistory.address || {};
+        return Object.keys(addr).map(id => ({ id, fields: { Address: addr[id] } }));
+      }
+      return [];
+    },
     atGet: async () => refData.locations,
     getRefClients: () => refData.clients,
     getRefLocations: () => refData.locations,
@@ -144,13 +178,22 @@ export function createScannerSandbox({ repoRoot, fetch, jwt, refData, examples =
 
   return {
     events,
-    constants: () => run('({ MODELS, PROXY_URL, AT_BASE, TABLES: { CLIENTS: TABLES.CLIENTS, LOCATIONS: TABLES.LOCATIONS }, SCAN_MAX_TOKENS, F, SCAN_V2: { ...SCAN_V2 } })'),
+    constants: () => run('({ MODELS, PROXY_URL, AT_BASE, TABLES: { CLIENTS: TABLES.CLIENTS, LOCATIONS: TABLES.LOCATIONS, ORDERS: TABLES.ORDERS }, SCAN_MAX_TOKENS, F, SCAN_V2: { ...SCAN_V2 } })'),
+    // Test-only escape hatch: calls a scan-engine-v2.js internal (e.g.
+    // _sv2PalletsFromText, _sv2Calibrate, _sv2PickLocation) without going
+    // through a full scanFile() round trip. Never used by run-current.mjs.
+    run,
     /**
      * One file through the batch flow: gate → extract → preview/match → form prefill.
+     * @param {{excludeOrderId?:string, excludeCreatedAtOrAfter?:string}} [opts] round 3: the golden
+     *   doc's own saved order id (and its "Created At"), excluded from scanV2ClientHistoryLocations
+     *   so scoring never leaks the answer key — or anything saved after it — into the client's history.
      * @returns {{status:'ok'|'rejected'|'error', error?:string, parsed?:object, form?:object, matched?:object}}
      */
-    async scanFile(file) {
+    async scanFile(file, opts = {}) {
       await ready;
+      excludeOrderId = opts.excludeOrderId || null;
+      excludeCreatedAtOrAfter = opts.excludeCreatedAtOrAfter || null;
       captured = null;
       events.toasts.length = 0; events.errors.length = 0;
       ctx._scanFiles = []; ctx._scanUploadedFile = null; ctx._scanResult = null;

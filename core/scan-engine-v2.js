@@ -42,6 +42,15 @@ const SCAN_V2 = {
   minCharsPerPage: 150,     // below this a PDF page is treated as a scan (no usable text layer)
   maxClientCandidates: 6,
   maxLocationCandidates: 20,
+  // Round 3 (docs/scan/04): ids of LOCATIONS records known to be stored with
+  // the wrong country (e.g. an EU address filed under GR — verified in round 2,
+  // docs/scan/03 #1). Not populated in production yet — nobody has wired a data
+  // -quality registry into the app. tools/scan-eval builds this list read-only
+  // (see build-data-quality.mjs) and the eval harness feeds it in for testing;
+  // until a real registry exists, the override in _sv2PickLocation stays
+  // inert (null) and country mismatches are never crossed — see the comment
+  // there for why an empty field beats a wrong guess.
+  dataQualityLocationIds: null,
 };
 
 function scanEngineV2On() {
@@ -289,6 +298,122 @@ function _sv2CitySim(a, b) {
   return _sv2TokSim(a.replace(/ /g, ''), b.replace(/ /g, '')) >= 0.8 ? 0.8 : 0;
 }
 
+// ─── Client order history (round 3) ─────────────────────────────────
+// A duplicate pair of location records (same company, two neighbouring towns)
+// scores almost identically on name/city and used to fall through to "leave
+// empty" (docs/scan/03 #2). The client's OWN past orders are a real fact, not
+// a guess: if they have used exactly one of the tied records before, that
+// breaks the tie. Memoised per client id for the lifetime of the page/process
+// — a client's site list changes rarely enough that a stale answer for a few
+// minutes is harmless, and refetching per stop inside one scan would be four
+// round trips for a four-stop order.
+const _sv2HistoryCache = new Map();
+async function scanV2ClientHistoryLocations(clientId) {
+  if (!clientId) return new Set();
+  if (_sv2HistoryCache.has(clientId)) return _sv2HistoryCache.get(clientId);
+  const p = (async () => {
+    try {
+      if (typeof atGetAll !== 'function' || typeof TABLES === 'undefined' || typeof F === 'undefined') return new Set();
+      const filter = `FIND("${clientId}",ARRAYJOIN({${F.CLIENT}},","))>0`;
+      const fields = [F.LOADING_LOC1, F.LOADING_LOC2, F.LOADING_LOC3, F.UNLOADING_LOC1, F.UNLOADING_LOC2, F.UNLOADING_LOC3];
+      // Read-only GET through the same facade/cache the rest of the app uses
+      // (core/api.js atGetAll) — no write path touched, ORDERS stays SELECT-only.
+      const recs = await atGetAll(TABLES.ORDERS, { filterByFormula: filter, fields }, true);
+      const ids = new Set();
+      for (const r of recs) for (const fld of fields) for (const id of (r.fields?.[fld] || [])) ids.add(id);
+      return ids;
+    } catch (e) { console.warn('[scan v2] client history lookup failed:', e && e.message); return new Set(); }
+  })();
+  _sv2HistoryCache.set(clientId, p);
+  return p;
+}
+
+// The eval harness (tools/scan-eval) scans MANY documents in one process/vm
+// context to avoid re-loading the app for every doc — but that means the
+// module-level cache above would happily survive from one golden document to
+// the next. Two different golden docs can share a client (they do, in the
+// current set), each with its OWN exclude-the-answer-key filter (run-current.
+// mjs's scanExcludeFor); without a reset between docs, the SECOND doc would
+// silently get the FIRST doc's (differently-filtered) cached history —
+// exactly the leakage this cache was never designed to prevent, because in
+// the real browser there is only ever one client's context at a time and no
+// "exclude" concept at all. A no-op in production (never called there).
+function scanV2ResetPerScanCaches() {
+  _sv2HistoryCache.clear();
+}
+
+// Address text for postcode matching (LOCATIONS records don't carry a
+// dedicated postcode column — CLAUDE.md confirms only Name/City/Country/
+// Address). Fetched once, separately from the shared getRefLocations() list,
+// so this file's extra column never touches core/api.js's cached reference
+// shape used by every other module (prime directive: no unrequested cache
+// changes elsewhere).
+let _sv2AddrMapPromise = null;
+async function scanV2LocationAddressMap() {
+  if (_sv2AddrMapPromise) return _sv2AddrMapPromise;
+  _sv2AddrMapPromise = (async () => {
+    try {
+      if (typeof atGetAll !== 'function' || typeof TABLES === 'undefined') return new Map();
+      const recs = await atGetAll(TABLES.LOCATIONS, { fields: ['Address'] }, true);
+      return new Map(recs.map(r => [r.id, _sv2Norm(r.fields && r.fields.Address || '')]));
+    } catch (e) { console.warn('[scan v2] location address lookup failed:', e && e.message); return new Map(); }
+  })();
+  return _sv2AddrMapPromise;
+}
+
+// ─── Confidence calibration (round 3) ────────────────────────────────
+// Round 2 measured buckets below 0.5 confidence at 80-94% correct (docs/scan/
+// 03) — the model hedges even when the quote it gave IS in the document.
+// A verified quote is cheap, independent evidence the extraction is real
+// (copied, not invented); an unverifiable one (paraphrase, or none given) is
+// the opposite signal. Blending both beats trusting either alone.
+function _sv2QuoteVerified(q, text) {
+  if (!q || !text) return null;           // nothing to check (image/PDF input, or no quote)
+  const nq = _sv2Norm(q);
+  if (!nq) return null;
+  return _sv2Norm(text).includes(nq);
+}
+function _sv2Calibrate(rawC, q, text) {
+  const v = _sv2QuoteVerified(q, text);
+  if (v == null) return rawC;             // no text layer to check against — leave as reported
+  return v ? Math.max(rawC, 0.92) : Math.min(rawC, 0.4);
+}
+// Same idea for a match re-checked deterministically against ALL records
+// (not just the model's shortlist): a near-certain code match (score >= 0.85)
+// is itself real evidence, so the BETTER of the two signals wins instead of
+// the worse one (a plain Math.min reproduced the same under-confidence bug —
+// a hedging model score dragging down an already-verified match).
+function _sv2Combine(modelC, matchC) {
+  if (matchC <= 0) return 0;
+  if (matchC >= 0.85) return Math.max(modelC, matchC);
+  return Math.min(Math.max(modelC, 0.3), matchC + 0.15);
+}
+
+// ─── Pallet count fallback (round 3) ─────────────────────────────────
+// Carrier orders print the cargo summary as one line, e.g.
+// "Weight: 3 500,00 kg, Number: 33,00, CBM: 75,00, LDM: 13,60" — the pallet
+// count is "Number:". The model reads this correctly most of the time but not
+// always (round 2: empty in 1 of 3 runs on the same document, docs/scan/03
+// #3) even though the prompt already calls this pattern out. A deterministic
+// regex reads the same line the model had; used only when the model left
+// pallets empty, and always flagged with a warning so it is never silently
+// trusted over a value a person or the model actually stated.
+function _sv2PalletsFromText(text) {
+  if (!text) return null;
+  for (const rawLine of text.split('\n')) {
+    const line = rawLine.replace(/\s+/g, ' ');
+    // Require both "Number:" and "LDM" on the line: the anchor that this is
+    // the cargo-summary line, not an unrelated "Order Number" elsewhere.
+    const m = /number\s*:\s*([\d]+(?:[.,]\d+)?)[^\n]*\bldm\b/i.exec(line);
+    if (!m) continue;
+    const n = _sv2Num(m[1]);
+    // "1" / "1,00" is the same placeholder-for-not-stated the model is told
+    // to ignore (SCAN_V2_SYSTEM) — a fallback must honour the same rule.
+    if (n && n > 1 && n <= 40) return Math.round(n);
+  }
+  return null;
+}
+
 /** Client: ranked [{id, name, score}] for an extracted name. */
 function scanV2RankClients(name, clients) {
   const idx = _sv2Index(clients, 'client');
@@ -298,8 +423,15 @@ function scanV2RankClients(name, clients) {
     .filter(x => x.score > 0).sort((a, b) => b.score - a.score).slice(0, 5);
 }
 
-/** Location: every plausible record for an extracted stop, best first. */
-function _sv2ScoreLocation(stop, it, idx) {
+/**
+ * Location: every plausible record for an extracted stop, best first.
+ * @param {Map<string,string>} [addrMap] record id -> normalised Address text
+ *   (scanV2LocationAddressMap) — a postcode printed on the document, matched
+ *   against the record's stored address, tells two same-named-company,
+ *   same-country duplicates apart when city spelling alone cannot (round 3,
+ *   docs/scan/04 task 3: "suburb vs registered city, duplicate records").
+ */
+function _sv2ScoreLocation(stop, it, idx, addrMap) {
   const city = _sv2Norm(stop.city);
   // "ACME - CITYNAME": the city inside a company line is not part of the
   // name — left in, it made every "..., CITYNAME" record look alike.
@@ -315,20 +447,27 @@ function _sv2ScoreLocation(stop, it, idx) {
   const hay = stop._hay || (stop._hay = ' ' + _sv2Norm([stop.company, stop.address, stop.city].join(' ')) + ' ');
   const cityToks = city.split(' ').filter(w => w.length >= 3);
   const nameS = _sv2NameScore(q, it, idx.idf);
+  // Postcode is a stronger locator than city spelling (a suburb's postcode
+  // still narrows to the parent city's registered record). Digits only: the
+  // document may print "GR-54628" or "54628 Thessaloniki".
+  const pc = (stop.postcode || '').replace(/\D/g, '');
+  const addr = addrMap && addrMap.get(it.id);
+  const pcHit = pc.length >= 3 && addr && addr.includes(pc) ? 0.95 : 0;
   const cityS = Math.max(_sv2CitySim(city, it.cityN),
     it.cityN && it.cityN.length >= 4 && hay.includes(' ' + it.cityN + ' ') ? 0.9 : 0,
-    cityToks.some(c => it.toks.includes(c)) ? 0.9 : 0);
+    cityToks.some(c => it.toks.includes(c)) ? 0.9 : 0,
+    pcHit);
   const cc = stop._cc !== undefined ? stop._cc : (stop._cc = typeof countryCode === 'function' ? countryCode(stop.country) : null);
   const sameCountry = !cc || !it.cc || cc === it.cc;
   let score = 0.65 * nameS + 0.35 * cityS;
   if (!sameCountry) score *= 0.4;            // wrong country: almost never the same place
-  return { id: it.id, label: [it.name, it.city, it.cc].filter(Boolean).join(', '), score, nameS, cityS, sameCountry };
+  return { id: it.id, label: [it.name, it.city, it.cc].filter(Boolean).join(', '), score, nameS, cityS, sameCountry, pcHit: pcHit > 0 };
 }
-function scanV2RankLocations(stop, locations, limit = 5) {
+function scanV2RankLocations(stop, locations, limit = 5, addrMap) {
   const idx = _sv2Index(locations, 'location');
   const out = [];
   for (const it of idx.items) {
-    const r = _sv2ScoreLocation(stop, it, idx);
+    const r = _sv2ScoreLocation(stop, it, idx, addrMap);
     if (r.nameS >= 0.2 || r.cityS >= 1) out.push(r);
   }
   out.sort((a, b) => b.score - a.score);
@@ -383,19 +522,50 @@ function scanV2Candidates(text, records, kind, max) {
   }));
 }
 
-// The model's pick (from the candidate list) wins only when the deterministic
-// score does not see a clearly better record: on 27/9 the model chose a
-// same-named company in ANOTHER city while the code ranked the record in the
-// printed city first.
-function _sv2PickLocation(stop, cands, locations) {
-  const ranked = scanV2RankLocations(stop, locations, 0);
+/**
+ * @param {Set<string>} [history] location ids this client used on past orders
+ *   (scanV2ClientHistoryLocations) — breaks ties between duplicate records.
+ * @param {Set<string>} [dqFlags] location ids KNOWN to carry the wrong country
+ *   (tools/scan-eval data-quality scan; null in production — see SCAN_V2
+ *   .dataQualityLocationIds). Only with both this AND history do we cross a
+ *   country mismatch; see the comment at that branch for why.
+ * @param {Map<string,string>} [addrMap] scanV2LocationAddressMap
+ */
+function _sv2PickLocation(stop, cands, locations, history, dqFlags, addrMap) {
+  const ranked = scanV2RankLocations(stop, locations, 0, addrMap);
   const idx = _sv2Index(locations, 'location');
   const [a, b] = ranked;
   const cand = stop.candidate && cands.find(c => c.code === stop.candidate.trim());
+
+  // Duplicate records for the same company in neighbouring towns score almost
+  // identically and used to fall through to "ambiguous, leave empty" (docs/
+  // scan/03 #2). A near-tie where the client has used exactly ONE of the
+  // contenders before is not ambiguous to a dispatcher who knows this client
+  // — it is settled by precedent, so settle it the same way here.
+  if (a && history && history.size) {
+    const tied = ranked.filter(r => r.score >= a.score - 0.08 && r.nameS >= 0.5);
+    if (tied.length > 1) {
+      const inHist = tied.filter(r => history.has(r.id));
+      if (inHist.length === 1) return { id: inHist[0].id, score: Math.max(0.75, a.score), by: 'history-tiebreak' };
+    }
+  }
+
   if (cand) {
-    const r = _sv2ScoreLocation(stop, idx.byId.get(cand.id), idx);
+    const r = _sv2ScoreLocation(stop, idx.byId.get(cand.id), idx, addrMap);
     if (r.sameCountry && (r.nameS >= 0.25 || r.cityS >= 0.8) && (!a || r.score >= a.score - 0.1)) {
       return { id: cand.id, score: Math.max(0.7, r.score), by: 'model+check' };
+    }
+    // Country mismatch: a bare name/city match is not enough on its own to
+    // override what the document itself says about the country (a same-named
+    // company abroad is common). We only cross it when TWO independent facts
+    // agree: the client has actually shipped to/from this exact record before
+    // (history — not a guess), AND the record is already confirmed bad by a
+    // data-quality pass (dqFlags), so the mismatch is a known DATA error, not
+    // a real difference. Neither signal alone is enough (round 3 decision,
+    // docs/scan/04): an empty field with a warning beats a wrong pick.
+    if (!r.sameCountry && history && history.has(cand.id) && dqFlags && dqFlags.has(cand.id)
+        && (r.nameS >= 0.25 || r.cityS >= 0.8)) {
+      return { id: cand.id, score: 0.6, by: 'history+dq-override' };
     }
   }
   if (a && a.score >= 0.5 && (!b || a.score - b.score >= 0.04 || a.nameS >= 0.9)) return { id: a.id, score: a.score, by: 'code' };
@@ -507,8 +677,14 @@ async function scanV2Extract(file, opts = {}) {
   if (!orders.length) throw new Error('Το AI δεν βρήκε εντολή μεταφοράς στο έγγραφο.');
 
   const meta = { engine: 'v2', model: res.model || o.model, input: input.kind, why: input.why, ms, usage: res.usage || null,
-    client_candidates: clientCands.length, location_candidates: locCands.length, orders: orders.length };
-  const mapped = orders.map(ord => _sv2ToV1(ord, clientCands, locCands, clients, locations, meta));
+    client_candidates: clientCands.length, location_candidates: locCands.length, orders: orders.length,
+    text: input.kind === 'text' ? input.text : null };
+  // Data-quality flags come from the eval harness only today (SCAN_V2
+  // .dataQualityLocationIds is null in production — see its comment).
+  const dqFlags = o.dataQualityLocationIds ? new Set(o.dataQualityLocationIds) : null;
+  const addrMap = await scanV2LocationAddressMap().catch(() => new Map());
+  const mapped = [];
+  for (const ord of orders) mapped.push(await _sv2ToV1(ord, clientCands, locCands, clients, locations, meta, { dqFlags, addrMap }));
   const first = mapped[0];
   first._moreOrders = mapped.slice(1);
   if (mapped.length > 1) {
@@ -517,12 +693,20 @@ async function scanV2Extract(file, opts = {}) {
   return first;
 }
 
-function _sv2ToV1(ord, clientCands, locCands, clients, locations, meta) {
+async function _sv2ToV1(ord, clientCands, locCands, clients, locations, meta, opts = {}) {
+  const { dqFlags = null, addrMap = null } = opts;
   const fv = k => (ord[k] && typeof ord[k].v === 'string' ? ord[k].v.trim() : '');
   const fc = k => (ord[k] && fv(k) ? Number(ord[k].c) || 0 : 0);
+  // Calibrated confidence for a top-level field: blends the model's own
+  // number with whether its quote is actually IN the document (see
+  // _sv2Calibrate). field_confidence (not _v2.fields[k].c, which stays the
+  // raw model value for audit) is what the review screen and the eval
+  // harness read, so this is where round 3's calibration fix lives.
+  const fcCal = k => _sv2Calibrate(fc(k), ord[k] && ord[k].q, meta.text);
   const client = _sv2PickClient(ord, clientCands, clients);
+  const history = client.id ? await scanV2ClientHistoryLocations(client.id) : new Set();
   const stops = (ord.stops || []).map(s => {
-    const pick = _sv2PickLocation(s, locCands, locations);
+    const pick = _sv2PickLocation(s, locCands, locations, history, dqFlags, addrMap);
     const cc = typeof countryCode === 'function' ? (countryCode(s.country) || s.country || '') : s.country;
     return {
       type: s.type, location_name: s.company || '', location_id: pick.id, city: s.city || '', city_gr: '', country: cc,
@@ -536,6 +720,15 @@ function _sv2ToV1(ord, clientCands, locCands, clients, locations, meta) {
   const loadSum = loading.reduce((a, s) => a + (s.pallets || 0), 0);
   if (!pallets && loadSum) pallets = loadSum;
   const warnings = [...(ord.warnings || [])];
+  let palletsFromFallback = false;
+  if (!pallets && meta.text) {
+    const fb = _sv2PalletsFromText(meta.text);
+    if (fb) {
+      pallets = fb;
+      palletsFromFallback = true;
+      warnings.push(`Παλέτες δεν εντοπίστηκαν από το μοντέλο· συμπληρώθηκαν από το κείμενο (Number: ${fb}) — έλεγξε.`);
+    }
+  }
   // Carrier-order tables repeat the supplier on every unloading row; the model
   // sometimes adds them up (loading row + every unloading row, 27/9). When every delivery
   // states its pallets, their sum is the load — say so, never silently.
@@ -564,16 +757,17 @@ function _sv2ToV1(ord, clientCands, locCands, clients, locations, meta) {
 
   const matchConf = m => (m.id ? Math.min(1, m.score + 0.2) : 0);
   const minC = xs => (xs.length ? Math.min(...xs) : 0);
+  const stopConf = s => _sv2Combine(_sv2Calibrate(s._c, s._q, meta.text), matchConf(s._match));
   const fieldConf = {
-    client_name: client.id ? Math.min(fc('client_name') || 0.5, matchConf(client)) : 0,
-    reference: fc('reference'),
-    pallets: pallets > 34 ? 0.3 : (fc('pallets') || (loadSum ? 0.7 : 0)),
-    temperature_c: fc('temperature_c'),
-    pallet_type: fc('pallet_type'),
-    dates: minC(stops.map(s => (s.date ? s._c : 0))),
-    loading_stops: minC(loading.map(s => Math.min(s._c, matchConf(s._match)))),
-    delivery_stops: minC(delivery.map(s => Math.min(s._c, matchConf(s._match)))),
-    stop_pallets: minC(stops.filter(s => s.pallets != null).map(s => s._c)),
+    client_name: client.id ? _sv2Combine(fc('client_name') || 0.5, matchConf(client)) : 0,
+    reference: fcCal('reference'),
+    pallets: pallets > 34 ? 0.3 : palletsFromFallback ? 0.55 : (fcCal('pallets') || (loadSum ? 0.7 : 0)),
+    temperature_c: fcCal('temperature_c'),
+    pallet_type: fcCal('pallet_type'),
+    dates: minC(stops.map(s => (s.date ? _sv2Calibrate(s._c, s._q, meta.text) : 0))),
+    loading_stops: minC(loading.map(stopConf)),
+    delivery_stops: minC(delivery.map(stopConf)),
+    stop_pallets: minC(stops.filter(s => s.pallets != null).map(s => _sv2Calibrate(s._c, s._q, meta.text))),
   };
   const crit = [fieldConf.client_name, fieldConf.reference || 1, fieldConf.loading_stops, fieldConf.delivery_stops, fieldConf.dates];
   const worst = Math.min(...crit);
@@ -601,7 +795,10 @@ function _sv2ToV1(ord, clientCands, locCands, clients, locations, meta) {
     _docType: 'CARRIER_ORDER',
     _model: meta.model,
     _modelLabel: (typeof scanModelLabel === 'function' ? scanModelLabel(meta.model) : meta.model) + ' · v2 · ' + (meta.input === 'text' ? 'κείμενο' : meta.input),
-    _v2: { ...meta, fields: quotes, client_match: client, warnings },
+    // meta.text (the full document text, used above only to calibrate
+    // confidence) is deliberately left out here — no reason to keep a whole
+    // document's text alive in every prefilled form / training example.
+    _v2: { ...meta, text: undefined, fields: quotes, client_match: client, warnings },
   };
 }
 

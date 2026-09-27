@@ -163,6 +163,45 @@ async function main() {
   const docs = golden.docs.filter(d => !only || only.has(d.doc_id));
   const examples = arg('examples') ? JSON.parse(fs.readFileSync(arg('examples'), 'utf8')) : [];
 
+  // Round 3 (docs/scan/04, task 3): client order history for location matching.
+  // Built read-only by build-client-history.mjs; absent by default (--no-history
+  // or file missing) → atGetAll(ORDERS by Client) returns [], exactly like before.
+  const historyPath = flag('no-history') ? null : arg('history', path.join(path.dirname(goldenPath), 'client-history.json'));
+  const clientHistory = historyPath && fs.existsSync(historyPath) ? JSON.parse(fs.readFileSync(historyPath, 'utf8')) : null;
+  if (arg('engine', 'current') === 'v2') {
+    console.log(clientHistory ? `client history: ${Object.keys(clientHistory.byClient || {}).length} clients, ${Object.keys(clientHistory.address || {}).length} location addresses (${historyPath})`
+      : 'client history: none loaded (run build-client-history.mjs, or pass --history) — matching ignores past orders');
+  }
+  // Per doc_id: the doc's OWN saved order (golden truth `matched[].legacy_id`) and
+  // its "Created At" from the snapshot — never counted as "history" while scoring
+  // THAT doc, see the leakage note in build-client-history.mjs / app-sandbox.mjs.
+  const scanExcludeFor = d => {
+    const ownId = (d.matched || []).find(m => m.table === 'orders')?.legacy_id;
+    if (!ownId || !clientHistory) return {};
+    let createdAt = null;
+    for (const recs of Object.values(clientHistory.byClient || {})) {
+      const own = recs.find(r => r.id === ownId);
+      if (own) { createdAt = own.fields?.['Created At'] || null; break; }
+    }
+    return { excludeOrderId: ownId, excludeCreatedAtOrAfter: createdAt };
+  };
+
+  // Round 3 (docs/scan/04, task 3): the country-mismatch override in
+  // _sv2PickLocation only fires with BOTH a client-history precedent AND a
+  // confirmed-bad record here — auto-loads the newest data-quality scan
+  // (build-data-quality.mjs); --no-data-quality disables the override
+  // entirely (its documented default when nothing is loaded).
+  if (!flag('no-data-quality') && v2.dataQualityLocationIds == null) {
+    const dqDir = path.join(path.dirname(goldenPath), 'data-quality');
+    const newest = fs.existsSync(dqDir) ? fs.readdirSync(dqDir).filter(f => f.endsWith('.json')).sort().at(-1) : null;
+    const dqFile = arg('data-quality', newest ? path.join(dqDir, newest) : null);
+    if (dqFile && fs.existsSync(dqFile)) {
+      const dq = JSON.parse(fs.readFileSync(dqFile, 'utf8'));
+      v2.dataQualityLocationIds = (dq.records || []).map(r => r.id);
+      console.log(`data quality: ${v2.dataQualityLocationIds.length} flagged location(s) (${dqFile})`);
+    }
+  }
+
   let fetchFn, refData, jwt;
   const replay = arg('replay') ? JSON.parse(fs.readFileSync(arg('replay'), 'utf8')) : null;
   let currentDoc = null;
@@ -210,7 +249,7 @@ async function main() {
     console.log(`reference data: ${refData.clients.length} clients, ${refData.locations.length} locations`);
   }
 
-  const sandbox = createScannerSandbox({ repoRoot: REPO, fetch: fetchFn, jwt, refData, examples, engine, v2 });
+  const sandbox = createScannerSandbox({ repoRoot: REPO, fetch: fetchFn, jwt, refData, examples, engine, v2, clientHistory });
   const settings = sandbox.constants();
   const out = { schema: 'scan-results/v1', engine, dry_run: dry, commit: gitHead(), run_at: new Date().toISOString(),
     models: consts.MODELS, max_tokens: consts.SCAN_MAX_TOKENS, examples: examples.length,
@@ -232,7 +271,12 @@ async function main() {
     const before = fetchFn.calls.length;
     const t0 = Date.now();
     let r;
-    try { r = await sandbox.scanFile(file); } catch (e) { r = { status: 'error', error: e.message }; }
+    // Reset scan-engine-v2.js's per-client history cache before every document:
+    // two golden docs can share a client, each with ITS OWN exclude-the-answer
+    // filter — without this, doc 2 would silently reuse doc 1's (differently
+    // filtered) cached history. See scanV2ResetPerScanCaches's own comment.
+    sandbox.run('typeof scanV2ResetPerScanCaches === "function" && scanV2ResetPerScanCaches()');
+    try { r = await sandbox.scanFile(file, scanExcludeFor(d)); } catch (e) { r = { status: 'error', error: e.message }; }
     const calls = fetchFn.calls.slice(before).filter(c => c.path === '/v1/ai/messages');
     const row = {
       doc_id: d.doc_id, file: d.file, status: r.status, error: r.error || null, ms: Date.now() - t0,
