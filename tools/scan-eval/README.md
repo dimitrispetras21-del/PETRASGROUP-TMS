@@ -22,8 +22,10 @@
 | Αρχείο | Τι κάνει |
 |---|---|
 | `extract-text.mjs` | inventory + κείμενο: PDF με pdfjs-dist 3.11.174 (η ίδια έκδοση με το app), `.doc` με το macOS `textutil` |
-| `run-current.mjs` | τρέχει το **σημερινό** scan πάνω στο golden set και γράφει `results/current-*.json` |
-| `lib/app-sandbox.mjs` | φορτώνει τον **ίδιο τον κώδικα** της εφαρμογής (config.js, core/scan-helpers.js, core/form-helpers.js, core/countries.js και τις συναρτήσεις scan του modules/orders_intl.js) σε Node vm — όχι αντίγραφο prompts |
+| `run-current.mjs` | τρέχει το scan πάνω στο golden set: σημερινή μηχανή (`results/current-*.json`) ή, με `--engine v2`, τη μηχανή του γύρου 2 (`results/v2-*.json`) μέσα από την ΙΔΙΑ ροή της εφαρμογής |
+| `lib/app-sandbox.mjs` | φορτώνει τον **ίδιο τον κώδικα** της εφαρμογής (config.js, core/scan-helpers.js, core/doc-text.js, core/scan-engine-v2.js, core/form-helpers.js, core/countries.js και τις συναρτήσεις scan του modules/orders_intl.js) σε Node vm — όχι αντίγραφο prompts. `engine:'v2'` γυρίζει τον ίδιο διακόπτη με τον browser |
+| `ui-smoke.mjs` | η πραγματική φόρμα σε Chromium (Playwright), backend mocked με επινοημένα δεδομένα: .doc → v2 → προσυμπλήρωση |
+| `test/synthetic-docs.mjs` | επινοημένο PDF με text layer και Word .doc, φτιαγμένα byte-προς-byte |
 | `lib/mock-fetch.mjs` | ψεύτικος Worker για `--dry-run` και τα tests |
 | `score.mjs` + `lib/score.mjs` | βαθμολόγηση golden × results |
 | `lib/normalize.mjs` | ημερομηνίες→ISO, αριθμοί με ευρωπαϊκά διαχωριστικά, χώρες→ISO2, τύπος παλέτας, reference |
@@ -49,6 +51,15 @@ read -s TMS_JWT && export TMS_JWT          # επικόλληση, Enter — δ�
 node tools/scan-eval/run-current.mjs                 # δείχνει εκτίμηση κόστους, ΔΕΝ στέλνει
 node tools/scan-eval/run-current.mjs --confirm-cost  # στέλνει
 
+# 3''. μηχανή v2 (γύρος 2) — ίδια ροή, ίδιο σκορ. Το JWT μπορεί να διαβαστεί από το .env.local χωρίς να τυπωθεί:
+node --env-file=.env.local tools/scan-eval/run-current.mjs --engine v2 --budget 12 --confirm-cost
+#   --model claude-opus-5 | claude-haiku-4-5-20251001   --mode pdf|text|auto   --effort low|medium   --thinking adaptive
+#   κάθε live εκτέλεση γράφεται στο results/ledger.jsonl· --budget σταματά ΠΡΙΝ το όριο (σύνολο ledger)
+# 3'''. αλλαγές matching/φόρμας χωρίς κόστος: ίδιες απαντήσεις μοντέλου, νέος κώδικας μετά το μοντέλο
+node tools/scan-eval/run-current.mjs --engine v2 --replay .local/scan-golden/results/v2-<ts>.json
+# UI: η φόρμα όπως τη βλέπει ο dispatcher (κανένα token, καμία εγγραφή)
+node tools/scan-eval/ui-smoke.mjs [--shot .local/scan-golden/results/ui.png]
+
 # 4. βαθμολογία
 node tools/scan-eval/score.mjs --golden .local/scan-golden/golden.json --results .local/scan-golden/results/current-<ts>.json
 ```
@@ -62,9 +73,9 @@ node tools/scan-eval/score.mjs --golden .local/scan-golden/golden.json --results
 Η **πρόβλεψη που βαθμολογείται είναι η προσυμπλήρωση της φόρμας**, όχι το ωμό JSON (κρατιέται κι αυτό στο `raw`).
 
 Διαφορές από τον browser, σκόπιμες:
-- **Παραδείγματα few-shot:** κενά (όπως φρέσκος browser). Το `TABLES.SCAN_TRAINING` είναι `''` στο config.js
-  (το κλειδί δηλώνεται δύο φορές· κερδίζει το κενό), άρα δεν υπάρχει κοινή μάθηση στην παραγωγή — κάθε browser
-  έχει μόνο τα δικά του στο localStorage. Για να μετρηθεί ένας συγκεκριμένος browser: `--examples <json>`.
+- **Παραδείγματα few-shot:** κενά (όπως φρέσκος browser, και όπως ο πίνακας `scan_examples` στις 27/9: 0 γραμμές).
+  Ως τις 27/9 το `TABLES.SCAN_TRAINING` δηλωνόταν δύο φορές και κέρδιζε το κενό — διορθώθηκε στο feat/scan-engine-v2.
+  Για να μετρηθεί ένας συγκεκριμένος browser: `--examples <json>`. Η v2 δεν χρησιμοποιεί few-shot.
 - **Έλεγχος διπλού Reference:** stub (κενό) — δεν επηρεάζει την εξαγωγή και δεν διαβάζει παραγγελίες.
 - **Προεπισκόπηση PDF:** stub (φορτώνει pdf.js από CDN, άσχετο με την εξαγωγή).
 - **Origin header:** προστίθεται (ο browser το βάζει μόνος· χωρίς αυτό ο Worker γυρίζει 403).
