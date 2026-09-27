@@ -204,6 +204,18 @@ function formatDate(d) {
   return new Date(d).toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' });
 }
 
+// Read-back under every native <input type="date">. The control draws itself
+// in the BROWSER's language, not ours: on an English (US) Chrome, 5 June shows
+// as 06/05/2026 and was being read — and typed — as 6 May (Θοδωρής, 27/9).
+// Spelling the month out removes the ambiguity whatever the browser says.
+// Built from the ISO parts, never new Date('YYYY-MM-DD') (UTC midnight → -1 day west of UTC).
+function dateReadout(iso) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso || '');
+  if (!m) return '';
+  return new Date(+m[1], +m[2] - 1, +m[3])
+    .toLocaleDateString('el-GR', { weekday: 'short', day: 'numeric', month: 'long', year: 'numeric' });
+}
+
 function formatDateShort(d) {
   if (!d) return '—';
   return new Date(d).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' });

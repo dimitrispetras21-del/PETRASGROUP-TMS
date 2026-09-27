@@ -2780,7 +2780,9 @@ function buildEntityModal(entityKey, recId, fields) {
         input = `<select class="form-select" id="ef_${field.f.replace(/\s/g,'_')}">
           <option value="">${isV2 ? '— Επιλογή —' : '— Select —'}</option>${opts}</select>`;
       } else if (field.type === 'date') {
-        input = `<input class="form-input" type="date" id="ef_${field.f.replace(/\s/g,'_')}" value="${val?val.split('T')[0]:''}">`;
+        const dv = val ? val.split('T')[0] : '';
+        input = `<input class="form-input" type="date" id="ef_${field.f.replace(/\s/g,'_')}" value="${dv}" oninput="this.nextElementSibling.textContent=dateReadout(this.value)">`
+              + `<div class="ef-hint form-date-readout">${dateReadout(dv)}</div>`;
       } else if (field.type === 'number') {
         // No «0» placeholder on dead fields: a grey 0 in a disabled box reads
         // as a stored zero — exactly what rule #3 forbids.

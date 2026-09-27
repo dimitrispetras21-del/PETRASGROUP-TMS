@@ -479,9 +479,20 @@ async function _expInlineEdit(e, recId, fieldName, vType) {
   inp.style.width = '140px';
   td.innerHTML = '';
   td.appendChild(inp);
+  // Month spelled out: the native control follows the browser language (see dateReadout).
+  const readout = document.createElement('div');
+  readout.className = 'mnt-dim';
+  readout.style.fontSize = 'var(--text-xs)';
+  readout.textContent = dateReadout(inp.value);
+  td.appendChild(readout);
+  inp.addEventListener('input', () => { readout.textContent = dateReadout(inp.value); });
   inp.focus();
 
+  const orig = inp.value;
+  let saving = false;
   const save = async () => {
+    if (saving) return;
+    saving = true;
     const newVal = inp.value || null;
     td.innerHTML = '<span class="mnt-dim">Αποθήκευση…</span>';
     try {
@@ -496,9 +507,21 @@ async function _expInlineEdit(e, recId, fieldName, vType) {
       _expiryPaint();
     }
   };
-  inp.addEventListener('change', save);
-  inp.addEventListener('blur', () => { if (td.contains(inp)) _expiryPaint(); });
-  inp.addEventListener('keydown', (ev) => { if (ev.key === 'Escape') _expiryPaint(); });
+  // Save ONCE, on Enter or on leaving the cell — not on 'change'. A native date
+  // input fires 'change' after every complete segment edit, so typing a date
+  // wrote each intermediate value (P47331, 25/9: five PATCHes in a minute,
+  // 09-01→09-02→09-26→08-26→2027-08-26); stopping half-way left a wrong date.
+  // A half-typed date (badInput) is a cancel, never a silent clear.
+  const commit = () => {
+    if (!td.contains(inp)) return;
+    if (inp.validity.badInput || inp.value === orig) { _expiryPaint(); return; }
+    save();
+  };
+  inp.addEventListener('blur', commit);
+  inp.addEventListener('keydown', (ev) => {
+    if (ev.key === 'Enter') { ev.preventDefault(); commit(); }
+    else if (ev.key === 'Escape') { inp.removeEventListener('blur', commit); _expiryPaint(); }
+  });
 }
 
 // Inline text editor for the insurer (trucks only — trailers have no column)
