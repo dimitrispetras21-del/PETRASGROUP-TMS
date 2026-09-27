@@ -102,3 +102,16 @@ test('v2 switch off (default): .doc still refused, v1 flow unchanged', async () 
   const r = await sb.scanFile(new File([makeDoc('x')], 'a.doc', { type: browserMimeType('x.doc') }));
   assert.equal(r.status, 'rejected');
 });
+
+test('credit exhausted (Worker 402): the dispatcher reads the Worker message, no retries', async () => {
+  const mock = createMockFetch({ refData, extraction, extractionV2 });
+  const f402 = async (url, init) => new URL(url).pathname === '/v1/ai/messages'
+    ? new Response(JSON.stringify({ error: 'Εξαντλήθηκε η πίστωση AI — ενημερώστε τον διαχειριστή' }), { status: 402 })
+    : mock(url, init);
+  const fetch = recordingFetch(f402);
+  const sb = createScannerSandbox({ repoRoot: REPO, fetch, jwt: 'x.y.z', refData, engine: 'v2' });
+  const r = await sb.scanFile(new File([makeDoc(LINES.join('\n'))], 'a.doc', { type: browserMimeType('x.doc') }));
+  assert.equal(r.status, 'error');
+  assert.match(r.error, /πίστωση AI/);
+  assert.equal(aiCalls(fetch).length, 1);
+});

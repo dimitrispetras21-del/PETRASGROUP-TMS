@@ -239,16 +239,24 @@ async function scanCallAnthropic(payload, opts = {}) {
       clearTimeout(to);
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
-        let msg = body.error?.message || `API error ${res.status}`;
+        // The Worker answers {error: "<text>"} (a string); Anthropic-shaped
+        // bodies carry {error: {message}}. Reading only .message showed the
+        // dispatcher «API error 502» and hid the Worker's own words — incl.
+        // «Εξαντλήθηκε η πίστωση AI» (402, 27/9/2026).
+        let msg = (typeof body.error === 'string' ? body.error : body.error?.message) || `API error ${res.status}`;
         // Friendlier messages for common errors
         if (res.status === 429 || msg.includes('rate limit')) {
           msg = 'Rate limit reached — περιμένετε 60s και ξαναπροσπαθήστε. (Tip: μειώστε scans συγχρόνως)';
         } else if (res.status === 529) {
           msg = 'Anthropic API overloaded — προσπαθήστε ξανά σε λίγο.';
         }
-        // Don't retry 4xx (except 429)
+        // Don't retry 4xx (except 429). The throw lands in the catch below,
+        // which used to swallow it and retry anyway (3 calls + 3 s for a
+        // request that cannot succeed, measured 27/9) — hence noRetry.
         if (res.status >= 400 && res.status < 500 && res.status !== 429) {
-          throw new Error(msg);
+          const err = new Error(msg);
+          err.noRetry = true;
+          throw err;
         }
         lastErr = new Error(msg);
       } else {
@@ -256,6 +264,7 @@ async function scanCallAnthropic(payload, opts = {}) {
       }
     } catch (e) {
       clearTimeout(to);
+      if (e.noRetry) throw e;
       if (e.name === 'AbortError') {
         lastErr = new Error('AI request timed out (60s)');
       } else if (!lastErr) {

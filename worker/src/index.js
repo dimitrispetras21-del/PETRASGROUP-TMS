@@ -818,6 +818,14 @@ async function handleAiMessages(request, origin, env) {
     console.error(`AI PROXY upstream ${upstream.status}:`, text.slice(0, 300));
     if (upstream.status === 429) return jsonError("AI rate limit reached, try again shortly", 429, origin, env);
     if (upstream.status === 529) return jsonError("AI service overloaded, try again shortly", 503, origin, env);
+    // 27/9/2026: the Anthropic credit ran out and every scan failed as a
+    // generic «AI request failed» — nobody knew why until the owner looked at
+    // the console. Anthropic answers 400 "credit balance is too low"; say that
+    // in words the dispatcher can act on. 402 (not 5xx) so the front does not
+    // retry a request that cannot succeed until someone tops up.
+    if (upstream.status === 400 && /credit balance is too low/i.test(text)) {
+      return jsonError("Εξαντλήθηκε η πίστωση AI — ενημερώστε τον διαχειριστή", 402, origin, env);
+    }
     return jsonError("AI request failed", 502, origin, env);
   }
   return new Response(text, {
