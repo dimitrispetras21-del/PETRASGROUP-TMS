@@ -447,8 +447,8 @@ function _renderIntlLayout(c) {
       </div>
       <div style="display:flex;gap:var(--space-2);align-items:center">
         <button class="btn btn-secondary btn-sm" onclick="openIntlScan()">${_i('camera')} Σάρωση</button>
+        ${canEdit ? `<button class="btn btn-sm pre-btn" onclick="openPreorder()" title="Φορτίο που ανακοινώθηκε — λεπτομέρειες αργότερα">Pre-order</button>` : ''}
         ${canEdit ? `<button class="btn btn-primary btn-sm" onclick="openIntlCreate()">+ Νέα παραγγελία</button>` : ''}
-        ${canEdit ? `<button class="btn btn-secondary btn-sm" onclick="openPreorder()" title="Φορτίο που ανακοινώθηκε — λεπτομέρειες αργότερα">Pre-order</button>` : ''}
         <button class="btn btn-ghost btn-sm" onclick="_intlExportCSV()">${_i('download')} CSV</button>
         <button class="btn btn-ghost btn-sm" onclick="_intlPrint()">${_i('file_text')} Εκτύπωση</button>
       </div>
@@ -593,20 +593,25 @@ function _oiRowHtml(r) {
   const legChip = INTL_ORDERS.legParents && INTL_ORDERS.legParents.has(r.id)
     ? '<span class="oi-legchip" title="Σπασμένο σε 2 σκέλη — δες το Weekly International για την εκτέλεση">2 σκέλη</span>' : '';
   const orderNoCell = f['Order No'] ? `#${escapeHtml(String(f['Order No']))}` : '—';
-  return `<tr onclick="selectIntlOrder('${r.id}')" id="irow_${r.id}" class="oi-row${sel}" style="height:${_OI_ROW_H}px">
+  // Pre-order row (Figma 709:1144): faded, «— → —», «PRE k/n», and the two
+  // actions where ΑΝΑΘΕΣΗ + ΤΙΜΗ would be — a pre-order has neither yet.
+  const pre = isPreorder(f);
+  const preActs = can('orders') === 'full'
+    ? `<div class="pre-acts"><button type="button" class="pre-act" onclick="event.stopPropagation();openIntlEdit('${r.id}')">Μετατροπή</button><button type="button" class="pre-act cancel" onclick="event.stopPropagation();cancelPreorder('${r.id}')">Ακύρωση</button></div>` : '';
+  return `<tr onclick="selectIntlOrder('${r.id}')" id="irow_${r.id}" class="oi-row${sel}${pre ? ' oi-pre' : ''}" style="height:${_OI_ROW_H}px">
     <td class="oi-dim oi-num">${orderNoCell}</td>
     <td>${refCell}${legChip}${_oiFlags(f)}</td>
     <td class="oi-dim oi-num">W${escapeHtml(f['Week Number']||'—')}</td>
     <td class="oi-dim oi-nowrap">${escapeHtml(_OI_DIR[f['Direction']] || f['Direction'] || '—')}</td>
     <td><span class="oi-name" title="${client}">${client}</span></td>
-    <td>${_oiLocCell(r, 'Loading', 'Loading Summary')}</td>
-    <td>${_oiLocCell(r, 'Unloading', 'Delivery Summary')}</td>
+    <td>${pre ? '—' : _oiLocCell(r, 'Loading', 'Loading Summary')}</td>
+    <td>${pre ? '—' : _oiLocCell(r, 'Unloading', 'Delivery Summary')}</td>
     <td class="oi-num">${_oiDate(f['Loading DateTime'])}</td>
     <td class="oi-num">${_oiDate(f['Delivery DateTime'])}</td>
     <td class="oi-num oi-med">${pal ? escapeHtml(String(pal)) : '—'}</td>
-    <td>${_oiAssignCell(f)}</td>
-    <td class="oi-num oi-med">${_oiMoney(f['Price'])}</td>
-    <td>${isPreorder(f) ? preorderChipHtml(f) : _oiStatusHtml(f['Status']||'Pending')}</td>
+    ${pre ? `<td colspan="2">${preActs}</td>` : `<td>${_oiAssignCell(f)}</td>
+    <td class="oi-num oi-med">${_oiMoney(f['Price'])}</td>`}
+    <td>${pre ? preorderPillHtml(f, preorderSeq(r, INTL_ORDERS.data)) : _oiStatusHtml(f['Status']||'Pending')}</td>
     ${_oiInvCell(r)}
   </tr>`;
 }
