@@ -448,6 +448,7 @@ function _renderIntlLayout(c) {
       <div style="display:flex;gap:var(--space-2);align-items:center">
         <button class="btn btn-secondary btn-sm" onclick="openIntlScan()">${_i('camera')} Σάρωση</button>
         ${canEdit ? `<button class="btn btn-primary btn-sm" onclick="openIntlCreate()">+ Νέα παραγγελία</button>` : ''}
+        ${canEdit ? `<button class="btn btn-secondary btn-sm" onclick="openPreorder()" title="Φορτίο που ανακοινώθηκε — λεπτομέρειες αργότερα">Pre-order</button>` : ''}
         <button class="btn btn-ghost btn-sm" onclick="_intlExportCSV()">${_i('download')} CSV</button>
         <button class="btn btn-ghost btn-sm" onclick="_intlPrint()">${_i('file_text')} Εκτύπωση</button>
       </div>
@@ -605,7 +606,7 @@ function _oiRowHtml(r) {
     <td class="oi-num oi-med">${pal ? escapeHtml(String(pal)) : '—'}</td>
     <td>${_oiAssignCell(f)}</td>
     <td class="oi-num oi-med">${_oiMoney(f['Price'])}</td>
-    <td>${_oiStatusHtml(f['Status']||'Pending')}</td>
+    <td>${isPreorder(f) ? preorderChipHtml(f) : _oiStatusHtml(f['Status']||'Pending')}</td>
     ${_oiInvCell(r)}
   </tr>`;
 }
@@ -765,6 +766,7 @@ function _oiCardHtml(rec, opts) {
   const pe = !!f['Pallet Exchange'], vs = !!f['Veroia Switch'];
   const chips = [
     `<span class="oi-chip">${escapeHtml(stGr)}</span>`,
+    isPreorder(f) ? preorderChipHtml(f) : '',
     pe ? '<span class="oi-chip">Ανταλλαγή παλετών</span>' : '',
     vs ? '<span class="oi-chip">Veroia Switch</span>' : '',
     f['National Groupage'] ? '<span class="oi-chip">Ομαδοποίηση</span>' : '',
@@ -812,8 +814,12 @@ function _oiCardHtml(rec, opts) {
   }
   const assignBody = unassigned ? '<div class="oi-note">Προς ανάθεση — η ανάθεση γίνεται στο Εβδομαδιαίο Διεθνών</div>' : assign;
   const canCancel = canEdit && !['Cancelled','Delivered','Invoiced'].includes(st);
+  // Pre-order (owner 22/9): opening the order form on it IS the conversion —
+  // the same button, named for what it does; the small form edits day/notes.
+  const pre = isPreorder(f);
   const actions = canEdit ? [
-    `<button type="button" class="oi-link" data-oi-act="edit" onclick="openIntlEdit('${recId}')">Επεξεργασία</button>`,
+    `<button type="button" class="oi-link" data-oi-act="edit" onclick="openIntlEdit('${recId}')">${pre ? 'Μετατροπή σε παραγγελία' : 'Επεξεργασία'}</button>`,
+    pre ? `<button type="button" class="oi-link" data-oi-act="pre-edit" onclick="editPreorder('${recId}')">Επεξεργασία pre-order</button>` : '',
     `<button type="button" class="oi-link" data-oi-act="dup" onclick="duplicateIntlOrder('${recId}')">Διπλασιασμός</button>`,
     canCancel ? `<button type="button" class="oi-link" data-oi-act="cancel" title="Σήμανση ως ακυρωμένη — η εγγραφή μένει" onclick="cancelIntlOrder('${recId}')">Ακύρωση</button>` : '',
     `<button type="button" class="oi-link oi-link-danger" data-oi-act="delete" title="Διαγραφή με cascade — NL/GL/CL/Ramp/Παλέτες" onclick="deleteIntlOrder('${recId}')">Διαγραφή</button>`,
@@ -1001,6 +1007,10 @@ async function _openModal(recId, f, _clientLabelOverride, _scanPrefill) {
   // (το init της σελίδας Orders δεν έχει τρέξει) → η αναζήτηση έδειχνε κενά.
   try { await fhLoadLocations(); } catch(e) { console.warn('locations preload:', e.message); }
   const isEdit = !!recId;
+  // Pre-order (owner 22/9): editing one IS converting it — one door, the
+  // normal form with its six required fields; the save clears 'Ops Status'
+  // on the same id (submitIntlOrder). Set per opened modal, never inherited.
+  INTL_ORDERS._preConvert = (isEdit && isPreorder(f)) ? recId : null;
   const clientId = Array.isArray(f['Client']) ? f['Client'][0] : '';
   const clientLabel = _clientLabelOverride || (clientId ? (await _resolveClientName(clientId)) : '');
 
@@ -1156,7 +1166,14 @@ async function _openModal(recId, f, _clientLabelOverride, _scanPrefill) {
       Η αποθήκευση είναι κλειδωμένη ώστε να μη σβηστούν. Κλείσε, κάνε Ανανέωση και ξαναδοκίμασε.
     </div>` + body;
   }
-  openModal(isEdit ? 'Επεξεργασία παραγγελίας' : 'Νέα διεθνής παραγγελία', body, footer);
+  if (INTL_ORDERS._preConvert) body = preorderConvertBand(f) + body;
+  openModal(INTL_ORDERS._preConvert ? 'Μετατροπή pre-order σε παραγγελία' : isEdit ? 'Επεξεργασία παραγγελίας' : 'Νέα διεθνής παραγγελία', body, footer);
+  // A pre-order has no ORDER STOPS, so stop 1 opened with an empty date and the
+  // day already agreed with the client would have to be typed again.
+  if (INTL_ORDERS._preConvert && f['Loading DateTime']) {
+    const dl = document.getElementById('dt_l_1');
+    if (dl && !dl.value) dl.value = toLocalDate(f['Loading DateTime']);
+  }
   _oiBalanceUpdate();
 }
 
@@ -2015,6 +2032,12 @@ async function submitIntlOrder(recId) {
     // στην επεξεργασία το Status ανήκει στο popover ανάθεσης, δεν το ξαναγράφει
     // η φόρμα.
     if (!recId && !fields['Status']) fields['Status'] = 'Pending';
+    // Pre-order conversion: the six required fields passed above, so the row
+    // stops being provisional here — same id, no new order. The country goes
+    // too: the delivery location now carries its own (DRAFT 052 CHECK ties
+    // dest_country to 'Provisional').
+    const _wasPre = !!recId && INTL_ORDERS._preConvert === recId;
+    if (_wasPre) { fields['Ops Status'] = null; fields['Destination Country'] = null; }
 
     const result = recId
       ? await atSafePatch(TABLES.ORDERS, recId, fields)
@@ -2022,6 +2045,11 @@ async function submitIntlOrder(recId) {
     if (result?.conflict) { toast('Η εγγραφή άλλαξε από άλλον χρήστη — κάνε Ανανέωση και ξαναδοκίμασε','warn'); return; }
 
     if (result?.error) throw new Error(result.error.message || JSON.stringify(result.error));
+    // Αρχή 2: the row the Worker returned decides, not the toast below.
+    if (_wasPre && !result?._offline && result?.fields?.['Ops Status']) {
+      showErrorToast('Η παραγγελία αποθηκεύτηκε αλλά ΕΜΕΙΝΕ pre-order (η σήμανση δεν καθάρισε). Ενημέρωσε τον διαχειριστή.', 'error', 12000);
+      if (typeof logError === 'function') logError(new Error('Ops Status not cleared'), 'preorder convert ' + recId);
+    }
     if (!recId && result?.id) INTL_ORDERS._createdId = result.id;
 
     invalidateCache(TABLES.ORDERS);
@@ -2101,11 +2129,13 @@ async function submitIntlOrder(recId) {
     document.getElementById('modal').style.maxWidth = '';
     closeModal();
     INTL_ORDERS._createdId = null;
-    toast(recId ? 'Order updated ✓' : 'Order created ✓');
+    toast(_wasPre ? 'Το pre-order έγινε παραγγελία ✓' : recId ? 'Order updated ✓' : 'Order created ✓');
     // Weekly v3: το modal ανοίγει και από το Weekly International — το repaint
     // πρέπει να σεβαστεί τη σελίδα που είναι ανοιχτή, όχι να τη hijack-άρει.
     if (typeof currentPage!=='undefined' && currentPage==='weekly_intl' && typeof renderWeeklyIntl==='function') { renderWeeklyIntl(); }
     else if (typeof currentPage!=='undefined' && currentPage==='weekly_natl' && typeof renderWeeklyNatl==='function') { renderWeeklyNatl(); }
+    // Daily Ops opens this form for a pre-order conversion (27/9).
+    else if (typeof currentPage!=='undefined' && currentPage==='daily_ops' && typeof renderDailyOps==='function') { renderDailyOps(); }
     else await renderOrdersIntl();
     // Batch scan: Save → αμέσως η επόμενη φόρμα της ουράς
     if (window._scanQueue && (window._scanQueue.length || window._scanQueueTotal > 1)) { setTimeout(() => _scanQueueNext(), 250); }

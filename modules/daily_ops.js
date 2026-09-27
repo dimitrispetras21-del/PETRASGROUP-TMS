@@ -31,6 +31,12 @@ const OPS_FIELDS = [
   // 'Group ID' (Παντελής 15/9, Figma 647:1011): export loadings of the same
   // groupage collapse into one row. Same truck is the fallback key.
   'Group ID',
+  // Pre-order (owner 22/9 + 27/9). Without 'Ops Status' a pre-order is NULL =
+  // absent (facade trap 2) and would read as an ordinary «ΠΡΟΣ ΑΝΑΘΕΣΗ» row;
+  // 'Notes' is the pre-order's only description, 'Destination Country' its
+  // only destination (DRAFT 052 — an unknown label is logged and skipped by
+  // the Worker, never an error).
+  'Ops Status','Notes','Destination Country',
 ];
 
 /* ── ENTRY ────────────────────────────────────────────────────── */
@@ -438,8 +444,9 @@ function _opsDraw() {
   const total=all.length;
 
   // Per-direction completion — κάθε αναλογία x/y, ποτέ σκέτο ποσοστό.
-  const loadsAll = [...cats.el, ...cats.il];
-  const delsAll  = [...cats.ed, ...cats.id];
+  // Pre-orders are not declarable (no points) — outside «x / y δηλωμένες» (22/9).
+  const loadsAll = [...cats.el, ...cats.il].filter(r=>!isPreorder(r.fields));
+  const delsAll  = [...cats.ed, ...cats.id].filter(r=>!isPreorder(r.fields));
   const loadsDone = loadsAll.filter(r=>['In Transit','Delivered'].includes(r.fields['Status']||'')).length;
   const delsDone  = delsAll.filter(r=>(r.fields['Status']||'')==='Delivered').length;
   const pendN=isToday?OPS.overdue.length+OPS.overdueLoads.length:0;
@@ -474,7 +481,8 @@ function _opsDraw() {
     `${OPS.overdueLoads.length} ${OPS.overdueLoads.length===1?'εκκρεμής φόρτωση':'εκκρεμείς φορτώσεις'} από προηγούμενες ημέρες`,
     'δεν φορτώθηκε και δεν μετατέθηκε',
     r=>{const f=r.fields, n=_daysAgo(f['Loading DateTime']);
-      return `<div class="do-zrow" id="r_${r.id}"><span class="do-cl">${_C(f)}</span><span class="do-rt">${route(r)}${_opsWho(f)}</span>
+      const pre=isPreorder(f);
+      return `<div class="do-zrow${pre?' do-pre':''}" id="r_${r.id}"><span class="do-cl">${_C(f)}${pre?' '+preorderChipHtml(f):''}</span><span class="do-rt">${route(r)}${_opsWho(f)}</span>
         <span class="do-late">φόρτωση ${_DMY(f['Loading DateTime'])} · ${_agoTxt(n)}</span>
         ${_opsSlots(r,'ovl')}</div>${OPS._expanded?.has(r.id)?_opsSubRows(r,'Loading',true):''}`;}):'';
   const ovLErr=isToday&&OPS.overdueLoadsErr?`<div class="do-err"><span>Η ζώνη εκκρεμών φορτώσεων δεν φορτώθηκε — δεν σημαίνει ότι δεν υπάρχουν εκκρεμείς φορτώσεις. Οι υπόλοιπες ενότητες είναι ενημερωμένες.</span><button class="do-btn" onclick="renderDailyOps()">Ξαναδοκίμασε</button></div>`:'';
@@ -493,6 +501,7 @@ function _opsDraw() {
     <div class="do-top">
       <h1 class="do-h1">Ημερήσιο Πλάνο</h1>
       <span class="do-sub">${fD(tgt)} · ${total} ${total===1?'παραγγελία':'παραγγελίες'} ${_opsDayWord()}${pendN?` · <b>${pendN} ${pendN===1?'εκκρεμής':'εκκρεμείς'}</b>`:''}</span>
+      ${preorderCounterHtml([...new Map([...all,...(isToday?OPS.overdueLoads:[])].map(r=>[r.id,r.fields])).values()],"preorderJump('.do-page .do-pre')")}
       <div class="do-seg">
         <button class="${OPS.date==='yesterday'?'on':''}" onclick="OPS.date='yesterday';renderDailyOps()">Χθες</button>
         <button class="${isToday?'on':''}" onclick="OPS.date='today';renderDailyOps()">Σήμερα</button>
@@ -569,7 +578,8 @@ function _opsSec(type,label,items,isToday,emptyTxt,start) {
   const cols=`<th>#</th><th>ΠΕΛΑΤΗΣ</th>${mid}<th>ΚΑΤΑΣΤΑΣΗ</th><th style="text-align:right">ΕΝΕΡΓΕΙΕΣ</th>`;
   const colg='<colgroup><col style="width:32px"><col><col><col style="width:200px"><col style="width:56px"><col style="width:80px"><col style="width:206px"><col style="width:320px"></colgroup>';
   const done=items.filter(r=>isL?['In Transit','Delivered'].includes(r.fields['Status']||''):(r.fields['Status']||'')==='Delivered').length;
-  const head=`<div class="do-sec-h">${label}<span>${items.length?`${items.length} · ${done} ${done===1?'δηλωμένη':'δηλωμένες'}`:`— καμία ${when}`}</span></div>`;
+  const preN=items.filter(r=>isPreorder(r.fields)).length;
+  const head=`<div class="do-sec-h">${label}<span>${items.length?`${items.length-preN} · ${done} ${done===1?'δηλωμένη':'δηλωμένες'}${preN?` · ${preN} pre-order`:''}`:`— καμία ${when}`}</span></div>`;
   if(!items.length) return `<div class="do-sec">${head}<div class="do-empty">${emptyTxt} ${when}</div></div>`;
   return `<div class="do-sec">${head}
     <div style="overflow-x:auto"><table class="do-t">${colg}<thead><tr>${cols}</tr></thead><tbody>${isL&&isExp?_opsGroupedRows(items,start,type,isToday):items.map((r,i)=>_opsRow(r,start+i,type,isToday)).join('')}</tbody></table></div>
@@ -685,6 +695,10 @@ function _opsSlots(rec, ctx) {
   // entered on Monday). The date lie is removed at the source instead: every
   // writer stamps the viewed day (_opsTgt / _opsNowOnTgt). Only a future day
   // has no buttons.
+  // Pre-order (owner 22/9): «Φορτώθηκε» on a load without a point would be a
+  // lie in the base — the only action is to complete it. Any role that may
+  // act here (planning:full) may convert; the form enforces the six fields.
+  if(isPreorder(f)) return `<div class="do-slots"><span class="do-slot"><button class="do-btn" onclick="event.stopPropagation();_opsConvert('${id}')">Μετατροπή</button></span></div>`;
   const done=st==='Delivered'||(isL&&st==='In Transit');
   if(done) return '';
   const slots=[];
@@ -709,8 +723,10 @@ function _opsSlots(rec, ctx) {
 function _opsRow(rec,num,type,isToday,cls) {
   const f=rec.fields, id=rec.id;
   const client=_C(f), sub=_CSub(f);
+  const pre=isPreorder(f);
   const loadL=_L(_opsStopLoc(id,'Loading'));
-  const delivL=_L(_opsStopLoc(id,'Unloading'));
+  // Pre-order: no point yet — the destination country, escaped (_L output is).
+  const delivL=_L(_opsStopLoc(id,'Unloading'))||(pre?escapeHtml(preorderDest(f)):'');
   const truck=_TT(f), driver=_D(f), partner=_P(f);
   // Missing is not zero and not blank (DESIGN.md #3): a dash.
   const pal=f['Total Pallets']!=null&&f['Total Pallets']!==''?f['Total Pallets']:'—';
@@ -742,7 +758,9 @@ function _opsRow(rec,num,type,isToday,cls) {
   // the generic word «συνεργάτης» told the phone caller nothing.
   const asgCell=_opsAsgCell(f, truck, driver, partner);
   const pill=_opsStopsBadge(id,_stype);
-  const stCell=`<td class="do-st">${_opsStatusWord(f,pill,isL,_opsStamp(_mStops,_opsTgt()))}</td>`;
+  const stCell=pre
+    ? `<td class="do-st">${preorderChipHtml(f)}${f['Notes']?`<span class="do-sl">${escapeHtml(String(f['Notes']))}</span>`:''}</td>`
+    : `<td class="do-st">${_opsStatusWord(f,pill,isL,_opsStamp(_mStops,_opsTgt()))}</td>`;
   const actCell=`<td class="do-acts">${_opsSlots(rec,type)}</td>`;
 
   let mid='';
@@ -754,7 +772,7 @@ function _opsRow(rec,num,type,isToday,cls) {
   // υπο-γραμμές ακολουθούν το tr ώστε να ζουν στο ίδιο tbody. Η ανοιχτή
   // γραμμή κρατά το φόντο επιλογής (.do-open) όσο είναι ανοιχτή.
   const _trClick=_multi?` onclick="if(!event.target.closest('button,input,select,a'))_opsToggleStops('${id}')"`:'';
-  return `<tr id="r_${id}" class="do-hover${cls?' '+cls:''}${isDone?' do-done':''}${_expanded?' do-open':''}" style="${_multi?'cursor:pointer':''}"${_trClick}><td class="do-num">${num}</td>${cl}${mid}${stCell}${actCell}</tr>`+(_expanded?_opsSubRows(rec,_stype):'');
+  return `<tr id="r_${id}" class="do-hover${cls?' '+cls:''}${isDone?' do-done':''}${_expanded?' do-open':''}${pre?' do-pre pre-'+preorderLevel(f):''}" style="${_multi?'cursor:pointer':''}"${_trClick}><td class="do-num">${num}</td>${cl}${mid}${stCell}${actCell}</tr>`+(_expanded?_opsSubRows(rec,_stype):'');
 }
 
 // Own fleet = a plate or a driver on a non-partner trip. A plate without a
@@ -897,6 +915,7 @@ async function _opsStat(id,st){
   return _opsStatFinal(id,st);
 }
 // Βρες την εγγραφή σε όποια λίστα ζει (ημέρα ή εκκρεμείς φορτώσεις).
+function _opsConvert(id){ if(_opsBlockReadOnly()) return; convertPreorder(id); }
 function _opsFind(id){ return OPS.intl.find(x=>x.id===id)||OPS.overdueLoads.find(x=>x.id===id)||OPS.overdue.find(x=>x.id===id); }
 async function _opsStatFinal(id,st){ if(_opsBlockReadOnly()) return; try{
   const r0=_opsFind(id);
@@ -1119,6 +1138,7 @@ window._opsOvAct = _opsOvAct;
 window._opsSetFilter = _opsSetFilter;
 window._opsToggleZone = _opsToggleZone;
 window._opsToggleStops = _opsToggleStops;
+window._opsConvert = _opsConvert;
 window._opsMarkStopUI = _opsMarkStopUI;
 window._opsChangeDay = _opsChangeDay; window._opsChangeDayGo = _opsChangeDayGo;
 window._opsPopPick = _opsPopPick; window._opsPopOther = _opsPopOther; window._opsPopHint = _opsPopHint; window._opsCloseFloat = _opsCloseFloat;

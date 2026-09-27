@@ -72,7 +72,7 @@ function _wiApplyFilter() {
     if (show && qk) show = _wi2QuickMatch(row, qk);
     el.style.display = show ? '' : 'none';
   });
-  document.querySelectorAll('.wi2-chip').forEach(c => c.classList.toggle('on', (c.dataset.q || '') === qk));
+  document.querySelectorAll('.wi2-chip,.pre-count').forEach(c => c.classList.toggle('on', (c.dataset.q || '') === qk));
 }
 // Quick filters of the v2 band. «Χωρίς ανάθεση» = neither own truck nor partner
 // (DECISION_LOG 2/9). «Κενά» = own round trip without import — a partner row is
@@ -85,6 +85,8 @@ function _wi2QuickMatch(row, qk) {
     case 'own':     return row.saved && !row.partnerId;
     case 'partner': return row.saved && !!row.partnerId;
     case 'matched': return row.type === 'export' && !!row.importId;
+    // Pre-order counter (owner 27/9): the rows still waiting for their points.
+    case 'pre':     return (row.orderIds || [row.orderId]).some(id => isPreorder((WINTL.data.exports.find(r => r.id === id) || WINTL.data.imports.find(r => r.id === id))?.fields));
     default: return true;
   }
 }
@@ -840,6 +842,10 @@ function _wiNewOrder() {
   obs.observe(ov, { attributes: true, attributeFilter: ['style', 'class', 'hidden'] });
 }
 
+// Pre-order (owner 22/9): same role gate as «+ Νέα παραγγελία»; the small
+// form repaints the board itself after saving (preorder.js _preRepaint).
+function _wiPreorder() { if(_wiBlockReadOnly()) return; openPreorder(); }
+
 function _wk3Tabs(currentWeek) {
   const today = _wiCurrentWeek();
   const step = d => `<button type="button" class="wk3-step" onclick="WINTL.week=${currentWeek+d};renderWeeklyIntl()" title="${d<0?'Προηγούμενη':'Επόμενη'} εβδομάδα">${d<0?'‹':'›'}</button>`;
@@ -922,6 +928,9 @@ function _wiPaint(){
   const delivN=[...expRows,...impRows].filter(r=>_wk3StFlags(_fOf(r)).delivered).length;
   const lateN=[...expRows,...impRows].filter(r=>_wk3StFlags(_fOf(r)).late).length;
   const pendAll=pending+impNoVehicle;
+  // Pre-order counter (owner 27/9): every order on the sheet, group members
+  // included — a pre-order folded into a group is still one to complete.
+  const preFields=[...expRows,...impRows].flatMap(r=>(r.orderIds||[r.orderId]).map(id=>(data.exports.find(x=>x.id===id)||data.imports.find(x=>x.id===id))?.fields||{}));
   const firstPendingId=_firstExp(r=>!r.saved);
   const jumpPending=firstPendingId?`_ccJump('${firstPendingId}')`:'_wiJumpFirstUnassigned()';
   // «ΕΛΕΥΘΕΡΑ ΣΗΜΕΡΑ» και ο δείκτης φάσης αφαιρέθηκαν 3/9 (owner: λιγότερος
@@ -945,12 +954,14 @@ function _wiPaint(){
         <button class="wi2-btn" onclick="renderWeeklyIntl()" title="Ανανέωση">Ανανέωση</button>
         <button class="wi2-btn" id="wi-fs" onclick="_wiFullscreen()" title="Πλήρης οθόνη — μόνο ο πίνακας· Esc για έξοδο">Πλήρης οθόνη</button>
         <button class="wi2-btn primary" onclick="_wiNewOrder()" title="Νέα διεθνής παραγγελία — χωρίς έξοδο από το εβδομαδιαίο">+ Νέα παραγγελία</button>
+        <button class="wi2-btn" onclick="_wiPreorder()" title="Φορτίο που ανακοινώθηκε — λεπτομέρειες αργότερα">Pre-order</button>
       </div>
     </div>
     ${_wi2LegendHTML()}
     <!-- KPI band (frame 319:906): replaces the Command Center — same numbers
          (gaps, unmatched, free fleet), once, every fraction with its denominator. -->
     <div class="wi2-band">
+      ${preorderCounterHtml(preFields,"_wi2Quick('pre');preorderJump('#wi-rows .wi2-pre')",WINTL.quick==='pre')}
       <!-- ΘΟΡΥΒΟΣ ΚΑΤΩ, ΓΡΑΜΜΕΣ ΠΑΝΩ (owner 3/9): «θέλω απλά το badge με το 8 και
            το ΚΕΝΑ ΓΥΡΙΣΜΑΤΑ 8 επείγοντα». Η αναλυτική πρόταση, η φάση της
            εβδομάδας και ολόκληρο το «ΕΛΕΥΘΕΡΑ ΣΗΜΕΡΑ» έφυγαν — ο στόχος είναι
@@ -1196,8 +1207,9 @@ function _wiImpRowHTML(row,impNo){
   const imp=data.imports.find(r=>r.id===row.orderId);
   if(!imp) return '';
   const f=imp.fields;
+  const isPre=row.orderIds.length<=1&&isPreorder(f);
   const fromStr=_wiRaw(f['Loading Summary']||_wiFlatLocName(f['Loading Location 1'])||_wiClientName(f)||'—');
-  const toStr  =_wiRaw(f['Delivery Summary']||_wiFlatLocName(f['Unloading Location 1'])||_wiClientName(f)||'—');
+  const toStr  =isPre?(preorderDest(f)||'—'):_wiRaw(f['Delivery Summary']||_wiFlatLocName(f['Unloading Location 1'])||_wiClientName(f)||'—');
   const stR=_wk3StFlags(f);
   const impVS2=!!f['Veroia Switch'];
 
@@ -1243,7 +1255,10 @@ function _wiImpRowHTML(row,impNo){
   const lIso=f['Loading DateTime']||'';
   const loadCard=segOn
     ? _wiSegPillWrap(row.id,members,'load',true,true)
-    : _wi2Card({cls:stR.loaded?'ok':'', date:_wi2Date(imp.id,'Loading DateTime',lIso,lIso?_wk3D(_wiFmt(lIso)):'—',stR.loaded?' done':'','Ημ. φόρτωσης'+(stR.loaded?' — φορτώθηκε ✓':'')), name:lo.name, sub:lo.sub, extra:_wk3MoreStops(fromStr,f._stopsL,'load')});
+    : _wi2Card({cls:stR.loaded?'ok':'', date:_wi2Date(imp.id,'Loading DateTime',lIso,lIso?_wk3D(_wiFmt(lIso)):'—',stR.loaded?' done':'','Ημ. φόρτωσης'+(stR.loaded?' — φορτώθηκε ✓':'')), name:lo.name, sub:lo.sub, extra:_wk3MoreStops(fromStr,f._stopsL,'load'),
+        // Pre-order chip on the LOADING card of an import: the delivery card is
+        // the narrow one and clipped the word (rig 1440px, 27/9).
+        right:isPre?preorderChipHtml(f,true):''});
   const right=`<span class="wi2-flags">${_wiBadges(f)}</span>${_wi2Pal(f)}${f['Reference']?`<span class="wi2-ref" title="Κωδικός αναφοράς">${escapeHtml(String(f['Reference']))}</span>`:''}`;
   let delCard;
   if(segOn){
@@ -1260,7 +1275,7 @@ function _wiImpRowHTML(row,impNo){
     :`<span class="wi2-dash" title="Χωρίς εθνικό σκέλος — δεν είναι Veroia Switch">—</span>`;
 
   return `<div id="wi-imp-${imp.id}" data-row-id="${row.id}"
-    class="wk3-row impr${!row.saved?' wi2-un':''}${stR.delivered&&!stR.late?' wk3-done':''}"
+    class="wk3-row impr${!row.saved?' wi2-un':''}${stR.delivered&&!stR.late?' wk3-done':''}${isPre?' wi2-pre pre-'+preorderLevel(f):''}"
     draggable="true"
     oncontextmenu="_wiImpCtx(event,${row.id})"
     ondragstart="event.stopPropagation();_wiImpDragStart(event,'${imp.id}')">
@@ -2161,8 +2176,11 @@ function _wiRowHTML(row,i){
   const today=(typeof localToday==='function')?localToday():toLocalDate(new Date());
   const hasPartner=!!(row.partnerId||row.partnerLabel);
 
+  // Pre-order (owner 22/9 + 27/9): no points yet — the delivery side names the
+  // destination country instead of repeating the client as a fake place.
+  const isPre=!isGroup&&isPreorder(pf);
   const fromStr=primary?_wiRaw(pf['Loading Summary']||_wiFlatLocName(pf['Loading Location 1'])||_wiClientName(pf)||'—'):'—';
-  const toStr  =primary?_wiRaw(pf['Delivery Summary']||_wiFlatLocName(pf['Unloading Location 1'])||_wiClientName(pf)||'—'):'—';
+  const toStr  =primary?(isPre?(preorderDest(pf)||'—'):_wiRaw(pf['Delivery Summary']||_wiFlatLocName(pf['Unloading Location 1'])||_wiClientName(pf)||'—')):'—';
   // GRP (owner 12/8): η γραμμή δείχνει ΕΝΑ σημείο ανά ΜΕΛΟΣ (①=1ο μέλος κ.ο.κ.),
   // όχι το comma-parsing του summary του πρώτου — αυτό εμφάνιζε την πόλη του
   // San Lucar ως ψεύτικο «② προορισμό». Συνθετικά arrays {n,dt} ώστε τα ①②,
@@ -2240,7 +2258,7 @@ function _wiRowHTML(row,i){
     delCard=_wi2Card({cls:stF.late?'late':stF.delivered?'ok':'',
       name:de.name+(stF.late?'<span class="wi2-late" title="Καθυστέρησε (Delivery Performance = Delayed)">! καθυστέρηση</span>':stF.delivered?'<span class="wk3-okc" title="Παραδόθηκε">✓</span>':''),
       sub:de.sub, extra:_wk3MoreStops(isGroup?gDs:toStr,isGroup?gD:pf._stopsD,'del')+members,
-      right:`${refs?`<span class="wi2-ref" title="Κωδικός αναφοράς">${escapeHtml(String(refs))}</span>`:''}${_wiCrossChip(pf)}${_wiExecChip(pf,row.saved)}<span class="wi2-flags">${_wiBadges(pf)}</span>${isGroup?_wi2PalGroup(exps):_wi2Pal(pf)}`});
+      right:`${isPre?preorderChipHtml(pf,true):''}${refs?`<span class="wi2-ref" title="Κωδικός αναφοράς">${escapeHtml(String(refs))}</span>`:''}${_wiCrossChip(pf)}${_wiExecChip(pf,row.saved)}<span class="wi2-flags">${_wiBadges(pf)}</span>${isGroup?_wi2PalGroup(exps):_wi2Pal(pf)}`});
   }
 
   // Import side: matched preview · «ΚΕΝΟ ΓΥΡΙΣΜΑ» (own, no import) · navy
@@ -2343,7 +2361,7 @@ function _wiRowHTML(row,i){
     return _wi2Card({date:_wi2Date(imp.id,'Delivery DateTime',dIso,dIso?_wk3D(_wiFmt(dIso)):'—','','Εθνικό σκέλος: ημ. τελικής διανομής'), name:de2.name, sub:de2.sub, extra:_wk3MoreStops(f2['Delivery Summary']||'',f2._stopsD,'del')}); })()
     :`<span class="wi2-dash" title="Χωρίς εθνικό σκέλος">—</span>`;
 
-  const rowCls=['wk3-row',!row.saved?'wi2-un':'',urg?'wi2-rowurg':gapCell?'wi2-gap':'',stF.delivered&&!stF.late?'wk3-done':''].filter(Boolean).join(' ');
+  const rowCls=['wk3-row',!row.saved?'wi2-un':'',urg?'wi2-rowurg':gapCell?'wi2-gap':'',stF.delivered&&!stF.late?'wk3-done':'',isPre?'wi2-pre pre-'+preorderLevel(pf):''].filter(Boolean).join(' ');
   return `
   <div id="wi-row-${row.id}" data-row-id="${row.id}" class="${rowCls}">
     <div class="wk3-num">${i+1}${isGroup?`<button class="wk3-grpb" title="Groupage ×${exps.length} — κλικ: μέλη ομάδας (βάση: το πρώτο-παραδιδόμενο)" onclick="event.stopPropagation();_wiToggleGroup(${row.id})">×${exps.length}</button>`:''}<span class="wi-sync" id="wi-sync-${row.id}"></span></div>
@@ -3767,6 +3785,7 @@ function _wiCtx(e,rowId){
   e.preventDefault();e.stopPropagation();
   if(_wiBlockReadOnly()) return;
   const row=WINTL.rows.find(r=>r.id===rowId);if(!row) return;
+  if(_wiPreCtx(e,row,false)) return;
   const isGroup=row.orderIds.length>1;
   const myPals=_wiRowPals(row);
   const others=WINTL.rows.filter(r=>r.id!==rowId&&!r.saved&&r.type==='export'
@@ -3807,6 +3826,36 @@ function _wiCtx(e,rowId){
     top:`${Math.min(e.clientY,window.innerHeight-260)}px`});
   requestAnimationFrame(()=>{ const f=ctx.querySelector('.wi-ctx-i:not([disabled])'); if(f) f.focus(); });
   setTimeout(()=>document.addEventListener('click',_wiCtxClose,{once:true}),10);
+}
+
+// Pre-order menu (owner 22/9): conversion first, then the small form, then the
+// two actions that make sense without points — assignment (you hold a truck
+// for tomorrow) and print. Groupage, rota, split, local move and week shift
+// all need loading/delivery points a pre-order does not have yet.
+// Returns false for anything that is not a lone pre-order (normal menu).
+function _wiPreCtx(e,row,isImp){
+  if((row.orderIds||[]).length>1) return false;
+  const oid=row.orderIds?.[0]||row.orderId;
+  const rec=WINTL.data.exports.find(r=>r.id===oid)||WINTL.data.imports.find(r=>r.id===oid);
+  if(!rec||!isPreorder(rec.fields)) return false;
+  let html='';
+  html+=_wiCtxBtn('Μετατροπή σε παραγγελία…',`_wk3Edit('${oid}')`);
+  html+=_wiCtxBtn('Επεξεργασία pre-order…',`editPreorder('${oid}')`);
+  html+='<div class="wi-ctx-sep"></div>';
+  html+=_wiCtxBtn('Ανάθεση…',isImp?`_wiPanelAssign(${row.id},true,'${oid}')`:`_wiPanelAssign(${row.id},false)`);
+  html+=_wiCtxBtn('Εκτύπωση…',`_wiMenuPrint(${row.id},${isImp?'true':'false'})`);
+  html+='<div class="wi-ctx-sep"></div>';
+  html+=_wiCtxBtn('Ακύρωση pre-order',`cancelPreorder('${oid}')`,true);
+  if(row.saved&&!isImp) html+=_wiCtxBtn('Καθαρισμός ανάθεσης',`_wiClear(${row.id})`,true);
+  const ctx=document.getElementById('wi-ctx');
+  ctx.innerHTML=html;
+  ctx._returnFocus=e.currentTarget;
+  Object.assign(ctx.style,{display:'block',
+    left:`${Math.min(e.clientX,window.innerWidth-220)}px`,
+    top:`${Math.min(e.clientY,window.innerHeight-260)}px`});
+  requestAnimationFrame(()=>{ const f=ctx.querySelector('.wi-ctx-i:not([disabled])'); if(f) f.focus(); });
+  setTimeout(()=>document.addEventListener('click',_wiCtxClose,{once:true}),10);
+  return true;
 }
 
 // Σπάσιμο σκέλους (owner 6/9, FEATURES.ORDER_SPLIT): shared by _wiCtx (export
@@ -4625,6 +4674,7 @@ function _wiImpCtx(e,rowId,matchedExportRowId){
     setTimeout(()=>document.addEventListener('click',_wiCtxClose,{once:true}),10);
     return;
   }
+  if(_wiPreCtx(e,row,true)) return;
   const myPals=_wiRowPals(row);
   const others=WINTL.rows.filter(r=>r.type==='import'&&r.id!==rowId&&!r.adj&&!r.matchedTo
     &&(myPals+_wiRowPals(r))<=33);
@@ -5324,6 +5374,7 @@ window._wiPrintImpGroup = _wiPrintImpGroup;
 window._wiToggleDetails = _wiToggleDetails;
 // Νέα παραγγελία από το εβδομαδιαίο — inline onclick, module σε IIFE
 window._wiNewOrder = _wiNewOrder;
+window._wiPreorder = _wiPreorder;
 window._wiExportCSV = _wiExportCSV;
 window._wiApplyFilter = _wiApplyFilter;
 window._wk3Gaps = _wk3Gaps;

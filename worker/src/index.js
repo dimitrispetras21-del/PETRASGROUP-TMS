@@ -1218,6 +1218,12 @@ var TABLES = {
       // Export|Import|arrows, verbatim (#9)
       Status: "status",
       "Ops Status": "ops_status",
+      // Pre-order destination country (owner 27/9): ISO-2 code, only while the
+      // exact delivery point is unknown. Column + view column come from DRAFT
+      // migration 052 — deploy this Worker ONLY AFTER 052 ran: an explicit
+      // fields[] read (Daily Ops) would otherwise select a column the view
+      // does not have and the whole request would fail.
+      "Destination Country": "dest_country",
       "Invoice Status": "invoice_status",
       "Delivery Performance": "delivery_performance",
       "Carrier Type": "carrier_type",
