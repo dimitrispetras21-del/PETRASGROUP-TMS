@@ -398,6 +398,9 @@ async function scanSyncTrainingFromServer() {
     let added = 0;
     for (const r of recs) {
       if (seen.has(r.id)) continue;
+      // The same table holds the Worker's DKV-import examples (doc_type 'dkv');
+      // they are not order scans and would crowd the 90-slot local list.
+      if ((r.fields['Doc Type'] || '').toLowerCase() === 'dkv') continue;
       let corrected = r.fields['Corrected'];
       if (typeof corrected === 'string') { try { corrected = JSON.parse(corrected); } catch (e) { continue; } }
       if (!corrected) continue;
@@ -437,33 +440,14 @@ function scanGetTrainingExamples(docType, limit = 3, hintClientId = null) {
  * On app boot, hydrate localStorage cache from the canonical Airtable
  * _SCAN_TRAINING table. Best-effort — fails silently if table missing.
  */
+// Called at login (core/auth.js). It used to read Airtable-era labels
+// ('Created', 'AI Output', 'Summary', 'Client') that the Worker map for
+// scan_examples does not have ("Doc Type", "Client ID", Corrected,
+// "Created At") — the sort by 'Created' could never succeed, and on success
+// it would have OVERWRITTEN each browser's own corrections. One reader only
+// (principle 3): the merge in scanSyncTrainingFromServer.
 async function scanHydrateTrainingCache() {
-  const tableId = (typeof TABLES !== 'undefined' && TABLES.SCAN_TRAINING) || null;
-  if (!tableId || typeof atGetAll !== 'function') return;
-  try {
-    const recs = await atGetAll(tableId, {
-      maxRecords: SCAN_TRAINING_MAX,
-      sort: [{ field: 'Created', direction: 'desc' }],
-    }, false).catch(() => []);
-    if (!recs?.length) return;
-    const list = recs.map(r => {
-      const f = r.fields || {};
-      let ai = {}, corrected = {};
-      try { ai = JSON.parse(f['AI Output'] || '{}'); } catch {}
-      try { corrected = JSON.parse(f['Corrected'] || '{}'); } catch {}
-      return {
-        ts: new Date(f['Created'] || Date.now()).getTime(),
-        docType: f['Doc Type'] || 'UNKNOWN',
-        summary: f['Summary'] || '',
-        clientId: (f['Client'] || [])[0] || null,
-        ai, corrected,
-      };
-    });
-    localStorage.setItem(SCAN_TRAINING_KEY, JSON.stringify(list));
-    console.log('[scan] hydrated', list.length, 'training examples from Airtable');
-  } catch (e) {
-    console.warn('[scan] hydrate failed:', e.message);
-  }
+  return scanSyncTrainingFromServer();
 }
 
 // ─── Aliases dictionary — common abbreviations & misspellings ──

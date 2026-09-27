@@ -76,13 +76,11 @@ const TABLES = {
   ORDER_STOPS:   'tblaeY5QOHAS1gyE8',
   RAMP_EVENTS:   'tbllHu40WSq4yWg5S',
   PARTNER_ASSIGN:'tblUhgqnmiam5MGNK',
+  // Shared scan few-shot examples (Postgres scan_examples via the Worker).
+  // Declared ONCE: until 27/9/2026 a second `SCAN_TRAINING: ''` (Airtable-era
+  // placeholder) further down silently won and switched shared learning off.
   SCAN_TRAINING:'tblScanTraining000',
   METRICS_SNAPSHOTS: 'tblakFiR37kf4uQXy',
-  // SCAN_TRAINING: optional. Create the table manually in Airtable with these
-  // fields (Doc Type single-select, Summary text, Client linked to CLIENTS,
-  // AI Output long text, Corrected long text, Created date) and paste its
-  // table id below. Leave blank to use localStorage-only mode.
-  SCAN_TRAINING: '',
 };
 
 // ── Claude model IDs ───────────────────────────────────────────────────
