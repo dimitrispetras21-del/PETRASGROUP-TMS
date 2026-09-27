@@ -262,7 +262,12 @@ const _WI2_CSS=`
    τις κανονικές, στον ίδιο πίνακα. minmax(0,…) αφαιρεί το κατώφλι
    περιεχομένου: τα κλάσματα γίνονται καθαρά αναλογικά και κάθε γραμμή —
    και η κεφαλίδα — βγάζει ταυτόσημες στήλες. */
-.wk3.wi2 .wk3-cols,.wk3.wi2 .wk3-row{grid-template-columns:36px var(--fL) minmax(0,1.1fr) 240px minmax(0,0.9fr) var(--fR)}
+/* ΑΝΑΘΕΣΗ 240→224px (owner 28/9: «μήπως το assign είναι πολύ μεγάλο;»). 200px
+   was asked; measured on real data it cut the longest partner name («Hart
+   Logistics sp. z o. o. sp. k.», 155px at 11px bold) — 224px with the pill's
+   side padding 8→6px is the narrowest width that keeps it whole. The freed
+   16px go to the two legs through their 1.1fr/0.9fr split. */
+.wk3.wi2 .wk3-cols,.wk3.wi2 .wk3-row{grid-template-columns:36px var(--fL) minmax(0,1.1fr) 224px minmax(0,0.9fr) var(--fR)}
 .wi2-mast{display:flex;align-items:center;gap:var(--space-4);margin-bottom:var(--space-3);flex-wrap:wrap}
 .wi2-title{font-family:'Syne',sans-serif;font-weight:700;font-size:18px;color:var(--text);display:flex;align-items:center;gap:12px;white-space:nowrap}
 .wi2-legend-btn{font:500 11px 'DM Sans',sans-serif;color:var(--text-mid);border:1px solid var(--border);border-radius:var(--radius-full);padding:4px 8px;background:none;cursor:pointer}
@@ -324,21 +329,26 @@ const _WI2_CSS=`
 .wk3.wi2 .wk3-row{min-height:26px;margin-top:2px;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface-card);align-items:center}
 .wk3.wi2 .wk3-row.alt{background:var(--surface-card)}
 .wk3.wi2 .wk3-row:hover{background:var(--surface-sunken)}
-.wk3.wi2 .wk3-row.wi2-un{border-color:var(--unassigned);border-left-width:3px}
-.wk3.wi2 .wk3-row.wi2-gap{border-color:var(--warn);border-left-width:3px}
+/* ACCENT WITHOUT SHIFT (owner 28/9, «στοίχιση»): a 3px left border moved every
+   cell of the row 2px right of the others — the accent is an inset shadow now,
+   the border stays 1px like every row. */
+.wk3.wi2 .wk3-row.wi2-un{border-color:var(--unassigned);box-shadow:inset 2px 0 0 var(--unassigned)}
+.wk3.wi2 .wk3-row.wi2-gap{border-color:var(--warn);box-shadow:inset 2px 0 0 var(--warn)}
 /* ΣΥΓΚΡΟΥΣΗ ΟΝΟΜΑΤΟΣ (owner 3/9, από screenshot της οθόνης του): η μπάντα
    «ΚΕΝΑ ΓΥΡΙΣΜΑΤΑ» και οι επείγουσες ΓΡΑΜΜΕΣ είχαν την ίδια κλάση
    .wi2-urg. Ο κανόνας της μπάντας ορίζει display:flex και γράφεται μετά
    το style.css, οπότε νικούσε το display:grid της γραμμής: ΜΟΝΟ αυτές οι
    γραμμές έπαυαν να είναι πλέγμα και στοιβάζονταν αριστερά, με έξτρα
    padding και φόντο κάρτας. Η γραμμή πήρε δικό της όνομα. */
-.wk3.wi2 .wk3-row.wi2-rowurg{border-color:var(--danger-strong);border-left-width:3px}
+.wk3.wi2 .wk3-row.wi2-rowurg{border-color:var(--danger-strong);box-shadow:inset 2px 0 0 var(--danger-strong)}
 .wk3.wi2 .wk3-row.wk3-done{background:var(--success-bg)}
 .wk3.wi2 .wk3-legrow{background:var(--surface-page);border-style:dashed;min-height:24px}
-.wk3.wi2 .wk3-num{border-right:none;font-size:11px;color:var(--text-dim);justify-content:flex-start;padding-left:8px;gap:4px;flex-wrap:wrap;font-variant-numeric:tabular-nums}
+/* «2 ×2» wraps in the 36px number column; with normal line-height + 4px gap
+   the two lines were 31px and pushed a grouped row to 33px (28/9). */
+.wk3.wi2 .wk3-num{border-right:none;font-size:11px;line-height:12px;color:var(--text-dim);justify-content:flex-start;padding-left:8px;gap:1px 4px;flex-wrap:wrap;font-variant-numeric:tabular-nums}
 .wk3.wi2 .wk3-num.imp{color:var(--accent-text);font-weight:700}
 .wk3.wi2 .wk3-num .wi-sync{display:inline;margin:0;font-size:11px}
-.wk3.wi2 .wk3-grpb{font-size:11px;padding:0 4px;border-radius:var(--radius-full)}
+.wk3.wi2 .wk3-grpb{font-size:11px;line-height:11px;padding:0 4px;border-radius:var(--radius-full)}
 .wk3.wi2 .wk3-leg{display:grid;grid-template-columns:minmax(0,var(--sL,1fr)) auto minmax(0,var(--sR,1fr));padding:0 4px;align-items:center;gap:4px;min-height:24px}
 .wk3.wi2 .wk3-leg.gap,.wk3.wi2 .wk3-leg.void{background:transparent;justify-content:stretch}
 .wk3.wi2 .wk3-leg.bgap,.wk3.wi2 .wk3-leg.grp{background:transparent}
@@ -434,17 +444,19 @@ const _WI2_CSS=`
 /* ΑΝΑΘΕΣΗ — χρώμα ΚΑΙ λέξη (DESIGN ΜΕΡΟΣ Ε, owner 4/9): «ΙΔ.» / «ΣΥΝ.» /
    «ΠΡΟΣ ΑΝΑΘΕΣΗ». Δύο σειρές με ορατό «…» και title — όχι αναδίπλωση, γιατί
    μια τρίτη σειρά σπάει το ύψος γραμμής των 29px (27/9). */
-.wk3.wi2 .wk3-pill{height:auto;min-height:24px;flex-direction:column;align-items:flex-start;justify-content:center;gap:0;padding:0 8px;font-size:12px;line-height:12px;border-radius:var(--radius);white-space:nowrap;overflow:hidden;box-sizing:border-box;transform:none;box-shadow:none}
+.wk3.wi2 .wk3-pill{height:auto;min-height:24px;flex-direction:column;align-items:flex-start;justify-content:center;gap:0;padding:0 6px;font-size:12px;line-height:12px;border-radius:var(--radius);white-space:nowrap;overflow:hidden;box-sizing:border-box;transform:none;box-shadow:none}
 .wk3.wi2 .wk3-row:hover .wk3-pill{transform:none;box-shadow:none}
 .wk3.wi2 .wk3-pill .t,.wk3.wi2 .wk3-pill small{display:block;max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.wk3.wi2 .wk3-pill small{font-size:11px;color:var(--text-on-dark);font-variant-numeric:tabular-nums}
-.wk3.wi2 .wk3-pill .t{font-size:11px;font-variant-numeric:tabular-nums}
+.wk3.wi2 .wk3-pill small{font-size:10px;line-height:11px;color:var(--text-on-dark);font-variant-numeric:tabular-nums}
+.wk3.wi2 .wk3-pill .t{font-size:11px;line-height:12px;font-weight:700;font-variant-numeric:tabular-nums}
 .wk3.wi2 .wk3-pill.un{color:var(--unassigned);align-items:center;font-weight:700;letter-spacing:.5px}
 .wk3.wi2 .wk3-pill.unimp{align-items:center;font-size:12px}
 .wk3.wi2 .wk3-pill.unimp small{color:var(--text-dim);font-weight:500}
 .wk3.wi2 .wk3-prt{border:1px solid var(--border);border-radius:var(--radius);padding:1px 3px;font-size:12px;background:var(--surface-card)}
 .wk3.wi2 .wk3-stopline{padding-left:0;font-size:11px;line-height:1.15}
-.wk3.wi2 .wi2-stops{display:inline-flex;align-items:center;max-width:100%;vertical-align:top;white-space:nowrap}
+/* height = the name line (12px): the 12px ①② circles and the «+N» button
+   made the box 13px and every multi-stop/grouped row 30px instead of 29. */
+.wk3.wi2 .wi2-stops{display:inline-flex;align-items:center;max-width:100%;vertical-align:top;white-space:nowrap;height:12px}
 .wk3.wi2 .wi2-s1{min-width:0;overflow:hidden;text-overflow:ellipsis}
 .wk3.wi2 .wi2-sx{flex:none;margin-left:6px}
 .wk3.wi2 .wi2-sx.diff .wk3-stopn{background:var(--warn)}
@@ -1315,22 +1327,27 @@ function _wiImpRowHTML(row,impNo){
   // Draggable=true (item 2): GI groups reorder the same way GRP groups do
   // (_wiSegDrop/_wiSaveSegOrder generalized on row.type — see their comments).
   const segOn=_wiSegOn()&&row.orderIds.length>1;
-  const members=segOn?_wiGrpOrder(row.orderIds.map(id=>data.imports.find(r=>r.id===id)).filter(Boolean),'Loading DateTime'):null;
+  const members=row.orderIds.length>1?_wiGrpOrder(row.orderIds.map(id=>data.imports.find(r=>r.id===id)).filter(Boolean),'Loading DateTime'):null;
+  // Flag off (28/9): every member in ONE card per side, like a multi-stop order.
+  const iG=(!segOn&&members&&members.length>1)?members:null;
+  const iGL=iG?iG.map(e=>_wiGrpPt(e,'L')):null, iGD=iG?iG.map(e=>_wiGrpPt(e,'D')):null;
+  const gFrom=iG?iGL.map(x=>x.n).join(', '):fromStr, gTo=iG?iGD.map(x=>x.n).join(', '):toStr;
 
-  const lo=_wi2Loc(fromStr,'Φόρτωση',f._stopsL);
-  const lIso=f['Loading DateTime']||'';
+  const lo=_wi2Loc(gFrom,'Φόρτωση',iG?iGL:f._stopsL);
+  const lF=iG?_wiGrpFirst(iG,'Loading DateTime'):imp, lIso=lF.fields['Loading DateTime']||'';
   let loadCard=segOn
     ? _wiSegPillWrap(row.id,members,'load',true,true)
-    : _wi2Card({cls:stR.loaded?'ok':'', date:_wi2Date(imp.id,'Loading DateTime',lIso,lIso?_wk3D(_wiFmt(lIso)):'—',stR.loaded?' done':'','Ημ. φόρτωσης'+(stR.loaded?' — φορτώθηκε ✓':'')), name:lo.name, sub:lo.sub, extra:_wk3MoreStops(fromStr,f._stopsL,'load')});
-  const right=`<span class="wi2-flags">${_wiBadges(f)}</span>${_wi2Pal(f)}${f['Reference']?`<span class="wi2-ref" title="Κωδικός αναφοράς">${escapeHtml(String(f['Reference']))}</span>`:''}`;
+    : _wi2Card({cls:stR.loaded?'ok':'', date:_wi2Date(lF.id,'Loading DateTime',lIso,lIso?_wk3D(_wiFmt(lIso)):'—',stR.loaded?' done':'','Ημ. φόρτωσης'+(stR.loaded?' — φορτώθηκε ✓':'')), name:lo.name, sub:lo.sub, extra:_wk3MoreStops(gFrom,iG?iGL:f._stopsL,'load')});
+  const right=`<span class="wi2-flags">${_wiBadges(f)}</span>${iG?_wi2PalGroup(iG):_wi2Pal(f)}${f['Reference']?`<span class="wi2-ref" title="Κωδικός αναφοράς">${escapeHtml(String(f['Reference']))}</span>`:''}`;
   let delCard;
   if(segOn){
     delCard=_wiSegPillWrap(row.id,members,'del',true,true,_wiSegTotalsHTML(members));
   } else if(impVS2){ const v=_wk3VsCd(f,'imp');
     delCard=_wi2Card({cls:stR.late?'late':stR.delivered?'ok':'', date:_wi2Date(imp.id,'VS CD Date',v.iso,v.iso?_wk3D(_wiFmt(v.iso+'T12:00:00')):'—',(stR.delivered?' done':'')+(stR.late?' late':'')+(v.est?' estd':''),v.est?'Εκτίμηση άφιξης CD (Delivery−1) — κλικ για πραγματική':'Ημ. άφιξης στο Cross-Dock'), name:'<span class="wi2-nw">Cross-Dock <span class="wk3-vsb">VS</span></span>', sub:'Βέροια, GR', right});
   } else {
-    const de=_wi2Loc(toStr,'Παράδοση',f._stopsD); const dIso=f['Delivery DateTime']||'';
-    delCard=_wi2Card({cls:stR.late?'late':stR.delivered?'ok':'', date:_wi2Date(imp.id,'Delivery DateTime',dIso,dIso?_wk3D(_wiFmt(dIso)):'—',(stR.delivered?' done':'')+(stR.late?' late':''),'Ημ. παράδοσης'+(stR.delivered?' — παραδόθηκε ✓':'')+(stR.late?' — ΚΑΘΥΣΤΕΡΗΣΕ':'')), name:de.name+(stR.late?'<span class="wi2-late" title="Καθυστέρησε (Delivery Performance)">! καθυστέρηση</span>':''), sub:de.sub, extra:_wk3MoreStops(toStr,f._stopsD,'del'), right});
+    const dF=iG?_wiGrpFirst(iG,'Delivery DateTime'):imp;
+    const de=_wi2Loc(gTo,'Παράδοση',iG?iGD:f._stopsD); const dIso=dF.fields['Delivery DateTime']||'';
+    delCard=_wi2Card({cls:stR.late?'late':stR.delivered?'ok':'', date:_wi2Date(dF.id,'Delivery DateTime',dIso,dIso?_wk3D(_wiFmt(dIso)):'—',(stR.delivered?' done':'')+(stR.late?' late':''),'Ημ. παράδοσης'+(stR.delivered?' — παραδόθηκε ✓':'')+(stR.late?' — ΚΑΘΥΣΤΕΡΗΣΕ':'')), name:de.name+(stR.late?'<span class="wi2-late" title="Καθυστέρησε (Delivery Performance)">! καθυστέρηση</span>':''), sub:de.sub, extra:_wk3MoreStops(gTo,iG?iGD:f._stopsD,'del'), right});
   }
   if(isPre) loadCard=_wiPreLeg(imp);
   // Right feed: VS import → national distribution from Veroia (final destination)
@@ -1343,7 +1360,7 @@ function _wiImpRowHTML(row,impNo){
     draggable="true"
     oncontextmenu="_wiImpCtx(event,${row.id})"
     ondragstart="event.stopPropagation();_wiImpDragStart(event,'${imp.id}')">
-    <div class="wk3-num imp" style="cursor:grab" title="Εισαγωγή I${impNo||''} — σύρε πάνω σε εξαγωγή για ταίριασμα">${isPre?'P':'I'+(impNo||'')}${f['Group ID']?`<span class="wk3-grpb" title="Groupage εισαγωγών · ${escapeHtml(String(f['Group ID']).split('|')[0])}">${segOn?'×'+members.length:'G'}</span>`:''}<span class="wi-sync" id="wi-sync-${row.id}"></span></div>
+    <div class="wk3-num imp" style="cursor:grab" title="Εισαγωγή I${impNo||''} — σύρε πάνω σε εξαγωγή για ταίριασμα">${isPre?'P':'I'+(impNo||'')}${f['Group ID']?`<span class="wk3-grpb" title="Groupage εισαγωγών · ${escapeHtml(String(f['Group ID']).split('|')[0])}">${members&&members.length>1?'×'+members.length:'G'}</span>`:''}<span class="wi-sync" id="wi-sync-${row.id}"></span></div>
     <div class="wk3-feed l" title="Χωρίς εθνικό σκέλος"><span class="wi2-dash">—</span></div>
     <div class="wk3-leg void${leftCls}">${leftInner}</div>
     ${row.hasSplitLegs
@@ -1767,8 +1784,13 @@ function _wi2FitStops(){
     // .fit = natural widths (1st name not allowed to shrink into «…»), so the
     // test is «does it fit whole», not «does it fit once squeezed».
     // Room left on the name line after its other inline marks (✓, «! καθυστέρηση»).
-    const others=[...line.children].filter(c=>c!==box).reduce((a,c)=>a+c.getBoundingClientRect().width+4,0);
-    const avail=line.clientWidth-4-others, w=()=>box.getBoundingClientRect().width;
+    // Margins read, not assumed: .wi2-name>* adds 4px right, .wk3-okc 3px left.
+    const mx=c=>{ const cs=getComputedStyle(c); return (parseFloat(cs.marginLeft)||0)+(parseFloat(cs.marginRight)||0); };
+    const others=[...line.children].filter(c=>c!==box).reduce((a,c)=>a+c.getBoundingClientRect().width+mx(c),0);
+    // Box alone on the line: its trailing margin is clipped empty space, no
+    // room needed. Marks after it: every margin counts — the line's own
+    // ellipsis measures them and would cut the ✓.
+    const avail=Math.floor(others?line.clientWidth-mx(box)-others:line.clientWidth-(parseFloat(getComputedStyle(box).marginLeft)||0)), w=()=>box.getBoundingClientRect().width;
     box.classList.add('fit');
     xs.forEach(x=>x.classList.remove('off')); chip.classList.add('off');
     let hidden=0;
@@ -1777,6 +1799,10 @@ function _wi2FitStops(){
       for(let i=xs.length-1;i>=0&&w()>avail;i--){ xs[i].classList.add('off'); hidden++; }
     }
     box.classList.remove('fit');
+    // The ✓ / «! καθυστέρηση» after the box share the name line: cap the box
+    // at the room left, so the 1st name ellipsizes instead of the mark being
+    // clipped off the card edge (seen 28/9 on a grouped row: «+1 .»).
+    box.style.maxWidth=Math.max(0,avail)+'px';
     // Folded other-day stops still show their day on the chip (owner 27/9):
     // stops are in date order, so the first hidden one is the earliest.
     const hd=xs.find(x=>x.classList.contains('off')&&x.dataset.wd);
@@ -1973,6 +1999,7 @@ function _wi2Balance(){
   // measured again at 12px after a resize widened it.
   names.forEach(e=>{ e.classList.remove('clamp'); e.style.fontSize=''; });
   document.querySelectorAll('#wi-rows .wi2-stops .off').forEach(e=>e.classList.remove('off'));
+  document.querySelectorAll('#wi-rows .wi2-stops').forEach(b=>{ b.style.maxWidth=''; });
   // Chip back to its rendered «+N» so the --sL measurement below never depends
   // on the previous fit pass (which may have written «+1 · Δευ»).
   document.querySelectorAll('#wi-rows .wi2-more[data-n]').forEach(c=>{ c.textContent='+'+c.dataset.n; c.classList.remove('diff'); });
@@ -2280,6 +2307,26 @@ function _wiSegPillWrap(rowId,list,kind,isImportSide,draggable,totalsHTML){
   return `<div class="wk3-segwrap"><div class="wk3-segpill" data-row-id="${rowId}" data-kind="${kind}">${segs}</div>${totalsHTML||''}</div>`;
 }
 
+// GRP (owner 12/8): a group line shows ONE point per MEMBER (① = 1st member…),
+// not the comma-parsing of the first member's summary — that showed San
+// Lucar's city as a fake «② destination». Synthetic {n,dt} arrays, so the
+// multi-stop fit (_wi2Loc → _wk3LocHTML: «① A ② B» / «+N», other-day chip,
+// hover/click list) renders a group exactly like a multi-stop order — one
+// card per side, on the common grid (owner 28/9). Shared by export groups
+// (GRP-), standalone import groups (GI-) and a GI- group matched into an
+// export row. Fallback WITHOUT escapeHtml — _wk3LocHTML escapes on its own.
+function _wiGrpPt(e,side){
+  const key=side==='L'?'_stopsL':'_stopsD', sumKey=side==='L'?'Loading Summary':'Delivery Summary';
+  return { n:(e.fields[key]?.[0]?.n)||String(e.fields[sumKey]||e.fields['Client Name']||'—').split(',').slice(0,2).join(',').replace(/^['"\s/]+/,'').replace(/['"\s/]+$/,'').trim(),
+    dt:e.fields[side==='L'?'Loading DateTime':'Delivery DateTime'] };
+}
+// The member whose date the card shows: the multi-stop list (_wk3Arr) orders
+// ① by date, so the card's date must be the EARLIEST member's — otherwise
+// «① A» sits next to B's date and the orange other-day chip points the
+// wrong way. Its id is also the record a click on that date edits.
+function _wiGrpFirst(recs,field){
+  return recs.reduce((a,b)=>String(b.fields[field]||'~')<String(a.fields[field]||'~')?b:a);
+}
 function _wiRowHTML(row,i){
   const {data,ui}=WINTL;
   const exps   =_wiGrpOrder(row.orderIds.map(id=>data.exports.find(r=>r.id===id)).filter(Boolean));
@@ -2295,15 +2342,8 @@ function _wiRowHTML(row,i){
   const isPre=!isGroup&&isPreorder(pf);
   const fromStr=primary?_wiRaw(pf['Loading Summary']||_wiFlatLocName(pf['Loading Location 1'])||_wiClientName(pf)||'—'):'—';
   const toStr  =primary?_wiRaw(pf['Delivery Summary']||_wiFlatLocName(pf['Unloading Location 1'])||_wiClientName(pf)||'—'):'—';
-  // GRP (owner 12/8): η γραμμή δείχνει ΕΝΑ σημείο ανά ΜΕΛΟΣ (①=1ο μέλος κ.ο.κ.),
-  // όχι το comma-parsing του summary του πρώτου — αυτό εμφάνιζε την πόλη του
-  // San Lucar ως ψεύτικο «② προορισμό». Συνθετικά arrays {n,dt} ώστε τα ①②,
-  // η συντομογραφία 3+ και το ίδια-μέρα-δίπλα να δουλέψουν με την υπάρχουσα λογική.
-  // Fallback ΧΩΡΙΣ escapeHtml — το _wk3LocHTML κάνει το δικό του escape.
-  const _gm1=(e,key,sumKey)=>({ n:(e.fields[key]?.[0]?.n)||String(e.fields[sumKey]||e.fields['Client Name']||'—').split(',').slice(0,2).join(',').replace(/^['"\s/]+/,'').replace(/['"\s/]+$/,'').trim(),
-    dt:e.fields[sumKey==='Loading Summary'?'Loading DateTime':'Delivery DateTime'] });
-  const gL=isGroup?exps.map(e=>_gm1(e,'_stopsL','Loading Summary')):null;
-  const gD=isGroup?exps.map(e=>_gm1(e,'_stopsD','Delivery Summary')):null;
+  const gL=isGroup?exps.map(e=>_wiGrpPt(e,'L')):null;
+  const gD=isGroup?exps.map(e=>_wiGrpPt(e,'D')):null;
   const gLs=gL?gL.map(x=>x.n).join(', '):'';
   const gDs=gD?gD.map(x=>x.n).join(', '):'';
   const refs=isGroup?exps.map(e=>e.fields['Reference']).filter(Boolean).join(' · '):(pf['Reference']||'');
@@ -2358,7 +2398,8 @@ function _wiRowHTML(row,i){
     loadCard=_wi2Card({cls:stF.loaded?'ok':'', date:_wi2Date(pid,'VS CD Date',v.iso,v.iso?_wk3D(_wiFmt(v.iso+'T12:00:00')):'—',(stF.loaded?' done':'')+(v.est?' estd':''),v.est?'Εκτίμηση (Loading+1) — κλικ για πραγματική ημερομηνία CD':'Ημ. φόρτωσης από Cross-Dock'), name:'<span class="wi2-nw">Cross-Dock <span class="wk3-vsb">VS</span></span>', sub:'Βέροια, GR'});
   } else {
     const lo=_wi2Loc(isGroup?gLs:fromStr,'Φόρτωση',isGroup?gL:pf._stopsL);
-    loadCard=_wi2Card({cls:stF.loaded?'ok':'', date:_wi2Date(pid,'Loading DateTime',loadIso,loadIso?_wk3D(_wiFmt(loadIso)):'—',stF.loaded?' done':'','Ημερομηνία φόρτωσης'+(stF.loaded?' — φορτώθηκε ✓':'')), name:lo.name, sub:lo.sub, extra:_wk3MoreStops(isGroup?gLs:fromStr,isGroup?gL:pf._stopsL,'load')});
+    const gF=isGroup?_wiGrpFirst(exps,'Loading DateTime'):primary, gIso=isGroup?(gF.fields['Loading DateTime']||''):loadIso;
+    loadCard=_wi2Card({cls:stF.loaded?'ok':'', date:_wi2Date(isGroup?gF.id:pid,'Loading DateTime',gIso,gIso?_wk3D(_wiFmt(gIso)):'—',stF.loaded?' done':'','Ημερομηνία φόρτωσης'+(stF.loaded?' — φορτώθηκε ✓':'')), name:lo.name, sub:lo.sub, extra:_wk3MoreStops(isGroup?gLs:fromStr,isGroup?gL:pf._stopsL,'load')});
   }
   const de=_wi2Loc(isGroup?gDs:toStr,'Παράδοση',isGroup?gD:pf._stopsD);
   const members=(isGroup&&ui.openGroup===row.id)?exps.map((m,k)=>{const mf=m.fields;
@@ -2394,7 +2435,9 @@ function _wiRowHTML(row,i){
   // its orderId, not re-derived) so its orderIds is the authoritative member
   // list — gated behind _wiSegOn() so a flag-off board never does this lookup
   // (byte parity with the pre-existing single-card path below).
-  const impGroupRow=(_wiSegOn()&&row.importId)?WINTL.rows.find(r=>r.type==='import'&&r.orderId===row.importId):null;
+  // Looked up with the tiles flag OFF too (28/9): the single-card path below
+  // needs the members for its «① A ② B» names and group pallets.
+  const impGroupRow=row.importId?WINTL.rows.find(r=>r.type==='import'&&r.orderId===row.importId):null;
   // Item 1 (owner 8/9): ordered by _wiGrpOrder (GI- suffix, else Loading
   // DateTime) — NOT impGroupRow.orderIds' raw insertion order — so a drag
   // reorder done from EITHER this pill or the standalone GI- row (they write
@@ -2402,7 +2445,7 @@ function _wiRowHTML(row,i){
   const impMembers=(impGroupRow&&impGroupRow.orderIds&&impGroupRow.orderIds.length>1)
     ?_wiGrpOrder(impGroupRow.orderIds.map(id=>data.imports.find(r=>r.id===id)).filter(Boolean),'Loading DateTime'):null;
   let impInner;
-  if(impMembers&&impMembers.length>1){
+  if(_wiSegOn()&&impMembers&&impMembers.length>1){
     // Reuse the SAME segment renderer the standalone GI- row uses, with
     // impGroupRow.id (NOT this export row's id) as the segment rowId — click/
     // right-click/assign-panel/drag-drop (_wiSegCtx, _wiCancelGroupMember,
@@ -2442,22 +2485,27 @@ function _wiRowHTML(row,i){
     impInner=`${gLoad}<span class="wi2-arrow">→</span>${gDel}`;
   } else if(imp){
     const f2=imp.fields;
-    const il=_wi2Loc(f2['Loading Summary']||_wiFlatLocName(f2['Loading Location 1'])||_wiClientName(f2)||'—','Φόρτωση',f2._stopsL);
-    const ilIso=f2['Loading DateTime']||'';
-    const iload=_wi2Card({cls:stI.loaded?'ok':'', date:_wi2Date(imp.id,'Loading DateTime',ilIso,ilIso?_wk3D(_wiFmt(ilIso)):'—',stI.loaded?' done':'','Ημ. φόρτωσης εισαγωγής'+(stI.loaded?' — φορτώθηκε ✓':'')), name:il.name, sub:il.sub, extra:_wk3MoreStops(f2['Loading Summary']||'',f2._stopsL,'load')});
+    const iG=(impMembers&&impMembers.length>1)?impMembers:null;
+    const iGL=iG?iG.map(e=>_wiGrpPt(e,'L')):null, iGD=iG?iG.map(e=>_wiGrpPt(e,'D')):null;
+    const iLs=iG?iGL.map(x=>x.n).join(', '):(f2['Loading Summary']||_wiFlatLocName(f2['Loading Location 1'])||_wiClientName(f2)||'—');
+    const il=_wi2Loc(iLs,'Φόρτωση',iG?iGL:f2._stopsL);
+    const iLF=iG?_wiGrpFirst(iG,'Loading DateTime'):imp, ilIso=iLF.fields['Loading DateTime']||'';
+    const iload=_wi2Card({cls:stI.loaded?'ok':'', date:_wi2Date(iLF.id,'Loading DateTime',ilIso,ilIso?_wk3D(_wiFmt(ilIso)):'—',stI.loaded?' done':'','Ημ. φόρτωσης εισαγωγής'+(stI.loaded?' — φορτώθηκε ✓':'')), name:il.name, sub:il.sub, extra:_wk3MoreStops(iG?iLs:(f2['Loading Summary']||''),iG?iGL:f2._stopsL,'load')});
     // ΙΔΙΑ ΘΕΣΗ ΜΕ ΤΗΝ ΕΞΑΓΩΓΗ (owner 3/9): οι παλέτες και τα σήματα έμπαιναν
     // εδώ στη ΔΕΥΤΕΡΗ ΣΕΙΡΑ, κάτω από το όνομα, ενώ στην εξαγωγή μπαίνουν στη
     // δεξιά θυρίδα — δύο ιδιώματα για το ίδιο πράγμα στην ίδια γραμμή. Και
     // επειδή μοιράζονταν τη σειρά με την πόλη, η πόλη στριμωχνόταν πίσω από
     // «PE · 33 p». Τώρα: δεξιά οι παλέτες, η δεύτερη σειρά μένει της πόλης.
-    const iright=`<span class="wi2-flags">${_wiBadges(f2)}</span>${_wi2Pal(f2)}<button class="wk3-unm" title="Αφαίρεση ταιριάσματος" onclick="event.stopPropagation();_wiUnmatch('${imp.id}')">×</button>`;
+    const iright=`<span class="wi2-flags">${_wiBadges(f2)}</span>${iG?_wi2PalGroup(iG):_wi2Pal(f2)}<button class="wk3-unm" title="Αφαίρεση ταιριάσματος${iG?' (όλη η ομάδα)':''}" onclick="event.stopPropagation();${iG?`_wiRemoveImport(${row.id})`:`_wiUnmatch('${imp.id}')`}">×</button>`;
     let idel;
     if(impVS){ const v=_wk3VsCd(f2,'imp');
       // Matched preview is the narrow column: «Cross-Dock VS» on one line, no city (the badge says it)
       idel=_wi2Card({cls:stI.late?'late':stI.delivered?'ok':'', date:_wi2Date(imp.id,'VS CD Date',v.iso,v.iso?_wk3D(_wiFmt(v.iso+'T12:00:00')):'—',(stI.delivered?' done':'')+(stI.late?' late':'')+(v.est?' estd':''),v.est?'Εκτίμηση άφιξης CD (Delivery−1) — κλικ για πραγματική':'Ημ. άφιξης στο Cross-Dock'), name:'<span class="wi2-nw">Cross-Dock <span class="wk3-vsb">VS</span></span>', sub:'', title:'Cross-Dock Βέροια', right:iright});
     } else {
-      const id2=_wi2Loc(f2['Delivery Summary']||_wiFlatLocName(f2['Unloading Location 1'])||_wiClientName(f2)||'—','Παράδοση',f2._stopsD); const idIso=f2['Delivery DateTime']||'';
-      idel=_wi2Card({cls:stI.late?'late':stI.delivered?'ok':'', date:_wi2Date(imp.id,'Delivery DateTime',idIso,idIso?_wk3D(_wiFmt(idIso)):'—',(stI.delivered?' done':'')+(stI.late?' late':''),'Ημ. παράδοσης εισαγωγής'+(stI.delivered?' — παραδόθηκε ✓':'')+(stI.late?' — ΚΑΘΥΣΤΕΡΗΣΕ':'')), name:id2.name+(stI.late?'<span class="wi2-late">! καθυστέρηση</span>':''), sub:id2.sub, extra:_wk3MoreStops(f2['Delivery Summary']||'',f2._stopsD,'del'), right:iright});
+      const iDs=iG?iGD.map(x=>x.n).join(', '):(f2['Delivery Summary']||_wiFlatLocName(f2['Unloading Location 1'])||_wiClientName(f2)||'—');
+      const iDF=iG?_wiGrpFirst(iG,'Delivery DateTime'):imp;
+      const id2=_wi2Loc(iDs,'Παράδοση',iG?iGD:f2._stopsD); const idIso=iDF.fields['Delivery DateTime']||'';
+      idel=_wi2Card({cls:stI.late?'late':stI.delivered?'ok':'', date:_wi2Date(iDF.id,'Delivery DateTime',idIso,idIso?_wk3D(_wiFmt(idIso)):'—',(stI.delivered?' done':'')+(stI.late?' late':''),'Ημ. παράδοσης εισαγωγής'+(stI.delivered?' — παραδόθηκε ✓':'')+(stI.late?' — ΚΑΘΥΣΤΕΡΗΣΕ':'')), name:id2.name+(stI.late?'<span class="wi2-late">! καθυστέρηση</span>':''), sub:id2.sub, extra:_wk3MoreStops(iG?iDs:(f2['Delivery Summary']||''),iG?iGD:f2._stopsD,'del'), right:iright});
     }
     impInner=isPreorder(f2)
       ? _wiPreLeg(imp,`<button class="wk3-unm" title="Αφαίρεση ταιριάσματος" onclick="event.stopPropagation();_wiUnmatch('${imp.id}')">×</button>`)

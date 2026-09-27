@@ -351,6 +351,10 @@ const PERMS = {
 // deployed — without them the facade would silently drop the two fields and
 // leave orphan legs. Flip to true only after both, then bump ?v= in app.html.
 // GROUP_TILES (owner 8/9/2026, spec docs/design/2026-09-08-groupage-tiles.md):
-// segmented single-pill groupage on Weekly International. Off = today's board
-// renders byte-for-byte unchanged. Flip to true only after live verification.
-const FEATURES = { ORDER_SPLIT: true, GROUP_TILES: true };
+// segmented single-pill groupage on Weekly International. OFF since 28/9
+// (owner: «διόρθωσε και το groupage»): the tiles needed their own wider grid
+// (style.css .wk3-row:has(.wk3-tiled) → 580-600px legs), so a grouped row's
+// ASSIGNMENT and IMPORT cells started 72-136px right of every other row. With
+// the flag off a group renders like a multi-stop order — ONE card per side,
+// «① A ② B» / «+N» (_wiGrpPt + _wi2Loc) — on the common grid.
+const FEATURES = { ORDER_SPLIT: true, GROUP_TILES: false };
