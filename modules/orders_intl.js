@@ -2204,7 +2204,7 @@ function openIntlScan() {
         📷 &nbsp;Λήψη με κάμερα
       </button>
     </div>
-    <input type="file" id="scanFile" accept="image/*,application/pdf" multiple style="display:none"
+    <input type="file" id="scanFile" accept="image/*,application/pdf${typeof scanEngineV2On === 'function' && scanEngineV2On() ? ',.doc,application/msword' : ''}" multiple style="display:none"
       onchange="_scanHandleFiles(this.files)">
     <input type="file" id="scanCamera" accept="image/*" capture="environment" style="display:none"
       onchange="_scanHandleFile(this.files[0])">
@@ -2232,9 +2232,11 @@ async function _scanHandleFile(file) {
     toast(`Το αρχείο είναι πολύ μεγάλο (${(file.size/1024/1024).toFixed(1)}MB) — όριο 10MB`, 'error');
     return;
   }
-  const okType = file.type.startsWith('image/') || file.type === 'application/pdf';
+  // Engine v2 (scan round 2) also reads legacy Word .doc — DPS sends those.
+  const v2 = typeof scanEngineV2On === 'function' && scanEngineV2On();
+  const okType = v2 ? scanV2Accepts(file) : (file.type.startsWith('image/') || file.type === 'application/pdf');
   if (!okType) {
-    toast('Δεκτά μόνο JPG / PNG / PDF', 'error');
+    toast(v2 ? 'Δεκτά μόνο JPG / PNG / PDF / Word (.doc)' : 'Δεκτά μόνο JPG / PNG / PDF', 'error');
     return;
   }
 
@@ -2263,6 +2265,8 @@ async function _scanHandleFile(file) {
       st.innerHTML = dataUrl
         ? `<div class="scan-preview-doc"><img src="${dataUrl}" alt="PDF page 1"></div>`
         : `<div class="scan-preview-info">📄 PDF · ${escapeHtml(file.name)}<span class="scan-preview-meta">preview unavailable</span></div>`;
+    } else {
+      st.innerHTML = `<div class="scan-preview-info">📄 ${escapeHtml(file.name)}</div>`;  // .doc (v2): no preview
     }
   } catch(e) {
     console.warn('[scan] preview failed:', e.message);
@@ -2285,6 +2289,13 @@ async function _scanExtractCore(file) {
   setStatus('<span class="spinner" style="width:16px;height:16px;flex-shrink:0"></span>', 'Προετοιμασία αρχείου…');
 
   try {
+    // Engine v2 behind a per-browser switch until the owner approves it
+    // (core/scan-engine-v2.js): one structured-output call, text layer first,
+    // matching in code over all clients/locations.
+    if (typeof scanEngineV2On === 'function' && scanEngineV2On()) {
+      setStatus('<span class="spinner" style="width:16px;height:16px;flex-shrink:0"></span>', 'AI αναλύει το έγγραφο (v2)…');
+      return await scanV2Extract(file);
+    }
     // 1. Preprocess (auto-rotate + resize for images, pass-through for PDF)
     const pre = await scanPreprocessFile(file);
     if (pre.wasPreprocessed) {
@@ -2441,7 +2452,9 @@ function _scanWeak(d) { return _scanScore(d) < 3; }
 function _scanHandleFiles(fileList) {
   const files = [...(fileList || [])].filter(f => {
     if (f.size > 10*1024*1024) { toast(`${f.name}: >10MB — παραλείπεται`, 'warn'); return false; }
-    const ok = f.type.startsWith('image/') || f.type === 'application/pdf';
+    const ok = (typeof scanEngineV2On === 'function' && scanEngineV2On())
+      ? scanV2Accepts(f)
+      : (f.type.startsWith('image/') || f.type === 'application/pdf');
     if (!ok) toast(`${f.name}: μη υποστηριζόμενος τύπος`, 'warn');
     return ok;
   }).slice(0, 10);
@@ -2612,7 +2625,9 @@ async function _scanPreview(data) {
     const rec = (getRefClients() || []).find(c => c.id === data.client_id);
     if (rec) { clientId = rec.id; clientLabel = rec.fields?.['Company Name'] || ''; }
   }
-  if (!clientId && data.client_name) {
+  // v2 already matched over ALL clients in code; its "no match" means "not
+  // sure" — a weaker fuzzy guess on top would prefill a wrong client silently.
+  if (!clientId && data.client_name && data._engine !== 'v2') {
     // Fuzzy fallback (handles model not using tool, or unknown names)
     if (typeof scanFuzzyMatch === 'function' && typeof getRefClients === 'function') {
       const list = (getRefClients() || []).map(c => ({ id: c.id, label: c.fields?.['Company Name'] || '' })).filter(c => c.label);
@@ -2632,6 +2647,7 @@ async function _scanPreview(data) {
       const direct = _fhLocationsArr.find(l => l.id === s.location_id);
       if (direct) return direct;
     }
+    if (data._engine === 'v2') return null;  // same reason as the client above
     // Try fuzzy first if available
     if (typeof scanFuzzyMatch === 'function') {
       const composite = [s.location_name, s.city_gr, s.city, s.country].filter(Boolean).join(' ');
@@ -2718,6 +2734,13 @@ async function _scanPreview(data) {
     if (_ld && _dd && !isNaN(_ld) && !isNaN(_dd) && _dd < _ld) warns.push('Η παράδοση είναι ΠΡΙΝ τη φόρτωση — έλεγξε τις ημερομηνίες');
     if (data.pallets && data.pallets > 33) warns.push(`Παλέτες ${data.pallets} > 33 (χωρητικότητα φορτηγού)`);
     if (data.temperature_c != null && (data.temperature_c < -30 || data.temperature_c > 30)) warns.push(`Θερμοκρασία ${data.temperature_c}°C εκτός λογικού εύρους`);
+    // v2 stop dates live on the stops (the top-level dates above are v1-only).
+    if (data._engine === 'v2') {
+      const lds = (data.loading_stops || []).map(s => s.date).filter(Boolean).sort();
+      const dds = (data.delivery_stops || []).map(s => s.date).filter(Boolean).sort();
+      if (lds.length && dds.length && dds[0] < lds[lds.length - 1]) warns.push('Η παράδοση είναι ΠΡΙΝ τη φόρτωση — έλεγξε τις ημερομηνίες');
+      (data._v2?.warnings || []).forEach(w => warns.push(escapeHtml(w)));
+    }
     if (warns.length && st) st.insertAdjacentHTML('afterbegin', warns.map(w =>
       `<div class="oi-banner oi-banner-warn">⚠ ${w}</div>`).join(''));
   } catch (e) {}
@@ -2783,6 +2806,7 @@ async function _scanOpen(matched, data) {
   if (data.temperature_c!=null) { f['Temperature °C'] = data.temperature_c; f['Refrigerator Mode'] = 'Continuous'; }
   if (data.direction)   f['Direction'] = data.direction;
   if (data.price_eur)   f['Price'] = data.price_eur;
+  if (data.pallet_type) f['Pallet Type'] = data.pallet_type;   // only v2 extracts it (EUR/CHEP/Industrial)
   // Default Type for international orders (if AI didn't say otherwise)
   if (!f['Type']) f['Type'] = 'International';
 
