@@ -31,6 +31,13 @@ const OPS_FIELDS = [
   // 'Group ID' (Παντελής 15/9, Figma 647:1011): export loadings of the same
   // groupage collapse into one row. Same truck is the fallback key.
   'Group ID',
+  // Pre-order (owner 22/9). Without 'Ops Status' a pre-order is NULL = absent
+  // (facade trap 2) and would read as an ordinary «ΠΡΟΣ ΑΝΑΘΕΣΗ» row; 'Notes'
+  // is its only description. 'Destination Country' is deliberately NOT asked
+  // for: a pre-order has no delivery date, so it never sits in a delivery
+  // section — and an explicit fields[] read of a column the view lacks (Worker
+  // deployed before DRAFT 052) would fail this whole page.
+  'Ops Status','Notes',
 ];
 
 /* ── ENTRY ────────────────────────────────────────────────────── */
@@ -408,12 +415,15 @@ const _OPS_STYLE=`<style>
   .do-foot{margin-top:16px;font-size:var(--text-xs);color:var(--text-dim);text-align:right}
   /* Popover «Αλλαγή ημέρας» — στη γραμμή, Enter = Αύριο. Floats above the
      page, so it is the one element here allowed a shadow (D). */
-  .do-pop{position:absolute;z-index:var(--z-float,50);width:360px;background:var(--surface-card);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow-md);padding:12px 16px;text-align:left;white-space:normal}
+  /* 440px (was 360) since 27/9: a fourth option «Μεθαύριο» — at 360 the
+     date input inside «Άλλη…» shrank below its readable width. */
+  .do-pop{position:absolute;z-index:var(--z-float,50);width:440px;background:var(--surface-card);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow-md);padding:12px 16px;text-align:left;white-space:normal}
   .do-pop h4{font-family:inherit;font-size:var(--text-base);font-weight:700;margin:0 0 4px}
   .do-pop .do-psub{font-size:var(--text-xs);color:var(--text-dim);margin-bottom:8px}
   .do-pop .do-opts{display:flex;gap:8px;margin-bottom:8px}
   .do-pop .do-opt{flex:1;border:1px solid var(--border);border-radius:var(--radius);padding:4px 8px;background:var(--surface-card);cursor:pointer;font-family:inherit;text-align:left}
   .do-pop .do-opt:hover{border-color:var(--border-dark)}
+  .do-pop .do-opt:last-child{flex:1.3}
   .do-pop .do-opt b{display:block;font-size:var(--text-sm);color:var(--text)}
   .do-pop .do-opt span{font-size:var(--text-xs);color:var(--text-dim)}
   .do-pop .do-opt.on{background:var(--surface-dark);border-color:var(--surface-dark)} .do-pop .do-opt.on b,.do-pop .do-opt.on span{color:var(--text-on-dark)}
@@ -438,8 +448,9 @@ function _opsDraw() {
   const total=all.length;
 
   // Per-direction completion — κάθε αναλογία x/y, ποτέ σκέτο ποσοστό.
-  const loadsAll = [...cats.el, ...cats.il];
-  const delsAll  = [...cats.ed, ...cats.id];
+  // Pre-orders are not declarable (no points) — outside «x / y δηλωμένες» (22/9).
+  const loadsAll = [...cats.el, ...cats.il].filter(r=>!isPreorder(r.fields));
+  const delsAll  = [...cats.ed, ...cats.id].filter(r=>!isPreorder(r.fields));
   const loadsDone = loadsAll.filter(r=>['In Transit','Delivered'].includes(r.fields['Status']||'')).length;
   const delsDone  = delsAll.filter(r=>(r.fields['Status']||'')==='Delivered').length;
   const pendN=isToday?OPS.overdue.length+OPS.overdueLoads.length:0;
@@ -474,7 +485,8 @@ function _opsDraw() {
     `${OPS.overdueLoads.length} ${OPS.overdueLoads.length===1?'εκκρεμής φόρτωση':'εκκρεμείς φορτώσεις'} από προηγούμενες ημέρες`,
     'δεν φορτώθηκε και δεν μετατέθηκε',
     r=>{const f=r.fields, n=_daysAgo(f['Loading DateTime']);
-      return `<div class="do-zrow" id="r_${r.id}"><span class="do-cl">${_C(f)}</span><span class="do-rt">${route(r)}${_opsWho(f)}</span>
+      const pre=isPreorder(f);
+      return `<div class="do-zrow${pre?' do-pre':''}" id="r_${r.id}"><span class="do-cl">${_C(f)}${pre?' '+preorderChipHtml(f):''}</span><span class="do-rt">${route(r)}${_opsWho(f)}</span>
         <span class="do-late">φόρτωση ${_DMY(f['Loading DateTime'])} · ${_agoTxt(n)}</span>
         ${_opsSlots(r,'ovl')}</div>${OPS._expanded?.has(r.id)?_opsSubRows(r,'Loading',true):''}`;}):'';
   const ovLErr=isToday&&OPS.overdueLoadsErr?`<div class="do-err"><span>Η ζώνη εκκρεμών φορτώσεων δεν φορτώθηκε — δεν σημαίνει ότι δεν υπάρχουν εκκρεμείς φορτώσεις. Οι υπόλοιπες ενότητες είναι ενημερωμένες.</span><button class="do-btn" onclick="renderDailyOps()">Ξαναδοκίμασε</button></div>`:'';
@@ -493,6 +505,7 @@ function _opsDraw() {
     <div class="do-top">
       <h1 class="do-h1">Ημερήσιο Πλάνο</h1>
       <span class="do-sub">${fD(tgt)} · ${total} ${total===1?'παραγγελία':'παραγγελίες'} ${_opsDayWord()}${pendN?` · <b>${pendN} ${pendN===1?'εκκρεμής':'εκκρεμείς'}</b>`:''}</span>
+      ${preorderCounterHtml([...new Map([...all,...(isToday?OPS.overdueLoads:[])].map(r=>[r.id,r.fields])).values()],"preorderJump('.do-page .do-pre')")}
       <div class="do-seg">
         <button class="${OPS.date==='yesterday'?'on':''}" onclick="OPS.date='yesterday';renderDailyOps()">Χθες</button>
         <button class="${isToday?'on':''}" onclick="OPS.date='today';renderDailyOps()">Σήμερα</button>
@@ -523,9 +536,9 @@ function _opsDraw() {
     ${ovH}${ovLH}${ovLErr}
     <div class="ops-sections" style="gap:0">
       ${_opsSec('el','ΦΟΡΤΩΣΕΙΣ ΕΞΑΓΩΓΗΣ',cats.el,isToday,'Καμία παραγγελία εξαγωγής για φόρτωση',1)}
-      ${_opsSec('ed','ΠΑΡΑΔΟΣΕΙΣ ΕΞΑΓΩΓΗΣ',cats.ed,isToday,'Καμία παραγγελία εξαγωγής για παράδοση',1+cats.el.length)}
-      ${_opsSec('il','ΦΟΡΤΩΣΕΙΣ ΕΙΣΑΓΩΓΗΣ',cats.il,isToday,'Καμία παραγγελία εισαγωγής για φόρτωση',1+cats.el.length+cats.ed.length)}
-      ${_opsSec('id','ΠΑΡΑΔΟΣΕΙΣ ΕΙΣΑΓΩΓΗΣ',cats.id,isToday,'Καμία παραγγελία εισαγωγής για παράδοση',1+cats.el.length+cats.ed.length+cats.il.length)}
+      ${_opsSec('ed','ΠΑΡΑΔΟΣΕΙΣ ΕΞΑΓΩΓΗΣ',cats.ed,isToday,'Καμία παραγγελία εξαγωγής για παράδοση',1)}
+      ${_opsSec('il','ΦΟΡΤΩΣΕΙΣ ΕΙΣΑΓΩΓΗΣ',cats.il,isToday,'Καμία παραγγελία εισαγωγής για φόρτωση',1)}
+      ${_opsSec('id','ΠΑΡΑΔΟΣΕΙΣ ΕΙΣΑΓΩΓΗΣ',cats.id,isToday,'Καμία παραγγελία εισαγωγής για παράδοση',1)}
     </div>
     <div class="do-foot">ORDERS · φίλτρο ημέρας ${_DMYFull(tgt)} · ${OPS.intl.length} ${OPS.intl.length===1?'εγγραφή':'εγγραφές'}${pendN?` + ${pendN} ${pendN===1?'εκκρεμής':'εκκρεμείς'}`:''}${upd?` · ενημερώθηκε ${upd}`:''}</div>
     </div>`;
@@ -549,9 +562,12 @@ function _opsToggleZone(key) {
   if (btn) { btn.setAttribute('aria-expanded', willOpen ? 'true' : 'false'); const t = btn.querySelector('.do-tog'); if (t) t.textContent = willOpen ? '▲ Απόκρυψη' : '▼ Εμφάνιση'; }
 }
 
-// `start`: η αρίθμηση συνεχίζεται από ενότητα σε ενότητα. Με `i+1` σε κάθε
-// ενότητα η οθόνη είχε τέσσερα «#1» και κανείς δεν μπορούσε να πει «το 7»
-// στο τηλέφωνο — ο αριθμός δεν ταυτοποιούσε τίποτα (3/9).
+// `start`: numbering restarts at 1 in EVERY section (owner 27/9, on dispatcher
+// Παντελής's request). 3/9 had made it run on across sections so «το 7» named
+// a single row on the phone; the dispatchers asked for the opposite — exports
+// 1–5 followed by imports 7–10 did not match how they read the day, section
+// by section. A row is now named by section + number. Callers pass 1; the
+// parameter stays because the grouped export rows count from it.
 function _opsSec(type,label,items,isToday,emptyTxt,start) {
   const isL=type==='el'||type==='il', isExp=type==='el'||type==='ed';
   const when=_opsDayWord();
@@ -569,7 +585,8 @@ function _opsSec(type,label,items,isToday,emptyTxt,start) {
   const cols=`<th>#</th><th>ΠΕΛΑΤΗΣ</th>${mid}<th>ΚΑΤΑΣΤΑΣΗ</th><th style="text-align:right">ΕΝΕΡΓΕΙΕΣ</th>`;
   const colg='<colgroup><col style="width:32px"><col><col><col style="width:200px"><col style="width:56px"><col style="width:80px"><col style="width:206px"><col style="width:320px"></colgroup>';
   const done=items.filter(r=>isL?['In Transit','Delivered'].includes(r.fields['Status']||''):(r.fields['Status']||'')==='Delivered').length;
-  const head=`<div class="do-sec-h">${label}<span>${items.length?`${items.length} · ${done} ${done===1?'δηλωμένη':'δηλωμένες'}`:`— καμία ${when}`}</span></div>`;
+  const preN=items.filter(r=>isPreorder(r.fields)).length;
+  const head=`<div class="do-sec-h">${label}<span>${items.length?`${items.length-preN} · ${done} ${done===1?'δηλωμένη':'δηλωμένες'}${preN?` · ${preN} pre-order`:''}`:`— καμία ${when}`}</span></div>`;
   if(!items.length) return `<div class="do-sec">${head}<div class="do-empty">${emptyTxt} ${when}</div></div>`;
   return `<div class="do-sec">${head}
     <div style="overflow-x:auto"><table class="do-t">${colg}<thead><tr>${cols}</tr></thead><tbody>${isL&&isExp?_opsGroupedRows(items,start,type,isToday):items.map((r,i)=>_opsRow(r,start+i,type,isToday)).join('')}</tbody></table></div>
@@ -685,6 +702,10 @@ function _opsSlots(rec, ctx) {
   // entered on Monday). The date lie is removed at the source instead: every
   // writer stamps the viewed day (_opsTgt / _opsNowOnTgt). Only a future day
   // has no buttons.
+  // Pre-order (owner 22/9): «Φορτώθηκε» on a load without a point would be a
+  // lie in the base — the only action is to complete it. Any role that may
+  // act here (planning:full) may convert; the form enforces the six fields.
+  if(isPreorder(f)) return `<div class="do-slots"><span class="do-slot"><button class="do-btn" onclick="event.stopPropagation();_opsConvert('${id}')">Μετατροπή</button></span></div>`;
   const done=st==='Delivered'||(isL&&st==='In Transit');
   if(done) return '';
   const slots=[];
@@ -709,6 +730,7 @@ function _opsSlots(rec, ctx) {
 function _opsRow(rec,num,type,isToday,cls) {
   const f=rec.fields, id=rec.id;
   const client=_C(f), sub=_CSub(f);
+  const pre=isPreorder(f);
   const loadL=_L(_opsStopLoc(id,'Loading'));
   const delivL=_L(_opsStopLoc(id,'Unloading'));
   const truck=_TT(f), driver=_D(f), partner=_P(f);
@@ -742,7 +764,9 @@ function _opsRow(rec,num,type,isToday,cls) {
   // the generic word «συνεργάτης» told the phone caller nothing.
   const asgCell=_opsAsgCell(f, truck, driver, partner);
   const pill=_opsStopsBadge(id,_stype);
-  const stCell=`<td class="do-st">${_opsStatusWord(f,pill,isL,_opsStamp(_mStops,_opsTgt()))}</td>`;
+  const stCell=pre
+    ? `<td class="do-st">${preorderChipHtml(f)}${f['Notes']?`<span class="do-sl">${escapeHtml(String(f['Notes']))}</span>`:''}</td>`
+    : `<td class="do-st">${_opsStatusWord(f,pill,isL,_opsStamp(_mStops,_opsTgt()))}</td>`;
   const actCell=`<td class="do-acts">${_opsSlots(rec,type)}</td>`;
 
   let mid='';
@@ -754,7 +778,7 @@ function _opsRow(rec,num,type,isToday,cls) {
   // υπο-γραμμές ακολουθούν το tr ώστε να ζουν στο ίδιο tbody. Η ανοιχτή
   // γραμμή κρατά το φόντο επιλογής (.do-open) όσο είναι ανοιχτή.
   const _trClick=_multi?` onclick="if(!event.target.closest('button,input,select,a'))_opsToggleStops('${id}')"`:'';
-  return `<tr id="r_${id}" class="do-hover${cls?' '+cls:''}${isDone?' do-done':''}${_expanded?' do-open':''}" style="${_multi?'cursor:pointer':''}"${_trClick}><td class="do-num">${num}</td>${cl}${mid}${stCell}${actCell}</tr>`+(_expanded?_opsSubRows(rec,_stype):'');
+  return `<tr id="r_${id}" class="do-hover${cls?' '+cls:''}${isDone?' do-done':''}${_expanded?' do-open':''}${pre?' do-pre pre-'+preorderLevel(f):''}" style="${_multi?'cursor:pointer':''}"${_trClick}><td class="do-num">${num}</td>${cl}${mid}${stCell}${actCell}</tr>`+(_expanded?_opsSubRows(rec,_stype):'');
 }
 
 // Own fleet = a plate or a driver on a non-partner trip. A plate without a
@@ -897,6 +921,7 @@ async function _opsStat(id,st){
   return _opsStatFinal(id,st);
 }
 // Βρες την εγγραφή σε όποια λίστα ζει (ημέρα ή εκκρεμείς φορτώσεις).
+function _opsConvert(id){ if(_opsBlockReadOnly()) return; convertPreorder(id); }
 function _opsFind(id){ return OPS.intl.find(x=>x.id===id)||OPS.overdueLoads.find(x=>x.id===id)||OPS.overdue.find(x=>x.id===id); }
 async function _opsStatFinal(id,st){ if(_opsBlockReadOnly()) return; try{
   const r0=_opsFind(id);
@@ -982,8 +1007,14 @@ function _opsChangeDay(ev, id, kind){
   // εκκρεμών η παλιά ημέρα είναι ήδη περασμένη, οπότε το «Αύριο» μετέθετε στο
   // ΠΑΡΕΛΘΟΝ και η γραμμή ξαναγύριζε εκκρεμής. Το `base` μένει ως το «τώρα …»
   // και ως αφετηρία του delta που μετακινεί μαζί την παράδοση.
+  // «Μεθαύριο» (27/9, dispatcher Παντελής): after «Αύριο» the only quick pick
+  // was Monday, so a two-day postponement mid-week needed the date picker.
+  // «Δευτέρα» is shown only when it is a date NOT already offered: on Saturday
+  // Μεθαύριο is Monday, on Sunday Αύριο is Monday. The relative button stays
+  // (its label carries «Δευ»), so the popover never offers two buttons that
+  // write the same date.
   const _tdy=localToday();
-  const tmrw=_plus(_tdy,1), mon=_nextMonday(_tdy);
+  const tmrw=_plus(_tdy,1), day2=_plus(_tdy,2), mon=_nextMonday(_tdy);
   const stype=kind==='load'?'Loading':'Unloading';
   const loc=_L(_opsStopLoc(id,stype))||'';
   const hasDel=kind==='load'&&!!f['Delivery DateTime'];
@@ -993,7 +1024,8 @@ function _opsChangeDay(ev, id, kind){
     <div class="do-psub">${_C(f)}${loc?' · '+loc:''}${f['Total Pallets']?' · '+f['Total Pallets']+'p':''} · τώρα ${_DMY(base)}</div>
     <div class="do-opts">
       <button class="do-opt on" data-v="${tmrw}" onclick="_opsPopPick(this)"><b>Αύριο</b><span>${_dowShort(tmrw)} ${_DMY(tmrw)}</span></button>
-      <button class="do-opt" data-v="${mon}" onclick="_opsPopPick(this)"><b>Δευτέρα</b><span>${_DMY(mon)}</span></button>
+      <button class="do-opt" data-v="${day2}" onclick="_opsPopPick(this)"><b>Μεθαύριο</b><span>${_dowShort(day2)} ${_DMY(day2)}</span></button>
+      ${mon!==tmrw&&mon!==day2?`<button class="do-opt" data-v="${mon}" onclick="_opsPopPick(this)"><b>Δευτέρα</b><span>${_DMY(mon)}</span></button>`:''}
       <button class="do-opt" data-v="" onclick="_opsPopPick(this)"><b>Άλλη…</b><input type="date" onclick="event.stopPropagation()" onchange="_opsPopOther(this)"></button>
     </div>
     ${hasDel?`<label><input type="checkbox" checked onchange="OPS._pop.moveDel=this.checked;_opsPopHint()"><span>Μετακίνηση και της παράδοσης<small id="doPopHint"></small></span></label>`:''}
@@ -1119,6 +1151,7 @@ window._opsOvAct = _opsOvAct;
 window._opsSetFilter = _opsSetFilter;
 window._opsToggleZone = _opsToggleZone;
 window._opsToggleStops = _opsToggleStops;
+window._opsConvert = _opsConvert;
 window._opsMarkStopUI = _opsMarkStopUI;
 window._opsChangeDay = _opsChangeDay; window._opsChangeDayGo = _opsChangeDayGo;
 window._opsPopPick = _opsPopPick; window._opsPopOther = _opsPopOther; window._opsPopHint = _opsPopHint; window._opsCloseFloat = _opsCloseFloat;

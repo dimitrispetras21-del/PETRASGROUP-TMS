@@ -1,0 +1,90 @@
+-- 052 — DRAFT (ΔΕΝ ΕΚΤΕΛΕΣΤΗΚΕ) — Pre-order: «Χώρα προορισμού» όταν δεν ξέρουμε ακόμη το σημείο.
+--        Απόφαση owner 27/9 (DECISION_LOG 27/9 βράδυ §4, Παντελής: «πολλές φορές δεν έχουμε ακριβή
+--        τόπο προορισμού»). Branch feat/preorder. Τρέχει ο owner, μετά τις 15:00.
+--
+-- ΣΕΙΡΑ (υποχρεωτική): 044 → 052 → deploy Worker (label "Destination Country" → dest_country).
+--   Αν γίνει deploy ΠΡΙΝ το 052: pre-order ΜΕ χώρα αποτυγχάνει δυνατά («Save failed», 500 για
+--   στήλη που δεν υπάρχει)· χωρίς χώρα και οι μετατροπές δουλεύουν (η μετατροπή στέλνει null μόνο
+--   όταν η εγγραφή έχει χώρα). Καμία οθόνη δεν ζητά ρητά το label στο fields[] (το Ημερήσιο
+--   σκόπιμα όχι) — άρα καμία σελίδα δεν πέφτει. Αντίστροφα (052 χωρίς deploy) είναι ακίνδυνο: η
+--   φόρμα pre-order λέει ρητά «η χώρα δεν αποθηκεύτηκε» (αρχή 1).
+--
+-- WHY μια στήλη και όχι κάτι υπάρχον (μετρημένο στον χάρτη ORDERS 27/9):
+--   * Τα orders ΔΕΝ έχουν στήλη χώρας — η χώρα ζει μόνο στις locations (locations.country).
+--   * «Τοποθεσία-χώρα» (ψεύτικο σημείο «Ιταλία») θα μόλυνε τον πίνακα τοποθεσιών και θα έγραφε
+--     Unloading Location + ORDER STOPS που δεν υπάρχουν — ψέμα στη βάση.
+--   * Στο Notes ως κείμενο: αμέτρητο, αφιλτράριστο, και μένει «Ιταλία» ακόμη κι όταν το σημείο
+--     είναι στη Γερμανία (δύο πηγές, αρχή 3).
+-- Τιμή = ISO 3166-1 alpha-2 (GR, IT, DE …), η ίδια σύμβαση με clients/workshops/core/countries.js.
+-- ΜΙΑ στήλη, σημασία κατά κατεύθυνση (πρόταση συντονιστή 27/9, εκκρεμεί επιβεβαίωση owner): το ΞΕΝΟ
+-- άκρο που δεν ξέρουμε ακόμη — Export → χώρα προορισμού, Import → χώρα φόρτωσης. Το ελληνικό άκρο
+-- δεν είναι ποτέ το άγνωστο. Η φόρμα αλλάζει μόνο την ετικέτα (preorder.js _preCountryLabel).
+-- Ζει ΜΟΝΟ όσο η παραγγελία είναι pre-order: στη μετατροπή η φόρμα γράφει null (η τοποθεσία
+-- παράδοσης έχει τη δική της χώρα). Ο δεύτερος CHECK το κάνει κανόνα της βάσης (αρχή 4) —
+-- προϋποθέτει ότι η μετατροπή στέλνει 'Ops Status' ΚΑΙ 'Destination Country' null μαζί (έτσι κάνει
+-- το submitIntlOrder στο feat/preorder).
+--
+-- Η VIEW: ο Worker διαβάζει τα ORDERS από την orders_with_derived (readView), που έχει ΡΗΤΗ λίστα
+-- στηλών — νέα στήλη στον πίνακα ΔΕΝ φτάνει μόνη της στη view (ίδιο μάθημα με 018/019/019_view_order_legs). Το CREATE OR
+-- REPLACE κρατά τις υπάρχουσες στήλες στη θέση τους και προσθέτει μία στο τέλος.
+-- ⚠ ΠΡΙΝ: ο τρέχων ορισμός πρέπει να είναι ΑΚΡΙΒΩΣ της worker/migrations/019_view_order_legs.sql (τελευταία
+--   που άγγιξε τη view: πρόσθεσε parent_order_id, leg_no μετά το order_no — μετρημένο στην παραγωγή από τον
+--   συντονιστή 27/9). Το REPLACE επιτρέπει ΜΟΝΟ προσθήκη στο τέλος: αν η λίστα παρακάτω παρέλειπε στήλη,
+--   η Postgres αρνείται («cannot drop columns from view»). Αν ο ορισμός διαφέρει, ΣΤΑΜΑΤΑ
+--   — κάποιος άλλαξε τη view εκτός repo και το REPLACE θα έσβηνε την αλλαγή του.
+--
+-- Αναστρέψιμο (το REPLACE δεν αφαιρεί στήλη — χρειάζεται drop + ξανά ο ορισμός της 019_view_order_legs):
+--   drop view public.orders_with_derived;  -- και μετά το create view της 019_view_order_legs αυτούσιο
+--   (αν η drop αρνηθεί λόγω εξαρτώμενων views, άφησε τη view: μια στήλη που κανείς δεν διαβάζει
+--    δεν βλάπτει — φεύγει μόνο το label από τον Worker και οι CHECK)
+--   alter table public.orders drop constraint orders_dest_country_preorder_only,
+--                             drop constraint orders_dest_country_iso2, drop column dest_country;
+--   (ΠΡΩΤΑ Worker χωρίς το label — αλλιώς κάθε pre-order με χώρα αποτυγχάνει.)
+
+-- ΠΡΙΝ (εκτός συναλλαγής, μόνο ανάγνωση): ο ορισμός της view = 019_view_order_legs;
+--   select pg_get_viewdef('public.orders_with_derived'::regclass, true);
+--   αναμενόμενο: SELECT v.*, o.group_id, o.plan_week_start, o.id AS order_no, o.parent_order_id, o.leg_no
+--                FROM orders_with_derived_old3 v JOIN orders o ON o.id = v.id;  (v.* αναπτυγμένο)
+
+BEGIN;
+
+-- ΠΡΙΝ: η στήλη δεν υπάρχει ήδη (πρέπει 0).
+SELECT count(*) AS already_there FROM information_schema.columns
+ WHERE table_schema = 'public' AND table_name = 'orders' AND column_name = 'dest_country';
+
+ALTER TABLE public.orders ADD COLUMN dest_country text;
+
+ALTER TABLE public.orders
+  ADD CONSTRAINT orders_dest_country_iso2
+  CHECK (dest_country IS NULL OR dest_country ~ '^[A-Z]{2}$');
+
+ALTER TABLE public.orders
+  ADD CONSTRAINT orders_dest_country_preorder_only
+  CHECK (dest_country IS NULL OR ops_status = 'Provisional');
+
+create or replace view public.orders_with_derived as
+select v.*, o.group_id, o.plan_week_start, o.id as order_no, o.parent_order_id, o.leg_no, o.dest_country
+  from public.orders_with_derived_old3 v
+  join public.orders o on o.id = v.id;
+
+-- ΜΕΤΑ: στήλη στον πίνακα + στη view (πρέπει 1 και 1), περιορισμοί έγκυροι.
+SELECT (SELECT count(*) FROM information_schema.columns
+         WHERE table_schema='public' AND table_name='orders' AND column_name='dest_country') AS in_table,
+       (SELECT count(*) FROM information_schema.columns
+         WHERE table_schema='public' AND table_name='orders_with_derived' AND column_name='dest_country') AS in_view;
+-- ΜΕΤΑ: η view δεν έχασε γραμμές (τα δύο counts ίσα) και κράτησε τις στήλες σκελών + τη νέα (πρέπει 3).
+SELECT (SELECT count(*) FROM public.orders_with_derived) AS view_rows,
+       (SELECT count(*) FROM public.orders) AS table_rows;
+SELECT count(*) AS kept_and_new FROM information_schema.columns
+ WHERE table_schema='public' AND table_name='orders_with_derived'
+   AND column_name IN ('parent_order_id', 'leg_no', 'dest_country');
+SELECT conname, convalidated FROM pg_constraint
+ WHERE conrelid = 'public.orders'::regclass
+   AND conname IN ('orders_dest_country_iso2', 'orders_dest_country_preorder_only');
+
+COMMIT;
+
+-- Επανάληψη ελέγχου session (CLAUDE.md «ο επαναλαμβανόμενος έλεγχος»), μετά την πρώτη χρήση:
+--   SELECT count(*) FILTER (WHERE dest_country IS NOT NULL) AS γραμμένα,
+--          count(*) FILTER (WHERE ops_status = 'Provisional') AS preorders
+--     FROM orders WHERE deleted_at IS NULL;

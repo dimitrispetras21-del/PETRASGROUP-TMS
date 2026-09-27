@@ -72,7 +72,11 @@ function _wiApplyFilter() {
     if (show && qk) show = _wi2QuickMatch(row, qk);
     el.style.display = show ? '' : 'none';
   });
-  document.querySelectorAll('.wi2-chip').forEach(c => c.classList.toggle('on', (c.dataset.q || '') === qk));
+  document.querySelectorAll('.wi2-chip,.pre-count').forEach(c => c.classList.toggle('on', (c.dataset.q || '') === qk));
+  // Rows hidden at paint time were skipped by the stops fit pass (no layout);
+  // re-run it now that some may be visible again, or they would show every
+  // stop plus «+N» and get cut mid-name by the line's ellipsis.
+  _wi2FitStops();
 }
 // Quick filters of the v2 band. «Χωρίς ανάθεση» = neither own truck nor partner
 // (DECISION_LOG 2/9). «Κενά» = own round trip without import — a partner row is
@@ -85,6 +89,8 @@ function _wi2QuickMatch(row, qk) {
     case 'own':     return row.saved && !row.partnerId;
     case 'partner': return row.saved && !!row.partnerId;
     case 'matched': return row.type === 'export' && !!row.importId;
+    // Pre-order counter (owner 27/9): the rows still waiting for their points.
+    case 'pre':     return (row.orderIds || [row.orderId]).some(id => isPreorder((WINTL.data.exports.find(r => r.id === id) || WINTL.data.imports.find(r => r.id === id))?.fields));
     default: return true;
   }
 }
@@ -230,6 +236,15 @@ const _WI2_CSS=`
 /* 14/9: an explicit «open» (localStorage 1 → fl-on/fr-on) wins over the <1800px collapse — the media rule
    above forced 18px on every laptop, so the ΠΡΟΣ/ΑΠΟ ΒΕΡΟΙΑ headers toggled the class and nothing moved. */
 .wk3.wi2.fl-on{--fL:200px}.wk3.wi2.fr-on{--fR:200px}
+/* 27/9: the auto-collapse above only shrank the column to 18px — its cards
+   stayed and were cut to an unreadable «31/…». An 18px column cannot carry a
+   date, so behave like the manual collapse (style.css .fl-off/.fr-off: cards
+   hidden) and leave a dot where a national leg exists; ◂ ▸ opens the column
+   with the full date. An explicit fl-on/fr-on keeps the cards. */
+@media (max-width:1800px){
+.wk3.wi2:not(.fl-on) .wk3-feed.l>*,.wk3.wi2:not(.fr-on) .wk3-feed.r>*{display:none}
+.wk3.wi2:not(.fl-on) .wk3-feed.l:has(.wi2-card)::after,.wk3.wi2:not(.fr-on) .wk3-feed.r:has(.wi2-card)::after{content:'';width:6px;height:6px;border-radius:var(--radius-full);background:var(--accent);align-self:center}
+}
 /* Μαζεμένη στήλη = μαζεμένη κεφαλίδα. Το κείμενο «ΠΡΟΣ/ΑΠΟ ΒΕΡΟΙΑ» είναι
    γυμνός κόμβος δίπλα στο βελάκι, οπότε ξεχείλιζε από τα 18px. font-size:0
    στο κελί και κανονικό στο βελάκι: το κείμενο φεύγει, το ◂ ▸ μένει και η
@@ -281,23 +296,27 @@ const _WI2_CSS=`
 .wi2-chip:disabled,.wi2-chip:disabled:hover{color:var(--text-dim);background:var(--surface-card);border-color:var(--border);cursor:default}
 .wi2-week{margin-left:auto;font:500 12px 'DM Sans',sans-serif;color:var(--text-dim);white-space:nowrap;font-variant-numeric:tabular-nums}
 .wk3.wi2 .wk3-sheet{background:transparent;border:none;box-shadow:none;border-radius:0;max-height:calc(100vh - 340px);padding-bottom:4px}
-.wk3.wi2 .wk3-cols{background:var(--surface-card);border:1px solid var(--border);border-radius:var(--radius);margin-bottom:8px;min-height:30px}
-.wk3.wi2 .wk3-cols .c{font:700 11px 'Syne',sans-serif;letter-spacing:1.2px;color:var(--text-mid);padding:0 8px;height:30px;gap:4px}
+.wk3.wi2 .wk3-cols{background:var(--surface-card);border:1px solid var(--border);border-radius:var(--radius);margin-bottom:4px;min-height:24px}
+.wk3.wi2 .wk3-cols .c{font:700 11px 'Syne',sans-serif;letter-spacing:1.2px;color:var(--text-mid);padding:0 8px;height:24px;gap:4px}
 .wk3.wi2 .wk3-cols .c.fc{color:var(--text-dim)}
 .wk3.wi2 .wk3-cols .c .fc-ch{font-size:11px}
 .wk3.wi2 .wk3-cols .n{background:none;color:inherit;font:700 11px 'Syne',sans-serif;letter-spacing:1.2px;min-width:0;height:auto;padding:0;font-variant-numeric:tabular-nums}
-.wi2-day{background:var(--surface-card);border:1px solid var(--border);border-radius:var(--radius);padding:4px 12px 8px;margin-bottom:8px}
+.wi2-day{background:var(--surface-card);border:1px solid var(--border);border-radius:var(--radius);padding:2px 8px 4px;margin-bottom:4px}
 .wi2-day.today{border-color:var(--accent)}
-.wi2-day.empty{padding-bottom:8px}
-.wk3.wi2 .wk3-dayh{position:sticky;top:38px;z-index:20;background:var(--surface-card);border:none;padding:8px 4px 4px;gap:12px;align-items:baseline;box-shadow:none}
-.wk3.wi2 .wk3-dayh .d{font:700 18px 'Syne',sans-serif;letter-spacing:0;color:var(--text);font-variant-numeric:tabular-nums}
+.wk3.wi2 .wk3-dayh{position:sticky;top:28px;z-index:20;background:var(--surface-card);border:none;padding:2px 4px 0;gap:12px;align-items:baseline;box-shadow:none}
+.wk3.wi2 .wk3-dayh .d{font:700 16px 'Syne',sans-serif;letter-spacing:0;color:var(--text);font-variant-numeric:tabular-nums}
 .wk3.wi2 .wk3-dayh.today .d{color:var(--text)}
 .wk3.wi2 .wk3-dayh .now{font:700 11px 'DM Sans',sans-serif;letter-spacing:1px;color:var(--surface-card);background:var(--accent);border:none;border-radius:var(--radius-full);padding:0 8px;line-height:16px}
 .wi2-none{font-size:11px;color:var(--text-dim);padding:4px 4px 0;font-style:italic}
-/* ΥΨΟΣ ΓΡΑΜΜΗΣ ≤ 44px (DESIGN Κ5): γραμμή 1px + κελί 0 + κάρτα 4+1 πάνω/κάτω
-   = 12px «σκελετός», οπότε το περιεχόμενο της κάρτας έχει ακριβώς 32px:
-   όνομα 16px + σειρά μεταδεδομένων 16px. Κάθε padding εδώ είναι μετρημένο. */
-.wk3.wi2 .wk3-row{min-height:40px;margin-top:4px;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface-card);align-items:center}
+/* ΠΥΚΝΟΤΗΤΑ (owner 27/9, «dense»): περισσότερες γραμμές ανά οθόνη — οι
+   οθόνες των dispatchers είναι φαρδιές, όχι ψηλές. Γραμμή 44→29px: γραμμή 1px
+   + κάρτα 1px πάνω/κάτω, χωρίς padding, περιεχόμενο 25px = όνομα 13px (12px
+   γράμματα + 1px ώστε οι ουρές ρ φ χ ψ να μην κόβονται από το overflow:hidden)
+   + σειρά μεταδεδομένων 12px. ΔΥΟ σειρές παραμένουν (owner): η μία σειρά θα
+   έκοβε πόλη/ημερομηνία/παλέτες. Μετρήθηκε στο rig: 1440×900 7→11 πλήρεις
+   γραμμές, 1920×1080 9→15. Κάτω από 11px δεν κατεβαίνει τίποτα εκτός από την
+   κλιμάκωση ονόματος της _wi2Balance. Κάθε padding εδώ είναι μετρημένο. */
+.wk3.wi2 .wk3-row{min-height:26px;margin-top:2px;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface-card);align-items:center}
 .wk3.wi2 .wk3-row.alt{background:var(--surface-card)}
 .wk3.wi2 .wk3-row:hover{background:var(--surface-sunken)}
 .wk3.wi2 .wk3-row.wi2-un{border-color:var(--unassigned);border-left-width:3px}
@@ -310,18 +329,18 @@ const _WI2_CSS=`
    padding και φόντο κάρτας. Η γραμμή πήρε δικό της όνομα. */
 .wk3.wi2 .wk3-row.wi2-rowurg{border-color:var(--danger-strong);border-left-width:3px}
 .wk3.wi2 .wk3-row.wk3-done{background:var(--success-bg)}
-.wk3.wi2 .wk3-legrow{background:var(--surface-page);border-style:dashed;min-height:38px}
+.wk3.wi2 .wk3-legrow{background:var(--surface-page);border-style:dashed;min-height:24px}
 .wk3.wi2 .wk3-num{border-right:none;font-size:11px;color:var(--text-dim);justify-content:flex-start;padding-left:8px;gap:4px;flex-wrap:wrap;font-variant-numeric:tabular-nums}
 .wk3.wi2 .wk3-num.imp{color:var(--accent-text);font-weight:700}
 .wk3.wi2 .wk3-num .wi-sync{display:inline;margin:0;font-size:11px}
 .wk3.wi2 .wk3-grpb{font-size:11px;padding:0 4px;border-radius:var(--radius-full)}
-.wk3.wi2 .wk3-leg{display:grid;grid-template-columns:minmax(0,var(--sL,1fr)) auto minmax(0,var(--sR,1fr));padding:0 4px;align-items:center;gap:4px;min-height:38px}
+.wk3.wi2 .wk3-leg{display:grid;grid-template-columns:minmax(0,var(--sL,1fr)) auto minmax(0,var(--sR,1fr));padding:0 4px;align-items:center;gap:4px;min-height:24px}
 .wk3.wi2 .wk3-leg.gap,.wk3.wi2 .wk3-leg.void{background:transparent;justify-content:stretch}
 .wk3.wi2 .wk3-leg.bgap,.wk3.wi2 .wk3-leg.grp{background:transparent}
 /* ΚΑΡΤΑ ΔΥΟ ΣΕΙΡΩΝ (owner 4/9): το όνομα παίρνει ΟΛΟ το πλάτος σε δική του
    σειρά· ημερομηνία, πόλη, σήματα και παλέτες στη δεύτερη. Πριν, το πλακίδιο
    ημερομηνίας και οι παλέτες έτρωγαν ~110px από το όνομα στην ίδια σειρά. */
-.wi2-card{flex:1 1 0;min-width:0;display:flex;flex-direction:column;justify-content:center;gap:0;min-height:34px;padding:4px 8px;background:var(--surface-card);border:1px solid var(--border);border-radius:var(--radius);box-sizing:border-box;transition:border-color var(--duration-fast) var(--ease-out),background var(--duration-fast) var(--ease-out),box-shadow var(--duration-fast) var(--ease-out),transform var(--duration-fast) var(--ease-out)}
+.wi2-card{flex:1 1 0;min-width:0;display:flex;flex-direction:column;justify-content:center;gap:0;min-height:24px;padding:0 6px;background:var(--surface-card);border:1px solid var(--border);border-radius:var(--radius);box-sizing:border-box;transition:border-color var(--duration-fast) var(--ease-out),background var(--duration-fast) var(--ease-out),box-shadow var(--duration-fast) var(--ease-out),transform var(--duration-fast) var(--ease-out)}
 .wk3-leg:hover>.wi2-card{border-color:var(--text-dim);transform:translateY(-1px);box-shadow:var(--shadow-lift)}
 @media (prefers-reduced-motion:reduce){.wi2-card{transition:none}.wk3-leg:hover>.wi2-card{transform:none}}
 .wk3.wi2 .wk3-pill,.wk3.wi2 .wi2-gapbox,.wk3.wi2 .wi2-void,.wk3.wi2 .wi2-date,.wk3.wi2 .wi2-carrier{transition:box-shadow var(--duration-fast) var(--ease-out),transform var(--duration-fast) var(--ease-out),border-color var(--duration-fast) var(--ease-out),background var(--duration-fast) var(--ease-out)}
@@ -332,7 +351,7 @@ const _WI2_CSS=`
 .wk3.wi2 .wk3-feed .wi2-card .wi2-sub{display:none}
 .wk3.wi2 .wk3-feed .wi2-card .wi2-name{font-size:12px;line-height:18px}
 .wk3.wi2 .wk3-feed .wi2-date.wk3-ld{min-width:0;padding:0 5px;font-size:10.5px;line-height:18px}
-.wk3.wi2 .wi2-carrier{font:600 11px 'DM Sans',sans-serif;line-height:16px;padding:1px 8px;border-radius:9999px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%;box-sizing:border-box;cursor:default}
+.wk3.wi2 .wi2-carrier{font:600 11px 'DM Sans',sans-serif;line-height:12px;padding:0 6px;border-radius:9999px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%;box-sizing:border-box;cursor:default}
 .wk3.wi2 .wi2-carrier.own{background:var(--navy-mid);color:var(--text-on-dark)}
 .wk3.wi2 .wi2-carrier.par{background:var(--chip-partner);color:var(--text-on-dark)}
 .wk3.wi2 .wi2-carrier.un{background:transparent;border:1px dashed var(--unassigned);color:var(--unassigned)}
@@ -341,6 +360,12 @@ const _WI2_CSS=`
 .wi2-card.ok{background:var(--success-bg);border-color:var(--ok)}
 .wi2-card.late{background:var(--danger-bg);border-color:var(--danger)}
 .wi2-meta{display:flex;align-items:center;gap:8px;min-width:0;height:16px}
+/* Leg cards only (27/9 density) — the single-line feed cards keep their own 18px rhythm. */
+.wk3.wi2 .wk3-leg .wi2-meta{height:12px;gap:6px}
+.wk3.wi2 .wk3-leg .wi2-date{line-height:12px;padding:0 4px}
+.wk3.wi2 .wk3-leg .wi2-date.estd{line-height:10px}
+.wk3.wi2 .wk3-leg .wi-badge,.wk3.wi2 .wk3-leg .wi-cross,.wk3.wi2 .wk3-leg .wi-exec,.wk3.wi2 .wk3-leg .wk3-vsb{line-height:12px;padding:0 3px}
+.wk3.wi2 .wk3-leg .wi2-pal{font-size:11px}
 .wi2-right{margin-left:auto;display:inline-flex;align-items:center;gap:4px;flex-shrink:0}
 .wi2-right>*{flex-shrink:0}
 .wi2-date{flex-shrink:0;font:700 11px 'DM Sans',sans-serif;color:var(--accent-text);background:var(--accent-light);border-radius:var(--radius);padding:0 8px;line-height:16px;cursor:pointer;font-variant-numeric:tabular-nums;margin:0}
@@ -349,19 +374,19 @@ const _WI2_CSS=`
    πελάτη ξεκινούσε σε έξι διαφορετικά x μέσα στην ίδια στήλη (560..577).
    min-width αντί για width: τα κοντά πλακίδια γεμίζουν ως το κοινό όριο,
    ένα μελλοντικό πιο μακρύ σπρώχνει αντί να κοπεί. */
-.wk3.wi2 .wi2-date.wk3-ld{width:auto;min-width:78px;box-sizing:border-box;text-align:left;margin:0;font-size:11px}
+.wk3.wi2 .wi2-date.wk3-ld{width:auto;min-width:70px;box-sizing:border-box;text-align:left;margin:0;font-size:11px}
 .wk3.wi2 .wi2-date.wk3-ld.done::after{font-size:11px}
 /* style.css pins these two with !important and hex; same weight, token value */
 .wk3.wi2 .wk3-ld.done{color:var(--ok) !important}
 .wk3.wi2 .wk3-ld.late{color:var(--warn) !important}
 .wi2-date.estd{font-style:italic;border:1px dashed var(--accent-text);background:transparent;line-height:14px}
-/* ΚΛΙΜΑΚΩΣΗ ΟΝΟΜΑΤΟΣ (owner 4/9): μία σειρά, 13px. Αν δεν χωρά, η
+/* ΚΛΙΜΑΚΩΣΗ ΟΝΟΜΑΤΟΣ (owner 4/9· 12px από 27/9): μία σειρά. Αν δεν χωρά, η
    _wi2Balance κατεβάζει ΜΟΝΟ αυτό το όνομα ως 10px· αν ούτε έτσι, .clamp
    (δύο σειρές με ορατό «…» + title). Το ellipsis εδώ είναι δίχτυ, όχι
    σχέδιο: ποτέ σιωπηλή κοπή (Κ6), ακόμη και πριν προλάβει η μέτρηση. */
-.wi2-name{font-size:13px;line-height:16px;font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.wi2-name{font-size:12px;line-height:13px;font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .wi2-name>*{margin-right:4px}
-.wi2-name.clamp{white-space:normal;overflow-wrap:break-word;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;line-height:1.2}
+.wi2-name.clamp{white-space:normal;overflow-wrap:break-word;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;line-height:1.1}
 .wk3.wi2.wi2-measure .wi2-name,.wk3.wi2.wi2-measure .wi2-sub{white-space:nowrap;display:block;overflow:visible}
 .wi2-sub{font-size:11px;color:var(--text-dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
 .wi2-nw{white-space:nowrap}
@@ -374,17 +399,18 @@ const _WI2_CSS=`
 .wk3.wi2 .wi-cross,.wk3.wi2 .wi-exec{font-size:11px;line-height:16px;padding:0 4px;margin:0;border-radius:var(--radius)}
 .wk3.wi2 .wk3-vsb{font-size:11px;padding:0 4px;border-radius:var(--radius)}
 .wk3.wi2 .wk3-okc{font-size:11px}
-.wk3.wi2 .wk3-stopn,.wk3.wi2 .wk3-gmn{width:16px;height:16px;font-size:11px;line-height:16px}
+.wk3.wi2 .wk3-stopn{width:12px;height:12px;font-size:11px;line-height:12px}
+.wk3.wi2 .wk3-gmn{width:16px;height:16px;font-size:11px;line-height:16px}
 .wi2-arrow{color:var(--text-dim);font-size:12px;flex-shrink:0}
 .wi2-late{font-size:11px;font-weight:700;color:var(--danger);white-space:nowrap}
-.wi2-gapbox{flex:1;min-height:34px;display:flex;align-items:center;gap:8px;padding:0 8px;border:1px solid var(--warn);border-radius:var(--radius);font:700 10px 'Syne',sans-serif;letter-spacing:.8px;color:var(--warn);cursor:pointer;box-sizing:border-box;background:var(--surface-card)}
+.wi2-gapbox{flex:1;min-height:24px;display:flex;align-items:center;gap:8px;padding:0 8px;border:1px solid var(--warn);border-radius:var(--radius);font:700 10px 'Syne',sans-serif;letter-spacing:.8px;color:var(--warn);cursor:pointer;box-sizing:border-box;background:var(--surface-card)}
 .wi2-gapbox.urg{border-color:var(--danger-strong);color:var(--danger-strong)}
 .wi2-gapbox small{font:500 11px 'DM Sans',sans-serif;letter-spacing:0}
-.wi2-void{flex:1;min-height:34px;border-radius:var(--radius);background:var(--surface-page)}
+.wi2-void{flex:1;min-height:24px;border-radius:var(--radius);background:var(--surface-page)}
 .wk3.wi2 .wk3-leg>.wi2-gapbox,.wk3.wi2 .wk3-leg>.wi2-void{grid-column:1/-1}
 .wi2-void.navy{background:var(--surface-dark)}
 .wi2-dash{width:100%;text-align:center;color:var(--text-dim);font-size:12px;cursor:help}
-.wk3.wi2 .wk3-feed{background:transparent;padding:0 4px;display:flex;flex-direction:column;justify-content:center;align-items:stretch;gap:3px;height:auto;min-height:38px;white-space:normal;align-self:stretch;font-size:11px}
+.wk3.wi2 .wk3-feed{background:transparent;padding:0 4px;display:flex;flex-direction:column;justify-content:center;align-items:stretch;gap:1px;height:auto;min-height:24px;white-space:normal;align-self:stretch;font-size:11px}
 .wk3.wi2 .wk3-feed.bgap{background:transparent !important}
 .wk3.wi2.fl-off .wk3-feed.l,.wk3.wi2.fr-off .wk3-feed.r{background:var(--surface-page)}
 .wk3.wi2 .wk3-assign{display:grid;grid-template-columns:20px minmax(0,1fr) 20px;padding:0 4px;gap:4px;align-items:center}
@@ -393,17 +419,35 @@ const _WI2_CSS=`
 .wk3.wi2 .wk3-assign>:not(.wk3-prt){grid-column:2;min-width:0}
 /* ΑΝΑΘΕΣΗ — χρώμα ΚΑΙ λέξη (DESIGN ΜΕΡΟΣ Ε, owner 4/9): «ΙΔ.» / «ΣΥΝ.» /
    «ΠΡΟΣ ΑΝΑΘΕΣΗ». Δύο σειρές με ορατό «…» και title — όχι αναδίπλωση, γιατί
-   μια τρίτη σειρά σπάει το όριο των 44px της γραμμής. */
-.wk3.wi2 .wk3-pill{height:auto;min-height:34px;flex-direction:column;align-items:flex-start;justify-content:center;gap:0;padding:4px 12px;font-size:12px;line-height:1.25;border-radius:var(--radius);white-space:nowrap;overflow:hidden;box-sizing:border-box;transform:none;box-shadow:none}
+   μια τρίτη σειρά σπάει το ύψος γραμμής των 29px (27/9). */
+.wk3.wi2 .wk3-pill{height:auto;min-height:24px;flex-direction:column;align-items:flex-start;justify-content:center;gap:0;padding:0 8px;font-size:12px;line-height:12px;border-radius:var(--radius);white-space:nowrap;overflow:hidden;box-sizing:border-box;transform:none;box-shadow:none}
 .wk3.wi2 .wk3-row:hover .wk3-pill{transform:none;box-shadow:none}
 .wk3.wi2 .wk3-pill .t,.wk3.wi2 .wk3-pill small{display:block;max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .wk3.wi2 .wk3-pill small{font-size:11px;color:var(--text-on-dark);font-variant-numeric:tabular-nums}
-.wk3.wi2 .wk3-pill .t{font-variant-numeric:tabular-nums}
+.wk3.wi2 .wk3-pill .t{font-size:11px;font-variant-numeric:tabular-nums}
 .wk3.wi2 .wk3-pill.un{color:var(--unassigned);align-items:center;font-weight:700;letter-spacing:.5px}
 .wk3.wi2 .wk3-pill.unimp{align-items:center;font-size:12px}
 .wk3.wi2 .wk3-pill.unimp small{color:var(--text-dim);font-weight:500}
-.wk3.wi2 .wk3-prt{border:1px solid var(--border);border-radius:var(--radius);padding:4px;font-size:13px;background:var(--surface-card)}
-.wk3.wi2 .wk3-stopline{padding-left:0;font-size:11px;line-height:1.5}
+.wk3.wi2 .wk3-prt{border:1px solid var(--border);border-radius:var(--radius);padding:1px 3px;font-size:12px;background:var(--surface-card)}
+.wk3.wi2 .wk3-stopline{padding-left:0;font-size:11px;line-height:1.15}
+.wk3.wi2 .wi2-stops{display:inline-flex;align-items:center;max-width:100%;vertical-align:top;white-space:nowrap}
+.wk3.wi2 .wi2-s1{min-width:0;overflow:hidden;text-overflow:ellipsis}
+.wk3.wi2 .wi2-sx{flex:none;margin-left:6px}
+.wk3.wi2 .wi2-sx.diff .wk3-stopn{background:var(--warn)}
+.wk3.wi2 .wi2-dsep{margin:0 4px;color:var(--text-dim)}
+.wk3.wi2 .wi2-dday{font:700 11px 'DM Sans',sans-serif;line-height:12px;padding:0 4px;border-radius:var(--radius);background:var(--warn-bg);color:var(--warn);font-variant-numeric:tabular-nums}
+.wk3.wi2 .wi2-sx.off,.wk3.wi2 .wi2-more.off{display:none}
+.wk3.wi2 .wi2-stops.fit{max-width:none}
+.wk3.wi2 .wi2-stops.fit .wi2-s1{flex:none;overflow:visible}
+/* The column split (--sL) is measured on the 1st stop + «+N» only. */
+.wk3.wi2.wi2-measure .wi2-stops{max-width:none}
+.wk3.wi2.wi2-measure .wi2-s1{overflow:visible}
+.wk3.wi2.wi2-measure .wi2-sx{display:none}
+.wk3.wi2.wi2-measure .wi2-more{display:inline-block}
+.wk3.wi2 .wi2-more{flex:none;margin-left:4px;font:700 11px 'DM Sans',sans-serif;line-height:12px;padding:0 5px;border:none;border-radius:var(--radius-full);background:var(--accent-light);color:var(--accent-text);cursor:pointer;font-variant-numeric:tabular-nums}
+.wk3.wi2 .wi2-more:hover{background:var(--accent);color:var(--surface-card)}
+.wk3.wi2 .wi2-more.diff{background:var(--warn-bg);color:var(--warn)}
+.wk3.wi2 .wk3-xfold.open{padding-top:2px}
 .wk3.wi2 .wk3-stopline .wk3-sln{white-space:normal;overflow:visible}
 .wk3.wi2 .wk3-sld{font-size:11px}
 .wk3.wi2 .wk3-lcol .wk3-stopline.dl{padding-left:0}
@@ -443,7 +487,12 @@ const _WI2_CSS=`
    τα κρυμμένα κελιά δεν πιάνουν στήλη, οπότε η εξαγωγή έπεφτε στα 18px.
    minmax(0,…) όπως και στο πλήρες πλάτος, για να μην εξαρτώνται τα πλάτη
    από το περιεχόμενο της κάθε γραμμής. */
-@media (max-width:1360px){.wk3.wi2 .wk3-cols,.wk3.wi2 .wk3-row{grid-template-columns:36px minmax(0,1.1fr) 200px minmax(0,0.9fr)}}
+@media (max-width:1360px){.wk3.wi2 .wk3-cols,.wk3.wi2 .wk3-row{grid-template-columns:36px minmax(0,1.1fr) 200px minmax(0,0.9fr)}
+/* 27/9: the style.css:2948 hide never won — «.wk3.wi2 .wk3-feed{display:flex}»
+   above out-ranks its bare «.wk3-feed{display:none}», so both feed cells
+   still took grid slots in the 4-column grid: every row wrapped to ~94px
+   and the export card was squeezed. Same hide, stated at this scope. */
+.wk3.wi2 .wk3-feed,.wk3.wi2 .wk3-cols .c.fc{display:none}}
 /* Wave 2 (owner 6/9): local movements around Veroia, tied to an
    international order — not costed, not invoiced, no round-trip need.
    Sub-row reuses .wk3-legrow's look (dashed, page background) but spans the
@@ -840,6 +889,10 @@ function _wiNewOrder() {
   obs.observe(ov, { attributes: true, attributeFilter: ['style', 'class', 'hidden'] });
 }
 
+// Pre-order (owner 22/9): same role gate as «+ Νέα παραγγελία»; the small
+// form repaints the board itself after saving (preorder.js _preRepaint).
+function _wiPreorder() { if(_wiBlockReadOnly()) return; openPreorder(); }
+
 function _wk3Tabs(currentWeek) {
   const today = _wiCurrentWeek();
   const step = d => `<button type="button" class="wk3-step" onclick="WINTL.week=${currentWeek+d};renderWeeklyIntl()" title="${d<0?'Προηγούμενη':'Επόμενη'} εβδομάδα">${d<0?'‹':'›'}</button>`;
@@ -922,6 +975,9 @@ function _wiPaint(){
   const delivN=[...expRows,...impRows].filter(r=>_wk3StFlags(_fOf(r)).delivered).length;
   const lateN=[...expRows,...impRows].filter(r=>_wk3StFlags(_fOf(r)).late).length;
   const pendAll=pending+impNoVehicle;
+  // Pre-order counter (owner 27/9): every order on the sheet, group members
+  // included — a pre-order folded into a group is still one to complete.
+  const preFields=[...expRows,...impRows].flatMap(r=>(r.orderIds||[r.orderId]).map(id=>(data.exports.find(x=>x.id===id)||data.imports.find(x=>x.id===id))?.fields||{}));
   const firstPendingId=_firstExp(r=>!r.saved);
   const jumpPending=firstPendingId?`_ccJump('${firstPendingId}')`:'_wiJumpFirstUnassigned()';
   // «ΕΛΕΥΘΕΡΑ ΣΗΜΕΡΑ» και ο δείκτης φάσης αφαιρέθηκαν 3/9 (owner: λιγότερος
@@ -944,6 +1000,7 @@ function _wiPaint(){
         <button class="wi2-btn" onclick="_wiExportCSV()" title="Εξαγωγή CSV">CSV</button>
         <button class="wi2-btn" onclick="renderWeeklyIntl()" title="Ανανέωση">Ανανέωση</button>
         <button class="wi2-btn" id="wi-fs" onclick="_wiFullscreen()" title="Πλήρης οθόνη — μόνο ο πίνακας· Esc για έξοδο">Πλήρης οθόνη</button>
+        <button class="wi2-btn pre-btn" onclick="_wiPreorder()" title="Φορτίο που ανακοινώθηκε — λεπτομέρειες αργότερα">Pre-order</button>
         <button class="wi2-btn primary" onclick="_wiNewOrder()" title="Νέα διεθνής παραγγελία — χωρίς έξοδο από το εβδομαδιαίο">+ Νέα παραγγελία</button>
       </div>
     </div>
@@ -951,6 +1008,7 @@ function _wiPaint(){
     <!-- KPI band (frame 319:906): replaces the Command Center — same numbers
          (gaps, unmatched, free fleet), once, every fraction with its denominator. -->
     <div class="wi2-band">
+      ${preorderCounterHtml(preFields,"_wi2Quick('pre');preorderJump('#wi-rows .wi2-pre')",WINTL.quick==='pre')}
       <!-- ΘΟΡΥΒΟΣ ΚΑΤΩ, ΓΡΑΜΜΕΣ ΠΑΝΩ (owner 3/9): «θέλω απλά το badge με το 8 και
            το ΚΕΝΑ ΓΥΡΙΣΜΑΤΑ 8 επείγοντα». Η αναλυτική πρόταση, η φάση της
            εβδομάδας και ολόκληρο το «ΕΛΕΥΘΕΡΑ ΣΗΜΕΡΑ» έφυγαν — ο στόχος είναι
@@ -1100,7 +1158,7 @@ function _wiAllRowsHTML(){
     // Day counters (frame 368:966): what the day owes, in words
     const gExp=grp.exps.length;
     const empty=!gExp&&!showImps.length;
-    html+=`<section class="wi2-day${isToday?' today':''}${empty?' empty':''}" data-day="${grp.rawDate}">
+    html+=`<section class="wi2-day${isToday?' today':''}" data-day="${grp.rawDate}">
       <div class="wk3-dayh${isToday?' today':''}"><span class="d">${wd||'ΧΩΡΙΣ ΗΜΕΡΟΜΗΝΙΑ'}${dm?' '+dm:''}</span>${isToday?'<span class="now">ΣΗΜΕΡΑ</span>':''}</div>`;
     if(empty){ html+=`<div class="wi2-none">Καμία κίνηση — η κενή μέρα είναι πληροφορία, όχι απουσία</div></section>`; return; }
 
@@ -1196,6 +1254,7 @@ function _wiImpRowHTML(row,impNo){
   const imp=data.imports.find(r=>r.id===row.orderId);
   if(!imp) return '';
   const f=imp.fields;
+  const isPre=row.orderIds.length<=1&&isPreorder(f);
   const fromStr=_wiRaw(f['Loading Summary']||_wiFlatLocName(f['Loading Location 1'])||_wiClientName(f)||'—');
   const toStr  =_wiRaw(f['Delivery Summary']||_wiFlatLocName(f['Unloading Location 1'])||_wiClientName(f)||'—');
   const stR=_wk3StFlags(f);
@@ -1241,7 +1300,7 @@ function _wiImpRowHTML(row,impNo){
 
   const lo=_wi2Loc(fromStr,'Φόρτωση',f._stopsL);
   const lIso=f['Loading DateTime']||'';
-  const loadCard=segOn
+  let loadCard=segOn
     ? _wiSegPillWrap(row.id,members,'load',true,true)
     : _wi2Card({cls:stR.loaded?'ok':'', date:_wi2Date(imp.id,'Loading DateTime',lIso,lIso?_wk3D(_wiFmt(lIso)):'—',stR.loaded?' done':'','Ημ. φόρτωσης'+(stR.loaded?' — φορτώθηκε ✓':'')), name:lo.name, sub:lo.sub, extra:_wk3MoreStops(fromStr,f._stopsL,'load')});
   const right=`<span class="wi2-flags">${_wiBadges(f)}</span>${_wi2Pal(f)}${f['Reference']?`<span class="wi2-ref" title="Κωδικός αναφοράς">${escapeHtml(String(f['Reference']))}</span>`:''}`;
@@ -1254,17 +1313,18 @@ function _wiImpRowHTML(row,impNo){
     const de=_wi2Loc(toStr,'Παράδοση',f._stopsD); const dIso=f['Delivery DateTime']||'';
     delCard=_wi2Card({cls:stR.late?'late':stR.delivered?'ok':'', date:_wi2Date(imp.id,'Delivery DateTime',dIso,dIso?_wk3D(_wiFmt(dIso)):'—',(stR.delivered?' done':'')+(stR.late?' late':''),'Ημ. παράδοσης'+(stR.delivered?' — παραδόθηκε ✓':'')+(stR.late?' — ΚΑΘΥΣΤΕΡΗΣΕ':'')), name:de.name+(stR.late?'<span class="wi2-late" title="Καθυστέρησε (Delivery Performance)">! καθυστέρηση</span>':''), sub:de.sub, extra:_wk3MoreStops(toStr,f._stopsD,'del'), right});
   }
+  if(isPre){ const pc=_wiPreCards(imp); loadCard=pc.load; delCard=pc.del; }
   // Right feed: VS import → national distribution from Veroia (final destination)
   const feedR=impVS2?(()=>{ const de=_wi2Loc(toStr,'Παράδοση',f._stopsD); const dIso=f['Delivery DateTime']||'';
     return _wi2Card({date:_wi2Date(imp.id,'Delivery DateTime',dIso,dIso?_wk3D(_wiFmt(dIso)):'—','','Εθνικό σκέλος: ημ. τελικής διανομής'), name:de.name, sub:de.sub, extra:_wk3MoreStops(toStr,f._stopsD,'del')}); })()
     :`<span class="wi2-dash" title="Χωρίς εθνικό σκέλος — δεν είναι Veroia Switch">—</span>`;
 
   return `<div id="wi-imp-${imp.id}" data-row-id="${row.id}"
-    class="wk3-row impr${!row.saved?' wi2-un':''}${stR.delivered&&!stR.late?' wk3-done':''}"
+    class="wk3-row impr${!row.saved?' wi2-un':''}${stR.delivered&&!stR.late?' wk3-done':''}${isPre?' wi2-pre pre-'+preorderLevel(f):''}"
     draggable="true"
     oncontextmenu="_wiImpCtx(event,${row.id})"
     ondragstart="event.stopPropagation();_wiImpDragStart(event,'${imp.id}')">
-    <div class="wk3-num imp" style="cursor:grab" title="Εισαγωγή I${impNo||''} — σύρε πάνω σε εξαγωγή για ταίριασμα">I${impNo||''}${f['Group ID']?`<span class="wk3-grpb" title="Groupage εισαγωγών · ${escapeHtml(String(f['Group ID']).split('|')[0])}">${segOn?'×'+members.length:'G'}</span>`:''}<span class="wi-sync" id="wi-sync-${row.id}"></span></div>
+    <div class="wk3-num imp" style="cursor:grab" title="Εισαγωγή I${impNo||''} — σύρε πάνω σε εξαγωγή για ταίριασμα">${isPre?'P':'I'+(impNo||'')}${f['Group ID']?`<span class="wk3-grpb" title="Groupage εισαγωγών · ${escapeHtml(String(f['Group ID']).split('|')[0])}">${segOn?'×'+members.length:'G'}</span>`:''}<span class="wi-sync" id="wi-sync-${row.id}"></span></div>
     <div class="wk3-feed l" title="Χωρίς εθνικό σκέλος"><span class="wi2-dash">—</span></div>
     <div class="wk3-leg void${leftCls}">${leftInner}</div>
     ${row.hasSplitLegs
@@ -1635,51 +1695,88 @@ function _wk3Arr(str,arr){
   return L.map((x,i)=>({...x,_i:i}))
     .sort((a,b)=>(String(a.dt||'').localeCompare(String(b.dt||'')))||(a._i-b._i));
 }
-// Ίδιας-μέρας σημεία (owner 10/8): ΔΙΠΛΑ-ΔΙΠΛΑ στη γραμμή· από κάτω μόνο
-// όσα πέφτουν άλλη μέρα. Στα 3+ ίδιας μέρας: συντομογραφίες + κλικ που
-// ξεδιπλώνει σειρά με τα πλήρη ονόματα.
+// Stops on another day than the 1st keep their own (highlighted) date in the
+// tooltip and the unfolded list.
 function _wk3SideCalc(str,arr){
   const L=_wk3Arr(str,arr);
   const d0=L.length&&L[0].dt?toLocalDate(L[0].dt):'';
-  const same=[],diff=[];
-  L.forEach(x=>{ const dd=x.dt?toLocalDate(x.dt):''; (dd&&d0&&dd!==d0?diff:same).push(x); });
-  return {L,same,diff};
+  const diff=L.filter(x=>{ const dd=x.dt?toLocalDate(x.dt):''; return dd&&d0&&dd!==d0; });
+  return {L,diff};
 }
-function _wk3LocHTML(str,label,arr){
+// ΠΟΛΛΑΠΛΑ ΣΗΜΕΙΑ (owner 27/9, επιλογή α + «αν χωράνε, γιατί +2;»). Πριν,
+// 2-3 σημεία ίδιας μέρας γράφονταν ΟΛΑ στη σειρά του ονόματος ΚΑΙ μετρούσαν
+// στην _wi2Balance, που μοιράζει ΕΝΑ πλάτος σε όλη τη στήλη από την πιο
+// απαιτητική κάρτα: μία παραγγελία 3 σημείων έσπρωχνε το --sL 0.49→0.65,
+// μετακινούσε το βέλος 66px σε ΚΑΘΕ γραμμή, μεγάλωνε τη γραμμή 42→58px και
+// έκοβε το 3ο όνομα. Τώρα:
+//  · το --sL μετριέται ΜΟΝΟ με το 1ο σημείο + «+N» (.wi2-measure κρύβει τα
+//    υπόλοιπα) — πολλά σημεία δεν φαρδαίνουν ποτέ τη στήλη της εβδομάδας·
+//  · μετά τη διάταξη, η _wi2FitStops δείχνει όσα ΟΛΟΚΛΗΡΑ σημεία χωρούν στο
+//    πλάτος που μένει και μαζεύει τα υπόλοιπα στο «+N» — ποτέ μισό όνομα·
+//  · hover = αριθμημένη λίστα με ημερομηνίες· κλικ στο «+N» = ξεδιπλώνει τη
+//    λίστα (.wk3-xfold της _wk3MoreStops) μέσα στην ίδια κάρτα.
+function _wk3StopsTip(L,diff){
+  return escapeHtml(L.map((x,i)=>`${i+1}. ${x.n}${diff.includes(x)&&x.dt?' — '+_wk3D(_wiFmt(x.dt)):''}`).join('\n'));
+}
+function _wk3LocHTML(str,label,arr,title){
   const kind=label==='Φόρτωση'?'load':'del';
-  const {L,same}=_wk3SideCalc(str,arr);
+  const {L,diff}=_wk3SideCalc(str,arr);
   if(!L.length) return (_wiClean(str||'—'));
-  const circ=i=>`<span class="wk3-stopn${kind==='load'?' ln':''}">${i+1}</span>`;
   if(L.length===1) return escapeHtml(L[0].n);
-  if(same.length===1) return `${circ(0)}${escapeHtml(same[0].n)}`;
-  // Έως 3 σημεία με πλήρη ονόματα (owner 12/8: «δύσκολο να διαβάσει ποια είναι
-  // τα σημεία») — η γραμμή απλώνει ως τις παλέτες· αν πάλι δεν χωρά και κοπεί
-  // με «…», το hover δείχνει την πλήρη αριθμημένη λίστα. Συντομογραφία μόνο 4+.
-  if(same.length<=3){
-    const tip3=escapeHtml(same.map((x,i)=>`${i+1}. ${x.n}`).join('\n'));
-    return `<span title="${tip3}">${same.map((x,i)=>`${circ(i)}${escapeHtml(x.n)}`).join(' ')}</span>`;
-  }
-  const tip=escapeHtml(same.map((x,i)=>`${i+1}. ${x.n}`).join('\n'));
-  const ab=same.map((x,i)=>`${circ(i)}${escapeHtml(x.n.split(',')[0].slice(0,5))}…`).join(' ');
-  return `<span class="wk3-abbr" title="${same.length} σημεία — κλικ για πλήρη ονόματα&#10;${tip}" onclick="event.stopPropagation();const c=this.closest('.wk3-lcol')||this.closest('.wk3-fcol');const f=c&&c.querySelector('.wk3-xfold');if(f)f.classList.toggle('open')">${ab}</span>`;
+  const tip=_wk3StopsTip(L,diff);
+  const dayNote=diff.length?' — '+diff.length+' σε άλλη ημέρα':'';
+  const circ=i=>`<span class="wk3-stopn${kind==='load'?' ln':''}">${i+1}</span>`;
+  const rest=L.slice(1).map((x,k)=>{
+    const d=diff.includes(x);
+    // Other-day stop (owner 27/9): its date is shown INLINE as an orange chip —
+    // no hover needed, no extra row. data-wd feeds «+N · Τετ» when it folds.
+    const dd=d&&x.dt?_wk3D(_wiFmt(x.dt)):'';
+    return `<span class="wi2-sx${d?' diff':''}"${dd?` data-wd="${escapeHtml(dd.split(' ')[0])}"`:''}>${circ(k+1)}${escapeHtml(x.n)}${dd?`<span class="wi2-dsep">·</span><span class="wi2-dday" title="Άλλη ημέρα από το 1ο σημείο">${escapeHtml(dd)}</span>`:''}</span>`;
+  }).join('');
+  return `<span class="wi2-stops" title="${L.length} σημεία${dayNote}&#10;${tip}"><span class="wi2-s1">${circ(0)}${escapeHtml(title||L[0].n)}</span>${rest}`+
+    `<button type="button" class="wi2-more" data-n="${L.length-1}" title="Κλικ: όλα τα σημεία${dayNote}&#10;${tip}" onclick="event.stopPropagation();const f=this.closest('.wi2-card')&&this.closest('.wi2-card').querySelector('.wk3-xfold');if(f)f.classList.toggle('open')">+${L.length-1}</button></span>`;
 }
+// After layout (end of _wi2Balance: every render + debounced resize): show as
+// many WHOLE extra stops as fit in the width the name line actually has, fold
+// the rest into «+N». Only multi-stop cards are touched, at most one reflow
+// per hidden stop — cheap on a week of ~30 rows.
+function _wi2FitStops(){
+  document.querySelectorAll('#wi-rows .wi2-stops').forEach(box=>{
+    const line=box.parentElement; if(!line||!line.offsetParent) return;
+    const xs=[...box.querySelectorAll(':scope>.wi2-sx')], chip=box.querySelector(':scope>.wi2-more');
+    if(!chip) return;
+    // .fit = natural widths (1st name not allowed to shrink into «…»), so the
+    // test is «does it fit whole», not «does it fit once squeezed».
+    // Room left on the name line after its other inline marks (✓, «! καθυστέρηση»).
+    const others=[...line.children].filter(c=>c!==box).reduce((a,c)=>a+c.getBoundingClientRect().width+4,0);
+    const avail=line.clientWidth-4-others, w=()=>box.getBoundingClientRect().width;
+    box.classList.add('fit');
+    xs.forEach(x=>x.classList.remove('off')); chip.classList.add('off');
+    let hidden=0;
+    if(w()>avail){
+      chip.classList.remove('off');
+      for(let i=xs.length-1;i>=0&&w()>avail;i--){ xs[i].classList.add('off'); hidden++; }
+    }
+    box.classList.remove('fit');
+    // Folded other-day stops still show their day on the chip (owner 27/9):
+    // stops are in date order, so the first hidden one is the earliest.
+    const hd=xs.find(x=>x.classList.contains('off')&&x.dataset.wd);
+    chip.textContent='+'+hidden+(hd?' · '+hd.dataset.wd:'');
+    chip.classList.toggle('diff',!!hd);
+  });
+}
+// The folded full list behind «+N»: every stop, in order, with its date when
+// it falls on another day than the 1st. Hidden until the chip is clicked, so
+// the row keeps its two-line height (owner 27/9).
 function _wk3MoreStops(str,arr,kind){
-  const {L,same,diff}=_wk3SideCalc(str,arr);
+  const {L,diff}=_wk3SideCalc(str,arr);
   if(L.length<2) return '';
   const arrow=kind==='del'?'<span class="wk3-sep" style="margin:0 2px 0 0">→</span>':'';
   const circ=i=>`<span class="wk3-stopn${kind==='load'?' ln':''}">${i+1}</span>`;
-  let html='';
-  // Αναδιπλωμένη σειρά πλήρων ονομάτων για τα 3+ ίδιας μέρας (ανοίγει με κλικ)
-  if(same.length>=3){
-    html+=`<div class="wk3-xfold">${same.map((x,i)=>
-      `<div class="wk3-stopline${kind==='del'?' dl':''}">${arrow}${circ(i)}<span class="wk3-sln">${escapeHtml(x.n)}</span></div>`).join('')}</div>`;
-  }
-  // Διαφορετικής μέρας: πάντα δική τους γραμμή με την ημερομηνία τους
-  html+=diff.map((st,i)=>{
-    const dtxt=st.dt?_wk3D(_wiFmt(st.dt)):'';
-    return `<div class="wk3-stopline${kind==='del'?' dl':''}">${arrow}${circ(same.length+i)}${dtxt?`<b class="wk3-sld diff" title="Διαφορετική ημέρα από το 1ο σημείο">${dtxt}</b>`:''}<span class="wk3-sln">${escapeHtml(st.n)}</span></div>`;
-  }).join('');
-  return html;
+  return `<div class="wk3-xfold">${L.map((st,i)=>{
+    const dtxt=diff.includes(st)&&st.dt?_wk3D(_wiFmt(st.dt)):'';
+    return `<div class="wk3-stopline${kind==='del'?' dl':''}">${arrow}${circ(i)}${dtxt?`<b class="wk3-sld diff" title="Διαφορετική ημέρα από το 1ο σημείο">${dtxt}</b>`:''}<span class="wk3-sln">${escapeHtml(st.n)}</span></div>`;
+  }).join('')}</div>`;
 }
 function _wk3Edit(orderId){
   if(!orderId) return;
@@ -1823,11 +1920,16 @@ function _wiClientName(f){
   }
   return f['Client Name']||f['Client Summary']||'';
 }
-// Name line + sub line for one end of a leg. Multi-stop (①②…) keeps the
-// existing folding helpers as they are; only the single-stop case gets a city.
+// Name line + sub line for one end of a leg. Multi-stop shows the 1st stop
+// exactly like a single stop (title, then city on line 2) plus the «+N» chip
+// — same width need, same two lines (owner 27/9, see _wk3LocHTML).
 function _wi2Loc(str,label,arr){
   const L=_wk3Arr(str,arr);
-  if(L.length>1) return {name:_wk3LocHTML(str,label,arr),sub:''};
+  if(L.length>1){
+    const src=(Array.isArray(arr)&&arr.length)?arr[L[0]._i]:null;
+    const f=_wi2Split(src?(typeof src==='string'?src:src.n):L[0].n);
+    return {name:_wk3LocHTML(str,label,arr,f.title),sub:escapeHtml([f.city,f.cc].filter(Boolean).join(', '))};
+  }
   const raw=(Array.isArray(arr)&&arr.length)?(typeof arr[0]==='string'?arr[0]:arr[0].n):str;
   const s=_wi2Split(raw);
   return {name:escapeHtml(s.title||'—'),sub:escapeHtml([s.city,s.cc].filter(Boolean).join(', '))};
@@ -1849,8 +1951,12 @@ function _wi2Balance(){
   const sheet=document.querySelector('.wk3.wi2'); if(!sheet) return;
   const names=[...document.querySelectorAll('#wi-rows .wi2-name')];
   // Reset last pass first: a name that shrank for a narrow column must be
-  // measured again at 13px after a resize widened it.
+  // measured again at 12px after a resize widened it.
   names.forEach(e=>{ e.classList.remove('clamp'); e.style.fontSize=''; });
+  document.querySelectorAll('#wi-rows .wi2-stops .off').forEach(e=>e.classList.remove('off'));
+  // Chip back to its rendered «+N» so the --sL measurement below never depends
+  // on the previous fit pass (which may have written «+1 · Δευ»).
+  document.querySelectorAll('#wi-rows .wi2-more[data-n]').forEach(c=>{ c.textContent='+'+c.dataset.n; c.classList.remove('diff'); });
   const legs=[...document.querySelectorAll('#wi-rows .wk3-leg')].filter(l=>l.offsetParent&&l.children.length>=3);
   if(legs.length){
     sheet.classList.add('wi2-measure');            // nowrap: διαβάζουμε το φυσικό πλάτος
@@ -1869,7 +1975,7 @@ function _wi2Balance(){
       sheet.style.setProperty('--sR',(1-r).toFixed(3)+'fr');
     }
   }
-  // ΚΛΙΜΑΚΩΣΗ ΑΝΑ ΟΝΟΜΑ (owner 4/9): 13px σε όλο το πλάτος → 12 → 11 → 10,
+  // ΚΛΙΜΑΚΩΣΗ ΑΝΑ ΟΝΟΜΑ (owner 4/9· βάση 12px από 27/9): 12px → 11 → 10,
   // μετρημένο με scrollWidth ΜΟΝΟ για το όνομα που δεν χωρά. Αν ούτε στα 10px
   // χωρά: δύο σειρές με ορατό «…» και το πλήρες κείμενο σε title — τίποτα
   // δεν κόβεται σιωπηλά (Κ6). Οι μαζεμένες εθνικές στήλες (18px) εξαιρούνται:
@@ -1877,14 +1983,15 @@ function _wi2Balance(){
   let cut=0;
   const fits=e=>e.scrollWidth<=e.clientWidth+1;
   names.forEach(e=>{
-    if(e.clientWidth<40) return;
+    if(e.clientWidth<40||e.querySelector('.wi2-stops')) return;   // multi-stop: _wi2FitStops below
     if(!fits(e)){
-      for(const px of [12,11,10]){ e.style.fontSize=px+'px'; if(fits(e)) break; }
+      for(const px of [11,10]){ e.style.fontSize=px+'px'; if(fits(e)) break; }
       if(!fits(e)){ e.classList.add('clamp'); e.title=e.innerText.trim(); cut++; return; }
     }
     if(e.title) e.removeAttribute('title');
   });
   WINTL._clamped=cut;
+  _wi2FitStops();
 }
 let _wi2BalTimer=null;
 window.addEventListener('resize',()=>{ clearTimeout(_wi2BalTimer); _wi2BalTimer=setTimeout(_wi2Balance,150); });
@@ -2161,6 +2268,8 @@ function _wiRowHTML(row,i){
   const today=(typeof localToday==='function')?localToday():toLocalDate(new Date());
   const hasPartner=!!(row.partnerId||row.partnerLabel);
 
+  // Pre-order (owner 22/9, Figma 709:1097): no points yet — own dashed cards below.
+  const isPre=!isGroup&&isPreorder(pf);
   const fromStr=primary?_wiRaw(pf['Loading Summary']||_wiFlatLocName(pf['Loading Location 1'])||_wiClientName(pf)||'—'):'—';
   const toStr  =primary?_wiRaw(pf['Delivery Summary']||_wiFlatLocName(pf['Unloading Location 1'])||_wiClientName(pf)||'—'):'—';
   // GRP (owner 12/8): η γραμμή δείχνει ΕΝΑ σημείο ανά ΜΕΛΟΣ (①=1ο μέλος κ.ο.κ.),
@@ -2242,6 +2351,8 @@ function _wiRowHTML(row,i){
       sub:de.sub, extra:_wk3MoreStops(isGroup?gDs:toStr,isGroup?gD:pf._stopsD,'del')+members,
       right:`${refs?`<span class="wi2-ref" title="Κωδικός αναφοράς">${escapeHtml(String(refs))}</span>`:''}${_wiCrossChip(pf)}${_wiExecChip(pf,row.saved)}<span class="wi2-flags">${_wiBadges(pf)}</span>${isGroup?_wi2PalGroup(exps):_wi2Pal(pf)}`});
   }
+
+  if(isPre){ const pc=_wiPreCards(primary); loadCard=pc.load; delCard=pc.del; }
 
   // Import side: matched preview · «ΚΕΝΟ ΓΥΡΙΣΜΑ» (own, no import) · navy
   // (partner — nothing expected back, owner 9/8) · open drop target.
@@ -2343,10 +2454,10 @@ function _wiRowHTML(row,i){
     return _wi2Card({date:_wi2Date(imp.id,'Delivery DateTime',dIso,dIso?_wk3D(_wiFmt(dIso)):'—','','Εθνικό σκέλος: ημ. τελικής διανομής'), name:de2.name, sub:de2.sub, extra:_wk3MoreStops(f2['Delivery Summary']||'',f2._stopsD,'del')}); })()
     :`<span class="wi2-dash" title="Χωρίς εθνικό σκέλος">—</span>`;
 
-  const rowCls=['wk3-row',!row.saved?'wi2-un':'',urg?'wi2-rowurg':gapCell?'wi2-gap':'',stF.delivered&&!stF.late?'wk3-done':''].filter(Boolean).join(' ');
+  const rowCls=['wk3-row',!row.saved?'wi2-un':'',urg?'wi2-rowurg':gapCell?'wi2-gap':'',stF.delivered&&!stF.late?'wk3-done':'',isPre?'wi2-pre pre-'+preorderLevel(pf):''].filter(Boolean).join(' ');
   return `
   <div id="wi-row-${row.id}" data-row-id="${row.id}" class="${rowCls}">
-    <div class="wk3-num">${i+1}${isGroup?`<button class="wk3-grpb" title="Groupage ×${exps.length} — κλικ: μέλη ομάδας (βάση: το πρώτο-παραδιδόμενο)" onclick="event.stopPropagation();_wiToggleGroup(${row.id})">×${exps.length}</button>`:''}<span class="wi-sync" id="wi-sync-${row.id}"></span></div>
+    <div class="wk3-num">${isPre?'P':i+1}${isGroup?`<button class="wk3-grpb" title="Groupage ×${exps.length} — κλικ: μέλη ομάδας (βάση: το πρώτο-παραδιδόμενο)" onclick="event.stopPropagation();_wiToggleGroup(${row.id})">×${exps.length}</button>`:''}<span class="wi-sync" id="wi-sync-${row.id}"></span></div>
     <div class="wk3-feed l" title="${vsExp?'Εθνικό σκέλος προς Βέροια — φόρτωση από τον αρχικό πελάτη. Ο μεταφορέας συμπληρώνεται στο Weekly National.':'Χωρίς εθνικό σκέλος — δεν είναι Veroia Switch'}">${feedL}${vsExp?_wi2Carrier(pid):''}</div>
     <div class="wk3-leg${isGroup?' grp':''}${segOn?' wk3-tiled':''}"${segOn?` data-seg-n="${exps.length}"`:''} style="cursor:pointer" title="${isGroup?'Κλικ: καρτέλα ρότας ομάδας · δεξί κλικ: groupage/ρότα':'Κλικ: άνοιγμα φόρμας παραγγελίας · δεξί κλικ: groupage/ρότα'}" oncontextmenu="_wiCtx(event,${row.id})" onclick="event.stopPropagation();${isGroup?`_wiRota(${row.id})`:`_wk3Edit('${pid}')`}">${loadCard}<span class="wi2-arrow">→</span>${delCard}</div>
     ${row.hasSplitLegs
@@ -3767,6 +3878,7 @@ function _wiCtx(e,rowId){
   e.preventDefault();e.stopPropagation();
   if(_wiBlockReadOnly()) return;
   const row=WINTL.rows.find(r=>r.id===rowId);if(!row) return;
+  if(_wiPreCtx(e,row,false)) return;
   const isGroup=row.orderIds.length>1;
   const myPals=_wiRowPals(row);
   const others=WINTL.rows.filter(r=>r.id!==rowId&&!r.saved&&r.type==='export'
@@ -3807,6 +3919,48 @@ function _wiCtx(e,rowId){
     top:`${Math.min(e.clientY,window.innerHeight-260)}px`});
   requestAnimationFrame(()=>{ const f=ctx.querySelector('.wi-ctx-i:not([disabled])'); if(f) f.focus(); });
   setTimeout(()=>document.addEventListener('click',_wiCtxClose,{once:true}),10);
+}
+
+// Pre-order cards (Figma 709:1097): one dashed card «PRE-ORDER · client» /
+// «date · export · 1/2 · notes», an empty dashed card for the unknown end
+// (the destination country when known — owner 27/9). The dash colour carries
+// the urgency (owner 27/9): grey ≥4 days, amber 2–3, red ≤1 / past.
+function _wiPreCards(rec){
+  const f=rec.fields||{}, lvl=preorderLevel(f);
+  const seq=preorderSeq(rec,[...WINTL.data.exports,...WINTL.data.imports]);
+  const meta=[f['Loading DateTime']?_wk3D(_wiFmt(f['Loading DateTime'])):'—',String(f['Direction']||'').toLowerCase(),seq,f['Notes']||''].filter(Boolean).join(' · ');
+  const tip=escapeHtml(preorderTip(f));
+  return {
+    load:`<div class="wi2-card pre-card pre-${lvl}" title="${tip}"><div class="wi2-name"><span class="pre-cw">PRE-ORDER · ${escapeHtml(_wiClientName(f)||'—')}</span></div><div class="wi2-meta"><span class="wi2-sub">${escapeHtml(meta)}</span></div></div>`,
+    del:`<div class="wi2-card pre-empty" title="${tip}"><div class="wi2-name">${escapeHtml(preorderDest(f)||'—')}</div></div>`,
+  };
+}
+
+// Pre-order menu (Figma 709:1097): header, conversion (blue), the small form,
+// cancel (red). Nothing else: groupage, rota, split, local move, week shift and
+// print all need points a pre-order does not have yet. Assignment stays on the
+// row's own ΑΝΑΘΕΣΗ cell (owner 27/9: no blocking of assignment).
+// Returns false for anything that is not a lone pre-order (normal menu).
+function _wiPreCtx(e,row,isImp){
+  if((row.orderIds||[]).length>1) return false;
+  const oid=row.orderIds?.[0]||row.orderId;
+  const rec=WINTL.data.exports.find(r=>r.id===oid)||WINTL.data.imports.find(r=>r.id===oid);
+  if(!rec||!isPreorder(rec.fields)) return false;
+  const seq=preorderSeq(rec,[...WINTL.data.exports,...WINTL.data.imports]);
+  let html=`<div class="wi-ctx-h">${escapeHtml(['PRE-ORDER',_wiClientName(rec.fields)||'—',seq].filter(Boolean).join(' · '))}</div>`;
+  html+=_wiCtxBtn('Μετατροπή σε παραγγελία…',`_wk3Edit('${oid}')`).replace('class="wi-ctx-i','class="wi-ctx-i pre-go');
+  html+=_wiCtxBtn('Επεξεργασία pre-order',`editPreorder('${oid}')`);
+  html+='<div class="wi-ctx-sep"></div>';
+  html+=_wiCtxBtn('Ακύρωση pre-order',`cancelPreorder('${oid}')`,true);
+  const ctx=document.getElementById('wi-ctx');
+  ctx.innerHTML=html;
+  ctx._returnFocus=e.currentTarget;
+  Object.assign(ctx.style,{display:'block',
+    left:`${Math.min(e.clientX,window.innerWidth-240)}px`,
+    top:`${Math.min(e.clientY,window.innerHeight-180)}px`});
+  requestAnimationFrame(()=>{ const f=ctx.querySelector('.wi-ctx-i:not([disabled])'); if(f) f.focus(); });
+  setTimeout(()=>document.addEventListener('click',_wiCtxClose,{once:true}),10);
+  return true;
 }
 
 // Σπάσιμο σκέλους (owner 6/9, FEATURES.ORDER_SPLIT): shared by _wiCtx (export
@@ -4625,6 +4779,7 @@ function _wiImpCtx(e,rowId,matchedExportRowId){
     setTimeout(()=>document.addEventListener('click',_wiCtxClose,{once:true}),10);
     return;
   }
+  if(_wiPreCtx(e,row,true)) return;
   const myPals=_wiRowPals(row);
   const others=WINTL.rows.filter(r=>r.type==='import'&&r.id!==rowId&&!r.adj&&!r.matchedTo
     &&(myPals+_wiRowPals(r))<=33);
@@ -5324,6 +5479,7 @@ window._wiPrintImpGroup = _wiPrintImpGroup;
 window._wiToggleDetails = _wiToggleDetails;
 // Νέα παραγγελία από το εβδομαδιαίο — inline onclick, module σε IIFE
 window._wiNewOrder = _wiNewOrder;
+window._wiPreorder = _wiPreorder;
 window._wiExportCSV = _wiExportCSV;
 window._wiApplyFilter = _wiApplyFilter;
 window._wk3Gaps = _wk3Gaps;
