@@ -48,6 +48,16 @@ enabled = true
   [observability.logs]
   invocation_logs = false
 
+# R2 — ORDER DOCUMENTS (scan round 3, 28/9/2026): scanned CMR/invoices/etc,
+# one object per (order, sha256). ΠΑΝΩ από το [vars] για τον ΙΔΙΟ λόγο με το
+# [browser] παραπάνω — TOML: ό,τι ακολουθεί το [vars] γίνεται plain var, και
+# το binding θα έφτανε στον Worker ως env.ORDER_DOCS === "ORDER_DOCS" (string),
+# όχι ως bucket. Bucket ήδη υπάρχει, EU jurisdiction, χωρίς public access.
+[[r2_buckets]]
+binding = "ORDER_DOCS"
+bucket_name = "tms-order-docs"
+jurisdiction = "eu"
+
 [vars]
 ALLOWED_ORIGIN = "https://dimitrispetras21-del.github.io"
 SUPABASE_URL = "https://gatejgbpyodlepkvqkgf.supabase.co"
