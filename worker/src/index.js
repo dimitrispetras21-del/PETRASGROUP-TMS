@@ -1231,9 +1231,9 @@ var TABLES = {
       "Ops Status": "ops_status",
       // Pre-order destination country (owner 27/9): ISO-2 code, only while the
       // exact delivery point is unknown. Column + view column come from DRAFT
-      // migration 052 — deploy this Worker ONLY AFTER 052 ran: an explicit
-      // fields[] read (Daily Ops) would otherwise select a column the view
-      // does not have and the whole request would fail.
+      // migration 052 — deploy this Worker ONLY AFTER 052 ran: any explicit
+      // fields[] read naming this label (none in the front end today) and any
+      // pre-order saved with a country would otherwise hit a missing column.
       "Destination Country": "dest_country",
       "Invoice Status": "invoice_status",
       "Delivery Performance": "delivery_performance",

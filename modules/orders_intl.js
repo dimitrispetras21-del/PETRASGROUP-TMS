@@ -1011,6 +1011,7 @@ async function _openModal(recId, f, _clientLabelOverride, _scanPrefill) {
   // normal form with its six required fields; the save clears 'Ops Status'
   // on the same id (submitIntlOrder). Set per opened modal, never inherited.
   INTL_ORDERS._preConvert = (isEdit && isPreorder(f)) ? recId : null;
+  INTL_ORDERS._preConvertCountry = !!(INTL_ORDERS._preConvert && f['Destination Country']);
   const clientId = Array.isArray(f['Client']) ? f['Client'][0] : '';
   const clientLabel = _clientLabelOverride || (clientId ? (await _resolveClientName(clientId)) : '');
 
@@ -2037,9 +2038,13 @@ async function submitIntlOrder(recId) {
     // Pre-order conversion: the six required fields passed above, so the row
     // stops being provisional here — same id, no new order. The country goes
     // too: the delivery location now carries its own (DRAFT 052 CHECK ties
-    // dest_country to 'Provisional').
+    // dest_country to 'Provisional'). Sent only when the row has one, so a
+    // conversion never names a column the base may not have yet.
     const _wasPre = !!recId && INTL_ORDERS._preConvert === recId;
-    if (_wasPre) { fields['Ops Status'] = null; fields['Destination Country'] = null; }
+    if (_wasPre) {
+      fields['Ops Status'] = null;
+      if (INTL_ORDERS._preConvertCountry) fields['Destination Country'] = null;
+    }
 
     const result = recId
       ? await atSafePatch(TABLES.ORDERS, recId, fields)

@@ -31,12 +31,13 @@ const OPS_FIELDS = [
   // 'Group ID' (Παντελής 15/9, Figma 647:1011): export loadings of the same
   // groupage collapse into one row. Same truck is the fallback key.
   'Group ID',
-  // Pre-order (owner 22/9 + 27/9). Without 'Ops Status' a pre-order is NULL =
-  // absent (facade trap 2) and would read as an ordinary «ΠΡΟΣ ΑΝΑΘΕΣΗ» row;
-  // 'Notes' is the pre-order's only description, 'Destination Country' its
-  // only destination (DRAFT 052 — an unknown label is logged and skipped by
-  // the Worker, never an error).
-  'Ops Status','Notes','Destination Country',
+  // Pre-order (owner 22/9). Without 'Ops Status' a pre-order is NULL = absent
+  // (facade trap 2) and would read as an ordinary «ΠΡΟΣ ΑΝΑΘΕΣΗ» row; 'Notes'
+  // is its only description. 'Destination Country' is deliberately NOT asked
+  // for: a pre-order has no delivery date, so it never sits in a delivery
+  // section — and an explicit fields[] read of a column the view lacks (Worker
+  // deployed before DRAFT 052) would fail this whole page.
+  'Ops Status','Notes',
 ];
 
 /* ── ENTRY ────────────────────────────────────────────────────── */
@@ -731,8 +732,7 @@ function _opsRow(rec,num,type,isToday,cls) {
   const client=_C(f), sub=_CSub(f);
   const pre=isPreorder(f);
   const loadL=_L(_opsStopLoc(id,'Loading'));
-  // Pre-order: no point yet — the destination country, escaped (_L output is).
-  const delivL=_L(_opsStopLoc(id,'Unloading'))||(pre?escapeHtml(preorderDest(f)):'');
+  const delivL=_L(_opsStopLoc(id,'Unloading'));
   const truck=_TT(f), driver=_D(f), partner=_P(f);
   // Missing is not zero and not blank (DESIGN.md #3): a dash.
   const pal=f['Total Pallets']!=null&&f['Total Pallets']!==''?f['Total Pallets']:'—';

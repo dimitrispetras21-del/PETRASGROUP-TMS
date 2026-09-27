@@ -152,7 +152,11 @@ async function submitPreorder(recId) {
       // Edit owns these fields, so an emptied box clears the column.
       Object.assign(fields, { Notes: notes || null, 'Destination Country': country || null });
       const res = await atSafePatch(TABLES.ORDERS, recId, fields);
-      if (res?.conflict) { toast('Η εγγραφή άλλαξε από άλλον χρήστη — κάνε Ανανέωση και ξαναδοκίμασε', 'warn'); return; }
+      if (res?.conflict) {
+        toast('Η εγγραφή άλλαξε από άλλον χρήστη — κάνε Ανανέωση και ξαναδοκίμασε', 'warn');
+        if (btn) { btn.disabled = false; btn.textContent = 'Αποθήκευση pre-order'; }
+        return;
+      }
       made.push(res);
     } else {
       // Brand/Type as the order form writes them on create. VS/Groupage OFF on
