@@ -934,7 +934,7 @@ function _wiPaint(){
   // και στο μηδέν, αλλιώς δεν ξε-επιλέγεται όταν αδειάσει η κατηγορία.
   const chip=(q,lbl,n)=>{ const on=(WINTL.quick||'')===q; return `<button class="wi2-chip${on?' on':''}" data-q="${q}"${(!n&&!on)?' disabled':''} onclick="_wi2Quick('${q}')">${lbl} (${n})</button>`; };
   document.getElementById('content').innerHTML=`
-    <div class="wk3 wi2 ${_wiQuietOn()?'wi-quiet':''}${localStorage.getItem('tms_wk3_fl')==='0'?' fl-off':''}${localStorage.getItem('tms_wk3_fr')==='0'?' fr-off':''}${localStorage.getItem('tms_wk3_fl')==='1'?' fl-on':''}${localStorage.getItem('tms_wk3_fr')==='1'?' fr-on':''}" style="display:block;width:100%">
+    <div class="wk3 wi2 ${_wiQuietOn()?'wi-quiet':''}${_wiDensityCls()}${localStorage.getItem('tms_wk3_fl')==='0'?' fl-off':''}${localStorage.getItem('tms_wk3_fr')==='0'?' fr-off':''}${localStorage.getItem('tms_wk3_fl')==='1'?' fl-on':''}${localStorage.getItem('tms_wk3_fr')==='1'?' fr-on':''}" style="display:block;width:100%">
     <style>${_WI2_CSS}</style>
     <div class="wi2-mast">
       <div class="wi2-title">Πίνακας Σχεδιασμού Αποστολών <button class="wi2-legend-btn" onclick="_wi2Legend()" title="Υπόμνημα χρωμάτων και σημάτων">? υπόμνημα</button></div>
@@ -1579,6 +1579,22 @@ function _wiBadges(f){
 // history, group print. Shared key with weekly_natl (twin behaviour).
 function _wiQuietOn(){ return localStorage.getItem('tms_weekly_details')!=='1'; }
 function _wiToggleDetails(){ localStorage.setItem('tms_weekly_details', _wiQuietOn()?'1':'0'); renderWeeklyIntl(); }
+// TEMPORARY (27/9, feat/weekly-density): lets the owner compare the two density
+// candidates on the real board before choosing one — CSS in assets/style.css
+// «WEEKLY INTL DENSITY VARIANTS». Switch: app.html?wi_density=compact|dense
+// (remembered in localStorage 'tms_wi_density'), ?wi_density=off to go back.
+// Default = no class = today's rendering. Once the owner picks, the chosen
+// rules become the plain .wk3.wi2 rules and this switch is deleted.
+function _wiDensityCls(){
+  let v=null;
+  try{
+    const q=new URLSearchParams(location.search).get('wi_density');
+    if(q==='off') localStorage.removeItem('tms_wi_density');
+    else if(q) localStorage.setItem('tms_wi_density',q);
+    v=localStorage.getItem('tms_wi_density');
+  }catch{}
+  return v==='compact'||v==='dense' ? ' wi-density-'+v : '';
+}
 // Excel sidebar «οδηγός → μέρα επιστροφής» (cols 33-36 of WEEKLY PLAN),
 // computed from this week's assignments — no new data entry.
 /* ── BUILD v3 Φάση Β — διαθεσιμότητα κατά τον κανόνα ημερών του owner:
