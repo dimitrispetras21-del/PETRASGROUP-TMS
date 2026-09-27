@@ -1721,7 +1721,7 @@ function _wk3LocHTML(str,label,arr,title){
     return `<span class="wi2-sx${d?' diff':''}"${dd?` data-wd="${escapeHtml(dd.split(' ')[0])}"`:''}>${circ(k+1)}${escapeHtml(x.n)}${dd?`<span class="wi2-dsep">·</span><span class="wi2-dday" title="Άλλη ημέρα από το 1ο σημείο">${escapeHtml(dd)}</span>`:''}</span>`;
   }).join('');
   return `<span class="wi2-stops" title="${L.length} σημεία${dayNote}&#10;${tip}"><span class="wi2-s1">${circ(0)}${escapeHtml(title||L[0].n)}</span>${rest}`+
-    `<button type="button" class="wi2-more" title="Κλικ: όλα τα σημεία${dayNote}&#10;${tip}" onclick="event.stopPropagation();const f=this.closest('.wi2-card')&&this.closest('.wi2-card').querySelector('.wk3-xfold');if(f)f.classList.toggle('open')">+${L.length-1}</button></span>`;
+    `<button type="button" class="wi2-more" data-n="${L.length-1}" title="Κλικ: όλα τα σημεία${dayNote}&#10;${tip}" onclick="event.stopPropagation();const f=this.closest('.wi2-card')&&this.closest('.wi2-card').querySelector('.wk3-xfold');if(f)f.classList.toggle('open')">+${L.length-1}</button></span>`;
 }
 // After layout (end of _wi2Balance: every render + debounced resize): show as
 // many WHOLE extra stops as fit in the width the name line actually has, fold
@@ -1941,6 +1941,9 @@ function _wi2Balance(){
   // measured again at 12px after a resize widened it.
   names.forEach(e=>{ e.classList.remove('clamp'); e.style.fontSize=''; });
   document.querySelectorAll('#wi-rows .wi2-stops .off').forEach(e=>e.classList.remove('off'));
+  // Chip back to its rendered «+N» so the --sL measurement below never depends
+  // on the previous fit pass (which may have written «+1 · Δευ»).
+  document.querySelectorAll('#wi-rows .wi2-more[data-n]').forEach(c=>{ c.textContent='+'+c.dataset.n; c.classList.remove('diff'); });
   const legs=[...document.querySelectorAll('#wi-rows .wk3-leg')].filter(l=>l.offsetParent&&l.children.length>=3);
   if(legs.length){
     sheet.classList.add('wi2-measure');            // nowrap: διαβάζουμε το φυσικό πλάτος
