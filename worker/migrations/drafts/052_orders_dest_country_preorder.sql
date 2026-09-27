@@ -22,22 +22,25 @@
 -- το submitIntlOrder στο feat/preorder).
 --
 -- Η VIEW: ο Worker διαβάζει τα ORDERS από την orders_with_derived (readView), που έχει ΡΗΤΗ λίστα
--- στηλών — νέα στήλη στον πίνακα ΔΕΝ φτάνει μόνη της στη view (ίδιο μάθημα με 018/019). Το CREATE OR
+-- στηλών — νέα στήλη στον πίνακα ΔΕΝ φτάνει μόνη της στη view (ίδιο μάθημα με 018/019/019_view_order_legs). Το CREATE OR
 -- REPLACE κρατά τις υπάρχουσες στήλες στη θέση τους και προσθέτει μία στο τέλος.
--- ⚠ ΠΡΙΝ: η τρέχουσα ορισμός πρέπει να είναι ΑΚΡΙΒΩΣ της 019 (παρακάτω SELECT). Αν διαφέρει, ΣΤΑΜΑΤΑ
+-- ⚠ ΠΡΙΝ: ο τρέχων ορισμός πρέπει να είναι ΑΚΡΙΒΩΣ της worker/migrations/019_view_order_legs.sql (τελευταία
+--   που άγγιξε τη view: πρόσθεσε parent_order_id, leg_no μετά το order_no — μετρημένο στην παραγωγή από τον
+--   συντονιστή 27/9). Το REPLACE επιτρέπει ΜΟΝΟ προσθήκη στο τέλος: αν η λίστα παρακάτω παρέλειπε στήλη,
+--   η Postgres αρνείται («cannot drop columns from view»). Αν ο ορισμός διαφέρει, ΣΤΑΜΑΤΑ
 --   — κάποιος άλλαξε τη view εκτός repo και το REPLACE θα έσβηνε την αλλαγή του.
 --
--- Αναστρέψιμο (το REPLACE δεν αφαιρεί στήλη — χρειάζεται drop + ξανά ο ορισμός της 019):
---   drop view public.orders_with_derived;  -- και μετά το create view της 019 αυτούσιο
+-- Αναστρέψιμο (το REPLACE δεν αφαιρεί στήλη — χρειάζεται drop + ξανά ο ορισμός της 019_view_order_legs):
+--   drop view public.orders_with_derived;  -- και μετά το create view της 019_view_order_legs αυτούσιο
 --   (αν η drop αρνηθεί λόγω εξαρτώμενων views, άφησε τη view: μια στήλη που κανείς δεν διαβάζει
 --    δεν βλάπτει — φεύγει μόνο το label από τον Worker και οι CHECK)
 --   alter table public.orders drop constraint orders_dest_country_preorder_only,
 --                             drop constraint orders_dest_country_iso2, drop column dest_country;
 --   (ΠΡΩΤΑ Worker χωρίς το label — αλλιώς κάθε pre-order με χώρα αποτυγχάνει.)
 
--- ΠΡΙΝ (εκτός συναλλαγής, μόνο ανάγνωση): ο ορισμός της view = 019;
+-- ΠΡΙΝ (εκτός συναλλαγής, μόνο ανάγνωση): ο ορισμός της view = 019_view_order_legs;
 --   select pg_get_viewdef('public.orders_with_derived'::regclass, true);
---   αναμενόμενο: SELECT v.*, o.group_id, o.plan_week_start, o.id AS order_no
+--   αναμενόμενο: SELECT v.*, o.group_id, o.plan_week_start, o.id AS order_no, o.parent_order_id, o.leg_no
 --                FROM orders_with_derived_old3 v JOIN orders o ON o.id = v.id;  (v.* αναπτυγμένο)
 
 BEGIN;
@@ -57,7 +60,7 @@ ALTER TABLE public.orders
   CHECK (dest_country IS NULL OR ops_status = 'Provisional');
 
 create or replace view public.orders_with_derived as
-select v.*, o.group_id, o.plan_week_start, o.id as order_no, o.dest_country
+select v.*, o.group_id, o.plan_week_start, o.id as order_no, o.parent_order_id, o.leg_no, o.dest_country
   from public.orders_with_derived_old3 v
   join public.orders o on o.id = v.id;
 
@@ -66,6 +69,12 @@ SELECT (SELECT count(*) FROM information_schema.columns
          WHERE table_schema='public' AND table_name='orders' AND column_name='dest_country') AS in_table,
        (SELECT count(*) FROM information_schema.columns
          WHERE table_schema='public' AND table_name='orders_with_derived' AND column_name='dest_country') AS in_view;
+-- ΜΕΤΑ: η view δεν έχασε γραμμές (τα δύο counts ίσα) και κράτησε τις στήλες σκελών + τη νέα (πρέπει 3).
+SELECT (SELECT count(*) FROM public.orders_with_derived) AS view_rows,
+       (SELECT count(*) FROM public.orders) AS table_rows;
+SELECT count(*) AS kept_and_new FROM information_schema.columns
+ WHERE table_schema='public' AND table_name='orders_with_derived'
+   AND column_name IN ('parent_order_id', 'leg_no', 'dest_country');
 SELECT conname, convalidated FROM pg_constraint
  WHERE conrelid = 'public.orders'::regclass
    AND conname IN ('orders_dest_country_iso2', 'orders_dest_country_preorder_only');
