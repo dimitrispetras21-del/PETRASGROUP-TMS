@@ -230,6 +230,15 @@ const _WI2_CSS=`
 /* 14/9: an explicit «open» (localStorage 1 → fl-on/fr-on) wins over the <1800px collapse — the media rule
    above forced 18px on every laptop, so the ΠΡΟΣ/ΑΠΟ ΒΕΡΟΙΑ headers toggled the class and nothing moved. */
 .wk3.wi2.fl-on{--fL:200px}.wk3.wi2.fr-on{--fR:200px}
+/* 27/9: the auto-collapse above only shrank the column to 18px — its cards
+   stayed and were cut to an unreadable «31/…». An 18px column cannot carry a
+   date, so behave like the manual collapse (style.css .fl-off/.fr-off: cards
+   hidden) and leave a dot where a national leg exists; ◂ ▸ opens the column
+   with the full date. An explicit fl-on/fr-on keeps the cards. */
+@media (max-width:1800px){
+.wk3.wi2:not(.fl-on) .wk3-feed.l>*,.wk3.wi2:not(.fr-on) .wk3-feed.r>*{display:none}
+.wk3.wi2:not(.fl-on) .wk3-feed.l:has(.wi2-card)::after,.wk3.wi2:not(.fr-on) .wk3-feed.r:has(.wi2-card)::after{content:'';width:6px;height:6px;border-radius:var(--radius-full);background:var(--accent);align-self:center}
+}
 /* Μαζεμένη στήλη = μαζεμένη κεφαλίδα. Το κείμενο «ΠΡΟΣ/ΑΠΟ ΒΕΡΟΙΑ» είναι
    γυμνός κόμβος δίπλα στο βελάκι, οπότε ξεχείλιζε από τα 18px. font-size:0
    στο κελί και κανονικό στο βελάκι: το κείμενο φεύγει, το ◂ ▸ μένει και η
@@ -281,23 +290,26 @@ const _WI2_CSS=`
 .wi2-chip:disabled,.wi2-chip:disabled:hover{color:var(--text-dim);background:var(--surface-card);border-color:var(--border);cursor:default}
 .wi2-week{margin-left:auto;font:500 12px 'DM Sans',sans-serif;color:var(--text-dim);white-space:nowrap;font-variant-numeric:tabular-nums}
 .wk3.wi2 .wk3-sheet{background:transparent;border:none;box-shadow:none;border-radius:0;max-height:calc(100vh - 340px);padding-bottom:4px}
-.wk3.wi2 .wk3-cols{background:var(--surface-card);border:1px solid var(--border);border-radius:var(--radius);margin-bottom:8px;min-height:30px}
-.wk3.wi2 .wk3-cols .c{font:700 11px 'Syne',sans-serif;letter-spacing:1.2px;color:var(--text-mid);padding:0 8px;height:30px;gap:4px}
+.wk3.wi2 .wk3-cols{background:var(--surface-card);border:1px solid var(--border);border-radius:var(--radius);margin-bottom:4px;min-height:24px}
+.wk3.wi2 .wk3-cols .c{font:700 11px 'Syne',sans-serif;letter-spacing:1.2px;color:var(--text-mid);padding:0 8px;height:24px;gap:4px}
 .wk3.wi2 .wk3-cols .c.fc{color:var(--text-dim)}
 .wk3.wi2 .wk3-cols .c .fc-ch{font-size:11px}
 .wk3.wi2 .wk3-cols .n{background:none;color:inherit;font:700 11px 'Syne',sans-serif;letter-spacing:1.2px;min-width:0;height:auto;padding:0;font-variant-numeric:tabular-nums}
-.wi2-day{background:var(--surface-card);border:1px solid var(--border);border-radius:var(--radius);padding:4px 12px 8px;margin-bottom:8px}
+.wi2-day{background:var(--surface-card);border:1px solid var(--border);border-radius:var(--radius);padding:2px 8px 4px;margin-bottom:4px}
 .wi2-day.today{border-color:var(--accent)}
-.wi2-day.empty{padding-bottom:8px}
-.wk3.wi2 .wk3-dayh{position:sticky;top:38px;z-index:20;background:var(--surface-card);border:none;padding:8px 4px 4px;gap:12px;align-items:baseline;box-shadow:none}
-.wk3.wi2 .wk3-dayh .d{font:700 18px 'Syne',sans-serif;letter-spacing:0;color:var(--text);font-variant-numeric:tabular-nums}
+.wk3.wi2 .wk3-dayh{position:sticky;top:28px;z-index:20;background:var(--surface-card);border:none;padding:2px 4px 0;gap:12px;align-items:baseline;box-shadow:none}
+.wk3.wi2 .wk3-dayh .d{font:700 16px 'Syne',sans-serif;letter-spacing:0;color:var(--text);font-variant-numeric:tabular-nums}
 .wk3.wi2 .wk3-dayh.today .d{color:var(--text)}
 .wk3.wi2 .wk3-dayh .now{font:700 11px 'DM Sans',sans-serif;letter-spacing:1px;color:var(--surface-card);background:var(--accent);border:none;border-radius:var(--radius-full);padding:0 8px;line-height:16px}
 .wi2-none{font-size:11px;color:var(--text-dim);padding:4px 4px 0;font-style:italic}
-/* ΥΨΟΣ ΓΡΑΜΜΗΣ ≤ 44px (DESIGN Κ5): γραμμή 1px + κελί 0 + κάρτα 4+1 πάνω/κάτω
-   = 12px «σκελετός», οπότε το περιεχόμενο της κάρτας έχει ακριβώς 32px:
-   όνομα 16px + σειρά μεταδεδομένων 16px. Κάθε padding εδώ είναι μετρημένο. */
-.wk3.wi2 .wk3-row{min-height:40px;margin-top:4px;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface-card);align-items:center}
+/* ΠΥΚΝΟΤΗΤΑ (owner 27/9, «dense»): περισσότερες γραμμές ανά οθόνη — οι
+   οθόνες των dispatchers είναι φαρδιές, όχι ψηλές. Γραμμή 44→28px: γραμμή 1px
+   + κάρτα 1px πάνω/κάτω, χωρίς padding, περιεχόμενο 24px = όνομα 12px +
+   σειρά μεταδεδομένων 12px. ΔΥΟ σειρές παραμένουν (owner): η μία σειρά θα
+   έκοβε πόλη/ημερομηνία/παλέτες. Μετρήθηκε στο rig: 1440×900 7→11 πλήρεις
+   γραμμές, 1920×1080 9→15. Κάτω από 11px δεν κατεβαίνει τίποτα εκτός από την
+   κλιμάκωση ονόματος της _wi2Balance. Κάθε padding εδώ είναι μετρημένο. */
+.wk3.wi2 .wk3-row{min-height:26px;margin-top:2px;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface-card);align-items:center}
 .wk3.wi2 .wk3-row.alt{background:var(--surface-card)}
 .wk3.wi2 .wk3-row:hover{background:var(--surface-sunken)}
 .wk3.wi2 .wk3-row.wi2-un{border-color:var(--unassigned);border-left-width:3px}
@@ -310,18 +322,18 @@ const _WI2_CSS=`
    padding και φόντο κάρτας. Η γραμμή πήρε δικό της όνομα. */
 .wk3.wi2 .wk3-row.wi2-rowurg{border-color:var(--danger-strong);border-left-width:3px}
 .wk3.wi2 .wk3-row.wk3-done{background:var(--success-bg)}
-.wk3.wi2 .wk3-legrow{background:var(--surface-page);border-style:dashed;min-height:38px}
+.wk3.wi2 .wk3-legrow{background:var(--surface-page);border-style:dashed;min-height:24px}
 .wk3.wi2 .wk3-num{border-right:none;font-size:11px;color:var(--text-dim);justify-content:flex-start;padding-left:8px;gap:4px;flex-wrap:wrap;font-variant-numeric:tabular-nums}
 .wk3.wi2 .wk3-num.imp{color:var(--accent-text);font-weight:700}
 .wk3.wi2 .wk3-num .wi-sync{display:inline;margin:0;font-size:11px}
 .wk3.wi2 .wk3-grpb{font-size:11px;padding:0 4px;border-radius:var(--radius-full)}
-.wk3.wi2 .wk3-leg{display:grid;grid-template-columns:minmax(0,var(--sL,1fr)) auto minmax(0,var(--sR,1fr));padding:0 4px;align-items:center;gap:4px;min-height:38px}
+.wk3.wi2 .wk3-leg{display:grid;grid-template-columns:minmax(0,var(--sL,1fr)) auto minmax(0,var(--sR,1fr));padding:0 4px;align-items:center;gap:4px;min-height:24px}
 .wk3.wi2 .wk3-leg.gap,.wk3.wi2 .wk3-leg.void{background:transparent;justify-content:stretch}
 .wk3.wi2 .wk3-leg.bgap,.wk3.wi2 .wk3-leg.grp{background:transparent}
 /* ΚΑΡΤΑ ΔΥΟ ΣΕΙΡΩΝ (owner 4/9): το όνομα παίρνει ΟΛΟ το πλάτος σε δική του
    σειρά· ημερομηνία, πόλη, σήματα και παλέτες στη δεύτερη. Πριν, το πλακίδιο
    ημερομηνίας και οι παλέτες έτρωγαν ~110px από το όνομα στην ίδια σειρά. */
-.wi2-card{flex:1 1 0;min-width:0;display:flex;flex-direction:column;justify-content:center;gap:0;min-height:34px;padding:4px 8px;background:var(--surface-card);border:1px solid var(--border);border-radius:var(--radius);box-sizing:border-box;transition:border-color var(--duration-fast) var(--ease-out),background var(--duration-fast) var(--ease-out),box-shadow var(--duration-fast) var(--ease-out),transform var(--duration-fast) var(--ease-out)}
+.wi2-card{flex:1 1 0;min-width:0;display:flex;flex-direction:column;justify-content:center;gap:0;min-height:24px;padding:0 6px;background:var(--surface-card);border:1px solid var(--border);border-radius:var(--radius);box-sizing:border-box;transition:border-color var(--duration-fast) var(--ease-out),background var(--duration-fast) var(--ease-out),box-shadow var(--duration-fast) var(--ease-out),transform var(--duration-fast) var(--ease-out)}
 .wk3-leg:hover>.wi2-card{border-color:var(--text-dim);transform:translateY(-1px);box-shadow:var(--shadow-lift)}
 @media (prefers-reduced-motion:reduce){.wi2-card{transition:none}.wk3-leg:hover>.wi2-card{transform:none}}
 .wk3.wi2 .wk3-pill,.wk3.wi2 .wi2-gapbox,.wk3.wi2 .wi2-void,.wk3.wi2 .wi2-date,.wk3.wi2 .wi2-carrier{transition:box-shadow var(--duration-fast) var(--ease-out),transform var(--duration-fast) var(--ease-out),border-color var(--duration-fast) var(--ease-out),background var(--duration-fast) var(--ease-out)}
@@ -332,7 +344,7 @@ const _WI2_CSS=`
 .wk3.wi2 .wk3-feed .wi2-card .wi2-sub{display:none}
 .wk3.wi2 .wk3-feed .wi2-card .wi2-name{font-size:12px;line-height:18px}
 .wk3.wi2 .wk3-feed .wi2-date.wk3-ld{min-width:0;padding:0 5px;font-size:10.5px;line-height:18px}
-.wk3.wi2 .wi2-carrier{font:600 11px 'DM Sans',sans-serif;line-height:16px;padding:1px 8px;border-radius:9999px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%;box-sizing:border-box;cursor:default}
+.wk3.wi2 .wi2-carrier{font:600 11px 'DM Sans',sans-serif;line-height:12px;padding:0 6px;border-radius:9999px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%;box-sizing:border-box;cursor:default}
 .wk3.wi2 .wi2-carrier.own{background:var(--navy-mid);color:var(--text-on-dark)}
 .wk3.wi2 .wi2-carrier.par{background:var(--chip-partner);color:var(--text-on-dark)}
 .wk3.wi2 .wi2-carrier.un{background:transparent;border:1px dashed var(--unassigned);color:var(--unassigned)}
@@ -341,6 +353,12 @@ const _WI2_CSS=`
 .wi2-card.ok{background:var(--success-bg);border-color:var(--ok)}
 .wi2-card.late{background:var(--danger-bg);border-color:var(--danger)}
 .wi2-meta{display:flex;align-items:center;gap:8px;min-width:0;height:16px}
+/* Leg cards only (27/9 density) — the single-line feed cards keep their own 18px rhythm. */
+.wk3.wi2 .wk3-leg .wi2-meta{height:12px;gap:6px}
+.wk3.wi2 .wk3-leg .wi2-date{line-height:12px;padding:0 4px}
+.wk3.wi2 .wk3-leg .wi2-date.estd{line-height:10px}
+.wk3.wi2 .wk3-leg .wi-badge,.wk3.wi2 .wk3-leg .wi-cross,.wk3.wi2 .wk3-leg .wi-exec,.wk3.wi2 .wk3-leg .wk3-vsb{line-height:12px;padding:0 3px}
+.wk3.wi2 .wk3-leg .wi2-pal{font-size:11px}
 .wi2-right{margin-left:auto;display:inline-flex;align-items:center;gap:4px;flex-shrink:0}
 .wi2-right>*{flex-shrink:0}
 .wi2-date{flex-shrink:0;font:700 11px 'DM Sans',sans-serif;color:var(--accent-text);background:var(--accent-light);border-radius:var(--radius);padding:0 8px;line-height:16px;cursor:pointer;font-variant-numeric:tabular-nums;margin:0}
@@ -349,19 +367,19 @@ const _WI2_CSS=`
    πελάτη ξεκινούσε σε έξι διαφορετικά x μέσα στην ίδια στήλη (560..577).
    min-width αντί για width: τα κοντά πλακίδια γεμίζουν ως το κοινό όριο,
    ένα μελλοντικό πιο μακρύ σπρώχνει αντί να κοπεί. */
-.wk3.wi2 .wi2-date.wk3-ld{width:auto;min-width:78px;box-sizing:border-box;text-align:left;margin:0;font-size:11px}
+.wk3.wi2 .wi2-date.wk3-ld{width:auto;min-width:70px;box-sizing:border-box;text-align:left;margin:0;font-size:11px}
 .wk3.wi2 .wi2-date.wk3-ld.done::after{font-size:11px}
 /* style.css pins these two with !important and hex; same weight, token value */
 .wk3.wi2 .wk3-ld.done{color:var(--ok) !important}
 .wk3.wi2 .wk3-ld.late{color:var(--warn) !important}
 .wi2-date.estd{font-style:italic;border:1px dashed var(--accent-text);background:transparent;line-height:14px}
-/* ΚΛΙΜΑΚΩΣΗ ΟΝΟΜΑΤΟΣ (owner 4/9): μία σειρά, 13px. Αν δεν χωρά, η
+/* ΚΛΙΜΑΚΩΣΗ ΟΝΟΜΑΤΟΣ (owner 4/9· 12px από 27/9): μία σειρά. Αν δεν χωρά, η
    _wi2Balance κατεβάζει ΜΟΝΟ αυτό το όνομα ως 10px· αν ούτε έτσι, .clamp
    (δύο σειρές με ορατό «…» + title). Το ellipsis εδώ είναι δίχτυ, όχι
    σχέδιο: ποτέ σιωπηλή κοπή (Κ6), ακόμη και πριν προλάβει η μέτρηση. */
-.wi2-name{font-size:13px;line-height:16px;font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.wi2-name{font-size:12px;line-height:12px;font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .wi2-name>*{margin-right:4px}
-.wi2-name.clamp{white-space:normal;overflow-wrap:break-word;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;line-height:1.2}
+.wi2-name.clamp{white-space:normal;overflow-wrap:break-word;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;line-height:1.1}
 .wk3.wi2.wi2-measure .wi2-name,.wk3.wi2.wi2-measure .wi2-sub{white-space:nowrap;display:block;overflow:visible}
 .wi2-sub{font-size:11px;color:var(--text-dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
 .wi2-nw{white-space:nowrap}
@@ -374,17 +392,18 @@ const _WI2_CSS=`
 .wk3.wi2 .wi-cross,.wk3.wi2 .wi-exec{font-size:11px;line-height:16px;padding:0 4px;margin:0;border-radius:var(--radius)}
 .wk3.wi2 .wk3-vsb{font-size:11px;padding:0 4px;border-radius:var(--radius)}
 .wk3.wi2 .wk3-okc{font-size:11px}
-.wk3.wi2 .wk3-stopn,.wk3.wi2 .wk3-gmn{width:16px;height:16px;font-size:11px;line-height:16px}
+.wk3.wi2 .wk3-stopn{width:12px;height:12px;font-size:11px;line-height:12px}
+.wk3.wi2 .wk3-gmn{width:16px;height:16px;font-size:11px;line-height:16px}
 .wi2-arrow{color:var(--text-dim);font-size:12px;flex-shrink:0}
 .wi2-late{font-size:11px;font-weight:700;color:var(--danger);white-space:nowrap}
-.wi2-gapbox{flex:1;min-height:34px;display:flex;align-items:center;gap:8px;padding:0 8px;border:1px solid var(--warn);border-radius:var(--radius);font:700 10px 'Syne',sans-serif;letter-spacing:.8px;color:var(--warn);cursor:pointer;box-sizing:border-box;background:var(--surface-card)}
+.wi2-gapbox{flex:1;min-height:24px;display:flex;align-items:center;gap:8px;padding:0 8px;border:1px solid var(--warn);border-radius:var(--radius);font:700 10px 'Syne',sans-serif;letter-spacing:.8px;color:var(--warn);cursor:pointer;box-sizing:border-box;background:var(--surface-card)}
 .wi2-gapbox.urg{border-color:var(--danger-strong);color:var(--danger-strong)}
 .wi2-gapbox small{font:500 11px 'DM Sans',sans-serif;letter-spacing:0}
-.wi2-void{flex:1;min-height:34px;border-radius:var(--radius);background:var(--surface-page)}
+.wi2-void{flex:1;min-height:24px;border-radius:var(--radius);background:var(--surface-page)}
 .wk3.wi2 .wk3-leg>.wi2-gapbox,.wk3.wi2 .wk3-leg>.wi2-void{grid-column:1/-1}
 .wi2-void.navy{background:var(--surface-dark)}
 .wi2-dash{width:100%;text-align:center;color:var(--text-dim);font-size:12px;cursor:help}
-.wk3.wi2 .wk3-feed{background:transparent;padding:0 4px;display:flex;flex-direction:column;justify-content:center;align-items:stretch;gap:3px;height:auto;min-height:38px;white-space:normal;align-self:stretch;font-size:11px}
+.wk3.wi2 .wk3-feed{background:transparent;padding:0 4px;display:flex;flex-direction:column;justify-content:center;align-items:stretch;gap:1px;height:auto;min-height:24px;white-space:normal;align-self:stretch;font-size:11px}
 .wk3.wi2 .wk3-feed.bgap{background:transparent !important}
 .wk3.wi2.fl-off .wk3-feed.l,.wk3.wi2.fr-off .wk3-feed.r{background:var(--surface-page)}
 .wk3.wi2 .wk3-assign{display:grid;grid-template-columns:20px minmax(0,1fr) 20px;padding:0 4px;gap:4px;align-items:center}
@@ -393,17 +412,17 @@ const _WI2_CSS=`
 .wk3.wi2 .wk3-assign>:not(.wk3-prt){grid-column:2;min-width:0}
 /* ΑΝΑΘΕΣΗ — χρώμα ΚΑΙ λέξη (DESIGN ΜΕΡΟΣ Ε, owner 4/9): «ΙΔ.» / «ΣΥΝ.» /
    «ΠΡΟΣ ΑΝΑΘΕΣΗ». Δύο σειρές με ορατό «…» και title — όχι αναδίπλωση, γιατί
-   μια τρίτη σειρά σπάει το όριο των 44px της γραμμής. */
-.wk3.wi2 .wk3-pill{height:auto;min-height:34px;flex-direction:column;align-items:flex-start;justify-content:center;gap:0;padding:4px 12px;font-size:12px;line-height:1.25;border-radius:var(--radius);white-space:nowrap;overflow:hidden;box-sizing:border-box;transform:none;box-shadow:none}
+   μια τρίτη σειρά σπάει το ύψος γραμμής των 28px (27/9). */
+.wk3.wi2 .wk3-pill{height:auto;min-height:24px;flex-direction:column;align-items:flex-start;justify-content:center;gap:0;padding:0 8px;font-size:12px;line-height:12px;border-radius:var(--radius);white-space:nowrap;overflow:hidden;box-sizing:border-box;transform:none;box-shadow:none}
 .wk3.wi2 .wk3-row:hover .wk3-pill{transform:none;box-shadow:none}
 .wk3.wi2 .wk3-pill .t,.wk3.wi2 .wk3-pill small{display:block;max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .wk3.wi2 .wk3-pill small{font-size:11px;color:var(--text-on-dark);font-variant-numeric:tabular-nums}
-.wk3.wi2 .wk3-pill .t{font-variant-numeric:tabular-nums}
+.wk3.wi2 .wk3-pill .t{font-size:11px;font-variant-numeric:tabular-nums}
 .wk3.wi2 .wk3-pill.un{color:var(--unassigned);align-items:center;font-weight:700;letter-spacing:.5px}
 .wk3.wi2 .wk3-pill.unimp{align-items:center;font-size:12px}
 .wk3.wi2 .wk3-pill.unimp small{color:var(--text-dim);font-weight:500}
-.wk3.wi2 .wk3-prt{border:1px solid var(--border);border-radius:var(--radius);padding:4px;font-size:13px;background:var(--surface-card)}
-.wk3.wi2 .wk3-stopline{padding-left:0;font-size:11px;line-height:1.5}
+.wk3.wi2 .wk3-prt{border:1px solid var(--border);border-radius:var(--radius);padding:1px 3px;font-size:12px;background:var(--surface-card)}
+.wk3.wi2 .wk3-stopline{padding-left:0;font-size:11px;line-height:1.15}
 .wk3.wi2 .wk3-stopline .wk3-sln{white-space:normal;overflow:visible}
 .wk3.wi2 .wk3-sld{font-size:11px}
 .wk3.wi2 .wk3-lcol .wk3-stopline.dl{padding-left:0}
@@ -443,7 +462,12 @@ const _WI2_CSS=`
    τα κρυμμένα κελιά δεν πιάνουν στήλη, οπότε η εξαγωγή έπεφτε στα 18px.
    minmax(0,…) όπως και στο πλήρες πλάτος, για να μην εξαρτώνται τα πλάτη
    από το περιεχόμενο της κάθε γραμμής. */
-@media (max-width:1360px){.wk3.wi2 .wk3-cols,.wk3.wi2 .wk3-row{grid-template-columns:36px minmax(0,1.1fr) 200px minmax(0,0.9fr)}}
+@media (max-width:1360px){.wk3.wi2 .wk3-cols,.wk3.wi2 .wk3-row{grid-template-columns:36px minmax(0,1.1fr) 200px minmax(0,0.9fr)}
+/* 27/9: the style.css:2948 hide never won — «.wk3.wi2 .wk3-feed{display:flex}»
+   above out-ranks its bare «.wk3-feed{display:none}», so both feed cells
+   still took grid slots in the 4-column grid: every row wrapped to ~94px
+   and the export card was squeezed. Same hide, stated at this scope. */
+.wk3.wi2 .wk3-feed,.wk3.wi2 .wk3-cols .c.fc{display:none}}
 /* Wave 2 (owner 6/9): local movements around Veroia, tied to an
    international order — not costed, not invoiced, no round-trip need.
    Sub-row reuses .wk3-legrow's look (dashed, page background) but spans the
@@ -934,7 +958,7 @@ function _wiPaint(){
   // και στο μηδέν, αλλιώς δεν ξε-επιλέγεται όταν αδειάσει η κατηγορία.
   const chip=(q,lbl,n)=>{ const on=(WINTL.quick||'')===q; return `<button class="wi2-chip${on?' on':''}" data-q="${q}"${(!n&&!on)?' disabled':''} onclick="_wi2Quick('${q}')">${lbl} (${n})</button>`; };
   document.getElementById('content').innerHTML=`
-    <div class="wk3 wi2 ${_wiQuietOn()?'wi-quiet':''}${_wiDensityCls()}${localStorage.getItem('tms_wk3_fl')==='0'?' fl-off':''}${localStorage.getItem('tms_wk3_fr')==='0'?' fr-off':''}${localStorage.getItem('tms_wk3_fl')==='1'?' fl-on':''}${localStorage.getItem('tms_wk3_fr')==='1'?' fr-on':''}" style="display:block;width:100%">
+    <div class="wk3 wi2 ${_wiQuietOn()?'wi-quiet':''}${localStorage.getItem('tms_wk3_fl')==='0'?' fl-off':''}${localStorage.getItem('tms_wk3_fr')==='0'?' fr-off':''}${localStorage.getItem('tms_wk3_fl')==='1'?' fl-on':''}${localStorage.getItem('tms_wk3_fr')==='1'?' fr-on':''}" style="display:block;width:100%">
     <style>${_WI2_CSS}</style>
     <div class="wi2-mast">
       <div class="wi2-title">Πίνακας Σχεδιασμού Αποστολών <button class="wi2-legend-btn" onclick="_wi2Legend()" title="Υπόμνημα χρωμάτων και σημάτων">? υπόμνημα</button></div>
@@ -1579,22 +1603,6 @@ function _wiBadges(f){
 // history, group print. Shared key with weekly_natl (twin behaviour).
 function _wiQuietOn(){ return localStorage.getItem('tms_weekly_details')!=='1'; }
 function _wiToggleDetails(){ localStorage.setItem('tms_weekly_details', _wiQuietOn()?'1':'0'); renderWeeklyIntl(); }
-// TEMPORARY (27/9, feat/weekly-density): lets the owner compare the two density
-// candidates on the real board before choosing one — CSS in assets/style.css
-// «WEEKLY INTL DENSITY VARIANTS». Switch: app.html?wi_density=compact|dense
-// (remembered in localStorage 'tms_wi_density'), ?wi_density=off to go back.
-// Default = no class = today's rendering. Once the owner picks, the chosen
-// rules become the plain .wk3.wi2 rules and this switch is deleted.
-function _wiDensityCls(){
-  let v=null;
-  try{
-    const q=new URLSearchParams(location.search).get('wi_density');
-    if(q==='off') localStorage.removeItem('tms_wi_density');
-    else if(q) localStorage.setItem('tms_wi_density',q);
-    v=localStorage.getItem('tms_wi_density');
-  }catch{}
-  return v==='compact'||v==='dense' ? ' wi-density-'+v : '';
-}
 // Excel sidebar «οδηγός → μέρα επιστροφής» (cols 33-36 of WEEKLY PLAN),
 // computed from this week's assignments — no new data entry.
 /* ── BUILD v3 Φάση Β — διαθεσιμότητα κατά τον κανόνα ημερών του owner:
@@ -1865,7 +1873,7 @@ function _wi2Balance(){
   const sheet=document.querySelector('.wk3.wi2'); if(!sheet) return;
   const names=[...document.querySelectorAll('#wi-rows .wi2-name')];
   // Reset last pass first: a name that shrank for a narrow column must be
-  // measured again at 13px after a resize widened it.
+  // measured again at 12px after a resize widened it.
   names.forEach(e=>{ e.classList.remove('clamp'); e.style.fontSize=''; });
   const legs=[...document.querySelectorAll('#wi-rows .wk3-leg')].filter(l=>l.offsetParent&&l.children.length>=3);
   if(legs.length){
@@ -1885,7 +1893,7 @@ function _wi2Balance(){
       sheet.style.setProperty('--sR',(1-r).toFixed(3)+'fr');
     }
   }
-  // ΚΛΙΜΑΚΩΣΗ ΑΝΑ ΟΝΟΜΑ (owner 4/9): 13px σε όλο το πλάτος → 12 → 11 → 10,
+  // ΚΛΙΜΑΚΩΣΗ ΑΝΑ ΟΝΟΜΑ (owner 4/9· βάση 12px από 27/9): 12px → 11 → 10,
   // μετρημένο με scrollWidth ΜΟΝΟ για το όνομα που δεν χωρά. Αν ούτε στα 10px
   // χωρά: δύο σειρές με ορατό «…» και το πλήρες κείμενο σε title — τίποτα
   // δεν κόβεται σιωπηλά (Κ6). Οι μαζεμένες εθνικές στήλες (18px) εξαιρούνται:
@@ -1895,7 +1903,7 @@ function _wi2Balance(){
   names.forEach(e=>{
     if(e.clientWidth<40) return;
     if(!fits(e)){
-      for(const px of [12,11,10]){ e.style.fontSize=px+'px'; if(fits(e)) break; }
+      for(const px of [11,10]){ e.style.fontSize=px+'px'; if(fits(e)) break; }
       if(!fits(e)){ e.classList.add('clamp'); e.title=e.innerText.trim(); cut++; return; }
     }
     if(e.title) e.removeAttribute('title');
