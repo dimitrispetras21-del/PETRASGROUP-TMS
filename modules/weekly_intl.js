@@ -303,9 +303,10 @@ const _WI2_CSS=`
 .wk3.wi2 .wk3-dayh .now{font:700 11px 'DM Sans',sans-serif;letter-spacing:1px;color:var(--surface-card);background:var(--accent);border:none;border-radius:var(--radius-full);padding:0 8px;line-height:16px}
 .wi2-none{font-size:11px;color:var(--text-dim);padding:4px 4px 0;font-style:italic}
 /* ΠΥΚΝΟΤΗΤΑ (owner 27/9, «dense»): περισσότερες γραμμές ανά οθόνη — οι
-   οθόνες των dispatchers είναι φαρδιές, όχι ψηλές. Γραμμή 44→28px: γραμμή 1px
-   + κάρτα 1px πάνω/κάτω, χωρίς padding, περιεχόμενο 24px = όνομα 12px +
-   σειρά μεταδεδομένων 12px. ΔΥΟ σειρές παραμένουν (owner): η μία σειρά θα
+   οθόνες των dispatchers είναι φαρδιές, όχι ψηλές. Γραμμή 44→29px: γραμμή 1px
+   + κάρτα 1px πάνω/κάτω, χωρίς padding, περιεχόμενο 25px = όνομα 13px (12px
+   γράμματα + 1px ώστε οι ουρές ρ φ χ ψ να μην κόβονται από το overflow:hidden)
+   + σειρά μεταδεδομένων 12px. ΔΥΟ σειρές παραμένουν (owner): η μία σειρά θα
    έκοβε πόλη/ημερομηνία/παλέτες. Μετρήθηκε στο rig: 1440×900 7→11 πλήρεις
    γραμμές, 1920×1080 9→15. Κάτω από 11px δεν κατεβαίνει τίποτα εκτός από την
    κλιμάκωση ονόματος της _wi2Balance. Κάθε padding εδώ είναι μετρημένο. */
@@ -377,7 +378,7 @@ const _WI2_CSS=`
    _wi2Balance κατεβάζει ΜΟΝΟ αυτό το όνομα ως 10px· αν ούτε έτσι, .clamp
    (δύο σειρές με ορατό «…» + title). Το ellipsis εδώ είναι δίχτυ, όχι
    σχέδιο: ποτέ σιωπηλή κοπή (Κ6), ακόμη και πριν προλάβει η μέτρηση. */
-.wi2-name{font-size:12px;line-height:12px;font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.wi2-name{font-size:12px;line-height:13px;font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .wi2-name>*{margin-right:4px}
 .wi2-name.clamp{white-space:normal;overflow-wrap:break-word;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;line-height:1.1}
 .wk3.wi2.wi2-measure .wi2-name,.wk3.wi2.wi2-measure .wi2-sub{white-space:nowrap;display:block;overflow:visible}
@@ -412,7 +413,7 @@ const _WI2_CSS=`
 .wk3.wi2 .wk3-assign>:not(.wk3-prt){grid-column:2;min-width:0}
 /* ΑΝΑΘΕΣΗ — χρώμα ΚΑΙ λέξη (DESIGN ΜΕΡΟΣ Ε, owner 4/9): «ΙΔ.» / «ΣΥΝ.» /
    «ΠΡΟΣ ΑΝΑΘΕΣΗ». Δύο σειρές με ορατό «…» και title — όχι αναδίπλωση, γιατί
-   μια τρίτη σειρά σπάει το ύψος γραμμής των 28px (27/9). */
+   μια τρίτη σειρά σπάει το ύψος γραμμής των 29px (27/9). */
 .wk3.wi2 .wk3-pill{height:auto;min-height:24px;flex-direction:column;align-items:flex-start;justify-content:center;gap:0;padding:0 8px;font-size:12px;line-height:12px;border-radius:var(--radius);white-space:nowrap;overflow:hidden;box-sizing:border-box;transform:none;box-shadow:none}
 .wk3.wi2 .wk3-row:hover .wk3-pill{transform:none;box-shadow:none}
 .wk3.wi2 .wk3-pill .t,.wk3.wi2 .wk3-pill small{display:block;max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -1124,7 +1125,7 @@ function _wiAllRowsHTML(){
     // Day counters (frame 368:966): what the day owes, in words
     const gExp=grp.exps.length;
     const empty=!gExp&&!showImps.length;
-    html+=`<section class="wi2-day${isToday?' today':''}${empty?' empty':''}" data-day="${grp.rawDate}">
+    html+=`<section class="wi2-day${isToday?' today':''}" data-day="${grp.rawDate}">
       <div class="wk3-dayh${isToday?' today':''}"><span class="d">${wd||'ΧΩΡΙΣ ΗΜΕΡΟΜΗΝΙΑ'}${dm?' '+dm:''}</span>${isToday?'<span class="now">ΣΗΜΕΡΑ</span>':''}</div>`;
     if(empty){ html+=`<div class="wi2-none">Καμία κίνηση — η κενή μέρα είναι πληροφορία, όχι απουσία</div></section>`; return; }
 
