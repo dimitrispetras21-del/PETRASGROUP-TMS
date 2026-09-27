@@ -424,6 +424,22 @@ const _WI2_CSS=`
 .wk3.wi2 .wk3-pill.unimp small{color:var(--text-dim);font-weight:500}
 .wk3.wi2 .wk3-prt{border:1px solid var(--border);border-radius:var(--radius);padding:1px 3px;font-size:12px;background:var(--surface-card)}
 .wk3.wi2 .wk3-stopline{padding-left:0;font-size:11px;line-height:1.15}
+.wk3.wi2 .wi2-stops{display:inline-flex;align-items:center;max-width:100%;vertical-align:top;white-space:nowrap}
+.wk3.wi2 .wi2-s1{min-width:0;overflow:hidden;text-overflow:ellipsis}
+.wk3.wi2 .wi2-sx{flex:none;margin-left:6px}
+.wk3.wi2 .wi2-sx.diff .wk3-stopn{background:var(--warn)}
+.wk3.wi2 .wi2-sx.off,.wk3.wi2 .wi2-more.off{display:none}
+.wk3.wi2 .wi2-stops.fit{max-width:none}
+.wk3.wi2 .wi2-stops.fit .wi2-s1{flex:none;overflow:visible}
+/* The column split (--sL) is measured on the 1st stop + «+N» only. */
+.wk3.wi2.wi2-measure .wi2-stops{max-width:none}
+.wk3.wi2.wi2-measure .wi2-s1{overflow:visible}
+.wk3.wi2.wi2-measure .wi2-sx{display:none}
+.wk3.wi2.wi2-measure .wi2-more{display:inline-block}
+.wk3.wi2 .wi2-more{flex:none;margin-left:4px;font:700 11px 'DM Sans',sans-serif;line-height:12px;padding:0 5px;border:none;border-radius:var(--radius-full);background:var(--accent-light);color:var(--accent-text);cursor:pointer;font-variant-numeric:tabular-nums}
+.wk3.wi2 .wi2-more:hover{background:var(--accent);color:var(--surface-card)}
+.wk3.wi2 .wi2-more.diff{background:var(--warn-bg);color:var(--warn)}
+.wk3.wi2 .wk3-xfold.open{padding-top:2px}
 .wk3.wi2 .wk3-stopline .wk3-sln{white-space:normal;overflow:visible}
 .wk3.wi2 .wk3-sld{font-size:11px}
 .wk3.wi2 .wk3-lcol .wk3-stopline.dl{padding-left:0}
@@ -1660,9 +1676,8 @@ function _wk3Arr(str,arr){
   return L.map((x,i)=>({...x,_i:i}))
     .sort((a,b)=>(String(a.dt||'').localeCompare(String(b.dt||'')))||(a._i-b._i));
 }
-// Ίδιας-μέρας σημεία (owner 10/8): ΔΙΠΛΑ-ΔΙΠΛΑ στη γραμμή· από κάτω μόνο
-// όσα πέφτουν άλλη μέρα. Στα 3+ ίδιας μέρας: συντομογραφίες + κλικ που
-// ξεδιπλώνει σειρά με τα πλήρη ονόματα.
+// Splits the stops into same-day-as-the-1st and other-day ones; the other-day
+// ones keep their own (highlighted) date in the tooltip and the unfolded list.
 function _wk3SideCalc(str,arr){
   const L=_wk3Arr(str,arr);
   const d0=L.length&&L[0].dt?toLocalDate(L[0].dt):'';
@@ -1670,41 +1685,74 @@ function _wk3SideCalc(str,arr){
   L.forEach(x=>{ const dd=x.dt?toLocalDate(x.dt):''; (dd&&d0&&dd!==d0?diff:same).push(x); });
   return {L,same,diff};
 }
-function _wk3LocHTML(str,label,arr){
-  const kind=label==='Φόρτωση'?'load':'del';
-  const {L,same}=_wk3SideCalc(str,arr);
-  if(!L.length) return (_wiClean(str||'—'));
-  const circ=i=>`<span class="wk3-stopn${kind==='load'?' ln':''}">${i+1}</span>`;
-  if(L.length===1) return escapeHtml(L[0].n);
-  if(same.length===1) return `${circ(0)}${escapeHtml(same[0].n)}`;
-  // Έως 3 σημεία με πλήρη ονόματα (owner 12/8: «δύσκολο να διαβάσει ποια είναι
-  // τα σημεία») — η γραμμή απλώνει ως τις παλέτες· αν πάλι δεν χωρά και κοπεί
-  // με «…», το hover δείχνει την πλήρη αριθμημένη λίστα. Συντομογραφία μόνο 4+.
-  if(same.length<=3){
-    const tip3=escapeHtml(same.map((x,i)=>`${i+1}. ${x.n}`).join('\n'));
-    return `<span title="${tip3}">${same.map((x,i)=>`${circ(i)}${escapeHtml(x.n)}`).join(' ')}</span>`;
-  }
-  const tip=escapeHtml(same.map((x,i)=>`${i+1}. ${x.n}`).join('\n'));
-  const ab=same.map((x,i)=>`${circ(i)}${escapeHtml(x.n.split(',')[0].slice(0,5))}…`).join(' ');
-  return `<span class="wk3-abbr" title="${same.length} σημεία — κλικ για πλήρη ονόματα&#10;${tip}" onclick="event.stopPropagation();const c=this.closest('.wk3-lcol')||this.closest('.wk3-fcol');const f=c&&c.querySelector('.wk3-xfold');if(f)f.classList.toggle('open')">${ab}</span>`;
+// ΠΟΛΛΑΠΛΑ ΣΗΜΕΙΑ (owner 27/9, επιλογή α + «αν χωράνε, γιατί +2;»). Πριν,
+// 2-3 σημεία ίδιας μέρας γράφονταν ΟΛΑ στη σειρά του ονόματος ΚΑΙ μετρούσαν
+// στην _wi2Balance, που μοιράζει ΕΝΑ πλάτος σε όλη τη στήλη από την πιο
+// απαιτητική κάρτα: μία παραγγελία 3 σημείων έσπρωχνε το --sL 0.49→0.65,
+// μετακινούσε το βέλος 66px σε ΚΑΘΕ γραμμή, μεγάλωνε τη γραμμή 42→58px και
+// έκοβε το 3ο όνομα. Τώρα:
+//  · το --sL μετριέται ΜΟΝΟ με το 1ο σημείο + «+N» (.wi2-measure κρύβει τα
+//    υπόλοιπα) — πολλά σημεία δεν φαρδαίνουν ποτέ τη στήλη της εβδομάδας·
+//  · μετά τη διάταξη, η _wi2FitStops δείχνει όσα ΟΛΟΚΛΗΡΑ σημεία χωρούν στο
+//    πλάτος που μένει και μαζεύει τα υπόλοιπα στο «+N» — ποτέ μισό όνομα·
+//  · hover = αριθμημένη λίστα με ημερομηνίες· κλικ στο «+N» = ξεδιπλώνει τη
+//    λίστα (.wk3-xfold της _wk3MoreStops) μέσα στην ίδια κάρτα.
+function _wk3StopsTip(L,diff){
+  return escapeHtml(L.map((x,i)=>`${i+1}. ${x.n}${diff.includes(x)&&x.dt?' — '+_wk3D(_wiFmt(x.dt)):''}`).join('\n'));
 }
+function _wk3LocHTML(str,label,arr,title){
+  const kind=label==='Φόρτωση'?'load':'del';
+  const {L,diff}=_wk3SideCalc(str,arr);
+  if(!L.length) return (_wiClean(str||'—'));
+  if(L.length===1) return escapeHtml(L[0].n);
+  const tip=_wk3StopsTip(L,diff);
+  const dayNote=diff.length?' — '+diff.length+' σε άλλη ημέρα':'';
+  const circ=i=>`<span class="wk3-stopn${kind==='load'?' ln':''}">${i+1}</span>`;
+  const rest=L.slice(1).map((x,k)=>{
+    const d=diff.includes(x);
+    return `<span class="wi2-sx${d?' diff':''}"${d&&x.dt?` title="Άλλη ημέρα: ${escapeHtml(_wk3D(_wiFmt(x.dt)))}"`:''}>${circ(k+1)}${escapeHtml(x.n)}</span>`;
+  }).join('');
+  return `<span class="wi2-stops" title="${L.length} σημεία${dayNote}&#10;${tip}"><span class="wi2-s1">${circ(0)}${escapeHtml(title||L[0].n)}</span>${rest}`+
+    `<button type="button" class="wi2-more" title="Κλικ: όλα τα σημεία${dayNote}&#10;${tip}" onclick="event.stopPropagation();const f=this.closest('.wi2-card')&&this.closest('.wi2-card').querySelector('.wk3-xfold');if(f)f.classList.toggle('open')">+${L.length-1}</button></span>`;
+}
+// After layout (end of _wi2Balance: every render + debounced resize): show as
+// many WHOLE extra stops as fit in the width the name line actually has, fold
+// the rest into «+N». Only multi-stop cards are touched, at most one reflow
+// per hidden stop — cheap on a week of ~30 rows.
+function _wi2FitStops(){
+  document.querySelectorAll('#wi-rows .wi2-stops').forEach(box=>{
+    const line=box.parentElement; if(!line||!line.offsetParent) return;
+    const xs=[...box.querySelectorAll(':scope>.wi2-sx')], chip=box.querySelector(':scope>.wi2-more');
+    if(!chip) return;
+    // .fit = natural widths (1st name not allowed to shrink into «…»), so the
+    // test is «does it fit whole», not «does it fit once squeezed».
+    // Room left on the name line after its other inline marks (✓, «! καθυστέρηση»).
+    const others=[...line.children].filter(c=>c!==box).reduce((a,c)=>a+c.getBoundingClientRect().width+4,0);
+    const avail=line.clientWidth-4-others, w=()=>box.getBoundingClientRect().width;
+    box.classList.add('fit');
+    xs.forEach(x=>x.classList.remove('off')); chip.classList.add('off');
+    let hidden=0;
+    if(w()>avail){
+      chip.classList.remove('off');
+      for(let i=xs.length-1;i>=0&&w()>avail;i--){ xs[i].classList.add('off'); hidden++; }
+    }
+    box.classList.remove('fit');
+    chip.textContent='+'+hidden;
+    chip.classList.toggle('diff',xs.some(x=>x.classList.contains('off')&&x.classList.contains('diff')));
+  });
+}
+// The folded full list behind «+N»: every stop, in order, with its date when
+// it falls on another day than the 1st. Hidden until the chip is clicked, so
+// the row keeps its two-line height (owner 27/9).
 function _wk3MoreStops(str,arr,kind){
-  const {L,same,diff}=_wk3SideCalc(str,arr);
+  const {L,diff}=_wk3SideCalc(str,arr);
   if(L.length<2) return '';
   const arrow=kind==='del'?'<span class="wk3-sep" style="margin:0 2px 0 0">→</span>':'';
   const circ=i=>`<span class="wk3-stopn${kind==='load'?' ln':''}">${i+1}</span>`;
-  let html='';
-  // Αναδιπλωμένη σειρά πλήρων ονομάτων για τα 3+ ίδιας μέρας (ανοίγει με κλικ)
-  if(same.length>=3){
-    html+=`<div class="wk3-xfold">${same.map((x,i)=>
-      `<div class="wk3-stopline${kind==='del'?' dl':''}">${arrow}${circ(i)}<span class="wk3-sln">${escapeHtml(x.n)}</span></div>`).join('')}</div>`;
-  }
-  // Διαφορετικής μέρας: πάντα δική τους γραμμή με την ημερομηνία τους
-  html+=diff.map((st,i)=>{
-    const dtxt=st.dt?_wk3D(_wiFmt(st.dt)):'';
-    return `<div class="wk3-stopline${kind==='del'?' dl':''}">${arrow}${circ(same.length+i)}${dtxt?`<b class="wk3-sld diff" title="Διαφορετική ημέρα από το 1ο σημείο">${dtxt}</b>`:''}<span class="wk3-sln">${escapeHtml(st.n)}</span></div>`;
-  }).join('');
-  return html;
+  return `<div class="wk3-xfold">${L.map((st,i)=>{
+    const dtxt=diff.includes(st)&&st.dt?_wk3D(_wiFmt(st.dt)):'';
+    return `<div class="wk3-stopline${kind==='del'?' dl':''}">${arrow}${circ(i)}${dtxt?`<b class="wk3-sld diff" title="Διαφορετική ημέρα από το 1ο σημείο">${dtxt}</b>`:''}<span class="wk3-sln">${escapeHtml(st.n)}</span></div>`;
+  }).join('')}</div>`;
 }
 function _wk3Edit(orderId){
   if(!orderId) return;
@@ -1848,11 +1896,16 @@ function _wiClientName(f){
   }
   return f['Client Name']||f['Client Summary']||'';
 }
-// Name line + sub line for one end of a leg. Multi-stop (①②…) keeps the
-// existing folding helpers as they are; only the single-stop case gets a city.
+// Name line + sub line for one end of a leg. Multi-stop shows the 1st stop
+// exactly like a single stop (title, then city on line 2) plus the «+N» chip
+// — same width need, same two lines (owner 27/9, see _wk3LocHTML).
 function _wi2Loc(str,label,arr){
   const L=_wk3Arr(str,arr);
-  if(L.length>1) return {name:_wk3LocHTML(str,label,arr),sub:''};
+  if(L.length>1){
+    const src=(Array.isArray(arr)&&arr.length)?arr[L[0]._i]:null;
+    const f=_wi2Split(src?(typeof src==='string'?src:src.n):L[0].n);
+    return {name:_wk3LocHTML(str,label,arr,f.title),sub:escapeHtml([f.city,f.cc].filter(Boolean).join(', '))};
+  }
   const raw=(Array.isArray(arr)&&arr.length)?(typeof arr[0]==='string'?arr[0]:arr[0].n):str;
   const s=_wi2Split(raw);
   return {name:escapeHtml(s.title||'—'),sub:escapeHtml([s.city,s.cc].filter(Boolean).join(', '))};
@@ -1876,6 +1929,7 @@ function _wi2Balance(){
   // Reset last pass first: a name that shrank for a narrow column must be
   // measured again at 12px after a resize widened it.
   names.forEach(e=>{ e.classList.remove('clamp'); e.style.fontSize=''; });
+  document.querySelectorAll('#wi-rows .wi2-stops .off').forEach(e=>e.classList.remove('off'));
   const legs=[...document.querySelectorAll('#wi-rows .wk3-leg')].filter(l=>l.offsetParent&&l.children.length>=3);
   if(legs.length){
     sheet.classList.add('wi2-measure');            // nowrap: διαβάζουμε το φυσικό πλάτος
@@ -1902,7 +1956,7 @@ function _wi2Balance(){
   let cut=0;
   const fits=e=>e.scrollWidth<=e.clientWidth+1;
   names.forEach(e=>{
-    if(e.clientWidth<40) return;
+    if(e.clientWidth<40||e.querySelector('.wi2-stops')) return;   // multi-stop: _wi2FitStops below
     if(!fits(e)){
       for(const px of [11,10]){ e.style.fontSize=px+'px'; if(fits(e)) break; }
       if(!fits(e)){ e.classList.add('clamp'); e.title=e.innerText.trim(); cut++; return; }
@@ -1910,6 +1964,7 @@ function _wi2Balance(){
     if(e.title) e.removeAttribute('title');
   });
   WINTL._clamped=cut;
+  _wi2FitStops();
 }
 let _wi2BalTimer=null;
 window.addEventListener('resize',()=>{ clearTimeout(_wi2BalTimer); _wi2BalTimer=setTimeout(_wi2Balance,150); });
