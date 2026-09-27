@@ -1096,14 +1096,10 @@ async function _openModal(recId, f, _clientLabelOverride, _scanPrefill) {
              είναι για ευρωπαλέτες;»): one value, 'EUR' (148 rows vs 1 'Euro',
              fixed by the owner's SQL). An order still holding 'Euro' shows
              «— Επιλογή —» here and the save skips the field — nothing erased. -->
-        <select class="form-select" id="f_PalletType"><option value="">— Επιλογή —</option>
+        <select class="form-select" id="f_PalletType" onchange="peSyncPalletType('f',this.value)"><option value="">— Επιλογή —</option>
           ${opt(['EUR','CHEP','Industrial'],'Pallet Type')}</select>
       </div>
-      <div class="form-field" style="padding-top:24px">
-        <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer">
-          <input type="checkbox" id="f_PalletExch" ${f['Pallet Exchange']?'checked':''} style="width:15px;height:15px">
-          Ανταλλαγή παλετών (PE)</label>
-      </div>
+      ${peChoiceHtml('f', f, isEdit)}
     </div>
     <div style="display:flex;gap:24px;margin:16px 0;flex-wrap:wrap">
       <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer">
@@ -1157,6 +1153,7 @@ async function _openModal(recId, f, _clientLabelOverride, _scanPrefill) {
     </div>` + body;
   }
   openModal(isEdit ? 'Επεξεργασία παραγγελίας' : 'Νέα διεθνής παραγγελία', body, footer);
+  peSyncPalletType('f', document.getElementById('f_PalletType')?.value || '');
   _oiBalanceUpdate();
 }
 
@@ -1804,7 +1801,11 @@ async function submitIntlOrder(recId) {
 
     // Checkboxes
     const ck = id => !!document.getElementById(id)?.checked;
-    fields['Pallet Exchange'] = ck('f_PalletExch');
+    // PE is ΝΑΙ/ΟΧΙ, not a checkbox (owner 27/9, see core/form-helpers.js):
+    // null = unanswered → blocks a new order below; on an edit it is left out
+    // of the PATCH so a legacy NULL is not turned into a «No» nobody chose.
+    const _pe = peRead('f');
+    if (_pe !== null) fields['Pallet Exchange'] = _pe;
     fields['High Risk Flag']  = ck('f_HighRisk');
     fields['Veroia Switch']  = ck('f_VeroiaSwitch');
     fields['National Groupage'] = ck('f_Groupage');
@@ -1888,6 +1889,7 @@ async function submitIntlOrder(recId) {
     if (!_firstUnload?.locationId)       _vErrors.push('Delivery Location 1 is required');
     if (!fields['Loading DateTime'])     _vErrors.push('Loading Date (Stop 1) is required');
     if (!fields['Delivery DateTime'])    _vErrors.push('Delivery Date (Stop 1) is required');
+    if (_pe === null && !recId)          _vErrors.push(peMarkMissing('f'));
 
     // Date cross-validation
     if (fields['Loading DateTime'] && fields['Delivery DateTime']) {
