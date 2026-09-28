@@ -10,7 +10,11 @@
 // row renderer, its own strings, and passes them in.
 // Step 2a (22/9): the column sort, the CSV download, the print tail, the OR()
 // batching and the row-count label — the parts that differed only by wording.
-// The filters, the row/column renderers and the card follow in step 2b/3.
+// 28/9: the two lists became ONE (modules/orders_catalog.js) and the old list
+// code left both modules, with the shared filter engine (filterSpecs /
+// applyFilters / tripState) that only they used. Today's readers: the catalog
+// and the order views (sort, shell, virtual scroll, CSV, print, count), the two
+// loaders (periodFormula) and the batched reads (chunk).
 //
 // No IIFE on purpose: the two modules ARE IIFEs and reach this through the
 // global, exactly like they reach TABLES, atGet or toast.
@@ -86,57 +90,6 @@ const OrdersList = {
       if (col.type === 'date') return (va || '').localeCompare(vb || '') * dir;
       return String(va).toLowerCase().localeCompare(String(vb).toLowerCase()) * dir;
     });
-  },
-
-  // Step 2b-a (22/9): the two _applyFilters bodies as one pure function. The
-  // spec is tests/orders-list-filters.test.js — it describes TODAY, including
-  // the asymmetry that intl treats a missing Status as Pending (statusDefault)
-  // while natl compares it literally (owner decision pending, not fixed here).
-  //   search(f, rec) → strings the free-text search looks into (module-specific);
-  //   eq → fields compared literally to the select value (no case folding;
-  //        Status is NOT listed there — it is handled with statusDefault);
-  //   _q arrives lowercased + trimmed from intlSearch/natlSearch.
-  tripState(f) {
-    return (f['Linked Trip']?.length > 0 || f['NATIONAL TRIPS']?.length > 0 || f['NATIONAL TRIPS 2']?.length > 0) ? 'assigned' : 'unassigned';
-  },
-  // The two lists' filter specs live HERE so the unit spec runs the real
-  // objects, not copies (reviewer P4 on 0f2f7f3). The modules only inject
-  // their name resolvers — the lookup maps and helpers they already own.
-  filterSpecs: {
-    // Δ2: 'Order Number' is derived and never reaches the browser; 'Order No'
-    // (7/9/2026) is real. A missing Status counts as Pending on this list.
-    intl: ({ clientName, cleanSummary }) => ({
-      search: f => [clientName(f), String(f['Reference'] || ''), String(f['Order No'] || ''),
-                    cleanSummary(f['Loading Summary']), cleanSummary(f['Delivery Summary']), f['Goods'] || ''],
-      eq: ['Direction', 'Brand'],
-      statusDefault: 'Pending',
-    }),
-    // Δ2: 'Name' is not a NATIONAL ORDERS field — the list shows Reference, so
-    // search does too. Status is compared literally (no Pending default —
-    // unlike intl; owner decision pending, locked as-is by the tests).
-    natl: ({ clientsMap, locationsMap }) => ({
-      search: f => {
-        const cId = Array.isArray(f['Client']) ? f['Client'][0] : '';
-        const pId = (f['Pickup Location 1'] || [])[0] || '';
-        const dId = (f['Delivery Location 1'] || f['Delivery Location'] || [])[0] || '';
-        return [String(f['Reference'] || ''), clientsMap[cId] || '', locationsMap[pId] || '', locationsMap[dId] || '', f['Goods'] || ''];
-      },
-      eq: ['Direction', 'Type'],
-    }),
-  },
-  applyFilters(recs, filters, { search, eq = [], statusDefault }) {
-    const F = filters || {};
-    const status = f => f['Status'] || statusDefault;
-    if (F._q) { const q = F._q; recs = recs.filter(r => search(r.fields, r).some(s => String(s).toLowerCase().includes(q))); }
-    for (const k of eq) if (F[k]) recs = recs.filter(r => r.fields[k] === F[k]);
-    // Both lists have a Status select ('Status'); intl also has the header
-    // '_status' pills — same test, same default.
-    if (F.Status)    recs = recs.filter(r => status(r.fields) === F.Status);
-    if (F._status)   recs = recs.filter(r => status(r.fields) === F._status);
-    if (F._week)     recs = recs.filter(r => String(r.fields['Week Number']) === String(F._week));
-    if (F._groupage) recs = recs.filter(r => r.fields['National Groupage']);
-    if (F._trip === 'assigned' || F._trip === 'unassigned') recs = recs.filter(r => OrdersList.tripState(r.fields) === F._trip);
-    return recs;
   },
 
   // Step 2b-b: the table shell around the virtual scroller. Head and body are

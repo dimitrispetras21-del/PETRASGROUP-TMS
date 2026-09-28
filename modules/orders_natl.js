@@ -4,18 +4,8 @@
 (function() {
 'use strict';
 
-const NATL_ORDERS = { data: [], filtered: [], selectedId: null };
-const _natlFilters = {};
-let _natlSortCol = null;
-let _natlSortDir = 0;
-let _onPage = 1;
-const _onPageSize = 50;
+const NATL_ORDERS = { data: [], selectedId: null };
 let _natlPeriod = '60'; // '60' | '180' | 'all'
-
-// ─── Virtual Scroll State ─────────────────────
-const _onVS = { sortedRecs: [], lastStart: -1, lastEnd: -1, rafId: null };
-const _ON_ROW_H = 40;
-const _ON_BUFFER = 10;
 
 // ─── Ref data: delegates to shared form-helpers.js ──
 const _loadLocations = fhLoadLocations;
@@ -40,12 +30,7 @@ async function _natlLoad() {
     ]);
     records.sort((a,b) => (b.fields['Loading DateTime']||'').localeCompare(a.fields['Loading DateTime']||''));
     NATL_ORDERS.data = records;
-    NATL_ORDERS.filtered = records;
     NATL_ORDERS.selectedId = null;
-    Object.keys(_natlFilters).forEach(k => delete _natlFilters[k]);
-    // Δ3: a stale ⚠ from a previous visit would claim a write failed in THIS
-    // list. The map is module-level, so it survives navigation unless wiped.
-    _onPage = 1;
 
     // Pre-resolve all client names — batch fetches in parallel (not N+1)
     const _allClientIds = [...new Set(records
@@ -105,9 +90,7 @@ function renderOrdersNatl() {
 }
 
 // Greek display words for DB values (DESIGN.md ΜΕΡΟΣ Ε): the value in the
-// record never changes, only what the screen prints. Direction keeps the
-// arrows as plain text — no filled badge (owner 30/8, spec §6).
-const _ON_DIR = { 'South→North': '↑ ΑΝΟΔΟΣ', 'North→South': '↓ ΚΑΘΟΔΟΣ' };
+// record never changes, only what the screen prints.
 const _ON_DIR_WORD = { 'South→North': 'ΑΝΟΔΟΣ', 'North→South': 'ΚΑΘΟΔΟΣ' };
 const _ON_STATUS = {
   Pending: 'ΣΕ ΑΝΑΜΟΝΗ', Confirmed: 'ΕΠΙΒΕΒΑΙΩΜΕΝΗ', Assigned: 'ΑΝΑΤΕΘΕΙΜΕΝΗ',
@@ -126,81 +109,12 @@ const _onHasTrip = f => ((f['Linked Trip']?.length||0)+(f['NATIONAL TRIPS']?.len
 // hand-off, not invented.
 const _ON_CSS = `
 <style>
-.on-v2 .entity-table-wrap thead th{background:var(--surface-sunken);font:700 11px/1.3 'DM Sans',sans-serif;letter-spacing:.5px;text-transform:uppercase;color:var(--text-mid);padding:8px var(--space-2);border-bottom:1px solid var(--border)}
-/* overflow:hidden, not visible: with table-layout:fixed (Δ1) a long value would
-   otherwise print straight across the next column instead of stopping at its
-   own. Every clipped cell carries the full text in its title (Δ5). */
-.on-v2 .entity-table-wrap thead th{overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
-/* tabular-nums on EVERY cell, not only the numeric ones (ΜΕΡΟΣ Γ): references
-   and plates mix digits with letters and would jump between rows otherwise. */
-.on-v2 .entity-table-wrap tbody td{height:${_ON_ROW_H}px;padding:0 var(--space-2);font-size:13px;line-height:1.25;color:var(--text);border-bottom:1px solid var(--border);white-space:normal;overflow:hidden;text-overflow:ellipsis;max-width:none;vertical-align:middle;font-variant-numeric:tabular-nums}
-/* Hover without transition: an eight-hour work table must not "swim" (spec §2). */
-.on-v2 .entity-table-wrap tbody tr{transition:none}
-/* No zebra: --surface-sunken is the hover tint and the palette has no second
-   grey for alternate rows — a zebra in the same tint would hide the hover.
-   Borders separate the rows (ΜΕΡΟΣ Δ: depth by borders, not fills). */
-.on-v2 .entity-table-wrap tbody tr:hover td{background:var(--surface-sunken)}
-.on-v2 .entity-table-wrap tbody tr.selected td{background:var(--accent-light)}
-.on-v2 #onVScroll{scrollbar-width:thin;scrollbar-color:var(--border) transparent}
-.on-v2 .entity-table-wrap tbody td.on-num,.on-v2 .entity-table-wrap tbody td.on-dir,.on-v2 .entity-table-wrap tbody td.on-trip{white-space:nowrap}
-.on-num{font-variant-numeric:tabular-nums}
 .on-v2 .dim{color:var(--text-dim)}
-/* The reference text must be its OWN element to get «…»: an anonymous flex item
-   (a bare text node) cannot take text-overflow, it just clips mid-letter. */
-.on-name{display:flex;align-items:center;gap:4px;min-width:0;font-weight:700;color:var(--text)}
-.on-name>.on-ref{min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.on-name>.on-tag{flex:none}
-.on-name-miss>.on-ref{color:var(--text-dim);font-weight:400}
-.on-tag{display:inline-block;font:700 11px/1.2 'DM Sans',sans-serif;letter-spacing:.3px;padding:0 4px;border-radius:var(--radius)}
-.on-tag-vs{background:var(--surface-dark);color:var(--text-on-dark)}
-.on-tag-grp{background:var(--surface-sunken);color:var(--surface-dark)}
-.on-dot.late{background:var(--danger)}
-.on-fix{margin-left:6px;padding:1px 8px;border:1px solid var(--accent);border-radius:999px;background:#fff;color:var(--accent);font-size:11px;font-weight:600;cursor:pointer}
-.on-fix:hover{background:var(--accent);color:#fff}
-.on-dir{color:var(--text-mid);white-space:nowrap}
-.on-cell2{display:flex;flex-direction:column;min-width:0}
-/* Each half stays on ONE line. Not cosmetic: the cell used to be free to wrap
-   because the column was 676px wide by accident (Δ1). Bounded, a long client
-   name wrapped to four lines and pushed the row past ${_ON_ROW_H}px — which is
-   the exact height the virtual scroller's spacers assume, so the list would
-   scroll to the wrong rows. «…» + the full text in the title (Δ5). */
-.on-cell2>span{line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.on-cell2 small{font-size:11px;color:var(--text-dim);line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-/* Route cell: loading ABOVE, delivery BELOW (ΜΕΡΟΣ Ζ.1). A fixed-width dim key
-   keeps the two names aligned; the «City, Country» qualifier sits inline, dim. */
-.on-route{display:flex;flex-direction:column;min-width:0}
-.on-leg{display:flex;align-items:baseline;gap:4px;min-width:0;line-height:1.2}
-.on-leg-k{flex:none;width:44px;font-size:11px;color:var(--text-dim)}
-.on-leg-v{min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.on-leg-v small{font-size:11px;color:var(--text-dim)}
 /* Form: the chosen mode card keeps a border, not a fill (spec §6). */
 #modal .nf-mode.on{background:var(--surface-card);box-shadow:none}
 .on-dot{display:inline-block;width:8px;height:8px;border-radius:var(--radius-full);margin-right:4px;vertical-align:middle}
 .on-dot.ok{background:var(--ok)}
 .on-dot.unassigned{background:var(--unassigned)}
-.on-trip{color:var(--text-mid);font-size:11px;white-space:nowrap}
-/* Colour AND word (rule #2): the dark red is «ΠΡΟΣ ΑΝΑΘΕΣΗ», never alone. */
-.on-trip.unassigned{color:var(--unassigned);font-weight:700}
-/* 4px, not var(--space-2): the error ring below is ~42px wide and the column is
-   44px — the default padding clipped its right edge (measured 3/9). */
-.on-v2 .entity-table-wrap tbody td.on-inv{padding:0 4px}
-.on-inv{text-align:center}
-.on-inv-box{display:inline-block;width:16px;height:16px;border:1px solid var(--border-dark);border-radius:var(--radius);background:var(--surface-card);vertical-align:middle}
-.on-inv-on{font-weight:700;color:var(--ok)}
-/* Δ3: the ring carries the alarm so the ✓/box inside can keep carrying the
-   state. Red outline + ⚠ side by side — never one instead of the other. */
-/* Δ4: the symbols must be readable without hovering for a tooltip. */
-.on-legend{padding:8px 16px;color:var(--text-mid);font-size:12px;border-bottom:1px solid var(--border)}
-.on-legend b{font-weight:700;color:var(--text)}
-/* Empty ≠ error (rule #7): .on-empty is a list that loaded and holds nothing;
-   .on-state-err is a list that never arrived. Different box, different words. */
-.on-empty{padding:32px;text-align:center;color:var(--text);font-size:14px}
-.on-empty small{display:block;margin-top:4px;font-size:12px;color:var(--text-mid)}
-.on-empty .btn{margin-top:12px}
-.on-state-err{margin:16px;padding:16px;border:1px solid var(--danger);border-radius:var(--radius);background:var(--surface-card);color:var(--text);font-size:14px}
-.on-state-err b{color:var(--danger)}
-.on-state-err small{display:block;margin-top:4px;font-size:12px;color:var(--text-mid)}
-.on-state-err .btn{margin-top:12px}
 /* Detail card: 480px, shadow to the left, closed = width 0 AND display:none
    (the 482px lesson of 29/8 — a closed panel that keeps width cuts columns). */
 .on-v2 .entity-detail-panel{width:480px;background:var(--surface-card);position:relative;z-index:1;box-shadow:var(--shadow-panel);border-left:1px solid var(--border);overflow-y:auto}
@@ -243,323 +157,13 @@ const _ON_CSS = `
 .on-head-edit{margin-left:auto;margin-right:8px;background:var(--accent);color:#fff;border:none;border-radius:6px;padding:6px 12px;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:500;cursor:pointer}
 .on-head-edit:hover{background:var(--accent-hover,#0369A1)}
 .on-notes{font-size:13px;color:var(--text-mid);line-height:1.5;white-space:pre-wrap;word-break:break-word}
-.on-foot{padding:8px 16px;color:var(--text-mid);font-size:12px;text-align:center;font-variant-numeric:tabular-nums}
 </style>`;
 
-// Δ4 (3/9): the badges and the ⚠ only explained themselves in a `title`, i.e.
-// only to someone who already suspected something. One line under the table
-// spells them out — cheaper than a tooltip nobody hovers.
-const _ON_LEGEND = '<b>VS</b> Veroia Switch · <b>GRP</b> ομαδοποίηση';
-
-// Esc closes the card (spec §1). One listener, installed once, checks that the
-// card is on screen so it does nothing on other pages.
-function _onEscClose(e) {
-  if (e.key !== 'Escape') return;
-  const p = document.getElementById('natlDetail');
-  if (p && !p.classList.contains('hidden')) closeNatlDetail();
-}
 function closeNatlDetail() {
   const p = document.getElementById('natlDetail');
   if (p) p.classList.add('hidden');
   NATL_ORDERS.selectedId = null;
   document.querySelectorAll('#natlTable tbody tr.selected').forEach(tr => tr.classList.remove('selected'));
-}
-
-// One label per period, used by the subtitle AND the empty state — two copies
-// drifted before ("60 ημέρες" here, "2 μήνες" there) and the empty state then
-// blamed a period the dropdown did not show.
-const _ON_PERIOD_LABEL = { '60': 'τελευταίες 60 ημέρες', '180': 'τελευταίοι 6 μήνες', all: 'όλες οι ημερομηνίες' };
-
-// Six states (ΜΕΡΟΣ Δ2): a filter option that would match nothing in the loaded
-// list is DISABLED, not hidden — the dispatcher sees it exists and that it is
-// empty today, and cannot click into an empty list wondering what broke.
-// The zero itself is never printed (rule #4).
-function _onOpt(value, label, n) {
-  return `<option value="${value}"${n === 0 ? ' disabled title="Καμία παραγγελία σε αυτή την περίοδο"' : ''}>${label}</option>`;
-}
-
-function _renderNatlLayout(c) {
-  const canEdit = can('orders') === 'full';
-  const _i = n => (typeof icon === 'function') ? icon(n, 14) : '';
-  document.removeEventListener('keydown', _onEscClose);
-  document.addEventListener('keydown', _onEscClose);
-  const cnt = pred => NATL_ORDERS.data.filter(r => pred(r.fields)).length;
-  c.innerHTML = `${_ON_CSS}
-    <div class="page-header" style="margin-bottom:var(--space-4)">
-      <div>
-        <div class="page-title">Εθνικές Παραγγελίες</div>
-        <div class="page-sub" id="natlSub">${NATL_ORDERS.data.length} παραγγελίες</div>
-      </div>
-      <div style="display:flex;gap:var(--space-2);align-items:center">
-        <button class="btn btn-secondary btn-sm" onclick="openNatlScan()">${_i('camera')} Σάρωση</button>
-        ${canEdit ? `<button class="btn btn-primary btn-sm" onclick="openNatlCreate()">${_i('plus')} Νέα παραγγελία</button>` : ''}
-        <button class="btn btn-ghost btn-sm" onclick="_natlExportCSV()">${_i('download')} CSV</button>
-        <button class="btn btn-ghost btn-sm" onclick="_natlPrint()">${_i('file_text')} Εκτύπωση</button>
-      </div>
-    </div>
-    <div class="entity-layout on-v2">
-      <div class="entity-list-panel">
-        <div class="entity-toolbar-v2">
-          <div class="entity-search-wrap">
-            ${_i('search')}
-            <input class="entity-search-input" placeholder="Αναζήτηση πελάτη / τοποθεσίας / εμπορεύματος…"
-              oninput="natlSearch(this.value)">
-          </div>
-          <select class="svc-filter" onchange="natlFilter('Direction',this.value)">
-            <option value="">Κατεύθυνση: Όλες</option>
-            ${_onOpt('North→South', '↓ ΚΑΘΟΔΟΣ (Βορράς→Νότος)', cnt(f => f['Direction'] === 'North→South'))}
-            ${_onOpt('South→North', '↑ ΑΝΟΔΟΣ (Νότος→Βορράς)', cnt(f => f['Direction'] === 'South→North'))}
-          </select>
-          <select class="svc-filter" onchange="natlFilter('Type',this.value)">
-            <option value="">Τύπος: Όλοι</option>
-            ${_onOpt('Independent', 'Ανεξάρτητη', cnt(f => f['Type'] === 'Independent'))}
-            ${_onOpt('Veroia Switch', 'Veroia Switch', cnt(f => f['Type'] === 'Veroia Switch'))}
-          </select>
-          <select class="svc-filter" onchange="natlFilter('Status',this.value)">
-            <option value="">Κατάσταση παραγγελίας: Όλες</option>
-            ${_onOpt('Pending', 'Σε αναμονή', cnt(f => f['Status'] === 'Pending'))}
-            ${_onOpt('Confirmed', 'Επιβεβαιωμένη', cnt(f => f['Status'] === 'Confirmed'))}
-            ${_onOpt('In Transit', 'Σε μεταφορά', cnt(f => f['Status'] === 'In Transit'))}
-            ${_onOpt('Delivered', 'Παραδόθηκε', cnt(f => f['Status'] === 'Delivered'))}
-          </select>
-          <select class="svc-filter" onchange="natlFilter('_trip',this.value)">
-            <option value="">Ανάθεση: Όλες</option>
-            ${_onOpt('unassigned', 'Προς ανάθεση', cnt(f => !_onHasTrip(f)))}
-            ${_onOpt('assigned', 'Με δρομολόγιο', cnt(f => _onHasTrip(f)))}
-          </select>
-          <select class="svc-filter" onchange="natlFilter('_groupage',this.value)">
-            <option value="">Ομαδοποίηση: Όλες</option>
-            ${_onOpt('1', 'Μόνο ομαδοποιημένες', cnt(f => !!f['National Groupage']))}
-          </select>
-          <select class="svc-filter" onchange="natlPeriodChange(this.value)">
-            <option value="60" ${_natlPeriod==='60'?'selected':''}>Τελευταίες 60 ημέρες</option>
-            <option value="180" ${_natlPeriod==='180'?'selected':''}>Τελευταίοι 6 μήνες</option>
-            <option value="all" ${_natlPeriod==='all'?'selected':''}>Όλα</option>
-          </select>
-          <span class="entity-count-chip" id="natlCount">${NATL_ORDERS.data.length}</span>
-        </div>
-        <div class="entity-table-wrap" id="natlTable"></div>
-      </div>
-      <div class="entity-detail-panel hidden" id="natlDetail"></div>
-    </div>`;
-}
-
-// ─── Sort helpers ────────────────────────────────
-// `w` (px) feeds the shared <colgroup> that BOTH tables carry — see
-// _renderNatlTable. Widths sum to 1129, the same budget orders_intl.js uses, so
-// table-layout:fixed scales them proportionally at any list width.
-// 4/9: ΠΑΡΑΛΑΒΗ and ΠΑΡΑΔΟΣΗ were two 180px columns side by side and ΠΕΛΑΤΗΣ
-// got 160 — measured at 1920: a 527px client name in a 213px cell, 68% hidden,
-// on 3 of 3 rows. Stacking the two legs in ONE column (loading above, delivery
-// below — owner 4/9) frees 160px of budget for the client name; the sum stays
-// 1129 so the fixed layout keeps scaling like orders_intl.
-const _natlColDefs = [
-  { key: 'name',     label: 'ΑΝΑΦΟΡΑ',    type: 'text',   w: 110, get: (f) => f['Reference']||'' },
-  { key: 'dir',      label: 'ΚΑΤΕΥΘ.',       type: 'text',   w: 96,  get: (f) => f['Direction']||'' },
-  { key: 'client',   label: 'ΠΕΛΑΤΗΣ',    type: 'text',   w: 280, get: (f) => { const id=(f['Client']||[])[0]; return id?(_fhClientsMap[id]||''):''; } },
-  { key: 'route',    label: 'ΔΙΑΔΡΟΜΗ',  type: 'text',   w: 290, get: (f) => { const id=(f['Pickup Location 1']||[])[0]; return id?(_fhLocationsMap[id]||''):''; } },
-  // Same short keys as the route legs («ΦΟΡΤ.» / «ΠΑΡΑΔ.») so the date reads
-  // as the date OF that leg; the long titles overran the 72/76px columns
-  // (widened to 84/90 on 22/9 — the short titles were still clipped).
-  { key: 'loadDate', label: 'ΗΜ. ΦΟΡΤ.', type: 'date',   w: 84,  get: (f) => f['Loading DateTime']||'' },
-  { key: 'delDate',  label: 'ΗΜ. ΠΑΡΑΔ.',  type: 'date',   w: 90,  get: (f) => f['Delivery DateTime']||'' },
-  { key: 'pal',      label: 'ΠΑΛ.',       type: 'number', w: 44,  get: (f) => f['Pallets']||0 },
-  { key: 'trip',     label: 'ΑΝΑΘΕΣΗ',      type: 'text',   w: 133, get: (f) => _onHasTrip(f)?'Assigned':'Pending' },
-  { key: 'inv',      label: 'ΤΙΜ.',       type: 'text',   w: 44,  get: (f) => f['Invoiced']?'1':'0' },
-];
-
-function _natlSortToggle(key) {
-  if (_natlSortCol === key) {
-    _natlSortDir = (_natlSortDir + 1) % 3;
-    if (_natlSortDir === 0) _natlSortCol = null;
-  } else {
-    _natlSortCol = key;
-    _natlSortDir = 1;
-  }
-  _applyNatlFilters();
-}
-
-function _natlSortRecords(recs) { return OrdersList.sortRecords(recs, _natlColDefs, _natlSortCol, _natlSortDir); }
-
-// ─── Table (Virtual Scroll) ─────────────────────
-// Two-line cell (DESIGN.md ΜΕΡΟΣ Ζ.1): the main part stays on line one, the
-// qualifier drops to line two in 11px dim. Solves the cut without widening the
-// column. Δ5 (3/9): the column is width-bound (Δ1), so a label CAN still run
-// out of room — then it gets «…» and the full text in `title`, a visible cut
-// with a way to read the rest, never a silent one mid-word (Κ6).
-// `sepRe` decides where the label splits; CLIENTS «Company Name» is written
-// "ΝΟΜΙΚΗ ΕΠΩΝΥΜΙΑ - διακριτικός τίτλος" (1920 rows, 4/9), so the legal name
-// goes up and the trade name down.
-function _onCell2(label, sepRe) {
-  if (!label || label === '—') return '<span class="dim">—</span>';
-  const t = escapeHtml(label);
-  const m = sepRe ? sepRe.exec(label) : null;
-  const main = m ? label.slice(0, m.index) : label;
-  const qual = m ? label.slice(m.index + m[0].length) : '';
-  // Main part fits one line (~28 chars ≈ the column at 1440): name up,
-  // qualifier down.
-  if (main.length <= 28) {
-    return `<span class="on-cell2" title="${t}"><span>${escapeHtml(main)}</span>${qual ? `<small>${escapeHtml(qual)}</small>` : ''}</span>`;
-  }
-  // Main part too long for one line («IFCO SYSTEMS HELLAS R P C PALLET SYSTEMS
-  // ΕΤΑΙΡΕΙΑ ΠΕΡΙΟΡΙΣΜΕΝΗΣ ΕΥΘΥΝΗΣ», 516px in a 385px cell, measured 4/9): the
-  // NAME takes both lines, broken at the space nearest its middle, both halves
-  // full size — the second half is still the name, not a qualifier. The
-  // qualifier, if any, trails the second line small. Only past that does «…»
-  // + title remain, as the visible fallback of Κ6.
-  const mid = main.length / 2;
-  let best = -1;
-  for (let i = main.indexOf(' '); i > 0; i = main.indexOf(' ', i + 1)) if (best < 0 || Math.abs(i - mid) < Math.abs(best - mid)) best = i;
-  if (best < 0) return `<span class="on-cell2" title="${t}"><span>${escapeHtml(main)}</span>${qual ? `<small>${escapeHtml(qual)}</small>` : ''}</span>`;
-  return `<span class="on-cell2" title="${t}"><span>${escapeHtml(main.slice(0, best))}</span><span>${escapeHtml(main.slice(best + 1))}${qual ? ` <small>· ${escapeHtml(qual)}</small>` : ''}</span></span>`;
-}
-const _ON_NAME_SEP = /\s[-–—]\s/;
-
-// One leg of the route cell. The location label is "Name, City, Country": the
-// name leads, the rest follows inline and dim — one line per leg, because the
-// cell already spends its two lines on loading/delivery.
-function _onLeg(key, label) {
-  if (!label || label === '—') return `<span class="on-leg"><small class="on-leg-k">${key}</small><span class="on-leg-v dim">—</span></span>`;
-  const i = label.indexOf(', ');
-  const name = i < 0 ? label : label.slice(0, i);
-  const qual = i < 0 ? '' : label.slice(i + 2);
-  return `<span class="on-leg"><small class="on-leg-k">${key}</small><span class="on-leg-v" title="${escapeHtml(label)}">${escapeHtml(name)}${qual ? ` <small>${escapeHtml(qual)}</small>` : ''}</span></span>`;
-}
-
-// ΤΙΜ. cell: an empty 14px box says "click me" (the old "·" did not), the tick
-// says done. A failed write keeps ⚠ IN the cell — never only a toast (0/89
-// "invoiced" wrote nothing for ten days while the toast said success).
-//
-// Δ3 (3/9): the ⚠ is ADDED to the state, never PUT IN ITS PLACE. The accountant
-// is refused on every click (403 on `orders`), so a substituting ⚠ wiped the ✓
-// off every invoiced order after one morning of retries — the column stopped
-// answering the only question it exists to answer. The error also lives in a
-// module map, not in the DOM: the virtual scroller rewrites tbody.innerHTML on
-// the first scroll and the old in-place patch vanished with it.
-function _onInvCell(r) {
-  // Read-only since 22/9 (owner): «τιμολογήθηκε» is written only from the
-  // Τιμολόγηση screen (ERP number + date) — see the intl list for the reason.
-  const on = !!r.fields['Invoiced'];
-  return on ? '<span class="on-inv-box on-inv-on">✓</span>' : '<span class="on-inv-box"></span>';
-}
-
-function _onRowHtml(r) {
-  const f = r.fields;
-  const hasTrip = _onHasTrip(f);
-  const dir = f['Direction']||'';
-  const dirT   = _ON_DIR[dir] || escapeHtml(dir) || '—';
-  // «ΠΡΟΣ ΑΝΑΘΕΣΗ», not «Εκκρεμεί» (owner 4/9, DESIGN.md ΜΕΡΟΣ Ε): the empty
-  // slot is a debt of the dispatcher, named as such. NATIONAL ORDERS only
-  // knows whether a trip is linked — plate/driver live on the trip, not here.
-  const noLoad = !!(NATL_ORDERS.noLoad && NATL_ORDERS.noLoad.has(r.id));
-  const tripT  = noLoad
-    ? `<span class="on-dot late"></span>ΕΚΤΟΣ WEEKLY <button class="on-fix" onclick="event.stopPropagation();_natlSendToWeekly('${r.id}')" title="Δημιουργεί το φορτίο που λείπει — μετά εμφανίζεται στο Εβδομαδιαίο Εθνικών">Στείλε →</button>`
-    : hasTrip
-    ? '<span class="on-dot ok"></span>ΜΕ ΔΡΟΜΟΛΟΓΙΟ'
-    : '<span class="on-dot unassigned"></span>ΠΡΟΣ ΑΝΑΘΕΣΗ';
-  const vsB    = f['Type']==='Veroia Switch' ? '<span class="on-tag on-tag-vs">VS</span>' : '';
-  const grpB   = f['National Groupage'] ? '<span class="on-tag on-tag-grp">GRP</span>' : '';
-  const sel    = r.id === NATL_ORDERS.selectedId ? ' selected' : '';
-
-  const _pickupId = (f['Pickup Location 1']||[])[0]||'';
-  const pickup = _pickupId ? (_fhLocationsMap[_pickupId]||'—') : '—';
-  const _delivId = (f['Delivery Location 1']||f['Delivery Location']||[])[0]||'';
-  const delivery = _delivId ? (_fhLocationsMap[_delivId]||'—') : '—';
-  const _clientId = (f['Client']||[])[0]||'';
-  const client = _clientId ? (_fhClientsMap[_clientId]||'—') : '—';
-  // Unknown is not zero (rule #3): a missing count is "—"; a written 0 is "0".
-  const pal = f['Pallets'] != null ? f['Pallets'] : '—';
-
-  // Δ2 (3/9): the first column printed `r.id.slice(-6)` — six characters of an
-  // internal row id («7qDsiu») read by the team as an order number. `Name` is
-  // not a NATIONAL ORDERS field at all (worker TABLES map: Reference is, Name
-  // is not), so that fallback was permanent, never a fallback. Now it prints
-  // the Reference, and «—» when none was entered — the same answer the card of
-  // the same record already gives.
-  const ref = String(f['Reference'] || '').trim();
-  const refCell = ref
-    ? `<span class="on-name" title="${escapeHtml(ref)}"><span class="on-ref">${escapeHtml(ref)}</span>${vsB}${grpB}</span>`
-    : `<span class="on-name on-name-miss" title="Δεν έχει καταχωρηθεί αναφορά"><span class="on-ref">—</span>${vsB}${grpB}</span>`;
-
-  return `<tr onclick="selectNatlOrder('${r.id}')" id="nrow_${r.id}" class="${sel}" style="height:${_ON_ROW_H}px">
-    <td>${refCell}</td>
-    <td class="on-dir">${dirT}</td>
-    <td>${_onCell2(client, _ON_NAME_SEP)}</td>
-    <td><span class="on-route">${_onLeg('ΦΟΡΤ.', pickup)}${_onLeg('ΠΑΡΑΔ.', delivery)}</span></td>
-    <td class="on-num">${_onDate(f['Loading DateTime'])}</td>
-    <td class="on-num">${_onDate(f['Delivery DateTime'])}</td>
-    <td class="on-num">${pal}</td>
-    <td class="on-trip${hasTrip ? '' : ' unassigned'}">${tripT}</td>
-    <td class="on-inv" id="ninv_${r.id}" title="${f['Invoiced'] ? 'Τιμολογήθηκε' + (f['Invoice Number'] ? ' · ΤΠΥ ' + escapeHtml(f['Invoice Number']) : '') : 'Δεν έχει τιμολογηθεί — καταχώρηση από την Τιμολόγηση'}">${_onInvCell(r)}</td>
-  </tr>`;
-}
-
-// Virtual scroll — shared painter in core/orders-list.js (step 1, 22/9); state
-// `_onVS` and the row renderer stay here.
-function _onVirtualPaint() {
-  OrdersList.virtualPaint(_onVS, { scrollerId: 'onVScroll', topSpacerId: 'onTopSpacer', bottomSpacerId: 'onBottomSpacer', rowH: _ON_ROW_H, buffer: _ON_BUFFER, rowHtml: _onRowHtml });
-}
-
-function _onOnScroll() { OrdersList.virtualOnScroll(_onVS, _onVirtualPaint); }
-
-function _renderNatlTable(records) {
-  const wrap = document.getElementById('natlTable');
-  if (!records.length) {
-    // Two different empties (rule #7): filters hiding real rows is not the
-    // same as a period with no rows. Both say the list DID load.
-    const hasFilters = Object.values(_natlFilters).some(Boolean);
-    wrap.innerHTML = hasFilters
-      ? `<div class="on-empty">Καμία παραγγελία δεν ταιριάζει στα φίλτρα
-          <small>Οι ${NATL_ORDERS.data.length} παραγγελίες της περιόδου φορτώθηκαν — τα φίλτρα τις κρύβουν.</small>
-          <button type="button" class="btn btn-secondary btn-sm" onclick="natlClearFilters()">Καθαρισμός φίλτρων</button></div>`
-      : `<div class="on-empty">Καμία εθνική παραγγελία — ${_ON_PERIOD_LABEL[_natlPeriod] || ''}
-          <small>Η λίστα φορτώθηκε κανονικά και είναι κενή. Για παλαιότερες, άλλαξε την περίοδο στο φίλτρο δεξιά.</small></div>`;
-    return;
-  }
-
-  const sortedRecs = _natlSortRecords(records);
-  _onVS.sortedRecs = sortedRecs;
-  _onVS.lastStart = -1;
-  _onVS.lastEnd = -1;
-
-  // Table shell (head/colgroup/spacers/legend/count) is shared — step 2b-b.
-  wrap.innerHTML = OrdersList.tableShell({
-    colDefs: _natlColDefs, sortCol: _natlSortCol, sortDir: _natlSortDir, sortToggle: '_natlSortToggle',
-    ids: { scroller: 'onVScroll', top: 'onTopSpacer', bottom: 'onBottomSpacer' }, rowH: _ON_ROW_H,
-    total: sortedRecs.length, legend: _ON_LEGEND, legendClass: 'on-legend', footClass: 'on-foot',
-  });
-
-  const scroller = document.getElementById('onVScroll');
-  scroller.addEventListener('scroll', _onOnScroll, { passive: true });
-  _onVirtualPaint();
-}
-
-// ─── Filters ────────────────────────────────────
-function natlSearch(q) { _natlFilters._q = q.toLowerCase().trim(); _onPage = 1; _applyNatlFilters(); }
-function natlFilter(k,v) { if(!v) delete _natlFilters[k]; else _natlFilters[k]=v; _onPage = 1; _applyNatlFilters(); }
-function natlPeriodChange(v) { _natlPeriod = v; _onVS.lastStart = -1; _onVS.lastEnd = -1; renderOrdersNatl(); }
-// The selects hold their own state, so clearing the map alone would leave them
-// showing a filter that no longer applies — the layout is rebuilt instead.
-function natlClearFilters() {
-  Object.keys(_natlFilters).forEach(k => delete _natlFilters[k]);
-  NATL_ORDERS.selectedId = null;
-  // Same as the international list (22/9): clearing must also widen the
-  // period back to «όλες», which needs a REFETCH — the toolbar is rebuilt by
-  // the render, so the selects return to their defaults too.
-  natlPeriodChange('all');
-}
-
-// Spec in core/orders-list.js (filterSpecs.natl) — shared with the unit spec;
-// the lookup maps are passed by reference (form-helpers fills them later).
-const _ON_FILTER_SPEC = OrdersList.filterSpecs.natl({ clientsMap: _fhClientsMap, locationsMap: _fhLocationsMap });
-function _applyNatlFilters() {
-  const recs = OrdersList.applyFilters(NATL_ORDERS.data, _natlFilters, _ON_FILTER_SPEC);
-  NATL_ORDERS.filtered = recs;
-  _renderNatlTable(recs);
-  const n = OrdersList.countLabel(recs.length);
-  document.getElementById('natlCount').textContent = n;
-  const period = _ON_PERIOD_LABEL[_natlPeriod] || '';
-  document.getElementById('natlSub').textContent   = period ? `${n} · ${period}` : n;
 }
 
 // ─── Detail Panel ───────────────────────────────
@@ -2585,108 +2189,16 @@ function _natlPrefillFromScan(fields) {
 }
 
 // Expose functions used from onclick/onchange handlers
-function _natlExportCSV() {
-  const recs = NATL_ORDERS.filtered;
-  if (!recs.length) { toast('Καμία παραγγελία για εξαγωγή — η λίστα είναι κενή', 'error'); return; }
-  const rows = [['Reference','Direction','Client','Pickup','Delivery','Load Date','Del Date','Pallets','Goods','Type','Trip','Invoiced','Price']];
-  recs.forEach(r => { const f = r.fields;
-    const cId = (f['Client']||[])[0]; const pId = (f['Pickup Location 1']||[])[0];
-    const dId = (f['Delivery Location 1']||f['Delivery Location']||[])[0];
-    const trip = ((f['Linked Trip']?.length||0)+(f['NATIONAL TRIPS']?.length||0)+(f['NATIONAL TRIPS 2']?.length||0))>0?'Assigned':'Pending';
-    // 'Name' was never a NATIONAL ORDERS field — the first column exported empty (22/9).
-    rows.push([f['Reference']||'', f['Direction']||'', cId?(_fhClientsMap[cId]||''):'',
-      pId?(_fhLocationsMap[pId]||''):'', dId?(_fhLocationsMap[dId]||''):'',
-      f['Loading DateTime']||'', f['Delivery DateTime']||'', f['Pallets']||0,
-      f['Goods']||'', f['Type']||'', trip, f['Invoiced']?'Yes':'No', f['Price']||0,
-    ]); });
-  OrdersList.csvDownload(rows, `orders_natl_${localToday()}.csv`);
-}
-
-// Print-friendly view of National Orders. Opens new tab with A4 layout.
-function _natlPrint() {
-  const recs = NATL_ORDERS.filtered || [];
-  if (!recs.length) { toast('Καμία παραγγελία για εκτύπωση — η λίστα είναι κενή', 'error'); return; }
-  const today = localToday();
-  const tok = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
-  const printVars = ['--surface-dark','--text','--text-mid','--text-dim','--border','--surface-sunken',
-    '--badge-pe-bg','--badge-pe-text','--badge-ok-bg','--badge-ok-text','--warn-bg','--warn','--text-on-dark']
-    .map(n => `${n}:${tok(n)}`).join(';');
-  const rowsHTML = recs.map(r => {
-    const f = r.fields;
-    const cId = (f['Client']||[])[0]; const pId = (f['Pickup Location 1']||[])[0];
-    const dId = (f['Delivery Location 1']||f['Delivery Location']||[])[0];
-    const direction = f['Direction']||'';
-    const trip = _onHasTrip(f) ? 'Με δρομολόγιο' : 'Προς ανάθεση';
-    return `<tr>
-      <td>${escapeHtml(f['Reference']||'—')}</td>
-      <td><span class="dir">${_ON_DIR[direction] || escapeHtml(direction)}</span></td>
-      <td>${escapeHtml(cId?(_fhClientsMap[cId]||''):'')}</td>
-      <td>${escapeHtml(pId?(_fhLocationsMap[pId]||''):'')}</td>
-      <td>${escapeHtml(dId?(_fhLocationsMap[dId]||''):'')}</td>
-      <td>${(f['Loading DateTime']||'').substring(0,10)}</td>
-      <td>${(f['Delivery DateTime']||'').substring(0,10)}</td>
-      <td class="r">${f['Pallets'] != null ? f['Pallets'] : '—'}</td>
-      <td>${escapeHtml(f['Type']||'')}</td>
-      <td><span class="st">${trip}</span></td>
-      <td class="r">${f['Price'] != null ? Number(f['Price']).toLocaleString('el-GR')+' €' : '—'}</td>
-    </tr>`;
-  }).join('');
-  const html = `<!DOCTYPE html><html><head>
-    <title>Εθνικές Παραγγελίες — ${today}</title>
-    <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;700;800&family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet">
-    <style>
-      :root{${printVars}}
-      *{box-sizing:border-box;margin:0;padding:0}
-      body{font-family:'DM Sans',sans-serif;color:var(--text);padding:20px;font-size:11px}
-      h1{font-family:'Syne',sans-serif;font-size:22px;color:var(--surface-dark);margin-bottom:4px}
-      .sub{color:var(--text-dim);font-size:11px;margin-bottom:18px}
-      table{width:100%;border-collapse:collapse;font-size:10px;font-variant-numeric:tabular-nums}
-      thead th{background:var(--surface-dark);color:var(--text-on-dark);padding:8px 6px;text-align:left;font-weight:700;text-transform:uppercase;font-size:9px;letter-spacing:.4px}
-      tbody td{padding:6px;border-bottom:1px solid var(--border)}
-      .r{text-align:right}
-      .dir{font-size:10px;white-space:nowrap;color:var(--text-mid)}
-      .st{font-size:10px;color:var(--text-mid)}
-      .footer{margin-top:14px;font-size:9px;color:var(--text-dim);display:flex;justify-content:space-between}
-      @media print { body { padding: 0 } @page { size: A4 landscape; margin: 1cm } }
-    </style>
-  </head><body>
-    <h1>Εθνικές Παραγγελίες</h1>
-    <div class="sub">${recs.length} παραγγελίες · ${today} · Petras Group TMS</div>
-    <table>
-      <thead><tr>
-        <th>Αναφορά</th><th>Κατεύθ.</th><th>Πελάτης</th><th>Παραλαβή</th><th>Παράδοση</th>
-        <th>Ημ. φόρτωσης</th><th>Ημ. παράδοσης</th><th class="r">Παλ.</th><th>Τύπος</th>
-        <th>Ανάθεση</th><th class="r">Τιμή</th>
-      </tr></thead>
-      <tbody>${rowsHTML}</tbody>
-    </table>
-    <div class="footer">
-      <span>Εκτύπωση ${new Date().toLocaleString('el-GR')}</span>
-      <span>Petras Group · Cold Chain Logistics</span>
-    </div>
-    <script>window.addEventListener('load',()=>setTimeout(()=>window.print(),300));<\/script>
-  </body></html>`;
-  OrdersList.printOpen(html);
-}
-
 window.renderOrdersNatl = renderOrdersNatl;
 window.loadOrdersNatlData = loadOrdersNatlData;
 window.openNatlCreate = openNatlCreate;
 window.openNatlCreateWith = f => _openNatlModal(null, f || {}); // 9/9: Weekly National «νέα άνοδος» prefill
 window.openNatlEdit = openNatlEdit;
 window.selectNatlOrder = selectNatlOrder;
-// The card's «×» is an inline onclick, so it resolves in the global scope; the
-// Esc handler lives inside the module and never needed this. Without it the ×
-// threw «closeNatlDetail is not defined» (app_errors 5/9 17:40, 6/9 16:35).
+// The card's «×» is an inline onclick, so it resolves in the global scope.
+// Without this the × threw «closeNatlDetail is not defined» (app_errors 5/9
+// 17:40, 6/9 16:35).
 window.closeNatlDetail = closeNatlDetail;
-window._natlSortToggle = _natlSortToggle;
-window._applyNatlFilters = _applyNatlFilters;
-window.natlSearch = natlSearch;
-window.natlFilter = natlFilter;
-window.natlPeriodChange = natlPeriodChange;
-window.natlClearFilters = natlClearFilters;
-window._natlExportCSV = _natlExportCSV;
-window._natlPrint = _natlPrint;
 window.openNatlScan = openNatlScan;
 window._natlScanDrop = _natlScanDrop;
 window._natlScanHandleFile = _natlScanHandleFile;
@@ -2713,10 +2225,4 @@ window._natlClientDrop = fhClientDrop;
 window._natlLocDrop = fhLocDrop;
 window._natlShowDrop = fhShowDrop;
 window._natlPickLinked = fhPickLinked;
-// _onPage is mutated from onclick (++/--) so expose as getter/setter
-Object.defineProperty(window, '_onPage', {
-  get: function() { return _onPage; },
-  set: function(v) { _onPage = v; },
-  configurable: true
-});
 })();

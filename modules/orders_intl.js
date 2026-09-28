@@ -4,18 +4,9 @@
 (function() {
 'use strict';
 
-const INTL_ORDERS = { data: [], filtered: [], selectedId: null };
-const _intlFilters = {};
-let _intlSortCol = null;   // current sort column key
-let _intlSortDir = 0;      // 0=none, 1=asc, 2=desc
-let _oiPage = 1;
-const _oiPageSize = 50;
+const INTL_ORDERS = { data: [], selectedId: null };
 let _intlPeriod = '60'; // '60' | '180' | 'all'
 
-// ─── Virtual Scroll State ─────────────────────
-const _oiVS = { allRows: [], sortedRecs: [], lastStart: -1, lastEnd: -1, rafId: null };
-const _OI_ROW_H = 40; // row height in px
-const _OI_BUFFER = 10; // buffer rows above/below
 // ─── Ref data: delegates to shared form-helpers.js ──
 const _loadLocations = fhLoadLocations;
 const _searchClients = fhSearchClients;
@@ -50,21 +41,12 @@ function _stopsTotalPallets(orderId) {
   return stops.filter(s => s.fields[F.STOP_TYPE] === 'Loading')
     .reduce((sum, s) => sum + (s.fields[F.STOP_PALLETS] || 0), 0);
 }
-function _weekNum(dateStr) {
-  const d = new Date(dateStr + 'T12:00:00');
-  const jan1 = new Date(d.getFullYear(), 0, 1);
-  const ws = new Date(jan1); ws.setDate(jan1.getDate() - jan1.getDay());
-  return Math.floor((d - ws) / 604800000) + 1;
-}
 
 // ─── Alignment pass (παρτίδα 3, Figma w4-orders-interaction-spec 208:724) ──
 // Owner 30/8: the layout STAYS; only colour, typography, card, motion.
 // Everything below is display-only. DB values (Export/Pending/…) are never
 // rewritten: filters, sorting, CSV and writes keep reading the raw field.
-const _oiLocMeta = {};   // locId → {name, city, country} for the two-line cells
-// A failed «Invoiced» write stays visible IN the cell until a write succeeds.
-// A toast alone let the checkbox read as success while 0/89 rows were written
-// (accountant → 403, ten days of production). Spec §2.
+const _oiLocMeta = {};   // locId → {name, city, country} for the card's stop lines
 // Partial loads speak (DESIGN #7): each secondary fetch that fails adds one
 // line above the table saying what is missing and what that does NOT mean.
 const _oiLoadWarns = [];
@@ -79,19 +61,8 @@ const _OI_STATUS = {
   'Invoiced':   { gr: 'Τιμολογήθηκε', dot: 'invoiced' },
   'Cancelled':  { gr: 'Ακυρώθηκε',    dot: 'cancelled' },
 };
-// Δ4 (3/9): the badges and the ⚠ only explained themselves in a `title`, i.e.
-// only to someone who already suspected something. One line under the table
-// spells them out — cheaper than a tooltip nobody hovers.
-const _OI_LEGEND = '<b>VS</b> Veroia Switch · <b>GRP</b> ομαδοποίηση · <b>PE</b> ανταλλαγή παλετών · <b>HR</b> υψηλό ρίσκο';
-const _OI_DIR    = { Export: '↑ Εξαγωγή', Import: '↓ Εισαγωγή' };
 const _OI_DIR_W  = { Export: 'Εξαγωγή',   Import: 'Εισαγωγή' };
 const _OI_REEFER = { 'Continuous': 'Συνεχής', 'Start-Stop': 'Start-Stop', 'No temp': 'Χωρίς ψύξη' };
-// Status = 6px dot + word in --text-mid (spec §6): the colour lives only in
-// the dot, the word carries the meaning (DESIGN.md #2).
-function _oiStatusHtml(st) {
-  const s = _OI_STATUS[st] || { gr: st || '—', dot: 'unknown' };
-  return `<span class="oi-dot oi-dot-${s.dot}"></span><span class="oi-st">${escapeHtml(s.gr)}</span>`;
-}
 function _oiDate(d) { return d ? new Date(d).toLocaleDateString('el-GR', { day: 'numeric', month: 'numeric' }) : '—'; }
 // Unknown ≠ zero (DESIGN.md #3): null/'' → «—»; a real number, 0 included, prints.
 function _oiMoney(v) { return (v === null || v === undefined || v === '') ? '—' : '€ ' + Number(v).toLocaleString('el-GR'); }
@@ -106,84 +77,6 @@ function _oiLocOf(stop) {
   const id = Array.isArray(arr) ? arr[0] : null;
   const m = id ? _oiLocMeta[id] : null;
   return { id, name: m?.name || (id ? (_fhLocationsMap[id] || id.slice(-6)) : '?'), city: m?.city || '', country: m?.country || '' };
-}
-// Two-line cell (spec §5): names on line 1 — wraps, never ellipsis — and the
-// first stop's city/country on line 2. Pre-normalisation orders have no
-// ORDER_STOPS; they fall back to the legacy summary string, one line.
-function _oiLocCell(r, type, summaryKey) {
-  const stops = _oiStops(r.id, type);
-  if (!stops.length) {
-    const s = _cleanSummary(r.fields[summaryKey]);
-    return `<span class="oi-name" title="${s}">${s}</span>`;
-  }
-  const locs = stops.map(_oiLocOf);
-  // First stop by name; the others as «+N» on line 2 — the full list sits in
-  // the title and in the card. Joining every name overflowed the two lines
-  // the row allows (measured 3/9: 2-stop cells were the ones being cut).
-  const names = locs[0].name;
-  const all = locs.map(l => l.name).join(', ');
-  const sub = [[locs[0].city, locs[0].country].filter(Boolean).join(', ')];
-  if (locs.length > 1) sub.push(`+${locs.length - 1}`);
-  // The cross-dock leg sits on the Greek side: loading for exports, delivery for imports.
-  const cdSide = r.fields['Direction'] === 'Import' ? 'Unloading' : 'Loading';
-  if (r.fields['Veroia Switch'] && type === cdSide) sub.push('μέσω CD');
-  const subTxt = sub.filter(Boolean).join(' · ');
-  return `<span class="oi-name" title="${escapeHtml(all)}">${escapeHtml(names)}</span>`
-       + (subTxt ? `<span class="oi-sub" title="${escapeHtml(subTxt)}">${escapeHtml(subTxt)}</span>` : '');
-}
-function _oiAssignCell(f) {
-  const pid = (f['Partner'] || [])[0];
-  if (pid) {
-    const pr = (typeof getRefPartners === 'function' ? getRefPartners() : []).find(x => x.id === pid);
-    // «ΣΥΝ.» + the company name (ΜΕΡΟΣ Ε) — never the generic word, which told
-    // the dispatcher nothing. A partner id that is not in the reference data
-    // prints «—» (unknown ≠ known), so a stale link stays visible.
-    const name = pr?.fields?.['Company Name'] || '—';
-    const plates = f['Partner Truck Plates'] || '';
-    // Δ5 (3/9): the sub-line is the PLATES. It is nowrap+hidden in a narrow
-    // column, so it is routinely cut — «…» so the cut is visible, title so the
-    // value is still reachable.
-    return `<span class="oi-name" title="${escapeHtml('ΣΥΝ. ' + name)}"><b>ΣΥΝ.</b> ${escapeHtml(name)}</span>`
-         + (plates ? `<span class="oi-sub" title="${escapeHtml(plates)}">${escapeHtml(plates)}</span>` : '');
-  }
-  const tid = (f['Truck'] || [])[0], did = (f['Driver'] || [])[0];
-  if (!tid && !did) return '<span class="oi-unassigned" title="Χωρίς φορτηγό και οδηγό — η ανάθεση γίνεται στο Εβδομαδιαίο Διεθνών">ΠΡΟΣ ΑΝΑΘΕΣΗ</span>';
-  const t = tid ? (typeof getRefTrucks === 'function' ? getRefTrucks() : []).find(x => x.id === tid) : null;
-  const d = did ? (typeof getRefDrivers === 'function' ? getRefDrivers() : []).find(x => x.id === did) : null;
-  const plate = t?.fields?.['License Plate'] || '';
-  const driver = (d?.fields?.['Full Name'] || '').trim();
-  // «ΙΔ.» + plate on line 1, driver on line 2. A truck link with no plate in
-  // the reference data prints «—» rather than promoting the driver to line 1,
-  // so the two lines always mean the same thing.
-  return `<span class="oi-name" title="${escapeHtml(['ΙΔ. ' + (plate || '—'), driver].filter(Boolean).join(' · '))}"><b>ΙΔ.</b> ${escapeHtml(plate || '—')}</span>`
-       + (driver ? `<span class="oi-sub" title="${escapeHtml(driver)}">${escapeHtml(driver)}</span>` : '');
-}
-// Signals sit next to the order number — no separate flags column (spec §6).
-// VS keeps its colour (semantic, same navy as the Weekly VS badge); the rest
-// are quiet.
-function _oiFlags(f) {
-  const out = [];
-  if (f['Veroia Switch'])     out.push('<span class="oi-flag oi-flag-vs" title="Veroia Switch">VS</span>');
-  if (f['National Groupage']) out.push('<span class="oi-flag" title="National Groupage">GRP</span>');
-  if (f['Pallet Exchange'])   out.push('<span class="oi-flag" title="Ανταλλαγή παλετών">PE</span>');
-  // Δ4 (3/9): this was a ⚠, pixel-identical to the ⚠ of a FAILED invoicing
-  // write two columns to the right — the same mark meaning "this load is risky"
-  // and "the database refused your click". «HR» joins the VS/GRP/PE family and
-  // is spelled out in the legend under the table; ⚠ is now the alarm only.
-  if (f['High Risk Flag'])    out.push('<span class="oi-flag oi-flag-hr" title="Υψηλό ρίσκο">HR</span>');
-  return out.join('');
-}
-function _oiInvCell(r) {
-  // Read-only since 22/9 (owner): the ONE door for «τιμολογήθηκε» is the
-  // Τιμολόγηση screen (ERP number + date). A bare Invoiced=true from here is
-  // refused by the Worker (422) and by migration 043 — the click only produced
-  // a ⚠ for every role, so the click is gone; the tick stays as information.
-  const on = !!r.fields['Invoiced'];
-  const tip = on ? 'Τιμολογήθηκε' + (r.fields['Invoice Number'] ? ' · ΤΠΥ ' + escapeHtml(r.fields['Invoice Number']) : '') : 'Δεν έχει τιμολογηθεί — καταχώρηση από την Τιμολόγηση';
-  return `<td class="oi-inv" title="${tip}">${on ? '<span class="oi-chk on">✓</span>' : '<span class="oi-chk"></span>'}</td>`;
-}
-function _oiPeriodLabel() {
-  return _intlPeriod === '60' ? 'τελευταίες 60 ημέρες' : _intlPeriod === '180' ? 'τελευταίοι 6 μήνες' : 'όλες οι ημερομηνίες';
 }
 function _oiCloseCard() {
   const p = document.getElementById('intlDetail'); if (!p) return;
@@ -201,76 +94,7 @@ function _oiEnsureStyles() {
   document.head.appendChild(st);
 }
 function _oiCss() { return `
-.oi-layout .entity-table-wrap thead th{background:var(--surface-sunken);font-size:11px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:var(--text-mid);padding:0 4px;height:30px;line-height:12px;white-space:normal;border-bottom:1px solid var(--border);overflow:hidden;vertical-align:middle}
-/* tabular-nums on the whole body (DESIGN ΜΕΡΟΣ Γ): references, plates, dates,
-   pallets and prices all sit in columns; one rule beats remembering .oi-num
-   on every new cell. 13px = table data size. 4px gutters (8px between
-   columns): at 8px the narrow columns overflowed silently with the card open
-   — measured 5/9 at 1138px list width. */
-.oi-layout .entity-table-wrap tbody td{height:40px;padding:0 4px;font-size:13px;line-height:13px;color:var(--text);border-bottom:1px solid var(--border);white-space:normal;overflow:hidden;text-overflow:clip;max-width:none;vertical-align:middle;font-variant-numeric:tabular-nums}
-.oi-layout .entity-table-wrap tbody tr{transition:none;cursor:pointer}
-.oi-layout .entity-table-wrap tbody tr:hover td{background:var(--surface-sunken)}
-.oi-layout .entity-table-wrap tbody tr.selected td{background:var(--accent-light)}
-.oi-layout td strong{font-weight:700}
-/* Δ5: ONE line. A two-reference order («02162511, 102162512») wrapped to two
-   lines and pushed the VS/GRP/PE badges onto a third, which the 40px row cut
-   off — losing an operational signal silently to save half a reference. The
-   «…» + title lose nothing silently. */
-.oi-ref{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-/* Δ5: line-clamp instead of a bare max-height. Same two/three lines as before,
-   but the cut now ENDS IN «…» instead of shearing a word in half with nothing
-   to show for it. Every .oi-name is rendered with a title carrying the full
-   value, so the rest is one hover away. */
-.oi-name{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;line-clamp:2;max-height:26px;overflow:hidden;overflow-wrap:anywhere}
-.oi-name:only-child{-webkit-line-clamp:3;line-clamp:3;max-height:39px}
-.oi-sub{display:block;font-size:11px;line-height:12px;color:var(--text-dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.oi-dim{color:var(--text-mid)}
 .oi-num{font-variant-numeric:tabular-nums}
-.oi-med{font-weight:500}
-.oi-miss{color:var(--text-dim)}
-/* Wave 3 (owner 6/9, FEATURES.ORDER_SPLIT): tokens only (DESIGN K1) — no new
-   hex, reuses the accent pair already used for the primary action elsewhere. */
-.oi-legchip{display:inline-block;margin-left:6px;padding:1px 6px;border-radius:9999px;font-size:10px;font-weight:700;color:var(--accent);background:var(--surface-sunken);border:1px solid var(--border);vertical-align:middle}
-/* ΠΡΟΣ ΑΝΑΘΕΣΗ (owner 4/9): the empty box is an open action for the
-   dispatcher, not a fact about the fleet — a tile that asks for a click, in the
-   one colour that means only «χωρίς ανάθεση». nowrap: a wrapped pill reads as
-   two tiles; the column was widened to 116px so it never needs to. */
-.oi-unassigned{display:inline-block;padding:0 4px;border:1px solid var(--unassigned);border-radius:9999px;color:var(--unassigned);font-size:11px;line-height:18px;font-weight:700;white-space:nowrap}
-.oi-layout .entity-table-wrap tbody td.oi-nowrap{white-space:nowrap}
-.oi-flag{display:inline-block;margin-left:4px;padding:0 4px;border-radius:6px;font-size:11px;line-height:14px;font-weight:700;vertical-align:1px;color:var(--text-mid);border:1px solid var(--border)}
-.oi-flag-vs{background:var(--surface-dark);border-color:var(--surface-dark);color:var(--text-on-dark)}
-.oi-flag-hr{border-color:var(--danger);color:var(--danger)}
-.oi-dot{display:inline-block;width:6px;height:6px;border-radius:9999px;margin-right:4px;vertical-align:1px;background:var(--text-dim)}
-.oi-dot-pending{background:var(--warn)}
-/* Not --accent: the accent is the primary action only (ΜΕΡΟΣ Β) and 30 dots
-   per screen made it decoration. Assigned and In Transit share navy — the
-   word next to the dot tells them apart (DESIGN #2), the colour never had to. */
-.oi-dot-assigned{background:var(--surface-dark)}
-.oi-dot-transit{background:var(--surface-dark)}
-.oi-dot-delivered{background:var(--ok)}
-.oi-dot-invoiced{background:var(--text-dim)}
-.oi-dot-cancelled{background:var(--danger)}
-.oi-st{color:var(--text-mid);font-size:12px}
-/* 4px, not 8px: the error ring below is ~34px wide and the column is 40px. */
-.oi-layout .entity-table-wrap tbody td.oi-inv{padding:0 4px}
-.oi-inv{text-align:center}
-.oi-chk{display:inline-block;width:18px;height:18px;border:1px solid var(--border-dark);border-radius:6px;background:var(--surface-card);vertical-align:middle;line-height:16px;font-size:11px;font-weight:700;color:var(--text-mid)}
-.oi-chk.on{border-color:var(--text-mid)}
-/* Δ3: the ring carries the alarm so the box inside can keep carrying the state. */
-/* Δ4: the marks must be readable without hunting for a tooltip. */
-/* Scrollbar of the list — was inline on the scroller until 2b-b; the shell no
-   longer sets it, each list's CSS does (the national one uses --border). */
-.oi-layout #oiVScroll{scrollbar-width:thin;scrollbar-color:var(--border-dark) transparent}
-.oi-foot{padding:8px 16px;color:var(--text-mid);font-size:12px;text-align:center}
-.oi-legend{padding:4px 16px;color:var(--text-mid);font-size:12px;border-bottom:1px solid var(--border)}
-.oi-legend b{font-weight:700;color:var(--text)}
-.oi-strip{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:4px 16px;font-size:12px;color:var(--text-mid);border-bottom:1px solid var(--border)}
-.oi-strip-clear{margin-left:auto;background:none;border:1px solid var(--border);border-radius:6px;padding:0 8px;line-height:20px;font-size:12px;color:var(--text-mid);cursor:pointer;font-family:inherit}
-.oi-strip-clear:hover{border-color:var(--border-dark);color:var(--text)}
-/* A load that failed says so ABOVE the rows (DESIGN #7): the table still
-   paints whatever did arrive, and this line keeps «missing» from reading as
-   «none». Amber = attention, not an error the user caused. */
-.oi-strip-warn{padding:4px 16px;font-size:12px;color:var(--warn);background:var(--warn-bg);border-bottom:1px solid var(--warn-border)}
 .oi-layout .entity-detail-panel{width:480px;flex-shrink:0;display:flex;flex-direction:column;background:var(--surface-card);border-left:1px solid var(--border);position:relative;z-index:var(--z-raised);box-shadow:var(--shadow-panel);transition:none;overflow-y:auto;overflow-x:hidden}
 .oi-layout .entity-detail-panel.hidden{display:none;width:0;border-left:none;box-shadow:none}
 .oi-layout .entity-detail-panel:not(.hidden){animation:oi-slide var(--duration-fast) var(--ease-out)}
@@ -359,7 +183,7 @@ async function _intlLoad() {
     records.sort((a,b) => (b.fields['Loading DateTime']||'').localeCompare(a.fields['Loading DateTime']||''));
     // Wave 3 (owner 6/9, FEATURES.ORDER_SPLIT): a leg is the parent's own
     // execution detail, not a second customer order — the list shows the
-    // parent once (chip «2 σκέλη» in _oiRowHtml), legs stay reachable only via
+    // parent once (chip «2 σκέλη» in the catalog row), legs stay reachable only via
     // the base ORDERS table. No fields[] restriction on this fetch, so
     // 'Parent Order' is already present when it exists — pure client-side
     // filter, no request-shape change on the off-path.
@@ -372,10 +196,7 @@ async function _intlLoad() {
       _oiVisible = records.filter(r => !getLinkedId(r.fields['Parent Order']));
     }
     INTL_ORDERS.data = _oiVisible;
-    INTL_ORDERS.filtered = _oiVisible;
     INTL_ORDERS.selectedId = null;
-    Object.keys(_intlFilters).forEach(k => delete _intlFilters[k]);
-    _oiPage = 1;
     // Batch fetch ORDER_STOPS for all orders (for list + detail display)
     const allStopIds = records.flatMap(r => r.fields['ORDER STOPS'] || []);
     window._intlStopsByOrder = {};
@@ -401,12 +222,12 @@ async function _intlLoad() {
     }
     // Inject Loading/Delivery Summary from ORDER_STOPS for orders missing them
     await _loadLocations();
-    // City/country for the two-line cells. Same cached GET the form helpers
+    // City/country for the card's stop lines. Same cached GET the form helpers
     // use (no new endpoint); the helpers keep only the joined label.
     try {
       (await atGet(TABLES.LOCATIONS)).forEach(l => {
         // One list everywhere (owner 5/9): resolve to the Greek name once here
-        // so every reader of _oiLocMeta (row sub-line, stop popover) gets it
+        // so every reader of _oiLocMeta (the card's stop lines) gets it
         // for free, whatever spelling/code the location record still stores.
         const rawCountry = l.fields['Country'] || '';
         _oiLocMeta[l.id] = { name: l.fields['Name'] || '', city: l.fields['City'] || '',
@@ -442,308 +263,11 @@ function renderOrdersIntl() {
   return Promise.resolve(navigate('orders_intl'));
 }
 
-// After an in-place change to ONE order (status, pallet sheets): update that
+// After an in-place change to ONE order (pallet sheets): update that
 // row on the Orders page and keep the card open — never repaint the old list
 // container, which no longer exists (it would throw after the write succeeded).
 function _intlRepaintOne(rec) {
   if (typeof OrdersCatalog !== 'undefined' && rec) OrdersCatalog.updateRecord('intl', rec);
-}
-
-function _renderIntlLayout(c) {
-  const canEdit = can('orders') === 'full';
-  const _i = n => (typeof icon === 'function') ? icon(n, 14) : '';
-  // Δ2 (DESIGN ΜΕΡΟΣ Δ2): a filter value with zero rows in the loaded period
-  // is disabled, not offered — picking it could only produce an empty list.
-  // Counted on the raw field, never on the translated label.
-  const _n = (key, val) => INTL_ORDERS.data.filter(r => (r.fields[key] || (key === 'Status' ? 'Pending' : '')) === val).length;
-  const _dis = (key, val) => _n(key, val) ? '' : ' disabled';
-  c.innerHTML = `
-    <div class="page-header" style="margin-bottom:var(--space-4)">
-      <div>
-        <div class="page-title">Διεθνείς Παραγγελίες</div>
-        <div class="page-sub" id="intlSub">${INTL_ORDERS.data.length} παραγγελίες · ${_oiPeriodLabel()}</div>
-      </div>
-      <div style="display:flex;gap:var(--space-2);align-items:center">
-        <button class="btn btn-secondary btn-sm" onclick="openIntlScan()">${_i('camera')} Σάρωση</button>
-        ${canEdit ? `<button class="btn btn-sm pre-btn" onclick="openPreorder()" title="Φορτίο που ανακοινώθηκε — λεπτομέρειες αργότερα">Pre-order</button>` : ''}
-        ${canEdit ? `<button class="btn btn-primary btn-sm" onclick="openIntlCreate()">+ Νέα παραγγελία</button>` : ''}
-        <button class="btn btn-ghost btn-sm" onclick="_intlExportCSV()">${_i('download')} CSV</button>
-        <button class="btn btn-ghost btn-sm" onclick="_intlPrint()">${_i('file_text')} Εκτύπωση</button>
-      </div>
-    </div>
-    <div class="entity-layout oi-layout">
-      <div class="entity-list-panel">
-        <div class="entity-toolbar-v2">
-          <div class="entity-search-wrap">
-            ${_i('search')}
-            <input class="entity-search-input" placeholder="Αναζήτηση πελάτη / τοποθεσίας / εμπορεύματος…"
-              oninput="intlSearch(this.value)">
-          </div>
-          <select class="svc-filter" onchange="intlFilter('Direction',this.value)">
-            <option value="">Κατεύθυνση: Όλες</option>
-            <option value="Export"${_dis('Direction','Export')}>↑ Εξαγωγή</option>
-            <option value="Import"${_dis('Direction','Import')}>↓ Εισαγωγή</option>
-          </select>
-          <select class="svc-filter" onchange="intlFilter('_status',this.value)">
-            <option value="">Κατάσταση: Όλες</option>
-            <option value="Pending"${_dis('Status','Pending')}>Σε αναμονή</option>
-            <option value="Assigned"${_dis('Status','Assigned')}>Ανατεθειμένη</option>
-            <option value="In Transit"${_dis('Status','In Transit')}>Σε μεταφορά</option>
-            <option value="Delivered"${_dis('Status','Delivered')}>Παραδόθηκε</option>
-          </select>
-          <select class="svc-filter" onchange="intlFilter('Brand',this.value)">
-            <option value="">Μάρκα: Όλες</option>
-            <option value="Petras Group"${_dis('Brand','Petras Group')}>Petras Group</option>
-            <option value="DPS"${_dis('Brand','DPS')}>DPS</option>
-          </select>
-          <select class="svc-filter" onchange="intlFilter('_week',this.value)">
-            <option value="">Εβδομάδα: Όλες</option>
-            ${_buildWeekOpts()}
-          </select>
-          <select class="svc-filter" onchange="intlPeriodChange(this.value)">
-            <option value="60" ${_intlPeriod==='60'?'selected':''}>Τελευταίες 60 ημέρες</option>
-            <option value="180" ${_intlPeriod==='180'?'selected':''}>Τελευταίοι 6 μήνες</option>
-            <option value="all" ${_intlPeriod==='all'?'selected':''}>Όλα</option>
-          </select>
-          <span class="entity-count-chip" id="intlCount">${INTL_ORDERS.data.length}</span>
-        </div>
-        <div class="entity-table-wrap" id="intlTable"></div>
-      </div>
-      <div class="entity-detail-panel hidden" id="intlDetail"></div>
-    </div>`;
-}
-
-function _buildWeekOpts() {
-  const wn = currentWeekNumber(); let s = '';
-  // «selected» follows the ACTIVE filter, not the current week: the old
-  // markup pre-selected «→ W36» while no week filter was applied, so the
-  // dropdown claimed a narrowing the count and the strip denied (5/9). The
-  // arrow still marks today's week; a week with no orders is disabled (Δ2).
-  const sel = String(_intlFilters['_week'] || '');
-  for (let w = wn-3; w <= wn+8; w++) {
-    if (w < 1) continue;
-    const has = INTL_ORDERS.data.some(r => String(r.fields['Week Number']) === String(w));
-    s += `<option value="${w}"${sel === String(w) ? ' selected' : ''}${has ? '' : ' disabled'}>${w===wn?'→ ':''} W${w}</option>`;
-  }
-  return s;
-}
-
-// Ανάθεση για τη λίστα (owner 12/8, για τιμολόγηση): συνεργάτης με πινακίδες
-// ή δικές μας πινακίδες + οδηγός. Ονόματα από το REF_DATA (preloaded).
-function _oiAssign(f){
-  const pid=(f['Partner']||[])[0];
-  if(pid){
-    const pr=(typeof getRefPartners==='function'?getRefPartners():[]).find(x=>x.id===pid);
-    return [pr?.fields?.['Company Name']||'', f['Partner Truck Plates']||''].filter(Boolean).join(' \u00b7 ');
-  }
-  const tid=(f['Truck']||[])[0], did=(f['Driver']||[])[0];
-  if(!tid&&!did) return '';
-  const t=tid?(typeof getRefTrucks==='function'?getRefTrucks():[]).find(x=>x.id===tid):null;
-  const d=did?(typeof getRefDrivers==='function'?getRefDrivers():[]).find(x=>x.id===did):null;
-  return [t?.fields?.['License Plate']||'', (d?.fields?.['Full Name']||'').trim().split(/\s+/)[0]].filter(Boolean).join(' \u00b7 ');
-}
-
-// ─── Sort helpers ────────────────────────────────
-// Widths sum to 1181px (ΑΝΑΘΕΣΗ took 10px from ΠΕΛΑΤΗΣ/ΦΟΡΤΩΣΗ/ΠΑΡΑΔΟΣΗ on 5/9 so
-// the «ΠΡΟΣ ΑΝΑΘΕΣΗ» tile fits with the card open; ΑΡ. added 52px on 7/9):
-// measured 3/9 in the rig at 1920×1080 the list gets 1618px with the card
-// closed and 1138px with the 480px card open — the new total is now OVER that
-// (the 29/8 lesson: anything wider than 1138 pushes the last column out of
-// view). Not rebalanced here — owner asked for this column at this width;
-// flagged in the session report, not silently absorbed.
-// table-layout:fixed scales them up proportionally when the card is closed.
-const _intlColDefs = [
-  // 'Order No' is a read-only field the Worker now exposes on ORDERS records
-  // (the Postgres row id, e.g. 165) — added 7/9/2026 so the team has a stable
-  // internal number distinct from the client's own Reference in the next column.
-  { key: 'no',       label: 'ΑΡ.',            t: 'Εσωτερικός αριθμός παραγγελίας', type: 'number', w: 64, get: (f) => f['Order No'] || 0 },
-  { key: 'orderNo',  label: 'ΑΝΑΦΟΡΑ',       t: 'Αναφορά πελάτη',       type: 'text',   w: 104, get: (f) => f['Reference']||'' },
-  { key: 'week',     label: 'ΕΒΔ.',           type: 'number', w: 44,  get: (f) => f['Week Number']||0 },
-  { key: 'dir',      label: 'ΚΑΤΕΥΘ.',        type: 'text',   w: 88,  get: (f) => f['Direction']||'' },
-  { key: 'client',   label: 'ΠΕΛΑΤΗΣ',        type: 'text',   w: 126, get: (f) => _clientName(f) },
-  { key: 'loading',  label: 'ΦΟΡΤΩΣΗ',        type: 'text',   w: 134, get: (f, r) => _stopsLocationSummary(r?.id,'Loading') || _cleanSummary(f['Loading Summary']) },
-  { key: 'delivery', label: 'ΠΑΡΑΔΟΣΗ',       type: 'text',   w: 130, get: (f, r) => _stopsLocationSummary(r?.id,'Unloading') || _cleanSummary(f['Delivery Summary']) },
-  { key: 'loadDate', label: 'ΗΜ. ΦΟΡΤ.',      t: 'Ημερομηνία φόρτωσης',  type: 'date',   w: 72,  get: (f) => f['Loading DateTime']||'' },
-  { key: 'delDate',  label: 'ΗΜ. ΠΑΡΑΔ.',     t: 'Ημερομηνία παράδοσης', type: 'date',   w: 72,  get: (f) => f['Delivery DateTime']||'' },
-  { key: 'pal',      label: 'ΠΑΛ.',           t: 'Παλέτες',              type: 'number', w: 40,  get: (f, r) => _stopsTotalPallets(r?.id) || f['Total Pallets'] || 0 },
-  { key: 'assign',   label: 'ΑΝΑΘΕΣΗ',        type: 'text',   w: 116, get: (f) => _oiAssign(f) },
-  { key: 'price',    label: 'ΤΙΜΗ €',         type: 'number', w: 64,  get: (f) => f['Price']||0 },
-  { key: 'status',   label: 'ΚΑΤΑΣΤΑΣΗ',      type: 'text',   w: 99,  get: (f) => f['Status']||'Pending' },
-  { key: 'inv',      label: 'ΤΙΜ.',           t: 'Τιμολογήθηκε',         type: 'text',   w: 40,  get: (f) => f['Invoiced']?'1':'0' },
-];
-
-function _intlSortToggle(key) {
-  if (_intlSortCol === key) {
-    _intlSortDir = (_intlSortDir + 1) % 3;
-    if (_intlSortDir === 0) _intlSortCol = null;
-  } else {
-    _intlSortCol = key;
-    _intlSortDir = 1;
-  }
-  _applyIntlFilters();
-}
-
-function _intlSortRecords(recs) { return OrdersList.sortRecords(recs, _intlColDefs, _intlSortCol, _intlSortDir); }
-
-// ─── Table (Virtual Scroll) ─────────────────────
-// Column widths come from the shared <colgroup> (both the thead table and the
-// virtual-scroll tbody table carry it), so cells carry no inline widths and
-// nothing is clipped with ellipsis (DESIGN.md #6).
-function _oiRowHtml(r) {
-  const f = r.fields;
-  const sel = r.id === INTL_ORDERS.selectedId ? ' selected' : '';
-  // Δ2 (3/9): this column printed `r.id.slice(-6)` — six characters of an
-  // internal row id («a2SNCr») that the team read as an order number. It was
-  // not a fallback but the permanent value: 'Order Number' is a derived field
-  // the Worker deliberately does not expose (worker/src/index.js, ORDERS map),
-  // so f['Order Number'] is undefined on every record. Now: the Reference the
-  // form actually writes, and «—» when it was never entered — the same answer
-  // the card of the same record already gives («— δεν έχει καταχωρηθεί»).
-  const ref = String(f['Reference'] || '').replace(/["']+/g, '').trim();
-  const refCell = ref
-    ? `<strong class="oi-ref" title="${escapeHtml(ref)}">${escapeHtml(ref)}</strong>`
-    : '<span class="oi-miss" title="Δεν έχει καταχωρηθεί αναφορά">—</span>';
-  const pal = _stopsTotalPallets(r.id) || f['Total Pallets'];
-  const client = _clientName(f);
-  // Wave 3: the parent still owns client/price/invoicing — a chip says the
-  // route now runs in two legs instead of listing them as separate rows.
-  const legChip = INTL_ORDERS.legParents && INTL_ORDERS.legParents.has(r.id)
-    ? '<span class="oi-legchip" title="Σπασμένο σε 2 σκέλη — δες το Weekly International για την εκτέλεση">2 σκέλη</span>' : '';
-  const orderNoCell = f['Order No'] ? `#${escapeHtml(String(f['Order No']))}` : '—';
-  // Pre-order row (Figma 709:1144): faded, «— → —», «PRE» (never «k/n», owner 28/9), and the two
-  // actions where ΑΝΑΘΕΣΗ + ΤΙΜΗ would be — a pre-order has neither yet.
-  const pre = isPreorder(f);
-  const preActs = can('orders') === 'full'
-    ? `<div class="pre-acts"><button type="button" class="pre-act" onclick="event.stopPropagation();openIntlEdit('${r.id}')">Μετατροπή</button><button type="button" class="pre-act del" onclick="event.stopPropagation();deletePreorder('${r.id}')">Διαγραφή</button></div>` : '';
-  return `<tr onclick="selectIntlOrder('${r.id}')" id="irow_${r.id}" class="oi-row${sel}${pre ? ' oi-pre' : ''}" style="height:${_OI_ROW_H}px">
-    <td class="oi-dim oi-num">${orderNoCell}</td>
-    <td>${refCell}${legChip}${_oiFlags(f)}${typeof OrderDocs !== 'undefined' ? OrderDocs.badge(r.id) : ''}</td>
-    <td class="oi-dim oi-num">W${escapeHtml(f['Week Number']||'—')}</td>
-    <td class="oi-dim oi-nowrap">${escapeHtml(_OI_DIR[f['Direction']] || f['Direction'] || '—')}</td>
-    <td><span class="oi-name" title="${client}">${client}</span></td>
-    <td>${pre ? escapeHtml((f['Direction'] === 'Import' && preorderCountryText(f)) || '—') : _oiLocCell(r, 'Loading', 'Loading Summary')}</td>
-    <td>${pre ? escapeHtml((f['Direction'] !== 'Import' && preorderCountryText(f)) || '—') : _oiLocCell(r, 'Unloading', 'Delivery Summary')}</td>
-    <td class="oi-num">${_oiDate(f['Loading DateTime'])}</td>
-    <td class="oi-num">${_oiDate(f['Delivery DateTime'])}</td>
-    <td class="oi-num oi-med">${pal ? escapeHtml(String(pal)) : '—'}</td>
-    ${pre ? `<td colspan="2">${preActs}</td>` : `<td>${_oiAssignCell(f)}</td>
-    <td class="oi-num oi-med">${_oiMoney(f['Price'])}</td>`}
-    <td>${pre ? preorderPillHtml(f) : _oiStatusHtml(f['Status']||'Pending')}</td>
-    ${_oiInvCell(r)}
-  </tr>`;
-}
-
-// Virtual scroll — the painter and its rAF throttle live in core/orders-list.js
-// (step 1 of the unification, 22/9): identical in both order lists, so it is
-// written once. The state object `_oiVS` and the row renderer stay here.
-function _oiVirtualPaint() {
-  OrdersList.virtualPaint(_oiVS, { scrollerId: 'oiVScroll', topSpacerId: 'oiTopSpacer', bottomSpacerId: 'oiBottomSpacer', rowH: _OI_ROW_H, buffer: _OI_BUFFER, rowHtml: _oiRowHtml });
-}
-
-function _oiOnScroll() { OrdersList.virtualOnScroll(_oiVS, _oiVirtualPaint); }
-
-// OI-6: one source of truth for «which filters are narrowing the list» —
-// shared by the empty state (OI-4) and the always-visible strip above the
-// table, so the two can never disagree.
-function _intlActiveFilters() {
-  const active = [];
-  if (_intlFilters['_q'])       active.push(`αναζήτηση «${escapeHtml(_intlFilters['_q'])}»`);
-  if (_intlFilters['Direction'])active.push(`κατεύθυνση ${_intlFilters['Direction'] === 'Export' ? 'Εξαγωγή' : 'Εισαγωγή'}`);
-  if (_intlFilters['_status'])  active.push(`κατάσταση ${escapeHtml((_OI_STATUS[_intlFilters['_status']] || {}).gr || _intlFilters['_status'])}`);
-  if (_intlFilters['Status'])   active.push(`κατάσταση ${escapeHtml(_intlFilters['Status'])}`);
-  if (_intlFilters['Brand'])    active.push(`μάρκα ${escapeHtml(_intlFilters['Brand'])}`);
-  if (_intlFilters['_week'])    active.push(`εβδομάδα ${escapeHtml(String(_intlFilters['_week']))}`);
-  if (_intlPeriod === '60')     active.push('τελευταίες 60 ημέρες');
-  else if (_intlPeriod === '180') active.push('τελευταίοι 6 μήνες');
-  return active;
-}
-
-function _renderIntlTable(records) {
-  const wrap = document.getElementById('intlTable');
-  const activeF = _intlActiveFilters();
-  if (!records.length) {
-    // OI-4: the empty state names the filters hiding the data (list built once
-    // in _intlActiveFilters — see OI-6).
-    const active = activeF;
-    const hasFilters = active.length > 0;
-    wrap.innerHTML = _oiLoadWarns.map(w => `<div class="oi-strip-warn">⚠ ${escapeHtml(w)}</div>`).join('')
-      + ((typeof showEmpty === 'function') ? showEmpty({
-      illustration: 'order',
-      title: hasFilters ? 'Καμία παραγγελία με αυτά τα φίλτρα' : 'Καμία διεθνής παραγγελία',
-      description: hasFilters
-        ? `Ενεργά: ${active.join(' · ')}. Από ${INTL_ORDERS.data.length} συνολικά.`
-        : 'Μόλις καταχωρηθεί η πρώτη παραγγελία, θα εμφανιστεί εδώ.',
-      action: hasFilters
-        ? { label: 'Καθαρισμός φίλτρων', onClick: '_intlClearFilters()' }
-        : { label: '+ Νέα παραγγελία', onClick: 'openIntlCreate()' },
-    }) : `<div style="text-align:center;padding:32px;color:var(--text-mid)">Καμία παραγγελία με αυτά τα φίλτρα</div>`);
-    return;
-  }
-  const sortedRecs = _intlSortRecords(records);
-  _oiVS.sortedRecs = sortedRecs;
-  _oiVS.lastStart = -1;
-  _oiVS.lastEnd = -1;
-
-  // OI-6: with results SHOWING, active filters were invisible — the page could
-  // land on «0 orders» (or 21 of 124) with nothing saying why. Slim strip
-  // above the table names them and offers the existing clear action.
-  const filterStrip = activeF.length ? `
-    <div class="oi-strip">
-      <span style="font-weight:600">Φίλτρα:</span> ${activeF.join(' · ')}
-      <button type="button" class="oi-strip-clear" onclick="_intlClearFilters()">Καθαρισμός</button>
-    </div>` : '';
-  const warnStrips = _oiLoadWarns.map(w => `<div class="oi-strip-warn">⚠ ${escapeHtml(w)}</div>`).join('');
-  // Table shell (head/colgroup/spacers/legend/count) is shared — step 2b-b.
-  wrap.innerHTML = warnStrips + filterStrip + OrdersList.tableShell({
-    colDefs: _intlColDefs, sortCol: _intlSortCol, sortDir: _intlSortDir, sortToggle: '_intlSortToggle',
-    ids: { scroller: 'oiVScroll', top: 'oiTopSpacer', bottom: 'oiBottomSpacer' }, rowH: _OI_ROW_H,
-    total: sortedRecs.length, legend: _OI_LEGEND, legendClass: 'oi-legend', footClass: 'oi-foot',
-  });
-
-  const scroller = document.getElementById('oiVScroll');
-  scroller.addEventListener('scroll', _oiOnScroll, { passive: true });
-  _oiVirtualPaint();
-}
-
-// ─── Filters ────────────────────────────────────
-function intlSearch(q) { _intlFilters._q = q.toLowerCase().trim(); _oiPage = 1; _applyIntlFilters(); }
-function intlFilter(k,v) { if(!v) delete _intlFilters[k]; else _intlFilters[k]=v; _oiPage = 1; _applyIntlFilters(); }
-function intlPeriodChange(v) { _intlPeriod = v; _oiVS.lastStart = -1; _oiVS.lastEnd = -1; renderOrdersIntl(); }
-
-/** Καθαρίζει κάθε φίλτρο της λίστας και επαναφέρει το χρονικό εύρος. OI-4. */
-function _intlClearFilters() {
-  Object.keys(_intlFilters).forEach(k => delete _intlFilters[k]);
-  _oiPage = 1;
-  // Widening the period needs a REFETCH, not a re-filter: _applyIntlFilters()
-  // only narrows INTL_ORDERS.data, which was fetched for the old window. And a
-  // full re-render rebuilds the toolbar, so every <select> returns to its
-  // default — the first version poked .entity-toolbar-v2 selects that are not
-  // in that container, so the dropdowns kept showing filters no longer applied.
-  // Both caught by the live check on 5/8.
-  intlPeriodChange('all');
-}
-
-// Spec in core/orders-list.js (filterSpecs.intl) — shared with the unit spec;
-// only the two helpers this module owns are injected.
-const _OI_FILTER_SPEC = OrdersList.filterSpecs.intl({ clientName: _clientName, cleanSummary: _cleanSummary });
-function _applyIntlFilters() {
-  const recs = OrdersList.applyFilters(INTL_ORDERS.data, _intlFilters, _OI_FILTER_SPEC);
-  INTL_ORDERS.filtered = recs;
-  _renderIntlTable(recs);
-  const n = OrdersList.countLabel(recs.length);
-  document.getElementById('intlCount').textContent = n;
-  document.getElementById('intlSub').textContent   = `${n} · ${_oiPeriodLabel()}`;
-
-  // The week the filter is actually querying. This is the figure that silently
-  // pulled the wrong week before Wave 1 unified it on isoWeekNumber(): the
-  // header said one week and the query used another, with nothing on screen to
-  // show the mismatch. Reported so the audit keeps watching it.
-  if (typeof reportPageMetrics === 'function') reportPageMetrics('orders_intl', {
-    weekNumberDefault: typeof currentWeekNumber === 'function' ? currentWeekNumber() : -1,
-    weekFilter: _intlFilters['_week'] ? Number(_intlFilters['_week']) : -1,
-    total: INTL_ORDERS.data.length,
-    shown: recs.length,
-  });
 }
 
 // ─── Detail Panel (card, Figma 204:1395 · pattern w2-location-card 230:821) ──
@@ -2184,43 +1708,6 @@ async function submitIntlOrder(recId) {
   }
 }
 
-// ─── Inline toggle ───────────────────────────────
-
-// ─── Status Change ─────────────────────────────
-async function _intlChangeStatus(recId, newStatus) {
-  try {
-    const res = await atSafePatch(TABLES.ORDERS, recId, { 'Status': newStatus });
-    if (res?.conflict) { toast('Η εγγραφή άλλαξε από άλλον χρήστη — κάνε Ανανέωση','warn'); return; }
-    // Central sync — propagates status to partner assignments + downstream
-    if (typeof syncOrderDownstream === 'function') {
-      syncOrderDownstream(recId, { source: 'intl', changedFields: ['Status'], skipVS: true, skipGRP: true, skipRamp: true })
-        .catch(e => console.warn('[intl status sync]', e));
-    }
-    const rec = INTL_ORDERS.data.find(r => r.id === recId);
-    if (rec) rec.fields['Status'] = newStatus;
-    _intlRepaintOne(rec);
-    selectIntlOrder(recId);
-    toast(`Κατάσταση → ${(_OI_STATUS[newStatus] || {}).gr || newStatus} ✓`);
-  } catch(e) { reportError('Σφάλμα αλλαγής status', e); }
-}
-
-// ─── Invoice Block — check PE sheets ─────────
-async function _checkPalletSheets(recId) {
-  const rec = INTL_ORDERS.data.find(r => r.id === recId);
-  if (!rec) return true;
-  const f = rec.fields;
-  if (!f['Pallet Exchange']) return true; // no PE, allow invoice
-  if (!f['Pallet Sheet 1 Uploaded']) {
-    toast('Λείπει το Δελτίο 1 — καταχώρησέ το πριν την τιμολόγηση', 'danger');
-    return false;
-  }
-  if (f['Veroia Switch'] && !f['Pallet Sheet 2 Uploaded']) {
-    toast('Λείπει το Δελτίο 2 (cross-dock) — καταχώρησέ το πριν την τιμολόγηση', 'danger');
-    return false;
-  }
-  return true;
-}
-
 // ─── Pallet Sheet Upload ───────────────
 // SW-2: this module used to carry a SECOND openPalletUpload/closePalletUpload
 // pair (an iframe overlay to the petras-assign standalone). Both were dead:
@@ -2929,97 +2416,6 @@ async function _scanOpen(matched, data) {
   if (data._scanFile) window._scanPendingDoc = { file: data._scanFile, source: 'scan' };
 }
 
-function _intlExportCSV() {
-  const recs = INTL_ORDERS.filtered;
-  if (!recs.length) { toast('Καμία παραγγελία για εξαγωγή — η λίστα είναι κενή', 'error'); return; }
-  const rows = [['Order No','Week','Direction','Client','Loading','Delivery','Load Date','Del Date','Pallets','Goods','Status','Invoiced','Price']];
-  recs.forEach(r => { const f = r.fields; rows.push([
-    f['Order No']||'', f['Week Number']||'', f['Direction']||'', _clientName(f), // 'Order Number' was the dead Airtable label — the column exported empty (7/9)
-    _cleanSummary(f['Loading Summary']), _cleanSummary(f['Delivery Summary']),
-    f['Loading DateTime']||'', f['Delivery DateTime']||'', f['Total Pallets']||0,
-    f['Goods']||'', f['Status']||'Pending', f['Invoiced']?'Yes':'No', f['Price']||0,
-  ]); });
-  OrdersList.csvDownload(rows, `orders_intl_${localToday()}.csv`);
-}
-
-// Print-friendly view of the currently filtered orders.
-// Opens a new tab with a clean A4 layout — user can save as PDF via browser print dialog.
-function _intlPrint() {
-  const recs = INTL_ORDERS.filtered || [];
-  if (!recs.length) { toast('Καμία παραγγελία για εκτύπωση — η λίστα είναι κενή', 'error'); return; }
-  const today = localToday();
-  const rowsHTML = recs.map(r => {
-    const f = r.fields;
-    const dirCls = (f['Direction']||'').toLowerCase() === 'export' ? 'dir-exp' : 'dir-imp';
-    const status = f['Status'] || 'Pending';
-    const stCls = ['Delivered','Invoiced'].includes(status) ? 'st-ok'
-                : status === 'In Transit' ? 'st-mid'
-                : status === 'Cancelled' ? 'st-bad' : 'st-pending';
-    const pal = _stopsTotalPallets(r.id) || f['Total Pallets'];
-    return `<tr>
-      <td>${escapeHtml(String(f['Reference'] || '—'))}</td>
-      <td>${f['Week Number']||'—'}</td>
-      <td><span class="dir ${dirCls}">${escapeHtml(_OI_DIR_W[f['Direction']] || f['Direction'] || '—')}</span></td>
-      <td>${escapeHtml(_clientName(f)||'')}</td>
-      <td>${escapeHtml(_cleanSummary(f['Loading Summary']))}</td>
-      <td>${escapeHtml(_cleanSummary(f['Delivery Summary']))}</td>
-      <td>${(f['Loading DateTime']||'').substring(0,10) || '—'}</td>
-      <td>${(f['Delivery DateTime']||'').substring(0,10) || '—'}</td>
-      <td class="r">${pal ? escapeHtml(String(pal)) : '—'}</td>
-      <td><span class="st ${stCls}">${escapeHtml((_OI_STATUS[status] || {}).gr || status)}</span></td>
-      <td class="r">${_oiMoney(f['Price'])}</td>
-    </tr>`;
-  }).join('');
-  // The popup loads no stylesheet, so var(--x) inside it resolved to nothing
-  // (the old h1 silently lost its navy). Copying the live token values in keeps
-  // the print on the same palette without a single hex in this file.
-  const _cs = getComputedStyle(document.documentElement);
-  const rootCss = ':root{' + ['--surface-dark','--surface-sunken','--text','--text-mid','--text-on-dark','--border','--ok','--warn','--warn-bg','--warn-border','--danger']
-    .map(t => `${t}:${_cs.getPropertyValue(t).trim()}`).join(';') + '}';
-  const html = `<!DOCTYPE html><html lang="el"><head>
-    <meta charset="utf-8">
-    <title>Διεθνείς Παραγγελίες — ${today}</title>
-    <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;700;800&family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet">
-    <style>
-      ${rootCss}
-      *{box-sizing:border-box;margin:0;padding:0}
-      body{font-family:'DM Sans',sans-serif;color:var(--text);padding:16px;font-size:11px;font-variant-numeric:tabular-nums}
-      h1{font-family:'Syne',sans-serif;font-size:18px;color:var(--surface-dark);margin-bottom:4px}
-      .sub{color:var(--text-mid);font-size:11px;margin-bottom:16px}
-      table{width:100%;border-collapse:collapse;font-size:11px}
-      thead th{background:var(--surface-dark);color:var(--text-on-dark);padding:8px 4px;text-align:left;font-weight:700;text-transform:uppercase;font-size:11px;letter-spacing:.4px}
-      tbody td{padding:4px;border-bottom:1px solid var(--border)}
-      .r{text-align:right}
-      .dir,.st{padding:0 4px;border-radius:6px;font-size:11px;font-weight:700;border:1px solid var(--border)}
-      .dir-exp{color:var(--text)}
-      .dir-imp{background:var(--warn-bg);border-color:var(--warn-border);color:var(--warn)}
-      .st-ok{color:var(--ok);border-color:var(--ok)}
-      .st-mid{color:var(--surface-dark);border-color:var(--surface-dark)}
-      .st-bad{color:var(--danger);border-color:var(--danger)}
-      .st-pending{background:var(--surface-sunken);color:var(--text-mid)}
-      .footer{margin-top:16px;font-size:11px;color:var(--text-mid);display:flex;justify-content:space-between}
-      @media print { body { padding: 0 } @page { size: A4 landscape; margin: 1cm } }
-    </style>
-  </head><body>
-    <h1>Διεθνείς Παραγγελίες</h1>
-    <div class="sub">${recs.length} παραγγελίες · ${today} · Petras Group TMS</div>
-    <table>
-      <thead><tr>
-        <th>Αναφορά</th><th>Εβδ.</th><th>Κατεύθ.</th><th>Πελάτης</th>
-        <th>Φόρτωση</th><th>Παράδοση</th><th>Ημ. φόρτωσης</th><th>Ημ. παράδοσης</th>
-        <th class="r">Παλ.</th><th>Κατάσταση</th><th class="r">Τιμή €</th>
-      </tr></thead>
-      <tbody>${rowsHTML}</tbody>
-    </table>
-    <div class="footer">
-      <span>Εκτυπώθηκε ${new Date().toLocaleString('el-GR')}</span>
-      <span>Petras Group · Cold Chain Logistics</span>
-    </div>
-    <script>window.addEventListener('load',()=>setTimeout(()=>window.print(),300));<\/script>
-  </body></html>`;
-  OrdersList.printOpen(html);
-}
-
 // Owner 28/9: orders have ONLY «Διαγραφή» — the soft «Ακύρωση» (Status
 // 'Cancelled') was removed here, in orders_natl and on the pre-order. A
 // cancelled row stayed on Weekly/Daily as a live order (order 394), and the
@@ -3392,7 +2788,6 @@ window.cleanupOrphanGL = cleanupOrphanGL;
 window.cleanupOrphans = cleanupOrphans;
 window.renderOrdersIntl = renderOrdersIntl;
 window.loadOrdersIntlData = loadOrdersIntlData;
-window._intlClearFilters = _intlClearFilters;   // OI-4 — πρέπει να είναι ΜΕΣΑ στο IIFE
 window.openIntlScan = openIntlScan;
 window.openIntlCreate = openIntlCreate;
 window.openIntlEdit = openIntlEdit;
@@ -3403,13 +2798,6 @@ window.selectIntlOrder = selectIntlOrder;
 window._oiCloseCard = _oiCloseCard;
 window.openIntlReadOnlyCard = openIntlReadOnlyCard;
 window._oiBalanceUpdate = _oiBalanceUpdate;
-window._intlSortToggle = _intlSortToggle;
-window._applyIntlFilters = _applyIntlFilters;
-window.intlSearch = intlSearch;
-window.intlFilter = intlFilter;
-window.intlPeriodChange = intlPeriodChange;
-window._intlExportCSV = _intlExportCSV;
-window._intlPrint = _intlPrint;
 window.submitIntlOrder = submitIntlOrder;
 window._addStop = _addStop;
 window._removeStop = _removeStop;
@@ -3434,10 +2822,4 @@ window._pickLinked = fhPickLinked;
 // followed by no NAT_LOADS request at all). Only the order form, which calls
 // it directly, ever synced.
 window._syncVeroiaSwitch = _syncVeroiaSwitch;
-// _oiPage is mutated from onclick (++/--) so expose as getter/setter
-Object.defineProperty(window, '_oiPage', {
-  get: function() { return _oiPage; },
-  set: function(v) { _oiPage = v; },
-  configurable: true
-});
 })();

@@ -157,8 +157,8 @@ const OrdersCatalog = (() => {
     }
     if (F.dir) rows = rows.filter(r => r.f['Direction'] === F.dir);
     if (F.status) rows = rows.filter(r => r.status === F.status);
-    // Brand exists on international orders only (core/orders-list.js
-    // filterSpecs.natl has no Brand): picking a brand narrows to international.
+    // Brand exists on international orders only (the national list never had
+    // a Brand filter): picking a brand narrows to international.
     if (F.brand) rows = rows.filter(r => r.type === 'intl' && r.f['Brand'] === F.brand);
     if (F.week) rows = rows.filter(r => r.week === F.week);
     if (F.chip === 'pa') rows = rows.filter(r => r.assign.key === 'pa' && !r.pre);
