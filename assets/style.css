@@ -7425,63 +7425,20 @@ button.btn-icon:focus-visible { outline:2px solid var(--accent); outline-offset:
 .wk3-segtip span{display:block;color:var(--text-dim)}
 
 /* ═══════════════════════════════════════════════════════════════
-   SCAN REVIEW + DOC VIEWER (scan round 3, 27/9/2026)
-   core/scan-review.js + core/doc-viewer.js — the order form opened from a
-   v2-engine scan, laid out next to the original document. Reuses the plain
-   .scan-conf-* tint (already defined above) so a field looks the same whether
-   it is shown alone (v1's confidence tint) or inside this side-by-side panel.
+   DOC VIEWER (scan round 3, 27/9/2026)
+   core/doc-viewer.js — renders the original scanned/stored document (the
+   round-3 side-by-side review panel that used to sit next to the order form
+   was removed 28/9/2026, owner decision: keep the plain form, give access to
+   the official document instead — see docs/scan/04). This viewer is still
+   used by the paperclip badge's viewer modal (core/order-docs.js). The
+   highlight-a-quote machinery (text-layer, caption bar, .doc-viewer-hl) only
+   ever served the removed review panel and was deleted with it 28/9/2026.
 ═══════════════════════════════════════════════════════════════ */
-.scan-review-layout { display: flex; flex-direction: column; gap: 12px; }
-.scan-review-header {
-  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
-  font-size: var(--text-sm); color: var(--text-mid);
-}
-.scan-review-header .scan-review-model { font-weight: 600; color: var(--text); }
-.scan-review-count { font-size: var(--text-xs); color: var(--text-dim); margin-left: auto; }
-.scan-review-warnings {
-  background: var(--warning-bg); border: 1px solid var(--warning); border-radius: var(--radius);
-  padding: 8px 12px; font-size: var(--text-sm); color: var(--warning); line-height: 1.5;
-}
-
-.scan-review-cols { display: flex; gap: 20px; align-items: flex-start; }
-/* Doc pane scrolls on its own (fixed height) — the form pane never does: it
-   already relies on the surrounding .modal being the only scroll context, or
-   the client/location autocomplete dropdowns get clipped by a second overflow
-   context (see the .modal-footer comment above on the same trap). */
-.scan-review-doc {
-  flex: 0 0 44%;
-  max-height: 70vh;
-  overflow-y: auto;
-  overflow-x: hidden;
-  background: var(--surface-sunken);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-}
-.scan-review-form { flex: 1 1 auto; min-width: 0; }
-
-@media (max-width: 1100px) {
-  .scan-review-cols { flex-direction: column; }
-  .scan-review-doc { flex-basis: auto; width: 100%; max-height: 40vh; }
-}
-
-.scan-review-badge { font-size: 11px; font-weight: 600; margin-top: 2px; }
-.scan-review-badge-high { color: var(--success); }
-.scan-review-badge-med  { color: var(--warning); }
-.scan-review-badge-low  { color: var(--danger); }
-
 .doc-viewer { position: relative; padding: 8px; }
 .doc-viewer-page { position: relative; margin: 0 auto 10px; box-shadow: 0 1px 4px rgba(0,0,0,0.15); }
 .doc-viewer-page canvas { display: block; }
-.doc-viewer-textlayer { position: absolute; left: 0; top: 0; right: 0; bottom: 0; overflow: hidden; line-height: 1; }
-.doc-viewer-textlayer span { position: absolute; white-space: pre; transform-origin: 0 0; color: transparent; }
-.doc-viewer-textlayer span.doc-viewer-hl { background: rgba(2,132,199,0.35); border-radius: 2px; }
 .doc-viewer-image { padding: 8px; text-align: center; }
 .doc-viewer-image img { max-width: 100%; height: auto; border-radius: var(--radius); }
-.doc-viewer-caption {
-  margin: 0 8px 8px; padding: 8px 10px; background: var(--bg); border: 1px solid var(--border);
-  border-radius: var(--radius); font-size: var(--text-sm); color: var(--text-mid); font-style: italic;
-}
 .doc-viewer-text { margin: 0; padding: 12px; font: 13px/1.5 'DM Sans', monospace; white-space: pre-wrap; word-break: break-word; color: var(--text); }
-.doc-viewer-text .doc-viewer-hl { background: rgba(2,132,199,0.25); border-radius: 2px; }
 .doc-viewer-unsupported { padding: 24px; text-align: center; color: var(--text-mid); font-size: var(--text-sm); }
 .doc-viewer-unsupported .btn { margin-top: 12px; }

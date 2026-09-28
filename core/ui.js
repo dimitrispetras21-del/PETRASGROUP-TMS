@@ -41,6 +41,14 @@ function closeModal() {
   document.getElementById('modalOverlay').classList.remove('open');
   _modalBusy = false;
   if (_modalPrevFocus) { try { _modalPrevFocus.focus(); } catch(_) {} _modalPrevFocus = null; }
+  // A scan's original file waits here for upload after save (orders_intl.js
+  // _scanOpen, orders_natl.js _natlScanOpenFormV2 — core/order-docs.js).
+  // Every close path funnels through here, so this is the one place that can
+  // catch "closed/cancelled without saving" — a successful save already
+  // consumed and cleared it (OrderDocs.handleOrderSaved/handleNatlOrderSaved)
+  // before this runs, so this is a no-op then. Without it, a cancelled scan's
+  // file would sit on window and attach itself to the NEXT hand-typed order.
+  if (window._scanPendingDoc) delete window._scanPendingDoc;
 }
 
 /**

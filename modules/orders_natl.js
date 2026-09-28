@@ -2542,48 +2542,13 @@ async function _natlScanOpenFormV2(r) {
     if (s.date) { const el = document.getElementById('simd' + uid); if (el && !el.value) el.value = s.date; }
   });
 
-  if (typeof ScanReview !== 'undefined' && data._scanFile) _natlAttachReview(data, matched);
-}
-
-// Confidence a location match deserves, mirroring _sv2ToV1's own matchConf
-// (core/scan-engine-v2.js) — reading its pre-computed score, not re-scoring.
-function _natlMatchConf(m) { return (m && m.id) ? Math.min(1, (m.score || 0) + 0.2) : 0; }
-
-function _natlAttachReview(data, matched) {
-  const fieldMeta = {};
-  const add = (id, confidence, quote, label) => {
-    if (document.getElementById(id)) fieldMeta[id] = { confidence: confidence || 0, quote: quote || '', label };
-  };
-  const fc = data.field_confidence || {};
-  const vf = (data._v2 && data._v2.fields) || {};
-  const q  = k => (vf[k] && vf[k].q) || '';
-  const qc = k => (vf[k] && vf[k].c) || 0;
-
-  add('ls_nclient', fc.client_name,     q('client_name'),    'Πελάτης');
-  add('nf_Goods',   qc('goods'),        q('goods'),          'Εμπόρευμα');
-  add('nf_Temp',    fc.temperature_c,   q('temperature_c'),  'Θερμοκρασία');
-  add('nf_Price',   qc('price'),        q('price'),          'Τιμή');
-
-  const pickup = matched.pickup;
-  if (pickup) {
-    add('ls_npickup',  Math.min(pickup._c || 0, _natlMatchConf(pickup._match)), pickup._q, 'Σημείο φόρτωσης');
-    add('nf_LoadDate', pickup._c, pickup._q, 'Ημ. φόρτωσης');
-  }
-  (matched.deliveries || []).forEach((s, i) => {
-    const uid = _simRows[i];
-    if (uid == null) return;
-    add(`ls_nsl${uid}`, Math.min(s._c || 0, _natlMatchConf(s._match)), s._q, `Τοποθεσία παράδοσης ${i + 1}`);
-    add(`simp${uid}`,   s._c, s._q, `Παλέτες παράδοσης ${i + 1}`);
-    add(`simd${uid}`,   s._c, s._q, `Ημερομηνία παράδοσης ${i + 1}`);
-  });
-
-  ScanReview.attach({
-    formRoot: document.getElementById('modalBody'),
-    file: data._scanFile,
-    fieldMeta,
-    modelLabel: data._modelLabel,
-    warnings: (data._v2 && data._v2.warnings) || [],
-  });
+  // Owner 28/9: the side-by-side review UI (round 3) is gone — the scan opens
+  // the plain form. National orders have no document-storage path yet
+  // (order_documents.order_id is an FK to `orders`, not `national_orders` —
+  // see core/order-docs.js) — the file is still tagged so submitNatlOrder's
+  // existing handleNatlOrderSaved() can tell the user so instead of silently
+  // dropping it, exactly as the round-3 doc-storage handoff intended.
+  if (data._scanFile) window._scanPendingDoc = { file: data._scanFile, source: 'scan' };
 }
 
 function _natlPrefillFromScan(fields) {

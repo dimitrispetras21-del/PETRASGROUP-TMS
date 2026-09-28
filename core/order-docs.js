@@ -362,8 +362,16 @@ function attachToOrder(orderId) {
     try {
       await uploadDoc(orderId, file, 'upload');
       toast('Το έγγραφο αποθηκεύτηκε ✓', 'success');
-      // Refresh the open detail card, if this order's is the one showing.
-      if (typeof INTL_ORDERS !== 'undefined' && INTL_ORDERS.selectedId === orderId && typeof selectIntlOrder === 'function') {
+      // uploadDoc() already invalidated the badge index, but sectionHtml's own
+      // lazy preload (fire-and-forget) would not repaint anything once it
+      // lands — the card would keep showing «Κανένα έγγραφο» until some
+      // unrelated action re-rendered it. Force the refetch NOW, then repaint
+      // the row + card through the one hook orders_intl.js already exposes
+      // for exactly this (fresh data in, same render) — no full page reload.
+      await preloadIndex(true);
+      if (typeof window._intlRefreshOrder === 'function') {
+        await window._intlRefreshOrder(orderId);
+      } else if (typeof INTL_ORDERS !== 'undefined' && INTL_ORDERS.selectedId === orderId && typeof selectIntlOrder === 'function') {
         selectIntlOrder(orderId);
       }
     } catch (e) {

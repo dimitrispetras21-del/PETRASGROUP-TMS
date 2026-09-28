@@ -2910,52 +2910,13 @@ async function _scanOpen(matched, data) {
   // Pass scan-derived stops via 4th arg so _openModal can render them
   await _openModal(null, f, matched.clientLabel, { loadStops, unloadStops });
 
-  // Side-by-side review (round 3): v2 only — v1 never kept the original file,
-  // so core/scan-review.js has nothing to show it next to.
-  if (data._engine === 'v2' && data._scanFile && typeof ScanReview !== 'undefined') {
-    _scanAttachReview(data, ls, ds);
-  }
-}
-
-// Confidence a location match deserves, mirroring _sv2ToV1's own matchConf
-// (core/scan-engine-v2.js) — reading its pre-computed score, not re-scoring.
-function _scanMatchConf(m) { return (m && m.id) ? Math.min(1, (m.score || 0) + 0.2) : 0; }
-
-function _scanAttachReview(data, ls, ds) {
-  const fieldMeta = {};
-  const add = (id, confidence, quote, label) => {
-    if (document.getElementById(id)) fieldMeta[id] = { confidence: confidence || 0, quote: quote || '', label };
-  };
-  const fc = data.field_confidence || {};
-  const vf = data._v2 && data._v2.fields || {};
-  const q  = k => (vf[k] && vf[k].q) || '';
-  const qc = k => (vf[k] && vf[k].c) || 0;
-  add('ls_client',   fc.client_name,    q('client_name'),    'Πελάτης');
-  add('f_Reference', fc.reference,      q('reference'),      'Reference');
-  add('f_Goods',     qc('goods'),       q('goods'),          'Εμπόρευμα');
-  add('f_GrossWeight', qc('gross_weight_kg'), q('gross_weight_kg'), 'Μικτό βάρος');
-  add('f_Temp',      fc.temperature_c,  q('temperature_c'),  'Θερμοκρασία');
-  add('f_PalletType', fc.pallet_type,   q('pallet_type'),    'Τύπος παλέτας');
-  add('f_Price',     qc('price'),       q('price'),          'Τιμή');
-  ls.forEach((s, i) => {
-    const n = i + 1;
-    add(`ls_l_${n}`,  Math.min(s._c || 0, _scanMatchConf(s._match)), s._q, `Τοποθεσία φόρτωσης ${n}`);
-    add(`pal_l_${n}`, s._c, s._q, `Παλέτες φόρτωσης ${n}`);
-    add(`dt_l_${n}`,  s._c, s._q, `Ημερομηνία φόρτωσης ${n}`);
-  });
-  ds.forEach((s, i) => {
-    const n = i + 1;
-    add(`ls_u_${n}`,  Math.min(s._c || 0, _scanMatchConf(s._match)), s._q, `Τοποθεσία παράδοσης ${n}`);
-    add(`pal_u_${n}`, s._c, s._q, `Παλέτες παράδοσης ${n}`);
-    add(`dt_u_${n}`,  s._c, s._q, `Ημερομηνία παράδοσης ${n}`);
-  });
-  ScanReview.attach({
-    formRoot: document.getElementById('modalBody'),
-    file: data._scanFile,
-    fieldMeta,
-    modelLabel: data._modelLabel,
-    warnings: (data._v2 && data._v2.warnings) || [],
-  });
+  // Owner 28/9: the side-by-side review UI (round 3) is gone — the scan opens
+  // the plain form, same as before round 3. Only the ORIGINAL file survives,
+  // so it can still be uploaded after save (core/order-docs.js,
+  // handleOrderSaved). Cleared in closeModal() if the form is closed/
+  // cancelled without saving, so a stale scan's file never attaches to a
+  // later, unrelated (e.g. hand-typed) order.
+  if (data._scanFile) window._scanPendingDoc = { file: data._scanFile, source: 'scan' };
 }
 
 function _intlExportCSV() {
