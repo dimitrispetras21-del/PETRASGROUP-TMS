@@ -549,8 +549,8 @@ var PERMISSIONS = {
     // DELIBERATELY ABSENT (denied by the no-blanket rule): fuel (cost table),
     // and every P&L/cost table to come (trip_costs, driver_ledger). Do NOT add
     // `fuel` here, dispatchers seeing fuel spend is exactly the R-04 leak.
-    orders: ["GET", "POST", "PATCH"],
-    national_orders: ["GET", "POST", "PATCH"],
+    orders: ["GET", "POST", "PATCH", "DELETE"],
+    national_orders: ["GET", "POST", "PATCH", "DELETE"],
     // groupage_lines: NO DELETE, ever (the never-delete rule, gotcha #5 / spec §6).
     // The DB also refuses it (no service_role DELETE grant + ON DELETE RESTRICT);
     // this keeps the app layer honest too. Status flips Assigned<->Unassigned.
