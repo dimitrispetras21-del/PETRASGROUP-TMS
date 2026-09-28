@@ -421,7 +421,7 @@ const _WI2_CSS=`
 .wi2-gapbox.urg{border-color:var(--danger-strong);color:var(--danger-strong)}
 .wi2-gapbox small{font:500 11px 'DM Sans',sans-serif;letter-spacing:0}
 .wi2-void{flex:1;min-height:24px;border-radius:var(--radius);background:var(--surface-page)}
-.wk3.wi2 .wk3-leg>.wi2-gapbox,.wk3.wi2 .wk3-leg>.wi2-void,.wk3.wi2 .wk3-leg>.pre-span{grid-column:1/-1}
+.wk3.wi2 .wk3-leg>.wi2-gapbox,.wk3.wi2 .wk3-leg>.wi2-void{grid-column:1/-1}
 .wi2-void.navy{background:var(--surface-dark)}
 .wi2-dash{width:100%;text-align:center;color:var(--text-dim);font-size:12px;cursor:help}
 .wk3.wi2 .wk3-feed{background:transparent;padding:0 4px;display:flex;flex-direction:column;justify-content:center;align-items:stretch;gap:1px;height:auto;min-height:24px;white-space:normal;align-self:stretch;font-size:11px}
@@ -1022,7 +1022,7 @@ function _wiPaint(){
     <!-- KPI band (frame 319:906): replaces the Command Center — same numbers
          (gaps, unmatched, free fleet), once, every fraction with its denominator. -->
     <div class="wi2-band">
-      ${preorderCounterHtml(preFields,"_wi2Quick('pre');preorderJump('#wi-rows .pre-span')",WINTL.quick==='pre')}
+      ${preorderCounterHtml(preFields,"_wi2Quick('pre');preorderJump('#wi-rows .pre-leg')",WINTL.quick==='pre')}
       <!-- ΘΟΡΥΒΟΣ ΚΑΤΩ, ΓΡΑΜΜΕΣ ΠΑΝΩ (owner 3/9): «θέλω απλά το badge με το 8 και
            το ΚΕΝΑ ΓΥΡΙΣΜΑΤΑ 8 επείγοντα». Η αναλυτική πρόταση, η φάση της
            εβδομάδας και ολόκληρο το «ΕΛΕΥΘΕΡΑ ΣΗΜΕΡΑ» έφυγαν — ο στόχος είναι
@@ -1290,7 +1290,12 @@ function _wiImpRowHTML(row,impNo){
   } else {
     // Β.3-3: import-without-vehicle is NOT the same red as export-without-
     // assignment — dashed border (non-color signal) + explicit prefix.
-    impPill=`<div class="wk3-pill unimp" title="Εισαγωγή χωρίς δικό όχημα — κλικ για ανάθεση"><span class="t">ΠΡΟΣ ΑΝΑΘΕΣΗ</span><small>εισαγωγή · χωρίς όχημα</small></div>`;
+    // Pre-order import (owner 28/9): the one-line «ΠΡΟΣ ΑΝΑΘΕΣΗ» of every other
+    // unassigned card — the two-line import variant made this row 1px taller
+    // than its neighbours (measured 26 vs 24px, rig 28/9).
+    impPill=isPre
+      ? `<div class="wk3-pill un" title="Pre-order εισαγωγής χωρίς όχημα — κλικ για ανάθεση"><span class="t">ΠΡΟΣ ΑΝΑΘΕΣΗ</span></div>`
+      : `<div class="wk3-pill unimp" title="Εισαγωγή χωρίς δικό όχημα — κλικ για ανάθεση"><span class="t">ΠΡΟΣ ΑΝΑΘΕΣΗ</span><small>εισαγωγή · χωρίς όχημα</small></div>`;
   }
 
   // Left (export) cell: own vehicle with no export = empty southbound leg.
@@ -1334,7 +1339,7 @@ function _wiImpRowHTML(row,impNo){
     :`<span class="wi2-dash" title="Χωρίς εθνικό σκέλος — δεν είναι Veroia Switch">—</span>`;
 
   return `<div id="wi-imp-${imp.id}" data-row-id="${row.id}"
-    class="wk3-row impr${!row.saved?' wi2-un':''}${stR.delivered&&!stR.late?' wk3-done':''}${isPre?' wi2-pre pre-'+preorderLevel(f):''}"
+    class="wk3-row impr${!row.saved?' wi2-un':''}${stR.delivered&&!stR.late?' wk3-done':''}"
     draggable="true"
     oncontextmenu="_wiImpCtx(event,${row.id})"
     ondragstart="event.stopPropagation();_wiImpDragStart(event,'${imp.id}')">
@@ -2474,7 +2479,7 @@ function _wiRowHTML(row,i){
     return _wi2Card({date:_wi2Date(imp.id,'Delivery DateTime',dIso,dIso?_wk3D(_wiFmt(dIso)):'—','','Εθνικό σκέλος: ημ. τελικής διανομής'), name:de2.name, sub:de2.sub, extra:_wk3MoreStops(f2['Delivery Summary']||'',f2._stopsD,'del')}); })()
     :`<span class="wi2-dash" title="Χωρίς εθνικό σκέλος">—</span>`;
 
-  const rowCls=['wk3-row',!row.saved?'wi2-un':'',urg?'wi2-rowurg':gapCell?'wi2-gap':'',stF.delivered&&!stF.late?'wk3-done':'',isPre?'wi2-pre pre-'+preorderLevel(pf):''].filter(Boolean).join(' ');
+  const rowCls=['wk3-row',!row.saved?'wi2-un':'',urg?'wi2-rowurg':gapCell?'wi2-gap':'',stF.delivered&&!stF.late?'wk3-done':''].filter(Boolean).join(' ');
   return `
   <div id="wi-row-${row.id}" data-row-id="${row.id}" class="${rowCls}">
     <div class="wk3-num">${isPre?'P':i+1}${isGroup?`<button class="wk3-grpb" title="Groupage ×${exps.length} — κλικ: μέλη ομάδας (βάση: το πρώτο-παραδιδόμενο)" onclick="event.stopPropagation();_wiToggleGroup(${row.id})">×${exps.length}</button>`:''}<span class="wi-sync" id="wi-sync-${row.id}"></span></div>
@@ -3941,25 +3946,26 @@ function _wiCtx(e,rowId){
   setTimeout(()=>document.addEventListener('click',_wiCtxClose,{once:true}),10);
 }
 
-// Pre-order leg (Figma 709:1097, owner 28/9 «καθόλου ωραία»): ONE dashed card
-// spanning the whole leg — export or import column, own row or inside a
-// truck's row — never the normal load→delivery pair, which printed the client
-// twice (no points: both ends fall back to the client), a «—» date and «0 p».
-// «PRE-ORDER · client» / «date · export · → country · notes» — no «k/n»:
-// loads created together are independent orders (owner 28/9). The
-// country is the unknown FOREIGN end: destination for an export, loading
-// country for an import (hence «από»). Dash colour = urgency (owner 27/9):
-// grey ≥4 days, amber 2–3, red ≤1 / past / no date.
+// Pre-order leg (owner 28/9 «να σουλουπωθεί»): a normal row with placeholders
+// — the SAME two half-cards and arrow as any order, so the column keeps its
+// rhythm. Left: small «PRE» chip + client / loading date chip (same date chip,
+// same click-to-change). Right: the unknown FOREIGN end — «→ Ιταλία (IT)» for
+// an export, «από Ολλανδία (NL)» for an import — / notes (ellipsis, full in
+// the title). Only the two cards are dashed; the dash + chip colour carry the
+// urgency (owner 27/9: grey ≥4 days, amber 2–3, red ≤1 / past / no date).
+// Never the load→delivery pair of a normal order: with no points both ends
+// fell back to the client (twice), a «—» date and «0 p» (order 394).
 function _wiPreLeg(rec,extra){
-  const f=rec.fields||{}, lvl=preorderLevel(f), imp=f['Direction']==='Import';
-  const notes=String(f['Notes']||'').trim();
-  const meta=[
-    f['Loading DateTime']?_wk3D(_wiFmt(f['Loading DateTime'])):'χωρίς ημ. φόρτωσης',
-    imp?'import':'export',
-    preorderCountryText(f),
-    notes.length>40?notes.slice(0,39)+'…':notes,
-  ].filter(Boolean).join(' · ');
-  return `<div class="wi2-card pre-card pre-span pre-${lvl}" data-oid="${escapeHtml(String(rec.id))}" title="${escapeHtml(preorderTip(f))}"><div class="wi2-name"><span class="pre-cw">PRE-ORDER · ${escapeHtml(_wiClientName(f)||'—')}</span></div><div class="wi2-meta"><span class="wi2-sub">${escapeHtml(meta)}</span>${extra?`<span class="wi2-right">${extra}</span>`:''}</div></div>`;
+  const f=rec.fields||{}, lvl=preorderLevel(f), tip=escapeHtml(preorderTip(f));
+  const iso=f['Loading DateTime']||'';
+  const left=_wi2Card({cls:'pre-card pre-'+lvl, title:tip,
+    date:_wi2Date(rec.id,'Loading DateTime',iso,iso?_wk3D(_wiFmt(iso)):'χωρίς ημ.','','Ημ. φόρτωσης pre-order'),
+    name:`<span class="pre-chip pre-${lvl}">PRE</span>${escapeHtml(_wiClientName(f)||'—')}`});
+  const right=_wi2Card({cls:'pre-card pre-'+lvl, title:tip,
+    name:escapeHtml(preorderCountryText(f)||'—'),
+    sub:escapeHtml(String(f['Notes']||'').trim()), right:extra||''});
+  // data-oid on the left card: the counter's jump target and the rig's handle.
+  return left.replace('<div class="wi2-card','<div data-oid="'+escapeHtml(String(rec.id))+'" class="wi2-card pre-leg')+'<span class="wi2-arrow">→</span>'+right;
 }
 
 // Pre-order menu (Figma 709:1097): header, conversion (blue), the small form,

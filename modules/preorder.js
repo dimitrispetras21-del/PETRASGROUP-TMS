@@ -274,9 +274,6 @@ function _preEnsureStyles() {
 .pre-count.pre-amber{border:1px solid var(--warn);color:var(--warn);background:var(--warn-bg)}
 .pre-count.pre-red{border:1px solid var(--danger);color:var(--surface-card);background:var(--danger)}
 .pre-count.on{outline:2px solid var(--surface-dark);outline-offset:2px}
-.wk3.wi2 #wi-rows .wk3-row.wi2-pre{border-style:dashed;border-color:var(--border-dark);border-left-width:3px}
-.wk3.wi2 #wi-rows .wk3-row.wi2-pre.pre-amber{border-color:var(--warn)}
-.wk3.wi2 #wi-rows .wk3-row.wi2-pre.pre-red{border-color:var(--danger);border-left:4px solid var(--danger);background:var(--danger-bg)}
 .do-t tr.do-pre td{color:var(--text-dim)}
 .do-t tr.do-pre td:first-child{box-shadow:inset 3px 0 0 var(--border-dark)}
 .do-t tr.do-pre.pre-amber td:first-child{box-shadow:inset 3px 0 0 var(--warn)}
@@ -301,9 +298,9 @@ function _preEnsureStyles() {
 .pre-card{border:1px dashed var(--border-dark)!important;background:var(--surface-card)!important}
 .pre-card.pre-amber{border-color:var(--warn)!important}
 .pre-card.pre-red{border-color:var(--danger)!important}
-.pre-card .pre-cw{font-weight:700;letter-spacing:.02em}
-.pre-card .pre-cm{color:var(--text-dim);font-size:11px}
-.pre-empty{border:1px dashed var(--border)!important;background:var(--surface-card)!important;color:var(--text-dim)}
+/* Inside a Weekly card the chip is a tile of the 9.5px family (variant A,
+   owner 28/9), not the 18px list pill — same line box as the date chip. */
+.wi2-card .pre-chip{height:12px;line-height:12px;padding:0 4px;font-size:9.5px;margin-right:4px;vertical-align:1px}
 .wi-ctx-h{padding:8px 12px 4px;font:700 10px 'DM Sans',sans-serif;letter-spacing:.06em;color:var(--text-mid)}
 .wi-ctx-i.pre-go{color:var(--accent-text)}
 .pre-pill{display:inline-flex;align-items:center;height:20px;padding:0 8px;border:1px dashed var(--border-dark);border-radius:var(--radius-full);font:700 10px 'DM Sans',sans-serif;color:var(--text-mid);background:var(--surface-card);white-space:nowrap}
