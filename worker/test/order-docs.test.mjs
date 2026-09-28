@@ -158,6 +158,37 @@ test('oversized declared Content-Length → 413, no R2 write', async () => {
   assert.equal(r2.calls.put.length, 0);
 });
 
+// Review 28/9 (P2): the cap must hold on the actual bytes, not the header.
+test('under-declared Content-Length (body longer than declared) → 413, no row', async () => {
+  const r2 = makeFakeR2();
+  const tok = await token('dispatcher');
+  const res = await worker.fetch(uploadReq({ auth: tok, contentLength: 5 }), envWith(r2), {});
+  assert.equal(res.status, 413);
+  assert.equal(docsTable.length, 0, 'no metadata row for a body that broke the declared size');
+});
+
+// Review 28/9 (P3): two concurrent uploads of the same file — the loser's
+// insert hits UNIQUE(order_id, sha256); it must answer with the existing row.
+test('concurrent duplicate upload: unique violation on insert → 200 with the winner\'s row, not a 500', async () => {
+  const r2 = makeFakeR2();
+  const tok = await token('dispatcher');
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async (url, init = {}) => {
+    const u = new URL(url);
+    if (u.pathname.endsWith('/order_documents') && (init.method || 'GET') === 'POST') {
+      const body = JSON.parse(init.body);
+      docsTable.push({ id: nextId++, deleted_at: null, ...body, legacy_id: 'recWINNER000000' });
+      return new Response(JSON.stringify({ code: '23505', message: 'duplicate key value violates unique constraint' }), { status: 409, headers: { 'content-type': 'application/json' } });
+    }
+    return realFetch(url, init);
+  };
+  const res = await worker.fetch(uploadReq({ auth: tok }), envWith(r2), {});
+  globalThis.fetch = realFetch;
+  assert.equal(res.status, 200);
+  assert.equal((await res.json()).id, 'recWINNER000000');
+  assert.equal(docsTable.length, 1);
+});
+
 test('missing Content-Length → 400, no R2 write', async () => {
   const r2 = makeFakeR2();
   const tok = await token('dispatcher');

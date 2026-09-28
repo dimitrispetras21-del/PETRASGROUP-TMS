@@ -4332,6 +4332,28 @@ function shapeOrderDocument(row) {
   };
 }
 __name(shapeOrderDocument, "shapeOrderDocument");
+// The 15 MB cap must hold on the BYTES, not on the client's Content-Length
+// claim (review 28/9): an under-declared header would otherwise stream any
+// size into R2. FixedLengthStream (Workers runtime) errors as soon as the body
+// is longer or shorter than declared, and gives R2 the known length it needs
+// for a streamed put. The TransformStream branch exists only for Node tests.
+function docsCapBody(body, size) {
+  if (typeof FixedLengthStream === "function") {
+    const { readable, writable } = new FixedLengthStream(size);
+    body.pipeTo(writable).catch(() => {});
+    return readable;
+  }
+  let seen = 0;
+  return body.pipeThrough(new TransformStream({
+    transform(chunk, ctl) {
+      seen += chunk.byteLength;
+      if (seen > size) ctl.error(new Error("body exceeds declared Content-Length"));
+      else ctl.enqueue(chunk);
+    },
+    flush(ctl) { if (seen !== size) ctl.error(new Error("body length differs from declared Content-Length")); }
+  }));
+}
+__name(docsCapBody, "docsCapBody");
 async function handleDocsUpload(request, url, origin, env, caller) {
   // Same width as the "who can touch an order" question elsewhere in this
   // file: create OR edit. Accountant only ever PATCHes orders (invoicing),
@@ -4401,7 +4423,7 @@ async function handleDocsUpload(request, url, origin, env, caller) {
     // straight into R2. Passing the browser's own sha256 as R2's checksum
     // option makes R2 itself reject a body that does not match it — the
     // integrity check happens without the Worker ever holding the whole file.
-    putResult = await env.ORDER_DOCS.put(r2Key, request.body, {
+    putResult = await env.ORDER_DOCS.put(r2Key, docsCapBody(request.body, size), {
       httpMetadata: { contentType: mime },
       sha256
     });
@@ -4409,6 +4431,9 @@ async function handleDocsUpload(request, url, origin, env, caller) {
     console.error("DOCS UPLOAD R2 put failed", r2Key, e.message);
     if (/checksum|sha-?256/i.test(e && e.message || "")) {
       return jsonError("Upload failed: content does not match the given sha256", 400, origin, env);
+    }
+    if (/length/i.test(e && e.message || "")) {
+      return jsonError(`Upload failed: body size does not match Content-Length (max ${MAX_DOC_BYTES} bytes)`, 413, origin, env);
     }
     return jsonError("Failed to store document", 502, origin, env);
   }
@@ -4429,6 +4454,14 @@ async function handleDocsUpload(request, url, origin, env, caller) {
   try {
     created = await dbInsert(env, "order_documents", row);
   } catch (e) {
+    // Two concurrent uploads of the same file both pass the idempotency check
+    // above; the second insert then hits UNIQUE(order_id, sha256). The row the
+    // caller wanted exists — answer with it instead of a scary 500 (review 28/9).
+    try {
+      const again = new URLSearchParams({ select: "*", order_id: `eq.${orderId}`, sha256: `eq.${sha256}`, deleted_at: "is.null", limit: "1" });
+      const { rows } = await dbSelectRaw(env, "order_documents", again);
+      if (rows.length) return jsonOk(shapeOrderDocument(rows[0]), origin, env, 200);
+    } catch (_) { /* fall through to the loud error below */ }
     // The object is ALREADY safely in R2 at this point — losing the metadata
     // row must never look like success (principle 1). There is no delete
     // route to clean up the orphaned object; B-55 (tms-auditor) is the net,
