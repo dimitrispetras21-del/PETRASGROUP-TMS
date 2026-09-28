@@ -308,6 +308,12 @@ async function runAccountant(browser) {
   await snap(page, '06-accountant');
   assert(!page._log.some(u => /^PNL /.test(u)), 'accountant: NO request to /costs/pnl');
   assert(realErrors(page).length === 0, 'accountant: no page/console errors: ' + JSON.stringify(realErrors(page)));
+  // Narrow laptop: the strip and table scroll inside their cards, the page never scrolls sideways.
+  await page.setViewportSize({ width: 1024, height: 900 });
+  await page.waitForTimeout(200);
+  const over = await page.evaluate(() => { const c = document.getElementById('content'); return c.scrollWidth - c.clientWidth; });
+  assert(over <= 1, 'at 1024px no horizontal page scroll (overflow ' + over + 'px)');
+  await page.screenshot({ path: shot('08-accountant-1024') });
   await page.context().close();
 }
 

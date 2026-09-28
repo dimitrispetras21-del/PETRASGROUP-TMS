@@ -413,7 +413,7 @@ const OrdersWeekView = (() => {
       const single = m.rows.filter(r => !r.guest && r.single).length;
       const foot = [`Διεθνή · ${m.rtFailed ? 'τα RT δεν φορτώθηκαν' : rtLabel}`, `${m.weekIntl.length} παραγγελίες`, single ? `${single} με ένα μόνο σκέλος` : ''].filter(Boolean).join(' · ');
       intlHtml = `<div class="owv-card"><table class="owv-t">
-        <colgroup><col style="width:108px"><col style="width:150px"><col><col><col style="width:150px"><col style="width:150px"></colgroup>
+        <colgroup><col style="width:96px"><col style="width:140px"><col><col><col style="width:130px"><col style="width:150px"></colgroup>
         <thead><tr><th>RT</th><th>Όχημα · Οδηγός</th><th>Εξαγωγή</th><th>Εισαγωγή</th><th class="num">Τζίρος RT</th><th>Τιμολόγηση</th></tr></thead>
         <tbody>${body.join('')}</tbody>
         <tfoot><tr><td colspan="4">${esc(foot)}</td><td class="num"><b class="owv-tot">${O.eurSym(tI.sum)}</b></td><td class="owv-dim">τιμολογ. ${esc(O.eurSym(tI.invSum))}</td></tr></tfoot>
@@ -592,7 +592,7 @@ const OrdersWeekView = (() => {
 .owv-wk:hover{background:var(--surface-sunken)}
 .owv-wk.on{background:var(--surface-sunken);box-shadow:inset 0 -3px 0 var(--surface-dark)}
 .owv-wk-r{font-size:12.5px;font-weight:600}
-.owv-wk-v{display:flex;gap:8px;align-items:baseline;font-size:12px;white-space:nowrap;overflow:hidden}
+.owv-wk-v{display:flex;flex-wrap:wrap;column-gap:8px;align-items:baseline;font-size:12px;white-space:nowrap}
 .owv-wk-v b{font-weight:600}
 .owv-st-ok{color:var(--ok)}.owv-st-warn{color:var(--warn)}.owv-st-dim{color:var(--text-dim)}
 .owv-kpi{display:flex;align-items:center;gap:var(--space-5);background:var(--bg-card);border:1px solid var(--border);border-radius:10px;padding:12px 16px;flex-wrap:wrap}
@@ -609,7 +609,10 @@ const OrdersWeekView = (() => {
 .owv-chip{font:500 12.5px 'DM Sans',sans-serif;padding:6px 12px;border-radius:6px;border:1px solid var(--border-error);background:var(--danger-bg);color:var(--danger);white-space:nowrap}
 .owv-chip b{margin-left:4px}
 button.owv-chip{cursor:pointer}
-.owv-card{background:var(--bg-card);border:1px solid var(--border);border-radius:10px;overflow:hidden}
+/* Below ~1300px the two leg columns would overlap their amounts: the table keeps
+   its width and scrolls inside its card, the page never scrolls sideways. */
+.owv-card{background:var(--bg-card);border:1px solid var(--border);border-radius:10px;overflow-x:auto}
+.owv-t{min-width:1000px}.owv-tn{min-width:860px}
 .owv-t{width:100%;border-collapse:collapse;table-layout:fixed;font-size:12.5px;color:var(--text)}
 .owv-t th{font-size:10.5px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--text-mid);text-align:left;padding:8px 10px;border-bottom:1px solid var(--border-mid)}
 .owv-t td{padding:7px 10px;border-bottom:1px solid var(--border);vertical-align:top}
@@ -648,7 +651,7 @@ button.owv-chip{cursor:pointer}
 .owv-tn td{vertical-align:middle}
 .owv-cl{overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
 .owv-sum{display:flex;justify-content:space-between;gap:var(--space-3);background:var(--bg-card);border:1px solid var(--border);border-radius:10px;padding:10px 16px;font-size:12.5px;color:var(--text)}
-@media (max-width: 900px){.owv-strip{overflow-x:auto}.owv-wk{min-width:120px}.owv-chips{margin-left:0}.owv-card{overflow-x:auto}.owv-t{min-width:860px}}
+@media (max-width: 900px){.owv-strip{overflow-x:auto}.owv-wk{min-width:120px}.owv-chips{margin-left:0}}
 @media print{.owv-strip{display:none}}`;
     document.head.appendChild(st);
   }
