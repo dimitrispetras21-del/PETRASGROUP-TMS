@@ -21,7 +21,7 @@ const OrdersHub = (() => {
   'use strict';
 
   const VIEWS = {};   // key → { label, order, visible(), render(ctx), counts? }
-  const H = { scope: 'all', view: '', token: 0, preset: null };
+  const H = { scope: 'all', view: '', token: 0, preset: null, pendingSelect: null };
 
   const _user = () => { try { return (JSON.parse(localStorage.getItem('tms_user') || '{}').username) || ''; } catch (_) { return ''; } };
   // Per-viewer convenience only (remembered tab/scope) — nothing depends on it.
@@ -141,6 +141,24 @@ const OrdersHub = (() => {
   }
   // Open the hub on a given scope/view (links from other pages).
   function open(scope, view) { preset({ scope, view }); navigate('orders'); }
+  // Open ONE order in its own catalog with its card (the «Άνοιγμα →» of the
+  // money views): the card and its actions belong to the type's own module.
+  function openOrder(type, id) {
+    H.pendingSelect = { type, id };
+    if (typeof currentPage !== 'undefined' && currentPage === 'orders' && document.getElementById('ordersBody')) {
+      H.scope = type; H.view = 'catalog'; _savePrefs();
+      document.getElementById('content').innerHTML = _headerHtml();
+      _renderBody().then(refreshBadges);
+      return;
+    }
+    open(type, 'catalog');
+  }
+  function _consumeSelect(type) {
+    const p = H.pendingSelect; H.pendingSelect = null;
+    if (!p || p.type !== type) return;
+    const fn = type === 'intl' ? window.selectIntlOrder : window.selectNatlOrder;
+    if (typeof fn === 'function') fn(p.id);
+  }
 
   // ── Counters ────────────────────────────────────────────────────────────
   // Tab counters follow the scope; the sidebar counter is the ROLE's queue,
@@ -182,8 +200,8 @@ const OrdersHub = (() => {
   register('catalog', {
     label: 'Κατάλογος', order: 1,
     render: async ctx => {
-      if (ctx.scope === 'intl') return renderOrdersIntlInto(ctx);
-      if (ctx.scope === 'natl') return renderOrdersNatlInto(ctx);
+      if (ctx.scope === 'intl') { await renderOrdersIntlInto(ctx); return _consumeSelect('intl'); }
+      if (ctx.scope === 'natl') { await renderOrdersNatlInto(ctx); return _consumeSelect('natl'); }
       return OrdersCatalog.render(ctx);
     },
   });
@@ -212,7 +230,7 @@ const OrdersHub = (() => {
     document.head.appendChild(st);
   }
 
-  return { register, preset, render, refresh, open, setScope, setView, refreshBadges, get scope() { return H.scope; }, get view() { return H.view; } };
+  return { register, preset, render, refresh, open, openOrder, setScope, setView, refreshBadges, get scope() { return H.scope; }, get view() { return H.view; } };
 })();
 
 function renderOrders() { return OrdersHub.render(); }
