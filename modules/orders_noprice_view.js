@@ -467,6 +467,10 @@ const OrdersNoPrice = (() => {
       // an unmapped label is dropped with a 200 (facade trap #1).
       const back = OrdersCommon.price(res && res.fields);
       if (!(back > 0)) throw Object.assign(new Error('ο διακομιστής δεν επέστρεψε την τιμή'), { _ours: true });
+      // The row leaves the list on success — so «a price came back» is not
+      // enough: it must be the price that was typed (a coercion or a trigger
+      // would otherwise show success for a different amount; review 28/9).
+      if (Math.abs(back - n) > 0.005) throw Object.assign(new Error(`γράφτηκε ${OrdersCommon.eur(back)} αντί για ${OrdersCommon.eur(n)}`), { _ours: true });
       rec.fields['Price'] = back;
       _sessionItems().push({ recordId: id, table: tableOfType(type), price: back, actor: _username(), at: new Date().toISOString() });
       OrdersData.invalidate();

@@ -105,9 +105,30 @@ const OrdersCommon = {
   // From the flat link fields both forms write (intl: Loading/Unloading
   // Location N, written from the stops by submitIntlOrder; natl: Pickup/Delivery
   // Location N). Needs the reference locations (preloadReferenceData).
+  // Location lookup of its own: the reference preload is ONE Promise.all over
+  // six tables, so a failure in any of them (trucks, say) leaves the locations
+  // empty and every place cell would print «—» with nothing saying why. The
+  // page calls ensureLocations() before a view renders; when it fails,
+  // locationsFailed makes the page SAY so (principle 1).
+  _locs: null,
+  locationsFailed: false,
+  async ensureLocations() {
+    const ref = typeof getRefLocations === 'function' ? getRefLocations() : [];
+    if (ref && ref.length) { OrdersCommon._locs = new Map(ref.map(r => [r.id, r])); OrdersCommon.locationsFailed = false; return; }
+    if (OrdersCommon._locs && OrdersCommon._locs.size) return;
+    try {
+      const recs = await atGet(TABLES.LOCATIONS);       // same cached GET the order modules use
+      OrdersCommon._locs = new Map(recs.map(r => [r.id, r]));
+      OrdersCommon.locationsFailed = false;
+    } catch (e) {
+      console.warn('orders common: locations', e);
+      OrdersCommon.locationsFailed = true;
+    }
+  },
   _locMeta(id) {
     if (!id) return null;
-    const l = (typeof getRefLocations === 'function' ? getRefLocations() : []).find(r => r.id === id);
+    const l = OrdersCommon._locs ? OrdersCommon._locs.get(id)
+      : (typeof getRefLocations === 'function' ? getRefLocations() : []).find(r => r.id === id);
     if (!l) return { name: '', city: '', cc: '' };
     const raw = l.fields['Country'] || '';
     const cc = (typeof countryCode === 'function' && countryCode(raw)) || String(raw).trim();

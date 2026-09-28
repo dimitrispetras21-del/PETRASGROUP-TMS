@@ -104,7 +104,12 @@ const OrdersHub = (() => {
       setTabsExtra: html => { const el = document.getElementById('ohTabsExtra'); if (el && token === H.token) el.innerHTML = html; },
     };
     try {
+      await OrdersCommon.ensureLocations();
+      if (token !== H.token) return;
       await v.render(ctx);
+      if (token === H.token && OrdersCommon.locationsFailed) {
+        body.insertAdjacentHTML('afterbegin', '<div class="oh-warn">⚠ Οι τοποθεσίες δεν φορτώθηκαν — οι στήλες ΦΟΡΤΩΣΗ/ΠΑΡΑΔΟΣΗ δείχνουν «—». Δεν σημαίνει ότι δεν έχουν καταχωρηθεί. Ξαναδοκίμασε με Ανανέωση.</div>');
+      }
     } catch (e) {
       // DESIGN #7: what happened · what it does NOT mean · what to do.
       if (token === H.token) body.innerHTML = typeof showError === 'function'
@@ -222,6 +227,7 @@ const OrdersHub = (() => {
 .oh-tab.on .oh-badge{color:var(--text)}
 .oh-badge.danger{color:var(--danger)}
 .oh-tabs-extra{margin-left:auto;padding-bottom:6px}
+.oh-warn{border:1px solid var(--warn);color:var(--warn);border-radius:6px;padding:6px 10px;font-size:12px;margin-bottom:8px}
 .oh-navbadge{margin-left:auto;font-size:11px;font-weight:600;color:var(--text-on-dark);font-variant-numeric:tabular-nums}`;
     document.head.appendChild(st);
   }
