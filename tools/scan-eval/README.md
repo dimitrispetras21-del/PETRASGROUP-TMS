@@ -62,6 +62,13 @@ node tools/scan-eval/ui-smoke.mjs [--shot .local/scan-golden/results/ui.png]
 
 # 4. βαθμολογία
 node tools/scan-eval/score.mjs --golden .local/scan-golden/golden.json --results .local/scan-golden/results/current-<ts>.json
+
+# 4'. Γύρος 4 — golden-full.json (v1 15 + v2 55 νέα, docs/ + docs-lastmonth-flat/ μαζί):
+node tools/scan-eval/run-current.mjs --engine v2 --golden .local/scan-golden/golden-full.json --dry-run
+#   --docs <dir1,dir2>  ρητοί φάκελοι εγγράφων, δοκιμάζονται πρώτοι· μετά το `dir` του κάθε golden doc· μετά 'docs'
+#   --include-unscored  τρέχει ΚΑΙ τα scored:false (δίδυμα/αταίριαστα) — default τα προσπερνά
+node tools/scan-eval/score.mjs --golden .local/scan-golden/golden-full.json --results <results.json> --split dev|heldout|all
+#   --split default 'all' (μόνο scored:true)· ανά έγγραφο δείχνει και ανάλυση ανά template (bare id, ποτέ όνομα σε --aggregate-only)
 ```
 Τρέχει από τον κύριο φάκελο **ή** από worktree (το `.local/scan-golden` βρίσκεται ανεβαίνοντας γονείς· ή `SCAN_GOLDEN_DIR=`).
 
@@ -93,6 +100,16 @@ node tools/scan-eval/score.mjs --golden .local/scan-golden/golden.json --results
 gross_weight_kg, pallets, pallet_type, temperature_c, price, stops:[{type, location_id, date, pallets, country}], confidence:{…}}],
 calls:[{model, usage, stop_reason, cost}], cost_usd, truncated}`. Κάθε νέα μηχανή (Γύρος 2) γράφει την ίδια μορφή.
 
+**golden (`scan-golden/v2`, Γύρος 4)** — v1 + ανά έγγραφο `template` (bare id `T01`…`Tnn` — το όνομα οικογένειας ζει
+ΜΟΝΟ στο `golden.templates`, ποτέ στο `doc.template`, ώστε το `--aggregate-only` να μην τη διαρρεύσει), `split:
+'dev'|'heldout'` (ανά template — 30% των templates, στρογγυλοποίηση πάνω, εξαιρουμένων όσων περιέχουν από τα παλιά
+15· δες σημείωση παρακάτω αν ο στόχος δεν πιάστηκε), `scored: true|false` και `duplicates_of: <doc_id>|null`.
+`scored:false` = δίδυμο άλλου εγγράφου (`duplicates_of`) ή **καμία αποθηκευμένη παραγγελία δεν βρέθηκε** — δεν
+υπάρχει αλήθεια να ελεγχθεί, οπότε το score.mjs/run-current.mjs το αγνοούν από προεπιλογή. Ο κανόνας αλήθειας
+άλλαξε για τα νέα έγγραφα (`truth_rule_new` στο ίδιο το αρχείο): **η αποθηκευμένη παραγγελία είναι η αλήθεια**
+(owner: «στο TMS έχω βάλει τα σωστά»), όχι το έγγραφο όπως στα παλιά 15 (`truth_rule_old15`, αμετάβλητο) — δύο
+κανόνες αλήθειας στο ΙΔΙΟ αρχείο, καθένας κρατά την πηγή του (`src: 'saved'` έναντι `doc`/`doc+saved`).
+
 ## Μετρικές
 - ακρίβεια ανά πεδίο (και χωρίς τα `contested`)
 - % εγγράφων με **όλα τα κρίσιμα σωστά**: πελάτης, reference, παλέτες, θερμοκρασία, ημερομηνίες στάσεων, στάσεις (πλήθος + τοποθεσία)
@@ -105,3 +122,8 @@ calls:[{model, usage, stop_reason, cost}], cost_usd, truncated}`. Κάθε νέ�
 - golden χωρίς αποτέλεσμα → `WARNING … have no result` και μετρά ως `missing`
 - ληγμένο JWT → σταματά πριν σταλεί οτιδήποτε
 - golden με λάθος μορφή → `--oracle` < 100%
+- Γύρος 4: ο στόχος «held-out ≥ 25% των scored εγγράφων» **δεν πιάστηκε** στο `golden-full.json` — 5 από τα 6
+  templates περιέχουν έγγραφο από τα παλιά 15 (πρέπει `dev`), οπότε μόνο 1 template (3 έγγραφα, 6,7%) ήταν
+  ελεύθερο για held-out. Δεν είναι σφάλμα του script· είναι το πραγματικό σχήμα των εγγράφων του μήνα
+  (η μεγάλη πλειοψηφία επαναχρησιμοποιεί τα ίδια sender forms με τα 15 του tuning). Θέλει περισσότερα, πιο
+  ποικίλα πρότυπα πελατών πριν έχει νόημα ένα πραγματικό held-out σετ (δες Δ στο docs/scan/04).

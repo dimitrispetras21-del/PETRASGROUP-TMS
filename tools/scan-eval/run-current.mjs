@@ -6,9 +6,14 @@
 //
 // Options:
 //   --golden <path>     golden.json (default: nearest .local/scan-golden/golden.json)
-//   --docs <dir>        documents dir (default: <golden dir>/docs)
-//   --out <path>        results file, must be under .local/ (default: <golden dir>/results/current-<ts>.json)
+//   --docs <dir1,dir2>  document dir(s), comma-separated, tried in order (default:
+//                       <golden dir>/docs, plus each doc's own `dir` field when the
+//                       golden entry carries one — round 4's golden-full.json mixes
+//                       docs/ (old 15) and docs-lastmonth-flat/ (new) in one file)
 //   --only d01,d02      subset of doc_ids
+//   --include-unscored  also run docs with `scored:false` in the golden (round 4:
+//                       no saved order to check them against — default skips them,
+//                       same reasoning score.mjs applies when scoring)
 //   --examples <path>   JSON array = localStorage 'tms_scan_training' of a browser (few-shot);
 //                       default [] = a fresh browser. TABLES.SCAN_TRAINING is '' in config.js,
 //                       so production has no shared examples — each browser only has its own.
@@ -153,14 +158,34 @@ async function main() {
   const budget = arg('budget') ? Number(arg('budget')) : null;
   const goldenDir = findGoldenDir();
   const goldenPath = arg('golden', path.join(goldenDir, 'golden.json'));
-  const docsDir = arg('docs', path.join(path.dirname(goldenPath), 'docs'));
+  // Round 4 (docs/scan/04 follow-up): a golden file's docs can live under more
+  // than one directory (old 15 in docs/, new batch in docs-lastmonth-flat/).
+  // --docs, if given, is tried FIRST for every doc (in listed order); each
+  // doc's own `dir` (relative to the golden file) and the plain 'docs'
+  // fallback are tried after, so a golden file with no `dir` fields (the v1
+  // 15-doc set) keeps working exactly as before with no flag at all.
+  const docsDirArg = arg('docs');
+  const explicitDocsDirs = docsDirArg ? docsDirArg.split(',') : [];
+  function resolveDocPath(d) {
+    const candidates = [...explicitDocsDirs, ...(d.dir ? [d.dir] : []), 'docs'];
+    for (const c of candidates) {
+      const p = path.isAbsolute(c) ? path.join(c, d.file) : path.join(path.dirname(goldenPath), c, d.file);
+      if (fs.existsSync(p)) return p;
+    }
+    throw new Error(`document not found for ${d.doc_id} (${d.file}) — tried: ${candidates.join(', ')}`);
+  }
   const stamp = new Date().toISOString().replace(/[:.]/g, '-');
   const outPath = arg('out', path.join(path.dirname(goldenPath), 'results', `${dry ? 'dryrun-' : arg('replay') ? 'replay-' : ''}${engine}${v2.model ? '-' + v2.model : ''}${v2.mode ? '-' + v2.mode : ''}-${stamp}.json`));
   assertLocal(outPath, '--out');
 
   const golden = JSON.parse(fs.readFileSync(goldenPath, 'utf8'));
   const only = arg('only') ? new Set(arg('only').split(',')) : null;
-  const docs = golden.docs.filter(d => !only || only.has(d.doc_id));
+  // Round 4: `scored:false` (duplicate, or no saved order to check against —
+  // see golden-full.json's truth_rule_new) means there is nothing to measure;
+  // skip by default so a plain run over golden-full.json doesn't burn model
+  // calls on documents score.mjs would ignore anyway.
+  const includeUnscored = flag('include-unscored');
+  const docs = golden.docs.filter(d => (!only || only.has(d.doc_id)) && (includeUnscored || d.scored !== false));
   const examples = arg('examples') ? JSON.parse(fs.readFileSync(arg('examples'), 'utf8')) : [];
 
   // Round 3 (docs/scan/04, task 3): client order history for location matching.
@@ -266,7 +291,7 @@ async function main() {
       break;
     }
     currentDoc = d.doc_id;
-    const buf = fs.readFileSync(path.join(docsDir, d.file));
+    const buf = fs.readFileSync(resolveDocPath(d));
     const file = new File([buf], d.file, { type: browserMimeType(d.file) });
     const before = fetchFn.calls.length;
     const t0 = Date.now();

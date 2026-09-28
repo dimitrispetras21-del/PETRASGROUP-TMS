@@ -163,6 +163,39 @@ export function goldenToResults(golden) {
   };
 }
 
+// Round 4 (docs/scan/04 follow-up): a golden set can now carry `scored:false`
+// (no saved order to check a doc against — see golden-full.json's truth_rule_new)
+// and `split: 'dev'|'heldout'` (per-template, docs/scan/05). Filtering happens
+// here, before scoreRun, so scoreRun/aggregate stay pure per-doc functions and
+// every existing test (which builds golden.docs without these fields) is
+// unaffected — `scored`/`split` absent behaves as scored:true, split:'dev'.
+export function filterGolden(golden, { split = 'all', scoredOnly = true } = {}) {
+  const docs = (golden.docs || []).filter(d => {
+    if (scoredOnly && d.scored === false) return false;
+    if (split !== 'all' && (d.split || 'dev') !== split) return false;
+    return true;
+  });
+  return { ...golden, docs };
+}
+
+// Per-template breakdown (round 4 task 6): groups the already-scored `docs`
+// rows (from scoreRun) by the golden doc's `template` id. Bare ids only
+// (T01, T02, …) — golden.templates (the id → family-name lookup) is never
+// read here, so --aggregate-only can print this table without leaking a
+// sender/family name (privacy: the repo is public, reports get pasted).
+export function templateBreakdown(golden, scoredDocs) {
+  const templateOf = new Map((golden.docs || []).map(d => [d.doc_id, d.template || null]));
+  const groups = {};
+  for (const d of scoredDocs) {
+    const t = templateOf.get(d.doc_id) || 'untemplated';
+    (groups[t] ||= []).push(d);
+  }
+  return Object.fromEntries(Object.entries(groups).sort().map(([t, ds]) => [t, {
+    documents: ds.length,
+    critical_all_ok: ds.filter(x => x.critical_all_ok).length,
+  }]));
+}
+
 export function aggregate({ checks, docs }) {
   const byCheck = {};
   for (const c of checks) {
