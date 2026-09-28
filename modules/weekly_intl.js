@@ -263,12 +263,12 @@ const _WI2_CSS=`
    τις κανονικές, στον ίδιο πίνακα. minmax(0,…) αφαιρεί το κατώφλι
    περιεχομένου: τα κλάσματα γίνονται καθαρά αναλογικά και κάθε γραμμή —
    και η κεφαλίδα — βγάζει ταυτόσημες στήλες. */
-/* ΑΝΑΘΕΣΗ 224px (owner 28/9 βράδυ: «παράκοψες το assign πλακίδιο»). 176px
-   έκοβε 28/54 κάρτες. Μετρήθηκε σε 54 κάρτες ανάθεσης 4 εβδομάδων (W33-W36,
-   καταγραφή 28/8): πλήρεις 48% @176 · 89% @192-216 · 91% @220 · 100% @224 —
-   οι 5 που θέλουν 223px είναι όλες «Hart Logistics sp. z o. o. sp. k.», ο
-   συχνότερος μακρύς συνεργάτης, οπότε το ≥95% πιάνεται μόνο στα 224. */
-.wk3.wi2 .wk3-cols,.wk3.wi2 .wk3-row{grid-template-columns:36px var(--fL) minmax(0,1.1fr) 224px minmax(0,0.9fr) var(--fR)}
+/* ΑΝΑΘΕΣΗ 192px (owner 28/9 βράδυ, μετά από μέτρηση). Σε 54 κάρτες ανάθεσης
+   4 εβδομάδων (W33-W36, καταγραφή 28/8): πλήρεις 48% @176 · 89% @192-216 ·
+   91% @220 · 100% @224. Ο owner διάλεξε 192: δέχεται το ~11% που κόβεται με
+   «…» (κυρίως «Hart Logistics sp. z o. o. sp. k.») — το πλήρες κείμενο είναι
+   στο title της κάρτας. */
+.wk3.wi2 .wk3-cols,.wk3.wi2 .wk3-row{grid-template-columns:36px var(--fL) minmax(0,1.1fr) 192px minmax(0,0.9fr) var(--fR)}
 .wi2-mast{display:flex;align-items:center;gap:var(--space-4);margin-bottom:var(--space-3);flex-wrap:wrap}
 .wi2-title{font-family:'Syne',sans-serif;font-weight:700;font-size:18px;color:var(--text);display:flex;align-items:center;gap:12px;white-space:nowrap}
 .wi2-legend-btn{font:500 11px 'DM Sans',sans-serif;color:var(--text-mid);border:1px solid var(--border);border-radius:var(--radius-full);padding:4px 8px;background:none;cursor:pointer}
@@ -523,7 +523,7 @@ const _WI2_CSS=`
    τα κρυμμένα κελιά δεν πιάνουν στήλη, οπότε η εξαγωγή έπεφτε στα 18px.
    minmax(0,…) όπως και στο πλήρες πλάτος, για να μην εξαρτώνται τα πλάτη
    από το περιεχόμενο της κάθε γραμμής. */
-@media (max-width:1360px){.wk3.wi2 .wk3-cols,.wk3.wi2 .wk3-row{grid-template-columns:36px minmax(0,1.1fr) 224px minmax(0,0.9fr)}
+@media (max-width:1360px){.wk3.wi2 .wk3-cols,.wk3.wi2 .wk3-row{grid-template-columns:36px minmax(0,1.1fr) 192px minmax(0,0.9fr)}
 /* 27/9: the style.css:2948 hide never won — «.wk3.wi2 .wk3-feed{display:flex}»
    above out-ranks its bare «.wk3-feed{display:none}», so both feed cells
    still took grid slots in the 4-column grid: every row wrapped to ~94px
