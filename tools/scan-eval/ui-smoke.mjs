@@ -5,10 +5,11 @@
 //
 // Why: the Node sandbox (lib/app-sandbox.mjs) stubs _openModal, so it proves
 // what the scanner HANDS the form, not that the form renders it. This opens
-// app.html from the working tree, turns the v2 switch on, and runs four
-// scenarios: an International scan from a synthetic PDF, one from a synthetic
-// Word .doc, a National scan (same engine, different form), and a plain "New
-// Order" (no scan at all). Every Worker request is answered locally with
+// app.html from the working tree, turns the v2 switch on, and runs scenarios:
+// an International scan from a synthetic PDF, one from a synthetic Word .doc,
+// one from a synthetic .docx (round 4, core/doc-text.js's docxToText), a
+// National scan (same engine, different form), and a plain "New Order" (no
+// scan at all). Every Worker request is answered locally with
 // INVENTED data (fixtures/) — no token, no production call, nothing written
 // anywhere.
 //
@@ -39,7 +40,7 @@ const FIX = path.join(HERE, 'fixtures');
 // the main checkout's (same one lib/app-sandbox.mjs uses for the Node tests).
 const refData = JSON.parse(fs.readFileSync(path.join(FIX, 'synthetic-ref.json'), 'utf8'));
 const baseAnswer = JSON.parse(fs.readFileSync(path.join(FIX, 'synthetic-extraction-v2.json'), 'utf8'));
-const { makeDoc, makePdf, SYNTH_LINES } = await import('./test/synthetic-docs.mjs');
+const { makeDoc, makeDocx, makePdf, SYNTH_LINES, SYNTH_DOCX } = await import('./test/synthetic-docs.mjs');
 const BACKEND = 'petras-tms-backend-staging.petrasgroup.workers.dev';
 
 const TYPES = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.png': 'image/png', '.json': 'application/json', '.svg': 'image/svg+xml' };
@@ -141,6 +142,34 @@ try {
   await cancel();
   await page.waitForTimeout(200);
   check((await pendingDoc()) == null, '.doc scan: cancelling the form clears window._scanPendingDoc');
+
+  // ═══ 2b. International, synthetic .docx → v2 → plain prefilled form ═══
+  currentAnswer = baseAnswer;
+  await page.evaluate(() => openIntlScan());
+  await page.waitForSelector('#scanFile', { state: 'attached' });
+  check(/\.docx/.test(await page.getAttribute('#scanFile', 'accept')), 'intl file picker accepts .docx when v2 is on');
+  await page.setInputFiles('#scanFile', { name: 'synthetic-order.docx', mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', buffer: makeDocx() });
+  await page.evaluate(() => { window._scanResult = null; delete window._scanPendingDoc; });
+  await page.click('#btnScanGo');
+  await page.waitForFunction(() => window._scanResult && window._scanResult.data, null, { timeout: 20000 });
+  const docxPrompt = JSON.stringify(aiBodies[aiBodies.length - 1]?.messages || '');
+  check(new RegExp(`Transport order ${SYNTH_DOCX.reference}`).test(docxPrompt), '.docx text reached the prompt');
+  check(docxPrompt.includes(SYNTH_DOCX.header), '.docx HEADER text reached the prompt (not just the body)');
+  await page.evaluate(() => _scanOpenStored());
+  await page.waitForSelector('#f_PalletType', { timeout: 10000 });
+  check(await noReviewLeftover(), '.docx scan: form opened PLAIN — no .scan-review-* element anywhere');
+  // The mocked AI answer (fixtures/synthetic-extraction-v2.json) is fixed
+  // regardless of the prompt text — same prefill as the PDF/.doc scenarios
+  // above proves the values reached the form, not that this fixture's OWN
+  // reference/pallets were echoed back (nothing here extracts them).
+  check(await page.inputValue('#f_PalletType') === 'EUR', 'form (.docx): Pallet Type = EUR');
+  check(await page.inputValue('#f_Reference') === 'SYN-0001', 'form (.docx): Reference = SYN-0001');
+  const pending2b = await pendingDoc();
+  check(pending2b?.name === 'synthetic-order.docx' && pending2b?.source === 'scan', `.docx scan: window._scanPendingDoc set (got ${JSON.stringify(pending2b)})`);
+
+  await cancel();
+  await page.waitForTimeout(200);
+  check((await pendingDoc()) == null, '.docx scan: cancelling the form clears window._scanPendingDoc');
 
   // ═══ 3. National, same engine + switch, different form ═══
   currentAnswer = baseAnswer;

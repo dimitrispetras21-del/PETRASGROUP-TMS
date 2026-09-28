@@ -2260,7 +2260,7 @@ function openIntlScan() {
         📷 &nbsp;Λήψη με κάμερα
       </button>
     </div>
-    <input type="file" id="scanFile" accept="image/*,application/pdf${typeof scanEngineV2On === 'function' && scanEngineV2On() ? ',.doc,application/msword' : ''}" multiple style="display:none"
+    <input type="file" id="scanFile" accept="image/*,application/pdf${typeof scanEngineV2On === 'function' && scanEngineV2On() ? ',.doc,application/msword,.docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document' : ''}" multiple style="display:none"
       onchange="_scanHandleFiles(this.files)">
     <input type="file" id="scanCamera" accept="image/*" capture="environment" style="display:none"
       onchange="_scanHandleFile(this.files[0])">
@@ -2288,11 +2288,11 @@ async function _scanHandleFile(file) {
     toast(`Το αρχείο είναι πολύ μεγάλο (${(file.size/1024/1024).toFixed(1)}MB) — όριο 10MB`, 'error');
     return;
   }
-  // Engine v2 (scan round 2) also reads legacy Word .doc — DPS sends those.
+  // Engine v2 (scan round 2/4) also reads Word .doc / .docx — DPS sends those.
   const v2 = typeof scanEngineV2On === 'function' && scanEngineV2On();
   const okType = v2 ? scanV2Accepts(file) : (file.type.startsWith('image/') || file.type === 'application/pdf');
   if (!okType) {
-    toast(v2 ? 'Δεκτά μόνο JPG / PNG / PDF / Word (.doc)' : 'Δεκτά μόνο JPG / PNG / PDF', 'error');
+    toast(v2 ? 'Δεκτά μόνο JPG / PNG / PDF / Word (.doc, .docx)' : 'Δεκτά μόνο JPG / PNG / PDF', 'error');
     return;
   }
 
@@ -2322,7 +2322,7 @@ async function _scanHandleFile(file) {
         ? `<div class="scan-preview-doc"><img src="${dataUrl}" alt="PDF page 1"></div>`
         : `<div class="scan-preview-info">📄 PDF · ${escapeHtml(file.name)}<span class="scan-preview-meta">preview unavailable</span></div>`;
     } else {
-      st.innerHTML = `<div class="scan-preview-info">📄 ${escapeHtml(file.name)}</div>`;  // .doc (v2): no preview
+      st.innerHTML = `<div class="scan-preview-info">📄 ${escapeHtml(file.name)}</div>`;  // .doc/.docx (v2): no preview
     }
   } catch(e) {
     console.warn('[scan] preview failed:', e.message);

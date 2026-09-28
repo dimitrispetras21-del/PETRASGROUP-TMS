@@ -98,7 +98,12 @@ export function createScannerSandbox({ repoRoot, fetch, jwt, refData, examples =
 
   const ctx = {
     console: { log: (...a) => events.logs.push(a.join(' ')), warn: (...a) => events.logs.push(a.join(' ')), error: (...a) => events.logs.push(a.join(' ')), info() {}, debug() {} },
-    setTimeout, clearTimeout, AbortController, URL, Blob, File, TextEncoder, TextDecoder, Intl, structuredClone, btoa, atob, WeakMap,
+    // DecompressionStream: core/doc-text.js's .docx reader inflates zip
+    // entries with it (native in Node >= 18, same object the outer process
+    // already has — vm.createContext gives the sandbox NOTHING it isn't
+    // handed explicitly, so without this line the .docx path would throw
+    // "no DecompressionStream" only inside this harness, never in a browser).
+    setTimeout, clearTimeout, AbortController, URL, Blob, File, TextEncoder, TextDecoder, DecompressionStream, Intl, structuredClone, btoa, atob, WeakMap,
     fetch,
     FileReader: FileReaderPolyfill,
     localStorage: {

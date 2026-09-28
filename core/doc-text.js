@@ -170,4 +170,197 @@ function cleanWordText(s) {
     .trim();
 }
 
-if (typeof module !== 'undefined' && module.exports) module.exports = { docLegacyToText };
+// ═══════════════════════════════════════════════════════════════════
+// Word (.docx, Office Open XML) → plain text, in the browser.
+//
+// Why this exists (scan round 4, 28/9/2026): newer carrier orders from DPS
+// arrive as .docx, not the legacy binary .doc above. A .docx is a ZIP archive
+// of WordprocessingML parts — no zip library is loaded in the browser, so
+// this walks the ZIP central directory itself and inflates with the
+// platform's own DecompressionStream('deflate-raw') (native in every current
+// browser and in Node >= 18 — see tools/scan-eval/lib/app-sandbox.mjs, which
+// runs this exact file in a Node vm for the eval harness and needs the same
+// global).
+//
+// Carrier orders routinely put the transport reference or the client's
+// address in a page HEADER, and lay cargo lines out as a TABLE — reading only
+// word/document.xml would hand the model an order with no reference and no
+// rows, so headers, footers and footnotes are folded in too, and table rows/
+// cells keep \t / \n structure instead of collapsing into one paragraph.
+//
+// Fails LOUDLY (throws) on anything it does not understand — same contract as
+// docLegacyToText above: no document.xml, a corrupt zip, an unsupported
+// compression method, or inflated output past the size guard below must
+// reach the dispatcher as "cannot read", never an empty prefilled form.
+// ═══════════════════════════════════════════════════════════════════
+
+// Cap on TOTAL inflated bytes across every part read from one file. A zip's
+// central directory can CLAIM any "uncompressed size" it likes, so the only
+// guard worth having counts bytes actually produced by DecompressionStream,
+// never the (untrusted) metadata — a real zip bomb lies about this exact field.
+const DOCX_MAX_INFLATED_BYTES = 20 * 1024 * 1024;
+
+function _docxU8(buffer) { return buffer instanceof Uint8Array ? buffer : new Uint8Array(buffer); }
+
+// ── ZIP: central directory + local headers, stored/deflate only (the only
+// two methods a Word-produced .docx ever uses — no general zip library needed) ──
+function _docxFindEocd(u8) {
+  const from = Math.max(0, u8.length - 22 - 65535); // EOCD record + up to a 64KB comment
+  for (let i = u8.length - 22; i >= from; i--) {
+    if (u8[i] === 0x50 && u8[i + 1] === 0x4B && u8[i + 2] === 0x05 && u8[i + 3] === 0x06) return i;
+  }
+  return -1;
+}
+
+function _docxCentralDirectory(u8, dv) {
+  const eocd = _docxFindEocd(u8);
+  if (eocd < 0) throw new Error('.docx: not a zip file (no end-of-central-directory record)');
+  const total = dv.getUint16(eocd + 10, true);
+  let off = dv.getUint32(eocd + 16, true);
+  const entries = new Map();
+  for (let i = 0; i < total; i++) {
+    if (off + 46 > u8.length || dv.getUint32(off, true) !== 0x02014b50) throw new Error('.docx: malformed central directory');
+    const method = dv.getUint16(off + 10, true);
+    const compSize = dv.getUint32(off + 20, true);
+    const nameLen = dv.getUint16(off + 28, true);
+    const extraLen = dv.getUint16(off + 30, true);
+    const commentLen = dv.getUint16(off + 32, true);
+    const localOffset = dv.getUint32(off + 42, true);
+    const nameStart = off + 46;
+    if (nameStart + nameLen > u8.length) throw new Error('.docx: malformed central directory');
+    const name = new TextDecoder('utf-8').decode(u8.subarray(nameStart, nameStart + nameLen));
+    entries.set(name, { method, compSize, localOffset });
+    off = nameStart + nameLen + extraLen + commentLen;
+  }
+  return entries;
+}
+
+// budget: { used } shared across every part of ONE file, so the cap is on the
+// file's total output, not reset per-part (a bomb could otherwise be split
+// across many small parts, each individually under the limit).
+async function _docxInflate(bytes, method, budget) {
+  let out;
+  if (method === 0) {
+    out = bytes; // stored, no compression
+  } else if (method === 8) {
+    if (typeof DecompressionStream === 'undefined') throw new Error('.docx: this runtime cannot inflate zip entries (no DecompressionStream)');
+    const reader = new Blob([bytes]).stream().pipeThrough(new DecompressionStream('deflate-raw')).getReader();
+    const chunks = [];
+    let n = 0;
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      n += value.length;
+      if (budget.used + n > DOCX_MAX_INFLATED_BYTES) throw new Error('.docx: inflated content exceeds the size limit (possible zip bomb)');
+      chunks.push(value);
+    }
+    out = new Uint8Array(n);
+    let pos = 0;
+    for (const c of chunks) { out.set(c, pos); pos += c.length; }
+  } else {
+    throw new Error(`.docx: unsupported zip compression method (${method})`);
+  }
+  budget.used += out.length;
+  if (budget.used > DOCX_MAX_INFLATED_BYTES) throw new Error('.docx: content exceeds the size limit (possible zip bomb)');
+  return out;
+}
+
+async function _docxReadPart(u8, dv, entry, budget) {
+  const off = entry.localOffset;
+  if (off + 30 > u8.length || dv.getUint32(off, true) !== 0x04034b50) throw new Error('.docx: malformed local file header');
+  const nameLen = dv.getUint16(off + 26, true);
+  const extraLen = dv.getUint16(off + 28, true);
+  const dataStart = off + 30 + nameLen + extraLen;
+  if (dataStart + entry.compSize > u8.length) throw new Error('.docx: truncated zip entry');
+  const inflated = await _docxInflate(u8.subarray(dataStart, dataStart + entry.compSize), entry.method, budget);
+  return new TextDecoder('utf-8').decode(inflated);
+}
+
+// ── WordprocessingML → text ──────────────────────────────────────────
+function _docxDecodeEntities(s) {
+  return s.replace(/&(#x[0-9a-fA-F]+|#\d+|amp|lt|gt|quot|apos);/g, (m, ent) => {
+    if (ent[0] === '#') {
+      const code = ent[1] === 'x' ? parseInt(ent.slice(2), 16) : parseInt(ent.slice(1), 10);
+      return Number.isFinite(code) ? String.fromCodePoint(code) : m;
+    }
+    return { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'" }[ent];
+  });
+}
+
+// One pass over the raw XML, tag name only (no real XML parser is loaded in
+// the browser): w:p closing -> newline, w:tab -> \t, w:br/w:cr -> newline. A
+// table row becomes ONE line: w:tc opens add \t (except the row's first
+// cell) and w:tr closing adds \n, so a row survives as tab-separated columns
+// instead of one line per cell — inside a cell, a paragraph boundary is a
+// SPACE inserted before the next paragraph starts (never after the last one,
+// or every cell would end in a stray space+tab before the next column).
+// w:instrText (field codes), w:delText and anything inside w:del
+// (tracked-change deletions) are dropped entirely — not what is printed on
+// the page, and a deleted run showing up would look like a live instruction.
+function _docxXmlToText(xml) {
+  const tokenRe = /<[^>]+>|[^<]+/g;
+  let out = '', skipDepth = 0, tableDepth = 0, rowHasCell = false, cellFirstPara = true, m;
+  while ((m = tokenRe.exec(xml))) {
+    const tok = m[0];
+    if (tok[0] !== '<') { if (skipDepth === 0) out += _docxDecodeEntities(tok); continue; }
+    const closing = tok[1] === '/';
+    const nameMatch = /^<\/?([a-zA-Z0-9_]+:[a-zA-Z0-9_]+)/.exec(tok);
+    const name = nameMatch ? nameMatch[1] : '';
+    switch (name) {
+      case 'w:del': case 'w:instrText': case 'w:delText':
+        skipDepth = Math.max(0, skipDepth + (closing ? -1 : 1));
+        break;
+      case 'w:tab':
+        if (!closing && skipDepth === 0) out += '\t';
+        break;
+      case 'w:br': case 'w:cr':
+        if (!closing && skipDepth === 0) out += '\n';
+        break;
+      case 'w:tbl':
+        if (skipDepth === 0) tableDepth = Math.max(0, tableDepth + (closing ? -1 : 1));
+        break;
+      case 'w:tr':
+        if (skipDepth === 0) { if (!closing) rowHasCell = false; else out += '\n'; }
+        break;
+      case 'w:tc':
+        if (!closing && skipDepth === 0) { if (rowHasCell) out += '\t'; rowHasCell = true; cellFirstPara = true; }
+        break;
+      case 'w:p':
+        if (skipDepth === 0) {
+          if (tableDepth > 0) { if (!closing) { if (!cellFirstPara) out += ' '; cellFirstPara = false; } }
+          else if (closing) out += '\n';
+        }
+        break;
+    }
+  }
+  return out;
+}
+
+/**
+ * @param {ArrayBuffer|Uint8Array} buffer
+ * @returns {Promise<string>}
+ */
+async function docxToText(buffer) {
+  const u8 = _docxU8(buffer);
+  if (u8.length < 22 || u8[0] !== 0x50 || u8[1] !== 0x4B) throw new Error('.docx: not a zip file');
+  const dv = new DataView(u8.buffer, u8.byteOffset, u8.byteLength);
+  const entries = _docxCentralDirectory(u8, dv);
+  if (!entries.has('word/document.xml')) throw new Error('.docx: no word/document.xml found (not a Word file?)');
+
+  const byPrefix = prefix => [...entries.keys()].filter(n => n.startsWith(prefix) && n.endsWith('.xml')).sort();
+  const headers = byPrefix('word/header');
+  const footers = byPrefix('word/footer');
+  const footnotes = entries.has('word/footnotes.xml') ? ['word/footnotes.xml'] : [];
+
+  const budget = { used: 0 };
+  const parts = [];
+  for (const name of [...headers, 'word/document.xml', ...footers, ...footnotes]) {
+    parts.push(_docxXmlToText(await _docxReadPart(u8, dv, entries.get(name), budget)));
+  }
+  return parts.filter(Boolean).join('\n')
+    .replace(/[ \t]+\n/g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
+if (typeof module !== 'undefined' && module.exports) module.exports = { docLegacyToText, docxToText };

@@ -1,5 +1,7 @@
 // INVENTED documents built byte by byte for the v2 tests and the UI smoke:
-// a one-page PDF with a real text layer and a Word 97 .doc. No real data.
+// a one-page PDF with a real text layer, a Word 97 .doc, and a .docx. No real data.
+import zlib from 'node:zlib';
+
 export const SYNTH_LINES = ['Acme Frozen Foods GmbH', 'Transport order SYN-0001', 'Loading: Alpha Cold Store, 99999 Testdorf, DE, 10.01.2031',
   'Delivery: Gamma Warehouse, Samplepolis, GR, 13.01.2031', 'Goods: frozen peas, 20 EUR pallets, 12.000 kg, -18 C',
   'Freight: 1.500,00 EUR', 'Terms and conditions apply to this synthetic order and nothing else.'];
@@ -68,3 +70,124 @@ export function makeDoc(text, { password = false } = {}) {
   return Buffer.concat([head, fat, dir, wd, tbl]);
 }
 
+// ── .docx (Office Open XML) — a hand-built ZIP, no library ──────────────
+// Round 4 (28/9/2026): core/doc-text.js's docxToText() parses the ZIP central
+// directory itself; these tests must build a REAL zip (not just "some bytes
+// that vaguely look like one") to exercise that parser, including BOTH
+// compression methods a .docx can carry.
+
+/**
+ * Minimal ZIP container: local file headers + central directory + EOCD, no
+ * data descriptors, no comments — just enough for docxToText() to read.
+ * @param {Array<{name:string, data:Buffer, method:0|8}>} files method 0 =
+ *   stored, 8 = deflate (the only two methods a Word-produced .docx uses).
+ */
+export function makeZip(files) {
+  const localParts = [], centralParts = [];
+  let offset = 0;
+  for (const f of files) {
+    const nameBuf = Buffer.from(f.name, 'utf8');
+    const compData = f.method === 8 ? zlib.deflateRawSync(f.data) : f.data;
+    const local = Buffer.alloc(30);
+    local.writeUInt32LE(0x04034b50, 0);
+    local.writeUInt16LE(20, 4);              // version needed
+    local.writeUInt16LE(0, 6);               // flags
+    local.writeUInt16LE(f.method, 8);
+    local.writeUInt16LE(0, 10); local.writeUInt16LE(0, 12); // mod time/date (unchecked)
+    local.writeUInt32LE(0, 14);              // crc32 (docxToText never verifies it)
+    local.writeUInt32LE(compData.length, 18);
+    local.writeUInt32LE(f.data.length, 22);
+    local.writeUInt16LE(nameBuf.length, 26);
+    local.writeUInt16LE(0, 28);              // extra field length
+    const localEntry = Buffer.concat([local, nameBuf, compData]);
+    localParts.push(localEntry);
+
+    const central = Buffer.alloc(46);
+    central.writeUInt32LE(0x02014b50, 0);
+    central.writeUInt16LE(20, 4); central.writeUInt16LE(20, 6);
+    central.writeUInt16LE(0, 8);
+    central.writeUInt16LE(f.method, 10);
+    central.writeUInt16LE(0, 12); central.writeUInt16LE(0, 14);
+    central.writeUInt32LE(0, 16);
+    central.writeUInt32LE(compData.length, 20);
+    central.writeUInt32LE(f.data.length, 24);
+    central.writeUInt16LE(nameBuf.length, 28);
+    central.writeUInt16LE(0, 30); central.writeUInt16LE(0, 32);
+    central.writeUInt16LE(0, 34); central.writeUInt16LE(0, 36);
+    central.writeUInt32LE(0, 38);
+    central.writeUInt32LE(offset, 42);       // local header offset
+    centralParts.push(Buffer.concat([central, nameBuf]));
+    offset += localEntry.length;
+  }
+  const localBuf = Buffer.concat(localParts);
+  const centralBuf = Buffer.concat(centralParts);
+  const eocd = Buffer.alloc(22);
+  eocd.writeUInt32LE(0x06054b50, 0);
+  eocd.writeUInt16LE(files.length, 8);
+  eocd.writeUInt16LE(files.length, 10);
+  eocd.writeUInt32LE(centralBuf.length, 12);
+  eocd.writeUInt32LE(localBuf.length, 16);
+  return Buffer.concat([localBuf, centralBuf, eocd]);
+}
+
+const _WNS = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"';
+
+// Fixed INVENTED content (year 2031) exercising every WordprocessingML shape
+// the reader must handle in one document: a plain paragraph, a tab inside a
+// run, an XML entity, a tracked-change deletion that must NOT reach the
+// output, Greek text, and a 2x2 table — plus a page header carrying the
+// reference (carrier orders often print it there, not in the body).
+export const SYNTH_DOCX = {
+  reference: 'DX-0001',
+  header: 'DPS LOGISTICS HEADER REF-HDR-0001',
+  footer: 'Footer note 2031',
+  deletedText: 'SHOULD NOT APPEAR',
+  table: [['Alpha Cold Store', '10 pallets'], ['Beta Warehouse', '5 pallets']],
+};
+
+function _docxDocumentXml() {
+  const s = SYNTH_DOCX;
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:document ${_WNS}><w:body>
+<w:p><w:r><w:t>Transport order ${s.reference}</w:t></w:r></w:p>
+<w:p><w:r><w:t>Reference:</w:t></w:r><w:r><w:tab/></w:r><w:r><w:t>${s.reference}</w:t></w:r></w:p>
+<w:p><w:r><w:t>Client: Alpha &amp; Beta Logistics</w:t></w:r></w:p>
+<w:p><w:del w:id="1" w:author="test" w:date="2031-01-10T00:00:00Z"><w:r><w:delText>${s.deletedText}</w:delText></w:r></w:del><w:r><w:t>Goods: frozen peas</w:t></w:r></w:p>
+<w:p><w:r><w:t>Παραγγελία μεταφοράς — ψυγείο, -18C</w:t></w:r></w:p>
+<w:tbl>
+<w:tr><w:tc><w:p><w:r><w:t>${s.table[0][0]}</w:t></w:r></w:p></w:tc><w:tc><w:p><w:r><w:t>${s.table[0][1]}</w:t></w:r></w:p></w:tc></w:tr>
+<w:tr><w:tc><w:p><w:r><w:t>${s.table[1][0]}</w:t></w:r></w:p></w:tc><w:tc><w:p><w:r><w:t>${s.table[1][1]}</w:t></w:r></w:p></w:tc></w:tr>
+</w:tbl>
+</w:body></w:document>`;
+}
+function _docxHeaderXml() {
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:hdr ${_WNS}><w:p><w:r><w:t>${SYNTH_DOCX.header}</w:t></w:r></w:p></w:hdr>`;
+}
+function _docxFooterXml() {
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:ftr ${_WNS}><w:p><w:r><w:t>${SYNTH_DOCX.footer}</w:t></w:r></w:p></w:ftr>`;
+}
+
+/**
+ * A minimal but complete .docx (document + header + footer). `methods` lets a
+ * test force stored (0) vs deflated (8) per part; the default already mixes
+ * both so ONE fixture exercises both compression paths the reader supports.
+ * @param {{document?:0|8, header?:0|8, footer?:0|8}} [methods]
+ */
+export function makeDocx(methods = {}) {
+  const m = { document: 8, header: 0, footer: 8, ...methods };
+  return makeZip([
+    { name: 'word/document.xml', data: Buffer.from(_docxDocumentXml(), 'utf8'), method: m.document },
+    { name: 'word/header1.xml', data: Buffer.from(_docxHeaderXml(), 'utf8'), method: m.header },
+    { name: 'word/footer1.xml', data: Buffer.from(_docxFooterXml(), 'utf8'), method: m.footer },
+  ]);
+}
+
+/**
+ * A .docx whose only part is huge, highly repetitive text (deflates to almost
+ * nothing) — for the zip-bomb guard: DecompressionStream must be made to
+ * produce > the cap, not just have a central directory that CLAIMS a big size.
+ */
+export function makeDocxBomb(sizeBytes) {
+  const xml = `<?xml version="1.0"?><w:document ${_WNS}><w:body><w:p><w:r><w:t>${'A'.repeat(sizeBytes)}</w:t></w:r></w:p></w:body></w:document>`;
+  return makeZip([{ name: 'word/document.xml', data: Buffer.from(xml, 'utf8'), method: 8 }]);
+}

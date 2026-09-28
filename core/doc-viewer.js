@@ -18,9 +18,10 @@
 //     → Promise<{ destroy() }>
 //
 // PDF: pdf.js renders each page to a plain <canvas>. Images: plain <img>.
-// Legacy .doc: text via core/doc-text.js, rendered as plain text (pre-wrap).
-// .docx / .eml / .msg: no parser here (see core/doc-text.js's own scope
-// note) — filename + a download button, never a public URL.
+// Legacy .doc and .docx: text via core/doc-text.js, rendered as plain text
+// (pre-wrap) — the row-level «Λήψη» button (core/order-docs.js) still gives
+// the original bytes, this view is a preview, not the only way to reach it.
+// .eml / .msg: no parser here — filename + a download button, never a public URL.
 // ═══════════════════════════════════════════════════════════════════
 'use strict';
 
@@ -35,8 +36,9 @@ function _dvKind(mime, filename) {
   if (m === 'application/pdf' || ext === 'pdf') return 'pdf';
   if (m.startsWith('image/')) return 'image';
   if (ext === 'doc' || m === 'application/msword') return 'doc';
+  if (ext === 'docx' || m === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') return 'docx';
   if (ext === 'txt' || m === 'text/plain') return 'txt';
-  return 'unsupported';   // .docx, .eml, .msg, and anything else we don't parse
+  return 'unsupported';   // .eml, .msg, and anything else we don't parse
 }
 
 // ─── PDF: canvas render, one <canvas> per page ───────────────────────
@@ -100,13 +102,16 @@ async function _dvRender(container, opts) {
     return { destroy() { if (objectUrl) URL.revokeObjectURL(objectUrl); container.innerHTML = ''; } };
   }
 
-  if (kind === 'doc' || kind === 'txt') {
+  if (kind === 'doc' || kind === 'docx' || kind === 'txt') {
     let text = opts.text;
     if (text == null) {
       if (!src) throw new Error('DocViewer: ' + kind + ' needs file, blob or text');
       if (kind === 'doc') {
         const buf = await src.arrayBuffer();
         text = docLegacyToText(buf);   // throws loudly on anything it can't read — same contract as the scan path
+      } else if (kind === 'docx') {
+        const buf = await src.arrayBuffer();
+        text = await docxToText(buf);  // same "throw, never show empty" contract as docLegacyToText
       } else {
         text = await src.text();
       }

@@ -7,9 +7,12 @@
 //   node tools/scan-eval/docs-smoke.mjs [--headed]
 //
 // Covers (per the round-3 handoff, updated 28/9/2026 when the side-by-side
-// review screen was removed and document access was kept/polished):
+// review screen was removed and document access was kept/polished; 2b added
+// round 4 when core/doc-viewer.js gained a .docx text preview):
 //   1. paperclip badge on the right order only — Weekly / Intl list / Daily Ops
 //   2. badge click -> viewer modal -> doc list -> inline preview of a synthetic PDF
+//   2b. the same order's .docx renders as TEXT (core/doc-text.js's docxToText),
+//      not the old "unsupported, download only" placeholder
 //   3. manual attach on an EXISTING order -> one POST /docs/upload with
 //      source=upload -> the paperclip appears in the list WITHOUT a reload
 //   4. post-save hook (as submitIntlOrder calls it) -> one POST /docs/upload,
@@ -35,7 +38,7 @@ const BACKEND = 'petras-tms-backend-staging.petrasgroup.workers.dev';
 // under REPO — this worktree has no node_modules of its own and finds the main
 // checkout's, same as ui-smoke.mjs and lib/app-sandbox.mjs.
 const PDFJS_DIR = path.join(path.dirname(require.resolve('pdfjs-dist/package.json')), 'build');
-const { makePdf, SYNTH_LINES } = await import('./test/synthetic-docs.mjs');
+const { makePdf, makeDocx, SYNTH_LINES, SYNTH_DOCX } = await import('./test/synthetic-docs.mjs');
 
 // Facade ids (config.js TABLES) — hardcoded here the same way ui-smoke.mjs
 // hardcodes BACKEND: these ids are stable API surface, not implementation detail.
@@ -66,6 +69,12 @@ const DOC_FILENAME = 'delivery-note.pdf';
 // not a bare "%PDF" string — the viewer screenshot must prove an actual page
 // rendered, not just that some bytes moved through.
 const DOC_BYTES = makePdf(SYNTH_LINES);
+// Round 4: a second, REAL .docx stored on the same order — proves
+// core/doc-viewer.js renders it as text (core/doc-text.js's docxToText),
+// not the pre-round-4 "unsupported, download only" fallback.
+const DOC_ID2 = 'recDoc2';
+const DOC_FILENAME2 = 'delivery-note.docx';
+const DOCX_BYTES = makeDocx();
 
 // Mutable test knobs the route handler reads live. docsIndex mirrors what a
 // real ORDER_DOCS table would answer — seeded with recOrderA (the fixture's
@@ -126,10 +135,16 @@ await page.route('**/*', async route => {
     return route.fulfill({ status: 201, headers: cors, body: JSON.stringify({ id: DOC_ID, order_id: call.order, sha256: call.sha256, filename: call.filename, mime: 'application/pdf', size: DOC_BYTES.length, source: call.source, created_at: new Date().toISOString() }) });
   }
   if (u.pathname === '/docs/list') {
-    return route.fulfill({ status: 200, headers: cors, body: JSON.stringify([{ id: DOC_ID, order_id: u.searchParams.get('order'), sha256: 'x', filename: DOC_FILENAME, mime: 'application/pdf', size: DOC_BYTES.length, source: 'upload', created_at: '2026-09-27T10:00:00.000Z', uploaded_by: 'dimitris' }]) });
+    return route.fulfill({ status: 200, headers: cors, body: JSON.stringify([
+      { id: DOC_ID, order_id: u.searchParams.get('order'), sha256: 'x', filename: DOC_FILENAME, mime: 'application/pdf', size: DOC_BYTES.length, source: 'upload', created_at: '2026-09-27T10:00:00.000Z', uploaded_by: 'dimitris' },
+      { id: DOC_ID2, order_id: u.searchParams.get('order'), sha256: 'y', filename: DOC_FILENAME2, mime: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', size: DOCX_BYTES.length, source: 'upload', created_at: '2026-09-27T10:05:00.000Z', uploaded_by: 'dimitris' },
+    ]) });
   }
   if (u.pathname === `/docs/file/${DOC_ID}`) {
     return route.fulfill({ status: 200, headers: { ...cors, 'content-type': 'application/pdf' }, body: DOC_BYTES });
+  }
+  if (u.pathname === `/docs/file/${DOC_ID2}`) {
+    return route.fulfill({ status: 200, headers: { ...cors, 'content-type': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' }, body: DOCX_BYTES });
   }
 
   // ── facade GET (/v0/<base>/<tableId>) ──
@@ -207,6 +222,19 @@ try {
     return false;
   }, DOC_ID);
   check(canvasNonBlank, 'Viewer: PDF canvas has real (non-white) pixels — a rendered page, not a blank canvas');
+
+  // ── 2b. Round 4: the SAME order's .docx renders as text, not a download-only
+  // placeholder (core/doc-viewer.js -> core/doc-text.js's docxToText). Two
+  // "Προβολή" buttons now exist in this modal (one per document), so the
+  // internal entry point is called directly instead of a text-scoped click. ──
+  check(listText.includes(DOC_FILENAME2), 'Viewer: lists the order\'s SECOND document (.docx) too');
+  await page.evaluate(([id, filename]) => window.OrderDocs._openInline(id, filename), [DOC_ID2, DOC_FILENAME2]);
+  await page.waitForSelector(`#_odInline_${DOC_ID2} .doc-viewer-text`, { timeout: 8000 });
+  check(await page.$(`#_odInline_${DOC_ID2} .doc-viewer-unsupported`) === null, '.docx: no "unsupported, download only" fallback');
+  const docxPreview = await page.textContent(`#_odInline_${DOC_ID2} .doc-viewer-text`);
+  check(docxPreview.includes(`Transport order ${SYNTH_DOCX.reference}`), '.docx preview: body text rendered');
+  check(docxPreview.includes(SYNTH_DOCX.header), '.docx preview: HEADER text rendered too, not just the body');
+  check(!docxPreview.includes(SYNTH_DOCX.deletedText), '.docx preview: a tracked-change deletion is not shown as live text');
   await page.screenshot({ path: path.join(SHOTS, 'order-docs-04-viewer-open-1440.png'), fullPage: false });
   await page.evaluate(() => closeModal());
 

@@ -10,7 +10,7 @@
 //     (output_config.format) guarantee parseable JSON, so the clean-up call
 //     and the regex JSON repair have nothing left to do.
 //   • TEXT, not pictures, when the document has a text layer (PDF via pdf.js,
-//     legacy Word .doc via core/doc-text.js). A 3-page carrier order costs
+//     legacy Word .doc and .docx via core/doc-text.js). A 3-page carrier order costs
 //     ~3k tokens as text vs ~7k as PDF. Scans without a text layer (photos,
 //     image-only PDFs) still go as the image/PDF itself.
 //   • Client / location matching happens HERE, in code, over ALL records the
@@ -61,7 +61,8 @@ function scanEngineV2On() {
 function scanV2Accepts(file) {
   const n = (file && file.name || '').toLowerCase();
   return file.type.startsWith('image/') || file.type === 'application/pdf'
-    || file.type === 'application/msword' || /\.doc$/.test(n);
+    || file.type === 'application/msword' || /\.doc$/.test(n)
+    || file.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' || /\.docx$/.test(n);
 }
 
 // ─── Static prompt (cached prefix) ─────────────────────────────────
@@ -195,6 +196,13 @@ async function scanV2PrepareInput(file, mode = SCAN_V2.mode) {
     catch (e) { throw new Error(`Δεν διαβάζεται το Word αρχείο (${e.message}) — αποθηκεύστε το ως PDF και ξαναδοκιμάστε.`); }
     if (text.replace(/\s+/g, '').length < 40) throw new Error('Το Word αρχείο δεν έχει κείμενο — αποθηκεύστε το ως PDF και ξαναδοκιμάστε.');
     return { kind: 'text', text, pages: null, why: 'doc' };
+  }
+  if (file.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' || /\.docx$/.test(name)) {
+    let text;
+    try { text = await docxToText(buf); }
+    catch (e) { throw new Error(`Δεν διαβάζεται το Word αρχείο (${e.message}) — αποθηκεύστε το ως PDF και ξαναδοκιμάστε.`); }
+    if (text.replace(/\s+/g, '').length < 40) throw new Error('Το Word αρχείο δεν έχει κείμενο — αποθηκεύστε το ως PDF και ξαναδοκιμάστε.');
+    return { kind: 'text', text, pages: null, why: 'docx' };
   }
   if (file.type === 'application/pdf' || /\.pdf$/.test(name)) {
     const b64 = () => _scanArrayBufferToBase64(buf);

@@ -2022,7 +2022,7 @@ function openNatlScan() {
         ${(typeof icon === 'function') ? icon('camera', 14) : ''} Λήψη με κάμερα
       </button>
     </div>
-    <input type="file" id="natlScanFile" accept="image/*,application/pdf${typeof scanEngineV2On === 'function' && scanEngineV2On() ? ',.doc,application/msword' : ''}" style="display:none"
+    <input type="file" id="natlScanFile" accept="image/*,application/pdf${typeof scanEngineV2On === 'function' && scanEngineV2On() ? ',.doc,application/msword,.docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document' : ''}" style="display:none"
       onchange="_natlScanHandleFile(this.files[0])">
     <input type="file" id="natlScanCamera" accept="image/*" capture="environment" style="display:none"
       onchange="_natlScanHandleFile(this.files[0])">
@@ -2045,10 +2045,10 @@ async function _natlScanHandleFile(file) {
   if (!file) return;
   const MAX_SIZE = 10 * 1024 * 1024;
   if (file.size > MAX_SIZE) { toast(`File too large (${(file.size/1024/1024).toFixed(1)}MB) — max 10MB`, 'error'); return; }
-  // Engine v2 (scan round 2/3) also reads legacy Word .doc, same as orders_intl.js.
+  // Engine v2 (scan round 2/3/4) also reads Word .doc / .docx, same as orders_intl.js.
   const v2 = typeof scanEngineV2On === 'function' && scanEngineV2On();
   const okType = v2 ? scanV2Accepts(file) : (file.type.startsWith('image/') || file.type === 'application/pdf');
-  if (!okType) { toast(v2 ? 'Δεκτά μόνο JPG / PNG / PDF / Word (.doc)' : 'Only JPG / PNG / PDF supported', 'error'); return; }
+  if (!okType) { toast(v2 ? 'Δεκτά μόνο JPG / PNG / PDF / Word (.doc, .docx)' : 'Only JPG / PNG / PDF supported', 'error'); return; }
 
   window._natlScanFile = file;
   const btn = document.getElementById('btnNatlScanGo');
@@ -2073,7 +2073,7 @@ async function _natlScanHandleFile(file) {
         ? `<div class="scan-preview-doc"><img src="${dataUrl}" alt="PDF page 1"></div>`
         : `<div class="scan-preview-info">PDF · ${escapeHtml(file.name)}</div>`;
     } else {
-      st.innerHTML = `<div class="scan-preview-info">📄 ${escapeHtml(file.name)}</div>`;  // .doc (v2): no preview
+      st.innerHTML = `<div class="scan-preview-info">📄 ${escapeHtml(file.name)}</div>`;  // .doc/.docx (v2): no preview
     }
   } catch(e) { st.innerHTML = `<div class="scan-preview-info">${escapeHtml(file.name)}</div>`; }
 }
