@@ -351,7 +351,13 @@ const _WI2_CSS=`
    padding και φόντο κάρτας. Η γραμμή πήρε δικό της όνομα. */
 .wk3.wi2 .wk3-row.wi2-rowurg{border-color:var(--danger-strong);box-shadow:inset 2px 0 0 var(--danger-strong)}
 .wk3.wi2 .wk3-row.wk3-done{background:var(--success-bg)}
-.wk3.wi2 .wk3-legrow{background:var(--surface-page);border-style:dashed;min-height:24px}
+/* Legrow (σκέλος ρότας / τοπική κίνηση) πάνω στη γκρι ημέρα (28/9): το φόντο
+   του ήταν ήδη --surface-page και το περίγραμμα ερχόταν από τη γραμμή — με
+   διάφανη γραμμή θα εξαφανιζόταν. Δικό του διακεκομμένο περίγραμμα. */
+.wk3.wi2 .wk3-legrow{background:transparent;border-style:dashed;border-color:var(--border-mid);min-height:24px}
+/* Διαχωριστικό ανάμεσα στα δύο σκέλη σπασμένης παραγγελίας (style.css
+   .wi2-splitframe .wk3-row) — το έκρυβε η διάφανη γραμμή. */
+.wk3.wi2 .wi2-splitframe .wk3-row{border-bottom:1px dashed var(--border-mid)}
 /* «2 ×2» wraps in the 36px number column; with normal line-height + 4px gap
    the two lines were 31px and pushed a grouped row to 33px (28/9). */
 .wk3.wi2 .wk3-num{border-right:none;font-size:11px;line-height:12px;color:var(--text-mid);justify-content:flex-start;padding-left:8px;gap:1px 4px;flex-wrap:wrap;font-variant-numeric:tabular-nums}
