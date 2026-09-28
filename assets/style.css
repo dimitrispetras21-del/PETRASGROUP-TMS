@@ -7382,39 +7382,34 @@ button.btn-icon:focus-visible { outline:2px solid var(--accent); outline-offset:
   flex-direction:column;align-items:center;justify-content:center;gap:1px;text-align:center}
 .wk3-segtotals .wi2-pal{font-size:12px;font-weight:700;line-height:1.15}
 .wk3-segstops{font-size:9px;color:var(--text-dim);line-height:1.15;white-space:nowrap}
-/* Πλάτη πλακάτ (owner review 8/9 v2 — item α): η _wi2Balance() του module
-   μοιράζει sL/sR μετρώντας .wi2-name/.wi2-meta ως ΑΜΕΣΑ παιδιά του .wk3-leg —
-   το .wk3-segwrap δεν έχει τέτοια (είναι δύο επίπεδα πιο μέσα), άρα η μέτρηση
-   επιστρέφει 0 και οι σειρές με segments κληρονομούσαν έναν λόγο υπολογισμένο
-   ΑΠΟ ΑΛΛΕΣ (μονές) γραμμές — τυχαίος για ένα πλακάτ με σύνολα δεξιά. Δικό
-   της grid-template ΜΟΝΟ όταν το JS προσθέσει .wk3-tiled (μόνο όταν segOn —
-   άρα ΠΟΤΕ με κλειστή σημαία, βλ. modules/weekly_intl.js). Ειδικότητα 4-5
-   κλάσεων ώστε να νικά το `.wk3.wi2 .wk3-leg` (inline <style> του module,
-   3 κλάσεις) όποια κι αν είναι η σειρά στο DOM. Νούμερα: spec §Widths —
-   238/262 (3+ μέλη, βλ. compact στο _wiSegHTML) · 230/250 (2 μέλη), με +8px
-   κενό +64px σύνολα προστιθέμενα στο δεξί (παράδοση). */
-.wk3.wi2 .wk3-leg.wk3-tiled{grid-template-columns:minmax(238px,1fr) auto minmax(334px,1fr)}
-.wk3.wi2 .wk3-leg.wk3-tiled[data-seg-n="2"]{grid-template-columns:minmax(230px,1fr) auto minmax(322px,1fr)}
-/* Η ΓΡΑΜΜΗ (.wk3-row) είναι ΚΙ ΑΥΤΗ grid (module's own <style>, γρ. 245:
-   `minmax(0,1.1fr)`/`minmax(0,0.9fr)` για τα δύο .wk3-leg) — min 0 σημαίνει
-   ότι ο browser ΔΕΝ φουσκώνει το track για να χωρέσει το παιδί, άρα το πλάτος
-   που μόλις κλειδώσαμε παραπάνω (238-334/230-322) περίσσευε από το πλάτος
-   που της έδινε η σειρά και το `.wk3-leg{overflow:hidden}` το έκοβε σιωπηλά —
-   ΤΑ ΣΥΝΟΛΑ δεξιά της παράδοσης εξαφανίζονταν εντελώς, αόρατο bug που δεν θα
-   φαινόταν παρά μόνο μετρώντας rects (βρέθηκε με Playwright evaluate, όχι με
-   screenshot). Ίδιο 36px/240px/var(--fL)/var(--fR) με το γρ. 245 ΕΠΙΤΗΔΕΣ
-   (var() λύνεται στην τιμή που έχει ΤΩΡΑ η μεταβλητή — αν αλλάξει εκεί, θα
-   αλλάξει και εδώ)· μόνο τα δύο minmax ελάχιστα ανεβαίνουν, και ΜΟΝΟ σε
-   γραμμή που όντως περιέχει .wk3-tiled. ΔΕΝ καλύπτει το media query
-   max-width:1360px (γρ. 443) — άλλη στήλωση, εκτός εύρους της συγκεκριμένης
-   αναθεώρησης (οθόνες ελέγχθηκαν στα 1440px). Το track παρακάτω δίνει το
-   ΠΕΡΙΘΩΡΙΟ (border-box) του ίδιου του .wk3-leg — για να χωρέσουν τα τρία
-   tracks από πάνω (238-334/230-322) πρέπει να προστεθεί ΚΑΙ το gap:4px×2
-   ΚΑΙ το padding:0 4px×2 του .wk3-leg (γρ. 315, wi2 mode) — 8+8=16px, αλλιώς
-   ξανακόβεται σιωπηλά (επαληθεύτηκε με rects, όχι με μάτι — βλ. σχόλιο πιο
-   πάνω): 238+12(βέλος)+334+16=600 (3+ μέλη) · 230+12+322+16=580 (2 μέλη). */
-.wk3.wi2 .wk3-row:has(.wk3-leg.wk3-tiled){grid-template-columns:36px var(--fL) minmax(600px,1.1fr) 240px minmax(600px,0.9fr) var(--fR)}
-.wk3.wi2 .wk3-row:has(.wk3-leg.wk3-tiled[data-seg-n="2"]){grid-template-columns:36px var(--fL) minmax(580px,1.1fr) 240px minmax(580px,0.9fr) var(--fR)}
+/* ΠΛΑΚΑΤ ΣΤΟ ΚΟΙΝΟ ΠΛΕΓΜΑ — Weekly International (owner 28/9: «να σουλουπωθεί
+   στα νέα δεδομένα»). Μέχρι τις 28/9 ένα .wk3-tiled σκέλος είχε δικά του
+   ελάχιστα πλάτη (238-334px) και η γραμμή του δικό της grid-template (σκέλη
+   580-600px) — η ανάθεση και η εισαγωγή μιας ομάδας ξεκινούσαν 72-136px
+   δεξιότερα από κάθε άλλη γραμμή. Αφαιρέθηκαν: το πλακάτ ζει στο ίδιο κελί, με
+   το ίδιο πλάτος, όπως η μονή κάρτα. Όσα τμήματα δεν χωρούν σε μία σειρά
+   (~90px το καθένα) μαζεύονται σε «+N» που ανοίγει την ομάδα επιτόπου
+   (weekly_intl.js _wi2FitSegs) — κάθε ενέργεια τμήματος μένει προσβάσιμη.
+   ΟΛΟΙ οι κανόνες εδώ είναι .wk3.wi2: το Weekly National χρησιμοποιεί τις ίδιες
+   κοινές κλάσεις .wk3-seg / .wk3-segtotals (βλ. weekly_natl.js _wnSegHTML) και ΔΕΝ
+   αλλάζει — γι' αυτό οι κοινοί κανόνες πάνω έμειναν ως είχαν. */
+.wk3.wi2 .wk3-seg{min-height:25px;padding:0 10px}
+.wk3.wi2 .wk3-segtop{font-size:10px;height:11px;line-height:11px}
+/* Κλίμακα της μονής κάρτας (παραλλαγή A: όνομα 11/12, 2η σειρά 10/11,
+   πλακίδια 9.5) — γραμμή 29px. Το όνομα ΔΕΝ αναδιπλώνεται: «…» + title. */
+.wk3.wi2 .wk3-seg .wi2-name{font-size:11px;line-height:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.wk3.wi2 .wk3-seg .wi2-sub{font-size:10px}
+.wk3.wi2 .wk3-seg .wi2-date{font-size:9.5px;padding:0 4px;height:auto;line-height:9.5px}
+.wk3.wi2 .wk3-segtop .wi2-pal{font-size:9.5px}
+.wk3.wi2 .wk3-seg.off{display:none}
+.wk3.wi2 .wk3-segmore{flex:0 0 auto;min-width:44px;align-items:center;font:700 10px 'DM Sans',sans-serif;color:var(--accent-text)}
+.wk3.wi2 .wk3-segmore.off{display:none}
+.wk3.wi2 .wk3-segwrap.open .wk3-segpill{flex-wrap:wrap}
+.wk3.wi2 .wk3-segwrap.open .wk3-seg{flex:1 1 90px}
+/* Σύνολα: στενό κουτί, «N p» κάτω δεξιά όπως οι παλέτες της μονής κάρτας. */
+.wk3.wi2 .wk3-segtotals{flex:0 0 auto;width:auto;min-width:40px;align-items:flex-end;text-align:right}
+.wk3.wi2 .wk3-segtotals .wi2-pal{font-size:10px;line-height:11px}
+.wk3.wi2 .wk3-segstops{font-size:9.5px;line-height:10px}
 /* Item 2 tooltip: πελάτης, αναφορά, παλέτες, ημέρα/ώρα — CSS-only hover. */
 .wk3-segtip{display:none;position:absolute;left:0;top:100%;margin-top:6px;z-index:20;
   min-width:170px;max-width:240px;background:var(--surface-dark);color:var(--text-on-dark);

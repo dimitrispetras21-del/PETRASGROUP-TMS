@@ -33,11 +33,10 @@ const OPS_FIELDS = [
   'Group ID',
   // Pre-order (owner 22/9). Without 'Ops Status' a pre-order is NULL = absent
   // (facade trap 2) and would read as an ordinary «ΠΡΟΣ ΑΝΑΘΕΣΗ» row; 'Notes'
-  // is its only description. 'Destination Country' is deliberately NOT asked
-  // for: a pre-order has no delivery date, so it never sits in a delivery
-  // section — and an explicit fields[] read of a column the view lacks (Worker
-  // deployed before DRAFT 052) would fail this whole page.
-  'Ops Status','Notes',
+  // is its only description, 'Destination Country' its only place (owner 28/9:
+  // the country must show). Safe to ask for since 052 ran and Worker 1692d0da
+  // maps it (27/9) — before that, this read would have failed the page.
+  'Ops Status','Notes','Destination Country',
 ];
 
 /* ── ENTRY ────────────────────────────────────────────────────── */
@@ -488,7 +487,7 @@ function _opsDraw() {
     'δεν φορτώθηκε και δεν μετατέθηκε',
     r=>{const f=r.fields, n=_daysAgo(f['Loading DateTime']);
       const pre=isPreorder(f);
-      return `<div class="do-zrow${pre?' do-pre':''}" id="r_${r.id}"><span class="do-cl">${_C(f)}${pre?' '+preorderChipHtml(f):''}</span><span class="do-rt">${route(r)}${_opsWho(f)}</span>
+      return `<div class="do-zrow${pre?' do-pre':''}" id="r_${r.id}"><span class="do-cl">${_C(f)}${pre?' '+preorderChipHtml(f):''}</span><span class="do-rt">${pre?escapeHtml(preorderCountryText(f)||'—'):route(r)}${_opsWho(f)}</span>
         <span class="do-late">φόρτωση ${_DMY(f['Loading DateTime'])} · ${_agoTxt(n)}</span>
         ${_opsSlots(r,'ovl')}</div>${OPS._expanded?.has(r.id)?_opsSubRows(r,'Loading',true):''}`;}):'';
   const ovLErr=isToday&&OPS.overdueLoadsErr?`<div class="do-err"><span>Η ζώνη εκκρεμών φορτώσεων δεν φορτώθηκε — δεν σημαίνει ότι δεν υπάρχουν εκκρεμείς φορτώσεις. Οι υπόλοιπες ενότητες είναι ενημερωμένες.</span><button class="do-btn" onclick="renderDailyOps()">Ξαναδοκίμασε</button></div>`:'';
@@ -733,11 +732,15 @@ function _opsRow(rec,num,type,isToday,cls) {
   const f=rec.fields, id=rec.id;
   const client=_C(f), sub=_CSub(f);
   const pre=isPreorder(f);
-  const loadL=_L(_opsStopLoc(id,'Loading'));
-  const delivL=_L(_opsStopLoc(id,'Unloading'));
+  // Pre-order (owner 28/9): no points — the place cell names the foreign
+  // country (export → destination, import → loading), and the pallets are
+  // unknown, not 0 (the view sums empty stops to 0).
+  const preCC=pre?(escapeHtml(preorderCountryText(f))||'—'):'';
+  const loadL=pre?preCC:_L(_opsStopLoc(id,'Loading'));
+  const delivL=pre?preCC:_L(_opsStopLoc(id,'Unloading'));
   const truck=_TT(f), driver=_D(f), partner=_P(f);
   // Missing is not zero and not blank (DESIGN.md #3): a dash.
-  const pal=f['Total Pallets']!=null&&f['Total Pallets']!==''?f['Total Pallets']:'—';
+  const pal=!pre&&f['Total Pallets']!=null&&f['Total Pallets']!==''?f['Total Pallets']:'—';
   const st=f['Status']||'';
   const isDone=st==='Delivered';
   const isL=type==='el'||type==='il', isExp=type==='el'||type==='ed';

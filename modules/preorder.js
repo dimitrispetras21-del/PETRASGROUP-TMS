@@ -54,19 +54,6 @@ function _preWhen(f) {
   return `φόρτωση σε ${n} ημ.`;
 }
 
-/** «k/n» among the pre-orders announced together — same client, direction
- *  and loading day (Figma 709: «1/2»). Derived, not stored: the small form
- *  writes n plain rows, so the batch is whatever still shares those three.
- *  '' for a lone one. `records` = [{id, fields}] the screen already holds. */
-function preorderSeq(rec, records) {
-  const f = rec && rec.fields; if (!isPreorder(f)) return '';
-  const key = r => [getLinkedId(r.fields['Client']), r.fields['Direction'], toLocalDate(r.fields['Loading DateTime'] || '')].join('|');
-  const k = key(rec);
-  const sib = (records || []).filter(r => r && isPreorder(r.fields) && key(r) === k)
-    .sort((a, b) => (Number(a.fields['Order No']) || 0) - (Number(b.fields['Order No']) || 0) || String(a.id).localeCompare(String(b.id)));
-  return sib.length > 1 ? `${sib.findIndex(r => r.id === rec.id) + 1}/${sib.length}` : '';
-}
-
 /** Destination while the point is unknown: the country, or «—». */
 function preorderDest(f) {
   const c = f && f['Destination Country'];
@@ -90,10 +77,19 @@ function preorderTip(f) {
   if (f['Notes']) bits.push('«' + String(f['Notes']) + '»');
   return bits.join(' · ');
 }
-/** Orders list status (Figma 709:1144): dashed «PRE k/n», urgency colour. */
-function preorderPillHtml(f, seq) {
+/** The unknown FOREIGN end in words (plain text, caller escapes):
+ *  export → «→ Ιταλία (IT)», import → «από Ολλανδία (NL)», '' without one. */
+function preorderCountryText(f) {
+  const cc = f && f['Destination Country'] ? String(f['Destination Country']) : '';
+  if (!cc) return '';
+  return (f['Direction'] === 'Import' ? 'από ' : '→ ') + (preorderDest(f) || cc) + ' (' + cc + ')';
+}
+/** Orders list status (Figma 709:1144): dashed «PRE», urgency colour. No «k/n»
+ *  (owner 28/9): loads created together are independent orders — different
+ *  trucks, different assignments — so nothing on screen pairs them. */
+function preorderPillHtml(f) {
   _preEnsureStyles();
-  return `<span class="pre-pill pre-${preorderLevel(f)}" title="${escapeHtml(preorderTip(f))}">PRE${seq ? ' ' + escapeHtml(seq) : ''}</span>`;
+  return `<span class="pre-pill pre-${preorderLevel(f)}" title="${escapeHtml(preorderTip(f))}">PRE</span>`;
 }
 
 /** «N προσωρινές» — hidden at 0. `onclick` is the page's own jump/filter. */
@@ -205,6 +201,8 @@ async function submitPreorder(recId) {
       if (country) fields['Destination Country'] = country;
       // Sequential, never a retried batch: a POST is not idempotent (14/9,
       // order 335). A failure at k leaves k-1 rows — said out loud below.
+      // Each row is a fully independent order (owner 28/9): no group id, no
+      // matched id, no batch marker — different loads, different assignments.
       for (let i = 0; i < n; i++) made.push(await atCreate(TABLES.ORDERS, fields));
     }
   } catch (e) {
@@ -276,15 +274,12 @@ function _preEnsureStyles() {
 .pre-count.pre-amber{border:1px solid var(--warn);color:var(--warn);background:var(--warn-bg)}
 .pre-count.pre-red{border:1px solid var(--danger);color:var(--surface-card);background:var(--danger)}
 .pre-count.on{outline:2px solid var(--surface-dark);outline-offset:2px}
-.wk3.wi2 #wi-rows .wk3-row.wi2-pre{border-style:dashed;border-color:var(--border-dark);border-left-width:3px}
-.wk3.wi2 #wi-rows .wk3-row.wi2-pre.pre-amber{border-color:var(--warn)}
-.wk3.wi2 #wi-rows .wk3-row.wi2-pre.pre-red{border-color:var(--danger);border-left:4px solid var(--danger);background:var(--danger-bg)}
 .do-t tr.do-pre td{color:var(--text-dim)}
 .do-t tr.do-pre td:first-child{box-shadow:inset 3px 0 0 var(--border-dark)}
 .do-t tr.do-pre.pre-amber td:first-child{box-shadow:inset 3px 0 0 var(--warn)}
 .do-t tr.do-pre.pre-red td:first-child{box-shadow:inset 4px 0 0 var(--danger)}
 .do-zrow.do-pre{color:var(--text-dim)}
-.pre-flash td,.wk3-row.pre-flash,.do-zrow.pre-flash{outline:2px solid var(--accent);outline-offset:-2px}
+.pre-flash td,.wk3-row.pre-flash,.do-zrow.pre-flash,.wi2-card.pre-flash{outline:2px solid var(--accent);outline-offset:-2px}
 .pre-f{margin-bottom:12px;flex:1;min-width:0}
 .pre-lbl{display:block;font:700 10px 'DM Sans',sans-serif;letter-spacing:.06em;color:var(--text-mid);margin-bottom:6px}
 .pre-row{display:flex;gap:12px}
@@ -303,9 +298,9 @@ function _preEnsureStyles() {
 .pre-card{border:1px dashed var(--border-dark)!important;background:var(--surface-card)!important}
 .pre-card.pre-amber{border-color:var(--warn)!important}
 .pre-card.pre-red{border-color:var(--danger)!important}
-.pre-card .pre-cw{font-weight:700;letter-spacing:.02em}
-.pre-card .pre-cm{color:var(--text-dim);font-size:11px}
-.pre-empty{border:1px dashed var(--border)!important;background:var(--surface-card)!important;color:var(--text-dim)}
+/* Inside a Weekly card the chip is a tile of the 9.5px family (variant A,
+   owner 28/9), not the 18px list pill — same line box as the date chip. */
+.wi2-card .pre-chip{height:12px;line-height:12px;padding:0 4px;font-size:9.5px;margin-right:4px;vertical-align:1px}
 .wi-ctx-h{padding:8px 12px 4px;font:700 10px 'DM Sans',sans-serif;letter-spacing:.06em;color:var(--text-mid)}
 .wi-ctx-i.pre-go{color:var(--accent-text)}
 .pre-pill{display:inline-flex;align-items:center;height:20px;padding:0 8px;border:1px dashed var(--border-dark);border-radius:var(--radius-full);font:700 10px 'DM Sans',sans-serif;color:var(--text-mid);background:var(--surface-card);white-space:nowrap}
@@ -332,7 +327,7 @@ function preorderJump(selector) {
 
 if (typeof window !== 'undefined') {
   Object.assign(window, { isPreorder, preorderLevel, preorderDest, preorderChipHtml, preorderCounterHtml, preorderConvertBand,
-    preorderJump, openPreorder, editPreorder, submitPreorder, cancelPreorder, convertPreorder, _preBtnLabel, _preClose, _preDir, _preStep, preorderSeq, preorderTip, preorderPillHtml });
+    preorderJump, openPreorder, editPreorder, submitPreorder, cancelPreorder, convertPreorder, _preBtnLabel, _preClose, _preDir, _preStep, preorderTip, preorderPillHtml, preorderCountryText });
   // The page buttons («Pre-order», blue outline) render before any chip does.
   if (document.head) _preEnsureStyles();
 }
