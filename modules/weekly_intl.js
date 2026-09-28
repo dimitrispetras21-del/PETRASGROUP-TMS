@@ -2314,9 +2314,11 @@ function _wiSegPillWrap(rowId,list,kind,isImportSide,draggable,totalsHTML){
   const open=!!(WINTL.ui.segOpen&&WINTL.ui.segOpen.has(list.map(o=>o.id).sort().join(',')+':'+kind));
   return `<div class="wk3-segwrap${open?' open':''}"><div class="wk3-segpill" data-row-id="${rowId}" data-kind="${kind}">${segs}${more}</div>${totalsHTML||''}</div>`;
 }
-// The open state lives in WINTL.ui, not only on the DOM: reorder/remove from
-// inside an opened group repaint the row (or the board) — without this it
-// snapped back to «+N» right after the action it was opened for.
+// The open state lives in WINTL.ui, not only on the DOM: a reorder inside an
+// opened group repaints the row — without this it snapped back to «+N» right
+// after the action it was opened for. Removing a member changes the member
+// set (the key), so the smaller group comes back collapsed — intended: it is
+// a different group now.
 function _wi2SegToggle(el){
   const w=el.closest('.wk3-segwrap'), p=w&&w.querySelector('.wk3-segpill'); if(!p) return;
   const ids=[...p.querySelectorAll('.wk3-seg[data-order-id]')].map(x=>x.dataset.orderId).sort().join(',');
