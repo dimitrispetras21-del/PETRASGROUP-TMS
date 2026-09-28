@@ -309,13 +309,13 @@ const _WI2_CSS=`
 .wk3.wi2 .wk3-cols .c.fc{color:var(--text-dim)}
 .wk3.wi2 .wk3-cols .c .fc-ch{font-size:11px}
 .wk3.wi2 .wk3-cols .n{background:none;color:inherit;font:700 11px 'Syne',sans-serif;letter-spacing:1.2px;min-width:0;height:auto;padding:0;font-variant-numeric:tabular-nums}
-.wi2-day{background:var(--surface-card);border:1px solid var(--border);border-radius:var(--radius);padding:2px 8px 4px;margin-bottom:4px}
+.wi2-day{background:var(--surface-page);border:1px solid var(--border);border-radius:var(--radius);padding:2px 8px 4px;margin-bottom:4px}
 .wi2-day.today{border-color:var(--accent)}
-.wk3.wi2 .wk3-dayh{position:sticky;top:28px;z-index:20;background:var(--surface-card);border:none;padding:2px 4px 0;gap:12px;align-items:baseline;box-shadow:none}
+.wk3.wi2 .wk3-dayh{position:sticky;top:28px;z-index:20;background:var(--surface-page);border:none;padding:2px 4px 0;gap:12px;align-items:baseline;box-shadow:none}
 .wk3.wi2 .wk3-dayh .d{font:700 16px 'Syne',sans-serif;letter-spacing:0;color:var(--text);font-variant-numeric:tabular-nums}
 .wk3.wi2 .wk3-dayh.today .d{color:var(--text)}
 .wk3.wi2 .wk3-dayh .now{font:700 11px 'DM Sans',sans-serif;letter-spacing:1px;color:var(--surface-card);background:var(--accent);border:none;border-radius:var(--radius-full);padding:0 8px;line-height:16px}
-.wi2-none{font-size:11px;color:var(--text-dim);padding:4px 4px 0;font-style:italic}
+.wi2-none{font-size:11px;color:var(--text-mid);padding:4px 4px 0;font-style:italic}
 /* ΠΥΚΝΟΤΗΤΑ (owner 27/9, «dense»): περισσότερες γραμμές ανά οθόνη — οι
    οθόνες των dispatchers είναι φαρδιές, όχι ψηλές. Γραμμή 44→29px: γραμμή 1px
    + κάρτα 1px + 1px padding πάνω/κάτω, περιεχόμενο 23px = όνομα 12px
@@ -327,8 +327,16 @@ const _WI2_CSS=`
    τα γράμματα μίκρυναν σε 11/10px και τα πλακίδια της 2ης σειράς σε 9.5px.
    Κατώτατο 9.5px (owner 28/9), και στην κλιμάκωση ονόματος της _wi2Balance.
    Κάθε padding εδώ είναι μετρημένο. */
-.wk3.wi2 .wk3-row{min-height:26px;margin-top:2px;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface-card);align-items:center}
-.wk3.wi2 .wk3-row.alt{background:var(--surface-card)}
+/* ΓΚΡΙ ΗΜΕΡΑ, ΛΕΥΚΑ ΠΛΑΚΙΔΙΑ (owner 28/9: «γκρι το φόντο σε κάθε ημέρα ώστε
+   μόνο τα πλακίδια να είναι λευκά»). Το γκρι είναι το ΙΔΙΟ token με τη
+   μαζεμένη στήλη εθνικού σκέλους (.fl-off/.fr-off → --surface-page, #F4F6F9),
+   όπως ζήτησε — όχι νέο χρώμα. Η γραμμή γίνεται διάφανη και χωρίς περίγραμμα,
+   ώστε να μην μπαίνει λευκό/γκρι κουτί γύρω από τις κάρτες· τα περιγράμματα
+   κατάστασης (ΠΡΟΣ ΑΝΑΘΕΣΗ / ΚΕΝΟ / επείγον) και η απόχρωση «παραδόθηκε»
+   μένουν. Κείμενο πάνω στο γκρι (αριθμός γραμμής, «Καμία κίνηση») σε
+   --text-mid: το --text-dim έδινε ~2.4:1, το --text-mid ~7.2:1. */
+.wk3.wi2 .wk3-row{min-height:26px;margin-top:2px;border:1px solid transparent;border-radius:var(--radius);background:transparent;align-items:center}
+.wk3.wi2 .wk3-row.alt{background:transparent}
 .wk3.wi2 .wk3-row:hover{background:var(--surface-sunken)}
 /* ACCENT WITHOUT SHIFT (owner 28/9, «στοίχιση»): a 3px left border moved every
    cell of the row 2px right of the others — the accent is an inset shadow now,
@@ -346,7 +354,7 @@ const _WI2_CSS=`
 .wk3.wi2 .wk3-legrow{background:var(--surface-page);border-style:dashed;min-height:24px}
 /* «2 ×2» wraps in the 36px number column; with normal line-height + 4px gap
    the two lines were 31px and pushed a grouped row to 33px (28/9). */
-.wk3.wi2 .wk3-num{border-right:none;font-size:11px;line-height:12px;color:var(--text-dim);justify-content:flex-start;padding-left:8px;gap:1px 4px;flex-wrap:wrap;font-variant-numeric:tabular-nums}
+.wk3.wi2 .wk3-num{border-right:none;font-size:11px;line-height:12px;color:var(--text-mid);justify-content:flex-start;padding-left:8px;gap:1px 4px;flex-wrap:wrap;font-variant-numeric:tabular-nums}
 .wk3.wi2 .wk3-num.imp{color:var(--accent-text);font-weight:700}
 .wk3.wi2 .wk3-num .wi-sync{display:inline;margin:0;font-size:11px}
 .wk3.wi2 .wk3-grpb{font-size:11px;line-height:11px;padding:0 4px;border-radius:var(--radius-full)}
@@ -431,7 +439,7 @@ const _WI2_CSS=`
 .wi2-gapbox{flex:1;min-height:24px;display:flex;align-items:center;gap:8px;padding:0 8px;border:1px solid var(--warn);border-radius:var(--radius);font:700 10px 'Syne',sans-serif;letter-spacing:.8px;color:var(--warn);cursor:pointer;box-sizing:border-box;background:var(--surface-card)}
 .wi2-gapbox.urg{border-color:var(--danger-strong);color:var(--danger-strong)}
 .wi2-gapbox small{font:500 11px 'DM Sans',sans-serif;letter-spacing:0}
-.wi2-void{flex:1;min-height:24px;border-radius:var(--radius);background:var(--surface-page)}
+.wi2-void{flex:1;min-height:24px;border-radius:var(--radius);background:var(--surface-card)}
 .wk3.wi2 .wk3-leg>.wi2-gapbox,.wk3.wi2 .wk3-leg>.wi2-void{grid-column:1/-1}
 .wi2-void.navy{background:var(--surface-dark)}
 .wi2-dash{width:100%;text-align:center;color:var(--text-dim);font-size:12px;cursor:help}
@@ -459,7 +467,7 @@ const _WI2_CSS=`
 .wk3.wi2 .wk3-pill .t,.wk3.wi2 .wk3-pill small{display:block;max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .wk3.wi2 .wk3-pill small{font-size:10px;line-height:11px;color:var(--text-on-dark);font-variant-numeric:tabular-nums}
 .wk3.wi2 .wk3-pill .t{font-size:11px;line-height:12px;font-weight:700;font-variant-numeric:tabular-nums}
-.wk3.wi2 .wk3-pill.un{color:var(--unassigned);align-items:center;font-weight:700;letter-spacing:.5px}
+.wk3.wi2 .wk3-pill.un{color:var(--unassigned);align-items:center;font-weight:700;letter-spacing:.5px;background:var(--surface-card)}
 .wk3.wi2 .wk3-pill.unimp{align-items:center;font-size:12px}
 .wk3.wi2 .wk3-pill.unimp small{color:var(--text-dim);font-weight:500}
 .wk3.wi2 .wk3-prt{border:1px solid var(--border);border-radius:var(--radius);padding:1px 3px;font-size:12px;background:var(--surface-card)}
@@ -488,7 +496,7 @@ const _WI2_CSS=`
 .wk3.wi2 .wk3-sld{font-size:11px}
 .wk3.wi2 .wk3-lcol .wk3-stopline.dl{padding-left:0}
 .wk3.wi2 .wk3-gm{font-size:11px}
-.wi2-legnote{font-size:11px;color:var(--text-dim);white-space:nowrap}
+.wi2-legnote{font-size:11px;color:var(--text-mid);white-space:nowrap}
 .wi2-unlink{font:500 11px 'DM Sans',sans-serif;color:var(--text-dim);background:none;border:none;cursor:pointer}
 .wi2-unlink:hover{color:var(--danger)}
 .wk3.wi2 .wk3-empty .big{font-size:18px}
