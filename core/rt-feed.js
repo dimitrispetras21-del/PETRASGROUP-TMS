@@ -455,7 +455,21 @@ async function rtOnOrderDeleted(orderId) {
     const rt = await _rtFind([pg]);
     if (!rt) return;
     if (_rtClosed(rt)) return; // ιστορικό — μένει ως έχει
-    const lines = await plFetch('/costs/lines?rt_id=' + rt.id);
+    // A dispatcher may delete orders (owner 28/9) but must never read cost
+    // lines (R-04 lock) → this GET is a 403 for that role. Not an error: the
+    // DB already did the job — on 387's delete (22:21:31) trigger order_unlink
+    // removed the leg and rt_sync set the round trip 'cancelled' before this
+    // front cascade ran. So a 403 is a console note, never a warning toast;
+    // any other failure stays loud through _rtSafe (αρχή 1).
+    let lines;
+    try { lines = await plFetch('/costs/lines?rt_id=' + rt.id); }
+    catch (e) {
+      if (/forbidden|HTTP 403/i.test(String(e && e.message))) {
+        console.info('[rt-feed] cost lines not readable for this role — round trip left to the DB triggers', rt.code || rt.id);
+        return;
+      }
+      throw e;
+    }
     if ((lines.records || []).length) _rtWarn('P&L: το ' + rt.code + ' έχει κόστη αλλά η παραγγελία διαγράφηκε — θέλει χέρι στο TRIP PnL');
     else await plFetch('/costs/rt/' + rt.id, { method: 'PATCH', body: { status: 'cancelled' } });
   });

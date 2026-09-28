@@ -4083,7 +4083,7 @@ function _wiPreLeg(rec,extra){
 }
 
 // Pre-order menu (Figma 709:1097): header, conversion (blue), the small form,
-// cancel (red). Nothing else: groupage, rota, split, local move, week shift and
+// delete (red — owner 28/9: orders have no «Ακύρωση», only «Διαγραφή»). Nothing else: groupage, rota, split, local move, week shift and
 // print all need points a pre-order does not have yet. Assignment stays on the
 // row's own ΑΝΑΘΕΣΗ cell (owner 27/9: no blocking of assignment).
 // Returns false for anything that is not a lone pre-order (normal menu).
@@ -4096,7 +4096,7 @@ function _wiPreCtx(e,row,isImp){
   html+=_wiCtxBtn('Μετατροπή σε παραγγελία…',`_wk3Edit('${oid}')`).replace('class="wi-ctx-i','class="wi-ctx-i pre-go');
   html+=_wiCtxBtn('Επεξεργασία pre-order',`editPreorder('${oid}')`);
   html+='<div class="wi-ctx-sep"></div>';
-  html+=_wiCtxBtn('Ακύρωση pre-order',`cancelPreorder('${oid}')`,true);
+  html+=_wiCtxBtn('Διαγραφή pre-order',`deletePreorder('${oid}')`,true);
   const ctx=document.getElementById('wi-ctx');
   ctx.innerHTML=html;
   ctx._returnFocus=e.currentTarget;

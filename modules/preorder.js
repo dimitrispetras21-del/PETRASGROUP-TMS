@@ -234,14 +234,13 @@ async function submitPreorder(recId) {
 
 function editPreorder(recId) { return openPreorder(recId); }
 
-// Cancel = the order list's own cancel (Status 'Cancelled' + downstream sync),
-// not a second implementation. ops_status stays as the trace (22/9).
-function cancelPreorder(recId) {
-  return OrdersList.cancelOrder({
-    recId, table: TABLES.ORDERS, source: 'intl', detailId: 'intlDetail', rerender: _preRepaint,
-    confirmText: 'Ακύρωση του pre-order;\n\nΗ εγγραφή μένει ως Ακυρωμένη — δεν σβήνεται.',
-    errorText: 'Η ακύρωση απέτυχε — δοκίμασε ξανά', logTag: 'cancelPreorder',
-  });
+// Owner 28/9: orders have no «Ακύρωση», only «Διαγραφή». A cancelled
+// pre-order (order 394) stayed on Weekly/Daily as an ordinary order with its
+// truck, and the team deletes anyway (24 deleted vs 1 cancelled). Delete = the
+// order list's own delete (deleteIntlOrder: its confirm, cascade and 403
+// message), not a second implementation — only the repaint follows the page.
+function deletePreorder(recId) {
+  return deleteIntlOrder(recId, { rerender: _preRepaint });
 }
 
 // Conversion from screens that hold only SOME fields (Daily Ops asks for a
@@ -308,7 +307,7 @@ function _preEnsureStyles() {
 .pre-pill.pre-red{border-color:var(--danger);color:var(--danger)}
 .pre-acts{display:flex;gap:6px;align-items:center}
 .pre-act{height:26px;padding:0 10px;border-radius:var(--radius);background:var(--surface-card);font:600 12px 'DM Sans',sans-serif;cursor:pointer;white-space:nowrap;border:1px solid var(--accent);color:var(--accent-text)}
-.pre-act.cancel{border-color:var(--danger);color:var(--danger)}
+.pre-act.del{border-color:var(--danger);color:var(--danger)}
 tr.oi-pre td{color:var(--text-dim)}
 .pre-band{padding:8px 12px;margin-bottom:12px;border-radius:var(--radius);font-size:12px;line-height:1.5;border:1px dashed var(--border-dark);background:var(--surface-sunken);color:var(--text)}
 .pre-band.pre-amber{border:1px solid var(--warn);background:var(--warn-bg)}
@@ -327,7 +326,7 @@ function preorderJump(selector) {
 
 if (typeof window !== 'undefined') {
   Object.assign(window, { isPreorder, preorderLevel, preorderDest, preorderChipHtml, preorderCounterHtml, preorderConvertBand,
-    preorderJump, openPreorder, editPreorder, submitPreorder, cancelPreorder, convertPreorder, _preBtnLabel, _preClose, _preDir, _preStep, preorderTip, preorderPillHtml, preorderCountryText });
+    preorderJump, openPreorder, editPreorder, submitPreorder, deletePreorder, convertPreorder, _preBtnLabel, _preClose, _preDir, _preStep, preorderTip, preorderPillHtml, preorderCountryText });
   // The page buttons («Pre-order», blue outline) render before any chip does.
   if (document.head) _preEnsureStyles();
 }

@@ -653,8 +653,6 @@ function selectNatlOrder(recId) {
       <div class="on-sec-title">Ενέργειες</div>
       <div class="on-acts">
         <button type="button" class="on-act" onclick="openNatlEdit('${recId}')">Επεξεργασία</button>
-        ${f['Status']!=='Cancelled' && f['Status']!=='Delivered' && f['Status']!=='Invoiced'
-          ? `<button type="button" class="on-act" title="Σήμανση ως ακυρωμένη — η εγγραφή μένει" onclick="cancelNatlOrder('${recId}')">Ακύρωση</button>` : ''}
         <button type="button" class="on-act danger" title="Διαγραφή με cascade — αφαιρεί NL/GL/CL/Ramp/Παλέτες" onclick="deleteNatlOrder('${recId}')">Διαγραφή</button>
       </div>
     </div>` : ''}`;
@@ -1851,17 +1849,9 @@ async function _syncNationalLoad(noId, noFields, isDelete) {
   }
 }
 
-// ═══════════════════════════════════════════════
-// cancelNatlOrder — soft cancel: marks Status='Cancelled', leaves linked
-// records intact for audit/reporting. Use for client-cancelled orders.
-// ═══════════════════════════════════════════════
-async function cancelNatlOrder(recId) {
-  return OrdersList.cancelOrder({
-    recId, table: TABLES.NAT_ORDERS, source: 'natl', detailId: 'natlDetail', rerender: renderOrdersNatl,
-    confirmText: 'Ακύρωση αυτής της National Order;\n\nΘα μαρκαριστεί ως Cancelled αλλά τα linked records (NL/GL/CL/Ramp/Pallet Ledger) παραμένουν.\n\nΓια ολική διαγραφή χρησιμοποίησε το Delete.',
-    errorText: 'Η ακύρωση απέτυχε, δοκιμάστε ξανά', logTag: 'cancelNatlOrder',
-  });
-}
+// Owner 28/9: national orders have ONLY «Διαγραφή» too — «Ακύρωση» removed
+// (same decision as orders_intl; docs/DECISION_LOG.md 28/9). Legacy
+// 'Cancelled' rows still render with their label (_ON_STATUS).
 
 // ═══════════════════════════════════════════════
 // deleteNatlOrder — Delete a National Order + cleanup NL/GL/CL/Ramp
@@ -1884,7 +1874,7 @@ async function deleteNatlOrder(recId) {
       await atSoftDelete(TABLES.NAT_ORDERS, recId);
     } catch(e) {
       const m = String(e && e.message || e);
-      toast(/403|forbidden|δικαίωμα/i.test(m) ? 'Χωρίς δικαίωμα διαγραφής εθνικής παραγγελίας — χρησιμοποίησε «Ακύρωση» ή ζήτα από τον owner' : 'Η διαγραφή απέτυχε — δεν άλλαξε τίποτα', 'danger');
+      toast(/403|forbidden|δικαίωμα/i.test(m) ? 'Χωρίς δικαίωμα διαγραφής εθνικής παραγγελίας — ζήτα από τον owner' : 'Η διαγραφή απέτυχε — δεν άλλαξε τίποτα', 'danger');
       return;
     }
 
@@ -2680,7 +2670,6 @@ window._natlScanExtract = _natlScanExtract;
 window._natlScanOpenForm = _natlScanOpenForm;
 window.submitNatlOrder = submitNatlOrder;
 window.deleteNatlOrder = deleteNatlOrder;
-window.cancelNatlOrder = cancelNatlOrder;
 // Φ3β — groupage: όλα καλούνται από inline onclick, module σε IIFE
 window._grpAddRow = _grpAddRow;
 window._grpDelRow = _grpDelRow;

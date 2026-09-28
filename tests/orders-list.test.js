@@ -2,7 +2,7 @@
 // Pure parts of core/orders-list.js (step 1 of the orders-lists unification,
 // 22/9/2026): the period cutoff formula both lists send to the facade, and the
 // virtual-scroll range math. UNIT ONLY — no critics/e2e spec drives the DOM
-// painter or cancelOrder; the painting was verified with a one-off Playwright
+// painter; the painting was verified with a one-off Playwright
 // probe against the HAR rig (scroll → rows/spacers), not with a rig spec.
 const { test } = require('node:test');
 const assert = require('node:assert');

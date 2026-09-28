@@ -4,7 +4,8 @@
 // Step 1 of the unification (owner 22/9/2026, docs/data-audit/2026-09/
 // 2026-09-22-orders-lists-unification.md §3): ONLY what was byte-identical in
 // both modules moves here — the period cutoff formula, the virtual-scroll
-// painter and its rAF throttle, and the «cancel order» flow. Behaviour is
+// painter and its rAF throttle (the «cancel order» flow that also lived here
+// was removed 28/9 — orders have only «Διαγραφή», owner). Behaviour is
 // unchanged by construction: each module keeps its own state object, its own
 // row renderer, its own strings, and passes them in.
 // Step 2a (22/9): the column sort, the CSV download, the print tail, the OR()
@@ -194,30 +195,6 @@ const OrdersList = {
     if (!w) { toast('Το αναδυόμενο παράθυρο μπλοκαρίστηκε — επίτρεψε τα pop-ups για αυτόν τον ιστότοπο', 'warn'); return; }
     w.document.write(html);
     w.document.close();
-  },
-
-  // «Ακύρωση»: Status → Cancelled, downstream sync, close the card, re-render.
-  // The linked records (NL/GL/CL/Ramp/Pallet Ledger) stay — deletion is the
-  // separate hard cascade each module keeps for itself.
-  async cancelOrder({ recId, table, source, detailId, rerender, confirmText, errorText, logTag }) {
-    if (!(await confirmAction(confirmText, { title: 'Ακύρωση παραγγελίας', confirmLabel: 'Ακύρωσέ την', danger: true }))) return;
-    try {
-      await atPatch(table, recId, { 'Status': 'Cancelled' });
-      invalidateCache(table);
-      try {
-        if (typeof syncOrderDownstream === 'function') {
-          await syncOrderDownstream(recId, { source, changedFields: ['Status'] });
-        }
-      } catch (e) { console.warn('Cancel: downstream sync warning:', e.message); }
-      toast('Παραγγελία ακυρώθηκε', 'success');
-      document.getElementById(detailId)?.classList.add('hidden');
-      await rerender();
-    } catch (e) {
-      // User sees a clean message; full error goes to the persistent error log
-      // (with call-site + recId context), not dumped raw into the toast.
-      reportError(errorText);
-      if (typeof logError === 'function') logError(e, logTag + ' ' + recId);
-    }
   },
 };
 

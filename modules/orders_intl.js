@@ -477,7 +477,6 @@ function _renderIntlLayout(c) {
             <option value="Assigned"${_dis('Status','Assigned')}>Ανατεθειμένη</option>
             <option value="In Transit"${_dis('Status','In Transit')}>Σε μεταφορά</option>
             <option value="Delivered"${_dis('Status','Delivered')}>Παραδόθηκε</option>
-            <option value="Cancelled"${_dis('Status','Cancelled')}>Ακυρώθηκε</option>
           </select>
           <select class="svc-filter" onchange="intlFilter('Brand',this.value)">
             <option value="">Μάρκα: Όλες</option>
@@ -602,7 +601,7 @@ function _oiRowHtml(r) {
   // actions where ΑΝΑΘΕΣΗ + ΤΙΜΗ would be — a pre-order has neither yet.
   const pre = isPreorder(f);
   const preActs = can('orders') === 'full'
-    ? `<div class="pre-acts"><button type="button" class="pre-act" onclick="event.stopPropagation();openIntlEdit('${r.id}')">Μετατροπή</button><button type="button" class="pre-act cancel" onclick="event.stopPropagation();cancelPreorder('${r.id}')">Ακύρωση</button></div>` : '';
+    ? `<div class="pre-acts"><button type="button" class="pre-act" onclick="event.stopPropagation();openIntlEdit('${r.id}')">Μετατροπή</button><button type="button" class="pre-act del" onclick="event.stopPropagation();deletePreorder('${r.id}')">Διαγραφή</button></div>` : '';
   return `<tr onclick="selectIntlOrder('${r.id}')" id="irow_${r.id}" class="oi-row${sel}${pre ? ' oi-pre' : ''}" style="height:${_OI_ROW_H}px">
     <td class="oi-dim oi-num">${orderNoCell}</td>
     <td>${refCell}${legChip}${_oiFlags(f)}${typeof OrderDocs !== 'undefined' ? OrderDocs.badge(r.id) : ''}</td>
@@ -823,7 +822,6 @@ function _oiCardHtml(rec, opts) {
            + (d ? kv('Οδηγός', escapeHtml(d.fields?.['Full Name']||'')) : '');
   }
   const assignBody = unassigned ? '<div class="oi-note">Προς ανάθεση — η ανάθεση γίνεται στο Εβδομαδιαίο Διεθνών</div>' : assign;
-  const canCancel = canEdit && !['Cancelled','Delivered','Invoiced'].includes(st);
   // Pre-order (owner 22/9): opening the order form on it IS the conversion —
   // the same button, named for what it does; the small form edits day/notes.
   const pre = isPreorder(f);
@@ -831,7 +829,6 @@ function _oiCardHtml(rec, opts) {
     `<button type="button" class="oi-link" data-oi-act="edit" onclick="openIntlEdit('${recId}')">${pre ? 'Μετατροπή σε παραγγελία' : 'Επεξεργασία'}</button>`,
     pre ? `<button type="button" class="oi-link" data-oi-act="pre-edit" onclick="editPreorder('${recId}')">Επεξεργασία pre-order</button>` : '',
     `<button type="button" class="oi-link" data-oi-act="dup" onclick="duplicateIntlOrder('${recId}')">Διπλασιασμός</button>`,
-    canCancel ? `<button type="button" class="oi-link" data-oi-act="cancel" title="Σήμανση ως ακυρωμένη — η εγγραφή μένει" onclick="cancelIntlOrder('${recId}')">Ακύρωση</button>` : '',
     `<button type="button" class="oi-link oi-link-danger" data-oi-act="delete" title="Διαγραφή με cascade — NL/GL/CL/Ramp/Παλέτες" onclick="deleteIntlOrder('${recId}')">Διαγραφή</button>`,
   ].filter(Boolean).join('<span class="oi-sep">·</span>') : '';
 
@@ -3010,25 +3007,19 @@ function _intlPrint() {
   OrdersList.printOpen(html);
 }
 
-// ═══════════════════════════════════════════════════════════════
-// CANCEL — soft cancellation. Sets Status='Cancelled', leaves all
-// linked records intact (so audit trail / pallet ledger / reports
-// remain visible). Use this for client-cancelled orders.
-// ═══════════════════════════════════════════════════════════════
-async function cancelIntlOrder(recId) {
-  return OrdersList.cancelOrder({
-    recId, table: TABLES.ORDERS, source: 'intl', detailId: 'intlDetail', rerender: renderOrdersIntl,
-    confirmText: 'Ακύρωση αυτής της παραγγελίας;\n\nΘα μαρκαριστεί ως Cancelled αλλά τα linked records (NL/GL/CL/Ramp/Pallet Ledger) παραμένουν.\n\nΓια ολική διαγραφή χρησιμοποίησε το Delete.',
-    errorText: 'Η ακύρωση απέτυχε — δοκιμάστε ξανά', logTag: 'cancelIntlOrder',
-  });
-}
-
+// Owner 28/9: orders have ONLY «Διαγραφή» — the soft «Ακύρωση» (Status
+// 'Cancelled') was removed here, in orders_natl and on the pre-order. A
+// cancelled row stayed on Weekly/Daily as a live order (order 394), and the
+// team deleted anyway (24 deleted vs 1 cancelled). Legacy 'Cancelled' rows
+// still render with their label (_OI_STATUS). docs/DECISION_LOG.md 28/9.
 // ═══════════════════════════════════════════════════════════════
 // DELETE — hard cascade. Removes the ORDER record + ALL linked
 // downstream records (NL, GL, CL, RAMP, PALLET_LEDGER, ORDER_STOPS).
-// Use sparingly — for true mistakes / duplicates only.
+// The only way an order leaves (owner 28/9 — no more «Ακύρωση»).
+// opts.rerender: the page to repaint afterwards (the pre-order delete on
+// Weekly/Daily passes its own); default = the orders list.
 // ═══════════════════════════════════════════════════════════════
-async function deleteIntlOrder(recId) {
+async function deleteIntlOrder(recId, opts) {
   if (!confirm('🛑 ΔΙΑΓΡΑΦΗ International Order;\n\nΑυτό θα σβήσει ΚΑΙ:\n• Τα linked NAT_LOADS\n• GROUPAGE LINES + CONS_LOADS\n• RAMP records\n• PALLET LEDGER entries\n• ORDER_STOPS\n\nΗ ΕΝΕΡΓΕΙΑ ΔΕΝ ΑΝΑΙΡΕΙΤΑΙ.\n\nΕίσαι σίγουρος;')) return;
 
   try {
@@ -3047,7 +3038,7 @@ async function deleteIntlOrder(recId) {
       else await atDelete(TABLES.ORDERS, recId);
     } catch(e) {
       const m = String(e && e.message || e);
-      toast(/403|forbidden|δικαίωμα/i.test(m) ? 'Χωρίς δικαίωμα διαγραφής παραγγελίας — χρησιμοποίησε «Ακύρωση» ή ζήτα από τον owner' : 'Η διαγραφή απέτυχε — δεν άλλαξε τίποτα', 'danger');
+      toast(/403|forbidden|δικαίωμα/i.test(m) ? 'Χωρίς δικαίωμα διαγραφής παραγγελίας — ζήτα από τον owner' : 'Η διαγραφή απέτυχε — δεν άλλαξε τίποτα', 'danger');
       if (typeof logError === 'function') logError(e, 'deleteIntlOrder (order first) ' + recId);
       return;
     }
@@ -3148,7 +3139,7 @@ async function deleteIntlOrder(recId) {
     toast(_delFail ? `Order deleted (${_delFail} linked records failed — δες error log)` : 'Order deleted', _delFail ? 'warn' : 'success');
     if (_delFail && typeof logError === 'function') logError(new Error(`Cascade delete: ${_delFail} sub-deletes failed`), 'deleteIntlOrder ' + recId);
     document.getElementById('intlDetail')?.classList.add('hidden');
-    await renderOrdersIntl();
+    await ((opts && opts.rerender) || renderOrdersIntl)();
   } catch(e) {
     // Clean user message; raw error to the persistent log, not the toast.
     reportError('Η διαγραφή απέτυχε — δοκιμάστε ξανά');
@@ -3383,7 +3374,6 @@ async function _intlRefreshOrder(orderId) {
 }
 window._intlRefreshOrder = _intlRefreshOrder;
 
-window.cancelIntlOrder = cancelIntlOrder;
 window.deleteIntlOrder = deleteIntlOrder;
 window.cleanupOrphanGL = cleanupOrphanGL;
 window.cleanupOrphans = cleanupOrphans;
