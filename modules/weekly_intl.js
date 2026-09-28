@@ -2832,9 +2832,14 @@ function _wiGiSortRecs(recs){
     ||String(a.id).localeCompare(String(b.id)));
 }
 const WI_EXECUTING=['In Transit','Delivered'];
+// null = the read failed (status unknown) — callers must not act on it as if
+// it were a real status; _wiExecutingLive treats it as planning (unchanged).
+async function _wiStatusLive(oid){
+  try{ const r=await atGetOne(TABLES.ORDERS,oid); return String(r?.fields?.['Status']||''); }
+  catch(e){ if(typeof logError==='function') logError(e,'_wiStatusLive: status read failed — treated as planning'); return null; }
+}
 async function _wiExecutingLive(oid){
-  try{ const r=await atGetOne(TABLES.ORDERS,oid); return WI_EXECUTING.includes(String(r?.fields?.['Status']||'')); }
-  catch(e){ if(typeof logError==='function') logError(e,'_wiExecutingLive: status read failed — treated as planning'); return false; }
+  return WI_EXECUTING.includes(await _wiStatusLive(oid));
 }
 // Assignment saves keep the vehicle change (a corrected truck) but never the
 // Status regression to Assigned for an executing order.
@@ -3656,11 +3661,19 @@ async function _wiClear(rowId){
       // Execution beats planning (design 8/9): this was the one board write
       // with no executing check — «Καθαρισμός» on a row whose order is already
       // In Transit stripped the truck/driver of a vehicle on the road (audit 13/9).
-      if(await _wiExecutingLive(orderId)){ kept.push(orderId); continue; }
-      const res=await atSafePatch(TABLES.ORDERS,orderId,{
+      const st=await _wiStatusLive(orderId);
+      if(WI_EXECUTING.includes(st)){ kept.push(orderId); continue; }
+      // No vehicle = nothing assigned (28/9, order 387 / auditor B-43): the
+      // clear used to leave Status 'Assigned' on an order with no truck, so its
+      // RT stayed «planned» with an empty leg. Only 'Assigned' goes back —
+      // In Transit/Delivered are skipped above, and an unknown status (read
+      // failed, st===null) is left as it is rather than guessed.
+      const clearPatch={
         'Truck':[],'Trailer':[],'Driver':[],'Partner':[],
         'Is Partner Trip':false,'Partner Truck Plates':'',
-      });
+      };
+      if(st==='Assigned') clearPatch['Status']='Pending';
+      const res=await atSafePatch(TABLES.ORDERS,orderId,clearPatch);
       if(res?.error) throw new Error(res.error.message||res.error.type);
       // Χωρίς ανάθεση δεν υπάρχει ανταλλαγή: ο feeder σβήνει την εκκρεμή κίνηση
       // partner (τις οριστικές δεν τις αγγίζει — είναι ιστορικό).

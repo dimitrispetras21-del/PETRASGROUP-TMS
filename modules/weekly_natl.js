@@ -2463,10 +2463,14 @@ async function _wnClear(rowId) {
       // Execution beats planning (14/9, 030 trigger): a load already
       // Delivered/Cancelled keeps its assignment — the board never checked
       // Status before writing over it (A6, same guard as save/match/unmatch).
-      const done = await _wnDoneLive(orderId);
-      if (done) { showErrorToast(`Το φορτίο είναι ${done} — η ανάθεση δεν αλλάζει από το Weekly`); return; }
-      const res = await atSafePatch(TABLES.NAT_LOADS, orderId,
-        { 'Truck':[],'Trailer':[],'Driver':[],'Partner':[],'Is Partner Trip':false,'Partner Truck Plates':'' });
+      const st = await _wnStatusLive(orderId);
+      if (st === 'Delivered' || st === 'Cancelled') { showErrorToast(`Το φορτίο είναι ${st} — η ανάθεση δεν αλλάζει από το Weekly`); return; }
+      // Same gap as Weekly International's «Καθαρισμός» (28/9, order 387): the
+      // vehicle went but Status stayed 'Assigned'. Only 'Assigned' goes back to
+      // 'Pending'; any other status (or an unreadable one) is left untouched.
+      const clearPatch = { 'Truck':[],'Trailer':[],'Driver':[],'Partner':[],'Is Partner Trip':false,'Partner Truck Plates':'' };
+      if (st === 'Assigned') clearPatch['Status'] = 'Pending';
+      const res = await atSafePatch(TABLES.NAT_LOADS, orderId, clearPatch);
       if (res?.conflict) { toast('Η εγγραφή άλλαξε από άλλον χρήστη — γίνεται ανανέωση','warn'); await renderWeeklyNatl(); return; }
     } catch(e) { toast('Σφάλμα εκκαθάρισης','warn'); return; }
   }
@@ -2627,7 +2631,12 @@ async function _wnRevertNoStatus(nlId) {
 // Execution beats planning (14/9): a load the 030 trigger already set
 // Delivered/Cancelled keeps its assignment — the board never checked Status.
 async function _wnDoneLive(id) {
-  try { const r = await atGetOne(TABLES.NAT_LOADS, id); const st = String(r?.fields?.['Status'] || ''); return (st === 'Delivered' || st === 'Cancelled') ? st : ''; }
+  const st = await _wnStatusLive(id);
+  return (st === 'Delivered' || st === 'Cancelled') ? st : '';
+}
+// '' when the read fails — same as before for _wnDoneLive (treated as open).
+async function _wnStatusLive(id) {
+  try { const r = await atGetOne(TABLES.NAT_LOADS, id); return String(r?.fields?.['Status'] || ''); }
   catch(e) { return ''; }
 }
 async function _wnUnassignSn(rowId, snId) {
