@@ -97,8 +97,7 @@ const OrdersNoPrice = (() => {
     const f = r.fields || {};
     const natl = r._type === 'natl';
     const load = _firstLink(f, natl ? 'Pickup Location' : 'Loading Location');
-    let del = _firstLink(f, natl ? 'Delivery Location' : 'Unloading Location');
-    if (!del && natl && Array.isArray(f['Delivery Location'])) del = f['Delivery Location'][0] || '';
+    const del = _firstLink(f, natl ? 'Delivery Location' : 'Unloading Location');
     return load && del ? load + '>' + del : '';
   }
   const _price = r => { const v = parseFloat((r.fields || {})['Price']); return Number.isFinite(v) ? v : null; };

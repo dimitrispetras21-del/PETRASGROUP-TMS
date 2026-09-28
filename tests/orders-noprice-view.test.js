@@ -57,7 +57,9 @@ test('groupByClient: clients by their oldest item, items oldest first, undated l
 test('routeKey: first loading + first delivery, per type, both needed', () => {
   assert.strictEqual(NP.routeKey(rec('x', 'intl', { 'Loading Location 1': ['L1'], 'Unloading Location 1': ['L2'] })), 'L1>L2');
   assert.strictEqual(NP.routeKey(rec('x', 'natl', { 'Pickup Location 1': ['L1'], 'Delivery Location 2': ['L3'] })), 'L1>L3');
-  assert.strictEqual(NP.routeKey(rec('x', 'natl', { 'Pickup Location 1': ['L1'], 'Delivery Location': ['L4'] })), 'L1>L4');
+  // An un-numbered 'Delivery Location' is not a NATIONAL ORDERS field in the
+  // Worker map (data-truth review 29/9) — it is ignored, never guessed from.
+  assert.strictEqual(NP.routeKey(rec('x', 'natl', { 'Pickup Location 1': ['L1'], 'Delivery Location': ['L4'] })), '');
   assert.strictEqual(NP.routeKey(rec('x', 'intl', { 'Loading Location 1': ['L1'] })), '');
 });
 

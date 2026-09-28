@@ -25,8 +25,9 @@
 // RTs (accountant has GET on rt — Worker COSTS_PERMS), and OrdersData's
 // invoicing set for the pallet-slip gate (shared with the hub's counters).
 // RT legs point at the Postgres order id; ORDERS exposes it read-only as
-// «Order ID» (Worker computed "Order ID": "id"; «Order No» is the same id via
-// the view's order_no alias — used as a fallback).
+// «Order No» (the view's order_no alias, migration 019). «Order ID» maps the
+// raw id, which the facade does not copy into fields (the 7/9 lesson) — kept
+// only as a first try in case that ever changes.
 // ═══════════════════════════════════════════════════════════════════════════
 const OrdersWeekView = (() => {
   'use strict';

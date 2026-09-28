@@ -970,7 +970,9 @@ if (typeof window !== 'undefined') {
   if (typeof OrdersHub !== 'undefined') {
     OrdersHub.register('invoicing', {
       label: 'Προς τιμολόγηση', order: 2,
-      visible: () => typeof can === 'function' && can('orders') !== 'none',
+      // Not warehouse: it reads orders but has no CLIENTS GET, so the ERP block
+      // (ΑΦΜ, address, terms) could only fail — and invoicing is not its job.
+      visible: () => typeof can === 'function' && can('orders') !== 'none' && can('clients') !== 'none',
       render: ctx => OrdersInvoicingView.render(ctx),
     });
   }

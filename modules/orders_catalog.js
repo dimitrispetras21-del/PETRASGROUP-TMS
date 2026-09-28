@@ -90,7 +90,9 @@ const OrdersCatalog = (() => {
     r.pal = type === 'intl' ? f['Total Pallets'] : f['Pallets'];
     r.assign = _assign(r);
     r.status = _status(r);
-    r.price = C().price(f);
+    // A price of 0 is «χωρίς τιμή» here too — the rule of every other view,
+    // the Worker and migration 043 (28 of 41 unpriced delivered orders are 0).
+    r.price = C().hasPrice(f) ? C().price(f) : null;
     r.week = C().weekStartOf(rec);
     r.pre = type === 'intl' && typeof isPreorder === 'function' && isPreorder(f);
     r.tags = [];

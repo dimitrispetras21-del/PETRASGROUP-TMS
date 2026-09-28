@@ -41,11 +41,12 @@ const OrdersCommon = {
   weekDateOf(rec) {
     const f = rec.fields || {};
     if (rec._type === 'natl') return OrdersCommon.ymd(f['Loading DateTime'] || f['Delivery DateTime']);
-    if (f['Direction'] === 'Import') return OrdersCommon.ymd(f['Loading DateTime'] || f['Delivery DateTime']);
-    // weekly_intl.js B2 (owner 6/9): an explicit «Plan Week Start» (the
-    // Saturday) overrides the dates for an export — the board shows it there,
-    // so this page must too. Unused while nothing writes it (Wave 1).
+    // weekly_intl.js B2 (owner 6/9): an explicit «Plan Week Start» (a Saturday)
+    // wins over the dates on the board — _wiImpShift writes it on IMPORTS moved
+    // to another week (2 live rows 29/9, €6.000 that would otherwise sit one
+    // week apart here and on the board); exports honour it the same way.
     if (f['Plan Week Start']) return OrdersCommon.ymd(f['Plan Week Start']);
+    if (f['Direction'] === 'Import') return OrdersCommon.ymd(f['Loading DateTime'] || f['Delivery DateTime']);
     return OrdersCommon.ymd(f['Delivery DateTime'] || f['Loading DateTime']);
   },
   weekStartOf(rec) { return OrdersCommon.weekStartOfYmd(OrdersCommon.weekDateOf(rec)); },
@@ -160,7 +161,6 @@ const OrdersCommon = {
     if (which === 'load') ids = OrdersCommon._linkIds(f, natl ? 'Pickup Location' : 'Loading Location');
     else {
       ids = OrdersCommon._linkIds(f, natl ? 'Delivery Location' : 'Unloading Location');
-      if (!ids.length && natl && Array.isArray(f['Delivery Location'])) ids = f['Delivery Location'].slice(0, 1);
     }
     const date = which === 'load' ? f['Loading DateTime'] : f['Delivery DateTime'];
     if (!ids.length) return { name: '', sub: '', date, count: 0 };
