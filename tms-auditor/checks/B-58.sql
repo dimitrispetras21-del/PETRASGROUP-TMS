@@ -1,0 +1,16 @@
+-- id: B-58
+-- title: Ανοιχτά pre-order (όλα)
+-- flows: F-01
+-- severity: P3
+-- schedule: daily
+-- red: > 0
+-- baseline: 
+-- queue: yes
+-- entity: orders
+-- impact: Φορτία κρατημένα στο Weekly που περιμένουν προορισμό/στοιχεία.
+-- next: Weekly → μετρητής «N προσωρινές» → μετατροπή όσων έχουν πλέον στοιχεία.
+-- exceptions: Ουρά εργασίας — ποτέ κόκκινο.
+-- tolerance: 
+-- source: owner 28/9 — ορατότητα στη σύνοψη 17:00· 28/9 = 1
+-- enabled: yes
+SELECT count(*) FROM orders o WHERE o.deleted_at IS NULL AND o.ops_status = 'Provisional' AND o.status <> 'Cancelled'
