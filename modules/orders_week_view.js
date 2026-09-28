@@ -303,7 +303,7 @@ const OrdersWeekView = (() => {
     if (!(typeof can === 'function' && can('costs') !== 'none')) { ctx.body.innerHTML = ''; return; }
     _ensureStyles(); OC().ensureStyles();
     if (!S.week) S.week = defaultWeek();
-    ctx.setSub('Εβδομάδα όπως στο Weekly: εξαγωγή κατά παράδοση, εισαγωγή κατά φόρτωση · τζίρος = τιμές πελάτη (το TRIP PnL αφαιρεί το VS και δείχνει κόστη)');
+    ctx.setSub('Εβδομάδα όπως στο Weekly (εξαγωγή κατά παράδοση, εισαγωγή κατά φόρτωση) · τζίρος = τιμές πελάτη, χωρίς κόστη');
     ctx.setActions(`<button type="button" class="btn btn-ghost btn-sm" data-owv="print">Εκτύπωση</button><button type="button" class="btn btn-ghost btn-sm" data-owv="csv">CSV</button>`);
     // Nationals have no RT and no vehicle yet — the grouping toggle means nothing there.
     if (ctx.scope !== 'natl') _paintModeToggle(ctx);

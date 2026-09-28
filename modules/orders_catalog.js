@@ -406,7 +406,7 @@ const OrdersCatalog = (() => {
 .oc-chip b{margin-left:6px;color:var(--text)}.oc-chip.red{border-color:var(--danger);color:var(--danger)}.oc-chip.red b{color:var(--danger)}
 .oc-chip.on{background:var(--surface-sunken);font-weight:600}
 .oc-toolbar{display:flex;gap:var(--space-2);align-items:center;flex-wrap:wrap;margin-bottom:var(--space-3)}
-.oc-search{flex:0 1 280px}
+.oc-search{flex:1 1 200px;max-width:280px}.oc-toolbar .svc-filter{max-width:170px}
 .oc-link{border:none;background:none;color:var(--accent);font-weight:600;font-size:12.5px;cursor:pointer;padding:0 4px}.oc-link.oc-del{color:var(--danger)}
 .oc-warn{border:1px solid var(--warn);color:var(--warn);border-radius:6px;padding:6px 10px;font-size:12px;margin-bottom:8px}
 .oc-cat .oc-tablewrap{background:var(--bg-card);border:1px solid var(--border);border-radius:8px;overflow:hidden}
