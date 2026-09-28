@@ -107,26 +107,16 @@ function _wi2Quick(qk) { WINTL.quick = (WINTL.quick === qk) ? '' : qk; _wiApplyF
 // την αρίθμηση WEEKNUM, μετατοπίζουμε το όριο μία μέρα νωρίτερα — μια
 // ημερομηνία ανήκει στη νέα εβδομάδα Ν αν η (ημερομηνία+1μέρα) ανήκε στην
 // παλιά (Κυριακή-start). Τα αποθηκευμένα δεδομένα/VS dates δεν αλλάζουν.
-function _wiWeekNumOf(d){
-  const y=d.getFullYear(),j=new Date(y,0,1);
-  return Math.ceil(((d-j)/86400000+j.getDay()+1)/7);
-}
-function _wiCurrentWeek(){
-  return _wiWeekNumOf(new Date(Date.now()+86400000));
-}
-// Week start για εβδομάδα w — πλέον ΣΑΒΒΑΤΟ (Κυριακή παλιάς αρίθμησης −1μέρα)
-function _wiWeekStart(w){
-  const y=new Date().getFullYear(),jan1=new Date(y,0,1);
-  const firstSun=new Date(jan1); firstSun.setDate(jan1.getDate()-jan1.getDay());
-  const ws=new Date(firstSun); ws.setDate(firstSun.getDate()+(w-1)*7-1); // Σάββατο
-  return ws;
-}
-function _wiWeekRange(w){
-  const ws=_wiWeekStart(w);
-  const we=new Date(ws); we.setDate(ws.getDate()+6);
-  const f=d=>d.toLocaleDateString('el-GR',{day:'numeric',month:'short'});
-  return `${f(ws)} – ${f(we)}`;
-}
+// Found 28/9/2026: the old formula counted the time of day, so ceil() pushed
+// every Friday after ~01:00 into the NEXT week — on Fridays this board opened
+// next week as «current» and Friday rows were treated as another week. The
+// week now comes from core/tms-week.js (calendar dates, time ignored), the
+// same definition the national board uses, so the two cannot drift apart.
+// (_wiWeekNumOf, the old formula's only other user, is gone with it.)
+function _wiCurrentWeek(){ return TmsWeek.current(); }
+// Week start για εβδομάδα w — ΣΑΒΒΑΤΟ
+function _wiWeekStart(w){ return TmsWeek.start(w); }
+function _wiWeekRange(w){ return TmsWeek.rangeLabel(w); }
 const _WI_WD=['Κυρ','Δευ','Τρί','Τετ','Πέμ','Παρ','Σάβ'];
 function _wiFmt(s){
   if(!s) return '—';
@@ -2177,7 +2167,7 @@ function _wiExecChip(f, saved){
 }
 // T4: exports live in their DELIVERY week — flag the ones loading in another
 // week, because in that week's view this line does NOT exist.
-function _wiWeekOf(dt){ if(!dt) return null; try{return _wiWeekNumOf(new Date(new Date(dt).getTime()+86400000));}catch{return null;} }
+function _wiWeekOf(dt){ return TmsWeek.numOf(dt); }
 function _wiCrossChip(f){
   const lw=_wiWeekOf(f?.['Loading DateTime']);
   if(lw==null||lw===WINTL.week) return '';

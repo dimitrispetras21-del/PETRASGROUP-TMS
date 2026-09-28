@@ -89,7 +89,7 @@ const AUDIT_CROSS_CHECKS = [
       { page: 'dashboard',    key: 'weekNumber' },
       { page: 'orders_intl',  key: 'weekNumberDefault' },
       { page: 'performance',  key: 'weekNumberDefault' },
-      { page: 'weekly_intl',  key: 'weekNumberDefault', note: 'δικός του τύπος _wiCurrentWeek() (έναρξη Κυριακή)' },
+      { page: 'weekly_intl',  key: 'weekNumberDefault', note: 'TmsWeek.current() — core/tms-week.js (έναρξη Σάββατο)' },
       { page: 'weekly_natl',  key: 'weekNumberDefault', note: 'TmsWeek.current() — core/tms-week.js (έναρξη Σάββατο)' },
     ],
   },
