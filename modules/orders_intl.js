@@ -329,11 +329,13 @@ function _oiCss() { return `
 `; }
 
 // ─── Main ───────────────────────────────────────
-async function renderOrdersIntl() {
-  const c = document.getElementById('content');
-  c.innerHTML = showLoading('Φόρτωση παραγγελιών…');
+// Since 28/9/2026 (owner: one «Παραγγελίες» page) the LIST is drawn by
+// modules/orders_catalog.js for both types. This module keeps what is really
+// international: the data load (orders + stops + location meta + client
+// names), the card, the form, the scan and every cascade. The catalog calls
+// loadOrdersIntlData(); the card opens in the catalog's own layout.
+async function _intlLoad() {
   _oiLoadWarns.length = 0;
-  try {
     // Date range filter based on period dropdown
     const _intlDateFormula = OrdersList.periodFormula(_intlPeriod);
     const [, records] = await Promise.all([
@@ -374,12 +376,6 @@ async function renderOrdersIntl() {
     INTL_ORDERS.selectedId = null;
     Object.keys(_intlFilters).forEach(k => delete _intlFilters[k]);
     _oiPage = 1;
-    // Apply dashboard nav filter if coming from KPI click
-    if (window._dashNav) {
-      if (window._dashNav.dir) _intlFilters.direction = window._dashNav.dir;
-      if (window._dashNav.trip) _intlFilters.trip = window._dashNav.trip;
-      window._dashNav = null;
-    }
     // Batch fetch ORDER_STOPS for all orders (for list + detail display)
     const allStopIds = records.flatMap(r => r.fields['ORDER STOPS'] || []);
     window._intlStopsByOrder = {};
@@ -426,14 +422,31 @@ async function renderOrdersIntl() {
     // Pre-resolve all client names — batch fetches in parallel
     const clientIds = [...new Set(records.map(r=>(r.fields['Client']||[])[0]).filter(Boolean))];
     await fhBatchResolveClients(clientIds);
-    _oiEnsureStyles();
-    _renderIntlLayout(c);
-    _applyIntlFilters();
-  } catch(e) {
-    // DESIGN #7: what happened · what it does NOT mean · what to do.
-    c.innerHTML = showError('Οι διεθνείς παραγγελίες δεν φορτώθηκαν. Δεν σημαίνει ότι δεν υπάρχουν — η ανάγνωση απέτυχε. Ξαναδοκίμασε με Ανανέωση· αν επιμένει, ενημέρωσε τον διαχειριστή.');
-    if (typeof logError === 'function') logError(e, 'renderOrdersIntl load');
-  }
+  return INTL_ORDERS.data;
+}
+
+// Loader for the catalog: period = '60' | '180' | 'all' (same select as before).
+async function loadOrdersIntlData(period) {
+  if (period) _intlPeriod = period;
+  await _intlLoad();
+  _oiEnsureStyles();
+  return { records: INTL_ORDERS.data, warns: _oiLoadWarns.slice(), legParents: INTL_ORDERS.legParents };
+}
+
+// Kept for its callers (form submit, delete, pre-order, scan, retry buttons):
+// «redraw the international list» now means «redraw the Orders page» — or open
+// it on the international scope when the user is elsewhere (as before: a save
+// from another page used to land on this list).
+function renderOrdersIntl() {
+  if (typeof currentPage !== 'undefined' && currentPage === 'orders' && typeof OrdersHub !== 'undefined') return OrdersHub.refresh();
+  return Promise.resolve(navigate('orders_intl'));
+}
+
+// After an in-place change to ONE order (status, pallet sheets): update that
+// row on the Orders page and keep the card open — never repaint the old list
+// container, which no longer exists (it would throw after the write succeeded).
+function _intlRepaintOne(rec) {
+  if (typeof OrdersCatalog !== 'undefined' && rec) OrdersCatalog.updateRecord('intl', rec);
 }
 
 function _renderIntlLayout(c) {
@@ -2185,7 +2198,7 @@ async function _intlChangeStatus(recId, newStatus) {
     }
     const rec = INTL_ORDERS.data.find(r => r.id === recId);
     if (rec) rec.fields['Status'] = newStatus;
-    _applyIntlFilters();
+    _intlRepaintOne(rec);
     selectIntlOrder(recId);
     toast(`Κατάσταση → ${(_OI_STATUS[newStatus] || {}).gr || newStatus} ✓`);
   } catch(e) { reportError('Σφάλμα αλλαγής status', e); }
@@ -3366,9 +3379,9 @@ async function _intlRefreshOrder(orderId) {
     if (fresh && fresh.fields) {
       const idx = INTL_ORDERS.data.findIndex(r => r.id === orderId);
       if (idx >= 0) INTL_ORDERS.data[idx] = fresh;
+      _intlRepaintOne(fresh);
     }
     invalidateCache(TABLES.ORDERS);
-    _applyIntlFilters();
     if (INTL_ORDERS.selectedId === orderId) selectIntlOrder(orderId);
   } catch (e) { logError(e, 'orders_intl refresh after pallet save'); }
 }
@@ -3378,6 +3391,7 @@ window.deleteIntlOrder = deleteIntlOrder;
 window.cleanupOrphanGL = cleanupOrphanGL;
 window.cleanupOrphans = cleanupOrphans;
 window.renderOrdersIntl = renderOrdersIntl;
+window.loadOrdersIntlData = loadOrdersIntlData;
 window._intlClearFilters = _intlClearFilters;   // OI-4 — πρέπει να είναι ΜΕΣΑ στο IIFE
 window.openIntlScan = openIntlScan;
 window.openIntlCreate = openIntlCreate;

@@ -19,7 +19,7 @@ const OrdersCatalog = (() => {
 
   const ROW_H = 46, BUFFER = 12;
   const S = {
-    period: '60', rows: [], filtered: [], noLoad: new Set(), filters: {},
+    period: '60', rows: [], filtered: [], noLoad: new Set(), legParents: null, filters: {},
     sortCol: 'load', sortDir: 2, selected: null, ctx: null,
     vs: { sortedRecs: [], lastStart: -1, lastEnd: -1, rafId: null },
   };
@@ -98,6 +98,9 @@ const OrdersCatalog = (() => {
     if (f['National Groupage']) r.tags.push('GRP');
     if (f['Pallet Exchange']) r.tags.push('PE');
     if (type === 'intl' && f['High Risk Flag']) r.tags.push('HR');
+    // Split order (FEATURES.ORDER_SPLIT): the parent is listed once; the chip
+    // says the route runs in two legs (same wording as the old list).
+    r.legs = type === 'intl' && S.legParents && S.legParents.has(rec.id);
     return r;
   }
 
@@ -127,12 +130,13 @@ const OrdersCatalog = (() => {
       : (r.status === 'Cancelled' || r.pre ? '<span class="oc-dim">—</span>' : '<span class="oc-red">χωρίς τιμή</span>');
     return `<tr id="ocrow_${r.id}" class="oc-row${sel}" style="height:${ROW_H}px" onclick="OrdersCatalog.open('${r.type}','${r.id}')">
       <td class="oc-num"><b>${esc(r.num)}</b></td>
-      <td><span class="oc-l1" title="${esc(r.ref)}">${r.ref ? esc(r.ref) : '<span class="oc-dim">— χωρίς αναφορά</span>'}</span><span class="oc-l2">${esc(r.dir)}${tags}</span></td>
+      <td><span class="oc-l1" title="${esc(r.ref)}">${r.ref ? esc(r.ref) : '<span class="oc-dim">— χωρίς αναφορά</span>'}</span><span class="oc-l2">${esc(r.dir)}${tags}${r.legs ? '<span class="oc-tag" title="Σπασμένο σε 2 σκέλη — δες το Weekly International για την εκτέλεση">2 σκέλη</span>' : ''}</span></td>
       <td><span class="oc-l1 oc-plain" title="${r.client}">${r.client}</span></td>
       <td>${r.pre ? '<span class="oc-dim">—</span>' : C().placeCell(r.load)}</td>
       <td>${r.pre ? '<span class="oc-dim">—</span>' : C().placeCell(r.del)}</td>
       <td class="oc-r">${r.pal ? esc(r.pal) : '<span class="oc-dim">—</span>'}</td>
-      <td>${r.assign.html}</td>
+      <td>${r.pre && typeof can === 'function' && can('orders') === 'full'
+        ? `<button type="button" class="oc-link" onclick="event.stopPropagation();openIntlEdit('${r.id}')">Μετατροπή</button><button type="button" class="oc-link oc-del" onclick="event.stopPropagation();deletePreorder('${r.id}')">Διαγραφή</button>` : r.assign.html}</td>
       <td class="oc-nowrap">${statusHtml}</td>
       <td class="oc-r oc-med">${priceHtml}</td>
       <td>${C().invCell(f)}</td>
@@ -271,15 +275,40 @@ const OrdersCatalog = (() => {
     S.ctx = ctx;
     _ensureStyles();
     OrdersCommon.ensureStyles();
-    const [intl, natl] = await Promise.all([loadOrdersIntlData(S.period), loadOrdersNatlData(S.period)]);
+    // One type failing must not blank the other: it is SAID above the list
+    // (what failed · what it does not mean), and the other type still shows.
+    const [ri, rn] = await Promise.allSettled([loadOrdersIntlData(S.period), loadOrdersNatlData(S.period)]);
     if (!ctx.isCurrent()) return;
+    const failed = w => ({ records: [], warns: [w] });
+    const intl = ri.status === 'fulfilled' ? ri.value : failed('Οι διεθνείς παραγγελίες δεν φορτώθηκαν. Δεν σημαίνει ότι δεν υπάρχουν — η ανάγνωση απέτυχε. Ξαναδοκίμασε με Ανανέωση.');
+    const natl = rn.status === 'fulfilled' ? rn.value : failed('Οι εθνικές παραγγελίες δεν φορτώθηκαν. Δεν σημαίνει ότι δεν υπάρχουν — η ανάγνωση απέτυχε. Ξαναδοκίμασε με Ανανέωση.');
+    if (ri.status === 'rejected' && typeof logError === 'function') logError(ri.reason, 'orders catalog: intl load');
+    if (rn.status === 'rejected' && typeof logError === 'function') logError(rn.reason, 'orders catalog: natl load');
+    if (ri.status === 'rejected' && rn.status === 'rejected') throw ri.reason;
     S.noLoad = natl.noLoad || new Set();
+    S.legParents = intl.legParents || null;
+    // Dashboard KPI click («Νέα παραγγελία»/«χωρίς ανάθεση» tiles) hands over
+    // a one-shot filter, as it did to the old international list.
+    if (window._dashNav) {
+      if (window._dashNav.dir) S.filters.dir = window._dashNav.dir;
+      if (window._dashNav.trip === 'unassigned') S.filters.chip = 'pa';
+      window._dashNav = null;
+    }
     S.rows = [...intl.records.map(r => _row(r, 'intl')), ...natl.records.map(r => _row(r, 'natl'))];
     ctx.setActions(_actionsHtml());
     ctx.body.innerHTML = [...(intl.warns || []), ...(natl.warns || [])].map(w => `<div class="oc-warn">⚠ ${esc(w)}</div>`).join('') + _layoutHtml();
     _apply();
     const n = S.rows.filter(_inScope).length;
     ctx.setSub(`Διεθνείς και εθνικές · ${OrdersList.countLabel(n)} · ${PERIOD_LABEL[S.period]}`);
+  }
+
+  // One order changed in place (status, pallet sheets, «Στείλε →»): rebuild
+  // that row from the fresh record and repaint, keeping the card open.
+  function updateRecord(type, rec) {
+    const i = S.rows.findIndex(r => r.id === rec.id && r.type === type);
+    if (i < 0) return;
+    S.rows[i] = _row(rec, type);
+    _apply();
   }
 
   // ── Public handlers (inline onclick) ─────────────────────────────────────
@@ -359,7 +388,7 @@ const OrdersCatalog = (() => {
 .oc-chip.on{background:var(--surface-sunken);font-weight:600}
 .oc-toolbar{display:flex;gap:var(--space-2);align-items:center;flex-wrap:wrap;margin-bottom:var(--space-3)}
 .oc-search{flex:0 1 280px}
-.oc-link{border:none;background:none;color:var(--accent);font-weight:600;font-size:12.5px;cursor:pointer;padding:0 4px}
+.oc-link{border:none;background:none;color:var(--accent);font-weight:600;font-size:12.5px;cursor:pointer;padding:0 4px}.oc-link.oc-del{color:var(--danger)}
 .oc-warn{border:1px solid var(--warn);color:var(--warn);border-radius:6px;padding:6px 10px;font-size:12px;margin-bottom:8px}
 .oc-cat .oc-tablewrap{background:var(--bg-card);border:1px solid var(--border);border-radius:8px;overflow:hidden}
 .oc-cat .oc-tablewrap thead th{background:var(--surface-sunken);font:700 10.5px/1.3 'DM Sans',sans-serif;letter-spacing:.5px;color:var(--text-mid);padding:9px 8px;border-bottom:1px solid var(--border);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-align:left}
@@ -383,6 +412,6 @@ const OrdersCatalog = (() => {
     document.head.appendChild(st);
   }
 
-  return { render, open, search, filter, chip, clear, period, sort, toggleNew, newOrder, csv, print };
+  return { render, updateRecord, open, search, filter, chip, clear, period, sort, toggleNew, newOrder, csv, print };
 })();
 window.OrdersCatalog = OrdersCatalog;

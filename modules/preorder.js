@@ -257,6 +257,8 @@ function _preRepaint() {
   if (p === 'weekly_intl' && typeof renderWeeklyIntl === 'function') return renderWeeklyIntl();
   if (p === 'daily_ops' && typeof renderDailyOps === 'function') return renderDailyOps();
   if (p === 'orders_intl' && typeof renderOrdersIntl === 'function') return renderOrdersIntl();
+  // One «Παραγγελίες» page since 28/9/2026 (orders_intl is only an alias now).
+  if (p === 'orders' && typeof OrdersHub !== 'undefined') return OrdersHub.refresh();
 }
 
 // Tokens only (DESIGN.md #1). Levels: grey dashed → amber → solid red, the

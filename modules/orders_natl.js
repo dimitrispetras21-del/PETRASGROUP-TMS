@@ -26,10 +26,12 @@ function _locSelect(id, currentId) { return fhLocSelect(id, currentId, 'fhLocDro
 function _clientSelect(id, currentId, currentLabel) { return fhClientSelect(id, currentId, currentLabel, 'fhClientDrop'); }
 
 // ─── Main ───────────────────────────────────────
-async function renderOrdersNatl() {
-  const c = document.getElementById('content');
-  c.innerHTML = showLoading('Φόρτωση εθνικών παραγγελιών…');
-  try {
+// Since 28/9/2026 (owner: one «Παραγγελίες» page) the LIST is drawn by
+// modules/orders_catalog.js for both types. This module keeps what is really
+// national: the data load (orders + client names + the «missing national
+// load» check), the card, the form (normal / groupage), the scan and the
+// cascades. The catalog calls loadOrdersNatlData().
+async function _natlLoad() {
     // Date range filter based on period dropdown
     const _natlDateFormula = OrdersList.periodFormula(_natlPeriod);
     const [, records] = await Promise.all([
@@ -73,21 +75,33 @@ async function renderOrdersNatl() {
       }
     } catch(e) { if (typeof logError === 'function') logError(e, 'orders_natl: load presence check'); }
 
-    _renderNatlLayout(c);
-    _applyNatlFilters();
-  } catch(e) {
-    // Failure is not emptiness (DESIGN.md #7): the generic showError said
-    // «Κάτι πήγε στραβά» over a blank page, which reads like "no orders". This
-    // says what happened, what it does NOT mean, and what to do — with the
-    // retry in place, not in a toast that is gone by the time it is read.
-    c.innerHTML = `${_ON_CSS}<div class="on-state-err">
-      <b>Δεν φορτώθηκαν οι εθνικές παραγγελίες.</b>
-      <small>Δεν σημαίνει ότι δεν υπάρχουν — η ανάγνωση από τον server απέτυχε και η λίστα δεν έχει τίποτα να δείξει.</small>
-      <small>Ξαναδοκίμασε. Αν επιμένει, πες το στον Δημήτρη — το σφάλμα έχει καταγραφεί.</small>
-      <button type="button" class="btn btn-secondary btn-sm" onclick="renderOrdersNatl()">Ξαναδοκίμασε</button>
-    </div>`;
-    if (typeof logError === 'function') logError(e, 'renderOrdersNatl load');
-  }
+  return NATL_ORDERS.data;
+}
+
+// The card's styles used to arrive with the list's innerHTML; the list is
+// gone, so they go to <head> once (same CSS, scoped under .on-v2 — the
+// catalog layout carries that class).
+function _onEnsureStyles() {
+  if (document.getElementById('onStyles')) return;
+  const holder = document.createElement('div'); holder.innerHTML = _ON_CSS;
+  const st = holder.querySelector('style'); if (!st) return;
+  st.id = 'onStyles'; document.head.appendChild(st);
+}
+
+// Loader for the catalog: period = '60' | '180' | 'all'.
+async function loadOrdersNatlData(period) {
+  if (period) _natlPeriod = period;
+  await _natlLoad();
+  _onEnsureStyles();
+  return { records: NATL_ORDERS.data, noLoad: NATL_ORDERS.noLoad || new Set(), warns: [] };
+}
+
+// Kept for its callers (form submit, groupage submit, delete, scan, retry):
+// «redraw the national list» now means «redraw the Orders page» — or open it
+// on the national scope when the user is elsewhere.
+function renderOrdersNatl() {
+  if (typeof currentPage !== 'undefined' && currentPage === 'orders' && typeof OrdersHub !== 'undefined') return OrdersHub.refresh();
+  return Promise.resolve(navigate('orders_natl'));
 }
 
 // Greek display words for DB values (DESIGN.md ΜΕΡΟΣ Ε): the value in the
@@ -1129,7 +1143,12 @@ async function _openNatlModal(recId, f) {
       <div class="form-field">
         <label class="form-label">Τύπος</label>
         <select class="form-select" id="nf_Type"><option value="">— Επιλογή —</option>
-          ${opt([['Independent','Ανεξάρτητη'],['Veroia Switch','Veroia Switch']],'Type')}</select>
+          ${opt([['Independent','Ανεξάρτητη']].concat(
+            // Owner 27/9: Veroia Switch loads never become national ORDERS (the
+            // international order writes the national load itself). The choice
+            // is gone for new orders; an old record that already says VS keeps
+            // it visible so an edit does not silently rewrite its Type.
+            f['Type'] === 'Veroia Switch' ? [['Veroia Switch','Veroia Switch (παλιά εγγραφή)']] : []),'Type')}</select>
       </div>
       <!-- Δ16/audit w4: κρύβονται σε Groupage — εκεί ο πελάτης/η τιμή δηλώνονται
            ανά γραμμή παράδοσης (grpc/grpv) και _grpSubmit δεν τα διαβάζει ποτέ.
@@ -1249,7 +1268,11 @@ async function _natlSendToWeekly(recId) {
     NATL_ORDERS.noLoad && NATL_ORDERS.noLoad.delete(recId);
     invalidateCache(TABLES.NAT_LOADS);
     toast('Το φορτίο δημιουργήθηκε — είναι πλέον στο Εβδομαδιαίο Εθνικών ✓');
-    _applyNatlFilters();
+    // Only the row changes («εκτός» → «στο Εβδομαδιαίο»); the old list
+    // container is gone since 28/9 — repainting it threw AFTER the load was
+    // created and the catch below then reported a failure that did not happen.
+    const inList = NATL_ORDERS.data.find(r => r.id === recId);
+    if (inList && typeof OrdersCatalog !== 'undefined') OrdersCatalog.updateRecord('natl', inList);
   } catch(e) {
     if (typeof reportError === 'function') reportError('Το φορτίο ΔΕΝ δημιουργήθηκε', e); else toast('Το φορτίο ΔΕΝ δημιουργήθηκε: ' + (e && e.message), 'danger');
   }
@@ -2647,6 +2670,7 @@ function _natlPrint() {
 }
 
 window.renderOrdersNatl = renderOrdersNatl;
+window.loadOrdersNatlData = loadOrdersNatlData;
 window.openNatlCreate = openNatlCreate;
 window.openNatlCreateWith = f => _openNatlModal(null, f || {}); // 9/9: Weekly National «νέα άνοδος» prefill
 window.openNatlEdit = openNatlEdit;

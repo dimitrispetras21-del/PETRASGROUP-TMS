@@ -9,8 +9,8 @@
 //
 // This file owns ONLY the frame: route, header, scope (Όλες/Διεθνείς/Εθνικές),
 // view tabs, counters. Each view renders itself into #ordersBody:
-//   catalog   → modules/orders_intl.js / orders_natl.js (one type) or
-//               modules/orders_catalog.js (both types)
+//   catalog   → modules/orders_catalog.js (every scope; the cards come from
+//               modules/orders_intl.js / orders_natl.js)
 //   invoicing → modules/orders_invoicing_view.js
 //   week      → modules/orders_week_view.js
 //   noprice   → modules/orders_noprice_view.js
@@ -153,11 +153,9 @@ const OrdersHub = (() => {
     }
     open(type, 'catalog');
   }
-  function _consumeSelect(type) {
+  function _consumeSelect() {
     const p = H.pendingSelect; H.pendingSelect = null;
-    if (!p || p.type !== type) return;
-    const fn = type === 'intl' ? window.selectIntlOrder : window.selectNatlOrder;
-    if (typeof fn === 'function') fn(p.id);
+    if (p && typeof OrdersCatalog !== 'undefined') OrdersCatalog.open(p.type, p.id);
   }
 
   // ── Counters ────────────────────────────────────────────────────────────
@@ -196,14 +194,12 @@ const OrdersHub = (() => {
     b.textContent = String(n);
   }
 
-  // ── The catalog view: one type → that module; both → orders_catalog.js ───
+  // ── The catalog view: ONE list for every scope (modules/orders_catalog.js).
+  // The two old per-type lists are not drawn any more — one list, one set of
+  // columns, one code path (principle 3); the modules keep loading + cards.
   register('catalog', {
     label: 'Κατάλογος', order: 1,
-    render: async ctx => {
-      if (ctx.scope === 'intl') { await renderOrdersIntlInto(ctx); return _consumeSelect('intl'); }
-      if (ctx.scope === 'natl') { await renderOrdersNatlInto(ctx); return _consumeSelect('natl'); }
-      return OrdersCatalog.render(ctx);
-    },
+    render: async ctx => { await OrdersCatalog.render(ctx); _consumeSelect(); },
   });
 
   // Tokens only (DESIGN.md #1); Syne only for the title (page-title class).
