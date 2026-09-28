@@ -76,13 +76,18 @@ const TABLES = {
   ORDER_STOPS:   'tblaeY5QOHAS1gyE8',
   RAMP_EVENTS:   'tbllHu40WSq4yWg5S',
   PARTNER_ASSIGN:'tblUhgqnmiam5MGNK',
+  // Shared scan few-shot examples (Postgres scan_examples via the Worker).
+  // Declared ONCE: until 27/9/2026 a second `SCAN_TRAINING: ''` (Airtable-era
+  // placeholder) further down silently won and switched shared learning off.
   SCAN_TRAINING:'tblScanTraining000',
   METRICS_SNAPSHOTS: 'tblakFiR37kf4uQXy',
-  // SCAN_TRAINING: optional. Create the table manually in Airtable with these
-  // fields (Doc Type single-select, Summary text, Client linked to CLIENTS,
-  // AI Output long text, Corrected long text, Created date) and paste its
-  // table id below. Leave blank to use localStorage-only mode.
-  SCAN_TRAINING: '',
+  // Scan round 3 (core/order-docs.js): GET-only facade table backing the
+  // paperclip badge index — one atGetAll(fields:['Order']) tells the list/
+  // weekly/daily screens which orders have a stored document. The actual
+  // file bytes never go through this Airtable-style path (upload/list/file
+  // are their own /docs/* Worker routes) — this id exists only so 'Order'
+  // resolves through the normal facade cache (2 min, same as ORDERS).
+  ORDER_DOCS: 'tblOrderDocuments',
 };
 
 // ── Claude model IDs ───────────────────────────────────────────────────

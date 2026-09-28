@@ -1,0 +1,22 @@
+{
+  "schema": "scan-results/v1",
+  "engine": "synthetic",
+  "docs": [
+    { "doc_id": "s01", "status": "ok", "orders": [{
+        "client_id": "recSynthClient0001", "reference": "syn 0001", "direction": "import", "goods": "frozen peas 10kg",
+        "gross_weight_kg": 12000, "pallets": 20, "pallet_type": null, "temperature_c": -18, "price": 1500,
+        "confidence": { "client_name": 0.95, "reference": 0.9, "pallets": 0.8, "loading_stops": 0.9, "delivery_stops": 0.6, "dates": 0.85 },
+        "stops": [
+          { "type": "loading", "location_id": "recSynthLoc000001", "country": "DE", "date": "2031-01-10", "pallets": 20 },
+          { "type": "delivery", "location_id": null, "country": "Greece", "date": "2031-01-13T00:00:00Z", "pallets": 20 }
+        ] }] },
+    { "doc_id": "s02", "status": "rejected", "error": "unsupported type", "orders": [] },
+    { "doc_id": "s03", "status": "ok", "orders": [{
+        "client_id": "recSynthClient0001", "reference": "B-77", "pallets": 33, "temperature_c": 4,
+        "confidence": { "client_name": 0.4, "pallets": 0.95, "dates": 0.95 },
+        "stops": [
+          { "type": "loading", "location_id": "recSynthLoc000002", "date": "01.03.2031", "pallets": 33 },
+          { "type": "delivery", "location_id": "recSynthLoc000003", "date": "2031-03-04", "pallets": 33 }
+        ] }] }
+  ]
+}

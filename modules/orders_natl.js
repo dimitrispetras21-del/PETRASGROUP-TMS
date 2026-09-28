@@ -1401,6 +1401,11 @@ async function submitNatlOrder(recId) {
       }
       const created = await atCreate(TABLES.NAT_ORDERS, fields);
       savedNatlId = created.id;
+      // Scan round 3 GAP: order_documents.order_id is an FK to `orders` (the
+      // international table) — national writes here to `national_orders`, a
+      // different id-space, so a scanned document can never attach through this
+      // path. Say so instead of silently dropping the file the user just picked.
+      if (typeof OrderDocs !== 'undefined') OrderDocs.handleNatlOrderSaved();
     }
 
     // ── Active learning: persist scan correction (Phase 3) ──
@@ -2017,7 +2022,7 @@ function openNatlScan() {
         ${(typeof icon === 'function') ? icon('camera', 14) : ''} Λήψη με κάμερα
       </button>
     </div>
-    <input type="file" id="natlScanFile" accept="image/*,application/pdf" style="display:none"
+    <input type="file" id="natlScanFile" accept="image/*,application/pdf${typeof scanEngineV2On === 'function' && scanEngineV2On() ? ',.doc,application/msword,.docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document' : ''}" style="display:none"
       onchange="_natlScanHandleFile(this.files[0])">
     <input type="file" id="natlScanCamera" accept="image/*" capture="environment" style="display:none"
       onchange="_natlScanHandleFile(this.files[0])">
@@ -2040,7 +2045,10 @@ async function _natlScanHandleFile(file) {
   if (!file) return;
   const MAX_SIZE = 10 * 1024 * 1024;
   if (file.size > MAX_SIZE) { toast(`File too large (${(file.size/1024/1024).toFixed(1)}MB) — max 10MB`, 'error'); return; }
-  if (!file.type.startsWith('image/') && file.type !== 'application/pdf') { toast('Only JPG / PNG / PDF supported', 'error'); return; }
+  // Engine v2 (scan round 2/3/4) also reads Word .doc / .docx, same as orders_intl.js.
+  const v2 = typeof scanEngineV2On === 'function' && scanEngineV2On();
+  const okType = v2 ? scanV2Accepts(file) : (file.type.startsWith('image/') || file.type === 'application/pdf');
+  if (!okType) { toast(v2 ? 'Δεκτά μόνο JPG / PNG / PDF / Word (.doc, .docx)' : 'Only JPG / PNG / PDF supported', 'error'); return; }
 
   window._natlScanFile = file;
   const btn = document.getElementById('btnNatlScanGo');
@@ -2059,11 +2067,13 @@ async function _natlScanHandleFile(file) {
     if (file.type.startsWith('image/')) {
       const url = URL.createObjectURL(file);
       st.innerHTML = `<div class="scan-preview-doc"><img src="${url}" alt="preview"></div>`;
-    } else if (typeof scanRenderPDFPreview === 'function') {
+    } else if (file.type === 'application/pdf' && typeof scanRenderPDFPreview === 'function') {
       const dataUrl = await scanRenderPDFPreview(file);
       st.innerHTML = dataUrl
         ? `<div class="scan-preview-doc"><img src="${dataUrl}" alt="PDF page 1"></div>`
         : `<div class="scan-preview-info">PDF · ${escapeHtml(file.name)}</div>`;
+    } else {
+      st.innerHTML = `<div class="scan-preview-info">📄 ${escapeHtml(file.name)}</div>`;  // .doc/.docx (v2): no preview
     }
   } catch(e) { st.innerHTML = `<div class="scan-preview-info">${escapeHtml(file.name)}</div>`; }
 }
@@ -2084,6 +2094,16 @@ async function _natlScanExtract() {
   setStatus('<span class="spinner" style="width:16px;height:16px;flex-shrink:0"></span>', 'Προετοιμασία αρχείου…');
 
   try {
+    // Engine v2 behind the same per-browser switch as orders_intl.js
+    // (core/scan-engine-v2.js) — one structured-output call, matching in code
+    // over ALL clients/locations. v1 (below) is untouched when the switch is off.
+    if (typeof scanEngineV2On === 'function' && scanEngineV2On()) {
+      setStatus('<span class="spinner" style="width:16px;height:16px;flex-shrink:0"></span>', 'AI αναλύει το έγγραφο (v2)…');
+      const data = await scanV2Extract(file);
+      data._scanFile = file;   // side-by-side review needs the original (see orders_intl.js)
+      await _natlScanPreview(data);
+      return;
+    }
     const pre = await scanPreprocessFile(file);
     setStatus('<span class="spinner" style="width:16px;height:16px;flex-shrink:0"></span>', 'AI αναλύει το εθνικό δελτίο…');
 
@@ -2198,6 +2218,12 @@ Set client_id and location_id fields when tools return a confident match (>0.85)
 }
 
 async function _natlScanPreview(data) {
+  // v2 result shape is core/scan-engine-v2.js's own (client_name/loading_stops/
+  // delivery_stops/field_confidence keyed differently) — the v1 code below
+  // expects the old natl-specific schema (pickup_locations/name/…), so it
+  // branches off entirely rather than being bent to fit both.
+  if (data._engine === 'v2') return _natlScanPreviewV2(data);
+
   const st = document.getElementById('natlScanStatus');
   const btn = document.getElementById('btnNatlScanGo');
   if (btn) { btn.disabled = false; btn.innerHTML = 'Εξαγωγή & συμπλήρωση φόρμας'; }
@@ -2331,9 +2357,98 @@ async function _natlScanPreview(data) {
   }
 }
 
+// ─── v2 preview (round 3) — core/scan-engine-v2.js's own field shape ──────
+// The national form has ONE pickup location for the whole load (no per-stop
+// pickup UI, unlike international's several loading stops) — a document with
+// more than one loading stop still prefills form, using the first, with a
+// warning banner so it isn't silently dropped.
+async function _natlScanPreviewV2(data) {
+  const st = document.getElementById('natlScanStatus');
+  const btn = document.getElementById('btnNatlScanGo');
+  if (btn) { btn.disabled = false; btn.innerHTML = 'Εξαγωγή & συμπλήρωση φόρμας'; }
+
+  const allClients = (typeof getRefClients === 'function' ? getRefClients() : []) || [];
+  const clientLabel = data.client_id
+    ? ((allClients.find(c => c.id === data.client_id) || {}).fields || {})['Company Name'] || ''
+    : (data.client_name || '');
+
+  const pickup = (data.loading_stops || [])[0] || null;
+  const deliveries = data.delivery_stops || [];
+  const fc = data.field_confidence || {};
+  const mark = score => score == null ? ''
+    : score >= 0.85 ? '<span style="color:var(--ok)">✓</span>'
+    : score >= 0.6  ? '<span style="color:var(--warn)">~</span>'
+                     : '<span style="color:var(--danger)">⚠</span>';
+  const row = (label, val, score) => val ? `
+    <div class="detail-field">
+      <span class="detail-field-label">${label}</span>
+      <span class="detail-field-value" style="display:flex;align-items:center;gap:6px">${val} ${mark(score)}</span>
+    </div>` : '';
+
+  const conf = data.confidence || 'LOW';
+  const confC = conf === 'HIGH' ? 'var(--ok)' : conf === 'MEDIUM' ? 'var(--warn)' : 'var(--danger)';
+  const warns = [...((data._v2 && data._v2.warnings) || [])];
+  if ((data.loading_stops || []).length > 1) {
+    warns.push(`Το έγγραφο έχει ${data.loading_stops.length} σημεία φόρτωσης — η φόρμα δέχεται ένα, κρατήθηκε το 1ο.`);
+  }
+
+  st.style.display = 'block';
+  st.innerHTML = `
+    ${warns.map(w => `<div style="background:var(--warn-bg);border:1px solid var(--warn-border);padding:6px 10px;border-radius:var(--radius);margin-bottom:6px;font-size:12px;color:var(--warn)">⚠ ${escapeHtml(w)}</div>`).join('')}
+    <div style="background:var(--surface-page);border:1px solid var(--border);border-radius:var(--radius);padding:12px;margin-bottom:4px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;gap:8px;flex-wrap:wrap">
+        <span class="detail-section-title" style="margin:0">AI Extraction</span>
+        <span style="display:flex;align-items:center;gap:8px">
+          ${data._modelLabel ? `<span style="font-size:11px;color:var(--text-mid)">${escapeHtml(data._modelLabel)}</span>` : ''}
+          <span style="font-size:11px;font-weight:600;letter-spacing:1px;color:${confC}">${conf}</span>
+        </span>
+      </div>
+      ${row('Client', escapeHtml(clientLabel || data.client_name || ''), fc.client_name)}
+      ${data.reference ? row('Reference', escapeHtml(String(data.reference)), fc.reference) : ''}
+      ${row('Direction', escapeHtml(data.direction || ''), null)}
+      ${pickup ? row('Pickup', escapeHtml(pickup.location_name || pickup.city || ''), fc.loading_stops) : ''}
+      ${deliveries.map((s, i) => row(`Delivery ${deliveries.length > 1 ? i + 1 : ''}`, escapeHtml(s.location_name || s.city || ''), fc.delivery_stops)).join('')}
+      ${row('Load Date', escapeHtml((pickup && pickup.date) || ''), fc.dates)}
+      ${row('Pallets', data.pallets != null ? String(data.pallets) : '', fc.pallets)}
+      ${row('Goods', escapeHtml(data.goods || ''), null)}
+      ${row('Temp', data.temperature_c != null ? data.temperature_c + ' °C' : '', fc.temperature_c)}
+      ${data.notes ? `<div style="margin-top:8px;font-size:11px;color:var(--text-dim);font-style:italic">${escapeHtml(data.notes)}</div>` : ''}
+    </div>
+    <div style="font-size:11px;color:var(--text-dim);text-align:center;padding-top:4px">✓ ≥0.85 · ~ 0.6–0.85 · ⚠ &lt;0.6</div>`;
+
+  window._natlScanResult = { data, matched: { clientId: data.client_id || '', clientLabel, pickup, deliveries } };
+  document.getElementById('modalFooter').innerHTML = `
+    <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
+    <button class="btn btn-ghost" onclick="openNatlScan()">← Νέα σάρωση</button>
+    <button class="btn btn-success" onclick="_natlScanOpenForm()">Άνοιγμα φόρμας →</button>`;
+
+  if (data.reference && typeof findDuplicateOrders === 'function') {
+    findDuplicateOrders(data.reference, TABLES.NAT_ORDERS).then(dupes => {
+      if (!dupes.length) return;
+      const dupListHtml = dupes.map(d => {
+        const f = d.fields;
+        const loadDate = (f['Loading DateTime'] || '').substring(0, 10);
+        const name = f['Name'] || d.id.slice(-6);
+        return `<li style="margin:4px 0">
+          <a href="#" onclick="event.preventDefault();closeModal();renderOrdersNatl().then(()=>setTimeout(()=>selectNatlOrder('${d.id}'),300))"
+             style="color:var(--warn);text-decoration:underline;font-weight:600">${escapeHtml(String(name))}</a>
+          <span style="color:var(--warn);font-size:11px"> · ${loadDate || 'χωρίς ημερομηνία'}</span>
+        </li>`;
+      }).join('');
+      st.insertAdjacentHTML('afterbegin', `
+        <div style="background:var(--warn-bg);border:1px solid var(--warn-border);padding:8px 12px;border-radius:var(--radius);margin-bottom:8px">
+          <div style="font-weight:700;color:var(--warn);font-size:13px">⚠ Πιθανό διπλότυπο</div>
+          <div style="font-size:12px;color:var(--warn);margin-top:4px">Βρέθηκε ήδη παραγγελία με Reference <strong>${escapeHtml(String(data.reference))}</strong>:</div>
+          <ul style="margin:6px 0 0 18px;padding:0;font-size:12px">${dupListHtml}</ul>
+        </div>`);
+    });
+  }
+}
+
 async function _natlScanOpenForm() {
   const r = window._natlScanResult;
   if (!r) return;
+  if (r.data._engine === 'v2') return _natlScanOpenFormV2(r);
   const f = {};
   if (r.matched.clientId) f['Client'] = [r.matched.clientId];
   if (r.data.name)        f['Name'] = r.data.name;
@@ -2365,6 +2480,75 @@ async function _natlScanOpenForm() {
     // Pre-fill form fields after the modal renders
     setTimeout(() => _natlPrefillFromScan(f), 100);
   }
+}
+
+// ─── v2 open-form (round 3) ────────────────────────────────────────────
+// Builds the same `f` (Airtable-label) object _openNatlModal already knows
+// how to read for client/pickup/deliveries, and calls it DIRECTLY instead of
+// through openNatlCreate()+_natlPrefillFromScan (the v1 path above): that
+// prefill only matches DOM elements carrying data-field/name/#fld_* attributes,
+// and the national form has none — v1's scan-to-form fill has never actually
+// populated anything (verified by reading the form markup, 27/9/2026). Left
+// unchanged per the round-3 brief ("without the switch the national scan
+// must behave exactly as today") — this v2 path is the fix, scoped to v2 only.
+async function _natlScanOpenFormV2(r) {
+  const { data, matched } = r;
+  const f = {};
+  if (matched.clientId) f['Client'] = [matched.clientId];
+  // The shared v2 engine's direction is intl-flavoured (Export/Import, from
+  // GR-vs-abroad) and never matches this form's North→South/South→North
+  // options — harmless: an all-Greek document makes it null anyway (both
+  // stops read country GR), so this simply never fires and the dispatcher
+  // picks the direction, same as an unscanned national order always has.
+  if (data.direction)   f['Direction'] = data.direction;
+  if (data.goods)       f['Goods'] = data.goods;
+  if (data.notes)       f['Notes'] = String(data.notes);
+  if (data.pallets)     f['Pallets'] = data.pallets;
+  if (data.temperature_c != null) f['Temperature °C'] = data.temperature_c;
+  if (data.price_eur)   f['Price'] = data.price_eur;
+
+  const pickup = matched.pickup;
+  if (pickup) {
+    if (pickup.location_id) f['Pickup Location 1'] = [pickup.location_id];
+    if (pickup.date) f['Loading DateTime'] = pickup.date;
+  }
+  (matched.deliveries || []).forEach((s, i) => {
+    if (s.location_id) f[`Delivery Location ${i + 1}`] = [s.location_id];
+  });
+  const firstDelDate = (matched.deliveries || []).map(s => s.date).find(Boolean);
+  if (firstDelDate) f['Delivery DateTime'] = firstDelDate;
+
+  // Register matched labels so the autocomplete inputs show a name instead of
+  // a blank box next to a hidden id (same trick orders_intl.js uses).
+  if (matched.clientId && matched.clientLabel) _fhClientsMap[matched.clientId] = matched.clientLabel;
+  const allLocs = (typeof getRefLocations === 'function' ? getRefLocations() : []) || [];
+  const labelFor = id => { const l = allLocs.find(x => x.id === id); return l ? (l.fields?.['Name'] || l.fields?.['City'] || '') : ''; };
+  if (pickup && pickup.location_id) _fhLocationsMap[pickup.location_id] = labelFor(pickup.location_id);
+  (matched.deliveries || []).forEach(s => { if (s.location_id) _fhLocationsMap[s.location_id] = labelFor(s.location_id); });
+
+  window._natlScanPending = { docType: data._docType || 'CARRIER_ORDER', summary: window._natlScanFile?.name || '', ai: data };
+
+  closeModal();
+  await _openNatlModal(null, f);
+
+  // _openNatlModal only pre-fills row 1's pallets/date from `f` (its own
+  // single-delivery shortcut) — _simRows holds the uids it just created, in
+  // the SAME order as the `Delivery Location N` fields above, so row i is
+  // delivery i. Never overwrites a value _openNatlModal already set.
+  (matched.deliveries || []).forEach((s, i) => {
+    const uid = _simRows[i];
+    if (uid == null) return;
+    if (s.pallets != null) { const el = document.getElementById('simp' + uid); if (el && !el.value) el.value = s.pallets; }
+    if (s.date) { const el = document.getElementById('simd' + uid); if (el && !el.value) el.value = s.date; }
+  });
+
+  // Owner 28/9: the side-by-side review UI (round 3) is gone — the scan opens
+  // the plain form. National orders have no document-storage path yet
+  // (order_documents.order_id is an FK to `orders`, not `national_orders` —
+  // see core/order-docs.js) — the file is still tagged so submitNatlOrder's
+  // existing handleNatlOrderSaved() can tell the user so instead of silently
+  // dropping it, exactly as the round-3 doc-storage handoff intended.
+  if (data._scanFile) window._scanPendingDoc = { file: data._scanFile, source: 'scan' };
 }
 
 function _natlPrefillFromScan(fields) {

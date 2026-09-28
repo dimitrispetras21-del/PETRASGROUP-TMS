@@ -626,6 +626,8 @@ async function renderWeeklyIntl(){
       // CLAUDE.md facade trap) until the Worker ships it.
       atGetAll(TABLES.ORDERS,  {filterByFormula:`AND({Type}='International',{Direction}='Export',OR(AND(IS_AFTER({Delivery DateTime},'${toLocalDate(new Date(ws.getTime()-8*86400000))}'),IS_BEFORE({Delivery DateTime},'${toLocalDate(new Date(we.getTime()+8*86400000))}')),AND(IS_AFTER({Loading DateTime},'${toLocalDate(new Date(ws.getTime()-8*86400000))}'),IS_BEFORE({Loading DateTime},'${toLocalDate(new Date(we.getTime()+8*86400000))}'))))`},false),
       atGetAll(TABLES.ORDERS,  {filterByFormula:impFilter},false),
+      // Scan round 3: paperclip index — own ~2min cache, never rejects/throws.
+      (typeof OrderDocs !== 'undefined' ? OrderDocs.preloadIndex() : Promise.resolve()),
     ]);
     if (loadId !== _wiLoadId) return;
     WINTL.data.trucks   = getRefTrucks().filter(r=>r.fields['Active']).map(r=>({id:r.id,label:r.fields['License Plate']||r.id}));
@@ -1358,7 +1360,7 @@ function _wiImpRowHTML(row,impNo){
   let loadCard=segOn
     ? _wiSegPillWrap(row.id,members,'load',true,true)
     : _wi2Card({cls:stR.loaded?'ok':'', date:_wi2Date(imp.id,'Loading DateTime',lIso,lIso?_wk3D(_wiFmt(lIso)):'—',stR.loaded?' done':'','Ημ. φόρτωσης'+(stR.loaded?' — φορτώθηκε ✓':'')), name:lo.name, sub:lo.sub, extra:_wk3MoreStops(fromStr,f._stopsL,'load')});
-  const right=`<span class="wi2-flags">${_wiBadges(f)}</span>${_wi2Pal(f)}${f['Reference']?`<span class="wi2-ref" title="Κωδικός αναφοράς">${escapeHtml(String(f['Reference']))}</span>`:''}`;
+  const right=`<span class="wi2-flags">${_wiBadges(f,imp.id)}</span>${_wi2Pal(f)}${f['Reference']?`<span class="wi2-ref" title="Κωδικός αναφοράς">${escapeHtml(String(f['Reference']))}</span>`:''}`;
   let delCard;
   if(segOn){
     delCard=_wiSegPillWrap(row.id,members,'del',true,true,_wiSegTotalsHTML(members));
@@ -1676,13 +1678,18 @@ async function _wiDoHandoverChange(rowId){
 }
 
 /* ── ROW HTML ──────────────────────────────────────────────────────── */
-function _wiBadges(f){
+// orderId (scan round 3, optional): lets a paperclip badge join the flags
+// when core/order-docs.js is loaded and that order has a stored document.
+// Rendered through OrderDocs.badge (own markup/class/stopPropagation) so
+// Weekly's drag&drop and right-click handlers on the card stay untouched.
+function _wiBadges(f,orderId){
   const b=[];
   if(f['High Risk Flag'])   b.push('<span class="wi-badge wi-b-risk" title="Υψηλό ρίσκο">!</span>');
   if(f['Pallet Exchange'])  b.push('<span class="wi-badge wi-b-pe">PE</span>');
   if(f['National Groupage'])b.push('<span class="wi-badge wi-b-grpg">GRP</span>');
   const veroia=f['Veroia Switch'];
   if(veroia)                b.push('<span class="wi-badge wi-b-veroia">Veroia</span>');
+  if(orderId && typeof OrderDocs!=='undefined') b.push(OrderDocs.badge(orderId,{size:11}));
 
   return b.join('');
 }
@@ -2466,7 +2473,7 @@ function _wiRowHTML(row,i){
     delCard=_wi2Card({cls:stF.late?'late':stF.delivered?'ok':'',
       name:de.name+(stF.late?'<span class="wi2-late" title="Καθυστέρησε (Delivery Performance = Delayed)">! καθυστέρηση</span>':stF.delivered?'<span class="wk3-okc" title="Παραδόθηκε">✓</span>':''),
       sub:de.sub, extra:_wk3MoreStops(isGroup?gDs:toStr,isGroup?gD:pf._stopsD,'del')+members,
-      right:`${refs?`<span class="wi2-ref" title="Κωδικός αναφοράς">${escapeHtml(String(refs))}</span>`:''}${_wiCrossChip(pf)}${_wiExecChip(pf,row.saved)}<span class="wi2-flags">${_wiBadges(pf)}</span>${isGroup?_wi2PalGroup(exps):_wi2Pal(pf)}`});
+      right:`${refs?`<span class="wi2-ref" title="Κωδικός αναφοράς">${escapeHtml(String(refs))}</span>`:''}${_wiCrossChip(pf)}${_wiExecChip(pf,row.saved)}<span class="wi2-flags">${isGroup?'':_wiBadges(pf,pid)}</span>${isGroup?_wi2PalGroup(exps):_wi2Pal(pf)}`});
   }
 
   if(isPre) loadCard=_wiPreLeg(primary);
@@ -2544,7 +2551,7 @@ function _wiRowHTML(row,i){
     // δεξιά θυρίδα — δύο ιδιώματα για το ίδιο πράγμα στην ίδια γραμμή. Και
     // επειδή μοιράζονταν τη σειρά με την πόλη, η πόλη στριμωχνόταν πίσω από
     // «PE · 33 p». Τώρα: δεξιά οι παλέτες, η δεύτερη σειρά μένει της πόλης.
-    const iright=`<span class="wi2-flags">${_wiBadges(f2)}</span>${_wi2Pal(f2)}<button class="wk3-unm" title="Αφαίρεση ταιριάσματος" onclick="event.stopPropagation();_wiUnmatch('${imp.id}')">×</button>`;
+    const iright=`<span class="wi2-flags">${_wiBadges(f2,imp.id)}</span>${_wi2Pal(f2)}<button class="wk3-unm" title="Αφαίρεση ταιριάσματος" onclick="event.stopPropagation();_wiUnmatch('${imp.id}')">×</button>`;
     let idel;
     if(impVS){ const v=_wk3VsCd(f2,'imp');
       // Matched preview is the narrow column: «Cross-Dock VS» on one line, no city (the badge says it)

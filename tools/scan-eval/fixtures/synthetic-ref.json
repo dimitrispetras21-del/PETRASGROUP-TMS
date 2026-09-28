@@ -1,0 +1,12 @@
+{
+  "_note": "INVENTED data for tests and --dry-run. No real client, location or document.",
+  "clients": [
+    { "id": "recSynthClient0001", "fields": { "Company Name": "ACME FROZEN FOODS GMBH" } },
+    { "id": "recSynthClient0002", "fields": { "Company Name": "BETA FRUIT S.A." } }
+  ],
+  "locations": [
+    { "id": "recSynthLoc000001", "fields": { "Name": "Alpha Cold Store", "City": "Testdorf", "Country": "DE" } },
+    { "id": "recSynthLoc000002", "fields": { "Name": "Gamma Warehouse", "City": "Samplepolis", "Country": "GR" } },
+    { "id": "recSynthLoc000003", "fields": { "Name": "Delta Market Hub", "City": "Exampleburg", "Country": "AT" } }
+  ]
+}

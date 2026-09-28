@@ -348,6 +348,11 @@ async function renderOrdersIntl() {
       // cache is warm. A failure is reported above the table, never swallowed.
       (typeof preloadReferenceData === 'function' ? preloadReferenceData() : Promise.resolve())
         .catch(e => { console.warn('orders_intl: ref data', e); _oiLoadWarns.push(_OI_WARN_REF); }),
+      // Scan round 3: paperclip badge index. Never rejects (core/order-docs.js
+      // logs its own warning and returns an empty index) — nothing here needs
+      // its own .catch, but the array slot is intentional so the list never
+      // waits on it twice (virtual-scroll rows read the already-settled index).
+      (typeof OrderDocs !== 'undefined' ? OrderDocs.preloadIndex() : Promise.resolve()),
     ]);
     records.sort((a,b) => (b.fields['Loading DateTime']||'').localeCompare(a.fields['Loading DateTime']||''));
     // Wave 3 (owner 6/9, FEATURES.ORDER_SPLIT): a leg is the parent's own
@@ -600,7 +605,7 @@ function _oiRowHtml(r) {
     ? `<div class="pre-acts"><button type="button" class="pre-act" onclick="event.stopPropagation();openIntlEdit('${r.id}')">Μετατροπή</button><button type="button" class="pre-act cancel" onclick="event.stopPropagation();cancelPreorder('${r.id}')">Ακύρωση</button></div>` : '';
   return `<tr onclick="selectIntlOrder('${r.id}')" id="irow_${r.id}" class="oi-row${sel}${pre ? ' oi-pre' : ''}" style="height:${_OI_ROW_H}px">
     <td class="oi-dim oi-num">${orderNoCell}</td>
-    <td>${refCell}${legChip}${_oiFlags(f)}</td>
+    <td>${refCell}${legChip}${_oiFlags(f)}${typeof OrderDocs !== 'undefined' ? OrderDocs.badge(r.id) : ''}</td>
     <td class="oi-dim oi-num">W${escapeHtml(f['Week Number']||'—')}</td>
     <td class="oi-dim oi-nowrap">${escapeHtml(_OI_DIR[f['Direction']] || f['Direction'] || '—')}</td>
     <td><span class="oi-name" title="${client}">${client}</span></td>
@@ -861,6 +866,7 @@ function _oiCardHtml(rec, opts) {
       <div class="oi-links"><button type="button" class="oi-link" onclick="navigate('weekly_intl')">άνοιγμα στο Εβδομαδιαίο Διεθνών →</button></div>
     </div>
     ${f['Notes'] ? `<div class="oi-sect oi-sect-alt"><div class="oi-sect-t">Σημειώσεις</div><div class="oi-text">${escapeHtml(f['Notes'])}</div></div>` : ''}
+    <div class="oi-sect"><div class="oi-sect-t">Έγγραφα</div><div class="oi-links">${typeof OrderDocs !== 'undefined' ? OrderDocs.sectionHtml(recId, { canEdit }) : ''}</div></div>
     ${actions ? `<div class="oi-sect"><div class="oi-sect-t">Ενέργειες</div><div class="oi-links">${actions}</div></div>` : ''}`;
 }
 
@@ -2066,6 +2072,14 @@ async function submitIntlOrder(recId) {
 
     invalidateCache(TABLES.ORDERS);
 
+    // Scan round 3: the review UI stashes the scanned file on window._scanPendingDoc
+    // when it opened THIS form; only fires on the create path (order_documents
+    // needs a real order id). Fire-and-forget — a failed upload never blocks the
+    // save flow above, it shows its own persistent warning (core/order-docs.js).
+    if (!recId && result?.id && typeof OrderDocs !== 'undefined' && window._scanPendingDoc) {
+      OrderDocs.handleOrderSaved(result.id);
+    }
+
     // ── Active learning: persist scan correction (Phase 3) ──
     // If this submission was prefilled from a scan, save the user-corrected
     // values as a few-shot example for future scans of the same doc type.
@@ -2246,7 +2260,7 @@ function openIntlScan() {
         📷 &nbsp;Λήψη με κάμερα
       </button>
     </div>
-    <input type="file" id="scanFile" accept="image/*,application/pdf" multiple style="display:none"
+    <input type="file" id="scanFile" accept="image/*,application/pdf${typeof scanEngineV2On === 'function' && scanEngineV2On() ? ',.doc,application/msword,.docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document' : ''}" multiple style="display:none"
       onchange="_scanHandleFiles(this.files)">
     <input type="file" id="scanCamera" accept="image/*" capture="environment" style="display:none"
       onchange="_scanHandleFile(this.files[0])">
@@ -2274,9 +2288,11 @@ async function _scanHandleFile(file) {
     toast(`Το αρχείο είναι πολύ μεγάλο (${(file.size/1024/1024).toFixed(1)}MB) — όριο 10MB`, 'error');
     return;
   }
-  const okType = file.type.startsWith('image/') || file.type === 'application/pdf';
+  // Engine v2 (scan round 2/4) also reads Word .doc / .docx — DPS sends those.
+  const v2 = typeof scanEngineV2On === 'function' && scanEngineV2On();
+  const okType = v2 ? scanV2Accepts(file) : (file.type.startsWith('image/') || file.type === 'application/pdf');
   if (!okType) {
-    toast('Δεκτά μόνο JPG / PNG / PDF', 'error');
+    toast(v2 ? 'Δεκτά μόνο JPG / PNG / PDF / Word (.doc, .docx)' : 'Δεκτά μόνο JPG / PNG / PDF', 'error');
     return;
   }
 
@@ -2305,6 +2321,8 @@ async function _scanHandleFile(file) {
       st.innerHTML = dataUrl
         ? `<div class="scan-preview-doc"><img src="${dataUrl}" alt="PDF page 1"></div>`
         : `<div class="scan-preview-info">📄 PDF · ${escapeHtml(file.name)}<span class="scan-preview-meta">preview unavailable</span></div>`;
+    } else {
+      st.innerHTML = `<div class="scan-preview-info">📄 ${escapeHtml(file.name)}</div>`;  // .doc/.docx (v2): no preview
     }
   } catch(e) {
     console.warn('[scan] preview failed:', e.message);
@@ -2327,6 +2345,13 @@ async function _scanExtractCore(file) {
   setStatus('<span class="spinner" style="width:16px;height:16px;flex-shrink:0"></span>', 'Προετοιμασία αρχείου…');
 
   try {
+    // Engine v2 behind a per-browser switch until the owner approves it
+    // (core/scan-engine-v2.js): one structured-output call, text layer first,
+    // matching in code over all clients/locations.
+    if (typeof scanEngineV2On === 'function' && scanEngineV2On()) {
+      setStatus('<span class="spinner" style="width:16px;height:16px;flex-shrink:0"></span>', 'AI αναλύει το έγγραφο (v2)…');
+      return await scanV2Extract(file);
+    }
     // 1. Preprocess (auto-rotate + resize for images, pass-through for PDF)
     const pre = await scanPreprocessFile(file);
     if (pre.wasPreprocessed) {
@@ -2483,7 +2508,9 @@ function _scanWeak(d) { return _scanScore(d) < 3; }
 function _scanHandleFiles(fileList) {
   const files = [...(fileList || [])].filter(f => {
     if (f.size > 10*1024*1024) { toast(`${f.name}: >10MB — παραλείπεται`, 'warn'); return false; }
-    const ok = f.type.startsWith('image/') || f.type === 'application/pdf';
+    const ok = (typeof scanEngineV2On === 'function' && scanEngineV2On())
+      ? scanV2Accepts(f)
+      : (f.type.startsWith('image/') || f.type === 'application/pdf');
     if (!ok) toast(`${f.name}: μη υποστηριζόμενος τύπος`, 'warn');
     return ok;
   }).slice(0, 10);
@@ -2511,6 +2538,10 @@ async function _scanExtract() {
   if (!files.length) return;
   if (files.length === 1) {
     const parsed = await _scanExtractCore(files[0]);
+    // Carried through _scanResult/_scanQueue to _scanOpen (round 3): the
+    // side-by-side review needs the ORIGINAL file, not just the AI's reading
+    // of it — nothing upstream of this point keeps a reference otherwise.
+    if (parsed) parsed._scanFile = files[0];
     if (parsed) await _scanPreview(parsed);
     return;
   }
@@ -2524,6 +2555,7 @@ async function _scanExtract() {
     try {
       window._scanResult = null;
       const parsed = await _scanExtractCore(files[i]);
+      if (parsed) parsed._scanFile = files[i];   // see single-file branch above
       if (parsed) { await _scanPreview(parsed);
         if (window._scanResult) window._scanQueue.push({ ...window._scanResult, _fileName: files[i].name }); }
     } catch(e) { console.warn('[batch scan]', files[i].name, e.message); }
@@ -2654,7 +2686,9 @@ async function _scanPreview(data) {
     const rec = (getRefClients() || []).find(c => c.id === data.client_id);
     if (rec) { clientId = rec.id; clientLabel = rec.fields?.['Company Name'] || ''; }
   }
-  if (!clientId && data.client_name) {
+  // v2 already matched over ALL clients in code; its "no match" means "not
+  // sure" — a weaker fuzzy guess on top would prefill a wrong client silently.
+  if (!clientId && data.client_name && data._engine !== 'v2') {
     // Fuzzy fallback (handles model not using tool, or unknown names)
     if (typeof scanFuzzyMatch === 'function' && typeof getRefClients === 'function') {
       const list = (getRefClients() || []).map(c => ({ id: c.id, label: c.fields?.['Company Name'] || '' })).filter(c => c.label);
@@ -2674,6 +2708,7 @@ async function _scanPreview(data) {
       const direct = _fhLocationsArr.find(l => l.id === s.location_id);
       if (direct) return direct;
     }
+    if (data._engine === 'v2') return null;  // same reason as the client above
     // Try fuzzy first if available
     if (typeof scanFuzzyMatch === 'function') {
       const composite = [s.location_name, s.city_gr, s.city, s.country].filter(Boolean).join(' ');
@@ -2760,6 +2795,13 @@ async function _scanPreview(data) {
     if (_ld && _dd && !isNaN(_ld) && !isNaN(_dd) && _dd < _ld) warns.push('Η παράδοση είναι ΠΡΙΝ τη φόρτωση — έλεγξε τις ημερομηνίες');
     if (data.pallets && data.pallets > 33) warns.push(`Παλέτες ${data.pallets} > 33 (χωρητικότητα φορτηγού)`);
     if (data.temperature_c != null && (data.temperature_c < -30 || data.temperature_c > 30)) warns.push(`Θερμοκρασία ${data.temperature_c}°C εκτός λογικού εύρους`);
+    // v2 stop dates live on the stops (the top-level dates above are v1-only).
+    if (data._engine === 'v2') {
+      const lds = (data.loading_stops || []).map(s => s.date).filter(Boolean).sort();
+      const dds = (data.delivery_stops || []).map(s => s.date).filter(Boolean).sort();
+      if (lds.length && dds.length && dds[0] < lds[lds.length - 1]) warns.push('Η παράδοση είναι ΠΡΙΝ τη φόρτωση — έλεγξε τις ημερομηνίες');
+      (data._v2?.warnings || []).forEach(w => warns.push(escapeHtml(w)));
+    }
     if (warns.length && st) st.insertAdjacentHTML('afterbegin', warns.map(w =>
       `<div class="oi-banner oi-banner-warn">⚠ ${w}</div>`).join(''));
   } catch (e) {}
@@ -2825,6 +2867,7 @@ async function _scanOpen(matched, data) {
   if (data.temperature_c!=null) { f['Temperature °C'] = data.temperature_c; f['Refrigerator Mode'] = 'Continuous'; }
   if (data.direction)   f['Direction'] = data.direction;
   if (data.price_eur)   f['Price'] = data.price_eur;
+  if (data.pallet_type) f['Pallet Type'] = data.pallet_type;   // only v2 extracts it (EUR/CHEP/Industrial)
   // Default Type for international orders (if AI didn't say otherwise)
   if (!f['Type']) f['Type'] = 'International';
 
@@ -2866,6 +2909,14 @@ async function _scanOpen(matched, data) {
   closeModal();
   // Pass scan-derived stops via 4th arg so _openModal can render them
   await _openModal(null, f, matched.clientLabel, { loadStops, unloadStops });
+
+  // Owner 28/9: the side-by-side review UI (round 3) is gone — the scan opens
+  // the plain form, same as before round 3. Only the ORIGINAL file survives,
+  // so it can still be uploaded after save (core/order-docs.js,
+  // handleOrderSaved). Cleared in closeModal() if the form is closed/
+  // cancelled without saving, so a stale scan's file never attaches to a
+  // later, unrelated (e.g. hand-typed) order.
+  if (data._scanFile) window._scanPendingDoc = { file: data._scanFile, source: 'scan' };
 }
 
 function _intlExportCSV() {

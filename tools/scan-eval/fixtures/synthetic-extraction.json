@@ -1,0 +1,21 @@
+{
+  "_note": "INVENTED answer the mock Worker returns as the model's final JSON.",
+  "client_name": "ACME FROZEN FOODS GMBH",
+  "client_id": "recSynthClient0001",
+  "reference": "SYN-0001",
+  "goods": "frozen peas",
+  "gross_weight_kg": 12000,
+  "pallets": 20,
+  "temperature_c": -18,
+  "direction": "Import",
+  "price_eur": 1500,
+  "confidence": "HIGH",
+  "field_confidence": { "client_name": 0.95, "reference": 0.9, "pallets": 0.8, "loading_stops": 0.9, "delivery_stops": 0.6, "dates": 0.85 },
+  "notes": "driver prints thermograph",
+  "loading_stops": [
+    { "location_name": "Alpha Cold Store", "location_id": "recSynthLoc000001", "city": "Testdorf", "country": "DE", "date": "2031-01-10", "pallets": 20 }
+  ],
+  "delivery_stops": [
+    { "location_name": "Gamma Warehouse", "location_id": null, "city": "Samplepolis", "country": "GR", "date": "2031-01-13", "pallets": null }
+  ]
+}

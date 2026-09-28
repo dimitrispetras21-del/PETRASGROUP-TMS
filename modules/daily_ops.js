@@ -65,6 +65,8 @@ async function _opsLoad() {
     OPS.drivers=getRefDrivers().filter(r=>r.fields['Active']).map(r=>({id:r.id,lb:r.fields['Full Name']||''}));
     OPS.locs=getRefLocations(); OPS.clients=getRefClients();
   }
+  // Scan round 3: paperclip index — own ~2min cache, never rejects.
+  if (typeof OrderDocs !== 'undefined') await OrderDocs.preloadIndex();
   const tgt=_opsTgt();
   // VS (owner 10/8): το διεθνές σκέλος εμφανίζεται τη μέρα του Cross-Dock
   // (VS CD Date, αλλιώς Loading+1) — φέρε και τα χθεσινά-Loading VS.
@@ -753,7 +755,11 @@ function _opsRow(rec,num,type,isToday,cls) {
   };
   const amtInp=(fld,v)=>`<input class="do-tinp" type="number" step="1" value="${v||''}" placeholder="—" style="width:64px" onblur="_opsSvF('${id}','${fld}',parseFloat(this.value)||null)">`;
 
-  const cl=`<td class="do-wrap"><span class="do-main">${client}</span>${sub?`<span class="do-sl">${sub}</span>`:''}</td>`;
+  // Scan round 3: paperclip badge — every row here is an international ORDERS
+  // record (module docstring: "International ORDERS only"), so the plain
+  // record id is always the right key for OrderDocs.
+  const docBadge=typeof OrderDocs!=='undefined'?OrderDocs.badge(id,{size:12}):'';
+  const cl=`<td class="do-wrap"><span class="do-main">${client}${docBadge}</span>${sub?`<span class="do-sl">${sub}</span>`:''}</td>`;
   // Χωρίς ώρα δεν αποδίδεται ΤΙΠΟΤΑ — όπως ήδη κάνει η υπογραμμή πελάτη.
   // Οι στήλες loading_datetime/delivery_datetime είναι `date` στη βάση, άρα
   // το `_HM` γυρίζει πάντα κενό: το «—» κρεμόταν κάτω από ΚΑΘΕ τοποθεσία σε

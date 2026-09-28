@@ -7418,3 +7418,22 @@ button.btn-icon:focus-visible { outline:2px solid var(--accent); outline-offset:
 .wk3-seg:hover .wk3-segtip{display:block}
 .wk3-segtip b{display:block;font-size:12px;margin-bottom:2px}
 .wk3-segtip span{display:block;color:var(--text-dim)}
+
+/* ═══════════════════════════════════════════════════════════════
+   DOC VIEWER (scan round 3, 27/9/2026)
+   core/doc-viewer.js — renders the original scanned/stored document (the
+   round-3 side-by-side review panel that used to sit next to the order form
+   was removed 28/9/2026, owner decision: keep the plain form, give access to
+   the official document instead — see docs/scan/04). This viewer is still
+   used by the paperclip badge's viewer modal (core/order-docs.js). The
+   highlight-a-quote machinery (text-layer, caption bar, .doc-viewer-hl) only
+   ever served the removed review panel and was deleted with it 28/9/2026.
+═══════════════════════════════════════════════════════════════ */
+.doc-viewer { position: relative; padding: 8px; }
+.doc-viewer-page { position: relative; margin: 0 auto 10px; box-shadow: 0 1px 4px rgba(0,0,0,0.15); }
+.doc-viewer-page canvas { display: block; }
+.doc-viewer-image { padding: 8px; text-align: center; }
+.doc-viewer-image img { max-width: 100%; height: auto; border-radius: var(--radius); }
+.doc-viewer-text { margin: 0; padding: 12px; font: 13px/1.5 'DM Sans', monospace; white-space: pre-wrap; word-break: break-word; color: var(--text); }
+.doc-viewer-unsupported { padding: 24px; text-align: center; color: var(--text-mid); font-size: var(--text-sm); }
+.doc-viewer-unsupported .btn { margin-top: 12px; }

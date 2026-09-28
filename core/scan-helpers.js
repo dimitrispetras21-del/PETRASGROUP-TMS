@@ -239,16 +239,24 @@ async function scanCallAnthropic(payload, opts = {}) {
       clearTimeout(to);
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
-        let msg = body.error?.message || `API error ${res.status}`;
+        // The Worker answers {error: "<text>"} (a string); Anthropic-shaped
+        // bodies carry {error: {message}}. Reading only .message showed the
+        // dispatcher «API error 502» and hid the Worker's own words — incl.
+        // «Εξαντλήθηκε η πίστωση AI» (402, 27/9/2026).
+        let msg = (typeof body.error === 'string' ? body.error : body.error?.message) || `API error ${res.status}`;
         // Friendlier messages for common errors
         if (res.status === 429 || msg.includes('rate limit')) {
           msg = 'Rate limit reached — περιμένετε 60s και ξαναπροσπαθήστε. (Tip: μειώστε scans συγχρόνως)';
         } else if (res.status === 529) {
           msg = 'Anthropic API overloaded — προσπαθήστε ξανά σε λίγο.';
         }
-        // Don't retry 4xx (except 429)
+        // Don't retry 4xx (except 429). The throw lands in the catch below,
+        // which used to swallow it and retry anyway (3 calls + 3 s for a
+        // request that cannot succeed, measured 27/9) — hence noRetry.
         if (res.status >= 400 && res.status < 500 && res.status !== 429) {
-          throw new Error(msg);
+          const err = new Error(msg);
+          err.noRetry = true;
+          throw err;
         }
         lastErr = new Error(msg);
       } else {
@@ -256,6 +264,7 @@ async function scanCallAnthropic(payload, opts = {}) {
       }
     } catch (e) {
       clearTimeout(to);
+      if (e.noRetry) throw e;
       if (e.name === 'AbortError') {
         lastErr = new Error('AI request timed out (60s)');
       } else if (!lastErr) {
@@ -389,6 +398,9 @@ async function scanSyncTrainingFromServer() {
     let added = 0;
     for (const r of recs) {
       if (seen.has(r.id)) continue;
+      // The same table holds the Worker's DKV-import examples (doc_type 'dkv');
+      // they are not order scans and would crowd the 90-slot local list.
+      if ((r.fields['Doc Type'] || '').toLowerCase() === 'dkv') continue;
       let corrected = r.fields['Corrected'];
       if (typeof corrected === 'string') { try { corrected = JSON.parse(corrected); } catch (e) { continue; } }
       if (!corrected) continue;
@@ -428,34 +440,6 @@ function scanGetTrainingExamples(docType, limit = 3, hintClientId = null) {
  * On app boot, hydrate localStorage cache from the canonical Airtable
  * _SCAN_TRAINING table. Best-effort — fails silently if table missing.
  */
-async function scanHydrateTrainingCache() {
-  const tableId = (typeof TABLES !== 'undefined' && TABLES.SCAN_TRAINING) || null;
-  if (!tableId || typeof atGetAll !== 'function') return;
-  try {
-    const recs = await atGetAll(tableId, {
-      maxRecords: SCAN_TRAINING_MAX,
-      sort: [{ field: 'Created', direction: 'desc' }],
-    }, false).catch(() => []);
-    if (!recs?.length) return;
-    const list = recs.map(r => {
-      const f = r.fields || {};
-      let ai = {}, corrected = {};
-      try { ai = JSON.parse(f['AI Output'] || '{}'); } catch {}
-      try { corrected = JSON.parse(f['Corrected'] || '{}'); } catch {}
-      return {
-        ts: new Date(f['Created'] || Date.now()).getTime(),
-        docType: f['Doc Type'] || 'UNKNOWN',
-        summary: f['Summary'] || '',
-        clientId: (f['Client'] || [])[0] || null,
-        ai, corrected,
-      };
-    });
-    localStorage.setItem(SCAN_TRAINING_KEY, JSON.stringify(list));
-    console.log('[scan] hydrated', list.length, 'training examples from Airtable');
-  } catch (e) {
-    console.warn('[scan] hydrate failed:', e.message);
-  }
-}
 
 // ─── Aliases dictionary — common abbreviations & misspellings ──
 // Edit/extend in core/scan-helpers.js. Used both at AI prompt-injection time
@@ -995,7 +979,6 @@ if (typeof window !== 'undefined') {
   window.scanGetReferenceData = scanGetReferenceData;
   window.SCAN_ALIASES = SCAN_ALIASES;
   // Phase 3: active learning
-  window.scanHydrateTrainingCache = scanHydrateTrainingCache;
   // Phase 4: tool use
   window.SCAN_TOOLS = SCAN_TOOLS;
   window.scanExtractWithTools = scanExtractWithTools;
