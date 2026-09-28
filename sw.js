@@ -40,6 +40,14 @@ const APP_SHELL = [
   '/PETRASGROUP-TMS/modules/daily_ops.js',
   '/PETRASGROUP-TMS/modules/orders_intl.js',
   '/PETRASGROUP-TMS/modules/orders_natl.js',
+  // One «Παραγγελίες» page since 28/9/2026: the two modules above no longer
+  // draw a list — without these the dispatchers' main screen fails offline.
+  '/PETRASGROUP-TMS/core/orders-common.js',
+  '/PETRASGROUP-TMS/modules/orders_hub.js',
+  '/PETRASGROUP-TMS/modules/orders_catalog.js',
+  '/PETRASGROUP-TMS/modules/orders_invoicing_view.js',
+  '/PETRASGROUP-TMS/modules/orders_week_view.js',
+  '/PETRASGROUP-TMS/modules/orders_noprice_view.js',
   '/PETRASGROUP-TMS/modules/locations.js',
   '/PETRASGROUP-TMS/modules/maintenance.js',
   '/PETRASGROUP-TMS/modules/pallet_upload.js',
