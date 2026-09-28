@@ -7322,8 +7322,8 @@ button.btn-icon:focus-visible { outline:2px solid var(--accent); outline-offset:
 .wk3-segpill{flex:1 1 0;min-width:0;display:flex;border:1px solid var(--border);
   border-radius:var(--radius);overflow:hidden;background:var(--surface-card)}
 .wk3-seg{position:relative;flex:1 1 0;min-width:0;box-sizing:border-box;
-  display:flex;flex-direction:column;justify-content:center;min-height:25px;
-  padding:0 10px;background:var(--border);--seg-bg:var(--surface-card);cursor:pointer;
+  display:flex;flex-direction:column;justify-content:center;min-height:36px;
+  padding:3px 10px;background:var(--border);--seg-bg:var(--surface-card);cursor:pointer;
   isolation:isolate;
   transition:transform var(--duration-fast) var(--ease-out),box-shadow var(--duration-fast) var(--ease-out);}
 /* Διαγώνιο κόψιμο (spec): άκρα στρογγυλά (το κλείνει το overflow:hidden του
@@ -7363,37 +7363,53 @@ button.btn-icon:focus-visible { outline:2px solid var(--accent); outline-offset:
 .wk3-seg.late{--seg-bg:var(--danger-bg)}
 .wk3-seg.dragging{opacity:.4}
 .wk3-seg.dragover{outline:2px dashed var(--accent);outline-offset:-2px}
-.wk3-segtop{display:flex;align-items:center;gap:6px;font-size:10px;height:11px;line-height:11px}
-/* Κλίμακα της μονής κάρτας (owner 28/9, παραλλαγή A: όνομα 11/12, 2η σειρά
-   10/11, πλακίδια 9.5) — ίδια γράμματα σε ομάδα και σε μονή παραγγελία, ώστε
-   η γραμμή να μένει 29px. Το όνομα ΔΕΝ αναδιπλώνεται: «…» + title. */
-.wk3-seg .wi2-name{font-size:11px;line-height:12px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.wk3-seg .wi2-sub{font-size:10px}
-.wk3-seg .wi2-date{font-size:9.5px;padding:0 4px;min-width:0;height:auto;line-height:9.5px;
+.wk3-segtop{display:flex;align-items:center;gap:6px;font-size:11px}
+/* Πυκνότερη γραμματοσειρά ΜΕΣΑ στο τμήμα — οι κοινές .wi2-name/.wi2-sub/.wi2-date
+   (μοιρασμένες με τη μονή κάρτα, 13/11/11px) δεν χωρούν σε τμήμα πλάτους
+   ~100-130px· scope εδώ, όχι στις κοινές κλάσεις, ώστε η μονή κάρτα να μείνει
+   ανέγγιχτη. Νούμερα: spec 2026-09-08 v2 §Segment content. */
+.wk3-seg .wi2-name{font-size:10px;line-height:13px;font-weight:600}
+.wk3-seg .wi2-sub{font-size:9px}
+.wk3-seg .wi2-date{font-size:9px;padding:0 5px;min-width:0;height:16px;line-height:16px;
   border-radius:var(--radius-sm);box-sizing:border-box}
-.wk3-segtop .wi2-name{font-size:10px}
-.wk3-segtop .wi2-pal{font-size:9.5px}
-.wk3-seg.off{display:none}
-.wk3-segmore{flex:0 0 auto;min-width:44px;align-items:center;font:700 10px 'DM Sans',sans-serif;color:var(--accent-text)}
-.wk3-segmore.off{display:none}
-.wk3-segwrap.open .wk3-segpill{flex-wrap:wrap}
-.wk3-segwrap.open .wk3-seg{flex:1 1 90px}
-/* Σύνολα δεξιά της παράδοσης (owner review 8/9 v2 — item γ): κουτί ΕΚΤΟΣ του
-   πλακάτ, ώστε να μην το στριμώχνει. 28/9: στενό κουτί με το «N p» κάτω δεξιά,
-   στη θέση που έχουν οι παλέτες στη μονή κάρτα, και τις στάσεις από πάνω. */
-.wk3-segtotals{flex:0 0 auto;min-width:40px;box-sizing:border-box;display:flex;
-  flex-direction:column;align-items:flex-end;justify-content:center;gap:1px;text-align:right}
-.wk3-segtotals .wi2-pal{font-size:10px;font-weight:700;line-height:11px}
-.wk3-segstops{font-size:9.5px;color:var(--text-dim);line-height:10px;white-space:nowrap}
-/* ΠΛΑΚΑΤ ΣΤΟ ΚΟΙΝΟ ΠΛΕΓΜΑ (owner 28/9: «να σουλουπωθεί στα νέα δεδομένα»).
-   Μέχρι τις 28/9 ένα .wk3-tiled σκέλος είχε δικά του ελάχιστα πλάτη
-   (238-334px) και η γραμμή του δικό της grid-template (σκέλη 580-600px) — η
-   ανάθεση και η εισαγωγή μιας ομάδας ξεκινούσαν 72-136px δεξιότερα από κάθε
-   άλλη γραμμή. Οι κανόνες αυτοί αφαιρέθηκαν: το πλακάτ ζει στο ίδιο κελί, με
+.wk3-segtop .wi2-name{font-size:9px}
+.wk3-segtop .wi2-pal{font-size:9px}
+/* Σύνολα δεξιά της παράδοσης (owner review 8/9 v2 — item γ): σταθερό κουτί
+   ΕΚΤΟΣ του μεριδίου πλάτους του ίδιου του πλακάτ (βλ. .wk3-tiled παρακάτω) —
+   πριν μοιραζόταν flex:1 1 0 με το .wk3-segpill μέσα στο ίδιο .wk3-segwrap και
+   το στρίμωχνε ίσα με το πλάτος των συνόλων. */
+.wk3-segtotals{flex:0 0 64px;width:64px;box-sizing:border-box;display:flex;
+  flex-direction:column;align-items:center;justify-content:center;gap:1px;text-align:center}
+.wk3-segtotals .wi2-pal{font-size:12px;font-weight:700;line-height:1.15}
+.wk3-segstops{font-size:9px;color:var(--text-dim);line-height:1.15;white-space:nowrap}
+/* ΠΛΑΚΑΤ ΣΤΟ ΚΟΙΝΟ ΠΛΕΓΜΑ — Weekly International (owner 28/9: «να σουλουπωθεί
+   στα νέα δεδομένα»). Μέχρι τις 28/9 ένα .wk3-tiled σκέλος είχε δικά του
+   ελάχιστα πλάτη (238-334px) και η γραμμή του δικό της grid-template (σκέλη
+   580-600px) — η ανάθεση και η εισαγωγή μιας ομάδας ξεκινούσαν 72-136px
+   δεξιότερα από κάθε άλλη γραμμή. Αφαιρέθηκαν: το πλακάτ ζει στο ίδιο κελί, με
    το ίδιο πλάτος, όπως η μονή κάρτα. Όσα τμήματα δεν χωρούν σε μία σειρά
-   (ελάχιστο ~90px το καθένα) μαζεύονται σε ένα τμήμα «+N» που ανοίγει την
-   ομάδα σε όλο της το μέγεθος (weekly_intl.js _wi2FitSegs) — κάθε ενέργεια
-   τμήματος (δεξί κλικ, σύρσιμο, αφαίρεση μέλους) μένει προσβάσιμη. */
+   (~90px το καθένα) μαζεύονται σε «+N» που ανοίγει την ομάδα επιτόπου
+   (weekly_intl.js _wi2FitSegs) — κάθε ενέργεια τμήματος μένει προσβάσιμη.
+   ΟΛΟΙ οι κανόνες εδώ είναι .wk3.wi2: το Weekly National χρησιμοποιεί τις ίδιες
+   κοινές κλάσεις .wk3-seg / .wk3-segtotals (βλ. weekly_natl.js _wnSegHTML) και ΔΕΝ
+   αλλάζει — γι' αυτό οι κοινοί κανόνες πάνω έμειναν ως είχαν. */
+.wk3.wi2 .wk3-seg{min-height:25px;padding:0 10px}
+.wk3.wi2 .wk3-segtop{font-size:10px;height:11px;line-height:11px}
+/* Κλίμακα της μονής κάρτας (παραλλαγή A: όνομα 11/12, 2η σειρά 10/11,
+   πλακίδια 9.5) — γραμμή 29px. Το όνομα ΔΕΝ αναδιπλώνεται: «…» + title. */
+.wk3.wi2 .wk3-seg .wi2-name{font-size:11px;line-height:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.wk3.wi2 .wk3-seg .wi2-sub{font-size:10px}
+.wk3.wi2 .wk3-seg .wi2-date{font-size:9.5px;padding:0 4px;height:auto;line-height:9.5px}
+.wk3.wi2 .wk3-segtop .wi2-pal{font-size:9.5px}
+.wk3.wi2 .wk3-seg.off{display:none}
+.wk3.wi2 .wk3-segmore{flex:0 0 auto;min-width:44px;align-items:center;font:700 10px 'DM Sans',sans-serif;color:var(--accent-text)}
+.wk3.wi2 .wk3-segmore.off{display:none}
+.wk3.wi2 .wk3-segwrap.open .wk3-segpill{flex-wrap:wrap}
+.wk3.wi2 .wk3-segwrap.open .wk3-seg{flex:1 1 90px}
+/* Σύνολα: στενό κουτί, «N p» κάτω δεξιά όπως οι παλέτες της μονής κάρτας. */
+.wk3.wi2 .wk3-segtotals{flex:0 0 auto;width:auto;min-width:40px;align-items:flex-end;text-align:right}
+.wk3.wi2 .wk3-segtotals .wi2-pal{font-size:10px;line-height:11px}
+.wk3.wi2 .wk3-segstops{font-size:9.5px;line-height:10px}
 /* Item 2 tooltip: πελάτης, αναφορά, παλέτες, ημέρα/ώρα — CSS-only hover. */
 .wk3-segtip{display:none;position:absolute;left:0;top:100%;margin-top:6px;z-index:20;
   min-width:170px;max-width:240px;background:var(--surface-dark);color:var(--text-on-dark);

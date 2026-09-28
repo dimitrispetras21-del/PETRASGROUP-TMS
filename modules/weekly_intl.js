@@ -263,12 +263,12 @@ const _WI2_CSS=`
    τις κανονικές, στον ίδιο πίνακα. minmax(0,…) αφαιρεί το κατώφλι
    περιεχομένου: τα κλάσματα γίνονται καθαρά αναλογικά και κάθε γραμμή —
    και η κεφαλίδα — βγάζει ταυτόσημες στήλες. */
-/* ΑΝΑΘΕΣΗ 240→224px (owner 28/9: «μήπως το assign είναι πολύ μεγάλο;»). 200px
-   was asked; measured on real data it cut the longest partner name («Hart
-   Logistics sp. z o. o. sp. k.», 155px at 11px bold) — 224px with the pill's
-   side padding 8→6px is the narrowest width that keeps it whole. The freed
-   16px go to the two legs through their 1.1fr/0.9fr split. */
-.wk3.wi2 .wk3-cols,.wk3.wi2 .wk3-row{grid-template-columns:36px var(--fL) minmax(0,1.1fr) 224px minmax(0,0.9fr) var(--fR)}
+/* ΑΝΑΘΕΣΗ 240→176px (owner 28/9: «να μικρύνουμε πλέον και το assign — δεν
+   υπάρχει ανάγκη για τόσο μεγάλο πλακίδιο/στήλη»). Owner accepts that long
+   partner names and double plates («CB8214OB / CB4406EB») ellipsize — the
+   pill's title carries the full text. The freed 64px go to the two legs
+   through their 1.1fr/0.9fr split. */
+.wk3.wi2 .wk3-cols,.wk3.wi2 .wk3-row{grid-template-columns:36px var(--fL) minmax(0,1.1fr) 176px minmax(0,0.9fr) var(--fR)}
 .wi2-mast{display:flex;align-items:center;gap:var(--space-4);margin-bottom:var(--space-3);flex-wrap:wrap}
 .wi2-title{font-family:'Syne',sans-serif;font-weight:700;font-size:18px;color:var(--text);display:flex;align-items:center;gap:12px;white-space:nowrap}
 .wi2-legend-btn{font:500 11px 'DM Sans',sans-serif;color:var(--text-mid);border:1px solid var(--border);border-radius:var(--radius-full);padding:4px 8px;background:none;cursor:pointer}
@@ -514,7 +514,7 @@ const _WI2_CSS=`
    τα κρυμμένα κελιά δεν πιάνουν στήλη, οπότε η εξαγωγή έπεφτε στα 18px.
    minmax(0,…) όπως και στο πλήρες πλάτος, για να μην εξαρτώνται τα πλάτη
    από το περιεχόμενο της κάθε γραμμής. */
-@media (max-width:1360px){.wk3.wi2 .wk3-cols,.wk3.wi2 .wk3-row{grid-template-columns:36px minmax(0,1.1fr) 224px minmax(0,0.9fr)}
+@media (max-width:1360px){.wk3.wi2 .wk3-cols,.wk3.wi2 .wk3-row{grid-template-columns:36px minmax(0,1.1fr) 176px minmax(0,0.9fr)}
 /* 27/9: the style.css:2948 hide never won — «.wk3.wi2 .wk3-feed{display:flex}»
    above out-ranks its bare «.wk3-feed{display:none}», so both feed cells
    still took grid slots in the 4-column grid: every row wrapped to ~94px
@@ -1367,7 +1367,7 @@ function _wiImpRowHTML(row,impNo){
         ? `<button class="wk3-prt r" title="Εκτύπωση ομάδας (import) — ${row.orderIds.length} έγγραφα σε ένα πακέτο" onclick="event.stopPropagation();_wiPrintImpGroup(${row.id})">⎙<sup>I</sup></button>`
         : `<button class="wk3-prt r" title="Εκτύπωση εντολής (import) — δεξί κλικ: κοινή χρήση" data-shq="${printSheetQuery(imp.id,'import',!!row.partnerId)}" data-shtitle="Εντολή εισαγωγής — W${WINTL.week}" onclick="event.stopPropagation();_wiPrintImp('${imp.id}',${row.partnerId?'true':'false'})">⎙<sup>I</sup></button>`}
     </div>`}
-    <div class="wk3-leg imp${segOn?' wk3-tiled':''}"${segOn?` data-seg-n="${members.length}"`:''} style="cursor:pointer" title="Κλικ: άνοιγμα φόρμας παραγγελίας — σύρε για ταίριασμα" onclick="event.stopPropagation();_wk3Edit('${imp.id}')">${isPre?loadCard:`${loadCard}<span class="wi2-arrow">→</span>${delCard}`}</div>
+    <div class="wk3-leg imp" style="cursor:pointer" title="Κλικ: άνοιγμα φόρμας παραγγελίας — σύρε για ταίριασμα" onclick="event.stopPropagation();_wk3Edit('${imp.id}')">${isPre?loadCard:`${loadCard}<span class="wi2-arrow">→</span>${delCard}`}</div>
     <div class="wk3-feed r" title="${impVS2?'Εθνική διανομή από Βέροια — τελικός προορισμός. Ο μεταφορέας συμπληρώνεται στο Weekly National.':'Χωρίς εθνικό σκέλος'}">${feedR}${(typeof impVS2!=="undefined"?impVS2:(imp&&impVS))?_wi2Carrier(imp.id):''}</div>
   </div>`;
 }
@@ -2293,7 +2293,7 @@ function _wiSegHTML(o,kind,isImportSide,idx,total,rowId,draggable){
 // «k/N παραδόθηκαν» μόλις παραδοθεί έστω μία στάση) — ΔΥΟ σειρές σε σταθερό
 // κουτί (owner review 8/9 v2: πριν ήταν μία inline γραμμή που μοιραζόταν το
 // ίδιο πλάτος με το ίδιο το πλακάτ παράδοσης και το στρίμωχνε· τώρα ζει σε
-// δικό του σταθερό πλάτος — βλ. assets/style.css .wk3-segtotals/.wk3-tiled).
+// δικό του κουτί — βλ. assets/style.css .wk3-segtotals). 28/9: σύντομο κείμενο.
 function _wiSegTotalsHTML(list){
   const n=list.length;
   const delivered=list.filter(o=>_wk3StFlags(o.fields).delivered).length;
@@ -2308,27 +2308,37 @@ function _wiSegTotalsHTML(list){
 // opens the whole group in place (all tiles, all their actions), again to close.
 function _wiSegPillWrap(rowId,list,kind,isImportSide,draggable,totalsHTML){
   const segs=list.map((o,idx)=>_wiSegHTML(o,kind,isImportSide,idx,list.length,rowId,draggable)).join('');
-  const more=`<div class="wk3-seg wk3-segmore off" data-pos="last" role="button" tabindex="0" title="Όλα τα μέλη της ομάδας" onkeydown="if(event.key==='Enter'){event.preventDefault();this.click()}" onclick="event.stopPropagation();_wi2SegToggle(this)" oncontextmenu="event.stopPropagation()"></div>`;
-  return `<div class="wk3-segwrap"><div class="wk3-segpill" data-row-id="${rowId}" data-kind="${kind}">${segs}${more}</div>${totalsHTML||''}</div>`;
+  const more=`<div class="wk3-seg wk3-segmore off" data-pos="last" role="button" tabindex="0" title="Όλα τα μέλη της ομάδας" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click()}" onclick="event.stopPropagation();_wi2SegToggle(this)" oncontextmenu="event.preventDefault();event.stopPropagation()"></div>`;
+  // Keyed by the member set (sorted ids), not rowId: row ids are rebuilt per
+  // week, and a reorder keeps the same members.
+  const open=!!(WINTL.ui.segOpen&&WINTL.ui.segOpen.has(list.map(o=>o.id).sort().join(',')+':'+kind));
+  return `<div class="wk3-segwrap${open?' open':''}"><div class="wk3-segpill" data-row-id="${rowId}" data-kind="${kind}">${segs}${more}</div>${totalsHTML||''}</div>`;
 }
+// The open state lives in WINTL.ui, not only on the DOM: reorder/remove from
+// inside an opened group repaint the row (or the board) — without this it
+// snapped back to «+N» right after the action it was opened for.
 function _wi2SegToggle(el){
-  const w=el.closest('.wk3-segwrap'); if(!w) return;
-  w.classList.toggle('open'); _wi2FitSegs();
+  const w=el.closest('.wk3-segwrap'), p=w&&w.querySelector('.wk3-segpill'); if(!p) return;
+  const ids=[...p.querySelectorAll('.wk3-seg[data-order-id]')].map(x=>x.dataset.orderId).sort().join(',');
+  const k=ids+':'+p.dataset.kind, set=WINTL.ui.segOpen=WINTL.ui.segOpen||new Set();
+  if(w.classList.toggle('open')) set.add(k); else set.delete(k);
+  _wi2FitSegs();
 }
 // One line of tiles per group card: a tile narrower than ~90px shows nothing
 // readable, so the tiles that do not fit collapse into «+N» (the diagonal
 // seams overlap 12px, counted). Open = every tile, wrapped, «−» to close.
 function _wi2FitSegs(){
-  const MIN=90, SEAM=12;
+  const MIN=90, SEAM=12, MORE=44;
   document.querySelectorAll('#wi-rows .wk3-segpill').forEach(p=>{
     if(!p.offsetParent) return;
     const segs=[...p.querySelectorAll(':scope>.wk3-seg:not(.wk3-segmore)')], more=p.querySelector(':scope>.wk3-segmore');
     if(!more) return;
     segs.forEach(x=>x.classList.remove('off'));
     const open=p.closest('.wk3-segwrap').classList.contains('open');
-    const fit=k=>(p.clientWidth+SEAM*(k-1))/k>=MIN;
+    // k tiles, plus the «+N» tile when some are hidden (it overlaps one seam).
+    const fit=(k,withMore)=>(p.clientWidth-(withMore?MORE-SEAM:0)+SEAM*(k-1))/k>=MIN;
     let show=segs.length;
-    if(!open&&!fit(show)){ show=Math.max(1,segs.length-1); while(show>1&&!fit(show+1)) show--; }
+    if(!open&&!fit(show,false)){ show=segs.length-1; while(show>1&&!fit(show,true)) show--; }
     const hidden=segs.length-show;
     segs.forEach((x,i)=>x.classList.toggle('off',i>=show));
     more.classList.toggle('off',!open&&!hidden);
@@ -2472,9 +2482,9 @@ function _wiRowHTML(row,i){
     // _wiRemoveImport(row.id) the classic single card below already used via
     // _wiUnmatch. Appended INSIDE the totals block (.wk3-segwrap is a flex
     // row, CLAUDE.md file allowlist for this fix has no assets/style.css)
-    // rather than as a sibling of gLoad/gDel — .wk3-leg.wk3-tiled is a fixed
-    // 3-column grid (load/arrow/del, assets/style.css .wk3-leg.wk3-tiled) and
-    // a 4th sibling would silently overflow that grid instead of sitting in
+    // rather than as a sibling of gLoad/gDel — .wk3-leg is a fixed 3-column
+    // grid (load/arrow/del) and a 4th sibling would overflow that grid
+    // instead of sitting in
     // the delivery column where the classic card's own «×» lived.
     // draggable=true (item 2, owner 8/9): GI segments reorder from inside a
     // matched export row exactly like the standalone GI- row does.
@@ -2543,7 +2553,7 @@ function _wiRowHTML(row,i){
   <div id="wi-row-${row.id}" data-row-id="${row.id}" class="${rowCls}">
     <div class="wk3-num">${isPre?'P':i+1}${isGroup?`<button class="wk3-grpb" title="Groupage ×${exps.length} — κλικ: μέλη ομάδας (βάση: το πρώτο-παραδιδόμενο)" onclick="event.stopPropagation();_wiToggleGroup(${row.id})">×${exps.length}</button>`:''}<span class="wi-sync" id="wi-sync-${row.id}"></span></div>
     <div class="wk3-feed l" title="${vsExp?'Εθνικό σκέλος προς Βέροια — φόρτωση από τον αρχικό πελάτη. Ο μεταφορέας συμπληρώνεται στο Weekly National.':'Χωρίς εθνικό σκέλος — δεν είναι Veroia Switch'}">${feedL}${vsExp?_wi2Carrier(pid):''}</div>
-    <div class="wk3-leg${isGroup?' grp':''}${segOn?' wk3-tiled':''}"${segOn?` data-seg-n="${exps.length}"`:''} style="cursor:pointer" title="${isGroup?'Κλικ: καρτέλα ρότας ομάδας · δεξί κλικ: groupage/ρότα':'Κλικ: άνοιγμα φόρμας παραγγελίας · δεξί κλικ: groupage/ρότα'}" oncontextmenu="_wiCtx(event,${row.id})" onclick="event.stopPropagation();${isGroup?`_wiRota(${row.id})`:`_wk3Edit('${pid}')`}">${isPre?loadCard:`${loadCard}<span class="wi2-arrow">→</span>${delCard}`}</div>
+    <div class="wk3-leg${isGroup?' grp':''}" style="cursor:pointer" title="${isGroup?'Κλικ: καρτέλα ρότας ομάδας · δεξί κλικ: groupage/ρότα':'Κλικ: άνοιγμα φόρμας παραγγελίας · δεξί κλικ: groupage/ρότα'}" oncontextmenu="_wiCtx(event,${row.id})" onclick="event.stopPropagation();${isGroup?`_wiRota(${row.id})`:`_wk3Edit('${pid}')`}">${isPre?loadCard:`${loadCard}<span class="wi2-arrow">→</span>${delCard}`}</div>
     ${row.hasSplitLegs
       // Wave 3: the parent no longer executes — no assign popover, no print
       // (nothing to hand a driver for a row that is not itself moving). The
