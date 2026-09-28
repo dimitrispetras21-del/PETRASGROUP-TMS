@@ -42,6 +42,7 @@ const APP_SHELL = [
   '/PETRASGROUP-TMS/modules/orders_natl.js',
   // One «Παραγγελίες» page since 28/9/2026: the two modules above no longer
   // draw a list — without these the dispatchers' main screen fails offline.
+  '/PETRASGROUP-TMS/core/orders-list.js',
   '/PETRASGROUP-TMS/core/orders-common.js',
   '/PETRASGROUP-TMS/modules/orders_hub.js',
   '/PETRASGROUP-TMS/modules/orders_catalog.js',
