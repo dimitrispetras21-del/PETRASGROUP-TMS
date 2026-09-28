@@ -35,9 +35,11 @@ const NAV = [
     { id: 'daily_ops',      label: 'Ημερήσιο Πλάνο',      icon: 'list_checks' },
     { id: 'daily_ramp',     label: 'Πίνακας Ράμπας',      icon: 'activity' },
   ]},
+  // Owner 28/9/2026: international + national orders, invoicing, the weekly
+  // overview and «Χωρίς τιμή» are ONE page (modules/orders_hub.js). The old
+  // ids orders_intl / orders_natl / invoicing are aliases — see _ORDERS_ALIAS.
   { section: 'Παραγγελίες', perm: 'orders', items: [
-    { id: 'orders_intl', label: 'Διεθνείς Παραγγελίες', icon: 'file_text' },
-    { id: 'orders_natl', label: 'Εθνικές Παραγγελίες',  icon: 'file_text' },
+    { id: 'orders',      label: 'Παραγγελίες',          icon: 'file_text' },
     { id: 'locations',   label: 'Τοποθεσίες',           icon: 'map_pin' },
   ]},
   { section: 'Πελάτες & Συνεργάτες', perm: 'clients', items: [
@@ -65,7 +67,6 @@ const NAV = [
     { id: 'maint_trailers', label: 'Ιστορικό Ρυμουλκών', icon: 'clock' },
   ]},
   { section: 'Οικονομικά', perm: 'orders', items: [
-    { id: 'invoicing',     label: 'Τιμολόγηση',       icon: 'file_check' },
     { id: 'pallet_ledger', label: 'Ισοζύγιο Παλετών', icon: 'package' },
     // Same gate as Μισθοδοσία Οδηγών (spec 2026-09-07 §3): perm 'costs', not
     // the section's 'orders' — accountant (full) and owner (full) write,
@@ -250,7 +251,21 @@ let currentPage = '';
  * persists the choice to localStorage, and renders the target module.
  * @param {string} page - Page identifier (e.g. 'dashboard', 'orders_intl')
  */
+// The three old order pages are one page since 28/9/2026 (owner). Their ids
+// stay valid — bookmarks, the remembered tms_page, dashboard/command-palette
+// links and every navigate('orders_intl') in other modules land on the hub
+// with the matching scope/view instead of «Άγνωστη σελίδα».
+const _ORDERS_ALIAS = {
+  orders_intl: { scope: 'intl', view: 'catalog' },
+  orders_natl: { scope: 'natl', view: 'catalog' },
+  invoicing:   { view: 'invoicing' },
+};
+
 function navigate(page) {
+  if (_ORDERS_ALIAS[page] && typeof OrdersHub !== 'undefined') {
+    OrdersHub.preset(_ORDERS_ALIAS[page]);
+    page = 'orders';
+  }
   // Permission guard: block navigation if user lacks access
   const _pagePerm = {};
   NAV.forEach(g => g.items.forEach(i => { _pagePerm[i.id] = i.perm || g.perm; }));
@@ -360,14 +375,12 @@ function navigate(page) {
     case 'daily_ops':      renderDailyOps();                                      break;
     case 'daily_ramp':     renderDailyRamp(); break;
     // Orders
-    case 'orders_intl':    renderOrdersIntl();            break;
-    case 'orders_natl':    renderOrdersNatl();            break;
+    case 'orders':         renderOrders();                break;
     case 'locations':      renderLocations();                                     break;
     // Clients & Partners
     case 'clients':        renderEntity('clients');       break;
     case 'partners':       renderEntity('partners');      break;
     case 'pallet_ledger':  renderPalletLedger();          break;
-    case 'invoicing':      renderInvoicing();             break;
     // Maintenance
     case 'maint_dash':     renderMaintDash();       break;
     case 'maint_req':      renderMaintRequests();   break;
