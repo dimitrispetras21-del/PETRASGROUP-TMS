@@ -263,12 +263,12 @@ const _WI2_CSS=`
    τις κανονικές, στον ίδιο πίνακα. minmax(0,…) αφαιρεί το κατώφλι
    περιεχομένου: τα κλάσματα γίνονται καθαρά αναλογικά και κάθε γραμμή —
    και η κεφαλίδα — βγάζει ταυτόσημες στήλες. */
-/* ΑΝΑΘΕΣΗ 240→176px (owner 28/9: «να μικρύνουμε πλέον και το assign — δεν
-   υπάρχει ανάγκη για τόσο μεγάλο πλακίδιο/στήλη»). Owner accepts that long
-   partner names and double plates («CB8214OB / CB4406EB») ellipsize — the
-   pill's title carries the full text. The freed 64px go to the two legs
-   through their 1.1fr/0.9fr split. */
-.wk3.wi2 .wk3-cols,.wk3.wi2 .wk3-row{grid-template-columns:36px var(--fL) minmax(0,1.1fr) 176px minmax(0,0.9fr) var(--fR)}
+/* ΑΝΑΘΕΣΗ 224px (owner 28/9 βράδυ: «παράκοψες το assign πλακίδιο»). 176px
+   έκοβε 28/54 κάρτες. Μετρήθηκε σε 54 κάρτες ανάθεσης 4 εβδομάδων (W33-W36,
+   καταγραφή 28/8): πλήρεις 48% @176 · 89% @192-216 · 91% @220 · 100% @224 —
+   οι 5 που θέλουν 223px είναι όλες «Hart Logistics sp. z o. o. sp. k.», ο
+   συχνότερος μακρύς συνεργάτης, οπότε το ≥95% πιάνεται μόνο στα 224. */
+.wk3.wi2 .wk3-cols,.wk3.wi2 .wk3-row{grid-template-columns:36px var(--fL) minmax(0,1.1fr) 224px minmax(0,0.9fr) var(--fR)}
 .wi2-mast{display:flex;align-items:center;gap:var(--space-4);margin-bottom:var(--space-3);flex-wrap:wrap}
 .wi2-title{font-family:'Syne',sans-serif;font-weight:700;font-size:18px;color:var(--text);display:flex;align-items:center;gap:12px;white-space:nowrap}
 .wi2-legend-btn{font:500 11px 'DM Sans',sans-serif;color:var(--text-mid);border:1px solid var(--border);border-radius:var(--radius-full);padding:4px 8px;background:none;cursor:pointer}
@@ -447,6 +447,15 @@ const _WI2_CSS=`
    μια τρίτη σειρά σπάει το ύψος γραμμής των 29px (27/9). */
 .wk3.wi2 .wk3-pill{height:auto;min-height:24px;flex-direction:column;align-items:flex-start;justify-content:center;gap:0;padding:0 6px;font-size:12px;line-height:12px;border-radius:var(--radius);white-space:nowrap;overflow:hidden;box-sizing:border-box;transform:none;box-shadow:none}
 .wk3.wi2 .wk3-row:hover .wk3-pill{transform:none;box-shadow:none}
+/* ΚΙΝΗΣΗ ΚΑΙ ΣΤΗΝ ΑΝΑΘΕΣΗ (owner 28/9: «δεν έχει και motion»). Ο «κίνηση
+   παντού» (5/9) έδωσε .wk3-pill:hover lift, αλλά ο κανόνας ακριβώς από πάνω
+   (να μη σηκώνεται το pill όταν περνάς οπουδήποτε στη γραμμή) έχει μεγαλύτερη
+   ειδικότητα και νικούσε ΚΑΙ όταν ο δείκτης ήταν πάνω στο ίδιο το pill — η
+   κίνηση δεν έτρεξε ποτέ. Ίδια γλώσσα με τις κάρτες των σκελών
+   (.wk3-leg:hover>.wi2-card): hover στο κελί ⇒ lift 1px + shadow-lift, ίδια
+   διάρκεια/easing (το transition υπάρχει ήδη στο .wk3-pill). */
+.wk3.wi2 .wk3-row .wk3-assign:hover .wk3-pill{transform:translateY(-1px);box-shadow:var(--shadow-lift)}
+@media (prefers-reduced-motion:reduce){.wk3.wi2 .wk3-row .wk3-assign:hover .wk3-pill{transform:none}}
 .wk3.wi2 .wk3-pill .t,.wk3.wi2 .wk3-pill small{display:block;max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .wk3.wi2 .wk3-pill small{font-size:10px;line-height:11px;color:var(--text-on-dark);font-variant-numeric:tabular-nums}
 .wk3.wi2 .wk3-pill .t{font-size:11px;line-height:12px;font-weight:700;font-variant-numeric:tabular-nums}
@@ -514,7 +523,7 @@ const _WI2_CSS=`
    τα κρυμμένα κελιά δεν πιάνουν στήλη, οπότε η εξαγωγή έπεφτε στα 18px.
    minmax(0,…) όπως και στο πλήρες πλάτος, για να μην εξαρτώνται τα πλάτη
    από το περιεχόμενο της κάθε γραμμής. */
-@media (max-width:1360px){.wk3.wi2 .wk3-cols,.wk3.wi2 .wk3-row{grid-template-columns:36px minmax(0,1.1fr) 176px minmax(0,0.9fr)}
+@media (max-width:1360px){.wk3.wi2 .wk3-cols,.wk3.wi2 .wk3-row{grid-template-columns:36px minmax(0,1.1fr) 224px minmax(0,0.9fr)}
 /* 27/9: the style.css:2948 hide never won — «.wk3.wi2 .wk3-feed{display:flex}»
    above out-ranks its bare «.wk3-feed{display:none}», so both feed cells
    still took grid slots in the 4-column grid: every row wrapped to ~94px
