@@ -42,6 +42,10 @@ const OrdersCommon = {
     const f = rec.fields || {};
     if (rec._type === 'natl') return OrdersCommon.ymd(f['Loading DateTime'] || f['Delivery DateTime']);
     if (f['Direction'] === 'Import') return OrdersCommon.ymd(f['Loading DateTime'] || f['Delivery DateTime']);
+    // weekly_intl.js B2 (owner 6/9): an explicit «Plan Week Start» (the
+    // Saturday) overrides the dates for an export — the board shows it there,
+    // so this page must too. Unused while nothing writes it (Wave 1).
+    if (f['Plan Week Start']) return OrdersCommon.ymd(f['Plan Week Start']);
     return OrdersCommon.ymd(f['Delivery DateTime'] || f['Loading DateTime']);
   },
   weekStartOf(rec) { return OrdersCommon.weekStartOfYmd(OrdersCommon.weekDateOf(rec)); },
