@@ -80,10 +80,16 @@ const OrdersCommon = {
   // that never reached the Weekly (no NAT_LOAD) still counts once its date passed.
   isDelivered(rec) {
     const f = rec.fields || {};
-    if (f['Status'] === 'Delivered') return true;
-    if (rec._type !== 'natl') return false;
-    if (f['Status'] === 'Cancelled') return false;
-    const t = new Date(f['Delivery DateTime'] || '').getTime();
+    if (rec._type !== 'natl') return f['Status'] === 'Delivered';
+    return OrdersCommon.deliveredByDate(f['Status'], f['Delivery DateTime']);
+  },
+  // The national rule itself — also called by weekly_natl.js _wnIsDelivered
+  // (NAT_LOADS rows carry their own status), so the board and this page can
+  // never disagree about «παραδόθηκε» (it was a declared copy until 28/9).
+  deliveredByDate(status, deliveryDt) {
+    if (status === 'Delivered') return true;
+    if (status === 'Cancelled') return false;
+    const t = new Date(deliveryDt || '').getTime();
     return !isNaN(t) && t < Date.now();
   },
   daysSinceDelivery(rec) {

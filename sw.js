@@ -44,7 +44,6 @@ const APP_SHELL = [
   '/PETRASGROUP-TMS/modules/maintenance.js',
   '/PETRASGROUP-TMS/modules/pallet_upload.js',
   '/PETRASGROUP-TMS/modules/pallet_ledger.js',
-  '/PETRASGROUP-TMS/modules/invoicing.js',
   '/PETRASGROUP-TMS/modules/performance.js',
 ];
 

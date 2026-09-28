@@ -571,16 +571,11 @@ function _wnRowElId(r) { return r.type==='southnorth' ? 'wn-sn-'+r.orderId : 'wn
 // Μετρημένο 3/9: status='Delivered' 0/20, delivery_datetime<now() 20/20, άρα ο
 // παλιός μετρητής (`r.status==='Delivered'`) έδειχνε δομικά 0 σε εβδομάδα που
 // είχε παραδοθεί ολόκληρη — και το tooltip του ισχυριζόταν «γραμμένο γεγονός».
-// Ο κανόνας είναι ΑΝΤΙΓΡΑΦΟ του _invIsDelivered (modules/invoicing.js:127):
-// δεν υπάρχει σήμερα κοινός helper και ο κύκλος αυτός αγγίζει ένα αρχείο.
-// ΕΚΚΡΕΜΟΤΗΤΑ: να ανέβει σε core/data-helpers.js ώστε να υπάρχει μία πηγή.
+// One rule since 28/9/2026: OrdersCommon.deliveredByDate (core/orders-common.js)
+// — the same function the «Παραγγελίες» page uses for national orders, so the
+// board and the invoicing view cannot disagree (it was a declared copy).
 function _wnIsDelivered(row) {
-  if (row.status === 'Delivered') return true;   // αν κάποτε γραφτεί, μετράει
-  if (row.status === 'Cancelled') return false;
-  const dt = _wnOrd(row)?.fields?.['Delivery DateTime'];
-  if (!dt) return false;
-  const t = new Date(dt).getTime();
-  return !isNaN(t) && t < Date.now();
+  return OrdersCommon.deliveredByDate(row.status, _wnOrd(row)?.fields?.['Delivery DateTime']);
 }
 
 function _wnPaint() {
