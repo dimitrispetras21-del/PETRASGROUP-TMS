@@ -107,18 +107,13 @@ function _wnPulseRow(rowId) {
   setTimeout(() => { el.style.background = orig; }, 700);
 }
 
-// Week number matching Airtable WEEKNUM (Sunday-start)
-function _wnCurrentWeek() {
-  const d = new Date(), y = d.getFullYear(), j = new Date(y, 0, 1);
-  return Math.ceil(((d - j) / 86400000 + j.getDay() + 1) / 7);
-}
-// Week start (Sunday) for a given week number
-function _wnWeekStart(w) {
-  const y = new Date().getFullYear(), jan1 = new Date(y, 0, 1);
-  const firstSun = new Date(jan1); firstSun.setDate(jan1.getDate() - jan1.getDay());
-  const ws = new Date(firstSun); ws.setDate(firstSun.getDate() + (w - 1) * 7);
-  return ws;
-}
+// Owner decision 28/9/2026: the national week runs SATURDAY–Friday, exactly
+// like the international board. Previously Sunday-start Airtable WEEKNUM,
+// which put the same Saturday in different week numbers on the two boards.
+// Thin wrappers over core/tms-week.js on purpose: one definition for both
+// boards, so they cannot drift apart again.
+function _wnCurrentWeek() { return TmsWeek.current(); }
+function _wnWeekStart(w)  { return TmsWeek.start(w); }
 
 /* ── CSS moved to assets/style.css ── */
 
@@ -612,8 +607,8 @@ function _wnPaint() {
 
   // Same reporting contract as weekly_intl (kanban contract #11): the numbers
   // below are the AUDIT's, unchanged since Wave 1 — weekNumberDefault comes
-  // from _wnCurrentWeek(), the Sunday-start formula this planner still
-  // carries, so the audit can see it drift from canonical isoWeekNumber().
+  // from _wnCurrentWeek() = TmsWeek (Saturday-start, core/tms-week.js, owner
+  // 28/9/2026), so the audit can see it drift from canonical isoWeekNumber().
   if (typeof reportPageMetrics === 'function') reportPageMetrics('weekly_natl', {
     weekNumber: week,
     weekNumberDefault: _wnCurrentWeek(),
@@ -756,7 +751,7 @@ function _wnPaint() {
       </select>
       <button id="wn-clear" class="btn btn-ghost btn-sm" style="display:none" onclick="_wnClearFilter()">${_wnI('x', 12)} Καθαρισμός</button>
       ${crossRows.length ? `<span class="wn4-cross" title="Παραδίδουν σε άλλη εβδομάδα — στην προβολή εκείνης δεν εμφανίζονται (φίλτρο ανά εβδομάδα ΦΟΡΤΩΣΗΣ)" onclick="${_jump(_wnRowElId(crossRows[0]))}">↦ ${crossRows.length} παραδίδ${crossRows.length===1?'ει':'ουν'} σε άλλη εβδομάδα</span>` : ''}
-      <span class="wk3-range">Εβδομάδα ${week} · ${weekRange} · Κυρ–Σαβ</span>
+      <span class="wk3-range">Εβδομάδα ${week} · ${weekRange} · Σαβ–Παρ</span>
     </div>
 
     <!-- sheet: sticky column identity (contract #1) + one panel per day (contract #2) -->
@@ -1255,7 +1250,9 @@ function _wnExecChip(f, saved){
 }
 // T4 twin: natl filters by LOADING week, so the cross-week blind spot is the
 // DELIVERY side — flag rows delivering in another week.
-function _wnWeekOf(dt){ if(!dt) return null; try{const d=new Date(dt),y=d.getFullYear(),j=new Date(y,0,1); return Math.ceil(((d-j)/864e5+j.getDay()+1)/7);}catch{return null;} }
+// Saturday–Friday week (owner 28/9/2026) — must match the board's own week,
+// otherwise a Saturday delivery is flagged as «another week» on its own board.
+function _wnWeekOf(dt){ return TmsWeek.numOf(dt); }
 function _wnCrossChip(f){
   const dw=_wnWeekOf(f?.['Delivery DateTime']);
   if(dw==null||dw===WNATL.week) return '';

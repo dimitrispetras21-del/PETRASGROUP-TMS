@@ -170,13 +170,19 @@ async function fetchPreviousWeekStats(week, tableId, useDateRange = false) {
     const prevWeek = week - 1;
     let filter;
     if (useDateRange) {
-      // Compute prev week date range (Sunday start)
+      // Saturday–Friday range (owner 28/9/2026: national week = the
+      // international board's week). The only date-range caller is
+      // weekly_natl, so this must match its _wnWeekStart or «W-1» counts a
+      // different 7 days than the board shows. Local date strings, not
+      // toISOString(): in UTC+2/+3 a local midnight is the PREVIOUS UTC day,
+      // which would shift the window back to Friday–Thursday.
       const y = new Date().getFullYear(), jan1 = new Date(y, 0, 1);
       const firstSun = new Date(jan1); firstSun.setDate(jan1.getDate() - jan1.getDay());
-      const ws = new Date(firstSun); ws.setDate(firstSun.getDate() + (prevWeek - 1) * 7);
+      const ws = new Date(firstSun); ws.setDate(firstSun.getDate() + (prevWeek - 1) * 7 - 1);
       const we = new Date(ws); we.setDate(ws.getDate() + 6);
-      const wsStr = ws.toISOString().slice(0,10);
-      const weStr = we.toISOString().slice(0,10);
+      const ymd = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+      const wsStr = ymd(ws);
+      const weStr = ymd(we);
       filter = `AND(IS_AFTER({Loading DateTime},'${wsStr}'),IS_BEFORE({Loading DateTime},'${weStr}T23:59:59'))`;
     } else {
       filter = `{Week Number}=${prevWeek}`;

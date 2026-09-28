@@ -26,6 +26,8 @@ const APP_SHELL = [
   '/PETRASGROUP-TMS/core/auth.js',
   '/PETRASGROUP-TMS/core/router.js',
   '/PETRASGROUP-TMS/core/utils.js',
+  // Both weekly boards call TmsWeek while loading — offline without it they break.
+  '/PETRASGROUP-TMS/core/tms-week.js',
   '/PETRASGROUP-TMS/core/ui.js',
   '/PETRASGROUP-TMS/core/entity.js',
   '/PETRASGROUP-TMS/core/pa-helpers.js',
