@@ -185,7 +185,13 @@ async function main() {
   // skip by default so a plain run over golden-full.json doesn't burn model
   // calls on documents score.mjs would ignore anyway.
   const includeUnscored = flag('include-unscored');
-  const docs = golden.docs.filter(d => (!only || only.has(d.doc_id)) && (includeUnscored || d.scored !== false));
+  // Round 4 follow-up: a live/replay run over just the dev split, matching
+  // score.mjs's own --split (same default 'all' — omit the flag and nothing
+  // changes). Iterating dev-only lets a prompt/schema change be tried on the
+  // ~70% tuning slice without spending on the held-out documents too.
+  const split = arg('split', 'all');
+  const docs = golden.docs.filter(d => (!only || only.has(d.doc_id)) && (includeUnscored || d.scored !== false)
+    && (split === 'all' || (d.split || 'dev') === split));
   const examples = arg('examples') ? JSON.parse(fs.readFileSync(arg('examples'), 'utf8')) : [];
 
   // Round 3 (docs/scan/04, task 3): client order history for location matching.

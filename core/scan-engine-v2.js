@@ -86,7 +86,7 @@ STOPS
 - ref = the stop's own loading/delivery reference if printed, else "".
 
 FIELDS  (each: v = value, c = confidence 0..1, q = the shortest exact quote from the document that proves v, max 60 chars; v "" and c 0 when the document does not state it)
-- reference: the order/transport/booking number the customer uses for this transport (labels like Transport number, Order No, Auftragsnr., Objednávka, Αρ. παραγγελίας). SAP print-outs may show raw field codes instead of labels: the transport order is the code containing TANUM or TKNUM; BKK/BANK codes are bank references. The file name often repeats the reference. Value only, as printed, keep leading zeros. Not a VAT, customer, bank or tax number.
+- reference: the order/transport/booking number the customer uses for this transport (labels like Transport number, Order No, Auftragsnr., Objednávka, Αρ. παραγγελίας). SAP print-outs may show raw field codes instead of labels: the transport order is the code containing TANUM or TKNUM; BKK/BANK codes are bank references. The file name often repeats the reference. Value only, as printed, keep leading zeros. Not a VAT, customer, bank or tax number. If a separate "code"/"kód" number is printed next to one specific loading location (a supplier's own shipment code), prefer THAT over a generic order/contract number at the top of the document — the top number is often the forwarder's own filing number, reused across many unrelated shipments.
 - goods: short description of the cargo, in the document's language.
 - gross_weight_kg: total gross weight in kg, digits only (22.500 kg -> 22500; 21 t -> 21000). Prefer the value labelled gross weight / weight section over a weight inside a loading instruction. Placeholders such as 0, 1, 1,00 mean "not stated".
 - pallets: total pallets loaded on the truck, digits only; count pallets, never crates, boxes or cartons. A cargo line whose article IS pallets (EP, Europaletten, Ευρωπαλέτες) gives the pallet count, whatever unit code follows the number (normally = the sum of the loading stops = the sum of the delivery stops). "Number:" printed next to the weight is the pallet count. Placeholders (1, 1,00) mean "not stated".
@@ -284,9 +284,28 @@ function _sv2Index(records, kind) {
   return idx;
 }
 
+function _sv2Acronym(toks) { return toks.map(t => t[0]).join(''); }
+
 // Weighted token overlap (0..1) between a query name and a record name.
 function _sv2NameScore(qToks, item, idf) {
   if (!qToks.length || !item.toks.length) return 0;
+  // Abbreviation / compound-word identity (round 4, docs/scan/04 task 3):
+  // plain per-token overlap scores ZERO when a company is filed under an
+  // initialism ("BRD XYZ") but the document spells it out ("Blue Ridge
+  // Dairy"), or the reverse — the document says "COLD LINE" as two words,
+  // the record has it glued into one, "Coldline". Found by hand: this let an
+  // UNRELATED record that merely shares ordinary words (e.g. the delivery
+  // city) outscore the actually-correct one. Either direction counts as a
+  // full identity match, whichever side is abbreviated.
+  const qJoin = qToks.join(''), itJoin = item.toks.join('');
+  const qAcr = _sv2Acronym(qToks), itAcr = _sv2Acronym(item.toks);
+  const isAbbrev = t => t.length >= 2 && t.length <= 6 && /^[a-z]+$/.test(t);
+  const identity =
+    (qToks.length >= 2 && item.toks.some(t => t === qAcr && isAbbrev(t))) ||
+    (item.toks.length >= 2 && qToks.some(t => t === itAcr && isAbbrev(t))) ||
+    (qJoin.length >= 6 && item.toks.includes(qJoin)) ||
+    (itJoin.length >= 6 && qToks.includes(itJoin));
+  if (identity) return 0.9;
   let hit = 0;
   for (const q of qToks) {
     let best = 0;
@@ -752,6 +771,22 @@ async function _sv2ToV1(ord, clientCands, locCands, clients, locations, meta, op
   if (pallets && loading.length === 1 && loading[0].pallets == null) loading[0].pallets = pallets;
   if (pallets && delivery.length === 1 && delivery[0].pallets == null) delivery[0].pallets = pallets;
 
+  // Pallet type default (round 4, docs/scan/04): the great majority of this
+  // fleet's carrier orders never print a pallet type at all — a mechanical
+  // check of 30 new documents found the type simply absent from the text in
+  // every "wrong" case, never a different type the model misread. EUR is the
+  // fleet's overwhelming convention (round 4 golden: ~88% of stated types).
+  // Guessing it when nothing is printed is still a guess, so it always stays
+  // below the "must check" line (SCAN_V2_SYSTEM: <0.6) and always warns —
+  // same pattern as the pallets-from-text fallback above, never silent.
+  let palletType = _sv2PalletType(fv('pallet_type'));
+  let palletTypeDefaulted = false;
+  if (!palletType && pallets) {
+    palletType = 'EUR';
+    palletTypeDefaulted = true;
+    warnings.push('Τύπος παλέτας δεν αναφέρεται στο έγγραφο — υποτέθηκε EUR (συνηθισμένος τύπος), έλεγξε.');
+  }
+
   // Direction is a fact about the route, not something to ask the model for.
   const lc = loading[0]?.country, dc = delivery[delivery.length - 1]?.country;
   let direction = null;
@@ -763,6 +798,23 @@ async function _sv2ToV1(ord, clientCands, locCands, clients, locations, meta, op
   if (price && currency && currency !== 'EUR') warnings.push(`Τιμή σε ${currency}, όχι EUR — έλεγξε πριν την αποθήκευση.`);
   const temp = _sv2Num(fv('temperature_c'));
 
+  // Ambiguous date window (round 4, docs/scan/04): a document that offers two
+  // candidate days for one stop ("Friday or Saturday", "13 ή 14/09") is not
+  // settled by the text at all — round 4's golden set found the actual
+  // execution date split both ways (sometimes the earlier day, sometimes the
+  // later, sometimes neither, once the shipment slipped past both). Picking
+  // either option is a genuine 50/50 guess, so this stays a HIGH-confidence
+  // guess turning into a silently-wrong prefill; the fix is not to gamble on
+  // which day (tried "always later" against the live golden set — it broke
+  // as many correct dates as it fixed, see docs/scan/04) but to say so: keep
+  // the model's own first-day answer, cap confidence, and warn by name.
+  // "FRIDAY 04 or SATURDAY 05/09/2026", "ΚΥΡΙΑΚΗ 13 ή ΔΕΥΤΕΡΑ 14/09/2026": a
+  // weekday name (letters) commonly sits between "or"/"ή" and the second day.
+  const ambiguousDateInDoc = meta.text && /\b\d{1,2}\s*(?:or|ή)\s*(?:[\p{L}]+\s+)?\d{1,2}\s*[\/.\-]\s*\d{1,2}\b/iu.test(meta.text);
+  if (ambiguousDateInDoc) {
+    warnings.push('Το έγγραφο δίνει δύο πιθανές ημερομηνίες (π.χ. "04 ή 05") — επιβεβαίωσε τις ημερομηνίες πριν αποθηκεύσεις.');
+  }
+
   const matchConf = m => (m.id ? Math.min(1, m.score + 0.2) : 0);
   const minC = xs => (xs.length ? Math.min(...xs) : 0);
   const stopConf = s => _sv2Combine(_sv2Calibrate(s._c, s._q, meta.text), matchConf(s._match));
@@ -771,8 +823,8 @@ async function _sv2ToV1(ord, clientCands, locCands, clients, locations, meta, op
     reference: fcCal('reference'),
     pallets: pallets > 34 ? 0.3 : palletsFromFallback ? 0.55 : (fcCal('pallets') || (loadSum ? 0.7 : 0)),
     temperature_c: fcCal('temperature_c'),
-    pallet_type: fcCal('pallet_type'),
-    dates: minC(stops.map(s => (s.date ? _sv2Calibrate(s._c, s._q, meta.text) : 0))),
+    pallet_type: palletTypeDefaulted ? 0.3 : fcCal('pallet_type'),
+    dates: Math.min(minC(stops.map(s => (s.date ? _sv2Calibrate(s._c, s._q, meta.text) : 0))), ambiguousDateInDoc ? 0.4 : 1),
     loading_stops: minC(loading.map(stopConf)),
     delivery_stops: minC(delivery.map(stopConf)),
     stop_pallets: minC(stops.filter(s => s.pallets != null).map(s => _sv2Calibrate(s._c, s._q, meta.text))),
@@ -790,7 +842,7 @@ async function _sv2ToV1(ord, clientCands, locCands, clients, locations, meta, op
     goods: fv('goods') || null,
     gross_weight_kg: _sv2Num(fv('gross_weight_kg')) || null,
     pallets: pallets || null,
-    pallet_type: _sv2PalletType(fv('pallet_type')),
+    pallet_type: palletType,
     temperature_c: temp,
     direction,
     price_eur: price || null,
