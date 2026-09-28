@@ -1,8 +1,8 @@
 // ═══════════════════════════════════════════════════════════════════
 // ORDER SCAN — ENGINE v2 (scan round 2, 27/9/2026)
 //
-// Behind a switch: the production scanner stays the old one until the owner
-// approves (localStorage 'tms_scan_engine' = 'v2' turns this on per browser).
+// Default engine since the 28/9/2026 release (owner approval). The old v1
+// engine is an emergency fallback only — see scanEngineV2On() below.
 //
 // What changed against v1 and why (measured on the golden set, docs/scan/03-*):
 //   • ONE model call per document. v1 made 3–4 (Haiku classifier → tool loop
@@ -53,8 +53,14 @@ const SCAN_V2 = {
   dataQualityLocationIds: null,
 };
 
+// v2 is the default for everyone since the release of 28/9/2026 (owner:
+// «ναι, ανεβάζουμε»). The old engine stays reachable ONLY as an emergency
+// fallback, per browser: localStorage.setItem('tms_scan_engine','v1').
+// REMOVE the v1 fallback (this check + the v1 paths it guards in
+// scan-helpers.js / orders_intl.js / orders_natl.js) by 2026-10-15 —
+// principle 8: a second engine nobody runs will rot and then lie.
 function scanEngineV2On() {
-  try { return localStorage.getItem('tms_scan_engine') === 'v2'; } catch (e) { return false; }
+  try { return localStorage.getItem('tms_scan_engine') !== 'v1'; } catch (e) { return true; }
 }
 
 // Files the v2 engine can read (v1 gate: images + PDF only).

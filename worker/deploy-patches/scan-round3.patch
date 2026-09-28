@@ -1,8 +1,8 @@
 diff --git a/worker/src/index.js b/worker/src/index.js
-index 03d256e..338cf6b 100644
+index ef1fa22..77b1470 100644
 --- a/worker/src/index.js
 +++ b/worker/src/index.js
-@@ -447,7 +447,16 @@ __name(handleAppErrorsGet, "handleAppErrorsGet");
+@@ -434,7 +434,16 @@ __name(handleAppErrorsGet, "handleAppErrorsGet");
  // src/middleware/rbac.js
  var PERMISSIONS = {
    owner: {
@@ -20,7 +20,7 @@ index 03d256e..338cf6b 100644
    },
    // The reference/maintenance WRITE grants below mirror the frontend PERMS
    // levels ('full' -> write, 'view' -> read-only) so the migrated app behaves
-@@ -494,7 +503,12 @@ var PERMISSIONS = {
+@@ -481,7 +490,12 @@ var PERMISSIONS = {
      // only by the sister repo's fuel_import.html tool, so no POST/PATCH grant is
      // given to any interactive role. NOTE(scoping): if a future in-app fuel-entry
      // feature is built, decide then who may write it; today read-only is correct.
@@ -34,7 +34,7 @@ index 03d256e..338cf6b 100644
    },
    accountant: {
      "*": ["GET"],
-@@ -535,7 +549,11 @@ var PERMISSIONS = {
+@@ -522,7 +536,11 @@ var PERMISSIONS = {
      // times. Half a delivery was recorded: the order said Delivered while its
      // stop never got its tick. Same lock, same width as `orders` above.
      order_stops: ["GET", "PATCH"],
@@ -47,7 +47,7 @@ index 03d256e..338cf6b 100644
    },
    dispatcher: {
      // No blanket read: dispatchers must not see P&L / cost tables (R-04 scenario).
-@@ -609,7 +627,12 @@ var PERMISSIONS = {
+@@ -596,7 +614,12 @@ var PERMISSIONS = {
      // workshops), which stay read-only here too. maintenance.js gates nothing,
      // so its «Διαγραφή» buttons still show to a dispatcher and still 403.
      maint_history: ["GET", "POST", "PATCH"],
@@ -61,7 +61,7 @@ index 03d256e..338cf6b 100644
    },
    warehouse: {
      orders: ["GET"],
-@@ -619,7 +642,11 @@ var PERMISSIONS = {
+@@ -606,7 +629,11 @@ var PERMISSIONS = {
      groupage_lines: ["GET"],
      order_stops: ["GET"],
      // warehouse needs the stop list to load/unload
@@ -74,7 +74,22 @@ index 03d256e..338cf6b 100644
    }
  };
  function can(role, table, method) {
-@@ -1842,6 +1869,34 @@ var TABLES = {
+@@ -801,6 +828,14 @@ async function handleAiMessages(request, origin, env) {
+     console.error(`AI PROXY upstream ${upstream.status}:`, text.slice(0, 300));
+     if (upstream.status === 429) return jsonError("AI rate limit reached, try again shortly", 429, origin, env);
+     if (upstream.status === 529) return jsonError("AI service overloaded, try again shortly", 503, origin, env);
++    // 27/9/2026: the Anthropic credit ran out and every scan failed as a
++    // generic «AI request failed» — nobody knew why until the owner looked at
++    // the console. Anthropic answers 400 "credit balance is too low"; say that
++    // in words the dispatcher can act on. 402 (not 5xx) so the front does not
++    // retry a request that cannot succeed until someone tops up.
++    if (upstream.status === 400 && /credit balance is too low/i.test(text)) {
++      return jsonError("Εξαντλήθηκε η πίστωση AI — ενημερώστε τον διαχειριστή", 402, origin, env);
++    }
+     return jsonError("AI request failed", 502, origin, env);
+   }
+   return new Response(text, {
+@@ -1806,6 +1841,34 @@ var TABLES = {
    // instead of failing loud at review time (CLAUDE.md «ο νεκρός κώδικας λέει
    // ψέματα»). Fuel lines now live in ct_cost_lines (category fuel/reefer_fuel,
    // handleCosts POST/PATCH /costs/lines) — see ct_v_fuel for the read shape.
@@ -109,7 +124,7 @@ index 03d256e..338cf6b 100644
  };
  function tableConfig(tableId) {
    return TABLES[tableId] || null;
-@@ -4259,6 +4314,243 @@ async function handlePerformance(request, url, origin, env) {
+@@ -4223,6 +4286,243 @@ async function handlePerformance(request, url, origin, env) {
  }
  __name(handlePerformance, "handlePerformance");
  
@@ -353,7 +368,7 @@ index 03d256e..338cf6b 100644
  // src/routes/pallets.js — ΠΑΛΕΤΕΣ Φ1 (PALLETS_ARCHITECTURE §5/§6)
  // Ημερολόγιο pl_movements: CRUD + confirm/reverse + balances.
  // taken/given ΠΑΝΤΑ από τη δική μας σκοπιά (taken = πήραμε εμείς).
-@@ -4917,6 +5209,9 @@ var index_default = {
+@@ -4806,6 +5106,9 @@ var index_default = {
      if (url.pathname.startsWith("/pallets/")) {
        return handlePallets(request, url, origin, env);
      }

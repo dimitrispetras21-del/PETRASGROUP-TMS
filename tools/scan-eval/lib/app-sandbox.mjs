@@ -87,7 +87,9 @@ export function browserMimeType(fileName) {
 export function createScannerSandbox({ repoRoot, fetch, jwt, refData, examples = [], engine = 'current', v2 = {}, clientHistory = null }) {
   const events = { toasts: [], errors: [], logs: [] };
   const store = new Map([['tms_jwt', jwt || ''], ['tms_scan_training', JSON.stringify(examples)]]);
-  if (engine === 'v2') store.set('tms_scan_engine', 'v2');
+  // Since the 28/9/2026 release v2 is the app default; 'current' here means the
+  // legacy v1 engine, reachable only through the emergency fallback switch.
+  store.set('tms_scan_engine', engine === 'v2' ? 'v2' : 'v1');
   const elements = new Map();
   let captured = null;
   // Set per scanFile() call (run-current.mjs): the golden doc's OWN saved

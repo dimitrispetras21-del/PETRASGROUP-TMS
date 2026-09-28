@@ -78,7 +78,8 @@ await page.route('**/*', async route => {
 await page.addInitScript(() => {
   localStorage.setItem('tms_user', JSON.stringify({ name: 'Test User', role: 'owner', username: 'dimitris', loginAt: Date.now(), expiresAt: Date.now() + 8 * 3600e3 }));
   localStorage.setItem('tms_jwt', 'synthetic.test.token');
-  localStorage.setItem('tms_scan_engine', 'v2');
+  // No tms_scan_engine on purpose: since the 28/9/2026 release v2 is the
+  // default, so every scan below proves the DEFAULT path, not an opt-in.
 });
 
 let failed = 0;
@@ -207,6 +208,12 @@ try {
   check(await noReviewLeftover(), 'non-scan "New Order" form: no review layout/classes present');
   check((await pendingDoc()) == null, 'non-scan "New Order" form: window._scanPendingDoc never set');
   await cancel();
+
+  // ═══ 5. Release 28/9: v2 is the default; 'v1' is the only way back ═══
+  check(await page.evaluate(() => { localStorage.removeItem('tms_scan_engine'); return scanEngineV2On(); }),
+    'default (no localStorage switch): engine v2 is ON');
+  check(await page.evaluate(() => { localStorage.setItem('tms_scan_engine', 'v1'); const on = scanEngineV2On(); localStorage.removeItem('tms_scan_engine'); return on === false; }),
+    "emergency fallback: tms_scan_engine='v1' turns v2 OFF");
 
   check(errors.length === 0, `no page errors${errors.length ? ': ' + errors.join(' | ') : ''}`);
 } catch (e) {
