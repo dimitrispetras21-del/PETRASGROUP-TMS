@@ -434,7 +434,16 @@ __name(handleAppErrorsGet, "handleAppErrorsGet");
 // src/middleware/rbac.js
 var PERMISSIONS = {
   owner: {
-    "*": ["GET", "POST", "PATCH", "DELETE"]
+    "*": ["GET", "POST", "PATCH", "DELETE"],
+    // ORDER DOCUMENTS (28/9/2026, scan round 3): the ONLY per-table row owner
+    // ever needs, because it is the ONE table that must stay read-only through
+    // the facade for EVERYONE, owner included. Without this row owner's "*"
+    // wildcard would grant POST/PATCH/DELETE on tblOrderDocuments too — a
+    // facade write there creates/edits a metadata row with no matching R2
+    // object (or an orphaned one), which is exactly the lie principle 1 warns
+    // against. Real writes only happen through /docs/upload (streams into R2
+    // first, then inserts the row). GET stays open — owner reads everything.
+    order_documents: ["GET"]
   },
   // The reference/maintenance WRITE grants below mirror the frontend PERMS
   // levels ('full' -> write, 'view' -> read-only) so the migrated app behaves
@@ -481,7 +490,12 @@ var PERMISSIONS = {
     // only by the sister repo's fuel_import.html tool, so no POST/PATCH grant is
     // given to any interactive role. NOTE(scoping): if a future in-app fuel-entry
     // feature is built, decide then who may write it; today read-only is correct.
-    fuel: ["GET"]
+    fuel: ["GET"],
+    // ORDER DOCUMENTS (28/9/2026): read-only, listed explicitly like the rest
+    // of this block even though '*': GET already covers it — the whole point
+    // is that this table must NEVER get a POST/PATCH/DELETE row anywhere (see
+    // the owner block's comment for why a facade write here would be a lie).
+    order_documents: ["GET"]
   },
   accountant: {
     "*": ["GET"],
@@ -522,7 +536,11 @@ var PERMISSIONS = {
     // times. Half a delivery was recorded: the order said Delivered while its
     // stop never got its tick. Same lock, same width as `orders` above.
     order_stops: ["GET", "PATCH"],
-    pallet_ledger_suppliers: ["GET", "POST", "PATCH"]
+    pallet_ledger_suppliers: ["GET", "POST", "PATCH"],
+    // ORDER DOCUMENTS (28/9/2026): read-only, same reasoning as management —
+    // '*': GET already covers it, listed explicitly so it never accidentally
+    // gains a write row.
+    order_documents: ["GET"]
   },
   dispatcher: {
     // No blanket read: dispatchers must not see P&L / cost tables (R-04 scenario).
@@ -596,7 +614,12 @@ var PERMISSIONS = {
     // workshops), which stay read-only here too. maintenance.js gates nothing,
     // so its «Διαγραφή» buttons still show to a dispatcher and still 403.
     maint_history: ["GET", "POST", "PATCH"],
-    maint_req: ["GET", "POST", "PATCH"]
+    maint_req: ["GET", "POST", "PATCH"],
+    // ORDER DOCUMENTS (28/9/2026): dispatchers have NO '*' wildcard (see the
+    // block comment above), so without this row order_documents would be a
+    // silent 403 for the role that scans the documents in the first place.
+    // GET only — real writes go through /docs/upload, never the facade.
+    order_documents: ["GET"]
   },
   warehouse: {
     orders: ["GET"],
@@ -606,7 +629,11 @@ var PERMISSIONS = {
     groupage_lines: ["GET"],
     order_stops: ["GET"],
     // warehouse needs the stop list to load/unload
-    locations: ["GET"]
+    locations: ["GET"],
+    // ORDER DOCUMENTS (28/9/2026): warehouse reads orders (line 1 above), so
+    // it gets the same read access to their scanned documents. No wildcard
+    // here either, so without this row it would be a silent 403.
+    order_documents: ["GET"]
   }
 };
 function can(role, table, method) {
@@ -801,6 +828,14 @@ async function handleAiMessages(request, origin, env) {
     console.error(`AI PROXY upstream ${upstream.status}:`, text.slice(0, 300));
     if (upstream.status === 429) return jsonError("AI rate limit reached, try again shortly", 429, origin, env);
     if (upstream.status === 529) return jsonError("AI service overloaded, try again shortly", 503, origin, env);
+    // 27/9/2026: the Anthropic credit ran out and every scan failed as a
+    // generic «AI request failed» — nobody knew why until the owner looked at
+    // the console. Anthropic answers 400 "credit balance is too low"; say that
+    // in words the dispatcher can act on. 402 (not 5xx) so the front does not
+    // retry a request that cannot succeed until someone tops up.
+    if (upstream.status === 400 && /credit balance is too low/i.test(text)) {
+      return jsonError("Εξαντλήθηκε η πίστωση AI — ενημερώστε τον διαχειριστή", 402, origin, env);
+    }
     return jsonError("AI request failed", 502, origin, env);
   }
   return new Response(text, {
@@ -1806,6 +1841,34 @@ var TABLES = {
   // instead of failing loud at review time (CLAUDE.md «ο νεκρός κώδικας λέει
   // ψέματα»). Fuel lines now live in ct_cost_lines (category fuel/reefer_fuel,
   // handleCosts POST/PATCH /costs/lines) — see ct_v_fuel for the read shape.
+  // ══════════════════════════════════════════════════════════════════════════
+  // ORDER DOCUMENTS (scan round 3, 28/9/2026): scanned/uploaded files attached
+  // to an order (CMR, invoice, photo…). READ-ONLY through this generic facade —
+  // GET only (see PERMISSIONS below: every role gets `order_documents: ["GET"]`,
+  // including owner, which otherwise would write through its "*" wildcard —
+  // trap #3). Writes go through the dedicated /docs/upload endpoint, which
+  // streams the body into R2 (env.ORDER_DOCS) and mints legacy_id itself
+  // (facadeMatch still reaches handleFacadeCreate/Update/Delete for this
+  // table because it IS in TABLES — `can()` denies every one of those methods
+  // for every role, so the router's 403 does the blocking, not a 404).
+  // A row without an R2 object would be a lie in the DB (principle 1) — no
+  // facade write path may ever produce one.
+  tblOrderDocuments: {
+    name: "ORDER DOCUMENTS",
+    pg: "order_documents",
+    fields: {
+      SHA256: "sha256",
+      Filename: "filename",
+      Mime: "mime",
+      Size: "size",
+      Source: "source",
+      "Uploaded By": "uploaded_by",
+      Created: "created_at"
+    },
+    links: {
+      Order: { column: "order_id", table: "orders" }
+    }
+  }
 };
 function tableConfig(tableId) {
   return TABLES[tableId] || null;
@@ -4223,6 +4286,243 @@ async function handlePerformance(request, url, origin, env) {
 }
 __name(handlePerformance, "handlePerformance");
 
+// src/routes/order_docs.js — SCAN ROUND 3 (28/9/2026): scanned/uploaded order
+// documents (CMR, invoice, photo…). Real bytes live in R2 (env.ORDER_DOCS,
+// bucket tms-order-docs); order_documents (Postgres, migration 053) is
+// metadata + the r2_key only. These three handlers are the ONLY writers/
+// readers of the R2 object — the generic facade (tblOrderDocuments) never
+// touches R2, it only reads the metadata table (see PERMISSIONS: GET-only
+// for every role, including owner's own explicit row overriding its "*").
+var DOC_MIME_EXTENSIONS = {
+  "application/pdf": ["pdf"],
+  "image/jpeg": ["jpg", "jpeg"],
+  "image/png": ["png"],
+  "application/msword": ["doc"],
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document": ["docx"],
+  "message/rfc822": ["eml"],
+  "application/vnd.ms-outlook": ["msg"],
+  "text/plain": ["txt"]
+};
+var MAX_DOC_BYTES = 15 * 1024 * 1024;
+function docExtOf(filename) {
+  const m = /\.([A-Za-z0-9]+)$/.exec(filename || "");
+  return m ? m[1].toLowerCase() : "";
+}
+__name(docExtOf, "docExtOf");
+// Content-Disposition is client-controlled text landing straight in a
+// response header — strip quotes/CR/LF/path separators so it cannot inject
+// another header or claim a path.
+function sanitizeDocFilename(name) {
+  return String(name || "document").replace(/["\r\n\\/]/g, "_").slice(0, 255);
+}
+__name(sanitizeDocFilename, "sanitizeDocFilename");
+function shapeOrderDocument(row) {
+  return {
+    id: row.legacy_id,
+    // ίδια σύμβαση με κάθε άλλη απάντηση εκτός του γενικού facade
+    // (handlePerformance κ.ά.): `id` = legacy_id, ΠΟΤΕ το ωμό bigint.
+    order_id: row.order_id,
+    sha256: row.sha256,
+    filename: row.filename,
+    mime: row.mime,
+    size: row.size,
+    source: row.source,
+    uploaded_by: row.uploaded_by,
+    created_at: row.created_at
+  };
+}
+__name(shapeOrderDocument, "shapeOrderDocument");
+async function handleDocsUpload(request, url, origin, env, caller) {
+  // Same width as the "who can touch an order" question elsewhere in this
+  // file: create OR edit. Accountant only ever PATCHes orders (invoicing),
+  // never POSTs one, but must still be able to attach a document to it.
+  if (!can(caller.role, "orders", "POST") && !can(caller.role, "orders", "PATCH")) {
+    return jsonError("Forbidden", 403, origin, env);
+  }
+  const q = url.searchParams;
+  const orderLegacy = q.get("order");
+  const sha256 = (q.get("sha256") || "").toLowerCase();
+  const filename = q.get("filename") || "";
+  const source = q.get("source") || "";
+  if (!orderLegacy) return jsonError("order is required", 400, origin, env);
+  if (!/^[0-9a-f]{64}$/.test(sha256)) return jsonError("sha256 must be 64 hex characters", 400, origin, env);
+  if (!filename.trim()) return jsonError("filename is required", 400, origin, env);
+  if (source !== "scan" && source !== "upload") return jsonError("source must be 'scan' or 'upload'", 400, origin, env);
+
+  const mime = (request.headers.get("Content-Type") || "").split(";")[0].trim().toLowerCase();
+  const allowedExts = DOC_MIME_EXTENSIONS[mime];
+  const ext = docExtOf(filename);
+  // Both mime AND extension must agree with the allow-list (owner brief):
+  // a mismatched pair is rejected loudly rather than trusting either alone.
+  if (!allowedExts || !allowedExts.includes(ext)) {
+    return jsonError(`Unsupported file type (mime=${mime || "none"}, ext=${ext || "none"})`, 415, origin, env);
+  }
+
+  const declared = request.headers.get("Content-Length");
+  const size = declared ? parseInt(declared, 10) : NaN;
+  if (!declared || !Number.isFinite(size) || size <= 0) {
+    return jsonError("Content-Length is required", 400, origin, env);
+  }
+  if (size > MAX_DOC_BYTES) {
+    return jsonError(`File too large (max ${MAX_DOC_BYTES} bytes)`, 413, origin, env);
+  }
+
+  let orderId;
+  try {
+    const resolved = await resolveLegacyToIds(env, dbSelectRaw, "orders", [orderLegacy]);
+    orderId = resolved.get(orderLegacy);
+  } catch (e) {
+    console.error("DOCS UPLOAD order lookup failed", e.message);
+    return jsonError("Failed to resolve order", 500, origin, env);
+  }
+  if (orderId == null) return jsonError("Order not found", 404, origin, env);
+
+  // Idempotent (migration 053, UNIQUE(order_id, sha256)): a rescanned or
+  // retried upload of the SAME file for the SAME order is a no-op, never a
+  // second R2 object or a second row.
+  try {
+    const params = new URLSearchParams();
+    params.set("select", "*");
+    params.set("order_id", `eq.${orderId}`);
+    params.set("sha256", `eq.${sha256}`);
+    params.set("deleted_at", "is.null");
+    params.set("limit", "1");
+    const { rows: existing } = await dbSelectRaw(env, "order_documents", params);
+    if (existing.length) return jsonOk(shapeOrderDocument(existing[0]), origin, env, 200);
+  } catch (e) {
+    console.error("DOCS UPLOAD idempotency check failed", e.message);
+    return jsonError("Failed to check for existing document", 500, origin, env);
+  }
+
+  const r2Key = `orders/${orderId}/${sha256}`;
+  let putResult;
+  try {
+    // Streamed, never buffered (free-plan CPU budget): request.body goes
+    // straight into R2. Passing the browser's own sha256 as R2's checksum
+    // option makes R2 itself reject a body that does not match it — the
+    // integrity check happens without the Worker ever holding the whole file.
+    putResult = await env.ORDER_DOCS.put(r2Key, request.body, {
+      httpMetadata: { contentType: mime },
+      sha256
+    });
+  } catch (e) {
+    console.error("DOCS UPLOAD R2 put failed", r2Key, e.message);
+    if (/checksum|sha-?256/i.test(e && e.message || "")) {
+      return jsonError("Upload failed: content does not match the given sha256", 400, origin, env);
+    }
+    return jsonError("Failed to store document", 502, origin, env);
+  }
+
+  const row = {
+    legacy_id: mintLegacyId(),
+    order_id: orderId,
+    sha256,
+    filename: filename.slice(0, 255),
+    mime,
+    size: putResult && putResult.size != null ? putResult.size : size,
+    r2_key: r2Key,
+    source,
+    uploaded_by: caller.sub,
+    created_at: (/* @__PURE__ */ new Date()).toISOString()
+  };
+  let created;
+  try {
+    created = await dbInsert(env, "order_documents", row);
+  } catch (e) {
+    // The object is ALREADY safely in R2 at this point — losing the metadata
+    // row must never look like success (principle 1). There is no delete
+    // route to clean up the orphaned object; B-55 (tms-auditor) is the net,
+    // and this message gives a human the r2_key to reconcile by hand.
+    console.error("DOCS UPLOAD DB insert failed after R2 write", r2Key, e.message);
+    return jsonError(`Stored the file but failed to record it (r2_key: ${r2Key}). Contact support with this key.`, 500, origin, env);
+  }
+  await audit(env, { actor: caller.sub, role: caller.role, action: "create", table: "order_documents", recordId: created.legacy_id, after: created });
+  return jsonOk(shapeOrderDocument(created), origin, env, 201);
+}
+__name(handleDocsUpload, "handleDocsUpload");
+async function handleDocsList(request, url, origin, env, caller) {
+  if (!can(caller.role, "orders", "GET")) return jsonError("Forbidden", 403, origin, env);
+  const orderLegacy = url.searchParams.get("order");
+  if (!orderLegacy) return jsonError("order is required", 400, origin, env);
+  let orderId;
+  try {
+    const resolved = await resolveLegacyToIds(env, dbSelectRaw, "orders", [orderLegacy]);
+    orderId = resolved.get(orderLegacy);
+  } catch (e) {
+    console.error("DOCS LIST order lookup failed", e.message);
+    return jsonError("Failed to resolve order", 500, origin, env);
+  }
+  if (orderId == null) return jsonError("Order not found", 404, origin, env);
+  try {
+    const params = new URLSearchParams();
+    params.set("select", "*");
+    params.set("order_id", `eq.${orderId}`);
+    params.set("deleted_at", "is.null");
+    params.set("order", "created_at.desc");
+    const { rows } = await dbSelectRaw(env, "order_documents", params);
+    return jsonOk({ records: rows.map(shapeOrderDocument) }, origin, env);
+  } catch (e) {
+    console.error("DOCS LIST failed", e.message);
+    return jsonError("Failed to load documents", 500, origin, env);
+  }
+}
+__name(handleDocsList, "handleDocsList");
+async function handleDocsFile(request, docId, origin, env, caller) {
+  if (!can(caller.role, "orders", "GET")) return jsonError("Forbidden", 403, origin, env);
+  let row;
+  try {
+    const params = new URLSearchParams();
+    params.set("select", "*");
+    params.set("legacy_id", `eq.${docId}`);
+    params.set("deleted_at", "is.null");
+    params.set("limit", "1");
+    const { rows } = await dbSelectRaw(env, "order_documents", params);
+    row = rows[0] || null;
+  } catch (e) {
+    console.error("DOCS FILE lookup failed", e.message);
+    return jsonError("Failed to load document", 500, origin, env);
+  }
+  if (!row) return jsonError("Document not found", 404, origin, env);
+  let obj;
+  try {
+    obj = await env.ORDER_DOCS.get(row.r2_key);
+  } catch (e) {
+    console.error("DOCS FILE R2 get failed", row.r2_key, e.message);
+    return jsonError("Failed to load document", 500, origin, env);
+  }
+  if (!obj) {
+    // The metadata row exists but the object does not — never happens through
+    // the normal path (the row is only inserted after a successful put), so
+    // this stays loud (principle 1) instead of a quiet 404 that would look
+    // like "wrong id" to whoever is debugging it.
+    console.error("DOCS FILE object missing in R2", row.r2_key);
+    return jsonError("Document is missing from storage", 500, origin, env);
+  }
+  const headers = new Headers(corsHeaders(origin, env));
+  headers.set("Content-Type", row.mime || "application/octet-stream");
+  headers.set("Content-Disposition", `inline; filename="${sanitizeDocFilename(row.filename)}"`);
+  // Never a public/presigned URL (owner requirement) — every byte flows
+  // through this authenticated route, so nothing shared may cache it.
+  headers.set("Cache-Control", "private, no-store");
+  headers.set("X-Content-Type-Options", "nosniff");
+  return new Response(obj.body, { status: 200, headers });
+}
+__name(handleDocsFile, "handleDocsFile");
+async function handleDocs(request, url, origin, env) {
+  if (!env.ORDER_DOCS) return jsonError("Document storage not configured", 501, origin, env);
+  const caller = await getCaller(request, env);
+  if (!caller) return jsonError("Unauthorized", 401, origin, env);
+  const seg = url.pathname.split("/").filter(Boolean);
+  const action = seg[1] || "";
+  const method = request.method;
+  if (action === "upload" && method === "POST") return handleDocsUpload(request, url, origin, env, caller);
+  if (action === "list" && method === "GET") return handleDocsList(request, url, origin, env, caller);
+  if (action === "file" && method === "GET" && seg[2]) return handleDocsFile(request, seg[2], origin, env, caller);
+  // No DELETE anywhere — owner: documents are never deleted (falls through to 404).
+  return jsonError("Not found", 404, origin, env);
+}
+__name(handleDocs, "handleDocs");
+
 // src/routes/pallets.js — ΠΑΛΕΤΕΣ Φ1 (PALLETS_ARCHITECTURE §5/§6)
 // Ημερολόγιο pl_movements: CRUD + confirm/reverse + balances.
 // taken/given ΠΑΝΤΑ από τη δική μας σκοπιά (taken = πήραμε εμείς).
@@ -4805,6 +5105,9 @@ var index_default = {
     }
     if (url.pathname.startsWith("/pallets/")) {
       return handlePallets(request, url, origin, env);
+    }
+    if (url.pathname.startsWith("/docs/")) {
+      return handleDocs(request, url, origin, env);
     }
     if (url.pathname === "/performance/delivery" && request.method === "GET") {
       return handlePerformance(request, url, origin, env);
