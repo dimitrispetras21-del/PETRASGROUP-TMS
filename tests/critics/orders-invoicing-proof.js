@@ -1,7 +1,7 @@
 // Proof rig for the view «Προς τιμολόγηση» of the one «Παραγγελίες» page
 // (modules/orders_invoicing_view.js, owner 28/9/2026, Figma 805:1011).
 //
-// Same pattern as tests/critics/invoicing-proof.js: preparePage/gotoPage (fake
+// Same pattern as the former tests/critics/invoicing-proof.js (retired 29/9, git history): preparePage/gotoPage (fake
 // session + HAR replay), then page.route mocks registered AFTER preparePage so
 // they win for the calls the view makes (orders, national orders, clients,
 // locations, /pallets/gate, /pallets/override). Static assets load LIVE from

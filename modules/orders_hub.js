@@ -151,7 +151,9 @@ const OrdersHub = (() => {
   function openOrder(type, id) {
     H.pendingSelect = { type, id };
     if (typeof currentPage !== 'undefined' && currentPage === 'orders' && document.getElementById('ordersBody')) {
-      H.scope = type; H.view = 'catalog'; _savePrefs();
+      // «Όλες» already shows both types — keep it; otherwise the type's scope.
+      if (H.scope !== 'all') H.scope = type;
+      H.view = 'catalog'; _savePrefs();
       document.getElementById('content').innerHTML = _headerHtml();
       _renderBody().then(refreshBadges);
       return;

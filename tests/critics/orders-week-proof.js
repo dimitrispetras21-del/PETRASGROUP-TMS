@@ -6,7 +6,7 @@
 //   cd /Users/dimitrispetras/PETRASGROUP-TMS && \
 //   PW_BASE_URL=http://127.0.0.1:8788/.claude/worktrees/<dir>/ node <dir>/tests/critics/orders-week-proof.js
 //
-// Pattern of tests/critics/invoicing-proof.js: preparePage (fake session + HAR
+// Pattern of the former tests/critics/invoicing-proof.js (retired 29/9, git history): preparePage (fake session + HAR
 // replay) from tests/critics/auth.js, then page.route mocks registered AFTER it
 // so they win for every backend call the view makes. Everything is SYNTHETIC
 // demo data shaped like the Figma (no production names, no real numbers).

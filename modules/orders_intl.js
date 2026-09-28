@@ -2335,7 +2335,7 @@ async function _scanPreview(data) {
         // number the team knows the order by.
         const orderNo = f['Reference'] || '—';
         return `<li style="margin:4px 0">
-          <a href="#" onclick="event.preventDefault();closeModal();renderOrdersIntl().then(()=>setTimeout(()=>selectIntlOrder('${d.id}'),300))">Παραγγελία ${escapeHtml(String(orderNo))}</a>
+          <a href="#" onclick="event.preventDefault();closeModal();OrdersHub.openOrder('intl','${d.id}')">Παραγγελία ${escapeHtml(String(orderNo))}</a>
           <span style="font-size:11px"> · ${loadDate||'χωρίς ημερομηνία'} · ${escapeHtml(_clientName(f)||'—')}</span>
         </li>`;
       }).join('');

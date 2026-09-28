@@ -1,5 +1,5 @@
 // Proof script for the «Χωρίς τιμή» view of «Παραγγελίες» (owner 27–28/9/2026,
-// Figma 808:1275 screen + 775:1011 A4). Modelled on invoicing-proof.js.
+// Figma 808:1275 screen + 775:1011 A4). Modelled on the former invoicing-proof.js (retired 29/9 with modules/invoicing.js — git history).
 //
 // Run from the MAIN repo root (its node_modules + HAR), against a server that
 // serves the code under test:
@@ -42,7 +42,17 @@ const T = {
 const ymdLocal = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 const daysAgo = n => { const d = new Date(); d.setDate(d.getDate() - n); return ymdLocal(d) + 'T10:00:00.000Z'; };
 const dm = n => { const d = new Date(); d.setDate(d.getDate() - n); return d.getDate() + '/' + (d.getMonth() + 1); };
-const todayAt = (h, m) => { const d = new Date(); d.setHours(h, m, 0, 0); return d.toISOString(); };
+// «Today at h:m» — but never LATER than now: a run after midnight (found
+// 29/9 00:40) put the stub audit rows «in the future», so they sorted above
+// the save made during the run and the «newest first» check failed. When h:m
+// is still ahead, the rows are placed a few minutes back instead, keeping
+// their order (later h:m → more recent). Runs in 00:00–00:17 would cross into
+// yesterday — rerun after that.
+const todayAt = (h, m) => {
+  const d = new Date(); d.setHours(h, m, 0, 0);
+  if (d.getTime() < Date.now() - 60000) return d.toISOString();
+  return new Date(Date.now() - (1440 - (h * 60 + m)) * 1000).toISOString();
+};
 
 const CLIENTS = [
   { id: 'recC1', fields: { 'Company Name': 'Thracia Foods EOOD', 'VAT Number': 'BG 204567891', 'Payment Terms Days': 30 } },
@@ -253,7 +263,7 @@ async function runOwner(browser) {
   const tt = await toastText(page);
   assert(/Η τιμή καταχωρήθηκε — η #1209 πέρασε στα Προς τιμολόγηση/.test(tt), 'toast «Η τιμή καταχωρήθηκε — η #1209 πέρασε στα Προς τιμολόγηση»: ' + tt);
   const filled2 = await page.locator('#npFilled tr').allInnerTexts();
-  assert(filled2.length === 3 && /#1209/.test(filled2[0]) && /950,00 €/.test(filled2[0]), 'row moved to «Συμπληρώθηκαν σήμερα» (top)');
+  assert(filled2.length === 3 && /#1209/.test(filled2[0]) && /950,00 €/.test(filled2[0]), 'row moved to «Συμπληρώθηκαν σήμερα» (top): ' + JSON.stringify(filled2).slice(0, 400));
   assert(await kpiVal(page, 'Εκκρεμούν') === '2' && await kpiVal(page, 'Συμπληρώθηκαν σήμερα') === '3', 'KPIs: Εκκρεμούν 2, Συμπληρώθηκαν σήμερα 3');
   assert(await page.locator('input.np-in[data-id="recX2"]').inputValue() === '3.1', 'the value typed in another row survived the repaint');
   await page.waitForFunction(() => (document.getElementById('ohBadge_noprice') || {}).textContent === '2', null, { timeout: 8000 }).catch(() => {});

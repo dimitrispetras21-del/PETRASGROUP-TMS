@@ -273,8 +273,25 @@ const OrdersCatalog = (() => {
       <button type="button" class="btn btn-ghost btn-sm" onclick="OrdersCatalog.print()">${_i('file_text')} Εκτύπωση</button>${menu}`;
   }
 
+  // Esc closes the open card (both cards' × say «Κλείσιμο (Esc)»). One
+  // listener for the page's life; it acts only on the Orders page.
+  let _escOn = false;
+  function _installEsc() {
+    if (_escOn) return; _escOn = true;
+    document.addEventListener('keydown', e => {
+      if (e.key !== 'Escape' || typeof currentPage === 'undefined' || currentPage !== 'orders') return;
+      if (document.getElementById('modalOverlay')?.classList.contains('open')) return;   // an open form owns Esc
+      const i = document.getElementById('intlDetail'), n = document.getElementById('natlDetail');
+      if (i && !i.classList.contains('hidden') && typeof _oiCloseCard === 'function') _oiCloseCard();
+      if (n && !n.classList.contains('hidden') && typeof closeNatlDetail === 'function') closeNatlDetail();
+      S.selected = null;
+      document.querySelectorAll('#ocTable tr.selected').forEach(tr => tr.classList.remove('selected'));
+    });
+  }
+
   async function render(ctx) {
     S.ctx = ctx;
+    _installEsc();
     _ensureStyles();
     OrdersCommon.ensureStyles();
     // One type failing must not blank the other: it is SAID above the list

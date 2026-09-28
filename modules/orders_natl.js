@@ -1959,7 +1959,7 @@ async function _natlScanPreview(data) {
         const loadDate = (f['Loading DateTime']||'').substring(0,10);
         const name = f['Name'] || d.id.slice(-6);
         return `<li style="margin:4px 0">
-          <a href="#" onclick="event.preventDefault();closeModal();renderOrdersNatl().then(()=>setTimeout(()=>selectNatlOrder('${d.id}'),300))"
+          <a href="#" onclick="event.preventDefault();closeModal();OrdersHub.openOrder('natl','${d.id}')"
              style="color:var(--warn);text-decoration:underline;font-weight:600">${escapeHtml(String(name))}</a>
           <span style="color:var(--warn);font-size:11px"> · ${loadDate||'χωρίς ημερομηνία'}</span>
         </li>`;
@@ -2047,7 +2047,7 @@ async function _natlScanPreviewV2(data) {
         const loadDate = (f['Loading DateTime'] || '').substring(0, 10);
         const name = f['Name'] || d.id.slice(-6);
         return `<li style="margin:4px 0">
-          <a href="#" onclick="event.preventDefault();closeModal();renderOrdersNatl().then(()=>setTimeout(()=>selectNatlOrder('${d.id}'),300))"
+          <a href="#" onclick="event.preventDefault();closeModal();OrdersHub.openOrder('natl','${d.id}')"
              style="color:var(--warn);text-decoration:underline;font-weight:600">${escapeHtml(String(name))}</a>
           <span style="color:var(--warn);font-size:11px"> · ${loadDate || 'χωρίς ημερομηνία'}</span>
         </li>`;
