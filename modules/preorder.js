@@ -54,19 +54,6 @@ function _preWhen(f) {
   return `φόρτωση σε ${n} ημ.`;
 }
 
-/** «k/n» among the pre-orders announced together — same client, direction
- *  and loading day (Figma 709: «1/2»). Derived, not stored: the small form
- *  writes n plain rows, so the batch is whatever still shares those three.
- *  '' for a lone one. `records` = [{id, fields}] the screen already holds. */
-function preorderSeq(rec, records) {
-  const f = rec && rec.fields; if (!isPreorder(f)) return '';
-  const key = r => [getLinkedId(r.fields['Client']), r.fields['Direction'], toLocalDate(r.fields['Loading DateTime'] || '')].join('|');
-  const k = key(rec);
-  const sib = (records || []).filter(r => r && isPreorder(r.fields) && key(r) === k)
-    .sort((a, b) => (Number(a.fields['Order No']) || 0) - (Number(b.fields['Order No']) || 0) || String(a.id).localeCompare(String(b.id)));
-  return sib.length > 1 ? `${sib.findIndex(r => r.id === rec.id) + 1}/${sib.length}` : '';
-}
-
 /** Destination while the point is unknown: the country, or «—». */
 function preorderDest(f) {
   const c = f && f['Destination Country'];
@@ -97,10 +84,12 @@ function preorderCountryText(f) {
   if (!cc) return '';
   return (f['Direction'] === 'Import' ? 'από ' : '→ ') + (preorderDest(f) || cc) + ' (' + cc + ')';
 }
-/** Orders list status (Figma 709:1144): dashed «PRE k/n», urgency colour. */
-function preorderPillHtml(f, seq) {
+/** Orders list status (Figma 709:1144): dashed «PRE», urgency colour. No «k/n»
+ *  (owner 28/9): loads created together are independent orders — different
+ *  trucks, different assignments — so nothing on screen pairs them. */
+function preorderPillHtml(f) {
   _preEnsureStyles();
-  return `<span class="pre-pill pre-${preorderLevel(f)}" title="${escapeHtml(preorderTip(f))}">PRE${seq ? ' ' + escapeHtml(seq) : ''}</span>`;
+  return `<span class="pre-pill pre-${preorderLevel(f)}" title="${escapeHtml(preorderTip(f))}">PRE</span>`;
 }
 
 /** «N προσωρινές» — hidden at 0. `onclick` is the page's own jump/filter. */
@@ -212,6 +201,8 @@ async function submitPreorder(recId) {
       if (country) fields['Destination Country'] = country;
       // Sequential, never a retried batch: a POST is not idempotent (14/9,
       // order 335). A failure at k leaves k-1 rows — said out loud below.
+      // Each row is a fully independent order (owner 28/9): no group id, no
+      // matched id, no batch marker — different loads, different assignments.
       for (let i = 0; i < n; i++) made.push(await atCreate(TABLES.ORDERS, fields));
     }
   } catch (e) {
@@ -339,7 +330,7 @@ function preorderJump(selector) {
 
 if (typeof window !== 'undefined') {
   Object.assign(window, { isPreorder, preorderLevel, preorderDest, preorderChipHtml, preorderCounterHtml, preorderConvertBand,
-    preorderJump, openPreorder, editPreorder, submitPreorder, cancelPreorder, convertPreorder, _preBtnLabel, _preClose, _preDir, _preStep, preorderSeq, preorderTip, preorderPillHtml, preorderCountryText });
+    preorderJump, openPreorder, editPreorder, submitPreorder, cancelPreorder, convertPreorder, _preBtnLabel, _preClose, _preDir, _preStep, preorderTip, preorderPillHtml, preorderCountryText });
   // The page buttons («Pre-order», blue outline) render before any chip does.
   if (document.head) _preEnsureStyles();
 }

@@ -3945,19 +3945,18 @@ function _wiCtx(e,rowId){
 // spanning the whole leg — export or import column, own row or inside a
 // truck's row — never the normal load→delivery pair, which printed the client
 // twice (no points: both ends fall back to the client), a «—» date and «0 p».
-// «PRE-ORDER · client» / «date · export · → country · k/n · notes». The
+// «PRE-ORDER · client» / «date · export · → country · notes» — no «k/n»:
+// loads created together are independent orders (owner 28/9). The
 // country is the unknown FOREIGN end: destination for an export, loading
 // country for an import (hence «από»). Dash colour = urgency (owner 27/9):
 // grey ≥4 days, amber 2–3, red ≤1 / past / no date.
 function _wiPreLeg(rec,extra){
   const f=rec.fields||{}, lvl=preorderLevel(f), imp=f['Direction']==='Import';
-  const seq=preorderSeq(rec,[...WINTL.data.exports,...WINTL.data.imports]);
   const notes=String(f['Notes']||'').trim();
   const meta=[
     f['Loading DateTime']?_wk3D(_wiFmt(f['Loading DateTime'])):'χωρίς ημ. φόρτωσης',
     imp?'import':'export',
     preorderCountryText(f),
-    seq,
     notes.length>40?notes.slice(0,39)+'…':notes,
   ].filter(Boolean).join(' · ');
   return `<div class="wi2-card pre-card pre-span pre-${lvl}" data-oid="${escapeHtml(String(rec.id))}" title="${escapeHtml(preorderTip(f))}"><div class="wi2-name"><span class="pre-cw">PRE-ORDER · ${escapeHtml(_wiClientName(f)||'—')}</span></div><div class="wi2-meta"><span class="wi2-sub">${escapeHtml(meta)}</span>${extra?`<span class="wi2-right">${extra}</span>`:''}</div></div>`;
@@ -3973,8 +3972,7 @@ function _wiPreCtx(e,row,isImp){
   const oid=row.orderIds?.[0]||row.orderId;
   const rec=WINTL.data.exports.find(r=>r.id===oid)||WINTL.data.imports.find(r=>r.id===oid);
   if(!rec||!isPreorder(rec.fields)) return false;
-  const seq=preorderSeq(rec,[...WINTL.data.exports,...WINTL.data.imports]);
-  let html=`<div class="wi-ctx-h">${escapeHtml(['PRE-ORDER',_wiClientName(rec.fields)||'—',seq].filter(Boolean).join(' · '))}</div>`;
+  let html=`<div class="wi-ctx-h">${escapeHtml('PRE-ORDER · '+(_wiClientName(rec.fields)||'—'))}</div>`;
   html+=_wiCtxBtn('Μετατροπή σε παραγγελία…',`_wk3Edit('${oid}')`).replace('class="wi-ctx-i','class="wi-ctx-i pre-go');
   html+=_wiCtxBtn('Επεξεργασία pre-order',`editPreorder('${oid}')`);
   html+='<div class="wi-ctx-sep"></div>';

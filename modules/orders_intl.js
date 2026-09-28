@@ -593,7 +593,7 @@ function _oiRowHtml(r) {
   const legChip = INTL_ORDERS.legParents && INTL_ORDERS.legParents.has(r.id)
     ? '<span class="oi-legchip" title="Σπασμένο σε 2 σκέλη — δες το Weekly International για την εκτέλεση">2 σκέλη</span>' : '';
   const orderNoCell = f['Order No'] ? `#${escapeHtml(String(f['Order No']))}` : '—';
-  // Pre-order row (Figma 709:1144): faded, «— → —», «PRE k/n», and the two
+  // Pre-order row (Figma 709:1144): faded, «— → —», «PRE» (never «k/n», owner 28/9), and the two
   // actions where ΑΝΑΘΕΣΗ + ΤΙΜΗ would be — a pre-order has neither yet.
   const pre = isPreorder(f);
   const preActs = can('orders') === 'full'
@@ -611,7 +611,7 @@ function _oiRowHtml(r) {
     <td class="oi-num oi-med">${pal ? escapeHtml(String(pal)) : '—'}</td>
     ${pre ? `<td colspan="2">${preActs}</td>` : `<td>${_oiAssignCell(f)}</td>
     <td class="oi-num oi-med">${_oiMoney(f['Price'])}</td>`}
-    <td>${pre ? preorderPillHtml(f, preorderSeq(r, INTL_ORDERS.data)) : _oiStatusHtml(f['Status']||'Pending')}</td>
+    <td>${pre ? preorderPillHtml(f) : _oiStatusHtml(f['Status']||'Pending')}</td>
     ${_oiInvCell(r)}
   </tr>`;
 }
