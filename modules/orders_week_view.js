@@ -269,14 +269,28 @@ const OrdersWeekView = (() => {
       OrdersData.loadInvoicingSet().then(ok, fail('invoicing set')),
     ]);
     const live = r => r.fields && r.fields['Status'] !== 'Cancelled';
-    const intl = (intlRes || []).filter(live); intl.forEach(r => { r._type = 'intl'; });
+    const intl = (intlRes || []).filter(live);
+    // A split leg carries no price — its parent does. When the leg's dates are
+    // in the window but the parent's are not, the parent is read by id, or the
+    // RT would show a priced order as «χωρίς τιμή» (code review 28/9).
+    let parentsFailed = false;
+    const have = new Set(intl.map(r => r.id));
+    const missing = [...new Set(intl.filter(isSplitLeg).map(r => { const p = r.fields['Parent Order']; return Array.isArray(p) ? p[0] : p; }))]
+      .filter(id => id && !have.has(id));
+    for (let i = 0; i < missing.length; i += 20) {
+      const f = `OR(${missing.slice(i, i + 20).map(id => `RECORD_ID()="${id}"`).join(',')})`;
+      try {
+        (await atGetAll(TABLES.ORDERS, { filterByFormula: f }, false)).forEach(r => { if (live(r) && !have.has(r.id)) { have.add(r.id); intl.push(r); } });
+      } catch (e) { console.error('orders week: split parents', e); parentsFailed = true; }
+    }
+    intl.forEach(r => { r._type = 'intl'; });
     const natl = (natlRes.r || []).filter(live); natl.forEach(r => { r._type = 'natl'; });
     // Without the invoicing set the slip gate is unknown → the per-order sheet
     // flags decide (OrdersData.sheetsOk fallback) and a banner says so.
     const set = setRes.ok ? setRes.r : { gate: {}, gateFailed: true, intl: [], natl: [] };
     return {
       week, strip, intl, natl, natlFailed: !natlRes.ok, rts: rtRes.ok ? (rtRes.r.records || []) : null,
-      set, setFailed: !setRes.ok, gateFailed: !!set.gateFailed,
+      set, setFailed: !setRes.ok, gateFailed: !!set.gateFailed, parentsFailed,
     };
   }
 
@@ -356,6 +370,7 @@ const OrdersWeekView = (() => {
     const banners = [];
     if (scope !== 'natl' && m.rtFailed) banners.push('Τα RT δεν φορτώθηκαν — οι παραγγελίες εμφανίζονται χωρίς ομαδοποίηση. Τα ποσά των παραγγελιών ισχύουν.');
     if (scope !== 'intl' && d.natlFailed) banners.push('Οι εθνικές παραγγελίες δεν φορτώθηκαν — τα σύνολα παρακάτω ΔΕΝ τις περιλαμβάνουν. Δεν σημαίνει ότι δεν υπάρχουν.');
+    if (scope !== 'natl' && d.parentsFailed) banners.push('Κάποιες αρχικές παραγγελίες σπασμένων σκελών δεν φορτώθηκαν — τα σκέλη τους εμφανίζονται χωρίς τιμή.');
     if (d.setFailed || d.gateFailed) banners.push('Ο έλεγχος δελτίων παλετών δεν απάντησε — η κατάσταση «μπλοκαρισμένη» βασίζεται στις σημάνσεις της παραγγελίας.');
 
     // ── KPI band ──

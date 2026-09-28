@@ -84,7 +84,12 @@ const ORDERS = [
   exp('recO1202', 1202, 'recC2', 'recL3', -3, { Price: 9000, Invoiced: true, 'Invoice Number': '0411' }),
   exp('recO1190', 1190, 'recC2', 'recL3', -10, { Price: 18940, Invoiced: true, 'Invoice Number': '0400' }),
   exp('recO1180', 1180, 'recC1', 'recL2', -17, { Price: 21310 }),
+  // Split order: the leg is in this week, its priced parent 40 days back — outside
+  // the window the view reads, so it must be fetched by id (code review 28/9).
+  exp('recO1100', 1100, 'recC4', 'recL4', -40, { Price: 4000 }),
+  exp('recO1250', 1250, 'recC4', 'recL4', 3, Object.assign({ 'Parent Order': ['recO1100'], 'Leg No': 1 }, own('recT3', 'recD3'))),
 ];
+const OUT_OF_WINDOW = new Set(['recO1100']);
 const nat = (id, client, ref, from, to, k, f) => ({ id, fields: Object.assign({ Client: [client], Reference: ref, Type: 'Independent', 'Pickup Location 1': [from], 'Delivery Location 1': [to], 'Loading DateTime': day(k, 7), 'Delivery DateTime': day(k, 15) }, f) });
 const NAT = [
   nat('recN418', 'recC5', '4500128790', 'recL11', 'recL1', 1, { Price: 560 }),
@@ -103,6 +108,7 @@ const RTS = [
   { id: 1186, code: 'RT-1186', date_start: day(3).slice(0, 10), status: 'open', ct_rt_legs: [leg(1229, 'EXPORT', 1), leg(null, 'IMPORT', 2, { order_id: null, nat_load_id: 55 })] },
   { id: 1187, code: 'RT-1187', date_start: day(3).slice(0, 10), status: 'open', ct_rt_legs: [leg(1232, 'EXPORT', 1), leg(1230, 'IMPORT', 2)] },
   { id: 1188, code: 'RT-1188', date_start: day(4).slice(0, 10), status: 'open', ct_rt_legs: [leg(1233, 'EXPORT', 1), leg(1236, 'IMPORT', 2)] },
+  { id: 1189, code: 'RT-1189', date_start: day(1).slice(0, 10), status: 'open', ct_rt_legs: [leg(1250, 'EXPORT', 1)] },
   { id: 1199, code: 'RT-1199', date_start: day(3).slice(0, 10), status: 'cancelled', ct_rt_legs: [leg(1240, 'EXPORT', 1)] },
 ];
 
@@ -116,7 +122,10 @@ function installMocks(page, log, opts = {}) {
     const u = decodeURIComponent(route.request().url());
     log.push(u);
     // OrdersData's invoicing set asks for delivered/invoiced only (all time).
-    const recs = isInvoicingQuery(u) ? ORDERS.filter(r => ['Delivered', 'Invoiced'].includes(r.fields.Status) || r.fields.Invoiced) : ORDERS;
+    const ids = [...u.matchAll(/RECORD_ID\(\)="(rec[A-Za-z0-9]+)"/g)].map(m => m[1]);
+    const recs = ids.length ? ORDERS.filter(r => ids.includes(r.id))
+      : isInvoicingQuery(u) ? ORDERS.filter(r => ['Delivered', 'Invoiced'].includes(r.fields.Status) || r.fields.Invoiced)
+      : ORDERS.filter(r => !OUT_OF_WINDOW.has(r.id));
     return json(route, { records: recs });
   });
   page.route(`**/${T.NAT_ORDERS}**`, route => {
@@ -239,6 +248,8 @@ async function runOwner(browser) {
   const oq = page._log.find(u => u.includes(T.ORDERS) && u.includes("{Direction}='Import'"));
   assert(!!oq && /\{Direction\}='Export'/.test(oq), 'one ORDERS read carries exports + imports of the strip window');
   assert(page._log.some(u => /\/costs\/rt\?overlap=1&from=\d{4}-\d{2}-\d{2}&to=\d{4}-\d{2}-\d{2}/.test(u)), '/costs/rt?overlap=1&from=&to= requested');
+  assert(page._log.some(u => u.includes('RECORD_ID()="recO1100"')), 'split leg in the week → its parent (outside the window) read by id');
+  assert(!/RT-1189|#1250/.test(await text(page, '#ordersBody')), 'the split leg is not shown as a «χωρίς τιμή» order: its money is the parent\'s, in the parent\'s week');
   await snap(page, '01-owner-day');
 
   // ── CSV: one line per order, the same numbers as the screen ──
