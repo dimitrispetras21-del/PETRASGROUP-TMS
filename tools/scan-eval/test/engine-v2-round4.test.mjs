@@ -147,6 +147,33 @@ test('v2: the client picker gets the same abbreviation-identity boost (round 4)'
   assert.equal(pick.id, 'recClientAbbrev');
 });
 
+// Review of round 4 (B1): initials are not an identity. Logistics firms
+// routinely go by three letters, so a spelled-out name also "equals" an
+// unrelated company whose record IS those three letters.
+test('v2: initials-only match vs a record sharing real words → left empty (ambiguous), not the initials company', () => {
+  const ctx = loadEngineOnly();
+  const locations = [
+    { id: 'recTrue', fields: { Name: 'Euro Cold Store Ltd', City: 'Testdorf', Country: 'DE' } },
+    { id: 'recInitials', fields: { Name: 'ECS Forwarding', City: 'Testdorf', Country: 'DE' } },
+  ];
+  const pick = ctx._sv2PickLocation({ company: 'European Cold Storage', city: 'Testdorf', country: 'DE', postcode: '' }, [], locations, new Set());
+  assert.notEqual(pick.id, 'recInitials');
+  if (pick.id === null) assert.equal(pick.by, 'acronym-ambiguous');
+});
+
+test('v2: initials-only match with no other plausible record → kept but low (never certain), flagged', () => {
+  const ctx = loadEngineOnly();
+  const locations = [
+    { id: 'recInitials', fields: { Name: 'ECS Forwarding', City: 'Testdorf', Country: 'DE' } },
+    { id: 'recOther', fields: { Name: 'Other Foods Group', City: 'Elsewhere', Country: 'DE' } },
+  ];
+  const pick = ctx._sv2PickLocation({ company: 'European Cold Storage', city: 'Testdorf', country: 'DE', postcode: '' }, [], locations, new Set());
+  if (pick.id) {
+    assert.ok(pick.score <= 0.45, `initials-only pick must stay below the must-check line (got ${pick.score})`);
+    assert.match(pick.by, /acronym/);
+  }
+});
+
 test('v2: two truly identical name/city duplicates still tie (no false identity match on ordinary names)', () => {
   const ctx = loadEngineOnly();
   const locations = [

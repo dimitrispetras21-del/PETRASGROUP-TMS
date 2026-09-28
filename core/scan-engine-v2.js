@@ -297,15 +297,41 @@ function _sv2NameScore(qToks, item, idf) {
   // UNRELATED record that merely shares ordinary words (e.g. the delivery
   // city) outscore the actually-correct one. Either direction counts as a
   // full identity match, whichever side is abbreviated.
+  if (_sv2NameIdentity(qToks, item)) return 0.9;
+  return _sv2PlainNameScore(qToks, item, idf);
+}
+// 'compound' | 'acronym' | null. Split out because the two are NOT equally
+// trustworthy (review of round 4): a glued/split compound ("Cold Line" ↔
+// "Coldline", ≥6 letters) is specific, but initials are not — logistics
+// firms routinely go by three letters, so "European Cold Storage" also
+// equals an unrelated "ECS Forwarding". Acronym-only wins are therefore
+// downgraded in the pickers (_sv2FlagAcronym), never presented as certain.
+function _sv2NameIdentity(qToks, item) {
+  if (!qToks.length || !item || !item.toks.length) return null;
   const qJoin = qToks.join(''), itJoin = item.toks.join('');
+  if ((qJoin.length >= 6 && item.toks.includes(qJoin)) || (itJoin.length >= 6 && qToks.includes(itJoin))) return 'compound';
   const qAcr = _sv2Acronym(qToks), itAcr = _sv2Acronym(item.toks);
   const isAbbrev = t => t.length >= 2 && t.length <= 6 && /^[a-z]+$/.test(t);
-  const identity =
-    (qToks.length >= 2 && item.toks.some(t => t === qAcr && isAbbrev(t))) ||
-    (item.toks.length >= 2 && qToks.some(t => t === itAcr && isAbbrev(t))) ||
-    (qJoin.length >= 6 && item.toks.includes(qJoin)) ||
-    (itJoin.length >= 6 && qToks.includes(itJoin));
-  if (identity) return 0.9;
+  if ((qToks.length >= 2 && item.toks.some(t => t === qAcr && isAbbrev(t))) ||
+      (item.toks.length >= 2 && qToks.some(t => t === itAcr && isAbbrev(t)))) return 'acronym';
+  return null;
+}
+// Downgrade a pick that rests ONLY on initials: if another record in the same
+// country shares real words with the document, the initials match is a coin
+// toss between two companies → leave the field empty (owner rule: empty +
+// warning beats wrong). If it is the only plausible record, keep it but below
+// the "must check" line, and say why.
+function _sv2FlagAcronym(pick, qToks, idx, ranked) {
+  if (!pick || !pick.id) return pick;
+  const item = idx.byId.get(pick.id);
+  if (!item || _sv2NameIdentity(qToks, item) !== 'acronym' || _sv2PlainNameScore(qToks, item, idx.idf) >= 0.5) return pick;
+  const rival = (ranked || []).some(r => r.id !== pick.id && r.sameCountry !== false
+    && _sv2NameIdentity(qToks, idx.byId.get(r.id)) !== 'acronym' && _sv2PlainNameScore(qToks, idx.byId.get(r.id), idx.idf) >= 0.25);
+  if (rival) return { id: null, score: 0, by: 'acronym-ambiguous', acronymOf: item.name };
+  return { ...pick, score: Math.min(pick.score, 0.45), by: pick.by + '+acronym', acronymOf: item.name };
+}
+function _sv2PlainNameScore(qToks, item, idf) {
+  if (!qToks.length || !item.toks.length) return 0;
   let hit = 0;
   for (const q of qToks) {
     let best = 0;
@@ -561,6 +587,9 @@ function scanV2Candidates(text, records, kind, max) {
 function _sv2PickLocation(stop, cands, locations, history, dqFlags, addrMap) {
   const ranked = scanV2RankLocations(stop, locations, 0, addrMap);
   const idx = _sv2Index(locations, 'location');
+  return _sv2FlagAcronym(_sv2PickLocationRaw(stop, cands, ranked, idx, history, dqFlags, addrMap), stop._q || [], idx, ranked);
+}
+function _sv2PickLocationRaw(stop, cands, ranked, idx, history, dqFlags, addrMap) {
   const [a, b] = ranked;
   const cand = stop.candidate && cands.find(c => c.code === stop.candidate.trim());
 
@@ -606,6 +635,12 @@ function _sv2PickLocation(stop, cands, locations, history, dqFlags, addrMap) {
 }
 
 function _sv2PickClient(order, cands, clients) {
+  const name = order.client_name?.v || '';
+  const idx = _sv2Index(clients, 'client');
+  const q = [...new Set(_sv2Tokens(name))];
+  return _sv2FlagAcronym(_sv2PickClientRaw(order, cands, clients), q, idx, scanV2RankClients(name, clients));
+}
+function _sv2PickClientRaw(order, cands, clients) {
   const name = order.client_name?.v || '';
   const ranked = scanV2RankClients(name, clients);
   const cand = order.client_candidate && cands.find(c => c.code === order.client_candidate.trim());
@@ -781,7 +816,12 @@ async function _sv2ToV1(ord, clientCands, locCands, clients, locations, meta, op
   // same pattern as the pallets-from-text fallback above, never silent.
   let palletType = _sv2PalletType(fv('pallet_type'));
   let palletTypeDefaulted = false;
-  if (!palletType && pallets) {
+  // Keyed off the RAW model field (review of round 4): a type the model did
+  // read but we cannot map ("wooden pallets") is not "not stated" — assuming
+  // EUR there would turn a lost value into a wrong one. Say so and leave it.
+  if (!palletType && fv('pallet_type')) {
+    warnings.push(`Τύπος παλέτας «${fv('pallet_type')}» δεν αναγνωρίστηκε — διάλεξε στη φόρμα.`);
+  } else if (!palletType && pallets) {
     palletType = 'EUR';
     palletTypeDefaulted = true;
     warnings.push('Τύπος παλέτας δεν αναφέρεται στο έγγραφο — υποτέθηκε EUR (συνηθισμένος τύπος), έλεγξε.');
@@ -815,7 +855,15 @@ async function _sv2ToV1(ord, clientCands, locCands, clients, locations, meta, op
     warnings.push('Το έγγραφο δίνει δύο πιθανές ημερομηνίες (π.χ. "04 ή 05") — επιβεβαίωσε τις ημερομηνίες πριν αποθηκεύσεις.');
   }
 
-  const matchConf = m => (m.id ? Math.min(1, m.score + 0.2) : 0);
+  // Initials-only picks (see _sv2FlagAcronym) stay below the "must check"
+  // line whatever the model's own confidence says, and are named in notes.
+  const matchConf = m => (m.id ? (/acronym/.test(m.by || '') ? 0.3 : Math.min(1, m.score + 0.2)) : 0);
+  const acrWarn = (m, what) => {
+    if (m && m.by === 'acronym-ambiguous') warnings.push(`${what}: ταιριάζει μόνο με αρχικά με «${m.acronymOf}» και υπάρχει άλλη εγγραφή με κοινές λέξεις — αφέθηκε κενό, διάλεξε.`);
+    else if (m && /\+acronym$/.test(m.by || '')) warnings.push(`${what}: επιλέχθηκε «${m.acronymOf}» μόνο από τα αρχικά — έλεγξε ότι είναι η ίδια εταιρεία.`);
+  };
+  acrWarn(client, 'Πελάτης');
+  stops.forEach(s => acrWarn(s._match, s.type === 'loading' ? 'Φόρτωση' : 'Παράδοση'));
   const minC = xs => (xs.length ? Math.min(...xs) : 0);
   const stopConf = s => _sv2Combine(_sv2Calibrate(s._c, s._q, meta.text), matchConf(s._match));
   const fieldConf = {

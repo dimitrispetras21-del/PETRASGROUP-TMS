@@ -308,7 +308,12 @@ function _docxXmlToText(xml) {
     const name = nameMatch ? nameMatch[1] : '';
     switch (name) {
       case 'w:del': case 'w:instrText': case 'w:delText':
-        skipDepth = Math.max(0, skipDepth + (closing ? -1 : 1));
+        // Self-closing forms carry no text and must not open a skip: Word
+        // writes <w:del w:id=".." .../> inside w:rPr to mark a deleted
+        // paragraph mark, and an empty field code can be <w:instrText/>.
+        // Counted as an "open", either one silently dropped the REST of the
+        // document (review of round 4).
+        if (!/\/\s*>$/.test(tok)) skipDepth = Math.max(0, skipDepth + (closing ? -1 : 1));
         break;
       case 'w:tab':
         if (!closing && skipDepth === 0) out += '\t';
@@ -326,6 +331,10 @@ function _docxXmlToText(xml) {
         if (!closing && skipDepth === 0) { if (rowHasCell) out += '\t'; rowHasCell = true; cellFirstPara = true; }
         break;
       case 'w:p':
+        // Belt and braces: deletions and field codes live inside runs, so no
+        // skip may outlive its paragraph — a malformed/unknown construct can
+        // cost at most one paragraph, never the rest of the document.
+        if (closing) skipDepth = 0;
         if (skipDepth === 0) {
           if (tableDepth > 0) { if (!closing) { if (!cellFirstPara) out += ' '; cellFirstPara = false; } }
           else if (closing) out += '\n';

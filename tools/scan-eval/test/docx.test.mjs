@@ -93,3 +93,26 @@ test('docx: zip-bomb guard — inflated output past the cap throws instead of ha
   const bomb = makeDocxBomb(25 * 1024 * 1024); // deflates to a few KB, inflates past the 20MB cap
   await assert.rejects(() => docxToText(bomb), /size limit|zip bomb/);
 });
+
+// Review of round 4 (B2): a self-closing skip element must not open a skip.
+// Word writes <w:del .../> inside w:rPr for a deleted paragraph mark, and an
+// empty field code can be <w:instrText/>; counted as an "open", everything
+// after it vanished silently.
+const W_NS = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"';
+const docXml = body => `<?xml version="1.0"?><w:document ${W_NS}><w:body>${body}</w:body></w:document>`;
+
+test('docx: self-closing w:del / w:instrText do not swallow the rest of the document', async () => {
+  const xml = docXml('<w:p><w:r><w:t>BEFORE-2031</w:t></w:r></w:p>'
+    + '<w:p><w:pPr><w:rPr><w:del w:id="1" w:author="x" w:date="2031-01-01T00:00:00Z"/></w:rPr></w:pPr><w:r><w:t>MIDDLE-2031</w:t></w:r></w:p>'
+    + '<w:p><w:r><w:instrText/></w:r><w:r><w:t>AFTER-2031</w:t></w:r></w:p>');
+  const text = await docxToText(makeZip([{ name: 'word/document.xml', data: Buffer.from(xml), method: 0 }]));
+  assert.match(text, /BEFORE-2031/);
+  assert.match(text, /MIDDLE-2031/);
+  assert.match(text, /AFTER-2031/);
+});
+
+test('docx: an unclosed skip element costs at most its own paragraph', async () => {
+  const xml = docXml('<w:p><w:r><w:instrText>FIELD</w:r></w:p><w:p><w:r><w:t>NEXT-PARA-2031</w:t></w:r></w:p>');
+  const text = await docxToText(makeZip([{ name: 'word/document.xml', data: Buffer.from(xml), method: 0 }]));
+  assert.match(text, /NEXT-PARA-2031/);
+});
