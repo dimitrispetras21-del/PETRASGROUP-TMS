@@ -1,4 +1,4 @@
--- DRAFT 053 — national_orders_with_derived: every national order gets its number (order_no = id).
+-- DRAFT 054 — national_orders_with_derived: every national order gets its number (order_no = id).
 -- NOT EXECUTED. Owner runs it (after 15:00), then the Worker deploy that reads it (same evening).
 --
 -- Why (owner 27/9: «αριθμός παραγγελίας πολύ σημαντικός και για εθνικών»; 28/9 go):
@@ -35,12 +35,12 @@ begin
   select count(*) into base_n from public.national_orders;
   select count(*) into view_n from public.national_orders_with_derived;
   select count(*) into bad from public.national_orders_with_derived where order_no is null or order_no <> id;
-  if base_n <> view_n then raise exception '053: row count % <> %', view_n, base_n; end if;
-  if bad <> 0 then raise exception '053: % rows without a correct order_no', bad; end if;
+  if base_n <> view_n then raise exception '054: row count % <> %', view_n, base_n; end if;
+  if bad <> 0 then raise exception '054: % rows without a correct order_no', bad; end if;
   if exists (select 1 from information_schema.role_table_grants
              where table_schema = 'public' and table_name = 'national_orders_with_derived'
                and grantee in ('anon', 'authenticated')) then
-    raise exception '053: view is open to anon/authenticated';
+    raise exception '054: view is open to anon/authenticated';
   end if;
 end $$;
 
