@@ -2518,14 +2518,12 @@ async function deleteIntlOrder(recId, opts) {
     if (typeof rtOnOrderDeleted === 'function') await rtOnOrderDeleted(recId);
     if (typeof plOnOrderDeleted === 'function') await plOnOrderDeleted(recId, 'intl');
 
-    // 5. Delete ORDER_STOPS linked to this ORDER
-    try {
-      const intlStops = await stopsLoad(recId, F.STOP_PARENT_ORDER);
-      for (const s of intlStops) {
-        try { await atDelete(TABLES.ORDER_STOPS, s.id); } catch(e) { _delFail++; console.warn('Stop delete:', e); }
-      }
-      if (intlStops.length) _tmsLog(`Deleted ${intlStops.length} ORDER_STOPS for ORDER ${recId}`);
-    } catch(e) { _delFail++; console.warn('ORDER_STOPS cleanup:', e); }
+    // 5. ORDER_STOPS: the database removes them in the SAME transaction as the
+    // order — every ORDERS DELETE goes through delete_order_cascade (Worker
+    // handleOrderCascadeDelete); measured 29/9: order 400's 3 stops carry the
+    // order's own deleted_at. The front used to reload the stops here via
+    // stopsLoad → atGetOne(the order it had just deleted) → «Record not found»
+    // toast + app_errors after a SUCCESSFUL delete (owner 08:59, Παντελής 09:41).
 
     // 5b. Delete PARTNER_ASSIGN records linked to this ORDER
     try {

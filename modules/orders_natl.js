@@ -1576,14 +1576,10 @@ async function deleteNatlOrder(recId) {
 
     if (typeof plOnOrderDeleted === 'function') await plOnOrderDeleted(recId, 'natl');
 
-    // 4. Delete ORDER_STOPS linked to this NO
-    try {
-      const natStops = await stopsLoad(recId, F.STOP_PARENT_NAT);
-      for (const s of natStops) {
-        try { await atDelete(TABLES.ORDER_STOPS, s.id); } catch(e) { _delFail++; console.warn('Stop delete:', e); }
-      }
-      if (natStops.length) _tmsLog(`Deleted ${natStops.length} ORDER_STOPS for NO ${recId}`);
-    } catch(e) { _delFail++; console.warn('ORDER_STOPS cleanup:', e); }
+    // 4. ORDER_STOPS: removed by the database trigger
+    // trg_national_orders_soft_delete_cascade in the same transaction. Reloading
+    // them here read the order just deleted (stopsLoad → atGetOne → «Record not
+    // found» toast after a SUCCESSFUL delete — live check 29/9).
 
     // 4b. Delete PARTNER_ASSIGN records linked to this NO (via Nat Load field — also Order in case national orders use that)
     try {
