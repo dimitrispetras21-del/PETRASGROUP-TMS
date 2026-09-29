@@ -450,7 +450,31 @@ async function _atFetch(tableId, paramStr = '') {
     records = records.concat(data.records || []);
     offset  = data.offset || '';
   } while (offset);
-  return records;
+  return _atDedupePages(records, tableId);
+}
+
+// Safety net (29/9/2026). The Worker pages with limit/offset; until its ORDER BY
+// ends with the primary key, a page can repeat rows of another page while OTHER
+// rows are never returned — measured on «orders, last 60 days»: 228 rows
+// returned, 23 repeated, 23 never shown. A repeat is therefore also proof that
+// rows are MISSING: the copies are dropped (nothing counted twice) and the fact
+// is SAID in the error log (principle 1) — dropping them silently would hide
+// the gap. The real fix is the Worker's `order=…,id.asc`.
+function _atDedupePages(records, tableId) {
+  const seen = new Set(), out = [];
+  let dup = 0;
+  for (const r of records) {
+    const id = r && r.id;
+    if (id && seen.has(id)) { dup++; continue; }
+    if (id) seen.add(id);
+    out.push(r);
+  }
+  if (dup) {
+    const msg = `σελιδοποίηση ${tableId}: ${dup} διπλές εγγραφές — πιθανώς λείπουν άλλες τόσες (Worker χωρίς ORDER BY id)`;
+    console.warn(msg);
+    if (typeof logError === 'function') logError(new Error(msg), '_atFetch paging');
+  }
+  return out;
 }
 
 // ── Public API ────────────────────────────────────
