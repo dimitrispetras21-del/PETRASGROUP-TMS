@@ -286,6 +286,18 @@ const OrdersData = {
   _inflight: null,
   _cache: null,           // { at, intl, natl, natlFailed, gate, gateFailed }
   invalidate() { OrdersData._cache = null; },
+  // The national orders' loads — who drives them (ΑΝΑΘΕΣΗ of «Χωρίς τιμή»,
+  // owner 29/9). Read only by the view that shows it, once per cached set,
+  // so the week/invoicing views and the tab badges don't pay for it.
+  // Sets set.natLoads (Map, or null = not loaded → the view shows «—», never
+  // a guess) and set.natLoadsFailed.
+  async loadNatLoads(set) {
+    if (!set._natLoadsP) set._natLoadsP = (async () => {
+      try { set.natLoads = set.natl.length ? await OrdersCommon.natLoadsFor(set.natl) : new Map(); set.natLoadsFailed = false; }
+      catch (e) { console.error('orders data: national loads', e); set.natLoads = null; set.natLoadsFailed = true; set._natLoadsP = null; }
+    })();
+    return set._natLoadsP;
+  },
   async loadInvoicingSet(force) {
     if (!force && OrdersData._cache && Date.now() - OrdersData._cache.at < 60000) return OrdersData._cache;
     if (OrdersData._inflight) return OrdersData._inflight;
@@ -306,14 +318,8 @@ const OrdersData = {
       // parent carries price and invoicing, the legs never appear here.
       const intlVis = (typeof FEATURES !== 'undefined' && FEATURES.ORDER_SPLIT)
         ? intl.filter(r => !getLinkedId(r.fields['Parent Order'])) : intl;
-      const set = { at: Date.now(), intl: intlVis, natl: natlRes.r, natlFailed: !natlRes.ok, gate: {}, gateFailed: false, natLoads: null, natLoadsFailed: false };
+      const set = { at: Date.now(), intl: intlVis, natl: natlRes.r, natlFailed: !natlRes.ok, gate: {}, gateFailed: false };
       await OrdersData._loadGate(set);
-      // The national orders' loads — who drives them (ΑΝΑΘΕΣΗ, owner 29/9).
-      // null = not loaded: the views then show «—», never a guess.
-      if (set.natl.length) {
-        try { set.natLoads = await OrdersCommon.natLoadsFor(set.natl); }
-        catch (e) { console.error('orders data: national loads', e); set.natLoads = null; set.natLoadsFailed = true; }
-      } else set.natLoads = new Map();
       const clientIds = [...new Set([...set.intl, ...set.natl].map(r => (r.fields['Client'] || [])[0]).filter(Boolean))];
       if (clientIds.length && typeof fhBatchResolveClients === 'function') { try { await fhBatchResolveClients(clientIds); } catch (e) { console.warn('orders data: clients', e); } }
       OrdersData._cache = set;

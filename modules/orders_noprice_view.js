@@ -238,7 +238,7 @@ const OrdersNoPrice = (() => {
     if (!ctx.isCurrent()) return;
     const all = OrdersData.all(set);
     const list = selectNoPrice(all, r => OrdersData.stateOf(set, r), ctx.scope);
-    const [ci, audit] = await Promise.all([_loadClientInfo(list), _loadAudit()]);
+    const [ci, audit] = await Promise.all([_loadClientInfo(list), _loadAudit(), OrdersData.loadNatLoads(set)]);
     if (!ctx.isCurrent()) return;
     V = { ctx, set, all, list, groups: groupByClient(list), clientInfo: ci.map, clientFailed: ci.failed, audit, canWrite: owner };
     // Print is the accountant's primary action (she carries the sheet to the

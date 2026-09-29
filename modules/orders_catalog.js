@@ -247,11 +247,15 @@ const OrdersCatalog = (() => {
       </div>` : '';
     // Scan is a visible button again, next to «Νέα παραγγελία» (owner 29/9:
     // «τα κουμπιά scan δεν υπάρχουν» — hidden in the ▾ menu nobody found it).
-    // Same audience as on the old two pages: every role that sees the list.
+    // Same audience as the ▾ menu it came from: only roles that may create
+    // orders (can('orders')==='full'). A scan creates an order and runs the
+    // paid extraction — a view-only role must not get that path (reviewer
+    // 29/9; the Weekly boards gate theirs with the same read-only check).
     // One button per type in its own scope; both, side by side, on «Όλες».
     const scope = S.ctx ? S.ctx.scope : 'all';
     const scanBtn = (fn, label) => `<button type="button" class="btn-scan" onclick="${fn}()">${_i('camera')} ${label}</button>`;
-    const scans = scope === 'intl' ? scanBtn('openIntlScan', 'Σάρωση')
+    const scans = !canEdit ? ''
+      : scope === 'intl' ? scanBtn('openIntlScan', 'Σάρωση')
       : scope === 'natl' ? scanBtn('openNatlScan', 'Σάρωση')
       : scanBtn('openIntlScan', 'Σάρωση διεθνούς') + scanBtn('openNatlScan', 'Σάρωση εθνικής');
     return `<button type="button" class="btn btn-ghost btn-sm" onclick="OrdersCatalog.csv()">${_i('download')} CSV</button>
@@ -403,8 +407,6 @@ const OrdersCatalog = (() => {
 .oc-l2{display:block;font-size:11.5px;color:var(--text-mid);overflow:hidden;white-space:nowrap;text-overflow:ellipsis;line-height:1.3}
 .oc-tag{display:inline-block;margin-left:6px;padding:0 4px;border:1px solid var(--border-mid);border-radius:3px;font-size:9px;font-weight:600;letter-spacing:.3px;color:var(--text-mid);line-height:13px}
 .oc-dim{color:var(--text-dim)}.oc-red{color:var(--danger);font-weight:500}.oc-g{color:var(--ok)}
-.oc-dot{display:inline-block;width:6px;height:6px;border-radius:50%;margin-right:6px;vertical-align:middle;background:var(--text-mid)}
-.oc-dot.ok{background:var(--ok)}.oc-dot.danger{background:var(--danger)}.oc-dot.hollow{background:transparent;border:1.5px solid var(--text-mid)}
 .oc-sdot{display:inline-block;width:6px;height:6px;border-radius:50%;margin-right:6px;vertical-align:middle}
 .oc-s-pending{border:1.5px solid var(--text-dim)}.oc-s-assigned{background:var(--accent)}.oc-s-confirmed{background:var(--text-mid)}
 .oc-s-transit{background:var(--surface-dark)}.oc-s-delivered{background:var(--ok)}.oc-s-cancelled,.oc-s-unknown{border:1.5px solid var(--border-mid)}
