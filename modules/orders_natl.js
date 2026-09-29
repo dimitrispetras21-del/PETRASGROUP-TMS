@@ -24,19 +24,26 @@ function _clientSelect(id, currentId, currentLabel) { return fhClientSelect(id, 
 async function _natlLoad() {
     // Date range filter based on period dropdown
     const _natlDateFormula = OrdersList.periodFormula(_natlPeriod);
-    const [, records] = await Promise.all([
-      _loadLocations(),
-      atGet(TABLES.NAT_ORDERS, _natlDateFormula || '', false),
-    ]);
+    // Perf 29/9: the list paints on the orders and their loads (ΑΝΑΘΕΣΗ /
+    // «εκτός» need them); location labels and client names arrive in the
+    // background (NATL_ORDERS.namesReady — the catalog shows «…» until then).
+    const records = await atGet(TABLES.NAT_ORDERS, _natlDateFormula || '', false);
     records.sort((a,b) => (b.fields['Loading DateTime']||'').localeCompare(a.fields['Loading DateTime']||''));
     NATL_ORDERS.data = records;
     NATL_ORDERS.selectedId = null;
 
-    // Pre-resolve all client names — batch fetches in parallel (not N+1)
+    // Location labels (the card's stop lines read _fhLocationsMap) and client
+    // names — batch fetches in parallel (not N+1). Never rejects.
     const _allClientIds = [...new Set(records
       .flatMap(r => r.fields['Client']||[])
       .filter(Boolean))];
-    await _batchResolveClients(_allClientIds);
+    // After the reference preload: it holds every client name, so the
+    // batches then fetch only what it lacks (none, normally).
+    const _refP = typeof preloadReferenceData === 'function' ? preloadReferenceData().catch(e => console.warn('orders_natl: ref data', e)) : Promise.resolve();
+    NATL_ORDERS.namesReady = _refP.then(() => Promise.all([
+      _loadLocations().catch(e => console.warn('orders_natl: locations', e)),
+      _batchResolveClients(_allClientIds).catch(e => console.warn('orders_natl: client names', e)),
+    ])).then(() => []);
 
     // 13/9 (owner: «εθνικές παραγγελίες που δεν βρίσκονται στο Weekly»): the
     // Weekly National reads NATIONAL LOADS only. Orders 5–8 were saved while the
@@ -78,7 +85,7 @@ async function loadOrdersNatlData(period) {
   if (period) _natlPeriod = period;
   await _natlLoad();
   _onEnsureStyles();
-  return { records: NATL_ORDERS.data, noLoad: NATL_ORDERS.noLoad || new Set(), loads: NATL_ORDERS.loads || new Map(),
+  return { records: NATL_ORDERS.data, noLoad: NATL_ORDERS.noLoad || new Set(), loads: NATL_ORDERS.loads || new Map(), namesReady: NATL_ORDERS.namesReady,
     warns: NATL_ORDERS.loadsFailed ? ['Τα εθνικά φορτία δεν φορτώθηκαν — η στήλη ΑΝΑΘΕΣΗ των εθνικών δεν δείχνει όχημα ούτε «εκτός». Δεν σημαίνει ότι δεν υπάρχουν. Ξαναδοκίμασε με Ανανέωση.'] : [] };
 }
 

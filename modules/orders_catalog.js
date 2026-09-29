@@ -20,6 +20,7 @@ const OrdersCatalog = (() => {
   const ROW_H = 46, BUFFER = 12;
   const S = {
     period: '60', rows: [], filtered: [], noLoad: new Set(), loads: new Map(), legParents: null, filters: {},
+    namesPending: false, namesP: null,
     sortCol: 'load', sortDir: 2, selected: null, ctx: null,
     vs: { sortedRecs: [], lastStart: -1, lastEnd: -1, rafId: null },
   };
@@ -43,6 +44,7 @@ const OrdersCatalog = (() => {
   const PERIOD_LABEL = { '60': 'τελευταίες 60 ημέρες', '180': 'τελευταίοι 6 μήνες', all: 'όλες οι ημερομηνίες' };
 
   function _status(r) { return r.f['Status'] || (r.type === 'intl' ? 'Pending' : ''); }
+  const _refReady = () => typeof REF_DATA !== 'undefined' && !!REF_DATA._loaded;
 
   // ΑΝΑΘΕΣΗ: the shared cell (OrdersCommon.assignOf) — the same one «Χωρίς
   // τιμή» shows (owner 29/9). National orders take their vehicle from their
@@ -67,6 +69,15 @@ const OrdersCatalog = (() => {
     r.del = C().placeOf(rec, 'del');
     r.pal = type === 'intl' ? f['Total Pallets'] : f['Pallets'];
     r.assign = _assign(r);
+    // Names still on their way (perf 29/9 — the list paints before them):
+    // «…», never «—» (reads as «none») nor a record id (reads as a number).
+    // One repaint replaces them when they land (render → S.namesP).
+    if (S.namesPending) {
+      const cid = (f['Client'] || [])[0];
+      if (cid && !_fhClientsMap[cid]) r.client = '…';
+      [r.load, r.del].forEach(p => { if (p.count && !p.name && !p.sub) p.name = '…'; });
+      if (!_refReady() && (r.assign.key === 'own' || r.assign.key === 'partner')) r.assign = Object.assign({}, r.assign, { text: '…', html: '<span class="oc-adim">…</span>' });
+    }
     r.status = _status(r);
     // A price of 0 is «χωρίς τιμή» here too — the rule of every other view,
     // the Worker and migration 043 (28 of 41 unpriced delivered orders are 0).
@@ -303,12 +314,29 @@ const OrdersCatalog = (() => {
       if (window._dashNav.trip === 'unassigned') S.filters.chip = 'pa';
       window._dashNav = null;
     }
+    // Paint now; names follow (perf 29/9). Pending only when something the
+    // rows show is really missing — a warm cache paints complete at once.
+    const allRecs = [...intl.records, ...natl.records];
+    S.namesPending = !_refReady() || allRecs.some(r => { const c = (r.fields['Client'] || [])[0]; return c && !_fhClientsMap[c]; });
     S.rows = [...intl.records.map(r => _row(r, 'intl')), ...natl.records.map(r => _row(r, 'natl'))];
     ctx.setActions(_actionsHtml());
-    ctx.body.innerHTML = [...(intl.warns || []), ...(natl.warns || [])].map(w => `<div class="oc-warn">⚠ ${esc(w)}</div>`).join('') + _layoutHtml();
+    const warnHtml = ws => ws.map(w => `<div class="oc-warn">⚠ ${esc(w)}</div>`).join('');
+    ctx.body.innerHTML = `<div id="ocWarns">${warnHtml([...(intl.warns || []), ...(natl.warns || [])])}</div>` + _layoutHtml();
     _apply();
     const n = S.rows.filter(_inScope).length;
     ctx.setSub(`Διεθνείς και εθνικές · ${OrdersList.countLabel(n)} · ${PERIOD_LABEL[S.period]}`);
+    // Both loaders' namesReady never reject; each resolves to its warnings.
+    S.namesP = Promise.all([intl.namesReady, natl.namesReady].map(p => p || Promise.resolve([])))
+      .then(ws => {
+        if (!ctx.isCurrent()) return;
+        const was = S.namesPending;
+        S.namesPending = false;
+        const late = ws.flat();
+        if (late.length) { const box = document.getElementById('ocWarns'); if (box) box.insertAdjacentHTML('beforeend', warnHtml(late)); }
+        if (!was) return;
+        S.rows = S.rows.map(r => _row(r.rec, r.type));
+        _apply();
+      });
   }
 
   // One order changed in place (status, pallet sheets, «Στείλε →»): rebuild
@@ -321,10 +349,13 @@ const OrdersCatalog = (() => {
   }
 
   // ── Public handlers (inline onclick) ─────────────────────────────────────
-  function open(type, id) {
+  async function open(type, id) {
     S.selected = id;
     document.querySelectorAll('#ocTable tr.selected').forEach(tr => tr.classList.remove('selected'));
     const row = document.getElementById('ocrow_' + id); if (row) row.classList.add('selected');
+    // The cards read the same names (client, location labels): a click in the
+    // first seconds waits for them rather than open a card of record ids.
+    if (S.namesPending && S.namesP) { await S.namesP; if (S.selected !== id) return; }
     if (type === 'intl') { if (typeof closeNatlDetail === 'function') closeNatlDetail(); selectIntlOrder(id); }
     else { if (typeof _oiCloseCard === 'function') _oiCloseCard(); selectNatlOrder(id); }
   }
@@ -359,7 +390,10 @@ const OrdersCatalog = (() => {
   // fhClientName returns HTML-escaped text; CSV/print/search need the plain name.
   function _unesc(s) { const d = document.createElement('textarea'); d.innerHTML = String(s || ''); return d.value; }
   function _plain(p) { return p && (p.name || p.sub) ? [p.name, p.sub].filter(Boolean).join(', ') : ''; }
+  // An export while names are still loading would carry «…» into the file.
+  const _namesBusy = () => { if (!S.namesPending) return false; if (typeof toast === 'function') toast('Φορτώνουν ακόμη τα ονόματα — δοκίμασε ξανά σε λίγα δευτερόλεπτα', 'warn'); return true; };
   function csv() {
+    if (_namesBusy()) return;
     const head = ['ΑΡ.', 'Τύπος', 'Αναφορά', 'Κατεύθυνση', 'Πελάτης', 'Φόρτωση', 'Ημ. φόρτωσης', 'Παράδοση', 'Ημ. παράδοσης', 'Παλέτες', 'Ανάθεση', 'Κατάσταση', 'Τιμή', 'ΤΠΥ', 'Ημ. ΤΠΥ'];
     const rows = S.filtered.map(r => [r.num, r.type === 'intl' ? 'Διεθνής' : 'Εθνική', r.ref, r.dir, _unesc(r.client), _plain(r.load), C().ymd(r.f['Loading DateTime']),
       _plain(r.del), C().ymd(r.f['Delivery DateTime']), r.pal || '', r.assign.text, (STATUS[r.status] || [r.status])[0] || '',
@@ -367,6 +401,7 @@ const OrdersCatalog = (() => {
     OrdersList.csvDownload([head, ...rows], `paraggelies_${C().today()}.csv`);
   }
   function print() {
+    if (_namesBusy()) return;
     const tr = S.filtered.map(r => `<tr><td>${esc(r.num)}</td><td>${esc(r.ref)}<br><small>${esc(r.dir)}</small></td><td>${esc(_unesc(r.client))}</td>
       <td>${esc(r.load.name)}<br><small>${esc(r.load.sub)} · ${C().dm(r.load.date)}</small></td><td>${esc(r.del.name)}<br><small>${esc(r.del.sub)} · ${C().dm(r.del.date)}</small></td>
       <td class="r">${esc(r.pal || '')}</td><td>${esc((STATUS[r.status] || [r.status])[0] || '')}</td><td class="r">${r.price !== null ? esc(C().eur(r.price)) : '—'}</td>

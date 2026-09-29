@@ -10,12 +10,24 @@ const _fhLocationsMap = {};  // recId → label
 const _fhClientsMap   = {};  // recId → name
 const _fhClientCache  = {};  // query → [{id,label}]
 
+// The location records (Name/City/Country) — the reference preload's copy
+// when it has landed (kept fresh by its revalidate), else the same single
+// shared read (api.js refLocationsFetch). Never a second full-table read.
+async function fhLocationRecords() {
+  const ref = typeof getRefLocations === 'function' ? getRefLocations() : [];
+  if (ref.length) return ref;
+  return refLocationsFetch();
+}
+
 /**
  * Load all locations into shared cache (idempotent)
  */
 async function fhLoadLocations() {
   if (_fhLocationsArr.length) return;
-  const locs = await atGet(TABLES.LOCATIONS);
+  const locs = await fhLocationRecords();
+  // Two callers can await the same read (the Orders page loads both types at
+  // once): only the first fills the shared arrays, or every picker doubles.
+  if (_fhLocationsArr.length) return;
   const sorted = locs
     .map(r => ({
       id: r.id,
@@ -75,6 +87,14 @@ async function fhSearchClients(q) {
  * Batch-resolve client IDs to names (for pre-loading table views)
  */
 async function fhBatchResolveClients(ids) {
+  // Names the reference preload already holds (every client, Company Name)
+  // cost no request (perf 29/9: 3 batches per Orders open asked for names
+  // that were already in memory). Only the rest is fetched, as before.
+  const ref = typeof getRefClients === 'function' ? getRefClients() : [];
+  if (ref.length && ids.some(id => !_fhClientsMap[id])) {
+    const want = new Set(ids.filter(id => !_fhClientsMap[id]));
+    ref.forEach(r => { if (want.has(r.id) && r.fields['Company Name']) _fhClientsMap[r.id] = r.fields['Company Name']; });
+  }
   const unresolvedIds = ids.filter(id => !_fhClientsMap[id]);
   if (!unresolvedIds.length) return;
   const batches = [];

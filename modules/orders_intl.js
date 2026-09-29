@@ -21,19 +21,6 @@ function _cleanSummary(s) {
   // Strip all quotes, clean up slashes, trim
   return escapeHtml(s.replace(/["']+/g,'').replace(/\s*\/\s*/g, ' / ').replace(/\s*\/\s*$/, '').trim() || '—');
 }
-// Resolve location names from ORDER_STOPS for a given order + stop type
-function _stopsLocationSummary(orderId, stopType) {
-  const stops = (window._intlStopsByOrder || {})[orderId];
-  if (!stops || !stops.length) return null;
-  const filtered = stops.filter(s => s.fields[F.STOP_TYPE] === stopType)
-    .sort((a,b) => (a.fields[F.STOP_NUMBER]||0) - (b.fields[F.STOP_NUMBER]||0));
-  if (!filtered.length) return null;
-  return filtered.map(s => {
-    const locArr = s.fields[F.STOP_LOCATION];
-    const locId = Array.isArray(locArr) ? locArr[0] : null;
-    return locId ? (_fhLocationsMap[locId] || locId.slice(-6)) : '?';
-  }).join(', ');
-}
 // Get total pallets from ORDER_STOPS loading stops
 function _stopsTotalPallets(orderId) {
   const stops = (window._intlStopsByOrder || {})[orderId];
@@ -51,7 +38,6 @@ const _oiLocMeta = {};   // locId → {name, city, country} for the card's stop 
 // line above the table saying what is missing and what that does NOT mean.
 const _oiLoadWarns = [];
 const _OI_WARN_REF   = 'Τα στοιχεία στόλου και συνεργατών δεν φορτώθηκαν — η στήλη ΑΝΑΘΕΣΗ δείχνει «—». Δεν σημαίνει ότι δεν έχει γίνει ανάθεση. Ξαναδοκίμασε με Ανανέωση.';
-const _OI_WARN_STOPS = 'Οι στάσεις των παραγγελιών δεν φορτώθηκαν — ΦΟΡΤΩΣΗ/ΠΑΡΑΔΟΣΗ δείχνουν την παλιά περίληψη ή «—». Δεν σημαίνει ότι δεν υπάρχουν στάσεις. Ξαναδοκίμασε με Ανανέωση.';
 const _OI_WARN_LOC   = 'Οι τοποθεσίες δεν φορτώθηκαν — λείπει η πόλη/χώρα κάτω από τα ονόματα. Δεν σημαίνει ότι δεν έχουν καταχωρηθεί. Ξαναδοκίμασε με Ανανέωση.';
 const _OI_STATUS = {
   'Pending':    { gr: 'Σε αναμονή',   dot: 'pending' },
@@ -155,29 +141,25 @@ function _oiCss() { return `
 // ─── Main ───────────────────────────────────────
 // Since 28/9/2026 (owner: one «Παραγγελίες» page) the LIST is drawn by
 // modules/orders_catalog.js for both types. This module keeps what is really
-// international: the data load (orders + stops + location meta + client
-// names), the card, the form, the scan and every cascade. The catalog calls
+// international: the data load (orders; names in the background; stops per
+// card), the card, the form, the scan and every cascade. The catalog calls
 // loadOrdersIntlData(); the card opens in the catalog's own layout.
 async function _intlLoad() {
   _oiLoadWarns.length = 0;
     // Date range filter based on period dropdown
     const _intlDateFormula = OrdersList.periodFormula(_intlPeriod);
-    const [, records] = await Promise.all([
-      _loadLocations(),
+    // Perf 29/9 (owner «ok για κατάλογο»): the list paints on the orders
+    // alone. Names (clients, places, fleet) arrive in the background
+    // (INTL_ORDERS.namesReady → the catalog repaints once, showing «…» until
+    // then, never «—» or a record id); the stops load when a card opens.
+    // Before, the first row waited on the whole reference preload (20 pages of
+    // CLIENTS, 12 of LOCATIONS on a cold cache), a second full LOCATIONS read,
+    // every order's stops in sequential batches, and the client-name batches.
+    const [records] = await Promise.all([
       atGet(TABLES.ORDERS, _intlDateFormula || '', false),
-      // The ΑΝΑΘΕΣΗ column reads getRefTrucks/Drivers/Partners, which return []
-      // until the background preload (core/auth.js, 200ms after login) has
-      // landed — and nothing repaints when it does. Measured in the 28/8
-      // recording: 432 partners loaded, yet the one partner row printed the
-      // generic «Συνεργάτης» and 57 own-fleet rows printed «—», because the
-      // table painted first. Deduped in api.js, so this costs nothing when the
-      // cache is warm. A failure is reported above the table, never swallowed.
-      (typeof preloadReferenceData === 'function' ? preloadReferenceData() : Promise.resolve())
-        .catch(e => { console.warn('orders_intl: ref data', e); _oiLoadWarns.push(_OI_WARN_REF); }),
       // Scan round 3: paperclip badge index. Never rejects (core/order-docs.js
-      // logs its own warning and returns an empty index) — nothing here needs
-      // its own .catch, but the array slot is intentional so the list never
-      // waits on it twice (virtual-scroll rows read the already-settled index).
+      // logs its own warning and returns an empty index) — one request in
+      // parallel with ORDERS, so the rows read an already-settled index.
       (typeof OrderDocs !== 'undefined' ? OrderDocs.preloadIndex() : Promise.resolve()),
     ]);
     records.sort((a,b) => (b.fields['Loading DateTime']||'').localeCompare(a.fields['Loading DateTime']||''));
@@ -197,53 +179,68 @@ async function _intlLoad() {
     }
     INTL_ORDERS.data = _oiVisible;
     INTL_ORDERS.selectedId = null;
-    // Batch fetch ORDER_STOPS for all orders (for list + detail display)
-    const allStopIds = records.flatMap(r => r.fields['ORDER STOPS'] || []);
+    // Stops belong to the card now (_oiLoadCardStops): a fresh list forgets
+    // the old ones so a reopened card reads them again.
     window._intlStopsByOrder = {};
-    if (allStopIds.length) {
-      try {
-        // Fetch in batches of 90 (OR formula limit)
-        const stopRecs = [];
-        for (let b = 0; b < allStopIds.length; b += 90) {
-          const batch = allStopIds.slice(b, b + 90);
-          const f = `OR(${batch.map(id => `RECORD_ID()="${id}"`).join(',')})`;
-          const recs = await atGetAll(TABLES.ORDER_STOPS, { filterByFormula: f }, false);
-          stopRecs.push(...recs);
-        }
-        stopRecs.forEach(sr => {
-          const parentArr = sr.fields[F.STOP_PARENT_ORDER];
-          const parentId = Array.isArray(parentArr) ? parentArr[0] : null;
-          if (parentId) {
-            if (!window._intlStopsByOrder[parentId]) window._intlStopsByOrder[parentId] = [];
-            window._intlStopsByOrder[parentId].push(sr);
-          }
-        });
-      } catch(e) { console.warn('Batch ORDER_STOPS fetch:', e); _oiLoadWarns.push(_OI_WARN_STOPS); }
-    }
-    // Inject Loading/Delivery Summary from ORDER_STOPS for orders missing them
-    await _loadLocations();
-    // City/country for the card's stop lines. Same cached GET the form helpers
-    // use (no new endpoint); the helpers keep only the joined label.
-    try {
-      (await atGet(TABLES.LOCATIONS)).forEach(l => {
-        // One list everywhere (owner 5/9): resolve to the Greek name once here
-        // so every reader of _oiLocMeta (the card's stop lines) gets it
-        // for free, whatever spelling/code the location record still stores.
-        const rawCountry = l.fields['Country'] || '';
-        _oiLocMeta[l.id] = { name: l.fields['Name'] || '', city: l.fields['City'] || '',
-          country: rawCountry && typeof countryName === 'function' ? countryName(rawCountry) : rawCountry };
-      });
-    } catch(e) { console.warn('orders_intl: location meta', e); _oiLoadWarns.push(_OI_WARN_LOC); }
-    records.forEach(r => {
-      const loadSummary = _stopsLocationSummary(r.id, 'Loading');
-      const delSummary = _stopsLocationSummary(r.id, 'Unloading');
-      if (loadSummary && !r.fields['Loading Summary']) r.fields['Loading Summary'] = loadSummary;
-      if (delSummary && !r.fields['Delivery Summary']) r.fields['Delivery Summary'] = delSummary;
-    });
-    // Pre-resolve all client names — batch fetches in parallel
-    const clientIds = [...new Set(records.map(r=>(r.fields['Client']||[])[0]).filter(Boolean))];
-    await fhBatchResolveClients(clientIds);
+    window._intlStopsFailed = {};
+    INTL_ORDERS.namesReady = _intlLoadNames(records);
   return INTL_ORDERS.data;
+}
+
+// The names the rows show: fleet/partners/locations (ΑΝΑΘΕΣΗ, ΦΟΡΤΩΣΗ,
+// ΠΑΡΑΔΟΣΗ read the reference preload), the location labels of the form and
+// card, and the client names. Resolves to the warnings to show — never rejects:
+// a failed part is SAID above the list (what is missing · what it does not mean).
+async function _intlLoadNames(records) {
+  const warns = [];
+  if (typeof preloadReferenceData === 'function') {
+    try { await preloadReferenceData(); }
+    catch (e) { console.warn('orders_intl: ref data', e); warns.push(_OI_WARN_REF); }
+  }
+  try { await _loadLocations(); } catch (e) { console.warn('orders_intl: locations', e); warns.push(_OI_WARN_LOC); }
+  const clientIds = [...new Set(records.map(r=>(r.fields['Client']||[])[0]).filter(Boolean))];
+  try { await fhBatchResolveClients(clientIds); } catch (e) { console.warn('orders_intl: client names', e); }
+  return warns;
+}
+
+// City/country of every location for the card's stop lines — the same single
+// LOCATIONS read the reference preload makes (fhLocationRecords). Once.
+async function _oiLoadLocMeta() {
+  if (Object.keys(_oiLocMeta).length) return;
+  (await fhLocationRecords()).forEach(l => {
+    // One list everywhere (owner 5/9): resolve to the Greek name once here
+    // so every reader of _oiLocMeta (the card's stop lines) gets it
+    // for free, whatever spelling/code the location record still stores.
+    const rawCountry = l.fields['Country'] || '';
+    _oiLocMeta[l.id] = { name: l.fields['Name'] || '', city: l.fields['City'] || '',
+      country: rawCountry && typeof countryName === 'function' ? countryName(rawCountry) : rawCountry };
+  });
+}
+
+// The card's stops, read when the card opens (perf 29/9 — the list used to
+// read every order's stops before its first row). One request: the order
+// record already carries its stop ids. Repaints the card if it is still the
+// one open; a failure is said IN the card, never shown as «no stops».
+async function _oiLoadCardStops(rec) {
+  const recId = rec.id;
+  const ids = rec.fields['ORDER STOPS'] || [];
+  try {
+    const [recs] = await Promise.all([
+      ids.length ? atGetAll(TABLES.ORDER_STOPS, { filterByFormula: `OR(${ids.map(id => `RECORD_ID()="${id}"`).join(',')})` }, false) : [],
+      _oiLoadLocMeta().catch(e => console.warn('orders_intl: location meta', e)),
+    ]);
+    window._intlStopsByOrder[recId] = recs.filter(sr => getLinkedId(sr.fields[F.STOP_PARENT_ORDER]) === recId);
+    delete window._intlStopsFailed[recId];
+  } catch (e) {
+    console.warn('orders_intl: card stops', e);
+    window._intlStopsFailed[recId] = true;
+  }
+  if (INTL_ORDERS.selectedId !== recId) return;
+  const panel = document.getElementById('intlDetail');
+  if (!panel || panel.classList.contains('hidden')) return;
+  const top = panel.scrollTop;
+  panel.innerHTML = _oiCardHtml(rec);
+  panel.scrollTop = top;
 }
 
 // Loader for the catalog: period = '60' | '180' | 'all' (same select as before).
@@ -251,7 +248,7 @@ async function loadOrdersIntlData(period) {
   if (period) _intlPeriod = period;
   await _intlLoad();
   _oiEnsureStyles();
-  return { records: INTL_ORDERS.data, warns: _oiLoadWarns.slice(), legParents: INTL_ORDERS.legParents };
+  return { records: INTL_ORDERS.data, warns: _oiLoadWarns.slice(), legParents: INTL_ORDERS.legParents, namesReady: INTL_ORDERS.namesReady };
 }
 
 // Kept for its callers (form submit, delete, pre-order, scan, retry buttons):
@@ -283,6 +280,10 @@ function selectIntlOrder(recId) {
   panel.classList.remove('hidden');
   panel.innerHTML = _oiCardHtml(rec);
   panel.scrollTop = 0;
+  if (!window._intlStopsByOrder || !window._intlStopsByOrder[recId]) {
+    window._intlStopsByOrder = window._intlStopsByOrder || {}; window._intlStopsFailed = window._intlStopsFailed || {};
+    _oiLoadCardStops(rec);
+  }
 }
 
 function _oiCardHtml(rec, opts) {
@@ -342,6 +343,14 @@ function _oiCardHtml(rec, opts) {
   };
   let route = _oiStops(recId, 'Loading').map(s => stopRow(s, 'Φόρτωση')).join('')
             + _oiStops(recId, 'Unloading').map(s => stopRow(s, 'Παράδοση')).join('');
+  const stopsKnown = window._intlStopsByOrder && window._intlStopsByOrder[recId];
+  if (!route && !readOnly && !stopsKnown) {
+    // The card opened before its stops arrived (_oiLoadCardStops repaints),
+    // or they failed — said here, not shown as an order without stops.
+    route = (window._intlStopsFailed && window._intlStopsFailed[recId])
+      ? `<div class="oi-stop"><span class="n">Οι στάσεις δεν φορτώθηκαν — δεν σημαίνει ότι δεν υπάρχουν. Κλείσε και ξαναάνοιξε την καρτέλα.</span></div>`
+      : `<div class="oi-stop"><span class="n" style="color:var(--text-mid)">Φόρτωση στάσεων…</span></div>`;
+  }
   if (!route) {
     // Pre-normalisation record: no ORDER_STOPS, only the legacy summary strings.
     route = `<div class="oi-stop"><span class="oi-stype">Φόρτωση</span><span class="n">${_cleanSummary(f['Loading Summary'])}</span></div>

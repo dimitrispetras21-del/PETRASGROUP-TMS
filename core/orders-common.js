@@ -128,7 +128,7 @@ const OrdersCommon = {
     if (ref && ref.length) { OrdersCommon._locs = new Map(ref.map(r => [r.id, r])); OrdersCommon.locationsFailed = false; return; }
     if (OrdersCommon._locs && OrdersCommon._locs.size) return;
     try {
-      const recs = await atGet(TABLES.LOCATIONS);       // same cached GET the order modules use
+      const recs = await refLocationsFetch();           // the one shared LOCATIONS read (api.js)
       OrdersCommon._locs = new Map(recs.map(r => [r.id, r]));
       OrdersCommon.locationsFailed = false;
     } catch (e) {

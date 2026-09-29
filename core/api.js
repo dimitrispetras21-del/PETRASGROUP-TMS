@@ -819,8 +819,11 @@ function fv(v) {
 // ── Background preload (called on app init) ───────
 function atPreload() {
   const TABLES_CFG = typeof TABLES !== 'undefined' ? TABLES : {};
+  // No LOCATIONS here (perf 29/9): the reference preload reads it (shared
+  // with the pickers, refLocationsFetch); this whole-table copy in another
+  // request shape was read by nobody and put 12 pages ahead of every page's
+  // first request on a cold start.
   const preloadIds = [
-    TABLES_CFG.LOCATIONS,
     TABLES_CFG.TRUCKS,
     TABLES_CFG.TRAILERS,
     TABLES_CFG.DRIVERS,
@@ -887,7 +890,7 @@ async function preloadReferenceData() {
     atGetAll(T.TRUCKS,    { fields: _REF_FIELDS.trucks },    true),
     atGetAll(T.DRIVERS,   { fields: _REF_FIELDS.drivers },   true),
     atGetAll(T.TRAILERS,  { fields: _REF_FIELDS.trailers },  true),
-    atGetAll(T.LOCATIONS, { fields: _REF_FIELDS.locations },  true),
+    refLocationsFetch(),
     atGetAll(T.CLIENTS,   { fields: _REF_FIELDS.clients },   true),
     atGetAll(T.PARTNERS,  { fields: _REF_FIELDS.partners },  true),
   ]).then(([trucks, drivers, trailers, locations, clients, partners]) => {
@@ -904,6 +907,21 @@ async function preloadReferenceData() {
   });
 
   return REF_DATA._loading;
+}
+
+// ONE LOCATIONS read per load, shared by this preload and the location
+// pickers (fhLocationRecords/fhLoadLocations). Until 29/9 the pickers read the
+// whole table again in another request shape (no fields[]), so a cold open of
+// the Orders page fetched 12 pages twice (measured: 24 LOCATIONS requests).
+// atGetAll has no in-flight dedupe, hence the shared promise; a failure clears
+// it so the next caller retries instead of inheriting the rejection.
+function refLocationsFetch() {
+  if (!REF_DATA._locP) {
+    const T = typeof TABLES !== 'undefined' ? TABLES : {};
+    REF_DATA._locP = atGetAll(T.LOCATIONS, { fields: _REF_FIELDS.locations }, true);
+    REF_DATA._locP.catch(() => { REF_DATA._locP = null; });
+  }
+  return REF_DATA._locP;
 }
 
 // Stale-while-revalidate (owner 12/8): το πρώτο paint σερβίρεται από το cache
@@ -955,6 +973,7 @@ function invalidateRefData() {
   REF_DATA.locations = REF_DATA.clients = REF_DATA.partners = null;
   REF_DATA._loaded = false;
   REF_DATA._loading = null;
+  REF_DATA._locP = null;      // the shared LOCATIONS read, or a changed location is never seen
 }
 
 // ═══════════════════════════════════════════════
