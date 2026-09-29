@@ -271,8 +271,6 @@ const _WI2_CSS=`
 .wi2-acts{display:flex;gap:8px;align-items:center}
 .wi2-btn{font:500 12px 'DM Sans',sans-serif;color:var(--text-mid);background:var(--surface-card);border:1px solid var(--border);border-radius:var(--radius);padding:8px 12px;cursor:pointer;white-space:nowrap;line-height:1.3}
 .wi2-btn:hover{background:var(--surface-sunken);color:var(--text)}
-.wi2-btn.primary{background:var(--accent);border-color:var(--accent);color:var(--surface-card);font-weight:700}
-.wi2-btn.primary:hover{background:var(--accent-hover)}
 .wi2-lg{background:var(--surface-card);border:1px solid var(--border);border-radius:var(--radius);padding:12px 16px;margin-bottom:12px;font-size:11px;color:var(--text-mid);display:flex;flex-wrap:wrap;gap:8px 24px}
 .wi2-lg b{color:var(--text)}
 .wi2-lg[hidden]{display:none}
@@ -1055,8 +1053,8 @@ function _wiPaint(){
         <button class="wi2-btn" onclick="renderWeeklyIntl()" title="Ανανέωση">Ανανέωση</button>
         <button class="wi2-btn" id="wi-fs" onclick="_wiFullscreen()" title="Πλήρης οθόνη — μόνο ο πίνακας· Esc για έξοδο">Πλήρης οθόνη</button>
         <button class="wi2-btn pre-btn" onclick="_wiPreorder()" title="Φορτίο που ανακοινώθηκε — λεπτομέρειες αργότερα">Pre-order</button>
-        <button class="btn-scan" onclick="_wiScan()" title="Νέα διεθνής παραγγελία από σάρωση εγγράφου — χωρίς έξοδο από το εβδομαδιαίο">${typeof icon==='function'?icon('camera',14):''} Σάρωση</button>
-        <button class="wi2-btn primary" onclick="_wiNewOrder()" title="Νέα διεθνής παραγγελία — χωρίς έξοδο από το εβδομαδιαίο">+ Νέα παραγγελία</button>
+        ${OrdersCommon.scanButton('_wiScan()', 'Σάρωση διεθνούς', 'Νέα διεθνής παραγγελία από σάρωση εγγράφου — χωρίς έξοδο από το εβδομαδιαίο')}
+        ${OrdersCommon.newOrderButton('_wiNewOrder()', '+ Νέα παραγγελία', 'Νέα διεθνής παραγγελία — χωρίς έξοδο από το εβδομαδιαίο')}
       </div>
     </div>
     ${_wi2LegendHTML()}

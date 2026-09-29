@@ -198,6 +198,21 @@ const OrdersCommon = {
   // A NATIONAL order never carries its own vehicle (0 of 11 have one, measured
   // 29/9): its assignment lives on its national load — `opts.load` — which the
   // Weekly National assigns. `opts.missingLoad` = no load at all («εκτός»).
+  // The order-creation buttons: ONE markup for the Orders page and both
+  // Weekly boards (owner 29/9: «το κουμπί θέλω να είναι όπως στις
+  // παραγγελίες· ίδιο κουμπί και στο weekly»). The Weekly used its own
+  // 12px/26–34px buttons, so the same .btn-scan stood out as «another» button.
+  // `fn` is the handler call as written in onclick (a trusted literal).
+  scanButton(fn, label, title) {
+    const esc = s => escapeHtml(String(s == null ? '' : s));
+    const ic = typeof icon === 'function' ? icon('camera', 14) : '';
+    return `<button type="button" class="btn-scan" onclick="${fn}"${title ? ` title="${esc(title)}"` : ''}>${ic} ${esc(label)}</button>`;
+  },
+  newOrderButton(fn, label, title) {
+    const esc = s => escapeHtml(String(s == null ? '' : s));
+    return `<button type="button" class="btn-new-order" onclick="${fn}"${title ? ` title="${esc(title)}"` : ''}>${esc(label)}</button>`;
+  },
+
   assignOf(rec, opts) {
     const o = opts || {};
     const f = rec.fields || {};

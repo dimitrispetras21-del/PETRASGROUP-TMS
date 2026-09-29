@@ -249,7 +249,7 @@ const OrdersCatalog = (() => {
     const _i = n => (typeof icon === 'function' ? icon(n, 14) : '');
     const menu = canEdit ? `
       <div class="oc-new">
-        <button type="button" class="btn-new-order" onclick="OrdersCatalog.toggleNew(event)">+ Νέα παραγγελία ▾</button>
+        ${OrdersCommon.newOrderButton('OrdersCatalog.toggleNew(event)', '+ Νέα παραγγελία ▾')}
         <div class="oc-menu hidden" id="ocNewMenu">
           <button type="button" onclick="OrdersCatalog.newOrder('intl')">Διεθνής</button>
           <button type="button" onclick="OrdersCatalog.newOrder('natl')">Εθνική</button>
@@ -264,7 +264,7 @@ const OrdersCatalog = (() => {
     // 29/9; the Weekly boards gate theirs with the same read-only check).
     // One button per type in its own scope; both, side by side, on «Όλες».
     const scope = S.ctx ? S.ctx.scope : 'all';
-    const scanBtn = (fn, label) => `<button type="button" class="btn-scan" onclick="${fn}()">${_i('camera')} ${label}</button>`;
+    const scanBtn = (fn, label) => OrdersCommon.scanButton(fn + '()', label);
     const scans = !canEdit ? ''
       : scope === 'intl' ? scanBtn('openIntlScan', 'Σάρωση')
       : scope === 'natl' ? scanBtn('openNatlScan', 'Σάρωση')

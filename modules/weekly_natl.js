@@ -391,8 +391,6 @@ function _wnCss() { return `<style id="wn4-css">
 .wn4-acts{display:flex;gap:8px;align-items:center}
 .wn4-btn{font:inherit;font-size:12px;font-weight:600;color:var(--text-mid);background:var(--surface-card);border:1px solid var(--border);border-radius:6px;padding:4px 12px;cursor:pointer}
 .wn4-btn:hover{color:var(--text);background:var(--surface-sunken)}
-.wn4-btn.pri{background:var(--accent);color:var(--surface-card);border-color:var(--accent);font-weight:700}
-.wn4-btn.pri:hover{background:var(--accent-hover);border-color:var(--accent-hover);color:var(--surface-card)}
 .wn4-strip{display:flex;align-items:center;gap:24px;padding:12px 16px;background:var(--surface-card);border:1px solid var(--border);border-radius:6px;margin-bottom:8px;flex-wrap:wrap}
 .wn4-alert{display:flex;align-items:center;gap:12px;padding:8px 16px 8px 12px;border:1px solid var(--border);border-radius:6px;background:none;color:var(--text);font:inherit;text-align:left;cursor:default}
 .wn4-alert.hot{border-color:var(--danger);cursor:pointer}
@@ -692,8 +690,8 @@ function _wnPaint() {
         <button class="wn4-btn" onclick="_wnPrintWeek()">Εκτύπωση</button>
         <button class="wn4-btn" onclick="_wnExportCSV()">CSV</button>
         <button class="wn4-btn" onclick="renderWeeklyNatl()" title="Ανανέωση">Ανανέωση</button>
-        <button class="btn-scan" onclick="_wnScan()" title="Νέα εθνική παραγγελία από σάρωση εγγράφου — χωρίς έξοδο από το εβδομαδιαίο">${typeof icon==='function'?icon('camera',14):''} Σάρωση</button>
-        <button class="wn4-btn pri" onclick="_wnNewOrder()" title="Νέα εθνική παραγγελία — χωρίς έξοδο από το εβδομαδιαίο">+ Νέα παραγγελία</button>
+        ${OrdersCommon.scanButton('_wnScan()', 'Σάρωση εθνικής', 'Νέα εθνική παραγγελία από σάρωση εγγράφου — χωρίς έξοδο από το εβδομαδιαίο')}
+        ${OrdersCommon.newOrderButton('_wnNewOrder()', '+ Νέα παραγγελία', 'Νέα εθνική παραγγελία — χωρίς έξοδο από το εβδομαδιαίο')}
       </div>
     </div>
     <div id="wn-legend" class="wn4-legend" hidden>
