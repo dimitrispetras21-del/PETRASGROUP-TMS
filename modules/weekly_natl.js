@@ -333,6 +333,13 @@ function _wnNewOrder() {
   openNatlCreate();
   _wnRerenderOnClose();
 }
+// Scan straight from the board (owner 29/9: «δεν υπάρχουν στο weekly» — the
+// boards never had one). Same gate and same repaint as «+ Νέα παραγγελία».
+function _wnScan() {
+  if(_wnBlockReadOnly()) return;
+  openNatlScan();
+  _wnRerenderOnClose();
+}
 function _wnRerenderOnClose() {
   const ov = document.getElementById('modalOverlay');
   if (!ov) return;
@@ -685,6 +692,7 @@ function _wnPaint() {
         <button class="wn4-btn" onclick="_wnPrintWeek()">Εκτύπωση</button>
         <button class="wn4-btn" onclick="_wnExportCSV()">CSV</button>
         <button class="wn4-btn" onclick="renderWeeklyNatl()" title="Ανανέωση">Ανανέωση</button>
+        <button class="btn-scan" onclick="_wnScan()" title="Νέα εθνική παραγγελία από σάρωση εγγράφου — χωρίς έξοδο από το εβδομαδιαίο">${typeof icon==='function'?icon('camera',14):''} Σάρωση</button>
         <button class="wn4-btn pri" onclick="_wnNewOrder()" title="Νέα εθνική παραγγελία — χωρίς έξοδο από το εβδομαδιαίο">+ Νέα παραγγελία</button>
       </div>
     </div>
@@ -2798,6 +2806,7 @@ window._wnToggleStops = _wnToggleStops;
 window._wnOpenRow = _wnOpenRow;
 window._wnSetAppt = _wnSetAppt;
 window._wnNewOrder = _wnNewOrder;
+window._wnScan = _wnScan;
 window._wnNewSn = _wnNewSn;
 window._wnConsumePendingMatch = _wnConsumePendingMatch;
 // Φέτα 5 — τοπικές κινήσεις (inline onclick, module σε IIFE)

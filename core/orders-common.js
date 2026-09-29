@@ -192,6 +192,70 @@ const OrdersCommon = {
       : '<span class="oc-inv" title="Τιμολογήθηκε πριν γίνει υποχρεωτικός ο αριθμός ΤΠΥ">✓ χωρίς αριθμό</span>';
   },
 
+  // ── Assignment (ΑΝΑΘΕΣΗ) — ONE cell for the Κατάλογος and «Χωρίς τιμή»
+  // (owner 29/9: «στο χωρίς τιμή δεν υπάρχει η πινακίδα/ανάθεση»). Plate on
+  // top, driver grey below; a partner by name with its plates below.
+  // A NATIONAL order never carries its own vehicle (0 of 11 have one, measured
+  // 29/9): its assignment lives on its national load — `opts.load` — which the
+  // Weekly National assigns. `opts.missingLoad` = no load at all («εκτός»).
+  assignOf(rec, opts) {
+    const o = opts || {};
+    const f = rec.fields || {};
+    const esc = s => escapeHtml(String(s == null ? '' : s));
+    const two = (a, b, key, text) => ({ key, text,
+      html: `<span class="oc-a1" title="${esc(a)}">${esc(a)}</span><span class="oc-a2" title="${esc(b)}">${esc(b)}</span>` });
+    const vehicle = x => {
+      const pid = (x['Partner'] || [])[0];
+      if (pid) {
+        const pr = (typeof getRefPartners === 'function' ? getRefPartners() : []).find(p => p.id === pid);
+        // A partner missing from the (cached) partner list still IS a partner:
+        // «—» on top would read as «nobody», so the word stands in for the name.
+        const name = pr?.fields?.['Company Name'] || 'συνεργάτης';
+        const plates = String(x['Partner Truck Plates'] || '').trim() || (pr ? 'συνεργάτης' : '');
+        return two(name, plates, 'partner', [name, plates].filter(Boolean).join(' · '));
+      }
+      const tid = (x['Truck'] || [])[0], did = (x['Driver'] || [])[0];
+      if (!tid && !did) return null;
+      const t = tid ? (typeof getRefTrucks === 'function' ? getRefTrucks() : []).find(v => v.id === tid) : null;
+      const d = did ? (typeof getRefDrivers === 'function' ? getRefDrivers() : []).find(v => v.id === did) : null;
+      const plate = t?.fields?.['License Plate'] || '—';
+      const drv = String(d?.fields?.['Full Name'] || '').trim();
+      return two(plate, drv, 'own', [plate, drv].filter(Boolean).join(' · '));
+    };
+    const open = title => ({ key: 'pa', text: 'προς ανάθεση',
+      html: `<span class="oc-adot hollow"></span><span class="oc-adim"${title ? ` title="${esc(title)}"` : ''}>— προς ανάθεση</span>` });
+    if (rec._type === 'natl') {
+      if (f['National Groupage']) return { key: 'grp', text: 'μέσω ομαδοποίησης', html: '<span class="oc-adot hollow"></span>μέσω ομαδοπ.' };
+      if (o.missingLoad) {
+        const send = o.canSend ? ` <button type="button" class="oc-alink" onclick="event.stopPropagation();_natlSendToWeekly('${rec.id}')" title="Δημιουργεί το φορτίο που λείπει — μετά εμφανίζεται στο Εβδομαδιαίο Εθνικών">Στείλε →</button>` : '';
+        return { key: 'out', text: 'εκτός Εβδομαδιαίου', html: `<span class="oc-adot danger"></span><span class="oc-ared">εκτός</span>${send}` };
+      }
+      const v = o.load ? vehicle(o.load.fields || {}) : null;
+      return v || open(o.load ? 'Στο Εβδομαδιαίο Εθνικών, χωρίς όχημα' : '');
+    }
+    const v = vehicle(f);
+    if (v) return v;
+    const st = f['Status'] || 'Pending';
+    if (st === 'Delivered' || st === 'Cancelled' || st === 'Invoiced') return { key: 'none', text: '', html: '<span class="oc-adim">—</span>' };
+    return open('');
+  },
+
+  // National loads of the given national orders: Map orderId → load record
+  // (Source National Order, Truck, Driver, Partner, Partner Truck Plates).
+  // Batches of 90 — one OR() over every candidate blew past the formula limit
+  // (22/9). Shared by orders_natl.js (the «εκτός» check) and OrdersData, so
+  // «is it on the board / who drives it» is asked one way only.
+  async natLoadsFor(natlRecs) {
+    const out = new Map();
+    const cand = (natlRecs || []).filter(r => !(r.fields || {})['National Groupage']);
+    for (const part of OrdersList.chunk(cand, 90)) {
+      const ff = `OR(${part.map(r => `FIND("${r.id}",ARRAYJOIN({Source National Order},","))>0`).join(',')})`;
+      const nls = await atGetAll(TABLES.NAT_LOADS, { filterByFormula: ff, fields: ['Source National Order', 'Truck', 'Driver', 'Partner', 'Partner Truck Plates'] }, false);
+      nls.forEach(n => { const id = getLinkedId(n.fields['Source National Order']); if (id && !out.has(id)) out.set(id, n); });
+    }
+    return out;
+  },
+
   // Tokens only (DESIGN.md #1). Injected once.
   ensureStyles() {
     if (document.getElementById('ocStyles')) return;
@@ -202,7 +266,13 @@ const OrdersCommon = {
 .oc-pcity{overflow:hidden;white-space:nowrap;text-overflow:ellipsis;min-width:0}
 .oc-pdate{flex-shrink:0;font-variant-numeric:tabular-nums}
 .oc-miss,.oc-noinv{color:var(--text-dim)}
-.oc-inv{color:var(--ok, #067647);font-weight:600;white-space:nowrap;font-variant-numeric:tabular-nums}`;
+.oc-inv{color:var(--ok, #067647);font-weight:600;white-space:nowrap;font-variant-numeric:tabular-nums}
+.oc-a1{display:block;font-weight:500;color:var(--text);overflow:hidden;white-space:nowrap;text-overflow:ellipsis;line-height:1.3}
+.oc-a2{display:block;font-size:11.5px;color:var(--text-mid);overflow:hidden;white-space:nowrap;text-overflow:ellipsis;line-height:1.3}
+.oc-adot{display:inline-block;width:6px;height:6px;border-radius:50%;margin-right:6px;vertical-align:middle;background:var(--text-mid)}
+.oc-adot.danger{background:var(--danger)}.oc-adot.hollow{background:transparent;border:1.5px solid var(--text-mid)}
+.oc-adim{color:var(--text-dim)}.oc-ared{color:var(--danger);font-weight:500}
+.oc-alink{border:none;background:none;color:var(--accent);font-weight:600;font-size:12.5px;cursor:pointer;padding:0 4px}`;
     document.head.appendChild(st);
   },
 };
@@ -236,8 +306,14 @@ const OrdersData = {
       // parent carries price and invoicing, the legs never appear here.
       const intlVis = (typeof FEATURES !== 'undefined' && FEATURES.ORDER_SPLIT)
         ? intl.filter(r => !getLinkedId(r.fields['Parent Order'])) : intl;
-      const set = { at: Date.now(), intl: intlVis, natl: natlRes.r, natlFailed: !natlRes.ok, gate: {}, gateFailed: false };
+      const set = { at: Date.now(), intl: intlVis, natl: natlRes.r, natlFailed: !natlRes.ok, gate: {}, gateFailed: false, natLoads: null, natLoadsFailed: false };
       await OrdersData._loadGate(set);
+      // The national orders' loads — who drives them (ΑΝΑΘΕΣΗ, owner 29/9).
+      // null = not loaded: the views then show «—», never a guess.
+      if (set.natl.length) {
+        try { set.natLoads = await OrdersCommon.natLoadsFor(set.natl); }
+        catch (e) { console.error('orders data: national loads', e); set.natLoads = null; set.natLoadsFailed = true; }
+      } else set.natLoads = new Map();
       const clientIds = [...new Set([...set.intl, ...set.natl].map(r => (r.fields['Client'] || [])[0]).filter(Boolean))];
       if (clientIds.length && typeof fhBatchResolveClients === 'function') { try { await fhBatchResolveClients(clientIds); } catch (e) { console.warn('orders data: clients', e); } }
       OrdersData._cache = set;

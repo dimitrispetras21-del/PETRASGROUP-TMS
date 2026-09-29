@@ -922,6 +922,18 @@ function _wiBuildRows(){
 function _wiNewOrder() {
   if(_wiBlockReadOnly()) return;
   openIntlCreate();
+  _wiRerenderOnClose();
+}
+// Scan straight from the board (owner 29/9: «δεν υπάρχουν στο weekly» — the
+// boards never had one). Same gate and same repaint as «+ Νέα παραγγελία»;
+// the form the scan fills is the same openIntlCreate form (and a batch opens
+// one per file), whose save already repaints this page.
+function _wiScan() {
+  if(_wiBlockReadOnly()) return;
+  openIntlScan();
+  _wiRerenderOnClose();
+}
+function _wiRerenderOnClose() {
   const ov = document.getElementById('modalOverlay');
   if (!ov) return;
   const visible = () => ov.style.display !== 'none' && !ov.hidden;
@@ -1043,6 +1055,7 @@ function _wiPaint(){
         <button class="wi2-btn" onclick="renderWeeklyIntl()" title="Ανανέωση">Ανανέωση</button>
         <button class="wi2-btn" id="wi-fs" onclick="_wiFullscreen()" title="Πλήρης οθόνη — μόνο ο πίνακας· Esc για έξοδο">Πλήρης οθόνη</button>
         <button class="wi2-btn pre-btn" onclick="_wiPreorder()" title="Φορτίο που ανακοινώθηκε — λεπτομέρειες αργότερα">Pre-order</button>
+        <button class="btn-scan" onclick="_wiScan()" title="Νέα διεθνής παραγγελία από σάρωση εγγράφου — χωρίς έξοδο από το εβδομαδιαίο">${typeof icon==='function'?icon('camera',14):''} Σάρωση</button>
         <button class="wi2-btn primary" onclick="_wiNewOrder()" title="Νέα διεθνής παραγγελία — χωρίς έξοδο από το εβδομαδιαίο">+ Νέα παραγγελία</button>
       </div>
     </div>
@@ -5616,6 +5629,7 @@ window._wiPrintImpGroup = _wiPrintImpGroup;
 window._wiToggleDetails = _wiToggleDetails;
 // Νέα παραγγελία από το εβδομαδιαίο — inline onclick, module σε IIFE
 window._wiNewOrder = _wiNewOrder;
+window._wiScan = _wiScan;
 window._wiPreorder = _wiPreorder;
 window._wiExportCSV = _wiExportCSV;
 window._wiApplyFilter = _wiApplyFilter;

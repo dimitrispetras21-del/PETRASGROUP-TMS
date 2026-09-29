@@ -19,7 +19,7 @@ const OrdersCatalog = (() => {
 
   const ROW_H = 46, BUFFER = 12;
   const S = {
-    period: '60', rows: [], filtered: [], noLoad: new Set(), legParents: null, filters: {},
+    period: '60', rows: [], filtered: [], noLoad: new Set(), loads: new Map(), legParents: null, filters: {},
     sortCol: 'load', sortDir: 2, selected: null, ctx: null,
     vs: { sortedRecs: [], lastStart: -1, lastEnd: -1, rafId: null },
   };
@@ -44,35 +44,13 @@ const OrdersCatalog = (() => {
 
   function _status(r) { return r.f['Status'] || (r.type === 'intl' ? 'Pending' : ''); }
 
-  // Assignment, in the words of each type (the same facts the two lists show):
-  //   intl → partner company, or plate + driver; «προς ανάθεση» when open;
-  //   natl → «εκτός» + «Στείλε →» when the national load is missing (the one
-  //          real gap, owner 22/9), «μέσω ομαδοπ.» for groupage, else «στο
-  //          Εβδομαδιαίο» (a NAT_LOAD exists — plates live on the trip).
+  // ΑΝΑΘΕΣΗ: the shared cell (OrdersCommon.assignOf) — the same one «Χωρίς
+  // τιμή» shows (owner 29/9). National orders take their vehicle from their
+  // national load; a missing load is «εκτός» with the «Στείλε →» repair.
   function _assign(r) {
-    const f = r.f;
-    if (r.type === 'natl') {
-      if (S.noLoad.has(r.id)) return { key: 'out', html: `<span class="oc-dot danger"></span><span class="oc-red">εκτός</span> <button type="button" class="oc-link" onclick="event.stopPropagation();_natlSendToWeekly('${r.id}')" title="Δημιουργεί το φορτίο που λείπει — μετά εμφανίζεται στο Εβδομαδιαίο Εθνικών">Στείλε →</button>`, text: 'εκτός Εβδομαδιαίου' };
-      if (f['National Groupage']) return { key: 'grp', html: '<span class="oc-dot hollow"></span>μέσω ομαδοπ.', text: 'μέσω ομαδοποίησης' };
-      return { key: 'in', html: '<span class="oc-dot ok"></span>στο Εβδομαδιαίο', text: 'στο Εβδομαδιαίο' };
-    }
-    const pid = (f['Partner'] || [])[0];
-    if (pid) {
-      const pr = (typeof getRefPartners === 'function' ? getRefPartners() : []).find(x => x.id === pid);
-      const name = pr?.fields?.['Company Name'] || '—';
-      return { key: 'partner', html: `<span class="oc-l1" title="${esc(name)}">${esc(name)}</span><span class="oc-l2">συνεργάτης</span>`, text: name + ' · συνεργάτης' };
-    }
-    const tid = (f['Truck'] || [])[0], did = (f['Driver'] || [])[0];
-    if (!tid && !did) {
-      const st = _status(r);
-      if (st === 'Delivered' || st === 'Cancelled' || st === 'Invoiced') return { key: 'none', html: '<span class="oc-dim">—</span>', text: '' };
-      return { key: 'pa', html: '<span class="oc-dot hollow"></span><span class="oc-dim">προς ανάθεση</span>', text: 'προς ανάθεση' };
-    }
-    const t = tid ? (typeof getRefTrucks === 'function' ? getRefTrucks() : []).find(x => x.id === tid) : null;
-    const d = did ? (typeof getRefDrivers === 'function' ? getRefDrivers() : []).find(x => x.id === did) : null;
-    const plate = t?.fields?.['License Plate'] || '—';
-    const drv = (d?.fields?.['Full Name'] || '').trim();
-    return { key: 'own', html: `<span class="oc-l1">${esc(plate)}</span><span class="oc-l2" title="${esc(drv)}">${esc(drv)}</span>`, text: [plate, drv].filter(Boolean).join(' · ') };
+    const canSend = typeof can === 'function' && can('orders') === 'full';
+    return OrdersCommon.assignOf(r.rec, r.type === 'natl'
+      ? { load: S.loads.get(r.id) || null, missingLoad: S.noLoad.has(r.id), canSend } : {});
   }
 
   function _row(rec, type) {
@@ -260,17 +238,24 @@ const OrdersCatalog = (() => {
     const _i = n => (typeof icon === 'function' ? icon(n, 14) : '');
     const menu = canEdit ? `
       <div class="oc-new">
-        <button type="button" class="btn btn-primary btn-sm" onclick="OrdersCatalog.toggleNew(event)">+ Νέα παραγγελία ▾</button>
+        <button type="button" class="btn-new-order" onclick="OrdersCatalog.toggleNew(event)">+ Νέα παραγγελία ▾</button>
         <div class="oc-menu hidden" id="ocNewMenu">
           <button type="button" onclick="OrdersCatalog.newOrder('intl')">Διεθνής</button>
           <button type="button" onclick="OrdersCatalog.newOrder('natl')">Εθνική</button>
           <button type="button" onclick="OrdersCatalog.newOrder('pre')">Pre-order</button>
-          <button type="button" onclick="OrdersCatalog.newOrder('scan-intl')">Σάρωση διεθνούς</button>
-          <button type="button" onclick="OrdersCatalog.newOrder('scan-natl')">Σάρωση εθνικής</button>
         </div>
       </div>` : '';
+    // Scan is a visible button again, next to «Νέα παραγγελία» (owner 29/9:
+    // «τα κουμπιά scan δεν υπάρχουν» — hidden in the ▾ menu nobody found it).
+    // Same audience as on the old two pages: every role that sees the list.
+    // One button per type in its own scope; both, side by side, on «Όλες».
+    const scope = S.ctx ? S.ctx.scope : 'all';
+    const scanBtn = (fn, label) => `<button type="button" class="btn-scan" onclick="${fn}()">${_i('camera')} ${label}</button>`;
+    const scans = scope === 'intl' ? scanBtn('openIntlScan', 'Σάρωση')
+      : scope === 'natl' ? scanBtn('openNatlScan', 'Σάρωση')
+      : scanBtn('openIntlScan', 'Σάρωση διεθνούς') + scanBtn('openNatlScan', 'Σάρωση εθνικής');
     return `<button type="button" class="btn btn-ghost btn-sm" onclick="OrdersCatalog.csv()">${_i('download')} CSV</button>
-      <button type="button" class="btn btn-ghost btn-sm" onclick="OrdersCatalog.print()">${_i('file_text')} Εκτύπωση</button>${menu}`;
+      <button type="button" class="btn btn-ghost btn-sm" onclick="OrdersCatalog.print()">${_i('file_text')} Εκτύπωση</button>${scans}${menu}`;
   }
 
   // Esc closes the open card (both cards' × say «Κλείσιμο (Esc)»). One
@@ -305,6 +290,7 @@ const OrdersCatalog = (() => {
     if (rn.status === 'rejected' && typeof logError === 'function') logError(rn.reason, 'orders catalog: natl load');
     if (ri.status === 'rejected' && rn.status === 'rejected') throw ri.reason;
     S.noLoad = natl.noLoad || new Set();
+    S.loads = natl.loads || new Map();
     S.legParents = intl.legParents || null;
     // Dashboard KPI click («Νέα παραγγελία»/«χωρίς ανάθεση» tiles) hands over
     // a one-shot filter, as it did to the old international list.
@@ -364,8 +350,6 @@ const OrdersCatalog = (() => {
     if (kind === 'intl') return openIntlCreate();
     if (kind === 'natl') return openNatlCreate();
     if (kind === 'pre') return openPreorder();
-    if (kind === 'scan-intl') return openIntlScan();
-    if (kind === 'scan-natl') return openNatlScan();
   }
 
   // fhClientName returns HTML-escaped text; CSV/print/search need the plain name.

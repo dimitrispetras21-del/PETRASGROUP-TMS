@@ -44,21 +44,21 @@ async function _natlLoad() {
     // with no sign anywhere. The list now asks which non-groupage orders have no
     // live load and says so on the row, with the repair one click away
     // (_natlSendToWeekly runs the same _syncNationalLoad the form runs).
+    // The loads come from OrdersCommon.natLoadsFor (one query, shared with the
+    // «Χωρίς τιμή» view): they answer both «is it on the board» (noLoad) and
+    // «who drives it» (the ΑΝΑΘΕΣΗ cell — owner 29/9).
     NATL_ORDERS.noLoad = new Set();
+    NATL_ORDERS.loads = new Map();
+    NATL_ORDERS.loadsFailed = false;
     try {
-      const cand = records.filter(r => !r.fields['National Groupage']);
-      if (cand.length) {
-        // Batches of 90 like the international ORDER_STOPS fetch: one OR()
-        // over every candidate of «όλες» blew past the formula limit (22/9).
-        const have = new Set();
-        for (const part of OrdersList.chunk(cand, 90)) {
-          const ff = `OR(${part.map(r => `FIND("${r.id}",ARRAYJOIN({Source National Order},","))>0`).join(',')})`;
-          const nls = await atGetAll(TABLES.NAT_LOADS, { filterByFormula: ff, fields: ['Source National Order'] }, false);
-          nls.forEach(n => { const id = getLinkedId(n.fields['Source National Order']); if (id) have.add(id); });
-        }
-        cand.forEach(r => { if (!have.has(r.id)) NATL_ORDERS.noLoad.add(r.id); });
-      }
-    } catch(e) { if (typeof logError === 'function') logError(e, 'orders_natl: load presence check'); }
+      NATL_ORDERS.loads = await OrdersCommon.natLoadsFor(records);
+      records.forEach(r => { if (!r.fields['National Groupage'] && !NATL_ORDERS.loads.has(r.id)) NATL_ORDERS.noLoad.add(r.id); });
+    } catch(e) {
+      // Unknown ≠ «εκτός»: without the answer no row is marked missing, and
+      // the list SAYS the check did not run (warn below).
+      NATL_ORDERS.loadsFailed = true;
+      if (typeof logError === 'function') logError(e, 'orders_natl: load presence check');
+    }
 
   return NATL_ORDERS.data;
 }
@@ -78,7 +78,8 @@ async function loadOrdersNatlData(period) {
   if (period) _natlPeriod = period;
   await _natlLoad();
   _onEnsureStyles();
-  return { records: NATL_ORDERS.data, noLoad: NATL_ORDERS.noLoad || new Set(), warns: [] };
+  return { records: NATL_ORDERS.data, noLoad: NATL_ORDERS.noLoad || new Set(), loads: NATL_ORDERS.loads || new Map(),
+    warns: NATL_ORDERS.loadsFailed ? ['Τα εθνικά φορτία δεν φορτώθηκαν — η στήλη ΑΝΑΘΕΣΗ των εθνικών δεν δείχνει όχημα ούτε «εκτός». Δεν σημαίνει ότι δεν υπάρχουν. Ξαναδοκίμασε με Ανανέωση.'] : [] };
 }
 
 // Kept for its callers (form submit, groupage submit, delete, scan, retry):

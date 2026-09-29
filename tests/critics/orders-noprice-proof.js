@@ -38,6 +38,7 @@ const shot = name => path.join(SHOT_DIR, 'noprice-' + name + '.png');
 const T = {
   ORDERS: 'tblgHlNmLBH3JTdIM', NAT_ORDERS: 'tblGHCCsTMqAy4KR2', CLIENTS: 'tblFWKAQVUzAM8mCE',
   TRUCKS: 'tblEAPExIAjiA3asD', PARTNERS: 'tblLHl5m8bqONfhWv', LOCATIONS: 'tblxu8DRfTQOFRCzS',
+  NAT_LOADS: 'tblVW42cZnfC47gTb', DRIVERS: 'tbl7UGmYhc2Y82pPs',
 };
 const ymdLocal = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 const daysAgo = n => { const d = new Date(); d.setDate(d.getDate() - n); return ymdLocal(d) + 'T10:00:00.000Z'; };
@@ -72,10 +73,14 @@ const LOCATIONS = [
 ];
 const TRUCKS = [{ id: 'recT1', fields: { 'License Plate': 'ΚΗΞ 5102', Active: true } }];
 const PARTNERS = [{ id: 'recP1', fields: { 'Company Name': 'Transfrio Logistics', Country: 'Greece' } }];
+const DRIVERS = [{ id: 'recD1', fields: { 'Full Name': 'Γιώργος Παπαδόπουλος', Active: true } }];
+// A national order's vehicle lives on its national load, not on the order:
+// recN1 → load on own truck recT1 + driver recD1; recN2 has NO load (→ «εκτός»).
+const NAT_LOADS = [{ id: 'recNL1', fields: { 'Source National Order': ['recN1'], Truck: ['recT1'], Driver: ['recD1'] } }];
 
 const intl = (id, f) => ({ id, fields: Object.assign({ Status: 'Delivered', Direction: 'Export' }, f) });
 const ORDERS = [
-  intl('recX1', { 'Order No': 1209, Reference: 'BG-0852', Client: ['recC1'], 'Loading Location 1': ['recL1'], 'Unloading Location 1': ['recL2'], 'Loading DateTime': daysAgo(18), 'Delivery DateTime': daysAgo(17), 'Total Pallets': 20, Goods: 'Τυριά', 'Temperature °C': 4, Truck: ['recT1'] }),
+  intl('recX1', { 'Order No': 1209, Reference: 'BG-0852', Client: ['recC1'], 'Loading Location 1': ['recL1'], 'Unloading Location 1': ['recL2'], 'Loading DateTime': daysAgo(18), 'Delivery DateTime': daysAgo(17), 'Total Pallets': 20, Goods: 'Τυριά', 'Temperature °C': 4, Truck: ['recT1'], Driver: ['recD1'] }),
   intl('recX0', { 'Order No': 1220, Reference: 'BG-0811', Client: ['recC1'], 'Loading Location 1': ['recL1'], 'Unloading Location 1': ['recL2'], 'Loading DateTime': daysAgo(14), 'Delivery DateTime': daysAgo(13), Price: 950, Invoiced: true, 'Invoice Number': 'ΤΠΥ-900', 'Total Pallets': 18 }),
   intl('recX2', { 'Order No': 1225, Reference: '6100118250', Client: ['recC2'], 'Loading Location 1': ['recL3'], 'Unloading Location 1': ['recL4'], 'Loading DateTime': daysAgo(9), 'Delivery DateTime': daysAgo(7), 'Total Pallets': 33, Goods: 'Ροδάκινα', 'Temperature °C': 2, Partner: ['recP1'] }),
   intl('recX3', { 'Order No': 1211, Reference: '6100117001', Client: ['recC2'], 'Loading Location 1': ['recL3'], 'Unloading Location 1': ['recL4'], 'Loading DateTime': daysAgo(24), 'Delivery DateTime': daysAgo(22), Price: 3300, 'Total Pallets': 33 }),
@@ -122,6 +127,9 @@ function installMocks(page, S) {
   page.route(`**/${T.LOCATIONS}**`, route => json(route, { records: LOCATIONS }));
   page.route(`**/${T.TRUCKS}**`, route => json(route, { records: TRUCKS }));
   page.route(`**/${T.PARTNERS}**`, route => json(route, { records: PARTNERS }));
+  page.route(`**/${T.DRIVERS}**`, route => json(route, { records: DRIVERS }));
+  page.route(`**/${T.NAT_LOADS}**`, route => { S.natLoadCalls = (S.natLoadCalls || 0) + 1;
+    return S.natLoadsFail ? json(route, { error: 'Failed to load' }, 500) : json(route, { records: NAT_LOADS }); });
   page.route('**/audit?**', route => {
     const u = new URL(route.request().url());
     S.auditCalls.push(u.search);
@@ -206,7 +214,21 @@ async function runOwner(browser) {
   assert(/950,00/.test(txt[0]) && /#1220 · \d+\/\d+/.test(txt[0]), 'last-price hint on #1209 = 950,00 · #1220');
   assert(/3\.300,00/.test(txt[1]) && /#1211/.test(txt[1]), 'last-price hint on #1225 = 3.300,00 · #1211');
   assert(/— πρώτη φορά/.test(txt[2]), 'national with no history → «— πρώτη φορά»');
-  assert(/ΚΗΞ 5102/.test(txt[0]) && /Transfrio Logistics/.test(txt[1]), 'vehicle line: truck plate / partner');
+  // ΑΝΑΘΕΣΗ = its own column, the Κατάλογος cell (owner 29/9): plate on top,
+  // driver grey below; partner by name; the dates cell carries no plate.
+  const heads = await page.locator('.np-card').first().locator('thead th').allInnerTexts();
+  const ai = heads.findIndex(h => /ΑΝΑΘΕΣΗ/.test(h)), di = heads.findIndex(h => /ΗΜΕΡΟΜΗΝΙΕΣ/.test(h));
+  assert(ai === di + 1, 'ΑΝΑΘΕΣΗ column right after ΗΜΕΡΟΜΗΝΙΕΣ: ' + JSON.stringify(heads));
+  const cell = async (id, i) => (await page.locator(`tr.np-row:has(input[data-id="${id}"]) > td`).nth(i).innerText()).trim();
+  const a1 = await cell('recX1', ai), a2 = await cell('recX2', ai), aN = await cell('recN1', ai);
+  assert(/^ΚΗΞ 5102\s+Γιώργος Παπαδόπουλος$/.test(a1), 'intl own truck: plate + driver below: ' + JSON.stringify(a1));
+  assert(/^Transfrio Logistics/.test(a2), 'intl partner: partner name: ' + JSON.stringify(a2));
+  assert(/^ΚΗΞ 5102\s+Γιώργος Παπαδόπουλος$/.test(aN), 'national: vehicle from its NATIONAL LOAD: ' + JSON.stringify(aN));
+  const d1 = await cell('recX1', di);
+  assert(!/ΚΗΞ|Transfrio/.test(d1), 'dates cell has no plate any more: ' + JSON.stringify(d1));
+  assert(await page.locator(`tr.np-row:has(input[data-id="recX1"]) > td`).nth(ai).locator('.oc-a2').count() === 1, 'driver line uses the shared grey class (oc-a2)');
+  assert(/εκτός/.test((await page.locator('#npFilled tr', { hasText: '420,00' }).innerText())), 'filled national with no load → «εκτός»');
+  assert(S.natLoadCalls >= 1, 'national loads were read (NAT_LOADS)');
   assert(/Plovdiv BG/.test(txt[0]) && /Veroia GR/.test(txt[0]), 'places: name + «City CC»');
   assert(await kpiVal(page, 'Εκκρεμούν') === '3', 'KPI Εκκρεμούν 3');
   const oldest = await kpiVal(page, 'Παλαιότερη');
@@ -286,6 +308,17 @@ async function runOwner(browser) {
   const [dl] = await Promise.all([page.waitForEvent('download', { timeout: 5000 }), page.click('#ohActions button:has-text("CSV")')]);
   const csv = fs.readFileSync(await dl.path(), 'utf8');
   assert(/Αρ\.","Τύπος","Αναφορά","Πελάτης","ΑΦΜ/.test(csv) && csv.trim().split('\n').length === 2 && /Nordfrisch GmbH/.test(csv), 'CSV: header + 1 row (Nordfrisch)');
+  assert(/<th>ΑΝΑΘΕΣΗ<\/th>/.test(html) && /<td>Transfrio Logistics[^<]*<\/td>/.test(html), 'A4: ΑΝΑΘΕΣΗ column with the partner');
+  assert(/"Ανάθεση"/.test(csv) && /"Transfrio Logistics[^"]*"/.test(csv), 'CSV: «Ανάθεση» column with the partner');
+
+  // ── national loads fail: the ΑΝΑΘΕΣΗ of nationals is UNKNOWN, and says so ──
+  S.natLoadsFail = true;
+  await page.evaluate(() => { OrdersData.invalidate(); OrdersHub.refresh(); });
+  await page.waitForFunction(() => /Τα εθνικά φορτία δεν φορτώθηκαν/.test(document.body.innerText), null, { timeout: 25000 });
+  const nfTxt = await page.locator('#npFilled tr', { hasText: '420,00' }).innerText();
+  assert(!/εκτός|προς ανάθεση/.test(nfTxt), 'loads failed: national shows «—», never «εκτός»/«προς ανάθεση»: ' + JSON.stringify(nfTxt.replace(/\s+/g, ' ')));
+  S.natLoadsFail = false;
+  page._console = page._console.filter(m => !/500|national loads|Failed to load/i.test(m));
 
   // ── /audit failure: grey note, never silence ──
   S.auditFail = true;

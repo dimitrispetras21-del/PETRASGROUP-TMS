@@ -272,21 +272,16 @@ const OrdersNoPrice = (() => {
     const t = f['Temperature °C'];
     return [f['Goods'] || '', t !== undefined && t !== null && t !== '' ? t + ' °C' : ''].filter(Boolean).join(' ');
   }
-  // Grey line under the dates: own truck's plate, else the partner.
-  function _vehicle(r) {
-    const f = r.fields || {};
-    const tid = (Array.isArray(f['Truck']) && f['Truck'][0]) || '';
-    if (tid) {
-      const t = getRefTrucks().find(x => x.id === tid);
-      if (t && t.fields['License Plate']) return t.fields['License Plate'];
-    }
-    const pid = (Array.isArray(f['Partner']) && f['Partner'][0]) || '';
-    if (pid) {
-      const p = getRefPartners().find(x => x.id === pid);
-      const plates = String(f['Partner Truck Plates'] || '').trim();
-      return [(p && p.fields['Company Name']) || '', plates].filter(Boolean).join(' · ');
-    }
-    return '';
+  // ΑΝΑΘΕΣΗ: the SAME cell as the Κατάλογος (OrdersCommon.assignOf — owner
+  // 29/9: «στο χωρίς τιμή δεν υπάρχει η πινακίδα/ανάθεση»; it used to be a
+  // small grey line under the dates). A national order's vehicle lives on its
+  // national load (V.set.natLoads). When those loads did not load, a national
+  // row says «—» (unknown), never «προς ανάθεση» or «εκτός».
+  function _assign(r) {
+    if (r._type !== 'natl') return OrdersCommon.assignOf(r);
+    const loads = V && V.set && V.set.natLoads;
+    if (!loads) return { key: 'unknown', text: '', html: '<span class="oc-adim">—</span>' };
+    return OrdersCommon.assignOf(r, { load: loads.get(r.id) || null, missingLoad: !r.fields['National Groupage'] && !loads.has(r.id) });
   }
   const _days = r => OrdersCommon.daysSinceDelivery(r);
   const _overdue = r => { const d = _days(r); return d !== null && d > OVERDUE_DAYS; };
@@ -335,6 +330,7 @@ const OrdersNoPrice = (() => {
     const oldestDays = oldest ? _days(oldest) : null;
 
     const banners = [];
+    if (V.set.natLoadsFailed) banners.push('Τα εθνικά φορτία δεν φορτώθηκαν — η ΑΝΑΘΕΣΗ των εθνικών δείχνει «—». Δεν σημαίνει ότι είναι χωρίς ανάθεση· ξαναδοκίμασε.');
     if (V.set.natlFailed) banners.push('Οι εθνικές παραγγελίες δεν φορτώθηκαν — η λίστα δείχνει μόνο διεθνείς. Δεν σημαίνει ότι οι εθνικές έχουν τιμή· ξαναδοκίμασε.');
     const notes = [];
     if (V.clientFailed) notes.push('τα στοιχεία πελατών (ΑΦΜ, όροι) δεν φορτώθηκαν');
@@ -352,10 +348,10 @@ const OrdersNoPrice = (() => {
       <div class="np-knote">${owner ? 'Η Ειρήνη βλέπει την ίδια λίστα χωρίς πεδία τιμής και την τυπώνει για εσένα' : 'Ο owner συμπληρώνει τις τιμές· τύπωσε τη λίστα για εκείνον'}</div>
     </div>`;
 
-    const cols = ['np-c-no', 'np-c-ref', 'np-c-pl', 'np-c-pl', 'np-c-dt', 'np-c-pal', 'np-c-days', 'np-c-last'].concat(owner ? ['np-c-in'] : []).concat(['np-c-open']);
+    const cols = ['np-c-no', 'np-c-ref', 'np-c-pl', 'np-c-pl', 'np-c-dt', 'np-c-as', 'np-c-pal', 'np-c-days', 'np-c-last'].concat(owner ? ['np-c-in'] : []).concat(['np-c-open']);
     const colgroup = '<colgroup>' + cols.map(c => `<col class="${c}">`).join('') + '</colgroup>';
     const ncol = cols.length;
-    const head = `<tr><th>ΑΡ.</th><th>ΑΝΑΦΟΡΑ</th><th>ΦΟΡΤΩΣΗ</th><th>ΠΑΡΑΔΟΣΗ</th><th>ΗΜΕΡΟΜΗΝΙΕΣ</th><th>ΠΑΛ. · ΕΙΔΟΣ</th><th class="np-r">ΜΕΡΕΣ</th><th class="np-r">ΤΕΛΕΥΤ. ΤΙΜΗ</th>${owner ? '<th class="np-in-h">ΤΙΜΗ €</th>' : ''}<th></th></tr>`;
+    const head = `<tr><th>ΑΡ.</th><th>ΑΝΑΦΟΡΑ</th><th>ΦΟΡΤΩΣΗ</th><th>ΠΑΡΑΔΟΣΗ</th><th>ΗΜΕΡΟΜΗΝΙΕΣ</th><th>ΑΝΑΘΕΣΗ</th><th>ΠΑΛ. · ΕΙΔΟΣ</th><th class="np-r">ΜΕΡΕΣ</th><th class="np-r">ΤΕΛΕΥΤ. ΤΙΜΗ</th>${owner ? '<th class="np-in-h">ΤΙΜΗ €</th>' : ''}<th></th></tr>`;
 
     const rowHtml = r => {
       const f = r.fields;
@@ -376,7 +372,8 @@ const OrdersNoPrice = (() => {
         <td>${f['Reference'] ? `<span class="np-ref">${_esc(f['Reference'])}</span>` : '<span class="np-dim">— χωρίς</span>'}</td>
         <td>${OrdersCommon.placeCell(OrdersCommon.placeOf(r, 'load'), { noDate: true })}</td>
         <td>${OrdersCommon.placeCell(OrdersCommon.placeOf(r, 'del'), { noDate: true })}</td>
-        <td><span class="np-main np-num">${_dates(r)}</span><span class="np-sub" title="${_esc(_vehicle(r))}">${_esc(_vehicle(r)) || '&nbsp;'}</span></td>
+        <td><span class="np-main np-num">${_dates(r)}</span></td>
+        <td>${_assign(r).html}</td>
         <td><span class="np-main np-num">${_esc(_pallets(r)) || '—'}</span><span class="np-sub" title="${_esc(_goods(r))}">${_esc(_goods(r)) || '&nbsp;'}</span></td>
         <td class="np-r np-num${_overdue(r) ? ' np-red' : ''}">${d === null ? '—' : d}</td>
         <td class="np-r np-num">${hintHtml}</td>
@@ -410,6 +407,7 @@ const OrdersNoPrice = (() => {
         <td>${OrdersCommon.placeCell(OrdersCommon.placeOf(rec, 'load'), { noDate: true })}</td>
         <td>${OrdersCommon.placeCell(OrdersCommon.placeOf(rec, 'del'), { noDate: true })}</td>
         <td><span class="np-main np-num">${_dates(rec)}</span><span class="np-sub">${_esc(_rawClientName(_clientId(rec)))}</span></td>
+        <td>${_assign(rec).html}</td>
         <td><span class="np-main np-num">${_esc(_pallets(rec)) || '—'}</span></td>
         <td colspan="${owner ? 3 : 2}" class="np-fill"><span class="np-main np-num"><span class="np-dot"></span>${OrdersCommon.eurSym(x.price)} · ${_esc(_actorShort(x.actor))} ${_hhmm(x.at)}</span><span class="np-sub">${_esc(next)}</span></td>
         <td class="np-r"><button type="button" class="np-open" onclick="OrdersHub.openOrder('${rec._type}','${_esc(rec.id)}')">Άνοιγμα →</button></td>
@@ -525,10 +523,11 @@ const OrdersNoPrice = (() => {
         <td>${placeA4(OrdersCommon.placeOf(r, 'load'))}</td>
         <td>${placeA4(OrdersCommon.placeOf(r, 'del'))}</td>
         <td><b class="${late ? 'red' : ''}">${_dates(r)}${d === null ? '' : ' · ' + d + ' ημ.'}</b><span>${esc([pal ? pal + ' παλ.' : '', f['Goods'] || ''].filter(Boolean).join(' · '))}</span></td>
+        <td>${esc(_assign(r).text || '—')}</td>
         <td class="r">${hint ? OrdersCommon.eur(hint.price) : '—'}</td>
         <td><div class="box"></div></td>
       </tr>
-      <tr class="noterow"><td></td><td colspan="6"><span class="nl">Σημείωση</span><span class="line"></span></td></tr>`;
+      <tr class="noterow"><td></td><td colspan="7"><span class="nl">Σημείωση</span><span class="line"></span></td></tr>`;
     }).join('');
     const _cs = getComputedStyle(document.documentElement);
     // The popup loads no stylesheet: copy the live token values (orders_intl.js
@@ -572,9 +571,9 @@ tr{page-break-inside:avoid}
 <div class="sub">Για συμπλήρωση από τον owner · επιστροφή στο λογιστήριο για καταχώριση</div>
 <div class="sum">${recs.length} ${recs.length === 1 ? 'παραγγελία' : 'παραγγελίες'} · ${nIntl} ${nIntl === 1 ? 'διεθνής' : 'διεθνείς'} · ${nNatl} ${nNatl === 1 ? 'εθνική' : 'εθνικές'} · σειρά: παλαιότερη πρώτα · ★ πάνω από ${OVERDUE_DAYS} ημέρες</div>
 <table>
-<colgroup><col style="width:9%"><col style="width:23%"><col style="width:15%"><col style="width:15%"><col style="width:18%"><col style="width:10%"><col style="width:10%"></colgroup>
-<thead><tr><th>ΑΡ.</th><th>ΠΕΛΑΤΗΣ · ΑΦΜ</th><th>ΦΟΡΤΩΣΗ</th><th>ΠΑΡΑΔΟΣΗ</th><th>ΗΜ/ΝΙΕΣ · ΠΑΛ.</th><th style="text-align:right;white-space:nowrap">ΤΕΛ. ΤΙΜΗ</th><th>ΤΙΜΗ €</th></tr></thead>
-<tbody>${rows || '<tr><td colspan="7" style="padding:14px 6px;color:var(--text-mid)">Καμία παραγγελία χωρίς τιμή.</td></tr>'}</tbody>
+<colgroup><col style="width:8%"><col style="width:20%"><col style="width:14%"><col style="width:14%"><col style="width:15%"><col style="width:12%"><col style="width:8%"><col style="width:9%"></colgroup>
+<thead><tr><th>ΑΡ.</th><th>ΠΕΛΑΤΗΣ · ΑΦΜ</th><th>ΦΟΡΤΩΣΗ</th><th>ΠΑΡΑΔΟΣΗ</th><th>ΗΜ/ΝΙΕΣ · ΠΑΛ.</th><th>ΑΝΑΘΕΣΗ</th><th style="text-align:right;white-space:nowrap">ΤΕΛ. ΤΙΜΗ</th><th>ΤΙΜΗ €</th></tr></thead>
+ <tbody>${rows || '<tr><td colspan="8" style="padding:14px 6px;color:var(--text-mid)">Καμία παραγγελία χωρίς τιμή.</td></tr>'}</tbody>
 </table>
 <div class="sign">
 <span>Συμπλήρωσε</span><div class="ln"></div><span>Ημερομηνία</span><div class="ln"></div>
@@ -589,7 +588,7 @@ tr{page-break-inside:avoid}
 
   function csv() {
     if (!V) return;
-    const rows = [['Αρ.', 'Τύπος', 'Αναφορά', 'Πελάτης', 'ΑΦΜ', 'Όροι (ημ.)', 'Φόρτωση', 'Παράδοση', 'Ημ. φόρτωσης', 'Ημ. παράδοσης', 'Όχημα', 'Παλέτες', 'Είδος', 'Ημέρες από παράδοση', 'Τελ. τιμή', 'Τελ. τιμή από', 'Τιμή €']];
+    const rows = [['Αρ.', 'Τύπος', 'Αναφορά', 'Πελάτης', 'ΑΦΜ', 'Όροι (ημ.)', 'Φόρτωση', 'Παράδοση', 'Ημ. φόρτωσης', 'Ημ. παράδοσης', 'Ανάθεση', 'Παλέτες', 'Είδος', 'Ημέρες από παράδοση', 'Τελ. τιμή', 'Τελ. τιμή από', 'Τιμή €']];
     for (const r of _ordered()) {
       const f = r.fields, meta = _clientMeta(_clientId(r)), hint = _hint(r);
       const pl = w => { const p = OrdersCommon.placeOf(r, w); return [p.name, p.sub].filter(Boolean).join(' · '); };
@@ -597,7 +596,7 @@ tr{page-break-inside:avoid}
       rows.push([
         OrdersCommon.numLabel(r), r._type === 'natl' ? 'Εθνική' : 'Διεθνής', f['Reference'] || '', _rawClientName(_clientId(r)),
         meta.vat, meta.terms === null ? '' : meta.terms, pl('load'), pl('del'),
-        OrdersCommon.ymd(f['Loading DateTime']), OrdersCommon.ymd(f['Delivery DateTime']), _vehicle(r),
+        OrdersCommon.ymd(f['Loading DateTime']), OrdersCommon.ymd(f['Delivery DateTime']), _assign(r).text,
         _pallets(r), _goods(r), d === null ? '' : d,
         hint ? OrdersCommon.eur(hint.price) : '', hint ? [OrdersCommon.numLabel(hint.rec), OrdersCommon.dm(hint.date)].join(' · ') : '',
         '',
@@ -659,7 +658,7 @@ tr{page-break-inside:avoid}
 .np-note{font-size:12px;color:var(--text-mid);margin-bottom:var(--space-2)}
 .np-foot{font-size:11.5px;color:var(--text-dim);margin-top:var(--space-2)}
 .np-t col.np-c-no{width:70px}.np-t col.np-c-ref{width:110px}.np-t col.np-c-pl{width:auto}
-.np-t col.np-c-dt{width:150px}.np-t col.np-c-pal{width:130px}.np-t col.np-c-days{width:64px}
+.np-t col.np-c-dt{width:120px}.np-t col.np-c-as{width:150px}.np-t col.np-c-pal{width:130px}.np-t col.np-c-days{width:64px}
 .np-t col.np-c-last{width:110px}.np-t col.np-c-in{width:130px}.np-t col.np-c-open{width:90px}`;
     document.head.appendChild(st);
   }
