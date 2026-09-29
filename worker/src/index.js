@@ -2305,7 +2305,13 @@ async function handleFacadeGet(request, tableId, origin, env, ctx) {
       path: url.pathname
     }, unknownSort);
   }
-  if (orderParts.length) params.set("order", orderParts.join(","));
+  // Deterministic paging (29/9/2026): limit/offset over an unordered (or
+  // tie-ordered) relation lets Postgres return a different row order per page,
+  // so rows were DUPLICATED across pages and others silently MISSING (measured:
+  // 228 rows over 3 pages -> 23 duplicates, 23 missing). id is unique on every
+  // facade relation, so it is always the last tiebreaker.
+  orderParts.push("id.asc");
+  params.set("order", orderParts.join(","));
   const pageSize = Math.min(parseInt(q.get("pageSize"), 10) || MAX_PAGE, MAX_PAGE);
   const startOffset = parseInt(q.get("offset"), 10) || 0;
   params.set("limit", String(pageSize + 1));
