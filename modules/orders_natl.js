@@ -40,10 +40,17 @@ async function _natlLoad() {
     // After the reference preload: it holds every client name, so the
     // batches then fetch only what it lacks (none, normally).
     const _refP = typeof preloadReferenceData === 'function' ? preloadReferenceData().catch(e => console.warn('orders_natl: ref data', e)) : Promise.resolve();
-    NATL_ORDERS.namesReady = _refP.then(() => Promise.all([
-      _loadLocations().catch(e => console.warn('orders_natl: locations', e)),
-      _batchResolveClients(_allClientIds).catch(e => console.warn('orders_natl: client names', e)),
-    ])).then(() => []);
+    // Resolves to the warnings to show. A failed locations read used to fail
+    // the whole national list (banner); now the list is up, so it must be SAID
+    // here — the card prints _fhLocationsMap labels (reviewer 29/9). Client
+    // batches never reject (safeFetch logs them; unknown ids stay as before).
+    NATL_ORDERS.namesReady = _refP.then(() => {
+      const warns = [];
+      return Promise.all([
+        _loadLocations().catch(e => { console.warn('orders_natl: locations', e); warns.push('Οι τοποθεσίες δεν φορτώθηκαν — οι στάσεις στην καρτέλα των εθνικών δείχνουν κωδικό αντί για όνομα. Δεν σημαίνει ότι δεν έχουν καταχωρηθεί. Ξαναδοκίμασε με Ανανέωση.'); }),
+        _batchResolveClients(_allClientIds).catch(e => console.warn('orders_natl: client names', e)),
+      ]).then(() => warns);
+    });
 
     // 13/9 (owner: «εθνικές παραγγελίες που δεν βρίσκονται στο Weekly»): the
     // Weekly National reads NATIONAL LOADS only. Orders 5–8 were saved while the

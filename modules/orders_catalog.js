@@ -317,7 +317,9 @@ const OrdersCatalog = (() => {
     // Paint now; names follow (perf 29/9). Pending only when something the
     // rows show is really missing — a warm cache paints complete at once.
     const allRecs = [...intl.records, ...natl.records];
-    S.namesPending = !_refReady() || allRecs.some(r => { const c = (r.fields['Client'] || [])[0]; return c && !_fhClientsMap[c]; });
+    // _fhLocationsArr too: the cards print its labels, and open() waits only
+    // while pending (reviewer 29/9 — another page can fill clients + ref first).
+    S.namesPending = !_refReady() || !_fhLocationsArr.length || allRecs.some(r => { const c = (r.fields['Client'] || [])[0]; return c && !_fhClientsMap[c]; });
     S.rows = [...intl.records.map(r => _row(r, 'intl')), ...natl.records.map(r => _row(r, 'natl'))];
     ctx.setActions(_actionsHtml());
     const warnHtml = ws => ws.map(w => `<div class="oc-warn">⚠ ${esc(w)}</div>`).join('');

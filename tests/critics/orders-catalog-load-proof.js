@@ -43,6 +43,7 @@ async function newPage(browser, opts) {
   await page.route(`**/${HOST}/**`, async route => {
     const u = decodeURIComponent(route.request().url());
     if (opts.delayMs) await new Promise(r => setTimeout(r, opts.delayMs));
+    if (opts.locFail && u.includes(T.LOCATIONS)) return json(route, { error: 'stub: locations down' }, 500);
     if (u.includes(T.TRUCKS) && /Tachograph/.test(u) && !/Year/.test(u)) return opts.refFail ? json(route, { error: 'stub: ref down' }, 500) : json(route, trucksRef);
     if (u.includes(T.NAT_LOADS) && /Source National Order/.test(u)) return json(route, { records: [] });
     if (/tblOrderDocuments/.test(u)) return json(route, { records: [] });
@@ -98,6 +99,15 @@ const rowsText = page => page.$$eval('#ocTable tbody tr[onclick]', trs => trs.ma
   ok(true, 'banner «Τα στοιχεία στόλου και συνεργατών δεν φορτώθηκαν …» shown');
   await page.waitForTimeout(500);
   ok(!(await rowsText(page)).some(t => t.includes('…')), 'no «…» left after the failure (it is said, not left pending)');
+
+  console.log('\n── locations fail (the national cards print their labels)');
+  await page.context().close();
+  page = await newPage(browser, { locFail: true });
+  await gotoPage(page, 'orders', BASE);
+  await page.waitForSelector('#ocTable tbody tr[onclick]', { timeout: 120000 });
+  await page.waitForFunction(() => /στάσεις στην καρτέλα των εθνικών/.test((document.getElementById('ocWarns') || {}).innerText || ''), null, { timeout: 90000 });
+  ok(true, 'national banner «Οι τοποθεσίες δεν φορτώθηκαν — οι στάσεις στην καρτέλα των εθνικών …» shown');
+  ok(!(await rowsText(page)).some(t => t.includes('…')), 'no «…» left after the locations failure');
 
   console.log('\n── a card whose stops fail');
   const id2 = await page.$eval('#ocTable tbody tr[onclick*="\'intl\'"]', tr => tr.getAttribute('onclick').match(/'(rec[^']+)'\)/)[1]);
