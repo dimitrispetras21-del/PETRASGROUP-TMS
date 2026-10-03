@@ -215,7 +215,11 @@ function selectNatlOrder(recId) {
   // Δ2 again: `Name` is not a field, so the old fallback printed six characters
   // of the row id as if it were a title. Reference, or an honest «ΧΩΡΙΣ ΑΝΑΦΟΡΑ».
   const name = String(f['Reference'] || '').trim() || 'ΧΩΡΙΣ ΑΝΑΦΟΡΑ';
-  const subParts = [_ON_DIR_WORD[f['Direction']] || f['Direction'] || '', _ON_TYPE[f['Type']] || f['Type'] || ''].filter(Boolean);
+  // «Ε-427» first, like the international card's «#1229» (owner 27/9). Only
+  // when the Worker sends 'Order No' (view 054 + deploy): before that the card
+  // simply has no number — never the record id (IN-2).
+  const natNo = f['Order No'] ? OrdersCommon.numLabel({ _type: 'natl', fields: f }) : '';
+  const subParts = [natNo, _ON_DIR_WORD[f['Direction']] || f['Direction'] || '', _ON_TYPE[f['Type']] || f['Type'] || ''].filter(Boolean);
 
   // Header chips are OUTLINE only; PE always shows when it applies (owner 31/8).
   const chips = [];
