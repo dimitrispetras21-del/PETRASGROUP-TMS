@@ -2696,9 +2696,11 @@ __name(facadeBatchCreate, "facadeBatchCreate");
 // δεκάδες SELECT.
 //
 // Η αποτυχία της ανάγνωσης ΔΕΝ μπλοκάρει την ενημέρωση: το «πριν» είναι
-// τεκμηρίωση, όχι προϋπόθεση. Γυρίζει null, γράφεται console.error, και η
-// γραμμή του audit μπαίνει όπως έμπαινε μέχρι σήμερα — ποτέ χαμένη εγγραφή
-// χρήστη επειδή δεν διαβάστηκε το ιστορικό.
+// τεκμηρίωση, όχι προϋπόθεση. Γυρίζει undefined (≠ null = «δεν βρέθηκε»),
+// γράφεται console.error, και η γραμμή του audit μπαίνει όπως έμπαινε μέχρι
+// σήμερα — ποτέ χαμένη εγγραφή χρήστη επειδή δεν διαβάστηκε το ιστορικό.
+// ΜΙΑ εξαίρεση (3/10): η σήμανση τιμολόγησης, που ο έλεγχός της (invoiceMarkError)
+// ΧΡΕΙΑΖΕΤΑΙ το «πριν» — βλ. invoiceNeedsBefore.
 //
 // ΧΩΡΙΣ φίλτρο deleted_at: το dbUpdate παρακάτω δεν φιλτράρει ούτε αυτό, και
 // το «πριν» πρέπει να είναι η γραμμή που ΟΝΤΩΣ ενημερώνεται.
@@ -2712,7 +2714,7 @@ async function readRowBefore(env, table, recId) {
     return rows[0] || null;
   } catch (e) {
     console.error(`AUDIT before-read failed ${table} ${recId}`, e.message);
-    return null;
+    return void 0;
   }
 }
 __name(readRowBefore, "readRowBefore");
@@ -2856,6 +2858,17 @@ function invoiceMarkError(table, patch, before) {
   return null;
 }
 __name(invoiceMarkError, "invoiceMarkError");
+// The guard above reads the row as it was. When that read FAILED (not «not
+// found»), a patch that marks an order invoiced or sets its ERP number used
+// to pass the guard unchecked (fail-open, audit 28/9) and reach Postgres,
+// whose 043 trigger answered with a bare 500. Such a patch now waits for a
+// readable row (503, retry). Price-only edits still pass: the owner fills
+// prices daily, and the 043 trigger guards an invoiced row's price itself.
+function invoiceNeedsBefore(table, patch) {
+  if (table !== "orders" && table !== "national_orders") return false;
+  return patch.invoiced === true || "invoice_number" in patch;
+}
+__name(invoiceNeedsBefore, "invoiceNeedsBefore");
 async function handleFacadeUpdate(request, tableId, recId, origin, env, ctx) {
   const { res, caller, cfg } = await authorizeWrite(request, tableId, "PATCH", origin, env);
   if (res) return res;
@@ -2883,6 +2896,9 @@ async function handleFacadeUpdate(request, tableId, recId, origin, env, ctx) {
   }
   // Διαβάζεται ΠΡΙΝ το dbUpdate — μετά δεν υπάρχει τρόπος να ανακτηθεί.
   const before = await readRowBefore(env, cfg.pg, recId);
+  if (before === void 0 && invoiceNeedsBefore(cfg.pg, patch)) {
+    return jsonError("Η τιμολόγηση δεν επαληθεύτηκε (η παραγγελία δεν διαβάστηκε) — ξαναδοκίμασε", 503, origin, env);
+  }
   const invErr = invoiceMarkError(cfg.pg, patch, before);
   if (invErr) return jsonError(invErr, 422, origin, env);
   let updated;
@@ -2901,7 +2917,7 @@ async function handleFacadeUpdate(request, tableId, recId, origin, env, ctx) {
     action: "update",
     table: cfg.pg,
     recordId: recId,
-    before,
+    before: before ?? null,
     after: updated
   });
   const record = await shapeOneWithLinks(updated, cfg, env);
