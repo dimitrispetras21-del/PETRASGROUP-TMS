@@ -339,15 +339,22 @@ function showComingSoon(label, opts) {
 // The button's next sibling is the menu. Same contract as the Orders
 // «+ Νέα ▾» menu (orders_catalog.js toggleNew): click toggles, the next click
 // anywhere closes — a menu item runs its own onclick first, then closes.
+// Closing with the ⋯ itself also drops the pending outside-click listener, so
+// open/close cycles never pile listeners up on document. The listener goes on
+// synchronously: stopPropagation keeps THIS click from reaching document, and a
+// setTimeout here left a gap in which a fast second click did not close.
 function wkMoreToggle(ev) {
   ev.stopPropagation();
   const btn = ev.currentTarget, m = btn && btn.nextElementSibling;
   if (!m) return;
-  m.hidden = !m.hidden;
-  btn.setAttribute('aria-expanded', String(!m.hidden));
-  if (!m.hidden) setTimeout(() => document.addEventListener('click', () => {
+  if (!m.hidden) { btn._wkClose && btn._wkClose(); return; }
+  const close = () => {
     m.hidden = true; btn.setAttribute('aria-expanded', 'false');
-  }, { once: true }), 0);
+    document.removeEventListener('click', close);
+  };
+  btn._wkClose = close;
+  m.hidden = false; btn.setAttribute('aria-expanded', 'true');
+  document.addEventListener('click', close, { once: true });
 }
 
 // ── Toast with success animation (A5) ───────────
