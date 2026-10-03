@@ -1511,6 +1511,16 @@ var TABLES = {
   tblGHCCsTMqAy4KR2: {
     name: "NATIONAL ORDERS",
     pg: "national_orders",
+    // National order number «Ε-<id>» (owner 27/9: «αριθμός παραγγελίας πολύ
+    // σημαντικός και για εθνικών»; go 3/10). Same mechanism as ORDERS/019: the
+    // view national_orders_with_derived (migration 054) aliases id → order_no,
+    // because the facade keeps the raw `id` internal and a label mapped to "id"
+    // came back null (7/9). DEPLOY ONLY AFTER 054 RAN: every national read goes
+    // through the view, so a missing view breaks the whole national list.
+    readView: "national_orders_with_derived",
+    computed: {
+      "Order No": "order_no"
+    },
     reverseLinks: { "ORDER STOPS": { table: "order_stops", column: "national_order_id" } },
     fields: {
       Direction: "direction",
