@@ -43,8 +43,9 @@ const WNATL = {
   _rowNo: {},
 };
 
-// ONE filter state (WNATL.filterStatus) drives the select, the quick-filter
-// chips and the rows — two widgets, one truth (principle 3).
+// ONE filter state (WNATL.filterStatus) drives the select and the rows
+// (principle 3). The quick-filter chips that mirrored the select went 3/10
+// (owner: «λίγο περιττό»); every chip was one of the select's options.
 // Read-only gate for planning:view roles (management/accountant/warehouse), the
 // same contract weekly_intl.js keeps with _wiBlockReadOnly (13/9, Thodoris
 // go-live audit): this board offered every write control to a management
@@ -85,7 +86,6 @@ function _wnApplyFilter() {
       if (b) b.textContent = b.textContent.replace('▾', '▸');
     }
   });
-  document.querySelectorAll('#wn-quick [data-qf]').forEach(b => b.classList.toggle('on', b.dataset.qf === fs));
   const sel = document.getElementById('wn-status');
   if (sel && sel.value !== fs) sel.value = fs;
   const clr = document.getElementById('wn-clear');
@@ -377,40 +377,40 @@ function _wnTabs(cur) {
    so no descendant can fall back to the browser default. */
 function _wnCss() { return `<style id="wn4-css">
 .wn4{--wn4-row:40px;--wn4-card:32px;display:block;width:100%;font-size:13px}
-.wn4-head{display:flex;align-items:center;gap:16px;margin-bottom:8px;flex-wrap:wrap}
-.wn4-title{font-family:'Syne',sans-serif;font-weight:800;font-size:18px;color:var(--text);display:flex;align-items:center;gap:8px;line-height:1.2}
-.wn4-lgb{font:inherit;font-size:11px;font-weight:600;color:var(--text-mid);background:var(--surface-sunken);border:1px solid var(--border);border-radius:6px;padding:4px 8px;cursor:pointer}
+.wn4-head{display:grid;grid-template-columns:minmax(0,1fr) auto minmax(max-content,1fr);align-items:center;gap:16px;margin-bottom:8px;position:relative;z-index:40;container-type:inline-size}
+.wn4-title{font-family:'Syne',sans-serif;font-weight:700;font-size:16px;color:var(--text);display:flex;align-items:center;gap:8px;line-height:1.2;white-space:nowrap;min-width:0}
+.wn4-tt{overflow:hidden;min-width:0}
+.wn4-lgb{font:inherit;font-size:11px;font-weight:700;color:var(--text-mid);background:none;border:1px solid var(--border);border-radius:9999px;width:20px;height:20px;padding:0;cursor:pointer;flex:none}
 .wn4-lgb:hover{color:var(--accent-text)}
+/* ΜΙΑ ΣΕΙΡΑ ΚΕΦΑΛΙΔΑΣ (owner 3/10, ίδιο με το intl): τίτλος · εβδομάδες στο
+   κέντρο · ενέργειες δεξιά. Όταν δεν χωράει φεύγει πρώτα ο τίτλος (το topbar
+   γράφει ήδη «Εβδομαδιαίο Εθνικών» — το «?» μένει). Μετρημένο στο rig 3/10:
+   φυσικό πλάτος 1106px (χωράει στα 1440), χωρίς τίτλο 823px· +14px
+   περιθώριο. Ποτέ αναδίπλωση: αριστερή στήλη minmax(0,…)· ο τίτλος (όχι όνομα
+   εταιρείας — DESIGN #6 δεν αφορά) απλώς στενεύει αν ένα μηχάνημα αποδώσει
+   τη γραμματοσειρά λίγο πλατύτερη, αντί να πέσει πάνω στις εβδομάδες. */
+@container (max-width:1120px){.wn4-title .wn4-tt{display:none}}
 .wn4-legend{display:flex;flex-wrap:wrap;gap:8px 16px;font-size:11px;color:var(--text-mid);background:var(--surface-card);border:1px solid var(--border);border-radius:6px;padding:8px 12px;margin-bottom:8px;align-items:center}
 .wn4-legend[hidden]{display:none}
 .wn4-legend .sw{display:inline-block;width:16px;height:11px;border-radius:6px;vertical-align:-1px;margin-right:4px}
-.wn4-head .wk3-tabs{margin:0 auto;padding:4px;align-items:center;background:var(--surface-sunken);border-radius:6px}
-.wn4-head .wk3-tab{top:0;border-radius:6px;border:none;font-size:12px} .wn4-head .wk3-tab.on{background:var(--surface-dark);color:var(--text-on-dark)}
+.wn4-head .wk3-tabs{padding:2px;align-items:center;align-self:center;background:var(--surface-sunken);border-radius:6px}
+/* Ίδια μπάρα εβδομάδων με το intl (.wi2-tabs): DM Sans 12px — η Syne έτρωγε
+   ~50px που η μία σειρά κεφαλίδας δεν έχει (owner 3/10). */
+.wn4-head .wk3-tab{top:0;border-radius:6px;border:none;font:500 12px 'DM Sans',sans-serif;padding:6px 8px;line-height:1.3} .wn4-head .wk3-tab.on{background:var(--surface-dark);color:var(--text-on-dark);font-weight:700}
 .wn4-head .wk3-tab.on::after{display:none}
 .wn4-head .wk3-step{font:inherit;font-size:14px;border:none}
-.wn4-acts{display:flex;gap:8px;align-items:center}
+.wn4-acts{display:flex;gap:8px;align-items:center;justify-self:end}
 .wn4-btn{font:inherit;font-size:12px;font-weight:600;color:var(--text-mid);background:var(--surface-card);border:1px solid var(--border);border-radius:6px;padding:4px 12px;cursor:pointer}
 .wn4-btn:hover{color:var(--text);background:var(--surface-sunken)}
-.wn4-strip{display:flex;align-items:center;gap:24px;padding:12px 16px;background:var(--surface-card);border:1px solid var(--border);border-radius:6px;margin-bottom:8px;flex-wrap:wrap}
-.wn4-alert{display:flex;align-items:center;gap:12px;padding:8px 16px 8px 12px;border:1px solid var(--border);border-radius:6px;background:none;color:var(--text);font:inherit;text-align:left;cursor:default}
-.wn4-alert.hot{border-color:var(--danger);cursor:pointer}
-.wn4-alert .n{font-family:'Syne',sans-serif;font-weight:700;font-size:18px;line-height:1;padding:4px 8px;border-radius:6px;background:var(--ok);color:var(--surface-card);font-variant-numeric:tabular-nums}
-.wn4-alert.hot .n{background:var(--danger)}
-.wn4-alert .t{font-family:'Syne',sans-serif;font-weight:700;font-size:12px;letter-spacing:1px;color:var(--ok)}
-.wn4-alert.hot .t{color:var(--danger)}
-.wn4-alert .s{font-size:11px;color:var(--text-mid);margin-top:4px}
-.wn4-free .l,.wn4-quick .l{font-size:11px;font-weight:700;letter-spacing:1px;color:var(--text-dim);font-variant-numeric:tabular-nums}
-.wn4-free .p{font-weight:700;font-size:12px;color:var(--text);margin:4px 0;font-variant-numeric:tabular-nums}
-.wn4-free .d{font-size:11px;color:var(--text-mid)}
-.wn4-quick .r{display:flex;gap:4px;margin-top:4px;flex-wrap:wrap}
-.wn4-qf{font:inherit;font-size:12px;font-weight:600;color:var(--text-mid);background:var(--surface-sunken);border:1px solid var(--surface-sunken);border-radius:6px;padding:4px 12px;cursor:pointer;font-variant-numeric:tabular-nums}
-.wn4-qf:hover{color:var(--accent-text)} .wn4-qf.on{background:var(--surface-dark);border-color:var(--surface-dark);color:var(--text-on-dark);font-weight:700}
-/* Δ2 «ανενεργό»: a filter whose count is zero would only blank the sheet —
-   it is rendered disabled so the eye reads «nothing here» before the click. */
-.wn4-qf:disabled{color:var(--text-dim);background:none;border:1px dashed var(--border);cursor:not-allowed}
-.wn4-queue{margin-left:auto;display:inline-flex;align-items:center;gap:4px;background:var(--surface-sunken);color:var(--accent-text);border:none;border-radius:6px;padding:8px 12px;font:inherit;font-size:11px;font-weight:600;cursor:pointer}
+.wn4-acts .wk-more-t{padding:8px 12px;line-height:1.3}
+/* Οι δύο συναγερμοί και το «ελεύθερα» ζούσαν σε λωρίδα με κουτιά πάνω από
+   τα φίλτρα· από 3/10 είναι .wk-sig (style.css) στη σειρά των φίλτρων. Η
+   πρόταση κάτω από κάθε αριθμό πήγε στο title του σήματος. */
+.wn4-queue{display:inline-flex;align-items:center;gap:4px;background:var(--surface-sunken);color:var(--accent-text);border:none;border-radius:6px;padding:4px 10px;font:inherit;font-size:11px;font-weight:600;cursor:pointer}
 .wn4-queue b{font-size:13px;font-variant-numeric:tabular-nums}
-.wn4 .wk3-sub{margin-bottom:8px}
+.wn4 .wk-sig.wn4-free{cursor:help} .wn4 .wk-sig.wn4-free:hover{background:var(--surface-card)}
+.wn4 .wk3-sub{margin-bottom:8px;gap:8px}
+.wn4 .wk3-sub .entity-search-wrap{flex:0 1 260px;min-width:200px}
 .wn4 .wk3-range{font-size:12px}
 .wn4-cross{font-size:11px;color:var(--accent-text);margin-left:auto;cursor:help}
 .wn4-cross+.wk3-range{margin-left:0}
@@ -426,6 +426,11 @@ function _wnCss() { return `<style id="wn4-css">
    action of the screen (DESIGN.md ΜΕΡΟΣ Β) and the day marker is not an action. */
 .wn4-day.today{border-color:var(--surface-dark)}
 .wn4-day.quiet .wn4-dh .d{color:var(--text-dim)}
+/* Κενή μέρα τοπικών = ΜΙΑ λεπτή γραμμή (owner 3/10, «κάτω χάνουμε»): ήταν
+   κουτί ~73px × 7 μέρες κάτω από το φύλλο. Το «+ Τοπικό» μένει στη γραμμή. */
+.wn4-day.quiet{padding:0 8px;margin-bottom:4px}
+.wn4-day.quiet .wn4-dh{padding:2px 4px}
+.wn4-day.quiet .wn4-dh .d{font-size:12px}
 /* Δ4: κενή μέρα του πίνακα = μία γκρίζα γραμμή. Ορατή (Δ2), υποχωρητική. */
 .wn4-dayq{display:flex;align-items:center;gap:8px;padding:4px 12px;border-bottom:1px solid var(--border)}
 .wn4-dayq .d{font-family:'Syne',sans-serif;font-weight:600;font-size:11px;letter-spacing:.5px;color:var(--text-dim)}
@@ -436,7 +441,6 @@ function _wnCss() { return `<style id="wn4-css">
 .wn4-dh .d{font-family:'Syne',sans-serif;font-weight:700;font-size:14px;color:var(--text)}
 .wn4-dh .k{font-size:11px;color:var(--text-dim)}
 .wn4-dh .k .bad{color:var(--unassigned);font-weight:500} .wn4-dh .k .hot{color:var(--danger);font-weight:500}
-.wn4-none{font-size:11px;color:var(--text-dim);padding:4px}
 /* 13/9 (owner: alignment + room for multi-stop pills): ONE column ratio for every row and the header — ΚΑΘΟΔΟΣ carries the multi-drop pills, ΑΝΟΔΟΣ is mostly empty or a single card; 1.3/0.7 keeps every row aligned and gives the pill ~165px per segment at 1800px. */
 .wn4 .wk3-row{display:grid;grid-template-columns:36px minmax(0,1fr) 280px minmax(0,1fr);min-height:var(--wn4-row);align-items:center;background:var(--surface-card);border:1px solid var(--border);border-radius:6px;margin-top:4px}
 /* Δ5: ΙΔΙΟ hover με το intl (weekly_intl.js:239). Η γραμμή αυτού του πίνακα
@@ -526,7 +530,10 @@ function _wnCss() { return `<style id="wn4-css">
 .wn4-mv .rm:hover{color:var(--danger);background:var(--surface-sunken)}
 .wn4-addst{font:inherit;font-size:11px;font-weight:500;color:var(--text-dim);background:none;border:none;padding:0;cursor:pointer;text-align:left}
 .wn4-addst:hover{color:var(--accent-text)}
-.wn4-foot{display:flex;align-items:center;gap:16px;padding:8px 16px;background:var(--surface-card);border:1px solid var(--border);border-radius:6px;margin-top:12px;flex-wrap:wrap}
+.wn4-foot{display:flex;align-items:center;gap:16px;padding:4px 12px;background:var(--surface-card);border:1px solid var(--border);border-radius:6px;margin-top:8px;flex-wrap:wrap}
+/* .content: 16px πάνω (ήταν 32) και κάτω όσο το FAB της συνομιλίας (Δ1,
+   --fab-clear), όχι 148px — μόνο σε αυτή τη σελίδα (owner 3/10). */
+.content:has(>.wn4){padding-top:16px;padding-bottom:var(--fab-clear)}
 .wn4-foot .t{font-size:11px;color:var(--text-mid);display:inline-flex;align-items:center;gap:4px;background:none;border:none;padding:0;font-family:inherit}
 .wn4-foot .t b{font-weight:700;font-size:13px;color:var(--text);font-variant-numeric:tabular-nums}
 .wn4-foot .t.bad b{color:var(--unassigned)} .wn4-foot .t.hot b{color:var(--danger)}
@@ -562,7 +569,7 @@ function _wnCss() { return `<style id="wn4-css">
 .wn4-segp{font-size:9px;color:var(--text-dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .wn4-segtot{font-size:11px;font-weight:700;color:var(--text);white-space:nowrap}
 .wn4 .wk3-num .xn{font-size:10px;font-weight:700;color:var(--text-dim)}
-@media print{.wn4-strip,.wn4-acts,.wk3-sub{display:none}}
+@media print{.wn4-acts,.wk3-sub{display:none}}
 </style>`; }
 
 // Element id of a row on the board — ns rows are #wn-row-<id>, standalone
@@ -628,7 +635,6 @@ function _wnPaint() {
   const uncovered   = rows.filter(r => r.needsLocal).length;
   const matchedN    = nsRows.filter(r => r.matchedId).length;
   const snTotal     = snRows.length + matchedN;           // every ΑΝΟΔΟΣ of the week
-  const grpN        = rows.filter(r => r.isGrp).length;
   const delivered   = rows.filter(_wnIsDelivered).length;
   const crossRows   = rows.filter(r => { const f = _wnOrd(r)?.fields; const dw = _wnWeekOf(f?.['Delivery DateTime']); return dw != null && dw !== week; });
   const _firstRow = (pred) => { const r = rows.find(pred); return r ? _wnRowElId(r) : ''; };
@@ -674,22 +680,25 @@ function _wnPaint() {
     ${_wnCss()}
     <div class="wn3 wk3 wn4 ${_wnQuietOn()?'wi-quiet':''}">
 
-    <!-- head: title + legend · week tabs · actions (contract #4 inventory) -->
+    <!-- head: ONE row — title + legend · week tabs centred · actions right
+         (owner 3/10, twin of weekly_intl). Εκτύπωση/CSV/Ανανέωση in «⋯»,
+         Λεπτομέρειες on the filter row (as in intl), the week phase badge
+         next to the week range. Contract #4 inventory unchanged. -->
     <div class="wn4-head">
-      <div>
-        <!-- Δ7 (3/9): το in-page breadcrumb αφαιρέθηκε — το topbar του
-             core/router.js τυπώνει ήδη «Σχεδιασμός / Weekly National» δύο
-             εκατοστά πιο πάνω. Το intl δεν έχει δεύτερο. -->
-        <div class="wn4-title">Πίνακας Εθνικών Δρομολογίων
-          <button class="wn4-lgb" onclick="const l=document.getElementById('wn-legend');l.hidden=!l.hidden" title="Τι σημαίνει κάθε χρώμα και σήμα">? υπόμνημα</button></div>
-      </div>
+      <!-- Δ7 (3/9): το in-page breadcrumb αφαιρέθηκε — το topbar του
+           core/router.js τυπώνει ήδη «Σχεδιασμός / Weekly National» δύο
+           εκατοστά πιο πάνω. Το intl δεν έχει δεύτερο. -->
+      <div class="wn4-title"><span class="wn4-tt">Πίνακας Εθνικών Δρομολογίων</span><button class="wn4-lgb" onclick="const l=document.getElementById('wn-legend');l.hidden=!l.hidden" title="Τι σημαίνει κάθε χρώμα και σήμα" aria-label="Υπόμνημα">?</button></div>
       <nav class="wk3-tabs" aria-label="Εβδομάδες">${_wnTabs(week)}</nav>
-      ${typeof weekPhaseBadge==='function'?weekPhaseBadge(week,_wnCurrentWeek()):''}
       <div class="wn4-acts">
-        <button class="wn4-btn" onclick="_wnToggleDetails()" title="Πρόσθετες ενδείξεις γραμμής (↦ όρια εβδομάδας, ⚠ φόρτωση χωρίς ανάθεση)">Λεπτομέρειες${_wnQuietOn()?'':' ✓'}</button>
-        <button class="wn4-btn" onclick="_wnPrintWeek()">Εκτύπωση</button>
-        <button class="wn4-btn" onclick="_wnExportCSV()">CSV</button>
-        <button class="wn4-btn" onclick="renderWeeklyNatl()" title="Ανανέωση">Ανανέωση</button>
+        <div class="wk-more">
+          <button type="button" class="wn4-btn wk-more-t" onclick="wkMoreToggle(event)" aria-haspopup="true" aria-expanded="false" title="Εκτύπωση · CSV · Ανανέωση">⋯</button>
+          <div class="wk-more-m" role="menu" hidden>
+            <button type="button" role="menuitem" onclick="_wnPrintWeek()">Εκτύπωση</button>
+            <button type="button" role="menuitem" onclick="_wnExportCSV()">CSV</button>
+            <button type="button" role="menuitem" onclick="renderWeeklyNatl()" title="Ανανέωση">Ανανέωση</button>
+          </div>
+        </div>
         ${OrdersCommon.scanButton('_wnScan()', 'Σάρωση εθνικής', 'Νέα εθνική παραγγελία από σάρωση εγγράφου — χωρίς έξοδο από το εβδομαδιαίο')}
         ${OrdersCommon.newOrderButton('_wnNewOrder()', '+ Νέα παραγγελία', 'Νέα εθνική παραγγελία — χωρίς έξοδο από το εβδομαδιαίο')}
       </div>
@@ -707,35 +716,11 @@ function _wnPaint() {
       <span>PE = ανταλλαγή παλετών · ①② = σειρά σημείων · ⟳ γράφεται · ✓ γράφτηκε · ⚠ ΔΕΝ γράφτηκε</span>
     </div>
 
-    <!-- strip: uncovered/pending alert · free today · quick filters · Pick Ups queue (owner) -->
-    <div class="wn4-strip">
-      <button type="button" class="wn4-alert${uncovered?' hot':''}" title="${escapeHtml(uncovSub)}${uncovered?' — κλικ: πήγαινε στο πρώτο':''}" onclick="${_jump(_firstRow(r=>r.needsLocal))}">
-        <span class="n">${uncovered}</span>
-        <span><div class="t">ΑΚΑΛΥΠΤΑ ΚΟΜΜΑΤΙΑ</div><div class="s">${uncovSub}</div></span>
-      </button>
-      <button type="button" class="wn4-alert${pendingAll?' hot':''}" title="${escapeHtml(pendSub)}${pendingAll?' — κλικ: πήγαινε στο πρώτο':''}" onclick="${_jump(_firstRow(r=>!r.saved))}">
-        <span class="n">${pendingAll}</span>
-        <span><div class="t">ΠΡΟΣ ΑΝΑΘΕΣΗ</div><div class="s">${pendSub}</div></span>
-      </button>
-      <div class="wn4-free">
-        <div class="l">ΕΛΕΥΘΕΡΑ ${isCur?'ΣΗΜΕΡΑ':'ΤΗΝ ΕΒΔΟΜΑΔΑ'} · ${freeT.length}/${data.trucks.length}</div>
-        <div class="p">${freeT.length ? _few(freeT, 3) : 'κανένα φορτηγό ελεύθερο'}</div>
-        <div class="d">οδηγοί χωρίς ανάθεση ${freeD.length}/${data.drivers.length}${freeD.length?' · '+_few(freeD, 2):''}</div>
-      </div>
-      <div class="wn4-quick" id="wn-quick">
-        <div class="l">ΓΡΗΓΟΡΑ ΦΙΛΤΡΑ</div>
-        <div class="r">
-          <button class="wn4-qf" data-qf="" onclick="_wnQuick('')"${total?'':' disabled'}>Όλα (${total})</button>
-          <button class="wn4-qf" data-qf="pending" onclick="_wnQuick('pending')"${pendingAll?'':' disabled'}>Προς ανάθεση (${pendingAll})</button>
-          <button class="wn4-qf" data-qf="unmatched" onclick="_wnQuick('unmatched')"${snRows.length?'':' disabled'}>Άνοδοι χωρίς ταίριασμα (${snRows.length})</button>
-          <button class="wn4-qf" data-qf="uncovered" onclick="_wnQuick('uncovered')"${uncovered?'':' disabled'}>Ακάλυπτα (${uncovered})</button>
-          <button class="wn4-qf" data-qf="groupage" onclick="_wnQuick('groupage')"${grpN?'':' disabled'}>Groupage (${grpN})</button>
-        </div>
-      </div>
-      <span id="wn-pickups-q" style="margin-left:auto"></span>
-    </div>
-
-    <!-- search / status / details / cross-week / range — wk3-sub, twin του intl -->
+    <!-- filter row = the old strip folded in (owner 3/10): search · status ·
+         details · the two alerts + «ελεύθερα» as .wk-sig · Pick Ups queue ·
+         cross-week · range + phase. The quick-filter chips went (DECISION_LOG
+         3/10): each one was an option of «Κατάσταση» already — ONE filter
+         state, WNATL.filterStatus, so nothing was lost. -->
     <div class="wk3-sub">
       <div class="entity-search-wrap">
         ${_wnI('search')}
@@ -751,8 +736,15 @@ function _wnPaint() {
         <option value="groupage">Groupage</option>
       </select>
       <button id="wn-clear" class="btn btn-ghost btn-sm" style="display:none" onclick="_wnClearFilter()">${_wnI('x', 12)} Καθαρισμός</button>
+      <button class="wn4-btn" onclick="_wnToggleDetails()" title="Πρόσθετες ενδείξεις γραμμής (↦ όρια εβδομάδας, ⚠ φόρτωση χωρίς ανάθεση)">Λεπτομέρειες${_wnQuietOn()?'':' ✓'}</button>
+      <!-- Δ3 (3/9): ΔΥΟ μεγέθη, δύο αριθμοί, το καθένα πηδά στη δική του πρώτη γραμμή. -->
+      <button type="button" class="wk-sig${uncovered?' hot':' ok'}" title="${escapeHtml(uncovSub)}${uncovered?' — κλικ: πήγαινε στο πρώτο':''}" onclick="${_jump(_firstRow(r=>r.needsLocal))}">ΑΚΑΛΥΠΤΑ ΚΟΜΜΑΤΙΑ <b>${uncovered}</b></button>
+      <button type="button" class="wk-sig${pendingAll?' hot':' ok'}" title="${escapeHtml(pendSub)}${pendingAll?' — κλικ: πήγαινε στο πρώτο':''}" onclick="${_jump(_firstRow(r=>!r.saved))}">ΠΡΟΣ ΑΝΑΘΕΣΗ <b>${pendingAll}</b></button>
+      <span class="wk-sig wn4-free" title="Φορτηγά ελεύθερα ${isCur?'σήμερα':'την εβδομάδα'} ${freeT.length}/${data.trucks.length}: ${freeT.length ? _few(freeT, 12) : 'κανένα'} — Οδηγοί χωρίς ανάθεση ${freeD.length}/${data.drivers.length}${freeD.length?': '+_few(freeD, 12):''}">ΕΛΕΥΘΕΡΑ ${isCur?'ΣΗΜΕΡΑ':'ΤΗΝ ΕΒΔΟΜΑΔΑ'} <b>${freeT.length}/${data.trucks.length}</b></span>
+      <span id="wn-pickups-q"></span>
       ${crossRows.length ? `<span class="wn4-cross" title="Παραδίδουν σε άλλη εβδομάδα — στην προβολή εκείνης δεν εμφανίζονται (φίλτρο ανά εβδομάδα ΦΟΡΤΩΣΗΣ)" onclick="${_jump(_wnRowElId(crossRows[0]))}">↦ ${crossRows.length} παραδίδ${crossRows.length===1?'ει':'ουν'} σε άλλη εβδομάδα</span>` : ''}
       <span class="wk3-range">Εβδομάδα ${week} · ${weekRange} · Σαβ–Παρ</span>
+      ${typeof weekPhaseBadge==='function'?weekPhaseBadge(week,_wnCurrentWeek()):''}
     </div>
 
     <!-- sheet: sticky column identity (contract #1) + one panel per day (contract #2) -->
@@ -1047,10 +1039,11 @@ function _wnLocalsHTML() {
     }
 
     html += `<section class="wn4-day${isToday?' today':''}${moves.length?'':' quiet'}" data-day="${key}">
-      <div class="wn4-dh"><span class="d">${lbl.name} ${lbl.date}</span>${isToday?'<span class="now">ΣΗΜΕΡΑ</span>':''}<span class="k">${parts.join(' · ')}</span>
+      <div class="wn4-dh"><span class="d">${lbl.name} ${lbl.date}</span>${isToday?'<span class="now">ΣΗΜΕΡΑ</span>':''}<span class="k">${moves.length ? parts.join(' · ') : 'Καμία τοπική κίνηση'}</span>
         <button class="wn4-ladd" onclick="_wnAddLocal('${key}')" title="Νέα τοπική κίνηση αυτή τη μέρα">+ Τοπικό</button></div>`;
 
-    if (!moves.length) { html += `<div class="wn4-none">Καμία τοπική κίνηση</div></section>`; return; }
+    // Empty day = the header line alone (owner 3/10) — the label rides on it.
+    if (!moves.length) { html += `</section>`; return; }
 
     order.forEach(dk => {
       const ms = byDrv[dk]; n++;

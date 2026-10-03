@@ -38,11 +38,11 @@ const WINTL = {
   ui:        { openRow:null, openGroup:null },
   filter:    '',
   filterStatus: '',
-  quick:     '',   // v2 band quick filter: ''|pending|gap|own|partner|matched
+  quick:     '',   // pre-order counter filter: ''|'pre' (quick-filter chips removed owner 3/10)
   _seq:      0,
 };
 
-// Search / status select / quick-filter chips — all by hiding rows, no rebuild.
+// Search / status select / pre-order counter — all by hiding rows, no rebuild.
 function _wiApplyFilter() {
   const q = (WINTL.filter || '').toLowerCase();
   const fs = WINTL.filterStatus || '';
@@ -72,30 +72,21 @@ function _wiApplyFilter() {
     if (show && qk) show = _wi2QuickMatch(row, qk);
     el.style.display = show ? '' : 'none';
   });
-  document.querySelectorAll('.wi2-chip,.pre-count').forEach(c => c.classList.toggle('on', (c.dataset.q || '') === qk));
+  document.querySelectorAll('.pre-count').forEach(c => c.classList.toggle('on', (c.dataset.q || '') === qk));
   // Rows hidden at paint time were skipped by the stops fit pass (no layout);
   // re-run it now that some may be visible again, or they would show every
   // stop plus «+N» and get cut mid-name by the line's ellipsis.
   _wi2FitStops();
   _wi2FitSegs();
 }
-// Quick filters of the v2 band. «Χωρίς ανάθεση» = neither own truck nor partner
-// (DECISION_LOG 2/9). «Κενά» = own round trip without import — a partner row is
-// never a gap (owner 9/8: nothing is expected back from a partner).
+// The pre-order counter's filter — the one survivor of the v2 band's quick
+// filters (the chip row went 3/10, owner: «λίγο περιττό»; DECISION_LOG). The
+// rows still waiting for their points; a matched import (row.importId) counts
+// too: an assigned import pre-order lives inside its truck's export row
+// (owner 28/9, order 394).
 function _wi2QuickMatch(row, qk) {
-  if (row.legOf) return true;
-  switch (qk) {
-    case 'pending': return !row.saved;
-    case 'gap':     return row.type === 'export' && row.saved && !row.partnerId && !row.importId;
-    case 'own':     return row.saved && !row.partnerId;
-    case 'partner': return row.saved && !!row.partnerId;
-    case 'matched': return row.type === 'export' && !!row.importId;
-    // Pre-order counter (owner 27/9): the rows still waiting for their points.
-    // A matched import (row.importId) counts too: an assigned import pre-order
-    // lives inside its truck's export row (owner 28/9, order 394).
-    case 'pre':     return [...(row.orderIds || [row.orderId]), row.importId].filter(Boolean).some(id => isPreorder((WINTL.data.exports.find(r => r.id === id) || WINTL.data.imports.find(r => r.id === id))?.fields));
-    default: return true;
-  }
+  if (row.legOf || qk !== 'pre') return true;
+  return [...(row.orderIds || [row.orderId]), row.importId].filter(Boolean).some(id => isPreorder((WINTL.data.exports.find(r => r.id === id) || WINTL.data.imports.find(r => r.id === id))?.fields));
 }
 function _wi2Quick(qk) { WINTL.quick = (WINTL.quick === qk) ? '' : qk; _wiApplyFilter(); }
 
@@ -259,39 +250,55 @@ const _WI2_CSS=`
    «…» (κυρίως «Hart Logistics sp. z o. o. sp. k.») — το πλήρες κείμενο είναι
    στο title της κάρτας. */
 .wk3.wi2 .wk3-cols,.wk3.wi2 .wk3-row{grid-template-columns:36px var(--fL) minmax(0,1.1fr) 192px minmax(0,0.9fr) var(--fR)}
-.wi2-mast{display:flex;align-items:center;gap:var(--space-4);margin-bottom:var(--space-3);flex-wrap:wrap}
-.wi2-title{font-family:'Syne',sans-serif;font-weight:700;font-size:18px;color:var(--text);display:flex;align-items:center;gap:12px;white-space:nowrap}
-.wi2-legend-btn{font:500 11px 'DM Sans',sans-serif;color:var(--text-mid);border:1px solid var(--border);border-radius:var(--radius-full);padding:4px 8px;background:none;cursor:pointer}
+.wi2-mast{display:grid;grid-template-columns:minmax(0,1fr) auto minmax(max-content,1fr);align-items:center;gap:16px;margin-bottom:8px;position:relative;z-index:40;container-type:inline-size}
+.wi2-title{font-family:'Syne',sans-serif;font-weight:700;font-size:16px;color:var(--text);display:flex;align-items:center;gap:8px;white-space:nowrap;min-width:0}
+.wi2-tt{overflow:hidden;min-width:0}
+.wi2-legend-btn{font:700 11px 'DM Sans',sans-serif;color:var(--text-mid);border:1px solid var(--border);border-radius:var(--radius-full);width:20px;height:20px;padding:0;background:none;cursor:pointer;flex:none}
 .wi2-legend-btn:hover{background:var(--surface-sunken)}
-.wi2-tabs{display:flex;gap:4px;background:var(--surface-sunken);border-radius:var(--radius);padding:4px;margin:0 auto}
-.wi2-tabs .wk3-step,.wi2-tabs .wk3-tab{border:none;background:none;cursor:pointer;font:500 12px 'DM Sans',sans-serif;color:var(--text-mid);padding:8px 12px;border-radius:var(--radius);line-height:1.3}
-.wi2-tabs .wk3-step{padding:8px;font-weight:700;color:var(--text-dim)}
+.wi2-tabs{display:flex;gap:2px;background:var(--surface-sunken);border-radius:var(--radius);padding:2px}
+.wi2-tabs .wk3-step,.wi2-tabs .wk3-tab{border:none;background:none;cursor:pointer;font:500 12px 'DM Sans',sans-serif;color:var(--text-mid);padding:6px 8px;border-radius:var(--radius);line-height:1.3}
+.wi2-tabs .wk3-step{padding:6px;font-weight:700;color:var(--text-dim)}
 .wi2-tabs .wk3-tab:hover{background:var(--surface-card)}
 .wi2-tabs .wk3-tab.on{background:var(--surface-dark);color:var(--text-on-dark);font-weight:700}
-.wi2-acts{display:flex;gap:8px;align-items:center}
+.wi2-acts{display:flex;gap:8px;align-items:center;justify-self:end}
+/* ΜΙΑ ΣΕΙΡΑ ΚΕΦΑΛΙΔΑΣ (owner 3/10: «μπαρ εβδομάδας κεντρικά και κουμπιά
+   δεξιά»). Όταν δεν χωράει, μαζεύει με σειρά: πρώτα ο τίτλος (το topbar
+   γράφει ήδη «Εβδομαδιαίο Διεθνών» — το «?» μένει), μετά οι δύο ακριανές
+   εβδομάδες (τα ‹ › « » μένουν). Όρια μετρημένα στο rig 3/10: φυσικό πλάτος
+   όλων 1255px, χωρίς τίτλο 957px· +15-50px περιθώριο. Ποτέ αναδίπλωση: η
+   αριστερή στήλη είναι minmax(0,…) και ο τίτλος (όχι όνομα εταιρείας —
+   DESIGN #6 δεν αφορά) απλώς στενεύει αν ένα μηχάνημα αποδώσει τη
+   γραμματοσειρά λίγο πλατύτερη από το rig, αντί να πέσει πάνω στις εβδομάδες. */
+@container (max-width:1270px){.wi2-title .wi2-tt{display:none}}
+@container (max-width:1010px){.wi2-tabs .wk3-tab.far{display:none}}
 .wi2-btn{font:500 12px 'DM Sans',sans-serif;color:var(--text-mid);background:var(--surface-card);border:1px solid var(--border);border-radius:var(--radius);padding:8px 12px;cursor:pointer;white-space:nowrap;line-height:1.3}
 .wi2-btn:hover{background:var(--surface-sunken);color:var(--text)}
 .wi2-lg{background:var(--surface-card);border:1px solid var(--border);border-radius:var(--radius);padding:12px 16px;margin-bottom:12px;font-size:11px;color:var(--text-mid);display:flex;flex-wrap:wrap;gap:8px 24px}
 .wi2-lg b{color:var(--text)}
 .wi2-lg[hidden]{display:none}
-.wi2-band{display:flex;align-items:center;gap:16px;padding:12px;background:var(--surface-card);border:1px solid var(--border);border-radius:var(--radius);margin-bottom:12px;flex-wrap:wrap}
-.wi2-urg{display:flex;align-items:center;gap:12px;padding:8px 16px 8px 12px;border:1px solid var(--warn-border);border-radius:var(--radius);background:var(--warn-bg)}
-.wi2-urg.zero{border-color:var(--border);background:var(--surface-card)}
-.wi2-urg .n{font:700 18px 'Syne',sans-serif;color:var(--surface-card);background:var(--warn);border:none;border-radius:var(--radius);padding:4px 12px;cursor:pointer;line-height:1.2;font-variant-numeric:tabular-nums}
-.wi2-urg.zero .n{background:var(--surface-sunken);color:var(--text-dim);cursor:default}
-.wi2-urg h4{font:700 12px 'Syne',sans-serif;letter-spacing:1px;color:var(--warn);margin:0}
-.wi2-urg.zero h4{color:var(--text-dim)}
-.wi2-urg p{font-size:11px;color:var(--text-mid);margin:4px 0 0}
-.wi2-quick .k{font:700 11px 'DM Sans',sans-serif;letter-spacing:1px;color:var(--text-dim)}
-.wi2-quick .chips{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
-.wi2-chip{font:500 12px 'DM Sans',sans-serif;color:var(--text-mid);background:var(--surface-sunken);border:1px solid transparent;border-radius:var(--radius);padding:4px 12px;cursor:pointer;white-space:nowrap;font-variant-numeric:tabular-nums}
-.wi2-chip:hover{background:var(--border)}
-.wi2-chip.on{background:var(--surface-dark);color:var(--text-on-dark);font-weight:700}
-/* Δ2 «ανενεργό»: φίλτρο με μηδέν αποτελέσματα δεν πατιέται — ένα κλικ που
-   αδειάζει την οθόνη χωρίς λόγο διαβάζεται ως σφάλμα. */
-.wi2-chip:disabled,.wi2-chip:disabled:hover{color:var(--text-dim);background:var(--surface-card);border-color:var(--border);cursor:default}
+.wk3.wi2 .wk3-sub{margin-bottom:8px;gap:8px}
+.wk3.wi2 .wk3-sub .entity-search-wrap{flex:0 1 260px;min-width:200px}
 .wi2-week{margin-left:auto;font:500 12px 'DM Sans',sans-serif;color:var(--text-dim);white-space:nowrap;font-variant-numeric:tabular-nums}
-.wk3.wi2 .wk3-sheet{background:transparent;border:none;box-shadow:none;border-radius:0;max-height:calc(100vh - 340px);padding-bottom:4px}
+/* ΚΑΤΩ ΑΚΡΗ (owner 3/10: «κάτω χάνουμε πάλι αρκετό»). Πριν: max-height
+   calc(100vh - 340px), νούμερο που υπέθετε κεφαλίδα ~4 σειρών — με τη νέα
+   κεφαλίδα θα άφηνε ~160px κενό κάτω. Τώρα η σελίδα είναι στήλη flex στο
+   ύψος του .content και το φύλλο παίρνει ό,τι μένει: ανοιχτό υπόμνημα,
+   πανό τοπικών ή στενό παράθυρο απλώς το μικραίνουν, χωρίς δεύτερο
+   νούμερο να συντηρείται. Το .content χάνει τα 148px κάτω (D-8) μόνο εδώ:
+   τη θέση τους παίρνει το padding ΜΕΣΑ στο φύλλο, μετά το υποσέλιδο
+   (.wi2-foot ζει μέσα στο φύλλο), ώστε στο τέλος της
+   κύλισης η τελευταία γραμμή να βγαίνει πάνω από το FAB της συνομιλίας
+   (Δ1: 76px = 24 + 52· φύλλο ως 8px από κάτω + υποσέλιδο ~18px →
+   χρειάζονται ≥54px). Όσο δεν κυλάει, το padding είναι αόρατο κάτω από το
+   υποσέλιδο. */
+.content:has(>.wk3.wi2){padding-top:16px;padding-bottom:8px}
+.wk3.wi2{display:flex;flex-direction:column;width:100%;height:100%}
+.wk3.wi2>*{flex:0 0 auto}
+.wk3.wi2>.wk3-wrap{flex:0 1 auto;min-height:200px;display:flex;flex-direction:column}
+.wk3.wi2 .wk3-sheet{background:transparent;border:none;box-shadow:none;border-radius:0;flex:0 1 auto;min-height:0;max-height:none;padding-bottom:calc(var(--fab-clear) - 32px)}
+/* Χαρτί (Cmd+P της σελίδας — το κουμπί «Εκτύπωση» ανοίγει δικό του φύλλο):
+   χωρίς ύψος οθόνης, το φύλλο τυπώνεται ολόκληρο αντί να κόβεται. */
+@media print{.wk3.wi2,.wk3.wi2>.wk3-wrap{display:block;height:auto}.wk3.wi2 .wk3-sheet{overflow:visible;padding-bottom:0}}
 .wk3.wi2 .wk3-cols{background:var(--surface-card);border:1px solid var(--border);border-radius:var(--radius);margin-bottom:4px;min-height:24px}
 .wk3.wi2 .wk3-cols .c{font:700 11px 'Syne',sans-serif;letter-spacing:1.2px;color:var(--text-mid);padding:0 8px;height:24px;gap:4px}
 .wk3.wi2 .wk3-cols .c.fc{color:var(--text-dim)}
@@ -303,7 +310,12 @@ const _WI2_CSS=`
 .wk3.wi2 .wk3-dayh .d{font:700 16px 'Syne',sans-serif;letter-spacing:0;color:var(--text);font-variant-numeric:tabular-nums}
 .wk3.wi2 .wk3-dayh.today .d{color:var(--text)}
 .wk3.wi2 .wk3-dayh .now{font:700 11px 'DM Sans',sans-serif;letter-spacing:1px;color:var(--surface-card);background:var(--accent);border:none;border-radius:var(--radius-full);padding:0 8px;line-height:16px}
-.wi2-none{font-size:11px;color:var(--text-mid);padding:4px 4px 0;font-style:italic}
+.wi2-none{font-size:11px;color:var(--text-mid);font-style:italic}
+/* Κενή μέρα = ΜΙΑ λεπτή γραμμή (owner 3/10), όπως η .wn4-dayq του εθνικού:
+   ορατή (Δ2 — η κενή μέρα είναι πληροφορία), αλλά όχι κουτί 46px. */
+.wi2-day.wi2-day0{padding:0 8px;margin-bottom:2px}
+.wk3.wi2 .wi2-day0 .wk3-dayh{position:static;padding:2px 4px;gap:8px}
+.wk3.wi2 .wi2-day0 .wk3-dayh .d{font-size:12px;color:var(--text-mid)}
 /* ΠΥΚΝΟΤΗΤΑ (owner 27/9, «dense»): περισσότερες γραμμές ανά οθόνη — οι
    οθόνες των dispatchers είναι φαρδιές, όχι ψηλές. Γραμμή 44→29px: γραμμή 1px
    + κάρτα 1px + 1px padding πάνω/κάτω, περιεχόμενο 23px = όνομα 12px
@@ -336,7 +348,8 @@ const _WI2_CSS=`
    .wi2-urg. Ο κανόνας της μπάντας ορίζει display:flex και γράφεται μετά
    το style.css, οπότε νικούσε το display:grid της γραμμής: ΜΟΝΟ αυτές οι
    γραμμές έπαυαν να είναι πλέγμα και στοιβάζονταν αριστερά, με έξτρα
-   padding και φόντο κάρτας. Η γραμμή πήρε δικό της όνομα. */
+   padding και φόντο κάρτας. Η γραμμή πήρε δικό της όνομα (η μπάντα
+   έφυγε 3/10 — το σήμα της είναι πια .wk-sig). */
 .wk3.wi2 .wk3-row.wi2-rowurg{border-color:var(--danger-strong);box-shadow:inset 2px 0 0 var(--danger-strong)}
 .wk3.wi2 .wk3-row.wk3-done{background:var(--success-bg)}
 /* Legrow (σκέλος ρότας / τοπική κίνηση) πάνω στη γκρι ημέρα (28/9): το φόντο
@@ -494,8 +507,8 @@ const _WI2_CSS=`
 .wi2-unlink{font:500 11px 'DM Sans',sans-serif;color:var(--text-dim);background:none;border:none;cursor:pointer}
 .wi2-unlink:hover{color:var(--danger)}
 .wk3.wi2 .wk3-empty .big{font-size:18px}
-.wi2-foot{display:flex;align-items:center;justify-content:flex-end;gap:24px;padding:4px 16px;background:var(--surface-card);border:1px solid var(--border);border-radius:var(--radius);margin-top:8px;flex-wrap:wrap}
-.wi2-foot .sync{font-size:11px;color:var(--text-mid);margin-left:auto;font-variant-numeric:tabular-nums}
+.wi2-foot{padding:2px 4px 0}
+.wi2-foot .sync{font-size:11px;color:var(--text-mid);font-variant-numeric:tabular-nums}
 .wi2-foot .sync .err{color:var(--danger);font-weight:700}
 /* Owner 6/9: the assignment-popover shell (#wi-popover/#wn-popover, all
    .wi-pop-* classes, .wi-sdo-sub, .wi-lane-*) moved OUT of this .wk3.wi2
@@ -954,7 +967,9 @@ function _wk3Tabs(currentWeek) {
     if (w < 1 || w > 53) continue;
     const wS=_wiWeekStart(w), wE=new Date(wS); wE.setDate(wS.getDate()+6);
     const fmt=d=>String(d.getDate()).padStart(2,'0')+'/'+String(d.getMonth()+1);
-    html += `<button type="button" class="wk3-tab${w===currentWeek?' on':''}" onclick="WINTL.week=${w};renderWeeklyIntl()" title="${fmt(wS)}–${fmt(wE)}">W${w}${w===today?' (Τρέχουσα)':''}</button>`;
+    // «far» = the two outermost weeks, first to fold when the one-row header
+    // runs out of width (_WI2_CSS @container, owner 3/10).
+    html += `<button type="button" class="wk3-tab${w===currentWeek?' on':''}${Math.abs(w-currentWeek)===3?' far':''}" onclick="WINTL.week=${w};renderWeeklyIntl()" title="${fmt(wS)}–${fmt(wE)}">W${w}${w===today?' (Τρέχουσα)':''}</button>`;
   }
   html += step(1)+jump(4);
   if (currentWeek !== today)
@@ -982,10 +997,6 @@ function _wiPaint(){
   const pending=expRows.filter(r=>!r.saved).length;
   const matched=impRows.filter(r=>r.matchedTo).length;
   const unmatched=impRows.filter(r=>!r.matchedTo).length;
-  // Β.3-3 (Wave 1): imports without a vehicle get their OWN counter — the same
-  // red used to mean two different things and the header chip disagreed with
-  // what the eye counted (VISUAL §Χρώμα).
-  const impNoVehicle=impRows.filter(r=>!r.saved).length;
   const total=expRows.length+impRows.length;
   const pct=total?Math.round((assigned+matched)/total*100):0;
 
@@ -1019,12 +1030,8 @@ function _wiPaint(){
   const gapRows=ownRows.filter(r=>!r.importId);
   const urgN=gapRows.filter(r=>_wi2Urgent(_fOf(r),today)).length;
   const gaps=gapRows.length;
-  const ownAll=[...expRows,...impRows].filter(r=>r.saved&&!r.partnerId).length;
-  const parAll=[...expRows,...impRows].filter(r=>r.saved&&r.partnerId).length;
-  const matchedExp=expRows.filter(r=>r.importId).length;
   const delivN=[...expRows,...impRows].filter(r=>_wk3StFlags(_fOf(r)).delivered).length;
   const lateN=[...expRows,...impRows].filter(r=>_wk3StFlags(_fOf(r)).late).length;
-  const pendAll=pending+impNoVehicle;
   // Pre-order counter (owner 27/9): every order on the sheet, group members
   // included — a pre-order folded into a group is still one to complete.
   const preFields=[...expRows,...impRows].flatMap(r=>(r.orderIds||[r.orderId]).map(id=>(data.exports.find(x=>x.id===id)||data.imports.find(x=>x.id===id))?.fields||{}));
@@ -1038,44 +1045,38 @@ function _wiPaint(){
   const cur=_wiCurrentWeek();
   // Δ2 (DESIGN): φίλτρο με μηδέν = ανενεργό. Το ενεργό μένει πατήσιμο ακόμη
   // και στο μηδέν, αλλιώς δεν ξε-επιλέγεται όταν αδειάσει η κατηγορία.
-  const chip=(q,lbl,n)=>{ const on=(WINTL.quick||'')===q; return `<button class="wi2-chip${on?' on':''}" data-q="${q}"${(!n&&!on)?' disabled':''} onclick="_wi2Quick('${q}')">${lbl} (${n})</button>`; };
   document.getElementById('content').innerHTML=`
-    <div class="wk3 wi2 ${_wiQuietOn()?'wi-quiet':''}${localStorage.getItem('tms_wk3_fl')==='0'?' fl-off':''}${localStorage.getItem('tms_wk3_fr')==='0'?' fr-off':''}${localStorage.getItem('tms_wk3_fl')==='1'?' fl-on':''}${localStorage.getItem('tms_wk3_fr')==='1'?' fr-on':''}" style="display:block;width:100%">
+    <div class="wk3 wi2 ${_wiQuietOn()?'wi-quiet':''}${localStorage.getItem('tms_wk3_fl')==='0'?' fl-off':''}${localStorage.getItem('tms_wk3_fr')==='0'?' fr-off':''}${localStorage.getItem('tms_wk3_fl')==='1'?' fl-on':''}${localStorage.getItem('tms_wk3_fr')==='1'?' fr-on':''}">
     <style>${_WI2_CSS}</style>
+    <!-- ΔΥΟ ΣΕΙΡΕΣ ΠΑΝΩ ΑΠΟ ΤΟ ΦΥΛΛΟ (owner 3/10, από screenshot της οθόνης
+         του: «πολύ ανεκμετάλλευτος χώρος… λίγο περιττό το ΓΡΗΓΟΡΑ ΦΙΛΤΡΑ»).
+         1: τίτλος · εβδομάδες στο κέντρο · ενέργειες δεξιά. Εκτύπωση/CSV/
+            Ανανέωση/Πλήρης οθόνη (προβολή & έξοδος) στο «⋯»· ορατές μένουν οι
+            ενέργειες δημιουργίας (Pre-order, Σάρωση, Νέα) — ίδια σειρά.
+         2: φίλτρα + σήματα (κενά γυρίσματα, προσωρινές) + εβδομάδα δεξιά.
+         Τα γρήγορα φίλτρα έφυγαν μαζί με τον κώδικά τους (DECISION_LOG 3/10):
+         «Χωρίς ανάθεση» ζει στο Κατάσταση, τα κενά γυρίσματα στο σήμα τους·
+         τα φίλτρα/μετρητές Ιδιόκτητα · Συνεργάτες · Ταιριασμένες δεν
+         υπάρχουν πια (απόφαση owner, καταγεγραμμένη εκεί). -->
     <div class="wi2-mast">
-      <div class="wi2-title">Πίνακας Σχεδιασμού Αποστολών <button class="wi2-legend-btn" onclick="_wi2Legend()" title="Υπόμνημα χρωμάτων και σημάτων">? υπόμνημα</button></div>
+      <div class="wi2-title"><span class="wi2-tt">Πίνακας Σχεδιασμού Αποστολών</span><button class="wi2-legend-btn" onclick="_wi2Legend()" title="Υπόμνημα χρωμάτων και σημάτων" aria-label="Υπόμνημα">?</button></div>
       <nav class="wi2-tabs" aria-label="Εβδομάδες">${_wk3Tabs(week)}</nav>
       <div class="wi2-acts">
-        <button class="wi2-btn" onclick="_wiPrintWeek()" title="Εκτύπωση εβδομάδας">Εκτύπωση</button>
-        <button class="wi2-btn" onclick="_wiExportCSV()" title="Εξαγωγή CSV">CSV</button>
-        <button class="wi2-btn" onclick="renderWeeklyIntl()" title="Ανανέωση">Ανανέωση</button>
-        <button class="wi2-btn" id="wi-fs" onclick="_wiFullscreen()" title="Πλήρης οθόνη — μόνο ο πίνακας· Esc για έξοδο">Πλήρης οθόνη</button>
+        <div class="wk-more">
+          <button type="button" class="wi2-btn wk-more-t" onclick="wkMoreToggle(event)" aria-haspopup="true" aria-expanded="false" title="Εκτύπωση · CSV · Ανανέωση · Πλήρης οθόνη">⋯</button>
+          <div class="wk-more-m" role="menu" hidden>
+            <button type="button" role="menuitem" onclick="_wiPrintWeek()" title="Εκτύπωση εβδομάδας">Εκτύπωση</button>
+            <button type="button" role="menuitem" onclick="_wiExportCSV()" title="Εξαγωγή CSV">CSV</button>
+            <button type="button" role="menuitem" onclick="renderWeeklyIntl()" title="Ανανέωση">Ανανέωση</button>
+            <button type="button" role="menuitem" id="wi-fs" onclick="_wiFullscreen()" title="Πλήρης οθόνη — μόνο ο πίνακας· Esc για έξοδο">Πλήρης οθόνη</button>
+          </div>
+        </div>
         <button class="wi2-btn pre-btn" onclick="_wiPreorder()" title="Φορτίο που ανακοινώθηκε — λεπτομέρειες αργότερα">Pre-order</button>
         ${OrdersCommon.scanButton('_wiScan()', 'Σάρωση διεθνούς', 'Νέα διεθνής παραγγελία από σάρωση εγγράφου — χωρίς έξοδο από το εβδομαδιαίο')}
         ${OrdersCommon.newOrderButton('_wiNewOrder()', '+ Νέα παραγγελία', 'Νέα διεθνής παραγγελία — χωρίς έξοδο από το εβδομαδιαίο')}
       </div>
     </div>
     ${_wi2LegendHTML()}
-    <!-- KPI band (frame 319:906): replaces the Command Center — same numbers
-         (gaps, unmatched, free fleet), once, every fraction with its denominator. -->
-    <div class="wi2-band">
-      ${preorderCounterHtml(preFields,"_wi2Quick('pre');preorderJump('#wi-rows .pre-leg')",WINTL.quick==='pre')}
-      <!-- ΘΟΡΥΒΟΣ ΚΑΤΩ, ΓΡΑΜΜΕΣ ΠΑΝΩ (owner 3/9): «θέλω απλά το badge με το 8 και
-           το ΚΕΝΑ ΓΥΡΙΣΜΑΤΑ 8 επείγοντα». Η αναλυτική πρόταση, η φάση της
-           εβδομάδας και ολόκληρο το «ΕΛΕΥΘΕΡΑ ΣΗΜΕΡΑ» έφυγαν — ο στόχος είναι
-           να χωράνε περισσότερες εγγραφές στην οθόνη. Κανένας αριθμός δεν
-           χάθηκε: τα κενά γυρίσματα και τα ασυμφώνητα ζουν στα γρήγορα
-           φίλτρα, με τους παρονομαστές τους. Τα σύνολα του υποσέλιδου και τα
-           τσιπάκια της κεφαλίδας ημέρας αφαιρέθηκαν 3/9 για τον ίδιο λόγο. -->
-      <div class="wi2-urg${gaps?'':' zero'}">
-        <button class="n" onclick="_wk3Gaps()" title="Ιδιόκτητοι γύροι χωρίς φορτίο επιστροφής — κλικ: οι αταίριαστες εισαγωγές">${gaps}</button>
-        <h4>ΚΕΝΑ ΓΥΡΙΣΜΑΤΑ${urgN?` · ${urgN} ${urgN===1?'ΕΠΕΙΓΟΝ':'ΕΠΕΙΓΟΝΤΑ'}`:''}</h4>
-      </div>
-      <div class="wi2-quick">
-        <div class="k">ΓΡΗΓΟΡΑ ΦΙΛΤΡΑ</div>
-        <div class="chips">${chip('','Όλες',total)}${chip('pending','Χωρίς ανάθεση',pendAll)}${chip('gap','Κενά γυρίσματα',gaps)}${chip('own','Ιδιόκτητα',ownAll)}${chip('partner','Συνεργάτες',parAll)}${chip('matched','Ταιριασμένες',matchedExp)}</div>
-      </div>
-    </div>
     <div class="wk3-sub">
       <div class="entity-search-wrap">
         ${_ico('search')}
@@ -1089,6 +1090,13 @@ function _wiPaint(){
       </select>
       ${WINTL.filter||WINTL.filterStatus||WINTL.quick?`<button class="btn btn-ghost btn-sm" onclick="WINTL.filter='';WINTL.filterStatus='';WINTL.quick='';document.getElementById('wi-search').value='';_wiApplyFilter()">${_ico('x', 12)} Καθαρισμός</button>`:''}
       <button class="wi2-btn" onclick="_wiToggleDetails()" title="Πρόσθετες ενδείξεις γραμμής (όρια εβδομάδας, εκτέλεση)">Λεπτομέρειες${_wiQuietOn()?'':' ✓'}</button>
+      <!-- ΘΟΡΥΒΟΣ ΚΑΤΩ, ΓΡΑΜΜΕΣ ΠΑΝΩ (owner 3/9: «θέλω απλά το badge με το 8 και
+           το ΚΕΝΑ ΓΥΡΙΣΜΑΤΑ 8 επείγοντα»· 3/10: σήμα στη σειρά των φίλτρων,
+           όχι κουτί). Κλικ = οι αταίριαστες εισαγωγές που μπορούν να γεμίσουν
+           τα κενά (_wk3Gaps). Μηδέν = γκρι, ορατό: το «κανένα κενό» είναι
+           πληροφορία. -->
+      <button type="button" class="wk-sig${gaps?' warn':''}" onclick="_wk3Gaps()" title="Ιδιόκτητοι γύροι χωρίς φορτίο επιστροφής — κλικ: οι αταίριαστες εισαγωγές">ΚΕΝΑ ΓΥΡΙΣΜΑΤΑ <b>${gaps}</b>${urgN?` · ${urgN} ${urgN===1?'ΕΠΕΙΓΟΝ':'ΕΠΕΙΓΟΝΤΑ'}`:''}</button>
+      ${preorderCounterHtml(preFields,"_wi2Quick('pre');preorderJump('#wi-rows .pre-leg')",WINTL.quick==='pre')}
       ${unmatched>0?`<button class="wi2-btn" onclick="_wiAutoMatch()" title="Περιορισμένο: χωρίς συντεταγμένες τοποθεσιών (LO-1) σκοράρει μόνο με ημερομηνίες">${_ico('zap',13)} Αυτόματο ταίριασμα (${unmatched}) — χωρίς συντεταγμένες</button>`:''}
       <span id="wi-crossweek-in"></span>
       <span class="wi2-week">Εβδομάδα ${week} · ${_wiWeekRange(week)} · Σαβ–Παρ</span>
@@ -1111,11 +1119,11 @@ function _wiPaint(){
               <p>Καμία διεθνής παραγγελία ακόμη. Οι νέες εμφανίζονται εδώ μόλις καταχωρηθούν.</p>
             </div>`}
         </div>
+        <!-- Υποσέλιδο ΜΕΣΑ στο φύλλο, αμέσως μετά την τελευταία μέρα (owner
+             3/10): μικρό, χωρίς κουτί. Αριστερά — τη δεξιά γωνία την έχει το
+             FAB της συνομιλίας. -->
+        <div class="wi2-foot"><span id="wi2-sync" class="sync"></span></div>
       </main>
-    </div>
-    <!-- Tally (contract §3): every fraction carries its denominator. -->
-    <div class="wi2-foot">
-      <span id="wi2-sync" class="sync"></span>
     </div>
     <div id="wi-ctx"></div>
     <div id="wi-popover"></div>
@@ -1209,9 +1217,10 @@ function _wiAllRowsHTML(){
     // Day counters (frame 368:966): what the day owes, in words
     const gExp=grp.exps.length;
     const empty=!gExp&&!showImps.length;
-    html+=`<section class="wi2-day${isToday?' today':''}" data-day="${grp.rawDate}">
-      <div class="wk3-dayh${isToday?' today':''}"><span class="d">${wd||'ΧΩΡΙΣ ΗΜΕΡΟΜΗΝΙΑ'}${dm?' '+dm:''}</span>${isToday?'<span class="now">ΣΗΜΕΡΑ</span>':''}</div>`;
-    if(empty){ html+=`<div class="wi2-none">Καμία κίνηση — η κενή μέρα είναι πληροφορία, όχι απουσία</div></section>`; return; }
+    // Empty day = ONE slim line, the label on the day header itself (owner 3/10)
+    html+=`<section class="wi2-day${isToday?' today':''}${empty?' wi2-day0':''}" data-day="${grp.rawDate}">
+      <div class="wk3-dayh${isToday?' today':''}"><span class="d">${wd||'ΧΩΡΙΣ ΗΜΕΡΟΜΗΝΙΑ'}${dm?' '+dm:''}</span>${isToday?'<span class="now">ΣΗΜΕΡΑ</span>':''}${empty?'<span class="wi2-none">Καμία κίνηση</span>':''}</div>`;
+    if(empty){ html+=`</section>`; return; }
 
     // Owner (9/8): ταξινόμηση ανά πελάτη και μετά Veroia Switch
     const _cKey=(f)=>String(f?.['Client Name']||f?.['Client Summary']||'').toUpperCase();

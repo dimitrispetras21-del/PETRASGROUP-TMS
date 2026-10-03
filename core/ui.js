@@ -335,6 +335,21 @@ function showComingSoon(label, opts) {
   </div>`;
 }
 
+// ── «⋯» menu of the Weekly headers (owner 3/10/2026) ──
+// The button's next sibling is the menu. Same contract as the Orders
+// «+ Νέα ▾» menu (orders_catalog.js toggleNew): click toggles, the next click
+// anywhere closes — a menu item runs its own onclick first, then closes.
+function wkMoreToggle(ev) {
+  ev.stopPropagation();
+  const btn = ev.currentTarget, m = btn && btn.nextElementSibling;
+  if (!m) return;
+  m.hidden = !m.hidden;
+  btn.setAttribute('aria-expanded', String(!m.hidden));
+  if (!m.hidden) setTimeout(() => document.addEventListener('click', () => {
+    m.hidden = true; btn.setAttribute('aria-expanded', 'false');
+  }, { once: true }), 0);
+}
+
 // ── Toast with success animation (A5) ───────────
 function toast(msg, type = 'success') {
   let el = document.getElementById('toast');

@@ -2770,6 +2770,26 @@ button.ecard-meta-row-btn, .ecard-meta-row button.badge {
 .wk3-sub{display:flex;align-items:center;gap:10px;margin-bottom:10px;flex-wrap:wrap}
 .wk3-sub .entity-search-wrap{flex:0 1 340px}
 .wk3-range{font-size:11.5px;color:var(--text-dim);margin-left:auto;white-space:nowrap}
+/* WEEKLY — ΔΥΟ ΣΕΙΡΕΣ ΠΑΝΩ ΑΠΟ ΤΟ ΦΥΛΛΟ (owner 3/10/2026, και στα δύο Weekly).
+   Κοινά εδώ, όχι σε κάθε module, γιατί το <style> του ενός δεν φτάνει ποτέ
+   στο άλλο (ίδιος λόγος με το ASSIGNMENT POPOVER πιο κάτω) — μία εμφάνιση.
+   .wk-more: το «⋯» της κεφαλίδας (Εκτύπωση/CSV/Ανανέωση…), ίδιο συμβόλαιο
+   με το «+ Νέα ▾» των Παραγγελιών: κλικ ανοίγει, το επόμενο κλικ οπουδήποτε
+   κλείνει (wkMoreToggle, core/ui.js).
+   .wk-sig: τα σήματα που ζούσαν σε κουτιά πάνω από τα φίλτρα, τώρα στη
+   σειρά των φίλτρων. Μηδέν = γκρι αλλά ορατό (το «κανένα» είναι πληροφορία)·
+   .ok = πράσινος αριθμός, .warn = πορτοκαλί, .hot = κόκκινο. */
+.wk-more{position:relative;display:inline-flex}
+.wk-more-m{position:absolute;right:0;top:calc(100% + 4px);z-index:50;display:flex;flex-direction:column;min-width:160px;padding:4px;background:var(--surface-card);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow-lift)}
+.wk-more-m[hidden]{display:none}
+.wk-more-m button{text-align:left;border:none;background:none;padding:8px 12px;font:500 13px 'DM Sans',sans-serif;color:var(--text);border-radius:var(--radius);cursor:pointer;white-space:nowrap}
+.wk-more-m button:hover{background:var(--surface-sunken)}
+.wk-sig{display:inline-flex;align-items:center;gap:6px;font:700 11px 'DM Sans',sans-serif;letter-spacing:.5px;color:var(--text-dim);background:var(--surface-card);border:1px solid var(--border);border-radius:var(--radius);padding:4px 10px;line-height:18px;cursor:pointer;white-space:nowrap}
+.wk-sig b{font:700 13px 'Syne',sans-serif;color:inherit;font-variant-numeric:tabular-nums}
+.wk-sig:hover{background:var(--surface-sunken)}
+.wk-sig.ok b{color:var(--ok)}
+.wk-sig.warn{color:var(--warn);background:var(--warn-bg);border-color:var(--warn-border)}
+.wk-sig.hot{color:var(--danger);background:var(--danger-bg);border-color:var(--danger)}
 /* Φάση Α2 — v3 «καθολικό» πάνω στα υπάρχοντα containers (scoped, τα wi-*
    του National άθικτα): τυπογραφικές μέρες, λιτές κεφαλίδες, κόκκινα κενά. */
 /* ── v3.1 proto σώμα — ledger 34px, 6-στηλο grid, feeds, day headers ── */
