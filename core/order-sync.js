@@ -230,7 +230,9 @@ const _orderSync = (function() {
       try { await atDelete(TABLES.CONS_LOADS, clId); res.deleted++; }
       catch (e) { res.failed++; log(e, `delete CL ${clId}`); }
     }
-    if (res.unsure && typeof showErrorToast === 'function') {
+    if (res.failed && typeof showErrorToast === 'function') {
+      showErrorToast(`Το φορτηγό groupage δεν σβήστηκε ολόκληρο (${res.failed} αποτυχία) — έλεγξε το Weekly National.`, 'warn', 9000);
+    } else if (res.unsure && typeof showErrorToast === 'function') {
       showErrorToast(`Το φορτηγό groupage ΔΕΝ σβήστηκε: δεν επιβεβαιώθηκε αν έχει κι άλλους πελάτες. Έλεγξε το Weekly National.`, 'warn', 9000);
     } else if (res.kept && typeof toast === 'function') {
       toast('Το κοινό φορτηγό groupage έμεινε για τους άλλους πελάτες — βγήκε μόνο αυτή η παραγγελία', 'info');

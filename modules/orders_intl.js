@@ -850,7 +850,7 @@ async function _syncVeroiaSwitch(orderId, fields) {
     // 2. Delete GL + NAT_ORDER + CL + NL created by _syncGrpFromIntl
     // _deleteGrpForIntl handles the full cascade correctly (finds NAT_ORDER via JS filter)
     try { await _deleteGrpForIntl(orderId); }
-    catch(e) { console.warn('GRP cleanup on VS OFF:', e); }
+    catch(e) { console.warn('GRP cleanup on VS OFF:', e); showErrorToast('Οι γραμμές groupage δεν ελευθερώθηκαν — δεν σβήστηκε τίποτα. Έλεγξε το Weekly National.', 'warn', 9000); }
 
     // 3. Delete RAMP records linked to the INTL ORDER
     try {
@@ -1076,7 +1076,7 @@ async function _syncVeroiaSwitch(orderId, fields) {
 
   // GRP OFF → delete any auto-created NAT_ORDER + its GL + CL + NL
   try { await _deleteGrpForIntl(orderId); }
-  catch(e) { console.warn('GL cleanup (grp OFF):', e); }
+  catch(e) { console.warn('GL cleanup (grp OFF):', e); showErrorToast('Οι γραμμές groupage δεν ελευθερώθηκαν — δεν σβήστηκε τίποτα. Έλεγξε το Weekly National.', 'warn', 9000); }
 
   invalidateCache(TABLES.NAT_LOADS);
 
@@ -1508,38 +1508,28 @@ async function submitIntlOrder(recId) {
         if (assignedGLs.length > 0) {
             const ok = await confirmAction(
               `Η παραγγελία αυτή έχει ήδη ενταχθεί σε groupage φορτίο.\n\n` +
-              `Αν αποθηκεύσεις αλλαγές, το φορτίο θα διαλυθεί αυτόματα\n` +
-              `ώστε να ξαναφτιαχτεί με τα νέα δεδομένα.\n\n` +
+              `Αν αποθηκεύσεις αλλαγές, η παραγγελία θα βγει από το φορτίο\n` +
+              `ώστε να ξαναμπεί με τα νέα δεδομένα. Το φορτηγό μένει\n` +
+              `αν έχει κι άλλους πελάτες.\n\n` +
               `Θέλεις να συνεχίσεις;`,
               { title: 'Groupage φορτίο', confirmLabel: 'Συνέχεια', danger: true }
             );
             if (!ok) { btn.textContent = 'Αποθήκευση'; btn.disabled = false; return; }
 
-            // Auto-restore: delete CL + NL, set GL → Unassigned
+            // Release this order's lines; the truck (CL + NL) goes only if no
+            // other order's line is left on it — this ran on EVERY save of an
+            // assigned order and dissolved everyone's truck (audit A4 review, 3/10).
             toast('Αυτόματη επαναφορά ενοποιημένων φορτίων…', 'info');
+            await releaseGroupageTrucks(assignedGLs, 'intl pre-save restore ' + recId);
             for (const gl of assignedGLs) {
-              try {
-                // Same 13/9 fix as _deleteGrpForIntl: the CL comes from the line's FK.
-                const _clId = getLinkedId(gl.fields['Linked Consolidated Load']);
-                const cls = _clId ? [{ id: _clId }] : [];
-                for (const cl of cls) {
-                  try {
-                    const nls = await atGetAll(TABLES.NAT_LOADS, {
-                      filterByFormula: `FIND("${cl.id}",ARRAYJOIN({Source Consolidated Load},","))>0` /* 13/9: groupage loads link via the CL FK, never Source Record */,
-                    }, false);
-                    for (const nl of nls) await atDelete(TABLES.NAT_LOADS, nl.id);
-                  } catch(e) { console.warn('auto-restore NL delete:', e); }
-                  await atDelete(TABLES.CONS_LOADS, cl.id);
-                }
-              } catch(e) { console.warn('auto-restore CL delete:', e); }
               await atPatch(TABLES.GL_LINES, gl.id, { 'Status': 'Unassigned' });
             }
             invalidateCache(TABLES.CONS_LOADS);
             invalidateCache(TABLES.NAT_LOADS);
             invalidateCache(TABLES.GL_LINES);
-            toast('Το φορτίο διαλύθηκε — συνεχίζει η αποθήκευση...', 'info');
+            toast('Η παραγγελία βγήκε από το φορτίο — συνεχίζει η αποθήκευση...', 'info');
           }
-      } catch(e) { console.warn('Pre-save CL restore:', e); }
+      } catch(e) { console.warn('Pre-save CL restore:', e); showErrorToast('Ο έλεγχος του φορτίου groupage απέτυχε — δεν σβήστηκε τίποτα. Έλεγξε το Weekly National.', 'warn', 9000); }
     }
     // ────────────────────────────────────────────────────────────
 

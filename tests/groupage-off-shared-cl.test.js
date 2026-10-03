@@ -126,6 +126,12 @@ test('intl edit path (_deleteGrpForIntl) delegates to releaseGroupageTrucks', ()
   assert.match(b, /releaseGroupageTrucks\(/);
   assert.doesNotMatch(b, /atDelete\(TABLES\.CONS_LOADS/);
 });
+test('intl pre-save auto-restore (every save of an assigned VS+GRP order) delegates too', () => {
+  const src = fs.readFileSync(path.join(ROOT, 'modules/orders_intl.js'), 'utf8');
+  const b = block(src, /Pre-save check: auto-restore CL/, /\n    \/\/ ─{20,}/);
+  assert.match(b, /releaseGroupageTrucks\(assignedGLs/);
+  assert.doesNotMatch(b, /atDelete\(TABLES\.CONS_LOADS/);
+});
 test('order delete paths use the same shared check (one copy)', () => {
   for (const f of ['modules/orders_intl.js', 'modules/orders_natl.js']) {
     const src = fs.readFileSync(path.join(ROOT, f), 'utf8');
