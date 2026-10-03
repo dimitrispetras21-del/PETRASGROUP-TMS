@@ -181,6 +181,64 @@ const _orderSync = (function() {
   }
 
   /**
+   * A groupage truck (CONSOLIDATED LOAD) is ONE load shared by N orders.
+   * Returns the Assigned lines that stay on `clId` once the caller's own lines
+   * (`releasedGlIds`) are released. Non-empty → the truck must survive.
+   * The single copy of the «other customers?» check (audit A4, owner go 3/10):
+   * order delete had it, the National Groupage OFF edit did not, so unticking
+   * ONE order deleted everyone's truck. Throws when the read fails — a caller
+   * must then KEEP the CL: an empty answer from a failed read is not «alone».
+   */
+  async function clOtherAssignedLines(clId, releasedGlIds) {
+    const released = new Set(releasedGlIds || []);
+    const lines = await atGetAll(TABLES.GL_LINES, {
+      filterByFormula: `AND(FIND("${clId}",ARRAYJOIN({Linked Consolidated Load},","))>0,{Status}="Assigned")`,
+      fields: ['Status']
+    }, false);
+    return lines.filter(x => !released.has(x.id));
+  }
+
+  /**
+   * National Groupage turned OFF on an existing order (intl or natl): take the
+   * order's lines `gls` off their trucks. A truck (CL + the national load built
+   * from it) is deleted ONLY when nothing else would be left Assigned on it;
+   * otherwise it stays for the other customers. Lines themselves are NEVER
+   * deleted — the caller flips them to 'Unassigned' (never-delete rule, DB
+   * ON DELETE RESTRICT). Failed share check → keep the truck + a visible warning.
+   * @param {Array<{id:string, fields:Object}>} gls - lines being released (need 'Linked Consolidated Load')
+   * @param {string} ctx - caller label for the error log
+   * @returns {Promise<{kept:number, deleted:number, unsure:number, failed:number}>}
+   */
+  async function releaseGroupageTrucks(gls, ctx) {
+    const res = { kept: 0, deleted: 0, unsure: 0, failed: 0 };
+    const released = gls.map(g => g.id);
+    // Two lines of one order can sit on the same truck — decide per truck once.
+    const clIds = [...new Set(gls.map(g => getLinkedId(g.fields['Linked Consolidated Load'])).filter(Boolean))];
+    const log = (e, what) => { if (typeof logError === 'function') logError(e, `${ctx}: ${what}`); else console.warn(ctx, what, e); };
+    for (const clId of clIds) {
+      let others;
+      try { others = await clOtherAssignedLines(clId, released); }
+      catch (e) { res.unsure++; log(e, `CL ${clId} share check — CL kept`); continue; }
+      if (others.length) { res.kept++; continue; }
+      try {
+        const nls = await atGetAll(TABLES.NAT_LOADS, {
+          filterByFormula: `FIND("${clId}",ARRAYJOIN({Source Consolidated Load},","))>0` /* 13/9: groupage loads link via the CL FK, never Source Record */,
+          fields: ['Name']
+        }, false);
+        for (const nl of nls) await atDelete(TABLES.NAT_LOADS, nl.id);
+      } catch (e) { res.failed++; log(e, `NL of CL ${clId}`); }
+      try { await atDelete(TABLES.CONS_LOADS, clId); res.deleted++; }
+      catch (e) { res.failed++; log(e, `delete CL ${clId}`); }
+    }
+    if (res.unsure && typeof showErrorToast === 'function') {
+      showErrorToast(`Το φορτηγό groupage ΔΕΝ σβήστηκε: δεν επιβεβαιώθηκε αν έχει κι άλλους πελάτες. Έλεγξε το Weekly National.`, 'warn', 9000);
+    } else if (res.kept && typeof toast === 'function') {
+      toast('Το κοινό φορτηγό groupage έμεινε για τους άλλους πελάτες — βγήκε μόνο αυτή η παραγγελία', 'info');
+    }
+    return res;
+  }
+
+  /**
    * Convenience: patch a source order AND trigger downstream sync.
    * Drop-in replacement for atPatch when the caller wants automatic sync.
    */
@@ -198,11 +256,13 @@ const _orderSync = (function() {
     return result;
   }
 
-  return { syncOrderDownstream, syncGLtoCLtoNL, patchWithSync };
+  return { syncOrderDownstream, syncGLtoCLtoNL, patchWithSync, clOtherAssignedLines, releaseGroupageTrucks };
 })();
 
 if (typeof window !== 'undefined') {
   window.syncOrderDownstream = _orderSync.syncOrderDownstream;
   window.syncGLtoCLtoNL = _orderSync.syncGLtoCLtoNL;
   window.patchWithSync = _orderSync.patchWithSync;
+  window.clOtherAssignedLines = _orderSync.clOtherAssignedLines;
+  window.releaseGroupageTrucks = _orderSync.releaseGroupageTrucks;
 }

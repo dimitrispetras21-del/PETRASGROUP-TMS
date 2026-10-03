@@ -1101,31 +1101,16 @@ async function submitNatlOrder(recId) {
         await _syncGroupageLinesFromNO(savedNatlId, fields);
       } catch(e) { console.warn('GL sync error:', e); }
     } else if (savedNatlId && !fields['National Groupage']) {
-      // National Groupage turned OFF → DELETE GL + CL + CL-linked NL
+      // National Groupage turned OFF → release this order's GL lines; a truck
+      // (CL + its NL) goes only if no OTHER order is left on it (audit A4, 3/10:
+      // this path used to delete the truck shared by every customer).
       try {
         const staleGL = await atGetAll(TABLES.GL_LINES, {
           filterByFormula: `FIND("${savedNatlId}",ARRAYJOIN({Linked National Order},","))>0`,
           fields: ['Status','Linked Consolidated Load']
         }, false);
-        // Delete CONS_LOADS linked to these GL lines
-        for (const gl of staleGL) {
-          try {
-            // 14/9: same fix as deleteNatlOrder — CL from the line's FK, not a 422 filter.
-            const _clId = getLinkedId(gl.fields['Linked Consolidated Load']);
-            const cls = _clId ? [{ id: _clId }] : [];
-            for (const cl of cls) {
-              // Delete NL records from this CL
-              try {
-                const nlsFromCL = await atGetAll(TABLES.NAT_LOADS, {
-                  filterByFormula: `FIND("${cl.id}",ARRAYJOIN({Source Consolidated Load},","))>0` /* 13/9: groupage loads link via the CL FK, never Source Record */,
-                  fields: ['Name']
-                }, false);
-                for (const nl of nlsFromCL) await atDelete(TABLES.NAT_LOADS, nl.id);
-              } catch(e) { console.warn('NL-CL cleanup:', e); }
-              await atDelete(TABLES.CONS_LOADS, cl.id);
-            }
-          } catch(e) { console.warn('CL cleanup:', e); }
-        }
+        // ReferenceError if core/order-sync.js is missing → caught below, nothing deleted.
+        await releaseGroupageTrucks(staleGL, 'natl GRP OFF ' + savedNatlId);
         // FIXME(audit): GL_LINES must never be hard-deleted — only set Status='Unassigned'.
         // Hard-delete breaks the ORDERS→GL_LINES→CONS_LOADS history chain permanently.
         // See .reference/ANALYSIS_WEAK_SPOTS_OPPORTUNITIES.md and orders_natl.js findings.
@@ -1135,8 +1120,15 @@ async function submitNatlOrder(recId) {
         }
         if (staleGL.length) _tmsLog(`Unassigned ${staleGL.length} stale GL lines`);
         invalidateCache(TABLES.GL_LINES);
+        invalidateCache(TABLES.CONS_LOADS);
         invalidateCache(TABLES.NAT_LOADS);
-      } catch(e) { console.warn('GL cleanup error:', e); }
+      } catch(e) {
+        // Was console-only: a failed read here left the groupage state unknown
+        // with a green «saved». Nothing was deleted — say so.
+        console.warn('GL cleanup error:', e);
+        if (typeof logError === 'function') logError(e, 'natl GRP OFF cleanup ' + savedNatlId);
+        showErrorToast('Η «Εθνική Ομαδοποίηση» βγήκε, αλλά οι γραμμές groupage δεν ελευθερώθηκαν — δεν σβήστηκε τίποτα. Έλεγξε το Weekly National.', 'warn', 9000);
+      }
     }
     // ─────────────────────────────────────────────────────────
 
@@ -1557,12 +1549,8 @@ async function deleteNatlOrder(recId) {
             // The truck survives while any OTHER order's line is still Assigned
             // on it; only this order's lines are released below.
             let others = [];
-            try {
-              others = (await atGetAll(TABLES.GL_LINES, {
-                filterByFormula: `AND(FIND("${cl.id}",ARRAYJOIN({Linked Consolidated Load},","))>0,{Status}="Assigned")`,
-                fields: ['Linked National Order']
-              }, false)).filter(x => getLinkedId(x.fields['Linked National Order']) !== recId);
-            } catch(e) { _delFail++; console.warn('CL share check:', e); continue; }
+            try { others = await clOtherAssignedLines(cl.id, gls.map(x => x.id)); } // core/order-sync.js — the one copy (A4)
+            catch(e) { _delFail++; console.warn('CL share check:', e); continue; }
             if (others.length) { _tmsLog(`CL ${cl.id} kept — ${others.length} other line(s) still assigned`); continue; }
             // Delete NL records from this CL
             try {

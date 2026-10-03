@@ -1119,7 +1119,8 @@ async function _syncGrpFromIntl(orderId, fields) {
 
 // ═══════════════════════════════════════════════════════════════
 // _deleteGrpForIntl — cleanup when intl GRP is turned OFF
-// Finds GL lines via Linked International Order (JS filter), deletes GL + CL + NL
+// Finds GL lines via Linked International Order (JS filter); unassigns them and
+// deletes a CL + NL only when no other order's line is left on it
 // ═══════════════════════════════════════════════════════════════
 async function _deleteGrpForIntl(orderId) {
   // Fetch all GL lines — filter in JS by Linked International Order
@@ -1131,26 +1132,20 @@ async function _deleteGrpForIntl(orderId) {
     const links = r.fields['Linked International Order'] || [];
     return links.some(l => (l?.id || l) === orderId);
   });
-  for (const gl of gls) {
-    if (gl.fields.Status !== 'Assigned') {
-      try {
-        // The CL is the line's own FK (audit 13/9): filtering CONS_LOADS by a
-        // «Groupage Lines» reverse field the Worker does not model was a 422
-        // swallowed into [] — no CL/NL was ever cleaned up here.
-        const _clId = getLinkedId(gl.fields['Linked Consolidated Load']);
-        const cls = _clId ? [{ id: _clId }] : [];
-        for (const cl of cls) {
-          try {
-            const nls = await atGetAll(TABLES.NAT_LOADS, {filterByFormula:`FIND("${cl.id}",ARRAYJOIN({Source Consolidated Load},","))>0` /* 13/9: groupage loads link via the CL FK, never Source Record */},false);
-            for (const nl of nls) await atDelete(TABLES.NAT_LOADS, nl.id);
-          } catch(e) { logError(e, '_deleteGrpForIntl: delete NL'); }
-          await atDelete(TABLES.CONS_LOADS, cl.id);
-        }
-      } catch(e) { logError(e, '_deleteGrpForIntl: delete CL'); }
-      // Business rule: GL records are NEVER deleted — set to Unassigned instead.
-      try { await atPatch(TABLES.GL_LINES, gl.id, { Status: 'Unassigned' }); }
-      catch(e) { if (typeof logError === 'function') logError(e, '_deleteGrpForIntl: GL→Unassigned'); }
-    }
+  // Assigned lines are left alone here (unchanged behaviour). An Unassigned
+  // line still carries its old CL FK (nothing clears it), and that truck may
+  // now carry other customers — so the truck goes only if it would be empty
+  // (audit A4, 3/10; the one shared check lives in core/order-sync.js).
+  const toRelease = gls.filter(gl => gl.fields.Status !== 'Assigned');
+  try { await releaseGroupageTrucks(toRelease, '_deleteGrpForIntl ' + orderId); }
+  catch(e) {
+    logError(e, '_deleteGrpForIntl: release trucks — nothing deleted');
+    if (typeof showErrorToast === 'function') showErrorToast('Το φορτηγό groupage δεν ελέγχθηκε — δεν σβήστηκε τίποτα. Έλεγξε το Weekly National.', 'warn', 9000);
+  }
+  for (const gl of toRelease) {
+    // Business rule: GL records are NEVER deleted — set to Unassigned instead.
+    try { await atPatch(TABLES.GL_LINES, gl.id, { Status: 'Unassigned' }); }
+    catch(e) { if (typeof logError === 'function') logError(e, '_deleteGrpForIntl: GL→Unassigned'); }
   }
   invalidateCache(TABLES.GL_LINES);
   invalidateCache(TABLES.CONS_LOADS);  // C6: missing cache invalidation
@@ -2490,13 +2485,8 @@ async function deleteIntlOrder(recId, opts) {
             // orders — it survives while any line NOT belonging to this order
             // is still Assigned on it (same guard as deleteNatlOrder).
             let others = [];
-            try {
-              const mine = new Set(gls.map(x => x.id));
-              others = (await atGetAll(TABLES.GL_LINES, {
-                filterByFormula: `AND(FIND("${cl.id}",ARRAYJOIN({Linked Consolidated Load},","))>0,{Status}="Assigned")`,
-                fields: ['Status']
-              }, false)).filter(x => !mine.has(x.id));
-            } catch(e) { _delFail++; console.warn('CL share check:', e); continue; }
+            try { others = await clOtherAssignedLines(cl.id, gls.map(x => x.id)); } // core/order-sync.js — the one copy (A4)
+            catch(e) { _delFail++; console.warn('CL share check:', e); continue; }
             if (others.length) continue;
             try {
               const nlsFromCL = await atGetAll(TABLES.NAT_LOADS, {
