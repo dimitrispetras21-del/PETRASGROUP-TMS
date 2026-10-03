@@ -45,7 +45,13 @@ function can(section) {
 // atPreload is defined in api.js and runs in background
 setTimeout(() => { if (typeof atPreload === 'function') atPreload(); }, 100);
 // Preload normalized reference data (single fetch per table, shared across modules)
-setTimeout(() => { if (typeof preloadReferenceData === 'function') preloadReferenceData(); }, 200);
+// A failed preload used to surface only as an «unhandledrejection» with no
+// context (audit 28/9); the pages that need the data say so themselves
+// (orders: banner) — this line makes the cause reach app_errors with a name.
+setTimeout(() => {
+  if (typeof preloadReferenceData !== 'function') return;
+  preloadReferenceData().catch(e => { if (typeof logError === 'function') logError(e, 'auth: preloadReferenceData'); });
+}, 200);
 // Shared scan examples are synced when the scan dialog opens (openIntlScan →
 // scanSyncTrainingFromServer), not here: at login every role would read
 // scan_examples, and warehouse has no right to it (403 toast), 27/9/2026.
