@@ -51,7 +51,8 @@ section('currentWeekNumber');
 
 const wn = currentWeekNumber();
 assert(typeof wn === 'number', 'currentWeekNumber: returns a number');
-assert(wn > 0 && wn <= 53, 'currentWeekNumber: value in 1-53 range');
+// TmsWeek (3/10/2026): a Saturday–Friday week can be W54 (2028) — see tests/tms-week-sql.test.js.
+assert(wn > 0 && wn <= 54, 'currentWeekNumber: value in 1-54 range');
 
 // ── formatDate ──
 section('formatDate');
@@ -105,29 +106,18 @@ assertEqual(expiryClass('2099-12-31'), 'expiry-ok', 'expiryClass: far future is 
 // Past date should be alert
 assertEqual(expiryClass('2020-01-01'), 'expiry-alert', 'expiryClass: past date is alert');
 
-// ── isoWeekNumber / currentWeekNumber ──
-// Locked because two disagreeing implementations (utils.js naive vs
-// metrics.js Sunday-start) once made the same app show week 31 and 32 on the
-// same day. ISO was chosen by measurement: it matches the stored `Week Number`
-// on 111/124 ORDERS records vs 99/124 (Sunday-start) and 76/124 (old formula).
-// See docs/design/DEEP_AUDIT_2026-08-04/dashboard.md D-1.
-section('isoWeekNumber');
+// ── currentWeekNumber = TmsWeek ──
+// Locked because disagreeing week definitions once made the same app show week
+// 31 and 32 on the same day (4/8), and on 3/10 put 26/253 orders in another week
+// on the Dashboard than on the Weekly. Since 3/10/2026 (owner «Α») there is ONE:
+// TmsWeek, Saturday–Friday (core/tms-week.js; SQL twin tms_week(), migration 056).
+section('currentWeekNumber');
 
-assert(typeof isoWeekNumber === 'function', 'isoWeekNumber exists');
-
-// The bug that started this: 4 Aug 2026 read as week 31, ISO says 32.
-assertEqual(isoWeekNumber(new Date(2026, 7, 4)), 32, 'isoWeekNumber: 2026-08-04 is week 32');
-
-// 1 Jan 2026 is a Thursday, so it belongs to week 1 of 2026.
-assertEqual(isoWeekNumber(new Date(2026, 0, 1)), 1, 'isoWeekNumber: 2026-01-01 (Thu) is week 1');
-
-// 1 Jan 2027 is a Friday, so that week's Thursday is still in 2026 -> week 53.
-assertEqual(isoWeekNumber(new Date(2027, 0, 1)), 53, 'isoWeekNumber: 2027-01-01 (Fri) is week 53 of 2026');
-
-// Monday starts a new week; the Sunday before it belongs to the previous one.
-assertEqual(isoWeekNumber(new Date(2026, 7, 2)), 31, 'isoWeekNumber: Sun 2026-08-02 is week 31');
-assertEqual(isoWeekNumber(new Date(2026, 7, 3)), 32, 'isoWeekNumber: Mon 2026-08-03 is week 32');
-
-// currentWeekNumber must be exactly isoWeekNumber(today) — one implementation.
-assertEqual(currentWeekNumber(), isoWeekNumber(new Date()),
-  'currentWeekNumber: delegates to isoWeekNumber');
+assert(typeof TmsWeek !== 'undefined', 'TmsWeek loaded before the utils tests');
+assertEqual(currentWeekNumber(), TmsWeek.current(), 'currentWeekNumber: delegates to TmsWeek.current()');
+// Friday closes a week, Saturday opens the next (the 26 orders of 3/10 were Saturdays).
+assertEqual(TmsWeek.numOf(new Date(2026, 9, 2)), 40, 'TmsWeek: Fri 2026-10-02 is week 40');
+assertEqual(TmsWeek.numOf(new Date(2026, 9, 3)), 41, 'TmsWeek: Sat 2026-10-03 is week 41');
+// New Year stays inside its week: Fri 1/1/2027 is still W53 of 2026.
+assertEqual(TmsWeek.numOf(new Date(2027, 0, 1)), 53, 'TmsWeek: Fri 2027-01-01 is week 53');
+assertEqual(TmsWeek.numOf(new Date(2027, 0, 2)), 2, 'TmsWeek: Sat 2027-01-02 is week 2 (no W1 in 2027)');

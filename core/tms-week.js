@@ -15,8 +15,10 @@
 // So the week Sat 26/12/2026 – Fri 1/1/2027 stays W53 on every one of its
 // days instead of breaking into W53 + W1 at New Year.
 //
-// Not ISO weeks: dashboard/performance use isoWeekNumber() (core/utils.js),
-// a different, audited definition — do not merge the two.
+// The ONE week of the whole app since 3/10/2026 (owner «Α»): currentWeekNumber
+// (Dashboard, Performance, AI chat, notifications) and metrics._weekOf call it,
+// and the database's week_number is the same function in SQL (migration 056,
+// tms_week(); compared day by day in tests/tms-week-sql.test.js).
 // ═══════════════════════════════════════════════════════════════════════
 
 var TmsWeek = {

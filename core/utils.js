@@ -244,45 +244,24 @@ function expiryLabel(dateStr) {
 }
 
 /**
- * ISO-8601 week number (1-53) for any date. Weeks start on Monday and week 1
- * is the one containing the year's first Thursday.
+ * The current planning week — TmsWeek (core/tms-week.js): Saturday–Friday,
+ * numbered as the Weekly boards number it.
  *
- * This is the single source of truth for week numbers. There used to be two
- * implementations that disagreed by one:
- *   - this function: ceil((daysSinceJan1 + 1) / 7)          -> 31 on 2026-08-04
- *   - core/metrics.js _weekOf: Sunday-start WEEKNUM         -> 32 on 2026-08-04
- * so the Dashboard header, the International Orders week filter and My
- * Performance all showed week 31 while the two Weekly planners showed 32 on the
- * same day — and the Orders filter silently queried the wrong week.
+ * ONE week definition everywhere (owner 3/10/2026, decision «Α»). Until then
+ * this returned the ISO week (unified on 4/8 for the 31-vs-32 split) while the
+ * Weekly boards counted Saturday–Friday and the database's «Week Number»
+ * counted Sunday–Saturday: measured 3/10, 26/253 orders sat in a different
+ * week on the Dashboard than on the Weekly, and Fri 1/1/2027 would have been
+ * W1 / W53. Migration 056 makes week_number = tms_week() in the database, so
+ * every `{Week Number} == currentWeekNumber()` comparison (Dashboard,
+ * Performance, AI chat, notifications) now speaks of the Weekly's week.
+ * Note the definition's edges: no W1 in a year whose 1 January is not a
+ * Sunday, W54 in 2028 (tests/tms-week-sql.test.js).
  *
- * ISO is not a preference here, it is what the database uses. Measured against
- * all 124 ORDERS records on 2026-08-04, matching the stored `Week Number`
- * against each candidate formula applied to `Loading DateTime`:
- *   ISO           111/124  (90%)   <- chosen
- *   Sunday-start   99/124
- *   old formula    76/124
- * See docs/design/DEEP_AUDIT_2026-08-04/dashboard.md D-1.
- *
- * @param {Date} [date=new Date()] - date to evaluate
- * @returns {number} Week number (1-53)
- */
-function isoWeekNumber(date) {
-  const src = date || new Date();
-  // Work in UTC so DST transitions cannot shift the day.
-  const d = new Date(Date.UTC(src.getFullYear(), src.getMonth(), src.getDate()));
-  // Shift to the Thursday of this week: that is the day that decides which
-  // year — and therefore which week 1 — the week belongs to.
-  d.setUTCDate(d.getUTCDate() + 4 - (d.getUTCDay() || 7));
-  const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
-  return Math.ceil(((d - yearStart) / 86400000 + 1) / 7);
-}
-
-/**
- * ISO-8601 week number for today.
- * @returns {number} Week number (1-53)
+ * @returns {number} Week number (2-54)
  */
 function currentWeekNumber() {
-  return isoWeekNumber(new Date());
+  return TmsWeek.current();
 }
 
 // -- Page metric reporting (cross-check channel) --------------

@@ -82,14 +82,14 @@ const AUDIT_CROSS_CHECKS = [
   {
     id: 'week',
     label: 'Αριθμός εβδομάδας',
-    why: 'Το 31-vs-32 της 4/8/2026. Ενοποιήθηκε στο Κύμα 1 — αυτή η γραμμή το κρατά ενοποιημένο.',
-    canonical: () => (typeof isoWeekNumber === 'function' ? isoWeekNumber(new Date()) : null),
-    canonicalLabel: 'isoWeekNumber() — core/utils.js',
+    why: 'Το 31-vs-32 της 4/8/2026· από 3/10 ΕΝΑΣ ορισμός παντού (TmsWeek, Σάββατο–Παρασκευή) — αυτή η γραμμή το κρατά ενοποιημένο.',
+    canonical: () => (typeof TmsWeek !== 'undefined' ? TmsWeek.current() : null),
+    canonicalLabel: 'TmsWeek.current() — core/tms-week.js',
     rows: [
       { page: 'dashboard',    key: 'weekNumber' },
       { page: 'orders_intl',  key: 'weekNumberDefault' },
       { page: 'performance',  key: 'weekNumberDefault' },
-      { page: 'weekly_intl',  key: 'weekNumberDefault', note: 'TmsWeek.current() — core/tms-week.js (έναρξη Σάββατο)' },
+      { page: 'weekly_intl',  key: 'weekNumberDefault' },
       { page: 'weekly_natl',  key: 'weekNumberDefault', note: 'TmsWeek.current() — core/tms-week.js (έναρξη Σάββατο)' },
     ],
   },

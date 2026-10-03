@@ -608,7 +608,7 @@ function _wnPaint() {
   // Same reporting contract as weekly_intl (kanban contract #11): the numbers
   // below are the AUDIT's, unchanged since Wave 1 — weekNumberDefault comes
   // from _wnCurrentWeek() = TmsWeek (Saturday-start, core/tms-week.js, owner
-  // 28/9/2026), so the audit can see it drift from canonical isoWeekNumber().
+  // 28/9/2026), the app-wide canonical week since 3/10/2026 (owner «Α»).
   if (typeof reportPageMetrics === 'function') reportPageMetrics('weekly_natl', {
     weekNumber: week,
     weekNumberDefault: _wnCurrentWeek(),

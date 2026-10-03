@@ -990,11 +990,9 @@ function _wiPaint(){
   const pct=total?Math.round((assigned+matched)/total*100):0;
 
   // Report what this planner shows. weekNumber is the week the user is looking
-  // at; weekNumberDefault is what _wiCurrentWeek() calls "today". That helper is
-  // a THIRD week formula (Sunday-start WEEKNUM), separate from the canonical
-  // isoWeekNumber() the Dashboard, Orders and Performance were unified on. The
-  // two agree today and will not agree on every date — reporting both is how
-  // the audit catches the next 31-vs-32 before a person does.
+  // at; weekNumberDefault is what _wiCurrentWeek() calls "today" — TmsWeek, the
+  // one week definition of the whole app since 3/10/2026 (owner «Α»). Reporting
+  // both lets the audit catch the next 31-vs-32 before a person does.
   if (typeof reportPageMetrics === 'function') reportPageMetrics('weekly_intl', {
     weekNumber: week,
     weekNumberDefault: _wiCurrentWeek(),
