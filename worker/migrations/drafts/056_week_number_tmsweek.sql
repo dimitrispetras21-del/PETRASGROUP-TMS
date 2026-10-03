@@ -1,6 +1,14 @@
--- DRAFT 056 — ONE week definition everywhere: the database's week_number = TmsWeek.
--- NOT EXECUTED. Owner runs it (after 15:00). No Worker deploy needed: the facade already
--- maps «Week Number» → week_number; only the number it carries changes.
+-- 056 — ONE week definition everywhere: the database's week_number = TmsWeek.
+-- ΕΚΤΕΛΕΣΤΗΚΕ 3/10/2026 (owner, SQL editor). The DO block FAILED with «relation
+-- "_w056_before" does not exist»: the editor did not run BEGIN…COMMIT as one transaction,
+-- so the «on commit drop» temp table was gone before the proofs — while the functions,
+-- grants and view WERE committed. Every proof was re-run with SELECT the same day (old
+-- expression computed inline): 283/283 rows, 124 columns, 0 rows ≠ tms_week(), 30 moved,
+-- all Saturday loadings, 0 others; views closed; anon/authenticated without EXECUTE,
+-- service_role with EXECUTE; tms_week('2027-01-01') = 53. State is correct.
+-- LESSON for migrations run in the editor: no temp tables between statements — put the
+-- logic AND its proofs in ONE DO block wherever atomicity matters.
+-- No Worker deploy needed: the facade already maps «Week Number» → week_number.
 --
 -- Why (owner 3/10/2026, decision «Α»; measurement docs/data-audit/2026-10/
 -- 2026-10-03-week-number-vs-tmsweek.md): orders_with_derived.week_number counted
