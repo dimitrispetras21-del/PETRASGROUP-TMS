@@ -2116,6 +2116,17 @@ function applyFilter(formula, labelToColumn, params) {
   params.append(r.column, r.expr);
 }
 __name(applyFilter, "applyFilter");
+// `{__col:<column>}` is internal syntax: preResolveLinkTerms emits it for link
+// terms it has already resolved. A client formula must name fields by label
+// only (labels are what the per-role table config controls), so the internal
+// form is not accepted from clients (4/10/2026). Checked on the raw client
+// formula, BEFORE preResolveLinkTerms adds its own terms.
+function assertClientFormula(formula) {
+  if (/__col/i.test(formula || "")) {
+    throw new UnsupportedFilter("Internal filter syntax is not accepted from clients");
+  }
+}
+__name(assertClientFormula, "assertClientFormula");
 
 // src/lib/facade-links.js
 async function resolveIdsToLegacy(env, dbSelectRaw2, parentTable, ids) {
@@ -2301,6 +2312,7 @@ async function handleFacadeGet(request, tableId, origin, env, ctx) {
   let formula = q.get("filterByFormula");
   if (formula) {
     try {
+      assertClientFormula(formula);
       formula = await preResolveLinkTerms(formula, cfg, env);
       applyFilter(formula, filterFieldMap(cfg), params);
     } catch (e) {
