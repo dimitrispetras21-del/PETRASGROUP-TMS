@@ -2,22 +2,26 @@
 -- every test row, every trigger side effect (audit_log rows, leg status sync) rolls back with it.
 -- Run AFTER 057 (and after 057_stock_lots_verify.sql V1–V8). Expected last line of the error panel:
 --
---     RESULT: 71/71 OK
+--     RESULT: 82/82 OK
 --
 -- followed by one line per case («OK  01 expected over_draw · got over_draw»). Anything less = STOP,
--- copy the panel to the coordinator. 49 refusals + 14 accepted paths + 6 money cases (Ε1).
--- Cases 36–49 and P11–P14 are the round-0 rules of the impact map (4/10): E-04 cancel (36, 37, P14),
--- B-16 lot_grouped (38–43), C-15 lot_vs (44, 45, P11), C-05 piece_no_truck (46–49, P12, P13).
+-- copy the panel to the coordinator. 61 refusals + 15 accepted paths + 6 money cases (Ε1).
+-- Cases 36–49 and P11, P14 are the round-0 rules of the impact map (4/10): E-04 cancel (36, 37, P14),
+-- B-16 lot_grouped (38–43), C-15 lot_vs (44, 45, P11), C-05 piece_no_truck (46–49). 50–51: K7.
+-- Round 1 of the critics (4/10): D1 «on a truck» = truck or partner (13, 52, P12, P13), Σ-08 / E2-11
+-- an invoiced lot's statuses are frozen (53–55, 61), Σ-05 lot_grouped covers the rota (56–60),
+-- D3 pieces_moving (P15).
 --
 -- HOW IT STAYS HARMLESS
 --   * Test rows use NEGATIVE ids written with OVERRIDING SYSTEM VALUE: no identity sequence moves,
 --     so the next real order number (#…) is not skipped. References start with TEST-STOCK-.
 --   * No test row has a truck or a partner trip, so rt_create_from_order never opens a round trip
 --     (RT codes come from a sequence that a rollback would not give back). A piece born In Transit
---     or Delivered must be «on a truck» (piece_no_truck): the IP: shorthand puts it in a test group
---     (Group ID 'GI-TEST|…') instead — a group without a truck opens no round trip either.
---   * Reads two live clients, one Greek non-warehouse location, 424 (warehouse after 057) and 360
---     ('Veroia Hub'); never updates a real row.
+--     or Delivered must be «on a truck» (piece_no_truck; round 1 D1: a truck or a partner — a group
+--     no longer counts): the IP: shorthand gives it the first live PARTNER with is_partner_trip left
+--     false — rt_create_from_order opens a round trip only for a truck or a partner TRIP.
+--   * Reads two live clients, one Greek non-warehouse location, 424 (warehouse after 057), 360
+--     ('Veroia Hub') and one live partner; never updates a real row.
 --   * Each case runs in its own sub-block and is rolled back on its own (it always ends by raising),
 --     so the cases are independent of each other and of their order.
 --
@@ -25,18 +29,19 @@
 --   refusal: the error's hint is 'stock:<expected code>', or its constraint/index name is the
 --            expected CHECK / unique index;
 --   accepted / money: the statements pass and the check query returns exactly the expected text.
--- Shorthand in the statement lists (expanded by the runner, so the 71 cases stay readable):
+-- Shorthand in the statement lists (expanded by the runner, so the 82 cases stay readable):
 --   'IP:id,lot,pallets,status[,client[,pickup]]' = an international piece (Import, to a Greek site;
---      status In Transit / Delivered → Group ID 'GI-TEST|<rec>', see above)
+--      status In Transit / Delivered → partner_id = the live partner, see above)
 --   'NP:id,lot,pallets,status[,client[,pickup]]' = a national piece
---   defaults: client = first client, pickup = 424. %1$s..%5$s = client 1, client 2, Greek site, 424, 360.
+--   defaults: client = first client, pickup = 424. %1$s..%6$s = client 1, client 2, Greek site, 424, 360,
+--   the live partner.
 -- Base fixtures (built once, before the cases): lot A = order -9001 (33p, Delivered at 424, price
 -- 3300.00, warehouse partner assignment 300.00 'Assigned') anchored as -9301; lot B = order -9002
 -- (33p, Delivered at 424, price 2000.00, NO partner assignment) anchored as -9302.
 
 do $test$
 declare
-  c1 bigint; c2 bigint; gr bigint;
+  c1 bigint; c2 bigint; gr bigint; pt bigint;
   wh  constant bigint := 424;
   hub constant bigint := 360;
   r record; s text; a text[];
@@ -50,9 +55,10 @@ begin
    where deleted_at is null and country in ('Greece', 'GR')
      and coalesce(type, '') not in ('Partner Warehouse', 'Veroia Hub')
    order by id limit 1;
-  if c1 is null or c2 is null or gr is null or to_regclass('public.stock_lots') is null
+  select id into pt from public.partners where deleted_at is null order by id limit 1;
+  if c1 is null or c2 is null or gr is null or pt is null or to_regclass('public.stock_lots') is null
      or not public.stock_is_warehouse(wh) or not public.stock_is_warehouse(hub) then
-    raise exception 'RESULT: 0/71 — SETUP FAILED: run 057 first (needs 2 clients, a Greek site, 424 + 360 as warehouses)';
+    raise exception 'RESULT: 0/82 — SETUP FAILED: run 057 first (needs 2 clients, a Greek site, a partner, 424 + 360 as warehouses)';
   end if;
 
   insert into public.orders (id, legacy_id, reference, order_type, direction, status, client_id,
@@ -69,7 +75,7 @@ begin
 
   for r in
     select * from (values
-    -- ── Refusals (51) ───────────────────────────────────────────────────────────────────────────
+    -- ── Refusals (61) ───────────────────────────────────────────────────────────────────────────
     ('01', 'over_draw', array['IP:-9101,-9301,5,Pending', 'IP:-9102,-9301,15,Pending', 'IP:-9103,-9301,14,Pending'], null::text),
     ('02', 'orders_stock_piece_no_money', array[$q$insert into public.orders (id, legacy_id, reference, order_type, direction, status,
         client_id, loading_location_1_id, unloading_location_1_id, loading_pallets_1, stock_lot_id, price)
@@ -92,20 +98,23 @@ begin
         $q$select public.delete_order_cascade('recTSTSTK9001')$q$], null),
     ('10', 'lot_has_pieces', array['IP:-9101,-9301,5,Pending',
         $q$update public.stock_lots set deleted_at = now() where id = -9301$q$], null),
-    -- (on a truck before In Transit — piece_no_truck; a truck would open a round trip, a group does not)
+    -- (on a vehicle before In Transit — piece_no_truck; a partner without «partner trip» opens no
+    --  round trip, a truck would)
     ('11', 'piece_executed', array['IP:-9101,-9301,5,Assigned',
-        $q$update public.orders set group_id = 'GI-TEST|recTSTSTK9101' where id = -9101$q$,
+        $q$update public.orders set partner_id = %6$s where id = -9101$q$,
         $q$update public.orders set status = 'In Transit' where id = -9101$q$,
         $q$update public.orders set deleted_at = now() where id = -9101$q$], null),
     ('12', 'piece_on_truck', array['IP:-9101,-9301,5,Assigned',
-        $q$update public.orders set group_id = 'GI-TEST|' where id = -9101$q$,
+        $q$update public.orders set partner_id = %6$s where id = -9101$q$,
         $q$update public.orders set deleted_at = now() where id = -9101$q$], null),
-    ('13', 'piece_on_truck', array['IP:-9101,-9301,5,Pending',
+    -- D1 (round 1): an export's match is a plan, not a vehicle — the matched piece is not delivered
+    -- (round 0 accepted this as «on a truck»; its delete is P13).
+    ('13', 'piece_no_truck', array['IP:-9101,-9301,5,Assigned',
         $q$insert into public.orders (id, legacy_id, reference, order_type, direction, status, client_id,
            loading_location_1_id, unloading_location_1_id, loading_pallets_1, matched_import_id)
            overriding system value values (-9004, 'recTSTSTK9004', 'TEST-STOCK-EXPORT', 'International', 'Export',
            'Pending', %2$s, %3$s, %4$s, 10, 'recTSTSTK9101')$q$,
-        $q$update public.orders set deleted_at = now() where id = -9101$q$], null),
+        $q$update public.orders set status = 'Delivered' where id = -9101$q$], null),
     ('14', 'invoice_incomplete', array['IP:-9101,-9301,5,Pending',
         $q$update public.orders set invoiced = true, invoice_number = 'TEST-ERP-14' where id = -9001$q$], null),
     ('15', 'invoice_incomplete', array['IP:-9101,-9301,33,Delivered',
@@ -226,8 +235,65 @@ begin
         'IP:-9101,-9301,5,Pending'], null),
     ('51', 'lot_cancelled', array[$q$update public.orders set status = 'Cancelled' where id = -9001$q$,
         'NP:-9501,-9301,5,Pending'], null),
+    -- D1 (round 1): a Group ID without a vehicle is a plan — the piece is not loaded (critic-3 Σ-03:
+    -- «Καθαρισμός ανάθεσης» leaves exactly this shape; round 0 let it go In Transit with no RT leg).
+    ('52', 'piece_no_truck', array['IP:-9101,-9301,5,Assigned',
+        $q$update public.orders set group_id = 'GI-TEST|recTSTSTK9101' where id = -9101$q$,
+        $q$update public.orders set status = 'In Transit' where id = -9101$q$], null),
+    -- Σ-08 / E2-11 (round 1): once the lot is invoiced no status steps back — a piece (53), a national
+    -- piece by its delivery date (54), the international source (55), the national source (61).
+    ('53', 'lot_invoiced', array['IP:-9101,-9301,33,Delivered',
+        $q$update public.orders set invoiced = true, invoice_number = 'TEST-ERP-53' where id = -9001$q$,
+        $q$update public.orders set status = 'In Transit' where id = -9101$q$], null),
+    ('54', 'lot_invoiced', array[$q$insert into public.national_orders (id, legacy_id, reference, status, client_id,
+           pickup_location_1_id, delivery_location_1_id, pallets, stock_lot_id, loading_datetime, delivery_datetime)
+           overriding system value values (-9501, 'recTSTSTK9501', 'TEST-STOCK-9501', 'Pending', %1$s, %4$s, %3$s, 33, -9301,
+           current_date - 2, current_date - 1)$q$,
+        $q$update public.orders set invoiced = true, invoice_number = 'TEST-ERP-54' where id = -9001$q$,
+        $q$update public.national_orders set delivery_datetime = current_date + 3 where id = -9501$q$], null),
+    ('55', 'lot_invoiced', array['IP:-9101,-9301,33,Delivered',
+        $q$update public.orders set invoiced = true, invoice_number = 'TEST-ERP-55' where id = -9001$q$,
+        $q$update public.orders set status = 'In Transit' where id = -9001$q$], null),
+    -- Σ-05 (round 1): no rota around a lot source — at the mark when it is a rota leg (56) or a rota
+    -- parent (57), on its own save (58), and when another order points its rotation at it (59 update,
+    -- 60 insert). 'recTSTSTK9007' is a rota parent that is no lot (it need not exist).
+    ('56', 'lot_grouped', array[$q$insert into public.orders (id, legacy_id, reference, order_type, direction, status, client_id,
+           loading_location_1_id, unloading_location_1_id, loading_pallets_1, rotation_id)
+           overriding system value values (-9006, 'recTSTSTK9006', 'TEST-STOCK-9006', 'International', 'Export',
+           'Pending', %1$s, %3$s, %4$s, 10, 'recTSTSTK9007')$q$,
+        $q$insert into public.stock_lots (id, order_id) values (-9305, -9006)$q$], null),
+    ('57', 'lot_grouped', array[$q$insert into public.orders (id, legacy_id, reference, order_type, direction, status, client_id,
+           loading_location_1_id, unloading_location_1_id, loading_pallets_1)
+           overriding system value values (-9006, 'recTSTSTK9006', 'TEST-STOCK-9006', 'International', 'Export',
+           'Pending', %1$s, %3$s, %4$s, 10)$q$,
+        $q$insert into public.orders (id, legacy_id, reference, order_type, direction, status, client_id,
+           loading_location_1_id, unloading_location_1_id, loading_pallets_1, rotation_id)
+           overriding system value values (-9004, 'recTSTSTK9004', 'TEST-STOCK-ROTA', 'International', 'Export',
+           'Pending', %2$s, %4$s, %3$s, 10, 'recTSTSTK9006')$q$,
+        $q$insert into public.stock_lots (id, order_id) values (-9305, -9006)$q$], null),
+    ('58', 'lot_grouped', array[$q$update public.orders set rotation_id = 'recTSTSTK9007' where id = -9001$q$], null),
+    ('59', 'lot_grouped', array[$q$insert into public.orders (id, legacy_id, reference, order_type, direction, status, client_id,
+           loading_location_1_id, unloading_location_1_id, loading_pallets_1)
+           overriding system value values (-9004, 'recTSTSTK9004', 'TEST-STOCK-ROTA', 'International', 'Export',
+           'Pending', %2$s, %4$s, %3$s, 10)$q$,
+        $q$update public.orders set rotation_id = 'recTSTSTK9001' where id = -9004$q$], null),
+    ('60', 'lot_grouped', array[$q$insert into public.orders (id, legacy_id, reference, order_type, direction, status, client_id,
+           loading_location_1_id, unloading_location_1_id, loading_pallets_1, rotation_id)
+           overriding system value values (-9004, 'recTSTSTK9004', 'TEST-STOCK-ROTA', 'International', 'Export',
+           'Pending', %2$s, %4$s, %3$s, 10, 'recTSTSTK9001')$q$], null),
+    ('61', 'lot_invoiced', array[$q$insert into public.national_orders (id, legacy_id, reference, status, client_id,
+           pickup_location_1_id, delivery_location_1_id, pallets, price, loading_datetime, delivery_datetime)
+           overriding system value values (-9502, 'recTSTSTK9502', 'TEST-STOCK-NLOT', 'Pending', %1$s, %3$s, %5$s, 12, 500,
+           current_date - 3, current_date - 2)$q$,
+        $q$insert into public.stock_lots (id, nat_order_id) values (-9304, -9502)$q$,
+        $q$insert into public.national_orders (id, legacy_id, reference, status, client_id, pickup_location_1_id,
+           delivery_location_1_id, pallets, stock_lot_id, loading_datetime, delivery_datetime)
+           overriding system value values (-9501, 'recTSTSTK9501', 'TEST-STOCK-9501', 'Pending', %1$s, %5$s, %3$s, 12, -9304,
+           current_date - 2, current_date - 1)$q$,
+        $q$update public.national_orders set invoiced = true, invoice_number = 'TEST-ERP-61' where id = -9502$q$,
+        $q$update public.national_orders set delivery_datetime = current_date + 3 where id = -9502$q$], null),
 
-    -- ── Accepted paths (14) ──────────────────────────────────────────────────────────────────────
+    -- ── Accepted paths (15) ──────────────────────────────────────────────────────────────────────
     -- P1: the form re-sends every field; only the reference changes; the lot is CLOSED.
     ('P1', 'true', array['IP:-9101,-9301,31,Delivered',
         $q$update public.stock_lots set closed_note = 'TEST: 2 χαλασμένες' where id = -9301$q$,
@@ -315,22 +381,44 @@ begin
     ('P11', 'true', array['IP:-9101,-9301,5,Pending',
         $q$update public.orders set veroia_switch = true where id = -9101$q$],
         $q$select veroia_switch::text from public.orders where id = -9101$q$),
-    -- P12 (C-05): a piece in a truck's group is loaded (In Transit) — on a truck = passes.
-    ('P12', 'In Transit', array['IP:-9101,-9301,5,Assigned',
+    -- P12 (round 1 D1): a piece with only a Group ID (-9101) or only an export's match (-9102) has no
+    --      vehicle: on_truck false, both counted «without truck» — the same answer as the shelf.
+    ('P12', '2 false,false', array['IP:-9101,-9301,5,Assigned',
         $q$update public.orders set group_id = 'GI-TEST|recTSTSTK9101' where id = -9101$q$,
-        $q$update public.orders set status = 'In Transit' where id = -9101$q$],
-        $q$select status from public.orders where id = -9101$q$),
-    -- P13 (C-05): a lone piece matched by an export (Case B, no truck of its own yet) is delivered.
-    ('P13', 'Delivered', array['IP:-9101,-9301,5,Assigned',
+        'IP:-9102,-9301,5,Assigned',
         $q$insert into public.orders (id, legacy_id, reference, order_type, direction, status, client_id,
            loading_location_1_id, unloading_location_1_id, loading_pallets_1, matched_import_id)
            overriding system value values (-9004, 'recTSTSTK9004', 'TEST-STOCK-EXPORT', 'International', 'Export',
-           'Pending', %2$s, %3$s, %4$s, 10, 'recTSTSTK9101')$q$,
-        $q$update public.orders set status = 'Delivered' where id = -9101$q$],
-        $q$select status from public.orders where id = -9101$q$),
+           'Pending', %2$s, %3$s, %4$s, 10, 'recTSTSTK9102')$q$],
+        $q$select pieces_without_truck || ' ' || (select string_agg(on_truck::text, ',' order by piece_id)
+                                                     from public.stock_v_pieces where lot_id = -9301)
+             from public.stock_v_lots where id = -9301$q$),
+    -- P13 (round 1 D1, critic-3 Σ-04): such loose pieces are deletable (the shelf offers [Διαγραφή]);
+    --      deleting the matched one clears the export's match (order_soft_delete_unlink).
+    ('P13', '2 null', array['IP:-9101,-9301,5,Assigned',
+        $q$update public.orders set group_id = 'GI-TEST|recTSTSTK9101' where id = -9101$q$,
+        'IP:-9102,-9301,5,Assigned',
+        $q$insert into public.orders (id, legacy_id, reference, order_type, direction, status, client_id,
+           loading_location_1_id, unloading_location_1_id, loading_pallets_1, matched_import_id)
+           overriding system value values (-9004, 'recTSTSTK9004', 'TEST-STOCK-EXPORT', 'International', 'Export',
+           'Pending', %2$s, %3$s, %4$s, 10, 'recTSTSTK9102')$q$,
+        $q$update public.orders set deleted_at = now() where id = -9101$q$,
+        $q$update public.orders set deleted_at = now() where id = -9102$q$],
+        $q$select count(*) filter (where deleted_at is not null) || ' '
+                  || coalesce((select matched_import_id from public.orders where id = -9004), 'null')
+             from public.orders where id in (-9101, -9102)$q$),
     -- P14 (E-04): a lot WITHOUT pieces may be cancelled.
     ('P14', 'Cancelled', array[$q$update public.orders set status = 'Cancelled' where id = -9002$q$],
         $q$select status from public.orders where id = -9002$q$),
+    -- P15 (round 1 D3): pieces_moving = pieces that LEFT a warehouse whose intake is not marked. Lot A
+    --      back to In Transit (not received): -9101 In Transit, loaded yesterday → counts; -9102
+    --      Assigned (planned, not moving) and -9103 In Transit loading today → do not. Lot B is
+    --      received → 0, although its piece -9104 left yesterday. Expected «1 0» (lot A, lot B).
+    ('P15', '1 0', array[$q$update public.orders set status = 'In Transit' where id = -9001$q$,
+        'IP:-9101,-9301,5,In Transit', 'IP:-9102,-9301,5,Assigned', 'IP:-9103,-9301,5,In Transit',
+        'IP:-9104,-9302,5,In Transit',
+        $q$update public.orders set loading_datetime = current_date - 1 where id in (-9101, -9102, -9104)$q$],
+        $q$select string_agg(pieces_moving::text, ' ' order by id desc) from public.stock_v_lots where id in (-9301, -9302)$q$),
 
     -- ── Money (6, Ε1) — price 3300, warehouse rate 300, 33 pallets → net 3000.00 ─────────────────
     ('M1', '454.55/1363.63/1181.82 Σ3000.00 net 3000.00 in_stock 0.00',
@@ -365,17 +453,17 @@ begin
     v_txt := null;
     begin
       foreach s in array r.stmts loop
-        s := format(s, c1, c2, gr, wh, hub);
+        s := format(s, c1, c2, gr, wh, hub, pt);
         if left(s, 3) = 'IP:' then
           a := string_to_array(substr(s, 4), ',');
           s := format($x$insert into public.orders (id, legacy_id, reference, order_type, direction, status, client_id,
                   loading_location_1_id, unloading_location_1_id, loading_pallets_1, loading_datetime, delivery_datetime,
-                  stock_lot_id, group_id, created_at)
+                  stock_lot_id, partner_id, created_at)
                   overriding system value values (%s, %L, %L, 'International', 'Import', %L, %s, %s, %s, %s,
-                  current_date, current_date + 2, %s, %L, now() + make_interval(secs => %s))$x$,
+                  current_date, current_date + 2, %s, %s, now() + make_interval(secs => %s))$x$,
                   a[1], 'recTSTSTK' || abs(a[1]::bigint), 'TEST-STOCK-' || abs(a[1]::bigint), a[4],
                   coalesce(a[5], c1::text), coalesce(a[6], wh::text), gr, a[3], a[2],
-                  case when a[4] in ('In Transit', 'Delivered') then 'GI-TEST|recTSTSTK' || abs(a[1]::bigint) end,
+                  case when a[4] in ('In Transit', 'Delivered') then pt::text else 'null' end,
                   abs(a[1]::bigint) % 1000);
         elsif left(s, 3) = 'NP:' then
           a := string_to_array(substr(s, 4), ',');

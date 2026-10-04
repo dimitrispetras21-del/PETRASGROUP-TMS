@@ -14,7 +14,7 @@ select md5(string_agg(rt_id::text || '=' || revenue::text || '/' || revenue_intl
   from public.ct_v_rt_revenue;
 
 -- ── V1 — objects ─────────────────────────────────────────────────────────────────────────────────
--- Expected: 8 | 1 | 1 | 6 | 4 | 3 | 8 | 5 | 136 | 4 | 1 | 0
+-- Expected: 8 | 1 | 1 | 6 | 4 | 3 | 8 | 5 | 137 | 4 | 1 | 0
 select
   (select count(*) from information_schema.columns
     where table_schema = 'public' and table_name = 'stock_lots')                                  as stock_lots_cols,      -- 8
@@ -42,7 +42,7 @@ select
       and viewname in ('stock_v_pieces', 'stock_v_lots', 'stock_v_lot_money', 'stock_v_lot_alloc',
                        'stock_v_rt_amounts'))                                                     as views,                -- 5
   (select count(*) from pg_attribute
-    where attrelid = 'public.orders_with_derived'::regclass and attnum > 0 and not attisdropped) as owd_cols,             -- 136
+    where attrelid = 'public.orders_with_derived'::regclass and attnum > 0 and not attisdropped) as owd_cols,             -- 137
   (select count(*) from pg_attribute
     where attrelid = 'public.ct_v_rt_revenue'::regclass and attnum > 0 and not attisdropped)     as revenue_cols,         -- 4 (034)
   (select count(*) from pg_trigger
@@ -51,22 +51,26 @@ select
   -- a blank Group ID would be ONE group for the round-trip engine (057 header, WHAT)
   (select count(*) from public.orders where group_id is not null and btrim(group_id) = '')      as blank_group_ids;      -- 0
 
--- The 4 new orders_with_derived columns, in this order. Expected 4 rows:
+-- The 5 new orders_with_derived columns, in this order. Expected 5 rows:
 -- 133 stock_lot_id bigint · 134 own_stock_lot text · 135 stock_lot_order_no bigint · 136 stock_lot_source text
+-- · 137 stock_lot_reference text (round 1: the lot source's Reference for the piece's driver sheet)
 select attnum, attname, format_type(atttypid, atttypmod)
   from pg_attribute
  where attrelid = 'public.orders_with_derived'::regclass and attnum > 132 and not attisdropped
  order by attnum;
 
--- The round-0 rules of the impact map (4/10) are in the guard functions that ran. Expected 3 rows:
---   stock_guard_lots   | t | t | f | f
---   stock_guard_natl   | f | t | t | t
---   stock_guard_orders | t | t | t | t
+-- The round-0 rules of the impact map and the round-1 rules of the critics (4/10) are in the guard
+-- functions that ran. Expected 3 rows:
+--   stock_guard_lots   | t | t | f | f | t | f
+--   stock_guard_natl   | f | t | t | t | f | t
+--   stock_guard_orders | t | t | t | t | t | t
 select p.proname,
        p.prosrc like '%''lot_grouped''%'    as lot_grouped,      -- B-16
        p.prosrc like '%''lot_vs''%'         as lot_vs,           -- C-15, OWNER-Q1 default
        p.prosrc like '%''piece_no_truck''%' as piece_no_truck,   -- C-05
-       p.prosrc like '%δεν ακυρώνεται%'     as lot_no_cancel     -- E-04
+       p.prosrc like '%δεν ακυρώνεται%'     as lot_no_cancel,    -- E-04
+       p.prosrc like '%rotation_id%'        as lot_rota,         -- round 1 Σ-05
+       p.prosrc like '%η κατάσταση του κομματιού δεν αλλάζει%' as status_frozen  -- round 1 Σ-08
   from pg_proc p join pg_namespace n on n.oid = p.pronamespace
  where n.nspname = 'public' and p.proname in ('stock_guard_lots', 'stock_guard_orders', 'stock_guard_natl')
  order by p.proname;
@@ -140,11 +144,11 @@ select count(*) from public.orders o join public.orders_with_derived d using (id
 select count(*) from public.ct_v_rt_pnl;
 
 -- ── V6 — the facade's shapes exist (the Worker reads these columns) ──────────────────────────────
--- Expected: runs, 0 rows (no lot yet).
-select id, legacy_id, deleted_at, order_id, client_rec, warehouse_rec, remaining_pallets, complete
+-- Expected: runs, 0 rows (no lot yet). pieces_moving = facade «Pieces Moving» (round 1 D3).
+select id, legacy_id, deleted_at, order_id, client_rec, warehouse_rec, remaining_pallets, complete, pieces_moving
   from public.stock_v_lots limit 1;
--- Expected: runs, 1 row, all four NULL.
-select stock_lot_id, own_stock_lot, stock_lot_order_no, stock_lot_source
+-- Expected: runs, 1 row, all five NULL. stock_lot_reference = facade «Stock Lot Reference».
+select stock_lot_id, own_stock_lot, stock_lot_order_no, stock_lot_source, stock_lot_reference
   from public.orders_with_derived limit 1;
 
 -- ── V7 — data ────────────────────────────────────────────────────────────────────────────────────

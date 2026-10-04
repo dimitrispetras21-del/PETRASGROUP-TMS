@@ -5,8 +5,9 @@
 -- WHO / WHEN / ORDER (mandatory)
 --   * The owner runs this file in the Supabase SQL editor, AFTER 15:00 (team works 05:30–14:30).
 --   * Then 057_stock_lots_verify.sql (SELECT only; run its V0 BEFORE this file too), then
---     057_stock_lots_rules_test.sql (must end with «RESULT: 71/71 OK» — it always rolls back).
---   * The Worker (facade labels «Stock Lot», «Own Stock Lot», tblStockLots, /costs/stock-lots) is
+--     057_stock_lots_rules_test.sql (must end with «RESULT: 82/82 OK» — it always rolls back).
+--   * The Worker (facade labels «Stock Lot», «Own Stock Lot», «Stock Lot Reference» → stock_lot_reference,
+--     tblStockLots incl. «Pieces Moving» → pieces_moving, /costs/stock-lots) is
 --     deployed ONLY after the verify file passes. Worker first is QUIET, not loud: after every ORDERS
 --     save the Worker re-reads all computed labels in ONE select that names the new columns; before
 --     057 that select fails inside a try/catch that only logs, so saves still answer 200/201 but
@@ -56,19 +57,37 @@
 --           revivals) or that delete a piece — never by the round-trip triggers' vehicle copies —
 --           and FOR NO KEY UPDATE, so even the FK re-check those copies cause never waits on it.
 --
+-- ROUND 1 OF THE CRITICS (4/10/2026, five critics on the integrated tree):
+--   * D1    ONE definition of «a piece is on a truck» = it has a truck or a partner. A Group ID or an
+--           export's match is a PLAN, not a vehicle (critic-3 Σ-03, critic-5 S5-11): stock_v_pieces
+--           .on_truck, piece_on_truck (delete) and piece_no_truck all read exactly that, like
+--           OrdersStock.isLoose in the front. A piece with a stale Group ID and no vehicle is loose —
+--           listed on the shelf, deletable, joinable (critic-3 Σ-04).
+--   * D3    stock_v_lots.pieces_moving: pieces that left the warehouse (In Transit / delivered, loading
+--           before today) while the lot's intake is not marked — the S-06 threshold, in ONE place: S-06
+--           (057b) and the Weekly shelf's red chip (facade «Pieces Moving») read this column (critic-1 C1-01).
+--   * C4-05 orders_with_derived.stock_lot_reference: the lot SOURCE's Reference for the piece's driver
+--           sheet — the number the warehouse booked the goods under (critic-4).
+--   * Σ-08  once the lot is invoiced, a piece's status (and the source's) no longer changes — leaving
+--           «Delivered» after the invoice would leave an invoiced lot incomplete (critic-3 Σ-08, E2-11).
+--   * Σ-05  lot_grouped also covers the rota (rotation_id): a lot source is never a rota leg nor a rota
+--           parent — the round-trip walk links rotation_id exactly like a group (critic-3 Σ-05).
+--
 -- B-54 LIVES HERE, NOT IN 057b (impact map AU-06; the task asked for 057b — this is why it moved):
 --   B-54 is the auditor's P1 HOURLY check «enabled triggers in public <> red_value». This block adds
 --   four (stock_guard_lots / _orders / _natl, orders_group_id_blank_null). 057b is a separate
 --   approval that may run days later; every hour until then would be a false P1, and an hourly
 --   false P1 teaches everyone to ignore the true one. Moved in the same block, the new value
 --   commits WITH the triggers or not at all: no false hour, no wrong value after a rollback.
---   HOW: the count is MEASURED at the start (27 on 4/10 evening — 034 added two triggers and left
---   red_value at 25, so B-54 is already red live), the block proves it ends at exactly start + 4,
---   and red_value becomes that measured end — but only if red_value is either the start count
---   (B-54 was green) or 25 (the 4/10 value 034 left behind); any other value is someone's edit of
---   B-54 we cannot see → the block refuses. A NOTICE prints old → new. Chosen over «always set it»
---   so that 057 never silently overwrites a deliberate decision on B-54, and over «assume 25»
---   because 034 proved the count moves between drafting and running.
+--   HOW: the count is MEASURED at the start (27 on 4/10 late evening, re-read after 034 + 058: 034
+--   added two triggers and B-54's red_value was then set to 27, so B-54 is green live), the block
+--   proves it ends at exactly start + 4, and red_value becomes that measured end — but only if
+--   red_value equals the start count (B-54 was green). Any other value is someone's edit of B-54 we
+--   cannot see, or a red B-54 nobody has looked at → the block refuses. (Round 0 also accepted 25,
+--   the value 034 left behind for a few hours; live is 27 since, so that allowance was dead and went.)
+--   A NOTICE prints old → new. Chosen over «always set it» so that 057 never silently overwrites a
+--   deliberate decision on B-54, and over «assume 27» because 034 proved the count moves between
+--   drafting and running.
 --   R1 (guards off) leaves red_value at the post-057 count on purpose: three triggers gone → B-54
 --   reads 3 less and turns red together with S-02, so «guards off» is loud; GUARDS ON restores it.
 --   Mirror: tms-auditor/checks/B-54.sql «red: <> N» with N = the value the NOTICE printed (31 if
@@ -138,8 +157,8 @@ begin
     raise exception '057 guard: % orders carry a blank group_id (not NULL) — check their round trips first, owner decides', v_n;
   end if;
   -- B-54 (header): its own text is run here and in §8/§9 — one definition of «the inventory», the
-  -- md5 guarantees it is the 4/10 text. The count is MEASURED, never assumed (27 on 4/10 evening:
-  -- 034 added two triggers and left red_value at 25).
+  -- md5 guarantees it is the 4/10 text. The count is MEASURED, never assumed (27 on 4/10 late
+  -- evening, red_value 27 too).
   if to_regclass('monitoring.checks') is null then
     raise exception '057 guard: monitoring.checks missing — the auditor (047) is not on this database';
   end if;
@@ -254,10 +273,12 @@ begin
   -- ── 4. Views (owner-rights like ct_v_rt_*: callers need SELECT on the view, not on the tables;
   --       callers DO need EXECUTE on order_pallets / stock_natl_delivered — granted in §7) ──────────
 
-  -- a) Every live piece of every lot, both tables. on_truck = the piece is committed to a vehicle in
-  --    ANY of the ways the Weekly can do it (truck, partner, a group, or an export matching it);
-  --    group_id '' is «no group». The §6 normaliser stores '' as NULL; nullif stays as a belt for a
-  --    row written while that trigger is disabled.
+  -- a) Every live piece of every lot, both tables. on_truck = the piece HAS A VEHICLE: a truck or a
+  --    partner (round 1 D1 — the one definition, shared with piece_on_truck / piece_no_truck in §6
+  --    and OrdersStock.isLoose in the front). A Group ID or an export matching the piece is a plan:
+  --    round 0 counted them too, and the shelf said «1 piece without truck» while this view said 0
+  --    for the same piece (critic-3 Σ-03); a piece left with a stale Group ID after «Καθαρισμός
+  --    ανάθεσης» could even be marked loaded with no vehicle and no round-trip leg.
   create view public.stock_v_pieces as
   select o.stock_lot_id                                   as lot_id,
          'intl'::text                                     as piece_kind,
@@ -271,10 +292,7 @@ begin
          coalesce(o.status = 'Delivered', false)          as delivered,
          case when o.status = 'Delivered'
               then coalesce(o.actual_delivery_date, o.delivery_datetime) end as delivered_on,
-         (o.truck_id is not null or o.partner_id is not null
-          or nullif(btrim(o.group_id), '') is not null
-          or exists (select 1 from public.orders e
-                      where e.deleted_at is null and e.id <> o.id and e.matched_import_id = o.legacy_id)) as on_truck,
+         (o.truck_id is not null or o.partner_id is not null)  as on_truck,
          o.created_at
     from public.orders o
    where o.deleted_at is null and o.stock_lot_id is not null
@@ -294,6 +312,15 @@ begin
   -- b) THE one truth about a lot: stock, drawn, remaining, completeness. Read by the facade
   --    (tblStockLots), by the guards (§6) and by the auditor. No money here — dispatchers read it.
   --    complete is never NULL: a NULL would let an incomplete lot slip past «NOT complete» checks.
+  --    pieces_moving (round 1 D3, critic-1 C1-01): pieces that already LEFT the warehouse — In Transit
+  --    or delivered, with a loading date before today — while the lot's intake is not marked
+  --    delivered; 0 once it is. THE one definition of «pieces move without an intake»: the auditor's
+  --    S-06 counts lots with pieces_moving > 0, and the Weekly shelf turns red only on it (facade
+  --    «Pieces Moving»). Round 0's shelf went red as soon as a piece was ASSIGNED to a truck, which is
+  --    normal planning before the goods reach the warehouse (the form allows it, Q8) — a false red the
+  --    dispatcher learns to ignore, next to an S-06 that said something else. Today's loading does not
+  --    count: the intake may still be marked later that day (S-06's exception). «Delivered» is the
+  --    view's own p.delivered (national pieces: by date), so no second meaning of it appears here.
   create view public.stock_v_lots as
   select b.id, b.legacy_id, b.deleted_at, b.order_id, b.nat_order_id, b.lot_no, b.source_kind,
          b.reference, b.source_notes, b.client_id, b.client_rec, b.client_name,
@@ -301,7 +328,9 @@ begin
          b.intake_partner_id, b.intake_status, b.intake_delivered, b.received_on, b.ops_status,
          b.stock_pallets, b.drawn_pallets, b.remaining_pallets, b.delivered_pallets,
          case when b.closed_at is not null then greatest(b.remaining_pallets, 0) else 0 end as written_off_pallets,
-         b.pieces, b.pieces_delivered, b.pieces_without_truck, b.last_piece_delivered,
+         b.pieces, b.pieces_delivered, b.pieces_without_truck,
+         case when b.intake_delivered then 0 else b.pieces_left end                    as pieces_moving,
+         b.last_piece_delivered,
          b.closed_note, b.closed_at,
          k.complete,
          case when k.complete then greatest(b.received_on, b.last_piece_delivered, b.closed_at::date) end as completed_on,
@@ -319,7 +348,7 @@ begin
              src.ops_status, src.stock_pallets,
              pc.drawn_pallets,
              src.stock_pallets - pc.drawn_pallets                              as remaining_pallets,
-             pc.delivered_pallets, pc.pieces, pc.pieces_delivered, pc.pieces_without_truck,
+             pc.delivered_pallets, pc.pieces, pc.pieces_delivered, pc.pieces_without_truck, pc.pieces_left,
              pc.last_piece_delivered, s.closed_note, s.closed_at, src.invoiced
         from public.stock_lots s
         join lateral (
@@ -348,6 +377,8 @@ begin
           select count(*)                                              as pieces,
                  count(*) filter (where p.delivered)                   as pieces_delivered,
                  count(*) filter (where not p.on_truck and not p.delivered) as pieces_without_truck,
+                 count(*) filter (where (p.status = 'In Transit' or p.delivered)
+                                    and p.loading_date < current_date)   as pieces_left,
                  coalesce(sum(p.pallets), 0)                           as drawn_pallets,
                  coalesce(sum(p.pallets) filter (where p.delivered), 0) as delivered_pallets,
                  max(p.delivered_on)                                   as last_piece_delivered
@@ -459,10 +490,15 @@ begin
    where a.piece_kind = 'intl' and m.source_kind = 'intl' and m.allocation_status = 'ok';
 
   -- ── 5. Altered views — CURRENT text (pg_get_viewdef, 4/10, md5-guarded above) + appended ──────
-  -- orders_with_derived: the facade's ORDERS readView. Four columns at the end (CREATE OR REPLACE
+  -- orders_with_derived: the facade's ORDERS readView. Five columns at the end (CREATE OR REPLACE
   -- keeps the 132 in place, grants untouched). own_stock_lot = rec of the lot THIS order is the
   -- source of (a plain string); stock_lot_* describe the lot THIS order is a piece of. One live
-  -- anchor per order (unique index) and a PK join → same rows.
+  -- anchor per order (unique index) and PK joins → same rows.
+  -- stock_lot_reference (round 1, critic-4 C4-05): the lot SOURCE's Reference, printed on the piece's
+  -- driver sheet. The driver at the warehouse gate abroad otherwise holds only our order number
+  -- («#1300»), which the warehouse never saw — it booked the goods under the intake's reference.
+  -- Served here (facade «Stock Lot Reference») instead of a second GET in print.html: one read, and
+  -- the dispatcher sees the same text on screen and on paper.
   create or replace view public.orders_with_derived as
    SELECT v.id,
       v.legacy_id,
@@ -603,11 +639,14 @@ begin
               WHEN ps.order_id IS NOT NULL THEN 'intl'::text
               WHEN ps.nat_order_id IS NOT NULL THEN 'natl'::text
               ELSE NULL::text
-          END AS stock_lot_source
+          END AS stock_lot_source,
+      COALESCE(pso.reference, psn.reference) AS stock_lot_reference
      FROM orders_with_derived_old3 v
        JOIN orders o ON o.id = v.id
        LEFT JOIN stock_lots own ON own.order_id = o.id AND own.deleted_at IS NULL
-       LEFT JOIN stock_lots ps ON ps.id = o.stock_lot_id;
+       LEFT JOIN stock_lots ps ON ps.id = o.stock_lot_id
+       LEFT JOIN orders pso ON pso.id = ps.order_id
+       LEFT JOIN national_orders psn ON psn.id = ps.nat_order_id;
 
   -- ct_v_rt_revenue: the CURRENT text (pg_get_viewdef after 034, 4/10 evening — md5-guarded in §0)
   -- verbatim, with ONE change: the international leg amount reads the allocation first
@@ -789,10 +828,16 @@ begin
         -- its round trip would carry the lot next to other legs. Refused at the mark; the source's own
         -- later save and an export's match are refused in stock_guard_orders. The exists() runs
         -- after the FOR UPDATE above, so it sees a match committed while this mark waited.
+        -- Round 1 (critic-3 Σ-05): the rota too — an order that is a rota leg (its rotation_id) or a
+        -- rota parent (another order's rotation_id points at it). The round-trip walk links
+        -- rotation_id both ways exactly like a group, so a forward leg would ride the lot's trip.
         if nullif(btrim(o.group_id), '') is not null or nullif(btrim(o.matched_import_id), '') is not null
            or exists (select 1 from public.orders e
-                       where e.deleted_at is null and e.id <> o.id and e.matched_import_id = o.legacy_id) then
-          perform stock_raise('lot_grouped', 'Η παρτίδα πάει στην αποθήκη — δεν μπαίνει σε ομάδα ή ταίριασμα');
+                       where e.deleted_at is null and e.id <> o.id and e.matched_import_id = o.legacy_id)
+           or nullif(btrim(o.rotation_id), '') is not null
+           or exists (select 1 from public.orders e
+                       where e.deleted_at is null and e.id <> o.id and e.rotation_id = o.legacy_id) then
+          perform stock_raise('lot_grouped', 'Η παρτίδα πάει στην αποθήκη — δεν μπαίνει σε ομάδα, ταίριασμα ή ρότα');
         end if;
         -- OWNER-Q1 default (4/10): a lot source never carries Veroia Switch (impact map C-15, plan §9
         -- Q4). With VS an Import lot spawns a national load «Veroia → foreign warehouse» and a RAMP
@@ -873,6 +918,7 @@ begin
     v_gone    boolean := false;
     v_revived boolean := false;
     v_match   boolean;
+    v_rota    boolean;
     v_judge   boolean;
     v_mine    numeric;
     v_others  numeric;
@@ -893,14 +939,17 @@ begin
     -- next to the vehicle copies, so ordinary saves still leave on the first line.
     v_match := new.deleted_at is null and nullif(btrim(new.matched_import_id), '') is not null
                and (tg_op = 'INSERT' or v_revived or new.matched_import_id is distinct from old.matched_import_id);
+    -- Same for a rota leg pointing at its parent (round 1, critic-3 Σ-05; ROTA below).
+    v_rota  := new.deleted_at is null and nullif(btrim(new.rotation_id), '') is not null
+               and (tg_op = 'INSERT' or v_revived or new.rotation_id is distinct from old.rotation_id);
 
     -- Ordinary rows leave here (contract §3.2: the first line).
     if tg_op = 'INSERT' then
-      if new.stock_lot_id is null and new.parent_order_id is null and not v_match then return new; end if;
+      if new.stock_lot_id is null and new.parent_order_id is null and not v_match and not v_rota then return new; end if;
     else
       if new.stock_lot_id is null and old.stock_lot_id is null
          and new.parent_order_id is not distinct from old.parent_order_id
-         and not v_match
+         and not v_match and not v_rota
          and not exists (select 1 from public.stock_lots s where s.order_id = new.id and s.deleted_at is null) then
         return new;
       end if;
@@ -929,7 +978,19 @@ begin
       if exists (select 1 from public.orders t
                    join public.stock_lots s on s.order_id = t.id and s.deleted_at is null
                   where t.legacy_id = new.matched_import_id and t.deleted_at is null) then
-        perform stock_raise('lot_grouped', 'Η παρτίδα πάει στην αποθήκη — δεν μπαίνει σε ομάδα ή ταίριασμα');
+        perform stock_raise('lot_grouped', 'Η παρτίδα πάει στην αποθήκη — δεν μπαίνει σε ομάδα, ταίριασμα ή ρότα');
+      end if;
+    end if;
+
+    -- ROTA (round 1, critic-3 Σ-05): an order may not become a rota leg of a lot source — the walk
+    -- of rt_create_from_order follows rotation_id like a group, so the forward leg would join the
+    -- lot's round trip. Judged on the LEG's row (its save writes the link), locked exactly like MATCH.
+    if v_rota then
+      perform 1 from public.orders t where t.legacy_id = new.rotation_id for key share;
+      if exists (select 1 from public.orders t
+                   join public.stock_lots s on s.order_id = t.id and s.deleted_at is null
+                  where t.legacy_id = new.rotation_id and t.deleted_at is null) then
+        perform stock_raise('lot_grouped', 'Η παρτίδα πάει στην αποθήκη — δεν μπαίνει σε ομάδα, ταίριασμα ή ρότα');
       end if;
     end if;
 
@@ -952,9 +1013,12 @@ begin
         if old.status in ('In Transit', 'Delivered') then
           perform stock_raise('piece_executed', 'Κομμάτι σε κίνηση ή παραδομένο δεν σβήνεται');
         end if;
-        if old.truck_id is not null or old.partner_id is not null or nullif(btrim(old.group_id), '') is not null
-           or exists (select 1 from public.orders e
-                       where e.deleted_at is null and e.id <> old.id and e.matched_import_id = old.legacy_id) then
+        -- «On a truck» = stock_v_pieces.on_truck = a truck or a partner (round 1 D1). A piece with
+        -- only a stale Group ID or an export's match is loose: the shelf lists it with [Διαγραφή],
+        -- and round 0's wider test refused that delete with «Επιστροφή στο απόθεμα πρώτα» — an
+        -- action that does not exist for such a piece (critic-3 Σ-04). Deleting it clears the
+        -- export's match (order_soft_delete_unlink).
+        if old.truck_id is not null or old.partner_id is not null then
           perform stock_raise('piece_on_truck', 'Το κομμάτι είναι σε φορτηγό — «Επιστροφή στο απόθεμα» πρώτα');
         end if;
         return new;
@@ -1029,18 +1093,37 @@ begin
         end if;
       end if;
 
+      -- Once the lot is invoiced, the piece's status is frozen (round 1, critic-3 Σ-08 / critic-2
+      -- E2-11): an Undo of «Παραδόθηκε» or a form re-save after the invoice would leave an invoiced
+      -- lot with a piece «in transit» — invoiced AND incomplete, found only by S-03 an hour later.
+      -- Revivals and inserts are already judged above (lot_invoiced). Only a piece LEAVING Delivered
+      -- can race the invoice mark (which reads «all delivered»), so only that takes the lot lock —
+      -- FOR NO KEY UPDATE like every draw (D-22); other status steps never lock the lot.
+      if tg_op = 'UPDATE' and not v_revived and new.status is distinct from old.status then
+        if old.status = 'Delivered' then
+          perform 1 from public.stock_lots s where s.id = new.stock_lot_id for no key update;
+        end if;
+        if coalesce((select coalesce(so.invoiced, sn.invoiced, false)
+                       from public.stock_lots s
+                       left join public.orders so on so.id = s.order_id
+                       left join public.national_orders sn on sn.id = s.nat_order_id
+                      where s.id = new.stock_lot_id), false) then
+          perform stock_raise('lot_invoiced', 'Η παρτίδα τιμολογήθηκε — η κατάσταση του κομματιού δεν αλλάζει· αναίρεσε πρώτα το τιμολόγιο');
+        end if;
+      end if;
+
       -- A piece is loaded or delivered only from a truck (impact map 4/10 C-05, principle 4): a piece
       -- sent back to stock keeps its old loading date, so the Ημερήσιο lists it every morning in the
       -- red «εκκρεμείς φορτώσεις» with a «Φορτώθηκε» button — one click would make a truckless piece
       -- In Transit, undeletable and counted nowhere. The screens hide that button; this catches
-      -- every other path. «On a truck» is stock_v_pieces.on_truck, read on the NEW row (the same
+      -- every other path. «On a truck» is stock_v_pieces.on_truck = a truck or a partner (round 1
+      -- D1: a Group ID or an export's match is a plan — round 0 let a piece with a stale Group ID be
+      -- loaded with no vehicle and no round-trip leg, critic-3 Σ-03), read on the NEW row (the same
       -- save may set the truck and the status). Judged only when the status CHANGES (or the row is
       -- born / revived): re-saving a delivered piece whose vehicle was cleared later still passes.
       if new.status in ('In Transit', 'Delivered')
          and (tg_op = 'INSERT' or v_revived or new.status is distinct from old.status)
-         and new.truck_id is null and new.partner_id is null and nullif(btrim(new.group_id), '') is null
-         and not exists (select 1 from public.orders e
-                          where e.deleted_at is null and e.id <> new.id and e.matched_import_id = new.legacy_id) then
+         and new.truck_id is null and new.partner_id is null then
         perform stock_raise('piece_no_truck', 'Κομμάτι χωρίς φορτηγό δεν φορτώνεται ούτε παραδίδεται — βάλ'' το πρώτα σε φορτηγό από το ΑΠΟΘΕΜΑ');
       end if;
     end if;
@@ -1075,12 +1158,20 @@ begin
            and not public.stock_is_warehouse(new.unloading_location_1_id) then
           perform stock_raise('warehouse_rule', 'Ο προορισμός της παρτίδας πρέπει να είναι αποθήκη (τοποθεσία «Partner Warehouse» ή «Veroia Hub»)');
         end if;
-        -- B-16 (see stock_guard_lots): a lot source joins no group and matches no import. Judged when
-        -- the value is SET or changed, so clearing one (or re-sending an unchanged form) passes.
+        -- B-16 (see stock_guard_lots): a lot source joins no group, matches no import and is no rota
+        -- leg (round 1 Σ-05). Judged when the value is SET or changed, so clearing one (or re-sending
+        -- an unchanged form) passes.
         if (nullif(btrim(new.group_id), '') is not null and new.group_id is distinct from old.group_id)
            or (nullif(btrim(new.matched_import_id), '') is not null
-               and new.matched_import_id is distinct from old.matched_import_id) then
-          perform stock_raise('lot_grouped', 'Η παρτίδα πάει στην αποθήκη — δεν μπαίνει σε ομάδα ή ταίριασμα');
+               and new.matched_import_id is distinct from old.matched_import_id)
+           or (nullif(btrim(new.rotation_id), '') is not null and new.rotation_id is distinct from old.rotation_id) then
+          perform stock_raise('lot_grouped', 'Η παρτίδα πάει στην αποθήκη — δεν μπαίνει σε ομάδα, ταίριασμα ή ρότα');
+        end if;
+        -- Round 1 (critic-2 E2-11, the source side of Σ-08): an invoiced lot's intake stays
+        -- delivered — the status of the source no longer changes while «Invoiced» stays on. Clearing
+        -- «Invoiced» in the same save passes (the 043 guard decides who may do that).
+        if old.invoiced is true and new.invoiced is true and new.status is distinct from old.status then
+          perform stock_raise('lot_invoiced', 'Η παρτίδα τιμολογήθηκε — η κατάσταση της παραλαβής δεν αλλάζει· αναίρεσε πρώτα το τιμολόγιο');
         end if;
         -- OWNER-Q1 default (4/10): no Veroia Switch on a lot source (see stock_guard_lots).
         if coalesce(new.veroia_switch, false) and old.veroia_switch is not true then
@@ -1230,7 +1321,26 @@ begin
         end if;
       end if;
 
-      -- piece_no_truck (C-05), national mirror: «on a truck» = truck or partner (stock_v_pieces).
+      -- Invoiced lot → the piece's status is frozen (round 1 Σ-08, see stock_guard_orders). National
+      -- «delivered» is derived from status AND date, so a delivery date moved past today (delivered
+      -- → not) is the same step back as a status change; a date correction that stays delivered passes.
+      if tg_op = 'UPDATE' and not v_revived
+         and (new.status is distinct from old.status
+              or public.stock_natl_delivered(new.status, new.delivery_datetime)
+                 is distinct from public.stock_natl_delivered(old.status, old.delivery_datetime)) then
+        if public.stock_natl_delivered(old.status, old.delivery_datetime) then
+          perform 1 from public.stock_lots s where s.id = new.stock_lot_id for no key update;
+        end if;
+        if coalesce((select coalesce(so.invoiced, sn.invoiced, false)
+                       from public.stock_lots s
+                       left join public.orders so on so.id = s.order_id
+                       left join public.national_orders sn on sn.id = s.nat_order_id
+                      where s.id = new.stock_lot_id), false) then
+          perform stock_raise('lot_invoiced', 'Η παρτίδα τιμολογήθηκε — η κατάσταση του κομματιού δεν αλλάζει· αναίρεσε πρώτα το τιμολόγιο');
+        end if;
+      end if;
+
+      -- piece_no_truck (C-05), national mirror: «on a truck» = truck or partner (stock_v_pieces, D1).
       -- Only a written status is judged; a delivery derived from the date is no write.
       if new.status in ('In Transit', 'Delivered')
          and (tg_op = 'INSERT' or v_revived or new.status is distinct from old.status)
@@ -1269,6 +1379,14 @@ begin
         -- OWNER-Q1 default (4/10): no Veroia Switch on a lot source (see stock_guard_lots).
         if coalesce(new.veroia_switch, false) and old.veroia_switch is not true then
           perform stock_raise('lot_vs', 'Η παρτίδα πάει κατευθείαν στην αποθήκη — όχι Veroia Switch');
+        end if;
+        -- Round 1 (E2-11, see stock_guard_orders): an invoiced lot's intake stays delivered — status
+        -- and the date-derived «delivered» of the national source no longer change while invoiced.
+        if old.invoiced is true and new.invoiced is true
+           and (new.status is distinct from old.status
+                or public.stock_natl_delivered(new.status, new.delivery_datetime)
+                   is distinct from public.stock_natl_delivered(old.status, old.delivery_datetime)) then
+          perform stock_raise('lot_invoiced', 'Η παρτίδα τιμολογήθηκε — η κατάσταση της παραλαβής δεν αλλάζει· αναίρεσε πρώτα το τιμολόγιο');
         end if;
       end if;
       if num_nonnulls(new.delivery_location_2_id, new.delivery_location_3_id, new.delivery_location_4_id,
@@ -1361,14 +1479,14 @@ begin
   if v_b54_after is distinct from v_b54_before + 4 then
     raise exception '057 proof: enabled triggers in public % → %, expected +4', v_b54_before, v_b54_after;
   end if;
-  -- Overwritten only from a value we can explain: the inventory before this block (B-54 was green)
-  -- or 25, the value of 4/10 that 034 left behind. Any other value is someone's deliberate edit of
-  -- B-54 → stop, the owner decides (we never overwrite a decision we cannot see).
+  -- Overwritten only from a value we can explain: the inventory before this block (B-54 was green;
+  -- 27 = 27 live on 4/10 late evening). Any other value is someone's deliberate edit of B-54, or a
+  -- red B-54 nobody has looked at → stop, the owner decides (we never overwrite what we cannot see).
   update monitoring.checks set red_value = v_b54_after
-   where id = 'B-54' and red_value in (v_b54_before, 25);
+   where id = 'B-54' and red_value = v_b54_before;
   get diagnostics v_n = row_count;
   if v_n <> 1 then
-    raise exception '057 proof: B-54 red_value is % — neither the inventory before 057 (%) nor 25; someone edited B-54, owner decides',
+    raise exception '057 proof: B-54 red_value is % but the inventory before 057 is % (B-54 is red or was edited) — owner decides',
       v_b54_red, v_b54_before;
   end if;
   raise notice '057: B-54 red_value % → % (enabled triggers in public before 057: %, after: %)',
@@ -1377,7 +1495,7 @@ begin
   -- ── 9. Proofs (any miss rolls the whole block back) ────────────────────────────────────────────
   select count(*) into v_cols from pg_attribute
    where attrelid = 'public.orders_with_derived'::regclass and attnum > 0 and not attisdropped;
-  if v_cols <> 136 then raise exception '057 proof: orders_with_derived has % columns, expected 136', v_cols; end if;
+  if v_cols <> 137 then raise exception '057 proof: orders_with_derived has % columns, expected 137', v_cols; end if;
   select count(*) into v_n from public.orders_with_derived;
   if v_n <> v_owd_rows then raise exception '057 proof: orders_with_derived rows % → %', v_owd_rows, v_n; end if;
   select count(*) into v_n from public.orders o join public.orders_with_derived d using (id)
@@ -1455,7 +1573,7 @@ begin
    where attrelid = 'public.ct_v_rt_revenue'::regclass and attnum > 0 and not attisdropped;
   if v_cols <> 4 then raise exception '057 proof: ct_v_rt_revenue has % columns, expected 4', v_cols; end if;
 
-  raise notice '057 OK: orders_with_derived 136 cols / % rows, % RT revenues (total/intl/natl) unchanged, 3 guards, 6 CHECKs, blank group_id → NULL, born closed, B-54 % triggers → % (green). New view md5: owd %, revenue %',
+  raise notice '057 OK: orders_with_derived 137 cols / % rows, % RT revenues (total/intl/natl) unchanged, 3 guards, 6 CHECKs, blank group_id → NULL, born closed, B-54 % triggers → % (green). New view md5: owd %, revenue %',
     v_owd_rows, cardinality(v_rev_after), v_b54_before, v_b54_red,
     md5(pg_get_viewdef('public.orders_with_derived'::regclass, true)),
     md5(pg_get_viewdef('public.ct_v_rt_revenue'::regclass, true));
