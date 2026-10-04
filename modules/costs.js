@@ -257,7 +257,9 @@ async function ctLinesPerRt() {
         if (recs.length) byRt[id] = recs;
       }, e => { console.warn('[costs] lines rt ' + id + ' failed', e.message); failed = true; })));
   }
-  if (failed) { _ct.linesFailed = true; return; }
+  // linesCapped off on failure: the «όριο 300 → ίσως ψευδώς χωρίς κόστη»
+  // banner would contradict the cards, which say «άγνωστη», not «χωρίς κόστη».
+  if (failed) { _ct.linesFailed = true; _ct.linesCapped = false; return; }
   _ct.linesByRt = byRt; _ct.linesCapped = capped;
 }
 
@@ -582,13 +584,17 @@ function ctRenderList() {
   V.forEach(t => {
     // Στα αθροίσματα ομάδων μπαίνουν ΜΟΝΟ γραμμές με καταχωρημένα κόστη —
     // αλλιώς η ομάδα θα έδειχνε ψεύτικο περιθώριο. Οι υπόλοιπες μετριούνται ρητά.
-    if (!ctCostInfo(t).complete) { skipped++; return; }
+    // With linesFailed the completeness of EVERY RT is unknown (review
+    // fix/pnl-lines-cap): all RTs count, and net/margin are «—» below — not
+    // margins of a partial set beside «ελλιπή κόστη ΔΕΝ μετρούν».
+    if (!_ct.linesFailed && !ctCostInfo(t).complete) { skipped++; return; }
     const k = keyFn(t); (m[k] = m[k] || { n: 0, rev: 0, gross: 0, net: 0 }); m[k].n++; m[k].rev += Number(t.revenue || 0); m[k].gross += Number(t.cost_gross || 0); m[k].net += Number(t.cost_net || 0); });
-  const rows = Object.entries(m).map(([k, v]) => ({ k, ...v, p: v.rev - v.gross, mg: v.rev ? (v.rev - v.gross) / v.rev * 100 : null, mx: v.rev ? (v.rev - v.net) / v.rev * 100 : null }))
+  const unk = _ct.linesFailed;
+  const rows = Object.entries(m).map(([k, v]) => ({ k, ...v, p: unk ? null : v.rev - v.gross, mg: !unk && v.rev ? (v.rev - v.gross) / v.rev * 100 : null, mx: !unk && v.rev ? (v.rev - v.net) / v.rev * 100 : null }))
     .sort((a, b) => (a.mg ?? 999) - (b.mg ?? 999)).map(r => `
     <tr><td style="font-weight:600">${ctEsc(r.k)}</td><td class="ct-num ct-mono">${r.n}</td>
     <td class="ct-num ct-mono">${ctEur(r.rev)}</td><td class="ct-num ct-mono">${ctEur(r.gross)}</td>
-    <td class="ct-num ct-mono" style="font-weight:700;${r.p < 0 ? 'color:var(--danger)' : ''}">${ctEurP(r.p)}</td>
+    <td class="ct-num ct-mono" style="font-weight:700;${r.p < 0 ? 'color:var(--danger)' : ''}">${r.p == null ? '—' : ctEurP(r.p)}</td>
     <td style="text-align:center">${ctPill(r.mg != null ? Math.round(r.mg * 10) / 10 : null)}</td>
     <td class="ct-num ct-mono" style="color:var(--text-dim)">${r.mx != null ? r.mx.toFixed(1) + '%' : '—'}</td></tr>`).join('');
   const h = _ct.group === 'truck' ? 'Φορτηγό / Συνεργάτης' : _ct.group === 'driver' ? 'Οδηγός' : 'Εβδομάδα';
