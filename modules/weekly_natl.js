@@ -2787,11 +2787,12 @@ function _wnExecuted(st) { return st === 'In Transit' || st === 'Delivered'; }
 // LEG FIRST (P1 RT-1193, 30/9; owner 4/10): when a vehicle leaves or changes on
 // a load that is a round-trip leg, the leg must leave the trip BEFORE the
 // vehicle changes, or the RT sync writes the new (or NULL) vehicle over the
-// whole trip, its sibling legs and the payroll. National loads have NO round-
-// trip legs today (0 of 243 ct_rt_legs carry nat_load_id, 4/10; no RT trigger on
-// national_loads, core/rt-feed.js is international only). From migration 034
-// the RT trigger handles national legs on the base side — this board makes NO
-// RT calls on purpose; every vehicle write below is marked «LEG FIRST».
+// whole trip, its sibling legs and the payroll. For national loads the base
+// does it: migration 034 (live since 4/10/2026) — trigger rt_sync_national_load
+// on national_loads takes the leg out of a shared trip FIRST, then moves it,
+// and creates trips only for loads executed from 5/10 (0 of 243 legs carried a
+// nat_load_id on 4/10). core/rt-feed.js is international only. This board
+// makes NO RT calls on purpose; every vehicle write below is marked «LEG FIRST».
 function _wnConfirmExecuted(what) {
   // No word «παραδόθηκε» here either (owner 4/10: not visible on the Weekly).
   return confirmAction(`Το φορτίο είναι ήδη σε εκτέλεση. ${what} — η κατάσταση μένει ως έχει.\nΤο όχημα μεταφέρεται/σβήνει δρομολόγιο + μισθοδοσία, ακόμη και σε κλειστό δρομολόγιο.`,

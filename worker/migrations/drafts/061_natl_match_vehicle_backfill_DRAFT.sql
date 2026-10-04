@@ -15,8 +15,17 @@
 --   ΚΑΘΟΔΟΣ 80 → ΑΝΟΔΟΣ 99   80: truck 26, trailer 8, driver 37 · 99: none, Pending
 --   ΚΑΘΟΔΟΣ 76 → ΑΝΟΔΟΣ 102  76: truck 5, driver 125            · 102: none, Pending
 --   ΚΑΘΟΔΟΣ 77 → ΑΝΟΔΟΣ 103  77: truck 5, driver 125            · 103: none, Pending
--- All three are own fleet (no partner on either side). No trigger on
--- national_loads reacts to truck/driver/status (only soft-delete triggers).
+-- All three are own fleet (no partner on either side).
+--
+-- RT / payroll: migration 034 IS LIVE (executed 4/10/2026). Its trigger
+-- rt_sync_national_load (AFTER UPDATE OF status, truck_id, driver_id, … ON
+-- national_loads) creates a NATL round trip — and so a payroll line — only for
+-- a load executed from 5/10/2026 (Athens: first of loading / delivery / actual
+-- delivery / creation), or follows a leg that already exists. These three load
+-- 7/9, 7/9 and 9/9 (Athens) and have NO ct_rt_legs row (0 of 243 legs carry a
+-- nat_load_id), so setting their vehicle creates no RT and no payroll line —
+-- verified read-only 4/10/2026 (dates + trigger source + leg count). The
+-- block proves it again after the update (0 new legs for 99/102/103).
 --
 -- ⚠ Owner check BEFORE running: 99/102/103 come from national orders 8, 13, 14
 -- (loading 7/9 and 9/9) — inside the «11 old national orders 24/8–14/9» of
@@ -44,6 +53,7 @@ DECLARE
   n_upd  int;
   n_aud  int;
   n_bad  int;
+  n_legs int;
 BEGIN
   -- Guard: exactly the 3 measured pairs, still in the measured state.
   SELECT count(*) INTO n_ok
@@ -93,7 +103,15 @@ BEGIN
     RAISE EXCEPTION '061: % ΑΝΟΔΟΣ rows do not match their ΚΑΘΟΔΟΣ after the update — rolled back', n_bad;
   END IF;
 
-  RAISE NOTICE '061 ok: % ΑΝΟΔΟΣ loads got their ΚΑΘΟΔΟΣ vehicle, % audit lines', n_upd, n_aud;
+  -- Proof: 034's trigger ran on this UPDATE and must have created nothing —
+  -- the loads are before its 5/10 cut. A leg here would mean an RT + payroll
+  -- line for an old September trip: roll back and look.
+  SELECT count(*) INTO n_legs FROM ct_rt_legs WHERE nat_load_id IN (99, 102, 103);
+  IF n_legs <> 0 THEN
+    RAISE EXCEPTION '061: % ct_rt_legs now point at loads 99/102/103 (034 created a round trip) — rolled back', n_legs;
+  END IF;
+
+  RAISE NOTICE '061 ok: % ΑΝΟΔΟΣ loads got their ΚΑΘΟΔΟΣ vehicle, % audit lines, 0 round-trip legs', n_upd, n_aud;
 END $$;
 
 -- AFTER (read only) — expect 3 rows, sn_truck = truck_id etc., sn_status Assigned;
@@ -108,3 +126,4 @@ WHERE ns.direction = 'North→South' AND ns.deleted_at IS NULL AND sn.deleted_at
   AND (ns.truck_id IS NOT NULL OR ns.partner_id IS NOT NULL)
   AND sn.truck_id IS NULL AND sn.partner_id IS NULL;
 SELECT count(*) AS audit_lines FROM audit_log WHERE actor = 'migration:061';   -- expect 3
+SELECT count(*) AS rt_legs FROM ct_rt_legs WHERE nat_load_id IN (99, 102, 103);  -- expect 0 (034 cut 5/10)
