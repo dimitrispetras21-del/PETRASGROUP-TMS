@@ -2617,6 +2617,13 @@ function _wiRowHTML(row,i){
     return _wi2Card({date:_wi2Date(imp.id,'Delivery DateTime',dIso,dIso?_wk3D(_wiFmt(dIso)):'—','','Εθνικό σκέλος: ημ. τελικής διανομής'), name:de2.name, sub:de2.sub, extra:_wk3MoreStops(f2['Delivery Summary']||'',f2._stopsD,'del')}); })()
     :`<span class="wi2-dash" title="Χωρίς εθνικό σκέλος">—</span>`;
 
+  // ⎙I of a truck whose return load is an import GROUP prints the whole group
+  // (impact map 4/10 PR-01, P1): it printed only the member the export names,
+  // so a piece joined to the group (its warehouse pickup) never reached the
+  // driver's paper. Found by any member and not gated on the tiles switch —
+  // what is printed must not depend on how the board draws it.
+  const impPrintRow=row.importId?_wiImpGroupRowOf(row.importId):null;
+  const impPrintN=impPrintRow?(impPrintRow.orderIds||[]).length:0;
   const rowCls=['wk3-row',!row.saved?'wi2-un':'',urg?'wi2-rowurg':gapCell?'wi2-gap':'',stF.delivered&&!stF.late?'wk3-done':''].filter(Boolean).join(' ');
   return `
   <div id="wi-row-${row.id}" data-row-id="${row.id}" class="${rowCls}">
@@ -2634,7 +2641,9 @@ function _wiRowHTML(row,i){
         ?`<button class="wk3-prt l" title="Εκτύπωση ομάδας — ${exps.length} έγγραφα σε ένα πακέτο" onclick="event.stopPropagation();_wiPrintGroup(${row.id})">⎙</button>`
         :`<button class="wk3-prt l" title="Εκτύπωση εντολής (export) — δεξί κλικ: κοινή χρήση" data-shq="${printSheetQuery(row.orderIds[0],'export',!!(row.partnerId||row.partnerLabel))}" data-shtitle="Εντολή εξαγωγής — W${WINTL.week}" onclick="event.stopPropagation();_wiPrint(${row.id},'export')">⎙</button>`}
       ${pill}
-      ${row.importId?`<button class="wk3-prt r" title="Εκτύπωση εντολής (import) — δεξί κλικ: κοινή χρήση" data-shq="${printSheetQuery(row.importId,'import',!!(row.partnerId||row.partnerLabel))}" data-shtitle="Εντολή εισαγωγής — W${WINTL.week}" onclick="event.stopPropagation();_wiPrint(${row.id},'import')">⎙<sup>I</sup></button>`:''}
+      ${impPrintN>1
+        ?`<button class="wk3-prt r" title="Εκτύπωση ομάδας (import) — ${impPrintN} έγγραφα" data-shq="${_wiImpGroupPrintQuery(impPrintRow)}" data-shtitle="Εντολές εισαγωγής (ομάδα) — W${WINTL.week}" onclick="event.stopPropagation();_wiPrintImpGroup(${impPrintRow.id})">⎙<sup>I</sup></button>`
+        :row.importId?`<button class="wk3-prt r" title="Εκτύπωση εντολής (import) — δεξί κλικ: κοινή χρήση" data-shq="${printSheetQuery(row.importId,'import',!!(row.partnerId||row.partnerLabel))}" data-shtitle="Εντολή εισαγωγής — W${WINTL.week}" onclick="event.stopPropagation();_wiPrint(${row.id},'import')">⎙<sup>I</sup></button>`:''}
     </div>`}
     <div class="wk3-leg imp${gapCell?' gap':''}${parCell?' bgap':''}" id="wi-ci-${row.id}"
          ${imp?`style="cursor:pointer" title="Κλικ: φόρμα εισαγωγής · δεξί κλικ: μενού εισαγωγής (ρότα, εκτύπωση)" oncontextmenu="_wiMatchedImpCtx(event,${row.id})"`:''}
@@ -5177,7 +5186,10 @@ function _wiPanelConfirmDelLocal(moveId){
 // matched one), so the standalone import menu can serve the matched card too.
 function _wiMatchedImpCtx(e,exportRowId){
   const exp=WINTL.rows.find(r=>r.id===exportRowId); if(!exp||!exp.importId) return;
-  const impRow=WINTL.rows.find(r=>r.type==='import'&&r.orderId===exp.importId);
+  // By ANY member (impact map 4/10 PR-02): the export may point at a member
+  // that is not the group's lead (a drag reorder, or a piece joined) — found by
+  // the lead id only, the menu said «δεν βρέθηκε» on a group the board draws.
+  const impRow=_wiImpGroupRowOf(exp.importId);
   if(!impRow){ e.preventDefault();e.stopPropagation(); toast('Η ταιριασμένη εισαγωγή δεν βρέθηκε στις γραμμές της εβδομάδας — άνοιξέ την από τη φόρμα','warn'); return; }
   _wiImpCtx(e,impRow.id,exportRowId);
 }
@@ -5722,9 +5734,14 @@ function _wiPrintGroup(rowId){
 function _wiPrintImpGroup(rowId){
   const row=WINTL.rows.find(r=>r.id===rowId); if(!row||row.orderIds.length<2) return;
   const base='https://dimitrispetras21-del.github.io/PETRASGROUP-TMS/print.html';
-  const sheet=row.partnerId?'partner':'driver';
+  window.open(`${base}?${_wiImpGroupPrintQuery(row)}`,'_blank');
+}
+// The packet's query — ONE producer for the print button and its share menu
+// (data-shq → /print/pdf, which takes orderIds too), so paper, PDF and text
+// list the same members in the same order.
+function _wiImpGroupPrintQuery(row){
   const ordered=_wiGrpOrder(row.orderIds.map(id=>WINTL.data.imports.find(r=>r.id===id)).filter(Boolean),'Loading DateTime').map(e=>e.id);
-  window.open(`${base}?orderIds=${(ordered.length?ordered:row.orderIds).join(',')}&leg=import&sheet=${sheet}`,'_blank');
+  return `orderIds=${(ordered.length?ordered:row.orderIds).join(',')}&leg=import&sheet=${row.partnerId?'partner':'driver'}`;
 }
 
 /* ── ΚΑΡΤΕΛΑ ΡΟΤΑΣ (owner 12/8, εγκεκριμένο πρωτότυπο grp_trip_proto) ──
@@ -5873,7 +5890,16 @@ function _wiPrintWeek(){
     const exps=row.orderIds.map(id=>data.exports.find(r=>r.id===id)).filter(Boolean);
     const primary=exps[0];if(!primary)return;
     const f=primary.fields;
-    const imp=row.importId?data.imports.find(r=>r.id===row.importId):null;
+    // Every member of the truck's import group, in the board's order (impact
+    // map 4/10 PR-10): only the member the export names was printed, so a
+    // piece joined to the group was missing from the week's paper. «ΑΠ» marks
+    // a piece; «→ ΑΠΟΘΗΚΗ» a lot (it goes to the warehouse, not the client).
+    const grpRow=row.importId?_wiImpGroupRowOf(row.importId):null;
+    const impRecs=(grpRow&&(grpRow.orderIds||[]).length>1)
+      ?_wiGrpOrder(grpRow.orderIds.map(id=>data.imports.find(r=>r.id===id)).filter(Boolean),'Loading DateTime')
+      :(row.importId?[data.imports.find(r=>r.id===row.importId)].filter(Boolean):[]);
+    const impCell=impRecs.length?impRecs.map(m=>{ const mf=m.fields;
+      return (_wiIsPiece(mf)?'ΑΠ ':'')+escapeHtml(mf['Loading Summary']||_wiFlatLocName(mf['Loading Location 1'])||'')+' → '+escapeHtml(mf['Delivery Summary']||_wiFlatLocName(mf['Unloading Location 1'])||'')+(_wiIsLot(mf)?' · → ΑΠΟΘΗΚΗ':''); }).join('<br>'):'—';
     // Λεξιλόγιο ΜΕΡΟΣ Ε: «ΣΥΝ.» + επωνυμία · «ΙΔ.» + πινακίδα + οδηγός · «ΠΡΟΣ ΑΝΑΘΕΣΗ»
     const partner=row.partnerLabel||(row.partnerId?'—':'');
     const plates=[row.truckLabel,row.trailerLabel].filter(Boolean).join(' / ');
@@ -5881,11 +5907,11 @@ function _wiPrintWeek(){
       :(plates?`ΙΔ. ${plates}${row.driverLabel?' · '+row.driverLabel:''}`:'ΠΡΟΣ ΑΝΑΘΕΣΗ');
     html+=`<tr>
       <td style="${td}">${i+1}</td>
-      <td style="${td}">${escapeHtml(f['Loading Summary']||'')} → ${escapeHtml(f['Delivery Summary']||'')}</td>
+      <td style="${td}">${escapeHtml(f['Loading Summary']||'')} → ${escapeHtml(f['Delivery Summary']||'')}${_wiIsLot(f)?' · → ΑΠΟΘΗΚΗ':''}</td>
       <td style="${td};font-variant-numeric:tabular-nums">${toLocalDate(f['Loading DateTime'])} → ${toLocalDate(f['Delivery DateTime'])}</td>
       <td style="${td};text-align:center;font-variant-numeric:tabular-nums">${pals(f)}</td>
       <td style="${td}">${escapeHtml(assign)}</td>
-      <td style="${td}">${imp?(escapeHtml(imp.fields['Loading Summary']||'')+' → '+escapeHtml(imp.fields['Delivery Summary']||'')):'—'}</td>
+      <td style="${td}">${impCell}</td>
     </tr>`;
   });
   html+='</tbody></table>';
@@ -6761,18 +6787,26 @@ window._wiStockReturnLone = _wiStockReturnLone;
 function _wiExportCSV() {
   const allOrders = [...WINTL.data.exports, ...WINTL.data.imports];
   if (!allOrders.length) { toast('Δεν υπάρχουν δεδομένα για εξαγωγή', 'error'); return; }
-  const rows = [['Order No','Direction','Client','Loading','Delivery','Load Date','Del Date','Pallets','Truck','Trailer','Driver','Partner','Status']];
+  // «Απόθεμα» (impact map 4/10 B-25/PR-11): the lot carries 33p into the
+  // warehouse and its pieces carry the SAME pallets out (5+15+13) — two real
+  // movements, but a column sum in Excel counted 66 for 33 with nothing to
+  // tell them apart. «Παρτίδα #N» / «Κομμάτι #N» share N (order_no = id, the
+  // number a piece's «Stock Lot Order No» carries), so the sheet can filter.
+  const rows = [['Order No','Direction','Client','Loading','Delivery','Load Date','Del Date','Pallets','Truck','Trailer','Driver','Partner','Status','Απόθεμα']];
   allOrders.forEach(r => { const f = r.fields;
+    const stock = _wiIsLot(f) ? 'Παρτίδα ' + OrdersCommon.numLabel(r) : _wiIsPiece(f) ? 'Κομμάτι ' + OrdersStock.lotNumLabel(f) : '';
     const trk = WINTL.data.trucks.find(t => t.id === ((f['Truck']||[])[0]))?.label || '';
     const trl = WINTL.data.trailers.find(t => t.id === ((f['Trailer']||[])[0]))?.label || '';
     const drv = WINTL.data.drivers.find(d => d.id === ((f['Driver']||[])[0]))?.label || '';
     const prt = WINTL.data.partners.find(p => p.id === ((f['Partner']||[])[0]))?.label || '';
     const assigned = !!(trk || prt);
-    rows.push([f['Order Number']||'', f['Direction']||'',
+    // 'Order No', not 'Order Number': no such label on the facade (CLAUDE.md
+    // name trap) — the first column was blank on every row.
+    rows.push([f['Order No']||'', f['Direction']||'',
       typeof getClientName==='function' ? getClientName((f['Client']||[])[0]) : '',
       f['Loading Summary']||'', f['Delivery Summary']||'',
       f['Loading DateTime']||'', f['Delivery DateTime']||'', ('Total Pallets' in f)?f['Total Pallets']:'',
-      trk, trl, drv, prt, assigned?'Assigned':'Unassigned',
+      trk, trl, drv, prt, assigned?'Assigned':'Unassigned', stock,
     ]); });
   const csv = rows.map(r => r.map(c => `"${String(csvSafeCell(c)).replace(/"/g,'""')}"`).join(',')).join('\n');
   const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8' });
