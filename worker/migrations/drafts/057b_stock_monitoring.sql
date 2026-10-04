@@ -1,8 +1,8 @@
 -- 057b — DRAFT (NOT EXECUTED) — the auditor learns stock lots. SEPARATE approval from 057; run it
--- only after 057_stock_lots_verify.sql V1–V8 pass. ONE DO block (lesson 056): the 7 new checks, the
--- 2 changed ones and their proofs commit together or not at all.
+-- only after 057_stock_lots_verify.sql V1–V8 pass. ONE DO block (lesson 056): the 9 new checks, the
+-- 4 changed ones and their proofs commit together or not at all.
 --
--- WHY each check (plan §6, owner Ε3):
+-- WHY each check (plan §6, owner Ε3; S-12/S-13/B-34/B-34b = impact map 4/10):
 --   S-01 P1  remaining < 0 — impossible while the guards stand; > 0 = they were bypassed.
 --   S-02 P1  a guard trigger or one of the 6 CHECKs is gone/disabled (e.g. R1 of the rollback;
 --            back with 057_stock_lots_guards_on.sql).
@@ -12,10 +12,28 @@
 --   S-09 P3  EVERY «Κλείσιμο υπολοίπου» of the last 24 h, one line each: lot · pallets written off ·
 --            «χαμένο υπόλοιπο» amount · who (actor/role from audit_log) · the reason (Ε3).
 --   S-11 P2  a lot received > 2 days ago without allocation (no price / no warehouse cost).
+--   S-12 P2  an order LOADING at a partner warehouse that is not a piece (map PR-17/G-15): pallets
+--            leave the warehouse past the stock — the lot never empties, nothing is allocated.
+--   S-13 P2  an order DELIVERING to a partner warehouse that is not a lot (map G-14): the pallets
+--            are on no shelf, no piece can be drawn, the full price looks invoiceable at intake.
+--            Both count only orders written AFTER the first stock lot (0 until go-live; Ε4: the
+--            past is never linked) and never a Cancelled one (it moves nothing).
 --   B-13     pieces never carry a price by design → no longer «delivered without price».
 --   B-15     a lot counts from the day it became COMPLETE (not from its intake); pieces never count.
+--   B-34 / B-34b  a designed stock refusal (Greek 422 STOCK_RULE: over_draw, piece_on_truck, …) is an
+--            ANSWER, not an error. The front logs it with context «_atRetry 422 rule» (app_errors
+--            .message = ctx || ': ' || msg); counted, every refused delete would trip B-34b once per
+--            order and B-34 after ~3 refusals a day (map AU-07). Other 422s keep counting. «_» is a
+--            LIKE wildcard that also matches itself — no other message starts «?atRetry 422 rule».
+--            Until the front ships that context, refusals log as «_atRetry 422: …» and still count.
 -- B-16 is unchanged (a piece cannot carry pallet exchange — CHECK). S-04/S-07/S-08 are not created
--- (plan v4); S-10 is out of scope (plan Π7).
+-- (plan v4); S-10 is out of scope (plan Π7). B-54 (trigger inventory) is NOT here: 057 moves it
+-- to «measured + 4» in the same commit as its four triggers (057 header — 057b may run days later).
+--
+-- GUARDED TEXTS: B-13 84dfe3aa…, B-15 66d4436c…, B-34 ee5498c6…, B-34b 077efbe5… — re-read live on
+-- 4/10 evening AFTER 034 and 058 ran (058 added B-59…B-62 and touched none of them). The 9 new ids
+-- S-01…S-13 exist nowhere (live: 75 checks, B-01…B-62 and P-01…P-09; main's 047b seed and the 058
+-- draft hold no S-id) — and the guard below refuses to run if one appears.
 --
 -- THE CHECK GUARD: monitoring.check_sql_guard() allows only a short list of functions (no to_char,
 -- no nullif, no LATERAL). The S-09 amount is therefore round(x, 2) and its «who» a scalar subquery.
@@ -23,8 +41,9 @@
 -- tms_check_runner, exactly like monitoring.run_checks() will — so a check that would error at its
 -- first run fails HERE instead (principle 6).
 --
--- AFTER RUNNING: mirror these 9 checks into tms-auditor/checks/*.sql (S-01…S-11 new files, B-13 and
--- B-15 edited) and regenerate 047b, or the seed-drift test fails.
+-- AFTER RUNNING: mirror these 13 checks into tms-auditor/checks/*.sql (S-01…S-13 new files; B-13,
+-- B-15, B-34, B-34b edited; and B-54 «red: <> N» from 057's NOTICE) and regenerate 047b, or the seed-drift
+-- test fails.
 
 do $mon$
 declare
@@ -41,7 +60,7 @@ begin
     raise exception '057b guard: run 057 first (stock_v_lots / stock_v_lot_money missing)';
   end if;
   select count(*) into v_n from monitoring.checks
-   where id in ('S-01', 'S-02', 'S-03', 'S-05', 'S-06', 'S-09', 'S-11');
+   where id in ('S-01', 'S-02', 'S-03', 'S-05', 'S-06', 'S-09', 'S-11', 'S-12', 'S-13');
   if v_n <> 0 then raise exception '057b guard: % S-check(s) already exist — 057b ran before', v_n; end if;
   select md5(sql_text) into v_md5 from monitoring.checks where id = 'B-13';
   if v_md5 is distinct from '84dfe3aa966da031b4c285a8323352d7' then
@@ -51,8 +70,16 @@ begin
   if v_md5 is distinct from '66d4436c229d127b3626c6c3b0f3fe45' then
     raise exception '057b guard: B-15 text changed since 4/10 (md5 %) — regenerate the draft', v_md5;
   end if;
+  select md5(sql_text) into v_md5 from monitoring.checks where id = 'B-34';
+  if v_md5 is distinct from 'ee5498c631cd9c1b9426ba7cda9d69b2' then
+    raise exception '057b guard: B-34 text changed since 4/10 (md5 %) — regenerate the draft', v_md5;
+  end if;
+  select md5(sql_text) into v_md5 from monitoring.checks where id = 'B-34b';
+  if v_md5 is distinct from '077efbe51163e3630b7a96b3f09fbe96' then
+    raise exception '057b guard: B-34b text changed since 4/10 (md5 %) — regenerate the draft', v_md5;
+  end if;
 
-  -- ── The 7 new checks ──────────────────────────────────────────────────────────────────────────
+  -- ── The 9 new checks ──────────────────────────────────────────────────────────────────────────
   insert into monitoring.checks (id, title, flows, sql_text, ids_sql, entity_table, red_op, red_value, severity,
                                  schedule_tag, is_queue, impact, next_step, confidence, exceptions, enabled)
   values
@@ -103,27 +130,57 @@ begin
    'stock_lots', '>', 0, 'P2', 'daily', true,
    'Χωρίς τιμή πελάτη ή κόστος αποθήκης η παρτίδα δεν επιμερίζεται: όλη η τιμή μένει στη γραμμή της παρτίδας και τα RT των κομματιών δείχνουν έσοδο 0 στο TRIP PnL.',
    'Συμπλήρωση της τιμής στην παρτίδα ή του Partner Rate στην ανάθεση της αποθήκης.',
-   'σταθερός έλεγχος SQL — δείχνει ΤΙ, όχι ΓΙΑΤΙ', 'Εθνική πηγή ή παραλαβή με δικό μας φορτηγό: χωρίς κόστος αποθήκης μέχρι τη Φ3 (Ε6/Ε7) — χτυπά σκόπιμα.', true);
+   'σταθερός έλεγχος SQL — δείχνει ΤΙ, όχι ΓΙΑΤΙ', 'Εθνική πηγή ή παραλαβή με δικό μας φορτηγό: χωρίς κόστος αποθήκης μέχρι τη Φ3 (Ε6/Ε7) — χτυπά σκόπιμα.', true),
+  ('S-12', 'Απόθεμα: φόρτωση από αποθήκη συνεργάτη χωρίς παρτίδα', array['F-05','F-30'],
+   $c$SELECT count(*) FROM orders o JOIN locations l ON l.id = o.loading_location_1_id WHERE o.deleted_at IS NULL AND o.stock_lot_id IS NULL AND o.status IS DISTINCT FROM 'Cancelled' AND l.type = 'Partner Warehouse' AND o.created_at > (SELECT min(s.created_at) FROM stock_lots s)$c$,
+   $c$SELECT coalesce(array_agg(x ORDER BY x),'{}') FROM (SELECT o.legacy_id AS x FROM orders o JOIN locations l ON l.id = o.loading_location_1_id WHERE o.deleted_at IS NULL AND o.stock_lot_id IS NULL AND o.status IS DISTINCT FROM 'Cancelled' AND l.type = 'Partner Warehouse' AND o.created_at > (SELECT min(s.created_at) FROM stock_lots s) ORDER BY o.legacy_id LIMIT 50) s$c$,
+   'orders', '>', 0, 'P2', 'daily', true,
+   'Παλέτες φεύγουν από αποθήκη συνεργάτη με απλή παραγγελία, όχι ως κομμάτι παρτίδας: το απόθεμα δεν μειώνεται, ο επιμερισμός δεν τις βλέπει και η παρτίδα δεν κλείνει ποτέ σωστά — ή φορτώνουμε κάτι που δεν μπήκε ποτέ στο απόθεμα.',
+   'Weekly → η παραγγελία (ανάγνωση): είναι κομμάτι που γράφτηκε ως απλή παραγγελία; Τότε «+ Κομμάτι από απόθεμα» στο ίδιο φορτηγό και σβήσιμο της απλής.',
+   'σταθερός έλεγχος SQL — δείχνει ΤΙ, όχι ΓΙΑΤΙ', 'Μόνο παραγγελίες που γράφτηκαν μετά την πρώτη παρτίδα (πριν = 0· Ε4: το παρελθόν δεν συνδέεται). Ακυρωμένες δεν μετρούν.', true),
+  ('S-13', 'Απόθεμα: παραγγελία προς αποθήκη συνεργάτη χωρίς παρτίδα', array['F-05','F-30'],
+   $c$SELECT count(*) FROM orders o JOIN locations l ON l.id = o.unloading_location_1_id WHERE o.deleted_at IS NULL AND o.status IS DISTINCT FROM 'Cancelled' AND l.type = 'Partner Warehouse' AND o.created_at > (SELECT min(s.created_at) FROM stock_lots s) AND NOT EXISTS (SELECT 1 FROM stock_lots s WHERE s.order_id = o.id AND s.deleted_at IS NULL)$c$,
+   $c$SELECT coalesce(array_agg(x ORDER BY x),'{}') FROM (SELECT o.legacy_id AS x FROM orders o JOIN locations l ON l.id = o.unloading_location_1_id WHERE o.deleted_at IS NULL AND o.status IS DISTINCT FROM 'Cancelled' AND l.type = 'Partner Warehouse' AND o.created_at > (SELECT min(s.created_at) FROM stock_lots s) AND NOT EXISTS (SELECT 1 FROM stock_lots s WHERE s.order_id = o.id AND s.deleted_at IS NULL) ORDER BY o.legacy_id LIMIT 50) s$c$,
+   'orders', '>', 0, 'P2', 'daily', true,
+   'Παραγγελία πελάτη παραδίδει σε αποθήκη συνεργάτη χωρίς να είναι παρτίδα: οι παλέτες δεν φαίνονται στο ΑΠΟΘΕΜΑ, κανένα κομμάτι δεν βγαίνει από αυτές, και η παραγγελία μοιάζει έτοιμη για τιμολόγηση από την παραλαβή, ενώ ο πελάτης δεν έχει παραλάβει.',
+   'Φόρμα της παραγγελίας (ανάγνωση): είναι απόθεμα πελάτη; Τότε «Παρτίδα αποθέματος». Αλλιώς ο προορισμός μπήκε λάθος.',
+   'σταθερός έλεγχος SQL — δείχνει ΤΙ, όχι ΓΙΑΤΙ', 'Μόνο παραγγελίες μετά την πρώτη παρτίδα· ακυρωμένες δεν μετρούν. Η τοποθεσία 92 έχει τύπο «Partner Warehouse» αλλά μοιάζει με σημείο πελάτη (plan §9, ερώτημα owner): αν χτυπά εκεί, διορθώνεται ο τύπος, όχι ο έλεγχος.', true);
 
-  -- ── The 2 changed checks ──────────────────────────────────────────────────────────────────────
+  -- ── The 4 changed checks ──────────────────────────────────────────────────────────────────────
   update monitoring.checks set sql_text = sql_text || E'\n AND stock_lot_id IS NULL' where id = 'B-13';
   update monitoring.checks
      set sql_text = $c$SELECT count(*) FROM orders o LEFT JOIN stock_v_lots l ON l.order_id = o.id WHERE o.deleted_at IS NULL AND o.status='Delivered' AND o.invoiced IS NOT TRUE AND o.parent_order_id IS NULL AND o.stock_lot_id IS NULL AND CASE WHEN l.id IS NULL THEN coalesce(o.actual_delivery_date,o.delivery_datetime) < current_date-30 ELSE l.complete AND l.completed_on < current_date-30 END$c$
    where id = 'B-15';
+  -- Designed stock refusals are answers, not errors (header, map AU-07). Appended, so the rest of
+  -- each text stays byte for byte the 4/10 one (md5-guarded above, md5-proved below).
+  update monitoring.checks set sql_text = sql_text || E'\n AND message NOT LIKE ''_atRetry 422 rule%''' where id = 'B-34';
+  update monitoring.checks set sql_text = sql_text || E'\n AND e.message NOT LIKE ''_atRetry 422 rule%''' where id = 'B-34b';
 
   -- ── Proofs: every new/changed check passes the guard and runs as the auditor does ────────────
   select count(*) into v_n from monitoring.checks
-   where id in ('S-01', 'S-02', 'S-03', 'S-05', 'S-06', 'S-09', 'S-11') and enabled;
-  if v_n <> 7 then raise exception '057b proof: % of 7 S-checks enabled', v_n; end if;
+   where id in ('S-01', 'S-02', 'S-03', 'S-05', 'S-06', 'S-09', 'S-11', 'S-12', 'S-13') and enabled;
+  if v_n <> 9 then raise exception '057b proof: % of 9 S-checks enabled', v_n; end if;
   select md5(sql_text) into v_md5 from monitoring.checks where id = 'B-13';
   if v_md5 is distinct from md5($c$SELECT count(*) FROM orders WHERE deleted_at IS NULL AND status='Delivered' AND coalesce(price,0)<=0 AND parent_order_id IS NULL
  AND coalesce(actual_delivery_date,delivery_datetime) < current_date-3
  AND stock_lot_id IS NULL$c$) then
     raise exception '057b proof: B-13 text is not the expected one (md5 %)', v_md5;
   end if;
+  select md5(sql_text) into v_md5 from monitoring.checks where id = 'B-34';
+  if v_md5 is distinct from md5($c$SELECT count(*) FROM app_errors WHERE created_at>now()-interval '24 hours' AND message NOT LIKE 'queue: offline flush%'
+ AND message NOT LIKE '_atRetry 422 rule%'$c$) then
+    raise exception '057b proof: B-34 text is not the expected one (md5 %)', v_md5;
+  end if;
+  select md5(sql_text) into v_md5 from monitoring.checks where id = 'B-34b';
+  if v_md5 is distinct from md5($c$SELECT count(DISTINCT left(e.message,40)) FROM app_errors e WHERE e.created_at>now()-interval '1 hour' AND e.message NOT LIKE 'queue: offline flush%'
+ AND NOT EXISTS (SELECT 1 FROM app_errors p WHERE left(p.message,40)=left(e.message,40) AND p.created_at BETWEEN now()-interval '8 days' AND now()-interval '1 hour')
+ AND e.message NOT LIKE '_atRetry 422 rule%'$c$) then
+    raise exception '057b proof: B-34b text is not the expected one (md5 %)', v_md5;
+  end if;
 
   for r in select id, sql_text, ids_sql from monitoring.checks
-            where id in ('S-01', 'S-02', 'S-03', 'S-05', 'S-06', 'S-09', 'S-11', 'B-13', 'B-15') order by id loop
+            where id in ('S-01', 'S-02', 'S-03', 'S-05', 'S-06', 'S-09', 'S-11', 'S-12', 'S-13',
+                         'B-13', 'B-15', 'B-34', 'B-34b') order by id loop
     perform monitoring.check_sql_guard(r.sql_text);
     if r.ids_sql is not null then perform monitoring.check_sql_guard(r.ids_sql); end if;
     v := null; ids := null;
