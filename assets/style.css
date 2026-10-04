@@ -3136,8 +3136,11 @@ button.ecard-meta-row-btn, .ecard-meta-row button.badge {
    Tokens only; no money on this strip, ever.
    RIGHT-aligned (owner 4/10: «η αποθήκη να είναι πάνω δεξιά, όχι αριστερά»):
    the stock leaves as imports, so it sits above the ΑΝΑΘΕΣΗ/ΕΙΣΑΓΩΓΗ side and
-   stays off the export client column (max 75% of the sheet: one full chip at 1440). The list only
-   takes the width its chips need and scrolls (with the fade) beyond that. */
+   stays off the export client column (max 75% of the sheet). The list only
+   takes the width its chips need and scrolls (with the fade) beyond that.
+   Round 1 (critic-1 C1-03, critic-5 S5-01): a chip is «▣ Αποθήκη · Πελάτης
+   18/24p» + a flag only for a problem — about half the old width, so 2–3 fit
+   at 1440 — and the label «ΑΠΟΘΕΜΑ · N» is a button that lists every lot. */
 .wk3.wi2 { --wi-shelf-h:0px; }
 .wk3.wi2.has-shelf { --wi-shelf-h:28px; }
 .wk3.wi2 .wi-shelf { position:sticky; top:0; z-index:31; height:var(--wi-shelf-h); overflow:hidden; background:var(--surface-page); }
@@ -3153,17 +3156,19 @@ button.ecard-meta-row-btn, .ecard-meta-row button.badge {
   mask-image:linear-gradient(to right, transparent, black 32px); }
 .wi-shelf-list.ovl.ovf { -webkit-mask-image:linear-gradient(to right, transparent, black 32px, black calc(100% - 32px), transparent);
   mask-image:linear-gradient(to right, transparent, black 32px, black calc(100% - 32px), transparent); }
-.wi-shelf-lbl { flex:none; font:700 11px 'Syne',sans-serif; letter-spacing:1.2px; color:var(--text-mid); }
+.wi-shelf-lbl { flex:none; font:700 11px 'Syne',sans-serif; letter-spacing:1.2px; color:var(--text-mid);
+  border:none; background:none; padding:0 2px; white-space:nowrap; }
+button.wi-shelf-lbl { cursor:pointer; }
+button.wi-shelf-lbl:hover { color:var(--text); text-decoration:underline; }
+.wi-shelf-lbl .wi-shelf-k { color:var(--warn); }
 .wi-shelf-chip { flex:none; display:inline-flex; align-items:center; gap:5px; height:22px; padding:0 8px;
   border:1px solid var(--border); border-radius:var(--radius-full); background:var(--surface-card);
   font:500 11px 'DM Sans',sans-serif; color:var(--text); white-space:nowrap; cursor:pointer;
   font-variant-numeric:tabular-nums; }
 .wi-shelf-chip:hover { border-color:var(--text-dim); }
-.wi-shelf-chip:focus-visible, .wi-shelf-loose:focus-visible, .wi-shelf-fail:focus-visible { outline:2px solid var(--accent); outline-offset:1px; }
-.wi-shelf-chip .cc, .wi-shelf-chip .sep, .wi-shelf-chip .d { color:var(--text-mid); }
+.wi-shelf-chip:focus-visible, .wi-shelf-loose:focus-visible, .wi-shelf-fail:focus-visible, .wi-shelf-lbl:focus-visible { outline:2px solid var(--accent); outline-offset:1px; }
+.wi-shelf-chip .sep { color:var(--text-mid); }
 .wi-shelf-chip .n { font-weight:700; }
-.wi-shelf-bar { flex:none; width:32px; height:4px; border-radius:var(--radius-full); background:var(--surface-sunken); overflow:hidden; }
-.wi-shelf-bar > i { display:block; height:100%; background:var(--accent); }
 .wi-shelf-chip .fl { font-weight:700; }
 .wi-shelf-chip.aging, .wi-shelf-chip.close { border-color:var(--warn-border); background:var(--warn-bg); }
 .wi-shelf-chip.aging .fl, .wi-shelf-chip.close .fl { color:var(--warn); }
@@ -3172,7 +3177,7 @@ button.ecard-meta-row-btn, .ecard-meta-row button.badge {
 .wi-shelf-loose { flex:none; height:22px; padding:0 8px; border:1px dashed var(--border-dark);
   border-radius:var(--radius-full); background:var(--surface-card); font:600 11px 'DM Sans',sans-serif;
   color:var(--text); white-space:nowrap; cursor:pointer; }
-.wi-shelf-loose.zero { border-color:var(--border); color:var(--text-dim); font-weight:500; }
+.wi-shelf-loose.late { border:1px solid var(--warn-border); background:var(--warn-bg); color:var(--warn); }
 .wi-shelf-fail { flex:none; height:22px; padding:0 10px; border:1px solid var(--danger); border-radius:var(--radius);
   background:var(--danger-bg); color:var(--danger); font:700 11px 'DM Sans',sans-serif; letter-spacing:.4px; cursor:pointer; }
 @media print { .wk3.wi2 .wi-shelf { display:none; } .wk3.wi2.has-shelf { --wi-shelf-h:0px; } }
@@ -3187,6 +3192,14 @@ button.ecard-meta-row-btn, .ecard-meta-row button.badge {
 .wi-stk-opt[disabled]:hover { background:none; }
 .wi-stk-piece { justify-content:space-between; }
 .wi-stk-ref { color:var(--text-dim); }
+/* Link-weight buttons: «Άνοιγμα παρτίδας» in the lot panel, «ή κομμάτι από
+   ΑΠΟΘΕΜΑ» in an empty return box — a way on, not a main action. */
+.wi-stk-link, .wi2-gapstk-b { border:none; background:none; padding:0; font:600 11.5px 'DM Sans',sans-serif;
+  letter-spacing:0; color:var(--accent); cursor:pointer; white-space:nowrap; }
+.wi-stk-link:hover, .wi2-gapstk-b:hover { text-decoration:underline; }
+.wi-stk-link:focus-visible, .wi2-gapstk-b:focus-visible { outline:2px solid var(--accent); outline-offset:1px; }
+.wi2-gapstk { margin-left:auto; }
+.wi2-gapstk:empty { display:none; }
 
 /* dropdown */
 .wi-sd { position:relative; }
