@@ -746,6 +746,24 @@ async function openNatlEdit(recId) {
 }
 
 async function _openNatlModal(recId, f) {
+  // P1 4/10 (live, owner's Chrome): the location pickers (fhLocSelect/fhLocDrop)
+  // search the shared _fhLocationsArr, which only fhLoadLocations() fills. The
+  // Orders page fills it in the background since perf 29/9 and the Weekly
+  // National never did, so a form opened straight from the board searched an
+  // empty list: every letter typed looked like «no such location», and an
+  // edit showed its stops blank next to a hidden id. Every national form —
+  // create, create-with (Weekly «νέα άνοδος»), edit, both scans — passes
+  // through here, so this is the one place that guarantees the list (the
+  // international form got the same await on 11/8, orders_intl.js _openModal).
+  // A failed or empty read does NOT open the form: an empty picker would be
+  // indistinguishable from «no results». It is said, and logged.
+  let locErr = null;
+  try { await fhLoadLocations(); } catch (e) { locErr = e; }
+  if (!_fhLocationsArr.length) {
+    if (typeof logError === 'function') logError(locErr || new Error('locations read returned 0 records'), 'orders_natl: form locations');
+    toast('Οι τοποθεσίες δεν φορτώθηκαν — η φόρμα δεν άνοιξε, γιατί η αναζήτηση σημείου θα έδειχνε κενό. Ξαναδοκίμασε σε λίγο.', 'danger');
+    return;
+  }
   const isEdit = !!recId;
   const clientId  = Array.isArray(f['Client'])           ? f['Client'][0]           : '';
   const pickupId  = (f['Pickup Location 1']||[])[0]||'';
