@@ -1262,9 +1262,19 @@ async function atSoftDelete(tableId, recordId) {
   } catch(e) {
     if (typeof logError === 'function') logError(e, 'soft delete backup');
   }
-  // Track for undo
-  _undoSet({ type: 'delete', tableId, recId: recordId, label: recLabel });
+  // Track for undo — except a piece or a lot (critic-1 C1-07, round 1 X4):
+  // its restore is refused (_atNoRestore), so «Restore» could only say «no».
+  // The older undo goes too: it would revert an unrelated, earlier edit.
+  if (rec && _atNoRestore(rec.fields)) clearUndo();
+  else _undoSet({ type: 'delete', tableId, recId: recordId, label: recLabel });
   return result;
+}
+
+// Stock lots Φ1 (impact map 4/10 DL-05): a piece or a lot is never re-created
+// from the trash. One test for the restore AND for the undo offered after the
+// delete, so the two can never disagree.
+function _atNoRestore(fields) {
+  return typeof OrdersStock !== 'undefined' && !!fields && (OrdersStock.isPiece(fields) || OrdersStock.isLot(fields));
 }
 
 /**
@@ -1303,7 +1313,7 @@ async function atRestoreFromTrash(trashIndex) {
     // STOCK LOTS anchor = an ordinary full-price order to the warehouse. Both
     // come back through the ΑΠΟΘΕΜΑ (new piece / mark the lot), which applies
     // the lot's rules. The entry stays in the Κάδος as a record of what went.
-    if (typeof OrdersStock !== 'undefined' && (OrdersStock.isPiece(item.fields) || OrdersStock.isLot(item.fields))) {
+    if (_atNoRestore(item.fields)) {
       if (typeof reportError === 'function') reportError('Η επαναφορά κομματιού/παρτίδας γίνεται από το ΑΠΟΘΕΜΑ — όχι από τον κάδο');
       return null;
     }

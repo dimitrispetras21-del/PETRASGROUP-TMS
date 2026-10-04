@@ -84,6 +84,19 @@ test('DL-04: a successful delete still writes the trash entry and the undo', asy
   assert.strictEqual(s.run('getTrash()[0].fields.Reference'), 'ORD-1');
 });
 
+// critic-1 C1-07 (round 1 X4): the restore of a piece/lot is refused (DL-05), so the «Restore» undo
+// offered right after its delete was a button that could only say «no». No undo for it — and the
+// previous action's undo is cleared too, or the toolbar «Undo» would revert an older, unrelated edit.
+for (const [name, fields] of [['piece', { 'Stock Lot': ['recSTOCKLOT1'], Reference: 'P', Status: 'Pending' }], ['lot', { 'Own Stock Lot': 'recSTOCKLOT1', Reference: 'L', Status: 'Pending' }]]) {
+  test(`X4: deleting a ${name} keeps the Κάδος entry but offers no «Restore» (and no older undo)`, async () => {
+    const s = sandbox((url, m) => (!url.includes('/v0/') ? json(201, {}) : m === 'GET' ? json(200, { id: 'recX1', fields }) : json(200, { id: 'recX1', deleted: true })));
+    s.run("_undoSet({ type: 'patch', tableId: 'tblO', recId: 'recOTHER', prevFields: { Notes: 'x' }, label: 'older edit' })");
+    await s.run("atSoftDelete('tblO', 'recX1')");
+    assert.strictEqual(s.run('getUndoAction()'), null);
+    assert.strictEqual(s.run('getTrash()[0].id'), 'recX1', 'the Κάδος keeps the record of what went');
+  });
+}
+
 for (const [name, fields] of [['piece', { 'Stock Lot': ['recSTOCKLOT1'], Reference: 'P' }], ['lot', { 'Own Stock Lot': 'recSTOCKLOT1', Reference: 'L' }]]) {
   test(`DL-05: a ${name} is not re-created from the trash (Greek refusal, no POST, no «Restored»)`, async () => {
     const s = sandbox((url) => json(200, { id: 'recNEW', fields: {} }));
