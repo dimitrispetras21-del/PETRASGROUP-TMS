@@ -584,13 +584,10 @@ var PERMISSIONS = {
     // weekly_intl/weekly_natl/daily_ops and its own docstring says "called when a
     // dispatcher clears/unassigns a partner". DELETE is granted because
     // unassigning is a real dispatcher action (facade soft-delete).
-    // ⚠️ R-04 TENSION, deliberate: this table carries margin data (Gross Profit,
-    // Margin Percent), which dispatchers otherwise must not see. It is granted
-    // anyway because the dispatcher must set Partner Rate to do the job, and the
-    // margin is derived from it. If the client wants the margin hidden from
-    // dispatchers, the fix is field-level (drop `computed` from the response by
-    // role), NOT revoking the table, which would break assignment entirely.
-    // Raise at scoping alongside the pallet-ledger RBAC question.
+    // R-04: this table carries margin data (Client Revenue, Gross Profit,
+    // Margin Percent). The table stays granted because the dispatcher must set
+    // Partner Rate; since 4/10/2026 those three labels are stripped for this
+    // role field-level — see PL_READERS / cfgForRole next to tableConfig.
     partner_assignments: ["GET", "POST", "PATCH", "DELETE"],
     // clients:'full' -> dispatchers manage the reference "clients" section today.
     clients: ["GET", "POST", "PATCH", "DELETE"],
@@ -1834,6 +1831,10 @@ var TABLES = {
       "Gross Profit": "gross_profit",
       "Margin Percent": "margin_percent"
     },
+    // P&L labels: returned only to PL_READERS (see cfgForRole). Owner lock
+    // 23/8: «dispatcher δεν βλέπει P&L». Until 4/10/2026 every dispatcher read
+    // of this table carried all three (ledger A7, Sotiris report SA-11).
+    plOnly: ["Client Revenue", "Gross Profit", "Margin Percent"],
     links: {
       Partner: { column: "partner_id", table: "partners" },
       Order: { column: "order_id", table: "orders" },
@@ -1884,6 +1885,31 @@ function tableConfig(tableId) {
   return TABLES[tableId] || null;
 }
 __name(tableConfig, "tableConfig");
+// P&L REDACTION BY ROLE (4/10/2026, ledger A7 / Sotiris report SA-11).
+// Owner lock 23/8: «Dispatcher δεν βλέπει P&L — περιθώρια, κέρδη, κόστη».
+// The facade had no per-field filter, so the dispatcher's table grant on
+// partner_assignments (needed to set Partner Rate) also served Client
+// Revenue / Gross Profit / Margin Percent on every read. Revoking the table
+// would break assignment, so the P&L labels are removed from the table
+// config for every role NOT listed here: the label never reaches the select,
+// the filter (-> 422) or the computed re-read after a write, and
+// toAirtableRecord only emits mapped columns, so `select=*` on the view
+// cannot leak it. A write naming one is dropped and logged, as before.
+// Allow-list, not deny-list (principle 5): a new role starts WITHOUT P&L.
+// The list mirrors the front end's costs != 'none' (config.js PERMS) — the
+// same gate orders_week_view.js uses to hide «Client Revenue».
+var PL_READERS = ["owner", "management", "accountant"];
+function cfgForRole(cfg, role) {
+  if (!cfg || !cfg.plOnly || PL_READERS.includes(role)) return cfg;
+  const strip = (map) => {
+    if (!map) return map;
+    const out = { ...map };
+    for (const label of cfg.plOnly) delete out[label];
+    return Object.keys(out).length ? out : void 0;
+  };
+  return { ...cfg, fields: strip(cfg.fields) || {}, computed: strip(cfg.computed), aliases: strip(cfg.aliases), plRedacted: cfg.plOnly };
+}
+__name(cfgForRole, "cfgForRole");
 function columnToLabel(cfg) {
   const out = {};
   for (const [label, column] of Object.entries(cfg.fields)) {
@@ -2232,7 +2258,7 @@ __name(toAirtableRecord, "toAirtableRecord");
 async function handleFacadeGet(request, tableId, origin, env, ctx) {
   const caller = await getCaller(request, env);
   if (!caller) return jsonError("Unauthorized", 401, origin, env);
-  const cfg = tableConfig(tableId);
+  const cfg = cfgForRole(tableConfig(tableId), caller.role);
   if (!cfg) {
     return jsonError("Table not available on this backend", 404, origin, env);
   }
@@ -2254,7 +2280,9 @@ async function handleFacadeGet(request, tableId, origin, env, ctx) {
       const col = cfg.fields[label] || (cfg.computed || {})[label];
       if (col) cols.push(col);
       else if (cfg.links && cfg.links[label]) cols.push(cfg.links[label].column);
-      else if (!(cfg.reverseLinks && cfg.reverseLinks[label])) unknownRead.push(label);
+      // A redacted P&L label is known, just not this role's — not an
+      // unknown-field event (entity.js partner stats requests two of them).
+      else if (!(cfg.reverseLinks && cfg.reverseLinks[label]) && !(cfg.plRedacted || []).includes(label)) unknownRead.push(label);
     }
     if (unknownRead.length) {
       logUnknownFields(env, ctx, {
@@ -2407,7 +2435,7 @@ __name(preResolveLinkTerms, "preResolveLinkTerms");
 async function authorizeWrite(request, tableId, method, origin, env) {
   const caller = await getCaller(request, env);
   if (!caller) return { res: jsonError("Unauthorized", 401, origin, env) };
-  const cfg = tableConfig(tableId);
+  const cfg = cfgForRole(tableConfig(tableId), caller.role);
   if (!cfg) return { res: jsonError("Table not available on this backend", 404, origin, env) };
   if (!can(caller.role, cfg.pg, method)) {
     return { res: jsonError("Forbidden", 403, origin, env) };
@@ -2797,7 +2825,7 @@ __name(handleFacadeBatchUpdate, "handleFacadeBatchUpdate");
 async function handleFacadeGetOne(request, tableId, recId, origin, env) {
   const caller = await getCaller(request, env);
   if (!caller) return jsonError("Unauthorized", 401, origin, env);
-  const cfg = tableConfig(tableId);
+  const cfg = cfgForRole(tableConfig(tableId), caller.role);
   if (!cfg) return jsonError("Table not available on this backend", 404, origin, env);
   if (!can(caller.role, cfg.pg, "GET")) return jsonError("Forbidden", 403, origin, env);
   const params = new URLSearchParams();
