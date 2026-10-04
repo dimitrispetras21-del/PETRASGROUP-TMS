@@ -30,6 +30,8 @@ const APP_SHELL = [
   '/PETRASGROUP-TMS/core/tms-week.js',
   '/PETRASGROUP-TMS/core/ui.js',
   '/PETRASGROUP-TMS/core/entity.js',
+  // 060: the Drivers card reads a driver's local moves through it.
+  '/PETRASGROUP-TMS/core/relay-history.js',
   '/PETRASGROUP-TMS/core/pa-helpers.js',
   // Local relays (060): Weekly International draws and edits them through it.
   '/PETRASGROUP-TMS/core/relay.js',

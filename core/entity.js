@@ -316,6 +316,11 @@ const ENTITY_CONFIG = {
     },
     cardRt: true,
     cardTruckAgg: true,
+    // 060 · OWNER-Q2 answered 4/10 (both: salary = track record only,
+    // per_trip = daily ΤΟΠΙΚΟ line): «a track record for every driver» — his
+    // local moves, read from local_moves itself (core/relay-history.js). No
+    // amounts, so every role that sees drivers sees it.
+    cardLocalMoves: true,
     perm: 'drivers',
     searchFields: ['Full Name', 'License Number'],
     searchHint: 'Αναζήτηση: όνομα, αρ. διπλώματος…',
@@ -358,6 +363,16 @@ const ENTITY_CONFIG = {
         // decides how the driver is paid, so a driver without it is not saved.
         { f: 'Type',        label: 'Τύπος', type: 'select', req: true, options: [
           { val: 'Internal', label: 'Εσωτερικός' }, { val: 'External', label: 'Εξωτερικός' }] },
+        // 060 · OWNER-Q2 answered 4/10 (both: salary = track record only,
+        // per_trip = daily ΤΟΠΙΚΟ line). Its own column (drivers.pay_basis),
+        // NOT «Τύπος» above, which holds Internal/External — a different fact
+        // (principle 3). Empty = unknown: the base pays it like per_trip so no
+        // day is lost, and Μισθοδοσία shows «τύπος αμοιβής άγνωστος». The
+        // Worker serves the label to P&L readers only (owner/management/
+        // accountant) — the same roles that can open this form.
+        { f: 'Pay Basis',   label: 'Τύπος αμοιβής', type: 'select', options: [
+          { val: 'salary', label: 'Μισθωτός' }, { val: 'per_trip', label: 'Ανά δρομολόγιο' }],
+          hint: 'Κενό = άγνωστο. Μισθωτός: οι τοπικές κινήσεις μένουν μόνο ως ιστορικό. Ανά δρομολόγιο ή κενό: μία γραμμή ΤΟΠΙΚΟ ανά ημέρα στη Μισθοδοσία.' },
         { f: 'Phone',       label: 'Τηλέφωνο' },
         { f: 'Salary Base', label: 'Βασικός μισθός', type: 'number',
           // ΔΙΑΦΕΡΕΙ από τα άλλα τρία: εδώ η ΣΤΗΛΗ ΔΕΝ ΥΠΑΡΧΕΙ στη βάση
@@ -2147,6 +2162,10 @@ function _renderEntityCardV2(entityKey, rec, panel) {
         <div class="ecard-sec-title">Με ποια φορτηγά</div>
         <div class="ecard-sec-body" id="ec_${recId}_agg">Φόρτωση…</div>
       </div>` : ''}
+      ${cfg.cardLocalMoves ? `<div class="ecard-sec">
+        <div class="ecard-sec-title">Τοπικές κινήσεις</div>
+        <div class="ecard-sec-body" id="ec_${recId}_lm">Φόρτωση…</div>
+      </div>` : ''}
       ${cfg.cardActivity ? `<div class="ecard-sec">
         <div class="ecard-sec-title">${cfg.cardActivityTitle || 'Δραστηριότητα'}</div>
         <div class="ecard-sec-body" id="ec_${recId}_act">Φόρτωση…</div>
@@ -2169,7 +2188,29 @@ function _renderEntityCardV2(entityKey, rec, panel) {
 
   if (cfg.cardMaint) _loadEntityCardMaint(entityKey, rec);
   if (cfg.cardRt) _loadEntityCardRT(entityKey, rec);
+  if (cfg.cardLocalMoves) _loadEntityCardLocalMoves(rec);
   if (cfg.cardActivity) _loadEntityCardActivity(entityKey, rec);
+}
+
+// The driver's track record (060): newest 10 local moves, the rest counted.
+// A failed read is said as such — «Καμία» only when the read succeeded empty.
+async function _loadEntityCardLocalMoves(rec) {
+  const body = () => document.getElementById(`ec_${rec.id}_lm`);
+  try {
+    if (typeof lhLoad !== 'function') throw new Error('core/relay-history.js not loaded');
+    const rows = await lhLoad(rec.id);
+    const el = body();
+    if (!el) return;
+    el.innerHTML = rows.length
+      ? LH_STYLE + lhListHtml(rows.slice(0, 10)) + (rows.length > 10 ? `<div class="ecard-km-sub">+${rows.length - 10} παλαιότερες</div>` : '')
+      : `<div class="ecard-empty">Καμία τοπική κίνηση.</div>`;
+  } catch (e) {
+    const el = body();
+    if (el) el.innerHTML = /forbidden|403/i.test(String(e && e.message))
+      ? `<div class="ecard-empty">Ο ρόλος σου δεν έχει πρόσβαση στις τοπικές κινήσεις.</div>`
+      : `<div class="ecard-fail">⚠ Δεν φόρτωσαν οι τοπικές κινήσεις.</div>`;
+    if (typeof logError === 'function') logError(e, 'entity card: local moves');
+  }
 }
 
 async function _loadEntityCardMaint(entityKey, rec) {

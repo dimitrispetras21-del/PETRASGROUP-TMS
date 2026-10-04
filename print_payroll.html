@@ -203,6 +203,8 @@ function printedLine() {
 
 // Μία γραμμή κίνησης — στήλες από dlEntryAmounts (ίδιος κανόνας με οθόνη/CSV).
 function pKinisiBase(e) {
+  // 060: a local driver's day prints with the card's own label (dlLocalLabel).
+  if (dlIsLocal(e)) return escapeHtml(dlLocalLabel(e));
   if (e.entry_type === 'trip') return 'Δρομολόγιο · ' + (e.route_text ? escapeHtml(e.route_text) : '—');
   if (e.entry_type === 'payment_bank') return 'Πληρωμή · Κατάθεση τράπεζας';
   if (e.entry_type === 'payment_cash') return 'Πληρωμή · Μετρητά';
