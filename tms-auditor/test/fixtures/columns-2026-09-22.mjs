@@ -60,7 +60,7 @@ export const DRAFT_057 = {
       ['stock_pallets', 'numeric'], ['drawn_pallets', 'numeric'], ['remaining_pallets', 'numeric'], ['delivered_pallets', 'numeric'], ['written_off_pallets', 'numeric'],
       ['pieces', 'int8'], ['pieces_delivered', 'int8'], ['pieces_without_truck', 'int8'], ['pieces_moving', 'int8'], ['last_piece_delivered', 'date'],
       ['closed_note', 'text'], ['closed_at', 'timestamptz'], ['complete', 'bool'], ['completed_on', 'date'], ['invoiced', 'bool']],
-    stock_v_lot_money: [['lot_id', 'int8'], ['lot_rec', 'text'], ['source_kind', 'text'], ['source_id', 'int8'], ['source_rec', 'text'], ['price', 'numeric'], ['partner_cost', 'numeric'],
+    stock_v_lot_money: [['lot_id', 'int8'], ['lot_rec', 'text'], ['source_kind', 'text'], ['source_id', 'int8'], ['source_rec', 'text'], ['price', 'numeric'], ['partner_cost', 'numeric'], ['has_assignment', 'bool'],
       ['warehouse_charge', 'numeric'], ['charge_total', 'numeric'], ['net', 'numeric'], ['total_pallets', 'numeric'], ['per_pallet', 'numeric'], ['drawn_pallets', 'numeric'], ['allocated_amount', 'numeric'], ['remaining_pallets', 'numeric'],
       ['in_stock_amount', 'numeric'], ['written_off_pallets', 'numeric'], ['written_off_amount', 'numeric'], ['closed_at', 'timestamptz'], ['allocation_status', 'text']],
   },

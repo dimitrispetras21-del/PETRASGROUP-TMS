@@ -762,6 +762,7 @@ CREATE TABLE public.stock_v_lot_money (
   source_rec text,
   price numeric,
   partner_cost numeric,
+  has_assignment boolean,
   warehouse_charge numeric,
   charge_total numeric,
   net numeric,
