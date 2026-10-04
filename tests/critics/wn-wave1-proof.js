@@ -224,6 +224,20 @@ SECTIONS.push(async browser => {
   await page.context().close();
 });
 
+// ── §4 #10 · the «free» signal says what it counts ──────────────────────────
+SECTIONS.push(async browser => {
+  console.log('\n── §4 #10 · «ΧΩΡΙΣ ΕΘΝΙΚΗ ΑΝΑΘΕΣΗ ΣΗΜΕΡΑ» (same number)');
+  const { page } = await openBoard(browser);
+  const sig = await page.$eval('.wn4-free', el => ({ text: el.innerText.replace(/\s+/g, ' ').trim(), title: el.title }));
+  ok(/^ΧΩΡΙΣ ΕΘΝΙΚΗ ΑΝΑΘΕΣΗ ΣΗΜΕΡΑ/.test(sig.text) && !/ΕΛΕΥΘΕΡΑ/.test(sig.text), 'label: «' + sig.text + '»');
+  // today Mon 5/10: NS-A and NS-B on ΚΖΗ 1001, NS-P on a partner → 1 of 2 trucks without a national assignment
+  ok(/1\/2$/.test(sig.text), 'number unchanged by the relabel: 1/2 (ΚΖΗ 1001 busy today, ΚΖΗ 1002 not)');
+  ok(/διεθνείς αναθέσεις ΔΕΝ μετρώνται/.test(sig.title), 'tooltip says the international assignments are not counted');
+  const sub = await page.$eval('.wk3-sub', el => ({ sw: el.scrollWidth, cw: el.clientWidth }));
+  ok(sub.sw <= sub.cw + 1, `filter row does not overflow at 1600px (${sub.sw} ≤ ${sub.cw})`);
+  await page.context().close();
+});
+
 (async () => {
   const browser = await chromium.launch();
   for (const s of SECTIONS) await s(browser);

@@ -667,8 +667,12 @@ function _wnPaint() {
   const _firstRow = (pred) => { const r = rows.find(pred); return r ? _wnRowElId(r) : ''; };
   const _jump = id => id ? `_ccJump('${id}')` : '';
 
-  // ΕΛΕΥΘΕΡΑ ΣΗΜΕΡΑ: current week → today's assignments (board + locals);
-  // any other week → the whole week, and the label says so.
+  // ΧΩΡΙΣ ΕΘΝΙΚΗ ΑΝΑΘΕΣΗ ΣΗΜΕΡΑ: current week → today's assignments (board +
+  // locals); any other week → the whole week, and the label says so.
+  // §4 #10 (GPT-N03/WN-10, 4/10/2026): it was labelled «ΕΛΕΥΘΕΡΑ» but reads
+  // ONLY national loads — 28/9–1/10 it would have said 28/28 free while 14–16
+  // trucks were abroad. Same number, honest label; reading the international
+  // assignments too is the medium fix, not done here.
   const todayKey = (typeof localToday==='function') ? localToday() : toLocalDate(new Date());
   const isCur = week === _wnCurrentWeek();
   const busyT = new Set(), busyD = new Set();
@@ -767,7 +771,7 @@ function _wnPaint() {
       <!-- Δ3 (3/9): ΔΥΟ μεγέθη, δύο αριθμοί, το καθένα πηδά στη δική του πρώτη γραμμή. -->
       <button type="button" class="wk-sig${uncovered?' hot':' ok'}" title="${escapeHtml(uncovSub)}${uncovered?' — κλικ: πήγαινε στο πρώτο':''}" onclick="${_jump(_firstRow(r=>r.needsLocal))}">ΑΚΑΛΥΠΤΑ ΚΟΜΜΑΤΙΑ <b>${uncovered}</b></button>
       <button type="button" class="wk-sig${pendingAll?' hot':' ok'}" title="${escapeHtml(pendSub)}${pendingAll?' — κλικ: πήγαινε στο πρώτο':''}" onclick="${_jump(_firstRow(r=>!r.saved))}">ΠΡΟΣ ΑΝΑΘΕΣΗ <b>${pendingAll}</b></button>
-      <span class="wk-sig wn4-free" title="Φορτηγά ελεύθερα ${isCur?'σήμερα':'την εβδομάδα'} ${freeT.length}/${data.trucks.length}: ${freeT.length ? _few(freeT, 12) : 'κανένα'} — Οδηγοί χωρίς ανάθεση ${freeD.length}/${data.drivers.length}${freeD.length?': '+_few(freeD, 12):''}">ΕΛΕΥΘΕΡΑ ${isCur?'ΣΗΜΕΡΑ':'ΤΗΝ ΕΒΔΟΜΑΔΑ'} <b>${freeT.length}/${data.trucks.length}</b></span>
+      <span class="wk-sig wn4-free" title="Φορτηγά χωρίς εθνική ανάθεση ${isCur?'σήμερα':'την εβδομάδα'} ${freeT.length}/${data.trucks.length}: ${freeT.length ? _few(freeT, 12) : 'κανένα'} — Οδηγοί χωρίς εθνική ανάθεση ${freeD.length}/${data.drivers.length}${freeD.length?': '+_few(freeD, 12):''} — οι διεθνείς αναθέσεις ΔΕΝ μετρώνται εδώ">ΧΩΡΙΣ ΕΘΝΙΚΗ ΑΝΑΘΕΣΗ ${isCur?'ΣΗΜΕΡΑ':'ΤΗΝ ΕΒΔΟΜΑΔΑ'} <b>${freeT.length}/${data.trucks.length}</b></span>
       <span id="wn-pickups-q"></span>
       ${crossRows.length ? `<span class="wn4-cross" title="Παραδίδουν σε άλλη εβδομάδα — στην προβολή εκείνης δεν εμφανίζονται (φίλτρο ανά εβδομάδα ΦΟΡΤΩΣΗΣ)" onclick="${_jump(_wnRowElId(crossRows[0]))}">↦ ${crossRows.length} παραδίδ${crossRows.length===1?'ει':'ουν'} σε άλλη εβδομάδα</span>` : ''}
       <span class="wk3-range">Εβδομάδα ${week} · ${weekRange} · Σαβ–Παρ</span>
