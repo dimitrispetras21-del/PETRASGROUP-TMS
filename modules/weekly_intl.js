@@ -985,19 +985,23 @@ function _wk3Tabs(currentWeek) {
 // «Τα κενά» (owner): own γύροι χωρίς φορτίο επιστροφής → δείξε τα αδιάθετα
 // imports που μπορούν να τα γεμίσουν (highlight + scroll).
 function _wk3Gaps(){
-  const imps=[...document.querySelectorAll('[id^="wi-imp-"]')];
+  // A lot import row is not filler for a gap: it goes to its warehouse with a
+  // partner, never with our truck's return load (impact map 4/10 B-19). Loose
+  // pieces are not drawn at all while the shelf is on (_wiShelved).
+  const imps=[...document.querySelectorAll('[id^="wi-imp-"]')].filter(el=>{ const r=_wiRecOf(el.id.slice(7)); return !(r&&_wiIsLot(r.fields)); });
   imps.forEach(r=>{r.style.transition='background .3s';r.style.background='var(--accent-light)';setTimeout(()=>{r.style.background='';},1800);});
   if(imps[0]) imps[0].scrollIntoView({behavior:'smooth',block:'center'});
 }
 function _wiJumpFirstUnassigned(){
-  const impRow=WINTL.rows.find(r=>r.type==='import'&&!r.saved);
+  const impRow=WINTL.rows.find(r=>r.type==='import'&&!r.saved&&!_wiShelved(r));   // a shelved piece has no row to jump to
   if(impRow&&typeof _ccJump==='function') _ccJump('wi-imp-'+impRow.orderId);
 }
 
 function _wiPaint(){
   const {rows,week,data}=WINTL;
   const expRows=rows.filter(r=>r.type==='export'&&!r.legOf);
-  const impRows=rows.filter(r=>r.type==='import'&&!r.adj&&!r.legOf);
+  // Loose pieces are counted by the shelf, not by «ΕΙΣΑΓΩΓΗ · N» (_wiShelved, B-19).
+  const impRows=rows.filter(r=>r.type==='import'&&!r.adj&&!r.legOf&&!_wiShelved(r));
   const expN=expRows.length, impN=impRows.length;
   const assigned=expRows.filter(r=>r.saved).length;
   const pending=expRows.filter(r=>!r.saved).length;
@@ -1178,7 +1182,8 @@ function _wiPaint(){
 /* ── ALL ROWS ──────────────────────────────────────────────────────── */
 function _wiAllRowsHTML(){
   const expRows=WINTL.rows.filter(r=>r.type==='export'&&!r.legOf&&!r.splitLegOf);
-  const impRows=WINTL.rows.filter(r=>r.type==='import'&&!r.legOf&&!r.adj&&!r.splitLegOf);
+  // A loose piece is not a board row while the shelf is its home (_wiShelved, B-19).
+  const impRows=WINTL.rows.filter(r=>r.type==='import'&&!r.legOf&&!r.adj&&!r.splitLegOf&&!_wiShelved(r));
   const today=(typeof localToday==='function')?localToday():toLocalDate(new Date());
   const _f=r=>(WINTL.data.exports.find(x=>x.id===(r.orderIds?.[0]))||WINTL.data.imports.find(x=>x.id===r.orderId))?.fields||{};
 
@@ -5923,6 +5928,53 @@ function _wiStockSkip(row){
   if(_wiIsLot(f)) return true;
   return _wiIsPiece(f)&&!row.truckId&&!row.partnerId&&!row.matchedTo&&!String(f['Group ID']||'').trim();
 }
+// The import row that carries `oid` — found by ANY member, never only by the
+// row's lead: an export's Matched Import ID names one member, and the lead a
+// group sorts first may be another (impact map 4/10 PR-01/PR-02).
+function _wiImpGroupRowOf(oid){
+  return oid?WINTL.rows.find(r=>r.type==='import'&&(r.orderId===oid||(r.orderIds||[]).includes(oid)))||null:null;
+}
+// Φ1 «a piece rides only our own trucks» (plan §3) on EVERY path that can put
+// one on a partner, not only «+ Κομμάτι» (impact map 4/10 B-05: the popover,
+// its GI propagation, drag/drop and auto-match all could, and the DB accepts
+// it — the piece then carried a partner cost, or a Partner with no assignment
+// row). One predicate, one message.
+const WI_PIECE_OWN_ONLY='Φ1: κομμάτι μόνο σε δικό μας φορτηγό';
+// The pieces in the import load of `ids`: each id plus every member of its GI
+// group row on this board.
+function _wiPieceIn(ids){
+  const all=new Set();
+  (ids||[]).filter(Boolean).forEach(id=>{ all.add(id); const g=_wiImpGroupRowOf(id); if(g) (g.orderIds||[g.orderId]).forEach(x=>all.add(x)); });
+  return [...all].filter(id=>{ const r=_wiRecOf(id); return !!r&&_wiIsPiece(r.fields); });
+}
+// An import row the auto-match may score: unmatched, not a lot or a waiting
+// piece (_wiStockSkip), and — lone OR group — holding no piece: a piece
+// reaches a truck only by a person's choice, and the score may pick a partner.
+function _wiMatchableImp(r){
+  return !!r&&r.type==='import'&&!r.matchedTo&&!_wiStockSkip(r)&&!_wiPieceIn(r.orderIds||[r.orderId]).length;
+}
+// Loose pieces live on the shelf (plan §3, impact map 4/10 B-19). A piece
+// waiting in the warehouse (OrdersStock.isLoose) is not a board row while the
+// shelf is on screen: its row sat on the day of the truck it last left, lit up
+// under «ΚΕΝΑ ΓΥΡΙΣΜΑΤΑ», counted in «ΕΙΣΑΓΩΓΗ · N» and could be dragged or
+// assigned (a partner too) past every check of «+ Κομμάτι». The shelf's «N
+// κομμάτια χωρίς φορτηγό» is its one home. No shelf (switch off, warehouse
+// role) = no home, so the row stays — else the piece would vanish unannounced.
+// A piece an export still points at keeps its place in that export's row.
+function _wiShelved(row){
+  if(!WINTL.data.stock||!row||row.type!=='import'||row.matchedTo||(row.orderIds||[]).length>1) return false;
+  const rec=WINTL.data.imports.find(r=>r.id===row.orderId);
+  return !!rec&&typeof OrdersStock!=='undefined'&&OrdersStock.isLoose(rec.fields);
+}
+// The top-bar Undo reverts ONE cached PATCH (core/api.js atPatch → _undoSet).
+// After a stock action — several writes that only make sense together (lock +
+// join, leg off + vehicle off + group off) — it rebuilt half a group on a truck
+// outside its round trip and toasted «Reverted» (impact map 4/10 B-13). So
+// every stock action ends with clearUndo(). Not atSuppressUndo: that flag is
+// ONE boolean (a nested wrapper lowers it early), stays raised across the
+// user's confirm dialogs, cannot reach the piece form's own create
+// (orders_intl.js), and would leave the PREVIOUS, unrelated undo armed.
+function _wiNoUndo(){ if(typeof clearUndo==='function') clearUndo(); }
 
 // «ΑΠ» (piece) / «→ ΑΠΟΘΗΚΗ» (lot) badges. The piece's tooltip names its lot
 // from the shelf data when loaded, else from the order's own number.
