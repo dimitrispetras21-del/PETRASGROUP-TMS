@@ -700,7 +700,12 @@ async function _openModal(recId, f, _clientLabelOverride, _scanPrefill, _piece) 
         <div class="form-input oi-locked" title="Τιμολογείται η παρτίδα — το κομμάτι δεν έχει δική του τιμή">στην παρτίδα ${escapeHtml(_oiPieceLotLabel(SK, f))}</div>
       </div>` : `<div class="form-field">
         <label class="form-label">Τιμή (€) *</label>
-        <input class="form-input" type="number" id="f_Price" value="${f['Price']||''}">
+        ${SK.mode === 'lotEdit' && f['Invoiced']
+          // The lot's PRICE locks with the client invoice (DB: 422 lot_invoiced on a
+          // price change) — read-only here, so nobody types what the base refuses.
+          // Its warehouse charge stays open (OWNER-Q4b). Ordinary orders unchanged.
+          ? `<input class="form-input oi-locked" type="number" id="f_Price" value="${f['Price']||''}" readonly title="Τιμολογήθηκε">`
+          : `<input class="form-input" type="number" id="f_Price" value="${f['Price']||''}">`}
       </div>`}
     </div>
     <div class="form-grid">
@@ -1053,8 +1058,9 @@ function _oiChargeHtml(SK) {
       </div>`
       + (parts.length ? `<small id="oiChargeLine">${e(parts.join(' · '))}</small>` : '')
       + (m.allocation_status === 'no_charge' ? `<small class="${received ? 'oi-charge-bad' : 'oi-charge-dim'}" id="oiChargeNone">Χρέωση αποθήκης: — · 0 αν δεν χρεώνει</small>` : '')
-      // 'no_partner_rate' (SQL S1): an assignment without a rate is not «no assignment».
-      + (m.allocation_status === 'no_partner_rate' ? '<small class="oi-charge-bad" id="oiChargeNone">λείπει το κόμιστρο συνεργάτη</small>' : '')
+      // 'no_partner_rate' (SQL S1): an assignment WITHOUT a rate — never «δικό μας
+      // φορτηγό», never «no assignment». Red under the same rule as R3 (received).
+      + (m.allocation_status === 'no_partner_rate' ? `<small class="${received ? 'oi-charge-bad' : 'oi-charge-dim'}" id="oiChargeNone">λείπει το κόμιστρο συνεργάτη</small>` : '')
       // Σ2-04 (front half): a charge above the price makes every piece's revenue
       // negative — said where it is typed, not found later as loss-making RTs.
       + (tot != null && price != null && tot > price ? '<small class="oi-charge-warn" id="oiChargeOver">Οι χρεώσεις ξεπερνούν την τιμή</small>' : '');

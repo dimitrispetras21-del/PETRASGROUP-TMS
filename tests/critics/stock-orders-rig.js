@@ -417,6 +417,7 @@ async function runFormTick(browser) {
   await page.waitForSelector('#f_StockLot', { timeout: 8000 });
   const ti = await tickOf();
   ok(ti.disabled && ti.title === 'Τιμολογήθηκε', 'R1 / OWNER-Q8 «never invoiced»: an invoiced order — box disabled, title «Τιμολογήθηκε» — ' + JSON.stringify(ti));
+  ok(!(await page.$eval('#f_Price', e => e.readOnly)), 'an invoiced ORDINARY order keeps its price field as before (only a lot\'s locks)');
   await page.evaluate(() => closeModal());
   // G-14 no_split: an existing order (lot shape: one delivery abroad) that is the PARENT of a leg
   // is refused before any write — the R1 mark reads its legs first.
@@ -1157,11 +1158,29 @@ async function runOwnerCharge(browser) {
   await page.screenshot({ path: shot('16f-owner-charge-over-price') });
   await close();
 
+  // ── SQL S1: an assignment without a rate → «λείπει το κόμιστρο συνεργάτη», red only once received (R3) ──
+  Object.assign(cap.money, { partner_cost: null, has_assignment: true }); setCharge(cap.money, null); cap.money.allocation_status = 'no_partner_rate';
+  cap.fx.lots[0].fields['Intake Delivered'] = false;
+  await open();
+  const npr0 = await page.$eval('#oiChargeNone', e => ({ t: e.textContent, cls: e.className }));
+  await close();
+  cap.fx.lots[0].fields['Intake Delivered'] = true;
+  await open();
+  const npr1 = await page.$eval('#oiChargeNone', e => ({ t: e.textContent, cls: e.className }));
+  const nprBand = await band();
+  ok(npr0.t === 'λείπει το κόμιστρο συνεργάτη' && /oi-charge-dim/.test(npr0.cls) && npr1.t === npr0.t && /oi-charge-bad/.test(npr1.cls) && !/δικό μας|μόνο τα κομμάτια/.test(nprBand),
+    'S1: no_partner_rate → «λείπει το κόμιστρο συνεργάτη», neutral before intake, red once received; never «δικό μας» — ' + JSON.stringify([npr0, npr1]));
+  await close();
+  cap.money.partner_cost = '300.00'; delete cap.money.has_assignment;
+
   // ── OWNER-Q4b answered 4/10: an INVOICED lot — the field stays open, the save goes through ──
   setCharge(cap.money, 100);
   const nP = cap.chargePatches.length;
   await open(Object.assign(JSON.parse(JSON.stringify(lf.fields)), { Invoiced: true, 'Invoice Number': '0777', 'Invoice Date': TODAY }));
   ok(!(await page.$eval('#f_WhCharge', e => e.disabled)) && !(await page.$eval('#oiChargeSave', e => e.disabled)), 'OWNER-Q4b: invoiced lot → the charge field and its button are enabled');
+  // the lot's PRICE locks with the invoice (DB 422 lot_invoiced on a change): read-only, says why
+  const pr = await page.$eval('#f_Price', e => ({ ro: e.readOnly, title: e.title, v: e.value }));
+  ok(pr.ro && pr.title === 'Τιμολογήθηκε' && pr.v === '3300', 'invoiced LOT: the price field is read-only, title «Τιμολογήθηκε» — ' + JSON.stringify(pr));
   await page.fill('#f_WhCharge', '140');
   await page.click('#oiChargeSave');
   await page.waitForFunction(() => (document.getElementById('oiChargeMsg') || {}).textContent === 'Αποθηκεύτηκε', null, { timeout: 8000 });
@@ -1190,6 +1209,20 @@ async function runOwnerNoCharge(browser) {
   const a = (await page.locator('#oivAlloc').innerText()).replace(/\s+/g, ' ');
   ok(/Ο επιμερισμός εκκρεμεί: χωρίς χρέωση αποθήκης/.test(a) && !/no_charge|no_intake_cost/.test(a), 'round 2 #1: no_charge → «Ο επιμερισμός εκκρεμεί: χωρίς χρέωση αποθήκης» — ' + a);
   await page.context().close();
+
+  // SQL S1: an assignment without a rate — the owner block names it
+  const p1 = await newPage(browser, 'owner', 'invoicing');
+  Object.assign(p1._cap.money, { partner_cost: null, has_assignment: true, charge_total: null, net: null, allocation_status: 'no_partner_rate' });
+  await gotoPage(p1, 'orders', BASE_URL);
+  await p1.waitForSelector('#oivBody', { timeout: 20000 });
+  await p1.click('.oiv-allopen');
+  await p1.click('.oiv-seg-b[data-tab="all"]');
+  await p1.locator('#oivBody tr.oiv-r', { hasText: 'TEST-STOCK-LOT' }).click();
+  await p1.waitForFunction(() => /εκκρεμεί/.test((document.getElementById('oivAlloc') || {}).innerText || ''), null, { timeout: 8000 });
+  const a1 = (await p1.locator('#oivAlloc').innerText()).replace(/\s+/g, ' ');
+  ok(/Ο επιμερισμός εκκρεμεί: λείπει το κόμιστρο συνεργάτη/.test(a1) && !/no_partner_rate|δικό μας/.test(a1), 'S1: no_partner_rate → «Ο επιμερισμός εκκρεμεί: λείπει το κόμιστρο συνεργάτη» — ' + a1);
+  ok(p1._cap.errors.length === 0, 'no page errors — ' + p1._cap.errors.join(' | '));
+  await p1.context().close();
 
   const p2 = await newPage(browser, 'owner', 'invoicing');
   const c2 = p2._cap;

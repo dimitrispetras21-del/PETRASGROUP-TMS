@@ -177,3 +177,17 @@ test('S5-10: «full_truck_pallets» label «Παλέτες γεμάτου φορ
   assert.strictEqual(m[1], 'Παλέτες γεμάτου φορτηγού');
   assert.ok(m[1].split(/\s+/).length <= 4);
 });
+
+// SQL S1 (round 3): an assignment WITHOUT a rate is 'no_partner_rate' — no
+// allocation (the whole price stays on the lot's leg, like no_charge) and the
+// line names the missing rate; it never reads «δικό μας φορτηγό» / «μόνο τα κομμάτια».
+test('S1: no_partner_rate — «χωρίς επιμερισμό (λείπει το κόμιστρο συνεργάτη)», never «δικό μας» / «μόνο τα κομμάτια»', async () => {
+  const m = { lots: [{ lot_rec: 'recSTOCKLOT1', allocation_status: 'no_partner_rate', has_assignment: true, partner_cost: null, warehouse_charge: null, charge_total: null }], pieces: [] };
+  const { ctx } = load(async () => ({ ok: true, status: 200, json: async () => m }));
+  const t = { id: 7, code: 'RT-7', trip_type: 'PARTNER', partner_id: 9, revenue: 3300, status: 'closed', date_start: '2026-10-01' };
+  setCard(ctx, t, [[10, LOT, 'IMPORT']]);
+  await ctx.ctStockLoad();
+  const h = text(ctx.ctCardHtml(t));
+  assert.match(h, /παρτίδα #312 — χωρίς επιμερισμό \(λείπει το κόμιστρο συνεργάτη\): όλο το έσοδο εδώ/, h);
+  assert.ok(!/δικό μας|μόνο τα κομμάτια|ανεξήγητη/.test(h), h);
+});
