@@ -55,7 +55,9 @@ function seed(opts = {}) {
       EXP('recG4b', 'G4B', 'Assigned', 'recTruck7', 'recDriver7', { 'Group ID': 'GRP-DDD|recG4a,recG4b' }),
     ],
   };
-  const PG = {}; db[T.ORD].forEach((r, i) => { PG[r.id] = 1000 + i; });
+  // «Order No» = orders.id (migration 019): _wiRtOf (fix/unmatch-leg-first) finds
+  // an order's round trip by it, in a date window of /costs/rt?overlap=1.
+  const PG = {}; db[T.ORD].forEach((r, i) => { PG[r.id] = 1000 + i; r.fields['Order No'] = PG[r.id]; });
   const leg = id => ({ id: PG[id] * 10, direction: 'EXPORT', order_id: PG[id], nat_load_id: null });
   const rts = [
     { id: 101, code: 'RT-101', status: 'closed', ct_rt_legs: [leg('recE1')] },
@@ -119,7 +121,10 @@ async function newPage(browser, opts = {}) {
       S.log.push({ k: 'legdel', rt: rt.id, pg, order: byPg(pg), status: 200 });
       return json(route, { deleted: true });
     }
-    if (u.pathname === '/costs/rt' && m === 'GET') return json(route, { records: JSON.parse(JSON.stringify(rts)) });
+    if (u.pathname === '/costs/rt' && m === 'GET') {
+      if (S.armed) S.log.push({ k: 'rtget', q: u.search });
+      return json(route, { records: JSON.parse(JSON.stringify(rts)) });
+    }
     if (!u.pathname.startsWith('/v0/')) {
       if (m !== 'GET' && S.armed) S.log.push({ k: 'other', m, path: u.pathname });
       return json(route, m === 'GET' ? { records: [] } : { ok: true });
@@ -178,7 +183,7 @@ const rowOf = (page, oid) => page.evaluate(id => (WINTL.rows.find(r => (r.orderI
 const ord = (S, id) => S.db[T.ORD].find(r => r.id === id).fields;
 const patches = S => S.log.filter(x => x.k === 'patch' && x.tid === T.ORD);
 const legDels = S => S.log.filter(x => x.k === 'legdel');
-const writes = S => S.log.filter(x => x.k !== 'trigger');
+const writes = S => S.log.filter(x => x.k !== 'trigger' && x.k !== 'rtget');
 const idx = (S, pred) => S.log.findIndex(pred);
 
 (async () => {
@@ -247,11 +252,12 @@ const idx = (S, pred) => S.log.findIndex(pred);
   const firstPatch = idx(S, x => x.k === 'patch' && x.tid === T.ORD);
   const dels = legDels(S);
   ok(dels.length === 2 && dels.every(d => d.status === 200) && dels.map(d => d.order).sort().join(',') === 'recG2a,recG2b', 'legs of G2a and G2b DELETEd: ' + dels.map(d => d.order + ':' + d.status).join(' '));
-  ok(firstPatch > -1 && S.log.slice(0, firstPatch).filter(x => x.k === 'legdel').length === 2, 'both leg DELETEs happen BEFORE the first vehicle PATCH (log: ' + S.log.filter(x => x.k !== 'trigger').map(x => x.k + ':' + (x.order || x.id || x.path)).join(' → ') + ')');
+  ok(firstPatch > -1 && S.log.slice(0, firstPatch).filter(x => x.k === 'legdel').length === 2, 'both leg DELETEs happen BEFORE the first vehicle PATCH (log: ' + writes(S).map(x => x.k + ':' + (x.order || x.id || x.path)).join(' → ') + ')');
   ok(!ord(S, 'recG2a').Truck && !ord(S, 'recG2b').Truck, 'G2a, G2b: Truck NULL');
   ok((ord(S, 'recR1').Truck || [])[0] === 'recTruck6' && (ord(S, 'recR1').Driver || [])[0] === 'recDriver6', 'rotation leg R1 keeps TRK-6/Driver 6 (not wiped by the trigger)');
   ok(S.rts.find(r => r.id === 105).ct_rt_legs.length === 1 && S.rts.find(r => r.id === 105).truck === 'recTruck6', 'RT-105 keeps R1 and its truck');
   ok(!S.log.some(x => x.k === 'trigger' && x.to === 'recR1'), 'no trigger propagation reached R1');
+  ok(S.log.some(x => x.k === 'rtget' && /overlap=1/.test(x.q)), 'RT lookup went through the shared _wiRtOf (date window, overlap=1)');
   await page.context().close();
 
   console.log('\n── (c3) same, but RT-105 is CLOSED → leg DELETE 409 → nothing written');
