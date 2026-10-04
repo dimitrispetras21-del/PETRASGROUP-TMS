@@ -997,11 +997,17 @@ function _wiJumpFirstUnassigned(){
   if(impRow&&typeof _ccJump==='function') _ccJump('wi-imp-'+impRow.orderId);
 }
 
+// The import rows «ΕΙΣΑΓΩΓΗ · N» counts — ONE list for the board's header and
+// the week's paper (critic-4 C4-07: the paper counted data.imports, i.e. every
+// lot, loose piece and GI member, so one week had two import counts). Loose
+// pieces are counted by the shelf, not here (_wiShelved, B-19).
+function _wiBoardImpRows(){
+  return WINTL.rows.filter(r=>r.type==='import'&&!r.adj&&!r.legOf&&!_wiShelved(r));
+}
 function _wiPaint(){
   const {rows,week,data}=WINTL;
   const expRows=rows.filter(r=>r.type==='export'&&!r.legOf);
-  // Loose pieces are counted by the shelf, not by «ΕΙΣΑΓΩΓΗ · N» (_wiShelved, B-19).
-  const impRows=rows.filter(r=>r.type==='import'&&!r.adj&&!r.legOf&&!_wiShelved(r));
+  const impRows=_wiBoardImpRows();
   const expN=expRows.length, impN=impRows.length;
   const assigned=expRows.filter(r=>r.saved).length;
   const pending=expRows.filter(r=>!r.saved).length;
@@ -1411,7 +1417,10 @@ function _wiImpRowHTML(row,impNo){
       : `<div class="wk3-assign" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click()}" role="button" tabindex="0" onclick="event.stopPropagation();_wiOpenImpPopover(event,'${imp.id}',${row.id})">
       ${impPill}
       ${row.orderIds.length>1
-        ? `<button class="wk3-prt r" title="Εκτύπωση ομάδας (import) — ${row.orderIds.length} έγγραφα σε ένα πακέτο" onclick="event.stopPropagation();_wiPrintImpGroup(${row.id})">⎙<sup>I</sup></button>`
+        // C4-06 (critic-4, round 1): an import-only truck's group ⎙I gets the
+        // share menu the matched export row's group ⎙I has — the packet that
+        // carries the warehouse pickup. One query builder for both.
+        ? `<button class="wk3-prt r" title="Εκτύπωση ομάδας (import) — ${row.orderIds.length} έγγραφα σε ένα πακέτο" data-shq="${_wiImpGroupPrintQuery(row)}" data-shtitle="Εντολές εισαγωγής (ομάδα) — W${WINTL.week}" onclick="event.stopPropagation();_wiPrintImpGroup(${row.id})">⎙<sup>I</sup></button>`
         : `<button class="wk3-prt r" title="Εκτύπωση εντολής (import) — δεξί κλικ: κοινή χρήση" data-shq="${printSheetQuery(imp.id,'import',!!row.partnerId)}" data-shtitle="Εντολή εισαγωγής — W${WINTL.week}" onclick="event.stopPropagation();_wiPrintImp('${imp.id}',${row.partnerId?'true':'false'})">⎙<sup>I</sup></button>`}
     </div>`}
     <div class="wk3-leg imp" style="cursor:pointer" title="Κλικ: άνοιγμα φόρμας παραγγελίας — σύρε για ταίριασμα" onclick="event.stopPropagation();_wk3Edit('${imp.id}')">${isPre?loadCard:`${loadCard}<span class="wi2-arrow">→</span>${delCard}`}</div>
@@ -2300,15 +2309,22 @@ function _wiSegDateHTML(o,kind,isImportSide){
   const iso=f[field]||'';
   return _wi2Date(o.id,field,iso,iso?_wk3D(_wiFmt(iso)):'—',cls,'Ημ. '+(kind==='load'?'φόρτωσης':'παράδοσης'));
 }
+// The place text of an order's loading/delivery — the board's chain: the
+// stops' Summary when the board injected one (_wiInjectStopSummaries), else the
+// first location, else the client. «Loading/Delivery Summary» is not a facade
+// field (the Worker map has no DERIVED fields), so whoever reads it alone
+// prints blanks (K11: the week paper's export column did).
+function _wiPlaceStr(f,kind){
+  return kind==='load'
+    ?(f['Loading Summary']||_wiFlatLocName(f['Loading Location 1'])||_wiClientName(f)||'—')
+    :(f['Delivery Summary']||_wiFlatLocName(f['Unloading Location 1'])||_wiClientName(f)||'—');
+}
 // Τόπος/υπότιτλος τμήματος — ίδια λογική με το μονό πλακάτ.
 function _wiSegPlace(o,kind,isImportSide){
   const f=o.fields||{};
   const vs=kind==='load' ? (!isImportSide&&!!f['Veroia Switch']) : (isImportSide&&!!f['Veroia Switch']);
   if(vs) return {name:'<span class="wi2-nw">Cross-Dock <span class="wk3-vsb">VS</span></span>',sub:'Βέροια, GR'};
-  const str=kind==='load'
-    ?(f['Loading Summary']||_wiFlatLocName(f['Loading Location 1'])||_wiClientName(f)||'—')
-    :(f['Delivery Summary']||_wiFlatLocName(f['Unloading Location 1'])||_wiClientName(f)||'—');
-  return _wi2Loc(_wiRaw(str),kind==='load'?'Φόρτωση':'Παράδοση',kind==='load'?f._stopsL:f._stopsD);
+  return _wi2Loc(_wiRaw(_wiPlaceStr(f,kind)),kind==='load'?'Φόρτωση':'Παράδοση',kind==='load'?f._stopsL:f._stopsD);
 }
 // Tooltip hover (item 2, owner 8/9): πελάτης, αναφορά, παλέτες, ημέρα/ώρα.
 function _wiSegTipHTML(o,kind){
@@ -5967,7 +5983,7 @@ function _wiPrintWeek(){
   const td='padding:4px 6px;border:1px solid';
   const pals=f=>('Total Pallets' in f&&f['Total Pallets']!==''&&f['Total Pallets']!=null)?f['Total Pallets']:'—';
   let html=`<h2 style="font-family:'Syne',sans-serif;margin-bottom:12px">Εβδομαδιαίο Διεθνών — W${WINTL.week}</h2>
-    <p style="font-size:12px;margin-bottom:16px">${rows.length} εξαγωγές · ${data.imports.length} εισαγωγές · Εκτύπωση ${new Date().toLocaleString('el-GR')} — αντικαθιστά κάθε προηγούμενη έκδοση</p>
+    <p style="font-size:12px;margin-bottom:16px">${rows.length} εξαγωγές · ${_wiBoardImpRows().length} εισαγωγές · Εκτύπωση ${new Date().toLocaleString('el-GR')} — αντικαθιστά κάθε προηγούμενη έκδοση</p>
     <table style="width:100%;border-collapse:collapse;font-size:11px">
       <thead><tr style="font-weight:700">
         <th style="${td};text-align:left">#</th>
@@ -5990,7 +6006,7 @@ function _wiPrintWeek(){
       ?_wiGrpOrder(grpRow.orderIds.map(id=>data.imports.find(r=>r.id===id)).filter(Boolean),'Loading DateTime')
       :(row.importId?[data.imports.find(r=>r.id===row.importId)].filter(Boolean):[]);
     const impCell=impRecs.length?impRecs.map(m=>{ const mf=m.fields;
-      return (_wiIsPiece(mf)?'ΑΠ ':'')+escapeHtml(mf['Loading Summary']||_wiFlatLocName(mf['Loading Location 1'])||'')+' → '+escapeHtml(mf['Delivery Summary']||_wiFlatLocName(mf['Unloading Location 1'])||'')+(_wiIsLot(mf)?' · → ΑΠΟΘΗΚΗ':''); }).join('<br>'):'—';
+      return (_wiIsPiece(mf)?'ΑΠ ':'')+escapeHtml(_wiRaw(_wiPlaceStr(mf,'load')))+' → '+escapeHtml(_wiRaw(_wiPlaceStr(mf,'del')))+(_wiIsLot(mf)?' · → ΑΠΟΘΗΚΗ':''); }).join('<br>'):'—';
     // Λεξιλόγιο ΜΕΡΟΣ Ε: «ΣΥΝ.» + επωνυμία · «ΙΔ.» + πινακίδα + οδηγός · «ΠΡΟΣ ΑΝΑΘΕΣΗ»
     const partner=row.partnerLabel||(row.partnerId?'—':'');
     const plates=[row.truckLabel,row.trailerLabel].filter(Boolean).join(' / ');
@@ -5998,7 +6014,7 @@ function _wiPrintWeek(){
       :(plates?`ΙΔ. ${plates}${row.driverLabel?' · '+row.driverLabel:''}`:'ΠΡΟΣ ΑΝΑΘΕΣΗ');
     html+=`<tr>
       <td style="${td}">${i+1}</td>
-      <td style="${td}">${escapeHtml(f['Loading Summary']||'')} → ${escapeHtml(f['Delivery Summary']||'')}${_wiIsLot(f)?' · → ΑΠΟΘΗΚΗ':''}</td>
+      <td style="${td}">${escapeHtml(_wiRaw(_wiPlaceStr(f,'load')))} → ${escapeHtml(_wiRaw(_wiPlaceStr(f,'del')))}${_wiIsLot(f)?' · → ΑΠΟΘΗΚΗ':''}</td>
       <td style="${td};font-variant-numeric:tabular-nums">${toLocalDate(f['Loading DateTime'])} → ${toLocalDate(f['Delivery DateTime'])}</td>
       <td style="${td};text-align:center;font-variant-numeric:tabular-nums">${pals(f)}</td>
       <td style="${td}">${escapeHtml(assign)}</td>
