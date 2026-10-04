@@ -101,8 +101,14 @@ function _queueOffline(method, url, body, recordId) {
   }
 }
 
+// Items of a running flush that are not resolved yet (sent / refused / kept).
+// They stay in localStorage until each one is decided: emptying the stored
+// queue BEFORE the replay meant that a page leaving mid-flush (a 401 on the
+// conflict check sends it to the login) lost every queued change (review 4/10, P2-2).
+const _flushRest = [];
+let _flushing = false;
 function _saveOfflineQueue() {
-  try { localStorage.setItem('tms_offline_queue', JSON.stringify(_offlineQueue)); } catch(e) { if (typeof logError === 'function') logError(e, '_saveOfflineQueue'); }
+  try { localStorage.setItem('tms_offline_queue', JSON.stringify([..._offlineQueue, ..._flushRest])); } catch(e) { if (typeof logError === 'function') logError(e, '_saveOfflineQueue'); }
 }
 
 function _loadOfflineQueue() {
@@ -114,12 +120,26 @@ function _loadOfflineQueue() {
 }
 
 async function _flushOfflineQueue() {
-  if (!_offlineQueue.length || !navigator.onLine) return;
+  // One flush at a time: 'online' can fire again while a replay is running.
+  if (_flushing || !_offlineQueue.length || !navigator.onLine) return;
+  _flushing = true;
+  try {
   const batch = [..._offlineQueue];
   _offlineQueue.length = 0;
+  _flushRest.push(...batch);
   _saveOfflineQueue();
 
   let failed = 0, conflicts = 0, rejected = 0;
+  // A refusal leaves the queue LOUDLY, naming the record (principle 1).
+  const refuse = (item, status, why, head) => {
+    rejected++;
+    const tid = (item.url.match(/\/v0\/[^/]+\/([^/?]+)/) || [])[1] || '';
+    const tname = (typeof _tableNameFromId === 'function' && tid) ? (_tableNameFromId(tid) || tid) : tid;
+    const msg = `Αλλαγή εκτός σύνδεσης ${head} (${tname} · ${item.recordId || 'νέα εγγραφή'}): ${why} — ΔΕΝ γράφτηκε· κάνε την ξανά`;
+    if (typeof showErrorToast === 'function') showErrorToast(msg, 'error', 15000);
+    const _rj = new Error(msg); _rj._req = item.req || null;
+    if (typeof logError === 'function') logError(_rj, 'queue rejected');
+  };
   for (const item of batch) {
     try {
       // For PATCH operations, check if record was modified since we queued
@@ -161,26 +181,27 @@ async function _flushOfflineQueue() {
       // for the next flush, like a network error (the catch below).
       if (!res.ok) {
         if (res.status >= 400 && res.status < 500 && ![401, 408, 429].includes(res.status)) {
-          rejected++;
-          const errData = await res.json().catch(() => ({}));
-          const why = _atErrMsg(errData.error, `HTTP ${res.status}`);
-          const tid = (item.url.match(/\/v0\/[^/]+\/([^/?]+)/) || [])[1] || '';
-          const tname = (typeof _tableNameFromId === 'function' && tid) ? (_tableNameFromId(tid) || tid) : tid;
-          const msg = `Αλλαγή εκτός σύνδεσης ΑΠΟΡΡΙΦΘΗΚΕ (${tname} · ${item.recordId || 'νέα εγγραφή'}): ${why} — ΔΕΝ γράφτηκε· κάνε την ξανά`;
-          if (typeof showErrorToast === 'function') showErrorToast(msg, 'error', 15000);
-          const _rj = new Error(msg); _rj._req = item.req || null;
-          if (typeof logError === 'function') logError(_rj, 'queue rejected');
+          const errData = (await res.json().catch(() => null)) || {};
+          refuse(item, res.status, _atErrMsg(errData.error, `HTTP ${res.status}`), 'ΑΠΟΡΡΙΦΘΗΚΕ');
           continue;
         }
-        throw new Error(`offline replay HTTP ${res.status}`);   // → stays queued (catch)
+        // This Worker answers a DB refusal (CHECK/trigger) with 500 too, so a
+        // 5xx is not always transient: after 3 replays it leaves the queue
+        // loudly instead of sitting there for ever, unseen (review 4/10, P2-1).
+        // 401/408/429 are not about the change — kept without a count.
+        if (res.status >= 500) item.tries = (item.tries || 0) + 1;
+        if (item.tries >= 3) { refuse(item, res.status, `ο server απάντησε HTTP ${res.status} σε 3 προσπάθειες`, 'ΔΕΝ ΠΕΡΑΣΕ'); continue; }
+        throw new Error(`offline replay HTTP ${res.status} · ${item.method} ${item.recordId || 'νέα εγγραφή'}`);   // → stays queued (catch)
       }
     } catch(e) {
       if (typeof logError === 'function') logError(e, '_flushOfflineQueue mutation');
       _offlineQueue.push(item);
       failed++;
+    } finally {
+      _flushRest.shift();            // decided: sent, refused or back in the queue
+      _saveOfflineQueue();
     }
   }
-  _saveOfflineQueue();
   const synced = batch.length - failed - conflicts - rejected;
   // «Αποθηκεύτηκε τοπικά» must leave a trace centrally (principle 1): one summary line per flush, excluded
   // from the error-rate checks by its prefix (B-34/B-34b), with the ids of the replayed actions.
@@ -194,6 +215,9 @@ async function _flushOfflineQueue() {
   }
   if (conflicts > 0 && typeof showErrorToast === 'function') {
     showErrorToast(`${conflicts} \u03B1\u03BB\u03BB\u03B1\u03B3\u03AD\u03C2 \u03C0\u03B1\u03C1\u03B1\u03BB\u03B5\u03AF\u03C6\u03B8\u03B7\u03BA\u03B1\u03BD \u03BB\u03CC\u03B3\u03C9 conflict \u2014 reload`, 'warn');
+  }
+  } finally {
+    _flushing = false;
   }
 }
 

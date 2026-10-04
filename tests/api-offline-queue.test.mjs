@@ -115,3 +115,48 @@ for (const st of [401, 429]) {
     assert.ok(!s.toasts.some((t) => /ΑΠΟΡΡΙΦΘΗΚΕ/.test(t)), s.toasts.join(' / '));
   });
 }
+
+// Review 4/10 (P2-2): the stored queue must not be emptied before the replay — a page that leaves
+// mid-flush (a 401 on the conflict check sends it to the login) kept nothing. Read the store at the
+// moment the PATCH goes out: the not-yet-decided change must still be there.
+test('mid-flush the stored queue still holds every change not yet decided', async () => {
+  let seen = null;
+  const s = sandbox((url, m) => {
+    if (!url.includes('/v0/')) return json(201, {});
+    if (m === 'GET') return json(200, { id: 'recP1', fields: { Status: 'Pending' } });
+    seen = JSON.parse(s.ctx.localStorage.getItem('tms_offline_queue') || '[]').length;
+    return json(200, { id: 'recP1', fields: {} });
+  });
+  s.ctx.navigator.onLine = false;
+  await s.run("atPatch('tblO', 'recP1', { Status: 'In Transit' })");
+  s.ctx.navigator.onLine = true;
+  await s.online();
+  assert.strictEqual(seen, 1, 'the change was not in storage while it was being replayed');
+  assert.strictEqual(s.queue().length, 0, 'sent → gone after the flush');
+});
+
+// Review 4/10 (P2-1): this Worker answers a DB refusal with 500 too — a 5xx kept for ever is a
+// silent loss. Three replays, then it leaves the queue loudly.
+test('a 5xx stays queued, but after 3 replays it leaves loudly instead of waiting for ever', async () => {
+  const s = sandbox((url, m) => {
+    if (!url.includes('/v0/')) return json(201, {});
+    if (m === 'GET') return json(200, { id: 'recP1', fields: { Status: 'Pending' } });
+    return json(500, { error: 'Failed to update record' });
+  });
+  s.ctx.navigator.onLine = false;
+  await s.run("atPatch('tblO', 'recP1', { Status: 'In Transit' })");
+  s.ctx.navigator.onLine = true;
+  await s.online(); assert.strictEqual(s.queue().length, 1, 'after 1 replay it must stay queued');
+  await s.online(); assert.strictEqual(s.queue().length, 1, 'after 2 replays it must stay queued');
+  s.toasts.length = 0;
+  await s.online();
+  assert.strictEqual(s.queue().length, 0, 'after 3 replays it must leave the queue');
+  assert.ok(s.toasts.some((t) => /ΔΕΝ ΠΕΡΑΣΕ .*recP1.*HTTP 500 σε 3 προσπάθειες/.test(t)), s.toasts.join(' | '));
+});
+
+test('a 4xx with a null body is refused once (no double count, no re-queue)', async () => {
+  const s = await replay(() => new Response('null', { status: 422, headers: { 'content-type': 'application/json' } }));
+  assert.strictEqual(s.queue().length, 0);
+  assert.ok(s.toasts.some((t) => /ΑΠΟΡΡΙΦΘΗΚΕ/.test(t)));
+  assert.match(flushLine(s), /synced 0, conflicts 0, failed 0, rejected 1/);
+});
