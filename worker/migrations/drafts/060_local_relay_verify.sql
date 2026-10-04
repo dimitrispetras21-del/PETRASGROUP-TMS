@@ -15,11 +15,13 @@ SELECT
   (SELECT count(*) FROM pg_index i JOIN pg_class c ON c.oid = i.indexrelid
     WHERE c.relname IN ('local_moves_relay_once', 'dl_local_day_live') AND i.indisunique AND i.indisvalid) = 2 AS unique_ok,
   (SELECT count(*) FROM pg_trigger WHERE NOT tgisinternal AND tgenabled = 'O'
-    AND tgname IN ('local_moves_before', 'dl_sync_from_local_move', 'local_moves_follow_order', 'dl_local_pay_basis_sync')) = 4 AS triggers_ok,
+    AND tgname IN ('local_moves_before', 'dl_sync_from_local_move', 'local_moves_follow_order', 'dl_local_pay_basis_sync',
+                   'dl_local_line_guard')) = 5 AS triggers_ok,
   (SELECT count(*) FROM pg_proc p WHERE p.pronamespace = 'public'::regnamespace
-    AND p.proname IN ('local_moves_before', 'local_moves_follow_order', 'dl_local_day_sync', 'dl_sync_from_local_move', 'dl_local_pay_basis_sync')
+    AND p.proname IN ('local_moves_before', 'local_moves_follow_order', 'dl_local_day_sync', 'dl_sync_from_local_move', 'dl_local_pay_basis_sync',
+                      'dl_local_line_guard')
     AND NOT has_function_privilege('anon', p.oid, 'EXECUTE') AND NOT has_function_privilege('authenticated', p.oid, 'EXECUTE')
-    AND NOT has_function_privilege('service_role', p.oid, 'EXECUTE')) = 5 AS functions_closed,
+    AND NOT has_function_privilege('service_role', p.oid, 'EXECUTE')) = 6 AS functions_closed,
   (SELECT prosecdef FROM pg_proc WHERE oid = 'public.dl_local_day_sync(bigint,date)'::regprocedure) AS day_sync_secdef,
   position('update local_moves lm set deleted_at' IN pg_get_functiondef('public.order_soft_delete_unlink()'::regprocedure)) > 0
     AND position('partner_assignments' IN pg_get_functiondef('public.order_soft_delete_unlink()'::regprocedure)) > 0 AS unlink_step6_ok,
@@ -31,7 +33,7 @@ SELECT
   (SELECT sql_text LIKE '%d.local_move_id IS NULL%' AND ids_sql LIKE '%d.local_move_id IS NULL%' FROM monitoring.checks WHERE id = 'B-09') AS b09_ok,
   (SELECT red_value FROM monitoring.checks WHERE id = 'B-54') =
   (SELECT count(*) FROM pg_trigger t JOIN pg_class c ON c.oid = t.tgrelid JOIN pg_namespace ns ON ns.oid = c.relnamespace
-    WHERE NOT t.tgisinternal AND t.tgenabled <> 'D' AND ns.nspname = 'public') AS b54_green,          -- 31 after 060 alone
+    WHERE NOT t.tgisinternal AND t.tgenabled <> 'D' AND ns.nspname = 'public') AS b54_green,          -- 32 after 060 alone (36 with 057)
   (SELECT count(*) FROM local_moves WHERE move_kind <> 'local') AS relays,
   (SELECT count(*) FROM local_moves WHERE move_kind = 'local') AS plain_local_moves,
   (SELECT count(*) FROM dl_entries WHERE local_move_id IS NOT NULL AND deleted_at IS NULL) AS local_lines_live,
@@ -39,7 +41,8 @@ SELECT
   (SELECT count(*) FROM drivers WHERE pay_basis IS NOT NULL) AS drivers_classified;
 
 -- V2 - every (local driver, day) of a per-trip/unknown driver has ONE live line naming its relays;
---      a salaried driver has none (OWNER-Q2 answered 4/10). Empty until the first relay.
+--      a salaried driver has none (OWNER-Q2 answered 4/10) - except a past line kept for review
+--      after a pay basis change (needs_review). Empty until the first relay.
 SELECT lm.driver_id, d.full_name, d.pay_basis, lm.move_date, count(*) AS relays,
        array_agg(lm.id ORDER BY lm.id) AS relay_ids, array_agg(lm.parent_order_id ORDER BY lm.id) AS orders,
        e.id AS line_id, e.local_move_id AS anchor, e.route, e.trip_value IS NOT NULL AS has_value, e.needs_review

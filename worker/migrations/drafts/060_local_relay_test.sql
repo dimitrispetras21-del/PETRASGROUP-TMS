@@ -7,9 +7,10 @@
 -- DRAFT - run ONLY after 060 said "060 OK", after 15:00, with an explicit yes (it attempts writes).
 -- ASCII only (clipboard-safe). Orders and drivers are PICKED BY QUERY inside the block, never
 -- hard-coded: T1/T2/T3 = live own-fleet imports with an RT (not VS, not pre-order, not split, not
--- legs), E1 = a live own-fleet export, D1/D2 = active drivers who drive none of them. Pre-order /
--- VS / cancelled / split refusals use a live example when one exists, otherwise they are reported
--- as "skipped" (never as OK).
+-- legs), E1 = a live own-fleet export, D1/D2/D3 = active drivers who drive none of them, LG = a
+-- leg of a live split order. Pre-order / VS / cancelled / split refusals and the split-delete
+-- scenario use a live example when one exists, otherwise they are reported as "skipped" (never
+-- as OK). Order days are moved inside the block where a scenario needs a past or future day.
 -- Each scenario runs in its own sub-block (BEGIN ... EXCEPTION WHEN others): an unexpected error
 -- is recorded as FAIL with its message and undoes only that scenario.
 --
@@ -21,9 +22,10 @@
 DO $dry$
 DECLARE
   t1 bigint; t2 bigint; t3 bigint; e1 bigint; pre bigint; vs bigint; gone bigint; sp bigint; nl bigint;
-  t1_drv bigint; e1_drv bigint; d1 bigint; d2 bigint; loc bigint; loc2 bigint; trl bigint; prt bigint;
-  x date; t3_day date; e_day date; pre_kind text; vs_ok boolean; gone_kind text; sp_kind text; any_rt bigint;
-  rl1 bigint; rl2 bigint; rle bigint; rl3 bigint; lmp bigint; lmq bigint;
+  t1_drv bigint; e1_drv bigint; d1 bigint; d2 bigint; d3 bigint; loc bigint; loc2 bigint; trl bigint; prt bigint;
+  x date; t3_day date; e_day date; f_day date; p_day date; pre_kind text; vs_ok boolean; gone_kind text; sp_kind text; any_rt bigint;
+  lg bigint; lg_kind text; lg_drv bigint; lg_parent bigint; lg_by bigint;
+  rl1 bigint; rl2 bigint; rle bigint; rl3 bigint; rle2 bigint; rl4 bigint; rlg bigint; lmp bigint; lmq bigint; lid bigint;
   lm local_moves%rowtype; e dl_entries%rowtype;
   n bigint; n2 bigint; s text; j jsonb; b09_before numeric; b09_ids text[]; v numeric; ids text[];
   fp_before text; fp_after text;
@@ -37,6 +39,7 @@ DECLARE
   t_salary text := convert_from(decode('zqTOv8+AzrnOus6tz4IgzrrOuc69zq7Pg861zrnPgjogzr8gzr/OtM63zrPPjM+CIM61zq/Ovc6xzrkgzrzOuc+DzrjPic+Ez4zPgiAozrzPjM69zr8gzrnPg8+Ezr/Pgc65zrrPjCk=', 'base64'), 'UTF8');
   r_gone  text := convert_from(decode('z4TOv8+AzrnOus6tz4IgzrrOuc69zq7Pg861zrnPgjogzrrOsc68zq/OsSDOts+Jzr3PhM6xzr3OriDPgM65zrE=', 'base64'), 'UTF8');
   r_salary text := convert_from(decode('zr8gzr/OtM63zrPPjM+CIM6tzrPOuc69zrUgzrzOuc+DzrjPic+Ez4zPgiAozrzPjM69zr8gzrnPg8+Ezr/Pgc65zrrPjCk=', 'base64'), 'UTF8');
+  r_changed text := convert_from(decode('zqzOu867zrHOvs6xzr0gzr/OuSDPhM6/z4DOuc66zq3PgiDOus65zr3Ors+DzrXOuc+CIM+EzrfPgiDOt868zq3Pgc6xz4I=', 'base64'), 'UTF8');
 BEGIN
   IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public'
                   AND table_name = 'local_moves' AND column_name = 'move_kind') THEN
@@ -82,6 +85,12 @@ BEGIN
   SELECT d.id INTO d2 FROM drivers d WHERE d.deleted_at IS NULL AND coalesce(d.active, true) AND d.id <> d1
      AND d.id NOT IN (SELECT o.driver_id FROM orders o WHERE o.id IN (t1, t2, t3, e1) AND o.driver_id IS NOT NULL)
    ORDER BY d.id LIMIT 1;
+  SELECT d.id INTO d3 FROM drivers d WHERE d.deleted_at IS NULL AND coalesce(d.active, true) AND d.id NOT IN (d1, d2)
+     AND d.id NOT IN (SELECT o.driver_id FROM orders o WHERE o.id IN (t1, t2, t3, e1) AND o.driver_id IS NOT NULL)
+   ORDER BY d.id LIMIT 1;
+  IF d1 IS NULL OR d2 IS NULL OR d3 IS NULL THEN
+    RAISE EXCEPTION 'DRY RUN 060: not enough free drivers (d1 % d2 % d3 %)', d1, d2, d3;
+  END IF;
   SELECT id INTO loc FROM locations WHERE legacy_id = 'recJucKOhC1zh4IP3';        -- the Veroia cross-dock
   IF loc IS NULL THEN SELECT min(id) INTO loc FROM locations WHERE deleted_at IS NULL; END IF;
   SELECT min(id) INTO loc2 FROM locations WHERE deleted_at IS NULL AND id <> loc;
@@ -99,8 +108,18 @@ BEGIN
    WHERE o.deleted_at IS NULL AND coalesce(o.status, '') <> 'Cancelled' AND NOT coalesce(o.veroia_switch, false)
      AND o.ops_status IS DISTINCT FROM 'Provisional' AND o.direction IN ('Import', 'Export')
      AND EXISTS (SELECT 1 FROM orders l WHERE l.parent_order_id = o.id AND l.deleted_at IS NULL) ORDER BY o.id DESC LIMIT 1;
-  res := res || format('picks t1=%s t2=%s t3=%s e1=%s d1=%s d2=%s loc=%s pre=%s vs=%s gone=%s split=%s',
-                       t1, t2, t3, e1, d1, d2, loc, pre, vs, gone, sp);
+  -- a leg of a live split order that can carry a relay (for S18: deleting the parent reaches it)
+  SELECT l.id, CASE WHEN l.direction = 'Import' THEN 'relay_delivery' ELSE 'relay_loading' END, l.driver_id, l.parent_order_id
+    INTO lg, lg_kind, lg_drv, lg_parent FROM orders l JOIN orders p ON p.id = l.parent_order_id
+   WHERE l.deleted_at IS NULL AND p.deleted_at IS NULL AND coalesce(l.status, '') <> 'Cancelled'
+     AND l.direction IN ('Import', 'Export') AND NOT coalesce(l.veroia_switch, false) AND l.ops_status IS DISTINCT FROM 'Provisional'
+     AND (CASE WHEN l.direction = 'Import' THEN l.delivery_datetime ELSE l.loading_datetime END) IS NOT NULL
+     AND NOT EXISTS (SELECT 1 FROM orders z WHERE z.parent_order_id = l.id AND z.deleted_at IS NULL)
+     AND l.parent_order_id NOT IN (t1, t2, t3, e1)
+   ORDER BY l.id DESC LIMIT 1;
+  lg_by := CASE WHEN d3 IS DISTINCT FROM lg_drv THEN d3 ELSE d1 END;
+  res := res || format('picks t1=%s t2=%s t3=%s e1=%s d1=%s d2=%s d3=%s loc=%s pre=%s vs=%s gone=%s split=%s leg=%s',
+                       t1, t2, t3, e1, d1, d2, d3, loc, pre, vs, gone, sp, lg);
   EXECUTE (SELECT sql_text FROM monitoring.checks WHERE id = 'B-09') INTO b09_before;
 
   -- fingerprint of the international side: orders, round trips, non-local payroll lines
@@ -121,7 +140,8 @@ BEGIN
        AND e.local_move_id = rl1 AND e.source = 'auto' AND e.created_by = 'trigger:local_move' AND e.entry_type = 'trip'
        AND e.date_end = x AND e.route = w_local || sep || w_deliv || ' ' || t1 AND ascii(e.route) = 932
        AND j->>'kind' = 'local_day' AND jsonb_array_length(j->'moves') = 1 AND (j->'moves'->0->>'id')::bigint = rl1
-       AND j->'pay_basis' = 'null'::jsonb THEN
+       AND j->'pay_basis' = 'null'::jsonb AND jsonb_typeof(j->'moves'->0->'rt_codes') = 'array'
+       AND jsonb_array_length(j->'moves'->0->'rt_codes') >= 1 THEN
       ok := ok + 1; res := res || 'S1 ok'::text;
     ELSE
       bad := bad + 1; res := res || format('S1 FAIL status=%s day=%s/%s lines=%s rt=%s val=%s anchor=%s/%s by=%s route=%s info=%s',
@@ -256,14 +276,33 @@ BEGIN
       GET STACKED DIAGNOSTICS hint = PG_EXCEPTION_HINT;
       got := coalesce(nullif(hint, ''), SQLERRM);
     END;
+    SELECT relay_info INTO j FROM dl_v_entries WHERE id = e.id;
     IF lm.status = 'Cancelled' AND n2 = 1 AND e.deleted_at IS NOT NULL AND e.deleted_reason = t_gone
-       AND ascii(e.deleted_reason) = 932 AND got = 'local_relay:final' THEN
+       AND ascii(e.deleted_reason) = 932 AND got = 'local_relay:final' AND j IS NULL THEN
       ok := ok + 1; res := res || 'S7 ok'::text;
     ELSE
-      bad := bad + 1; res := res || format('S7 FAIL relay=%s audit=%s line_deleted=%s reason=%s revive=%s', lm.status, n2, e.deleted_at, e.deleted_reason, got);
+      bad := bad + 1; res := res || format('S7 FAIL relay=%s audit=%s line_deleted=%s reason=%s revive=%s cancelled_line_info=%s', lm.status, n2, e.deleted_at, e.deleted_reason, got, j);
     END IF;
   EXCEPTION WHEN others THEN bad := bad + 1; res := res || ('S7 ERROR ' || SQLERRM);
   END;
+
+  -- S7b. A gone relay skips the trigger rules, so a later write to it meets the row CHECK (both
+  --      refusal paths are live): a partner on T2's cancelled relay -> local_moves_relay_executor.
+  IF prt IS NULL THEN res := res || 'S7b skipped (no partner)'::text;
+  ELSE
+    BEGIN
+      got := 'not refused';
+      BEGIN
+        UPDATE local_moves SET partner_id = prt WHERE id = rl2;
+      EXCEPTION WHEN others THEN
+        GET STACKED DIAGNOSTICS st = RETURNED_SQLSTATE, hint = PG_EXCEPTION_HINT, cn = CONSTRAINT_NAME;
+        got := coalesce(nullif(hint, ''), nullif(cn, ''), st);
+      END;
+      IF got = 'local_moves_relay_executor' THEN ok := ok + 1; res := res || 'S7b ok'::text;
+      ELSE bad := bad + 1; res := res || ('S7b FAIL got ' || got); END IF;
+    EXCEPTION WHEN others THEN bad := bad + 1; res := res || ('S7b ERROR ' || SQLERRM);
+    END;
+  END IF;
 
   -- S8. Accounting wrote an amount (neutral test value) on the (D1, X+1) line, then T1 is DELETED:
   --     the order delete succeeds, the relay goes with it (023 step 6, audit), the line is NOT
@@ -275,13 +314,28 @@ BEGIN
     SELECT * INTO e FROM dl_entries WHERE driver_id = d1 AND entry_date = x + 1 AND local_move_id IS NOT NULL ORDER BY id DESC LIMIT 1;
     SELECT count(*) INTO n2 FROM audit_log WHERE table_name = 'local_moves' AND actor = 'trigger:order_unlink'
        AND action = 'delete' AND record_id = rl1::text;
+    SELECT relay_info INTO j FROM dl_v_entries WHERE id = e.id;
     IF lm.deleted_at IS NOT NULL AND n2 = 1 AND e.deleted_at IS NULL AND e.needs_review
-       AND position(r_gone IN coalesce(e.review_note, '')) > 0 THEN
+       AND position(r_gone IN coalesce(e.review_note, '')) > 0 AND jsonb_array_length(j->'moves') = 0 THEN
       ok := ok + 1; res := res || 'S8 ok'::text;
     ELSE
-      bad := bad + 1; res := res || format('S8 FAIL relay_deleted=%s audit=%s line_deleted=%s review=%s note=%s', lm.deleted_at, n2, e.deleted_at, e.needs_review, e.review_note);
+      bad := bad + 1; res := res || format('S8 FAIL relay_deleted=%s audit=%s line_deleted=%s review=%s note=%s info=%s', lm.deleted_at, n2, e.deleted_at, e.needs_review, e.review_note, j);
     END IF;
   EXCEPTION WHEN others THEN bad := bad + 1; res := res || ('S8 ERROR ' || SQLERRM);
+  END;
+
+  -- S8b. A deleted relay is not revived either (S7 proved it for a cancelled one).
+  BEGIN
+    got := 'not refused';
+    BEGIN
+      UPDATE local_moves SET deleted_at = NULL WHERE id = rl1;
+    EXCEPTION WHEN others THEN
+      GET STACKED DIAGNOSTICS hint = PG_EXCEPTION_HINT;
+      got := coalesce(nullif(hint, ''), SQLERRM);
+    END;
+    IF got = 'local_relay:final' THEN ok := ok + 1; res := res || 'S8b ok'::text;
+    ELSE bad := bad + 1; res := res || ('S8b FAIL ' || got); END IF;
+  EXCEPTION WHEN others THEN bad := bad + 1; res := res || ('S8b ERROR ' || SQLERRM);
   END;
 
   -- S9. A deleted relay given another driver pays nobody.
@@ -331,6 +385,27 @@ BEGIN
   EXCEPTION WHEN others THEN bad := bad + 1; res := res || ('S11 ERROR ' || SQLERRM);
   END;
 
+  -- S11b. The EXPORT's loading day moves to a day 3+ days ahead: the local loading follows (one
+  --       audit row), the old day's line (no money) is cancelled, the new day gets one line.
+  --       From here on e_day is that future day, so S13 below is about today-and-later lines.
+  BEGIN
+    f_day := (now() AT TIME ZONE 'Europe/Athens')::date + 3;
+    IF f_day = e_day THEN f_day := f_day + 1; END IF;
+    UPDATE orders SET loading_datetime = f_day WHERE id = e1;
+    SELECT * INTO lm FROM local_moves WHERE id = rle;
+    SELECT count(*) INTO n FROM dl_entries WHERE driver_id = d2 AND entry_date = e_day AND local_move_id IS NOT NULL AND deleted_at IS NULL;
+    SELECT * INTO e FROM dl_entries WHERE driver_id = d2 AND entry_date = f_day AND local_move_id IS NOT NULL AND deleted_at IS NULL;
+    SELECT count(*) INTO n2 FROM audit_log WHERE table_name = 'local_moves' AND actor = 'trigger:local_moves_follow'
+       AND record_id = rle::text AND after_data->>'reason' LIKE '%day moved';
+    IF lm.move_date = f_day AND n = 0 AND e.local_move_id = rle AND e.route = w_local || sep || w_load || ' ' || e1 AND n2 = 1 THEN
+      ok := ok + 1; res := res || 'S11b ok'::text;
+    ELSE
+      bad := bad + 1; res := res || format('S11b FAIL day=%s/%s old_lines=%s anchor=%s route=%s audit=%s', lm.move_date, f_day, n, e.local_move_id, e.route, n2);
+    END IF;
+    e_day := f_day;                                  -- last: an error above leaves e_day as it was
+  EXCEPTION WHEN others THEN bad := bad + 1; res := res || ('S11b ERROR ' || SQLERRM);
+  END;
+
   -- S12. The payroll line belongs to the system: never also an RT line, never twice a day, never
   --      a non-trip. (rows the screens cannot write anyway - the floor under the Worker)
   FOR t IN SELECT * FROM (VALUES
@@ -349,9 +424,10 @@ BEGIN
     END;
   END LOOP;
 
-  -- S13. Pay basis (OWNER-Q2 answered 4/10): salary -> no line (track record only); back to
-  --      per_trip -> the line comes back; an amount then salary -> review, never dropped; NULL
-  --      again -> still exactly one line. Orders, RTs, international lines untouched throughout.
+  -- S13. Pay basis (OWNER-Q2 answered 4/10), on a FUTURE day (S11b): salary -> no line (track
+  --      record only); back to per_trip -> the line comes back; an amount then salary -> review,
+  --      never dropped; NULL again -> still exactly one line. Orders, RTs, international lines
+  --      untouched throughout. (A PAST never-valued line goes to review instead: S19.)
   SELECT md5(coalesce((SELECT string_agg(concat_ws(':', id, status, driver_id, truck_id, trailer_id, loading_datetime, delivery_datetime, deleted_at), ',' ORDER BY id) FROM orders), '')
           || coalesce((SELECT string_agg(concat_ws(':', id, status, driver_id, truck_id, trailer_id, date_start, date_end), ',' ORDER BY id) FROM ct_round_trips), '')
           || coalesce((SELECT string_agg(concat_ws(':', id, driver_id, entry_date, date_end, rt_id, deleted_at, needs_review, trip_value), ',' ORDER BY id) FROM dl_entries WHERE local_move_id IS NULL), ''))
@@ -420,6 +496,150 @@ BEGIN
     ELSIF ids = ARRAY[rl3::text || ':truck-copy'] THEN ok := ok + 1; res := res || 'S14d ok'::text;
     ELSE bad := bad + 1; res := res || format('S14d FAIL B-65 ids=%s', ids); END IF;
   EXCEPTION WHEN others THEN bad := bad + 1; res := res || ('S14 ERROR ' || SQLERRM);
+  END;
+
+  -- S15. The ONE exit accounting has on a local line (coordinator D3): cancel with a reason, and
+  --      only when nothing is owed by a line. dl_local_line_guard is the floor under the Worker.
+  BEGIN
+    -- a) D2 is per-trip/unknown and his relay on E1 is live that day: cancel refused
+    got := 'not refused';
+    BEGIN
+      UPDATE dl_entries SET deleted_at = now(), deleted_reason = 'dry-run 060'
+       WHERE driver_id = d2 AND entry_date = e_day AND local_move_id IS NOT NULL AND deleted_at IS NULL;
+    EXCEPTION WHEN others THEN
+      GET STACKED DIAGNOSTICS hint = PG_EXCEPTION_HINT;
+      got := coalesce(nullif(hint, ''), SQLERRM);
+    END;
+    IF got = 'local_relay:line_has_relay' THEN ok := ok + 1; res := res || 'S15a ok'::text;
+    ELSE bad := bad + 1; res := res || ('S15a FAIL ' || got); END IF;
+
+    -- b) D1 back to unknown (his T3 relay now gets a line); his X+1 line (money, flagged in S8)
+    --    has no live relay left: cancel allowed even though he is not salaried
+    UPDATE drivers SET pay_basis = NULL WHERE id = d1;
+    SELECT id INTO lid FROM dl_entries WHERE driver_id = d1 AND entry_date = x + 1 AND local_move_id IS NOT NULL AND deleted_at IS NULL;
+    UPDATE dl_entries SET deleted_at = now(), deleted_reason = 'dry-run 060: no relay left' WHERE id = lid;
+    SELECT count(*) INTO n FROM dl_entries WHERE driver_id = d1 AND entry_date = t3_day AND local_move_id IS NOT NULL AND deleted_at IS NULL;
+    IF lid IS NOT NULL AND (SELECT deleted_at FROM dl_entries WHERE id = lid) IS NOT NULL AND n = 1 THEN
+      ok := ok + 1; res := res || 'S15b ok'::text;
+    ELSE bad := bad + 1; res := res || format('S15b FAIL line=%s t3_lines=%s', lid, n); END IF;
+
+    -- c) never restored
+    got := 'not refused';
+    BEGIN
+      UPDATE dl_entries SET deleted_at = NULL, deleted_reason = NULL WHERE id = lid;
+    EXCEPTION WHEN others THEN
+      GET STACKED DIAGNOSTICS hint = PG_EXCEPTION_HINT;
+      got := coalesce(nullif(hint, ''), SQLERRM);
+    END;
+    IF got = 'local_relay:line_restore' THEN ok := ok + 1; res := res || 'S15c ok'::text;
+    ELSE bad := bad + 1; res := res || ('S15c FAIL ' || got); END IF;
+
+    -- d) D2 salaried: his flagged line (money) may be cancelled; the re-sync never re-creates it
+    --    while he is salaried; back to unknown -> a NEW empty line (the cancelled one stays)
+    UPDATE drivers SET pay_basis = 'salary' WHERE id = d2;
+    SELECT id INTO lid FROM dl_entries WHERE driver_id = d2 AND entry_date = e_day AND local_move_id IS NOT NULL AND deleted_at IS NULL;
+    UPDATE dl_entries SET deleted_at = now(), deleted_reason = 'dry-run 060: salaried' WHERE id = lid;
+    UPDATE local_moves SET move_date = move_date WHERE id = rle;            -- any later sync of that day
+    SELECT count(*) INTO n FROM dl_entries WHERE driver_id = d2 AND entry_date = e_day AND local_move_id IS NOT NULL AND deleted_at IS NULL;
+    UPDATE drivers SET pay_basis = NULL WHERE id = d2;
+    SELECT * INTO e FROM dl_entries WHERE driver_id = d2 AND entry_date = e_day AND local_move_id IS NOT NULL AND deleted_at IS NULL;
+    IF lid IS NOT NULL AND n = 0 AND e.id IS NOT NULL AND e.id <> lid AND e.trip_value IS NULL AND NOT e.needs_review THEN
+      ok := ok + 1; res := res || 'S15d ok'::text;
+    ELSE bad := bad + 1; res := res || format('S15d FAIL cancelled=%s live_while_salaried=%s new=%s', lid, n, e.id); END IF;
+
+    -- e) "value 0" is not money: the relay goes, the line is cancelled, not sent to review
+    UPDATE dl_entries SET trip_value = 0 WHERE id = e.id;
+    UPDATE local_moves SET deleted_at = now() WHERE id = rle;
+    SELECT * INTO e FROM dl_entries WHERE id = e.id;
+    IF e.deleted_at IS NOT NULL AND NOT e.needs_review AND e.deleted_reason = t_gone THEN
+      ok := ok + 1; res := res || 'S15e ok'::text;
+    ELSE bad := bad + 1; res := res || format('S15e FAIL deleted=%s review=%s reason=%s', e.deleted_at, e.needs_review, e.deleted_reason); END IF;
+  EXCEPTION WHEN others THEN bad := bad + 1; res := res || ('S15 ERROR ' || SQLERRM);
+  END;
+
+  -- S16. Money written, then the day's set of relays changes: review with the "changed" note.
+  BEGIN
+    INSERT INTO local_moves (move_kind, parent_order_id, driver_id, trailer_id, to_location_id)
+    VALUES ('relay_loading', e1, d2, trl, loc) RETURNING id INTO rle2;
+    UPDATE dl_entries SET trip_value = 7 WHERE driver_id = d2 AND entry_date = e_day AND local_move_id IS NOT NULL AND deleted_at IS NULL;
+    UPDATE local_moves SET deleted_at = now() WHERE id = rl3;                  -- frees T3 for D2
+    UPDATE orders SET delivery_datetime = e_day WHERE id = t3;
+    INSERT INTO local_moves (move_kind, parent_order_id, driver_id, trailer_id, from_location_id)
+    VALUES ('relay_delivery', t3, d2, trl, loc) RETURNING id INTO rl4;
+    SELECT count(*) INTO n FROM dl_entries WHERE driver_id = d2 AND entry_date = e_day AND local_move_id IS NOT NULL AND deleted_at IS NULL;
+    SELECT * INTO e FROM dl_entries WHERE driver_id = d2 AND entry_date = e_day AND local_move_id IS NOT NULL AND deleted_at IS NULL;
+    IF n = 1 AND e.trip_value = 7 AND e.needs_review AND position(r_changed IN coalesce(e.review_note, '')) > 0
+       AND e.local_move_id = least(rle2, rl4)
+       AND e.route = w_local || sep || w_load || ' ' || e1 || sep || w_deliv || ' ' || t3 THEN
+      ok := ok + 1; res := res || 'S16 ok'::text;
+    ELSE bad := bad + 1; res := res || format('S16 FAIL lines=%s value=%s review=%s note=%s route=%s', n, e.trip_value, e.needs_review, e.review_note, e.route); END IF;
+  EXCEPTION WHEN others THEN bad := bad + 1; res := res || ('S16 ERROR ' || SQLERRM);
+  END;
+
+  -- S17. The T3 relay changes driver D2 -> D3 while D2's line holds money: D2's line stays, still in
+  --      review, relabelled; D3 gets exactly one empty line (both days locked in fixed order).
+  BEGIN
+    UPDATE local_moves SET driver_id = d3 WHERE id = rl4;
+    SELECT * INTO e FROM dl_entries WHERE driver_id = d2 AND entry_date = e_day AND local_move_id IS NOT NULL AND deleted_at IS NULL;
+    SELECT count(*) INTO n FROM dl_entries WHERE driver_id = d3 AND local_move_id IS NOT NULL AND deleted_at IS NULL;
+    SELECT count(*) INTO n2 FROM dl_entries WHERE driver_id = d3 AND entry_date = e_day AND local_move_id = rl4 AND deleted_at IS NULL
+       AND trip_value IS NULL AND route = w_local || sep || w_deliv || ' ' || t3;
+    IF e.id IS NOT NULL AND e.needs_review AND e.trip_value = 7 AND e.route = w_local || sep || w_load || ' ' || e1
+       AND n = 1 AND n2 = 1 THEN
+      ok := ok + 1; res := res || 'S17 ok'::text;
+    ELSE bad := bad + 1; res := res || format('S17 FAIL d2_line=%s review=%s route=%s d3_lines=%s/%s', e.id, e.needs_review, e.route, n, n2); END IF;
+  EXCEPTION WHEN others THEN bad := bad + 1; res := res || ('S17 ERROR ' || SQLERRM);
+  END;
+
+  -- S18. A split order is deleted: 023 step 3 deletes its legs, each leg re-fires 023, and step 6
+  --      takes the leg's relay with it (audit row).
+  IF lg IS NULL THEN res := res || 'S18 skipped (no live split leg)'::text;
+  ELSE
+    BEGIN
+      INSERT INTO local_moves (move_kind, parent_order_id, driver_id, trailer_id, from_location_id, to_location_id)
+      VALUES (lg_kind, lg, lg_by, trl, CASE WHEN lg_kind = 'relay_delivery' THEN loc END, CASE WHEN lg_kind = 'relay_loading' THEN loc END)
+      RETURNING id INTO rlg;
+      UPDATE orders SET deleted_at = now() WHERE id = lg_parent;
+      SELECT * INTO lm FROM local_moves WHERE id = rlg;
+      SELECT count(*) INTO n2 FROM audit_log WHERE table_name = 'local_moves' AND actor = 'trigger:order_unlink'
+         AND action = 'delete' AND record_id = rlg::text AND before_data->>'parent_order_id' = lg::text;
+      IF lm.deleted_at IS NOT NULL AND n2 = 1 THEN ok := ok + 1; res := res || 'S18 ok'::text;
+      ELSE bad := bad + 1; res := res || format('S18 FAIL relay_deleted=%s audit=%s', lm.deleted_at, n2); END IF;
+    EXCEPTION WHEN others THEN bad := bad + 1; res := res || ('S18 ERROR ' || SQLERRM);
+    END;
+  END IF;
+
+  -- S19. A PAST line nobody valued, driver becomes salaried: review, NOT cancelled (he may have
+  --      been per-trip that day; no pay basis history, coordinator D4). Cleared without a value it
+  --      is B-64 'salaried'; cancelling it with a reason is allowed.
+  BEGIN
+    p_day := (now() AT TIME ZONE 'Europe/Athens')::date - 2;
+    UPDATE orders SET delivery_datetime = p_day WHERE id = t3;                  -- rl4 (D3) follows
+    SELECT id INTO lid FROM dl_entries WHERE driver_id = d3 AND entry_date = p_day AND local_move_id IS NOT NULL AND deleted_at IS NULL;
+    UPDATE drivers SET pay_basis = 'salary' WHERE id = d3;
+    SELECT * INTO e FROM dl_entries WHERE id = lid;
+    IF lid IS NOT NULL AND e.deleted_at IS NULL AND e.needs_review AND position(r_salary IN coalesce(e.review_note, '')) > 0 THEN
+      ok := ok + 1; res := res || 'S19a ok'::text;
+    ELSE bad := bad + 1; res := res || format('S19a FAIL line=%s deleted=%s review=%s note=%s', lid, e.deleted_at, e.needs_review, e.review_note); END IF;
+    UPDATE dl_entries SET needs_review = false, review_note = 'dry-run 060 checked' WHERE id = lid;
+    EXECUTE (SELECT ids_sql FROM monitoring.checks WHERE id = 'B-64') INTO ids;
+    UPDATE dl_entries SET deleted_at = now(), deleted_reason = 'dry-run 060: salaried, not owed' WHERE id = lid;
+    EXECUTE (SELECT ids_sql FROM monitoring.checks WHERE id = 'B-64') INTO b09_ids;
+    IF ('salaried:' || lid) = ANY (ids) AND NOT (('salaried:' || lid) = ANY (b09_ids))
+       AND (SELECT deleted_at FROM dl_entries WHERE id = lid) IS NOT NULL THEN
+      ok := ok + 1; res := res || 'S19b ok'::text;
+    ELSE bad := bad + 1; res := res || format('S19b FAIL B-64 before=%s after=%s', ids, b09_ids); END IF;
+    -- c) the same past day, but accounting had already typed "value 0" (= nothing owed): a switch
+    --    to salary cancels it, no review
+    UPDATE drivers SET pay_basis = NULL WHERE id = d3;                         -- a new empty line
+    UPDATE dl_entries SET trip_value = 0 WHERE driver_id = d3 AND entry_date = p_day AND local_move_id IS NOT NULL AND deleted_at IS NULL
+      RETURNING id INTO lid;
+    UPDATE drivers SET pay_basis = 'salary' WHERE id = d3;
+    SELECT * INTO e FROM dl_entries WHERE id = lid;
+    IF lid IS NOT NULL AND e.deleted_at IS NOT NULL AND NOT e.needs_review AND e.deleted_reason = t_salary THEN
+      ok := ok + 1; res := res || 'S19c ok'::text;
+    ELSE bad := bad + 1; res := res || format('S19c FAIL line=%s deleted=%s review=%s reason=%s', lid, e.deleted_at, e.needs_review, e.deleted_reason); END IF;
+  EXCEPTION WHEN others THEN bad := bad + 1; res := res || ('S19 ERROR ' || SQLERRM);
   END;
 
   RAISE EXCEPTION 'DRY RUN 060 finished - EVERYTHING UNDONE, nothing kept. Result: % OK, % FAIL  ||  %',

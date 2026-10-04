@@ -39,7 +39,16 @@ BEGIN
   SELECT relacl INTO view_acl_items FROM pg_class WHERE oid = 'public.dl_v_entries'::regclass;
   SELECT array_agg(a::text ORDER BY a::text) INTO view_acl FROM unnest(view_acl_items) a;
 
-  -- 1. AUDITOR back to 4/10 (results first: monitoring.results references monitoring.checks)
+  -- 1. AUDITOR back to 4/10. Open incidents of the removed checks are closed first: incidents has
+  --    no foreign key to checks, so they would stay open in the report for a check that is gone.
+  --    'confirmed' too - the check that a human confirmed no longer exists.
+  UPDATE monitoring.incidents SET state = 'resolved', resolved_verified_at = clock_timestamp(),
+         state_changed_by = '060 rollback (check removed)', state_changed_at = clock_timestamp()
+   WHERE state IN ('new', 'confirmed', 'recurred')
+     AND (check_id IN ('B-63', 'B-64', 'B-65')
+          OR incident_key IN ('MECH:check:B-63', 'MECH:check:B-64', 'MECH:check:B-65',
+                              'MECH:stale:B-63', 'MECH:stale:B-64', 'MECH:stale:B-65'));
+  -- results next: monitoring.results references monitoring.checks
   DELETE FROM monitoring.results WHERE check_id IN ('B-63', 'B-64', 'B-65');
   DELETE FROM monitoring.checks WHERE id IN ('B-63', 'B-64', 'B-65');
   GET DIAGNOSTICS k = ROW_COUNT;
@@ -55,6 +64,7 @@ BEGIN
   IF k <> 1 THEN RAISE EXCEPTION '060 rollback: B-09 is not the 060 text (% rows) - edited by hand, stop', k; END IF;
 
   -- 2. TRIGGERS and the 023 text
+  DROP TRIGGER dl_local_line_guard ON public.dl_entries;
   DROP TRIGGER dl_local_pay_basis_sync ON public.drivers;
   DROP TRIGGER dl_sync_from_local_move ON public.local_moves;
   DROP TRIGGER local_moves_follow_order ON public.orders;
@@ -165,6 +175,7 @@ end $function$;
   END LOOP;
 
   -- 4. FUNCTIONS, INDEXES, CONSTRAINTS, COLUMNS
+  DROP FUNCTION public.dl_local_line_guard();
   DROP FUNCTION public.dl_local_pay_basis_sync();
   DROP FUNCTION public.dl_sync_from_local_move();
   DROP FUNCTION public.dl_local_day_sync(bigint, date);
@@ -181,12 +192,12 @@ end $function$;
     DROP COLUMN move_kind;
   ALTER TABLE public.drivers DROP CONSTRAINT drivers_pay_basis_chk, DROP COLUMN pay_basis;
 
-  -- 5. B-54 back to the count without 060's 4 triggers
+  -- 5. B-54 back to the count without 060's 5 triggers
   SELECT count(*) INTO trg_after FROM pg_trigger t JOIN pg_class c ON c.oid = t.tgrelid
     JOIN pg_namespace ns ON ns.oid = c.relnamespace
    WHERE NOT t.tgisinternal AND t.tgenabled <> 'D' AND ns.nspname = 'public';
-  IF trg_after <> trg_before - 4 THEN
-    RAISE EXCEPTION '060 rollback proof: trigger count % -> % (expected -4)', trg_before, trg_after;
+  IF trg_after <> trg_before - 5 THEN
+    RAISE EXCEPTION '060 rollback proof: trigger count % -> % (expected -5)', trg_before, trg_after;
   END IF;
   UPDATE monitoring.checks SET red_value = trg_after WHERE id = 'B-54' AND red_value = trg_before;
   GET DIAGNOSTICS k = ROW_COUNT;
@@ -205,6 +216,12 @@ end $function$;
   END IF;
   IF NOT EXISTS (SELECT 1 FROM monitoring.checks WHERE id = 'B-09' AND md5(sql_text) = 'b8f8d0e705f8466a3f6305c9e38c544f' AND md5(ids_sql) = 'b96ff398c369f06b6eb9c99d343e155c' AND md5(exceptions) = 'f93a59943f94028e83cc5f9ca2d67495') THEN
     RAISE EXCEPTION '060 rollback proof: B-09 is not the 4/10 text';
+  END IF;
+  IF EXISTS (SELECT 1 FROM monitoring.incidents WHERE state IN ('new', 'confirmed', 'recurred')
+              AND (check_id IN ('B-63', 'B-64', 'B-65')
+                   OR incident_key IN ('MECH:check:B-63', 'MECH:check:B-64', 'MECH:check:B-65',
+                                       'MECH:stale:B-63', 'MECH:stale:B-64', 'MECH:stale:B-65'))) THEN
+    RAISE EXCEPTION '060 rollback proof: an incident of B-63..B-65 is still open';
   END IF;
   IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public'
               AND ((table_name = 'local_moves' AND column_name = 'move_kind')
