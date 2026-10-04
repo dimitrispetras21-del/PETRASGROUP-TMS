@@ -2956,7 +2956,13 @@ async function _wiSaveImportMatch(rowId,impId){
   // begin. Not reachable from the ordinary drag — an already-matched import
   // never renders its own row to drag FROM — only from the new grip.
   const oldExpRow=WINTL.rows.find(r=>r.type==='export'&&r.id!==rowId&&r.importId===matchImpId);
-  if(oldExpRow) await _wiRemoveImport(oldExpRow.id);
+  if(oldExpRow&&!(await _wiRemoveImport(oldExpRow.id))){
+    // The old match did not fully come off (a member is still on the old trip):
+    // writing this export's vehicle onto it now would copy it onto the old
+    // trip and its export. _wiRemoveImport already said why, in Greek.
+    toast('Το νέο ταίριασμα ΔΕΝ έγινε — το παλιό δεν αφαιρέθηκε πλήρως','warn');
+    return;
+  }
 
   // Optimistic UI update
   const oldImp=row.importId;
@@ -3052,10 +3058,13 @@ async function _wiSaveImportMatch(rowId,impId){
   }
 }
 
+// Returns true only when the unmatch fully landed (match cleared AND every
+// cleared member left its round trip) — a re-match must not write a new
+// vehicle onto a member that still sits on the old trip (review 4/10, P3-3).
 async function _wiRemoveImport(rowId){
   const row=WINTL.rows.find(r=>r.id===rowId);
-  if(!row){ toast('Η γραμμή δεν βρέθηκε','warn'); return; }
-  if(!row.importId){ toast('Δεν υπάρχει ταιριασμένη εισαγωγή','warn'); return; }
+  if(!row){ toast('Η γραμμή δεν βρέθηκε','warn'); return false; }
+  if(!row.importId){ toast('Δεν υπάρχει ταιριασμένη εισαγωγή','warn'); return false; }
   const impId=row.importId;
   row.importId=null;
 
@@ -3124,7 +3133,9 @@ async function _wiRemoveImport(rowId){
     // former trailing rtOnImportUnmatched pass ran AFTER the clear, which is
     // the order that wiped the export's truck (30/9). An executing member
     // keeps its leg, as before.
+    return clearErrors.length===0;
   }
+  return false;
 }
 
 /* ── AUTO-MATCH ALGORITHM ─────────────────────────────────────────── */
@@ -4322,6 +4333,14 @@ async function _wiDoSplit(rowId){
   });
   Object.keys(leg2Fields).forEach(k=>{ if(leg2Fields[k]===undefined) delete leg2Fields[k]; });
 
+  // The parent's leg must be able to leave its round trip later (see below):
+  // a closed/complete trip refuses that (409), so stop here, before anything
+  // is created — not after two legs exist (review 4/10, P2-1).
+  const preRt=await _wiRtOf(parentOid);
+  if(!preRt.ok){ _wiPanelSetBusy(false); toast('Το σπάσιμο δεν ξεκίνησε — '+preRt.msg,'warn'); return; }
+  if(preRt.rt&&(preRt.rt.status==='closed'||preRt.rt.status==='complete')){
+    _wiPanelSetBusy(false); toast('Ο γύρος '+(preRt.rt.code||'')+' είναι κλειστός — το σπάσιμο δεν ξεκίνησε· ζήτα από τον owner','warn'); return;
+  }
   let leg1=null, leg2=null;
   try{
     leg1=await atCreate(TABLES.ORDERS,leg1Fields);
@@ -4365,8 +4384,11 @@ async function _wiDoSplit(rowId){
   // members) and delete the driver's payroll line. Failure → parent untouched.
   const leaveParent=await _wiRtLeave(parentOid);
   if(!leaveParent.ok){
-    _wiPanelSetBusy(false);
-    reportError('Τα δύο σκέλη δημιουργήθηκαν (ID '+leg1.id+', '+leg2.id+') αλλά ο γονέας ΔΕΝ βγήκε από τον γύρο του ('+leaveParent.msg+') — ΔΕΝ αδειάστηκε, για να μη χάσει το φορτηγό ο γύρος. Άδειασε χειροκίνητα την ανάθεσή του ('+parentOid+') μόλις λυθεί.',null);
+    // Repaint so the board shows the two legs and offers «Ένωση ξανά»: an
+    // unchanged panel invited a second «Σπάσιμο» = a second pair of legs.
+    _wiPanelSetBusy(false); _wiPanelClose();
+    reportError('Τα δύο σκέλη δημιουργήθηκαν αλλά ο γονέας ΔΕΝ βγήκε από τον γύρο του ('+leaveParent.msg+') — δεν αδειάστηκε, για να μη χάσει το φορτηγό ο γύρος. Πάτα «Ένωση ξανά» στη γραμμή (σβήνει τα δύο σκέλη, ο γονέας μένει ως είχε) και ξαναδοκίμασε όταν λυθεί.',null);
+    await renderWeeklyIntl();
     return;
   }
   try{
@@ -4536,6 +4558,31 @@ async function _wiRtLegDelete(rtId, pgOrderId){
   const data=await res.json().catch(()=>({}));
   return {ok:res.ok, status:res.status, error:data.error};
 }
+// Where is this order's round-trip leg? Read from the source, never guessed:
+// the order's pg id is its «Order No» (migration 019: order_no = orders.id), and
+// the trip is searched in a date window around the order (overlap=1, up to 500
+// trips). The older lookup (rtFindForOrder) read the bare /costs/rt list — the
+// newest 200 trips only — and mapped rec→pg through pl_v_order_gate, which needs
+// a live Loading stop; either gap answered «no trip» and the vehicle clear went
+// on to wipe the trip (review 4/10, P2-2). Any read failure → {ok:false}. A trip
+// that is cancelled is ignored, as everywhere (rt_sync_from_order ignores it too).
+// An order with no date at all falls back to the newest-200 list (none today).
+async function _wiRtOf(orderId){
+  if(typeof plFetch!=='function'||typeof atGetOne!=='function') return {ok:false,msg:'η αναζήτηση γύρου δεν είναι διαθέσιμη'};
+  let rec;
+  try{ rec=await atGetOne(TABLES.ORDERS,orderId); }
+  catch(e){ return {ok:false,msg:'η παραγγελία δεν διαβάστηκε ('+((e&&e.message)||e)+')'}; }
+  const f=(rec&&rec.fields)||{}, pg=Number(f['Order No']);
+  if(!pg) return {ok:false,msg:'ο αριθμός της παραγγελίας δεν διαβάστηκε'};
+  const ds=['Loading DateTime','Delivery DateTime','Actual Delivery Date'].map(k=>String(f[k]||'').slice(0,10)).filter(Boolean).sort();
+  const shift=(d,n)=>{ const x=new Date(d+'T12:00:00Z'); x.setUTCDate(x.getUTCDate()+n); return x.toISOString().slice(0,10); };
+  const q=ds.length?('?overlap=1&from='+shift(ds[0],-7)+'&to='+shift(ds[ds.length-1],7)):'';
+  let r;
+  try{ r=await plFetch('/costs/rt'+q); }
+  catch(e){ return {ok:false,msg:'ο γύρος δεν διαβάστηκε ('+((e&&e.message)||e)+')'}; }
+  const rt=((r&&r.records)||[]).find(t=>t.status!=='cancelled'&&(t.ct_rt_legs||[]).some(l=>Number(l.order_id)===pg))||null;
+  return {ok:true,pg,rt};
+}
 // Take one order's leg OFF its round trip, BEFORE anything clears that order's
 // vehicle (live 30/9, RT-1193). The live trigger rt_sync_from_order copies an
 // order's truck/driver onto its round trip AND onto every other order of that
@@ -4543,18 +4590,14 @@ async function _wiRtLegDelete(rtId, pgOrderId){
 // wipes the truck off the export (even a Delivered one), and dl_sync_from_rt
 // then deletes the driver's payroll line («έμεινε χωρίς οδηγό μας» — three
 // times in three minutes on 30/9). So every caller that clears a vehicle asks
-// here first and clears NOTHING unless this says ok. A failed lookup is a
-// failure, never «no round trip»: guessing «no leg» is exactly the wipe.
-// No round trip found (never created, or cancelled) → ok, nothing to take off.
+// here first and clears NOTHING unless this says ok (lookup: _wiRtOf).
 async function _wiRtLeave(orderId){
-  if(typeof rtFindForOrder!=='function') return {ok:true};
-  let found;
-  try{ found=await rtFindForOrder(orderId); }
-  catch(e){ return {ok:false,msg:'ο γύρος δεν διαβάστηκε ('+((e&&e.message)||e)+')'}; }
-  if(!found||!found.rt||found.pg==null) return {ok:true};
-  const del=await _wiRtLegDelete(found.rt.id,found.pg).catch(err=>({ok:false,status:0,error:err&&err.message}));
+  const at=await _wiRtOf(orderId);
+  if(!at.ok) return at;
+  if(!at.rt) return {ok:true};
+  const del=await _wiRtLegDelete(at.rt.id,at.pg).catch(err=>({ok:false,status:0,error:err&&err.message}));
   if(del.ok) return {ok:true};
-  return {ok:false,status:del.status,msg:del.status===409?'ο γύρος '+(found.rt.code||'')+' είναι κλειστός — ζήτα από τον owner'
+  return {ok:false,status:del.status,msg:del.status===409?'ο γύρος '+(at.rt.code||'')+' είναι κλειστός — ζήτα από τον owner'
     :del.status===403?'χωρίς δικαίωμα αφαίρεσης σκέλους γύρου'
     :('το σκέλος δεν αφαιρέθηκε από τον γύρο: '+(del.error||('HTTP '+del.status)))};
 }

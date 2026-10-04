@@ -25,6 +25,7 @@ const wiSrc = [
   fn(WI, /async function _wiRewriteGroupSuffix\(recs,isImp\)\{[\s\S]*?\n\}\n/, '_wiRewriteGroupSuffix'),
   fn(WI, /async function _wiSyncGroupResidue\(row\)\{[\s\S]*?\n\}\n/, '_wiSyncGroupResidue'),
   // leg-first helper the clear paths call before touching a vehicle (tests/unmatch-leg-first.test.js)
+  fn(WI, /async function _wiRtOf\(orderId\)\{[\s\S]*?\n\}\n/, '_wiRtOf'),
   fn(WI, /async function _wiRtLeave\(orderId\)\{[\s\S]*?\n\}\n/, '_wiRtLeave'),
   fn(WI, /async function _wiCancelGroupMember\(rowId,orderId,isImportSide\)\{[\s\S]*?\n\}\n/, '_wiCancelGroupMember'),
 ].join('\n');
@@ -46,6 +47,8 @@ function world({ exports = [], imports = [], rows = [], executing = {} } = {}) {
     getLinkedId: v => (Array.isArray(v) ? v[0] || null : v || null),
     confirmAction: async () => true,
     _wiExecutingLive: async id => !!executing[id],
+    // round-trip lookup (_wiRtOf): the order has an Order No, no trip holds it
+    atGetOne: async (_t, id) => ({ id, fields: { 'Order No': 1 } }), plFetch: async () => ({ records: [] }),
     _wiDissolveClearMember: async () => undefined,
     _wiSync() {}, toast() {}, _wiPaint() {}, reportError() {},
     renderWeeklyIntl: async () => {},
