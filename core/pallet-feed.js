@@ -105,14 +105,11 @@ async function plOnDelivered(orderId) {
     // Wave 3: see plOnOrderSaved — a leg's delivery isn't a second client delivery.
     if (typeof FEATURES !== 'undefined' && FEATURES.ORDER_SPLIT && getLinkedId(rec.fields['Parent Order'])) return;
     if (!rec.fields['Pallet Exchange']) return;
-    // OWNER-Q7 default (4/10): a stock LOT writes no DELIVERY. Its «Delivered»
-    // is the warehouse intake, not a client delivery — the confirmed 33/33
-    // «client exchange at Αποθήκη Χ» this would write is false, and its
-    // «Διόρθωση ανταλλαγής» would book a warehouse shortfall as client debt
-    // (impact map 4/10 C-03 / PL-02). Ε5: the lot's ONE exchange is at its
-    // loading (plOnOrderSaved, unchanged). Where the pieces' receivers'
-    // empties are recorded is still the owner's question.
-    if (OrdersStock.isLot(rec.fields)) return;
+    // A stock LOT's «Delivered» is the warehouse intake, not a client
+    // delivery: no client DELIVERY (a confirmed 33/33 «client exchange at
+    // Αποθήκη Χ» would be false, impact map C-03 / PL-02). Ε5: the client
+    // exchanges ONCE, at the lot's loading (plOnOrderSaved, unchanged).
+    if (OrdersStock.isLot(rec.fields)) return _plLotIntake(rec, stops, orderId);
     const clientRec = _plClientRec(rec.fields);
     for (const s of stops) {
       if (s.fields[F.STOP_TYPE] !== 'Unloading') continue;
@@ -134,6 +131,41 @@ async function plOnDelivered(orderId) {
   });
 }
 
+// OWNER-Q7 answered 4/10 (pallet movement at warehouse intake; pieces never
+// exchange) — coordinator queue #6, owner: «Να γράφεται και η αποθήκη».
+// The intake is locked pallet case #4 (docs/PALLETS_ARCHITECTURE §3): we hand
+// loaded pallets to a PARTNER, so ONE pending PARTNER_PICKUP, given = the
+// lot's pallets, taken = 0 until the sheet says what the warehouse left. Once
+// per lot: found by its warehouse stop, never rewritten (a confirmed one is
+// history). The ledger only knows clients and partners and a location is
+// linked to no partner, so a lot our own truck carried has no counterparty to
+// write — it is said, not invented. Pieces write nothing (Ε5: their receivers
+// never exchange); pallets that leave on pieces are the accountant's
+// ADJUSTMENT (case #10) — the owner asked for the intake only.
+async function _plLotIntake(rec, stops, orderId) {
+  const f = rec.fields;
+  const partnerRec = Array.isArray(f['Partner']) ? f['Partner'][0] : null;
+  const s = stops.find(x => x.fields[F.STOP_TYPE] === 'Unloading');
+  if (!s) return;
+  const pallets = parseInt(s.fields[F.STOP_PALLETS], 10) || 0;
+  if (!pallets) return;
+  if (!partnerRec || !f['Is Partner Trip']) {
+    if (typeof showErrorToast === 'function') showErrorToast('Παλέτες αποθήκης: η παρτίδα δεν έχει συνεργάτη — καταχώρησε χειροκίνητα από το Ισοζύγιο', 'warn', 10000);
+    return;
+  }
+  const existing = await plFetch('/pallets/movements?order_stop_rec=' + encodeURIComponent(s.id));
+  if ((existing.records || []).length) return;
+  await plFetch('/pallets/movements', { method: 'POST', body: {
+    movement_date: _plToday(),
+    counterparty_type: 'PARTNER',
+    partner_rec: partnerRec,
+    location_rec: (s.fields[F.STOP_LOCATION] || [])[0] || null,
+    event_type: 'PARTNER_PICKUP',
+    taken: 0, given: pallets,
+    order_stop_rec: s.id, order_rec: orderId
+  }});
+}
+
 // ── Feeder §3.3: διεθνής ανάθεση σε partner (VS μόνο) ──
 async function plOnIntlPartnerAssigned(orderId) {
   return _plSafe('εκκρεμής partner', async () => {
@@ -144,6 +176,10 @@ async function plOnIntlPartnerAssigned(orderId) {
     // client-facing exchange; the parent's own assignment is cleared on split,
     // so it never reaches here with a partner anyway, but a leg can.
     if (typeof FEATURES !== 'undefined' && FEATURES.ORDER_SPLIT && getLinkedId(f['Parent Order'])) return;
+    // A lot never carries VS (057 lot_vs), so it is never «eligible» below —
+    // and the not-eligible branch would DELETE its pending intake movement
+    // (_plLotIntake). A lot's partner pallets are the intake's alone.
+    if (OrdersStock.isLot(f)) return;
     const partnerRec = Array.isArray(f['Partner']) ? f['Partner'][0] : null;
     const eligible = f['Pallet Exchange'] && f['Veroia Switch'] && f['Is Partner Trip'] && partnerRec;
     const evType = f['Direction'] === 'Import' ? 'PARTNER_DROPOFF' : 'PARTNER_PICKUP';
