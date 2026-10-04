@@ -244,7 +244,7 @@ async function installStubs(page) {
 }
 
 async function openBoard(browser, role, F, opts) {
-  const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 }, baseURL, locale: 'el-GR', timezoneId: 'Europe/Athens' });
+  const ctx = await browser.newContext({ viewport: { width: RIG_W, height: 900 }, baseURL, locale: 'el-GR', timezoneId: 'Europe/Athens' });
   const page = await ctx.newPage();
   const errs = [];
   page.on('console', m => { if (m.type() === 'error') errs.push(m.text().slice(0, 160)); });
@@ -284,6 +284,9 @@ async function openBoard(browser, role, F, opts) {
   return { ctx, page, errs, ref };
 }
 
+// RIG_W=1920 repeats every screen at that width; file names keep «-1440» so
+// before/after sets compare by name — the width lives in the output folder.
+const RIG_W = +(process.env.RIG_W || 1440);
 const shot = (page, name) => page.screenshot({ path: path.join(outDir, name) });
 const rowIdOf = (page, oid) => page.evaluate(o => (WINTL.rows.find(r => (r.orderIds || [r.orderId]).includes(o)) || {}).id, oid);
 // Join through the REAL panel: open «+ Κομμάτι από απόθεμα» on the truck's
@@ -323,6 +326,19 @@ if (MAIN) (async () => {
       return { over: l.scrollWidth > l.clientWidth + 1, fade: l.classList.contains('ovf'), looseInView: lr.right <= sr.right + 1 && lr.left >= sr.left }; });
     ok('shelf_overflow_signalled', fit.fade === fit.over && fit.looseInView, fit);
     ok('shelf_nointake_first', /nointake/.test(shelf.chips[0] || ''), shelf.chips);
+    // Owner 4/10: «πάνω δεξιά, όχι αριστερά» — the strip ends at the sheet's
+    // right edge and never starts in the left quarter (the export client
+    // column); the urgent first chip is still whole. Scrolled → left fade too.
+    const side = await page.evaluate(() => {
+      const inn = document.querySelector('#wi-shelf .wi-shelf-in').getBoundingClientRect(),
+        sh = document.querySelector('main.wk3-sheet').getBoundingClientRect(),
+        l = document.querySelector('.wi-shelf-list'), c0 = l.querySelector('.wi-shelf-chip').getBoundingClientRect(), lr = l.getBoundingClientRect();
+      const r = { rightGap: Math.round(sh.right - inn.right), leftShare: +((inn.left - sh.left) / sh.width).toFixed(2),
+        firstWhole: c0.left >= lr.left - 1 && c0.right <= lr.right + 1 };
+      l.scrollLeft = l.scrollWidth; _wiShelfFit(); r.leftFade = l.scrollLeft > 1 ? l.classList.contains('ovl') : 'no-scroll';
+      l.scrollLeft = 0; _wiShelfFit(); r.leftFadeOffAtStart = !l.classList.contains('ovl');
+      return r; });
+    ok('shelf_top_right', side.rightGap <= 16 && side.leftShare >= 0.24 && side.firstWhole && side.leftFade !== false && side.leftFadeOffAtStart, side);
     await shot(page, 'stock-shelf-2lots-compact-header-1440.png'); out.screens.push('stock-shelf-2lots-compact-header-1440.png');
 
     // Counters: the lot row and the loose piece are not «unmatched».

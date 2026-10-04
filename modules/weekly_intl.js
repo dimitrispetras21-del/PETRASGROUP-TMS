@@ -6014,11 +6014,13 @@ function _wiShelfChip(l,c){
   return `<button type="button" class="wi-shelf-chip ${escapeHtml(c.key)}" data-lot="${escapeHtml(l.id)}" onclick="_wiStockLotOpen(this,'${escapeHtml(l.id)}')" title="${escapeHtml(tip)}"><span aria-hidden="true">▣</span><b>${escapeHtml(f['Warehouse Name']||'—')}</b>${cc?`<span class="cc">${cc}</span>`:''}<span class="sep">·</span>${escapeHtml(f['Client Name']||'—')}<b class="n">${rem}/${stock}p</b><span class="wi-shelf-bar" aria-hidden="true"><i style="width:${pct}%"></i></span><span class="d">${days}</span>${flag?`<span class="fl">${flag}</span>`:''}</button>`;
 }
 // The chips scroll sideways with no scrollbar (28px leave no room for one):
-// the mouse wheel scrolls them too, and a fade on the right edge says «more»
-// while any chip is out of view — never a silent cut (DESIGN Κ6).
+// the mouse wheel scrolls them too, and a fade on each edge says «more»
+// while any chip is out of view on that side — never a silent cut (DESIGN Κ6;
+// the right-aligned strip of 4/10 scrolls far more often, so the left needs it).
 function _wiShelfFit(){
   const l=document.querySelector('#wi-shelf .wi-shelf-list'); if(!l) return;
   l.classList.toggle('ovf',l.scrollLeft+l.clientWidth<l.scrollWidth-1);
+  l.classList.toggle('ovl',l.scrollLeft>1);
 }
 function _wiShelfWheel(e,el){
   if(el.scrollWidth<=el.clientWidth||Math.abs(e.deltaY)<=Math.abs(e.deltaX)) return;

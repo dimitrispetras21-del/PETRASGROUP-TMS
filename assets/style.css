@@ -3133,17 +3133,26 @@ button.ecard-meta-row-btn, .ecard-meta-row button.badge {
    and the sticky day headers move down by exactly the strip — and by nothing
    when there is no strip (no .has-shelf → 0px). Chips never cut a warehouse or
    client name (DESIGN #6): they keep their width and the row scrolls sideways.
-   Tokens only; no money on this strip, ever. */
+   Tokens only; no money on this strip, ever.
+   RIGHT-aligned (owner 4/10: «η αποθήκη να είναι πάνω δεξιά, όχι αριστερά»):
+   the stock leaves as imports, so it sits above the ΑΝΑΘΕΣΗ/ΕΙΣΑΓΩΓΗ side and
+   stays off the export client column (max 75% of the sheet: one full chip at 1440). The list only
+   takes the width its chips need and scrolls (with the fade) beyond that. */
 .wk3.wi2 { --wi-shelf-h:0px; }
 .wk3.wi2.has-shelf { --wi-shelf-h:28px; }
 .wk3.wi2 .wi-shelf { position:sticky; top:0; z-index:31; height:var(--wi-shelf-h); overflow:hidden; background:var(--surface-page); }
 .wk3.wi2.has-shelf .wk3-cols { top:var(--wi-shelf-h); }
 .wk3.wi2.has-shelf .wk3-dayh { top:calc(28px + var(--wi-shelf-h)); }
-.wi-shelf-in { display:flex; align-items:center; gap:6px; height:28px; padding:2px 0 4px; box-sizing:border-box; }
-.wi-shelf-list { flex:1 1 auto; min-width:0; display:flex; align-items:center; gap:6px; overflow-x:auto; scrollbar-width:none; }
+.wi-shelf-in { display:flex; align-items:center; justify-content:flex-end; gap:6px; height:28px; padding:2px 0 4px; box-sizing:border-box;
+  max-width:75%; margin-left:auto; }
+.wi-shelf-list { flex:0 1 auto; min-width:0; display:flex; align-items:center; gap:6px; overflow-x:auto; scrollbar-width:none; }
 .wi-shelf-list::-webkit-scrollbar { display:none; }
 .wi-shelf-list.ovf { -webkit-mask-image:linear-gradient(to right, black calc(100% - 32px), transparent);
   mask-image:linear-gradient(to right, black calc(100% - 32px), transparent); }
+.wi-shelf-list.ovl { -webkit-mask-image:linear-gradient(to right, transparent, black 32px);
+  mask-image:linear-gradient(to right, transparent, black 32px); }
+.wi-shelf-list.ovl.ovf { -webkit-mask-image:linear-gradient(to right, transparent, black 32px, black calc(100% - 32px), transparent);
+  mask-image:linear-gradient(to right, transparent, black 32px, black calc(100% - 32px), transparent); }
 .wi-shelf-lbl { flex:none; font:700 11px 'Syne',sans-serif; letter-spacing:1.2px; color:var(--text-mid); }
 .wi-shelf-chip { flex:none; display:inline-flex; align-items:center; gap:5px; height:22px; padding:0 8px;
   border:1px solid var(--border); border-radius:var(--radius-full); background:var(--surface-card);
