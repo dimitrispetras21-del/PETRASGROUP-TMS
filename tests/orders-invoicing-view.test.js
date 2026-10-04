@@ -225,7 +225,7 @@ test('stock: the piece never appears and changes no total; the lot waits, then i
   assert.deepStrictEqual(V.tabCounts(V.baseList(withPiece, 'open')), V.tabCounts(V.baseList(without, 'open')));
   const lot = withPiece.find(it => it.id === 'iL');
   assert.deepStrictEqual([lot.state, lot.reason, lot.lot && lot.lot.id], ['blocked', 'stock', 'recLot1']);
-  assert.strictEqual(V.stockText(lot.lot), 'περιμένει κομμάτια: 13p στην αποθήκη · 1 σε κίνηση');
+  assert.strictEqual(V.stockText(lot.lot), 'περιμένει κομμάτια: 13p στην αποθήκη · 1 σε κίνηση · 0 χωρίς φορτηγό');
   assert.strictEqual(V.stockText(null), 'η κατάσταση της παρτίδας δεν διαβάστηκε');
   // a blocked lot is never in «Προς κοπή»; complete → ready, once, at the full client price
   const k0 = V.kpis(V.baseList(withPiece, PREV));
@@ -234,4 +234,44 @@ test('stock: the piece never appears and changes no total; the lot waits, then i
   assert.strictEqual(done.find(it => it.id === 'iL').state, 'ready');
   assert.deepStrictEqual([k1.ready - k0.ready, k1.readySum - k0.readySum, k1.blocked - k0.blocked], [1, 3300, -1]);
   assert.strictEqual(done.filter(it => it.ref === 'LOT-1' || it.ref === 'PC-1').length, 1, 'one invoice for the lot, none for the piece');
+});
+
+// E-07 (impact map 4/10): a piece returned to stock is waiting, not moving.
+test('stockText: «σε κίνηση» counts only pieces on a truck; returned ones are «χωρίς φορτηγό»', () => {
+  const lot = STOCK_LOT(false, { Pieces: 4, 'Pieces Delivered': 1, 'Pieces Without Truck': 2, 'Remaining Pallets': 7 });
+  assert.strictEqual(V.stockText(lot), 'περιμένει κομμάτια: 7p στην αποθήκη · 1 σε κίνηση · 2 χωρίς φορτηγό');
+  // absent counts (facade trap #2) are 0, never NaN or a negative
+  assert.strictEqual(V.stockText({ id: 'x', fields: {} }), 'περιμένει κομμάτια: 0p στην αποθήκη · 0 σε κίνηση · 0 χωρίς φορτηγό');
+});
+
+// PR-15/E-06 — OWNER-Q6 default (4/10): the ERP sheet of a LOT names the
+// pieces' deliveries and the last one's date, not the warehouse intake.
+test('ERP sheet of a complete lot: «N παραδόσεις (κομμάτια)» + «Last Piece Delivered»; ordinary rows unchanged', async () => {
+  const name = id => CLIENTS[id] || '';
+  const lastPiece = OrdersCommon.addDays(TODAY, -1);
+  const set = await stockSet([LOT_ORDER, PIECE_ORDER], STOCK_LOT(true, { 'Remaining Pallets': 0, Pieces: 2, 'Pieces Delivered': 2, 'Last Piece Delivered': lastPiece }));
+  const items = V.scopeFilter(V.annotate(set, name), 'all');
+  const lot = items.find(it => it.id === 'iL');
+  assert.deepStrictEqual([lot.erp.place, lot.erp.date, lot.erp.lot], ['2 παραδόσεις (κομμάτια)', lastPiece, true]);
+  assert.strictEqual(lot.deliv, OrdersCommon.ymd(LOT_ORDER.fields['Delivery DateTime']), 'the card keeps the order\'s own delivery (warehouse intake)');
+  const rows = V.csvRows(V.groupByClient(V.baseList(items, PREV)), () => null);
+  const lotRow = rows.find(r => r[1] === 'LOT-1');
+  assert.deepStrictEqual([lotRow[6], lotRow[7]], ['2 παραδόσεις (κομμάτια)', lastPiece]);
+  const plain = rows.find(r => r[1] === '6100118264');
+  assert.strictEqual(plain[7], OrdersCommon.ymd(fixture().intl[1].fields['Delivery DateTime']), 'an ordinary order keeps its delivery date');
+  // one piece → singular; lot record not read → said, never the warehouse
+  assert.strictEqual(V.erpDelivery({ stock: new Map([['recLot1', STOCK_LOT(true, { 'Pieces Delivered': 1 })]]) }, LOT_ORDER, { name: 'Αποθήκη Χ', sub: '' }, '').place, '1 παράδοση (κομμάτι)');
+  const unread = V.erpDelivery({ stock: null }, LOT_ORDER, { name: 'Αποθήκη Χ', sub: 'Budapest HU' }, '2026-10-01');
+  assert.deepStrictEqual([unread.place, unread.date], ['παραδόσεις κομματιών — η παρτίδα δεν διαβάστηκε', '']);
+});
+
+// E-05 (impact map 4/10): a lot waits to be invoiced from «Completed On».
+test('age of a lot: none while incomplete, from «Completed On» once complete — not from the warehouse intake', async () => {
+  const name = id => CLIENTS[id] || '';
+  const old = Object.assign({}, LOT_ORDER, { fields: Object.assign({}, LOT_ORDER.fields, { 'Delivery DateTime': OrdersCommon.addDays(TODAY, -45) + 'T10:00:00' }) });
+  const open = V.scopeFilter(V.annotate(await stockSet([old], STOCK_LOT(false)), name), 'all').find(it => it.id === 'iL');
+  assert.strictEqual(open.days, null, 'an incomplete lot has no age (it cannot be invoiced yet)');
+  const done = V.scopeFilter(V.annotate(await stockSet([old], STOCK_LOT(true, { 'Completed On': OrdersCommon.addDays(TODAY, -2) })), name), 'all').find(it => it.id === 'iL');
+  assert.strictEqual(done.days, 2);
+  assert.strictEqual(V.metricsOf([done]).overdue, 0, 'not «overdue» because of the 45 days in the warehouse');
 });

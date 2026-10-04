@@ -42,16 +42,19 @@ const OrdersInvoicingView = (() => {
       const client = (clientId && clientName(clientId)) || '—';
       const load = OC.placeOf(rec, 'load'), del = OC.placeOf(rec, 'del');
       const num = OC.numLabel(rec);
+      const deliv = OC.ymd(f['Delivery DateTime']);
       return {
         rec, id: rec.id, type: rec._type, f,
         state: st.key, reason: st.reason || '', lot: st.lot || null,
         week: OC.weekStartOf(rec) || '',
         price: OC.price(f),
         clientId, client,
-        deliv: OC.ymd(f['Delivery DateTime']),
-        days: OC.daysSinceDelivery(rec),
+        deliv,
+        // E-05: a lot's age counts from «Completed On», none while incomplete.
+        days: OrdersData.ageOf(set, rec),
         num, ref: String(f['Reference'] || ''),
         load, del,
+        erp: erpDelivery(set, rec, del, deliv),
         search: [client, num, f['Reference'], load.name, load.sub, del.name, del.sub, f['Invoice Number']]
           .filter(Boolean).map(fold).join(' '),
       };
@@ -60,10 +63,30 @@ const OrdersInvoicingView = (() => {
   // Why a stock lot (057) is not invoiceable yet — from its STOCK LOTS record
   // (absent counts are 0 on the facade). null lot = the lots were not read:
   // said as such, never as «0 στην αποθήκη».
+  // A piece returned to stock has no truck: it is waiting, not moving (E-07,
+  // impact map 4/10) — «σε κίνηση» counts only the pieces that ride a truck.
   function stockText(lot) {
     if (!lot) return 'η κατάσταση της παρτίδας δεν διαβάστηκε';
     const g = lot.fields || {}, n = v => Number(v) || 0;
-    return `περιμένει κομμάτια: ${n(g['Remaining Pallets'])}p στην αποθήκη · ${n(g['Pieces']) - n(g['Pieces Delivered'])} σε κίνηση`;
+    const loose = n(g['Pieces Without Truck']);
+    const moving = Math.max(0, n(g['Pieces']) - n(g['Pieces Delivered']) - loose);
+    return `περιμένει κομμάτια: ${n(g['Remaining Pallets'])}p στην αποθήκη · ${moving} σε κίνηση · ${loose} χωρίς φορτηγό`;
+  }
+  // «Παράδοση» on the ERP sheet, the print and «Αντιγραφή όλων».
+  // OWNER-Q6 default (4/10, impact map PR-15/E-06): a LOT is invoiced once,
+  // after its LAST piece — so the paper names the deliveries («N παραδόσεις
+  // (κομμάτια)», date = «Last Piece Delivered» of the STOCK LOTS record), not
+  // the warehouse intake the order itself records. The card keeps the order's
+  // own route. A lot whose record was not read says so — never the warehouse.
+  function erpDelivery(set, rec, del, deliv) {
+    const f = rec.fields || {};
+    const isLot = rec._type === 'intl' && typeof OrdersStock !== 'undefined' && OrdersStock.isLot(f);
+    if (!isLot) return { place: [del.name, del.sub].filter(Boolean).join(' · '), date: deliv || '', lot: false };
+    const lot = set && set.stock ? set.stock.get(OrdersStock.lotRecOfLot(f)) : null;
+    if (!lot) return { place: 'παραδόσεις κομματιών — η παρτίδα δεν διαβάστηκε', date: '', lot: true };
+    const g = lot.fields || {}, n = Number(g['Pieces Delivered']) || 0;
+    return { place: n === 1 ? '1 παράδοση (κομμάτι)' : n + ' παραδόσεις (κομμάτια)',
+      date: g['Last Piece Delivered'] ? OrdersCommon.ymd(g['Last Piece Delivered']) : '', lot: true };
   }
   // Only what this view is about: delivered orders (and the invoiced ones).
   // Not-yet-delivered and cancelled never belong to «Παραδομένες».
@@ -215,8 +238,8 @@ const OrdersInvoicingView = (() => {
         c && c['VAT Number'] ? String(c['VAT Number']) : '',
         addressLine(c),
         [it.load.name, it.load.sub].filter(Boolean).join(' · '),
-        [it.del.name, it.del.sub].filter(Boolean).join(' · '),
-        it.deliv || '',
+        it.erp.place,
+        it.erp.date,
         pal == null || pal === '' ? '' : String(pal),
         it.price === null ? '' : it.price.toFixed(2),
         OrdersCommon.isInvoiced(it.f) ? String(it.f['Invoice Number'] || '') : '',
@@ -241,7 +264,7 @@ const OrdersInvoicingView = (() => {
 
   const pure = { annotate, scopeFilter, weekStats, defaultWeek, stripWeeks, weekWord, baseList, tabCounts, tabFilter,
     searchFilter, groupByClient, kpis, dupCheck, nextReady, dateCheck, invoiceFields, undoFields, addressLine, csvRows,
-    metricsOf, dirWord, stockText };
+    metricsOf, dirWord, stockText, erpDelivery };
   if (typeof document === 'undefined') return { pure };
 
   // ── State ───────────────────────────────────────────────────────────────
@@ -919,9 +942,12 @@ const OrdersInvoicingView = (() => {
     const it = itemById(S.selId); if (!it) return;
     const c = it.clientId ? info(it.clientId) : null;
     const terms = c && c['Payment Terms Days'] != null && c['Payment Terms Days'] !== '' ? c['Payment Terms Days'] + ' ημέρες' : '';
-    const lines = [['Επωνυμία', (c && c['Company Name']) || it.client], ['ΑΦΜ', c && c['VAT Number']], ['Διεύθυνση', addressLine(c)],
-      ['Όροι πληρωμής', terms], ['Αναφορά πελάτη', it.ref], ['Ποσό', it.price === null ? '' : OC().eur(it.price)]]
-      .map(([k, v]) => k + '\t' + (v == null ? '' : String(v))).join('\n');
+    const rows = [['Επωνυμία', (c && c['Company Name']) || it.client], ['ΑΦΜ', c && c['VAT Number']], ['Διεύθυνση', addressLine(c)],
+      ['Όροι πληρωμής', terms], ['Αναφορά πελάτη', it.ref], ['Ποσό', it.price === null ? '' : OC().eur(it.price)]];
+    // A lot's deliveries go with the copy (OWNER-Q6 default, see erpDelivery):
+    // the ERP invoice of a lot covers the pieces, not the warehouse intake.
+    if (it.erp.lot) rows.splice(5, 0, ['Παράδοση', it.erp.place + (it.erp.date ? ' · ' + OC().dm(it.erp.date) : '')]);
+    const lines = rows.map(([k, v]) => k + '\t' + (v == null ? '' : String(v))).join('\n');
     try { await navigator.clipboard.writeText(lines); toast('Τα στοιχεία αντιγράφηκαν'); }
     catch (e) { toast('Η αντιγραφή δεν επιτράπηκε από τον browser — επίλεξε και αντέγραψε χειροκίνητα', 'warn'); }
   }
@@ -952,7 +978,7 @@ const OrdersInvoicingView = (() => {
         if (it.price !== null) total += it.price;
         const pal = it.type === 'intl' ? it.f['Total Pallets'] : it.f['Pallets'];
         const st = it.state === 'invoiced' ? 'ΤΠΥ ' + (it.f['Invoice Number'] || '—') : it.state === 'blocked' ? (it.reason === 'price' ? 'χωρίς τιμή' : it.reason === 'stock' ? 'περιμένει κομμάτια' : 'λείπει δελτίο') : 'προς κοπή';
-        return `<tr><td>${esc(it.num)}</td><td>${esc(it.ref)}</td><td>${esc([it.load.name, it.load.sub].filter(Boolean).join(' · '))}</td><td>${esc([it.del.name, it.del.sub].filter(Boolean).join(' · '))}</td><td>${esc(OC().dm(it.deliv))}</td><td class="r">${pal == null ? '' : esc(pal)}</td><td class="r">${it.price === null ? '—' : eur(it.price)}</td><td>${esc(st)}</td></tr>`;
+        return `<tr><td>${esc(it.num)}</td><td>${esc(it.ref)}</td><td>${esc([it.load.name, it.load.sub].filter(Boolean).join(' · '))}</td><td>${esc(it.erp.place)}</td><td>${esc(OC().dm(it.erp.date))}</td><td class="r">${pal == null ? '' : esc(pal)}</td><td class="r">${it.price === null ? '—' : eur(it.price)}</td><td>${esc(st)}</td></tr>`;
       }).join('');
       return `<tr class="g"><td colspan="6">${esc(g.client)}${c && c['VAT Number'] ? ' · ΑΦΜ ' + esc(c['VAT Number']) : ''}</td><td class="r">${eur(g.sum)}</td><td>${g.items.length}</td></tr>${rows}`;
     }).join('');
