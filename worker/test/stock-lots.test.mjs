@@ -554,7 +554,8 @@ test('PATCH /costs/stock-lots/<rec> (owner): writes ONLY warehouse_charge on the
   assert.deepEqual(r.json, { lot: READ_BACK });
   const upd = calls.find((c) => c.method === 'PATCH' && c.table === 'stock_lots');
   assert.deepEqual(upd.body, { warehouse_charge: 150.5 });
-  assert.equal(upd.params.get('legacy_id'), 'eq.recLOT1');
+  assert.equal(upd.params.get('id'), 'eq.7', 'the write targets the primary key just read — one row at most');
+  assert.equal(upd.params.get('legacy_id'), null);
   assert.equal(upd.params.get('deleted_at'), 'is.null', 'a lot soft-deleted between the lookup and the write is not touched');
   const audited = auditRows();
   assert.equal(audited.length, 1);
@@ -731,6 +732,13 @@ test('PATCH /costs/settings: full_truck_pallets ≤ 0 → 400 in Greek before an
     assert.equal(r.status, 400, `${value}: ${r.text}`);
     assert.deepEqual(r.json, { error: 'Οι παλέτες γεμάτου φορτηγού πρέπει να είναι πάνω από 0' }, String(value));
     assert.equal(calls.length, 0, String(value));
+  }
+  // 1e999 / NaN-ish raw bodies: Infinity would reach the DB as null (review round 2, P3-c)
+  for (const raw of ['{"key":"x_import","value":1e999}', '{"key":"full_truck_pallets","value":1e999}', '{"key":"x_export","value":-1e999}']) {
+    calls.length = 0;
+    const r = await call('owner', 'PATCH', '/costs/settings', raw);
+    assert.equal(r.status, 400, `${raw}: ${r.text}`);
+    assert.equal(calls.length, 0, raw);
   }
   on('GET', 'ct_settings', (u) => json([{ key: u.searchParams.get('key').slice(3), value: 1, updated_at: '2026-10-01T00:00:00Z' }]));
   on('PATCH', 'ct_settings', (u, body) => json([{ key: u.searchParams.get('key').slice(3), ...body }]));

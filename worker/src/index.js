@@ -3406,7 +3406,10 @@ async function handleCosts(request, url, origin, env) {
     // ---- PATCH /costs/settings  {key, value} (owner) ----
     if (resource === "settings" && method === "PATCH") {
       const body = await request.json().catch(() => null);
-      if (!body || !body.key || typeof body.value !== "number") {
+      // Number.isFinite: a JSON 1e999 parses to Infinity, passes typeof, and
+      // JSON.stringify would then send value:null to the DB — a setting the
+      // PnL views read would silently turn NULL (review round 2, P3-c).
+      if (!body || !body.key || typeof body.value !== "number" || !Number.isFinite(body.value)) {
         return jsonError("key + numeric value required", 400, origin, env);
       }
       // full_truck_pallets = F, the divisor of a stock piece's VS charge
@@ -4077,9 +4080,10 @@ async function handleCosts(request, url, origin, env) {
       if (!before) return jsonError("Η παρτίδα δεν βρέθηκε", 404, origin, env);
       let updated;
       try {
-        // deleted_at again on the write: a lot unmarked between the lookup and
-        // this PATCH matches 0 rows (→ 409 below), it is never written.
-        updated = await ctDbPatch(env, "stock_lots", `legacy_id=eq.${encodeURIComponent(recId)}&deleted_at=is.null`, { warehouse_charge: charge });
+        // By the primary key just read (one row at most, whatever happens to
+        // legacy_id), and deleted_at again: a lot unmarked between the lookup
+        // and this PATCH matches 0 rows (→ 409 below), it is never written.
+        updated = await ctDbPatch(env, "stock_lots", `id=eq.${Number(before.id)}&deleted_at=is.null`, { warehouse_charge: charge });
       } catch (e) {
         const rule = stockRuleError(e);
         if (rule) return stockRuleResponse(rule, origin, env);
