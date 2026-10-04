@@ -225,6 +225,15 @@ function installPayrollMocks(page, opts) {
       const e = store.entries.find(x => x.id === entryId);
       if (!e) return json(route, {}, 404);
       if (body.cancel) { e.cancelled = true; e.deleted_reason = body.reason || ''; }
+      else if (body.needs_review === false) {
+        // «Ελέγχθηκε» (4/10) — mirrors ledger-rules.mjs validatePatch: only
+        // {needs_review:false, reason}, and the reason REPLACES review_note.
+        // opts.ignoreReviewPatch answers 200 without writing anything — the
+        // «green toast that lied» case the re-read check must catch.
+        const extra = Object.keys(body).filter(k => k !== 'needs_review' && k !== 'reason');
+        if (extra.length || !String(body.reason || '').trim()) return json(route, { error: 'bad clear-review body' }, 400);
+        if (!opts.ignoreReviewPatch) { e.needs_review = false; e.review_note = String(body.reason).trim(); }
+      }
       else if (body.restore) {
         // v3β «Επαναφορά ακύρωσης» — owner/management only PATCH; the mock
         // doesn't enforce role (the rig proves the role gate via the DOM:
@@ -1261,6 +1270,125 @@ async function runCashLockFlow(browser) {
   return { consoleErrors, captured };
 }
 
+// ── «Ελέγχθηκε» (4/10): a flagged line (needs_review) shows the word, its
+// «···» menu offers .dl-menu-review, the modal shows WHY it was flagged, an
+// empty reason sends nothing, a reason sends exactly {needs_review:false,
+// reason: <old note> · ελέγχθηκε DD/MM/YYYY από <name>: <reason>}, and the
+// verdict comes from the re-read row. Management = Θοδωρής, who enters payroll.
+const REVIEW_NOTE = 'Μετρητά Μ 97.00 € χειροκίνητο ≠ γραμμές CASH 77.00 € (3) — ξαναγράφτηκε από τις γραμμές 21/09/2026 (042)';
+function reviewEntry() {
+  return baseEntry({ id: 9, entry_type: 'trip', entry_date: '2026-08-20', trip_value: null, expenses: 77, rt_id: 9009, rt_code: 'RT-9009',
+    needs_review: true, review_note: REVIEW_NOTE, route_text: 'Βέροια → Μιλάνο' });
+}
+function todayDMY() { const d = new Date(); return pad2(d.getDate()) + '/' + pad2(d.getMonth() + 1) + '/' + d.getFullYear(); }
+async function openAugustCard(page) {
+  await gotoPage(page, 'payroll', BASE_URL);
+  await page.waitForSelector('.dl-page', { timeout: 15000 });
+  await page.evaluate(id => renderPayrollDriver(id), DRIVER_ID);
+  await page.waitForSelector('.dl-ledger', { timeout: 15000 });
+  await page.locator('.dl-ychip[data-year="2026"]').click();
+  await page.waitForTimeout(100);
+  await page.selectOption('#dlMonth', '08');
+  await page.waitForTimeout(150);
+}
+async function toastState(page) {
+  return page.evaluate(() => { const t = document.getElementById('toast'); return t ? { text: t.innerText, bg: t.style.background } : null; });
+}
+
+async function runReviewClearFlow(browser) {
+  console.log('\n== management · «Ελέγχθηκε» σε γραμμή «θέλει έλεγχο» ==');
+  const { context, page, consoleErrors } = await newPage(browser, 'management');
+  const { captured } = installPayrollMocks(page, { extraEntries: [reviewEntry()] });
+  await openAugustCard(page);
+  const row9 = page.locator('.dl-row[data-entry="9"]');
+  assert(await page.locator('.dl-row.review[data-entry="9"]').count() === 1, 'id 9 (needs_review) keeps the amber .review inset');
+  assert((await row9.locator('.dl-review-word').innerText()).trim() === 'θέλει έλεγχο', 'id 9 says «θέλει έλεγχο» in words');
+  assert(await row9.locator('.dl-review-word').getAttribute('title') === REVIEW_NOTE, 'the word carries the review_note as title');
+  assert(await page.locator('.dl-review-word').count() === 1, 'only the flagged line carries the word');
+  const shotRow = path.join(SHOT_DIR, 'payroll-review-01-flagged-row-1440.png');
+  await page.screenshot({ path: shotRow, fullPage: true }); console.log('  screenshot: ' + shotRow);
+  // a non-flagged live row never offers the action
+  await page.locator('.dl-row[data-entry="2"] .dl-more').click();
+  await page.waitForSelector('.dl-menu', { timeout: 5000 });
+  assert(await page.locator('.dl-menu-review').count() === 0, 'id 2 (not flagged): menu has NO .dl-menu-review');
+  await page.keyboard.press('Escape');
+  await page.waitForTimeout(100);
+  await row9.locator('.dl-more').click();
+  await page.waitForSelector('.dl-menu', { timeout: 5000 });
+  assert(await page.locator('.dl-menu-review').count() === 1, 'id 9: menu offers .dl-menu-review «Ελέγχθηκε»');
+  assert(await page.locator('.dl-menu button').first().getAttribute('class') === 'dl-menu-review', '«Ελέγχθηκε» is the first item; Ακύρωση stays last');
+  await page.locator('.dl-menu-review').click();
+  await page.waitForSelector('#dlModal.open #dlReason', { timeout: 5000 });
+  const sub = await page.locator('#dlModal .s').first().innerText();
+  assert(sub.includes(REVIEW_NOTE), 'the modal shows why the line was flagged: ' + sub.slice(0, 60) + '…');
+  const shotModal = path.join(SHOT_DIR, 'payroll-review-02-modal-1440.png');
+  await page.screenshot({ path: shotModal }); console.log('  screenshot: ' + shotModal);
+  const before = captured.patches.length;
+  await page.locator('#dlReasonSave').click();
+  await page.waitForTimeout(150);
+  assert(captured.patches.length === before, 'empty reason: NO PATCH is sent');
+  assert(/υποχρεωτική/.test(await page.locator('#dlErr').innerText()), 'empty reason: #dlErr says the reason is required');
+  await Promise.all([
+    page.waitForResponse(r => r.request().method() === 'PATCH' && r.url().includes('/costs/ledger/9'), { timeout: 10000 }),
+    answerReasonModal(page, 'proof: σωστές οι γραμμές μετρητών'),
+  ]);
+  await page.waitForTimeout(250);
+  const p = captured.patches[captured.patches.length - 1];
+  const expected = REVIEW_NOTE + ' · ελέγχθηκε ' + todayDMY() + ' από Critic: proof: σωστές οι γραμμές μετρητών';
+  assert(p.id === 9 && JSON.stringify(Object.keys(p.body).sort()) === '["needs_review","reason"]', 'PATCH /costs/ledger/9 carries exactly {needs_review, reason}: ' + JSON.stringify(Object.keys(p.body)));
+  assert(p.body.needs_review === false && p.body.reason === expected, 'reason = old note · ελέγχθηκε <today> από <name>: <reason> — ' + p.body.reason);
+  assert(captured.ledgerGets.length >= 2, 'the card was re-read after the PATCH (' + captured.ledgerGets.length + ' GETs)');
+  await page.waitForSelector('.dl-row[data-entry="9"]:not(.review)', { timeout: 5000 });
+  assert(await page.locator('.dl-review-word').count() === 0, 'after the re-read the word is gone');
+  const t = await toastState(page);
+  assert(t && /Ελέγχθηκε/.test(t.text) && /--ok/.test(t.bg), 'success toast only AFTER the re-read proved it: ' + JSON.stringify(t));
+  const shotDone = path.join(SHOT_DIR, 'payroll-review-03-cleared-1440.png');
+  await page.screenshot({ path: shotDone }); console.log('  screenshot: ' + shotDone);
+  await row9.locator('.dl-more').click();
+  await page.waitForSelector('.dl-menu', { timeout: 5000 });
+  assert(await page.locator('.dl-menu-review').count() === 0, 'cleared line: the menu no longer offers «Ελέγχθηκε»');
+  await context.close();
+  return { consoleErrors };
+}
+
+async function runReviewNotPersistedFlow(browser) {
+  console.log('\n== accountant · «Ελέγχθηκε» που ΔΕΝ γράφτηκε (200 χωρίς εγγραφή) ==');
+  const { context, page, consoleErrors } = await newPage(browser, 'accountant');
+  const { store, captured } = installPayrollMocks(page, { extraEntries: [reviewEntry()], ignoreReviewPatch: true });
+  await openAugustCard(page);
+  await page.locator('.dl-row[data-entry="9"] .dl-more').click();
+  await page.waitForSelector('.dl-menu', { timeout: 5000 });
+  assert(await page.locator('.dl-menu-review').count() === 1, 'accountant: id 9 menu offers «Ελέγχθηκε» (ledger PATCH is hers too)');
+  await page.locator('.dl-menu-review').click();
+  // race: a trigger appends a NEW cause while the modal is open — the user
+  // never saw it, so nothing may be sent and the card must show the new note
+  const NEW_CAUSE = ' · ο γύρος RT-9009 ξανάνοιξε (046)';
+  store.entries.find(x => x.id === 9).review_note += NEW_CAUSE;
+  const beforeRace = captured.patches.length;
+  await answerReasonModal(page, 'proof: δεν είδα τη νέα αιτία');
+  await page.waitForTimeout(300);
+  assert(captured.patches.length === beforeRace, 'cause changed meanwhile → NO PATCH sent');
+  const tr = await toastState(page);
+  assert(tr && /άλλαξε στο μεταξύ/.test(tr.text) && /--warn/.test(tr.bg), 'warn toast asks to read the new cause: ' + JSON.stringify(tr));
+  assert((await page.locator('.dl-row[data-entry="9"] .dl-review-word').getAttribute('title')).endsWith(NEW_CAUSE), 'the card now shows the new cause in the word title');
+  await page.locator('.dl-row[data-entry="9"] .dl-more').click();
+  await page.waitForSelector('.dl-menu', { timeout: 5000 });
+  await page.locator('.dl-menu-review').click();
+  await Promise.all([
+    page.waitForResponse(r => r.request().method() === 'PATCH' && r.url().includes('/costs/ledger/9'), { timeout: 10000 }),
+    answerReasonModal(page, 'proof: δοκιμή'),
+  ]);
+  await page.waitForTimeout(250);
+  assert(captured.patches.some(x => x.id === 9 && x.body.needs_review === false), 'the PATCH was sent and answered 200');
+  const t = await toastState(page);
+  assert(t && /ΔΕΝ γράφτηκε/.test(t.text) && /--danger/.test(t.bg), 'a 200 that wrote nothing → red «ΔΕΝ γράφτηκε», never a green toast: ' + JSON.stringify(t));
+  assert(await page.locator('.dl-row.review[data-entry="9"] .dl-review-word').count() === 1, 'the line still reads «θέλει έλεγχο» — the screen shows the table, not the wish');
+  const shotFail = path.join(SHOT_DIR, 'payroll-review-04-not-persisted-1440.png');
+  await page.screenshot({ path: shotFail }); console.log('  screenshot: ' + shotFail);
+  await context.close();
+  return { consoleErrors };
+}
+
 async function runDriverRtsFlow(browser) {
   console.log('\n== accountant · καρτέλα · RTs χωρίς γραμμή (.dl-rts) ==');
   const { context, page, consoleErrors } = await newPage(browser, 'accountant');
@@ -1408,10 +1536,13 @@ async function runManagementFlow(browser) {
   await page.evaluate(id => renderPayrollDriver(id), DRIVER_ID);
   await page.waitForSelector('.dl-ledger', { timeout: 15000 });
   assert(await page.locator('.dl-page').count() === 1, 'management: the driver card renders (.dl-page)');
-  assert(await page.locator('.dl-row[data-entry]').count() > 0, 'management: ledger rows render');
+  // Rows are counted AFTER picking August: the card opens on the CURRENT
+  // month, and from October 2026 on the fixture (Jul–Sep) has no rows there —
+  // the check went red on the calendar alone (measured 4/10), not on code.
   await page.locator('.dl-ychip[data-year="2026"]').click();
   await page.selectOption('#dlMonth', '08');
   await page.waitForTimeout(150);
+  assert(await page.locator('.dl-row[data-entry]').count() > 0, 'management: ledger rows render');
 
   // ── v3β «Επαναφορά ακύρωσης» (α, owner 15/9): management sees .dl-more on
   // the cancelled row (id 5, cancelled from the fixture's own start), with
@@ -1497,17 +1628,21 @@ async function runDispatcherFlow(browser) {
     const ownerRestore = await runOwnerRestoreFlow(browser);
     const disp = await runDispatcherFlow(browser);
     const cashLock = await runCashLockFlow(browser);
+    const review = await runReviewClearFlow(browser);
+    const reviewFail = await runReviewNotPersistedFlow(browser);
     const all = [
       ...home.consoleErrors, ...homeGap.consoleErrors, ...bulk.consoleErrors,
       ...card.consoleErrors, ...rts.consoleErrors, ...typeLink.consoleErrors,
       ...vp.consoleErrors, ...print.consoleErrors,
       ...mgmt.consoleErrors, ...ownerRestore.consoleErrors, ...disp.consoleErrors, ...cashLock.consoleErrors,
+      ...review.consoleErrors, ...reviewFail.consoleErrors,
     ];
     console.log('\n== console errors ==');
     console.log('home:', home.consoleErrors.length, 'homeGap:', homeGap.consoleErrors.length, 'bulk:', bulk.consoleErrors.length,
       'card:', card.consoleErrors.length, 'rts:', rts.consoleErrors.length, 'typeLink:', typeLink.consoleErrors.length,
       'viewport:', vp.consoleErrors.length, 'print:', print.consoleErrors.length,
-      'management:', mgmt.consoleErrors.length, 'ownerRestore:', ownerRestore.consoleErrors.length, 'dispatcher:', disp.consoleErrors.length, 'cashLock:', cashLock.consoleErrors.length);
+      'management:', mgmt.consoleErrors.length, 'ownerRestore:', ownerRestore.consoleErrors.length, 'dispatcher:', disp.consoleErrors.length, 'cashLock:', cashLock.consoleErrors.length,
+      'review:', review.consoleErrors.length, 'reviewFail:', reviewFail.consoleErrors.length);
     if (all.length) all.forEach(e => console.log('  ! ' + e));
     console.log('\n== captured request bodies (accountant) ==');
     console.log(JSON.stringify({ posts: card.captured.posts, patches: card.captured.patches }, null, 2));
