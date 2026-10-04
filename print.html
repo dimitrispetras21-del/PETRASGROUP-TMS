@@ -255,7 +255,8 @@ const T_ORDERS='tblgHlNmLBH3JTdIM',T_PARTNERS='tblLHl5m8bqONfhWv',
 var orderStops=[];
 // Ονοματεπώνυμο του χρήστη που εκτυπώνει (owner 12/8) — ίδιο origin, οπότε
 // διαβάζεται το tms_user του app· fallback στον owner αν λείπει.
-const DISPATCHER=(function(){try{return JSON.parse(localStorage.getItem('tms_user')||'{}').name||'Δ. Πέτρας';}catch(e){return 'Δ. Πέτρας';}})();
+// Printed only into HTML (meta grid, sheet header, cover): escaped once here.
+const DISPATCHER=(function(){try{return escHtml(JSON.parse(localStorage.getItem('tms_user')||'{}').name||'Δ. Πέτρας');}catch(e){return 'Δ. Πέτρας';}})();
 // Επικοινωνία στα φύλλα/WhatsApp — συμπλήρωσε τα τηλέφωνα (κενό = δεν τυπώνεται)
 const OFFICE_PHONE='';      // π.χ. '+30 23320 XXXXX'
 const EMERGENCY_PHONE='';   // π.χ. '+30 69X XXX XXXX'
@@ -296,6 +297,10 @@ function fmtDT(s){
   }catch(e){return s;}
 }
 function eur(v){if(!v&&v!==0)return'—';return parseFloat(v).toLocaleString('el-GR',{minimumFractionDigits:2,maximumFractionDigits:2})+' EUR';}
+// Every text that comes from data is escaped where it is concatenated into
+// HTML (sheets, cover, title bar). The WhatsApp text (waBuild) is plain text
+// and stays unescaped; URLs built from data encode the data parts.
+function escHtml(s){ return s == null ? '' : String(s).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
 
 // Proxy-mode auth: send the logged-in user's JWT; the Worker swaps it for the PAT.
 function atAuthHeader(){
@@ -360,7 +365,7 @@ var LBL_GR={coords:'Συντ/νες',cancel:'Ακυρώνει κάθε προη�
 // Maps link· αν δεν φορτώσει (offline/μπλοκ) κρύβεται, το link μένει τυπωμένο.
 function stopQR(lat,lng){
   if(!lat||!lng) return '';
-  var u='https://maps.google.com/?q='+lat+','+lng;
+  var u='https://maps.google.com/?q='+encodeURIComponent(lat)+','+encodeURIComponent(lng);
   return '<img class="stop-qr" alt="" onerror="this.style.display=\'none\'" src="https://api.qrserver.com/v1/create-qr-code/?size=148x148&margin=0&data='+encodeURIComponent(u)+'">';
 }
 var _stopSeq=0; // συνεχής αρίθμηση σημείων ανά έγγραφο (①②③…)
@@ -380,6 +385,7 @@ function hasTime(s){
 // dtLabel: 'loading' | 'delivery' | 'crossdock'
 // tag (optional, group cover only — finding #6): small order-of-origin label
 // printed next to the type badge, e.g. "ΠΑΡΑΓΓΕΛΙΑ A · 269 · Lidl Ecser".
+// tag arrives as HTML: buildCoverDoc escapes its data parts.
 function buildCard(num,loc,dtLabel,dt,pals,palType,showDetails,goods,pe,gw,temp,refr,tag){
   var L=LBL||LBL_EN;
   var typeCls='', typeLbl='';
@@ -387,31 +393,31 @@ function buildCard(num,loc,dtLabel,dt,pals,palType,showDetails,goods,pe,gw,temp,
   else if(dtLabel==='delivery'){typeCls='unload'; typeLbl=L.unload;}
   else if(dtLabel==='crossdock'){typeCls='crossdock'; typeLbl='CROSS-DOCK';}
   var seq=++_stopSeq;
-  var mapsUrl=(loc.lat&&loc.lng)?'https://maps.google.com/?q='+loc.lat+','+loc.lng:'';
+  var mapsUrl=(loc.lat&&loc.lng)?'https://maps.google.com/?q='+encodeURIComponent(loc.lat)+','+encodeURIComponent(loc.lng):'';
 
   var h='<div class="stop '+typeCls+'">';
   h+='<div class="num">'+seq+'</div>';
   h+=stopQR(loc.lat,loc.lng);
   h+='<span class="type">'+typeLbl+'</span>';
   if(tag)h+='<span class="stoptag">'+tag+'</span>';
-  h+='<div class="name">'+loc.name+'</div>';
+  h+='<div class="name">'+escHtml(loc.name)+'</div>';
   var addrBits=[];
-  if(loc.address)addrBits.push(loc.address);
-  if(mapsUrl)addrBits.push(L.coords+': '+loc.lat+', '+loc.lng+' · <a href="'+mapsUrl+'" target="_blank">📍 '+mapsUrl.replace('https://','')+'</a>');
+  if(loc.address)addrBits.push(escHtml(loc.address));
+  if(mapsUrl)addrBits.push(L.coords+': '+escHtml(loc.lat)+', '+escHtml(loc.lng)+' · <a href="'+escHtml(mapsUrl)+'" target="_blank">📍 '+escHtml(mapsUrl.replace('https://',''))+'</a>');
   if(addrBits.length)h+='<div class="addr">'+addrBits.join('<br>')+'</div>';
   h+='<div class="grid">';
   var withTime=hasTime(dt);
   var dtLbl=dtLabel==='delivery'?(withTime?L.dtDel:L.dtDelDateOnly):(withTime?L.dtLoad:L.dtLoadDateOnly);
-  h+='<div class="f"><b>'+dtLbl+'</b><span class="big">'+fmtDT(dt)+'</span></div>';
-  if(loc.hours)h+='<div class="f"><b>'+L.hours+'</b><span>'+loc.hours+'</span></div>';
-  if(loc.days)h+='<div class="f"><b>'+L.days+'</b><span>'+loc.days+'</span></div>';
-  h+='<div class="f"><b>'+L.pal+'</b><span>'+(pals||'—')+' × '+(palType||'EUR')+'</span></div>';
+  h+='<div class="f"><b>'+dtLbl+'</b><span class="big">'+escHtml(fmtDT(dt))+'</span></div>';
+  if(loc.hours)h+='<div class="f"><b>'+L.hours+'</b><span>'+escHtml(loc.hours)+'</span></div>';
+  if(loc.days)h+='<div class="f"><b>'+L.days+'</b><span>'+escHtml(loc.days)+'</span></div>';
+  h+='<div class="f"><b>'+L.pal+'</b><span>'+escHtml(pals||'—')+' × '+escHtml(palType||'EUR')+'</span></div>';
   if(showDetails){
-    if(goods)h+='<div class="f"><b>'+L.goods+'</b><span>'+goods+'</span></div>';
-    h+='<div class="f"><b>'+L.pe+'</b><span class="'+(pe==='YES'?'hot':'')+'">'+(pe==='YES'?L.yes:pe==='NO'?L.no:pe)+'</span></div>';
-    if(gw)h+='<div class="f"><b>'+L.gw+'</b><span>'+gw+' KG</span></div>';
-    if(temp!==''&&temp!=null)h+='<div class="f"><b>'+L.temp+'</b><span class="hot">'+temp+'°C</span></div>';
-    if(refr)h+='<div class="f"><b>'+L.refr+'</b><span>'+refr+'</span></div>';
+    if(goods)h+='<div class="f"><b>'+L.goods+'</b><span>'+escHtml(goods)+'</span></div>';
+    h+='<div class="f"><b>'+L.pe+'</b><span class="'+(pe==='YES'?'hot':'')+'">'+(pe==='YES'?L.yes:pe==='NO'?L.no:escHtml(pe))+'</span></div>';
+    if(gw)h+='<div class="f"><b>'+L.gw+'</b><span>'+escHtml(gw)+' KG</span></div>';
+    if(temp!==''&&temp!=null)h+='<div class="f"><b>'+L.temp+'</b><span class="hot">'+escHtml(temp)+'°C</span></div>';
+    if(refr)h+='<div class="f"><b>'+L.refr+'</b><span>'+escHtml(refr)+'</span></div>';
   }
   h+='</div><div style="clear:both"></div></div>';return h;
 }
@@ -460,9 +466,9 @@ function routeStrip(f,isExport,veroiaSwitch,VEROIA){
     if(veroiaSwitch&&!isExport) dd=vcd||(dd?new Date(new Date(dd).getTime()-86400000).toISOString():dd);
   }catch(e){}
   return '<div class="route2">'+
-    '<div class="side"><div class="k">'+L.from+'</div><div class="n">'+from+'</div><div class="d">'+fmtDT(ld)+'</div></div>'+
+    '<div class="side"><div class="k">'+L.from+'</div><div class="n">'+escHtml(from)+'</div><div class="d">'+escHtml(fmtDT(ld))+'</div></div>'+
     '<div class="mid">→</div>'+
-    '<div class="side to"><div class="k">'+L.to+'</div><div class="n">'+to+'</div><div class="d">'+fmtDT(dd)+'</div></div>'+
+    '<div class="side to"><div class="k">'+L.to+'</div><div class="n">'+escHtml(to)+'</div><div class="d">'+escHtml(fmtDT(dd))+'</div></div>'+
   '</div>';
 }
 
@@ -626,7 +632,7 @@ async function loadAll(){
     }
     renderDocs(htmlArr);
   }catch(err){
-    document.getElementById('loading').innerHTML='<span style="color:#DC2626">Error: '+err.message+'</span>';
+    document.getElementById('loading').innerHTML='<span style="color:#DC2626">Error: '+escHtml(err.message)+'</span>';
   }
 }
 
@@ -734,7 +740,7 @@ function generatePDF(orderRec, bare){ // bare (Wave 3): no toolbar — docs 2..N
   var badgeHTML=badges(f);
   var rawNotes=f['Notes']||'';
   var urgent=/urgent|προσοχή|attention|critical|must|fragile|εύθραυστ|χειριστεί|χειρισμ|ασφαλ/i.test(rawNotes);
-  var notesHTML=rawNotes?'<div class="notes-box'+(urgent?' urgent':'')+'"><b>'+(urgent?'⚠ ':'')+'Notes:</b> '+rawNotes+'</div>':'';
+  var notesHTML=rawNotes?'<div class="notes-box'+(urgent?' urgent':'')+'"><b>'+(urgent?'⚠ ':'')+'Notes:</b> '+escHtml(rawNotes)+'</div>':'';
 
   var titleStr=isPartner?('Partner Assignment Order — '+legLabel+' — W'+wk):('Εντολή Οδηγού — '+legLabelGr+' — W'+wk);
   // Wave 3 (owner 6/9): a leg carries 'Parent Order'/'Leg No' once migration
@@ -753,20 +759,20 @@ function generatePDF(orderRec, bare){ // bare (Wave 3): no toolbar — docs 2..N
   // v2.1 chips φορτίου — PE πρώτης τάξης (εγκεκριμένο)
   var peYes=!!f['Pallet Exchange'];
   var chipsHTML='<div class="cargo">'+
-    '<div class="chip"><div class="k">'+LBL.pal+'</div><div class="v">'+(fv(f['Total Pallets'])||'—')+' <small>× '+(fv(f['Pallet Type'])||'EUR')+'</small></div></div>'+
+    '<div class="chip"><div class="k">'+LBL.pal+'</div><div class="v">'+escHtml(fv(f['Total Pallets'])||'—')+' <small>× '+escHtml(fv(f['Pallet Type'])||'EUR')+'</small></div></div>'+
     '<div class="chip '+(peYes?'pe-yes':'pe-no')+'"><div class="k">'+LBL.pe+'</div><div class="v">'+(peYes?LBL.yes:LBL.no)+'</div></div>'+
-    ((f['Temperature °C']!==''&&f['Temperature °C']!=null)?'<div class="chip temp"><div class="k">'+LBL.temp+'</div><div class="v">'+f['Temperature °C']+'°C'+(f['Refrigerator Mode']?' <small>'+f['Refrigerator Mode']+'</small>':'')+'</div></div>':'')+
-    (fv(f['Goods'])?'<div class="chip"><div class="k">'+LBL.goods+'</div><div class="v" style="font-size:11.5px">'+fv(f['Goods'])+'</div></div>':'')+
-    (f['Gross Weight kg']?'<div class="chip"><div class="k">'+LBL.gw+'</div><div class="v">'+f['Gross Weight kg']+' <small>KG</small></div></div>':'')+
+    ((f['Temperature °C']!==''&&f['Temperature °C']!=null)?'<div class="chip temp"><div class="k">'+LBL.temp+'</div><div class="v">'+escHtml(f['Temperature °C'])+'°C'+(f['Refrigerator Mode']?' <small>'+escHtml(f['Refrigerator Mode'])+'</small>':'')+'</div></div>':'')+
+    (fv(f['Goods'])?'<div class="chip"><div class="k">'+LBL.goods+'</div><div class="v" style="font-size:11.5px">'+escHtml(fv(f['Goods']))+'</div></div>':'')+
+    (f['Gross Weight kg']?'<div class="chip"><div class="k">'+LBL.gw+'</div><div class="v">'+escHtml(f['Gross Weight kg'])+' <small>KG</small></div></div>':'')+
     (f['High Risk Flag']&&!isPartner?'<div class="chip alert"><div class="k">Σημάνσεις</div><div class="v">High Risk</div></div>':'')+
     '</div>';
 
   // Επικοινωνία (μόνο συμπληρωμένα)
   var contactBits=[];
-  if(OFFICE_PHONE)contactBits.push('<span><b>'+LBL.office+':</b> '+OFFICE_PHONE+'</span>');
-  if(EMERGENCY_PHONE)contactBits.push('<span><b>'+LBL.emrg+':</b> '+EMERGENCY_PHONE+'</span>');
-  if(OFFICE_EMAIL)contactBits.push('<span><b>Email:</b> '+OFFICE_EMAIL+'</span>');
-  if(INVOICE_EMAIL)contactBits.push('<span><b>Invoicing:</b> '+INVOICE_EMAIL+'</span>');
+  if(OFFICE_PHONE)contactBits.push('<span><b>'+LBL.office+':</b> '+escHtml(OFFICE_PHONE)+'</span>');
+  if(EMERGENCY_PHONE)contactBits.push('<span><b>'+LBL.emrg+':</b> '+escHtml(EMERGENCY_PHONE)+'</span>');
+  if(OFFICE_EMAIL)contactBits.push('<span><b>Email:</b> '+escHtml(OFFICE_EMAIL)+'</span>');
+  if(INVOICE_EMAIL)contactBits.push('<span><b>Invoicing:</b> '+escHtml(INVOICE_EMAIL)+'</span>');
   var contactHTML=contactBits.length?'<div class="contact2">'+contactBits.join('')+'</div>':'';
 
   // Checklist οδηγού (εγκεκριμένο #2)
@@ -776,7 +782,7 @@ function generatePDF(orderRec, bare){ // bare (Wave 3): no toolbar — docs 2..N
   var pbarHTML=bare?'':'<div class="pbar"><div class="pbar-left">'+
     '<span class="pbar-logo">PETRAS<span> GROUP</span></span>'+
     '<div class="pbar-div"></div>'+
-    '<span class="pbar-title">'+titleStr+'</span>'+
+    '<span class="pbar-title">'+escHtml(titleStr)+'</span>'+
     '</div><div><button class="pbar-btn wa" onclick="copyWA(this)">📋 WhatsApp</button><button class="pbar-btn" onclick="window.print()">Print / PDF</button></div></div>'+
     '<div class="pbar-spacer"></div>';
 
@@ -786,11 +792,11 @@ function generatePDF(orderRec, bare){ // bare (Wave 3): no toolbar — docs 2..N
     :{date:'Ημερομηνία',week:'Εβδομάδα',cat:'Κατηγορία',disp:'Dispatcher',ord:'Αρ. Εντολής',ref:'Reference',flags:'Σημάνσεις'};
   var metaHTML='<div class="meta">'+
     '<div class="meta-item"><span class="meta-lbl">'+_m.date+'</span><span class="meta-val">'+new Date().toLocaleDateString('el-GR')+' '+new Date().toLocaleTimeString('el-GR',{hour:'2-digit',minute:'2-digit'})+'</span></div>'+
-    '<div class="meta-item"><span class="meta-lbl">'+_m.week+'</span><span class="meta-val">W'+wk+'</span></div>'+
+    '<div class="meta-item"><span class="meta-lbl">'+_m.week+'</span><span class="meta-val">W'+escHtml(wk)+'</span></div>'+
     '<div class="meta-item"><span class="meta-lbl">'+_m.cat+'</span><span class="meta-val">'+(isPartner?legLabel:legLabelGr)+'</span></div>'+
     '<div class="meta-item"><span class="meta-lbl">'+_m.disp+'</span><span class="meta-val">'+DISPATCHER+'</span></div>'+
-    '<div class="meta-item"><span class="meta-lbl">'+_m.ord+'</span><span class="meta-val">'+orderNo+'</span></div>'+
-    (refNo?'<div class="meta-item"><span class="meta-lbl">'+_m.ref+'</span><span class="meta-val">'+refNo+'</span></div>':'')+
+    '<div class="meta-item"><span class="meta-lbl">'+_m.ord+'</span><span class="meta-val">'+escHtml(orderNo)+'</span></div>'+
+    (refNo?'<div class="meta-item"><span class="meta-lbl">'+_m.ref+'</span><span class="meta-val">'+escHtml(refNo)+'</span></div>':'')+
     (badgeHTML&&!isPartner?'<div class="meta-item"><span class="meta-lbl">'+_m.flags+'</span><span class="meta-val">'+badgeHTML+'</span></div>':'')+
     '</div>';
 
@@ -803,13 +809,13 @@ function generatePDF(orderRec, bare){ // bare (Wave 3): no toolbar — docs 2..N
     '<div class="doc-header">'+
       '<div>'+
         '<div class="carrier-label">Carrier</div>'+
-        '<div class="carrier-name">'+(pf['Company Name']||'—')+'</div>'+
+        '<div class="carrier-name">'+escHtml(pf['Company Name']||'—')+'</div>'+
         '<div class="carrier-sub">'+
-          (pf['VAT Number']?'VAT: '+pf['VAT Number']+'<br>':'')+
-          (pf['Adress']?pf['Adress']+'<br>':'')+
-          (pf['Email']||'')+
+          (pf['VAT Number']?'VAT: '+escHtml(pf['VAT Number'])+'<br>':'')+
+          (pf['Adress']?escHtml(pf['Adress'])+'<br>':'')+
+          escHtml(pf['Email']||'')+
         '</div>'+
-        '<div class="plates-tag">'+(f['Partner Truck Plates']||'—')+'</div>'+
+        '<div class="plates-tag">'+escHtml(f['Partner Truck Plates']||'—')+'</div>'+
       '</div>'+
       '<div class="brand-wrap">'+
         '<div class="brand">PETRAS<span> GROUP</span></div>'+
@@ -817,11 +823,11 @@ function generatePDF(orderRec, bare){ // bare (Wave 3): no toolbar — docs 2..N
         '<div class="co-info"><b>VERMION FRESH SA</b><br>Kopanos, Naousa — Imathia, Greece<br>VAT: EL800816168<br>vermionfresh@petrasgroup.com</div>'+
       '</div>'+
     '</div>'+
-    '<div class="doc-title">Partner Assignment Order — '+legLabel+' — PAO-W'+wk+'-'+orderNo+'</div>'+
+    '<div class="doc-title">Partner Assignment Order — '+legLabel+' — PAO-W'+escHtml(wk)+'-'+escHtml(orderNo)+'</div>'+
     metaHTML+
     routeStrip(f,isExport,veroiaSwitch,VEROIA)+
     '<div class="rate2">'+
-      '<div><div class="k">Agreed Rate — '+legLabel+'</div><div class="amt">'+rate+'</div></div>'+
+      '<div><div class="k">Agreed Rate — '+legLabel+'</div><div class="amt">'+escHtml(rate)+'</div></div>'+
       '<div class="terms"><div class="k">Payment</div>30 days after CMR<br><small>Original CMR + delivery note required</small></div>'+
     '</div>'+
     chipsHTML+
@@ -830,7 +836,7 @@ function generatePDF(orderRec, bare){ // bare (Wave 3): no toolbar — docs 2..N
     contactHTML+
     '<div class="sigs2">'+
       '<div class="s"><div class="who">PETRAS GROUP / VERMION FRESH SA</div><div class="role">Authorized Signatory</div><div class="line">Signature &amp; Date</div></div>'+
-      '<div class="s"><div class="who">'+(pf['Company Name']||'CARRIER')+'</div><div class="role">Authorized Signatory</div><div class="line">Signature &amp; Date</div></div>'+
+      '<div class="s"><div class="who">'+escHtml(pf['Company Name']||'CARRIER')+'</div><div class="role">Authorized Signatory</div><div class="line">Signature &amp; Date</div></div>'+
     '</div>';
   }else{
     var driver=allDrivers.find(r=>f['Driver']&&r.id===f['Driver'][0])||{};
@@ -870,16 +876,16 @@ function generatePDF(orderRec, bare){ // bare (Wave 3): no toolbar — docs 2..N
       '</div>'+
       '<div class="doctag">'+
         '<div class="k">Εντολή Οδηγού</div>'+
-        '<div class="t">W'+wk+' · '+legLabelGr+'</div>'+
+        '<div class="t">W'+escHtml(wk)+' · '+legLabelGr+'</div>'+
         '<div class="s">'+LBL.issued+' '+new Date().toLocaleDateString('el-GR')+' '+new Date().toLocaleTimeString('el-GR',{hour:'2-digit',minute:'2-digit'})+' · '+DISPATCHER+'</div>'+
-        '<div class="ordno">ORDER '+orderNo+(refNo?' · REF '+refNo:'')+'</div>'+
+        '<div class="ordno">ORDER '+escHtml(orderNo)+(refNo?' · REF '+escHtml(refNo):'')+'</div>'+
         '<div class="cxl">'+LBL.cancel+'</div>'+
       '</div>'+
     '</div>'+
     '<div class="vb">'+
-      '<div class="c"><div class="k">Οδηγός</div><div class="v">'+(df['Full Name']||'—')+'</div></div>'+
-      '<div class="c"><div class="k">Φορτηγό</div><div class="v">'+(tf['License Plate']||'—')+'</div></div>'+
-      '<div class="c"><div class="k">Τρέιλερ</div><div class="v">'+(trf['License Plate']||'—')+'</div></div>'+
+      '<div class="c"><div class="k">Οδηγός</div><div class="v">'+escHtml(df['Full Name']||'—')+'</div></div>'+
+      '<div class="c"><div class="k">Φορτηγό</div><div class="v">'+escHtml(tf['License Plate']||'—')+'</div></div>'+
+      '<div class="c"><div class="k">Τρέιλερ</div><div class="v">'+escHtml(trf['License Plate']||'—')+'</div></div>'+
       '<div class="c"><div class="k">'+weightLbl+'</div><div class="v">'+weightVal+'</div></div>'+
     '</div>'+
     routeStrip(f,isExport,veroiaSwitch,VEROIA)+
@@ -891,7 +897,7 @@ function generatePDF(orderRec, bare){ // bare (Wave 3): no toolbar — docs 2..N
     contactHTML+
     '<div class="sigs2">'+
       '<div class="s"><div class="who">VERMION FRESH SA / PETRAS GROUP</div><div class="role">Dispatcher</div><div class="line">Υπογραφή &amp; Ημερομηνία</div></div>'+
-      '<div class="s"><div class="who">'+(df['Full Name']||'—')+'</div><div class="role">Οδηγός · Παραλαβή εντολής</div><div class="line">Υπογραφή &amp; Ημερομηνία</div></div>'+
+      '<div class="s"><div class="who">'+escHtml(df['Full Name']||'—')+'</div><div class="role">Οδηγός · Παραλαβή εντολής</div><div class="line">Υπογραφή &amp; Ημερομηνία</div></div>'+
     '</div>';
   }
 
@@ -934,9 +940,9 @@ function buildCoverDoc(items){
   var fromLoc=fromStop?resolveLoc(fromStop.fields['Location']):null;
   var toLoc=toStop?resolveLoc(toStop.fields['Location']):null;
   var routeHTML='<div class="route2">'+
-    '<div class="side"><div class="k">'+LBL.from+'</div><div class="n">'+(fromLoc?fromLoc.name:'—')+'</div><div class="d">'+fmtDT(fromStop?fromStop.fields['DateTime']:'')+'</div></div>'+
+    '<div class="side"><div class="k">'+LBL.from+'</div><div class="n">'+escHtml(fromLoc?fromLoc.name:'—')+'</div><div class="d">'+escHtml(fmtDT(fromStop?fromStop.fields['DateTime']:''))+'</div></div>'+
     '<div class="mid">→</div>'+
-    '<div class="side to"><div class="k">'+LBL.to+'</div><div class="n">'+(toLoc?toLoc.name:'—')+'</div><div class="d">'+fmtDT(toStop?toStop.fields['DateTime']:'')+'</div></div>'+
+    '<div class="side to"><div class="k">'+LBL.to+'</div><div class="n">'+escHtml(toLoc?toLoc.name:'—')+'</div><div class="d">'+escHtml(fmtDT(toStop?toStop.fields['DateTime']:''))+'</div></div>'+
   '</div>';
 
   // 4 cargo chips, totalled/merged across every order in the group.
@@ -949,10 +955,10 @@ function buildCoverDoc(items){
     if(fv(f['Goods'])&&goodsList.indexOf(fv(f['Goods']))<0) goodsList.push(fv(f['Goods']));
   });
   var chipsHTML='<div class="cargo">'+
-    '<div class="chip"><div class="k">'+LBL.pal+'</div><div class="v">'+(totalPallets||'—')+' <small>× '+(fv(f0['Pallet Type'])||'EUR')+'</small></div></div>'+
+    '<div class="chip"><div class="k">'+LBL.pal+'</div><div class="v">'+(totalPallets||'—')+' <small>× '+escHtml(fv(f0['Pallet Type'])||'EUR')+'</small></div></div>'+
     '<div class="chip '+(anyPE?'pe-yes':'pe-no')+'"><div class="k">'+LBL.pe+'</div><div class="v">'+(anyPE?LBL.yes:LBL.no)+'</div></div>'+
-    '<div class="chip temp"><div class="k">'+LBL.temp+'</div><div class="v">'+(temps.length?temps.join(' / ')+'°C':'—')+'</div></div>'+
-    '<div class="chip"><div class="k">'+LBL.goods+'</div><div class="v" style="font-size:11.5px">'+(goodsList.length?goodsList.join(' · '):'—')+'</div></div>'+
+    '<div class="chip temp"><div class="k">'+LBL.temp+'</div><div class="v">'+(temps.length?escHtml(temps.join(' / '))+'°C':'—')+'</div></div>'+
+    '<div class="chip"><div class="k">'+LBL.goods+'</div><div class="v" style="font-size:11.5px">'+(goodsList.length?escHtml(goodsList.join(' · ')):'—')+'</div></div>'+
   '</div>';
 
   // Vehicle bar: the group shares one truck/trailer/driver once assigned
@@ -962,9 +968,9 @@ function buildCoverDoc(items){
   var trailer=allTrailers.find(function(r){return f0['Trailer']&&r.id===f0['Trailer'][0];})||{};
   var df=driver.fields||{}, tf=truck.fields||{}, trf=trailer.fields||{};
   var vbHTML=isPartner?'':'<div class="vb">'+
-    '<div class="c"><div class="k">Οδηγός</div><div class="v">'+(df['Full Name']||'—')+'</div></div>'+
-    '<div class="c"><div class="k">Φορτηγό</div><div class="v">'+(tf['License Plate']||'—')+'</div></div>'+
-    '<div class="c"><div class="k">Τρέιλερ</div><div class="v">'+(trf['License Plate']||'—')+'</div></div>'+
+    '<div class="c"><div class="k">Οδηγός</div><div class="v">'+escHtml(df['Full Name']||'—')+'</div></div>'+
+    '<div class="c"><div class="k">Φορτηγό</div><div class="v">'+escHtml(tf['License Plate']||'—')+'</div></div>'+
+    '<div class="c"><div class="k">Τρέιλερ</div><div class="v">'+escHtml(trf['License Plate']||'—')+'</div></div>'+
   '</div>';
 
   // Meta grid: every order number/reference in the group + delivery sequence.
@@ -972,15 +978,15 @@ function buildCoverDoc(items){
   var seqNames=items.map(function(it,i){
     var uns=stopsOfType(it.stops,'Unloading'), last=uns[uns.length-1];
     var loc=last?resolveLoc(last.fields['Location']):null;
-    return String.fromCharCode(65+i)+'. '+(loc?loc.name:'—');
+    return String.fromCharCode(65+i)+'. '+escHtml(loc?loc.name:'—');
   });
   var _m=isPartner
     ?{wk:'Week',cat:'Category',ord:'Order Nos',seq:'Delivery Sequence'}
     :{wk:'Εβδομάδα',cat:'Κατηγορία',ord:'Αρ. Εντολών',seq:'ΣΕΙΡΑ ΠΑΡΑΔΟΣΗΣ'};
   var metaHTML='<div class="meta">'+
-    '<div class="meta-item"><span class="meta-lbl">'+_m.wk+'</span><span class="meta-val">W'+wk+'</span></div>'+
+    '<div class="meta-item"><span class="meta-lbl">'+_m.wk+'</span><span class="meta-val">W'+escHtml(wk)+'</span></div>'+
     '<div class="meta-item"><span class="meta-lbl">'+_m.cat+'</span><span class="meta-val">'+(isPartner?legLabel:legLabelGr)+'</span></div>'+
-    '<div class="meta-item"><span class="meta-lbl">'+_m.ord+'</span><span class="meta-val">'+orderNos.join(' · ')+'</span></div>'+
+    '<div class="meta-item"><span class="meta-lbl">'+_m.ord+'</span><span class="meta-val">'+escHtml(orderNos.join(' · '))+'</span></div>'+
     '<div class="meta-item"><span class="meta-lbl">'+_m.seq+'</span><span class="meta-val">'+seqNames.join(' → ')+'</span></div>'+
   '</div>';
 
@@ -993,7 +999,7 @@ function buildCoverDoc(items){
       var f=it.orderRec.fields;
       var uns=stopsOfType(it.stops,'Unloading'), lastUn=uns[uns.length-1];
       var lastName=lastUn?(resolveLoc(lastUn.fields['Location'])||{}).name:'—';
-      var tag='ΠΑΡΑΓΓΕΛΙΑ '+String.fromCharCode(65+i)+' · '+ordNoOf(it.orderRec)+' · '+lastName;
+      var tag='ΠΑΡΑΓΓΕΛΙΑ '+String.fromCharCode(65+i)+' · '+escHtml(ordNoOf(it.orderRec))+' · '+escHtml(lastName);
       stopsOfType(it.stops,type).forEach(function(s){
         var loc=resolveLoc(s.fields['Location']); if(!loc)return;
         tlHTML+=buildCard(0,loc,dtLabel,s.fields['DateTime']||'',s.fields['Pallets']||'',
@@ -1008,14 +1014,14 @@ function buildCoverDoc(items){
     '<span>☐ Θερμογράφος σε λειτουργία</span><span>☐ Τρέιλερ καθαρό / προψυγμένο</span>'+
     '<span>☐ Παλέτες μετρημένες</span><span>☐ CMR υπογεγραμμένο</span></div>';
   var contactBits=[];
-  if(OFFICE_PHONE)contactBits.push('<span><b>'+LBL.office+':</b> '+OFFICE_PHONE+'</span>');
-  if(EMERGENCY_PHONE)contactBits.push('<span><b>'+LBL.emrg+':</b> '+EMERGENCY_PHONE+'</span>');
-  if(OFFICE_EMAIL)contactBits.push('<span><b>Email:</b> '+OFFICE_EMAIL+'</span>');
-  if(INVOICE_EMAIL)contactBits.push('<span><b>Invoicing:</b> '+INVOICE_EMAIL+'</span>');
+  if(OFFICE_PHONE)contactBits.push('<span><b>'+LBL.office+':</b> '+escHtml(OFFICE_PHONE)+'</span>');
+  if(EMERGENCY_PHONE)contactBits.push('<span><b>'+LBL.emrg+':</b> '+escHtml(EMERGENCY_PHONE)+'</span>');
+  if(OFFICE_EMAIL)contactBits.push('<span><b>Email:</b> '+escHtml(OFFICE_EMAIL)+'</span>');
+  if(INVOICE_EMAIL)contactBits.push('<span><b>Invoicing:</b> '+escHtml(INVOICE_EMAIL)+'</span>');
   var contactHTML=contactBits.length?'<div class="contact2">'+contactBits.join('')+'</div>':'';
   var sigsHTML='<div class="sigs2">'+
     '<div class="s"><div class="who">VERMION FRESH SA / PETRAS GROUP</div><div class="role">Dispatcher</div><div class="line">Υπογραφή &amp; Ημερομηνία</div></div>'+
-    '<div class="s"><div class="who">'+(df['Full Name']||'—')+'</div><div class="role">Οδηγός · Παραλαβή εντολής</div><div class="line">Υπογραφή &amp; Ημερομηνία</div></div>'+
+    '<div class="s"><div class="who">'+escHtml(df['Full Name']||'—')+'</div><div class="role">Οδηγός · Παραλαβή εντολής</div><div class="line">Υπογραφή &amp; Ημερομηνία</div></div>'+
   '</div>';
 
   var titleStr=(isPartner?'Partner Assignment Order — Group':'Εντολή Οδηγού · Ομάδα')+' — '+legLabel+' — W'+wk;
@@ -1023,7 +1029,7 @@ function buildCoverDoc(items){
   var pbarHTML='<div class="pbar"><div class="pbar-left">'+
     '<span class="pbar-logo">PETRAS<span> GROUP</span></span>'+
     '<div class="pbar-div"></div>'+
-    '<span class="pbar-title">'+titleStr+'</span>'+
+    '<span class="pbar-title">'+escHtml(titleStr)+'</span>'+
     '</div><div><button class="pbar-btn wa" onclick="copyWA(this)">📋 WhatsApp</button><button class="pbar-btn" onclick="window.print()">Print / PDF</button></div></div>'+
     '<div class="pbar-spacer"></div>';
   var hdHTML='<div class="doc-header">'+
@@ -1034,7 +1040,7 @@ function buildCoverDoc(items){
     '</div>'+
     '<div class="doctag">'+
       '<div class="k">'+(isPartner?'Group Order':'Εντολή Οδηγού · Ομάδα')+'</div>'+
-      '<div class="t">W'+wk+' · '+(isPartner?legLabel:legLabelGr)+'</div>'+
+      '<div class="t">W'+escHtml(wk)+' · '+(isPartner?legLabel:legLabelGr)+'</div>'+
       '<div class="s">'+LBL.issued+' '+new Date().toLocaleDateString('el-GR')+' '+new Date().toLocaleTimeString('el-GR',{hour:'2-digit',minute:'2-digit'})+' · '+DISPATCHER+'</div>'+
     '</div>'+
   '</div>';
