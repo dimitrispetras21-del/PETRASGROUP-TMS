@@ -23,6 +23,19 @@
 // of the member the export points at, a DB refusal (422 STOCK_RULE) reaching
 // the screen in Greek, the counters without lots/loose pieces, the lot drag
 // refusal.
+//
+// Round 0 of the impact map (4/10) adds: ⎙I prints the whole import group
+// (PR-01), the matched-import menu finds the group by any member (PR-02), the
+// week print and CSV name pieces and lots (PR-10, B-25), the lone-lead lock
+// only after the piece exists (B-04), «Επιστροφή» of a lone piece clears its
+// group and sends the round-trip leg DELETE before the vehicle PATCH (B-04a,
+// D-23 — /costs and /pallets/gate are answered by the facade below), no piece
+// on a partner on any path (B-05), «×» returns a piece to stock (B-07), no
+// «Groupage εισαγωγών» for a piece (B-09), no Undo left after a stock action
+// (B-13), loose pieces only on the shelf (B-19), Case A refused on a moving
+// import (B-22), no «Σπάσιμο σκέλους» on a piece or lot (B-28), no [Διαγραφή]
+// on a matched piece (DL-06), and the three data-independent changes proven
+// with FEATURES.STOCK_LOTS = false (G-42).
 const path = require('path'), fs = require('fs');
 const ROOT = path.join(__dirname, '../..');
 const req = m => require(require.resolve(m, { paths: [process.cwd(), ROOT] }));
@@ -69,7 +82,9 @@ function bridge(route) {
 
 // ── in-memory facade ─────────────────────────────────────────────────────────
 function makeFacade() {
-  const F = { orders: {}, lots: {}, writes: [], unknown: [], failLots: false, refuse: null, seq: 0 };
+  const F = { orders: {}, lots: {}, writes: [], unknown: [], failLots: false, refuse: null, refusePost: null, seq: 0, rt: null, costsOther: [] };
+  const nos = {}; let nextNo = 1000;
+  F.no = id => { const m = /LOT[A-Z]0*(\d+)$/.exec(id); return m ? +m[1] : (nos[id] || (nos[id] = ++nextNo)); };
   const isEmpty = v => v == null || (Array.isArray(v) && !v.length);
   const pals = f => { let s = 0; for (let i = 1; i <= 10; i++) s += +(f['Loading Pallets ' + i] || 0); return s; };
   const link = v => Array.isArray(v) ? v[0] : (v || null);
@@ -82,9 +97,10 @@ function makeFacade() {
     const f = {};
     for (const [k, v] of Object.entries(o.fields)) if (!isEmpty(v)) f[k] = v;
     f['Total Pallets'] = pals(o.fields);
-    // «Order No» = orders.id (019): the shared round-trip lookup _wiRtOf reads it
-    // before any vehicle clear (main f896b588) — without it every return stops.
-    f['Order No'] = 1000 + Object.keys(F.orders).indexOf(o.id);
+    // 'Order No' = the order's id (order_no = id on all 283 live rows, SELECT
+    // 4/10): a lot's rec ends in its number (…LOTA0000312 = #312), every
+    // other order gets its own number from 1001 on.
+    f['Order No'] = F.no(o.id);
     const lp = link(o.fields['Stock Lot']);
     if (lp && F.lots[lp]) { f['Stock Lot Order No'] = F.lots[lp].fields['Lot No']; f['Stock Lot Source'] = 'intl'; }
     const own = lotOfOrder(o.id); if (own) f['Own Stock Lot'] = own.id;
@@ -131,6 +147,23 @@ function makeFacade() {
     for (const [k, v] of Object.entries(fields)) { if (isEmpty(v)) delete o.fields[k]; else o.fields[k] = v; }
     return F.read(o);
   };
+  // Round trips, just enough for _wiRtLeave (core/rt-feed.js rtFindForOrder →
+  // /pallets/gate → /costs/rt, then DELETE /costs/rt/<id>/legs). F.rt = null:
+  // no round trip anywhere. The DELETE lands in F.writes, so its place among
+  // the ORDERS writes is the proof of «leg first, vehicle second» (D-23).
+  F.costs = (m, url) => {
+    const p = url.pathname;
+    if (p === '/pallets/gate') { const pg = F.rt && F.rt.pg[url.searchParams.get('order_recs')]; return { records: pg != null ? [{ order_id: pg }] : [] }; }
+    if (p === '/costs/rt' && m === 'GET') return { records: F.rt ? [{ id: F.rt.id, code: F.rt.code, status: 'planned', ct_rt_legs: F.rt.legs.map(order_id => ({ order_id })) }] : [] };
+    const lg = /^\/costs\/rt\/(\d+)\/legs$/.exec(p);
+    if (lg && m === 'DELETE') {
+      const pg = +url.searchParams.get('order_id');
+      if (F.rt) F.rt.legs = F.rt.legs.filter(x => x !== pg);
+      F.writes.push({ m: 'DELETE', table: 'ct_rt_legs', recId: String(pg) });
+      return { ok: true };
+    }
+    F.costsOther.push(m + ' ' + p + url.search); return { records: [] };
+  };
   F.create = fields => {
     const id = 'recRIGNEW' + String(++F.seq).padStart(5, '0');
     F.orders[id] = { id, fields: {} }; F.patch(id, fields);
@@ -147,12 +180,7 @@ async function installRoutes(page, F) {
     const send = (status, body) => route.fulfill({ status, headers: hdr, body: JSON.stringify(body) });
     const seg = url.pathname.split('/').filter(Boolean);   // v0 / base / table / [rec]
     const table = seg[2], recId = seg[3];
-    // Round trips: this rig has none — /costs/rt answers an empty list (so the
-    // leg-first lookup finds «no trip» for sure, never a read failure).
-    if (F.ready && seg[0] === 'costs' && seg[1] === 'rt') {
-      F.costs = (F.costs || []).concat([{ m: r.method(), url: url.pathname + url.search }]);
-      return send(200, r.method() === 'GET' ? { records: [] } : { deleted: true });
-    }
+    if (F.ready && (seg[0] === 'costs' || seg[0] === 'pallets')) return send(200, F.costs(r.method(), url));
     if (!F.ready || ![ORDERS, LOTS, 'local_moves'].includes(table)) return bridge(route);
     if (table === 'local_moves') return send(200, { records: [] });
     const m = r.method();
@@ -172,6 +200,7 @@ async function installRoutes(page, F) {
       return send(422, { error: { type: 'STOCK_RULE', code: e.code, message: e.message } });
     }
     if (m === 'PATCH') { const rec = F.patch(recId, body.fields || {}); return rec ? send(200, rec) : send(404, { error: { type: 'NOT_FOUND' } }); }
+    if (m === 'POST' && F.refusePost) { const e = F.refusePost; F.refusePost = null; return send(422, { error: { type: 'STOCK_RULE', code: e.code, message: e.message } }); }
     if (m === 'POST') return send(200, F.create(body.fields || {}));
     if (m === 'DELETE') { if (F.orders[recId]) F.orders[recId].deleted = true; return send(200, { id: recId, deleted: true }); }
     return route.fallback();
@@ -214,6 +243,19 @@ function buildStore(F, ref, opts) {
   o('recRIGLOTB0000318', { Direction: 'Import', Client: [C2], 'Loading DateTime': d(-9), 'Delivery DateTime': d(-8), 'Loading Pallets 1': 24, 'Loading Location 1': [L3], 'Unloading Location 1': [WH2], Partner: [PA2], 'Is Partner Trip': true, Status: 'Assigned' });
   F.lots.recRIGSTOCKLOTB1 = { id: 'recRIGSTOCKLOTB1', fields: { Order: ['recRIGLOTB0000318'], 'Lot No': 318, 'Source Kind': 'intl', Reference: 'LOT-B', 'Client Rec': C2, 'Client Name': ref.clientName[C2], 'Warehouse Rec': WH2, 'Warehouse Name': ref.locName[WH2], 'Warehouse City': ref.locCity[WH2], 'Warehouse Country': ref.locCountry[WH2], 'Intake Status': 'Assigned', 'Intake Delivered': false, 'Stock Pallets': 24 } };
   o('recRIGP4000000004', Object.assign({ Direction: 'Import', Client: [C2], 'Stock Lot': ['recRIGSTOCKLOTB1'], 'Loading DateTime': d(-2), 'Delivery DateTime': d(-1), 'Loading Pallets 1': 6, 'Loading Location 1': [WH2], 'Unloading Location 1': [L2], Reference: 'TEST-STOCK-P4' }, veh(T5, D1), { Status: 'In Transit' }));
+  if (opts.extra) {
+    // Export lot #330 on our own truck (a lot's row offers no split, prints «→ ΑΠΟΘΗΚΗ»).
+    o('recRIGLOTE0000330', Object.assign({ Direction: 'Export', Client: [C1], 'Loading DateTime': d(2), 'Delivery DateTime': d(3), 'Loading Pallets 1': 14, 'Loading Location 1': [L1], 'Unloading Location 1': [WH] }, veh(T5, D2)));
+    F.lots.recRIGSTOCKLOTE1 = { id: 'recRIGSTOCKLOTE1', fields: { Order: ['recRIGLOTE0000330'], 'Lot No': 330, 'Source Kind': 'intl', Reference: 'LOT-E', 'Client Rec': C1, 'Client Name': ref.clientName[C1], 'Warehouse Rec': WH, 'Warehouse Name': ref.locName[WH], 'Warehouse City': ref.locCity[WH], 'Warehouse Country': ref.locCountry[WH], 'Intake Status': 'Assigned', 'Intake Delivered': false, 'Stock Pallets': 14 } };
+    // A truckless GI group that holds a piece (what «×» left before B-07): I7 + P6.
+    o('recRIGI7000000007', { Direction: 'Import', Client: [C2], 'Loading DateTime': d(4), 'Delivery DateTime': d(6), 'Loading Pallets 1': 9, 'Loading Location 1': [L3], 'Unloading Location 1': [L1], 'Group ID': 'GI-RIGOFF|recRIGI7000000007' });
+    o('recRIGP6000000006', { Direction: 'Import', Client: [C1], 'Stock Lot': ['recRIGSTOCKLOTA1'], 'Loading DateTime': d(4), 'Delivery DateTime': d(6), 'Loading Pallets 1': 3, 'Loading Location 1': [WH], 'Unloading Location 1': [L2], 'Group ID': 'GI-RIGOFF|recRIGI7000000007', Reference: 'TEST-STOCK-P6' });
+    // Case B pair whose vehicle copy never landed: E3 → P5 (piece, no vehicle).
+    F.orders.recRIGE3000000003.fields['Matched Import ID'] = 'recRIGP5000000005';
+    o('recRIGP5000000005', { Direction: 'Import', Client: [C1], 'Stock Lot': ['recRIGSTOCKLOTA1'], 'Loading DateTime': d(4), 'Delivery DateTime': d(5), 'Loading Pallets 1': 2, 'Loading Location 1': [WH], 'Unloading Location 1': [L3], Reference: 'TEST-STOCK-P5' });
+    // A plain unmatched import: «Groupage εισαγωγών» still has a candidate to offer.
+    o('recRIGI8000000008', { Direction: 'Import', Client: [C2], 'Loading DateTime': d(5), 'Delivery DateTime': d(6), 'Loading Pallets 1': 5, 'Loading Location 1': [L2], 'Unloading Location 1': [L1] });
+  }
   if (!opts.zeroLot) return;
   // Lot C (#320): received, NO piece ever drawn (the client collected it / damaged whole).
   o('recRIGLOTC0000320', { Direction: 'Import', Client: [C2], 'Loading DateTime': d(-6), 'Delivery DateTime': d(-5), 'Loading Pallets 1': 10, 'Loading Location 1': [L3], 'Unloading Location 1': [WH], Partner: [PA2], 'Is Partner Trip': true, Status: 'Delivered' });
@@ -222,17 +264,25 @@ function buildStore(F, ref, opts) {
 
 // Page-side stubs: the piece form ALWAYS (see the header); everything stock
 // itself is the app's real code.
-async function installStubs(page) {
-  await page.evaluate(() => {
-    FEATURES.STOCK_LOTS = true;
+// switchOff: FEATURES.STOCK_LOTS stays as config.js ships it (false) — the
+// side-system stubs and the captures below are still needed to drive the
+// board (a real confirm modal would wait for a human).
+async function installStubs(page, switchOff) {
+  await page.evaluate(off => {
+    if (!off) FEATURES.STOCK_LOTS = true;
     TABLES.STOCK_LOTS = TABLES.STOCK_LOTS || 'tblStockLots';
-    window.__rig = { pieceCalls: [], toasts: [], beforeHook: null };
+    window.__rig = { pieceCalls: [], toasts: [], confirms: [], opened: [], printed: [], csv: [], beforeHook: null, formMode: null };
     if (typeof OrdersStock === 'undefined') throw new Error('OrdersStock missing — this rig runs on the merged front (FRONT-ORDERS + FRONT-WEEKLY)');
     window.openIntlPieceCreate = async (lot, presets) => {
       window.__rig.pieceCalls.push({ lot: lot.id, presets: JSON.parse(JSON.stringify(presets || {})) });
+      // formMode 'cancel' = the dispatcher closes the form: nothing is saved.
+      if (window.__rig.formMode === 'cancel') return;
       const values = { 'Loading Pallets 1': 5, Reference: 'TEST-STOCK-NEW', 'Unloading Location 1': [getRefLocations()[0].id] };
       const fields = OrdersStock.pieceFields(lot, presets, values);
-      const rec = await atCreate(TABLES.ORDERS, fields);
+      // A refused POST: the real form shows it and stays open — no hook.
+      let rec;
+      try { rec = await atCreate(TABLES.ORDERS, fields); }
+      catch (e) { window.__rig.toasts.push('form refused: ' + (e && e.message)); return; }
       const ctx = presets && presets.context;
       // a case may age the context / leave the page before the hook runs
       if (typeof window.__rig.beforeHook === 'function') window.__rig.beforeHook(ctx);
@@ -240,16 +290,23 @@ async function installStubs(page) {
       await renderWeeklyIntl();
     };
     // Side systems this rig does not exercise: round trips, downstream sync.
+    // The REAL rtFindForOrder is kept aside for the leg-first proof (D-23).
+    window.__rig.rtFind0 = window.rtFindForOrder;
     window.rtOnOrderSaved = async () => null;
     window.rtOnImportUnmatched = async () => null;
     window.rtFindForOrder = async () => ({ pg: null, rt: null });
     window.syncOrderDownstream = async () => null;
-    window.confirmAction = async () => true;
+    window.confirmAction = async t => { window.__rig.confirms.push(String(t)); return true; };
+    // Prints and downloads are captured, never opened.
+    window.open = u => { window.__rig.opened.push(String(u)); return null; };
+    window._printWeekShell = (title, html) => { window.__rig.printed.push({ title, html }); };
+    const cou = URL.createObjectURL.bind(URL);
+    URL.createObjectURL = b => { if (b && b.text) b.text().then(t => window.__rig.csv.push(t)); return cou(b); };
     const t0 = window.toast, e0 = window.showErrorToast;
     window.toast = (m, ty) => { window.__rig.toasts.push((ty || 'success') + ': ' + m); return t0 && t0(m, ty); };
     window.showErrorToast = (m, ty) => { window.__rig.toasts.push((ty || 'error') + ': ' + m); return e0 && e0(m, ty); };
     invalidateCache(TABLES.ORDERS);
-  });
+  }, !!switchOff);
 }
 
 async function openBoard(browser, role, F, opts) {
@@ -282,9 +339,9 @@ async function openBoard(browser, role, F, opts) {
   });
   if (!F.built) { buildStore(F, ref, opts || {}); F.built = true; }
   F.ready = true;
-  // opts.switchOff: no stubs, FEATURES.STOCK_LOTS untouched — the board as it
-  // ships today (used by the switch-off parity check).
-  if (!(opts && opts.switchOff)) await installStubs(page);
+  // opts.switchOff: FEATURES.STOCK_LOTS untouched — the board as it ships
+  // today (G-42); only the side systems and captures are stubbed.
+  await installStubs(page, !!(opts && opts.switchOff));
   await page.evaluate(async () => { invalidateCache(TABLES.ORDERS); await renderWeeklyIntl(); });
   await page.waitForTimeout(F.failLots ? 6500 : 1200);
   // A board that did not paint must stop the rig loudly, with what it said.
@@ -308,6 +365,16 @@ async function join(page, oid, kind, id) {
   await page.locator(`#wi-panel .wi-stk-opt[onclick="_wiStockPick('${kind}',${i})"]`).click();
 }
 const writesSince = (F, n) => F.writes.slice(n).map(w => ({ m: w.m, table: w.table, rec: w.recId, fields: w.fields || w.body }));
+// B-13: after a stock action the top-bar Undo holds nothing (core/api.js).
+const undoOf = page => page.evaluate(() => { const a = getUndoAction(); return a ? { type: a.type, rec: a.recId, prev: a.prevFields } : null; });
+// (waits for a painted board first: a write that repaints without awaiting it
+// would otherwise leave no #wi-ctx for a moment)
+const ctxMenu = async (page, js) => { await page.waitForFunction(() => !!document.getElementById('wi-ctx'), null, { timeout: 15000 }); await page.waitForTimeout(300);
+  await page.evaluate(js); await page.waitForTimeout(250);
+  const t = await page.evaluate(() => ({ text: (document.getElementById('wi-ctx') || {}).innerText || '', dis: [...document.querySelectorAll('#wi-ctx .wi-ctx-i.dis')].map(b => b.textContent + ' [' + b.title + ']') }));
+  await page.keyboard.press('Escape'); await page.evaluate(() => { const c = document.getElementById('wi-ctx'); if (c) c.style.display = 'none'; });
+  return t.text.replace(/\n/g, ' | ') + (t.dis.length ? ' || disabled: ' + t.dis.join(' ; ') : ''); };
+const fakeEv = `({preventDefault(){},stopPropagation(){},currentTarget:document.body,target:document.body,clientX:300,clientY:300})`;
 
 if (MAIN) (async () => {
   const out = { screens: [], checks: {} };
@@ -363,11 +430,34 @@ if (MAIN) (async () => {
     // Badges: «ΑΠ» on the piece tile, «→ ΑΠΟΘΗΚΗ» on the lot row.
     const badges = await page.evaluate(() => ({
       apTile: [...document.querySelectorAll('.wk3-seg .wi-b-ap')].map(b => b.title),
-      apLoose: !!document.querySelector('#wi-imp-recRIGP3000000003 .wi-b-ap'),
+      loosePieceRow: !!document.getElementById('wi-imp-recRIGP3000000003'),
       lot: (document.querySelector('#wi-imp-recRIGLOTA0000312 .wi-b-lot') || {}).textContent || null,
       lastTile: (() => { const p = [...document.querySelectorAll('.wk3-segpill')].find(x => x.querySelector('[data-order-id="recRIGP2000000002"]')); const s = p ? [...p.querySelectorAll('.wk3-seg[data-order-id]')] : []; return s.length ? s[s.length - 1].dataset.orderId : null; })(),
     }));
-    ok('badges', badges.apTile.length >= 1 && /Κομμάτι 5\/33p · παρτίδα #312/.test(badges.apTile[0]) && badges.apLoose && /ΑΠΟΘΗΚΗ/.test(badges.lot || '') && badges.lastTile === 'recRIGP2000000002', badges);
+    ok('badges', badges.apTile.length >= 1 && /Κομμάτι 5\/33p · παρτίδα #312/.test(badges.apTile[0]) && /ΑΠΟΘΗΚΗ/.test(badges.lot || '') && badges.lastTile === 'recRIGP2000000002', badges);
+
+    // B-19: the loose piece P3 lives on the shelf only — no board row, not in
+    // «ΕΙΣΑΓΩΓΗ · N», and «ΚΕΝΑ ΓΥΡΙΣΜΑΤΑ» lights neither it nor a lot row.
+    const b19 = await page.evaluate(() => {
+      const all = WINTL.rows.filter(r => r.type === 'import' && !r.adj && !r.legOf).length;
+      const hdr = [...document.querySelectorAll('.wk3-cols .c')].map(c => c.textContent).find(t => /ΕΙΣΑΓΩΓΗ/.test(t)) || '';
+      _wk3Gaps();
+      const lit = [...document.querySelectorAll('[id^="wi-imp-"]')].filter(el => el.style.background).map(el => el.id.slice(7));
+      return { all, hdr: hdr.replace(/\s+/g, ' ').trim(), lit, p3Row: !!document.getElementById('wi-imp-recRIGP3000000003'),
+        shelfLoose: (document.querySelector('.wi-shelf-loose') || {}).textContent };
+    });
+    ok('loose_piece_shelf_only', !b19.p3Row && b19.hdr === `ΕΙΣΑΓΩΓΗ · ${b19.all - 1}` && /^1 κομμάτι χωρίς φορτηγό$/.test(b19.shelfLoose || '')
+      && !b19.lit.some(id => /LOT|recRIGP3/.test(id)) && b19.lit.includes('recRIGI5000000005'), b19);
+
+    // PR-01: ⎙I of a truck whose import is a GI group prints the WHOLE group —
+    // button, share query (data-shq → /print/pdf) and the opened URL.
+    const pr01 = await page.evaluate(() => {
+      const r = WINTL.rows.find(x => x.type === 'export' && x.orderIds.includes('recRIGE4000000004'));
+      const b = document.querySelector(`#wi-row-${r.id} .wk3-prt.r`); const n = window.__rig.opened.length; b.click();
+      return { title: b.title, shq: b.dataset.shq, url: window.__rig.opened.slice(n)[0] || '' };
+    });
+    ok('pr01_group_print_E4', /Εκτύπωση ομάδας \(import\) — 2 έγγραφα/.test(pr01.title)
+      && /^orderIds=recRIGI4000000004,recRIGP2000000002&leg=import&sheet=driver$/.test(pr01.shq || '') && /[?&]orderIds=recRIGI4000000004,recRIGP2000000002&leg=import/.test(pr01.url), pr01);
 
     // Lot drag refusal.
     const drag = await page.evaluate(() => { const n = window.__rig.toasts.length; const el = document.getElementById('wi-imp-recRIGLOTA0000312');
@@ -401,18 +491,38 @@ if (MAIN) (async () => {
     await shot(page, 'stock-panel-add-piece-1440.png'); out.screens.push('stock-panel-add-piece-1440.png');
     await page.evaluate(() => _wiPanelClose());
 
-    // Case A — lone import: suffix on the lead, then ONE POST with that Group ID.
+    // Case A — lone import (B-04): the POST creates the piece WITHOUT group and
+    // vehicle, THEN the lead gets «GI-…|lead», THEN the piece gets that exact
+    // Group ID + the lead's truck (the round-trip trigger finds the export's
+    // trip only through the lead's Group ID).
     let n0 = F.writes.length;
     await join(page, 'recRIGE1000000001', 'lot', 'recRIGSTOCKLOTA1');
     await page.waitForTimeout(1500);
     const wA = writesSince(F, n0);
-    const lead = wA.find(w => w.m === 'PATCH' && w.rec === 'recRIGI1000000001');
-    const post = wA.find(w => w.m === 'POST');
+    const iPost = wA.findIndex(w => w.m === 'POST');
+    const post = wA[iPost];
+    const newA = (F.created || []).slice(-1)[0];
+    const iLead = wA.findIndex(w => w.m === 'PATCH' && w.rec === 'recRIGI1000000001');
+    const lead = wA[iLead];
     const gidA = lead && lead.fields['Group ID'];
-    ok('caseA_lone_suffix_on_lead', !!gidA && /^GI-[0-9A-Z]+\|recRIGI1000000001$/.test(gidA), lead);
-    ok('caseA_lone_post', post && post.fields['Group ID'] === gidA && JSON.stringify(post.fields['Stock Lot']) === '["recRIGSTOCKLOTA1"]' && post.fields.Status === 'Assigned' && !('Price' in post.fields) && post.fields.Truck && post.fields.Truck[0] === F.orders.recRIGI1000000001.fields.Truck[0], post);
+    const iJoin = wA.findIndex(w => w.m === 'PATCH' && w.rec === newA);
+    const joinA = wA[iJoin];
+    ok('caseA_lone_suffix_on_lead_after_post', !!gidA && /^GI-[0-9A-Z]+\|recRIGI1000000001$/.test(gidA) && iPost >= 0 && iPost < iLead, { iPost, iLead, lead });
+    ok('caseA_lone_post', post && !('Group ID' in post.fields) && !(post.fields.Truck || []).length && post.fields.Status === 'Pending' && JSON.stringify(post.fields['Stock Lot']) === '["recRIGSTOCKLOTA1"]' && !('Price' in post.fields), post);
+    ok('caseA_lone_piece_on_truck_after_lock', joinA && iLead < iJoin && joinA.fields['Group ID'] === gidA && joinA.fields.Status === 'Assigned' && joinA.fields.Truck && joinA.fields.Truck[0] === F.orders.recRIGI1000000001.fields.Truck[0]
+      && F.orders[newA].fields['Group ID'] === gidA, { iJoin, joinA });
     const presetsA = await page.evaluate(() => window.__rig.pieceCalls.slice(-1)[0]);
-    ok('caseA_presets', presetsA && presetsA.presets.lockLoadingDate === true && presetsA.presets.context && presetsA.presets.context.kind === 'A', presetsA);
+    ok('caseA_presets', presetsA && presetsA.presets.lockLoadingDate === true && presetsA.presets.context && presetsA.presets.context.kind === 'A'
+      && presetsA.presets.context.lockLead === true && !presetsA.presets.groupId && !presetsA.presets.truck, presetsA);
+    const undo = {};
+    undo.caseA_lone = await undoOf(page);
+    // PR-01 on the truck the piece just joined: the opened URL carries every member.
+    const pr01b = await page.evaluate(() => {
+      const r = WINTL.rows.find(x => x.type === 'export' && x.orderIds.includes('recRIGE1000000001'));
+      const b = document.querySelector(`#wi-row-${r.id} .wk3-prt.r`); const n = window.__rig.opened.length; b.click();
+      return { title: b.title, url: window.__rig.opened.slice(n)[0] || '' };
+    });
+    ok('pr01_group_print_after_join', new RegExp(`[?&]orderIds=recRIGI1000000001,${newA}&leg=import`).test(pr01b.url) && /2 έγγραφα/.test(pr01b.title), pr01b);
     const afterA = await page.evaluate(() => { const r = WINTL.rows.find(x => x.type === 'import' && (x.orderIds || []).includes('recRIGI1000000001'));
       return r ? { lead: r.orderId, ids: r.orderIds, sync: (WINTL._syncLog || {}) } : null; });
     ok('caseA_piece_last_lead_kept', afterA && afterA.lead === 'recRIGI1000000001' && afterA.ids.length === 2, afterA);
@@ -423,6 +533,7 @@ if (MAIN) (async () => {
     await page.waitForTimeout(1500);
     const wG = writesSince(F, n0);
     ok('caseA_group_untouched', !wG.some(w => w.m === 'PATCH' && /recRIGI[23]/.test(w.rec || '')) && wG.some(w => w.m === 'POST' && w.fields['Group ID'] === 'GI-RIGGRP|recRIGI2000000002,recRIGI3000000003'), wG);
+    undo.caseA_group = await undoOf(page);
 
     // Reorder, then «Ακύρωση groupage» of the member the export POINTS at (not
     // the lead any more): the export's pointer must follow the group's lead.
@@ -435,6 +546,18 @@ if (MAIN) (async () => {
       const g = find(), e = WINTL.rows.find(r => r.type === 'export' && r.orderIds.includes('recRIGE2000000002'));
       return { rowId: g.id, lead: g.orderId, ptr: e.importId, ids: g.orderIds };
     });
+    // PR-02: the export points at I2, the group's lead is now I3 — the
+    // matched-import menu still finds the group (by any member).
+    const pr02 = await page.evaluate(async () => {
+      const e = WINTL.rows.find(r => r.type === 'export' && r.orderIds.includes('recRIGE2000000002'));
+      const n = window.__rig.toasts.length;
+      _wiMatchedImpCtx({ preventDefault() {}, stopPropagation() {}, currentTarget: document.body, clientX: 300, clientY: 300 }, e.id);
+      await new Promise(r => setTimeout(r, 200));
+      const c = document.getElementById('wi-ctx'); const t = c ? c.innerText : '';
+      if (c) c.style.display = 'none';
+      return { menu: t.replace(/\n/g, ' | '), toasts: window.__rig.toasts.slice(n) };
+    });
+    ok('pr02_matched_menu_by_any_member', /Εκτύπωση…/.test(pr02.menu) && !pr02.toasts.some(t => /δεν βρέθηκε/.test(t)), pr02);
     n0 = F.writes.length;
     await page.evaluate(async r => { await _wiCancelGroupMember(r, 'recRIGI2000000002', true); }, seg.rowId);
     await page.waitForTimeout(600);
@@ -458,6 +581,7 @@ if (MAIN) (async () => {
     ok('caseB_post_then_match', postB && !postB.fields['Group ID'] && matchB && matchB.fields['Matched Import ID'] === newB
       && wB.findIndex(w => w === postB) < wB.findIndex(w => w === matchB)
       && wB.some(w => w.m === 'PATCH' && w.rec === newB && w.fields.Truck && w.fields.Status === 'Assigned'), { newB, wB });
+    undo.caseB = await undoOf(page);
 
     // Case B whose hook runs after the page changed: said loudly, nothing written.
     n0 = F.writes.length;
@@ -476,6 +600,7 @@ if (MAIN) (async () => {
     await page.waitForTimeout(1500);
     const wL = writesSince(F, n0).filter(w => w.rec === 'recRIGP3000000003');
     ok('loose_one_patch', wL.length === 1 && wL[0].fields['Group ID'] === 'GI-RIGRET|recRIGI4000000004' && wL[0].fields.Status === 'Assigned' && wL[0].fields['Loading DateTime'] && wL[0].fields['Delivery DateTime'] && wL[0].fields.Truck, wL);
+    undo.loose_join = await undoOf(page);
 
     // Return to stock from the «ΑΠ» tile of P2: Group ID null (main e1a66597:
     // never '' — the RT triggers would join every '' into one group) + vehicle off + Pending.
@@ -485,6 +610,7 @@ if (MAIN) (async () => {
     await page.waitForTimeout(1200);
     const wR = writesSince(F, n0).filter(w => w.rec === 'recRIGP2000000002');
     ok('return_to_stock_payload', wR.length === 1 && wR[0].fields['Group ID'] === null && Array.isArray(wR[0].fields.Truck) && !wR[0].fields.Truck.length && wR[0].fields.Status === 'Pending', wR);
+    undo.return_group = await undoOf(page);
 
     // A DB refusal reaches the screen in Greek, with ⚠ on the row.
     await page.evaluate(async () => { await renderWeeklyIntl(); }); await page.waitForTimeout(1200);
@@ -496,6 +622,73 @@ if (MAIN) (async () => {
     const refusal = await page.evaluate(r => ({ toasts: window.__rig.toasts.slice(-4), sync: (document.getElementById('wi-sync-' + r) || {}).textContent }), rE1b);
     ok('db_refusal_greek', refusal.toasts.some(t => /Η παρτίδα έκλεισε/.test(t)) && refusal.sync === '⚠' && JSON.stringify(F.orders.recRIGP2000000002.fields) === before, refusal);
     await shot(page, 'stock-db-refusal-1440.png'); out.screens.push('stock-db-refusal-1440.png');
+
+    // B-04 (b): E3's import is now the lone matched piece newB. «+ Κομμάτι»
+    // again, then the form is CANCELLED → nothing written, newB untouched
+    // (the old code had already locked it: «GI-…|newB», a one-member group).
+    await page.evaluate(async () => { await renderWeeklyIntl(); }); await page.waitForTimeout(1200);
+    const newBfields = () => JSON.stringify(F.orders[newB].fields);
+    let before4 = newBfields();
+    n0 = F.writes.length;
+    await page.evaluate(() => { window.__rig.formMode = 'cancel'; });
+    await join(page, 'recRIGE3000000003', 'lot', 'recRIGSTOCKLOTA1'); await page.waitForTimeout(1200);
+    ok('b04_cancelled_form_writes_nothing', writesSince(F, n0).length === 0 && newBfields() === before4, writesSince(F, n0));
+    // … and a REFUSED POST (422 over-draw) → only the refused POST, no lock.
+    n0 = F.writes.length;
+    F.refusePost = { code: 'over_draw', message: 'Η παρτίδα δεν έχει τόσες παλέτες' };
+    await page.evaluate(() => { window.__rig.formMode = null; });
+    await join(page, 'recRIGE3000000003', 'lot', 'recRIGSTOCKLOTA1'); await page.waitForTimeout(1500);
+    const wRef = writesSince(F, n0);
+    ok('b04_refused_post_lead_untouched', wRef.length === 1 && wRef[0].m === 'POST' && newBfields() === before4, wRef);
+    // … and a loose piece whose join the DB refuses: the lock written for it
+    // is taken back, so newB ends as it was.
+    F.refuse = { recId: 'recRIGP2000000002', code: 'lot_closed', message: 'Η παρτίδα έκλεισε — όχι νέα κομμάτια ή αλλαγές παλετών' };
+    n0 = F.writes.length;
+    await join(page, 'recRIGE3000000003', 'piece', 'recRIGP2000000002'); await page.waitForTimeout(1500);
+    const wUndo = writesSince(F, n0).map(w => w.m + ' ' + w.rec + ' ' + JSON.stringify(w.fields));
+    ok('b04_refused_join_lock_undone', wUndo.length === 3 && /^PATCH .+"Group ID":"GI-[0-9A-Z]+\|/.test(wUndo[0]) && wUndo[0].startsWith('PATCH ' + newB)
+      && wUndo[1].startsWith('PATCH recRIGP2000000002') && wUndo[2] === `PATCH ${newB} {"Group ID":null}` && newBfields() === before4, wUndo);
+
+    // B-04 (a) + D-23: «Επιστροφή» of a lone matched piece that still carries
+    // a one-member «GI-…|piece» (left by the old lock). The round-trip leg
+    // DELETE goes out BEFORE the vehicle PATCH (the trigger copies a vehicle
+    // change onto the whole trip), and the group is cleared too — null.
+    F.orders[newB].fields['Group ID'] = 'GI-LEGACY|' + newB;
+    F.rt = { id: 901, code: 'RT-RIG1', legs: [7003, 7103], pg: { recRIGE3000000003: 7003, [newB]: 7103 } };
+    await page.evaluate(async () => { window.rtFindForOrder = window.__rig.rtFind0; invalidateCache(TABLES.ORDERS); await renderWeeklyIntl(); });
+    await page.waitForTimeout(1200);
+    n0 = F.writes.length;
+    await page.evaluate(async () => { const e = WINTL.rows.find(r => r.type === 'export' && r.orderIds.includes('recRIGE3000000003')); await _wiStockReturnLone(e.id); });
+    await page.waitForTimeout(1500);
+    const wD = writesSince(F, n0);
+    const iDel = wD.findIndex(w => w.m === 'DELETE' && w.table === 'ct_rt_legs' && w.rec === '7103');
+    const iVeh = wD.findIndex(w => w.m === 'PATCH' && w.rec === newB && Array.isArray(w.fields.Truck) && !w.fields.Truck.length);
+    ok('d23_leg_delete_before_vehicle_patch', iDel >= 0 && iVeh > iDel && F.rt.legs.join() === '7003'
+      && !wD.some(w => w.m === 'PATCH' && w.rec === 'recRIGE3000000003' && 'Truck' in (w.fields || {})), { iDel, iVeh, legs: F.rt.legs, wD: wD.map(w => w.m + ' ' + w.table + ' ' + w.rec + ' ' + JSON.stringify(w.fields || {})) });
+    const pB = F.orders[newB].fields;
+    ok('b04_lone_return_clears_group', !('Group ID' in pB) && !pB.Truck && pB.Status === 'Pending' && wD.some(w => w.m === 'PATCH' && w.rec === newB && w.fields['Group ID'] === null), pB);
+    undo.return_lone = await undoOf(page);
+    await page.evaluate(() => { window.rtFindForOrder = async () => ({ pg: null, rt: null }); });
+    F.rt = null;
+
+    // B-07: «×» on E4, whose import group is [I4, P3 (piece)] — the confirm
+    // says the piece returns to stock; the piece leaves the group (null) and
+    // its truck; the lone survivor I4 is no group any more (as «Ακύρωση
+    // groupage» leaves it); the shelf re-reads.
+    n0 = F.writes.length;
+    const b07 = await page.evaluate(async () => {
+      const e = WINTL.rows.find(r => r.type === 'export' && r.orderIds.includes('recRIGE4000000004'));
+      const c0 = window.__rig.confirms.length;
+      // the real «×» of the group pill, whatever function it calls
+      document.querySelector(`#wi-row-${e.id} .wk3-unm`).click(); await new Promise(r => setTimeout(r, 2500));
+      return { confirm: window.__rig.confirms.slice(c0).join(' / '), loose: (WINTL.data.stock && WINTL.data.stock.loose || []).map(p => p.id) };
+    });
+    const p3 = F.orders.recRIGP3000000003.fields, i4 = F.orders.recRIGI4000000004.fields;
+    ok('b07_unmatch_returns_piece', /#312 \(4p\) βγαίνει και από την ομάδα και επιστρέφει στο απόθεμα/.test(b07.confirm)
+      && !('Group ID' in p3) && !p3.Truck && !('Group ID' in i4) && !i4.Truck && !F.orders.recRIGE4000000004.fields['Matched Import ID']
+      && b07.loose.includes('recRIGP3000000003'), { b07, p3, i4, writes: writesSince(F, n0).map(w => w.m + ' ' + w.rec + ' ' + JSON.stringify(w.fields || {})) });
+    undo.unmatch_piece = await undoOf(page);
+    ok('b13_no_undo_after_stock_actions', Object.values(undo).every(v => v === null), undo);
 
     // Fullscreen: the strip stays inside the sheet; a chip click leaves fullscreen and opens the panel.
     await page.evaluate(async () => { await renderWeeklyIntl(); }); await page.waitForTimeout(1200);
@@ -563,6 +756,129 @@ if (MAIN) (async () => {
       modal = await page.evaluate(() => (document.getElementById('modal') || {}).innerText || '');
     }
     ok('zero_piece_lot_closable', !/ close/.test(z.chip || '') && z.buttons.includes('Κλείσιμο υπολοίπου…') && /Μένουν 10 παλέτες/.test(modal), { z, modal: modal.replace(/\s+/g, ' ').slice(0, 200) });
+    await ctx.close();
+  }
+
+  // 6) prints, CSV, partners, groupage, menus — a fresh week with an export
+  //    lot (#330, own truck), a truckless GI group holding a piece (I7 + P6)
+  //    and a Case B pair whose vehicle copy never landed (E3 → P5).
+  {
+    const F = makeFacade();
+    const { ctx, page } = await openBoard(browser, 'dispatcher', F, { extra: true });
+    const rowOf = oid => rowIdOf(page, oid);
+
+    // PR-10: the week's paper lists every member of a truck's import group,
+    // «ΑΠ» before a piece; a lot row says «→ ΑΠΟΘΗΚΗ».
+    const pw = await page.evaluate(() => { const n = window.__rig.printed.length; _wiPrintWeek(); return (window.__rig.printed[n] || {}).html || ''; });
+    const pwRows = pw.split('<tr>').slice(1);
+    const e4 = pwRows.find(r => /ΙΔ\./.test(r) && /<br>ΑΠ /.test(r)) || '';
+    ok('pr10_week_print_members', !!e4 && (e4.match(/<br>/g) || []).length === 1 && pwRows.some(r => /→ ΑΠΟΘΗΚΗ/.test(r)), { e4: e4.replace(/\s+/g, ' ').slice(0, 400), lotRows: pwRows.filter(r => /ΑΠΟΘΗΚΗ/.test(r)).length });
+
+    // B-25/PR-11: CSV «Απόθεμα» column and a filled «Order No».
+    await page.evaluate(() => _wiExportCSV()); await page.waitForTimeout(500);
+    const csv = await page.evaluate(() => window.__rig.csv.slice(-1)[0] || '');
+    const lines = csv.replace(/^\ufeff/, '').split('\n');
+    const col = (l, i) => (l.match(/"((?:[^"]|"")*)"/g) || [])[i];
+    const byNo = n => lines.find(l => col(l, 0) === `"${n}"`) || '';
+    const noOf = id => F.no(id);
+    ok('b25_csv_stock_column', col(lines[0], 13) === '"Απόθεμα"' && lines.slice(1).every(l => col(l, 0) !== '""')
+      && col(byNo(312), 13) === '"Παρτίδα #312"' && col(byNo(330), 13) === '"Παρτίδα #330"' && col(byNo(noOf('recRIGP3000000003')), 13) === '"Κομμάτι #312"'
+      && col(byNo(noOf('recRIGP4000000004')), 13) === '"Κομμάτι #318"' && col(byNo(noOf('recRIGI5000000005')), 13) === '""',
+      lines.slice(0, 3).concat(['…', byNo(312), byNo(noOf('recRIGP3000000003')), byNo(noOf('recRIGI5000000005'))]));
+
+    // B-05: no piece on a partner — popover (export whose import group holds
+    // a piece), popover via the server-only GI sibling, drag/drop of a loose
+    // piece and of a group onto a partner export. Toast, and nothing written.
+    const PA = await page.evaluate(() => getRefPartners()[0].id);
+    const tryPartner = async (oid, hide) => {
+      const rid = await rowOf(oid); const n0 = F.writes.length;
+      const t = await page.evaluate(async ([r, pa, hideId]) => {
+        const n = window.__rig.toasts.length;
+        if (hideId) WINTL.data.imports = WINTL.data.imports.filter(x => x.id !== hideId);   // «not in this view»
+        _wiField(r, 'partnerId', pa); _wiField(r, 'partnerRate', '500'); _wiField(r, 'partnerRateImp', '300');
+        await _wiSaveFromPopover(r); return window.__rig.toasts.slice(n);
+      }, [rid, PA, hide || null]);
+      return { toasts: t, writes: writesSince(F, n0).length };
+    };
+    const popE4 = await tryPartner('recRIGE4000000004');
+    const popI7 = await tryPartner('recRIGI7000000007', 'recRIGP6000000006');
+    await page.evaluate(async () => { invalidateCache(TABLES.ORDERS); await renderWeeklyIntl(); }); await page.waitForTimeout(1200);
+    const drop = async (impId, expOid) => { const rid = await rowOf(expOid); const n0 = F.writes.length;
+      const t = await page.evaluate(async ([i, r]) => { const n = window.__rig.toasts.length; window._wiDragging = i; await _wiDropOnRow({ preventDefault() {} }, r); return window.__rig.toasts.slice(n); }, [impId, rid]);
+      return { toasts: t, writes: writesSince(F, n0).length }; };
+    const dropLoose = await drop('recRIGP3000000003', 'recRIGE5000000005');
+    const dropGroup = await drop('recRIGI4000000004', 'recRIGE5000000005');
+    const own = r => r.writes === 0 && r.toasts.some(t => /Φ1: κομμάτι μόνο σε δικό μας φορτηγό/.test(t));
+    ok('b05_no_piece_on_partner', own(popE4) && own(popI7) && own(dropLoose) && own(dropGroup), { popE4, popI7, dropLoose, dropGroup });
+
+    // B-09: a row holding a piece offers no «Groupage εισαγωγών», no
+    // candidate list offers one, and _wiImpGroup refuses one.
+    const rI7 = await rowOf('recRIGI7000000007'), rI5 = await rowOf('recRIGI5000000005');
+    const mI7 = await ctxMenu(page, `_wiImpCtx(${fakeEv},${rI7})`);
+    const cand = await page.evaluate(r => { _wiPanelGroupBuild(r, true); const v = [...document.querySelectorAll('.wiGrpPick')].map(b => +b.value);
+      _wiPanelClose(); return v.map(id => (WINTL.rows.find(x => x.id === id) || {}).orderIds || []); }, rI5);
+    let n6 = F.writes.length;
+    const grpT = await page.evaluate(async ([a, b]) => { const n = window.__rig.toasts.length; await _wiImpGroup(a, b); return window.__rig.toasts.slice(n); }, [rI5, rI7]);
+    ok('b09_no_import_groupage_with_piece', !/Groupage εισαγωγών/.test(mI7) && !cand.flat().some(id => /recRIGP/.test(id)) && cand.length > 0
+      && writesSince(F, n6).length === 0 && grpT.some(t => /«\+ Κομμάτι από απόθεμα…»/.test(t)), { mI7, cand, grpT });
+
+    // B-28: no «Σπάσιμο σκέλους» on a piece's row or a lot's row; a plain export keeps it.
+    const mP4 = await ctxMenu(page, `_wiImpCtx(${fakeEv},${await rowOf('recRIGP4000000004')})`);
+    const mLot = await ctxMenu(page, `_wiCtx(${fakeEv},${await rowOf('recRIGLOTE0000330')})`);
+    const mE6 = await ctxMenu(page, `_wiCtx(${fakeEv},${await rowOf('recRIGE6000000006')})`);
+    ok('b28_no_split_on_piece_or_lot', !/Σπάσιμο σκέλους/.test(mP4) && !/Σπάσιμο σκέλους/.test(mLot) && /Σπάσιμο σκέλους/.test(mE6), { mP4, mLot, mE6 });
+
+    // DL-06: in lot #312's panel, P5 (Case B import of E3, no vehicle yet)
+    // has no [Διαγραφή]; the truly loose P3 has.
+    await page.evaluate(() => _wiStockLotOpen(document.body, 'recRIGSTOCKLOTA1')); await page.waitForTimeout(900);
+    const dl = await page.evaluate(() => { const has = id => { const el = [...document.querySelectorAll('#wi-stk-pieces .wi-stk-piece')].find(x => (x.getAttribute('onclick') || '').includes(id)); return el ? !!el.querySelector('.wi2-unlink') : null; };
+      const r = { p5: has('recRIGP5000000005'), p3: has('recRIGP3000000003') }; _wiPanelClose(); return r; });
+    ok('dl06_no_delete_on_matched_piece', dl.p5 === false && dl.p3 === true, dl);
+
+    // B-22: E4's import starts moving (the server says In Transit, the board
+    // still says Assigned) → the join is refused before any write; after a
+    // repaint the menu item is disabled with the reason.
+    F.orders.recRIGI4000000004.fields.Status = 'In Transit';
+    n6 = F.writes.length;
+    const t0 = await page.evaluate(() => window.__rig.toasts.length);
+    await join(page, 'recRIGE4000000004', 'lot', 'recRIGSTOCKLOTA1'); await page.waitForTimeout(1200);
+    const live = { writes: writesSince(F, n6).length, toasts: await page.evaluate(n => window.__rig.toasts.slice(n), t0), forms: await page.evaluate(() => window.__rig.pieceCalls.length) };
+    await page.evaluate(async () => { invalidateCache(TABLES.ORDERS); await renderWeeklyIntl(); }); await page.waitForTimeout(1200);
+    const mE4 = await ctxMenu(page, `_wiCtx(${fakeEv},${await rowOf('recRIGE4000000004')})`);
+    ok('b22_no_case_a_on_moving_import', live.writes === 0 && live.forms === 0 && live.toasts.some(t => /σε κίνηση — όχι νέο κομμάτι/.test(t))
+      && /disabled: .*\+ Κομμάτι από απόθεμα… \[σε κίνηση — όχι νέο κομμάτι\]/.test(mE4), { live, mE4 });
+    await shot(page, 'stock-round0-extra-1440.png'); out.screens.push('stock-round0-extra-1440.png');
+    await ctx.close();
+  }
+
+  // 7) FEATURES.STOCK_LOTS = false (as config.js ships) — G-42: the three
+  //    data-independent Weekly changes are proven, not just present.
+  {
+    const F = makeFacade();
+    const { ctx, page } = await openBoard(browser, 'dispatcher', F, { switchOff: true });
+    const off = await page.evaluate(() => ({ sw: FEATURES.STOCK_LOTS, shelf: !!document.getElementById('wi-shelf'), p3Row: !!document.getElementById('wi-imp-recRIGP3000000003') }));
+    ok('g42_switch_off_board', off.sw === false && !off.shelf && off.p3Row, off);   // no shelf = no home: the loose piece keeps its row
+    // (1) row pallets = Σ group members: I2 (10p) + I3 (8p) = 18p.
+    const grpRow = await rowIdOf(page, 'recRIGI3000000003');
+    const pals = await page.evaluate(r => { _wiPanelGroupBuild(r, true); const t = document.getElementById('wi-panel').innerText; _wiPanelClose(); return t.replace(/\s+/g, ' '); }, grpRow);
+    ok('g42_off_row_pallets_sum', /\b18p( \/ 33p|\))/.test(pals), pals.slice(0, 300));
+    // (2) the export finds its group by ANY member: after a reorder the lead is
+    //     I3 while E2 still points at I2 — E2's row still draws both tiles.
+    const seg = await page.evaluate(async () => {
+      const find = () => WINTL.rows.find(r => r.type === 'import' && (r.orderIds || []).includes('recRIGI2000000002'));
+      window._wiSegDrag = { rowId: find().id, orderId: 'recRIGI3000000003' };
+      await _wiSegDrop({ preventDefault() {} }, find().id, 'recRIGI2000000002');
+      await renderWeeklyIntl();
+      const g = find(), e = WINTL.rows.find(r => r.type === 'export' && r.orderIds.includes('recRIGE2000000002'));
+      const tiles = [...document.querySelectorAll(`#wi-row-${e.id} .wk3-seg[data-order-id]`)].map(x => x.dataset.orderId);
+      return { rowId: g.id, lead: g.orderId, ptr: e.importId, tiles: [...new Set(tiles)] };
+    });
+    ok('g42_off_group_pill_any_member', seg.lead === 'recRIGI3000000003' && seg.ptr === 'recRIGI2000000002' && seg.tiles.includes('recRIGI2000000002') && seg.tiles.includes('recRIGI3000000003'), seg);
+    // (3) the member the export points at leaves → Matched Import ID follows the lead.
+    await page.evaluate(async r => { await _wiCancelGroupMember(r, 'recRIGI2000000002', true); }, seg.rowId);
+    await page.waitForTimeout(600);
+    ok('g42_off_pointer_follows_lead', F.orders.recRIGE2000000002.fields['Matched Import ID'] === 'recRIGI3000000003', F.orders.recRIGE2000000002.fields);
+    await shot(page, 'stock-switch-off-1440.png'); out.screens.push('stock-switch-off-1440.png');
     await ctx.close();
   }
 
