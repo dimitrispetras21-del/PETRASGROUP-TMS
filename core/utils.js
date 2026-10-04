@@ -116,8 +116,9 @@ function escapeHtml(str) {
 /**
  * One CSV cell, before quoting: a TEXT cell that starts with = + - @ (or a tab
  * or CR) is written with a leading ' so spreadsheet software keeps it as text.
- * Numbers (typeof number) pass unchanged, and so does a negative amount
- * written as text («-12,50», «-1.234,50»): it is a number, not text.
+ * Numbers (typeof number) pass unchanged, and so does a text that is entirely
+ * a signed number («+12,50», «-12,50», «+1.234,56», «-3»): spreadsheet
+ * software reads it as a number, and the payroll CSV writes its amounts so.
  * Every CSV exporter routes each cell through here (one rule, one place).
  * null/undefined/booleans pass through — each exporter keeps its own blanks.
  * @param {*} v - Cell value
@@ -126,7 +127,7 @@ function escapeHtml(str) {
 function csvSafeCell(v) {
   if (v == null || typeof v === 'number' || typeof v === 'boolean' || typeof v === 'bigint') return v;
   const s = String(v);
-  if (!/^[=+\-@\t\r]/.test(s) || /^-\d+(?:[.,]\d+)*$/.test(s)) return s;
+  if (!/^[=+\-@\t\r]/.test(s) || /^[+-]?\d+([.,]\d+)*$/.test(s)) return s;
   return "'" + s;
 }
 

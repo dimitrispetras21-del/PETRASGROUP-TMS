@@ -85,9 +85,9 @@ test('csvDownload: text starting with = + - @ is written as text, numbers stay n
   global.URL = { createObjectURL: b => { created.push(b); return 'blob:x'; }, revokeObjectURL: () => {} };
   global.document = { createElement: () => ({ click() {} }) };
   try {
-    OrdersList.csvDownload([['=SUM(A1)', '+30 2310', -12.5, '-12,50', 'Βέροια']], 'x.csv');
+    OrdersList.csvDownload([['=SUM(A1)', '+30 2310', -12.5, '-12,50', '+12,50', '-1+2', 'Βέροια']], 'x.csv');
   } finally { delete global.toast; delete global.Blob; delete global.URL; delete global.document; }
-  assert.strictEqual(created[0].text, '﻿"\'=SUM(A1)","\'+30 2310","-12.5","-12,50","Βέροια"');
+  assert.strictEqual(created[0].text, '﻿"\'=SUM(A1)","\'+30 2310","-12.5","-12,50","+12,50","\'-1+2","Βέροια"');
 });
 
 test('chunk: batches of 90 cover every id exactly once — the union equals the single-OR() set', () => {
