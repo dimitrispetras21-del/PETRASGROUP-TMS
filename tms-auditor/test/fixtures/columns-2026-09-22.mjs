@@ -44,3 +44,25 @@ export const TABLES = {
 };
 // Synthetic, NOT from production: exists only so the role test can prove tms_reader cannot read it.
 export const SYNTHETIC = { users: [['id', 'int8!'], ['username', 'text!'], ['password_hash', 'text!'], ['role', 'text!']] };
+// SYNTHETIC from DRAFT 057 (worker/migrations/drafts/057_stock_lots.sql), until it runs: the stock-lot table, the two
+// piece columns and the three views the S-checks (and B-15) read. Not in the 22/9 snapshot because they do not exist
+// in production yet; without them those checks cannot run locally. Views become TABLES here, like dl_v_rt_gap above.
+// Names/types are read from the 057 text (CREATE TABLE §1, ADD COLUMN §2, view select lists §4), not from a catalog.
+// After 057 runs: re-snapshot them from information_schema into TABLES and delete this block (principle 8).
+export const DRAFT_057 = {
+  tables: {
+    stock_lots: [['id', 'int8!'], ['legacy_id', 'text!'], ['order_id', 'int8'], ['nat_order_id', 'int8'], ['closed_note', 'text'], ['closed_at', 'timestamptz'], ['created_at', 'timestamptz!'], ['deleted_at', 'timestamptz']],
+    stock_v_pieces: [['lot_id', 'int8'], ['piece_kind', 'text'], ['piece_id', 'int8'], ['piece_rec', 'text'], ['client_id', 'int8'], ['pickup_location_id', 'int8'], ['pallets', 'numeric'], ['status', 'text'], ['loading_date', 'date'], ['delivered', 'bool'], ['delivered_on', 'date'], ['on_truck', 'bool'], ['created_at', 'timestamptz']],
+    stock_v_lots: [['id', 'int8'], ['legacy_id', 'text'], ['deleted_at', 'timestamptz'], ['order_id', 'int8'], ['nat_order_id', 'int8'], ['lot_no', 'int8'], ['source_kind', 'text'],
+      ['reference', 'text'], ['source_notes', 'text'], ['client_id', 'int8'], ['client_rec', 'text'], ['client_name', 'text'],
+      ['warehouse_location_id', 'int8'], ['warehouse_rec', 'text'], ['warehouse_name', 'text'], ['warehouse_city', 'text'], ['warehouse_country', 'text'],
+      ['intake_partner_id', 'int8'], ['intake_status', 'text'], ['intake_delivered', 'bool'], ['received_on', 'date'], ['ops_status', 'text'],
+      ['stock_pallets', 'numeric'], ['drawn_pallets', 'numeric'], ['remaining_pallets', 'numeric'], ['delivered_pallets', 'numeric'], ['written_off_pallets', 'numeric'],
+      ['pieces', 'int8'], ['pieces_delivered', 'int8'], ['pieces_without_truck', 'int8'], ['last_piece_delivered', 'date'],
+      ['closed_note', 'text'], ['closed_at', 'timestamptz'], ['complete', 'bool'], ['completed_on', 'date'], ['invoiced', 'bool']],
+    stock_v_lot_money: [['lot_id', 'int8'], ['lot_rec', 'text'], ['source_kind', 'text'], ['source_id', 'int8'], ['source_rec', 'text'], ['price', 'numeric'], ['intake_cost', 'numeric'],
+      ['net', 'numeric'], ['total_pallets', 'numeric'], ['per_pallet', 'numeric'], ['drawn_pallets', 'numeric'], ['allocated_amount', 'numeric'], ['remaining_pallets', 'numeric'],
+      ['in_stock_amount', 'numeric'], ['written_off_pallets', 'numeric'], ['written_off_amount', 'numeric'], ['closed_at', 'timestamptz'], ['allocation_status', 'text']],
+  },
+  columns: { orders: [['stock_lot_id', 'int8']], national_orders: [['stock_lot_id', 'int8']] },
+};

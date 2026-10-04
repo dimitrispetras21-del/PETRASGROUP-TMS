@@ -11,7 +11,8 @@
 -- next: 
 -- exceptions: Σκέλη split· VS εθνικό σκέλος.
 -- tolerance: 
--- source: 02b Β-13 · 22/9 = 24 (ουρά dispatcher)
+-- source: 02b Β-13 · 22/9 = 24 (ουρά dispatcher) · DRAFT 057b_stock_monitoring.sql (4/10, ΔΕΝ εκτελέστηκε): + «AND stock_lot_id IS NULL» (το κομμάτι παρτίδας δεν έχει ποτέ τιμή — σχεδιασμός, όχι εύρημα)· ζωντανό μόνο μετά τα 057 + 057b
 -- enabled: yes
 SELECT count(*) FROM orders WHERE deleted_at IS NULL AND status='Delivered' AND coalesce(price,0)<=0 AND parent_order_id IS NULL
- AND coalesce(actual_delivery_date,delivery_datetime) < current_date-3;
+ AND coalesce(actual_delivery_date,delivery_datetime) < current_date-3
+ AND stock_lot_id IS NULL;
