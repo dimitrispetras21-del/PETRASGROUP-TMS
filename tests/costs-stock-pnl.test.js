@@ -1,0 +1,97 @@
+// node --test tests/costs-stock-pnl.test.js   (TZ=Europe/Athens)
+// TRIP PnL card × stock lots (057, Ε1; impact map 4/10 E-15 / D-11 / D-12). The REAL modules/costs.js
+// runs in a vm with the REAL OrdersStock; /costs/* and the page helpers are stubs.
+//   lot RT (partner, revenue = warehouse rate 300, lot Price 3.300): no «ανεξήγητη διαφορά», label + €300
+//   owned RT with a VS export + a piece: the piece shows its allocation and the VS note is −850, not −(850−alloc)
+//   allocation not read: «ο επιμερισμός δεν διαβάστηκε», no diff note at all
+//   ctStockLoad: no lot/piece on any card → no request (before 057 / the stock Worker = today's page)
+process.env.TZ = 'Europe/Athens';
+const { test } = require('node:test');
+const assert = require('node:assert');
+const fs = require('fs');
+const path = require('path');
+const vm = require('vm');
+
+const ROOT = path.join(__dirname, '..');
+vm.runInThisContext(fs.readFileSync(path.join(ROOT, 'core', 'data-helpers.js'), 'utf8'));
+global.TmsWeek = require('../core/tms-week.js');
+const { OrdersStock } = require('../core/orders-common.js');
+const SRC = fs.readFileSync(path.join(ROOT, 'modules', 'costs.js'), 'utf8');
+
+const LOT = { id: 'recLOT0000000312', fields: { Direction: 'Import', Price: 3300, 'Order No': 312, 'Own Stock Lot': 'recSTOCKLOT1', Client: ['recCLIA'], 'Delivery DateTime': '2026-10-02' } };
+const PIECE = { id: 'recPIECE00000001', fields: { Direction: 'Import', 'Stock Lot': ['recSTOCKLOT1'], 'Stock Lot Order No': 312, 'Stock Lot Source': 'intl', Client: ['recCLIA'], 'Delivery DateTime': '2026-10-06' } };
+const EXPVS = { id: 'recEXPORT0000001', fields: { Direction: 'Export', Price: 2000, 'Veroia Switch': true, Client: ['recCLIB'], 'Loading DateTime': '2026-10-03' } };
+const MONEY = { lots: [{ lot_rec: 'recSTOCKLOT1', allocation_status: 'ok', intake_cost: 300, net: 3000 }], pieces: [{ lot_rec: 'recSTOCKLOT1', piece_rec: 'recPIECE00000001', amount: 454.55 }] };
+
+function load(fetchImpl) {
+  const net = [];
+  const ctx = {
+    console: { log() {}, warn() {}, error() {} }, OrdersStock, getLinkedId, Number, Math, Object, JSON, String,
+    PROXY_URL: 'https://w.example', localStorage: { getItem: () => null },
+    icon: () => '', fmtDate: d => String(d || ''), fhClientName: () => 'Πελάτης', orderLoadName: () => 'Αποθήκη Χ', orderDelName: () => 'Προορισμός', orderLocCountry: () => 'GR',
+    fetch: async (url) => { net.push(String(url).replace('https://w.example', '')); return fetchImpl ? fetchImpl(String(url)) : { ok: true, status: 200, json: async () => MONEY }; },
+  };
+  ctx.window = ctx;
+  vm.runInNewContext(SRC + '\nthis._ct = _ct; this.ctCardHtml = ctCardHtml; this.ctStockLoad = typeof ctStockLoad === "function" ? ctStockLoad : null;', ctx);
+  return { ctx, net };
+}
+function setCard(ctx, trip, legs) {
+  ctx._ct.rts = { [trip.id]: { id: trip.id, ct_rt_legs: legs.map(([pg, o, dir]) => ({ order_id: pg, direction: dir })) } };
+  ctx._ct.orderByPg = Object.fromEntries(legs.map(([pg, o]) => [pg, { id: o.id, fields: JSON.parse(JSON.stringify(o.fields)) }]));
+  ctx._ct.linesByRt = {}; ctx._ct.palletGate = {}; ctx._ct.lookups = { trucks: [], drivers: [], partners: [] };
+}
+const text = html => html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ');
+
+test('D-11/E-15: the lot\'s partner RT — no «ανεξήγητη διαφορά», the leg says what it earns', async () => {
+  const { ctx } = load();
+  const t = { id: 1, code: 'RT-1', trip_type: 'PARTNER', partner_id: 9, revenue: 300, status: 'closed', date_start: '2026-10-01' };
+  setCard(ctx, t, [[10, LOT, 'IMPORT']]);
+  if (ctx.ctStockLoad) await ctx.ctStockLoad();   // absent on the base commit → the card as it was
+  const h = text(ctx.ctCardHtml(t));
+  assert.ok(!/ανεξήγητη διαφορά/.test(h), h);
+  assert.match(h, /παρτίδα #312 — έσοδο = κόστος αποθήκης · το καθαρό μοιράζεται στα κομμάτια/);
+  assert.match(h, /€300/);
+  assert.ok(!/€3\.300/.test(h), 'the lot\'s client price is not this RT\'s revenue: ' + h);
+});
+
+test('D-12/E-15: a piece leg shows its allocation; with a VS export the VS note is the full 850', async () => {
+  const { ctx } = load();
+  const t = { id: 2, code: 'RT-2', trip_type: 'OWNED', truck_id: 1, revenue: 2000 - 850 + 454.55, status: 'closed', date_start: '2026-10-01' };
+  setCard(ctx, t, [[20, EXPVS, 'EXPORT'], [21, PIECE, 'IMPORT']]);
+  if (ctx.ctStockLoad) await ctx.ctStockLoad();   // absent on the base commit → the card as it was
+  const h = text(ctx.ctCardHtml(t));
+  assert.match(h, /από παρτίδα #312/);
+  assert.match(h, /€455/);
+  assert.match(h, /Veroia Switch: −€850 /, h);
+  assert.ok(!/ανεξήγητη/.test(h), h);
+});
+
+test('allocation not read: «ο επιμερισμός δεν διαβάστηκε», no diff note (unknown is not «ανεξήγητη»)', async () => {
+  const { ctx } = load(() => ({ ok: false, status: 500, json: async () => ({ error: 'Ο επιμερισμός δεν διαβάστηκε' }) }));
+  const t = { id: 2, code: 'RT-2', trip_type: 'OWNED', truck_id: 1, revenue: 1604.55, status: 'closed', date_start: '2026-10-01' };
+  setCard(ctx, t, [[20, EXPVS, 'EXPORT'], [21, PIECE, 'IMPORT']]);
+  if (ctx.ctStockLoad) await ctx.ctStockLoad();   // absent on the base commit → the card as it was
+  const h = text(ctx.ctCardHtml(t));
+  assert.match(h, /παρτίδα #312 — ο επιμερισμός δεν διαβάστηκε/);
+  assert.ok(!/Veroia Switch: −|ανεξήγητη/.test(h), h);
+});
+
+test('no lot/piece on any card (always so before 057 + the stock Worker): no /costs/stock-lots request', async () => {
+  const { ctx, net } = load();
+  const t = { id: 3, code: 'RT-3', trip_type: 'OWNED', truck_id: 1, revenue: 1150, status: 'closed', date_start: '2026-10-01' };
+  setCard(ctx, t, [[30, EXPVS, 'EXPORT']]);
+  if (ctx.ctStockLoad) await ctx.ctStockLoad();   // absent on the base commit → the card as it was
+  assert.deepStrictEqual(net, []);
+  assert.match(text(ctx.ctCardHtml(t)), /Veroia Switch: −€850 /);
+});
+
+test('the lot without a price/warehouse rate: the DB keeps the whole price on its leg — so does the card', async () => {
+  const { ctx } = load(async () => ({ ok: true, status: 200, json: async () => ({ lots: [{ lot_rec: 'recSTOCKLOT1', allocation_status: 'no_intake_cost', intake_cost: null }], pieces: [] }) }));
+  const t = { id: 1, code: 'RT-1', trip_type: 'PARTNER', partner_id: 9, revenue: 3300, status: 'closed', date_start: '2026-10-01' };
+  setCard(ctx, t, [[10, LOT, 'IMPORT']]);
+  if (ctx.ctStockLoad) await ctx.ctStockLoad();   // absent on the base commit → the card as it was
+  const h = text(ctx.ctCardHtml(t));
+  assert.match(h, /χωρίς επιμερισμό \(χωρίς κόστος αποθήκης\): όλο το έσοδο εδώ/);
+  assert.match(h, /€3\.300/);
+  assert.ok(!/ανεξήγητη/.test(h), h);
+});

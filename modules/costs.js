@@ -366,6 +366,7 @@ async function ctReload() {
     // τρέχει ΠΡΙΝ το render ώστε οι κάρτες να βγουν κατευθείαν πλήρεις· αν
     // αποτύχει, οι κάρτες βγαίνουν με ποσά + ορατή σημείωση, ποτέ κενές.
     await ctEnrich();
+    await ctStockLoad();
     ctRenderSummary(); ctRenderVehBar(); ctRenderList();
     ctRecon();
   } catch (e) {
@@ -420,6 +421,65 @@ async function ctEnrich() {
     console.warn('[costs] enrich failed:', e && e.message);
     _ct.orderByPg = {}; _ct.enrichFail = true;
   }
+}
+
+// ── Stock lots Φ1 (057, Ε1; impact map 4/10 E-15 / D-11 / D-12) ────────────
+// After 057 the RT revenue (ct_v_rt_revenue) is NOT the order prices for a
+// stock lot: the lot's leg earns the warehouse partner's rate (its partner RT
+// → margin 0) and each piece's leg earns its pallet share of the lot's net.
+// The card's «οι τιμές των σκελών αθροίζουν …» check summed order Prices, so
+// every lot RT read «ανεξήγητη διαφορά €(net)» and a piece leg printed «—»
+// while its RT revenue held the allocation. The amounts come from
+// GET /costs/stock-lots (owner only, like this page) — the DB's own numbers,
+// nothing recomputed here. Read only when a card carries a lot or a piece
+// (never before 057 + the stock Worker: the labels do not exist then, so no
+// request is made and the page is today's). A failed read is said per leg
+// and the sum check is skipped — unknown is not «ανεξήγητη διαφορά».
+// The leg orders come from ctEnrich's ORDERS read, which has no fields[] —
+// 'Own Stock Lot' / 'Stock Lot' / 'Stock Lot Order No' are in it.
+async function ctStockLoad() {
+  _ct.stock = null; _ct.stockFailed = false;
+  if (!_ct.orderByPg) return;
+  const isStock = o => o && (OrdersStock.isLot(o.fields) || OrdersStock.isPiece(o.fields));
+  const any = Object.values(_ct.rts).some(rt => (rt.ct_rt_legs || []).some(l => l.order_id != null && isStock(_ct.orderByPg[l.order_id])));
+  if (!any) return;
+  try {
+    const r = await ctFetch('/costs/stock-lots');
+    const lots = {}, pieces = {};
+    (r.lots || []).forEach(m => { lots[m.lot_rec] = m; });
+    (r.pieces || []).forEach(p => { pieces[p.piece_rec] = p; });
+    _ct.stock = { lots, pieces };
+  } catch (e) {
+    console.warn('[costs] stock-lots failed', e && e.message);
+    _ct.stockFailed = true;
+  }
+}
+// The leg's revenue under 057, mirroring ct_v_rt_revenue: { amount (shown),
+// sum (what goes into the card's legs check), note, unread }; null for an
+// ordinary order. allocation_status ≠ 'ok' (no price / no warehouse rate) =
+// the DB's fallback: the whole price stays on the lot's leg, pieces earn 0.
+function ctStockLeg(o) {
+  const f = o.fields;
+  const isLot = OrdersStock.isLot(f);
+  if (!isLot && !OrdersStock.isPiece(f)) return null;
+  const num = isLot ? (f['Order No'] ? '#' + f['Order No'] : '—') : OrdersStock.lotNumLabel(f);
+  const unread = { amount: null, sum: 0, unread: true, note: `παρτίδα ${num} — ο επιμερισμός δεν διαβάστηκε` };
+  if (_ct.stockFailed || !_ct.stock) return unread;
+  const why = { no_price: 'χωρίς τιμή', no_intake_cost: 'χωρίς κόστος αποθήκης', no_pallets: 'χωρίς παλέτες' };
+  if (isLot) {
+    const m = _ct.stock.lots[OrdersStock.lotRecOfLot(f)];
+    if (!m) return unread;
+    if (m.allocation_status !== 'ok') {
+      const p = f['Price'] != null && f['Price'] !== '' ? Number(f['Price']) : null;
+      return { amount: p, sum: p || 0, note: `παρτίδα ${num} — χωρίς επιμερισμό (${why[m.allocation_status] || m.allocation_status}): όλο το έσοδο εδώ` };
+    }
+    // Left out of the legs sum (the lot's price is not this RT's revenue).
+    return { amount: Number(m.intake_cost), sum: 0, note: `παρτίδα ${num} — έσοδο = κόστος αποθήκης · το καθαρό μοιράζεται στα κομμάτια` };
+  }
+  const a = _ct.stock.pieces[o.id];
+  if (!a) return unread;
+  if (a.amount == null) return { amount: null, sum: 0, note: `από παρτίδα ${num} — χωρίς επιμερισμό: έσοδο 0` };
+  return { amount: Number(a.amount), sum: Number(a.amount), note: `από παρτίδα ${num}` };
 }
 
 // ── Cost-complete v1: έχει η γραμμή έστω μία καταχωρημένη γραμμή κόστους; ──
@@ -682,9 +742,12 @@ function ctLegLine(l) {
   const to = orderDelName(f, 26) || '—';
   const cc = orderLocCountry(f, 'del');
   const date = imp ? (f['Delivery DateTime'] || f['Loading DateTime']) : f['Loading DateTime'];
-  const price = f['Price'] != null && f['Price'] !== '' ? ctEur(f['Price']) : '<span style="color:var(--text-dim);font-weight:400">—</span>';
+  const stk = ctStockLeg(o);   // stock lot / piece: the DB's revenue for this leg, not the order Price
+  const amt = stk ? stk.amount : (f['Price'] != null && f['Price'] !== '' ? Number(f['Price']) : null);
+  const price = amt != null ? ctEur(amt) : '<span style="color:var(--text-dim);font-weight:400">—</span>';
+  const stkNote = stk ? ` <span style="color:var(--text-mid);font-size:12px">· ${ctEsc(stk.note)}</span>` : '';
   return `<div class="ct-leg">${chip}
-    <span class="rt">${imp ? ctEsc(from) : from} <span class="arr">→</span> ${ctEsc(to)}${cc && !imp ? ' (' + cc + ')' : ''}</span>
+    <span class="rt">${imp ? ctEsc(from) : from} <span class="arr">→</span> ${ctEsc(to)}${cc && !imp ? ' (' + cc + ')' : ''}${stkNote}</span>
     <span class="ldate ct-mono">${fmtDate(date)}</span>
     <span class="lamt ct-mono">${price}</span></div>`;
 }
@@ -752,12 +815,17 @@ function ctCardHtml(t) {
   // αντιγράφεται η σταθερά (αρχή 3) — και αν δεν εξηγείται από VS, το λέμε.
   let vsNote = '';
   if (_ct.orderByPg) {
+    // Stock lot / piece legs add what the DB credits them (ctStockLeg), not
+    // the order Price; an unread allocation makes the check unknown → skipped.
+    let stockUnread = false;
     const legsSum = legs.reduce((a, l) => {
       const o = l.order_id != null && _ct.orderByPg[l.order_id];
+      const stk = o && ctStockLeg(o);
+      if (stk) { if (stk.unread) stockUnread = true; return a + stk.sum; }
       return a + (o && o.fields['Price'] != null && o.fields['Price'] !== '' ? Number(o.fields['Price']) : 0);
     }, 0);
     const diff = Math.round(legsSum - Number(t.revenue || 0));
-    if (diff > 0) {
+    if (diff > 0 && !stockUnread) {
       const hasVs = legs.some(l => { const o = l.order_id != null && _ct.orderByPg[l.order_id]; return o && o.fields['Veroia Switch']; });
       vsNote = hasVs
         ? `<div class="ct-leg" style="color:var(--text-mid);font-size:12px">Veroia Switch: −${ctEur(diff)} εσωτερική μεταφορά (δεν είναι έσοδο πελάτη), άρα έσοδο trip ${ctEur(t.revenue)}</div>`
