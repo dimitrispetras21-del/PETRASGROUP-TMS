@@ -673,8 +673,13 @@ async function _openModal(recId, f, _clientLabelOverride, _scanPrefill) {
       <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer">
         <input type="checkbox" id="f_VeroiaSwitch" ${f['Veroia Switch']?'checked':''} style="width:15px;height:15px">
         Veroia Switch</label>
-      <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer">
-        <input type="checkbox" id="f_Groupage" ${f['National Groupage']?'checked':''} style="width:15px;height:15px">
+      <!-- Hidden, not removed (4/10, before the first national dispatcher): ticked
+           on a Veroia Switch order it deleted the national leg with its truck and
+           queued it where nobody works, under «συγχρονίστηκε ✓» (0/253 use it).
+           The input stays so the save keeps the stored value — removing it would
+           write false and run the «groupage OFF» cleanup on every edit. -->
+      <label style="display:none">
+        <input type="checkbox" id="f_Groupage" ${f['National Groupage']?'checked':''}>
         National Groupage</label>
     </div>
 

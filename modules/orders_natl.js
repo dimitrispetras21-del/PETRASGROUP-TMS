@@ -549,6 +549,8 @@ function _simRead() {
   return _simRows.map(uid => ({
     locId: document.getElementById('lv_nsl' + uid)?.value || '',
     pal:   parseInt(g('simp' + uid), 10) || 0,
+    // An empty box is «not given», not 0: the multi-stop edit guard reads this.
+    palSet: g('simp' + uid).trim() !== '',
     date:  g('simd' + uid),
     note:  g('simn' + uid)
   })).filter(s => s.locId);
@@ -696,6 +698,10 @@ async function _grpSubmit() {
   // 12/08): η ημερομηνία παράδοσης του φορτίου είναι η πρώτη δηλωμένη των
   // σημείων. Εφεδρεία η φόρτωση, ώστε CL/NL να μη μένουν χωρίς ημερομηνία.
   common.delDate = groups.flatMap(g => g.stops).map(s => s.date).find(Boolean) || common.loadDate;
+  // P1-β (4/10): without a direction the truck was written but sat in no
+  // column of the Weekly National (ΚΑΘΟΔΟΣ/ΑΝΟΔΟΣ only) — never planned, under
+  // a green toast. Same rule as the simple form.
+  if (common.direction !== 'North→South' && common.direction !== 'South→North') { toast('Η κατεύθυνση είναι υποχρεωτική','warn'); return; }
   if (!common.fromLocId || !common.loadDate) { toast('Σημείο φόρτωσης και ημερομηνία φόρτωσης είναι υποχρεωτικά','warn'); return; }
   if (!groups.length) { toast('Χρειάζεται τουλάχιστον μία γραμμή με πελάτη και τοποθεσία','warn'); return; }
   const nStops = groups.reduce((s,g)=>s+g.stops.length,0);
@@ -765,6 +771,23 @@ async function _openNatlModal(recId, f) {
     return false;   // the scan v2 caller must not leave its file pending for no form
   }
   const isEdit = !!recId;
+  // P1-α (4/10, before the first dispatcher): an edit used to open every
+  // delivery card with no pallets and no date (they live in ORDER_STOPS, never
+  // read here), and the save wrote 0 pallets and the first card's date to
+  // EVERY stop — order, Weekly load and pallet ledger, under a green toast.
+  // The edit now reads the order's own stops and pre-fills each card with
+  // ITS pallets/date/note. If that read fails, the cards stay empty and the
+  // save refuses a multi-stop edit until each card is filled (never a guess).
+  let _editStops = null;
+  if (isEdit) {
+    try {
+      const st = await stopsLoad(recId, F.STOP_PARENT_NAT);
+      _editStops = (st || []).filter(s => s.fields[F.STOP_TYPE] === 'Unloading');
+    } catch (e) {
+      _editStops = null;
+      if (typeof logError === 'function') logError(e, 'orders_natl: edit form stops ' + recId);
+    }
+  }
   const clientId  = Array.isArray(f['Client'])           ? f['Client'][0]           : '';
   const pickupId  = (f['Pickup Location 1']||[])[0]||'';
   const delivId   = (f['Delivery Location 1']||f['Delivery Location']||[])[0]||'';
@@ -889,10 +912,19 @@ async function _openNatlModal(recId, f) {
   if (!_pre.length && delivId) _pre.push({ loc: delivId });   // παλιό μονό πεδίο
   if (_pre.length) {
     _pre[0].date = f['Delivery DateTime'] ? toLocalDate(f['Delivery DateTime']) : '';
-    // Οι παλέτες ανά στάση ζουν στα ORDER_STOPS, που δεν φορτώνονται στη φόρμα.
-    // Με ΕΝΑ σημείο το σύνολο ΕΙΝΑΙ η στάση, οπότε προσυμπληρώνεται με ασφάλεια·
-    // με πολλά θα ήταν εικασία, άρα μένουν κενά και το σύνολο δεν πειράζεται.
+    // Με ΕΝΑ σημείο το σύνολο ΕΙΝΑΙ η στάση, οπότε προσυμπληρώνεται με ασφάλεια.
     if (_pre.length === 1 && f['Pallets']) _pre[0].pal = f['Pallets'];
+    // Each card from its OWN stop: Unloading #i ↔ Delivery Location i (the save
+    // numbers them that way). Only when the stop's location is the card's — a
+    // mismatch (edited elsewhere) leaves that card empty rather than guess.
+    if (_editStops) _pre.forEach((p, i) => {
+      const s = _editStops.find(x => Number(x.fields[F.STOP_NUMBER]) === i + 1);
+      if (!s || (s.fields[F.STOP_LOCATION] || [])[0] !== p.loc) return;
+      const sf = s.fields;
+      if (sf[F.STOP_PALLETS] != null && sf[F.STOP_PALLETS] !== '') p.pal = sf[F.STOP_PALLETS];
+      if (sf[F.STOP_DATETIME]) p.date = toLocalDate(sf[F.STOP_DATETIME]);
+      if (sf[F.STOP_NOTES]) p.note = sf[F.STOP_NOTES];
+    });
   }
   (_pre.length ? _pre : [{}]).forEach(p => _simAddRow(p));
 }
@@ -978,6 +1010,14 @@ async function submitNatlOrder(recId) {
     if(!fields['Loading DateTime'])   _vErrors.push('Η ημερομηνία φόρτωσης είναι υποχρεωτική');
     if(!fields['Delivery DateTime'])  _vErrors.push('Χρειάζεται ημερομηνία σε ένα τουλάχιστον σημείο');
     if(_pe === null && !recId)        _vErrors.push(peMarkMissing('nf'));
+    // P1-α: an edit with 2+ delivery points writes each card's pallets and date
+    // to ITS stop. A card left empty would be written as 0 pallets / another
+    // card's date — so it is refused, never guessed (the form pre-fills them
+    // from the stops; empty means that read failed or the card is new).
+    if (recId && _stops.length > 1) {
+      const _miss = _stops.map((s, i) => (!s.palSet || !s.date) ? i + 1 : 0).filter(Boolean);
+      if (_miss.length) _vErrors.push(`Συμπλήρωσε παλέτες και ημερομηνία σε κάθε σημείο παράδοσης (σημείο ${_miss.join(', ')})`);
+    }
 
     // Date cross-validation
     if (fields['Loading DateTime'] && fields['Delivery DateTime']) {
@@ -1100,11 +1140,13 @@ async function submitNatlOrder(recId) {
     try {
       const _natStops = [];
       const _sRef = fields['Reference'] || null, _sGoods = fields['Goods'] || null, _sTemp = fields['Temperature °C'] ?? null;
-      if (pickupId) _natStops.push({ stopNumber: 1, stopType: 'Loading', locationId: pickupId, pallets: pallets || 0, dateTime: fields['Loading DateTime'] || null, clientId: clientId || null, ref: _sRef, goods: _sGoods, temp: _sTemp });
+      // On an edit, «no pallets given» leaves the stop's pallets as they are
+      // (null = not written by stopsSave's PATCH) instead of writing 0 (P1-α).
+      if (pickupId) _natStops.push({ stopNumber: 1, stopType: 'Loading', locationId: pickupId, pallets: pallets || (recId ? null : 0), dateTime: fields['Loading DateTime'] || null, clientId: clientId || null, ref: _sRef, goods: _sGoods, temp: _sTemp });
       // Α1: κάθε στάση παίρνει ΤΙΣ ΔΙΚΕΣ ΤΗΣ παλέτες. Πριν γραφόταν το σύνολο
       // αυτούσιο σε κάθε στάση, που έδειχνε π.χ. 20/20/20 αντί για 8/6/6.
       _stops.forEach((s, i) => _natStops.push({ stopNumber: i + 1, stopType: 'Unloading',
-        locationId: s.locId, pallets: s.pal || 0,
+        locationId: s.locId, pallets: s.palSet ? s.pal : (recId ? null : 0),
         dateTime: s.date || fields['Delivery DateTime'] || null,
         clientId: clientId || null, ref: _sRef, goods: _sGoods, temp: _sTemp,
         notes: s.note || null }));
@@ -1411,9 +1453,12 @@ async function _syncNationalLoad(noId, noFields, isDelete) {
     'Loading DateTime': noFields['Loading DateTime'] || null,
     'Delivery DateTime': noFields['Delivery DateTime'] || null,
     'Reference': noFields['Reference'] || '',
-    'Status': 'Pending',
     'Pallet Exchange': !!noFields['Pallet Exchange'],
   };
+  // 'Pending' only when the load is BORN. On an update it reset an assigned
+  // load (truck/driver set on the Weekly) to Pending on every edit of the
+  // order (P1-α, 4/10) — the international form already leaves Status out.
+  if (!existing.length) nlFields['Status'] = 'Pending';
 
   // Copy Pickup/Delivery Locations 1-10 (new-style), fallback to old-style
   let hasNewPickup = false, hasNewDeliv = false;
@@ -1422,6 +1467,10 @@ async function _syncNationalLoad(noId, noFields, isDelete) {
     const dId = _lid(noFields[`Delivery Location ${i}`]);
     if (pId) { nlFields[`Pickup Location ${i}`] = [pId]; hasNewPickup = true; }
     if (dId) { nlFields[`Delivery Location ${i}`] = [dId]; hasNewDeliv = true; }
+    // A point removed from the order must leave the load too (P1-α): noFields
+    // is the order as re-read (an absent slot = NULL), and [] → NULL in the
+    // Worker. Only on an update — a new load has nothing to clear.
+    else if (existing.length) nlFields[`Delivery Location ${i}`] = [];
   }
   // Note: old-style single 'Pickup Location' / 'Delivery Location' fields no longer exist in schema
 
@@ -1458,12 +1507,14 @@ async function _syncNationalLoad(noId, noFields, isDelete) {
     //
     // Πηγή αλήθειας = τα ORDER_STOPS της ΙΔΙΑΣ της παραγγελίας, όπου η φόρμα
     // έχει ήδη γράψει τις παλέτες κάθε σημείου.
-    const _byStop = {};
+    const _byStop = {}, _dateByStop = {};
     try {
       const _noStops = await stopsLoad(noId, F.STOP_PARENT_NAT);
       (_noStops || []).forEach(s => {
         const t = s.fields?.[F.STOP_TYPE], n = s.fields?.[F.STOP_NUMBER], p = s.fields?.[F.STOP_PALLETS];
         if (t && p != null) _byStop[t + '#' + (n || 0)] = p;
+        // Each delivery keeps ITS date on the load too (P1-α: every stop got the order's first date).
+        if (t && s.fields?.[F.STOP_DATETIME]) _dateByStop[t + '#' + (n || 0)] = s.fields[F.STOP_DATETIME];
       });
     } catch(e) { console.warn('Α1: ανάγνωση ORDER_STOPS της NO απέτυχε', e); }
 
@@ -1490,7 +1541,7 @@ async function _syncNationalLoad(noId, noFields, isDelete) {
         clientId: _clientId, goods: _goods, temp: _temp, ref: _ref });
       const dId = _lid(noFields[`Delivery Location ${i}`]);
       if (dId) _nlStops.push({ stopNumber: i, stopType: 'Unloading', locationId: dId,
-        pallets: _palFor('Unloading', i, _nUnload), dateTime: noFields['Delivery DateTime'] || null,
+        pallets: _palFor('Unloading', i, _nUnload), dateTime: _dateByStop['Unloading#' + i] || noFields['Delivery DateTime'] || null,
         clientId: _clientId, goods: _goods, temp: _temp, ref: _ref });
     }
     if (_nlStops.length) {
