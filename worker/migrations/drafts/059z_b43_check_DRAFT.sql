@@ -2,7 +2,9 @@
 --        (plan rt-never-closed v4, phase 0b = section Theta "062a"). Touches ONLY the B-43 row of
 --        monitoring.checks. No TMS table, no TMS data, no Worker, no front end.
 --
--- DRAFT - NOT EXECUTED. The owner runs it in the Supabase SQL editor AFTER 15:00 (team works
+-- EXECUTED 4/10/2026 evening by the owner (result row: 059z OK, P2, hourly, true, b43_now 0).
+-- Verified by SELECT: B-43 row fingerprint = 1afc44fa... (equals tms-auditor/checks/B-43.sql), B-54 green 27.
+-- Was: DRAFT - NOT EXECUTED. The owner runs it in the Supabase SQL editor AFTER 15:00 (team works
 -- 05:30-14:30), with an explicit yes in the conversation. Plan order is binding: 0b -> 1 -> 2 -> 4 -> 5,
 -- so phase 1 (screens stop cancelling round trips) must not ship before this row is live.
 -- Rollback: 059z_b43_check_rollback_DRAFT.sql (same folder).
