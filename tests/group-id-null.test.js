@@ -49,6 +49,12 @@ function world({ exports = [], imports = [], rows = [], executing = {} } = {}) {
     _wiExecutingLive: async id => !!executing[id],
     // round-trip lookup (_wiRtOf): the order has an Order No, no trip holds it
     atGetOne: async (_t, id) => ({ id, fields: { 'Order No': 1, 'Loading DateTime': '2026-10-01T06:00:00Z' } }), plFetch: async () => ({ records: [] }),
+    // 4/10 (fix/wi-assign-never-locks): _wiCancelGroupMember reads the live
+    // status through _wiLiveOrders (it needs Reference/Status for its one
+    // confirm) instead of _wiExecutingLive — same `executing` map drives both.
+    WI_EXECUTING: ['In Transit', 'Delivered'],
+    _wiLiveOrders: async ids => ids.map(id => ({ id, st: executing[id] ? 'Delivered' : 'Assigned', f: {} })),
+    _wiExecConfirmText: () => 'executing',
     _wiDissolveClearMember: async () => undefined,
     _wiSync() {}, toast() {}, _wiPaint() {}, reportError() {},
     renderWeeklyIntl: async () => {},

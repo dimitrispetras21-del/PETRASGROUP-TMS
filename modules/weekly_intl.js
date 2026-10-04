@@ -2849,6 +2849,37 @@ async function _wiStatusLive(oid){
 async function _wiExecutingLive(oid){
   return WI_EXECUTING.includes(await _wiStatusLive(oid));
 }
+// «Η ανάθεση δεν κλειδώνει ποτέ» (owner 4/10/2026, also for International):
+// WI_EXECUTING is no longer a refusal anywhere in the assignment paths below
+// (_wiSaveFromPopover, _wiClear, _wiCancelGroupMember) — it only decides
+// whether the ONE confirm of the action has to say what happens downstream.
+// Why that text is true: DB trigger rt_sync_from_order copies an order's
+// vehicle onto its round trip (closed ones too) and every sibling leg, and
+// dl_sync_from_rt moves the payroll line to the new driver, or soft-deletes it
+// (needs_review when amounts exist) for a partner/no vehicle. One live read per
+// order → {id, st, f}; st null = the read failed, treated as planning exactly
+// like _wiStatusLive (never as executing).
+async function _wiLiveOrders(ids){
+  const out=[];
+  for(const id of ids){
+    try{ const r=await atGetOne(TABLES.ORDERS,id); out.push({id,st:String(r?.fields?.['Status']||''),f:r?.fields||{}}); }
+    catch(e){ if(typeof logError==='function') logError(e,'_wiLiveOrders: status read failed — treated as planning'); out.push({id,st:null,f:{}}); }
+  }
+  return out;
+}
+// One message for the three actions, so the warning cannot drift between them
+// (αρχή 3). `what` = the action in one line; the list names every executing
+// order the action touches (ONE confirm per user action, not per order).
+function _wiExecConfirmText(execs,what){
+  const lines=execs.map(x=>{
+    const ref=x.f['Reference']?String(x.f['Reference']):x.id;
+    const dir=x.f['Direction']==='Import'?'εισαγωγή':'εξαγωγή';
+    return '• '+ref+' ('+dir+') — '+(x.st==='Delivered'?'παραδόθηκε':'σε μεταφορά');
+  });
+  return what+'\n\n'+lines.join('\n')
+    +'\n\nΤι γίνεται: μεταφέρεται/σβήνει δρομολόγιο + μισθοδοσία, ακόμη και σε κλειστό δρομολόγιο.'
+    +'\nΗ κατάσταση (Status) αυτών των παραγγελιών δεν αλλάζει.';
+}
 // Assignment saves keep the vehicle change (a corrected truck) but never the
 // Status regression to Assigned for an executing order.
 async function _wiPlanPatch(oid,fields){
@@ -3479,6 +3510,32 @@ async function _wiSaveFromPopover(rowId){
     const conflict=_wiSameDayConflict(row);
     if(conflict && !(await confirmAction(conflict+'\n\nΣυνέχεια με την ανάθεση;',{title:'Πιθανή διπλή δέσμευση',confirmLabel:'Συνέχεια'}))) return;
   }
+  // «Η ανάθεση δεν κλειδώνει ποτέ» (owner 4/10/2026): re-assigning an order
+  // that is already In Transit/Delivered is allowed — ONE confirm, before any
+  // write, naming every executing order this save touches (the row's own
+  // orders, its matched import and the import's GI- group members, i.e. the
+  // same set the writes below reach). Cancel = nothing written.
+  // No RT leg leaves first here, on purpose: the save writes the SAME new
+  // vehicle on every leg of the row's round trip (export group + matched
+  // import + GI members — the set rtLegsForOrder builds), so the trip moving
+  // as a whole to the new truck/driver is the intended result, and the
+  // payroll line following the new driver is what the confirm announces.
+  // Rotation legs (Rotation ID) follow too — by definition they ride the
+  // same truck. Status is never regressed: _wiPlanPatch strips it below.
+  {
+    const touch=[...row.orderIds];
+    if(row.importId && !touch.includes(row.importId)) touch.push(row.importId);
+    const anchor=row.type==='import'
+      ? WINTL.data.imports.find(x=>row.orderIds.includes(x.id))
+      : (row.importId ? WINTL.data.imports.find(x=>x.id===row.importId) : null);
+    if(anchor && String(anchor.fields?.['Group ID']||'').indexOf('GI-')===0){
+      (await _wiGiGroup(anchor.id,anchor)).members.forEach(id=>{ if(!touch.includes(id)) touch.push(id); });
+    }
+    const execs=(await _wiLiveOrders(touch)).filter(x=>WI_EXECUTING.includes(x.st));
+    if(execs.length && !(await confirmAction(
+      _wiExecConfirmText(execs,'Αλλαγή ανάθεσης σε παραγγελία που έχει ήδη εκτελεστεί. Το νέο όχημα γράφεται σε όλο το δρομολόγιο (RT) και στα σκέλη του.'),
+      {title:'Αλλαγή ανάθεσης σε εκτελεσμένη',confirmLabel:'Αλλαγή ανάθεσης'}))) return;
+  }
   const btn=document.getElementById(`wi-pop-btn-${rowId}`);
   const spin=document.getElementById(`wi-pop-spin-${rowId}`);
   if(btn){btn.disabled=true;if(spin)spin.style.display='block';}
@@ -3667,24 +3724,97 @@ async function _wiDeletePartnerAssignments(orderIds){
 }
 
 
+// «Καθαρισμός ανάθεσης» (rewritten 4/10/2026 — owner «Η ανάθεση δεν κλειδώνει
+// ποτέ», + stock-lots finding B-08 «Καθαρισμός ανάθεσης δεν καθαρίζει τα μέλη
+// της ομάδας»).
+// WHO is cleared: every member of the row's groups, not only the visible ids.
+// Before, `row.orderIds + row.importId` reached the exports and the import
+// LEAD only — the other GI- members kept Truck/Driver/'Assigned' while the
+// toast said «καθαρίστηκε ✓» and their RT kept crediting the wrong trip (13
+// live GI groups on 4/10, all of 2 members). Same discovery as _wiRemoveImport
+// (_wiGiGroup) for the import side, a Group ID read for the export group.
+// The GROUP ITSELF stays: Group ID / Matched Import ID are not written here —
+// the orders still travel together, only without a vehicle, and the next
+// assignment of the row reaches all of them again. Breaking a group is
+// «Διάλυση»/«Ακύρωση groupage», a different action.
+// EXECUTING orders (In Transit/Delivered) are cleared too, after ONE confirm
+// that names them; their Status is never touched (only Assigned → Pending, as
+// since 28/9 / B-43). Cancel = nothing written.
+// RT LEG FIRST, decided per round trip (P1 RT-1193, 30/9): rt_sync_from_order
+// copies a cleared (NULL) vehicle onto the whole RT and every sibling leg, and
+// dl_sync_from_rt then drops the payroll. So:
+//   • an RT whose legs are ALL being cleared here keeps its legs — nobody
+//     else is on it, the RT losing its vehicle (and the payroll line going /
+//     being flagged) is exactly the clear, and it works on a closed RT too
+//     (the Worker refuses leg DELETE on closed/complete RTs, 409);
+//   • an RT that also carries an order NOT being cleared (a rotation leg,
+//     a leg of another row) gets each cleared order's leg DELETEd FIRST, so
+//     the vehicle clear below cannot reach the others. Any DELETE failure —
+//     or an RT lookup that fails — stops the whole clear before a single
+//     vehicle is written. Lookup and leave go through the shared helpers
+//     _wiRtOf / _wiRtLeave (fix/unmatch-leg-first) — one leg-first rule, one
+//     place; this function only adds the per-RT decision.
 async function _wiClear(rowId){
   const row=WINTL.rows.find(r=>r.id===rowId);if(!row) return;
-  if(!(await confirmAction('Καθαρισμός ανάθεσης;', { confirmLabel: 'Καθαρισμός' }))) return;
   const allOrderIds=[...row.orderIds];
-  if(row.importId && !allOrderIds.includes(row.importId)) allOrderIds.push(row.importId);
-  const errors=[]; const kept=[];
-  for(const orderId of allOrderIds){
+  const add=id=>{ if(id&&!allOrderIds.includes(id)) allOrderIds.push(id); };
+  add(row.importId);
+  try{
+    // Export group: every live member sharing the lead's Group ID (the board
+    // may show only this week's members). Import side: the GI- group of the
+    // import row itself, or of the export's matched import.
+    const expGid=row.type==='export'
+      ? String(WINTL.data.exports.find(x=>x.id===row.orderIds[0])?.fields?.['Group ID']||'') : '';
+    if(expGid){
+      const sibs=await atGetAll(TABLES.ORDERS,{filterByFormula:`{Group ID}='${expGid}'`},false)||[];
+      sibs.forEach(s=>add(s.id));
+    }
+    const giFrom=row.type==='import'?row.orderId:row.importId;
+    if(giFrom) (await _wiGiGroup(giFrom)).members.forEach(add);
+  }catch(e){ reportError('Δεν διαβάστηκαν τα μέλη της ομάδας — ο καθαρισμός ΔΕΝ έγινε',e); return; }
+
+  const live=await _wiLiveOrders(allOrderIds);
+  const execs=live.filter(x=>WI_EXECUTING.includes(x.st));
+  const ask=execs.length
+    ? _wiExecConfirmText(execs,'Καθαρισμός ανάθεσης ('+allOrderIds.length+(allOrderIds.length===1?' παραγγελία':' παραγγελίες')+') — περιλαμβάνει παραγγελία που έχει ήδη εκτελεστεί. Αφαιρείται το όχημα.')
+    : (allOrderIds.length>1?'Καθαρισμός ανάθεσης; Αδειάζουν '+allOrderIds.length+' παραγγελίες (όλα τα μέλη της ομάδας).':'Καθαρισμός ανάθεσης;');
+  if(!(await confirmAction(ask,{title:execs.length?'Καθαρισμός σε εκτελεσμένη':'Επιβεβαίωση',confirmLabel:'Καθαρισμός'}))) return;
+  _wiSync('wi-sync-'+rowId,'pend','Καθαρισμός ανάθεσης…');
+
+  // RT legs first (see the header): find each order's live RT (_wiRtOf —
+  // a failed or uncertain lookup stops everything), then decide per RT
+  // whether anyone outside this clear rides on it.
+  const byRt={}; const clearedPg=new Set();
+  for(const oid of allOrderIds){
+    const at=await _wiRtOf(oid);
+    if(!at.ok){
+      _wiSync('wi-sync-'+rowId,'err','Ο καθαρισμός ΔΕΝ έγινε');
+      toast('Ο καθαρισμός σταμάτησε πριν γράψει οτιδήποτε — '+at.msg,'warn');
+      return;
+    }
+    clearedPg.add(at.pg);
+    if(at.rt) (byRt[at.rt.id]=byRt[at.rt.id]||{rt:at.rt,oids:[]}).oids.push(oid);
+  }
+  for(const {rt,oids} of Object.values(byRt)){
+    const others=(rt.ct_rt_legs||[]).filter(l=>l.nat_load_id!=null||!clearedPg.has(Number(l.order_id)));
+    if(!others.length) continue; // the whole RT is cleared together — legs stay
+    for(const oid of oids){
+      const leave=await _wiRtLeave(oid);
+      if(!leave.ok){
+        _wiSync('wi-sync-'+rowId,'err','Ο καθαρισμός ΔΕΝ έγινε');
+        toast('Ο καθαρισμός σταμάτησε ('+(rt.code||'δρομολόγιο')+' έχει κι άλλα σκέλη) — '+leave.msg,'warn');
+        return;
+      }
+    }
+  }
+
+  const errors=[];
+  for(const {id:orderId,st} of live){
     try{
-      // Execution beats planning (design 8/9): this was the one board write
-      // with no executing check — «Καθαρισμός» on a row whose order is already
-      // In Transit stripped the truck/driver of a vehicle on the road (audit 13/9).
-      const st=await _wiStatusLive(orderId);
-      if(WI_EXECUTING.includes(st)){ kept.push(orderId); continue; }
-      // No vehicle = nothing assigned (28/9, order 387 / auditor B-43): the
-      // clear used to leave Status 'Assigned' on an order with no truck, so its
-      // RT stayed «planned» with an empty leg. Only 'Assigned' goes back —
-      // In Transit/Delivered are skipped above, and an unknown status (read
-      // failed, st===null) is left as it is rather than guessed.
+      // No vehicle = nothing assigned (28/9, order 387 / auditor B-43): only
+      // 'Assigned' goes back to Pending. In Transit/Delivered keep their
+      // Status (owner 4/10), and an unknown status (read failed, st===null)
+      // is left as it is rather than guessed.
       const clearPatch={
         'Truck':[],'Trailer':[],'Driver':[],'Partner':[],
         'Is Partner Trip':false,'Partner Truck Plates':'',
@@ -3699,13 +3829,11 @@ async function _wiClear(rowId){
   }
   if(errors.length){ _wiSync('wi-sync-'+rowId,'err','Ο καθαρισμός ΔΕΝ γράφτηκε στη βάση'); toast('Ο καθαρισμός απέτυχε: '+errors[0].slice(0,50),'warn');return;}
 
-  // Remove PA records for cleared orders (not for the executing ones kept above)
-  try{ await _wiDeletePartnerAssignments(allOrderIds.filter(id=>!kept.includes(id))); }
+  try{ await _wiDeletePartnerAssignments(allOrderIds); }
   catch(e){ console.warn('PA delete error:',e.message); }
 
   _wiSync('wi-sync-'+rowId,'ok','Η ανάθεση καθαρίστηκε');
-  if(kept.length) toast(kept.length+' σε εκτέλεση — η ανάθεσή τους κρατήθηκε','warn');
-  else toast('Η ανάθεση καθαρίστηκε ✓');
+  toast(allOrderIds.length>1?'Η ανάθεση καθαρίστηκε σε '+allOrderIds.length+' παραγγελίες ✓':'Η ανάθεση καθαρίστηκε ✓');
   WINTL.ui.openRow=null;
   await renderWeeklyIntl();
 }
@@ -5388,35 +5516,45 @@ async function _wiSyncGroupResidue(row){
 // while the order still counts as a leg of that round trip.
 async function _wiCancelGroupMember(rowId,orderId,isImportSide){
   const row=WINTL.rows.find(r=>r.id===rowId); if(!row||!row.orderIds||row.orderIds.length<2) return;
-  const ok=await confirmAction('Αφαίρεση αυτής της παραγγελίας από το groupage; Η παραγγελία φεύγει ΧΩΡΙΣ ανάθεση.',
+  // «Η ανάθεση δεν κλειδώνει ποτέ» (owner 4/10/2026): a member already In
+  // Transit/Delivered used to leave the group «on paper only» (kept truck and
+  // RT leg). Now it leaves like any other member — RT leg out first, then the
+  // vehicle — after ONE confirm that says so; only its Status is kept (never
+  // written back to Pending). The leg still leaves first, executing or not:
+  // the other members stay on the group's RT, and clearing this vehicle while
+  // its leg is there would wipe theirs too (rt_sync_from_order, RT-1193).
+  const live=(await _wiLiveOrders([orderId]))[0];
+  const executing=WI_EXECUTING.includes(live.st);
+  const ok=await confirmAction(executing
+    ? _wiExecConfirmText([live],'Αφαίρεση από το groupage παραγγελίας που έχει ήδη εκτελεστεί. Η παραγγελία φεύγει ΧΩΡΙΣ ανάθεση και βγαίνει από το δρομολόγιο της ομάδας.')
+    : 'Αφαίρεση αυτής της παραγγελίας από το groupage; Η παραγγελία φεύγει ΧΩΡΙΣ ανάθεση.',
     {title:'Ακύρωση groupage', confirmLabel:'Αφαίρεση'});
   if(!ok) return;
-  // Execution beats planning (see _wiExecutingLive): a member already In
-  // Transit/Delivered leaves the group on paper only — it keeps the truck
-  // that loaded it, its status and its round-trip leg.
-  const executing=await _wiExecutingLive(orderId);
   try{
-    if(!executing){
-      // Leg first, vehicle second (_wiRtLeave) — and a failed lookup stops
-      // too: it used to read as «no round trip» and clear the vehicle anyway.
+    {
+      // Leg first, vehicle second (_wiRtLeave), executing or not (owner 4/10:
+      // an executing member no longer stays «on paper only») — and a failed
+      // lookup stops too: it used to read as «no round trip» and clear the
+      // vehicle anyway.
       const leave=await _wiRtLeave(orderId);
       if(!leave.ok){ toast('Η αφαίρεση σταμάτησε — '+leave.msg,'warn'); return; }
     }
     // 'Group ID': null, never '' — orders that left a group as '' would be
     // ONE group to the round-trip triggers (see _wiGroupPatch).
-    const leavePatch=executing?{'Group ID':null}:{
+    // Status 'Pending' only for a member that is not executing (owner 4/10).
+    const leavePatch={
       'Group ID':null,'Truck':[],'Trailer':[],'Driver':[],'Partner':[],
-      'Is Partner Trip':false,'Partner Truck Plates':'','Status':'Pending',
+      'Is Partner Trip':false,'Partner Truck Plates':'',
+      ...(executing?{}:{'Status':'Pending'}),
     };
     const res=await atSafePatch(TABLES.ORDERS,orderId,leavePatch);
     if(res?.error) throw new Error(res.error.message||res.error.type);
-    if(String(res.fields?.['Group ID']||'')||(!executing&&(getLinkedId(res.fields?.['Truck'])||getLinkedId(res.fields?.['Partner']))))
+    if(String(res.fields?.['Group ID']||'')||getLinkedId(res.fields?.['Truck'])||getLinkedId(res.fields?.['Partner']))
       throw new Error('Η αφαίρεση δεν επιβεβαιώθηκε στην ανάγνωση');
   }catch(e){ reportError('Η αφαίρεση από το groupage απέτυχε',e); return; }
   const cache=isImportSide?WINTL.data.imports:WINTL.data.exports;
   const rec=cache.find(r=>r.id===orderId);
-  if(rec) Object.assign(rec.fields,executing?{'Group ID':null}:{'Group ID':null,'Truck':[],'Trailer':[],'Driver':[],'Partner':[],'Is Partner Trip':false,'Partner Truck Plates':'','Status':'Pending'});
-  if(executing) toast('Η παραγγελία είναι ήδη σε μεταφορά/παραδόθηκε — βγήκε από το groupage αλλά κρατά όχημα, κατάσταση και γύρο','warn');
+  if(rec) Object.assign(rec.fields,{'Group ID':null,'Truck':[],'Trailer':[],'Driver':[],'Partner':[],'Is Partner Trip':false,'Partner Truck Plates':'',...(executing?{}:{'Status':'Pending'})});
   row.orderIds=row.orderIds.filter(id=>id!==orderId);
   // Item 2 (owner 9/9): the departing order may have BEEN row.orderId — the
   // "lead" every matched export's pointer (row.importId/Matched Import ID)

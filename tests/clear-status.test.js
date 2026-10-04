@@ -25,13 +25,20 @@ const wiSrc = [
   fn(WI, /const WI_EXECUTING=\[[^\]]*\];/, 'WI_EXECUTING'),
   fn(WI, /async function _wiStatusLive\(oid\)\{[\s\S]*?\n\}\n/, '_wiStatusLive'),
   fn(WI, /async function _wiExecutingLive\(oid\)\{[\s\S]*?\n\}\n/, '_wiExecutingLive'),
+  fn(WI, /async function _wiLiveOrders\(ids\)\{[\s\S]*?\n\}\n/, '_wiLiveOrders'),
+  fn(WI, /function _wiExecConfirmText\(execs,what\)\{[\s\S]*?\n\}\n/, '_wiExecConfirmText'),
   fn(WI, /async function _wiClear\(rowId\)\{[\s\S]*?\n\}\n/, '_wiClear'),
 ].join('\n');
 async function runWiClear(statusById, row) {
   const patches = [];
   const ctx = {
-    WINTL: { rows: [row], ui: {} }, TABLES: { ORDERS: 'O' },
+    WINTL: { rows: [row], ui: {}, data: { exports: [], imports: [] } }, TABLES: { ORDERS: 'O' },
     confirmAction: async () => true,
+    // 4/10: _wiClear also gathers the GI- group of the matched import; a lone
+    // import is its own group (what _wiGiGroup returns without a GI- id).
+    _wiGiGroup: async id => ({ lead: id, members: [id] }), reportError: () => {},
+    // leg-first lookup (_wiRtOf, fix/unmatch-leg-first): no round trip here.
+    _wiRtOf: async () => ({ ok: true, pg: 1, rt: null }), _wiRtLeave: async () => ({ ok: true }),
     atGetOne: stubGetOne(statusById),
     atSafePatch: async (_t, id, f) => { patches.push({ id, f }); return { id, fields: f }; },
     logError: () => {}, plOnIntlPartnerAssigned: () => {}, _wiSync: () => {}, toast: () => {},
@@ -55,12 +62,17 @@ test('_wiClear: matched import cleared too, each by its own status', async () =>
   assert.ok(!('Status' in patches.find(x => x.id === 'recI').f), 'Pending is not rewritten');
 });
 
-test('_wiClear: executing orders untouched; unreadable status → vehicle cleared, no Status written', async () => {
+// 4/10/2026 (owner «Η ανάθεση δεν κλειδώνει ποτέ»): executing orders are no
+// longer skipped — after one confirm their vehicle is cleared too, and their
+// Status is never written (only Assigned → Pending). Before: skipped entirely.
+test('_wiClear: executing orders cleared without Status; unreadable status → vehicle cleared, no Status written', async () => {
   const { patches } = await runWiClear({ recT: 'In Transit', recD: 'Delivered', recX: new Error('boom') },
     { id: 1, orderIds: ['recT', 'recD', 'recX'], importId: null });
-  assert.deepStrictEqual(patches.map(x => x.id), ['recX']);
-  assert.ok(!('Status' in patches[0].f));
-  assert.strictEqual(patches[0].f.Truck.length, 0);
+  assert.deepStrictEqual(patches.map(x => x.id), ['recT', 'recD', 'recX']);
+  for (const p of patches) {
+    assert.ok(!('Status' in p.f), p.id + ': no Status');
+    assert.strictEqual(p.f.Truck.length, 0, p.id + ': vehicle emptied');
+  }
 });
 
 test('_wiExecutingLive: behaviour unchanged after the _wiStatusLive split', async () => {

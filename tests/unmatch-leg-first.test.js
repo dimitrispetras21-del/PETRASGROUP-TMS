@@ -25,6 +25,11 @@ const grab = (re, name, optional) => { const m = WI.match(re); if (!m && !option
 const wiSrc = [
   grab(/async function _wiRtOf\(orderId\)\{[\s\S]*?\n\}\n/, '_wiRtOf', true),       // absent in the «before» copy
   grab(/async function _wiRtLeave\(orderId\)\{[\s\S]*?\n\}\n/, '_wiRtLeave', true), // absent in the «before» copy
+  // fix/wi-assign-never-locks (4/10): _wiCancelGroupMember reads the live status
+  // and builds its one confirm through these (absent in older copies)
+  grab(/const WI_EXECUTING=\[[^\]]*\];/, 'WI_EXECUTING', true),
+  grab(/async function _wiLiveOrders\(ids\)\{[\s\S]*?\n\}\n/, '_wiLiveOrders', true),
+  grab(/function _wiExecConfirmText\(execs,what\)\{[\s\S]*?\n\}\n/, '_wiExecConfirmText', true),
   grab(/async function _wiRemoveImport\(rowId\)\{[\s\S]*?\n\}\n/, '_wiRemoveImport'),
   grab(/async function _wiDissolveClearMember\(oid\)\{[\s\S]*?\n\}\n/, '_wiDissolveClearMember'),
   grab(/async function _wiCancelGroupMember\(rowId,orderId,isImportSide(?:,ask)?\)\{[\s\S]*?\n\}\n/, '_wiCancelGroupMember'),
