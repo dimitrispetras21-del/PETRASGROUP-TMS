@@ -44,6 +44,19 @@ const OrdersCatalog = (() => {
   const PERIOD_LABEL = { '60': 'τελευταίες 60 ημέρες', '180': 'τελευταίοι 6 μήνες', all: 'όλες οι ημερομηνίες' };
 
   function _status(r) { return r.f['Status'] || (r.type === 'intl' ? 'Pending' : ''); }
+  // G-27/E-12 (impact map 4/10): a lot is «Delivered» when the WAREHOUSE
+  // received it — the client has not. Same dot, its own word, on the screen,
+  // the CSV and the paper (the raw Status is untouched: filters read it).
+  function _statusWord(r) {
+    if (r.lot && r.status === 'Delivered') return 'Στην αποθήκη';
+    return (STATUS[r.status] || [r.status])[0] || '';
+  }
+  // The price as text for the CSV and the paper (PR-14): a piece's blank price
+  // carries its reason, as on the screen — never a bare gap next to the lot.
+  function _priceText(r) {
+    if (r.price !== null) return C().eur(r.price);
+    return r.piece ? 'στην παρτίδα ' + OrdersStock.lotNumLabel(r.f) : '';
+  }
   const _refReady = () => typeof REF_DATA !== 'undefined' && !!REF_DATA._loaded;
 
   // ΑΝΑΘΕΣΗ: the shared cell (OrdersCommon.assignOf) — the same one «Χωρίς
@@ -122,7 +135,7 @@ const OrdersCatalog = (() => {
     const f = r.f;
     const sel = r.id === S.selected ? ' selected' : '';
     const tags = r.tags.map(t => `<span class="oc-tag">${t}</span>`).join('');
-    const [stWord, stDot] = STATUS[r.status] || [r.status || '—', 'unknown'];
+    const stDot = (STATUS[r.status] || [null, 'unknown'])[1], stWord = _statusWord(r) || '—';
     const statusHtml = r.pre && typeof preorderPillHtml === 'function' ? preorderPillHtml(f)
       : `<span class="oc-sdot oc-s-${stDot}"></span>${esc(stWord)}`;
     const priceHtml = r.price !== null ? esc(C().eur(r.price))
@@ -405,17 +418,19 @@ const OrdersCatalog = (() => {
   const _namesBusy = () => { if (!S.namesPending) return false; if (typeof toast === 'function') toast('Φορτώνουν ακόμη τα ονόματα — δοκίμασε ξανά σε λίγα δευτερόλεπτα', 'warn'); return true; };
   function csv() {
     if (_namesBusy()) return;
-    const head = ['ΑΡ.', 'Τύπος', 'Αναφορά', 'Κατεύθυνση', 'Πελάτης', 'Φόρτωση', 'Ημ. φόρτωσης', 'Παράδοση', 'Ημ. παράδοσης', 'Παλέτες', 'Ανάθεση', 'Κατάσταση', 'Τιμή', 'ΤΠΥ', 'Ημ. ΤΠΥ'];
-    const rows = S.filtered.map(r => [r.num, r.type === 'intl' ? 'Διεθνής' : 'Εθνική', r.ref, r.dir, _unesc(r.client), _plain(r.load), C().ymd(r.f['Loading DateTime']),
-      _plain(r.del), C().ymd(r.f['Delivery DateTime']), r.pal || '', r.assign.text, (STATUS[r.status] || [r.status])[0] || '',
-      r.price !== null ? C().eur(r.price) : '', r.f['Invoice Number'] || '', C().ymd(r.f['Invoice Date'])]);
+    // «Σήμανση» = the row's tags (ΑΠ, ΑΠΟΘΕΜΑ, VS, GRP, PE, HR) — PR-14: the
+    // file carries what the screen shows next to the direction.
+    const head = ['ΑΡ.', 'Τύπος', 'Αναφορά', 'Κατεύθυνση', 'Σήμανση', 'Πελάτης', 'Φόρτωση', 'Ημ. φόρτωσης', 'Παράδοση', 'Ημ. παράδοσης', 'Παλέτες', 'Ανάθεση', 'Κατάσταση', 'Τιμή', 'ΤΠΥ', 'Ημ. ΤΠΥ'];
+    const rows = S.filtered.map(r => [r.num, r.type === 'intl' ? 'Διεθνής' : 'Εθνική', r.ref, r.dir, r.tags.join(' '), _unesc(r.client), _plain(r.load), C().ymd(r.f['Loading DateTime']),
+      _plain(r.del), C().ymd(r.f['Delivery DateTime']), r.pal || '', r.assign.text, _statusWord(r),
+      _priceText(r), r.f['Invoice Number'] || '', C().ymd(r.f['Invoice Date'])]);
     OrdersList.csvDownload([head, ...rows], `paraggelies_${C().today()}.csv`);
   }
   function print() {
     if (_namesBusy()) return;
-    const tr = S.filtered.map(r => `<tr><td>${esc(r.num)}</td><td>${esc(r.ref)}<br><small>${esc(r.dir)}</small></td><td>${esc(_unesc(r.client))}</td>
+    const tr = S.filtered.map(r => `<tr><td>${esc(r.num)}</td><td>${esc(r.ref)}<br><small>${esc([r.dir, r.tags.join(' ')].filter(Boolean).join(' · '))}</small></td><td>${esc(_unesc(r.client))}</td>
       <td>${esc(r.load.name)}<br><small>${esc(r.load.sub)} · ${C().dm(r.load.date)}</small></td><td>${esc(r.del.name)}<br><small>${esc(r.del.sub)} · ${C().dm(r.del.date)}</small></td>
-      <td class="r">${esc(r.pal || '')}</td><td>${esc((STATUS[r.status] || [r.status])[0] || '')}</td><td class="r">${r.price !== null ? esc(C().eur(r.price)) : '—'}</td>
+      <td class="r">${esc(r.pal || '')}</td><td>${esc(_statusWord(r))}</td><td class="r">${esc(_priceText(r) || '—')}</td>
       <td>${r.f['Invoice Number'] ? '✓ ΤΠΥ ' + esc(r.f['Invoice Number']) : ''}</td></tr>`).join('');
     OrdersList.printOpen(`<!doctype html><html lang="el"><head><meta charset="utf-8"><title>Παραγγελίες</title><style>
       @page{size:A4 landscape;margin:12mm}body{font:10px/1.35 'DM Sans',Arial,sans-serif;color:#000}h1{font-size:15px;margin:0 0 2px}
