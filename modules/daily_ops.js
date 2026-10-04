@@ -111,12 +111,13 @@ async function _opsLoad() {
   }
   OPS.intl=intl;
   const ids=new Set(intl.map(r=>r.id));
-  // Stock lots Φ1 (impact map 4/10 C-05): a LOOSE piece (back in stock, no
-  // truck) keeps the dates of the truck it left, so both overdue queries
-  // caught it every morning with «Φορτώθηκε»/«Παραδόθηκε» — one click made a
-  // truckless piece In Transit (then undeletable). It is stock, counted on the
-  // Weekly shelf; same predicate as the shelf. Filtered in BOTH zones: the
-  // loadings zone skips what the deliveries zone holds (ovIds below).
+  // Stock lots Φ1: a LOOSE piece (back in stock, no truck and no partner —
+  // decision D1, OrdersStock.isLoose) keeps the dates of the truck it left.
+  // Round 0 (C-05) took it out of BOTH zones because they offered
+  // «Φορτώθηκε»/«Παραδόθηκε» on it — which made it the one late item no screen
+  // showed (critic-1 C1-02, round 1). It now stays in the LOADINGS zone (what
+  // it waits for is a truck and a load) with the K6 hint instead of a button
+  // (_opsSlots), and is kept out of the deliveries zone so it is listed once.
   const _opsNotLoose=r=>!OrdersStock.isLoose(r.fields);
   OPS.overdue=ov.filter(r=>!ids.has(r.id)&&_opsNotLoose(r));
   const ovIds=new Set(OPS.overdue.map(r=>r.id));
@@ -127,7 +128,7 @@ async function _opsLoad() {
   // ενότητά της — όπως ήδη φαίνεται σε ΦΟΡΤΩΣΕΙΣ και ΠΑΡΑΔΟΣΕΙΣ όταν κάνει
   // και τα δύο την ίδια μέρα: η οθόνη ομαδοποιεί κατά ΔΟΥΛΕΙΑ, όχι κατά
   // εγγραφή. Το `!ovIds` μένει: μία εκκρεμότητα, μία ζώνη.
-  OPS.overdueLoads=ovL.filter(r=>!ovIds.has(r.id)&&_opsNotLoose(r));
+  OPS.overdueLoads=ovL.filter(r=>!ovIds.has(r.id));
   OPS.loadedAt=new Date();
 
   // Wave 3 (owner 6/9, FEATURES.ORDER_SPLIT): a split PARENT keeps its
@@ -161,7 +162,11 @@ async function _opsLoad() {
   try{
     const bareImps=[...intl,...OPS.overdue,...OPS.overdueLoads].filter(r=>{
       const f=r.fields;
-      return f['Direction']==='Import' && !(f['Truck']||[]).length && !(f['Partner']||[]).length && !(f['Driver']||[]).length;
+      // D1 (round 1): a piece is on a truck only by its OWN Truck/Partner — the
+      // DB (piece_no_truck) and the Weekly judge it so. Borrowing the matched
+      // export's vehicle would draw a loose piece as assigned, with a
+      // «Φορτώθηκε» the base refuses.
+      return f['Direction']==='Import' && !OrdersStock.isPiece(f) && !(f['Truck']||[]).length && !(f['Partner']||[]).length && !(f['Driver']||[]).length;
     });
     if(bareImps.length){
       const ff=`OR(${bareImps.map(r=>`{Matched Import ID}='${r.id}'`).join(',')})`;
@@ -410,6 +415,10 @@ const _OPS_STYLE=`<style>
   .do-btn:hover{background:var(--accent);border-color:var(--accent)}
   .do-late-btn{height:28px;padding:0 8px;border:0;background:none;color:var(--danger);font-family:inherit;font-size:var(--text-xs);font-weight:600;cursor:pointer;white-space:nowrap}
   .do-late-btn:hover{text-decoration:underline}
+  /* A lot's «Παραλαβή (καθυστέρηση)» (C1-08) is wider than its 104px slot: in
+     one line it ran over «Παραλαβή αποθήκης» and «Αλλαγή ημέρας» (rig 4/10).
+     Two lines inside the slot keep the three actions on one vertical. */
+  .do-late-btn.do-2l{white-space:normal;height:auto;min-height:28px;max-width:104px;line-height:1.15;padding:2px 8px}
   .do-ghost{height:28px;padding:0 8px;border:0;background:none;color:var(--text-mid);font-family:inherit;font-size:var(--text-xs);font-weight:600;cursor:pointer;white-space:nowrap}
   .do-ghost:hover{text-decoration:underline;color:var(--text)}
   .do-tinp{height:28px;padding:0 4px;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface-card);font-family:inherit;font-size:var(--text-xs);color:var(--text)}
@@ -456,6 +465,15 @@ const _OPS_STYLE=`<style>
 // takes the intake for a client delivery; the button and the done word say
 // it too (_opsSlots / _opsStatusWord).
 const _OPS_LOT_TAG='<span class="do-tag lot">→ ΑΠΟΘΗΚΗ</span>';
+// A PIECE loads at the warehouse — the call there must say how many pallets of
+// WHICH lot to release (C-04). One helper for the day table AND the overdue
+// loadings zone (critic-4 C4-09: the late warehouse pickup is exactly the row
+// where the call is made, and it dropped the line).
+const _opsPieceSub=f=>{
+  if(!OrdersStock.isPiece(f)) return '';
+  const p=f['Total Pallets']!=null&&f['Total Pallets']!==''?f['Total Pallets']+'p':'';
+  return ['ΑΠ',p,'παρτίδα '+escapeHtml(OrdersStock.lotNumLabel(f))].filter(Boolean).join(' · ');
+};
 
 /* ── DRAW ─────────────────────────────────────────────────────── */
 function _opsDraw() {
@@ -510,8 +528,8 @@ function _opsDraw() {
     `${OPS.overdueLoads.length} ${OPS.overdueLoads.length===1?'εκκρεμής φόρτωση':'εκκρεμείς φορτώσεις'} από προηγούμενες ημέρες`,
     'δεν φορτώθηκε και δεν μετατέθηκε',
     r=>{const f=r.fields, n=_daysAgo(f['Loading DateTime']);
-      const pre=isPreorder(f);
-      return `<div class="do-zrow${pre?' do-pre':''}" id="r_${r.id}"><span class="do-cl">${_C(f)}${pre?' '+preorderChipHtml(f):''}</span><span class="do-rt">${pre?escapeHtml(preorderCountryText(f)||'—'):route(r)}${_opsWho(f)}</span>
+      const pre=isPreorder(f), ps=_opsPieceSub(f);
+      return `<div class="do-zrow${pre?' do-pre':''}" id="r_${r.id}"><span class="do-cl">${_C(f)}${pre?' '+preorderChipHtml(f):''}</span><span class="do-rt">${pre?escapeHtml(preorderCountryText(f)||'—'):route(r)}${_opsWho(f)}${ps?`<span class="do-sl">${ps}</span>`:''}</span>
         <span class="do-late">φόρτωση ${_DMY(f['Loading DateTime'])} · ${_agoTxt(n)}</span>
         ${_opsSlots(r,'ovl')}</div>${OPS._expanded?.has(r.id)?_opsSubRows(r,'Loading',true):''}`;}):'';
   const ovLErr=isToday&&OPS.overdueLoadsErr?`<div class="do-err"><span>Η ζώνη εκκρεμών φορτώσεων δεν φορτώθηκε — δεν σημαίνει ότι δεν υπάρχουν εκκρεμείς φορτώσεις. Οι υπόλοιπες ενότητες είναι ενημερωμένες.</span><button class="do-btn" onclick="renderDailyOps()">Ξαναδοκίμασε</button></div>`:'';
@@ -609,9 +627,18 @@ function _opsSec(type,label,items,isToday,emptyTxt,start) {
                         : '<th>ΠΑΡΑΔΟΣΗ</th><th>ΑΝΑΘΕΣΗ</th><th colspan="2">ΕΚΤ. ΑΦΙΞΗ</th>';
   const cols=`<th>#</th><th>ΠΕΛΑΤΗΣ</th>${mid}<th>ΚΑΤΑΣΤΑΣΗ</th><th style="text-align:right">ΕΝΕΡΓΕΙΕΣ</th>`;
   const colg='<colgroup><col style="width:32px"><col><col><col style="width:200px"><col style="width:56px"><col style="width:80px"><col style="width:206px"><col style="width:320px"></colgroup>';
-  const done=items.filter(r=>isL?['In Transit','Delivered'].includes(r.fields['Status']||''):(r.fields['Status']||'')==='Delivered').length;
+  // A lot's delivery is its warehouse intake (C-01): the KPI ΠΑΡΑΔΟΣΕΙΣ leaves
+  // it out, so the section header counts the same way and names the intake
+  // apart (critic-1 C1-11) — «2 · 1 δηλωμένη» under a KPI «0 / 1» read as two
+  // different facts about the same row.
+  const isLotRow=r=>!isL&&OrdersStock.isLot(r.fields);
+  const lotN=items.filter(isLotRow).length;
+  const done=items.filter(r=>!isLotRow(r)&&(isL?['In Transit','Delivered'].includes(r.fields['Status']||''):(r.fields['Status']||'')==='Delivered')).length;
   const preN=items.filter(r=>isPreorder(r.fields)).length;
-  const head=`<div class="do-sec-h">${label}<span>${items.length?`${items.length-preN} · ${done} ${done===1?'δηλωμένη':'δηλωμένες'}${preN?` · ${preN} pre-order`:''}`:`— καμία ${when}`}</span></div>`;
+  const n=items.length-preN-lotN;
+  const cnt=[(n||!lotN)&&`${n} · ${done} ${done===1?'δηλωμένη':'δηλωμένες'}`, preN&&`${preN} pre-order`,
+    lotN&&`${lotN} ${lotN===1?'παραλαβή':'παραλαβές'} αποθήκης`].filter(Boolean).join(' · ');
+  const head=`<div class="do-sec-h">${label}<span>${items.length?cnt:`— καμία ${when}`}</span></div>`;
   if(!items.length) return `<div class="do-sec">${head}<div class="do-empty">${emptyTxt} ${when}</div></div>`;
   return `<div class="do-sec">${head}
     <div style="overflow-x:auto"><table class="do-t">${colg}<thead><tr>${cols}</tr></thead><tbody>${isL&&isExp?_opsGroupedRows(items,start,type,isToday):items.map((r,i)=>_opsRow(r,start+i,type,isToday)).join('')}</tbody></table></div>
@@ -747,12 +774,19 @@ function _opsSlots(rec, ctx) {
     } else {
       const okFn=isOv?`_opsOvAct('${id}','On Time')`:`_opsDel('${id}','On Time')`;
       const lateFn=isOv?`_opsOvAct('${id}','Delayed')`:`_opsDel('${id}','Delayed')`;
-      // C-01: the same write (Delivered = intake), named for what it is.
-      const okW=OrdersStock.isLot(f)?'Παραλαβή αποθήκης':'Παραδόθηκε';
+      // C-01: the same write (Delivered = intake), named for what it is. The
+      // late button too (critic-1 C1-08): on a lot «Καθυστέρησε» read at 06:00
+      // as «the partner is late» — one click then WROTE the intake (Delivered,
+      // pallets locked, pieces drawable) for stock that had not arrived.
+      const lot=OrdersStock.isLot(f);
+      const okW=lot?'Παραλαβή αποθήκης':'Παραδόθηκε';
+      const lateW=lot?'Παραλαβή (καθυστέρηση)':'Καθυστέρησε';
+      const lateQ=lot?'Παραλήφθηκε στην αποθήκη με καθυστέρηση;':'Καθυστέρησε;';
       slots.push(multi?`<button class="do-btn" onclick="event.stopPropagation();_opsToggleStops('${id}')">${okW}</button>`
                       :`<button class="do-btn" onclick="confirmAction('${okW};').then(ok=>{if(ok)${okFn}})">${okW}</button>`);
-      slots.push(multi?`<button class="do-late-btn" onclick="event.stopPropagation();_opsToggleStops('${id}')">Καθυστέρησε</button>`
-                      :`<button class="do-late-btn" onclick="confirmAction('Καθυστέρησε;').then(ok=>{if(ok)${lateFn}})">Καθυστέρησε</button>`);
+      const lateC=lot?'do-late-btn do-2l':'do-late-btn';
+      slots.push(multi?`<button class="${lateC}" onclick="event.stopPropagation();_opsToggleStops('${id}')">${lateW}</button>`
+                      :`<button class="${lateC}" onclick="confirmAction('${lateQ}').then(ok=>{if(ok)${lateFn}})">${lateW}</button>`);
     }
   }
   slots.push(`<button class="do-ghost" onclick="_opsChangeDay(event,'${id}','${isL?'load':'deliver'}')">Αλλαγή ημέρας</button>`);
@@ -798,9 +832,8 @@ function _opsRow(rec,num,type,isToday,cls) {
   // καν ως έννοια (κανόνας #3: «—» σημαίνει άγνωστο).
   const locCell=(name,dt,sub)=>{const hm=_HM(dt);
     return `<td class="do-wrap"><span class="do-main">${name||'—'}</span>${hm?`<span class="do-sl">${hm}</span>`:''}${sub?`<span class="do-sl">${sub}</span>`:''}</td>`;};
-  // Stock lots Φ1 (impact map 4/10 C-04): a PIECE loads at the warehouse —
-  // the 06:00 call there must say how many pallets of WHICH lot to release.
-  const pieceSub=OrdersStock.isPiece(f)?['ΑΠ',pal==='—'?'':pal+'p','παρτίδα '+escapeHtml(OrdersStock.lotNumLabel(f))].filter(Boolean).join(' · '):'';
+  // Stock lots Φ1 (impact map 4/10 C-04): «ΑΠ · 5p · παρτίδα #312».
+  const pieceSub=_opsPieceSub(f);
   const lotTag=!isL&&OrdersStock.isLot(f)?_OPS_LOT_TAG:'';
   // Assignment cell — colour AND word (DESIGN.md E, owner 4/9). «ΠΡΟΣ
   // ΑΝΑΘΕΣΗ», not «χωρίς οδηγό»: the empty cell means the dispatcher owes an
@@ -862,12 +895,50 @@ function _opsUser(){ try{ return JSON.parse(localStorage.getItem('tms_user')||'{
 // The one word the dispatcher needs: «δικαίωμα» for a 403 (the facade's
 // message never says it), otherwise the short HTTP/text reason.
 function _opsErrWord(e){ const m=String(e&&e.message||e||''); return /403|forbidden|permission/i.test(m)?'χωρίς δικαίωμα':m.slice(0,40)||'σφάλμα'; }
+// Returns {stop, prev}: what the stop held before THIS click, so a refused
+// order write can put it back (_opsWriteOrder).
 async function _opsMarkStop(stop, perf){
-  if(_opsBlockReadOnly()) return;
+  if(_opsBlockReadOnly()) return null;
   const patch={'Completed At': _opsNowOnTgt(), 'Completed By': _opsUser()};
   if(perf) patch['Performance']=perf;
+  const prev={}; Object.keys(patch).forEach(k=>{ prev[k]=stop.fields[k]==null?null:stop.fields[k]; });
   await atSafePatch(TABLES.ORDER_STOPS, stop.id, patch);
   Object.assign(stop.fields, patch);
+  return {stop, prev};
+}
+// Σ-02 (critic-3, round 1 X1): the stop stamp is written BEFORE the order (11/9:
+// no stamp, no Delivered). When the order write is then REFUSED — a 4xx, the
+// server wrote nothing (e._noRetry; e.g. 422 piece_no_truck) — THIS click's
+// stamp is put back, so the row is pending again with its button, and the
+// message says what really happened. Never «Ξαναδοκίμασε» there: a rule refuses
+// the same way every time, and core/api.js already showed its reason (decision
+// D2: context only here). Before, the stamp stayed, the toast said «δεν
+// γράφτηκε τίποτα», and a multi-stop order showed every point «✓» with no
+// button left — never declarable again from this screen.
+// A network/5xx failure has an unknown outcome (the order may be written), so
+// the stamp stays — un-stamping could leave a Delivered order without its
+// stamp, the half-write of 11/9 — and the message says to refresh first.
+async function _opsWriteOrder(id, patch, stamped){
+  try{ await atSafePatch(TABLES.ORDERS,id,patch); return true; }
+  catch(e){
+    const refused=!!(e&&e._noRetry);
+    let msg, type='danger';
+    if(refused&&stamped){
+      try{
+        await atSafePatch(TABLES.ORDER_STOPS, stamped.stop.id, stamped.prev);
+        for(const [k,v] of Object.entries(stamped.prev)){ if(v==null) delete stamped.stop.fields[k]; else stamped.stop.fields[k]=v; }
+        msg='Δεν δηλώθηκε — η σφραγίδα του σημείου αναιρέθηκε· η γραμμή μένει εκκρεμής'; type='warn';
+      }catch(e2){
+        if(typeof logError==='function') logError(e2,'daily-ops: stamp rollback '+id);
+        msg='Δεν δηλώθηκε, αλλά η σφραγίδα του σημείου ΕΜΕΙΝΕ γραμμένη (η αναίρεσή της απέτυχε) — ενημέρωσε τον διαχειριστή';
+      }
+    } else if(refused){ msg='Δεν δηλώθηκε — δεν γράφτηκε τίποτα'; type='warn'; }
+    else if(stamped) msg='Η σφραγίδα γράφτηκε, η παραγγελία ΔΕΝ επιβεβαιώθηκε (σύνδεση) — Ανανέωση πριν ξαναδοκιμάσεις';
+    else msg='Η αποθήκευση απέτυχε — δεν γράφτηκε τίποτα. Ξαναδοκίμασε.';
+    toast(msg,type);
+    _opsDraw();
+    return false;
+  }
 }
 // Η αναλογία φαίνεται ΠΑΝΤΑ (0/2, 1/2, 2/2) — ο χρήστης δεν πατά τίποτα
 // για να δει τι απομένει (η αόρατη αλλαγή ήταν το λάθος του picker).
@@ -931,7 +1002,8 @@ async function _opsMarkStopUI(orderId, stopId, perf){
   _opsCloseFloat(); // 9/9: a live «Αλλαγή ημέρας» popover must never outlive the click that starts another action
   const stop=((OPS._stopsByOrder||{})[orderId]||[]).find(s=>s.id===stopId);
   if(!stop) return;
-  try{ await _opsMarkStop(stop, perf); }
+  let m;
+  try{ m=await _opsMarkStop(stop, perf); }
   catch(e){ toast('Σφάλμα δήλωσης σημείου: '+e.message,'danger'); if(typeof logError==='function') logError(e,'daily-ops: stop mark'); return; }
   const stype=stop.fields[F.STOP_TYPE];
   const all=_opsStopsOf(orderId, stype);
@@ -940,9 +1012,9 @@ async function _opsMarkStopUI(orderId, stopId, perf){
     OPS._expanded && OPS._expanded.delete(orderId);
     const agg=all.some(x=>x.fields['Performance']==='Delayed')?'Delayed':'On Time';
     if(stype==='Unloading'){
-      return OPS.overdue.some(r=>r.id===orderId) ? _opsOvActFinal(orderId,agg) : _opsDelFinal(orderId,agg);
+      return OPS.overdue.some(r=>r.id===orderId) ? _opsOvActFinal(orderId,agg,m) : _opsDelFinal(orderId,agg,m);
     }
-    return _opsStatFinal(orderId,'In Transit');
+    return _opsStatFinal(orderId,'In Transit',m);
   }
   toast(`${n}/${all.length} — η παραγγελία μένει ως έχει μέχρι να δηλωθούν όλα`);
   _opsDraw();
@@ -950,6 +1022,7 @@ async function _opsMarkStopUI(orderId, stopId, perf){
 async function _opsStat(id,st){
   if(_opsBlockReadOnly()) return;
   _opsCloseFloat(); // 9/9: a live «Αλλαγή ημέρας» popover must never outlive the click that starts another action
+  let m=null;
   if(st==='In Transit'){
     const loads=_opsStopsOf(id,'Loading');
     if(loads.length>1 && loads.some(x=>!x.fields['Performance'])){ _opsToggleStops(id); return; }
@@ -958,16 +1031,16 @@ async function _opsStat(id,st){
     // 403 στη στάση και η παραγγελία γινόταν In Transit/Delivered χωρίς τικ —
     // μισή εγγραφή που καμία οθόνη δεν εξηγεί· αρχή 1).
     if(loads.length===1){
-      try{ await _opsMarkStop(loads[0], null); }
+      try{ m=await _opsMarkStop(loads[0], null); }
       catch(e){ if(typeof logError==='function') logError(e,'daily-ops: single load stamp'); toast('Η σφραγίδα φόρτωσης ΔΕΝ γράφτηκε ('+_opsErrWord(e)+') — η παραγγελία έμεινε ως έχει','danger'); return; }
     }
   }
-  return _opsStatFinal(id,st);
+  return _opsStatFinal(id,st,m);
 }
 // Βρες την εγγραφή σε όποια λίστα ζει (ημέρα ή εκκρεμείς φορτώσεις).
 function _opsConvert(id){ if(_opsBlockReadOnly()) return; convertPreorder(id); }
 function _opsFind(id){ return OPS.intl.find(x=>x.id===id)||OPS.overdueLoads.find(x=>x.id===id)||OPS.overdue.find(x=>x.id===id); }
-async function _opsStatFinal(id,st){ if(_opsBlockReadOnly()) return; try{
+async function _opsStatFinal(id,st,stamped){ if(_opsBlockReadOnly()) return; try{
   const r0=_opsFind(id);
   const patch={'Status':st};
   // VS: το «Σε μεταφορά» σφραγίζει την πραγματική ημέρα αναχώρησης από CD
@@ -978,7 +1051,7 @@ async function _opsStatFinal(id,st){ if(_opsBlockReadOnly()) return; try{
   // γιατί ΚΑΝΕΙΣ δεν καθάριζε ποτέ το πεδίο. Η πληροφορία ΔΕΝ χάνεται: κάθε PATCH
   // γράφεται με before/after στο audit_log, άρα το «πότε και από ποιον» μένει εκεί.
   if(r0?.fields['Postponed To']) patch['Postponed To']=null;
-  await atSafePatch(TABLES.ORDERS,id,patch);
+  if(!(await _opsWriteOrder(id,patch,stamped))) return;
   if(r0){r0.fields['Status']=st;if(patch['VS CD Date'])r0.fields['VS CD Date']=patch['VS CD Date'];if('Postponed To' in patch)r0.fields['Postponed To']=null;}
   // Η εκκρεμής φόρτωση που φορτώθηκε φεύγει από τη ζώνη — δεν είναι πια εκκρεμής.
   OPS.overdueLoads=OPS.overdueLoads.filter(r=>r.id!==id);
@@ -993,20 +1066,23 @@ async function _opsDel(id,perf){
   // Multi: το κουμπί της σύνοψης ΔΕΝ δηλώνει — ανοίγει τα σημεία (owner 26/8).
   if(dels.length>1){ if(!OPS._expanded?.has(id)) _opsToggleStops(id); return; }
   // Same rule as _opsStat: no stamp, no Delivered (audit 11/9: 282/302/308).
-  if(dels.length===1){ try{ await _opsMarkStop(dels[0], perf); }catch(e){ if(typeof logError==='function') logError(e,'daily-ops: single delivery stamp'); toast('Η σφραγίδα παράδοσης ΔΕΝ γράφτηκε ('+_opsErrWord(e)+') — η παραγγελία έμεινε ως έχει','danger'); return; } }
-  return _opsDelFinal(id,perf);
+  let m=null;
+  if(dels.length===1){ try{ m=await _opsMarkStop(dels[0], perf); }catch(e){ if(typeof logError==='function') logError(e,'daily-ops: single delivery stamp'); toast('Η σφραγίδα παράδοσης ΔΕΝ γράφτηκε ('+_opsErrWord(e)+') — η παραγγελία έμεινε ως έχει','danger'); return; } }
+  return _opsDelFinal(id,perf,m);
 }
-async function _opsDelFinal(id,perf){ if(_opsBlockReadOnly()) return; const d=_opsTgt();
+async function _opsDelFinal(id,perf,stamped){ if(_opsBlockReadOnly()) return; const d=_opsTgt();
   // Ίδιος λόγος με το _opsStat: παραδομένη παραγγελία δεν είναι «αναβεβλημένη».
   const _r0=OPS.intl.find(x=>x.id===id);
   const _p={'Status':'Delivered','Delivery Performance':perf,'Actual Delivery Date':d};
   if(_r0?.fields['Postponed To']) _p['Postponed To']=null;
-  try{await atSafePatch(TABLES.ORDERS,id,_p);
+  try{if(!(await _opsWriteOrder(id,_p,stamped))) return;
   if (typeof plOnDelivered === 'function') plOnDelivered(id);
   const r=OPS.intl.find(x=>x.id===id);if(r){r.fields['Status']='Delivered';r.fields['Delivery Performance']=perf;if('Postponed To' in _p)r.fields['Postponed To']=null;}
   try { await paSyncStatus({ parentType:'order', parentId:id, status:'Delivered' }); }
   catch(e) { if(typeof logError==='function') logError(e,'daily-ops: PA status sync '+id); toast('Η κατάσταση γράφτηκε, αλλά η ανάθεση συνεργάτη ΔΕΝ ενημερώθηκε','warn'); }
-  toast(perf==='On Time'?(OrdersStock.isLot(_r0?.fields)?'Στην αποθήκη ✓':'Παραδόθηκε ✓'):'Καθυστέρησε — καταχωρήθηκε',perf==='Delayed'?'danger':'success');_opsDraw();}catch(e){toast('Η αποθήκευση απέτυχε — δεν γράφτηκε τίποτα. Ξαναδοκίμασε.','danger');}}
+  // C1-08: a lot's late button records a late INTAKE — the toast says so, not «Καθυστέρησε».
+  const _lot=OrdersStock.isLot(_r0?.fields);
+  toast(perf==='On Time'?(_lot?'Στην αποθήκη ✓':'Παραδόθηκε ✓'):_lot?'Στην αποθήκη ✓ — με καθυστέρηση':'Καθυστέρησε — καταχωρήθηκε',perf==='Delayed'?(_lot?'warn':'danger'):'success');_opsDraw();}catch(e){toast('Η αποθήκευση απέτυχε — δεν γράφτηκε τίποτα. Ξαναδοκίμασε.','danger');}}
 
 /* ── «Αλλαγή ημέρας» popover ───────────────────────────────────────────
    Η αναβολή ΕΙΝΑΙ αλλαγή ημερομηνίας στην παραγγελία — μία πηγή (αρχή 3).
@@ -1167,22 +1243,23 @@ function _opsPrint() {
 async function _opsOvAct(id,perf='Delayed'){
   const dels=_opsStopsOf(id,'Unloading');
   if(dels.length>1){ if(!OPS._expanded?.has(id)) _opsToggleStops(id); return; }
-  if(dels.length===1){ try{ await _opsMarkStop(dels[0], perf); }catch(e){ if(typeof logError==='function') logError(e,'daily-ops: overdue stamp'); toast('Η σφραγίδα παράδοσης ΔΕΝ γράφτηκε ('+_opsErrWord(e)+') — η παραγγελία έμεινε ως έχει','danger'); return; } }
-  return _opsOvActFinal(id,perf);
+  let m=null;
+  if(dels.length===1){ try{ m=await _opsMarkStop(dels[0], perf); }catch(e){ if(typeof logError==='function') logError(e,'daily-ops: overdue stamp'); toast('Η σφραγίδα παράδοσης ΔΕΝ γράφτηκε ('+_opsErrWord(e)+') — η παραγγελία έμεινε ως έχει','danger'); return; } }
+  return _opsOvActFinal(id,perf,m);
 }
-async function _opsOvActFinal(id,perf='Delayed'){ if(_opsBlockReadOnly()) return; const d=localToday();
+async function _opsOvActFinal(id,perf='Delayed',stamped=null){ if(_opsBlockReadOnly()) return; const d=localToday();
   // Ίδιο καθάρισμα με το _opsDel — η καθυστερημένη κλείνει κι αυτή τον κύκλο.
   const _ov=OPS.overdue.find(x=>x.id===id);
   const _p={'Status':'Delivered','Delivery Performance':perf,'Actual Delivery Date':d};
   if(_ov?.fields['Postponed To']) _p['Postponed To']=null;
-  try{await atSafePatch(TABLES.ORDERS,id,_p);
+  try{if(!(await _opsWriteOrder(id,_p,stamped))) return;
   if (typeof plOnDelivered === 'function') plOnDelivered(id);
   // Central sync — propagate status to partner assignments
   if (typeof syncOrderDownstream === 'function') {
     syncOrderDownstream(id, { source: 'intl', changedFields: ['Status'], skipVS: true, skipGRP: true, skipRamp: true })
       .catch(e => console.warn('[ops overdue sync]', e));
   }
-  OPS.overdue=OPS.overdue.filter(r=>r.id!==id);toast(perf==='Delayed'?'Σημειώθηκε ως καθυστερημένη':OrdersStock.isLot(_ov?.fields)?'Σημειώθηκε: στην αποθήκη':'Σημειώθηκε ως παραδοθείσα');_opsDraw();}catch(e){toast('Η αποθήκευση απέτυχε — δεν γράφτηκε τίποτα. Ξαναδοκίμασε.','danger');}}
+  OPS.overdue=OPS.overdue.filter(r=>r.id!==id);const _lot=OrdersStock.isLot(_ov?.fields);toast(_lot?(perf==='Delayed'?'Σημειώθηκε: στην αποθήκη με καθυστέρηση':'Σημειώθηκε: στην αποθήκη'):perf==='Delayed'?'Σημειώθηκε ως καθυστερημένη':'Σημειώθηκε ως παραδοθείσα');_opsDraw();}catch(e){toast('Η αποθήκευση απέτυχε — δεν γράφτηκε τίποτα. Ξαναδοκίμασε.','danger');}}
 
 // Expose functions used from onclick/onchange handlers
 window.renderDailyOps = renderDailyOps;
