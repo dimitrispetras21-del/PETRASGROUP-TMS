@@ -21,7 +21,7 @@ select c.relname, c.reloptions from pg_class c
  order by c.relname;
 
 -- ── V1 — objects ─────────────────────────────────────────────────────────────────────────────────
--- Expected: 9 | 1 | 1 | 8 | 4 | 3 | 8 | 5 | 137 | 4 | 1 | 0 | 33
+-- Expected: 9 | 1 | 1 | 8 | 4 | 3 | 8 | 5 | 137 | 4 | 1 | 0 | 33 | t
 select
   (select count(*) from information_schema.columns
     where table_schema = 'public' and table_name = 'stock_lots')                                  as stock_lots_cols,      -- 9 (warehouse_charge, round 2)
@@ -59,7 +59,10 @@ select
   -- a blank Group ID would be ONE group for the round-trip engine (057 header, WHAT)
   (select count(*) from public.orders where group_id is not null and btrim(group_id) = '')      as blank_group_ids,      -- 0
   -- F of OWNER-Q3 answered 4/10 (VS on piece prorated /F) — 057's one data change
-  (select value from public.ct_settings where key = 'full_truck_pallets')                        as full_truck_pallets;   -- 33
+  (select value from public.ct_settings where key = 'full_truck_pallets')                        as full_truck_pallets,   -- 33
+  -- the revenue text 057 left is the one R2 knows how to replace (round 3, critic-3 Σ2-05): f = do
+  -- NOT rely on R2 (it would refuse); tell the coordinator tonight, not during an emergency
+  md5(pg_get_viewdef('public.ct_v_rt_revenue'::regclass, true)) = '7bd4c2b3206af115a5cfff5478dfdfc9' as revenue_known_to_r2; -- t
 
 -- The 5 new orders_with_derived columns, in this order. Expected 5 rows:
 -- 133 stock_lot_id bigint · 134 own_stock_lot text · 135 stock_lot_order_no bigint · 136 stock_lot_source text
@@ -71,9 +74,9 @@ select attnum, attname, format_type(atttypid, atttypmod)
 
 -- The round-0 rules of the impact map, the round-1 rules of the critics and the round-2 rules (4/10)
 -- are in the guard functions that ran. Expected 3 rows:
---   stock_guard_lots   | t | t | f | f | t | f | t | t | f
---   stock_guard_natl   | f | t | t | t | f | t | f | t | f
---   stock_guard_orders | t | t | t | t | t | t | f | t | f
+--   stock_guard_lots   | t | t | f | f | t | f | f | t | f
+--   stock_guard_natl   | f | t | t | t | f | t | t | t | f
+--   stock_guard_orders | t | t | t | t | t | t | t | t | f
 select p.proname,
        p.prosrc like '%''lot_grouped''%'    as lot_grouped,      -- B-16
        p.prosrc like '%''lot_vs''%'         as lot_vs,           -- C-15, OWNER-Q1 answered 4/10 (no VS on a lot)
@@ -81,7 +84,7 @@ select p.proname,
        p.prosrc like '%δεν ακυρώνεται%'     as lot_no_cancel,    -- E-04
        p.prosrc like '%rotation_id%'        as lot_rota,         -- round 1 Σ-05
        p.prosrc like '%η κατάσταση του κομματιού δεν αλλάζει%' as status_frozen, -- round 1 Σ-08
-       p.prosrc like '%new.warehouse_charge is distinct from old.warehouse_charge%' as charge_frozen, -- round 2, lot_invoiced
+       p.prosrc like '%η τιμή δεν αλλάζει%' as price_frozen, -- round 3: the lot price freezes with the invoice (the charge does not, OWNER-Q4b)
        p.prosrc like '%''lot_no_dest''%'    as lot_no_dest,      -- round 2, OWNER-Q5 answered 4/10
        p.prosrc like '%warehouse_rule%'     as warehouse_rule    -- gone (OWNER-Q5): f everywhere
   from pg_proc p join pg_namespace n on n.oid = p.pronamespace
@@ -196,14 +199,19 @@ select (select count(*) from public.stock_lots)                                 
 --     assignment by id desc — re-read against 034's ct_v_rt_costs, md5 3349bcf0…: its «planned»
 --     takes exactly this pick for every order carried by an RT leg; the split-sibling and national
 --     branches it added never apply to a lot source, which has no legs). And charge_total = partner
---     cost + warehouse charge, NULL only when neither was entered (round 2). Expected: 0 rows.
+--     cost + warehouse charge, NULL when neither was entered (round 2) or when the assignment has no
+--     rate (round 3, 'no_partner_rate': a sum with a missing part is not a total). Expected: 0 rows.
 select m.lot_id, m.partner_cost, pa.partner_rate, m.warehouse_charge, m.charge_total
   from public.stock_v_lot_money m
   left join lateral (select pa.partner_rate from public.partner_assignments pa
                       where pa.order_id = m.source_id and pa.deleted_at is null and pa.status <> 'Cancelled'
                       order by pa.id desc limit 1) pa on true
  where (m.source_kind = 'intl' and m.partner_cost is distinct from pa.partner_rate)
-    or m.charge_total is distinct from case when m.partner_cost is null and m.warehouse_charge is null then null
+    or m.has_assignment is distinct from (m.source_kind = 'intl' and exists (
+         select 1 from public.partner_assignments p2
+          where p2.order_id = m.source_id and p2.deleted_at is null and p2.status <> 'Cancelled'))
+    or m.charge_total is distinct from case when m.has_assignment and m.partner_cost is null then null
+                                            when m.partner_cost is null and m.warehouse_charge is null then null
                                             else coalesce(m.partner_cost, 0) + coalesce(m.warehouse_charge, 0) end;
 
 -- (b) the RT that carried the lot in earns exactly coalesce(partner cost, 0): a partner's RT has

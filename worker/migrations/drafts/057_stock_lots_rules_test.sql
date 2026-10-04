@@ -2,10 +2,10 @@
 -- every test row, every trigger side effect (audit_log rows, leg status sync) rolls back with it.
 -- Run AFTER 057 (and after 057_stock_lots_verify.sql V1–V8). Expected last line of the error panel:
 --
---     RESULT: 113/113 OK
+--     RESULT: 117/117 OK
 --
 -- followed by one line per case («OK  01 expected over_draw · got over_draw»). Anything less = STOP,
--- copy the panel to the coordinator. 77 refusals + 18 accepted paths + 18 money cases (Ε1).
+-- copy the panel to the coordinator. 78 refusals + 19 accepted paths + 20 money cases (Ε1).
 -- Cases 36–49 and P11, P14 are the round-0 rules of the impact map (4/10): E-04 cancel (36, 37, P14),
 -- B-16 lot_grouped (38–43), C-15 lot_vs (44, 45, P11), C-05 piece_no_truck (46–49). 50–51: K7.
 -- Round 1 of the critics (4/10): D1 «on a truck» = truck or partner (13, 52, P12, P13), Σ-08 / E2-11
@@ -18,7 +18,7 @@
 --     lot_empty. The two piece_is_lot sites in the LOT SOURCE blocks are backstops that only a
 --     bypassed guard can reach (a piece marked as a lot while stock_guard_lots was off) — proved in
 --     the local harness with the guard disabled, never here (no DDL in a production test).
---   * «Χρέωση αποθήκης» (contract round 2 #1): 73 (charge frozen by the invoice), 74 (CHECK ≥ 0),
+--   * «Χρέωση αποθήκης» (contract round 2 #1): 74 (CHECK ≥ 0),
 --     P16 (editable while closed, same value re-sent after the invoice passes), M7–M11 (own truck
 --     with / without / cleared / 0 charge, partner + charge, tms_reader blind to the column), and
 --     OWNER-Q7 answered 4/10 (same rule): P8 + M12 (national lot without / with a charge).
@@ -32,6 +32,12 @@
 --     keeps the full charge. The amounts assume x_import 650, x_export 850, F 33 (4/10) — each line
 --     prints the X and F it used. The RT-level sums (intl leg − share, national leg + share, total =
 --     allocation) are proved in the local harness: this test never opens a round trip.
+-- Round 3 (4/10, the round-2 critics + OWNER-Q4b):
+--   * OWNER-Q4b answered 4/10 (warehouse charge open after invoice): round 2's case 73 (charge
+--     refused after the invoice) is now P19 — accepted, the net recomputed. 73 and 79 now prove what
+--     DOES freeze with the invoice: the lot price (international and national source).
+--   * Σ2-03 M13: an assignment without a rate is 'no_partner_rate', not «no assignment».
+--   * Σ2-04 M14: a charge above the price stays 'ok' with a negative net (S-11 reports it, 057b).
 --
 -- HOW IT STAYS HARMLESS
 --   * Test rows use NEGATIVE ids written with OVERRIDING SYSTEM VALUE: no identity sequence moves,
@@ -85,7 +91,7 @@ begin
   if c1 is null or c2 is null or gr is null or pt is null or cd is null or ut is null or dl is null
      or to_regclass('public.stock_lots') is null
      or (select count(*) from public.locations where id in (wh, hub) and deleted_at is null) <> 2 then
-    raise exception 'RESULT: 0/113 — SETUP FAILED: run 057 first (needs 2 clients, a Greek site, a partner, an untyped, a Client Depot and a deleted location, 424 + 360 live)';
+    raise exception 'RESULT: 0/117 — SETUP FAILED: run 057 first (needs 2 clients, a Greek site, a partner, an untyped, a Client Depot and a deleted location, 424 + 360 live)';
   end if;
   -- VS5 reads the revenue view's text: pin the deparse context (rolled back with everything else).
   perform set_config('search_path', 'public', true);
@@ -379,12 +385,11 @@ begin
         $q$update public.national_orders set deleted_at = now() where id = -9501$q$,
         $q$update public.stock_lots set deleted_at = now() where id = -9302$q$,
         $q$update public.national_orders set deleted_at = null where id = -9501$q$], null),
-    -- Round 2 «Χρέωση αποθήκης»: 73 — entered while open, then the lot is invoiced: the charge is frozen
-    -- (OWNER-Q4 answered 4/10 (open until invoice)); 74 — a negative charge (CHECK).
-    ('73', 'lot_invoiced', array[$q$update public.stock_lots set warehouse_charge = 100 where id = -9301$q$,
-        'IP:-9101,-9301,33,Delivered',
+    -- 73 (round 3): the lot PRICE freezes with the client invoice (OWNER-Q4 answered 4/10 (open until
+    -- invoice)) — the warehouse charge does not (P19). 74 — a negative charge (CHECK).
+    ('73', 'lot_invoiced', array['IP:-9101,-9301,33,Delivered',
         $q$update public.orders set invoiced = true, invoice_number = 'TEST-ERP-73' where id = -9001$q$,
-        $q$update public.stock_lots set warehouse_charge = 120 where id = -9301$q$], null),
+        $q$update public.orders set price = 3400 where id = -9001$q$], null),
     ('74', 'stock_lots_charge_nonneg', array[$q$update public.stock_lots set warehouse_charge = -1 where id = -9301$q$], null),
     -- OWNER-Q5 answered 4/10: any location, but ONE live one — NULL / deleted destination at the four
     -- sites: intl mark (75, NULL), natl mark (76, deleted), intl source save (77, deleted), natl
@@ -406,8 +411,20 @@ begin
            current_date, current_date + 1)$q$,
         $q$insert into public.stock_lots (id, nat_order_id) values (-9304, -9502)$q$,
         $q$update public.national_orders set delivery_location_1_id = null where id = -9502$q$], null),
+    -- 79 (round 3): the price of an invoiced NATIONAL lot source freezes too (stock_guard_natl).
+    ('79', 'lot_invoiced', array[$q$insert into public.national_orders (id, legacy_id, reference, status, client_id,
+           pickup_location_1_id, delivery_location_1_id, pallets, price, loading_datetime, delivery_datetime)
+           overriding system value values (-9502, 'recTSTSTK9502', 'TEST-STOCK-NLOT', 'Pending', %1$s, %3$s, %5$s, 12, 500,
+           current_date - 3, current_date - 2)$q$,
+        $q$insert into public.stock_lots (id, nat_order_id) values (-9304, -9502)$q$,
+        $q$insert into public.national_orders (id, legacy_id, reference, status, client_id, pickup_location_1_id,
+           delivery_location_1_id, pallets, stock_lot_id, loading_datetime, delivery_datetime)
+           overriding system value values (-9501, 'recTSTSTK9501', 'TEST-STOCK-9501', 'Pending', %1$s, %5$s, %3$s, 12, -9304,
+           current_date - 2, current_date - 1)$q$,
+        $q$update public.national_orders set invoiced = true, invoice_number = 'TEST-ERP-79' where id = -9502$q$,
+        $q$update public.national_orders set price = 600 where id = -9502$q$], null),
 
-    -- ── Accepted paths (18) ──────────────────────────────────────────────────────────────────────
+    -- ── Accepted paths (19) ──────────────────────────────────────────────────────────────────────
     -- P1: the form re-sends every field; only the reference changes; the lot is CLOSED.
     ('P1', 'true', array['IP:-9101,-9301,31,Delivered',
         $q$update public.stock_lots set closed_note = 'TEST: 2 χαλασμένες' where id = -9301$q$,
@@ -542,6 +559,15 @@ begin
         $q$update public.orders set invoiced = true, invoice_number = 'TEST-ERP-P16' where id = -9001$q$,
         $q$update public.stock_lots set warehouse_charge = 50 where id = -9301$q$],
         $q$select warehouse_charge || ' ' || (closed_at is not null) from public.stock_lots where id = -9301$q$),
+    -- P19 (round 3, OWNER-Q4b answered 4/10 (warehouse charge open after invoice)): the warehouse
+    --      bills after the client invoice — the owner enters 120 on the invoiced lot A, the net is
+    --      recomputed (3300 − 300 − 120 = 2880.00) and the one 33-pallet piece earns all of it.
+    ('P19', 'ok invoiced 420.00 2880.00 2880.00', array['IP:-9101,-9301,33,Delivered',
+        $q$update public.orders set invoiced = true, invoice_number = 'TEST-ERP-P19' where id = -9001$q$,
+        $q$update public.stock_lots set warehouse_charge = 120 where id = -9301$q$],
+        $q$select m.allocation_status || ' ' || case when l.invoiced then 'invoiced' else 'open' end || ' ' || m.charge_total
+                  || ' ' || m.net || ' ' || (select amount from public.stock_v_lot_alloc where piece_id = -9101)
+             from public.stock_v_lot_money m join public.stock_v_lots l on l.id = m.lot_id where m.lot_id = -9301$q$),
     -- P17 / P18 (OWNER-Q5 answered 4/10 (any location can be a warehouse)): a lot to an UNTYPED
     --      location and to a 'Client Depot' location are marked — no type is a condition any more.
     ('P17', 'untyped', array[$q$insert into public.orders (id, legacy_id, reference, order_type, direction, status, client_id,
@@ -559,7 +585,7 @@ begin
         $q$select coalesce(w.type, 'untyped') from public.stock_v_lots l join public.locations w on w.id = l.warehouse_location_id
             where l.id = -9305$q$),
 
-    -- ── Money (18, Ε1) — lot A: price 3300, warehouse rate 300, 33 pallets → net 3000.00 ─────────
+    -- ── Money (20, Ε1) — lot A: price 3300, warehouse rate 300, 33 pallets → net 3000.00 ─────────
     ('M1', '454.55/1363.63/1181.82 Σ3000.00 net 3000.00 in_stock 0.00',
         array['IP:-9101,-9301,5,Pending', 'IP:-9102,-9301,15,Pending', 'IP:-9103,-9301,13,Pending'],
         $q$select string_agg(a.amount::text, '/' order by a.seq) || ' Σ' || sum(a.amount) || ' net ' || max(m.net)
@@ -643,6 +669,22 @@ begin
               $q$update public.stock_lots set warehouse_charge = 50 where id = -9304$q$],
         $q$select source_kind || ' ' || allocation_status || ' total=' || charge_total || ' net=' || net
              from public.stock_v_lot_money where lot_id = -9304$q$),
+    -- M13 (round 3, Σ2-03): lot B's source HAS an assignment whose rate is empty — not «no assignment»:
+    --     'no_partner_rate', no total, no allocation, even with a warehouse charge entered (that charge
+    --     would otherwise allocate the net without the partner's rate, which arrives later and counts twice).
+    ('M13', 'no_partner_rate true total=null rows=0',
+        array[$q$insert into public.partner_assignments (id, order_id, partner_rate, status)
+                 overriding system value values (-9202, -9002, null, 'Assigned')$q$,
+              $q$update public.stock_lots set warehouse_charge = 200 where id = -9302$q$, 'IP:-9101,-9302,5,Pending'],
+        $q$select allocation_status || ' ' || has_assignment || ' total=' || coalesce(charge_total::text, 'null')
+                  || ' rows=' || (select count(*) from public.stock_v_rt_amounts where order_id in (-9002, -9101))
+             from public.stock_v_lot_money where lot_id = -9302$q$),
+    -- M14 (round 3, Σ2-04): a charge above the price (2500 on 2000) stays 'ok' and is allocated as it is
+    --     (net = price − charge, the owner's rule) — negative; S-11 (057b) is what says so.
+    ('M14', 'ok net=-500.00 piece=-75.76',
+        array[$q$update public.stock_lots set warehouse_charge = 2500 where id = -9302$q$, 'IP:-9101,-9302,5,Pending'],
+        $q$select allocation_status || ' net=' || net || ' piece=' || (select amount from public.stock_v_lot_alloc where piece_id = -9101)
+             from public.stock_v_lot_money where lot_id = -9302$q$),
     -- OWNER-Q3 answered 4/10 (VS on piece prorated /F): the VS charge of a piece, computed exactly as
     -- both legs of ct_v_rt_revenue compute it — X by the order's direction, the pallets of the order's
     -- stock_v_pieces row, stock_vs_charge(). Printed «X × pallets/F = charge» («full» = not a piece).

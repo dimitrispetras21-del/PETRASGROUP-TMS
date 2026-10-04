@@ -5,7 +5,7 @@
 -- WHO / WHEN / ORDER (mandatory)
 --   * The owner runs this file in the Supabase SQL editor, AFTER 15:00 (team works 05:30–14:30).
 --   * Then 057_stock_lots_verify.sql (SELECT only; run its V0 BEFORE this file too), then
---     057_stock_lots_rules_test.sql (must end with «RESULT: 113/113 OK» — it always rolls back).
+--     057_stock_lots_rules_test.sql (must end with «RESULT: 117/117 OK» — it always rolls back).
 --   * The Worker (facade labels «Stock Lot», «Own Stock Lot», «Stock Lot Reference» → stock_lot_reference,
 --     tblStockLots incl. «Pieces Moving» → pieces_moving, /costs/stock-lots) is
 --     deployed ONLY after the verify file passes. Worker first is QUIET, not loud: after every ORDERS
@@ -102,7 +102,7 @@
 --           allocation (today's rule) and the auditor's S-11 says so. stock_v_lot_money shows
 --           partner_cost / warehouse_charge / charge_total (intake_cost is gone: a dead name misleads).
 --           The source's own RT earns coalesce(partner_cost, 0): a partner's RT keeps margin 0, our own
---           truck earns 0 (owner: «μόνο τα κομμάτια»). Frozen by the invoice (lot_invoiced); tms_reader
+--           truck earns 0 (owner: «μόνο τα κομμάτια»). Open after the invoice (OWNER-Q4b); tms_reader
 --           cannot read the column (column grants); CHECK stock_lots_charge_nonneg.
 --   * OWNER-Q3 answered 4/10 (VS on piece prorated /F): a piece's VS charge = round(X × least(pallets,
 --           F) / F, 2), F = ct_settings.full_truck_pallets (33, new row + CHECK > 0). Ordinary VS orders
@@ -116,6 +116,17 @@
 --           and lot_missing (cases 67–72); the two piece_is_lot LOT SOURCE sites are backstops reached
 --           only with a guard bypassed (harness proof, not the rules test). P3 (2) R3 has a way back:
 --           057_stock_lots_blank_null_on.sql. P3 (5) the verify file's V0 prints both views' options.
+--
+-- ROUND 3 (the five round-2 critics, critic-3 Σ2-03…Σ2-11, and OWNER-Q4b 4/10):
+--   * OWNER-Q4b answered 4/10 (warehouse charge open after invoice): round 2's lot_invoiced refusal
+--           of a warehouse_charge change is gone (stock_guard_lots says where it would go back). The
+--           lot PRICE now really freezes with the invoice (lot_invoiced in both LOT SOURCE branches):
+--           round 2 claimed «everything locks with the invoice» but only 043 stood there, and 043
+--           lets an invoiced price change as long as it stays > 0.
+--   * Σ2-03 'no_partner_rate' + has_assignment in stock_v_lot_money; Σ2-04 a charge above the price
+--           stays 'ok' and S-11 reports it (057b); Σ2-09 S-14 (057b) reports a live lot whose warehouse
+--           location was deleted; Σ2-05 R2 replaces only the revenue text 057 wrote; Σ2-10 the BLANK
+--           NULL ON header no longer promises a self-repair; Σ2-11 the dry run fingerprints sequences.
 --
 -- B-54 LIVES HERE, NOT IN 057b (impact map AU-06; the task asked for 057b — this is why it moved):
 --   B-54 is the auditor's P1 HOURLY check «enabled triggers in public <> red_value». This block adds
@@ -513,6 +524,16 @@ begin
   --    charge_total is NULL only when NEITHER part was entered → 'no_charge': no allocation, the full
   --    price stays on the source (today's rule) and S-11 shouts. 0 is a real charge (the warehouse
   --    charges nothing) → allocated. With an assignment, an empty field means «no extra charge».
+  --    'no_partner_rate' (round 3, critic-3 Σ2-03): the source HAS a live assignment but its rate is
+  --    empty (the Weekly demands a rate, paUpsert does not). Read as «no assignment» it would let the
+  --    owner follow S-11's advice, type the whole warehouse bill into warehouse_charge and get 'ok' —
+  --    the partner's rate then counted twice once it is filled in, or the pieces allocated without it
+  --    and silently re-priced later. So it is its own status: no allocation, charge_total NULL (a sum
+  --    with a missing part is not a total), S-11 reports it, and has_assignment tells the screen to say
+  --    «λείπει το κόμιστρο συνεργάτη» instead of «Κόμιστρο συνεργάτη —».
+  --    A charge above the price (net < 0) stays 'ok' and is allocated as it is (the rule is net =
+  --    price − charge, nothing more); S-11 reports it, so a typo of 6500 for 650 is loud the next
+  --    morning instead of showing up weeks later as loss-making RTs (round 3, Σ2-04).
   --    'no_pallets' only exists if the guards were bypassed (R1): it keeps a division by zero out
   --    of ct_v_rt_revenue (TRIP PnL would die) and makes S-11 shout instead.
   --    Rounding: net is rounded to cents once; allocated_amount = round(net·drawn/T, 2) — the same
@@ -529,6 +550,7 @@ begin
          x.source_rec,
          x.price,
          x.partner_cost,
+         x.has_assignment,
          s.warehouse_charge,
          c.charge_total,
          case when k.st = 'ok' then k.net end                                   as net,
@@ -545,28 +567,30 @@ begin
     from public.stock_v_lots l
     join public.stock_lots s on s.id = l.id
     cross join lateral (
-      select o.legacy_id as source_rec, o.price,
-             (select pa.partner_rate
-                from public.partner_assignments pa
-               where pa.order_id = o.id and pa.deleted_at is null and pa.status <> 'Cancelled'
-               order by pa.id desc
-               limit 1)  as partner_cost
+      select o.legacy_id as source_rec, o.price, pa.partner_rate as partner_cost, (pa.id is not null) as has_assignment
         from public.orders o
+        left join lateral (select pa.id, pa.partner_rate
+                             from public.partner_assignments pa
+                            where pa.order_id = o.id and pa.deleted_at is null and pa.status <> 'Cancelled'
+                            order by pa.id desc
+                            limit 1) pa on true
        where o.id = l.order_id
       union all
       -- OWNER-Q7 answered 4/10 (same rule): a lot with a NATIONAL pickup has no assignment cost in
       -- Φ1 (plan Ε7), so partner_cost is NULL and its charge is warehouse_charge alone — entered →
       -- 'ok', not entered → 'no_charge'. No national-only branch: one rule for every lot.
-      select n.legacy_id, n.price, null::numeric
+      select n.legacy_id, n.price, null::numeric, false
         from public.national_orders n
        where n.id = l.nat_order_id
     ) x
     cross join lateral (
-      select case when x.partner_cost is null and s.warehouse_charge is null then null::numeric
+      select case when x.has_assignment and x.partner_cost is null                then null::numeric
+                  when x.partner_cost is null and s.warehouse_charge is null    then null::numeric
                   else coalesce(x.partner_cost, 0) + coalesce(s.warehouse_charge, 0) end as charge_total
     ) c
     cross join lateral (
       select case when coalesce(x.price, 0) <= 0 then 'no_price'
+                  when x.has_assignment and x.partner_cost is null then 'no_partner_rate'
                   when c.charge_total is null    then 'no_charge'
                   when l.stock_pallets <= 0      then 'no_pallets'
                   else 'ok' end                                                 as st,
@@ -929,19 +953,19 @@ begin
       end if;
     end if;
 
-    -- The warehouse charge (round 2, contract «Χρέωση αποθήκης») moves the net of an invoiced lot —
-    -- after the invoice, every piece RT would be re-priced against a price the client already paid.
-    -- OWNER-Q4 answered 4/10 (open until invoice): the price and the warehouse charge stay editable
-    -- until the invoice so the accountant can correct them; every change re-prices the piece RTs live
-    -- (owner-only view; payroll does not read it). So: allowed while the lot is open or closed and not
-    -- invoiced, refused once invoiced — the same code and text as a reason edit (lot_invoiced). Race
-    -- with «Invoiced» on the source: that save takes FOR NO KEY UPDATE on this lot row (LOT SOURCE of
-    -- stock_guard_orders / _natl) and this UPDATE holds the same row, so one waits for the other and
-    -- this trigger, which fires after the row lock, reads the invoice that committed. A dead anchor
-    -- that stays dead left above (the Worker answers 404 for it); a revival is judged as a new mark.
-    if tg_op = 'UPDATE' and new.warehouse_charge is distinct from old.warehouse_charge and v_invoiced then
-      perform stock_raise('lot_invoiced', 'Η παρτίδα τιμολογήθηκε — δεν αλλάζει');
-    end if;
+    -- The warehouse charge (round 2, contract «Χρέωση αποθήκης») is NOT judged here, on purpose.
+    -- OWNER-Q4b answered 4/10 (warehouse charge open after invoice): it is our cost, never on the
+    -- client invoice; the warehouse bills later. A lock at the client invoice would freeze a cost the
+    -- warehouse has not even billed yet — the owner would then type it nowhere, and the pieces' RTs
+    -- would keep a net that is known to be wrong. So it stays editable for as long as the lot lives
+    -- (open, closed, invoiced); only the owner writes it (Worker PATCH, audited), and every change
+    -- re-prices the piece RTs live (owner-only view; payroll does not read it). The lot PRICE is a
+    -- different matter: it IS on the client invoice and freezes with it (LOT SOURCE of
+    -- stock_guard_orders / _natl, OWNER-Q4 answered 4/10 (open until invoice)).
+    -- THE one place for a charge rule: if the owner ever wants it frozen, it goes here, as
+    --   if tg_op = 'UPDATE' and new.warehouse_charge is distinct from old.warehouse_charge and v_invoiced then …
+    -- (round 2 had exactly that line; the rules test's P19 then turns red, which is the point).
+    -- A dead anchor that stays dead left above (the Worker answers 404 for it).
 
     if tg_op = 'INSERT' or v_revived then
       -- A save of the source at the same second (a second destination, a client site as destination,
@@ -1343,6 +1367,16 @@ begin
         if old.invoiced is true and new.invoiced is true and new.status is distinct from old.status then
           perform stock_raise('lot_invoiced', 'Η παρτίδα τιμολογήθηκε — η κατάσταση της παραλαβής δεν αλλάζει· αναίρεσε πρώτα το τιμολόγιο');
         end if;
+        -- OWNER-Q4 answered 4/10 (open until invoice): the lot price is editable until the client
+        -- invoice so the accountant can correct it, and frozen by it — the invoice states that price,
+        -- and every piece RT is allocated from it. 043 alone does not freeze it (it only keeps an
+        -- invoiced price > 0 with an ERP number): on an ordinary order a price fix after the invoice
+        -- touches one row, on a lot it silently re-prices every piece RT of a closed sale. Clearing
+        -- «Invoiced» in the same save passes, like the status freeze above. (Round 3: the round-2 tree
+        -- had no such rule; the owner's «everything locks with the invoice» was not enforced.)
+        if old.invoiced is true and new.invoiced is true and new.price is distinct from old.price then
+          perform stock_raise('lot_invoiced', 'Η παρτίδα τιμολογήθηκε — η τιμή δεν αλλάζει· αναίρεσε πρώτα το τιμολόγιο');
+        end if;
         -- OWNER-Q1 answered 4/10 (no VS on a lot): no Veroia Switch on a lot source (see stock_guard_lots).
         if coalesce(new.veroia_switch, false) and old.veroia_switch is not true then
           perform stock_raise('lot_vs', 'Η παρτίδα πάει κατευθείαν στην αποθήκη — όχι Veroia Switch');
@@ -1560,6 +1594,11 @@ begin
                 or public.stock_natl_delivered(new.status, new.delivery_datetime)
                    is distinct from public.stock_natl_delivered(old.status, old.delivery_datetime)) then
           perform stock_raise('lot_invoiced', 'Η παρτίδα τιμολογήθηκε — η κατάσταση της παραλαβής δεν αλλάζει· αναίρεσε πρώτα το τιμολόγιο');
+        end if;
+        -- OWNER-Q4 answered 4/10 (open until invoice): the price freezes with the invoice (see
+        -- stock_guard_orders).
+        if old.invoiced is true and new.invoiced is true and new.price is distinct from old.price then
+          perform stock_raise('lot_invoiced', 'Η παρτίδα τιμολογήθηκε — η τιμή δεν αλλάζει· αναίρεσε πρώτα το τιμολόγιο');
         end if;
       end if;
       if num_nonnulls(new.delivery_location_2_id, new.delivery_location_3_id, new.delivery_location_4_id,
