@@ -13,7 +13,7 @@
 --   B-60  report §4 #6 + PU-1: groupage lines left «Unassigned» ⇒ a supplier is never collected
 --         (the drag & drop queue that would pick them up is not worked by anyone). «Unassigned» is
 --         normal until the line is dragged into a truck, so only lines LOADING BY TOMORROW (Athens
---         date; a NULL loading_date counts, 0 such lines today) are red — review 4/10: a line
+--         date — groupage_lines.loading_date is type date, checked 4/10; a NULL counts, 0 today) are red — review 4/10: a line
 --         loading in 3 weeks is not a finding.
 --   B-61  report §4 #2 (SA-1/WN-04): a VS national leg whose delivery time has passed with no truck
 --         and no partner ⇒ stays «ΠΡΟΣ ΑΝΑΘΕΣΗ», nobody knows who ran it. Status is NOT read:
@@ -41,7 +41,14 @@
 --   B-36  37 → 37  (now 0)   trigger rows are objects — unchanged, as expected
 --   B-53   0 →  1  (now 0)
 --   P-02   0 →  4  (now 0)
---   P-03   4 → 47  (now 0)   ⚠ 47/30 days: if the digest gets noisy, review the rule, not the parse
+--   P-03   4 → 47  (now 0)   classified read-only 4/10 (review asked: split parents?): NOT mostly split —
+--               2 hits on 1 split parent, 6 on split children/legs (3 now Cancelled+deleted), 4 audit
+--               rows with no matching order (role system), 35 on plain owned orders (34 have a live RT
+--               today, 1 deleted).
+--               ALL 47 fall 5/9–14/9 (7/9: 20) — before RT-on-assignment (033, 14/9); since 15/9:
+--               0 hits out of 102 Worker-written assignments. So P-03 is quiet now, not «1.6/day»:
+--               SQL left as is (only the parse changed); a hit from now on is a real «assigned, no
+--               RT event within 60″». The owner may still decide to exclude split legs.
 --   P-04   0 →  9  (now 0)
 --   P-05   0 →  0  (now 0)
 --   P-06   2 →  7  (now 0)
@@ -89,19 +96,21 @@
 -- are identical to these; 047b = «what the catalog defines», 058 = the delta production runs.
 -- The md5 constants in the proof below are md5(sql_text)/md5(ids_sql) of the catalog files —
 -- change a literal and the block refuses until the constant is recomputed from the file.
--- The 8 fixed rows are the second INSERT, emitted verbatim by seedSql() from their catalog files
+-- The 8 fixed rows are UPDATEs of sql_text/ids_sql ONLY (review 4/10): enabled, severity,
+-- schedule_tag, disabled_reason etc. the owner may have changed by hand are NOT touched. Their texts
+-- are the catalog files byte-for-byte
 -- (tms-auditor/checks/B-36, B-53, P-02…P-06, P-08 .sql), same as their rows in 047b.
 --
--- Idempotent: INSERT … ON CONFLICT (id) DO UPDATE (same form as 047b) — safe to re-run (the guard
--- accepts the 8 audit rows in either their original or their fixed text).
+-- Idempotent: B-59…B-62 by INSERT … ON CONFLICT (id) DO UPDATE (new rows, same form as 047b); the 8
+-- by UPDATE of the two texts — safe to re-run (the guard accepts their original or fixed text).
 -- Reverse:   DELETE FROM monitoring.results WHERE check_id IN ('B-59','B-60','B-61','B-62');
 --            DELETE FROM monitoring.checks  WHERE id       IN ('B-59','B-60','B-61','B-62');
 --            (or, keeping history: UPDATE monitoring.checks SET enabled=false,
 --             disabled_reason='…' WHERE id IN (…) — reported as a GAP, never green)
---            The 8 audit rows: re-run their rows from 047b as of commit e1a66597 (original text).
+--            The 8 audit rows: UPDATE sql_text/ids_sql back to their 047b text as of commit e1a66597.
 
 DO $do$
-DECLARE r record; v numeric; ids text[]; n int;
+DECLARE r record; v numeric; ids text[]; n int; k int;
 BEGIN
   IF to_regclass('monitoring.checks') IS NULL THEN
     RAISE EXCEPTION '058: monitoring.checks does not exist — 047 must run first';
@@ -191,36 +200,55 @@ BEGIN
       OR (md5(k.sql_text) = e.new_sql AND md5(coalesce(k.ids_sql, '')) = e.new_ids);
   IF n <> 8 THEN RAISE EXCEPTION '058: only % of the 8 audit checks hold the 047b or the fixed text — production was edited by hand, stop', n; END IF;
 
-INSERT INTO monitoring.checks (id, title, flows, sql_text, ids_sql, entity_table, red_op, red_value, baseline, severity,
-  schedule_tag, is_queue, impact, next_step, exceptions, tolerance, enabled, disabled_reason) VALUES
-($m$B-36$m$, $m$Γεγονότα triggers 24h (split/reopen)$m$, ARRAY[$m$F-16$m$,$m$F-18$m$]::text[], $m$SELECT count(*) FILTER (WHERE (((after_data #>> '{}')::jsonb->>'split'))='true') + count(*) FILTER (WHERE table_name='ct_round_trips' AND ((after_data #>> '{}')::jsonb->>'reason') LIKE 'reopened:%')
- FROM audit_log WHERE created_at>now()-interval '24 hours'$m$, NULL, NULL, $m$>$m$, 0, NULL, $m$P3$m$, $m$daily$m$, true, NULL, NULL, NULL, NULL, true, NULL),
-($m$B-53$m$, $m$Αναίρεση τιμολόγησης (invoiced true→false) από μη-owner (24 ώρες)$m$, ARRAY[$m$F-30$m$]::text[], $m$SELECT count(*) FROM audit_log WHERE table_name IN ('orders','national_orders') AND action='update' AND role<>'owner'
+-- ONLY the two texts are written (review 4/10): enabled, severity, schedule_tag, disabled_reason and
+  -- every other column the owner may have changed by hand stay as they are. Texts = catalog files.
+  UPDATE monitoring.checks SET sql_text = $m$SELECT count(*) FILTER (WHERE (((after_data #>> '{}')::jsonb->>'split'))='true') + count(*) FILTER (WHERE table_name='ct_round_trips' AND ((after_data #>> '{}')::jsonb->>'reason') LIKE 'reopened:%')
+ FROM audit_log WHERE created_at>now()-interval '24 hours'$m$,
+    ids_sql = NULL
+   WHERE id = 'B-36';
+  GET DIAGNOSTICS k = ROW_COUNT; IF k <> 1 THEN RAISE EXCEPTION '058: B-36 updated % rows', k; END IF;
+  UPDATE monitoring.checks SET sql_text = $m$SELECT count(*) FROM audit_log WHERE table_name IN ('orders','national_orders') AND action='update' AND role<>'owner'
  AND (((before_data #>> '{}')::jsonb->>'invoiced'))='true' AND coalesce(((after_data #>> '{}')::jsonb->>'invoiced'),'false')='false'
- AND created_at>now()-interval '24 hours'$m$, NULL, NULL, $m$>$m$, 0, NULL, $m$P3$m$, $m$daily$m$, false, $m$Ενημερωτικό: μια τιμολογημένη παραγγελία ξανάγινε ατιμολόγητη από ρόλο που δεν είναι owner (ο φραγμός Δ10 απορρίφθηκε 22/9 — μετριέται).$m$, $m$Ιστορικό Ενεργειών → orders/update με αλλαγή Invoiced (ανάγνωση).$m$, $m$Ο owner αναιρεί από την καρτέλα (4801db4) — δεν μετρά.$m$, NULL, true, NULL),
-($m$P-02$m$, $m$Νέα VS παραγγελία χωρίς εθνικό φορτίο (ίχνος)$m$, ARRAY[$m$F-10$m$]::text[], $m$SELECT count(*) FROM audit_log a WHERE a.table_name='orders' AND a.action='create' AND (((a.after_data #>> '{}')::jsonb->>'veroia_switch'))='true' AND a.created_at BETWEEN now()-interval '26 hours' AND now()-interval '3 minutes'
- AND NOT EXISTS (SELECT 1 FROM audit_log b WHERE b.table_name='national_loads' AND b.action IN ('create','update') AND (b.actor=a.actor OR b.actor LIKE 'trigger:national_load%') AND b.created_at BETWEEN a.created_at-interval '60 seconds' AND a.created_at+interval '60 seconds')$m$, $m$SELECT coalesce(array_agg(x ORDER BY x), '{}') FROM (SELECT a.record_id AS x FROM audit_log a WHERE a.table_name='orders' AND a.action='create' AND (((a.after_data #>> '{}')::jsonb->>'veroia_switch'))='true' AND a.created_at BETWEEN now()-interval '26 hours' AND now()-interval '3 minutes'
- AND NOT EXISTS (SELECT 1 FROM audit_log b WHERE b.table_name='national_loads' AND b.action IN ('create','update') AND (b.actor=a.actor OR b.actor LIKE 'trigger:national_load%') AND b.created_at BETWEEN a.created_at-interval '60 seconds' AND a.created_at+interval '60 seconds') LIMIT 50) s$m$, $m$audit$m$, $m$>$m$, 0, NULL, $m$P3$m$, $m$hourly$m$, false, NULL, NULL, NULL, $m$ζεύγος εντός ±60″ (το audit του trigger γράφεται ΠΡΙΝ από του Worker)$m$, true, NULL),
-($m$P-03$m$, $m$Ανάθεση χωρίς γεγονός γύρου (ίχνος)$m$, ARRAY[$m$F-14$m$]::text[], $m$SELECT count(*) FROM audit_log a WHERE a.table_name='orders' AND a.action='update' AND (((a.before_data #>> '{}')::jsonb->>'truck_id')) IS NULL AND (((a.before_data #>> '{}')::jsonb->>'partner_id')) IS NULL AND ((((a.after_data #>> '{}')::jsonb->>'truck_id')) IS NOT NULL OR (((a.after_data #>> '{}')::jsonb->>'partner_id')) IS NOT NULL) AND a.created_at BETWEEN now()-interval '26 hours' AND now()-interval '3 minutes'
- AND NOT EXISTS (SELECT 1 FROM audit_log b WHERE b.table_name IN ('ct_round_trips','ct_rt_legs') AND b.actor LIKE 'trigger:rt%' AND b.created_at BETWEEN a.created_at-interval '60 seconds' AND a.created_at+interval '60 seconds')$m$, $m$SELECT coalesce(array_agg(x ORDER BY x), '{}') FROM (SELECT a.record_id AS x FROM audit_log a WHERE a.table_name='orders' AND a.action='update' AND (((a.before_data #>> '{}')::jsonb->>'truck_id')) IS NULL AND (((a.before_data #>> '{}')::jsonb->>'partner_id')) IS NULL AND ((((a.after_data #>> '{}')::jsonb->>'truck_id')) IS NOT NULL OR (((a.after_data #>> '{}')::jsonb->>'partner_id')) IS NOT NULL) AND a.created_at BETWEEN now()-interval '26 hours' AND now()-interval '3 minutes'
- AND NOT EXISTS (SELECT 1 FROM audit_log b WHERE b.table_name IN ('ct_round_trips','ct_rt_legs') AND b.actor LIKE 'trigger:rt%' AND b.created_at BETWEEN a.created_at-interval '60 seconds' AND a.created_at+interval '60 seconds') LIMIT 50) s$m$, $m$audit$m$, $m$>$m$, 0, NULL, $m$P3$m$, $m$hourly$m$, false, NULL, NULL, $m$Γονείς split· ίδιο σήμα με B-01 (κατάσταση) — εδώ με ώρα και actor.$m$, $m$ζεύγος εντός ±60″ (το audit του trigger γράφεται ΠΡΙΝ από του Worker)$m$, true, NULL),
-($m$P-04$m$, $m$Ταίριασμα εισαγωγής χωρίς εγγραφή γύρου (ίχνος)$m$, ARRAY[$m$F-16$m$]::text[], $m$SELECT count(*) FROM audit_log a WHERE a.table_name='orders' AND a.action='update' AND coalesce(((a.before_data #>> '{}')::jsonb->>'matched_import_id'),'')='' AND coalesce(((a.after_data #>> '{}')::jsonb->>'matched_import_id'),'')<>'' AND a.created_at BETWEEN now()-interval '26 hours' AND now()-interval '3 minutes'
- AND NOT EXISTS (SELECT 1 FROM audit_log b WHERE b.table_name IN ('ct_round_trips','ct_rt_legs') AND (b.actor=a.actor OR b.actor LIKE 'trigger:rt%') AND b.created_at BETWEEN a.created_at-interval '90 seconds' AND a.created_at+interval '90 seconds')$m$, $m$SELECT coalesce(array_agg(x ORDER BY x), '{}') FROM (SELECT a.record_id AS x FROM audit_log a WHERE a.table_name='orders' AND a.action='update' AND coalesce(((a.before_data #>> '{}')::jsonb->>'matched_import_id'),'')='' AND coalesce(((a.after_data #>> '{}')::jsonb->>'matched_import_id'),'')<>'' AND a.created_at BETWEEN now()-interval '26 hours' AND now()-interval '3 minutes'
- AND NOT EXISTS (SELECT 1 FROM audit_log b WHERE b.table_name IN ('ct_round_trips','ct_rt_legs') AND (b.actor=a.actor OR b.actor LIKE 'trigger:rt%') AND b.created_at BETWEEN a.created_at-interval '90 seconds' AND a.created_at+interval '90 seconds') LIMIT 50) s$m$, $m$audit$m$, $m$>$m$, 0, NULL, $m$P3$m$, $m$hourly$m$, false, NULL, NULL, NULL, $m$ζεύγος εντός ±90″ (το audit του trigger γράφεται ΠΡΙΝ από του Worker)$m$, true, NULL),
-($m$P-05$m$, $m$Ρότα χωρίς ενημέρωση γύρου (ίχνος)$m$, ARRAY[$m$F-18$m$]::text[], $m$SELECT count(*) FROM audit_log a WHERE a.table_name='orders' AND a.action='update' AND coalesce(((a.before_data #>> '{}')::jsonb->>'rotation_id'),'')='' AND coalesce(((a.after_data #>> '{}')::jsonb->>'rotation_id'),'')<>'' AND a.created_at BETWEEN now()-interval '26 hours' AND now()-interval '3 minutes'
- AND NOT EXISTS (SELECT 1 FROM audit_log b WHERE b.table_name IN ('ct_round_trips','ct_rt_legs') AND (b.actor=a.actor OR b.actor LIKE 'trigger:rt%') AND b.created_at BETWEEN a.created_at-interval '90 seconds' AND a.created_at+interval '90 seconds')$m$, $m$SELECT coalesce(array_agg(x ORDER BY x), '{}') FROM (SELECT a.record_id AS x FROM audit_log a WHERE a.table_name='orders' AND a.action='update' AND coalesce(((a.before_data #>> '{}')::jsonb->>'rotation_id'),'')='' AND coalesce(((a.after_data #>> '{}')::jsonb->>'rotation_id'),'')<>'' AND a.created_at BETWEEN now()-interval '26 hours' AND now()-interval '3 minutes'
- AND NOT EXISTS (SELECT 1 FROM audit_log b WHERE b.table_name IN ('ct_round_trips','ct_rt_legs') AND (b.actor=a.actor OR b.actor LIKE 'trigger:rt%') AND b.created_at BETWEEN a.created_at-interval '90 seconds' AND a.created_at+interval '90 seconds') LIMIT 50) s$m$, $m$audit$m$, $m$>$m$, 0, NULL, $m$P3$m$, $m$hourly$m$, false, NULL, NULL, $m$Κλειστός γύρος: το front αναιρεί τη ρότα (P3 22/9) — τότε υπάρχει και δεύτερο update.$m$, $m$ζεύγος εντός ±90″ (το audit του trigger γράφεται ΠΡΙΝ από του Worker)$m$, true, NULL),
-($m$P-06$m$, $m$Delivered χωρίς σφραγίδα στάσης (ίχνος · δεύτερη πόρτα)$m$, ARRAY[$m$F-26$m$,$m$F-09$m$]::text[], $m$SELECT count(*) FROM audit_log a WHERE a.table_name='orders' AND a.action='update' AND (((a.after_data #>> '{}')::jsonb->>'status'))='Delivered' AND coalesce(((a.before_data #>> '{}')::jsonb->>'status'),'')<>'Delivered' AND a.created_at BETWEEN now()-interval '26 hours' AND now()-interval '3 minutes'
- AND NOT EXISTS (SELECT 1 FROM audit_log b WHERE b.table_name='order_stops' AND b.action='update' AND b.actor=a.actor AND b.created_at BETWEEN a.created_at-interval '120 seconds' AND a.created_at+interval '120 seconds')$m$, $m$SELECT coalesce(array_agg(x ORDER BY x), '{}') FROM (SELECT a.record_id AS x FROM audit_log a WHERE a.table_name='orders' AND a.action='update' AND (((a.after_data #>> '{}')::jsonb->>'status'))='Delivered' AND coalesce(((a.before_data #>> '{}')::jsonb->>'status'),'')<>'Delivered' AND a.created_at BETWEEN now()-interval '26 hours' AND now()-interval '3 minutes'
- AND NOT EXISTS (SELECT 1 FROM audit_log b WHERE b.table_name='order_stops' AND b.action='update' AND b.actor=a.actor AND b.created_at BETWEEN a.created_at-interval '120 seconds' AND a.created_at+interval '120 seconds') LIMIT 50) s$m$, $m$audit$m$, $m$>$m$, 0, NULL, $m$P3$m$, $m$hourly$m$, false, NULL, NULL, $m$Delivered από καρτέλα (F-09) = ασάφεια Α1 — το σήμα ΕΙΝΑΙ αυτό.$m$, $m$ζεύγος εντός ±120″ (το audit του trigger γράφεται ΠΡΙΝ από του Worker)$m$, true, NULL),
-($m$P-08$m$, $m$Παλέτες: ενημέρωση χωρίς επιβεβαίωση (ίχνος)$m$, ARRAY[$m$F-31$m$]::text[], $m$SELECT count(*) FROM audit_log a WHERE a.table_name='pl_movements' AND a.action='update' AND (((a.after_data #>> '{}')::jsonb->>'sheet_url')) IS NOT NULL AND a.created_at BETWEEN now()-interval '26 hours' AND now()-interval '3 minutes'
- AND NOT EXISTS (SELECT 1 FROM audit_log b WHERE b.table_name='pl_movements' AND b.action='confirm' AND b.record_id=a.record_id AND b.created_at BETWEEN a.created_at-interval '120 seconds' AND a.created_at+interval '120 seconds')$m$, $m$SELECT coalesce(array_agg(x ORDER BY x), '{}') FROM (SELECT a.record_id AS x FROM audit_log a WHERE a.table_name='pl_movements' AND a.action='update' AND (((a.after_data #>> '{}')::jsonb->>'sheet_url')) IS NOT NULL AND a.created_at BETWEEN now()-interval '26 hours' AND now()-interval '3 minutes'
- AND NOT EXISTS (SELECT 1 FROM audit_log b WHERE b.table_name='pl_movements' AND b.action='confirm' AND b.record_id=a.record_id AND b.created_at BETWEEN a.created_at-interval '120 seconds' AND a.created_at+interval '120 seconds') LIMIT 50) s$m$, $m$audit$m$, $m$>$m$, 0, NULL, $m$P2$m$, $m$hourly$m$, false, $m$Το δελτίο παλετών ανέβηκε αλλά η κίνηση δεν επιβεβαιώθηκε — μένει εκκρεμής και μπλοκάρει τιμολόγηση.$m$, NULL, NULL, $m$ζεύγος εντός ±120″ (το audit του trigger γράφεται ΠΡΙΝ από του Worker)$m$, true, NULL)
-ON CONFLICT (id) DO UPDATE SET title=EXCLUDED.title, flows=EXCLUDED.flows, sql_text=EXCLUDED.sql_text,
-  ids_sql=EXCLUDED.ids_sql, entity_table=EXCLUDED.entity_table, red_op=EXCLUDED.red_op, red_value=EXCLUDED.red_value,
-  baseline=EXCLUDED.baseline, severity=EXCLUDED.severity, schedule_tag=EXCLUDED.schedule_tag, is_queue=EXCLUDED.is_queue,
-  impact=EXCLUDED.impact, next_step=EXCLUDED.next_step, exceptions=EXCLUDED.exceptions, tolerance=EXCLUDED.tolerance,
-  enabled=EXCLUDED.enabled, disabled_reason=EXCLUDED.disabled_reason;
+ AND created_at>now()-interval '24 hours'$m$,
+    ids_sql = NULL
+   WHERE id = 'B-53';
+  GET DIAGNOSTICS k = ROW_COUNT; IF k <> 1 THEN RAISE EXCEPTION '058: B-53 updated % rows', k; END IF;
+  UPDATE monitoring.checks SET sql_text = $m$SELECT count(*) FROM audit_log a WHERE a.table_name='orders' AND a.action='create' AND (((a.after_data #>> '{}')::jsonb->>'veroia_switch'))='true' AND a.created_at BETWEEN now()-interval '26 hours' AND now()-interval '3 minutes'
+ AND NOT EXISTS (SELECT 1 FROM audit_log b WHERE b.table_name='national_loads' AND b.action IN ('create','update') AND (b.actor=a.actor OR b.actor LIKE 'trigger:national_load%') AND b.created_at BETWEEN a.created_at-interval '60 seconds' AND a.created_at+interval '60 seconds')$m$,
+    ids_sql = $m$SELECT coalesce(array_agg(x ORDER BY x), '{}') FROM (SELECT a.record_id AS x FROM audit_log a WHERE a.table_name='orders' AND a.action='create' AND (((a.after_data #>> '{}')::jsonb->>'veroia_switch'))='true' AND a.created_at BETWEEN now()-interval '26 hours' AND now()-interval '3 minutes'
+ AND NOT EXISTS (SELECT 1 FROM audit_log b WHERE b.table_name='national_loads' AND b.action IN ('create','update') AND (b.actor=a.actor OR b.actor LIKE 'trigger:national_load%') AND b.created_at BETWEEN a.created_at-interval '60 seconds' AND a.created_at+interval '60 seconds') LIMIT 50) s$m$
+   WHERE id = 'P-02';
+  GET DIAGNOSTICS k = ROW_COUNT; IF k <> 1 THEN RAISE EXCEPTION '058: P-02 updated % rows', k; END IF;
+  UPDATE monitoring.checks SET sql_text = $m$SELECT count(*) FROM audit_log a WHERE a.table_name='orders' AND a.action='update' AND (((a.before_data #>> '{}')::jsonb->>'truck_id')) IS NULL AND (((a.before_data #>> '{}')::jsonb->>'partner_id')) IS NULL AND ((((a.after_data #>> '{}')::jsonb->>'truck_id')) IS NOT NULL OR (((a.after_data #>> '{}')::jsonb->>'partner_id')) IS NOT NULL) AND a.created_at BETWEEN now()-interval '26 hours' AND now()-interval '3 minutes'
+ AND NOT EXISTS (SELECT 1 FROM audit_log b WHERE b.table_name IN ('ct_round_trips','ct_rt_legs') AND b.actor LIKE 'trigger:rt%' AND b.created_at BETWEEN a.created_at-interval '60 seconds' AND a.created_at+interval '60 seconds')$m$,
+    ids_sql = $m$SELECT coalesce(array_agg(x ORDER BY x), '{}') FROM (SELECT a.record_id AS x FROM audit_log a WHERE a.table_name='orders' AND a.action='update' AND (((a.before_data #>> '{}')::jsonb->>'truck_id')) IS NULL AND (((a.before_data #>> '{}')::jsonb->>'partner_id')) IS NULL AND ((((a.after_data #>> '{}')::jsonb->>'truck_id')) IS NOT NULL OR (((a.after_data #>> '{}')::jsonb->>'partner_id')) IS NOT NULL) AND a.created_at BETWEEN now()-interval '26 hours' AND now()-interval '3 minutes'
+ AND NOT EXISTS (SELECT 1 FROM audit_log b WHERE b.table_name IN ('ct_round_trips','ct_rt_legs') AND b.actor LIKE 'trigger:rt%' AND b.created_at BETWEEN a.created_at-interval '60 seconds' AND a.created_at+interval '60 seconds') LIMIT 50) s$m$
+   WHERE id = 'P-03';
+  GET DIAGNOSTICS k = ROW_COUNT; IF k <> 1 THEN RAISE EXCEPTION '058: P-03 updated % rows', k; END IF;
+  UPDATE monitoring.checks SET sql_text = $m$SELECT count(*) FROM audit_log a WHERE a.table_name='orders' AND a.action='update' AND coalesce(((a.before_data #>> '{}')::jsonb->>'matched_import_id'),'')='' AND coalesce(((a.after_data #>> '{}')::jsonb->>'matched_import_id'),'')<>'' AND a.created_at BETWEEN now()-interval '26 hours' AND now()-interval '3 minutes'
+ AND NOT EXISTS (SELECT 1 FROM audit_log b WHERE b.table_name IN ('ct_round_trips','ct_rt_legs') AND (b.actor=a.actor OR b.actor LIKE 'trigger:rt%') AND b.created_at BETWEEN a.created_at-interval '90 seconds' AND a.created_at+interval '90 seconds')$m$,
+    ids_sql = $m$SELECT coalesce(array_agg(x ORDER BY x), '{}') FROM (SELECT a.record_id AS x FROM audit_log a WHERE a.table_name='orders' AND a.action='update' AND coalesce(((a.before_data #>> '{}')::jsonb->>'matched_import_id'),'')='' AND coalesce(((a.after_data #>> '{}')::jsonb->>'matched_import_id'),'')<>'' AND a.created_at BETWEEN now()-interval '26 hours' AND now()-interval '3 minutes'
+ AND NOT EXISTS (SELECT 1 FROM audit_log b WHERE b.table_name IN ('ct_round_trips','ct_rt_legs') AND (b.actor=a.actor OR b.actor LIKE 'trigger:rt%') AND b.created_at BETWEEN a.created_at-interval '90 seconds' AND a.created_at+interval '90 seconds') LIMIT 50) s$m$
+   WHERE id = 'P-04';
+  GET DIAGNOSTICS k = ROW_COUNT; IF k <> 1 THEN RAISE EXCEPTION '058: P-04 updated % rows', k; END IF;
+  UPDATE monitoring.checks SET sql_text = $m$SELECT count(*) FROM audit_log a WHERE a.table_name='orders' AND a.action='update' AND coalesce(((a.before_data #>> '{}')::jsonb->>'rotation_id'),'')='' AND coalesce(((a.after_data #>> '{}')::jsonb->>'rotation_id'),'')<>'' AND a.created_at BETWEEN now()-interval '26 hours' AND now()-interval '3 minutes'
+ AND NOT EXISTS (SELECT 1 FROM audit_log b WHERE b.table_name IN ('ct_round_trips','ct_rt_legs') AND (b.actor=a.actor OR b.actor LIKE 'trigger:rt%') AND b.created_at BETWEEN a.created_at-interval '90 seconds' AND a.created_at+interval '90 seconds')$m$,
+    ids_sql = $m$SELECT coalesce(array_agg(x ORDER BY x), '{}') FROM (SELECT a.record_id AS x FROM audit_log a WHERE a.table_name='orders' AND a.action='update' AND coalesce(((a.before_data #>> '{}')::jsonb->>'rotation_id'),'')='' AND coalesce(((a.after_data #>> '{}')::jsonb->>'rotation_id'),'')<>'' AND a.created_at BETWEEN now()-interval '26 hours' AND now()-interval '3 minutes'
+ AND NOT EXISTS (SELECT 1 FROM audit_log b WHERE b.table_name IN ('ct_round_trips','ct_rt_legs') AND (b.actor=a.actor OR b.actor LIKE 'trigger:rt%') AND b.created_at BETWEEN a.created_at-interval '90 seconds' AND a.created_at+interval '90 seconds') LIMIT 50) s$m$
+   WHERE id = 'P-05';
+  GET DIAGNOSTICS k = ROW_COUNT; IF k <> 1 THEN RAISE EXCEPTION '058: P-05 updated % rows', k; END IF;
+  UPDATE monitoring.checks SET sql_text = $m$SELECT count(*) FROM audit_log a WHERE a.table_name='orders' AND a.action='update' AND (((a.after_data #>> '{}')::jsonb->>'status'))='Delivered' AND coalesce(((a.before_data #>> '{}')::jsonb->>'status'),'')<>'Delivered' AND a.created_at BETWEEN now()-interval '26 hours' AND now()-interval '3 minutes'
+ AND NOT EXISTS (SELECT 1 FROM audit_log b WHERE b.table_name='order_stops' AND b.action='update' AND b.actor=a.actor AND b.created_at BETWEEN a.created_at-interval '120 seconds' AND a.created_at+interval '120 seconds')$m$,
+    ids_sql = $m$SELECT coalesce(array_agg(x ORDER BY x), '{}') FROM (SELECT a.record_id AS x FROM audit_log a WHERE a.table_name='orders' AND a.action='update' AND (((a.after_data #>> '{}')::jsonb->>'status'))='Delivered' AND coalesce(((a.before_data #>> '{}')::jsonb->>'status'),'')<>'Delivered' AND a.created_at BETWEEN now()-interval '26 hours' AND now()-interval '3 minutes'
+ AND NOT EXISTS (SELECT 1 FROM audit_log b WHERE b.table_name='order_stops' AND b.action='update' AND b.actor=a.actor AND b.created_at BETWEEN a.created_at-interval '120 seconds' AND a.created_at+interval '120 seconds') LIMIT 50) s$m$
+   WHERE id = 'P-06';
+  GET DIAGNOSTICS k = ROW_COUNT; IF k <> 1 THEN RAISE EXCEPTION '058: P-06 updated % rows', k; END IF;
+  UPDATE monitoring.checks SET sql_text = $m$SELECT count(*) FROM audit_log a WHERE a.table_name='pl_movements' AND a.action='update' AND (((a.after_data #>> '{}')::jsonb->>'sheet_url')) IS NOT NULL AND a.created_at BETWEEN now()-interval '26 hours' AND now()-interval '3 minutes'
+ AND NOT EXISTS (SELECT 1 FROM audit_log b WHERE b.table_name='pl_movements' AND b.action='confirm' AND b.record_id=a.record_id AND b.created_at BETWEEN a.created_at-interval '120 seconds' AND a.created_at+interval '120 seconds')$m$,
+    ids_sql = $m$SELECT coalesce(array_agg(x ORDER BY x), '{}') FROM (SELECT a.record_id AS x FROM audit_log a WHERE a.table_name='pl_movements' AND a.action='update' AND (((a.after_data #>> '{}')::jsonb->>'sheet_url')) IS NOT NULL AND a.created_at BETWEEN now()-interval '26 hours' AND now()-interval '3 minutes'
+ AND NOT EXISTS (SELECT 1 FROM audit_log b WHERE b.table_name='pl_movements' AND b.action='confirm' AND b.record_id=a.record_id AND b.created_at BETWEEN a.created_at-interval '120 seconds' AND a.created_at+interval '120 seconds') LIMIT 50) s$m$
+   WHERE id = 'P-08';
+  GET DIAGNOSTICS k = ROW_COUNT; IF k <> 1 THEN RAISE EXCEPTION '058: P-08 updated % rows', k; END IF;
 
   -- Proofs INSIDE the block: any failure aborts the whole block (nothing kept).
   -- (1) What is stored is exactly the catalog: md5 of tms-auditor/checks/B-59…B-62.sql sql/ids text.
@@ -235,7 +263,7 @@ ON CONFLICT (id) DO UPDATE SET title=EXCLUDED.title, flows=EXCLUDED.flows, sql_t
   IF n <> 4 THEN RAISE EXCEPTION '058: only % of 4 rows match the catalog md5 (enabled, P2)', n; END IF;
   -- (1b) The 8 fixed audit checks now hold the catalog text: parse present, no bare «_data->>» left.
   SELECT count(*) INTO n FROM monitoring.checks
-   WHERE id IN ('B-36','B-53','P-02','P-03','P-04','P-05','P-06','P-08') AND enabled
+   WHERE id IN ('B-36','B-53','P-02','P-03','P-04','P-05','P-06','P-08')
      AND position('_data #>> ''{}'')::jsonb->>' IN sql_text) > 0
      AND sql_text !~ '(after|before)_data\s*->>' AND coalesce(ids_sql, '') !~ '(after|before)_data\s*->>';
   IF n <> 8 THEN RAISE EXCEPTION '058: only % of 8 audit checks carry the parse and no bare after_data/before_data ->>', n; END IF;
@@ -248,7 +276,8 @@ ON CONFLICT (id) DO UPDATE SET title=EXCLUDED.title, flows=EXCLUDED.flows, sql_t
   -- (SELECT only) — so a missing GRANT fails HERE, not silently as the editor's superuser.
   -- Texts are read BEFORE switching role: tms_check_runner cannot read schema monitoring.
   FOR r IN SELECT id, sql_text, ids_sql FROM monitoring.checks
-            WHERE id IN ('B-59','B-60','B-61','B-62','B-36','B-53','P-02','P-03','P-04','P-05','P-06','P-08') ORDER BY id LOOP
+            WHERE id IN ('B-59','B-60','B-61','B-62','B-36','B-53','P-02','P-03','P-04','P-05','P-06','P-08')
+              AND enabled ORDER BY id LOOP       -- a check the owner disabled is not run (it may be disabled because it fails)
     PERFORM monitoring.check_sql_guard(r.sql_text);
     IF r.ids_sql IS NOT NULL THEN PERFORM monitoring.check_sql_guard(r.ids_sql); END IF;
     PERFORM set_config('statement_timeout', '10000', true);
