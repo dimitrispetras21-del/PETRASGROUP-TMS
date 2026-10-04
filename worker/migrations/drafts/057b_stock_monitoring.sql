@@ -8,7 +8,10 @@
 --            back with 057_stock_lots_guards_on.sql).
 --   S-03 P1  an invoiced lot that is not complete (the one-invoice rule broken).
 --   S-05 P2  a lot received > 21 days ago and still not complete (queue: pallets aging abroad).
---   S-06 P1  pieces moving / delivered while the lot's intake was never marked delivered.
+--   S-06 P1  pieces moving / delivered while the lot's intake was never marked delivered — counts lots
+--            with stock_v_lots.pieces_moving > 0 (round 1 D3): ONE definition, the same column the
+--            Weekly shelf's red chip reads («Pieces Moving»), so the screen and the auditor can never
+--            say two different things about the same lot (critic-1 C1-01).
 --   S-09 P3  EVERY «Κλείσιμο υπολοίπου» of the last 24 h, one line each: lot · pallets written off ·
 --            «χαμένο υπόλοιπο» amount · who (actor/role from audit_log) · the reason (Ε3).
 --   S-11 P2  a lot received > 2 days ago without allocation (no price / no warehouse cost).
@@ -111,8 +114,8 @@ begin
    'Ράφι του Weekly (πορτοκαλί τσιπ «>21η»): κομμάτι στο επόμενο φορτηγό ή «Κλείσιμο υπολοίπου» με αιτιολογία.',
    'σταθερός έλεγχος SQL — δείχνει ΤΙ, όχι ΓΙΑΤΙ', null, true),
   ('S-06', 'Απόθεμα: κομμάτια κινούνται ενώ η παραλαβή δεν σημειώθηκε', array['F-26','F-14'],
-   $c$SELECT count(DISTINCT l.id) FROM stock_v_lots l JOIN stock_v_pieces p ON p.lot_id = l.id WHERE NOT l.intake_delivered AND p.status IN ('In Transit','Delivered') AND p.loading_date < current_date$c$,
-   $c$SELECT coalesce(array_agg(x ORDER BY x),'{}') FROM (SELECT DISTINCT l.legacy_id AS x FROM stock_v_lots l JOIN stock_v_pieces p ON p.lot_id = l.id WHERE NOT l.intake_delivered AND p.status IN ('In Transit','Delivered') AND p.loading_date < current_date ORDER BY l.legacy_id LIMIT 50) s$c$,
+   $c$SELECT count(*) FROM stock_v_lots WHERE pieces_moving > 0$c$,
+   $c$SELECT coalesce(array_agg(x ORDER BY x),'{}') FROM (SELECT legacy_id AS x FROM stock_v_lots WHERE pieces_moving > 0 ORDER BY legacy_id LIMIT 50) s$c$,
    'stock_lots', '>', 0, 'P1', 'hourly', false,
    'Φεύγουν παλέτες από αποθήκη όπου η παρτίδα δεν έχει μπει ακόμη: είτε ξεχάστηκε το «Παραδόθηκε» της παραλαβής, είτε φορτώνουμε κάτι που δεν υπάρχει.',
    'Weekly → η γραμμή της παρτίδας (σήμα «→ ΑΠΟΘΗΚΗ»): σημειώθηκε η παράδοση στην αποθήκη; (ανάγνωση)',

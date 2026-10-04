@@ -11,8 +11,8 @@
 -- next: Weekly → η γραμμή της παρτίδας (σήμα «→ ΑΠΟΘΗΚΗ»): σημειώθηκε η παράδοση στην αποθήκη; (ανάγνωση)
 -- exceptions: Κομμάτια με φόρτωση σήμερα δεν μετρούν (η παραλαβή μπορεί να σημειωθεί αργότερα μέσα στη μέρα).
 -- tolerance:
--- source: DRAFT 057b_stock_monitoring.sql (4/10, ΔΕΝ εκτελέστηκε) — καθρέφτης της γραμμής του· plan §6 · ζωντανό μόνο μετά τα 057 + 057b
+-- source: DRAFT 057b_stock_monitoring.sql (4/10, ΔΕΝ εκτελέστηκε) — καθρέφτης της γραμμής του· plan §6 · ζωντανό μόνο μετά τα 057 + 057b · γύρος 1 D3: διαβάζει stock_v_lots.pieces_moving — ο ίδιος ορισμός με το κόκκινο τσιπ του ραφιού («Pieces Moving»)
 -- enabled: yes
-SELECT count(DISTINCT l.id) FROM stock_v_lots l JOIN stock_v_pieces p ON p.lot_id = l.id WHERE NOT l.intake_delivered AND p.status IN ('In Transit','Delivered') AND p.loading_date < current_date
+SELECT count(*) FROM stock_v_lots WHERE pieces_moving > 0
 -- @ids
-SELECT coalesce(array_agg(x ORDER BY x),'{}') FROM (SELECT DISTINCT l.legacy_id AS x FROM stock_v_lots l JOIN stock_v_pieces p ON p.lot_id = l.id WHERE NOT l.intake_delivered AND p.status IN ('In Transit','Delivered') AND p.loading_date < current_date ORDER BY l.legacy_id LIMIT 50) s
+SELECT coalesce(array_agg(x ORDER BY x),'{}') FROM (SELECT legacy_id AS x FROM stock_v_lots WHERE pieces_moving > 0 ORDER BY legacy_id LIMIT 50) s

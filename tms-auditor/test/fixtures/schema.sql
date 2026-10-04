@@ -744,6 +744,7 @@ CREATE TABLE public.stock_v_lots (
   pieces bigint,
   pieces_delivered bigint,
   pieces_without_truck bigint,
+  pieces_moving bigint,
   last_piece_delivered date,
   closed_note text,
   closed_at timestamptz,
