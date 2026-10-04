@@ -1016,6 +1016,11 @@ function _wiPaint(){
   const impPlan=impRows.filter(r=>!_wiStockSkip(r));
   const matched=impPlan.filter(r=>r.matchedTo).length;
   const unmatched=impPlan.filter(r=>!r.matchedTo).length;
+  // K9 (round 1): the button's number is what _wiAutoMatch will TAKE — the
+  // same filter on the same rows — not «unmatched»: a truckless group holding
+  // a piece is unmatched but never auto-matched (B-05), so «(N)» promised a
+  // pair the click then could not find.
+  const autoN=rows.filter(_wiMatchableImp).length;
   const total=expRows.length+impPlan.length;
   const pct=total?Math.round((assigned+matched)/total*100):0;
 
@@ -1116,7 +1121,7 @@ function _wiPaint(){
            πληροφορία. -->
       <button type="button" class="wk-sig${gaps?' warn':''}" onclick="_wk3Gaps()" title="Ιδιόκτητοι γύροι χωρίς φορτίο επιστροφής — κλικ: οι αταίριαστες εισαγωγές">ΚΕΝΑ ΓΥΡΙΣΜΑΤΑ <b>${gaps}</b>${urgN?` · ${urgN} ${urgN===1?'ΕΠΕΙΓΟΝ':'ΕΠΕΙΓΟΝΤΑ'}`:''}</button>
       ${preorderCounterHtml(preFields,"_wi2Quick('pre');preorderJump('#wi-rows .pre-leg')",WINTL.quick==='pre')}
-      ${unmatched>0?`<button class="wi2-btn" onclick="_wiAutoMatch()" title="Περιορισμένο: χωρίς συντεταγμένες τοποθεσιών (LO-1) σκοράρει μόνο με ημερομηνίες">${_ico('zap',13)} Αυτόματο ταίριασμα (${unmatched}) — χωρίς συντεταγμένες</button>`:''}
+      ${autoN>0?`<button class="wi2-btn" onclick="_wiAutoMatch()" title="Περιορισμένο: χωρίς συντεταγμένες τοποθεσιών (LO-1) σκοράρει μόνο με ημερομηνίες">${_ico('zap',13)} Αυτόματο ταίριασμα (${autoN}) — χωρίς συντεταγμένες</button>`:''}
       <span id="wi-crossweek-in"></span>
       <span class="wi2-week">Εβδομάδα ${week} · ${_wiWeekRange(week)} · Σαβ–Παρ</span>
     </div>
@@ -5675,7 +5680,14 @@ async function _wiRewriteGroupSuffix(recs,isImp){
   if(recs.length<2) return true;
   const base=String(recs.find(e=>e.fields['Group ID'])?.fields['Group ID']||'').split('|')[0]
     ||((isImp?'GI-':'GRP-')+String(recs[0].id).slice(-8));
-  const gid=base+'|'+recs.map(r=>r.id).join(',');
+  // K10 (round 1): a stock PIECE is never written into the suffix — it is
+  // the last member by having no position (pos 99 in _wiGiSortRecs,
+  // _wiGrpOrder and rt-feed's _rtLegSeq), the rule of the join (§6.5). The
+  // residue of a member leaving pinned it in the middle. Every member still
+  // carries the SAME string (rows collapse by Group ID equality). Only pieces
+  // left = the lead keeps the suffix, so it is never empty.
+  const pinned=recs.filter(r=>!_wiIsPiece(r.fields));
+  const gid=base+'|'+(pinned.length?pinned:recs.slice(0,1)).map(r=>r.id).join(',');
   let ok=true;
   for(const e of recs){
     try{
