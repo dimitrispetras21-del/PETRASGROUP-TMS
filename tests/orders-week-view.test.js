@@ -200,3 +200,20 @@ test('stock: a piece in an RT is shown, never counted; no total changes because 
   assert.strictEqual(t.blocked.stock, 1);
   assert.strictEqual(t.blocked.price, 1, 'the unpriced export is still «price»');
 });
+
+// E-05 (impact map 4/10): «παλαιότερη εκκρεμής» of a lot counts from its
+// «Completed On» (OrdersData.ageOf, carried by the page's state function) —
+// never from the warehouse intake while its pieces are still out.
+test('stock: oldest pending ignores an incomplete lot\'s intake date; a bare state function keeps the old rule', () => {
+  const { OrdersStock, OrdersData } = require('../core/orders-common.js');
+  global.OrdersStock = OrdersStock;
+  const LOT = o('recLot', 1300, { Direction: 'Import', 'Loading DateTime': '2026-09-20T08:00', 'Delivery DateTime': '2026-09-21T08:00', Price: 3300, Status: 'Delivered', 'Own Stock Lot': 'recLot1' });
+  const set = { intl: [], natl: [], gate: {}, gateFailed: false, stockFailed: false,
+    stock: new Map([['recLot1', { id: 'recLot1', fields: { Complete: false } }]]) };
+  const bare = r => OrdersData.stateOf(set, r);
+  const paged = Object.assign(r => OrdersData.stateOf(set, r), { ageOf: r => OrdersData.ageOf(set, r) });
+  assert.strictEqual(W.totals([LOT], paged).oldest, null, 'incomplete lot → no age');
+  assert.strictEqual(W.totals([LOT], bare).oldest, OrdersCommon.daysSinceDelivery(LOT), 'fallback: the delivery age');
+  set.stock.get('recLot1').fields = { Complete: true, 'Completed On': OrdersCommon.addDays(OrdersCommon.today(), -1) };
+  assert.strictEqual(W.totals([LOT], paged).oldest, 1);
+});

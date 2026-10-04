@@ -80,7 +80,9 @@ const OrdersWeekView = (() => {
       else if (s.key === 'blocked') { t.blockedN++; t.blocked[s.reason] = (t.blocked[s.reason] || 0) + 1; }
       else t.pendingN++;
       if (s.key === 'ready' || s.key === 'blocked') {
-        const d = OC().daysSinceDelivery(r);
+        // E-05: the page's state function carries OrdersData.ageOf (a lot
+        // waits from «Completed On»); a bare state function falls back.
+        const d = stateOf.ageOf ? stateOf.ageOf(r) : OC().daysSinceDelivery(r);
         if (d != null && (t.oldest == null || d > t.oldest)) t.oldest = d;
       }
     }
@@ -343,10 +345,13 @@ const OrdersWeekView = (() => {
 
   function _stateFn(set) {
     const memo = new Map();
-    return rec => {
+    const fn = rec => {
       if (!memo.has(rec)) memo.set(rec, OrdersData.stateOf(set, rec));
       return memo.get(rec);
     };
+    // «παλαιότερη εκκρεμής» with the same age rule as «Προς τιμολόγηση» (E-05).
+    fn.ageOf = rec => OrdersData.ageOf(set, rec);
+    return fn;
   }
 
   function _paint(ctx) {
