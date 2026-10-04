@@ -242,6 +242,25 @@ async function renderTripPnl() {
   await ctReload();
 }
 
+// Per-RT re-read for a capped /costs/lines batch (see ctReload). Six at a
+// time — 128 RTs on 4/10/2026. Any failed read makes cost completeness
+// UNKNOWN for the page (linesFailed: its own banner, no margins), never
+// «χωρίς κόστος»: the batch result is kept and nothing is guessed from it.
+async function ctLinesPerRt() {
+  const ids = (_ct.pnl || []).map(t => t.id);
+  const byRt = {}; let failed = false, capped = false;
+  for (let i = 0; i < ids.length; i += 6) {
+    await Promise.all(ids.slice(i, i + 6).map(id =>
+      ctFetch('/costs/lines?rt_id=' + encodeURIComponent(id)).then(r => {
+        const recs = r.records || [];
+        if (recs.length >= 300) capped = true;
+        if (recs.length) byRt[id] = recs;
+      }, e => { console.warn('[costs] lines rt ' + id + ' failed', e.message); failed = true; })));
+  }
+  if (failed) { _ct.linesFailed = true; return; }
+  _ct.linesByRt = byRt; _ct.linesCapped = capped;
+}
+
 async function ctReload() {
   const list = document.getElementById('ctList');
   if (list) list.innerHTML = '<div class="ct-empty">Φόρτωση…</div>';
@@ -260,7 +279,7 @@ async function ctReload() {
     const [pnl, rts, lookups, palletGate, lines] = await Promise.all([
       ctFetch('/costs/pnl'), ctFetch('/costs/rt'), _ct.lookups ? Promise.resolve({ cached: true }) : ctFetch('/costs/lookups'),
       ctFetch('/costs/pallet-gate').catch(e => { console.warn('[costs] pallet-gate failed', e.message); _ct.palletGateFailed = true; return { records: [] }; }),
-      // Μία κλήση για ΟΛΕΣ τις γραμμές κόστους (όριο 300) — τροφοδοτεί το
+      // Μία κλήση για ΟΛΕΣ τις γραμμές κόστους (όριο 300· αν γεμίσει → ctLinesPerRt) — τροφοδοτεί το
       // cost-complete και τη «σκάλα» χωρίς N+1 αιτήματα ανά δρομολόγιο.
       // Αποτυχία εδώ = η πληρότητα κοστών γίνεται ΑΓΝΩΣΤΗ, όχι «μηδέν» —
       // η σημαία τη μετατρέπει σε ορατό μήνυμα αντί για ψευδή «κόστη ελλιπή».
@@ -277,6 +296,14 @@ async function ctReload() {
     // εμφανίζονταν ψευδώς «χωρίς κόστη»/«χωρίς σκέλη». Λέγεται φωναχτά.
     _ct.linesCapped = (lines.records || []).length >= 300;
     _ct.rtsCapped = (rts.records || []).length >= 200;
+    // The batch call stops at 300 lines (newest first) and the live Worker
+    // has no offset. Measured 4/10/2026: 641 lines carry an rt_id, so 26 of
+    // the 128 RTs read «χωρίς κόστος» in front of the owner while their costs
+    // were in the base (principle 2). A full batch is therefore re-read per
+    // RT with ?rt_id= (the drill-down panel's call, already live) — complete
+    // by RT instead of cut by date. Worker paging stays queued; it would make
+    // this one call again.
+    if (_ct.linesCapped) await ctLinesPerRt();
     // Η διαδρομή με ονόματα είναι ρητό αίτημα owner (24/8) — ο εμπλουτισμός
     // τρέχει ΠΡΙΝ το render ώστε οι κάρτες να βγουν κατευθείαν πλήρεις· αν
     // αποτύχει, οι κάρτες βγαίνουν με ποσά + ορατή σημείωση, ποτέ κενές.
@@ -527,7 +554,7 @@ function ctRenderList() {
   const w = icon('warning', 13);
   const warnNotes =
     (_ct.linesFailed ? `<div class="ct-note ct-nwarn">${w} Οι γραμμές κόστους ΔΕΝ φόρτωσαν — η πληρότητα κοστών είναι <b>άγνωστη</b>, όχι μηδενική. Ό,τι δείχνει «κόστη;» παρακάτω μπορεί να έχει κανονικά κόστη. <button class="ct-btn" style="height:24px;padding:0 8px" onclick="ctReload()">Ανανέωση</button></div>` : '') +
-    (_ct.linesCapped ? `<div class="ct-note ct-nwarn">${w} Φορτώθηκαν μόνο οι 300 νεότερες γραμμές κόστους (όριο Worker) — παλαιότερα δρομολόγια ίσως δείχνουν ψευδώς «χωρίς κόστη». Χρειάζεται σελιδοποίηση στο /costs (ουρά Worker).</div>` : '') +
+    (_ct.linesCapped ? `<div class="ct-note ct-nwarn">${w} Οι γραμμές κόστους έφτασαν το όριο των 300 του Worker — κάποια δρομολόγια ίσως δείχνουν ψευδώς «χωρίς κόστη». Χρειάζεται σελιδοποίηση στο /costs (ουρά Worker).</div>` : '') +
     (_ct.rtsCapped ? `<div class="ct-note ct-nwarn">${w} Φορτώθηκαν μόνο τα 200 νεότερα δρομολόγια (όριο Worker) — παλαιότερες κάρτες ίσως εμφανίζονται χωρίς σκέλη.</div>` : '');
   const notice = warnNotes + ctPalletGateNotice(V);
   // Η ένδειξη ταξινόμησης ισχύει μόνο για τη λίστα καρτών — οι ομαδοποιήσεις
