@@ -7,9 +7,14 @@
 // 057+060 and a rollback brings the old one back:
 //   • OLD Worker (no next_offset in the answer): a full batch is re-read per
 //     RT with ?rt_id=.
-//   • NEW Worker (deploy/worker-local-relay 0142e44d): ?offset= & ?limit=
-//     (≤ 1000), answer { records, next_offset } — the page follows
-//     next_offset to null.
+//   • NEW Worker (deploy/worker-local-relay 9fac16aa): ?offset= & ?limit=
+//     (≤ 999), answer { records, next_offset } — the page follows
+//     next_offset to null, asking ?limit=999.
+// Every paging Worker here sits on a PostgREST that cuts each answer at
+// db-max-rows = 1000, as the live one does (measured 4/10/2026: limit=1001
+// returns 1000). Without that cap this rig passed 0142e44d + a front asking
+// 1000: the Worker asked 1001 for its «more?» probe, got 1000, answered
+// next_offset null with lines left — silent truncation (reviewer NO_GO).
 // This rig serves facades that behave exactly like each Worker and OPENS the
 // screen; expectations are written out by hand, not recomputed with the
 // page's functions. Synthetic data only.
@@ -59,19 +64,23 @@ function oldWorker(ds, u) {
   const rid = u.searchParams.get('rt_id');
   return { status: 200, body: { records: ds.lines.filter(l => !rid || String(l.rt_id) === rid).sort(byNewest).slice(0, 300) } };
 }
-// The NEW Worker (0142e44d): same filters + offset/limit as the contract says —
-// bad value → 400, limit default 300 / max 1000, limit+1 probe, next_offset
-// ALWAYS present. opts.shiftFrom: from that offset on, the window is one row
-// early (a line inserted between two calls) → the boundary row repeats.
+// The NEW Worker (9fac16aa): same filters + offset/limit as the contract says —
+// bad value → 400, limit default 300 / max opts.cap (999; 1000 = the NO_GO
+// 0142e44d), limit+1 probe, next_offset ALWAYS present. The probe goes to a
+// PostgREST that returns at most opts.maxRows rows (1000 live; 999 models a
+// Worker whose probe row is cut). opts.shiftFrom: from that offset on, the
+// window is one row early (a line inserted between two calls) → the boundary
+// row repeats.
 function newWorker(ds, u, opts) {
   const q = u.searchParams, ro = q.get('offset'), rl = q.get('limit');
+  const cap = opts.cap || 999, maxRows = opts.maxRows || 1000;
   if (ro && !/^\d+$/.test(ro)) return { status: 400, body: { error: 'Μη έγκυρο offset — θέλει ακέραιο από 0 και πάνω' } };
   if (rl && !(/^\d+$/.test(rl) && Number(rl) >= 1)) return { status: 400, body: { error: 'Μη έγκυρο limit' } };
-  const offset = ro ? Number(ro) : 0, limit = rl ? Math.min(Number(rl), 1000) : 300;
+  const offset = ro ? Number(ro) : 0, limit = rl ? Math.min(Number(rl), cap) : 300;
   const rid = q.get('rt_id');
   const all = ds.lines.filter(l => !rid || String(l.rt_id) === rid).sort(byNewest);
   const from = opts.shiftFrom != null && offset >= opts.shiftFrom ? offset - 1 : offset;
-  let rows = all.slice(from, from + limit + 1);
+  let rows = all.slice(from, from + Math.min(limit + 1, maxRows));
   const next = rows.length > limit ? offset + limit : null;
   if (next !== null) rows = rows.slice(0, limit);
   const body = { records: rows, next_offset: next };
@@ -124,7 +133,7 @@ const UNKNOWN = 'Οι γραμμές κόστους δεν φόρτωσαν — 
   console.log('\n── OLD Worker · A: capped batch (300 of 400 lines) → re-read per RT');
   {
     const { page, S } = await open(browser, A);
-    ok(S.req.includes('GET /costs/lines?limit=1000'), 'one batch call GET /costs/lines?limit=1000 (old Worker ignores limit → 300 = full)');
+    ok(S.req.includes('GET /costs/lines?limit=999'), 'one batch call GET /costs/lines?limit=999 (old Worker ignores limit → 300 = full)');
     const perRt = perRtIds(S);
     ok(perRt.length === 41 && perRt.join() === A.pnl.map(t => t.id).join(), `then one GET /costs/lines?rt_id= per RT on the page: ${perRt.length}/41`);
     ok(!S.req.some(r => /offset=/.test(r)), 'no offset request to a Worker that never offered one');
@@ -172,8 +181,8 @@ const UNKNOWN = 'Οι γραμμές κόστους δεν φόρτωσαν — 
     ok(await title(page) === '47 από 128 δρομολόγια χωρίς καταχωρημένο κόστος', 'banner: «' + await title(page) + '»');
     ok(await eqq(page) === '81/128', 'cost range: «' + await eqq(page) + '» (expected 81/128)');
     const lr = linesReq(S);
-    ok(JSON.stringify(lr) === JSON.stringify(['GET /costs/lines?limit=1000', 'GET /costs/lines?limit=1000&offset=1000', 'GET /costs/lines?limit=1000&offset=2000']),
-      'lines calls = batch + offset 1000 + offset 2000: ' + JSON.stringify(lr));
+    ok(JSON.stringify(lr) === JSON.stringify(['GET /costs/lines?limit=999', 'GET /costs/lines?limit=999&offset=999', 'GET /costs/lines?limit=999&offset=1998']),
+      'lines calls = batch + offset 999 + offset 1998: ' + JSON.stringify(lr));
     ok(perRtIds(S).length === 0, 'no ?rt_id= fan-out');
     const held = await heldCounts(page);
     ok(Object.keys(held).length === 81 && Object.values(held).every(n => n === 30), `held: 81 RTs × 30 lines (got ${Object.keys(held).length} RTs)`);
@@ -186,18 +195,18 @@ const UNKNOWN = 'Οι γραμμές κόστους δεν φόρτωσαν — 
   {
     const { page, S } = await open(browser, A, { worker: 'new' });
     ok(await title(page) === '1 από 41 δρομολόγια χωρίς καταχωρημένο κόστος', 'banner: «' + await title(page) + '»');
-    ok(JSON.stringify(linesReq(S)) === JSON.stringify(['GET /costs/lines?limit=1000']), 'one lines call: ' + JSON.stringify(linesReq(S)));
+    ok(JSON.stringify(linesReq(S)) === JSON.stringify(['GET /costs/lines?limit=999']), 'one lines call: ' + JSON.stringify(linesReq(S)));
     ok(S.errors.length === 0, 'no page errors: ' + S.errors.slice(0, 2).join(' | '));
     await page.context().close();
   }
 
   console.log('\n── NEW Worker · B: page 2 fails → UNKNOWN, never «χωρίς κόστος» from the 1st page');
   {
-    const { page, S } = await open(browser, B, { worker: 'new', failOffset: 1000 });
+    const { page, S } = await open(browser, B, { worker: 'new', failOffset: 999 });
     const t = await title(page);
     ok(t === UNKNOWN, 'banner: «' + t + '»');
     ok(/ΔΕΝ φόρτωσαν/.test(await notes(page)), 'visible «ΔΕΝ φόρτωσαν» note');
-    ok(!linesReq(S).some(r => /offset=2000/.test(r)), 'stops at the failed page (no offset=2000 call)');
+    ok(!linesReq(S).some(r => /offset=1998/.test(r)), 'stops at the failed page (no offset=1998 call)');
     ok(perRtIds(S).length === 0, 'no ?rt_id= fan-out on the paging Worker');
     ok(S.errors.length === 0, 'no page errors: ' + S.errors.slice(0, 2).join(' | '));
     await page.context().close();
@@ -205,7 +214,7 @@ const UNKNOWN = 'Οι γραμμές κόστους δεν φόρτωσαν — 
 
   console.log('\n── NEW Worker · B: rolled back mid-read (page 2 has no next_offset) → UNKNOWN');
   {
-    const { page, S } = await open(browser, B, { worker: 'new', rollbackAt: 1000 });
+    const { page, S } = await open(browser, B, { worker: 'new', rollbackAt: 999 });
     const t = await title(page);
     ok(t === UNKNOWN, 'banner: «' + t + '» — a page without next_offset is not «the last page»');
     ok(S.errors.length === 0, 'no page errors: ' + S.errors.slice(0, 2).join(' | '));
@@ -214,11 +223,59 @@ const UNKNOWN = 'Οι γραμμές κόστους δεν φόρτωσαν — 
 
   console.log('\n── NEW Worker · B: a line inserted between calls (boundary row repeats) → kept once');
   {
-    const { page, S } = await open(browser, B, { worker: 'new', shiftFrom: 1000 });
+    const { page, S } = await open(browser, B, { worker: 'new', shiftFrom: 999 });
     ok(await title(page) === '47 από 128 δρομολόγια χωρίς καταχωρημένο κόστος', 'banner: «' + await title(page) + '»');
     const held = await heldCounts(page);
     const over = Object.entries(held).filter(([, n]) => n !== 30);
     ok(Object.keys(held).length === 81 && over.length === 0, 'held: 81 RTs × 30 lines — no RT holds a line twice' + (over.length ? ': ' + JSON.stringify(over) : ''));
+    ok(S.errors.length === 0, 'no page errors: ' + S.errors.slice(0, 2).join(' | '));
+    await page.context().close();
+  }
+
+  console.log('\n── NO_GO Worker 0142e44d (cap 1000) on PostgREST max-rows 1000 · B → still «47 από 128»: the page asks 999, so the probe row fits');
+  {
+    const { page, S } = await open(browser, B, { worker: 'new', cap: 1000 });
+    ok(await title(page) === '47 από 128 δρομολόγια χωρίς καταχωρημένο κόστος', 'banner: «' + await title(page) + '» (a front asking 1000 here reads 1000 lines, next_offset null, and claims ~100 χωρίς κόστος)');
+    ok(JSON.stringify(linesReq(S)) === JSON.stringify(['GET /costs/lines?limit=999', 'GET /costs/lines?limit=999&offset=999', 'GET /costs/lines?limit=999&offset=1998']),
+      'lines calls = 999 + 999 + rest: ' + JSON.stringify(linesReq(S)));
+    const held = await heldCounts(page);
+    ok(Object.keys(held).length === 81 && Object.values(held).every(n => n === 30), `held: 81 RTs × 30 lines (got ${Object.keys(held).length} RTs)`);
+    ok(S.errors.length === 0, 'no page errors: ' + S.errors.slice(0, 2).join(' | '));
+    await page.context().close();
+  }
+
+  console.log('\n── Worker whose probe row is cut (max-rows 999) · B: a FULL page that says «last» → UNKNOWN, never a silent cut');
+  {
+    const { page, S } = await open(browser, B, { worker: 'new', maxRows: 999 });
+    const t = await title(page);
+    ok(t === UNKNOWN, 'banner: «' + t + '» — 999 records + next_offset null is not proof of «last»');
+    ok(!/χωρίς καταχωρημένο κόστος/.test(t), 'no «N από 128 χωρίς καταχωρημένο κόστος» claim from the first 999 lines');
+    ok(/ΔΕΝ φόρτωσαν/.test(await notes(page)), 'visible «ΔΕΝ φόρτωσαν» note with «Ανανέωση»');
+    ok(JSON.stringify(linesReq(S)) === JSON.stringify(['GET /costs/lines?limit=999']), 'one lines call (the Worker said «last»): ' + JSON.stringify(linesReq(S)));
+    ok(S.errors.length === 0, 'no page errors: ' + S.errors.slice(0, 2).join(' | '));
+    await page.context().close();
+  }
+
+  // ── Dataset C: 41 RTs, RTs 1–40 carry 25 lines each minus the tail, RT 41
+  // none. 998 lines = a short page, trusted; 999 = a full page that says
+  // «last» → UNKNOWN: the documented price of the guard above (rare: the
+  // lines left must be exactly a full page; the next line or reload clears it).
+  const mkC = total => {
+    const C = { pnl: A.pnl, lines: [] };
+    for (let k = 1; k < 41; k++) for (let j = 0; j < 25; j++) C.lines.push({ id: k * 100 + j, rt_id: k, category: 'fuel', net: 40, vat: 0, line_date: day(k - 1) });
+    C.lines.length = total;
+    return C;
+  };
+  console.log('\n── NEW Worker · C: 998 lines (short page) → «1 από 41» · 999 lines (full page, «last») → UNKNOWN');
+  {
+    const { page, S } = await open(browser, mkC(998), { worker: 'new' });
+    ok(await title(page) === '1 από 41 δρομολόγια χωρίς καταχωρημένο κόστος', '998 lines: banner «' + await title(page) + '»');
+    ok(JSON.stringify(linesReq(S)) === JSON.stringify(['GET /costs/lines?limit=999']), '998 lines: one call');
+    await page.context().close();
+  }
+  {
+    const { page, S } = await open(browser, mkC(999), { worker: 'new' });
+    ok(await title(page) === UNKNOWN, '999 lines: banner «' + await title(page) + '» (loud, not a silent claim)');
     ok(S.errors.length === 0, 'no page errors: ' + S.errors.slice(0, 2).join(' | '));
     await page.context().close();
   }

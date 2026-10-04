@@ -263,13 +263,28 @@ async function ctLinesPerRt() {
   _ct.linesByRt = byRt; _ct.linesCapped = capped;
 }
 
-// Paging Worker (deploy/worker-local-relay 0142e44d, 4/10/2026): its answer
+// Page size 999, not 1000: the Worker asks PostgREST for limit+1 rows to
+// know whether another page exists, and PostgREST cuts every answer at 1000
+// (db-max-rows). A 1000 page never got its probe row and answered
+// next_offset null with lines left — silent truncation at 1000 (reviewer
+// NO_GO on 0142e44d). 999 reads correctly from that Worker too, so the
+// order of the two deploys does not matter.
+const CT_LINES_PAGE = 999;
+
+// Paging Worker (deploy/worker-local-relay, 4/10/2026): its answer
 // ALWAYS carries next_offset — the next page's offset, or null on the last.
 // Pages are followed to null. A failed page, a page WITHOUT next_offset (the
 // Worker rolled back mid-read) or an offset that does not move forward makes
 // completeness UNKNOWN (linesFailed), never «χωρίς κόστος» from a partial
-// read. A line seen twice (a row inserted between two calls shifts the window
-// by one) is kept once, or its RT's card would list it twice.
+// read. So does a FULL page (≥ CT_LINES_PAGE records) that says «last»:
+// that is exactly what a Worker whose probe row was cut returns, and it
+// cannot be told apart from «exactly 999 left». The price is a rare false
+// «άγνωστη πληρότητα» when the lines left are exactly a full page — loud,
+// gone with the next line or reload — instead of a silent cut.
+// A line seen twice (a row inserted between two calls shifts the window by
+// one) is kept once, or its RT's card would list it twice. A line DELETED
+// between two calls can be skipped for that read (offset paging is no
+// snapshot); nothing detects it, the next reload reads correctly.
 async function ctLinesPaged(first) {
   const seen = new Set(), byRt = {};
   const add = recs => (recs || []).forEach(l => {
@@ -277,16 +292,18 @@ async function ctLinesPaged(first) {
     seen.add(l.id);
     if (l.rt_id) (byRt[l.rt_id] = byRt[l.rt_id] || []).push(l);
   });
+  const fullLast = r => r.next_offset === null && (r.records || []).length >= CT_LINES_PAGE;
   add(first.records);
-  let next = first.next_offset, pages = 1, failed = false;
-  while (next !== null) {
-    // 50 pages × 1000 lines, far above the base (805 on 4/10/2026): reaching
+  let next = first.next_offset, pages = 1, failed = fullLast(first);
+  while (!failed && next !== null) {
+    // 50 pages × 999 lines, far above the base (805 on 4/10/2026): reaching
     // it means a Worker that never says «last page», not a big base.
     if (!Number.isInteger(next) || ++pages > 50) { failed = true; break; }
-    const r = await ctFetch('/costs/lines?limit=1000&offset=' + next)
+    const r = await ctFetch('/costs/lines?limit=' + CT_LINES_PAGE + '&offset=' + next)
       .catch(e => { console.warn('[costs] lines page ' + next + ' failed', e.message); return null; });
     if (!r || !('next_offset' in r) || (r.next_offset !== null && !(r.next_offset > next))) { failed = true; break; }
     add(r.records);
+    if (fullLast(r)) { failed = true; break; }
     next = r.next_offset;
   }
   _ct.linesByRt = byRt;
@@ -312,12 +329,13 @@ async function ctReload() {
       ctFetch('/costs/pnl'), ctFetch('/costs/rt'), _ct.lookups ? Promise.resolve({ cached: true }) : ctFetch('/costs/lookups'),
       ctFetch('/costs/pallet-gate').catch(e => { console.warn('[costs] pallet-gate failed', e.message); _ct.palletGateFailed = true; return { records: [] }; }),
       // Μία κλήση για ΟΛΕΣ τις γραμμές κόστους — τροφοδοτεί το cost-complete
-      // και τη «σκάλα» χωρίς N+1 αιτήματα ανά δρομολόγιο. ?limit=1000: ο Worker
-      // με σελιδοποίηση δίνει ως 1000 + next_offset (→ ctLinesPaged)· ο παλιός
-      // αγνοεί την παράμετρο και δίνει 300 χωρίς next_offset (→ ctLinesPerRt).
+      // και τη «σκάλα» χωρίς N+1 αιτήματα ανά δρομολόγιο. ?limit=999
+      // (CT_LINES_PAGE — γιατί όχι 1000, εκεί): ο Worker με σελιδοποίηση δίνει
+      // ως 999 + next_offset (→ ctLinesPaged)· ο παλιός αγνοεί την παράμετρο
+      // και δίνει 300 χωρίς next_offset (→ ctLinesPerRt).
       // Αποτυχία εδώ = η πληρότητα κοστών γίνεται ΑΓΝΩΣΤΗ, όχι «μηδέν» —
       // η σημαία τη μετατρέπει σε ορατό μήνυμα αντί για ψευδή «κόστη ελλιπή».
-      ctFetch('/costs/lines?limit=1000').catch(e => { console.warn('[costs] lines failed', e.message); _ct.linesFailed = true; return { records: [] }; })
+      ctFetch('/costs/lines?limit=' + CT_LINES_PAGE).catch(e => { console.warn('[costs] lines failed', e.message); _ct.linesFailed = true; return { records: [] }; })
     ]);
     _ct.pnl = pnl.records || [];
     _ct.splitMissing = _ct.pnl.some(t => !ctHasSplit(t));
