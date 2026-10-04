@@ -2991,6 +2991,11 @@ async function _wiSaveImportMatch(rowId,impId){
   // never silently onto a wider or narrower set than the server confirms.
   const giGroup = await _wiGiGroup(impId, importRec);
   const matchImpId = giGroup.lead;
+  // Φ1: a piece never rides a partner (WI_PIECE_OWN_ONLY, B-05) — a loose
+  // piece or a group holding one dropped on a partner export, before any write.
+  if(row.partnerId&&(_wiPieceIn([impId,...giGroup.members]).length||(importRec&&_wiIsPiece(importRec.fields)))){
+    toast(WI_PIECE_OWN_ONLY,'warn'); return;
+  }
 
   // Lock check: verify export doesn't already have a matched import on server
   try {
@@ -3232,7 +3237,7 @@ async function _wiAutoMatch() {
   // Lots never match; a piece reaches a truck only by a person's choice
   // («+ Κομμάτι από απόθεμα…», stock plan §6.7) — never by a score.
   const expRows = rows.filter(r => r.type === 'export' && !r.importId && !_wiLotHeld(r));
-  const impRows = rows.filter(r => r.type === 'import' && !r.matchedTo && !_wiStockSkip(r));
+  const impRows = rows.filter(_wiMatchableImp);   // no lot, waiting piece, or load holding a piece (B-05)
   if (!impRows.length || !expRows.length) { toast('Δεν υπάρχουν αταίριαστα ζεύγη'); return; }
 
   toast('Υπολογισμός ταιριασμάτων…');
@@ -3558,6 +3563,10 @@ async function _wiSaveFromPopover(rowId){
   const rateImpEl=document.getElementById(`wi-pop-rate-imp-${rowId}`);
   if(rateImpEl) row.partnerRateImp=rateImpEl.value;
   const isPartner=!!row.partnerId;
+  // Φ1: no piece on a partner (WI_PIECE_OWN_ONLY, B-05) — this row's own
+  // orders, the export's import load, and (below, before any write) the GI
+  // siblings the propagation would reach from the server.
+  if(isPartner&&_wiPieceIn([...row.orderIds,row.importId]).length){ toast(WI_PIECE_OWN_ONLY,'warn'); return; }
   if(!isPartner&&!row.truckId){toast('Επίλεξε φορτηγό ή συνεργάτη','warn');return;}
   if(isPartner&&!row.partnerRate){toast('Το κόμιστρο εξαγωγής είναι υποχρεωτικό για συνεργάτη','warn');return;}
   if(isPartner&&row.importId&&!row.partnerRateImp){toast('Το κόμιστρο εισαγωγής είναι υποχρεωτικό για συνεργάτη','warn');return;}
@@ -3566,6 +3575,20 @@ async function _wiSaveFromPopover(rowId){
   if(!isPartner){
     const conflict=_wiSameDayConflict(row);
     if(conflict && !(await confirmAction(conflict+'\n\nΣυνέχεια με την ανάθεση;',{title:'Πιθανή διπλή δέσμευση',confirmLabel:'Συνέχεια'}))) return;
+  }
+  // The GI propagation below reaches siblings this board may not hold (another
+  // week): read them now, before any write, and refuse a partner on a piece.
+  // An unreadable group refuses too — «unknown» must not put a piece on a
+  // partner truck.
+  if(isPartner){
+    const a0=row.type==='import'?WINTL.data.imports.find(x=>row.orderIds.includes(x.id)):(row.importId?WINTL.data.imports.find(x=>x.id===row.importId):null);
+    const g0=String(a0?.fields?.['Group ID']||'');
+    if(g0.indexOf('GI-')===0){
+      let sibs=null;
+      try{ sibs=await atGetAll(TABLES.ORDERS,{filterByFormula:`{Group ID}='${g0}'`},false); }catch(e){ sibs=null; }
+      if(!Array.isArray(sibs)){ toast('Η ομάδα εισαγωγών δεν διαβάστηκε — η ανάθεση σε συνεργάτη δεν έγινε','warn'); return; }
+      if(sibs.some(x=>_wiIsPiece(x.fields))){ toast(WI_PIECE_OWN_ONLY,'warn'); return; }
+    }
   }
   // «Η ανάθεση δεν κλειδώνει ποτέ» (owner 4/10/2026): re-assigning an order
   // that is already In Transit/Delivered is allowed — ONE confirm, before any
@@ -4169,8 +4192,11 @@ function _wiPanelGroupBuild(rowId,isImp){
   const row=WINTL.rows.find(r=>r.id===rowId); if(!row) return;
   const myPals=_wiRowPals(row);
   // A lot is never grouped (stock plan §6.7) — not offered as a candidate.
+  // Nor a piece (impact map 4/10 B-09): this path writes Group ID alone — no
+  // vehicle, no loading-day confirm, no suffix — so a piece could become a
+  // group's lead or be orphaned; pieces join only through «+ Κομμάτι».
   const others=isImp
-    ? WINTL.rows.filter(r=>r.type==='import'&&r.id!==rowId&&!r.adj&&!r.matchedTo&&!_wiLotHeld(r)&&(myPals+_wiRowPals(r))<=33)
+    ? WINTL.rows.filter(r=>r.type==='import'&&r.id!==rowId&&!r.adj&&!r.matchedTo&&!_wiLotHeld(r)&&!_wiPieceIn(r.orderIds).length&&(myPals+_wiRowPals(r))<=33)
     : WINTL.rows.filter(r=>r.id!==rowId&&!r.saved&&r.type==='export'&&!_wiLotHeld(r)&&(myPals+_wiRowPals(r))<=33);
   const cand=others.slice(0,6).map(o=>{
     let lbl;
@@ -5229,7 +5255,10 @@ async function _wiImpCtx(e,rowId,matchedExportRowId){
   }
   const myPals=_wiRowPals(row);
   const others=WINTL.rows.filter(r=>r.type==='import'&&r.id!==rowId&&!r.adj&&!r.matchedTo
-    &&!_wiLotHeld(r)&&(myPals+_wiRowPals(r))<=33);
+    &&!_wiLotHeld(r)&&!_wiPieceIn(r.orderIds).length&&(myPals+_wiRowPals(r))<=33);
+  // A row holding a piece gets no «Groupage εισαγωγών…» (B-09, see
+  // _wiPanelGroupBuild): a piece joins a load only through «+ Κομμάτι».
+  const hasPiece=_wiPieceIn(row.orderIds).length>0;
   let html='';
   html+=_wiCtxBtn('Ανάθεση…',`_wiPanelAssign(${rowId},true,'${row.orderId}')`);
   html+=_wiCtxBtn('Εκτύπωση…',`_wiMenuPrint(${rowId},true)`);
@@ -5239,7 +5268,7 @@ async function _wiImpCtx(e,rowId,matchedExportRowId){
   // Item 4 (owner 7/9): same exclusion as the export menu — a split leg keeps
   // everything except Σπάσιμο (already gone via _wiSplitCtxItems) and its
   // grouping equivalent here, "Groupage εισαγωγών".
-  if(!row.splitLegOf) html+=others.length
+  if(!row.splitLegOf&&!hasPiece) html+=others.length
     ? _wiCtxBtn('Groupage εισαγωγών…',`_wiPanelGroupBuild(${rowId},true)`)
     : _wiCtxBtnDisabled('Groupage εισαγωγών…',`Καμία συμβατή εισαγωγή — όριο 33 παλέτες (τώρα ${myPals}p)`);
   // An import row with our own truck and no export («ΚΕΝΟ EXPORT») is a
@@ -5317,6 +5346,8 @@ async function _wiImpGroup(rowId,otherRowId){
   if(!a||!b) return;
   const ai=WINTL.data.imports.find(r=>r.id===a.orderId), bi=WINTL.data.imports.find(r=>r.id===b.orderId);
   if(!ai||!bi) return;
+  // Never takes a piece (B-09) — even from a panel opened before the data changed.
+  if(_wiPieceIn([...a.orderIds,...b.orderIds]).length){ toast('Το κομμάτι μπαίνει σε φορτηγό μόνο με «+ Κομμάτι από απόθεμα…» — όχι με Groupage εισαγωγών','warn'); return; }
   const gid=ai.fields['Group ID']||bi.fields['Group ID']||('GI-'+Date.now().toString(36).toUpperCase());
   try{
     for(const oid of [ai.id,bi.id]){
@@ -6371,7 +6402,7 @@ function _wiStockPick(kind,i){
 async function _wiStockJoin(rowId,pick){
   if(_wiBlockReadOnly()||!_wiStockOn()||!OrdersStock.canWrite()) return;
   const row=WINTL.rows.find(r=>r.id===rowId); if(!row) return;
-  if(row.partnerId||!row.truckId){ toast('Φ1: κομμάτι μόνο σε δικό μας φορτηγό','warn'); return; }
+  if(row.partnerId||!row.truckId){ toast(WI_PIECE_OWN_ONLY,'warn'); return; }
   // A «new import» left pending by a cancelled form (_wiNewImport) would
   // otherwise be consumed by the piece's create and match it to THAT row.
   window._wiPendingMatch=null;
