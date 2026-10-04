@@ -4428,6 +4428,11 @@ function _wiSplitCtxItems(row,rowId,btn){
     if(blocking) html+=btn(`Ένωση ξανά — μπλοκαρισμένη (σκέλος ${blocking.splitLegNo||'?'} ${_ordOf2(blocking)?.fields?.['Status']})`,`toast('Δεν γίνεται ένωση — σκέλος ήδη σε εκτέλεση/παραδόθηκε','warn')`);
     else html+=btn('Ένωση ξανά',`_wiRejoinLegs(${rowId})`);
   } else {
+    // Never offered on a piece or a lot (impact map 4/10 B-28/G-22): the base
+    // refuses both (no_split, CHECK parent_order_id is null) at the leg-1 POST
+    // — an item that can only end in a refusal is a lie on the menu.
+    const rec=_wiRecOf(row.orderIds?.[0]||row.orderId);
+    if(rec&&(_wiIsPiece(rec.fields)||_wiIsLot(rec.fields))) return '';
     html+=btn('Σπάσιμο σκέλους…',`_wiPanelSplit(${rowId})`);
   }
   return html;
@@ -5566,6 +5571,10 @@ async function _wiSegDrop(e,rowId,orderId){
   const ids=recs.map(x=>x.id);
   const from=ids.indexOf(d.orderId), to=ids.indexOf(orderId);
   if(from<0||to<0) return;
+  // OWNER-Q8 default (4/10, impact map B-10): a piece MAY be dragged first in
+  // its group (a warehouse pickup first is physically plausible) — no filter
+  // here. «Always last» binds only the join (_wiStockLockLead), not a person's
+  // explicit order.
   ids.splice(to,0,ids.splice(from,1)[0]);
   await _wiSaveSegOrder(row.id,ids,recs,isImp);
 }
@@ -6237,6 +6246,8 @@ function _wiLotCtx(e,row,isImp){
   if(!_wiLotHeld(row)) return false;
   const rec=_wiRecOf(row.orderIds?.[0]||row.orderId);
   let html=`<div class="wi-ctx-h">${escapeHtml('ΠΑΡΤΙΔΑ → ΑΠΟΘΗΚΗ · '+(_wiClientName(rec.fields)||'—'))}</div>`;
+  // OWNER-Q default (4/10, impact map B-15; no number given to this builder):
+  // a lot's «Ανάθεση…» stays as it is — own trucks are still offered.
   html+=_wiCtxBtn('Ανάθεση…',isImp?`_wiPanelAssign(${row.id},true,'${rec.id}')`:`_wiPanelAssign(${row.id},false)`);
   html+=_wiCtxBtn('Εκτύπωση…',`_wiMenuPrint(${row.id},${isImp?'true':'false'})`);
   html+=_wiCtxBtn('Άνοιγμα',`_wk3Edit('${rec.id}')`);
@@ -6304,7 +6315,9 @@ function _wiStockPieceLine(p,withLot){
     :grp?'σε ομάδα χωρίς φορτηγό':'χωρίς φορτηγό';
   const dest=(typeof OrdersCommon!=='undefined'&&OrdersCommon.placeOf(p,'del').name)||_wiFlatLocName(f['Unloading Location 1'])||'—';
   const st=f['Status']||'Pending';
-  const loose=!tr&&!pa&&!grp&&!WI_EXECUTING.includes(st);
+  // A piece an export carries as its import (Case B) is on that truck even
+  // with no vehicle of its own yet — no [Διαγραφή] (impact map 4/10 DL-06).
+  const loose=!tr&&!pa&&!grp&&!WI_EXECUTING.includes(st)&&!WINTL.rows.some(r=>r.type==='export'&&r.importId===p.id);
   const ld=f['Loading DateTime']?_wk3D(_wiFmt(f['Loading DateTime'])):'';
   const head=withLot?`${escapeHtml(OrdersStock.lotNumLabel(f))} · ${escapeHtml(_wiClientName(f)||'—')} · `:'';
   const del=(loose&&OrdersStock.canWrite())?`<button type="button" class="wi2-unlink" onclick="event.stopPropagation();_wiStockDelPiece('${p.id}')" title="Διαγραφή κομματιού (μόνο χωρίς φορτηγό)">Διαγραφή</button>`:'';
