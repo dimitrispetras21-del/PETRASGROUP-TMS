@@ -557,37 +557,44 @@ BEGIN
   EXCEPTION WHEN others THEN bad := bad + 1; res := res || ('S15 ERROR ' || SQLERRM);
   END;
 
-  -- S16. Money written, then the day's set of relays changes: review with the "changed" note.
+  -- S16. Accounting settled the day at "value 0", then a relay is ADDED to that day: review with
+  --      the "changed" note. "Value 0" is a value, not money: without the review the new relay
+  --      would be settled at 0 silently - no NULL amount (not pending), a line exists (B-64 quiet).
+  --      (front review round 2, 4/10.) Then accounting checks it and writes the neutral value 7,
+  --      which S17 builds on.
   BEGIN
     INSERT INTO local_moves (move_kind, parent_order_id, driver_id, trailer_id, to_location_id)
     VALUES ('relay_loading', e1, d2, trl, loc) RETURNING id INTO rle2;
-    UPDATE dl_entries SET trip_value = 7 WHERE driver_id = d2 AND entry_date = e_day AND local_move_id IS NOT NULL AND deleted_at IS NULL;
+    UPDATE dl_entries SET trip_value = 0 WHERE driver_id = d2 AND entry_date = e_day AND local_move_id IS NOT NULL AND deleted_at IS NULL;
     UPDATE local_moves SET deleted_at = now() WHERE id = rl3;                  -- frees T3 for D2
     UPDATE orders SET delivery_datetime = e_day WHERE id = t3;
     INSERT INTO local_moves (move_kind, parent_order_id, driver_id, trailer_id, from_location_id)
     VALUES ('relay_delivery', t3, d2, trl, loc) RETURNING id INTO rl4;
     SELECT count(*) INTO n FROM dl_entries WHERE driver_id = d2 AND entry_date = e_day AND local_move_id IS NOT NULL AND deleted_at IS NULL;
     SELECT * INTO e FROM dl_entries WHERE driver_id = d2 AND entry_date = e_day AND local_move_id IS NOT NULL AND deleted_at IS NULL;
-    IF n = 1 AND e.trip_value = 7 AND e.needs_review AND position(r_changed IN coalesce(e.review_note, '')) > 0
+    IF n = 1 AND e.trip_value = 0 AND e.needs_review AND position(r_changed IN coalesce(e.review_note, '')) > 0
        AND e.local_move_id = least(rle2, rl4)
        AND e.route = w_local || sep || w_load || ' ' || e1 || sep || w_deliv || ' ' || t3 THEN
       ok := ok + 1; res := res || 'S16 ok'::text;
     ELSE bad := bad + 1; res := res || format('S16 FAIL lines=%s value=%s review=%s note=%s route=%s', n, e.trip_value, e.needs_review, e.review_note, e.route); END IF;
+    UPDATE dl_entries SET trip_value = 7, needs_review = false, review_note = 'dry-run 060 checked' WHERE id = e.id;
   EXCEPTION WHEN others THEN bad := bad + 1; res := res || ('S16 ERROR ' || SQLERRM);
   END;
 
-  -- S17. The T3 relay changes driver D2 -> D3 while D2's line holds money: D2's line stays, still in
-  --      review, relabelled; D3 gets exactly one empty line (both days locked in fixed order).
+  -- S17. The T3 relay changes driver D2 -> D3 while D2's line holds money (7, review cleared in
+  --      S16): D2's line stays, relabelled, BACK in review with a fresh "changed" note; D3 gets
+  --      exactly one empty line (both days locked in fixed order).
   BEGIN
     UPDATE local_moves SET driver_id = d3 WHERE id = rl4;
     SELECT * INTO e FROM dl_entries WHERE driver_id = d2 AND entry_date = e_day AND local_move_id IS NOT NULL AND deleted_at IS NULL;
     SELECT count(*) INTO n FROM dl_entries WHERE driver_id = d3 AND local_move_id IS NOT NULL AND deleted_at IS NULL;
     SELECT count(*) INTO n2 FROM dl_entries WHERE driver_id = d3 AND entry_date = e_day AND local_move_id = rl4 AND deleted_at IS NULL
        AND trip_value IS NULL AND route = w_local || sep || w_deliv || ' ' || t3;
-    IF e.id IS NOT NULL AND e.needs_review AND e.trip_value = 7 AND e.route = w_local || sep || w_load || ' ' || e1
+    IF e.id IS NOT NULL AND e.needs_review AND position(r_changed IN coalesce(e.review_note, '')) > 0
+       AND e.trip_value = 7 AND e.route = w_local || sep || w_load || ' ' || e1
        AND n = 1 AND n2 = 1 THEN
       ok := ok + 1; res := res || 'S17 ok'::text;
-    ELSE bad := bad + 1; res := res || format('S17 FAIL d2_line=%s review=%s route=%s d3_lines=%s/%s', e.id, e.needs_review, e.route, n, n2); END IF;
+    ELSE bad := bad + 1; res := res || format('S17 FAIL d2_line=%s review=%s note=%s route=%s d3_lines=%s/%s', e.id, e.needs_review, e.review_note, e.route, n, n2); END IF;
   EXCEPTION WHEN others THEN bad := bad + 1; res := res || ('S17 ERROR ' || SQLERRM);
   END;
 
