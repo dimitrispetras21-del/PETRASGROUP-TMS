@@ -50,6 +50,11 @@ test('E-16 metrics.js: a loose piece is not unassigned / overdue / high-risk; a 
   assert.strictEqual(m.highRiskDeliveries(clone([LOOSE_SOON, NORMAL_SOON])), 1);
 });
 
+test('round-1 K5 metrics.assignmentRate: a loose piece is not «unassigned»; a piece on a truck counts as assigned', () => {
+  const m = metricsLib();
+  assert.deepStrictEqual(plain(m.assignmentRate(clone([LOOSE, NORMAL, ONTRUCK]))), { assigned: 1, total: 2, pct: 50 });
+});
+
 test('E-17 metrics.js money: pieces out of everything, lots out of ready/overdue, a lot still owed', () => {
   const m = metricsLib();
   const old = dayOff(-45);

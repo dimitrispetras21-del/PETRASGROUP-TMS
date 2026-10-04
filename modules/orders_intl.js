@@ -1162,7 +1162,9 @@ async function _oiMarkLot(orderId, ctx) {
   const formOpen = !!document.getElementById('f_StockLot');
   // «Ξανά» re-sends ONLY the mark, never the form's edits: a refusal fixed in
   // the form (e.g. 0 pallets) needs the order saved again first — say how.
-  showErrorToast('Η παραγγελία αποθηκεύτηκε, αλλά ΔΕΝ έγινε παρτίδα: ' + res.error
+  // The DB's own reason is already on screen when res.shown (round-1 K3):
+  // this line says only what happened and what to do, not the reason twice.
+  showErrorToast('Η παραγγελία αποθηκεύτηκε, αλλά ΔΕΝ έγινε παρτίδα' + (res.shown ? ' (ο λόγος παραπάνω)' : ': ' + res.error)
     + (formOpen ? ' — «Ξανά» ξαναστέλνει μόνο τη σήμανση· αν πρέπει να αλλάξεις κάτι στη φόρμα: Άκυρο → άνοιξε ξανά την παραγγελία.'
                 : ' — άνοιξε την παραγγελία, τσέκαρε «Παρτίδα» και πάτησε Αποθήκευση.'), 'error', 12000);
   const b = document.getElementById('btnSubmit');
@@ -2959,9 +2961,11 @@ async function deleteIntlOrder(recId, opts) {
       // with _noRetry and the Worker's own message — it does not carry
       // error.type — so _noRetry is the marker: shown as is, logged once.
       const designed = !!(e && e._noRetry);
-      toast(/403|forbidden|δικαίωμα/i.test(m) ? 'Χωρίς δικαίωμα διαγραφής παραγγελίας — ζήτα από τον owner'
-        : designed ? escapeHtml(m) + ' — δεν άλλαξε τίποτα'
-        : 'Η διαγραφή απέτυχε — δεν άλλαξε τίποτα', 'danger');
+      // _atRetry has ALREADY put the Worker's Greek answer on screen (a rule's
+      // «no», e._rule, or another 4xx): repeating it as a second toast was the
+      // same sentence twice (round-1 K1). Only the 403 gets its own pointer.
+      if (/403|forbidden|δικαίωμα/i.test(m)) toast('Χωρίς δικαίωμα διαγραφής παραγγελίας — ζήτα από τον owner', 'danger');
+      else if (!designed) toast('Η διαγραφή απέτυχε — δεν άλλαξε τίποτα', 'danger');
       if (!designed && typeof logError === 'function') logError(e, 'deleteIntlOrder (order first) ' + recId);
       return;
     }

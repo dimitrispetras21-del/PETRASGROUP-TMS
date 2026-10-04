@@ -447,6 +447,7 @@ const metrics = (function() {
 
   function assignmentRate(orders, opts = {}) {
     orders = _excludeLegs(orders); // Wave 3: strip split legs before counting (see _excludeLegs)
+    orders = _excludeLoose(orders); // E-16 / round-1 K5: a loose stock piece waits on the shelf, not for a truck
     const { week } = opts;
     const periodOrders = week ? orders.filter(o => o.fields['Week Number'] === week) : orders;
     const assigned = periodOrders.filter(o => {

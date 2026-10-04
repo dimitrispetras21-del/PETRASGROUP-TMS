@@ -52,7 +52,7 @@ async function run(type) {
   const toasts = await page.evaluate(() => window.__toasts);
   console.log('    toasts:', JSON.stringify(toasts));
   ok(deletedId === id, `the DELETE went out for ${id}`);
-  ok(!toasts.some(([m]) => /Failed to load record/.test(m)), 'no «Failed to load record» toast after a successful delete');
+  ok(!toasts.some(([m]) => /Failed to load record|Η εγγραφή δεν φορτώθηκε/.test(m)), 'no «Η εγγραφή δεν φορτώθηκε» toast after a successful delete');
   const after = logs.slice(logsBefore).filter(l => /atGetOne\(.*Record not found/.test(l));
   ok(after.length === 0, 'no «atGetOne … Record not found» error logged' + (after.length ? ': ' + after[0].slice(0, 120) : ''));
   await browser.close();

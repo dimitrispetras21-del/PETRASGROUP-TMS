@@ -463,7 +463,8 @@ const OrdersStock = {
     // warehouse, later «προς κοπή» at full price, with no stock to draw from.
     const create = typeof atSuppressUndo === 'function' ? atSuppressUndo(atCreate) : atCreate;
     try { created = await create(TABLES.STOCK_LOTS, { Order: [orderRec] }); }
-    catch (e) { return { ok: false, error: OrdersStock._msg(e) }; }
+    // shown: _atRetry already put the Worker's Greek reason on screen (4xx).
+    catch (e) { return { ok: false, error: OrdersStock._msg(e), shown: !!(e && e._noRetry) }; }
     if (!created || !OrdersStock._rec(created.id)) return { ok: false, error: 'ο server δεν επέστρεψε την παρτίδα (εκτός σύνδεσης;) — άνοιξε ξανά την παραγγελία για να δεις αν έγινε παρτίδα' };
     try {
       const lot = await atGetOne(TABLES.STOCK_LOTS, created.id);

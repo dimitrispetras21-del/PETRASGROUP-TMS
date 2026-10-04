@@ -502,7 +502,7 @@ async function _atFetch(tableId, paramStr = '') {
       if (typeof logError === 'function') logError(new Error(errMsg), '_atFetch');
       // Static toast only: errMsg carries raw Airtable detail (field names, IDs).
       // The full message already went to the gated log via logError above.
-      if (typeof showErrorToast === 'function') showErrorToast('Failed to load data', 'error');
+      if (typeof showErrorToast === 'function') showErrorToast('Τα δεδομένα δεν φορτώθηκαν', 'error');
       throw new Error(errMsg);
     }
     records = records.concat(data.records || []);
@@ -750,7 +750,7 @@ async function atGetOne(tableId, recId) {
   if (data.error) {
     const errMsg = _atErrMsg(data.error, 'Unknown Airtable error');
     if (typeof logError === 'function') logError(new Error(errMsg), `atGetOne(${tableId}, ${recId})`);
-    if (typeof showErrorToast === 'function') showErrorToast('Failed to load record', 'error');
+    if (typeof showErrorToast === 'function') showErrorToast('Η εγγραφή δεν φορτώθηκε', 'error');
     throw new Error(errMsg);
   }
   return data;

@@ -187,7 +187,9 @@ const OrdersCatalog = (() => {
       intl: rows.filter(r => r.type === 'intl').length,
       natl: rows.filter(r => r.type === 'natl').length,
       transit: rows.filter(r => r.status === 'In Transit').length,
-      delivered: rows.filter(r => C().isDelivered(r.rec)).length,
+      // A lot Delivered = in the partner's warehouse, not at the client (its word
+      // is «Στην αποθήκη»): it is not counted as delivered (round-1 K2, 4/10).
+      delivered: rows.filter(r => C().isDelivered(r.rec) && !r.lot).length,
       value: live.filter(r => r.price !== null).reduce((s, r) => s + r.price, 0),
       unpriced: live.filter(r => r.price === null && !r.pre && !r.piece).length,
       pa: rows.filter(r => r.assign.key === 'pa' && !r.pre).length,
