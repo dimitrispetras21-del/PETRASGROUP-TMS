@@ -12,11 +12,11 @@
 | # | Τι | Αρχείο | Αναμενόμενο |
 |---|---|---|---|
 | 0 | Μέτρηση πριν | `057_stock_lots_verify.sql` → μόνο **V0** | 4 νούμερα — γράψ' τα |
-| 1 | Δοκιμή χωρίς ίχνος | `057_stock_lots_dryrun.sql` | Κόκκινο **σκόπιμα**: `DRY RUN 057 finished - EVERYTHING UNDONE, nothing kept. Result: 7 OK, 0 FAIL  ‖  A ok … G ok …` |
+| 1 | Δοκιμή χωρίς ίχνος | `057_stock_lots_dryrun.sql` | Κόκκινο **σκόπιμα**: `DRY RUN 057 finished - EVERYTHING UNDONE, nothing kept. Result: 8 OK, 0 FAIL  ‖  A ok … H ok …` |
 | 1β | Τίποτα δεν έμεινε | SELECT του συντονιστή | Κανένα αντικείμενο `stock_*`, καμία ρύθμιση `full_truck_pallets` |
 | 2 | Η αλλαγή | `057_stock_lots.sql` | Χωρίς σφάλμα. Σφάλμα = δεν εφαρμόστηκε τίποτα (ΣΤΟΠ) |
 | 3 | Επαλήθευση | `057_stock_lots_verify.sql` V0–V8 (ένα-ένα) | V0 = τα ίδια 4 νούμερα του βήματος 0· V1–V8 όπως γράφει το σχόλιο κάθε ερωτήματος |
-| 4 | Δοκιμή κανόνων | `057_stock_lots_rules_test.sql` | Κόκκινο **σκόπιμα**, τελευταία γραμμή `RESULT: 117/117 OK` (όλα rollback) |
+| 4 | Δοκιμή κανόνων | `057_stock_lots_rules_test.sql` | Κόκκινο **σκόπιμα**, τελευταία γραμμή `RESULT: 119/119 OK` (όλα rollback) |
 | 5 | Ελεγκτής | `057b_stock_monitoring.sql` (χωριστή έγκριση) | Χωρίς σφάλμα· B-54 = **31** (27 + 4 triggers του 057) |
 | 6 | Worker | ΕΝΑ deploy της αλυσίδας (βλ. παρακάτω) | Φρουροί πριν και μετά, smoke |
 | 7 | Front | συγχώνευση με `FEATURES.STOCK_LOTS = false` | Καμία ορατή αλλαγή στο απόθεμα· οι γενικές αλλαγές της Φ1 (εκτυπώσεις ομάδας, CSV) ναι |
