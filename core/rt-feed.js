@@ -475,26 +475,7 @@ async function rtOnOrderDeleted(orderId) {
   });
 }
 
-// ── Ξεταίριασμα εισαγωγής (Weekly International _wiRemoveImport) ──
-// Το ταίριασμα/ξεταίριασμα γράφει 'Matched Import ID' μέσω syncOrderDownstream
-// με skipPL:true (δεν είναι από μόνο του γεγονός P&L) — άρα ο αυτόματος feed
-// ΠΟΤΕ δεν έβλεπε το ξεταίριασμα, και το σκέλος εισαγωγής έμενε κολλημένο σε
-// RT που δεν το αφορά πια. Καλείται απευθείας από modules/weekly_intl.js.
-// Αφαιρεί ΜΟΝΟ το σκέλος εισαγωγής — το RT της εξαγωγής μένει (ξαναγίνεται
-// μονοσκελές, όπως πριν το ταίριασμα).
-async function rtOnImportUnmatched(exportOrderId, importOrderId) {
-  return _rtSafe('αφαίρεση σκέλους εισαγωγής', async () => {
-    const pgI = await _rtPg(importOrderId);
-    if (pgI == null) return; // χωρίς στάση φόρτωσης — τίποτα καταγεγραμμένο στο /costs
-    const pgX = await _rtPg(exportOrderId);
-    const rt = await _rtFind([pgX, pgI].filter(v => v != null));
-    if (!rt) return; // δεν δημιουργήθηκε ποτέ RT — τίποτα να καθαριστεί
-    await plFetch('/costs/rt/' + rt.id + '/legs?order_id=' + pgI, { method: 'DELETE' });
-  });
-}
-
 window.rtOnOrderSaved = rtOnOrderSaved;
 window.rtOnOrderDeleted = rtOnOrderDeleted;
-window.rtOnImportUnmatched = rtOnImportUnmatched;
 window.rtLegsForOrder = rtLegsForOrder;
 window.rtFindForOrder = rtFindForOrder;

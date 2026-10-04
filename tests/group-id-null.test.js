@@ -24,6 +24,8 @@ const wiSrc = [
   fn(WI, /async function _wiSplit\(rowId\)\{[\s\S]*?\n\}\n/, '_wiSplit'),
   fn(WI, /async function _wiRewriteGroupSuffix\(recs,isImp\)\{[\s\S]*?\n\}\n/, '_wiRewriteGroupSuffix'),
   fn(WI, /async function _wiSyncGroupResidue\(row\)\{[\s\S]*?\n\}\n/, '_wiSyncGroupResidue'),
+  // leg-first helper the clear paths call before touching a vehicle (tests/unmatch-leg-first.test.js)
+  fn(WI, /async function _wiRtLeave\(orderId\)\{[\s\S]*?\n\}\n/, '_wiRtLeave'),
   fn(WI, /async function _wiCancelGroupMember\(rowId,orderId,isImportSide\)\{[\s\S]*?\n\}\n/, '_wiCancelGroupMember'),
 ].join('\n');
 

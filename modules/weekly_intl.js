@@ -3101,6 +3101,12 @@ async function _wiRemoveImport(rowId){
     for(const memberId of giGroup.members){
       try{
         if(await _wiExecutingLive(memberId)){ keptExecuting.push(memberId); continue; }
+        // Leg OFF the export's round trip FIRST, vehicle second — whatever
+        // decides above that this member is cleared (see _wiRtLeave: the other
+        // order wiped the export's truck and the driver's payroll line, 30/9).
+        // A failed leg removal leaves this member's assignment untouched.
+        const leave=await _wiRtLeave(memberId);
+        if(!leave.ok){ clearErrors.push(memberId+': '+leave.msg+' — η ανάθεσή του ΔΕΝ καθαρίστηκε'); continue; }
         const rc=await atSafePatch(TABLES.ORDERS,memberId,{
           'Truck':[],'Trailer':[],'Driver':[],'Partner':[],
           'Is Partner Trip':false,'Partner Truck Plates':'','Status':'Pending',
@@ -3113,19 +3119,11 @@ async function _wiRemoveImport(rowId){
     // Invalidate cache so next load is fresh
     if(typeof atClearCache==='function') atClearCache(TABLES.ORDERS);
     toast('Το ταίριασμα αφαιρέθηκε ✓');
-    // P&L feed (5/9, N2): the unmatch above went through syncOrderDownstream
-    // with skipPL:true, same reason the match never reached the feed either —
-    // so the import's leg was never detached and stayed on the export's RT
-    // forever. rtOnImportUnmatched (core/rt-feed.js) removes just that leg via
-    // DELETE /costs/rt/:id/legs (N1); non-blocking, toasts on its own failure.
-    // Unlike rtOnOrderSaved, it does NOT gather GI- siblings itself — one call
-    // per member, same fix as the assignment-clear above.
-    if(typeof rtOnImportUnmatched === 'function'){
-      for(const memberId of giGroup.members){
-        if(keptExecuting.includes(memberId)) continue; // executing member keeps its round-trip leg too
-        rtOnImportUnmatched(row.orderIds[0], memberId).catch(e => console.warn('[wi unmatch] rt sync:', e && e.message));
-      }
-    }
+    // P&L feed (5/9, N2): each cleared member's leg already left the export's
+    // round trip in the loop above (_wiRtLeave), before its vehicle — the
+    // former trailing rtOnImportUnmatched pass ran AFTER the clear, which is
+    // the order that wiped the export's truck (30/9). An executing member
+    // keeps its leg, as before.
   }
 }
 
@@ -4530,6 +4528,28 @@ async function _wiRtLegDelete(rtId, pgOrderId){
   const data=await res.json().catch(()=>({}));
   return {ok:res.ok, status:res.status, error:data.error};
 }
+// Take one order's leg OFF its round trip, BEFORE anything clears that order's
+// vehicle (live 30/9, RT-1193). The live trigger rt_sync_from_order copies an
+// order's truck/driver onto its round trip AND onto every other order of that
+// trip: an order that loses its vehicle while its leg is still on the trip
+// wipes the truck off the export (even a Delivered one), and dl_sync_from_rt
+// then deletes the driver's payroll line («έμεινε χωρίς οδηγό μας» — three
+// times in three minutes on 30/9). So every caller that clears a vehicle asks
+// here first and clears NOTHING unless this says ok. A failed lookup is a
+// failure, never «no round trip»: guessing «no leg» is exactly the wipe.
+// No round trip found (never created, or cancelled) → ok, nothing to take off.
+async function _wiRtLeave(orderId){
+  if(typeof rtFindForOrder!=='function') return {ok:true};
+  let found;
+  try{ found=await rtFindForOrder(orderId); }
+  catch(e){ return {ok:false,msg:'ο γύρος δεν διαβάστηκε ('+((e&&e.message)||e)+')'}; }
+  if(!found||!found.rt||found.pg==null) return {ok:true};
+  const del=await _wiRtLegDelete(found.rt.id,found.pg).catch(err=>({ok:false,status:0,error:err&&err.message}));
+  if(del.ok) return {ok:true};
+  return {ok:false,status:del.status,msg:del.status===409?'ο γύρος '+(found.rt.code||'')+' είναι κλειστός — ζήτα από τον owner'
+    :del.status===403?'χωρίς δικαίωμα αφαίρεσης σκέλους γύρου'
+    :('το σκέλος δεν αφαιρέθηκε από τον γύρο: '+(del.error||('HTTP '+del.status)))};
+}
 async function _wiRotAdd(parentRowId, legOid){
   const pr=WINTL.rows.find(r=>r.id===parentRowId); if(!pr) return;
   const pOid=pr.type==='import'?pr.orderId:pr.orderIds?.[0];
@@ -5091,17 +5111,15 @@ async function _wiMerge(rowId,otherId){
 // _wiRotUnlink: the round trip itself is never deleted (financial history).
 async function _wiDissolveClearMember(oid){
   if(await _wiExecutingLive(oid)) return 'kept'; // execution beats planning — see _wiExecutingLive
+  // Leg off the group's round trip FIRST (see _wiRtLeave): clearing the
+  // vehicle while the leg is still on would wipe the truck off the member
+  // the group keeps. A failed removal stops here — the caller reports it.
+  const leave=await _wiRtLeave(oid);
+  if(!leave.ok) throw new Error(leave.msg+' — η ανάθεση ΔΕΝ αδειάστηκε');
   const res=await atSafePatch(TABLES.ORDERS,oid,{'Truck':[],'Trailer':[],'Driver':[],'Partner':[],'Is Partner Trip':false,'Status':'Pending'});
   if(res?.error) throw new Error(res.error.message||res.error.type);
   if(getLinkedId(res.fields?.['Truck'])||getLinkedId(res.fields?.['Partner']))
     throw new Error('Η ανάθεση δεν αδειάστηκε στην ανάγνωση');
-  if(typeof rtFindForOrder==='function'){
-    const {pg,rt}=await rtFindForOrder(oid).catch(()=>({pg:null,rt:null}));
-    if(rt&&pg!=null){
-      const del=await _wiRtLegDelete(rt.id,pg).catch(err=>({ok:false,status:0,error:err&&err.message}));
-      if(!del.ok) console.warn('[wi dissolve] rt leg delete failed for',oid,del.status,del.error);
-    }
-  }
 }
 async function _wiSplit(rowId){
   const row=WINTL.rows.find(r=>r.id===rowId);if(!row||row.orderIds.length<=1) return;
@@ -5321,18 +5339,11 @@ async function _wiCancelGroupMember(rowId,orderId,isImportSide){
   // that loaded it, its status and its round-trip leg.
   const executing=await _wiExecutingLive(orderId);
   try{
-    if(!executing && typeof rtFindForOrder==='function'){
-      const {pg,rt}=await rtFindForOrder(orderId).catch(()=>({pg:null,rt:null}));
-      if(rt&&pg!=null){
-        const del=await _wiRtLegDelete(rt.id,pg).catch(err=>({ok:false,status:0,error:err&&err.message}));
-        if(!del.ok){
-          const msg=del.status===409?'Ο γύρος είναι κλειστός — η αφαίρεση σταμάτησε· ζήτα από τον owner'
-            :del.status===403?'Χωρίς δικαίωμα αφαίρεσης σκέλους γύρου'
-            :('Το σκέλος δεν αφαιρέθηκε από το round trip: '+(del.error||('HTTP '+del.status)));
-          toast(msg,'warn');
-          return;
-        }
-      }
+    if(!executing){
+      // Leg first, vehicle second (_wiRtLeave) — and a failed lookup stops
+      // too: it used to read as «no round trip» and clear the vehicle anyway.
+      const leave=await _wiRtLeave(orderId);
+      if(!leave.ok){ toast('Η αφαίρεση σταμάτησε — '+leave.msg,'warn'); return; }
     }
     // 'Group ID': null, never '' — orders that left a group as '' would be
     // ONE group to the round-trip triggers (see _wiGroupPatch).
