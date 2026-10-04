@@ -93,6 +93,7 @@ async function installRoutes(page, F, costs) {
     const m = r.method();
     if (url.pathname.startsWith('/pallets/')) {
       F.pallets.push(m + ' ' + url.pathname + url.search);
+      if (m === 'POST') (F.palletBodies = F.palletBodies || []).push(r.postDataJSON());
       if (url.pathname === '/pallets/gate') {
         const recs = (url.searchParams.get('order_recs') || '').split(',').filter(Boolean);
         return send(200, { records: recs.filter(x => F.orders[x]).map(x => ({ order_rec: x, order_id: F.orders[x].pg })) });
@@ -217,8 +218,13 @@ async function open(browser, role, route, F, costs, bootDone) {
     const patch = w.find(x => x.table === 'ORDERS' && x.rec === 'recRIGLOT0000312');
     ok('C01_intake_write_is_delivered', patch && patch.fields.Status === 'Delivered' && patch.fields['Actual Delivery Date'], w);
     ok('C01_done_word_and_toast', /Στην αποθήκη ✓/.test(after.row || '') && after.toasts.some(t => /Στην αποθήκη ✓/.test(t)), after);
+    // OWNER-Q7 answered 4/10 (coordinator queue #6, «Να γράφεται και η αποθήκη»): the intake writes ONE
+    // pending partner movement (locked pallet case #4) — never a client DELIVERY (Ε5: the client exchanges
+    // once, at the lot's loading).
     const palletPosts = F.pallets.filter(p => p.startsWith('POST'));
-    ok('C03_no_pallet_delivery_for_lot', palletPosts.length === 0, F.pallets);
+    const pb = (F.palletBodies || [])[0] || {};
+    ok('C03_lot_intake_one_partner_movement', palletPosts.length === 1 && pb.counterparty_type === 'PARTNER' && pb.event_type === 'PARTNER_PICKUP'
+      && pb.given === 33 && pb.taken === 0 && !pb.confirm && !pb.client_rec, { posts: F.pallets, body: pb });
     await shot(page, 'daily-ops-stock-after-intake-1440.png');
 
     // Round 1 X1 (critic-3 Σ-02): the order write is REFUSED after the stop stamp → the stamp is put
