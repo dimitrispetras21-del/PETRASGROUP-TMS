@@ -521,9 +521,13 @@ function buildDelHTML(f,isExport,veroiaSwitch,VEROIA,VADDR,VLAT,VLNG){
       // for its stop. Mirror buildLoadHTML's per-stop pattern exactly —
       // details (incl. goods/temp) only on the first card, order-level PE/GW
       // fallback like the loading side.
+      // Round 1 O10 (critic-4 C4-03): a LOT's delivery is the warehouse
+      // intake — no pallet exchange there (Ε5: the one exchange is at the
+      // client's loading; pallet-feed writes nothing at intake, Q7 default).
+      // YES here sent the partner's driver to claim empties the ledger never sees.
       html+=buildCard(si+1,loc,'delivery',stopDt,sf['Pallets']||'',
         fv(f['Pallet Type']),si===0,sf['Goods']||fv(f['Goods']),
-        f['Pallet Exchange']?'YES':'NO',f['Gross Weight kg'],
+        f['Pallet Exchange']&&!f['Own Stock Lot']?'YES':'NO',f['Gross Weight kg'],
         sf['Temperature']!=null?sf['Temperature']:f['Temperature °C'],f['Refrigerator Mode']);
     }
     if(html)return html;
@@ -563,6 +567,17 @@ function stockLotLabel(f){
   var n=f&&f['Stock Lot Order No'];
   if(!n||!Array.isArray(f['Stock Lot'])||!f['Stock Lot'].length)return '';
   return (f['Stock Lot Source']==='natl'?'Ε-':'#')+n;
+}
+// One stock text for the meta grid, the WhatsApp text and the cover's stop
+// tag (round 1 O10, critic-4 C4-02/C4-05): the warehouse knows the goods by
+// the lot's REFERENCE (printed on its intake sheet), never by our #N — so the
+// Reference leads, served by the Worker as ORDERS «Stock Lot Reference».
+// Before that label exists it is absent (facade trap #2) and the line falls
+// back to the lot number alone. No «ΑΠ ·» (it abbreviated the label next to it).
+function stockLotText(f,isPartner){
+  var n=stockLotLabel(f); if(!n)return '';
+  var ref=String(f['Stock Lot Reference']||'').trim();
+  return (ref?'Ref '+ref+' · ':'')+(isPartner?'lot ':'παρτίδα ')+n;
 }
 function badges(f){
   var b='';
@@ -678,8 +693,13 @@ function waBuild(f,isPartner,isExport,veroiaSwitch,VEROIA,VADDR,VLAT,VLNG,vehLin
   if(fv(f['Goods']))cargo.push(fv(f['Goods']));
   if(f['Temperature °C']!==''&&f['Temperature °C']!=null)cargo.push('🌡 *'+f['Temperature °C']+'°C'+(f['Refrigerator Mode']?' '+f['Refrigerator Mode']:'')+'*');
   if(cargo.length)lines.push('📦 '+cargo.join(' · '));
-  lines.push('🔁 *'+L.pe+': '+(f['Pallet Exchange']?L.yes:L.no)+'*');
+  // C4-03: a lot exchanges at the client's loading, never at the warehouse.
+  if(f['Own Stock Lot']&&f['Pallet Exchange'])lines.push('🔁 *'+L.pe+': '+L.yes+(isPartner?' at loading · ':' στη φόρτωση · ')+L.no+(isPartner?' at the warehouse':' στην αποθήκη')+'*');
+  else lines.push('🔁 *'+L.pe+': '+(f['Pallet Exchange']?L.yes:L.no)+'*');
   if(refNo)lines.push((isPartner?'Ref':'Ref')+': '+refNo);
+  // C4-02: on the phone the warehouse pickup must read as STOCK, like the paper.
+  var _stk=stockLotText(f,isPartner);
+  if(_stk)lines.push('📦 '+(isPartner?'From stock · ':'Απόθεμα · ')+_stk);
   if(f['Notes'])lines.push('📝 '+f['Notes']);
   var cb=[];
   if(OFFICE_PHONE)cb.push(L.office+' '+OFFICE_PHONE);
@@ -793,9 +813,9 @@ function generatePDF(orderRec, bare){ // bare (Wave 3): no toolbar — docs 2..N
 
   var refNo=f['Reference']||'';
   var _m=isPartner
-    ?{date:'Date',week:'Week',cat:'Category',disp:'Dispatcher',ord:'Order No',ref:'Reference',flags:'Flags',stock:'Stock',stockV:'From stock · lot '}
-    :{date:'Ημερομηνία',week:'Εβδομάδα',cat:'Κατηγορία',disp:'Dispatcher',ord:'Αρ. Εντολής',ref:'Reference',flags:'Σημάνσεις',stock:'Απόθεμα',stockV:'ΑΠ · Παρτίδα '};
-  var stockNo=stockLotLabel(f);
+    ?{date:'Date',week:'Week',cat:'Category',disp:'Dispatcher',ord:'Order No',ref:'Reference',flags:'Flags',stock:'From stock'}
+    :{date:'Ημερομηνία',week:'Εβδομάδα',cat:'Κατηγορία',disp:'Dispatcher',ord:'Αρ. Εντολής',ref:'Reference',flags:'Σημάνσεις',stock:'Απόθεμα'};
+  var stockNo=stockLotText(f,isPartner);
   var metaHTML='<div class="meta">'+
     '<div class="meta-item"><span class="meta-lbl">'+_m.date+'</span><span class="meta-val">'+new Date().toLocaleDateString('el-GR')+' '+new Date().toLocaleTimeString('el-GR',{hour:'2-digit',minute:'2-digit'})+'</span></div>'+
     '<div class="meta-item"><span class="meta-lbl">'+_m.week+'</span><span class="meta-val">W'+wk+'</span></div>'+
@@ -803,7 +823,7 @@ function generatePDF(orderRec, bare){ // bare (Wave 3): no toolbar — docs 2..N
     '<div class="meta-item"><span class="meta-lbl">'+_m.disp+'</span><span class="meta-val">'+DISPATCHER+'</span></div>'+
     '<div class="meta-item"><span class="meta-lbl">'+_m.ord+'</span><span class="meta-val">'+orderNo+'</span></div>'+
     (refNo?'<div class="meta-item"><span class="meta-lbl">'+_m.ref+'</span><span class="meta-val">'+refNo+'</span></div>':'')+
-    (stockNo?'<div class="meta-item"><span class="meta-lbl">'+_m.stock+'</span><span class="meta-val">'+_m.stockV+stockNo+'</span></div>':'')+
+    (stockNo?'<div class="meta-item"><span class="meta-lbl">'+_m.stock+'</span><span class="meta-val">'+stockNo+'</span></div>':'')+
     (badgeHTML&&!isPartner?'<div class="meta-item"><span class="meta-lbl">'+_m.flags+'</span><span class="meta-val">'+badgeHTML+'</span></div>':'')+
     '</div>';
 
@@ -953,17 +973,29 @@ function buildCoverDoc(items){
   '</div>';
 
   // 4 cargo chips, totalled/merged across every order in the group.
-  var totalPallets=0, anyPE=false, temps=[], goodsList=[];
-  items.forEach(function(it){
+  // Round 1 O10 (critic-4 C4-01): the cover is what the driver reads at each
+  // stop, so its chips are built from EVERY member — the first order's pallet
+  // type and «any PE = ΝΑΙ» told him to swap pallets at a warehouse whose piece
+  // the base forbids to swap (Ε5) and to count EUR where it hands out CHEP.
+  var totalPallets=0, peRefs=[], temps=[], goodsList=[], byType={}, typeOrder=[];
+  items.forEach(function(it,i){
     var f=it.orderRec.fields;
     var p=parseFloat(fv(f['Total Pallets'])); if(!isNaN(p)) totalPallets+=p;
-    if(f['Pallet Exchange']) anyPE=true;
+    var pt=fv(f['Pallet Type'])||'EUR';
+    if(byType[pt]===undefined){byType[pt]=0;typeOrder.push(pt);}
+    if(!isNaN(p)) byType[pt]+=p;
+    if(f['Pallet Exchange']) peRefs.push(String.fromCharCode(65+i)+' '+(f['Reference']||ordNoOf(it.orderRec)));
     if(f['Temperature °C']!==''&&f['Temperature °C']!=null&&temps.indexOf(String(f['Temperature °C']))<0) temps.push(String(f['Temperature °C']));
     if(fv(f['Goods'])&&goodsList.indexOf(fv(f['Goods']))<0) goodsList.push(fv(f['Goods']));
   });
+  var anyPE=peRefs.length>0, allPE=peRefs.length===items.length;
+  var palV=typeOrder.length>1
+    ? typeOrder.map(function(t){return byType[t]+' <small>× '+t+'</small>';}).join(' + ')
+    : (totalPallets||'—')+' <small>× '+(typeOrder[0]||'EUR')+'</small>';
+  var peV=!anyPE?LBL.no:allPE?LBL.yes:LBL.yes+' <small>— '+(isPartner?'only ':'μόνο ')+peRefs.join(', ')+'</small>';
   var chipsHTML='<div class="cargo">'+
-    '<div class="chip"><div class="k">'+LBL.pal+'</div><div class="v">'+(totalPallets||'—')+' <small>× '+(fv(f0['Pallet Type'])||'EUR')+'</small></div></div>'+
-    '<div class="chip '+(anyPE?'pe-yes':'pe-no')+'"><div class="k">'+LBL.pe+'</div><div class="v">'+(anyPE?LBL.yes:LBL.no)+'</div></div>'+
+    '<div class="chip"><div class="k">'+LBL.pal+'</div><div class="v">'+palV+'</div></div>'+
+    '<div class="chip '+(anyPE?'pe-yes':'pe-no')+'"><div class="k">'+LBL.pe+'</div><div class="v">'+peV+'</div></div>'+
     '<div class="chip temp"><div class="k">'+LBL.temp+'</div><div class="v">'+(temps.length?temps.join(' / ')+'°C':'—')+'</div></div>'+
     '<div class="chip"><div class="k">'+LBL.goods+'</div><div class="v" style="font-size:11.5px">'+(goodsList.length?goodsList.join(' · '):'—')+'</div></div>'+
   '</div>';
@@ -1006,7 +1038,9 @@ function buildCoverDoc(items){
       var f=it.orderRec.fields;
       var uns=stopsOfType(it.stops,'Unloading'), lastUn=uns[uns.length-1];
       var lastName=lastUn?(resolveLoc(lastUn.fields['Location'])||{}).name:'—';
-      var tag='ΠΑΡΑΓΓΕΛΙΑ '+String.fromCharCode(65+i)+' · '+ordNoOf(it.orderRec)+' · '+lastName;
+      // C4-02: the piece is marked as stock on the cover too, at its stop.
+      var stk=stockLotText(f,isPartner);
+      var tag='ΠΑΡΑΓΓΕΛΙΑ '+String.fromCharCode(65+i)+' · '+ordNoOf(it.orderRec)+' · '+lastName+(stk?' · '+(isPartner?'From stock · ':'Απόθεμα · ')+stk:'');
       stopsOfType(it.stops,type).forEach(function(s){
         var loc=resolveLoc(s.fields['Location']); if(!loc)return;
         tlHTML+=buildCard(0,loc,dtLabel,s.fields['DateTime']||'',s.fields['Pallets']||'',
