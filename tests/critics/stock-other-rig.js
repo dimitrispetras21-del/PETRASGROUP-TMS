@@ -9,8 +9,9 @@
 // (daily_ops.js, costs.js, pallet-feed.js, OrdersStock); stubbed in the page: confirmAction (no human),
 // paSyncStatus (partner-assignment sync, not exercised here).
 //
-// Screens at 1440: Ημερήσιο with a lot intake + a piece loading + a loose piece (absent from the zones),
-// the same after «Παραλαβή αποθήκης»; TRIP PnL with a lot RT and a VS export + piece RT, and the same
+// Screens at 1440: Ημερήσιο with a lot intake + a piece loading + a loose piece (round 1 C1-02: in the
+// overdue LOADINGS zone with the K6 hint), the same after «Παραλαβή αποθήκης», and after a REFUSED
+// «Φορτώθηκε» on a piece (round 1 X1: the stop stamp is put back); TRIP PnL with a lot RT and a VS export + piece RT, and the same
 // with the allocation read failing.
 const path = require('path'), fs = require('fs');
 const ROOT = path.join(__dirname, '../..');
@@ -54,7 +55,8 @@ const ymd = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')
 const day = n => { const d = new Date(); d.setHours(12, 0, 0, 0); d.setDate(d.getDate() + n); return ymd(d); };
 
 function makeFacade() {
-  const F = { orders: {}, stops: {}, writes: [], pallets: [], costs: [], stockFail: false, ready: false };
+  // refuse: { orderRec: <422 body> } — the facade answers that ORDERS PATCH with a designed refusal (round 1 X1)
+  const F = { orders: {}, stops: {}, writes: [], pallets: [], costs: [], stockFail: false, ready: false, refuse: {} };
   const isEmpty = v => v == null || (Array.isArray(v) && !v.length);
   const read = o => { const f = {}; for (const [k, v] of Object.entries(o.fields)) if (!isEmpty(v)) f[k] = v; return { id: o.id, createdTime: '2026-10-01T00:00:00.000Z', fields: f }; };
   F.read = read;
@@ -109,7 +111,8 @@ async function installRoutes(page, F, costs) {
     if (m === 'GET' && !recId) return send(200, { records: F.list(table, url.searchParams.get('filterByFormula')) });
     if (m === 'GET') return store[recId] ? send(200, F.read(store[recId])) : send(404, { error: { type: 'NOT_FOUND' } });
     const body = r.postDataJSON ? r.postDataJSON() : null;
-    F.writes.push({ m, table, recId, fields: body && body.fields });
+    F.writes.push({ m, table, recId, fields: body && body.fields, refused: !!(m === 'PATCH' && table === ORDERS && F.refuse[recId]) });
+    if (m === 'PATCH' && table === ORDERS && F.refuse[recId]) return send(422, F.refuse[recId]);
     if (m === 'PATCH' && store[recId]) { Object.assign(store[recId].fields, body.fields || {}); return send(200, F.read(store[recId])); }
     return send(200, { id: recId || 'recNEW', fields: (body && body.fields) || {} });
   });
@@ -188,14 +191,22 @@ async function open(browser, role, route, F, costs, bootDone) {
     const s = await page.evaluate(() => {
       const row = id => { const el = document.getElementById('r_' + id); return el ? el.innerText.replace(/\s+/g, ' ') : null; };
       const kpis = [...document.querySelectorAll('.do-kpi')].map(k => k.innerText.replace(/\s+/g, ' '));
-      return { lot: row('recRIGLOT0000312'), imp: row('recRIGIMP0000001'), piece: row('recRIGPC10000001'), loose: row('recRIGPC20000002'), old: row('recRIGOLD0000001'), kpis,
+      const inZone = (key, id) => !!document.querySelector('#' + key + ' #r_' + id);
+      const heads = Object.fromEntries([...document.querySelectorAll('.do-sec-h')].map(h => [h.firstChild.textContent.trim(), (h.querySelector('span') || {}).textContent]));
+      return { lot: row('recRIGLOT0000312'), imp: row('recRIGIMP0000001'), piece: row('recRIGPC10000001'), loose: row('recRIGPC20000002'), old: row('recRIGOLD0000001'), kpis, heads,
+        looseInLoads: inZone('ovLoad', 'recRIGPC20000002'), looseInDels: inZone('ovL', 'recRIGPC20000002'),
         zones: [...document.querySelectorAll('.do-zone')].map(z => z.innerText.replace(/\s+/g, ' ')) };
     });
     ok('C01_lot_tag_and_button', /→ ΑΠΟΘΗΚΗ/.test(s.lot || '') && /Παραλαβή αποθήκης/.test(s.lot || '') && !/Παραδόθηκε/.test(s.lot || ''), s.lot);
     ok('C01_ordinary_delivery_unchanged', /Παραδόθηκε/.test(s.imp || '') && !/ΑΠΟΘΗΚΗ/.test(s.imp || ''), s.imp);
     ok('C01_kpi_deliveries_without_lot', /ΠΑΡΑΔΟΣΕΙΣ 0 \/ 1 δηλωμένη/.test(s.kpis.join(' | ')), s.kpis);
     ok('C04_piece_subline', /ΑΠ · 5p · παρτίδα #312/.test(s.piece || ''), s.piece);
-    ok('C05_loose_piece_in_no_zone', s.loose === null && s.zones.every(z => !/TEST-STOCK-P2/.test(z)) && /εκκρεμ(ής|είς) φόρτωσ/.test(s.zones.join(' ')) && s.old !== null, s.zones);
+    // Round 1 C1-02 (was C-05 «in no zone»): the loose piece is the late item — in the LOADINGS zone,
+    // once, with the K6 hint and its lot line (C4-09), never with «Φορτώθηκε».
+    ok('C102_loose_piece_in_loadings_zone', s.looseInLoads && !s.looseInDels && /χωρίς φορτηγό — από το ΑΠΟΘΕΜΑ του Εβδομαδιαίου/.test(s.loose || '')
+      && /ΑΠ · 4p · παρτίδα #312/.test(s.loose || '') && !/Φορτώθηκε|Παραδόθηκε/.test(s.loose || '') && s.old !== null && /Φορτώθηκε/.test(s.old || ''), { loose: s.loose, zones: s.zones });
+    ok('C108_lot_late_is_intake', /Παραλαβή \(καθυστέρηση\)/.test(s.lot || '') && !/Καθυστέρησε/.test(s.lot || '') && /Καθυστέρησε/.test(s.imp || ''), s.lot);
+    ok('C111_section_counts_like_kpi', s.heads['ΠΑΡΑΔΟΣΕΙΣ ΕΙΣΑΓΩΓΗΣ'] === '1 · 0 δηλωμένες · 1 παραλαβή αποθήκης', s.heads);
     await shot(page, 'daily-ops-stock-1440.png');
 
     const n0 = F.writes.length;
@@ -209,6 +220,24 @@ async function open(browser, role, route, F, costs, bootDone) {
     const palletPosts = F.pallets.filter(p => p.startsWith('POST'));
     ok('C03_no_pallet_delivery_for_lot', palletPosts.length === 0, F.pallets);
     await shot(page, 'daily-ops-stock-after-intake-1440.png');
+
+    // Round 1 X1 (critic-3 Σ-02): the order write is REFUSED after the stop stamp → the stamp is put
+    // back, the Greek reason shows ONCE (core/api.js), the context line never says «Ξαναδοκίμασε».
+    F.refuse.recRIGPC10000001 = { error: { type: 'STOCK_RULE', code: 'lot_invoiced', message: 'Η παρτίδα είναι τιμολογημένη — η κατάσταση του κομματιού δεν αλλάζει' } };
+    await page.evaluate(() => { window.__rig.toasts.length = 0; document.querySelectorAll('#tms-toast-container > *').forEach(n => n.remove()); });
+    const n1 = F.writes.length;
+    await page.locator('#r_recRIGPC10000001 button.do-btn', { hasText: 'Φορτώθηκε' }).click();
+    await page.waitForTimeout(2500);
+    const rf = await page.evaluate(() => ({ row: (document.getElementById('r_recRIGPC10000001') || {}).innerText, toasts: window.__rig.toasts.slice(),
+      dom: [...document.querySelectorAll('#tms-toast-container > *')].map(n => n.innerText.replace(/\s+/g, ' ')) }));
+    const w1 = F.writes.slice(n1).map(x => ({ m: x.m, table: x.table === ORDERS ? 'ORDERS' : 'STOPS', rec: x.recId, fields: x.fields, refused: x.refused }));
+    const stopW = w1.filter(x => x.table === 'STOPS' && x.rec === 'recRIGSTPC1L0001');
+    ok('X1_refused_stamp_rolled_back', stopW.length === 2 && stopW[0].fields['Completed At'] && stopW[1].fields['Completed At'] === null && stopW[1].fields['Completed By'] === null
+      && w1.some(x => x.table === 'ORDERS' && x.refused) && !F.stops.recRIGSTPC1L0001.fields['Completed At'] && F.orders.recRIGPC10000001.fields.Status === 'Assigned', w1);
+    const reason = rf.dom.filter(t => /τιμολογημένη/.test(t)).length + rf.toasts.filter(t => /τιμολογημένη/.test(t)).length;
+    ok('X1_said_once_and_true', reason === 1 && rf.toasts.some(t => /σφραγίδα του σημείου αναιρέθηκε/.test(t)) && !rf.toasts.concat(rf.dom).some(t => /Ξαναδοκίμασε|δεν γράφτηκε τίποτα/.test(t))
+      && /Φορτώθηκε/.test(rf.row || '') && !/Φορτώθηκε ✓/.test(rf.row || ''), rf);
+    await shot(page, 'daily-ops-stock-refused-1440.png');
     out.dailyOpsErrors = errs.filter(e => !/favicon|Failed to load resource/.test(e));
     await ctx.close();
   }
