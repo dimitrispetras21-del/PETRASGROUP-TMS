@@ -5704,9 +5704,10 @@ async function _wiSyncGroupResidue(row){
 // an order stops sharing a truck. The RT leg leaves FIRST, same order as
 // _wiRotUnlink: a failed DELETE (403/409) must never leave the fields cleared
 // while the order still counts as a leg of that round trip.
-// `ask` (optional): the confirm's words for a caller that names the same
-// write differently — «Επιστροφή στο απόθεμα» for a stock piece. The write
-// itself is identical for every caller.
+// `ask` (optional): the confirm's and the success toast's words for a caller
+// that names the same write differently — «Επιστροφή στο απόθεμα» for a stock
+// piece (critic-1 C1-12: it confirmed with the words of another action). The
+// write itself is identical for every caller.
 async function _wiCancelGroupMember(rowId,orderId,isImportSide,ask){
   const row=WINTL.rows.find(r=>r.id===rowId); if(!row||!row.orderIds||row.orderIds.length<2) return;
   // «Η ανάθεση δεν κλειδώνει ποτέ» (owner 4/10/2026): a member already In
@@ -5798,7 +5799,7 @@ async function _wiCancelGroupMember(rowId,orderId,isImportSide,ask){
     partnerPlates:'', partnerRate:'', partnerRateImp:'',
     saved:false,
   });
-  toast('Αφαιρέθηκε από το groupage — χωρίς ανάθεση ✓');
+  toast((ask&&ask.done)||'Αφαιρέθηκε από το groupage — χωρίς ανάθεση ✓');
   _wiPaint();
 }
 
@@ -6068,7 +6069,7 @@ function _wiImpGroupRowOf(oid){
 // its GI propagation, drag/drop and auto-match all could, and the DB accepts
 // it — the piece then carried a partner cost, or a Partner with no assignment
 // row). One predicate, one message.
-const WI_PIECE_OWN_ONLY='Φ1: κομμάτι μόνο σε δικό μας φορτηγό';
+const WI_PIECE_OWN_ONLY='Κομμάτι αποθέματος μόνο σε δικό μας φορτηγό';
 // The pieces in the import load of `ids`: each id plus every member of its GI
 // group row on this board.
 function _wiPieceIn(ids){
@@ -6898,7 +6899,7 @@ async function _wiStockReturn(rowId,orderId,isImportSide){
   if(await _wiExecutingLive(orderId)){ toast('Το κομμάτι είναι σε κίνηση — δεν επιστρέφει στο απόθεμα','warn'); return; }
   try{
     await _wiCancelGroupMember(rowId,orderId,isImportSide,
-      {text:'Επιστροφή στο απόθεμα — το κομμάτι μένει χωρίς φορτηγό, με όλα του τα στοιχεία.',title:'Επιστροφή στο απόθεμα',label:'Επιστροφή'});
+      {text:'Επιστροφή στο απόθεμα — το κομμάτι μένει χωρίς φορτηγό, με όλα του τα στοιχεία.',title:'Επιστροφή στο απόθεμα',label:'Επιστροφή',done:'Επέστρεψε στο απόθεμα ✓'});
   }finally{ _wiNoUndo(); }   // B-13: leg off + group off + vehicle off are one return
   _wiStockLoad();
 }
@@ -6909,8 +6910,10 @@ async function _wiStockReturnLone(expRowId){
   if(await _wiExecutingLive(pid)){ toast('Το κομμάτι είναι σε κίνηση — δεν επιστρέφει στο απόθεμα','warn'); return; }
   if(!(await confirmAction('Επιστροφή στο απόθεμα — το κομμάτι μένει χωρίς φορτηγό, με όλα του τα στοιχεία.',
     {title:'Επιστροφή στο απόθεμα',confirmLabel:'Επιστροφή'}))) return;
-  try{ await _wiStockReturnLoneRun(pid,expOid,expRowId); }
+  let back=false;
+  try{ back=await _wiStockReturnLoneRun(pid,expOid,expRowId); }
   finally{ _wiNoUndo(); }   // B-13: unmatch + leg off + vehicle off + group off are one return
+  if(back) toast('Επέστρεψε στο απόθεμα ✓');   // C1-12: only when the read-back says so
   _wiStockLoad();
   await renderWeeklyIntl();
 }
@@ -6923,15 +6926,15 @@ async function _wiStockReturnLoneRun(pid,expOid,expRowId){
   // does not take that on faith (αρχή 2) — both orders are read back.
   let exp=null,pc=null;
   try{ exp=await atGetOne(TABLES.ORDERS,expOid); pc=await atGetOne(TABLES.ORDERS,pid); }catch(e){}
-  if(!exp||!pc){ reportError('Η επιστροφή δεν επιβεβαιώθηκε στην ανάγνωση — έλεγξε την παραγγελία',null); return; }
-  if(String(exp.fields?.['Matched Import ID']||'')===pid) return; // the unmatch failed: its own ⚠ already says so
+  if(!exp||!pc){ reportError('Η επιστροφή δεν επιβεβαιώθηκε στην ανάγνωση — έλεγξε την παραγγελία',null); return false; }
+  if(String(exp.fields?.['Matched Import ID']||'')===pid) return false; // the unmatch failed: its own ⚠ already says so
   const pf=pc.fields||{};
   const veh=f=>getLinkedId(f['Truck'])||getLinkedId(f['Trailer'])||getLinkedId(f['Driver']);
   // B-04: a one-member «GI-…|piece» (left by a lock written before a form
   // that was then cancelled) goes too — else the piece is never joinable
   // again. null, never '' (see _wiGroupPatch).
   const hasVeh=!!veh(pf), hasGid=!!String(pf['Group ID']||'').trim();
-  if(!hasVeh&&!hasGid) return;
+  if(!hasVeh&&!hasGid) return true;
   try{
     // A vehicle still on means _wiRemoveImport KEPT it (the piece started
     // moving, or its leg could not leave the round trip): cleared here only
