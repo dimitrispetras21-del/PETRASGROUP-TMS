@@ -286,9 +286,17 @@ const OrdersInvoicingView = (() => {
     return m;
   }
 
+  // Why a lot is not allocated: one reason per status the base can return
+  // (stock_v_lot_money.allocation_status); an unknown one is shown as it is,
+  // never dressed up as another reason. 'no_charge' (round 2 #1, owner 4/10)
+  // replaced 'no_intake_cost': no partner rate AND no «Χρέωση αποθήκης».
+  function allocWhy(st) {
+    return { no_price: 'χωρίς τιμή', no_charge: 'χωρίς χρέωση αποθήκης', no_pallets: 'χωρίς παλέτες' }[st] || String(st || '—');
+  }
+
   const pure = { annotate, scopeFilter, weekStats, defaultWeek, stripWeeks, weekWord, baseList, tabCounts, tabFilter,
     searchFilter, groupByClient, kpis, dupCheck, nextReady, dateCheck, invoiceFields, undoFields, addressLine, csvRows,
-    metricsOf, dirWord, stockText, erpDelivery };
+    metricsOf, dirWord, stockText, erpDelivery, allocWhy };
   if (typeof document === 'undefined') return { pure };
 
   // ── State ───────────────────────────────────────────────────────────────
@@ -608,16 +616,16 @@ const OrdersInvoicingView = (() => {
     else {
       const m = st.lot, num = v => (v == null || v === '' ? null : Number(v));
       if (m.allocation_status !== 'ok') {
-        // One reason per status the base can return; an unknown one is shown
-        // as it is, never dressed up as another reason.
-        const why = { no_price: 'χωρίς τιμή', no_intake_cost: 'χωρίς κόστος αποθήκης', no_pallets: 'χωρίς παλέτες' }[m.allocation_status] || String(m.allocation_status || '—');
-        body = `<div class="oiv-warn">Ο επιμερισμός εκκρεμεί: ${esc(why)}</div>`;
+        body = `<div class="oiv-warn">Ο επιμερισμός εκκρεμεί: ${esc(allocWhy(m.allocation_status))}</div>`;
       } else {
         const pp = num(m.per_pallet);
         const per = pp === null ? '—' : new Intl.NumberFormat('el-GR', { minimumFractionDigits: 2, maximumFractionDigits: 4 }).format(pp) + ' €';
         const rows = st.pieces.map(p => kv(esc((p.piece_kind === 'natl' ? 'Ε-' : '#') + p.piece_id) + ' · ' + esc(num(p.pallets)) + 'p', eurSym(num(p.amount)))).join('');
         const rem = num(m.remaining_pallets) || 0, off = num(m.written_off_pallets) || 0;
-        body = kv('Τιμή πελάτη', eurSym(num(m.price))) + kv('Κόστος αποθήκης', eurSym(num(m.intake_cost)))
+        // Round 2 #1 (owner 4/10): charge = partner rate + «Χρέωση αποθήκης»
+        // (each euro entered once); net = price − charge. «—» = none entered.
+        body = kv('Τιμή πελάτη', eurSym(num(m.price))) + kv('Συνεργάτης', eurSym(num(m.partner_cost)))
+          + kv('Χρέωση αποθήκης', eurSym(num(m.warehouse_charge))) + kv('Σύνολο χρέωσης', eurSym(num(m.charge_total)))
           + kv('Καθαρό', `<b>${eurSym(num(m.net))}</b>`) + kv('€ / παλέτα', per) + rows
           + (!m.closed_at && rem > 0 ? kv('Σε απόθεμα ' + esc(rem) + 'p', eurSym(num(m.in_stock_amount))) : '')
           + (m.closed_at ? kv('<span class="oiv-bad">Χαμένο υπόλοιπο ' + esc(off) + 'p</span>', `<span class="oiv-bad">${eurSym(num(m.written_off_amount))}</span>`) : '');

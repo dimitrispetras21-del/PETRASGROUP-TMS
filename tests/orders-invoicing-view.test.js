@@ -322,3 +322,14 @@ test('O3: a lot\'s one date (when) = its last delivery; KPI date and the invoice
   const plain = items.find(it => it.id === 'i2');
   assert.strictEqual(plain.when, plain.deliv, 'an ordinary order: its own delivery');
 });
+
+// Round 2 #1 (owner 4/10): stock_v_lot_money.allocation_status 'no_intake_cost'
+// became 'no_charge' (no partner rate AND no «Χρέωση αποθήκης»). The dead name
+// is no longer dressed up as a reason; an unknown status is shown as it is.
+test('allocation why-map: no_charge → «χωρίς χρέωση αποθήκης»; the old name is not translated', () => {
+  assert.strictEqual(V.allocWhy('no_charge'), 'χωρίς χρέωση αποθήκης');
+  assert.strictEqual(V.allocWhy('no_price'), 'χωρίς τιμή');
+  assert.strictEqual(V.allocWhy('no_pallets'), 'χωρίς παλέτες');
+  assert.strictEqual(V.allocWhy('no_intake_cost'), 'no_intake_cost');
+  assert.strictEqual(V.allocWhy(null), '—');
+});
