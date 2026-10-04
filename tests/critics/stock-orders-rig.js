@@ -682,6 +682,13 @@ async function runLotEdit(browser) {
   const unTo2 = (await page.evaluate(() => (document.getElementById('tms-toast-container') || {}).innerText || '')).replace(/\s+/g, ' ');
   ok(!/δεν αποθηκεύτηκε τίποτα/.test(unTo2) && cap.deletes.length === nD + 2 && await page.evaluate(() => document.getElementById('modalOverlay').classList.contains('open')),
     '1b F2: unmarked, PATCH refused → «Η παρτίδα καταργήθηκε, η παραγγελία ΔΕΝ αποθηκεύτηκε», form stays — ' + unTo2);
+  // reviewer 1b P3-1: a SECOND refused Save (no unmark this time) still says the lot is gone.
+  cap.orderPatchFail = { type: 'VALIDATION', code: 'x', message: 'Άκυρη τιμή πεδίου' };
+  await page.evaluate(() => { const c = document.getElementById('tms-toast-container'); if (c) c.innerHTML = ''; });
+  await page.click('#btnSubmit');
+  await waitText(page, /Η παρτίδα καταργήθηκε, η παραγγελία ΔΕΝ αποθηκεύτηκε — ξαναπάτα Αποθήκευση/);
+  const unTo3 = (await page.evaluate(() => (document.getElementById('tms-toast-container') || {}).innerText || '')).replace(/\s+/g, ' ');
+  ok(!/δεν αποθηκεύτηκε τίποτα/.test(unTo3) && cap.deletes.length === nD + 2, '1b P3-1: 2nd refused Save still «Η παρτίδα καταργήθηκε…», no 2nd unmark — ' + unTo3);
   await page.click('#btnSubmit');
   await page.waitForFunction(() => !document.getElementById('modalOverlay').classList.contains('open'), null, { timeout: 10000 });
   ok(cap.deletes.length === nD + 2 && cap.deletes.at(-1).id === 'recLot1', 'unmark allowed → DELETE STOCK LOTS recLot1 (once, not again on the retry)');
@@ -942,6 +949,34 @@ async function runPrintGroup(browser) {
   await page.context().close();
 }
 
+// Round 1b (F3): the lot Reference and the PE reference list are typed by people —
+// on the paper they are text, never markup; the WhatsApp text keeps them as typed.
+async function runPrintEscape(browser) {
+  console.log('\n[print] escaping of typed references');
+  const page = await newPage(browser, 'dispatcher', 'catalog');
+  const cap = page._cap;
+  const RAW_LOT = 'LOT <b>X</b> & 1', RAW_LEAD = 'L<i>1</i>';
+  cap.fx.orders.find(o => o.id === 'recGPc').fields['Stock Lot Reference'] = RAW_LOT;
+  cap.fx.orders.find(o => o.id === 'recLead').fields.Reference = RAW_LEAD;
+  await page.goto('print.html?orderIds=recLead,recGPc&leg=import&sheet=driver');
+  await page.waitForFunction(() => document.querySelectorAll('.p-doc').length >= 3, null, { timeout: 20000 });
+  const r = await page.evaluate(() => {
+    const tag = [...document.querySelectorAll('.stoptag')].find(t => /Απόθεμα/.test(t.textContent));
+    const pe = [...document.querySelectorAll('.p-doc .cargo .chip')].find(c => /μόνο/.test(c.textContent));
+    const meta = [...document.querySelectorAll('.meta-item')].find(e => /απόθεμα/i.test(e.querySelector('.meta-lbl').textContent));
+    return { tag: tag ? tag.textContent : '', tagEl: tag ? tag.querySelectorAll('b,i').length : -1,
+      pe: pe ? pe.textContent.replace(/\s+/g, ' ') : '', peEl: pe ? pe.querySelectorAll('i').length : -1,
+      meta: meta ? meta.querySelector('.meta-val').textContent : '', metaEl: meta ? meta.querySelectorAll('b').length : -1,
+      wa: (window._waArr || []).join('\n') };
+  });
+  ok(r.tag.includes('Ref ' + RAW_LOT) && r.tagEl === 0, 'F3: cover stop tag prints the lot Reference as text — ' + JSON.stringify([r.tag, r.tagEl]));
+  ok(r.pe.includes('A ' + RAW_LEAD) && r.peEl === 0, 'F3: cover PE chip prints the reference as text — ' + JSON.stringify([r.pe, r.peEl]));
+  ok(r.meta.includes('Ref ' + RAW_LOT) && r.metaEl === 0, 'F3: piece sheet meta prints the lot Reference as text — ' + JSON.stringify([r.meta, r.metaEl]));
+  ok(r.wa.includes('Ref ' + RAW_LOT) && !r.wa.includes('&amp;') && !r.wa.includes('&lt;'), 'F3: WhatsApp text keeps the Reference as typed (not escaped)');
+  ok(cap.errors.length === 0, 'no page errors — ' + cap.errors.join(' | '));
+  await page.context().close();
+}
+
 // O10 (critic-4 C4-03): the lot's partner sheet — the exchange is at the
 // client's loading (Ε5), never at the warehouse intake (no ledger movement there).
 async function runPrintLotPartner(browser) {
@@ -966,7 +1001,7 @@ async function runPrintLotPartner(browser) {
 (async () => {
   const browser = await chromium.launch();
   try {
-    for (const run of [runCatalog, runForm, runFormTick, runLotCreate, runPiece, runLotEdit, runAccountant, runOwner, runReopen, runWarehouse, runPrint, runPrintGroup, runPrintLotPartner]) {
+    for (const run of [runCatalog, runForm, runFormTick, runLotCreate, runPiece, runLotEdit, runAccountant, runOwner, runReopen, runWarehouse, runPrint, runPrintGroup, runPrintEscape, runPrintLotPartner]) {
       try { await run(browser); } catch (e) { failed++; console.log('  ✗ ' + run.name + ' threw: ' + (e && e.stack || e)); }
     }
   } finally { await browser.close(); }

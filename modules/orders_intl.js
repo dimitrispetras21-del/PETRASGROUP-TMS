@@ -1827,6 +1827,9 @@ async function submitIntlOrder(recId) {
 
     let fields = {};
     const _SK = INTL_ORDERS._stock || { mode: 'none' };
+    // Kept on the form's stock state, not only here: a second Save after a
+    // refused one no longer unmarks (wasLot=false), yet the lot is still gone.
+    if (_SK.unmarked) _unmarked = true;
     const _lotBox = document.getElementById('f_StockLot');
     const _lotWanted = !!(_lotBox && _lotBox.checked);
 
@@ -2129,14 +2132,18 @@ async function submitIntlOrder(recId) {
         return;
       }
       _SK.wasLot = false;   // a retry of this save must not unmark twice
-      _unmarked = true;
+      _SK.unmarked = _unmarked = true;
     }
 
     const result = recId
       ? await atSafePatch(TABLES.ORDERS, recId, fields)
       : await atCreate(TABLES.ORDERS, fields);
     _written = true;
-    if (result?.conflict) { toast((_unmarked ? _OI_UNMARKED_NOT_SAVED + ' · ' : '') + 'Η εγγραφή άλλαξε από άλλον χρήστη — κάνε Ανανέωση και ξαναδοκίμασε','warn'); return; }
+    if (result?.conflict) {
+      if (_unmarked) showErrorToast('Η παρτίδα καταργήθηκε, η παραγγελία ΔΕΝ αποθηκεύτηκε — άλλαξε από άλλον χρήστη: κάνε Ανανέωση και ξανακάνε την αλλαγή', 'warn', 12000);
+      else toast('Η εγγραφή άλλαξε από άλλον χρήστη — κάνε Ανανέωση και ξαναδοκίμασε','warn');
+      return;
+    }
 
     if (result?.error) throw new Error(result.error.message || JSON.stringify(result.error));
     // G-32 (impact map 4/10): a new piece is a piece only if its link landed.

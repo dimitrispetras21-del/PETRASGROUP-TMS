@@ -1016,12 +1016,13 @@ function _wiPaint(){
   const impPlan=impRows.filter(r=>!_wiStockSkip(r));
   const matched=impPlan.filter(r=>r.matchedTo).length;
   const unmatched=impPlan.filter(r=>!r.matchedTo).length;
-  // K9 (round 1): the button's number is what _wiAutoMatch will TAKE — the
-  // same filter on the same rows — not «unmatched»: a truckless group holding
-  // a piece is unmatched but never auto-matched (B-05), so «(N)» promised a
-  // pair the click then could not find. Only this week's own rows, like the
+  // K9 (round 1): the button's number uses the auto-match's own filter
+  // (_wiMatchableImp), not «unmatched»: a truckless group holding a piece is
+  // unmatched but never auto-matched (B-05), so «(N)» promised a pair the
+  // click then could not find. Counted on this week's own rows, like the
   // tally (round 1b): an adjacent-week or rota-leg import alone showed a
-  // button main never showed, with a number the tally did not have.
+  // button main never showed. The click still scores those rows too, as on
+  // main — the number is this week's, not a promise about them.
   const autoN=rows.filter(r=>_wiMatchableImp(r)&&!r.adj&&!r.legOf).length;
   const total=expRows.length+impPlan.length;
   const pct=total?Math.round((assigned+matched)/total*100):0;
