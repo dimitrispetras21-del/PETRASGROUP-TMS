@@ -3143,6 +3143,59 @@ button.ecard-meta-row-btn, .ecard-meta-row button.badge {
   text-transform:uppercase; color:var(--text-dim); }
 .wi-div { width:1px; height:34px; background:var(--border-mid); align-self:flex-end; margin:0 3px; }
 
+/* ΑΠΟΘΕΜΑ ΣΕ ΑΠΟΘΗΚΗ — Weekly International (owner 3–4/10/2026, plan
+   stock-lots-v5 §6.2). The strip is the sheet's FIRST child and sticky at its
+   top, so it stays in view while the board scrolls and in fullscreen (the
+   sheet IS the fullscreen element). Its height is a token: the column header
+   and the sticky day headers move down by exactly the strip — and by nothing
+   when there is no strip (no .has-shelf → 0px). Chips never cut a warehouse or
+   client name (DESIGN #6): they keep their width and the row scrolls sideways.
+   Tokens only; no money on this strip, ever. */
+.wk3.wi2 { --wi-shelf-h:0px; }
+.wk3.wi2.has-shelf { --wi-shelf-h:28px; }
+.wk3.wi2 .wi-shelf { position:sticky; top:0; z-index:31; height:var(--wi-shelf-h); overflow:hidden; background:var(--surface-page); }
+.wk3.wi2.has-shelf .wk3-cols { top:var(--wi-shelf-h); }
+.wk3.wi2.has-shelf .wk3-dayh { top:calc(28px + var(--wi-shelf-h)); }
+.wi-shelf-in { display:flex; align-items:center; gap:6px; height:28px; padding:2px 0 4px; box-sizing:border-box; }
+.wi-shelf-list { flex:1 1 auto; min-width:0; display:flex; align-items:center; gap:6px; overflow-x:auto; scrollbar-width:none; }
+.wi-shelf-list::-webkit-scrollbar { display:none; }
+.wi-shelf-list.ovf { -webkit-mask-image:linear-gradient(to right, black calc(100% - 32px), transparent);
+  mask-image:linear-gradient(to right, black calc(100% - 32px), transparent); }
+.wi-shelf-lbl { flex:none; font:700 11px 'Syne',sans-serif; letter-spacing:1.2px; color:var(--text-mid); }
+.wi-shelf-chip { flex:none; display:inline-flex; align-items:center; gap:5px; height:22px; padding:0 8px;
+  border:1px solid var(--border); border-radius:var(--radius-full); background:var(--surface-card);
+  font:500 11px 'DM Sans',sans-serif; color:var(--text); white-space:nowrap; cursor:pointer;
+  font-variant-numeric:tabular-nums; }
+.wi-shelf-chip:hover { border-color:var(--text-dim); }
+.wi-shelf-chip:focus-visible, .wi-shelf-loose:focus-visible, .wi-shelf-fail:focus-visible { outline:2px solid var(--accent); outline-offset:1px; }
+.wi-shelf-chip .cc, .wi-shelf-chip .sep, .wi-shelf-chip .d { color:var(--text-mid); }
+.wi-shelf-chip .n { font-weight:700; }
+.wi-shelf-bar { flex:none; width:32px; height:4px; border-radius:var(--radius-full); background:var(--surface-sunken); overflow:hidden; }
+.wi-shelf-bar > i { display:block; height:100%; background:var(--accent); }
+.wi-shelf-chip .fl { font-weight:700; }
+.wi-shelf-chip.aging, .wi-shelf-chip.close { border-color:var(--warn-border); background:var(--warn-bg); }
+.wi-shelf-chip.aging .fl, .wi-shelf-chip.close .fl { color:var(--warn); }
+.wi-shelf-chip.nointake { border-color:var(--danger); background:var(--danger-bg); }
+.wi-shelf-chip.nointake .fl { color:var(--danger); }
+.wi-shelf-loose { flex:none; height:22px; padding:0 8px; border:1px dashed var(--border-dark);
+  border-radius:var(--radius-full); background:var(--surface-card); font:600 11px 'DM Sans',sans-serif;
+  color:var(--text); white-space:nowrap; cursor:pointer; }
+.wi-shelf-loose.zero { border-color:var(--border); color:var(--text-dim); font-weight:500; }
+.wi-shelf-fail { flex:none; height:22px; padding:0 10px; border:1px solid var(--danger); border-radius:var(--radius);
+  background:var(--danger-bg); color:var(--danger); font:700 11px 'DM Sans',sans-serif; letter-spacing:.4px; cursor:pointer; }
+@media print { .wk3.wi2 .wi-shelf { display:none; } .wk3.wi2.has-shelf { --wi-shelf-h:0px; } }
+.wi-badge.wi-b-ap { background:var(--accent-text); }
+.wi-badge.wi-b-lot { background:var(--surface-dark); }
+/* Panels of the stock entries (lot, loose pieces, «+ Κομμάτι από απόθεμα…»). */
+.wi-stk-h { font-weight:700; color:var(--text); margin-top:2px; }
+.wi-stk-bad { color:var(--danger); font-weight:700; }
+.wi-stk-warn { color:var(--warn); font-weight:600; }
+.wi-stk-opt { width:100%; border:none; background:none; text-align:left; font-family:inherit; color:inherit; }
+.wi-stk-opt[disabled] { color:var(--text-dim); cursor:not-allowed; }
+.wi-stk-opt[disabled]:hover { background:none; }
+.wi-stk-piece { justify-content:space-between; }
+.wi-stk-ref { color:var(--text-dim); }
+
 /* dropdown */
 .wi-sd { position:relative; }
 .wi-sdi { width:162px; padding:6px 9px; font-size:var(--text-xs); border-radius:var(--radius);
