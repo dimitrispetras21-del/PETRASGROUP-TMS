@@ -387,6 +387,25 @@ test('mapper: relay CHECKs by constraint name; other local_moves_* CHECKs named;
   assert.strictEqual(dup.message, W.RELAY_RULE_TEXT.relay_exists, 'race floor and trigger refusal say the same');
 });
 
+// Rebased onto the stock-lots Worker (057, deploys first): ONE mapper serves
+// both families (αρχή 3) — a second *RuleError/*RuleResponse beside it would
+// let the two drift apart, so the source is pinned here.
+test('one DB-rule mapper for 057 stock + 060 relay: one function, each family keeps its own type', async () => {
+  assert.strictEqual((src.match(/^function \w+RuleError\(/gm) || []).length, 1, 'one *RuleError');
+  assert.strictEqual((src.match(/^function \w+RuleResponse\(/gm) || []).length, 1, 'one *RuleResponse');
+  const stock = W.stockRuleError({ pg: { code: '23514', hint: 'stock:over_draw', message: 'Υπέρβαση αποθέματος' } });
+  assert.deepStrictEqual(stock, { code: 'over_draw', message: 'Υπέρβαση αποθέματος' });
+  assert.deepStrictEqual(await asJson(W.stockRuleResponse(stock, '', env)),
+    { status: 422, body: { error: { type: 'STOCK_RULE', code: 'over_draw', message: 'Υπέρβαση αποθέματος' } } });
+  const relay = W.stockRuleError({ pg: { code: '23514', hint: 'local_relay:direction', message: 'ascii' } });
+  assert.deepStrictEqual(await asJson(W.stockRuleResponse(relay, '', env)),
+    { status: 422, body: { error: { type: 'LOCAL_RELAY_RULE', code: 'direction', message: W.RELAY_RULE_TEXT.direction } } });
+  // a stock CHECK name is never answered with a relay text, nor the reverse
+  const chk = (name) => W.stockRuleError({ pg: { code: '23514', message: `violates check constraint "${name}"` } });
+  assert.strictEqual(chk('stock_lots_close_shape').type, undefined);
+  assert.strictEqual(chk('local_moves_relay_trailer').type, 'LOCAL_RELAY_RULE');
+});
+
 test('mapper: anything else keeps today\'s 500 path', () => {
   assert.strictEqual(W.stockRuleError(new Error('plain')), null);
   assert.strictEqual(W.stockRuleError({ pg: { code: '23514', hint: null, message: 'violates check constraint "orders_price_chk"' } }), null);
