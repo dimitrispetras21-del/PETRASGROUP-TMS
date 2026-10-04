@@ -114,6 +114,23 @@ function escapeHtml(str) {
 }
 
 /**
+ * One CSV cell, before quoting: a TEXT cell that starts with = + - @ (or a tab
+ * or CR) is written with a leading ' so spreadsheet software keeps it as text.
+ * Numbers (typeof number) pass unchanged, and so does a negative amount
+ * written as text («-12,50», «-1.234,50»): it is a number, not text.
+ * Every CSV exporter routes each cell through here (one rule, one place).
+ * null/undefined/booleans pass through — each exporter keeps its own blanks.
+ * @param {*} v - Cell value
+ * @returns {*} The value, or the text with a leading '
+ */
+function csvSafeCell(v) {
+  if (v == null || typeof v === 'number' || typeof v === 'boolean' || typeof v === 'bigint') return v;
+  const s = String(v);
+  if (!/^[=+\-@\t\r]/.test(s) || /^-\d+(?:[.,]\d+)*$/.test(s)) return s;
+  return "'" + s;
+}
+
+/**
  * Display name for a login username (e.g. `created_by` on any record) — the
  * person's first name from the USERS roster (config.js), first token of
  * `name`, so 'alexia' reads as 'Alexia' wherever a record names who wrote it
@@ -863,7 +880,7 @@ function _errLogExport(format) {
       e.ts || '', e.severity || '', e.count || 1, e.user || '', e.page || '',
       e.ctx || '', e.msg || '', (e.stack || '').replace(/\n/g, ' | ')
     ]));
-    const csv = rows.map(r => r.map(c => `"${String(c).replace(/"/g,'""')}"`).join(',')).join('\n');
+    const csv = rows.map(r => r.map(c => `"${String(csvSafeCell(c)).replace(/"/g,'""')}"`).join(',')).join('\n');
     blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8' });
     filename = `tms-errors-${new Date().toISOString().slice(0,10)}.csv`;
   } else {

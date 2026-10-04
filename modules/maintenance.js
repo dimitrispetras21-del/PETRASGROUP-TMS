@@ -772,7 +772,7 @@ function _expiryExportCSV() {
     rows.push([_mntTypeGr(r.vType), r.plate, r.brand, r.model,
       kt?.date||'', kt?.days??'', kf?.date||'', kf?.days??'', ins?.date||'', ins?.days??'', r.insurer]);
   });
-  const csv = rows.map(r => r.map(c => `"${String(c).replace(/"/g,'""')}"`).join(',')).join('\n');
+  const csv = rows.map(r => r.map(c => `"${String(csvSafeCell(c)).replace(/"/g,'""')}"`).join(',')).join('\n');
   const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8' });
   const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
   a.download = `fleet_expiry_${localToday()}.csv`; a.click(); URL.revokeObjectURL(a.href);
@@ -1432,7 +1432,7 @@ function _historyExport(vType) {
       f['Description']||'', f['Parts']||'', f['Cost'] ?? '', f['Odometer km'] ?? '', MAINT_STATUS_LABEL[f['Status']] || f['Status'] || ''
     ]);
   });
-  const csv = rows.map(r => r.map(c => `"${String(c).replace(/"/g,'""')}"`).join(',')).join('\n');
+  const csv = rows.map(r => r.map(c => `"${String(csvSafeCell(c)).replace(/"/g,'""')}"`).join(',')).join('\n');
   const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);

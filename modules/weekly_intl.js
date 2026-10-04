@@ -5968,7 +5968,7 @@ function _wiExportCSV() {
       f['Loading DateTime']||'', f['Delivery DateTime']||'', ('Total Pallets' in f)?f['Total Pallets']:'',
       trk, trl, drv, prt, assigned?'Assigned':'Unassigned',
     ]); });
-  const csv = rows.map(r => r.map(c => `"${String(c).replace(/"/g,'""')}"`).join(',')).join('\n');
+  const csv = rows.map(r => r.map(c => `"${String(csvSafeCell(c)).replace(/"/g,'""')}"`).join(',')).join('\n');
   const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8' });
   const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
   a.download = `weekly_intl_W${WINTL.week}_${localToday()}.csv`; a.click(); URL.revokeObjectURL(a.href);

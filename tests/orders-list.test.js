@@ -56,6 +56,12 @@ test('chunk + countLabel', () => {
 });
 
 // ── step 2a, reviewer P3 (22/9): csvDownload and the OR() batching union ──
+// csvDownload calls csvSafeCell, a global of core/utils.js (loaded before this
+// file in app.html) — extracted verbatim here, as tests/csv-safe-cell.test.js does.
+const csvSafeCellSrc = (require('fs').readFileSync(require('path').join(__dirname, '..', 'core', 'utils.js'), 'utf8')
+  .match(/function csvSafeCell\(v\) \{[\s\S]*?\n\}\n/) || [''])[0];
+global.csvSafeCell = require('vm').runInNewContext(csvSafeCellSrc + '\ncsvSafeCell;', {});
+
 test('csvDownload: BOM + quoted cells with "" escaping, filename, one click, Greek toast', () => {
   const clicks = [], toasts = [], created = [];
   global.toast = (m, t) => toasts.push([m, t]);
@@ -70,6 +76,18 @@ test('csvDownload: BOM + quoted cells with "" escaping, filename, one click, Gre
   assert.strictEqual(created[0].text, '﻿"A","B"\n"plain","say ""hi"", ok"\n"0",""');
   assert.deepStrictEqual(clicks, [{ href: 'blob:x', download: 'orders_intl_2026-09-22.csv' }]);
   assert.deepStrictEqual(toasts, [['Το CSV αποθηκεύτηκε', undefined]]);
+});
+
+test('csvDownload: text starting with = + - @ is written as text, numbers stay numbers', () => {
+  const created = [];
+  global.toast = () => {};
+  global.Blob = class { constructor(parts) { this.text = parts.join(''); } };
+  global.URL = { createObjectURL: b => { created.push(b); return 'blob:x'; }, revokeObjectURL: () => {} };
+  global.document = { createElement: () => ({ click() {} }) };
+  try {
+    OrdersList.csvDownload([['=SUM(A1)', '+30 2310', -12.5, '-12,50', 'Βέροια']], 'x.csv');
+  } finally { delete global.toast; delete global.Blob; delete global.URL; delete global.document; }
+  assert.strictEqual(created[0].text, '﻿"\'=SUM(A1)","\'+30 2310","-12.5","-12,50","Βέροια"');
 });
 
 test('chunk: batches of 90 cover every id exactly once — the union equals the single-OR() set', () => {

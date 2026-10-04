@@ -24,8 +24,9 @@ function dlPrintDrivers() {
 // ── CSV: κοινά εργαλεία ──
 // RFC4180-ελάχιστο: εισαγωγικά μόνο όταν το κελί περιέχει το διαχωριστικό,
 // εισαγωγικά ή αλλαγή γραμμής (διπλασιασμός εσωτερικών εισαγωγικών).
+// csvSafeCell (core/utils.js): text starting with = + - @ is written as text.
 function dlCsvCell(v) {
-  var s = (v === null || v === undefined) ? '' : String(v);
+  var s = (v === null || v === undefined) ? '' : String(csvSafeCell(v));
   if (/[;"\n\r]/.test(s)) s = '"' + s.replace(/"/g, '""') + '"';
   return s;
 }

@@ -132,9 +132,9 @@ const OrdersList = {
   chunk(arr, n) { const out = []; for (let i = 0; i < arr.length; i += n) out.push(arr.slice(i, i + n)); return out; },
 
   // CSV: BOM + quoted cells, one download, Greek toasts (DESIGN.md ΜΕΡΟΣ Ε —
-  // the national list said «CSV exported» until 22/9).
+  // the national list said «CSV exported» until 22/9). csvSafeCell: core/utils.js.
   csvDownload(rows, filename) {
-    const csv = rows.map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\n');
+    const csv = rows.map(r => r.map(c => `"${String(csvSafeCell(c)).replace(/"/g, '""')}"`).join(',')).join('\n');
     const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8' });
     const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
     a.download = filename; a.click(); URL.revokeObjectURL(a.href);

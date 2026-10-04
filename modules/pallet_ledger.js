@@ -211,7 +211,7 @@ function plvClearQ() {
 }
 
 function plvExportCSV() {
-  const esc = (v) => '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"';
+  const esc = (v) => '"' + String(v == null ? '' : csvSafeCell(v)).replace(/"/g, '""') + '"';
   const isBalanceTab = PLV.tab === 'clients' || PLV.tab === 'partners';
   let head, body, fname;
   if (isBalanceTab) {
@@ -869,7 +869,7 @@ async function plvDrill(kind, id) {
 function plvStmtCSV() {
   const s = PLV._stmt;
   if (!s || !s.rows.length) { toast('Κενή καρτέλα — τίποτα για εξαγωγή', 'error'); return; }
-  const esc = (v) => '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"';
+  const esc = (v) => '"' + String(v == null ? '' : csvSafeCell(v)).replace(/"/g, '""') + '"';
   const head = ['Reference', 'Ημερομηνία', 'Κωδικός', 'Είδος', 'Σημείο', 'Πήραμε', 'Δώσαμε', 'Κατάσταση', 'Τρεχούμενο'];
   const body = s.rows.map(({ m, run }) => [_plvRowExtras(m).ref, m.movement_date, m.code,
     PLV_EVENT_GR[m.event_type] || m.event_type, _plvLoc(m), m.taken, m.given,
