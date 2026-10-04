@@ -2672,6 +2672,12 @@ async function _wnRevertNoStatus(nlId) {
   const nlRec = WNATL.data.southnorth.concat(WNATL.data.northsouth).find(r => r.id === nlId);
   const noId = getLinkedId(nlRec?.fields?.['Source National Order']);
   if (!noId) return;
+  // Owner 4/10/2026 («η ανάθεση δεν κλειδώνει ποτέ»): unassigning never moves
+  // an executed order back — only Assigned (or empty) becomes Pending; an
+  // order the Ramp already set In Transit keeps it (it went back to Pending
+  // unconditionally before). An unreadable status is not overwritten
+  // (atGetOne already logs and toasts the failed read).
+  if (!_wnUnplans(await _wnStatusLive(noId, TABLES.NAT_ORDERS))) return;
   try {
     await atSafePatch(TABLES.NAT_ORDERS, noId, { 'Status': 'Pending' });
     if (typeof syncOrderDownstream === 'function') {
@@ -2689,10 +2695,19 @@ async function _wnDoneLive(id) {
   const st = await _wnStatusLive(id);
   return (st === 'Delivered' || st === 'Cancelled') ? st : '';
 }
-// '' when the read fails — same as before for _wnDoneLive (treated as open).
-async function _wnStatusLive(id) {
-  try { const r = await atGetOne(TABLES.NAT_LOADS, id); return String(r?.fields?.['Status'] || ''); }
-  catch(e) { return ''; }
+// '' = no status in the base; null = the read failed (atGetOne logs + toasts).
+// _wnDoneLive treats both as open, as before.
+async function _wnStatusLive(id, table) {
+  try { const r = await atGetOne(table || TABLES.NAT_LOADS, id); return String(r?.fields?.['Status'] || ''); }
+  catch(e) { return null; }
+}
+// «Καθαρισμός» / «Αφαίρεση ανάθεσης» turn Assigned → Pending ONLY (owner
+// 4/10/2026): an executed row (In Transit/Delivered) keeps its status when its
+// vehicle goes. Until now both unassign paths wrote 'Pending' unconditionally,
+// so an In Transit load (set by the Ramp) fell back to Pending.
+function _wnUnplans(st) { return st === 'Assigned' || st === ''; }
+function _wnUnplanFields(fields, st) {
+  return _wnUnplans(st) ? Object.assign({}, fields, { 'Status': 'Pending' }) : fields;
 }
 async function _wnUnassignSn(rowId, snId) {
   if(_wnBlockReadOnly()) return;
@@ -2704,13 +2719,13 @@ async function _wnUnassignSn(rowId, snId) {
     'Truck': [], 'Trailer': [], 'Driver': [],
     'Partner': [], 'Is Partner Trip': false,
     'Partner Truck Plates': '', 'Partner Rate': null,
-    'Status': 'Pending'
   };
 
   try {
-    const done = await _wnDoneLive(snId);
+    const st = await _wnStatusLive(snId);
+    const done = (st === 'Delivered' || st === 'Cancelled') ? st : '';
     if (done) { toast('Το φορτίο είναι ' + done + ' — η ανάθεση κρατιέται', 'warn'); return; }
-    const res = await atSafePatch(TABLES.NAT_LOADS, snId, fields);
+    const res = await atSafePatch(TABLES.NAT_LOADS, snId, _wnUnplanFields(fields, st));
     if (res?.conflict) { toast('Η εγγραφή άλλαξε από άλλον χρήστη — γίνεται ανανέωση','warn'); await renderWeeklyNatl(); return; }
   } catch(err) { toast('Σφάλμα: ' + err.message, 'warn'); return; }
 
@@ -2741,15 +2756,14 @@ async function _wnUnassign(rowId) {
     'Truck': [], 'Trailer': [], 'Driver': [],
     'Partner': [], 'Is Partner Trip': false,
     'Partner Truck Plates': '', 'Partner Rate': null,
-    'Status': 'Pending'
   };
 
   const errors = []; const kept = []; let written = 0;
   for (const orderId of row.orderIds) {
     try {
-      const done = await _wnDoneLive(orderId);
-      if (done) { kept.push(orderId); continue; }
-      const res = await atSafePatch(TABLES.NAT_LOADS, orderId, fields);
+      const st = await _wnStatusLive(orderId);
+      if (st === 'Delivered' || st === 'Cancelled') { kept.push(orderId); continue; }
+      const res = await atSafePatch(TABLES.NAT_LOADS, orderId, _wnUnplanFields(fields, st));
       if (res?.conflict) { toast('Η εγγραφή άλλαξε από άλλον χρήστη — γίνεται ανανέωση','warn'); await renderWeeklyNatl(); return; }
       if (res?.error) throw new Error(res.error.message || res.error.type);
       written++;
@@ -2758,9 +2772,9 @@ async function _wnUnassign(rowId) {
   // Also unassign matched S→N if exists (same guard: a delivered leg keeps its assignment)
   if (row.matchedId) {
     try {
-      const done = await _wnDoneLive(row.matchedId);
-      if (done) kept.push(row.matchedId);
-      else { await atSafePatch(TABLES.NAT_LOADS, row.matchedId, fields); written++; }
+      const st = await _wnStatusLive(row.matchedId);
+      if (st === 'Delivered' || st === 'Cancelled') kept.push(row.matchedId);
+      else { await atSafePatch(TABLES.NAT_LOADS, row.matchedId, _wnUnplanFields(fields, st)); written++; }
     } catch(err) { errors.push(err.message); }
   }
 

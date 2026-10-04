@@ -94,7 +94,9 @@ const WN = src('modules/weekly_natl.js');
 const wnSrc = [
   fn(WN, /async function _wnUnassign\(rowId\) \{[\s\S]*?\n\}\n/, '_wnUnassign'),
   fn(WN, /async function _wnDoneLive\(id\) \{[\s\S]*?\n\}\n/, '_wnDoneLive'),
-  fn(WN, /async function _wnStatusLive\(id\) \{[\s\S]*?\n\}\n/, '_wnStatusLive'),
+  fn(WN, /async function _wnStatusLive\(id, table\) \{[\s\S]*?\n\}\n/, '_wnStatusLive'),
+  fn(WN, /function _wnUnplans\(st\) \{[^\n]*\n/, '_wnUnplans'),
+  fn(WN, /function _wnUnplanFields\(fields, st\) \{[\s\S]*?\n\}\n/, '_wnUnplanFields'),
 ].join('\n');
 async function runWnUnassign(statusById, row) {
   const patches = []; const paDeleted = []; const toasts = [];
@@ -128,6 +130,14 @@ test('_wnUnassign: Assigned NAT_LOAD → Status Pending, vehicle + Partner Rate 
     assert.strictEqual(p.f['Partner Rate'], null);
   }
   assert.deepStrictEqual(paDeleted, ['n1', 's1']);
+});
+
+test('_wnUnassign (owner 4/10): In Transit leg → vehicle cleared, Status NOT written; unreadable → no Status; empty → Pending', async () => {
+  const { patches } = await runWnUnassign({ n1: 'In Transit', s1: new Error('x') }, { orderIds: ['n1'], matchedId: 's1' });
+  assert.deepStrictEqual(patches.map(x => x.id), ['n1', 's1']);
+  for (const p of patches) { assert.ok(!('Status' in p.f), p.id); assert.strictEqual(p.f.Truck.length, 0); }
+  const e = await runWnUnassign({ n1: '' }, { orderIds: ['n1'] });
+  assert.strictEqual(e.patches[0].f.Status, 'Pending');
 });
 
 test('_wnUnassign: Delivered/Cancelled leg keeps its assignment and its PA row', async () => {

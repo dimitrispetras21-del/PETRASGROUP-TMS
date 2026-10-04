@@ -31,7 +31,9 @@ function seed() {
     [T.DR]: [{ id: 'recDriver00001AA', fields: { 'Full Name': 'Driver One', Active: true } }, { id: 'recDriver00002AA', fields: { 'Full Name': 'Driver Two', Active: true } }],
     [T.PT]: [{ id: 'recPartner00001A', fields: { 'Company Name': 'Partner Co' } }],
     [T.LOC]: [{ id: 'recLocVeroia0001', fields: { Name: 'CROSS-DOCK', City: 'Veroia', Country: 'Greece' } }],
-    [T.NO]: [{ id: 'recNatOrderC0001', fields: { Status: 'Assigned', Direction: NS } }],
+    [T.NO]: [{ id: 'recNatOrderC0001', fields: { Status: 'Assigned', Direction: NS } },
+      { id: 'recNatOrderT0001', fields: { Status: 'In Transit', Direction: NS } },
+      { id: 'recNatOrderE0001', fields: { Status: 'Pending', Direction: NS } }],
     [T.PA]: [
       { id: 'recPAnC000000001', fields: { 'Nat Load': ['recNlC000000000A'], Partner: ['recPartner00001A'], 'Partner Rate': 400, Status: 'Assigned' } },
       { id: 'recPAsC000000001', fields: { 'Nat Load': ['recNlsC00000000A'], Partner: ['recPartner00001A'], 'Partner Rate': 400, Status: 'Assigned' } },
@@ -55,6 +57,11 @@ function seed() {
       nl('recNlC000000000A', NS, '2026-10-07T06:00:00.000Z', Object.assign(par(400, 'ΙΑΒ 2000'), { Client: 'NS-C', 'Source National Order': ['recNatOrderC0001'], 'Matched Load': 'recNlsC00000000A' })),
       nl('recNlsC00000000A', SN, '2026-10-08T06:00:00.000Z', Object.assign(par(400, 'ΙΑΒ 2000'), { Client: 'SN-C', 'Matched Load': 'recNlC000000000A' })),
       nl('recNlsD00000000A', SN, '2026-10-08T07:00:00.000Z', Object.assign(own('recTruck000002AA', 'recDriver00002AA'), { Client: 'SN-D alone' })),
+      // owner 4/10 «η ανάθεση δεν κλειδώνει ποτέ» — executed / cancelled / plain loads (Thu 8/10)
+      nl('recNlT000000000A', NS, '2026-10-08T08:00:00.000Z', Object.assign(own('recTruck000002AA', 'recDriver00002AA'), { Client: 'NS-T in transit', Status: 'In Transit', 'Source National Order': ['recNatOrderT0001'] })),
+      nl('recNlDel0000000A', NS, '2026-10-08T09:00:00.000Z', Object.assign(own('recTruck000001AA', 'recDriver00001AA'), { Client: 'NS-DEL delivered', Status: 'Delivered' })),
+      nl('recNlX000000000A', NS, '2026-10-08T10:00:00.000Z', Object.assign(own('recTruck000001AA', 'recDriver00001AA'), { Client: 'NS-X cancelled', Status: 'Cancelled' })),
+      nl('recNlE000000000A', NS, '2026-10-08T11:00:00.000Z', { Client: 'NS-E pending', 'Source National Order': ['recNatOrderE0001'] }),
     ],
   };
 }
@@ -322,6 +329,20 @@ SECTIONS.push(async browser => {
   const t0 = await nl0.page.evaluate(() => window.__toasts.map(t => t[0]).join(' | '));
   ok(/η φόρμα δεν άνοιξε/.test(t0) && await pending(nl0.page) === null, 'form never opened (no locations) → no pending match left');
   await nl0.page.context().close();
+});
+
+// ── owner 4/10 «η ανάθεση δεν κλειδώνει ποτέ» ──────────────────────────────
+SECTIONS.push(async browser => {
+  console.log('\n── owner 4/10 (1) · unassign: Assigned → Pending only, an executed row keeps its status');
+  const t = await clearBy(browser, 'ctx', 'recNlT000000000A');
+  const pT = t.writes.find(w => w.m === 'PATCH' && w.rid === 'recNlT000000000A');
+  ok(pT && pT.body.fields.Truck.length === 0 && !('Status' in pT.body.fields), 'In Transit load: vehicle cleared, NO Status in the payload: ' + JSON.stringify(pT && pT.body.fields));
+  ok(!t.writes.some(w => w.tid === T.NO), 'its In Transit national order is not written (no Pending)');
+  const c = await clearBy(browser, 'pop', 'recNlC000000000A');
+  const pC = c.writes.find(w => w.m === 'PATCH' && w.rid === 'recNlC000000000A');
+  ok(pC && pC.body.fields.Status === 'Pending', 'Assigned load: «Καθαρισμός» → Status Pending');
+  ok(c.writes.some(w => w.tid === T.NO && w.body.fields.Status === 'Pending'), 'Assigned national order → Pending');
+  ok([t, c].every(x => x.errors.length === 0), 'no page errors');
 });
 
 (async () => {
