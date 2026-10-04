@@ -84,7 +84,15 @@ const OrdersCatalog = (() => {
     r.price = C().hasPrice(f) ? C().price(f) : null;
     r.week = C().weekStartOf(rec);
     r.pre = type === 'intl' && typeof isPreorder === 'function' && isPreorder(f);
+    // Stock lots (057): a piece has no price of its own — its lot is invoiced
+    // once — so it is never «χωρίς τιμή»; the lot is the order that went INTO
+    // the warehouse. Data-based, from the facade fields of the row (no request).
+    const OS = typeof OrdersStock !== 'undefined' ? OrdersStock : null;
+    r.piece = !!(OS && OS.isPiece(f));
+    r.lot = !!(OS && OS.isLot(f));
     r.tags = [];
+    if (r.piece) r.tags.push('ΑΠ');
+    if (r.lot) r.tags.push('ΑΠΟΘΕΜΑ');
     if (type === 'intl' && f['Veroia Switch']) r.tags.push('VS');
     if (f['National Groupage']) r.tags.push('GRP');
     if (f['Pallet Exchange']) r.tags.push('PE');
@@ -118,6 +126,7 @@ const OrdersCatalog = (() => {
     const statusHtml = r.pre && typeof preorderPillHtml === 'function' ? preorderPillHtml(f)
       : `<span class="oc-sdot oc-s-${stDot}"></span>${esc(stWord)}`;
     const priceHtml = r.price !== null ? esc(C().eur(r.price))
+      : r.piece ? `<span class="oc-dim oc-lotp" title="Τιμολογείται η παρτίδα">στην παρτίδα<br>${esc(OrdersStock.lotNumLabel(f))}</span>`
       : (r.status === 'Cancelled' || r.pre ? '<span class="oc-dim">—</span>' : '<span class="oc-red">χωρίς τιμή</span>');
     return `<tr id="ocrow_${r.id}" class="oc-row${sel}" style="height:${ROW_H}px" onclick="OrdersCatalog.open('${r.type}','${r.id}')">
       <td class="oc-num"><b>${esc(r.num)}</b></td>
@@ -152,7 +161,7 @@ const OrdersCatalog = (() => {
     if (F.week) rows = rows.filter(r => r.week === F.week);
     if (F.chip === 'pa') rows = rows.filter(r => r.assign.key === 'pa' && !r.pre);
     if (F.chip === 'out') rows = rows.filter(r => r.assign.key === 'out');
-    if (F.chip === 'noprice') rows = rows.filter(r => r.price === null && r.status !== 'Cancelled' && !r.pre);
+    if (F.chip === 'noprice') rows = rows.filter(r => r.price === null && r.status !== 'Cancelled' && !r.pre && !r.piece);
     S.filtered = rows;
     _paintTable();
     _paintKpi();
@@ -167,7 +176,7 @@ const OrdersCatalog = (() => {
       transit: rows.filter(r => r.status === 'In Transit').length,
       delivered: rows.filter(r => C().isDelivered(r.rec)).length,
       value: live.filter(r => r.price !== null).reduce((s, r) => s + r.price, 0),
-      unpriced: live.filter(r => r.price === null && !r.pre).length,
+      unpriced: live.filter(r => r.price === null && !r.pre && !r.piece).length,
       pa: rows.filter(r => r.assign.key === 'pa' && !r.pre).length,
       out: rows.filter(r => r.assign.key === 'out').length,
     };
@@ -444,6 +453,7 @@ const OrdersCatalog = (() => {
 .oc-l2{display:block;font-size:11.5px;color:var(--text-mid);overflow:hidden;white-space:nowrap;text-overflow:ellipsis;line-height:1.3}
 .oc-tag{display:inline-block;margin-left:6px;padding:0 4px;border:1px solid var(--border-mid);border-radius:3px;font-size:9px;font-weight:600;letter-spacing:.3px;color:var(--text-mid);line-height:13px}
 .oc-dim{color:var(--text-dim)}.oc-red{color:var(--danger);font-weight:500}.oc-g{color:var(--ok)}
+.oc-lotp{display:inline-block;font-size:11px;font-weight:400;line-height:1.25}
 .oc-sdot{display:inline-block;width:6px;height:6px;border-radius:50%;margin-right:6px;vertical-align:middle}
 .oc-s-pending{border:1.5px solid var(--text-dim)}.oc-s-assigned{background:var(--accent)}.oc-s-confirmed{background:var(--text-mid)}
 .oc-s-transit{background:var(--surface-dark)}.oc-s-delivered{background:var(--ok)}.oc-s-cancelled,.oc-s-unknown{border:1.5px solid var(--border-mid)}

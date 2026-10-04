@@ -88,6 +88,12 @@ const TABLES = {
   // are their own /docs/* Worker routes) — this id exists only so 'Order'
   // resolves through the normal facade cache (2 min, same as ORDERS).
   ORDER_DOCS: 'tblOrderDocuments',
+  // Stock lots (migration 057, owner 3–4/10/2026): one row per lot of pallets a
+  // client leaves in a warehouse; the pieces are ordinary ORDERS that link to it
+  // («Stock Lot»). Born in Postgres, so the id is a facade route name, not an
+  // Airtable id. The Worker reads it from stock_v_lots (remaining, complete…)
+  // and writes only «Order» and «Closed Note» — no money label exists on it.
+  STOCK_LOTS: 'tblStockLots',
 };
 
 // ── Claude model IDs ───────────────────────────────────────────────────
@@ -358,4 +364,11 @@ const PERMS = {
 // GROUP_TILES (owner 8/9/2026, spec docs/design/2026-09-08-groupage-tiles.md):
 // segmented single-pill groupage on Weekly International. Off = today's board
 // renders byte-for-byte unchanged. Flip to true only after live verification.
-const FEATURES = { ORDER_SPLIT: true, GROUP_TILES: true };
+// STOCK_LOTS (owner 3–4/10/2026, plan .claude/plans/stock-lots-v5.md): lots in
+// a warehouse + pieces on our trucks. Off = no lot checkbox, no shelf, no piece
+// entry. Born closed: flip only after migration 057 verify (V0–V8 + rules test
+// 50/50), the Worker with «Stock Lot»/tblStockLots live, both front branches
+// merged and the live proofs counted in the base. The data-based guards (a
+// piece is never invoiced alone, a lot waits for its pieces) do NOT depend on
+// this switch. Remove the switch one week after go-live.
+const FEATURES = { ORDER_SPLIT: true, GROUP_TILES: true, STOCK_LOTS: false };
