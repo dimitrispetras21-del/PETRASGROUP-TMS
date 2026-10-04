@@ -33,7 +33,7 @@ function load() {
   const src = [
     grab(/const WI_EXECUTING=\[[^\]]*\];\n/, 'WI_EXECUTING'),
     one('_wiIsPiece'), one('_wiIsLot'), one('_wiRecOf'),
-    many('_wiStockSkip'), many('_wiImpGroupRowOf'), many('_wiPieceIn'), many('_wiMatchableImp'), many('_wiShelved'),
+    many('_wiStockSkip'), many('_wiImpGroupRowOf'), many('_wiPieceIn'), many('_wiMatchableImp'), many('_wiLoose'), many('_wiShelved'),
     many('_wiSplitCtxItems'),
   ].join('\n');
   vm.runInContext(src + '\nObject.assign(this,{_wiPieceIn,_wiMatchableImp,_wiShelved,_wiSplitCtxItems});', ctx);

@@ -6027,22 +6027,35 @@ function _wiStockOn(){ return typeof OrdersStock!=='undefined' && OrdersStock.on
 function _wiIsPiece(f){ return typeof OrdersStock!=='undefined' && !!f && OrdersStock.isPiece(f); }
 function _wiIsLot(f){ return typeof OrdersStock!=='undefined' && !!f && OrdersStock.isLot(f); }
 function _wiRecOf(id){ return WINTL.data.exports.find(r=>r.id===id)||WINTL.data.imports.find(r=>r.id===id)||null; }
-// A lot that no truck of ours carries (a partner, or nobody yet): it goes to
-// the warehouse, so it is never matched, grouped or given the full menu.
-// (An own truck carrying a lot is Φ3 — then it behaves like any order.)
+// A lot goes to the warehouse ALONE, whoever carries it: never matched,
+// grouped, merged or given a rota leg, and only the lot menu (_wiLotCtx).
+// Round 1 (critic-3 Σ-05): this used to stop at «no truck of ours», so a lot
+// on our own truck (OWNER-Q2 default: allowed) got the full menu — and the
+// DB refuses its group/match (057 lot_grouped), after _wiGroupPatch had
+// already written the OTHER export into a one-member group.
 function _wiLotHeld(row){
-  if(!row||(row.orderIds||[]).length>1||row.truckId) return false;
+  if(!row||(row.orderIds||[]).length>1) return false;
   const rec=_wiRecOf(row.orderIds?.[0]||row.orderId);
   return !!rec&&_wiIsLot(rec.fields);
 }
 // Import rows that never wait for a match: every lot, and a piece that sits in
-// the warehouse (no truck, partner, export or group — the DB's «on_truck»).
+// the warehouse (no truck, no partner, no export pointing at it). D1 (round 1):
+// a Group ID is planning, not a vehicle — a truckless piece with a stale group
+// is loose like any other (critic-3 Σ-03/Σ-04, critic-5 S5-11).
 function _wiStockSkip(row){
   if(!row||row.type!=='import'||(row.orderIds||[]).length>1) return false;
   const rec=WINTL.data.imports.find(r=>r.id===row.orderId), f=rec&&rec.fields;
   if(!f) return false;
   if(_wiIsLot(f)) return true;
-  return _wiIsPiece(f)&&!row.truckId&&!row.partnerId&&!row.matchedTo&&!String(f['Group ID']||'').trim();
+  return _wiIsPiece(f)&&!row.truckId&&!row.partnerId&&!row.matchedTo;
+}
+// D1 (round 1, ONE definition): a piece is «on a truck» when it has a Truck or
+// a Partner — nothing else. OrdersStock.isLoose drops its Group ID test in the
+// same round (core builder); the fields go in WITHOUT the Group ID so this
+// line gives the D1 answer before and after that change lands. Once
+// orders-common.js has it, the override is a no-op — never a second rule.
+function _wiLoose(f){
+  return typeof OrdersStock!=='undefined'&&!!f&&OrdersStock.isLoose(Object.assign({},f,{'Group ID':null}));
 }
 // The import row that carries `oid` — found by ANY member, never only by the
 // row's lead: an export's Matched Import ID names one member, and the lead a
@@ -6080,7 +6093,7 @@ function _wiMatchableImp(r){
 function _wiShelved(row){
   if(!WINTL.data.stock||!row||row.type!=='import'||row.matchedTo||(row.orderIds||[]).length>1) return false;
   const rec=WINTL.data.imports.find(r=>r.id===row.orderId);
-  return !!rec&&typeof OrdersStock!=='undefined'&&OrdersStock.isLoose(rec.fields);
+  return !!rec&&_wiLoose(rec.fields);
 }
 // The top-bar Undo reverts ONE cached PATCH (core/api.js atPatch → _undoSet).
 // After a stock action — several writes that only make sense together (lock +
@@ -6392,14 +6405,18 @@ function _wiStockReturnLoneItem(impRow,expRowId){
     ? _wiCtxBtnDisabled('Επιστροφή στο απόθεμα','σε κίνηση — δεν επιστρέφει')
     : _wiCtxBtn('Επιστροφή στο απόθεμα',`_wiStockReturnLone(${expRowId})`,true));
 }
-// Pieces that can still join a truck: no group, not moving, and not the
-// matched import of any export this board knows (re-checked on the server
-// before any write, _wiStockLooseCheck).
+// Pieces that can still join a truck: not moving, and not the matched import
+// of any export this board knows (re-checked on the server before any write,
+// _wiStockLooseCheck). D1 (round 1): a stale Group ID does NOT keep a
+// truckless piece off a truck — the join overwrites it (critic-3 Σ-04: the
+// piece of a deleted lead was otherwise stuck for ever). A matched piece
+// stays out: joining it would leave its export pointing at a piece that rides
+// another truck.
 function _wiStockLooseFree(){
   const st=WINTL.data.stock; if(!st||st.status!=='ok') return [];
   return (st.loose||[]).filter(p=>{
     const f=p.fields||{};
-    if(String(f['Group ID']||'').trim()||WI_EXECUTING.includes(f['Status'])) return false;
+    if(WI_EXECUTING.includes(f['Status'])) return false;
     return !WINTL.data.exports.some(e=>e.fields['Matched Import ID']===p.id);
   });
 }
@@ -6492,9 +6509,9 @@ async function _wiStockJoin(rowId,pick){
   }finally{ _wiNoUndo(); }
 }
 // The piece must still be free on the SERVER (another dispatcher, another
-// tab): a piece, no truck/partner/group, not moving, not matched by any
-// export. A failed check refuses — joining twice would put one piece on two
-// trucks.
+// tab): a piece, no truck or partner (D1 — a group alone is not a truck),
+// not moving, not matched by any export. A failed check refuses — joining
+// twice would put one piece on two trucks.
 async function _wiStockLooseCheck(id){
   let rec=null, matched=null;
   try{ rec=await atGetOne(TABLES.ORDERS,id); }catch(e){ rec=null; }
@@ -6504,7 +6521,8 @@ async function _wiStockLooseCheck(id){
   else{
     if(!_wiIsPiece(f)) why.push('δεν είναι κομμάτι παρτίδας');
     if(getLinkedId(f['Truck'])||getLinkedId(f['Partner'])) why.push('έχει ήδη φορτηγό');
-    if(String(f['Group ID']||'').trim()) why.push('είναι ήδη σε ομάδα');
+    // D1: no «ήδη σε ομάδα» — a truckless piece's Group ID is overwritten by
+    // the join (Case A) or cleared before it (Case B, _wiStockJoinB).
     if(WI_EXECUTING.includes(f['Status'])) why.push('είναι σε κίνηση ή παραδόθηκε');
   }
   if(!Array.isArray(matched)) why.push('ο έλεγχος ταιριάσματος δεν διαβάστηκε');
@@ -6716,26 +6734,40 @@ async function _wiStockJoinB(row,pick){
   }
   const pc=pick.piece, pf=pc.fields||{};
   const cur=toLocalDate(pf['Loading DateTime']||'');
-  if(cur!==day){
+  // D1 (round 1): a truckless piece may still carry the Group ID of a group
+  // it left (a deleted lead, Σ-04). The match (_wiSaveImportMatch) copies the
+  // vehicle to the WHOLE GI group of the import, so that stale group would
+  // drag its other members onto this truck — it is cleared first (null,
+  // never '': see _wiGroupPatch).
+  const staleGid=String(pf['Group ID']||'').trim();
+  if(cur!==day||staleGid){
     // New loading day: the date chip's rule (_wk3IsoOnDay) and its downstream
     // sync. The delivery moves by the same days, so it never lands before
     // the loading.
-    const patch={'Loading DateTime':_wk3IsoOnDay(pf['Loading DateTime'],day)};
-    const dcur=toLocalDate(pf['Delivery DateTime']||'');
-    if(dcur&&cur){
-      const delta=Math.round((new Date(day+'T12:00:00')-new Date(cur+'T12:00:00'))/864e5);
-      patch['Delivery DateTime']=_wk3IsoOnDay(pf['Delivery DateTime'],_wk3AddDays(dcur,delta));
+    const patch={};
+    if(cur!==day){
+      patch['Loading DateTime']=_wk3IsoOnDay(pf['Loading DateTime'],day);
+      const dcur=toLocalDate(pf['Delivery DateTime']||'');
+      if(dcur&&cur){
+        const delta=Math.round((new Date(day+'T12:00:00')-new Date(cur+'T12:00:00'))/864e5);
+        patch['Delivery DateTime']=_wk3IsoOnDay(pf['Delivery DateTime'],_wk3AddDays(dcur,delta));
+      }
     }
-    _wiSync('wi-sync-'+row.id,'pend','Νέα ημέρα φόρτωσης κομματιού…');
+    if(staleGid) patch['Group ID']=null;
+    _wiSync('wi-sync-'+row.id,'pend',cur!==day?'Νέα ημέρα φόρτωσης κομματιού…':'Το κομμάτι βγαίνει από την παλιά ομάδα…');
     try{
       const res=await atSafePatch(TABLES.ORDERS,pc.id,patch);
       if(res?.conflict){ _wiSync('wi-sync-'+row.id,null); toast('Η εγγραφή άλλαξε από άλλον χρήστη — ανανέωση…','warn'); await renderWeeklyIntl(); return; }
       if(res?.error) throw new Error(res.error.message||res.error.type);
       const fresh=await atGetOne(TABLES.ORDERS,pc.id);
       if(toLocalDate(fresh?.fields?.['Loading DateTime']||'')!==day) throw new Error('η ανάγνωση πίσω δεν δείχνει τη νέα ημέρα');
+      if(String(fresh?.fields?.['Group ID']||'').trim()) throw new Error('η ανάγνωση πίσω δείχνει ακόμη την παλιά ομάδα');
     }catch(e){
-      const msg='Η ημέρα φόρτωσης του κομματιού ΔΕΝ άλλαξε — δεν ταιριάστηκε: '+String(e&&e.message||e);
-      _wiSync('wi-sync-'+row.id,'err',msg); reportError(msg,e); return;
+      // D2: a DB refusal is already on screen (core/api.js) — here only what
+      // did not happen.
+      const shown=!!(e&&(e._rule||e._noRetry));
+      const msg='Το κομμάτι ΔΕΝ ταιριάστηκε — '+(cur!==day?'η ημέρα φόρτωσης δεν άλλαξε':'η παλιά ομάδα δεν καθαρίστηκε')+(shown?'':': '+String(e&&e.message||e));
+      _wiSync('wi-sync-'+row.id,'err',shown?msg+' ('+String(e&&e.message||e)+')':msg); reportError(msg,e); return;
     }
     invalidateCache(TABLES.ORDERS);
     if(typeof syncOrderDownstream==='function') syncOrderDownstream(pc.id,{source:'intl',changedFields:Object.keys(patch),skipPA:true})
