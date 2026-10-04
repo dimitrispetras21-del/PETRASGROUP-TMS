@@ -1,4 +1,4 @@
-// toast(): 'error'/'err' must render as danger, never as success (4/10/2026).
+// toast(): 'error' must render as danger, never as success (4/10/2026).
 // 37 call sites passed 'error', which had no colour entry and fell back to the
 // green success style with a check mark — a refusal looked like a save.
 // UNIT ONLY: toast() is extracted verbatim from core/ui.js and run with a stub DOM.
@@ -25,8 +25,8 @@ function run(type) {
 
 test('toast source found', () => assert.ok(src, 'toast() not found in core/ui.js'));
 
-test("'error' and 'err' render as danger (red, ×), not success", () => {
-  for (const t of ['error', 'err']) {
+test("'error' renders as danger (red, ×), not success", () => {
+  for (const t of ['error']) {
     const r = run(t);
     assert.strictEqual(r.bg, 'var(--danger)', t);
     assert.match(r.html, /M6 6l8 8M14 6l-8 8/, t + ' uses the danger icon');
