@@ -101,3 +101,25 @@ export function validatePatch(body, before) {
   }
   return { patch, needsReason };
 }
+
+// 060 local relays (owner 4/10/2026). A local driver's day line
+// (dl_entries.local_move_id set) belongs to the system: dl_local_day_sync
+// creates, relabels, cancels or flags it from the relays of that (driver,
+// day). A hand edit of its day, route or RT, or a manual cancel/restore, would
+// make it disagree with the relays it stands for — two truths (αρχή 3).
+// Accounting fills the money (amounts; «Αξία 0» = not paid separately), the
+// note, and clears a review flag (needs_review:false + reason, which
+// validatePatch then checks as for any line). Allow-list, so a ledger field
+// added later starts closed on these lines (αρχή 5).
+// OWNER-Q2 answered 4/10 (both: salary = track record only, per_trip = daily
+// ΤΟΠΙΚΟ line): a salaried driver gets no such line; a line that was paid and
+// then lost its relays or its per-trip basis is flagged (needs_review) by the
+// DB, and its exit is «Αξία 0» + clearing the flag — never a silent cancel.
+export const LOCAL_LINE_EDITABLE = ['trip_value', 'advance', 'expenses', 'note', 'needs_review', 'reason'];
+export function localLineLockError(body, before) {
+  if (!before || before.local_move_id == null) return null;
+  if (!body || typeof body !== 'object') return null; // validatePatch names it
+  const locked = Object.keys(body).filter(k => !LOCAL_LINE_EDITABLE.includes(k));
+  if (!locked.length) return null;
+  return 'γραμμή τοπικών κινήσεων (' + locked.join(', ') + '): την κρατά το σύστημα — Αξία 0 αν δεν πληρώνεται χωριστά· αν η κίνηση δεν έγινε, σβήσ\' την από το Weekly';
+}

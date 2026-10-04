@@ -35,6 +35,7 @@ test('aggregateMonth: trips, pending, payments, adjustments per driver + last_pa
 
   assert.deepStrictEqual(out[46], {
     trips: 2,
+    local_days: 0,
     pending: 1,
     value: 850.50,
     expenses: 20.25,
@@ -46,6 +47,7 @@ test('aggregateMonth: trips, pending, payments, adjustments per driver + last_pa
 
   assert.deepStrictEqual(out[90], {
     trips: 1,
+    local_days: 0,
     pending: 0,
     value: 500,
     expenses: 10,
@@ -68,4 +70,28 @@ test('aggregateMonth: last_payment tie-break by id when same date', () => {
 test('aggregateMonth: empty input yields an empty object', () => {
   assert.deepStrictEqual(aggregateMonth([]), {});
   assert.deepStrictEqual(aggregateMonth(undefined), {});
+});
+
+// 060 local relays (owner 4/10/2026): «δρομολόγια N · τοπικά M» on the month
+// card. A local driver's day line is entry_type 'trip' with local_move_id set.
+test('aggregateMonth: local day lines count as local_days, not trips; their pay still counts', () => {
+  const rows = [
+    { id: 20, driver_id: 31, entry_type: 'trip', entry_date: '2026-10-05', trip_value: null, local_move_id: 7, pending: true, cancelled: false },
+    { id: 21, driver_id: 31, entry_type: 'trip', entry_date: '2026-10-06', trip_value: '0', expenses: '2', local_move_id: 9, pending: false, cancelled: false },
+    { id: 22, driver_id: 31, entry_type: 'trip', entry_date: '2026-10-01', trip_value: '1', local_move_id: null, rt_id: 5, pending: false, cancelled: false },
+    // a cancelled local line (system cancel: no relays left that day) does not count
+    { id: 23, driver_id: 31, entry_type: 'trip', entry_date: '2026-10-07', trip_value: null, local_move_id: 11, pending: false, cancelled: true }
+  ];
+  const d = aggregateMonth(rows)[31];
+  assert.strictEqual(d.trips, 1);
+  assert.strictEqual(d.local_days, 2);
+  assert.strictEqual(d.pending, 1, 'a local line without value awaits accounting like any line');
+  assert.strictEqual(d.value, 1);
+  assert.strictEqual(d.expenses, 2);
+});
+
+test('aggregateMonth: rows without the local_move_id column (pre-060 shape) count as trips', () => {
+  const d = aggregateMonth([{ id: 1, driver_id: 2, entry_type: 'trip', entry_date: '2026-10-01', trip_value: '1', cancelled: false }])[2];
+  assert.strictEqual(d.trips, 1);
+  assert.strictEqual(d.local_days, 0);
 });

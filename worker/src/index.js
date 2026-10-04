@@ -1,7 +1,7 @@
 // Browser Rendering (owner 25/8): bundled by wrangler from worker/node_modules —
 // run `npm install` in worker/ before deploying from a fresh clone.
 import puppeteer from "@cloudflare/puppeteer";
-import { validateNewEntry, validatePatch } from "./ledger-rules.mjs";
+import { validateNewEntry, validatePatch, localLineLockError } from "./ledger-rules.mjs";
 import { monthRange, aggregateMonth } from "./ledger-month.mjs";
 import { validateRtBody, planRtUpsert, canRemoveLeg } from "./rt-rules.mjs";
 import { validateLineBody, CT_PAY_SOURCES } from "./costs-line-rules.mjs";
@@ -253,7 +253,8 @@ async function dbInsert(env, table, row) {
     const err = new Error(`dbInsert ${table} ${res.status}: ${detail.slice(0, 200)}`);
     // The whole PostgREST error object (code/hint/message), parsed from the
     // FULL body: stockRuleError() needs the hint and the constraint name, and
-    // a long Greek message can push them past the 200-char cut above (057).
+    // a long Greek message (057) or a long `details` («Failing row contains …»,
+    // 060 local relays) can push them past the 200-char cut above.
     try { err.pg = JSON.parse(detail); } catch {}
     throw err;
   }
@@ -594,9 +595,14 @@ var PERMISSIONS = {
     // τις δημιουργεί, αναθέτει οδηγό και τις σβήνει από την ίδια οθόνη —
     // ίδιο δικαίωμα με τα national_loads που στέκουν δίπλα τους. DELETE =
     // soft-delete του facade.
+    // 060 (owner 4/10/2026): ο ίδιος πίνακας κρατά και την «τοπική παράδοση /
+    // φόρτωση» διεθνούς παραγγελίας (Move Kind relay_*), που ο dispatcher
+    // γράφει από το Weekly Διεθνών και το Ημερήσιο — ίδιο δικαίωμα, καμία
+    // νέα γραμμή. Τη μισθοδοσία του τοπικού τη γράφει μόνο trigger της βάσης
+    // (SECURITY DEFINER)· ο dispatcher δεν έχει /costs/ledger (COSTS_PERMS).
     // Οι υπόλοιποι ρόλοι: owner/management/accountant καλύπτονται από το δικό
-    // τους `"*"`, το warehouse ΔΕΝ έχει wildcard και μένει σκόπιμα έξω — ο
-    // σχεδιασμός της εβδομάδας δεν είναι δουλειά της αποθήκης.
+    // τους `"*"` (ανάγνωση για management/accountant)· το warehouse έχει από
+    // 060 δική του γραμμή μόνο-ανάγνωσης (βλ. το block του).
     local_moves: ["GET", "POST", "PATCH", "DELETE"],
     // planning:'full' -> dispatchers own the ramp board (daily_ramp.js). DELETE
     // is the facade soft-delete. Auto-sync creates ramp rows on board render
@@ -665,7 +671,13 @@ var PERMISSIONS = {
     // ORDER DOCUMENTS (28/9/2026): warehouse reads orders (line 1 above), so
     // it gets the same read access to their scanned documents. No wildcard
     // here either, so without this row it would be a silent 403.
-    order_documents: ["GET"]
+    order_documents: ["GET"],
+    // LOCAL MOVES (060, owner 4/10/2026): Daily Ops — which warehouse sees —
+    // shows which local driver comes for an import delivery or an export
+    // loading. Read-only, and the table carries no money (pay lives only in
+    // dl_entries, behind COSTS_PERMS where warehouse has nothing). No
+    // wildcard here, so this row opens exactly this one table.
+    local_moves: ["GET"]
   }
 };
 function can(role, table, method) {
@@ -950,8 +962,20 @@ var TABLES = {
       Type: "type",
       "License Number": "license_number",
       "License Expiry": "license_expiry",
-      Active: "active"
-    }
+      Active: "active",
+      // 060, OWNER-Q2 answered 4/10 (both: salary = track record only,
+      // per_trip = daily ΤΟΠΙΚΟ line): 'salary' | 'per_trip' | null (unknown).
+      // A column of its own, NOT `Type` above: drivers.type holds
+      // Internal/External (a different fact, αρχή 3). Changing it re-syncs the
+      // driver's local-relay payroll lines in the DB (060 trigger), so it is
+      // written only by the roles that write drivers (owner/management/
+      // accountant — dispatcher has drivers: GET).
+      "Pay Basis": "pay_basis"
+    },
+    // Pay data, same readers as P&L (PL_READERS / cfgForRole): «Dispatcher
+    // must never see payroll» (owner) — dispatcher and warehouse get the
+    // driver without this label, cannot filter on it, cannot write it.
+    plOnly: ["Pay Basis"]
   },
   tblEAPExIAjiA3asD: {
     name: "TRUCKS",
@@ -1814,6 +1838,22 @@ var TABLES = {
   //
   // Τα ονόματα πεδίων είναι ΑΚΡΙΒΩΣ όσα στέλνει το weekly_natl.js
   // (_wnSaveLocal / _wnSaveCover / φίλτρο {Date} του _wnLoadAll).
+  //
+  // 060 (owner 4/10/2026, «οκ προχωρα με τις τοπικες παραδοσεις»): ο ίδιος
+  // πίνακας κρατά και την τοπική παράδοση/φόρτωση διεθνούς παραγγελίας —
+  // «Move Kind» = 'local' (θέλημα / Weekly National, όπως σήμερα) |
+  // 'relay_delivery' | 'relay_loading' (με «Parent Order»). Οι κανόνες
+  // (κατεύθυνση, VS, pre-order, σπασμένος γονέας, «όχι ο ίδιος ο διεθνής»,
+  // ρυμούλκα, μέρα = μέρα της παραγγελίας) ζουν ΜΟΝΟ στη βάση (060)· οι
+  // αρνήσεις της γυρίζουν ως ελληνικά 422 μέσω stockRuleError(). Date και
+  // Status των relays τα παράγει η βάση — η οθόνη δεν τα στέλνει.
+  // Ιστορικό οδηγού (track record, OWNER-Q2 answered 4/10): οι γραμμές αυτού
+  // του πίνακα ΕΙΝΑΙ το ιστορικό — μία πηγή. Ανάγνωση ανά οδηγό:
+  //   filterByFormula = FIND("<driver rec>", ARRAYJOIN({Driver}, ","))>0
+  //   sort[0][field]=Date, sort[0][direction]=desc
+  // (δουλεύει επειδή υπάρχει το links block: preResolveLinkTerms → driver_id).
+  // ΠΡΟΫΠΟΘΕΣΗ DEPLOY: το 060 πρέπει να έχει τρέξει ΠΡΩΤΑ — χωρίς τη στήλη
+  // move_kind κάθε εγγραφή ή fields[] με «Move Kind» σκάει στην PostgREST.
   // ══════════════════════════════════════════════════════════════════════════
   local_moves: {
     name: "LOCAL MOVES",
@@ -1826,7 +1866,11 @@ var TABLES = {
       "Time From": "time_from",
       "Time To": "time_to",
       Status: "status",
-      Notes: "notes"
+      Notes: "notes",
+      // 060: written on POST only — the DB refuses a later change of kind or
+      // parent (delete and re-add). Always present on read (NOT NULL DEFAULT
+      // 'local'), so Weekly National can keep only its own 'local' rows.
+      "Move Kind": "move_kind"
     },
     links: {
       Driver: { column: "driver_id", table: "drivers" },
@@ -2018,6 +2062,8 @@ __name(tableConfig, "tableConfig");
 // Allow-list, not deny-list (principle 5): a new role starts WITHOUT P&L.
 // The list mirrors the front end's costs != 'none' (config.js PERMS) — the
 // same gate orders_week_view.js uses to hide «Client Revenue».
+// Since 060 (4/10/2026) the same gate carries DRIVERS «Pay Basis»: pay data
+// is read by exactly the roles that read the payroll (/costs/ledger).
 var PL_READERS = ["owner", "management", "accountant"];
 function cfgForRole(cfg, role) {
   if (!cfg || !cfg.plOnly || PL_READERS.includes(role)) return cfg;
@@ -3063,32 +3109,110 @@ const STOCK_CHECK_TEXT = {
   stock_lots_one_source: "Η παρτίδα δείχνει σε ακριβώς μία παραγγελία",
   stock_lots_close_shape: "Το κλείσιμο υπολοίπου θέλει αιτιολογία"
 };
+// LOCAL RELAYS (migration 060, owner 4/10/2026): DB refusals → Greek 422.
+// The relay rules live ONLY in the base (060 CHECKs + local_moves_before
+// trigger, αρχή 4), so every path that writes local_moves meets them. Without
+// this mapping a refused save came back as a 500 — the single PATCH even
+// drops the reason («Failed to update record») — the front retried it three
+// times and the dispatcher never learnt why (αρχή 1).
+// ONE mapper for every DB-rule family: stockRuleError() below serves 057's
+// 'stock:' family above AND this 'local_relay:' family, and every write path
+// calls it in one line — never a second mapper beside it (αρχή 3). It keeps
+// the stock-lots name: 057's Worker deploys first (coordinator, 4/10/2026).
+// Recognised ONLY by machine-readable markers, never by message wording:
+//   - trigger refusals: hint «local_relay:<code>» (060 raises them with
+//     SQLSTATE 23514 and an ASCII message for the logs). The Greek text per
+//     code lives here; a code this map does not know still answers 422 and
+//     names the code — loud, never the silent 500 path;
+//   - row CHECKs cannot carry a hint: matched by constraint name. Texts only —
+//     the rule is the CHECK, so editing a text never changes what is allowed.
+//     Any other local_moves_* CHECK still answers 422 with its name;
+//   - the one-live-relay-per-order unique index (23505).
+// Anything else → null, i.e. today's 500 path, unchanged — including
+// dl_local_day_live (23505 on the payroll line): 060 serialises those writers
+// with an advisory lock, and if one ever slips through, the front's 5xx retry
+// is exactly the cure.
+const RELAY_RULE_TEXT = {
+  immutable: "Το είδος και η παραγγελία μιας τοπικής κίνησης δεν αλλάζουν — σβήσ' την και ξαναβάλ' την",
+  order_gone: "Η παραγγελία είναι σβησμένη ή ακυρωμένη — δεν μπαίνει τοπικός οδηγός",
+  veroia_switch: "Η παραγγελία περνά από Veroia Switch (cross-dock) — εκεί δεν μπαίνει τοπικός οδηγός",
+  direction: "Τοπική παράδοση μόνο σε εισαγωγή, τοπική φόρτωση μόνο σε εξαγωγή",
+  split_parent: "Η παραγγελία είναι σπασμένη σε σκέλη — βάλε τον τοπικό οδηγό στο σκέλος",
+  pre_order: "Η παραγγελία είναι pre-order — μετάτρεψέ την πρώτα σε κανονική παραγγελία",
+  same_driver: "Ο τοπικός οδηγός είναι ο ίδιος ο οδηγός της παραγγελίας — διάλεξε άλλον",
+  no_order_date: "Η παραγγελία δεν έχει ημερομηνία παράδοσης/φόρτωσης — συμπλήρωσέ την πρώτα",
+  partner: "Συνεργάτης δεν μπαίνει σε τοπική παράδοση/φόρτωση — μόνο δικός μας οδηγός",
+  no_trailer: "Με τοπικό οδηγό γράφεται πάντα και η ρυμούλκα"
+};
+const RELAY_CHECK_TEXT = {
+  local_moves_kind_chk: "Άγνωστο είδος τοπικής κίνησης",
+  local_moves_kind_parent: "Η τοπική παράδοση/φόρτωση δένεται σε μία διεθνή παραγγελία",
+  local_moves_relay_points: "Τοπική παράδοση: μόνο «Από» (πού παραλαμβάνει ο τοπικός)· τοπική φόρτωση: μόνο «Προς» (πού παραδίδει στον διεθνή)",
+  local_moves_status_chk: "Μη αποδεκτή κατάσταση τοπικής κίνησης — το «έγινε» το λέει η παραγγελία",
+  local_moves_executor: RELAY_RULE_TEXT.partner,
+  local_moves_relay_trailer: RELAY_RULE_TEXT.no_trailer,
+  local_moves_one_parent: "Η τοπική κίνηση δένεται σε παραγγελία ή σε εθνικό φορτίο, όχι και στα δύο",
+  local_moves_time_from_fmt: "Ώρα σε μορφή ΩΩ:ΛΛ (π.χ. 07:00)",
+  local_moves_time_to_fmt: "Ώρα σε μορφή ΩΩ:ΛΛ (π.χ. 07:00)"
+};
 function stockRuleError(e) {
   const pg = e && e.pg;
   if (!pg || typeof pg !== "object") return null;
   const code = String(pg.code || "");
   const message = String(pg.message || "");
+  const hint = typeof pg.hint === "string" ? pg.hint : "";
+  // 'local_relay:' (060): the hint is the marker, whatever SQLSTATE carried
+  // it — a relay refusal must never fall back to the 500 path because of a
+  // different errcode.
+  if (hint.startsWith("local_relay:")) {
+    const rc = hint.slice("local_relay:".length).trim();
+    return {
+      type: "LOCAL_RELAY_RULE",
+      code: rc,
+      message: Object.prototype.hasOwnProperty.call(RELAY_RULE_TEXT, rc) ? RELAY_RULE_TEXT[rc] : `Η τοπική κίνηση δεν αποθηκεύτηκε (${rc || "χωρίς κωδικό"}): ${message}`
+    };
+  }
   if (code === "23514") {
-    const hint = typeof pg.hint === "string" ? pg.hint : "";
+    // 'stock:' (057) only under 23514, as 057's stock_raise sends it — a
+    // stock hint under another SQLSTATE keeps the 500 path (pinned in
+    // stock-lots.test.mjs). Stock rules carry no `type`: stockRuleResponse
+    // answers them as STOCK_RULE.
     if (hint.startsWith("stock:")) return { code: hint.slice(6), message };
     const m = /check constraint "([^"]+)"/.exec(message);
-    if (m && Object.prototype.hasOwnProperty.call(STOCK_CHECK_TEXT, m[1])) {
+    if (!m) return null;
+    if (Object.prototype.hasOwnProperty.call(STOCK_CHECK_TEXT, m[1])) {
       return { code: m[1], message: STOCK_CHECK_TEXT[m[1]] };
+    }
+    if (Object.prototype.hasOwnProperty.call(RELAY_CHECK_TEXT, m[1])) return { type: "LOCAL_RELAY_RULE", code: m[1], message: RELAY_CHECK_TEXT[m[1]] };
+    if (m[1].startsWith("local_moves_")) {
+      return { type: "LOCAL_RELAY_RULE", code: m[1], message: `Η τοπική κίνηση δεν αποθηκεύτηκε: κανόνας ${m[1]}` };
+    }
+    // drivers.pay_basis (060, OWNER-Q2 answered 4/10): the form offers only
+    // the allowed values; this is for any other writer.
+    if (m[1].startsWith("drivers_pay_basis")) {
+      return { type: "LOCAL_RELAY_RULE", code: m[1], message: "Τύπος αμοιβής: Μισθωτός, Ανά δρομολόγιο ή κενό (άγνωστο)" };
     }
     return null;
   }
   if (code === "23505" && /stock_lots_(order|nat)_live/.test(message)) {
     return { code: "lot_exists", message: "Η παραγγελία είναι ήδη παρτίδα" };
   }
+  if (code === "23505" && /local_moves_relay_once/.test(message)) {
+    return { type: "LOCAL_RELAY_RULE", code: "relay_exists", message: "Η παραγγελία έχει ήδη τοπική παράδοση ή φόρτωση — άνοιξε την υπάρχουσα" };
+  }
   return null;
 }
 __name(stockRuleError, "stockRuleError");
 // 422, not 400/500: the request was well-formed and the server is fine — the
-// business rule said no. `error.message` is what the front's _atRetry toasts
-// (object or string), so no front change is needed; `code` lets a screen
-// react to a specific rule (e.g. over_draw) without parsing Greek text.
+// business rule said no, and the same request will be refused every time, so
+// the front's _atRetry must not retry it (it retries 5xx only).
+// `error.message` is what _atRetry toasts (object or string), so no front
+// change is needed for the text; `code` lets a screen react to one rule
+// (e.g. over_draw, same_driver) without parsing Greek; `type` names the
+// family — STOCK_RULE (057, whose rules carry no type of their own) or
+// LOCAL_RELAY_RULE (060).
 function stockRuleResponse(rule, origin, env) {
-  return jsonOk({ error: { type: "STOCK_RULE", code: rule.code, message: rule.message } }, origin, env, 422);
+  return jsonOk({ error: { type: rule.type || "STOCK_RULE", code: rule.code, message: rule.message } }, origin, env, 422);
 }
 __name(stockRuleResponse, "stockRuleResponse");
 async function handleFacadeUpdate(request, tableId, recId, origin, env, ctx) {
@@ -3287,10 +3411,13 @@ async function ctDbPatch(env, table, filter, patch) {
   if (!res.ok) {
     const detail = await res.text().catch(() => "");
     const err = new Error(`ctDbPatch ${table} ${res.status}: ${detail.slice(0, 200)}`);
-    // Same as dbUpdate: keep the parsed PostgREST error so a 057 refusal on a
-    // costs path (PATCH /costs/stock-lots → stock_guard_lots) reaches
-    // stockRuleError() as the Greek 422 instead of a generic 500. Callers
-    // that never look at e.pg are unaffected.
+    // ONE capture of the parsed PostgREST error (as dbUpdate/dbInsert do) for
+    // every costs PATCH that maps a DB refusal: PATCH /costs/stock-lots (057
+    // stock_guard_lots → stockRuleError() → Greek 422 instead of a generic
+    // 500) and the ledger PATCH (060: tells the dl_local_day_live conflict
+    // apart from dl_rt_live by constraint name, which a long `details` can
+    // push past the 200-char cut above). Callers that never look at e.pg are
+    // unaffected.
     try { err.pg = JSON.parse(detail); } catch {}
     throw err;
   }
@@ -3827,7 +3954,10 @@ async function handleCosts(request, url, origin, env) {
       // name is joined in the browser from the balances it already holds.
       if (url.searchParams.get("pending") === "1") {
         const params = new URLSearchParams({
-          select: "id,driver_id,entry_date,date_end,rt_id,rt_code,route_text,route_legs,advance,expenses",
+          // local_move_id + relay_info (060): a local driver's day line sits
+          // in this queue too (no value yet); the screen labels it ΤΟΠΙΚΟ and
+          // offers no RT link instead of showing it as an RT-less trip.
+          select: "id,driver_id,entry_date,date_end,rt_id,rt_code,route_text,route_legs,advance,expenses,local_move_id,relay_info",
           pending: "eq.true",
           order: "entry_date.desc,id.desc",
           limit: "2000"
@@ -3849,7 +3979,10 @@ async function handleCosts(request, url, origin, env) {
       const monthQuery = monthRangeResult
         ? (() => {
             const params = new URLSearchParams({
-              select: "id,driver_id,entry_type,entry_date,trip_value,advance,expenses,amount,pending,cancelled",
+              // local_move_id (060): aggregateMonth counts a local driver's
+              // day lines as local_days, apart from trips. ΠΡΟΫΠΟΘΕΣΗ DEPLOY:
+              // 060 ran first — without the view column this whole call 400s.
+              select: "id,driver_id,entry_type,entry_date,trip_value,advance,expenses,amount,pending,cancelled,local_move_id",
               limit: "5000"
             });
             params.append("entry_date", `gte.${monthRangeResult.from}`);
@@ -3914,6 +4047,10 @@ async function handleCosts(request, url, origin, env) {
       const body = await request.json().catch(() => null);
       const before = await dbSelectRaw(env, "dl_entries", new URLSearchParams({ id: `eq.${recId}`, select: "*" }));
       if (!before.rows.length) return jsonError("Not found", 404, origin, env);
+      // 060: a local driver's day line is the system's (ledger-rules.mjs) —
+      // checked before cancel/restore/validatePatch so none of them can move it.
+      const localLock = localLineLockError(body, before.rows[0]);
+      if (localLock) return jsonError(localLock, 400, origin, env);
       if (before.rows[0].deleted_at && !(body && body.restore)) return jsonError("entry is cancelled", 409, origin, env);
       let patch;
       if (body && body.restore) {
@@ -3948,6 +4085,15 @@ async function handleCosts(request, url, origin, env) {
         // same dl_rt_live unique index or FK as the create path (index.js:2941), but
         // had no catch here — it fell through to handleCosts' generic 500 instead
         // of the 409/400 the equivalent POST conflict already gets (verify-worker §4).
+        // 060 first: dl_local_day_live is ALSO a 23505, and the RT test below
+        // would answer it with a false «round trip» message. Read from the
+        // parsed PostgREST message (ctDbPatch keeps it as e.pg): the 200-char
+        // cut of e.message can lose the constraint name. Unreachable while
+        // localLineLockError holds (day, restore and RT of a local line are
+        // refused above) — kept so a regression there is named, not mislabelled.
+        const pgMsg = String((e.pg && e.pg.message) || "") + " " + e.message;
+        if (/dl_local_day_live/.test(pgMsg)) return jsonError("Ο τοπικός έχει ήδη ζωντανή γραμμή τοπικών κινήσεων αυτή τη μέρα (dl_local_day_live)", 409, origin, env);
+        if (/dl_one_origin|dl_lm_is_trip/.test(pgMsg)) return jsonError("Η γραμμή τοπικών κινήσεων δεν δένεται σε RT και μένει τύπου «δρομολόγιο» (" + (/dl_one_origin/.test(pgMsg) ? "dl_one_origin" : "dl_lm_is_trip") + ")", 400, origin, env);
         if (/23505|dl_rt_live/.test(e.message)) return jsonError("rt_id: this round trip already has a ledger line", 409, origin, env);
         if (/23503/.test(e.message)) return jsonError("rt_id: unknown round trip", 400, origin, env);
         if (/dl_cash_lock/.test(e.message)) return jsonError("expenses: Μετρητά Μ = γραμμές μετρητών του δρομολογίου — καταχώρησε ή διόρθωσε τη γραμμή στα Έξοδα Δρομολογίων (dl_cash_lock)", 400, origin, env);

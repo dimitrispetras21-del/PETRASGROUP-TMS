@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert';
-import { validateNewEntry, validatePatch } from '../src/ledger-rules.mjs';
+import { validateNewEntry, validatePatch, localLineLockError, DL_FIELDS } from '../src/ledger-rules.mjs';
 
 test('trip: value/advance/expenses optional (pending), amount forbidden', () => {
   const r = validateNewEntry({ driver_id: 46, entry_type: 'trip', entry_date: '2026-08-10', date_end: '2026-08-17', route: 'ΒΕΡΟΙΑ-ΠΟΛΩΝΙΑ-ΒΕΡΟΙΑ' });
@@ -86,4 +86,37 @@ test('adjustment creation: negative amount allowed, zero rejected', () => {
     validateNewEntry({ driver_id: 46, entry_type: 'adjustment', entry_date: '2026-08-10', amount: -25.5 }),
     { row: { driver_id: 46, entry_type: 'adjustment', entry_date: '2026-08-10', amount: -25.5, source: 'manual' } });
   assert.match(validateNewEntry({ driver_id: 46, entry_type: 'adjustment', entry_date: '2026-08-10', amount: 0 }).error, /amount/);
+});
+
+// 060 local relays (owner 4/10/2026): the local driver's day line belongs to
+// the system — money, note and review flag only.
+const localLine = { id: 50, entry_type: 'trip', local_move_id: 7, rt_id: null, entry_date: '2026-10-05', trip_value: null, deleted_at: null };
+test('local line: cancel, restore, day, route, RT are refused and named', () => {
+  for (const body of [
+    { cancel: true, reason: 'x' }, { restore: true, reason: 'x' }, { entry_date: '2026-10-06' },
+    { date_end: '2026-10-06' }, { route: 'κάτι' }, { rt_id: 5 }, { trip_value: 1, rt_id: 5 }
+  ]) {
+    const err = localLineLockError(body, localLine);
+    assert.ok(err, JSON.stringify(body) + ' must be refused');
+    assert.match(err, /την κρατά το σύστημα/);
+    for (const k of Object.keys(body).filter(k => !['trip_value', 'reason'].includes(k))) assert.ok(err.includes(k), k + ' named');
+  }
+});
+test('local line: amounts («Αξία 0»), note and clearing review pass this guard', () => {
+  for (const body of [
+    { trip_value: 0 }, { trip_value: 1, reason: 'διόρθωση' }, { advance: 1 }, { expenses: 1 },
+    { note: 'πλήρωσε διόδια' }, { needs_review: false, reason: 'ελέγχθηκε' }
+  ]) assert.strictEqual(localLineLockError(body, localLine), null, JSON.stringify(body));
+  // and validatePatch still applies its own rules after the guard
+  assert.ok(validatePatch({ trip_value: 0 }, localLine).patch);
+});
+test('ordinary lines are not touched by the local-line guard', () => {
+  const rtLine = { id: 51, entry_type: 'trip', local_move_id: null, rt_id: 9 };
+  assert.strictEqual(localLineLockError({ cancel: true, reason: 'x' }, rtLine), null);
+  assert.strictEqual(localLineLockError({ rt_id: 3 }, { id: 52, entry_type: 'trip', rt_id: null }), null);
+});
+test('local_move_id is never writable through /costs/ledger (DL_FIELDS unchanged)', () => {
+  assert.ok(!DL_FIELDS.includes('local_move_id'));
+  assert.match(validateNewEntry({ driver_id: 1, entry_type: 'trip', entry_date: '2026-10-05', route: 'x', local_move_id: 3 }).error, /local_move_id/);
+  assert.match(validatePatch({ local_move_id: 3 }, { entry_type: 'trip' }).error, /local_move_id/);
 });
