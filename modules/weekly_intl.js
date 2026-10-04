@@ -6457,8 +6457,9 @@ function _wiStockPick(kind,i){
 //     becomes the LAST member of that group. The group's order is pinned first
 //     (a suffix of the existing members — the piece is never written into it,
 //     so pos 99 keeps it last in _wiGiSortRecs, _wiGrpOrder and rt-feed's
-//     _rtLegSeq, and the lead never changes); then ONE create (new piece) or
-//     ONE patch (loose piece) carrying that exact Group ID and the lead's truck.
+//     _rtLegSeq, and the lead never changes); then ONE patch carrying that
+//     exact Group ID and the lead's vehicle — a new piece is first created
+//     bare by the form and joined after a fresh read of the lead (Σ-01).
 //   Case B — export without an import: the piece becomes its import through
 //     the ordinary match (_wiSaveImportMatch, unchanged).
 // Any failed step stops the next one and leaves a red ⚠ on the row.
@@ -6551,6 +6552,17 @@ async function _wiStockLockLead(row,seedId){
     toast('Η εισαγωγή του φορτηγού είναι σε κίνηση — όχι νέο κομμάτι· δεν γράφτηκε τίποτα','warn');
     return null;
   }
+  // Σ-07c / Σ-01 (critic-3, round 1): the piece takes the LEAD's vehicle, as
+  // the server has it. A lead with no truck gave a piece with a Group ID and
+  // no vehicle — and a green «μπήκε στο φορτηγό»; a lead on another truck than
+  // the row shows would put the piece on a truck nobody chose. Both refused
+  // here, before any write.
+  const why=_wiStockLeadBad(recs[0],row.truckId);
+  if(why){
+    _wiSync('wi-sync-'+row.id,null);
+    toast(why+' — δεν γράφτηκε τίποτα','warn');
+    return null;
+  }
   if(!gid0.includes('|')){
     if(recs.length===1){
       // B-04 (impact map 4/10): the lone lead's «GI-…|lead» is NOT written
@@ -6576,17 +6588,46 @@ async function _wiStockLockLead(row,seedId){
   const lead=recs[0];
   return {leadId:lead.id,groupId:String(lead.fields['Group ID']||''),lead};
 }
+// Why the truck's import lead cannot take a piece NOW ('' = it can): no
+// truck, another truck than the one expected, or already moving.
+function _wiStockLeadBad(lead,truck){
+  const lf=(lead&&lead.fields)||{}, t=getLinkedId(lf['Truck'])||'';
+  if(!t) return 'Η εισαγωγή του φορτηγού δεν έχει φορτηγό στη βάση — πρώτα ανάθεση';
+  if(truck&&t!==truck) return 'Το φορτηγό της εισαγωγής άλλαξε στο μεταξύ';
+  if(WI_EXECUTING.includes(lf['Status'])) return 'Η εισαγωγή του φορτηγού είναι σε κίνηση — όχι νέο κομμάτι';
+  return '';
+}
+const _wiReadOrder=async id=>{ try{ return await atGetOne(TABLES.ORDERS,id); }catch(e){ return null; } };
+// D2 (round 1): a DB refusal (4xx) is already on screen ONCE, from core/api.js
+// _atRetry. A caller adds only the CONTEXT — what did and did not happen —
+// never the same sentence again (critic-1 C1-06, critic-5 S5-06).
+const _wiShown=e=>!!(e&&(e._rule||e._noRetry));
 // The deferred lone-lead lock (B-04), written only once the piece exists.
 // '' = written and read back; otherwise why not, in Greek.
 async function _wiStockLockWrite(leadId,gid){
   let res=null;
-  try{ res=await atSafePatch(TABLES.ORDERS,leadId,{'Group ID':gid}); }catch(e){ return String((e&&e.message)||e); }
+  try{ res=await atSafePatch(TABLES.ORDERS,leadId,{'Group ID':gid}); }
+  catch(e){ return _wiShown(e)?'η βάση το αρνήθηκε':String((e&&e.message)||e); }
   if(!res) return 'καμία απάντηση';
   if(res.conflict) return 'η εισαγωγή άλλαξε από άλλον χρήστη';
   if(res.error) return String(res.error.message||res.error.type||'σφάλμα');
   if(String(res.fields?.['Group ID']||'')!==gid) return 'δεν επιβεβαιώθηκε στην ανάγνωση';
   const c=WINTL.data.imports.find(x=>x.id===leadId); if(c) c.fields['Group ID']=gid;
   return '';
+}
+// Σ-07b (critic-3, round 1): a lock whose ANSWER was lost may have landed —
+// the lead then sat in a one-member group nobody took back. The server is
+// read and what it SAYS decides: landed = go on; not landed = why; unreadable
+// = say that too.
+async function _wiStockLockSure(leadId,gid){
+  const why=await _wiStockLockWrite(leadId,gid);
+  if(!why) return '';
+  const r=await _wiReadOrder(leadId);
+  if(r&&String(r.fields?.['Group ID']||'')===gid){
+    const c=WINTL.data.imports.find(x=>x.id===leadId); if(c) c.fields['Group ID']=gid;
+    return '';
+  }
+  return r?why:why+' — και η εισαγωγή δεν διαβάστηκε: έλεγξέ την';
 }
 // A lock whose piece then did NOT get on the truck is taken back, so the lead
 // ends as it was (B-04) — only while the lead is still alone in that group (a
@@ -6602,6 +6643,24 @@ async function _wiStockLockUndo(leadId,gid){
   }catch(e){ return false; }
 }
 const _wiLockUndoNote=(back,gid)=>back?' — η εισαγωγή του φορτηγού έμεινε όπως ήταν':` — ΠΡΟΣΟΧΗ: η εισαγωγή του φορτηγού κράτησε την ομάδα ${gid}· έλεγξέ την`;
+// The ONE join write of a piece already in the base: Group ID + the lead's
+// vehicle (B-04 order: after the lead's lock). Σ-07a (critic-3, round 1): when
+// the write fails, the piece is READ — a lost answer of a write that landed is
+// a piece ON the truck, never «ΧΩΡΙΣ φορτηγό».
+//   {ok:true} on the truck (read back) · {ok:false,found:'…'|null,err} not
+//   (found = what the read shows; null = the read failed too).
+async function _wiStockJoinWrite(pieceId,patch,ctx){
+  let err=null, res=null;
+  try{
+    res=await atSafePatch(TABLES.ORDERS,pieceId,patch);
+    if(res?.conflict) err=new Error('η εγγραφή άλλαξε από άλλον χρήστη');
+    else if(res?.error) err=new Error(res.error.message||res.error.type);
+  }catch(e){ err=e; }
+  const r=await _wiReadOrder(pieceId);
+  const bad=r?_wiStockVerify(r,ctx):null;
+  if(bad==='') return {ok:true,lost:!!err};
+  return {ok:false,found:bad,err:err||new Error(bad||'η ανάγνωση πίσω απέτυχε'),conflict:!!res?.conflict};
+}
 async function _wiStockJoinA(row,seedId,pick){
   const lock=await _wiStockLockLead(row,seedId);
   if(!lock) return;
@@ -6612,32 +6671,32 @@ async function _wiStockJoinA(row,seedId,pick){
     groupId:lock.groupId,truck,trailer,driver,lockLead:!!lock.lockLead,at:Date.now()};
   if(pick.lot){
     ctx.lotRec=pick.lot.id;
-    const presets={loadingDate:loadIso||undefined,deliveryDate:delIso||undefined,lockLoadingDate:!!loadIso,context:ctx};
-    // Lone lead (B-04): the form creates the piece WITHOUT group and vehicle;
-    // _wiOnPieceSaved then locks the lead and puts the piece on the truck. A
+    // Σ-01 (critic-3, round 1): the form creates the piece WITHOUT group and
+    // vehicle — for a lone lead (B-04) AND a group. The vehicle read when the
+    // form opened can be minutes old by the save (06:00, four dispatchers): a
+    // new driver of the lead was written back over the whole round trip and
+    // its payroll line, a new truck opened a phantom round trip. A
+    // re-read right before the POST would need a hook in the form
+    // (orders_intl.js); instead the POST carries no vehicle and
+    // _wiOnPieceSaved joins it with ONE patch whose vehicle comes from a
+    // fresh read of the lead — or leaves it on the shelf and says why. A
     // cancelled form or a refused POST therefore writes nothing at all.
-    if(!lock.lockLead){
-      presets.groupId=lock.groupId;
-      if(truck){ presets.truck=truck; presets.status='Assigned'; }
-      if(trailer) presets.trailer=trailer;
-      if(driver) presets.driver=driver;
-    }
-    _wiStockOpenForm(pick.lot,presets);
+    _wiStockOpenForm(pick.lot,{loadingDate:loadIso||undefined,deliveryDate:delIso||undefined,lockLoadingDate:!!loadIso,context:ctx});
     return;
   }
   const pc=pick.piece, pf=pc.fields||{};
   ctx.lotRec=OrdersStock.lotRecOfPiece(pf);
   const day=toLocalDate(loadIso||''), dday=toLocalDate(delIso||'');
   if(!day){ _wiSync('wi-sync-'+row.id,'err','Η εισαγωγή του φορτηγού δεν έχει ημέρα φόρτωσης — το κομμάτι δεν μπήκε'); return; }
-  let patch={'Group ID':lock.groupId,'Truck':truck?[truck]:[],'Trailer':trailer?[trailer]:[],'Driver':driver?[driver]:[],
-    'Loading DateTime':_wk3IsoOnDay(pf['Loading DateTime'],day)};
+  // D1: 'Group ID' overwrites whatever group a truckless piece still carried.
+  let patch={'Group ID':lock.groupId,'Truck':[truck],'Trailer':trailer?[trailer]:[],'Driver':driver?[driver]:[],
+    'Loading DateTime':_wk3IsoOnDay(pf['Loading DateTime'],day),'Status':'Assigned'};
   if(dday) patch['Delivery DateTime']=_wk3IsoOnDay(pf['Delivery DateTime'],dday);
-  if(truck) patch['Status']='Assigned';
   patch=await _wiPlanPatch(pc.id,patch);
   // Lone lead (B-04): lock it first (the trigger walks piece → lead's Group ID
   // → export's round trip); a refused join below takes the lock back.
   if(lock.lockLead){
-    const why=await _wiStockLockWrite(lock.leadId,lock.groupId);
+    const why=await _wiStockLockSure(lock.leadId,lock.groupId);
     if(why){
       const msg='Η σειρά της εισαγωγής ΔΕΝ γράφτηκε ('+why+') — το κομμάτι δεν μπήκε, δεν γράφτηκε τίποτα';
       _wiSync('wi-sync-'+row.id,'err',msg); reportError(msg,null); return;
@@ -6687,34 +6746,34 @@ async function _wiStockJoinB(row,pick){
 }
 // Server truth after a join: the piece points at its lot and, in Case A,
 // carries the group's EXACT Group ID and the lead's truck. Returns what is
-// wrong ('' = all right).
+// wrong ('' = all right). Σ-07c (round 1): a Case A join without a truck is
+// never «all right» — it was the green toast of a piece with no vehicle.
 function _wiStockVerify(rec,ctx){
   const f=rec&&rec.fields; if(!f) return 'η ανάγνωση πίσω δεν επέστρεψε την παραγγελία';
   const miss=[];
   if(ctx.lotRec&&getLinkedId(f['Stock Lot'])!==ctx.lotRec) miss.push('δεν δείχνει στην παρτίδα');
   if(ctx.kind==='A'){
     if(String(f['Group ID']||'')!==ctx.groupId) miss.push('η ομάδα (Group ID) δεν γράφτηκε');
-    if(ctx.truck&&getLinkedId(f['Truck'])!==ctx.truck) miss.push('το φορτηγό δεν γράφτηκε');
+    if(!ctx.truck||getLinkedId(f['Truck'])!==ctx.truck) miss.push('το φορτηγό δεν γράφτηκε');
   }
   return miss.join(' · ');
 }
 async function _wiStockApply(row,pieceId,patch,ctx){
   _wiSync('wi-sync-'+row.id,'pend','Ένταξη κομματιού στο φορτηγό…');
-  try{
-    const res=await atSafePatch(TABLES.ORDERS,pieceId,patch);
-    if(res?.conflict){
-      const back=ctx.lockLead?await _wiStockLockUndo(ctx.leadId,ctx.groupId):true;
-      _wiSync('wi-sync-'+row.id,null); toast('Η εγγραφή άλλαξε από άλλον χρήστη — ανανέωση…'+_wiLockUndoNote(back,ctx.groupId),'warn'); await renderWeeklyIntl(); return;
-    }
-    if(res?.error) throw new Error(res.error.message||res.error.type);
-    const bad=_wiStockVerify(await atGetOne(TABLES.ORDERS,pieceId),ctx);
-    if(bad) throw new Error(bad);
-  }catch(e){
-    // A lock written for this join only (lone lead, B-04) does not outlive it.
+  const w=await _wiStockJoinWrite(pieceId,patch,ctx);
+  if(!w.ok){
+    // A lock written for this join only (lone lead, B-04) does not outlive it
+    // — _wiStockLockUndo keeps it when the piece did land (it reads the group).
     const undo=ctx.lockLead?_wiLockUndoNote(await _wiStockLockUndo(ctx.leadId,ctx.groupId),ctx.groupId):'';
-    const msg='Το κομμάτι ΔΕΝ μπήκε στο φορτηγό: '+String(e&&e.message||e)+undo;
-    _wiSync('wi-sync-'+row.id,'err',msg); reportError(msg,e);
-    if(typeof logError==='function') logError(e instanceof Error?e:new Error(msg),'weekly intl: stock join');
+    if(w.conflict&&w.found!==null){ _wiSync('wi-sync-'+row.id,null); toast('Η εγγραφή άλλαξε από άλλον χρήστη — ανανέωση…'+undo,'warn'); await renderWeeklyIntl(); return; }
+    const e=w.err, shown=_wiShown(e), why=String((e&&e.message)||e);
+    const msg=(w.found===null
+      ?'Η ένταξη του κομματιού ΔΕΝ επιβεβαιώθηκε (η ανάγνωση απέτυχε) — έλεγξε τη λωρίδα ΑΠΟΘΕΜΑ και το φορτηγό'
+      :'Το κομμάτι ΔΕΝ μπήκε στο φορτηγό — έμεινε στο απόθεμα')+(shown?'':': '+why)+undo;
+    // The row's ⚠ keeps the reason for later (a tooltip, not a second toast).
+    _wiSync('wi-sync-'+row.id,'err',shown?msg+' · '+why:msg); reportError(msg,e);
+    // A designed refusal is already logged by _atRetry ('_atRetry 422 rule').
+    if(!shown&&typeof logError==='function') logError(e instanceof Error?e:new Error(msg),'weekly intl: stock join');
     return;
   }
   _wiSync('wi-sync-'+row.id,'ok','Το κομμάτι μπήκε στο φορτηγό');
@@ -6722,7 +6781,7 @@ async function _wiStockApply(row,pieceId,patch,ctx){
   if(typeof syncOrderDownstream==='function') syncOrderDownstream(pieceId,{source:'intl'})
     .catch(e=>{ if(typeof logError==='function') logError(e,'weekly intl: stock piece sync'); });
   if(typeof rtOnOrderSaved==='function') rtOnOrderSaved(ctx.leadId).catch(e=>console.warn('[wi stock] rt sync:',e&&e.message));
-  toast('Το κομμάτι μπήκε στο φορτηγό ✓');
+  toast('Το κομμάτι μπήκε στο φορτηγό ✓'+(w.lost?' (η απάντηση χάθηκε — επιβεβαιώθηκε στην ανάγνωση)':''));
   await renderWeeklyIntl();
 }
 function _wiStockOpenForm(lot,presets){
@@ -6745,9 +6804,11 @@ window._wiOnPieceSaved=async function(newId,fields,ctx){
   try{ await _wiOnPieceSavedRun(newId,ctx); }finally{ _wiNoUndo(); }
 };
 async function _wiOnPieceSavedRun(newId,ctx){
-  const loud=msg=>{
+  // noLog: a designed DB refusal is already logged by _atRetry under its own
+  // prefix — a second line here would count it as an app error (AU-07).
+  const loud=(msg,noLog)=>{
     if(typeof showErrorToast==='function') showErrorToast(msg,'error',12000); else reportError(msg,null);
-    if(typeof logError==='function') logError(new Error(msg),'weekly intl: stock piece join');
+    if(!noLog&&typeof logError==='function') logError(new Error(msg),'weekly intl: stock piece join');
   };
   const onBoard=typeof currentPage==='undefined'||currentPage==='weekly_intl';
   const row=!onBoard?null:ctx.expOid
@@ -6763,38 +6824,38 @@ async function _wiOnPieceSavedRun(newId,ctx){
     return;
   }
   const shelfMsg=why=>`Το κομμάτι αποθηκεύτηκε ΧΩΡΙΣ φορτηγό (${why}) — μένει στη λωρίδα ΑΠΟΘΕΜΑ· Weekly Διεθνών → δεξί κλικ στο φορτηγό → «+ Κομμάτι από απόθεμα…»`;
-  // Case A, lone lead (B-04): the POST carried neither group nor truck. Lock
-  // the lead now that the piece exists, then put the piece on the truck — in
+  const fail=(msg,noLog)=>{ if(row) _wiSync('wi-sync-'+row.id,'err',msg); loud(msg,noLog); };
+  // Case A (lone lead AND group, Σ-01): the POST carried neither group nor
+  // vehicle. The lead is read NOW, right before the join writes; the vehicle
+  // comes from this read. Another truck, a lead that started moving or whose
+  // group changed while the form was open = no join: the piece waits on the
+  // shelf and the message says why.
+  const lead=await _wiReadOrder(ctx.leadId);
+  if(!lead||!lead.fields) return fail(shelfMsg('η εισαγωγή του φορτηγού δεν διαβάστηκε'));
+  const lf=lead.fields, gNow=String(lf['Group ID']||'').trim();
+  const changed=_wiStockLeadBad(lead,ctx.truck)
+    ||(ctx.lockLead?(gNow?'Η εισαγωγή του φορτηγού μπήκε στο μεταξύ σε άλλη ομάδα':''):(gNow!==ctx.groupId?'Η ομάδα εισαγωγών του φορτηγού άλλαξε στο μεταξύ':''));
+  if(changed) return fail(shelfMsg(changed.charAt(0).toLowerCase()+changed.slice(1)));
+  const tr=getLinkedId(lf['Trailer'])||'', dr=getLinkedId(lf['Driver'])||'';
+  const veh={'Group ID':ctx.groupId,'Truck':[ctx.truck],'Trailer':tr?[tr]:[],'Driver':dr?[dr]:[],'Status':'Assigned'};
+  // Lone lead (B-04): lock it first, then put the piece on the truck — in
   // that order (_wiStockLockLead says why). Either step failing leaves the
   // piece on the shelf, the lead as it was, and says so.
   if(ctx.lockLead){
-    const why=await _wiStockLockWrite(ctx.leadId,ctx.groupId);
-    if(why){
-      const msg=shelfMsg('η σειρά της εισαγωγής του φορτηγού δεν γράφτηκε: '+why);
-      if(row) _wiSync('wi-sync-'+row.id,'err',msg);
-      loud(msg); return;
-    }
-    const veh={'Group ID':ctx.groupId,'Truck':ctx.truck?[ctx.truck]:[],'Trailer':ctx.trailer?[ctx.trailer]:[],'Driver':ctx.driver?[ctx.driver]:[]};
-    if(ctx.truck) veh['Status']='Assigned';
-    let res=null, err=null;
-    try{ res=await atSafePatch(TABLES.ORDERS,newId,veh); }catch(e){ err=e; }
-    if(err||!res||res.conflict||res.error){
-      const why2=String((err&&err.message)||(res&&res.error&&(res.error.message||res.error.type))||(res&&res.conflict?'η εγγραφή άλλαξε από άλλον χρήστη':'καμία απάντηση'));
-      const msg=shelfMsg(why2)+_wiLockUndoNote(await _wiStockLockUndo(ctx.leadId,ctx.groupId),ctx.groupId);
-      if(row) _wiSync('wi-sync-'+row.id,'err',msg);
-      loud(msg); return;
-    }
+    const why=await _wiStockLockSure(ctx.leadId,ctx.groupId);
+    if(why) return fail(shelfMsg('η σειρά της εισαγωγής του φορτηγού δεν γράφτηκε: '+why));
   }
-  // Case A: the piece now carries the group and the truck (the ONE POST, or
-  // the lone-lead PATCH above). A.5: read it back; A.6: the lead's round
-  // trip. Neither needs the board — the row only gets its ✓/⚠ when on screen.
-  let fresh=null; try{ fresh=await atGetOne(TABLES.ORDERS,newId); }catch(e){ fresh=null; }
-  const bad=_wiStockVerify(fresh,ctx);
-  if(bad){
-    const msg='Το κομμάτι αποθηκεύτηκε, αλλά: '+bad+' — έλεγξέ το';
-    if(row) _wiSync('wi-sync-'+row.id,'err',msg);
-    loud(msg);
-  } else if(row) _wiSync('wi-sync-'+row.id,'ok','Το κομμάτι μπήκε στο φορτηγό');
+  // A.5: the ONE join patch, read back (Σ-07a: a lost answer is decided by the
+  // read, not assumed); A.6: the lead's round trip.
+  const w=await _wiStockJoinWrite(newId,veh,ctx);
+  if(!w.ok){
+    const undo=ctx.lockLead?_wiLockUndoNote(await _wiStockLockUndo(ctx.leadId,ctx.groupId),ctx.groupId):'';
+    const e=w.err, shown=_wiShown(e), why=shown?'η βάση αρνήθηκε την ένταξη':String((e&&e.message)||e);
+    return fail((w.found===null
+      ?'Το κομμάτι αποθηκεύτηκε, αλλά η ένταξή του στο φορτηγό ΔΕΝ επιβεβαιώθηκε (η ανάγνωση απέτυχε) — έλεγξε τη λωρίδα ΑΠΟΘΕΜΑ και το φορτηγό'
+      :shelfMsg(why))+undo,shown&&!!e._rule);
+  }
+  if(row) _wiSync('wi-sync-'+row.id,'ok','Το κομμάτι μπήκε στο φορτηγό'+(w.lost?' (η απάντηση χάθηκε — επιβεβαιώθηκε στην ανάγνωση)':''));
   if(typeof rtOnOrderSaved==='function') rtOnOrderSaved(ctx.leadId).catch(e=>console.warn('[wi stock] rt sync:',e&&e.message));
 }
 
@@ -6854,7 +6915,12 @@ async function _wiStockReturnLoneRun(pid,expOid,expRowId){
     if(res?.error) throw new Error(res.error.message||res.error.type);
     const again=await atGetOne(TABLES.ORDERS,pid);
     if(veh(again?.fields||{})||String(again?.fields?.['Group ID']||'').trim()) throw new Error('η ανάγνωση πίσω δείχνει ακόμη όχημα ή ομάδα');
-  }catch(e){ reportError('Το ταίριασμα αφαιρέθηκε αλλά το κομμάτι ΔΕΝ επέστρεψε πλήρως στο απόθεμα: '+String((e&&e.message)||e)+' — έλεγξε χειροκίνητα',e); }
+  }catch(e){
+    // D2: a DB refusal's own sentence is already on screen — only the context here.
+    reportError('Το ταίριασμα αφαιρέθηκε αλλά το κομμάτι ΔΕΝ επέστρεψε πλήρως στο απόθεμα'+(_wiShown(e)?'':': '+String((e&&e.message)||e))+' — έλεγξε χειροκίνητα',e);
+    return false;
+  }
+  return true;
 }
 
 // Expose functions used from onclick/oninput/onfocus handlers
