@@ -246,25 +246,32 @@ test('stockText: «σε κίνηση» counts only pieces on a truck; returned o
   assert.strictEqual(V.stockText({ id: 'x', fields: {} }), 'περιμένει κομμάτια');
 });
 
-// PR-15/E-06 — OWNER-Q6 default (4/10): the ERP sheet of a LOT names the
-// pieces' deliveries and the last one's date, not the warehouse intake.
-test('ERP sheet of a complete lot: «N παραδόσεις» + «Last Piece Delivered»; ordinary rows unchanged', async () => {
+// OWNER-Q9 answered 4/10 (ERP = original order only): «η Ειρήνη καταχωρεί και
+// τιμολογεί το αρχικό order». The ERP sheet of a LOT is the order's own row —
+// its destination (the warehouse), its delivery date, its pallets — exactly
+// like any order; no «N παραδόσεις», no last-piece date (the OWNER-Q6 default).
+test('OWNER-Q9: the ERP row of a complete lot = the order\'s own row (warehouse, its delivery date, its pallets)', async () => {
   const name = id => CLIENTS[id] || '';
   const lastPiece = OrdersCommon.addDays(TODAY, -1);
   const set = await stockSet([LOT_ORDER, PIECE_ORDER], STOCK_LOT(true, { 'Remaining Pallets': 0, Pieces: 2, 'Pieces Delivered': 2, 'Last Piece Delivered': lastPiece }));
   const items = V.scopeFilter(V.annotate(set, name), 'all');
   const lot = items.find(it => it.id === 'iL');
-  assert.deepStrictEqual([lot.erp.place, lot.erp.date, lot.erp.lot], ['2 παραδόσεις', lastPiece, true], 'O5: no internal «(κομμάτια)»');
-  assert.strictEqual(lot.deliv, OrdersCommon.ymd(LOT_ORDER.fields['Delivery DateTime']), 'the card keeps the order\'s own delivery (warehouse intake)');
+  const own = OrdersCommon.ymd(LOT_ORDER.fields['Delivery DateTime']);
+  assert.deepStrictEqual([lot.erp.place, lot.erp.date, lot.erp.pallets], [[lot.del.name, lot.del.sub].filter(Boolean).join(' · '), own, '33']);
+  assert.ok(!/παράδοσ|κομμάτ/.test(JSON.stringify(lot.erp)), 'nothing of the pieces on the paper');
   const rows = V.csvRows(V.groupByClient(V.baseList(items, PREV)), () => null);
   const lotRow = rows.find(r => r[1] === 'LOT-1');
-  assert.deepStrictEqual([lotRow[6], lotRow[7], lotRow[8]], ['2 παραδόσεις', lastPiece, '33']);
+  assert.deepStrictEqual([lotRow[6], lotRow[7], lotRow[8], lotRow[9]], [lot.erp.place, own, '33', '3300.00']);
+  assert.ok(!rows.some(r => r[1] === 'PC-1'), 'no piece row');
   const plain = rows.find(r => r[1] === '6100118264');
   assert.strictEqual(plain[7], OrdersCommon.ymd(fixture().intl[1].fields['Delivery DateTime']), 'an ordinary order keeps its delivery date');
-  // one piece → singular; lot record not read → said, never the warehouse
-  assert.strictEqual(V.erpDelivery({ stock: new Map([['recLot1', STOCK_LOT(true, { 'Pieces Delivered': 1 })]]) }, LOT_ORDER, { name: 'Αποθήκη Χ', sub: '' }, '').place, '1 παράδοση');
-  const unread = V.erpDelivery({ stock: null }, LOT_ORDER, { name: 'Αποθήκη Χ', sub: 'Budapest HU' }, '2026-10-01');
-  assert.deepStrictEqual([unread.place, unread.date], ['παραδόσεις κομματιών — η παρτίδα δεν διαβάστηκε', '']);
+  // the lot record not read changes nothing on the paper
+  const unread = V.erpDelivery(LOT_ORDER, { name: 'Αποθήκη Χ', sub: 'Budapest HU' }, '2026-10-01');
+  assert.deepStrictEqual([unread.place, unread.date, unread.pallets], ['Αποθήκη Χ · Budapest HU', '2026-10-01', '33']);
+  // the gate keeps the lot's own date (card header, age, sort, invoice-date check)
+  assert.deepStrictEqual(lot.lotDone, { date: lastPiece, closeOnly: false });
+  assert.strictEqual(V.lotDone({ stock: null }, LOT_ORDER).date, '', 'lot record not read → no date, never the intake');
+  assert.strictEqual(V.lotDone(set, fixture().intl[1]), null, 'an ordinary order has no lot date');
 });
 
 // E-05 (impact map 4/10): a lot waits to be invoiced from «Completed On».
@@ -278,34 +285,29 @@ test('age of a lot: none while incomplete, from «Completed On» once complete �
   assert.strictEqual(V.metricsOf([done]).overdue, 0, 'not «overdue» because of the 45 days in the warehouse');
 });
 
-// Round 1 O2 (critic-2 E2-02, critic-4 C4-08): a CLOSED lot is not «33
-// pallets delivered» on the paper she types into the ERP — delivered + the
-// written-off note; a lot closed with no piece prints the close, not
-// «0 παραδόσεις» and a blank date. Same text in the CSV, the print and the copy
-// (one source: erpDelivery).
-test('O2: ERP pallets of a closed lot = delivered + «N χαμένες»; a zero-piece close prints the close and its date', async () => {
+// OWNER-Q9 (4/10) replaces round 1 O2 on the papers: a CLOSED lot is invoiced
+// as its original order too — its own 33 pallets, no «31 + 2 χαμένες», no close
+// text. The close stays on the card (ΕΛΕΓΧΟΙ) and in the lot's own date
+// (lotDone: a zero-piece close dates from the close).
+test('OWNER-Q9: a closed lot\'s ERP row = the order\'s own pallets; the close only dates the gate', async () => {
   const name = id => CLIENTS[id] || '';
   const lastPiece = OrdersCommon.addDays(TODAY, -3), closedOn = OrdersCommon.addDays(TODAY, -1);
   const closed = STOCK_LOT(true, { 'Remaining Pallets': 2, Pieces: 2, 'Pieces Delivered': 2, 'Delivered Pallets': 31, 'Written Off Pallets': 2,
     'Last Piece Delivered': lastPiece, 'Closed At': closedOn + 'T13:00:00Z', 'Closed Note': '2 χαλασμένες', 'Completed On': closedOn });
   const items = V.scopeFilter(V.annotate(await stockSet([LOT_ORDER], closed), name), 'all');
   const lot = items.find(it => it.id === 'iL');
-  assert.deepStrictEqual([lot.state, lot.erp.place, lot.erp.date, lot.erp.pallets], ['ready', '2 παραδόσεις', lastPiece, '31 + 2 χαμένες']);
+  assert.deepStrictEqual([lot.state, lot.erp.date, lot.erp.pallets, lot.when], ['ready', OrdersCommon.ymd(LOT_ORDER.fields['Delivery DateTime']), '33', lastPiece]);
   const row = V.csvRows(V.groupByClient(V.baseList(items, PREV)), () => null).find(r => r[1] === 'LOT-1');
-  assert.strictEqual(row[8], '31 + 2 χαμένες', 'the CSV «Παλέτες» cell');
-  // zero pieces, whole lot written off (Ε3)
+  assert.strictEqual(row[8], '33', 'the CSV «Παλέτες» cell = the order\'s own pallets');
+  // zero pieces, whole lot written off (Ε3): the gate date is the close
   const zero = STOCK_LOT(true, { 'Remaining Pallets': 33, Pieces: 0, 'Pieces Delivered': 0, 'Delivered Pallets': 0, 'Written Off Pallets': 33,
     'Closed At': closedOn + 'T13:00:00Z', 'Closed Note': 'ο πελάτης τα πήρε', 'Completed On': closedOn });
-  const z = V.erpDelivery({ stock: new Map([['recLot1', zero]]) }, LOT_ORDER, { name: 'Αποθήκη Χ', sub: '' }, '');
-  assert.deepStrictEqual([z.place, z.date, z.pallets, z.closeOnly], ['κλείσιμο υπολοίπου — κανένα κομμάτι', closedOn, '0 + 33 χαμένες', true]);
-  // not closed: the order's own pallets, unchanged
-  const open = V.erpDelivery({ stock: new Map([['recLot1', STOCK_LOT(false)]]) }, LOT_ORDER, { name: 'Αποθήκη Χ', sub: '' }, '');
-  assert.strictEqual(open.pallets, '33');
+  assert.deepStrictEqual(V.lotDone({ stock: new Map([['recLot1', zero]]) }, LOT_ORDER), { date: closedOn, closeOnly: true });
 });
 
 // Round 1 O3 (critic-2 E2-03, critic-5 S5-05): one date per lot — the KPI
-// «Παλαιότερη εκκρεμής», the sort and the invoice-date check read the same
-// date as the ERP paper (last delivery), never the warehouse intake.
+// «Παλαιότερη εκκρεμής», the sort and the invoice-date check read the lot's
+// last delivery, never the warehouse intake (kept as a gate after OWNER-Q9).
 test('O3: a lot\'s one date (when) = its last delivery; KPI date and the invoice-date warning follow it', async () => {
   const name = id => CLIENTS[id] || '';
   const lastPiece = OrdersCommon.addDays(TODAY, -2);
@@ -313,7 +315,8 @@ test('O3: a lot\'s one date (when) = its last delivery; KPI date and the invoice
   const done = STOCK_LOT(true, { 'Remaining Pallets': 0, 'Pieces Delivered': 2, 'Last Piece Delivered': lastPiece, 'Completed On': lastPiece });
   const items = V.scopeFilter(V.annotate(await stockSet([old], done), name), 'all');
   const lot = items.find(it => it.id === 'iL');
-  assert.deepStrictEqual([lot.when, lot.erp.date, lot.days], [lastPiece, lastPiece, 2]);
+  // OWNER-Q9: the paper prints the order's own delivery; the gate keeps the last piece.
+  assert.deepStrictEqual([lot.when, lot.erp.date, lot.days], [lastPiece, OrdersCommon.ymd(old.fields['Delivery DateTime']), 2]);
   const k = V.kpis([lot]);
   assert.deepStrictEqual([k.oldestDays, k.oldestDate], [2, lastPiece], 'the KPI date is the date its days count from, not the intake 40 days ago');
   const before = OrdersCommon.addDays(lastPiece, -1);

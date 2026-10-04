@@ -43,7 +43,7 @@ const OrdersInvoicingView = (() => {
       const load = OC.placeOf(rec, 'load'), del = OC.placeOf(rec, 'del');
       const num = OC.numLabel(rec);
       const deliv = OC.ymd(f['Delivery DateTime']);
-      const erp = erpDelivery(set, rec, del, deliv);
+      const done = lotDone(set, rec);
       return {
         rec, id: rec.id, type: rec._type, f,
         state: st.key, reason: st.reason || '', lot: st.lot || null,
@@ -55,14 +55,16 @@ const OrdersInvoicingView = (() => {
         days: OrdersData.ageOf(set, rec),
         num, ref: String(f['Reference'] || ''),
         load, del,
-        erp,
+        erp: erpDelivery(rec, del, deliv),
+        lotDone: done,
         // Round 1 O3 (critic-2 E2-03, critic-5 S5-05, critic-4 C4-04): ONE
         // date per lot — its last delivery (or the close, when no piece was
-        // ever delivered), the date the ERP paper prints. The card header, the
-        // list cell, the KPI «Παλαιότερη εκκρεμής», the sort and the invoice-
-        // date check read it; the intake date (deliv) is the warehouse's, not
-        // the client's. Every other order: its delivery, as before.
-        when: erp.lot ? erp.date : deliv,
+        // ever delivered). The card header, the KPI «Παλαιότερη εκκρεμής»,
+        // the sort, the age and the invoice-date check (a gate) read it. Since
+        // OWNER-Q9 (4/10) it is NOT printed on the ERP papers: those carry
+        // the order's own delivery (erpDelivery). Every other order: its
+        // delivery, as before.
+        when: done ? done.date : deliv,
         search: [client, num, f['Reference'], load.name, load.sub, del.name, del.sub, f['Invoice Number']]
           .filter(Boolean).map(fold).join(' '),
       };
@@ -86,32 +88,32 @@ const OrdersInvoicingView = (() => {
   }
   // «Παράδοση» and «Παλέτες» on the ERP sheet, the print and «Αντιγραφή
   // όλων» — one place, so the three papers cannot disagree.
-  // OWNER-Q6 default (4/10, impact map PR-15/E-06): a LOT is invoiced once,
-  // after its LAST piece — so the paper names the deliveries («N παραδόσεις»,
-  // date = «Last Piece Delivered» of the STOCK LOTS record, else «Completed
-  // On»), not the warehouse intake the order itself records. «(κομμάτια)» was
-  // dropped (round 1 O5, critic-2 E2-07): an internal word that could end up in
-  // the invoice text the client reads. A lot whose record was not read says
-  // so — never the warehouse.
-  // Pallets (round 1 O2, critic-2 E2-02 / critic-4 C4-08): a CLOSED lot prints
-  // what was delivered plus the written-off note («31 + 2 χαμένες») — «33»
-  // alone said 33 pallets reached the client. A lot closed with no piece
-  // delivered prints the close itself, never «0 παραδόσεις» and a blank date.
-  function erpDelivery(set, rec, del, deliv) {
+  // OWNER-Q9 answered 4/10 (ERP = original order only): «η Ειρήνη καταχωρεί
+  // και τιμολογεί το αρχικό order», however many trucks carried it on. A LOT
+  // is therefore printed EXACTLY like any order: its own destination (the
+  // warehouse), its own delivery date, its own pallets. The OWNER-Q6 default
+  // («N παραδόσεις» + the last piece's date) and the round-1 O2 pallets
+  // («31 + 2 χαμένες») are gone from the papers; the pieces and the close
+  // stay on the card (ΕΛΕΓΧΟΙ), and the lot still waits for its pieces
+  // before it can be invoiced (gate, owner «α» 3/10 — OrdersData.stateOf).
+  function erpDelivery(rec, del, deliv) {
     const f = rec.fields || {};
     const own = rec._type === 'intl' ? f['Total Pallets'] : f['Pallets'];
-    const ownPal = own == null || own === '' ? '' : String(own);
-    const isLot = rec._type === 'intl' && typeof OrdersStock !== 'undefined' && OrdersStock.isLot(f);
-    if (!isLot) return { place: [del.name, del.sub].filter(Boolean).join(' · '), date: deliv || '', lot: false, pallets: ownPal };
+    return { place: [del.name, del.sub].filter(Boolean).join(' · '), date: deliv || '', pallets: own == null || own === '' ? '' : String(own) };
+  }
+  // A lot's own date (round 1 O3): its last piece delivered, else «Completed
+  // On»; a lot closed with no piece delivered → the close (closeOnly). null
+  // for any other order; date '' when the lot record was not read. Read by
+  // the card header, the age, the sort and the invoice-date gate — never
+  // printed on the ERP papers (OWNER-Q9).
+  function lotDone(set, rec) {
+    const f = rec.fields || {};
+    if (!(rec._type === 'intl' && typeof OrdersStock !== 'undefined' && OrdersStock.isLot(f))) return null;
     const lot = set && set.stock ? set.stock.get(OrdersStock.lotRecOfLot(f)) : null;
-    if (!lot) return { place: 'παραδόσεις κομματιών — η παρτίδα δεν διαβάστηκε', date: '', lot: true, pallets: ownPal };
-    const g = lot.fields || {}, num = v => Number(v) || 0, ymd = OrdersCommon.ymd;
-    const n = num(g['Pieces Delivered']), closed = !!g['Closed At'], off = num(g['Written Off Pallets']);
-    const pallets = closed ? num(g['Delivered Pallets']) + (off ? ' + ' + off + ' χαμένες' : '') : ownPal;
-    if (!n && closed) return { place: 'κλείσιμο υπολοίπου — κανένα κομμάτι', date: ymd(g['Completed On'] || g['Closed At']), lot: true, closeOnly: true, pallets };
-    const last = g['Last Piece Delivered'] ? ymd(g['Last Piece Delivered']) : '';
-    return { place: n === 0 ? 'καμία παράδοση ακόμη' : n === 1 ? '1 παράδοση' : n + ' παραδόσεις',
-      date: last || (g['Completed On'] ? ymd(g['Completed On']) : ''), lot: true, pallets };
+    if (!lot) return { date: '', closeOnly: false };
+    const g = lot.fields || {}, ymd = OrdersCommon.ymd;
+    if (!Number(g['Pieces Delivered']) && g['Closed At']) return { date: ymd(g['Completed On'] || g['Closed At']), closeOnly: true };
+    return { date: g['Last Piece Delivered'] ? ymd(g['Last Piece Delivered']) : (g['Completed On'] ? ymd(g['Completed On']) : ''), closeOnly: false };
   }
   // Only what this view is about: delivered orders (and the invoiced ones).
   // Not-yet-delivered and cancelled never belong to «Παραδομένες».
@@ -296,7 +298,7 @@ const OrdersInvoicingView = (() => {
 
   const pure = { annotate, scopeFilter, weekStats, defaultWeek, stripWeeks, weekWord, baseList, tabCounts, tabFilter,
     searchFilter, groupByClient, kpis, dupCheck, nextReady, dateCheck, invoiceFields, undoFields, addressLine, csvRows,
-    metricsOf, dirWord, stockText, erpDelivery, allocWhy };
+    metricsOf, dirWord, stockText, erpDelivery, lotDone, allocWhy };
   if (typeof document === 'undefined') return { pure };
 
   // ── State ───────────────────────────────────────────────────────────────
@@ -524,7 +526,7 @@ const OrdersInvoicingView = (() => {
             <td class="num">${esc(it.num)}</td>
             <td><span class="oc-pname">${esc(it.ref || '—')}</span><span class="oiv-sub">${esc(dirWord(it.f))}</span></td>
             <td>${OC().placeCell(it.load)}</td>
-            <td>${it.erp.lot ? OC().placeCell({ name: it.erp.place, sub: '', date: it.erp.date }) : OC().placeCell(it.del)}</td>
+            <td>${OC().placeCell(it.del)}</td>
             <td class="r num">${pal == null || pal === '' ? '<span class="oiv-muted">—</span>' : esc(pal)}</td>
             <td class="r num">${it.price === null ? '<span class="oiv-muted">—</span>' : eur(it.price)}</td>
             <td>${statusCell(it)}</td></tr>`;
@@ -704,7 +706,7 @@ const OrdersInvoicingView = (() => {
     // A lot is never «Παραδόθηκε» on its intake date (plan §8, critic-4
     // C4-04): blocked = «Στην αποθήκη» + a pointer to ΕΛΕΓΧΟΙ (O4); ready =
     // the one lot date (O3) under its own word.
-    const doneWord = it.erp.lot ? (it.erp.closeOnly ? 'Κλείσιμο υπολοίπου' : 'Τελευταίο κομμάτι') : 'Παραδόθηκε';
+    const doneWord = it.lotDone ? (it.lotDone.closeOnly ? 'Κλείσιμο υπολοίπου' : 'Τελευταίο κομμάτι') : 'Παραδόθηκε';
     if (it.state === 'invoiced') status = `<span><i class="oiv-dot ok"></i>Τιμολογήθηκε ${f['Invoice Date'] ? dm(f['Invoice Date']) : ''}</span><span><i class="oiv-dot hollow"></i>${f['Invoice Number'] ? 'ΤΠΥ ' + esc(f['Invoice Number']) : 'χωρίς αριθμό'}</span>`;
     else if (it.state === 'blocked' && it.reason === 'stock') status = `<span><i class="oiv-dot ok"></i>Στην αποθήκη ${dm(it.deliv)}</span><span><i class="oiv-dot hollow"></i>περιμένει κομμάτια</span>`;
     else if (it.state === 'blocked') status = `<span><i class="oiv-dot ok"></i>${isLotIt(it) ? doneWord + ' ' + dm(it.when) : 'Παραδόθηκε ' + dm(it.deliv)}</span><span><i class="oiv-dot bad"></i>${it.reason === 'price' ? 'χωρίς τιμή → owner' : 'δελτίο → Αλεξία'}</span>`;
@@ -1024,9 +1026,8 @@ const OrdersInvoicingView = (() => {
     const terms = c && c['Payment Terms Days'] != null && c['Payment Terms Days'] !== '' ? c['Payment Terms Days'] + ' ημέρες' : '';
     const rows = [['Επωνυμία', (c && c['Company Name']) || it.client], ['ΑΦΜ', c && c['VAT Number']], ['Διεύθυνση', addressLine(c)],
       ['Όροι πληρωμής', terms], ['Αναφορά πελάτη', it.ref], ['Ποσό', it.price === null ? '' : OC().eur(it.price)]];
-    // A lot's deliveries go with the copy (OWNER-Q6 default, see erpDelivery):
-    // the ERP invoice of a lot covers the pieces, not the warehouse intake.
-    if (it.erp.lot) rows.splice(5, 0, ['Παράδοση', it.erp.place + (it.erp.date ? ' · ' + OC().dm(it.erp.date) : '')], ['Παλέτες', it.erp.pallets]);
+    // OWNER-Q9 answered 4/10 (ERP = original order only): a lot copies the
+    // same lines as any order — no pieces' deliveries.
     const lines = rows.map(([k, v]) => k + '\t' + (v == null ? '' : String(v))).join('\n');
     try { await navigator.clipboard.writeText(lines); toast('Τα στοιχεία αντιγράφηκαν'); }
     catch (e) { toast('Η αντιγραφή δεν επιτράπηκε από τον browser — επίλεξε και αντέγραψε χειροκίνητα', 'warn'); }

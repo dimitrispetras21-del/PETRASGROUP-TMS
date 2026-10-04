@@ -15,7 +15,7 @@
 // (PR-17, G-31) · tick rules, no_split, duplicate (OWNER-Q8, G-14, G-13) ·
 // lot create (OWNER-Q1, G-14, mark refused + retry, OWNER-Q2, G-26) · piece
 // (G-10, PR-06, G-29, over-draw, G-32, piece edit) · lot edit + refused delete
-// (OWNER-Q1, DL-03, AU-07) · accountant (E-07, close, ERP sheet PR-15/E-06) ·
+// (OWNER-Q1, DL-03, AU-07) · accountant (E-07, close, ERP sheet OWNER-Q9) ·
 // owner allocation · warehouse role (G-07) · print.html piece sheet (PR-05).
 // Round 1 (O1–O11): close/reopen with the read-back, one lot date, the close on
 // her papers, the reason once and neutral, D2 «context only», the delete
@@ -831,8 +831,10 @@ async function runAccountant(browser) {
   const row = (await page.locator('#oivBody tr.oiv-r', { hasText: 'TEST-STOCK-LOT' }).innerText()).replace(/\s+/g, ' ');
   ok(/προς κοπή/.test(row), 'after the close the set is re-read: the lot is «προς κοπή» — ' + row);
   const lastPiece0 = addDays(TODAY, -1), lastDm0 = (+lastPiece0.slice(8, 10)) + '/' + (+lastPiece0.slice(5, 7)), todayDm = (+TODAY.slice(8, 10)) + '/' + (+TODAY.slice(5, 7));
-  // O3: one date for the lot — the list cell = the ERP paper (deliveries + last piece), not «Αποθήκη Χ · intake»
-  ok(new RegExp('2 παραδόσεις ' + lastDm0).test(row) && !/Αποθήκη Χ/.test(row), 'O3: list ΠΑΡΑΔΟΣΗ of the lot = «2 παραδόσεις · ' + lastDm0 + '» — ' + row);
+  // OWNER-Q9 answered 4/10 (ERP = original order only): the list cell = the order's own delivery
+  // (the warehouse, its date), like any order — no «N παραδόσεις».
+  const intakeDm = (+addDays(TODAY, -3).slice(8, 10)) + '/' + (+addDays(TODAY, -3).slice(5, 7));
+  ok(/Αποθήκη Χ/.test(row) && row.includes(intakeDm) && !/παραδόσεις/.test(row), 'OWNER-Q9: list ΠΑΡΑΔΟΣΗ of the lot = «Αποθήκη Χ · ' + intakeDm + '» like any order — ' + row);
   await page.locator('#oivBody tr.oiv-r', { hasText: 'TEST-STOCK-LOT' }).click();
   await page.waitForFunction(() => /Κλείσιμο υπολοίπου:/.test((document.getElementById('oivCard') || {}).innerText || ''), null, { timeout: 8000 });
   const rc = (await page.locator('#oivCard').innerText()).replace(/\s+/g, ' ');
@@ -846,22 +848,25 @@ async function runAccountant(browser) {
   await page.fill('#oivDate', TODAY); await page.dispatchEvent('#oivDate', 'input');
   await page.screenshot({ path: shot('08-after-close-ready') });
 
-  // ── PR-15/E-06 (OWNER-Q6 default): the ERP sheet of the complete lot ──
-  const lastPiece = addDays(TODAY, -1), lastDm = (+lastPiece.slice(8, 10)) + '/' + (+lastPiece.slice(5, 7));
+  // ── OWNER-Q9 answered 4/10 (ERP = original order only): the ERP sheet of the complete lot ──
+  // «η Ειρήνη καταχωρεί και τιμολογεί το αρχικό order»: the lot's row is the order's own row.
+  const intake = addDays(TODAY, -3), intakeDm2 = (+intake.slice(8, 10)) + '/' + (+intake.slice(5, 7));
   await page.locator('#oivBody tr.oiv-r', { hasText: 'TEST-STOCK-LOT' }).click();
   await page.waitForFunction(() => /TEST-STOCK-LOT/.test((document.getElementById('oivCard') || {}).innerText || ''), null, { timeout: 8000 });
   await page.evaluate(() => { OrdersInvoicingView.exportCsv(); OrdersInvoicingView.print(); return OrdersInvoicingView.copyErp(); });
   await page.waitForFunction(() => window.__csv.length && window.__printed.length && window.__clip.length, null, { timeout: 8000 });
   const erp = await page.evaluate(() => window.__csv.at(-1).rows);
   const eh = erp[0], er = erp.find(r => r[1] === 'TEST-STOCK-LOT') || [];
-  ok(er[eh.indexOf('Παράδοση')] === '2 παραδόσεις' && er[eh.indexOf('Ημ. παράδοσης')] === lastPiece, 'ERP CSV: lot «Παράδοση» = «2 παραδόσεις» (O5: no «(κομμάτια)»), date = Last Piece Delivered — ' + JSON.stringify(er));
-  ok(er[eh.indexOf('Παλέτες')] === '31 + 2 χαμένες', 'O2: ERP CSV pallets of the closed lot = «31 + 2 χαμένες» — ' + er[eh.indexOf('Παλέτες')]);
+  ok(/^Αποθήκη Χ/.test(er[eh.indexOf('Παράδοση')] || '') && er[eh.indexOf('Ημ. παράδοσης')] === intake && er[eh.indexOf('Πελάτης')] === 'Πελάτης Α' && er[eh.indexOf('Ποσό')] === '3300.00', 'OWNER-Q9: ERP CSV lot row = the order\'s own (client, warehouse, its delivery date, price) — ' + JSON.stringify(er));
+  ok(er[eh.indexOf('Παλέτες')] === '33' && !erp.some(r => /TEST-STOCK-[12]$/.test(r[1] || '')), 'OWNER-Q9: ERP CSV pallets = the order\'s own 33 (no «χαμένες»), no piece rows — ' + er[eh.indexOf('Παλέτες')]);
   const pr = (erp.find(r => r[1] === 'TEST-PLAIN') || []);
   ok(/Cold Hub B/.test(pr[eh.indexOf('Παράδοση')] || ''), 'ERP CSV: an ordinary order keeps its destination — ' + pr[eh.indexOf('Παράδοση')]);
   const erpPaper = await page.evaluate(() => window.__printed.at(-1));
-  ok(/<td>2 παραδόσεις<\/td>/.test(erpPaper) && erpPaper.includes('<td>' + lastDm + '</td>') && erpPaper.includes('<td class="r">31 + 2 χαμένες</td>'), 'ERP print: the lot row names the deliveries + last date + «31 + 2 χαμένες»');
+  const lotTr = (erpPaper.split('<tr>').find(t => t.includes('TEST-STOCK-LOT')) || '');
+  ok(/<td>Αποθήκη Χ[^<]*<\/td><td>/.test(lotTr) && lotTr.includes('<td>' + intakeDm2 + '</td>') && lotTr.includes('<td class="r">33</td>') && !/παραδόσεις|χαμένες/.test(erpPaper), 'OWNER-Q9: ERP print lot row = warehouse + its date + 33, no «παραδόσεις» / «χαμένες» — ' + lotTr.replace(/\s+/g, ' ').slice(0, 200));
   const clip = await page.evaluate(() => window.__clip.at(-1));
-  ok(clip.includes('Παράδοση\t2 παραδόσεις · ' + lastDm) && clip.includes('Παλέτες\t31 + 2 χαμένες'), '«Αντιγραφή όλων»: «Παράδοση» + «Παλέτες» lines of the lot — ' + JSON.stringify(clip));
+  const keys = clip.split('\n').map(l => l.split('\t')[0]);
+  ok(JSON.stringify(keys) === JSON.stringify(['Επωνυμία', 'ΑΦΜ', 'Διεύθυνση', 'Όροι πληρωμής', 'Αναφορά πελάτη', 'Ποσό']) && clip.includes('Αναφορά πελάτη\tTEST-STOCK-LOT'), 'OWNER-Q9: «Αντιγραφή όλων» of a lot = the same lines as any order — ' + JSON.stringify(clip));
   const cardNow = (await page.locator('#oivCard').innerText()).replace(/\s+/g, ' ');
   ok(/Παράδοση [^Π]*Αποθήκη Χ/.test(cardNow), 'the card\'s ΠΑΡΑΓΓΕΛΙΑ section keeps the order\'s own route (warehouse intake)');
   const erpPage = await page.context().newPage();
