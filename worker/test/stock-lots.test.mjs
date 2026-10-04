@@ -138,8 +138,8 @@ test('TABLES: tblStockLots exactly as contract §4.2 — no money, no label both
   for (const label of Object.keys(t.fields)) assert.ok(!(label in t.computed), `${label} in both fields and computed`);
   const all = [...Object.entries(t.fields), ...Object.entries(t.computed), ...Object.entries(t.links).map(([l, v]) => [l, v.column])];
   for (const [label, column] of all) {
-    assert.doesNotMatch(label, /price|rate|revenue|margin|profit|cost|amount/i, `money label ${label}`);
-    assert.doesNotMatch(column, /price|rate|revenue|margin|profit|cost|amount/i, `money column ${column}`);
+    assert.doesNotMatch(label, /price|rate|revenue|margin|profit|cost|amount|charge/i, `money label ${label}`);
+    assert.doesNotMatch(column, /price|rate|revenue|margin|profit|cost|amount|charge/i, `money column ${column}`);
   }
   // every facade readView needs id/legacy_id/deleted_at (GET sends deleted_at=is.null + order=id.asc);
   // the facade adds them itself, so they must NOT be labels.
@@ -163,9 +163,9 @@ test('TABLES: ORDERS gains exactly the Stock Lot link + 4 computed labels', () =
   assert.ok(!natLabels.some((l) => /stock/i.test(l)), 'no stock label on NATIONAL ORDERS in Φ1');
 });
 
-test('COSTS_PERMS: "stock-lots" exists only on owner, GET only', () => {
+test('COSTS_PERMS: "stock-lots" exists only on owner — GET (allocation) + PATCH (warehouse charge)', () => {
   for (const [role, perms] of Object.entries(COSTS_PERMS)) {
-    if (role === 'owner') assert.deepEqual(perms['stock-lots'], ['GET']);
+    if (role === 'owner') assert.deepEqual(perms['stock-lots'], ['GET', 'PATCH']);
     else assert.equal(perms['stock-lots'], undefined, role);
   }
 });
@@ -205,7 +205,9 @@ async function token(role, sub = 'tester') {
 async function call(role, method, pathAndQuery, body) {
   const headers = { Origin: ORIGIN, Authorization: `Bearer ${await token(role)}` };
   if (body !== undefined) headers['Content-Type'] = 'application/json';
-  const req = new Request(`https://w.invalid${pathAndQuery}`, { method, headers, body: body === undefined ? undefined : JSON.stringify(body) });
+  // a string body is sent verbatim — JSON.stringify cannot produce 1e999 (→ Infinity on parse) or NaN
+  const raw = body === undefined ? undefined : typeof body === 'string' ? body : JSON.stringify(body);
+  const req = new Request(`https://w.invalid${pathAndQuery}`, { method, headers, body: raw });
   const res = await worker.fetch(req, env, ctx);
   const text = await res.text();
   let json = null;
@@ -297,7 +299,7 @@ test('GET STOCK LOTS (dispatcher): reads stock_v_lots with deleted_at + id order
   assert.equal(rec.fields['Remaining Pallets'], 13);
   assert.equal(rec.fields.Complete, false);
   assert.equal(rec.fields['Warehouse Rec'], 'recWH1', 'a plain rec string');
-  assert.ok(!Object.keys(rec.fields).some((l) => /price|rate|revenue|margin|profit|cost|amount/i.test(l)));
+  assert.ok(!Object.keys(rec.fields).some((l) => /price|rate|revenue|margin|profit|cost|amount|charge/i.test(l)));
   assert.equal(rec.fields['Closed At'], undefined, 'NULL columns are absent (trap #2)');
 });
 
@@ -466,18 +468,31 @@ test('a Greek message longer than the 200-char log cut still maps — parsed fro
 });
 
 // ---- /costs/stock-lots (Ε1 money, owner only) ----
-const MONEY = [{ lot_id: 7, lot_rec: 'recLOT1', source_kind: 'intl', price: 3300, intake_cost: 300, net: 3000, total_pallets: 33, per_pallet: 90.9091, drawn_pallets: 20, allocated_amount: 1818.18, remaining_pallets: 13, in_stock_amount: 1181.82, written_off_pallets: 0, written_off_amount: 0, closed_at: null, allocation_status: 'ok' }];
+// stock_v_lot_money as contract round 2 fixes it: charge = partner_cost (the
+// assignment on the source) + warehouse_charge (the field) — intake_cost is gone.
+// recLOT1: a partner carried it in, no extra warehouse charge → 'ok'.
+// recLOT2: our own truck carried it in and the field is empty → 'no_charge',
+// so nothing is allocated (charge_total/net/per_pallet NULL).
+const MONEY = [
+  { lot_id: 7, lot_rec: 'recLOT1', source_kind: 'intl', source_id: 42, source_rec: 'recORDER1', price: 3300, partner_cost: 300, warehouse_charge: null, charge_total: 300, net: 3000, total_pallets: 33, per_pallet: 90.9091, drawn_pallets: 20, allocated_amount: 1818.18, remaining_pallets: 13, in_stock_amount: 1181.82, written_off_pallets: 0, written_off_amount: 0, closed_at: null, allocation_status: 'ok' },
+  { lot_id: 8, lot_rec: 'recLOT2', source_kind: 'intl', source_id: 43, source_rec: 'recORDER2', price: 2000, partner_cost: null, warehouse_charge: null, charge_total: null, net: null, total_pallets: 20, per_pallet: null, drawn_pallets: 0, allocated_amount: null, remaining_pallets: 20, in_stock_amount: null, written_off_pallets: 0, written_off_amount: null, closed_at: null, allocation_status: 'no_charge' }
+];
 const ALLOC = [
   { lot_id: 7, lot_rec: 'recLOT1', piece_kind: 'intl', piece_id: 50, piece_rec: 'recPIECE1', seq: 1, pallets: 5, cum_pallets: 5, amount: 454.55 },
   { lot_id: 7, lot_rec: 'recLOT1', piece_kind: 'intl', piece_id: 51, piece_rec: 'recPIECE2', seq: 2, pallets: 15, cum_pallets: 20, amount: 1363.63 }
 ];
+// the money views honour ?lot_rec=eq.<rec> like PostgREST would
+const byLot = (rows) => (u) => {
+  const f = u.searchParams.get('lot_rec');
+  return json(f ? rows.filter((r) => `eq.${r.lot_rec}` === f) : rows);
+};
 
 test('GET /costs/stock-lots?lot= (owner): both money views, filtered by lot_rec, ordered; served as is', async () => {
-  on('GET', 'stock_v_lot_money', () => json(MONEY));
-  on('GET', 'stock_v_lot_alloc', () => json(ALLOC));
+  on('GET', 'stock_v_lot_money', byLot(MONEY));
+  on('GET', 'stock_v_lot_alloc', byLot(ALLOC));
   const r = await call('owner', 'GET', '/costs/stock-lots?lot=recLOT1');
   assert.equal(r.status, 200, r.text);
-  assert.deepEqual(r.json, { lots: MONEY, pieces: ALLOC });
+  assert.deepEqual(r.json, { lots: [MONEY[0]], pieces: ALLOC });
   const m = calls.find((c) => c.table === 'stock_v_lot_money');
   const a = calls.find((c) => c.table === 'stock_v_lot_alloc');
   assert.equal(m.params.get('lot_rec'), 'eq.recLOT1');
@@ -488,6 +503,7 @@ test('GET /costs/stock-lots?lot= (owner): both money views, filtered by lot_rec,
   calls.length = 0;
   const all = await call('owner', 'GET', '/costs/stock-lots');
   assert.equal(all.status, 200);
+  assert.deepEqual(all.json.lots, MONEY, "the 'no_charge' lot is served too — the screen says why it is not allocated");
   assert.equal(calls.find((c) => c.table === 'stock_v_lot_money').params.get('lot_rec'), null);
 });
 
@@ -512,4 +528,216 @@ test('GET /costs/stock-lots: a bad lot id → 400; a failed read → 500 «Ο ε
   const r = await call('owner', 'GET', '/costs/stock-lots?lot=recLOT1');
   assert.equal(r.status, 500);
   assert.deepEqual(r.json, { error: 'Ο επιμερισμός δεν διαβάστηκε' });
+});
+
+// ---- PATCH /costs/stock-lots/<lotRec> — «Χρέωση αποθήκης» (contract round 2, owner only) ----
+const CHARGE = (rec) => `/costs/stock-lots/${rec}`;
+const BAD_CHARGE = { error: 'Μη έγκυρη χρέωση αποθήκης' };
+const BAD_LOT = { error: 'Μη έγκυρη παρτίδα' };
+const NOT_SAVED = { error: 'Η χρέωση αποθήκης δεν αποθηκεύτηκε' };
+// the live lot the route looks up first (stock_lots by legacy_id, deleted_at IS NULL)
+const liveLot = (rec, charge) => (u) => (u.searchParams.get('legacy_id') === `eq.${rec}` && u.searchParams.get('deleted_at') === 'is.null'
+  ? json([{ id: rec === 'recLOT1' ? 7 : 8, legacy_id: rec, warehouse_charge: charge }])
+  : json([]));
+const patched = (rec) => (u, body) => json([{ id: rec === 'recLOT1' ? 7 : 8, legacy_id: rec, order_id: 42, nat_order_id: null, closed_note: null, closed_at: null, deleted_at: null, ...body }]);
+// what the DB computes after 150.50 € of storage on recLOT1: charge 450.50, net 2849.50
+const READ_BACK = { ...MONEY[0], warehouse_charge: 150.5, charge_total: 450.5, net: 2849.5, per_pallet: 86.3485, allocated_amount: 1726.97, in_stock_amount: 1122.53 };
+const readBack = (row) => (u) => (u.searchParams.get('lot_rec') === `eq.${row.lot_rec}` ? json([row]) : json([]));
+
+test('PATCH /costs/stock-lots/<rec> (owner): writes ONLY warehouse_charge on the live lot, audits before/after, returns the read-back row', async () => {
+  on('GET', 'stock_lots', liveLot('recLOT1', null));
+  on('PATCH', 'stock_lots', patched('recLOT1'));
+  on('GET', 'stock_v_lot_money', readBack(READ_BACK));
+  const r = await call('owner', 'PATCH', CHARGE('recLOT1'), { warehouse_charge: 150.5 });
+  assert.equal(r.status, 200, r.text);
+  // the response is the VIEW's row (net/charge_total recomputed by the DB), never an echo of the typed value
+  assert.deepEqual(r.json, { lot: READ_BACK });
+  const upd = calls.find((c) => c.method === 'PATCH' && c.table === 'stock_lots');
+  assert.deepEqual(upd.body, { warehouse_charge: 150.5 });
+  assert.equal(upd.params.get('legacy_id'), 'eq.recLOT1');
+  assert.equal(upd.params.get('deleted_at'), 'is.null', 'a lot soft-deleted between the lookup and the write is not touched');
+  const audited = auditRows();
+  assert.equal(audited.length, 1);
+  assert.equal(audited[0].action, 'update');
+  assert.equal(audited[0].table_name, 'stock_lots');
+  assert.equal(audited[0].record_id, 'recLOT1');
+  assert.equal(audited[0].role, 'owner');
+  assert.deepEqual(JSON.parse(audited[0].before_data), { warehouse_charge: null });
+  assert.deepEqual(JSON.parse(audited[0].after_data), { warehouse_charge: 150.5 });
+  // order: lookup → write → audit → read-back
+  const seq = calls.map((c) => `${c.method} ${c.table}`);
+  assert.deepEqual(seq, ['GET stock_lots', 'PATCH stock_lots', 'POST audit_log', 'GET stock_v_lot_money']);
+  assert.equal(calls[3].params.get('lot_rec'), 'eq.recLOT1');
+});
+
+test('PATCH /costs/stock-lots/<rec>: null clears the field (→ no_charge for an own-truck lot); 0 is a real value', async () => {
+  on('GET', 'stock_lots', liveLot('recLOT2', 120));
+  on('PATCH', 'stock_lots', patched('recLOT2'));
+  on('GET', 'stock_v_lot_money', readBack(MONEY[1]));
+  let r = await call('owner', 'PATCH', CHARGE('recLOT2'), { warehouse_charge: null });
+  assert.equal(r.status, 200, r.text);
+  assert.deepEqual(calls.find((c) => c.method === 'PATCH').body, { warehouse_charge: null }, 'null is sent, not dropped');
+  assert.deepEqual(r.json, { lot: MONEY[1] });
+  assert.equal(r.json.lot.allocation_status, 'no_charge');
+  let a = auditRows();
+  assert.equal(a.length, 1);
+  assert.deepEqual(JSON.parse(a[0].before_data), { warehouse_charge: 120 });
+  assert.deepEqual(JSON.parse(a[0].after_data), { warehouse_charge: null });
+  // 0 = «the warehouse charges nothing» — allocated, not missing
+  routes.length = 0;
+  calls.length = 0;
+  const zero = { ...MONEY[1], warehouse_charge: 0, charge_total: 0, net: 2000, per_pallet: 100, allocated_amount: 0, in_stock_amount: 2000, written_off_amount: 0, allocation_status: 'ok' };
+  on('GET', 'stock_lots', liveLot('recLOT2', null));
+  on('PATCH', 'stock_lots', patched('recLOT2'));
+  on('GET', 'stock_v_lot_money', readBack(zero));
+  r = await call('owner', 'PATCH', CHARGE('recLOT2'), { warehouse_charge: 0 });
+  assert.equal(r.status, 200, r.text);
+  assert.deepEqual(calls.find((c) => c.method === 'PATCH').body, { warehouse_charge: 0 });
+  assert.deepEqual(r.json, { lot: zero });
+  a = auditRows();
+  assert.deepEqual(JSON.parse(a[0].after_data), { warehouse_charge: 0 });
+});
+
+test('PATCH /costs/stock-lots/<rec>: every other role → 403 before any DB call', async () => {
+  for (const role of ['dispatcher', 'accountant', 'management', 'warehouse']) {
+    calls.length = 0;
+    const r = await call(role, 'PATCH', CHARGE('recLOT1'), { warehouse_charge: 10 });
+    assert.equal(r.status, 403, role);
+    assert.equal(calls.length, 0, role);
+  }
+});
+
+test('PATCH /costs/stock-lots/<rec>: a bad body → 400 «Μη έγκυρη χρέωση αποθήκης», before any DB call', async () => {
+  for (const body of [
+    '', 'not json', '[]', 'null', '42', '{"warehouse_charge":NaN}',
+    '{"warehouse_charge":1e999}', // parses to Infinity
+    {}, [150], { charge: 150 },
+    { warehouse_charge: '150' }, { warehouse_charge: '' }, { warehouse_charge: true }, { warehouse_charge: [150] }, { warehouse_charge: { v: 1 } },
+    { warehouse_charge: -0.01 }, { warehouse_charge: -150 },
+    { warehouse_charge: 1.005 }, { warehouse_charge: 150.123 }, { warehouse_charge: 0.1 + 0.2 },
+    { warehouse_charge: 1e10 }, // past numeric(12,2)
+    { warehouse_charge: 150, note: 'x' }, { warehouse_charge: 150, lot_rec: 'recLOT2' }, { warehouse_charge: null, closed_note: 'x' }
+  ]) {
+    calls.length = 0;
+    const r = await call('owner', 'PATCH', CHARGE('recLOT1'), body);
+    const label = typeof body === 'string' ? body : JSON.stringify(body);
+    assert.equal(r.status, 400, label);
+    assert.deepEqual(r.json, BAD_CHARGE, label);
+    assert.equal(calls.length, 0, label);
+  }
+  // the edges that ARE valid: two decimals, the column's maximum
+  for (const v of [0.01, 0.29, 1234.56, 9999999999.99]) {
+    routes.length = 0;
+    calls.length = 0;
+    on('GET', 'stock_lots', liveLot('recLOT1', null));
+    on('PATCH', 'stock_lots', patched('recLOT1'));
+    on('GET', 'stock_v_lot_money', readBack({ ...READ_BACK, warehouse_charge: v }));
+    const r = await call('owner', 'PATCH', CHARGE('recLOT1'), { warehouse_charge: v });
+    assert.equal(r.status, 200, `${v}: ${r.text}`);
+    assert.deepEqual(calls.find((c) => c.method === 'PATCH').body, { warehouse_charge: v });
+  }
+});
+
+test('PATCH /costs/stock-lots/<rec>: a bad lot rec → 400 «Μη έγκυρη παρτίδα», before any DB call', async () => {
+  for (const rec of ['abc', 'rec', 'rec%22)%2Cor', 'recLOT1%26deleted_at%3Dnot.is.null', 'rec' + 'a'.repeat(33)]) {
+    calls.length = 0;
+    const r = await call('owner', 'PATCH', CHARGE(rec), { warehouse_charge: 10 });
+    assert.equal(r.status, 400, rec);
+    assert.deepEqual(r.json, BAD_LOT, rec);
+    assert.equal(calls.length, 0, rec);
+  }
+});
+
+test('PATCH /costs/stock-lots/<rec>: no live lot → 404 «Η παρτίδα δεν βρέθηκε»; nothing written, nothing audited', async () => {
+  on('GET', 'stock_lots', liveLot('recLOT1', null)); // only recLOT1 is live
+  const r = await call('owner', 'PATCH', CHARGE('recGONE1'), { warehouse_charge: 10 });
+  assert.equal(r.status, 404, r.text);
+  assert.deepEqual(r.json, { error: 'Η παρτίδα δεν βρέθηκε' });
+  const look = calls.find((c) => c.method === 'GET' && c.table === 'stock_lots');
+  assert.equal(look.params.get('legacy_id'), 'eq.recGONE1');
+  assert.equal(look.params.get('deleted_at'), 'is.null', 'a soft-deleted lot counts as not found');
+  assert.equal(calls.filter((c) => c.method === 'PATCH').length, 0);
+  assert.equal(auditRows().length, 0);
+});
+
+test('PATCH /costs/stock-lots/<rec>: invoiced lot → stock_guard_lots lot_invoiced → Greek 422; nothing audited, no read-back', async () => {
+  const msg = 'Η παρτίδα τιμολογήθηκε — δεν αλλάζει';
+  on('GET', 'stock_lots', liveLot('recLOT1', 300));
+  on('PATCH', 'stock_lots', () => stockReject('lot_invoiced', msg));
+  const r = await call('owner', 'PATCH', CHARGE('recLOT1'), { warehouse_charge: 150 });
+  assert.equal(r.status, 422, r.text);
+  assert.deepEqual(r.json, STOCK_422('lot_invoiced', msg));
+  assert.equal(auditRows().length, 0);
+  assert.equal(calls.filter((c) => c.table === 'stock_v_lot_money').length, 0);
+});
+
+test('PATCH /costs/stock-lots/<rec>: any other DB failure → 500 «Η χρέωση αποθήκης δεν αποθηκεύτηκε», never a 200', async () => {
+  for (const fail of [
+    () => pgError(400, { code: '42703', details: null, hint: null, message: 'column "warehouse_charge" of relation "stock_lots" does not exist' }),
+    () => pgError(400, { code: '23514', details: null, hint: null, message: 'new row for relation "stock_lots" violates check constraint "stock_lots_warehouse_charge_check"' }),
+    () => new Response('<html>bad gateway</html>', { status: 502 })
+  ]) {
+    routes.length = 0;
+    calls.length = 0;
+    on('GET', 'stock_lots', liveLot('recLOT1', null));
+    on('PATCH', 'stock_lots', fail);
+    const r = await call('owner', 'PATCH', CHARGE('recLOT1'), { warehouse_charge: 150 });
+    assert.equal(r.status, 500, r.text);
+    assert.deepEqual(r.json, NOT_SAVED);
+    assert.equal(auditRows().length, 0);
+  }
+  // the lookup itself failing is the same «not saved» — nothing was written
+  routes.length = 0;
+  calls.length = 0;
+  on('GET', 'stock_lots', () => pgError(503, { code: 'PGRST000', message: 'connection refused' }));
+  const r = await call('owner', 'PATCH', CHARGE('recLOT1'), { warehouse_charge: 150 });
+  assert.equal(r.status, 500, r.text);
+  assert.deepEqual(r.json, NOT_SAVED);
+  assert.equal(calls.filter((c) => c.method === 'PATCH').length, 0);
+});
+
+test('PATCH /costs/stock-lots/<rec>: 0 rows patched → 409 «Η χρέωση αποθήκης δεν γράφτηκε»; nothing audited', async () => {
+  on('GET', 'stock_lots', liveLot('recLOT1', null));
+  on('PATCH', 'stock_lots', () => json([])); // e.g. soft-deleted between the lookup and the write
+  const r = await call('owner', 'PATCH', CHARGE('recLOT1'), { warehouse_charge: 150 });
+  assert.equal(r.status, 409, r.text);
+  assert.deepEqual(r.json, { error: 'Η χρέωση αποθήκης δεν γράφτηκε' });
+  assert.equal(auditRows().length, 0);
+  assert.equal(calls.filter((c) => c.table === 'stock_v_lot_money').length, 0);
+});
+
+test('PATCH /costs/stock-lots/<rec>: the write landed but the read-back failed → 500 that says so (audited, not «not saved»)', async () => {
+  on('GET', 'stock_lots', liveLot('recLOT1', null));
+  on('PATCH', 'stock_lots', patched('recLOT1'));
+  for (const view of [() => pgError(500, { code: '42P01', message: 'relation "public.stock_v_lot_money" does not exist' }), () => json([])]) {
+    routes.splice(2);
+    calls.length = 0;
+    on('GET', 'stock_v_lot_money', view);
+    const r = await call('owner', 'PATCH', CHARGE('recLOT1'), { warehouse_charge: 150 });
+    assert.equal(r.status, 500, r.text);
+    assert.deepEqual(r.json, { error: 'Η χρέωση αποθήκης γράφτηκε, αλλά δεν ξαναδιαβάστηκε — άνοιξε ξανά την παραγγελία' });
+    assert.equal(auditRows().length, 1, 'the write happened, so it is on the record');
+  }
+});
+
+// ---- PATCH /costs/settings full_truck_pallets (contract round 2, ADDENDUM A, owner 4/10) ----
+// F prorates the VS charge of a stock piece (X × min(pallets, F) / F). The DB
+// CHECK (value > 0 for this key) is the real guard; the Worker only answers it
+// first, in Greek, instead of the generic failure a CHECK would become.
+test('PATCH /costs/settings: full_truck_pallets ≤ 0 → 400 in Greek before any DB call; > 0 (non-integer too) passes; other keys untouched', async () => {
+  for (const value of [0, -33, -0.5]) {
+    calls.length = 0;
+    const r = await call('owner', 'PATCH', '/costs/settings', { key: 'full_truck_pallets', value });
+    assert.equal(r.status, 400, `${value}: ${r.text}`);
+    assert.deepEqual(r.json, { error: 'Οι παλέτες γεμάτου φορτηγού πρέπει να είναι πάνω από 0' }, String(value));
+    assert.equal(calls.length, 0, String(value));
+  }
+  on('GET', 'ct_settings', (u) => json([{ key: u.searchParams.get('key').slice(3), value: 1, updated_at: '2026-10-01T00:00:00Z' }]));
+  on('PATCH', 'ct_settings', (u, body) => json([{ key: u.searchParams.get('key').slice(3), ...body }]));
+  for (const [key, value] of [['full_truck_pallets', 33], ['full_truck_pallets', 32.5], ['x_import', 0]]) {
+    calls.length = 0;
+    const r = await call('owner', 'PATCH', '/costs/settings', { key, value });
+    assert.equal(r.status, 200, `${key}=${value}: ${r.text}`);
+    assert.equal(calls.find((c) => c.method === 'PATCH').body.value, value);
+  }
 });
