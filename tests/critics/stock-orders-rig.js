@@ -17,6 +17,9 @@
 // (G-10, PR-06, G-29, over-draw, G-32, piece edit) · lot edit + refused delete
 // (OWNER-Q1, DL-03, AU-07) · accountant (E-07, close, ERP sheet PR-15/E-06) ·
 // owner allocation · warehouse role (G-07) · print.html piece sheet (PR-05).
+// Round 1 (O1–O11): close/reopen with the read-back, one lot date, the close on
+// her papers, the reason once and neutral, D2 «context only», the delete
+// confirm of a piece/lot, the group packet / lot partner sheet / piece sheet.
 const path = require('path');
 const fs = require('fs');
 const ROOT = path.join(__dirname, '../..');   // the worktree under test
@@ -55,9 +58,12 @@ function fixtures() {
   return {
     orders: [
       { id: 'recLotSrc', fields: Object.assign({ 'Order No': 1300, Reference: 'TEST-STOCK-LOT', Direction: 'Export', Type: 'International', Status: 'Delivered', Client: ['recCliA'], Price: 3300, 'Total Pallets': 33, 'Loading Pallets 1': 33, 'Own Stock Lot': 'recLot1', Goods: 'Φρέσκα λαχανικά', 'Temperature °C': 4, 'Refrigerator Mode': 'Start-Stop', 'Pallet Type': 'CHEP', 'ORDER STOPS': ['recSt1', 'recSt2'], 'Loading DateTime': addDays(TODAY, -6) + 'T08:00:00', 'Delivery DateTime': addDays(TODAY, -3) + 'T08:00:00', 'Pallet Exchange': false }, route2('recLocGR1', 'recWhHU')) },
-      { id: 'recPc1', fields: Object.assign({ 'Order No': 1301, Reference: 'TEST-STOCK-1', Direction: 'Import', Type: 'International', Status: 'Delivered', Client: ['recCliA'], 'Total Pallets': 16, 'Stock Lot': ['recLot1'], 'Stock Lot Order No': 1300, 'Stock Lot Source': 'intl', 'Loading DateTime': addDays(TODAY, -2) + 'T08:00:00', 'Delivery DateTime': addDays(TODAY, -1) + 'T08:00:00' }, route2('recWhHU', 'recDestGR')) },
+      { id: 'recPc1', fields: Object.assign({ 'Order No': 1301, Reference: 'TEST-STOCK-1', Direction: 'Import', Type: 'International', Status: 'Delivered', Client: ['recCliA'], 'Total Pallets': 16, 'Stock Lot': ['recLot1'], 'Stock Lot Order No': 1300, 'Stock Lot Source': 'intl', 'Stock Lot Reference': 'TEST-STOCK-LOT', 'Loading DateTime': addDays(TODAY, -2) + 'T08:00:00', 'Delivery DateTime': addDays(TODAY, -1) + 'T08:00:00' }, route2('recWhHU', 'recDestGR')) },
       { id: 'recPc2', fields: Object.assign({ 'Order No': 1302, Reference: 'TEST-STOCK-2', Direction: 'Import', Type: 'International', Status: 'Delivered', Client: ['recCliA'], 'Total Pallets': 15, 'Stock Lot': ['recLot1'], 'Stock Lot Order No': 1300, 'Stock Lot Source': 'intl', 'Loading DateTime': addDays(TODAY, -2) + 'T08:00:00', 'Delivery DateTime': addDays(TODAY, -1) + 'T09:00:00' }, route2('recWhHU', 'recDestGR')) },
       { id: 'recPlain', fields: Object.assign({ 'Order No': 1290, Reference: 'TEST-PLAIN', Direction: 'Export', Type: 'International', Status: 'Delivered', Client: ['recCliA'], Price: 1500, 'Total Pallets': 20, 'Loading DateTime': addDays(TODAY, -5) + 'T08:00:00', 'Delivery DateTime': addDays(TODAY, -3) + 'T08:00:00' }, route2('recLocGR1', 'recDestGR')) },
+      // ⎙I group packet (round 1 O10): a lead with PE + EUR, and a piece (CHEP, no PE) in its group
+      { id: 'recLead', fields: { 'Order No': 2001, Reference: 'TEST-LEAD', Direction: 'Import', Type: 'International', Status: 'Assigned', Client: ['recCliA'], Price: 2500, 'Total Pallets': 18, 'Pallet Type': 'EUR', 'Pallet Exchange': true, 'Group ID': 'GI-T|recLead', 'ORDER STOPS': ['recSl1', 'recSl2'], 'Loading DateTime': addDays(TODAY, 1) + 'T07:00:00', 'Delivery DateTime': addDays(TODAY, 3) + 'T07:00:00' } },
+      { id: 'recGPc', fields: { 'Order No': 2002, Reference: 'TEST-STOCK-5', Direction: 'Import', Type: 'International', Status: 'Assigned', Client: ['recCliA'], 'Total Pallets': 15, 'Pallet Type': 'CHEP', 'Pallet Exchange': false, 'Group ID': 'GI-T|recLead', 'Stock Lot': ['recLot1'], 'Stock Lot Order No': 1300, 'Stock Lot Source': 'intl', 'Stock Lot Reference': 'TEST-STOCK-LOT', 'ORDER STOPS': ['recSp1', 'recSp2'], 'Loading DateTime': addDays(TODAY, 1) + 'T07:00:00', 'Delivery DateTime': addDays(TODAY, 3) + 'T10:00:00' } },
       { id: 'recOpen', fields: Object.assign({ 'Order No': 1310, Reference: 'TEST-OPEN', Direction: 'Export', Type: 'International', Status: 'Pending', Client: ['recCliA'], Price: 2000, 'Total Pallets': 20, 'Loading DateTime': addDays(TODAY, 2) + 'T08:00:00', 'Delivery DateTime': addDays(TODAY, 4) + 'T08:00:00' }, route2('recLocGR1', 'recWhHU')) },
     ],
     lots: [{ id: 'recLot1', fields: lotFields() }],
@@ -72,7 +78,10 @@ async function newPage(browser, role, view) {
   const page = await ctx.newPage();
   const cap = { posts: [], patches: [], deletes: [], errors: [], orderFail: null, lotFail: null, orderDelFail: null, dropStockLot: false, pwReads: 0, lotReqs: 0, fx: fixtures(), seq: 0 };
   page.on('pageerror', e => cap.errors.push(String(e)));
-  page.on('dialog', d => { if (cap.acceptDialog) { cap.dialogs = (cap.dialogs || []).concat([d.message()]); d.accept(); } else { cap.errors.push('native dialog: ' + d.message()); d.dismiss(); } });
+  page.on('dialog', d => {
+    if (cap.acceptDialog || cap.dismissDialog) { cap.dialogs = (cap.dialogs || []).concat([d.message()]); return cap.acceptDialog ? d.accept() : d.dismiss(); }
+    cap.errors.push('native dialog: ' + d.message()); d.dismiss();
+  });
   await preparePage(page, role);
   await page.addInitScript(([r, v]) => { localStorage.setItem('tms_orders_hub_demo_' + r, JSON.stringify({ scope: 'all', view: v })); }, [role, view]);
   const json = (r, body, status = 200) => r.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) });
@@ -103,8 +112,12 @@ async function newPage(browser, role, view) {
   // ORDER STOPS of the lot (the form draws its stops from here)
   await page.route('**/tblaeY5QOHAS1gyE8**', r => {
     if (r.request().method() !== 'GET') return r.fallback();
-    const st = (id, type, loc, pal, dt) => ({ id, fields: { 'Stop Type': type, 'Stop Number': 1, Location: [loc], Pallets: pal, DateTime: dt, 'Parent Order': ['recLotSrc'] } });
-    return json(r, { records: decodeURIComponent(r.request().url()).includes('recSt1') ? [st('recSt1', 'Loading', 'recLocGR1', 33, addDays(TODAY, -6) + 'T08:00:00'), st('recSt2', 'Unloading', 'recWhHU', 33, addDays(TODAY, -3) + 'T08:00:00')] : [] });
+    const st = (id, type, loc, pal, dt, parent) => ({ id, fields: { 'Stop Type': type, 'Stop Number': 1, Location: [loc], Pallets: pal, DateTime: dt, 'Parent Order': [parent || 'recLotSrc'] } });
+    const all = [st('recSt1', 'Loading', 'recLocGR1', 33, addDays(TODAY, -6) + 'T08:00:00'), st('recSt2', 'Unloading', 'recWhHU', 33, addDays(TODAY, -3) + 'T08:00:00'),
+      st('recSl1', 'Loading', 'recLocGR1', 18, addDays(TODAY, 1) + 'T07:00:00', 'recLead'), st('recSl2', 'Unloading', 'recDestGR', 18, addDays(TODAY, 3) + 'T07:00:00', 'recLead'),
+      st('recSp1', 'Loading', 'recWhHU', 15, addDays(TODAY, 1) + 'T07:00:00', 'recGPc'), st('recSp2', 'Unloading', 'recDestGR', 15, addDays(TODAY, 3) + 'T10:00:00', 'recGPc')];
+    const u = decodeURIComponent(r.request().url());
+    return json(r, { records: all.filter(x => u.includes('"' + x.id + '"') || u.includes("'" + x.id + "'")) });
   });
   await page.route(`**/${LOCATIONS}**`, r => {
     const u = decodeURIComponent(r.request().url());
@@ -147,6 +160,7 @@ async function newPage(browser, role, view) {
       if (one) return json(r, cap.fx.lots.find(l => l.id === one[1]) || { error: { type: 'NOT_FOUND', message: 'not found' } }, cap.fx.lots.find(l => l.id === one[1]) ? 200 : 404);
       cap.lotReads = (cap.lotReads || []).concat([url.split('?')[1] || '']);
       const f = (url.match(/filterByFormula=([^&]*)/) || [])[1] || '';
+      if (f.includes('{Complete}=0')) cap.openLotReads = (cap.openLotReads || 0) + 1;
       const rid = (f.match(/RECORD_ID\(\)='(rec[A-Za-z0-9]+)'/) || [])[1];
       return json(r, { records: rid ? cap.fx.lots.filter(l => l.id === rid) : cap.fx.lots });
     }
@@ -161,7 +175,12 @@ async function newPage(browser, role, view) {
     if (m === 'PATCH') {
       cap.patches.push({ table: 'stock_lots', id: one && one[1], fields: b.fields });
       const lot = cap.fx.lots.find(l => l.id === (one && one[1]));
-      if (lot && b.fields['Closed Note']) Object.assign(lot.fields, { 'Closed Note': b.fields['Closed Note'], 'Closed At': new Date().toISOString(), Complete: true, 'Completed On': TODAY, 'Written Off Pallets': 2 });
+      if (lot && b.fields['Closed Note']) Object.assign(lot.fields, { 'Closed Note': b.fields['Closed Note'], 'Closed At': new Date().toISOString(), Complete: true, 'Completed On': TODAY, 'Written Off Pallets': lot.fields['Remaining Pallets'] || 0 });
+      if (lot && 'Closed Note' in b.fields && b.fields['Closed Note'] === null) {
+        if (cap.reopenFail) { const e = cap.reopenFail; cap.reopenFail = null; return json(r, { error: e }, 422); }
+        ['Closed Note', 'Closed At', 'Completed On'].forEach(k => delete lot.fields[k]);
+        Object.assign(lot.fields, { Complete: false, 'Written Off Pallets': 0 });
+      }
       return json(r, lot || { id: one && one[1], fields: b.fields });
     }
     cap.deletes.push({ table: 'stock_lots', id: one && one[1] });
@@ -207,11 +226,17 @@ async function runCatalog(browser) {
   await gotoPage(page, 'orders', BASE_URL);
   await page.waitForSelector('#ocrow_recPc1', { timeout: 20000 });
   const pcRow = (await page.locator('#ocrow_recPc1').innerText()).replace(/\s+/g, ' ');
-  ok(/στην παρτίδα #1300/.test(pcRow) && !/χωρίς τιμή/.test(pcRow), 'catalog: piece price cell «στην παρτίδα #1300», not «χωρίς τιμή» — ' + pcRow);
+  ok(/#1300/.test(pcRow) && !/χωρίς τιμή/.test(pcRow), 'catalog: piece price cell names lot #1300, not «χωρίς τιμή» — ' + pcRow);
   ok(await page.locator('#ocrow_recPc1 .oc-tag', { hasText: /^ΑΠ$/ }).count() === 1, 'catalog: piece tag «ΑΠ»');
-  const cell = await page.$eval('#ocrow_recPc1 .oc-lotp', e => ({ h: e.getBoundingClientRect().height, sw: e.scrollWidth, cw: e.clientWidth, row: e.closest('tr').getBoundingClientRect().height, td: e.closest('td').scrollWidth <= e.closest('td').clientWidth }));
-  ok(cell.h <= 42 && cell.row <= 47 && cell.td, 'catalog: «στην παρτίδα #1300» fits inside the 46px row, no overflow — ' + JSON.stringify(cell));
+  const cell = await page.$eval('#ocrow_recPc1 .oc-lotp', e => ({ h: e.getBoundingClientRect().height, sw: e.scrollWidth, cw: e.clientWidth, row: e.closest('tr').getBoundingClientRect().height, td: e.closest('td').scrollWidth <= e.closest('td').clientWidth, text: e.textContent, title: e.title, lines: Math.round(e.getBoundingClientRect().height / parseFloat(getComputedStyle(e).lineHeight)) }));
+  ok(cell.h <= 42 && cell.row <= 47 && cell.td, 'catalog: the piece price cell fits inside the 46px row, no overflow — ' + JSON.stringify(cell));
+  // O11: one line; the 84px column holds 68px — «στην παρτίδα #1300» (106px) goes to the title
+  ok(cell.text === '#1300' && cell.lines === 1 && /^Στην παρτίδα #1300/.test(cell.title), 'O11: piece price on ONE line «#1300», «Στην παρτίδα #1300 — …» in the title — ' + JSON.stringify(cell));
   ok(/ΑΠΟΘΕΜΑ/.test(await page.locator('#ocrow_recLotSrc').innerText()), 'catalog: lot tag «ΑΠΟΘΕΜΑ»');
+  const lead = await page.$eval('#ocrow_recLotSrc .oc-l2', e => ({ first: (e.firstElementChild || {}).textContent, firstIsStart: e.firstChild === e.firstElementChild, vis: e.firstElementChild ? e.firstElementChild.getBoundingClientRect().right <= e.getBoundingClientRect().right : false }));
+  ok(lead.first === 'ΑΠΟΘΕΜΑ' && lead.firstIsStart && lead.vis, 'O11: the stock tag leads the line (before «Εξαγωγή»), fully visible — ' + JSON.stringify(lead));
+  const legend = (await page.locator('.oc-legend').innerText()).replace(/\s+/g, ' ');
+  ok(/ΑΠ κομμάτι από απόθεμα/.test(legend) && /ΑΠΟΘΕΜΑ παρτίδα σε αποθήκη/.test(legend), 'O11: the legend explains ΑΠ / ΑΠΟΘΕΜΑ — ' + legend);
   const kpi = (await page.locator('#ocKpi').innerText()).replace(/\s+/g, ' ');
   ok(!/χωρίς τιμή/.test(kpi), 'catalog KPI: no «χωρίς τιμή» chip/count from the 2 unpriced pieces — ' + kpi);
   // G-27/E-12: the lot that reached the warehouse is «Στην αποθήκη», not «Παραδόθηκε»
@@ -263,18 +288,31 @@ async function runForm(browser) {
   await page.waitForTimeout(500);
   ok(cap.pwReads === pw0, 'G-31: opening a new form reads no Partner-Warehouse list (' + (cap.pwReads - pw0) + ')');
   ok(!(await page.isVisible('#oiWhWarn')), 'PR-17: no warning on an empty form');
+  // O6 (critic-5 S5-03): the lot is one tick «Παρτίδα» in the flags row; no grey box on a new order
+  const tick = await page.evaluate(() => { const cb = document.getElementById('f_StockLot'), hr = document.getElementById('f_HighRisk'); return { label: cb.closest('label').textContent.trim(), sameRow: cb.closest('label').parentElement === hr.closest('label').parentElement }; });
+  ok(tick.label === 'Παρτίδα' && tick.sameRow, 'O6: «Παρτίδα» is one checkbox next to «⚠ Υψηλό ρίσκο» — ' + JSON.stringify(tick));
+  ok(!(await page.isVisible('#oiLotBox')) && !(await page.isVisible('#f_StockWh')), 'O6: no lot box / warehouse select until ticked');
+  const lots0 = cap.openLotReads || 0;
   await page.fill('#ls_l_1', 'Budapest');
   await page.locator('#ls_l_1_d .linked-drop-item', { hasText: 'Αποθήκη Χ' }).click();
+  await page.waitForTimeout(500);
+  ok(!(await page.isVisible('#oiWhWarn')) && (cap.openLotReads || 0) === lots0, 'O6: loading at a warehouse with NO client yet → no bar, no read');
+  await page.evaluate(() => { fhPickLinked('client', 'recCliA', 'Πελάτης Α'); document.getElementById('ls_client').dispatchEvent(new FocusEvent('focusout', { bubbles: true })); });
   await page.waitForFunction(() => { const e = document.getElementById('oiWhWarn'); return e && e.style.display !== 'none' && e.textContent; }, null, { timeout: 8000 });
-  ok((await page.locator('#oiWhWarn').innerText()) === 'Φόρτωση από αποθήκη συνεργάτη: αν είναι κομμάτι παρτίδας, άνοιξέ το από το ΑΠΟΘΕΜΑ του Weekly — αλλιώς θα τιμολογηθεί δεύτερη φορά', 'PR-17: loading 1 = partner warehouse → the warning, word for word');
-  ok(cap.pwReads === pw0 + 1, 'G-31: the list read once, at this first need');
+  const wtxt = await page.locator('#oiWhWarn').innerText();
+  ok(wtxt === 'Υπάρχει παρτίδα αυτού του πελάτη εδώ — κομμάτι; από το ΑΠΟΘΕΜΑ' && wtxt.split(/\s+/).filter(w => w !== '—').length <= 12, 'O6: an OPEN lot of this client at this warehouse → the ≤12-word bar — ' + wtxt);
+  ok(cap.pwReads === pw0 && cap.openLotReads === lots0 + 1, 'O6: the bar reads the open lots once (no Partner-Warehouse list) — pw ' + (cap.pwReads - pw0) + ', lots ' + (cap.openLotReads - lots0));
   await page.evaluate(() => document.getElementById('modalTitle').scrollIntoView({ block: 'start' }));
   await page.screenshot({ path: shot('02a-pr17-warning') });
-  // the first pick above went through the real dropdown; this one is set
+  // another warehouse, where this client has no open lot → no bar (the old bar fired here too)
+  await page.evaluate(() => { fhPickLinked('l_1', 'recWhAT', 'Αποθήκη Υ'); document.getElementById('ls_l_1').dispatchEvent(new FocusEvent('focusout', { bubbles: true })); });
+  await page.waitForFunction(() => document.getElementById('oiWhWarn').style.display === 'none', null, { timeout: 8000 });
+  ok(cap.openLotReads === lots0 + 1, 'O6: a warehouse without this client\'s open lot → no bar (lots cached, no second read)');
+  // the first pick above went through the real dropdown; these are set
   // directly (a second dropdown in the same field races its own blur timer)
   await page.evaluate(() => { fhPickLinked('l_1', 'recLocGR1', 'Pack House A'); document.getElementById('ls_l_1').dispatchEvent(new FocusEvent('focusout', { bubbles: true })); });
   await page.waitForFunction(() => document.getElementById('oiWhWarn').style.display === 'none', null, { timeout: 8000 });
-  ok(true, 'PR-17: a client site → the warning goes');
+  ok(true, 'PR-17: a client site → no bar');
   await page.evaluate(() => closeModal());
   ok(cap.errors.length === 0, 'no page errors / native dialogs — ' + cap.errors.join(' | '));
   await page.context().close();
@@ -350,7 +388,8 @@ async function runLotCreate(browser) {
   await page.waitForFunction(() => document.querySelectorAll('#f_StockWh option').length > 1, null, { timeout: 8000 });
   const opts = await page.locator('#f_StockWh option').allInnerTexts();
   ok(opts.some(o => /Αποθήκη Χ · Budapest HU/.test(o)) && opts.some(o => /Αποθήκη Υ · Wien AT/.test(o)) && !opts.some(o => /Αποθήκη Ζ/.test(o)), 'Φ1 list: warehouses abroad only (HU, AT; the GR one is not offered) — ' + opts.join(' | '));
-  ok(cap.pwReads === pwTick, 'G-31: the tick reuses the list read minutes ago (no second request)');
+  // Round 1 O6: the PR-17 bar no longer reads the Partner-Warehouse list (it reads the open lots), so the tick is its first need.
+  ok(cap.pwReads === pwTick + 1, 'G-31: the tick reads the warehouse list once, at its first need (' + (cap.pwReads - pwTick) + ')');
   ok(!(await page.isVisible('#f_VeroiaSwitch')) && !(await page.$eval('#f_VeroiaSwitch', e => e.checked)), 'OWNER-Q1: «Παρτίδα» ticked → Veroia Switch hidden and unticked');
   ok(await page.locator('#stoprow_u_2').count() === 1, 'ticking alone touches no stop (no warehouse chosen yet)');
   await page.selectOption('#f_StockWh', 'recWhHU');
@@ -439,7 +478,9 @@ async function runPiece(browser) {
   ok(await page.$eval('#pal_l_1', e => e.max) === '13', 'pallets max = remaining 13 (mirror)');
   ok(await page.$eval('#dt_l_1', e => e.readOnly && e.value) === ld, 'loading day = the truck\'s, read-only');
   ok(await page.inputValue('#dt_u_1') === dd, 'delivery day prefilled');
-  ok(await page.isVisible('#oiPieceWarn') && /δεν έχει παραληφθεί ακόμη στην αποθήκη/.test(await page.locator('#oiPieceWarn').innerText()), 'warning: loading before the intake');
+  const pw = await page.locator('#oiPieceWarn').innerText();
+  const dd2 = y => y.slice(8, 10) + '/' + y.slice(5, 7);
+  ok(await page.isVisible('#oiPieceWarn') && pw === `Φόρτωση ${dd2(ld)} πριν από την παραλαβή στην αποθήκη (${dd2(addDays(TODAY, -1))}) — έλεγξε την ημέρα.`, 'O7: one sentence, no contradiction — ' + pw);
   // PR-06: the lot's cargo (one GET of its source order)
   const cargo = await page.evaluate(() => ['f_Goods', 'f_Temp', 'f_ReeferMode', 'f_PalletType'].map(id => document.getElementById(id).value));
   ok(JSON.stringify(cargo) === JSON.stringify(['Φρέσκα λαχανικά', '4', 'Start-Stop', 'CHEP']), 'PR-06: goods / °C / reefer / pallet type pre-filled from the lot\'s source — ' + JSON.stringify(cargo));
@@ -465,8 +506,12 @@ async function runPiece(browser) {
   await waitText(page, /Υπέρβαση αποθέματος: διαθέσιμες 13 παλέτες, ζητήθηκαν 15/);
   ok(true, '422 over_draw → the Greek message on screen');
   ok(await page.isVisible('#pal_l_1') && (await page.evaluate(() => window._pieceCalls.length)) === 0, 'modal stays open; the Weekly hook not called');
+  await page.waitForTimeout(300);
   const toastsNow = await page.evaluate(() => [(document.getElementById('toast') || {}).innerText || '', (document.getElementById('tms-toast-container') || {}).innerText || ''].join(' | '));
   ok(!/Order created/.test(toastsNow) && !/Σφάλμα server/.test(toastsNow), 'no success toast, no «Σφάλμα server» — toasts: ' + toastsNow.replace(/\s+/g, ' '));
+  // O8 / D2 (critic-1 C1-06): the base's sentence ONCE (core/api.js), then only the context
+  const times = (toastsNow.match(/Υπέρβαση αποθέματος: διαθέσιμες 13 παλέτες, ζητήθηκαν 15/g) || []).length;
+  ok(times === 1 && /Δεν αποθηκεύτηκε τίποτα — η φόρμα μένει ανοιχτή/.test(toastsNow) && !/Σφάλμα αποθήκευσης/.test(toastsNow), 'O8: refusal once + context only, no generic «Σφάλμα αποθήκευσης» — ×' + times + ' · ' + toastsNow.replace(/\s+/g, ' '));
   await page.screenshot({ path: shot('05-piece-over-draw') });
   const refusedBody = cap.posts.filter(p => p.table === 'orders')[nOrders].fields;
   await page.fill('#pal_l_1', '5'); await page.fill('#pal_u_1', '5');
@@ -541,12 +586,14 @@ async function runPiece(browser) {
   await page.evaluate(() => openIntlReadOnlyCard('recPc1')); await page.waitForTimeout(800);
   const cardTxt = await page.evaluate(() => (document.getElementById('intlDetail') || {}).innerText || '');
   dupRes.cardPrice = /Τιμή\s*στην παρτίδα #1300/.test(cardTxt); dupRes.card = cardTxt.replace(/\s+/g, ' ').slice(0, 300);
+  dupRes.cardInv = /Τιμολογήθηκε\s*με την παρτίδα #1300/.test(cardTxt) && !/Τιμολογήθηκε\s*Όχι/.test(cardTxt);
   await page.evaluate(() => { const p = document.getElementById('intlDetail'); if (p) p.classList.add('hidden'); });
   await page.evaluate(f => openIntlEditWith('recPc1', JSON.parse(JSON.stringify(f))), pc.fields);
   await page.waitForFunction(() => /Επεξεργασία κομματιού/.test(document.getElementById('modalTitle').textContent), null, { timeout: 8000 });
   await page.waitForSelector('#pal_l_1');
   ok(dupRes.seen.some(t => /^warn: Νέο κομμάτι: από τη λωρίδα ΑΠΟΘΕΜΑ/.test(t)) && dupRes.sameModal, 'duplicateIntlOrder(piece) refuses in Greek, opens nothing — ' + JSON.stringify(dupRes.seen));
   ok(dupRes.cardPrice, 'piece card: price row «στην παρτίδα #1300» — ' + dupRes.card);
+  ok(dupRes.cardInv, 'O5: piece card «Τιμολογήθηκε · με την παρτίδα #1300», never «Όχι»');
   await page.fill('#pal_l_1', '16'); await page.fill('#dt_l_1', addDays(TODAY, -2));
   await page.evaluate(() => fhPickLinked('u_1', 'recDestGR', 'Cold Hub B'));
   await page.fill('#pal_u_1', '16'); await page.fill('#dt_u_1', addDays(TODAY, -1));
@@ -572,8 +619,28 @@ async function runLotEdit(browser) {
   await gotoPage(page, 'orders', BASE_URL);
   await page.waitForSelector('#ocrow_recPc1', { timeout: 20000 });
 
-  // ── editing a lot: band, frozen pallets, unmark (refused, then allowed) ──
+  // ── O1/O2: a CLOSED lot shows its close in the band, and «Άνοιγμα ξανά» ──
   const lf = cap.fx.orders.find(o => o.id === 'recLotSrc');
+  const lot1 = cap.fx.lots.find(l => l.id === 'recLot1');
+  Object.assign(lot1.fields, { 'Closed Note': '2 παλέτες χαλασμένες', 'Closed At': addDays(TODAY, -1) + 'T10:00:00Z', Complete: true, 'Completed On': addDays(TODAY, -1), 'Written Off Pallets': 2 });
+  await page.evaluate(f => openIntlEditWith('recLotSrc', JSON.parse(JSON.stringify(f))), lf.fields);
+  await page.waitForSelector('#oiLotReopen', { timeout: 8000 });
+  const closedDm = (+addDays(TODAY, -1).slice(8, 10)) + '/' + (+addDays(TODAY, -1).slice(5, 7));
+  const cband = (await page.locator('#oiLotBand').innerText()).replace(/\s+/g, ' ');
+  ok(cband.includes('Κλείσιμο υπολοίπου: 2 παλ. · 2 παλέτες χαλασμένες · ' + closedDm), 'O2: the band of a closed lot says the close (pallets · reason · date) — ' + cband);
+  await page.waitForTimeout(700);   // the modal's fade-in
+  await page.evaluate(() => document.getElementById('modalTitle').scrollIntoView({ block: 'start' }));
+  await page.screenshot({ path: shot('10a-lot-edit-closed') });
+  const nRe = cap.patches.length;
+  await page.click('#oiLotReopen');
+  await page.waitForFunction(() => !document.getElementById('oiLotClosed'), null, { timeout: 8000 });
+  const rp = cap.patches.slice(nRe);
+  ok(rp.length === 1 && rp[0].table === 'stock_lots' && rp[0].id === 'recLot1' && JSON.stringify(rp[0].fields) === '{"Closed Note":null}', 'O1: «Άνοιγμα ξανά» = ONE PATCH STOCK LOTS {Closed Note:null} — ' + JSON.stringify(rp));
+  ok(/άνοιξε ξανά — περιμένει κομμάτια/.test(await page.evaluate(() => (document.getElementById('toast') || {}).innerText || '')) && await page.isVisible('#oiLotBand'), 'O1: band repainted from the read-back (no close line), toast says what happened');
+  await page.evaluate(() => closeModal());
+  await page.waitForFunction(() => !document.getElementById('modalOverlay').classList.contains('open'), null, { timeout: 8000 });
+
+  // ── editing a lot: band, frozen pallets, unmark (refused, then allowed) ──
   await page.evaluate(f => openIntlEditWith('recLotSrc', JSON.parse(JSON.stringify(f))), lf.fields);
   await page.waitForSelector('#f_StockLot', { timeout: 8000 });
   await page.waitForFunction(() => document.getElementById('f_StockWh').value === 'recWhHU', null, { timeout: 8000 });
@@ -593,9 +660,12 @@ async function runLotEdit(browser) {
   cap.acceptDialog = true;
   cap.lotFail = { type: 'STOCK_RULE', code: 'lot_has_pieces', message: 'Η παρτίδα έχει κομμάτια — δεν καταργείται' };
   const nP = cap.patches.length, nD = cap.deletes.length;
+  await page.evaluate(() => { const c = document.getElementById('tms-toast-container'); if (c) c.innerHTML = ''; });
   await page.click('#btnSubmit');
-  await waitText(page, /ΠΑΡΑΜΕΝΕΙ παρτίδα — δεν αποθηκεύτηκε τίποτα: Η παρτίδα έχει κομμάτια — δεν καταργείται/);
+  await waitText(page, /ΠΑΡΑΜΕΝΕΙ παρτίδα — δεν αποθηκεύτηκε τίποτα/);
   ok(cap.deletes.length === nD + 1 && cap.patches.length === nP, 'unmark refused (lot_has_pieces) → nothing else written (no ORDERS PATCH)');
+  const unTo = (await page.evaluate(() => (document.getElementById('tms-toast-container') || {}).innerText || '')).replace(/\s+/g, ' ');
+  ok((unTo.match(/Η παρτίδα έχει κομμάτια — δεν καταργείται/g) || []).length === 1, 'O8 / D2: the base\'s sentence once, the context without it — ' + unTo);
   ok((cap.dialogs || []).some(m => /θα πάψει να είναι παρτίδα/.test(m)), 'native confirm asked first');
   await page.click('#btnSubmit');
   await page.waitForFunction(() => !document.getElementById('modalOverlay').classList.contains('open'), null, { timeout: 10000 });
@@ -605,23 +675,32 @@ async function runLotEdit(browser) {
 
   // ── DL-03 + AU-07: a designed refusal of a delete — its own words, logged once ──
   console.log('[dispatcher] delete refused');
-  await page.evaluate(() => { window.__logCtx = []; document.getElementById('toast')?.remove(); });
-  cap.acceptDialog = true;
+  await page.evaluate(() => { window.__logCtx = []; document.getElementById('toast')?.remove(); const c = document.getElementById('tms-toast-container'); if (c) c.innerHTML = ''; });
+  cap.acceptDialog = true; cap.dialogs = [];
   cap.orderDelFail = { type: 'STOCK_RULE', code: 'piece_on_truck', message: 'Το κομμάτι είναι σε φορτηγό — «Επιστροφή στο απόθεμα» πρώτα' };
   const nOrdDel = cap.deletes.filter(d => d.table === 'orders').length;
   await page.evaluate(() => deleteIntlOrder('recPc1'));
-  // D2 / round-1 K1: _atRetry puts the refusal's own Greek words on screen ONCE;
-  // deleteIntlOrder adds no second copy and no generic «Η διαγραφή απέτυχε».
-  await page.waitForFunction(() => /Το κομμάτι είναι σε φορτηγό/.test(document.body.innerText || ''), null, { timeout: 15000 });
-  await page.waitForTimeout(400);
-  const delToast = await page.evaluate(() => document.body.innerText);
-  const copies = (delToast.match(/Το κομμάτι είναι σε φορτηγό — «Επιστροφή στο απόθεμα» πρώτα/g) || []).length;
-  ok(copies === 1 && !/Η διαγραφή απέτυχε/.test(delToast), 'DL-03 + D2: the refusal\'s own Greek words, once, not «Η διαγραφή απέτυχε» — copies=' + copies);
+  // K1 (round 1): a designed refusal is shown ONCE, by core/api.js — no second toast of the caller.
+  const REFUSAL = 'Το κομμάτι είναι σε φορτηγό — «Επιστροφή στο απόθεμα» πρώτα';
+  await page.waitForFunction(t => document.body.innerText.split(t).length - 1 === 1, REFUSAL, { timeout: 15000 });
+  await page.waitForTimeout(300);
+  const delBody = await page.evaluate(() => document.body.innerText);
+  ok(delBody.split(REFUSAL).length - 1 === 1 && !/Η διαγραφή απέτυχε/.test(delBody), 'DL-03 / K1: the refusal\'s own Greek words, once (core/api.js), not «Η διαγραφή απέτυχε»');
+  // O9 (critic-1 C1-07): the confirm said NAT_LOADS/RAMP/«ΔΕΝ ΑΝΑΙΡΕΙΤΑΙ» for a 16p piece
+  const dq = (cap.dialogs || [])[0] || '';
+  ok(/^Διαγραφή κομματιού #1301 — οι 16p γυρίζουν στην παρτίδα #1300\./.test(dq) && !/NAT_LOADS|ΔΕΝ ΑΝΑΙΡΕΙΤΑΙ/.test(dq), 'O9: the piece\'s confirm says what it is — ' + JSON.stringify(dq));
   const ctxs = await page.evaluate(() => window.__logCtx);
   ok(ctxs.filter(c => /_atRetry 422/.test(c)).length === 1 && !ctxs.some(c => /deleteIntlOrder/.test(c)), 'AU-07: one app_errors row (_atRetry), none from deleteIntlOrder — ' + JSON.stringify(ctxs));
   ok(cap.deletes.filter(d => d.table === 'orders').length === nOrdDel + 1, 'one DELETE sent, nothing after it (no cascade)');
   await page.screenshot({ path: shot('11-delete-refused') });
   cap.acceptDialog = false;
+  // O9: a lot says what it is too — dismissed, nothing sent
+  cap.dismissDialog = true; cap.dialogs = [];
+  const nDel2 = cap.deletes.length;
+  await page.evaluate(() => deleteIntlOrder('recLotSrc'));
+  const lq = (cap.dialogs || [])[0] || '';
+  ok(/^Διαγραφή παρτίδας #1300 \(33p\) — το απόθεμα φεύγει μαζί της/.test(lq) && cap.deletes.length === nDel2, 'O9: the lot\'s confirm says what it is; «Άκυρο» sends nothing — ' + JSON.stringify(lq));
+  cap.dismissDialog = false;
 
   ok(cap.errors.length === 0, 'no page errors / native dialogs — ' + cap.errors.join(' | '));
   await page.context().close();
@@ -643,15 +722,31 @@ async function runAccountant(browser) {
   await page.locator('#oivBody tr.oiv-r', { hasText: 'TEST-STOCK-LOT' }).click();
   await page.waitForFunction(() => /TEST-STOCK-1/.test((document.getElementById('oivPieces') || {}).innerText || ''), null, { timeout: 8000 });
   const card = (await page.locator('#oivCard').innerText()).replace(/\s+/g, ' ');
-  ok(/περιμένει κομμάτια: 2p στην αποθήκη · 0 σε κίνηση · 0 χωρίς φορτηγό/.test(card), 'E-07 card: «περιμένει κομμάτια: 2p στην αποθήκη · 0 σε κίνηση · 0 χωρίς φορτηγό»');
-  ok(/ΚΟΜΜΑΤΙΑ · 2/.test(card) && /TEST-STOCK-1/.test(card) && /TEST-STOCK-2/.test(card) && /Cold Hub B/.test(card), 'card: pieces list (ref, destination) — ' + card);
+  // O4 (critic-5 S5-04 / critic-2 E2-10): the reason ONCE (ΕΛΕΓΧΟΙ), no zero terms, neutral not red
+  ok((card.match(/περιμένει κομμάτια: 2p στην αποθήκη/g) || []).length === 1 && !/0 σε κίνηση|0 χωρίς φορτηγό/.test(card), 'O4: «περιμένει κομμάτια: 2p στην αποθήκη» once on the card, no «0 …» terms — ' + card);
+  const neutral = await page.evaluate(() => {
+    const row = [...document.querySelectorAll('#oivBody tr.oiv-r')].find(tr => /TEST-STOCK-LOT/.test(tr.innerText));
+    const ck = [...document.querySelectorAll('#oivCard .oiv-ck')].find(e => /Παρτίδα ·/.test(e.innerText));
+    return { rowBad: !!(row && row.querySelector('.oiv-st.bad')), rowWait: !!(row && row.querySelector('.oiv-st.wait')), ck: ck && ck.className, block: !!document.querySelector('#oivCard .oiv-block') };
+  });
+  ok(!neutral.rowBad && neutral.rowWait && /\bna\b/.test(neutral.ck || '') && !neutral.block, 'O4: waiting is neutral — list, ΕΛΕΓΧΟΙ and action block carry no red — ' + JSON.stringify(neutral));
+  ok(/ΚΟΜΜΑΤΙΑ · 3/.test(card) && /TEST-STOCK-1/.test(card) && /TEST-STOCK-2/.test(card) && /TEST-STOCK-5/.test(card) && /Cold Hub B/.test(card), 'card: pieces list (ref, destination; the group piece of the print stage too) — ' + card);
   ok(!/Επιμερισμός/.test(card) && !cap.allocReq, 'accountant: no allocation block, no /costs/stock-lots request');
   ok(await page.locator('#oivNum').count() === 0, 'no invoice form while blocked');
   ok(await page.locator('.oiv-warn-btn', { hasText: 'Κλείσιμο υπολοίπου' }).count() === 1, '«Κλείσιμο υπολοίπου…» offered (chip «close», Ε3 accountant)');
   await page.screenshot({ path: shot('06-invoicing-lot-blocked') });
+  // O1: with no piece drawn the modal says the WHOLE lot goes (the early-click case)
+  await page.evaluate(() => { const l = { id: 'recLotZ', fields: { 'Lot No': 1400, 'Source Kind': 'intl', 'Warehouse Name': 'Αποθήκη Χ', 'Client Name': 'Πελάτης Α', 'Remaining Pallets': 33, Pieces: 0, 'Intake Delivered': true } }; OrdersStock.openCloseModal(l, () => {}); });
+  await page.waitForSelector('#osCloseText');
+  const ztxt = (await page.locator('#osCloseText').innerText()).replace(/\s+/g, ' ');
+  ok(/^Κλείνει ΟΛΗ η παρτίδα \(33 παλέτες\) — δεν βγήκε κανένα κομμάτι\./.test(ztxt), 'O1: zero pieces → «Κλείνει ΟΛΗ η παρτίδα (33 παλέτες)…» — ' + ztxt);
+  await page.screenshot({ path: shot('07a-close-modal-zero-pieces') });
+  await page.click('#modal .btn-ghost');
+  await page.waitForFunction(() => !document.getElementById('modalOverlay').classList.contains('open'), null, { timeout: 8000 });
   await page.click('.oiv-warn-btn:has-text("Κλείσιμο υπολοίπου")');
   await page.waitForSelector('#osCloseNote');
-  ok(/Μένουν 2 παλέτες στην αποθήκη\. Γράφονται ως χαμένο υπόλοιπο/.test(await page.locator('#modalBody').innerText()), 'close modal: pallets only, no money');
+  const mtxt = (await page.locator('#osCloseText').innerText()).replace(/\s+/g, ' ');
+  ok(mtxt === 'Μένουν 2 παλέτες στην αποθήκη. Γράφονται χαμένες· η παρτίδα δεν δίνει άλλα κομμάτια. Ανοίγει ξανά μέχρι να τιμολογηθεί.', 'O1: the modal names the consequence — ' + mtxt);
   ok(!/€/.test(await page.locator('#modalBody').innerText()), 'close modal: no amount');
   await page.click('#osCloseBtn');
   ok(/υποχρεωτική/.test(await page.locator('#osCloseErr').innerText()) && !cap.patches.length, 'empty reason → refused on screen, nothing sent');
@@ -664,6 +759,20 @@ async function runAccountant(browser) {
   await page.waitForFunction(() => /προς κοπή/.test((document.querySelector('#oivBody tr.oiv-r.on') || document.body).innerText), null, { timeout: 8000 }).catch(() => {});
   const row = (await page.locator('#oivBody tr.oiv-r', { hasText: 'TEST-STOCK-LOT' }).innerText()).replace(/\s+/g, ' ');
   ok(/προς κοπή/.test(row), 'after the close the set is re-read: the lot is «προς κοπή» — ' + row);
+  const lastPiece0 = addDays(TODAY, -1), lastDm0 = (+lastPiece0.slice(8, 10)) + '/' + (+lastPiece0.slice(5, 7)), todayDm = (+TODAY.slice(8, 10)) + '/' + (+TODAY.slice(5, 7));
+  // O3: one date for the lot — the list cell = the ERP paper (deliveries + last piece), not «Αποθήκη Χ · intake»
+  ok(new RegExp('2 παραδόσεις ' + lastDm0).test(row) && !/Αποθήκη Χ/.test(row), 'O3: list ΠΑΡΑΔΟΣΗ of the lot = «2 παραδόσεις · ' + lastDm0 + '» — ' + row);
+  await page.locator('#oivBody tr.oiv-r', { hasText: 'TEST-STOCK-LOT' }).click();
+  await page.waitForFunction(() => /Κλείσιμο υπολοίπου:/.test((document.getElementById('oivCard') || {}).innerText || ''), null, { timeout: 8000 });
+  const rc = (await page.locator('#oivCard').innerText()).replace(/\s+/g, ' ');
+  ok(new RegExp('Τελευταίο κομμάτι ' + lastDm0).test(rc) && !/Παραδόθηκε 1?\d\/\d/.test(rc.split('ΣΤΟΙΧΕΙΑ')[0]), 'O3: ready header «Τελευταίο κομμάτι ' + lastDm0 + '», never «Παραδόθηκε <intake>» — ' + rc.slice(0, 160));
+  ok(rc.includes('Παρτίδα · 31/33p παραδόθηκαν') && rc.includes('Κλείσιμο υπολοίπου: 2 παλ. · 2 παλέτες χαλασμένες στην αποθήκη · ' + todayDm), 'O2: ΕΛΕΓΧΟΙ show the close where she works (31/33p · 2 παλ. · reason · date)');
+  ok(await page.locator('[data-oiv="reopen"]').count() === 0, 'O1: the accountant closes but does not reopen (owner/dispatcher)');
+  // O3: an invoice dated before the last piece is warned about (it passed silently against the intake)
+  await page.fill('#oivDate', addDays(TODAY, -2));
+  await page.dispatchEvent('#oivDate', 'input');
+  ok(/πριν την παράδοση \(/.test(await page.locator('#oivHint').innerText()), 'O3: invoice date before the last piece → «πριν την παράδοση» warning');
+  await page.fill('#oivDate', TODAY); await page.dispatchEvent('#oivDate', 'input');
   await page.screenshot({ path: shot('08-after-close-ready') });
 
   // ── PR-15/E-06 (OWNER-Q6 default): the ERP sheet of the complete lot ──
@@ -674,15 +783,16 @@ async function runAccountant(browser) {
   await page.waitForFunction(() => window.__csv.length && window.__printed.length && window.__clip.length, null, { timeout: 8000 });
   const erp = await page.evaluate(() => window.__csv.at(-1).rows);
   const eh = erp[0], er = erp.find(r => r[1] === 'TEST-STOCK-LOT') || [];
-  ok(er[eh.indexOf('Παράδοση')] === '2 παραδόσεις (κομμάτια)' && er[eh.indexOf('Ημ. παράδοσης')] === lastPiece, 'ERP CSV: lot «Παράδοση» = «2 παραδόσεις (κομμάτια)», date = Last Piece Delivered — ' + JSON.stringify(er));
+  ok(er[eh.indexOf('Παράδοση')] === '2 παραδόσεις' && er[eh.indexOf('Ημ. παράδοσης')] === lastPiece, 'ERP CSV: lot «Παράδοση» = «2 παραδόσεις» (O5: no «(κομμάτια)»), date = Last Piece Delivered — ' + JSON.stringify(er));
+  ok(er[eh.indexOf('Παλέτες')] === '31 + 2 χαμένες', 'O2: ERP CSV pallets of the closed lot = «31 + 2 χαμένες» — ' + er[eh.indexOf('Παλέτες')]);
   const pr = (erp.find(r => r[1] === 'TEST-PLAIN') || []);
   ok(/Cold Hub B/.test(pr[eh.indexOf('Παράδοση')] || ''), 'ERP CSV: an ordinary order keeps its destination — ' + pr[eh.indexOf('Παράδοση')]);
   const erpPaper = await page.evaluate(() => window.__printed.at(-1));
-  ok(/2 παραδόσεις \(κομμάτια\)/.test(erpPaper) && erpPaper.includes('<td>' + lastDm + '</td>'), 'ERP print: the lot row names the deliveries + last date');
+  ok(/<td>2 παραδόσεις<\/td>/.test(erpPaper) && erpPaper.includes('<td>' + lastDm + '</td>') && erpPaper.includes('<td class="r">31 + 2 χαμένες</td>'), 'ERP print: the lot row names the deliveries + last date + «31 + 2 χαμένες»');
   const clip = await page.evaluate(() => window.__clip.at(-1));
-  ok(clip.includes('Παράδοση\t2 παραδόσεις (κομμάτια) · ' + lastDm), '«Αντιγραφή όλων»: «Παράδοση» line of the lot — ' + JSON.stringify(clip));
+  ok(clip.includes('Παράδοση\t2 παραδόσεις · ' + lastDm) && clip.includes('Παλέτες\t31 + 2 χαμένες'), '«Αντιγραφή όλων»: «Παράδοση» + «Παλέτες» lines of the lot — ' + JSON.stringify(clip));
   const cardNow = (await page.locator('#oivCard').innerText()).replace(/\s+/g, ' ');
-  ok(/Παράδοση [^Π]*Αποθήκη Χ/.test(cardNow), 'the card is unchanged: its «Παράδοση» is still the warehouse intake');
+  ok(/Παράδοση [^Π]*Αποθήκη Χ/.test(cardNow), 'the card\'s ΠΑΡΑΓΓΕΛΙΑ section keeps the order\'s own route (warehouse intake)');
   const erpPage = await page.context().newPage();
   await erpPage.setContent(erpPaper.replace(/<script>[\s\S]*?<\/script>/g, ''));
   await erpPage.setViewportSize({ width: 1440, height: 700 });
@@ -714,6 +824,42 @@ async function runOwner(browser) {
   await page.context().close();
 }
 
+// O1 (critic-2 E2-01 / critic-1 C1-04): owner on «Προς τιμολόγηση», a lot the
+// accountant closed by mistake — «Άνοιγμα ξανά» → confirm → ONE PATCH, the set
+// re-read, the lot waits again. A refusal (lot invoiced meanwhile) is said once
+// by core/api.js and the card adds only the context.
+async function runReopen(browser) {
+  console.log('\n[owner] Άνοιγμα ξανά (Προς τιμολόγηση)');
+  const page = await newPage(browser, 'owner', 'invoicing');
+  const cap = page._cap;
+  Object.assign(cap.fx.lots[0].fields, { 'Closed Note': 'λάθος κλικ', 'Closed At': TODAY + 'T06:00:00Z', Complete: true, 'Completed On': TODAY, 'Written Off Pallets': 2 });
+  await gotoPage(page, 'orders', BASE_URL);
+  await page.waitForSelector('#oivBody', { timeout: 20000 });
+  await page.click('.oiv-allopen');
+  await page.click('.oiv-seg-b[data-tab="all"]');
+  await page.locator('#oivBody tr.oiv-r', { hasText: 'TEST-STOCK-LOT' }).click();
+  await page.waitForSelector('[data-oiv="reopen"]', { timeout: 8000 });
+  await page.evaluate(() => document.querySelector('.oiv-closed').scrollIntoView({ block: 'center' }));
+  await page.screenshot({ path: shot('13a-owner-closed-lot-reopen') });
+  // refused once (the lot was invoiced meanwhile): the base's sentence once, the card only the context
+  cap.reopenFail = { type: 'STOCK_RULE', code: 'reopen_invoiced', message: 'Τιμολογημένη παρτίδα δεν ξανανοίγει' };
+  await page.click('[data-oiv="reopen"]');
+  await page.click('#_cfaOk');
+  await page.waitForFunction(() => /Δεν άνοιξε — η παρτίδα μένει κλειστή/.test((document.getElementById('oivCard') || {}).innerText || ''), null, { timeout: 8000 });
+  const both = (await page.evaluate(() => [(document.getElementById('oivCard') || {}).innerText || '', (document.getElementById('tms-toast-container') || {}).innerText || ''].join(' | '))).replace(/\s+/g, ' ');
+  ok((both.match(/Τιμολογημένη παρτίδα δεν ξανανοίγει/g) || []).length === 1, 'D2: refusal once (api toast), the card says only «Δεν άνοιξε — η παρτίδα μένει κλειστή» — ' + both.slice(0, 200));
+  const nP = cap.patches.length;
+  await page.click('[data-oiv="reopen"]');
+  await page.click('#_cfaOk');
+  await page.waitForFunction(() => /περιμένει κομμάτια/.test(([...document.querySelectorAll('#oivBody tr.oiv-r')].find(tr => /TEST-STOCK-LOT/.test(tr.innerText)) || {}).innerText || ''), null, { timeout: 10000 });
+  const rp = cap.patches.slice(nP);
+  ok(rp.length === 1 && rp[0].table === 'stock_lots' && JSON.stringify(rp[0].fields) === '{"Closed Note":null}', 'O1: one PATCH {Closed Note:null} — ' + JSON.stringify(rp));
+  ok(/άνοιξε ξανά — περιμένει κομμάτια/.test(await page.evaluate(() => (document.getElementById('toast') || {}).innerText || '')), 'O1: after the read-back the set is re-read — the lot waits for pieces again; toast says so');
+  await page.screenshot({ path: shot('13b-owner-after-reopen') });
+  ok(cap.errors.length === 0, 'no page errors — ' + cap.errors.join(' | '));
+  await page.context().close();
+}
+
 // G-07: the warehouse role never asks STOCK LOTS (no grant → 403 toast storm).
 async function runWarehouse(browser) {
   console.log('\n[warehouse] Παραγγελίες');
@@ -730,7 +876,9 @@ async function runWarehouse(browser) {
   await page.context().close();
 }
 
-// PR-05: the piece's driver sheet says «ΑΠ · Παρτίδα #N» — no client, no money.
+// PR-05 / round 1 O10 (critic-4 C4-05): the piece's driver sheet names the
+// lot by the REFERENCE the warehouse knows («Stock Lot Reference», Worker label
+// after S2) and falls back to «#N» before the deploy — no client, no money, no «ΑΠ ·».
 async function runPrint(browser) {
   console.log('\n[print] piece driver sheet');
   const page = await newPage(browser, 'dispatcher', 'catalog');
@@ -738,12 +886,62 @@ async function runPrint(browser) {
   await page.goto('print.html?orderId=recPc1&leg=import&sheet=driver');
   await page.waitForFunction(() => /Εντολή Οδηγού/.test(document.body.innerText), null, { timeout: 20000 });
   const t = (await page.locator('#doc').innerText()).replace(/\s+/g, ' ');
-  ok(/ΑΠΟΘΕΜΑ ΑΠ · Παρτίδα #1300|Απόθεμα ΑΠ · Παρτίδα #1300/i.test(t), 'PR-05: piece sheet «Απόθεμα · ΑΠ · Παρτίδα #1300» — ' + (t.match(/.{0,30}Παρτίδα.{0,20}/) || [''])[0]);
+  const meta = await page.evaluate(() => { const i = [...document.querySelectorAll('.meta-item')].find(e => /απόθεμα/i.test(e.querySelector('.meta-lbl').textContent)); return i ? i.querySelector('.meta-val').textContent : ''; });
+  ok(meta === 'Ref TEST-STOCK-LOT · παρτίδα #1300', 'O10/C4-05: piece sheet «Ref <lot Reference> · παρτίδα #1300», no «ΑΠ ·» — ' + JSON.stringify(meta));
   ok(!/Πελάτης Α/.test(t) && !/€|3\.?300/.test(t), 'PR-05: no client name, no money on the sheet');
+  const wa = await page.evaluate(() => _waArr.join('\n'));
+  ok(/Απόθεμα · Ref TEST-STOCK-LOT · παρτίδα #1300/.test(wa), 'O10/C4-02: the WhatsApp text marks the piece as stock — ' + JSON.stringify(wa.split('\n').filter(l => /παρτίδα/.test(l))));
   await page.screenshot({ path: shot('12-print-piece-sheet'), fullPage: false });
+  // before the Worker serves «Stock Lot Reference»: the lot number alone (facade trap #2: absent)
+  await page.goto('print.html?orderId=recPc2&leg=import&sheet=driver');
+  await page.waitForFunction(() => /Εντολή Οδηγού/.test(document.body.innerText), null, { timeout: 20000 });
+  const meta2 = await page.evaluate(() => { const i = [...document.querySelectorAll('.meta-item')].find(e => /απόθεμα/i.test(e.querySelector('.meta-lbl').textContent)); return i ? i.querySelector('.meta-val').textContent : ''; });
+  ok(meta2 === 'παρτίδα #1300', 'O10/C4-05: no «Stock Lot Reference» label yet → «παρτίδα #1300» — ' + JSON.stringify(meta2));
   await page.goto('print.html?orderId=recPlain&leg=export&sheet=driver');
   await page.waitForFunction(() => /Εντολή Οδηγού/.test(document.body.innerText), null, { timeout: 20000 });
-  ok(!/Παρτίδα/.test(await page.locator('#doc').innerText()), 'an ordinary order prints no lot line');
+  ok(!/Παρτίδα|παρτίδα/.test(await page.locator('#doc').innerText()), 'an ordinary order prints no lot line');
+  ok(cap.errors.length === 0, 'no page errors — ' + cap.errors.join(' | '));
+  await page.context().close();
+}
+
+// O10 (critic-4 C4-01/C4-02): ⎙I of a truck whose import group holds a piece.
+// The COVER is what the driver reads at each stop: chips from every member.
+async function runPrintGroup(browser) {
+  console.log('\n[print] group packet with a piece');
+  const page = await newPage(browser, 'dispatcher', 'catalog');
+  const cap = page._cap;
+  await page.setViewportSize({ width: 1440, height: 1100 });
+  await page.goto('print.html?orderIds=recLead,recGPc&leg=import&sheet=driver');
+  await page.waitForFunction(() => document.querySelectorAll('.p-doc').length >= 3, null, { timeout: 20000 });
+  const docs = await page.$$eval('.p-doc', es => es.map(e => e.innerText.replace(/\s+/g, ' ')));
+  const chips = await page.evaluate(() => { const c = document.querySelector('.p-doc .cargo'); return c ? [...c.querySelectorAll('.chip')].map(x => x.innerText.replace(/\s+/g, ' ')) : []; });
+  ok(chips.some(c => /18 × EUR \+ 15 × CHEP/.test(c)), 'O10/C4-01: cover pallets chip lists every type «18 × EUR + 15 × CHEP» — ' + JSON.stringify(chips));
+  ok(chips.some(c => /ΝΑΙ — μόνο A TEST-LEAD/.test(c)), 'O10/C4-01: cover PE «ΝΑΙ — μόνο A TEST-LEAD» (the piece never exchanges) — ' + JSON.stringify(chips));
+  ok(/ΠΑΡΑΓΓΕΛΙΑ B · 2002 · [^·]+ · Απόθεμα · Ref TEST-STOCK-LOT · παρτίδα #1300/.test(docs[0]), 'O10/C4-02: the cover stop of the piece is marked as stock');
+  const wa = await page.evaluate(() => _waArr);
+  ok(wa.length >= 2 && /Απόθεμα · Ref TEST-STOCK-LOT · παρτίδα #1300/.test(wa[wa.length - 1]) && !/Απόθεμα/.test(wa[0]), 'O10/C4-02: the piece\'s WhatsApp text (right-click share) says stock; the lead\'s does not');
+  await page.screenshot({ path: shot('14-print-group-packet'), fullPage: true });
+  ok(cap.errors.length === 0, 'no page errors — ' + cap.errors.join(' | '));
+  await page.context().close();
+}
+
+// O10 (critic-4 C4-03): the lot's partner sheet — the exchange is at the
+// client's loading (Ε5), never at the warehouse intake (no ledger movement there).
+async function runPrintLotPartner(browser) {
+  console.log('\n[print] lot partner sheet');
+  const page = await newPage(browser, 'dispatcher', 'catalog');
+  const cap = page._cap;
+  Object.assign(cap.fx.orders.find(o => o.id === 'recLotSrc').fields, { 'Pallet Exchange': true, Partner: ['recPa'], 'Is Partner Trip': true, 'Partner Rate': 300, 'Pallet Type': 'EUR' });
+  await page.setViewportSize({ width: 1440, height: 1100 });
+  await page.goto('print.html?orderId=recLotSrc&leg=export&sheet=partner');
+  await page.waitForFunction(() => /Partner Assignment Order/.test(document.body.innerText), null, { timeout: 20000 });
+  const stops = await page.$$eval('.stop', es => es.map(e => ({ type: (e.querySelector('.type') || {}).textContent, pe: ([...e.querySelectorAll('.f')].find(f => /Pallet Exchange/.test(f.innerText)) || { innerText: '' }).innerText.replace(/\s+/g, ' ') })));
+  const load = stops.find(x => x.type === 'LOADING') || {}, del = stops.find(x => x.type === 'DELIVERY') || {};
+  ok(/YES/.test(load.pe) && /Pallet Exchange NO/.test(del.pe), 'O10/C4-03: loading card PE YES, warehouse delivery card PE NO — ' + JSON.stringify(stops));
+  const wa = await page.evaluate(() => _waArr.join('\n'));
+  ok(/Pallet Exchange: YES at loading · NO at the warehouse/.test(wa), 'O10/C4-03: the WhatsApp text says YES at loading · NO at the warehouse — ' + JSON.stringify(wa.split('\n').filter(l => /Pallet/.test(l))));
+  ok(!/3\.?300/.test(await page.locator('#doc').innerText()), 'no client price on the partner sheet');
+  await page.screenshot({ path: shot('15-print-lot-partner'), fullPage: true });
   ok(cap.errors.length === 0, 'no page errors — ' + cap.errors.join(' | '));
   await page.context().close();
 }
@@ -751,7 +949,7 @@ async function runPrint(browser) {
 (async () => {
   const browser = await chromium.launch();
   try {
-    for (const run of [runCatalog, runForm, runFormTick, runLotCreate, runPiece, runLotEdit, runAccountant, runOwner, runWarehouse, runPrint]) {
+    for (const run of [runCatalog, runForm, runFormTick, runLotCreate, runPiece, runLotEdit, runAccountant, runOwner, runReopen, runWarehouse, runPrint, runPrintGroup, runPrintLotPartner]) {
       try { await run(browser); } catch (e) { failed++; console.log('  ✗ ' + run.name + ' threw: ' + (e && e.stack || e)); }
     }
   } finally { await browser.close(); }
