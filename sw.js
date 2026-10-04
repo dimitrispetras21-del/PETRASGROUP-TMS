@@ -7,7 +7,7 @@
 //   - Offline banner via postMessage to all clients
 // ═══════════════════════════════════════════════════════════
 
-const SW_VERSION = '1791127100';
+const SW_VERSION = '1791129300';
 
 // Το vendor/leaflet/* ΔΕΝ μπαίνει στο APP_SHELL επίτηδες: το pre-cache στο
 // install θα κατέβαζε 228 KB σε κάθε χρήστη, ακυρώνοντας το lazy loading της
@@ -30,6 +30,8 @@ const APP_SHELL = [
   '/PETRASGROUP-TMS/core/tms-week.js',
   '/PETRASGROUP-TMS/core/ui.js',
   '/PETRASGROUP-TMS/core/entity.js',
+  // 060: the Drivers card reads a driver's local moves through it.
+  '/PETRASGROUP-TMS/core/relay-history.js',
   '/PETRASGROUP-TMS/core/pa-helpers.js',
   '/PETRASGROUP-TMS/core/ai-chat.js',
   // Modules

@@ -64,7 +64,10 @@ function dlCsvAmt(n) { var s = dlNum(n); return s === null ? '—' : s; }
 // «Τύπος · λεπτομέρεια» — ίδια σύμβαση με το A4 (print_payroll.html, Figma
 // 601:1011, ενημέρωση συμβολαίου 14/9): μία διατύπωση παντού (αρχή 3).
 function dlCsvKinisi(e) {
-  var base = e.entry_type === 'trip' ? 'Δρομολόγιο · ' + (e.route_text || '—')
+  // 060: a local driver's day is not a «Δρομολόγιο» — the same label as the
+  // card (dlLocalLabel, modules/payroll.js), one wording on screen and paper.
+  var base = dlIsLocal(e) ? dlLocalLabel(e)
+    : e.entry_type === 'trip' ? 'Δρομολόγιο · ' + (e.route_text || '—')
     : e.entry_type === 'payment_bank' ? 'Πληρωμή · Κατάθεση τράπεζας'
     : e.entry_type === 'payment_cash' ? 'Πληρωμή · Μετρητά'
     : 'Προσαρμογή' + (e.note ? ' · ' + e.note : '');
