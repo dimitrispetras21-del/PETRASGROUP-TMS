@@ -2309,6 +2309,10 @@ function _wnOpenPopover(e, rowId) {
     + ` → ${pf['Delivery DateTime']?_wnFmt(pf['Delivery DateTime'])+' ':''}${toLbl}${toP.sub?', '+toP.sub:''}`
     + ` · ${('Total Pallets' in pf)?pf['Total Pallets']+'p':'— p'}`;
 
+  // «Καθαρισμός» = the right-click «Αφαίρεση ανάθεσης», the SAME function
+  // (§4 #12, WN-05, 4/10/2026). Its own _wnClear did less: no repaint, the
+  // matched ΑΝΟΔΟΣ stayed assigned, 'Partner Rate' kept. One path, so the two
+  // buttons cannot drift apart again (principle 3).
   const pop = document.getElementById('wn-popover');
   pop.innerHTML = `
     <div class="wi-pop-header">
@@ -2333,7 +2337,7 @@ function _wnOpenPopover(e, rowId) {
     <div id="wn-lane-${rowId}" class="wi-lane-hist"></div>
     <div class="wi-pop-footer">
       <span class="wi2-pop-sync">sync: ⟳ γράφεται → ✓ γράφτηκε / ⚠ ΔΕΝ γράφτηκε (μένει ορατό)</span>
-      ${row.saved ? `<button class="wi-pop-cancel" onclick="event.stopPropagation();_wnClear(${rowId}).then(()=>_wnClosePopover())">Καθαρισμός</button>` : ''}
+      ${row.saved ? `<button class="wi-pop-cancel" onclick="event.stopPropagation();_wnClosePopover();${row.type==='southnorth' ? `_wnUnassignSn(${rowId},'${row.orderId}')` : `_wnUnassign(${rowId})`}">Καθαρισμός</button>` : ''}
       <button class="wi-pop-save" id="wn-pop-btn-${rowId}"
               onclick="event.stopPropagation();_wnSaveFromPopover(${rowId})">
         <div id="wn-pop-spin-${rowId}" class="wi2-spin" style="display:none"></div>
@@ -2525,44 +2529,6 @@ async function _wnSaveFromPopover(rowId) {
   _wnClosePopover();
   toast('Αποθηκεύτηκε ✓');
   await renderWeeklyNatl();
-}
-
-/* ── CLEAR ───────────────────────────────────────────────────────── */
-async function _wnClear(rowId) {
-  if(_wnBlockReadOnly()) return;
-  const row = WNATL.rows.find(r => r.id===rowId); if (!row) return;
-  for (const orderId of row.orderIds) {
-    try {
-      // Execution beats planning (14/9, 030 trigger): a load already
-      // Delivered/Cancelled keeps its assignment — the board never checked
-      // Status before writing over it (A6, same guard as save/match/unmatch).
-      const st = await _wnStatusLive(orderId);
-      if (st === 'Delivered' || st === 'Cancelled') { showErrorToast(`Το φορτίο είναι ${st} — η ανάθεση δεν αλλάζει από το Weekly`); return; }
-      // Same gap as Weekly International's «Καθαρισμός» (28/9, order 387): the
-      // vehicle went but Status stayed 'Assigned'. Only 'Assigned' goes back to
-      // 'Pending'; any other status (or an unreadable one) is left untouched.
-      const clearPatch = { 'Truck':[],'Trailer':[],'Driver':[],'Partner':[],'Is Partner Trip':false,'Partner Truck Plates':'' };
-      if (st === 'Assigned') clearPatch['Status'] = 'Pending';
-      const res = await atSafePatch(TABLES.NAT_LOADS, orderId, clearPatch);
-      if (res?.conflict) { toast('Η εγγραφή άλλαξε από άλλον χρήστη — γίνεται ανανέωση','warn'); await renderWeeklyNatl(); return; }
-    } catch(e) { toast('Σφάλμα εκκαθάρισης','warn'); return; }
-  }
-  // Delete PA records for cleared loads
-  try {
-    for (const loadId of row.orderIds) {
-      await paDelete({ parentType:'nat_load', parentId:loadId });
-    }
-  } catch(e) { console.warn('NAT PA delete:', e.message); }
-
-  // Δ3: the clear popover never reverted the source NATIONAL ORDER's Status —
-  // same gap _wnUnassign already closed (13/9 Sotiris go-live audit).
-  for (const orderId of row.orderIds) await _wnRevertNoStatus(orderId);
-
-  Object.assign(row, { truckId:'',trailerId:'',driverId:'',partnerId:'',
-    truckLabel:'',trailerLabel:'',driverLabel:'',partnerLabel:'',
-    partnerPlates:'',partnerRate:'',saved:false });
-  invalidateCache(TABLES.NAT_LOADS);
-  toast('Εκκαθαρίστηκε');
 }
 
 /* ── CONTEXT MENU (right-click for groupage) ─────────────────────── */
@@ -2783,6 +2749,14 @@ async function _wnUnassign(rowId) {
   if (kept.length) toast(kept.length + ' φορτίο σε παράδοση/ακύρωση — η ανάθεσή του κρατιέται', 'warn');
   if (errors.length) { toast('Σφάλμα: ' + errors[0].slice(0, 60), 'warn'); return; }
   if (!written) return; // nothing changed in the base — no «Ανάθεση αφαιρέθηκε», no row reset
+  // §4 #12: the popover's «Καθαρισμός» now runs THIS function, and the old
+  // _wnClear removed the PARTNER ASSIGNMENT rows; this path never did, so a
+  // partner unassigned by right-click kept its rate in PARTNER ASSIGNMENTS.
+  // Same cleanup as _wnUnassignSn, only for the legs actually cleared.
+  try {
+    for (const loadId of [...row.orderIds, ...(row.matchedId ? [row.matchedId] : [])])
+      if (!kept.includes(loadId)) await paDelete({ parentType:'nat_load', parentId:loadId });
+  } catch(e) { console.warn('NAT PA delete:', e.message); }
   for (const orderId of row.orderIds) if (!kept.includes(orderId)) await _wnRevertNoStatus(orderId);
   if (row.matchedId && !kept.includes(row.matchedId)) await _wnRevertNoStatus(row.matchedId);
 
@@ -2848,7 +2822,6 @@ window._wnOpenPopover = _wnOpenPopover;
 window._wnOpenSnPopover = _wnOpenSnPopover;
 window._wnClosePopover = _wnClosePopover;
 window._wnSaveFromPopover = _wnSaveFromPopover;
-window._wnClear = _wnClear;
 window._wnExportCSV = _wnExportCSV;
 window._wnUnmatch = _wnUnmatch;
 window._wnCtxClose = _wnCtxClose;

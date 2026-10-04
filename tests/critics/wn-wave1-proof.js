@@ -238,6 +238,44 @@ SECTIONS.push(async browser => {
   await page.context().close();
 });
 
+// ── §4 #12 · popover «Καθαρισμός» = right-click «Αφαίρεση ανάθεσης» ────────
+const writesOf = S => S.writes.map(w => ({ m: w.m, tid: w.tid, rid: w.rid, body: w.body }));
+async function clearBy(browser, how, sel) {
+  const { page, S } = await openBoard(browser);
+  const rowSel = await page.evaluate(s => s.startsWith('#') ? s : '#wn-row-' + WNATL.rows.find(r => r.orderId === s).id, sel);
+  if (how === 'ctx') {
+    await page.click(`${rowSel}${rowSel.startsWith('#wn-sn-') ? '' : ' .wk3-leg'}`, { button: 'right', position: { x: 20, y: 10 } });
+    await page.click('#wn-ctx .wi-ctx-item:has-text("Αφαίρεση ανάθεσης")');
+  } else {
+    await page.click(`${rowSel} .wk3-assign`);
+    await page.waitForSelector('#wn-popover .wi-pop-cancel', { timeout: 5000 });
+    await page.click('#wn-popover .wi-pop-cancel');
+  }
+  await page.waitForTimeout(2500);
+  const pill = await page.$eval(`${rowSel} .wk3-pill`, el => el.innerText).catch(() => '');
+  const out = { writes: writesOf(S), pill, popOpen: await page.$eval('#wn-popover', el => getComputedStyle(el).display !== 'none' && el.innerText.trim() !== ''), errors: S.errors };
+  await page.context().close();
+  return out;
+}
+SECTIONS.push(async browser => {
+  console.log('\n── §4 #12 · «Καθαρισμός» does exactly what right-click «Αφαίρεση ανάθεσης» does');
+  const a = await clearBy(browser, 'ctx', 'recNlC000000000A');
+  const b = await clearBy(browser, 'pop', 'recNlC000000000A');
+  ok(a.writes.length > 0 && JSON.stringify(a.writes) === JSON.stringify(b.writes), `ΚΑΘΟΔΟΣ (partner, matched): identical write sequence — ${a.writes.length} writes each`);
+  const sC = b.writes.find(w => w.m === 'PATCH' && w.rid === 'recNlsC00000000A');
+  const nC = b.writes.find(w => w.m === 'PATCH' && w.rid === 'recNlC000000000A');
+  ok(nC && nC.body.fields['Partner Rate'] === null && nC.body.fields.Status === 'Pending' && nC.body.fields.Partner.length === 0, 'Καθαρισμός: ΚΑΘΟΔΟΣ partner + rate cleared, Status Pending');
+  ok(sC && sC.body.fields['Partner Rate'] === null && sC.body.fields.Partner.length === 0, 'Καθαρισμός: the matched ΑΝΟΔΟΣ is cleared too');
+  ok(b.writes.filter(w => w.m === 'DELETE' && w.tid === T.PA).map(w => w.rid).sort().join() === 'recPAnC000000001,recPAsC000000001', 'Καθαρισμός: both PARTNER ASSIGNMENT rows deleted');
+  ok(b.writes.some(w => w.m === 'PATCH' && w.tid === T.NO && w.body.fields.Status === 'Pending'), 'Καθαρισμός: source national order back to Pending');
+  ok(/ΠΡΟΣ ΑΝΑΘΕΣΗ/.test(b.pill) && !b.popOpen, 'Καθαρισμός: popover closed and the board repainted the row as «ΠΡΟΣ ΑΝΑΘΕΣΗ» (pill: ' + b.pill.replace(/\s+/g, ' ') + ', popover open: ' + b.popOpen + ')');
+  const c = await clearBy(browser, 'ctx', '#wn-sn-recNlsD00000000A');
+  const d = await clearBy(browser, 'pop', '#wn-sn-recNlsD00000000A');
+  ok(c.writes.length > 0 && JSON.stringify(c.writes) === JSON.stringify(d.writes), `standalone ΑΝΟΔΟΣ: identical write sequence — ${c.writes.length} writes each`);
+  ok(/χωρίς όχημα/.test(d.pill), 'standalone ΑΝΟΔΟΣ: repainted as «ΑΝΟ · χωρίς όχημα»');
+  ok([a, b, c, d].every(x => x.errors.length === 0), 'no page errors');
+});
+
 (async () => {
   const browser = await chromium.launch();
   for (const s of SECTIONS) await s(browser);

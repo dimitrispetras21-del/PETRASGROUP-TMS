@@ -1,7 +1,7 @@
 // node --test tests/clear-status.test.js
 // 28/9/2026 — «Καθαρισμός» emptied the vehicle but left Status 'Assigned'
 // (order 387, auditor B-43). Covers Weekly International (_wiClear, ORDERS) and
-// Weekly National (_wnClear, NATIONAL LOADS), the two clear paths that had the
+// Weekly National (NATIONAL LOADS — since 4/10 the right-click unassign path), the two clear paths that had the
 // gap. UNIT ONLY: the functions are extracted verbatim from the module source
 // (same technique as tests/critics/rot-cands-sim.js) and run against stubbed
 // facade calls; nothing is sent anywhere.
@@ -86,44 +86,60 @@ test('_wiExecutingLive: behaviour unchanged after the _wiStatusLive split', asyn
 });
 
 // ── weekly_natl.js «Καθαρισμός» (NATIONAL LOADS) ───────────────────────────
+// Since 4/10/2026 (§4 #12, WN-05) the popover's «Καθαρισμός» runs the SAME
+// function as the right-click «Αφαίρεση ανάθεσης» (_wnUnassign / _wnUnassignSn);
+// the separate _wnClear is gone. The order-387 rule still holds on that path:
+// an Assigned load goes back to Pending with its vehicle cleared.
 const WN = src('modules/weekly_natl.js');
 const wnSrc = [
-  fn(WN, /async function _wnClear\(rowId\) \{[\s\S]*?\n\}\n/, '_wnClear'),
+  fn(WN, /async function _wnUnassign\(rowId\) \{[\s\S]*?\n\}\n/, '_wnUnassign'),
   fn(WN, /async function _wnDoneLive\(id\) \{[\s\S]*?\n\}\n/, '_wnDoneLive'),
   fn(WN, /async function _wnStatusLive\(id\) \{[\s\S]*?\n\}\n/, '_wnStatusLive'),
 ].join('\n');
-async function runWnClear(statusById, orderIds) {
-  const patches = []; const errs = [];
+async function runWnUnassign(statusById, row) {
+  const patches = []; const paDeleted = []; const toasts = [];
   const ctx = {
-    WNATL: { rows: [{ id: 1, orderIds }] }, TABLES: { NAT_LOADS: 'NL' },
-    _wnBlockReadOnly: () => false,
+    WNATL: { rows: [Object.assign({ id: 1 }, row)] }, TABLES: { NAT_LOADS: 'NL' },
+    _wnBlockReadOnly: () => false, confirmAction: async () => true,
     atGetOne: stubGetOne(statusById),
     atSafePatch: async (_t, id, f) => { patches.push({ id, f }); return { id, fields: f }; },
-    showErrorToast: m => errs.push(m), toast: () => {}, paDelete: async () => {},
-    _wnRevertNoStatus: async () => {}, invalidateCache: () => {}, renderWeeklyNatl: async () => {},
+    toast: m => toasts.push(m), paDelete: async p => { paDeleted.push(p.parentId); },
+    _wnRevertNoStatus: async () => {}, invalidateCache: () => {}, renderWeeklyNatl: async () => {}, _wnPaint: () => {},
     console,
   };
-  vm.runInNewContext(wnSrc + '\nthis._wnClear=_wnClear;this._wnDoneLive=_wnDoneLive;', ctx);
-  await ctx._wnClear(1);
-  return { patches, errs, ctx };
+  vm.runInNewContext(wnSrc + '\nthis._wnUnassign=_wnUnassign;this._wnDoneLive=_wnDoneLive;', ctx);
+  await ctx._wnUnassign(1);
+  return { patches, paDeleted, toasts, ctx };
 }
 
-test('_wnClear: Assigned NAT_LOAD → Status Pending with the vehicle clear; Pending untouched', async () => {
-  const { patches } = await runWnClear({ n1: 'Assigned', n2: 'Pending' }, ['n1', 'n2']);
-  assert.strictEqual(patches.find(x => x.id === 'n1').f.Status, 'Pending');
-  assert.ok(!('Status' in patches.find(x => x.id === 'n2').f));
+test('popover «Καθαρισμός» calls the right-click functions — no clear path of its own', () => {
+  const btn = (WN.match(/<button class="wi-pop-cancel"[^\n]*Καθαρισμός<\/button>/) || [''])[0];
+  assert.match(btn, /_wnUnassignSn\(\$\{rowId\},'\$\{row\.orderId\}'\)/, 'ΑΝΟΔΟΣ row → _wnUnassignSn, as in _wnCtxSn');
+  assert.match(btn, /_wnUnassign\(\$\{rowId\}\)/, 'ΚΑΘΟΔΟΣ row → _wnUnassign, as in _wnCtx');
+  assert.ok(!/function _wnClear\b/.test(WN), '_wnClear removed');
 });
 
-test('_wnClear: Delivered/Cancelled still refused (unchanged guard)', async () => {
+test('_wnUnassign: Assigned NAT_LOAD → Status Pending, vehicle + Partner Rate cleared; matched ΑΝΟΔΟΣ too; PA rows deleted', async () => {
+  const { patches, paDeleted } = await runWnUnassign({ n1: 'Assigned', s1: 'Assigned' }, { orderIds: ['n1'], matchedId: 's1' });
+  assert.deepStrictEqual(patches.map(x => x.id), ['n1', 's1']);
+  for (const p of patches) {
+    assert.strictEqual(p.f.Status, 'Pending');
+    assert.strictEqual(p.f.Truck.length, 0);
+    assert.strictEqual(p.f['Partner Rate'], null);
+  }
+  assert.deepStrictEqual(paDeleted, ['n1', 's1']);
+});
+
+test('_wnUnassign: Delivered/Cancelled leg keeps its assignment and its PA row', async () => {
   for (const st of ['Delivered', 'Cancelled']) {
-    const { patches, errs } = await runWnClear({ n1: st }, ['n1']);
-    assert.strictEqual(patches.length, 0, st);
-    assert.strictEqual(errs.length, 1, st);
+    const { patches, paDeleted } = await runWnUnassign({ n1: st, s1: 'Assigned' }, { orderIds: ['n1'], matchedId: 's1' });
+    assert.deepStrictEqual(patches.map(x => x.id), ['s1'], st);
+    assert.deepStrictEqual(paDeleted, ['s1'], st);
   }
 });
 
 test('_wnDoneLive: behaviour unchanged after the _wnStatusLive split', async () => {
-  const { ctx } = await runWnClear({}, []);
+  const { ctx } = await runWnUnassign({}, { orderIds: [] });
   ctx.atGetOne = stubGetOne({ a: 'Delivered', b: 'Cancelled', c: 'Assigned', d: new Error('x') });
   assert.strictEqual(await ctx._wnDoneLive('a'), 'Delivered');
   assert.strictEqual(await ctx._wnDoneLive('b'), 'Cancelled');
