@@ -11,8 +11,13 @@
 --         driver is not paid and costs land on no RT. 0 of 243 RT legs are national today.
 --   B-60  report §4 #6 + PU-1: groupage lines left «Unassigned» ⇒ a supplier is never collected
 --         (the drag & drop queue that would pick them up is not worked by anyone).
---   B-61  report §4 #2 (SA-1/WN-04): a VS national leg auto-closed «Delivered» with no truck and
---         no partner ⇒ stays red «ΠΡΟΣ ΑΝΑΘΕΣΗ» forever, nobody knows who ran it.
+--   B-61  report §4 #2 (SA-1/WN-04): a VS national leg whose delivery time has passed with no truck
+--         and no partner ⇒ stays «ΠΡΟΣ ΑΝΑΘΕΣΗ», nobody knows who ran it. Status is NOT read:
+--         owner 4/10 «δεν θελουμε παραδοσεις για το εθνικων» — national legs no longer get
+--         «Delivered» (trigger national_load_follow_order to stop copying it; no «Παραδόθηκε» in
+--         the front); «executed» = the delivery time has passed. delivery_datetime < now() (it is a
+--         timestamptz, 15:00 on VS legs), so a Monday 15:00 leg shows in Monday's 17:00 digest;
+--         actual_delivery_date only as fallback.
 --   B-62  report §3 P1-α (wave 0, commit f1419375): a multi-stop national order whose delivery
 --         stops were written with 0/NULL pallets ⇒ wrong Weekly load and pallet ledger.
 --
@@ -25,8 +30,10 @@
 -- EXACT sql_text below:
 --   B-59 = 0   (without the 5/10 cut it would be 14 — all historical, no national RT exists)
 --   B-60 = 0   (2 groupage lines in total, both Assigned to consolidated load 5)
---   B-61 = 0   (without the cut 40 of the 45 Delivered VS legs; loads 121/122 deliver 5/10, no
---               vehicle yet — B-61 WILL count them if they close without an executor)
+--   B-61 = 0   (re-measured 4/10 16:28 after the owner decision; without the 5/10 cut 40 — all
+--               historical; loads 121/122 deliver Mon 5/10 15:00 with no vehicle yet — B-61 WILL
+--               count them from 15:00 if still unassigned)
+-- B-59 does not read status (only excludes Cancelled) — unaffected by «no Delivered for nationals».
 --   B-62 = 0   (no national order has 2+ delivery stops today; 7 SINGLE-stop orders do have a
 --               0-pallet delivery stop — outside this check by design, report item = multi-stop)
 -- The 8 statements (4 counts + 4 id lists) were linted with tms-auditor/checks/load.mjs lintSql
@@ -95,17 +102,19 @@ BEGIN
    $m$Εβδομαδιαίο Εθνικών / Παραγγελίες → Groupage: σε ποιο φορτηγό έπρεπε να μπει η γραμμή; (ανάγνωση)$m$,
    $m$Γραμμές που επανήλθαν σε Unassigned με τον κανόνα never-delete (η παραγγελία δεν είναι πια groupage, ακυρώθηκε ή διαγράφηκε) ΔΕΝ μετρούν.$m$,
    $m$15′ (γραμμές και φορτηγό γράφονται σε χωριστά αιτήματα)$m$, true, NULL),
-  ($m$B-61$m$, $m$VS εθνικό σκέλος «Delivered» χωρίς εκτελεστή — από 5/10$m$, ARRAY[$m$F-10$m$,$m$F-23$m$,$m$F-26$m$]::text[],
-   $m$SELECT count(*) FROM national_loads nl WHERE nl.deleted_at IS NULL AND nl.source_type='Direct' AND nl.status='Delivered'
+  ($m$B-61$m$, $m$VS εθνικό σκέλος με παράδοση που πέρασε, χωρίς εκτελεστή — από 5/10$m$, ARRAY[$m$F-10$m$,$m$F-23$m$]::text[],
+   $m$SELECT count(*) FROM national_loads nl WHERE nl.deleted_at IS NULL AND nl.source_type='Direct' AND coalesce(nl.status,'')<>'Cancelled'
  AND NOT (nl.truck_id IS NOT NULL OR (coalesce(nl.is_partner_trip,false) AND nl.partner_id IS NOT NULL))
- AND coalesce(nl.actual_delivery_date, (nl.delivery_datetime AT TIME ZONE 'Europe/Athens')::date) >= date '2026-10-05'$m$,
-   $m$SELECT coalesce(array_agg(x ORDER BY x), '{}') FROM (SELECT nl.legacy_id AS x FROM national_loads nl WHERE nl.deleted_at IS NULL AND nl.source_type='Direct' AND nl.status='Delivered'
+ AND coalesce(nl.actual_delivery_date, (nl.delivery_datetime AT TIME ZONE 'Europe/Athens')::date) >= date '2026-10-05'
+ AND coalesce(nl.delivery_datetime < now(), nl.actual_delivery_date < (now() AT TIME ZONE 'Europe/Athens')::date)$m$,
+   $m$SELECT coalesce(array_agg(x ORDER BY x), '{}') FROM (SELECT nl.legacy_id AS x FROM national_loads nl WHERE nl.deleted_at IS NULL AND nl.source_type='Direct' AND coalesce(nl.status,'')<>'Cancelled'
  AND NOT (nl.truck_id IS NOT NULL OR (coalesce(nl.is_partner_trip,false) AND nl.partner_id IS NOT NULL))
- AND coalesce(nl.actual_delivery_date, (nl.delivery_datetime AT TIME ZONE 'Europe/Athens')::date) >= date '2026-10-05' LIMIT 50) s$m$,
+ AND coalesce(nl.actual_delivery_date, (nl.delivery_datetime AT TIME ZONE 'Europe/Athens')::date) >= date '2026-10-05'
+ AND coalesce(nl.delivery_datetime < now(), nl.actual_delivery_date < (now() AT TIME ZONE 'Europe/Athens')::date) LIMIT 50) s$m$,
    $m$national_loads$m$, $m$>$m$, 0, NULL, $m$P2$m$, $m$hourly$m$, false,
-   $m$Το VS σκέλος έκλεισε αυτόματα με τη διεθνή χωρίς φορτηγό/συνεργάτη: μένει για πάντα «ΠΡΟΣ ΑΝΑΘΕΣΗ», δεν δέχεται ανάθεση και κανείς δεν ξέρει ποιος το εκτέλεσε (μισθοδοσία, RT).$m$,
-   $m$Εβδομαδιαίο Εθνικών → το σκέλος· ρώτα τον Σωτήρη ποιο φορτηγό το έκανε (ανάγνωση — η ανάθεση σε κλειστό σκέλος περιμένει την απόφαση §8.2).$m$,
-   $m$Σκέλη με παράδοση πριν 5/10 εκτός (40 από 45 παραδομένα VS, «μένουν ως έχουν» §8.2). Μόνο source_type='Direct' (VS).$m$,
+   $m$Το VS σκέλος εκτελέστηκε (η ώρα παράδοσης πέρασε) χωρίς φορτηγό/συνεργάτη στο TMS: μένει «ΠΡΟΣ ΑΝΑΘΕΣΗ» και κανείς δεν ξέρει ποιος το έκανε (μισθοδοσία, RT).$m$,
+   $m$Εβδομαδιαίο Εθνικών → το σκέλος· ρώτα τον Σωτήρη ποιο φορτηγό το έκανε και ανάθεσέ το (ανάγνωση από τον ελεγκτή).$m$,
+   $m$Ανεξάρτητα από status: τα εθνικά ΔΕΝ παίρνουν πια «Delivered» (owner 4/10) — εκτελεσμένο = η ώρα παράδοσης πέρασε. Σκέλη με παράδοση πριν 5/10 εκτός (40 ιστορικά χωρίς εκτελεστή, μένουν ως έχουν). Μόνο source_type='Direct' (VS)· Cancelled εκτός.$m$,
    NULL, true, NULL),
   ($m$B-62$m$, $m$Εθνική πολυστάσια με στάση παράδοσης 0/κενές παλέτες$m$, ARRAY[$m$F-12$m$]::text[],
    $m$SELECT count(*) FROM national_orders n WHERE n.deleted_at IS NULL AND coalesce(n.status,'')<>'Cancelled' AND n.created_at < now()-interval '15 minutes'
@@ -154,9 +163,10 @@ END $do$;
 --   AND ((g.order_id IS NOT NULL AND o.deleted_at IS NULL AND coalesce(o.status,'')<>'Cancelled' AND coalesce(o.national_groupage,false))
 --     OR (g.national_order_id IS NOT NULL AND n.deleted_at IS NULL AND coalesce(n.status,'')<>'Cancelled' AND coalesce(n.national_groupage,false)))
 -- UNION ALL
--- SELECT 'B-61', count(*) FROM national_loads nl WHERE nl.deleted_at IS NULL AND nl.source_type='Direct' AND nl.status='Delivered'
+-- SELECT 'B-61', count(*) FROM national_loads nl WHERE nl.deleted_at IS NULL AND nl.source_type='Direct' AND coalesce(nl.status,'')<>'Cancelled'
 --   AND NOT (nl.truck_id IS NOT NULL OR (coalesce(nl.is_partner_trip,false) AND nl.partner_id IS NOT NULL))
 --   AND coalesce(nl.actual_delivery_date, (nl.delivery_datetime AT TIME ZONE 'Europe/Athens')::date) >= date '2026-10-05'
+--   AND coalesce(nl.delivery_datetime < now(), nl.actual_delivery_date < (now() AT TIME ZONE 'Europe/Athens')::date)
 -- UNION ALL
 -- SELECT 'B-62', count(*) FROM national_orders n WHERE n.deleted_at IS NULL AND coalesce(n.status,'')<>'Cancelled' AND n.created_at < now()-interval '15 minutes'
 --   AND (SELECT count(*) FROM order_stops s WHERE s.national_order_id=n.id AND s.deleted_at IS NULL AND s.stop_type='Unloading') >= 2
