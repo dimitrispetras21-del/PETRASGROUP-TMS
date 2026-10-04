@@ -2598,6 +2598,12 @@ function _renderPartnerAssignments(el, paRecs) {
   const avgRate   = total ? paRecs.reduce((s,r)=>s+(parseFloat(r.fields[F.PA_RATE])||0),0)/total : 0;
   const marginVals= paRecs.map(r=>parseFloat(r.fields['Margin Percent'])).filter(n=>!isNaN(n));
   const avgMargin = marginVals.length ? marginVals.reduce((s,v)=>s+v,0)/marginVals.length : 0;
+  // Revenue/Margin only where the owner lock 23/8 allows P&L (costs != 'none',
+  // same gate as orders_week_view.js). Since 4/10/2026 the Worker strips these
+  // labels for other roles (ledger A7 / SA-11), so a dispatcher would otherwise
+  // read «€0» revenue and «Avg Margin 0.0%» — an absent field shown as a
+  // measured number (facade trap #2). Hidden, not zeroed.
+  const showPL = typeof can === 'function' && can('costs') !== 'none';
 
   const card = (label,val,color) => `
     <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:6px;padding:8px">
@@ -2612,7 +2618,7 @@ function _renderPartnerAssignments(el, paRecs) {
       ${card('Completed', completed, 'var(--success)')}
       ${card('Total Spent', '€'+Math.round(totalSpent).toLocaleString())}
       ${card('Avg Rate', '€'+Math.round(avgRate).toLocaleString())}
-      ${card('Avg Margin', avgMargin.toFixed(1)+'%', avgMargin>=20?'var(--success)':avgMargin>=10?'var(--warning)':avgMargin>0?'var(--danger)':'var(--text-dim)')}
+      ${showPL ? card('Avg Margin', avgMargin.toFixed(1)+'%', avgMargin>=20?'var(--success)':avgMargin>=10?'var(--warning)':avgMargin>0?'var(--danger)':'var(--text-dim)') : ''}
     </div>`;
 
   if (!paRecs.length) {
@@ -2640,8 +2646,8 @@ function _renderPartnerAssignments(el, paRecs) {
       <td style="padding:4px 6px;color:var(--text-mid)">${date||'—'}</td>
       <td style="padding:4px 6px"><span style="font-size:9px;font-weight:700;color:${kindColor}">${kind}</span></td>
       <td style="padding:4px 6px;text-align:right;color:var(--text);font-weight:600">€${rate.toFixed(0)}</td>
-      <td style="padding:4px 6px;text-align:right;color:var(--text-mid)">€${rev.toFixed(0)}</td>
-      <td style="padding:4px 6px;text-align:right;color:${marginColor};font-weight:600">${marginTxt}</td>
+      ${showPL ? `<td style="padding:4px 6px;text-align:right;color:var(--text-mid)">€${rev.toFixed(0)}</td>
+      <td style="padding:4px 6px;text-align:right;color:${marginColor};font-weight:600">${marginTxt}</td>` : ''}
       <td style="padding:4px 6px"><span class="badge ${badgeCls}" style="font-size:9px">${status}</span></td>
     </tr>`;
   }).join('');
@@ -2653,11 +2659,11 @@ function _renderPartnerAssignments(el, paRecs) {
         <th style="text-align:left;padding:4px 6px;font-size:9px;font-weight:600;letter-spacing:.5px;text-transform:uppercase;color:var(--text-dim)">Date</th>
         <th style="text-align:left;padding:4px 6px;font-size:9px;font-weight:600;letter-spacing:.5px;text-transform:uppercase;color:var(--text-dim)">Type</th>
         <th style="text-align:right;padding:4px 6px;font-size:9px;font-weight:600;letter-spacing:.5px;text-transform:uppercase;color:var(--text-dim)">Rate</th>
-        <th style="text-align:right;padding:4px 6px;font-size:9px;font-weight:600;letter-spacing:.5px;text-transform:uppercase;color:var(--text-dim)">Revenue</th>
-        <th style="text-align:right;padding:4px 6px;font-size:9px;font-weight:600;letter-spacing:.5px;text-transform:uppercase;color:var(--text-dim)">Margin</th>
+        ${showPL ? `<th style="text-align:right;padding:4px 6px;font-size:9px;font-weight:600;letter-spacing:.5px;text-transform:uppercase;color:var(--text-dim)">Revenue</th>
+        <th style="text-align:right;padding:4px 6px;font-size:9px;font-weight:600;letter-spacing:.5px;text-transform:uppercase;color:var(--text-dim)">Margin</th>` : ''}
         <th style="text-align:left;padding:4px 6px;font-size:9px;font-weight:600;letter-spacing:.5px;text-transform:uppercase;color:var(--text-dim)">Status</th>
       </tr></thead>
-      <tbody>${rowsHTML}${paRecs.length>30?`<tr><td colspan="6" style="padding:6px;text-align:center;color:var(--text-dim)">+${paRecs.length-30} more</td></tr>`:''}</tbody>
+      <tbody>${rowsHTML}${paRecs.length>30?`<tr><td colspan="${showPL ? 6 : 4}" style="padding:6px;text-align:center;color:var(--text-dim)">+${paRecs.length-30} more</td></tr>`:''}</tbody>
     </table>`;
 }
 
