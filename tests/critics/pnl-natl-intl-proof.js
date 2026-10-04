@@ -25,7 +25,7 @@ const eur = n => '€' + Math.round(Number(n) || 0).toLocaleString('el-GR');
 // The screen's own convention (ctEurP): a loss in parentheses, never «€-500».
 const eurP = n => Number(n) < 0 ? '(' + eur(-n).replace('€', '') + ' €)' : eur(n);
 
-// ── Fixture: two international, two national (one without costs), one mixed,
+// ── Fixture: two international, two national (one without costs), three mixed (one priced, one unpriced VS, one priced exactly 850),
 // one partner (international). All in ONE planning week so every card renders.
 const row = o => Object.assign({ code: 'RT-' + o.id, trip_type: 'OWNED', driver_id: null, partner_id: null,
   date_end: null, status: 'in_progress', total_km: null, cost_vat: 0, dl_trip_value: null, dl_expenses: null,
@@ -37,9 +37,14 @@ const PNL = [
   row({ id: 4, scope: 'NATL', truck_id: 2, date_start: '2026-09-30', revenue: 650, revenue_intl: 0, revenue_natl: 650, cost_net: 0, cost_gross: 0, profit_worst: 650, margin_worst_pct: 100 }),
   row({ id: 5, scope: 'INTL', truck_id: 1, date_start: '2026-09-29', revenue: 6150, revenue_intl: 5300, revenue_natl: 850, cost_net: 2500, cost_gross: 2500, profit_worst: 3650, margin_worst_pct: 59.3 }),
   row({ id: 6, scope: 'INTL', trip_type: 'PARTNER', truck_id: null, partner_id: 9, date_start: '2026-09-30', revenue: 2850, revenue_intl: 2850, revenue_natl: 0, cost_net: 2700, cost_gross: 2700, profit_worst: 150, margin_worst_pct: 5.3 }),
+  // Review 2d169480: a VS order with NO price yet — the 034 view still moves
+  // the 850 transfer to the national leg, so intl = −850, natl = +850 (mixed).
+  row({ id: 7, scope: 'INTL', truck_id: 1, date_start: '2026-10-01', revenue: 0, revenue_intl: -850, revenue_natl: 850, cost_net: 400, cost_gross: 400, profit_worst: -400, margin_worst_pct: null }),
+  // …and a VS order priced exactly 850: intl = 0, natl = 850 (mixed too).
+  row({ id: 8, scope: 'INTL', truck_id: 1, date_start: '2026-10-01', revenue: 850, revenue_intl: 0, revenue_natl: 850, cost_net: 300, cost_gross: 300, profit_worst: 550, margin_worst_pct: 64.7 }),
 ];
-const RTS = PNL.map(t => ({ id: t.id, ct_rt_legs: t.id === 5
-  ? [{ order_id: 501, direction: 'Export' }, { nat_load_id: 77 }]
+const RTS = PNL.map(t => ({ id: t.id, ct_rt_legs: [5, 7, 8].includes(t.id)
+  ? [{ order_id: 500 + t.id, direction: 'Export' }, { nat_load_id: 70 + t.id }]
   : t.scope === 'NATL' ? [{ nat_load_id: 70 + t.id }] : [{ order_id: 500 + t.id, direction: 'Export' }] }));
 // RT 4 has NO cost line → «κόστη ελλιπή» → its row's net/margin must be «—».
 const LINES = PNL.filter(t => t.id !== 4).map((t, i) => ({ id: 900 + i, rt_id: t.id, category: 'fuel', net: t.cost_net, vat: 0 }));
@@ -50,8 +55,11 @@ const LOOKUPS = { trucks: [{ id: 1, license_plate: 'ΤΕΣΤ-1001', active: true
 const EXP = {
   INTL:  { n: 3, ri: 10850, rn: 0,    rev: 10850, cost: 8200,  net: 2650, mg: '24.4%' },   // RT 1, 2, 6
   NATL:  { n: 2, ri: 0,     rn: 1450, rev: 1450,  cost: 300,   net: null, mg: null, q: '1/2' }, // RT 3, 4 (4 without costs)
-  MIX:   { n: 1, ri: 5300,  rn: 850,  rev: 6150,  cost: 2500,  net: 3650, mg: '59.3%' },   // RT 5
-  TOTAL: { n: 6, ri: 16150, rn: 2300, rev: 18450, cost: 11000, net: null, mg: null, q: '5/6' },
+  // RT 5 + 7 + 8: intl 5300 − 850 + 0 = 4450 · natl 850 × 3 = 2550 · revenue 6150 + 0 + 850 = 7000
+  // costs 2500 + 400 + 300 = 3200 · net 3800 · 3800 / 7000 = 54.29 %
+  MIX:   { n: 3, ri: 4450,  rn: 2550, rev: 7000,  cost: 3200,  net: 3800, mg: '54.3%' },
+  // all 8: intl 10850 + 0 + 4450 = 15300 · natl 0 + 1450 + 2550 = 4000 · revenue 19300 · costs 11700 · RT 4 without costs
+  TOTAL: { n: 8, ri: 15300, rn: 4000, rev: 19300, cost: 11700, net: null, mg: null, q: '7/8' },
 };
 
 async function newPage(browser, role, data) {
@@ -115,14 +123,16 @@ function checkRow(r, e, name) {
   if (process.env.PNL_SHOT) await page.screenshot({ path: process.env.PNL_SHOT, fullPage: false });
 
   console.log('\n── Owner · per-RT type field');
-  ok((await visibleCards(page)).join(',') === '1,2,3,4,5,6', 'all 6 cards: ' + (await visibleCards(page)).join(','));
+  ok((await visibleCards(page)).join(',') === '1,2,3,4,5,6,7,8', 'all 8 cards: ' + (await visibleCards(page)).join(','));
   const kinds = await page.$$eval('.ct-card', cs => Object.fromEntries(cs.map(c => [c.id.replace('ctCard', ''), (c.querySelector('.ct-kind') || {}).textContent])));
-  ok(JSON.stringify(kinds) === JSON.stringify({ 1: 'Διεθνές', 2: 'Διεθνές', 3: 'Εθνικό', 4: 'Εθνικό', 5: 'Μικτό', 6: 'Διεθνές' }), 'type per card: ' + JSON.stringify(kinds));
+  ok(JSON.stringify(kinds) === JSON.stringify({ 1: 'Διεθνές', 2: 'Διεθνές', 3: 'Εθνικό', 4: 'Εθνικό', 5: 'Μικτό', 6: 'Διεθνές', 7: 'Μικτό', 8: 'Μικτό' }), 'type per card: ' + JSON.stringify(kinds));
   const split5 = await page.$eval('#ctCard5 .ct-split', s => s.textContent.trim()).catch(() => '');
   ok(split5 === `διεθνή ${eur(5300)} · εθνικά ${eur(850)}`, 'mixed card shows the revenue split: ' + split5);
+  const split7 = await page.$eval('#ctCard7 .ct-split', s => s.textContent.trim()).catch(() => '');
+  ok(split7 === `διεθνή ${eur(-850)} · εθνικά ${eur(850)}`, 'unpriced VS RT (intl −850) is Μικτό with its split: ' + split7);
   ok(await page.$('#ctCard1 .ct-split') === null && await page.$('#ctCard3 .ct-split') === null, 'pure cards show no split');
   const leg5 = await page.$eval('#ctCard5', c => c.textContent);
-  ok(/εθνικό φορτίο #77/.test(leg5) && !/όχι έσοδο πελάτη/.test(leg5), 'national leg line no longer says «όχι έσοδο πελάτη»');
+  ok(/εθνικό φορτίο #75/.test(leg5) && !/όχι έσοδο πελάτη/.test(leg5), 'national leg line no longer says «όχι έσοδο πελάτη»');
 
   console.log('\n── Owner · type filter');
   const seg = async (s, ids, rev) => {
@@ -133,10 +143,10 @@ function checkRow(r, e, name) {
     const t2 = await kindTable(page);
     ok(t2.find(x => x.kind === 'TOTAL').rev === eur(EXP.TOTAL.rev), `«${s}»: the type table keeps all types (Σύνολο ${eur(EXP.TOTAL.rev)})`);
   };
-  await seg('MIX', '5', EXP.MIX.rev);
+  await seg('MIX', '5,7,8', EXP.MIX.rev);
   await seg('NATL', '3,4', EXP.NATL.rev);
   await seg('INTL', '1,2,6', EXP.INTL.rev);
-  await seg('ALL', '1,2,3,4,5,6', EXP.TOTAL.rev);
+  await seg('ALL', '1,2,3,4,5,6,7,8', EXP.TOTAL.rev);
 
   console.log('\n── Owner · vehicle filter narrows the subtotals');
   await page.selectOption('#ctVehSel', '2'); await page.waitForTimeout(200);
@@ -163,8 +173,9 @@ function checkRow(r, e, name) {
   T = await kindTable(page);
   const nn = await page.$eval('#ctKindNote', n => n.textContent);
   ok(/δεν ήρθε από τον διακομιστή/.test(nn), 'missing columns are SAID, not read as €0 national revenue');
-  ok(by('MIX').n === '0' && by('INTL').n === '4' && by('NATL').n === '2', `type falls back to scope (Διεθνή ${by('INTL').n}, Εθνικά ${by('NATL').n}, Μικτά ${by('MIX').n})`);
-  ok(by('INTL').ri === '—' && by('INTL').rn === '—' && by('INTL').rev === eur(17000), 'split cells «—», revenue still summed: ' + by('INTL').rev);
+  // INTL by scope = RT 1, 2, 5, 6, 7, 8: 5000 + 3000 + 6150 + 2850 + 0 + 850 = 17850
+  ok(by('MIX').n === '0' && by('INTL').n === '6' && by('NATL').n === '2', `type falls back to scope (Διεθνή ${by('INTL').n}, Εθνικά ${by('NATL').n}, Μικτά ${by('MIX').n})`);
+  ok(by('INTL').ri === '—' && by('INTL').rn === '—' && by('INTL').rev === eur(17850), 'split cells «—», revenue still summed: ' + by('INTL').rev);
   await page.context().close();
 
   console.log('\n── Dispatcher · no TRIP PnL');
@@ -184,7 +195,14 @@ function checkRow(r, e, name) {
   if (process.env.PNL_REAL) {
     console.log('\n── Real rows (read-only SELECT of ct_v_rt_pnl, ' + process.env.PNL_REAL + ')');
     const real = JSON.parse(fs.readFileSync(process.env.PNL_REAL, 'utf8'));
-    const kindOf = t => (Number(t.revenue_intl) > 0 && Number(t.revenue_natl) > 0) ? 'MIX' : t.scope === 'NATL' ? 'NATL' : 'INTL';
+    // Hard-coded expectation, measured 4/10/2026 with a SELECT on ct_v_rt_pnl:
+    // 128 RTs, every one scope INTL with revenue_natl = 0 → all «Διεθνή», no
+    // «Εθνικά», no «Μικτά». The page's rule is NOT re-implemented here (review
+    // 2d169480). If the file no longer matches that measurement the expectation
+    // is stale — say so and fail instead of re-deriving it.
+    const EXPECT_REAL = { INTL: real, NATL: [], MIX: [] };
+    const stale = real.filter(t => t.scope !== 'INTL' || Number(t.revenue_natl) !== 0);
+    ok(!stale.length, 'real rows still match the 4/10 measurement (all INTL, natl 0)' + (stale.length ? ' — STALE: ' + stale.length + ' rows differ, update EXPECT_REAL' : ''));
     const sum = (rows, f) => rows.reduce((a, t) => a + Number(t[f] || 0), 0);
     // Every RT gets one cost line so net/margin are shown — the comparison is
     // the page's arithmetic against the view's, not the completeness gate.
@@ -193,7 +211,7 @@ function checkRow(r, e, name) {
     await page.waitForSelector('#ctKindTbl', { timeout: 60000 }); await page.waitForTimeout(300);
     T = await kindTable(page);
     for (const k of ['INTL', 'NATL', 'MIX']) {
-      const rows = real.filter(t => kindOf(t) === k);
+      const rows = EXPECT_REAL[k];
       const rev = sum(rows, 'revenue'), gross = sum(rows, 'cost_gross'), pw = sum(rows, 'profit_worst');
       console.log(`    SELECT ${k}: n=${rows.length} revenue_intl=${sum(rows, 'revenue_intl').toFixed(2)} revenue_natl=${sum(rows, 'revenue_natl').toFixed(2)} cost_gross=${gross.toFixed(2)} Σprofit_worst=${pw.toFixed(2)}`);
       if (!rows.length) { ok(by(k).n === '0', `${k}: 0 RTs on the page too`); continue; }

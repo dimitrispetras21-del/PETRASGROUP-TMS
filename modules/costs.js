@@ -156,15 +156,25 @@ function ctChip(t) {
 // shown split in two columns. Its COSTS are NOT split: fuel, tolls, driver and
 // wear belong to one physical trip and any allocation key would be invented —
 // the whole RT counts once, in the «Μικτά» row.
-// Rule: both revenue shares > 0 → MIX; otherwise the RT's own scope.
+// Rule: an RT carrying ANY revenue of the kind other than its scope → MIX;
+// otherwise its own scope. Not «both shares > 0»: the 034 view moves the VS
+// transfer (x_export 850 / x_import 650) from the order to the national leg
+// even while the order's price is still empty (the owner fills prices later),
+// so an unpriced VS RT reads revenue_intl = −850, revenue_natl = +850 — and a
+// price of exactly 850 reads revenue_intl = 0. Both are mixed trips (review
+// 2d169480); «> 0 && > 0» filed them under «Διεθνή» with −€850 international.
 const CT_KIND_LABEL = { INTL: 'Διεθνές', NATL: 'Εθνικό', MIX: 'Μικτό' };
 const CT_KIND_PLURAL = { INTL: 'Διεθνή', NATL: 'Εθνικά', MIX: 'Μικτά' };
 // A row without the two columns (Worker/view older than 034) is NOT a row with
 // zero national revenue — the split is unknown and the page says so.
 function ctHasSplit(t) { return t.revenue_intl != null && t.revenue_natl != null; }
 function ctKind(t) {
-  if (ctHasSplit(t) && Number(t.revenue_intl) > 0 && Number(t.revenue_natl) > 0) return 'MIX';
-  return t.scope === 'NATL' ? 'NATL' : 'INTL';
+  const own = t.scope === 'NATL' ? 'NATL' : 'INTL';
+  if (ctHasSplit(t)) {
+    const other = own === 'NATL' ? Number(t.revenue_intl) : Number(t.revenue_natl);
+    if (other !== 0) return 'MIX';
+  }
+  return own;
 }
 // Λεξιλόγιο κατάστασης (owner review 24/8) — δύο ανεξάρτητα σήματα: η ΕΚΤΕΛΕΣΗ
 // εδώ, τα ΚΟΣΤΗ στο pill «κόστη ελλιπή». Ο feeder γεννά RT μόνο όταν η μεταφορά
@@ -860,7 +870,7 @@ async function ctOpenPanel(id) {
       ${(rt.ct_rt_legs || []).map(l => l.nat_load_id
         ? `<div class="ct-lrow"><span>Εθνικό σκέλος · εθνικό φορτίο #${l.nat_load_id}</span><span></span></div>`
         : `<div class="ct-lrow"><span>${String(l.direction || '').toUpperCase().includes('IMP') ? 'Εισαγωγή' : 'Εξαγωγή'} · διεθνές φορτίο #${l.order_id}</span><span></span></div>`).join('')}
-      ${ctHasSplit(t) && Number(t.revenue_natl) > 0 ? `<div class="ct-totrow ct-mini"><span>Έσοδα διεθνή</span><span class="ct-mono">${ctEur(t.revenue_intl)}</span></div>
+      ${ctKind(t) === 'MIX' ? `<div class="ct-totrow ct-mini"><span>Έσοδα διεθνή</span><span class="ct-mono">${ctEur(t.revenue_intl)}</span></div>
       <div class="ct-totrow ct-mini"><span>Έσοδα εθνικά</span><span class="ct-mono">${ctEur(t.revenue_natl)}</span></div>` : ''}
       <div class="ct-totrow"><span>${(rt.ct_rt_legs || []).length || 0} συνδεδεμένα φορτία ${!(rt.ct_rt_legs || []).length ? '· <span style="color:var(--warn)">σύνδεση από τους σχεδιαστές στο επόμενο βήμα</span>' : ''}</span><span class="ct-mono">${ctEur(t.revenue)}</span></div></div>
     <div class="ct-psec"><h3>Κόστη ανά κατηγορία</h3>${costRows}
