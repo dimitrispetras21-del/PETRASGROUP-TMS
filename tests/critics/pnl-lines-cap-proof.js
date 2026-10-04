@@ -94,6 +94,12 @@ const notes = page => page.$$eval('.ct-note', ns => ns.map(n => n.textContent.re
     ok(t === 'Οι γραμμές κόστους δεν φόρτωσαν — άγνωστη πληρότητα', 'banner: «' + t + '»');
     ok(!/χωρίς καταχωρημένο κόστος/.test(t), 'no «N από M χωρίς καταχωρημένο κόστος» claim');
     ok(/ΔΕΝ φόρτωσαν/.test(await notes(page)), 'visible «γραμμές κόστους ΔΕΝ φόρτωσαν» note with «Ανανέωση»');
+    ok(!/300/.test(await notes(page)), 'no contradicting «όριο 300 … ίσως ψευδώς χωρίς κόστη» banner next to «άγνωστη»');
+    // grouped view (by truck): unknown completeness → no margins of a partial set
+    await page.selectOption('#ctGroup', 'truck'); await page.waitForTimeout(400);
+    const g = await page.$$eval('#ctList table.ct-tbl tbody tr', trs => trs.map(tr => [...tr.cells].map(c => c.textContent.trim())));
+    ok(g.length === 1 && g[0][1] === '41' && g[0][4] === '—' && g[0][5] === '—', 'grouped by truck: all 41 RTs counted, Καθαρό and Περιθώριο «—»: ' + JSON.stringify(g));
+    ok(!/ελλιπή κόστη ΔΕΝ μετρούν/.test(await page.$eval('#ctList', el => el.textContent)), 'grouped by truck: no «ελλιπή κόστη ΔΕΝ μετρούν» claim');
     ok(S.errors.length === 0, 'no page errors: ' + S.errors.slice(0, 2).join(' | '));
     await page.context().close();
   }
