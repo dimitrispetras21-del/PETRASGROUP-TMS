@@ -26,7 +26,7 @@ const wiSrc = [
   fn(WI, /async function _wiStatusLive\(oid\)\{[\s\S]*?\n\}\n/, '_wiStatusLive'),
   fn(WI, /async function _wiExecutingLive\(oid\)\{[\s\S]*?\n\}\n/, '_wiExecutingLive'),
   fn(WI, /async function _wiLiveOrders\(ids\)\{[\s\S]*?\n\}\n/, '_wiLiveOrders'),
-  fn(WI, /function _wiExecConfirmText\(execs,what\)\{[\s\S]*?\n\}\n/, '_wiExecConfirmText'),
+  fn(WI, /function _wiExecConfirmText\(execs,what,closedOk\)\{[\s\S]*?\n\}\n/, '_wiExecConfirmText'),
   fn(WI, /async function _wiClear\(rowId\)\{[\s\S]*?\n\}\n/, '_wiClear'),
 ].join('\n');
 async function runWiClear(statusById, row) {

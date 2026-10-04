@@ -29,7 +29,7 @@ const wiSrc = [
   // and builds its one confirm through these (absent in older copies)
   grab(/const WI_EXECUTING=\[[^\]]*\];/, 'WI_EXECUTING', true),
   grab(/async function _wiLiveOrders\(ids\)\{[\s\S]*?\n\}\n/, '_wiLiveOrders', true),
-  grab(/function _wiExecConfirmText\(execs,what\)\{[\s\S]*?\n\}\n/, '_wiExecConfirmText', true),
+  grab(/function _wiExecConfirmText\(execs,what,closedOk\)\{[\s\S]*?\n\}\n/, '_wiExecConfirmText', true),
   grab(/async function _wiRemoveImport\(rowId\)\{[\s\S]*?\n\}\n/, '_wiRemoveImport'),
   grab(/async function _wiDissolveClearMember\(oid\)\{[\s\S]*?\n\}\n/, '_wiDissolveClearMember'),
   grab(/async function _wiCancelGroupMember\(rowId,orderId,isImportSide(?:,ask)?\)\{[\s\S]*?\n\}\n/, '_wiCancelGroupMember'),

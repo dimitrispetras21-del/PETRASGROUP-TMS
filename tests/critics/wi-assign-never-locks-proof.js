@@ -13,6 +13,9 @@
 //   (c) clear a grouped row: every Group ID member cleared (GI member too), decided per RT:
 //       RT fully cleared → no leg DELETE; RT with an outside leg → members' legs DELETEd first;
 //       closed RT with an outside leg → 409 → nothing written
+//   (c4) RT with a national (nat_load) leg → the order's leg DELETEd first, the nat leg stays
+//   (c5) row spanning TWO mixed RTs, one open + one closed → refused before the confirm, 0 writes
+//   (c6) partner group, one member Delivered → its PARTNER ASSIGNMENT row is kept (payable)
 //   (d) _wiCancelGroupMember on an executing member → confirm, leg first, no Status Pending
 // Run from the MAIN repo root:
 //   PW_BASE_URL=http://127.0.0.1:8788/.claude/worktrees/<wt>/ node .claude/worktrees/<wt>/tests/critics/wi-assign-never-locks-proof.js
@@ -21,7 +24,7 @@ const path = require('path');
 const { preparePage, gotoPage } = require(path.resolve(__dirname, 'auth.js'));
 const BASE = process.env.PW_BASE_URL || 'http://127.0.0.1:8788/';
 const HOST = 'petras-tms-backend-staging.petrasgroup.workers.dev';
-const T = { ORD: 'tblgHlNmLBH3JTdIM', TRK: 'tblEAPExIAjiA3asD', DRV: 'tbl7UGmYhc2Y82pPs' };
+const T = { ORD: 'tblgHlNmLBH3JTdIM', TRK: 'tblEAPExIAjiA3asD', DRV: 'tbl7UGmYhc2Y82pPs', PA: 'tblUhgqnmiam5MGNK' };
 const VERBATIM = 'μεταφέρεται/σβήνει δρομολόγιο + μισθοδοσία, ακόμη και σε κλειστό δρομολόγιο';
 let pass = 0, fail = 0;
 const ok = (c, m) => { if (c) { pass++; console.log('  ✓ ' + m); } else { fail++; console.log('  ✗ ' + m); } };
@@ -36,7 +39,7 @@ const IMP = (id, ref, st, truck, drv, extra = {}) => ({ id, fields: Object.assig
   'Loading DateTime': '2026-10-08T08:00:00', 'Delivery DateTime': '2026-10-09T10:00:00', 'Total Pallets': 10,
 }, truck ? { Truck: [truck], Driver: [drv] } : {}, extra) });
 function seed(opts = {}) {
-  const trucks = ['recTruck1', 'recTruck2', 'recTruck3', 'recTruck4', 'recTruck5', 'recTruck6', 'recTruck7'];
+  const trucks = ['recTruck1', 'recTruck2', 'recTruck3', 'recTruck4', 'recTruck5', 'recTruck6', 'recTruck7', 'recTruck8'];
   const db = {
     [T.TRK]: trucks.map((id, i) => ({ id, fields: { 'License Plate': 'TRK-' + (i + 1), Active: true } })),
     [T.DRV]: trucks.map((_, i) => ({ id: 'recDriver' + (i + 1), fields: { 'Full Name': 'Driver ' + (i + 1), Active: true } })),
@@ -53,6 +56,13 @@ function seed(opts = {}) {
       EXP('recR1', 'R1-ROTA', 'Assigned', 'recTruck6', 'recDriver6', { 'Rotation ID': 'recG2a', 'Loading DateTime': '2026-10-08T08:00:00', 'Delivery DateTime': '2026-10-09T10:00:00' }),
       EXP('recG4a', 'G4A-DELIV', 'Delivered', 'recTruck7', 'recDriver7', { 'Group ID': 'GRP-DDD|recG4a,recG4b' }),
       EXP('recG4b', 'G4B', 'Assigned', 'recTruck7', 'recDriver7', { 'Group ID': 'GRP-DDD|recG4a,recG4b' }),
+      EXP('recN1', 'N1-NATLEG', 'Assigned', 'recTruck3', 'recDriver3'),             // (c4) RT-108 also carries a nat_load leg
+      EXP('recE6', 'E6', 'Assigned', 'recTruck8', 'recDriver8', { 'Matched Import ID': 'recI6' }), // (c5) RT-109 open + rota R6
+      EXP('recR6', 'R6-ROTA', 'Assigned', 'recTruck8', 'recDriver8', { 'Rotation ID': 'recE6', 'Loading DateTime': '2026-10-08T08:00:00', 'Delivery DateTime': '2026-10-09T10:00:00' }),
+      IMP('recI6', 'I6', 'Assigned', 'recTruck8', 'recDriver8'),                    // (c5) RT-110 CLOSED + Y6
+      EXP('recY6', 'Y6-OTHER', 'Delivered', 'recTruck8', 'recDriver8'),
+      EXP('recP1', 'P1-PART-DELIV', 'Delivered', null, null, { 'Group ID': 'GRP-PPP|recP1,recP2', Partner: ['recPartner1'], 'Is Partner Trip': true, 'Partner Rate': 500 }),
+      EXP('recP2', 'P2-PART', 'Assigned', null, null, { 'Group ID': 'GRP-PPP|recP1,recP2', Partner: ['recPartner1'], 'Is Partner Trip': true, 'Partner Rate': 500 }),
     ],
   };
   // «Order No» = orders.id (migration 019): _wiRtOf (fix/unmatch-leg-first) finds
@@ -65,7 +75,15 @@ function seed(opts = {}) {
     { id: 103, code: 'RT-103', status: 'planned', ct_rt_legs: ['recG1a', 'recG1b', 'recI1', 'recI2'].map(leg) },
     { id: 104, code: 'RT-104', status: 'planned', ct_rt_legs: [leg('recX1')] },
     { id: 105, code: 'RT-105', status: opts.rt105 || 'planned', ct_rt_legs: ['recG2a', 'recG2b', 'recR1'].map(leg) },
-    { id: 107, code: 'RT-107', status: 'planned', ct_rt_legs: ['recG4a', 'recG4b'].map(leg) },
+    { id: 107, code: 'RT-107', status: opts.rt107 || 'planned', ct_rt_legs: ['recG4a', 'recG4b'].map(leg) },
+    { id: 108, code: 'RT-108', status: 'planned', ct_rt_legs: [leg('recN1'), { id: 77777, direction: 'EXPORT', order_id: null, nat_load_id: 77 }] },
+    { id: 109, code: 'RT-109', status: 'planned', ct_rt_legs: ['recE6', 'recR6'].map(leg) },
+    { id: 110, code: 'RT-110', status: 'closed', ct_rt_legs: ['recI6', 'recY6'].map(leg) },
+    { id: 111, code: 'RT-111', status: 'planned', ct_rt_legs: ['recP1', 'recP2'].map(leg) },
+  ];
+  db[T.PA] = [
+    { id: 'recPA1', fields: { Order: ['recP1'], Partner: ['recPartner1'], 'Partner Rate': 500, Status: 'Delivered' } },
+    { id: 'recPA2', fields: { Order: ['recP2'], Partner: ['recPartner1'], 'Partner Rate': 500, Status: 'Assigned' } },
   ];
   rts.forEach(rt => { const o = db[T.ORD].find(r => PG[r.id] === rt.ct_rt_legs[0].order_id); rt.truck = (o.fields.Truck || [])[0] || null; });
   return { db, PG, rts };
@@ -159,6 +177,7 @@ async function newPage(browser, opts = {}) {
   await gotoPage(page, 'weekly_intl', BASE);
   await page.waitForFunction(() => typeof _wiClear === 'function' && window.WINTL && WINTL.rows && WINTL.rows.length > 0, null, { timeout: 60000 });
   await page.waitForTimeout(800);
+  await page.evaluate(() => { window.__toasts = []; const t0 = window.toast; window.toast = (m, k) => { window.__toasts.push(String(m)); try { return t0 && t0(m, k); } catch (_) {} }; });
   return { page, S };
 }
 // Runs an action and answers each confirm modal in turn; returns the modal texts.
@@ -260,20 +279,53 @@ const idx = (S, pred) => S.log.findIndex(pred);
   ok(S.log.some(x => x.k === 'rtget' && /overlap=1/.test(x.q)), 'RT lookup went through the shared _wiRtOf (date window, overlap=1)');
   await page.context().close();
 
-  console.log('\n── (c3) same, but RT-105 is CLOSED → leg DELETE 409 → nothing written');
+  console.log('\n── (c3) same, but RT-105 is CLOSED → refused before the confirm, nothing written');
   ({ page, S } = await newPage(browser, { rt105: 'closed' }));
   rid = await rowOf(page, 'recG2a');
   seen = await act(page, S, `_wiClear(${rid})`, [true]);
-  ok(legDels(S).length === 1 && legDels(S)[0].status === 409, 'first leg DELETE refused 409, clear stops');
-  ok(patches(S).length === 0, 'no vehicle PATCH at all (' + patches(S).length + ')');
+  let tl = await page.evaluate(() => window.__toasts.slice(-1)[0] || '');
+  ok(seen.length === 0 && /RT-105 είναι κλειστό/.test(tl), 'no confirm; toast names closed RT-105: «' + tl.slice(0, 90) + '…»');
+  ok(writes(S).length === 0, 'zero writes, zero leg DELETEs (' + writes(S).length + ')');
   ok(['recG2a', 'recG2b', 'recR1'].every(id => (ord(S, id).Truck || [])[0] === 'recTruck6'), 'G2a/G2b/R1 all still on TRK-6');
+  await page.context().close();
+
+  console.log('\n── (c4) N1 whose RT-108 also carries a national (nat_load) leg');
+  ({ page, S } = await newPage(browser));
+  rid = await rowOf(page, 'recN1');
+  seen = await act(page, S, `_wiClear(${rid})`, [true]);
+  const n1d = idx(S, x => x.k === 'legdel' && x.order === 'recN1'), n1p = idx(S, x => x.k === 'patch' && x.id === 'recN1');
+  ok(n1d > -1 && S.log[n1d].status === 200 && n1p > n1d, 'N1 leg DELETE (' + n1d + ') before its vehicle PATCH (' + n1p + ')');
+  const rt108 = S.rts.find(r => r.id === 108);
+  ok(rt108.ct_rt_legs.length === 1 && rt108.ct_rt_legs[0].nat_load_id === 77 && rt108.truck === 'recTruck3', 'RT-108 keeps the nat_load leg and its truck');
+  await page.context().close();
+
+  console.log('\n── (c5) E6 row spans RT-109 (open, + rota R6) and RT-110 (CLOSED, + Y6) → refused up front');
+  ({ page, S } = await newPage(browser));
+  rid = await rowOf(page, 'recE6');
+  seen = await act(page, S, `_wiClear(${rid})`, [true]);
+  tl = await page.evaluate(() => window.__toasts.slice(-1)[0] || '');
+  ok(seen.length === 0 && /RT-110/.test(tl) && !/RT-109/.test(tl), 'no confirm; toast names only closed RT-110');
+  ok(writes(S).length === 0 && legDels(S).length === 0, 'zero writes, no leg DELETE on the OPEN RT-109 either (' + writes(S).map(x => x.k + ':' + (x.order || x.id)).join(',') + ')');
+  ok(S.rts.find(r => r.id === 109).ct_rt_legs.length === 2 && ['recE6', 'recR6', 'recI6', 'recY6'].every(id => (ord(S, id).Truck || [])[0] === 'recTruck8'), 'RT-109 keeps both legs; E6/R6/I6/Y6 keep TRK-8');
+  await page.context().close();
+
+  console.log('\n── (c6) partner group P1 (Delivered) + P2 (Assigned): PA of the executing one is kept');
+  ({ page, S } = await newPage(browser));
+  rid = await rowOf(page, 'recP1');
+  seen = await act(page, S, `_wiClear(${rid})`, [true]);
+  const paDels = S.log.filter(x => x.k === 'delete' && x.tid === T.PA).map(x => x.id);
+  ok(seen.length === 1 && seen[0].includes(VERBATIM) && seen[0].includes('P1-PART-DELIV'), 'one confirm naming P1 (RT-111 cleared whole → closed-trip promise holds)');
+  ok(paDels.join(',') === 'recPA2', 'only P2\'s PARTNER ASSIGNMENT deleted: [' + paDels.join(',') + ']');
+  ok(S.db[T.PA].some(r => r.id === 'recPA1' && r.fields['Partner Rate'] === 500), 'P1\'s PA (rate 500, the payable) still in the base');
+  ok(!ord(S, 'recP1').Partner && !ord(S, 'recP2').Partner && ord(S, 'recP1').Status === 'Delivered' && ord(S, 'recP2').Status === 'Pending', 'both orders lose the partner; P1 stays Delivered, P2 → Pending');
   await page.context().close();
 
   console.log('\n── (d) _wiCancelGroupMember on the Delivered member G4a (RT-107 with G4b)');
   ({ page, S } = await newPage(browser));
   rid = await rowOf(page, 'recG4a');
   seen = await act(page, S, `_wiCancelGroupMember(${rid},'recG4a',false)`, [false]);
-  ok(seen.length === 1 && seen[0].includes(VERBATIM) && seen[0].includes('G4A-DELIV') && writes(S).length === 0, 'cancel: one verbatim confirm (no «on paper only» refusal), 0 writes');
+  ok(seen.length === 1 && seen[0].includes('μεταφέρεται/σβήνει δρομολόγιο + μισθοδοσία') && seen[0].includes('G4A-DELIV') && writes(S).length === 0, 'cancel: one confirm (no «on paper only» refusal), 0 writes');
+  ok(!seen[0].includes('ακόμη και σε κλειστό δρομολόγιο') && /ΚΛΕΙΣΤΟ δρομολόγιο που έχει κι άλλες παραγγελίες δεν επιτρέπεται/.test(seen[0]), 'text does not promise the closed trip; says removal from a closed shared trip is refused');
   seen = await act(page, S, `_wiCancelGroupMember(${rid},'recG4a',false)`, [true]);
   const dIdx = idx(S, x => x.k === 'legdel' && x.order === 'recG4a');
   const pIdx = idx(S, x => x.k === 'patch' && x.id === 'recG4a');
@@ -291,6 +343,15 @@ const idx = (S, pred) => S.log.findIndex(pred);
   seen = await act(page, S, `_wiCancelGroupMember(${rid},'recG4a',false)`, [true]);
   ok(legDels(S).length === 1 && patches(S).length === 0, 'DELETE 500 → stop, 0 PATCH');
   ok((ord(S, 'recG4a').Truck || [])[0] === 'recTruck7' && ord(S, 'recG4a')['Group ID'], 'G4a unchanged (truck + group)');
+  await page.context().close();
+
+  console.log('\n── (d3) the same on a CLOSED RT-107 → 409 → nothing written');
+  ({ page, S } = await newPage(browser, { rt107: 'closed' }));
+  rid = await rowOf(page, 'recG4a');
+  seen = await act(page, S, `_wiCancelGroupMember(${rid},'recG4a',false)`, [true]);
+  tl = await page.evaluate(() => window.__toasts.slice(-1)[0] || '');
+  ok(legDels(S).length === 1 && legDels(S)[0].status === 409 && patches(S).length === 0, '409 → 0 PATCH; toast: «' + tl.slice(0, 80) + '»');
+  ok((ord(S, 'recG4b').Truck || [])[0] === 'recTruck7' && (ord(S, 'recG4a').Truck || [])[0] === 'recTruck7', 'G4a and G4b keep TRK-7');
   await page.context().close();
 
   await browser.close();
