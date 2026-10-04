@@ -61,3 +61,30 @@ test('popover save wiring: the matched ΑΝΟΔΟΣ is written with Partner Rate
   assert.match(save, /atSafePatch\(TABLES\.NAT_LOADS, row\.matchedId, _wnPlanFields\(snFields, /);
   assert.match(save, /rate: snOfPair \? null : rate, clearRate: snOfPair,/);
 });
+
+// ── the same pair, owner 4/10 Q7 + Q2/Q3/Q8 (one RT per pair under 034) ──────
+test('_wnSnVehicleSwap (Q7): a different own vehicle on the ΑΝΟΔΟΣ is swapped to the ΚΑΘΟΔΟΣ one; same vehicle / none → null', () => {
+  const ctx = { getLinkedId: v => (Array.isArray(v) ? v[0] : v) || null,
+    WNATL: { data: { trucks: [{ id: 't1', label: 'ΚΖΗ 1001' }, { id: 't2', label: 'ΚΖΗ 1002' }], partners: [{ id: 'p1', label: 'Partner Co' }] } } };
+  vm.runInNewContext(pick(WN, /function _wnSnVehicleSwap\(row, snF\) \{[\s\S]*?\n\}\n/, '_wnSnVehicleSwap') + '\nthis.f=_wnSnVehicleSwap;', ctx);
+  const own = { saved: true, truckId: 't1', driverId: 'd1' };
+  const sw = ctx.f(own, { Truck: ['t2'] });
+  assert.ok(sw && sw.from === 'φορτηγό ΚΖΗ 1002' && sw.to === 'φορτηγό ΚΖΗ 1001');
+  assert.strictEqual(JSON.stringify(sw.veh.Truck), '["t1"]'); assert.strictEqual(sw.veh['Partner Rate'], null); assert.strictEqual(JSON.stringify(sw.veh.Partner), '[]');   // vm realm: compare by JSON
+  assert.strictEqual(ctx.f(own, { Truck: ['t1'] }), null);                 // same truck
+  assert.strictEqual(ctx.f(own, {}), null);                                 // no vehicle → _wnVehicleForSn
+  assert.strictEqual(ctx.f({ saved: false }, { Truck: ['t2'] }), null);     // ΚΑΘΟΔΟΣ without vehicle
+  const ps = ctx.f({ saved: true, partnerId: 'p1', partnerPlates: 'ΙΑΒ 1' }, { Truck: ['t2'] });
+  assert.ok(ps && ps.veh['Is Partner Trip'] === true && ps.veh.Partner[0] === 'p1' && ps.veh['Partner Rate'] === null);
+  assert.strictEqual(ctx.f({ saved: true, partnerId: 'p1' }, { Partner: ['p1'] }), null);   // same partner
+});
+
+test('_wnUnmatch (Q2/Q3/Q8): match cleared on BOTH loads before the ΑΝΟΔΟΣ vehicle; no executed exception; Status via _wnUnplanFields', () => {
+  const fn = pick(WN, /async function _wnUnmatch\(rowId, snId\) \{[\s\S]*?\n\}\n/, '_wnUnmatch');
+  const iNs = fn.indexOf("atSafePatch(TABLES.NAT_LOADS, row.orderIds[0], { 'Matched Load': '' })");
+  const iSn = fn.indexOf("atSafePatch(TABLES.NAT_LOADS, snId, { 'Matched Load': '' })");
+  const iVeh = fn.indexOf('atSafePatch(TABLES.NAT_LOADS, snId, _wnUnplanFields(clr, stSn))');
+  assert.ok(iNs > 0 && iSn > iNs && iVeh > iSn, 'order: ΚΑΘΟΔΟΣ match → ΑΝΟΔΟΣ match → ΑΝΟΔΟΣ vehicle');
+  assert.ok(!/_wnExecuted\(stSn\)\)\s*left\s*=/.test(fn) && !/κρατά το όχημά της/.test(fn), 'no «executed keeps its vehicle» branch left');
+  assert.match(fn, /_wnConfirmExecuted\(/);
+});

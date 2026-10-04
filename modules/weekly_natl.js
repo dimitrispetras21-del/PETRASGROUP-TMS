@@ -2221,6 +2221,31 @@ function _wnVehicleForSn(row, snF) {
   return v;
 }
 
+// Owner 4/10 (Q7, «Όπως τα διεθνή»): an ΑΝΟΔΟΣ that already has ITS OWN,
+// different vehicle takes the ΚΑΘΟΔΟΣ vehicle on a match — after ONE confirm
+// that names both. Until then the match left it silently on its own truck: a
+// pair on two trucks, which migration 034 (one RT per pair) cannot represent.
+// The ΑΝΟΔΟΣ rate goes too (§8.5: one rate, on the ΚΑΘΟΔΟΣ). Same vehicle, or
+// a ΚΑΘΟΔΟΣ without one → null (nothing to swap; _wnVehicleForSn covers an
+// ΑΝΟΔΟΣ without a vehicle).
+function _wnSnVehicleSwap(row, snF) {
+  if (!row || !row.saved || !snF) return null;
+  const snTruck = getLinkedId(snF['Truck']), snPartner = getLinkedId(snF['Partner']);
+  if (!snTruck && !snPartner) return null;
+  if (row.partnerId ? snPartner === row.partnerId : (!snPartner && snTruck === row.truckId)) return null;
+  const lbl = (t, p) => p
+    ? 'συνεργάτη ' + ((WNATL.data.partners.find(x => x.id === p) || {}).label || '—')
+    : 'φορτηγό ' + ((WNATL.data.trucks.find(x => x.id === t) || {}).label || '—');
+  const veh = row.partnerId
+    ? { 'Partner': [row.partnerId], 'Is Partner Trip': true, 'Partner Truck Plates': row.partnerPlates || '',
+        'Truck': [], 'Trailer': [], 'Driver': [], 'Partner Rate': null }
+    : { 'Truck': [row.truckId], 'Trailer': row.trailerId ? [row.trailerId] : [], 'Driver': row.driverId ? [row.driverId] : [],
+        'Is Partner Trip': false, 'Partner': [], 'Partner Truck Plates': '', 'Partner Rate': null };
+  veh['Status'] = 'Assigned';               // callers pass it through _wnPlanFields
+  return { veh, oldPartner: snPartner, from: lbl(snTruck, snPartner),
+           to: row.partnerId ? lbl(null, row.partnerId) : lbl(row.truckId, null) };
+}
+
 async function _wnSaveMatch(rowId, snId) {
   if(_wnBlockReadOnly()) return;
   const row = WNATL.rows.find(r => r.id===rowId); if (!row) return;
@@ -2235,8 +2260,15 @@ async function _wnSaveMatch(rowId, snId) {
   // A match alone changes no vehicle → no dialog. Only when it will also put
   // the ΚΑΘΟΔΟΣ vehicle on an executed ΑΝΟΔΟΣ (§4 #5) is that ONE confirm asked,
   // before the optimistic paint; «Ακύρωση» = nothing written (owner 4/10).
-  const veh = _wnVehicleForSn(row, WNATL.data.southnorth.find(r => r.id===snId)?.fields);
-  if (veh && _wnExecuted(stSn) && !(await _wnConfirmExecuted('Το ταίριασμα περνά το όχημα της καθόδου στην άνοδο'))) return;
+  const snF0 = WNATL.data.southnorth.find(r => r.id===snId)?.fields;
+  const swap = _wnSnVehicleSwap(row, snF0);
+  const veh = swap ? swap.veh : _wnVehicleForSn(row, snF0);
+  if (swap) {
+    const ex = stSn === null || _wnExecuted(stSn);
+    const txt = `Η άνοδος είχε ${swap.from} — θα πάρει ${swap.to}, το όχημα της καθόδου.`
+      + (ex ? '\nΤο φορτίο είναι ήδη σε εκτέλεση· η κατάσταση μένει ως έχει. Το όχημα μεταφέρεται/σβήνει δρομολόγιο + μισθοδοσία.' : '');
+    if (!(await confirmAction(txt, { title: 'Αλλαγή οχήματος ανόδου', confirmLabel: 'Συνέχεια' }))) return;
+  } else if (veh && _wnExecuted(stSn) && !(await _wnConfirmExecuted('Το ταίριασμα περνά το όχημα της καθόδου στην άνοδο'))) return;
   row.matchedId = snId;
   WNATL.rows = WNATL.rows.filter(r => !(r.type==='southnorth' && r.orderId===snId));
   _wnPaint();
@@ -2252,6 +2284,16 @@ async function _wnSaveMatch(rowId, snId) {
         // LEG FIRST (see _wnExecuted): national RT legs are handled by the 034 trigger.
         const r3 = await atSafePatch(TABLES.NAT_LOADS, snId, _wnPlanFields(veh, stSn));
         if (r3?.error) throw new Error(r3.error.message || r3.error.type);
+        if (swap) {
+          // The ΑΝΟΔΟΣ PARTNER ASSIGNMENTS row follows its new vehicle: the
+          // ΚΑΘΟΔΟΣ partner without a rate (§8.5), or gone for an own truck —
+          // except an executed/unreadable leg's row, a payable (review 4/10).
+          try {
+            if (row.partnerId) await paUpsert({ parentType:'nat_load', parentId:snId, partnerId:row.partnerId, rate:null, clearRate:true,
+                                                status: _wnExecuted(stSn) ? stSn : 'Assigned', keepStatus: _wnKeepsPa(stSn) });
+            else if (swap.oldPartner && !_wnKeepsPa(stSn)) await paDelete({ parentType:'nat_load', parentId:snId });
+          } catch(e) { console.warn('NAT PA (match swap):', e.message); }
+        }
       } catch(err) {
         // The pair IS written; only the vehicle is missing on the ΑΝΟΔΟΣ — say
         // exactly that, never the generic «σύνδεση ΔΕΝ γράφτηκε» below.
@@ -2283,12 +2325,26 @@ async function _wnUnmatch(rowId, snId) {
   if(_wnBlockReadOnly()) return;
   const row = WNATL.rows.find(r => r.id===rowId); if (!row) return;
   // A6: same guard as _wnSaveMatch — only a Cancelled leg is refused (owner
-  // 4/10); unmatching writes no vehicle and no Status, so no confirm.
+  // 4/10). The ΚΑΘΟΔΟΣ is never written beyond its Matched Load.
   const doneNs = await _wnDoneLive(row.orderIds[0]);
   if (doneNs) { showErrorToast(`Το φορτίο είναι ${doneNs} — δεν αλλάζει από το Weekly`); return; }
-  const doneSn = await _wnDoneLive(snId);
+  const stSn = await _wnStatusLive(snId);
+  const doneSn = _wnDoneOf(stSn);
   if (doneSn) { showErrorToast(`Το φορτίο είναι ${doneSn} — δεν αλλάζει από το Weekly`); return; }
   const snOrd = WNATL.data.southnorth.find(r => r.id===snId);
+  const snF = (snOrd && snOrd.fields) || {};
+  const snHasVehicle = !!(getLinkedId(snF['Truck']) || getLinkedId(snF['Partner']));
+  // Owner 4/10 (Q2+Q3 «ό,τι ισχύει διεθνών ισχύει εθνικών», Q8 «Σωστά, πάντα
+  // βγαίνει η ανάθεση»): an unmatched ΑΝΟΔΟΣ ALWAYS leaves without its
+  // assignment, whatever its Status — the status may be stale («ο χρήστης ίσως
+  // … άργησε να κάνει update»). The ΚΑΘΟΔΟΣ keeps truck and RT. Clearing only
+  // Matched Load was not enough from 5/10: migration 034 holds the pair in ONE
+  // national RT, re-runs rt_sync_national_load on the matched_load change,
+  // finds the ΑΝΟΔΟΣ «compatible» (same truck) and keeps it in the ΚΑΘΟΔΟΣ
+  // trip — wrong RT, wrong payroll. Executed (or unreadable) ΑΝΟΔΟΣ: ONE
+  // confirm first that says so; its Status is never set back.
+  if (snHasVehicle && (stSn === null || _wnExecuted(stSn))
+      && !(await _wnConfirmExecuted('Το ξεταίριασμα αφαιρεί την ανάθεση της ανόδου· η κάθοδος κρατά το όχημα και το δρομολόγιό της'))) return;
   row.matchedId = null;
   if (snOrd) {
     WNATL.rows.push(_wnBuildRow(snOrd, 'southnorth'));
@@ -2296,10 +2352,27 @@ async function _wnUnmatch(rowId, snId) {
   _wnPaint();
   _wnSync('wn-sync-'+rowId,'pend','Αφαίρεση σύνδεσης…'); // T3
   try {
+    // Order matters: the match goes on BOTH loads first, then the vehicle —
+    // the 034 trigger then takes the ΑΝΟΔΟΣ leg out of the RT (leg-first lives
+    // inside the trigger) and the ΚΑΘΟΔΟΣ is never written.
     await atSafePatch(TABLES.NAT_LOADS, row.orderIds[0], { 'Matched Load': '' });
     await atSafePatch(TABLES.NAT_LOADS, snId, { 'Matched Load': '' });
+    if (snHasVehicle) {
+      const clr = { 'Truck': [], 'Trailer': [], 'Driver': [], 'Partner': [], 'Is Partner Trip': false,
+                    'Partner Truck Plates': '', 'Partner Rate': null };
+      // Assigned → Pending only; In Transit/Delivered/unreadable keep their Status.
+      const res = await atSafePatch(TABLES.NAT_LOADS, snId, _wnUnplanFields(clr, stSn));
+      if (res?.conflict) { toast('Η εγγραφή άλλαξε από άλλον χρήστη — γίνεται ανανέωση','warn'); await renderWeeklyNatl(); return; }
+      if (res?.error) throw new Error(res.error.message || res.error.type);
+      // An executed (or unreadable) leg's PA row is a payable — kept (review 4/10).
+      try { if (!_wnKeepsPa(stSn)) await paDelete({ parentType:'nat_load', parentId:snId }); }
+      catch(e) { console.warn('PA delete (unmatch):', e.message); }
+      await _wnRevertNoStatus(snId);
+      invalidateCache(TABLES.NAT_LOADS);
+      await renderWeeklyNatl();
+    }
     _wnSync('wn-sync-'+rowId,'ok','Αφαιρέθηκε');
-    toast('Σύνδεση αφαιρέθηκε');
+    toast(snHasVehicle ? 'Σύνδεση αφαιρέθηκε — η άνοδος έμεινε χωρίς ανάθεση' : 'Σύνδεση αφαιρέθηκε');
   } catch(err) {
     _wnSync('wn-sync-'+rowId,'err','Η αφαίρεση ΔΕΝ γράφτηκε στη βάση');
     toast('Σφάλμα: '+err.message, 'warn');

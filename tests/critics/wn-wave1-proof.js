@@ -213,10 +213,16 @@ SECTIONS.push(async browser => {
   let f = nlOf(S, 'recNlsA00000000A');
   ok((f.Truck || [])[0] === 'recTruck000001AA' && f.Status === 'Assigned', 'base: ΑΝΟΔΟΣ now has truck ' + (f.Truck || []).join() + ', Status ' + f.Status);
 
+  // owner 4/10 Q7 «Όπως τα διεθνή»: an ΑΝΟΔΟΣ with its OWN, different truck takes the
+  // ΚΑΘΟΔΟΣ vehicle after ONE confirm naming both — not silent, not refused, not two trucks
+  await page.evaluate(() => { window.__confirms = []; });
   await dropOn(page, 'recNlsB00000000A', 'recNlB000000000A'); await settle(page);
+  const cB = await page.evaluate(() => window.__confirms);
+  ok(cB.length === 1 && /είχε φορτηγό ΚΖΗ 1002/.test(cB[0]) && /θα πάρει φορτηγό ΚΖΗ 1001/.test(cB[0]), 'ΑΝΟΔΟΣ with its OWN truck: ONE confirm «είχε … θα πάρει …»: ' + JSON.stringify(cB));
   p = patchesTo(S, 'recNlsB00000000A');
-  ok(p.length === 1 && Object.keys(p[0]).join() === 'Matched Load', 'ΑΝΟΔΟΣ with its OWN truck: only Matched Load written: ' + JSON.stringify(p));
-  ok((nlOf(S, 'recNlsB00000000A').Truck || [])[0] === 'recTruck000002AA', 'base: its own truck kept');
+  ok(p[0] && Object.keys(p[0]).join() === 'Matched Load' && p[1] && p[1].Truck[0] === 'recTruck000001AA' && p[1].Driver[0] === 'recDriver00001AA' && p[1]['Partner Rate'] === null,
+     'ΑΝΟΔΟΣ with its OWN truck: Matched Load first, then the ΚΑΘΟΔΟΣ vehicle: ' + JSON.stringify(p));
+  ok((nlOf(S, 'recNlsB00000000A').Truck || [])[0] === 'recTruck000001AA', 'base: the pair is on ONE truck (ΚΖΗ 1001)');
 
   await dropOn(page, 'recNlsP00000000A', 'recNlP000000000A'); await settle(page);
   const vp = patchesTo(S, 'recNlsP00000000A').find(x => 'Partner' in x);
@@ -673,6 +679,109 @@ SECTIONS.push(async browser => {
     const t = await page.evaluate(() => window.__toasts.map(x => x[0]).join(' | '));
     ok(/Κόμιστρο και στην κάθοδο και στην άνοδο/.test(t), 'match of two rated legs → warning toast');
     ok(!S.writes.some(w => w.m === 'PATCH' && w.body && w.body.fields && 'Partner Rate' in w.body.fields), 'match writes no Partner Rate');
+    await page.context().close();
+  }
+});
+
+// ── owner 4/10 (Q2+Q3) · unmatch «×»: the ΑΝΟΔΟΣ leaves without assignment, the ΚΑΘΟΔΟΣ keeps truck + RT ──
+SECTIONS.push(async browser => {
+  console.log('\n── owner 4/10 · «×» unmatch: ΑΝΟΔΟΣ without vehicle, ΚΑΘΟΔΟΣ untouched');
+  const pairOwn = db => {
+    const ns = db[T.NL].find(r => r.id === 'recNlB000000000A'), sn = db[T.NL].find(r => r.id === 'recNlsB00000000A');
+    ns.fields['Matched Load'] = 'recNlsB00000000A'; sn.fields['Matched Load'] = 'recNlB000000000A';
+    sn.fields.Truck = ['recTruck000001AA']; sn.fields.Driver = ['recDriver00001AA'];   // same truck as the ΚΑΘΟΔΟΣ (one RT from 5/10)
+  };
+  const unmatch = (page, ns, sn) => page.evaluate(([n, s]) => _wnUnmatch(WNATL.rows.find(r => r.orderId === n).id, s), [ns, sn]);
+  {
+    const { page, S } = await openBoard(browser, { mutate: pairOwn });
+    const before = S.writes.length;
+    await unmatch(page, 'recNlB000000000A', 'recNlsB00000000A'); await settle(page);
+    const w = S.writes.slice(before).filter(x => x.m !== 'GET');
+    const seq = w.map(x => x.tid === T.NL ? x.rid.slice(0, 8) + ':' + Object.keys(x.body.fields).join('+') : x.m + ' ' + x.tid);
+    ok(seq[0] === 'recNlB00:Matched Load' && seq[1] === 'recNlsB0:Matched Load', 'match cleared on BOTH loads first: ' + seq.slice(0, 2).join(' , '));
+    const vi = w.findIndex(x => x.tid === T.NL && x.rid === 'recNlsB00000000A' && 'Truck' in x.body.fields);
+    ok(vi > 1, 'THEN the ΑΝΟΔΟΣ vehicle is cleared (write #' + (vi + 1) + ')');
+    const snF = nlOf(S, 'recNlsB00000000A'), nsF = nlOf(S, 'recNlB000000000A');
+    ok(!snF.Truck && !snF.Driver && !snF.Partner && snF.Status === 'Pending' && !snF['Matched Load'], 'base: ΑΝΟΔΟΣ has no vehicle, Pending, no match: ' + JSON.stringify(snF).slice(0, 160));
+    ok((nsF.Truck || [])[0] === 'recTruck000001AA' && nsF.Status === 'Assigned' && !nsF['Matched Load'], 'base: ΚΑΘΟΔΟΣ keeps its truck and status');
+    ok(!w.some(x => x.tid === T.NL && x.rid === 'recNlB000000000A' && Object.keys(x.body.fields).some(k => k !== 'Matched Load')), 'ΚΑΘΟΔΟΣ: nothing but Matched Load written');
+    ok(S.errors.length === 0, 'no page errors: ' + S.errors.slice(0, 2).join(' | '));
+    await page.context().close();
+  }
+  {
+    // partner pair: the ΑΝΟΔΟΣ PA row goes with its vehicle, the ΚΑΘΟΔΟΣ row stays
+    const { page, S } = await openBoard(browser);
+    const before = S.writes.length;
+    await unmatch(page, 'recNlC000000000A', 'recNlsC00000000A'); await settle(page);
+    const w = S.writes.slice(before);
+    ok(w.filter(x => x.m === 'DELETE' && x.tid === T.PA).map(x => x.rid).join() === 'recPAsC000000001', 'partner pair: only the ΑΝΟΔΟΣ PA row deleted');
+    ok(!nlOf(S, 'recNlsC00000000A').Partner && (nlOf(S, 'recNlC000000000A').Partner || [])[0] === 'recPartner00001A', 'base: ΑΝΟΔΟΣ without partner, ΚΑΘΟΔΟΣ keeps it');
+    await page.context().close();
+  }
+  {
+    // owner Q8 «πάντα βγαίνει η ανάθεση»: an executed ΑΝΟΔΟΣ loses its vehicle too —
+    // after ONE confirm; its Status is not set back and its PA row (a payable) stays
+    const { page, S } = await openBoard(browser, { mutate: db => { pairOwn(db); db[T.NL].find(r => r.id === 'recNlsB00000000A').fields.Status = 'Delivered'; } });
+    const before = S.writes.length;
+    await unmatch(page, 'recNlB000000000A', 'recNlsB00000000A'); await settle(page);
+    const c = await page.evaluate(() => window.__confirms);
+    ok(c.length === 1 && /σε εκτέλεση/.test(c[0]) && /αφαιρεί την ανάθεση της ανόδου/.test(c[0]), 'Delivered ΑΝΟΔΟΣ: ONE confirm that says what happens: ' + JSON.stringify(c));
+    const w = S.writes.slice(before).filter(x => x.m !== 'GET');
+    const v = w.find(x => x.tid === T.NL && x.rid === 'recNlsB00000000A' && 'Truck' in x.body.fields);
+    ok(v && !('Status' in v.body.fields), 'Delivered ΑΝΟΔΟΣ: vehicle cleared, NO Status in the payload');
+    const f = nlOf(S, 'recNlsB00000000A');
+    ok(!f.Truck && f.Status === 'Delivered', 'base: Delivered ΑΝΟΔΟΣ without vehicle, still Delivered');
+    ok((nlOf(S, 'recNlB000000000A').Truck || [])[0] === 'recTruck000001AA', 'base: ΚΑΘΟΔΟΣ keeps its truck');
+    await page.context().close();
+  }
+  {
+    // «Ακύρωση» in that confirm → nothing written
+    const { page, S } = await openBoard(browser, { mutate: db => { pairOwn(db); db[T.NL].find(r => r.id === 'recNlsB00000000A').fields.Status = 'In Transit'; } });
+    await page.evaluate(() => { window.__confirmAnswer = false; });
+    const before = S.writes.length;
+    await unmatch(page, 'recNlB000000000A', 'recNlsB00000000A'); await settle(page);
+    ok(S.writes.slice(before).filter(x => x.m !== 'GET').length === 0 && nlOf(S, 'recNlsB00000000A')['Matched Load'] === 'recNlB000000000A', 'In Transit ΑΝΟΔΟΣ, «Ακύρωση» → 0 writes, pair kept');
+    await page.context().close();
+  }
+  {
+    // status unreadable → treated like executed: one confirm, vehicle cleared, no Status, PA kept
+    const { page, S } = await openBoard(browser, { mutate: pairOwn });
+    S.failGet.add('recNlsB00000000A');
+    const before = S.writes.length;
+    await unmatch(page, 'recNlB000000000A', 'recNlsB00000000A');
+    for (let t = 0; t < 30 && !S.writes.slice(before).some(x => x.m === 'PATCH' && x.rid === 'recNlsB00000000A' && 'Truck' in x.body.fields); t++) await page.waitForTimeout(500);
+    await settle(page);
+    const v = S.writes.slice(before).find(x => x.m === 'PATCH' && x.rid === 'recNlsB00000000A' && 'Truck' in x.body.fields);
+    ok((await page.evaluate(() => window.__confirms)).length === 1 && v && !('Status' in v.body.fields), 'unreadable ΑΝΟΔΟΣ status: one confirm, vehicle cleared, NO Status written');
+    await page.context().close();
+  }
+});
+
+// ── owner 4/10 Q7 · match swap: cancel writes nothing; partner swap moves the PA row ──
+SECTIONS.push(async browser => {
+  console.log('\n── owner 4/10 Q7 · match of an ΑΝΟΔΟΣ that has its own vehicle');
+  {
+    const { page, S } = await openBoard(browser);
+    await page.evaluate(() => { window.__confirmAnswer = false; });
+    const before = S.writes.length;
+    await dropOn(page, 'recNlsB00000000A', 'recNlB000000000A'); await settle(page);
+    ok(S.writes.slice(before).filter(x => x.m !== 'GET').length === 0 && (nlOf(S, 'recNlsB00000000A').Truck || [])[0] === 'recTruck000002AA' && !nlOf(S, 'recNlsB00000000A')['Matched Load'],
+       '«Ακύρωση» in the confirm → 0 writes, no match, own truck kept');
+    await page.context().close();
+  }
+  {
+    // ΑΝΟΔΟΣ on a partner of its own (PA row 150) matched under an own-truck ΚΑΘΟΔΟΣ → PA row goes
+    const { page, S } = await openBoard(browser, { mutate: db => {
+      Object.assign(db[T.NL].find(r => r.id === 'recNlsA00000000A').fields, { Partner: ['recPartner00001A'], 'Is Partner Trip': true, 'Partner Rate': 150, Status: 'Assigned' });
+      db[T.PA].push({ id: 'recPAsA000000001', fields: { 'Nat Load': ['recNlsA00000000A'], Partner: ['recPartner00001A'], 'Partner Rate': 150, Status: 'Assigned' } });
+    } });
+    const before = S.writes.length;
+    await dropOn(page, 'recNlsA00000000A', 'recNlA000000000A'); await settle(page);
+    const c = await page.evaluate(() => window.__confirms);
+    ok(c.length === 1 && /είχε συνεργάτη Partner Co/.test(c[0]) && /θα πάρει φορτηγό ΚΖΗ 1001/.test(c[0]), 'partner → own truck: ONE confirm naming both: ' + JSON.stringify(c));
+    const f = nlOf(S, 'recNlsA00000000A');
+    ok((f.Truck || [])[0] === 'recTruck000001AA' && !f.Partner && !('Partner Rate' in f) && f['Is Partner Trip'] === false, 'base: ΑΝΟΔΟΣ on the ΚΑΘΟΔΟΣ truck, partner + rate gone');
+    ok(S.writes.slice(before).some(x => x.m === 'DELETE' && x.tid === T.PA && x.rid === 'recPAsA000000001'), 'its PA row (planned) deleted');
     await page.context().close();
   }
 });
