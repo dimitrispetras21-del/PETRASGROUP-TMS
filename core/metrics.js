@@ -46,10 +46,33 @@ const metrics = (function() {
     });
   }
 
+  // Stock lots Φ1 (impact map 4/10 E-16): a LOOSE piece (no truck, back in
+  // the warehouse) is STOCK, not late or unassigned work — «Επιστροφή στο
+  // απόθεμα» keeps the old dates, so it would count as unassigned / overdue /
+  // high-risk for as long as it waits. The Weekly shelf counts it. Same
+  // predicate as the shelf (OrdersStock.isLoose); callers must request
+  // 'Stock Lot' and 'Group ID', or it is silently false (metrics_audit does).
+  function _excludeLoose(orders) {
+    return (orders || []).filter(r => !OrdersStock.isLoose(r.fields || {}));
+  }
+  // E-17: a PIECE is never invoiced (no price, by a DB CHECK) — never owed,
+  // ready or overdue. A LOT is invoiced once, only when COMPLETE; whether it
+  // is, only the STOCK LOTS read knows, and «Προς τιμολόγηση»
+  // (OrdersData.stateOf) is the ONE place that applies it. So here a lot is
+  // left out of «ready»/«overdue» instead of a third copy of that rule; its
+  // price still counts in «Ανεξόφλητο» (it is owed). See the money functions.
+  function _excludePieces(orders) {
+    return (orders || []).filter(r => !OrdersStock.isPiece(r.fields || {}));
+  }
+  function _excludeStock(orders) {
+    return (orders || []).filter(r => !OrdersStock.isPiece(r.fields || {}) && !OrdersStock.isLot(r.fields || {}));
+  }
+
   // ════ OPERATIONAL ═══════════════════════════════════
 
   function unassignedOrders(orders, opts = {}) {
     orders = _excludeLegs(orders); // Wave 3: strip split legs before counting (see _excludeLegs)
+    orders = _excludeLoose(orders); // E-16: a loose stock piece is stock, not unassigned work
     const { direction, period } = opts;
     return orders.filter(r => {
       const f = r.fields;
@@ -103,6 +126,7 @@ const metrics = (function() {
 
   function overdueDeliveries(orders) {
     orders = _excludeLegs(orders); // Wave 3: strip split legs before counting (see _excludeLegs)
+    orders = _excludeLoose(orders); // E-16
     const today = _today();
     const delivered = new Set(['Delivered','Invoiced']);
     return orders.filter(r => {
@@ -114,6 +138,7 @@ const metrics = (function() {
 
   function highRiskDeliveries(orders) {
     orders = _excludeLegs(orders); // Wave 3: strip split legs before counting (see _excludeLegs)
+    orders = _excludeLoose(orders); // E-16
     const now = Date.now();
     const cutoff = now + 48*3600*1000;
     return orders.filter(r => {
@@ -279,7 +304,7 @@ const metrics = (function() {
 
   function outstandingBalance(orders, natOrders = []) {
     orders = _excludeLegs(orders); // Wave 3: strip split legs before counting (see _excludeLegs)
-    const pool = [...orders, ...natOrders];
+    const pool = _excludePieces([...orders, ...natOrders]); // E-17: a lot's price is owed; a piece has none
     return pool
       .filter(r => r.fields['Status'] === 'Delivered' && !r.fields['Invoiced'])
       .reduce((sum, r) => sum + (parseFloat(r.fields['Price'])||0), 0);
@@ -297,6 +322,7 @@ const metrics = (function() {
 
   function revenueReadyToInvoice(orders) {
     orders = _excludeLegs(orders); // Wave 3: strip split legs before counting (see _excludeLegs)
+    orders = _excludeStock(orders); // E-17: lots are blocked until complete — «Προς τιμολόγηση» is the one truth
     return orders
       .filter(r => {
         const f = r.fields;
@@ -313,6 +339,7 @@ const metrics = (function() {
 
   function overdueInvoices(orders, opts = {}) {
     orders = _excludeLegs(orders); // Wave 3: strip split legs before counting (see _excludeLegs)
+    orders = _excludeStock(orders); // E-17: a piece is never invoiced; a lot waits for its pieces, not for us
     const { daysCutoff = 30 } = opts;
     const cutoff = _daysAgo(daysCutoff);
     return orders.filter(r => {

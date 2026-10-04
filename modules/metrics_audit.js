@@ -316,7 +316,12 @@ async function renderMetricsAudit() {
         'Order Number','Direction','Status','Invoiced','Price','Loading DateTime','Delivery DateTime',
         'Truck','Partner','Trailer','Driver','Total Pallets','Week Number',
         'Delivery Performance','Pallet Exchange','Pallet Sheet 1 Uploaded','Pallet Sheet 2 Uploaded',
-        'Veroia Switch','Docs Ready','Temp OK','CMR Photo Received','Client Notified','Driver Notified'
+        'Veroia Switch','Docs Ready','Temp OK','CMR Photo Received','Client Notified','Driver Notified',
+        // Stock lots Φ1 (impact map 4/10 E-16/E-17): metrics.js leaves loose
+        // pieces out of unassigned/overdue/high-risk and pieces/lots out of the
+        // invoice figures — without these labels its predicates are silently
+        // false. Before the stock Worker an unknown READ label is dropped (200).
+        'Stock Lot','Own Stock Lot','Group ID'
       ]}, true), 'metrics audit: ORDERS'),
       safeFetch(() => atGetAll(TABLES.NAT_ORDERS, { fields: ['Status','Invoiced','Price','Truck','Partner','Loading DateTime'] }, true), 'metrics audit: NAT_ORDERS'),
       safeFetch(() => atGetAll(TABLES.NAT_LOADS, { fields: ['Status','Truck','Partner','Loading DateTime','Direction'] }, true), 'metrics audit: NAT_LOADS'),
@@ -402,7 +407,9 @@ function _runAllMetrics(d) {
     add('op', 'op.pallet_flow', 'Ροή παλετών ράμπας σήμερα', `${flow.inbound} ΕΙΣ / ${flow.outbound} ΕΞ / ${flow.net} ΚΑΘ.`, 'εγγραφές ράμπας');
 
     const stock = metrics.stockInWarehouse(d.ramp);
-    add('op', 'op.stock_pallets', 'Απόθεμα στην αποθήκη', stock + ' παλέτες', 'Done + In Stock');
+    // E-28 (impact map 4/10): Veroia RAMP stock — not the stock lots in partner
+    // warehouses abroad (Weekly «ΑΠΟΘΕΜΑ»); one word, two meanings, otherwise.
+    add('op', 'op.stock_pallets', 'Απόθεμα ράμπας Βέροιας', stock + ' παλέτες', 'Done + In Stock');
   } catch(e) { add('op', '_error', 'Σφάλμα υπολογισμού', 'ΣΦΑΛΜΑ: '+e.message); }
 
   // ════ PERFORMANCE ══════════════════════════════
