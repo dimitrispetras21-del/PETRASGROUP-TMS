@@ -189,22 +189,52 @@ test('X2: a failed intake releases the guard — the next click writes it', asyn
 
 const pk = (id, status, extra = {}) => ({ id, status, event_type: 'PARTNER_PICKUP', given: 33, taken: 0, order_stop_rec: 'recSTOPU1', order_rec: 'recLOT1', ...extra });
 
-test('X3 (R2-4): undo of the intake deletes the PENDING intake movement of the lot\'s stop — and nothing else', async () => {
-  const rows = [pk(9, 'pending'), { id: 8, status: 'confirmed', event_type: 'DELIVERY', given: 33, taken: 33, order_stop_rec: 'recSTOPU1' }, pk(7, 'pending', { order_stop_rec: 'recSTOPX' })];
+test('X3 (R2-4): undo of the intake deletes the PENDING movement the intake wrote — and nothing else', async () => {
+  const rows = [{ id: 8, status: 'confirmed', event_type: 'DELIVERY', given: 33, taken: 33, order_stop_rec: 'recSTOPX' }, pk(7, 'pending', { order_stop_rec: 'recSTOPX' })];
   const { ctx, net, toasts } = world({ id: 'recLOT1', fields: { ...LOT_P, ...NO } }, { rows });
+  await ctx.plOnDelivered('recLOT1');
+  const mine = rows.find(r => r.order_stop_rec === 'recSTOPU1').id;
+  net.length = 0;
   await ctx.plOnLotIntakeUndone('recLOT1');
-  assert.deepStrictEqual(net.filter(c => c.m !== 'GET').map(c => c.m + ' ' + c.url), ['DELETE /pallets/movements/9']);
+  assert.deepStrictEqual(net.filter(c => c.m !== 'GET').map(c => c.m + ' ' + c.url), ['DELETE /pallets/movements/' + mine]);
   assert.deepStrictEqual(rows.map(r => r.id), [8, 7]);
   assert.deepStrictEqual(toasts, []);
 });
 
 test('X3 (R2-4): a CONFIRMED intake is never deleted — one line sends the reversal to the Ισοζύγιο', async () => {
-  const rows = [pk(9, 'confirmed')];
+  const rows = [];
   const { ctx, net, toasts } = world({ id: 'recLOT1', fields: { ...LOT_P, ...NO } }, { rows });
+  await ctx.plOnDelivered('recLOT1');
+  rows[0].status = 'confirmed';   // the sheet came in before the undo
+  net.length = 0;
   await ctx.plOnLotIntakeUndone('recLOT1');
   assert.deepStrictEqual(net.filter(c => c.m !== 'GET'), []);
   assert.deepStrictEqual(toasts, ['warn: Παλέτες αποθήκης #312 (33p): η κίνηση παλετών επιβεβαιώθηκε — αντιλογισμός από το Ισοζύγιο']);
   assert.strictEqual(rows.length, 1);
+});
+
+test('X3 (review P3): a pending row typed BEFORE the intake is not the intake\'s — the undo leaves it', async () => {
+  const rows = [pk(9, 'pending')];   // the accountant entered it by hand; the intake then wrote nothing
+  const { ctx, net, toasts } = world({ id: 'recLOT1', fields: { ...LOT_P, ...NO } }, { rows });
+  await ctx.plOnDelivered('recLOT1');
+  assert.strictEqual(rows.length, 1, 'the intake found it and wrote nothing');
+  net.length = 0;
+  await ctx.plOnLotIntakeUndone('recLOT1');
+  assert.deepStrictEqual(net, [], 'nothing read, nothing deleted');
+  assert.deepStrictEqual(rows.map(r => r.id), [9]);
+  assert.deepStrictEqual(toasts, []);
+});
+
+test('X3 (review P3): a failed undo says REMOVE it in the Ισοζύγιο, never «καταχώρησε»', async () => {
+  const rows = [];
+  const { ctx, toasts } = world({ id: 'recLOT1', fields: { ...LOT_P, ...NO } }, { rows });
+  await ctx.plOnDelivered('recLOT1');
+  rows.length = 0; rows.push({ ...pk(0, 'pending'), id: 'x' });   // the DB answers something odd…
+  ctx.fetch = async () => { throw new TypeError('Failed to fetch'); };
+  await ctx.plOnLotIntakeUndone('recLOT1');
+  assert.strictEqual(toasts.length, 1, JSON.stringify(toasts));
+  assert.match(toasts[0], /δεν σβήστηκε — σβήσ' την από το Ισοζύγιο/);
+  assert.ok(!/καταχώρησ/.test(toasts[0]), toasts[0]);
 });
 
 test('X3: undo pressed while the intake is still writing waits for it, then removes it', async () => {

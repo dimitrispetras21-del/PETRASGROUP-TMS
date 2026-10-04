@@ -160,6 +160,11 @@ async function plOnDelivered(orderId) {
 // same second can still both write: only a unique index on pl_movements
 // (order_stop_id, event_type) would stop that, and there is none today.
 const _plLotInFlight = new Map();   // orderId → the running intake
+// orderId → id of the movement THIS page's intake wrote. The undo removes only
+// that row: a pending PARTNER_PICKUP the accountant typed on the same stop
+// before the click (the intake then wrote nothing) is hers, not the intake's.
+// The undo bar lives in this page only, so the map always outlives it.
+const _plLotWrote = new Map();
 
 async function _plLotIntake(rec, stops, orderId) {
   if (_plLotInFlight.has(orderId)) return;
@@ -194,7 +199,7 @@ async function _plLotIntakeOnce(rec, stops, orderId) {
   const existing = await plFetch(byStop);
   if ((existing.records || []).length) return;
   try {
-    await plFetch('/pallets/movements', { method: 'POST', body: {
+    const made = await plFetch('/pallets/movements', { method: 'POST', body: {
       movement_date: _plToday(),
       counterparty_type: 'PARTNER',
       partner_rec: partnerRec,
@@ -203,11 +208,14 @@ async function _plLotIntakeOnce(rec, stops, orderId) {
       taken: 0, given: pallets,
       order_stop_rec: s.id, order_rec: orderId
     }});
+    if (made && made.record) _plLotWrote.set(orderId, made.record.id);
   } catch (e) {
     // A POST lost on the way back (timeout, dropped line) may have written
     // the row. «Failed — enter it by hand» would then make the accountant
     // write a second one: ask again by its stop before saying it (Σ2-07).
     const again = await plFetch(byStop).catch(() => null);
+    const landed = again && (again.records || []).find(m => m.event_type === 'PARTNER_PICKUP');
+    if (landed) { _plLotWrote.set(orderId, landed.id); return; }   // none existed before the POST
     if (again && (again.records || []).length) return;
     throw e;
   }
@@ -216,25 +224,37 @@ async function _plLotIntakeOnce(rec, stops, orderId) {
 // Undo of «Παραλαβή αποθήκης» in the Ημερήσιο (critic-1 R2-4): the order went
 // back, the pending intake movement stayed — «given 33» in the accountant's
 // queue for goods that never arrived. It goes with the order's undo: only the
-// PENDING PARTNER_PICKUP of the lot's warehouse stop (any other row on that
-// stop is not the intake's). A confirmed one is history the accountant
-// signed: it is said, never deleted — the reversal is hers, in the Ισοζύγιο.
+// movement THIS page's intake wrote (_plLotWrote), and only while pending. A
+// confirmed one is history the accountant signed: it is said, never deleted —
+// the reversal is hers, in the Ισοζύγιο.
 async function plOnLotIntakeUndone(orderId) {
-  return _plSafe('αναίρεση κίνησης παλετών αποθήκης', async () => {
-    // Undo pressed while the intake is still writing: its row would land
-    // after this read and stay behind.
-    const busy = _plLotInFlight.get(orderId);
-    if (busy) await busy.catch(() => {});
-    const { rec, stops } = await _plLoadOrder(orderId, 'intl');
-    const s = rec && _plLotStop(stops);
+  // Undo pressed while the intake is still writing: its row would land
+  // after this read and stay behind.
+  const busy = _plLotInFlight.get(orderId);
+  if (busy) await busy.catch(() => {});
+  const mine = _plLotWrote.get(orderId);
+  if (mine == null) return;   // this page's intake wrote nothing — nothing to take back
+  let rec = null, s = null;
+  try {
+    const lo = await _plLoadOrder(orderId, 'intl');
+    rec = lo.rec; s = rec && _plLotStop(lo.stops);
     if (!s) return;
     const got = await plFetch('/pallets/movements?order_stop_rec=' + encodeURIComponent(s.id));
-    for (const m of (got.records || [])) {
-      if (m.event_type !== 'PARTNER_PICKUP') continue;
-      if (m.status === 'pending') await plFetch('/pallets/movements/' + m.id, { method: 'DELETE' });
-      else if (m.status === 'confirmed') _plLotSay(rec.fields, s, 'η κίνηση παλετών επιβεβαιώθηκε — αντιλογισμός από το Ισοζύγιο');
+    const m = (got.records || []).find(r => r.id === mine);
+    if (!m) { _plLotWrote.delete(orderId); return; }   // already gone
+    if (m.status === 'pending') {
+      await plFetch('/pallets/movements/' + m.id, { method: 'DELETE' });
+      _plLotWrote.delete(orderId);
+    } else if (m.status === 'confirmed') {
+      _plLotSay(rec.fields, s, 'η κίνηση παλετών επιβεβαιώθηκε — αντιλογισμός από το Ισοζύγιο');
     }
-  });
+  } catch (e) {
+    // Not _plSafe: its «καταχώρησε χειροκίνητα» would send the accountant to
+    // ADD a movement, when the pending one must be REMOVED.
+    console.warn('[pallet-feed] αναίρεση κίνησης παλετών αποθήκης', e && e.message);
+    if (rec) _plLotSay(rec.fields, s, 'η εκκρεμής κίνηση δεν σβήστηκε — σβήσ\' την από το Ισοζύγιο');
+    else if (typeof showErrorToast === 'function') showErrorToast('Παλέτες αποθήκης: η εκκρεμής κίνηση δεν σβήστηκε — σβήσ\' την από το Ισοζύγιο', 'warn', _PL_TOAST_MS);
+  }
 }
 
 // ── Feeder §3.3: διεθνής ανάθεση σε partner (VS μόνο) ──
