@@ -422,7 +422,7 @@ const AIC_TOOLS = [
     input_schema: {
       type:'object',
       properties: {
-        page: { type:'string', enum:['dashboard','weekly_intl','weekly_natl','weekly_pickups','daily_ramp','orders_intl','orders_natl','maint_req','maint_expiry','locations','clients','partners','trucks','trailers','drivers'], description:'Page ID to navigate to' }
+        page: { type:'string', enum:['dashboard','weekly_intl','weekly_natl','daily_ramp','orders_intl','orders_natl','maint_req','maint_expiry','locations','clients','partners','trucks','trailers','drivers'], description:'Page ID to navigate to' }
       },
       required:['page']
     }
@@ -717,7 +717,6 @@ const _PAGE_HELP_NAMES = {
   dashboard: 'Dashboard',
   weekly_intl: 'Weekly International',
   weekly_natl: 'Weekly National',
-  weekly_pickups: 'National Pick Ups',
   daily_ramp: 'Daily Ramp Board',
   daily_ops: 'Daily Ops Plan',
   orders_intl: 'International Orders',
@@ -828,7 +827,7 @@ clickable chips με τη σύνταξη: [ACTION:label|js_call]
 
 Χρησιμοποίησέ τα ΟΠΟΥ έχει νόημα να ξεκινήσει επόμενη ενέργεια — όχι σε κάθε μήνυμα.
 
-ΣΕΛΙΔΕΣ TMS: dashboard, weekly_intl, weekly_natl, weekly_pickups, daily_ramp, daily_ops, orders_intl, orders_natl, maint_req, maint_expiry, locations, clients, partners, trucks, trailers, drivers, performance, invoicing, pallet_ledger.`;
+ΣΕΛΙΔΕΣ TMS: dashboard, weekly_intl, weekly_natl, daily_ramp, daily_ops, orders_intl, orders_natl, maint_req, maint_expiry, locations, clients, partners, trucks, trailers, drivers, performance, invoicing, pallet_ledger.`;
 }
 
 function _aicAllowedTools() {

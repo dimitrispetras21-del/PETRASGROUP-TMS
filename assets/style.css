@@ -838,13 +838,6 @@ body {
      always clears it. */
   padding: 32px 36px 148px;
 }
-/* PU-8: η σελίδα-iframe (weekly_pickups) γεμίζει ήδη ακριβώς το ύψος —
-   το D-8 padding εκεί απλώς δημιουργεί περιττό δεύτερο scroll. */
-.content:has(> iframe.embed) { padding: 0 0 0 0;
-  background: var(--bg);
-  scrollbar-width: thin;
-  scrollbar-color: #D1D5DB transparent;
-}
 
 
 /* SH-3: στόχοι αφής ≥44px στο ΚΕΛΥΦΟΣ και σε desktop — topbar/sidebar chrome.
@@ -2396,16 +2389,6 @@ button.ecard-meta-row-btn, .ecard-meta-row button.badge {
     overflow-x: auto;
     -webkit-overflow-scrolling: touch;
     max-width: 100%;
-  }
-
-  /* National Pick Ups iframe — fill remaining viewport instead of 150px */
-  iframe.embed,
-  iframe[src*="national_consolidation"],
-  iframe[src*="petras-assign"] {
-    width: 100%;
-    height: calc(100vh - 56px) !important;  /* 56px topbar */
-    min-height: 500px;
-    border: none;
   }
 
   /* Page headers stack on narrow screens */

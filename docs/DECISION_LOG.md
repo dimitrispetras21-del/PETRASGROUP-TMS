@@ -2550,3 +2550,29 @@ Delivered + εισαγωγή 419) — `dl_entries` 11249 / 11258 / 11259 soft-de
   αλλάζει στον Worker ξεκινά από το deploy branch της τελευταίας έκδοσης, ποτέ από το main.»
 - **Ποιος:** owner (OK στο sync), Claude.
 
+## 2026-10-04 · Μενού — οι «Εθνικές Παραλαβές» αφαιρέθηκαν (ανατρέπει το «National Pick Ups: owner-only» της 12/8)
+
+### Το `weekly_pickups` φεύγει από το μενού και τον router — δεν «κρύβεται» άλλο
+- **Επιλογή:** αφαιρέθηκαν το στοιχείο «Εθνικές Παραλαβές» από το NAV και το `case 'weekly_pickups'`
+  του `navigate()` (iframe προς `petras-assign/national_consolidation.html`), μαζί με ό,τι υπήρχε
+  μόνο γι' αυτό: το owner-only κουμπί «N στην ουρά Pick Ups ↗» στο Weekly Εθνικών (και η μέτρηση
+  GROUPAGE LINES `Unassigned` πίσω του), οι κανόνες CSS του iframe (`iframe.embed`), οι 3 αναφορές
+  στο AI chat. Παλιό `#weekly_pickups` ή αποθηκευμένο `tms_page` πέφτει στο `default:` («Άγνωστη
+  σελίδα … η σελίδα καταργήθηκε»), όπως κάθε άγνωστη διαδρομή.
+- **Γιατί (αρχή 8):** το URL δίνει **404** (curl 4/10· 401 μέσα στην εφαρμογή στο audit 4/8, 404
+  ήδη στις 3/9). Το μενού υποσχόταν σελίδα που δεν άνοιγε.
+- **Ποιος το έβλεπε:** μόνο ο ρόλος `owner` (NAV `role:'owner'`, guard στο case, φίλτρο ⌘K)· στη
+  βάση 1 ενεργός λογαριασμός owner. Dispatcher/management/accountant/warehouse δεν το έβλεπαν από 12/8.
+- **Εναλλακτικές:** (α) να μείνει κρυφό ως είχε — απορρίφθηκε: νεκρή διεπαφή λέει ψέματα· (β) να
+  μείνει ο μετρητής ουράς ως σκέτος αριθμός — απορρίφθηκε: το `Unassigned` είναι και η «ταφόπλακα»
+  μιας αφαιρεμένης γραμμής groupage (κανόνας never-delete), άρα ο αριθμός δεν είναι ουρά. Σήμερα
+  groupage_lines = 2, και οι δύο Assigned, 0 Unassigned — ο μετρητής δεν εμφανιζόταν καν.
+- **Απόδειξη:** `tests/router-removed-pickups.test.js` (4 έλεγχοι· 3 κόκκινοι στο origin/main, 4/4
+  στο branch)· `node --test tests/*.test.js` + κριτές static/units 127/127· πραγματικός browser
+  (Playwright, κενό facade) 18/18: sidebar και ⌘K χωρίς το στοιχείο, `#weekly_pickups` = ίδια οθόνη
+  με τυχαία άγνωστη διαδρομή, κανένα iframe, Weekly Εθνικών ανοίγει για owner και dispatcher χωρίς
+  σφάλμα σελίδας. Το F-41 του tms-auditor («ανεξερεύνητη επιφάνεια») παύει να υπάρχει.
+- **Αν ξαναχτιστεί:** ως κανονικό module μέσα στο TMS (owner 24/8: Ράμπα + National Pick Up
+  τελευταία), όχι ως iframe άλλου repo.
+- **Ποιος:** Claude, στο πακέτο εργασιών της 4/10 (owner: «οκ παμε να τα κανουμε ολα τωρα»)·
+  branch `fix/remove-weekly-pickups` → ελεγκτής → go → main.
