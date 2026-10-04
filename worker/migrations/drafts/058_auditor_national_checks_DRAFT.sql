@@ -10,7 +10,10 @@
 --   B-59  report §4 #1 (WN-02/SA-2/N-12): a national load with a vehicle but no round trip ⇒ the
 --         driver is not paid and costs land on no RT. 0 of 243 RT legs are national today.
 --   B-60  report §4 #6 + PU-1: groupage lines left «Unassigned» ⇒ a supplier is never collected
---         (the drag & drop queue that would pick them up is not worked by anyone).
+--         (the drag & drop queue that would pick them up is not worked by anyone). «Unassigned» is
+--         normal until the line is dragged into a truck, so only lines LOADING BY TOMORROW (Athens
+--         date; a NULL loading_date counts, 0 such lines today) are red — review 4/10: a line
+--         loading in 3 weeks is not a finding.
 --   B-61  report §4 #2 (SA-1/WN-04): a VS national leg whose delivery time has passed with no truck
 --         and no partner ⇒ stays «ΠΡΟΣ ΑΝΑΘΕΣΗ», nobody knows who ran it. Status is NOT read:
 --         owner 4/10 «δεν θελουμε παραδοσεις για το εθνικων» — national legs no longer get
@@ -29,13 +32,14 @@
 -- Measured read-only on production 4/10/2026 16:19 Athens (Supabase MCP, SELECT only), with the
 -- EXACT sql_text below:
 --   B-59 = 0   (without the 5/10 cut it would be 14 — all historical, no national RT exists)
---   B-60 = 0   (2 groupage lines in total, both Assigned to consolidated load 5)
+--   B-60 = 0   (re-measured 4/10 16:33 with the horizon; 2 groupage lines in total, both
+--               Assigned to consolidated load 5)
 --   B-61 = 0   (re-measured 4/10 16:28 after the owner decision; without the 5/10 cut 40 — all
 --               historical; loads 121/122 deliver Mon 5/10 15:00 with no vehicle yet — B-61 WILL
 --               count them from 15:00 if still unassigned)
--- B-59 does not read status (only excludes Cancelled) — unaffected by «no Delivered for nationals».
 --   B-62 = 0   (no national order has 2+ delivery stops today; 7 SINGLE-stop orders do have a
 --               0-pallet delivery stop — outside this check by design, report item = multi-stop)
+-- B-59 does not read status (only excludes Cancelled) — unaffected by «no Delivered for nationals».
 -- The 8 statements (4 counts + 4 id lists) were linted with tms-auditor/checks/load.mjs lintSql
 -- (same allow-list as check_sql_guard) — all OK — and run verbatim: 0/{} for each.
 --
@@ -56,8 +60,10 @@
 -- Catalog (principle 3): tms-auditor/checks/B-59…B-62.sql hold the SAME rows — the VALUES list
 -- below is what checks/load.mjs seedSql() produces from those files (field for field; sql_text and
 -- ids_sql byte-identical; only the line breaks between fields differ). Edit the .sql files first,
--- then this list. 047b is NOT regenerated here (owner-run seed, untouched), so the repo test
--- «committed seed (047b) … regenerated» is red on this branch until 047b is rebuilt.
+-- then this list. 047b is regenerated from the catalog (build-seed.mjs) and its B-59…B-62 rows
+-- are identical to these; 047b = «what the catalog defines», 058 = the delta production runs.
+-- The md5 constants in the proof below are md5(sql_text)/md5(ids_sql) of the catalog files —
+-- change a literal and the block refuses until the constant is recomputed from the file.
 --
 -- Idempotent: INSERT … ON CONFLICT (id) DO UPDATE (same form as 047b) — safe to re-run.
 -- Reverse:   DELETE FROM monitoring.results WHERE check_id IN ('B-59','B-60','B-61','B-62');
@@ -91,16 +97,18 @@ BEGIN
   ($m$B-60$m$, $m$Γραμμές groupage «Unassigned» σε ζωντανή παραγγελία groupage$m$, ARRAY[$m$F-11$m$,$m$F-25$m$]::text[],
    $m$SELECT count(*) FROM groupage_lines g LEFT JOIN orders o ON o.id=g.order_id LEFT JOIN national_orders n ON n.id=g.national_order_id
  WHERE g.deleted_at IS NULL AND g.status='Unassigned' AND g.created_at < now()-interval '15 minutes'
+ AND coalesce(g.loading_date <= (now() AT TIME ZONE 'Europe/Athens')::date + 1, true)
  AND ((g.order_id IS NOT NULL AND o.deleted_at IS NULL AND coalesce(o.status,'')<>'Cancelled' AND coalesce(o.national_groupage,false))
    OR (g.national_order_id IS NOT NULL AND n.deleted_at IS NULL AND coalesce(n.status,'')<>'Cancelled' AND coalesce(n.national_groupage,false)))$m$,
    $m$SELECT coalesce(array_agg(x ORDER BY x), '{}') FROM (SELECT g.legacy_id AS x FROM groupage_lines g LEFT JOIN orders o ON o.id=g.order_id LEFT JOIN national_orders n ON n.id=g.national_order_id
  WHERE g.deleted_at IS NULL AND g.status='Unassigned' AND g.created_at < now()-interval '15 minutes'
+ AND coalesce(g.loading_date <= (now() AT TIME ZONE 'Europe/Athens')::date + 1, true)
  AND ((g.order_id IS NOT NULL AND o.deleted_at IS NULL AND coalesce(o.status,'')<>'Cancelled' AND coalesce(o.national_groupage,false))
    OR (g.national_order_id IS NOT NULL AND n.deleted_at IS NULL AND coalesce(n.status,'')<>'Cancelled' AND coalesce(n.national_groupage,false))) LIMIT 50) s$m$,
    $m$groupage_lines$m$, $m$>$m$, 0, NULL, $m$P2$m$, $m$hourly$m$, false,
    $m$Γραμμή groupage χωρίς φορτηγό — ο προμηθευτής δεν παραλαμβάνεται και δεν φαίνεται σε καμία στήλη του Εβδομαδιαίου Εθνικών.$m$,
-   $m$Εβδομαδιαίο Εθνικών / Παραγγελίες → Groupage: σε ποιο φορτηγό έπρεπε να μπει η γραμμή; (ανάγνωση)$m$,
-   $m$Γραμμές που επανήλθαν σε Unassigned με τον κανόνα never-delete (η παραγγελία δεν είναι πια groupage, ακυρώθηκε ή διαγράφηκε) ΔΕΝ μετρούν.$m$,
+   $m$Εβδομαδιαίο Εθνικών → Groupage: η γραμμή φορτώνει σήμερα/αύριο — σε ποιο φορτηγό μπαίνει; (ανάγνωση)$m$,
+   $m$Unassigned είναι κανονικό μέχρι να μπει η γραμμή σε φορτηγό: μετρά ΜΟΝΟ όταν η φόρτωση είναι έως αύριο (Αθήνα· κενή ημερομηνία μετρά). Γραμμές που επανήλθαν σε Unassigned με τον κανόνα never-delete (η παραγγελία δεν είναι πια groupage, ακυρώθηκε ή διαγράφηκε) ΔΕΝ μετρούν.$m$,
    $m$15′ (γραμμές και φορτηγό γράφονται σε χωριστά αιτήματα)$m$, true, NULL),
   ($m$B-61$m$, $m$VS εθνικό σκέλος με παράδοση που πέρασε, χωρίς εκτελεστή — από 5/10$m$, ARRAY[$m$F-10$m$,$m$F-23$m$]::text[],
    $m$SELECT count(*) FROM national_loads nl WHERE nl.deleted_at IS NULL AND nl.source_type='Direct' AND coalesce(nl.status,'')<>'Cancelled'
@@ -136,17 +144,36 @@ BEGIN
     impact=EXCLUDED.impact, next_step=EXCLUDED.next_step, exceptions=EXCLUDED.exceptions, tolerance=EXCLUDED.tolerance,
     enabled=EXCLUDED.enabled, disabled_reason=EXCLUDED.disabled_reason;
 
-  -- Proofs INSIDE the block: a guard refusal or a non-numeric result aborts the whole block (nothing kept).
+  -- Proofs INSIDE the block: any failure aborts the whole block (nothing kept).
+  -- (1) What is stored is exactly the catalog: md5 of tms-auditor/checks/B-59…B-62.sql sql/ids text.
+  SELECT count(*) INTO n FROM monitoring.checks k
+    JOIN (VALUES
+      ('B-59', '95ff00d9e57a2497ad2d879e69440cb2', '0a6a34d11b716a21e9fb7621d2883511'),
+      ('B-60', 'e258a2e4aac12b5686f79f585ce9d164', 'b87f133253be237b7dc910cd3dc4a83c'),
+      ('B-61', 'c21dc070ce74aba46e5b3af40b55c171', '0936836e082b053b1b39ad9bc6061359'),
+      ('B-62', '4d2c49408e3b3177fcc953de2de7c45e', '04fa2f616ac8dff12f8b72f6e81d1fe7')
+    ) e(id, sql_md5, ids_md5) ON e.id = k.id
+   WHERE md5(k.sql_text) = e.sql_md5 AND md5(k.ids_sql) = e.ids_md5 AND k.enabled AND k.severity = 'P2';
+  IF n <> 4 THEN RAISE EXCEPTION '058: only % of 4 rows match the catalog md5 (enabled, P2)', n; END IF;
+  -- (2) B-61 must not depend on «Delivered»: nationals no longer get that status (owner 4/10).
+  IF EXISTS (SELECT 1 FROM monitoring.checks WHERE id = 'B-61'
+              AND (sql_text LIKE '%''Delivered''%' OR ids_sql LIKE '%''Delivered''%')) THEN
+    RAISE EXCEPTION '058: B-61 still reads status Delivered';
+  END IF;
+  -- (3) Each check runs the way run_checks (047) runs it: guard, 10 s timeout, as tms_check_runner
+  -- (SELECT only) — so a missing GRANT fails HERE, not silently as the editor's superuser.
+  -- Texts are read BEFORE switching role: tms_check_runner cannot read schema monitoring.
   FOR r IN SELECT id, sql_text, ids_sql FROM monitoring.checks WHERE id IN ('B-59','B-60','B-61','B-62') ORDER BY id LOOP
     PERFORM monitoring.check_sql_guard(r.sql_text);
     PERFORM monitoring.check_sql_guard(r.ids_sql);
+    PERFORM set_config('statement_timeout', '10000', true);
+    SET LOCAL ROLE tms_check_runner;
     EXECUTE r.sql_text INTO v;
     EXECUTE r.ids_sql INTO ids;
+    RESET ROLE;
     IF v IS NULL THEN RAISE EXCEPTION '058: % returned NULL', r.id; END IF;
     RAISE NOTICE '058: % = % (ids %)', r.id, v, coalesce(array_to_string(ids, ','), '');
   END LOOP;
-  SELECT count(*) INTO n FROM monitoring.checks WHERE id IN ('B-59','B-60','B-61','B-62') AND enabled;
-  IF n <> 4 THEN RAISE EXCEPTION '058: expected 4 enabled checks, found %', n; END IF;
 END $do$;
 
 -- After the block (read-only, run separately — the editor shows the result grid, not NOTICEs):
@@ -160,6 +187,7 @@ END $do$;
 -- UNION ALL
 -- SELECT 'B-60', count(*) FROM groupage_lines g LEFT JOIN orders o ON o.id=g.order_id LEFT JOIN national_orders n ON n.id=g.national_order_id
 --   WHERE g.deleted_at IS NULL AND g.status='Unassigned' AND g.created_at < now()-interval '15 minutes'
+--   AND coalesce(g.loading_date <= (now() AT TIME ZONE 'Europe/Athens')::date + 1, true)
 --   AND ((g.order_id IS NOT NULL AND o.deleted_at IS NULL AND coalesce(o.status,'')<>'Cancelled' AND coalesce(o.national_groupage,false))
 --     OR (g.national_order_id IS NOT NULL AND n.deleted_at IS NULL AND coalesce(n.status,'')<>'Cancelled' AND coalesce(n.national_groupage,false)))
 -- UNION ALL
