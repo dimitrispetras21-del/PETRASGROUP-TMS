@@ -1160,6 +1160,11 @@ async function submitNatlOrder(recId) {
     } catch (e) { console.warn('[natl_scan] save correction skipped:', e.message); }
 
     // ── Save ORDER_STOPS for national order ──
+    // Wave-0 reviewer (4/10/2026): a failed stops write was a console.warn
+    // under a green «saved», and _syncNationalLoad then rebuilt the load from
+    // the OLD stops (its pallets/dates per point). Now it is heard, and the
+    // load is left as it is rather than synced from stale stops.
+    let _stopsFailed = false;
     try {
       const _natStops = [];
       const _sRef = fields['Reference'] || null, _sGoods = fields['Goods'] || null, _sTemp = fields['Temperature °C'] ?? null;
@@ -1173,8 +1178,17 @@ async function submitNatlOrder(recId) {
         dateTime: s.date || fields['Delivery DateTime'] || null,
         clientId: clientId || null, ref: _sRef, goods: _sGoods, temp: _sTemp,
         notes: s.note || null }));
-      if (_natStops.length) await stopsSave(savedNatlId, _natStops, F.STOP_PARENT_NAT);
-      if (typeof plOnOrderSaved === 'function') await plOnOrderSaved(savedNatlId, 'natl');
+      if (_natStops.length) {
+        try { await stopsSave(savedNatlId, _natStops, F.STOP_PARENT_NAT); }
+        catch (e) {
+          _stopsFailed = true;
+          if (typeof logError === 'function') logError(e, 'natl ORDER_STOPS save ' + savedNatlId);
+          showErrorToast('Η παραγγελία αποθηκεύτηκε, αλλά τα σημεία παράδοσης ΔΕΝ αποθηκεύτηκαν'
+            + (fields['National Groupage'] ? '' : recId ? ' — γι\' αυτό το φορτίο στο Εβδομαδιαίο ΔΕΝ ενημερώθηκε' : ' — γι\' αυτό η παραγγελία ΔΕΝ μπήκε στο Εβδομαδιαίο')
+            + '. Άνοιξέ την με «Επεξεργασία» και αποθήκευσε ξανά.', 'warn', 15000);
+        }
+      }
+      if (!_stopsFailed && typeof plOnOrderSaved === 'function') await plOnOrderSaved(savedNatlId, 'natl');
     } catch(e) { console.warn('NAT ORDER_STOPS save:', e); }
 
     // ── Sync GROUPAGE LINES ──────────────────────────────────
@@ -1217,7 +1231,12 @@ async function submitNatlOrder(recId) {
 
     // ── Sync NATIONAL LOADS ─────────────────────────────────
     try {
-      if (!fields['National Groupage']) {
+      if (!fields['National Groupage'] && _stopsFailed) {
+        // The load copies its per-point pallets/dates from the order's stops:
+        // with the stops write failed it would copy the OLD ones. Left as is —
+        // the warning above says so; a re-save from the form syncs both.
+        _tmsLog(`_syncNationalLoad skipped for NO ${savedNatlId}: ORDER_STOPS save failed`);
+      } else if (!fields['National Groupage']) {
         // Non-groupage → create/update NL record
         const fullRec = await atGetOne(TABLES.NAT_ORDERS, savedNatlId);
         if (fullRec.fields) {
@@ -1265,7 +1284,8 @@ async function submitNatlOrder(recId) {
     invalidateCache(TABLES.NAT_ORDERS);
     document.getElementById('modal').style.maxWidth = '';
     closeModal();
-    toast(recId ? 'Η παραγγελία ενημερώθηκε' : 'Η παραγγελία καταχωρήθηκε');
+    // No green «saved» over the stops warning — it would read as «all done».
+    if (!_stopsFailed) toast(recId ? 'Η παραγγελία ενημερώθηκε' : 'Η παραγγελία καταχωρήθηκε');
     // B2: the modal now also opens from Weekly National (openNatlEdit, Δ1) —
     // repaint respects whichever page is open, same pattern as orders_intl.js
     // submitIntlOrder, instead of always hijacking the screen back to the list.
