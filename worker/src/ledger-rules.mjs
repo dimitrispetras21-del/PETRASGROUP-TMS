@@ -105,21 +105,44 @@ export function validatePatch(body, before) {
 // 060 local relays (owner 4/10/2026). A local driver's day line
 // (dl_entries.local_move_id set) belongs to the system: dl_local_day_sync
 // creates, relabels, cancels or flags it from the relays of that (driver,
-// day). A hand edit of its day, route or RT, or a manual cancel/restore, would
-// make it disagree with the relays it stands for — two truths (αρχή 3).
-// Accounting fills the money (amounts; «Αξία 0» = not paid separately), the
-// note, and clears a review flag (needs_review:false + reason, which
-// validatePatch then checks as for any line). Allow-list, so a ledger field
-// added later starts closed on these lines (αρχή 5).
+// day). A hand edit of its day, route or RT, or a restore, would make it
+// disagree with the relays it stands for — two truths (αρχή 3). Accounting
+// fills the money (amounts; «Αξία 0» = not paid separately), the note, and
+// clears a review flag (needs_review:false + reason, which validatePatch then
+// checks as for any line). Allow-list, so a ledger field added later starts
+// closed on these lines (αρχή 5). This allow-list is also what keeps the 060
+// constraints dl_local_day_live / dl_one_origin / dl_lm_is_trip out of reach
+// of /costs/ledger (no day, restore, RT or type change), so the PATCH handler
+// has no catch for them — a test pins that (ledger-rules.test.mjs).
 // OWNER-Q2 answered 4/10 (both: salary = track record only, per_trip = daily
 // ΤΟΠΙΚΟ line): a salaried driver gets no such line; a line that was paid and
 // then lost its relays or its per-trip basis is flagged (needs_review) by the
-// DB, and its exit is «Αξία 0» + clearing the flag — never a silent cancel.
-export const LOCAL_LINE_EDITABLE = ['trip_value', 'advance', 'expenses', 'note', 'needs_review', 'reason'];
+// DB.
+// Cancel (coordinator D3, 4/10): passes THIS guard, but only on top of
+// localLineCancelError below — the handler must read the two facts first.
+export const LOCAL_LINE_EDITABLE = ['trip_value', 'advance', 'expenses', 'note', 'needs_review', 'reason', 'cancel'];
 export function localLineLockError(body, before) {
   if (!before || before.local_move_id == null) return null;
   if (!body || typeof body !== 'object') return null; // validatePatch names it
   const locked = Object.keys(body).filter(k => !LOCAL_LINE_EDITABLE.includes(k));
   if (!locked.length) return null;
   return 'γραμμή τοπικών κινήσεων (' + locked.join(', ') + '): την κρατά το σύστημα — Αξία 0 αν δεν πληρώνεται χωριστά· αν η κίνηση δεν έγινε, σβήσ\' την από το Weekly';
+}
+
+// Coordinator D3 (4/10/2026): a local line may be cancelled by the ledger
+// writers (owner/management/accountant, with the reason validatePatch already
+// demands) in exactly two cases, both read live by the handler:
+//   - the driver is salaried (payBasis 'salary'): no line is owed, and the DB
+//     re-sync never recreates one for a salaried driver (dl_local_day_sync);
+//   - no live relay of that driver is left on that day (liveRelays 0): the
+//     line stands for nothing. A relay added later makes a NEW line.
+// Any other cancel would leave a per-trip relay day unpaid while the relay
+// stands — the DB would not recreate it until that day's relays change, and
+// only the auditor (B-64 «missing») would see it. Refused, loudly.
+// payBasis null (unknown) is NOT salaried: it is paid like per_trip (060).
+export function localLineCancelError(facts) {
+  if (!facts) return 'γραμμή τοπικών κινήσεων: δεν διαβάστηκαν ο τύπος αμοιβής και οι κινήσεις της μέρας — δεν ακυρώνεται';
+  if (facts.payBasis === 'salary') return null;
+  if (facts.liveRelays === 0) return null;
+  return 'γραμμή τοπικών κινήσεων: ακυρώνεται μόνο αν ο οδηγός είναι μισθωτός ή αν δεν έμεινε τοπική κίνηση εκείνη τη μέρα (μένουν ' + facts.liveRelays + ') — Αξία 0 αν δεν πληρώνεται χωριστά, ή σβήσε την κίνηση από το Weekly';
 }

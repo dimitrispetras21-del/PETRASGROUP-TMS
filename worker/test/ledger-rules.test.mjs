@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert';
-import { validateNewEntry, validatePatch, localLineLockError, DL_FIELDS } from '../src/ledger-rules.mjs';
+import { validateNewEntry, validatePatch, localLineLockError, localLineCancelError, DL_FIELDS } from '../src/ledger-rules.mjs';
 
 test('trip: value/advance/expenses optional (pending), amount forbidden', () => {
   const r = validateNewEntry({ driver_id: 46, entry_type: 'trip', entry_date: '2026-08-10', date_end: '2026-08-17', route: 'ΒΕΡΟΙΑ-ΠΟΛΩΝΙΑ-ΒΕΡΟΙΑ' });
@@ -91,9 +91,12 @@ test('adjustment creation: negative amount allowed, zero rejected', () => {
 // 060 local relays (owner 4/10/2026): the local driver's day line belongs to
 // the system — money, note and review flag only.
 const localLine = { id: 50, entry_type: 'trip', local_move_id: 7, rt_id: null, entry_date: '2026-10-05', trip_value: null, deleted_at: null };
-test('local line: cancel, restore, day, route, RT are refused and named', () => {
+// This allow-list is also what keeps the 060 constraints dl_local_day_live
+// (restore / day), dl_one_origin (rt_id) and dl_lm_is_trip (type) out of reach
+// of /costs/ledger — the PATCH handler carries no catch for them.
+test('local line: restore, day, route, RT are refused and named', () => {
   for (const body of [
-    { cancel: true, reason: 'x' }, { restore: true, reason: 'x' }, { entry_date: '2026-10-06' },
+    { restore: true, reason: 'x' }, { entry_date: '2026-10-06' },
     { date_end: '2026-10-06' }, { route: 'κάτι' }, { rt_id: 5 }, { trip_value: 1, rt_id: 5 }
   ]) {
     const err = localLineLockError(body, localLine);
@@ -109,6 +112,29 @@ test('local line: amounts («Αξία 0»), note and clearing review pass this g
   ]) assert.strictEqual(localLineLockError(body, localLine), null, JSON.stringify(body));
   // and validatePatch still applies its own rules after the guard
   assert.ok(validatePatch({ trip_value: 0 }, localLine).patch);
+});
+test('local line: the type is never patchable (dl_lm_is_trip unreachable)', () => {
+  assert.match(validatePatch({ entry_type: 'payment_cash' }, localLine).error, /entry_type/);
+});
+// Coordinator D3 (4/10/2026): cancel passes the lock guard, and is then
+// decided on two live facts (the handler reads them).
+test('local line: cancel (+reason) passes the lock guard — localLineCancelError decides', () => {
+  assert.strictEqual(localLineLockError({ cancel: true, reason: 'μισθωτός' }, localLine), null);
+  assert.ok(validatePatch({ cancel: true, reason: 'μισθωτός' }, localLine).patch.deleted_at);
+});
+test('local line cancel (D3): salaried driver or no live relay left → allowed; otherwise refused and explained', () => {
+  assert.strictEqual(localLineCancelError({ payBasis: 'salary', liveRelays: 3 }), null);
+  assert.strictEqual(localLineCancelError({ payBasis: 'per_trip', liveRelays: 0 }), null);
+  assert.strictEqual(localLineCancelError({ payBasis: null, liveRelays: 0 }), null);
+  for (const facts of [{ payBasis: 'per_trip', liveRelays: 1 }, { payBasis: null, liveRelays: 2 }]) {
+    const err = localLineCancelError(facts);
+    assert.match(err, /μισθωτός/, JSON.stringify(facts));
+    assert.ok(err.includes(String(facts.liveRelays)), 'names how many relays remain');
+  }
+  // unknown pay basis is paid like per_trip (060): never treated as salaried
+  assert.ok(localLineCancelError({ payBasis: null, liveRelays: 1 }));
+  // no facts = no decision (never «allowed» by default, αρχή 1)
+  assert.ok(localLineCancelError(null));
 });
 test('ordinary lines are not touched by the local-line guard', () => {
   const rtLine = { id: 51, entry_type: 'trip', local_move_id: null, rt_id: 9 };

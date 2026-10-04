@@ -96,6 +96,35 @@ build — δεν ισχύει πλέον.
 4. Deploy: `cd worker && CLOUDFLARE_API_TOKEN=$CF_API_TOKEN npx wrangler deploy`
    (το CF_API_TOKEN από το `.env.local` της ρίζας).
 
+## Προαπαιτούμενο deploy: 060 (τοπική παράδοση/φόρτωση, 4/10/2026)
+
+Σειρά: **060 → Worker → οθόνες**, το ίδιο απόγευμα, μετά τις 15:00. Ο Worker
+αυτού του branch ονομάζει στήλες του 060 (`dl_v_entries.local_move_id` στην
+αρχική της Μισθοδοσίας· `move_kind` και `pay_basis` στον έλεγχο ακύρωσης
+γραμμής τοπικού). Αν μπει πριν από το 060, η αρχική της Μισθοδοσίας
+απαντά **503 «Η βάση δεν έχει ακόμη το migration 060»** (όχι γενικό 500) —
+αλλά δεν δουλεύει.
+
+**Ακριβώς πριν από το `wrangler deploy`** (SELECT μόνο, στη Supabase):
+
+```sql
+SELECT count(*) AS found   -- ΠΡΕΠΕΙ 5· αλλιώς ΣΤΑΜΑΤΑ
+FROM information_schema.columns
+WHERE table_schema = 'public'
+  AND (table_name, column_name) IN (('local_moves','move_kind'), ('drivers','pay_basis'),
+       ('dl_entries','local_move_id'), ('dl_v_entries','local_move_id'), ('dl_v_entries','relay_info'));
+```
+
+Και: `node --test test/*.test.mjs` πράσινο, με το `migrations/drafts/060_local_relay.sql`
+**ίδιο** με αυτό που εκτελέστηκε (το `local-relay-contract.test.mjs` τυπώνει το
+md5 που έλεγξε — σύγκρινέ το). Το test διαβάζει τους κωδικούς άρνησης και τα
+ονόματα CHECK από το 060 και κοκκινίζει σε κάθε απόκλιση από τα ελληνικά
+κείμενα του Worker.
+
+**Επαναφορά 060:** ΠΡΩΤΑ ξανά deploy του αποθηκευμένου bundle του
+`deploy/worker-0410` (ο ζωντανός Worker πριν από αυτό το branch), ΜΕΤΑ το
+rollback του 060 — αλλιώς ο Worker αυτός μένει να ζητά στήλες που δεν υπάρχουν.
+
 ## Περιεχόμενα
 
 - `src/index.js` — Worker 2 (auth JWT, PERMISSIONS, facade, audit, AI routes)
