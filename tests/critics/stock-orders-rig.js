@@ -610,9 +610,13 @@ async function runLotEdit(browser) {
   cap.orderDelFail = { type: 'STOCK_RULE', code: 'piece_on_truck', message: 'Το κομμάτι είναι σε φορτηγό — «Επιστροφή στο απόθεμα» πρώτα' };
   const nOrdDel = cap.deletes.filter(d => d.table === 'orders').length;
   await page.evaluate(() => deleteIntlOrder('recPc1'));
-  await page.waitForFunction(() => /δεν άλλαξε τίποτα/.test((document.getElementById('toast') || {}).innerText || ''), null, { timeout: 15000 });
-  const delToast = await page.evaluate(() => document.getElementById('toast').innerText);
-  ok(/Το κομμάτι είναι σε φορτηγό — «Επιστροφή στο απόθεμα» πρώτα — δεν άλλαξε τίποτα/.test(delToast) && !/Η διαγραφή απέτυχε/.test(delToast), 'DL-03: the refusal\'s own Greek words, not «Η διαγραφή απέτυχε» — ' + delToast);
+  // D2 / round-1 K1: _atRetry puts the refusal's own Greek words on screen ONCE;
+  // deleteIntlOrder adds no second copy and no generic «Η διαγραφή απέτυχε».
+  await page.waitForFunction(() => /Το κομμάτι είναι σε φορτηγό/.test(document.body.innerText || ''), null, { timeout: 15000 });
+  await page.waitForTimeout(400);
+  const delToast = await page.evaluate(() => document.body.innerText);
+  const copies = (delToast.match(/Το κομμάτι είναι σε φορτηγό — «Επιστροφή στο απόθεμα» πρώτα/g) || []).length;
+  ok(copies === 1 && !/Η διαγραφή απέτυχε/.test(delToast), 'DL-03 + D2: the refusal\'s own Greek words, once, not «Η διαγραφή απέτυχε» — copies=' + copies);
   const ctxs = await page.evaluate(() => window.__logCtx);
   ok(ctxs.filter(c => /_atRetry 422/.test(c)).length === 1 && !ctxs.some(c => /deleteIntlOrder/.test(c)), 'AU-07: one app_errors row (_atRetry), none from deleteIntlOrder — ' + JSON.stringify(ctxs));
   ok(cap.deletes.filter(d => d.table === 'orders').length === nOrdDel + 1, 'one DELETE sent, nothing after it (no cascade)');
