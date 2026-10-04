@@ -1,17 +1,20 @@
 -- 057 VERIFY — SELECT ONLY. Run each query on its own in the SQL editor; the expected value is in
 -- the comment above it. Any other value = STOP: no Worker deploy, tell the coordinator.
--- V0 runs BEFORE 057 too (write its two numbers down). V1–V8 right after 057. V9 after the first
+-- V0 runs BEFORE 057 too (write its four numbers down). V1–V8 right after 057. V9 after the first
 -- real lot (and any time later — it must keep returning 0 rows).
 
 -- ── V0 — every round trip's revenue, before and after (no lot exists → identical) ──────────────
--- Expected: the SAME two numbers before and after 057.
-select count(*) as rts, sum(revenue) as revenue_total from public.ct_v_rt_revenue;
--- Stronger: the md5 of every RT's revenue. Expected: the SAME md5 before and after 057.
-select md5(string_agg(rt_id::text || '=' || revenue::text, ',' order by rt_id)) as revenue_md5
+-- Expected: the SAME four numbers before and after 057 (since 034 the view splits intl / natl).
+select count(*) as rts, sum(revenue) as revenue_total, sum(revenue_intl) as revenue_intl,
+       sum(revenue_natl) as revenue_natl
+  from public.ct_v_rt_revenue;
+-- Stronger: the md5 of every RT's three revenue figures. Expected: the SAME md5 before and after 057.
+select md5(string_agg(rt_id::text || '=' || revenue::text || '/' || revenue_intl::text || '/' || revenue_natl::text,
+                      ',' order by rt_id)) as revenue_md5
   from public.ct_v_rt_revenue;
 
 -- ── V1 — objects ─────────────────────────────────────────────────────────────────────────────────
--- Expected: 8 | 1 | 1 | 6 | 4 | 3 | 8 | 5 | 136 | 2 | 1 | 0
+-- Expected: 8 | 1 | 1 | 6 | 4 | 3 | 8 | 5 | 136 | 4 | 1 | 0
 select
   (select count(*) from information_schema.columns
     where table_schema = 'public' and table_name = 'stock_lots')                                  as stock_lots_cols,      -- 8
@@ -41,7 +44,7 @@ select
   (select count(*) from pg_attribute
     where attrelid = 'public.orders_with_derived'::regclass and attnum > 0 and not attisdropped) as owd_cols,             -- 136
   (select count(*) from pg_attribute
-    where attrelid = 'public.ct_v_rt_revenue'::regclass and attnum > 0 and not attisdropped)     as revenue_cols,         -- 2
+    where attrelid = 'public.ct_v_rt_revenue'::regclass and attnum > 0 and not attisdropped)     as revenue_cols,         -- 4 (034)
   (select count(*) from pg_trigger
     where tgrelid = 'public.orders'::regclass and not tgisinternal and tgenabled = 'O'
       and tgname = 'orders_group_id_blank_null')                                                as blank_gid_trigger,    -- 1
@@ -54,6 +57,28 @@ select attnum, attname, format_type(atttypid, atttypmod)
   from pg_attribute
  where attrelid = 'public.orders_with_derived'::regclass and attnum > 132 and not attisdropped
  order by attnum;
+
+-- The round-0 rules of the impact map (4/10) are in the guard functions that ran. Expected 3 rows:
+--   stock_guard_lots   | t | t | f | f
+--   stock_guard_natl   | f | t | t | t
+--   stock_guard_orders | t | t | t | t
+select p.proname,
+       p.prosrc like '%''lot_grouped''%'    as lot_grouped,      -- B-16
+       p.prosrc like '%''lot_vs''%'         as lot_vs,           -- C-15, OWNER-Q1 default
+       p.prosrc like '%''piece_no_truck''%' as piece_no_truck,   -- C-05
+       p.prosrc like '%δεν ακυρώνεται%'     as lot_no_cancel     -- E-04
+  from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+ where n.nspname = 'public' and p.proname in ('stock_guard_lots', 'stock_guard_orders', 'stock_guard_natl')
+ order by p.proname;
+
+-- B-54 (auditor trigger inventory) moved WITH the four new triggers (057 header). Expected:
+-- <> | N | N with N = the value 057's NOTICE printed (31 on 4/10's database: 27 + 4).
+-- (after R1 of the rollback: <> | N | N−3 — red on purpose until GUARDS ON).
+select c.red_op, c.red_value,
+       (select count(*) from pg_trigger t join pg_class cl on cl.oid = t.tgrelid
+          join pg_namespace n on n.oid = cl.relnamespace
+         where not t.tgisinternal and t.tgenabled <> 'D' and n.nspname = 'public') as triggers_now
+  from monitoring.checks c where c.id = 'B-54';
 
 -- Trigger order on orders (BEFORE fires alphabetically). Expected 5 rows: order_leg_depth,
 -- order_leg_inherit, orders_group_id_blank_null, orders_invoice_mark_guard, stock_guard_orders (LAST).
@@ -135,7 +160,9 @@ select (select count(*) from public.stock_lots)                                 
 
 -- ── V9 — money (re-runnable after go-live; every query must return 0 rows) ──────────────────────
 -- (a) intake cost = the partner cost ct_v_rt_costs uses (same pick: latest live non-cancelled
---     assignment by id desc). Expected: 0 rows.
+--     assignment by id desc — re-read against 034's ct_v_rt_costs, md5 3349bcf0…: its «planned»
+--     takes exactly this pick for every order carried by an RT leg; the split-sibling and national
+--     branches it added never apply to a lot source, which has no legs). Expected: 0 rows.
 select m.lot_id, m.intake_cost, pa.partner_rate
   from public.stock_v_lot_money m
   left join lateral (select pa.partner_rate from public.partner_assignments pa
@@ -145,8 +172,9 @@ select m.lot_id, m.intake_cost, pa.partner_rate
 
 -- (b) the warehouse partner's RT has margin 0: revenue = its planned partner cost. Only RTs whose
 --     ONLY leg is the lot source, and lots without Veroia Switch (a VS lot would also carry the VS
---     charge — plan §9 question 4). Expected: 0 rows.
-select m.lot_id, l.rt_id, r.revenue, c.partner_planned
+--     charge — plan §9 question 4). Since 034 the revenue is split: the lot's amount must sit in
+--     revenue_intl, never in revenue_natl. Expected: 0 rows.
+select m.lot_id, l.rt_id, r.revenue, r.revenue_intl, r.revenue_natl, c.partner_planned
   from public.stock_v_lot_money m
   join public.ct_rt_legs l on l.order_id = m.source_id
   join public.ct_round_trips rt on rt.id = l.rt_id and rt.status <> 'cancelled'
@@ -155,7 +183,7 @@ select m.lot_id, l.rt_id, r.revenue, c.partner_planned
   join public.ct_v_rt_costs c on c.rt_id = l.rt_id
  where m.source_kind = 'intl' and m.allocation_status = 'ok' and o.veroia_switch is not true
    and (select count(*) from public.ct_rt_legs l2 where l2.rt_id = l.rt_id) = 1
-   and r.revenue <> c.partner_planned;
+   and (r.revenue <> c.partner_planned or r.revenue_natl <> 0 or r.revenue_intl <> r.revenue);
 
 -- (c) every cent of the client price is somewhere: intake cost + Σ pieces + in stock + written off
 --     = price. (A sub-cent price or rate would show here — prices are 2-decimal.) Expected: 0 rows.

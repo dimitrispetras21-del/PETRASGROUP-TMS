@@ -5,7 +5,8 @@
 -- When: after the bug that made R1 necessary is fixed (a fix to a guard FUNCTION is its own reviewed
 -- migration, run before this file). After 15:00. Re-running it is harmless.
 -- Rows written while the guards were off are NOT re-judged here — the auditor's S-01…S-11 show any
--- that break a rule. Expected notice: «GUARDS ON OK: 3 stock_guard triggers enabled». Then S-02 = 0.
+-- that break a rule. Expected notice: «GUARDS ON OK: 3 stock_guard triggers enabled». Then S-02 = 0,
+-- and B-54 reads its red_value again (the count 057 set; R1 left it there on purpose) — nothing to edit.
 do $on$
 declare
   v_n int;
