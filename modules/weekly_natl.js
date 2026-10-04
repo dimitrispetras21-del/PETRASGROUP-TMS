@@ -449,8 +449,6 @@ function _wnCss() { return `<style id="wn4-css">
 /* Οι δύο συναγερμοί και το «ελεύθερα» ζούσαν σε λωρίδα με κουτιά πάνω από
    τα φίλτρα· από 3/10 είναι .wk-sig (style.css) στη σειρά των φίλτρων. Η
    πρόταση κάτω από κάθε αριθμό πήγε στο title του σήματος. */
-.wn4-queue{display:inline-flex;align-items:center;gap:4px;background:var(--surface-sunken);color:var(--accent-text);border:none;border-radius:6px;padding:4px 10px;font:inherit;font-size:11px;font-weight:600;cursor:pointer}
-.wn4-queue b{font-size:13px;font-variant-numeric:tabular-nums}
 .wn4 .wk-sig.wn4-free{cursor:help} .wn4 .wk-sig.wn4-free:hover{background:var(--surface-card)}
 .wn4 .wk3-sub{margin-bottom:8px;gap:8px}
 .wn4 .wk3-sub .entity-search-wrap{flex:0 1 260px;min-width:200px}
@@ -715,7 +713,6 @@ function _wnPaint() {
   const wE   = new Date(wS);  wE.setDate(wS.getDate()+6);
   const fmtD = d => d.toLocaleDateString('el-GR',{day:'numeric',month:'short'});
   const weekRange = `${fmtD(wS)} – ${fmtD(wE)}`;
-  const role = (typeof ROLE !== 'undefined' ? ROLE : '');
   const hhmm = d => d ? String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0') : '—';
   const localsFailed = !!data._localsFailed;
   const lDrivers = new Set((data.locals||[]).map(m => _fid(m.fields?.['Driver']) || ('p:'+_fid(m.fields?.['Partner']))).filter(k => k && k !== 'p:'));
@@ -793,7 +790,6 @@ function _wnPaint() {
       <button type="button" class="wk-sig${uncovered?' hot':' ok'}" title="${escapeHtml(uncovSub)}${uncovered?' — κλικ: πήγαινε στο πρώτο':''}" onclick="${_jump(_firstRow(r=>r.needsLocal))}">ΑΚΑΛΥΠΤΑ ΚΟΜΜΑΤΙΑ <b>${uncovered}</b></button>
       <button type="button" class="wk-sig${pendingAll?' hot':' ok'}" title="${escapeHtml(pendSub)}${pendingAll?' — κλικ: πήγαινε στο πρώτο':''}" onclick="${_jump(_firstRow(r=>!r.saved))}">ΠΡΟΣ ΑΝΑΘΕΣΗ <b>${pendingAll}</b></button>
       <span class="wk-sig wn4-free" title="Φορτηγά χωρίς εθνική ανάθεση ${isCur?'σήμερα':'την εβδομάδα'} ${freeT.length}/${data.trucks.length}: ${freeT.length ? _few(freeT, 12) : 'κανένα'} — Οδηγοί χωρίς εθνική ανάθεση ${freeD.length}/${data.drivers.length}${freeD.length?': '+_few(freeD, 12):''} — οι διεθνείς αναθέσεις ΔΕΝ μετρώνται εδώ">ΧΩΡΙΣ ΕΘΝΙΚΗ ΑΝΑΘΕΣΗ ${isCur?'ΣΗΜΕΡΑ':'ΤΗΝ ΕΒΔΟΜΑΔΑ'} <b>${freeT.length}/${data.trucks.length}</b></span>
-      <span id="wn-pickups-q"></span>
       ${crossRows.length ? `<span class="wn4-cross" title="Παραδίδουν σε άλλη εβδομάδα — στην προβολή εκείνης δεν εμφανίζονται (φίλτρο ανά εβδομάδα ΦΟΡΤΩΣΗΣ)" onclick="${_jump(_wnRowElId(crossRows[0]))}">↦ ${crossRows.length} παραδίδ${crossRows.length===1?'ει':'ουν'} σε άλλη εβδομάδα</span>` : ''}
       <span class="wk3-range">Εβδομάδα ${week} · ${weekRange} · Σαβ–Παρ</span>
       ${typeof weekPhaseBadge==='function'?weekPhaseBadge(week,_wnCurrentWeek()):''}
@@ -858,26 +854,10 @@ function _wnPaint() {
     el.textContent = `W${week-1}: ${prev.total} φορτία · ${prev.assigned}/${prev.total} ανατεθειμένα`;
     el.title = 'Η προηγούμενη εβδομάδα, για σύγκριση';
   }).catch(e => console.warn('prev week (natl):', e));
-
-  // Φέτα 3 (Δ11): η ουρά του National Pick Ups. Τον χειμώνα εκεί κάθονται
-  // δεκάδες γραμμές groupage που περιμένουν να γίνουν φορτηγό — και το
-  // εβδομαδιαίο δεν τις έβλεπε καθόλου. Μόνο μέτρημα: το petras-assign δεν
-  // αγγίζεται. Αν αποτύχει ή είναι μηδέν, ο μετρητής απλώς δεν εμφανίζεται —
-  // ένα «0 στην ουρά» που στην πραγματικότητα είναι σφάλμα δικτύου θα ήταν
-  // χειρότερο από το τίποτα.
-  // owner 12/8: το Pick Ups έγινε owner-only. Ο μετρητής είναι κουμπί προς
-  // εκείνη τη σελίδα — σε άλλον ρόλο θα οδηγούσε σε «δεν έχεις πρόσβαση».
-  if (role !== 'owner') {
-    const q0 = document.getElementById('wn-pickups-q');
-    if (q0) q0.outerHTML = '';
-  } else
-  safeFetch(() => atGetAll(TABLES.GL_LINES, { filterByFormula: `{Status}="Unassigned"`, fields: ['Status'] }, false),
-            'weekly natl: pick ups queue', [])
-  .then(gl => {
-    const el = document.getElementById('wn-pickups-q');
-    if (!el || didFail(gl) || !gl.length) return;
-    el.outerHTML = `<button class="wn4-queue" title="Γραμμές groupage που περιμένουν ανάθεση στο National Pick Ups — κλικ: άνοιγμα της σελίδας" onclick="navigate('weekly_pickups')"><b>${gl.length}</b> στην ουρά Pick Ups ↗</button>`;
-  }).catch(e => console.warn('pick ups queue (natl):', e));
+  // The owner-only «N στην ουρά Pick Ups ↗» button that lived here was removed
+  // with the weekly_pickups route (4/10/2026): it navigated to that dead
+  // iframe, and its count of Status=Unassigned also counted the never-delete
+  // tombstones (Unassigned is what a removed groupage line becomes).
 }
 
 /* ── ALL ROWS — μία ημέρα ανά ΠΡΩΤΗ ΦΟΡΤΩΣΗ, κενές μέρες ορατές ──── */

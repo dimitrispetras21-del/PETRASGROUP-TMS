@@ -25,11 +25,13 @@ const NAV = [
     { id: 'dashboard',      label: 'Πίνακας Ελέγχου',     icon: 'layout_grid' },
     { id: 'weekly_intl',    label: 'Εβδομαδιαίο Διεθνών', icon: 'globe' },
     { id: 'weekly_natl',    label: 'Εβδομαδιαίο Εθνικών', icon: 'home' },
-    // owner-only (owner 12/8): η σελίδα ξαναχτίζεται μετά τον καθαρισμό
-    // δεδομένων και δεν τη δουλεύει κανείς άλλος στο μεταξύ. Το gate είναι
-    // ΜΟΝΟ front end — το petras-assign iframe κρατά δικό του JWT, οπότε όποιος
-    // ξέρει το URL το φτάνει απευθείας. Πραγματικό κλείδωμα θέλει RBAC στον Worker.
-    { id: 'weekly_pickups', label: 'Εθνικές Παραλαβές',   icon: 'package', role: 'owner' },
+    // «Εθνικές Παραλαβές» (weekly_pickups) removed 4/10/2026: it was an iframe
+    // of petras-assign/national_consolidation.html — HTTP 401 inside the app at
+    // the 4/8 audit, 404 since at least 3/9 (curl re-checked 4/10): a menu
+    // entry that opened nothing. A stale #weekly_pickups / tms_page now lands
+    // in navigate()'s default case («Άγνωστη σελίδα … καταργήθηκε»), like any
+    // unknown route. If the page is rebuilt it comes back as a real module
+    // here, not as an iframe.
   ]},
   { section: 'Ημερήσια Λειτουργία', perm: 'planning', items: [
     { id: 'daily_ops',      label: 'Ημερήσιο Πλάνο',      icon: 'list_checks' },
@@ -340,7 +342,7 @@ function navigate(page) {
   }
 
   const c = document.getElementById('content');
-  // Reset content styles (some pages override these — e.g. weekly_pickups iframe)
+  // Reset content styles (some pages override these — e.g. payroll/expenses set padding 0)
   c.style.padding = '';
   c.style.overflow = '';
   c.style.background = '';
@@ -352,26 +354,6 @@ function navigate(page) {
     case 'dashboard':      renderDashboard();            break;
     case 'weekly_intl':    renderWeeklyIntl(); break;
     case 'weekly_natl':    renderWeeklyNatl();       break;
-    case 'weekly_pickups':
-      // Ίδιο gate με το NAV item: χωρίς αυτό, ?page=weekly_pickups ή ένα παλιό
-      // bookmark παρακάμπτει το κρυμμένο μενού.
-      if ((typeof ROLE !== 'undefined' ? ROLE : '') !== 'owner') { c.innerHTML = showAccessDenied(); break; }
-      c.style.padding = '0';
-      c.style.overflow = 'hidden';
-      // Make the parent .content div fill the viewport so the iframe has room to grow.
-      // Mobile fix: previously the iframe collapsed to 150px because content height was 0.
-      c.style.height = 'calc(100vh - 56px)';
-      c.style.minHeight = '500px';
-      // C3 fix: sandbox the iframe to limit its access to the parent DOM/storage.
-      // allow-scripts: iframe runs JS; allow-forms: can submit forms (drag-drop saves);
-      // allow-same-origin: only allowed because we fully control the source (same account);
-      // allow-popups: needed for print preview; clipboard-write kept for copy actions.
-      // PU-7: το sandbox αφαιρέθηκε ΣΥΝΕΙΔΗΤΑ. Είχε allow-scripts +
-      // allow-same-origin σε SAME-ORIGIN iframe — μηδενική προστασία (ο ίδιος
-      // ο browser το επισημαίνει ως άκυρο συνδυασμό) και το iframe ΧΡΕΙΑΖΕΤΑΙ
-      // same-origin για το JWT στο localStorage. Καλύτερα καθόλου θέατρο.
-      c.innerHTML = '<iframe class="embed" src="https://dimitrispetras21-del.github.io/petras-assign/national_consolidation.html" style="width:100%;height:100%;border:none;display:block;" allow="clipboard-write"></iframe>';
-      break;
     case 'daily_ops':      renderDailyOps();                                      break;
     case 'daily_ramp':     renderDailyRamp(); break;
     // Orders
