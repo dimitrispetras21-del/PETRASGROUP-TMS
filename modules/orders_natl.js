@@ -115,7 +115,25 @@ const _ON_TYPE = { Independent: 'Ανεξάρτητη', 'Veroia Switch': 'Veroia
 // d/M like the Figma list ("7/9"): formatDateShort gives an English month name
 // ("24 Aug") that wraps in an 80px column and is not Greek (ΜΕΡΟΣ Ε).
 const _onDate = d => d ? new Date(d).toLocaleDateString('el-GR', { day: 'numeric', month: 'numeric' }) : '—';
-const _onHasTrip = f => ((f['Linked Trip']?.length||0)+(f['NATIONAL TRIPS']?.length||0)+(f['NATIONAL TRIPS 2']?.length||0)) > 0;
+// §4 #8 (N-06, 4/10/2026): the card used to read Linked Trip / NATIONAL TRIPS
+// on the ORDER — links a national order never carries — so it said «ΠΡΟΣ
+// ΑΝΑΘΕΣΗ — χωρίς δρομολόγιο» on every order, the 3 assigned ones included.
+// The assignment lives on the order's NATIONAL LOAD, which the list already
+// read (NATL_ORDERS.loads via OrdersCommon.natLoadsFor); the card asks the SAME
+// rule as the catalog's ΑΝΑΘΕΣΗ cell (OrdersCommon.assignOf), not a copy.
+// A failed load read is «unknown» — never «προς ανάθεση» (principle 1).
+function _onAssignment(rec) {
+  const loads = NATL_ORDERS.loads instanceof Map ? NATL_ORDERS.loads : null;
+  if (!rec.fields['National Groupage'] && (NATL_ORDERS.loadsFailed || !loads)) return { key: 'unknown', text: '' };
+  return OrdersCommon.assignOf({ ...rec, _type: 'natl' },
+    { load: (loads && loads.get(rec.id)) || null, missingLoad: !!(NATL_ORDERS.noLoad && NATL_ORDERS.noLoad.has(rec.id)) });
+}
+const _ON_ASSIGN_LINE = {
+  grp: 'Μέσω ομαδοποίησης — το φορτηγό ορίζεται στο groupage',
+  out: 'ΕΚΤΟΣ ΕΒΔΟΜΑΔΙΑΙΟΥ — δεν έχει εθνικό φορτίο',
+  unknown: 'Άγνωστη — τα εθνικά φορτία δεν φορτώθηκαν. Δεν σημαίνει ότι είναι χωρίς ανάθεση· ξαναδοκίμασε με Ανανέωση.',
+  pa: 'ΠΡΟΣ ΑΝΑΘΕΣΗ — στο Εβδομαδιαίο, χωρίς όχημα',
+};
 
 // Scoped styles for this screen only (spec w4-orders-interaction-spec 208:724).
 // They live here and not in style.css because the batch rule is "one agent,
@@ -208,7 +226,9 @@ function selectNatlOrder(recId) {
   }
   const f = rec.fields;
   const canEdit = can('orders') === 'full';
-  const hasTrip = _onHasTrip(f);
+  const asg = _onAssignment(rec);
+  const asgOk = asg.key === 'own' || asg.key === 'partner';
+  const asgOpen = asg.key === 'pa' || asg.key === 'out';
   const cId = Array.isArray(f['Client']) ? f['Client'][0] : '';
   const pId = (f['Pickup Location 1']||[])[0]||'';
   const client = cId ? (_fhClientsMap[cId] || cId) : '';
@@ -225,7 +245,10 @@ function selectNatlOrder(recId) {
   const chips = [];
   if (f['Status'] && _ON_STATUS[f['Status']]) chips.push(`<span class="on-chip">${_ON_STATUS[f['Status']]}</span>`);
   else if (f['Status']) chips.push(`<span class="on-chip">${escapeHtml(String(f['Status']).toUpperCase())}</span>`);
-  chips.push(hasTrip ? '<span class="on-chip">ΜΕ ΔΡΟΜΟΛΟΓΙΟ</span>' : '<span class="on-chip unassigned">ΠΡΟΣ ΑΝΑΘΕΣΗ</span>');
+  if (asgOk) chips.push('<span class="on-chip">ΜΕ ΟΧΗΜΑ</span>');
+  else if (asg.key === 'unknown') chips.push('<span class="on-chip warn">ΑΝΑΘΕΣΗ ΑΓΝΩΣΤΗ</span>');
+  else if (asg.key === 'out') chips.push('<span class="on-chip unassigned">ΕΚΤΟΣ ΕΒΔΟΜΑΔΙΑΙΟΥ</span>');
+  else if (asg.key === 'pa') chips.push('<span class="on-chip unassigned">ΠΡΟΣ ΑΝΑΘΕΣΗ</span>');
   chips.push(f['Invoiced'] ? '<span class="on-chip">ΤΙΜΟΛΟΓΗΘΗΚΕ</span>' : '<span class="on-chip warn">ΧΩΡΙΣ ΤΙΜΟΛΟΓΗΣΗ</span>');
   if (f['National Groupage']) chips.push('<span class="on-chip">GRP</span>');
   if (f['Type']==='Veroia Switch') chips.push('<span class="on-chip">VS</span>');
@@ -277,8 +300,8 @@ function selectNatlOrder(recId) {
     <div class="on-sec">
       <div class="on-sec-title">Ανάθεση</div>
       <div class="on-row">
-        <span class="${hasTrip ? 'on-dot ok' : 'on-dot unassigned'}"></span>
-        <span class="on-row-main${hasTrip ? '' : ' unassigned'}">${hasTrip ? 'Ανατεθειμένο σε δρομολόγιο' : 'ΠΡΟΣ ΑΝΑΘΕΣΗ — χωρίς δρομολόγιο'}</span>
+        <span class="on-dot${asgOk ? ' ok' : asgOpen ? ' unassigned' : ''}"></span>
+        <span class="on-row-main${asgOpen ? ' unassigned' : ''}" data-assign="${asg.key}">${asgOk ? escapeHtml(asg.text) : (_ON_ASSIGN_LINE[asg.key] || _ON_ASSIGN_LINE.unknown)}</span>
       </div>
       <div class="on-row"><button type="button" class="on-link" onclick="navigate('weekly_natl')">άνοιγμα στο Weekly National →</button></div>
     </div>
