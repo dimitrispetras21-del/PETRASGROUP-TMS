@@ -517,7 +517,7 @@ function _simRowHTML(uid, pre) {
       <div><label class="form-label">Τοποθεσία παράδοσης *</label>${_locSelect('nsl'+uid, pre.loc||'')}</div>
       <div><label class="form-label">Παλέτες</label>
         <input class="form-input" type="number" id="simp${uid}" min="0" max="99" step="1"
-          value="${pre.pal||''}" style="text-align:right"
+          value="${pre.pal ?? ''}" style="text-align:right"
           oninput="if(this.value.length>2)this.value=this.value.slice(0,2)"></div>
       <div><label class="form-label">Ημερομηνία</label>
         <input class="form-input" type="date" id="simd${uid}" value="${pre.date||''}"></div>
@@ -919,7 +919,7 @@ async function _openNatlModal(recId, f) {
     // mismatch (edited elsewhere) leaves that card empty rather than guess.
     if (_editStops) _pre.forEach((p, i) => {
       const s = _editStops.find(x => Number(x.fields[F.STOP_NUMBER]) === i + 1);
-      if (!s || (s.fields[F.STOP_LOCATION] || [])[0] !== p.loc) return;
+      if (!s || getLinkedId(s.fields[F.STOP_LOCATION]) !== p.loc) return;
       const sf = s.fields;
       if (sf[F.STOP_PALLETS] != null && sf[F.STOP_PALLETS] !== '') p.pal = sf[F.STOP_PALLETS];
       if (sf[F.STOP_DATETIME]) p.date = toLocalDate(sf[F.STOP_DATETIME]);
