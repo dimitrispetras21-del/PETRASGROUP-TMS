@@ -466,8 +466,9 @@ function ctStockLeg(o) {
   const unread = { amount: null, sum: 0, unread: true, note: `παρτίδα ${num} — ο επιμερισμός δεν διαβάστηκε` };
   if (_ct.stockFailed || !_ct.stock) return unread;
   // 'no_charge' (round 2 #1, owner 4/10) replaced 'no_intake_cost': neither a
-  // partner rate nor a «Χρέωση αποθήκης» on the lot.
-  const why = { no_price: 'χωρίς τιμή', no_charge: 'χωρίς χρέωση αποθήκης', no_pallets: 'χωρίς παλέτες' };
+  // partner rate nor a «Χρέωση αποθήκης» on the lot. 'no_partner_rate' (round
+  // 3, SQL S1): an assignment WITHOUT a rate, not «no assignment».
+  const why = { no_price: 'χωρίς τιμή', no_charge: 'χωρίς χρέωση αποθήκης', no_partner_rate: 'λείπει το κόμιστρο συνεργάτη', no_pallets: 'χωρίς παλέτες' };
   if (isLot) {
     const m = _ct.stock.lots[OrdersStock.lotRecOfLot(f)];
     if (!m) return unread;
@@ -488,9 +489,11 @@ function ctStockLeg(o) {
     // partner carried it but no rate was entered (review P3 4/10): the
     // wording follows the order's own Partner, never claims «δικό μας»
     // for a partner trip. The amount is 0 either way (the DB's coalesce).
+    // Critic-5 S5-05: ≤ 6 words like the partner line — «δικό μας φορτηγό»
+    // is already the card's header, the reason is in the title.
     if (m.partner_cost == null) {
       const own = !f['Is Partner Trip'] && !getLinkedId(f['Partner']);
-      return { amount: 0, sum: 0, note: `παρτίδα ${num} · ${own ? 'δικό μας φορτηγό' : 'χωρίς κόμιστρο συνεργάτη'} — μόνο τα κομμάτια`,
+      return { amount: 0, sum: 0, note: `παρτίδα ${num} · ${own ? 'μόνο τα κομμάτια' : 'χωρίς κόμιστρο'}`,
         title: own ? 'Το σκέλος που πήγε την παρτίδα στην αποθήκη με δικό μας φορτηγό δεν έχει έσοδο· το καθαρό της παρτίδας μοιράζεται στα κομμάτια'
           : 'Συνεργάτης χωρίς καταχωρημένο κόμιστρο: το σκέλος μετρά 0 μέχρι να μπει η ανάθεση· το καθαρό της παρτίδας μοιράζεται στα κομμάτια' };
     }
@@ -1173,7 +1176,8 @@ async function ctOpenSettings() {
   m.innerHTML = '<div class="ct-mhead">Ρυθμίσεις COSTS <button class="ct-close" onclick="ctCloseAll()">&times;</button></div><div class="ct-mbody ct-empty">Φόρτωση…</div>';
   // full_truck_pallets (057, owner Q3 4/10): F of a VS piece's share
   // round(X × min(pallets, F) / F, 2) — computed in ct_v_rt_revenue only.
-  const labels = { x_export: 'Χ — μεταφορά VS (εξαγωγή)', x_import: 'Χ — μεταφορά VS (εισαγωγή)', pallet_eur: 'Αξία παλέτας EUR', vat_default: 'Προεπιλογή ΦΠΑ', wear_fallback_eur_km: 'Φθορά €/km (εφεδρική τιμή)', full_truck_pallets: 'Παλέτες γεμάτου φορτηγού (επιμερισμός VS κομματιού)' };
+  // S5-10: the label names the setting (≤ 4 words), not its formula.
+  const labels = { x_export: 'Χ — μεταφορά VS (εξαγωγή)', x_import: 'Χ — μεταφορά VS (εισαγωγή)', pallet_eur: 'Αξία παλέτας EUR', vat_default: 'Προεπιλογή ΦΠΑ', wear_fallback_eur_km: 'Φθορά €/km (εφεδρική τιμή)', full_truck_pallets: 'Παλέτες γεμάτου φορτηγού' };
   try {
     const s = await ctFetch('/costs/settings');
     m.querySelector('.ct-mbody').innerHTML = (s.records || []).map(r => `

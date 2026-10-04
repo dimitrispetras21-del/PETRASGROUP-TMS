@@ -2,7 +2,7 @@
 // TRIP PnL card × stock lots (057, Ε1; impact map 4/10 E-15 / D-11 / D-12). The REAL modules/costs.js
 // runs in a vm with the REAL OrdersStock; /costs/* and the page helpers are stubs.
 //   lot RT (partner, revenue = partner rate 300, lot Price 3.300): no «ανεξήγητη διαφορά», label + €300
-//   lot RT on our own truck (round 2 #1, owner 4/10): €0 «δικό μας φορτηγό — μόνο τα κομμάτια»
+//   lot RT on our own truck (round 2 #1, owner 4/10): €0 «μόνο τα κομμάτια» (≤ 6 words, critic-5 S5-05)
 //   VS piece (owner Q3 4/10): the card shows the DB's prorated VS share, no front formula
 //   owned RT with a VS export + a piece: the piece shows its allocation and the VS note is −850, not −(850−alloc)
 //   allocation not read: «ο επιμερισμός δεν διαβάστηκε», no diff note at all
@@ -124,14 +124,16 @@ test('the lot without any charge (no partner, no «Χρέωση αποθήκης
 // our own truck earns 0 (stock_v_rt_amounts = coalesce(partner_cost, 0)) —
 // «μόνο τα κομμάτια», an owner decision, not a gap; the client price never
 // shows there and the legs check finds no «ανεξήγητη διαφορά».
-test('round 2: the lot on our own truck — €0, «παρτίδα #312 · δικό μας φορτηγό — μόνο τα κομμάτια»', async () => {
+test('round 2/3: the lot on our own truck — €0, «παρτίδα #312 · μόνο τα κομμάτια» (≤ 6 words)', async () => {
   const own = { lots: [{ lot_rec: 'recSTOCKLOT1', allocation_status: 'ok', partner_cost: null, warehouse_charge: 120, charge_total: 120, net: 3180 }], pieces: [] };
   const { ctx } = load(async () => ({ ok: true, status: 200, json: async () => own }));
   const t = { id: 4, code: 'RT-4', trip_type: 'OWNED', truck_id: 1, revenue: 0, status: 'closed', date_start: '2026-10-01' };
   setCard(ctx, t, [[10, LOT, 'EXPORT']]);
   await ctx.ctStockLoad();
   const raw = ctx.ctCardHtml(t), h = text(raw);
-  assert.match(h, /· παρτίδα #312 · δικό μας φορτηγό — μόνο τα κομμάτια/, h);
+  const line = (h.match(/· (παρτίδα #312[^€]*?) (?=2026|€)/) || [])[1] || '';
+  assert.strictEqual(line.trim(), 'παρτίδα #312 · μόνο τα κομμάτια', h);
+  assert.ok(line.trim().split(/\s+/).filter(w => w !== '·').length <= 6);
   assert.match(raw, /<span class="lamt ct-mono">€0<\/span>/, raw);
   assert.ok(!/€3\.300|ανεξήγητη|κόμιστρο συνεργάτη|κόστος αποθήκης/.test(h), h);
 });
@@ -154,7 +156,7 @@ test('addendum A: a VS piece — the card shows the DB\'s prorated VS share (−
 // Review P3 (4/10): partner_cost is NULL also when a PARTNER carried the lot and
 // no rate was entered — the line must not claim «δικό μας φορτηγό» then. The
 // wording follows the source order's own Partner; the amount stays 0.
-test('round 2: partner_cost NULL on a partner-carried lot — €0, «χωρίς κόμιστρο συνεργάτη», never «δικό μας»', async () => {
+test('round 2/3: partner_cost NULL on a partner-carried lot — €0, «χωρίς κόμιστρο» (≤ 6 words), never «μόνο τα κομμάτια»', async () => {
   const own = { lots: [{ lot_rec: 'recSTOCKLOT1', allocation_status: 'ok', partner_cost: null, warehouse_charge: 120, charge_total: 120, net: 3180 }], pieces: [] };
   const { ctx } = load(async () => ({ ok: true, status: 200, json: async () => own }));
   const t = { id: 6, code: 'RT-6', trip_type: 'PARTNER', partner_id: 9, revenue: 0, status: 'closed', date_start: '2026-10-01' };
@@ -162,7 +164,16 @@ test('round 2: partner_cost NULL on a partner-carried lot — €0, «χωρίς
   setCard(ctx, t, [[10, lotByPartner, 'EXPORT']]);
   await ctx.ctStockLoad();
   const raw = ctx.ctCardHtml(t), h = text(raw);
-  assert.match(h, /· παρτίδα #312 · χωρίς κόμιστρο συνεργάτη — μόνο τα κομμάτια/, h);
+  assert.match(h, /· παρτίδα #312 · χωρίς κόμιστρο (2026|€)/, h);
+  assert.ok(!/μόνο τα κομμάτια/.test(h), h);
   assert.match(raw, /<span class="lamt ct-mono">€0<\/span>/, raw);
   assert.ok(!/δικό μας φορτηγό|€3\.300|ανεξήγητη/.test(h), h);
+});
+
+// Critic-5 S5-10 (round 3): the settings label names the setting, ≤ 4 words.
+test('S5-10: «full_truck_pallets» label «Παλέτες γεμάτου φορτηγού» (≤ 4 words)', () => {
+  const m = SRC.match(/full_truck_pallets: '([^']*)'/);
+  assert.ok(m, 'label present');
+  assert.strictEqual(m[1], 'Παλέτες γεμάτου φορτηγού');
+  assert.ok(m[1].split(/\s+/).length <= 4);
 });
