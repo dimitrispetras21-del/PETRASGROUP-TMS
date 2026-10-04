@@ -21,13 +21,19 @@ async function plFetch(path, opts = {}) {
   return data;
 }
 
+// One duration for every «enter it in the Ισοζύγιο by hand» line, failure or
+// designed case alike (critic-5 S5-09: the same instruction had two weights,
+// 8 s and 10 s). 10 s: the intake line is the COMMON outcome of an own-truck
+// lot and is read on a phone at 06:00 (critic-1 R2-1).
+const _PL_TOAST_MS = 10000;
+
 // Μη-μπλοκάρον περίβλημα: ΚΑΘΕ feeder περνάει από εδώ.
 async function _plSafe(label, fn) {
   try { return await fn(); }
   catch (e) {
     console.warn('[pallet-feed]', label, e && e.message);
     if (typeof showErrorToast === 'function') {
-      showErrorToast('Παλέτες: απέτυχε ' + label + ' — καταχώρησε χειροκίνητα από το Ισοζύγιο', 'warn', 8000);
+      showErrorToast('Παλέτες: απέτυχε ' + label + ' — καταχώρησε χειροκίνητα από το Ισοζύγιο', 'warn', _PL_TOAST_MS);
     }
     return null;
   }
@@ -109,7 +115,9 @@ async function plOnDelivered(orderId) {
     // delivery: no client DELIVERY (a confirmed 33/33 «client exchange at
     // Αποθήκη Χ» would be false, impact map C-03 / PL-02). Ε5: the client
     // exchanges ONCE, at the lot's loading (plOnOrderSaved, unchanged).
-    if (OrdersStock.isLot(rec.fields)) return _plLotIntake(rec, stops, orderId);
+    // Its own label (critic-1 R2-8): «απέτυχε εγγραφές παράδοσης» read as a
+    // failed CLIENT delivery, for a warehouse intake.
+    if (OrdersStock.isLot(rec.fields)) return _plSafe('κίνηση παλετών αποθήκης', () => _plLotIntake(rec, stops, orderId));
     const clientRec = _plClientRec(rec.fields);
     for (const s of stops) {
       if (s.fields[F.STOP_TYPE] !== 'Unloading') continue;
@@ -142,28 +150,91 @@ async function plOnDelivered(orderId) {
 // write — it is said, not invented. Pieces write nothing (Ε5: their receivers
 // never exchange); pallets that leave on pieces are the accountant's
 // ADJUSTMENT (case #10) — the owner asked for the intake only.
+//
+// In-flight guard (critic-3 Σ2-07): the write is GET-then-POST and
+// pl_mov_stop is a plain index, so two calls that overlap in this page (a
+// double click on «Παραλαβή αποθήκης») both read «none» and wrote TWO
+// pending «given 33»; confirmed from
+// the sheet, the partner would «owe» 66. One intake per lot at a time here;
+// a second call returns — the first is writing the same row. Two USERS at the
+// same second can still both write: only a unique index on pl_movements
+// (order_stop_id, event_type) would stop that, and there is none today.
+const _plLotInFlight = new Map();   // orderId → the running intake
+
 async function _plLotIntake(rec, stops, orderId) {
+  if (_plLotInFlight.has(orderId)) return;
+  const run = _plLotIntakeOnce(rec, stops, orderId);
+  _plLotInFlight.set(orderId, run);
+  try { return await run; } finally { _plLotInFlight.delete(orderId); }
+}
+
+// The lot's warehouse stop: one rule for the intake and its undo.
+function _plLotStop(stops) { return stops.find(x => x.fields[F.STOP_TYPE] === 'Unloading'); }
+
+// Every lot-intake line names the lot and its pallets, with one prefix
+// (critic-1 R2-1): three lots received in one morning were identical lines,
+// and the person who must act was told nothing he could act on.
+const _PL_BY_HAND = ' — καταχώρησέ τις στο Ισοζύγιο';
+function _plLotSay(f, s, text) {
+  const no = f['Order No'] ? ' #' + f['Order No'] : '';
+  const n = parseInt(s ? s.fields[F.STOP_PALLETS] : f['Total Pallets'], 10) || 0;
+  if (typeof showErrorToast === 'function') showErrorToast('Παλέτες αποθήκης' + no + (n ? ' (' + n + 'p)' : '') + ': ' + text, 'warn', _PL_TOAST_MS);
+}
+
+async function _plLotIntakeOnce(rec, stops, orderId) {
   const f = rec.fields;
   const partnerRec = Array.isArray(f['Partner']) ? f['Partner'][0] : null;
-  const s = stops.find(x => x.fields[F.STOP_TYPE] === 'Unloading');
-  if (!s) return;
+  const s = _plLotStop(stops);
+  // These two returns were silent (R2-8): nothing written, nothing said.
+  if (!s) return _plLotSay(f, null, 'χωρίς σημείο αποθήκης' + _PL_BY_HAND);
   const pallets = parseInt(s.fields[F.STOP_PALLETS], 10) || 0;
-  if (!pallets) return;
-  if (!partnerRec || !f['Is Partner Trip']) {
-    if (typeof showErrorToast === 'function') showErrorToast('Παλέτες αποθήκης: η παρτίδα δεν έχει συνεργάτη — καταχώρησε χειροκίνητα από το Ισοζύγιο', 'warn', 10000);
-    return;
-  }
-  const existing = await plFetch('/pallets/movements?order_stop_rec=' + encodeURIComponent(s.id));
+  if (!pallets) return _plLotSay(f, s, '0 παλέτες στο σημείο αποθήκης' + _PL_BY_HAND);
+  if (!partnerRec || !f['Is Partner Trip']) return _plLotSay(f, s, 'χωρίς συνεργάτη' + _PL_BY_HAND);
+  const byStop = '/pallets/movements?order_stop_rec=' + encodeURIComponent(s.id);
+  const existing = await plFetch(byStop);
   if ((existing.records || []).length) return;
-  await plFetch('/pallets/movements', { method: 'POST', body: {
-    movement_date: _plToday(),
-    counterparty_type: 'PARTNER',
-    partner_rec: partnerRec,
-    location_rec: (s.fields[F.STOP_LOCATION] || [])[0] || null,
-    event_type: 'PARTNER_PICKUP',
-    taken: 0, given: pallets,
-    order_stop_rec: s.id, order_rec: orderId
-  }});
+  try {
+    await plFetch('/pallets/movements', { method: 'POST', body: {
+      movement_date: _plToday(),
+      counterparty_type: 'PARTNER',
+      partner_rec: partnerRec,
+      location_rec: (s.fields[F.STOP_LOCATION] || [])[0] || null,
+      event_type: 'PARTNER_PICKUP',
+      taken: 0, given: pallets,
+      order_stop_rec: s.id, order_rec: orderId
+    }});
+  } catch (e) {
+    // A POST lost on the way back (timeout, dropped line) may have written
+    // the row. «Failed — enter it by hand» would then make the accountant
+    // write a second one: ask again by its stop before saying it (Σ2-07).
+    const again = await plFetch(byStop).catch(() => null);
+    if (again && (again.records || []).length) return;
+    throw e;
+  }
+}
+
+// Undo of «Παραλαβή αποθήκης» in the Ημερήσιο (critic-1 R2-4): the order went
+// back, the pending intake movement stayed — «given 33» in the accountant's
+// queue for goods that never arrived. It goes with the order's undo: only the
+// PENDING PARTNER_PICKUP of the lot's warehouse stop (any other row on that
+// stop is not the intake's). A confirmed one is history the accountant
+// signed: it is said, never deleted — the reversal is hers, in the Ισοζύγιο.
+async function plOnLotIntakeUndone(orderId) {
+  return _plSafe('αναίρεση κίνησης παλετών αποθήκης', async () => {
+    // Undo pressed while the intake is still writing: its row would land
+    // after this read and stay behind.
+    const busy = _plLotInFlight.get(orderId);
+    if (busy) await busy.catch(() => {});
+    const { rec, stops } = await _plLoadOrder(orderId, 'intl');
+    const s = rec && _plLotStop(stops);
+    if (!s) return;
+    const got = await plFetch('/pallets/movements?order_stop_rec=' + encodeURIComponent(s.id));
+    for (const m of (got.records || [])) {
+      if (m.event_type !== 'PARTNER_PICKUP') continue;
+      if (m.status === 'pending') await plFetch('/pallets/movements/' + m.id, { method: 'DELETE' });
+      else if (m.status === 'confirmed') _plLotSay(rec.fields, s, 'η κίνηση παλετών επιβεβαιώθηκε — αντιλογισμός από το Ισοζύγιο');
+    }
+  });
 }
 
 // ── Feeder §3.3: διεθνής ανάθεση σε partner (VS μόνο) ──
@@ -240,6 +311,7 @@ async function plOnOrderDeleted(orderId, source) {
 window.plFetch = plFetch;
 window.plOnOrderSaved = plOnOrderSaved;
 window.plOnDelivered = plOnDelivered;
+window.plOnLotIntakeUndone = plOnLotIntakeUndone;
 window.plOnIntlPartnerAssigned = plOnIntlPartnerAssigned;
 window.plOnExchangeOff = plOnExchangeOff;
 window.plOnOrderDeleted = plOnOrderDeleted;
