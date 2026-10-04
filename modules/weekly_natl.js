@@ -2206,8 +2206,8 @@ function _wnDropOnRow(e, rowId) {
 // carries the vehicle over, the same fields the assignment popover writes on
 // a matched ΑΝΟΔΟΣ, and ONLY when the ΑΝΟΔΟΣ has none: a vehicle already on
 // it is a decision somebody made and is never overwritten. 'Partner Rate' is
-// left out on purpose: one rate for the round trip vs one per leg is an open
-// owner decision (§8.5), so the match does not decide it.
+// left out on purpose: owner 4/10 (§8.5) — ONE rate for the round trip, on
+// the ΚΑΘΟΔΟΣ only (see _wnPairRate).
 function _wnVehicleForSn(row, snF) {
   if (!row || !row.saved || !snF) return null;
   if (getLinkedId(snF['Truck']) || getLinkedId(snF['Partner'])) return null;
@@ -2264,6 +2264,12 @@ async function _wnSaveMatch(rowId, snId) {
     }
     _wnSync('wn-sync-'+rowId,'ok','Αποθηκεύτηκε');
     toast('Σύνδεση αποθηκεύτηκε ✓');
+    // §8.5: a match writes no rate, but two legs that each already carry one
+    // now sit in one round trip and would count twice — say so, do not guess
+    // which amount is right.
+    const _rateOf = (list, id) => Number(((list || []).find(r => r.id === id) || {}).fields?.['Partner Rate']) || 0;
+    if (_rateOf(WNATL.data.northsouth, row.orderIds[0]) && _rateOf(WNATL.data.southnorth, snId))
+      toast('Κόμιστρο και στην κάθοδο και στην άνοδο — άνοιξε «Ανάθεση» και αποθήκευσε ΕΝΑ ποσό για όλο το round trip', 'warn');
   } catch(err) {
     _wnSync('wn-sync-'+rowId,'err','Η σύνδεση ΔΕΝ γράφτηκε στη βάση');
     toast('Σφάλμα σύνδεσης: '+err.message, 'warn');
@@ -2304,6 +2310,23 @@ async function _wnUnmatch(rowId, snId) {
 }
 
 /* ── POPOVER ─────────────────────────────────────────────────────── */
+// Owner 4/10 (§8.5, «Ναι»): ONE partner rate for the whole round trip,
+// written on the ΚΑΘΟΔΟΣ only. Until then the popover wrote the same rate on
+// both legs; from 5/10 migration 034 puts a matched pair in ONE RT and sums
+// national_loads.partner_rate per leg (ct_v_rt_costs → partner_planned), so
+// the first partner pair would have shown its cost twice in TRIP PnL — and
+// twice on the partner card (one PARTNER ASSIGNMENTS row per leg). A rate
+// already on the ΑΝΟΔΟΣ of a pair (written before 4/10) is read as the
+// round-trip rate when the ΚΑΘΟΔΟΣ has none, and moves to the ΚΑΘΟΔΟΣ on the
+// next save. A standalone ΑΝΟΔΟΣ is its own trip and keeps its own rate.
+function _wnPairRate(row) {
+  if (row.partnerRate) return row.partnerRate;
+  if (!row.matchedId) return '';
+  const sn = (WNATL.data.southnorth || []).find(r => r.id === row.matchedId);
+  const v = sn && sn.fields && sn.fields['Partner Rate'];
+  return v ? String(v) : '';
+}
+
 function _wnOpenPopover(e, rowId) {
   if(_wnBlockReadOnly()) return;
   e.stopPropagation();
@@ -2383,7 +2406,7 @@ function _wnOpenPopover(e, rowId) {
       <div class="wi-pop-row">
         <div class="wi-pop-field" style="flex:2"><span class="wi-pop-lbl">Εταιρεία</span>${mkDrop('pt',partners,row.partnerId,'Επωνυμία…')}</div>
         <div class="wi-pop-field" style="flex:0 0 150px"><span class="wi-pop-lbl">Πινακίδες</span><input class="wi-pop-inp" type="text" placeholder="π.χ. ΙΑΒ 1099" id="wn-pop-pp-${rowId}" value="${escapeHtml(row.partnerPlates||'')}"/></div>
-        <div class="wi-pop-field" style="flex:0 0 130px"><span class="wi-pop-lbl">Κόμιστρο €</span><input class="wi-pop-inp" type="number" step="0.01" placeholder="π.χ. 350" id="wn-pop-rate-${rowId}" value="${row.partnerRate||''}"/></div>
+        <div class="wi-pop-field" style="flex:0 0 130px"><span class="wi-pop-lbl"${row.matchedId?' title="Ένα ποσό για κάθοδο + άνοδο — γράφεται μόνο στην κάθοδο"':''}>Κόμιστρο €${row.matchedId?' · κάθοδος + άνοδος':''}</span><input class="wi-pop-inp" type="number" step="0.01" placeholder="π.χ. 350" id="wn-pop-rate-${rowId}" value="${_wnPairRate(row)}"/></div>
       </div>
     </div>
     <div id="wn-lane-${rowId}" class="wi-lane-hist"></div>
@@ -2533,7 +2556,9 @@ async function _wnSaveFromPopover(rowId) {
   }
   if (row.matchedId) {
     try {
-      const res = await atSafePatch(TABLES.NAT_LOADS, row.matchedId, _wnPlanFields(fields, liveSt[row.matchedId]));
+      // §8.5: the round-trip rate lives on the ΚΑΘΟΔΟΣ — the ΑΝΟΔΟΣ is cleared (see _wnPairRate)
+      const snFields = isPartner ? Object.assign({}, fields, { 'Partner Rate': null }) : fields;
+      const res = await atSafePatch(TABLES.NAT_LOADS, row.matchedId, _wnPlanFields(snFields, liveSt[row.matchedId]));
       if (res?.conflict) { toast('Η εγγραφή άλλαξε από άλλον χρήστη — γίνεται ανανέωση','warn'); await renderWeeklyNatl(); return; }
       if (res?.error) throw new Error(res.error.message||res.error.type);
     } catch(err) { errors.push('Άνοδος: '+err.message); }
@@ -2583,7 +2608,9 @@ async function _wnSaveFromPopover(rowId) {
       const rate = row.partnerRate ? parseFloat(row.partnerRate) : null;
       for (const loadId of allLoadIds) {
         const ex = _wnExecuted(liveSt[loadId]);
-        await paUpsert({ parentType:'nat_load', parentId:loadId, partnerId:row.partnerId, rate,
+        const snOfPair = loadId === row.matchedId;   // §8.5: rate on the ΚΑΘΟΔΟΣ row only
+        await paUpsert({ parentType:'nat_load', parentId:loadId, partnerId:row.partnerId,
+                         rate: snOfPair ? null : rate, clearRate: snOfPair,
                          status: ex ? liveSt[loadId] : 'Assigned', keepStatus: _wnKeepsPa(liveSt[loadId]) });
       }
     } else {
@@ -2742,8 +2769,10 @@ async function _wnRevertNoStatus(nlId) {
   }
 }
 // The one refusal left (owner 4/10/2026, «η ανάθεση δεν κλειδώνει ποτέ»):
-// only a Cancelled load is refused — whether a cancelled load may be planned
-// again is an OPEN owner question. Delivered was refused here since 14/9
+// only a Cancelled load is refused. Owner 4/10 (#4): national work has no
+// «Ακύρωση» — only «Διαγραφή», as international; no screen writes Cancelled
+// (0 live rows on 4/10), the value stays valid in the base for compatibility,
+// and this refusal stays as a safety net. Delivered was refused here since 14/9
 // («execution beats planning»); it now gets the confirm below instead.
 async function _wnDoneLive(id) {
   return _wnDoneOf(await _wnStatusLive(id));

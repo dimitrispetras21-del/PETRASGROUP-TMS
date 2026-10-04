@@ -96,7 +96,7 @@ function nlWindow(f) {
 async function openBoard(browser, opts = {}) {
   const ctx = await browser.newContext({ baseURL: BASE, viewport: { width: 1600, height: 1000 }, serviceWorkers: 'block' });
   const page = await ctx.newPage();
-  const db = seed(); if (opts.noLocations) db[T.LOC] = [];
+  const db = seed(); if (opts.noLocations) db[T.LOC] = []; if (opts.mutate) opts.mutate(db);
   const S = { db, writes: [], nlReads: [], errors: [], failGet: new Set() };
   page.on('pageerror', e => S.errors.push(String(e)));
   page.on('dialog', d => d.accept());
@@ -222,7 +222,7 @@ SECTIONS.push(async browser => {
   const vp = patchesTo(S, 'recNlsP00000000A').find(x => 'Partner' in x);
   ok(vp && vp.Partner[0] === 'recPartner00001A' && vp['Is Partner Trip'] === true && vp['Partner Truck Plates'] === 'ΙΑΒ 1099' && vp.Status === 'Assigned',
      'partner: PATCH on the ΑΝΟΔΟΣ = ' + JSON.stringify(vp));
-  ok(vp && !('Partner Rate' in vp) && !('Partner Rate' in nlOf(S, 'recNlsP00000000A')), 'partner: rate NOT copied (owner decision §8.5 open)');
+  ok(vp && !('Partner Rate' in vp) && !('Partner Rate' in nlOf(S, 'recNlsP00000000A')), 'partner: rate NOT copied (owner 4/10 §8.5: one rate, on the ΚΑΘΟΔΟΣ)');
   ok(S.errors.length === 0, 'no page errors: ' + S.errors.slice(0, 2).join(' | '));
   await page.context().close();
 
@@ -608,6 +608,71 @@ SECTIONS.push(async browser => {
     ok(paP.length > 0 && paP.every(x => !('Status' in x.body.fields) && !('Assignment Date' in x.body.fields)),
        'partner re-assign, status read failed → PA PATCH without Status/Assignment Date (not rewritten «Assigned»): ' + JSON.stringify(paP.map(x => x.body.fields)));
     ok(S.errors.length === 0, 'no page errors: ' + S.errors.slice(0, 2).join(' | '));
+    await page.context().close();
+  }
+});
+
+// ── owner 4/10 §8.5 · ONE partner rate per round trip, on the ΚΑΘΟΔΟΣ only ──
+SECTIONS.push(async browser => {
+  console.log('\n── owner 4/10 §8.5 · partner rate written on the ΚΑΘΟΔΟΣ only');
+  const nlP = x => x.filter(w => w.m === 'PATCH' && w.tid === T.NL);
+  const paP = x => x.filter(w => w.m === 'PATCH' && w.tid === T.PA);
+  // recNlC + recNlsC: partner pair, 400 on BOTH legs and on both PA rows (the pre-4/10 way)
+  {
+    const { page, S } = await openBoard(browser);
+    const rowId = await rowIdOf(page, 'recNlC000000000A');
+    await page.click(`#wn-row-${rowId} .wk3-assign`);
+    await page.waitForSelector(`#wn-pop-btn-${rowId}`, { timeout: 5000 });
+    ok(await page.$eval(`#wn-pop-rate-${rowId}`, el => el.value) === '400', 'pair: popover shows ONE rate (400)');
+    ok(/κάθοδος \+ άνοδος/.test(await page.$eval(`#wn-pop-rate-${rowId}`, el => el.previousElementSibling.textContent)), 'pair: label says the rate is for κάθοδος + άνοδος');
+    await page.fill(`#wn-pop-rate-${rowId}`, '450');
+    const before = S.writes.length;
+    await page.click(`#wn-pop-btn-${rowId}`); await page.waitForTimeout(2500);
+    const w = S.writes.slice(before);
+    const ns = nlP(w).find(x => x.rid === 'recNlC000000000A'), sn = nlP(w).find(x => x.rid === 'recNlsC00000000A');
+    ok(ns && ns.body.fields['Partner Rate'] === 450, 'ΚΑΘΟΔΟΣ load PATCH: Partner Rate 450');
+    ok(sn && 'Partner Rate' in sn.body.fields && sn.body.fields['Partner Rate'] === null && sn.body.fields.Partner[0] === 'recPartner00001A',
+       'ΑΝΟΔΟΣ load PATCH: same partner, Partner Rate null: ' + JSON.stringify(sn && sn.body.fields));
+    const pn = paP(w).find(x => x.rid === 'recPAnC000000001'), ps = paP(w).find(x => x.rid === 'recPAsC000000001');
+    ok(pn && pn.body.fields['Partner Rate'] === 450, 'ΚΑΘΟΔΟΣ PA row: rate 450');
+    ok(ps && 'Partner Rate' in ps.body.fields && ps.body.fields['Partner Rate'] === null, 'ΑΝΟΔΟΣ PA row: rate cleared (null): ' + JSON.stringify(ps && ps.body.fields));
+    const sum = ['recNlC000000000A', 'recNlsC00000000A'].reduce((a, id) => a + (Number(nlOf(S, id)['Partner Rate']) || 0), 0);
+    const paSum = S.db[T.PA].filter(r => ['recPAnC000000001', 'recPAsC000000001'].includes(r.id)).reduce((a, r) => a + (Number(r.fields['Partner Rate']) || 0), 0);
+    ok(sum === 450 && paSum === 450, `base: the pair carries 450 once — loads Σ ${sum}, PA rows Σ ${paSum} (034 sums per leg)`);
+    ok(S.errors.length === 0, 'no page errors: ' + S.errors.slice(0, 2).join(' | '));
+    await page.context().close();
+  }
+  // legacy pair: rate only on the ΑΝΟΔΟΣ → shown as the round-trip rate, moved to the ΚΑΘΟΔΟΣ on save
+  {
+    const { page, S } = await openBoard(browser, { mutate: db => { delete db[T.NL].find(r => r.id === 'recNlC000000000A').fields['Partner Rate']; } });
+    const rowId = await rowIdOf(page, 'recNlC000000000A');
+    await page.click(`#wn-row-${rowId} .wk3-assign`);
+    await page.waitForSelector(`#wn-pop-btn-${rowId}`, { timeout: 5000 });
+    ok(await page.$eval(`#wn-pop-rate-${rowId}`, el => el.value) === '400', 'rate only on the ΑΝΟΔΟΣ → popover shows it as the round-trip rate (400)');
+    await page.click(`#wn-pop-btn-${rowId}`); await page.waitForTimeout(2500);
+    ok(nlOf(S, 'recNlC000000000A')['Partner Rate'] === 400 && !('Partner Rate' in nlOf(S, 'recNlsC00000000A')), 'saved: 400 moved to the ΚΑΘΟΔΟΣ, ΑΝΟΔΟΣ empty');
+    await page.context().close();
+  }
+  // a standalone ΑΝΟΔΟΣ is its own trip: it keeps its own rate
+  {
+    const { page, S } = await openBoard(browser);
+    const before = S.writes.length;
+    await page.evaluate(() => { const r = WNATL.rows.find(x => x.type === 'southnorth' && x.orderId === 'recNlsD00000000A'); r.partnerId = 'recPartner00001A'; r.partnerRate = '180'; });
+    await page.evaluate(() => _wnSaveFromPopover(WNATL.rows.find(x => x.type === 'southnorth' && x.orderId === 'recNlsD00000000A').id));
+    await page.waitForTimeout(2500);
+    const d = nlP(S.writes.slice(before)).find(x => x.rid === 'recNlsD00000000A');
+    ok(d && d.body.fields['Partner Rate'] === 180, 'standalone ΑΝΟΔΟΣ: keeps its own rate (180)');
+    await page.context().close();
+  }
+  // match of two legs that each already carry a rate → heard, nothing guessed
+  {
+    const { page, S } = await openBoard(browser, { mutate: db => {
+      const sn = db[T.NL].find(r => r.id === 'recNlsP00000000A'); Object.assign(sn.fields, { Partner: ['recPartner00001A'], 'Is Partner Trip': true, 'Partner Rate': 300, Status: 'Assigned' });
+    } });
+    await dropOn(page, 'recNlsP00000000A', 'recNlP000000000A'); await settle(page);
+    const t = await page.evaluate(() => window.__toasts.map(x => x[0]).join(' | '));
+    ok(/Κόμιστρο και στην κάθοδο και στην άνοδο/.test(t), 'match of two rated legs → warning toast');
+    ok(!S.writes.some(w => w.m === 'PATCH' && w.body && w.body.fields && 'Partner Rate' in w.body.fields), 'match writes no Partner Rate');
     await page.context().close();
   }
 });

@@ -150,7 +150,7 @@ test('_wnUnassign (review 4/10 LOW b): unreadable status → vehicle cleared, PA
   assert.deepStrictEqual(paDeleted, ['s1']);
 });
 
-test('_wnUnassign: a Cancelled leg keeps its assignment and its PA row (still refused — open owner question)', async () => {
+test('_wnUnassign: a Cancelled leg keeps its assignment and its PA row (still refused — a net: owner 4/10, national has only «Διαγραφή», no screen writes Cancelled)', async () => {
   const { patches, paDeleted } = await runWnUnassign({ n1: 'Cancelled', s1: 'Assigned' }, { orderIds: ['n1'], matchedId: 's1' });
   assert.deepStrictEqual(patches.map(x => x.id), ['s1']);
   assert.deepStrictEqual(paDeleted, ['s1']);

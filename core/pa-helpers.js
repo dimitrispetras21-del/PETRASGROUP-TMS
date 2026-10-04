@@ -29,8 +29,9 @@ async function _paFindExisting(parentType, parentId) {
  * @param {string} [p.status='Assigned']  — initial status
  * @param {string|null} [p.notes]         — optional notes
  * @param {boolean} [p.keepStatus=false]  — on an EXISTING row, leave Status + Assignment Date as they are
+ * @param {boolean} [p.clearRate=false]   — write the rate as NULL (a null rate is otherwise left untouched)
  */
-async function paUpsert({ parentType, parentId, partnerId, rate = null, status = 'Assigned', notes = null, keepStatus = false }) {
+async function paUpsert({ parentType, parentId, partnerId, rate = null, status = 'Assigned', notes = null, keepStatus = false, clearRate = false }) {
   if (!parentType || !parentId || !partnerId) return null;
 
   const fields = {
@@ -41,6 +42,10 @@ async function paUpsert({ parentType, parentId, partnerId, rate = null, status =
   if (parentType === 'nat_load') fields[F.PA_NAT_LOAD] = [parentId];
   else                           fields[F.PA_ORDER]    = [parentId];
   if (rate != null && rate !== '') fields[F.PA_RATE] = parseFloat(rate);
+  // clearRate (owner 4/10 §8.5, weekly_natl): the ΑΝΟΔΟΣ of a partner pair
+  // carries no rate — one rate per round trip, on the ΚΑΘΟΔΟΣ. Without it an
+  // old per-leg rate would stay on the ΑΝΟΔΟΣ row and count twice.
+  else if (clearRate) fields[F.PA_RATE] = null;
   if (notes) fields[F.PA_NOTES] = notes;
 
   const existing = await _paFindExisting(parentType, parentId);
