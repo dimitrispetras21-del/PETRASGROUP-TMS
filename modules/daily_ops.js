@@ -731,6 +731,11 @@ function _opsSlots(rec, ctx) {
   // lie in the base — the only action is to complete it. Any role that may
   // act here (planning:full) may convert; the form enforces the six fields.
   if(isPreorder(f)) return `<div class="do-slots"><span class="do-slot"><button class="do-btn" onclick="event.stopPropagation();_opsConvert('${id}')">Μετατροπή</button></span></div>`;
+  // A stock piece with no truck (round-1 K6): today's loading is real work, so
+  // the row stays — but «Φορτώθηκε» would claim a load nobody made (the base
+  // refuses it, piece_no_truck). Its truck is chosen from the ΑΠΟΘΕΜΑ strip of
+  // the Weekly («+ Κομμάτι από απόθεμα…»), which is where the row points.
+  if(OrdersStock.isLoose(f)) return `<div class="do-slots"><span class="do-slot do-sub">χωρίς φορτηγό — από το ΑΠΟΘΕΜΑ του Εβδομαδιαίου</span></div>`;
   const done=st==='Delivered'||(isL&&st==='In Transit');
   if(done) return '';
   const slots=[];

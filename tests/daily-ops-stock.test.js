@@ -42,8 +42,9 @@ function fixtures() {
   return { day: [lot, imp, piece], ov: [loose1], ovL: [loose1, loose2, old, onTruck] };
 }
 
-function load() {
+function load(extra = {}) {
   const fx = fixtures();
+  if (extra.day) fx.day.push(...extra.day);
   const S = { calls: [], patches: [], toasts: [], content: { innerHTML: '' } };
   const clone = a => a.map(r => ({ id: r.id, fields: JSON.parse(JSON.stringify(r.fields)) }));
   const names = { recCLIA: 'Πελάτης Α', recCLIB: 'Πελάτης Β', recTRK1: 'ΑΒΓ-1234', recPRT1: 'Συνεργάτης Α' };
@@ -133,4 +134,15 @@ test('C-04: the piece loading row says «ΑΠ · 5p · παρτίδα #312»; an
   await ctx.renderDailyOps();
   assert.ok(/<span class="do-sl">ΑΠ · 5p · παρτίδα #312<\/span>/.test(rowOf(S.content.innerHTML, 'recPC10000000001')));
   assert.ok(!/παρτίδα/.test(rowOf(S.content.innerHTML, 'recIMP0000000001')));
+});
+
+test('round-1 K6: a loose piece loading TODAY stays visible but offers no «Φορτώθηκε» — it points to the Weekly ΑΠΟΘΕΜΑ', async () => {
+  const looseToday = { id: 'recPC50000000005', fields: { Direction: 'Import', Client: ['recCLIA'], 'Loading DateTime': TODAY, 'Delivery DateTime': dayOff(2), Status: 'Pending', 'Total Pallets': 2, 'Stock Lot': ['recSTOCKLOT1'], 'Stock Lot Order No': 312 } };
+  const { ctx, S } = load({ day: [looseToday] });
+  await ctx.renderDailyOps();
+  const row = rowOf(S.content.innerHTML, 'recPC50000000005');
+  assert.ok(row, 'the row is gone — today\'s work must stay visible');
+  assert.ok(!/Φορτώθηκε/.test(row), 'a truckless piece offers «Φορτώθηκε»');
+  assert.ok(/χωρίς φορτηγό — από το ΑΠΟΘΕΜΑ του Εβδομαδιαίου/.test(row));
+  assert.ok(/Φορτώθηκε/.test(rowOf(S.content.innerHTML, 'recPC10000000001')) || /Φορτώθηκε ✓/.test(rowOf(S.content.innerHTML, 'recPC10000000001')), 'a piece ON a truck keeps its action');
 });
