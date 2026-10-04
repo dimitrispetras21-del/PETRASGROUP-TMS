@@ -2622,7 +2622,7 @@ function _wiRowHTML(row,i){
       ? _wiPreLeg(imp,`<button class="wk3-unm" title="Αφαίρεση ταιριάσματος" onclick="event.stopPropagation();_wiUnmatch('${imp.id}')">×</button>`)
       : `${iload}<span class="wi2-arrow">→</span>${idel}`;
   } else if(gapCell){
-    impInner=`<div class="wi2-gapbox${urg?' urg':''}" title="Κενό γυρισμού — ιδιόκτητος γύρος χωρίς φορτίο επιστροφής${urg?` · ΕΠΕΙΓΟΝ: παράδοση ${_wi2When(pf,today)}, χωρίς εισαγωγή`:''}. Κλικ: νέα παραγγελία εισαγωγής (ή σύρε υπάρχουσα εισαγωγή εδώ)">ΚΕΝΟ IMPORT${urg?`<small>ΕΠΕΙΓΟΝ</small>`:''}</div>`;
+    impInner=`<div class="wi2-gapbox${urg?' urg':''}" title="Κενό γυρισμού — ιδιόκτητος γύρος χωρίς φορτίο επιστροφής${urg?` · ΕΠΕΙΓΟΝ: παράδοση ${_wi2When(pf,today)}, χωρίς εισαγωγή`:''}. Κλικ: νέα παραγγελία εισαγωγής (ή σύρε υπάρχουσα εισαγωγή εδώ)">ΚΕΝΟ IMPORT${urg?`<small>ΕΠΕΙΓΟΝ</small>`:''}<span class="wi2-gapstk" data-row="${row.id}">${_wiStockGapLink(row)}</span></div>`;
   } else if(parCell){
     impInner=`<div class="wi2-void navy" title="Ανατεθειμένο σε συνεργάτη — δεν αναμένεται δικό μας σκέλος επιστροφής"></div>`;
   } else {
@@ -6311,6 +6311,7 @@ function _wiShelfPaint(){
   box.innerHTML=_wiShelfInner(st);
   host.classList.toggle('has-shelf',_wiShelfHas(st));
   _wiStockTipsRefresh();
+  _wiStockGapLinksRefresh();
   requestAnimationFrame(_wiShelfFit);
 }
 
@@ -6488,6 +6489,23 @@ async function _wiStockLooseOpen(anchor){
        <div class="wi-panel-note dim">Σε φορτηγό: δεξί κλικ στη γραμμή του φορτηγού → «+ Κομμάτι από απόθεμα…».</div>`
     : `<div class="wi-panel-empty">Κανένα κομμάτι χωρίς φορτηγό</div>`;
   _wiPanelOpen(anchor,'Κομμάτια χωρίς φορτηγό',`${WINTL._stkPieces.length} σε όλες τις εβδομάδες`,body,'');
+}
+
+// C1-05 (critic-1, round 1): an empty return trip is filled from its «ΚΕΝΟ
+// IMPORT» box — a click there opened a plain new import, and a warehouse
+// pickup typed that way is invoiced twice (the form only warns). With an open
+// lot that has pallets left, the box also offers the stock panel; a board
+// without stock looks exactly as before. Same gates as the menu item
+// (_wiStockCtxItem). Filled again by _wiShelfPaint: the shelf is read after
+// the board's first paint.
+function _wiStockGapLink(row){
+  if(!_wiStockOn()||!OrdersStock.canWrite()||!row||!row.truckId||row.partnerId||row.splitLegOf||row.hasSplitLegs||row.legOf) return '';
+  const st=WINTL.data.stock;
+  if(!st||st.status!=='ok'||!(st.lots||[]).some(l=>+(l.fields?.['Remaining Pallets']||0)>0&&!l.fields?.['Ops Status'])) return '';
+  return `<button type="button" class="wi2-gapstk-b" onclick="event.stopPropagation();_wiStockPanel(${row.id})" title="Κομμάτι από παρτίδα σε αποθήκη, σε αυτό το φορτηγό">ή κομμάτι από ΑΠΟΘΕΜΑ</button>`;
+}
+function _wiStockGapLinksRefresh(){
+  document.querySelectorAll('#wi-rows .wi2-gapstk[data-row]').forEach(el=>{ el.innerHTML=_wiStockGapLink(WINTL.rows.find(r=>r.id===+el.dataset.row)); });
 }
 
 // «+ Κομμάτι από απόθεμα…» (§6.4). Φ1: our own trucks only — no entry at all
