@@ -762,7 +762,7 @@ async function _openNatlModal(recId, f) {
   if (!_fhLocationsArr.length) {
     if (typeof logError === 'function') logError(locErr || new Error('locations read returned 0 records'), 'orders_natl: form locations');
     toast('Οι τοποθεσίες δεν φορτώθηκαν — η φόρμα δεν άνοιξε, γιατί η αναζήτηση σημείου θα έδειχνε κενό. Ξαναδοκίμασε σε λίγο.', 'danger');
-    return;
+    return false;   // the scan v2 caller must not leave its file pending for no form
   }
   const isEdit = !!recId;
   const clientId  = Array.isArray(f['Client'])           ? f['Client'][0]           : '';
@@ -2167,7 +2167,10 @@ async function _natlScanOpenFormV2(r) {
   window._natlScanPending = { docType: data._docType || 'CARRIER_ORDER', summary: window._natlScanFile?.name || '', ai: data };
 
   closeModal();
-  await _openNatlModal(null, f);
+  // Refused (locations did not load): no form, so nothing may stay pending —
+  // a _scanPendingDoc set below would attach this scan's file to the NEXT
+  // hand-typed national order (core/ui.js closeModal explains the hazard).
+  if ((await _openNatlModal(null, f)) === false) return;
 
   // _openNatlModal only pre-fills row 1's pallets/date from `f` (its own
   // single-delivery shortcut) — _simRows holds the uids it just created, in

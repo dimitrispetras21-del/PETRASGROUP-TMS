@@ -16,7 +16,7 @@
 // recording. tests/critics/auth.js supplies only the session + page bridge.
 // Run from a checkout root that has node_modules + .har (symlinks are fine):
 //   PW_BASE_URL=http://127.0.0.1:<port>/ node tests/critics/natl-form-locations-rig.js
-// Exit 1 on any ✗ (main 54be60af: A and B fail; the fix: all pass).
+// Exit 1 on any ✗ (main 54be60af: A, B and C fail — 2/11; the fix: 11/11).
 const { chromium } = require('playwright');
 const path = require('path');
 const { preparePage, gotoPage } = require(path.resolve(__dirname, 'auth.js'));
