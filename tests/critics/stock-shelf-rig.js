@@ -36,6 +36,18 @@
 // import (B-22), no «Σπάσιμο σκέλους» on a piece or lot (B-28), no [Διαγραφή]
 // on a matched piece (DL-06), and the three data-independent changes proven
 // with FEATURES.STOCK_LOTS = false (G-42).
+//
+// Round 1 (critics 1/3/4/5, 4/10) adds: the compact chip and a flag only for a
+// problem (W1), the red flag only from «Pieces Moving» (D3, absent → no red),
+// «ΑΠΟΘΕΜΑ · N» lists every lot, the loose button hidden at 0 and «εκπρόθεσμα»
+// (C1-02); the lot panel without repeats or zero lines, close primary only
+// when asked, «Άνοιγμα παρτίδας» (W2); the lot badge without pallets (W3); the
+// words (W4); a re-read of the lead before the join, lost answers decided by a
+// read, no join on a truckless lead (W5, Σ-01/Σ-07); D1 — a stale Group ID is
+// not a truck (W6); a lot on our own truck gets the lot menu (W7); a DB refusal
+// on screen once (W8, D2); prints (W9: C4-06, C4-07, K11); the auto-match
+// count and no piece in a rewritten suffix (W10: K9, K10); «ή κομμάτι από
+// ΑΠΟΘΕΜΑ» in an empty return box (W11, C1-05).
 const path = require('path'), fs = require('fs');
 const ROOT = path.join(__dirname, '../..');
 const req = m => require(require.resolve(m, { paths: [process.cwd(), ROOT] }));
@@ -81,8 +93,13 @@ function bridge(route) {
 }
 
 // ── in-memory facade ─────────────────────────────────────────────────────────
+const athensYmd = d => { if (!d) return ''; const t = new Date(d); return isNaN(t) ? '' : t.toLocaleDateString('sv-SE', { timeZone: 'Europe/Athens' }); };
 function makeFacade() {
-  const F = { orders: {}, lots: {}, writes: [], unknown: [], failLots: false, refuse: null, refusePost: null, seq: 0, rt: null, costsOther: [] };
+  // noMoving: the Worker does not serve «Pieces Moving» yet (D3 fallback).
+  // lose: {recId, n} — the PATCH lands but its answer is lost n times (Σ-07);
+  // loseNextPost: the same for the next created piece's first PATCHes.
+  const F = { orders: {}, lots: {}, writes: [], unknown: [], failLots: false, refuse: null, refusePost: null, seq: 0, rt: null, costsOther: [],
+    noMoving: false, lose: null, loseNextPost: false };
   const nos = {}; let nextNo = 1000;
   F.no = id => { const m = /LOT[A-Z]0*(\d+)$/.exec(id); return m ? +m[1] : (nos[id] || (nos[id] = ++nextNo)); };
   const isEmpty = v => v == null || (Array.isArray(v) && !v.length);
@@ -90,7 +107,6 @@ function makeFacade() {
   const link = v => Array.isArray(v) ? v[0] : (v || null);
   const lotOfOrder = id => Object.values(F.lots).find(l => link(l.fields.Order) === id);
   const pieces = lotId => Object.values(F.orders).filter(o => !o.deleted && link(o.fields['Stock Lot']) === lotId);
-  const matchedBy = id => Object.values(F.orders).some(o => !o.deleted && o.fields['Matched Import ID'] === id);
   // Read shape of the facade: NULL / empty links are ABSENT (CLAUDE.md trap 2),
   // computed labels come from the read view.
   F.read = o => {
@@ -114,8 +130,11 @@ function makeFacade() {
     f['Drawn Pallets'] = drawn; f['Remaining Pallets'] = f['Stock Pallets'] - drawn;
     f['Pieces'] = ps.length;
     f['Pieces Delivered'] = ps.filter(p => p.fields.Status === 'Delivered').length;
-    f['Pieces Without Truck'] = ps.filter(p => !link(p.fields.Truck) && !link(p.fields.Partner)
-      && !String(p.fields['Group ID'] || '').trim() && !matchedBy(p.id) && p.fields.Status !== 'Delivered').length;
+    // D1 (round 1): on a truck = Truck or Partner, nothing else (stock_v_pieces.on_truck).
+    f['Pieces Without Truck'] = ps.filter(p => !link(p.fields.Truck) && !link(p.fields.Partner) && p.fields.Status !== 'Delivered').length;
+    // D3 (round 1): stock_v_lots.pieces_moving — In Transit/Delivered with a
+    // loading day before today (the S-06 threshold); absent while not served.
+    if (!F.noMoving) f['Pieces Moving'] = ps.filter(p => ['In Transit', 'Delivered'].includes(p.fields.Status) && athensYmd(p.fields['Loading DateTime']) < athensYmd(new Date())).length;
     f['Complete'] = false; f['Invoiced'] = false;
     for (const k of Object.keys(f)) if (f[k] == null) delete f[k];
     return { id: l.id, fields: f };
@@ -194,6 +213,12 @@ async function installRoutes(page, F) {
     if (m === 'GET') { const o = F.orders[recId]; return o && !o.deleted ? send(200, F.read(o)) : send(404, { error: { type: 'NOT_FOUND', message: 'not found' } }); }
     const body = r.postDataJSON ? r.postDataJSON() : null;
     F.writes.push({ m, table, recId: recId || null, fields: body && body.fields });
+    // A write that LANDS but whose answer is lost (Σ-07): applied, then the
+    // connection fails — core/api.js retries and finally throws.
+    if (F.lose && F.lose.recId === recId && m === 'PATCH' && F.lose.n > 0) {
+      F.lose.n--; F.patch(recId, body.fields || {}); F.lost = (F.lost || 0) + 1;
+      return route.abort('failed');
+    }
     // A DB refusal on demand: the Worker's 422 STOCK_RULE (contract §4.4).
     if (F.refuse && F.refuse.recId === recId && m === 'PATCH') {
       const e = F.refuse; F.refuse = null;
@@ -201,7 +226,7 @@ async function installRoutes(page, F) {
     }
     if (m === 'PATCH') { const rec = F.patch(recId, body.fields || {}); return rec ? send(200, rec) : send(404, { error: { type: 'NOT_FOUND' } }); }
     if (m === 'POST' && F.refusePost) { const e = F.refusePost; F.refusePost = null; return send(422, { error: { type: 'STOCK_RULE', code: e.code, message: e.message } }); }
-    if (m === 'POST') return send(200, F.create(body.fields || {}));
+    if (m === 'POST') { const rec = F.create(body.fields || {}); if (F.loseNextPost) { F.loseNextPost = false; F.lose = { recId: rec.id, n: 3 }; } return send(200, rec); }
     if (m === 'DELETE') { if (F.orders[recId]) F.orders[recId].deleted = true; return send(200, { id: recId, deleted: true }); }
     return route.fallback();
   });
@@ -237,12 +262,29 @@ function buildStore(F, ref, opts) {
   F.lots.recRIGSTOCKLOTA1 = { id: 'recRIGSTOCKLOTA1', fields: { Order: ['recRIGLOTA0000312'], 'Lot No': 312, 'Source Kind': 'intl', Reference: 'LOT-A', 'Source Notes': 'Η αποθήκη μέτρησε 31 αντί για 33 (2 σπασμένες)', 'Client Rec': C1, 'Client Name': ref.clientName[C1], 'Warehouse Rec': WH, 'Warehouse Name': ref.locName[WH], 'Warehouse City': ref.locCity[WH], 'Warehouse Country': ref.locCountry[WH], 'Intake Status': 'Delivered', 'Intake Delivered': true, 'Received On': ref.receivedA, 'Stock Pallets': 33 } };
   // Piece P2 of lot A inside E4's import group (not in the suffix → last).
   o('recRIGP2000000002', Object.assign({ Direction: 'Import', Client: [C1], 'Stock Lot': ['recRIGSTOCKLOTA1'], 'Loading DateTime': d(3), 'Delivery DateTime': d(5), 'Loading Pallets 1': 5, 'Loading Location 1': [WH], 'Unloading Location 1': [L1], 'Group ID': 'GI-RIGRET|recRIGI4000000004', Reference: 'TEST-STOCK-P2' }, veh(T4, D4)));
-  // Loose piece P3 of lot A (no truck, no group).
-  o('recRIGP3000000003', { Direction: 'Import', Client: [C1], 'Stock Lot': ['recRIGSTOCKLOTA1'], 'Loading DateTime': d(5, 7), 'Delivery DateTime': d(6), 'Loading Pallets 1': 4, 'Loading Location 1': [WH], 'Unloading Location 1': [L3], Reference: 'TEST-STOCK-P3' });
+  // Loose piece P3 of lot A (no truck, no group). opts.noLoose: none at all.
+  if (!opts.noLoose) o('recRIGP3000000003', { Direction: 'Import', Client: [C1], 'Stock Lot': ['recRIGSTOCKLOTA1'], 'Loading DateTime': d(5, 7), 'Delivery DateTime': d(6), 'Loading Pallets 1': 4, 'Loading Location 1': [WH], 'Unloading Location 1': [L3], Reference: 'TEST-STOCK-P3' });
   // Lot B (#318): not received yet, but a piece is already moving → «nointake».
   o('recRIGLOTB0000318', { Direction: 'Import', Client: [C2], 'Loading DateTime': d(-9), 'Delivery DateTime': d(-8), 'Loading Pallets 1': 24, 'Loading Location 1': [L3], 'Unloading Location 1': [WH2], Partner: [PA2], 'Is Partner Trip': true, Status: 'Assigned' });
   F.lots.recRIGSTOCKLOTB1 = { id: 'recRIGSTOCKLOTB1', fields: { Order: ['recRIGLOTB0000318'], 'Lot No': 318, 'Source Kind': 'intl', Reference: 'LOT-B', 'Client Rec': C2, 'Client Name': ref.clientName[C2], 'Warehouse Rec': WH2, 'Warehouse Name': ref.locName[WH2], 'Warehouse City': ref.locCity[WH2], 'Warehouse Country': ref.locCountry[WH2], 'Intake Status': 'Assigned', 'Intake Delivered': false, 'Stock Pallets': 24 } };
   o('recRIGP4000000004', Object.assign({ Direction: 'Import', Client: [C2], 'Stock Lot': ['recRIGSTOCKLOTB1'], 'Loading DateTime': d(-2), 'Delivery DateTime': d(-1), 'Loading Pallets 1': 6, 'Loading Location 1': [WH2], 'Unloading Location 1': [L2], Reference: 'TEST-STOCK-P4' }, veh(T5, D1), { Status: 'In Transit' }));
+  // Lot D (#325): not received yet, its one piece only ASSIGNED to a truck for
+  // a later day — normal planning, no red (critic-1 C1-01, D3).
+  o('recRIGLOTD0000325', { Direction: 'Import', Client: [C1], 'Loading DateTime': d(1), 'Delivery DateTime': d(2), 'Loading Pallets 1': 12, 'Loading Location 1': [L3], 'Unloading Location 1': [WH2], Partner: [PA1], 'Is Partner Trip': true, Status: 'Assigned' });
+  F.lots.recRIGSTOCKLOTD1 = { id: 'recRIGSTOCKLOTD1', fields: { Order: ['recRIGLOTD0000325'], 'Lot No': 325, 'Source Kind': 'intl', Reference: 'LOT-D', 'Client Rec': C1, 'Client Name': ref.clientName[C1], 'Warehouse Rec': WH2, 'Warehouse Name': ref.locName[WH2], 'Warehouse City': ref.locCity[WH2], 'Warehouse Country': ref.locCountry[WH2], 'Intake Status': 'Assigned', 'Intake Delivered': false, 'Stock Pallets': 12 } };
+  o('recRIGP7000000007', Object.assign({ Direction: 'Import', Client: [C1], 'Stock Lot': ['recRIGSTOCKLOTD1'], 'Loading DateTime': d(12), 'Delivery DateTime': d(13), 'Loading Pallets 1': 4, 'Loading Location 1': [WH2], 'Unloading Location 1': [L2], Reference: 'TEST-STOCK-P7' }, veh(T2, D2)));
+  if (opts.r1) {
+    // Round 1 (W5/W6/C1-02): two more lone matched pairs (E7/I9, E8/I10), a
+    // Case B export (E9), a loose piece whose delivery day passed (P8) and a
+    // loose piece left with the Group ID of a deleted lead (P9, Σ-04).
+    o('recRIGE7000000007', Object.assign({ Direction: 'Export', Client: [C1], 'Loading DateTime': d(1), 'Delivery DateTime': d(2), 'Loading Pallets 1': 16, 'Loading Location 1': [L1], 'Unloading Location 1': [L2], 'Matched Import ID': 'recRIGI9000000009', Reference: 'EXP-7' }, veh(T3, D3)));
+    o('recRIGI9000000009', Object.assign({ Direction: 'Import', Client: [C2], 'Loading DateTime': d(3), 'Delivery DateTime': d(5), 'Loading Pallets 1': 14, 'Loading Location 1': [L2], 'Unloading Location 1': [L1], Reference: 'IMP-9' }, veh(T3, D3)));
+    o('recRIGE8000000008', Object.assign({ Direction: 'Export', Client: [C2], 'Loading DateTime': d(1), 'Delivery DateTime': d(3), 'Loading Pallets 1': 18, 'Loading Location 1': [L1], 'Unloading Location 1': [L3], 'Matched Import ID': 'recRIGIA000000010', Reference: 'EXP-8' }, veh(T5, D4)));
+    o('recRIGIA000000010', Object.assign({ Direction: 'Import', Client: [C1], 'Loading DateTime': d(4), 'Delivery DateTime': d(6), 'Loading Pallets 1': 12, 'Loading Location 1': [L3], 'Unloading Location 1': [L1], Reference: 'IMP-10' }, veh(T5, D4)));
+    o('recRIGE9000000009', Object.assign({ Direction: 'Export', Client: [C1], 'Loading DateTime': d(2), 'Delivery DateTime': d(4), 'Loading Pallets 1': 20, 'Loading Location 1': [L1], 'Unloading Location 1': [L3], Reference: 'EXP-9' }, veh(T4, D1)));
+    o('recRIGP8000000008', { Direction: 'Import', Client: [C1], 'Stock Lot': ['recRIGSTOCKLOTA1'], 'Loading DateTime': d(-5), 'Delivery DateTime': d(-4), 'Loading Pallets 1': 2, 'Loading Location 1': [WH], 'Unloading Location 1': [L2], Reference: 'TEST-STOCK-P8' });
+    o('recRIGP9000000009', { Direction: 'Import', Client: [C1], 'Stock Lot': ['recRIGSTOCKLOTA1'], 'Loading DateTime': d(3), 'Delivery DateTime': d(5), 'Loading Pallets 1': 3, 'Loading Location 1': [WH], 'Unloading Location 1': [L3], 'Group ID': 'GI-DEAD|recRIGDEAD0000001', Reference: 'TEST-STOCK-P9' });
+  }
   if (opts.extra) {
     // Export lot #330 on our own truck (a lot's row offers no split, prints «→ ΑΠΟΘΗΚΗ»).
     o('recRIGLOTE0000330', Object.assign({ Direction: 'Export', Client: [C1], 'Loading DateTime': d(2), 'Delivery DateTime': d(3), 'Loading Pallets 1': 14, 'Loading Location 1': [L1], 'Unloading Location 1': [WH] }, veh(T5, D2)));
@@ -284,8 +326,9 @@ async function installStubs(page, switchOff) {
       try { rec = await atCreate(TABLES.ORDERS, fields); }
       catch (e) { window.__rig.toasts.push('form refused: ' + (e && e.message)); return; }
       const ctx = presets && presets.context;
-      // a case may age the context / leave the page before the hook runs
-      if (typeof window.__rig.beforeHook === 'function') window.__rig.beforeHook(ctx);
+      // a case may age the context / leave the page / change the lead (via
+      // window.__rigSet, a node binding) before the hook runs
+      if (typeof window.__rig.beforeHook === 'function') await window.__rig.beforeHook(ctx);
       if (typeof window._wiOnPieceSaved === 'function') await window._wiOnPieceSaved(rec.id, fields, ctx);
       await renderWeeklyIntl();
     };
@@ -319,6 +362,13 @@ async function openBoard(browser, role, F, opts) {
   page.on('dialog', d => d.accept());
   await preparePage(page, role);
   await installRoutes(page, F);
+  // Round 1 (Σ-01): a case changes the SERVER's copy of an order while the
+  // piece form is open — the page calls this binding from beforeHook.
+  await page.exposeFunction('__rigSet', (id, field, val) => {
+    const o = F.orders[id]; if (!o) return false;
+    if (val == null || (Array.isArray(val) && !val.length)) delete o.fields[field]; else o.fields[field] = val;
+    return true;
+  });
   await gotoPage(page, 'weekly_intl', baseURL);
   await page.locator('#sidebar').waitFor({ timeout: 20000 });
   await page.waitForFunction(() => typeof WINTL !== 'undefined' && typeof renderWeeklyIntl === 'function', null, { timeout: 20000 });
@@ -417,6 +467,62 @@ if (MAIN) (async () => {
     ok('shelf_top_right', side.rightGap <= 16 && side.leftShare >= 0.24 && side.firstWhole && side.leftFade !== false && side.leftFadeOffAtStart, side);
     await shot(page, 'stock-shelf-2lots-compact-header-1440.png'); out.screens.push('stock-shelf-2lots-compact-header-1440.png');
 
+    // W1 (round 1): «▣ Αποθήκη · Πελάτης 18/24p» — no bar, no country code, no
+    // days — and a flag only for a problem; the label is a button counting
+    // the lots that need a look. D3: red ONLY from «Pieces Moving» (lot B: a
+    // piece In Transit before the intake); lot D's piece is merely ASSIGNED
+    // before its intake → no flag (C1-01).
+    const w1 = await page.evaluate(() => {
+      const el = document.getElementById('wi-shelf'), list = el.querySelector('.wi-shelf-list').getBoundingClientRect();
+      const chip = id => { const c = el.querySelector(`.wi-shelf-chip[data-lot="${id}"]`); if (!c) return null;
+        const r = c.getBoundingClientRect();
+        return { cls: c.className, n: (c.querySelector('.n') || {}).textContent, fl: (c.querySelector('.fl') || {}).textContent || '', kids: [...c.children].map(k => k.tagName + (k.className ? '.' + k.className : '')).join(' '),
+          w: Math.round(r.width), whole: r.left >= list.left - 1 && r.right <= list.right + 1 }; };
+      const lbl = el.querySelector('.wi-shelf-lbl');
+      return { lbl: lbl && lbl.textContent.replace(/\s+/g, ' ').trim(), lblTag: lbl && lbl.tagName,
+        bar: !!el.querySelector('.wi-shelf-bar'), cc: !!el.querySelector('.wi-shelf-chip .cc'), days: !!el.querySelector('.wi-shelf-chip .d'),
+        a: chip('recRIGSTOCKLOTA1'), b: chip('recRIGSTOCKLOTB1'), d: chip('recRIGSTOCKLOTD1') };
+    });
+    const whole = [w1.a, w1.b, w1.d].filter(c => c && c.whole).length;
+    ok('w1_chip_compact', !w1.bar && !w1.cc && !w1.days && w1.a && /^\d+\/\d+p$/.test(w1.a.n || '') && !w1.a.fl
+      && w1.a.kids === 'SPAN B SPAN.sep B.n', w1);
+    // The urgent chip is always whole; with real names (HAR reference data)
+    // one more fits only from 1920 — names are never cut (DESIGN Κ6), so the
+    // label's list is what shows every lot at 1440.
+    ok('w1_chips_fit', w1.b && w1.b.whole && whole >= (RIG_W >= 1920 ? 2 : 1), { whole, widths: [w1.a, w1.b, w1.d].map(c => c && c.w) });
+    ok('w1_label_button_flag_count', w1.lblTag === 'BUTTON' && w1.lbl === 'ΑΠΟΘΕΜΑ · 3 · 1 ⚠', w1.lbl);
+    ok('d3_red_only_from_pieces_moving', w1.b && /nointake/.test(w1.b.cls) && w1.b.fl === 'σε κίνηση χωρίς παραλαβή', w1.b);
+    ok('c101_assigned_before_intake_no_flag', w1.d && /\bok\b/.test(w1.d.cls) && !w1.d.fl, w1.d);
+
+    // «ΑΠΟΘΕΜΑ · N» opens EVERY lot, the urgent first; a line opens its lot.
+    await page.locator('#wi-shelf .wi-shelf-lbl').click(); await page.waitForTimeout(400);
+    const all = await page.evaluate(() => ({ title: (document.querySelector('#wi-panel .wi-panel-title') || {}).textContent,
+      lines: [...document.querySelectorAll('#wi-panel .wi-stk-opt[data-lot]')].map(b => b.dataset.lot + ' | ' + b.innerText.replace(/\s+/g, ' ')) }));
+    await shot(page, 'stock-shelf-all-lots-1440.png'); out.screens.push('stock-shelf-all-lots-1440.png');
+    let allOpen = '';
+    if (all.lines.length) { await page.locator('#wi-panel .wi-stk-opt[data-lot="recRIGSTOCKLOTA1"]').click(); await page.waitForTimeout(700);
+      allOpen = await page.evaluate(() => (document.querySelector('#wi-panel .wi-panel-title') || {}).textContent || ''); }
+    ok('w1_label_lists_all_lots', all.title === 'Ανοιχτές παρτίδες' && all.lines.length === 3 && all.lines[0].startsWith('recRIGSTOCKLOTB1')
+      && /σε κίνηση χωρίς παραλαβή/.test(all.lines[0]) && /^#312 · /.test(allOpen), { all, allOpen });
+
+    // W2: lot A's panel — the pieces' header from the read, no «(0 παραδόθηκαν)»;
+    // «+ Κομμάτι» primary, no close (pieces still out); «Άνοιγμα παρτίδας»
+    // opens the lot ORDER by id. Lot B: the problem said ONCE.
+    const pA = await page.evaluate(() => { const p = document.getElementById('wi-panel');
+      return { ctx: (p.querySelector('.wi-panel-ctx') || {}).innerText || '', text: p.innerText.replace(/\s+/g, ' '),
+        btns: [...p.querySelectorAll('.wi-panel-ft button')].map(b => b.textContent.trim() + ' [' + b.className + ']') }; });
+    const openedLot = await page.evaluate(async () => { const o = window.openIntlEditWith, got = [];
+      window.openIntlEditWith = id => got.push(id);
+      try { const b = document.querySelector('#wi-panel .wi-stk-link'); if (b) { b.click(); await new Promise(r => setTimeout(r, 400)); } } finally { window.openIntlEditWith = o; }
+      return got; });
+    ok('w2_lot_panel_once_no_zero', /^.+ · υπόλοιπο \d+\/33p · παραλαβή [^·]*\d/.test(pA.ctx) && /Άνοιγμα παρτίδας/.test(pA.ctx)
+      && /Κομμάτια · 2 /.test(pA.text + ' ') && !/παραδόθηκαν/.test(pA.text) && pA.btns.length === 1 && /^\+ Κομμάτι \[btn btn-primary\]$/.test(pA.btns[0])
+      && openedLot.join() === 'recRIGLOTA0000312', { pA, openedLot });
+    await page.evaluate(() => _wiStockLotOpen(document.querySelector('#wi-shelf .wi-shelf-lbl'), 'recRIGSTOCKLOTB1')); await page.waitForTimeout(800);
+    const panB = await page.evaluate(() => document.getElementById('wi-panel').innerText.replace(/\s+/g, ' '));
+    ok('w2_problem_said_once', (panB.match(/παραλαβή/g) || []).length === 1 && /1 κομμάτι κινείται, αλλά η παραλαβή στην αποθήκη δεν σημειώθηκε/.test(panB), panB.slice(0, 300));
+    await page.evaluate(() => _wiPanelClose());
+
     // Counters: the lot row and the loose piece are not «unmatched».
     const counters = await page.evaluate(() => {
       const btn = [...document.querySelectorAll('.wk3-sub .wi2-btn')].find(b => /Αυτόματο ταίριασμα/.test(b.textContent));
@@ -435,6 +541,7 @@ if (MAIN) (async () => {
       lastTile: (() => { const p = [...document.querySelectorAll('.wk3-segpill')].find(x => x.querySelector('[data-order-id="recRIGP2000000002"]')); const s = p ? [...p.querySelectorAll('.wk3-seg[data-order-id]')] : []; return s.length ? s[s.length - 1].dataset.orderId : null; })(),
     }));
     ok('badges', badges.apTile.length >= 1 && /Κομμάτι 5\/33p · παρτίδα #312/.test(badges.apTile[0]) && /ΑΠΟΘΗΚΗ/.test(badges.lot || '') && badges.lastTile === 'recRIGP2000000002', badges);
+    ok('w3_lot_badge_no_pallets', badges.lot === '→ ΑΠΟΘΗΚΗ', badges.lot);
 
     // B-19: the loose piece P3 lives on the shelf only — no board row, not in
     // «ΕΙΣΑΓΩΓΗ · N», and «ΚΕΝΑ ΓΥΡΙΣΜΑΤΑ» lights neither it nor a lot row.
@@ -487,9 +594,22 @@ if (MAIN) (async () => {
     const rE3 = await rowIdOf(page, 'recRIGE3000000003');
     await page.evaluate(r => _wiStockPanel(r), rE3); await page.waitForTimeout(400);
     const panel = await page.locator('#wi-panel').innerText();
-    ok('panel_free_space', /Ελεύθερος χώρος εισαγωγής: 33 − 0 = 33p/.test(panel) && /#312/.test(panel) && /Κομμάτια χωρίς φορτηγό/.test(panel), panel.replace(/\n/g, ' | '));
+    // S5-08 (round 1): one line «Ελεύθερα 33p (ενδεικτικά)», no arithmetic
+    // sentence or disclaimer, no empty section.
+    ok('panel_free_space', /Ελεύθερα 33p \(ενδεικτικά\)/.test(panel) && !/33 − 0|Το 33 είναι|Κανένα/.test(panel) && /#312/.test(panel) && /Κομμάτια χωρίς φορτηγό/.test(panel) && /υπόλοιπο \d+p/.test(panel), panel.replace(/\n/g, ' | '));
     await shot(page, 'stock-panel-add-piece-1440.png'); out.screens.push('stock-panel-add-piece-1440.png');
     await page.evaluate(() => _wiPanelClose());
+
+    // W11 (C1-05): E3's «ΚΕΝΟ IMPORT» box offers the stock; the link opens the
+    // «+ Κομμάτι από απόθεμα» panel of THAT row, never a new plain import.
+    const gap = await page.evaluate(async r => {
+      const b = document.querySelector(`#wi-ci-${r} .wi2-gapstk-b`); const n = window.__rig.pieceCalls.length;
+      if (b) { b.click(); await new Promise(x => setTimeout(x, 400)); }
+      const t = (document.querySelector('#wi-panel .wi-panel-title') || {}).textContent || '';
+      _wiPanelClose();
+      return { link: b ? b.textContent : null, box: (document.querySelector(`#wi-ci-${r}`) || {}).innerText, panel: t, rowPick: (WINTL._stkPick || {}).rowId === r, forms: window.__rig.pieceCalls.length - n };
+    }, rE3);
+    ok('c105_gap_box_offers_stock', gap.link === 'ή κομμάτι από ΑΠΟΘΕΜΑ' && gap.panel === '+ Κομμάτι από απόθεμα' && gap.rowPick && gap.forms === 0, gap);
 
     // Case A — lone import (B-04): the POST creates the piece WITHOUT group and
     // vehicle, THEN the lead gets «GI-…|lead», THEN the piece gets that exact
@@ -532,7 +652,14 @@ if (MAIN) (async () => {
     await join(page, 'recRIGE2000000002', 'lot', 'recRIGSTOCKLOTA1');
     await page.waitForTimeout(1500);
     const wG = writesSince(F, n0);
-    ok('caseA_group_untouched', !wG.some(w => w.m === 'PATCH' && /recRIGI[23]/.test(w.rec || '')) && wG.some(w => w.m === 'POST' && w.fields['Group ID'] === 'GI-RIGGRP|recRIGI2000000002,recRIGI3000000003'), wG);
+    // Σ-01 (round 1): the POST carries no group and no vehicle; ONE patch
+    // after a fresh read of the lead puts the piece on the truck.
+    const newG = (F.created || []).slice(-1)[0];
+    const postG = wG.find(w => w.m === 'POST'), patchG = wG.find(w => w.m === 'PATCH' && w.rec === newG);
+    ok('caseA_group_untouched', !wG.some(w => w.m === 'PATCH' && /recRIGI[23]/.test(w.rec || '')) && F.orders[newG].fields['Group ID'] === 'GI-RIGGRP|recRIGI2000000002,recRIGI3000000003', wG);
+    ok('sigma01_group_post_bare_then_one_patch', postG && !('Group ID' in postG.fields) && !(postG.fields.Truck || []).length && postG.fields.Status === 'Pending'
+      && patchG && patchG.fields['Group ID'] === 'GI-RIGGRP|recRIGI2000000002,recRIGI3000000003' && patchG.fields.Status === 'Assigned'
+      && JSON.stringify(patchG.fields.Truck) === JSON.stringify(F.orders.recRIGI2000000002.fields.Truck), { postG, patchG });
     undo.caseA_group = await undoOf(page);
 
     // Reorder, then «Ακύρωση groupage» of the member the export POINTS at (not
@@ -565,6 +692,10 @@ if (MAIN) (async () => {
     ok('reorder_then_cancel_pointed_member', seg.lead === 'recRIGI3000000003' && seg.ptr === 'recRIGI2000000002'
       && e2['Matched Import ID'] === 'recRIGI3000000003' && !String(i2['Group ID'] || '') && !i2.Truck,
       { seg, e2ptr: e2['Matched Import ID'], i2, writes: writesSince(F, n0).map(w => w.rec + ' ' + JSON.stringify(w.fields)) });
+    // K10 (round 1): the residue left after I2 went is [I3, piece] — the
+    // suffix pins I3 only; the piece carries the same string and stays last.
+    const g3 = F.orders.recRIGI3000000003.fields['Group ID'], gP = F.orders[newG].fields['Group ID'];
+    ok('k10_residue_never_pins_a_piece', g3 === 'GI-RIGGRP|recRIGI3000000003' && gP === g3, { g3, gP });
 
     // Case B — POST (no Group ID), then the export's Matched Import ID, then the vehicle.
     // The hook runs 35 minutes after the panel opened: the old 30-minute guard
@@ -610,6 +741,8 @@ if (MAIN) (async () => {
     await page.waitForTimeout(1200);
     const wR = writesSince(F, n0).filter(w => w.rec === 'recRIGP2000000002');
     ok('return_to_stock_payload', wR.length === 1 && wR[0].fields['Group ID'] === null && Array.isArray(wR[0].fields.Truck) && !wR[0].fields.Truck.length && wR[0].fields.Status === 'Pending', wR);
+    const tR = await page.evaluate(() => window.__rig.toasts.slice(-3));
+    ok('w4_return_toast', tR.includes('success: Επέστρεψε στο απόθεμα ✓') && !tR.some(t => /Αφαιρέθηκε από το groupage/.test(t)), tR);
     undo.return_group = await undoOf(page);
 
     // A DB refusal reaches the screen in Greek, with ⚠ on the row.
@@ -619,8 +752,12 @@ if (MAIN) (async () => {
     const before = JSON.stringify(F.orders.recRIGP2000000002.fields);
     await join(page, 'recRIGE1000000001', 'piece', 'recRIGP2000000002');
     await page.waitForTimeout(1500);
-    const refusal = await page.evaluate(r => ({ toasts: window.__rig.toasts.slice(-4), sync: (document.getElementById('wi-sync-' + r) || {}).textContent }), rE1b);
+    const refusal = await page.evaluate(r => ({ toasts: window.__rig.toasts.slice(-4), sync: (document.getElementById('wi-sync-' + r) || {}).textContent, tip: (document.getElementById('wi-sync-' + r) || {}).title }), rE1b);
     ok('db_refusal_greek', refusal.toasts.some(t => /Η παρτίδα έκλεισε/.test(t)) && refusal.sync === '⚠' && JSON.stringify(F.orders.recRIGP2000000002.fields) === before, refusal);
+    // D2 (round 1): the DB's sentence on screen ONCE (core/api.js); the
+    // Weekly adds only what happened. The row's ⚠ keeps the reason.
+    ok('d2_refusal_said_once', refusal.toasts.filter(t => /Η παρτίδα έκλεισε/.test(t)).length === 1
+      && refusal.toasts.some(t => /^error: Το κομμάτι ΔΕΝ μπήκε στο φορτηγό — έμεινε στο απόθεμα/.test(t)) && /Η παρτίδα έκλεισε/.test(refusal.tip || ''), refusal);
     await shot(page, 'stock-db-refusal-1440.png'); out.screens.push('stock-db-refusal-1440.png');
 
     // B-04 (b): E3's import is now the lone matched piece newB. «+ Κομμάτι»
@@ -712,9 +849,12 @@ if (MAIN) (async () => {
   }
 
   // 2) management — shelf visible, chip panel without buttons, no menus.
+  //    The Worker here does NOT serve «Pieces Moving» (D3 fallback): no red.
   {
-    const F = makeFacade();
+    const F = makeFacade(); F.noMoving = true;
     const { ctx, page } = await openBoard(browser, 'management', F);
+    const nm = await page.evaluate(() => [...document.querySelectorAll('#wi-shelf .wi-shelf-chip')].map(c => c.dataset.lot + ' ' + c.className));
+    ok('d3_label_absent_no_red', nm.length === 3 && !nm.some(c => /nointake/.test(c)), nm);
     await page.locator('.wi-shelf-chip').first().click(); await page.waitForTimeout(900);
     const m = await page.evaluate(() => ({ shelf: !!document.getElementById('wi-shelf'), buttons: [...document.querySelectorAll('#wi-panel .wi-panel-ft button, #wi-panel .wi2-unlink')].map(b => b.textContent.trim()) }));
     ok('management_read_only', m.shelf && !m.buttons.length, m);
@@ -746,11 +886,19 @@ if (MAIN) (async () => {
   //    but «Κλείσιμο υπολοίπου…» IS offered (else its one invoice never comes).
   {
     const F = makeFacade();
-    const { ctx, page } = await openBoard(browser, 'dispatcher', F, { zeroLot: true });
+    const { ctx, page } = await openBoard(browser, 'dispatcher', F, { zeroLot: true, noLoose: true });
+    // W1 (S5-01): no loose piece anywhere → no «0 κομμάτια χωρίς φορτηγό».
+    const lz = await page.evaluate(() => ({ btn: !!document.querySelector('#wi-shelf .wi-shelf-loose'), text: (document.getElementById('wi-shelf') || {}).innerText }));
+    ok('w1_loose_hidden_at_zero', !lz.btn && !/χωρίς φορτηγό/.test(lz.text || ''), lz);
     await page.locator('.wi-shelf-chip[data-lot="recRIGSTOCKLOTC1"]').click(); await page.waitForTimeout(900);
     const z = await page.evaluate(() => ({ chip: (document.querySelector('.wi-shelf-chip[data-lot="recRIGSTOCKLOTC1"]') || {}).className,
       buttons: [...document.querySelectorAll('#wi-panel .wi-panel-ft button')].map(b => b.textContent.trim()),
+      cls: [...document.querySelectorAll('#wi-panel .wi-panel-ft button')].map(b => b.textContent.trim() + ' [' + b.className + ']'),
       text: document.getElementById('wi-panel').innerText.replace(/\s+/g, ' ').slice(0, 260) }));
+    // W2 (C1-04, S5-07): a fresh lot with no piece — no zero lines, «+ Κομμάτι»
+    // is the main action and «Κλείσιμο υπολοίπου…» only a ghost (offered).
+    ok('w2_zero_lot_close_not_primary', z.cls.includes('+ Κομμάτι [btn btn-primary]') && z.cls.includes('Κλείσιμο υπολοίπου… [btn btn-ghost]')
+      && !/Κομμάτια ·|Κανένα κομμάτι|0 παραδόθηκαν/.test(z.text), z);
     await shot(page, 'stock-lot-zero-pieces-close-1440.png'); out.screens.push('stock-lot-zero-pieces-close-1440.png');
     // A missing button is a red check, never a crash before RESULT.
     let modal = '';
@@ -758,7 +906,9 @@ if (MAIN) (async () => {
       await page.locator('#wi-panel .wi-panel-ft button', { hasText: 'Κλείσιμο υπολοίπου' }).click(); await page.waitForTimeout(500);
       modal = await page.evaluate(() => (document.getElementById('modal') || {}).innerText || '');
     }
-    ok('zero_piece_lot_closable', !/ close/.test(z.chip || '') && z.buttons.includes('Κλείσιμο υπολοίπου…') && /Μένουν 10 παλέτες/.test(modal), { z, modal: modal.replace(/\s+/g, ' ').slice(0, 200) });
+    // The modal's words are OrdersStock's (round 1 O1 names a no-piece close
+    // «ΟΛΗ η παρτίδα»); the rig accepts both the old and the new sentence.
+    ok('zero_piece_lot_closable', !/ close/.test(z.chip || '') && z.buttons.includes('Κλείσιμο υπολοίπου…') && /Μένουν 10 παλέτες|ΟΛΗ η παρτίδα \(10 παλέτες\)/.test(modal), { z, modal: modal.replace(/\s+/g, ' ').slice(0, 200) });
     await ctx.close();
   }
 
@@ -770,12 +920,37 @@ if (MAIN) (async () => {
     const { ctx, page } = await openBoard(browser, 'dispatcher', F, { extra: true });
     const rowOf = oid => rowIdOf(page, oid);
 
+    // K9 (round 1): «Αυτόματο ταίριασμα (N)» = what the auto-match will take:
+    // unmatched import rows holding no lot and no piece. The truckless group
+    // I7 + P6 is unmatched but never auto-matched — it is not in N.
+    const k9 = await page.evaluate(() => {
+      const btn = [...document.querySelectorAll('.wk3-sub .wi2-btn')].find(b => /Αυτόματο ταίριασμα/.test(b.textContent));
+      const stockIn = r => (r.orderIds || [r.orderId]).some(id => { const x = WINTL.data.imports.find(i => i.id === id); return !!x && (OrdersStock.isPiece(x.fields) || OrdersStock.isLot(x.fields)); });
+      const want = WINTL.rows.filter(r => r.type === 'import' && !r.matchedTo && !stockIn(r)).map(r => r.orderId);
+      return { btn: btn ? btn.textContent.trim() : null, n: btn ? +((/\((\d+)\)/.exec(btn.textContent) || [])[1]) : 0, want };
+    });
+    ok('k9_auto_match_count_is_what_it_takes', k9.n === k9.want.length && !k9.want.includes('recRIGI7000000007'), k9);
+
+    // C4-06 (round 1): the import-only group's ⎙I (I7 + P6) has the share
+    // menu query, like the matched export row's.
+    const c406 = await page.evaluate(() => { const b = document.querySelector('#wi-imp-recRIGI7000000007 .wk3-prt.r'); return b ? { shq: b.dataset.shq || null, title: b.title } : null; });
+    ok('c406_import_only_group_share', !!c406 && /^orderIds=recRIGI7000000007,recRIGP6000000006&leg=import&sheet=driver$/.test(c406.shq || ''), c406);
+
     // PR-10: the week's paper lists every member of a truck's import group,
     // «ΑΠ» before a piece; a lot row says «→ ΑΠΟΘΗΚΗ».
     const pw = await page.evaluate(() => { const n = window.__rig.printed.length; _wiPrintWeek(); return (window.__rig.printed[n] || {}).html || ''; });
     const pwRows = pw.split('<tr>').slice(1);
     const e4 = pwRows.find(r => /ΙΔ\./.test(r) && /<br>ΑΠ /.test(r)) || '';
     ok('pr10_week_print_members', !!e4 && (e4.match(/<br>/g) || []).length === 1 && pwRows.some(r => /→ ΑΠΟΘΗΚΗ/.test(r)), { e4: e4.replace(/\s+/g, ' ').slice(0, 400), lotRows: pwRows.filter(r => /ΑΠΟΘΗΚΗ/.test(r)).length });
+    // C4-07 (round 1): the paper's «N εισαγωγές» is the board's «ΕΙΣΑΓΩΓΗ · N».
+    const hdrN = await page.evaluate(() => (/ΕΙΣΑΓΩΓΗ\s*·\s*(\d+)/.exec([...document.querySelectorAll('.wk3-cols .c')].map(c => c.textContent).join(' ')) || [])[1]);
+    const pwN = (/(\d+) εισαγωγές/.exec(pw) || [])[1];
+    ok('c407_week_print_counts_board_imports', !!pwN && pwN === hdrN, { pwN, hdrN });
+    // K11 (round 1): the export column is never blank — «Loading/Delivery
+    // Summary» is not a facade field; the board's place chain fills it.
+    const routes = pwRows.map(r => (r.split('<td')[2] || '').replace(/^[^>]*>/, '').replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim());
+    const blank = routes.filter(t => { const [a, b] = t.split(' → '); return !a || a === '—' || !b || /^(—|·|$)/.test(b.trim()); });
+    ok('k11_week_print_route_not_blank', routes.length > 0 && !blank.length, { routes: routes.slice(0, 4), blank });
 
     // B-25/PR-11: CSV «Απόθεμα» column and a filled «Order No».
     await page.evaluate(() => _wiExportCSV()); await page.waitForTimeout(500);
@@ -811,7 +986,7 @@ if (MAIN) (async () => {
       return { toasts: t, writes: writesSince(F, n0).length }; };
     const dropLoose = await drop('recRIGP3000000003', 'recRIGE5000000005');
     const dropGroup = await drop('recRIGI4000000004', 'recRIGE5000000005');
-    const own = r => r.writes === 0 && r.toasts.some(t => /Φ1: κομμάτι μόνο σε δικό μας φορτηγό/.test(t));
+    const own = r => r.writes === 0 && r.toasts.some(t => /Κομμάτι αποθέματος μόνο σε δικό μας φορτηγό/.test(t) && !/Φ1/.test(t));
     ok('b05_no_piece_on_partner', own(popE4) && own(popI7) && own(dropLoose) && own(dropGroup), { popE4, popI7, dropLoose, dropGroup });
 
     // B-09: a row holding a piece offers no «Groupage εισαγωγών», no
@@ -830,6 +1005,9 @@ if (MAIN) (async () => {
     const mLot = await ctxMenu(page, `_wiCtx(${fakeEv},${await rowOf('recRIGLOTE0000330')})`);
     const mE6 = await ctxMenu(page, `_wiCtx(${fakeEv},${await rowOf('recRIGE6000000006')})`);
     ok('b28_no_split_on_piece_or_lot', !/Σπάσιμο σκέλους/.test(mP4) && !/Σπάσιμο σκέλους/.test(mLot) && /Σπάσιμο σκέλους/.test(mE6), { mP4, mLot, mE6 });
+    // W7 (Σ-05, round 1): a lot on OUR truck (#330) is still a lot — the lot
+    // menu, never grouping, rota or merge (the DB refuses them: lot_grouped).
+    ok('w7_own_truck_lot_gets_lot_menu', /ΠΑΡΤΙΔΑ → ΑΠΟΘΗΚΗ/.test(mLot) && !/Ομαδοποίηση|ρότα|Συγχώνευση|Καθαρισμός ανάθεσης/.test(mLot), mLot);
 
     // DL-06: in lot #312's panel, P5 (Case B import of E3, no vehicle yet)
     // has no [Διαγραφή]; the truly loose P3 has.
@@ -851,6 +1029,21 @@ if (MAIN) (async () => {
     ok('b22_no_case_a_on_moving_import', live.writes === 0 && live.forms === 0 && live.toasts.some(t => /σε κίνηση — όχι νέο κομμάτι/.test(t))
       && /disabled: .*\+ Κομμάτι από απόθεμα… \[σε κίνηση — όχι νέο κομμάτι\]/.test(mE4), { live, mE4 });
     await shot(page, 'stock-round0-extra-1440.png'); out.screens.push('stock-round0-extra-1440.png');
+
+    // W6 / D1 (round 1): P6 sits in the truckless group GI-RIGOFF with I7. A
+    // group is not a truck: the shelf lists it «χωρίς φορτηγό», the «+ Κομμάτι»
+    // panel offers it, and the join OVERWRITES its old group (Σ-04).
+    await page.evaluate(() => _wiStockLooseOpen(document.body)); await page.waitForTimeout(300);
+    const p6line = await page.evaluate(() => { const el = [...document.querySelectorAll('#wi-panel .wi-stk-piece')].find(x => (x.getAttribute('onclick') || '').includes('recRIGP6000000006')); _wiPanelClose(); return el ? el.innerText.replace(/\s+/g, ' ') : null; });
+    const rE1x = await rowOf('recRIGE1000000001');
+    const offered = await page.evaluate(r => { _wiStockPanel(r); const ids = ((WINTL._stkPick || {}).loose || []).map(p => p.id); _wiPanelClose(); return ids; }, rE1x);
+    let d1err = '';
+    const n7 = F.writes.length;
+    try { await join(page, 'recRIGE1000000001', 'piece', 'recRIGP6000000006'); await page.waitForTimeout(1500); } catch (e) { d1err = String(e.message || e); }
+    const p6 = F.orders.recRIGP6000000006.fields, i1g = F.orders.recRIGI1000000001.fields['Group ID'];
+    ok('d1_truckless_group_piece_is_loose_and_joinable', /· χωρίς φορτηγό ·/.test(p6line || '') && offered.includes('recRIGP6000000006') && !d1err
+      && !!i1g && /\|recRIGI1000000001$/.test(i1g) && p6['Group ID'] === i1g && JSON.stringify(p6.Truck) === JSON.stringify(F.orders.recRIGI1000000001.fields.Truck),
+      { p6line, offered, d1err, i1g, p6g: p6['Group ID'], writes: writesSince(F, n7).map(w => w.m + ' ' + w.rec + ' ' + JSON.stringify(w.fields || {})) });
     await ctx.close();
   }
 
@@ -882,6 +1075,101 @@ if (MAIN) (async () => {
     await page.waitForTimeout(600);
     ok('g42_off_pointer_follows_lead', F.orders.recRIGE2000000002.fields['Matched Import ID'] === 'recRIGI3000000003', F.orders.recRIGE2000000002.fields);
     await shot(page, 'stock-switch-off-1440.png'); out.screens.push('stock-switch-off-1440.png');
+    await ctx.close();
+  }
+
+  // 8) Round 1 — the join against a server that moves (critic-3 Σ-01/Σ-07),
+  //    D1 in Case B (a stale group is cleared before the match) and the loose
+  //    pieces whose delivery day passed (critic-1 C1-02).
+  {
+    const F = makeFacade();
+    const { ctx, page, ref } = await openBoard(browser, 'dispatcher', F, { r1: true });
+    const [T1, , , , T5] = ref.trucks, [, , D3] = ref.drivers;
+    const toastsSince = n => page.evaluate(k => window.__rig.toasts.slice(k), n);
+    const nT = () => page.evaluate(() => window.__rig.toasts.length);
+
+    // C1-02: P8 (loose, delivery 4 days ago) — the button says it, warn; the
+    // list marks the line.
+    const late = await page.evaluate(() => { const b = document.querySelector('#wi-shelf .wi-shelf-loose'); return b ? { text: b.textContent.trim(), cls: b.className } : null; });
+    await page.evaluate(() => _wiStockLooseOpen(document.querySelector('#wi-shelf .wi-shelf-loose'))); await page.waitForTimeout(300);
+    const p8line = await page.evaluate(() => { const el = [...document.querySelectorAll('#wi-panel .wi-stk-piece')].find(x => (x.getAttribute('onclick') || '').includes('recRIGP8000000008')); return el ? el.innerText.replace(/\s+/g, ' ') : null; });
+    await shot(page, 'stock-loose-late-1440.png'); out.screens.push('stock-loose-late-1440.png');
+    await page.evaluate(() => _wiPanelClose());
+    ok('c102_loose_late_said', !!late && late.text === '3 κομμάτια χωρίς φορτηγό · 1 εκπρόθεσμο' && /\blate\b/.test(late.cls) && /εκπρόθεσμο/.test(p8line || ''), { late, p8line });
+    // D1: P9 (stale «GI-DEAD|…», no truck) lives on the shelf, not as a board row.
+    const p9row = await page.evaluate(() => !!document.getElementById('wi-imp-recRIGP9000000009'));
+    ok('d1_stale_group_piece_on_shelf_not_board', !p9row, { p9row });
+
+    // Σ-07b: the lone lead's lock LANDS but its answer is lost → the board
+    // reads I1, finds the lock, and joins P3 (it used to stop: «η σειρά ΔΕΝ
+    // γράφτηκε», the lead left in a one-member group, the piece on the shelf).
+    F.lose = { recId: 'recRIGI1000000001', n: 3 };
+    let t0 = await nT();
+    await join(page, 'recRIGE1000000001', 'piece', 'recRIGP3000000003'); await page.waitForTimeout(6500);
+    const g1 = F.orders.recRIGI1000000001.fields['Group ID'], p3f = F.orders.recRIGP3000000003.fields;
+    let tt = await toastsSince(t0);
+    ok('sigma07b_lost_lock_answer_read_back', !!g1 && p3f['Group ID'] === g1 && JSON.stringify(p3f.Truck) === JSON.stringify(F.orders.recRIGI1000000001.fields.Truck)
+      && tt.some(t => /^success: Το κομμάτι μπήκε στο φορτηγό ✓/.test(t)) && !tt.some(t => /ΔΕΝ γράφτηκε|ΔΕΝ μπήκε/.test(t)), { g1, p3g: p3f['Group ID'], tt });
+    F.lose = null;
+
+    // Σ-07a: a new piece on E7's lone lead I9 — the join patch LANDS, its
+    // answer is lost → said as on the truck, the lead's lock kept.
+    F.loseNextPost = true;
+    t0 = await nT();
+    await join(page, 'recRIGE7000000007', 'lot', 'recRIGSTOCKLOTA1'); await page.waitForTimeout(6500);
+    const new7 = (F.created || []).slice(-1)[0], n7f = F.orders[new7].fields, g9 = F.orders.recRIGI9000000009.fields['Group ID'];
+    tt = await toastsSince(t0);
+    ok('sigma07a_lost_join_answer_is_on_truck', !!g9 && n7f['Group ID'] === g9 && JSON.stringify(n7f.Truck) === JSON.stringify(F.orders.recRIGI9000000009.fields.Truck)
+      && !tt.some(t => /ΧΩΡΙΣ φορτηγό|ΔΕΝ μπήκε|ΠΡΟΣΟΧΗ/.test(t)), { new7, g9, n7g: n7f['Group ID'], tt });
+    F.lose = null; F.loseNextPost = false;
+
+    // Σ-01 (driver): while the form is open, E2's lead I2 gets ANOTHER driver
+    // → the one join patch carries the NEW driver (it used to POST the old
+    // one, which rt_sync_from_order then wrote over the whole round trip).
+    let n8 = F.writes.length;
+    await page.evaluate(d => { window.__rig.beforeHook = async () => { await window.__rigSet('recRIGI2000000002', 'Driver', [d]); }; }, D3);
+    await join(page, 'recRIGE2000000002', 'lot', 'recRIGSTOCKLOTA1'); await page.waitForTimeout(1500);
+    await page.evaluate(() => { window.__rig.beforeHook = null; });
+    const newD = (F.created || []).slice(-1)[0], wD1 = writesSince(F, n8);
+    const postD = wD1.find(w => w.m === 'POST'), patchD = wD1.find(w => w.m === 'PATCH' && w.rec === newD);
+    ok('sigma01_new_driver_written', postD && !(postD.fields.Driver || []).length && !(postD.fields.Truck || []).length
+      && patchD && JSON.stringify(patchD.fields.Driver) === JSON.stringify([D3]) && JSON.stringify(F.orders[newD].fields.Driver) === JSON.stringify([D3]), { postD, patchD });
+
+    // Σ-01 (truck): while the form is open, E8's lead I10 moves to another
+    // truck → no lock, no join: the piece waits on the shelf, said why.
+    n8 = F.writes.length; t0 = await nT();
+    await page.evaluate(t => { window.__rig.beforeHook = async () => { await window.__rigSet('recRIGIA000000010', 'Truck', [t]); }; }, T1);
+    await join(page, 'recRIGE8000000008', 'lot', 'recRIGSTOCKLOTA1'); await page.waitForTimeout(1500);
+    await page.evaluate(() => { window.__rig.beforeHook = null; });
+    const newT = (F.created || []).slice(-1)[0], wT = writesSince(F, n8);
+    tt = await toastsSince(t0);
+    ok('sigma01_truck_changed_no_join', wT.length === 1 && wT[0].m === 'POST' && !F.orders.recRIGIA000000010.fields['Group ID'] && !F.orders[newT].fields.Truck
+      && tt.some(t => /^error: Το κομμάτι αποθηκεύτηκε ΧΩΡΙΣ φορτηγό \(το φορτηγό της εισαγωγής άλλαξε στο μεταξύ\)/.test(t)), { wT: wT.map(w => w.m + ' ' + w.rec + ' ' + JSON.stringify(w.fields)), tt });
+
+    // Σ-07c: E4's import lead I4 has NO truck on the server (the board still
+    // shows one) → refused before any write; no form opens.
+    delete F.orders.recRIGI4000000004.fields.Truck;
+    n8 = F.writes.length; t0 = await nT();
+    const forms0 = await page.evaluate(() => window.__rig.pieceCalls.length);
+    await join(page, 'recRIGE4000000004', 'lot', 'recRIGSTOCKLOTA1'); await page.waitForTimeout(1200);
+    tt = await toastsSince(t0);
+    ok('sigma07c_truckless_lead_refused', writesSince(F, n8).length === 0 && (await page.evaluate(() => window.__rig.pieceCalls.length)) === forms0
+      && tt.some(t => /δεν έχει φορτηγό στη βάση — πρώτα ανάθεση — δεν γράφτηκε τίποτα/.test(t)), { tt, writes: writesSince(F, n8) });
+
+    // D1, Case B: P9 still carries «GI-DEAD|…». Joined to E9 (own truck, no
+    // import), its group is cleared FIRST — else the match would copy the
+    // vehicle to whatever group that string names.
+    await page.evaluate(async () => { invalidateCache(TABLES.ORDERS); await renderWeeklyIntl(); }); await page.waitForTimeout(1200);
+    n8 = F.writes.length;
+    let cbErr = '';
+    try { await join(page, 'recRIGE9000000009', 'piece', 'recRIGP9000000009'); await page.waitForTimeout(2000); } catch (e) { cbErr = String(e.message || e); }
+    const wB9 = writesSince(F, n8);
+    const iClr = wB9.findIndex(w => w.m === 'PATCH' && w.rec === 'recRIGP9000000009' && w.fields && w.fields['Group ID'] === null);
+    const iMatch = wB9.findIndex(w => w.m === 'PATCH' && w.rec === 'recRIGE9000000009' && w.fields && w.fields['Matched Import ID'] === 'recRIGP9000000009');
+    const p9 = F.orders.recRIGP9000000009.fields;
+    ok('d1_caseB_stale_group_cleared_before_match', !cbErr && iClr >= 0 && iMatch > iClr && !('Group ID' in p9) && !!p9.Truck,
+      { cbErr, iClr, iMatch, writes: wB9.map(w => w.m + ' ' + w.rec + ' ' + JSON.stringify(w.fields || {})) });
+    await shot(page, 'stock-r1-joins-1440.png'); out.screens.push('stock-r1-joins-1440.png');
     await ctx.close();
   }
 
