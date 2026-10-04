@@ -381,9 +381,16 @@ function toast(msg, type = 'success') {
     warn: '<svg width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 4v7M10 14v1"/></svg>',
     info: '<svg width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2"><circle cx="10" cy="10" r="7"/><path d="M10 7v4M10 14v0"/></svg>',
   };
-  el.style.background = colors[type] || colors.success;
+  // 37 call sites pass 'error' (or 'err'), which had no entry here and fell
+  // back to success: refusals and failures showed GREEN with a check mark —
+  // the «green toast that lies» (CLAUDE.md principle 2). Aliases map them to
+  // danger; any other unknown type is neutral info, never success.
+  const kind = { error: 'danger', err: 'danger', warning: 'warn' }[type] || type;
+  const shown = colors[kind] ? kind : 'info';
+  if (!colors[kind]) console.warn('toast: unknown type', type);
+  el.style.background = colors[shown];
   el.style.color = 'var(--text-on-dark)';
-  el.innerHTML = (icons[type] || icons.success) + `<span>${msg}</span>`;
+  el.innerHTML = icons[shown] + `<span>${msg}</span>`;
   // Animate in
   requestAnimationFrame(() => {
     el.style.transform = 'translateY(0)';
