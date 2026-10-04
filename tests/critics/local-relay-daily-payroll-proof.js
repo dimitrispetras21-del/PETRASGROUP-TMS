@@ -22,8 +22,9 @@
 //              (other tractor + other trailer) · delivered → «Παραδόθηκε από
 //              τοπικό …» · groupage of 3 with 2 relays «ΤΟΠ. 2/3» · export
 //              loading relay + confirm text · overdue zone · FOUR sections ·
-//              relay request separate from OPS_FIELDS · panel stub called with
-//              (orderId, kind, {onSaved}) · missing panel = visible toast ·
+//              relay request separate from OPS_FIELDS (Relay.loadForOrders) ·
+//              REAL Relay.openPanel in the app modal: prefilled, PATCH, read-back,
+//              re-read, dropped label said, Enter, Άκυρο · missing panel = toast ·
 //              warehouse sees, cannot open, no amounts · failed read / no
 //              «Move Kind» = visible zone, day still renders
 //   Μισθοδοσία local line label, no ↗, Διόρθωση only (no Ακύρωση, no
@@ -176,7 +177,10 @@ function recordIds(formula) { return [...String(formula).matchAll(/RECORD_ID\(\)
 const strip = r => ({ id: r.id, createdTime: r.createdTime, fields: r.fields });
 
 async function installStubs(page, opts = {}) {
-  const cap = { moves: [], orders: [], ledgerGets: 0, patches: [], drivers: [] };
+  const cap = { moves: [], orders: [], ledgerGets: 0, patches: [], drivers: [], lmPatches: [], lmReads: [], dropLabels: [] };
+  // Per page: the end-to-end save below writes into its own copy, so no
+  // other scenario sees a time it did not set.
+  const moves = MOVES.map(r => ({ ...r, fields: { ...r.fields } }));
   const ledger = freshLedger();
   const json = (route, body, status = 200) => route.fulfill({ status, contentType: 'application/json',
     headers: { 'access-control-allow-origin': route.request().headers()['origin'] || '*' }, body: JSON.stringify(body) });
@@ -186,6 +190,24 @@ async function installStubs(page, opts = {}) {
     const p = u.pathname;
     const f = u.searchParams.get('filterByFormula') || '';
     const m = p.match(/^\/v0\/[^/]+\/([^/]+)$/);
+    // One LOCAL MOVES record: the panel's PATCH and its read-back (atGetOne).
+    const one = p.match(/^\/v0\/[^/]+\/local_moves\/(rec[A-Za-z0-9]+)$/);
+    if (one) {
+      const r = moves.find(x => x.id === one[1]);
+      if (!r) return json(route, { error: { type: 'NOT_FOUND', message: 'Record not found' } }, 404);
+      if (req.method() === 'GET') { cap.lmReads.push(one[1]); return json(route, strip(r)); }
+      if (req.method() === 'PATCH') {
+        const body = req.postDataJSON(); cap.lmPatches.push({ id: one[1], fields: body.fields });
+        // A label the Worker map lacks is dropped with 200 OK (facade trap 1).
+        for (const [k, v] of Object.entries(body.fields || {})) {
+          if (cap.dropLabels.includes(k)) continue;
+          if (v == null || (Array.isArray(v) && !v.length)) delete r.fields[k]; else r.fields[k] = v;
+        }
+        // 060's BEFORE trigger derives a relay's Status from its driver.
+        r.fields.Status = r.fields.Driver ? 'Assigned' : 'Pending';
+        return json(route, strip(r));
+      }
+    }
     if (m && req.method() === 'GET') {
       const t = m[1];
       if (t === 'tblEAPExIAjiA3asD') return json(route, { records: REF.trucks });
@@ -214,8 +236,8 @@ async function installStubs(page, opts = {}) {
         cap.moves.push(u.search);
         if (opts.movesFail) return json(route, { error: 'Forbidden' }, 403);
         const byParent = idsIn(f, 'Parent Order'), byDriver = idsIn(f, 'Driver');
-        let rows = byParent.length ? MOVES.filter(r => byParent.includes((r.fields['Parent Order'] || [])[0]))
-          : byDriver.length ? MOVES.filter(r => byDriver.includes((r.fields.Driver || [])[0])) : [];
+        let rows = byParent.length ? moves.filter(r => byParent.includes((r.fields['Parent Order'] || [])[0]))
+          : byDriver.length ? moves.filter(r => byDriver.includes((r.fields.Driver || [])[0])) : [];
         if (byDriver.length) rows = rows.slice().sort((a, b) => String(b.fields.Date).localeCompare(String(a.fields.Date)));
         rows = rows.map(strip);
         if (opts.noKind) rows = rows.map(r => { const c = { ...r, fields: { ...r.fields } }; delete c.fields['Move Kind']; return c; });
@@ -282,46 +304,71 @@ async function dailyDispatcher(browser) {
   const zone = await txt(page, `#r_${ORD.OV}`);
   assert(zone.includes('ΤΟΠ.') && zone.includes('Τοπικός Π'), 'overdue delivery zone names the local driver');
 
-  // the relay read is its own request; the day request never asks for relay labels
+  // the relay read is its own request — core/relay.js's Relay.loadForOrders,
+  // the ONE reader Weekly International uses too; the day request never asks
+  // for relay labels
   assert(cap.moves.length === 1, 'one LOCAL MOVES request for the day (' + cap.moves.length + ')');
   const mq = decodeURIComponent(cap.moves[0]);
   assert(mq.includes('ARRAYJOIN({Parent Order},",")') && mq.includes(ORD.I1) && mq.includes(ORD.OV), 'it filters FIND on {Parent Order} for the day AND the overdue orders');
-  assert(mq.includes('fields[]=Move Kind'), 'it asks for «Move Kind» (060 label)');
+  assert(!mq.includes('fields[]'), 'it is Relay.loadForOrders\' request (no fields[]: every mapped label, «Move Kind» included)');
   assert(cap.orders.every(q => !decodeURIComponent(q).includes('Move Kind')), 'no ORDERS request carries a relay label (OPS_FIELDS untouched)');
-
-  // the panel belongs to Weekly; Daily Ops calls the agreed global
-  await page.evaluate(() => { window.__lr = []; window.lrOpenRelayPanel = (id, kind, o) => window.__lr.push([id, kind, typeof (o && o.onSaved)]); });
-  await page.locator(`#r_${ORD.I1} .do-rl[role=button]`).click();
-  await page.locator(`#r_${ORD.I2} .do-rl[role=button]`).click();
-  await page.locator(`#r_${ORD.E5} .do-rl[role=button]`).click();
-  const calls = await page.evaluate(() => window.__lr);
-  assert(JSON.stringify(calls) === JSON.stringify([[ORD.I1, 'relay_delivery', 'function'], [ORD.I2, 'relay_delivery', 'function'], [ORD.E5, 'relay_loading', 'function']]),
-    'click → window.lrOpenRelayPanel(orderId, kind, {onSaved}) — ' + JSON.stringify(calls));
-  await page.locator(`#r_${ORD.I2} .do-rl[role=button]`).focus();
-  await page.keyboard.press('Enter');
-  assert((await page.evaluate(() => window.__lr.length)) === 4, 'Enter on the focused relay opens it too (keyboard)');
   await page.mouse.move(0, 0);
   await page.screenshot({ path: path.join(SHOT_DIR, 'local-relay-daily-dispatcher-1440.png'), fullPage: true });
-  // Without the global: core/relay.js's Relay.openPanel (Weekly builder,
-  // feat/local-relay-weekly 53bb3ccb) hosted in the app modal. Stubbed here
-  // with the same signature — {order, kind, existing, host, onDone}.
-  await page.evaluate(() => {
-    delete window.lrOpenRelayPanel;
-    window.__rp = [];
-    window.Relay = { openPanel: o => { window.__rp.push({ id: o.order.id, kind: o.kind, existing: o.existing && o.existing.id, host: typeof o.host.open });
-      o.host.open('Παράδοση με τοπικό οδηγό', 'ctx', '<div id="rlyStubBody">body</div>', '<button id="rlyStubDone" onclick="window.__rpDone()">ok</button>'); window.__rpDone = () => { o.host.close(); o.onDone({ ok: false, problems: ['Ώρα'] }); }; } };
-  });
+
+  // END TO END (integration feat/local-relay-phi1): the click opens
+  // core/relay.js's REAL panel in the app modal — no stub — prefilled from the
+  // loaded relay; the save PATCHes LOCAL MOVES, reads the row back, closes and
+  // re-reads the day.
   await page.locator(`#r_${ORD.I1} .do-rl[role=button]`).click();
-  await page.waitForSelector('#rlyStubBody', { timeout: 5000 });
-  const rp = await page.evaluate(() => window.__rp);
-  assert(rp.length === 1 && rp[0].id === ORD.I1 && rp[0].kind === 'relay_delivery' && rp[0].existing === 'recLmv0000001' && rp[0].host === 'function',
-    'no global → Relay.openPanel({order, kind, existing, host}) in the app modal, with the loaded relay as «existing» — ' + JSON.stringify(rp));
+  await page.waitForSelector('#rly_drv', { timeout: 5000 });
+  const pv = await page.evaluate(() => ({ title: document.getElementById('modalTitle').textContent,
+    drv: document.getElementById('rly_drv').value, trl: document.getElementById('rly_trl').value,
+    time: document.getElementById('rly_time').value, pt: (document.getElementById('lv_rly_pt') || {}).value,
+    tm: (document.querySelector('input[name="rly_tm"]:checked') || {}).value,
+    ctx: (document.querySelector('#modalOverlay .do-sub') || {}).innerText }));
+  assert(pv.title === 'Τοπική παράδοση — αλλαγή' && pv.drv === DRV.P && pv.trl === TRL.A && pv.time === '07:00' && pv.pt === VER && pv.tm === 'same',
+    'click → the real Relay.openPanel in the app modal, prefilled from the loaded relay — ' + JSON.stringify(pv));
+  assert(pv.ctx === 'Πελάτης A', 'its context line names the client (OPS_FIELDS reads no Reference) — ' + JSON.stringify(pv.ctx));
+  await page.waitForTimeout(400);   // the overlay fades in (style.css overlay-fade)
+  await page.screenshot({ path: path.join(SHOT_DIR, 'local-relay-daily-panel-1440.png'), fullPage: false });
   const reloads = cap.moves.length;
-  await page.locator('#rlyStubDone').click();
+  await page.fill('#rly_time', '07:15');
+  await page.click('#rly_submit');
+  await page.waitForFunction(() => !document.getElementById('modalOverlay').classList.contains('open'), null, { timeout: 8000 });
+  const p1 = cap.lmPatches[0] || {}, pf = p1.fields || {};
+  assert(cap.lmPatches.length === 1 && p1.id === 'recLmv0000001' && pf['Time From'] === '07:15' && (pf.Driver || [])[0] === DRV.P
+    && Array.isArray(pf.Truck) && pf.Truck.length === 0 && (pf.Trailer || [])[0] === TRL.A && (pf['From Location'] || [])[0] === VER
+    && !('Date' in pf) && !('Status' in pf) && !('Move Kind' in pf) && !('Parent Order' in pf),
+    'Αποθήκευση → ONE PATCH of LOCAL MOVES with the panel\'s labels; never Date/Status (060 derives them), never kind/parent on edit — ' + JSON.stringify(p1));
+  assert(cap.lmReads.includes('recLmv0000001'), 'the row is READ BACK after the PATCH (principle 2)');
   await page.waitForTimeout(800);
-  assert((await page.evaluate(() => document.body.innerText)).includes('ΔΕΝ επιβεβαιώθηκαν: Ώρα'), 'a save whose read-back failed is said (warn toast), not hidden');
   assert(cap.moves.length > reloads, 'after the save the day is re-read (relays fetched again)');
   await page.waitForSelector(`#r_${ORD.I1}`, { timeout: 20000 });
+  const i1b = await txt(page, `#r_${ORD.I1} td.do-asg`);
+  assert(/ΤΟΠ\.\s*Τοπικός Π · 07:15/.test(i1b), 'the cell shows the saved time «07:15» — ' + JSON.stringify(i1b));
+
+  // a label the Worker drops (facade trap 1) → the read-back says so
+  cap.dropLabels = ['Time From'];
+  await page.locator(`#r_${ORD.I1} .do-rl[role=button]`).click();
+  await page.waitForSelector('#rly_time', { timeout: 5000 });
+  await page.fill('#rly_time', '07:45');
+  await page.click('#rly_submit');
+  await page.waitForTimeout(1000);
+  assert((await page.evaluate(() => document.body.innerText)).includes('ΔΕΝ επιβεβαιώθηκαν: Ώρα'), 'a save whose read-back failed is said (warn toast), not hidden');
+  cap.dropLabels = [];
+
+  // keyboard: Enter on the focused red relay opens it too; Άκυρο writes nothing
+  await page.waitForSelector(`#r_${ORD.I2} .do-rl[role=button]`, { timeout: 20000 });
+  const nPatch = cap.lmPatches.length;
+  await page.locator(`#r_${ORD.I2} .do-rl[role=button]`).focus();
+  await page.keyboard.press('Enter');
+  await page.waitForSelector('#rly_drv', { timeout: 5000 });
+  assert((await page.evaluate(() => document.getElementById('rly_drv').value)) === '', 'Enter on the focused «ΤΟΠ. ΠΡΟΣ ΑΝΑΘΕΣΗ» opens its panel, driver still empty (keyboard)');
+  await page.locator('#modalOverlay button:has-text("Άκυρο")').click();
+  await page.waitForTimeout(300);
+  assert(!(await page.evaluate(() => document.getElementById('modalOverlay').classList.contains('open'))) && cap.lmPatches.length === nPatch, 'Άκυρο closes the panel without a write');
+
+  // an older cached build without core/relay.js → said, never a dead click
   await page.evaluate(() => { delete window.Relay; });
   await page.locator(`#r_${ORD.I1} .do-rl[role=button]`).click();
   await page.waitForTimeout(300);
@@ -340,9 +387,9 @@ async function dailyWarehouse(browser) {
   const i1 = await txt(page, `#r_${ORD.I1} td.do-asg`);
   assert(/ΤΟΠ\.\s*Τοπικός Π · 07:00/.test(i1), 'warehouse sees who comes: «ΤΟΠ. Τοπικός Π · 07:00»');
   assert(await page.locator('.do-rl[role=button]').count() === 0, 'warehouse: no relay is clickable (no role=button)');
-  await page.evaluate(() => { window.__lr = []; window.lrOpenRelayPanel = () => window.__lr.push(1); });
   await page.locator(`#r_${ORD.I2} .do-rl`).click();
-  assert((await page.evaluate(() => window.__lr.length)) === 0, 'warehouse: clicking the red «ΤΟΠ. ΠΡΟΣ ΑΝΑΘΕΣΗ» opens nothing');
+  await page.waitForTimeout(300);
+  assert(await page.locator('#rly_drv').count() === 0, 'warehouse: clicking the red «ΤΟΠ. ΠΡΟΣ ΑΝΑΘΕΣΗ» opens nothing');
   const cells = await page.locator('td.do-asg').allInnerTexts();
   assert(cells.every(c => !/€|\d+,\d\d/.test(c)), 'warehouse: no amount in any ΑΝΑΘΕΣΗ cell');
   await page.screenshot({ path: path.join(SHOT_DIR, 'local-relay-daily-warehouse-1440.png'), fullPage: true });

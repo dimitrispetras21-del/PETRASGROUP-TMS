@@ -214,34 +214,15 @@ async function _opsLoad() {
   }
 }
 
-// Read through the facade's LOCAL MOVES links block (FIND on {Parent Order}
-// works only on a table with `links` — local_moves has one). Batches of 50:
-// one term is ~90 URL-encoded characters, so 50 stay far below the URL limit.
-const OPS_RELAY_FIELDS = ['Parent Order','Move Kind','Driver','Truck','Trailer','From Location','To Location','Time From','Status'];
+// orderId → { relay_delivery, relay_loading }, through the ONE relay reader
+// Weekly International uses (core/relay.js, principle 3): the same FIND on
+// {Parent Order}, the same throw on a response without «Move Kind» (the zone
+// then says «not loaded» instead of guessing which rows are relays), the same
+// drop of Cancelled relays and of Weekly National's plain local moves. A
+// second copy here had already drifted (batch size, duplicate handling).
 async function _opsLoadRelays(ids) {
-  const recs = [];
-  for (let b = 0; b < ids.length; b += 50) {
-    const ff = `OR(${ids.slice(b, b + 50).map(id => `FIND("${id}",ARRAYJOIN({Parent Order},","))>0`).join(',')})`;
-    recs.push(...await atGetAll(TABLES.LOCAL_MOVES, { filterByFormula: ff, fields: OPS_RELAY_FIELDS }, false));
-  }
-  return _opsIndexRelays(recs);
-}
-// orderId → { relay_delivery, relay_loading }. move_kind is NOT NULL in the
-// base, so a record WITHOUT 'Move Kind' means the Worker map lacks the label
-// (facade trap 1 drops it from the select): throw, so the zone says «not
-// loaded» instead of guessing which rows are relays. A plain local move
-// (Weekly National's errands) is not a relay; a Cancelled relay covers nothing.
-function _opsIndexRelays(recs) {
-  const by = {};
-  for (const r of recs) {
-    const f = r.fields || {};
-    if (f['Move Kind'] === undefined) throw new Error('LOCAL MOVES without «Move Kind» — Worker map not deployed');
-    if (f['Move Kind'] !== 'relay_delivery' && f['Move Kind'] !== 'relay_loading') continue;
-    if (f['Status'] === 'Cancelled') continue;
-    const pid = getLinkedId(f['Parent Order']);
-    if (pid) (by[pid] = by[pid] || {})[f['Move Kind']] = r;
-  }
-  return by;
+  if (!window.Relay || typeof Relay.loadForOrders !== 'function') throw new Error('core/relay.js not loaded');
+  return Relay.index(await Relay.loadForOrders(ids));
 }
 
 // Get first location ID from ORDER_STOPS for a given order + stop type
@@ -1017,26 +998,29 @@ function _opsAsk(id, ctx, word){
 }
 // The relay panel belongs to Weekly International's builder (core/relay.js:
 // the form, the 060 rules said before the click, the save with read-back).
-// Daily Ops only opens it — never a second form (principle 3). Preferred: the
-// agreed global window.lrOpenRelayPanel(orderId, kind, { onSaved }), kind =
-// the base's move_kind. Without it, Relay.openPanel directly, hosted in the
-// app's own modal (Daily Ops has no side panel of its own). Neither present
-// (an older build) → say so instead of a dead click (principle 1).
-function _opsOpenRelay(orderId, kind){
+// Daily Ops only opens it — never a second form (principle 3): Relay.openPanel
+// hosted in the app's own modal (Daily Ops has no side panel of its own), kind
+// = the base's move_kind. Relay.openPanel is the one contract between the two
+// screens; no window-level wrapper, so there is no second door to drift.
+// Without it (an older cached build) → say so instead of a dead click
+// (principle 1). Awaited, so a failure while opening reaches the catch.
+async function _opsOpenRelay(orderId, kind){
   if(_opsBlockReadOnly()) return;
   _opsCloseFloat();
-  const onSaved=()=>renderDailyOps();
   try{
-    if(typeof window.lrOpenRelayPanel==='function') return window.lrOpenRelayPanel(orderId, kind, { onSaved });
-    if(window.Relay && typeof window.Relay.openPanel==='function' && typeof openModal==='function'){
-      const order=_opsFind(orderId); if(!order) return;
-      return window.Relay.openPanel({ order, kind, existing:_opsRelayAny(orderId, kind),
-        host:{ open:(title, ctx, body, footer)=>openModal(title, `<div class="do-sub">${ctx}</div>${body}`, footer), close:()=>closeModal() },
-        // ok=false: written, but the read-back found labels that did not land
-        // (facade trap 1) — said, then the day is re-read either way.
-        onDone:r=>{ if(r&&r.ok===false) toast('Η τοπική κίνηση γράφτηκε, αλλά ΔΕΝ επιβεβαιώθηκαν: '+(r.problems||[]).join(', '),'warn'); onSaved(); } });
+    if(!(window.Relay && typeof window.Relay.openPanel==='function' && typeof openModal==='function')){
+      toast('Το πάνελ τοπικού οδηγού δεν είναι διαθέσιμο εδώ — άνοιξέ το από το Weekly Διεθνών (δεξί κλικ στην παραγγελία)','warn');
+      return;
     }
-    toast('Το πάνελ τοπικού οδηγού δεν είναι διαθέσιμο εδώ — άνοιξέ το από το Weekly Διεθνών (δεξί κλικ στην παραγγελία)','warn');
+    const order=_opsFind(orderId); if(!order) return;
+    await window.Relay.openPanel({ order, kind, existing:_opsRelayAny(orderId, kind),
+      // The panel's context line is built from Reference/Loading Summary, which
+      // OPS_FIELDS does not read (that request stays byte-identical, see
+      // _opsAsgCell) — here it would say «— → —», so the client names the order.
+      host:{ open:(title, ctx, body, footer)=>openModal(title, `<div class="do-sub">${_C(order.fields)||ctx}</div>${body}`, footer), close:()=>closeModal() },
+      // ok=false: written, but the read-back found labels that did not land
+      // (facade trap 1) — said, then the day is re-read either way.
+      onDone:r=>{ if(r&&r.ok===false) toast('Η τοπική κίνηση γράφτηκε, αλλά ΔΕΝ επιβεβαιώθηκαν: '+(r.problems||[]).join(', '),'warn'); renderDailyOps(); } });
   }catch(e){ if(typeof logError==='function') logError(e,'daily-ops: open relay panel'); toast('Το πάνελ τοπικού οδηγού δεν άνοιξε: '+(e&&e.message||e),'danger'); }
 }
 
