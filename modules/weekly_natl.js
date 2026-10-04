@@ -1916,6 +1916,7 @@ async function _wnConsumePendingMatch(newNlId, fields) {
   }
   // §4 #5: the same match, so the same vehicle copy (_wnVehicleForSn). The new
   // load was just created from a national order, so it has no vehicle yet.
+  // Status of a load created a moment ago by _syncNationalLoad = Pending.
   const veh = _wnVehicleForSn(WNATL.rows.find(r => r.id === p.rowId && r.orderIds[0] === p.nsId), {});
   if (veh) {
     try {
@@ -2189,8 +2190,7 @@ function _wnVehicleForSn(row, snF) {
   if (row.partnerId && row.partnerPlates) v['Partner Truck Plates'] = row.partnerPlates;
   if (!row.partnerId && row.trailerId) v['Trailer'] = [row.trailerId];
   if (!row.partnerId && row.driverId) v['Driver'] = [row.driverId];
-  const st = snF['Status'] || '';
-  if (!st || st === 'Pending') v['Status'] = 'Assigned';
+  v['Status'] = 'Assigned';                 // callers pass it through _wnPlanFields
   return v;
 }
 
@@ -2201,7 +2201,8 @@ async function _wnSaveMatch(rowId, snId) {
   // where either side is already Delivered/Cancelled keeps its state.
   const doneNs = await _wnDoneLive(row.orderIds[0]);
   if (doneNs) { showErrorToast(`Το φορτίο είναι ${doneNs} — δεν αλλάζει από το Weekly`); return; }
-  const doneSn = await _wnDoneLive(snId);
+  const stSn = await _wnStatusLive(snId);
+  const doneSn = _wnDoneOf(stSn);
   if (doneSn) { showErrorToast(`Το φορτίο είναι ${doneSn} — δεν αλλάζει από το Weekly`); return; }
   row.matchedId = snId;
   WNATL.rows = WNATL.rows.filter(r => !(r.type==='southnorth' && r.orderId===snId));
@@ -2216,7 +2217,7 @@ async function _wnSaveMatch(rowId, snId) {
     const veh = _wnVehicleForSn(row, WNATL.data.southnorth.find(r => r.id===snId)?.fields);
     if (veh) {
       try {
-        const r3 = await atSafePatch(TABLES.NAT_LOADS, snId, veh);
+        const r3 = await atSafePatch(TABLES.NAT_LOADS, snId, _wnPlanFields(veh, stSn));
         if (r3?.error) throw new Error(r3.error.message || r3.error.type);
       } catch(err) {
         // The pair IS written; only the vehicle is missing on the ΑΝΟΔΟΣ — say
@@ -2438,8 +2439,10 @@ async function _wnSaveFromPopover(rowId) {
   // A6: execution beats planning (14/9, 030 trigger) — a load the trigger
   // already moved to Delivered/Cancelled keeps its assignment; this popover
   // never checked Status before writing over it.
+  const liveSt = {};
+  for (const id of [...row.orderIds, ...(row.matchedId ? [row.matchedId] : [])]) liveSt[id] = await _wnStatusLive(id);
   for (const orderId of row.orderIds) {
-    const done = await _wnDoneLive(orderId);
+    const done = _wnDoneOf(liveSt[orderId]);
     if (done) { showErrorToast(`Το φορτίο είναι ${done} — δεν αλλάζει από το Weekly`); return; }
   }
 
@@ -2485,14 +2488,14 @@ async function _wnSaveFromPopover(rowId) {
   for (const orderId of row.orderIds) {
     try {
       // All rows are now in NAT_LOADS
-      const res = await atSafePatch(TABLES.NAT_LOADS, orderId, fields);
+      const res = await atSafePatch(TABLES.NAT_LOADS, orderId, _wnPlanFields(fields, liveSt[orderId]));
       if (res?.conflict) { toast('Η εγγραφή άλλαξε από άλλον χρήστη — γίνεται ανανέωση','warn'); await renderWeeklyNatl(); return; }
       if (res?.error) throw new Error(res.error.message||res.error.type);
     } catch(err) { errors.push(err.message); }
   }
   if (row.matchedId) {
     try {
-      const res = await atSafePatch(TABLES.NAT_LOADS, row.matchedId, fields);
+      const res = await atSafePatch(TABLES.NAT_LOADS, row.matchedId, _wnPlanFields(fields, liveSt[row.matchedId]));
       if (res?.conflict) { toast('Η εγγραφή άλλαξε από άλλον χρήστη — γίνεται ανανέωση','warn'); await renderWeeklyNatl(); return; }
       if (res?.error) throw new Error(res.error.message||res.error.type);
     } catch(err) { errors.push('Άνοδος: '+err.message); }
@@ -2510,7 +2513,9 @@ async function _wnSaveFromPopover(rowId) {
     for (const orderId of row.orderIds) {
       const nlRec = WNATL.data.southnorth.concat(WNATL.data.northsouth).find(r=>r.id===orderId);
       const noId = getLinkedId(nlRec?.fields?.['Source National Order']);
-      if (noId) {
+      // owner 4/10: Assigned only over Pending/empty — an order the Ramp set
+      // In Transit is not moved back (same rule as the load, _wnPlans).
+      if (noId && _wnPlans(await _wnStatusLive(noId, TABLES.NAT_ORDERS))) {
         await atSafePatch(TABLES.NAT_ORDERS, noId, { 'Status': 'Assigned' });
         if (typeof syncOrderDownstream === 'function') {
           syncOrderDownstream(noId, { source: 'natl', changedFields: ['Status'], skipVS: true, skipGRP: true, skipRamp: true, skipPL: true })
@@ -2692,8 +2697,7 @@ async function _wnRevertNoStatus(nlId) {
 // Execution beats planning (14/9): a load the 030 trigger already set
 // Delivered/Cancelled keeps its assignment — the board never checked Status.
 async function _wnDoneLive(id) {
-  const st = await _wnStatusLive(id);
-  return (st === 'Delivered' || st === 'Cancelled') ? st : '';
+  return _wnDoneOf(await _wnStatusLive(id));
 }
 // '' = no status in the base; null = the read failed (atGetOne logs + toasts).
 // _wnDoneLive treats both as open, as before.
@@ -2709,6 +2713,18 @@ function _wnUnplans(st) { return st === 'Assigned' || st === ''; }
 function _wnUnplanFields(fields, st) {
   return _wnUnplans(st) ? Object.assign({}, fields, { 'Status': 'Pending' }) : fields;
 }
+// The national twin of weekly_intl's _wiPlanPatch (owner 4/10/2026): an
+// assignment never moves a status backwards. 'Assigned' is written only over
+// Pending or an empty status; In Transit/Delivered (and an unreadable status,
+// null) keep theirs and only the vehicle changes. Before, the popover wrote
+// 'Assigned' unconditionally — an In Transit load (Ramp) fell back to Assigned.
+function _wnPlans(st) { return st === 'Pending' || st === ''; }
+function _wnPlanFields(fields, st) {
+  if (!('Status' in fields) || _wnPlans(st)) return fields;
+  const { Status, ...rest } = fields; return rest;
+}
+// Refused outright: Delivered/Cancelled (execution beats planning, 14/9).
+function _wnDoneOf(st) { return (st === 'Delivered' || st === 'Cancelled') ? st : ''; }
 async function _wnUnassignSn(rowId, snId) {
   if(_wnBlockReadOnly()) return;
   const row = WNATL.rows.find(r => r.id===rowId);
@@ -2723,7 +2739,7 @@ async function _wnUnassignSn(rowId, snId) {
 
   try {
     const st = await _wnStatusLive(snId);
-    const done = (st === 'Delivered' || st === 'Cancelled') ? st : '';
+    const done = _wnDoneOf(st);
     if (done) { toast('Το φορτίο είναι ' + done + ' — η ανάθεση κρατιέται', 'warn'); return; }
     const res = await atSafePatch(TABLES.NAT_LOADS, snId, _wnUnplanFields(fields, st));
     if (res?.conflict) { toast('Η εγγραφή άλλαξε από άλλον χρήστη — γίνεται ανανέωση','warn'); await renderWeeklyNatl(); return; }
@@ -2762,7 +2778,7 @@ async function _wnUnassign(rowId) {
   for (const orderId of row.orderIds) {
     try {
       const st = await _wnStatusLive(orderId);
-      if (st === 'Delivered' || st === 'Cancelled') { kept.push(orderId); continue; }
+      if (_wnDoneOf(st)) { kept.push(orderId); continue; }
       const res = await atSafePatch(TABLES.NAT_LOADS, orderId, _wnUnplanFields(fields, st));
       if (res?.conflict) { toast('Η εγγραφή άλλαξε από άλλον χρήστη — γίνεται ανανέωση','warn'); await renderWeeklyNatl(); return; }
       if (res?.error) throw new Error(res.error.message || res.error.type);
@@ -2773,7 +2789,7 @@ async function _wnUnassign(rowId) {
   if (row.matchedId) {
     try {
       const st = await _wnStatusLive(row.matchedId);
-      if (st === 'Delivered' || st === 'Cancelled') kept.push(row.matchedId);
+      if (_wnDoneOf(st)) kept.push(row.matchedId);
       else { await atSafePatch(TABLES.NAT_LOADS, row.matchedId, _wnUnplanFields(fields, st)); written++; }
     } catch(err) { errors.push(err.message); }
   }

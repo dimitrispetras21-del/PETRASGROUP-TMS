@@ -123,7 +123,10 @@ async function openBoard(browser, opts = {}) {
   await page.evaluate(() => {
     window.__toasts = [];
     const t0 = window.toast; window.toast = (m, k) => { window.__toasts.push([String(m), k || '']); try { return t0 && t0(m, k); } catch (_) {} };
-    window.confirmAction = async () => true;   // same stub for every path compared below
+    // same stub for every path compared below; records each dialog so a rig
+    // can count them (owner 4/10: ONE confirm) and answer «Ακύρωση» with false
+    window.__confirms = []; window.__confirmAnswer = true;
+    window.confirmAction = async (m) => { window.__confirms.push(String(m)); return window.__confirmAnswer; };
   });
   return { page, S };
 }
@@ -343,6 +346,34 @@ SECTIONS.push(async browser => {
   ok(pC && pC.body.fields.Status === 'Pending', 'Assigned load: «Καθαρισμός» → Status Pending');
   ok(c.writes.some(w => w.tid === T.NO && w.body.fields.Status === 'Pending'), 'Assigned national order → Pending');
   ok([t, c].every(x => x.errors.length === 0), 'no page errors');
+});
+
+// popover «Αποθήκευση/Ενημέρωση ανάθεσης» with a chosen truck; answer = the confirm's answer
+async function assignBy(browser, nlId, truckId, answer = true) {
+  const { page, S } = await openBoard(browser);
+  const rowId = await rowIdOf(page, nlId);
+  await page.click(`#wn-row-${rowId} .wk3-assign`);
+  await page.waitForSelector(`#wn-pop-btn-${rowId}`, { timeout: 5000 });
+  await page.evaluate(([r, t, a]) => { document.getElementById(`wsd-v-tk_wn_${r}`).value = t; window.__confirmAnswer = a; }, [rowId, truckId, answer]);
+  const before = S.writes.length;
+  await page.click(`#wn-pop-btn-${rowId}`);
+  await page.waitForTimeout(2500);
+  const out = { writes: S.writes.slice(before), confirms: await page.evaluate(() => window.__confirms), toasts: await page.evaluate(() => window.__toasts), S, errors: S.errors };
+  await page.context().close();
+  return out;
+}
+SECTIONS.push(async browser => {
+  console.log('\n── owner 4/10 (2) · assignment never moves a status backwards');
+  const e = await assignBy(browser, 'recNlE000000000A', 'recTruck000002AA');
+  const pE = e.writes.find(w => w.m === 'PATCH' && w.rid === 'recNlE000000000A');
+  ok(pE && pE.body.fields.Truck[0] === 'recTruck000002AA' && pE.body.fields.Status === 'Assigned', 'Pending load: vehicle + Status Assigned');
+  ok(e.writes.some(w => w.tid === T.NO && w.rid === 'recNatOrderE0001' && w.body.fields.Status === 'Assigned'), 'its Pending national order → Assigned');
+  const t = await assignBy(browser, 'recNlT000000000A', 'recTruck000001AA');
+  const pT = t.writes.find(w => w.m === 'PATCH' && w.rid === 'recNlT000000000A');
+  ok(pT && pT.body.fields.Truck[0] === 'recTruck000001AA' && !('Status' in pT.body.fields), 'In Transit load: vehicle written, NO Status in the payload: ' + JSON.stringify(pT && pT.body.fields));
+  ok(!t.writes.some(w => w.tid === T.NO), 'its In Transit national order is not written');
+  ok(t.S.db[T.NL].find(r => r.id === 'recNlT000000000A').fields.Status === 'In Transit', 'base: still In Transit');
+  ok([e, t].every(x => x.errors.length === 0), 'no page errors');
 });
 
 (async () => {

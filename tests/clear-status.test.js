@@ -96,6 +96,7 @@ const wnSrc = [
   fn(WN, /async function _wnDoneLive\(id\) \{[\s\S]*?\n\}\n/, '_wnDoneLive'),
   fn(WN, /async function _wnStatusLive\(id, table\) \{[\s\S]*?\n\}\n/, '_wnStatusLive'),
   fn(WN, /function _wnUnplans\(st\) \{[^\n]*\n/, '_wnUnplans'),
+  fn(WN, /function _wnDoneOf\(st\) \{[^\n]*\n/, '_wnDoneOf'),
   fn(WN, /function _wnUnplanFields\(fields, st\) \{[\s\S]*?\n\}\n/, '_wnUnplanFields'),
 ].join('\n');
 async function runWnUnassign(statusById, row) {
