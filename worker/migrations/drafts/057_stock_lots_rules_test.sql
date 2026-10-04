@@ -2,16 +2,36 @@
 -- every test row, every trigger side effect (audit_log rows, leg status sync) rolls back with it.
 -- Run AFTER 057 (and after 057_stock_lots_verify.sql V1–V8). Expected last line of the error panel:
 --
---     RESULT: 87/87 OK
+--     RESULT: 113/113 OK
 --
 -- followed by one line per case («OK  01 expected over_draw · got over_draw»). Anything less = STOP,
--- copy the panel to the coordinator. 66 refusals + 15 accepted paths + 6 money cases (Ε1).
+-- copy the panel to the coordinator. 77 refusals + 18 accepted paths + 18 money cases (Ε1).
 -- Cases 36–49 and P11, P14 are the round-0 rules of the impact map (4/10): E-04 cancel (36, 37, P14),
 -- B-16 lot_grouped (38–43), C-15 lot_vs (44, 45, P11), C-05 piece_no_truck (46–49). 50–51: K7.
 -- Round 1 of the critics (4/10): D1 «on a truck» = truck or partner (13, 52, P12, P13), Σ-08 / E2-11
 -- an invoiced lot's statuses are frozen (53–55, 61), Σ-05 lot_grouped covers the rota (56–60),
 -- D3 pieces_moving (P15). Round 1b of the SQL reviewer (P3-3): 62–66 reach the last five codes
 -- (lot_empty, lot_is_piece, piece_is_lot, lot_missing, lot_source_missing).
+-- Round 2 (4/10):
+--   * P3 (3) of the SQL reviewer: 67–72 reach the NATIONAL raise sites of lot_empty (mark, source
+--     save), lot_is_piece, piece_is_lot and lot_missing, and 69 the international source-save site of
+--     lot_empty. The two piece_is_lot sites in the LOT SOURCE blocks are backstops that only a
+--     bypassed guard can reach (a piece marked as a lot while stock_guard_lots was off) — proved in
+--     the local harness with the guard disabled, never here (no DDL in a production test).
+--   * «Χρέωση αποθήκης» (contract round 2 #1): 73 (charge frozen by the invoice), 74 (CHECK ≥ 0),
+--     P16 (editable while closed, same value re-sent after the invoice passes), M7–M11 (own truck
+--     with / without / cleared / 0 charge, partner + charge, tms_reader blind to the column), and
+--     OWNER-Q7 answered 4/10 (same rule): P8 + M12 (national lot without / with a charge).
+--   * OWNER-Q5 answered 4/10 (any location can be a warehouse): case 18 (warehouse_rule) is gone
+--     with its code; P17 (untyped location) and P18 ('Client Depot') are accepted; 75–78 refuse a
+--     NULL or deleted destination (lot_no_dest) at all four sites. Lots A and B sit at 424, which
+--     057 no longer types — itself a lot at an untyped location.
+--   * OWNER-Q3 answered 4/10 (VS on piece prorated /F): VS1–VS4 the piece's share (15/33 → 295.45,
+--     33/33 → 650, 40 → capped 650, an Export piece on 850), VS5 both legs of the deployed
+--     ct_v_rt_revenue call the one function with the piece's own pallets, VS6 an ordinary VS order
+--     keeps the full charge. The amounts assume x_import 650, x_export 850, F 33 (4/10) — each line
+--     prints the X and F it used. The RT-level sums (intl leg − share, national leg + share, total =
+--     allocation) are proved in the local harness: this test never opens a round trip.
 --
 -- HOW IT STAYS HARMLESS
 --   * Test rows use NEGATIVE ids written with OVERRIDING SYSTEM VALUE: no identity sequence moves,
@@ -21,8 +41,9 @@
 --     or Delivered must be «on a truck» (piece_no_truck; round 1 D1: a truck or a partner — a group
 --     no longer counts): the IP: shorthand gives it the first live PARTNER with is_partner_trip left
 --     false — rt_create_from_order opens a round trip only for a truck or a partner TRIP.
---   * Reads two live clients, one Greek non-warehouse location, 424 (warehouse after 057), 360
---     ('Veroia Hub') and one live partner; never updates a real row.
+--   * Reads two live clients, one Greek location (not 'Partner Warehouse' / 'Veroia Hub'), 424 and
+--     360 (any location can be a warehouse since OWNER-Q5), one other live UNTYPED location, one live
+--     'Client Depot' location, one DELETED location and one live partner; never updates a real row.
 --   * Each case runs in its own sub-block and is rolled back on its own (it always ends by raising),
 --     so the cases are independent of each other and of their order.
 --
@@ -34,15 +55,16 @@
 --   'IP:id,lot,pallets,status[,client[,pickup]]' = an international piece (Import, to a Greek site;
 --      status In Transit / Delivered → partner_id = the live partner, see above)
 --   'NP:id,lot,pallets,status[,client[,pickup]]' = a national piece
---   defaults: client = first client, pickup = 424. %1$s..%6$s = client 1, client 2, Greek site, 424, 360,
---   the live partner.
+--   defaults: client = first client, pickup = 424. %1$s..%9$s = client 1, client 2, Greek site, 424, 360,
+--   the live partner, a 'Client Depot' location, an untyped location, a deleted location.
 -- Base fixtures (built once, before the cases): lot A = order -9001 (33p, Delivered at 424, price
 -- 3300.00, warehouse partner assignment 300.00 'Assigned') anchored as -9301; lot B = order -9002
--- (33p, Delivered at 424, price 2000.00, NO partner assignment) anchored as -9302.
+-- (33p, Delivered at 424, price 2000.00, NO partner assignment — the lot our own truck carried in,
+-- no warehouse charge entered) anchored as -9302.
 
 do $test$
 declare
-  c1 bigint; c2 bigint; gr bigint; pt bigint;
+  c1 bigint; c2 bigint; gr bigint; pt bigint; cd bigint; ut bigint; dl bigint;
   wh  constant bigint := 424;
   hub constant bigint := 360;
   r record; s text; a text[];
@@ -57,10 +79,16 @@ begin
      and coalesce(type, '') not in ('Partner Warehouse', 'Veroia Hub')
    order by id limit 1;
   select id into pt from public.partners where deleted_at is null order by id limit 1;
-  if c1 is null or c2 is null or gr is null or pt is null or to_regclass('public.stock_lots') is null
-     or not public.stock_is_warehouse(wh) or not public.stock_is_warehouse(hub) then
-    raise exception 'RESULT: 0/87 — SETUP FAILED: run 057 first (needs 2 clients, a Greek site, a partner, 424 + 360 as warehouses)';
+  select id into cd from public.locations where deleted_at is null and type = 'Client Depot' order by id limit 1;
+  select id into ut from public.locations where deleted_at is null and type is null and id not in (wh, hub) order by id limit 1;
+  select id into dl from public.locations where deleted_at is not null order by id limit 1;
+  if c1 is null or c2 is null or gr is null or pt is null or cd is null or ut is null or dl is null
+     or to_regclass('public.stock_lots') is null
+     or (select count(*) from public.locations where id in (wh, hub) and deleted_at is null) <> 2 then
+    raise exception 'RESULT: 0/113 — SETUP FAILED: run 057 first (needs 2 clients, a Greek site, a partner, an untyped, a Client Depot and a deleted location, 424 + 360 live)';
   end if;
+  -- VS5 reads the revenue view's text: pin the deparse context (rolled back with everything else).
+  perform set_config('search_path', 'public', true);
 
   insert into public.orders (id, legacy_id, reference, order_type, direction, status, client_id,
                              loading_location_1_id, unloading_location_1_id, loading_pallets_1,
@@ -129,11 +157,8 @@ begin
         $q$insert into public.orders (id, legacy_id, reference, parent_order_id, leg_no)
            overriding system value values (-9007, 'recTSTSTK9007', 'TEST-STOCK-LEG', -9006, 1)$q$,
         $q$insert into public.stock_lots (id, order_id) values (-9305, -9006)$q$], null),
-    ('18', 'warehouse_rule', array[$q$insert into public.orders (id, legacy_id, reference, order_type, direction, status, client_id,
-           loading_location_1_id, unloading_location_1_id, loading_pallets_1)
-           overriding system value values (-9006, 'recTSTSTK9006', 'TEST-STOCK-9006', 'International', 'Export',
-           'Pending', %1$s, %4$s, %3$s, 10)$q$,
-        $q$insert into public.stock_lots (id, order_id) values (-9305, -9006)$q$], null),
+    -- (18: warehouse_rule — gone with its code, OWNER-Q5 answered 4/10 (any location can be a
+    --  warehouse); the same shape, a lot to an ordinary site, is accepted case P17/P18.)
     ('19', 'lot_multi_dest', array[$q$insert into public.orders (id, legacy_id, reference, order_type, direction, status, client_id,
            loading_location_1_id, unloading_location_1_id, unloading_location_2_id, loading_pallets_1)
            overriding system value values (-9006, 'recTSTSTK9006', 'TEST-STOCK-9006', 'International', 'Export',
@@ -213,7 +238,8 @@ begin
            overriding system value values (-9004, 'recTSTSTK9004', 'TEST-STOCK-EXPORT', 'International', 'Export',
            'Pending', %2$s, %3$s, %4$s, 10)$q$,
         $q$update public.orders set matched_import_id = 'recTSTSTK9001' where id = -9004$q$], null),
-    -- C-15 (OWNER-Q1 default): no Veroia Switch on a lot source — at the mark (44), on its save (45).
+    -- C-15 (OWNER-Q1 answered 4/10 (no VS on a lot)): no Veroia Switch on a lot source — at the mark
+    -- (44), on its save (45).
     ('44', 'lot_vs', array[$q$insert into public.orders (id, legacy_id, reference, order_type, direction, status, client_id,
            loading_location_1_id, unloading_location_1_id, loading_pallets_1, veroia_switch)
            overriding system value values (-9006, 'recTSTSTK9006', 'TEST-STOCK-9006', 'International', 'Export',
@@ -317,8 +343,71 @@ begin
            'Pending', %1$s, %3$s, %4$s, 10)$q$,
         $q$update public.orders set deleted_at = now() where id = -9006$q$,
         $q$insert into public.stock_lots (id, order_id) values (-9305, -9006)$q$], null),
+    -- Round 2, P3 (3): the national raise sites (and lot_empty's international source save).
+    -- 67: a national order without pallets is never marked (stock_guard_lots, national branch).
+    ('67', 'lot_empty', array[$q$insert into public.national_orders (id, legacy_id, reference, status, client_id,
+           pickup_location_1_id, delivery_location_1_id, price, loading_datetime, delivery_datetime)
+           overriding system value values (-9502, 'recTSTSTK9502', 'TEST-STOCK-NLOT', 'Pending', %1$s, %3$s, %5$s, 500,
+           current_date, current_date + 1)$q$,
+        $q$insert into public.stock_lots (id, nat_order_id) values (-9304, -9502)$q$], null),
+    -- 68: a national lot source saved with 0 pallets (stock_guard_natl, LOT SOURCE).
+    ('68', 'lot_empty', array[$q$insert into public.national_orders (id, legacy_id, reference, status, client_id,
+           pickup_location_1_id, delivery_location_1_id, pallets, price, loading_datetime, delivery_datetime)
+           overriding system value values (-9502, 'recTSTSTK9502', 'TEST-STOCK-NLOT', 'Pending', %1$s, %3$s, %5$s, 12, 500,
+           current_date, current_date + 1)$q$,
+        $q$insert into public.stock_lots (id, nat_order_id) values (-9304, -9502)$q$,
+        $q$update public.national_orders set pallets = 0 where id = -9502$q$], null),
+    -- 69: an international lot source (not yet delivered) saved with 0 pallets (stock_guard_orders, LOT SOURCE).
+    ('69', 'lot_empty', array[$q$insert into public.orders (id, legacy_id, reference, order_type, direction, status, client_id,
+           loading_location_1_id, unloading_location_1_id, loading_pallets_1)
+           overriding system value values (-9006, 'recTSTSTK9006', 'TEST-STOCK-9006', 'International', 'Export',
+           'Pending', %1$s, %3$s, %4$s, 10)$q$,
+        $q$insert into public.stock_lots (id, order_id) values (-9305, -9006)$q$,
+        $q$update public.orders set loading_pallets_1 = 0 where id = -9006$q$], null),
+    -- 70: a national piece of lot A is marked as a lot itself.
+    ('70', 'lot_is_piece', array['NP:-9501,-9301,5,Pending',
+        $q$insert into public.stock_lots (id, nat_order_id) values (-9305, -9501)$q$], null),
+    -- 71: a national lot source becomes a piece of lot A (the guard speaks before the no-money CHECK).
+    ('71', 'piece_is_lot', array[$q$insert into public.national_orders (id, legacy_id, reference, status, client_id,
+           pickup_location_1_id, delivery_location_1_id, pallets, price, loading_datetime, delivery_datetime)
+           overriding system value values (-9502, 'recTSTSTK9502', 'TEST-STOCK-NLOT', 'Pending', %1$s, %3$s, %5$s, 12, 500,
+           current_date, current_date + 1)$q$,
+        $q$insert into public.stock_lots (id, nat_order_id) values (-9304, -9502)$q$,
+        $q$update public.national_orders set stock_lot_id = -9301 where id = -9502$q$], null),
+    -- 72: a national piece of lot B is deleted, the empty lot B is unmarked, then the piece is revived.
+    ('72', 'lot_missing', array['NP:-9501,-9302,5,Pending',
+        $q$update public.national_orders set deleted_at = now() where id = -9501$q$,
+        $q$update public.stock_lots set deleted_at = now() where id = -9302$q$,
+        $q$update public.national_orders set deleted_at = null where id = -9501$q$], null),
+    -- Round 2 «Χρέωση αποθήκης»: 73 — entered while open, then the lot is invoiced: the charge is frozen
+    -- (OWNER-Q4 answered 4/10 (open until invoice)); 74 — a negative charge (CHECK).
+    ('73', 'lot_invoiced', array[$q$update public.stock_lots set warehouse_charge = 100 where id = -9301$q$,
+        'IP:-9101,-9301,33,Delivered',
+        $q$update public.orders set invoiced = true, invoice_number = 'TEST-ERP-73' where id = -9001$q$,
+        $q$update public.stock_lots set warehouse_charge = 120 where id = -9301$q$], null),
+    ('74', 'stock_lots_charge_nonneg', array[$q$update public.stock_lots set warehouse_charge = -1 where id = -9301$q$], null),
+    -- OWNER-Q5 answered 4/10: any location, but ONE live one — NULL / deleted destination at the four
+    -- sites: intl mark (75, NULL), natl mark (76, deleted), intl source save (77, deleted), natl
+    -- source save (78, NULL).
+    ('75', 'lot_no_dest', array[$q$insert into public.orders (id, legacy_id, reference, order_type, direction, status, client_id,
+           loading_location_1_id, loading_pallets_1)
+           overriding system value values (-9006, 'recTSTSTK9006', 'TEST-STOCK-9006', 'International', 'Export',
+           'Pending', %1$s, %3$s, 10)$q$,
+        $q$insert into public.stock_lots (id, order_id) values (-9305, -9006)$q$], null),
+    ('76', 'lot_no_dest', array[$q$insert into public.national_orders (id, legacy_id, reference, status, client_id,
+           pickup_location_1_id, delivery_location_1_id, pallets, price, loading_datetime, delivery_datetime)
+           overriding system value values (-9502, 'recTSTSTK9502', 'TEST-STOCK-NLOT', 'Pending', %1$s, %3$s, %9$s, 12, 500,
+           current_date, current_date + 1)$q$,
+        $q$insert into public.stock_lots (id, nat_order_id) values (-9304, -9502)$q$], null),
+    ('77', 'lot_no_dest', array[$q$update public.orders set unloading_location_1_id = %9$s where id = -9001$q$], null),
+    ('78', 'lot_no_dest', array[$q$insert into public.national_orders (id, legacy_id, reference, status, client_id,
+           pickup_location_1_id, delivery_location_1_id, pallets, price, loading_datetime, delivery_datetime)
+           overriding system value values (-9502, 'recTSTSTK9502', 'TEST-STOCK-NLOT', 'Pending', %1$s, %3$s, %5$s, 12, 500,
+           current_date, current_date + 1)$q$,
+        $q$insert into public.stock_lots (id, nat_order_id) values (-9304, -9502)$q$,
+        $q$update public.national_orders set delivery_location_1_id = null where id = -9502$q$], null),
 
-    -- ── Accepted paths (15) ──────────────────────────────────────────────────────────────────────
+    -- ── Accepted paths (18) ──────────────────────────────────────────────────────────────────────
     -- P1: the form re-sends every field; only the reference changes; the lot is CLOSED.
     ('P1', 'true', array['IP:-9101,-9301,31,Delivered',
         $q$update public.stock_lots set closed_note = 'TEST: 2 χαλασμένες' where id = -9301$q$,
@@ -367,8 +456,9 @@ begin
         'NP:-9501,-9303,4,Pending,%1$s,%5$s'],
         $q$select remaining_pallets || ' ' || pieces || ' ' || (select piece_kind from public.stock_v_pieces where lot_id = -9303)
              from public.stock_v_lots where id = -9303$q$),
-    -- P8 (Ε2): a NATIONAL order as the lot source (delivering to 360) — no intake cost in Φ1.
-    ('P8', 'natl no_intake_cost', array[$q$insert into public.national_orders (id, legacy_id, reference, status, client_id,
+    -- P8 (Ε2): a NATIONAL order as the lot source (delivering to 360) — no assignment cost in Φ1 and
+    --     no warehouse charge entered → no_charge (OWNER-Q7 answered 4/10 (same rule); with one: M12).
+    ('P8', 'natl no_charge', array[$q$insert into public.national_orders (id, legacy_id, reference, status, client_id,
            pickup_location_1_id, delivery_location_1_id, pallets, price, loading_datetime, delivery_datetime)
            overriding system value values (-9502, 'recTSTSTK9502', 'TEST-STOCK-NLOT', 'Pending', %1$s, %3$s, %5$s, 12, 500,
            current_date, current_date + 1)$q$,
@@ -444,8 +534,32 @@ begin
         'IP:-9104,-9302,5,In Transit',
         $q$update public.orders set loading_datetime = current_date - 1 where id in (-9101, -9102, -9104)$q$],
         $q$select string_agg(pieces_moving::text, ' ' order by id desc) from public.stock_v_lots where id in (-9301, -9302)$q$),
+    -- P16 (round 2): the warehouse charge is editable on a CLOSED lot that is not invoiced, and the same
+    --      value re-sent after the invoice is no change (the Worker may re-PATCH it) — closed_at kept.
+    ('P16', '50.00 true', array['IP:-9101,-9301,31,Delivered',
+        $q$update public.stock_lots set closed_note = 'TEST: 2 χαλασμένες' where id = -9301$q$,
+        $q$update public.stock_lots set warehouse_charge = 50 where id = -9301$q$,
+        $q$update public.orders set invoiced = true, invoice_number = 'TEST-ERP-P16' where id = -9001$q$,
+        $q$update public.stock_lots set warehouse_charge = 50 where id = -9301$q$],
+        $q$select warehouse_charge || ' ' || (closed_at is not null) from public.stock_lots where id = -9301$q$),
+    -- P17 / P18 (OWNER-Q5 answered 4/10 (any location can be a warehouse)): a lot to an UNTYPED
+    --      location and to a 'Client Depot' location are marked — no type is a condition any more.
+    ('P17', 'untyped', array[$q$insert into public.orders (id, legacy_id, reference, order_type, direction, status, client_id,
+           loading_location_1_id, unloading_location_1_id, loading_pallets_1)
+           overriding system value values (-9006, 'recTSTSTK9006', 'TEST-STOCK-9006', 'International', 'Export',
+           'Pending', %1$s, %3$s, %8$s, 10)$q$,
+        $q$insert into public.stock_lots (id, order_id) values (-9305, -9006)$q$],
+        $q$select coalesce(w.type, 'untyped') from public.stock_v_lots l join public.locations w on w.id = l.warehouse_location_id
+            where l.id = -9305$q$),
+    ('P18', 'Client Depot', array[$q$insert into public.orders (id, legacy_id, reference, order_type, direction, status, client_id,
+           loading_location_1_id, unloading_location_1_id, loading_pallets_1)
+           overriding system value values (-9006, 'recTSTSTK9006', 'TEST-STOCK-9006', 'International', 'Export',
+           'Pending', %1$s, %3$s, %7$s, 10)$q$,
+        $q$insert into public.stock_lots (id, order_id) values (-9305, -9006)$q$],
+        $q$select coalesce(w.type, 'untyped') from public.stock_v_lots l join public.locations w on w.id = l.warehouse_location_id
+            where l.id = -9305$q$),
 
-    -- ── Money (6, Ε1) — price 3300, warehouse rate 300, 33 pallets → net 3000.00 ─────────────────
+    -- ── Money (18, Ε1) — lot A: price 3300, warehouse rate 300, 33 pallets → net 3000.00 ─────────
     ('M1', '454.55/1363.63/1181.82 Σ3000.00 net 3000.00 in_stock 0.00',
         array['IP:-9101,-9301,5,Pending', 'IP:-9102,-9301,15,Pending', 'IP:-9103,-9301,13,Pending'],
         $q$select string_agg(a.amount::text, '/' order by a.seq) || ' Σ' || sum(a.amount) || ' net ' || max(m.net)
@@ -463,7 +577,9 @@ begin
                   || ' written_off ' || written_off_amount || ' in_stock ' || in_stock_amount
                   || ' pallets ' || written_off_pallets
              from public.stock_v_lot_money where lot_id = -9301$q$),
-    ('M4', 'no_intake_cost rows=0', array['IP:-9101,-9302,5,Pending'],
+    -- M4 (round 2 case 2): our own truck carried lot B in (no assignment) and no warehouse charge was
+    --     entered → no_charge: no allocation, today's rule (no row in stock_v_rt_amounts).
+    ('M4', 'no_charge rows=0', array['IP:-9101,-9302,5,Pending'],
         $q$select allocation_status || ' rows=' || (select count(*) from public.stock_v_rt_amounts where order_id in (-9002, -9101))
              from public.stock_v_lot_money where lot_id = -9302$q$),
     ('M5', 'no_price', array[$q$update public.orders set price = null where id = -9002$q$],
@@ -471,14 +587,138 @@ begin
     ('M6', '-9103=1181.82 -9102=1363.63 -9101=454.55 -9001=300.00',
         array['IP:-9101,-9301,5,Pending', 'IP:-9102,-9301,15,Pending', 'IP:-9103,-9301,13,Pending'],
         $q$select string_agg(order_id || '=' || rt_amount, ' ' order by order_id)
-             from public.stock_v_rt_amounts where order_id in (-9001, -9101, -9102, -9103)$q$)
+             from public.stock_v_rt_amounts where order_id in (-9001, -9101, -9102, -9103)$q$),
+    -- Round 2 «Χρέωση αποθήκης» (contract round 2 #1). Lot B = our own truck, no assignment.
+    -- M7 (case 1): own-truck lot WITH a charge (200) → ok; net 2000 − 200 = 1800.00; the source's RT
+    --     earns 0 (owner: «μόνο τα κομμάτια»); Σ pieces + in stock + written off = net, to the cent.
+    ('M7', 'ok src=0 pieces 272.73/818.18 Σ1090.91 + 709.09 + 0.00 = 1800.00',
+        array[$q$update public.stock_lots set warehouse_charge = 200 where id = -9302$q$,
+              'IP:-9101,-9302,5,Pending', 'IP:-9102,-9302,15,Pending'],
+        $q$select max(m.allocation_status) || ' src=' || (select rt_amount from public.stock_v_rt_amounts where order_id = -9002)
+                  || ' pieces ' || string_agg(a.amount::text, '/' order by a.seq) || ' Σ' || sum(a.amount)
+                  || ' + ' || max(m.in_stock_amount) || ' + ' || max(m.written_off_amount) || ' = ' || max(m.net)
+             from public.stock_v_lot_alloc a join public.stock_v_lot_money m on m.lot_id = a.lot_id
+            where a.lot_id = -9302$q$),
+    -- M8 (case 2, the field emptied again): charge 200 entered, then cleared → no_charge again, no
+    --     allocation, no RT amount (today's rule).
+    ('M8', 'no_charge total=null net=null rows=0',
+        array[$q$update public.stock_lots set warehouse_charge = 200 where id = -9302$q$,
+              $q$update public.stock_lots set warehouse_charge = null where id = -9302$q$,
+              'IP:-9101,-9302,5,Pending'],
+        $q$select allocation_status || ' total=' || coalesce(charge_total::text, 'null') || ' net=' || coalesce(net::text, 'null')
+                  || ' rows=' || (select count(*) from public.stock_v_rt_amounts where order_id in (-9002, -9101))
+             from public.stock_v_lot_money where lot_id = -9302$q$),
+    -- M9 (case 3): own-truck lot with charge 0 (the warehouse charges nothing) → ok, net = the price.
+    ('M9', 'ok total=0.00 net=2000.00 piece=303.03 src=0',
+        array[$q$update public.stock_lots set warehouse_charge = 0 where id = -9302$q$, 'IP:-9101,-9302,5,Pending'],
+        $q$select allocation_status || ' total=' || charge_total || ' net=' || net
+                  || ' piece=' || (select amount from public.stock_v_lot_alloc where piece_id = -9101)
+                  || ' src=' || (select rt_amount from public.stock_v_rt_amounts where order_id = -9002)
+             from public.stock_v_lot_money where lot_id = -9302$q$),
+    -- M10 (case 4): partner lot + an extra charge → net = price − rate − charge = 3300 − 300 − 150; the
+    --     partner RT still earns exactly its rate (margin 0) — the extra charge is in no RT.
+    ('M10', '300.00 + 150.00 = 450.00 net=2850.00 src=300.00',
+        array[$q$update public.stock_lots set warehouse_charge = 150 where id = -9301$q$,
+              'IP:-9101,-9301,5,Pending', 'IP:-9102,-9301,15,Pending', 'IP:-9103,-9301,13,Pending'],
+        $q$select partner_cost || ' + ' || warehouse_charge || ' = ' || charge_total || ' net=' || net
+                  || ' src=' || (select rt_amount from public.stock_v_rt_amounts where order_id = -9001)
+             from public.stock_v_lot_money where lot_id = -9301$q$),
+    -- M11 (case 7): tms_reader cannot read the charge; the auditor can; tms_reader still reads the
+    --     lot's other columns (id, legacy_id, closed_at). Privilege functions, not SET ROLE: the
+    --     editor's postgres may not SET ROLE tms_reader (measured live 4/10).
+    ('M11', 'false true true true true', array[]::text[],
+        $q$select has_column_privilege('tms_reader', 'public.stock_lots', 'warehouse_charge', 'select')
+                  || ' ' || has_column_privilege('tms_check_runner', 'public.stock_lots', 'warehouse_charge', 'select')
+                  || ' ' || has_column_privilege('tms_reader', 'public.stock_lots', 'id', 'select')
+                  || ' ' || has_column_privilege('tms_reader', 'public.stock_lots', 'legacy_id', 'select')
+                  || ' ' || has_column_privilege('tms_reader', 'public.stock_lots', 'closed_at', 'select')$q$),
+    -- M12 (OWNER-Q7 answered 4/10 (same rule)): a NATIONAL lot WITH a warehouse charge → ok
+    --     (no assignment cost in Φ1, so the charge is the field alone): 500 − 50 = 450.00.
+    ('M12', 'natl ok total=50.00 net=450.00',
+        array[$q$insert into public.national_orders (id, legacy_id, reference, status, client_id,
+           pickup_location_1_id, delivery_location_1_id, pallets, price, loading_datetime, delivery_datetime)
+           overriding system value values (-9502, 'recTSTSTK9502', 'TEST-STOCK-NLOT', 'Pending', %1$s, %3$s, %5$s, 12, 500,
+           current_date, current_date + 1)$q$,
+              $q$insert into public.stock_lots (id, nat_order_id) values (-9304, -9502)$q$,
+              $q$update public.stock_lots set warehouse_charge = 50 where id = -9304$q$],
+        $q$select source_kind || ' ' || allocation_status || ' total=' || charge_total || ' net=' || net
+             from public.stock_v_lot_money where lot_id = -9304$q$),
+    -- OWNER-Q3 answered 4/10 (VS on piece prorated /F): the VS charge of a piece, computed exactly as
+    -- both legs of ct_v_rt_revenue compute it — X by the order's direction, the pallets of the order's
+    -- stock_v_pieces row, stock_vs_charge(). Printed «X × pallets/F = charge» («full» = not a piece).
+    ('VS1', '650 × 15/33 = 295.45',
+        array['IP:-9101,-9301,15,Pending', $q$update public.orders set veroia_switch = true where id = -9101$q$],
+        $q$select k.x || ' × ' || coalesce(vp.pallets || '/' || public.ct_setting('full_truck_pallets'), 'full')
+                  || ' = ' || public.stock_vs_charge(k.x, vp.pallets)
+             from public.orders o
+             cross join lateral (select case when o.direction = 'Export' then public.ct_setting('x_export')
+                                             else public.ct_setting('x_import') end as x) k
+             left join public.stock_v_pieces vp on vp.piece_kind = 'intl' and vp.piece_id = o.id
+            where o.id = -9101$q$),
+    ('VS2', '650 × 33/33 = 650.00',
+        array['IP:-9101,-9301,33,Pending', $q$update public.orders set veroia_switch = true where id = -9101$q$],
+        $q$select k.x || ' × ' || coalesce(vp.pallets || '/' || public.ct_setting('full_truck_pallets'), 'full')
+                  || ' = ' || public.stock_vs_charge(k.x, vp.pallets)
+             from public.orders o
+             cross join lateral (select case when o.direction = 'Export' then public.ct_setting('x_export')
+                                             else public.ct_setting('x_import') end as x) k
+             left join public.stock_v_pieces vp on vp.piece_kind = 'intl' and vp.piece_id = o.id
+            where o.id = -9101$q$),
+    -- VS3: a 40-pallet piece (of a 45-pallet lot) pays the full charge, never more (capped at F).
+    ('VS3', '650 × 40/33 = 650.00',
+        array[$q$insert into public.orders (id, legacy_id, reference, order_type, direction, status, client_id,
+           loading_location_1_id, unloading_location_1_id, loading_pallets_1, loading_datetime, delivery_datetime, price)
+           overriding system value values (-9006, 'recTSTSTK9006', 'TEST-STOCK-9006', 'International', 'Export',
+           'Delivered', %1$s, %3$s, %4$s, 45, current_date - 5, current_date - 2, 4500)$q$,
+              $q$insert into public.stock_lots (id, order_id) values (-9305, -9006)$q$,
+              'IP:-9101,-9305,40,Pending', $q$update public.orders set veroia_switch = true where id = -9101$q$],
+        $q$select k.x || ' × ' || coalesce(vp.pallets || '/' || public.ct_setting('full_truck_pallets'), 'full')
+                  || ' = ' || public.stock_vs_charge(k.x, vp.pallets)
+             from public.orders o
+             cross join lateral (select case when o.direction = 'Export' then public.ct_setting('x_export')
+                                             else public.ct_setting('x_import') end as x) k
+             left join public.stock_v_pieces vp on vp.piece_kind = 'intl' and vp.piece_id = o.id
+            where o.id = -9101$q$),
+    -- VS4: an EXPORT piece prorates the export charge (850 base).
+    ('VS4', '850 × 15/33 = 386.36',
+        array['IP:-9101,-9301,15,Pending',
+              $q$update public.orders set direction = 'Export', veroia_switch = true where id = -9101$q$],
+        $q$select k.x || ' × ' || coalesce(vp.pallets || '/' || public.ct_setting('full_truck_pallets'), 'full')
+                  || ' = ' || public.stock_vs_charge(k.x, vp.pallets)
+             from public.orders o
+             cross join lateral (select case when o.direction = 'Export' then public.ct_setting('x_export')
+                                             else public.ct_setting('x_import') end as x) k
+             left join public.stock_v_pieces vp on vp.piece_kind = 'intl' and vp.piece_id = o.id
+            where o.id = -9101$q$),
+    -- VS5: the national leg earns what the international leg pays — the DEPLOYED ct_v_rt_revenue calls
+    --      stock_vs_charge exactly twice, the international leg with vp (the leg's order) and the
+    --      national Direct leg with svp (the load's source order), both joined to stock_v_pieces.
+    ('VS5', '2 calls · true true true true', array[]::text[],
+        $q$select (length(d) - length(replace(d, 'stock_vs_charge(', ''))) / length('stock_vs_charge(') || ' calls · '
+                  || (d like '%END, vp.pallets)%') || ' ' || (d like '%END, svp.pallets)%')
+                  || ' ' || (d like '%LEFT JOIN stock_v_pieces vp ON vp.piece_kind = ''intl''::text AND vp.piece_id = o.id%')
+                  || ' ' || (d like '%LEFT JOIN stock_v_pieces svp ON svp.piece_kind = ''intl''::text AND svp.piece_id = so.id%')
+             from (select pg_get_viewdef('public.ct_v_rt_revenue'::regclass, true) as d) v$q$),
+    -- VS6: an ORDINARY VS order of 15 pallets (no lot) keeps the full charge — no stock_v_pieces row.
+    ('VS6', '650 × full = 650',
+        array[$q$insert into public.orders (id, legacy_id, reference, order_type, direction, status, client_id,
+           loading_location_1_id, unloading_location_1_id, loading_pallets_1, veroia_switch)
+           overriding system value values (-9006, 'recTSTSTK9006', 'TEST-STOCK-9006', 'International', 'Import',
+           'Pending', %1$s, %4$s, %3$s, 15, true)$q$],
+        $q$select k.x || ' × ' || coalesce(vp.pallets || '/' || public.ct_setting('full_truck_pallets'), 'full')
+                  || ' = ' || public.stock_vs_charge(k.x, vp.pallets)
+             from public.orders o
+             cross join lateral (select case when o.direction = 'Export' then public.ct_setting('x_export')
+                                             else public.ct_setting('x_import') end as x) k
+             left join public.stock_v_pieces vp on vp.piece_kind = 'intl' and vp.piece_id = o.id
+            where o.id = -9006$q$)
     ) t(num, expect, stmts, check_sql)
   loop
     v_total := v_total + 1;
     v_txt := null;
     begin
       foreach s in array r.stmts loop
-        s := format(s, c1, c2, gr, wh, hub, pt);
+        s := format(s, c1, c2, gr, wh, hub, pt, cd, ut, dl);
         if left(s, 3) = 'IP:' then
           a := string_to_array(substr(s, 4), ',');
           s := format($x$insert into public.orders (id, legacy_id, reference, order_type, direction, status, client_id,

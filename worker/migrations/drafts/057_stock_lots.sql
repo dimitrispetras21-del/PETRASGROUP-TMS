@@ -5,7 +5,7 @@
 -- WHO / WHEN / ORDER (mandatory)
 --   * The owner runs this file in the Supabase SQL editor, AFTER 15:00 (team works 05:30–14:30).
 --   * Then 057_stock_lots_verify.sql (SELECT only; run its V0 BEFORE this file too), then
---     057_stock_lots_rules_test.sql (must end with «RESULT: 87/87 OK» — it always rolls back).
+--     057_stock_lots_rules_test.sql (must end with «RESULT: 113/113 OK» — it always rolls back).
 --   * The Worker (facade labels «Stock Lot», «Own Stock Lot», «Stock Lot Reference» → stock_lot_reference,
 --     tblStockLots incl. «Pieces Moving» → pieces_moving, /costs/stock-lots) is
 --     deployed ONLY after the verify file passes. Worker first is QUIET, not loud: after every ORDERS
@@ -21,7 +21,8 @@
 --     057_stock_lots_guards_on.sql (they come back, after R1) ·
 --     057_stock_lots_rollback_r2_revenue.sql (revenue view back to its pre-057 text — the 034 one) ·
 --     057_stock_lots_rollback_r3_blank_null_off.sql (only the blank group_id normaliser of §6 goes;
---     B-54 then reads one short — red on purpose).
+--     B-54 then reads one short — red on purpose) ·
+--     057_stock_lots_blank_null_on.sql (the normaliser comes back, after R3).
 --
 -- WHY ONE DO BLOCK (lesson 056, 3/10/2026): the SQL editor does not run BEGIN…COMMIT as one
 -- transaction — 056 half-committed and its temp table vanished before the proofs. A DO block is ONE
@@ -30,14 +31,22 @@
 -- WHAT (model, contract §1 — the DB supports every warehouse kind from day one, Ε2):
 --   * stock_lots: one row per lot, pointing to exactly ONE source order (orders OR national_orders).
 --     Price, invoice and the warehouse partner's assignment stay on that source order. The
---     warehouse = the source's destination 1, never stored twice.
+--     warehouse = the source's destination 1, never stored twice — ANY live location (OWNER-Q5
+--     answered 4/10 (any location can be a warehouse)): no location type is a condition.
+--     The lot itself carries ONE money field, warehouse_charge (round 2, owner 4/10): what the
+--     warehouse charges that is NOT already in the assignment — owner-only, never readable by
+--     tms_reader (column grants, §7).
 --   * A piece = an ordinary orders / national_orders row with stock_lot_id → stock_lots(id).
---   * Rules live HERE (principle 4): three BEFORE triggers + six CHECKs. Every refusal is a Greek
+--   * Rules live HERE (principle 4): three BEFORE triggers + eight CHECKs (round 2 added the
+--     warehouse charge ≥ 0 and full_truck_pallets > 0 to the six of round 0). Every refusal is a Greek
 --     message with hint 'stock:<code>' (or a named CHECK) so the Worker turns it into a 422 the
 --     screen can show — never «Server error».
 --   * Money (Ε1): stock_v_lot_money / stock_v_lot_alloc / stock_v_rt_amounts, read only by the owner
---     (Worker /costs/stock-lots) and by ct_v_rt_revenue. Nothing is stored by hand.
---   * The only DATA change: locations 424 and 885 become 'Partner Warehouse' (exactly 2 rows).
+--     (Worker /costs/stock-lots) and by ct_v_rt_revenue. Nothing is computed by hand: the only money
+--     typed in is the lot's warehouse_charge (owner, Worker PATCH).
+--   * The only DATA change: ONE new ct_settings row, full_truck_pallets = 33 (OWNER-Q3, VS of a
+--     piece prorated over a full truck). No existing row of any table is updated — no location is
+--     typed (OWNER-Q5: 424, 885 and 92 stay exactly as they are).
 --   * orders.group_id: a blank value is stored as NULL (one small BEFORE trigger, §6). «Επιστροφή
 --     στο απόθεμα» / «Ακύρωση groupage» write Group ID '' and the round-trip engine (033/037 walks:
 --     «group_id is not null and n.group_id = cur.group_id») would read every '' order as ONE group —
@@ -52,7 +61,8 @@
 --           every invoicing list and takes its pieces with it — goods delivered, never invoiced, silent.
 --   * B-16  a lot source never sits in a group or a match (lot_grouped): at the mark, on its own
 --           save, and when an export tries to take it as its matched import.
---   * C-15  OWNER-Q1 default: a lot source never carries Veroia Switch (lot_vs). Pieces may.
+--   * C-15  OWNER-Q1 answered 4/10 (no VS on a lot): a lot source never carries Veroia Switch
+--           (lot_vs). Pieces may (their VS charge is prorated, round 2 below).
 --   * C-05  a piece becomes In Transit / Delivered only while it is on a truck (piece_no_truck) —
 --           the DB backstop for the Ημερήσιο «Φορτώθηκε» on a piece that went back to stock.
 --   * D-22  the lot row is locked only by writes that are judged (draws, pallet/client/pickup changes,
@@ -78,11 +88,34 @@
 -- ROUND 1b OF THE INDEPENDENT SQL REVIEWER (4/10/2026, all P3):
 --   * P3-1  the identity sequence stock_lots_id_seq is born closed too (§7, proved in §9; precedent 053).
 --   * P3-2  §0 refuses if orders_with_derived / ct_v_rt_revenue carry view options (CREATE OR REPLACE
---           would drop them silently); §9 and R2 prove both stay owner-rights (reloptions NULL).
+--           would drop them silently); §9 proves both stay owner-rights (reloptions NULL). R2 records
+--           the revenue view's options and puts them back (round 2, P3 (1)).
 --   * P3-3  the rules test reaches lot_empty, lot_is_piece, piece_is_lot, lot_missing and
 --           lot_source_missing (cases 62–66) — every refusal code now has a case.
 --   * P3-6  R3 (057_stock_lots_rollback_r3_blank_null_off.sql): the normaliser's own way off.
 --   * P3-8  stock_v_lots.completed_on takes closed_at's ATHENS day, not the session's (UTC).
+--
+-- ROUND 2 (owner answers 4/10 + the round-1b SQL reviewer's P3 findings):
+--   * «Χρέωση αποθήκης» (contract round 2 #1): stock_lots.warehouse_charge (≥ 0, NULL = not entered).
+--           ONE rule for every lot: charge = the warehouse partner's assignment rate on the source (if
+--           any) + warehouse_charge (if any); net = price − charge. Neither entered → 'no_charge', no
+--           allocation (today's rule) and the auditor's S-11 says so. stock_v_lot_money shows
+--           partner_cost / warehouse_charge / charge_total (intake_cost is gone: a dead name misleads).
+--           The source's own RT earns coalesce(partner_cost, 0): a partner's RT keeps margin 0, our own
+--           truck earns 0 (owner: «μόνο τα κομμάτια»). Frozen by the invoice (lot_invoiced); tms_reader
+--           cannot read the column (column grants); CHECK stock_lots_charge_nonneg.
+--   * OWNER-Q3 answered 4/10 (VS on piece prorated /F): a piece's VS charge = round(X × least(pallets,
+--           F) / F, 2), F = ct_settings.full_truck_pallets (33, new row + CHECK > 0). Ordinary VS orders
+--           keep the full X. One function, stock_vs_charge(), for both legs of ct_v_rt_revenue.
+--   * OWNER-Q5 answered 4/10 (any location can be a warehouse): warehouse_rule and stock_is_warehouse
+--           are gone, and so is the data part that typed 424/885. A lot still needs ONE live
+--           destination: a NULL or deleted one is refused as lot_no_dest (at the mark and when the
+--           source's destination changes) — pieces load only from it (piece_pickup), and with a NULL
+--           destination a piece with no pickup would match it.
+--   * P3 (3) the rules test reaches the national raise sites of lot_empty, lot_is_piece, piece_is_lot
+--           and lot_missing (cases 67–72); the two piece_is_lot LOT SOURCE sites are backstops reached
+--           only with a guard bypassed (harness proof, not the rules test). P3 (2) R3 has a way back:
+--           057_stock_lots_blank_null_on.sql. P3 (5) the verify file's V0 prints both views' options.
 --
 -- B-54 LIVES HERE, NOT IN 057b (impact map AU-06; the task asked for 057b — this is why it moved):
 --   B-54 is the auditor's P1 HOURLY check «enabled triggers in public <> red_value». This block adds
@@ -123,6 +156,7 @@ declare
   v_b54_before bigint;
   v_b54_after  bigint;
   v_b54_red    numeric;
+  v_f          numeric;
 begin
   -- The view md5 guards below are measured against pg_get_viewdef() output, which qualifies any
   -- relation that is not on the search_path. Pin it so the guard is deterministic in any session.
@@ -168,10 +202,12 @@ begin
         v_obj, v_opts;
     end if;
   end loop;
-  select count(*) into v_n from public.locations
-   where id in (424, 885) and type is null and country is not null and country not in ('GR', 'Greece');
-  if v_n <> 2 then
-    raise exception '057 guard: locations 424/885 are no longer untyped foreign sites (% of 2 match) — owner decides', v_n;
+  -- OWNER-Q3 answered 4/10 (VS on piece prorated /F): §8 adds full_truck_pallets = 33. Absent on
+  -- 4/10 (measured live: x_export, x_import, pallet_eur, vat_default, wear_fallback_eur_km). If someone
+  -- set it since, 33 is accepted as is; any other value is a decision we cannot see → refuse.
+  select s.value into v_f from public.ct_settings s where s.key = 'full_truck_pallets';
+  if found and v_f is distinct from 33 then
+    raise exception '057 guard: ct_settings.full_truck_pallets is % (expected 33 or absent) — owner decides', v_f;
   end if;
   -- 0 on 4/10. A blank group_id written before this block may already have joined round trips the
   -- wrong way (see WHAT): turning it into NULL here would re-fire rt_link_split on live trips, so it
@@ -204,12 +240,21 @@ begin
   -- legacy_id: the Worker mints it on facade POST (mintLegacyId); this default only serves rows
   -- written from the SQL editor, so the facade can always address a lot (it reads by legacy_id).
   -- deleted_at: soft delete only (the facade's DELETE writes it; no DELETE grant below).
+  -- warehouse_charge (round 2, owner 4/10 «Χρέωση αποθήκης»): what the warehouse charges for this lot
+  -- that is NOT already in the warehouse partner's assignment on the source (storage when the partner
+  -- also carried it; everything when our own truck did). Every euro is entered once (principle 3):
+  -- the assignment rate stays where it is, this field holds only the rest. NULL = not entered (with no
+  -- assignment either → 'no_charge': no allocation, S-11 reports it); 0 = the warehouse charges
+  -- nothing (a real answer). Owner money (Ε1): never in the facade, never readable by tms_reader (§7),
+  -- written only through the Worker's owner-only PATCH /costs/stock-lots. numeric(12,2) rounds a
+  -- third decimal silently, so the Worker refuses more than 2 decimals with a 400 before it gets here.
   create table public.stock_lots (
     id           bigint generated by default as identity primary key,
     legacy_id    text not null unique
                  default ('rec' || substr(md5(random()::text || clock_timestamp()::text), 1, 14)),
     order_id     bigint references public.orders(id) on delete restrict,
     nat_order_id bigint references public.national_orders(id) on delete restrict,
+    warehouse_charge numeric(12,2),
     closed_note  text,
     closed_at    timestamptz,
     created_at   timestamptz not null default now(),
@@ -217,7 +262,9 @@ begin
     constraint stock_lots_one_source check (num_nonnulls(order_id, nat_order_id) = 1),
     -- «Κλείσιμο υπολοίπου» needs a reason (Ε3); closed_at is written by the trigger from DB time.
     constraint stock_lots_close_shape check ((closed_at is null) = (closed_note is null)
-                                             and (closed_note is null or btrim(closed_note) <> ''))
+                                             and (closed_note is null or btrim(closed_note) <> '')),
+    -- A negative charge would ADD to the pieces' revenue: money that no warehouse paid us.
+    constraint stock_lots_charge_nonneg check (warehouse_charge is null or warehouse_charge >= 0)
   );
   -- One LIVE lot per source order: two anchors would allocate the same price twice.
   create unique index stock_lots_order_live on public.stock_lots (order_id)
@@ -252,6 +299,11 @@ begin
       and num_nonnulls(pickup_location_2_id, pickup_location_3_id, pickup_location_4_id, pickup_location_5_id,
                        pickup_location_6_id, pickup_location_7_id, pickup_location_8_id, pickup_location_9_id,
                        pickup_location_10_id) = 0));
+  -- OWNER-Q3 answered 4/10 (VS on piece prorated /F): F divides every VS piece's charge in
+  -- ct_v_rt_revenue. 0 would kill TRIP PnL (division by zero), a negative F would turn the charge
+  -- upside down. The settings screen PATCHes any key (owner) — so the rule lives here, on the row.
+  alter table public.ct_settings add constraint ct_settings_full_truck_pallets_positive
+    check (key <> 'full_truck_pallets' or value > 0);
 
   -- ── 3. Functions (none SECURITY DEFINER: they run as the writer, like the 043 guard) ──────────
   -- THE pallet expression of an international order: exactly orders_with_derived_old.total_pallets.
@@ -274,14 +326,38 @@ begin
     select coalesce(p_status = 'Delivered' or (p_status is distinct from 'Cancelled' and p_delivery <= current_date), false)
   $f$;
 
-  -- THE one list of warehouse kinds (Ε2: any country, ours or a partner's). The Φ1 screen offers only
-  -- partner warehouses abroad; widening later is a screen change, never a DB change.
-  create function public.stock_is_warehouse(p_location_id bigint) returns boolean
-  language sql stable set search_path = public
+  -- OWNER-Q5 answered 4/10 (any location can be a warehouse): round 1's stock_is_warehouse (type
+  -- 'Partner Warehouse' / 'Veroia Hub') is gone with its four warehouse_rule refusals. The owner uses
+  -- client sites and untyped addresses as warehouses; a type check would only push dispatchers to
+  -- retype locations to get past it. What stays: ONE live destination (lot_no_dest in §6).
+
+  -- OWNER-Q3 answered 4/10 (VS on piece prorated /F): THE Veroia Switch charge of one VS leg in
+  -- ct_v_rt_revenue — both the international leg's deduction and the national Direct leg's credit
+  -- call it with the same X and the same pallets, so the two sides cancel to the cent.
+  --   p_x            the full charge (x_export / x_import, chosen by the caller exactly as 034 does);
+  --   p_piece_pallets the order's pallets as stock_v_pieces counts them (one definition), or NULL when
+  --                  the order is not a live piece.
+  -- NULL → p_x unchanged: ordinary VS orders keep the full charge, value and scale identical to 034's
+  -- text (§9 proves every RT's revenue unchanged). A piece pays its share of a full truck: owner
+  -- verbatim «αν πχ μιλάμε για 15 παλ, πρέπει να επιμερίζεται τα 650» · «Προς γεμάτο φορτηγό 33»,
+  -- capped at the full charge (a piece of F pallets or more pays X). F is ct_settings.full_truck_pallets
+  -- (never a number in SQL). A missing F row is LOUD (an error in TRIP PnL naming the row), never a
+  -- silent NULL that would drop the leg from the RT's revenue (principle 1).
+  create function public.stock_vs_charge(p_x numeric, p_piece_pallets numeric) returns numeric
+  language plpgsql stable set search_path = public
   as $f$
-    select exists (select 1 from public.locations l
-                    where l.id = p_location_id and l.deleted_at is null
-                      and l.type in ('Partner Warehouse', 'Veroia Hub'))
+  declare
+    v_f numeric;
+  begin
+    if p_piece_pallets is null then
+      return p_x;
+    end if;
+    v_f := public.ct_setting('full_truck_pallets');
+    if v_f is null then
+      raise exception 'ct_settings.full_truck_pallets is missing — the Veroia Switch charge of a stock piece cannot be prorated (057, OWNER-Q3)';
+    end if;
+    return round(p_x * least(p_piece_pallets, v_f) / v_f, 2);
+  end
   $f$;
 
   -- Every refusal goes through here: check_violation + hint 'stock:<code>'. The Worker maps the hint
@@ -423,17 +499,28 @@ begin
     ) k;
 
   -- c) Owner money per lot (Ε1) — NEVER a facade; read by /costs/stock-lots (owner) and the auditor.
-  --    intake_cost = the warehouse partner's rate, picked EXACTLY like ct_v_rt_costs.planned picks a
-  --    partner cost (latest live non-cancelled assignment of the order, by id desc) — one rule, so
-  --    the partner RT's revenue (= this cost) and its cost cancel to margin 0 (V9 proves it).
-  --    Re-read against 034's ct_v_rt_costs (4/10 evening, md5 3349bcf0…): same pick per carried
-  --    order; its split-sibling and national-load branches never apply to a lot source (no legs).
-  --    National sources: no intake cost in Φ1 (plan Ε7) → 'no_intake_cost' → today's rule applies.
+  --    ONE rule for every lot, whoever carried it to the warehouse (round 2, owner 4/10 «Χρέωση
+  --    αποθήκης», contract round 2 #1):
+  --      charge_total = partner_cost (if any) + warehouse_charge (if any)    — ADDITION: each euro once
+  --      net          = price − charge_total
+  --    partner_cost = the warehouse partner's rate, picked EXACTLY like ct_v_rt_costs.planned picks a
+  --    partner cost (latest live non-cancelled assignment of the order, by id desc) — one rule, so the
+  --    partner RT's revenue (= this cost) and its cost cancel to margin 0 (V9 proves it). Re-read
+  --    against 034's ct_v_rt_costs (4/10 evening, md5 3349bcf0…): same pick per carried order; its
+  --    split-sibling and national-load branches never apply to a lot source (no legs). Round 1 called
+  --    it intake_cost; renamed because the lot's charge is now two parts (a dead name misleads,
+  --    principle 8). warehouse_charge = the lot's own field (owner-only, §1).
+  --    charge_total is NULL only when NEITHER part was entered → 'no_charge': no allocation, the full
+  --    price stays on the source (today's rule) and S-11 shouts. 0 is a real charge (the warehouse
+  --    charges nothing) → allocated. With an assignment, an empty field means «no extra charge».
   --    'no_pallets' only exists if the guards were bypassed (R1): it keeps a division by zero out
   --    of ct_v_rt_revenue (TRIP PnL would die) and makes S-11 shout instead.
   --    Rounding: net is rounded to cents once; allocated_amount = round(net·drawn/T, 2) — the same
   --    expression as the last running total of stock_v_lot_alloc, so allocated = Σ piece amounts
   --    exactly, and allocated + in_stock + written_off = net exactly.
+  --    stock_lots is joined for warehouse_charge: stock_v_lots must never carry money (dispatchers and
+  --    tms_reader read it), and this view is owner-rights, so tms_reader's column grant (§7) does not
+  --    apply here — tms_reader has no SELECT on this view at all.
   create view public.stock_v_lot_money as
   select l.id                       as lot_id,
          l.legacy_id                as lot_rec,
@@ -441,7 +528,9 @@ begin
          l.lot_no                   as source_id,
          x.source_rec,
          x.price,
-         x.intake_cost,
+         x.partner_cost,
+         s.warehouse_charge,
+         c.charge_total,
          case when k.st = 'ok' then k.net end                                   as net,
          l.stock_pallets            as total_pallets,
          case when k.st = 'ok' then round(k.net / nullif(l.stock_pallets, 0), 4) end as per_pallet,
@@ -454,27 +543,35 @@ begin
          l.closed_at,
          k.st                       as allocation_status
     from public.stock_v_lots l
+    join public.stock_lots s on s.id = l.id
     cross join lateral (
       select o.legacy_id as source_rec, o.price,
              (select pa.partner_rate
                 from public.partner_assignments pa
                where pa.order_id = o.id and pa.deleted_at is null and pa.status <> 'Cancelled'
                order by pa.id desc
-               limit 1)  as intake_cost
+               limit 1)  as partner_cost
         from public.orders o
        where o.id = l.order_id
       union all
+      -- OWNER-Q7 answered 4/10 (same rule): a lot with a NATIONAL pickup has no assignment cost in
+      -- Φ1 (plan Ε7), so partner_cost is NULL and its charge is warehouse_charge alone — entered →
+      -- 'ok', not entered → 'no_charge'. No national-only branch: one rule for every lot.
       select n.legacy_id, n.price, null::numeric
         from public.national_orders n
        where n.id = l.nat_order_id
     ) x
     cross join lateral (
+      select case when x.partner_cost is null and s.warehouse_charge is null then null::numeric
+                  else coalesce(x.partner_cost, 0) + coalesce(s.warehouse_charge, 0) end as charge_total
+    ) c
+    cross join lateral (
       select case when coalesce(x.price, 0) <= 0 then 'no_price'
-                  when x.intake_cost is null     then 'no_intake_cost'
+                  when c.charge_total is null    then 'no_charge'
                   when l.stock_pallets <= 0      then 'no_pallets'
                   else 'ok' end                                                 as st,
-             round(x.price - x.intake_cost, 2)                                  as net,
-             round(round(x.price - x.intake_cost, 2) * l.drawn_pallets / nullif(l.stock_pallets, 0), 2) as alloc
+             round(x.price - c.charge_total, 2)                                 as net,
+             round(round(x.price - c.charge_total, 2) * l.drawn_pallets / nullif(l.stock_pallets, 0), 2) as alloc
     ) k;
 
   -- d) Per-piece allocation. ROUNDING RULE (running total): with the pieces in creation order
@@ -505,10 +602,15 @@ begin
     ) w;
 
   -- e) What ct_v_rt_revenue reads instead of orders.price for lot orders: the source order earns its
-  --    intake cost (the partner RT: margin 0), each international piece earns its allocation. Only
-  --    international lots with status 'ok'; anything else keeps today's rule (full price on the source).
+  --    partner cost — a partner's RT keeps margin 0; with no assignment (our own truck carried the lot
+  --    in) the source's RT earns 0: owner 4/10 «μόνο τα κομμάτια» — the revenue lives in the pieces,
+  --    a decision, not a gap. coalesce(…, 0), never NULL: a NULL would fall through
+  --    COALESCE(sa.rt_amount, o.price, …) in ct_v_rt_revenue and credit the FULL price to the intake
+  --    RT on top of the pieces — the same euros twice. The warehouse_charge is in no RT: it is what the
+  --    warehouse keeps. Each international piece earns its allocation. Only international lots with
+  --    status 'ok'; anything else keeps today's rule (full price on the source).
   create view public.stock_v_rt_amounts as
-  select m.source_id as order_id, m.intake_cost as rt_amount
+  select m.source_id as order_id, coalesce(m.partner_cost, 0) as rt_amount
     from public.stock_v_lot_money m
    where m.source_kind = 'intl' and m.allocation_status = 'ok'
   union all
@@ -677,19 +779,29 @@ begin
        LEFT JOIN national_orders psn ON psn.id = ps.nat_order_id;
 
   -- ct_v_rt_revenue: the CURRENT text (pg_get_viewdef after 034, 4/10 evening — md5-guarded in §0)
-  -- verbatim, with ONE change: the international leg amount reads the allocation first
-  -- (COALESCE(sa.rt_amount, o.price, …)) through LEFT JOIN stock_v_rt_amounts sa. With no lot, sa is
-  -- NULL everywhere → every RT keeps the same revenue / revenue_intl / revenue_natl (proved in §9).
+  -- verbatim, with TWO changes:
+  --   1. the international leg amount reads the allocation first (COALESCE(sa.rt_amount, o.price, …))
+  --      through LEFT JOIN stock_v_rt_amounts sa;
+  --   2. OWNER-Q3 answered 4/10 (VS on piece prorated /F): the VS charge of a leg goes through
+  --      stock_vs_charge(X, pallets) on BOTH sides — the international leg's deduction (vp = the leg's
+  --      order in stock_v_pieces) and the national Direct leg's credit (svp = that load's source order
+  --      in stock_v_pieces). For a live piece the charge is X·least(pallets, F)/F; for every other
+  --      order vp/svp is NULL and the function returns X itself, so an ordinary VS order reads exactly
+  --      034's amounts. X is still chosen by 034's CASE (x_export for an Export, else x_import).
+  -- With no lot, sa / vp / svp are NULL everywhere → every RT keeps the same revenue / revenue_intl /
+  -- revenue_natl (proved in §9).
   -- WHICH COLUMN THE STOCK AMOUNT FEEDS: revenue_intl only. The lot source and its pieces are
   -- ORDERS legs (l.order_id), and rev_intl is the orders-leg amount; rev_natl reads national loads
   -- (the VS charge credited to the national leg, national-order prices) and no stock amount ever
   -- lands there — Φ1 has no national pieces in stock_v_rt_amounts (intl only, plan Ε7). revenue =
-  -- revenue_intl + revenue_natl stays true by construction (same legs CTE). The VS treatment is
-  -- 034's, untouched: a VS piece reads allocation − x_import on its international leg, and its
-  -- national leg earns + x_import, exactly like any VS order. stock_v_rt_amounts has at most one row
-  -- per order (one live anchor per source, one lot per piece, a lot source is never a piece —
-  -- guards; V9(e)), so the join never multiplies a leg. ct_v_rt_pnl (27 columns) reads the same 4
-  -- columns and is not recreated.
+  -- revenue_intl + revenue_natl stays true by construction (same legs CTE). The VS treatment keeps
+  -- 034's shape — the international leg pays the charge, the national Direct leg earns it — but a VS
+  -- PIECE pays only its pallets' share of a full truck (round 2): a 15-pallet Import piece reads
+  -- allocation − 295.45 (650·15/33) and its national leg + 295.45, so the RT's total revenue is the
+  -- allocation, as before. Ordinary VS orders: − X / + X, unchanged. stock_v_rt_amounts and
+  -- stock_v_pieces have at most one row per order (one live anchor per source, one lot per piece, a
+  -- lot source is never a piece — guards; V9(e)), so the joins never multiply a leg. ct_v_rt_pnl (27
+  -- columns) reads the same 4 columns and is not recreated.
   create or replace view public.ct_v_rt_revenue as
    WITH natord_home AS (
            SELECT nord.id AS national_order_id,
@@ -718,7 +830,7 @@ begin
                           CASE
                               WHEN o.parent_order_id IS NOT NULL THEN p.veroia_switch
                               ELSE o.veroia_switch
-                          END THEN
+                          END THEN stock_vs_charge(
                           CASE
                               WHEN
                               CASE
@@ -726,7 +838,7 @@ begin
                                   ELSE o.direction
                               END = 'Export'::text THEN ct_setting('x_export'::text)
                               ELSE ct_setting('x_import'::text)
-                          END
+                          END, vp.pallets)
                           ELSE 0::numeric
                       END
                       ELSE 0::numeric
@@ -740,7 +852,7 @@ begin
                           CASE
                               WHEN so.parent_order_id IS NOT NULL THEN sp.veroia_switch
                               ELSE so.veroia_switch
-                          END THEN
+                          END THEN stock_vs_charge(
                           CASE
                               WHEN
                               CASE
@@ -748,7 +860,7 @@ begin
                                   ELSE so.direction
                               END = 'Export'::text THEN ct_setting('x_export'::text)
                               ELSE ct_setting('x_import'::text)
-                          END
+                          END, svp.pallets)
                           ELSE 0::numeric
                       END + COALESCE(( SELECT sum(h.price) AS sum
                          FROM natord_home h
@@ -760,9 +872,11 @@ begin
                LEFT JOIN orders o ON o.id = l.order_id
                LEFT JOIN orders p ON p.id = o.parent_order_id
                LEFT JOIN stock_v_rt_amounts sa ON sa.order_id = o.id
+               LEFT JOIN stock_v_pieces vp ON vp.piece_kind = 'intl'::text AND vp.piece_id = o.id
                LEFT JOIN national_loads nl ON nl.id = l.nat_load_id
                LEFT JOIN orders so ON so.id = nl.source_order_id
                LEFT JOIN orders sp ON sp.id = so.parent_order_id
+               LEFT JOIN stock_v_pieces svp ON svp.piece_kind = 'intl'::text AND svp.piece_id = so.id
           )
    SELECT rt_id,
       COALESCE(sum(rev_intl + rev_natl), 0::numeric) AS revenue,
@@ -815,6 +929,20 @@ begin
       end if;
     end if;
 
+    -- The warehouse charge (round 2, contract «Χρέωση αποθήκης») moves the net of an invoiced lot —
+    -- after the invoice, every piece RT would be re-priced against a price the client already paid.
+    -- OWNER-Q4 answered 4/10 (open until invoice): the price and the warehouse charge stay editable
+    -- until the invoice so the accountant can correct them; every change re-prices the piece RTs live
+    -- (owner-only view; payroll does not read it). So: allowed while the lot is open or closed and not
+    -- invoiced, refused once invoiced — the same code and text as a reason edit (lot_invoiced). Race
+    -- with «Invoiced» on the source: that save takes FOR NO KEY UPDATE on this lot row (LOT SOURCE of
+    -- stock_guard_orders / _natl) and this UPDATE holds the same row, so one waits for the other and
+    -- this trigger, which fires after the row lock, reads the invoice that committed. A dead anchor
+    -- that stays dead left above (the Worker answers 404 for it); a revival is judged as a new mark.
+    if tg_op = 'UPDATE' and new.warehouse_charge is distinct from old.warehouse_charge and v_invoiced then
+      perform stock_raise('lot_invoiced', 'Η παρτίδα τιμολογήθηκε — δεν αλλάζει');
+    end if;
+
     if tg_op = 'INSERT' or v_revived then
       -- A save of the source at the same second (a second destination, a client site as destination,
       -- «Invoiced») queues behind this mark — its own guard then sees the new anchor and judges it.
@@ -847,8 +975,13 @@ begin
                         o.unloading_location_8_id, o.unloading_location_9_id, o.unloading_location_10_id) > 0 then
           perform stock_raise('lot_multi_dest', 'Η παρτίδα έχει έναν μόνο προορισμό: την αποθήκη');
         end if;
-        if not public.stock_is_warehouse(o.unloading_location_1_id) then
-          perform stock_raise('warehouse_rule', 'Ο προορισμός της παρτίδας πρέπει να είναι αποθήκη (τοποθεσία «Partner Warehouse» ή «Veroia Hub»)');
+        -- OWNER-Q5 answered 4/10 (any location can be a warehouse): no type test, but ONE live
+        -- destination — pieces load only from it (piece_pickup), and a NULL one would let a piece with
+        -- no pickup «match» it (NULL is not distinct from NULL).
+        if o.unloading_location_1_id is null
+           or not exists (select 1 from public.locations l
+                           where l.id = o.unloading_location_1_id and l.deleted_at is null) then
+          perform stock_raise('lot_no_dest', 'Η παρτίδα χρειάζεται προορισμό (την αποθήκη)');
         end if;
         -- A lot travels to the warehouse on its own (impact map 4/10 B-16). An order already in a
         -- group, matched to an import, or taken BY an export as its matched import rides a truck
@@ -867,12 +1000,14 @@ begin
                        where e.deleted_at is null and e.id <> o.id and e.rotation_id = o.legacy_id) then
           perform stock_raise('lot_grouped', 'Η παρτίδα πάει στην αποθήκη — δεν μπαίνει σε ομάδα, ταίριασμα ή ρότα');
         end if;
-        -- OWNER-Q1 default (4/10): a lot source never carries Veroia Switch (impact map C-15, plan §9
-        -- Q4). With VS an Import lot spawns a national load «Veroia → foreign warehouse» and a RAMP
-        -- row at Veroia, and the partner RT reads intake − x_import (margin −650, V9(b) fails); an
-        -- Export lot's allocation ignores the VS charge. Pieces may keep VS (allocation − x_import,
-        -- like any VS order). If the owner allows VS on lots: drop the four lot_vs checks (here, the
-        -- national branch below, both LOT SOURCE branches) and decide where the VS charge lands.
+        -- OWNER-Q1 answered 4/10 (no VS on a lot): a lot source never carries Veroia Switch (impact
+        -- map C-15, plan §9 Q4). With VS an Import lot spawns a national load «Veroia → foreign
+        -- warehouse» and a RAMP row at Veroia, and the partner RT reads partner cost − x_import
+        -- (margin −650, V9(b) fails); an Export lot's allocation ignores the VS charge. The four
+        -- lot_vs checks (here, the national branch below, both LOT SOURCE branches) are the rule.
+        -- Pieces may keep VS: OWNER-Q3 answered 4/10 (VS on piece prorated /F) — a piece pays
+        -- X·least(pallets, F)/F on its international leg and its national leg earns the same
+        -- (stock_vs_charge, ct_v_rt_revenue).
         if coalesce(o.veroia_switch, false) then
           perform stock_raise('lot_vs', 'Η παρτίδα πάει κατευθείαν στην αποθήκη — όχι Veroia Switch');
         end if;
@@ -895,10 +1030,14 @@ begin
                         n.delivery_location_8_id, n.delivery_location_9_id, n.delivery_location_10_id) > 0 then
           perform stock_raise('lot_multi_dest', 'Η παρτίδα έχει έναν μόνο προορισμό: την αποθήκη');
         end if;
-        if not public.stock_is_warehouse(n.delivery_location_1_id) then
-          perform stock_raise('warehouse_rule', 'Ο προορισμός της παρτίδας πρέπει να είναι αποθήκη (τοποθεσία «Partner Warehouse» ή «Veroia Hub»)');
+        -- OWNER-Q5 answered 4/10: one live destination, any type (see the international branch).
+        if n.delivery_location_1_id is null
+           or not exists (select 1 from public.locations l
+                           where l.id = n.delivery_location_1_id and l.deleted_at is null) then
+          perform stock_raise('lot_no_dest', 'Η παρτίδα χρειάζεται προορισμό (την αποθήκη)');
         end if;
-        -- OWNER-Q1 default (4/10): no Veroia Switch on a lot source (see the international branch).
+        -- OWNER-Q1 answered 4/10 (no VS on a lot): no Veroia Switch on a lot source (see the
+        -- international branch).
         -- National sources have no group/match columns of the orders kind (B-16 is international);
         -- national groupage of a lot is a Φ3 question — no screen can make a national lot today.
         if coalesce(n.veroia_switch, false) then
@@ -1182,9 +1321,12 @@ begin
         if v_pieces > 0 and new.status = 'Cancelled' and old.status is distinct from 'Cancelled' then
           perform stock_raise('lot_has_pieces', 'Η παρτίδα έχει κομμάτια — δεν ακυρώνεται');
         end if;
+        -- OWNER-Q5 answered 4/10: a new destination is any live location, never none (see the mark).
         if new.unloading_location_1_id is distinct from old.unloading_location_1_id
-           and not public.stock_is_warehouse(new.unloading_location_1_id) then
-          perform stock_raise('warehouse_rule', 'Ο προορισμός της παρτίδας πρέπει να είναι αποθήκη (τοποθεσία «Partner Warehouse» ή «Veroia Hub»)');
+           and (new.unloading_location_1_id is null
+                or not exists (select 1 from public.locations l
+                                where l.id = new.unloading_location_1_id and l.deleted_at is null)) then
+          perform stock_raise('lot_no_dest', 'Η παρτίδα χρειάζεται προορισμό (την αποθήκη)');
         end if;
         -- B-16 (see stock_guard_lots): a lot source joins no group, matches no import and is no rota
         -- leg (round 1 Σ-05). Judged when the value is SET or changed, so clearing one (or re-sending
@@ -1201,7 +1343,7 @@ begin
         if old.invoiced is true and new.invoiced is true and new.status is distinct from old.status then
           perform stock_raise('lot_invoiced', 'Η παρτίδα τιμολογήθηκε — η κατάσταση της παραλαβής δεν αλλάζει· αναίρεσε πρώτα το τιμολόγιο');
         end if;
-        -- OWNER-Q1 default (4/10): no Veroia Switch on a lot source (see stock_guard_lots).
+        -- OWNER-Q1 answered 4/10 (no VS on a lot): no Veroia Switch on a lot source (see stock_guard_lots).
         if coalesce(new.veroia_switch, false) and old.veroia_switch is not true then
           perform stock_raise('lot_vs', 'Η παρτίδα πάει κατευθείαν στην αποθήκη — όχι Veroia Switch');
         end if;
@@ -1400,11 +1542,14 @@ begin
         if v_pieces > 0 and new.status = 'Cancelled' and old.status is distinct from 'Cancelled' then
           perform stock_raise('lot_has_pieces', 'Η παρτίδα έχει κομμάτια — δεν ακυρώνεται');
         end if;
+        -- OWNER-Q5 answered 4/10: any live location, never none (see stock_guard_lots).
         if new.delivery_location_1_id is distinct from old.delivery_location_1_id
-           and not public.stock_is_warehouse(new.delivery_location_1_id) then
-          perform stock_raise('warehouse_rule', 'Ο προορισμός της παρτίδας πρέπει να είναι αποθήκη (τοποθεσία «Partner Warehouse» ή «Veroia Hub»)');
+           and (new.delivery_location_1_id is null
+                or not exists (select 1 from public.locations l
+                                where l.id = new.delivery_location_1_id and l.deleted_at is null)) then
+          perform stock_raise('lot_no_dest', 'Η παρτίδα χρειάζεται προορισμό (την αποθήκη)');
         end if;
-        -- OWNER-Q1 default (4/10): no Veroia Switch on a lot source (see stock_guard_lots).
+        -- OWNER-Q1 answered 4/10 (no VS on a lot): no Veroia Switch on a lot source (see stock_guard_lots).
         if coalesce(new.veroia_switch, false) and old.veroia_switch is not true then
           perform stock_raise('lot_vs', 'Η παρτίδα πάει κατευθείαν στην αποθήκη — όχι Veroia Switch');
         end if;
@@ -1477,7 +1622,14 @@ begin
   --       anon, authenticated, and new relations arwDxtm to service_role: every line narrows that. ──
   revoke all on public.stock_lots from public, anon, authenticated, service_role;
   grant select, insert, update on public.stock_lots to service_role;          -- no DELETE/TRUNCATE: soft delete only
-  grant select on public.stock_lots to tms_check_runner, tms_reader;
+  -- tms_reader: every column EXCEPT warehouse_charge (round 2, Ε1 — owner money is never readable by
+  -- the read-only role the external tools use). Column grants, not a view: the auditor's checks keep
+  -- reading the table itself (S-12/S-13 need created_at), and a column added later is born closed to
+  -- tms_reader (principle 5) — tms_reader already reads several tables this way (live 4/10).
+  -- tms_check_runner keeps the table: it already reads the money views (S-09 / S-11).
+  grant select on public.stock_lots to tms_check_runner;
+  grant select (id, legacy_id, order_id, nat_order_id, closed_note, closed_at, created_at, deleted_at)
+    on public.stock_lots to tms_reader;
   -- The identity sequence is an object of its own with its own defaults (round 1b, SQL reviewer
   -- P3-1): live 4/10, objects created by supabase_admin get anon/authenticated USAGE+SELECT+UPDATE on
   -- sequences by default (by postgres: only postgres + service_role). An open sequence lets anon
@@ -1491,21 +1643,25 @@ begin
   grant select on public.stock_v_pieces, public.stock_v_lots to tms_check_runner, tms_reader;
   grant select on public.stock_v_lot_money, public.stock_v_lot_alloc to tms_check_runner;   -- S-09 amount; tms_reader: no money
   revoke all on function public.order_pallets(public.orders), public.stock_natl_delivered(text, date),
-    public.stock_is_warehouse(bigint), public.stock_raise(text, text), public.stock_guard_lots(),
+    public.stock_vs_charge(numeric, numeric), public.stock_raise(text, text), public.stock_guard_lots(),
     public.stock_guard_orders(), public.stock_guard_natl(), public.orders_group_id_blank_null()
     from public, anon, authenticated;
   -- A view checks FUNCTION privileges as its caller (not its owner): whoever reads stock_v_* or
   -- ct_v_rt_revenue needs these two, or TRIP PnL / the auditor fail with «permission denied».
   grant execute on function public.order_pallets(public.orders), public.stock_natl_delivered(text, date)
     to service_role, tms_check_runner, tms_reader;
-  -- The guards run as the writer (service_role through the Worker): it must be able to call these.
-  grant execute on function public.stock_is_warehouse(bigint), public.stock_raise(text, text) to service_role;
+  -- stock_vs_charge: called by ct_v_rt_revenue as its reader — only service_role reads that view
+  -- (live 4/10: no other grantee on ct_v_rt_revenue / ct_v_rt_pnl), so only service_role gets it.
+  grant execute on function public.stock_vs_charge(numeric, numeric) to service_role;
+  -- The guards run as the writer (service_role through the Worker): it must be able to call this.
+  grant execute on function public.stock_raise(text, text) to service_role;
 
-  -- ── 8. Data (last): the two foreign warehouses the Φ1 list needs (plan Π1, owner 4/10) ─────────
-  update public.locations set type = 'Partner Warehouse' where id in (424, 885) and type is null;
-  get diagnostics v_n = row_count;
-  if v_n <> 2 then
-    raise exception '057 proof: expected 2 locations typed Partner Warehouse, got %', v_n;
+  -- ── 8. Data (last): ONE new ct_settings row — F of OWNER-Q3 answered 4/10 (VS on piece prorated
+  --       /F). No location is typed any more (OWNER-Q5 answered 4/10: any location can be a
+  --       warehouse) — round 1's update of 424/885 is gone with warehouse_rule. Inserted only when
+  --       absent: §0 already refused any value other than 33. ───────────────────────────────────────
+  if not exists (select 1 from public.ct_settings s where s.key = 'full_truck_pallets') then
+    insert into public.ct_settings (key, value) values ('full_truck_pallets', 33);
   end if;
 
   -- B-54's expected inventory moves with the four triggers of §6, in this same commit (header).
@@ -1547,8 +1703,9 @@ begin
 
   select count(*) into v_n from pg_constraint
    where conname in ('orders_stock_piece_no_money', 'orders_stock_piece_shape', 'national_orders_stock_piece_no_money',
-                     'national_orders_stock_piece_shape', 'stock_lots_one_source', 'stock_lots_close_shape');
-  if v_n <> 6 then raise exception '057 proof: % of 6 CHECK constraints exist', v_n; end if;
+                     'national_orders_stock_piece_shape', 'stock_lots_one_source', 'stock_lots_close_shape',
+                     'stock_lots_charge_nonneg', 'ct_settings_full_truck_pallets_positive');
+  if v_n <> 8 then raise exception '057 proof: % of 8 CHECK constraints exist', v_n; end if;
   select count(*) into v_n from pg_trigger
    where not tgisinternal and tgenabled = 'O'
      and tgname in ('stock_guard_lots', 'stock_guard_orders', 'stock_guard_natl');
@@ -1563,7 +1720,7 @@ begin
 
   foreach v_role in array array['anon', 'authenticated'] loop
     foreach v_obj in array array['public.order_pallets(public.orders)', 'public.stock_natl_delivered(text, date)',
-                                 'public.stock_is_warehouse(bigint)', 'public.stock_raise(text, text)',
+                                 'public.stock_vs_charge(numeric, numeric)', 'public.stock_raise(text, text)',
                                  'public.stock_guard_lots()', 'public.stock_guard_orders()', 'public.stock_guard_natl()',
                                  'public.orders_group_id_blank_null()'] loop
       if has_function_privilege(v_role, v_obj, 'execute') then
@@ -1582,7 +1739,7 @@ begin
     end if;
   end loop;
   foreach v_obj in array array['public.order_pallets(public.orders)', 'public.stock_natl_delivered(text, date)',
-                               'public.stock_is_warehouse(bigint)', 'public.stock_raise(text, text)'] loop
+                               'public.stock_vs_charge(numeric, numeric)', 'public.stock_raise(text, text)'] loop
     if not has_function_privilege('service_role', v_obj, 'execute') then
       raise exception '057 proof: service_role cannot EXECUTE %', v_obj;
     end if;
@@ -1599,8 +1756,22 @@ begin
 
   select count(*) into v_n from public.stock_lots;
   if v_n <> 0 then raise exception '057 proof: stock_lots is not empty (%)', v_n; end if;
-  select count(*) into v_n from public.locations where id in (424, 885) and type = 'Partner Warehouse';
-  if v_n <> 2 then raise exception '057 proof: 424/885 not both Partner Warehouse (%)', v_n; end if;
+  -- The one data change (§8), and the rule that protects it.
+  select count(*) into v_n from public.ct_settings where key = 'full_truck_pallets' and value = 33;
+  if v_n <> 1 then raise exception '057 proof: ct_settings.full_truck_pallets is not 33'; end if;
+  -- Owner money (Ε1, round 2): tms_reader reads every column of stock_lots except warehouse_charge;
+  -- the auditor (tms_check_runner) reads the whole table, as it reads the money views.
+  if has_column_privilege('tms_reader', 'public.stock_lots', 'warehouse_charge', 'select') then
+    raise exception '057 proof: tms_reader can SELECT stock_lots.warehouse_charge';
+  end if;
+  if not has_column_privilege('tms_check_runner', 'public.stock_lots', 'warehouse_charge', 'select') then
+    raise exception '057 proof: tms_check_runner cannot SELECT stock_lots.warehouse_charge';
+  end if;
+  foreach v_obj in array array['id', 'legacy_id', 'order_id', 'nat_order_id', 'closed_note', 'closed_at', 'created_at', 'deleted_at'] loop
+    if not has_column_privilege('tms_reader', 'public.stock_lots', v_obj, 'select') then
+      raise exception '057 proof: tms_reader cannot SELECT stock_lots.%', v_obj;
+    end if;
+  end loop;
 
   -- B-54 is GREEN at commit: its own text, run now, returns exactly its red_value.
   select c.red_value into v_b54_red from monitoring.checks c where c.id = 'B-54' and c.red_op = '<>';
@@ -1616,7 +1787,7 @@ begin
    where oid in ('public.orders_with_derived'::regclass, 'public.ct_v_rt_revenue'::regclass) and reloptions is not null;
   if v_n <> 0 then raise exception '057 proof: % rewritten view(s) carry options (expected owner-rights, none)', v_n; end if;
 
-  raise notice '057 OK: orders_with_derived 137 cols / % rows, % RT revenues (total/intl/natl) unchanged, 3 guards, 6 CHECKs, blank group_id → NULL, born closed, B-54 % triggers → % (green). New view md5: owd %, revenue %',
+  raise notice '057 OK: orders_with_derived 137 cols / % rows, % RT revenues (total/intl/natl) unchanged, 3 guards, 8 CHECKs, blank group_id → NULL, born closed (warehouse_charge hidden from tms_reader), full_truck_pallets 33, B-54 % triggers → % (green). New view md5: owd %, revenue %',
     v_owd_rows, cardinality(v_rev_after), v_b54_before, v_b54_red,
     md5(pg_get_viewdef('public.orders_with_derived'::regclass, true)),
     md5(pg_get_viewdef('public.ct_v_rt_revenue'::regclass, true));
