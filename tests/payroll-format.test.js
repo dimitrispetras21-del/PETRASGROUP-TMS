@@ -101,3 +101,42 @@ test('dlPeriod.to is the real last day of the month (printed on the A4 statement
   assert.strictEqual(dlPeriod([], '2026', '').to, '2026-12-31');
   assert.strictEqual(dlPeriod([], 'all', '').to, null);
 });
+
+// «Ελέγχθηκε» (4/10): the Worker's clear branch replaces review_note with the
+// reason, so the browser sends old note + stamp — the flag's cause must stay on the row.
+test('dlReviewNote keeps the old note and appends one dated, signed stamp', () => {
+  const { dlReviewNote } = require('../modules/payroll.js');
+  const d = new Date(2026, 9, 4, 9, 30); // 04/10/2026 local
+  assert.strictEqual(
+    dlReviewNote('Μετρητά Μ 97.00 € χειροκίνητο ≠ γραμμές CASH 77.00 € (3)', '  σωστές οι γραμμές  ', 'Δημήτρης', d),
+    'Μετρητά Μ 97.00 € χειροκίνητο ≠ γραμμές CASH 77.00 € (3) · ελέγχθηκε 04/10/2026 από Δημήτρης: σωστές οι γραμμές');
+  // no old note → the stamp alone, no leading separator
+  assert.strictEqual(dlReviewNote(null, 'οκ', 'demo_owner', d), 'ελέγχθηκε 04/10/2026 από demo_owner: οκ');
+  assert.strictEqual(dlReviewNote('', 'οκ', 'x', d), 'ελέγχθηκε 04/10/2026 από x: οκ');
+});
+
+test('dlReviewPersisted trusts only the re-read row: flag gone AND our note written', () => {
+  const { dlReviewPersisted } = require('../modules/payroll.js');
+  assert.strictEqual(dlReviewPersisted({ needs_review: false, review_note: 'n' }, 'n'), true);
+  assert.strictEqual(dlReviewPersisted({ needs_review: true, review_note: 'n' }, 'n'), false, 'flag still set');
+  assert.strictEqual(dlReviewPersisted({ needs_review: false, review_note: 'old' }, 'n'), false, 'note not ours');
+  assert.strictEqual(dlReviewPersisted({ review_note: 'n' }, 'n'), false, 'column missing from the view = unproven, not ok');
+  assert.strictEqual(dlReviewPersisted(undefined, 'n'), false, 'row gone from the re-read');
+});
+
+// Contract with the deployed rule (worker/src/ledger-rules.mjs, same file on
+// deploy/worker-0410 as on main, 4/10): the exact body dlClearReview sends
+// must pass validatePatch and become review_note verbatim. If the Worker
+// starts appending server-side or renames the key, this goes red at build
+// time instead of on Θοδωρής' screen.
+test('the body dlClearReview sends is accepted by the Worker rule and written verbatim', async () => {
+  const { dlReviewNote } = require('../modules/payroll.js');
+  const { validatePatch } = await import('../worker/src/ledger-rules.mjs');
+  const note = dlReviewNote('ο γύρος RT-1172 ξανάνοιξε 23/09/2026', 'έλεγξα το ποσό', 'Θοδωρής', new Date(2026, 9, 4));
+  const v = validatePatch({ needs_review: false, reason: note }, { entry_type: 'trip', needs_review: true });
+  assert.strictEqual(v.error, undefined);
+  assert.deepStrictEqual(v.patch, { needs_review: false, review_note: note });
+  // and any extra key is refused — why the browser sends exactly two
+  assert.ok(validatePatch({ needs_review: false, reason: note, note: 'x' }, { entry_type: 'trip' }).error);
+  assert.ok(validatePatch({ needs_review: false }, { entry_type: 'trip' }).error, 'no reason → refused');
+});

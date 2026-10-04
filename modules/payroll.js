@@ -445,6 +445,14 @@ function dlEntryRowHtml(e) {
   // v3 #9: a valueless trip carries a visible word on the card, not only the
   // amber bar and the ΑΞΙΑ dash.
   const pendingWord = (isTrip && e.pending) ? ` <span class="dl-word">χωρίς αξία</span>` : '';
+  // A flagged line says so in words, like «χωρίς αξία»: until 4/10 the only
+  // sign was the 3px amber inset, and the reason lived in a row-wide hover
+  // title — 10 live lines that nobody could spot, let alone clear.
+  const reviewWord = e.needs_review ? ` <span class="dl-word dl-review-word" title="${escapeHtml(e.review_note || '')}">θέλει έλεγχο</span>` : '';
+  // One wrapper = one flex item: the cell is a column flexbox, so two loose
+  // words would stack on their own lines and spill out of the 40px row
+  // (measured on the rig 4/10: a valueless, flagged RT trip overlapped the row above).
+  const flagWords = (pendingWord || reviewWord) ? `<span>${pendingWord}${reviewWord}</span>` : '';
   const legsHtml = hasLegs ? `<div class="dl-entry-legs" style="margin-left:${wDate + 16}px">${rtLegBlockHtml(e.route_legs)}</div>` : '';
   const wrap = row => hasLegs ? `<div class="dl-entry">${row}${legsHtml}</div>` : row;
 
@@ -496,7 +504,7 @@ function dlEntryRowHtml(e) {
 
   return wrap(`<div class="dl-row${pendingCls}${e.needs_review ? ' review' : ''}${e.entry_type !== 'trip' ? ' pay' : ''}" data-entry="${e.id}" title="${e.needs_review ? escapeHtml(e.review_note || '') : ''}">
     <div style="width:${wDate}px"><span style="font-size:12px;font-variant-numeric:tabular-nums">${dateTxt}</span></div>
-    <div style="flex:1"><span class="m" style="font-weight:${isTrip ? 500 : 400}">${routeText}</span>${rtIcon}${pendingWord}</div>
+    <div style="flex:1"><span class="m" style="font-weight:${isTrip ? 500 : 400}">${routeText}</span>${rtIcon}${flagWords}</div>
     <div style="width:${wMoney}px" class="r">${valueCell}</div>
     <div style="width:${wMoney}px" class="r">${advCell}</div>
     <div style="width:${wMoney}px" class="r">${expCell}</div>
@@ -527,7 +535,8 @@ function dlMoreCellHtml(e, isTrip) {
   </div>`;
   }
   const editItem = isTrip ? item('dl-menu-edit', 'Διόρθωση', 'Αλλαγή αξίας, εξόδων ή ποσού', 'dlMenuEdit') : '';
-  const menu = open ? `<div class="dl-menu">${editItem}${item('dl-menu-cancel', 'Ακύρωση', 'Παραμένει στο ιστορικό ως ακυρωμένη', 'dlMenuCancel')}</div>` : '';
+  const reviewItem = (e.needs_review && dlCanReview()) ? item('dl-menu-review', 'Ελέγχθηκε', 'Φεύγει το «θέλει έλεγχο» — η αιτιολογία μένει στη γραμμή', 'dlMenuReviewed') : '';
+  const menu = open ? `<div class="dl-menu">${reviewItem}${editItem}${item('dl-menu-cancel', 'Ακύρωση', 'Παραμένει στο ιστορικό ως ακυρωμένη', 'dlMenuCancel')}</div>` : '';
   return `<div style="width:32px;position:relative" class="r">
     <button type="button" class="dl-more" title="Επιλογές" onclick="event.stopPropagation();dlToggleMenu(${e.id})">···</button>
     ${menu}
@@ -1232,6 +1241,84 @@ function dlMenuRestore(id) {
     onSubmit: reason => dlPatchEntry(id, { restore: true, reason }, 'Δεν επαναφέρθηκε') });
 }
 
+// ── «Ελέγχθηκε» (4/10): clears dl_entries.needs_review, which DB triggers set
+// (011 driver/RT changes, 037 merge, 042/dl_cash_sync, 046 reopen) and nothing
+// on screen could clear. Same role list as COSTS_PERMS.ledger PATCH in the
+// Worker — keep the two in step (αρχή 3); dispatcher never reaches payroll.
+function dlCanReview() {
+  return typeof ROLE !== 'undefined' && (ROLE === 'owner' || ROLE === 'management' || ROLE === 'accountant');
+}
+
+// The Worker's clear branch (ledger-rules.mjs validatePatch) WRITES the reason
+// as review_note — it replaces, it does not append. Sending only the typed
+// text would erase why the line was flagged (e.g. the 042 «χειροκίνητο ≠
+// γραμμές CASH» amounts) from the row, leaving it only in audit_log. So the
+// browser sends the old note + one stamp, joined with ' · ' exactly like the
+// DB triggers' concat_ws. The name/date here are for the reader of the row;
+// the authoritative who/when is the Worker's audit_log (caller.sub, created_at).
+function dlReviewNote(prev, reason, who, d) {
+  const p = n => String(n).padStart(2, '0');
+  const stamp = 'ελέγχθηκε ' + p(d.getDate()) + '/' + p(d.getMonth() + 1) + '/' + d.getFullYear() + ' από ' + who + ': ' + String(reason).trim();
+  // trimmed because the Worker trims the reason before writing it — the
+  // read-back comparison in dlReviewPersisted must see the same string
+  return [String(prev || '').trim(), stamp].filter(Boolean).join(' · ');
+}
+
+// Proof from the re-read row, never from the PATCH's 200 (αρχή 2): the flag is
+// gone AND the note is the one we sent.
+function dlReviewPersisted(after, note) {
+  return !!after && after.needs_review === false && (after.review_note || '') === note;
+}
+
+function dlMenuReviewed(id) {
+  const e = _dl.entries.find(x => x.id === id);
+  if (!e) return;
+  _dl.menuOpenId = null;
+  dlRenderDriverCard(); // closes the «···» menu (rebuilds #dlModal empty — so open it AFTER)
+  dlOpenReason({ title: 'Έλεγχος γραμμής',
+    sub: 'Σημάνθηκε: ' + (e.review_note || '—') + '. Η σήμανση φεύγει· η αιτιολογία προστίθεται στη σημείωση της γραμμής με όνομα και ημερομηνία.',
+    label: 'Τι ελέγχθηκε', button: 'Ελέγχθηκε',
+    onSubmit: reason => dlClearReview(id, reason, e.review_note || '') });
+}
+
+// Not dlPatchEntry: that one cannot tell «PATCH refused» from «PATCH done but
+// the re-read failed», and this action must say which one happened.
+async function dlClearReview(id, reason, shownNote) {
+  // Re-read BEFORE writing: the Worker clears blindly (no check of the current
+  // flag/note), so if a trigger appended a new cause meanwhile (dl_cash_sync,
+  // 046) or someone else already cleared it, the user would be signing off a
+  // cause they never saw — or overwriting another person's stamp.
+  try { await dlReloadEntries(); }
+  catch (err) { toast('Δεν καταγράφηκε ο έλεγχος: η γραμμή δεν ξαναδιαβάστηκε (' + err.message + ')', 'danger'); return; }
+  const e = _dl.entries.find(x => x.id === id);
+  if (!e || e.cancelled || !e.needs_review || (e.review_note || '') !== shownNote) {
+    dlRenderDriverCard();
+    toast((!e || e.cancelled || !e.needs_review) ? 'Η γραμμή δεν θέλει πια έλεγχο — δεν στάλθηκε τίποτα'
+      : 'Η αιτία της σήμανσης άλλαξε στο μεταξύ — διάβασέ τη και ξαναπάτα «Ελέγχθηκε»', 'warn');
+    return;
+  }
+  const who = (typeof user !== 'undefined' && user && (user.name || user.username)) || ROLE;
+  const note = dlReviewNote(e.review_note, reason, who, new Date());
+  try {
+    // exactly these two keys: the Worker refuses needs_review mixed with any other field
+    await ctFetch('/costs/ledger/' + id, { method: 'PATCH', body: { needs_review: false, reason: note } });
+  } catch (err) { toast('Δεν καταγράφηκε ο έλεγχος: ' + err.message, 'danger'); return; }
+  try {
+    await dlReloadBalances();
+    await dlReloadEntries();
+  } catch (err) {
+    dlRenderDriverCard();
+    toast('Ο έλεγχος στάλθηκε, αλλά η καρτέλα δεν ξαναδιαβάστηκε — άνοιξέ την ξανά για να δεις αν γράφτηκε (' + err.message + ')', 'danger');
+    return;
+  }
+  dlRenderDriverCard();
+  if (!dlReviewPersisted(_dl.entries.find(x => x.id === id), note)) {
+    toast('Ο έλεγχος ΔΕΝ γράφτηκε: η γραμμή διαβάζεται ακόμη ως «θέλει έλεγχο»', 'danger');
+    return;
+  }
+  toast('Ελέγχθηκε — η σήμανση αφαιρέθηκε', 'success');
+}
+
 // The driver's type (Εσωτερικός/Εξωτερικός) lives on the DRIVERS entity, not
 // in the ledger — 57/59 drivers have none (brief 15/9). Instead of a dead
 // «—», the card links straight into that driver's edit form: the facade id
@@ -1530,5 +1617,5 @@ async function dlBulkSubmit() {
 
 // node:test reads these; the browser ignores the guard.
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { dlEur, dlBalanceWord, dlDelta, dlTypeLabel, dlDateRange, dlMoney, dlPeriod, dlEntryAmounts };
+  module.exports = { dlEur, dlBalanceWord, dlDelta, dlTypeLabel, dlDateRange, dlMoney, dlPeriod, dlEntryAmounts, dlReviewNote, dlReviewPersisted };
 }
