@@ -19,8 +19,10 @@
 --            leave the warehouse past the stock — the lot never empties, nothing is allocated.
 --   S-13 P2  an order DELIVERING to a partner warehouse that is not a lot (map G-14): the pallets
 --            are on no shelf, no piece can be drawn, the full price looks invoiceable at intake.
---            Both count only orders written AFTER the first stock lot (0 until go-live; Ε4: the
---            past is never linked) and never a Cancelled one (it moves nothing).
+--            Both count only orders written AFTER the first LIVE stock lot (0 until go-live; Ε4: the
+--            past is never linked) and never a Cancelled one (it moves nothing). LIVE (round 1b, SQL
+--            reviewer P3-7): a proof lot marked and unmarked before go-live would otherwise open the
+--            window early and count every warehouse order written since — a red nobody can act on.
 --   B-13     pieces never carry a price by design → no longer «delivered without price».
 --   B-15     a lot counts from the day it became COMPLETE (not from its intake); pieces never count.
 --   B-34 / B-34b  a designed stock refusal (Greek 422 STOCK_RULE: over_draw, piece_on_truck, …) is an
@@ -135,19 +137,19 @@ begin
    'Συμπλήρωση της τιμής στην παρτίδα ή του Partner Rate στην ανάθεση της αποθήκης.',
    'σταθερός έλεγχος SQL — δείχνει ΤΙ, όχι ΓΙΑΤΙ', 'Εθνική πηγή ή παραλαβή με δικό μας φορτηγό: χωρίς κόστος αποθήκης μέχρι τη Φ3 (Ε6/Ε7) — χτυπά σκόπιμα.', true),
   ('S-12', 'Απόθεμα: φόρτωση από αποθήκη συνεργάτη χωρίς παρτίδα', array['F-05','F-30'],
-   $c$SELECT count(*) FROM orders o JOIN locations l ON l.id = o.loading_location_1_id WHERE o.deleted_at IS NULL AND o.stock_lot_id IS NULL AND o.status IS DISTINCT FROM 'Cancelled' AND l.type = 'Partner Warehouse' AND o.created_at > (SELECT min(s.created_at) FROM stock_lots s)$c$,
-   $c$SELECT coalesce(array_agg(x ORDER BY x),'{}') FROM (SELECT o.legacy_id AS x FROM orders o JOIN locations l ON l.id = o.loading_location_1_id WHERE o.deleted_at IS NULL AND o.stock_lot_id IS NULL AND o.status IS DISTINCT FROM 'Cancelled' AND l.type = 'Partner Warehouse' AND o.created_at > (SELECT min(s.created_at) FROM stock_lots s) ORDER BY o.legacy_id LIMIT 50) s$c$,
+   $c$SELECT count(*) FROM orders o JOIN locations l ON l.id = o.loading_location_1_id WHERE o.deleted_at IS NULL AND o.stock_lot_id IS NULL AND o.status IS DISTINCT FROM 'Cancelled' AND l.type = 'Partner Warehouse' AND o.created_at > (SELECT min(s.created_at) FROM stock_lots s WHERE s.deleted_at IS NULL)$c$,
+   $c$SELECT coalesce(array_agg(x ORDER BY x),'{}') FROM (SELECT o.legacy_id AS x FROM orders o JOIN locations l ON l.id = o.loading_location_1_id WHERE o.deleted_at IS NULL AND o.stock_lot_id IS NULL AND o.status IS DISTINCT FROM 'Cancelled' AND l.type = 'Partner Warehouse' AND o.created_at > (SELECT min(s.created_at) FROM stock_lots s WHERE s.deleted_at IS NULL) ORDER BY o.legacy_id LIMIT 50) s$c$,
    'orders', '>', 0, 'P2', 'daily', true,
    'Παλέτες φεύγουν από αποθήκη συνεργάτη με απλή παραγγελία, όχι ως κομμάτι παρτίδας: το απόθεμα δεν μειώνεται, ο επιμερισμός δεν τις βλέπει και η παρτίδα δεν κλείνει ποτέ σωστά — ή φορτώνουμε κάτι που δεν μπήκε ποτέ στο απόθεμα.',
    'Weekly → η παραγγελία (ανάγνωση): είναι κομμάτι που γράφτηκε ως απλή παραγγελία; Τότε «+ Κομμάτι από απόθεμα» στο ίδιο φορτηγό και σβήσιμο της απλής.',
-   'σταθερός έλεγχος SQL — δείχνει ΤΙ, όχι ΓΙΑΤΙ', 'Μόνο παραγγελίες που γράφτηκαν μετά την πρώτη παρτίδα (πριν = 0· Ε4: το παρελθόν δεν συνδέεται). Ακυρωμένες δεν μετρούν.', true),
+   'σταθερός έλεγχος SQL — δείχνει ΤΙ, όχι ΓΙΑΤΙ', 'Μόνο παραγγελίες που γράφτηκαν μετά την πρώτη ζωντανή παρτίδα (πριν = 0· Ε4: το παρελθόν δεν συνδέεται· μια διαγραμμένη παρτίδα-δοκιμή δεν ανοίγει το παράθυρο). Ακυρωμένες δεν μετρούν.', true),
   ('S-13', 'Απόθεμα: παραγγελία προς αποθήκη συνεργάτη χωρίς παρτίδα', array['F-05','F-30'],
-   $c$SELECT count(*) FROM orders o JOIN locations l ON l.id = o.unloading_location_1_id WHERE o.deleted_at IS NULL AND o.status IS DISTINCT FROM 'Cancelled' AND l.type = 'Partner Warehouse' AND o.created_at > (SELECT min(s.created_at) FROM stock_lots s) AND NOT EXISTS (SELECT 1 FROM stock_lots s WHERE s.order_id = o.id AND s.deleted_at IS NULL)$c$,
-   $c$SELECT coalesce(array_agg(x ORDER BY x),'{}') FROM (SELECT o.legacy_id AS x FROM orders o JOIN locations l ON l.id = o.unloading_location_1_id WHERE o.deleted_at IS NULL AND o.status IS DISTINCT FROM 'Cancelled' AND l.type = 'Partner Warehouse' AND o.created_at > (SELECT min(s.created_at) FROM stock_lots s) AND NOT EXISTS (SELECT 1 FROM stock_lots s WHERE s.order_id = o.id AND s.deleted_at IS NULL) ORDER BY o.legacy_id LIMIT 50) s$c$,
+   $c$SELECT count(*) FROM orders o JOIN locations l ON l.id = o.unloading_location_1_id WHERE o.deleted_at IS NULL AND o.status IS DISTINCT FROM 'Cancelled' AND l.type = 'Partner Warehouse' AND o.created_at > (SELECT min(s.created_at) FROM stock_lots s WHERE s.deleted_at IS NULL) AND NOT EXISTS (SELECT 1 FROM stock_lots s WHERE s.order_id = o.id AND s.deleted_at IS NULL)$c$,
+   $c$SELECT coalesce(array_agg(x ORDER BY x),'{}') FROM (SELECT o.legacy_id AS x FROM orders o JOIN locations l ON l.id = o.unloading_location_1_id WHERE o.deleted_at IS NULL AND o.status IS DISTINCT FROM 'Cancelled' AND l.type = 'Partner Warehouse' AND o.created_at > (SELECT min(s.created_at) FROM stock_lots s WHERE s.deleted_at IS NULL) AND NOT EXISTS (SELECT 1 FROM stock_lots s WHERE s.order_id = o.id AND s.deleted_at IS NULL) ORDER BY o.legacy_id LIMIT 50) s$c$,
    'orders', '>', 0, 'P2', 'daily', true,
    'Παραγγελία πελάτη παραδίδει σε αποθήκη συνεργάτη χωρίς να είναι παρτίδα: οι παλέτες δεν φαίνονται στο ΑΠΟΘΕΜΑ, κανένα κομμάτι δεν βγαίνει από αυτές, και η παραγγελία μοιάζει έτοιμη για τιμολόγηση από την παραλαβή, ενώ ο πελάτης δεν έχει παραλάβει.',
    'Φόρμα της παραγγελίας (ανάγνωση): είναι απόθεμα πελάτη; Τότε «Παρτίδα αποθέματος». Αλλιώς ο προορισμός μπήκε λάθος.',
-   'σταθερός έλεγχος SQL — δείχνει ΤΙ, όχι ΓΙΑΤΙ', 'Μόνο παραγγελίες μετά την πρώτη παρτίδα· ακυρωμένες δεν μετρούν. Η τοποθεσία 92 έχει τύπο «Partner Warehouse» αλλά μοιάζει με σημείο πελάτη (plan §9, ερώτημα owner): αν χτυπά εκεί, διορθώνεται ο τύπος, όχι ο έλεγχος.', true);
+   'σταθερός έλεγχος SQL — δείχνει ΤΙ, όχι ΓΙΑΤΙ', 'Μόνο παραγγελίες μετά την πρώτη ζωντανή παρτίδα (μια διαγραμμένη παρτίδα-δοκιμή δεν ανοίγει το παράθυρο)· ακυρωμένες δεν μετρούν. Η τοποθεσία 92 έχει τύπο «Partner Warehouse» αλλά μοιάζει με σημείο πελάτη (plan §9, ερώτημα owner): αν χτυπά εκεί, διορθώνεται ο τύπος, όχι ο έλεγχος.', true);
 
   -- ── The 4 changed checks ──────────────────────────────────────────────────────────────────────
   update monitoring.checks set sql_text = sql_text || E'\n AND stock_lot_id IS NULL' where id = 'B-13';
