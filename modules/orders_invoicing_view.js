@@ -101,19 +101,20 @@ const OrdersInvoicingView = (() => {
     const own = rec._type === 'intl' ? f['Total Pallets'] : f['Pallets'];
     return { place: [del.name, del.sub].filter(Boolean).join(' · '), date: deliv || '', pallets: own == null || own === '' ? '' : String(own) };
   }
-  // A lot's own date (round 1 O3): its last piece delivered, else «Completed
-  // On»; a lot closed with no piece delivered → the close (closeOnly). null
-  // for any other order; date '' when the lot record was not read. Read by
-  // the card header, the age, the sort and the invoice-date gate — never
-  // printed on the ERP papers (OWNER-Q9).
+  // A lot's ONE date (round 1 O3; critic-2 C2-03): «Completed On» — the day
+  // the lot became invoiceable, which the age already counts from — else its
+  // last piece (still waiting), else its close. The last piece alone split
+  // from the age when the remainder was closed days later, and let an invoice
+  // dated between the two pass the date check. null for any other order; date
+  // '' when the lot record was not read. Read by the card header, the age, the
+  // sort and the invoice-date gate — never printed on the ERP papers (OWNER-Q9).
   function lotDone(set, rec) {
     const f = rec.fields || {};
     if (!(rec._type === 'intl' && typeof OrdersStock !== 'undefined' && OrdersStock.isLot(f))) return null;
     const lot = set && set.stock ? set.stock.get(OrdersStock.lotRecOfLot(f)) : null;
-    if (!lot) return { date: '', closeOnly: false };
-    const g = lot.fields || {}, ymd = OrdersCommon.ymd;
-    if (!Number(g['Pieces Delivered']) && g['Closed At']) return { date: ymd(g['Completed On'] || g['Closed At']), closeOnly: true };
-    return { date: g['Last Piece Delivered'] ? ymd(g['Last Piece Delivered']) : (g['Completed On'] ? ymd(g['Completed On']) : ''), closeOnly: false };
+    if (!lot) return { date: '' };
+    const g = lot.fields || {}, d = g['Completed On'] || g['Last Piece Delivered'] || g['Closed At'];
+    return { date: d ? OrdersCommon.ymd(d) : '' };
   }
   // Only what this view is about: delivered orders (and the invoiced ones).
   // Not-yet-delivered and cancelled never belong to «Παραδομένες».
@@ -234,10 +235,11 @@ const OrdersInvoicingView = (() => {
   }
   // Date rules of the ERP invoice: after today = error (an invoice cannot be
   // issued tomorrow); before the delivery = warning only (it happens, rarely).
-  function dateCheck(dateYmd, todayYmd, delivYmd) {
+  // A lot's date is its completion, not a delivery (C2-03): the words say so.
+  function dateCheck(dateYmd, todayYmd, delivYmd, isLot) {
     if (!dateYmd || !/^\d{4}-\d{2}-\d{2}$/.test(dateYmd)) return { error: 'συμπλήρωσε ημερομηνία' };
     if (dateYmd > todayYmd) return { error: 'μετά τη σημερινή (' + OrdersCommon.dm(todayYmd) + ')' };
-    if (delivYmd && dateYmd < delivYmd) return { warn: 'πριν την παράδοση (' + OrdersCommon.dm(delivYmd) + ') — σίγουρα;' };
+    if (delivYmd && dateYmd < delivYmd) return { warn: (isLot ? 'πριν την ολοκλήρωση της παρτίδας (' : 'πριν την παράδοση (') + OrdersCommon.dm(delivYmd) + ') — σίγουρα;' };
     return {};
   }
   // The three fields — nothing else (no Status: «Invoiced» is a checkbox, not a
@@ -255,8 +257,12 @@ const OrdersInvoicingView = (() => {
   // The «Φύλλο ERP»: what she types into the ERP, in the order of the list.
   // Amount with a dot decimal and no thousands separator — a number for the
   // spreadsheet, not a formatted string; blank (not 0) when never entered.
+  // C2-04: the last column «Κατάσταση», the words of the print (stateWord) —
+  // since OWNER-Q9 a lot waiting for its pieces looks like any order on this
+  // sheet, so the state is the one thing that says «not yet». Last, so no
+  // column moves for whoever reads the file by position.
   function csvRows(groups, clientInfo) {
-    const rows = [['ΑΡ.', 'Αναφορά', 'Πελάτης', 'ΑΦΜ', 'Διεύθυνση', 'Φόρτωση', 'Παράδοση', 'Ημ. παράδοσης', 'Παλέτες', 'Ποσό', 'ΤΠΥ', 'Ημ. ΤΠΥ']];
+    const rows = [['ΑΡ.', 'Αναφορά', 'Πελάτης', 'ΑΦΜ', 'Διεύθυνση', 'Φόρτωση', 'Παράδοση', 'Ημ. παράδοσης', 'Παλέτες', 'Ποσό', 'ΤΠΥ', 'Ημ. ΤΠΥ', 'Κατάσταση']];
     for (const g of groups) for (const it of g.items) {
       const c = (it.clientId && clientInfo(it.clientId)) || null;
       rows.push([
@@ -270,6 +276,7 @@ const OrdersInvoicingView = (() => {
         it.price === null ? '' : it.price.toFixed(2),
         OrdersCommon.isInvoiced(it.f) ? String(it.f['Invoice Number'] || '') : '',
         OrdersCommon.isInvoiced(it.f) ? OrdersCommon.ymd(it.f['Invoice Date']) : '',
+        stateWord(it),
       ]);
     }
     return rows;
@@ -288,17 +295,24 @@ const OrdersInvoicingView = (() => {
     return m;
   }
 
+  // One state word per row — the ERP print and the ERP CSV (C2-04) say the same.
+  function stateWord(it) {
+    return it.state === 'invoiced' ? 'ΤΠΥ ' + (it.f['Invoice Number'] || '—')
+      : it.state === 'blocked' ? (it.reason === 'price' ? 'χωρίς τιμή' : it.reason === 'stock' ? 'περιμένει κομμάτια' : 'λείπει δελτίο')
+      : 'προς κοπή';
+  }
   // Why a lot is not allocated: one reason per status the base can return
   // (stock_v_lot_money.allocation_status); an unknown one is shown as it is,
   // never dressed up as another reason. 'no_charge' (round 2 #1, owner 4/10)
   // replaced 'no_intake_cost': no partner rate AND no «Χρέωση αποθήκης».
+  // 'no_partner_rate' (round 3, SQL S1): an assignment WITHOUT a rate.
   function allocWhy(st) {
-    return { no_price: 'χωρίς τιμή', no_charge: 'χωρίς χρέωση αποθήκης', no_pallets: 'χωρίς παλέτες' }[st] || String(st || '—');
+    return { no_price: 'χωρίς τιμή', no_charge: 'χωρίς χρέωση αποθήκης', no_partner_rate: 'λείπει το κόμιστρο συνεργάτη', no_pallets: 'χωρίς παλέτες' }[st] || String(st || '—');
   }
 
   const pure = { annotate, scopeFilter, weekStats, defaultWeek, stripWeeks, weekWord, baseList, tabCounts, tabFilter,
     searchFilter, groupByClient, kpis, dupCheck, nextReady, dateCheck, invoiceFields, undoFields, addressLine, csvRows,
-    metricsOf, dirWord, stockText, erpDelivery, lotDone, allocWhy };
+    metricsOf, dirWord, stockText, erpDelivery, lotDone, allocWhy, stateWord };
   if (typeof document === 'undefined') return { pure };
 
   // ── State ───────────────────────────────────────────────────────────────
@@ -524,7 +538,7 @@ const OrdersInvoicingView = (() => {
           const on = it.id === S.selId;
           return `<tr class="oiv-r${on ? ' on' : ''}" data-id="${esc(it.id)}" onclick="OrdersInvoicingView.select('${esc(it.id)}')">
             <td class="num">${esc(it.num)}</td>
-            <td><span class="oc-pname">${esc(it.ref || '—')}</span><span class="oiv-sub">${esc(dirWord(it.f))}</span></td>
+            <td><span class="oc-pname">${esc(it.ref || '—')}</span><span class="oiv-sub">${isLotIt(it) ? '<span class="oiv-tag">→ ΑΠΟΘΗΚΗ</span>' : ''}${esc(dirWord(it.f))}</span></td>
             <td>${OC().placeCell(it.load)}</td>
             <td>${OC().placeCell(it.del)}</td>
             <td class="r num">${pal == null || pal === '' ? '<span class="oiv-muted">—</span>' : esc(pal)}</td>
@@ -626,8 +640,11 @@ const OrdersInvoicingView = (() => {
         const rem = num(m.remaining_pallets) || 0, off = num(m.written_off_pallets) || 0;
         // Round 2 #1 (owner 4/10): charge = partner rate + «Χρέωση αποθήκης»
         // (each euro entered once); net = price − charge. «—» = none entered.
-        body = kv('Τιμή πελάτη', eurSym(num(m.price))) + kv('Συνεργάτης', eurSym(num(m.partner_cost)))
-          + kv('Χρέωση αποθήκης', eurSym(num(m.warehouse_charge))) + kv('Σύνολο χρέωσης', eurSym(num(m.charge_total)))
+        // One name per amount (R2, S5-01) on every owner screen; the total
+        // only when it adds two parts (S5-06) — else it repeats its one part.
+        const both = num(m.partner_cost) !== null && num(m.warehouse_charge) !== null;
+        body = kv('Τιμή πελάτη', eurSym(num(m.price))) + kv('Κόμιστρο συνεργάτη', eurSym(num(m.partner_cost)))
+          + kv('Χρέωση αποθήκης', eurSym(num(m.warehouse_charge))) + (both ? kv('Σύνολο χρεώσεων', eurSym(num(m.charge_total))) : '')
           + kv('Καθαρό', `<b>${eurSym(num(m.net))}</b>`) + kv('€ / παλέτα', per) + rows
           + (!m.closed_at && rem > 0 ? kv('Σε απόθεμα ' + esc(rem) + 'p', eurSym(num(m.in_stock_amount))) : '')
           + (m.closed_at ? kv('<span class="oiv-bad">Χαμένο υπόλοιπο ' + esc(off) + 'p</span>', `<span class="oiv-bad">${eurSym(num(m.written_off_amount))}</span>`) : '');
@@ -704,11 +721,17 @@ const OrdersInvoicingView = (() => {
     const ready = it.state === 'ready';
     let status;
     // A lot is never «Παραδόθηκε» on its intake date (plan §8, critic-4
-    // C4-04): blocked = «Στην αποθήκη» + a pointer to ΕΛΕΓΧΟΙ (O4); ready =
-    // the one lot date (O3) under its own word.
-    const doneWord = it.lotDone ? (it.lotDone.closeOnly ? 'Κλείσιμο υπολοίπου' : 'Τελευταίο κομμάτι') : 'Παραδόθηκε';
+    // C4-04). C2-02: a lot still waiting for pieces says so — whatever ELSE
+    // blocks it (an unpriced lot used to read «Τελευταίο κομμάτι —»); a
+    // complete one carries its one date (C2-03) under «Ολοκληρώθηκε».
+    const lotRec = isLotIt(it) ? lotOf(it) : null, lg = (lotRec && lotRec.fields) || {};
+    const lotWaiting = isLotIt(it) && lg['Complete'] !== true;
+    const nPieces = Number(lg['Pieces']) || 0;
+    const waitWord = 'Περιμένει κομμάτια' + (nPieces ? ' ' + (Number(lg['Pieces Delivered']) || 0) + '/' + nPieces : '');
+    const doneWord = isLotIt(it) ? 'Ολοκληρώθηκε' : 'Παραδόθηκε';
     if (it.state === 'invoiced') status = `<span><i class="oiv-dot ok"></i>Τιμολογήθηκε ${f['Invoice Date'] ? dm(f['Invoice Date']) : ''}</span><span><i class="oiv-dot hollow"></i>${f['Invoice Number'] ? 'ΤΠΥ ' + esc(f['Invoice Number']) : 'χωρίς αριθμό'}</span>`;
-    else if (it.state === 'blocked' && it.reason === 'stock') status = `<span><i class="oiv-dot ok"></i>Στην αποθήκη ${dm(it.deliv)}</span><span><i class="oiv-dot hollow"></i>περιμένει κομμάτια</span>`;
+    else if (lotWaiting) status = `<span><i class="oiv-dot ok"></i>Στην αποθήκη ${dm(it.deliv)}</span><span><i class="oiv-dot hollow"></i>${waitWord}</span>`
+      + (it.reason === 'price' ? '<span><i class="oiv-dot bad"></i>χωρίς τιμή → owner</span>' : '');
     else if (it.state === 'blocked') status = `<span><i class="oiv-dot ok"></i>${isLotIt(it) ? doneWord + ' ' + dm(it.when) : 'Παραδόθηκε ' + dm(it.deliv)}</span><span><i class="oiv-dot bad"></i>${it.reason === 'price' ? 'χωρίς τιμή → owner' : 'δελτίο → Αλεξία'}</span>`;
     else status = `<span><i class="oiv-dot ok"></i>${doneWord} ${dm(it.when)}</span><span><i class="oiv-dot hollow"></i>προς κοπή${it.days !== null ? ' · ' + it.days + (it.days === 1 ? ' ημέρα' : ' ημέρες') : ''}</span>`;
 
@@ -838,7 +861,7 @@ const OrdersInvoicingView = (() => {
     const numEl = document.getElementById('oivNum'), dateEl = document.getElementById('oivDate'), hint = document.getElementById('oivHint');
     if (!it || !btn || !numEl || !dateEl || !hint) return;
     const n = numEl.value.trim();
-    const dc = dateCheck(dateEl.value, today(), it.when);
+    const dc = dateCheck(dateEl.value, today(), it.when, isLotIt(it));
     const dup = dupCheck(S.all, n, it);
     const lines = [];
     if (dc.error) lines.push(`<span class="oiv-bad">Ημερομηνία ${esc(dc.error)}</span>`);
@@ -869,7 +892,7 @@ const OrdersInvoicingView = (() => {
     const n = (document.getElementById('oivNum') || {}).value; const num = String(n || '').trim();
     const d = (document.getElementById('oivDate') || {}).value || '';
     if (!num) { S.formErr = 'Συμπλήρωσε τον αριθμό ΤΠΥ του ERP'; paintCard(); return; }
-    const dc = dateCheck(d, today(), it.when);
+    const dc = dateCheck(d, today(), it.when, isLotIt(it));
     if (dc.error) { formInput(); return; }
     const dup = dupCheck(S.all, num, it);
     if (dup.other.length) {
@@ -941,7 +964,7 @@ const OrdersInvoicingView = (() => {
     const num = (document.getElementById('oivEditNum').value || '').trim();
     const d = document.getElementById('oivEditDate').value || '';
     if (!num) { S.formErr = 'Συμπλήρωσε τον αριθμό ΤΠΥ του ERP'; paintCard(); return; }
-    const dc = dateCheck(d, today(), it.when);
+    const dc = dateCheck(d, today(), it.when, isLotIt(it));
     if (dc.error) { S.formErr = 'Ημερομηνία ' + dc.error; paintCard(); return; }
     const old = it.f['Invoice Number'] || '—';
     if (!(await confirmAction(`Η παραγγελία ${it.num} είναι ήδη τιμολογημένη.\nΟ αριθμός ${old} θα αντικατασταθεί από ${num}.`, { title: 'Διόρθωση ΤΠΥ', confirmLabel: 'Διόρθωση' }))) return;
@@ -970,7 +993,7 @@ const OrdersInvoicingView = (() => {
     const d = document.getElementById('oivOvDate').value || '';
     if (!reason) { S.formErr = 'Η παράκαμψη χρειάζεται αιτιολογία'; paintCard(); return; }
     if (!num) { S.formErr = 'Συμπλήρωσε τον αριθμό ΤΠΥ του ERP'; paintCard(); return; }
-    const dc = dateCheck(d, today(), it.when);
+    const dc = dateCheck(d, today(), it.when, isLotIt(it));
     if (dc.error) { S.formErr = 'Ημερομηνία ' + dc.error; paintCard(); return; }
     if (!OC().hasPrice(it.f)) { S.formErr = 'Χωρίς τιμή δεν καταχωρείται τιμολόγιο'; paintCard(); return; }
     // Same duplicate rule as the normal path, asked BEFORE the override is
@@ -1057,12 +1080,13 @@ const OrdersInvoicingView = (() => {
       const c = g.clientId ? info(g.clientId) : null;
       const rows = g.items.map(it => {
         if (it.price !== null) total += it.price;
-        const st = it.state === 'invoiced' ? 'ΤΠΥ ' + (it.f['Invoice Number'] || '—') : it.state === 'blocked' ? (it.reason === 'price' ? 'χωρίς τιμή' : it.reason === 'stock' ? 'περιμένει κομμάτια' : 'λείπει δελτίο') : 'προς κοπή';
+        const st = stateWord(it);
         return `<tr><td>${esc(it.num)}</td><td>${esc(it.ref)}</td><td>${esc([it.load.name, it.load.sub].filter(Boolean).join(' · '))}</td><td>${esc(it.erp.place)}</td><td>${esc(OC().dm(it.erp.date))}</td><td class="r">${esc(it.erp.pallets)}</td><td class="r">${it.price === null ? '—' : eur(it.price)}</td><td>${esc(st)}</td></tr>`;
       }).join('');
       return `<tr class="g"><td colspan="6">${esc(g.client)}${c && c['VAT Number'] ? ' · ΑΦΜ ' + esc(c['VAT Number']) : ''}</td><td class="r">${eur(g.sum)}</td><td>${g.items.length}</td></tr>${rows}`;
     }).join('');
     const now = new Date().toLocaleDateString('el-GR');
+    // C4-12: the scope word only when it narrows («Όλες · Όλες» read as a stutter).
     OrdersList.printOpen(`<!DOCTYPE html><html lang="el"><head><meta charset="UTF-8"><title>Προς τιμολόγηση — ${esc(_periodLabel())}</title>
       <style>:root{${tok}}*{box-sizing:border-box}body{font:11px/1.35 Arial,sans-serif;color:var(--text);background:var(--surface-card);margin:0;padding:16px;font-variant-numeric:tabular-nums}
       h1{font-size:16px;margin:0 0 2px}.m{color:var(--text-mid);margin-bottom:10px}table{width:100%;border-collapse:collapse}
@@ -1070,7 +1094,7 @@ const OrdersInvoicingView = (() => {
       td{padding:3px 6px;border-bottom:1px solid var(--border);vertical-align:top}.r{text-align:right}tr.g td{font-weight:700;padding-top:8px;border-bottom:1px solid var(--text)}
       tfoot td{font-weight:700;border-top:1.5px solid var(--text);border-bottom:0;padding-top:6px}@page{size:A4 landscape;margin:12mm}</style></head><body>
       <h1>Προς τιμολόγηση — ${esc(_periodLabel())}</h1>
-      <div class="m">${esc(TAB_LABEL[S.tab] || '')} · ${esc({ all: 'Όλες', intl: 'Διεθνείς', natl: 'Εθνικές' }[S.ctx.scope] || '')} · ${v.list.length} παραγγελίες · ${esc(now)}</div>
+      <div class="m">${esc([TAB_LABEL[S.tab], { intl: 'Διεθνείς', natl: 'Εθνικές' }[S.ctx.scope], v.list.length + ' παραγγελίες', now].filter(Boolean).join(' · '))}</div>
       <table><thead><tr><th>Αρ.</th><th>Αναφορά</th><th>Φόρτωση</th><th>Παράδοση</th><th>Ημ. παρ.</th><th class="r">Παλ.</th><th class="r">Ποσό €</th><th>Κατάσταση</th></tr></thead>
       <tbody>${body}</tbody><tfoot><tr><td colspan="6">Σύνολο</td><td class="r">${eur(total)}</td><td></td></tr></tfoot></table>
       <script>window.onload=function(){window.print()}<\/script></body></html>`);
@@ -1132,6 +1156,8 @@ const OrdersInvoicingView = (() => {
 .oiv-r.on td{background:var(--accent-light)}
 .oiv-r.on td:first-child{box-shadow:inset 3px 0 0 var(--surface-dark)}
 .oiv-sub{display:block;font-size:11.5px;color:var(--text-mid);line-height:1.25}
+/* C2-07: the lot's quiet tag on the SCREEN list (same as the catalog) — never on the ERP papers (OWNER-Q9). */
+.oiv-tag{display:inline-block;margin-right:6px;padding:0 4px;border:1px solid var(--border-mid);border-radius:3px;font-size:9px;font-weight:600;letter-spacing:.3px;color:var(--text-mid);line-height:13px}
 .oiv-muted{color:var(--text-dim)}
 .oiv-muted.small{font-size:11.5px;margin-top:4px;line-height:1.35}
 .oiv-st{display:inline-flex;align-items:center;gap:7px;white-space:nowrap;color:var(--text);font-variant-numeric:tabular-nums}
