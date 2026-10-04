@@ -5,7 +5,7 @@
 -- WHO / WHEN / ORDER (mandatory)
 --   * The owner runs this file in the Supabase SQL editor, AFTER 15:00 (team works 05:30–14:30).
 --   * Then 057_stock_lots_verify.sql (SELECT only; run its V0 BEFORE this file too), then
---     057_stock_lots_rules_test.sql (must end with «RESULT: 69/69 OK» — it always rolls back).
+--     057_stock_lots_rules_test.sql (must end with «RESULT: 71/71 OK» — it always rolls back).
 --   * The Worker (facade labels «Stock Lot», «Own Stock Lot», tblStockLots, /costs/stock-lots) is
 --     deployed ONLY after the verify file passes. Worker first is QUIET, not loud: after every ORDERS
 --     save the Worker re-reads all computed labels in ONE select that names the new columns; before
@@ -985,10 +985,15 @@ begin
         -- re-checks on every write of a piece row already written in the same transaction, which
         -- is exactly the RT cascade's vehicle copy. FOR UPDATE would make that copy wait anyway.
         perform 1 from public.stock_lots s where s.id = new.stock_lot_id for no key update;
-        select v.client_id, v.warehouse_location_id, v.ops_status, v.invoiced, v.closed_at, v.stock_pallets
+        select v.client_id, v.warehouse_location_id, v.ops_status, v.invoiced, v.closed_at, v.stock_pallets, v.intake_status
           into st from public.stock_v_lots v where v.id = new.stock_lot_id;
         if not found then
           perform stock_raise('lot_missing', 'Η παρτίδα δεν είναι ενεργή');
+        end if;
+        -- An empty lot's source MAY be cancelled (E-04 refuses it only with pieces); after that
+        -- no new piece may draw from it — the goods were never taken into stock (round-1 K7).
+        if st.intake_status = 'Cancelled' then
+          perform stock_raise('lot_cancelled', 'Η παραγγελία της παρτίδας ακυρώθηκε — δεν βγαίνουν κομμάτια');
         end if;
         if st.ops_status is not null then
           perform stock_raise('lot_provisional', 'Η παρτίδα είναι pre-order — δεν βγαίνουν κομμάτια ακόμη');
@@ -1182,10 +1187,15 @@ begin
 
       if v_judge then
         perform 1 from public.stock_lots s where s.id = new.stock_lot_id for no key update;
-        select v.client_id, v.warehouse_location_id, v.ops_status, v.invoiced, v.closed_at, v.stock_pallets
+        select v.client_id, v.warehouse_location_id, v.ops_status, v.invoiced, v.closed_at, v.stock_pallets, v.intake_status
           into st from public.stock_v_lots v where v.id = new.stock_lot_id;
         if not found then
           perform stock_raise('lot_missing', 'Η παρτίδα δεν είναι ενεργή');
+        end if;
+        -- An empty lot's source MAY be cancelled (E-04 refuses it only with pieces); after that
+        -- no new piece may draw from it — the goods were never taken into stock (round-1 K7).
+        if st.intake_status = 'Cancelled' then
+          perform stock_raise('lot_cancelled', 'Η παραγγελία της παρτίδας ακυρώθηκε — δεν βγαίνουν κομμάτια');
         end if;
         if st.ops_status is not null then
           perform stock_raise('lot_provisional', 'Η παρτίδα είναι pre-order — δεν βγαίνουν κομμάτια ακόμη');

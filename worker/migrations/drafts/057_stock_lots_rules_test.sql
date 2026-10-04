@@ -2,7 +2,7 @@
 -- every test row, every trigger side effect (audit_log rows, leg status sync) rolls back with it.
 -- Run AFTER 057 (and after 057_stock_lots_verify.sql V1–V8). Expected last line of the error panel:
 --
---     RESULT: 69/69 OK
+--     RESULT: 71/71 OK
 --
 -- followed by one line per case («OK  01 expected over_draw · got over_draw»). Anything less = STOP,
 -- copy the panel to the coordinator. 49 refusals + 14 accepted paths + 6 money cases (Ε1).
@@ -25,7 +25,7 @@
 --   refusal: the error's hint is 'stock:<expected code>', or its constraint/index name is the
 --            expected CHECK / unique index;
 --   accepted / money: the statements pass and the check query returns exactly the expected text.
--- Shorthand in the statement lists (expanded by the runner, so the 69 cases stay readable):
+-- Shorthand in the statement lists (expanded by the runner, so the 71 cases stay readable):
 --   'IP:id,lot,pallets,status[,client[,pickup]]' = an international piece (Import, to a Greek site;
 --      status In Transit / Delivered → Group ID 'GI-TEST|<rec>', see above)
 --   'NP:id,lot,pallets,status[,client[,pickup]]' = a national piece
@@ -52,7 +52,7 @@ begin
    order by id limit 1;
   if c1 is null or c2 is null or gr is null or to_regclass('public.stock_lots') is null
      or not public.stock_is_warehouse(wh) or not public.stock_is_warehouse(hub) then
-    raise exception 'RESULT: 0/69 — SETUP FAILED: run 057 first (needs 2 clients, a Greek site, 424 + 360 as warehouses)';
+    raise exception 'RESULT: 0/71 — SETUP FAILED: run 057 first (needs 2 clients, a Greek site, 424 + 360 as warehouses)';
   end if;
 
   insert into public.orders (id, legacy_id, reference, order_type, direction, status, client_id,
@@ -69,7 +69,7 @@ begin
 
   for r in
     select * from (values
-    -- ── Refusals (49) ───────────────────────────────────────────────────────────────────────────
+    -- ── Refusals (51) ───────────────────────────────────────────────────────────────────────────
     ('01', 'over_draw', array['IP:-9101,-9301,5,Pending', 'IP:-9102,-9301,15,Pending', 'IP:-9103,-9301,14,Pending'], null::text),
     ('02', 'orders_stock_piece_no_money', array[$q$insert into public.orders (id, legacy_id, reference, order_type, direction, status,
         client_id, loading_location_1_id, unloading_location_1_id, loading_pallets_1, stock_lot_id, price)
@@ -221,6 +221,11 @@ begin
         %1$s, %4$s, %3$s, 5, -9301)$q$], null),
     ('49', 'piece_no_truck', array['NP:-9501,-9301,5,Pending',
         $q$update public.national_orders set status = 'In Transit' where id = -9501$q$], null),
+    -- K7 (round 1): an empty lot whose source was cancelled gives no pieces, intl and natl.
+    ('50', 'lot_cancelled', array[$q$update public.orders set status = 'Cancelled' where id = -9001$q$,
+        'IP:-9101,-9301,5,Pending'], null),
+    ('51', 'lot_cancelled', array[$q$update public.orders set status = 'Cancelled' where id = -9001$q$,
+        'NP:-9501,-9301,5,Pending'], null),
 
     -- ── Accepted paths (14) ──────────────────────────────────────────────────────────────────────
     -- P1: the form re-sends every field; only the reference changes; the lot is CLOSED.
