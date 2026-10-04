@@ -216,10 +216,9 @@ async function _opsLoad() {
 
 // orderId → { relay_delivery, relay_loading }, through the ONE relay reader
 // Weekly International uses (core/relay.js, principle 3): the same FIND on
-// {Parent Order}, the same throw on a response without «Move Kind» (the zone
+// {Parent Order}, the same throw when the Worker lacks «Move Kind» (the zone
 // then says «not loaded» instead of guessing which rows are relays), the same
-// drop of Cancelled relays and of Weekly National's plain local moves. A
-// second copy here had already drifted (batch size, duplicate handling).
+// drop of Cancelled relays and of Weekly National's plain local moves.
 async function _opsLoadRelays(ids) {
   if (!window.Relay || typeof Relay.loadForOrders !== 'function') throw new Error('core/relay.js not loaded');
   return Relay.index(await Relay.loadForOrders(ids));
@@ -421,6 +420,9 @@ const _OPS_STYLE=`<style>
   /* 060 local relay: its own word AND colour (DESIGN.md E) — ink, not the
      partner green or the unassigned red. Clickable only for planning:full. */
   .do-tag.loc{background:var(--surface-dark)}
+  /* Two lines like every other ΑΝΑΘΕΣΗ cell (40px rows): the vehicle and the
+     international share the second line, cut with «…», whole in the tooltip. */
+  .do-asg .do-sl.do-rl-sub{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .do-rl[role=button]{cursor:pointer}
   .do-rl[role=button]:hover{text-decoration:underline}
   .do-rl[role=button]:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
@@ -923,8 +925,8 @@ function _opsAsgCell(f, truck, driver, partner) {
    The order keeps the international driver, truck and RT; the relay only
    says who does the last (import delivery) or first (export loading) leg
    near Veroia. So ΑΝΑΘΕΣΗ leads with the LOCAL driver and keeps the
-   international one underneath (plan §3, «Στο Ημερήσιο φαίνεται ο τοπικός,
-   με τον διεθνή από κάτω»). A relay exists only on an import delivery or an
+   international one underneath («Στο Ημερήσιο φαίνεται ο τοπικός, με τον
+   διεθνή από κάτω»). A relay exists only on an import delivery or an
    export loading — the base refuses any other pairing. «Done» is never the
    relay's: the ✓ stays the order's own status write. */
 const _opsRelayKind=ctx=>(ctx==='el'||ctx==='ovl')?'relay_loading':(ctx==='id'||ctx==='ovd')?'relay_delivery':null;
@@ -936,20 +938,18 @@ function _opsRelay(id, ctx){ const k=_opsRelayKind(ctx); return k?_opsRelayAny(i
 const _opsCanRelay=()=>typeof can!=='function'||can('planning')==='full';
 // Raw (unescaped) local driver name — for confirmAction, which escapes itself.
 function _opsRelayDriverRaw(rel){ const id=getLinkedId(rel&&rel.fields['Driver']); const d=id?getRefDrivers().find(r=>r.id===id):null; return d?String(d.fields['Full Name']||''):''; }
-// «ίδιο CB1284KE · ρυμ. P59498» over «διεθν. Οδηγός» — two lines, so the
-// 200px column never breaks a name in half. No Truck on the relay = the
+// «ίδιο ΚΒΧ1001 · ρυμ. Ρ-501 · διεθν. Οδηγός» — the board's own vehicle words
+// (Relay.vehicleText), then who keeps the order. No Truck on the relay = the
 // local drives the order's own tractor (owner Q1 4/10: «παίζει και τα 2»); a
 // Truck = his own tractor with a trailer swap. The trailer is the relay's own
 // (the base requires it once a local driver is set), which is how a
 // drop-and-hook shows here while the RT keeps one trailer.
-function _opsRelaySub(rel, f){
-  const rf=rel.fields;
-  const other=getLinkedId(rf['Truck']);
-  const truck=other?'άλλο '+(getTruckPlate(other)||'—'):(_T(f)?'ίδιο '+_T(f):'ίδιο φορτηγό');
-  const tid=getLinkedId(rf['Trailer']); const t=tid?getRefTrailers().find(r=>r.id===tid):null;
-  const trl=t?escapeHtml(t.fields['License Plate']||''):'';
+function _opsRelaySub(rel, rec){
+  const f=rec.fields;
+  // _D/getPartnerName return escaped text; vehicleText is raw.
   const intl=_P(f)?('συν. '+(getPartnerName(getLinkedId(f['Partner']))||'—')):(_D(f)?'διεθν. '+_D(f):'');
-  return `<span class="do-sl">${[truck, trl?'ρυμ. '+trl:''].filter(Boolean).join(' · ')}</span>${intl?`<span class="do-sl">${intl}</span>`:''}`;
+  const line=[escapeHtml(Relay.vehicleText(Relay.summary(rel, rec))), intl].filter(Boolean).join(' · ');
+  return `<span class="do-sl do-rl-sub" title="${line}">${line}</span>`;
 }
 // The clickable part (planning:full only). A span, not a <button>: the print
 // view hides every button, and the relay must stay on paper (_opsPrint).
@@ -973,9 +973,9 @@ function _opsRelayMain(rel, orderId){
 // null when the row has no relay — the caller then draws _opsAsgCell as before.
 function _opsRelayCell(rec, ctx){
   const rel=_opsRelay(rec.id, ctx); if(!rel) return null;
-  return `<td class="do-asg do-wrap">${_opsRelayMain(rel, rec.id)}${_opsRelaySub(rel, rec.fields)}</td>`;
+  return `<td class="do-asg do-wrap">${_opsRelayMain(rel, rec.id)}${_opsRelaySub(rel, rec)}</td>`;
 }
-// Collapsed export group: «ΤΟΠ. 2/3 · Papis» = 2 of the 3 loadings have a
+// Collapsed export group: «ΤΟΠ. 2/3 · Τοπικός Α» = 2 of the 3 loadings have a
 // local driver on them. Not clickable — the members below carry their own
 // cells (one relay per order; one click for the whole group is Φ2).
 function _opsGroupRelayCell(g){
@@ -986,15 +986,15 @@ function _opsGroupRelayCell(g){
   const who=names.length>2?`${names.length} οδηγοί`:names.join(' · ');
   const open=rels.length-withDrv.length;
   const f0=g[0].fields;
-  const sub=s=>s?`<span class="do-sl">${s}</span>`:'';
-  return `<td class="do-asg do-wrap"><span class="do-main"><span class="do-tag loc">ΤΟΠ.</span>${withDrv.length}/${g.length}${who?' · '+who:''}${open?` <span class="do-tag none">${open} ΠΡΟΣ ΑΝΑΘΕΣΗ</span>`:''}</span>${sub(_TT(f0))}${sub(_D(f0)?'διεθν. '+_D(f0):'')}</td>`;
+  const line=[_TT(f0), _D(f0)?'διεθν. '+_D(f0):''].filter(Boolean).join(' · ');
+  return `<td class="do-asg do-wrap"><span class="do-main"><span class="do-tag loc">ΤΟΠ.</span>${withDrv.length}/${g.length}${who?' · '+who:''}${open?` <span class="do-tag none">${open} ΠΡΟΣ ΑΝΑΘΕΣΗ</span>`:''}</span>${line?`<span class="do-sl do-rl-sub" title="${line}">${line}</span>`:''}</td>`;
 }
 // Overdue zones are flex rows without an ΑΝΑΘΕΣΗ column: one inline piece.
 function _opsRelayInline(rec, ctx){
   const rel=_opsRelay(rec.id, ctx); if(!rel) return '';
   return ` ${_opsRelayMain(rel, rec.id)}`;
 }
-// «Παραδόθηκε από τοπικό Papis;» — computed at click time from the loaded
+// «Παραδόθηκε από τοπικό Τοπικός Α;» — computed at click time from the loaded
 // relay, so a name never travels inside an onclick string.
 function _opsAsk(id, ctx, word){
   const rel=_opsRelay(id, ctx); const n=rel?_opsRelayDriverRaw(rel):'';
@@ -1005,8 +1005,7 @@ function _opsAsk(id, ctx, word){
 // Daily Ops only opens it — never a second form (principle 3): Relay.openPanel
 // hosted in the app's own modal (Daily Ops has no side panel of its own), kind
 // = the base's move_kind. Relay.openPanel is the one contract between the two
-// screens; no window-level wrapper, so there is no second door to drift.
-// Without it (an older cached build) → say so instead of a dead click
+// screens. Without it (an older cached build) → say so instead of a dead click
 // (principle 1). Awaited, so a failure while opening reaches the catch.
 async function _opsOpenRelay(orderId, kind){
   if(_opsBlockReadOnly()) return;

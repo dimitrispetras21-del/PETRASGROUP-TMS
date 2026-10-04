@@ -316,9 +316,8 @@ const ENTITY_CONFIG = {
     },
     cardRt: true,
     cardTruckAgg: true,
-    // 060 · OWNER-Q2 answered 4/10 (both: salary = track record only,
-    // per_trip = daily ΤΟΠΙΚΟ line): «a track record for every driver» — his
-    // local moves, read from local_moves itself (core/relay-history.js). No
+    // 060 (owner 4/10): «a track record for every driver» — his local moves,
+    // read from local_moves itself (Relay.loadForDriver, core/relay.js). No
     // amounts, so every role that sees drivers sees it.
     cardLocalMoves: true,
     perm: 'drivers',
@@ -367,10 +366,14 @@ const ENTITY_CONFIG = {
         // per_trip = daily ΤΟΠΙΚΟ line). Its own column (drivers.pay_basis),
         // NOT «Τύπος» above, which holds Internal/External — a different fact
         // (principle 3). Empty = unknown: the base pays it like per_trip so no
-        // day is lost, and Μισθοδοσία shows «τύπος αμοιβής άγνωστος». The
-        // Worker serves the label to P&L readers only (owner/management/
-        // accountant) — the same roles that can open this form.
-        { f: 'Pay Basis',   label: 'Τύπος αμοιβής', type: 'select', options: [
+        // day is lost, and Μισθοδοσία shows «τύπος αμοιβής άγνωστος».
+        // viewPerm: payroll information (coordinator 4/10) — the Worker serves
+        // the label only to roles with costs access (plOnly: owner/management/
+        // accountant), so for anyone else the field is not drawn at all: an
+        // always-empty select there would read as «unknown». verify: an older
+        // Worker drops the label with 200 OK (facade trap #1) — the save
+        // checks the returned row and says so.
+        { f: 'Pay Basis',   label: 'Τύπος αμοιβής', type: 'select', viewPerm: 'costs', verify: true, options: [
           { val: 'salary', label: 'Μισθωτός' }, { val: 'per_trip', label: 'Ανά δρομολόγιο' }],
           hint: 'Κενό = άγνωστο. Μισθωτός: οι τοπικές κινήσεις μένουν μόνο ως ιστορικό. Ανά δρομολόγιο ή κενό: μία γραμμή ΤΟΠΙΚΟ ανά ημέρα στη Μισθοδοσία.' },
         { f: 'Phone',       label: 'Τηλέφωνο' },
@@ -2197,18 +2200,16 @@ function _renderEntityCardV2(entityKey, rec, panel) {
 async function _loadEntityCardLocalMoves(rec) {
   const body = () => document.getElementById(`ec_${rec.id}_lm`);
   try {
-    if (typeof lhLoad !== 'function') throw new Error('core/relay-history.js not loaded');
-    const rows = await lhLoad(rec.id);
+    if (typeof Relay === 'undefined') throw new Error('core/relay.js not loaded');
+    const rows = await Relay.loadForDriver(rec.id);
     const el = body();
     if (!el) return;
     el.innerHTML = rows.length
-      ? LH_STYLE + lhListHtml(rows.slice(0, 10)) + (rows.length > 10 ? `<div class="ecard-km-sub">+${rows.length - 10} παλαιότερες</div>` : '')
+      ? Relay.HISTORY_CSS + Relay.historyListHtml(rows.slice(0, 10)) + (rows.length > 10 ? `<div class="ecard-km-sub">+${rows.length - 10} παλαιότερες</div>` : '')
       : `<div class="ecard-empty">Καμία τοπική κίνηση.</div>`;
   } catch (e) {
     const el = body();
-    if (el) el.innerHTML = /forbidden|403/i.test(String(e && e.message))
-      ? `<div class="ecard-empty">Ο ρόλος σου δεν έχει πρόσβαση στις τοπικές κινήσεις.</div>`
-      : `<div class="ecard-fail">⚠ Δεν φόρτωσαν οι τοπικές κινήσεις.</div>`;
+    if (el) el.innerHTML = `<div class="ecard-fail">⚠ Δεν φόρτωσαν οι τοπικές κινήσεις${e && e.code === 'no_move_kind' ? ' — ' + escapeHtml(e.message) : ''}.</div>`;
     if (typeof logError === 'function') logError(e, 'entity card: local moves');
   }
 }
@@ -2814,6 +2815,9 @@ function buildEntityModal(entityKey, recId, fields) {
       : '';
     bodyHTML += `<div class="form-grid${sec.cols === 3 ? ' cols-3' : ''}"${secLabel ? '' : ' style="margin-top:16px"'}>`;
     for (const field of sec.fields) {
+      // A field another permission owns is not drawn (and so never sent:
+      // saveEntityRecord and entityRevalidate skip fields without an element).
+      if (field.viewPerm && typeof can === 'function' && can(field.viewPerm) === 'none') continue;
       const val = fields[field.f] ?? '';
       let input = '';
       if (field.type === 'textarea') {
@@ -2983,15 +2987,19 @@ async function saveEntityRecord(entityKey, recId) {
   if (btn) { btn.textContent = cfg.v2 ? 'Αποθήκευση…' : 'Saving...'; btn.disabled = true; }
 
   try {
-    if (recId) {
-      await atPatch(cfg.tableId, recId, fields);
-    } else {
-      await atCreate(cfg.tableId, fields);
-    }
+    const saved = recId ? await atPatch(cfg.tableId, recId, fields) : await atCreate(cfg.tableId, fields);
     invalidateCache(cfg.tableId);
     closeModal();
-    toast(cfg.v2 ? (recId ? 'Η εγγραφή ενημερώθηκε' : 'Η εγγραφή δημιουργήθηκε')
-                 : (recId ? 'Record updated' : 'Record created'));
+    // `verify` fields: the returned row IS the table's row (PostgREST
+    // representation, mapped back to labels), so a value the Worker dropped
+    // is missing from it. Checked only for a value that was sent — a cleared
+    // field is absent either way (facade trap #2).
+    const lost = (saved && saved.fields && !saved._offline)
+      ? cfg.formFields.flatMap(sc => sc.fields).filter(fl => fl.verify && fields[fl.f] != null && saved.fields[fl.f] !== fields[fl.f]).map(fl => fl.label)
+      : [];
+    if (lost.length) toast(`Η εγγραφή αποθηκεύτηκε, αλλά ΔΕΝ γράφτηκε: ${lost.join(', ')} — ο Worker δεν το γνωρίζει ακόμη`, 'error');
+    else toast(cfg.v2 ? (recId ? 'Η εγγραφή ενημερώθηκε' : 'Η εγγραφή δημιουργήθηκε')
+                      : (recId ? 'Record updated' : 'Record created'));
     await renderEntity(entityKey);
   } catch(e) {
     if (btn) { btn.textContent = cfg.v2 ? 'Αποθήκευση' : 'Save'; btn.disabled = false; }

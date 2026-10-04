@@ -1,6 +1,6 @@
 // Proof rig — local relay on the Weekly INTERNATIONAL board (migration 060,
-// plan .claude/plans/local-relay-plan.md §2Α/§2Β/Β5/Β7, owner 4/10/2026
-// «οκ προχωρα με τις τοπικες παραδοσεις»).
+// owner 4/10/2026 «οκ προχωρα με τις τοπικες παραδοσεις»; decisions in
+// docs/DECISION_LOG.md 2026-10-04).
 //
 // The board OPENS in a real browser against an in-memory facade. The facade
 // plays the base's rules for LOCAL MOVES the way 060 writes them (Date and
@@ -15,7 +15,8 @@
 //   (3) groupage of 3 members with the same local driver: 3 sub-rows, one badge
 //   (4) a Cancelled relay does not show and does not count as «exists»
 //   (5) a relay without driver: «ΠΡΟΣ ΑΝΑΘΕΣΗ»
-//   (6) a response without «Move Kind» (old Worker): error banner, menu disabled
+//   (6) an old Worker (422 on the «Move Kind» filter): error banner, menu disabled
+//  (6b) the board paints before the relays answer; items say «φορτώνουν»
 //   (7) menus: VS / cancelled / pre-order hidden; split parent never, its leg yes;
 //       matched pair says which (εξαγωγή / εισαγωγή) explicitly
 //   (8) create: exact labels, no Date/Status sent, read-back, sub-row appears
@@ -25,6 +26,11 @@
 //  (12) delete from the sub-row menu → DELETE, re-read proves it is gone
 //  (13) assignment popover carries the «…με τοπικό οδηγό» hint
 //  (14) read-only role: no relay panel from the sub-row
+//  (15) partner-run order: item closed with the reason; an existing relay stays
+//       editable, its panel names the partner and has no «ίδιος»
+//  (16) a sub-row click opens THAT relay even if the order's direction changed
+//  (17) the split panel warns about a relay on the parent
+//  (18) a failed re-read after a delete is said apart from a failed delete
 //
 // Run from the MAIN repo root (the .har lookup in auth.js is cwd-relative):
 //   PW_BASE_URL=http://127.0.0.1:8788/.claude/worktrees/lr-weekly/ node .claude/worktrees/lr-weekly/tests/critics/local-relay-weekly-proof.js
@@ -37,7 +43,7 @@ const BASE = process.env.PW_BASE_URL || 'http://127.0.0.1:8788/';
 const MODE = process.env.MODE || 'after';
 const SHOTS = path.resolve(__dirname, '../../docs/data-audit/2026-10/shots');
 const HOST = 'petras-tms-backend-staging.petrasgroup.workers.dev';
-const T = { ORD: 'tblgHlNmLBH3JTdIM', TRK: 'tblEAPExIAjiA3asD', TRL: 'tblDcrqRJXzPrtYLm', DRV: 'tbl7UGmYhc2Y82pPs', LOC: 'tblxu8DRfTQOFRCzS', LM: 'local_moves' };
+const T = { ORD: 'tblgHlNmLBH3JTdIM', TRK: 'tblEAPExIAjiA3asD', TRL: 'tblDcrqRJXzPrtYLm', DRV: 'tbl7UGmYhc2Y82pPs', LOC: 'tblxu8DRfTQOFRCzS', PTN: 'tblLHl5m8bqONfhWv', LM: 'local_moves' };
 const VEROIA = 'recJucKOhC1zh4IP3';
 let pass = 0, fail = 0;
 const ok = (c, m) => { if (c) { pass++; console.log('  ✓ ' + m); } else { fail++; console.log('  ✗ ' + m); } };
@@ -64,6 +70,7 @@ function seed() {
       { id: VEROIA, fields: { Name: 'CROSS-DOCK', City: 'Veroia', Country: 'GR' } },
       { id: 'recLocC', fields: { Name: 'Customer', City: 'Naousa', Country: 'GR' } },
     ],
+    [T.PTN]: [{ id: 'recPtn1', fields: { 'Company Name': 'Partner X' } }],
     [T.ORD]: [
       ORD('recImp1', 'Import', 'I1-MON', '2026-10-03', '2026-10-05', Object.assign({ Status: 'In Transit' }, OWN(1))),
       ORD('recImp3', 'Import', 'I3-NEW', '2026-10-04', '2026-10-06', OWN(3)),
@@ -78,6 +85,9 @@ function seed() {
       ORD('recSL1', 'Export', 'SP-LEG1', '2026-10-04', '2026-10-05', Object.assign({ 'Parent Order': ['recSP'], 'Leg No': 1 }, OWN(6))),
       ORD('recSL2', 'Export', 'SP-LEG2', '2026-10-05', '2026-10-08', Object.assign({ 'Parent Order': ['recSP'], 'Leg No': 2 }, OWN(7))),
       ORD('recPre', 'Export', 'PRE-1', '2026-10-06', '', { 'Ops Status': 'Provisional', Status: 'Pending' }),
+      ORD('recImpP', 'Import', 'I7-PARTNER', '2026-10-04', '2026-10-06', { Partner: ['recPtn1'], 'Is Partner Trip': true }),
+      ORD('recImpP2', 'Import', 'I9-PARTNER2', '2026-10-05', '2026-10-07', { Partner: ['recPtn1'], 'Is Partner Trip': true }),
+      ORD('recImpU', 'Import', 'I8-UNASSIGNED', '2026-10-04', '2026-10-06', {}),
     ],
     [T.LM]: [
       { id: 'recLM1', fields: { 'Move Kind': 'relay_delivery', 'Parent Order': ['recImp1'], Driver: ['recDrvL1'], Trailer: ['recTrl1'], 'From Location': [VEROIA], 'Time From': '07:00' } },
@@ -86,6 +96,8 @@ function seed() {
       { id: 'recLM2', fields: { 'Move Kind': 'relay_loading', 'Parent Order': ['recExp1'], Driver: ['recDrvL2'], Truck: ['recTrkL'], Trailer: ['recTrlL'], 'To Location': [VEROIA], 'Time From': '06:00' } },
       ...['recG1', 'recG2', 'recG3'].map((oid, k) => ({ id: 'recLMg' + (k + 1), fields: { 'Move Kind': 'relay_loading', 'Parent Order': [oid], Driver: ['recDrvL1'], Trailer: ['recTrl5'], 'To Location': [VEROIA], 'Time From': ['05:00', '05:30', '06:00'][k] } })),
       { id: 'recLM5', fields: { 'Move Kind': 'relay_loading', 'Parent Order': ['recSL1'], Driver: ['recDrvL2'], Trailer: ['recTrl6'], 'To Location': [VEROIA] } },
+      // written before the order went to a partner
+      { id: 'recLMp', fields: { 'Move Kind': 'relay_delivery', 'Parent Order': ['recImpP2'], Driver: ['recDrvL1'], Trailer: ['recTrl1'], 'From Location': [VEROIA] } },
     ],
   };
   return db;
@@ -117,7 +129,7 @@ async function newPage(browser, opts = {}) {
   await page.clock.setFixedTime(new Date('2026-10-05T09:00:00+03:00'));
   const db = seed();
   db[T.LM].forEach(r => derive(db, r));
-  const S = { db, log: [], errors: [], armed: false, lmGets: 0 };
+  const S = { db, log: [], errors: [], armed: false, lmGets: 0, failLmGets: 0 };
   page.on('pageerror', e => S.errors.push(String(e)));
   page.on('dialog', d => d.accept());
   await preparePage(page, opts.role || 'dispatcher');
@@ -143,7 +155,13 @@ async function newPage(browser, opts = {}) {
       const live = tbl.filter(r => !r._deleted);
       if (m === 'GET' && !rid) {
         S.lmGets++;
-        if (S.armed) S.log.push({ k: 'lmget', f });
+        if (S.armed) S.log.push({ k: 'lmget', f, fields: u.searchParams.getAll('fields[]') });
+        S.lastLmGet = { f, fields: u.searchParams.getAll('fields[]') };
+        // The live (pre-060) Worker has no «Move Kind» label: an unknown label
+        // in a FILTER is its one loud path — 422, «Unsupported query».
+        if (opts.noMoveKind && /\{Move Kind\}/.test(f)) return json(route, { error: 'Unsupported query for this table' }, 422);
+        if (S.failLmGets > 0) { S.failLmGets--; return json(route, { error: 'Forbidden' }, 403); }
+        if (opts.lmDelay) await new Promise(r => setTimeout(r, opts.lmDelay));
         let out;
         const ids = [...f.matchAll(/FIND\("(rec[A-Za-z0-9]+)",ARRAYJOIN\(\{Parent Order\}/g)].map(x => x[1]);
         if (ids.length) out = live.filter(r => ids.includes((r.fields['Parent Order'] || [])[0]));
@@ -257,7 +275,7 @@ async function ctxItems(page, call) {
   await page.evaluate(() => { const c = document.getElementById('wi-ctx'); if (c) { c.style.display = 'none'; c.innerHTML = ''; } });
   await page.evaluate(c => (0, eval)(c), call);
   await page.waitForTimeout(120);
-  return page.$$eval('#wi-ctx .wi-ctx-i', els => els.map(e => ({ t: e.textContent.trim(), dis: !!e.disabled })));
+  return page.$$eval('#wi-ctx .wi-ctx-i', els => els.map(e => ({ t: e.textContent.trim(), dis: !!e.disabled, tip: e.getAttribute('title') || '' })));
 }
 const relayItems = items => items.filter(i => /τοπικό οδηγό|Τοπική (παράδοση|φόρτωση)/.test(i.t));
 const subText = (page, id) => page.$eval(`.wi-rly-row[data-rly-id="${id}"]`, el => el.innerText.replace(/\s+/g, ' ').trim()).catch(() => null);
@@ -288,6 +306,10 @@ async function scenarios(browser) {
     ok((await subText(page, 'recLM4') || '').includes('ΠΡΟΣ ΑΝΑΘΕΣΗ') && await page.$('.wi-rly-row[data-rly-id="recLM4"] .wi-rly-need') !== null, '(5) relay without driver → red «ΠΡΟΣ ΑΝΑΘΕΣΗ»');
     ok((await subText(page, 'recLM5') || '').includes('SP-LEG1'), '(7) the split LEG\'s relay is drawn under the split frame');
     ok(await page.$('.wi-rly-fail') === null, 'no failure banner when the read succeeded');
+    const lg = S.lastLmGet || {};
+    ok(/,\{Move Kind\}!=BLANK\(\)\)$/.test(lg.f || '') && /^AND\(/.test(lg.f || ''), 'the relay read carries the «Move Kind» probe in its filter: ' + String(lg.f).slice(0, 60) + '…');
+    ok(JSON.stringify(lg.fields) === JSON.stringify(['Parent Order', 'Move Kind', 'Driver', 'Truck', 'Trailer', 'From Location', 'To Location', 'Time From', 'Date', 'Status']), 'the relay read names its fields[] (bounded URL): ' + JSON.stringify(lg.fields));
+    ok(((lg.f || '').match(/FIND\(/g) || []).length <= 50, 'at most 50 orders per relay request');
     await shot(page, 'local-relay-weekly-after-board-1440.png');
 
     console.log('\n(7) menus');
@@ -317,6 +339,49 @@ async function scenarios(browser) {
     it = relayItems(await ctxItems(page, `_wiSegCtx(${EV},${gRow},'recG2',false)`));
     ok(it.length === 1 && it[0].t === 'Τοπική φόρτωση: αλλαγή — εξαγωγή G2…', '(7) segment menu → that member only');
     await page.evaluate(() => { const c = document.getElementById('wi-ctx'); if (c) c.style.display = 'none'; });
+
+    console.log('\n(15) partner-run orders');
+    it = relayItems(await ctxItems(page, `_wiImpCtx(${EV},${await rowIdOf(page, 'recImpP')})`));
+    ok(it.length === 1 && it[0].dis && /συνεργάτης/.test(it[0].tip), '(15) partner-run import, no relay → item shown CLOSED with the reason: ' + JSON.stringify(it));
+    it = relayItems(await ctxItems(page, `_wiImpCtx(${EV},${await rowIdOf(page, 'recImpP2')})`));
+    ok(it.length === 1 && !it[0].dis && it[0].t === 'Τοπική παράδοση: αλλαγή…', '(15) partner-run import WITH a relay → still editable: ' + JSON.stringify(it));
+    await page.evaluate(() => { const c = document.getElementById('wi-ctx'); if (c) c.style.display = 'none'; });
+    await openRelay(page, 'recImpP2');
+    const pp = await page.evaluate(() => ({
+      note: document.querySelector('#wi-panel .wn3-pnote').textContent,
+      sameDis: document.querySelector('input[name="rly_tm"][value="same"]').disabled,
+      other: document.querySelector('input[name="rly_tm"][value="other"]').checked,
+      trkEnabled: !document.getElementById('rly_trk').disabled,
+    }));
+    ok(/συνεργάτης/.test(pp.note) && /Partner X/.test(pp.note) && !/Ο διεθνής \(δεν έχει ανατεθεί/.test(pp.note), '(15) the panel names the partner, not «δεν έχει ανατεθεί»: ' + pp.note);
+    ok(pp.sameDis && pp.other && pp.trkEnabled, '(15) «ίδιος» disabled, «άλλος» chosen, tractor list open');
+    S.armed = true; S.log = [];
+    await page.click('#rly_submit'); await page.waitForTimeout(300);
+    ok(/δικό μας τράκτορα/.test(await page.$eval('#rly_err', e => e.textContent)) && !S.log.some(l => l.k === 'lmpatch'), '(15) saving without our own tractor is refused in the panel, nothing sent');
+    S.armed = false;
+    await page.evaluate(() => _wiPanelClose());
+
+    console.log('\n(16) the sub-row opens THAT relay');
+    // The order's direction changed after the relay was written (060 never
+    // blocks an order edit; B-65 reports it): the click must still edit the
+    // clicked relay, not offer a new one of the other kind.
+    await page.evaluate(() => { WINTL.data.imports.find(o => o.id === 'recImp1').fields.Direction = 'Export'; });
+    await page.locator('.wi-rly-row[data-rly-id="recLM1"]').click();
+    await page.waitForFunction(() => { const p = document.getElementById('wi-panel'); return p && p.style.display === 'block' && document.getElementById('rly_submit'); }, null, { timeout: 5000 });
+    const t16 = await page.evaluate(() => ({ title: document.querySelector('#wi-panel .wi-panel-title').textContent, drv: document.getElementById('rly_drv').value }));
+    ok(t16.title === 'Τοπική παράδοση — αλλαγή' && t16.drv === 'recDrvL1', '(16) click → edit of recLM1 (delivery), not «Φόρτωση με τοπικό οδηγό»: ' + JSON.stringify(t16));
+    await page.evaluate(() => { _wiPanelClose(); WINTL.data.imports.find(o => o.id === 'recImp1').fields.Direction = 'Import'; });
+
+    console.log('\n(17) split panel warns about the parent\'s relay');
+    await page.evaluate(r => _wiPanelSplit(r), await rowIdOf(page, 'recImp1'));
+    await page.waitForTimeout(300);
+    const w17 = await page.$eval('#wi-panel .wi-panel-warn', e => e.textContent).catch(() => '');
+    ok(/τοπική παράδοση/.test(w17) && /σκέλος/.test(w17), '(17) «…έχει τοπική παράδοση — …δήλωσέ την ξανά στο σκέλος…»: ' + w17);
+    await page.evaluate(() => _wiPanelClose());
+    await page.evaluate(r => _wiPanelSplit(r), await rowIdOf(page, 'recImp3'));
+    await page.waitForTimeout(300);
+    ok(await page.$('#wi-panel .wi-panel-warn') === null, '(17) no warning on an order without a live relay (recImp3: only a Cancelled one)');
+    await page.evaluate(() => _wiPanelClose());
 
     console.log('\n(8) create');
     await openRelay(page, 'recImp3');
@@ -391,14 +456,32 @@ async function scenarios(browser) {
     ok(S.log.some(l => l.k === 'lmdelete' && l.id === 'recLM4'), '(12) DELETE sent');
     const delIdx = S.log.findIndex(l => l.k === 'lmdelete');
     ok(S.log.slice(delIdx + 1).some(l => l.k === 'lmget' && /recImp4/.test(l.f)), '(12) the order\'s relays are re-read after the DELETE');
-    ok(await page.$('.wi-rly-row[data-rly-id="recLM4"]') === null && (await page.evaluate(() => window.__toasts)).some(t => /διαγράφηκε/.test(t)), '(12) gone from the board, success after the re-read');
+    ok(await page.$('.wi-rly-row[data-rly-id="recLM4"]') === null && (await page.evaluate(() => window.__toasts)).some(t => /Η τοπική διαγράφηκε ✓/.test(t)), '(12) gone from the board, success after the re-read');
+
+    console.log('\n(18) delete, then the re-read fails');
+    await page.evaluate(() => { window.__toasts = []; });
+    await page.evaluate(() => _wiRelayConfirmDel('recLMg3', 'recG3'));
+    await page.waitForTimeout(200);
+    S.log = []; S.failLmGets = 1;
+    await page.click('#wi-panel .btn-danger');
+    await page.waitForTimeout(1200);
+    const t18 = await page.evaluate(() => window.__toasts);
+    ok(S.log.some(l => l.k === 'lmdelete' && l.id === 'recLMg3'), '(18) DELETE sent');
+    ok(t18.some(t => /διαγράφηκε, αλλά η επανανάγνωση απέτυχε/.test(t)) && !t18.some(t => /Η διαγραφή απέτυχε/.test(t)), '(18) said as «διαγράφηκε, αλλά η επανανάγνωση απέτυχε», never «η διαγραφή απέτυχε»: ' + JSON.stringify(t18));
+    ok(await page.$('.wi-rly-fail') !== null, '(18) the banner offers ↻');
+    await page.evaluate(() => _wiRelayReload()); await waitIdle(page);
+    ok(await page.$('.wi-rly-fail') === null && await page.$('.wi-rly-row[data-rly-id="recLMg3"]') === null, '(18) ↻ re-reads: banner gone, the deleted relay is not drawn');
 
     console.log('\n(13) assignment popover hint');
     await page.locator('#wi-imp-recImp3 .wk3-assign').click();
     await page.waitForTimeout(300);
     const hint = await page.$eval('#wi-popover .wi-rly-hint', e => e.textContent).catch(() => '');
-    ok(/«…με τοπικό οδηγό»/.test(hint) && /μεταφέρει ΟΛΟ το δρομολόγιο/.test(hint), '(13) hint: ' + hint);
+    ok(/«…με τοπικό οδηγό»/.test(hint) && /μεταφέρει ΟΛΟ το δρομολόγιο/.test(hint), '(13) hint on an order that has a driver: ' + hint);
     await shot(page, 'local-relay-weekly-after-popover-1440.png');
+    await page.keyboard.press('Escape'); await page.waitForTimeout(200);
+    await page.locator('#wi-imp-recImpU .wk3-assign').click();
+    await page.waitForTimeout(300);
+    ok(await page.$('#wi-popover') !== null && await page.$('#wi-popover .wi-rly-hint') === null && /ΣΥΝΕΡΓΑΤΗΣ/.test(await page.$eval('#wi-popover', e => e.innerText).catch(() => '')), '(13) no hint on a first assignment (no driver yet)');
     ok(S.errors.length === 0, 'page A: no page errors ' + S.errors.join(' | '));
     await page.context().close();
   }
@@ -443,16 +526,32 @@ async function scenarios(browser) {
 
   // ── Page D: old Worker without «Move Kind» ──────────────────────────────
   {
-    console.log('\n(6) a response without «Move Kind»');
+    console.log('\n(6) an old Worker: 422 on the «Move Kind» filter');
     const { page, S } = await newPage(browser, { noMoveKind: true });
     const banner = await page.$eval('.wi-rly-fail', e => e.innerText).catch(() => '');
-    ok(/δεν φορτώθηκαν/.test(banner) && /Move Kind/.test(banner), '(6) banner: ' + banner.replace(/\s+/g, ' ').slice(0, 160));
+    ok(/δεν φορτώθηκαν/.test(banner) && /Move Kind/.test(banner) && /060/.test(banner), '(6) the old Worker\'s 422 becomes the banner: ' + banner.replace(/\s+/g, ' ').slice(0, 200));
     ok(await page.$$eval('.wi-rly-row', els => els.length) === 0, '(6) no sub-row drawn from a read we cannot trust');
     const it = relayItems(await ctxItems(page, `_wiImpCtx(${EV},${await rowIdOf(page, 'recImp3')})`));
     ok(it.length === 1 && it[0].dis, '(6) menu item present but disabled');
     await page.evaluate(() => { const c = document.getElementById('wi-ctx'); if (c) c.style.display = 'none'; });
     await shot(page, 'local-relay-weekly-after-no-move-kind-1440.png');
     ok(S.errors.length === 0, 'page D: no page errors ' + S.errors.join(' | '));
+    await page.context().close();
+  }
+
+  // ── Page F: the relays answer late — the board does not wait ────────────
+  {
+    console.log('\n(6b) the board paints before the relays answer');
+    const { page, S } = await newPage(browser, { lmDelay: 4000 });
+    const st = await page.evaluate(() => WINTL.relay && WINTL.relay.state);
+    ok(st === 'loading' && await page.$$eval('.wk3-row', els => els.length) > 5, '(6b) rows drawn while the relay read is still out (state ' + st + ')');
+    const it = relayItems(await ctxItems(page, `_wiImpCtx(${EV},${await rowIdOf(page, 'recImp3')})`));
+    ok(it.length === 1 && it[0].dis && /φορτώνουν/.test(it[0].tip), '(6b) the item is closed «…φορτώνουν ακόμη»: ' + JSON.stringify(it));
+    await page.evaluate(() => { const c = document.getElementById('wi-ctx'); if (c) c.style.display = 'none'; });
+    await page.waitForFunction(() => WINTL.relay && WINTL.relay.state === 'ok', null, { timeout: 10000 });
+    await page.waitForTimeout(200);
+    ok(await page.$('.wi-rly-row[data-rly-id="recLM1"]') !== null, '(6b) the sub-rows arrive with the relays (one repaint)');
+    ok(S.errors.length === 0, 'page F: no page errors ' + S.errors.join(' | '));
     await page.context().close();
   }
 

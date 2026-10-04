@@ -203,8 +203,11 @@ function printedLine() {
 
 // Μία γραμμή κίνησης — στήλες από dlEntryAmounts (ίδιος κανόνας με οθόνη/CSV).
 function pKinisiBase(e) {
-  // 060: a local driver's day prints with the card's own label (dlLocalLabel).
-  if (dlIsLocal(e)) return escapeHtml(dlLocalLabel(e));
+  // 060: a local driver's day prints with the trigger's own label (route_text
+  // «ΤΟΠΙΚΟ · παράδοση N»), never «Δρομολόγιο». Inline on purpose: this page
+  // loads modules/payroll.js without ?v=, so it must not depend on a function
+  // a stale cached copy of that file would lack.
+  if (e.entry_type === 'trip' && e.local_move_id != null) return escapeHtml(e.route_text || 'ΤΟΠΙΚΟ');
   if (e.entry_type === 'trip') return 'Δρομολόγιο · ' + (e.route_text ? escapeHtml(e.route_text) : '—');
   if (e.entry_type === 'payment_bank') return 'Πληρωμή · Κατάθεση τράπεζας';
   if (e.entry_type === 'payment_cash') return 'Πληρωμή · Μετρητά';

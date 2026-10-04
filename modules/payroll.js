@@ -1,6 +1,7 @@
 // ═══════════════════════════════════════════════════════════
 // MODULE — ΜΙΣΘΟΔΟΣΙΑ ΟΔΗΓΩΝ (v2: αρχική με λίστα+strip, καρτέλα, μαζική πληρωμή)
-// Backend αμετάβλητο: /costs/ledger* (Worker).
+// Backend: /costs/ledger* (Worker)· 060 (4/10) πρόσθεσε στο dl_v_entries τα
+// local_move_id/relay_info των γραμμών τοπικού οδηγού.
 // Spec: docs/superpowers/specs/2026-09-05-driver-payroll-v2-ui.md
 // v2 λεξιλόγιο: κανένα ποσό δεν έχει δίπλα του λέξη-περιγραφή — το πρόσημο
 // και η παρένθεση (dlMoney) το λένε. Κανένας εσωτερικός κωδικός στην οθόνη
@@ -126,54 +127,53 @@ function dlEntryAmounts(e) {
 // record only, per_trip = daily ΤΟΠΙΚΟ line) ──
 // A local line is ONE per (driver, day), written ONLY by the DB trigger and
 // only for a driver who is not salaried. Its day and route are the system's
-// (they follow the moves in Weekly), so the card offers amounts only: no ↗,
-// no Ακύρωση/Επαναφορά — «Αξία 0» is how a day that is not paid separately
-// is closed. The Worker refuses the same edits (PATCH /costs/ledger/:id).
+// (they follow the moves in Weekly), so the card offers amounts and a note:
+// no ↗, no Επαναφορά, and Ακύρωση only where the trigger can no longer
+// resolve the line itself (dlLocalCanCancel). The Worker refuses the same.
 function dlIsLocal(e) { return !!e && e.entry_type === 'trip' && e.local_move_id != null; }
-// dl_v_entries.relay_info (060 draft, step 7) is ASCII-keyed jsonb — the SQL
-// stays ASCII and the Greek words live here, once, for screen, A4 and CSV:
-//   local day line: { kind:'local_day', pay_basis, moves:[{ id, move_kind, order_id, reference, rt_code, … }] }
-//   RT line:        { kind:'rt', relays:[{ id, move_kind, order_id, driver_id, driver_name, move_date, … }] }
+// dl_v_entries.relay_info (060, step 7) is ASCII-keyed jsonb, one entry per
+// move; the Greek words live here:
+//   local day line: { kind:'local_day', moves:[{ id, move_kind, order_id, rt_codes:[…] }] }
+//   RT line:        { kind:'rt', relays:[{ id, move_kind, order_id, driver_id, driver_name, move_date }] }
 // move_kind = 'relay_delivery' | 'relay_loading'. NULL = no relay. No amounts.
 function dlRelayList(e) {
   const ri = e && e.relay_info;
-  if (!ri || typeof ri !== 'object' || Array.isArray(ri)) return [];
+  if (!ri) return [];
   return Array.isArray(ri.moves) ? ri.moves : (Array.isArray(ri.relays) ? ri.relays : []);
 }
-// One entry per move: the view joins each move to its order's RT legs, so a
-// move whose order sits on two legs (e.g. one in a cancelled RT) arrives
-// twice — the label must still name it once.
-function dlRelayMoves(e) {
-  const seen = new Set();
-  return dlRelayList(e).filter(m => { if (!m || m.id == null) return !!m; const k = String(m.id); if (seen.has(k)) return false; seen.add(k); return true; });
-}
-function dlRelayRtCodes(e) { return [...new Set(dlRelayList(e).map(m => m.rt_code).filter(Boolean))]; }
-// OWNER-Q2 answered 4/10: pay basis NULL pays like per_trip (no day lost) and
-// the line says the basis is unknown. The view reads drivers.pay_basis live
-// into relay_info — the key present with null is «unknown»; an older view
-// without the key says nothing rather than guessing.
-function dlPayBasisUnknown(e) {
-  const ri = e && e.relay_info;
-  return dlIsLocal(e) && !!ri && typeof ri === 'object' && 'pay_basis' in ri && ri.pay_basis == null;
-}
+function dlRelayRtCodes(e) { return [...new Set(dlRelayList(e).flatMap(m => m.rt_codes || []))]; }
 function dlRelayWord(m) { return (m.move_kind === 'relay_loading' ? 'φόρτωση ' : 'παράδοση ') + (m.order_id != null ? m.order_id : '—'); }
-// «ΤΟΠΙΚΟ · παράδοση 415 · φόρτωση 431». Without relay_info (an older view)
-// the trigger's own route text is shown as written — never an empty cell.
-function dlLocalLabel(e) {
-  const moves = dlRelayMoves(e);
-  if (moves.length) return 'ΤΟΠΙΚΟ · ' + moves.map(dlRelayWord).join(' · ');
-  const r = String(e.route_text || '').trim();
-  return r ? (/^ΤΟΠΙΚΟ/i.test(r) ? r : 'ΤΟΠΙΚΟ · ' + r) : 'ΤΟΠΙΚΟ';
-}
+// The day's label is the trigger's own route text («ΤΟΠΙΚΟ · παράδοση 415 ·
+// φόρτωση 431», dl_local_day_sync) — one source for card, A4 and CSV; the DB
+// also compares it to know that the day's relays changed.
+function dlLocalLabel(e) { return String(e.route_text || '').trim() || 'ΤΟΠΙΚΟ'; }
 // The international RT line: who did the local part and when — never an
-// amount (OWNER-Q4 default: the international trip value is never reduced
-// automatically; accounting sees «⇄ τοπ.» and judges).
+// amount. OWNER-Q4 answered 4/10 («οχι»): the international's trip value is
+// never reduced automatically; accounting sees «⇄ τοπ.» and judges.
+function dlRelayName(m) {
+  return m.driver_name || ((_dl.balances || []).find(b => b.driver_id === m.driver_id) || {}).full_name || (m.driver_id == null ? 'ΠΡΟΣ ΑΝΑΘΕΣΗ' : 'οδηγός #' + m.driver_id);
+}
+function dlRelayDay(m) { return m.move_date ? dlDateRange(String(m.move_date).slice(0, 10), null) : ''; }
 function dlRelayTitle(e) {
-  // A relay_info in a shape this file does not know (e.g. plain text) is
-  // still shown, verbatim — never hidden because the format moved.
-  if (typeof (e && e.relay_info) === 'string') return e.relay_info;
-  const name = m => m.driver_name || ((_dl.balances || []).find(b => b.driver_id === m.driver_id) || {}).full_name || (m.driver_id == null ? 'ΠΡΟΣ ΑΝΑΘΕΣΗ' : 'οδηγός #' + m.driver_id);
-  return dlRelayMoves(e).map(m => 'τοπ. ' + dlRelayWord(m) + ' · ' + name(m) + (m.move_date ? ' · ' + dlDateRange(String(m.move_date).slice(0, 10), null) : '')).join('\n');
+  return dlRelayList(e).map(m => 'τοπ. ' + dlRelayWord(m) + ' · ' + dlRelayName(m) + (m.move_date ? ' · ' + dlRelayDay(m) : '')).join('\n');
+}
+// On the line itself, not only in the tooltip: «⇄ τοπ. Τοπικός · 04/10»
+// (surname = first word, the way the names are stored), «+N» for more.
+function dlRelayShort(e) {
+  const list = dlRelayList(e);
+  if (!list.length) return '';
+  const m = list[0], who = m.driver_id == null && !m.driver_name ? 'ΠΡΟΣ ΑΝΑΘΕΣΗ' : String(dlRelayName(m)).split(/\s+/)[0];
+  return '⇄ τοπ. ' + who + (m.move_date ? ' · ' + dlRelayDay(m) : '') + (list.length > 1 ? ' +' + (list.length - 1) : '');
+}
+// Coordinator 4/10: a local line may be cancelled (with a reason) only where
+// the trigger cannot resolve it — the driver is salaried (the trigger never
+// pays him by a line, so a line that already had money stays flagged) or the
+// day has no live relay left. The Worker allows exactly these two cases.
+// The pay basis is the hero's (DRIVERS «Pay Basis», dlLoadDriverExtras): one
+// source on the card.
+function dlLocalCanCancel(e) {
+  if (!dlIsLocal(e) || e.cancelled) return false;
+  return (dlExtrasMine() && _dl.extras.payBasis === 'salary') || dlRelayList(e).length === 0;
 }
 
 // ── Περίοδος καρτέλας (v3 #8) — ΜΙΑ συνάρτηση για οθόνη, εκτύπωση A4 και CSV ──
@@ -501,18 +501,16 @@ function dlEntryRowHtml(e) {
       : 'Προσαρμογή' + (e.note ? ' — ' + escapeHtml(e.note) : ''));
   // RT link: icon only, no visible code (v2 rule #2) — the code sits in title.
   const rtIcon = (isTrip && e.rt_id) ? `<span class="dl-rt" title="${escapeHtml(e.rt_code || '')}">↗</span>` : '';
-  // 060: on the international RT line, «⇄ τοπ.» = a local driver did the
-  // delivery/loading (who, which day in the tooltip). On the local line the
-  // RTs it served sit in the tooltip (no internal code on screen, v2 rule #2),
-  // and the driver's unknown pay basis is said in words (OWNER-Q2 answered
-  // 4/10: NULL pays like per_trip so pay is never lost, and accounting must
-  // classify him) — read live by the view into relay_info.pay_basis.
-  // The cell is a flex COLUMN in a 40px row: the new words share a line with
-  // their neighbour (↗ / «χωρίς αξία») instead of adding a third line.
-  const relayBadge = (isTrip && e.rt_id && e.relay_info != null && e.relay_info !== '') ? `<span class="dl-relay" title="${escapeHtml(dlRelayTitle(e) || 'τοπικός οδηγός')}">⇄ τοπ.</span>` : '';
+  // 060: on the international RT line, «⇄ τοπ. <who> · <day>» = a local
+  // driver did the delivery/loading (every relay in the tooltip). On the
+  // local line the RTs it served and its note sit in the tooltip (no internal
+  // code on screen, v2 rule #2). The cell is a flex COLUMN in a 40px row: the
+  // new words share a line with their neighbour (↗ / «χωρίς αξία») instead of
+  // adding a third line.
+  const relayBadge = (isTrip && e.rt_id && dlRelayList(e).length) ? `<span class="dl-relay" title="${escapeHtml(dlRelayTitle(e))}">${escapeHtml(dlRelayShort(e))}</span>` : '';
   const localRts = isLocal ? dlRelayRtCodes(e).join(', ') : '';
-  const localTitle = isLocal ? 'Γραμμή τοπικού οδηγού: τη μέρα και τη διαδρομή τις κρατούν οι τοπικές κινήσεις (Weekly) — εδώ μόνο ποσά. Αξία 0 = δεν πληρώνεται χωριστά.' + (localRts ? '\nΕξυπηρέτησε: ' + localRts : '') : '';
-  const pbNote = dlPayBasisUnknown(e) ? ` <span class="dl-word dl-pb-note">άγνωστος τύπος αμοιβής</span>` : '';
+  const localTitle = isLocal ? 'Γραμμή τοπικού οδηγού: τη μέρα και τη διαδρομή τις κρατούν οι τοπικές κινήσεις (Weekly) — εδώ μόνο ποσά. Αξία 0 = δεν πληρώνεται χωριστά.'
+    + (localRts ? '\nΕξυπηρέτησε: ' + localRts : '') + (e.note ? '\nΣημείωση: ' + e.note : '') : '';
   // 042 (owner 21/9, w11 θέμα 3): when the trip has CASH lines in Έξοδα
   // Δρομολογίων, Μετρητά Μ is THEIR sum — the DB writes it and refuses a
   // hand-typed value (dl_cash_lock), so the cell is read-only here too.
@@ -584,7 +582,7 @@ function dlEntryRowHtml(e) {
 
   return wrap(`<div class="dl-row${pendingCls}${e.needs_review ? ' review' : ''}${e.entry_type !== 'trip' ? ' pay' : ''}" data-entry="${e.id}" title="${e.needs_review ? escapeHtml(e.review_note || '') : ''}">
     <div style="width:${wDate}px"><span style="font-size:12px;font-variant-numeric:tabular-nums">${dateTxt}</span></div>
-    <div style="flex:1"><span class="m" style="font-weight:${isTrip ? 500 : 400}"${localTitle ? ` title="${escapeHtml(localTitle)}"` : ''}>${routeText}</span>${relayBadge ? `<span>${rtIcon}${relayBadge}</span>` : rtIcon}${isLocal ? `<span>${pendingWord}${pbNote}${reviewWord}</span>` : flagWords}</div>
+    <div style="flex:1"><span class="m" style="font-weight:${isTrip ? 500 : 400}"${localTitle ? ` title="${escapeHtml(localTitle)}"` : ''}>${routeText}</span>${relayBadge ? `<span>${rtIcon}${relayBadge}</span>` : rtIcon}${flagWords}</div>
     <div style="width:${wMoney}px" class="r">${valueCell}</div>
     <div style="width:${wMoney}px" class="r">${advCell}</div>
     <div style="width:${wMoney}px" class="r">${expCell}</div>
@@ -607,8 +605,9 @@ function dlMoreCellHtml(e, isTrip) {
   // keeps no undo). Same role list as the Worker's restore branch — a menu
   // item that ends in a 403 would be a lie on screen (αρχή 1).
   // 060: a local line belongs to the trigger — the DB cancels it when its
-  // day has no live move left (or flags it if money was written). A hand
-  // Ακύρωση/Επαναφορά would fight the trigger, so neither is offered.
+  // day has no live move left (or flags it if money was written). Επαναφορά
+  // would fight the trigger, so it is never offered; Ακύρωση only in the two
+  // cases the trigger cannot resolve (dlLocalCanCancel).
   const isLocal = dlIsLocal(e);
   if (e.cancelled) {
     if (!dlCanRestore() || isLocal) return '<div style="width:32px"></div>';
@@ -620,7 +619,9 @@ function dlMoreCellHtml(e, isTrip) {
   }
   const editItem = isTrip ? item('dl-menu-edit', 'Διόρθωση', isLocal ? 'Αξία (0 = δεν πληρώνεται χωριστά), έλαβε, έξοδα' : 'Αλλαγή αξίας, εξόδων ή ποσού', 'dlMenuEdit') : '';
   const reviewItem = (e.needs_review && dlCanReview()) ? item('dl-menu-review', 'Ελέγχθηκε', 'Φεύγει το «θέλει έλεγχο» — η αιτιολογία μένει στη γραμμή', 'dlMenuReviewed') : '';
-  const cancelItem = isLocal ? '' : item('dl-menu-cancel', 'Ακύρωση', 'Παραμένει στο ιστορικό ως ακυρωμένη', 'dlMenuCancel');
+  const cancelItem = !isLocal ? item('dl-menu-cancel', 'Ακύρωση', 'Παραμένει στο ιστορικό ως ακυρωμένη', 'dlMenuCancel')
+    : dlLocalCanCancel(e) ? item('dl-menu-cancel', 'Ακύρωση', (dlRelayList(e).length ? 'Ο οδηγός είναι μισθωτός' : 'Καμία ζωντανή τοπική κίνηση εκείνη τη μέρα') + ' — με αιτιολογία', 'dlMenuCancel')
+    : '';
   const menu = open ? `<div class="dl-menu">${reviewItem}${editItem}${cancelItem}</div>` : '';
   return `<div style="width:32px;position:relative" class="r">
     <button type="button" class="dl-more" title="Επιλογές" onclick="event.stopPropagation();dlToggleMenu(${e.id})">···</button>
@@ -744,8 +745,6 @@ function dlRenderHome() {
   const monthAvailable = !!monthData;
   const monthTrips = monthAvailable ? activeDrivers.reduce((a, b) => a + Number((monthData.drivers[b.driver_id] || {}).trips || 0), 0) : null;
   // 060: local days counted apart by the Worker (aggregateMonth local_days).
-  // An older Worker has no such key — then nothing is added (and its `trips`
-  // still holds the local days, as before).
   const monthLocal = monthAvailable ? activeDrivers.reduce((a, b) => a + Number((monthData.drivers[b.driver_id] || {}).local_days || 0), 0) : 0;
   const monthPayments = monthAvailable ? activeDrivers.reduce((a, b) => a + Number((monthData.drivers[b.driver_id] || {}).payments || 0), 0) : null;
   const cm = _dl.homeMonth || dlCurrentMonth();
@@ -1211,11 +1210,10 @@ function dlRtsBlockHtml() {
   </div>`;
 }
 
-// ── Τύπος αμοιβής + ιστορικό τοπικών κινήσεων (060 · OWNER-Q2 answered
-// 4/10 (both: salary = track record only, per_trip = daily ΤΟΠΙΚΟ line)) ──
+// ── Τύπος αμοιβής + ιστορικό τοπικών κινήσεων (060) ──
 // Both are facts of the DRIVER, read from their own homes — drivers.pay_basis
-// (DRIVERS «Pay Basis», P&L readers only) and the local_moves rows (core/
-// relay-history.js) — never copied into the ledger (principle 3). They load
+// (DRIVERS «Pay Basis», P&L readers only) and the local_moves rows
+// (Relay.loadForDriver) — never copied into the ledger (principle 3). They load
 // AFTER the card is on screen and fill only their two slots, so a late
 // answer never wipes an inline edit or the quick-entry row.
 // payBasis: undefined = not read (yet, or failed) · null = unknown · 'salary' | 'per_trip'.
@@ -1243,11 +1241,11 @@ function dlLocalMovesHtml(period) {
   if (!dlExtrasMine()) return '';
   const x = _dl.extras;
   if (x.lhErr) return `<div class="dl-note" id="dlLocalMovesErr">Οι τοπικές κινήσεις του οδηγού δεν φορτώθηκαν — δεν σημαίνει ότι δεν υπάρχουν.</div>`;
-  if (!Array.isArray(x.lh) || typeof lhTableHtml !== 'function') return '';
+  if (!Array.isArray(x.lh)) return '';
   const rows = x.lh.filter(m => (!period.from || m.date >= period.from) && (!period.to || m.date <= period.to));
   if (!rows.length) return '';
   const word = x.payBasis === 'salary' ? ' · μισθωτός: καταγραφή, χωρίς γραμμή πληρωμής' : '';
-  return `${typeof LH_STYLE === 'string' ? LH_STYLE : ''}<div class="dl-lm"><div class="dl-lm-title">Τοπικές κινήσεις · ${rows.length}${word}</div>${lhTableHtml(rows)}</div>`;
+  return `${Relay.HISTORY_CSS}<div class="dl-lm"><div class="dl-lm-title">Τοπικές κινήσεις · ${rows.length}${word}</div>${Relay.historyTableHtml(rows)}</div>`;
 }
 function dlPaintExtras() {
   if (_dl.view !== 'driver' || !dlExtrasMine()) return;
@@ -1266,7 +1264,7 @@ async function dlLoadDriverExtras(driverId) {
   else {
     const [pb, lh] = await Promise.allSettled([
       atGetAll(TABLES.DRIVERS, { filterByFormula: `RECORD_ID()="${legacyId}"`, fields: ['Pay Basis'] }, false),
-      typeof lhLoad === 'function' ? lhLoad(legacyId) : Promise.reject(new Error('core/relay-history.js not loaded'))
+      typeof Relay !== 'undefined' ? Relay.loadForDriver(legacyId) : Promise.reject(new Error('core/relay.js not loaded'))
     ]);
     // NULL is absent from a facade record (trap 2): a found driver without the
     // label reads as «unknown» — which, until the label is mapped, it is.
@@ -1363,6 +1361,14 @@ async function dlSaveInlineEdit(id) {
   if (Object.keys(body).length === 0) { _dl.editId = null; dlRenderDriverCard(); return; }
   // Reason is required only when changing an already-written (non-null) value — the Worker enforces this.
   const changingWritten = Object.keys(body).some(k => e[k] != null);
+  // 060: a local day closed with «Αξία 0» says why, in the line's note (the
+  // Worker accepts note on local lines, no reason needed): later nobody could
+  // tell «μισθωτός», «πληρώθηκε μέσα στο δρομολόγιο» and a slip apart.
+  if (!changingWritten && dlIsLocal(e) && body.trip_value === 0) {
+    dlOpenReason({ title: 'Αξία 0 — γιατί;', sub: 'Γράφεται ως σημείωση της γραμμής (π.χ. μισθωτός, πληρώθηκε μέσα στο δρομολόγιο).', label: 'Σημείωση', button: 'Αποθήκευση',
+      onSubmit: note => dlPatchEntry(id, { ...body, note }, 'Δεν αποθηκεύτηκε') });
+    return;
+  }
   if (changingWritten) {
     dlOpenReason({ title: 'Διόρθωση ποσού', sub: 'Το ποσό ήταν ήδη γραμμένο — η αλλαγή καταγράφεται στο ιστορικό με την αιτιολογία.',
       onSubmit: reason => dlPatchEntry(id, { ...body, reason }, 'Δεν αποθηκεύτηκε') });
@@ -1778,5 +1784,5 @@ async function dlBulkSubmit() {
 // node:test reads these; the browser ignores the guard.
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = { dlEur, dlBalanceWord, dlDelta, dlTypeLabel, dlDateRange, dlMoney, dlPeriod, dlEntryAmounts, dlReviewNote, dlReviewPersisted,
-    dlIsLocal, dlRelayMoves, dlRelayRtCodes, dlPayBasisUnknown, dlLocalLabel, dlRelayTitle };
+    dlIsLocal, dlRelayList, dlRelayRtCodes, dlLocalLabel, dlRelayTitle, dlRelayShort, dlLocalCanCancel };
 }
