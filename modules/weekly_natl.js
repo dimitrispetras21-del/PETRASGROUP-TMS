@@ -1887,6 +1887,20 @@ async function _wnConsumePendingMatch(newNlId, fields) {
     toast('Η άνοδος καταχωρήθηκε αλλά η σύνδεση με την κάθοδο ΔΕΝ γράφτηκε — δέσε την με σύρσιμο', 'danger');
     return;
   }
+  // §4 #5: the same match, so the same vehicle copy (_wnVehicleForSn). The new
+  // load was just created from a national order, so it has no vehicle yet.
+  const veh = _wnVehicleForSn(WNATL.rows.find(r => r.id === p.rowId && r.orderIds[0] === p.nsId), {});
+  if (veh) {
+    try {
+      const r3 = await atSafePatch(TABLES.NAT_LOADS, newNlId, veh);
+      if (r3?.error) throw new Error(r3.error.message || r3.error.type);
+    } catch(e) {
+      if (typeof logError === 'function') logError(e, '_wnConsumePendingMatch vehicle ' + p.nsId + '→' + newNlId);
+      invalidateCache(TABLES.NAT_LOADS);
+      toast('Η άνοδος δέθηκε με την κάθοδο αλλά το όχημα ΔΕΝ γράφτηκε σε αυτήν — πάτησε «Ενημέρωση ανάθεσης»', 'danger');
+      return;
+    }
+  }
   invalidateCache(TABLES.NAT_LOADS);
   toast('Η άνοδος δέθηκε με την κάθοδο ✓');
 }
@@ -2130,6 +2144,29 @@ function _wnDropOnRow(e, rowId) {
   _wnSaveMatch(rowId, snId);
 }
 
+// §4 #5 (UX-03, 4/10/2026): matching an ΑΝΟΔΟΣ under a ΚΑΘΟΔΟΣ that already
+// has a vehicle wrote only 'Matched Load'. The board then drew the pair under
+// the ΚΑΘΟΔΟΣ pill (covered), while the ΑΝΟΔΟΣ load stayed Pending with no
+// vehicle in the base — loads 99, 102, 103 (repair: DRAFT 061). The match now
+// carries the vehicle over, the same fields the assignment popover writes on
+// a matched ΑΝΟΔΟΣ, and ONLY when the ΑΝΟΔΟΣ has none: a vehicle already on
+// it is a decision somebody made and is never overwritten. 'Partner Rate' is
+// left out on purpose: one rate for the round trip vs one per leg is an open
+// owner decision (§8.5), so the match does not decide it.
+function _wnVehicleForSn(row, snF) {
+  if (!row || !row.saved || !snF) return null;
+  if (getLinkedId(snF['Truck']) || getLinkedId(snF['Partner'])) return null;
+  const v = row.partnerId
+    ? { 'Partner': [row.partnerId], 'Is Partner Trip': true }
+    : { 'Truck': [row.truckId], 'Is Partner Trip': false };
+  if (row.partnerId && row.partnerPlates) v['Partner Truck Plates'] = row.partnerPlates;
+  if (!row.partnerId && row.trailerId) v['Trailer'] = [row.trailerId];
+  if (!row.partnerId && row.driverId) v['Driver'] = [row.driverId];
+  const st = snF['Status'] || '';
+  if (!st || st === 'Pending') v['Status'] = 'Assigned';
+  return v;
+}
+
 async function _wnSaveMatch(rowId, snId) {
   if(_wnBlockReadOnly()) return;
   const row = WNATL.rows.find(r => r.id===rowId); if (!row) return;
@@ -2149,6 +2186,21 @@ async function _wnSaveMatch(rowId, snId) {
     if(r1?.conflict){ toast('Η εγγραφή άλλαξε από άλλον χρήστη — γίνεται ανανέωση','warn'); await renderWeeklyNatl(); return; }
     const r2 = await atSafePatch(TABLES.NAT_LOADS, snId, { 'Matched Load': row.orderIds[0] });
     if(r2?.conflict){ toast('Η εγγραφή άλλαξε από άλλον χρήστη — γίνεται ανανέωση','warn'); await renderWeeklyNatl(); return; }
+    const veh = _wnVehicleForSn(row, WNATL.data.southnorth.find(r => r.id===snId)?.fields);
+    if (veh) {
+      try {
+        const r3 = await atSafePatch(TABLES.NAT_LOADS, snId, veh);
+        if (r3?.error) throw new Error(r3.error.message || r3.error.type);
+      } catch(err) {
+        // The pair IS written; only the vehicle is missing on the ΑΝΟΔΟΣ — say
+        // exactly that, never the generic «σύνδεση ΔΕΝ γράφτηκε» below.
+        if (typeof logError === 'function') logError(err, '_wnSaveMatch vehicle ' + row.orderIds[0] + '→' + snId);
+        _wnSync('wn-sync-'+rowId,'err','Το ταίριασμα γράφτηκε· το όχημα ΔΕΝ πέρασε στην άνοδο');
+        toast('Η άνοδος ταιριάχτηκε αλλά το όχημα ΔΕΝ γράφτηκε σε αυτήν — πάτησε «Ενημέρωση ανάθεσης»', 'danger');
+        await renderWeeklyNatl();
+        return;
+      }
+    }
     _wnSync('wn-sync-'+rowId,'ok','Αποθηκεύτηκε');
     toast('Σύνδεση αποθηκεύτηκε ✓');
   } catch(err) {

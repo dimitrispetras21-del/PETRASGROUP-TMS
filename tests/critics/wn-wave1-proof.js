@@ -167,6 +167,50 @@ SECTIONS.push(async browser => {
   await page.context().close();
 });
 
+// ── §4 #5 · matching under an assigned ΚΑΘΟΔΟΣ carries the vehicle over ────
+const dropOn = (page, snId, nsId) => page.evaluate(async ([sn, ns]) => {
+  const rowId = WNATL.rows.find(r => r.orderId === ns).id;
+  window._wnDragging = sn; _wnDropOnRow({ preventDefault() {} }, rowId);
+}, [snId, nsId]);
+const patchesTo = (S, id) => S.writes.filter(w => w.m === 'PATCH' && w.tid === T.NL && w.rid === id).map(w => w.body.fields);
+SECTIONS.push(async browser => {
+  console.log('\n── §4 #5 · match copies the vehicle onto the ΑΝΟΔΟΣ (only when it has none)');
+  let { page, S } = await openBoard(browser);
+  await dropOn(page, 'recNlsA00000000A', 'recNlA000000000A'); await settle(page);
+  let p = patchesTo(S, 'recNlsA00000000A');
+  const veh = p.find(f => 'Truck' in f);
+  ok(p.some(f => f['Matched Load'] === 'recNlA000000000A'), 'own fleet: ΑΝΟΔΟΣ gets its Matched Load');
+  ok(veh && veh.Truck[0] === 'recTruck000001AA' && veh.Driver[0] === 'recDriver00001AA' && veh.Trailer[0] === 'recTrailer0001AA' && veh['Is Partner Trip'] === false && veh.Status === 'Assigned',
+     'own fleet: PATCH on the ΑΝΟΔΟΣ = ' + JSON.stringify(veh));
+  let f = nlOf(S, 'recNlsA00000000A');
+  ok((f.Truck || [])[0] === 'recTruck000001AA' && f.Status === 'Assigned', 'base: ΑΝΟΔΟΣ now has truck ' + (f.Truck || []).join() + ', Status ' + f.Status);
+
+  await dropOn(page, 'recNlsB00000000A', 'recNlB000000000A'); await settle(page);
+  p = patchesTo(S, 'recNlsB00000000A');
+  ok(p.length === 1 && Object.keys(p[0]).join() === 'Matched Load', 'ΑΝΟΔΟΣ with its OWN truck: only Matched Load written: ' + JSON.stringify(p));
+  ok((nlOf(S, 'recNlsB00000000A').Truck || [])[0] === 'recTruck000002AA', 'base: its own truck kept');
+
+  await dropOn(page, 'recNlsP00000000A', 'recNlP000000000A'); await settle(page);
+  const vp = patchesTo(S, 'recNlsP00000000A').find(x => 'Partner' in x);
+  ok(vp && vp.Partner[0] === 'recPartner00001A' && vp['Is Partner Trip'] === true && vp['Partner Truck Plates'] === 'ΙΑΒ 1099' && vp.Status === 'Assigned',
+     'partner: PATCH on the ΑΝΟΔΟΣ = ' + JSON.stringify(vp));
+  ok(vp && !('Partner Rate' in vp) && !('Partner Rate' in nlOf(S, 'recNlsP00000000A')), 'partner: rate NOT copied (owner decision §8.5 open)');
+  ok(S.errors.length === 0, 'no page errors: ' + S.errors.slice(0, 2).join(' | '));
+  await page.context().close();
+
+  ({ page, S } = await openBoard(browser));
+  await page.evaluate(() => {
+    const row = WNATL.rows.find(r => r.orderId === 'recNlA000000000A');
+    window._wnPendingMatch = { rowId: row.id, nsId: row.orderIds[0], at: Date.now() };
+    return window._wnConsumePendingMatch('recNlsP00000000A', { Direction: 'South→North' });
+  });
+  await settle(page);
+  const vc = patchesTo(S, 'recNlsP00000000A').find(x => 'Truck' in x);
+  ok(vc && vc.Truck[0] === 'recTruck000001AA' && vc.Driver[0] === 'recDriver00001AA' && vc.Status === 'Assigned',
+     '«νέα άνοδος» from the empty cell of an assigned ΚΑΘΟΔΟΣ: vehicle written too = ' + JSON.stringify(vc));
+  await page.context().close();
+});
+
 (async () => {
   const browser = await chromium.launch();
   for (const s of SECTIONS) await s(browser);
