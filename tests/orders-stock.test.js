@@ -271,7 +271,9 @@ test('markLot: POST {Order:[rec]} then read-back; ok only if the lot points at t
   reset(); db.readBack = { id: 'recLotNew01', fields: {} };
   const lost = await OrdersStock.markLot('recSrc');
   assert.strictEqual(lost.ok, false); assert.match(lost.error, /χωρίς τη σύνδεση/);
-  reset(); db.createError = 'Ο προορισμός της παρτίδας πρέπει να είναι αποθήκη (τοποθεσία «Partner Warehouse» ή «Veroia Hub»)';
+  // Addendum C (owner 4/10): the location TYPE is no longer refused (warehouse_rule is gone);
+  // the destination rule that stays is lot_multi_dest.
+  reset(); db.createError = 'Η παρτίδα έχει έναν μόνο προορισμό: την αποθήκη';
   const refused = await OrdersStock.markLot('recSrc');
   assert.strictEqual(refused.ok, false);
   assert.strictEqual(refused.error, db.createError, 'the Greek refusal of the base reaches the caller verbatim');

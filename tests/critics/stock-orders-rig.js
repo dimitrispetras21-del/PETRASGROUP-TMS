@@ -12,7 +12,7 @@
 //
 // Stages (each on its own page, so one red check does not hide the others):
 // catalog/card/print/CSV (G-27, E-12, PR-14) · form warning + lazy list
-// (PR-17, G-31) · tick rules, no_split, duplicate (OWNER-Q5, G-14, G-13) ·
+// (PR-17, G-31) · tick rules, no_split, duplicate (OWNER-Q8, G-14, G-13) ·
 // lot create (OWNER-Q1, G-14, mark refused + retry, OWNER-Q2, G-26) · piece
 // (G-10, PR-06, G-29, over-draw, G-32, piece edit) · lot edit + refused delete
 // (OWNER-Q1, DL-03, AU-07) · accountant (E-07, close, ERP sheet PR-15/E-06) ·
@@ -20,6 +20,10 @@
 // Round 1 (O1–O11): close/reopen with the read-back, one lot date, the close on
 // her papers, the reason once and neutral, D2 «context only», the delete
 // confirm of a piece/lot, the group packet / lot partner sheet / piece sheet.
+// Round 2 #1 (owner 4/10): the owner's «Χρέωση αποθήκης» in the lot band (GET,
+// PATCH, read-back, 422 once + context, 500 re-read, read failure), none for a
+// dispatcher, no «Χωρίς συνεργάτη αποθήκης» toast, the invoicing money lines,
+// and the order's own Reference escaped on the print sheet.
 const path = require('path');
 const fs = require('fs');
 const ROOT = path.join(__dirname, '../..');   // the worktree under test
@@ -44,6 +48,8 @@ const LOCS = [
   LOC('recWhAT', 'Αποθήκη Υ', 'Wien', 'AT', 'Partner Warehouse'),
   LOC('recWhGR', 'Αποθήκη Ζ', 'Thessaloniki', 'GR', 'Partner Warehouse'),
   LOC('recDestGR', 'Cold Hub B', 'Aspropyrgos', 'GR'),
+  // Addendum C (owner 4/10): any location can be a warehouse — this one has NO type.
+  LOC('recLocDE', 'Depot K', 'Muenchen', 'DE'),
 ];
 const CLIENTS_FX = [{ id: 'recCliA', fields: { 'Company Name': 'Πελάτης Α', 'VAT Number': 'EL000000000', City: 'Athens', Country: 'GR' } }];
 const lotFields = f => Object.assign({
@@ -54,6 +60,18 @@ const lotFields = f => Object.assign({
   Pieces: 2, 'Pieces Delivered': 2, 'Pieces Without Truck': 0, 'Last Piece Delivered': addDays(TODAY, -1), Complete: false, Invoiced: false,
 }, f || {});
 const route2 = (l, u) => ({ 'Loading Location 1': [l], 'Unloading Location 1': [u] });
+// One stock_v_lot_money row (round 2 #1 columns: partner_cost / warehouse_charge
+// / charge_total; 'no_intake_cost' became 'no_charge'). setCharge mirrors the
+// 057 rule: charge = partner + field (NULL only when both are), net = price − charge.
+const lotMoney = () => ({ lot_id: 1, lot_rec: 'recLot1', source_kind: 'intl', source_id: 1300, source_rec: 'recLotSrc', price: '3300.00', partner_cost: '300.00', warehouse_charge: null, charge_total: '300.00', net: '3000.00', total_pallets: '33', per_pallet: '90.9091', drawn_pallets: '31', allocated_amount: '2818.18', remaining_pallets: '2', in_stock_amount: '181.82', written_off_pallets: '0', written_off_amount: '0.00', closed_at: null, allocation_status: 'ok' });
+function setCharge(m, v) {
+  m.warehouse_charge = v == null ? null : Number(v).toFixed(2);
+  const p = m.partner_cost == null ? null : Number(m.partner_cost);
+  const tot = p == null && v == null ? null : (p || 0) + (v == null ? 0 : Number(v));
+  m.charge_total = tot == null ? null : tot.toFixed(2);
+  m.net = tot == null ? null : (Number(m.price) - tot).toFixed(2);
+  m.allocation_status = tot == null ? 'no_charge' : 'ok';
+}
 function fixtures() {
   return {
     orders: [
@@ -76,7 +94,8 @@ const ok = (c, m) => { if (c) { passed++; console.log('  ✓ ' + m); } else { fa
 async function newPage(browser, role, view) {
   const ctx = await browser.newContext({ baseURL: BASE_URL, viewport: { width: 1440, height: 960 } });
   const page = await ctx.newPage();
-  const cap = { posts: [], patches: [], deletes: [], errors: [], orderFail: null, lotFail: null, orderDelFail: null, dropStockLot: false, pwReads: 0, lotReqs: 0, fx: fixtures(), seq: 0 };
+  const cap = { posts: [], patches: [], deletes: [], errors: [], orderFail: null, lotFail: null, orderDelFail: null, dropStockLot: false, pwReads: 0, lotReqs: 0, fx: fixtures(), seq: 0,
+    money: lotMoney(), chargePatches: [], chargeFail: null, chargeReadFail: false, allocReads: 0 };
   page.on('pageerror', e => cap.errors.push(String(e)));
   page.on('dialog', d => {
     if (cap.acceptDialog || cap.dismissDialog) { cap.dialogs = (cap.dialogs || []).concat([d.message()]); return cap.acceptDialog ? d.accept() : d.dismiss(); }
@@ -99,10 +118,22 @@ async function newPage(browser, role, view) {
     if (b.records) return json(r, { records: b.records.map((x, i) => ({ id: 'recStub' + (++cap.seq) + i, fields: x.fields })) });
     return json(r, { id: 'recStub' + (++cap.seq), fields: b.fields || {} });
   });
+  // /costs/stock-lots (owner only): GET ?lot= reads cap.money; PATCH /costs/stock-lots/<rec>
+  // {warehouse_charge} writes it and answers {lot} (the read-back) — or cap.chargeFail
+  // {status, body, apply} ONCE (apply = the write landed anyway); cap.chargeReadFail fails ONE read.
   await page.route('**/costs/**', r => {
-    if (r.request().url().includes('/costs/stock-lots')) {
-      cap.allocReq = r.request().url();
-      return json(r, { lots: [{ lot_id: 1, lot_rec: 'recLot1', source_kind: 'intl', source_id: 1300, source_rec: 'recLotSrc', price: '3300.00', intake_cost: '300.00', net: '3000.00', total_pallets: '33', per_pallet: '90.9091', drawn_pallets: '31', allocated_amount: '2818.18', remaining_pallets: '2', in_stock_amount: '181.82', written_off_pallets: '0', written_off_amount: '0.00', closed_at: null, allocation_status: 'ok' }],
+    const req = r.request(), url = req.url();
+    if (url.includes('/costs/stock-lots')) {
+      if (req.method() === 'PATCH') {
+        const b = req.postDataJSON() || {};
+        cap.chargePatches.push({ url, body: b });
+        const f = cap.chargeFail; cap.chargeFail = null;
+        if (!f || f.apply) setCharge(cap.money, b.warehouse_charge);
+        return f ? json(r, f.body, f.status) : json(r, { lot: Object.assign({}, cap.money) });
+      }
+      cap.allocReq = url; cap.allocReads++;
+      if (cap.chargeReadFail) { cap.chargeReadFail = false; return json(r, { error: 'Ο επιμερισμός δεν διαβάστηκε' }, 500); }
+      return json(r, { lots: [Object.assign({}, cap.money)],
         pieces: [{ lot_id: 1, lot_rec: 'recLot1', piece_kind: 'intl', piece_id: 1301, piece_rec: 'recPc1', seq: 1, pallets: '16', cum_pallets: '16', amount: '1454.55' },
           { lot_id: 1, lot_rec: 'recLot1', piece_kind: 'intl', piece_id: 1302, piece_rec: 'recPc2', seq: 2, pallets: '15', cum_pallets: '31', amount: '1363.63' }] });
     }
@@ -214,6 +245,12 @@ async function newPage(browser, role, view) {
   return page;
 }
 const bodyText = page => page.locator('body').innerText();
+// Addendum C (owner 4/10): the warehouse is a SEARCH field (LOCATIONS > 500 rows), not a
+// select. The list loads on the first tick; the open drop refreshes when it lands.
+async function pickWarehouse(page, q, name) {
+  await page.fill('#f_StockWhS', q);
+  await page.locator('#f_StockWhD .linked-drop-item', { hasText: name }).first().click({ timeout: 8000 });
+}
 const waitText = (page, re, t = 8000) => page.waitForFunction(s => new RegExp(s).test(document.body.innerText), re.source, { timeout: t });
 
 async function fillCommon(page) {
@@ -297,7 +334,7 @@ async function runForm(browser) {
   // O6 (critic-5 S5-03): the lot is one tick «Παρτίδα» in the flags row; no grey box on a new order
   const tick = await page.evaluate(() => { const cb = document.getElementById('f_StockLot'), hr = document.getElementById('f_HighRisk'); return { label: cb.closest('label').textContent.trim(), sameRow: cb.closest('label').parentElement === hr.closest('label').parentElement }; });
   ok(tick.label === 'Παρτίδα' && tick.sameRow, 'O6: «Παρτίδα» is one checkbox next to «⚠ Υψηλό ρίσκο» — ' + JSON.stringify(tick));
-  ok(!(await page.isVisible('#oiLotBox')) && !(await page.isVisible('#f_StockWh')), 'O6: no lot box / warehouse select until ticked');
+  ok(!(await page.isVisible('#oiLotBox')) && !(await page.isVisible('#f_StockWhS')), 'O6: no lot box / warehouse field until ticked');
   const lots0 = cap.openLotReads || 0;
   await page.fill('#ls_l_1', 'Budapest');
   await page.locator('#ls_l_1_d .linked-drop-item', { hasText: 'Αποθήκη Χ' }).click();
@@ -325,26 +362,25 @@ async function runForm(browser) {
 }
 
 async function runFormTick(browser) {
-  console.log('\n[dispatcher] form: G-30 tick · G-14 no_split · G-13 duplicate');
+  console.log('\n[dispatcher] form: G-30 tick (OWNER-Q8) · G-14 no_split · G-13 duplicate');
   const page = await newPage(browser, 'dispatcher', 'catalog');
   const cap = page._cap;
   await gotoPage(page, 'orders', BASE_URL);
   await page.waitForSelector('#ocrow_recPc1', { timeout: 20000 });
 
-  // ── OWNER-Q5 (G-30): the tick only on a new order or one not yet Delivered ──
+  // ── OWNER-Q8 answered 4/10 (G-30): the tick on a new order and on ANY existing ordinary order, Delivered too ──
   const plainF = cap.fx.orders.find(o => o.id === 'recPlain').fields, openF = cap.fx.orders.find(o => o.id === 'recOpen').fields;
   await page.evaluate(f => openIntlEditWith('recPlain', JSON.parse(JSON.stringify(f))), plainF);
   await page.waitForSelector('#pal_l_1', { timeout: 8000 });
-  ok(await page.locator('#f_StockLot').count() === 0, 'OWNER-Q5: a Delivered ordinary order offers no «Παρτίδα» tick');
+  ok(await page.locator('#f_StockLot').count() === 1, 'OWNER-Q8: a Delivered ordinary order offers the «Παρτίδα» tick (dispatcher)');
   await page.evaluate(() => closeModal());
   await page.evaluate(f => openIntlEditWith('recOpen', JSON.parse(JSON.stringify(f))), openF);
   await page.waitForSelector('#f_StockLot', { timeout: 8000 });
-  ok(true, 'OWNER-Q5: a Pending ordinary order offers the tick');
+  ok(true, 'OWNER-Q8: a Pending ordinary order offers the tick');
   // G-14 no_split: an existing order that is the PARENT of a leg is refused before any write
   cap.fx.orders.push({ id: 'recLegX', fields: { 'Order No': 1311, Direction: 'Export', Type: 'International', Status: 'Pending', 'Parent Order': ['recOpen'], 'Leg No': 1 } });
   await page.check('#f_StockLot');
-  await page.waitForFunction(() => document.querySelectorAll('#f_StockWh option').length > 1, null, { timeout: 8000 });
-  await page.selectOption('#f_StockWh', 'recWhHU');
+  await pickWarehouse(page, 'Budapest', 'Αποθήκη Χ');
   await page.evaluate(() => fhPickLinked('l_1', 'recLocGR1', 'Pack House A'));   // no ORDER STOPS on this fixture
   await page.fill('#pal_l_1', '20'); await page.dispatchEvent('#pal_l_1', 'input');
   await page.fill('#dt_l_1', addDays(TODAY, 2)); await page.fill('#dt_u_1', addDays(TODAY, 4));
@@ -376,7 +412,7 @@ async function runLotCreate(browser) {
   // ── create a lot; the mark is refused once, then retried alone ──
   await page.evaluate(() => openIntlCreate());
   await page.waitForSelector('#f_StockLot', { timeout: 8000 });
-  ok(!(await page.isVisible('#f_StockWh')), 'lot box: warehouse select hidden until ticked');
+  ok(!(await page.isVisible('#f_StockWhS')), 'lot box: warehouse field hidden until ticked');
   await page.selectOption('#f_Direction', 'Export');
   await page.evaluate(() => fhPickLinked('client', 'recCliA', 'Πελάτης Α'));
   await page.fill('#f_Price', '3300');
@@ -391,16 +427,22 @@ async function runLotCreate(browser) {
   await page.check('#f_VeroiaSwitch');
   const pwTick = cap.pwReads;
   await page.check('#f_StockLot');
-  await page.waitForFunction(() => document.querySelectorAll('#f_StockWh option').length > 1, null, { timeout: 8000 });
-  const opts = await page.locator('#f_StockWh option').allInnerTexts();
-  ok(opts.some(o => /Αποθήκη Χ · Budapest HU/.test(o)) && opts.some(o => /Αποθήκη Υ · Wien AT/.test(o)) && !opts.some(o => /Αποθήκη Ζ/.test(o)), 'Φ1 list: warehouses abroad only (HU, AT; the GR one is not offered) — ' + opts.join(' | '));
+  await page.click('#f_StockWhS');
+  await page.waitForSelector('#f_StockWhD .linked-drop-item', { timeout: 8000 });
+  const opts = await page.$$eval('#f_StockWhD .linked-drop-item', es => es.map(e => e.textContent.replace(/\s+/g, ' ').trim()));
+  // Addendum C: every location ABROAD is offered (typed or not); the known warehouses first
+  // (typed «Partner Warehouse» / already a lot's warehouse); Ε2 keeps Greek ones out.
+  const known2 = opts.slice(0, 2).join(' | ');
+  ok(/Αποθήκη Χ[^|]* αποθήκη/.test(known2) && /Αποθήκη Υ[^|]* αποθήκη/.test(known2) && opts.some(o => /^Depot K/.test(o) && !/ αποθήκη$/.test(o))
+    && !opts.some(o => /Αποθήκη Ζ|Pack House A|Cold Hub B/.test(o)), 'addendum C: known warehouses first, an UNTYPED foreign location offered, no Greek one (Ε2) — ' + opts.join(' | '));
+  await page.screenshot({ path: shot('02c-warehouse-search') });
   // Round 1 O6: the PR-17 bar no longer reads the Partner-Warehouse list (it reads the open lots), so the tick is its first need.
   ok(cap.pwReads === pwTick + 1, 'G-31: the tick reads the warehouse list once, at its first need (' + (cap.pwReads - pwTick) + ')');
   ok(!(await page.isVisible('#f_VeroiaSwitch')) && !(await page.$eval('#f_VeroiaSwitch', e => e.checked)), 'OWNER-Q1: «Παρτίδα» ticked → Veroia Switch hidden and unticked');
   ok(await page.locator('#stoprow_u_2').count() === 1, 'ticking alone touches no stop (no warehouse chosen yet)');
-  await page.selectOption('#f_StockWh', 'recWhHU');
+  await pickWarehouse(page, 'Depot', 'Depot K');
   ok(await page.locator('#stoprow_u_2').count() === 0, 'warehouse chosen → extra unloading stop removed');
-  ok(await page.$eval('#lv_u_1', e => e.value) === 'recWhHU' && await page.$eval('#ls_u_1', e => e.readOnly), 'unloading 1 = the warehouse, locked');
+  ok(await page.$eval('#lv_u_1', e => e.value) === 'recLocDE' && await page.$eval('#ls_u_1', e => e.readOnly), 'addendum C: unloading 1 = the UNTYPED location picked as warehouse, locked');
   ok(!(await page.isVisible('#btn_addU')), '«+ Προσθήκη στάσης παράδοσης» hidden');
   ok(await page.inputValue('#pal_u_1') === '33', 'unloading pallets follow the loading ones (33)');
   await page.fill('#pal_l_1', '32'); await page.dispatchEvent('#pal_l_1', 'input');
@@ -425,18 +467,19 @@ async function runLotCreate(browser) {
     window._wiPendingMatch = { rowId: 'row1', at: Date.now() };
   });
 
-  cap.lotFail = { type: 'STOCK_RULE', code: 'warehouse_rule', message: 'Ο προορισμός της παρτίδας πρέπει να είναι αποθήκη (τοποθεσία «Partner Warehouse» ή «Veroia Hub»)' };
+  // Addendum C: the type is no longer refused (warehouse_rule is gone) — a transient refusal instead.
+  cap.lotFail = { type: 'STOCK_RULE', code: 'lot_source_missing', message: 'Η παραγγελία της παρτίδας δεν βρέθηκε ή έχει διαγραφεί' };
   await page.click('#btnSubmit');
   await waitText(page, /ΔΕΝ έγινε παρτίδα/);
   const oPosts = cap.posts.filter(p => p.table === 'orders');
   ok(oPosts.length === 1, 'one ORDERS POST');
   const of = oPosts[0].fields;
-  ok(JSON.stringify(of['Unloading Location 1']) === '["recWhHU"]' && JSON.stringify(of['Unloading Location 2']) === '[]' && of.Price === 3300 && of['Unloading Pallets 1'] === 33, 'ORDERS body: destination 1 = warehouse, 2 = [], Price 3300, unloading pallets 33');
+  ok(JSON.stringify(of['Unloading Location 1']) === '["recLocDE"]' && JSON.stringify(of['Unloading Location 2']) === '[]' && of.Price === 3300 && of['Unloading Pallets 1'] === 33, 'ORDERS body: destination 1 = warehouse (untyped DE), 2 = [], Price 3300, unloading pallets 33');
   ok(of['Veroia Switch'] === false && of['Cross-dock Date'] === null, 'OWNER-Q1: the lot POST carries «Veroia Switch» false and no cross-dock');
   ok(!('Stock Lot' in of), 'the lot order itself carries no «Stock Lot»');
   const lPosts = cap.posts.filter(p => p.table === 'stock_lots');
   ok(lPosts.length === 1 && JSON.stringify(lPosts[0].fields) === '{"Order":["recNewOrd1"]}', 'STOCK LOTS POST body = {Order:[saved order]}');
-  ok(/Ο προορισμός της παρτίδας πρέπει να είναι αποθήκη/.test(await bodyText(page)), 'the Greek refusal of the base is on screen');
+  ok(/Η παραγγελία της παρτίδας δεν βρέθηκε ή έχει διαγραφεί/.test(await bodyText(page)), 'the Greek refusal of the base is on screen');
   ok(await page.isVisible('#btnSubmit') && /Ξανά: σήμανση παρτίδας/.test(await page.locator('#btnSubmit').innerText()), 'modal stays open; button = «Ξανά: σήμανση παρτίδας»');
   ok(!/Order created/.test(await bodyText(page)), 'no success toast');
   await page.screenshot({ path: shot('03-mark-refused') });
@@ -445,8 +488,11 @@ async function runLotCreate(browser) {
   await page.waitForFunction(() => !document.getElementById('modalOverlay').classList.contains('open'), null, { timeout: 8000 });
   ok(cap.posts.filter(p => p.table === 'orders').length === 1 && cap.patches.length === patchesBefore, 'retry: the order is NOT saved again (no POST, no PATCH)');
   ok(cap.posts.filter(p => p.table === 'stock_lots').length === 2, 'retry: only the STOCK LOTS POST again');
+  ok(cap.fx.lots.some(l => JSON.stringify(l.fields.Order) === '["recNewOrd1"]'), 'addendum C: the lot to an UNTYPED foreign location is saved (STOCK LOTS row for the order)');
   const toastsLot = await page.evaluate(() => (document.getElementById('tms-toast-container') || {}).innerText || '');
-  ok(/Χωρίς συνεργάτη αποθήκης: δεν γίνεται επιμερισμός εσόδου στα κομμάτια/.test(toastsLot), 'OWNER-Q2: marked lot without a partner → the non-blocking note');
+  // Round 2 #1 (owner 4/10): a lot on our own truck IS allocated once the owner enters its
+  // «Χρέωση αποθήκης»; the missing charge is said in the owner's band and by the auditor (S-11).
+  ok(!/Χωρίς συνεργάτη αποθήκης/.test(toastsLot), 'round 2 #1: marked lot on our own truck → no «Χωρίς συνεργάτη αποθήκης…» toast — ' + toastsLot.replace(/\s+/g, ' '));
   ok(await page.evaluate(() => window.__consumeCalls.length === 0 && window._wiPendingMatch === null), 'G-26: the new lot is not auto-matched; the pending box is dropped');
 
   ok(cap.errors.length === 0, 'no page errors / native dialogs — ' + cap.errors.join(' | '));
@@ -657,6 +703,7 @@ async function runLotEdit(browser) {
   ok(await page.$eval('#pal_l_1', e => e.readOnly && /κλείδωσαν/.test(e.title)) && await page.locator('#btn_addL').count() === 0, 'intake Delivered → loading pallets read-only, no new loading stop (lot_frozen mirror)');
   ok(await page.$eval('#lv_u_1', e => e.value) === 'recWhHU' && await page.$eval('#ls_u_1', e => e.readOnly), 'lot edit: destination = warehouse, locked');
   ok(!(await page.isVisible('#f_VeroiaSwitch')), 'OWNER-Q1: lot edit opens without Veroia Switch');
+  ok(await page.locator('#oiLotCharge').count() === 0 && !cap.allocReq && !/Χρέωση αποθήκης/.test(await page.locator('#modalBody').innerText()), 'round 2 #1: a dispatcher sees no «Χρέωση αποθήκης» block and asks no /costs/stock-lots');
   await page.screenshot({ path: shot('10-lot-edit') });
   await page.uncheck('#f_StockLot');
   ok(await page.isVisible('#f_VeroiaSwitch'), 'OWNER-Q1: unticked → Veroia Switch is back');
@@ -837,13 +884,115 @@ async function runOwner(browser) {
   await page.locator('#oivBody tr.oiv-r', { hasText: 'TEST-STOCK-LOT' }).click();
   await page.waitForFunction(() => /Καθαρό/.test((document.getElementById('oivAlloc') || {}).innerText || ''), null, { timeout: 8000 });
   const a = (await page.locator('#oivAlloc').innerText()).replace(/\s+/g, ' ');
-  ok(/Τιμή πελάτη 3\.300,00 €/.test(a) && /Κόστος αποθήκης 300,00 €/.test(a) && /Καθαρό 3\.000,00 €/.test(a), 'owner: price, warehouse cost, net — ' + a);
+  ok(/Τιμή πελάτη 3\.300,00 €/.test(a) && /Καθαρό 3\.000,00 €/.test(a), 'owner: price, net — ' + a);
+  ok(/Συνεργάτης 300,00 €/.test(a) && /Χρέωση αποθήκης —/.test(a) && /Σύνολο χρέωσης 300,00 €/.test(a) && !/Κόστος αποθήκης/.test(a), 'round 2 #1: owner money lines «Συνεργάτης / Χρέωση αποθήκης (— = none) / Σύνολο χρέωσης» — ' + a);
   ok(/€ \/ παλέτα 90,9091 €/.test(a), 'owner: €/pallet 90,9091');
   ok(/#1301 · 16p 1\.454,55 €/.test(a) && /#1302 · 15p 1\.363,63 €/.test(a), 'owner: per piece amounts');
   ok(/Σε απόθεμα 2p 181,82 €/.test(a), 'owner: «Σε απόθεμα 2p · 181,82 €»');
   ok(cap.allocReq && cap.allocReq.includes('/costs/stock-lots?lot=recLot1'), 'owner: GET /costs/stock-lots?lot=recLot1');
   await page.evaluate(() => document.getElementById('oivAlloc').scrollIntoView({ block: 'end' }));
   await page.screenshot({ path: shot('09-owner-allocation') });
+  ok(cap.errors.length === 0, 'no page errors — ' + cap.errors.join(' | '));
+  await page.context().close();
+}
+
+// Round 2 #1 (owner 4/10): the owner's «Χρέωση αποθήκης» in the lot band of the
+// order form. A SEPARATE write (PATCH /costs/stock-lots/<rec>) that says its own
+// result; the screen paints only what the base returned (the read-back), and after
+// ANY non-200 it reads the lot again (integrator 4/10). The lot here was carried
+// into the warehouse by OUR OWN truck: no partner rate, no charge yet = 'no_charge'.
+async function runOwnerCharge(browser) {
+  console.log('\n[owner] lot band: «Χρέωση αποθήκης»');
+  const page = await newPage(browser, 'owner', 'catalog');
+  const cap = page._cap;
+  cap.money.partner_cost = null; setCharge(cap.money, null);
+  await gotoPage(page, 'orders', BASE_URL);
+  await page.waitForSelector('#ocrow_recPc1', { timeout: 20000 });
+  const lf = cap.fx.orders.find(o => o.id === 'recLotSrc');
+  const band = () => page.$eval('#oiLotCharge', e => e.innerText.replace(/\s+/g, ' ').trim());
+  const r0 = cap.allocReads;
+  await page.evaluate(f => openIntlEditWith('recLotSrc', JSON.parse(JSON.stringify(f))), lf.fields);
+  await page.waitForSelector('#f_WhCharge', { timeout: 8000 });
+  ok(cap.allocReads === r0 + 1 && /\/costs\/stock-lots\?lot=recLot1$/.test(cap.allocReq), 'owner: the band reads GET /costs/stock-lots?lot=recLot1 once — ' + cap.allocReq);
+  const b0 = await band();
+  ok(/Χρέωση αποθήκης \(€\) · μόνο owner/.test(b0) && /Συνεργάτης — · Αποθήκη — · Σύνολο —/.test(b0) && /λείπει η χρέωση αποθήκης — χωρίς επιμερισμό/.test(b0), 'owner band: «Συνεργάτης — · Αποθήκη — · Σύνολο —» + «λείπει η χρέωση αποθήκης — χωρίς επιμερισμό» — ' + b0);
+  ok(await page.inputValue('#f_WhCharge') === '' && await page.isVisible('#oiChargeSave') && /Αποθήκευση χρέωσης/.test(await page.innerText('#oiChargeSave')), 'owner band: empty field (no charge in the base, not 0) + «Αποθήκευση χρέωσης»');
+  await page.waitForTimeout(700);   // the modal's fade-in
+  await page.evaluate(() => document.getElementById('modalTitle').scrollIntoView({ block: 'start' }));
+  await page.screenshot({ path: shot('16-owner-charge-band') });
+
+  // ── 120 → PATCH {warehouse_charge:120} → repaint from the returned row ──
+  const nOrd = cap.posts.length + cap.patches.length;
+  await page.fill('#f_WhCharge', '120');
+  ok(/Δεν αποθηκεύτηκε ακόμη/.test(await page.innerText('#oiChargeMsg')), 'typed, not saved → «Δεν αποθηκεύτηκε ακόμη — πάτα «Αποθήκευση χρέωσης»»');
+  await page.click('#oiChargeSave');
+  await page.waitForFunction(() => (document.getElementById('oiChargeMsg') || {}).textContent === 'Αποθηκεύτηκε', null, { timeout: 8000 });
+  const p1 = cap.chargePatches.at(-1) || {};
+  ok(cap.chargePatches.length === 1 && /\/costs\/stock-lots\/recLot1$/.test(p1.url) && JSON.stringify(p1.body) === '{"warehouse_charge":120}', 'PATCH /costs/stock-lots/recLot1 body {"warehouse_charge":120} — ' + JSON.stringify(p1));
+  const b1 = await band();
+  ok(/Συνεργάτης — · Αποθήκη 120,00 € · Σύνολο 120,00 €/.test(b1) && !/λείπει η χρέωση/.test(b1) && await page.inputValue('#f_WhCharge') === '120', 'repainted from the read-back: «Αποθήκη 120,00 € · Σύνολο 120,00 €», the «λείπει» line gone — ' + b1);
+  ok(cap.posts.length + cap.patches.length === nOrd, 'a SEPARATE write: no ORDERS / STOCK LOTS write from «Αποθήκευση χρέωσης»');
+  await page.screenshot({ path: shot('16b-owner-charge-saved') });
+
+  // ── 422 lot_invoiced: the base's sentence ONCE + one context line, re-read ──
+  const REASON = 'Η παρτίδα τιμολογήθηκε — δεν αλλάζει';
+  cap.chargeFail = { status: 422, body: { error: { type: 'STOCK_RULE', code: 'lot_invoiced', message: REASON } } };
+  const r1 = cap.allocReads;
+  await page.fill('#f_WhCharge', '150');
+  await page.click('#oiChargeSave');
+  await page.waitForFunction(() => /Φαίνεται ό,τι έχει η βάση τώρα/.test((document.getElementById('oiLotCharge') || {}).innerText || ''), null, { timeout: 8000 });
+  await page.waitForTimeout(300);
+  const all422 = await page.evaluate(() => document.body.innerText);
+  ok(all422.split(REASON).length - 1 === 1 && all422.split('Φαίνεται ό,τι έχει η βάση τώρα (νέα ανάγνωση).').length - 1 === 1 && !/\[object Object\]/.test(all422), '422 lot_invoiced: the reason once + one context line, no «[object Object]»');
+  ok(cap.allocReads === r1 + 1 && await page.inputValue('#f_WhCharge') === '120' && /Αποθήκη 120,00 €/.test(await band()), '422: the lot is read again — the field shows the base\'s 120, never the typed 150');
+  await page.screenshot({ path: shot('16c-owner-charge-422') });
+
+  // ── 500 «γράφτηκε, αλλά δεν ξαναδιαβάστηκε»: re-read → the new value + ONE line ──
+  cap.chargeFail = { status: 500, apply: true, body: { error: 'Η χρέωση αποθήκης γράφτηκε, αλλά δεν ξαναδιαβάστηκε — άνοιξε ξανά την παραγγελία' } };
+  await page.fill('#f_WhCharge', '90');
+  await page.click('#oiChargeSave');
+  await page.waitForFunction(() => /η νέα ανάγνωση από τη βάση το επιβεβαιώνει/.test((document.getElementById('oiChargeMsg') || {}).textContent || ''), null, { timeout: 8000 });
+  const m500 = await page.$eval('#oiChargeMsg', e => ({ t: e.innerText, br: e.querySelectorAll('br').length }));
+  ok(await page.inputValue('#f_WhCharge') === '90' && /Αποθήκη 90,00 € · Σύνολο 90,00 €/.test(await band()) && m500.br === 0 && !/δεν ξαναδιαβάστηκε/.test(await band()), '500 read-back lost: re-read shows 90 + ONE line «Αποθηκεύτηκε — …επιβεβαιώνει» — ' + JSON.stringify(m500));
+  await page.screenshot({ path: shot('16d-owner-charge-500-reread') });
+
+  // ── 500 and the re-read fails too: «δεν φορτώθηκε», no field holding the typed value ──
+  cap.chargeFail = { status: 500, body: { error: 'Η χρέωση αποθήκης δεν αποθηκεύτηκε' } }; cap.chargeReadFail = true;
+  await page.fill('#f_WhCharge', '80');
+  await page.click('#oiChargeSave');
+  await page.waitForFunction(() => /Η χρέωση αποθήκης δεν φορτώθηκε/.test((document.getElementById('oiLotCharge') || {}).innerText || ''), null, { timeout: 8000 });
+  const bf = await band();
+  ok(await page.locator('#f_WhCharge').count() === 0 && bf.split('Η χρέωση αποθήκης δεν αποθηκεύτηκε').length - 1 === 1, 'PATCH 500 + re-read failed: «δεν φορτώθηκε», no input with the typed 80, the save\'s reason once — ' + bf);
+  await page.evaluate(() => closeModal());
+  await page.waitForFunction(() => !document.getElementById('modalOverlay').classList.contains('open'), null, { timeout: 8000 });
+
+  // ── the read fails when the form opens: said, never an empty field as if 0 ──
+  cap.chargeReadFail = true;
+  await page.evaluate(f => openIntlEditWith('recLotSrc', JSON.parse(JSON.stringify(f))), lf.fields);
+  await page.waitForFunction(() => /Η χρέωση αποθήκης δεν φορτώθηκε/.test((document.getElementById('oiLotCharge') || {}).innerText || ''), null, { timeout: 8000 });
+  ok(await page.locator('#f_WhCharge').count() === 0 && await page.locator('#oiChargeSave').count() === 0, 'read failure on open: «Η χρέωση αποθήκης δεν φορτώθηκε», no empty field, no save button');
+  await page.waitForTimeout(700);
+  await page.evaluate(() => document.getElementById('modalTitle').scrollIntoView({ block: 'start' }));
+  await page.screenshot({ path: shot('16e-owner-charge-not-read') });
+  await page.evaluate(() => closeModal());
+  ok(cap.errors.length === 0, 'no page errors / native dialogs — ' + cap.errors.join(' | '));
+  await page.context().close();
+}
+
+// Round 2 #1: «Προς τιμολόγηση», owner, a lot with neither a partner rate nor a charge.
+async function runOwnerNoCharge(browser) {
+  console.log('\n[owner] allocation block: no_charge');
+  const page = await newPage(browser, 'owner', 'invoicing');
+  const cap = page._cap;
+  cap.money.partner_cost = null; setCharge(cap.money, null);
+  await gotoPage(page, 'orders', BASE_URL);
+  await page.waitForSelector('#oivBody', { timeout: 20000 });
+  await page.click('.oiv-allopen');
+  await page.click('.oiv-seg-b[data-tab="all"]');
+  await page.locator('#oivBody tr.oiv-r', { hasText: 'TEST-STOCK-LOT' }).click();
+  await page.waitForFunction(() => /εκκρεμεί/.test((document.getElementById('oivAlloc') || {}).innerText || ''), null, { timeout: 8000 });
+  const a = (await page.locator('#oivAlloc').innerText()).replace(/\s+/g, ' ');
+  ok(/Ο επιμερισμός εκκρεμεί: χωρίς χρέωση αποθήκης/.test(a) && !/no_charge|no_intake_cost/.test(a), 'round 2 #1: no_charge → «Ο επιμερισμός εκκρεμεί: χωρίς χρέωση αποθήκης» — ' + a);
   ok(cap.errors.length === 0, 'no page errors — ' + cap.errors.join(' | '));
   await page.context().close();
 }
@@ -973,6 +1122,16 @@ async function runPrintEscape(browser) {
   ok(r.pe.includes('A ' + RAW_LEAD) && r.peEl === 0, 'F3: cover PE chip prints the reference as text — ' + JSON.stringify([r.pe, r.peEl]));
   ok(r.meta.includes('Ref ' + RAW_LOT) && r.metaEl === 0, 'F3: piece sheet meta prints the lot Reference as text — ' + JSON.stringify([r.meta, r.metaEl]));
   ok(r.wa.includes('Ref ' + RAW_LOT) && !r.wa.includes('&amp;') && !r.wa.includes('&lt;'), 'F3: WhatsApp text keeps the Reference as typed (not escaped)');
+  // Round 2 (task B): the order's OWN Reference (refNo) — meta «Reference» and «ORDER … · REF …».
+  const own = await page.evaluate(() => {
+    const doc = [...document.querySelectorAll('.p-doc')].find(d => /REF L/.test((d.querySelector('.ordno') || {}).textContent || ''));
+    const meta = doc && [...doc.querySelectorAll('.meta-item')].find(e => e.querySelector('.meta-lbl').textContent === 'Reference');
+    const ord = doc && doc.querySelector('.ordno');
+    return { meta: meta ? meta.querySelector('.meta-val').textContent : '', metaEl: meta ? meta.querySelectorAll('i').length : -1,
+      ord: ord ? ord.textContent : '', ordEl: ord ? ord.querySelectorAll('i').length : -1 };
+  });
+  ok(own.meta === RAW_LEAD && own.metaEl === 0 && own.ord.endsWith('REF ' + RAW_LEAD) && own.ordEl === 0, 'task B: the order\'s own Reference «' + RAW_LEAD + '» prints as text in the meta grid and the ORDER line — ' + JSON.stringify(own));
+  ok(/Ref: L<i>1<\/i>/.test(r.wa), 'task B: the WhatsApp text keeps the order Reference as typed');
   ok(cap.errors.length === 0, 'no page errors — ' + cap.errors.join(' | '));
   await page.context().close();
 }
@@ -1001,7 +1160,7 @@ async function runPrintLotPartner(browser) {
 (async () => {
   const browser = await chromium.launch();
   try {
-    for (const run of [runCatalog, runForm, runFormTick, runLotCreate, runPiece, runLotEdit, runAccountant, runOwner, runReopen, runWarehouse, runPrint, runPrintGroup, runPrintEscape, runPrintLotPartner]) {
+    for (const run of [runCatalog, runForm, runFormTick, runLotCreate, runPiece, runLotEdit, runAccountant, runOwner, runOwnerCharge, runOwnerNoCharge, runReopen, runWarehouse, runPrint, runPrintGroup, runPrintEscape, runPrintLotPartner]) {
       try { await run(browser); } catch (e) { failed++; console.log('  ✗ ' + run.name + ' threw: ' + (e && e.stack || e)); }
     }
   } finally { await browser.close(); }
