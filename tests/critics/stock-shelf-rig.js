@@ -468,13 +468,14 @@ if (MAIN) (async () => {
     const wL = writesSince(F, n0).filter(w => w.rec === 'recRIGP3000000003');
     ok('loose_one_patch', wL.length === 1 && wL[0].fields['Group ID'] === 'GI-RIGRET|recRIGI4000000004' && wL[0].fields.Status === 'Assigned' && wL[0].fields['Loading DateTime'] && wL[0].fields['Delivery DateTime'] && wL[0].fields.Truck, wL);
 
-    // Return to stock from the «ΑΠ» tile of P2: Group ID '' + vehicle off + Pending.
+    // Return to stock from the «ΑΠ» tile of P2: Group ID null (main e1a66597:
+    // never '' — the RT triggers would join every '' into one group) + vehicle off + Pending.
     n0 = F.writes.length;
     await page.evaluate(async () => { const row = WINTL.rows.find(r => r.type === 'import' && (r.orderIds || []).includes('recRIGP2000000002'));
       await _wiStockReturn(row.id, 'recRIGP2000000002', true); });
     await page.waitForTimeout(1200);
     const wR = writesSince(F, n0).filter(w => w.rec === 'recRIGP2000000002');
-    ok('return_to_stock_payload', wR.length === 1 && wR[0].fields['Group ID'] === '' && Array.isArray(wR[0].fields.Truck) && !wR[0].fields.Truck.length && wR[0].fields.Status === 'Pending', wR);
+    ok('return_to_stock_payload', wR.length === 1 && wR[0].fields['Group ID'] === null && Array.isArray(wR[0].fields.Truck) && !wR[0].fields.Truck.length && wR[0].fields.Status === 'Pending', wR);
 
     // A DB refusal reaches the screen in Greek, with ⚠ on the row.
     await page.evaluate(async () => { await renderWeeklyIntl(); }); await page.waitForTimeout(1200);
