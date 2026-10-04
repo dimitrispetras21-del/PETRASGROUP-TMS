@@ -97,7 +97,7 @@ async function openBoard(browser, opts = {}) {
   const ctx = await browser.newContext({ baseURL: BASE, viewport: { width: 1600, height: 1000 }, serviceWorkers: 'block' });
   const page = await ctx.newPage();
   const db = seed(); if (opts.noLocations) db[T.LOC] = [];
-  const S = { db, writes: [], nlReads: [], errors: [] };
+  const S = { db, writes: [], nlReads: [], errors: [], failGet: new Set() };
   page.on('pageerror', e => S.errors.push(String(e)));
   page.on('dialog', d => d.accept());
   // Clock BEFORE preparePage: its fake session is stamped with Date.now() and
@@ -112,6 +112,7 @@ async function openBoard(browser, opts = {}) {
     if (!mm) return m === 'GET' ? json(route, { records: [] }) : json(route, { ok: true });
     const [, tid, rid] = mm; const tbl = db[tid] || (db[tid] = []);
     if (m === 'GET') {
+      if (rid && S.failGet.has(rid)) return json(route, { error: { type: 'SERVER_ERROR' } }, 500);
       if (rid) { const r = tbl.find(x => x.id === rid); return r ? json(route, r) : json(route, { error: { type: 'NOT_FOUND' } }, 404); }
       const f = u.searchParams.get('filterByFormula') || '';
       let out = tbl;
@@ -531,6 +532,84 @@ SECTIONS.push(async browser => {
     await page.context().close();
   }
   ok([c, sn, pl, o].every(x => x.errors.length === 0), 'no page errors');
+});
+
+// ── review 4/10 (LOWs, coordinator: tonight) ────────────────────────────────
+SECTIONS.push(async browser => {
+  console.log('\n── review 4/10 LOW a · a create that ends without consuming the match drops it');
+  const { page, S } = await openBoard(browser);
+  // retry case: the save fails while OUR form is still open → kept for the retry
+  await openNewSn(page, 'recNlSat00000000');
+  await page.evaluate(async () => { await submitNatlOrder(); });
+  await page.waitForTimeout(600);
+  ok(await page.$('#modalOverlay.open #nf_Direction') && await pending(page) === 'recNlSat00000000',
+     'save refused with the form still open (retry possible) → pending match KEPT');
+  await page.click('#modalFooter button:has-text("Άκυρο")'); await page.waitForTimeout(400);
+  // OK on the duplicate dialog (form replaced), then the save ends without a load
+  await openNewSn(page, 'recNlSat00000000');
+  await page.evaluate(() => { window.__realConfirm('Πιθανό duplicate'); });
+  await page.waitForSelector('#_cfaOk'); await page.click('#_cfaOk'); await page.waitForTimeout(400);
+  ok(await pending(page) === 'recNlSat00000000', 'duplicate dialog → OK: pending kept while the save is in flight');
+  await page.evaluate(async () => { await submitNatlOrder(); });
+  await page.waitForTimeout(600);
+  ok(await pending(page) === null, '… the save then ends without a load (form gone) → pending match dropped at once, not after 30\'');
+  const before = S.writes.length;
+  await page.evaluate(() => window._wnConsumePendingMatch('recNlsP00000000A', { Direction: 'South→North' }));
+  await page.waitForTimeout(500);
+  ok(S.writes.length === before && !nlOf(S, 'recNlsP00000000A')['Matched Load'], 'the next ΑΝΟΔΟΣ is NOT bound to that ΚΑΘΟΔΟΣ (0 writes)');
+  ok(S.errors.length === 0, 'no page errors: ' + S.errors.slice(0, 2).join(' | '));
+  await page.context().close();
+
+  console.log('\n── review 4/10 LOW b · status unreadable → PA rows fail CLOSED');
+  const paDel = x => x.filter(w => w.m === 'DELETE' && w.tid === T.PA);
+  // a failed read is retried by core/api.js (1s + 2s per load) — wait for the
+  // load PATCH itself, then let the PA step run, instead of a fixed delay
+  const untilWrite = async (page, S, pred) => {
+    for (let t = 0; t < 40 && !S.writes.some(pred); t++) await page.waitForTimeout(500);
+    await page.waitForTimeout(2000);
+  };
+  {
+    const { page, S } = await openBoard(browser);
+    ['recNlC000000000A', 'recNlsC00000000A'].forEach(id => S.failGet.add(id));
+    const rowSel = '#wn-row-' + await rowIdOf(page, 'recNlC000000000A');
+    await page.click(`${rowSel} .wk3-leg`, { button: 'right', position: { x: 20, y: 10 } });
+    await page.click('#wn-ctx .wi-ctx-item:has-text("Αφαίρεση ανάθεσης")');
+    await untilWrite(page, S, w => w.m === 'PATCH' && w.rid === 'recNlC000000000A');
+    const w = writesOf(S);
+    ok(w.some(x => x.m === 'PATCH' && x.rid === 'recNlC000000000A'), 'right-click unassign, status read failed → the load is still cleared');
+    ok(paDel(w).length === 0, 'right-click unassign, status read failed → NO PA row deleted: ' + JSON.stringify(paDel(w).map(x => x.rid)));
+    ok(S.db[T.PA].some(r => r.id === 'recPAnC000000001') && S.db[T.PA].some(r => r.id === 'recPAsC000000001'), 'base: both PA rows still there');
+    ok(S.errors.length === 0, 'no page errors: ' + S.errors.slice(0, 2).join(' | '));
+    await page.context().close();
+  }
+  {
+    const { page, S } = await openBoard(browser);
+    // standalone ΑΝΟΔΟΣ (recNlsD) given a PA row for this case only — the PA
+    // lookup reads the whole table and filters in the page (pa-helpers)
+    S.db[T.PA].push({ id: 'recPAsD000000001', fields: { 'Nat Load': ['recNlsD00000000A'], Partner: ['recPartner00001A'], 'Partner Rate': 150, Status: 'Assigned' } });
+    S.failGet.add('recNlsD00000000A');
+    await page.click('#wn-sn-recNlsD00000000A', { button: 'right', position: { x: 20, y: 10 } });
+    await page.click('#wn-ctx .wi-ctx-item:has-text("Αφαίρεση ανάθεσης")');
+    await untilWrite(page, S, w => w.m === 'PATCH' && w.rid === 'recNlsD00000000A');
+    ok(writesOf(S).some(w => w.m === 'PATCH' && w.rid === 'recNlsD00000000A') && paDel(writesOf(S)).length === 0, 'standalone ΑΝΟΔΟΣ unassign, status read failed → load cleared, NO PA row deleted');
+    await page.context().close();
+  }
+  {
+    const { page, S } = await openBoard(browser);
+    ['recNlC000000000A', 'recNlsC00000000A'].forEach(id => S.failGet.add(id));
+    const rowId = await rowIdOf(page, 'recNlC000000000A');
+    await page.click(`#wn-row-${rowId} .wk3-assign`);
+    await page.waitForSelector(`#wn-pop-btn-${rowId}`, { timeout: 5000 });
+    await page.fill(`#wn-pop-rate-${rowId}`, '450');
+    const before = S.writes.length;
+    await page.click(`#wn-pop-btn-${rowId}`);
+    await untilWrite(page, S, w => w.m === 'PATCH' && w.tid === T.PA);
+    const paP = S.writes.slice(before).filter(x => x.m === 'PATCH' && x.tid === T.PA);
+    ok(paP.length > 0 && paP.every(x => !('Status' in x.body.fields) && !('Assignment Date' in x.body.fields)),
+       'partner re-assign, status read failed → PA PATCH without Status/Assignment Date (not rewritten «Assigned»): ' + JSON.stringify(paP.map(x => x.body.fields)));
+    ok(S.errors.length === 0, 'no page errors: ' + S.errors.slice(0, 2).join(' | '));
+    await page.context().close();
+  }
 });
 
 (async () => {

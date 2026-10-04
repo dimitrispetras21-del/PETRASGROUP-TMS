@@ -2590,11 +2590,11 @@ async function _wnSaveFromPopover(rowId) {
       for (const loadId of allLoadIds) {
         const ex = _wnExecuted(liveSt[loadId]);
         await paUpsert({ parentType:'nat_load', parentId:loadId, partnerId:row.partnerId, rate,
-                         status: ex ? liveSt[loadId] : 'Assigned', keepStatus: ex });
+                         status: ex ? liveSt[loadId] : 'Assigned', keepStatus: _wnKeepsPa(liveSt[loadId]) });
       }
     } else {
       for (const loadId of allLoadIds) {
-        if (_wnExecuted(liveSt[loadId])) continue;
+        if (_wnKeepsPa(liveSt[loadId])) continue;
         await paDelete({ parentType:'nat_load', parentId:loadId });
       }
     }
@@ -2784,6 +2784,11 @@ function _wnDoneOf(st) { return st === 'Cancelled' ? st : ''; }
 // confirm that says what happens; «Ακύρωση» = nothing is written. National
 // round trips + payroll start from 5/10 with migration 034, hence the text.
 function _wnExecuted(st) { return st === 'In Transit' || st === 'Delivered'; }
+// PA rows fail CLOSED (review 4/10, LOW b): _wnStatusLive returns null when the
+// read fails, and the vehicle write still goes on.
+// An unknown status may be an executed leg whose PA row is a payable, so it
+// is neither deleted nor rewritten as «Assigned» (principle 5: unknown → closed).
+function _wnKeepsPa(st) { return st === null || _wnExecuted(st); }
 // LEG FIRST (P1 RT-1193, 30/9; owner 4/10): when a vehicle leaves or changes on
 // a load that is a round-trip leg, the leg must leave the trip BEFORE the
 // vehicle changes, or the RT sync writes the new (or NULL) vehicle over the
@@ -2824,7 +2829,7 @@ async function _wnUnassignSn(rowId, snId) {
 
   // Delete PA record for this NAT_LOAD — not for an executed one (a payable;
   // review 4/10, same rule as _wnUnassign / weekly_intl M3).
-  try { if (!_wnExecuted(st)) await paDelete({ parentType:'nat_load', parentId:snId }); }
+  try { if (!_wnKeepsPa(st)) await paDelete({ parentType:'nat_load', parentId:snId }); }
   catch(e) { console.warn('PA delete:', e.message); }
   await _wnRevertNoStatus(snId);
 
@@ -2891,7 +2896,7 @@ async function _wnUnassign(rowId) {
   // never for an executed leg: its PA row is a payable (review 4/10, M3 twin).
   try {
     for (const loadId of [...row.orderIds, ...(row.matchedId ? [row.matchedId] : [])])
-      if (!kept.includes(loadId) && !_wnExecuted(liveSt[loadId])) await paDelete({ parentType:'nat_load', parentId:loadId });
+      if (!kept.includes(loadId) && !_wnKeepsPa(liveSt[loadId])) await paDelete({ parentType:'nat_load', parentId:loadId });
   } catch(e) { console.warn('NAT PA delete:', e.message); }
   for (const orderId of row.orderIds) if (!kept.includes(orderId)) await _wnRevertNoStatus(orderId);
   if (row.matchedId && !kept.includes(row.matchedId)) await _wnRevertNoStatus(row.matchedId);

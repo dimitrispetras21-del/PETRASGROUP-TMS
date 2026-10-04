@@ -1302,6 +1302,17 @@ async function submitNatlOrder(recId) {
     // that path already told the user, so skip to avoid double-reporting.
     if(e.message!=='v') reportError('Σφάλμα αποθήκευσης παραγγελίας', e);
     if(btn) { btn.textContent=recId?'Αποθήκευση':'Καταχώρηση'; btn.disabled=false; }
+  } finally {
+    // Weekly National «νέα άνοδος» pending match (review 4/10, LOW a): a create
+    // that ends WITHOUT consuming it — the save failed after a duplicate dialog
+    // had replaced the form, or Groupage ON / stops failed so no load was made —
+    // left it alive for 30' to bind the NEXT ΑΝΟΔΟΣ silently (principle 1).
+    // Kept only while this form is still open for a retry; the board's own
+    // observer drops it if that retry is then cancelled.
+    const _ov = document.getElementById('modalOverlay');
+    if (!recId && window._wnPendingMatch
+        && !(_ov && _ov.classList.contains('open') && document.getElementById('nf_Direction')))
+      window._wnPendingMatch = null;
   }
 }
 
