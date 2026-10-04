@@ -725,6 +725,18 @@ async function _grpSubmit() {
   // column of the Weekly National (ΚΑΘΟΔΟΣ/ΑΝΟΔΟΣ only) — never planned, under
   // a green toast. Same rule as the simple form.
   if (common.direction !== 'North→South' && common.direction !== 'South→North') { toast('Η κατεύθυνση είναι υποχρεωτική','warn'); return; }
+  // TEMPORARY guard (owner 5/10: «Να χτιστεί το εργαλείο ανόδου τώρα»): this
+  // form only knows the ΚΑΘΟΔΟΣ shape — ONE pickup (lv_npickup) → N
+  // deliveries (_natlWriteGroupageChain: one GL per delivery, CL Loading
+  // Location 1 only, NL Pickup Location 1 only, 1 Loading + N Unloading stops).
+  // A South→North entry was saved in that shape and labelled ΑΝΟΔΟΣ — many
+  // suppliers → Βέροια stored as one pickup → many deliveries. Refused out
+  // loud, nothing written, until the ΑΝΟΔΟΣ groupage tool lands; then this
+  // guard goes.
+  if (common.direction === 'South→North') {
+    toast('Το groupage ανόδου (πολλοί προμηθευτές → Βέροια) χτίζεται τώρα. Μέχρι τότε φτιάξε χωριστές εθνικές με το ίδιο φορτηγό', 'error');
+    return;
+  }
   if (!common.fromLocId || !common.loadDate) { toast('Σημείο φόρτωσης και ημερομηνία φόρτωσης είναι υποχρεωτικά','warn'); return; }
   if (!groups.length) { toast('Χρειάζεται τουλάχιστον μία γραμμή με πελάτη και τοποθεσία','warn'); return; }
   const nStops = groups.reduce((s,g)=>s+g.stops.length,0);

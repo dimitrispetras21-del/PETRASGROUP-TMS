@@ -210,6 +210,16 @@ const stopsOf = (S, key, id) => S.db[T.ST].filter(s => (s.fields[key] || [])[0] 
   await page.waitForTimeout(600);
   toasts = await page.evaluate(() => window.__toasts);
   ok(/Σημείο φόρτωσης/.test((toasts[toasts.length - 1] || [''])[0]), 'with a direction the next check speaks (the guard does not block everything)');
+  // owner 5/10: groupage ΑΝΟΔΟΣ refused out loud until its own tool exists —
+  // the form only knows the ΚΑΘΟΔΟΣ shape (one pickup → N deliveries)
+  await page.selectOption('#nf_Direction', 'South→North');
+  const b4 = S.writes.length;
+  await page.evaluate(() => _grpSubmit());
+  await page.waitForTimeout(600);
+  toasts = await page.evaluate(() => window.__toasts);
+  const last = toasts[toasts.length - 1] || ['', ''];
+  ok(/groupage ανόδου .*χτίζεται τώρα/.test(last[0]) && /χωριστές εθνικές με το ίδιο φορτηγό/.test(last[0]) && last[1] === 'error' && S.writes.length === b4,
+     'South→North: refused out loud («χτίζεται τώρα … χωριστές εθνικές»), nothing written: ' + JSON.stringify(last));
   await page.context().close();
 
   console.log('\n── PU-1 · «National Groupage» hidden on the international form');
