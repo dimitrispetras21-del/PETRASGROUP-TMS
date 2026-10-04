@@ -211,6 +211,19 @@ SECTIONS.push(async browser => {
   await page.context().close();
 });
 
+// ── §4 #7 · the PE badge on national loads ──────────────────────────────────
+SECTIONS.push(async browser => {
+  console.log('\n── §4 #7 · PE (pallet exchange) badge');
+  const { page, S } = await openBoard(browser);
+  ok(S.nlReads.some(f => f.includes('Pallet Exchange')), 'the week read asks the facade for «Pallet Exchange»');
+  const peA = await page.$$eval(`#wn-row-${await rowIdOf(page, 'recNlA000000000A')} .wi-b-pe`, els => els.map(e => e.textContent));
+  ok(peA.length === 1 && peA[0] === 'PE', 'load with Pallet Exchange shows the «PE» badge (wi-b-pe, as on Weekly International)');
+  const peB = await page.$$eval(`#wn-row-${await rowIdOf(page, 'recNlB000000000A')} .wi-b-pe`, els => els.length);
+  ok(peB === 0, 'load without Pallet Exchange shows none');
+  ok(await page.$$eval('#wn-rows .wi-b-pe', els => els.length) === 1, 'exactly one PE badge on the board (1 PE load in the week)');
+  await page.context().close();
+});
+
 (async () => {
   const browser = await chromium.launch();
   for (const s of SECTIONS) await s(browser);

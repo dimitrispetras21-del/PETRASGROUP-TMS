@@ -185,6 +185,11 @@ async function _wnLoadAll() {
       // order source) and 'Source Order' (VS, from orders_intl) — spec national-load-source.
       'Client','Total Pallets','Goods','Status','Source Type','Source National Order','Source Order','Source Consolidated Load','Matched Load',
       'Is Partner Trip','Partner Truck Plates','Partner Rate',
+      // §4 #7 (4/10/2026): _wnBadges draws «PE» from this field, but it was
+      // never requested — the facade answers only the fields asked for, so
+      // the badge could not appear (7 loads with PE, 0 badges). Same badge
+      // and class as Weekly International (wi-b-pe).
+      'Pallet Exchange',
       // Φ1 (Α3): ζητούσε 1..5 ενώ ο renderer κάνει loop 1..10 (_wnNlPickupSummary /
       // _wnNlDeliverySummary) και ο Worker σερβίρει 1..10. Φορτίο με 6+ σημεία
       // εμφανιζόταν κομμένο ΣΙΩΠΗΛΑ — καμία ένδειξη ότι λείπουν στάσεις.
