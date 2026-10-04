@@ -1149,7 +1149,15 @@ function _oiLotPallets() {
 // «Αποθήκευση» retries only the mark (submitIntlOrder → _markPending).
 async function _oiMarkLot(orderId, ctx) {
   const res = await OrdersStock.markLot(orderId);
-  if (res.ok) { INTL_ORDERS._markPending = null; INTL_ORDERS._markPendingCtx = null; return true; }
+  if (res.ok) {
+    INTL_ORDERS._markPending = null; INTL_ORDERS._markPendingCtx = null;
+    // OWNER-Q2 default (4/10, impact map G-25): a lot on our own truck is
+    // allowed, but Ε1 splits the lot's NET (price − partner cost) over the
+    // pieces — without a partner there is no intake cost to split from, so the
+    // intake trip keeps the whole price. Said, not refused.
+    if (ctx && !ctx.partner) showErrorToast('Χωρίς συνεργάτη αποθήκης: δεν γίνεται επιμερισμός εσόδου στα κομμάτια', 'warn', 10000);
+    return true;
+  }
   INTL_ORDERS._markPending = orderId; INTL_ORDERS._markPendingCtx = ctx;
   const formOpen = !!document.getElementById('f_StockLot');
   // «Ξανά» re-sends ONLY the mark, never the form's edits: a refusal fixed in
@@ -1882,6 +1890,24 @@ async function submitIntlOrder(recId) {
       const _wh = document.getElementById('f_StockWh')?.value || '';
       if (!_wh) _vErrors.push('Διάλεξε την αποθήκη της παρτίδας');
       else if (_unloadStops.length !== 1 || _unloadStops[0].locationId !== _wh) _vErrors.push('Η παρτίδα έχει έναν προορισμό: την αποθήκη');
+      // G-14 (impact map 4/10): the mark is the SECOND write — a refusal there
+      // leaves an ordinary order to the warehouse, invoiced at full price on
+      // intake with no stock behind it. So the base's mark refusals are
+      // mirrored here, before anything is saved (057 stock_guard_lots:
+      // lot_empty, lot_invoiced, no_split; the base still decides).
+      if (!_SK.wasLot) {
+        const _lotPals = _loadStops.reduce((a, st) => a + (st.pallets || 0), 0);
+        if (_lotPals <= 0) _vErrors.push('Παρτίδα χωρίς παλέτες — συμπλήρωσε τις παλέτες φόρτωσης');
+        if (_SK.srcInvoiced) _vErrors.push('Τιμολογημένη παραγγελία δεν γίνεται παρτίδα');
+        if (_SK.srcLeg) _vErrors.push('Σκέλος παραγγελίας δεν γίνεται παρτίδα');
+      }
+    }
+    // no_split also refuses the PARENT of legs: one read, only for an existing
+    // order being marked now, only when nothing else is wrong already.
+    if (_lotWanted && !_SK.wasLot && recId && !_SK.srcLeg && !_vErrors.length) {
+      const _legs = await _oiLegsOf(recId);
+      if (!_legs.ok) _vErrors.push('Ο έλεγχος σκελών δεν έγινε (' + _legs.error + ') — δεν αποθηκεύτηκε τίποτα· ξαναδοκίμασε');
+      else if (_legs.n) _vErrors.push('Παραγγελία με σκέλη δεν γίνεται παρτίδα');
     }
 
     // Date cross-validation
@@ -2037,6 +2063,15 @@ async function submitIntlOrder(recId) {
     if (result?.conflict) { toast('Η εγγραφή άλλαξε από άλλον χρήστη — κάνε Ανανέωση και ξαναδοκίμασε','warn'); return; }
 
     if (result?.error) throw new Error(result.error.message || JSON.stringify(result.error));
+    // G-32 (impact map 4/10): a new piece is a piece only if its link landed.
+    // A Worker without the «Stock Lot» label answers 200 and drops it (facade
+    // trap #1) — the order would be an ordinary priced import from the
+    // warehouse. The row the Worker returned decides (αρχή 2), loudly.
+    const _pieceLost = _SK.mode === 'pieceNew' && !result?._offline && getLinkedId(result?.fields?.['Stock Lot']) !== _SK.lotRec;
+    if (_pieceLost) {
+      showErrorToast('Η παραγγελία αποθηκεύτηκε ΧΩΡΙΣ σύνδεση με την παρτίδα — ΔΕΝ είναι κομμάτι και δεν μπήκε στο φορτηγό. Ενημέρωσε τον διαχειριστή πριν τη χρησιμοποιήσεις.', 'error', 15000);
+      if (typeof logError === 'function') logError(new Error('piece saved without its Stock Lot link (lot ' + _SK.lotRec + ')'), 'submitIntlOrder piece ' + (recId || result?.id));
+    }
     // Αρχή 2: the row the Worker returned decides, not the toast below.
     if (_wasPre && !result?._offline && result?.fields?.['Ops Status']) {
       showErrorToast('Η παραγγελία αποθηκεύτηκε αλλά ΕΜΕΙΝΕ pre-order (η σήμανση δεν καθάρισε). Ενημέρωσε τον διαχειριστή.', 'error', 12000);
@@ -2101,9 +2136,10 @@ async function submitIntlOrder(recId) {
     if (typeof plOnOrderSaved === 'function') await plOnOrderSaved(savedOrderId, 'intl');
     if (typeof rtOnOrderSaved === 'function') await rtOnOrderSaved(savedOrderId);
 
+    let _savedRec = null;   // the order as the base holds it after the save (OWNER-Q2 note)
     try {
       toast('Συγχρονισμός εθνικού φορτίου VS…', 'info');
-      const rec = await atGetOne(TABLES.ORDERS, savedOrderId);
+      const rec = _savedRec = await atGetOne(TABLES.ORDERS, savedOrderId);
       _tmsLog('SYNC: fetched record', savedOrderId, rec.fields?.[F.VEROIA_SWITCH], rec.fields?.['Direction'], rec.fields?.['Type']);
       if (!rec.fields) { toast('Ο συγχρονισμός απέτυχε — η παραγγελία επέστρεψε χωρίς πεδία', 'warn'); return; }
       await _syncVeroiaSwitch(savedOrderId, rec.fields);
@@ -2118,14 +2154,18 @@ async function submitIntlOrder(recId) {
       reportError('Ο συγχρονισμός εθνικού φορτίου απέτυχε', e, 'warn');
     }
 
-    const _finish = { recId: recId || null, savedOrderId, fields, wasPre: _wasPre };
+    // madeLot: G-26 (a new lot is never auto-matched to an export's empty
+    // import box). partner: OWNER-Q2 note after the mark — from the saved row,
+    // else from the form's opening state.
+    const _finish = { recId: recId || null, savedOrderId, fields, wasPre: _wasPre, madeLot: _lotWanted && !_SK.wasLot,
+      partner: (_savedRec && getLinkedId(_savedRec.fields && _savedRec.fields['Partner'])) || _SK.partner || '' };
     // 057: mark the lot (second write). A refusal keeps the modal open.
     if (_lotWanted && !_SK.wasLot) {
       if (!(await _oiMarkLot(savedOrderId, _finish))) return;
     }
     // 057: the Weekly joins the new piece to its truck (Group ID, match). The
     // piece is saved whatever happens there — a failure is said, not undone.
-    if (_SK.mode === 'pieceNew' && typeof window._wiOnPieceSaved === 'function') {
+    if (_SK.mode === 'pieceNew' && !_pieceLost && typeof window._wiOnPieceSaved === 'function') {
       try { await window._wiOnPieceSaved(savedOrderId, fields, _SK.presets.context); }
       catch (e) { reportError('Το κομμάτι αποθηκεύτηκε, αλλά η ένταξή του στο φορτηγό δεν ολοκληρώθηκε — δες το Weekly', e); }
     }
@@ -2147,8 +2187,14 @@ async function _oiFinishSave(ctx) {
   // αμέσως με το export που την άνοιξε (owner 3/9). Πριν το closeModal, ώστε
   // το repaint από κάτω να δει ήδη γραμμένο το ταίριασμα.
   if (!recId && typeof window._wiConsumePendingMatch === 'function') {
-    try { await window._wiConsumePendingMatch(savedOrderId, fields); }
-    catch (e) { console.warn('[wi pending match]', e); }
+    // G-26 (impact map 4/10): a lot goes INTO a warehouse on its own carrier —
+    // it is never the matched import of our export's truck. The pending box is
+    // dropped (not kept for the next import saved within 30 minutes).
+    if (ctx.madeLot) window._wiPendingMatch = null;
+    else {
+      try { await window._wiConsumePendingMatch(savedOrderId, fields); }
+      catch (e) { console.warn('[wi pending match]', e); }
+    }
   }
 
   document.getElementById('modal').style.maxWidth = '';
