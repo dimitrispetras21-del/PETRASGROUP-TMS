@@ -1870,8 +1870,26 @@ function _wnNewSn(rowId) {
   if (!row || row.type !== 'northsouth') return;
   if (row.matchedId) { toast('Η κάθοδος έχει ήδη ταιριασμένη άνοδο', 'warn'); return; }
   if (typeof openNatlCreateWith !== 'function') { toast('Η φόρμα παραγγελίας δεν είναι διαθέσιμη', 'warn'); return; }
-  window._wnPendingMatch = { rowId, nsId: row.orderIds[0], at: Date.now() };
-  openNatlCreateWith({ 'Direction': 'South→North' });
+  const pend = window._wnPendingMatch = { rowId, nsId: row.orderIds[0], at: Date.now() };
+  // §4 #13 (WN-09, 4/10/2026): «Άκυρο» (or ✕, or a form that never opened)
+  // left this pending for 30', so the NEXT ΑΝΟΔΟΣ created from anywhere on the
+  // board was bound to this ΚΑΘΟΔΟΣ. A save consumes it before the form
+  // closes (orders_natl → _wnConsumePendingMatch, then closeModal), so the
+  // first close of the form clears whatever is still pending — only if it is
+  // still THIS pending. The modal shows/hides by its 'open' class.
+  const ov = document.getElementById('modalOverlay');
+  let obs = null;
+  const drop = () => { if (obs) obs.disconnect(); if (window._wnPendingMatch === pend) window._wnPendingMatch = null; };
+  if (ov) {
+    let seenOpen = ov.classList.contains('open');
+    obs = new MutationObserver(() => {
+      if (ov.classList.contains('open')) { seenOpen = true; return; }
+      if (seenOpen) drop();
+    });
+    obs.observe(ov, { attributes: true, attributeFilter: ['class'] });
+  }
+  Promise.resolve(openNatlCreateWith({ 'Direction': 'South→North' }))
+    .then(() => { if (!ov || !ov.classList.contains('open')) drop(); }, drop);
   _wnRerenderOnClose();
 }
 async function _wnConsumePendingMatch(newNlId, fields) {

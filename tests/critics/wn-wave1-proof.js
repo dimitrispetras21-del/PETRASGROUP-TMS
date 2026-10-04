@@ -12,7 +12,7 @@ const path = require('path');
 const { preparePage, gotoPage } = require(path.resolve(__dirname, 'auth.js'));
 const BASE = process.env.PW_BASE_URL || 'http://127.0.0.1:8788/';
 const HOST = 'petras-tms-backend-staging.petrasgroup.workers.dev';
-const T = { NL: 'tblVW42cZnfC47gTb', NO: 'tblGHCCsTMqAy4KR2', TR: 'tblEAPExIAjiA3asD', TL: 'tblDcrqRJXzPrtYLm', DR: 'tbl7UGmYhc2Y82pPs', PT: 'tblLHl5m8bqONfhWv', PA: 'tblUhgqnmiam5MGNK' };
+const T = { NL: 'tblVW42cZnfC47gTb', NO: 'tblGHCCsTMqAy4KR2', TR: 'tblEAPExIAjiA3asD', TL: 'tblDcrqRJXzPrtYLm', DR: 'tbl7UGmYhc2Y82pPs', PT: 'tblLHl5m8bqONfhWv', PA: 'tblUhgqnmiam5MGNK', LOC: 'tblxu8DRfTQOFRCzS' };
 let pass = 0, fail = 0;
 const ok = (c, m) => { if (c) { pass++; console.log('  ✓ ' + m); } else { fail++; console.log('  ✗ ' + m); } };
 
@@ -30,6 +30,7 @@ function seed() {
     [T.TL]: [{ id: 'recTrailer0001AA', fields: { 'License Plate': 'ΡΥΜ 0001', Active: true } }],
     [T.DR]: [{ id: 'recDriver00001AA', fields: { 'Full Name': 'Driver One', Active: true } }, { id: 'recDriver00002AA', fields: { 'Full Name': 'Driver Two', Active: true } }],
     [T.PT]: [{ id: 'recPartner00001A', fields: { 'Company Name': 'Partner Co' } }],
+    [T.LOC]: [{ id: 'recLocVeroia0001', fields: { Name: 'CROSS-DOCK', City: 'Veroia', Country: 'Greece' } }],
     [T.NO]: [{ id: 'recNatOrderC0001', fields: { Status: 'Assigned', Direction: NS } }],
     [T.PA]: [
       { id: 'recPAnC000000001', fields: { 'Nat Load': ['recNlC000000000A'], Partner: ['recPartner00001A'], 'Partner Rate': 400, Status: 'Assigned' } },
@@ -70,10 +71,10 @@ function nlWindow(f) {
   return r => { const t = Date.parse(r.fields['Loading DateTime'] || ''); return (!a || t > Date.parse(a[1] + 'T00:00:00Z')) && (!b || t < Date.parse(b[1] + 'T00:00:00Z')); };
 }
 
-async function openBoard(browser) {
+async function openBoard(browser, opts = {}) {
   const ctx = await browser.newContext({ baseURL: BASE, viewport: { width: 1600, height: 1000 }, serviceWorkers: 'block' });
   const page = await ctx.newPage();
-  const db = seed();
+  const db = seed(); if (opts.noLocations) db[T.LOC] = [];
   const S = { db, writes: [], nlReads: [], errors: [] };
   page.on('pageerror', e => S.errors.push(String(e)));
   page.on('dialog', d => d.accept());
@@ -274,6 +275,53 @@ SECTIONS.push(async browser => {
   ok(c.writes.length > 0 && JSON.stringify(c.writes) === JSON.stringify(d.writes), `standalone ΑΝΟΔΟΣ: identical write sequence — ${c.writes.length} writes each`);
   ok(/χωρίς όχημα/.test(d.pill), 'standalone ΑΝΟΔΟΣ: repainted as «ΑΝΟ · χωρίς όχημα»');
   ok([a, b, c, d].every(x => x.errors.length === 0), 'no page errors');
+});
+
+// ── §4 #13 · «Άκυρο» on «νέα άνοδος» leaves no pending match ────────────────
+const openNewSn = async (page, nsId) => {
+  const rowId = await rowIdOf(page, nsId);
+  await page.click(`#wn-ci-${rowId} .wn4-drop`);
+  try { await page.waitForSelector('#modalOverlay.open', { timeout: 20000 }); }
+  catch (e) { console.log('form did not open; toasts:', JSON.stringify(await page.evaluate(() => window.__toasts)), 'pending:', await pending(page)); throw e; }
+  await page.waitForTimeout(300);
+};
+const pending = page => page.evaluate(() => window._wnPendingMatch ? window._wnPendingMatch.nsId : null);
+SECTIONS.push(async browser => {
+  console.log('\n── §4 #13 · cancel/close of «νέα άνοδος» clears the pending match');
+  const { page, S } = await openBoard(browser);
+  await openNewSn(page, 'recNlSat00000000');
+  ok(await pending(page) === 'recNlSat00000000', 'empty ΑΝΟΔΟΣ cell → form open, pending match = this ΚΑΘΟΔΟΣ');
+  ok(await page.$eval('#nf_Direction', el => el.value) === 'South→North', 'form prefilled ΑΝΟΔΟΣ');
+  await page.click('#modalFooter button:has-text("Άκυρο")');
+  await page.waitForTimeout(400);
+  ok(await pending(page) === null, '«Άκυρο» → pending match gone');
+  const before = S.writes.length;
+  await page.evaluate(() => window._wnConsumePendingMatch('recNlsP00000000A', { Direction: 'South→North' }));
+  await page.waitForTimeout(500);
+  ok(S.writes.length === before && !nlOf(S, 'recNlsP00000000A')['Matched Load'], 'the next ΑΝΟΔΟΣ created is NOT bound to the cancelled ΚΑΘΟΔΟΣ (0 writes)');
+
+  await openNewSn(page, 'recNlSat00000000');
+  await page.click('#modal .modal-close');
+  await page.waitForTimeout(400);
+  ok(await pending(page) === null, '✕ in the header → pending match gone too');
+
+  await openNewSn(page, 'recNlSat00000000');
+  await page.evaluate(async () => { await window._wnConsumePendingMatch('recNlsP00000000A', { Direction: 'South→North' }); closeModal(); });
+  await page.waitForTimeout(800);
+  ok(nlOf(S, 'recNlsP00000000A')['Matched Load'] === 'recNlSat00000000' && nlOf(S, 'recNlSat00000000')['Matched Load'] === 'recNlsP00000000A',
+     'save path unchanged: a created ΑΝΟΔΟΣ is still bound (Matched Load on both loads)');
+  ok(await pending(page) === null, 'and nothing is left pending after it');
+  ok(S.errors.length === 0, 'no page errors: ' + S.errors.slice(0, 2).join(' | '));
+  await page.context().close();
+
+  // The form refuses to open when the locations are not loaded (P1 4/10):
+  // that path must not leave a pending match either.
+  const nl0 = await openBoard(browser, { noLocations: true });
+  await nl0.page.click(`#wn-ci-${await rowIdOf(nl0.page, 'recNlSat00000000')} .wn4-drop`);
+  await nl0.page.waitForTimeout(2500);
+  const t0 = await nl0.page.evaluate(() => window.__toasts.map(t => t[0]).join(' | '));
+  ok(/η φόρμα δεν άνοιξε/.test(t0) && await pending(nl0.page) === null, 'form never opened (no locations) → no pending match left');
+  await nl0.page.context().close();
 });
 
 (async () => {
