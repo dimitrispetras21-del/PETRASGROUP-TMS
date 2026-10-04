@@ -1075,7 +1075,7 @@ function buildCoverDoc(items){
       var lastName=lastUn?(resolveLoc(lastUn.fields['Location'])||{}).name:'—';
       // C4-02: the piece is marked as stock on the cover too, at its stop.
       var stk=stockLotText(f,isPartner);
-      var tag='ΠΑΡΑΓΓΕΛΙΑ '+String.fromCharCode(65+i)+' · '+escHtml(ordNoOf(it.orderRec))+' · '+lastName+(stk?' · '+(isPartner?'From stock · ':'Απόθεμα · ')+escHtml(stk):'');
+      var tag='ΠΑΡΑΓΓΕΛΙΑ '+String.fromCharCode(65+i)+' · '+escHtml(ordNoOf(it.orderRec))+' · '+escHtml(lastName)+(stk?' · '+(isPartner?'From stock · ':'Απόθεμα · ')+escHtml(stk):'');
       stopsOfType(it.stops,type).forEach(function(s){
         var loc=resolveLoc(s.fields['Location']); if(!loc)return;
         tlHTML+=buildCard(0,loc,dtLabel,s.fields['DateTime']||'',s.fields['Pallets']||'',

@@ -108,7 +108,7 @@ const OrdersCatalog = (() => {
     r.lot = !!(OS && OS.isLot(f));
     r.tags = [];
     if (r.piece) r.tags.push('ΑΠ');
-    if (r.lot) r.tags.push('ΑΠΟΘΕΜΑ');
+    if (r.lot) r.tags.push('→ ΑΠΟΘΗΚΗ');   // OWNER-Q12 answered 4/10 («→ ΑΠΟΘΗΚΗ» everywhere)
     if (type === 'intl' && f['Veroia Switch']) r.tags.push('VS');
     if (f['National Groupage']) r.tags.push('GRP');
     if (f['Pallet Exchange']) r.tags.push('PE');
@@ -139,7 +139,7 @@ const OrdersCatalog = (() => {
     const sel = r.id === S.selected ? ' selected' : '';
     // Round 1 O11 (critic-5 S5-10): the stock tag goes BEFORE the direction —
     // after it, «ΑΠΟΘΕΜΑ» was cut to «Εξαγωγή…» at 1440 and the lot had none.
-    const isStk = t => t === 'ΑΠ' || t === 'ΑΠΟΘΕΜΑ';
+    const isStk = t => t === 'ΑΠ' || t === '→ ΑΠΟΘΗΚΗ';
     const stk = r.tags.filter(isStk).map(t => `<span class="oc-tag oc-tag-lead">${t}</span>`).join('');
     const tags = r.tags.filter(t => !isStk(t)).map(t => `<span class="oc-tag">${t}</span>`).join('');
     const stDot = (STATUS[r.status] || [null, 'unknown'])[1], stWord = _statusWord(r) || '—';
@@ -241,9 +241,9 @@ const OrdersCatalog = (() => {
     wrap.innerHTML = OrdersList.tableShell({
       colDefs: COLS, sortCol: S.sortCol, sortDir: S.sortDir, sortToggle: 'OrdersCatalog.sort',
       ids: { scroller: 'ocVScroll', top: 'ocTop', bottom: 'ocBottom' }, rowH: ROW_H, total: sorted.length,
-      // O11: «ΑΠ» / «ΑΠΟΘΕΜΑ» explained once the list holds a piece or a lot.
+      // O11: «ΑΠ» / «→ ΑΠΟΘΗΚΗ» explained once the list holds a piece or a lot.
       legend: '<b>#</b> διεθνής · <b>Ε-</b> εθνική · <b>VS</b> Veroia Switch · <b>GRP</b> ομαδοποίηση · <b>PE</b> ανταλλαγή παλετών · <b>HR</b> υψηλό ρίσκο · '
-        + (S.rows.some(x => x.piece || x.lot) ? '<b>ΑΠ</b> κομμάτι από απόθεμα · <b>ΑΠΟΘΕΜΑ</b> παρτίδα σε αποθήκη · ' : '')
+        + (S.rows.some(x => x.piece || x.lot) ? '<b>ΑΠ</b> κομμάτι από απόθεμα · <b>→ ΑΠΟΘΗΚΗ</b> παρτίδα σε αποθήκη · ' : '')
         + '<b class="oc-g">✓ ΤΠΥ</b> τιμολογήθηκε στο ERP',
       legendClass: 'oc-legend', footClass: 'oc-foot',
     });
@@ -435,7 +435,7 @@ const OrdersCatalog = (() => {
   const _namesBusy = () => { if (!S.namesPending) return false; if (typeof toast === 'function') toast('Φορτώνουν ακόμη τα ονόματα — δοκίμασε ξανά σε λίγα δευτερόλεπτα', 'warn'); return true; };
   function csv() {
     if (_namesBusy()) return;
-    // «Σήμανση» = the row's tags (ΑΠ, ΑΠΟΘΕΜΑ, VS, GRP, PE, HR) — PR-14: the
+    // «Σήμανση» = the row's tags (ΑΠ, → ΑΠΟΘΗΚΗ, VS, GRP, PE, HR) — PR-14: the
     // file carries what the screen shows next to the direction. It goes LAST
     // (round 1b): a column in the middle moved every column after it for
     // whoever already reads this file by position.

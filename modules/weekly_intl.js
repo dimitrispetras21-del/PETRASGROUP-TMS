@@ -5597,8 +5597,8 @@ async function _wiSegDrop(e,rowId,orderId){
   const ids=recs.map(x=>x.id);
   const from=ids.indexOf(d.orderId), to=ids.indexOf(orderId);
   if(from<0||to<0) return;
-  // OWNER-Q8 default (4/10, impact map B-10): a piece MAY be dragged first in
-  // its group (a warehouse pickup first is physically plausible) — no filter
+  // OWNER-Q11 answered 4/10 (piece may be first stop; impact map B-10): a
+  // piece MAY be dragged first in its group — the dispatcher's order wins, no filter
   // here. «Always last» binds only the join (_wiStockLockLead), not a person's
   // explicit order.
   ids.splice(to,0,ids.splice(from,1)[0]);
@@ -6064,7 +6064,7 @@ function _wiRecOf(id){ return WINTL.data.exports.find(r=>r.id===id)||WINTL.data.
 // A lot goes to the warehouse ALONE, whoever carries it: never matched,
 // grouped, merged or given a rota leg, and only the lot menu (_wiLotCtx).
 // Round 1 (critic-3 Σ-05): this used to stop at «no truck of ours», so a lot
-// on our own truck (OWNER-Q2 default: allowed) got the full menu — and the
+// on our own truck (allowed: an ordinary lot, owner 4/10) got the full menu — and the
 // DB refuses its group/match (057 lot_grouped), after _wiGroupPatch had
 // already written the OTHER export into a one-member group.
 function _wiLotHeld(row){
@@ -6351,8 +6351,8 @@ function _wiLotCtx(e,row,isImp){
   if(!_wiLotHeld(row)) return false;
   const rec=_wiRecOf(row.orderIds?.[0]||row.orderId);
   let html=`<div class="wi-ctx-h">${escapeHtml('ΠΑΡΤΙΔΑ → ΑΠΟΘΗΚΗ · '+(_wiClientName(rec.fields)||'—'))}</div>`;
-  // OWNER-Q default (4/10, impact map B-15; no number given to this builder):
-  // a lot's «Ανάθεση…» stays as it is — own trucks are still offered.
+  // A lot's «Ανάθεση…» offers own trucks too (impact map B-15): owner 4/10 —
+  // a lot carried by our own truck follows the same warehouse-charge rule.
   html+=_wiCtxBtn('Ανάθεση…',isImp?`_wiPanelAssign(${row.id},true,'${rec.id}')`:`_wiPanelAssign(${row.id},false)`);
   html+=_wiCtxBtn('Εκτύπωση…',`_wiMenuPrint(${row.id},${isImp?'true':'false'})`);
   html+=_wiCtxBtn('Άνοιγμα',`_wk3Edit('${rec.id}')`);

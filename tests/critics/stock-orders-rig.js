@@ -281,11 +281,11 @@ async function runCatalog(browser) {
   ok(cell.h <= 42 && cell.row <= 47 && cell.td, 'catalog: the piece price cell fits inside the 46px row, no overflow — ' + JSON.stringify(cell));
   // O11: one line; the 84px column holds 68px — «στην παρτίδα #1300» (106px) goes to the title
   ok(cell.text === '#1300' && cell.lines === 1 && /^Στην παρτίδα #1300/.test(cell.title), 'O11: piece price on ONE line «#1300», «Στην παρτίδα #1300 — …» in the title — ' + JSON.stringify(cell));
-  ok(/ΑΠΟΘΕΜΑ/.test(await page.locator('#ocrow_recLotSrc').innerText()), 'catalog: lot tag «ΑΠΟΘΕΜΑ»');
+  ok(/→ ΑΠΟΘΗΚΗ/.test(await page.locator('#ocrow_recLotSrc').innerText()), 'catalog: lot tag «→ ΑΠΟΘΗΚΗ»');
   const lead = await page.$eval('#ocrow_recLotSrc .oc-l2', e => ({ first: (e.firstElementChild || {}).textContent, firstIsStart: e.firstChild === e.firstElementChild, vis: e.firstElementChild ? e.firstElementChild.getBoundingClientRect().right <= e.getBoundingClientRect().right : false }));
-  ok(lead.first === 'ΑΠΟΘΕΜΑ' && lead.firstIsStart && lead.vis, 'O11: the stock tag leads the line (before «Εξαγωγή»), fully visible — ' + JSON.stringify(lead));
+  ok(lead.first === '→ ΑΠΟΘΗΚΗ' && lead.firstIsStart && lead.vis, 'O11: the stock tag leads the line (before «Εξαγωγή»), fully visible — ' + JSON.stringify(lead));
   const legend = (await page.locator('.oc-legend').innerText()).replace(/\s+/g, ' ');
-  ok(/ΑΠ κομμάτι από απόθεμα/.test(legend) && /ΑΠΟΘΕΜΑ παρτίδα σε αποθήκη/.test(legend), 'O11: the legend explains ΑΠ / ΑΠΟΘΕΜΑ — ' + legend);
+  ok(/ΑΠ κομμάτι από απόθεμα/.test(legend) && /→ ΑΠΟΘΗΚΗ παρτίδα σε αποθήκη/.test(legend), 'O11: the legend explains ΑΠ / → ΑΠΟΘΗΚΗ — ' + legend);
   const kpi = (await page.locator('#ocKpi').innerText()).replace(/\s+/g, ' ');
   ok(!/χωρίς τιμή/.test(kpi), 'catalog KPI: no «χωρίς τιμή» chip/count from the 2 unpriced pieces — ' + kpi);
   // G-27/E-12: the lot that reached the warehouse is «Στην αποθήκη», not «Παραδόθηκε»
@@ -299,11 +299,11 @@ async function runCatalog(browser) {
   const paper = await page.evaluate(() => window.__printed.at(-1));
   const trOf = ref => (paper.split('<tr>').find(t => t.includes(ref)) || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ');
   ok(/(^|\s)ΑΠ(\s|$)/.test(trOf('TEST-STOCK-1')) && /στην παρτίδα #1300/.test(trOf('TEST-STOCK-1')), 'catalog print: piece row «ΑΠ» + «στην παρτίδα #1300» — ' + trOf('TEST-STOCK-1'));
-  ok(/ΑΠΟΘΕΜΑ/.test(trOf('TEST-STOCK-LOT')) && /Στην αποθήκη/.test(trOf('TEST-STOCK-LOT')), 'catalog print: lot row «ΑΠΟΘΕΜΑ» + «Στην αποθήκη» — ' + trOf('TEST-STOCK-LOT'));
+  ok(/→ ΑΠΟΘΗΚΗ/.test(trOf('TEST-STOCK-LOT')) && /Στην αποθήκη/.test(trOf('TEST-STOCK-LOT')), 'catalog print: lot row «→ ΑΠΟΘΗΚΗ» + «Στην αποθήκη» — ' + trOf('TEST-STOCK-LOT'));
   const csvOut = await page.evaluate(() => window.__csv.at(-1).rows);
   const h = csvOut[0], pcCsv = csvOut.find(r => r.includes('TEST-STOCK-1')) || [], lotCsv = csvOut.find(r => r.includes('TEST-STOCK-LOT')) || [];
   ok(pcCsv[h.indexOf('Σήμανση')] === 'ΑΠ' && pcCsv[h.indexOf('Τιμή')] === 'στην παρτίδα #1300', 'catalog CSV: piece «Σήμανση»=ΑΠ, «Τιμή»=«στην παρτίδα #1300» — ' + JSON.stringify(pcCsv));
-  ok(lotCsv[h.indexOf('Σήμανση')] === 'ΑΠΟΘΕΜΑ' && lotCsv[h.indexOf('Κατάσταση')] === 'Στην αποθήκη', 'catalog CSV: lot «ΑΠΟΘΕΜΑ» + «Στην αποθήκη» — ' + JSON.stringify(lotCsv));
+  ok(lotCsv[h.indexOf('Σήμανση')] === '→ ΑΠΟΘΗΚΗ' && lotCsv[h.indexOf('Κατάσταση')] === 'Στην αποθήκη', 'catalog CSV: lot «→ ΑΠΟΘΗΚΗ» + «Στην αποθήκη» — ' + JSON.stringify(lotCsv));
   // Round 1b: the columns main already had keep their positions; the new one is last.
   const MAIN_HEAD = ['ΑΡ.', 'Τύπος', 'Αναφορά', 'Κατεύθυνση', 'Πελάτης', 'Φόρτωση', 'Ημ. φόρτωσης', 'Παράδοση', 'Ημ. παράδοσης', 'Παλέτες', 'Ανάθεση', 'Κατάσταση', 'Τιμή', 'ΤΠΥ', 'Ημ. ΤΠΥ'];
   ok(JSON.stringify(h) === JSON.stringify([...MAIN_HEAD, 'Σήμανση']), 'catalog CSV: main columns in place, «Σήμανση» last — ' + JSON.stringify(h));
