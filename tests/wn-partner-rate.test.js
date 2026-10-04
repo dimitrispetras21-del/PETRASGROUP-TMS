@@ -81,10 +81,18 @@ test('_wnSnVehicleSwap (Q7): a different own vehicle on the ΑΝΟΔΟΣ is swap
 
 test('_wnUnmatch (Q2/Q3/Q8): match cleared on BOTH loads before the ΑΝΟΔΟΣ vehicle; no executed exception; Status via _wnUnplanFields', () => {
   const fn = pick(WN, /async function _wnUnmatch\(rowId, snId\) \{[\s\S]*?\n\}\n/, '_wnUnmatch');
-  const iNs = fn.indexOf("atSafePatch(TABLES.NAT_LOADS, row.orderIds[0], { 'Matched Load': '' })");
-  const iSn = fn.indexOf("atSafePatch(TABLES.NAT_LOADS, snId, { 'Matched Load': '' })");
+  const iLoop = fn.indexOf('for (const id of [row.orderIds[0], snId])');
+  const iMl = fn.indexOf("atSafePatch(TABLES.NAT_LOADS, id, { 'Matched Load': '' })");
   const iVeh = fn.indexOf('atSafePatch(TABLES.NAT_LOADS, snId, _wnUnplanFields(clr, stSn))');
-  assert.ok(iNs > 0 && iSn > iNs && iVeh > iSn, 'order: ΚΑΘΟΔΟΣ match → ΑΝΟΔΟΣ match → ΑΝΟΔΟΣ vehicle');
+  assert.ok(iLoop > 0 && iMl > iLoop && iVeh > iMl, 'order: Matched Load on ΚΑΘΟΔΟΣ then ΑΝΟΔΟΣ → ΑΝΟΔΟΣ vehicle');
   assert.ok(!/_wnExecuted\(stSn\)\)\s*left\s*=/.test(fn) && !/κρατά το όχημά της/.test(fn), 'no «executed keeps its vehicle» branch left');
   assert.match(fn, /_wnConfirmExecuted\(/);
+  assert.match(fn, /if \(rm\?\.error\) throw/, 'each Matched Load write is checked before the vehicle is cleared');
+});
+
+test('_wnSaveMatch swap (review MEDIUM): the ΑΝΟΔΟΣ vehicle is emptied in its own write BEFORE the ΚΑΘΟΔΟΣ vehicle is written', () => {
+  const fn = pick(WN, /async function _wnSaveMatch\(rowId, snId\) \{[\s\S]*?\n\}\n/, '_wnSaveMatch');
+  const iEmpty = fn.indexOf("const r0 = await atSafePatch(TABLES.NAT_LOADS, snId, { 'Truck': [], 'Trailer': [], 'Driver': [], 'Partner': [],");
+  const iVeh = fn.indexOf('const r3 = await atSafePatch(TABLES.NAT_LOADS, snId, _wnPlanFields(veh, stSn));');
+  assert.ok(iEmpty > 0 && iVeh > iEmpty);
 });

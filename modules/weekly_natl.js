@@ -2282,6 +2282,18 @@ async function _wnSaveMatch(rowId, snId) {
     if (veh) {
       try {
         // LEG FIRST (see _wnExecuted): national RT legs are handled by the 034 trigger.
+        // A swap empties the ΑΝΟΔΟΣ vehicle in its OWN write first (review
+        // 4/10, MEDIUM): an ΑΝΟΔΟΣ that is the sole leg of its own RT would
+        // otherwise «follow its load in place» in 034 — its RT retargeted to
+        // the ΚΑΘΟΔΟΣ truck, two RTs and two payroll lines on one truck. Empty
+        // → the trigger drops that leg; the vehicle write below then joins the
+        // ΚΑΘΟΔΟΣ RT through the match. No Status here (it stays for the next write).
+        if (swap) {
+          const r0 = await atSafePatch(TABLES.NAT_LOADS, snId, { 'Truck': [], 'Trailer': [], 'Driver': [], 'Partner': [],
+            'Is Partner Trip': false, 'Partner Truck Plates': '', 'Partner Rate': null });
+          if (r0?.conflict) { toast('Η εγγραφή άλλαξε από άλλον χρήστη — γίνεται ανανέωση','warn'); await renderWeeklyNatl(); return; }
+          if (r0?.error) throw new Error(r0.error.message || r0.error.type);
+        }
         const r3 = await atSafePatch(TABLES.NAT_LOADS, snId, _wnPlanFields(veh, stSn));
         if (r3?.error) throw new Error(r3.error.message || r3.error.type);
         if (swap) {
@@ -2355,8 +2367,14 @@ async function _wnUnmatch(rowId, snId) {
     // Order matters: the match goes on BOTH loads first, then the vehicle —
     // the 034 trigger then takes the ΑΝΟΔΟΣ leg out of the RT (leg-first lives
     // inside the trigger) and the ΚΑΘΟΔΟΣ is never written.
-    await atSafePatch(TABLES.NAT_LOADS, row.orderIds[0], { 'Matched Load': '' });
-    await atSafePatch(TABLES.NAT_LOADS, snId, { 'Matched Load': '' });
+    // Each half checked (review 4/10): an {error} return must not be followed by
+    // clearing the ΑΝΟΔΟΣ vehicle — that would leave a matched pair with an
+    // unassigned ΑΝΟΔΟΣ under a «Σύνδεση αφαιρέθηκε» toast.
+    for (const id of [row.orderIds[0], snId]) {
+      const rm = await atSafePatch(TABLES.NAT_LOADS, id, { 'Matched Load': '' });
+      if (rm?.conflict) { toast('Η εγγραφή άλλαξε από άλλον χρήστη — γίνεται ανανέωση','warn'); await renderWeeklyNatl(); return; }
+      if (rm?.error) throw new Error(rm.error.message || rm.error.type);
+    }
     if (snHasVehicle) {
       const clr = { 'Truck': [], 'Trailer': [], 'Driver': [], 'Partner': [], 'Is Partner Trip': false,
                     'Partner Truck Plates': '', 'Partner Rate': null };

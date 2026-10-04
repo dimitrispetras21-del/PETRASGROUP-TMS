@@ -220,8 +220,10 @@ SECTIONS.push(async browser => {
   const cB = await page.evaluate(() => window.__confirms);
   ok(cB.length === 1 && /είχε φορτηγό ΚΖΗ 1002/.test(cB[0]) && /θα πάρει φορτηγό ΚΖΗ 1001/.test(cB[0]), 'ΑΝΟΔΟΣ with its OWN truck: ONE confirm «είχε … θα πάρει …»: ' + JSON.stringify(cB));
   p = patchesTo(S, 'recNlsB00000000A');
-  ok(p[0] && Object.keys(p[0]).join() === 'Matched Load' && p[1] && p[1].Truck[0] === 'recTruck000001AA' && p[1].Driver[0] === 'recDriver00001AA' && p[1]['Partner Rate'] === null,
-     'ΑΝΟΔΟΣ with its OWN truck: Matched Load first, then the ΚΑΘΟΔΟΣ vehicle: ' + JSON.stringify(p));
+  ok(p[0] && Object.keys(p[0]).join() === 'Matched Load'
+     && p[1] && p[1].Truck.length === 0 && p[1].Partner.length === 0 && !('Status' in p[1])
+     && p[2] && p[2].Truck[0] === 'recTruck000001AA' && p[2].Driver[0] === 'recDriver00001AA' && p[2]['Partner Rate'] === null,
+     'ΑΝΟΔΟΣ with its OWN truck: Matched Load → EMPTY vehicle (its own RT leg leaves, no Status) → the ΚΑΘΟΔΟΣ vehicle: ' + JSON.stringify(p));
   ok((nlOf(S, 'recNlsB00000000A').Truck || [])[0] === 'recTruck000001AA', 'base: the pair is on ONE truck (ΚΖΗ 1001)');
 
   await dropOn(page, 'recNlsP00000000A', 'recNlP000000000A'); await settle(page);
