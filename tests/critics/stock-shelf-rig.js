@@ -82,6 +82,9 @@ function makeFacade() {
     const f = {};
     for (const [k, v] of Object.entries(o.fields)) if (!isEmpty(v)) f[k] = v;
     f['Total Pallets'] = pals(o.fields);
+    // «Order No» = orders.id (019): the shared round-trip lookup _wiRtOf reads it
+    // before any vehicle clear (main f896b588) — without it every return stops.
+    f['Order No'] = 1000 + Object.keys(F.orders).indexOf(o.id);
     const lp = link(o.fields['Stock Lot']);
     if (lp && F.lots[lp]) { f['Stock Lot Order No'] = F.lots[lp].fields['Lot No']; f['Stock Lot Source'] = 'intl'; }
     const own = lotOfOrder(o.id); if (own) f['Own Stock Lot'] = own.id;
@@ -144,6 +147,12 @@ async function installRoutes(page, F) {
     const send = (status, body) => route.fulfill({ status, headers: hdr, body: JSON.stringify(body) });
     const seg = url.pathname.split('/').filter(Boolean);   // v0 / base / table / [rec]
     const table = seg[2], recId = seg[3];
+    // Round trips: this rig has none — /costs/rt answers an empty list (so the
+    // leg-first lookup finds «no trip» for sure, never a read failure).
+    if (F.ready && seg[0] === 'costs' && seg[1] === 'rt') {
+      F.costs = (F.costs || []).concat([{ m: r.method(), url: url.pathname + url.search }]);
+      return send(200, r.method() === 'GET' ? { records: [] } : { deleted: true });
+    }
     if (!F.ready || ![ORDERS, LOTS, 'local_moves'].includes(table)) return bridge(route);
     if (table === 'local_moves') return send(200, { records: [] });
     const m = r.method();
