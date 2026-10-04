@@ -3902,20 +3902,50 @@ async function handleCosts(request, url, origin, env) {
       await audit(env, { actor: caller.sub, role: caller.role, action: "create", table: "ct_cost_lines", recordId: String(created.id), after: created });
       return jsonOk({ record: created }, origin, env, 201);
     }
-    // ---- GET /costs/lines?rt_id= | alloc_status= ----
+    // ---- GET /costs/lines?rt_id= | alloc_status= | offset= | limit= ----
+    // Paging (4/10/2026): the batch read stopped at 300 lines with no way to
+    // ask for the rest — 805 lines in the base, so TRIP PnL showed RTs whose
+    // costs were older than the newest 300 as «χωρίς κόστος» (principle 2).
+    // Contract: ?offset=<int ≥ 0> & ?limit=<int ≥ 1, above 1000 cut to 1000>;
+    // without limit the page stays 300, as before. The response ALWAYS
+    // carries next_offset: the offset of the next page, or null when this
+    // page is the last. Its presence is how the front tells this Worker from
+    // the old one (which ignores both params and returns {records} only).
+    // limit+1 is asked and the extra row only proves «more» — exact, no
+    // empty trailing call, same probe as handleFacadeGet. id.desc is the
+    // tiebreaker: many lines share a line_date, and without a unique last key
+    // Postgres may order ties differently per page → duplicated/missing rows.
+    // A bad value is a 400, never «ignored → page 1» (principle 1): a client
+    // looping on a silently reset offset would read page 1 forever.
     if (resource === "lines" && method === "GET") {
       const q = url.searchParams;
+      const rawOffset = q.get("offset");
+      const rawLimit = q.get("limit");
+      if (rawOffset && !(/^\d+$/.test(rawOffset) && Number.isSafeInteger(Number(rawOffset)))) {
+        return jsonError("Μη έγκυρο offset — θέλει ακέραιο από 0 και πάνω", 400, origin, env);
+      }
+      if (rawLimit && !(/^\d+$/.test(rawLimit) && Number(rawLimit) >= 1)) {
+        return jsonError("Μη έγκυρο limit — θέλει ακέραιο από 1 και πάνω (πάνω από 1000 κόβεται στο 1000)", 400, origin, env);
+      }
+      const offset = rawOffset ? Number(rawOffset) : 0;
+      const limit = rawLimit ? Math.min(Number(rawLimit), 1e3) : 300;
       const params = new URLSearchParams();
       params.set("select", "*");
       params.set("order", "line_date.desc,id.desc");
-      params.set("limit", "300");
+      params.set("limit", String(limit + 1));
+      if (offset) params.set("offset", String(offset));
       if (q.get("rt_id")) params.append("rt_id", `eq.${q.get("rt_id")}`);
       if (q.get("alloc_status")) params.append("alloc_status", `eq.${q.get("alloc_status")}`);
       let { rows } = await dbSelectRaw(env, "ct_cost_lines", params);
+      // next_offset counts DB rows, before the cash_m filter below: a
+      // non-owner page may hold fewer than `limit` records and still have a
+      // next page. Callers loop on next_offset, never on records.length.
+      const nextOffset = rows.length > limit ? offset + limit : null;
+      if (nextOffset !== null) rows = rows.slice(0, limit);
       if (caller.role !== "owner") {
         rows = rows.filter((r) => r.category !== "cash_m");
       }
-      return jsonOk({ records: rows }, origin, env);
+      return jsonOk({ records: rows, next_offset: nextOffset }, origin, env);
     }
     // ---- [ΣΗΜΑΔΕΜΕΝΗ ΠΡΟΣΘΗΚΗ 24/8, εγκεκριμένη από owner] ----
     // PATCH/DELETE γραμμής κόστους — ΜΟΝΟ owner (COSTS_PERMS), reason
