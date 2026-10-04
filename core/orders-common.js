@@ -87,8 +87,12 @@ const OrdersCommon = {
   // The national rule itself — also called by weekly_natl.js _wnIsDelivered
   // (NAT_LOADS rows carry their own status), so the board and this page can
   // never disagree about «παραδόθηκε» (it was a declared copy until 28/9).
+  // The DATE alone decides (owner 4/10/2026): a written 'Delivered' (copied by
+  // the national_load_follow_order trigger onto VS legs) no longer counts on
+  // its own — the Weekly National shows such a load exactly like an Assigned
+  // one. Measured 4/10: 45 Delivered national loads, all with a past delivery
+  // date; 0 Delivered national orders — no count changes today.
   deliveredByDate(status, deliveryDt) {
-    if (status === 'Delivered') return true;
     if (status === 'Cancelled') return false;
     const t = new Date(deliveryDt || '').getTime();
     return !isNaN(t) && t < Date.now();

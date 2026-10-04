@@ -63,6 +63,13 @@ function seed() {
       nl('recNlX000000000A', NS, '2026-10-08T10:00:00.000Z', Object.assign(own('recTruck000001AA', 'recDriver00001AA'), { Client: 'NS-X cancelled', Status: 'Cancelled' })),
       nl('recNlE000000000A', NS, '2026-10-08T11:00:00.000Z', { Client: 'NS-E pending', 'Source National Order': ['recNatOrderE0001'] }),
       nl('recNlsV00000000A', SN, '2026-10-08T12:00:00.000Z', { Client: 'SN-V delivered no vehicle', Status: 'Delivered' }),
+      // owner 4/10 «(α) Ακριβώς σαν ανατεθειμένο»: twins that differ ONLY in Status
+      nl('recNlTwinAssign0', NS, '2026-10-03T07:00:00.000Z', Object.assign(own('recTruck000002AA', 'recDriver00002AA'), { Client: 'TWIN', Status: 'Assigned' })),
+      nl('recNlTwinDeliv00', NS, '2026-10-03T07:00:00.000Z', Object.assign(own('recTruck000002AA', 'recDriver00002AA'), { Client: 'TWIN', Status: 'Delivered' })),
+      nl('recNlsTwinAssign', SN, '2026-10-03T08:00:00.000Z', Object.assign(own('recTruck000001AA', 'recDriver00001AA'), { Client: 'TWIN-SN', Status: 'Assigned' })),
+      nl('recNlsTwinDeliv0', SN, '2026-10-03T08:00:00.000Z', Object.assign(own('recTruck000001AA', 'recDriver00001AA'), { Client: 'TWIN-SN', Status: 'Delivered' })),
+      // a Delivered load whose delivery time has NOT passed: the date alone decides
+      nl('recNlFutDeliv000', NS, '2026-10-08T13:00:00.000Z', Object.assign(own('recTruck000002AA', 'recDriver00002AA'), { Client: 'FUTURE DELIVERED', Status: 'Delivered' })),
     ],
   };
 }
@@ -418,6 +425,43 @@ SECTIONS.push(async browser => {
     await page.context().close();
   }
   ok([d, dn, t, tn, a, x, xc].every(r => r.errors.length === 0), 'no page errors');
+});
+
+// ── owner 4/10 «(α) Ακριβώς σαν ανατεθειμένο» · Delivered is invisible on the board ──
+SECTIONS.push(async browser => {
+  console.log('\n── owner 4/10 · an auto-Delivered load looks EXACTLY like an Assigned one');
+  const { page, S } = await openBoard(browser);
+  const norm = (html, rowId, recId) => html
+    .split(recId).join('REC')
+    .replace(new RegExp('(wn-row-|wn-ci-|wn-sync-|wn-stops-|wn-grpb-|data-row-id="|,|\\()' + rowId + '\\b', 'g'), '$1ID')
+    .replace(/<div class="wk3-num">\d+/, '<div class="wk3-num">N')
+    .replace(/title="(Άνοδος )?A?\d+"/, 'title="N"').replace(/>A\d+</, '>AN<');
+  const rowHtml = async (recId, sn) => {
+    const rowId = await rowIdOf(page, recId);
+    const sel = sn ? `#wn-sn-${recId}` : `#wn-row-${rowId}`;
+    return norm(await page.$eval(sel, el => el.outerHTML), rowId, recId);
+  };
+  for (const mode of ['quiet', 'details']) {
+    if (mode === 'details') { await page.evaluate(() => _wnToggleDetails()); await page.waitForSelector('#wn-rows'); await page.waitForTimeout(800); }
+    const a = await rowHtml('recNlTwinAssign0'), d = await rowHtml('recNlTwinDeliv00');
+    ok(a.length > 200 && a === d, `ΚΑΘΟΔΟΣ (${mode}): Delivered row HTML === Assigned row HTML (ids aside)` + (a === d ? '' : '\n      A: ' + a.slice(0, 400) + '\n      D: ' + d.slice(0, 400)));
+    const as = await rowHtml('recNlsTwinAssign', true), ds = await rowHtml('recNlsTwinDeliv0', true);
+    ok(as.length > 200 && as === ds, `ΑΝΟΔΟΣ (${mode}): Delivered row HTML === Assigned row HTML (ids aside)`);
+  }
+  const board = await page.$eval('.wn4', el => el.innerText);
+  ok(!/παραδόθηκε|Παραδόθηκε|Delivered/.test(board), 'no «παραδόθηκε»/«Delivered» anywhere in the visible board text');
+  const legend = await page.$eval('#wn-legend', el => el.textContent);
+  ok(/✓ φορτώθηκε \(Status\)/.test(legend) && !/παραδόθηκε/.test(legend), 'legend: «✓ φορτώθηκε (Status)» only');
+  const tally = await page.$$eval('.wn4-foot .t', els => els.map(e => e.innerText).find(t => /πέρασε η ώρα παράδοσης/.test(t)) || '');
+  const expect = await page.evaluate(() => {
+    const all = [...WNATL.data.northsouth, ...WNATL.data.southnorth];
+    return WNATL.rows.filter(r => { const f = all.find(x => x.id === r.orderId)?.fields || {}; const t = Date.parse(f['Delivery DateTime'] || ''); return f.Status !== 'Cancelled' && t < Date.now(); }).length + '/' + WNATL.rows.length;
+  });
+  ok(tally.startsWith(expect), `counter by date only: «${tally.replace(/\s+/g, ' ')}» (expected ${expect})`);
+  ok(await page.evaluate(() => OrdersCommon.deliveredByDate('Delivered', '2026-10-08T16:00:00Z') === false && OrdersCommon.deliveredByDate('Assigned', '2026-10-02T16:00:00Z') === true),
+     'deliveredByDate: a written Delivered with a future date does NOT count; a past date counts whatever the Status');
+  ok(S.errors.length === 0, 'no page errors: ' + S.errors.slice(0, 2).join(' | '));
+  await page.context().close();
 });
 
 (async () => {

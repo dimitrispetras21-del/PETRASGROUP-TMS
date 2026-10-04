@@ -613,6 +613,13 @@ function _wnRowElId(r) { return r.type==='southnorth' ? 'wn-sn-'+r.orderId : 'wn
 // One rule since 28/9/2026: OrdersCommon.deliveredByDate (core/orders-common.js)
 // — the same function the «Παραγγελίες» page uses for national orders, so the
 // board and the invoicing view cannot disagree (it was a declared copy).
+// Owner 4/10/2026 («μπορουν να γινονται αυτοματα παραδοθηκε. απλα να μην
+// φαινεται στο weekly» · «(α) Ακριβώς σαν ανατεθειμένο»): the base DOES write
+// Delivered on national loads now — the trigger national_load_follow_order
+// copies it from the international order onto the VS leg (45 loads, 4/10).
+// So the date alone decides here (the Status shortcut left deliveredByDate),
+// and nothing on this board shows a written Delivered: such a load looks
+// exactly like an Assigned one (no ✓, no tick, same chips, same counters).
 function _wnIsDelivered(row) {
   return OrdersCommon.deliveredByDate(row.status, _wnOrd(row)?.fields?.['Delivery DateTime']);
 }
@@ -743,7 +750,7 @@ function _wnPaint() {
       <span><span class="sw" style="border:1px dashed var(--border)"></span>κενό κελί ανόδου «—» = σύρε μια άνοδο εδώ· αν μείνει κενό μετρά στις «χωρίς ταίριασμα»</span>
       <span><span class="sw" style="background:var(--surface-dark)"></span>δεν αναμένεται σκέλος</span>
       <span>— = δεν υπάρχει σκέλος (μονή διαδρομή)</span>
-      <span><span class="sw" style="border:1px solid var(--ok)"></span>✓ φορτώθηκε / παραδόθηκε (Status)</span>
+      <span><span class="sw" style="border:1px solid var(--ok)"></span>✓ φορτώθηκε (Status)</span>
       <span>PE = ανταλλαγή παλετών · ①② = σειρά σημείων · ⟳ γράφεται · ✓ γράφτηκε · ⚠ ΔΕΝ γράφτηκε</span>
     </div>
 
@@ -810,7 +817,7 @@ function _wnPaint() {
       <span class="t" title="Σκέλη με φορτηγό ή συνεργάτη, και στις δύο κατευθύνσεις"><b>${assignedAll}/${total}</b> ανατεθειμένα</span>
       <button class="t bad" title="Σκέλη χωρίς φορτηγό ΚΑΙ χωρίς συνεργάτη — κλικ: πήγαινε στο πρώτο" onclick="${_jump(_firstRow(r=>!r.saved))}"><b>${pendingAll}/${total}</b> προς ανάθεση</button>
       <button class="t hot" title="Δηλώθηκαν «χρειάζεται τοπικό» και δεν έχουν οδηγό — κλικ: πήγαινε στο πρώτο" onclick="${_jump(_firstRow(r=>r.needsLocal))}"><b>${uncovered}/${total}</b> ακάλυπτα κομμάτια</button>
-      <span class="t" title="Υπολογισμός από το ρολόι, όχι γραμμένο Status — owner 10/8: το «παραδόθηκε» των εθνικών δεν γράφεται στη βάση"><b>${delivered}/${total}</b> πέρασε η ώρα παράδοσης</span>
+      <span class="t" title="Υπολογισμός από το ρολόι — η ώρα παράδοσης πέρασε· δεν διαβάζει Status"><b>${delivered}/${total}</b> πέρασε η ώρα παράδοσης</span>
       <span class="t" title="${localsFailed?'Ο πίνακας τοπικών κινήσεων δεν είναι διαθέσιμος':''}"><b>${localsFailed?'—':(data.locals||[]).length}</b> τοπικές κινήσεις · ${localsFailed?'—':lDrivers.size} οδηγοί</span>
       <span class="m">Ενημερώθηκε ${hhmm(WNATL._loadedAt)}</span>
       <span class="m" id="wn-syncsum"></span>
@@ -1270,7 +1277,9 @@ function _wnExecChip(f, saved){
   if(new Date(ld)>new Date()) return '';
   const st=f['Status']||'';
   if(!saved) return '<span class="wi-exec wi-exec--late" title="Η ώρα φόρτωσης πέρασε χωρίς ανάθεση">⚠ φόρτωση χωρίς ανάθεση</span>';
-  if(st==='Assigned'||st==='Pending') return '<span class="wi-exec wi-exec--stale" title="Η ώρα φόρτωσης πέρασε χωρίς εξέλιξη κατάστασης">⏱ πέρασε η φόρτωση · χωρίς εξέλιξη</span>';
+  // owner 4/10 «(α) Ακριβώς σαν ανατεθειμένο»: an auto-Delivered load gets the
+  // same chip as an Assigned one — no visible difference on this board.
+  if(st==='Assigned'||st==='Pending'||st==='Delivered') return '<span class="wi-exec wi-exec--stale" title="Η ώρα φόρτωσης πέρασε χωρίς εξέλιξη κατάστασης">⏱ πέρασε η φόρτωση · χωρίς εξέλιξη</span>';
   return '';
 }
 // T4 twin: natl filters by LOADING week, so the cross-week blind spot is the
@@ -1588,7 +1597,9 @@ function _wnRowHTML(row, i) {
   // Unknown ≠ 0 (contract #8): no Total Pallets → no «p» at all, never «0 p».
   const pals = f['Total Pallets'];
   const st = f['Status'] || '';
-  const loaded = st === 'In Transit' || st === 'Delivered', delivered = st === 'Delivered';
+  // owner 4/10: a Delivered load looks exactly like an Assigned one — the
+  // «φορτώθηκε» tick is In Transit only, and the delivery card has no ✓.
+  const loaded = st === 'In Transit';
   const loadDt = f['Loading DateTime'] ? _wnFmt(f['Loading DateTime']) : '';
   const delDt  = f['Delivery DateTime'] ? _wnFmt(f['Delivery DateTime']) : '';
 
@@ -1632,7 +1643,7 @@ function _wnRowHTML(row, i) {
         date: delDt, dateTitle: 'Ημ. παράδοσης',
         name: toP.name || escapeHtml(clientLabel) || (isGroup ? 'ΒΕΡΜΙΟΝ ΦΡΕΣ / CROSS-DOCK' : '—'),
         sub: toP.sub || (toP.name && clientLabel ? escapeHtml(clientLabel) : ''),
-        appt: f['Delivery Appointment'], ok: delivered, okTitle: 'Παραδόθηκε (Status: Delivered)',
+        appt: f['Delivery Appointment'],
         chips: _wnCoveredChip(row) + needChip + grpChip + `<span class="wk3-flags">${_wnBadges(f)}${_wnCrossChip(f)}${_wnExecChip(f,row.saved)}</span>`,
         pals,
       });
@@ -1835,13 +1846,13 @@ function _wnSnInlineCell(snRec, rowId) {
   const fromCard = _wnCard({
     date: f['Loading DateTime'] ? _wnFmt(f['Loading DateTime']) : '', dateTitle: 'Ημ. φόρτωσης ανόδου',
     name: fromP.name || (isGroupage ? escapeHtml(f['Name'] || '') : '') || '—', sub: fromP.sub,
-    appt: f['Loading Appointment'], ok: st === 'In Transit' || st === 'Delivered', okTitle: 'Φορτώθηκε (Status: '+escapeHtml(st)+')',
+    appt: f['Loading Appointment'], ok: st === 'In Transit', okTitle: 'Φορτώθηκε (Status: '+escapeHtml(st)+')',
   });
   const toCard = _wnCard({
     date: f['Delivery DateTime'] ? _wnFmt(f['Delivery DateTime']) : '', dateTitle: 'Ημ. παράδοσης',
     name: toP.name || (isGroupage ? 'ΒΕΡΜΙΟΝ ΦΡΕΣ / CROSS-DOCK' : escapeHtml(clientLabel)) || '—',
     sub: toP.sub || (toP.name && clientLabel ? escapeHtml(clientLabel) : ''),
-    appt: f['Delivery Appointment'], ok: st === 'Delivered', okTitle: 'Παραδόθηκε (Status: Delivered)',
+    appt: f['Delivery Appointment'],
     chips: `<span class="wk3-flags">${_wnBadges(f)}</span>`, pals: f['Total Pallets'],
     tail: `<button class="wk3-unm" title="Αφαίρεση ταιριάσματος" onclick="event.stopPropagation();_wnUnmatch(${rowId},'${snRec.id}')">✕</button>`,
   });
@@ -1949,13 +1960,13 @@ function _wnSnRowHTML(row, snNo) {
   const fromCard = _wnCard({
     date: f['Loading DateTime'] ? _wnFmt(f['Loading DateTime']) : '', dateTitle: 'Ημ. φόρτωσης',
     name: fromP.name || (isGroupage ? escapeHtml(f['Name'] || '') : '') || '—', sub: fromP.sub,
-    appt: f['Loading Appointment'], ok: st === 'In Transit' || st === 'Delivered', okTitle: 'Φορτώθηκε (Status: '+escapeHtml(st)+')',
+    appt: f['Loading Appointment'], ok: st === 'In Transit', okTitle: 'Φορτώθηκε (Status: '+escapeHtml(st)+')',
   });
   const toCard = _wnCard({
     date: f['Delivery DateTime'] ? _wnFmt(f['Delivery DateTime']) : '', dateTitle: 'Ημ. παράδοσης',
     name: toP.name || (isGroupage ? 'ΒΕΡΜΙΟΝ ΦΡΕΣ / CROSS-DOCK' : escapeHtml(clientLabel)) || '—',
     sub: toP.sub || (toP.name && clientLabel ? escapeHtml(clientLabel) : ''),
-    appt: f['Delivery Appointment'], ok: st === 'Delivered', okTitle: 'Παραδόθηκε (Status: Delivered)',
+    appt: f['Delivery Appointment'],
     chips: _wnCoveredChip(row) + (row.needsLocal ? `<span class="wn4-chip need">χρειάζεται τοπικό</span>` : '') + `<span class="wk3-flags">${_wnBadges(f)}${_wnCrossChip(f)}${_wnExecChip(f,row.saved)}</span>`,
     pals: f['Total Pallets'],
   });
@@ -2752,7 +2763,8 @@ function _wnExecuted(st) { return st === 'In Transit' || st === 'Delivered'; }
 // the RT trigger handles national legs on the base side — this board makes NO
 // RT calls on purpose; every vehicle write below is marked «LEG FIRST».
 function _wnConfirmExecuted(what) {
-  return confirmAction(`Το φορτίο έχει ήδη εκτελεστεί (σε μεταφορά / παραδόθηκε). ${what} — η κατάσταση μένει ως έχει.\nΤο όχημα μεταφέρεται/σβήνει δρομολόγιο + μισθοδοσία, ακόμη και σε κλειστό δρομολόγιο.`,
+  // No word «παραδόθηκε» here either (owner 4/10: not visible on the Weekly).
+  return confirmAction(`Το φορτίο είναι ήδη σε εκτέλεση. ${what} — η κατάσταση μένει ως έχει.\nΤο όχημα μεταφέρεται/σβήνει δρομολόγιο + μισθοδοσία, ακόμη και σε κλειστό δρομολόγιο.`,
     { title: 'Φορτίο σε εκτέλεση', confirmLabel: 'Συνέχεια' });
 }
 async function _wnUnassignSn(rowId, snId) {
