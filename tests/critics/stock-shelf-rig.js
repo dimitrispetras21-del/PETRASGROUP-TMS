@@ -654,16 +654,19 @@ if (MAIN) (async () => {
     // DELETE goes out BEFORE the vehicle PATCH (the trigger copies a vehicle
     // change onto the whole trip), and the group is cleared too — null.
     F.orders[newB].fields['Group ID'] = 'GI-LEGACY|' + newB;
-    F.rt = { id: 901, code: 'RT-RIG1', legs: [7003, 7103], pg: { recRIGE3000000003: 7003, [newB]: 7103 } };
+    // pg = the order's own «Order No» (019: order_no = orders.id) — what the
+    // shared lookup _wiRtOf reads (main f896b588), not /pallets/gate.
+    const pgE3 = F.no('recRIGE3000000003'), pgB = F.no(newB);
+    F.rt = { id: 901, code: 'RT-RIG1', legs: [pgE3, pgB], pg: { recRIGE3000000003: pgE3, [newB]: pgB } };
     await page.evaluate(async () => { window.rtFindForOrder = window.__rig.rtFind0; invalidateCache(TABLES.ORDERS); await renderWeeklyIntl(); });
     await page.waitForTimeout(1200);
     n0 = F.writes.length;
     await page.evaluate(async () => { const e = WINTL.rows.find(r => r.type === 'export' && r.orderIds.includes('recRIGE3000000003')); await _wiStockReturnLone(e.id); });
     await page.waitForTimeout(1500);
     const wD = writesSince(F, n0);
-    const iDel = wD.findIndex(w => w.m === 'DELETE' && w.table === 'ct_rt_legs' && w.rec === '7103');
+    const iDel = wD.findIndex(w => w.m === 'DELETE' && w.table === 'ct_rt_legs' && w.rec === String(pgB));
     const iVeh = wD.findIndex(w => w.m === 'PATCH' && w.rec === newB && Array.isArray(w.fields.Truck) && !w.fields.Truck.length);
-    ok('d23_leg_delete_before_vehicle_patch', iDel >= 0 && iVeh > iDel && F.rt.legs.join() === '7003'
+    ok('d23_leg_delete_before_vehicle_patch', iDel >= 0 && iVeh > iDel && F.rt.legs.join() === String(pgE3)
       && !wD.some(w => w.m === 'PATCH' && w.rec === 'recRIGE3000000003' && 'Truck' in (w.fields || {})), { iDel, iVeh, legs: F.rt.legs, wD: wD.map(w => w.m + ' ' + w.table + ' ' + w.rec + ' ' + JSON.stringify(w.fields || {})) });
     const pB = F.orders[newB].fields;
     ok('b04_lone_return_clears_group', !('Group ID' in pB) && !pB.Truck && pB.Status === 'Pending' && wD.some(w => w.m === 'PATCH' && w.rec === newB && w.fields['Group ID'] === null), pB);
