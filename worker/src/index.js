@@ -3906,18 +3906,29 @@ async function handleCosts(request, url, origin, env) {
     // Paging (4/10/2026): the batch read stopped at 300 lines with no way to
     // ask for the rest — 805 lines in the base, so TRIP PnL showed RTs whose
     // costs were older than the newest 300 as «χωρίς κόστος» (principle 2).
-    // Contract: ?offset=<int ≥ 0> & ?limit=<int ≥ 1, above 1000 cut to 1000>;
+    // Contract: ?offset=<int ≥ 0> & ?limit=<int ≥ 1, above 999 cut to 999>;
     // without limit the page stays 300, as before. The response ALWAYS
     // carries next_offset: the offset of the next page, or null when this
     // page is the last. Its presence is how the front tells this Worker from
     // the old one (which ignores both params and returns {records} only).
     // limit+1 is asked and the extra row only proves «more» — exact, no
-    // empty trailing call, same probe as handleFacadeGet. id.desc is the
-    // tiebreaker: many lines share a line_date, and without a unique last key
-    // Postgres may order ties differently per page → duplicated/missing rows.
+    // empty trailing call, same probe as handleFacadeGet. The cap is 999, not
+    // 1000, BECAUSE of that probe: PostgREST's db-max-rows is 1000 (measured
+    // live 4/10: limit=1001 returns 1000), so a 1000 page asked 1001, got
+    // 1000, saw no extra row and said next_offset null with lines left —
+    // silent truncation at 1000 (reviewer NO_GO on 0142e44d). limit+1 must
+    // stay ≤ max-rows; lowering max-rows below 1000 breaks this again.
+    // Offset paging is not a snapshot: a line inserted above the window
+    // between two calls repeats a row (the front keeps it once), and a line
+    // DELETED above it shifts the next page up by one, so one line can be
+    // skipped for that read — nothing here or in the front detects that;
+    // the next reload reads it. id.desc is the tiebreaker: many lines share
+    // a line_date, and without a unique last key Postgres may order ties
+    // differently per page → duplicated/missing rows.
     // A bad value is a 400, never «ignored → page 1» (principle 1): a client
     // looping on a silently reset offset would read page 1 forever.
     if (resource === "lines" && method === "GET") {
+      const LINES_MAX_PAGE = 999; // + 1 probe row = PostgREST db-max-rows (1000)
       const q = url.searchParams;
       const rawOffset = q.get("offset");
       const rawLimit = q.get("limit");
@@ -3925,10 +3936,10 @@ async function handleCosts(request, url, origin, env) {
         return jsonError("Μη έγκυρο offset — θέλει ακέραιο από 0 και πάνω", 400, origin, env);
       }
       if (rawLimit && !(/^\d+$/.test(rawLimit) && Number(rawLimit) >= 1)) {
-        return jsonError("Μη έγκυρο limit — θέλει ακέραιο από 1 και πάνω (πάνω από 1000 κόβεται στο 1000)", 400, origin, env);
+        return jsonError(`Μη έγκυρο limit — θέλει ακέραιο από 1 και πάνω (πάνω από ${LINES_MAX_PAGE} κόβεται στο ${LINES_MAX_PAGE})`, 400, origin, env);
       }
       const offset = rawOffset ? Number(rawOffset) : 0;
-      const limit = rawLimit ? Math.min(Number(rawLimit), 1e3) : 300;
+      const limit = rawLimit ? Math.min(Number(rawLimit), LINES_MAX_PAGE) : 300;
       const params = new URLSearchParams();
       params.set("select", "*");
       params.set("order", "line_date.desc,id.desc");

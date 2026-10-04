@@ -2,7 +2,7 @@
 // no offset; the base holds 805, so TRIP PnL read older RTs as «χωρίς κόστος».
 // Contract under test — against worker/src/index.js itself (the deploy source),
 // run in Node with PostgREST stubbed via fetch, like stock-lots.test.mjs:
-//   ?offset=<int ≥ 0>  ?limit=<int ≥ 1, > 1000 → 1000>  (no limit → 300, as before)
+//   ?offset=<int ≥ 0>  ?limit=<int ≥ 1, > 999 → 999>  (no limit → 300, as before)
 //   response { records, next_offset } — next_offset = next page's offset | null
 //   bad offset/limit → 400 in Greek, before any DB call
 //   COSTS_PERMS gate unchanged (dispatcher/warehouse 403)
@@ -55,6 +55,11 @@ const LINES = Array.from({ length: N }, (_, i) => ({
 // A PostgREST stand-in for ct_cost_lines: eq filters, order, limit, offset —
 // and it REFUSES any order other than the deterministic one, so a Worker that
 // drops the tiebreaker fails here instead of passing on a lucky sort.
+// It also caps every answer at db-max-rows = 1000, as the live PostgREST does
+// (measured 4/10/2026: limit=1001 returns 1000). Without the cap this stub
+// passed 0142e44d, whose 1000-page asked 1001, got 1000 and answered
+// next_offset null with lines left (reviewer NO_GO).
+const PG_MAX_ROWS = 1000;
 function pgLines(u, table = LINES) {
   assert.equal(u.searchParams.get('order'), 'line_date.desc,id.desc', 'deterministic order with id tiebreaker');
   let rows = table.slice();
@@ -64,7 +69,8 @@ function pgLines(u, table = LINES) {
   }
   rows.sort((a, b) => (a.line_date < b.line_date ? 1 : a.line_date > b.line_date ? -1 : b.id - a.id));
   const offset = Number(u.searchParams.get('offset') || 0);
-  const limit = Number(u.searchParams.get('limit'));
+  const asked = u.searchParams.get('limit');
+  const limit = Math.min(asked === null ? Infinity : Number(asked), PG_MAX_ROWS);
   return json(rows.slice(offset, offset + limit));
 }
 
@@ -143,17 +149,34 @@ test('offset paging with the default page: 300/300/205, every row once', async (
   assert.equal(new Set(pages.flat()).size, N);
 });
 
-test('limit is clamped to 1000: limit=5000 asks for 1001 and returns all 805 in one page', async () => {
+test('limit is clamped to 999: limit=5000 asks for 1000 (= max-rows) and returns all 805 in one page', async () => {
   const r = await call('owner', '/costs/lines?limit=5000');
   assert.equal(r.status, 200, r.text);
-  assert.equal(linesReads()[0].params.get('limit'), '1001');
+  assert.equal(linesReads()[0].params.get('limit'), '1000');
   assert.equal(r.json.records.length, N);
   assert.equal(r.json.next_offset, null);
   const big = Array.from({ length: 2500 }, (_, i) => ({ ...LINES[0], id: i + 1, line_date: '2026-09-01' }));
   linesTable = big;
   const r2 = await call('owner', '/costs/lines?limit=99999');
-  assert.equal(r2.json.records.length, 1000);
-  assert.equal(r2.json.next_offset, 1000);
+  assert.equal(r2.json.records.length, 999);
+  assert.equal(r2.json.next_offset, 999);
+});
+
+test('more lines than max-rows (1000): limit=1000 still reaches every line — the probe row fits under the cap', async () => {
+  // 1001 and 2500 lines: the shapes where a 1000-page used to stop with
+  // next_offset null (1001 = one line past the cap; the base had 805 on
+  // 4/10/2026 and grows by ~200 a week).
+  for (const [total, sizes] of [[1001, [999, 2]], [2500, [999, 999, 502]]]) {
+    calls.length = 0;
+    linesTable = Array.from({ length: total }, (_, i) => ({ ...LINES[0], id: i + 1, line_date: '2026-09-01' }));
+    const pages = await readAll('owner', 'limit=1000');
+    assert.deepEqual(pages.map((p) => p.length), sizes, `${total} lines: page sizes`);
+    const all = pages.flat();
+    assert.equal(new Set(all).size, total, `${total} lines: every line exactly once`);
+    for (const c of linesReads()) {
+      assert.ok(Number(c.params.get('limit')) <= PG_MAX_ROWS, `asked limit ${c.params.get('limit')} > max-rows ${PG_MAX_ROWS}: the probe row would be cut`);
+    }
+  }
 });
 
 test('filters still apply together with paging (rt_id, alloc_status)', async () => {
@@ -180,6 +203,7 @@ test('bad offset/limit → 400 in Greek, before any DB call — never «ignored,
     assert.equal(r.status, 400, q);
     assert.match(r.json.error, /[Α-Ωα-ωά-ώ]/, `${q}: Greek message`);
     assert.match(r.json.error, new RegExp(names), `${q}: names the bad parameter`);
+    if (names === 'limit') assert.match(r.json.error, /πάνω από 999 κόβεται στο 999/, `${q}: states the real cap`);
     assert.equal(linesReads().length, 0, `${q}: no DB call`);
   }
 });
