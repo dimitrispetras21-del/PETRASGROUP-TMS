@@ -17,22 +17,13 @@ var __defProp = Object.defineProperty;
 var __name = (target, value) => __defProp(target, "name", { value, configurable: true });
 
 // src/lib/cors.js
-// ONE source for the CORS allow-lists (review B 23/9 P4): corsHeaders and preflightRefusal read these.
-var CORS_ALLOWED_HEADERS = ["Content-Type", "Authorization", "x-tms-req", "x-tms-app"];
-function allowedOrigins(env) {
-  return (env.ALLOWED_ORIGIN || "").split(",").map((s) => s.trim()).filter(Boolean);
-}
 function corsHeaders(origin, env) {
-  const allowlist = allowedOrigins(env);
+  const allowlist = (env.ALLOWED_ORIGIN || "").split(",").map((s) => s.trim()).filter(Boolean);
   const allowed = allowlist.includes(origin) ? origin : "";
   return {
     "Access-Control-Allow-Origin": allowed,
     "Access-Control-Allow-Methods": "GET, POST, PATCH, DELETE, OPTIONS",
-    // x-tms-req / x-tms-app: Level A correlation (feat/tms-auditor). The front only sends them after it
-    // has SEEN x-tms-worker-req on a response of this page load, so an older Worker (or a rollback) never
-    // receives a header it does not allow — a preflight failure would block EVERY request.
-    "Access-Control-Allow-Headers": CORS_ALLOWED_HEADERS.join(", "),
-    "Access-Control-Expose-Headers": "x-tms-worker-req",
+    "Access-Control-Allow-Headers": "Content-Type, Authorization",
     "Access-Control-Max-Age": "86400",
     "Vary": "Origin"
   };
@@ -305,7 +296,7 @@ async function auditMany(env, entries) {
   if (!entries || !entries.length) return;
   try {
     const now = (/* @__PURE__ */ new Date()).toISOString();
-    await insertWithReqId(env, "audit_log", entries.map((entry) => ({
+    await dbInsertMany(env, "audit_log", entries.map((entry) => ({
       actor: entry.actor,
       role: entry.role,
       action: entry.action,
@@ -314,7 +305,7 @@ async function auditMany(env, entries) {
       before_data: entry.before ? JSON.stringify(entry.before) : null,
       after_data: entry.after ? JSON.stringify(entry.after) : null,
       created_at: now
-    })), true);
+    })));
   } catch (e) {
     console.error("AUDIT BATCH WRITE FAILED", entries[0]?.action, entries[0]?.table, e.message);
   }
@@ -399,12 +390,8 @@ async function handleAppErrorPost(request, origin, env) {
     user_agent: clampStr(body.user_agent, CLAMPS.user_agent),
     sw_version: clampStr(body.sw_version, CLAMPS.sw_version)
   };
-  const reqOf = sanitizeReqId(body.req);
-  // kind: 'offline' = an informational line (the offline queue was flushed), NOT an error — review B 23/9 #5.
-  const kind = body.kind === "offline" ? "offline" : null;
-  const extra = reqOf || caller || kind ? { req_id: reqOf, role: caller ? caller.role || null : null, ...(kind ? { kind } : {}) } : null;
   try {
-    await insertWithReqId(env, "app_errors", [row], false, extra);
+    await dbInsert(env, "app_errors", row);
     return jsonOk({ ok: true }, origin, env, 201);
   } catch (e) {
     console.error("APP ERROR INSERT FAILED", e.message);
@@ -562,8 +549,8 @@ var PERMISSIONS = {
     // DELIBERATELY ABSENT (denied by the no-blanket rule): fuel (cost table),
     // and every P&L/cost table to come (trip_costs, driver_ledger). Do NOT add
     // `fuel` here, dispatchers seeing fuel spend is exactly the R-04 leak.
-    orders: ["GET", "POST", "PATCH"],
-    national_orders: ["GET", "POST", "PATCH"],
+    orders: ["GET", "POST", "PATCH", "DELETE"],
+    national_orders: ["GET", "POST", "PATCH", "DELETE"],
     // groupage_lines: NO DELETE, ever (the never-delete rule, gotcha #5 / spec §6).
     // The DB also refuses it (no service_role DELETE grant + ON DELETE RESTRICT);
     // this keeps the app layer honest too. Status flips Assigned<->Unassigned.
@@ -597,13 +584,10 @@ var PERMISSIONS = {
     // weekly_intl/weekly_natl/daily_ops and its own docstring says "called when a
     // dispatcher clears/unassigns a partner". DELETE is granted because
     // unassigning is a real dispatcher action (facade soft-delete).
-    // ⚠️ R-04 TENSION, deliberate: this table carries margin data (Gross Profit,
-    // Margin Percent), which dispatchers otherwise must not see. It is granted
-    // anyway because the dispatcher must set Partner Rate to do the job, and the
-    // margin is derived from it. If the client wants the margin hidden from
-    // dispatchers, the fix is field-level (drop `computed` from the response by
-    // role), NOT revoking the table, which would break assignment entirely.
-    // Raise at scoping alongside the pallet-ledger RBAC question.
+    // R-04: this table carries margin data (Client Revenue, Gross Profit,
+    // Margin Percent). The table stays granted because the dispatcher must set
+    // Partner Rate; since 4/10/2026 those three labels are stripped for this
+    // role field-level — see PL_READERS / cfgForRole next to tableConfig.
     partner_assignments: ["GET", "POST", "PATCH", "DELETE"],
     // clients:'full' -> dispatchers manage the reference "clients" section today.
     clients: ["GET", "POST", "PATCH", "DELETE"],
@@ -659,24 +643,9 @@ function can(role, table, method) {
 __name(can, "can");
 
 // src/middleware/audit.js
-// Level A: env.__tmsReq is set per request by the fetch wrapper (Object.create(env)), so the 32 audit()
-// call sites need no change. If migration 049 has not run yet PostgREST rejects the unknown column: retry
-// WITHOUT it and say so loudly — the correlation id must never cost us the audit row itself (principle 1).
-async function insertWithReqId(env, table, rows, many, extra) {
-  const add = extra || (env.__tmsReq ? { req_id: env.__tmsReq } : null);
-  const withReq = add ? rows.map((r) => ({ ...r, ...add })) : rows;
-  try {
-    return many ? await dbInsertMany(env, table, withReq) : await dbInsert(env, table, withReq[0]);
-  } catch (e) {
-    if (!add || !/req_id|'role'|'kind'/.test(String(e && e.message))) throw e;
-    console.error("REQ_ID COLUMN MISSING — run migration 049", table);
-    return many ? await dbInsertMany(env, table, rows) : await dbInsert(env, table, rows[0]);
-  }
-}
-__name(insertWithReqId, "insertWithReqId");
 async function audit(env, entry) {
   try {
-    await insertWithReqId(env, "audit_log", [{
+    await dbInsert(env, "audit_log", {
       actor: entry.actor,
       role: entry.role,
       action: entry.action,
@@ -685,7 +654,7 @@ async function audit(env, entry) {
       before_data: entry.before ? JSON.stringify(entry.before) : null,
       after_data: entry.after ? JSON.stringify(entry.after) : null,
       created_at: (/* @__PURE__ */ new Date()).toISOString()
-    }], false);
+    });
   } catch (e) {
     console.error("AUDIT WRITE FAILED", entry.action, entry.table, e.message);
   }
@@ -1539,6 +1508,16 @@ var TABLES = {
   tblGHCCsTMqAy4KR2: {
     name: "NATIONAL ORDERS",
     pg: "national_orders",
+    // National order number «Ε-<id>» (owner 27/9: «αριθμός παραγγελίας πολύ
+    // σημαντικός και για εθνικών»; go 3/10). Same mechanism as ORDERS/019: the
+    // view national_orders_with_derived (migration 054) aliases id → order_no,
+    // because the facade keeps the raw `id` internal and a label mapped to "id"
+    // came back null (7/9). DEPLOY ONLY AFTER 054 RAN: every national read goes
+    // through the view, so a missing view breaks the whole national list.
+    readView: "national_orders_with_derived",
+    computed: {
+      "Order No": "order_no"
+    },
     reverseLinks: { "ORDER STOPS": { table: "order_stops", column: "national_order_id" } },
     fields: {
       Direction: "direction",
@@ -1852,6 +1831,10 @@ var TABLES = {
       "Gross Profit": "gross_profit",
       "Margin Percent": "margin_percent"
     },
+    // P&L labels: returned only to PL_READERS (see cfgForRole). Owner lock
+    // 23/8: «dispatcher δεν βλέπει P&L». Until 4/10/2026 every dispatcher read
+    // of this table carried all three (ledger A7, Sotiris report SA-11).
+    plOnly: ["Client Revenue", "Gross Profit", "Margin Percent"],
     links: {
       Partner: { column: "partner_id", table: "partners" },
       Order: { column: "order_id", table: "orders" },
@@ -1902,6 +1885,31 @@ function tableConfig(tableId) {
   return TABLES[tableId] || null;
 }
 __name(tableConfig, "tableConfig");
+// P&L REDACTION BY ROLE (4/10/2026, ledger A7 / Sotiris report SA-11).
+// Owner lock 23/8: «Dispatcher δεν βλέπει P&L — περιθώρια, κέρδη, κόστη».
+// The facade had no per-field filter, so the dispatcher's table grant on
+// partner_assignments (needed to set Partner Rate) also served Client
+// Revenue / Gross Profit / Margin Percent on every read. Revoking the table
+// would break assignment, so the P&L labels are removed from the table
+// config for every role NOT listed here: the label never reaches the select,
+// the filter (-> 422) or the computed re-read after a write, and
+// toAirtableRecord only emits mapped columns, so `select=*` on the view
+// cannot leak it. A write naming one is dropped and logged, as before.
+// Allow-list, not deny-list (principle 5): a new role starts WITHOUT P&L.
+// The list mirrors the front end's costs != 'none' (config.js PERMS) — the
+// same gate orders_week_view.js uses to hide «Client Revenue».
+var PL_READERS = ["owner", "management", "accountant"];
+function cfgForRole(cfg, role) {
+  if (!cfg || !cfg.plOnly || PL_READERS.includes(role)) return cfg;
+  const strip = (map) => {
+    if (!map) return map;
+    const out = { ...map };
+    for (const label of cfg.plOnly) delete out[label];
+    return Object.keys(out).length ? out : void 0;
+  };
+  return { ...cfg, fields: strip(cfg.fields) || {}, computed: strip(cfg.computed), aliases: strip(cfg.aliases), plRedacted: cfg.plOnly };
+}
+__name(cfgForRole, "cfgForRole");
 function columnToLabel(cfg) {
   const out = {};
   for (const [label, column] of Object.entries(cfg.fields)) {
@@ -2108,6 +2116,17 @@ function applyFilter(formula, labelToColumn, params) {
   params.append(r.column, r.expr);
 }
 __name(applyFilter, "applyFilter");
+// `{__col:<column>}` is internal syntax: preResolveLinkTerms emits it for link
+// terms it has already resolved. A client formula must name fields by label
+// only (labels are what the per-role table config controls), so the internal
+// form is not accepted from clients (4/10/2026). Checked on the raw client
+// formula, BEFORE preResolveLinkTerms adds its own terms.
+function assertClientFormula(formula) {
+  if (/__col/i.test(formula || "")) {
+    throw new UnsupportedFilter("Internal filter syntax is not accepted from clients");
+  }
+}
+__name(assertClientFormula, "assertClientFormula");
 
 // src/lib/facade-links.js
 async function resolveIdsToLegacy(env, dbSelectRaw2, parentTable, ids) {
@@ -2250,7 +2269,7 @@ __name(toAirtableRecord, "toAirtableRecord");
 async function handleFacadeGet(request, tableId, origin, env, ctx) {
   const caller = await getCaller(request, env);
   if (!caller) return jsonError("Unauthorized", 401, origin, env);
-  const cfg = tableConfig(tableId);
+  const cfg = cfgForRole(tableConfig(tableId), caller.role);
   if (!cfg) {
     return jsonError("Table not available on this backend", 404, origin, env);
   }
@@ -2272,7 +2291,9 @@ async function handleFacadeGet(request, tableId, origin, env, ctx) {
       const col = cfg.fields[label] || (cfg.computed || {})[label];
       if (col) cols.push(col);
       else if (cfg.links && cfg.links[label]) cols.push(cfg.links[label].column);
-      else if (!(cfg.reverseLinks && cfg.reverseLinks[label])) unknownRead.push(label);
+      // A redacted P&L label is known, just not this role's — not an
+      // unknown-field event (entity.js partner stats requests two of them).
+      else if (!(cfg.reverseLinks && cfg.reverseLinks[label]) && !(cfg.plRedacted || []).includes(label)) unknownRead.push(label);
     }
     if (unknownRead.length) {
       logUnknownFields(env, ctx, {
@@ -2291,6 +2312,7 @@ async function handleFacadeGet(request, tableId, origin, env, ctx) {
   let formula = q.get("filterByFormula");
   if (formula) {
     try {
+      assertClientFormula(formula);
       formula = await preResolveLinkTerms(formula, cfg, env);
       applyFilter(formula, filterFieldMap(cfg), params);
     } catch (e) {
@@ -2333,7 +2355,13 @@ async function handleFacadeGet(request, tableId, origin, env, ctx) {
       path: url.pathname
     }, unknownSort);
   }
-  if (orderParts.length) params.set("order", orderParts.join(","));
+  // Deterministic paging (29/9/2026): limit/offset over an unordered (or
+  // tie-ordered) relation lets Postgres return a different row order per page,
+  // so rows were DUPLICATED across pages and others silently MISSING (measured:
+  // 228 rows over 3 pages -> 23 duplicates, 23 missing). id is unique on every
+  // facade relation, so it is always the last tiebreaker.
+  orderParts.push("id.asc");
+  params.set("order", orderParts.join(","));
   const pageSize = Math.min(parseInt(q.get("pageSize"), 10) || MAX_PAGE, MAX_PAGE);
   const startOffset = parseInt(q.get("offset"), 10) || 0;
   params.set("limit", String(pageSize + 1));
@@ -2419,7 +2447,7 @@ __name(preResolveLinkTerms, "preResolveLinkTerms");
 async function authorizeWrite(request, tableId, method, origin, env) {
   const caller = await getCaller(request, env);
   if (!caller) return { res: jsonError("Unauthorized", 401, origin, env) };
-  const cfg = tableConfig(tableId);
+  const cfg = cfgForRole(tableConfig(tableId), caller.role);
   if (!cfg) return { res: jsonError("Table not available on this backend", 404, origin, env) };
   if (!can(caller.role, cfg.pg, method)) {
     return { res: jsonError("Forbidden", 403, origin, env) };
@@ -2708,9 +2736,11 @@ __name(facadeBatchCreate, "facadeBatchCreate");
 // δεκάδες SELECT.
 //
 // Η αποτυχία της ανάγνωσης ΔΕΝ μπλοκάρει την ενημέρωση: το «πριν» είναι
-// τεκμηρίωση, όχι προϋπόθεση. Γυρίζει null, γράφεται console.error, και η
-// γραμμή του audit μπαίνει όπως έμπαινε μέχρι σήμερα — ποτέ χαμένη εγγραφή
-// χρήστη επειδή δεν διαβάστηκε το ιστορικό.
+// τεκμηρίωση, όχι προϋπόθεση. Γυρίζει undefined (≠ null = «δεν βρέθηκε»),
+// γράφεται console.error, και η γραμμή του audit μπαίνει όπως έμπαινε μέχρι
+// σήμερα — ποτέ χαμένη εγγραφή χρήστη επειδή δεν διαβάστηκε το ιστορικό.
+// ΜΙΑ εξαίρεση (3/10): η σήμανση τιμολόγησης, που ο έλεγχός της (invoiceMarkError)
+// ΧΡΕΙΑΖΕΤΑΙ το «πριν» — βλ. invoiceNeedsBefore.
 //
 // ΧΩΡΙΣ φίλτρο deleted_at: το dbUpdate παρακάτω δεν φιλτράρει ούτε αυτό, και
 // το «πριν» πρέπει να είναι η γραμμή που ΟΝΤΩΣ ενημερώνεται.
@@ -2724,7 +2754,7 @@ async function readRowBefore(env, table, recId) {
     return rows[0] || null;
   } catch (e) {
     console.error(`AUDIT before-read failed ${table} ${recId}`, e.message);
-    return null;
+    return void 0;
   }
 }
 __name(readRowBefore, "readRowBefore");
@@ -2807,7 +2837,7 @@ __name(handleFacadeBatchUpdate, "handleFacadeBatchUpdate");
 async function handleFacadeGetOne(request, tableId, recId, origin, env) {
   const caller = await getCaller(request, env);
   if (!caller) return jsonError("Unauthorized", 401, origin, env);
-  const cfg = tableConfig(tableId);
+  const cfg = cfgForRole(tableConfig(tableId), caller.role);
   if (!cfg) return jsonError("Table not available on this backend", 404, origin, env);
   if (!can(caller.role, cfg.pg, "GET")) return jsonError("Forbidden", 403, origin, env);
   const params = new URLSearchParams();
@@ -2868,6 +2898,17 @@ function invoiceMarkError(table, patch, before) {
   return null;
 }
 __name(invoiceMarkError, "invoiceMarkError");
+// The guard above reads the row as it was. When that read FAILED (not «not
+// found»), a patch that marks an order invoiced or sets its ERP number used
+// to pass the guard unchecked (fail-open, audit 28/9) and reach Postgres,
+// whose 043 trigger answered with a bare 500. Such a patch now waits for a
+// readable row (503, retry). Price-only edits still pass: the owner fills
+// prices daily, and the 043 trigger guards an invoiced row's price itself.
+function invoiceNeedsBefore(table, patch) {
+  if (table !== "orders" && table !== "national_orders") return false;
+  return patch.invoiced === true || "invoice_number" in patch;
+}
+__name(invoiceNeedsBefore, "invoiceNeedsBefore");
 async function handleFacadeUpdate(request, tableId, recId, origin, env, ctx) {
   const { res, caller, cfg } = await authorizeWrite(request, tableId, "PATCH", origin, env);
   if (res) return res;
@@ -2895,6 +2936,9 @@ async function handleFacadeUpdate(request, tableId, recId, origin, env, ctx) {
   }
   // Διαβάζεται ΠΡΙΝ το dbUpdate — μετά δεν υπάρχει τρόπος να ανακτηθεί.
   const before = await readRowBefore(env, cfg.pg, recId);
+  if (before === void 0 && invoiceNeedsBefore(cfg.pg, patch)) {
+    return jsonError("Η τιμολόγηση δεν επαληθεύτηκε (η παραγγελία δεν διαβάστηκε) — ξαναδοκίμασε", 503, origin, env);
+  }
   const invErr = invoiceMarkError(cfg.pg, patch, before);
   if (invErr) return jsonError(invErr, 422, origin, env);
   let updated;
@@ -2913,7 +2957,7 @@ async function handleFacadeUpdate(request, tableId, recId, origin, env, ctx) {
     action: "update",
     table: cfg.pg,
     recordId: recId,
-    before,
+    before: before ?? null,
     after: updated
   });
   const record = await shapeOneWithLinks(updated, cfg, env);
@@ -5119,87 +5163,12 @@ async function handlePrintPdf(request, url, origin, env, ctx) {
 __name(handlePrintPdf, "handlePrintPdf");
 
 var FACADE_PATH = /^\/v0\/[^/]+\/([^/]+)(?:\/([^/]+))?\/?$/;
-// Level A helpers. A req id is 8–32 [a-z0-9] + "-" + attempt (1..99) or "q" (offline replay). Anything else
-// is dropped: the header is client-controlled and ends up in logs and in audit_log.
-function sanitizeReqId(v) {
-  return typeof v === "string" && /^[a-z0-9]{8,32}-(?:[0-9]{1,2}|q)$/i.test(v) ? v : null;
-}
-__name(sanitizeReqId, "sanitizeReqId");
-var REQ_ACTION = { GET: "read", POST: "create", PATCH: "update", DELETE: "delete" };
-function preflightRefusal(request, env) {
-  const origin = request.headers.get("Origin") || "";
-  if (origin && !allowedOrigins(env).includes(origin)) return "preflight-refused: origin";
-  const asked = (request.headers.get("Access-Control-Request-Headers") || "").toLowerCase().split(",").map((s) => s.trim()).filter(Boolean);
-  const allowedLc = CORS_ALLOWED_HEADERS.map((h) => h.toLowerCase());
-  const bad = asked.filter((h) => !allowedLc.includes(h));
-  // header NAMES only (they are protocol tokens, not user data), at most 5
-  return bad.length ? "preflight-refused: headers " + bad.slice(0, 5).join(",").slice(0, 80) : null;
-}
-__name(preflightRefusal, "preflightRefusal");
-function reqLineOf(request, req, status, t0, role, err, alwaysErr) {
-  const url = new URL(request.url);
-  const m = url.pathname.match(FACADE_PATH);
-  const cfg = m ? TABLES[m[1]] : null;
-  const app = request.headers.get("x-tms-app");
-  const line = {
-    kind: "req", v: 1, req, method: request.method, path: url.pathname, status, ms: Date.now() - t0, role,
-    table: cfg ? cfg.pg : (url.pathname.match(/^\/(costs|pallets|docs|print|performance|app-errors|auth|audit|health|api|v1)\b/) || [])[1] || null,
-    action: REQ_ACTION[request.method] || null,
-    rec: m && m[2] ? m[2].slice(0, 40) : null,
-    app: typeof app === "string" && /^[0-9a-z._-]{1,20}$/i.test(app) ? app : null
-  };
-  if (err && (status >= 500 || alwaysErr)) line.err = err;
-  return line;
-}
-__name(reqLineOf, "reqLineOf");
-function logReqLine(request, req, status, t0, role, err, alwaysErr) {
-  try { console.log(JSON.stringify(reqLineOf(request, req, status, t0, role, err, alwaysErr))); } catch (_) { /* logging never breaks a request */ }
-}
-__name(logReqLine, "logReqLine");
 var ORDERS_TABLE_ID = "tblgHlNmLBH3JTdIM";
 var index_default = {
   // ctx was never declared here — the runtime always passes it. It carries
   // waitUntil, which the unknown-field logger needs so its RPC survives the
   // response without ever blocking it.
-  // Level A (feat/tms-auditor): ONE JSON line per request — kind:"req" — for EVERY route (facade, /costs,
-  // /pallets, /print, /audit, /app-errors…). The role lookup (a second JWT verify) and the line itself run in
-  // ctx.waitUntil, i.e. AFTER the response is returned — review B 23/9 #3: the first version did both before
-  // returning, contrary to its own comment. NEVER logged: Authorization, cookies, bodies, query strings,
-  // usernames, client names. The first such line in Workers Logs is also the proof that console.* reaches
-  // Cloudflare after invocation_logs=false (22/9: 0 cf-worker-log in 24h — unverified until it appears).
-  // OPTIONS: logged ONLY when the preflight would be refused (origin or requested header not allowed) —
-  // successful preflights are ~half the volume and say nothing; a refused one blocks EVERY request of a page.
   async fetch(request, env, ctx) {
-    const t0 = Date.now();
-    const req = sanitizeReqId(request.headers.get("x-tms-req"));
-    const renv = Object.create(env, { __tmsReq: { value: req } });
-    const later = (p) => { if (ctx && typeof ctx.waitUntil === "function") ctx.waitUntil(p); else return p; };
-    let res;
-    try {
-      res = await index_default._route(request, renv, ctx);
-    } catch (e) {
-      logReqLine(request, req, 500, t0, null, String(e && e.message || e).slice(0, 120));
-      throw e;
-    }
-    if (request.method === "OPTIONS") {
-      const refused = preflightRefusal(request, env);
-      if (refused) logReqLine(request, req, res.status, t0, null, refused, true);
-      return res;
-    }
-    const out = new Response(res.body, res);
-    // Capability announcement for the front (core/api.js): a TIMESTAMP, not a flag — the front accepts it only
-    // if fresh (±10′), so a stale/cached response can never switch the header on (review B 23/9 #4).
-    out.headers.set("x-tms-worker-req", String(Math.floor(Date.now() / 1e3)));
-    const status = out.status;
-    const logged = later((async () => {
-      let role = null;
-      try { const c = await getCaller(request, env); role = c ? c.role || null : null; } catch (_) { role = null; }
-      logReqLine(request, req, status, t0, role, null);
-    })());
-    if (logged) await logged;                                   // no ctx (tests/local): log inline
-    return out;
-  },
-  async _route(request, env, ctx) {
     const origin = request.headers.get("Origin") || "";
     const cors = corsHeaders(origin, env);
     const url = new URL(request.url);

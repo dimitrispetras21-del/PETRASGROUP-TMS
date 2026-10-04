@@ -48,3 +48,21 @@ test('the two 21/8 rows (invoiced, no number) stay editable — only the transit
 test('unknown record (before=null) → the 404 path decides, not this guard', () => {
   assert.strictEqual(invoiceMarkError('orders', { invoiced: true }, null), null);
 });
+
+// invoiceNeedsBefore — when the «before» read FAILED (undefined, not «not
+// found»), only a patch that marks invoiced or sets the ERP number is refused
+// (503, retry); price-only edits still pass (3/10, audit 28/9 fail-open).
+const m2 = src.match(/function invoiceNeedsBefore\(table, patch\) \{[\s\S]*?\n\}\n/);
+assert.ok(m2, 'invoiceNeedsBefore not found in worker/src/index.js');
+const invoiceNeedsBefore = new Function(m2[0] + '\nreturn invoiceNeedsBefore;')();
+
+test('unreadable row: marking invoiced / setting the ERP number waits; price and other edits pass', () => {
+  assert.strictEqual(invoiceNeedsBefore('orders', { invoiced: true, invoice_number: 'ΤΠΥ-1' }), true);
+  assert.strictEqual(invoiceNeedsBefore('national_orders', { invoice_number: 'ΤΠΥ-1' }), true);
+  assert.strictEqual(invoiceNeedsBefore('orders', { price: 1200 }), false, 'owner fills prices daily');
+  assert.strictEqual(invoiceNeedsBefore('orders', { invoiced: false }), false, 'un-marking passes');
+  assert.strictEqual(invoiceNeedsBefore('clients', { invoiced: true }), false);
+  // the handler distinguishes the two «before» values
+  assert.ok(/before === void 0 && invoiceNeedsBefore\(cfg\.pg, patch\)/.test(src), 'handler refuses only on a FAILED read');
+  assert.ok(/return void 0;\s*\}\s*\}\s*__name\(readRowBefore/.test(src), 'readRowBefore returns undefined on failure');
+});
