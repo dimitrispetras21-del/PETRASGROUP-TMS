@@ -115,6 +115,25 @@ function _wnPulseRow(rowId) {
 function _wnCurrentWeek() { return TmsWeek.current(); }
 function _wnWeekStart(w)  { return TmsWeek.start(w); }
 
+// §4 #3 (WN-03, 4/10/2026): the server window above is not the week — W41
+// showed load 120 (Fri 2/10, already Delivered) as a «ΠΑΡΑΣΚΕΥΗ 02/10» panel at
+// the bottom, every week the same. Membership now follows the board's own day
+// key (_wnRowKey: first loading, else delivery) on the TmsWeek Saturday–Friday.
+// A round trip lives in the week of its ΚΑΘΟΔΟΣ row: an ΑΝΟΔΟΣ matched to a
+// ΚΑΘΟΔΟΣ of this week stays even if it loads on the next Saturday, and an
+// ΑΝΟΔΟΣ already shown under a ΚΑΘΟΔΟΣ of another week is not repeated here
+// as an «unmatched» row.
+function _wnCutToWeek(wStart) {
+  const wKey = toLocalDate(wStart);
+  const weekOf = r => TmsWeek.startOfDate(toLocalDate(r.fields['Loading DateTime'] || r.fields['Delivery DateTime'] || ''));
+  const nsAll = WNATL.data.northsouth;
+  WNATL.data.northsouth = nsAll.filter(r => weekOf(r) === wKey);
+  const keptPair  = new Set(WNATL.data.northsouth.map(r => r.fields['Matched Load']).filter(Boolean));
+  const otherPair = new Set(nsAll.filter(r => weekOf(r) !== wKey).map(r => r.fields['Matched Load']).filter(Boolean));
+  WNATL.data.southnorth = WNATL.data.southnorth.filter(r =>
+    keptPair.has(r.id) || (weekOf(r) === wKey && !otherPair.has(r.id)));
+}
+
 /* ── CSS moved to assets/style.css ── */
 
 /* ── ENTRY POINT ──────────────────────────────────────────────────── */
@@ -150,7 +169,11 @@ async function _wnLoadAll() {
   const wStart = _wnWeekStart(WNATL.week);
   const wEnd   = new Date(wStart); wEnd.setDate(wStart.getDate() + 6);
   const fmt    = d => toLocalDate(d);
-  const filter = `AND(IS_AFTER({Loading DateTime},'${fmt(new Date(wStart.getTime()-86400000))}'),IS_BEFORE({Loading DateTime},'${fmt(new Date(wEnd.getTime()+86400000))}'))`;
+  // The server window is wider than the week on purpose (the Worker compares
+  // timestamps in UTC): it already took in the previous Friday, and since
+  // 4/10/2026 it also takes the Saturday after, so a Friday ΚΑΘΟΔΟΣ can find
+  // its Saturday ΑΝΟΔΟΣ. The week itself is cut below, after the split.
+  const filter = `AND(IS_AFTER({Loading DateTime},'${fmt(new Date(wStart.getTime()-86400000))}'),IS_BEFORE({Loading DateTime},'${fmt(new Date(wEnd.getTime()+2*86400000))}'))`;
 
   // Ref data (cached) + orders in parallel
   const [, all, locals] = await Promise.all([
@@ -200,6 +223,7 @@ async function _wnLoadAll() {
   WNATL.data.southnorth = all
     .filter(r => r.fields['Direction'] === 'South→North')
     .sort((a,b) => (a.fields['Loading DateTime']||'').localeCompare(b.fields['Loading DateTime']||''));
+  _wnCutToWeek(wStart);
   WNATL.data.clLoads = [];
 
   // Τοπικές κινήσεις: ταξινομημένες ανά μέρα και σειρά μέσα στη μέρα (Δ7).
