@@ -117,11 +117,23 @@ INSERT INTO monitoring.checks (id, title, flows, sql_text, ids_sql, entity_table
  AND NOT EXISTS (SELECT 1 FROM groupage_lines g WHERE g.national_order_id=n.id AND g.deleted_at IS NULL)$m$, $m$SELECT coalesce(array_agg(x ORDER BY x), '{}') FROM (SELECT n.legacy_id AS x FROM national_orders n WHERE n.deleted_at IS NULL AND coalesce(n.status,'')<>'Cancelled' AND n.created_at < now()-interval '15 minutes'
  AND NOT EXISTS (SELECT 1 FROM national_loads l WHERE l.source_national_order_id=n.id AND l.deleted_at IS NULL)
  AND NOT EXISTS (SELECT 1 FROM groupage_lines g WHERE g.national_order_id=n.id AND g.deleted_at IS NULL) LIMIT 50) s$m$, $m$national_orders$m$, $m$>$m$, 0, NULL, $m$P3$m$, $m$hourly$m$, false, $m$Η εθνική παραγγελία δεν εμφανίζεται στο Weekly Εθνικών (ούτε γραμμή groupage ούτε φορτίο).$m$, NULL, $m$national_orders άδειο = ΣΩΣΤΟ (το VS γράφει κατευθείαν στο national_loads, 23/8)· Cancelled.$m$, $m$15′$m$, true, NULL),
-($m$B-43$m$, $m$Ενεργός γύρος με σκέλος χωρίς όχημα$m$, ARRAY[$m$F-15$m$]::text[], $m$SELECT count(DISTINCT r.id) FROM ct_round_trips r JOIN ct_rt_legs l ON l.rt_id=r.id JOIN orders o ON o.id=l.order_id
- WHERE r.status NOT IN ('cancelled','closed','complete') AND o.deleted_at IS NULL AND o.status<>'Cancelled'
- AND o.truck_id IS NULL AND o.partner_id IS NULL$m$, $m$SELECT coalesce(array_agg(x ORDER BY x), '{}') FROM (SELECT DISTINCT r.id::text AS x FROM ct_round_trips r JOIN ct_rt_legs l ON l.rt_id=r.id JOIN orders o ON o.id=l.order_id
- WHERE r.status NOT IN ('cancelled','closed','complete') AND o.deleted_at IS NULL AND o.status<>'Cancelled'
- AND o.truck_id IS NULL AND o.partner_id IS NULL LIMIT 50) s$m$, $m$ct_round_trips$m$, $m$>$m$, 0, NULL, $m$P3$m$, $m$hourly$m$, false, NULL, NULL, NULL, NULL, true, NULL),
+($m$B-43$m$, $m$Σκέλος που παραβιάζει το «πρώτα βγαίνει από το RT, μετά φεύγει το όχημα»$m$, ARRAY[$m$F-15$m$,$m$F-17$m$,$m$F-07$m$,$m$F-08$m$,$m$F-23$m$]::text[], $m$SELECT count(*) FROM ct_rt_legs l JOIN ct_round_trips r ON r.id=l.rt_id
+ LEFT JOIN orders o ON o.id=l.order_id LEFT JOIN national_loads nl ON nl.id=l.nat_load_id
+ WHERE r.status<>'cancelled'
+ AND (coalesce(o.deleted_at, nl.deleted_at) IS NOT NULL OR coalesce(o.status, nl.status, '')='Cancelled'
+  OR (l.order_id IS NOT NULL AND o.truck_id IS NULL AND NOT (coalesce(o.is_partner_trip,false) AND o.partner_id IS NOT NULL)
+   AND EXISTS (SELECT 1 FROM ct_rt_legs l2 JOIN orders o2 ON o2.id=l2.order_id WHERE l2.rt_id=l.rt_id AND l2.id<>l.id AND o2.deleted_at IS NULL
+    AND (o2.truck_id IS NOT NULL OR (coalesce(o2.is_partner_trip,false) AND o2.partner_id IS NOT NULL))))
+  OR (l.nat_load_id IS NOT NULL AND nl.truck_id IS NULL AND NOT (coalesce(nl.is_partner_trip,false) AND nl.partner_id IS NOT NULL)
+   AND EXISTS (SELECT 1 FROM ct_rt_legs l3 WHERE l3.rt_id=l.rt_id AND l3.id<>l.id)))$m$, $m$SELECT coalesce(array_agg(x ORDER BY x), '{}') FROM (SELECT DISTINCT l.rt_id::text AS x FROM ct_rt_legs l JOIN ct_round_trips r ON r.id=l.rt_id
+ LEFT JOIN orders o ON o.id=l.order_id LEFT JOIN national_loads nl ON nl.id=l.nat_load_id
+ WHERE r.status<>'cancelled'
+ AND (coalesce(o.deleted_at, nl.deleted_at) IS NOT NULL OR coalesce(o.status, nl.status, '')='Cancelled'
+  OR (l.order_id IS NOT NULL AND o.truck_id IS NULL AND NOT (coalesce(o.is_partner_trip,false) AND o.partner_id IS NOT NULL)
+   AND EXISTS (SELECT 1 FROM ct_rt_legs l2 JOIN orders o2 ON o2.id=l2.order_id WHERE l2.rt_id=l.rt_id AND l2.id<>l.id AND o2.deleted_at IS NULL
+    AND (o2.truck_id IS NOT NULL OR (coalesce(o2.is_partner_trip,false) AND o2.partner_id IS NOT NULL))))
+  OR (l.nat_load_id IS NOT NULL AND nl.truck_id IS NULL AND NOT (coalesce(nl.is_partner_trip,false) AND nl.partner_id IS NOT NULL)
+   AND EXISTS (SELECT 1 FROM ct_rt_legs l3 WHERE l3.rt_id=l.rt_id AND l3.id<>l.id))) LIMIT 50) s$m$, $m$ct_round_trips$m$, $m$>$m$, 0, NULL, $m$P2$m$, $m$hourly$m$, false, $m$Σκέλος που δεν τρέχει πια με το ταξίδι μένει μέσα του: το RT, το P&L και η μισθοδοσία το μετρούν, και μια αλλαγή οχήματος περνά σε όλο το ταξίδι (μοτίβο RT-1193, 30/9).$m$, $m$Τα ids είναι RT: σε καθένα δες ποιο σκέλος είναι νεκρό ή χωρίς όχημα — βγαίνει από το RT ή ξαναπαίρνει όχημα; Απόφαση owner (ανάγνωση).$m$, $m$Μετρά σκέλη (τα ids είναι τα RT τους), σε κάθε status εκτός από cancelled. Τρεις περιπτώσεις: (α) σκέλος ακυρωμένης/διαγραμμένης παραγγελίας ή φορτίου· (β) παραγγελία χωρίς όχημα δίπλα σε παραγγελία με όχημα· (γ) εθνικό φορτίο χωρίς όχημα σε RT με άλλα σκέλη. Όχημα = φορτηγό ή συνεργάτης με is_partner_trip (ίδιος κανόνας με B-01/033/034). ΔΕΝ μετρούν: RT μίας παραγγελίας που περιμένει νέο όχημα, ταίριασμα που καθαρίστηκε ολόκληρο (owner 4/10: φεύγει και από τις δύο), σκέλος VS που κράτησε το φορτηγό του. Ως το 059a η βάση αντιγράφει το κενό όχημα στις αδελφές παραγγελίες, οπότε το (β) δεν φαίνεται ακόμη.$m$, NULL, true, NULL),
 ($m$B-44$m$, $m$Ταίριασμα εισαγωγής χωρίς σκέλος γύρου$m$, ARRAY[$m$F-16$m$,$m$F-17$m$]::text[], $m$SELECT count(*) FROM orders o WHERE o.deleted_at IS NULL AND o.status<>'Cancelled' AND coalesce(o.matched_import_id,'')<>''
  AND coalesce(o.assigned_at,o.created_at) < now()-interval '15 minutes'
  AND NOT EXISTS (SELECT 1 FROM ct_rt_legs l JOIN ct_round_trips r ON r.id=l.rt_id WHERE l.order_id=o.id AND r.status<>'cancelled')$m$, $m$SELECT coalesce(array_agg(x ORDER BY x), '{}') FROM (SELECT o.legacy_id AS x FROM orders o WHERE o.deleted_at IS NULL AND o.status<>'Cancelled' AND coalesce(o.matched_import_id,'')<>''
