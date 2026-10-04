@@ -504,8 +504,6 @@ function _wnCss() { return `<style id="wn4-css">
 .wn4-chip.srv{color:var(--accent-text);background:var(--surface-sunken);cursor:pointer}
 .wn4-chip.solo{color:var(--text-mid);background:var(--surface-sunken)}
 .wn4 .wk3-assign{display:grid;grid-template-columns:40px 1fr 40px;gap:0;padding:0;align-self:stretch;align-items:center}
-.wn4 .wk3-assign .wk3-prt{justify-self:center;border:1px solid var(--border);border-radius:6px;font-size:12px;padding:4px}
-.wn4 .wk3-assign .wk3-prt.a sup{font-size:11px;font-weight:700}
 .wn4 .wk3-pill{height:auto;min-height:var(--wn4-card);flex-direction:column;justify-content:center;gap:0;line-height:1.2;padding:4px 8px;margin:0 4px;width:auto;font-size:12px;font-weight:600;white-space:normal;overflow:visible;text-align:center;font-variant-numeric:tabular-nums}
 .wn4 .wk3-pill small{font-size:11px;font-weight:400;overflow:visible;text-overflow:clip;white-space:normal}
 .wn4 .wk3-pill.own{background:var(--surface-dark);color:var(--text-on-dark)}
@@ -1631,7 +1629,12 @@ function _wnRowHTML(row, i) {
       });
 
   // ΟΛΟΙ οι handlers αυτούσιοι από τη v3: dragstart, δεξί κλικ (_wnCtx),
-  // popover ανάθεσης, print, και το drop target της ανόδου.
+  // popover ανάθεσης, και το drop target της ανόδου.
+  // §4 #4 (WN-01, 4/10/2026): no order print here (⎙ / ⎙A, and «Εκτύπωση» in
+  // the right-click menus). print.html reads ORDERS by id and every row of
+  // this board is a NATIONAL LOAD, so each click ended in a red «Error» on
+  // the sheet (and its WhatsApp share). Hidden until national printing exists;
+  // the empty <span>s keep the 40px | pill | 40px grid of the cell.
   return `
   <div id="wn-row-${row.id}" data-row-id="${row.id}" class="wk3-row${row.needsLocal?' hot':''}"
     draggable="true"
@@ -1639,9 +1642,9 @@ function _wnRowHTML(row, i) {
     <div class="wk3-num">${i+1}${nDel>1?`<span class="xn" title="${nDel} σημεία παράδοσης">×${nDel}</span>`:''}${row.src==='vs'?'<span class="wn4-src vs" title="Φορτίο Veroia Switch — τα στοιχεία αλλάζουν από το Weekly Διεθνών">VS</span>':row.src==='grp'?'<span class="wn4-src grp" title="Groupage">GRP</span>':''}${_wnSyncSlot('wn-sync-'+row.id)}</div>
     <div class="wk3-leg" style="cursor:pointer" onclick="_wnOpenRow(${row.id})" oncontextmenu="_wnCtx(event,${row.id})">${fromCard}<span class="wn4-arrow">→</span>${toCard}</div>
     <div class="wk3-assign" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click()}" role="button" tabindex="0" onclick="event.stopPropagation();_wnOpenPopover(event,${row.id})">
-      <button class="wk3-prt" title="Εκτύπωση εντολής καθόδου" onclick="event.stopPropagation();_wnPrint(${row.id},'northsouth')">⎙</button>
+      <span></span>
       ${pill}
-      ${sn ? `<button class="wk3-prt a" title="Εκτύπωση εντολής ανόδου" onclick="event.stopPropagation();_wnPrint(${row.id},'southnorth')">⎙<sup>A</sup></button>` : '<span></span>'}
+      <span></span>
     </div>
     <div class="wk3-leg${sn?'':(isOneWay?' bgap':' void')}" id="wn-ci-${row.id}"
          onclick="event.stopPropagation()"
@@ -1925,7 +1928,7 @@ function _wnSnRowHTML(row, snNo) {
     <div class="wk3-num imp" title="Άνοδος ${snNo||''}">A${snNo||''}${row.src==='vs'?'<span class="wn4-src vs" title="Φορτίο Veroia Switch — τα στοιχεία αλλάζουν από το Weekly Διεθνών">VS</span>':row.src==='grp'?'<span class="wn4-src grp" title="Groupage">GRP</span>':''}${_wnSyncSlot('wn-sync-'+row.id)}</div>
     <div class="wk3-leg void"><div class="wn4-dark" title="Δεν αναμένεται σκέλος καθόδου"></div></div>
     <div class="wk3-assign" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click()}" role="button" tabindex="0" onclick="event.stopPropagation();_wnOpenSnPopover(event,'${ord.id}',${row.id})">
-      <button class="wk3-prt" title="Εκτύπωση εντολής" onclick="event.stopPropagation();_wnPrintSn('${ord.id}')">⎙</button>
+      <span></span>
       ${pill}
       <span></span>
     </div>
@@ -2331,12 +2334,6 @@ function _wnOpenSnPopover(e, snId, rowId) {
   }
 }
 
-function _wnPrintSn(orderId) {
-  if (!orderId) { toast('Δεν υπάρχει εντολή για εκτύπωση','warn'); return; }
-  const row = WNATL.rows.find(r => r.orderId===orderId || r.matchedId===orderId);
-  printOrderSheet(orderId, 'import', !!(row && row.partnerLabel));
-}
-
 function _wnPopoverOutside(e) {
   const pop = document.getElementById('wn-popover');
   // Φέτα 1β: το κελί ανάθεσης είναι πλέον .wk3-assign (ήταν .wi-ca-wrap).
@@ -2518,7 +2515,6 @@ function _wnCtx(e, rowId) {
   if (row && row.src !== 'vs')
     items.push(`<button type="button" class="wi-ctx-item" onclick="_wnCtxClose();_wnOpenRow(${rowId})">Επεξεργασία</button>`);
   items.push(`<button type="button" class="wi-ctx-item" onclick="_wnCtxClose();_wnOpenPopover({stopPropagation:()=>{},currentTarget:document.getElementById('wn-row-${rowId}')},${rowId})">Ανάθεση</button>`);
-  items.push(`<button type="button" class="wi-ctx-item" onclick="_wnCtxClose();_wnPrint(${rowId},'northsouth')">Εκτύπωση</button>`);
   if (row?.saved)
     items.push(`<button type="button" class="wi-ctx-item wi-ctx-danger" onclick="_wnCtxClose();_wnUnassign(${rowId})">Αφαίρεση ανάθεσης</button>`);
   if (row?.matchedId)
@@ -2613,7 +2609,6 @@ function _wnCtxSn(e, rowId, snId) {
   if (row && row.src !== 'vs')
     items.push(`<button type="button" class="wi-ctx-item" onclick="_wnCtxClose();_wnOpenRow(${rowId})">Επεξεργασία</button>`);
   items.push(`<button type="button" class="wi-ctx-item" onclick="_wnCtxClose();_wnOpenSnPopover({stopPropagation:()=>{},currentTarget:document.getElementById('wn-sn-${snId}')},\'${snId}\',${rowId})">Ανάθεση</button>`);
-  items.push(`<button type="button" class="wi-ctx-item" onclick="_wnCtxClose();_wnPrintSn('${snId}')">Εκτύπωση</button>`);
   if (row?.saved)
     items.push(`<button type="button" class="wi-ctx-item wi-ctx-danger" onclick="_wnCtxClose();_wnUnassignSn(${rowId},'${snId}')">Αφαίρεση ανάθεσης</button>`);
   ctx.innerHTML = items.join('');
@@ -2785,13 +2780,6 @@ function _wnExportCSV() {
   }
 }
 
-function _wnPrint(rowId, leg) {
-  const row = WNATL.rows.find(r => r.id===rowId); if (!row) return;
-  const orderId = leg==='northsouth' ? row.orderIds[0] : row.matchedId;
-  if (!orderId) { toast('Δεν υπάρχει εντολή για εκτύπωση','warn'); return; }
-  printOrderSheet(orderId, leg==='northsouth'?'export':'import', !!row.partnerLabel);
-}
-
 // Expose functions used from onclick/oninput/onfocus handlers
 window.renderWeeklyNatl = renderWeeklyNatl;
 window.WNATL = WNATL;
@@ -2800,8 +2788,6 @@ window._wnOpenSnPopover = _wnOpenSnPopover;
 window._wnClosePopover = _wnClosePopover;
 window._wnSaveFromPopover = _wnSaveFromPopover;
 window._wnClear = _wnClear;
-window._wnPrint = _wnPrint;
-window._wnPrintSn = _wnPrintSn;
 window._wnExportCSV = _wnExportCSV;
 window._wnUnmatch = _wnUnmatch;
 window._wnCtxClose = _wnCtxClose;

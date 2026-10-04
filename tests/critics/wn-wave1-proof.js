@@ -144,6 +144,29 @@ SECTIONS.push(async browser => {
   await page.context().close();
 });
 
+// ── §4 #4 · no order-print buttons on national rows ─────────────────────────
+SECTIONS.push(async browser => {
+  console.log('\n── §4 #4 · order print hidden on national rows');
+  const { page, S } = await openBoard(browser);
+  const nRows = await page.$$eval('#wn-rows [data-row-id]', els => els.length);
+  const prt = await page.$$eval('#wn-rows .wk3-prt', els => els.length);
+  const glyph = await page.$eval('#wn-rows', el => (el.innerText.match(/⎙/g) || []).length);
+  ok(nRows > 0 && prt === 0 && glyph === 0, `no ⎙ / ⎙A button on ${nRows} national rows (buttons ${prt}, glyphs ${glyph})`);
+  const nsId = await rowIdOf(page, 'recNlSat00000000');
+  await page.click(`#wn-row-${nsId} .wk3-leg`, { button: 'right' });
+  let items = await page.$$eval('#wn-ctx .wi-ctx-item', els => els.map(e => e.textContent.trim()));
+  ok(items.length > 0 && !items.some(t => /Εκτύπωση/.test(t)), 'ΚΑΘΟΔΟΣ right-click menu has no «Εκτύπωση»: ' + items.join(' | '));
+  await page.evaluate(() => _wnCtxClose());
+  await page.click('#wn-sn-recNlsD00000000A', { button: 'right' });
+  items = await page.$$eval('#wn-ctx .wi-ctx-item', els => els.map(e => e.textContent.trim()));
+  ok(items.length > 0 && !items.some(t => /Εκτύπωση/.test(t)), 'ΑΝΟΔΟΣ right-click menu has no «Εκτύπωση»: ' + items.join(' | '));
+  const pills = await page.$$eval('#wn-rows .wk3-assign', els => els.map(e => getComputedStyle(e).gridTemplateColumns));
+  ok(pills.length > 0 && pills.every(g => g.split(' ').length === 3), 'assignment cell keeps its 3-column grid');
+  ok(await page.evaluate(() => typeof window._wnPrint === 'undefined' && typeof window._wnPrintSn === 'undefined'), 'the dead print handlers are gone from window');
+  ok(S.errors.length === 0, 'no page errors: ' + S.errors.slice(0, 2).join(' | '));
+  await page.context().close();
+});
+
 (async () => {
   const browser = await chromium.launch();
   for (const s of SECTIONS) await s(browser);
