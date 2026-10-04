@@ -253,7 +253,8 @@ async function open(browser, role, route, F, costs, bootDone) {
       lookups: { trucks: [{ id: 1, license_plate: 'ΑΒΓ-1234' }], drivers: [{ id: 2, full_name: 'Οδηγός Α' }], partners: [{ id: 9, company_name: 'Συνεργάτης Α' }] },
       'pallet-gate': { records: [] },
       lines: { records: [{ id: 1, rt_id: 501, category: 'partner_rate', net: 300, vat: 0 }, { id: 2, rt_id: 502, category: 'fuel', net: 800, vat: 100 }] },
-      'stock-lots': { lots: [{ lot_rec: 'recRIGSTOCKLOTA1', allocation_status: 'ok', intake_cost: 300, net: 3000 }], pieces: [{ lot_rec: 'recRIGSTOCKLOTA1', piece_rec: 'recRIGPC10000001', amount: 454.55 }] },
+      // stock_v_lot_money since round 2 #1: partner_cost / warehouse_charge / charge_total
+      'stock-lots': { lots: [{ lot_rec: 'recRIGSTOCKLOTA1', allocation_status: 'ok', partner_cost: 300, warehouse_charge: null, charge_total: 300, net: 3000 }], pieces: [{ lot_rec: 'recRIGSTOCKLOTA1', piece_rec: 'recRIGPC10000001', amount: 454.55 }] },
     };
     const { ctx, page, errs, ref } = await open(browser, 'owner', 'costs', F, costs, '#ctList .ct-fail, #ctList .ct-card, #ctList > div:not(.ct-empty)');
     const [C1, C2] = ref.clients, [L1, L2, WH] = ref.locs;
@@ -269,8 +270,9 @@ async function open(browser, role, route, F, costs, bootDone) {
     const tag = fail ? 'unread_' : '';
     if (!fail) {
       ok('D11_lot_rt_no_unexplained', !/ανεξήγητη/.test(lot) && /€300/.test(lot) && !/€3\.300/.test(lot), lot);
-      // Round 1 O11 (critic-5 S5-10): the lot line ≤ 6 words; one name («κόστος αποθήκης») for the one amount
-      ok('O11_lot_line_short_one_name', /· παρτίδα #312 · κόστος αποθήκης/.test(lot) && !/το καθαρό μοιράζεται/.test(lot) && !/κόμιστρο συνεργάτη/.test(lot) && /κόστος αποθήκης — καύσιμα/.test(lot), lot);
+      // Round 1 O11 (critic-5 S5-10): the lot line ≤ 6 words; one name for the one amount — since
+      // round 2 #1 the partner's rate is «κόμιστρο συνεργάτη» (the owner's «Χρέωση αποθήκης» is another amount)
+      ok('O11_lot_line_short_one_name', /· παρτίδα #312 · κόμιστρο συνεργάτη/.test(lot) && !/το καθαρό μοιράζεται/.test(lot) && !/κόστος αποθήκης/.test(lot) && /κόμιστρο συνεργάτη — καύσιμα/.test(lot), lot);
       ok('D12_piece_amount_and_vs_850', /από παρτίδα #312/.test(pc) && /€455/.test(pc) && /Veroia Switch: −€850 /.test(pc) && !/ανεξήγητη/.test(pc), pc);
     } else {
       ok(tag + 'said_per_leg_no_diff', /ο επιμερισμός δεν διαβάστηκε/.test(lot) && /ο επιμερισμός δεν διαβάστηκε/.test(pc) && !/ανεξήγητη|Veroia Switch: −/.test(lot + pc), { lot, pc });
