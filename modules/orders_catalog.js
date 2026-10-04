@@ -49,9 +49,18 @@ const OrdersCatalog = (() => {
   // the CSV and the paper (the raw Status is untouched: filters read it).
   // Round 1 O5 (critic-2 E2-04): an invoiced lot reads «Τιμολογήθηκε» — next
   // to its «✓ ΤΠΥ», «Στην αποθήκη» said the goods never left.
+  // C2-05 (round 3): a lot whose pieces are all done is no longer «in the
+  // warehouse» — «Ολοκληρώθηκε», read from the invoicing set when the page
+  // already holds it (the hub's counters load it; no request of our own). Not
+  // loaded yet → the word stays «Στην αποθήκη» (the facade row cannot know).
+  function _lotDone(r) {
+    const set = typeof OrdersData !== 'undefined' ? OrdersData._cache : null;
+    const lot = set && set.stock ? set.stock.get(OrdersStock.lotRecOfLot(r.f)) : null;
+    return !!(lot && lot.fields && lot.fields['Complete'] === true);
+  }
   function _statusWord(r) {
     if (r.lot && C().isInvoiced(r.f)) return 'Τιμολογήθηκε';
-    if (r.lot && r.status === 'Delivered') return 'Στην αποθήκη';
+    if (r.lot && r.status === 'Delivered') return _lotDone(r) ? 'Ολοκληρώθηκε' : 'Στην αποθήκη';
     return (STATUS[r.status] || [r.status])[0] || '';
   }
   // The price as text for the CSV and the paper (PR-14): a piece's blank price
@@ -123,15 +132,19 @@ const OrdersCatalog = (() => {
   // scales them when the ~480px card opens) ─────────────────────────────────
   const COLS = [
     { key: 'no',     label: 'ΑΡ.',        w: 60,  type: 'number', get: (f, r) => (r.type === 'natl' ? 1e7 : 0) + r.no },
-    { key: 'ref',    label: 'ΑΝΑΦΟΡΑ',    w: 116, type: 'text',   get: (f, r) => r.ref },
-    { key: 'client', label: 'ΠΕΛΑΤΗΣ',    w: 150, type: 'text',   get: (f, r) => r.client },
-    { key: 'load',   label: 'ΦΟΡΤΩΣΗ',    w: 168, type: 'date',   get: (f) => f['Loading DateTime'] || '' },
-    { key: 'del',    label: 'ΠΑΡΑΔΟΣΗ',   w: 168, type: 'date',   get: (f) => f['Delivery DateTime'] || '' },
+    // R2-6 / S5-04 (round 3): «→ ΑΠΟΘΗΚΗ» + «Εξαγωγή» need ~130px of text; at
+    // 116 the lot's direction was cut to «Εξ…» at 1440 (measured: 144 is the
+    // least). The 32px come from ΠΕΛΑΤΗΣ, ΦΟΡΤΩΣΗ/ΠΑΡΑΔΟΣΗ and ΤΙΜΟΛΟΓΙΟ;
+    // ΚΑΤΑΣΤΑΣΗ keeps 112 — «Στην αποθήκη» needs all of it (rig, 1440).
+    { key: 'ref',    label: 'ΑΝΑΦΟΡΑ',    w: 148, type: 'text',   get: (f, r) => r.ref },
+    { key: 'client', label: 'ΠΕΛΑΤΗΣ',    w: 134, type: 'text',   get: (f, r) => r.client },
+    { key: 'load',   label: 'ΦΟΡΤΩΣΗ',    w: 164, type: 'date',   get: (f) => f['Loading DateTime'] || '' },
+    { key: 'del',    label: 'ΠΑΡΑΔΟΣΗ',   w: 164, type: 'date',   get: (f) => f['Delivery DateTime'] || '' },
     { key: 'pal',    label: 'ΠΑΛ.',       w: 44,  type: 'number', get: (f, r) => r.pal || 0 },
     { key: 'assign', label: 'ΑΝΑΘΕΣΗ',    w: 130, type: 'text',   get: (f, r) => r.assign.text },
     { key: 'status', label: 'ΚΑΤΑΣΤΑΣΗ',  w: 112, type: 'text',   get: (f, r) => r.status },
     { key: 'price',  label: 'ΤΙΜΗ €',     w: 84,  type: 'number', get: (f, r) => r.price || 0 },
-    { key: 'inv',    label: 'ΤΙΜΟΛΟΓΙΟ',  w: 104, type: 'text',   get: (f) => String(f['Invoice Number'] || '') },
+    { key: 'inv',    label: 'ΤΙΜΟΛΟΓΙΟ',  w: 96,  type: 'text',   get: (f) => String(f['Invoice Number'] || '') },
   ];
 
   function _rowHtml(r) {
@@ -243,7 +256,8 @@ const OrdersCatalog = (() => {
       ids: { scroller: 'ocVScroll', top: 'ocTop', bottom: 'ocBottom' }, rowH: ROW_H, total: sorted.length,
       // O11: «ΑΠ» / «→ ΑΠΟΘΗΚΗ» explained once the list holds a piece or a lot.
       legend: '<b>#</b> διεθνής · <b>Ε-</b> εθνική · <b>VS</b> Veroia Switch · <b>GRP</b> ομαδοποίηση · <b>PE</b> ανταλλαγή παλετών · <b>HR</b> υψηλό ρίσκο · '
-        + (S.rows.some(x => x.piece || x.lot) ? '<b>ΑΠ</b> κομμάτι από απόθεμα · <b>→ ΑΠΟΘΗΚΗ</b> παρτίδα σε αποθήκη · ' : '')
+        // S5-08: the badge is explained, not repeated («→ ΑΠΟΘΗΚΗ … σε αποθήκη»).
+        + (S.rows.some(x => x.piece || x.lot) ? '<b>ΑΠ</b> κομμάτι από απόθεμα · <b>→ ΑΠΟΘΗΚΗ</b> παρτίδα · ' : '')
         + '<b class="oc-g">✓ ΤΠΥ</b> τιμολογήθηκε στο ERP',
       legendClass: 'oc-legend', footClass: 'oc-foot',
     });
@@ -442,12 +456,14 @@ const OrdersCatalog = (() => {
     const head = ['ΑΡ.', 'Τύπος', 'Αναφορά', 'Κατεύθυνση', 'Πελάτης', 'Φόρτωση', 'Ημ. φόρτωσης', 'Παράδοση', 'Ημ. παράδοσης', 'Παλέτες', 'Ανάθεση', 'Κατάσταση', 'Τιμή', 'ΤΠΥ', 'Ημ. ΤΠΥ', 'Σήμανση'];
     const rows = S.filtered.map(r => [r.num, r.type === 'intl' ? 'Διεθνής' : 'Εθνική', r.ref, r.dir, _unesc(r.client), _plain(r.load), C().ymd(r.f['Loading DateTime']),
       _plain(r.del), C().ymd(r.f['Delivery DateTime']), r.pal || '', r.assign.text, _statusWord(r),
-      _priceText(r), r.f['Invoice Number'] || '', C().ymd(r.f['Invoice Date']), r.tags.join(' ')]);
+      // R4 (C2-06 / C4-08): tags joined with « · » — «→ ΑΠΟΘΗΚΗ» is two words,
+      // so a space-joined cell could not be split back into its tags.
+      _priceText(r), r.f['Invoice Number'] || '', C().ymd(r.f['Invoice Date']), r.tags.join(' · ')]);
     OrdersList.csvDownload([head, ...rows], `paraggelies_${C().today()}.csv`);
   }
   function print() {
     if (_namesBusy()) return;
-    const tr = S.filtered.map(r => `<tr><td>${esc(r.num)}</td><td>${esc(r.ref)}<br><small>${esc([r.dir, r.tags.join(' ')].filter(Boolean).join(' · '))}</small></td><td>${esc(_unesc(r.client))}</td>
+    const tr = S.filtered.map(r => `<tr><td>${esc(r.num)}</td><td>${esc(r.ref)}<br><small>${esc([r.dir, ...r.tags].filter(Boolean).join(' · '))}</small></td><td>${esc(_unesc(r.client))}</td>
       <td>${esc(r.load.name)}<br><small>${esc(r.load.sub)} · ${C().dm(r.load.date)}</small></td><td>${esc(r.del.name)}<br><small>${esc(r.del.sub)} · ${C().dm(r.del.date)}</small></td>
       <td class="r">${esc(r.pal || '')}</td><td>${esc(_statusWord(r))}</td><td class="r">${esc(_priceText(r) || '—')}</td>
       <td>${r.f['Invoice Number'] ? '✓ ΤΠΥ ' + esc(r.f['Invoice Number']) : ''}</td></tr>`).join('');

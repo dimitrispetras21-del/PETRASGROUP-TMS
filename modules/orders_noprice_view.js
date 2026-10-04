@@ -508,6 +508,11 @@ const OrdersNoPrice = (() => {
   // ── A4 + CSV (both roles) ───────────────────────────────────────────────
   function _ordered() { return V ? V.groups.flatMap(g => g.items) : []; }
 
+  // C4-07 (round 3): the paper the owner writes prices on names a LOT — the
+  // price he writes is the whole lot's (the base of the allocation), not one
+  // delivery. Same word as everywhere (OWNER-Q12). The CSV carries it in
+  // «Τύπος», so no column moves.
+  const _isLot = r => r._type === 'intl' && typeof OrdersStock !== 'undefined' && OrdersStock.isLot(r.fields);
   function print() {
     if (!V) return;
     const recs = _ordered();
@@ -524,7 +529,7 @@ const OrdersNoPrice = (() => {
       const sub = [meta.vat ? 'ΑΦΜ ' + meta.vat : 'ΑΦΜ —', meta.terms ? 'όροι ' + meta.terms + ' ημ.' : '', f['Reference'] || 'χωρίς αναφορά'].filter(Boolean).join(' · ');
       const pal = _pallets(r);
       return `<tr class="${late ? 'late' : ''}">
-        <td class="no">${late ? '<i>★</i>' : ''}${esc(OrdersCommon.numLabel(r))}</td>
+        <td class="no">${late ? '<i>★</i>' : ''}${esc(OrdersCommon.numLabel(r))}${_isLot(r) ? '<span>→ ΑΠΟΘΗΚΗ</span>' : ''}</td>
         <td><b>${esc(_rawClientName(_clientId(r)))}</b><span>${esc(sub)}</span></td>
         <td>${placeA4(OrdersCommon.placeOf(r, 'load'))}</td>
         <td>${placeA4(OrdersCommon.placeOf(r, 'del'))}</td>
@@ -600,7 +605,7 @@ tr{page-break-inside:avoid}
       const pl = w => { const p = OrdersCommon.placeOf(r, w); return [p.name, p.sub].filter(Boolean).join(' · '); };
       const d = _days(r);
       rows.push([
-        OrdersCommon.numLabel(r), r._type === 'natl' ? 'Εθνική' : 'Διεθνής', f['Reference'] || '', _rawClientName(_clientId(r)),
+        OrdersCommon.numLabel(r), r._type === 'natl' ? 'Εθνική' : 'Διεθνής' + (_isLot(r) ? ' · → ΑΠΟΘΗΚΗ' : ''), f['Reference'] || '', _rawClientName(_clientId(r)),
         meta.vat, meta.terms === null ? '' : meta.terms, pl('load'), pl('del'),
         OrdersCommon.ymd(f['Loading DateTime']), OrdersCommon.ymd(f['Delivery DateTime']), _assign(r).text,
         _pallets(r), _goods(r), d === null ? '' : d,
