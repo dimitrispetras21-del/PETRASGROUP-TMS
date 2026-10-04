@@ -292,6 +292,216 @@ const OrdersCommon = {
   },
 };
 
+// ── Stock lots (migration 057, owner 3–4/10/2026) ───────────────────────────
+// A client leaves N pallets in a warehouse (the LOT = one ordinary order whose
+// destination is the warehouse, marked by a row in STOCK LOTS); we carry them
+// on in PIECES = ordinary ORDERS linked by «Stock Lot». One invoice for the lot,
+// none for a piece. Every rule (no over-draw, a piece has no price, the lot is
+// invoiced only when complete, …) lives in the base (057 triggers + CHECKs);
+// this object only mirrors them and is the ONE front API both the Orders page
+// and the Weekly International use (contract §5.2) — a second copy of «is this
+// a piece» is how a piece would end up invoiced on one screen and not another.
+//
+// Data predicates (isPiece/isLot) read the facade fields and do NOT depend on
+// the feature switch: a piece that exists must never show as «χωρίς τιμή»,
+// whatever the switch says. on() gates only what the user can START.
+const OrdersStock = {
+  on() {
+    return typeof FEATURES !== 'undefined' && FEATURES.STOCK_LOTS === true
+      && !!(typeof TABLES !== 'undefined' && TABLES.STOCK_LOTS);
+  },
+  isPiece(f) { return !!getLinkedId(f && f['Stock Lot']); },
+  // «Own Stock Lot» is the rec of the lot this order is the SOURCE of — a plain
+  // string from the view (own.legacy_id), not a link array.
+  isLot(f) { return !!(f && f['Own Stock Lot']); },
+  lotRecOfPiece(f) { return getLinkedId(f && f['Stock Lot']) || null; },
+  lotRecOfLot(f) { return (f && f['Own Stock Lot']) || null; },
+  // Same prefix rule as OrdersCommon.numLabel: «#312» international source,
+  // «Ε-27» national source (Φ3) — the two tables' ids overlap.
+  lotNumLabel(f) {
+    const n = f && f['Stock Lot Order No'];
+    if (!n) return '—';
+    return (f['Stock Lot Source'] === 'natl' ? 'Ε-' : '#') + n;
+  },
+  lotLabel(lot) {
+    const g = (lot && lot.fields) || {};
+    if (!g['Lot No']) return '—';
+    return (g['Source Kind'] === 'natl' ? 'Ε-' : '#') + g['Lot No'];
+  },
+  // Mark / unmark a lot, new piece, join, return, delete a loose piece. The
+  // Worker RBAC is the lock (stock_lots: dispatcher GET/POST/PATCH/DELETE);
+  // this only hides what would 403.
+  canWrite() { return typeof ROLE !== 'undefined' && (ROLE === 'owner' || ROLE === 'dispatcher'); },
+  // Ε3 (owner 4/10): «Κλείσιμο υπολοίπου» by whoever is working — the auditor
+  // reports every close (S-09), so it does not need to be narrow.
+  canClose() { return typeof ROLE !== 'undefined' && (ROLE === 'owner' || ROLE === 'dispatcher' || ROLE === 'accountant'); },
+
+  // The shelf/card state of one STOCK LOTS record. NULL columns are ABSENT on
+  // the facade (trap #2), so every count reads absent as 0 and every flag as
+  // false — never «undefined === undefined».
+  //   nointake — pieces move although the warehouse intake is not Delivered
+  //   close    — intake in, pieces drawn and all delivered, pallets still left
+  //   aging    — in the warehouse more than 21 days
+  // «close» needs at least one piece: with none drawn, «all delivered» is
+  // vacuous and every freshly received lot would ask to be closed (and could
+  // never turn «aging»). Contract §5.2 omits «Pieces > 0» — added on purpose.
+  chip(lot, todayYmd) {
+    const g = (lot && lot.fields) || {};
+    const n = v => { const x = Number(v); return Number.isFinite(x) ? x : 0; };
+    const stock = n(g['Stock Pallets']), remaining = n(g['Remaining Pallets']);
+    const pieces = n(g['Pieces']), done = n(g['Pieces Delivered']), loose = n(g['Pieces Without Truck']);
+    const intake = g['Intake Delivered'] === true;
+    const recv = g['Received On'] ? OrdersCommon.ymd(g['Received On']) : '';
+    const days = intake && recv ? OrdersCommon.daysBetween(recv, todayYmd || OrdersCommon.today()) : null;
+    let key = 'ok';
+    if (!intake && pieces > loose) key = 'nointake';
+    else if (intake && pieces > 0 && pieces === done && remaining > 0 && !g['Closed At']) key = 'close';
+    else if (intake && days !== null && days > 21) key = 'aging';
+    return { key, days, remaining, stock };
+  },
+
+  // The payload of a NEW piece: the form's own fields (values) with the lot's
+  // locks on top. Never «Price» — the lot is invoiced once (CHECK
+  // orders_stock_piece_no_money would refuse it anyway); never PE (Ε5: pallet
+  // exchange counts once, at the lot's loading). Status is «Assigned» only
+  // when the caller hands a vehicle with it (the Weekly join), else «Pending».
+  pieceFields(lot, presets, values) {
+    const g = (lot && lot.fields) || {}, p = presets || {};
+    const arr = v => (Array.isArray(v) ? v.filter(Boolean) : (v ? [v] : []));
+    const out = Object.assign({}, values || {});
+    delete out['Price'];
+    out['Stock Lot'] = [lot.id];
+    out['Client'] = [g['Client Rec']];
+    out['Direction'] = 'Import';
+    out['Type'] = 'International';
+    out['Loading Location 1'] = [g['Warehouse Rec']];
+    for (let i = 2; i <= 10; i++) out['Loading Location ' + i] = [];
+    out['Pallet Exchange'] = false;
+    if (p.groupId) out['Group ID'] = p.groupId;
+    if ('truck' in p) out['Truck'] = arr(p.truck);
+    if ('trailer' in p) out['Trailer'] = arr(p.trailer);
+    if ('driver' in p) out['Driver'] = arr(p.driver);
+    out['Status'] = p.status === 'Assigned' ? 'Assigned' : 'Pending';
+    const ld = (p.lockLoadingDate && p.loadingDate) ? p.loadingDate : (out['Loading DateTime'] || p.loadingDate);
+    if (ld) out['Loading DateTime'] = ld;
+    const dd = out['Delivery DateTime'] || p.deliveryDate;
+    if (dd) out['Delivery DateTime'] = dd;
+    return out;
+  },
+
+  // ── Reads: never throw, never an empty list on failure (principle 1) ─────
+  _msg(e) { return (e && e.message) || String(e || 'άγνωστο σφάλμα'); },
+  // A rec goes into a formula string — only the facade's own id shape passes.
+  _rec(r) { return typeof r === 'string' && /^rec[A-Za-z0-9]{1,32}$/.test(r); },
+  async loadLots(formula) {
+    try {
+      const lots = await atGetAll(TABLES.STOCK_LOTS, formula ? { filterByFormula: formula } : {}, false);
+      return { ok: true, lots };
+    } catch (e) {
+      console.error('orders stock: lots', e);
+      return { ok: false, failed: true, error: OrdersStock._msg(e) };
+    }
+  },
+  loadOpen() { return OrdersStock.loadLots('{Complete}=0'); },
+  async _orders(formula, tag) {
+    try {
+      const pieces = await atGetAll(TABLES.ORDERS, { filterByFormula: formula }, false);
+      pieces.forEach(r => { r._type = 'intl'; });
+      return { ok: true, failed: false, pieces };
+    } catch (e) {
+      console.error('orders stock: ' + tag, e);
+      return { ok: false, failed: true, pieces: null, error: OrdersStock._msg(e) };
+    }
+  },
+  async loadPieces(lotRec) {
+    if (!OrdersStock._rec(lotRec)) return { ok: false, failed: true, pieces: null, error: 'μη έγκυρη παρτίδα' };
+    return OrdersStock._orders(`FIND("${lotRec}",ARRAYJOIN({Stock Lot},","))>0`, 'pieces');
+  },
+  // Pieces waiting for a truck (all weeks): returned to stock, or created
+  // before their truck was known.
+  loadLoosePieces() {
+    return OrdersStock._orders("AND({Stock Lot}!=BLANK(),{Truck}=BLANK(),{Partner}=BLANK(),{Status}!='Delivered')", 'loose pieces');
+  },
+
+  // ── Writes: the answer is the read-back, never the toast (principle 2) ──
+  async markLot(orderRec) {
+    let created;
+    try { created = await atCreate(TABLES.STOCK_LOTS, { Order: [orderRec] }); }
+    catch (e) { return { ok: false, error: OrdersStock._msg(e) }; }
+    if (!created || !OrdersStock._rec(created.id)) return { ok: false, error: 'ο server δεν επέστρεψε την παρτίδα (εκτός σύνδεσης;) — άνοιξε ξανά την παραγγελία για να δεις αν έγινε παρτίδα' };
+    try {
+      const lot = await atGetOne(TABLES.STOCK_LOTS, created.id);
+      if (getLinkedId(lot && lot.fields && lot.fields['Order']) === orderRec) return { ok: true, lot };
+      return { ok: false, lot, error: 'η παρτίδα γράφτηκε χωρίς τη σύνδεση με την παραγγελία — ενημέρωσε τον διαχειριστή' };
+    } catch (e) {
+      return { ok: false, error: 'η σήμανση στάλθηκε αλλά δεν επιβεβαιώθηκε (' + OrdersStock._msg(e) + ') — άνοιξε ξανά την παραγγελία για να δεις αν έγινε παρτίδα' };
+    }
+  },
+  // Facade DELETE = soft delete; the base refuses a lot with pieces or an
+  // invoiced one (stock_guard_lots → Greek 422).
+  async unmarkLot(lotRec) {
+    try { await atDelete(TABLES.STOCK_LOTS, lotRec); return { ok: true }; }
+    catch (e) { return { ok: false, error: OrdersStock._msg(e) }; }
+  },
+  // The base stamps «Closed At» itself (now(), a client value is ignored) and
+  // refuses while a piece or the intake is not delivered (close_early).
+  async closeLot(lotRec, note) {
+    const text = String(note == null ? '' : note).trim();
+    if (!text) return { ok: false, error: 'Γράψε αιτιολογία' };
+    try { await atPatch(TABLES.STOCK_LOTS, lotRec, { 'Closed Note': text }); }
+    catch (e) { return { ok: false, error: OrdersStock._msg(e) }; }
+    try {
+      const lot = await atGetOne(TABLES.STOCK_LOTS, lotRec);
+      const f = (lot && lot.fields) || {};
+      if (f['Closed Note'] === text && f['Closed At']) return { ok: true, lot };
+      return { ok: false, lot, error: 'το κλείσιμο δεν γράφτηκε — η παρτίδα έμεινε ανοιχτή' };
+    } catch (e) {
+      return { ok: false, error: 'το κλείσιμο στάλθηκε αλλά δεν επιβεβαιώθηκε (' + OrdersStock._msg(e) + ') — ξαναφόρτωσε τη σελίδα' };
+    }
+  },
+
+  // «Κλείσιμο υπολοίπου»: pallets only, never money (the dispatcher and the
+  // accountant close too, and only the owner sees the lost amount).
+  _closing: null,
+  openCloseModal(lot, onDone) {
+    const g = (lot && lot.fields) || {};
+    const left = Number(g['Remaining Pallets']) || 0;
+    const esc = s => escapeHtml(String(s == null ? '' : s));
+    OrdersStock._closing = { lot, onDone };
+    const where = [g['Warehouse Name'], g['Client Name']].filter(Boolean).join(' · ');
+    const body = `<div style="font-size:13px;line-height:1.6;color:var(--text)">
+        <div style="font-weight:600;margin-bottom:6px">Παρτίδα ${esc(OrdersStock.lotLabel(lot))}${where ? ' · ' + esc(where) : ''}</div>
+        <div>Μένουν <b>${left}</b> ${left === 1 ? 'παλέτα' : 'παλέτες'} στην αποθήκη. Γράφονται ως χαμένο υπόλοιπο και η παρτίδα γίνεται έτοιμη για τιμολόγηση.</div>
+      </div>
+      <label class="form-label" for="osCloseNote" style="margin-top:12px;display:block">Αιτιολογία *</label>
+      <textarea class="form-textarea" id="osCloseNote" rows="3" style="width:100%;resize:vertical" placeholder="π.χ. 2 παλέτες χαλασμένες στην αποθήκη" oninput="document.getElementById('osCloseErr').style.display='none'"></textarea>
+      <div id="osCloseErr" role="alert" style="display:none;margin-top:8px;color:var(--danger);font-size:12.5px"></div>`;
+    const footer = `<button type="button" class="btn btn-ghost" onclick="closeModal()">Άκυρο</button>
+      <button type="button" class="btn btn-primary" id="osCloseBtn" onclick="OrdersStock._submitClose()">Κλείσιμο υπολοίπου</button>`;
+    openModal('Κλείσιμο υπολοίπου', body, footer);
+  },
+  async _submitClose() {
+    const c = OrdersStock._closing; if (!c) return;
+    const note = (document.getElementById('osCloseNote') || {}).value || '';
+    const err = document.getElementById('osCloseErr'), btn = document.getElementById('osCloseBtn');
+    const show = m => { if (err) { err.textContent = m; err.style.display = ''; } };
+    if (!note.trim()) { show('Η αιτιολογία είναι υποχρεωτική'); return; }
+    if (btn) { btn.disabled = true; btn.textContent = 'Κλείσιμο…'; }
+    const res = await OrdersStock.closeLot(c.lot.id, note);
+    if (!res.ok) {
+      // The modal stays open with the reason typed: the Greek refusal of the
+      // base (close_early, lot_invoiced…) is said here, where she is looking.
+      show('Δεν έκλεισε: ' + res.error);
+      if (btn) { btn.disabled = false; btn.textContent = 'Κλείσιμο υπολοίπου'; }
+      return;
+    }
+    OrdersStock._closing = null;
+    closeModal();
+    if (typeof toast === 'function') toast('Το υπόλοιπο της παρτίδας ' + escapeHtml(OrdersStock.lotLabel(res.lot)) + ' έκλεισε');
+    if (typeof c.onDone === 'function') { try { await c.onDone(res.lot); } catch (e) { console.warn('orders stock: close onDone', e); } }
+  },
+};
+
 // ── The data set of «Προς τιμολόγηση» and «Χωρίς τιμή» ──────────────────────
 // Both views (and the page's counters) read the SAME records with the SAME
 // pallet gate — loaded once per render, deduped while in flight. Same query as
@@ -333,8 +543,9 @@ const OrdersData = {
       // parent carries price and invoicing, the legs never appear here.
       const intlVis = (typeof FEATURES !== 'undefined' && FEATURES.ORDER_SPLIT)
         ? intl.filter(r => !getLinkedId(r.fields['Parent Order'])) : intl;
-      const set = { at: Date.now(), intl: intlVis, natl: natlRes.r, natlFailed: !natlRes.ok, gate: {}, gateFailed: false };
+      const set = { at: Date.now(), intl: OrdersData.withoutPieces(intlVis), natl: natlRes.r, natlFailed: !natlRes.ok, gate: {}, gateFailed: false };
       await OrdersData._loadGate(set);
+      await OrdersData._loadStock(set);
       const clientIds = [...new Set([...set.intl, ...set.natl].map(r => (r.fields['Client'] || [])[0]).filter(Boolean))];
       if (clientIds.length && typeof fhBatchResolveClients === 'function') { try { await fhBatchResolveClients(clientIds); } catch (e) { console.warn('orders data: clients', e); } }
       OrdersData._cache = set;
@@ -358,6 +569,23 @@ const OrdersData = {
       set.gate = {}; set.gateFailed = true;
     }
   },
+  // Stock pieces (057) never enter this set: a piece has no price of its own
+  // (the base refuses one) and is invoiced inside its lot, so here it could
+  // only ever show as a false «χωρίς τιμή» or a second invoice. This is the
+  // ONE place they are dropped — «Προς τιμολόγηση», «Χωρίς τιμή», the hub
+  // counters and the week view's states all read this set. Data-based, not
+  // behind FEATURES.STOCK_LOTS (a piece that exists is a piece).
+  withoutPieces(recs) { return recs.filter(r => !OrdersStock.isPiece(r.fields)); },
+  // The lots of the set: their completeness decides whether they may be
+  // invoiced. Read only when the set holds a lot. A failed read blocks every
+  // lot (stockFailed) and the view says so — never «ready» on a guess.
+  async _loadStock(set) {
+    set.stock = new Map(); set.stockFailed = false;
+    if (!set.intl.some(r => OrdersStock.isLot(r.fields))) return;
+    const res = await OrdersStock.loadLots('{Invoiced}=0');
+    if (!res.ok) { set.stock = null; set.stockFailed = true; return; }
+    res.lots.forEach(l => set.stock.set(l.id, l));
+  },
   sheetsOk(set, rec) {
     const f = rec.fields;
     if (!f['Pallet Exchange'] || rec._type !== 'intl') return true;
@@ -366,17 +594,26 @@ const OrdersData = {
     return !g || g.sheets_ok === true;   // absent = no loading stops = nothing to gate
   },
   // One state per record, one reason per blocked record (with who unblocks it).
-  //   'invoiced' · 'ready' · 'blocked' (reason: 'price' → owner, 'sheets' → Αλεξία) · 'pending' (not delivered)
+  //   'invoiced' · 'ready' · 'blocked' (reason: 'price' → owner, 'stock' → the
+  //   lot's pieces, 'sheets' → Αλεξία) · 'pending' (not delivered)
+  // A lot (057) is delivered when the WAREHOUSE received it, but it is invoiced
+  // once, only when complete (every piece delivered and nothing left, or the
+  // remainder closed) — the same rule stock_guard_orders enforces on
+  // «Invoiced»; 'stock' carries the lot record (null = not read) for the text.
   stateOf(set, rec) {
     const f = rec.fields;
     if (OrdersCommon.isInvoiced(f)) return { key: 'invoiced' };
     if (f['Status'] === 'Cancelled') return { key: 'cancelled' };
     if (!OrdersCommon.isDelivered(rec)) return { key: 'pending' };
     if (!OrdersCommon.hasPrice(f)) return { key: 'blocked', reason: 'price' };
+    if (OrdersStock.isLot(f)) {
+      const lot = (set.stock && set.stock.get(OrdersStock.lotRecOfLot(f))) || null;
+      if (set.stockFailed || !lot || lot.fields['Complete'] !== true) return { key: 'blocked', reason: 'stock', lot };
+    }
     if (!OrdersData.sheetsOk(set, rec)) return { key: 'blocked', reason: 'sheets' };
     return { key: 'ready' };
   },
   all(set) { return [...set.intl, ...set.natl]; },
 };
 
-if (typeof module !== 'undefined' && module.exports) module.exports = { OrdersCommon, OrdersData };
+if (typeof module !== 'undefined' && module.exports) module.exports = { OrdersCommon, OrdersData, OrdersStock };

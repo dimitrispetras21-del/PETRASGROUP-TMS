@@ -191,3 +191,47 @@ test('direction words', () => {
   assert.strictEqual(V.dirWord({ Direction: 'South→North' }), 'Άνοδος');
   assert.strictEqual(V.dirWord({}), '');
 });
+
+// ── Stock lots (057, contract §5.8): one lot + one piece ────────────────────
+// Through the REAL OrdersData.loadInvoicingSet (the one place pieces are
+// dropped), over stubbed reads — the view itself never re-filters.
+const vm = require('vm');
+vm.runInThisContext(require('fs').readFileSync(require('path').join(__dirname, '..', 'core', 'data-helpers.js'), 'utf8'));
+global.OrdersStock = require('../core/orders-common.js').OrdersStock;
+const STOCK_LOT = (complete, f) => ({ id: 'recLot1', fields: Object.assign({ 'Lot No': 1300, 'Source Kind': 'intl', 'Intake Delivered': true,
+  'Stock Pallets': 33, 'Remaining Pallets': 13, Pieces: 2, 'Pieces Delivered': 1, Complete: complete }, f) });
+async function stockSet(extra, lot) {
+  const base = fixture();
+  global.TABLES = { ORDERS: 'tblO', NAT_ORDERS: 'tblN', STOCK_LOTS: 'tblStockLots' };
+  global.FEATURES = { ORDER_SPLIT: true, STOCK_LOTS: false };
+  const strip = r => ({ id: r.id, fields: JSON.parse(JSON.stringify(r.fields)) });
+  global.atGet = async t => (t === 'tblO' ? [...base.intl, ...extra] : base.natl).map(strip);
+  global.atGetAll = async () => [lot];
+  global.plFetch = async () => ({ records: Object.values(base.gate) });
+  return OrdersData.loadInvoicingSet(true);
+}
+const LOT_ORDER = intl('iL', { 'Order No': 1300, Reference: 'LOT-1', Direction: 'Import', Client: ['recA'], Price: 3300, 'Own Stock Lot': 'recLot1', 'Total Pallets': 33, 'Loading DateTime': d(PREV, 1), 'Delivery DateTime': d(PREV, 2) });
+const PIECE_ORDER = intl('iP', { 'Order No': 1301, Reference: 'PC-1', Direction: 'Import', Client: ['recA'], 'Stock Lot': ['recLot1'], 'Stock Lot Order No': 1300, 'Total Pallets': 5, 'Loading DateTime': d(PREV, 3), 'Delivery DateTime': d(PREV, 4) });
+
+test('stock: the piece never appears and changes no total; the lot waits, then is one ready invoice', async () => {
+  const name = id => CLIENTS[id] || '';
+  const without = V.scopeFilter(V.annotate(await stockSet([LOT_ORDER], STOCK_LOT(false)), name), 'all');
+  const withPiece = V.scopeFilter(V.annotate(await stockSet([LOT_ORDER, PIECE_ORDER], STOCK_LOT(false)), name), 'all');
+  assert.ok(!withPiece.some(it => it.id === 'iP'), 'the piece is not an invoicing row');
+  assert.deepStrictEqual(withPiece.map(it => it.id), without.map(it => it.id));
+  assert.deepStrictEqual(V.kpis(V.baseList(withPiece, PREV)), V.kpis(V.baseList(without, PREV)), 'no KPI moves because of the piece');
+  assert.deepStrictEqual([...V.weekStats(withPiece)], [...V.weekStats(without)]);
+  assert.deepStrictEqual(V.metricsOf(withPiece), V.metricsOf(without));
+  assert.deepStrictEqual(V.tabCounts(V.baseList(withPiece, 'open')), V.tabCounts(V.baseList(without, 'open')));
+  const lot = withPiece.find(it => it.id === 'iL');
+  assert.deepStrictEqual([lot.state, lot.reason, lot.lot && lot.lot.id], ['blocked', 'stock', 'recLot1']);
+  assert.strictEqual(V.stockText(lot.lot), 'περιμένει κομμάτια: 13p στην αποθήκη · 1 σε κίνηση');
+  assert.strictEqual(V.stockText(null), 'η κατάσταση της παρτίδας δεν διαβάστηκε');
+  // a blocked lot is never in «Προς κοπή»; complete → ready, once, at the full client price
+  const k0 = V.kpis(V.baseList(withPiece, PREV));
+  const done = V.scopeFilter(V.annotate(await stockSet([LOT_ORDER, PIECE_ORDER], STOCK_LOT(true, { 'Remaining Pallets': 0, 'Pieces Delivered': 2 })), name), 'all');
+  const k1 = V.kpis(V.baseList(done, PREV));
+  assert.strictEqual(done.find(it => it.id === 'iL').state, 'ready');
+  assert.deepStrictEqual([k1.ready - k0.ready, k1.readySum - k0.readySum, k1.blocked - k0.blocked], [1, 3300, -1]);
+  assert.strictEqual(done.filter(it => it.ref === 'LOT-1' || it.ref === 'PC-1').length, 1, 'one invoice for the lot, none for the piece');
+});
