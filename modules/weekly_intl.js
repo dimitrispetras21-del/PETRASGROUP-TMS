@@ -1536,7 +1536,7 @@ function _wiSplitHeaderCtx(e,rowId){
   html+=_wiCtxBtn('Αλλαγή σημείου παράδοσης-παραλαβής…',`_wiPanelHandover(${rowId})`);
   // «Τα ταιριάσματα του γονέα» (owner brief): the split does not touch a
   // matched import — same _wiRemoveImport the un-split row's menu offers.
-  if(row.importId) html+=_wiCtxBtn('Αφαίρεση ταιριάσματος',`_wiRemoveImport(${rowId})`);
+  if(row.importId) html+=_wiCtxBtn('Αφαίρεση ταιριάσματος',`_wiUnmatchRow(${rowId})`);
   const ctx=document.getElementById('wi-ctx');
   ctx.innerHTML=html;
   ctx._returnFocus=e.currentTarget;
@@ -2548,7 +2548,7 @@ function _wiRowHTML(row,i){
     // silently scope group actions (Ανάθεση…, Ακύρωση groupage, reorder) at
     // the WRONG row. «×» unmatch is the one control the standalone row
     // doesn't need (nothing to unmatch there) — kept here, wired to the same
-    // _wiRemoveImport(row.id) the classic single card below already used via
+    // _wiUnmatchRow(row.id) the classic single card below reaches via
     // _wiUnmatch. Appended INSIDE the totals block (.wk3-segwrap is a flex
     // row, CLAUDE.md file allowlist for this fix has no assets/style.css)
     // rather than as a sibling of gLoad/gDel — .wk3-leg is a fixed 3-column
@@ -2575,7 +2575,7 @@ function _wiRowHTML(row,i){
       onclick="event.stopPropagation()"
       ondragstart="event.stopPropagation();_wiImpDragStart(event,'${impGroupRow.orderId}',true)">⋮⋮</span>`;
     const gLoad=_wiSegPillWrap(impGroupRow.id,impMembers,'load',true,true,grip);
-    const unmBtn=`<button class="wk3-unm" title="Αφαίρεση ταιριάσματος (όλη η ομάδα)" onclick="event.stopPropagation();_wiRemoveImport(${row.id})">×</button>`;
+    const unmBtn=`<button class="wk3-unm" title="Αφαίρεση ταιριάσματος (όλη η ομάδα)" onclick="event.stopPropagation();_wiUnmatchRow(${row.id})">×</button>`;
     const gDel=_wiSegPillWrap(impGroupRow.id,impMembers,'del',true,true,_wiSegTotalsHTML(impMembers)+unmBtn);
     impInner=`${gLoad}<span class="wi2-arrow">→</span>${gDel}`;
   } else if(imp){
@@ -2780,7 +2780,57 @@ async function _wiUnmatch(impId){
   // Find export row that has this import
   const expRow=WINTL.rows.find(r=>r.type==='export'&&r.importId===impId);
   if(!expRow) return;
-  await _wiRemoveImport(expRow.id);
+  await _wiUnmatchRow(expRow.id);
+}
+// Every USER unmatch («×», «Αφαίρεση ταιριάσματος») comes here (impact map 4/10
+// B-07). _wiRemoveImport keeps each member's Group ID, so a PIECE in the load
+// stayed glued to its group with no truck: not joinable, not deletable,
+// counted «χωρίς ταίριασμα» and auto-matchable. A piece now leaves the group
+// too and returns to stock — said in the confirm, before any write. The rest
+// is _wiRemoveImport unchanged (leg first, vehicle second), and the group that
+// stays is left as «Ακύρωση groupage» leaves it (_wiSyncGroupResidue: a lone
+// survivor is not a group). The whole-group drag onto another export
+// (_wiSaveImportMatch) calls _wiRemoveImport directly: there the piece rides
+// on with its group.
+async function _wiUnmatchRow(rowId){
+  const row=WINTL.rows.find(r=>r.id===rowId);
+  const pcs=(row&&row.importId)?_wiPieceIn([row.importId]).filter(id=>!WI_EXECUTING.includes(_wiRecOf(id)?.fields?.['Status'])):[];
+  if(!pcs.length) return _wiRemoveImport(rowId);
+  const one=pcs.length===1;
+  const lbl=pcs.map(id=>{ const f=_wiRecOf(id).fields; return `${OrdersStock.lotNumLabel(f)} (${+(f['Total Pallets']||0)}p)`; }).join(', ');
+  if(!(await confirmAction(`Αφαίρεση ταιριάσματος — η εισαγωγή φεύγει από το φορτηγό.\n\n${one?'Το κομμάτι της παρτίδας':'Τα κομμάτια των παρτίδων'} ${lbl} ${one?'βγαίνει':'βγαίνουν'} και από την ομάδα και ${one?'επιστρέφει':'επιστρέφουν'} στο απόθεμα — χωρίς φορτηγό, με όλα τα στοιχεία.`,
+    {title:'Αφαίρεση ταιριάσματος',confirmLabel:'Αφαίρεση'}))) return;
+  const grp=_wiImpGroupRowOf(row.importId), expOid=row.orderIds[0], impId=row.importId;
+  try{
+    await _wiRemoveImport(rowId);
+    let exp=null; try{ exp=await atGetOne(TABLES.ORDERS,expOid); }catch(e){ exp=null; }
+    if(exp&&String(exp.fields?.['Matched Import ID']||'')===impId) return;   // the unmatch failed: its own ⚠ says so
+    const left=[], kept=[];
+    for(const pid of pcs){
+      let f=null; try{ f=(await atGetOne(TABLES.ORDERS,pid))?.fields||null; }catch(e){ f=null; }
+      if(!f){ kept.push(pid+': δεν διαβάστηκε'); continue; }
+      // Still on a vehicle = _wiRemoveImport kept it (moving, or its leg could
+      // not leave): it stays with its group — never a piece on a truck with no group.
+      if(getLinkedId(f['Truck'])||getLinkedId(f['Partner'])){ kept.push(pid+': κρατά όχημα'); continue; }
+      if(!String(f['Group ID']||'').trim()){ left.push(pid); continue; }
+      try{
+        const res=await atSafePatch(TABLES.ORDERS,pid,{'Group ID':null});   // null, never '' (see _wiGroupPatch)
+        if(res?.error) throw new Error(res.error.message||res.error.type);
+        if(String(res?.fields?.['Group ID']||'')) throw new Error('δεν επιβεβαιώθηκε στην ανάγνωση');
+        const c=_wiRecOf(pid); if(c) c.fields['Group ID']=null;
+        left.push(pid);
+      }catch(e){ kept.push(pid+': '+((e&&e.message)||e)); }
+    }
+    if(grp&&left.length){
+      grp.orderIds=(grp.orderIds||[grp.orderId]).filter(id=>!left.includes(id));
+      if(left.includes(grp.orderId)) grp.orderId=grp.orderIds[0];
+      if(grp.orderIds.length&&!(await _wiSyncGroupResidue(grp)))
+        reportError('Τα κομμάτια επέστρεψαν στο απόθεμα αλλά η ομάδα που έμεινε ΔΕΝ ενημερώθηκε πλήρως στη βάση — έλεγξε χειροκίνητα',null);
+    }
+    if(kept.length) reportError('Το ταίριασμα αφαιρέθηκε αλλά κομμάτι ΔΕΝ επέστρεψε στο απόθεμα — έλεγξε χειροκίνητα: '+kept.join(' · '),kept);
+  }finally{ _wiNoUndo(); }   // B-13: one unmatch, not one revertible PATCH
+  _wiStockLoad();
+  await renderWeeklyIntl();
 }
 
 // Κενό κουτί εισαγωγής → νέα παραγγελία εισαγωγής, ήδη δεμένη με το export που
@@ -3460,7 +3510,7 @@ function _wiOpenPopover(e,rowId){
     <div id="wi-piz-${rowId}" class="wi2-piz"
          ondragover="event.preventDefault();this.classList.add('dh')" ondragleave="this.classList.remove('dh')"
          ondrop="event.stopPropagation();_wiDropOnPanel(event,${rowId})">${imp
-      ?`<div class="wi2-ichip"><span>${_wiClean(imp.fields['Loading Summary']||'—')} → ${_wiClean(imp.fields['Delivery Summary']||'—')}</span><small>${_wiFmt(imp.fields['Loading DateTime'])} → ${_wiFmt(imp.fields['Delivery DateTime'])} · ${('Total Pallets' in imp.fields)?imp.fields['Total Pallets']+' p':'— p'}</small><button class="wk3-unm" title="Αφαίρεση ταιριάσματος" onclick="event.stopPropagation();_wiClosePopover();_wiRemoveImport(${rowId})">×</button></div>`
+      ?`<div class="wi2-ichip"><span>${_wiClean(imp.fields['Loading Summary']||'—')} → ${_wiClean(imp.fields['Delivery Summary']||'—')}</span><small>${_wiFmt(imp.fields['Loading DateTime'])} → ${_wiFmt(imp.fields['Delivery DateTime'])} · ${('Total Pallets' in imp.fields)?imp.fields['Total Pallets']+' p':'— p'}</small><button class="wk3-unm" title="Αφαίρεση ταιριάσματος" onclick="event.stopPropagation();_wiClosePopover();_wiUnmatchRow(${rowId})">×</button></div>`
       :'σύρε εισαγωγή εδώ — ή άφησε κενό: θα μετρηθεί στα «κενά» του tally'}</div>`:''}
     <div class="wi-pop-footer">
       <span class="wi2-pop-sync">sync: ⟳ γράφεται → ✓ γράφτηκε / ⚠ ΔΕΝ γράφτηκε (μένει ορατό)</span>
@@ -4278,7 +4328,7 @@ async function _wiCtx(e,rowId){
   // back to the parent's form — the parent no longer has a row of its own
   // to click on, but its info (goods/pallets/client) still needs fixing.
   if(row.splitLegOf) html+=_wiCtxBtn('Αρχική παραγγελία…',`_wk3Edit('${row.splitLegOf}')`);
-  if(row.importId) html+=_wiCtxBtn('Αφαίρεση ταιριάσματος',`_wiRemoveImport(${rowId})`);
+  if(row.importId) html+=_wiCtxBtn('Αφαίρεση ταιριάσματος',`_wiUnmatchRow(${rowId})`);
   // Item 4 (owner 7/9): a split leg's menu is the normal one minus Σπάσιμο
   // (already excluded — _wiSplitCtxItems returns '' for row.splitLegOf) AND
   // Ομαδοποίηση — grouping merges two ORDERS rows into one visual row, which
@@ -6815,6 +6865,7 @@ window._wiNewImport = _wiNewImport;
 window._wiConsumePendingMatch = _wiConsumePendingMatch;
 window._wiRemoveImport = _wiRemoveImport;
 window._wiUnmatch = _wiUnmatch;
+window._wiUnmatchRow = _wiUnmatchRow;
 window._wiPrint = _wiPrint;
 window._wiPrintImp = _wiPrintImp;
 
