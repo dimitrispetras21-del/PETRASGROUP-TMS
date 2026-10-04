@@ -4566,7 +4566,11 @@ async function _wiRtLegDelete(rtId, pgOrderId){
 // a live Loading stop; either gap answered «no trip» and the vehicle clear went
 // on to wipe the trip (review 4/10, P2-2). Any read failure → {ok:false}. A trip
 // that is cancelled is ignored, as everywhere (rt_sync_from_order ignores it too).
-// An order with no date at all falls back to the newest-200 list (none today).
+// The trip's range covers its legs' dates (rt_recompute), so an overlap window
+// on the order's own dates finds it; with ONE date only (no delivery yet — 2
+// orders on 4/10) the trip may end weeks before, so the window opens 60 days
+// back (≤ ~22 trips/week → far below the Worker's 500 cap). No date at all,
+// or a full 500-row answer (possibly cut), is «not sure» → {ok:false}.
 async function _wiRtOf(orderId){
   if(typeof plFetch!=='function'||typeof atGetOne!=='function') return {ok:false,msg:'η αναζήτηση γύρου δεν είναι διαθέσιμη'};
   let rec;
@@ -4576,10 +4580,12 @@ async function _wiRtOf(orderId){
   if(!pg) return {ok:false,msg:'ο αριθμός της παραγγελίας δεν διαβάστηκε'};
   const ds=['Loading DateTime','Delivery DateTime','Actual Delivery Date'].map(k=>String(f[k]||'').slice(0,10)).filter(Boolean).sort();
   const shift=(d,n)=>{ const x=new Date(d+'T12:00:00Z'); x.setUTCDate(x.getUTCDate()+n); return x.toISOString().slice(0,10); };
-  const q=ds.length?('?overlap=1&from='+shift(ds[0],-7)+'&to='+shift(ds[ds.length-1],7)):'';
+  if(!ds.length) return {ok:false,msg:'η παραγγελία δεν έχει ημερομηνίες — ο γύρος της δεν βρίσκεται με βεβαιότητα'};
+  const q='?overlap=1&from='+shift(ds[0],ds.length>1?-7:-60)+'&to='+shift(ds[ds.length-1],7);
   let r;
   try{ r=await plFetch('/costs/rt'+q); }
   catch(e){ return {ok:false,msg:'ο γύρος δεν διαβάστηκε ('+((e&&e.message)||e)+')'}; }
+  if(((r&&r.records)||[]).length>=500) return {ok:false,msg:'πολλοί γύροι στο διάστημα — η αναζήτηση δεν είναι βέβαιη'};
   const rt=((r&&r.records)||[]).find(t=>t.status!=='cancelled'&&(t.ct_rt_legs||[]).some(l=>Number(l.order_id)===pg))||null;
   return {ok:true,pg,rt};
 }

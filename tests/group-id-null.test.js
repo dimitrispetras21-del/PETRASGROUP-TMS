@@ -48,7 +48,7 @@ function world({ exports = [], imports = [], rows = [], executing = {} } = {}) {
     confirmAction: async () => true,
     _wiExecutingLive: async id => !!executing[id],
     // round-trip lookup (_wiRtOf): the order has an Order No, no trip holds it
-    atGetOne: async (_t, id) => ({ id, fields: { 'Order No': 1 } }), plFetch: async () => ({ records: [] }),
+    atGetOne: async (_t, id) => ({ id, fields: { 'Order No': 1, 'Loading DateTime': '2026-10-01T06:00:00Z' } }), plFetch: async () => ({ records: [] }),
     _wiDissolveClearMember: async () => undefined,
     _wiSync() {}, toast() {}, _wiPaint() {}, reportError() {},
     renderWeeklyIntl: async () => {},

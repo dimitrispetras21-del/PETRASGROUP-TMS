@@ -203,3 +203,17 @@ test('«Σπάσιμο σκέλους» on a CLOSED trip stops before any leg is
   assert.strictEqual(w.orders.E.truck, 'T1');
   assert.ok(w.log.some(x => x.toast && /κλειστός — το σπάσιμο δεν ξεκίνησε/.test(x.toast)));
 });
+
+test('lookup: one date only opens the window 60 days back; no date at all clears nothing', async () => {
+  const w = world();
+  w.ctx.atGetOne = async (_t, id) => ({ id, fields: { 'Order No': 2, 'Loading DateTime': '2026-09-20T06:00:00Z' } });
+  await w.ctx._wiRemoveImport(1);
+  await new Promise(r => setTimeout(r, 10));
+  assert.ok(w.rtQueries.some(q => /overlap=1&from=2026-07-22&to=2026-09-27/.test(q)), w.rtQueries.join(' | '));
+  const w2 = world();
+  w2.ctx.atGetOne = async (_t, id) => ({ id, fields: { 'Order No': 2 } });
+  await w2.ctx._wiRemoveImport(1);
+  await new Promise(r => setTimeout(r, 10));
+  assert.strictEqual(w2.orders.I.truck, 'T1');
+  assert.ok(w2.log.some(x => x.error && /δεν έχει ημερομηνίες/.test(x.error)));
+});
