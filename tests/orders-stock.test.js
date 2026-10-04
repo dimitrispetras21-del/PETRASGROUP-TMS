@@ -287,11 +287,73 @@ test('closeLot: reason required; ok only when the read-back has the note AND «C
   assert.strictEqual(early.error, db.createError);
 });
 
-test('unmarkLot: facade DELETE; a refusal comes back as {ok:false, error}', async () => {
+test('unmarkLot: facade DELETE; a refusal comes back as {ok:false, error, shown}', async () => {
   assert.deepStrictEqual(await OrdersStock.unmarkLot('recLot1'), { ok: true });
   assert.deepStrictEqual(calls[0], ['atDelete', 'tblStockLots', 'recLot1']);
   db.createError = 'Η παρτίδα έχει κομμάτια — δεν καταργείται';
-  assert.deepStrictEqual(await OrdersStock.unmarkLot('recLot1'), { ok: false, error: 'Η παρτίδα έχει κομμάτια — δεν καταργείται' });
+  assert.deepStrictEqual(await OrdersStock.unmarkLot('recLot1'), { ok: false, error: 'Η παρτίδα έχει κομμάτια — δεν καταργείται', shown: false });
+});
+
+// D2 (round 1): a 4xx from core/api.js carries _noRetry = already on screen —
+// the caller says only what happened, never the base's sentence again.
+test('D2: unmark / close / reopen report shown:true when core/api.js already showed the refusal', async () => {
+  const refuse = () => { const e = new Error('Η παρτίδα έκλεισε — όχι νέα κομμάτια ή αλλαγές παλετών'); e._noRetry = true; e._rule = 'lot_closed'; throw e; };
+  global.atDelete = async () => refuse();
+  global.atPatch = async () => refuse();
+  for (const r of [await OrdersStock.unmarkLot('recLot1'), await OrdersStock.closeLot('recLot1', 'x'), await OrdersStock.reopenLot('recLot1')]) {
+    assert.deepStrictEqual([r.ok, r.shown], [false, true]);
+  }
+});
+
+// Round 1 O1 (critic-2 E2-01, critic-1 C1-04): the base reopens a closed lot
+// until it is invoiced; the screen does it with ONE patch and believes only
+// the read-back.
+test('O1 reopenLot: PATCH {Closed Note:null} with the undo suppressed; ok only when «Closed At» is gone', async () => {
+  let flag = false, seen = null;
+  global.atSuppressUndo = fn => async (...a) => { flag = true; try { return await fn(...a); } finally { flag = false; } };
+  const patch0 = global.atPatch;
+  global.atPatch = async (...a) => { seen = flag; return patch0(...a); };
+  try {
+    db.readBack = { id: 'recLot1', fields: { 'Lot No': 312 } };
+    const ok = await OrdersStock.reopenLot('recLot1');
+    assert.strictEqual(ok.ok, true);
+    assert.deepStrictEqual(calls[0], ['atPatch', 'tblStockLots', 'recLot1', { 'Closed Note': null }]);
+    assert.deepStrictEqual(calls[1], ['atGetOne', 'tblStockLots', 'recLot1']);
+    assert.strictEqual(seen, true, 'no global-Undo entry (it would close the lot again)');
+  } finally { delete global.atSuppressUndo; }
+  reset(); db.readBack = { id: 'recLot1', fields: { 'Closed Note': 'x', 'Closed At': '2026-10-04T13:00:00Z' } };
+  const still = await OrdersStock.reopenLot('recLot1');
+  assert.deepStrictEqual([still.ok, /έμεινε κλειστή/.test(still.error)], [false, true], 'read-back still closed → not reopened');
+  reset(); db.createError = 'Τιμολογημένη παρτίδα δεν ξανανοίγει';
+  const inv = await OrdersStock.reopenLot('recLot1');
+  assert.deepStrictEqual([inv.ok, inv.error], [false, 'Τιμολογημένη παρτίδα δεν ξανανοίγει']);
+  const n = calls.length;
+  assert.strictEqual((await OrdersStock.reopenLot('rec1") , 1)')).ok, false);
+  assert.strictEqual(calls.length, n, 'a bad rec sends nothing');
+});
+
+test('O1 reopenable: closed and not invoiced, owner/dispatcher only (the accountant closes, does not reopen)', () => {
+  const closed = lotRec('recLot1', { 'Closed At': '2026-10-04T13:00:00Z', 'Closed Note': 'x' });
+  assert.strictEqual(OrdersStock.reopenable(closed), true);
+  assert.strictEqual(OrdersStock.reopenable(lotRec('recLot1', {})), false, 'open lot');
+  assert.strictEqual(OrdersStock.reopenable(lotRec('recLot1', { 'Closed At': 'x', Invoiced: true })), false, 'invoiced (reopen_invoiced)');
+  global.ROLE = 'accountant'; assert.strictEqual(OrdersStock.reopenable(closed), false);
+  global.ROLE = 'owner'; assert.strictEqual(OrdersStock.reopenable(closed), true);
+});
+
+test('O1 closeText: names the consequence; with no piece drawn it says the WHOLE lot', () => {
+  const t = OrdersStock.closeText(lotRec('recLot1', { 'Remaining Pallets': 2, Pieces: 2 })).join(' ');
+  assert.match(t, /^Μένουν 2 παλέτες στην αποθήκη\./);
+  assert.match(t, /γράφονται χαμένες/i); assert.match(t, /δεν δίνει άλλα κομμάτια/); assert.match(t, /Ανοίγει ξανά μέχρι να τιμολογηθεί/);
+  const z = OrdersStock.closeText(lotRec('recLot1', { 'Remaining Pallets': 33, Pieces: 0 })).join(' ');
+  assert.match(z, /^Κλείνει ΟΛΗ η παρτίδα \(33 παλέτες\) — δεν βγήκε κανένα κομμάτι\./);
+  assert.ok(!/€/.test(t + z), 'pallets only, never money');
+});
+
+test('O2 closedLine: pallets · reason · date; empty for an open lot', () => {
+  assert.strictEqual(OrdersStock.closedLine(lotRec('recLot1', { 'Closed At': '2026-10-04T10:00:00Z', 'Closed Note': ' 2 χαλασμένες ', 'Written Off Pallets': 2 })),
+    'Κλείσιμο υπολοίπου: 2 παλ. · 2 χαλασμένες · 4/10');
+  assert.strictEqual(OrdersStock.closedLine(lotRec('recLot1', {})), '');
 });
 
 // ── the invoicing set (§5.3) ─────────────────────────────────────────────────

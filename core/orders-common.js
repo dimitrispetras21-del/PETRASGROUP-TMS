@@ -482,10 +482,11 @@ const OrdersStock = {
     }
   },
   // Facade DELETE = soft delete; the base refuses a lot with pieces or an
-  // invoiced one (stock_guard_lots → Greek 422).
+  // invoiced one (stock_guard_lots → Greek 422). shown: same as markLot — the
+  // caller says only what happened (D2, round 1), never the reason twice.
   async unmarkLot(lotRec) {
     try { await atDelete(TABLES.STOCK_LOTS, lotRec); return { ok: true }; }
-    catch (e) { return { ok: false, error: OrdersStock._msg(e) }; }
+    catch (e) { return { ok: false, error: OrdersStock._msg(e), shown: !!(e && e._noRetry) }; }
   },
   // The base stamps «Closed At» itself (now(), a client value is ignored) and
   // refuses while a piece or the intake is not delivered (close_early).
@@ -497,7 +498,7 @@ const OrdersStock = {
     // closed — refused, or a closed lot with no reason. Same as markLot.
     const patch = typeof atSuppressUndo === 'function' ? atSuppressUndo(atPatch) : atPatch;
     try { await patch(TABLES.STOCK_LOTS, lotRec, { 'Closed Note': text }); }
-    catch (e) { return { ok: false, error: OrdersStock._msg(e) }; }
+    catch (e) { return { ok: false, error: OrdersStock._msg(e), shown: !!(e && e._noRetry) }; }
     try {
       const lot = await atGetOne(TABLES.STOCK_LOTS, lotRec);
       const f = (lot && lot.fields) || {};
@@ -507,19 +508,70 @@ const OrdersStock = {
       return { ok: false, error: 'το κλείσιμο στάλθηκε αλλά δεν επιβεβαιώθηκε (' + OrdersStock._msg(e) + ') — ξαναφόρτωσε τη σελίδα' };
     }
   },
+  // «Άνοιγμα ξανά» (round 1 O1, critic-2 E2-01 / critic-1 C1-04): one click
+  // at 06:00 wrote a whole lot off with no way back but SQL, although the base
+  // already accepts a reopen until the lot is invoiced (057 stock_guard_lots:
+  // closed_note → NULL clears closed_at; reopen_invoiced refuses after the
+  // invoice). The read-back decides: reopened only when «Closed At» is gone
+  // (NULL = absent on the facade). No undo entry, same reason as closeLot —
+  // the global «Undo» would PATCH the old note back = a close nobody chose.
+  async reopenLot(lotRec) {
+    if (!OrdersStock._rec(lotRec)) return { ok: false, error: 'μη έγκυρη παρτίδα' };
+    const patch = typeof atSuppressUndo === 'function' ? atSuppressUndo(atPatch) : atPatch;
+    try { await patch(TABLES.STOCK_LOTS, lotRec, { 'Closed Note': null }); }
+    catch (e) { return { ok: false, error: OrdersStock._msg(e), shown: !!(e && e._noRetry) }; }
+    try {
+      const lot = await atGetOne(TABLES.STOCK_LOTS, lotRec);
+      const f = (lot && lot.fields) || {};
+      if (!f['Closed At'] && !f['Closed Note']) return { ok: true, lot };
+      return { ok: false, lot, error: 'το άνοιγμα δεν γράφτηκε — η παρτίδα έμεινε κλειστή' };
+    } catch (e) {
+      return { ok: false, error: 'το άνοιγμα στάλθηκε αλλά δεν επιβεβαιώθηκε (' + OrdersStock._msg(e) + ') — ξαναφόρτωσε τη σελίδα' };
+    }
+  },
+  // A closed lot may be reopened by whoever may write stock, while it is not
+  // invoiced (the base refuses after — reopen_invoiced). The accountant closes
+  // (Ε3) but does not reopen: owner/dispatcher decide whether pallets move.
+  reopenable(lot) {
+    const g = (lot && lot.fields) || {};
+    return !!g['Closed At'] && g['Invoiced'] !== true && OrdersStock.canWrite();
+  },
+  // The close as one line, for every screen that shows a closed lot (round 1
+  // O2): «Κλείσιμο υπολοίπου: 2 παλ. · <reason> · 4/10». '' when not closed.
+  closedLine(lot) {
+    const g = (lot && lot.fields) || {};
+    if (!g['Closed At']) return '';
+    const off = Number(g['Written Off Pallets']) || 0;
+    return ['Κλείσιμο υπολοίπου: ' + off + ' παλ.', String(g['Closed Note'] || '').trim(), OrdersCommon.dm(g['Closed At'])]
+      .filter(Boolean).join(' · ');
+  },
 
   // «Κλείσιμο υπολοίπου»: pallets only, never money (the dispatcher and the
   // accountant close too, and only the owner sees the lost amount).
   _closing: null,
+  // Round 1 O1 (critic-2 E2-01, critic-1 C1-04): the modal names what the
+  // click does — the pallets are written off, the lot gives no more pieces
+  // (lot_closed in the base), and it reopens only until invoiced. With no
+  // piece drawn it says the WHOLE lot goes, the case an early click hits.
+  closeText(lot) {
+    const g = (lot && lot.fields) || {};
+    const n = v => Number(v) || 0;
+    const left = n(g['Remaining Pallets']);
+    const pal = x => x + (x === 1 ? ' παλέτα' : ' παλέτες');
+    const head = n(g['Pieces']) === 0
+      ? `Κλείνει ΟΛΗ η παρτίδα (${pal(left)}) — δεν βγήκε κανένα κομμάτι.`
+      : `Μένουν ${pal(left)} στην αποθήκη.`;
+    return [head, 'Γράφονται χαμένες· η παρτίδα δεν δίνει άλλα κομμάτια.', 'Ανοίγει ξανά μέχρι να τιμολογηθεί.'];
+  },
   openCloseModal(lot, onDone) {
     const g = (lot && lot.fields) || {};
-    const left = Number(g['Remaining Pallets']) || 0;
     const esc = s => escapeHtml(String(s == null ? '' : s));
     OrdersStock._closing = { lot, onDone };
     const where = [g['Warehouse Name'], g['Client Name']].filter(Boolean).join(' · ');
+    const [head, what, back] = OrdersStock.closeText(lot);
     const body = `<div style="font-size:13px;line-height:1.6;color:var(--text)">
         <div style="font-weight:600;margin-bottom:6px">Παρτίδα ${esc(OrdersStock.lotLabel(lot))}${where ? ' · ' + esc(where) : ''}</div>
-        <div>Μένουν <b>${left}</b> ${left === 1 ? 'παλέτα' : 'παλέτες'} στην αποθήκη. Γράφονται ως χαμένο υπόλοιπο και η παρτίδα γίνεται έτοιμη για τιμολόγηση.</div>
+        <div id="osCloseText"><b>${esc(head)}</b> ${esc(what)} ${esc(back)}</div>
       </div>
       <label class="form-label" for="osCloseNote" style="margin-top:12px;display:block">Αιτιολογία *</label>
       <textarea class="form-textarea" id="osCloseNote" rows="3" style="width:100%;resize:vertical" placeholder="π.χ. 2 παλέτες χαλασμένες στην αποθήκη" oninput="document.getElementById('osCloseErr').style.display='none'"></textarea>
@@ -537,9 +589,10 @@ const OrdersStock = {
     if (btn) { btn.disabled = true; btn.textContent = 'Κλείσιμο…'; }
     const res = await OrdersStock.closeLot(c.lot.id, note);
     if (!res.ok) {
-      // The modal stays open with the reason typed: the Greek refusal of the
-      // base (close_early, lot_invoiced…) is said here, where she is looking.
-      show('Δεν έκλεισε: ' + res.error);
+      // The modal stays open with the reason typed. A refusal of the base
+      // (close_early, lot_invoiced…) is already on screen from core/api.js —
+      // here only what happened (D2, round 1); anything else with its cause.
+      show(res.shown ? 'Δεν έκλεισε — η παρτίδα μένει ανοιχτή.' : 'Δεν έκλεισε: ' + res.error);
       if (btn) { btn.disabled = false; btn.textContent = 'Κλείσιμο υπολοίπου'; }
       return;
     }

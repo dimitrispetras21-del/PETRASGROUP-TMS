@@ -43,6 +43,7 @@ const OrdersInvoicingView = (() => {
       const load = OC.placeOf(rec, 'load'), del = OC.placeOf(rec, 'del');
       const num = OC.numLabel(rec);
       const deliv = OC.ymd(f['Delivery DateTime']);
+      const erp = erpDelivery(set, rec, del, deliv);
       return {
         rec, id: rec.id, type: rec._type, f,
         state: st.key, reason: st.reason || '', lot: st.lot || null,
@@ -54,7 +55,14 @@ const OrdersInvoicingView = (() => {
         days: OrdersData.ageOf(set, rec),
         num, ref: String(f['Reference'] || ''),
         load, del,
-        erp: erpDelivery(set, rec, del, deliv),
+        erp,
+        // Round 1 O3 (critic-2 E2-03, critic-5 S5-05, critic-4 C4-04): ONE
+        // date per lot — its last delivery (or the close, when no piece was
+        // ever delivered), the date the ERP paper prints. The card header, the
+        // list cell, the KPI «Παλαιότερη εκκρεμής», the sort and the invoice-
+        // date check read it; the intake date (deliv) is the warehouse's, not
+        // the client's. Every other order: its delivery, as before.
+        when: erp.lot ? erp.date : deliv,
         search: [client, num, f['Reference'], load.name, load.sub, del.name, del.sub, f['Invoice Number']]
           .filter(Boolean).map(fold).join(' '),
       };
@@ -65,28 +73,45 @@ const OrdersInvoicingView = (() => {
   // said as such, never as «0 στην αποθήκη».
   // A piece returned to stock has no truck: it is waiting, not moving (E-07,
   // impact map 4/10) — «σε κίνηση» counts only the pieces that ride a truck.
+  // Round 1 O4 (critic-5 S5-04): only the non-zero terms — «0 σε κίνηση ·
+  // 0 χωρίς φορτηγό» was read three times on one card for nothing.
   function stockText(lot) {
     if (!lot) return 'η κατάσταση της παρτίδας δεν διαβάστηκε';
     const g = lot.fields || {}, n = v => Number(v) || 0;
     const loose = n(g['Pieces Without Truck']);
     const moving = Math.max(0, n(g['Pieces']) - n(g['Pieces Delivered']) - loose);
-    return `περιμένει κομμάτια: ${n(g['Remaining Pallets'])}p στην αποθήκη · ${moving} σε κίνηση · ${loose} χωρίς φορτηγό`;
+    const parts = [n(g['Remaining Pallets']) ? n(g['Remaining Pallets']) + 'p στην αποθήκη' : '',
+      moving ? moving + ' σε κίνηση' : '', loose ? loose + ' χωρίς φορτηγό' : ''].filter(Boolean);
+    return 'περιμένει κομμάτια' + (parts.length ? ': ' + parts.join(' · ') : '');
   }
-  // «Παράδοση» on the ERP sheet, the print and «Αντιγραφή όλων».
+  // «Παράδοση» and «Παλέτες» on the ERP sheet, the print and «Αντιγραφή
+  // όλων» — one place, so the three papers cannot disagree.
   // OWNER-Q6 default (4/10, impact map PR-15/E-06): a LOT is invoiced once,
-  // after its LAST piece — so the paper names the deliveries («N παραδόσεις
-  // (κομμάτια)», date = «Last Piece Delivered» of the STOCK LOTS record), not
-  // the warehouse intake the order itself records. The card keeps the order's
-  // own route. A lot whose record was not read says so — never the warehouse.
+  // after its LAST piece — so the paper names the deliveries («N παραδόσεις»,
+  // date = «Last Piece Delivered» of the STOCK LOTS record, else «Completed
+  // On»), not the warehouse intake the order itself records. «(κομμάτια)» was
+  // dropped (round 1 O5, critic-2 E2-07): an internal word that could end up in
+  // the invoice text the client reads. A lot whose record was not read says
+  // so — never the warehouse.
+  // Pallets (round 1 O2, critic-2 E2-02 / critic-4 C4-08): a CLOSED lot prints
+  // what was delivered plus the written-off note («31 + 2 χαμένες») — «33»
+  // alone said 33 pallets reached the client. A lot closed with no piece
+  // delivered prints the close itself, never «0 παραδόσεις» and a blank date.
   function erpDelivery(set, rec, del, deliv) {
     const f = rec.fields || {};
+    const own = rec._type === 'intl' ? f['Total Pallets'] : f['Pallets'];
+    const ownPal = own == null || own === '' ? '' : String(own);
     const isLot = rec._type === 'intl' && typeof OrdersStock !== 'undefined' && OrdersStock.isLot(f);
-    if (!isLot) return { place: [del.name, del.sub].filter(Boolean).join(' · '), date: deliv || '', lot: false };
+    if (!isLot) return { place: [del.name, del.sub].filter(Boolean).join(' · '), date: deliv || '', lot: false, pallets: ownPal };
     const lot = set && set.stock ? set.stock.get(OrdersStock.lotRecOfLot(f)) : null;
-    if (!lot) return { place: 'παραδόσεις κομματιών — η παρτίδα δεν διαβάστηκε', date: '', lot: true };
-    const g = lot.fields || {}, n = Number(g['Pieces Delivered']) || 0;
-    return { place: n === 1 ? '1 παράδοση (κομμάτι)' : n + ' παραδόσεις (κομμάτια)',
-      date: g['Last Piece Delivered'] ? OrdersCommon.ymd(g['Last Piece Delivered']) : '', lot: true };
+    if (!lot) return { place: 'παραδόσεις κομματιών — η παρτίδα δεν διαβάστηκε', date: '', lot: true, pallets: ownPal };
+    const g = lot.fields || {}, num = v => Number(v) || 0, ymd = OrdersCommon.ymd;
+    const n = num(g['Pieces Delivered']), closed = !!g['Closed At'], off = num(g['Written Off Pallets']);
+    const pallets = closed ? num(g['Delivered Pallets']) + (off ? ' + ' + off + ' χαμένες' : '') : ownPal;
+    if (!n && closed) return { place: 'κλείσιμο υπολοίπου — κανένα κομμάτι', date: ymd(g['Completed On'] || g['Closed At']), lot: true, closeOnly: true, pallets };
+    const last = g['Last Piece Delivered'] ? ymd(g['Last Piece Delivered']) : '';
+    return { place: n === 0 ? 'καμία παράδοση ακόμη' : n === 1 ? '1 παράδοση' : n + ' παραδόσεις',
+      date: last || (g['Completed On'] ? ymd(g['Completed On']) : ''), lot: true, pallets };
   }
   // Only what this view is about: delivered orders (and the invoiced ones).
   // Not-yet-delivered and cancelled never belong to «Παραδομένες».
@@ -163,7 +188,7 @@ const OrdersInvoicingView = (() => {
       if (isOpen(it) && it.days === null && g.oldest < 0) g.oldest = 0;
     }
     const groups = [...m.values()];
-    for (const g of groups) g.items.sort((a, b) => (a.deliv || '9').localeCompare(b.deliv || '9') || a.num.localeCompare(b.num));
+    for (const g of groups) g.items.sort((a, b) => (a.when || '9').localeCompare(b.when || '9') || a.num.localeCompare(b.num));
     groups.sort((a, b) => (b.oldest - a.oldest) || a.client.localeCompare(b.client, 'el'));
     return groups;
   }
@@ -177,7 +202,7 @@ const OrdersInvoicingView = (() => {
         if (it.type === 'intl') { k.intl++; k.intlSum += it.price || 0; } else { k.natl++; k.natlSum += it.price || 0; }
       } else if (it.state === 'invoiced') { k.invoiced++; if (it.price !== null) k.invSum += it.price; }
       else if (it.state === 'blocked') k.blocked++;
-      if (isOpen(it) && it.days !== null && (k.oldestDays === null || it.days > k.oldestDays)) { k.oldestDays = it.days; k.oldestDate = it.deliv; }
+      if (isOpen(it) && it.days !== null && (k.oldestDays === null || it.days > k.oldestDays)) { k.oldestDays = it.days; k.oldestDate = it.when; }
     }
     return k;
   }
@@ -232,7 +257,6 @@ const OrdersInvoicingView = (() => {
     const rows = [['ΑΡ.', 'Αναφορά', 'Πελάτης', 'ΑΦΜ', 'Διεύθυνση', 'Φόρτωση', 'Παράδοση', 'Ημ. παράδοσης', 'Παλέτες', 'Ποσό', 'ΤΠΥ', 'Ημ. ΤΠΥ']];
     for (const g of groups) for (const it of g.items) {
       const c = (it.clientId && clientInfo(it.clientId)) || null;
-      const pal = it.type === 'intl' ? it.f['Total Pallets'] : it.f['Pallets'];
       rows.push([
         it.num, it.ref, it.client,
         c && c['VAT Number'] ? String(c['VAT Number']) : '',
@@ -240,7 +264,7 @@ const OrdersInvoicingView = (() => {
         [it.load.name, it.load.sub].filter(Boolean).join(' · '),
         it.erp.place,
         it.erp.date,
-        pal == null || pal === '' ? '' : String(pal),
+        it.erp.pallets,
         it.price === null ? '' : it.price.toFixed(2),
         OrdersCommon.isInvoiced(it.f) ? String(it.f['Invoice Number'] || '') : '',
         OrdersCommon.isInvoiced(it.f) ? OrdersCommon.ymd(it.f['Invoice Date']) : '',
@@ -276,6 +300,7 @@ const OrdersInvoicingView = (() => {
     draft: null,            // {id, num, d} kept across a refused write so she does not retype
     clientInfo: new Map(), clientsFailed: false,
     undo: null,
+    reopenErr: null,        // {id, msg} — «Άνοιγμα ξανά» refused, said under the close line
     pieces: new Map(),      // lot rec → {status:'loading'|'ok'|'failed', pieces}
     alloc: new Map(),       // lot rec → {status, lot, pieces} (owner only)
   };
@@ -454,7 +479,10 @@ const OrdersInvoicingView = (() => {
   function statusCell(it) {
     if (it.state === 'invoiced') return OC().invCell(it.f);
     if (it.state === 'blocked') {
-      if (it.reason === 'stock') return `<span class="oiv-st bad" title="${esc(stockText(it.lot))}"><i class="oiv-dot fill"></i>περιμένει κομμάτια</span>`;
+      // O4 (critic-2 E2-10): a lot waiting for its pieces is normal work in
+      // progress nobody can act on here — neutral, not the red of «τιμή →
+      // owner» / «δελτίο → Αλεξία». A false red teaches to ignore red.
+      if (it.reason === 'stock') return `<span class="oiv-st wait" title="${esc(stockText(it.lot))}"><i class="oiv-dot wait"></i>περιμένει κομμάτια</span>`;
       return it.reason === 'price'
         ? '<span class="oiv-st bad"><i class="oiv-dot fill"></i>τιμή → owner</span>'
         : '<span class="oiv-st bad"><i class="oiv-dot fill"></i>δελτίο → Αλεξία</span>';
@@ -488,7 +516,7 @@ const OrdersInvoicingView = (() => {
             <td class="num">${esc(it.num)}</td>
             <td><span class="oc-pname">${esc(it.ref || '—')}</span><span class="oiv-sub">${esc(dirWord(it.f))}</span></td>
             <td>${OC().placeCell(it.load)}</td>
-            <td>${OC().placeCell(it.del)}</td>
+            <td>${it.erp.lot ? OC().placeCell({ name: it.erp.place, sub: '', date: it.erp.date }) : OC().placeCell(it.del)}</td>
             <td class="r num">${pal == null || pal === '' ? '<span class="oiv-muted">—</span>' : esc(pal)}</td>
             <td class="r num">${it.price === null ? '<span class="oiv-muted">—</span>' : eur(it.price)}</td>
             <td>${statusCell(it)}</td></tr>`;
@@ -511,13 +539,27 @@ const OrdersInvoicingView = (() => {
   const isLotIt = it => it.type === 'intl' && typeof OrdersStock !== 'undefined' && OrdersStock.isLot(it.f);
   const lotRecOf = it => OrdersStock.lotRecOfLot(it.f);
 
+  const lotOf = it => (S.set && S.set.stock ? S.set.stock.get(lotRecOf(it)) : null) || null;
+  // The lot's line(s) in ΕΛΕΓΧΟΙ — the ONE place its block reason is said
+  // (O4, critic-5 S5-04: the header and the action block only point here).
+  // Waiting is neutral («–»), a failed read stays red. A closed lot shows the
+  // close where she works (O2, critic-2 E2-02): pallets, reason, date — and,
+  // for owner/dispatcher while not invoiced, «Άνοιγμα ξανά» (O1).
   function lotCheck(it) {
-    if (!isLotIt(it) || it.state === 'invoiced') return '';
-    const lot = S.set.stock ? S.set.stock.get(lotRecOf(it)) : null;
+    if (!isLotIt(it)) return '';
+    const lot = lotOf(it);
+    if (it.state === 'invoiced') return lot && lot.fields['Closed At'] ? `<div class="oiv-ck na"><i>–</i><span>${esc(OrdersStock.closedLine(lot))}</span></div>` : '';
     if (S.set.stockFailed || !lot) return `<div class="oiv-ck bad"><i>✗</i><span>Παρτίδα · ${esc(stockText(null))}</span></div>`;
-    return lot.fields['Complete'] === true
-      ? '<div class="oiv-ck ok"><i>✓</i><span>Παρτίδα · όλα τα κομμάτια παραδόθηκαν</span></div>'
-      : `<div class="oiv-ck bad"><i>✗</i><span>Παρτίδα · ${esc(stockText(lot))}</span></div>`;
+    const g = lot.fields, n = v => Number(v) || 0;
+    if (g['Complete'] !== true) return `<div class="oiv-ck na"><i>–</i><span>Παρτίδα · ${esc(stockText(lot))}</span></div>`;
+    if (!g['Closed At']) return '<div class="oiv-ck ok"><i>✓</i><span>Παρτίδα · όλα τα κομμάτια παραδόθηκαν</span></div>';
+    const reopen = OrdersStock.reopenable(lot)
+      ? ` <button type="button" class="oiv-link" data-oiv="reopen" onclick="OrdersInvoicingView.reopenLot('${esc(it.id)}')">Άνοιγμα ξανά</button>` : '';
+    // The reopen's own failure stays under its line: a dispatcher has no
+    // invoice form on this card, so S.formErr would never be painted.
+    const rerr = S.reopenErr && S.reopenErr.id === it.id ? `<div class="oiv-err" role="alert">${esc(S.reopenErr.msg)}</div>` : '';
+    return `<div class="oiv-ck ok"><i>✓</i><span>Παρτίδα · ${n(g['Delivered Pallets'])}/${n(g['Stock Pallets'])}p παραδόθηκαν</span></div>`
+      + `<div class="oiv-ck na oiv-closed"><i>–</i><span>${esc(OrdersStock.closedLine(lot))}${reopen}</span></div>` + rerr;
   }
 
   function piecesSection(it) {
@@ -613,6 +655,30 @@ const OrdersInvoicingView = (() => {
     });
   }
 
+  // O1 (critic-2 E2-01): «Άνοιγμα ξανά» of a closed, not invoiced lot. The
+  // base accepts it until the invoice (reopen_invoiced); the read-back
+  // decides. Then the set is re-read: the lot is blocked again.
+  async function reopenLot(id) {
+    const it = itemById(id), lot = it && lotOf(it);
+    if (!it || !lot || S.busy || it.state === 'invoiced' || !OrdersStock.reopenable(lot)) return;
+    const label = OrdersStock.lotLabel(lot), off = Number(lot.fields['Written Off Pallets']) || 0;
+    if (!(await confirmAction(`Άνοιγμα ξανά της παρτίδας ${label};\nΟι ${off} παλέτες γυρίζουν στο υπόλοιπο· η παρτίδα περιμένει ξανά κομμάτια και δεν τιμολογείται μέχρι να ολοκληρωθεί.`,
+      { title: 'Άνοιγμα ξανά', confirmLabel: 'Άνοιγμα ξανά' }))) return;
+    S.busy = true; S.reopenErr = null;
+    const res = await OrdersStock.reopenLot(lot.id);
+    S.busy = false;
+    if (!res.ok) {
+      // D2: a refusal of the base is already on screen (core/api.js).
+      S.reopenErr = { id: it.id, msg: res.shown ? 'Δεν άνοιξε — η παρτίδα μένει κλειστή.' : 'Δεν άνοιξε: ' + res.error };
+      if (S.ctx && S.ctx.isCurrent()) paintCard();
+      return;
+    }
+    toast('Η παρτίδα ' + escapeHtml(label) + ' άνοιξε ξανά — περιμένει κομμάτια');
+    OrdersData.invalidate();
+    if (typeof OrdersHub !== 'undefined') OrdersHub.refreshBadges();
+    if (S.ctx && S.ctx.isCurrent()) await render(S.ctx);
+  }
+
   // ── The card ────────────────────────────────────────────────────────────
   const MISSING = '<span class="oiv-muted">— δεν έχει καταχωρηθεί</span>';
   const kv = (label, val) => `<div class="oiv-kv"><span>${label}</span><span>${val}</span></div>`;
@@ -627,9 +693,14 @@ const OrdersInvoicingView = (() => {
     const delivered = it.state !== 'pending' && !!it.deliv;
     const ready = it.state === 'ready';
     let status;
+    // A lot is never «Παραδόθηκε» on its intake date (plan §8, critic-4
+    // C4-04): blocked = «Στην αποθήκη» + a pointer to ΕΛΕΓΧΟΙ (O4); ready =
+    // the one lot date (O3) under its own word.
+    const doneWord = it.erp.lot ? (it.erp.closeOnly ? 'Κλείσιμο υπολοίπου' : 'Τελευταίο κομμάτι') : 'Παραδόθηκε';
     if (it.state === 'invoiced') status = `<span><i class="oiv-dot ok"></i>Τιμολογήθηκε ${f['Invoice Date'] ? dm(f['Invoice Date']) : ''}</span><span><i class="oiv-dot hollow"></i>${f['Invoice Number'] ? 'ΤΠΥ ' + esc(f['Invoice Number']) : 'χωρίς αριθμό'}</span>`;
-    else if (it.state === 'blocked') status = `<span><i class="oiv-dot ok"></i>${isLotIt(it) ? 'Στην αποθήκη' : 'Παραδόθηκε'} ${dm(it.deliv)}</span><span><i class="oiv-dot bad"></i>${it.reason === 'price' ? 'χωρίς τιμή → owner' : it.reason === 'stock' ? esc(stockText(it.lot)) : 'δελτίο → Αλεξία'}</span>`;
-    else status = `<span><i class="oiv-dot ok"></i>Παραδόθηκε ${dm(it.deliv)}</span><span><i class="oiv-dot hollow"></i>προς κοπή${it.days !== null ? ' · ' + it.days + (it.days === 1 ? ' ημέρα' : ' ημέρες') : ''}</span>`;
+    else if (it.state === 'blocked' && it.reason === 'stock') status = `<span><i class="oiv-dot ok"></i>Στην αποθήκη ${dm(it.deliv)}</span><span><i class="oiv-dot hollow"></i>περιμένει κομμάτια</span>`;
+    else if (it.state === 'blocked') status = `<span><i class="oiv-dot ok"></i>${isLotIt(it) ? doneWord + ' ' + dm(it.when) : 'Παραδόθηκε ' + dm(it.deliv)}</span><span><i class="oiv-dot bad"></i>${it.reason === 'price' ? 'χωρίς τιμή → owner' : 'δελτίο → Αλεξία'}</span>`;
+    else status = `<span><i class="oiv-dot ok"></i>${doneWord} ${dm(it.when)}</span><span><i class="oiv-dot hollow"></i>προς κοπή${it.days !== null ? ' · ' + it.days + (it.days === 1 ? ' ημέρα' : ' ημέρες') : ''}</span>`;
 
     // ΣΤΟΙΧΕΙΑ ΓΙΑ ΤΟ ERP
     const c = it.clientId ? info(it.clientId) : null;
@@ -728,7 +799,8 @@ const OrdersInvoicingView = (() => {
         // closable too, or its one invoice can never be issued.
         const canCl = it.lot && OrdersStock.canClose() && OrdersStock.closable(it.lot);
         const btn = canCl ? `<button type="button" class="oiv-warn-btn" onclick="OrdersInvoicingView.closeRemainder('${esc(it.id)}')">Κλείσιμο υπολοίπου…</button>` : '';
-        return `<section><div class="oiv-block" role="note">${esc(stockText(it.lot))} — η παρτίδα τιμολογείται μία φορά, όταν παραδοθούν όλα τα κομμάτια και δεν μένει τίποτα στην αποθήκη (ή κλείσει το υπόλοιπο).</div>${btn}</section>`;
+        // O4: the reason lives in ΕΛΕΓΧΟΙ; here only the rule, neutral.
+        return `<section><div class="oiv-muted small" role="note">Τιμολογείται μία φορά, μετά το τελευταίο κομμάτι.</div>${btn}</section>`;
       } else {
         const g = S.set.gate[it.id];
         who = (g ? `Λείπει δελτίο παλετών σε ${(g.loading_stops || 0) - (g.covered_stops || 0)} από ${g.loading_stops || 0} φορτώσεις` : 'Λείπει δελτίο παλετών')
@@ -756,7 +828,7 @@ const OrdersInvoicingView = (() => {
     const numEl = document.getElementById('oivNum'), dateEl = document.getElementById('oivDate'), hint = document.getElementById('oivHint');
     if (!it || !btn || !numEl || !dateEl || !hint) return;
     const n = numEl.value.trim();
-    const dc = dateCheck(dateEl.value, today(), it.deliv);
+    const dc = dateCheck(dateEl.value, today(), it.when);
     const dup = dupCheck(S.all, n, it);
     const lines = [];
     if (dc.error) lines.push(`<span class="oiv-bad">Ημερομηνία ${esc(dc.error)}</span>`);
@@ -787,7 +859,7 @@ const OrdersInvoicingView = (() => {
     const n = (document.getElementById('oivNum') || {}).value; const num = String(n || '').trim();
     const d = (document.getElementById('oivDate') || {}).value || '';
     if (!num) { S.formErr = 'Συμπλήρωσε τον αριθμό ΤΠΥ του ERP'; paintCard(); return; }
-    const dc = dateCheck(d, today(), it.deliv);
+    const dc = dateCheck(d, today(), it.when);
     if (dc.error) { formInput(); return; }
     const dup = dupCheck(S.all, num, it);
     if (dup.other.length) {
@@ -859,7 +931,7 @@ const OrdersInvoicingView = (() => {
     const num = (document.getElementById('oivEditNum').value || '').trim();
     const d = document.getElementById('oivEditDate').value || '';
     if (!num) { S.formErr = 'Συμπλήρωσε τον αριθμό ΤΠΥ του ERP'; paintCard(); return; }
-    const dc = dateCheck(d, today(), it.deliv);
+    const dc = dateCheck(d, today(), it.when);
     if (dc.error) { S.formErr = 'Ημερομηνία ' + dc.error; paintCard(); return; }
     const old = it.f['Invoice Number'] || '—';
     if (!(await confirmAction(`Η παραγγελία ${it.num} είναι ήδη τιμολογημένη.\nΟ αριθμός ${old} θα αντικατασταθεί από ${num}.`, { title: 'Διόρθωση ΤΠΥ', confirmLabel: 'Διόρθωση' }))) return;
@@ -888,7 +960,7 @@ const OrdersInvoicingView = (() => {
     const d = document.getElementById('oivOvDate').value || '';
     if (!reason) { S.formErr = 'Η παράκαμψη χρειάζεται αιτιολογία'; paintCard(); return; }
     if (!num) { S.formErr = 'Συμπλήρωσε τον αριθμό ΤΠΥ του ERP'; paintCard(); return; }
-    const dc = dateCheck(d, today(), it.deliv);
+    const dc = dateCheck(d, today(), it.when);
     if (dc.error) { S.formErr = 'Ημερομηνία ' + dc.error; paintCard(); return; }
     if (!OC().hasPrice(it.f)) { S.formErr = 'Χωρίς τιμή δεν καταχωρείται τιμολόγιο'; paintCard(); return; }
     // Same duplicate rule as the normal path, asked BEFORE the override is
@@ -923,7 +995,7 @@ const OrdersInvoicingView = (() => {
   }
 
   // ── Interactions ────────────────────────────────────────────────────────
-  function select(id) { S.selId = id; S.closed = false; S.edit = null; S.override = null; S.formErr = ''; S.draft = null;
+  function select(id) { S.selId = id; S.closed = false; S.edit = null; S.override = null; S.formErr = ''; S.draft = null; S.reopenErr = null;
     document.querySelectorAll('#oivBody tr.oiv-r').forEach(tr => tr.classList.toggle('on', tr.dataset.id === id));
     paintCard(); }
   function close() { S.selId = null; S.closed = true; paintCard(); document.querySelectorAll('#oivBody tr.oiv-r.on').forEach(tr => tr.classList.remove('on')); }
@@ -946,7 +1018,7 @@ const OrdersInvoicingView = (() => {
       ['Όροι πληρωμής', terms], ['Αναφορά πελάτη', it.ref], ['Ποσό', it.price === null ? '' : OC().eur(it.price)]];
     // A lot's deliveries go with the copy (OWNER-Q6 default, see erpDelivery):
     // the ERP invoice of a lot covers the pieces, not the warehouse intake.
-    if (it.erp.lot) rows.splice(5, 0, ['Παράδοση', it.erp.place + (it.erp.date ? ' · ' + OC().dm(it.erp.date) : '')]);
+    if (it.erp.lot) rows.splice(5, 0, ['Παράδοση', it.erp.place + (it.erp.date ? ' · ' + OC().dm(it.erp.date) : '')], ['Παλέτες', it.erp.pallets]);
     const lines = rows.map(([k, v]) => k + '\t' + (v == null ? '' : String(v))).join('\n');
     try { await navigator.clipboard.writeText(lines); toast('Τα στοιχεία αντιγράφηκαν'); }
     catch (e) { toast('Η αντιγραφή δεν επιτράπηκε από τον browser — επίλεξε και αντέγραψε χειροκίνητα', 'warn'); }
@@ -976,9 +1048,8 @@ const OrdersInvoicingView = (() => {
       const c = g.clientId ? info(g.clientId) : null;
       const rows = g.items.map(it => {
         if (it.price !== null) total += it.price;
-        const pal = it.type === 'intl' ? it.f['Total Pallets'] : it.f['Pallets'];
         const st = it.state === 'invoiced' ? 'ΤΠΥ ' + (it.f['Invoice Number'] || '—') : it.state === 'blocked' ? (it.reason === 'price' ? 'χωρίς τιμή' : it.reason === 'stock' ? 'περιμένει κομμάτια' : 'λείπει δελτίο') : 'προς κοπή';
-        return `<tr><td>${esc(it.num)}</td><td>${esc(it.ref)}</td><td>${esc([it.load.name, it.load.sub].filter(Boolean).join(' · '))}</td><td>${esc(it.erp.place)}</td><td>${esc(OC().dm(it.erp.date))}</td><td class="r">${pal == null ? '' : esc(pal)}</td><td class="r">${it.price === null ? '—' : eur(it.price)}</td><td>${esc(st)}</td></tr>`;
+        return `<tr><td>${esc(it.num)}</td><td>${esc(it.ref)}</td><td>${esc([it.load.name, it.load.sub].filter(Boolean).join(' · '))}</td><td>${esc(it.erp.place)}</td><td>${esc(OC().dm(it.erp.date))}</td><td class="r">${esc(it.erp.pallets)}</td><td class="r">${it.price === null ? '—' : eur(it.price)}</td><td>${esc(st)}</td></tr>`;
       }).join('');
       return `<tr class="g"><td colspan="6">${esc(g.client)}${c && c['VAT Number'] ? ' · ΑΦΜ ' + esc(c['VAT Number']) : ''}</td><td class="r">${eur(g.sum)}</td><td>${g.items.length}</td></tr>${rows}`;
     }).join('');
@@ -1056,10 +1127,12 @@ const OrdersInvoicingView = (() => {
 .oiv-muted.small{font-size:11.5px;margin-top:4px;line-height:1.35}
 .oiv-st{display:inline-flex;align-items:center;gap:7px;white-space:nowrap;color:var(--text);font-variant-numeric:tabular-nums}
 .oiv-st.bad{color:var(--danger);font-weight:600}
+.oiv-st.wait{color:var(--text-mid)}
 .oiv-dot{display:inline-block;width:8px;height:8px;border-radius:50%;border:1.5px solid var(--surface-dark);flex-shrink:0}
 .oiv-dot.fill,.oiv-dot.bad{background:var(--danger);border-color:var(--danger)}
 .oiv-dot.ok{background:var(--panel-ok-hi);border-color:var(--panel-ok-hi)}
 .oiv-dot.hollow{border-color:var(--text-on-dark)}
+.oiv-dot.wait{border-color:var(--text-mid)}
 .oiv-empty td{text-align:center;color:var(--text-mid);padding:36px 12px}
 .oiv-foot{display:flex;justify-content:space-between;gap:12px;background:var(--bg-card);border:1px solid var(--border);border-top:0;border-radius:0 0 8px 8px;margin-top:calc(-1 * var(--space-2));padding:10px 12px;font-size:12px;color:var(--text-mid);font-variant-numeric:tabular-nums}
 .oiv-total{color:var(--text)}
@@ -1089,6 +1162,7 @@ const OrdersInvoicingView = (() => {
 .oiv-ck.ok i{color:var(--ok)}
 .oiv-ck.bad i,.oiv-ck.bad span{color:var(--danger)}
 .oiv-ck.na i,.oiv-ck.na span{color:var(--text-mid)}
+.oiv-closed .oiv-link{margin-left:6px}
 .oiv-fr{display:flex;gap:10px}
 .oiv-fr label,.oiv-full{flex:1;display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--text-mid);min-width:0}
 .oiv-full{margin-bottom:8px}
@@ -1128,7 +1202,7 @@ const OrdersInvoicingView = (() => {
   }
 
   const api = { pure, render, select, close, setTab, pickWeek, shift, search, formInput, formKey, submit, undoInvoice,
-    startEdit, cancelEdit, saveEdit, startOverride, submitOverride, copyErp, exportCsv, print, closeRemainder };
+    startEdit, cancelEdit, saveEdit, startOverride, submitOverride, copyErp, exportCsv, print, closeRemainder, reopenLot };
   return api;
 })();
 
