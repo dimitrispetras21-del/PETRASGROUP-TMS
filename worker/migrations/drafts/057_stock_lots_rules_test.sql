@@ -2,10 +2,10 @@
 -- every test row, every trigger side effect (audit_log rows, leg status sync) rolls back with it.
 -- Run AFTER 057 (and after 057_stock_lots_verify.sql V1–V8). Expected last line of the error panel:
 --
---     RESULT: 50/50 OK
+--     RESULT: 51/51 OK
 --
 -- followed by one line per case («OK  01 expected over_draw · got over_draw»). Anything less = STOP,
--- copy the panel to the coordinator. 35 refusals + 9 accepted paths + 6 money cases (Ε1).
+-- copy the panel to the coordinator. 35 refusals + 10 accepted paths + 6 money cases (Ε1).
 --
 -- HOW IT STAYS HARMLESS
 --   * Test rows use NEGATIVE ids written with OVERRIDING SYSTEM VALUE: no identity sequence moves,
@@ -21,7 +21,7 @@
 --   refusal: the error's hint is 'stock:<expected code>', or its constraint/index name is the
 --            expected CHECK / unique index;
 --   accepted / money: the statements pass and the check query returns exactly the expected text.
--- Shorthand in the statement lists (expanded by the runner, so the 50 cases stay readable):
+-- Shorthand in the statement lists (expanded by the runner, so the 51 cases stay readable):
 --   'IP:id,lot,pallets,status[,client[,pickup]]' = an international piece (Import, to a Greek site)
 --   'NP:id,lot,pallets,status[,client[,pickup]]' = a national piece
 --   defaults: client = first client, pickup = 424. %1$s..%5$s = client 1, client 2, Greek site, 424, 360.
@@ -47,7 +47,7 @@ begin
    order by id limit 1;
   if c1 is null or c2 is null or gr is null or to_regclass('public.stock_lots') is null
      or not public.stock_is_warehouse(wh) or not public.stock_is_warehouse(hub) then
-    raise exception 'RESULT: 0/50 — SETUP FAILED: run 057 first (needs 2 clients, a Greek site, 424 + 360 as warehouses)';
+    raise exception 'RESULT: 0/51 — SETUP FAILED: run 057 first (needs 2 clients, a Greek site, 424 + 360 as warehouses)';
   end if;
 
   insert into public.orders (id, legacy_id, reference, order_type, direction, status, client_id,
@@ -159,7 +159,7 @@ begin
         overriding system value values (-9501, 'recTSTSTK9501', 'TEST-STOCK-9501', 'Pending', %1$s, %4$s, %3$s, 5, -9301, 50)$q$], null),
     ('35', 'lot_relink', array[$q$update public.stock_lots set order_id = -9002 where id = -9301$q$], null),
 
-    -- ── Accepted paths (9) ──────────────────────────────────────────────────────────────────────
+    -- ── Accepted paths (10) ──────────────────────────────────────────────────────────────────────
     -- P1: the form re-sends every field; only the reference changes; the lot is CLOSED.
     ('P1', 'true', array['IP:-9101,-9301,31,Delivered',
         $q$update public.stock_lots set closed_note = 'TEST: 2 χαλασμένες' where id = -9301$q$,
@@ -213,14 +213,34 @@ begin
            current_date, current_date + 1)$q$,
         $q$insert into public.stock_lots (id, nat_order_id) values (-9304, -9502)$q$],
         $q$select source_kind || ' ' || allocation_status from public.stock_v_lot_money where lot_id = -9304$q$),
-    -- P9: «Επιστροφή στο απόθεμα» exactly as _wiCancelGroupMember writes it (group '' not NULL),
-    --     then the loose piece can be deleted.
+    -- P9: «Επιστροφή στο απόθεμα» exactly as _wiCancelGroupMember writes it (Group ID '' — the base
+    --     stores it as NULL, P10), then the loose piece can be deleted.
     ('P9', 'true', array['IP:-9101,-9301,5,Assigned',
         $q$update public.orders set group_id = 'GI-TEST|recTSTSTK9101' where id = -9101$q$,
         $q$update public.orders set group_id = '', truck_id = null, trailer_id = null, driver_id = null, partner_id = null,
            status = 'Pending' where id = -9101$q$,
         $q$update public.orders set deleted_at = now() where id = -9101$q$],
         $q$select (deleted_at is not null)::text from public.orders where id = -9101$q$),
+    -- P10: a blank Group ID is stored as NULL (057 normaliser). A piece returned exactly as
+    --      _wiCancelGroupMember writes it, one created with '' and one with blanks carry NO group, so
+    --      the round-trip walks («cur.group_id is not null and n.group_id = cur.group_id») can never
+    --      join them. Without the normaliser this reads «0 2» (-9101 and -9102 = one '' group).
+    ('P10', '3 0', array['IP:-9101,-9301,5,Assigned',
+        $q$update public.orders set group_id = 'GI-TEST|recTSTSTK9101' where id = -9101$q$,
+        $q$update public.orders set group_id = '', truck_id = null, trailer_id = null, driver_id = null, partner_id = null,
+           status = 'Pending' where id = -9101$q$,
+        $q$insert into public.orders (id, legacy_id, reference, order_type, direction, status, client_id,
+           loading_location_1_id, unloading_location_1_id, loading_pallets_1, stock_lot_id, group_id)
+           overriding system value values (-9102, 'recTSTSTK9102', 'TEST-STOCK-9102', 'International', 'Import',
+           'Pending', %1$s, %4$s, %3$s, 5, -9301, '')$q$,
+        $q$insert into public.orders (id, legacy_id, reference, order_type, direction, status, client_id,
+           loading_location_1_id, unloading_location_1_id, loading_pallets_1, stock_lot_id, group_id)
+           overriding system value values (-9103, 'recTSTSTK9103', 'TEST-STOCK-9103', 'International', 'Import',
+           'Pending', %1$s, %4$s, %3$s, 5, -9301, '   ')$q$],
+        $q$select count(*) filter (where group_id is null) || ' '
+                  || (select count(*) from public.orders a join public.orders b on b.group_id = a.group_id and b.id <> a.id
+                       where a.id in (-9101, -9102, -9103))
+             from public.orders where id in (-9101, -9102, -9103)$q$),
 
     -- ── Money (6, Ε1) — price 3300, warehouse rate 300, 33 pallets → net 3000.00 ─────────────────
     ('M1', '454.55/1363.63/1181.82 Σ3000.00 net 3000.00 in_stock 0.00',

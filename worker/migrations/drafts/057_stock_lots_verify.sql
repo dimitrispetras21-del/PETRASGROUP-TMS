@@ -11,7 +11,7 @@ select md5(string_agg(rt_id::text || '=' || revenue::text, ',' order by rt_id)) 
   from public.ct_v_rt_revenue;
 
 -- ── V1 — objects ─────────────────────────────────────────────────────────────────────────────────
--- Expected: 8 | 1 | 1 | 6 | 4 | 3 | 7 | 5 | 136 | 2
+-- Expected: 8 | 1 | 1 | 6 | 4 | 3 | 8 | 5 | 136 | 2 | 1 | 0
 select
   (select count(*) from information_schema.columns
     where table_schema = 'public' and table_name = 'stock_lots')                                  as stock_lots_cols,      -- 8
@@ -32,7 +32,8 @@ select
   (select count(*) from pg_proc p join pg_namespace n on n.oid = p.pronamespace
     where n.nspname = 'public'
       and p.proname in ('order_pallets', 'stock_natl_delivered', 'stock_is_warehouse', 'stock_raise',
-                        'stock_guard_lots', 'stock_guard_orders', 'stock_guard_natl'))           as functions,            -- 7
+                        'stock_guard_lots', 'stock_guard_orders', 'stock_guard_natl',
+                        'orders_group_id_blank_null'))                                           as functions,            -- 8
   (select count(*) from pg_views
     where schemaname = 'public'
       and viewname in ('stock_v_pieces', 'stock_v_lots', 'stock_v_lot_money', 'stock_v_lot_alloc',
@@ -40,7 +41,12 @@ select
   (select count(*) from pg_attribute
     where attrelid = 'public.orders_with_derived'::regclass and attnum > 0 and not attisdropped) as owd_cols,             -- 136
   (select count(*) from pg_attribute
-    where attrelid = 'public.ct_v_rt_revenue'::regclass and attnum > 0 and not attisdropped)     as revenue_cols;         -- 2
+    where attrelid = 'public.ct_v_rt_revenue'::regclass and attnum > 0 and not attisdropped)     as revenue_cols,         -- 2
+  (select count(*) from pg_trigger
+    where tgrelid = 'public.orders'::regclass and not tgisinternal and tgenabled = 'O'
+      and tgname = 'orders_group_id_blank_null')                                                as blank_gid_trigger,    -- 1
+  -- a blank Group ID would be ONE group for the round-trip engine (057 header, WHAT)
+  (select count(*) from public.orders where group_id is not null and btrim(group_id) = '')      as blank_group_ids;      -- 0
 
 -- The 4 new orders_with_derived columns, in this order. Expected 4 rows:
 -- 133 stock_lot_id bigint · 134 own_stock_lot text · 135 stock_lot_order_no bigint · 136 stock_lot_source text
@@ -49,8 +55,8 @@ select attnum, attname, format_type(atttypid, atttypmod)
  where attrelid = 'public.orders_with_derived'::regclass and attnum > 132 and not attisdropped
  order by attnum;
 
--- Trigger order on orders (BEFORE fires alphabetically). Expected: stock_guard_orders LAST of the
--- BEFORE row triggers, after order_leg_depth, order_leg_inherit, orders_invoice_mark_guard.
+-- Trigger order on orders (BEFORE fires alphabetically). Expected 5 rows: order_leg_depth,
+-- order_leg_inherit, orders_group_id_blank_null, orders_invoice_mark_guard, stock_guard_orders (LAST).
 select tgname from pg_trigger
  where tgrelid = 'public.orders'::regclass and not tgisinternal and (tgtype & 2) = 2   -- BEFORE
  order by tgname;
@@ -69,13 +75,13 @@ select privilege_type from information_schema.role_table_grants
  where table_schema = 'public' and table_name = 'stock_lots' and grantee = 'service_role'
  order by 1;
 
--- Expected: 0 rows (anon/authenticated cannot execute any of the 7 functions).
+-- Expected: 0 rows (anon/authenticated cannot execute any of the 8 functions).
 select r.rolname, f.fn
   from (values ('anon'), ('authenticated')) r(rolname)
  cross join (values ('public.order_pallets(public.orders)'), ('public.stock_natl_delivered(text, date)'),
                     ('public.stock_is_warehouse(bigint)'), ('public.stock_raise(text, text)'),
                     ('public.stock_guard_lots()'), ('public.stock_guard_orders()'),
-                    ('public.stock_guard_natl()')) f(fn)
+                    ('public.stock_guard_natl()'), ('public.orders_group_id_blank_null()')) f(fn)
  where has_function_privilege(r.rolname, f.fn, 'execute');
 
 -- Expected: f | f | t | t (tms_reader sees no money; the auditor reads the amount for S-09).

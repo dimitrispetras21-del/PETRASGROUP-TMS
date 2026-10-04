@@ -487,7 +487,6 @@ const OrdersInvoicingView = (() => {
   // section; a failed read says so in red — never an empty list.
   const isLotIt = it => it.type === 'intl' && typeof OrdersStock !== 'undefined' && OrdersStock.isLot(it.f);
   const lotRecOf = it => OrdersStock.lotRecOfLot(it.f);
-  const PIECE_STATUS = { Pending: 'σε αναμονή', Assigned: 'ανατέθηκε', 'In Transit': 'σε μεταφορά', Delivered: 'παραδόθηκε' };
 
   function lotCheck(it) {
     if (!isLotIt(it) || it.state === 'invoiced') return '';
@@ -513,7 +512,7 @@ const OrdersInvoicingView = (() => {
         const where = [del.name, del.sub].filter(Boolean).join(' · ') || '—';
         const pal = pf['Total Pallets'];
         const clip = typeof OrderDocs !== 'undefined' && OrderDocs.badge ? OrderDocs.badge(p.id) : '';
-        return `<div class="oiv-pc"><div class="oiv-pc1"><b>${esc(OC().numLabel(p))}</b><span>${esc(pf['Reference'] || '—')}</span>${clip}<span class="oiv-pc-r">${pal == null || pal === '' ? '—' : esc(pal)}p · ${esc(PIECE_STATUS[pf['Status']] || pf['Status'] || '—')}</span></div>
+        return `<div class="oiv-pc"><div class="oiv-pc1"><b>${esc(OC().numLabel(p))}</b><span>${esc(pf['Reference'] || '—')}</span>${clip}<span class="oiv-pc-r">${pal == null || pal === '' ? '—' : esc(pal)}p · ${esc(OrdersStock.statusWord(pf['Status']))}</span></div>
           <div class="oiv-pc2"><span title="${esc(where)}">${esc(where)}</span><span>${pf['Delivery DateTime'] ? esc(dm(pf['Delivery DateTime'])) : '—'}</span></div></div>`;
       }).join('');
     }
@@ -544,7 +543,10 @@ const OrdersInvoicingView = (() => {
     else {
       const m = st.lot, num = v => (v == null || v === '' ? null : Number(v));
       if (m.allocation_status !== 'ok') {
-        body = `<div class="oiv-warn">Ο επιμερισμός εκκρεμεί: ${m.allocation_status === 'no_price' ? 'χωρίς τιμή' : 'χωρίς κόστος αποθήκης'}</div>`;
+        // One reason per status the base can return; an unknown one is shown
+        // as it is, never dressed up as another reason.
+        const why = { no_price: 'χωρίς τιμή', no_intake_cost: 'χωρίς κόστος αποθήκης', no_pallets: 'χωρίς παλέτες' }[m.allocation_status] || String(m.allocation_status || '—');
+        body = `<div class="oiv-warn">Ο επιμερισμός εκκρεμεί: ${esc(why)}</div>`;
       } else {
         const pp = num(m.per_pallet);
         const per = pp === null ? '—' : new Intl.NumberFormat('el-GR', { minimumFractionDigits: 2, maximumFractionDigits: 4 }).format(pp) + ' €';
@@ -699,7 +701,9 @@ const OrdersInvoicingView = (() => {
       else if (it.reason === 'stock') {
         // Ε3: whoever is working closes a remainder that will never leave;
         // the base refuses while a piece or the intake is not delivered.
-        const canCl = it.lot && OrdersStock.canClose() && OrdersStock.chip(it.lot, today()).key === 'close';
+        // closable(), not the chip: a received lot with no piece drawn must be
+        // closable too, or its one invoice can never be issued.
+        const canCl = it.lot && OrdersStock.canClose() && OrdersStock.closable(it.lot);
         const btn = canCl ? `<button type="button" class="oiv-warn-btn" onclick="OrdersInvoicingView.closeRemainder('${esc(it.id)}')">Κλείσιμο υπολοίπου…</button>` : '';
         return `<section><div class="oiv-block" role="note">${esc(stockText(it.lot))} — η παρτίδα τιμολογείται μία φορά, όταν παραδοθούν όλα τα κομμάτια και δεν μένει τίποτα στην αποθήκη (ή κλείσει το υπόλοιπο).</div>${btn}</section>`;
       } else {

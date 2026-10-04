@@ -384,7 +384,7 @@ function _oiCardHtml(rec, opts) {
   const actions = canEdit ? [
     `<button type="button" class="oi-link" data-oi-act="edit" onclick="openIntlEdit('${recId}')">${pre ? 'Μετατροπή σε παραγγελία' : 'Επεξεργασία'}</button>`,
     pre ? `<button type="button" class="oi-link" data-oi-act="pre-edit" onclick="editPreorder('${recId}')">Επεξεργασία pre-order</button>` : '',
-    `<button type="button" class="oi-link" data-oi-act="dup" onclick="duplicateIntlOrder('${recId}')">Διπλασιασμός</button>`,
+    _oiIsPiece(f) ? '' : `<button type="button" class="oi-link" data-oi-act="dup" onclick="duplicateIntlOrder('${recId}')">Διπλασιασμός</button>`,
     `<button type="button" class="oi-link oi-link-danger" data-oi-act="delete" title="Διαγραφή με cascade — NL/GL/CL/Ramp/Παλέτες" onclick="deleteIntlOrder('${recId}')">Διαγραφή</button>`,
   ].filter(Boolean).join('<span class="oi-sep">·</span>') : '';
 
@@ -404,7 +404,7 @@ function _oiCardHtml(rec, opts) {
       ${kvm('Μικτό βάρος', gw ? escapeHtml(Number(gw).toLocaleString('el-GR')) + ' kg' : '')}
       ${kv('Ανταλλαγή παλετών', peV, peCls)}
       ${f['Carrier Type'] ? kv('Μεταφορέας', escapeHtml(f['Carrier Type'])) : ''}
-      ${kvm('Τιμή', hasPrice ? _oiMoney(f['Price']) : '')}
+      ${_oiIsPiece(f) ? kv('Τιμή', 'στην παρτίδα ' + escapeHtml(OrdersStock.lotNumLabel(f)), 'miss') : kvm('Τιμή', hasPrice ? _oiMoney(f['Price']) : '')}
       ${kv('Τιμολογήθηκε', f['Invoiced']
         ? ['Ναι', f['Invoice Number'] ? 'ΤΠΥ ' + escapeHtml(f['Invoice Number']) : '', f['Invoice Date'] ? new Date(f['Invoice Date']).toLocaleDateString('el-GR') : ''].filter(Boolean).join(' · ')
         : 'Όχι')}
@@ -551,9 +551,17 @@ async function duplicateIntlOrder(recId) {
     f = w && w.fields;
   }
   if (!f) { toast('Δεν βρέθηκε η παραγγελία', 'warn'); return; }
+  // 057: a copy of a PIECE would be an ordinary import from the warehouse —
+  // no «Stock Lot» (the submit builds fields from the form), so it draws
+  // pallets the stock never sees, asks for a price and is invoiced a second
+  // time next to its lot. A new piece starts where the stock is counted.
+  if (_oiIsPiece(f)) { toast('Νέο κομμάτι: από τη λωρίδα ΑΠΟΘΕΜΑ του Weekly Διεθνών (δεξί κλικ στο φορτηγό → «+ Κομμάτι από απόθεμα…»)', 'warn'); return; }
+  // The stock labels never travel: a copy of a lot is a new order that becomes
+  // a lot only by its own «Παρτίδα» tick.
   const skip = new Set(['Order Number','Week Number','ORDER STOPS','Status','Truck','Trailer','Driver',
     'Partner','Is Partner Trip','Partner Rate','Partner Truck Plates','Matched Import ID',
-    'NATIONAL ORDERS','Group ID','Created','Last Modified']);
+    'NATIONAL ORDERS','Group ID','Created','Last Modified',
+    'Stock Lot','Own Stock Lot','Stock Lot Order No','Stock Lot Source']);
   const copy = {};
   for (const k of Object.keys(f)) if (!skip.has(k)) copy[k] = f[k];
   let stopsPre = null;
@@ -739,7 +747,7 @@ async function _openModal(recId, f, _clientLabelOverride, _scanPrefill, _piece) 
     </div>`;
 
   const footer = `
-    ${isEdit?`<button class="btn btn-ghost" title="Νέα παραγγελία με ίδια στοιχεία — αλλάζεις μόνο ημερομηνίες (π.χ. LABIDINO Δευ/Τετ/Παρ)" onclick="duplicateIntlOrder('${recId}')">Διπλασιασμός</button>`:''}
+    ${isEdit&&SK.mode!=='pieceEdit'?`<button class="btn btn-ghost" title="Νέα παραγγελία με ίδια στοιχεία — αλλάζεις μόνο ημερομηνίες (π.χ. LABIDINO Δευ/Τετ/Παρ)" onclick="duplicateIntlOrder('${recId}')">Διπλασιασμός</button>`:''}
     ${(!isEdit&&window._scanQueue&&window._scanQueue.length)?`<button class="btn btn-ghost" title="Προσπέρασε αυτό το σκαν χωρίς αποθήκευση" onclick="closeModal();_scanQueueNext()">Παράλειψη → (${window._scanQueue.length} ακόμη)</button>`:''}
     <button class="btn btn-ghost" onclick="closeModal()">Άκυρο</button>
     <button class="btn btn-success" id="btnSubmit" onclick="submitIntlOrder('${recId||''}')">Αποθήκευση</button>`;
@@ -817,6 +825,8 @@ function _removeStop(type, i) {
 // rule lives in the base (stock_guard_* + CHECKs) and comes back as a Greek
 // 422; what follows only mirrors it so the form does not invite a refusal.
 // ═══════════════════════════════════════════════════════════════════════════
+// A stock piece? (the card and «Διπλασιασμός» run before any modal context)
+function _oiIsPiece(f) { return typeof OrdersStock !== 'undefined' && OrdersStock.isPiece(f); }
 // The stock context of one opened modal:
 //   mode     'none' | 'pieceNew' (openIntlPieceCreate) | 'pieceEdit' | 'lotEdit'
 //   lot      the STOCK LOTS record (null when not read — failed says so)
@@ -1021,8 +1031,11 @@ async function _oiMarkLot(orderId, ctx) {
   if (res.ok) { INTL_ORDERS._markPending = null; INTL_ORDERS._markPendingCtx = null; return true; }
   INTL_ORDERS._markPending = orderId; INTL_ORDERS._markPendingCtx = ctx;
   const formOpen = !!document.getElementById('f_StockLot');
+  // «Ξανά» re-sends ONLY the mark, never the form's edits: a refusal fixed in
+  // the form (e.g. 0 pallets) needs the order saved again first — say how.
   showErrorToast('Η παραγγελία αποθηκεύτηκε, αλλά ΔΕΝ έγινε παρτίδα: ' + res.error
-    + (formOpen ? '' : ' — άνοιξε την παραγγελία, τσέκαρε «Παρτίδα» και πάτησε Αποθήκευση.'), 'error', 12000);
+    + (formOpen ? ' — «Ξανά» ξαναστέλνει μόνο τη σήμανση· αν πρέπει να αλλάξεις κάτι στη φόρμα: Άκυρο → άνοιξε ξανά την παραγγελία.'
+                : ' — άνοιξε την παραγγελία, τσέκαρε «Παρτίδα» και πάτησε Αποθήκευση.'), 'error', 12000);
   const b = document.getElementById('btnSubmit');
   if (b) { b.textContent = 'Ξανά: σήμανση παρτίδας'; b.disabled = false; }
   return false;

@@ -149,6 +149,34 @@ test('chip: ok · aging (22 days) · close · nointake — absent counts are 0, 
   assert.deepStrictEqual(OrdersStock.chip(bare, TODAY), { key: 'ok', days: null, remaining: 0, stock: 0 });
 });
 
+// review P2 (4/10): the button follows closable(), not the chip — a received
+// lot with NO piece drawn must be closable, or its one invoice never comes.
+test('closable: zero pieces drawn is closable (base close_early agrees); the chip still does not nudge', () => {
+  const zero = lotRec('a', { Pieces: 0, 'Pieces Delivered': 0, 'Remaining Pallets': 33, 'Drawn Pallets': 0, 'Received On': daysAgo(40) });
+  assert.strictEqual(OrdersStock.closable(zero), true);
+  assert.notStrictEqual(OrdersStock.chip(zero, TODAY).key, 'close', 'no «κλείσιμο;» nudge on a fresh/aging lot');
+  // absent counts (facade trap #2) read as 0 — still closable
+  const absent = lotRec('a', { 'Remaining Pallets': 33 });
+  delete absent.fields.Pieces; delete absent.fields['Pieces Delivered'];
+  assert.strictEqual(OrdersStock.closable(absent), true);
+  assert.strictEqual(OrdersStock.closable(lotRec('a', { Pieces: 3, 'Pieces Delivered': 3, 'Remaining Pallets': 2 })), true);
+  assert.strictEqual(OrdersStock.closable(lotRec('a', { Pieces: 3, 'Pieces Delivered': 2, 'Remaining Pallets': 2 })), false, 'a piece still moving');
+  assert.strictEqual(OrdersStock.closable(lotRec('a', { Pieces: 0, 'Pieces Delivered': 0, 'Intake Delivered': false })), false, 'intake not in');
+  assert.strictEqual(OrdersStock.closable(lotRec('a', { Pieces: 1, 'Pieces Delivered': 1, 'Remaining Pallets': 0 })), false, 'nothing left');
+  assert.strictEqual(OrdersStock.closable(lotRec('a', { Pieces: 0, 'Pieces Delivered': 0, 'Closed At': TODAY + 'T10:00:00Z' })), false, 'already closed');
+  assert.strictEqual(OrdersStock.closable({ id: 'b', fields: {} }), false);
+  assert.strictEqual(OrdersStock.closable(null), false);
+});
+
+test('statusWord: one Greek word per piece status for every screen', () => {
+  assert.strictEqual(OrdersStock.statusWord('In Transit'), 'σε μεταφορά');
+  assert.strictEqual(OrdersStock.statusWord('Delivered'), 'παραδόθηκε');
+  assert.strictEqual(OrdersStock.statusWord('Assigned'), 'ανατέθηκε');
+  assert.strictEqual(OrdersStock.statusWord('Pending'), 'σε αναμονή');
+  assert.strictEqual(OrdersStock.statusWord('Weird'), 'Weird', 'unknown shown as it is');
+  assert.strictEqual(OrdersStock.statusWord(undefined), '—');
+});
+
 // ── pieceFields ──────────────────────────────────────────────────────────────
 test('pieceFields: the lot locks on top of the form, never Price, PE false, exact Group ID, Status rule', () => {
   const lot = lotRec('recLot1', {});

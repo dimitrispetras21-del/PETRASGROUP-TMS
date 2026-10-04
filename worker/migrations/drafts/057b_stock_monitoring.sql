@@ -4,7 +4,8 @@
 --
 -- WHY each check (plan §6, owner Ε3):
 --   S-01 P1  remaining < 0 — impossible while the guards stand; > 0 = they were bypassed.
---   S-02 P1  a guard trigger or one of the 6 CHECKs is gone/disabled (e.g. R1 of the rollback).
+--   S-02 P1  a guard trigger or one of the 6 CHECKs is gone/disabled (e.g. R1 of the rollback;
+--            back with 057_stock_lots_guards_on.sql).
 --   S-03 P1  an invoiced lot that is not complete (the one-invoice rule broken).
 --   S-05 P2  a lot received > 21 days ago and still not complete (queue: pallets aging abroad).
 --   S-06 P1  pieces moving / delivered while the lot's intake was never marked delivered.
@@ -66,8 +67,8 @@ begin
    $c$SELECT (3 - (SELECT count(*) FROM pg_trigger WHERE NOT tgisinternal AND tgenabled <> 'D' AND tgname IN ('stock_guard_lots','stock_guard_orders','stock_guard_natl'))) + (6 - (SELECT count(*) FROM pg_constraint WHERE conname IN ('orders_stock_piece_no_money','orders_stock_piece_shape','national_orders_stock_piece_no_money','national_orders_stock_piece_shape','stock_lots_one_source','stock_lots_close_shape')))$c$,
    null, null, '>', 0, 'P1', 'hourly', false,
    'Χωρίς τους φρουρούς του 057 ένα κομμάτι παίρνει τιμή, ξεπερνά το απόθεμα ή τιμολογείται ατελής παρτίδα — σιωπηλά.',
-   'Αν έτρεξε το R1 της επαναφοράς: ξαναμπαίνουν με το 057 §6 μόλις διορθωθεί το σφάλμα. Αλλιώς: ποιος άλλαξε τη βάση;',
-   'σταθερός έλεγχος SQL — δείχνει ΤΙ, όχι ΓΙΑΤΙ', 'Το R1 (057_stock_lots_rollback.sql) το ανάβει σκόπιμα.', true),
+   'Αν έτρεξε το R1 της επαναφοράς: ξαναμπαίνουν με το 057_stock_lots_guards_on.sql μόλις διορθωθεί το σφάλμα. Αλλιώς: ποιος άλλαξε τη βάση;',
+   'σταθερός έλεγχος SQL — δείχνει ΤΙ, όχι ΓΙΑΤΙ', 'Το R1 (057_stock_lots_rollback_r1_guards_off.sql) το ανάβει σκόπιμα.', true),
   ('S-03', 'Απόθεμα: τιμολογημένη παρτίδα που δεν είναι πλήρης', array['F-30'],
    $c$SELECT count(*) FROM stock_v_lots WHERE invoiced AND NOT complete$c$,
    $c$SELECT coalesce(array_agg(x ORDER BY x),'{}') FROM (SELECT legacy_id AS x FROM stock_v_lots WHERE invoiced AND NOT complete ORDER BY legacy_id LIMIT 50) s$c$,

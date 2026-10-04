@@ -5,14 +5,20 @@
 -- WHO / WHEN / ORDER (mandatory)
 --   * The owner runs this file in the Supabase SQL editor, AFTER 15:00 (team works 05:30–14:30).
 --   * Then 057_stock_lots_verify.sql (SELECT only; run its V0 BEFORE this file too), then
---     057_stock_lots_rules_test.sql (must end with «RESULT: 50/50 OK» — it always rolls back).
+--     057_stock_lots_rules_test.sql (must end with «RESULT: 51/51 OK» — it always rolls back).
 --   * The Worker (facade labels «Stock Lot», «Own Stock Lot», tblStockLots, /costs/stock-lots) is
---     deployed ONLY after the verify file passes. Worker first = ORDERS reads that ask for the new
---     columns, and every STOCK LOTS read, fail with a PostgREST 400 (loud, never silent). This file
---     first is harmless: no screen reads the new objects, no lot exists, every RT keeps today's
---     revenue (proved below).
+--     deployed ONLY after the verify file passes. Worker first is QUIET, not loud: after every ORDERS
+--     save the Worker re-reads all computed labels in ONE select that names the new columns; before
+--     057 that select fails inside a try/catch that only logs, so saves still answer 200/201 but
+--     WITHOUT Order No / Week Number (blank on the screen, no error). Only a GET that asks for a new
+--     label, and every STOCK LOTS read, fail loudly. Deploy smoke: save one order and see its Order No.
+--     This file first is harmless: no screen reads the new objects, no lot exists, every RT keeps
+--     today's revenue (proved below).
 --   * 057b_stock_monitoring.sql (auditor checks) is a separate approval, after V1–V8 pass.
---   * Rollback: 057_stock_lots_rollback.sql (R1 = guards off, R2 = revenue view back to 3/10).
+--   * Rollback: ONE file per action, so the editor's «Run» can never run the wrong one —
+--     057_stock_lots_rollback_r1_guards_off.sql (the three guards go) ·
+--     057_stock_lots_guards_on.sql (they come back, after R1) ·
+--     057_stock_lots_rollback_r2_revenue.sql (revenue view back to 3/10).
 --
 -- WHY ONE DO BLOCK (lesson 056, 3/10/2026): the SQL editor does not run BEGIN…COMMIT as one
 -- transaction — 056 half-committed and its temp table vanished before the proofs. A DO block is ONE
@@ -29,9 +35,15 @@
 --   * Money (Ε1): stock_v_lot_money / stock_v_lot_alloc / stock_v_rt_amounts, read only by the owner
 --     (Worker /costs/stock-lots) and by ct_v_rt_revenue. Nothing is stored by hand.
 --   * The only DATA change: locations 424 and 885 become 'Partner Warehouse' (exactly 2 rows).
+--   * orders.group_id: a blank value is stored as NULL (one small BEFORE trigger, §6). «Επιστροφή
+--     στο απόθεμα» / «Ακύρωση groupage» write Group ID '' and the round-trip engine (033/037 walks:
+--     «group_id is not null and n.group_id = cur.group_id») would read every '' order as ONE group —
+--     two returned pieces on the same truck weeks apart would be merged into one round trip. NULL is
+--     what the facade already means by blank ({Group ID}='' filters translate to IS NULL).
 --
 -- NOT TOUCHED: national_orders_with_derived, ct_v_rt_costs, every existing trigger, every existing
--- row of orders / national_orders (stock_lot_id starts NULL everywhere; Ε4: no retroactive linking).
+-- row of orders / national_orders (stock_lot_id starts NULL everywhere; Ε4: no retroactive linking;
+-- no blank group_id exists today — the §0 guard refuses to run if one appears).
 
 do $mig$
 declare
@@ -47,6 +59,10 @@ begin
   -- The view md5 guards below are measured against pg_get_viewdef() output, which qualifies any
   -- relation that is not on the search_path. Pin it so the guard is deterministic in any session.
   perform set_config('search_path', 'public', true);
+  -- ADD COLUMN on orders / national_orders needs an ACCESS EXCLUSIVE lock: behind an idle open
+  -- transaction it would wait forever while every ORDERS read of the app queues behind it. Give up
+  -- after 5 s instead — the whole block rolls back, nothing half-done; run it again later.
+  perform set_config('lock_timeout', '5s', true);
 
   -- ── 0. Guards: refuse to run on a database that is not the one this draft was written against ──
   if to_regclass('public.stock_lots') is not null then
@@ -69,6 +85,13 @@ begin
    where id in (424, 885) and type is null and country is not null and country not in ('GR', 'Greece');
   if v_n <> 2 then
     raise exception '057 guard: locations 424/885 are no longer untyped foreign sites (% of 2 match) — owner decides', v_n;
+  end if;
+  -- 0 on 4/10. A blank group_id written before this block may already have joined round trips the
+  -- wrong way (see WHAT): turning it into NULL here would re-fire rt_link_split on live trips, so it
+  -- is not repaired silently — the owner looks at those orders first.
+  select count(*) into v_n from public.orders where group_id is not null and btrim(group_id) = '';
+  if v_n <> 0 then
+    raise exception '057 guard: % orders carry a blank group_id (not NULL) — check their round trips first, owner decides', v_n;
   end if;
   -- Every round trip's revenue BEFORE: no lot exists yet, so after this block every RT must show
   -- exactly the same number (the allocation join may not change a single cent of history).
@@ -175,7 +198,8 @@ begin
 
   -- a) Every live piece of every lot, both tables. on_truck = the piece is committed to a vehicle in
   --    ANY of the ways the Weekly can do it (truck, partner, a group, or an export matching it);
-  --    group_id '' is «no group» (_wiCancelGroupMember writes '' — 2026-10 measurement).
+  --    group_id '' is «no group». The §6 normaliser stores '' as NULL; nullif stays as a belt for a
+  --    row written while that trigger is disabled.
   create view public.stock_v_pieces as
   select o.stock_lot_id                                   as lot_id,
          'intl'::text                                     as piece_kind,
@@ -339,9 +363,12 @@ begin
   --        round(net·cum_i/T, 2) − round(net·cum_(i−1)/T, 2)
   --    where cum_i = pallets of pieces 1..i and T = the lot's total pallets. Consequences, exact to the
   --    cent: Σ piece amounts = round(net·drawn/T, 2) = allocated_amount; allocated + in_stock +
-  --    written_off = net; a NEW piece never changes the cents of an earlier piece; the residue of the
-  --    pallets still in the warehouse lands in in_stock_amount (open lot) or written_off_amount
-  --    («χαμένο υπόλοιπο», closed lot — Ε3 «β»: never credited to any RT).
+  --    written_off = net; the residue of the pallets still in the warehouse lands in in_stock_amount
+  --    (open lot) or written_off_amount («χαμένο υπόλοιπο», closed lot — Ε3 «β»: never credited to
+  --    any RT). A piece CREATED later never changes the cents of an earlier piece. Not guaranteed:
+  --    an order created EARLIER and linked to the lot afterwards (NULL → lot on UPDATE is allowed
+  --    within the remainder), or a revived piece, sorts by its old created_at among the earlier
+  --    pieces and can move their amounts by a cent — the totals above stay exact either way.
   --    Mirrored in JS and cross-checked against Postgres: tests/stock-lots-allocation.test.js.
   create view public.stock_v_lot_alloc as
   select w.lot_id, w.lot_rec, w.piece_kind, w.piece_id, w.piece_rec, w.seq, w.pallets, w.cum_pallets,
@@ -612,8 +639,11 @@ begin
     end if;
 
     if tg_op = 'INSERT' or v_revived then
+      -- FOR SHARE: a save of the source at the same second (a second destination, a client site as
+      -- destination, «Invoiced») queues behind this mark — its own guard then sees the new anchor and
+      -- judges it. Without the lock both commit and a lot exists that breaks the rules below.
       if new.order_id is not null then
-        select * into o from public.orders where id = new.order_id;
+        select * into o from public.orders where id = new.order_id for share;
         if o.id is null or o.deleted_at is not null then
           perform stock_raise('lot_source_missing', 'Η παραγγελία της παρτίδας δεν βρέθηκε ή έχει διαγραφεί');
         end if;
@@ -639,7 +669,7 @@ begin
           perform stock_raise('warehouse_rule', 'Ο προορισμός της παρτίδας πρέπει να είναι αποθήκη (τοποθεσία «Partner Warehouse» ή «Veroia Hub»)');
         end if;
       else
-        select * into n from public.national_orders where id = new.nat_order_id;
+        select * into n from public.national_orders where id = new.nat_order_id for share;
         if n.id is null or n.deleted_at is not null then
           perform stock_raise('lot_source_missing', 'Η παραγγελία της παρτίδας δεν βρέθηκε ή έχει διαγραφεί');
         end if;
@@ -1038,6 +1068,25 @@ begin
   create trigger stock_guard_orders before insert or update on public.orders          for each row execute function public.stock_guard_orders();
   create trigger stock_guard_natl   before insert or update on public.national_orders for each row execute function public.stock_guard_natl();
 
+  -- Blank Group ID = no group, stored as NULL (see WHAT). Lowest level on purpose: every writer
+  -- («Επιστροφή στο απόθεμα», «Ακύρωση groupage», a lone survivor's clear, SQL by hand) writes '',
+  -- and the RT walks of 033/037 (rt_create_from_order, rt_link_split) compare group_id with «=»,
+  -- where '' = '' links unrelated orders. Fixing the walks instead would leave the same trap for every
+  -- future reader of group_id. Not a stock guard: R1 of the rollback leaves it in place.
+  -- The WHEN keeps it off every ordinary save; a non-blank value is never touched (not even trimmed:
+  -- the Weekly compares Group ID strings exactly).
+  create function public.orders_group_id_blank_null() returns trigger
+  language plpgsql set search_path = public
+  as $f$
+  begin
+    new.group_id := null;
+    return new;
+  end
+  $f$;
+  create trigger orders_group_id_blank_null before insert or update of group_id on public.orders
+    for each row when (new.group_id is not null and btrim(new.group_id) = '')
+    execute function public.orders_group_id_blank_null();
+
   -- ── 7. Grants — born closed (principle 5). Defaults here give new functions EXECUTE to PUBLIC,
   --       anon, authenticated, and new relations arwDxtm to service_role: every line narrows that. ──
   revoke all on public.stock_lots from public, anon, authenticated, service_role;
@@ -1051,7 +1100,8 @@ begin
   grant select on public.stock_v_lot_money, public.stock_v_lot_alloc to tms_check_runner;   -- S-09 amount; tms_reader: no money
   revoke all on function public.order_pallets(public.orders), public.stock_natl_delivered(text, date),
     public.stock_is_warehouse(bigint), public.stock_raise(text, text), public.stock_guard_lots(),
-    public.stock_guard_orders(), public.stock_guard_natl() from public, anon, authenticated;
+    public.stock_guard_orders(), public.stock_guard_natl(), public.orders_group_id_blank_null()
+    from public, anon, authenticated;
   -- A view checks FUNCTION privileges as its caller (not its owner): whoever reads stock_v_* or
   -- ct_v_rt_revenue needs these two, or TRIP PnL / the auditor fail with «permission denied».
   grant execute on function public.order_pallets(public.orders), public.stock_natl_delivered(text, date)
@@ -1091,6 +1141,10 @@ begin
    where not tgisinternal and tgenabled = 'O'
      and tgname in ('stock_guard_lots', 'stock_guard_orders', 'stock_guard_natl');
   if v_n <> 3 then raise exception '057 proof: % of 3 guard triggers enabled', v_n; end if;
+  select count(*) into v_n from pg_trigger
+   where tgrelid = 'public.orders'::regclass and not tgisinternal and tgenabled = 'O'
+     and tgname = 'orders_group_id_blank_null';
+  if v_n <> 1 then raise exception '057 proof: the blank group_id trigger is not enabled on orders'; end if;
   if not (select relrowsecurity from pg_class where oid = 'public.stock_lots'::regclass) then
     raise exception '057 proof: RLS is off on stock_lots';
   end if;
@@ -1098,7 +1152,8 @@ begin
   foreach v_role in array array['anon', 'authenticated'] loop
     foreach v_obj in array array['public.order_pallets(public.orders)', 'public.stock_natl_delivered(text, date)',
                                  'public.stock_is_warehouse(bigint)', 'public.stock_raise(text, text)',
-                                 'public.stock_guard_lots()', 'public.stock_guard_orders()', 'public.stock_guard_natl()'] loop
+                                 'public.stock_guard_lots()', 'public.stock_guard_orders()', 'public.stock_guard_natl()',
+                                 'public.orders_group_id_blank_null()'] loop
       if has_function_privilege(v_role, v_obj, 'execute') then
         raise exception '057 proof: % can EXECUTE %', v_role, v_obj;
       end if;
@@ -1131,7 +1186,7 @@ begin
   select count(*) into v_n from public.locations where id in (424, 885) and type = 'Partner Warehouse';
   if v_n <> 2 then raise exception '057 proof: 424/885 not both Partner Warehouse (%)', v_n; end if;
 
-  raise notice '057 OK: orders_with_derived 136 cols / % rows, % RT revenues unchanged, 3 guards, 6 CHECKs, born closed. New view md5: owd %, revenue %',
+  raise notice '057 OK: orders_with_derived 136 cols / % rows, % RT revenues unchanged, 3 guards, 6 CHECKs, blank group_id → NULL, born closed. New view md5: owd %, revenue %',
     v_owd_rows, cardinality(v_rev_after),
     md5(pg_get_viewdef('public.orders_with_derived'::regclass, true)),
     md5(pg_get_viewdef('public.ct_v_rt_revenue'::regclass, true));

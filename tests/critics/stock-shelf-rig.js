@@ -8,17 +8,21 @@
 // LOCAL_MOVES are answered by an in-memory facade below, so every write the
 // board makes is CAPTURED, never sent anywhere.
 //
-// Until FRONT-ORDERS is merged, OrdersStock and openIntlPieceCreate do not
-// exist in the app: the rig installs stubs with the §5.2 signatures (only if
-// they are missing, so the same rig runs unchanged after the merge). The
-// piece-form stub "saves" at once: POST of OrdersStock.pieceFields(...) and the
-// _wiOnPieceSaved hook, exactly the contract's order.
+// The REAL OrdersStock (core/orders-common.js) runs; the rig stops loudly if it
+// is missing. The piece FORM is always replaced by a stub that "saves" at once —
+// POST of the real OrdersStock.pieceFields(...) then the _wiOnPieceSaved hook,
+// the contract's order — because the real modal would wait for a human and
+// block every later click (it did, 4/10: «modalOverlay intercepts pointer
+// events»). The real form's own path is covered by the FRONT-ORDERS rig.
 //
 // Screens at 1440: shelf with 2 lots · no shelf · read failure · management
-// (chip panel without buttons) · fullscreen · the «+ Κομμάτι» panel. Payloads:
-// Case A lone import, Case A group with «|», Case B, loose-piece join, return
-// to stock, a DB refusal (422 STOCK_RULE) reaching the screen in Greek, the
-// counters without lots/loose pieces, and the lot drag refusal.
+// (chip panel without buttons) · fullscreen · the «+ Κομμάτι» panel · a lot
+// with no piece drawn offering «Κλείσιμο υπολοίπου». Payloads: Case A lone
+// import, Case A group with «|», Case B (its hook 35 min late, and off the
+// board), loose-piece join, return to stock, reorder then «Ακύρωση groupage»
+// of the member the export points at, a DB refusal (422 STOCK_RULE) reaching
+// the screen in Greek, the counters without lots/loose pieces, the lot drag
+// refusal.
 const path = require('path'), fs = require('fs');
 const ROOT = path.join(__dirname, '../..');
 const req = m => require(require.resolve(m, { paths: [process.cwd(), ROOT] }));
@@ -201,68 +205,31 @@ function buildStore(F, ref, opts) {
   o('recRIGLOTB0000318', { Direction: 'Import', Client: [C2], 'Loading DateTime': d(-9), 'Delivery DateTime': d(-8), 'Loading Pallets 1': 24, 'Loading Location 1': [L3], 'Unloading Location 1': [WH2], Partner: [PA2], 'Is Partner Trip': true, Status: 'Assigned' });
   F.lots.recRIGSTOCKLOTB1 = { id: 'recRIGSTOCKLOTB1', fields: { Order: ['recRIGLOTB0000318'], 'Lot No': 318, 'Source Kind': 'intl', Reference: 'LOT-B', 'Client Rec': C2, 'Client Name': ref.clientName[C2], 'Warehouse Rec': WH2, 'Warehouse Name': ref.locName[WH2], 'Warehouse City': ref.locCity[WH2], 'Warehouse Country': ref.locCountry[WH2], 'Intake Status': 'Assigned', 'Intake Delivered': false, 'Stock Pallets': 24 } };
   o('recRIGP4000000004', Object.assign({ Direction: 'Import', Client: [C2], 'Stock Lot': ['recRIGSTOCKLOTB1'], 'Loading DateTime': d(-2), 'Delivery DateTime': d(-1), 'Loading Pallets 1': 6, 'Loading Location 1': [WH2], 'Unloading Location 1': [L2], Reference: 'TEST-STOCK-P4' }, veh(T5, D1), { Status: 'In Transit' }));
+  if (!opts.zeroLot) return;
+  // Lot C (#320): received, NO piece ever drawn (the client collected it / damaged whole).
+  o('recRIGLOTC0000320', { Direction: 'Import', Client: [C2], 'Loading DateTime': d(-6), 'Delivery DateTime': d(-5), 'Loading Pallets 1': 10, 'Loading Location 1': [L3], 'Unloading Location 1': [WH], Partner: [PA2], 'Is Partner Trip': true, Status: 'Delivered' });
+  F.lots.recRIGSTOCKLOTC1 = { id: 'recRIGSTOCKLOTC1', fields: { Order: ['recRIGLOTC0000320'], 'Lot No': 320, 'Source Kind': 'intl', Reference: 'LOT-C', 'Client Rec': C2, 'Client Name': ref.clientName[C2], 'Warehouse Rec': WH, 'Warehouse Name': ref.locName[WH], 'Warehouse City': ref.locCity[WH], 'Warehouse Country': ref.locCountry[WH], 'Intake Status': 'Delivered', 'Intake Delivered': true, 'Received On': ref.receivedA, 'Stock Pallets': 10 } };
 }
 
-// Page-side stubs (§5.2 signatures) — installed only when missing.
+// Page-side stubs: the piece form ALWAYS (see the header); everything stock
+// itself is the app's real code.
 async function installStubs(page) {
   await page.evaluate(() => {
     FEATURES.STOCK_LOTS = true;
     TABLES.STOCK_LOTS = TABLES.STOCK_LOTS || 'tblStockLots';
-    window.__rig = { pieceCalls: [], closeCalls: [], toasts: [], stubbed: [] };
-    if (typeof OrdersStock === 'undefined') {
-      window.__rig.stubbed.push('OrdersStock');
-      const safe = async (fn) => { try { return await fn(); } catch (e) { return { ok: false, failed: true, error: e }; } };
-      window.OrdersStock = {
-        on() { return typeof FEATURES !== 'undefined' && FEATURES.STOCK_LOTS === true && !!(typeof TABLES !== 'undefined' && TABLES.STOCK_LOTS); },
-        isPiece(f) { return !!getLinkedId(f && f['Stock Lot']); },
-        isLot(f) { return !!(f && f['Own Stock Lot']); },
-        lotRecOfPiece(f) { return getLinkedId(f && f['Stock Lot']) || null; },
-        lotRecOfLot(f) { return (f && f['Own Stock Lot']) || null; },
-        lotNumLabel(f) { const n = f && f['Stock Lot Order No']; return n ? (f['Stock Lot Source'] === 'natl' ? 'Ε-' : '#') + n : '—'; },
-        lotLabel(lot) { const f = (lot && lot.fields) || {}; return f['Lot No'] ? (f['Source Kind'] === 'natl' ? 'Ε-' : '#') + f['Lot No'] : '—'; },
-        canWrite() { return ['owner', 'dispatcher'].includes(ROLE); },
-        canClose() { return ['owner', 'dispatcher', 'accountant'].includes(ROLE); },
-        // Literal §5.2 rule. NOTE (open issue for FRONT-ORDERS): 'close' fires on
-        // a received lot with 0 pieces (0 === 0) — the rig data avoids that case.
-        chip(lot, today) {
-          const f = lot.fields || {}, rem = +(f['Remaining Pallets'] || 0), stock = +(f['Stock Pallets'] || 0);
-          const days = f['Received On'] ? Math.round((new Date(today + 'T12:00:00') - new Date(String(f['Received On']).slice(0, 10) + 'T12:00:00')) / 864e5) : null;
-          let key = 'ok';
-          if (!f['Intake Delivered'] && (+f['Pieces'] || 0) > (+f['Pieces Without Truck'] || 0)) key = 'nointake';
-          else if (f['Intake Delivered'] && (+f['Pieces'] || 0) === (+f['Pieces Delivered'] || 0) && rem > 0 && !f['Closed At']) key = 'close';
-          else if (f['Intake Delivered'] && days > 21) key = 'aging';
-          return { key, days, remaining: rem, stock };
-        },
-        pieceFields(lot, presets, values) {
-          const p = presets || {}, lf = lot.fields || {};
-          const out = Object.assign({}, values || {}, { 'Stock Lot': [lot.id], Client: [lf['Client Rec']], Direction: 'Import', Type: 'International', 'Loading Location 1': [lf['Warehouse Rec']], 'Pallet Exchange': false });
-          for (let i = 2; i <= 10; i++) out['Loading Location ' + i] = [];
-          if (p.groupId) out['Group ID'] = p.groupId;
-          if (p.truck) out.Truck = [p.truck]; if (p.trailer) out.Trailer = [p.trailer]; if (p.driver) out.Driver = [p.driver];
-          out.Status = p.status === 'Assigned' ? 'Assigned' : 'Pending';
-          if (p.loadingDate) out['Loading DateTime'] = p.loadingDate;
-          if (p.deliveryDate) out['Delivery DateTime'] = p.deliveryDate;
-          delete out.Price;
-          return out;
-        },
-        loadLots(formula) { return safe(async () => ({ ok: true, lots: await atGetAll(TABLES.STOCK_LOTS, formula ? { filterByFormula: formula } : {}, false) })); },
-        loadOpen() { return this.loadLots('{Complete}=0'); },
-        loadPieces(lotRec) { return safe(async () => ({ ok: true, pieces: await atGetAll(TABLES.ORDERS, { filterByFormula: `FIND("${lotRec}",ARRAYJOIN({Stock Lot},","))>0` }, false) })); },
-        loadLoosePieces() { return safe(async () => ({ ok: true, pieces: await atGetAll(TABLES.ORDERS, { filterByFormula: "AND({Stock Lot}!=BLANK(),{Truck}=BLANK(),{Partner}=BLANK(),{Status}!='Delivered')" }, false) })); },
-        openCloseModal(lot) { window.__rig.closeCalls.push(lot.id); },
-      };
-    }
-    if (typeof openIntlPieceCreate === 'undefined') {
-      window.__rig.stubbed.push('openIntlPieceCreate');
-      window.openIntlPieceCreate = async (lot, presets) => {
-        window.__rig.pieceCalls.push({ lot: lot.id, presets: JSON.parse(JSON.stringify(presets || {})) });
-        const values = { 'Loading Pallets 1': 5, Reference: 'TEST-STOCK-NEW', 'Unloading Location 1': [getRefLocations()[0].id] };
-        const fields = OrdersStock.pieceFields(lot, presets, values);
-        const rec = await atCreate(TABLES.ORDERS, fields);
-        if (typeof window._wiOnPieceSaved === 'function') await window._wiOnPieceSaved(rec.id, fields, presets && presets.context);
-        await renderWeeklyIntl();
-      };
-    }
+    window.__rig = { pieceCalls: [], toasts: [], beforeHook: null };
+    if (typeof OrdersStock === 'undefined') throw new Error('OrdersStock missing — this rig runs on the merged front (FRONT-ORDERS + FRONT-WEEKLY)');
+    window.openIntlPieceCreate = async (lot, presets) => {
+      window.__rig.pieceCalls.push({ lot: lot.id, presets: JSON.parse(JSON.stringify(presets || {})) });
+      const values = { 'Loading Pallets 1': 5, Reference: 'TEST-STOCK-NEW', 'Unloading Location 1': [getRefLocations()[0].id] };
+      const fields = OrdersStock.pieceFields(lot, presets, values);
+      const rec = await atCreate(TABLES.ORDERS, fields);
+      const ctx = presets && presets.context;
+      // a case may age the context / leave the page before the hook runs
+      if (typeof window.__rig.beforeHook === 'function') window.__rig.beforeHook(ctx);
+      if (typeof window._wiOnPieceSaved === 'function') await window._wiOnPieceSaved(rec.id, fields, ctx);
+      await renderWeeklyIntl();
+    };
     // Side systems this rig does not exercise: round trips, downstream sync.
     window.rtOnOrderSaved = async () => null;
     window.rtOnImportUnmatched = async () => null;
@@ -432,10 +399,33 @@ if (MAIN) (async () => {
     const wG = writesSince(F, n0);
     ok('caseA_group_untouched', !wG.some(w => w.m === 'PATCH' && /recRIGI[23]/.test(w.rec || '')) && wG.some(w => w.m === 'POST' && w.fields['Group ID'] === 'GI-RIGGRP|recRIGI2000000002,recRIGI3000000003'), wG);
 
-    // Case B — POST (no Group ID), then the export's Matched Import ID, then the vehicle.
+    // Reorder, then «Ακύρωση groupage» of the member the export POINTS at (not
+    // the lead any more): the export's pointer must follow the group's lead.
+    const seg = await page.evaluate(async () => {
+      const find = () => WINTL.rows.find(r => r.type === 'import' && (r.orderIds || []).includes('recRIGI2000000002'));
+      const row = find();
+      window._wiSegDrag = { rowId: row.id, orderId: 'recRIGI3000000003' };
+      await _wiSegDrop({ preventDefault() {} }, row.id, 'recRIGI2000000002');
+      await renderWeeklyIntl();
+      const g = find(), e = WINTL.rows.find(r => r.type === 'export' && r.orderIds.includes('recRIGE2000000002'));
+      return { rowId: g.id, lead: g.orderId, ptr: e.importId, ids: g.orderIds };
+    });
     n0 = F.writes.length;
+    await page.evaluate(async r => { await _wiCancelGroupMember(r, 'recRIGI2000000002', true); }, seg.rowId);
+    await page.waitForTimeout(600);
+    const e2 = F.orders.recRIGE2000000002.fields, i2 = F.orders.recRIGI2000000002.fields;
+    ok('reorder_then_cancel_pointed_member', seg.lead === 'recRIGI3000000003' && seg.ptr === 'recRIGI2000000002'
+      && e2['Matched Import ID'] === 'recRIGI3000000003' && !String(i2['Group ID'] || '') && !i2.Truck,
+      { seg, e2ptr: e2['Matched Import ID'], i2, writes: writesSince(F, n0).map(w => w.rec + ' ' + JSON.stringify(w.fields)) });
+
+    // Case B — POST (no Group ID), then the export's Matched Import ID, then the vehicle.
+    // The hook runs 35 minutes after the panel opened: the old 30-minute guard
+    // returned silently there and the piece stayed on the shelf (review P2).
+    n0 = F.writes.length;
+    await page.evaluate(() => { window.__rig.beforeHook = ctx => { if (ctx) ctx.at -= 35 * 60 * 1000; }; });
     await join(page, 'recRIGE3000000003', 'lot', 'recRIGSTOCKLOTA1');
     await page.waitForTimeout(2000);
+    await page.evaluate(() => { window.__rig.beforeHook = null; });
     const wB = writesSince(F, n0);
     const postB = wB.find(w => w.m === 'POST');
     const matchB = wB.find(w => w.m === 'PATCH' && w.rec === 'recRIGE3000000003');
@@ -443,6 +433,17 @@ if (MAIN) (async () => {
     ok('caseB_post_then_match', postB && !postB.fields['Group ID'] && matchB && matchB.fields['Matched Import ID'] === newB
       && wB.findIndex(w => w === postB) < wB.findIndex(w => w === matchB)
       && wB.some(w => w.m === 'PATCH' && w.rec === newB && w.fields.Truck && w.fields.Status === 'Assigned'), { newB, wB });
+
+    // Case B whose hook runs after the page changed: said loudly, nothing written.
+    n0 = F.writes.length;
+    const offB = await page.evaluate(async () => {
+      const n = window.__rig.toasts.length, cp = currentPage;
+      currentPage = 'orders_intl';
+      try { await window._wiOnPieceSaved('recRIGP3000000003', {}, { kind: 'B', expOid: 'recRIGE6000000006', at: Date.now() }); }
+      finally { currentPage = cp; }
+      return window.__rig.toasts.slice(n);
+    });
+    ok('caseB_off_board_loud', offB.some(t => /^error: Το κομμάτι αποθηκεύτηκε ΧΩΡΙΣ φορτηγό \(η σελίδα άλλαξε/.test(t)) && writesSince(F, n0).length === 0, offB);
 
     // Loose piece join (Case A on E4's group whose suffix is «GI-RIGRET|I4»): ONE PATCH.
     n0 = F.writes.length;
@@ -516,6 +517,26 @@ if (MAIN) (async () => {
     const t = await page.evaluate(() => (document.getElementById('wi-shelf') || {}).innerText || '');
     ok('failure_red_strip', /ΑΠΟΘΕΜΑ — δεν φορτώθηκε ↻/.test(t), t);
     await shot(page, 'stock-shelf-failed-1440.png'); out.screens.push('stock-shelf-failed-1440.png');
+    await ctx.close();
+  }
+
+  // 5) a received lot with NO piece drawn: no «κλείσιμο;» nudge on the chip,
+  //    but «Κλείσιμο υπολοίπου…» IS offered (else its one invoice never comes).
+  {
+    const F = makeFacade();
+    const { ctx, page } = await openBoard(browser, 'dispatcher', F, { zeroLot: true });
+    await page.locator('.wi-shelf-chip[data-lot="recRIGSTOCKLOTC1"]').click(); await page.waitForTimeout(900);
+    const z = await page.evaluate(() => ({ chip: (document.querySelector('.wi-shelf-chip[data-lot="recRIGSTOCKLOTC1"]') || {}).className,
+      buttons: [...document.querySelectorAll('#wi-panel .wi-panel-ft button')].map(b => b.textContent.trim()),
+      text: document.getElementById('wi-panel').innerText.replace(/\s+/g, ' ').slice(0, 260) }));
+    await shot(page, 'stock-lot-zero-pieces-close-1440.png'); out.screens.push('stock-lot-zero-pieces-close-1440.png');
+    // A missing button is a red check, never a crash before RESULT.
+    let modal = '';
+    if (z.buttons.includes('Κλείσιμο υπολοίπου…')) {
+      await page.locator('#wi-panel .wi-panel-ft button', { hasText: 'Κλείσιμο υπολοίπου' }).click(); await page.waitForTimeout(500);
+      modal = await page.evaluate(() => (document.getElementById('modal') || {}).innerText || '');
+    }
+    ok('zero_piece_lot_closable', !/ close/.test(z.chip || '') && z.buttons.includes('Κλείσιμο υπολοίπου…') && /Μένουν 10 παλέτες/.test(modal), { z, modal: modal.replace(/\s+/g, ' ').slice(0, 200) });
     await ctx.close();
   }
 

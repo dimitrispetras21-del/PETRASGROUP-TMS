@@ -349,6 +349,8 @@ const OrdersStock = {
   // «close» needs at least one piece: with none drawn, «all delivered» is
   // vacuous and every freshly received lot would ask to be closed (and could
   // never turn «aging»). Contract §5.2 omits «Pieces > 0» — added on purpose.
+  // The chip is a NUDGE; whether «Κλείσιμο υπολοίπου» may be OFFERED is
+  // closable() below — never read it off chip().key.
   chip(lot, todayYmd) {
     const g = (lot && lot.fields) || {};
     const n = v => { const x = Number(v); return Number.isFinite(x) ? x : 0; };
@@ -362,6 +364,22 @@ const OrdersStock = {
     else if (intake && pieces > 0 && pieces === done && remaining > 0 && !g['Closed At']) key = 'close';
     else if (intake && days !== null && days > 21) key = 'aging';
     return { key, days, remaining, stock };
+  },
+  // «Κλείσιμο υπολοίπου» may be offered: the screen mirror of the base's
+  // close_early rule (intake delivered, every drawn piece delivered) plus
+  // something left to close. ZERO pieces counts as «all delivered», exactly as
+  // in the base: a client who collects the goods himself, or a lot damaged
+  // whole, never draws a piece — without this the lot could never be closed,
+  // so its one invoice could never be issued (review P2, 4/10).
+  closable(lot) {
+    const g = (lot && lot.fields) || {};
+    const n = v => { const x = Number(v); return Number.isFinite(x) ? x : 0; };
+    return g['Intake Delivered'] === true && n(g['Pieces']) === n(g['Pieces Delivered'])
+      && n(g['Remaining Pallets']) > 0 && !g['Closed At'];
+  },
+  // One Greek word per piece status, for every screen that lists pieces.
+  statusWord(s) {
+    return ({ Pending: 'σε αναμονή', Assigned: 'ανατέθηκε', 'In Transit': 'σε μεταφορά', Delivered: 'παραδόθηκε' })[s] || s || '—';
   },
 
   // The payload of a NEW piece: the form's own fields (values) with the lot's
@@ -430,7 +448,11 @@ const OrdersStock = {
   // ── Writes: the answer is the read-back, never the toast (principle 2) ──
   async markLot(orderRec) {
     let created;
-    try { created = await atCreate(TABLES.STOCK_LOTS, { Order: [orderRec] }); }
+    // No undo entry for the mark: the global «Undo» right after saving a lot
+    // would remove the MARK and keep the order — an ordinary order to the
+    // warehouse, later «προς κοπή» at full price, with no stock to draw from.
+    const create = typeof atSuppressUndo === 'function' ? atSuppressUndo(atCreate) : atCreate;
+    try { created = await create(TABLES.STOCK_LOTS, { Order: [orderRec] }); }
     catch (e) { return { ok: false, error: OrdersStock._msg(e) }; }
     if (!created || !OrdersStock._rec(created.id)) return { ok: false, error: 'ο server δεν επέστρεψε την παρτίδα (εκτός σύνδεσης;) — άνοιξε ξανά την παραγγελία για να δεις αν έγινε παρτίδα' };
     try {

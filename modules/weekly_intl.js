@@ -5655,7 +5655,13 @@ async function _wiCancelGroupMember(rowId,orderId,isImportSide,ask){
   // the export's pointer name an id no live row claims. Promote the new
   // first-by-order survivor before anything downstream reads row.orderId.
   const wasLead=row.orderId===orderId;
-  const expRow=(isImportSide&&wasLead)?WINTL.rows.find(r=>r.type==='export'&&r.importId===orderId):null;
+  // The export may point at ANY member, not only the lead: a segment drag
+  // (_wiSaveSegOrder) reorders the suffix and leaves Matched Import ID where
+  // it was, and the pill is found by any member (impGroupRow). Whoever the
+  // pointer names, if that member leaves, the pointer follows the group's
+  // lead — else the export stays matched to the order that just left the
+  // truck while the members that keep the truck show as unmatched.
+  const expRow=isImportSide?WINTL.rows.find(r=>r.type==='export'&&r.importId===orderId):null;
   if(wasLead){
     const fallbackField=isImportSide?'Loading DateTime':'Delivery DateTime';
     const remaining=_wiGrpOrder(row.orderIds.map(id=>cache.find(r=>r.id===id)).filter(Boolean),fallbackField);
@@ -5670,6 +5676,8 @@ async function _wiCancelGroupMember(rowId,orderId,isImportSide,ask){
       for(const eOid of expRow.orderIds){
         const r2=await atSafePatch(TABLES.ORDERS,eOid,{'Matched Import ID':newLead});
         if(r2?.error) throw new Error(r2.error.message||r2.error.type);
+        // the board's own copy too: _wiStockLooseFree reads it before the next fetch
+        const ex=WINTL.data.exports.find(r=>r.id===eOid); if(ex) ex.fields['Matched Import ID']=newLead;
       }
       expRow.importId=newLead;
     }catch(e){ reportError('Ο νέος επικεφαλής της ομάδας εισαγωγών δεν ενημερώθηκε στην ταιριασμένη εξαγωγή — έλεγξε χειροκίνητα',e); }
@@ -5984,7 +5992,10 @@ function _wiShelfInner(st){
   const today=localToday();
   const lots=st.lots.map(l=>({l,c:OrdersStock.chip(l,today)||{key:'ok'}}))
     .sort((a,b)=>(_WI_SHELF_RANK[a.c.key]??3)-(_WI_SHELF_RANK[b.c.key]??3));
-  const nLoose=st.lots.reduce((s,l)=>s+(+(l.fields?.['Pieces Without Truck']||0)),0);
+  // The count IS the list it opens (_wiStockLooseOpen): one source. The
+  // lots' «Pieces Without Truck» counts a piece in a truckless group as «on a
+  // truck», so the button said 0 while its list showed the piece.
+  const nLoose=(st.loose||[]).length;
   // The chips scroll sideways inside their own box; the count of lots (left)
   // and of loose pieces (right) stay pinned, so nothing leaves the strip
   // unannounced however many lots are open.
@@ -6110,7 +6121,9 @@ async function _wiStockLotOpen(anchor,lotRec){
       :rem>0?`<button class="btn btn-outline" onclick="_wiStockNewLoose()" title="Νέο κομμάτι χωρίς φορτηγό — για φορτηγό: δεξί κλικ στη γραμμή του">+ Κομμάτι</button>`
       :`<button class="btn btn-outline" disabled title="Δεν μένουν παλέτες στην αποθήκη">+ Κομμάτι</button>`);
   }
-  if(OrdersStock.canClose()&&c.key==='close') btns.push(`<button class="btn btn-primary" onclick="_wiStockClose()">Κλείσιμο υπολοίπου…</button>`);
+  // closable(), not the chip: a received lot with NO piece drawn (collected by
+  // the client, damaged whole) must still be closable — else never invoiced.
+  if(OrdersStock.canClose()&&OrdersStock.closable(lot)) btns.push(`<button class="btn btn-primary" onclick="_wiStockClose()">Κλείσιμο υπολοίπου…</button>`);
   _wiPanelOpen(anchor,title,ctxLine,body,btns.join(''));
   const tok={}; WINTL._stkPiecesTok=tok;
   let r=null; try{ r=await OrdersStock.loadPieces(lot.id); }catch(e){ r={ok:false,error:e}; }
@@ -6134,7 +6147,7 @@ function _wiStockPieceLine(p,withLot){
   const ld=f['Loading DateTime']?_wk3D(_wiFmt(f['Loading DateTime'])):'';
   const head=withLot?`${escapeHtml(OrdersStock.lotNumLabel(f))} · ${escapeHtml(_wiClientName(f)||'—')} · `:'';
   const del=(loose&&OrdersStock.canWrite())?`<button type="button" class="wi2-unlink" onclick="event.stopPropagation();_wiStockDelPiece('${p.id}')" title="Διαγραφή κομματιού (μόνο χωρίς φορτηγό)">Διαγραφή</button>`:'';
-  return `<div class="wi-panel-opt wi-stk-piece" role="button" tabindex="0" onclick="_wiStockOpenPiece('${p.id}')" onkeydown="if(event.key==='Enter'){event.preventDefault();this.click()}" title="Κλικ: φόρμα κομματιού"><span>${head}${escapeHtml(who)} · ${escapeHtml(dest)} · ${escapeHtml(st)} · <b>${+(f['Total Pallets']||0)}p</b>${ld?` · φόρτωση ${ld}`:''}${f['Reference']?` · <span class="wi-stk-ref">${escapeHtml(String(f['Reference']))}</span>`:''}</span>${del}</div>`;
+  return `<div class="wi-panel-opt wi-stk-piece" role="button" tabindex="0" onclick="_wiStockOpenPiece('${p.id}')" onkeydown="if(event.key==='Enter'){event.preventDefault();this.click()}" title="Κλικ: φόρμα κομματιού"><span>${head}${escapeHtml(who)} · ${escapeHtml(dest)} · ${escapeHtml(OrdersStock.statusWord(st))} · <b>${+(f['Total Pallets']||0)}p</b>${ld?` · φόρτωση ${ld}`:''}${f['Reference']?` · <span class="wi-stk-ref">${escapeHtml(String(f['Reference']))}</span>`:''}</span>${del}</div>`;
 }
 function _wiStockOpenPiece(id){
   const p=(WINTL._stkPieces||[]).find(x=>x.id===id); if(!p) return;
@@ -6465,30 +6478,42 @@ function _wiStockOpenForm(lot,presets){
   openIntlPieceCreate(lot,presets);
 }
 // Called by the piece form (orders_intl.js) ONLY after a successful create,
-// before it closes and repaints this board. Same guards as
-// _wiConsumePendingMatch: this page, < 30 min, the truck's row still there —
-// found by ORDER id, because row ids are renumbered on every render.
+// before it closes and repaints this board. The truck's row is found by ORDER
+// id (row ids are renumbered on every render). No time limit, unlike
+// _wiConsumePendingMatch's 30 minutes: ctx travels inside THIS form's presets,
+// so no other create can pick it up, and every step below re-checks the board
+// or the server. Every way out that leaves the piece off its truck is SAID
+// (principle 1): the form toasts «Order created ✓» right after, and a piece
+// that silently stayed on the shelf is the lie that toast would tell.
 window._wiOnPieceSaved=async function(newId,fields,ctx){
   if(!ctx||!ctx.kind||!newId) return;   // a piece without a truck (shelf «+ Κομμάτι»)
-  if(typeof currentPage!=='undefined'&&currentPage!=='weekly_intl') return;
-  if(Date.now()-(ctx.at||0)>30*60*1000) return;
-  const row=ctx.expOid
+  const loud=msg=>{
+    if(typeof showErrorToast==='function') showErrorToast(msg,'error',12000); else reportError(msg,null);
+    if(typeof logError==='function') logError(new Error(msg),'weekly intl: stock piece join');
+  };
+  const onBoard=typeof currentPage==='undefined'||currentPage==='weekly_intl';
+  const row=!onBoard?null:ctx.expOid
     ? WINTL.rows.find(r=>r.type==='export'&&(r.orderIds||[]).includes(ctx.expOid))
     : WINTL.rows.find(r=>r.type==='import'&&(r.orderIds||[r.orderId]).includes(ctx.leadId));
-  if(!row){ reportError('Το κομμάτι αποθηκεύτηκε, αλλά η γραμμή του φορτηγού δεν βρέθηκε — έλεγξέ το στο ράφι ΑΠΟΘΕΜΑ',null); return; }
   if(ctx.kind==='B'){
-    if(row.importId){ reportError('Το κομμάτι αποθηκεύτηκε χωρίς φορτηγό: η εξαγωγή απέκτησε στο μεταξύ άλλη εισαγωγή',null); return; }
+    // Case B joins HERE (its POST carried no truck): no board, no row or a
+    // row that meanwhile got another import = the piece waits on the shelf.
+    const why=!onBoard?'η σελίδα άλλαξε πριν την ένταξη':!row?'η γραμμή του φορτηγού δεν βρέθηκε'
+      :row.importId?'η εξαγωγή απέκτησε στο μεταξύ άλλη εισαγωγή':'';
+    if(why){ loud(`Το κομμάτι αποθηκεύτηκε ΧΩΡΙΣ φορτηγό (${why}) — μένει στη λωρίδα ΑΠΟΘΕΜΑ· Weekly Διεθνών → δεξί κλικ στο φορτηγό → «+ Κομμάτι από απόθεμα…»`); return; }
     await _wiSaveImportMatch(row.id,newId);
     return;
   }
-  // A.5: read back what the ONE POST wrote; A.6: the round trip of the lead.
+  // Case A: the ONE POST already carried the group and the truck. A.5: read
+  // it back; A.6: the lead's round trip. Neither needs the board — the row
+  // only gets its ✓/⚠ when it is on screen.
   let fresh=null; try{ fresh=await atGetOne(TABLES.ORDERS,newId); }catch(e){ fresh=null; }
   const bad=_wiStockVerify(fresh,ctx);
   if(bad){
     const msg='Το κομμάτι αποθηκεύτηκε, αλλά: '+bad+' — έλεγξέ το';
-    _wiSync('wi-sync-'+row.id,'err',msg); reportError(msg,null);
-    if(typeof logError==='function') logError(new Error(msg),'weekly intl: stock piece read-back');
-  } else _wiSync('wi-sync-'+row.id,'ok','Το κομμάτι μπήκε στο φορτηγό');
+    if(row) _wiSync('wi-sync-'+row.id,'err',msg);
+    loud(msg);
+  } else if(row) _wiSync('wi-sync-'+row.id,'ok','Το κομμάτι μπήκε στο φορτηγό');
   if(typeof rtOnOrderSaved==='function') rtOnOrderSaved(ctx.leadId).catch(e=>console.warn('[wi stock] rt sync:',e&&e.message));
 };
 
