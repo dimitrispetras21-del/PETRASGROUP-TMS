@@ -2564,16 +2564,25 @@ async function _wnSaveFromPopover(rowId) {
   }
 
   // PARTNER ASSIGNMENT sync (one PA record per NAT_LOAD)
+  // Executed legs (review 4/10, twin of weekly_intl M3): a partner trip that
+  // already ran is a payable — its PA row is never deleted (owner 23/8:
+  // history stays), and a partner re-assignment keeps its PA Status +
+  // Assignment Date (keepStatus); a missing row is created with the leg's own
+  // status, not «Assigned». Before never-locks these legs were refused, so
+  // the board never reached this code for them.
   try {
     const allLoadIds = [...row.orderIds];
     if (row.matchedId) allLoadIds.push(row.matchedId);
     if (isPartner) {
       const rate = row.partnerRate ? parseFloat(row.partnerRate) : null;
       for (const loadId of allLoadIds) {
-        await paUpsert({ parentType:'nat_load', parentId:loadId, partnerId:row.partnerId, rate, status:'Assigned' });
+        const ex = _wnExecuted(liveSt[loadId]);
+        await paUpsert({ parentType:'nat_load', parentId:loadId, partnerId:row.partnerId, rate,
+                         status: ex ? liveSt[loadId] : 'Assigned', keepStatus: ex });
       }
     } else {
       for (const loadId of allLoadIds) {
+        if (_wnExecuted(liveSt[loadId])) continue;
         await paDelete({ parentType:'nat_load', parentId:loadId });
       }
     }
@@ -2800,8 +2809,9 @@ async function _wnUnassignSn(rowId, snId) {
     if (res?.conflict) { toast('Η εγγραφή άλλαξε από άλλον χρήστη — γίνεται ανανέωση','warn'); await renderWeeklyNatl(); return; }
   } catch(err) { toast('Σφάλμα: ' + err.message, 'warn'); return; }
 
-  // Delete PA record for this NAT_LOAD
-  try { await paDelete({ parentType:'nat_load', parentId:snId }); }
+  // Delete PA record for this NAT_LOAD — not for an executed one (a payable;
+  // review 4/10, same rule as _wnUnassign / weekly_intl M3).
+  try { if (!_wnExecuted(st)) await paDelete({ parentType:'nat_load', parentId:snId }); }
   catch(e) { console.warn('PA delete:', e.message); }
   await _wnRevertNoStatus(snId);
 
@@ -2864,10 +2874,11 @@ async function _wnUnassign(rowId) {
   // §4 #12: the popover's «Καθαρισμός» now runs THIS function, and the old
   // _wnClear removed the PARTNER ASSIGNMENT rows; this path never did, so a
   // partner unassigned by right-click kept its rate in PARTNER ASSIGNMENTS.
-  // Same cleanup as _wnUnassignSn, only for the legs actually cleared.
+  // Same cleanup as _wnUnassignSn, only for the legs actually cleared — and
+  // never for an executed leg: its PA row is a payable (review 4/10, M3 twin).
   try {
     for (const loadId of [...row.orderIds, ...(row.matchedId ? [row.matchedId] : [])])
-      if (!kept.includes(loadId)) await paDelete({ parentType:'nat_load', parentId:loadId });
+      if (!kept.includes(loadId) && !_wnExecuted(liveSt[loadId])) await paDelete({ parentType:'nat_load', parentId:loadId });
   } catch(e) { console.warn('NAT PA delete:', e.message); }
   for (const orderId of row.orderIds) if (!kept.includes(orderId)) await _wnRevertNoStatus(orderId);
   if (row.matchedId && !kept.includes(row.matchedId)) await _wnRevertNoStatus(row.matchedId);

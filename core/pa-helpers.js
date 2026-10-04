@@ -28,8 +28,9 @@ async function _paFindExisting(parentType, parentId) {
  * @param {number|null} [p.rate]          — agreed rate (optional)
  * @param {string} [p.status='Assigned']  — initial status
  * @param {string|null} [p.notes]         — optional notes
+ * @param {boolean} [p.keepStatus=false]  — on an EXISTING row, leave Status + Assignment Date as they are
  */
-async function paUpsert({ parentType, parentId, partnerId, rate = null, status = 'Assigned', notes = null }) {
+async function paUpsert({ parentType, parentId, partnerId, rate = null, status = 'Assigned', notes = null, keepStatus = false }) {
   if (!parentType || !parentId || !partnerId) return null;
 
   const fields = {
@@ -44,6 +45,10 @@ async function paUpsert({ parentType, parentId, partnerId, rate = null, status =
 
   const existing = await _paFindExisting(parentType, parentId);
   if (existing.length > 0) {
+    // keepStatus (review 4/10, weekly_natl): re-assigning a partner on a trip
+    // that already ran must not reset its PA Status/Assignment Date to
+    // «Assigned/today» — a run partner trip is a payable whose history stays.
+    if (keepStatus) { delete fields[F.PA_STATUS]; delete fields[F.PA_ASSIGN_DATE]; }
     return atPatch(TABLES.PARTNER_ASSIGN, existing[0].id, fields);
   }
   return atCreate(TABLES.PARTNER_ASSIGN, fields);

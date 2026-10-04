@@ -37,6 +37,10 @@ function seed() {
     [T.PA]: [
       { id: 'recPAnC000000001', fields: { 'Nat Load': ['recNlC000000000A'], Partner: ['recPartner00001A'], 'Partner Rate': 400, Status: 'Assigned' } },
       { id: 'recPAsC000000001', fields: { 'Nat Load': ['recNlsC00000000A'], Partner: ['recPartner00001A'], 'Partner Rate': 400, Status: 'Assigned' } },
+      // review 4/10 (HIGH): PA rows of trips that already ran = payables
+      { id: 'recPAdP000000001', fields: { 'Nat Load': ['recNlDP00000000A'], Partner: ['recPartner00001A'], 'Partner Rate': 300, Status: 'Delivered', 'Assignment Date': '2026-09-30' } },
+      { id: 'recPAdO000000001', fields: { 'Nat Load': ['recNlDO00000000A'], Partner: ['recPartner00001A'], 'Partner Rate': 250, Status: 'Delivered', 'Assignment Date': '2026-09-29' } },
+      { id: 'recPAsT000000001', fields: { 'Nat Load': ['recNlsT00000000A'], Partner: ['recPartner00001A'], 'Partner Rate': 200, Status: 'In Transit', 'Assignment Date': '2026-10-01' } },
     ],
     [T.NL]: [
       // #3 — week membership (UTC timestamps; Athens = UTC+3)
@@ -68,6 +72,9 @@ function seed() {
       nl('recNlTwinDeliv00', NS, '2026-10-03T07:00:00.000Z', Object.assign(own('recTruck000002AA', 'recDriver00002AA'), { Client: 'TWIN', Status: 'Delivered' })),
       nl('recNlsTwinAssign', SN, '2026-10-03T08:00:00.000Z', Object.assign(own('recTruck000001AA', 'recDriver00001AA'), { Client: 'TWIN-SN', Status: 'Assigned' })),
       nl('recNlsTwinDeliv0', SN, '2026-10-03T08:00:00.000Z', Object.assign(own('recTruck000001AA', 'recDriver00001AA'), { Client: 'TWIN-SN', Status: 'Delivered' })),
+      nl('recNlDP00000000A', NS, '2026-10-08T14:00:00.000Z', Object.assign(par(300, 'ΙΑΒ 3000'), { Client: 'NS-DP delivered partner', Status: 'Delivered' })),
+      nl('recNlDO00000000A', NS, '2026-10-08T15:00:00.000Z', Object.assign(own('recTruck000001AA', 'recDriver00001AA'), { Client: 'NS-DO delivered own + old PA', Status: 'Delivered' })),
+      nl('recNlsT00000000A', SN, '2026-10-08T16:00:00.000Z', Object.assign(par(200, 'ΙΑΒ 4000'), { Client: 'SN-T in transit partner', Status: 'In Transit' })),
       // a Delivered load whose delivery time has NOT passed: the date alone decides
       nl('recNlFutDeliv000', NS, '2026-10-08T13:00:00.000Z', Object.assign(own('recTruck000002AA', 'recDriver00002AA'), { Client: 'FUTURE DELIVERED', Status: 'Delivered' })),
     ],
@@ -480,6 +487,40 @@ SECTIONS.push(async browser => {
      'deliveredByDate: a written Delivered with a future date does NOT count; a past date counts whatever the Status');
   ok(S.errors.length === 0, 'no page errors: ' + S.errors.slice(0, 2).join(' | '));
   await page.context().close();
+});
+
+// ── review 4/10 (HIGH) · PA rows of executed loads are payables: never deleted, status kept ──
+SECTIONS.push(async browser => {
+  console.log('\n── review 4/10 · PARTNER ASSIGNMENT rows of executed loads stay');
+  const paDel = x => x.writes.filter(w => w.m === 'DELETE' && w.tid === T.PA).map(w => w.rid);
+  const c = await clearBy(browser, 'ctx', 'recNlDP00000000A');
+  ok(c.writes.some(w => w.m === 'PATCH' && w.rid === 'recNlDP00000000A' && w.body.fields.Partner.length === 0), 'Delivered partner load: unassign clears the vehicle on the load');
+  ok(paDel(c).length === 0, 'Delivered partner load: its PA row is NOT deleted (right-click / Καθαρισμός)');
+  const sn = await clearBy(browser, 'ctx', '#wn-sn-recNlsT00000000A');
+  ok(sn.writes.some(w => w.m === 'PATCH' && w.rid === 'recNlsT00000000A') && paDel(sn).length === 0, 'In Transit partner ΑΝΟΔΟΣ: unassign clears the load, PA row NOT deleted');
+  const pl = await clearBy(browser, 'pop', 'recNlC000000000A');
+  ok(paDel(pl).sort().join() === 'recPAnC000000001,recPAsC000000001', 'planned (Assigned) partner pair: PA rows still deleted as before');
+  const o = await assignBy(browser, 'recNlDO00000000A', 'recTruck000002AA', true);
+  ok(o.writes.some(w => w.m === 'PATCH' && w.rid === 'recNlDO00000000A') && paDel(o).length === 0, 'Delivered load re-assigned to own truck: its PA row NOT deleted');
+  // partner re-assignment (new rate) on a Delivered partner load
+  {
+    const { page, S } = await openBoard(browser);
+    const rowId = await rowIdOf(page, 'recNlDP00000000A');
+    await page.click(`#wn-row-${rowId} .wk3-assign`);
+    await page.waitForSelector(`#wn-pop-btn-${rowId}`, { timeout: 5000 });
+    await page.fill(`#wn-pop-rate-${rowId}`, '320');
+    const before = S.writes.length;
+    await page.click(`#wn-pop-btn-${rowId}`); await page.waitForTimeout(2500);
+    const w = S.writes.slice(before);
+    const paP = w.find(x => x.m === 'PATCH' && x.tid === T.PA && x.rid === 'recPAdP000000001');
+    ok(paP && paP.body.fields['Partner Rate'] === 320 && !('Status' in paP.body.fields) && !('Assignment Date' in paP.body.fields),
+       'Delivered partner re-assignment: PA PATCH carries the new rate, NO Status, NO Assignment Date: ' + JSON.stringify(paP && paP.body.fields));
+    const pa = S.db[T.PA].find(r => r.id === 'recPAdP000000001').fields;
+    ok(pa.Status === 'Delivered' && pa['Assignment Date'] === '2026-09-30', 'base: PA stays Delivered, assigned 30/9');
+    ok(!w.some(x => x.m === 'POST' && x.tid === T.PA), 'no second PA row created');
+    await page.context().close();
+  }
+  ok([c, sn, pl, o].every(x => x.errors.length === 0), 'no page errors');
 });
 
 (async () => {
