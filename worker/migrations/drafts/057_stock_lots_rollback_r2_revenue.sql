@@ -20,15 +20,33 @@
 -- back without first deciding about the option). Now the options are RECORDED before, PUT BACK after
 -- and PROVED identical: the rollback changes the money rule and nothing else. (057 itself still
 -- refuses options: it is a forward change the owner can re-plan; a rollback is not.)
--- If a later migration rewrites ct_v_rt_revenue, this file must be regenerated with it.
+-- WHAT IT REPLACES (round 3, critic-3 Σ2-05): only the revenue text 057 wrote (md5 7bd4c2b3…, the
+-- «revenue» md5 in 057's NOTICE; measured on the PGlite replica whose deparse matched production's
+-- for every guarded view) — or, re-run, the pre-057 text it restores. Anything else means a later
+-- migration rewrote ct_v_rt_revenue: replacing it would silently delete that migration's logic, so
+-- R2 refuses and must be regenerated with it. 057_stock_lots_verify.sql V1 «revenue_known_to_r2»
+-- and the dry run's scenario G check, the same evening, that the text 057 leaves is the one R2 knows.
+-- THE SCREEN (critic-3 Σ2-05 b): R2 changes the database's revenue only. TRIP PnL's lot lines
+-- (modules/costs.js, independent of FEATURES.STOCK_LOTS by design) keep printing «παρτίδα #N …»
+-- amounts that no longer add up to the RT's revenue — R2 goes together with a front change; tell the
+-- coordinator before running it.
 do $r2$
 declare
   v_md5   text;
   v_opts  text[];
   v_after text[];
+  -- The two texts R2 may replace (header). One literal each: harness + verify V1 prove the first is
+  -- what 057 leaves, the second is the md5 057 guards before it runs.
+  v_057_md5 constant text := '7bd4c2b3206af115a5cfff5478dfdfc9';
+  v_pre_md5 constant text := '62e488b56373dd14e1b697f7756aa5a8';
 begin
   perform set_config('search_path', 'public', true);   -- same deparse context as the md5 measurement
   perform set_config('lock_timeout', '5s', true);       -- never queue TRIP PnL reads behind an idle transaction
+  select md5(pg_get_viewdef('public.ct_v_rt_revenue'::regclass, true)) into v_md5;
+  if v_md5 is distinct from v_057_md5 and v_md5 is distinct from v_pre_md5 then
+    raise exception 'R2 guard: ct_v_rt_revenue is neither the text 057 wrote (md5 %) nor the pre-057 one — another migration rewrote it since 057 (md5 now %); regenerate R2 with it, never replace it blind',
+      v_057_md5, v_md5;
+  end if;
   -- Recorded BEFORE the replace (header): NULL = owner-rights, as 057 left it.
   select c.reloptions into v_opts from pg_class c where c.oid = 'public.ct_v_rt_revenue'::regclass;
   create or replace view public.ct_v_rt_revenue as
@@ -111,8 +129,8 @@ begin
      FROM legs
     GROUP BY rt_id;
   select md5(pg_get_viewdef('public.ct_v_rt_revenue'::regclass, true)) into v_md5;
-  if v_md5 is distinct from '62e488b56373dd14e1b697f7756aa5a8' then
-    raise exception 'R2 proof: ct_v_rt_revenue md5 is %, expected the pre-057 (034) 62e488b56373dd14e1b697f7756aa5a8', v_md5;
+  if v_md5 is distinct from v_pre_md5 then
+    raise exception 'R2 proof: ct_v_rt_revenue md5 is %, expected the pre-057 (034) %', v_md5, v_pre_md5;
   end if;
   -- Put back what the replace reset. The options come from the catalog itself (key=value pairs such
   -- as security_invoker=true), so splicing them into ALTER VIEW … SET is exact.

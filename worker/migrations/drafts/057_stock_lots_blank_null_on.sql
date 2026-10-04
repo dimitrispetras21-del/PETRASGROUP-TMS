@@ -9,8 +9,12 @@
 -- NULL here would re-fire rt_link_split on live round trips (the same reason 057 §0 refuses to run
 -- over blanks) — their round trips may already be joined the wrong way, and the owner looks at those
 -- orders first. The NOTICE counts them and lists up to 20; 057_stock_lots_verify.sql V1
--- «blank_group_ids» keeps showing them. The next save of such an order through the app re-sends
--- Group ID and the trigger stores it as NULL from then on.
+-- «blank_group_ids» keeps showing them. They STAY '' until the owner repairs them (round 3, critic-3
+-- Σ2-10): the order form never sends Group ID (only the Weekly's group actions do), so no ordinary
+-- save turns them into NULL, and while they stay the round-trip walks of 033/037 read every one of
+-- them as ONE group ('' = ''). Repair = after looking at their round trips, a reviewed UPDATE
+-- … SET group_id = NULL of exactly the ids the NOTICE printed (the trigger is back, so the stored
+-- value is NULL), then V1 «blank_group_ids» = 0.
 -- B-54 (trigger inventory): R3 left its red_value at the post-057 count, so with the trigger back it
 -- reads green again with nothing edited (unless R1 is also in force — then 3 short, red on purpose).
 -- Expected notice: «BLANK NULL ON OK: orders_group_id_blank_null enabled, as 057 §6 …».
