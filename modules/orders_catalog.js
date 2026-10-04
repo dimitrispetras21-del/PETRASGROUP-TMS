@@ -47,7 +47,10 @@ const OrdersCatalog = (() => {
   // G-27/E-12 (impact map 4/10): a lot is «Delivered» when the WAREHOUSE
   // received it — the client has not. Same dot, its own word, on the screen,
   // the CSV and the paper (the raw Status is untouched: filters read it).
+  // Round 1 O5 (critic-2 E2-04): an invoiced lot reads «Τιμολογήθηκε» — next
+  // to its «✓ ΤΠΥ», «Στην αποθήκη» said the goods never left.
   function _statusWord(r) {
+    if (r.lot && C().isInvoiced(r.f)) return 'Τιμολογήθηκε';
     if (r.lot && r.status === 'Delivered') return 'Στην αποθήκη';
     return (STATUS[r.status] || [r.status])[0] || '';
   }
@@ -134,16 +137,25 @@ const OrdersCatalog = (() => {
   function _rowHtml(r) {
     const f = r.f;
     const sel = r.id === S.selected ? ' selected' : '';
-    const tags = r.tags.map(t => `<span class="oc-tag">${t}</span>`).join('');
+    // Round 1 O11 (critic-5 S5-10): the stock tag goes BEFORE the direction —
+    // after it, «ΑΠΟΘΕΜΑ» was cut to «Εξαγωγή…» at 1440 and the lot had none.
+    const isStk = t => t === 'ΑΠ' || t === 'ΑΠΟΘΕΜΑ';
+    const stk = r.tags.filter(isStk).map(t => `<span class="oc-tag oc-tag-lead">${t}</span>`).join('');
+    const tags = r.tags.filter(t => !isStk(t)).map(t => `<span class="oc-tag">${t}</span>`).join('');
     const stDot = (STATUS[r.status] || [null, 'unknown'])[1], stWord = _statusWord(r) || '—';
     const statusHtml = r.pre && typeof preorderPillHtml === 'function' ? preorderPillHtml(f)
       : `<span class="oc-sdot oc-s-${stDot}"></span>${esc(stWord)}`;
     const priceHtml = r.price !== null ? esc(C().eur(r.price))
-      : r.piece ? `<span class="oc-dim oc-lotp" title="Τιμολογείται η παρτίδα">στην παρτίδα<br>${esc(OrdersStock.lotNumLabel(f))}</span>`
+      // O11 (critic-5 S5-10): ONE line — «στην παρτίδα<br>#N» grew the row
+      // inside the amounts column. The 84px column holds 68px of text and
+      // «στην παρτίδα #1300» measures 106px at 1440 (rig, 4/10), so the cell
+      // carries the lot number and the words go to the title; the paper and
+      // the CSV keep «στην παρτίδα #N» (_priceText), where width is no issue.
+      : r.piece ? `<span class="oc-dim oc-lotp" title="Στην παρτίδα ${esc(OrdersStock.lotNumLabel(f))} — τιμολογείται η παρτίδα">${esc(OrdersStock.lotNumLabel(f))}</span>`
       : (r.status === 'Cancelled' || r.pre ? '<span class="oc-dim">—</span>' : '<span class="oc-red">χωρίς τιμή</span>');
     return `<tr id="ocrow_${r.id}" class="oc-row${sel}" style="height:${ROW_H}px" onclick="OrdersCatalog.open('${r.type}','${r.id}')">
       <td class="oc-num"><b>${esc(r.num)}</b></td>
-      <td><span class="oc-l1" title="${esc(r.ref)}">${r.ref ? esc(r.ref) : '<span class="oc-dim">— χωρίς αναφορά</span>'}</span><span class="oc-l2">${esc(r.dir)}${tags}${r.legs ? '<span class="oc-tag" title="Σπασμένο σε 2 σκέλη — δες το Weekly International για την εκτέλεση">2 σκέλη</span>' : ''}</span></td>
+      <td><span class="oc-l1" title="${esc(r.ref)}">${r.ref ? esc(r.ref) : '<span class="oc-dim">— χωρίς αναφορά</span>'}</span><span class="oc-l2">${stk}${esc(r.dir)}${tags}${r.legs ? '<span class="oc-tag" title="Σπασμένο σε 2 σκέλη — δες το Weekly International για την εκτέλεση">2 σκέλη</span>' : ''}</span></td>
       <td><span class="oc-l1 oc-plain" title="${r.client}">${r.client}</span></td>
       <td>${r.pre ? '<span class="oc-dim">—</span>' : C().placeCell(r.load)}</td>
       <td>${r.pre ? '<span class="oc-dim">—</span>' : C().placeCell(r.del)}</td>
@@ -229,7 +241,10 @@ const OrdersCatalog = (() => {
     wrap.innerHTML = OrdersList.tableShell({
       colDefs: COLS, sortCol: S.sortCol, sortDir: S.sortDir, sortToggle: 'OrdersCatalog.sort',
       ids: { scroller: 'ocVScroll', top: 'ocTop', bottom: 'ocBottom' }, rowH: ROW_H, total: sorted.length,
-      legend: '<b>#</b> διεθνής · <b>Ε-</b> εθνική · <b>VS</b> Veroia Switch · <b>GRP</b> ομαδοποίηση · <b>PE</b> ανταλλαγή παλετών · <b>HR</b> υψηλό ρίσκο · <b class="oc-g">✓ ΤΠΥ</b> τιμολογήθηκε στο ERP',
+      // O11: «ΑΠ» / «ΑΠΟΘΕΜΑ» explained once the list holds a piece or a lot.
+      legend: '<b>#</b> διεθνής · <b>Ε-</b> εθνική · <b>VS</b> Veroia Switch · <b>GRP</b> ομαδοποίηση · <b>PE</b> ανταλλαγή παλετών · <b>HR</b> υψηλό ρίσκο · '
+        + (S.rows.some(x => x.piece || x.lot) ? '<b>ΑΠ</b> κομμάτι από απόθεμα · <b>ΑΠΟΘΕΜΑ</b> παρτίδα σε αποθήκη · ' : '')
+        + '<b class="oc-g">✓ ΤΠΥ</b> τιμολογήθηκε στο ERP',
       legendClass: 'oc-legend', footClass: 'oc-foot',
     });
     document.getElementById('ocVScroll').addEventListener('scroll', () => OrdersList.virtualOnScroll(S.vs, _paint), { passive: true });
@@ -470,7 +485,8 @@ const OrdersCatalog = (() => {
 .oc-l2{display:block;font-size:11.5px;color:var(--text-mid);overflow:hidden;white-space:nowrap;text-overflow:ellipsis;line-height:1.3}
 .oc-tag{display:inline-block;margin-left:6px;padding:0 4px;border:1px solid var(--border-mid);border-radius:3px;font-size:9px;font-weight:600;letter-spacing:.3px;color:var(--text-mid);line-height:13px}
 .oc-dim{color:var(--text-dim)}.oc-red{color:var(--danger);font-weight:500}.oc-g{color:var(--ok)}
-.oc-lotp{display:inline-block;font-size:11px;font-weight:400;line-height:1.25}
+.oc-lotp{display:inline-block;font-size:11px;font-weight:400;line-height:1.25;white-space:nowrap}
+.oc-tag.oc-tag-lead{margin-left:0;margin-right:6px}
 .oc-sdot{display:inline-block;width:6px;height:6px;border-radius:50%;margin-right:6px;vertical-align:middle}
 .oc-s-pending{border:1.5px solid var(--text-dim)}.oc-s-assigned{background:var(--accent)}.oc-s-confirmed{background:var(--text-mid)}
 .oc-s-transit{background:var(--surface-dark)}.oc-s-delivered{background:var(--ok)}.oc-s-cancelled,.oc-s-unknown{border:1.5px solid var(--border-mid)}

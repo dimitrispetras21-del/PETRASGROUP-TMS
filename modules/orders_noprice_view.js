@@ -400,6 +400,8 @@ const OrdersNoPrice = (() => {
         ? `→ Προς τιμολόγηση · εβδ. ${OrdersCommon.weekLabel(OrdersCommon.weekStartOf(rec))}`
         : st.key === 'invoiced' ? '→ τιμολογήθηκε'
         : st.key === 'blocked' && st.reason === 'sheets' ? '→ περιμένει δελτία παλετών (Αλεξία)'
+        // Round 1 O5 (critic-2 E2-09): a priced lot is not ready — it waits for its pieces.
+        : st.key === 'blocked' && st.reason === 'stock' ? '→ περιμένει κομμάτια (παρτίδα)'
         : '';
       return `<tr>
         <td class="np-no">${_esc(OrdersCommon.numLabel(rec))}</td>
@@ -473,7 +475,11 @@ const OrdersNoPrice = (() => {
       OrdersData.invalidate();
       OrdersHub.refreshBadges();
       const lbl = _esc(_label(rec));
-      if (OrdersData.sheetsOk(V.set, rec)) toast(`Η τιμή καταχωρήθηκε — η ${lbl} πέρασε στα Προς τιμολόγηση`);
+      // O5 (critic-2 E2-09): «πέρασε στα Προς τιμολόγηση» was not true for a
+      // lot — it lands there blocked until its last piece (or a close).
+      const _st = OrdersData.stateOf(V.set, rec);
+      if (_st.key === 'blocked' && _st.reason === 'stock') toast(`Η τιμή καταχωρήθηκε — η παρτίδα ${lbl} περιμένει κομμάτια πριν τιμολογηθεί`);
+      else if (OrdersData.sheetsOk(V.set, rec)) toast(`Η τιμή καταχωρήθηκε — η ${lbl} πέρασε στα Προς τιμολόγηση`);
       else toast(`Η τιμή καταχωρήθηκε — η ${lbl} περιμένει ακόμη δελτία παλετών (Αλεξία)`, 'warn');
       _repaintFromState();
     } catch (e) {

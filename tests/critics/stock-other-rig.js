@@ -268,7 +268,9 @@ async function open(browser, role, route, F, costs, bootDone) {
     const lot = cards.ctCard501 || '', pc = cards.ctCard502 || '';
     const tag = fail ? 'unread_' : '';
     if (!fail) {
-      ok('D11_lot_rt_no_unexplained', !/ανεξήγητη/.test(lot) && /παρτίδα #312 — έσοδο = κόστος αποθήκης · το καθαρό μοιράζεται στα κομμάτια/.test(lot) && /€300/.test(lot) && !/€3\.300/.test(lot), lot);
+      ok('D11_lot_rt_no_unexplained', !/ανεξήγητη/.test(lot) && /€300/.test(lot) && !/€3\.300/.test(lot), lot);
+      // Round 1 O11 (critic-5 S5-10): the lot line ≤ 6 words; one name («κόστος αποθήκης») for the one amount
+      ok('O11_lot_line_short_one_name', /· παρτίδα #312 · κόστος αποθήκης/.test(lot) && !/το καθαρό μοιράζεται/.test(lot) && !/κόμιστρο συνεργάτη/.test(lot) && /κόστος αποθήκης — καύσιμα/.test(lot), lot);
       ok('D12_piece_amount_and_vs_850', /από παρτίδα #312/.test(pc) && /€455/.test(pc) && /Veroia Switch: −€850 /.test(pc) && !/ανεξήγητη/.test(pc), pc);
     } else {
       ok(tag + 'said_per_leg_no_diff', /ο επιμερισμός δεν διαβάστηκε/.test(lot) && /ο επιμερισμός δεν διαβάστηκε/.test(pc) && !/ανεξήγητη|Veroia Switch: −/.test(lot + pc), { lot, pc });

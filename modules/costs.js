@@ -474,7 +474,11 @@ function ctStockLeg(o) {
       return { amount: p, sum: p || 0, note: `παρτίδα ${num} — χωρίς επιμερισμό (${why[m.allocation_status] || m.allocation_status}): όλο το έσοδο εδώ` };
     }
     // Left out of the legs sum (the lot's price is not this RT's revenue).
-    return { amount: Number(m.intake_cost), sum: 0, note: `παρτίδα ${num} — έσοδο = κόστος αποθήκης · το καθαρό μοιράζεται στα κομμάτια` };
+    // Round 1 O11 (critic-5 S5-10): ≤ 6 words in the amounts line, the why
+    // in the tooltip; «κόστος αποθήκης» is the one name of this amount (the
+    // partner note of the card says the same, ctPartnerNote).
+    return { amount: Number(m.intake_cost), sum: 0, note: `παρτίδα ${num} · κόστος αποθήκης`, lotCost: true,
+      title: 'Το έσοδο του σκέλους της παρτίδας = το κόστος αποθήκης· το καθαρό της παρτίδας μοιράζεται στα κομμάτια' };
   }
   const a = _ct.stock.pieces[o.id];
   if (!a) return unread;
@@ -745,7 +749,7 @@ function ctLegLine(l) {
   const stk = ctStockLeg(o);   // stock lot / piece: the DB's revenue for this leg, not the order Price
   const amt = stk ? stk.amount : (f['Price'] != null && f['Price'] !== '' ? Number(f['Price']) : null);
   const price = amt != null ? ctEur(amt) : '<span style="color:var(--text-dim);font-weight:400">—</span>';
-  const stkNote = stk ? ` <span style="color:var(--text-mid);font-size:12px">· ${ctEsc(stk.note)}</span>` : '';
+  const stkNote = stk ? ` <span style="color:var(--text-mid);font-size:12px"${stk.title ? ` title="${ctEsc(stk.title)}"` : ''}>· ${ctEsc(stk.note)}</span>` : '';
   return `<div class="ct-leg">${chip}
     <span class="rt">${imp ? ctEsc(from) : from} <span class="arr">→</span> ${ctEsc(to)}${cc && !imp ? ' (' + cc + ')' : ''}${stkNote}</span>
     <span class="ldate ct-mono">${fmtDate(date)}</span>
@@ -807,8 +811,11 @@ function ctCardHtml(t) {
   // τα νούμερα, χωρίς να τυφλώνει τον μόνο που τα χρειάζεται.
   const lockLine = gated
     ? `<div class="ct-locknote">${icon('warning', 13)} Δελτίο παλετών: λείπει σε ${gate.legs_needing_sheet - gate.legs_with_sheet} από ${gate.legs_needing_sheet} σκέλη — οι χαμένες παλέτες είναι κόστος που δεν φαίνεται ακόμη εδώ</div>` : '';
+  // O11 (critic-5 S5-10): on a lot's RT the partner's rate IS the warehouse
+  // cost the leg line names — one name for one amount, not two.
+  const lotRt = !!_ct.orderByPg && legs.some(l => { const o = l.order_id != null && _ct.orderByPg[l.order_id]; const k = o && ctStockLeg(o); return !!(k && k.lotCost); });
   const partnerNote = t.trip_type === 'PARTNER'
-    ? `<div class="ct-leg" style="color:var(--text-mid);font-size:12px">κόμιστρο συνεργάτη — καύσιμα/διόδια/οδηγός είναι δικά του κόστη, όχι ελλιπή δικά μας</div>` : '';
+    ? `<div class="ct-leg" style="color:var(--text-mid);font-size:12px">${lotRt ? 'κόστος αποθήκης' : 'κόμιστρο συνεργάτη'} — καύσιμα/διόδια/οδηγός είναι δικά του κόστη, όχι ελλιπή δικά μας</div>` : '';
   // Τα σκέλη δείχνουν τιμές παραγγελιών· το έσοδο trip αφαιρεί το εσωτερικό
   // VS κόμιστρο (view ct_v_rt_revenue). Χωρίς αυτή τη γραμμή, «2.700+3.100
   // αλλά έσοδα 5.150» διαβάζεται ως λάθος. Η διαφορά ΥΠΟΛΟΓΙΖΕΤΑΙ, δεν

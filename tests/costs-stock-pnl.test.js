@@ -49,9 +49,29 @@ test('D-11/E-15: the lot\'s partner RT — no «ανεξήγητη διαφορ�
   if (ctx.ctStockLoad) await ctx.ctStockLoad();   // absent on the base commit → the card as it was
   const h = text(ctx.ctCardHtml(t));
   assert.ok(!/ανεξήγητη διαφορά/.test(h), h);
-  assert.match(h, /παρτίδα #312 — έσοδο = κόστος αποθήκης · το καθαρό μοιράζεται στα κομμάτια/);
   assert.match(h, /€300/);
   assert.ok(!/€3\.300/.test(h), 'the lot\'s client price is not this RT\'s revenue: ' + h);
+});
+
+// Round 1 O11 (critic-5 S5-10): the lot's amount line ≤ 6 words, the why in
+// the tooltip; ONE name for the one amount — the partner note under it says
+// «κόστος αποθήκης» too, not «κόμιστρο συνεργάτη».
+test('O11: lot leg «· παρτίδα #312 · κόστος αποθήκης» (≤ 6 words, why in title); one name for the amount', async () => {
+  const { ctx } = load();
+  const t = { id: 1, code: 'RT-1', trip_type: 'PARTNER', partner_id: 9, revenue: 300, status: 'closed', date_start: '2026-10-01' };
+  setCard(ctx, t, [[10, LOT, 'IMPORT']]);
+  await ctx.ctStockLoad();
+  const raw = ctx.ctCardHtml(t), h = text(raw);
+  const line = (h.match(/· (παρτίδα #312[^€]*?)(?= \d|$| 2026)/) || [])[1] || '';
+  assert.strictEqual(line.trim(), 'παρτίδα #312 · κόστος αποθήκης', h);
+  assert.ok(line.trim().split(/\s+/).filter(w => w !== '·').length <= 6);
+  assert.match(raw, /title="Το έσοδο του σκέλους της παρτίδας = το κόστος αποθήκης/);
+  assert.ok(!/κόμιστρο συνεργάτη/.test(h) && /κόστος αποθήκης — καύσιμα/.test(h), 'one name for one amount: ' + h);
+  // an ordinary partner RT keeps its own word
+  const { ctx: c2 } = load();
+  setCard(c2, t, [[11, EXPVS, 'EXPORT']]);
+  await c2.ctStockLoad();
+  assert.match(text(c2.ctCardHtml(t)), /κόμιστρο συνεργάτη — καύσιμα/);
 });
 
 test('D-12/E-15: a piece leg shows its allocation; with a VS export the VS note is the full 850', async () => {
