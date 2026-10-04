@@ -354,8 +354,18 @@ SECTIONS.push(async browser => {
   await openNewSn(dp.page, 'recNlSat00000000');
   await dp.page.evaluate(() => { window.__realConfirm('Πιθανό duplicate'); });
   await dp.page.waitForSelector('#_cfaCancel'); await dp.page.click('#_cfaCancel'); await dp.page.waitForTimeout(400);
-  await dp.page.evaluate(() => openNatlCreate()); await dp.page.waitForSelector('#modalOverlay.open #nf_Direction'); await dp.page.waitForTimeout(400);
-  ok(await pending(dp.page) === null, 'duplicate confirm → «Ακύρωση», then a NEW order form → pending match gone');
+  ok(await pending(dp.page) === null, 'duplicate confirm → «Ακύρωση» (save stopped) → pending match gone at once (review 4/10)');
+  await openNewSn(dp.page, 'recNlSat00000000');
+  await dp.page.evaluate(() => { window.__realConfirm('Πιθανό duplicate'); });
+  await dp.page.waitForSelector('#_cfaOk'); await dp.page.keyboard.press('Escape'); await dp.page.waitForTimeout(400);
+  ok(await pending(dp.page) === null, 'duplicate confirm → Escape → pending match gone');
+  await openNewSn(dp.page, 'recNlSat00000000');
+  await dp.page.evaluate(() => { window.__realConfirm('Πιθανό duplicate'); });
+  await dp.page.waitForSelector('#_cfaOk'); await dp.page.keyboard.press('Enter'); await dp.page.waitForTimeout(400);
+  ok(await pending(dp.page) === 'recNlSat00000000', 'duplicate confirm → Enter (= OK, save goes on) → pending match KEPT');
+  await dp.page.evaluate(() => { window.__realConfirm('δεύτερος έλεγχος'); });
+  await dp.page.waitForSelector('#_cfaCancel'); await dp.page.click('#_cfaCancel'); await dp.page.waitForTimeout(400);
+  ok(await pending(dp.page) === null, '… a SECOND guard dialog cancelled → pending match gone');
   await dp.page.context().close();
 
   // The form refuses to open when the locations are not loaded (P1 4/10):

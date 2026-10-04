@@ -1891,20 +1891,32 @@ function _wnNewSn(rowId) {
   // closed» does not mean «the form was cancelled». The test is OUR form
   // element (#nf_Direction of this instance): closed while it is still in the
   // modal = Άκυρο/✕/overlay click → drop; a NEW order form opened = ours is
-  // over → drop. A dialog that replaced the form drops nothing. Only ever
-  // THIS pending; once it is consumed or replaced the observer leaves.
+  // over → drop. Closed after a dialog REPLACED the form: the save goes on
+  // only if that dialog was answered OK (#_cfaOk click or Enter — core/ui.js
+  // confirmAction); «Ακύρωση»/Escape/overlay stop the save (throw 'v'), so
+  // the pending is dropped too (review 4/10: it lived 30' and bound the next
+  // ΑΝΟΔΟΣ — WN-09 again). Our capture listeners on document run BEFORE the
+  // dialog's own handlers, so okSeen is set before the overlay closes.
+  // Only ever THIS pending; once it is consumed or replaced everything leaves.
   const ov = document.getElementById('modalOverlay');
-  let obs = null;
-  const drop = () => { if (obs) obs.disconnect(); if (window._wnPendingMatch === pend) window._wnPendingMatch = null; };
+  let obs = null, okSeen = false;
+  const onClick = e => { if (e.target && e.target.closest && e.target.closest('#_cfaOk')) okSeen = true; };
+  const onKey = e => { if (e.key === 'Enter' && document.getElementById('_cfaOk')) okSeen = true; };
+  const stop = () => { if (obs) obs.disconnect(); document.removeEventListener('click', onClick, true); document.removeEventListener('keydown', onKey, true); };
+  const drop = () => { stop(); if (window._wnPendingMatch === pend) window._wnPendingMatch = null; };
   if (ov) {
     let formEl = null;
+    document.addEventListener('click', onClick, true);
+    document.addEventListener('keydown', onKey, true);
     obs = new MutationObserver(() => {
-      if (window._wnPendingMatch !== pend) { obs.disconnect(); return; }
+      if (window._wnPendingMatch !== pend) { stop(); return; }
       const open = ov.classList.contains('open');
       const nf = document.getElementById('nf_Direction');
       if (!formEl) { if (open && nf) formEl = nf; return; }
       if (!open && formEl.isConnected) drop();
-      else if (open && nf && nf !== formEl) drop();
+      else if (!open && !okSeen) drop();          // replacing dialog cancelled → save stopped
+      else if (!open) okSeen = false;             // answered OK → save in flight; ready for a 2nd dialog
+      else if (nf && nf !== formEl) drop();
     });
     obs.observe(ov, { attributes: true, attributeFilter: ['class'] });
   }
