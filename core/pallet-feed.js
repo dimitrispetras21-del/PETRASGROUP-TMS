@@ -105,6 +105,14 @@ async function plOnDelivered(orderId) {
     // Wave 3: see plOnOrderSaved — a leg's delivery isn't a second client delivery.
     if (typeof FEATURES !== 'undefined' && FEATURES.ORDER_SPLIT && getLinkedId(rec.fields['Parent Order'])) return;
     if (!rec.fields['Pallet Exchange']) return;
+    // OWNER-Q7 default (4/10): a stock LOT writes no DELIVERY. Its «Delivered»
+    // is the warehouse intake, not a client delivery — the confirmed 33/33
+    // «client exchange at Αποθήκη Χ» this would write is false, and its
+    // «Διόρθωση ανταλλαγής» would book a warehouse shortfall as client debt
+    // (impact map 4/10 C-03 / PL-02). Ε5: the lot's ONE exchange is at its
+    // loading (plOnOrderSaved, unchanged). Where the pieces' receivers'
+    // empties are recorded is still the owner's question.
+    if (OrdersStock.isLot(rec.fields)) return;
     const clientRec = _plClientRec(rec.fields);
     for (const s of stops) {
       if (s.fields[F.STOP_TYPE] !== 'Unloading') continue;
