@@ -1,6 +1,11 @@
--- 061 — DRAFT, NOT EXECUTED. ΑΝΟΔΟΣ loads matched under an assigned ΚΑΘΟΔΟΣ but
--- left without a vehicle (report national-readiness 5/10, §4 #5, UX-03).
--- Owner runs it, after 15:00, only after his explicit go in the chat.
+-- 061 — ΑΝΟΔΟΣ loads matched under an assigned ΚΑΘΟΔΟΣ but left without a
+-- vehicle (report national-readiness 5/10, §4 #5, UX-03).
+-- ✅ ΕΚΤΕΛΕΣΤΗΚΕ 4/10/2026 (owner, evening — after §8.4: the 11 old national
+--    orders 24/8–14/9 are REAL). Verified with SELECT: loads 99/102/103 =
+--    Assigned with the same vehicle as 80/76/77 · still_uncovered 0 · audit
+--    'migration:061' = 3 · ct_rt_legs for 99/102/103 = 0 · NATL RT 0 · new
+--    payroll lines 0 · INTL fingerprint unchanged.
+-- Was: owner runs it, after 15:00, only after his explicit go in the chat.
 --
 -- WHY: until 4/10/2026 matching an ΑΝΟΔΟΣ to a ΚΑΘΟΔΟΣ (drag, or «νέα άνοδος» from
 -- the empty cell) wrote only 'Matched Load'. Weekly National drew the pair under
@@ -27,10 +32,10 @@
 -- verified read-only 4/10/2026 (dates + trigger source + leg count). The
 -- block proves it again after the update (0 new legs for 99/102/103).
 --
--- ⚠ Owner check BEFORE running: 99/102/103 come from national orders 8, 13, 14
--- (loading 7/9 and 9/9) — inside the «11 old national orders 24/8–14/9» of
--- decision §8.4 (tests or real?). If those orders are tests to be closed,
--- do NOT run this; it would assign a vehicle to a test load.
+-- Owner check BEFORE running (answered 4/10: REAL, §8.4): 99/102/103 come from
+-- national orders 8, 13, 14 (loading 7/9 and 9/9) — inside the «11 old
+-- national orders 24/8–14/9» of decision §8.4. Had they been tests, this
+-- would have assigned a vehicle to a test load.
 -- Only the national LOAD is touched; the source national order's Status is
 -- left as is (the board's own popover does not touch it for a matched leg).
 --
