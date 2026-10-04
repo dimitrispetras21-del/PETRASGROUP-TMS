@@ -579,6 +579,9 @@ function stockLotText(f,isPartner){
   var ref=String(f['Stock Lot Reference']||'').trim();
   return (ref?'Ref '+ref+' · ':'')+(isPartner?'lot ':'παρτίδα ')+n;
 }
+// The Reference is typed by people; the text above also feeds the WhatsApp
+// message (plain), so it is escaped where it enters HTML, not inside.
+function stockEsc(s){return String(s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});}
 function badges(f){
   var b='';
   if(f['High Risk Flag'])b+='<span class="badge b-risk">! Risk</span>';
@@ -823,7 +826,7 @@ function generatePDF(orderRec, bare){ // bare (Wave 3): no toolbar — docs 2..N
     '<div class="meta-item"><span class="meta-lbl">'+_m.disp+'</span><span class="meta-val">'+DISPATCHER+'</span></div>'+
     '<div class="meta-item"><span class="meta-lbl">'+_m.ord+'</span><span class="meta-val">'+orderNo+'</span></div>'+
     (refNo?'<div class="meta-item"><span class="meta-lbl">'+_m.ref+'</span><span class="meta-val">'+refNo+'</span></div>':'')+
-    (stockNo?'<div class="meta-item"><span class="meta-lbl">'+_m.stock+'</span><span class="meta-val">'+stockNo+'</span></div>':'')+
+    (stockNo?'<div class="meta-item"><span class="meta-lbl">'+_m.stock+'</span><span class="meta-val">'+stockEsc(stockNo)+'</span></div>':'')+
     (badgeHTML&&!isPartner?'<div class="meta-item"><span class="meta-lbl">'+_m.flags+'</span><span class="meta-val">'+badgeHTML+'</span></div>':'')+
     '</div>';
 
@@ -984,7 +987,7 @@ function buildCoverDoc(items){
     var pt=fv(f['Pallet Type'])||'EUR';
     if(byType[pt]===undefined){byType[pt]=0;typeOrder.push(pt);}
     if(!isNaN(p)) byType[pt]+=p;
-    if(f['Pallet Exchange']) peRefs.push(String.fromCharCode(65+i)+' '+(f['Reference']||ordNoOf(it.orderRec)));
+    if(f['Pallet Exchange']) peRefs.push(stockEsc(String.fromCharCode(65+i)+' '+(f['Reference']||ordNoOf(it.orderRec))));
     if(f['Temperature °C']!==''&&f['Temperature °C']!=null&&temps.indexOf(String(f['Temperature °C']))<0) temps.push(String(f['Temperature °C']));
     if(fv(f['Goods'])&&goodsList.indexOf(fv(f['Goods']))<0) goodsList.push(fv(f['Goods']));
   });
@@ -1040,7 +1043,7 @@ function buildCoverDoc(items){
       var lastName=lastUn?(resolveLoc(lastUn.fields['Location'])||{}).name:'—';
       // C4-02: the piece is marked as stock on the cover too, at its stop.
       var stk=stockLotText(f,isPartner);
-      var tag='ΠΑΡΑΓΓΕΛΙΑ '+String.fromCharCode(65+i)+' · '+ordNoOf(it.orderRec)+' · '+lastName+(stk?' · '+(isPartner?'From stock · ':'Απόθεμα · ')+stk:'');
+      var tag='ΠΑΡΑΓΓΕΛΙΑ '+String.fromCharCode(65+i)+' · '+ordNoOf(it.orderRec)+' · '+lastName+(stk?' · '+(isPartner?'From stock · ':'Απόθεμα · ')+stockEsc(stk):'');
       stopsOfType(it.stops,type).forEach(function(s){
         var loc=resolveLoc(s.fields['Location']); if(!loc)return;
         tlHTML+=buildCard(0,loc,dtLabel,s.fields['DateTime']||'',s.fields['Pallets']||'',

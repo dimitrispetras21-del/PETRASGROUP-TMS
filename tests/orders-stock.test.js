@@ -239,6 +239,11 @@ test('loadLots / loadOpen: the facade formula, and a failure is {ok:false, faile
   assert.strictEqual(r.ok, true);
   assert.strictEqual(r.lots.length, 1);
   assert.deepStrictEqual(calls.at(-1), ['atGetAll', 'tblStockLots', '{Complete}=0']);
+  // Round 1b: a lot whose intake was cancelled can get no piece (057 lot_cancelled) → not «open»;
+  // a missing intake status (NULL in the view) keeps the lot.
+  db.lots = [lotRec('recL1', {}), lotRec('recLc', { 'Intake Status': 'Cancelled' }), lotRec('recLn', { 'Intake Status': undefined })];
+  const o = await OrdersStock.loadOpen();
+  assert.deepStrictEqual(o.lots.map(l => l.id), ['recL1', 'recLn']);
   db.failLots = true;
   const f = await OrdersStock.loadLots('{Invoiced}=0');
   assert.strictEqual(f.ok, false); assert.strictEqual(f.failed, true); assert.ok(!('lots' in f), 'no lots key — never an empty list');

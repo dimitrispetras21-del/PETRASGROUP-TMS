@@ -440,7 +440,15 @@ const OrdersStock = {
       return { ok: false, failed: true, error: OrdersStock._msg(e) };
     }
   },
-  loadOpen() { return OrdersStock.loadLots('{Complete}=0'); },
+  // A lot whose source order was cancelled is never complete, yet it can get no
+  // piece (057 lot_cancelled) — offering it on the shelf / piece form only leads
+  // to a refusal. Filtered here, not in the formula: a NULL intake status must
+  // not hide a live lot (SQL `<>` drops NULLs).
+  async loadOpen() {
+    const r = await OrdersStock.loadLots('{Complete}=0');
+    if (r.ok) r.lots = r.lots.filter(l => (l.fields || {})['Intake Status'] !== 'Cancelled');
+    return r;
+  },
   async _orders(formula, tag) {
     try {
       const pieces = await atGetAll(TABLES.ORDERS, { filterByFormula: formula }, false);

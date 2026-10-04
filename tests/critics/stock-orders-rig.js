@@ -147,7 +147,10 @@ async function newPage(browser, role, view) {
       const echo = Object.assign({}, b.fields); if (cap.dropStockLot) delete echo['Stock Lot'];
       return json(r, { id, fields: echo });
     }
-    if (m === 'PATCH') { cap.patches.push({ table: 'orders', id: one && one[1], fields: b.fields }); return json(r, { id: one && one[1], fields: b.fields }); }
+    if (m === 'PATCH') {
+      if (cap.orderPatchFail) { const e = cap.orderPatchFail; cap.orderPatchFail = null; return json(r, { error: e }, 422); }
+      cap.patches.push({ table: 'orders', id: one && one[1], fields: b.fields }); return json(r, { id: one && one[1], fields: b.fields });
+    }
     cap.deletes.push({ table: 'orders', id: one && one[1] });
     if (cap.orderDelFail) { const e = cap.orderDelFail; cap.orderDelFail = null; return json(r, { error: e }, 422); }
     return json(r, { deleted: true });
@@ -255,6 +258,9 @@ async function runCatalog(browser) {
   const h = csvOut[0], pcCsv = csvOut.find(r => r.includes('TEST-STOCK-1')) || [], lotCsv = csvOut.find(r => r.includes('TEST-STOCK-LOT')) || [];
   ok(pcCsv[h.indexOf('Σήμανση')] === 'ΑΠ' && pcCsv[h.indexOf('Τιμή')] === 'στην παρτίδα #1300', 'catalog CSV: piece «Σήμανση»=ΑΠ, «Τιμή»=«στην παρτίδα #1300» — ' + JSON.stringify(pcCsv));
   ok(lotCsv[h.indexOf('Σήμανση')] === 'ΑΠΟΘΕΜΑ' && lotCsv[h.indexOf('Κατάσταση')] === 'Στην αποθήκη', 'catalog CSV: lot «ΑΠΟΘΕΜΑ» + «Στην αποθήκη» — ' + JSON.stringify(lotCsv));
+  // Round 1b: the columns main already had keep their positions; the new one is last.
+  const MAIN_HEAD = ['ΑΡ.', 'Τύπος', 'Αναφορά', 'Κατεύθυνση', 'Πελάτης', 'Φόρτωση', 'Ημ. φόρτωσης', 'Παράδοση', 'Ημ. παράδοσης', 'Παλέτες', 'Ανάθεση', 'Κατάσταση', 'Τιμή', 'ΤΠΥ', 'Ημ. ΤΠΥ'];
+  ok(JSON.stringify(h) === JSON.stringify([...MAIN_HEAD, 'Σήμανση']), 'catalog CSV: main columns in place, «Σήμανση» last — ' + JSON.stringify(h));
   const printPage = await page.context().newPage();
   await printPage.setContent(paper.replace(/<script>[\s\S]*?<\/script>/g, ''));
   await printPage.setViewportSize({ width: 1440, height: 900 });
@@ -667,9 +673,18 @@ async function runLotEdit(browser) {
   const unTo = (await page.evaluate(() => (document.getElementById('tms-toast-container') || {}).innerText || '')).replace(/\s+/g, ' ');
   ok((unTo.match(/Η παρτίδα έχει κομμάτια — δεν καταργείται/g) || []).length === 1, 'O8 / D2: the base\'s sentence once, the context without it — ' + unTo);
   ok((cap.dialogs || []).some(m => /θα πάψει να είναι παρτίδα/.test(m)), 'native confirm asked first');
+  // Round 1b: the unmark goes through, the ORDERS PATCH is then refused — the lot is gone, so
+  // «δεν αποθηκεύτηκε τίποτα» would be false; the next click saves the order without a 2nd unmark.
+  cap.orderPatchFail = { type: 'VALIDATION', code: 'x', message: 'Άκυρη τιμή πεδίου' };
+  await page.evaluate(() => { const c = document.getElementById('tms-toast-container'); if (c) c.innerHTML = ''; });
+  await page.click('#btnSubmit');
+  await waitText(page, /Η παρτίδα καταργήθηκε, η παραγγελία ΔΕΝ αποθηκεύτηκε — ξαναπάτα Αποθήκευση/);
+  const unTo2 = (await page.evaluate(() => (document.getElementById('tms-toast-container') || {}).innerText || '')).replace(/\s+/g, ' ');
+  ok(!/δεν αποθηκεύτηκε τίποτα/.test(unTo2) && cap.deletes.length === nD + 2 && await page.evaluate(() => document.getElementById('modalOverlay').classList.contains('open')),
+    '1b F2: unmarked, PATCH refused → «Η παρτίδα καταργήθηκε, η παραγγελία ΔΕΝ αποθηκεύτηκε», form stays — ' + unTo2);
   await page.click('#btnSubmit');
   await page.waitForFunction(() => !document.getElementById('modalOverlay').classList.contains('open'), null, { timeout: 10000 });
-  ok(cap.deletes.length === nD + 2 && cap.deletes.at(-1).id === 'recLot1', 'unmark allowed → DELETE STOCK LOTS recLot1');
+  ok(cap.deletes.length === nD + 2 && cap.deletes.at(-1).id === 'recLot1', 'unmark allowed → DELETE STOCK LOTS recLot1 (once, not again on the retry)');
   ok(cap.patches.slice(nP).some(p => p.table === 'orders' && p.id === 'recLotSrc'), '… and only then the ORDERS PATCH');
   cap.acceptDialog = false;
 
@@ -686,6 +701,8 @@ async function runLotEdit(browser) {
   await page.waitForTimeout(300);
   const delBody = await page.evaluate(() => document.body.innerText);
   ok(delBody.split(REFUSAL).length - 1 === 1 && !/Η διαγραφή απέτυχε/.test(delBody), 'DL-03 / K1: the refusal\'s own Greek words, once (core/api.js), not «Η διαγραφή απέτυχε»');
+  // Round 1b (D2): the caller adds only the context — once, without the reason.
+  ok(delBody.split('Η διαγραφή δεν έγινε — δεν άλλαξε τίποτα').length - 1 === 1, 'D2: one context line «Η διαγραφή δεν έγινε — δεν άλλαξε τίποτα» under the refusal');
   // O9 (critic-1 C1-07): the confirm said NAT_LOADS/RAMP/«ΔΕΝ ΑΝΑΙΡΕΙΤΑΙ» for a 16p piece
   const dq = (cap.dialogs || [])[0] || '';
   ok(/^Διαγραφή κομματιού #1301 — οι 16p γυρίζουν στην παρτίδα #1300\./.test(dq) && !/NAT_LOADS|ΔΕΝ ΑΝΑΙΡΕΙΤΑΙ/.test(dq), 'O9: the piece\'s confirm says what it is — ' + JSON.stringify(dq));

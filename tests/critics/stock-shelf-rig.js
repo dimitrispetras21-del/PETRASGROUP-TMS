@@ -930,6 +930,19 @@ if (MAIN) (async () => {
       return { btn: btn ? btn.textContent.trim() : null, n: btn ? +((/\((\d+)\)/.exec(btn.textContent) || [])[1]) : 0, want };
     });
     ok('k9_auto_match_count_is_what_it_takes', k9.n === k9.want.length && !k9.want.includes('recRIGI7000000007'), k9);
+    // Round 1b (reviewer P3-1): an adjacent-week import is not in the tally, so not in «(N)» either —
+    // alone it showed a button main never showed. I8 (plain, unmatched) moves to another plan week.
+    const autoCnt = () => page.evaluate(() => { const b = [...document.querySelectorAll('.wk3-sub .wi2-btn')].find(x => /Αυτόματο ταίριασμα/.test(x.textContent)); return b ? +((/\((\d+)\)/.exec(b.textContent) || [])[1]) : 0; });
+    const rerender = () => page.evaluate(async () => { invalidateCache(TABLES.ORDERS); await renderWeeklyIntl(); });
+    const k9before = await autoCnt();
+    const i8 = F.orders.recRIGI8000000008.fields;
+    const ws = await page.evaluate(() => WINTL._range.ws);
+    const nextWs = (() => { const t = new Date(ws + 'T12:00:00'); t.setDate(t.getDate() + 7); return t.toISOString().slice(0, 10); })();
+    i8['Plan Week Start'] = nextWs; await rerender();
+    const k9adj = { before: k9before, after: await autoCnt(), adjRow: await page.evaluate(() => !!WINTL.rows.find(r => r.orderId === 'recRIGI8000000008' && r.adj)) };
+    delete i8['Plan Week Start']; await rerender();
+    k9adj.restored = await autoCnt();
+    ok('k9_1b_adjacent_week_not_counted', k9adj.adjRow && k9adj.after === k9adj.before - 1 && k9adj.restored === k9adj.before, k9adj);
 
     // C4-06 (round 1): the import-only group's ⎙I (I7 + P6) has the share
     // menu query, like the matched export row's.

@@ -436,11 +436,13 @@ const OrdersCatalog = (() => {
   function csv() {
     if (_namesBusy()) return;
     // «Σήμανση» = the row's tags (ΑΠ, ΑΠΟΘΕΜΑ, VS, GRP, PE, HR) — PR-14: the
-    // file carries what the screen shows next to the direction.
-    const head = ['ΑΡ.', 'Τύπος', 'Αναφορά', 'Κατεύθυνση', 'Σήμανση', 'Πελάτης', 'Φόρτωση', 'Ημ. φόρτωσης', 'Παράδοση', 'Ημ. παράδοσης', 'Παλέτες', 'Ανάθεση', 'Κατάσταση', 'Τιμή', 'ΤΠΥ', 'Ημ. ΤΠΥ'];
-    const rows = S.filtered.map(r => [r.num, r.type === 'intl' ? 'Διεθνής' : 'Εθνική', r.ref, r.dir, r.tags.join(' '), _unesc(r.client), _plain(r.load), C().ymd(r.f['Loading DateTime']),
+    // file carries what the screen shows next to the direction. It goes LAST
+    // (round 1b): a column in the middle moved every column after it for
+    // whoever already reads this file by position.
+    const head = ['ΑΡ.', 'Τύπος', 'Αναφορά', 'Κατεύθυνση', 'Πελάτης', 'Φόρτωση', 'Ημ. φόρτωσης', 'Παράδοση', 'Ημ. παράδοσης', 'Παλέτες', 'Ανάθεση', 'Κατάσταση', 'Τιμή', 'ΤΠΥ', 'Ημ. ΤΠΥ', 'Σήμανση'];
+    const rows = S.filtered.map(r => [r.num, r.type === 'intl' ? 'Διεθνής' : 'Εθνική', r.ref, r.dir, _unesc(r.client), _plain(r.load), C().ymd(r.f['Loading DateTime']),
       _plain(r.del), C().ymd(r.f['Delivery DateTime']), r.pal || '', r.assign.text, _statusWord(r),
-      _priceText(r), r.f['Invoice Number'] || '', C().ymd(r.f['Invoice Date'])]);
+      _priceText(r), r.f['Invoice Number'] || '', C().ymd(r.f['Invoice Date']), r.tags.join(' ')]);
     OrdersList.csvDownload([head, ...rows], `paraggelies_${C().today()}.csv`);
   }
   function print() {

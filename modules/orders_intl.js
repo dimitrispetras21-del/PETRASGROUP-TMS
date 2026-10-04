@@ -1800,6 +1800,9 @@ async function submitIntlOrder(recId) {
   // modal already created is remembered until the modal closes.
   if (!recId && INTL_ORDERS._createdId) recId = INTL_ORDERS._createdId;
   let _written = false;   // the ORDERS write itself went through (D2 context below)
+  // The lot was unmarked (its own write, before the order save): a save that
+  // fails after it must not read «δεν αποθηκεύτηκε τίποτα» — the lot is gone.
+  let _unmarked = false;
 
   try {
     // 057: the order was saved but its lot mark was refused — this press
@@ -2126,13 +2129,14 @@ async function submitIntlOrder(recId) {
         return;
       }
       _SK.wasLot = false;   // a retry of this save must not unmark twice
+      _unmarked = true;
     }
 
     const result = recId
       ? await atSafePatch(TABLES.ORDERS, recId, fields)
       : await atCreate(TABLES.ORDERS, fields);
     _written = true;
-    if (result?.conflict) { toast('Η εγγραφή άλλαξε από άλλον χρήστη — κάνε Ανανέωση και ξαναδοκίμασε','warn'); return; }
+    if (result?.conflict) { toast((_unmarked ? _OI_UNMARKED_NOT_SAVED + ' · ' : '') + 'Η εγγραφή άλλαξε από άλλον χρήστη — κάνε Ανανέωση και ξαναδοκίμασε','warn'); return; }
 
     if (result?.error) throw new Error(result.error.message || JSON.stringify(result.error));
     // G-32 (impact map 4/10): a new piece is a piece only if its link landed.
@@ -2252,11 +2256,17 @@ async function submitIntlOrder(recId) {
     // the context: what was (not) written; the reason stays the api's.
     if (e && e._noRetry && e.message !== 'validation') {
       showErrorToast(_written ? 'Η παραγγελία αποθηκεύτηκε, αλλά ένα επόμενο βήμα δεν έγινε — ξαναδοκίμασε την Αποθήκευση'
+        : _unmarked ? _OI_UNMARKED_NOT_SAVED
         : 'Δεν αποθηκεύτηκε τίποτα — η φόρμα μένει ανοιχτή', 'warn', 8000);
-    } else if (e.message !== 'validation') reportError('Σφάλμα αποθήκευσης παραγγελίας', e);
+    } else if (e.message !== 'validation') {
+      reportError('Σφάλμα αποθήκευσης παραγγελίας', e);
+      if (_unmarked && !_written) showErrorToast(_OI_UNMARKED_NOT_SAVED, 'warn', 12000);
+    }
     if (btn) { btn.textContent = 'Αποθήκευση'; btn.disabled = false; }
   }
 }
+
+const _OI_UNMARKED_NOT_SAVED = 'Η παρτίδα καταργήθηκε, η παραγγελία ΔΕΝ αποθηκεύτηκε — ξαναπάτα Αποθήκευση';
 
 // The end of a successful save — moved out of submitIntlOrder unchanged so
 // the «retry only the lot mark» path (057) ends exactly the same way.
@@ -3060,9 +3070,12 @@ async function deleteIntlOrder(recId, opts) {
       const designed = !!(e && e._noRetry);
       // _atRetry has ALREADY put the Worker's Greek answer on screen (a rule's
       // «no», e._rule, or another 4xx): repeating it as a second toast was the
-      // same sentence twice (round-1 K1). Only the 403 gets its own pointer.
+      // same sentence twice (round-1 K1). Only the 403 gets its own pointer;
+      // a designed refusal gets only the context (round 1b, D2): what did
+      // not happen — the reason is the line above it.
       if (/403|forbidden|δικαίωμα/i.test(m)) toast('Χωρίς δικαίωμα διαγραφής παραγγελίας — ζήτα από τον owner', 'danger');
-      else if (!designed) toast('Η διαγραφή απέτυχε — δεν άλλαξε τίποτα', 'danger');
+      else if (designed) toast('Η διαγραφή δεν έγινε — δεν άλλαξε τίποτα', 'warn');
+      else toast('Η διαγραφή απέτυχε — δεν άλλαξε τίποτα', 'danger');
       if (!designed && typeof logError === 'function') logError(e, 'deleteIntlOrder (order first) ' + recId);
       return;
     }
