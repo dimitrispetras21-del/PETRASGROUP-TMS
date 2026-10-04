@@ -321,7 +321,10 @@ async function _rampAutoSync() {
       // A failed create here used to vanish to console only: the ramp board
       // would silently miss a stop with no trace. Route to the persistent log
       // so a recurring sync failure is visible in the Error Log, not just live.
-      await Promise.all(batch.map(fields => atCreate(TABLES.RAMP, fields).catch(e => {
+      // noUndo (4/10/2026): this runs detached after an order save (order-sync)
+      // and on board render — nobody «made» these rows, and arming the toolbar
+      // Undo here made Undo of a new national order delete a RAMP row instead.
+      await Promise.all(batch.map(fields => atCreate(TABLES.RAMP, fields, { noUndo: true }).catch(e => {
         _rampSyncFailed++;
         if (typeof logError === 'function') logError(e, '_rampAutoSync: create RAMP record');
         else console.error('Ramp sync error:', e);

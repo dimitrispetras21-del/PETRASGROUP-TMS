@@ -617,7 +617,11 @@ async function atPatch(tableId, recId, fields) {
  * @param {Object} fields - Key/value pairs for the new record
  * @returns {Promise<{id:string, fields:Object}>} Created record with generated ID
  */
-async function atCreate(tableId, fields) {
+// opts.noUndo: a create the USER did not make (a background sync) must not
+// re-arm the toolbar Undo. Per call, not the global _atSuppressUndo flag: that
+// flag spans awaits, so a detached sync holding it would also swallow the
+// user's own concurrent action (§4 #9 review, 4/10/2026).
+async function atCreate(tableId, fields, opts) {
   _auditLog('CREATE', tableId, null, fields);
   if (!_isOnline()) {
     _queueOffline('POST', _apiUrl(`/v0/${AT_BASE}/${tableId}`), { fields });
@@ -636,7 +640,7 @@ async function atCreate(tableId, fields) {
     throw new Error(errMsg);
   }
   // Track for undo (skip if inside cascade)
-  if (!_atSuppressUndo && typeof _undoSet === 'function') {
+  if (!_atSuppressUndo && !(opts && opts.noUndo) && typeof _undoSet === 'function') {
     const lbl = data.fields?.['Name'] || data.fields?.['Order Number'] || data.fields?.['Full Name'] || data.fields?.['License Plate'] || data.id;
     _undoSet({ type: 'create', tableId, recId: data.id, label: lbl });
   }

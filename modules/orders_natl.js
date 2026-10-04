@@ -1185,7 +1185,8 @@ async function submitNatlOrder(recId) {
           if (typeof logError === 'function') logError(e, 'natl ORDER_STOPS save ' + savedNatlId);
           showErrorToast('Η παραγγελία αποθηκεύτηκε, αλλά τα σημεία παράδοσης ΔΕΝ αποθηκεύτηκαν'
             + (fields['National Groupage'] ? '' : recId ? ' — γι\' αυτό το φορτίο στο Εβδομαδιαίο ΔΕΝ ενημερώθηκε' : ' — γι\' αυτό η παραγγελία ΔΕΝ μπήκε στο Εβδομαδιαίο')
-            + '. Άνοιξέ την με «Επεξεργασία» και αποθήκευσε ξανά.', 'warn', 15000);
+            // plOnOrderSaved is skipped below on this failure — say it too.
+            + '. Παλέτες δεν καταγράφηκαν. Άνοιξέ την με «Επεξεργασία» και αποθήκευσε ξανά.', 'warn', 15000);
         }
       }
       if (!_stopsFailed && typeof plOnOrderSaved === 'function') await plOnOrderSaved(savedNatlId, 'natl');
@@ -1269,10 +1270,14 @@ async function submitNatlOrder(recId) {
     // «εκτός Εβδομαδιαίου». Undo of a new national order is the order's own
     // delete (deleteNatlOrder: the same path as «Διαγραφή»; the base cascades
     // its load and stops — trg_national_orders_soft_delete_cascade).
+    // A role that cannot delete national orders gets no Undo at all (cleared,
+    // so the button does not offer the load/stop the chain wrote last).
     if (!recId && savedNatlId && typeof _undoSet === 'function') {
-      const _undoId = savedNatlId;
-      _undoSet({ type: 'create', tableId: TABLES.NAT_ORDERS, recId: _undoId, label: fields['Reference'] || 'εθνική παραγγελία',
-        undo: () => deleteNatlOrder(_undoId) });
+      if (_NATL_DELETE_ROLES.includes(typeof ROLE !== 'undefined' ? ROLE : '')) {
+        const _undoId = savedNatlId;
+        _undoSet({ type: 'create', tableId: TABLES.NAT_ORDERS, recId: _undoId, label: fields['Reference'] || 'εθνική παραγγελία',
+          undo: () => deleteNatlOrder(_undoId) });
+      } else if (typeof clearUndo === 'function') clearUndo();
     }
 
     // Central sync — RAMP trigger + PL orphan cleanup + PA sync + cache invalidation
@@ -1618,10 +1623,21 @@ async function _syncNationalLoad(noId, noFields, isDelete) {
 // ═══════════════════════════════════════════════
 // deleteNatlOrder — Delete a National Order + cleanup NL/GL/CL/Ramp
 // ═══════════════════════════════════════════════
+// Roles the Worker lets DELETE national_orders — the toolbar Undo of a new
+// national order is armed only for these (§4 #9 review, 4/10/2026). config.js
+// PERMS has no «delete» level, so the rule is mirrored here: compare with
+// PERMISSIONS in worker/src/index.js on the DEPLOYED branch
+// (origin/deploy/worker-0310: owner via "*", dispatcher via its
+// national_orders row since f9f78283, 28/9). main's worker/src/index.js still
+// lacks the dispatcher DELETE — a known repo/deploy split. The rig
+// tests/critics/natl-order-wave1-proof.js fails if this list and the deploy
+// branch disagree.
+const _NATL_DELETE_ROLES = ['owner', 'dispatcher'];
+
 // Returns true only when the order was deleted — the toolbar Undo of a new
 // national order runs this and must know a cancel/refusal from a delete (§4 #9).
 async function deleteNatlOrder(recId) {
-  if (!confirm('Delete this National Order? This will also remove linked loads and groupage lines.')) return false;
+  if (!confirm('Διαγραφή αυτής της εθνικής παραγγελίας; Θα αφαιρεθούν και τα συνδεδεμένα φορτία και οι γραμμές groupage.')) return false;
 
   try {
     toast('Deleting order...', 'info');
