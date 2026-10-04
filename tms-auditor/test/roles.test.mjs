@@ -27,6 +27,20 @@ test('tms_reader: SELECT on the list works; every write and every forbidden read
   }
 });
 
+// DRAFT 057 round 2 (Ε1): tms_reader reads stock_lots through a COLUMN grant that leaves out warehouse_charge (the
+// owner's money). Applied here from the draft's own grant line (lib/db.mjs draftGrants), so a 057 that widened it to
+// the whole table, or a parser that dropped the column list, turns this red. The refusal must be the privilege, not a
+// missing column.
+test('tms_reader: stock_lots without warehouse_charge (057 column grant); the auditor reads it all', async () => {
+  const db = await freshDb();
+  assert.ok((await as(db, 'tms_reader', 'SELECT id, legacy_id, order_id, nat_order_id, closed_note, closed_at, created_at, deleted_at FROM stock_lots')).ok);
+  for (const sql of ['SELECT warehouse_charge FROM stock_lots', 'SELECT * FROM stock_lots']) {
+    const r = await as(db, 'tms_reader', sql);
+    assert.ok(!r.ok && /permission denied/.test(r.err), `tms_reader must NOT read the charge: ${sql} → ${r.err || 'allowed'}`);
+  }
+  assert.ok((await as(db, 'tms_check_runner', 'SELECT warehouse_charge FROM stock_lots')).ok);
+});
+
 test('tms_monitor_writer: only the three monitoring functions write — nothing in the TMS', async () => {
   const db = await freshDb();
   assert.ok((await as(db, 'tms_monitor_writer', "SELECT monitoring.beat('routine-p1','t','x')")).ok);

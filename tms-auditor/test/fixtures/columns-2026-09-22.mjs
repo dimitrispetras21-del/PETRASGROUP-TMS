@@ -51,7 +51,7 @@ export const SYNTHETIC = { users: [['id', 'int8!'], ['username', 'text!'], ['pas
 // After 057 runs: re-snapshot them from information_schema into TABLES and delete this block (principle 8).
 export const DRAFT_057 = {
   tables: {
-    stock_lots: [['id', 'int8!'], ['legacy_id', 'text!'], ['order_id', 'int8'], ['nat_order_id', 'int8'], ['closed_note', 'text'], ['closed_at', 'timestamptz'], ['created_at', 'timestamptz!'], ['deleted_at', 'timestamptz']],
+    stock_lots: [['id', 'int8!'], ['legacy_id', 'text!'], ['order_id', 'int8'], ['nat_order_id', 'int8'], ['warehouse_charge', 'numeric'], ['closed_note', 'text'], ['closed_at', 'timestamptz'], ['created_at', 'timestamptz!'], ['deleted_at', 'timestamptz']],
     stock_v_pieces: [['lot_id', 'int8'], ['piece_kind', 'text'], ['piece_id', 'int8'], ['piece_rec', 'text'], ['client_id', 'int8'], ['pickup_location_id', 'int8'], ['pallets', 'numeric'], ['status', 'text'], ['loading_date', 'date'], ['delivered', 'bool'], ['delivered_on', 'date'], ['on_truck', 'bool'], ['created_at', 'timestamptz']],
     stock_v_lots: [['id', 'int8'], ['legacy_id', 'text'], ['deleted_at', 'timestamptz'], ['order_id', 'int8'], ['nat_order_id', 'int8'], ['lot_no', 'int8'], ['source_kind', 'text'],
       ['reference', 'text'], ['source_notes', 'text'], ['client_id', 'int8'], ['client_rec', 'text'], ['client_name', 'text'],
@@ -60,8 +60,8 @@ export const DRAFT_057 = {
       ['stock_pallets', 'numeric'], ['drawn_pallets', 'numeric'], ['remaining_pallets', 'numeric'], ['delivered_pallets', 'numeric'], ['written_off_pallets', 'numeric'],
       ['pieces', 'int8'], ['pieces_delivered', 'int8'], ['pieces_without_truck', 'int8'], ['pieces_moving', 'int8'], ['last_piece_delivered', 'date'],
       ['closed_note', 'text'], ['closed_at', 'timestamptz'], ['complete', 'bool'], ['completed_on', 'date'], ['invoiced', 'bool']],
-    stock_v_lot_money: [['lot_id', 'int8'], ['lot_rec', 'text'], ['source_kind', 'text'], ['source_id', 'int8'], ['source_rec', 'text'], ['price', 'numeric'], ['intake_cost', 'numeric'],
-      ['net', 'numeric'], ['total_pallets', 'numeric'], ['per_pallet', 'numeric'], ['drawn_pallets', 'numeric'], ['allocated_amount', 'numeric'], ['remaining_pallets', 'numeric'],
+    stock_v_lot_money: [['lot_id', 'int8'], ['lot_rec', 'text'], ['source_kind', 'text'], ['source_id', 'int8'], ['source_rec', 'text'], ['price', 'numeric'], ['partner_cost', 'numeric'],
+      ['warehouse_charge', 'numeric'], ['charge_total', 'numeric'], ['net', 'numeric'], ['total_pallets', 'numeric'], ['per_pallet', 'numeric'], ['drawn_pallets', 'numeric'], ['allocated_amount', 'numeric'], ['remaining_pallets', 'numeric'],
       ['in_stock_amount', 'numeric'], ['written_off_pallets', 'numeric'], ['written_off_amount', 'numeric'], ['closed_at', 'timestamptz'], ['allocation_status', 'text']],
   },
   columns: { orders: [['stock_lot_id', 'int8']], national_orders: [['stock_lot_id', 'int8']] },

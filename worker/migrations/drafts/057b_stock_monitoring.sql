@@ -4,8 +4,10 @@
 --
 -- WHY each check (plan §6, owner Ε3; S-12/S-13/B-34/B-34b = impact map 4/10):
 --   S-01 P1  remaining < 0 — impossible while the guards stand; > 0 = they were bypassed.
---   S-02 P1  a guard trigger or one of the 6 CHECKs is gone/disabled (e.g. R1 of the rollback;
---            back with 057_stock_lots_guards_on.sql).
+--   S-02 P1  a guard trigger or one of the 8 CHECKs is gone/disabled (e.g. R1 of the rollback;
+--            back with 057_stock_lots_guards_on.sql). Round 2: 6 → 8 — stock_lots_charge_nonneg (a
+--            negative warehouse charge would ADD revenue) and ct_settings_full_truck_pallets_positive
+--            (F = 0 kills TRIP PnL; OWNER-Q3) belong to the same list as 057 §9 proves (principle 3).
 --   S-03 P1  an invoiced lot that is not complete (the one-invoice rule broken).
 --   S-05 P2  a lot received > 21 days ago and still not complete (queue: pallets aging abroad).
 --   S-06 P1  pieces moving / delivered while the lot's intake was never marked delivered — counts lots
@@ -14,15 +16,25 @@
 --            say two different things about the same lot (critic-1 C1-01).
 --   S-09 P3  EVERY «Κλείσιμο υπολοίπου» of the last 24 h, one line each: lot · pallets written off ·
 --            «χαμένο υπόλοιπο» amount · who (actor/role from audit_log) · the reason (Ε3).
---   S-11 P2  a lot received > 2 days ago without allocation (no price / no warehouse cost).
---   S-12 P2  an order LOADING at a partner warehouse that is not a piece (map PR-17/G-15): pallets
---            leave the warehouse past the stock — the lot never empties, nothing is allocated.
---   S-13 P2  an order DELIVERING to a partner warehouse that is not a lot (map G-14): the pallets
---            are on no shelf, no piece can be drawn, the full price looks invoiceable at intake.
---            Both count only orders written AFTER the first LIVE stock lot (0 until go-live; Ε4: the
---            past is never linked) and never a Cancelled one (it moves nothing). LIVE (round 1b, SQL
---            reviewer P3-7): a proof lot marked and unmarked before go-live would otherwise open the
---            window early and count every warehouse order written since — a red nobody can act on.
+--   S-11 P2  a lot received > 2 days ago without allocation: no price, or no warehouse charge at all
+--            (round 2, owner 4/10: neither a partner assignment nor «Χρέωση αποθήκης» entered —
+--            stock_v_lot_money 'no_charge'). ONE rule for every lot, so an own-truck or a national lot
+--            without the field shouts until the owner enters it (0 is a valid answer). Any other
+--            non-'ok' status (no_pallets = guards bypassed) shouts too — the SQL says <> 'ok' on purpose.
+--   S-12 P2  an order of the SAME client LOADING at the warehouse of a live, not complete lot that is
+--            not a piece (map PR-17/G-15): pallets leave the warehouse past the stock — the lot never
+--            empties, nothing is allocated.
+--   S-13 P2  an order of the SAME client DELIVERING to the warehouse of a live, not complete lot that
+--            is not a lot itself (map G-14): the pallets are on no shelf, no piece can be drawn, the
+--            full price looks invoiceable at intake.
+--            OWNER-Q5 answered 4/10 (any location can be a warehouse): «warehouse» is no longer a
+--            location TYPE — it is the destination of a live lot that is not complete yet, and only
+--            that lot's client's orders written AFTER that lot count (Ε4: the past is never linked).
+--            Round 1 counted every order at a 'Partner Warehouse' location after the first live lot;
+--            with any location allowed, a type test would see nothing, and «any order at any lot's
+--            destination» would count every other client delivering to the same depot. A Cancelled
+--            order moves nothing and never counts. A dead (unmarked) proof lot opens nothing: only
+--            stock_v_lots rows (live anchor, live source) define a warehouse (round 1b P3-7 kept).
 --   B-13     pieces never carry a price by design → no longer «delivered without price».
 --   B-15     a lot counts from the day it became COMPLETE (not from its intake); pieces never count.
 --   B-34 / B-34b  a designed stock refusal (Greek 422 STOCK_RULE: over_draw, piece_on_truck, …) is an
@@ -96,9 +108,9 @@ begin
    'Ράφι του Weekly → η παρτίδα → ποιο κομμάτι έχει λάθος παλέτες (ανάγνωση). Μετά: S-02 — είναι ενεργοί οι φρουροί;',
    'σταθερός έλεγχος SQL — δείχνει ΤΙ, όχι ΓΙΑΤΙ', 'Καμία: ο κανόνας ζει στη βάση (stock_guard_orders / stock_guard_natl).', true),
   ('S-02', 'Απόθεμα: φρουροί της βάσης ανενεργοί', array['F-14','F-30'],
-   $c$SELECT (3 - (SELECT count(*) FROM pg_trigger WHERE NOT tgisinternal AND tgenabled <> 'D' AND tgname IN ('stock_guard_lots','stock_guard_orders','stock_guard_natl'))) + (6 - (SELECT count(*) FROM pg_constraint WHERE conname IN ('orders_stock_piece_no_money','orders_stock_piece_shape','national_orders_stock_piece_no_money','national_orders_stock_piece_shape','stock_lots_one_source','stock_lots_close_shape')))$c$,
+   $c$SELECT (3 - (SELECT count(*) FROM pg_trigger WHERE NOT tgisinternal AND tgenabled <> 'D' AND tgname IN ('stock_guard_lots','stock_guard_orders','stock_guard_natl'))) + (8 - (SELECT count(*) FROM pg_constraint WHERE conname IN ('orders_stock_piece_no_money','orders_stock_piece_shape','national_orders_stock_piece_no_money','national_orders_stock_piece_shape','stock_lots_one_source','stock_lots_close_shape','stock_lots_charge_nonneg','ct_settings_full_truck_pallets_positive')))$c$,
    null, null, '>', 0, 'P1', 'hourly', false,
-   'Χωρίς τους φρουρούς του 057 ένα κομμάτι παίρνει τιμή, ξεπερνά το απόθεμα ή τιμολογείται ατελής παρτίδα — σιωπηλά.',
+   'Χωρίς τους φρουρούς του 057 ένα κομμάτι παίρνει τιμή, ξεπερνά το απόθεμα, τιμολογείται ατελής παρτίδα, μπαίνει αρνητική χρέωση αποθήκης ή μηδενίζεται το F του VS κομματιού — σιωπηλά.',
    'Αν έτρεξε το R1 της επαναφοράς: ξαναμπαίνουν με το 057_stock_lots_guards_on.sql μόλις διορθωθεί το σφάλμα. Αλλιώς: ποιος άλλαξε τη βάση;',
    'σταθερός έλεγχος SQL — δείχνει ΤΙ, όχι ΓΙΑΤΙ', 'Το R1 (057_stock_lots_rollback_r1_guards_off.sql) το ανάβει σκόπιμα.', true),
   ('S-03', 'Απόθεμα: τιμολογημένη παρτίδα που δεν είναι πλήρης', array['F-30'],
@@ -129,27 +141,29 @@ begin
    'Κάθε κλείσιμο υπολοίπου γράφει παλέτες ως χαμένες: το «χαμένο υπόλοιπο» δεν πιστώνεται σε κανένα RT (Ε3 «β»). Ο owner το βλέπει με όνομα, παλέτες, ποσό και αιτιολογία.',
    'Ανάγνωση της γραμμής· αν η αιτιολογία δεν πείθει, μιλάμε με όποιον το έκλεισε πριν το τιμολόγιο.',
    'σταθερός έλεγχος SQL — δείχνει ΤΙ, όχι ΓΙΑΤΙ', 'Ποσό «—» = η παρτίδα δεν έχει επιμερισμό (βλ. S-11). «?» = δεν βρέθηκε γραμμή audit_log (κλείσιμο εκτός Worker).', true),
-  ('S-11', 'Απόθεμα: παραληφθείσα παρτίδα χωρίς επιμερισμό > 2 ημέρες', array['F-36'],
+  ('S-11', 'Απόθεμα: παρτίδα χωρίς επιμερισμό (χωρίς τιμή ή χωρίς χρέωση αποθήκης) > 2 ημέρες', array['F-36'],
    $c$SELECT count(*) FROM stock_v_lot_money m JOIN stock_v_lots l ON l.id = m.lot_id WHERE m.allocation_status <> 'ok' AND l.intake_delivered AND l.received_on < current_date - 2$c$,
    $c$SELECT coalesce(array_agg(x ORDER BY x),'{}') FROM (SELECT l.legacy_id AS x FROM stock_v_lot_money m JOIN stock_v_lots l ON l.id = m.lot_id WHERE m.allocation_status <> 'ok' AND l.intake_delivered AND l.received_on < current_date - 2 ORDER BY l.legacy_id LIMIT 50) s$c$,
    'stock_lots', '>', 0, 'P2', 'daily', true,
-   'Χωρίς τιμή πελάτη ή κόστος αποθήκης η παρτίδα δεν επιμερίζεται: όλη η τιμή μένει στη γραμμή της παρτίδας και τα RT των κομματιών δείχνουν έσοδο 0 στο TRIP PnL.',
-   'Συμπλήρωση της τιμής στην παρτίδα ή του Partner Rate στην ανάθεση της αποθήκης.',
-   'σταθερός έλεγχος SQL — δείχνει ΤΙ, όχι ΓΙΑΤΙ', 'Εθνική πηγή ή παραλαβή με δικό μας φορτηγό: χωρίς κόστος αποθήκης μέχρι τη Φ3 (Ε6/Ε7) — χτυπά σκόπιμα.', true),
-  ('S-12', 'Απόθεμα: φόρτωση από αποθήκη συνεργάτη χωρίς παρτίδα', array['F-05','F-30'],
-   $c$SELECT count(*) FROM orders o JOIN locations l ON l.id = o.loading_location_1_id WHERE o.deleted_at IS NULL AND o.stock_lot_id IS NULL AND o.status IS DISTINCT FROM 'Cancelled' AND l.type = 'Partner Warehouse' AND o.created_at > (SELECT min(s.created_at) FROM stock_lots s WHERE s.deleted_at IS NULL)$c$,
-   $c$SELECT coalesce(array_agg(x ORDER BY x),'{}') FROM (SELECT o.legacy_id AS x FROM orders o JOIN locations l ON l.id = o.loading_location_1_id WHERE o.deleted_at IS NULL AND o.stock_lot_id IS NULL AND o.status IS DISTINCT FROM 'Cancelled' AND l.type = 'Partner Warehouse' AND o.created_at > (SELECT min(s.created_at) FROM stock_lots s WHERE s.deleted_at IS NULL) ORDER BY o.legacy_id LIMIT 50) s$c$,
+   'Χωρίς τιμή πελάτη ή χωρίς χρέωση αποθήκης (ούτε ανάθεση συνεργάτη ούτε «Χρέωση αποθήκης») η παρτίδα δεν επιμερίζεται: όλη η τιμή μένει στη γραμμή της παρτίδας και τα RT των κομματιών δείχνουν έσοδο 0 στο TRIP PnL.',
+   'Owner: φόρμα της παρτίδας → «Χρέωση αποθήκης» (0 αν η αποθήκη δεν χρεώνει τίποτα) ή τιμή πελάτη· ή Partner Rate στην ανάθεση της αποθήκης.',
+   'σταθερός έλεγχος SQL — δείχνει ΤΙ, όχι ΓΙΑΤΙ', 'Παρτίδα με δικό μας φορτηγό ή εθνική πηγή: χτυπά μέχρι να μπει η «Χρέωση αποθήκης» — σκόπιμα (owner 4/10: ένας κανόνας για κάθε παρτίδα). «Χωρίς παλέτες» = παρακαμμένοι φρουροί, βλ. S-02.', true),
+  -- OWNER-Q5 answered 4/10 (any location can be a warehouse): S-12 / S-13 read the warehouse from
+  -- the live, not complete lots of the same client (header), never from a location type.
+  ('S-12', 'Απόθεμα: φόρτωση από την αποθήκη ανοιχτής παρτίδας, όχι ως κομμάτι', array['F-05','F-30'],
+   $c$SELECT count(*) FROM orders o WHERE o.deleted_at IS NULL AND o.stock_lot_id IS NULL AND o.status IS DISTINCT FROM 'Cancelled' AND EXISTS (SELECT 1 FROM stock_v_lots l JOIN stock_lots a ON a.id = l.id WHERE NOT l.complete AND l.client_id = o.client_id AND l.warehouse_location_id = o.loading_location_1_id AND o.created_at > a.created_at)$c$,
+   $c$SELECT coalesce(array_agg(x ORDER BY x),'{}') FROM (SELECT o.legacy_id AS x FROM orders o WHERE o.deleted_at IS NULL AND o.stock_lot_id IS NULL AND o.status IS DISTINCT FROM 'Cancelled' AND EXISTS (SELECT 1 FROM stock_v_lots l JOIN stock_lots a ON a.id = l.id WHERE NOT l.complete AND l.client_id = o.client_id AND l.warehouse_location_id = o.loading_location_1_id AND o.created_at > a.created_at) ORDER BY o.legacy_id LIMIT 50) s$c$,
    'orders', '>', 0, 'P2', 'daily', true,
-   'Παλέτες φεύγουν από αποθήκη συνεργάτη με απλή παραγγελία, όχι ως κομμάτι παρτίδας: το απόθεμα δεν μειώνεται, ο επιμερισμός δεν τις βλέπει και η παρτίδα δεν κλείνει ποτέ σωστά — ή φορτώνουμε κάτι που δεν μπήκε ποτέ στο απόθεμα.',
+   'Παλέτες του ίδιου πελάτη φεύγουν από την αποθήκη μιας ανοιχτής παρτίδας με απλή παραγγελία, όχι ως κομμάτι: το απόθεμα δεν μειώνεται, ο επιμερισμός δεν τις βλέπει και η παρτίδα δεν κλείνει ποτέ σωστά — ή φορτώνουμε κάτι που δεν μπήκε ποτέ στο απόθεμα.',
    'Weekly → η παραγγελία (ανάγνωση): είναι κομμάτι που γράφτηκε ως απλή παραγγελία; Τότε «+ Κομμάτι από απόθεμα» στο ίδιο φορτηγό και σβήσιμο της απλής.',
-   'σταθερός έλεγχος SQL — δείχνει ΤΙ, όχι ΓΙΑΤΙ', 'Μόνο παραγγελίες που γράφτηκαν μετά την πρώτη ζωντανή παρτίδα (πριν = 0· Ε4: το παρελθόν δεν συνδέεται· μια διαγραμμένη παρτίδα-δοκιμή δεν ανοίγει το παράθυρο). Ακυρωμένες δεν μετρούν.', true),
-  ('S-13', 'Απόθεμα: παραγγελία προς αποθήκη συνεργάτη χωρίς παρτίδα', array['F-05','F-30'],
-   $c$SELECT count(*) FROM orders o JOIN locations l ON l.id = o.unloading_location_1_id WHERE o.deleted_at IS NULL AND o.status IS DISTINCT FROM 'Cancelled' AND l.type = 'Partner Warehouse' AND o.created_at > (SELECT min(s.created_at) FROM stock_lots s WHERE s.deleted_at IS NULL) AND NOT EXISTS (SELECT 1 FROM stock_lots s WHERE s.order_id = o.id AND s.deleted_at IS NULL)$c$,
-   $c$SELECT coalesce(array_agg(x ORDER BY x),'{}') FROM (SELECT o.legacy_id AS x FROM orders o JOIN locations l ON l.id = o.unloading_location_1_id WHERE o.deleted_at IS NULL AND o.status IS DISTINCT FROM 'Cancelled' AND l.type = 'Partner Warehouse' AND o.created_at > (SELECT min(s.created_at) FROM stock_lots s WHERE s.deleted_at IS NULL) AND NOT EXISTS (SELECT 1 FROM stock_lots s WHERE s.order_id = o.id AND s.deleted_at IS NULL) ORDER BY o.legacy_id LIMIT 50) s$c$,
+   'σταθερός έλεγχος SQL — δείχνει ΤΙ, όχι ΓΙΑΤΙ', '«Αποθήκη» = ο προορισμός μιας ζωντανής, μη πλήρους παρτίδας (οποιαδήποτε τοποθεσία, owner 4/10). Μετρούν μόνο παραγγελίες του ίδιου πελάτη, γραμμένες μετά την παρτίδα (Ε4: το παρελθόν δεν συνδέεται· μια διαγραμμένη παρτίδα-δοκιμή δεν μετρά). Ακυρωμένες δεν μετρούν.', true),
+  ('S-13', 'Απόθεμα: παραγγελία προς την αποθήκη ανοιχτής παρτίδας χωρίς παρτίδα', array['F-05','F-30'],
+   $c$SELECT count(*) FROM orders o WHERE o.deleted_at IS NULL AND o.status IS DISTINCT FROM 'Cancelled' AND NOT EXISTS (SELECT 1 FROM stock_lots s WHERE s.order_id = o.id AND s.deleted_at IS NULL) AND EXISTS (SELECT 1 FROM stock_v_lots l JOIN stock_lots a ON a.id = l.id WHERE NOT l.complete AND l.client_id = o.client_id AND l.warehouse_location_id = o.unloading_location_1_id AND o.created_at > a.created_at)$c$,
+   $c$SELECT coalesce(array_agg(x ORDER BY x),'{}') FROM (SELECT o.legacy_id AS x FROM orders o WHERE o.deleted_at IS NULL AND o.status IS DISTINCT FROM 'Cancelled' AND NOT EXISTS (SELECT 1 FROM stock_lots s WHERE s.order_id = o.id AND s.deleted_at IS NULL) AND EXISTS (SELECT 1 FROM stock_v_lots l JOIN stock_lots a ON a.id = l.id WHERE NOT l.complete AND l.client_id = o.client_id AND l.warehouse_location_id = o.unloading_location_1_id AND o.created_at > a.created_at) ORDER BY o.legacy_id LIMIT 50) s$c$,
    'orders', '>', 0, 'P2', 'daily', true,
-   'Παραγγελία πελάτη παραδίδει σε αποθήκη συνεργάτη χωρίς να είναι παρτίδα: οι παλέτες δεν φαίνονται στο ΑΠΟΘΕΜΑ, κανένα κομμάτι δεν βγαίνει από αυτές, και η παραγγελία μοιάζει έτοιμη για τιμολόγηση από την παραλαβή, ενώ ο πελάτης δεν έχει παραλάβει.',
+   'Παραγγελία του ίδιου πελάτη παραδίδει στην αποθήκη μιας ανοιχτής παρτίδας χωρίς να είναι παρτίδα: οι παλέτες δεν φαίνονται στο ΑΠΟΘΕΜΑ, κανένα κομμάτι δεν βγαίνει από αυτές, και η παραγγελία μοιάζει έτοιμη για τιμολόγηση από την παραλαβή, ενώ ο πελάτης δεν έχει παραλάβει.',
    'Φόρμα της παραγγελίας (ανάγνωση): είναι απόθεμα πελάτη; Τότε «Παρτίδα αποθέματος». Αλλιώς ο προορισμός μπήκε λάθος.',
-   'σταθερός έλεγχος SQL — δείχνει ΤΙ, όχι ΓΙΑΤΙ', 'Μόνο παραγγελίες μετά την πρώτη ζωντανή παρτίδα (μια διαγραμμένη παρτίδα-δοκιμή δεν ανοίγει το παράθυρο)· ακυρωμένες δεν μετρούν. Η τοποθεσία 92 έχει τύπο «Partner Warehouse» αλλά μοιάζει με σημείο πελάτη (plan §9, ερώτημα owner): αν χτυπά εκεί, διορθώνεται ο τύπος, όχι ο έλεγχος.', true);
+   'σταθερός έλεγχος SQL — δείχνει ΤΙ, όχι ΓΙΑΤΙ', 'Μόνο παραγγελίες του ίδιου πελάτη προς τον προορισμό μιας ζωντανής, μη πλήρους παρτίδας, γραμμένες μετά από αυτήν (οποιαδήποτε τοποθεσία, owner 4/10)· ακυρωμένες δεν μετρούν. Μια δεύτερη αποστολή του πελάτη στην ίδια αποθήκη γίνεται δεύτερη παρτίδα.', true);
 
   -- ── The 4 changed checks ──────────────────────────────────────────────────────────────────────
   update monitoring.checks set sql_text = sql_text || E'\n AND stock_lot_id IS NULL' where id = 'B-13';
