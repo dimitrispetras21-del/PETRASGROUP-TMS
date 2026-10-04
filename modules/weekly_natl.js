@@ -1920,6 +1920,7 @@ async function _wnConsumePendingMatch(newNlId, fields) {
   const veh = _wnVehicleForSn(WNATL.rows.find(r => r.id === p.rowId && r.orderIds[0] === p.nsId), {});
   if (veh) {
     try {
+      // LEG FIRST (see _wnExecuted): a new load is in no trip yet; 034 trigger.
       const r3 = await atSafePatch(TABLES.NAT_LOADS, newNlId, veh);
       if (r3?.error) throw new Error(r3.error.message || r3.error.type);
     } catch(e) {
@@ -2222,6 +2223,7 @@ async function _wnSaveMatch(rowId, snId) {
     if(r2?.conflict){ toast('Η εγγραφή άλλαξε από άλλον χρήστη — γίνεται ανανέωση','warn'); await renderWeeklyNatl(); return; }
     if (veh) {
       try {
+        // LEG FIRST (see _wnExecuted): national RT legs are handled by the 034 trigger.
         const r3 = await atSafePatch(TABLES.NAT_LOADS, snId, _wnPlanFields(veh, stSn));
         if (r3?.error) throw new Error(r3.error.message || r3.error.type);
       } catch(err) {
@@ -2494,6 +2496,7 @@ async function _wnSaveFromPopover(rowId) {
         'Is Partner Trip':false,'Status':'Assigned','Partner':[],'Partner Truck Plates':'' };
 
   const errors = [];
+  // LEG FIRST (see _wnExecuted): national RT legs are handled by the 034 trigger.
   for (const orderId of row.orderIds) {
     try {
       // All rows are now in NAT_LOADS
@@ -2740,6 +2743,14 @@ function _wnDoneOf(st) { return st === 'Cancelled' ? st : ''; }
 // confirm that says what happens; «Ακύρωση» = nothing is written. National
 // round trips + payroll start from 5/10 with migration 034, hence the text.
 function _wnExecuted(st) { return st === 'In Transit' || st === 'Delivered'; }
+// LEG FIRST (P1 RT-1193, 30/9; owner 4/10): when a vehicle leaves or changes on
+// a load that is a round-trip leg, the leg must leave the trip BEFORE the
+// vehicle changes, or the RT sync writes the new (or NULL) vehicle over the
+// whole trip, its sibling legs and the payroll. National loads have NO round-
+// trip legs today (0 of 243 ct_rt_legs carry nat_load_id, 4/10; no RT trigger on
+// national_loads, core/rt-feed.js is international only). From migration 034
+// the RT trigger handles national legs on the base side — this board makes NO
+// RT calls on purpose; every vehicle write below is marked «LEG FIRST».
 function _wnConfirmExecuted(what) {
   return confirmAction(`Το φορτίο έχει ήδη εκτελεστεί (σε μεταφορά / παραδόθηκε). ${what} — η κατάσταση μένει ως έχει.\nΤο όχημα μεταφέρεται/σβήνει δρομολόγιο + μισθοδοσία, ακόμη και σε κλειστό δρομολόγιο.`,
     { title: 'Φορτίο σε εκτέλεση', confirmLabel: 'Συνέχεια' });
@@ -2763,6 +2774,7 @@ async function _wnUnassignSn(rowId, snId) {
   };
 
   try {
+    // LEG FIRST (see _wnExecuted): national RT legs are handled by the 034 trigger.
     const res = await atSafePatch(TABLES.NAT_LOADS, snId, _wnUnplanFields(fields, st));
     if (res?.conflict) { toast('Η εγγραφή άλλαξε από άλλον χρήστη — γίνεται ανανέωση','warn'); await renderWeeklyNatl(); return; }
   } catch(err) { toast('Σφάλμα: ' + err.message, 'warn'); return; }
@@ -2807,6 +2819,7 @@ async function _wnUnassign(rowId) {
   };
 
   const errors = []; let written = 0;
+  // LEG FIRST (see _wnExecuted): national RT legs are handled by the 034 trigger.
   for (const orderId of row.orderIds) {
     try {
       const st = liveSt[orderId];
