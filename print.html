@@ -195,6 +195,7 @@ body{-webkit-print-color-adjust:exact;print-color-adjust:exact}
 .stop.unload .type{background:#0284C7}
 /* Group-cover per-card order tag (finding #6) — muted, next to the type badge */
 .stop .stoptag{font-size:8px;font-weight:700;letter-spacing:.3px;color:#475569;background:#EEF2F6;border-radius:3px;padding:2px 7px;margin-left:6px}
+.stop .stoptag .stk{display:block;font-size:10px;font-weight:800;letter-spacing:0;color:#0B1929;margin-top:2px}
 .stop .name{font-family:'Syne',sans-serif;font-size:14px;font-weight:800;color:#0B1929;margin:5px 0 1px}
 .stop .addr{font-size:10px;color:#475569;line-height:1.55}
 .stop .addr a{color:#0284C7;text-decoration:none;font-weight:700}
@@ -570,10 +571,13 @@ function buildCrossdockHTML(f){
 // piece driver sheet): the DRIVER sheet also names the client (stockLotText).
 // Same «#312» / «Ε-27» rule as OrdersStock.lotNumLabel (core/orders-common.js);
 // tests/orders-stock.test.js keeps the two in step (this page loads no core JS).
+// C4-06 (round 3): ONE definition of a piece, as in the app (OrdersStock.isPiece):
+// the «Stock Lot» link. A piece whose number is not served still prints as a
+// piece — «παρτίδα —» — never silently as an ordinary order.
 function stockLotLabel(f){
-  var n=f&&f['Stock Lot Order No'];
-  if(!n||!Array.isArray(f['Stock Lot'])||!f['Stock Lot'].length)return '';
-  return (f['Stock Lot Source']==='natl'?'Ε-':'#')+n;
+  if(!f||!Array.isArray(f['Stock Lot'])||!f['Stock Lot'].length)return '';
+  var n=f['Stock Lot Order No'];
+  return n?(f['Stock Lot Source']==='natl'?'Ε-':'#')+n:'—';
 }
 // One stock text for the meta grid, the WhatsApp text and the cover's stop
 // tag (round 1 O10, critic-4 C4-02/C4-05): the warehouse knows the goods by
@@ -599,6 +603,10 @@ var pieceClients={};
 // One GET per client of a piece printed on a DRIVER sheet — only then, so an
 // ordinary print asks nothing more than before. Never throws: a refusal
 // (403 body without fields) or a failed fetch leaves '' → «—» on the paper.
+// C4-02 (round 3): a 403 is the role's design (warehouse) → the quiet «—»;
+// any OTHER failure (network, 5xx, expired session) also sets __clientsFailed
+// → a red banner like the locations' one: the sheet must not leave silently
+// without the name the warehouse releases the goods by.
 async function loadPieceClients(items){
   var ids=[];
   items.forEach(function(it){
@@ -611,10 +619,10 @@ async function loadPieceClients(items){
       var d=r.ok?await r.json():null;
       pieceClients[cid]=String((d&&d.fields&&d.fields['Company Name'])||'').trim();
       if(!r.ok)console.warn('print: client of the piece not readable ('+r.status+')');
-    }catch(e){console.warn('print: client of the piece not read',e);pieceClients[cid]='';}
+      if(!r.ok&&r.status!==403)window.__clientsFailed=true;
+    }catch(e){console.warn('print: client of the piece not read',e);pieceClients[cid]='';window.__clientsFailed=true;}
   }));
 }
-// A Reference is typed by people (the lot's above, the order's own refNo, the
 function badges(f){
   var b='';
   if(f['High Risk Flag'])b+='<span class="badge b-risk">! Risk</span>';
@@ -823,7 +831,9 @@ function generatePDF(orderRec, bare){ // bare (Wave 3): no toolbar — docs 2..N
   var peYes=!!f['Pallet Exchange'];
   var chipsHTML='<div class="cargo">'+
     '<div class="chip"><div class="k">'+LBL.pal+'</div><div class="v">'+escHtml(fv(f['Total Pallets'])||'—')+' <small>× '+escHtml(fv(f['Pallet Type'])||'EUR')+'</small></div></div>'+
-    '<div class="chip '+(peYes?'pe-yes':'pe-no')+'"><div class="k">'+LBL.pe+'</div><div class="v">'+(peYes?LBL.yes:LBL.no)+'</div></div>'+
+    // C4-04 (round 3): a LOT exchanges at the client's loading, never at the
+    // warehouse (Ε5) — the chip says both, like the stop cards and WhatsApp.
+    '<div class="chip '+(peYes?'pe-yes':'pe-no')+'"><div class="k">'+LBL.pe+'</div><div class="v">'+(peYes?LBL.yes:LBL.no)+(peYes&&f['Own Stock Lot']?' <small>'+(isPartner?'at loading · ':'στη φόρτωση · ')+LBL.no+(isPartner?' at the warehouse':' στην αποθήκη')+'</small>':'')+'</div></div>'+
     ((f['Temperature °C']!==''&&f['Temperature °C']!=null)?'<div class="chip temp"><div class="k">'+LBL.temp+'</div><div class="v">'+escHtml(f['Temperature °C'])+'°C'+(f['Refrigerator Mode']?' <small>'+escHtml(f['Refrigerator Mode'])+'</small>':'')+'</div></div>':'')+
     (fv(f['Goods'])?'<div class="chip"><div class="k">'+LBL.goods+'</div><div class="v" style="font-size:11.5px">'+escHtml(fv(f['Goods']))+'</div></div>':'')+
     (f['Gross Weight kg']?'<div class="chip"><div class="k">'+LBL.gw+'</div><div class="v">'+escHtml(f['Gross Weight kg'])+' <small>KG</small></div></div>':'')+
@@ -1075,10 +1085,13 @@ function buildCoverDoc(items){
     items.forEach(function(it,i){
       var f=it.orderRec.fields;
       var uns=stopsOfType(it.stops,'Unloading'), lastUn=uns[uns.length-1];
-      var lastName=lastUn?(resolveLoc(lastUn.fields['Location'])||{}).name:'—';
+      // C4-11 (round 3): an unresolved location prints «—», never «undefined».
+      var lastName=(lastUn&&(resolveLoc(lastUn.fields['Location'])||{}).name)||'—';
       // C4-02: the piece is marked as stock on the cover too, at its stop.
+      // C4-03 (round 3): on its OWN line at 10px — the hand-over identity (lot +
+      // client) was the smallest text on the page the driver reads there.
       var stk=stockLotText(f,isPartner);
-      var tag='ΠΑΡΑΓΓΕΛΙΑ '+String.fromCharCode(65+i)+' · '+escHtml(ordNoOf(it.orderRec))+' · '+escHtml(lastName)+(stk?' · '+(isPartner?'From stock · ':'Απόθεμα · ')+escHtml(stk):'');
+      var tag='ΠΑΡΑΓΓΕΛΙΑ '+String.fromCharCode(65+i)+' · '+escHtml(ordNoOf(it.orderRec))+' · '+escHtml(lastName)+(stk?'<span class="stk">'+(isPartner?'From stock · ':'Απόθεμα · ')+escHtml(stk)+'</span>':'');
       stopsOfType(it.stops,type).forEach(function(s){
         var loc=resolveLoc(s.fields['Location']); if(!loc)return;
         tlHTML+=buildCard(0,loc,dtLabel,s.fields['DateTime']||'',s.fields['Pallets']||'',
@@ -1140,6 +1153,12 @@ function renderDocs(htmlArr){
     docEl.insertAdjacentHTML('beforebegin',
       '<div style="background:#FEE2E2;border:2px solid #B91C1C;color:#7F1D1D;padding:12px 14px;margin:0 0 12px;font:700 13px system-ui;border-radius:6px">'
       + '⚠ ΟΙ ΤΟΠΟΘΕΣΙΕΣ ΔΕΝ ΦΟΡΤΩΘΗΚΑΝ — οι διευθύνσεις παρακάτω λείπουν επειδή απέτυχε η ανάγνωση, ΟΧΙ επειδή δεν υπάρχουν. ΜΗΝ δώσεις αυτό το φύλλο στον οδηγό. Κάνε ανανέωση.'
+      + '</div>');
+  }
+  if (window.__clientsFailed) {
+    docEl.insertAdjacentHTML('beforebegin',
+      '<div id="clientsFailed" style="background:#FEE2E2;border:2px solid #B91C1C;color:#7F1D1D;padding:12px 14px;margin:0 0 12px;font:700 13px system-ui;border-radius:6px">'
+      + '⚠ ΤΟ ΟΝΟΜΑ ΠΕΛΑΤΗ ΤΟΥ ΚΟΜΜΑΤΙΟΥ ΔΕΝ ΔΙΑΒΑΣΤΗΚΕ — το «—» παρακάτω είναι αποτυχία ανάγνωσης. ΜΗΝ δώσεις αυτό το φύλλο στον οδηγό. Κάνε ανανέωση.'
       + '</div>');
   }
   docEl.innerHTML=htmlArr.map(function(h,i){

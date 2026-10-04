@@ -485,4 +485,10 @@ test('PR-05: print.html names the lot exactly like OrdersStock.lotNumLabel (the 
   assert.strictEqual(stockLotLabel(intl), OrdersStock.lotNumLabel(intl));
   assert.strictEqual(stockLotLabel(natl), OrdersStock.lotNumLabel(natl));
   assert.strictEqual(stockLotLabel({ 'Order No': 5 }), '', 'an ordinary order prints no lot line');
+  // C4-06 (round 3): a piece = the «Stock Lot» link, as OrdersStock.isPiece — a
+  // missing number prints «—», never the sheet of an ordinary order.
+  const noNum = { 'Stock Lot': ['recLot1'] };
+  assert.ok(OrdersStock.isPiece(noNum));
+  assert.strictEqual(stockLotLabel(noNum), '—');
+  assert.strictEqual(stockLotLabel(noNum), OrdersStock.lotNumLabel(noNum));
 });
