@@ -1,7 +1,8 @@
 // tests/stock-lots-allocation.test.js — run: TZ=Europe/Athens node --test tests/stock-lots-allocation.test.js
-// Ε1 (owner 3–4/10/2026): a stock lot's net (client price − warehouse cost) is allocated to the RTs
+// Ε1 (owner 3–4/10/2026): a stock lot's net (client price − charge) is allocated to the RTs
 // that carry its pieces, pallets × net/T, in cents. The rule lives in the DB (DRAFT 057,
 // stock_v_lot_money + stock_v_lot_alloc); this file mirrors it in exact integer arithmetic and proves
+// (round 2 #1, owner 4/10: charge = partner_cost + warehouse_charge = charge_total — «cost» below)
 // the properties the owner was promised:
 //   • Σ piece amounts = allocated_amount = round(net·drawn/T, 2), exactly;
 //   • allocated + in stock / written off = net, exactly (no cent created or lost);
@@ -24,7 +25,9 @@ const crypto = require('crypto');
 
 const MIGRATION = path.join(__dirname, '..', 'worker', 'migrations', 'drafts', '057_stock_lots.sql');
 const SQL_MD5 = '682a9e034ff63710c1c1e42720e13a69';   // Postgres 17.6 (production, SELECT on VALUES) 4/10/2026, 80 cases
-const FORMULA_SHA = '6347c3b083c09401afad8e1fb8d27c1ab809a9522d8635a0d6452860eb8d08d1';
+// Re-pinned 4/10 (round 2 #1): 057 now nets the price against charge_total (partner_cost + warehouse_charge)
+// instead of intake_cost. The arithmetic is the same (net = round(price − cost, 2)), so SQL_MD5 stands.
+const FORMULA_SHA = '5f007388f2fa7397c626581ffed2fc959f43c96e8cf7a8b12244f17cdaa324fc';
 
 // ── The rule, in exact integers ─────────────────────────────────────────────────────────────────
 // Money in thousandths of a euro (milli), pallets in tenths. Postgres numeric division is not exact
@@ -124,8 +127,8 @@ function formulaText() {
   const sql = fs.readFileSync(MIGRATION, 'utf8');
   const pick = (re, what) => { const m = sql.match(re); assert.ok(m, `057: ${what} not found`); return m[0].replace(/\s+/g, ' ').trim(); };
   return [
-    pick(/round\(x\.price - x\.intake_cost, 2\)\s+as net,/, 'net expression'),
-    pick(/round\(round\(x\.price - x\.intake_cost, 2\) \* l\.drawn_pallets \/ nullif\(l\.stock_pallets, 0\), 2\) as alloc/, 'allocated_amount expression'),
+    pick(/round\(x\.price - c\.charge_total, 2\)\s+as net,/, 'net expression'),
+    pick(/round\(round\(x\.price - c\.charge_total, 2\) \* l\.drawn_pallets \/ nullif\(l\.stock_pallets, 0\), 2\) as alloc/, 'allocated_amount expression'),
     pick(/round\(w\.net \* w\.cum_pallets \/ w\.total_pallets, 2\)\s+- round\(w\.net \* \(w\.cum_pallets - w\.pallets\) \/ w\.total_pallets, 2\)/, 'piece amount expression'),
     pick(/order by p\.created_at, p\.piece_kind, p\.piece_id\s+rows between unbounded preceding and current row/, 'running-total order'),
   ].join('\n');
