@@ -603,7 +603,9 @@ async function _openModal(recId, f, _clientLabelOverride, _scanPrefill, _piece) 
     // The lot decides client, direction and the one loading stop (= the
     // warehouse); the scan-prefill path draws that stop like any other.
     const g = SK.lot.fields || {};
-    f = Object.assign({}, f, { Client: [g['Client Rec']], Direction: 'Import' });
+    // PR-06: goods / temperature / reefer / pallet type of the lot's source.
+    const cargo = await _oiLotCargo(SK);
+    f = Object.assign({}, f, cargo || {}, { Client: [g['Client Rec']], Direction: 'Import' });
     _clientLabelOverride = g['Client Name'] || _clientLabelOverride;
     const ld = SK.presets.loadingDate || '', dd = SK.presets.deliveryDate || '';
     _scanPrefill = { loadStops: [{ fields: { [F.STOP_LOCATION]: [g['Warehouse Rec']], [F.STOP_PALLETS]: '', [F.STOP_DATETIME]: ld } }] };
@@ -719,7 +721,7 @@ async function _openModal(recId, f, _clientLabelOverride, _scanPrefill, _piece) 
       <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer">
         <input type="checkbox" id="f_HighRisk" ${f['High Risk Flag']?'checked':''} style="width:15px;height:15px">
         ⚠ Υψηλό ρίσκο</label>
-      <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer">
+      <label id="oiVsLbl" style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer">
         <input type="checkbox" id="f_VeroiaSwitch" ${f['Veroia Switch']?'checked':''} style="width:15px;height:15px">
         Veroia Switch</label>
       <!-- Hidden, not removed (4/10, before the first national dispatcher): ticked
@@ -735,7 +737,7 @@ async function _openModal(recId, f, _clientLabelOverride, _scanPrefill, _piece) 
     ${_oiLotSectionHtml(SK)}
     <div style="padding-top:16px;border-top:1px solid var(--border)">
       <div class="detail-section-title" style="margin-bottom:12px">Στάσεις φόρτωσης</div>
-      <div id="stops_l" oninput="_oiLotPallets();_oiBalanceUpdate()">${buildStopRows('l')}</div>
+      <div id="stops_l" oninput="_oiLotPallets();_oiBalanceUpdate();_oiWhWarn()" onfocusout="_oiWhWarn()">${buildStopRows('l')}</div>
       <button type="button" class="btn btn-ghost" id="btn_addL"
         style="font-size:12px;padding:4px 12px" onclick="_addStop('l')"
         ${cntL>=10?'style="display:none"':''}>+ Προσθήκη στάσης φόρτωσης</button>
@@ -757,9 +759,11 @@ async function _openModal(recId, f, _clientLabelOverride, _scanPrefill, _piece) 
       </div>
     </div>`;
 
+  // G-29: «Παράλειψη →» belongs to the scan queue's own forms — a piece form
+  // opened from the Weekly in the middle of a queue would otherwise skip a scan.
   const footer = `
     ${isEdit&&SK.mode!=='pieceEdit'?`<button class="btn btn-ghost" title="Νέα παραγγελία με ίδια στοιχεία — αλλάζεις μόνο ημερομηνίες (π.χ. LABIDINO Δευ/Τετ/Παρ)" onclick="duplicateIntlOrder('${recId}')">Διπλασιασμός</button>`:''}
-    ${(!isEdit&&window._scanQueue&&window._scanQueue.length)?`<button class="btn btn-ghost" title="Προσπέρασε αυτό το σκαν χωρίς αποθήκευση" onclick="closeModal();_scanQueueNext()">Παράλειψη → (${window._scanQueue.length} ακόμη)</button>`:''}
+    ${(!isEdit&&SK.mode!=='pieceNew'&&window._scanQueue&&window._scanQueue.length)?`<button class="btn btn-ghost" title="Προσπέρασε αυτό το σκαν χωρίς αποθήκευση" onclick="closeModal();_scanQueueNext()">Παράλειψη → (${window._scanQueue.length} ακόμη)</button>`:''}
     <button class="btn btn-ghost" onclick="closeModal()">Άκυρο</button>
     <button class="btn btn-success" id="btnSubmit" onclick="submitIntlOrder('${recId||''}')">Αποθήκευση</button>`;
 
@@ -843,8 +847,12 @@ function _oiIsPiece(f) { return typeof OrdersStock !== 'undefined' && OrdersStoc
 //   lot      the STOCK LOTS record (null when not read — failed says so)
 //   section  show the «Παρτίδα» checkbox (switch on + a role that may mark)
 //   wasLot   the order is already a lot · frozen: its intake was Delivered
+//   src*     what the base judges when the order is MARKED (G-14 mirror)
+//   partner  the order's partner when the form opened (OWNER-Q2 note)
 async function _oiStockCtx(recId, f, piece) {
-  const sk = { mode: 'none', lot: null, lotRec: null, failed: false, presets: {}, section: false, wasLot: false, frozen: false, ownPallets: 0 };
+  f = f || {};
+  const sk = { mode: 'none', lot: null, lotRec: null, failed: false, presets: {}, section: false, wasLot: false, frozen: false, ownPallets: 0,
+    srcInvoiced: !!f['Invoiced'], srcLeg: !!getLinkedId(f['Parent Order']), partner: getLinkedId(f['Partner']) || '' };
   if (typeof OrdersStock === 'undefined') return sk;
   if (piece && !recId) {
     Object.assign(sk, { mode: 'pieceNew', lot: piece.lot, lotRec: piece.lot.id, presets: piece.presets || {} });
@@ -863,7 +871,14 @@ async function _oiStockCtx(recId, f, piece) {
     const res = OrdersStock._rec(sk.lotRec) ? await OrdersStock.loadLots(`RECORD_ID()='${sk.lotRec}'`) : { ok: false };
     if (res.ok && res.lots && res.lots[0]) sk.lot = res.lots[0]; else sk.failed = true;
   }
-  sk.section = sk.mode !== 'pieceEdit' && OrdersStock.on() && OrdersStock.canWrite();
+  // G-10: the «Παρτίδα» box exists only on an ordinary order and on a lot —
+  // never on a piece (new or edited): ticked there it would save the piece INTO
+  // a warehouse and the mark would be refused (lot_is_piece).
+  // OWNER-Q5 default (4/10, impact map G-30): the tick is offered on a new
+  // order and on one not yet Delivered — an order already delivered into a
+  // warehouse is not marked after the fact. An existing lot keeps its box.
+  sk.section = OrdersStock.on() && OrdersStock.canWrite()
+    && (sk.mode === 'lotEdit' || (sk.mode === 'none' && (!recId || f['Status'] !== 'Delivered')));
   return sk;
 }
 function _oiPieceLotLabel(SK, f) {
@@ -874,18 +889,26 @@ function _oiPieceTitle(SK) {
   return `Κομμάτι από απόθεμα · ${g['Warehouse Name'] || 'αποθήκη'} · διαθέσιμα ${Number(g['Remaining Pallets']) || 0}p`;
 }
 function _oiStockBandHtml(SK, f) {
-  if (!SK || SK.mode === 'none') return '';
+  if (!SK) return '';
+  // PR-17: filled by _oiWhWarn when loading stop 1 is a partner warehouse.
+  const whWarn = '<div id="oiWhWarn" class="oi-banner oi-banner-warn" role="status" style="display:none;margin-bottom:12px"></div>';
+  if (SK.mode === 'none') return whWarn;
   const g = (SK.lot && SK.lot.fields) || {}, n = v => Number(v) || 0, e = escapeHtml;
   const warn = '<div id="oiPieceWarn" class="oi-banner oi-banner-warn" role="status" style="display:none;margin-bottom:12px"></div>';
   if (SK.mode === 'lotEdit') {
-    if (!SK.lot) return '<div class="oi-banner oi-banner-bad" style="margin-bottom:12px">Η παρτίδα αυτής της παραγγελίας δεν διαβάστηκε — το υπόλοιπο δεν φαίνεται. Οι κανόνες της ισχύουν στη βάση· ξαναδοκίμασε με Ανανέωση.</div>';
-    return `<div class="oi-banner" style="margin-bottom:12px">Παρτίδα ${e(OrdersStock.lotLabel(SK.lot))} · υπόλοιπο ${n(g['Remaining Pallets'])}/${n(g['Stock Pallets'])}p · ${n(g['Pieces'])} κομμάτια (${n(g['Pieces Delivered'])} παραδόθηκαν)${SK.frozen ? '<small>Οι παλέτες κλείδωσαν με την παραλαβή στην αποθήκη — μείωση μόνο με «Κλείσιμο υπολοίπου».</small>' : ''}</div>`;
+    if (!SK.lot) return '<div class="oi-banner oi-banner-bad" style="margin-bottom:12px">Η παρτίδα αυτής της παραγγελίας δεν διαβάστηκε — το υπόλοιπο δεν φαίνεται. Οι κανόνες της ισχύουν στη βάση· ξαναδοκίμασε με Ανανέωση.</div>' + whWarn;
+    return `<div class="oi-banner" style="margin-bottom:12px">Παρτίδα ${e(OrdersStock.lotLabel(SK.lot))} · υπόλοιπο ${n(g['Remaining Pallets'])}/${n(g['Stock Pallets'])}p · ${n(g['Pieces'])} κομμάτια (${n(g['Pieces Delivered'])} παραδόθηκαν)${SK.frozen ? '<small>Οι παλέτες κλείδωσαν με την παραλαβή στην αποθήκη — μείωση μόνο με «Κλείσιμο υπολοίπου».</small>' : ''}</div>` + whWarn;
   }
   if (SK.mode === 'pieceEdit') {
     const tail = SK.lot ? ` · διαθέσιμα ${n(g['Remaining Pallets'])}p στην αποθήκη` : SK.failed ? ' — η παρτίδα δεν διαβάστηκε· το όριο παλετών το ελέγχει η βάση' : '';
     return `<div class="oi-banner" style="margin-bottom:12px">Κομμάτι της παρτίδας ${e(OrdersStock.lotNumLabel(f))}${e(tail)}</div>` + warn;
   }
-  return warn;
+  // pieceNew: the lot's cargo could not be read → the fields start empty, and
+  // the form says why (PR-06) instead of looking like a lot without goods.
+  const cargo = SK.cargoFailed
+    ? `<div class="oi-banner oi-banner-warn" id="oiCargoNote" role="status" style="margin-bottom:12px">Τα στοιχεία φορτίου της παρτίδας δεν διαβάστηκαν (${e(SK.cargoFailed)}) — συμπλήρωσε εμπόρευμα, θερμοκρασία, λειτουργία ψυκτικού και τύπο παλέτας.</div>`
+    : '';
+  return cargo + warn;
 }
 function _oiLotSectionHtml(SK) {
   if (!SK || !SK.section) return '';
@@ -951,7 +974,93 @@ function _oiStockAfterOpen(SK) {
     document.getElementById('btn_addL')?.remove();
     document.querySelectorAll('#stops_l button[title="Αφαίρεση στάσης"]').forEach(b => b.remove());
   }
-  if (SK.section) _oiLoadWarehouses(SK.wasLot ? ((SK.lot && SK.lot.fields['Warehouse Rec']) || SK.whRec || document.getElementById('lv_u_1')?.value || '') : '');
+  // G-31: the warehouse list is read when it is needed — an existing lot shows
+  // its warehouse at once; an ordinary order reads it on the first tick.
+  if (SK.section && SK.wasLot) _oiLoadWarehouses((SK.lot && SK.lot.fields['Warehouse Rec']) || SK.whRec || document.getElementById('lv_u_1')?.value || '');
+  // OWNER-Q1: an existing lot opens without Veroia Switch.
+  if (SK.mode === 'lotEdit') _oiLotVs(true);
+  _oiWhWarn();
+}
+
+// PR-06 (impact map 4/10): a piece carries the goods of its lot. The driver
+// sheet prints °C, reefer mode, goods and pallet type from the PIECE, so a
+// piece form that starts empty can send a reefer load out with no temperature
+// on paper. One read of the lot's source order (its «Order» link); a failure
+// leaves the fields empty and says so on the form (SK.cargoFailed) — never a
+// silent blank. Pre-filled only: the dispatcher may change any of them.
+async function _oiLotCargo(SK) {
+  const src = getLinkedId(SK.lot.fields['Order']);
+  if (!src) { SK.cargoFailed = 'η παρτίδα δεν δείχνει σε παραγγελία'; return null; }
+  try {
+    const rec = await atGetOne(TABLES.ORDERS, src);
+    const sf = (rec && rec.fields) || {}, out = {};
+    // Absent = empty on the source (facade trap #2), not a failure.
+    for (const k of ['Goods', 'Temperature °C', 'Refrigerator Mode', 'Pallet Type']) if (sf[k] != null && sf[k] !== '') out[k] = sf[k];
+    return out;
+  } catch (e) {
+    SK.cargoFailed = OrdersStock._msg(e);
+    return null;
+  }
+}
+
+// G-31 (impact map 4/10): the Partner-Warehouse list is read on first need —
+// the «Παρτίδα» tick or a loading stop to check (PR-17) — and kept for ten
+// minutes, not read on every form open. A failure is not cached: the next
+// need asks again. → { recs } or { recs: null, error }.
+let _oiPwCache = null;
+function _oiPartnerWarehouses() {
+  if (_oiPwCache && Date.now() - _oiPwCache.at < 600000) return _oiPwCache.p;
+  const p = atGetAll(TABLES.LOCATIONS, { filterByFormula: "{Type}='Partner Warehouse'", fields: ['Name', 'City', 'Country', 'Type'] })
+    .then(recs => ({ recs }), e => { console.error('orders intl: warehouses', e); _oiPwCache = null; return { recs: null, error: e }; });
+  _oiPwCache = { at: Date.now(), p };
+  return p;
+}
+
+// PR-17 / G-15 (impact map 4/10): an ordinary import typed or scanned «from
+// the warehouse» is a priced order — invoiced next to its lot, while the
+// warehouse stock never sees its pallets. Non-blocking: a warehouse can also
+// be an ordinary pickup. Only with the switch on (before go-live the ΑΠΟΘΕΜΑ
+// it points to does not exist) and never on a piece form, which loads there
+// by definition.
+async function _oiWhWarn() {
+  const el = document.getElementById('oiWhWarn'), SK = INTL_ORDERS._stock;
+  if (!el || !SK || SK.mode === 'pieceNew' || SK.mode === 'pieceEdit' || typeof OrdersStock === 'undefined' || !OrdersStock.on()) return;
+  const loc = document.getElementById('lv_l_1')?.value || '';
+  if (!loc) { el.style.display = 'none'; return; }
+  const res = await _oiPartnerWarehouses();
+  // The modal closed, or the stop changed, while the list was on its way.
+  if (!el.isConnected || (document.getElementById('lv_l_1')?.value || '') !== loc) return;
+  const hit = !!(res.recs && res.recs.some(r => r.id === loc));
+  el.textContent = hit ? 'Φόρτωση από αποθήκη συνεργάτη: αν είναι κομμάτι παρτίδας, άνοιξέ το από το ΑΠΟΘΕΜΑ του Weekly — αλλιώς θα τιμολογηθεί δεύτερη φορά' : '';
+  el.style.display = hit ? '' : 'none';
+}
+
+// OWNER-Q1 default (4/10, impact map PR-09/G-23): no Veroia Switch on a lot.
+// A lot ends in a warehouse abroad; a VS leg would print «deliver to Veroia»
+// on the partner sheet and create a national load for goods that never come
+// to Greece. Hidden and unticked while «Παρτίδα» is ticked and on a lot edit;
+// unticking the lot gives back what was there. Pieces keep VS (a real import
+// via Veroia). The submit forces it false too (_vs in submitIntlOrder).
+function _oiLotVs(lot) {
+  const cb = document.getElementById('f_VeroiaSwitch'), lbl = document.getElementById('oiVsLbl');
+  if (!cb || !lbl) return;
+  if (lot) {
+    if (cb._oiPrev === undefined) cb._oiPrev = cb.checked;
+    cb.checked = false; lbl.style.display = 'none';
+  } else {
+    if (cb._oiPrev !== undefined) { cb.checked = cb._oiPrev; delete cb._oiPrev; }
+    lbl.style.display = '';
+  }
+}
+
+// G-14: the legs of an existing order (no_split counts a PARENT as well as a
+// leg). → { ok, n } or { ok:false, error } — a failed read is said, never 0.
+async function _oiLegsOf(recId) {
+  if (!OrdersStock._rec(recId)) return { ok: false, error: 'μη έγκυρη παραγγελία' };
+  try {
+    const recs = await atGetAll(TABLES.ORDERS, { filterByFormula: `FIND("${recId}",ARRAYJOIN({Parent Order},","))>0` }, false);
+    return { ok: true, n: recs.length };
+  } catch (e) { return { ok: false, error: OrdersStock._msg(e) }; }
 }
 
 // Non-blocking (contract §5.4): a piece may be planned before the warehouse
@@ -974,10 +1083,8 @@ function _oiPieceWarn() {
 async function _oiLoadWarehouses(currentId) {
   const sel = document.getElementById('f_StockWh');
   if (!sel) return;
-  let recs = null;
-  try {
-    recs = await atGetAll(TABLES.LOCATIONS, { filterByFormula: "{Type}='Partner Warehouse'", fields: ['Name', 'City', 'Country', 'Type'] });
-  } catch (e) { console.error('orders intl: warehouses', e); }
+  sel.dataset.loaded = '1';       // one read per form, however often it is ticked
+  const recs = (await _oiPartnerWarehouses()).recs;
   if (!sel.isConnected) return;   // the modal closed meanwhile
   const opts = [];
   for (const r of recs || []) {
@@ -1002,6 +1109,9 @@ function _oiLotToggle() {
   const box = document.getElementById('oiLotWh'); if (box) box.style.display = on ? '' : 'none';
   const off = document.getElementById('oiLotOff');
   if (off) off.style.display = !on && INTL_ORDERS._stock && INTL_ORDERS._stock.wasLot ? '' : 'none';
+  _oiLotVs(on);
+  const sel = document.getElementById('f_StockWh');
+  if (on && sel && !sel.dataset.loaded) _oiLoadWarehouses('');   // G-31: first tick reads the list
   if (on) _oiLotApply(); else _oiLotRelease();
 }
 // One destination = the warehouse (lot_multi_dest / warehouse_rule in the
@@ -1681,7 +1791,10 @@ async function submitIntlOrder(recId) {
     const _pe = peRead('f');
     if (_pe !== null) fields['Pallet Exchange'] = _pe;
     fields['High Risk Flag']  = ck('f_HighRisk');
-    fields['Veroia Switch']  = ck('f_VeroiaSwitch');
+    // OWNER-Q1 default (4/10): never a VS leg on a lot (see _oiLotVs) — forced
+    // here too, so a stale checkbox cannot add the cross-dock stop below.
+    const _vs = ck('f_VeroiaSwitch') && !_lotWanted;
+    fields['Veroia Switch']  = _vs;
     fields['National Groupage'] = ck('f_Groupage');
 
     // Client
@@ -1714,7 +1827,7 @@ async function submitIntlOrder(recId) {
     }
 
     // Auto-create Cross-dock stop for Veroia Switch orders
-    if (ck('f_VeroiaSwitch')) {
+    if (_vs) {
       const _cdPal = _formStops.filter(s => s.stopType === 'Loading').reduce((sum, s) => sum + (s.pallets || 0), 0);
       // Cross-dock Date rule: Export = Loading +1 day, Import = Delivery -1 day
       let _cdDate = null;
@@ -3145,6 +3258,7 @@ window.openIntlPieceCreate = openIntlPieceCreate;
 window._oiLotToggle = _oiLotToggle;
 window._oiLotApply = _oiLotApply;
 window._oiLotPallets = _oiLotPallets;
+window._oiWhWarn = _oiWhWarn;   // PR-17: inline handlers of the loading stops
 window.duplicateIntlOrder = duplicateIntlOrder;
 window.selectIntlOrder = selectIntlOrder;
 window._oiCloseCard = _oiCloseCard;
