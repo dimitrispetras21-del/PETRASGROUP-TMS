@@ -4359,6 +4359,16 @@ async function _wiDoSplit(rowId){
     reportError('Τα δύο σκέλη δημιουργήθηκαν (ID '+leg1.id+', '+leg2.id+') αλλά οι ΣΤΑΣΕΙΣ του σκέλους 2 ΔΕΝ γράφτηκαν — ο γονέας ΔΕΝ αδειάστηκε ακόμη. Έλεγξε/σβήσε χειροκίνητα.',e);
     return;
   }
+  // The parent's leg leaves its round trip BEFORE its vehicle is cleared
+  // (_wiRtLeave): the clear below would otherwise copy «no truck» onto the
+  // parent's trip and every order on it (the matched import, a group's other
+  // members) and delete the driver's payroll line. Failure → parent untouched.
+  const leaveParent=await _wiRtLeave(parentOid);
+  if(!leaveParent.ok){
+    _wiPanelSetBusy(false);
+    reportError('Τα δύο σκέλη δημιουργήθηκαν (ID '+leg1.id+', '+leg2.id+') αλλά ο γονέας ΔΕΝ βγήκε από τον γύρο του ('+leaveParent.msg+') — ΔΕΝ αδειάστηκε, για να μη χάσει το φορτηγό ο γύρος. Άδειασε χειροκίνητα την ανάθεσή του ('+parentOid+') μόλις λυθεί.',null);
+    return;
+  }
   try{
     const patchRes=await atPatch(TABLES.ORDERS,parentOid,{'Truck':[],'Trailer':[],'Driver':[],'Partner':[],'Is Partner Trip':false,'Partner Truck Plates':''});
     if(patchRes?.error) throw new Error(patchRes.error.message||patchRes.error.type);
@@ -4369,12 +4379,10 @@ async function _wiDoSplit(rowId){
   }
 
   // RT (design doc: «ο γύρος του γονέα παίρνει το σκέλος 1»): the parent's own
-  // leg leaves its round trip, then rtOnOrderSaved re-derives leg 1's trip from
-  // its (inherited) truck — best-effort, never blocks the split (rt-feed's own
-  // _rtSafe already toasts on failure without throwing).
+  // leg already left its round trip above, before its vehicle was cleared; now
+  // rtOnOrderSaved re-derives leg 1's trip from its (inherited) truck —
+  // best-effort, never blocks the split (rt-feed's _rtSafe toasts on failure).
   try{
-    const mate=await rtFindForOrder(parentOid).catch(()=>({pg:null,rt:null}));
-    if(mate.rt&&mate.pg!=null) await _wiRtLegDelete(mate.rt.id,mate.pg).catch(e=>console.warn('[wi split] rt leg delete:',e&&e.message));
     if(typeof rtOnOrderSaved==='function'){
       await rtOnOrderSaved(leg1.id).catch(e=>console.warn('[wi split] rt leg1:',e&&e.message));
       if(mode==='own'&&execTruck) await rtOnOrderSaved(leg2.id).catch(e=>console.warn('[wi split] rt leg2:',e&&e.message));

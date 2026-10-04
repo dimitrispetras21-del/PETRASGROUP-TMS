@@ -27,6 +27,7 @@ const wiSrc = [
   grab(/async function _wiRemoveImport\(rowId\)\{[\s\S]*?\n\}\n/, '_wiRemoveImport'),
   grab(/async function _wiDissolveClearMember\(oid\)\{[\s\S]*?\n\}\n/, '_wiDissolveClearMember'),
   grab(/async function _wiCancelGroupMember\(rowId,orderId,isImportSide(?:,ask)?\)\{[\s\S]*?\n\}\n/, '_wiCancelGroupMember'),
+  grab(/async function _wiDoSplit\(rowId\)\{[\s\S]*?\n\}\n/, '_wiDoSplit'),
 ].join('\n');
 
 // One round trip RT1 = export E (truck T1, driver D1) + its imports. The model
@@ -71,12 +72,19 @@ function world({ imports = ['I'], exportsOnRt = ['E'], failLeg = null, lookupThr
     reportError: (m) => log.push({ error: m }), toast: (m, k) => log.push({ toast: m, k }),
     _wiPaint() {}, _wiSync() {}, atClearCache() {}, renderWeeklyIntl: async () => {},
     _wiSyncGroupResidue: async () => {}, _wiRewriteGroupSuffix: async () => true,
+    // «Σπάσιμο σκέλους» (_wiDoSplit): the panel inputs, the two leg POSTs, their stops
+    document: { getElementById: id => ({ lv_wiSplitLoc: { value: 'recHUB' }, wiSplitDt: { value: '2026-10-05T10:00' }, wiSplitMode: { value: '' } })[id] || null },
+    F: { STOP_PARENT_ORDER: 'Parent' }, stopsLoad: async () => [],
+    _wiParentPalletsTotal: () => 33, _wiOrderPoints: () => [{ locId: 'recA', dateTime: null, pallets: 33 }],
+    atCreate: async (_t, f) => ({ id: 'recLEG' + f['Leg No'], fields: { 'Parent Order': f['Parent Order'], 'Leg No': f['Leg No'] } }),
+    _wiCreateLegStops: async () => {}, _wiPanelSetBusy() {}, _wiPanelClose() {},
+    atPatch: async (t, id, f) => ctx.atSafePatch(t, id, f), rtOnOrderSaved: async () => {},
   };
   ctx.WINTL.rows = [
     { id: 1, type: 'export', orderIds: exportsOnRt.slice(), importId: imports[0] },
     { id: 2, type: 'import', orderId: imports[0], orderIds: imports.slice(), matchedTo: 1 },
   ];
-  vm.runInNewContext(wiSrc + '\nObject.assign(this,{_wiRemoveImport,_wiDissolveClearMember,_wiCancelGroupMember});', ctx);
+  vm.runInNewContext(wiSrc + '\nObject.assign(this,{_wiRemoveImport,_wiDissolveClearMember,_wiCancelGroupMember,_wiDoSplit});', ctx);
   return { ctx, orders, rt, legs, log };
 }
 
@@ -141,4 +149,23 @@ test('«Ακύρωση groupage» with a failed LOOKUP: stops before any write',
   assert.deepStrictEqual(w.log.filter(x => x.id), [], 'a PATCH was sent');
   assert.strictEqual(w.orders.E.truck, 'T1');
   assert.ok(w.log.some(x => x.toast && /σταμάτησε/.test(x.toast)));
+});
+
+test('«Σπάσιμο σκέλους»: the parent leaves its round trip before its vehicle is cleared — the matched import keeps the truck', async () => {
+  const w = world();                                   // RT1 = export E (the parent) + matched import I
+  w.ctx.WINTL.data.exports[0].fields = { Truck: ['T1'], Driver: ['D1'], Status: 'Assigned' };
+  await w.ctx._wiDoSplit(1);
+  assert.strictEqual(w.orders.I.truck, 'T1', 'matched import lost its truck');
+  assert.strictEqual(w.rt.payroll, 'live', 'payroll line deleted');
+  assert.strictEqual(w.orders.E.truck, null, 'parent still assigned');
+  assert.ok(!w.legs.has('E'), 'parent leg still on the round trip');
+});
+
+test('«Σπάσιμο σκέλους» with a failed parent-leg removal: the parent keeps its vehicle and it is reported', async () => {
+  const w = world({ failLeg: 'E' });
+  w.ctx.WINTL.data.exports[0].fields = { Truck: ['T1'], Driver: ['D1'], Status: 'Assigned' };
+  await w.ctx._wiDoSplit(1);
+  assert.strictEqual(w.orders.E.truck, 'T1');
+  assert.strictEqual(w.orders.I.truck, 'T1');
+  assert.ok(w.log.some(x => x.error && /ΔΕΝ βγήκε από τον γύρο/.test(x.error)));
 });
