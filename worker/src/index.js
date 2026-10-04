@@ -1265,10 +1265,14 @@ var TABLES = {
       // POST STOCK LOTS marks it). «Stock Lot Order No» / «Stock Lot Source»
       // ('intl'|'natl'): the number of the lot a PIECE belongs to, so the
       // Weekly and the catalog can label a piece «#N»/«Ε-N» without a second
-      // read of STOCK LOTS.
+      // read of STOCK LOTS. «Stock Lot Reference» (round 1, 4/10): the lot
+      // SOURCE's reference — the one the foreign warehouse knows from the
+      // partner's intake sheet — printed on the piece's driver sheet instead
+      // of our internal «#N» alone (print.html).
       "Own Stock Lot": "own_stock_lot",
       "Stock Lot Order No": "stock_lot_order_no",
-      "Stock Lot Source": "stock_lot_source"
+      "Stock Lot Source": "stock_lot_source",
+      "Stock Lot Reference": "stock_lot_reference"
     },
     // Reverse link (children listed on the parent, as Airtable's reverse field
     // does): the frontend's stopsLoad reads the parent's 'ORDER STOPS' then
@@ -1987,6 +1991,10 @@ var TABLES = {
       "Stock Pallets": "stock_pallets", "Drawn Pallets": "drawn_pallets", "Remaining Pallets": "remaining_pallets",
       "Delivered Pallets": "delivered_pallets", "Written Off Pallets": "written_off_pallets",
       Pieces: "pieces", "Pieces Delivered": "pieces_delivered", "Pieces Without Truck": "pieces_without_truck",
+      // «Pieces Moving» (round 1, 4/10): pieces In Transit/Delivered with a past
+      // loading day — the ONE definition of «κομμάτια κινούνται χωρίς παραλαβή»
+      // that the Weekly chip and the auditor's S-06 both read (057 stock_v_lots).
+      "Pieces Moving": "pieces_moving",
       "Last Piece Delivered": "last_piece_delivered", "Closed At": "closed_at",
       Complete: "complete", "Completed On": "completed_on", Invoiced: "invoiced"
     }

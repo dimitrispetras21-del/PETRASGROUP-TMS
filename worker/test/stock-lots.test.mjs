@@ -129,6 +129,7 @@ test('TABLES: tblStockLots exactly as contract §4.2 — no money, no label both
       'Stock Pallets': 'stock_pallets', 'Drawn Pallets': 'drawn_pallets', 'Remaining Pallets': 'remaining_pallets',
       'Delivered Pallets': 'delivered_pallets', 'Written Off Pallets': 'written_off_pallets',
       Pieces: 'pieces', 'Pieces Delivered': 'pieces_delivered', 'Pieces Without Truck': 'pieces_without_truck',
+      'Pieces Moving': 'pieces_moving',
       'Last Piece Delivered': 'last_piece_delivered', 'Closed At': 'closed_at',
       Complete: 'complete', 'Completed On': 'completed_on', Invoiced: 'invoiced'
     }
@@ -145,13 +146,14 @@ test('TABLES: tblStockLots exactly as contract §4.2 — no money, no label both
   for (const col of ['id', 'legacy_id', 'deleted_at']) assert.ok(!all.some(([, c]) => c === col), col);
 });
 
-test('TABLES: ORDERS gains exactly the Stock Lot link + 3 computed labels', () => {
+test('TABLES: ORDERS gains exactly the Stock Lot link + 4 computed labels', () => {
   const o = TABLES.tblgHlNmLBH3JTdIM;
   assert.deepEqual(o.links['Stock Lot'], { column: 'stock_lot_id', table: 'stock_lots' });
   assert.equal(o.computed['Own Stock Lot'], 'own_stock_lot');
   assert.equal(o.computed['Stock Lot Order No'], 'stock_lot_order_no');
   assert.equal(o.computed['Stock Lot Source'], 'stock_lot_source');
-  for (const label of ['Stock Lot', 'Own Stock Lot', 'Stock Lot Order No', 'Stock Lot Source']) {
+  assert.equal(o.computed['Stock Lot Reference'], 'stock_lot_reference');
+  for (const label of ['Stock Lot', 'Own Stock Lot', 'Stock Lot Order No', 'Stock Lot Source', 'Stock Lot Reference']) {
     assert.equal(o.fields[label], undefined, `${label} must not be a scalar field`);
   }
   assert.equal(o.links['Own Stock Lot'], undefined, 'a lot is never written from ORDERS');
