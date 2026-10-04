@@ -7,7 +7,7 @@
 //   - Offline banner via postMessage to all clients
 // ═══════════════════════════════════════════════════════════
 
-const SW_VERSION = '1791127100';
+const SW_VERSION = '1791127910';
 
 // Το vendor/leaflet/* ΔΕΝ μπαίνει στο APP_SHELL επίτηδες: το pre-cache στο
 // install θα κατέβαζε 228 KB σε κάθε χρήστη, ακυρώνοντας το lazy loading της
@@ -31,6 +31,8 @@ const APP_SHELL = [
   '/PETRASGROUP-TMS/core/ui.js',
   '/PETRASGROUP-TMS/core/entity.js',
   '/PETRASGROUP-TMS/core/pa-helpers.js',
+  // Local relays (060): Weekly International draws and edits them through it.
+  '/PETRASGROUP-TMS/core/relay.js',
   '/PETRASGROUP-TMS/core/ai-chat.js',
   // Modules
   '/PETRASGROUP-TMS/modules/dashboard.js',
