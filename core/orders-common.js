@@ -318,6 +318,16 @@ const OrdersStock = {
   // «Own Stock Lot» is the rec of the lot this order is the SOURCE of — a plain
   // string from the view (own.legacy_id), not a link array.
   isLot(f) { return !!(f && f['Own Stock Lot']); },
+  // A piece waiting in the warehouse: no truck, no partner, no group, not
+  // delivered. It is STOCK, not late work — its Loading/Delivery dates are the
+  // ones of the truck it last left («Επιστροφή στο απόθεμα» keeps them), so the
+  // screens that list late or unassigned orders skip it and the Weekly shelf
+  // counts it instead (impact map 4/10: C-05, E-16, B-19). Same rule as
+  // loadLoosePieces below; a Case-B piece carries the export's truck itself.
+  isLoose(f) {
+    return OrdersStock.isPiece(f) && !getLinkedId(f['Truck']) && !getLinkedId(f['Partner'])
+      && !String(f['Group ID'] || '').trim() && f['Status'] !== 'Delivered';
+  },
   lotRecOfPiece(f) { return getLinkedId(f && f['Stock Lot']) || null; },
   lotRecOfLot(f) { return (f && f['Own Stock Lot']) || null; },
   // Same prefix rule as OrdersCommon.numLabel: «#312» international source,

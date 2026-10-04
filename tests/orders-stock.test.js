@@ -93,6 +93,17 @@ test('isPiece / isLot read the facade fields — and do not depend on the switch
   assert.strictEqual(OrdersStock.lotRecOfLot({}), null);
 });
 
+test('isLoose: a piece with no truck, partner or group and not delivered — stock, not late work', () => {
+  const p = f => Object.assign({ 'Stock Lot': ['recLot1'], Status: 'Pending' }, f);
+  assert.strictEqual(OrdersStock.isLoose(p({})), true);
+  assert.strictEqual(OrdersStock.isLoose(p({ 'Group ID': null })), true, 'a cleared Group ID (NULL → absent) is no group');
+  assert.strictEqual(OrdersStock.isLoose(p({ Truck: ['recT'] })), false);
+  assert.strictEqual(OrdersStock.isLoose(p({ Partner: ['recP'] })), false);
+  assert.strictEqual(OrdersStock.isLoose(p({ 'Group ID': 'GI-X|recL' })), false, 'in a group');
+  assert.strictEqual(OrdersStock.isLoose(p({ Status: 'Delivered' })), false);
+  assert.strictEqual(OrdersStock.isLoose({ Status: 'Pending' }), false, 'an ordinary order is never loose');
+});
+
 test('on(): born closed — needs FEATURES.STOCK_LOTS === true AND TABLES.STOCK_LOTS', () => {
   global.FEATURES = { STOCK_LOTS: true };
   assert.strictEqual(OrdersStock.on(), true);
