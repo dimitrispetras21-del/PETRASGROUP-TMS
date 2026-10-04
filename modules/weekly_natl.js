@@ -165,6 +165,20 @@ async function renderWeeklyNatl() {
 }
 
 /* ── LOAD ALL (assets + orders in parallel) ──────────────────────── */
+
+// Migration 060 (local relay, planned — not before Mon 5/10 15:00) also writes
+// RELAYS on INTERNATIONAL orders into local_moves (Move Kind relay_delivery /
+// relay_loading). This board owns plain local moves only: a relay listed in
+// «Τοπικές» would get «×» and «Ανάθεση» (_wnDelLocal / _wnSaveCover), which
+// edit it as a local move. Absent Move Kind = every row today (the label is
+// not on the Worker map yet; a NULL is absent too), so nothing changes before
+// 060. Moves created here («Ανάθεση σε τοπικό οδηγό», _wnSaveLocal with
+// Parent Nat Load) write no Move Kind, and 060 allows them explicitly.
+function _wnIsLocalMove(m) {
+  const k = m && m.fields && m.fields['Move Kind'];
+  return k == null || k === '' || k === 'local';
+}
+
 async function _wnLoadAll() {
   const wStart = _wnWeekStart(WNATL.week);
   const wEnd   = new Date(wStart); wEnd.setDate(wStart.getDate() + 6);
@@ -238,7 +252,7 @@ async function _wnLoadAll() {
   // Contract #6: the section must say «δεν φορτώθηκε», not show 7 empty days.
   WNATL.data._localsFailed = (typeof didFail === 'function' && didFail(locals));
   WNATL.data.locals = WNATL.data._localsFailed ? []
-    : (locals || []).slice().sort((a,b) => {
+    : (locals || []).filter(_wnIsLocalMove).sort((a,b) => {
         const d = String(a.fields?.['Date']||'').localeCompare(String(b.fields?.['Date']||''));
         return d || ((a.fields?.['Sequence']||0) - (b.fields?.['Sequence']||0));
       });
