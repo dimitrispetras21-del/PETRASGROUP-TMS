@@ -940,6 +940,28 @@ async function _opsWriteOrder(id, patch, stamped){
     return false;
   }
 }
+// R2-4 (critic-1 round 2): the top-bar Undo of «Παραλαβή αποθήκης» put the
+// order back and left its pending intake movement (core/pallet-feed.js) in
+// the accountant's queue. Right after the order write, THIS order's Revert is
+// re-armed to take that movement with it (plOnLotIntakeUndone: pending only; a
+// confirmed one is said, never deleted). Only the order's own Revert: when a
+// later write of the same click takes the button (the partner assignment's
+// status mirror), the order stays Delivered and so does its movement — the
+// two never part. type 'create' is the one branch of core/api.js
+// undoLastAction that runs a caller's own undo (the national order chain uses
+// it the same way, §4 #9), so the button reads «Undo:» instead of «Revert:».
+function _opsArmIntakeUndo(id,t0,fields){
+  if(!OrdersStock.isLot(fields)||typeof getUndoAction!=='function'||typeof _undoSet!=='function') return;
+  const a=getUndoAction();
+  if(!a||a.type!=='patch'||a.tableId!==TABLES.ORDERS||a.recId!==id||a.ts<t0) return;
+  const {tableId,recId,prevFields,label}=a;
+  _undoSet({type:'create',tableId,recId,label,undo:async()=>{
+    await atPatch(tableId,recId,prevFields);   // the order first: a refused revert leaves the movement with it
+    toast(`Reverted ${label||'edit'}`,'success');
+    if(typeof plOnLotIntakeUndone==='function') await plOnLotIntakeUndone(recId);
+    return true;
+  }});
+}
 // Η αναλογία φαίνεται ΠΑΝΤΑ (0/2, 1/2, 2/2) — ο χρήστης δεν πατά τίποτα
 // για να δει τι απομένει (η αόρατη αλλαγή ήταν το λάθος του picker).
 function _opsStopsBadge(id, stype){
@@ -1075,8 +1097,10 @@ async function _opsDelFinal(id,perf,stamped){ if(_opsBlockReadOnly()) return; co
   const _r0=OPS.intl.find(x=>x.id===id);
   const _p={'Status':'Delivered','Delivery Performance':perf,'Actual Delivery Date':d};
   if(_r0?.fields['Postponed To']) _p['Postponed To']=null;
+  const t0=Date.now();
   try{if(!(await _opsWriteOrder(id,_p,stamped))) return;
   if (typeof plOnDelivered === 'function') plOnDelivered(id);
+  _opsArmIntakeUndo(id,t0,_r0?.fields);
   const r=OPS.intl.find(x=>x.id===id);if(r){r.fields['Status']='Delivered';r.fields['Delivery Performance']=perf;if('Postponed To' in _p)r.fields['Postponed To']=null;}
   try { await paSyncStatus({ parentType:'order', parentId:id, status:'Delivered' }); }
   catch(e) { if(typeof logError==='function') logError(e,'daily-ops: PA status sync '+id); toast('Η κατάσταση γράφτηκε, αλλά η ανάθεση συνεργάτη ΔΕΝ ενημερώθηκε','warn'); }
@@ -1252,8 +1276,10 @@ async function _opsOvActFinal(id,perf='Delayed',stamped=null){ if(_opsBlockReadO
   const _ov=OPS.overdue.find(x=>x.id===id);
   const _p={'Status':'Delivered','Delivery Performance':perf,'Actual Delivery Date':d};
   if(_ov?.fields['Postponed To']) _p['Postponed To']=null;
+  const t0=Date.now();
   try{if(!(await _opsWriteOrder(id,_p,stamped))) return;
   if (typeof plOnDelivered === 'function') plOnDelivered(id);
+  _opsArmIntakeUndo(id,t0,_ov?.fields);
   // Central sync — propagate status to partner assignments
   if (typeof syncOrderDownstream === 'function') {
     syncOrderDownstream(id, { source: 'intl', changedFields: ['Status'], skipVS: true, skipGRP: true, skipRamp: true })
