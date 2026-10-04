@@ -13,5 +13,5 @@
 -- tolerance: 
 -- source: 02b Β-36 · 22/9 = 0+0
 -- enabled: yes
-SELECT count(*) FILTER (WHERE (after_data->>'split')='true') + count(*) FILTER (WHERE table_name='ct_round_trips' AND after_data->>'reason' LIKE 'reopened:%')
+SELECT count(*) FILTER (WHERE (((after_data #>> '{}')::jsonb->>'split'))='true') + count(*) FILTER (WHERE table_name='ct_round_trips' AND ((after_data #>> '{}')::jsonb->>'reason') LIKE 'reopened:%')
  FROM audit_log WHERE created_at>now()-interval '24 hours';
