@@ -70,7 +70,7 @@
 --     cancel only for a salaried driver or a day with no live relay; never restored.
 --   dl_v_entries: the 30 columns unchanged + local_move_id + relay_info (jsonb, ASCII keys).
 --   monitoring: B-09 excludes local lines (same run, so B-09 never sees a local line first);
---     new B-63 / B-64 / B-65; B-54 trigger count +5 (27 -> 32 measured 4/10).
+--     new B-63 / B-64 / B-65; B-54 trigger count +5 (27 -> 32 measured 4/10; 36 with 057).
 --
 -- Refusal codes (SQLSTATE 23514, HINT 'local_relay:<code>', ASCII message) - the Worker maps
 -- them to 422 with a Greek text:
@@ -92,11 +92,21 @@
 -- taken by 058). Tested end to end on a local PGlite copy of the production schema (catalog read
 -- 4/10): this block, the dry run, the verify SELECTs and the rollback.
 --
--- ORDER WITH 057 (stock lots): each migration bumps B-54 by its OWN trigger count inside its block
--- (count before; require B-54 red_value = before and baseline NULL; require after = before + own;
--- UPDATE ... WHERE red_value = before; assert 1 row). 060 does that here (+5), so either order
--- works once 057 does the same (+4): 27 -> 32 -> 36 or 27 -> 31 -> 36. While 057 does NOT bump
--- B-54, running 057 first makes this guard refuse (red_value 27 <> live 31) - loud, never forced.
+-- ORDER WITH 057 (stock lots): BOTH migrations bump B-54 by their OWN trigger count inside their
+-- own block, so either order works. Each one counts the enabled non-internal triggers in public
+-- before, requires B-54 red_value = that count, proves after = before + own, then
+-- UPDATE ... SET red_value = after WHERE red_value = before and asserts 1 row (060 also requires
+-- baseline NULL). 060 adds 5 (below); 057 adds 4 (stock_guard_lots / _orders / _natl,
+-- orders_group_id_blank_null - its section 8, round-1b draft read 4/10):
+--   060 then 057: 27 -> 32 -> 36        057 then 060: 27 -> 31 -> 36
+-- Neither block edits B-54's sql_text (057 md5-guards it), and neither touches what the other
+-- guards: 060 reads/changes order_soft_delete_unlink, dl_v_entries, B-09, B-63..B-65; 057 reads/
+-- changes orders_with_derived, ct_v_rt_revenue (057b: S-xx, B-13, B-15, B-34, B-34b). Any other
+-- start value (a hand edit of B-54, a red B-54 nobody looked at, a migration that added triggers
+-- without bumping) makes the guard refuse - loud, never forced.
+-- Auditor mirror (tms-auditor/checks/B-54.sql "red: <> N", regenerated into 047b): each branch
+-- carries the value after ITSELF alone (060: 32, 057: 31); whichever merges to main SECOND sets
+-- the final value 36 = 27 + 4 + 5 and regenerates 047b.
 -- Reverse: worker/migrations/drafts/060_local_relay_rollback.sql (refuses once relays or pay
 -- bases exist - data would be lost).
 
@@ -111,6 +121,11 @@ DECLARE
 BEGIN
   -- pg_get_viewdef (md5 guard below) prints names relative to the search_path: pin it.
   PERFORM set_config('search_path', 'public, extensions', true);
+  -- ALTER TABLE on drivers / dl_entries / local_moves, CREATE TRIGGER on orders and the
+  -- dl_v_entries replace need strong locks: behind an idle open transaction they would wait
+  -- forever while every app read of those tables queues behind them. Give up after 5 s instead -
+  -- the whole block rolls back, nothing half-done; run it again later (same as 057).
+  PERFORM set_config('lock_timeout', '5s', true);
 
   -- 0. GUARDS (SELECT only): the base is what was measured on 4/10.
   IF to_regclass('monitoring.checks') IS NULL THEN
@@ -168,7 +183,7 @@ BEGIN
   -- run_checks compares against coalesce(baseline, red_value): a baseline would make the bump below
   -- a no-op and B-54 a standing P1 red.
   IF NOT EXISTS (SELECT 1 FROM monitoring.checks WHERE id = 'B-54' AND red_value = trg_before AND baseline IS NULL) THEN
-    RAISE EXCEPTION '060: B-54 red_value is not the live trigger count % (or has a baseline) - another migration ran without bumping it (057?), re-measure', trg_before;
+    RAISE EXCEPTION '060: B-54 red_value is not the live trigger count % (or has a baseline) - a migration changed triggers without bumping it, re-measure', trg_before;
   END IF;
   SELECT count(*) INTO dl_live_before FROM public.dl_entries WHERE deleted_at IS NULL;
   SELECT count(*) INTO orders_before FROM public.orders WHERE deleted_at IS NULL;
@@ -399,7 +414,7 @@ $s6$;
   CREATE FUNCTION public.dl_local_day_sync(p_driver bigint, p_day date) RETURNS void
     LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $f$
   DECLARE
-    live dl_entries%rowtype; has_money boolean; keep_past boolean; anchor bigint; route_txt text; salaried boolean;
+    live dl_entries%rowtype; has_money boolean; valued boolean; keep_past boolean; anchor bigint; route_txt text; salaried boolean;
     stamp text := ' (' || to_char(now() AT TIME ZONE 'Europe/Athens', 'DD/MM/YYYY') || ')';
     sep text := ' ' || chr(183) || ' ';
     -- Greek labels from base64 (this file stays ASCII). Transliterated:
@@ -445,6 +460,11 @@ $s6$;
     -- Money = a non-zero amount. "Value 0" is accounting saying "nothing is owed": a line holding
     -- only zeros is cancelled like an empty one, instead of waiting in review (B-08) for nothing.
     has_money := coalesce(live.trip_value, 0) <> 0 OR coalesce(live.advance, 0) <> 0 OR coalesce(live.expenses, 0) <> 0;
+    -- Valued = accounting typed ANY amount, "value 0" included. Used for the relabel below, not for
+    -- the cancel path: a day settled at 0 that then gets ANOTHER relay must be looked at again.
+    -- With has_money there, the new relay would be settled at 0 silently - no NULL amount (not
+    -- pending), a line exists (B-64 quiet). (front review, round 2, 4/10)
+    valued := live.trip_value IS NOT NULL OR live.advance IS NOT NULL OR live.expenses IS NOT NULL;
     -- A PAST day of a driver who is salaried NOW, on a line nobody valued yet: the pay basis has no
     -- history (coordinator D4 4/10), so he may have been per-trip that day and be owed it. Flag it
     -- for accounting, never cancel it silently. Today and later: salaried = no line.
@@ -474,10 +494,10 @@ $s6$;
     END IF;
 
     -- The label belongs to the trigger, not to money: always refreshed. A changed set of relays
-    -- after money was written goes to review (B-08); accounting clears it with a reason.
+    -- after a value was written (even 0) goes to review (B-08); accounting clears it with a reason.
     UPDATE dl_entries SET local_move_id = anchor, route = route_txt, updated_at = now(),
-           needs_review = needs_review OR (has_money AND route IS DISTINCT FROM route_txt),
-           review_note = CASE WHEN has_money AND route IS DISTINCT FROM route_txt
+           needs_review = needs_review OR (valued AND route IS DISTINCT FROM route_txt),
+           review_note = CASE WHEN valued AND route IS DISTINCT FROM route_txt
                               THEN concat_ws(sep, review_note, r_changed || stamp) ELSE review_note END
      WHERE id = live.id AND (local_move_id IS DISTINCT FROM anchor OR route IS DISTINCT FROM route_txt);
   END $f$;

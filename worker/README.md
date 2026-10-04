@@ -96,29 +96,38 @@ build — δεν ισχύει πλέον.
 4. Deploy: `cd worker && CLOUDFLARE_API_TOKEN=$CF_API_TOKEN npx wrangler deploy`
    (το CF_API_TOKEN από το `.env.local` της ρίζας).
 
-## Προαπαιτούμενο deploy: 060 (τοπική παράδοση/φόρτωση, 4/10/2026)
+## Προαπαιτούμενο deploy: 057 + 060 (απόθεμα + τοπική παράδοση/φόρτωση, 4/10/2026)
 
-Σειρά: **060 → Worker → οθόνες**, το ίδιο απόγευμα, μετά τις 15:00.
+Σειρά: **057 → 060 → ΕΝΑ deploy αυτού του Worker → οθόνες (απόθεμα, μετά τοπικές)**,
+το ίδιο απόγευμα, μετά τις 15:00.
 
-Το branch είναι **rebased πάνω στον Worker αποθέματος** (`deploy/worker-stock-lots`,
-057 — συντονιστής 4/10/2026): περιέχει και τις ετικέτες/STOCK LOTS του 057, άρα
-θέλει **και το 057 εκτελεσμένο** (ο έλεγχος V1/V6 του 057), και μπαίνει **μετά**
-τον Worker αποθέματος, ποτέ πριν. Ένας μόνο μηχανισμός 422 (`stockRuleError` /
-`stockRuleResponse`) για τις δύο οικογένειες (`stock:` και `local_relay:`).
+Το branch είναι **rebased πάνω στον Worker αποθέματος** (`deploy/worker-stock-lots`
+@ `aaddb6be`, 057 — συντονιστής 4/10/2026) και περιέχει και τα δύο: ετικέτες/STOCK
+LOTS του 057 και τοπικές του 060. Μπαίνει **με ΕΝΑ deploy** πάνω στον ζωντανό
+Worker· ο Worker μόνο-αποθέματος (`aaddb6be`) **δεν** γίνεται deploy χωριστά — μένει
+μόνο ως Plan B (αν το 060 αποτύχει) και ως μερική επαναφορά. Ένας μόνο μηχανισμός
+422 (`stockRuleError` / `stockRuleResponse`) για τις δύο οικογένειες (`stock:` και
+`local_relay:`).
 
-Ο Worker αυτού του branch ονομάζει στήλες του 060 (`dl_v_entries.local_move_id` στην
-αρχική της Μισθοδοσίας· `move_kind` και `pay_basis` στον έλεγχο ακύρωσης
-γραμμής τοπικού). Αν μπει πριν από το 060, η αρχική της Μισθοδοσίας
-απαντά **503 «Η βάση δεν έχει ακόμη το migration 060»** (όχι γενικό 500) —
-αλλά δεν δουλεύει.
+Ο Worker αυτού του branch ονομάζει στήλες **και** του 057 **και** του 060
+(`dl_v_entries.local_move_id` στην αρχική της Μισθοδοσίας· `move_kind` και
+`pay_basis` στον έλεγχο ακύρωσης γραμμής τοπικού· `stock_lot_id` και οι στήλες
+`orders_with_derived` / `stock_v_lots` του αποθέματος). Αν μπει πριν από το 060, η
+αρχική της Μισθοδοσίας απαντά **503 «Η βάση δεν έχει ακόμη το migration 060»** (όχι
+γενικό 500) — αλλά δεν δουλεύει. Αν μπει πριν από το 057, οι αποθηκεύσεις
+παραγγελιών χάνουν Order No / Week Number και οι αναγνώσεις παρτίδων πέφτουν.
 
 **Ακριβώς πριν από το `wrangler deploy`** (SELECT μόνο, στη Supabase):
 
 ```sql
-SELECT count(*) AS found   -- ΠΡΕΠΕΙ 5· αλλιώς ΣΤΑΜΑΤΑ
+SELECT count(*) AS found   -- ΠΡΕΠΕΙ 12· αλλιώς ΣΤΑΜΑΤΑ
 FROM information_schema.columns
 WHERE table_schema = 'public'
-  AND (table_name, column_name) IN (('local_moves','move_kind'), ('drivers','pay_basis'),
+  AND (table_name, column_name) IN (
+       ('orders','stock_lot_id'), ('national_orders','stock_lot_id'),
+       ('orders_with_derived','own_stock_lot'), ('orders_with_derived','stock_lot_order_no'),
+       ('orders_with_derived','stock_lot_source'), ('orders_with_derived','stock_lot_reference'),
+       ('stock_v_lots','pieces_moving'), ('local_moves','move_kind'), ('drivers','pay_basis'),
        ('dl_entries','local_move_id'), ('dl_v_entries','local_move_id'), ('dl_v_entries','relay_info'));
 ```
 
@@ -126,13 +135,18 @@ WHERE table_schema = 'public'
 **ίδιο** με αυτό που εκτελέστηκε (το `local-relay-contract.test.mjs` τυπώνει το
 md5 που έλεγξε — σύγκρινέ το). Το test διαβάζει τους κωδικούς άρνησης και τα
 ονόματα CHECK από το 060 και κοκκινίζει σε κάθε απόκλιση από τα ελληνικά
-κείμενα του Worker.
+κείμενα του Worker. Το αντίγραφο εδώ αντιγράφεται από το `feat/local-relay-sql`
+σε κάθε αλλαγή του 060 — δύο διαφορετικά 060 = ο έλεγχος md5 σταματά το deploy.
 
-**Επαναφορά 060:** ΠΡΩΤΑ ξανά deploy του αποθηκευμένου bundle του Worker
-αποθέματος (`deploy/worker-stock-lots`, ο ζωντανός Worker πριν από αυτό το
-branch — **όχι** του `deploy/worker-0410`, που θα έσβηνε και το απόθεμα ενώ το
-057 μένει), ΜΕΤΑ το rollback του 060 — αλλιώς ο Worker αυτός μένει να ζητά
-στήλες που δεν υπάρχουν.
+**Επαναφορά** — πάντα με αντίστροφη σειρά: οθόνες → Worker → SQL.
+- (α) Για οποιαδήποτε αμφιβολία: `npx wrangler rollback <Version ID που γράφτηκε
+  πριν από το deploy>` (ο Worker πριν από αυτό το deploy). Ασφαλές με 057 + 060 στη
+  βάση — ο παλιός Worker δεν τα διαβάζει — **αρκεί να έχουν φύγει πρώτα οι οθόνες**.
+- (β) Πρόβλημα μόνο στις τοπικές: deploy από την πηγή `deploy/worker-stock-lots`
+  @ `aaddb6be` (φρουρός: dispatcher DELETE 1 / VS CD Date 1 / WORKSHOPS 4 /
+  `tblStockLots: {` 1 / `"Move Kind"` 0 / `060_missing` 0). Το απόθεμα μένει.
+- Το rollback του 060 τρέχει **μόνο αφού** ο Worker γύρισε σε (α) ή (β) — αλλιώς ο
+  Worker αυτός μένει να ζητά στήλες που δεν υπάρχουν.
 
 ## Περιεχόμενα
 
