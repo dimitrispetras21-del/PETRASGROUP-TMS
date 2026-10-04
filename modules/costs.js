@@ -263,6 +263,36 @@ async function ctLinesPerRt() {
   _ct.linesByRt = byRt; _ct.linesCapped = capped;
 }
 
+// Paging Worker (deploy/worker-local-relay 0142e44d, 4/10/2026): its answer
+// ALWAYS carries next_offset — the next page's offset, or null on the last.
+// Pages are followed to null. A failed page, a page WITHOUT next_offset (the
+// Worker rolled back mid-read) or an offset that does not move forward makes
+// completeness UNKNOWN (linesFailed), never «χωρίς κόστος» from a partial
+// read. A line seen twice (a row inserted between two calls shifts the window
+// by one) is kept once, or its RT's card would list it twice.
+async function ctLinesPaged(first) {
+  const seen = new Set(), byRt = {};
+  const add = recs => (recs || []).forEach(l => {
+    if (seen.has(l.id)) return;
+    seen.add(l.id);
+    if (l.rt_id) (byRt[l.rt_id] = byRt[l.rt_id] || []).push(l);
+  });
+  add(first.records);
+  let next = first.next_offset, pages = 1, failed = false;
+  while (next !== null) {
+    // 50 pages × 1000 lines, far above the base (805 on 4/10/2026): reaching
+    // it means a Worker that never says «last page», not a big base.
+    if (!Number.isInteger(next) || ++pages > 50) { failed = true; break; }
+    const r = await ctFetch('/costs/lines?limit=1000&offset=' + next)
+      .catch(e => { console.warn('[costs] lines page ' + next + ' failed', e.message); return null; });
+    if (!r || !('next_offset' in r) || (r.next_offset !== null && !(r.next_offset > next))) { failed = true; break; }
+    add(r.records);
+    next = r.next_offset;
+  }
+  _ct.linesByRt = byRt;
+  if (failed) _ct.linesFailed = true;
+}
+
 async function ctReload() {
   const list = document.getElementById('ctList');
   if (list) list.innerHTML = '<div class="ct-empty">Φόρτωση…</div>';
@@ -281,11 +311,13 @@ async function ctReload() {
     const [pnl, rts, lookups, palletGate, lines] = await Promise.all([
       ctFetch('/costs/pnl'), ctFetch('/costs/rt'), _ct.lookups ? Promise.resolve({ cached: true }) : ctFetch('/costs/lookups'),
       ctFetch('/costs/pallet-gate').catch(e => { console.warn('[costs] pallet-gate failed', e.message); _ct.palletGateFailed = true; return { records: [] }; }),
-      // Μία κλήση για ΟΛΕΣ τις γραμμές κόστους (όριο 300· αν γεμίσει → ctLinesPerRt) — τροφοδοτεί το
-      // cost-complete και τη «σκάλα» χωρίς N+1 αιτήματα ανά δρομολόγιο.
+      // Μία κλήση για ΟΛΕΣ τις γραμμές κόστους — τροφοδοτεί το cost-complete
+      // και τη «σκάλα» χωρίς N+1 αιτήματα ανά δρομολόγιο. ?limit=1000: ο Worker
+      // με σελιδοποίηση δίνει ως 1000 + next_offset (→ ctLinesPaged)· ο παλιός
+      // αγνοεί την παράμετρο και δίνει 300 χωρίς next_offset (→ ctLinesPerRt).
       // Αποτυχία εδώ = η πληρότητα κοστών γίνεται ΑΓΝΩΣΤΗ, όχι «μηδέν» —
       // η σημαία τη μετατρέπει σε ορατό μήνυμα αντί για ψευδή «κόστη ελλιπή».
-      ctFetch('/costs/lines').catch(e => { console.warn('[costs] lines failed', e.message); _ct.linesFailed = true; return { records: [] }; })
+      ctFetch('/costs/lines?limit=1000').catch(e => { console.warn('[costs] lines failed', e.message); _ct.linesFailed = true; return { records: [] }; })
     ]);
     _ct.pnl = pnl.records || [];
     _ct.splitMissing = _ct.pnl.some(t => !ctHasSplit(t));
@@ -296,16 +328,22 @@ async function ctReload() {
     // Ανίχνευση σιωπηλού κοψίματος του Worker (review 24/8): 300 γραμμές /
     // 200 rts είναι τα server-side όρια — αν τα πιάσαμε, παλαιότερα RT θα
     // εμφανίζονταν ψευδώς «χωρίς κόστη»/«χωρίς σκέλη». Λέγεται φωναχτά.
-    _ct.linesCapped = (lines.records || []).length >= 300;
     _ct.rtsCapped = (rts.records || []).length >= 200;
-    // The batch call stops at 300 lines (newest first) and the live Worker
-    // has no offset. Measured 4/10/2026: 641 lines carry an rt_id, so 26 of
-    // the 128 RTs read «χωρίς κόστος» in front of the owner while their costs
-    // were in the base (principle 2). A full batch is therefore re-read per
-    // RT with ?rt_id= (the drill-down panel's call, already live) — complete
-    // by RT instead of cut by date. Worker paging stays queued; it would make
-    // this one call again.
-    if (_ct.linesCapped) await ctLinesPerRt();
+    // Feature-detected, not assumed: the paging Worker deploys only after
+    // 057+060, and a rollback brings the old one back — the page must read
+    // correctly from either, whichever is live at the moment it loads.
+    if ('next_offset' in lines) {
+      await ctLinesPaged(lines);
+    } else {
+      _ct.linesCapped = (lines.records || []).length >= 300;
+      // The old Worker stops at 300 lines (newest first) with no offset.
+      // Measured 4/10/2026: 641 lines carry an rt_id, so 26 of the 128 RTs
+      // read «χωρίς κόστος» in front of the owner while their costs were in
+      // the base (principle 2). A full batch is therefore re-read per RT with
+      // ?rt_id= (the drill-down panel's call, already live) — complete by RT
+      // instead of cut by date.
+      if (_ct.linesCapped) await ctLinesPerRt();
+    }
     // Η διαδρομή με ονόματα είναι ρητό αίτημα owner (24/8) — ο εμπλουτισμός
     // τρέχει ΠΡΙΝ το render ώστε οι κάρτες να βγουν κατευθείαν πλήρεις· αν
     // αποτύχει, οι κάρτες βγαίνουν με ποσά + ορατή σημείωση, ποτέ κενές.
