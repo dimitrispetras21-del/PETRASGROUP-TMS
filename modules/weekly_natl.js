@@ -2198,12 +2198,18 @@ async function _wnSaveMatch(rowId, snId) {
   if(_wnBlockReadOnly()) return;
   const row = WNATL.rows.find(r => r.id===rowId); if (!row) return;
   // A6: check both loads before the optimistic paint below — a matched pair
-  // where either side is already Delivered/Cancelled keeps its state.
+  // where either side is Cancelled keeps its state (since owner 4/10 only
+  // Cancelled is refused, see _wnDoneLive).
   const doneNs = await _wnDoneLive(row.orderIds[0]);
   if (doneNs) { showErrorToast(`Το φορτίο είναι ${doneNs} — δεν αλλάζει από το Weekly`); return; }
   const stSn = await _wnStatusLive(snId);
   const doneSn = _wnDoneOf(stSn);
   if (doneSn) { showErrorToast(`Το φορτίο είναι ${doneSn} — δεν αλλάζει από το Weekly`); return; }
+  // A match alone changes no vehicle → no dialog. Only when it will also put
+  // the ΚΑΘΟΔΟΣ vehicle on an executed ΑΝΟΔΟΣ (§4 #5) is that ONE confirm asked,
+  // before the optimistic paint; «Ακύρωση» = nothing written (owner 4/10).
+  const veh = _wnVehicleForSn(row, WNATL.data.southnorth.find(r => r.id===snId)?.fields);
+  if (veh && _wnExecuted(stSn) && !(await _wnConfirmExecuted('Το ταίριασμα περνά το όχημα της καθόδου στην άνοδο'))) return;
   row.matchedId = snId;
   WNATL.rows = WNATL.rows.filter(r => !(r.type==='southnorth' && r.orderId===snId));
   _wnPaint();
@@ -2214,7 +2220,6 @@ async function _wnSaveMatch(rowId, snId) {
     if(r1?.conflict){ toast('Η εγγραφή άλλαξε από άλλον χρήστη — γίνεται ανανέωση','warn'); await renderWeeklyNatl(); return; }
     const r2 = await atSafePatch(TABLES.NAT_LOADS, snId, { 'Matched Load': row.orderIds[0] });
     if(r2?.conflict){ toast('Η εγγραφή άλλαξε από άλλον χρήστη — γίνεται ανανέωση','warn'); await renderWeeklyNatl(); return; }
-    const veh = _wnVehicleForSn(row, WNATL.data.southnorth.find(r => r.id===snId)?.fields);
     if (veh) {
       try {
         const r3 = await atSafePatch(TABLES.NAT_LOADS, snId, _wnPlanFields(veh, stSn));
@@ -2243,8 +2248,8 @@ async function _wnSaveMatch(rowId, snId) {
 async function _wnUnmatch(rowId, snId) {
   if(_wnBlockReadOnly()) return;
   const row = WNATL.rows.find(r => r.id===rowId); if (!row) return;
-  // A6: same guard as _wnSaveMatch — unmatching a leg already
-  // Delivered/Cancelled would rewrite a status the board never owned.
+  // A6: same guard as _wnSaveMatch — only a Cancelled leg is refused (owner
+  // 4/10); unmatching writes no vehicle and no Status, so no confirm.
   const doneNs = await _wnDoneLive(row.orderIds[0]);
   if (doneNs) { showErrorToast(`Το φορτίο είναι ${doneNs} — δεν αλλάζει από το Weekly`); return; }
   const doneSn = await _wnDoneLive(snId);
@@ -2436,15 +2441,19 @@ async function _wnSaveFromPopover(rowId) {
   if(_wnBlockReadOnly()) return;
   const row = WNATL.rows.find(r => r.id===rowId); if (!row) return;
 
-  // A6: execution beats planning (14/9, 030 trigger) — a load the trigger
-  // already moved to Delivered/Cancelled keeps its assignment; this popover
-  // never checked Status before writing over it.
+  // A6 (14/9) read the live Status before writing; since owner 4/10 it only
+  // refuses a Cancelled load — an executed one gets the confirm below and
+  // keeps its Status (_wnPlanFields).
   const liveSt = {};
   for (const id of [...row.orderIds, ...(row.matchedId ? [row.matchedId] : [])]) liveSt[id] = await _wnStatusLive(id);
   for (const orderId of row.orderIds) {
     const done = _wnDoneOf(liveSt[orderId]);
     if (done) { showErrorToast(`Το φορτίο είναι ${done} — δεν αλλάζει από το Weekly`); return; }
   }
+  // owner 4/10: an executed leg is never refused — ONE confirm, «Ακύρωση» =
+  // nothing written. Asked before syncDrop so a cancel leaves the row as it was
+  // (the popover's inputs stay in the DOM while it is hidden).
+  if (Object.values(liveSt).some(_wnExecuted) && !(await _wnConfirmExecuted('Αλλάζει μόνο το όχημα'))) return;
 
   const syncDrop = (px, fId, lId) => {
     const uid = `${px}_wn_${rowId}`;
@@ -2694,8 +2703,10 @@ async function _wnRevertNoStatus(nlId) {
     if (typeof logError === 'function') logError(e, '_wnRevertNoStatus ' + noId);
   }
 }
-// Execution beats planning (14/9): a load the 030 trigger already set
-// Delivered/Cancelled keeps its assignment — the board never checked Status.
+// The one refusal left (owner 4/10/2026, «η ανάθεση δεν κλειδώνει ποτέ»):
+// only a Cancelled load is refused — whether a cancelled load may be planned
+// again is an OPEN owner question. Delivered was refused here since 14/9
+// («execution beats planning»); it now gets the confirm below instead.
 async function _wnDoneLive(id) {
   return _wnDoneOf(await _wnStatusLive(id));
 }
@@ -2723,13 +2734,27 @@ function _wnPlanFields(fields, st) {
   if (!('Status' in fields) || _wnPlans(st)) return fields;
   const { Status, ...rest } = fields; return rest;
 }
-// Refused outright: Delivered/Cancelled (execution beats planning, 14/9).
-function _wnDoneOf(st) { return (st === 'Delivered' || st === 'Cancelled') ? st : ''; }
+// Refused outright: Cancelled only (see _wnDoneLive).
+function _wnDoneOf(st) { return st === 'Cancelled' ? st : ''; }
+// Executed rows are never refused (owner 4/10/2026) — the dispatcher gets ONE
+// confirm that says what happens; «Ακύρωση» = nothing is written. National
+// round trips + payroll start from 5/10 with migration 034, hence the text.
+function _wnExecuted(st) { return st === 'In Transit' || st === 'Delivered'; }
+function _wnConfirmExecuted(what) {
+  return confirmAction(`Το φορτίο έχει ήδη εκτελεστεί (σε μεταφορά / παραδόθηκε). ${what} — η κατάσταση μένει ως έχει.\nΤο όχημα μεταφέρεται/σβήνει δρομολόγιο + μισθοδοσία, ακόμη και σε κλειστό δρομολόγιο.`,
+    { title: 'Φορτίο σε εκτέλεση', confirmLabel: 'Συνέχεια' });
+}
 async function _wnUnassignSn(rowId, snId) {
   if(_wnBlockReadOnly()) return;
   const row = WNATL.rows.find(r => r.id===rowId);
   if (!row) return;
-  if (!(await confirmAction('Αφαίρεση ανάθεσης;', { confirmLabel: 'Αφαίρεση' }))) return;
+  // Status first, so the dispatcher sees ONE dialog: the plain one, or the
+  // executed-row one (owner 4/10) — never both.
+  const st = await _wnStatusLive(snId);
+  const done = _wnDoneOf(st);
+  if (done) { toast('Το φορτίο είναι ' + done + ' — η ανάθεση κρατιέται', 'warn'); return; }
+  if (!(await (_wnExecuted(st) ? _wnConfirmExecuted('Αφαιρείται η ανάθεση')
+                                 : confirmAction('Αφαίρεση ανάθεσης;', { confirmLabel: 'Αφαίρεση' })))) return;
 
   const fields = {
     'Truck': [], 'Trailer': [], 'Driver': [],
@@ -2738,9 +2763,6 @@ async function _wnUnassignSn(rowId, snId) {
   };
 
   try {
-    const st = await _wnStatusLive(snId);
-    const done = _wnDoneOf(st);
-    if (done) { toast('Το φορτίο είναι ' + done + ' — η ανάθεση κρατιέται', 'warn'); return; }
     const res = await atSafePatch(TABLES.NAT_LOADS, snId, _wnUnplanFields(fields, st));
     if (res?.conflict) { toast('Η εγγραφή άλλαξε από άλλον χρήστη — γίνεται ανανέωση','warn'); await renderWeeklyNatl(); return; }
   } catch(err) { toast('Σφάλμα: ' + err.message, 'warn'); return; }
@@ -2766,7 +2788,17 @@ async function _wnUnassign(rowId) {
   if(_wnBlockReadOnly()) return;
   const row = WNATL.rows.find(r => r.id===rowId);
   if (!row) return;
-  if (!(await confirmAction('Αφαίρεση ανάθεσης;', { confirmLabel: 'Αφαίρεση' }))) return;
+  // Every leg's status first → ONE dialog (owner 4/10): the executed-row text
+  // if any leg is In Transit/Delivered, the plain one otherwise. A Cancelled
+  // leg is skipped (kept); if nothing is left, no dialog at all.
+  const legIds = [...row.orderIds, ...(row.matchedId ? [row.matchedId] : [])];
+  const liveSt = {};
+  for (const id of legIds) liveSt[id] = await _wnStatusLive(id);
+  const kept = legIds.filter(id => _wnDoneOf(liveSt[id]));
+  if (kept.length === legIds.length) { toast('Ακυρωμένο φορτίο — η ανάθεσή του κρατιέται', 'warn'); return; }
+  const anyExec = legIds.some(id => !kept.includes(id) && _wnExecuted(liveSt[id]));
+  if (!(await (anyExec ? _wnConfirmExecuted('Αφαιρείται η ανάθεση')
+                       : confirmAction('Αφαίρεση ανάθεσης;', { confirmLabel: 'Αφαίρεση' })))) return;
 
   const fields = {
     'Truck': [], 'Trailer': [], 'Driver': [],
@@ -2774,27 +2806,25 @@ async function _wnUnassign(rowId) {
     'Partner Truck Plates': '', 'Partner Rate': null,
   };
 
-  const errors = []; const kept = []; let written = 0;
+  const errors = []; let written = 0;
   for (const orderId of row.orderIds) {
     try {
-      const st = await _wnStatusLive(orderId);
-      if (_wnDoneOf(st)) { kept.push(orderId); continue; }
+      const st = liveSt[orderId];
+      if (kept.includes(orderId)) continue;
       const res = await atSafePatch(TABLES.NAT_LOADS, orderId, _wnUnplanFields(fields, st));
       if (res?.conflict) { toast('Η εγγραφή άλλαξε από άλλον χρήστη — γίνεται ανανέωση','warn'); await renderWeeklyNatl(); return; }
       if (res?.error) throw new Error(res.error.message || res.error.type);
       written++;
     } catch(err) { errors.push(err.message); }
   }
-  // Also unassign matched S→N if exists (same guard: a delivered leg keeps its assignment)
-  if (row.matchedId) {
+  // Also unassign matched S→N if exists (same guard: a cancelled leg keeps its assignment)
+  if (row.matchedId && !kept.includes(row.matchedId)) {
     try {
-      const st = await _wnStatusLive(row.matchedId);
-      if (_wnDoneOf(st)) kept.push(row.matchedId);
-      else { await atSafePatch(TABLES.NAT_LOADS, row.matchedId, _wnUnplanFields(fields, st)); written++; }
+      await atSafePatch(TABLES.NAT_LOADS, row.matchedId, _wnUnplanFields(fields, liveSt[row.matchedId])); written++;
     } catch(err) { errors.push(err.message); }
   }
 
-  if (kept.length) toast(kept.length + ' φορτίο σε παράδοση/ακύρωση — η ανάθεσή του κρατιέται', 'warn');
+  if (kept.length) toast(kept.length + ' ακυρωμένο φορτίο — η ανάθεσή του κρατιέται', 'warn');
   if (errors.length) { toast('Σφάλμα: ' + errors[0].slice(0, 60), 'warn'); return; }
   if (!written) return; // nothing changed in the base — no «Ανάθεση αφαιρέθηκε», no row reset
   // §4 #12: the popover's «Καθαρισμός» now runs THIS function, and the old

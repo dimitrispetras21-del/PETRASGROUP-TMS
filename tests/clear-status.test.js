@@ -97,13 +97,15 @@ const wnSrc = [
   fn(WN, /async function _wnStatusLive\(id, table\) \{[\s\S]*?\n\}\n/, '_wnStatusLive'),
   fn(WN, /function _wnUnplans\(st\) \{[^\n]*\n/, '_wnUnplans'),
   fn(WN, /function _wnDoneOf\(st\) \{[^\n]*\n/, '_wnDoneOf'),
+  fn(WN, /function _wnExecuted\(st\) \{[^\n]*\n/, '_wnExecuted'),
+  fn(WN, /function _wnConfirmExecuted\(what\) \{[\s\S]*?\n\}\n/, '_wnConfirmExecuted'),
   fn(WN, /function _wnUnplanFields\(fields, st\) \{[\s\S]*?\n\}\n/, '_wnUnplanFields'),
 ].join('\n');
-async function runWnUnassign(statusById, row) {
-  const patches = []; const paDeleted = []; const toasts = [];
+async function runWnUnassign(statusById, row, answer = true) {
+  const patches = []; const paDeleted = []; const toasts = []; const confirms = [];
   const ctx = {
     WNATL: { rows: [Object.assign({ id: 1 }, row)] }, TABLES: { NAT_LOADS: 'NL' },
-    _wnBlockReadOnly: () => false, confirmAction: async () => true,
+    _wnBlockReadOnly: () => false, confirmAction: async m => { confirms.push(m); return answer; },
     atGetOne: stubGetOne(statusById),
     atSafePatch: async (_t, id, f) => { patches.push({ id, f }); return { id, fields: f }; },
     toast: m => toasts.push(m), paDelete: async p => { paDeleted.push(p.parentId); },
@@ -112,7 +114,7 @@ async function runWnUnassign(statusById, row) {
   };
   vm.runInNewContext(wnSrc + '\nthis._wnUnassign=_wnUnassign;this._wnDoneLive=_wnDoneLive;', ctx);
   await ctx._wnUnassign(1);
-  return { patches, paDeleted, toasts, ctx };
+  return { patches, paDeleted, toasts, confirms, ctx };
 }
 
 test('popover «Καθαρισμός» calls the right-click functions — no clear path of its own', () => {
@@ -141,18 +143,32 @@ test('_wnUnassign (owner 4/10): In Transit leg → vehicle cleared, Status NOT w
   assert.strictEqual(e.patches[0].f.Status, 'Pending');
 });
 
-test('_wnUnassign: Delivered/Cancelled leg keeps its assignment and its PA row', async () => {
-  for (const st of ['Delivered', 'Cancelled']) {
-    const { patches, paDeleted } = await runWnUnassign({ n1: st, s1: 'Assigned' }, { orderIds: ['n1'], matchedId: 's1' });
-    assert.deepStrictEqual(patches.map(x => x.id), ['s1'], st);
-    assert.deepStrictEqual(paDeleted, ['s1'], st);
-  }
+test('_wnUnassign: a Cancelled leg keeps its assignment and its PA row (still refused — open owner question)', async () => {
+  const { patches, paDeleted } = await runWnUnassign({ n1: 'Cancelled', s1: 'Assigned' }, { orderIds: ['n1'], matchedId: 's1' });
+  assert.deepStrictEqual(patches.map(x => x.id), ['s1']);
+  assert.deepStrictEqual(paDeleted, ['s1']);
+  const all = await runWnUnassign({ n1: 'Cancelled' }, { orderIds: ['n1'] });
+  assert.strictEqual(all.patches.length + all.confirms.length, 0, 'all legs cancelled → no dialog, no write');
 });
 
-test('_wnDoneLive: behaviour unchanged after the _wnStatusLive split', async () => {
+test('_wnUnassign (owner 4/10): Delivered is NOT refused — ONE confirm (executed text), vehicle cleared, Status kept; Cancel → 0 writes', async () => {
+  const ok = await runWnUnassign({ n1: 'Delivered', s1: 'Assigned' }, { orderIds: ['n1'], matchedId: 's1' });
+  assert.strictEqual(ok.confirms.length, 1);
+  assert.match(ok.confirms[0], /μεταφέρεται\/σβήνει δρομολόγιο \+ μισθοδοσία, ακόμη και σε κλειστό δρομολόγιο/);
+  assert.deepStrictEqual(ok.patches.map(x => x.id), ['n1', 's1']);
+  assert.ok(!('Status' in ok.patches[0].f) && ok.patches[0].f.Truck.length === 0, 'Delivered: vehicle out, Status untouched');
+  assert.strictEqual(ok.patches[1].f.Status, 'Pending', 'the Assigned leg still → Pending');
+  const no = await runWnUnassign({ n1: 'Delivered' }, { orderIds: ['n1'] }, false);
+  assert.strictEqual(no.confirms.length, 1);
+  assert.strictEqual(no.patches.length + no.paDeleted.length, 0, 'Ακύρωση → nothing written');
+  const plain = await runWnUnassign({ n1: 'Assigned' }, { orderIds: ['n1'] });
+  assert.deepStrictEqual(plain.confirms, ['Αφαίρεση ανάθεσης;'], 'a planned row keeps the plain dialog');
+});
+
+test('_wnDoneLive (owner 4/10): refuses Cancelled only', async () => {
   const { ctx } = await runWnUnassign({}, { orderIds: [] });
   ctx.atGetOne = stubGetOne({ a: 'Delivered', b: 'Cancelled', c: 'Assigned', d: new Error('x') });
-  assert.strictEqual(await ctx._wnDoneLive('a'), 'Delivered');
+  assert.strictEqual(await ctx._wnDoneLive('a'), '');
   assert.strictEqual(await ctx._wnDoneLive('b'), 'Cancelled');
   assert.strictEqual(await ctx._wnDoneLive('c'), '');
   assert.strictEqual(await ctx._wnDoneLive('d'), '');

@@ -62,6 +62,7 @@ function seed() {
       nl('recNlDel0000000A', NS, '2026-10-08T09:00:00.000Z', Object.assign(own('recTruck000001AA', 'recDriver00001AA'), { Client: 'NS-DEL delivered', Status: 'Delivered' })),
       nl('recNlX000000000A', NS, '2026-10-08T10:00:00.000Z', Object.assign(own('recTruck000001AA', 'recDriver00001AA'), { Client: 'NS-X cancelled', Status: 'Cancelled' })),
       nl('recNlE000000000A', NS, '2026-10-08T11:00:00.000Z', { Client: 'NS-E pending', 'Source National Order': ['recNatOrderE0001'] }),
+      nl('recNlsV00000000A', SN, '2026-10-08T12:00:00.000Z', { Client: 'SN-V delivered no vehicle', Status: 'Delivered' }),
     ],
   };
 }
@@ -251,8 +252,9 @@ SECTIONS.push(async browser => {
 
 // ── §4 #12 · popover «Καθαρισμός» = right-click «Αφαίρεση ανάθεσης» ────────
 const writesOf = S => S.writes.map(w => ({ m: w.m, tid: w.tid, rid: w.rid, body: w.body }));
-async function clearBy(browser, how, sel) {
+async function clearBy(browser, how, sel, answer = true) {
   const { page, S } = await openBoard(browser);
+  await page.evaluate(a => { window.__confirmAnswer = a; }, answer);
   const rowSel = await page.evaluate(s => s.startsWith('#') ? s : '#wn-row-' + WNATL.rows.find(r => r.orderId === s).id, sel);
   if (how === 'ctx') {
     await page.click(`${rowSel}${rowSel.startsWith('#wn-sn-') ? '' : ' .wk3-leg'}`, { button: 'right', position: { x: 20, y: 10 } });
@@ -264,7 +266,7 @@ async function clearBy(browser, how, sel) {
   }
   await page.waitForTimeout(2500);
   const pill = await page.$eval(`${rowSel} .wk3-pill`, el => el.innerText).catch(() => '');
-  const out = { writes: writesOf(S), pill, popOpen: await page.$eval('#wn-popover', el => getComputedStyle(el).display !== 'none' && el.innerText.trim() !== ''), errors: S.errors };
+  const out = { writes: writesOf(S), pill, confirms: await page.evaluate(() => window.__confirms), popOpen: await page.$eval('#wn-popover', el => getComputedStyle(el).display !== 'none' && el.innerText.trim() !== ''), errors: S.errors };
   await page.context().close();
   return out;
 }
@@ -374,6 +376,48 @@ SECTIONS.push(async browser => {
   ok(!t.writes.some(w => w.tid === T.NO), 'its In Transit national order is not written');
   ok(t.S.db[T.NL].find(r => r.id === 'recNlT000000000A').fields.Status === 'In Transit', 'base: still In Transit');
   ok([e, t].every(x => x.errors.length === 0), 'no page errors');
+});
+
+const EXEC_TXT = /μεταφέρεται\/σβήνει δρομολόγιο \+ μισθοδοσία, ακόμη και σε κλειστό δρομολόγιο/;
+const nlWrites = x => x.writes.filter(w => w.m !== 'GET' && (w.tid === T.NL || w.tid === T.NO || w.tid === T.PA));
+SECTIONS.push(async browser => {
+  console.log('\n── owner 4/10 (3) · executed rows: ONE confirm, never a refusal; Cancelled still refused');
+  const d = await assignBy(browser, 'recNlDel0000000A', 'recTruck000002AA', true);
+  const pD = d.writes.find(w => w.m === 'PATCH' && w.rid === 'recNlDel0000000A');
+  ok(d.confirms.length === 1 && EXEC_TXT.test(d.confirms[0]), 're-assign a Delivered load → exactly ONE confirm with the RT/payroll text');
+  ok(pD && pD.body.fields.Truck[0] === 'recTruck000002AA' && !('Status' in pD.body.fields), 'confirmed → vehicle written, NO Status in the payload: ' + JSON.stringify(pD && pD.body.fields));
+  ok(d.S.db[T.NL].find(r => r.id === 'recNlDel0000000A').fields.Status === 'Delivered', 'base: still Delivered');
+  const dn = await assignBy(browser, 'recNlDel0000000A', 'recTruck000002AA', false);
+  ok(dn.confirms.length === 1 && nlWrites(dn).length === 0, '«Ακύρωση» → 0 writes (' + nlWrites(dn).length + ')');
+
+  const t = await clearBy(browser, 'ctx', 'recNlT000000000A');
+  ok(t.confirms.length === 1 && EXEC_TXT.test(t.confirms[0]), 'clear an In Transit load → ONE confirm (executed text), not two');
+  const tn = await clearBy(browser, 'ctx', 'recNlT000000000A', false);
+  ok(nlWrites(tn).length === 0, 'clear an In Transit load, «Ακύρωση» → 0 writes');
+  const a = await clearBy(browser, 'pop', 'recNlC000000000A');
+  ok(a.confirms.length === 1 && a.confirms[0] === 'Αφαίρεση ανάθεσης;', 'clear an Assigned load → the plain dialog, once');
+
+  const x = await assignBy(browser, 'recNlX000000000A', 'recTruck000002AA', true);
+  ok(nlWrites(x).length === 0 && x.confirms.length === 0, 'Cancelled load: assignment still refused, 0 writes');
+  const xc = await clearBy(browser, 'ctx', 'recNlX000000000A');
+  ok(nlWrites(xc).length === 0 && xc.confirms.length === 0, 'Cancelled load: unassign still refused, 0 writes, no dialog');
+
+  // match that puts the ΚΑΘΟΔΟΣ vehicle on a Delivered ΑΝΟΔΟΣ (§4 #5 + owner 4/10)
+  for (const answer of [true, false]) {
+    const { page, S } = await openBoard(browser);
+    await page.evaluate(a => { window.__confirmAnswer = a; }, answer);
+    await dropOn(page, 'recNlsV00000000A', 'recNlA000000000A'); await settle(page);
+    const c = await page.evaluate(() => window.__confirms);
+    const v = patchesTo(S, 'recNlsV00000000A');
+    if (answer) {
+      const vv = v.find(f => 'Truck' in f);
+      ok(c.length === 1 && EXEC_TXT.test(c[0]) && vv && vv.Truck[0] === 'recTruck000001AA' && !('Status' in vv), 'match onto a Delivered ΑΝΟΔΟΣ: ONE confirm → vehicle copied, NO Status: ' + JSON.stringify(vv));
+    } else {
+      ok(c.length === 1 && S.writes.filter(w => w.m !== 'GET').length === 0, 'match onto a Delivered ΑΝΟΔΟΣ, «Ακύρωση» → 0 writes');
+    }
+    await page.context().close();
+  }
+  ok([d, dn, t, tn, a, x, xc].every(r => r.errors.length === 0), 'no page errors');
 });
 
 (async () => {
