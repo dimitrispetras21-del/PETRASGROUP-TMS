@@ -14,5 +14,5 @@
 -- source: απόφαση owner 22/9 23:40 (Δ10 απορρίφθηκε)
 -- enabled: yes
 SELECT count(*) FROM audit_log WHERE table_name IN ('orders','national_orders') AND action='update' AND role<>'owner'
- AND (before_data->>'invoiced')='true' AND coalesce(after_data->>'invoiced','false')='false'
+ AND (((before_data #>> '{}')::jsonb->>'invoiced'))='true' AND coalesce(((after_data #>> '{}')::jsonb->>'invoiced'),'false')='false'
  AND created_at>now()-interval '24 hours';
