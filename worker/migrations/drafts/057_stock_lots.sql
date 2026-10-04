@@ -5,7 +5,7 @@
 -- WHO / WHEN / ORDER (mandatory)
 --   * The owner runs this file in the Supabase SQL editor, AFTER 15:00 (team works 05:30–14:30).
 --   * Then 057_stock_lots_verify.sql (SELECT only; run its V0 BEFORE this file too), then
---     057_stock_lots_rules_test.sql (must end with «RESULT: 82/82 OK» — it always rolls back).
+--     057_stock_lots_rules_test.sql (must end with «RESULT: 87/87 OK» — it always rolls back).
 --   * The Worker (facade labels «Stock Lot», «Own Stock Lot», «Stock Lot Reference» → stock_lot_reference,
 --     tblStockLots incl. «Pieces Moving» → pieces_moving, /costs/stock-lots) is
 --     deployed ONLY after the verify file passes. Worker first is QUIET, not loud: after every ORDERS
@@ -19,7 +19,9 @@
 --   * Rollback: ONE file per action, so the editor's «Run» can never run the wrong one —
 --     057_stock_lots_rollback_r1_guards_off.sql (the three guards go) ·
 --     057_stock_lots_guards_on.sql (they come back, after R1) ·
---     057_stock_lots_rollback_r2_revenue.sql (revenue view back to its pre-057 text — the 034 one).
+--     057_stock_lots_rollback_r2_revenue.sql (revenue view back to its pre-057 text — the 034 one) ·
+--     057_stock_lots_rollback_r3_blank_null_off.sql (only the blank group_id normaliser of §6 goes;
+--     B-54 then reads one short — red on purpose).
 --
 -- WHY ONE DO BLOCK (lesson 056, 3/10/2026): the SQL editor does not run BEGIN…COMMIT as one
 -- transaction — 056 half-committed and its temp table vanished before the proofs. A DO block is ONE
@@ -73,6 +75,15 @@
 --   * Σ-05  lot_grouped also covers the rota (rotation_id): a lot source is never a rota leg nor a rota
 --           parent — the round-trip walk links rotation_id exactly like a group (critic-3 Σ-05).
 --
+-- ROUND 1b OF THE INDEPENDENT SQL REVIEWER (4/10/2026, all P3):
+--   * P3-1  the identity sequence stock_lots_id_seq is born closed too (§7, proved in §9; precedent 053).
+--   * P3-2  §0 refuses if orders_with_derived / ct_v_rt_revenue carry view options (CREATE OR REPLACE
+--           would drop them silently); §9 and R2 prove both stay owner-rights (reloptions NULL).
+--   * P3-3  the rules test reaches lot_empty, lot_is_piece, piece_is_lot, lot_missing and
+--           lot_source_missing (cases 62–66) — every refusal code now has a case.
+--   * P3-6  R3 (057_stock_lots_rollback_r3_blank_null_off.sql): the normaliser's own way off.
+--   * P3-8  stock_v_lots.completed_on takes closed_at's ATHENS day, not the session's (UTC).
+--
 -- B-54 LIVES HERE, NOT IN 057b (impact map AU-06; the task asked for 057b — this is why it moved):
 --   B-54 is the auditor's P1 HOURLY check «enabled triggers in public <> red_value». This block adds
 --   four (stock_guard_lots / _orders / _natl, orders_group_id_blank_null). 057b is a separate
@@ -100,6 +111,7 @@
 do $mig$
 declare
   v_md5        text;
+  v_opts       text;
   v_cols       int;
   v_rev_before text[];
   v_rev_after  text[];
@@ -144,6 +156,18 @@ begin
   if v_cols <> 4 then
     raise exception '057 guard: ct_v_rt_revenue has % columns, expected 4 (034)', v_cols;
   end if;
+  -- Round 1b (SQL reviewer P3-2): CREATE OR REPLACE VIEW (§5) replaces a view's options with the ones
+  -- it names — none. Both views are owner-rights today (reloptions NULL, measured live 4/10); a
+  -- security_invoker / security_barrier set on either since then would be dropped silently, and the
+  -- md5 above cannot see it (pg_get_viewdef prints no options). Refuse instead: the owner decides.
+  foreach v_obj in array array['orders_with_derived', 'ct_v_rt_revenue'] loop
+    select array_to_string(c.reloptions, ', ') into v_opts from pg_class c
+     where c.oid = ('public.' || v_obj)::regclass;
+    if v_opts is not null then
+      raise exception '057 guard: % has view options (%) since 4/10 — CREATE OR REPLACE would drop them; regenerate the draft, owner decides',
+        v_obj, v_opts;
+    end if;
+  end loop;
   select count(*) into v_n from public.locations
    where id in (424, 885) and type is null and country is not null and country not in ('GR', 'Greece');
   if v_n <> 2 then
@@ -333,7 +357,11 @@ begin
          b.last_piece_delivered,
          b.closed_note, b.closed_at,
          k.complete,
-         case when k.complete then greatest(b.received_on, b.last_piece_delivered, b.closed_at::date) end as completed_on,
+         -- closed_at is a timestamptz: ::date alone takes the SESSION's day (UTC on Supabase), so a lot
+         -- closed at 00:30 Athens time would complete «yesterday» — on the screen and in B-15's 30-day
+         -- count. The team's day is Athens (round 1b, SQL reviewer P3-8); the other two are dates already.
+         case when k.complete then greatest(b.received_on, b.last_piece_delivered,
+                                            (b.closed_at at time zone 'Europe/Athens')::date) end as completed_on,
          b.invoiced
     from (
       select s.id, s.legacy_id, s.deleted_at, s.order_id, s.nat_order_id,
@@ -1429,7 +1457,8 @@ begin
   -- («Επιστροφή στο απόθεμα», «Ακύρωση groupage», a lone survivor's clear, SQL by hand) writes '',
   -- and the RT walks of 033/037 (rt_create_from_order, rt_link_split) compare group_id with «=»,
   -- where '' = '' links unrelated orders. Fixing the walks instead would leave the same trap for every
-  -- future reader of group_id. Not a stock guard: R1 of the rollback leaves it in place.
+  -- future reader of group_id. Not a stock guard: R1 of the rollback leaves it in place; its own way
+  -- off is 057_stock_lots_rollback_r3_blank_null_off.sql (drops only this trigger).
   -- The WHEN keeps it off every ordinary save; a non-blank value is never touched (not even trimmed:
   -- the Weekly compares Group ID strings exactly).
   create function public.orders_group_id_blank_null() returns trigger
@@ -1449,6 +1478,12 @@ begin
   revoke all on public.stock_lots from public, anon, authenticated, service_role;
   grant select, insert, update on public.stock_lots to service_role;          -- no DELETE/TRUNCATE: soft delete only
   grant select on public.stock_lots to tms_check_runner, tms_reader;
+  -- The identity sequence is an object of its own with its own defaults (round 1b, SQL reviewer
+  -- P3-1): live 4/10, objects created by supabase_admin get anon/authenticated USAGE+SELECT+UPDATE on
+  -- sequences by default (by postgres: only postgres + service_role). An open sequence lets anon
+  -- burn or reset lot ids. Closed like 053_order_documents. service_role is not touched: an identity
+  -- insert never checks sequence privileges.
+  revoke all on sequence public.stock_lots_id_seq from public, anon, authenticated;
   revoke all on public.stock_v_pieces, public.stock_v_lots, public.stock_v_lot_money, public.stock_v_lot_alloc,
                 public.stock_v_rt_amounts from public, anon, authenticated, service_role;
   grant select on public.stock_v_pieces, public.stock_v_lots, public.stock_v_lot_money, public.stock_v_lot_alloc,
@@ -1541,6 +1576,10 @@ begin
         raise exception '057 proof: % can SELECT %', v_role, v_obj;
       end if;
     end loop;
+    -- (PUBLIC is covered: a role inherits what PUBLIC holds.)
+    if has_sequence_privilege(v_role, 'public.stock_lots_id_seq', 'usage, select, update') then
+      raise exception '057 proof: % can use the stock_lots id sequence', v_role;
+    end if;
   end loop;
   foreach v_obj in array array['public.order_pallets(public.orders)', 'public.stock_natl_delivered(text, date)',
                                'public.stock_is_warehouse(bigint)', 'public.stock_raise(text, text)'] loop
@@ -1572,6 +1611,10 @@ begin
   select count(*) into v_cols from pg_attribute
    where attrelid = 'public.ct_v_rt_revenue'::regclass and attnum > 0 and not attisdropped;
   if v_cols <> 4 then raise exception '057 proof: ct_v_rt_revenue has % columns, expected 4', v_cols; end if;
+  -- Both rewritten views stay owner-rights, as the §0 guard found them (P3-2).
+  select count(*) into v_n from pg_class
+   where oid in ('public.orders_with_derived'::regclass, 'public.ct_v_rt_revenue'::regclass) and reloptions is not null;
+  if v_n <> 0 then raise exception '057 proof: % rewritten view(s) carry options (expected owner-rights, none)', v_n; end if;
 
   raise notice '057 OK: orders_with_derived 137 cols / % rows, % RT revenues (total/intl/natl) unchanged, 3 guards, 6 CHECKs, blank group_id → NULL, born closed, B-54 % triggers → % (green). New view md5: owd %, revenue %',
     v_owd_rows, cardinality(v_rev_after), v_b54_before, v_b54_red,

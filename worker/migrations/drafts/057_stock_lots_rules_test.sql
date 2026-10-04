@@ -2,15 +2,16 @@
 -- every test row, every trigger side effect (audit_log rows, leg status sync) rolls back with it.
 -- Run AFTER 057 (and after 057_stock_lots_verify.sql V1–V8). Expected last line of the error panel:
 --
---     RESULT: 82/82 OK
+--     RESULT: 87/87 OK
 --
 -- followed by one line per case («OK  01 expected over_draw · got over_draw»). Anything less = STOP,
--- copy the panel to the coordinator. 61 refusals + 15 accepted paths + 6 money cases (Ε1).
+-- copy the panel to the coordinator. 66 refusals + 15 accepted paths + 6 money cases (Ε1).
 -- Cases 36–49 and P11, P14 are the round-0 rules of the impact map (4/10): E-04 cancel (36, 37, P14),
 -- B-16 lot_grouped (38–43), C-15 lot_vs (44, 45, P11), C-05 piece_no_truck (46–49). 50–51: K7.
 -- Round 1 of the critics (4/10): D1 «on a truck» = truck or partner (13, 52, P12, P13), Σ-08 / E2-11
 -- an invoiced lot's statuses are frozen (53–55, 61), Σ-05 lot_grouped covers the rota (56–60),
--- D3 pieces_moving (P15).
+-- D3 pieces_moving (P15). Round 1b of the SQL reviewer (P3-3): 62–66 reach the last five codes
+-- (lot_empty, lot_is_piece, piece_is_lot, lot_missing, lot_source_missing).
 --
 -- HOW IT STAYS HARMLESS
 --   * Test rows use NEGATIVE ids written with OVERRIDING SYSTEM VALUE: no identity sequence moves,
@@ -29,7 +30,7 @@
 --   refusal: the error's hint is 'stock:<expected code>', or its constraint/index name is the
 --            expected CHECK / unique index;
 --   accepted / money: the statements pass and the check query returns exactly the expected text.
--- Shorthand in the statement lists (expanded by the runner, so the 82 cases stay readable):
+-- Shorthand in the statement lists (expanded by the runner, so the 87 cases stay readable):
 --   'IP:id,lot,pallets,status[,client[,pickup]]' = an international piece (Import, to a Greek site;
 --      status In Transit / Delivered → partner_id = the live partner, see above)
 --   'NP:id,lot,pallets,status[,client[,pickup]]' = a national piece
@@ -58,7 +59,7 @@ begin
   select id into pt from public.partners where deleted_at is null order by id limit 1;
   if c1 is null or c2 is null or gr is null or pt is null or to_regclass('public.stock_lots') is null
      or not public.stock_is_warehouse(wh) or not public.stock_is_warehouse(hub) then
-    raise exception 'RESULT: 0/82 — SETUP FAILED: run 057 first (needs 2 clients, a Greek site, a partner, 424 + 360 as warehouses)';
+    raise exception 'RESULT: 0/87 — SETUP FAILED: run 057 first (needs 2 clients, a Greek site, a partner, 424 + 360 as warehouses)';
   end if;
 
   insert into public.orders (id, legacy_id, reference, order_type, direction, status, client_id,
@@ -75,7 +76,7 @@ begin
 
   for r in
     select * from (values
-    -- ── Refusals (61) ───────────────────────────────────────────────────────────────────────────
+    -- ── Refusals (66) ───────────────────────────────────────────────────────────────────────────
     ('01', 'over_draw', array['IP:-9101,-9301,5,Pending', 'IP:-9102,-9301,15,Pending', 'IP:-9103,-9301,14,Pending'], null::text),
     ('02', 'orders_stock_piece_no_money', array[$q$insert into public.orders (id, legacy_id, reference, order_type, direction, status,
         client_id, loading_location_1_id, unloading_location_1_id, loading_pallets_1, stock_lot_id, price)
@@ -292,6 +293,30 @@ begin
            current_date - 2, current_date - 1)$q$,
         $q$update public.national_orders set invoiced = true, invoice_number = 'TEST-ERP-61' where id = -9502$q$,
         $q$update public.national_orders set delivery_datetime = current_date + 3 where id = -9502$q$], null),
+    -- Round 1b (SQL reviewer P3-3): the five codes no case reached until now, one case each.
+    -- 62: a lot without pallets (an order to the warehouse with no pallet count) is never marked.
+    ('62', 'lot_empty', array[$q$insert into public.orders (id, legacy_id, reference, order_type, direction, status, client_id,
+           loading_location_1_id, unloading_location_1_id)
+           overriding system value values (-9006, 'recTSTSTK9006', 'TEST-STOCK-9006', 'International', 'Export',
+           'Pending', %1$s, %3$s, %4$s)$q$,
+        $q$insert into public.stock_lots (id, order_id) values (-9305, -9006)$q$], null),
+    -- 63: a piece of lot A is marked as a lot itself.
+    ('63', 'lot_is_piece', array['IP:-9101,-9301,5,Pending',
+        $q$insert into public.stock_lots (id, order_id) values (-9305, -9101)$q$], null),
+    -- 64: lot B's source becomes a piece of lot A (the guard speaks before the no-money CHECK).
+    ('64', 'piece_is_lot', array[$q$update public.orders set stock_lot_id = -9301 where id = -9002$q$], null),
+    -- 65: a piece of lot B is deleted, the empty lot B is unmarked, then the piece is revived.
+    ('65', 'lot_missing', array['IP:-9101,-9302,5,Pending',
+        $q$update public.orders set deleted_at = now() where id = -9101$q$,
+        $q$update public.stock_lots set deleted_at = now() where id = -9302$q$,
+        $q$update public.orders set deleted_at = null where id = -9101$q$], null),
+    -- 66: a deleted order is marked as a lot.
+    ('66', 'lot_source_missing', array[$q$insert into public.orders (id, legacy_id, reference, order_type, direction, status, client_id,
+           loading_location_1_id, unloading_location_1_id, loading_pallets_1)
+           overriding system value values (-9006, 'recTSTSTK9006', 'TEST-STOCK-9006', 'International', 'Export',
+           'Pending', %1$s, %3$s, %4$s, 10)$q$,
+        $q$update public.orders set deleted_at = now() where id = -9006$q$,
+        $q$insert into public.stock_lots (id, order_id) values (-9305, -9006)$q$], null),
 
     -- ── Accepted paths (15) ──────────────────────────────────────────────────────────────────────
     -- P1: the form re-sends every field; only the reference changes; the lot is CLOSED.

@@ -10,14 +10,23 @@
 -- the text migration 034 (national RTs) left on 4/10 evening — 4 columns, revenue / revenue_intl /
 -- revenue_natl, embedded verbatim below (pg_get_viewdef via SELECT) → every RT reads orders.price
 -- again, exactly as before 057; ct_v_rt_pnl keeps reading the same 4 columns; the stock_v_* views
--- stay (unused by revenue). Proof: the view's md5 is the pre-057 one (62e488b5…, the md5 057 guards).
+-- stay (unused by revenue). Proof: the view's md5 is the pre-057 one (62e488b5…, the md5 057 guards)
+-- and it carries no view options (owner-rights); a view that gained options since 057 is refused.
 -- If a later migration rewrites ct_v_rt_revenue, this file must be regenerated with it.
 do $r2$
 declare
-  v_md5 text;
+  v_md5  text;
+  v_opts text;
 begin
   perform set_config('search_path', 'public', true);   -- same deparse context as the md5 measurement
   perform set_config('lock_timeout', '5s', true);       -- never queue TRIP PnL reads behind an idle transaction
+  -- CREATE OR REPLACE VIEW replaces the view's options with the ones it names — none (round 1b, SQL
+  -- reviewer P3-2). The view is owner-rights before 057 and after it (reloptions NULL, both proved by
+  -- 057); an option set since then would be dropped silently by this file → refuse, owner decides.
+  select array_to_string(reloptions, ', ') into v_opts from pg_class where oid = 'public.ct_v_rt_revenue'::regclass;
+  if v_opts is not null then
+    raise exception 'R2 guard: ct_v_rt_revenue has view options (%) — this file would drop them; owner decides', v_opts;
+  end if;
   create or replace view public.ct_v_rt_revenue as
    WITH natord_home AS (
            SELECT nord.id AS national_order_id,
@@ -101,6 +110,10 @@ begin
   if v_md5 is distinct from '62e488b56373dd14e1b697f7756aa5a8' then
     raise exception 'R2 proof: ct_v_rt_revenue md5 is %, expected the pre-057 (034) 62e488b56373dd14e1b697f7756aa5a8', v_md5;
   end if;
-  raise notice 'R2 OK: ct_v_rt_revenue is the pre-057 (034) text again (md5 %).', v_md5;
+  -- The md5 cannot see options (pg_get_viewdef prints none): owner-rights, exactly as before 057.
+  if (select reloptions from pg_class where oid = 'public.ct_v_rt_revenue'::regclass) is not null then
+    raise exception 'R2 proof: ct_v_rt_revenue carries view options, expected none (owner-rights as before 057)';
+  end if;
+  raise notice 'R2 OK: ct_v_rt_revenue is the pre-057 (034) text again (md5 %), owner-rights (no options).', v_md5;
 end
 $r2$;

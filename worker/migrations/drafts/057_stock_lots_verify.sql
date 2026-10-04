@@ -99,6 +99,13 @@ select table_name, grantee, privilege_type
                       'stock_v_lot_alloc', 'stock_v_rt_amounts')
    and grantee in ('anon', 'authenticated', 'PUBLIC');
 
+-- The identity sequence of stock_lots is born closed too (round 1b, SQL reviewer P3-1; objects made by
+-- supabase_admin get anon/authenticated rwU on sequences by default). Expected: f | f | t
+-- (service_role is untouched — an identity insert never needs it, but nothing was taken from it).
+select has_sequence_privilege('anon', 'public.stock_lots_id_seq', 'usage, select, update')          as anon_seq,
+       has_sequence_privilege('authenticated', 'public.stock_lots_id_seq', 'usage, select, update') as authenticated_seq,
+       has_sequence_privilege('service_role', 'public.stock_lots_id_seq', 'usage')                  as service_role_seq;
+
 -- Expected: exactly 3 rows — INSERT, SELECT, UPDATE (no DELETE, no TRUNCATE: soft delete only).
 select privilege_type from information_schema.role_table_grants
  where table_schema = 'public' and table_name = 'stock_lots' and grantee = 'service_role'
