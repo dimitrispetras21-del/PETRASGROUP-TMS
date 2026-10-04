@@ -140,9 +140,9 @@ function _oiCss() { return `
 .oi-locked{background:var(--surface-sunken);color:var(--text-mid);cursor:not-allowed}
 div.oi-locked{display:flex;align-items:center;font-size:13px}
 .oi-lot{margin:0 0 16px;padding:12px;border:1px solid var(--border);border-radius:8px;background:var(--surface-sunken)}
-.oi-lot-ck{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;cursor:pointer}
+.oi-lot-ck{display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer}
 .oi-lot-ck input{width:15px;height:15px;margin:0}
-.oi-lot-wh{margin-top:10px;max-width:420px}
+.oi-lot-wh{max-width:420px}
 .oi-lot-hint{font-size:11px;line-height:1.3;color:var(--text-mid);margin-top:4px}
 .oi-lot-hint.bad{color:var(--danger)}
 .oi-lot-off{margin-top:8px;font-size:12px;line-height:1.4;color:var(--warn)}
@@ -317,8 +317,11 @@ function _oiCardHtml(rec, opts) {
   // G-27 (impact map 4/10): a lot is «Delivered» when the WAREHOUSE received
   // it — «Παραδόθηκε» would read as delivered to the client. Same word as the
   // catalog and «Προς τιμολόγηση».
+  // Round 1 O5 (critic-2 E2-04): once invoiced, a lot reads «Τιμολογήθηκε» —
+  // «Στην αποθήκη» next to «✓ ΤΠΥ» said the goods never left.
   const isLot = typeof OrdersStock !== 'undefined' && OrdersStock.isLot(f);
-  const stGr = isLot && st === 'Delivered' ? 'Στην αποθήκη' : ((_OI_STATUS[st] || {}).gr || st);
+  const stGr = isLot && OrdersCommon.isInvoiced(f) ? 'Τιμολογήθηκε'
+    : isLot && st === 'Delivered' ? 'Στην αποθήκη' : ((_OI_STATUS[st] || {}).gr || st);
   // «Χωρίς ανάθεση» = no own truck AND no partner (owner 2/9). A partner load
   // IS assigned. Shown for every status: 15/89 delivered orders belong to
   // nobody and that gap must stay visible (DECISION_LOG 30/8).
@@ -410,7 +413,11 @@ function _oiCardHtml(rec, opts) {
       ${kv('Ανταλλαγή παλετών', peV, peCls)}
       ${f['Carrier Type'] ? kv('Μεταφορέας', escapeHtml(f['Carrier Type'])) : ''}
       ${_oiIsPiece(f) ? kv('Τιμή', 'στην παρτίδα ' + escapeHtml(OrdersStock.lotNumLabel(f)), 'miss') : kvm('Τιμή', hasPrice ? _oiMoney(f['Price']) : '')}
-      ${kv('Τιμολογήθηκε', f['Invoiced']
+      ${_oiIsPiece(f)
+        // O5 (critic-2 E2-05): a piece is never invoiced on its own — «Όχι»
+        // stayed «Όχι» for ever, even after the lot's ΤΠΥ.
+        ? kv('Τιμολογήθηκε', 'με την παρτίδα ' + escapeHtml(OrdersStock.lotNumLabel(f)), 'miss')
+        : kv('Τιμολογήθηκε', f['Invoiced']
         ? ['Ναι', f['Invoice Number'] ? 'ΤΠΥ ' + escapeHtml(f['Invoice Number']) : '', f['Invoice Date'] ? new Date(f['Invoice Date']).toLocaleDateString('el-GR') : ''].filter(Boolean).join(' · ')
         : 'Όχι')}
     </div>
@@ -669,7 +676,7 @@ async function _openModal(recId, f, _clientLabelOverride, _scanPrefill, _piece) 
         <select class="form-select" id="f_Direction"${_isPiece ? ' disabled title="Κομμάτι από απόθεμα = εισαγωγή από την αποθήκη"' : ''}><option value="">— Επιλογή —</option>
           ${opt([['Export','Εξαγωγή'],['Import','Εισαγωγή']],'Direction')}</select>
       </div>
-      <div class="form-field">
+      <div class="form-field" onfocusout="_oiWhWarn()">
         <label class="form-label">Πελάτης *</label>
         ${_clientSelect('client', clientId, clientLabel)}
       </div>
@@ -724,6 +731,7 @@ async function _openModal(recId, f, _clientLabelOverride, _scanPrefill, _piece) 
       <label id="oiVsLbl" style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer">
         <input type="checkbox" id="f_VeroiaSwitch" ${f['Veroia Switch']?'checked':''} style="width:15px;height:15px">
         Veroia Switch</label>
+      ${_oiLotTickHtml(SK)}
       <!-- Hidden, not removed (4/10, before the first national dispatcher): ticked
            on a Veroia Switch order it deleted the national leg with its truck and
            queued it where nobody works, under «συγχρονίστηκε ✓» (0/253 use it).
@@ -897,7 +905,7 @@ function _oiStockBandHtml(SK, f) {
   const warn = '<div id="oiPieceWarn" class="oi-banner oi-banner-warn" role="status" style="display:none;margin-bottom:12px"></div>';
   if (SK.mode === 'lotEdit') {
     if (!SK.lot) return '<div class="oi-banner oi-banner-bad" style="margin-bottom:12px">Η παρτίδα αυτής της παραγγελίας δεν διαβάστηκε — το υπόλοιπο δεν φαίνεται. Οι κανόνες της ισχύουν στη βάση· ξαναδοκίμασε με Ανανέωση.</div>' + whWarn;
-    return `<div class="oi-banner" style="margin-bottom:12px">Παρτίδα ${e(OrdersStock.lotLabel(SK.lot))} · υπόλοιπο ${n(g['Remaining Pallets'])}/${n(g['Stock Pallets'])}p · ${n(g['Pieces'])} κομμάτια (${n(g['Pieces Delivered'])} παραδόθηκαν)${SK.frozen ? '<small>Οι παλέτες κλείδωσαν με την παραλαβή στην αποθήκη — μείωση μόνο με «Κλείσιμο υπολοίπου».</small>' : ''}</div>` + whWarn;
+    return _oiLotBandHtml(SK) + whWarn;
   }
   if (SK.mode === 'pieceEdit') {
     const tail = SK.lot ? ` · διαθέσιμα ${n(g['Remaining Pallets'])}p στην αποθήκη` : SK.failed ? ' — η παρτίδα δεν διαβάστηκε· το όριο παλετών το ελέγχει η βάση' : '';
@@ -910,10 +918,47 @@ function _oiStockBandHtml(SK, f) {
     : '';
   return cargo + warn;
 }
+// The lot band of an existing lot. A closed lot shows its close (round 1 O2)
+// and, for owner/dispatcher while not invoiced, «Άνοιγμα ξανά» (O1, critic-1
+// C1-04 / critic-2 E2-01) — the way back that used to need SQL.
+function _oiLotBandHtml(SK) {
+  const g = (SK.lot && SK.lot.fields) || {}, n = v => Number(v) || 0, e = escapeHtml;
+  const closed = OrdersStock.closedLine(SK.lot);
+  const reopen = closed && OrdersStock.reopenable(SK.lot)
+    ? ` <button type="button" class="btn btn-ghost btn-sm" id="oiLotReopen" onclick="_oiLotReopen()">Άνοιγμα ξανά</button>` : '';
+  return `<div class="oi-banner" id="oiLotBand" style="margin-bottom:12px">Παρτίδα ${e(OrdersStock.lotLabel(SK.lot))} · υπόλοιπο ${n(g['Remaining Pallets'])}/${n(g['Stock Pallets'])}p · ${n(g['Pieces'])} κομμάτια (${n(g['Pieces Delivered'])} παραδόθηκαν)${closed ? `<small id="oiLotClosed">${e(closed)}${reopen}</small>` : ''}${SK.frozen ? '<small>Οι παλέτες κλείδωσαν με την παραλαβή στην αποθήκη — μείωση μόνο με «Κλείσιμο υπολοίπου».</small>' : ''}</div>`;
+}
+// The read-back decides (OrdersStock.reopenLot); the band is repainted from
+// the lot record the base returned. No confirm: reversible by closing again,
+// and a confirmAction would draw over the form being edited.
+async function _oiLotReopen() {
+  const SK = INTL_ORDERS._stock;
+  if (!SK || !SK.lot || !OrdersStock.reopenable(SK.lot)) return;
+  const b = document.getElementById('oiLotReopen'); if (b) { b.disabled = true; b.textContent = 'Άνοιγμα…'; }
+  const res = await OrdersStock.reopenLot(SK.lot.id);
+  if (!res.ok) {
+    // D2 (round 1): a refusal of the base is already on screen (core/api.js).
+    showErrorToast(res.shown ? 'Η παρτίδα ΔΕΝ άνοιξε — μένει κλειστή' : 'Η παρτίδα ΔΕΝ άνοιξε: ' + res.error, res.shown ? 'warn' : 'error', 10000);
+    if (b) { b.disabled = false; b.textContent = 'Άνοιγμα ξανά'; }
+    return;
+  }
+  SK.lot = res.lot;
+  const band = document.getElementById('oiLotBand');
+  if (band) band.outerHTML = _oiLotBandHtml(SK);
+  if (typeof OrdersData !== 'undefined') OrdersData.invalidate();
+  toast('Η παρτίδα ' + escapeHtml(OrdersStock.lotLabel(res.lot)) + ' άνοιξε ξανά — περιμένει κομμάτια');
+}
+// Round 1 O6 (critic-5 S5-03): the lot is ONE checkbox in the flags row, next
+// to «⚠ Υψηλό ρίσκο» and «Veroia Switch» — the grey box with three nouns sat
+// on every new international order for a rare case. The warehouse select
+// opens only when ticked (#oiLotBox below).
+function _oiLotTickHtml(SK) {
+  if (!SK || !SK.section) return '';
+  return `<label class="oi-lot-ck" title="Παρτίδα σε αποθήκη συνεργάτη — απόθεμα που βγαίνει σε κομμάτια"><input type="checkbox" id="f_StockLot" ${SK.wasLot ? 'checked' : ''} onchange="_oiLotToggle()"> Παρτίδα</label>`;
+}
 function _oiLotSectionHtml(SK) {
   if (!SK || !SK.section) return '';
-  return `<div class="oi-lot" id="oiLotBox">
-      <label class="oi-lot-ck"><input type="checkbox" id="f_StockLot" ${SK.wasLot ? 'checked' : ''} onchange="_oiLotToggle()"> Παρτίδα σε αποθήκη (απόθεμα)</label>
+  return `<div class="oi-lot" id="oiLotBox"${SK.wasLot ? '' : ' style="display:none"'}>
       <div id="oiLotWh" class="oi-lot-wh"${SK.wasLot ? '' : ' style="display:none"'}>
         <label class="form-label" for="f_StockWh">Αποθήκη *</label>
         <select class="form-select" id="f_StockWh" onchange="_oiLotApply()"><option value="">Φόρτωση αποθηκών…</option></select>
@@ -1004,8 +1049,8 @@ async function _oiLotCargo(SK) {
 }
 
 // G-31 (impact map 4/10): the Partner-Warehouse list is read on first need —
-// the «Παρτίδα» tick or a loading stop to check (PR-17) — and kept for ten
-// minutes, not read on every form open. A failure is not cached: the next
+// the «Παρτίδα» tick (the PR-17 warning reads the open lots since round 1
+// O6) — and kept for ten minutes, not read on every form open. A failure is not cached: the next
 // need asks again. → { recs } or { recs: null, error }.
 let _oiPwCache = null;
 function _oiPartnerWarehouses() {
@@ -1016,22 +1061,37 @@ function _oiPartnerWarehouses() {
   return p;
 }
 
+// The OPEN lots (Complete = 0), read on first need and kept two minutes —
+// the PR-17 warning asks on every loading-stop / client change. A failure is
+// not cached (the next need asks again) and shows no warning: the warning is
+// a hint, the base still refuses a priced order drawn from nothing.
+let _oiOpenLotsCache = null;
+function _oiOpenLots() {
+  if (_oiOpenLotsCache && Date.now() - _oiOpenLotsCache.at < 120000) return _oiOpenLotsCache.p;
+  const p = OrdersStock.loadOpen().then(r => { if (!r.ok) _oiOpenLotsCache = null; return r; });
+  _oiOpenLotsCache = { at: Date.now(), p };
+  return p;
+}
 // PR-17 / G-15 (impact map 4/10): an ordinary import typed or scanned «from
 // the warehouse» is a priced order — invoiced next to its lot, while the
 // warehouse stock never sees its pallets. Non-blocking: a warehouse can also
 // be an ordinary pickup. Only with the switch on (before go-live the ΑΠΟΘΕΜΑ
 // it points to does not exist) and never on a piece form, which loads there
 // by definition.
+// Round 1 O6 (critic-5 S5-03): only when an OPEN lot of THIS client sits at
+// that warehouse — the 20-word bar showed on every ordinary pickup at any
+// warehouse. ≤ 12 words. No client chosen yet → nothing to compare, no bar.
 async function _oiWhWarn() {
   const el = document.getElementById('oiWhWarn'), SK = INTL_ORDERS._stock;
   if (!el || !SK || SK.mode === 'pieceNew' || SK.mode === 'pieceEdit' || typeof OrdersStock === 'undefined' || !OrdersStock.on()) return;
   const loc = document.getElementById('lv_l_1')?.value || '';
-  if (!loc) { el.style.display = 'none'; return; }
-  const res = await _oiPartnerWarehouses();
-  // The modal closed, or the stop changed, while the list was on its way.
-  if (!el.isConnected || (document.getElementById('lv_l_1')?.value || '') !== loc) return;
-  const hit = !!(res.recs && res.recs.some(r => r.id === loc));
-  el.textContent = hit ? 'Φόρτωση από αποθήκη συνεργάτη: αν είναι κομμάτι παρτίδας, άνοιξέ το από το ΑΠΟΘΕΜΑ του Weekly — αλλιώς θα τιμολογηθεί δεύτερη φορά' : '';
+  const cli = document.getElementById('lv_client')?.value || '';
+  if (!loc || !cli) { el.style.display = 'none'; return; }
+  const res = await _oiOpenLots();
+  // The modal closed, or the stop / client changed, while the lots were on their way.
+  if (!el.isConnected || (document.getElementById('lv_l_1')?.value || '') !== loc || (document.getElementById('lv_client')?.value || '') !== cli) return;
+  const hit = !!(res.ok && res.lots.some(l => l.fields['Client Rec'] === cli && l.fields['Warehouse Rec'] === loc));
+  el.textContent = hit ? 'Υπάρχει παρτίδα αυτού του πελάτη εδώ — κομμάτι; από το ΑΠΟΘΕΜΑ' : '';
   el.style.display = hit ? '' : 'none';
 }
 
@@ -1072,8 +1132,12 @@ function _oiPieceWarn() {
   const recv = g['Received On'] ? toLocalDate(g['Received On']) : '';
   const ld = document.getElementById('dt_l_1')?.value || '';
   let msg = '';
+  // Round 1 O7 (critic-1 C1-10): one sentence, one fact — «δεν παραλήφθηκε …
+  // — παραλήφθηκε» read as a contradiction at 06:00. What it means: the
+  // loading day is before the warehouse intake.
+  const dm = ymd => ymd.slice(8, 10) + '/' + ymd.slice(5, 7);
   if (g['Intake Delivered'] !== true) msg = 'Η παρτίδα δεν έχει παραληφθεί ακόμη στην αποθήκη.';
-  else if (recv && ld && ld < recv) msg = `Η παρτίδα δεν έχει παραληφθεί ακόμη στην αποθήκη την ${ld.split('-').reverse().join('/')} — παραλήφθηκε ${recv.split('-').reverse().join('/')}.`;
+  else if (recv && ld && ld < recv) msg = `Φόρτωση ${dm(ld)} πριν από την παραλαβή στην αποθήκη (${dm(recv)}) — έλεγξε την ημέρα.`;
   el.textContent = msg;
   el.style.display = msg ? '' : 'none';
 }
@@ -1106,9 +1170,11 @@ async function _oiLoadWarehouses(currentId) {
 
 function _oiLotToggle() {
   const on = !!document.getElementById('f_StockLot')?.checked;
+  const wasLot = !!(INTL_ORDERS._stock && INTL_ORDERS._stock.wasLot);
+  const wrap = document.getElementById('oiLotBox'); if (wrap) wrap.style.display = on || wasLot ? '' : 'none';
   const box = document.getElementById('oiLotWh'); if (box) box.style.display = on ? '' : 'none';
   const off = document.getElementById('oiLotOff');
-  if (off) off.style.display = !on && INTL_ORDERS._stock && INTL_ORDERS._stock.wasLot ? '' : 'none';
+  if (off) off.style.display = !on && wasLot ? '' : 'none';
   _oiLotVs(on);
   const sel = document.getElementById('f_StockWh');
   if (on && sel && !sel.dataset.loaded) _oiLoadWarehouses('');   // G-31: first tick reads the list
@@ -1162,9 +1228,10 @@ async function _oiMarkLot(orderId, ctx) {
   const formOpen = !!document.getElementById('f_StockLot');
   // «Ξανά» re-sends ONLY the mark, never the form's edits: a refusal fixed in
   // the form (e.g. 0 pallets) needs the order saved again first — say how.
-  // The DB's own reason is already on screen when res.shown (round-1 K3):
+  // The DB's own reason is already on screen when res.shown (round-1 K3, D2):
   // this line says only what happened and what to do, not the reason twice.
-  showErrorToast('Η παραγγελία αποθηκεύτηκε, αλλά ΔΕΝ έγινε παρτίδα' + (res.shown ? ' (ο λόγος παραπάνω)' : ': ' + res.error)
+  // No «(ο λόγος παραπάνω)»: the toasts stack upwards, so the reason sat BELOW.
+  showErrorToast('Η παραγγελία αποθηκεύτηκε, αλλά ΔΕΝ έγινε παρτίδα' + (res.shown ? '' : ': ' + res.error)
     + (formOpen ? ' — «Ξανά» ξαναστέλνει μόνο τη σήμανση· αν πρέπει να αλλάξεις κάτι στη φόρμα: Άκυρο → άνοιξε ξανά την παραγγελία.'
                 : ' — άνοιξε την παραγγελία, τσέκαρε «Παρτίδα» και πάτησε Αποθήκευση.'), 'error', 12000);
   const b = document.getElementById('btnSubmit');
@@ -1732,6 +1799,7 @@ async function submitIntlOrder(recId) {
   // (335/336/337/338 in 3 minutes, dispatcher 14/9). The id of the order this
   // modal already created is remembered until the modal closes.
   if (!recId && INTL_ORDERS._createdId) recId = INTL_ORDERS._createdId;
+  let _written = false;   // the ORDERS write itself went through (D2 context below)
 
   try {
     // 057: the order was saved but its lot mark was refused — this press
@@ -2052,7 +2120,8 @@ async function submitIntlOrder(recId) {
       }
       const _un = await OrdersStock.unmarkLot(_SK.lotRec);
       if (!_un.ok) {
-        showErrorToast('Η παραγγελία ΠΑΡΑΜΕΝΕΙ παρτίδα — δεν αποθηκεύτηκε τίποτα: ' + _un.error, 'error', 12000);
+        // D2 (round 1): the base's reason is already on screen when shown.
+        showErrorToast('Η παραγγελία ΠΑΡΑΜΕΝΕΙ παρτίδα — δεν αποθηκεύτηκε τίποτα' + (_un.shown ? '' : ': ' + _un.error), _un.shown ? 'warn' : 'error', 12000);
         if (btn) { btn.textContent = 'Αποθήκευση'; btn.disabled = false; }
         return;
       }
@@ -2062,6 +2131,7 @@ async function submitIntlOrder(recId) {
     const result = recId
       ? await atSafePatch(TABLES.ORDERS, recId, fields)
       : await atCreate(TABLES.ORDERS, fields);
+    _written = true;
     if (result?.conflict) { toast('Η εγγραφή άλλαξε από άλλον χρήστη — κάνε Ανανέωση και ξαναδοκίμασε','warn'); return; }
 
     if (result?.error) throw new Error(result.error.message || JSON.stringify(result.error));
@@ -2176,7 +2246,14 @@ async function submitIntlOrder(recId) {
   } catch(e) {
     // 'validation' is the sentinel thrown after a blocking validation alert (line ~1259);
     // that path already messaged the user, so don't double-report.
-    if (e.message !== 'validation') reportError('Σφάλμα αποθήκευσης παραγγελίας', e);
+    // D2 (round 1, critic-1 C1-06 / critic-5 S5-06): a 4xx refusal (over_draw,
+    // a Worker validation, a 403) is already on screen from core/api.js — a
+    // generic red «Σφάλμα αποθήκευσης» under it read as a system fault. Only
+    // the context: what was (not) written; the reason stays the api's.
+    if (e && e._noRetry && e.message !== 'validation') {
+      showErrorToast(_written ? 'Η παραγγελία αποθηκεύτηκε, αλλά ένα επόμενο βήμα δεν έγινε — ξαναδοκίμασε την Αποθήκευση'
+        : 'Δεν αποθηκεύτηκε τίποτα — η φόρμα μένει ανοιχτή', 'warn', 8000);
+    } else if (e.message !== 'validation') reportError('Σφάλμα αποθήκευσης παραγγελίας', e);
     if (btn) { btn.textContent = 'Αποθήκευση'; btn.disabled = false; }
   }
 }
@@ -2934,8 +3011,28 @@ async function _scanOpen(matched, data) {
 // opts.rerender: the page to repaint afterwards (the pre-order delete on
 // Weekly/Daily passes its own); default = the orders list.
 // ═══════════════════════════════════════════════════════════════
+// Round 1 O9 (critic-1 C1-07): a piece or a lot says what it is before it
+// goes — the generic warning (NAT_LOADS, RAMP, «ΔΕΝ ΑΝΑΙΡΕΙΤΑΙ») scared the
+// dispatcher off a 4-pallet loose piece and named none of what happens: its
+// pallets go back to the lot. The record comes from what is on screen (the
+// list, the Weekly, its shelf), else one read; unknown → the generic text.
+async function _oiDeleteConfirmText(recId) {
+  let f = (INTL_ORDERS.data || []).find(r => r.id === recId)?.fields;
+  const W = window.WINTL && WINTL.data;
+  if (!f && W) f = [...(W.exports || []), ...(W.imports || []), ...((W.stock && W.stock.loose) || [])].find(r => r && r.id === recId)?.fields;
+  if (!f && typeof OrdersStock !== 'undefined' && OrdersStock._rec(recId)) {
+    try { f = (await atGetOne(TABLES.ORDERS, recId))?.fields; } catch (e) { f = null; }
+  }
+  const generic = '🛑 ΔΙΑΓΡΑΦΗ International Order;\n\nΑυτό θα σβήσει ΚΑΙ:\n• Τα linked NAT_LOADS\n• GROUPAGE LINES + CONS_LOADS\n• RAMP records\n• PALLET LEDGER entries\n• ORDER_STOPS\n\nΗ ΕΝΕΡΓΕΙΑ ΔΕΝ ΑΝΑΙΡΕΙΤΑΙ.\n\nΕίσαι σίγουρος;';
+  if (!f || typeof OrdersStock === 'undefined') return generic;
+  const num = f['Order No'] ? '#' + f['Order No'] : (f['Reference'] || '');
+  const pal = Number(f['Total Pallets']) || 0;
+  if (OrdersStock.isPiece(f)) return `Διαγραφή κομματιού ${num} — οι ${pal}p γυρίζουν στην παρτίδα ${OrdersStock.lotNumLabel(f)}.\n\nΣυνέχεια;`;
+  if (OrdersStock.isLot(f)) return `Διαγραφή παρτίδας ${num} (${pal}p) — το απόθεμα φεύγει μαζί της. Η βάση την αρνείται αν έχουν βγει κομμάτια ή αν τιμολογήθηκε.\n\nΣυνέχεια;`;
+  return generic;
+}
 async function deleteIntlOrder(recId, opts) {
-  if (!confirm('🛑 ΔΙΑΓΡΑΦΗ International Order;\n\nΑυτό θα σβήσει ΚΑΙ:\n• Τα linked NAT_LOADS\n• GROUPAGE LINES + CONS_LOADS\n• RAMP records\n• PALLET LEDGER entries\n• ORDER_STOPS\n\nΗ ΕΝΕΡΓΕΙΑ ΔΕΝ ΑΝΑΙΡΕΙΤΑΙ.\n\nΕίσαι σίγουρος;')) return;
+  if (!confirm(await _oiDeleteConfirmText(recId))) return;
 
   try {
     toast('Διαγραφή παραγγελίας...', 'info');
@@ -3309,6 +3406,7 @@ window._oiLotToggle = _oiLotToggle;
 window._oiLotApply = _oiLotApply;
 window._oiLotPallets = _oiLotPallets;
 window._oiWhWarn = _oiWhWarn;   // PR-17: inline handlers of the loading stops
+window._oiLotReopen = _oiLotReopen;   // O1: «Άνοιγμα ξανά» in the lot band
 window.duplicateIntlOrder = duplicateIntlOrder;
 window.selectIntlOrder = selectIntlOrder;
 window._oiCloseCard = _oiCloseCard;
