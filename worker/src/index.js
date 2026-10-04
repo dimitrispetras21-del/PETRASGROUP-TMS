@@ -1956,8 +1956,8 @@ var TABLES = {
   //   - `Closed Note` on PATCH = «Κλείσιμο υπολοίπου» with its reason — the
   //     DB stamps closed_at itself (a client-sent time is ignored), so
   //     «Closed At» is computed, read-only here.
-  // Every rule (destination must be a warehouse, no unmark with pieces or
-  // after invoicing, close only when intake and all pieces are delivered,
+  // Every rule (one destination = the warehouse — any live location, owner
+  // 4/10; no unmark with pieces or after invoicing, close only when intake and all pieces are delivered,
   // never re-link) lives in 057's stock_guard_lots trigger + CHECKs; the
   // refusals come back as Greek 422s through stockRuleError().
   //
