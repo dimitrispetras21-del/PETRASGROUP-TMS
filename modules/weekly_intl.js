@@ -5041,7 +5041,19 @@ async function _wiImpGroup(rowId,otherRowId){
 // `Group ID` on ORDERS (same pattern as NAT_LOADS `Groupage ID`), rebuilt in
 // _wiBuildRows — «με την ανανέωση η σελίδα χαλάει» (00 §2) ends here.
 // UI-level grouping of ORDERS only: GL/CL and the never-delete rule untouched.
+//
+// "No group" is written as null, NEVER '' (owner go 4/10). The facade copies
+// the value verbatim (fieldsToColumns: row[column]=value, no blank→NULL), so
+// '' lands in orders.group_id as ''. The round-trip triggers rt_link_split /
+// rt_create_from_order walk `cur.group_id is not null and n.group_id =
+// cur.group_id` — '' is not null, so every order cleared to '' counts as ONE
+// group and their RT legs get merged. The browser (rt-feed.js `if (gid)`)
+// already treats '' as no group, which is why this stayed invisible on
+// screen. Reads stay truthy-checks, so null (absent in the facade response)
+// and a legacy '' display the same. A DB guard (057, blank→NULL) is drafted
+// separately; this keeps new '' from being written meanwhile.
 async function _wiGroupPatch(orderIds, gid, rowId){
+  gid=gid||null; // a dissolve must never send '' (see above)
   _wiSync('wi-sync-'+rowId,'pend', gid?'Αποθήκευση ομάδας…':'Διάλυση ομάδας…');
   let failed=false;
   for(const oid of orderIds){
@@ -5105,7 +5117,7 @@ async function _wiSplit(rowId){
     });
   });
   _wiPaint();toast('Η ομάδα διαλύθηκε');
-  const gidOk=await _wiGroupPatch(allIds, '', row.id); // clear Group ID on all members
+  const gidOk=await _wiGroupPatch(allIds, null, row.id); // clear Group ID on all members — null, not '' (see _wiGroupPatch)
   // Owner audit fix: _wiGroupPatch already reports+toasts a partial failure,
   // but the old code went on to clear members' assignments regardless — if
   // the Group ID clear didn't actually land in the DB, a refresh re-collapses
@@ -5277,10 +5289,12 @@ async function _wiSyncGroupResidue(row){
   if(row.orderIds.length===1){
     const oid=row.orderIds[0];
     try{
-      const res=await atSafePatch(TABLES.ORDERS,oid,{'Group ID':''});
+      // null, never '': two lone survivors cleared to '' would be ONE group
+      // to the round-trip triggers (see _wiGroupPatch).
+      const res=await atSafePatch(TABLES.ORDERS,oid,{'Group ID':null});
       if(res?.error) throw new Error(res.error.message||res.error.type);
       if(String(res.fields?.['Group ID']||'')) throw new Error('Δεν καθαρίστηκε στην ανάγνωση');
-      const rec=cache.find(r=>r.id===oid); if(rec) rec.fields['Group ID']='';
+      const rec=cache.find(r=>r.id===oid); if(rec) rec.fields['Group ID']=null;
       return true;
     }catch(err){ console.warn('[wi group residue] lone survivor clear:',err.message); return false; }
   }
@@ -5320,8 +5334,10 @@ async function _wiCancelGroupMember(rowId,orderId,isImportSide){
         }
       }
     }
-    const leavePatch=executing?{'Group ID':''}:{
-      'Group ID':'','Truck':[],'Trailer':[],'Driver':[],'Partner':[],
+    // 'Group ID': null, never '' — orders that left a group as '' would be
+    // ONE group to the round-trip triggers (see _wiGroupPatch).
+    const leavePatch=executing?{'Group ID':null}:{
+      'Group ID':null,'Truck':[],'Trailer':[],'Driver':[],'Partner':[],
       'Is Partner Trip':false,'Partner Truck Plates':'','Status':'Pending',
     };
     const res=await atSafePatch(TABLES.ORDERS,orderId,leavePatch);
@@ -5331,7 +5347,7 @@ async function _wiCancelGroupMember(rowId,orderId,isImportSide){
   }catch(e){ reportError('Η αφαίρεση από το groupage απέτυχε',e); return; }
   const cache=isImportSide?WINTL.data.imports:WINTL.data.exports;
   const rec=cache.find(r=>r.id===orderId);
-  if(rec) Object.assign(rec.fields,executing?{'Group ID':''}:{'Group ID':'','Truck':[],'Trailer':[],'Driver':[],'Partner':[],'Is Partner Trip':false,'Partner Truck Plates':'','Status':'Pending'});
+  if(rec) Object.assign(rec.fields,executing?{'Group ID':null}:{'Group ID':null,'Truck':[],'Trailer':[],'Driver':[],'Partner':[],'Is Partner Trip':false,'Partner Truck Plates':'','Status':'Pending'});
   if(executing) toast('Η παραγγελία είναι ήδη σε μεταφορά/παραδόθηκε — βγήκε από το groupage αλλά κρατά όχημα, κατάσταση και γύρο','warn');
   row.orderIds=row.orderIds.filter(id=>id!==orderId);
   // Item 2 (owner 9/9): the departing order may have BEEN row.orderId — the
