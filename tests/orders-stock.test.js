@@ -93,15 +93,25 @@ test('isPiece / isLot read the facade fields — and do not depend on the switch
   assert.strictEqual(OrdersStock.lotRecOfLot({}), null);
 });
 
-test('isLoose: a piece with no truck, partner or group and not delivered — stock, not late work', () => {
+test('isLoose (D1): a piece with no truck and no partner, not delivered — a Group ID or a match is a plan, not a vehicle', () => {
   const p = f => Object.assign({ 'Stock Lot': ['recLot1'], Status: 'Pending' }, f);
   assert.strictEqual(OrdersStock.isLoose(p({})), true);
-  assert.strictEqual(OrdersStock.isLoose(p({ 'Group ID': null })), true, 'a cleared Group ID (NULL → absent) is no group');
+  assert.strictEqual(OrdersStock.isLoose(p({ 'Group ID': null })), true, 'a cleared Group ID (NULL → absent)');
   assert.strictEqual(OrdersStock.isLoose(p({ Truck: ['recT'] })), false);
   assert.strictEqual(OrdersStock.isLoose(p({ Partner: ['recP'] })), false);
-  assert.strictEqual(OrdersStock.isLoose(p({ 'Group ID': 'GI-X|recL' })), false, 'in a group');
+  // critic-3 Σ-03/Σ-04: «Καθαρισμός ανάθεσης» leaves the Group ID — the piece
+  // has no vehicle, so it is stock (joinable; the join overwrites the group).
+  assert.strictEqual(OrdersStock.isLoose(p({ 'Group ID': 'GI-X|recL' })), true, 'stale Group ID, no truck → loose');
+  assert.strictEqual(OrdersStock.isLoose(p({ 'Group ID': 'GI-X|recL', Truck: ['recT'] })), false, 'group on a truck → on the truck');
   assert.strictEqual(OrdersStock.isLoose(p({ Status: 'Delivered' })), false);
   assert.strictEqual(OrdersStock.isLoose({ Status: 'Pending' }), false, 'an ordinary order is never loose');
+});
+
+test('isLoose (D1) and loadLoosePieces ask the same thing: the formula has no Group ID term', async () => {
+  await OrdersStock.loadLoosePieces();
+  const f = calls.at(-1)[2];
+  assert.ok(!/Group ID/.test(f), 'no Group ID in the shelf formula — ' + f);
+  for (const term of ['{Stock Lot}!=BLANK()', '{Truck}=BLANK()', '{Partner}=BLANK()', "{Status}!='Delivered'"]) assert.ok(f.includes(term), term);
 });
 
 test('on(): born closed — needs FEATURES.STOCK_LOTS === true AND TABLES.STOCK_LOTS', () => {

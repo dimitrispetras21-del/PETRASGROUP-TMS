@@ -318,15 +318,21 @@ const OrdersStock = {
   // «Own Stock Lot» is the rec of the lot this order is the SOURCE of — a plain
   // string from the view (own.legacy_id), not a link array.
   isLot(f) { return !!(f && f['Own Stock Lot']); },
-  // A piece waiting in the warehouse: no truck, no partner, no group, not
-  // delivered. It is STOCK, not late work — its Loading/Delivery dates are the
-  // ones of the truck it last left («Επιστροφή στο απόθεμα» keeps them), so the
-  // screens that list late or unassigned orders skip it and the Weekly shelf
-  // counts it instead (impact map 4/10: C-05, E-16, B-19). Same rule as
-  // loadLoosePieces below; a Case-B piece carries the export's truck itself.
+  // A piece waiting in the warehouse: no truck, no partner, not delivered. It
+  // is STOCK, not late work — its Loading/Delivery dates are the ones of the
+  // truck it last left («Επιστροφή στο απόθεμα» keeps them), so the screens
+  // that list late or unassigned orders skip it and the Weekly shelf counts it
+  // instead (impact map 4/10: C-05, E-16, B-19). A Case-B piece carries the
+  // export's truck itself.
+  // D1 (round 1, 4/10): «on a truck» = Truck or Partner, NOTHING else. A Group
+  // ID or an export's match is a plan, not a vehicle — a piece left with a
+  // stale Group ID after «Καθαρισμός ανάθεσης» used to count «σε κίνηση» here
+  // and «χωρίς φορτηγό» in the base, and the base let it load with no truck
+  // (critic-3 Σ-03/Σ-04, critic-5 S5-11). Same predicate as loadLoosePieces
+  // below and as the base's stock_v_pieces.on_truck / piece_no_truck.
   isLoose(f) {
     return OrdersStock.isPiece(f) && !getLinkedId(f['Truck']) && !getLinkedId(f['Partner'])
-      && !String(f['Group ID'] || '').trim() && f['Status'] !== 'Delivered';
+      && f['Status'] !== 'Delivered';
   },
   lotRecOfPiece(f) { return getLinkedId(f && f['Stock Lot']) || null; },
   lotRecOfLot(f) { return (f && f['Own Stock Lot']) || null; },
@@ -450,7 +456,8 @@ const OrdersStock = {
     return OrdersStock._orders(`FIND("${lotRec}",ARRAYJOIN({Stock Lot},","))>0`, 'pieces');
   },
   // Pieces waiting for a truck (all weeks): returned to stock, or created
-  // before their truck was known.
+  // before their truck was known. The formula IS isLoose (D1): a Group ID
+  // does not take a piece off this list — the Weekly join overwrites it.
   loadLoosePieces() {
     return OrdersStock._orders("AND({Stock Lot}!=BLANK(),{Truck}=BLANK(),{Partner}=BLANK(),{Status}!='Delivered')", 'loose pieces');
   },
