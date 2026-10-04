@@ -393,6 +393,14 @@ async function dailyWarehouse(browser) {
   const cells = await page.locator('td.do-asg').allInnerTexts();
   assert(cells.every(c => !/€|\d+,\d\d/.test(c)), 'warehouse: no amount in any ΑΝΑΘΕΣΗ cell');
   await page.screenshot({ path: path.join(SHOT_DIR, 'local-relay-daily-warehouse-1440.png'), fullPage: true });
+  // The Worker gives warehouse NO DRIVERS read (PERMISSIONS: no drivers row,
+  // no wildcard), so in production no name resolves. The stub above is more
+  // generous; simulate the unresolved name and repaint: an ASSIGNED relay
+  // must still read assigned («ΤΟΠ. —»), never «ΠΡΟΣ ΑΝΑΘΕΣΗ».
+  await page.evaluate(() => { window.getDriverName = () => ''; _opsSetFilter('q', (OPS.filters && OPS.filters.q) || ''); });
+  const i1n = await txt(page, `#r_${ORD.I1} td.do-asg`);
+  assert(/ΤΟΠ\.\s*— · 07:00/.test(i1n) && !i1n.includes('ΠΡΟΣ ΑΝΑΘΕΣΗ'), 'warehouse without a readable name: «ΤΟΠ. — · 07:00», never «ΠΡΟΣ ΑΝΑΘΕΣΗ» — ' + JSON.stringify(i1n));
+  assert((await txt(page, `#r_${ORD.I2} td.do-asg`)).includes('ΤΟΠ. ΠΡΟΣ ΑΝΑΘΕΣΗ'), 'warehouse: the relay with no driver still reads red «ΤΟΠ. ΠΡΟΣ ΑΝΑΘΕΣΗ»');
   await context.close();
   return errors;
 }

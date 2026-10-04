@@ -959,7 +959,11 @@ function _opsRelayClick(orderId, kind){
   return ` role="button" tabindex="0" title="Άνοιγμα ${kind==='relay_delivery'?'τοπικής παράδοσης':'τοπικής φόρτωσης'}" onclick="event.stopPropagation();${go}" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();event.stopPropagation();${go}}"`;
 }
 function _opsRelayMain(rel, orderId){
-  const drv=getDriverName(getLinkedId(rel.fields['Driver']));
+  // Decided on the LINK, never on the resolved name: a role without DRIVERS
+  // read (warehouse, Worker PERMISSIONS) resolves no name, and an assigned
+  // relay must not read «ΠΡΟΣ ΑΝΑΘΕΣΗ» there — it reads «ΤΟΠ. —».
+  const drvId=getLinkedId(rel.fields['Driver']);
+  const drv=drvId?(getDriverName(drvId)||'—'):'';
   const hm=rel.fields['Time From']?escapeHtml(String(rel.fields['Time From'])):'';
   // Red word when the relay is declared but nobody is on it yet — the same
   // fact the auditor's B-63 reports the day before.
