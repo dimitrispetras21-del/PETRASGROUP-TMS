@@ -251,7 +251,7 @@ const AT_BASE='appElT5CQV6JQvym8';
 const T_ORDERS='tblgHlNmLBH3JTdIM',T_PARTNERS='tblLHl5m8bqONfhWv',
       T_TRUCKS='tblEAPExIAjiA3asD',T_TRAILERS='tblDcrqRJXzPrtYLm',
       T_DRIVERS='tbl7UGmYhc2Y82pPs',T_LOCS='tblxu8DRfTQOFRCzS',
-      T_STOPS='tblaeY5QOHAS1gyE8';
+      T_STOPS='tblaeY5QOHAS1gyE8',T_CLIENTS='tblFWKAQVUzAM8mCE';
 var orderStops=[];
 // Ονοματεπώνυμο του χρήστη που εκτυπώνει (owner 12/8) — ίδιο origin, οπότε
 // διαβάζεται το tms_user του app· fallback στον owner αν λείπει.
@@ -560,7 +560,8 @@ function buildCrossdockHTML(f){
 // PR-05 (impact map 4/10): a stock piece leaves FROM STOCK — its sheet says so
 // and names the lot the warehouse releases. The order is read with one GET and
 // no fields[] (atGet below), so «Stock Lot» and «Stock Lot Order No» arrive
-// with every other column. Lot number only: no client name, no money.
+// with every other column. No money. OWNER-Q10 answered 4/10 (client name on
+// piece driver sheet): the DRIVER sheet also names the client (stockLotText).
 // Same «#312» / «Ε-27» rule as OrdersStock.lotNumLabel (core/orders-common.js);
 // tests/orders-stock.test.js keeps the two in step (this page loads no core JS).
 function stockLotLabel(f){
@@ -574,10 +575,38 @@ function stockLotLabel(f){
 // Reference leads, served by the Worker as ORDERS «Stock Lot Reference».
 // Before that label exists it is absent (facade trap #2) and the line falls
 // back to the lot number alone. No «ΑΠ ·» (it abbreviated the label next to it).
+// OWNER-Q10 answered 4/10 (client name on piece driver sheet): «Ναι, και
+// πελάτης» — the warehouse releases the goods by lot AND client. Driver sheet
+// only (the partner sheet goes to a third-party carrier and stays as it was).
+// The piece's OWN «Client» link: the base refuses a piece whose client is not
+// the lot's (piece_mismatch), so it is the lot's client. A name that could not
+// be read (a role without CLIENTS, e.g. warehouse → 403; a failed read) prints
+// «—», never a gap that reads as «no client».
 function stockLotText(f,isPartner){
   var n=stockLotLabel(f); if(!n)return '';
   var ref=String(f['Stock Lot Reference']||'').trim();
-  return (ref?'Ref '+ref+' · ':'')+(isPartner?'lot ':'παρτίδα ')+n;
+  var who=isPartner?'':' · '+(pieceClients[fv(f['Client'])]||'—');
+  return (ref?'Ref '+ref+' · ':'')+(isPartner?'lot ':'παρτίδα ')+n+who;
+}
+// clientRec → name ('' = not read). Filled by loadPieceClients before any sheet is built.
+var pieceClients={};
+// One GET per client of a piece printed on a DRIVER sheet — only then, so an
+// ordinary print asks nothing more than before. Never throws: a refusal
+// (403 body without fields) or a failed fetch leaves '' → «—» on the paper.
+async function loadPieceClients(items){
+  var ids=[];
+  items.forEach(function(it){
+    var f=it.orderRec.fields||{}, cid=fv(f['Client']);
+    if(stockLotLabel(f)&&!computeIsPartner(f)&&/^rec[A-Za-z0-9]{1,32}$/.test(cid)&&ids.indexOf(cid)<0)ids.push(cid);
+  });
+  await Promise.all(ids.map(async function(cid){
+    try{
+      var r=await fetch(PROXY_URL+'/v0/'+AT_BASE+'/'+T_CLIENTS+'/'+cid,{headers:atAuthHeader()});
+      var d=r.ok?await r.json():null;
+      pieceClients[cid]=String((d&&d.fields&&d.fields['Company Name'])||'').trim();
+      if(!r.ok)console.warn('print: client of the piece not readable ('+r.status+')');
+    }catch(e){console.warn('print: client of the piece not read',e);pieceClients[cid]='';}
+  }));
 }
 // A Reference is typed by people (the lot's above, the order's own refNo, the
 // PE list); the same text also feeds the WhatsApp message (plain), so it is
@@ -644,6 +673,7 @@ async function loadAll(){
       }
       items.push({orderRec:orderR, stops:stops});
     }
+    await loadPieceClients(items);
     var htmlArr=[]; _waArr=[];
     var isGroup=items.length>1;
     if(isGroup) htmlArr.push(buildCoverDoc(items));
@@ -733,7 +763,8 @@ function generatePDF(orderRec, bare){ // bare (Wave 3): no toolbar — docs 2..N
   // Worker (legacy Airtable label — see CLAUDE.md name traps). The real
   // sequential id is 'Order No' (worker/src/index.js computed field,
   // orders_with_derived.order_no). Reference is the next best human id;
-  // the record-id fallback stays last-resort only.
+  // the record-id fallback stays last-resort only. Typed by people when it
+  // is the Reference: escaped where it enters HTML (escHtml), plain in WhatsApp.
   var orderNo=f['Order No']||f['Reference']||String(orderRec.id||orderId||'').slice(-6).toUpperCase();
   var isPartner=computeIsPartner(f);
   LBL=isPartner?LBL_EN:LBL_GR; // Συνεργάτης=EN, Οδηγός=GR (redesign 9/8)
@@ -825,7 +856,7 @@ function generatePDF(orderRec, bare){ // bare (Wave 3): no toolbar — docs 2..N
     '<div class="meta-item"><span class="meta-lbl">'+_m.week+'</span><span class="meta-val">W'+wk+'</span></div>'+
     '<div class="meta-item"><span class="meta-lbl">'+_m.cat+'</span><span class="meta-val">'+(isPartner?legLabel:legLabelGr)+'</span></div>'+
     '<div class="meta-item"><span class="meta-lbl">'+_m.disp+'</span><span class="meta-val">'+DISPATCHER+'</span></div>'+
-    '<div class="meta-item"><span class="meta-lbl">'+_m.ord+'</span><span class="meta-val">'+orderNo+'</span></div>'+
+    '<div class="meta-item"><span class="meta-lbl">'+_m.ord+'</span><span class="meta-val">'+escHtml(orderNo)+'</span></div>'+
     (refNo?'<div class="meta-item"><span class="meta-lbl">'+_m.ref+'</span><span class="meta-val">'+escHtml(refNo)+'</span></div>':'')+
     (stockNo?'<div class="meta-item"><span class="meta-lbl">'+_m.stock+'</span><span class="meta-val">'+escHtml(stockNo)+'</span></div>':'')+
     (badgeHTML&&!isPartner?'<div class="meta-item"><span class="meta-lbl">'+_m.flags+'</span><span class="meta-val">'+badgeHTML+'</span></div>':'')+
@@ -854,7 +885,7 @@ function generatePDF(orderRec, bare){ // bare (Wave 3): no toolbar — docs 2..N
         '<div class="co-info"><b>VERMION FRESH SA</b><br>Kopanos, Naousa — Imathia, Greece<br>VAT: EL800816168<br>vermionfresh@petrasgroup.com</div>'+
       '</div>'+
     '</div>'+
-    '<div class="doc-title">Partner Assignment Order — '+legLabel+' — PAO-W'+wk+'-'+orderNo+'</div>'+
+    '<div class="doc-title">Partner Assignment Order — '+legLabel+' — PAO-W'+wk+'-'+escHtml(orderNo)+'</div>'+
     metaHTML+
     routeStrip(f,isExport,veroiaSwitch,VEROIA)+
     '<div class="rate2">'+
@@ -909,7 +940,7 @@ function generatePDF(orderRec, bare){ // bare (Wave 3): no toolbar — docs 2..N
         '<div class="k">Εντολή Οδηγού</div>'+
         '<div class="t">W'+wk+' · '+legLabelGr+'</div>'+
         '<div class="s">'+LBL.issued+' '+new Date().toLocaleDateString('el-GR')+' '+new Date().toLocaleTimeString('el-GR',{hour:'2-digit',minute:'2-digit'})+' · '+DISPATCHER+'</div>'+
-        '<div class="ordno">ORDER '+orderNo+(refNo?' · REF '+escHtml(refNo):'')+'</div>'+
+        '<div class="ordno">ORDER '+escHtml(orderNo)+(refNo?' · REF '+escHtml(refNo):'')+'</div>'+
         '<div class="cxl">'+LBL.cancel+'</div>'+
       '</div>'+
     '</div>'+
@@ -1029,7 +1060,7 @@ function buildCoverDoc(items){
   var metaHTML='<div class="meta">'+
     '<div class="meta-item"><span class="meta-lbl">'+_m.wk+'</span><span class="meta-val">W'+wk+'</span></div>'+
     '<div class="meta-item"><span class="meta-lbl">'+_m.cat+'</span><span class="meta-val">'+(isPartner?legLabel:legLabelGr)+'</span></div>'+
-    '<div class="meta-item"><span class="meta-lbl">'+_m.ord+'</span><span class="meta-val">'+orderNos.join(' · ')+'</span></div>'+
+    '<div class="meta-item"><span class="meta-lbl">'+_m.ord+'</span><span class="meta-val">'+escHtml(orderNos.join(' · '))+'</span></div>'+
     '<div class="meta-item"><span class="meta-lbl">'+_m.seq+'</span><span class="meta-val">'+seqNames.join(' → ')+'</span></div>'+
   '</div>';
 
@@ -1044,7 +1075,7 @@ function buildCoverDoc(items){
       var lastName=lastUn?(resolveLoc(lastUn.fields['Location'])||{}).name:'—';
       // C4-02: the piece is marked as stock on the cover too, at its stop.
       var stk=stockLotText(f,isPartner);
-      var tag='ΠΑΡΑΓΓΕΛΙΑ '+String.fromCharCode(65+i)+' · '+ordNoOf(it.orderRec)+' · '+lastName+(stk?' · '+(isPartner?'From stock · ':'Απόθεμα · ')+escHtml(stk):'');
+      var tag='ΠΑΡΑΓΓΕΛΙΑ '+String.fromCharCode(65+i)+' · '+escHtml(ordNoOf(it.orderRec))+' · '+lastName+(stk?' · '+(isPartner?'From stock · ':'Απόθεμα · ')+escHtml(stk):'');
       stopsOfType(it.stops,type).forEach(function(s){
         var loc=resolveLoc(s.fields['Location']); if(!loc)return;
         tlHTML+=buildCard(0,loc,dtLabel,s.fields['DateTime']||'',s.fields['Pallets']||'',

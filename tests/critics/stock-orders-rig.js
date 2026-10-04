@@ -155,7 +155,16 @@ async function newPage(browser, role, view) {
     if (u.includes("{Type}='Partner Warehouse'")) cap.pwReads++;
     return json(r, { records: u.includes("{Type}='Partner Warehouse'") ? LOCS.filter(l => l.fields.Type === 'Partner Warehouse') : LOCS });
   });
-  await page.route(`**/${CLIENTS}**`, r => json(r, { records: CLIENTS_FX }));
+  // One client by id (print.html, OWNER-Q10): cap.clientsDenied = the Worker's 403 for a role
+  // without CLIENTS; cap.clientName overrides the name (escaping check).
+  await page.route(`**/${CLIENTS}**`, r => {
+    const one = r.request().url().match(/\/(rec[A-Za-z0-9]+)(\?|$)/);
+    if (!one) return json(r, { records: CLIENTS_FX });
+    cap.clientReads = (cap.clientReads || 0) + 1;
+    if (cap.clientsDenied) return json(r, { error: { type: 'FORBIDDEN', message: 'Δεν έχετε δικαίωμα' } }, 403);
+    const c = CLIENTS_FX.find(x => x.id === one[1]);
+    return c ? json(r, cap.clientName ? { id: c.id, fields: Object.assign({}, c.fields, { 'Company Name': cap.clientName }) } : c) : json(r, { error: { type: 'NOT_FOUND' } }, 404);
+  });
   await page.route(`**/${ORDERS}**`, async r => {
     const req = r.request(), m = req.method(), url = decodeURIComponent(req.url());
     const one = url.match(/\/(rec[A-Za-z0-9]+)(\?|$)/);
@@ -372,7 +381,13 @@ async function runFormTick(browser) {
   const plainF = cap.fx.orders.find(o => o.id === 'recPlain').fields, openF = cap.fx.orders.find(o => o.id === 'recOpen').fields;
   await page.evaluate(f => openIntlEditWith('recPlain', JSON.parse(JSON.stringify(f))), plainF);
   await page.waitForSelector('#pal_l_1', { timeout: 8000 });
-  ok(await page.locator('#f_StockLot').count() === 1, 'OWNER-Q8: a Delivered ordinary order offers the «Παρτίδα» tick (dispatcher)');
+  ok(await page.locator('#f_StockLot').count() === 1, 'OWNER-Q8: a Delivered, not invoiced ordinary order offers the «Παρτίδα» tick (dispatcher)');
+  await page.evaluate(() => closeModal());
+  // review P2 (4/10): «never invoiced» — an invoiced Delivered order offers no tick
+  const invF = Object.assign(JSON.parse(JSON.stringify(plainF)), { Invoiced: true, 'Invoice Number': '0999' });
+  await page.evaluate(f => openIntlEditWith('recPlain', f), invF);
+  await page.waitForSelector('#pal_l_1', { timeout: 8000 });
+  ok(await page.locator('#f_StockLot').count() === 0, 'OWNER-Q8 / review P2: an invoiced Delivered order offers no «Παρτίδα» tick');
   await page.evaluate(() => closeModal());
   await page.evaluate(f => openIntlEditWith('recOpen', JSON.parse(JSON.stringify(f))), openF);
   await page.waitForSelector('#f_StockLot', { timeout: 8000 });
@@ -451,6 +466,16 @@ async function runLotCreate(browser) {
   await page.fill('#dt_u_1', addDays(TODAY, 3));
   await page.screenshot({ path: shot('02-form-lot') });
 
+  // review P3 (4/10): retyping after a pick drops the chosen id — an unpicked name is refused
+  // at the save like a never-picked one, nothing is written; then the pick again.
+  await page.fill('#f_StockWhS', 'Depot K (άλλη)');
+  ok(await page.$eval('#f_StockWh', e => e.value) === '', 'review P3: retyping the warehouse after a pick clears the chosen id');
+  const nRe0 = cap.posts.length;
+  await page.click('#btnSubmit');
+  await waitText(page, /Διάλεξε την αποθήκη της παρτίδας/);
+  ok(cap.posts.length === nRe0, 'review P3: a retyped, unpicked warehouse is refused at the save — nothing POSTed');
+  await pickWarehouse(page, 'Depot', 'Depot K');
+  ok(await page.$eval('#f_StockWh', e => e.value) === 'recLocDE', '… picked again → recLocDE');
   // G-14: the base's mark refusals mirrored BEFORE the order is saved
   await page.fill('#pal_l_1', ''); await page.dispatchEvent('#pal_l_1', 'input');
   const nPost0 = cap.posts.length;
@@ -1056,7 +1081,9 @@ async function runWarehouse(browser) {
 
 // PR-05 / round 1 O10 (critic-4 C4-05): the piece's driver sheet names the
 // lot by the REFERENCE the warehouse knows («Stock Lot Reference», Worker label
-// after S2) and falls back to «#N» before the deploy — no client, no money, no «ΑΠ ·».
+// after S2) and falls back to «#N» before the deploy — no money, no «ΑΠ ·».
+// OWNER-Q10 answered 4/10 (client name on piece driver sheet): and the client —
+// «—» when the printing role cannot read CLIENTS (warehouse → 403).
 async function runPrint(browser) {
   console.log('\n[print] piece driver sheet');
   const page = await newPage(browser, 'dispatcher', 'catalog');
@@ -1065,19 +1092,43 @@ async function runPrint(browser) {
   await page.waitForFunction(() => /Εντολή Οδηγού/.test(document.body.innerText), null, { timeout: 20000 });
   const t = (await page.locator('#doc').innerText()).replace(/\s+/g, ' ');
   const meta = await page.evaluate(() => { const i = [...document.querySelectorAll('.meta-item')].find(e => /απόθεμα/i.test(e.querySelector('.meta-lbl').textContent)); return i ? i.querySelector('.meta-val').textContent : ''; });
-  ok(meta === 'Ref TEST-STOCK-LOT · παρτίδα #1300', 'O10/C4-05: piece sheet «Ref <lot Reference> · παρτίδα #1300», no «ΑΠ ·» — ' + JSON.stringify(meta));
-  ok(!/Πελάτης Α/.test(t) && !/€|3\.?300/.test(t), 'PR-05: no client name, no money on the sheet');
+  ok(meta === 'Ref TEST-STOCK-LOT · παρτίδα #1300 · Πελάτης Α', 'O10/C4-05 + OWNER-Q10: piece sheet «Ref <lot Reference> · παρτίδα #1300 · <client>», no «ΑΠ ·» — ' + JSON.stringify(meta));
+  ok((t.match(/Πελάτης Α/g) || []).length === 1 && !/€|3\.?300/.test(t) && cap.clientReads === 1, 'OWNER-Q10: the client name once on the piece sheet (one CLIENTS read), still no money — reads ' + cap.clientReads);
   const wa = await page.evaluate(() => _waArr.join('\n'));
-  ok(/Απόθεμα · Ref TEST-STOCK-LOT · παρτίδα #1300/.test(wa), 'O10/C4-02: the WhatsApp text marks the piece as stock — ' + JSON.stringify(wa.split('\n').filter(l => /παρτίδα/.test(l))));
+  ok(/Απόθεμα · Ref TEST-STOCK-LOT · παρτίδα #1300 · Πελάτης Α/.test(wa), 'O10/C4-02 + OWNER-Q10: the WhatsApp text marks the piece as stock, with the client — ' + JSON.stringify(wa.split('\n').filter(l => /παρτίδα/.test(l))));
   await page.screenshot({ path: shot('12-print-piece-sheet'), fullPage: false });
   // before the Worker serves «Stock Lot Reference»: the lot number alone (facade trap #2: absent)
   await page.goto('print.html?orderId=recPc2&leg=import&sheet=driver');
   await page.waitForFunction(() => /Εντολή Οδηγού/.test(document.body.innerText), null, { timeout: 20000 });
   const meta2 = await page.evaluate(() => { const i = [...document.querySelectorAll('.meta-item')].find(e => /απόθεμα/i.test(e.querySelector('.meta-lbl').textContent)); return i ? i.querySelector('.meta-val').textContent : ''; });
-  ok(meta2 === 'παρτίδα #1300', 'O10/C4-05: no «Stock Lot Reference» label yet → «παρτίδα #1300» — ' + JSON.stringify(meta2));
+  ok(meta2 === 'παρτίδα #1300 · Πελάτης Α', 'O10/C4-05: no «Stock Lot Reference» label yet → «παρτίδα #1300 · Πελάτης Α» — ' + JSON.stringify(meta2));
+  const reads0 = cap.clientReads;
   await page.goto('print.html?orderId=recPlain&leg=export&sheet=driver');
   await page.waitForFunction(() => /Εντολή Οδηγού/.test(document.body.innerText), null, { timeout: 20000 });
-  ok(!/Παρτίδα|παρτίδα/.test(await page.locator('#doc').innerText()), 'an ordinary order prints no lot line');
+  const plainT = await page.locator('#doc').innerText();
+  ok(!/Παρτίδα|παρτίδα/.test(plainT) && !/Πελάτης Α/.test(plainT) && cap.clientReads === reads0, 'an ordinary order prints no lot line and no client name, and reads no CLIENTS (OWNER-Q10: pieces only)');
+  // the partner sheet of a piece (third-party carrier) stays without the client
+  await page.goto('print.html?orderId=recPc1&leg=import&sheet=partner');
+  await page.waitForFunction(() => /Partner Assignment Order/.test(document.body.innerText), null, { timeout: 20000 });
+  ok(!/Πελάτης Α/.test(await page.locator('#doc').innerText()) && cap.clientReads === reads0, 'OWNER-Q10: the piece\'s PARTNER sheet stays without the client (no CLIENTS read)');
+  ok(cap.errors.length === 0, 'no page errors — ' + cap.errors.join(' | '));
+  await page.context().close();
+}
+
+// OWNER-Q10: the warehouse role has no CLIENTS (Worker 403) — the piece sheet
+// prints «—» for the client, never a gap and never a broken page.
+async function runPrintNoClients(browser) {
+  console.log('\n[print] piece driver sheet, warehouse role (CLIENTS 403)');
+  const page = await newPage(browser, 'warehouse', 'catalog');
+  const cap = page._cap;
+  cap.clientsDenied = true;
+  await page.goto('print.html?orderId=recPc1&leg=import&sheet=driver');
+  await page.waitForFunction(() => /Εντολή Οδηγού/.test(document.body.innerText), null, { timeout: 20000 });
+  const meta = await page.evaluate(() => { const i = [...document.querySelectorAll('.meta-item')].find(e => /απόθεμα/i.test(e.querySelector('.meta-lbl').textContent)); return i ? i.querySelector('.meta-val').textContent : ''; });
+  ok(meta === 'Ref TEST-STOCK-LOT · παρτίδα #1300 · —' && cap.clientReads === 1, 'OWNER-Q10: CLIENTS 403 → «… · παρτίδα #1300 · —», the sheet still prints — ' + JSON.stringify(meta));
+  const wa = await page.evaluate(() => _waArr.join('\n'));
+  ok(/Απόθεμα · Ref TEST-STOCK-LOT · παρτίδα #1300 · —/.test(wa), 'OWNER-Q10: the WhatsApp text says «—» too');
+  await page.screenshot({ path: shot('12b-print-piece-no-client') });
   ok(cap.errors.length === 0, 'no page errors — ' + cap.errors.join(' | '));
   await page.context().close();
 }
@@ -1095,7 +1146,8 @@ async function runPrintGroup(browser) {
   const chips = await page.evaluate(() => { const c = document.querySelector('.p-doc .cargo'); return c ? [...c.querySelectorAll('.chip')].map(x => x.innerText.replace(/\s+/g, ' ')) : []; });
   ok(chips.some(c => /18 × EUR \+ 15 × CHEP/.test(c)), 'O10/C4-01: cover pallets chip lists every type «18 × EUR + 15 × CHEP» — ' + JSON.stringify(chips));
   ok(chips.some(c => /ΝΑΙ — μόνο A TEST-LEAD/.test(c)), 'O10/C4-01: cover PE «ΝΑΙ — μόνο A TEST-LEAD» (the piece never exchanges) — ' + JSON.stringify(chips));
-  ok(/ΠΑΡΑΓΓΕΛΙΑ B · 2002 · [^·]+ · Απόθεμα · Ref TEST-STOCK-LOT · παρτίδα #1300/.test(docs[0]), 'O10/C4-02: the cover stop of the piece is marked as stock');
+  const tags = await page.evaluate(() => [...[...document.querySelectorAll('.p-doc')][0].querySelectorAll('.stoptag')].map(t => t.textContent.replace(/\s+/g, ' ')));
+  ok(tags.some(t => /^ΠΑΡΑΓΓΕΛΙΑ B · 2002 · [^·]+ · Απόθεμα · Ref TEST-STOCK-LOT · παρτίδα #1300 · Πελάτης Α$/.test(t)) && tags.filter(t => /^ΠΑΡΑΓΓΕΛΙΑ A/.test(t)).every(t => !/Πελάτης|Απόθεμα/.test(t)), 'O10/C4-02 + OWNER-Q10: the cover stop of the piece is marked as stock, with the client; the lead\'s is not — ' + JSON.stringify(tags));
   const wa = await page.evaluate(() => _waArr);
   ok(wa.length >= 2 && /Απόθεμα · Ref TEST-STOCK-LOT · παρτίδα #1300/.test(wa[wa.length - 1]) && !/Απόθεμα/.test(wa[0]), 'O10/C4-02: the piece\'s WhatsApp text (right-click share) says stock; the lead\'s does not');
   await page.screenshot({ path: shot('14-print-group-packet'), fullPage: true });
@@ -1137,6 +1189,28 @@ async function runPrintEscape(browser) {
   });
   ok(own.meta === RAW_LEAD && own.metaEl === 0 && own.ord.endsWith('REF ' + RAW_LEAD) && own.ordEl === 0, 'task B: the order\'s own Reference «' + RAW_LEAD + '» prints as text in the meta grid and the ORDER line — ' + JSON.stringify(own));
   ok(/Ref: L<i>1<\/i>/.test(r.wa), 'task B: the WhatsApp text keeps the order Reference as typed');
+  // OWNER-Q10: the client name is text too; review P3: an order without «Order No» prints its
+  // typed Reference as the order number — escaped in the meta, the ORDER line and the cover.
+  cap.clientName = 'Πελάτης <b>Β</b>';
+  delete cap.fx.orders.find(o => o.id === 'recLead').fields['Order No'];
+  await page.goto('print.html?orderIds=recLead,recGPc&leg=import&sheet=driver');
+  await page.waitForFunction(() => document.querySelectorAll('.p-doc').length >= 3, null, { timeout: 20000 });
+  const r2 = await page.evaluate(() => {
+    const docs = [...document.querySelectorAll('.p-doc')];
+    const lead = docs.find(d => /REF L/.test((d.querySelector('.ordno') || {}).textContent || ''));
+    const ordMeta = lead && [...lead.querySelectorAll('.meta-item')].find(e => /Αρ\. Εντολής/.test(e.querySelector('.meta-lbl').textContent));
+    const coverMeta = [...docs[0].querySelectorAll('.meta-item')].find(e => /Αρ\. Εντολών/.test(e.querySelector('.meta-lbl').textContent));
+    const tags = [...docs[0].querySelectorAll('.stoptag')];
+    const stockMeta = [...document.querySelectorAll('.meta-item')].find(e => /απόθεμα/i.test(e.querySelector('.meta-lbl').textContent));
+    return { ord: lead ? lead.querySelector('.ordno').textContent : '', ordEl: lead ? lead.querySelector('.ordno').querySelectorAll('i').length : -1,
+      meta: ordMeta ? ordMeta.querySelector('.meta-val').textContent : '', metaEl: ordMeta ? ordMeta.querySelectorAll('i').length : -1,
+      cover: coverMeta ? coverMeta.querySelector('.meta-val').textContent : '', coverEl: coverMeta ? coverMeta.querySelectorAll('i').length : -1,
+      tagEl: tags.reduce((a, t) => a + t.querySelectorAll('i,b').length, 0), tagTxt: tags.map(t => t.textContent).join(' | '),
+      client: stockMeta ? stockMeta.querySelector('.meta-val').textContent : '', clientEl: stockMeta ? stockMeta.querySelectorAll('b').length : -1 };
+  });
+  ok(r2.ord.startsWith('ORDER ' + RAW_LEAD) && r2.ordEl === 0 && r2.meta === RAW_LEAD && r2.metaEl === 0 && r2.cover.startsWith(RAW_LEAD) && r2.coverEl === 0 && r2.tagEl === 0 && r2.tagTxt.includes(RAW_LEAD),
+    'review P3: order number = typed Reference prints as text (ORDER line, «Αρ. Εντολής», cover meta + stop tags) — ' + JSON.stringify(r2).slice(0, 300));
+  ok(r2.client.endsWith(' · Πελάτης <b>Β</b>') && r2.clientEl === 0, 'OWNER-Q10: the client name prints as text — ' + JSON.stringify(r2.client));
   ok(cap.errors.length === 0, 'no page errors — ' + cap.errors.join(' | '));
   await page.context().close();
 }
@@ -1165,7 +1239,7 @@ async function runPrintLotPartner(browser) {
 (async () => {
   const browser = await chromium.launch();
   try {
-    for (const run of [runCatalog, runForm, runFormTick, runLotCreate, runPiece, runLotEdit, runAccountant, runOwner, runOwnerCharge, runOwnerNoCharge, runReopen, runWarehouse, runPrint, runPrintGroup, runPrintEscape, runPrintLotPartner]) {
+    for (const run of [runCatalog, runForm, runFormTick, runLotCreate, runPiece, runLotEdit, runAccountant, runOwner, runOwnerCharge, runOwnerNoCharge, runReopen, runWarehouse, runPrint, runPrintNoClients, runPrintGroup, runPrintEscape, runPrintLotPartner]) {
       try { await run(browser); } catch (e) { failed++; console.log('  ✗ ' + run.name + ' threw: ' + (e && e.stack || e)); }
     }
   } finally { await browser.close(); }

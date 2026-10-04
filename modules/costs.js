@@ -484,10 +484,15 @@ function ctStockLeg(o) {
     // separate «Χρέωση αποθήκης» that the owner enters on the lot.
     // Our own truck (no assignment → partner_cost NULL) earns 0 — an owner
     // decision («μόνο τα κομμάτια»), not a gap: the warehouse charge and the
-    // net are carried by the pieces' RTs.
+    // net are carried by the pieces' RTs. partner_cost is NULL too when a
+    // partner carried it but no rate was entered (review P3 4/10): the
+    // wording follows the order's own Partner, never claims «δικό μας»
+    // for a partner trip. The amount is 0 either way (the DB's coalesce).
     if (m.partner_cost == null) {
-      return { amount: 0, sum: 0, note: `παρτίδα ${num} · δικό μας φορτηγό — μόνο τα κομμάτια`,
-        title: 'Το σκέλος που πήγε την παρτίδα στην αποθήκη με δικό μας φορτηγό δεν έχει έσοδο· το καθαρό της παρτίδας μοιράζεται στα κομμάτια' };
+      const own = !f['Is Partner Trip'] && !getLinkedId(f['Partner']);
+      return { amount: 0, sum: 0, note: `παρτίδα ${num} · ${own ? 'δικό μας φορτηγό' : 'χωρίς κόμιστρο συνεργάτη'} — μόνο τα κομμάτια`,
+        title: own ? 'Το σκέλος που πήγε την παρτίδα στην αποθήκη με δικό μας φορτηγό δεν έχει έσοδο· το καθαρό της παρτίδας μοιράζεται στα κομμάτια'
+          : 'Συνεργάτης χωρίς καταχωρημένο κόμιστρο: το σκέλος μετρά 0 μέχρι να μπει η ανάθεση· το καθαρό της παρτίδας μοιράζεται στα κομμάτια' };
     }
     return { amount: Number(m.partner_cost), sum: 0, note: `παρτίδα ${num} · κόμιστρο συνεργάτη`,
       title: 'Το έσοδο του σκέλους της παρτίδας = το κόμιστρο του συνεργάτη· το καθαρό της παρτίδας μοιράζεται στα κομμάτια' };

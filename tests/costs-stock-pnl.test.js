@@ -150,3 +150,19 @@ test('addendum A: a VS piece — the card shows the DB\'s prorated VS share (−
   assert.match(h, /Veroia Switch: −€295 /, h);
   assert.ok(!/−€650|ανεξήγητη/.test(h), h);
 });
+
+// Review P3 (4/10): partner_cost is NULL also when a PARTNER carried the lot and
+// no rate was entered — the line must not claim «δικό μας φορτηγό» then. The
+// wording follows the source order's own Partner; the amount stays 0.
+test('round 2: partner_cost NULL on a partner-carried lot — €0, «χωρίς κόμιστρο συνεργάτη», never «δικό μας»', async () => {
+  const own = { lots: [{ lot_rec: 'recSTOCKLOT1', allocation_status: 'ok', partner_cost: null, warehouse_charge: 120, charge_total: 120, net: 3180 }], pieces: [] };
+  const { ctx } = load(async () => ({ ok: true, status: 200, json: async () => own }));
+  const t = { id: 6, code: 'RT-6', trip_type: 'PARTNER', partner_id: 9, revenue: 0, status: 'closed', date_start: '2026-10-01' };
+  const lotByPartner = { id: LOT.id, fields: Object.assign({}, LOT.fields, { 'Is Partner Trip': true, Partner: ['recPARTNER0001'] }) };
+  setCard(ctx, t, [[10, lotByPartner, 'EXPORT']]);
+  await ctx.ctStockLoad();
+  const raw = ctx.ctCardHtml(t), h = text(raw);
+  assert.match(h, /· παρτίδα #312 · χωρίς κόμιστρο συνεργάτη — μόνο τα κομμάτια/, h);
+  assert.match(raw, /<span class="lamt ct-mono">€0<\/span>/, raw);
+  assert.ok(!/δικό μας φορτηγό|€3\.300|ανεξήγητη/.test(h), h);
+});

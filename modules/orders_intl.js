@@ -893,10 +893,11 @@ async function _oiStockCtx(recId, f, piece) {
   // OWNER-Q8 answered 4/10 (owner+dispatcher, also after delivery, never
   // invoiced) — impact map G-30: the tick is offered on a new order and on any
   // existing ordinary order, Delivered too (goods already sitting in a
-  // warehouse are marked after the fact). Invoiced: the tick shows, and the
-  // save refuses BEFORE any write (G-14 mirror «Τιμολογημένη παραγγελία δεν
-  // γίνεται παρτίδα», srcInvoiced below); the base refuses it too (lot_invoiced).
-  sk.section = OrdersStock.on() && OrdersStock.canWrite() && (sk.mode === 'lotEdit' || sk.mode === 'none');
+  // warehouse are marked after the fact) — but NEVER on an invoiced one. The
+  // save's G-14 mirror («Τιμολογημένη παραγγελία δεν γίνεται παρτίδα»,
+  // srcInvoiced) and the base (lot_invoiced) stay as the guards behind it.
+  sk.section = OrdersStock.on() && OrdersStock.canWrite()
+    && (sk.mode === 'lotEdit' || (sk.mode === 'none' && !(recId && f['Invoiced'])));
   return sk;
 }
 function _oiPieceLotLabel(SK, f) {
@@ -1098,7 +1099,7 @@ function _oiLotSectionHtml(SK) {
         <label class="form-label" for="f_StockWhS">Αποθήκη *</label>
         <div style="position:relative">
           <input class="form-input" id="f_StockWhS" autocomplete="off" placeholder="Αναζήτηση αποθήκης…"
-            oninput="if(!this.value.trim())document.getElementById('f_StockWh').value='';_oiWhDrop(this.value)"
+            oninput="document.getElementById('f_StockWh').value='';_oiWhDrop(this.value)"
             onfocus="_oiWhDrop(this.value)" onblur="fhHideDrop('f_StockWhD')">
           <input type="hidden" id="f_StockWh" value="">
           <div id="f_StockWhD" class="linked-drop" style="display:none"></div>
@@ -1330,6 +1331,10 @@ async function _oiLoadWarehouses(currentId) {
 }
 // The warehouse search: known warehouses first, then every other location
 // abroad — same matching as the stop pickers (_fhNorm: Greek or Latin typing).
+// ANY typing clears the chosen id (oninput above; review P3 4/10): only a pick
+// (_oiWhPick) sets it, so a retyped, unpicked name is refused at the save
+// («Διάλεξε την αποθήκη της παρτίδας») like a never-picked one — it never
+// saves the OLD warehouse under a new name.
 function _oiWhDrop(q) {
   const d = document.getElementById('f_StockWhD');
   if (!d) return;
