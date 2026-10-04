@@ -484,7 +484,11 @@ const OrdersStock = {
   async closeLot(lotRec, note) {
     const text = String(note == null ? '' : note).trim();
     if (!text) return { ok: false, error: 'Γράψε αιτιολογία' };
-    try { await atPatch(TABLES.STOCK_LOTS, lotRec, { 'Closed Note': text }); }
+    // No undo entry for the close (DL-10, impact map 4/10): the global «Undo»
+    // would PATCH the old note back over a lot the base has already stamped
+    // closed — refused, or a closed lot with no reason. Same as markLot.
+    const patch = typeof atSuppressUndo === 'function' ? atSuppressUndo(atPatch) : atPatch;
+    try { await patch(TABLES.STOCK_LOTS, lotRec, { 'Closed Note': text }); }
     catch (e) { return { ok: false, error: OrdersStock._msg(e) }; }
     try {
       const lot = await atGetOne(TABLES.STOCK_LOTS, lotRec);
@@ -617,10 +621,41 @@ const OrdersData = {
   // lot (stockFailed) and the view says so — never «ready» on a guess.
   async _loadStock(set) {
     set.stock = new Map(); set.stockFailed = false;
-    if (!set.intl.some(r => OrdersStock.isLot(r.fields))) return;
-    const res = await OrdersStock.loadLots('{Invoiced}=0');
-    if (!res.ok) { set.stock = null; set.stockFailed = true; return; }
-    res.lots.forEach(l => set.stock.set(l.id, l));
+    const lots = set.intl.filter(r => OrdersStock.isLot(r.fields));
+    if (!lots.length) return;
+    // G-07 (impact map 4/10): the warehouse role has no STOCK LOTS grant in the
+    // Worker (no row, no wildcard) — the read would 403 and _atRetry would toast
+    // «Δεν έχετε δικαίωμα» on every render of «Παραγγελίες». The warehouse does
+    // not invoice: its lots stay blocked ('stock', lot null), never «ready».
+    if (typeof ROLE !== 'undefined' && ROLE === 'warehouse') return;
+    // The open lots ({Invoiced}=0) decide the states. The invoiced lots of the
+    // set are read by id as well: the ERP sheet of an invoiced lot names its
+    // deliveries from the lot record (PR-15/E-06), and the open read never
+    // returns them. 40 ids per request keeps the URL short.
+    const inv = [...new Set(lots.filter(r => OrdersCommon.isInvoiced(r.fields))
+      .map(r => OrdersStock.lotRecOfLot(r.fields)).filter(OrdersStock._rec))];
+    const formulas = [];
+    for (let i = 0; i < inv.length; i += 40) {
+      formulas.push(`OR(${i === 0 ? '{Invoiced}=0,' : ''}${inv.slice(i, i + 40).map(id => `RECORD_ID()='${id}'`).join(',')})`);
+    }
+    if (!formulas.length) formulas.push('{Invoiced}=0');
+    for (const fm of formulas) {
+      const res = await OrdersStock.loadLots(fm);
+      if (!res.ok) { set.stock = null; set.stockFailed = true; return; }
+      res.lots.forEach(l => set.stock.set(l.id, l));
+    }
+  },
+  // Days a delivered record has waited to be invoiced (null = no age). A lot
+  // (057) is «Delivered» when the WAREHOUSE received it, but it may be invoiced
+  // only once complete — so its wait starts at «Completed On», and there is no
+  // age while it is incomplete (E-05, impact map 4/10; the auditor's B-15
+  // counts a lot from completed_on too). One rule for every invoicing KPI.
+  ageOf(set, rec) {
+    const f = rec.fields || {};
+    if (!OrdersStock.isLot(f)) return OrdersCommon.daysSinceDelivery(rec);
+    const lot = set && set.stock ? set.stock.get(OrdersStock.lotRecOfLot(f)) : null;
+    const done = lot && lot.fields && lot.fields['Completed On'];
+    return done ? OrdersCommon.daysBetween(OrdersCommon.ymd(done), OrdersCommon.today()) : null;
   },
   sheetsOk(set, rec) {
     const f = rec.fields;

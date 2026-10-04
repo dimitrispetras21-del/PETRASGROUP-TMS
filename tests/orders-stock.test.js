@@ -345,3 +345,65 @@ test('withoutPieces is the one filter; data-based (switch off changes nothing)',
   const recs = [{ id: 'a', fields: {} }, { id: 'b', fields: { 'Stock Lot': ['recLot1'] } }, { id: 'c', fields: { 'Own Stock Lot': 'recLot1' } }];
   assert.deepStrictEqual(OrdersData.withoutPieces(recs).map(r => r.id), ['a', 'c']);
 });
+
+// ── round 0 (impact map 4/10) ────────────────────────────────────────────────
+test('G-07: the warehouse role never reads STOCK LOTS (no grant → no 403 storm); its lots stay blocked', async () => {
+  global.ROLE = 'warehouse';
+  db.orders = [order('recLotSrc', { Price: 3300, 'Own Stock Lot': 'recLot1' })];
+  db.lots = [lotRec('recLot1', { Complete: true })];
+  const set = await OrdersData.loadInvoicingSet(true);
+  assert.ok(!calls.some(c => c[1] === 'tblStockLots'), 'no STOCK LOTS request for the warehouse role');
+  assert.strictEqual(set.stockFailed, false);
+  assert.deepStrictEqual(OrdersData.stateOf(set, set.intl[0]), { key: 'blocked', reason: 'stock', lot: null }, 'never «ready» without its lot');
+});
+
+test('PR-15: invoiced lots of the set are read by id with the open ones — one formula, 40 ids per request', async () => {
+  db.orders = [
+    order('recOpen', { Price: 3300, 'Own Stock Lot': 'recLot1' }),
+    order('recInv', { Price: 2000, 'Own Stock Lot': 'recLot2', Invoiced: true, 'Invoice Number': '0500' }),
+  ];
+  db.lots = [lotRec('recLot1', {}), lotRec('recLot2', { Invoiced: true, Complete: true })];
+  const set = await OrdersData.loadInvoicingSet(true);
+  const reads = calls.filter(c => c[1] === 'tblStockLots').map(c => c[2]);
+  assert.deepStrictEqual(reads, ["OR({Invoiced}=0,RECORD_ID()='recLot2')"]);
+  assert.ok(set.stock.get('recLot2'), 'the invoiced lot record is there for the ERP sheet');
+  reset();
+  db.orders = Array.from({ length: 41 }, (_, i) => order('recI' + i, { Price: 1, 'Own Stock Lot': 'recLotI' + i, Invoiced: true }));
+  await OrdersData.loadInvoicingSet(true);
+  const r2 = calls.filter(c => c[1] === 'tblStockLots').map(c => c[2]);
+  assert.strictEqual(r2.length, 2);
+  assert.ok(r2[0].startsWith('OR({Invoiced}=0,') && r2[1] === "OR(RECORD_ID()='recLotI40')");
+});
+
+test('E-05: ageOf — a lot from «Completed On» (null while incomplete), every other order from its delivery', () => {
+  const lot = { id: 'a', _type: 'intl', fields: { Status: 'Delivered', 'Own Stock Lot': 'recLot1', 'Delivery DateTime': D(40) } };
+  const set = l => ({ stock: new Map([['recLot1', l]]) });
+  assert.strictEqual(OrdersData.ageOf(set(lotRec('recLot1', {})), lot), null);
+  assert.strictEqual(OrdersData.ageOf(set(lotRec('recLot1', { Complete: true, 'Completed On': daysAgo(3) })), lot), 3);
+  assert.strictEqual(OrdersData.ageOf({ stock: null }, lot), null, 'lot not read → no age, never the intake age');
+  assert.strictEqual(OrdersData.ageOf({}, order('p', { 'Delivery DateTime': D(5) })), 5);
+});
+
+test('DL-10: closeLot writes with the undo suppressed (the global Undo must not reopen a closed lot)', async () => {
+  let flag = false, seen = null;
+  global.atSuppressUndo = fn => async (...a) => { flag = true; try { return await fn(...a); } finally { flag = false; } };
+  const patch0 = global.atPatch;
+  global.atPatch = async (...a) => { seen = flag; return patch0(...a); };
+  db.readBack = { id: 'recLot1', fields: { 'Closed Note': 'x', 'Closed At': '2026-10-04T13:00:00Z' } };
+  try {
+    assert.strictEqual((await OrdersStock.closeLot('recLot1', 'x')).ok, true);
+    assert.strictEqual(seen, true, 'atPatch ran inside atSuppressUndo');
+  } finally { delete global.atSuppressUndo; }
+});
+
+test('PR-05: print.html names the lot exactly like OrdersStock.lotNumLabel (the page loads no core JS)', () => {
+  const html = fs.readFileSync(path.join(__dirname, '..', 'print.html'), 'utf8');
+  const src = (html.match(/function stockLotLabel\(f\)\{[\s\S]*?\n\}/) || [])[0];
+  assert.ok(src, 'stockLotLabel found in print.html');
+  const stockLotLabel = vm.runInNewContext('(' + src + ')');
+  const intl = { 'Stock Lot': ['recLot1'], 'Stock Lot Order No': 1300, 'Stock Lot Source': 'intl' };
+  const natl = { 'Stock Lot': ['recLot1'], 'Stock Lot Order No': 27, 'Stock Lot Source': 'natl' };
+  assert.strictEqual(stockLotLabel(intl), OrdersStock.lotNumLabel(intl));
+  assert.strictEqual(stockLotLabel(natl), OrdersStock.lotNumLabel(natl));
+  assert.strictEqual(stockLotLabel({ 'Order No': 5 }), '', 'an ordinary order prints no lot line');
+});
