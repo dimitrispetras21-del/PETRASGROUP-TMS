@@ -314,7 +314,11 @@ function _oiCardHtml(rec, opts) {
   // legacy 'Order Number', which remains derived and never reaches the browser.
   const orderNoNum = f['Order No'] ? `#${escapeHtml(String(f['Order No']))}` : '';
   const st = f['Status'] || 'Pending';
-  const stGr = (_OI_STATUS[st] || {}).gr || st;
+  // G-27 (impact map 4/10): a lot is «Delivered» when the WAREHOUSE received
+  // it — «Παραδόθηκε» would read as delivered to the client. Same word as the
+  // catalog and «Προς τιμολόγηση».
+  const isLot = typeof OrdersStock !== 'undefined' && OrdersStock.isLot(f);
+  const stGr = isLot && st === 'Delivered' ? 'Στην αποθήκη' : ((_OI_STATUS[st] || {}).gr || st);
   // «Χωρίς ανάθεση» = no own truck AND no partner (owner 2/9). A partner load
   // IS assigned. Shown for every status: 15/89 delivered orders belong to
   // nobody and that gap must stay visible (DECISION_LOG 30/8).
@@ -324,6 +328,7 @@ function _oiCardHtml(rec, opts) {
   const chips = [
     `<span class="oi-chip">${escapeHtml(stGr)}</span>`,
     isPreorder(f) ? preorderChipHtml(f) : '',
+    isLot ? '<span class="oi-chip">Παρτίδα → αποθήκη</span>' : '',
     pe ? '<span class="oi-chip">Ανταλλαγή παλετών</span>' : '',
     vs ? '<span class="oi-chip">Veroia Switch</span>' : '',
     f['National Groupage'] ? '<span class="oi-chip">Ομαδοποίηση</span>' : '',
@@ -571,6 +576,12 @@ async function duplicateIntlOrder(recId) {
   } catch(e) {}
   closeModal();
   await _openModal(null, copy, null, stopsPre);
+  // G-13 (impact map 4/10): the stock labels never travel, so the copy of a
+  // lot is an ordinary order to the warehouse — invoiced as such at intake if
+  // nobody ticks «Παρτίδα». Said once, where the form is open.
+  if (typeof OrdersStock !== 'undefined' && OrdersStock.isLot(f)) {
+    showErrorToast('Το αντίγραφο ΔΕΝ είναι παρτίδα — τσέκαρε «Παρτίδα» αν πρέπει', 'warn', 10000);
+  }
 }
 
 async function _openModal(recId, f, _clientLabelOverride, _scanPrefill, _piece) {
@@ -2781,8 +2792,18 @@ async function deleteIntlOrder(recId, opts) {
       else await atDelete(TABLES.ORDERS, recId);
     } catch(e) {
       const m = String(e && e.message || e);
-      toast(/403|forbidden|δικαίωμα/i.test(m) ? 'Χωρίς δικαίωμα διαγραφής παραγγελίας — ζήτα από τον owner' : 'Η διαγραφή απέτυχε — δεν άλλαξε τίποτα', 'danger');
-      if (typeof logError === 'function') logError(e, 'deleteIntlOrder (order first) ' + recId);
+      // DL-03 + AU-07 (impact map 4/10): a refusal the Worker DESIGNED — a 422
+      // such as STOCK_RULE «Το κομμάτι είναι σε φορτηγό — …» — is the reason
+      // the user needs, and _atRetry has already logged it once ('_atRetry
+      // 422'). The generic text hid it and the second logError doubled every
+      // refusal in app_errors. core/api.js throws such answers (400/403/422)
+      // with _noRetry and the Worker's own message — it does not carry
+      // error.type — so _noRetry is the marker: shown as is, logged once.
+      const designed = !!(e && e._noRetry);
+      toast(/403|forbidden|δικαίωμα/i.test(m) ? 'Χωρίς δικαίωμα διαγραφής παραγγελίας — ζήτα από τον owner'
+        : designed ? escapeHtml(m) + ' — δεν άλλαξε τίποτα'
+        : 'Η διαγραφή απέτυχε — δεν άλλαξε τίποτα', 'danger');
+      if (!designed && typeof logError === 'function') logError(e, 'deleteIntlOrder (order first) ' + recId);
       return;
     }
 
