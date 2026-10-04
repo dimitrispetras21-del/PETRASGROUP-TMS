@@ -11,7 +11,7 @@
 -- WHY ONE DO BLOCK: the Supabase SQL editor is NOT atomic across statements (lesson 056: BEGIN..COMMIT
 --   half-committed), but ONE DO block is ONE statement: its final error undoes everything inside it.
 -- EXPECTED (the red ERROR is deliberate):
---   ERROR: P0001: DRY RUN 057 finished - EVERYTHING UNDONE, nothing kept. Result: 7 OK, 0 FAIL  ||  A ok ... | G ok ...
+--   ERROR: P0001: DRY RUN 057 finished - EVERYTHING UNDONE, nothing kept. Result: 8 OK, 0 FAIL  ||  A ok ... | H ok ...
 --   Anything with FAIL or ERROR in it: do NOT run 057, copy the panel to the coordinator.
 --   A different message altogether (Greek, or "057 guard: ...", "057 proof: ...") is the guard or proof
 --   of 057 that stopped - exactly what 057 itself would have said. Do NOT run 057.
@@ -22,7 +22,8 @@
 --   without B-54, the last_value of every public sequence but the one 057 creates); E B-54 before ->
 --   after (+4, red_value moved); F smoke with negative ids: a lot with a warehouse charge allocates,
 --   an over-draw is refused; G the revenue text 057 leaves is the one the R2 rollback knows (else R2
---   would refuse in an emergency - tell the coordinator tonight).
+--   would refuse in an emergency - tell the coordinator tonight); H every public sequence unchanged
+--   AFTER the smoke too (F is the only scenario that writes; D fingerprints before it).
 
 DO $dry$
 DECLARE
@@ -1900,6 +1901,19 @@ end;
                                      || md5(pg_get_viewdef('public.ct_v_rt_revenue'::regclass, true)) || ', R2 knows 7bd4c2b3206af115a5cfff5478dfdfc9');
     end if;
   exception when others then bad := bad + 1; res := res || ('G ERROR ' || sqlerrm);
+  end;
+
+  -- H: sequences re-checked AFTER F (round 4, SQL reviewer P3 (a)): D runs before the smoke, the only
+  --    scenario that writes, so a nextval the smoke takes (a smoke row given a truck opens an RT and
+  --    burns an RT-NNNN for good) would pass D. Same fingerprint definition as D (FP, "sequences").
+  begin
+    execute $fp$select count(*) || ':' || coalesce(md5(string_agg(s.sequencename || '=' || coalesce(s.last_value::text, '-'), ',' order by s.sequencename)), '-') from pg_sequences s where s.schemaname = 'public' and s.sequencename <> 'stock_lots_id_seq'$fp$ into fp_tmp;
+    if ('sequences ' || fp_tmp) = (select b from unnest(fp_before) b where b like 'sequences %') then
+      ok := ok + 1; res := res || 'H ok sequences unchanged after the smoke'::text;
+    else
+      bad := bad + 1; res := res || 'H FAIL a sequence moved during the dry run (a number taken is never given back)'::text;
+    end if;
+  exception when others then bad := bad + 1; res := res || ('H ERROR ' || sqlerrm);
   end;
 
   RAISE EXCEPTION 'DRY RUN 057 finished - EVERYTHING UNDONE, nothing kept. Result: % OK, % FAIL  ||  %', ok, bad, array_to_string(res, '  |  ');

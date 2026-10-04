@@ -22,6 +22,12 @@ select c.relname, c.reloptions from pg_class c
 
 -- ── V1 — objects ─────────────────────────────────────────────────────────────────────────────────
 -- Expected: 9 | 1 | 1 | 8 | 4 | 3 | 8 | 5 | 137 | 4 | 1 | 0 | 33 | t
+-- (round 4, SQL reviewer P3 (b)) «pin» sets search_path = public for THIS statement only, exactly as
+-- 057 and R2 do before they measure: pg_get_viewdef qualifies every relation that is not on the
+-- search_path, so the same view prints a different text — and md5 — in a session with another path,
+-- and revenue_known_to_r2 would read f for a view R2 does know. MATERIALIZED makes it run before the
+-- select list; is_local = true ends with this statement's own transaction (nothing to reset).
+with pin as materialized (select set_config('search_path', 'public', true) as search_path)
 select
   (select count(*) from information_schema.columns
     where table_schema = 'public' and table_name = 'stock_lots')                                  as stock_lots_cols,      -- 9 (warehouse_charge, round 2)
@@ -62,7 +68,8 @@ select
   (select value from public.ct_settings where key = 'full_truck_pallets')                        as full_truck_pallets,   -- 33
   -- the revenue text 057 left is the one R2 knows how to replace (round 3, critic-3 Σ2-05): f = do
   -- NOT rely on R2 (it would refuse); tell the coordinator tonight, not during an emergency
-  md5(pg_get_viewdef('public.ct_v_rt_revenue'::regclass, true)) = '7bd4c2b3206af115a5cfff5478dfdfc9' as revenue_known_to_r2; -- t
+  md5(pg_get_viewdef('public.ct_v_rt_revenue'::regclass, true)) = '7bd4c2b3206af115a5cfff5478dfdfc9' as revenue_known_to_r2  -- t
+  from pin;
 
 -- The 5 new orders_with_derived columns, in this order. Expected 5 rows:
 -- 133 stock_lot_id bigint · 134 own_stock_lot text · 135 stock_lot_order_no bigint · 136 stock_lot_source text

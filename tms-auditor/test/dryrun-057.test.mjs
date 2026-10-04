@@ -25,11 +25,13 @@ test('057 dry run is regenerated from 057, never hand-edited (run: node worker/m
   // what the dry run adds around 057 is ASCII (the owner's clipboard has mangled Greek before)
   const added = dry.replace(body, '');
   assert.deepEqual([...added].filter((c) => c.charCodeAt(0) > 127), []);
-  // seven scenarios, each in its own exception block so one error never hides the others
-  for (const s of ['A', 'B', 'C', 'D', 'E', 'F', 'G']) assert.match(added, new RegExp(`exception when others then bad := bad \\+ 1; res := res \\|\\| \\('${s} ERROR ' \\|\\| sqlerrm\\);`));
+  // eight scenarios, each in its own exception block so one error never hides the others
+  for (const s of ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H']) assert.match(added, new RegExp(`exception when others then bad := bad \\+ 1; res := res \\|\\| \\('${s} ERROR ' \\|\\| sqlerrm\\);`));
   // round 3: G compares with the md5 R2 accepts (one literal, in R2), and D fingerprints the sequences
   assert.ok(added.includes(`= '${r2Md5(fs.readFileSync(R2, 'utf8'))}' then`), 'scenario G must use R2\'s v_057_md5');
   assert.match(added, /from pg_sequences s where s\.schemaname = 'public' and s\.sequencename <> 'stock_lots_id_seq'/);
+  // round 4: H re-reads the sequences AFTER the smoke (F), the only scenario that writes
+  assert.ok(added.indexOf("res := res || ('F ERROR '") < added.indexOf("'H ok sequences unchanged after the smoke'"), 'H must come after F');
 });
 
 test('the builder refuses a 057 it does not understand (loud, never a silent wrong copy)', () => {

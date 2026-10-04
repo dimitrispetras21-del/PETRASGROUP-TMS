@@ -2,10 +2,10 @@
 -- every test row, every trigger side effect (audit_log rows, leg status sync) rolls back with it.
 -- Run AFTER 057 (and after 057_stock_lots_verify.sql V1–V8). Expected last line of the error panel:
 --
---     RESULT: 117/117 OK
+--     RESULT: 119/119 OK
 --
 -- followed by one line per case («OK  01 expected over_draw · got over_draw»). Anything less = STOP,
--- copy the panel to the coordinator. 78 refusals + 19 accepted paths + 20 money cases (Ε1).
+-- copy the panel to the coordinator. 78 refusals + 21 accepted paths + 20 money cases (Ε1).
 -- Cases 36–49 and P11, P14 are the round-0 rules of the impact map (4/10): E-04 cancel (36, 37, P14),
 -- B-16 lot_grouped (38–43), C-15 lot_vs (44, 45, P11), C-05 piece_no_truck (46–49). 50–51: K7.
 -- Round 1 of the critics (4/10): D1 «on a truck» = truck or partner (13, 52, P12, P13), Σ-08 / E2-11
@@ -38,6 +38,9 @@
 --     DOES freeze with the invoice: the lot price (international and national source).
 --   * Σ2-03 M13: an assignment without a rate is 'no_partner_rate', not «no assignment».
 --   * Σ2-04 M14: a charge above the price stays 'ok' with a negative net (S-11 reports it, 057b).
+-- Round 4 (4/10, the independent SQL reviewer's GO, P2): the price lock reaches ONLY a lot source —
+--   P20 an ordinary invoiced order's price still changes (043 allows it); P21 re-sending the
+--   unchanged price of an invoiced lot source is no change.
 --
 -- HOW IT STAYS HARMLESS
 --   * Test rows use NEGATIVE ids written with OVERRIDING SYSTEM VALUE: no identity sequence moves,
@@ -91,7 +94,7 @@ begin
   if c1 is null or c2 is null or gr is null or pt is null or cd is null or ut is null or dl is null
      or to_regclass('public.stock_lots') is null
      or (select count(*) from public.locations where id in (wh, hub) and deleted_at is null) <> 2 then
-    raise exception 'RESULT: 0/117 — SETUP FAILED: run 057 first (needs 2 clients, a Greek site, a partner, an untyped, a Client Depot and a deleted location, 424 + 360 live)';
+    raise exception 'RESULT: 0/119 — SETUP FAILED: run 057 first (needs 2 clients, a Greek site, a partner, an untyped, a Client Depot and a deleted location, 424 + 360 live)';
   end if;
   -- VS5 reads the revenue view's text: pin the deparse context (rolled back with everything else).
   perform set_config('search_path', 'public', true);
@@ -424,7 +427,7 @@ begin
         $q$update public.national_orders set invoiced = true, invoice_number = 'TEST-ERP-79' where id = -9502$q$,
         $q$update public.national_orders set price = 600 where id = -9502$q$], null),
 
-    -- ── Accepted paths (19) ──────────────────────────────────────────────────────────────────────
+    -- ── Accepted paths (21) ──────────────────────────────────────────────────────────────────────
     -- P1: the form re-sends every field; only the reference changes; the lot is CLOSED.
     ('P1', 'true', array['IP:-9101,-9301,31,Delivered',
         $q$update public.stock_lots set closed_note = 'TEST: 2 χαλασμένες' where id = -9301$q$,
@@ -568,6 +571,21 @@ begin
         $q$select m.allocation_status || ' ' || case when l.invoiced then 'invoiced' else 'open' end || ' ' || m.charge_total
                   || ' ' || m.net || ' ' || (select amount from public.stock_v_lot_alloc where piece_id = -9101)
              from public.stock_v_lot_money m join public.stock_v_lots l on l.id = m.lot_id where m.lot_id = -9301$q$),
+    -- P20 (round 4): the lot price lock lives in the LOT SOURCE branch (a live anchor) and must never
+    --      reach an ordinary order — an invoiced order that is no lot still takes a price fix (043 allows
+    --      it while the price stays > 0 with an ERP number).
+    ('P20', '1100.00 true', array[$q$insert into public.orders (id, legacy_id, reference, order_type, direction, status, client_id,
+           loading_location_1_id, unloading_location_1_id, loading_pallets_1, price, invoiced, invoice_number)
+           overriding system value values (-9006, 'recTSTSTK9006', 'TEST-STOCK-9006', 'International', 'Export',
+           'Delivered', %1$s, %3$s, %4$s, 10, 1000.00, true, 'TEST-ERP-P20')$q$,
+        $q$update public.orders set price = 1100.00 where id = -9006$q$],
+        $q$select price || ' ' || invoiced from public.orders where id = -9006$q$),
+    -- P21 (round 4): the order form re-sends every field — the UNCHANGED price of an invoiced lot source
+    --      (written without decimals, numerically equal) is no change and passes.
+    ('P21', 'TEST-STOCK-P21 true', array['IP:-9101,-9301,33,Delivered',
+        $q$update public.orders set invoiced = true, invoice_number = 'TEST-ERP-P21' where id = -9001$q$,
+        $q$update public.orders set price = 3300, reference = 'TEST-STOCK-P21' where id = -9001$q$],
+        $q$select reference || ' ' || (price = 3300.00) from public.orders where id = -9001$q$),
     -- P17 / P18 (OWNER-Q5 answered 4/10 (any location can be a warehouse)): a lot to an UNTYPED
     --      location and to a 'Client Depot' location are marked — no type is a condition any more.
     ('P17', 'untyped', array[$q$insert into public.orders (id, legacy_id, reference, order_type, direction, status, client_id,
