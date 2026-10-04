@@ -137,11 +137,34 @@ function ctPill(m) {
 // Vocabulary is the owner's (DESIGN.md ΜΕΡΟΣ Ε, 4/9): «ΣΥΝ.» + company name
 // for a partner, «ΙΔ.» + plate + driver for own fleet — never the generic
 // word «Partner», which names a category, not the company the dispatcher calls.
+// The type (Εθνικό/Διεθνές/Μικτό) is its own field next to the dates since
+// 4/10 (ctKind), so the old « · ΕΘΝΙΚΟ» suffix left the vehicle chip.
 function ctChip(t) {
-  const natl = t.scope === 'NATL' ? ' · ΕΘΝΙΚΟ' : '';
-  if (t.trip_type === 'PARTNER') return `<span class="plate">ΣΥΝ. ${ctEsc(ctPartnerName(t.partner_id))}${natl}</span>`;
+  if (t.trip_type === 'PARTNER') return `<span class="plate">ΣΥΝ. ${ctEsc(ctPartnerName(t.partner_id))}</span>`;
   const drv = ctDriverName(t.driver_id);
-  return `<span class="plate">ΙΔ. ${ctEsc(ctTruckName(t.truck_id))}${drv ? ' · ' + ctEsc(drv) : ''}${natl}</span>`;
+  return `<span class="plate">ΙΔ. ${ctEsc(ctTruckName(t.truck_id))}${drv ? ' · ' + ctEsc(drv) : ''}</span>`;
+}
+
+// ── Τύπος δρομολογίου (owner 4/10/2026: «καθε RT εθνικων δημιουργει πλεον PnL
+// ... θελω σε ξεχωριστο πεδιο-εθνικων/διεθνων») ─────────────────────────────
+// Migration 034 gives national loads their own RTs (scope 'NATL') OR attaches a
+// Veroia Switch national leg to the international RT of the same truck, and
+// appends revenue_intl / revenue_natl to ct_v_rt_pnl (revenue = intl + natl).
+// An international RT that carries such a leg earns on both sides; calling it
+// «Διεθνές» would put national revenue in the international subtotal, calling
+// it «Εθνικό» the reverse. So it is its own type, «Μικτό», and its revenue is
+// shown split in two columns. Its COSTS are NOT split: fuel, tolls, driver and
+// wear belong to one physical trip and any allocation key would be invented —
+// the whole RT counts once, in the «Μικτά» row.
+// Rule: both revenue shares > 0 → MIX; otherwise the RT's own scope.
+const CT_KIND_LABEL = { INTL: 'Διεθνές', NATL: 'Εθνικό', MIX: 'Μικτό' };
+const CT_KIND_PLURAL = { INTL: 'Διεθνή', NATL: 'Εθνικά', MIX: 'Μικτά' };
+// A row without the two columns (Worker/view older than 034) is NOT a row with
+// zero national revenue — the split is unknown and the page says so.
+function ctHasSplit(t) { return t.revenue_intl != null && t.revenue_natl != null; }
+function ctKind(t) {
+  if (ctHasSplit(t) && Number(t.revenue_intl) > 0 && Number(t.revenue_natl) > 0) return 'MIX';
+  return t.scope === 'NATL' ? 'NATL' : 'INTL';
 }
 // Λεξιλόγιο κατάστασης (owner review 24/8) — δύο ανεξάρτητα σήματα: η ΕΚΤΕΛΕΣΗ
 // εδώ, τα ΚΟΣΤΗ στο pill «κόστη ελλιπή». Ο feeder γεννά RT μόνο όταν η μεταφορά
@@ -186,6 +209,7 @@ async function renderTripPnl() {
         <button data-s="ALL" class="active" onclick="ctSetScope('ALL')">Όλα</button>
         <button data-s="INTL" onclick="ctSetScope('INTL')">Διεθνή</button>
         <button data-s="NATL" onclick="ctSetScope('NATL')">Εθνικά</button>
+        <button data-s="MIX" onclick="ctSetScope('MIX')">Μικτά</button>
       </div>
       <span class="ct-vr"></span>
       <select id="ctVehSel" onchange="ctSetVeh(this.value)"><option value="ALL">Όλος ο στόλος</option></select>
@@ -233,6 +257,7 @@ async function ctReload() {
       ctFetch('/costs/lines').catch(e => { console.warn('[costs] lines failed', e.message); _ct.linesFailed = true; return { records: [] }; })
     ]);
     _ct.pnl = pnl.records || [];
+    _ct.splitMissing = _ct.pnl.some(t => !ctHasSplit(t));
     _ct.rts = {}; (rts.records || []).forEach(r => { _ct.rts[r.id] = r; });
     if (!lookups.cached) _ct.lookups = lookups;
     _ct.palletGate = {}; (palletGate.records || []).forEach(g => { _ct.palletGate[g.rt_id] = g; });
@@ -309,10 +334,56 @@ function ctCostInfo(t) {
   const n = (_ct.linesByRt && _ct.linesByRt[t.id] ? _ct.linesByRt[t.id].length : 0);
   return { n, complete: n > 0 };
 }
+function ctVehOk(t) {
+  return _ct.veh === 'ALL' || (_ct.veh === 'PARTNERS' ? t.trip_type === 'PARTNER' : t.truck_id === _ct.veh);
+}
+// _ct.scope holds the TYPE filter (ALL/INTL/NATL/MIX, ctKind) since 4/10 — a
+// mixed RT is neither «Διεθνή» nor «Εθνικά», so filtering on raw scope would
+// have listed it under «Διεθνή» while the subtotals put it under «Μικτά».
 function ctVisible() {
-  return _ct.pnl.filter(t =>
-    (_ct.scope === 'ALL' || t.scope === _ct.scope) &&
-    (_ct.veh === 'ALL' || (_ct.veh === 'PARTNERS' ? t.trip_type === 'PARTNER' : t.truck_id === _ct.veh)));
+  return _ct.pnl.filter(t => (_ct.scope === 'ALL' || ctKind(t) === _ct.scope) && ctVehOk(t));
+}
+
+// Subtotals per type (owner 4/10). Same rules as the StakeBanner below, so the
+// two blocks never disagree: revenue sums every RT; costs sum every RT and say
+// how many have costs entered; net and margin only when EVERY RT of the row has
+// costs (an unwritten cost as €0 would read as profit — DESIGN.md rule 3).
+// Base = vehicle filter only, so all three types stay visible whatever type
+// filter is active; the «Σύνολο» row is what «Όλα» shows in the banner.
+function ctKindTotals(list) {
+  const s = k => list.reduce((a, t) => a + Number(t[k] || 0), 0);
+  const n = list.length, rev = s('revenue'), gross = s('cost_gross');
+  const withCosts = list.filter(t => ctCostInfo(t).complete).length;
+  const complete = !_ct.linesFailed && n > 0 && withCosts === n;
+  return { n, rev, ri: s('revenue_intl'), rn: s('revenue_natl'), gross, withCosts, complete,
+    p: rev - gross, mg: rev ? (rev - gross) / rev * 100 : null };
+}
+function ctKindTableHtml() {
+  const base = _ct.pnl.filter(ctVehOk);
+  const split = !_ct.splitMissing;
+  const row = (label, k, tot) => {
+    const d = '<span style="color:var(--text-dim)">—</span>';
+    const e = (v, ok) => ok ? ctEur(v) : d;
+    const has = tot.n > 0;
+    const costQ = has && !tot.complete && !_ct.linesFailed ? ` <span class="ct-eqq">${tot.withCosts}/${tot.n}</span>` : '';
+    return `<tr data-kind="${k}"${k === 'TOTAL' ? ' class="ct-ktot"' : ''}><td>${label}</td>
+      <td class="ct-num ct-mono" data-c="n">${tot.n}</td>
+      <td class="ct-num ct-mono" data-c="ri">${e(tot.ri, has && split)}</td>
+      <td class="ct-num ct-mono" data-c="rn">${e(tot.rn, has && split)}</td>
+      <td class="ct-num ct-mono" data-c="rev">${e(tot.rev, has)}</td>
+      <td class="ct-num ct-mono" data-c="cost">${e(tot.gross, has)}${costQ}</td>
+      <td class="ct-num ct-mono" data-c="net"${tot.complete && tot.p < 0 ? ' style="color:var(--danger)"' : ''}>${tot.complete ? ctEurP(tot.p) : d}</td>
+      <td class="ct-num ct-mono" data-c="mg">${tot.complete && tot.mg != null ? tot.mg.toFixed(1) + '%' : d}</td></tr>`;
+  };
+  const body = ['INTL', 'NATL', 'MIX'].map(k => row(CT_KIND_PLURAL[k], k, ctKindTotals(base.filter(t => ctKind(t) === k)))).join('');
+  const note = split
+    ? 'Μικτό = διεθνές δρομολόγιο που κουβαλά και εθνικό σκέλος (Veroia Switch): τα έσοδά του χωρίζονται στις δύο στήλες, τα κόστη του ΔΕΝ μοιράζονται — μετρά ολόκληρο στη γραμμή «Μικτά». Καθαρό και περιθώριο μόνο όταν όλα τα δρομολόγια της γραμμής έχουν κόστη.'
+    : 'Ο διαχωρισμός εσόδων διεθνή/εθνικά δεν ήρθε από τον διακομιστή (στήλες revenue_intl / revenue_natl) — ο τύπος κρίνεται μόνο από το πεδίο του δρομολογίου και κανένα δρομολόγιο δεν φαίνεται ως Μικτό.';
+  return `<table class="ct-tbl ct-ktbl" id="ctKindTbl"><thead><tr><th>Τύπος</th><th class="ct-num">Δρομολόγια</th>
+    <th class="ct-num">Έσοδα διεθνή</th><th class="ct-num">Έσοδα εθνικά</th><th class="ct-num">Έσοδα</th>
+    <th class="ct-num">Κόστη</th><th class="ct-num">Καθαρό</th><th class="ct-num">Περιθώριο</th></tr></thead>
+    <tbody>${body}</tbody><tfoot>${row('Σύνολο', 'TOTAL', ctKindTotals(base))}</tfoot></table>
+    <div class="ct-knote${split ? '' : ' ct-nwarn ct-note'}" id="ctKindNote">${note}</div>`;
 }
 
 // StakeBanner (Figma 6:31, owner 28/8 — αντικατέστησε το navy lede + το
@@ -371,7 +442,7 @@ function ctRenderSummary() {
       <span class="op">=</span>
       <span class="ct-eqi"><span class="l">Καθαρό</span>${netVal}</span>
     </div>
-    <div class="ct-sfoot">${foot}</div></div>`;
+    <div class="ct-sfoot">${foot}</div></div>` + ctKindTableHtml();
 }
 
 // Τα φίλτρα οχήματος έγιναν dropdown (owner review 24/8, σημείο 3): «τρεις
@@ -388,7 +459,7 @@ function ctRenderVehBar() {
   // bug. The active one stays enabled so the user can always see where they are.
   document.querySelectorAll('#ctScopeSeg button').forEach(b => {
     const sc = b.dataset.s;
-    const n = sc === 'ALL' ? _ct.pnl.length : _ct.pnl.filter(t => t.scope === sc).length;
+    const n = sc === 'ALL' ? _ct.pnl.length : _ct.pnl.filter(t => ctKind(t) === sc).length;
     b.disabled = n === 0 && _ct.scope !== sc;
     b.title = n === 0 ? 'Καμία εγγραφή' : '';
   });
@@ -494,9 +565,13 @@ function ctRenderList() {
 // Ένα σκέλος = μία γραμμή: badge κατεύθυνσης · διαδρομή · ημερομηνία · ποσό
 // σε σταθερή στήλη 70px δεξιά (πλάτος = στοίχιση, tabular-nums).
 function ctLegLine(l) {
+  // Since 034 (4/10) a national leg CARRIES revenue (revenue_natl: the VS share
+  // the order gave up, or a national order's price) — the old «όχι έσοδο
+  // πελάτη» line would contradict the Έσοδα shown under it. The view sums per
+  // RT, so no per-leg amount exists to print here.
   if (l.nat_load_id) {
-    return `<div class="ct-leg"><span class="dchip imp">VS</span>
-      <span class="rt" style="color:var(--text-mid);font-style:italic">εθνικό σκέλος — εσωτερική μεταφορά, όχι έσοδο πελάτη</span></div>`;
+    return `<div class="ct-leg"><span class="dchip imp">ΕΘΝΙΚΟ</span>
+      <span class="rt" style="color:var(--text-mid)">εθνικό φορτίο #${l.nat_load_id} — το έσοδό του μετρά στα «Έσοδα εθνικά»</span></div>`;
   }
   const imp = String(l.direction || '').toUpperCase().includes('IMP');
   const o = _ct.orderByPg && _ct.orderByPg[l.order_id];
@@ -535,7 +610,7 @@ function ctCardNums(t, ci) {
   }
   return `<div class="ct-eqrow">
     <div class="ct-eq ct-eqsm">
-      <span class="ct-eqi"><span class="l">Έσοδα</span><b class="nv ct-mono">${ctEur(t.revenue)}</b></span>
+      <span class="ct-eqi"><span class="l">Έσοδα</span><b class="nv ct-mono">${ctEur(t.revenue)}</b>${ctKind(t) === 'MIX' ? `<span class="ct-eqq ct-split">διεθνή ${ctEur(t.revenue_intl)} · εθνικά ${ctEur(t.revenue_natl)}</span>` : ''}</span>
       <span class="op">−</span>
       <span class="ct-eqi"><span class="l">Κόστη</span>${costs}</span>
       <span class="op">=</span>
@@ -598,6 +673,8 @@ function ctCardHtml(t) {
         ${ctChip(t)}
         <span class="ct-vr12"></span>
         <span class="dates ct-mono">${fmtDate(t.date_start)}${t.date_end ? ' → ' + fmtDate(t.date_end) : ''}</span>
+        <span class="ct-vr12"></span>
+        <span class="ct-kind">${CT_KIND_LABEL[ctKind(t)]}</span>
       </div>
       ${ctStatusBadge(t)}
     </div>
@@ -764,7 +841,7 @@ async function ctOpenPanel(id) {
   const worstNeg = Number(t.profit_worst) < 0;
   panel.innerHTML = `
     <div class="ct-phead"><button class="ct-close" onclick="ctCloseAll()">&times;</button>
-      <h2>${ctEsc(t.code)} · ${t.scope === 'NATL' ? 'Εθνικό' : 'Διεθνές'}</h2>
+      <h2>${ctEsc(t.code)} · ${CT_KIND_LABEL[ctKind(t)]}</h2>
       <div class="ct-pmeta">${t.trip_type === 'PARTNER' ? 'ΣΥΝ. ' + ctEsc(ctPartnerName(t.partner_id)) : 'ΙΔ. ' + ctEsc(ctTruckName(t.truck_id)) + (ctDriverName(t.driver_id) ? ' · ' + ctEsc(ctDriverName(t.driver_id)) : '')}
        · ${fmtDate(t.date_start)}${t.date_end ? ' → ' + fmtDate(t.date_end) : ''} · ${t.total_km ? t.total_km.toLocaleString('el-GR') + ' km' : 'χωρίς km'}</div>
       ${t.status === 'planned' || t.status === 'in_progress' ? `<button class="ct-btn" style="margin-top:12px" onclick="ctCloseRt(${t.id})">Κλείσιμο δρομολογίου — χειροκίνητο</button>` : ''}</div>
@@ -781,8 +858,10 @@ async function ctOpenPanel(id) {
       <div style="font-size:11px;color:var(--text-mid);margin-top:8px">${t.status === 'closed' || t.status === 'complete' ? 'Το δρομολόγιο έχει ολοκληρωθεί — δέχεται κανονικά κόστη: τα τιμολόγια έρχονται και εβδομάδες μετά.' : 'ΦΠΑ 24% = καθαρό × 0,24 · 0 για reverse charge εξωτερικού.'}</div></div>
     <div class="ct-psec"><h3>Έσοδα (αυτόματα από τα σκέλη)</h3>
       ${(rt.ct_rt_legs || []).map(l => l.nat_load_id
-        ? `<div class="ct-lrow"><span style="font-style:italic;color:var(--text-mid)">Εθνικό σκέλος VS — εσωτερική μεταφορά (x_export 850 / x_import 650), όχι έσοδο πελάτη</span><span class="ct-mono" style="color:var(--text-mid)">σημείωμα</span></div>`
+        ? `<div class="ct-lrow"><span>Εθνικό σκέλος · εθνικό φορτίο #${l.nat_load_id}</span><span></span></div>`
         : `<div class="ct-lrow"><span>${String(l.direction || '').toUpperCase().includes('IMP') ? 'Εισαγωγή' : 'Εξαγωγή'} · διεθνές φορτίο #${l.order_id}</span><span></span></div>`).join('')}
+      ${ctHasSplit(t) && Number(t.revenue_natl) > 0 ? `<div class="ct-totrow ct-mini"><span>Έσοδα διεθνή</span><span class="ct-mono">${ctEur(t.revenue_intl)}</span></div>
+      <div class="ct-totrow ct-mini"><span>Έσοδα εθνικά</span><span class="ct-mono">${ctEur(t.revenue_natl)}</span></div>` : ''}
       <div class="ct-totrow"><span>${(rt.ct_rt_legs || []).length || 0} συνδεδεμένα φορτία ${!(rt.ct_rt_legs || []).length ? '· <span style="color:var(--warn)">σύνδεση από τους σχεδιαστές στο επόμενο βήμα</span>' : ''}</span><span class="ct-mono">${ctEur(t.revenue)}</span></div></div>
     <div class="ct-psec"><h3>Κόστη ανά κατηγορία</h3>${costRows}
       <div class="ct-totrow ct-mini"><span>Καθαρό κόστος (+φθορά)</span><span class="ct-mono">${ctEur(t.cost_net)}</span></div>
@@ -1060,6 +1139,14 @@ function ctStyles() { return `<style>
 .ct-wksumi b{font-weight:700;color:var(--text)}
 .ct-wksumi b.neg{color:var(--danger)}.ct-wksumi b.pos{color:var(--ok)}
 .ct-wkbody{padding-left:2px}
+/* Type subtotals (owner 4/10): a plain accounting table — words and numbers,
+   no pills; rows are not links, so no pointer/hover. */
+.ct-ktbl{margin-bottom:4px}
+.ct-ktbl tbody tr{cursor:default}.ct-ktbl tbody tr:hover{background:none}
+.ct-ktbl tfoot td{padding:8px 12px;font-size:13px;font-weight:700;border-top:1px solid var(--border);background:var(--surface-sunken)}
+.ct-knote{font-size:12px;color:var(--text-mid);margin:0 0 12px}
+.ct-chl .ct-kind{font-size:12px;color:var(--text-mid)}
+.ct-split{margin-left:4px;font-weight:500}
 .ct-modal{position:fixed;top:50%;left:50%;width:600px;max-width:94vw;max-height:90vh;overflow-y:auto;background:var(--surface-card);border-radius:6px;box-shadow:var(--shadow-md);z-index:calc(var(--z-overlay,9000) + 2);transform:translate(-50%,-46%) scale(.97);opacity:0;pointer-events:none;transition:all .15s}
 .ct-modal.open{transform:translate(-50%,-50%) scale(1);opacity:1;pointer-events:auto}
 .ct-mhead{background:var(--surface-dark);color:var(--text-on-dark);padding:12px 24px;font-family:'Syne',sans-serif;font-weight:700;font-size:18px}
