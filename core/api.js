@@ -1137,14 +1137,22 @@ async function undoLastAction() {
       const trash = getTrash();
       const idx = trash.findIndex(t => t.id === a.recId && t.table === a.tableId);
       if (idx < 0) { if (typeof toast === 'function') toast('Trash entry no longer available', 'error'); clearUndo(); return; }
-      await atRestoreFromTrash(idx);
+      // null = failed or refused (it said why): no green «Restored» over it (§4 #9, 4/10/2026).
+      if (!(await atRestoreFromTrash(idx))) { clearUndo(); return; }
       if (typeof toast === 'function') toast(`Restored ${a.label || 'record'}`, 'success');
     } else if (a.type === 'patch') {
       await atPatch(a.tableId, a.recId, a.prevFields);
       if (typeof toast === 'function') toast(`Reverted ${a.label || 'edit'}`, 'success');
     } else if (a.type === 'create') {
-      await atDelete(a.tableId, a.recId);
-      if (typeof toast === 'function') toast(`Removed created ${a.label || 'record'}`, 'success');
+      // A record whose creation started a chain carries its own undo — a new
+      // national order deletes the ORDER, not the last load/stop written
+      // (§4 #9, 4/10/2026). false = cancelled or refused: it said so itself.
+      if (typeof a.undo === 'function') {
+        if (!(await a.undo())) return;
+      } else {
+        await atDelete(a.tableId, a.recId);
+        if (typeof toast === 'function') toast(`Removed created ${a.label || 'record'}`, 'success');
+      }
     }
     clearUndo();
     // Trigger page re-render if router supports it
@@ -1209,6 +1217,17 @@ async function atRestoreFromTrash(trashIndex) {
     const trash = getTrash();
     if (trashIndex < 0 || trashIndex >= trash.length) return null;
     const item = trash[trashIndex];
+    // §4 #9 (N-11, 4/10/2026): re-creating a national order from its saved
+    // fields made a NEW Ε-n with no load and no stops — they were cascaded
+    // away with the original and nothing re-runs that chain. A real restore
+    // is un-deleting the original row (Worker/SQL), so until then it is
+    // refused, and said; the trash still shows what the order held.
+    if (typeof TABLES !== 'undefined' && item.table === TABLES.NAT_ORDERS) {
+      const msg = 'Η επαναφορά εθνικής παραγγελίας δεν γίνεται — θα έφτιαχνε νέα Ε-n χωρίς φορτίο και χωρίς στάσεις. Καταχώρισέ την ξανά από τη φόρμα· τα στοιχεία της φαίνονται στον Κάδο.';
+      if (typeof showErrorToast === 'function') showErrorToast(msg, 'warn', 10000);
+      else if (typeof toast === 'function') toast(msg, 'warn');
+      return null;
+    }
     // Re-create the record in its original table
     const restored = await atCreate(item.table, item.fields);
     // Remove from trash

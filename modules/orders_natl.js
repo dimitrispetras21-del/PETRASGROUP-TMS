@@ -1244,6 +1244,18 @@ async function submitNatlOrder(recId) {
     }
     // ─────────────────────────────────────────────────────────
 
+    // §4 #9 (N-11, 4/10/2026): every atCreate re-arms the toolbar Undo, so
+    // after a new national order it pointed at the LAST write of the chain —
+    // the load (or a stop) — and Undo deleted the load, leaving the order
+    // «εκτός Εβδομαδιαίου». Undo of a new national order is the order's own
+    // delete (deleteNatlOrder: the same path as «Διαγραφή»; the base cascades
+    // its load and stops — trg_national_orders_soft_delete_cascade).
+    if (!recId && savedNatlId && typeof _undoSet === 'function') {
+      const _undoId = savedNatlId;
+      _undoSet({ type: 'create', tableId: TABLES.NAT_ORDERS, recId: _undoId, label: fields['Reference'] || 'εθνική παραγγελία',
+        undo: () => deleteNatlOrder(_undoId) });
+    }
+
     // Central sync — RAMP trigger + PL orphan cleanup + PA sync + cache invalidation
     if (savedNatlId && typeof syncOrderDownstream === 'function') {
       syncOrderDownstream(savedNatlId, { source: 'natl', skipVS: true, skipGRP: true })
@@ -1586,8 +1598,10 @@ async function _syncNationalLoad(noId, noFields, isDelete) {
 // ═══════════════════════════════════════════════
 // deleteNatlOrder — Delete a National Order + cleanup NL/GL/CL/Ramp
 // ═══════════════════════════════════════════════
+// Returns true only when the order was deleted — the toolbar Undo of a new
+// national order runs this and must know a cancel/refusal from a delete (§4 #9).
 async function deleteNatlOrder(recId) {
-  if (!confirm('Delete this National Order? This will also remove linked loads and groupage lines.')) return;
+  if (!confirm('Delete this National Order? This will also remove linked loads and groupage lines.')) return false;
 
   try {
     toast('Deleting order...', 'info');
@@ -1605,7 +1619,12 @@ async function deleteNatlOrder(recId) {
     } catch(e) {
       const m = String(e && e.message || e);
       toast(/403|forbidden|δικαίωμα/i.test(m) ? 'Χωρίς δικαίωμα διαγραφής εθνικής παραγγελίας — ζήτα από τον owner' : 'Η διαγραφή απέτυχε — δεν άλλαξε τίποτα', 'danger');
-      return;
+      return false;
+    } finally {
+      // §4 #9 (N-11, 4/10/2026): atSoftDelete arms a toolbar «Restore», which
+      // re-created the order as a NEW Ε-n with no load and no stops. Restoring
+      // a national order is refused (atRestoreFromTrash), so it is not offered.
+      if (typeof clearUndo === 'function') clearUndo();
     }
 
     // 1. Delete NAT_LOADS (Direct) linked to this NO
@@ -1702,8 +1721,10 @@ async function deleteNatlOrder(recId) {
     toast(_delFail ? `Order deleted (${_delFail} linked records failed — check data)` : 'Order deleted', _delFail ? 'warn' : 'success');
     if (_delFail && typeof logError === 'function') logError(new Error(`Cascade delete: ${_delFail} sub-deletes failed`), 'deleteNatlOrder ' + recId);
     await renderOrdersNatl();
+    return true;
   } catch(e) {
     reportError('Η διαγραφή απέτυχε, δοκιμάστε ξανά', e);
+    return false;
   }
 }
 
