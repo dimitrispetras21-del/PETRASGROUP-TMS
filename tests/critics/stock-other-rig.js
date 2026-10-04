@@ -13,6 +13,9 @@
 // overdue LOADINGS zone with the K6 hint), the same after «Παραλαβή αποθήκης», and after a REFUSED
 // «Φορτώθηκε» on a piece (round 1 X1: the stop stamp is put back); TRIP PnL with a lot RT and a VS export + piece RT, and the same
 // with the allocation read failing.
+// Round 3 (fix list X1–X3): the top-bar Undo of the intake removes its PENDING movement and only says a
+// CONFIRMED one (X3, critic-1 R2-4); a double click on «Παραλαβή αποθήκης» writes ONE movement (X2,
+// critic-3 Σ2-07); a lot on our own truck gets a line that names the lot and its pallets (X1, R2-1).
 const path = require('path'), fs = require('fs');
 const ROOT = path.join(__dirname, '../..');
 const req = m => require(require.resolve(m, { paths: [process.cwd(), ROOT] }));
@@ -56,7 +59,7 @@ const day = n => { const d = new Date(); d.setHours(12, 0, 0, 0); d.setDate(d.ge
 
 function makeFacade() {
   // refuse: { orderRec: <422 body> } — the facade answers that ORDERS PATCH with a designed refusal (round 1 X1)
-  const F = { orders: {}, stops: {}, writes: [], pallets: [], costs: [], stockFail: false, ready: false, refuse: {} };
+  const F = { orders: {}, stops: {}, writes: [], pallets: [], costs: [], stockFail: false, ready: false, refuse: {}, movs: [], movSeq: 0, palletGetDelay: 0 };
   const isEmpty = v => v == null || (Array.isArray(v) && !v.length);
   const read = o => { const f = {}; for (const [k, v] of Object.entries(o.fields)) if (!isEmpty(v)) f[k] = v; return { id: o.id, createdTime: '2026-10-01T00:00:00.000Z', fields: f }; };
   F.read = read;
@@ -97,6 +100,22 @@ async function installRoutes(page, F, costs) {
       if (url.pathname === '/pallets/gate') {
         const recs = (url.searchParams.get('order_recs') || '').split(',').filter(Boolean);
         return send(200, { records: recs.filter(x => F.orders[x]).map(x => ({ order_rec: x, order_id: F.orders[x].pg })) });
+      }
+      // Round 3: movements are KEPT (GET by stop/order, DELETE of a pending row only — the Worker answers
+      // 409 for any other), so a second intake, an undo and a double click see what was written.
+      if (url.pathname === '/pallets/movements') {
+        if (m === 'POST') { const b = r.postDataJSON() || {}; const row = { id: ++F.movSeq, status: b.confirm ? 'confirmed' : 'pending', ...b }; F.movs.push(row); return send(200, { record: row }); }
+        const stop = url.searchParams.get('order_stop_rec'), ord = url.searchParams.get('order_rec');
+        // read NOW, answered after the delay: a read that ran before another call's write landed (X2)
+        const recs = F.movs.filter(x => (!stop || x.order_stop_rec === stop) && (!ord || x.order_rec === ord)).map(x => ({ ...x }));
+        if (F.palletGetDelay) await new Promise(res => setTimeout(res, F.palletGetDelay));
+        return send(200, { records: recs });
+      }
+      const mv = /^\/pallets\/movements\/(\d+)$/.exec(url.pathname);
+      if (mv && m === 'DELETE') {
+        const i = F.movs.findIndex(x => x.id === +mv[1] && x.status === 'pending');
+        if (i < 0) return send(409, { error: 'Confirmed movements are never deleted — use reverse' });
+        F.movs.splice(i, 1); return send(200, { deleted: true });
       }
       return send(200, { records: [] });
     }
@@ -173,7 +192,7 @@ async function open(browser, role, route, F, costs, bootDone) {
       F.orders[id] = { id, fields: Object.assign({ Type: 'International' }, f, { 'ORDER STOPS': stops.map(s => s[0]) }) };
       stops.forEach(([sid, type, loc, n]) => { F.stops[sid] = { id: sid, fields: { 'Parent Order': [id], 'Stop Type': type, 'Stop Number': 1, Location: [loc], Pallets: n } }; });
     };
-    o('recRIGLOT0000312', { Direction: 'Import', Client: [C1], 'Loading DateTime': day(-1), 'Delivery DateTime': day(0), Partner: [PA1], 'Is Partner Trip': true, Status: 'In Transit', 'Total Pallets': 33, 'Pallet Exchange': true, 'Own Stock Lot': 'recRIGSTOCKLOTA1', Reference: 'LOT-A' },
+    o('recRIGLOT0000312', { Direction: 'Import', Client: [C1], 'Loading DateTime': day(-1), 'Delivery DateTime': day(0), Partner: [PA1], 'Is Partner Trip': true, Status: 'In Transit', 'Total Pallets': 33, 'Pallet Exchange': true, 'Own Stock Lot': 'recRIGSTOCKLOTA1', 'Order No': 312, Reference: 'LOT-A' },
       [['recRIGSTLOTL0001', 'Loading', L1, 33], ['recRIGSTLOTU0001', 'Unloading', WH, 33]]);
     o('recRIGIMP0000001', { Direction: 'Import', Client: [C2], 'Loading DateTime': day(-2), 'Delivery DateTime': day(0), Truck: [T1], Driver: [D1], Status: 'In Transit', 'Total Pallets': 20 },
       [['recRIGSTIMPL0001', 'Loading', L2, 20], ['recRIGSTIMPU0001', 'Unloading', L1, 20]]);
@@ -227,6 +246,36 @@ async function open(browser, role, route, F, costs, bootDone) {
       && pb.given === 33 && pb.taken === 0 && !pb.confirm && !pb.client_rec, { posts: F.pallets, body: pb });
     await shot(page, 'daily-ops-stock-after-intake-1440.png');
 
+    // Round 3 X3 (critic-1 R2-4): the top-bar Undo of the intake takes its PENDING movement with it —
+    // the order back first, then the movement; a CONFIRMED one is said once and never deleted.
+    const clearToasts = () => page.evaluate(() => { window.__rig.toasts.length = 0; document.querySelectorAll('#tms-toast-container > *').forEach(n => n.remove()); });
+    const domToasts = () => page.evaluate(() => [...document.querySelectorAll('#tms-toast-container > *')].map(n => n.innerText.replace(/\s+/g, ' ')));
+    const intakeRows = () => F.movs.filter(x => x.order_stop_rec === 'recRIGSTLOTU0001' && x.event_type === 'PARTNER_PICKUP');
+    const undo = async () => {
+      await clearToasts();
+      const label = await page.locator('#undoBtn').getAttribute('title');
+      const p0 = F.pallets.length;
+      await page.locator('#undoBtn').click();
+      await page.waitForTimeout(2500);
+      return { label, pallets: F.pallets.slice(p0), toasts: await page.evaluate(() => window.__rig.toasts.slice()), dom: await domToasts(),
+        row: await page.evaluate(() => ((document.getElementById('r_recRIGLOT0000312') || {}).innerText || '').replace(/\s+/g, ' ')) };
+    };
+    const pendId = (intakeRows()[0] || {}).id;
+    const u1 = await undo();
+    ok('X3_undo_deletes_pending_intake', !!pendId && u1.pallets.includes('DELETE /pallets/movements/' + pendId) && !intakeRows().length
+      && F.orders.recRIGLOT0000312.fields.Status === 'In Transit' && /Παραλαβή αποθήκης/.test(u1.row) && !/Στην αποθήκη ✓/.test(u1.row), { pendId, ...u1, movs: F.movs });
+    await shot(page, 'daily-ops-stock-undo-intake-1440.png');
+    // the same lot taken in again; its movement then CONFIRMED (the sheet came in) before the Undo
+    await page.locator('#r_recRIGLOT0000312 button.do-btn', { hasText: 'Παραλαβή αποθήκης' }).click();
+    await page.waitForTimeout(2500);
+    intakeRows().forEach(x => { x.status = 'confirmed'; });
+    const nConf = intakeRows().length;
+    const u2 = await undo();
+    const confLine = 'Παλέτες αποθήκης #312 (33p): η κίνηση παλετών επιβεβαιώθηκε — αντιλογισμός από το Ισοζύγιο';
+    ok('X3_confirmed_said_never_deleted', nConf === 1 && !u2.pallets.some(x => x.startsWith('DELETE')) && intakeRows().length === 1
+      && u2.dom.filter(t => t.includes(confLine)).length === 1, { nConf, ...u2 });
+    await shot(page, 'daily-ops-stock-undo-confirmed-1440.png');
+
     // Round 1 X1 (critic-3 Σ-02): the order write is REFUSED after the stop stamp → the stamp is put
     // back, the Greek reason shows ONCE (core/api.js), the context line never says «Ξαναδοκίμασε».
     F.refuse.recRIGPC10000001 = { error: { type: 'STOCK_RULE', code: 'lot_invoiced', message: 'Η παρτίδα είναι τιμολογημένη — η κατάσταση του κομματιού δεν αλλάζει' } };
@@ -244,6 +293,32 @@ async function open(browser, role, route, F, costs, bootDone) {
     ok('X1_said_once_and_true', reason === 1 && rf.toasts.some(t => /σφραγίδα του σημείου αναιρέθηκε/.test(t)) && !rf.toasts.concat(rf.dom).some(t => /Ξαναδοκίμασε|δεν γράφτηκε τίποτα/.test(t))
       && /Φορτώθηκε/.test(rf.row || '') && !/Φορτώθηκε ✓/.test(rf.row || ''), rf);
     await shot(page, 'daily-ops-stock-refused-1440.png');
+
+    // Round 3 X2 (critic-3 Σ2-07): a DOUBLE click on «Παραλαβή αποθήκης» of a partner lot. Each read of the
+    // movements answers 1 s late with what was there when it ran, so both intakes read «none».
+    o('recRIGLOT0000314', { Direction: 'Import', Client: [C1], 'Loading DateTime': day(-1), 'Delivery DateTime': day(0), Partner: [PA1], 'Is Partner Trip': true, Status: 'In Transit', 'Total Pallets': 20, 'Pallet Exchange': true, 'Own Stock Lot': 'recRIGSTOCKLOTB1', 'Order No': 314, Reference: 'LOT-B' },
+      [['recRIGSTLOTL0314', 'Loading', L1, 20], ['recRIGSTLOTU0314', 'Unloading', WH, 20]]);
+    // X1 (critic-1 R2-1): a lot on our own truck — no partner to write a movement with
+    o('recRIGLOT0000313', { Direction: 'Import', Client: [C1], 'Loading DateTime': day(-1), 'Delivery DateTime': day(0), Truck: [T1], Driver: [D1], Status: 'In Transit', 'Total Pallets': 20, 'Pallet Exchange': true, 'Own Stock Lot': 'recRIGSTOCKLOTC1', 'Order No': 313, Reference: 'LOT-C' },
+      [['recRIGSTLOTL0313', 'Loading', L2, 20], ['recRIGSTLOTU0313', 'Unloading', WH, 20]]);
+    await page.evaluate(async () => { invalidateCache(TABLES.ORDERS); invalidateCache(TABLES.ORDER_STOPS); await renderDailyOps(); });
+    await page.locator('#r_recRIGLOT0000314 button.do-btn', { hasText: 'Παραλαβή αποθήκης' }).waitFor({ timeout: 15000 });
+    F.palletGetDelay = 1000;
+    const p2 = F.pallets.length;
+    await page.locator('#r_recRIGLOT0000314 button.do-btn', { hasText: 'Παραλαβή αποθήκης' }).dblclick();
+    await page.waitForTimeout(4000);
+    F.palletGetDelay = 0;
+    const posts314 = (F.palletBodies || []).filter(b => b.order_rec === 'recRIGLOT0000314');
+    ok('X2_double_click_one_movement', posts314.length === 1 && F.movs.filter(x => x.order_stop_rec === 'recRIGSTLOTU0314').length === 1, { posts: posts314.length, calls: F.pallets.slice(p2) });
+
+    await clearToasts();
+    const nb = (F.palletBodies || []).length;
+    await page.locator('#r_recRIGLOT0000313 button.do-btn', { hasText: 'Παραλαβή αποθήκης' }).click();
+    await page.waitForTimeout(2500);
+    const x1 = await domToasts();
+    const x1Line = 'Παλέτες αποθήκης #313 (20p): χωρίς συνεργάτη — καταχώρησέ τις στο Ισοζύγιο';
+    ok('X1_own_truck_line_names_lot_and_pallets', x1.filter(t => t.includes(x1Line)).length === 1 && (F.palletBodies || []).length === nb, x1);
+    await shot(page, 'daily-ops-stock-intake-no-partner-1440.png');
     out.dailyOpsErrors = errs.filter(e => !/favicon|Failed to load resource/.test(e));
     await ctx.close();
   }

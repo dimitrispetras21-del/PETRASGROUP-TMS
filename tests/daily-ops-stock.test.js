@@ -272,3 +272,44 @@ test('D1 (round-1 isLoose: Group ID does not count): a truckless piece with a st
   const z = zrowOf(S.content.innerHTML, 'recPCA000000000A');
   assert.ok(z && !/Φορτώθηκε/.test(z) && /χωρίς φορτηγό — από το ΑΠΟΘΕΜΑ/.test(z), z);
 });
+
+// ── Round 3 X3 (critic-1 R2-4) ───────────────────────────────────────────────
+// The top-bar Undo of a lot intake also undoes its pallet movement. The facade
+// stub arms the undo the way core/api.js atPatch does for a cached ORDERS
+// record (type 'patch' + the fields it held); getUndoAction/_undoSet/atPatch
+// and the feeder are recorded, nothing runs for real.
+function undoWorld() {
+  const w = load();
+  const { ctx, S } = w;
+  S.undo = null; S.seq = [];
+  const prev = { Status: 'Assigned', 'Delivery Performance': null, 'Actual Delivery Date': null };
+  const orig = ctx.atSafePatch;
+  ctx.atSafePatch = async (t, id, f) => { const r = await orig(t, id, f); if (t === 'tblO') S.undo = { type: 'patch', tableId: t, recId: id, prevFields: prev, label: id, ts: Date.now() }; return r; };
+  ctx.getUndoAction = () => S.undo;
+  ctx._undoSet = a => { S.undo = { ...a, ts: Date.now() }; };
+  ctx.atPatch = async (t, id, f) => { S.seq.push(['atPatch', t, id, f]); return { id, fields: f }; };
+  ctx.plOnLotIntakeUndone = async id => { S.seq.push(['plOnLotIntakeUndone', id]); };
+  return { ...w, prev };
+}
+
+test('X3 (R2-4): the Revert of a lot intake takes its pallet movement with it — the order first, then the movement', async () => {
+  const { ctx, S, prev } = undoWorld();
+  await ctx.renderDailyOps();
+  await ctx._opsDel('recLOT0000000312', 'On Time');
+  assert.strictEqual(S.undo && S.undo.type, 'create', 'the plain field Revert leaves the pending intake behind: ' + JSON.stringify(S.undo));
+  assert.strictEqual(S.undo.recId, 'recLOT0000000312');
+  assert.strictEqual(await S.undo.undo(), true);
+  assert.deepStrictEqual(S.seq, [['atPatch', 'tblO', 'recLOT0000000312', prev], ['plOnLotIntakeUndone', 'recLOT0000000312']]);
+  assert.strictEqual(S.toasts.slice(-1)[0], 'Reverted recLOT0000000312', 'the same words the plain Revert says');
+});
+
+test('X3: a lot declared from the overdue zone gets the same undo; an ordinary delivery keeps the plain Revert', async () => {
+  const { ctx, S } = undoWorld();
+  await ctx.renderDailyOps();
+  const lot = fixtures().day[0];
+  ctx.OPS.overdue = [{ id: lot.id, fields: Object.assign({}, lot.fields, { 'Delivery DateTime': dayOff(-1) }) }];
+  await ctx._opsOvAct(lot.id, 'On Time');
+  assert.strictEqual(S.undo && S.undo.type, 'create', JSON.stringify(S.undo));
+  await ctx._opsDel('recIMP0000000001', 'On Time');
+  assert.strictEqual(S.undo.type, 'patch', 'an ordinary order has no intake movement: its Revert is untouched');
+});
