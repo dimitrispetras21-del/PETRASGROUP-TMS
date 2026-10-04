@@ -269,6 +269,10 @@ const _AUDIT_FIELD = {
   loading_location_2_id:    'Φόρτωση 2 · τοποθεσία',
   matched_import_id:        'Αντιστοιχισμένη εισαγωγή',
   national_order_created:   'Δημιουργήθηκε εθνική',
+  // Stock lots Φ1 (impact map 4/10 AT-01): a piece's link and the lot's
+  // «Κλείσιμο υπολοίπου» note (the auditor S-09 reports every close).
+  stock_lot_id:             'Παρτίδα αποθέματος',
+  closed_note:              'Κλείσιμο υπολοίπου · αιτιολογία',
 };
 function _auditFieldLabel(f) {
   return _AUDIT_FIELD[f] || String(f);
@@ -388,6 +392,7 @@ const _AUDIT_TABLE = {
   trailers:                 'Ρυμούλκες',
   ct_round_trips:           'Δρομολόγια P&L',
   ct_cost_lines:            'Γραμμές κόστους',
+  stock_lots:               'Παρτίδες αποθέματος',   // AT-01 (stock lots Φ1)
 };
 function _auditTableLabel(t) {
   if (!t) return '—';
