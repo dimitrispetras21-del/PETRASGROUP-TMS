@@ -98,6 +98,7 @@ const wnSrc = [
   fn(WN, /function _wnUnplans\(st\) \{[^\n]*\n/, '_wnUnplans'),
   fn(WN, /function _wnDoneOf\(st\) \{[^\n]*\n/, '_wnDoneOf'),
   fn(WN, /function _wnExecuted\(st\) \{[^\n]*\n/, '_wnExecuted'),
+  fn(WN, /function _wnKeepsPa\(st\) \{[^\n]*\n/, '_wnKeepsPa'),
   fn(WN, /function _wnConfirmExecuted\(what\) \{[\s\S]*?\n\}\n/, '_wnConfirmExecuted'),
   fn(WN, /function _wnUnplanFields\(fields, st\) \{[\s\S]*?\n\}\n/, '_wnUnplanFields'),
 ].join('\n');
@@ -141,6 +142,12 @@ test('_wnUnassign (owner 4/10): In Transit leg → vehicle cleared, Status NOT w
   for (const p of patches) { assert.ok(!('Status' in p.f), p.id); assert.strictEqual(p.f.Truck.length, 0); }
   const e = await runWnUnassign({ n1: '' }, { orderIds: ['n1'] });
   assert.strictEqual(e.patches[0].f.Status, 'Pending');
+});
+
+test('_wnUnassign (review 4/10 LOW b): unreadable status → vehicle cleared, PA row NOT deleted (fail closed)', async () => {
+  const { patches, paDeleted } = await runWnUnassign({ n1: new Error('x'), s1: 'Assigned' }, { orderIds: ['n1'], matchedId: 's1' });
+  assert.deepStrictEqual(patches.map(x => x.id), ['n1', 's1']);
+  assert.deepStrictEqual(paDeleted, ['s1']);
 });
 
 test('_wnUnassign: a Cancelled leg keeps its assignment and its PA row (still refused — open owner question)', async () => {
