@@ -119,7 +119,7 @@ async function _flushOfflineQueue() {
   _offlineQueue.length = 0;
   _saveOfflineQueue();
 
-  let failed = 0, conflicts = 0;
+  let failed = 0, conflicts = 0, rejected = 0;
   for (const item of batch) {
     try {
       // For PATCH operations, check if record was modified since we queued
@@ -146,11 +146,34 @@ async function _flushOfflineQueue() {
           if (typeof logError === 'function') logError(e, '_flushOfflineQueue conflict check');
         }
       }
-      await fetch(item.url, {
+      const res = await fetch(item.url, {
         method: item.method,
         headers: _apiHeaders(item.method, item.req ? item.req + '-q' : null),
         body: item.body ? JSON.stringify(item.body) : undefined,
       });
+      // The answer is read (critic-3 Σ-02, round 1 4/10): fetch does not throw
+      // on an HTTP error, so a REFUSED write (422 rule, 403, 400, 404) counted
+      // as «συγχρονίστηκαν» and left the queue — the change was lost while the
+      // screen said it was saved. A 4xx is the server's final «no»: replaying
+      // it gets the same answer, so it leaves the queue, loudly, naming the
+      // record. 401/408/429 are not an answer about the change (session,
+      // timeout, rate limit) and 5xx is the server failing: those stay queued
+      // for the next flush, like a network error (the catch below).
+      if (!res.ok) {
+        if (res.status >= 400 && res.status < 500 && ![401, 408, 429].includes(res.status)) {
+          rejected++;
+          const errData = await res.json().catch(() => ({}));
+          const why = _atErrMsg(errData.error, `HTTP ${res.status}`);
+          const tid = (item.url.match(/\/v0\/[^/]+\/([^/?]+)/) || [])[1] || '';
+          const tname = (typeof _tableNameFromId === 'function' && tid) ? (_tableNameFromId(tid) || tid) : tid;
+          const msg = `Αλλαγή εκτός σύνδεσης ΑΠΟΡΡΙΦΘΗΚΕ (${tname} · ${item.recordId || 'νέα εγγραφή'}): ${why} — ΔΕΝ γράφτηκε· κάνε την ξανά`;
+          if (typeof showErrorToast === 'function') showErrorToast(msg, 'error', 15000);
+          const _rj = new Error(msg); _rj._req = item.req || null;
+          if (typeof logError === 'function') logError(_rj, 'queue rejected');
+          continue;
+        }
+        throw new Error(`offline replay HTTP ${res.status}`);   // → stays queued (catch)
+      }
     } catch(e) {
       if (typeof logError === 'function') logError(e, '_flushOfflineQueue mutation');
       _offlineQueue.push(item);
@@ -158,11 +181,11 @@ async function _flushOfflineQueue() {
     }
   }
   _saveOfflineQueue();
-  const synced = batch.length - failed - conflicts;
+  const synced = batch.length - failed - conflicts - rejected;
   // «Αποθηκεύτηκε τοπικά» must leave a trace centrally (principle 1): one summary line per flush, excluded
   // from the error-rate checks by its prefix (B-34/B-34b), with the ids of the replayed actions.
   if (batch.length && typeof logError === 'function') {
-    const _fl = new Error(`offline flush synced ${synced}, conflicts ${conflicts}, failed ${failed} · ${batch.map((b) => b.req).filter(Boolean).slice(0, 10).join(',')}`);
+    const _fl = new Error(`offline flush synced ${synced}, conflicts ${conflicts}, failed ${failed}${rejected ? `, rejected ${rejected}` : ''} · ${batch.map((b) => b.req).filter(Boolean).slice(0, 10).join(',')}`);
     _fl._kind = 'offline';                     // informational: stored with app_errors.kind='offline', not an error
     logError(_fl, 'queue');
   }
