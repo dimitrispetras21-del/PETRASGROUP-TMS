@@ -1,6 +1,7 @@
 -- 057 ROLLBACK R2 — revenue back to the pre-057 rule. This file holds ONE DO block on purpose: the
 -- SQL editor runs the whole file when nothing is selected, so a rollback file must never hold a second
--- action (R1 «guards off» lives in 057_stock_lots_rollback_r1_guards_off.sql).
+-- action (R1 «guards off» lives in 057_stock_lots_rollback_r1_guards_off.sql, R3 «blank group_id
+-- normaliser off» in 057_stock_lots_rollback_r3_blank_null_off.sql).
 -- Never drop columns, tables or views: orders_with_derived reads stock_lots, and breaking it takes
 -- down every ORDERS read of the app. The screens have their own kill switch: FEATURES.STOCK_LOTS=false
 -- in config.js (front deploy) hides every stock entry point without touching the database.
@@ -9,24 +10,27 @@
 -- When: the allocation shows wrong numbers in TRIP PnL. Effect: ct_v_rt_revenue is re-created with
 -- the text migration 034 (national RTs) left on 4/10 evening — 4 columns, revenue / revenue_intl /
 -- revenue_natl, embedded verbatim below (pg_get_viewdef via SELECT) → every RT reads orders.price
--- again, exactly as before 057; ct_v_rt_pnl keeps reading the same 4 columns; the stock_v_* views
--- stay (unused by revenue). Proof: the view's md5 is the pre-057 one (62e488b5…, the md5 057 guards)
--- and it carries no view options (owner-rights); a view that gained options since 057 is refused.
+-- again, exactly as before 057, and a VS piece pays the full x_import / x_export again (the
+-- OWNER-Q3 proration of 057 lives only in the view: stock_vs_charge() and the full_truck_pallets row
+-- stay, unused); ct_v_rt_pnl keeps reading the same 4 columns; the stock_v_* views stay (unused by
+-- revenue). Proof: the view's md5 is the pre-057 one (62e488b5…, the md5 057 guards).
+-- View options (round 2, SQL reviewer P3 (1)): CREATE OR REPLACE VIEW resets a view's options to the
+-- ones it names — none. Round 1b refused to run when the view had options, which blocked the rollback
+-- exactly when it may be needed (an owner who set security_invoker after 057 could not roll money
+-- back without first deciding about the option). Now the options are RECORDED before, PUT BACK after
+-- and PROVED identical: the rollback changes the money rule and nothing else. (057 itself still
+-- refuses options: it is a forward change the owner can re-plan; a rollback is not.)
 -- If a later migration rewrites ct_v_rt_revenue, this file must be regenerated with it.
 do $r2$
 declare
-  v_md5  text;
-  v_opts text;
+  v_md5   text;
+  v_opts  text[];
+  v_after text[];
 begin
   perform set_config('search_path', 'public', true);   -- same deparse context as the md5 measurement
   perform set_config('lock_timeout', '5s', true);       -- never queue TRIP PnL reads behind an idle transaction
-  -- CREATE OR REPLACE VIEW replaces the view's options with the ones it names — none (round 1b, SQL
-  -- reviewer P3-2). The view is owner-rights before 057 and after it (reloptions NULL, both proved by
-  -- 057); an option set since then would be dropped silently by this file → refuse, owner decides.
-  select array_to_string(reloptions, ', ') into v_opts from pg_class where oid = 'public.ct_v_rt_revenue'::regclass;
-  if v_opts is not null then
-    raise exception 'R2 guard: ct_v_rt_revenue has view options (%) — this file would drop them; owner decides', v_opts;
-  end if;
+  -- Recorded BEFORE the replace (header): NULL = owner-rights, as 057 left it.
+  select c.reloptions into v_opts from pg_class c where c.oid = 'public.ct_v_rt_revenue'::regclass;
   create or replace view public.ct_v_rt_revenue as
    WITH natord_home AS (
            SELECT nord.id AS national_order_id,
@@ -110,10 +114,18 @@ begin
   if v_md5 is distinct from '62e488b56373dd14e1b697f7756aa5a8' then
     raise exception 'R2 proof: ct_v_rt_revenue md5 is %, expected the pre-057 (034) 62e488b56373dd14e1b697f7756aa5a8', v_md5;
   end if;
-  -- The md5 cannot see options (pg_get_viewdef prints none): owner-rights, exactly as before 057.
-  if (select reloptions from pg_class where oid = 'public.ct_v_rt_revenue'::regclass) is not null then
-    raise exception 'R2 proof: ct_v_rt_revenue carries view options, expected none (owner-rights as before 057)';
+  -- Put back what the replace reset. The options come from the catalog itself (key=value pairs such
+  -- as security_invoker=true), so splicing them into ALTER VIEW … SET is exact.
+  if v_opts is not null then
+    execute format('alter view public.ct_v_rt_revenue set (%s)', array_to_string(v_opts, ', '));
   end if;
-  raise notice 'R2 OK: ct_v_rt_revenue is the pre-057 (034) text again (md5 %), owner-rights (no options).', v_md5;
+  -- The md5 cannot see options (pg_get_viewdef prints none): proved on their own, element for element.
+  select c.reloptions into v_after from pg_class c where c.oid = 'public.ct_v_rt_revenue'::regclass;
+  if v_after is distinct from v_opts then
+    raise exception 'R2 proof: ct_v_rt_revenue options % after the rollback, % before — expected the same',
+      coalesce(array_to_string(v_after, ', '), 'none'), coalesce(array_to_string(v_opts, ', '), 'none');
+  end if;
+  raise notice 'R2 OK: ct_v_rt_revenue is the pre-057 (034) text again (md5 %), view options kept: %.', v_md5,
+    coalesce(array_to_string(v_after, ', '), 'none (owner-rights)');
 end
 $r2$;
