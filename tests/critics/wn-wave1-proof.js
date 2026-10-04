@@ -133,6 +133,7 @@ async function openBoard(browser, opts = {}) {
     const t0 = window.toast; window.toast = (m, k) => { window.__toasts.push([String(m), k || '']); try { return t0 && t0(m, k); } catch (_) {} };
     // same stub for every path compared below; records each dialog so a rig
     // can count them (owner 4/10: ONE confirm) and answer «Ακύρωση» with false
+    window.__realConfirm = window.confirmAction;
     window.__confirms = []; window.__confirmAnswer = true;
     window.confirmAction = async (m) => { window.__confirms.push(String(m)); return window.__confirmAnswer; };
   });
@@ -332,6 +333,23 @@ SECTIONS.push(async browser => {
   ok(await pending(page) === null, 'and nothing is left pending after it');
   ok(S.errors.length === 0, 'no page errors: ' + S.errors.slice(0, 2).join(' | '));
   await page.context().close();
+
+  // submitNatlOrder's duplicate guard opens a REAL confirmAction on the same
+  // overlay mid-save: closing that dialog must not drop the pending match.
+  const dp = await openBoard(browser);
+  await openNewSn(dp.page, 'recNlSat00000000');
+  await dp.page.evaluate(() => { window.__realConfirm('Πιθανό duplicate'); });
+  await dp.page.waitForSelector('#_cfaOk'); await dp.page.click('#_cfaOk'); await dp.page.waitForTimeout(400);
+  ok(await pending(dp.page) === 'recNlSat00000000', 'duplicate confirm inside the save → «Αποθήκευση ως νέα»: pending match KEPT');
+  await dp.page.evaluate(async () => { await window._wnConsumePendingMatch('recNlsP00000000A', { Direction: 'South→North' }); closeModal(); });
+  await dp.page.waitForTimeout(800);
+  ok(nlOf(dp.S, 'recNlsP00000000A')['Matched Load'] === 'recNlSat00000000', '… and the ΑΝΟΔΟΣ saved after it is still bound');
+  await openNewSn(dp.page, 'recNlSat00000000');
+  await dp.page.evaluate(() => { window.__realConfirm('Πιθανό duplicate'); });
+  await dp.page.waitForSelector('#_cfaCancel'); await dp.page.click('#_cfaCancel'); await dp.page.waitForTimeout(400);
+  await dp.page.evaluate(() => openNatlCreate()); await dp.page.waitForSelector('#modalOverlay.open #nf_Direction'); await dp.page.waitForTimeout(400);
+  ok(await pending(dp.page) === null, 'duplicate confirm → «Ακύρωση», then a NEW order form → pending match gone');
+  await dp.page.context().close();
 
   // The form refuses to open when the locations are not loaded (P1 4/10):
   // that path must not leave a pending match either.

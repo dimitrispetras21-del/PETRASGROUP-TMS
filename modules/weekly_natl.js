@@ -1885,17 +1885,26 @@ function _wnNewSn(rowId) {
   // §4 #13 (WN-09, 4/10/2026): «Άκυρο» (or ✕, or a form that never opened)
   // left this pending for 30', so the NEXT ΑΝΟΔΟΣ created from anywhere on the
   // board was bound to this ΚΑΘΟΔΟΣ. A save consumes it before the form
-  // closes (orders_natl → _wnConsumePendingMatch, then closeModal), so the
-  // first close of the form clears whatever is still pending — only if it is
-  // still THIS pending. The modal shows/hides by its 'open' class.
+  // closes (orders_natl → _wnConsumePendingMatch, then closeModal). The modal
+  // shows/hides by its 'open' class — but the duplicate-guard confirmAction
+  // inside submitNatlOrder reuses the SAME overlay mid-save, so «the overlay
+  // closed» does not mean «the form was cancelled». The test is OUR form
+  // element (#nf_Direction of this instance): closed while it is still in the
+  // modal = Άκυρο/✕/overlay click → drop; a NEW order form opened = ours is
+  // over → drop. A dialog that replaced the form drops nothing. Only ever
+  // THIS pending; once it is consumed or replaced the observer leaves.
   const ov = document.getElementById('modalOverlay');
   let obs = null;
   const drop = () => { if (obs) obs.disconnect(); if (window._wnPendingMatch === pend) window._wnPendingMatch = null; };
   if (ov) {
-    let seenOpen = ov.classList.contains('open');
+    let formEl = null;
     obs = new MutationObserver(() => {
-      if (ov.classList.contains('open')) { seenOpen = true; return; }
-      if (seenOpen) drop();
+      if (window._wnPendingMatch !== pend) { obs.disconnect(); return; }
+      const open = ov.classList.contains('open');
+      const nf = document.getElementById('nf_Direction');
+      if (!formEl) { if (open && nf) formEl = nf; return; }
+      if (!open && formEl.isConnected) drop();
+      else if (open && nf && nf !== formEl) drop();
     });
     obs.observe(ov, { attributes: true, attributeFilter: ['class'] });
   }
