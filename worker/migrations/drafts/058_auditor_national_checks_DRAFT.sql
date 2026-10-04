@@ -46,9 +46,11 @@
 -- trigger 033 and 034 l.144-145. Statuses verified 4/10: national_loads.source_type
 -- Direct(=VS)/National/Groupage; groupage_lines.status Assigned/Unassigned; RT status 'cancelled'.
 --
--- Catalog note (principle 3): tms-auditor/checks/*.sql is the repo source of 047b. These four rows
--- are NOT yet there as files; adding B-59…B-62.sql + regenerating 047b is a follow-up (the
--- seed-drift test guards 047b, not this file).
+-- Catalog (principle 3): tms-auditor/checks/B-59…B-62.sql hold the SAME rows — the VALUES list
+-- below is what checks/load.mjs seedSql() produces from those files (field for field; sql_text and
+-- ids_sql byte-identical; only the line breaks between fields differ). Edit the .sql files first,
+-- then this list. 047b is NOT regenerated here (owner-run seed, untouched), so the repo test
+-- «committed seed (047b) … regenerated» is red on this branch until 047b is rebuilt.
 --
 -- Idempotent: INSERT … ON CONFLICT (id) DO UPDATE (same form as 047b) — safe to re-run.
 -- Reverse:   DELETE FROM monitoring.results WHERE check_id IN ('B-59','B-60','B-61','B-62');
