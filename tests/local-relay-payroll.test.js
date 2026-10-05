@@ -1,6 +1,6 @@
 // tests/local-relay-payroll.test.js — 060 local relays on the payroll card
-// (owner 4/10/2026 «οκ προχωρα με τις τοπικες παραδοσεις»; Q2: salary =
-// track record only, per_trip = daily ΤΟΠΙΚΟ line).
+// (owner 4/10/2026 «οκ προχωρα με τις τοπικες παραδοσεις»; owner 5/10: every
+// driver who does a relay gets the daily ΤΟΠΙΚΟ line — no pay types).
 // The SQL stays ASCII: dl_v_entries.relay_info carries keys (060, step 7),
 // one entry per move with its RT codes as an array; the day's label is the
 // trigger's route text. These tests pin the shape read and the one wording.
@@ -53,7 +53,7 @@ test('RT line: who did the local part and when — tooltip and the words on the 
   assert.ok(!/€|\d+,\d\d/.test(dlRelayTitle(e) + dlRelayShort(e)));
 });
 
-test('Ακύρωση of a local line: only when no live relay is left that day (salaried comes from the card\'s hero)', () => {
+test('Ακύρωση of a local line: only when no live relay of that driver is left that day — for every driver alike', () => {
   const live = localDay([{ id: 7, move_kind: 'relay_delivery', order_id: 9001, rt_codes: [] }]);
   const empty = localDay([], { local_move_id: 7 });
   assert.strictEqual(dlLocalCanCancel(live), false, 'a day with a live relay is the trigger\'s');

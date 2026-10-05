@@ -100,14 +100,14 @@ function isHiddenReason(r) { return !!r && r !== 'no_date' && r !== 'partner'; }
 // Reference, else the client, with the order number to tell two of the same
 // client apart, else the order number alone. Reference is empty on most
 // imports (70 of 82 in review round 3, 5/10), so a menu or sub-row keyed on
-// it alone named nothing. Raw text: each screen escapes it.
+// it alone named nothing. The client's name is core/data-helpers.js's
+// orderClientName — the same function the Weekly board names orders with
+// (principle 3). Raw text: each screen escapes it.
 function orderName(orderFields) {
   const f = orderFields || {};
   const ref = String(f['Reference'] || '').trim();
   if (ref) return ref;
-  const cid = getLinkedId(f['Client']);
-  const c = cid && typeof getRefClients === 'function' ? getRefClients().find(r => r.id === cid) : null;
-  const client = String((c && c.fields['Company Name']) || f['Client Name'] || f['Client Summary'] || '').trim();
+  const client = String((typeof orderClientName === 'function' ? orderClientName(f) : '') || '').trim();
   const no = f['Order No'] != null && f['Order No'] !== '' ? '#' + f['Order No'] : '';
   return [client, no].filter(Boolean).join(' ');
 }
@@ -215,19 +215,32 @@ function summary(rec, orderRec) {
     sameTractor: !trkId,
     tractor: trkId ? ((_trk(trkId) || {})['License Plate'] || '—') : ((ordTrkId && (_trk(ordTrkId) || {})['License Plate']) || ''),
     trailer: trlId ? ((_trl(trlId) || {})['License Plate'] || '—') : '',
-    trailerSwap: !!(trlId && getLinkedId(of['Trailer']) && trlId !== getLinkedId(of['Trailer'])),
+    // Not the order's trailer (an order with none counts as different: the
+    // relay's trailer is then the only one written anywhere).
+    trailerSwap: !!(trlId && trlId !== getLinkedId(of['Trailer'])),
     point: _short(_loc(ptId)) || (ptId ? '—' : ''),
     pointDir: kind === 'relay_delivery' ? 'από' : 'προς',
+    // The panel's default hand-over point: the board leaves it unsaid.
+    pointDefault: ptId === VEROIA_LOC,
     done: isDone(of, kind),
     // 060 keeps Date = the order's day; a gap means the order lost its date
     // or a trigger did not run — shown, never hidden (B-65 «day» reports it).
     dayMismatch: !!(want && day && want !== day) || !!(want && !day),
   };
 }
-// «ίδιο INT-1 · ρυμ. TRL-1» — one wording on the board, in Daily Ops and in
-// the track record. Raw text: each screen escapes it.
+// «ίδιο INT-1 · ρυμ. TRL-1» — the whole vehicle, in Daily Ops (its relay cell
+// replaces the order's assignment, so it must name the plates), in the
+// track record and in the board's tooltip. Raw text: each screen escapes it.
 function vehicleText(s) {
   return [(s.sameTractor ? 'ίδιο ' : 'άλλο ') + (s.tractor || 'φορτηγό'), s.trailer ? 'ρυμ. ' + s.trailer : ''].filter(Boolean).join(' · ');
+}
+// Only what differs from the order the board row above already shows: another
+// tractor, another trailer, a hand-over point other than Veroia (coordinator
+// screenshot review 5/10: the sub-row repeated the row above it). [] = the
+// order's own vehicle at the usual point. Raw text.
+function diffParts(s) {
+  return [!s.sameTractor ? 'άλλο φορτηγό ' + (s.tractor || '—') : '', s.trailerSwap ? 'ρυμ. ' + s.trailer : '',
+    s.point && !s.pointDefault ? s.pointDir + ' ' + s.point : ''].filter(Boolean);
 }
 
 // ── PANEL ───────────────────────────────────────────────────────────────
@@ -297,19 +310,21 @@ async function openPanel(o) {
 
   _cur = { order, kind, existing, host: o.host, onDone: o.onDone, busy: false, ptLabel, ordDrv, partnerRun };
 
-  // OWNER-Q2 answered 4/10 (both: salary = track record only, per_trip = daily
-  // ΤΟΠΙΚΟ line): the local is «recorded separately» — whether that record
-  // also pays him is the payroll's business (drivers.pay_basis), never shown
-  // here: the dispatcher never sees payroll.
+  // Owner 5/10: every driver who does a relay gets the day's ΤΟΠΙΚΟ payroll
+  // line (no pay types, no difference between drivers); the amount is
+  // accounting's. Nothing about pay is shown here: the dispatcher never sees
+  // payroll.
   // Compact on purpose: the host panel is ~360px wide and capped in height,
-  // and a scrolled panel hides its own title and save button.
+  // and a scrolled panel hides its own title and save button. Short labels;
+  // the longer explanation rides in the label's tooltip (screenshot review 5/10).
   const lbl = 'display:flex;align-items:center;gap:5px;font-size:12px;color:var(--text);white-space:nowrap';
+  const ptHelp = isDel ? 'Πού παραλαμβάνει ο τοπικός το φορτηγό' : 'Πού παραδίδει ο τοπικός το φορτηγό';
   const body = `
     <div class="wn3-pnote">${note}</div>
     <div class="wi-panel-fields" style="flex-direction:column;align-items:stretch;gap:8px" oninput="Relay._err('')" onchange="Relay._err('')">
-      <div id="rly_day" style="display:flex;align-items:baseline;gap:6px;font-size:13px;color:var(--text)"><span class="wi-plbl">${isDel ? 'Παράδοση στον πελάτη' : 'Φόρτωση'}</span>
-        <b>${escapeHtml(dayTxt)}</b> <small style="color:var(--text-dim)">από την παραγγελία</small></div>
-      <div class="wi-pf"><span class="wi-plbl">Τοπικός οδηγός</span>
+      <div id="rly_day" style="display:flex;align-items:baseline;gap:6px;font-size:13px;color:var(--text)" title="Η μέρα της παραγγελίας — αλλάζει μόνο από την παραγγελία"><span class="wi-plbl">${isDel ? 'Παράδοση' : 'Φόρτωση'}</span>
+        <b>${escapeHtml(dayTxt)}</b></div>
+      <div class="wi-pf"><span class="wi-plbl">Οδηγός</span>
         <select class="form-select" id="rly_drv"><option value="">— ΠΡΟΣ ΑΝΑΘΕΣΗ —</option>${_opts(drivers, drvVal, ordDrv, 'ο διεθνής της παραγγελίας')}</select></div>
       <div class="wi-pf"><span class="wi-plbl">Τράκτορας</span>
         <div style="display:flex;align-items:center;gap:10px">
@@ -323,14 +338,15 @@ async function openPanel(o) {
         <div class="wi-pf" style="flex:0 0 92px"><span class="wi-plbl">Ώρα</span>
           <input class="form-input" id="rly_time" placeholder="07:00" value="${escapeHtml(timeVal)}"></div>
       </div>
-      <div class="wi-pf"><span class="wi-plbl">${isDel ? 'Από — πού παραλαμβάνει ο τοπικός το φορτηγό' : 'Προς — πού παραδίδει ο τοπικός το φορτηγό'}</span>
+      <div class="wi-pf" id="rly_ptf" title="${ptHelp}"><span class="wi-plbl">${isDel ? 'Από' : 'Προς'}</span>
         ${fhLocSelect('rly_pt', ptVal)}</div>
     </div>`;
   // The refusal sits next to the save button: the body never grows, so the
   // panel never scrolls its own buttons away at the moment they matter.
+  // btn-primary: the app's primary action, like the board's other panels.
   const footer = `<span id="rly_err" role="alert" hidden style="flex:1;min-width:0;font-size:12px;font-weight:600;color:var(--danger);line-height:1.3"></span>
     <button class="btn btn-ghost" onclick="Relay._close()">Άκυρο</button>
-    <button class="btn btn-success" id="rly_submit" onclick="Relay._submit()">${existing ? 'Αποθήκευση' : 'Καταχώρηση'}</button>`;
+    <button class="btn btn-primary" id="rly_submit" onclick="Relay._submit()">${existing ? 'Αποθήκευση' : 'Καταχώρηση'}</button>`;
   const name = orderName(of);
   const ctx = `${escapeHtml(name)}${name ? ' · ' : ''}${escapeHtml(_short(of['Loading Summary']) || '—')} → ${escapeHtml(_short(of['Delivery Summary']) || '—')}`;
   o.host.open(existing ? (isDel ? 'Τοπική παράδοση — αλλαγή' : 'Τοπική φόρτωση — αλλαγή') : menuLabel(kind), ctx, body, footer);
@@ -444,11 +460,12 @@ async function remove(id) {
 }
 
 // ── TRACK RECORD (a driver's local moves) ─────────────────────────────────
-// The owner pays some drivers a fixed salary and others per trip, and wants
-// «a track record for every driver, knowing what he did on those days». The
-// track record IS the local_moves rows (relays and Weekly National's plain
-// errands) — no copy, no amounts ever: the Drivers card shows it to every
-// role that sees drivers, the payroll card next to the ledger.
+// The owner wants «a track record for every driver, knowing what he did on
+// those days» — every driver, since besides the three locals anyone may do a
+// local move (owner 5/10). The track record IS the local_moves rows (relays
+// and Weekly National's plain errands) — no copy, no amounts ever: the
+// Drivers card shows it to every role that sees drivers, the payroll card
+// next to the ledger.
 // → newest first: { id, date, kind, rec, order } (order: Order No / Truck /
 //   Trailer of a relay's order, null for a plain move).
 async function loadForDriver(driverRecId) {
@@ -524,7 +541,7 @@ const HISTORY_CSS = `<style>
 </style>`;
 
 const Relay = { KINDS, kindFor, orderDay, fmtDay, menuLabel, orderName, blockReason, isHiddenReason, isPartnerRun, isDone,
-  loadForOrders, index, summary, vehicleText, openPanel, verify, remove,
+  loadForOrders, index, summary, vehicleText, diffParts, openPanel, verify, remove,
   loadForDriver, historyTableHtml, historyListHtml, HISTORY_CSS, _submit, _close, _tm, _err };
 if (typeof window !== 'undefined') window.Relay = Relay;
 if (typeof module !== 'undefined' && module.exports) module.exports = Relay;

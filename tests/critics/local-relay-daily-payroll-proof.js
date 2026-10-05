@@ -1,7 +1,8 @@
 // Proof rig — local relays (060) on Daily Ops, Payroll and the Drivers card.
-// Owner 4/10/2026: «οκ προχωρα με τις τοπικες παραδοσεις»; OWNER-Q2 answered
-// 4/10 (both: salary = track record only, per_trip = daily ΤΟΠΙΚΟ line);
-// Q3 (availability) deliberately NOT built — nothing here asserts it.
+// Owner 4/10/2026: «οκ προχωρα με τις τοπικες παραδοσεις»; owner 5/10: no pay
+// types — every driver who does a relay gets the daily ΤΟΠΙΚΟ line, no
+// difference between drivers; Q3 (availability) deliberately NOT built —
+// nothing here asserts it.
 //
 // Run from the MAIN repo (node_modules/playwright + the .har live there):
 //   cd /Users/dimitrispetras/PETRASGROUP-TMS
@@ -29,14 +30,13 @@
 //              «Move Kind» = visible zone, day still renders
 //   Μισθοδοσία local line label (the trigger's route text), no ↗, Διόρθωση
 //              only while a live relay holds the day (no Επαναφορά even for
-//              owner) · Ακύρωση with a reason when the day has no live relay
-//              or the driver is salaried · «Αξία 0» asks why (note) · RT line
-//              «⇄ τοπ. <who> · <day>» · month cards «· τοπ. M» · pay basis
-//              unknown / salaried · track record table from local_moves ·
-//              dispatcher sees no payroll
-//   Οδηγοί     card «Τοπικές κινήσεις» (dispatcher) · form «Τύπος αμοιβής»
-//              (owner; not drawn for the dispatcher; a Worker that drops it
-//              is said after the save)
+//              owner) · Ακύρωση with a reason only when the day has no live
+//              relay of that driver — the same for every driver · «Αξία 0»
+//              asks why (note) · RT line «⇄ τοπ. <who> · <day>» · month cards
+//              «· τοπ. M» · no pay-type note anywhere · track record table
+//              from local_moves · dispatcher sees no payroll
+//   Οδηγοί     card «Τοπικές κινήσεις» for every driver (dispatcher, owner) ·
+//              the form has no «Τύπος αμοιβής» for anyone
 
 const path = require('path');
 const fs = require('fs');
@@ -71,12 +71,11 @@ const DRV = { IA: 'recDrvIntlA1', IB: 'recDrvIntlB2', P: 'recDrvLocP31', K: 'rec
 const REF = {
   trucks: [rec(TRK.A, { 'License Plate': 'ΚΒΧ1001', Active: true }), rec(TRK.B, { 'License Plate': 'ΚΒΧ1002', Active: true }), rec(TRK.L, { 'License Plate': 'ΚΒΧ2000', Active: true })],
   trailers: [rec(TRL.A, { 'License Plate': 'Ρ-501', Active: true }), rec(TRL.B, { 'License Plate': 'Ρ-502', Active: true }), rec(TRL.C, { 'License Plate': 'Ρ-503', Active: true })],
-  // 'Pay Basis': P absent (= unknown, facade trap 2), K salaried.
   drivers: [
     rec(DRV.IA, { 'Full Name': 'Διεθνής Α', Active: true, Type: 'Internal' }),
     rec(DRV.IB, { 'Full Name': 'Διεθνής Β', Active: true, Type: 'Internal' }),
     rec(DRV.P, { 'Full Name': 'Τοπικός Π', Active: true, Type: 'Internal' }),
-    rec(DRV.K, { 'Full Name': 'Τοπικός Κ', Active: true, Type: 'Internal', 'Pay Basis': 'salary' }),
+    rec(DRV.K, { 'Full Name': 'Τοπικός Κ', Active: true, Type: 'Internal' }),
   ],
   locations: [rec(VER, { Name: 'VEROIA CROSS-DOCK' }), rec('recLocSky01', { Name: 'SKYDRA' }), rec('recLocNl001', { Name: 'BARENDRECHT' }),
     rec('recLocNao01', { Name: 'NAOUSA' }), rec('recLocDe001', { Name: 'MUENCHEN' })],
@@ -170,10 +169,10 @@ function freshLedger() {
         route_legs: [{ dir: 'EXPORT', load: MINUS3, deliv: TODAY, from: { name: 'SKYDRA', country: 'GR' }, to: { name: 'MUENCHEN', country: 'DE' } }] }),
     ],
     [PG.K]: [ent({ id: 9201, driver_id: PG.K, entry_type: 'payment_bank', entry_date: MINUS3, amount: 1, balance_delta: -1, running_balance: -1 }),
-      // paid per trip, then made salaried: the trigger flagged the line (money
-      // was written) and will never resolve it — cancellable, with a reason
+      // a local day with its amount written and its three relays still live:
+      // the trigger holds it — the same rule as for any other driver
       ent({ id: 9202, driver_id: PG.K, entry_type: 'trip', entry_date: TODAY, local_move_id: 505, trip_value: 1, balance_delta: 1,
-        needs_review: true, review_note: 'ο οδηγός έγινε μισθωτός (μόνο ιστορικό)', route_text: 'ΤΟΠΙΚΟ · φόρτωση 431 · φόρτωση 432 · φόρτωση 435',
+        route_text: 'ΤΟΠΙΚΟ · φόρτωση 431 · φόρτωση 432 · φόρτωση 435',
         relay_info: { kind: 'local_day', moves: [{ id: 505, move_kind: 'relay_loading', order_id: 431, rt_codes: [] },
           { id: 506, move_kind: 'relay_loading', order_id: 432, rt_codes: [] }, { id: 507, move_kind: 'relay_loading', order_id: 435, rt_codes: [] }] } })],
   };
@@ -198,7 +197,7 @@ function recordIds(formula) { return [...String(formula).matchAll(/RECORD_ID\(\)
 const strip = r => ({ id: r.id, createdTime: r.createdTime, fields: r.fields });
 
 async function installStubs(page, opts = {}) {
-  const cap = { moves: [], orders: [], ledgerGets: 0, patches: [], drivers: [], lmPatches: [], lmReads: [], dropLabels: [], driverPatches: [] };
+  const cap = { moves: [], orders: [], ledgerGets: 0, patches: [], drivers: [], lmPatches: [], lmReads: [], dropLabels: [] };
   // Per page: the end-to-end save below writes into its own copy, so no
   // other scenario sees a time it did not set.
   const moves = MOVES.map(r => ({ ...r, fields: { ...r.fields } }));
@@ -229,16 +228,6 @@ async function installStubs(page, opts = {}) {
         return json(route, strip(r));
       }
     }
-    const drvOne = p.match(/^\/v0\/[^/]+\/tbl7UGmYhc2Y82pPs\/(rec[A-Za-z0-9]+)$/);
-    if (drvOne && req.method() === 'PATCH') {
-      const body = req.postDataJSON(); cap.driverPatches.push({ id: drvOne[1], fields: body.fields });
-      const r = REF.drivers.find(x => x.id === drvOne[1]);
-      const out = Object.assign({}, r.fields, body.fields);
-      Object.keys(out).forEach(k => { if (out[k] == null) delete out[k]; });
-      // the pre-060 Worker has no «Pay Basis» label: dropped with 200 OK
-      if (opts.dropPayBasis) delete out['Pay Basis'];
-      return json(route, { id: r.id, createdTime: r.createdTime, fields: out });
-    }
     if (m && req.method() === 'GET') {
       const t = m[1];
       if (t === 'tblEAPExIAjiA3asD') return json(route, { records: REF.trucks });
@@ -250,9 +239,7 @@ async function installStubs(page, opts = {}) {
         cap.drivers.push(u.search);
         const want = recordIds(f);
         const rows = want.length ? REF.drivers.filter(r => want.includes(r.id)) : REF.drivers;
-        // plOnly (Worker 060): dispatcher/warehouse never receive «Pay Basis».
-        const pl = ['owner', 'management', 'accountant'].includes(opts.role);
-        return json(route, { records: rows.map(r => { const c = strip(r); if (!pl) { c.fields = Object.assign({}, c.fields); delete c.fields['Pay Basis']; } return c; }) });
+        return json(route, { records: rows.map(strip) });
       }
       if (t === 'tblaeY5QOHAS1gyE8') { const want = recordIds(f); return json(route, { records: STOPS.filter(s => want.includes(s.id)) }); }
       if (t === 'tblgHlNmLBH3JTdIM') {
@@ -489,8 +476,9 @@ async function payrollAccountant(browser) {
   assert(rowTxt.includes('ΤΟΠΙΚΟ · παράδοση 415 · παράδοση 418'), 'local line label «ΤΟΠΙΚΟ · παράδοση 415 · παράδοση 418» (one line for the day, the trigger\'s route text)');
   assert(await row.locator('.dl-rt').count() === 0, 'local line: no ↗ (no RT link)');
   assert(rowTxt.includes('χωρίς αξία'), 'local line without amount reads «χωρίς αξία» (accounting enters it, never automatic)');
-  assert((await txt(page, '#dlPayBasis')).includes('τύπος αμοιβής άγνωστος'), 'hero: «τύπος αμοιβής άγνωστος» with a link to the driver form (said once, on the hero)');
-  assert(await page.locator('.dl-pb-note').count() === 0, 'the unknown pay basis is not repeated on every local line');
+  // owner 5/10: no pay types — the card says nothing about how a driver is paid
+  assert(await page.locator('#dlPayBasis, #dlPayBasisLink').count() === 0 && !/αμοιβής|μισθωτός|Ανά δρομολόγιο/i.test(await txt(page, '.dl-hero')),
+    'hero: no pay-type note (owner 5/10: no pay types, no difference between drivers)');
   const t9001 = await row.locator('.m').first().getAttribute('title');
   assert(/Αξία 0 = δεν πληρώνεται χωριστά/.test(t9001) && /RT-9415, RT-9418/.test(t9001), 'tooltip: system-held day/route, «Αξία 0», and the RTs served — codes only in the tooltip');
   assert((await page.locator('.dl-row[data-entry="9003"]').innerText()).includes('ΤΟΠΙΚΟ · παράδοση 409'), 'a «Αξία 0» day shows as a real value, not pending');
@@ -508,10 +496,10 @@ async function payrollAccountant(browser) {
   await page.press('#dlEiValue', 'Enter');
   await page.waitForSelector('#dlReason', { timeout: 5000 });
   assert((await txt(page, '#dlReasonTitle')) === 'Αξία 0 — γιατί;' && cap.patches.length === 0, '«Αξία 0» on a local day asks why before anything is sent');
-  await page.fill('#dlReason', 'μισθωτός');
+  await page.fill('#dlReason', 'μέσα στον μισθό');
   await Promise.all([page.waitForResponse(r => r.request().method() === 'PATCH' && r.url().includes('/costs/ledger/9001')), page.press('#dlReason', 'Enter')]);
   const pt = cap.patches.find(x => x.id === 9001);
-  assert(pt && pt.body.trip_value === 0 && pt.body.note === 'μισθωτός' && Object.keys(pt.body).length === 2, '«Αξία 0» → PATCH /costs/ledger/9001 {trip_value:0, note} — amount and its reason: ' + JSON.stringify(pt && pt.body));
+  assert(pt && pt.body.trip_value === 0 && pt.body.note === 'μέσα στον μισθό' && Object.keys(pt.body).length === 2, '«Αξία 0» → PATCH /costs/ledger/9001 {trip_value:0, note} — amount and its reason: ' + JSON.stringify(pt && pt.body));
   await page.waitForTimeout(400);
   await page.waitForSelector('#dlLocalMoves .lh-t', { timeout: 10000 });
 
@@ -547,20 +535,20 @@ async function payrollAccountant(browser) {
   assert(await rt.locator('.dl-rt').count() === 1, 'the RT line keeps its ↗');
   assert(await page.locator('.dl-row[data-entry="9102"] .dl-relay').count() === 0, 'an RT without a relay has no badge');
   await page.waitForTimeout(400);
-  assert(!(await txt(page, '#dlPayBasis')).includes('άγνωστος'), 'an international driver without relay work is not nagged about his pay basis');
   await page.screenshot({ path: path.join(SHOT_DIR, 'local-relay-payroll-rt-badge-1440.png'), fullPage: false });
 
+  // Another local driver: the same rules, nothing that sets him apart.
   await openCard(page, PG.K);
   await page.waitForSelector('#dlLocalMoves .lh-t', { timeout: 10000 });
-  assert((await txt(page, '#dlPayBasis')).includes('Μισθωτός'), 'salaried driver: hero says «Μισθωτός»');
-  assert((await txt(page, '#dlLocalMoves')).includes('μισθωτός: καταγραφή, χωρίς γραμμή πληρωμής'), 'salaried driver: track record only — «καταγραφή, χωρίς γραμμή πληρωμής»');
-  assert(await page.locator('#dlLocalMoves .lh-t tbody tr').count() === 3, 'salaried driver: his 3 loadings are listed');
-  assert((await page.locator('.dl-ledger').innerText()).split('ΤΟΠΙΚΟ').length === 2 && await page.locator('.dl-row.review[data-entry="9202"]').count() === 1,
-    'salaried driver: the only ΤΟΠΙΚΟ line is the flagged one paid before he became salaried');
+  assert(await page.locator('#dlPayBasis').count() === 0 && (await txt(page, '#dlLocalMoves .dl-lm-title')) === 'Τοπικές κινήσεις · 3',
+    'second local driver: track record «Τοπικές κινήσεις · 3», no pay-type word — ' + JSON.stringify(await txt(page, '#dlLocalMoves .dl-lm-title')));
+  assert((await page.locator('.dl-ledger').innerText()).split('ΤΟΠΙΚΟ').length === 2 && await page.locator('.dl-row[data-entry="9202"]').count() === 1,
+    'second local driver: his day is ONE ΤΟΠΙΚΟ line in his ledger (three loadings)');
   await page.waitForTimeout(300);
   await page.locator('.dl-row[data-entry="9202"] .dl-more').click();
   await page.waitForSelector('.dl-menu', { timeout: 5000 });
-  assert(await page.locator('.dl-menu .dl-menu-cancel').count() === 1 && (await txt(page, '.dl-menu .dl-menu-cancel')).includes('Ο οδηγός είναι μισθωτός'), 'salaried driver\'s flagged local line (relays still live): Ακύρωση offered, saying why');
+  assert(await page.locator('.dl-menu .dl-menu-edit').count() === 1 && await page.locator('.dl-menu .dl-menu-cancel').count() === 0,
+    'his local line with live relays: Διόρθωση only, no Ακύρωση — the same rule for every driver');
   await page.keyboard.press('Escape');
 
   const csv = await page.evaluate(e => dlCsvKinisi(e), freshLedger()[PG.P][0]);
@@ -611,47 +599,24 @@ async function driversCard(browser) {
   await page.waitForTimeout(900);   // the card panel slides in
   await page.locator(`#ec_${DRV.P}_lm`).scrollIntoViewIfNeeded();
   await page.screenshot({ path: path.join(SHOT_DIR, 'local-relay-drivers-card-1440.png'), fullPage: false });
-  // The row ✎ lets a dispatcher open the Drivers form (pre-existing): payroll
-  // information is not drawn there (coordinator 4/10).
-  await page.evaluate(id => openEntityEdit('drivers', id), DRV.P);
-  await page.waitForSelector('#ef_Full_Name', { timeout: 10000 });
-  assert(await page.locator('#ef_Pay_Basis').count() === 0 && !(await page.locator('#modalOverlay').innerText()).includes('Τύπος αμοιβής'), 'dispatcher: the Drivers form has no «Τύπος αμοιβής» (payroll information)');
   await context.close();
 
-  console.log('\n== Οδηγοί · owner (φόρμα) ==');
+  // owner 5/10: no pay types — the form has no «Τύπος αμοιβής» for anyone,
+  // and the card keeps «Τοπικές κινήσεις» for every driver.
+  console.log('\n== Οδηγοί · owner (καρτέλα + φόρμα) ==');
   const o = await newPage(browser, 'owner');
   await installStubs(o.page, { role: 'owner' });
   await gotoPage(o.page, 'drivers', BASE_URL);
   await o.page.waitForFunction(() => typeof _entityState !== 'undefined' && _entityState.drivers && (_entityState.drivers.records || []).length > 0, null, { timeout: 20000 });
+  await o.page.evaluate(id => selectEntity('drivers', id), DRV.K);
+  await o.page.waitForSelector(`#ec_${DRV.K}_lm .lh-l`, { timeout: 15000 });
+  assert(await o.page.locator(`#ec_${DRV.K}_lm .lh-i`).count() === 3, 'owner, another local driver\'s card: «Τοπικές κινήσεις» lists his 3 loadings');
   await o.page.evaluate(id => openEntityEdit('drivers', id), DRV.K);
-  await o.page.waitForSelector('#ef_Pay_Basis', { timeout: 10000 });
-  const opts = await o.page.locator('#ef_Pay_Basis option').allInnerTexts();
-  assert(JSON.stringify(opts.slice(1)) === JSON.stringify(['Μισθωτός', 'Ανά δρομολόγιο']), 'form «Τύπος αμοιβής»: Μισθωτός / Ανά δρομολόγιο (+ empty = unknown)');
-  assert(await o.page.locator('#ef_Pay_Basis').inputValue() === 'salary', 'form prefills the salaried driver as «Μισθωτός»');
-  assert((await o.page.locator('#modalOverlay').innerText()).includes('Κενό = άγνωστο'), 'form hint says «Κενό = άγνωστο»');
+  await o.page.waitForSelector('#ef_Full_Name', { timeout: 10000 });
+  assert(await o.page.locator('#ef_Pay_Basis').count() === 0 && !(await o.page.locator('#modalOverlay').innerText()).includes('Τύπος αμοιβής'),
+    'owner: the Drivers form has no «Τύπος αμοιβής» (owner 5/10)');
   await o.context.close();
-
-  // A Worker that drops «Pay Basis» (pre-060 map) answers 200 — the returned
-  // row lacks it, and the save says so instead of «ενημερώθηκε».
-  console.log('\n== Οδηγοί · owner (φόρμα, Worker χωρίς «Pay Basis») ==');
-  const d = await newPage(browser, 'owner');
-  const dcap = await installStubs(d.page, { role: 'owner', dropPayBasis: true });
-  await gotoPage(d.page, 'drivers', BASE_URL);
-  await d.page.waitForFunction(() => typeof _entityState !== 'undefined' && _entityState.drivers && (_entityState.drivers.records || []).length > 0, null, { timeout: 20000 });
-  await d.page.evaluate(id => openEntityEdit('drivers', id), DRV.P);
-  await d.page.waitForSelector('#ef_Pay_Basis', { timeout: 10000 });
-  await d.page.selectOption('#ef_Pay_Basis', 'per_trip');
-  // The real button: saveEntityRecord labels document.activeElement «Αποθήκευση…»
-  // (pre-existing), so a call without the click could relabel whatever has focus.
-  await d.page.click('#ef_save_drivers');
-  // the toast is read where the user reads it — on the page
-  const said = await d.page.waitForFunction(() => /ΔΕΝ γράφτηκε: Τύπος αμοιβής/.test(document.body.innerText), null, { timeout: 8000 }).then(() => true, () => false);
-  const body = await d.page.evaluate(() => document.body.innerText);
-  const dp = dcap.driverPatches[0] || {};
-  assert(dp.fields && dp.fields['Pay Basis'] === 'per_trip', 'owner: the PATCH carries «Pay Basis» = per_trip');
-  assert(said && !/Η εγγραφή ενημερώθηκε/.test(body), 'a dropped «Pay Basis» is said after the save («…ΔΕΝ γράφτηκε: Τύπος αμοιβής…»), never «ενημερώθηκε»' + (said ? '' : ' — errors: ' + JSON.stringify(d.errors.slice(-5))));
-  await d.context.close();
-  return [...errors, ...o.errors, ...d.errors];
+  return [...errors, ...o.errors];
 }
 
 (async () => {

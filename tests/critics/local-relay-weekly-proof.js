@@ -10,9 +10,12 @@
 // and the ROW the facade holds afterwards — never the toast.
 //
 // Scenarios (Β7, Weekly side; no availability work — owner Q3 4/10):
-//   (1) import Monday with a relay: sub-row «⤷ ΠΑΡΑΔΟΣΗ ΤΟΠ.», «ίδιο» tractor, badge on the card
-//   (2) export with a loading relay, other tractor + drop-and-hook trailer
-//   (3) groupage of 3 members with the same local driver: 3 sub-rows, one badge
+//   (1) import Monday with a relay: sub-row «⤷ ΠΑΡΑΔΟΣΗ ΤΟΠ. · Local A · Δευ 05/10 07:00»
+//       and nothing the order row above already says (its tractor, its trailer,
+//       the Veroia point, its name) — all of it in the tooltip; badge on the card
+//   (2) export with a loading relay, other tractor + drop-and-hook trailer: only those two said
+//   (3) groupage of 3 members with the same local driver: ONE line «ΦΟΡΤΩΣΗ ΤΟΠ. ×3 ·
+//       Local A · … 05:00–06:00», the members (each named) on click; one badge
 //   (4) a Cancelled relay does not show and does not count as «exists»
 //   (5) a relay without driver: «ΠΡΟΣ ΑΝΑΘΕΣΗ»
 //   (6) an old Worker (422 on the «Move Kind» filter): error banner, menu disabled
@@ -36,6 +39,9 @@
 //  (20) no Reference (most imports): menus, sub-row and badge name the client + order number
 //  (21) an order without a tractor: «ίδιος» stays allowed, but the panel says the local has no vehicle
 //  (22) a piece going back to stock keeps its relay → proven where the stock board is: stock-shelf-rig.js
+// Coordinator screenshot review + owner 5/10:
+//  (23) panel: short labels (help in the tooltip), primary button (btn-primary, not green)
+//  (24) a group with two local drivers: one line per driver, never folded together
 //
 // Run from the MAIN repo root (the .har lookup in auth.js is cwd-relative):
 //   PW_BASE_URL=http://127.0.0.1:8788/.claude/worktrees/lr-weekly/ node .claude/worktrees/lr-weekly/tests/critics/local-relay-weekly-proof.js
@@ -290,6 +296,10 @@ async function ctxItems(page, call) {
 }
 const relayItems = items => items.filter(i => /τοπικό οδηγό|Τοπική (παράδοση|φόρτωση)/.test(i.t));
 const subText = (page, id) => page.$eval(`.wi-rly-row[data-rly-id="${id}"]`, el => el.innerText.replace(/\s+/g, ' ').trim()).catch(() => null);
+const subTip = (page, id) => page.$eval(`.wi-rly-row[data-rly-id="${id}"]`, el => el.getAttribute('title') || '').catch(() => '');
+// The group line of one board row (one driver, one day, N relays).
+const grpOf = (page, firstRelayId) => page.evaluate(id => { const g = [...document.querySelectorAll('.wi-rly-grp')].find(el => (WINTL._rlyGrps[el.dataset.rlyGrp] || []).some(m => m.id === id));
+  return g ? { key: g.dataset.rlyGrp, text: g.innerText.replace(/\s+/g, ' ').trim(), tip: g.getAttribute('title') || '', open: g.getAttribute('aria-expanded') === 'true' } : null; }, firstRelayId);
 async function waitIdle(page) { await page.waitForTimeout(900); }
 async function openRelay(page, oid) {
   await page.evaluate(o => _wiRelayOpen(o), oid);
@@ -302,16 +312,33 @@ async function scenarios(browser) {
     const { page, S } = await newPage(browser);
     console.log('\n(1)–(5) the board draws what the facade holds');
     const t1 = await subText(page, 'recLM1');
-    ok(t1 && /ΠΑΡΑΔΟΣΗ ΤΟΠ\./.test(t1) && /Δευ 05\/10 07:00/.test(t1) && /Local A/.test(t1) && /ίδιο INT-1/.test(t1) && /ρυμ\. TRL-1/.test(t1) && /από CROSS-DOCK/.test(t1), '(1) import relay sub-row: ' + t1);
+    ok(t1 === '⤷ ΠΑΡΑΔΟΣΗ ΤΟΠ. · Local A · Δευ 05/10 07:00', '(1) import relay sub-row = driver · day · time, nothing the order row says again: ' + t1);
+    const tip1 = await subTip(page, 'recLM1');
+    ok(/ίδιο INT-1 · ρυμ\. TRL-1 · από CROSS-DOCK/.test(tip1) && /I1-MON/.test(tip1) && /μένει στην παραγγελία/.test(tip1), '(1) the tooltip carries the whole relay: ' + JSON.stringify(tip1));
     ok(/✓/.test(t1 || '') === false, '(1) In Transit import → the relay is not shown as done (done = the ORDER Delivered)');
     ok(await page.$eval('#wi-imp-recImp1 .wi-rly-b', e => e.textContent.trim()).catch(() => null) === '⇄ τοπ.', '(1) badge «⇄ τοπ.» on the import\'s assignment card');
     const t2 = await subText(page, 'recLM2');
-    ok(t2 && /ΦΟΡΤΩΣΗ ΤΟΠ\./.test(t2) && /Σάβ 03\/10 06:00/.test(t2) && /Local B/.test(t2) && /άλλο LOC-1/.test(t2) && /ρυμ\. TRL-L \(άλλη από της παραγγελίας\)/.test(t2) && /προς CROSS-DOCK/.test(t2), '(2) export relay, other tractor + drop-and-hook: ' + t2);
+    ok(t2 === '⤷ ΦΟΡΤΩΣΗ ΤΟΠ. · Local B · Σάβ 03/10 06:00 · άλλο φορτηγό LOC-1 · ρυμ. TRL-L', '(2) export relay: other tractor + drop-and-hook trailer said, Veroia point and the order\'s name not: ' + t2);
     const e1Row = await rowIdOf(page, 'recExp1');
     ok(await page.$$eval(`#wi-row-${e1Row} .wi-rly-b`, els => els.length) === 1, '(2) one badge on the matched pair\'s card');
-    const g = await Promise.all(['recLMg1', 'recLMg2', 'recLMg3'].map(id => subText(page, id)));
-    ok(g.every(t => t && /Local A/.test(t) && /ΦΟΡΤΩΣΗ ΤΟΠ\./.test(t)), '(3) groupage: three sub-rows, same local driver');
     const gRow = await rowIdOf(page, 'recG1');
+    let gl = await grpOf(page, 'recLMg1');
+    ok(gl && gl.text === '⤷ ΦΟΡΤΩΣΗ ΤΟΠ. ×3 · Local A · Σάβ 03/10 05:00–06:00 ▸' && !gl.open, '(3) groupage, one local driver: ONE line «×3 · Local A · 05:00–06:00»: ' + (gl && gl.text));
+    ok(await page.$$eval('.wi-rly-row[data-rly-id^="recLMg"]', els => els.length) === 0, '(3) the members are folded (no per-member line yet)');
+    ok(gl && /G1 05:00/.test(gl.tip) && /G2 05:30/.test(gl.tip) && /G3 06:00/.test(gl.tip), '(3) the group line\'s tooltip lists each member: ' + JSON.stringify(gl && gl.tip));
+    await page.locator('.wi-rly-grp').first().click();
+    await page.waitForTimeout(250);
+    const g = await Promise.all(['recLMg1', 'recLMg2', 'recLMg3'].map(id => subText(page, id)));
+    ok(g.every((t, k) => t === `⤷ ΦΟΡΤΩΣΗ ΤΟΠ. · Local A · Σάβ 03/10 ${['05:00', '05:30', '06:00'][k]} · G${k + 1}`), '(3) click → one line per member, each named: ' + JSON.stringify(g));
+    gl = await grpOf(page, 'recLMg1');
+    ok(gl && gl.open && /▾$/.test(gl.text) && await page.$$eval('.wi-rly-mem', els => els.length) === 3, '(3) the group line stays, marked open; members indented under it');
+    await shot(page, 'local-relay-weekly-after-group-open-1440.png');
+    const gm = await ctxItems(page, `_wiRelayGrpCtx(${EV},${JSON.stringify(gl.key)})`);
+    ok(gm.length === 4 && gm[0].t === 'Σύμπτυξη' && gm.slice(1).every((x, k) => x.t === `Αλλαγή — G${k + 1}…`), '(3) its menu: Σύμπτυξη + «Αλλαγή — G1…» per member: ' + JSON.stringify(gm.map(x => x.t)));
+    await page.evaluate(() => { const c = document.getElementById('wi-ctx'); if (c) c.style.display = 'none'; });
+    await page.locator('.wi-rly-grp').first().click();
+    await page.waitForTimeout(250);
+    ok(await page.$$eval('.wi-rly-row[data-rly-id^="recLMg"]', els => els.length) === 0, '(3) a second click folds them again');
     ok(await page.$$eval(`#wi-row-${gRow} .wi-rly-b`, els => els.length) === 1, '(3) groupage: ONE badge on the group\'s card');
     ok(await page.$('.wi-rly-row[data-rly-id="recLMc"]') === null, '(4) the Cancelled relay is not drawn');
     ok((await subText(page, 'recLM4') || '').includes('ΠΡΟΣ ΑΝΑΘΕΣΗ') && await page.$('.wi-rly-row[data-rly-id="recLM4"] .wi-rly-need') !== null, '(5) relay without driver → red «ΠΡΟΣ ΑΝΑΘΕΣΗ»');
@@ -407,6 +434,12 @@ async function scenarios(browser) {
       hasHandover: /άφιξη|φτάνει Βέροια|Handover/i.test(document.getElementById('wi-panel').innerText),
     }));
     ok(pre.title === 'Παράδοση με τοπικό οδηγό', '(8) panel title');
+    const p23 = await page.evaluate(() => ({ btn: document.getElementById('rly_submit').className,
+      lbls: [...document.querySelectorAll('#wi-panel .wi-plbl')].map(e => e.textContent.trim()),
+      ptTip: (document.getElementById('rly_ptf') || {}).title || '', dayTip: document.getElementById('rly_day').title }));
+    ok(/\bbtn-primary\b/.test(p23.btn) && !/btn-success/.test(p23.btn), '(23) the save button is the app\'s primary (btn-primary), not green: ' + p23.btn);
+    ok(JSON.stringify(p23.lbls) === JSON.stringify(['Παράδοση', 'Οδηγός', 'Τράκτορας', 'Ρυμούλκα', 'Ώρα', 'Από']), '(23) short labels: ' + JSON.stringify(p23.lbls));
+    ok(p23.ptTip === 'Πού παραλαμβάνει ο τοπικός το φορτηγό' && /από την παραγγελία/.test(p23.dayTip), '(23) the explanations ride in the tooltips: ' + JSON.stringify([p23.ptTip, p23.dayTip]));
     ok(pre.trl === 'recTrl3' && pre.pt === VEROIA && pre.same && pre.trkDisabled, '(8) trailer prefilled from the order, point = Veroia, tractor «ίδιος»');
     ok(pre.intlDisabled, '(8) the international driver is listed but cannot be picked');
     ok(/Τρί 06\/10/.test(pre.day), '(8) the customer day comes read-only from the order: ' + pre.day);
@@ -455,7 +488,7 @@ async function scenarios(browser) {
     const lm2 = S.db[T.LM].find(r => r.id === 'recLM2');
     ok(lm2 && !('Driver' in lm2.fields) && !('Truck' in lm2.fields) && lm2.fields.Status === 'Pending', '(9) facade row: NO Driver, NO Truck, Status Pending');
     const t9 = await subText(page, 'recLM2');
-    ok(t9 && /ΠΡΟΣ ΑΝΑΘΕΣΗ/.test(t9) && /ίδιο INT-2/.test(t9), '(9) sub-row redrawn: ' + t9);
+    ok(t9 === '⤷ ΦΟΡΤΩΣΗ ΤΟΠ. · ΠΡΟΣ ΑΝΑΘΕΣΗ · Σάβ 03/10 06:00 · ρυμ. TRL-L' && /ίδιο INT-2/.test(await subTip(page, 'recLM2')), '(9) sub-row redrawn — «ίδιο» is not said on the line, only in the tooltip: ' + t9);
     ok(await page.evaluate(() => getUndoAction() === null), '(9) no toolbar Undo armed by the relay edit');
 
     console.log('\n(12) delete');
@@ -481,7 +514,8 @@ async function scenarios(browser) {
     ok(t18.some(t => /διαγράφηκε, αλλά η επανανάγνωση απέτυχε/.test(t)) && !t18.some(t => /Η διαγραφή απέτυχε/.test(t)), '(18) said as «διαγράφηκε, αλλά η επανανάγνωση απέτυχε», never «η διαγραφή απέτυχε»: ' + JSON.stringify(t18));
     ok(await page.$('.wi-rly-fail') !== null, '(18) the banner offers ↻');
     await page.evaluate(() => _wiRelayReload()); await waitIdle(page);
-    ok(await page.$('.wi-rly-fail') === null && await page.$('.wi-rly-row[data-rly-id="recLMg3"]') === null, '(18) ↻ re-reads: banner gone, the deleted relay is not drawn');
+    const gl18 = await grpOf(page, 'recLMg1');
+    ok(await page.$('.wi-rly-fail') === null && gl18 && gl18.text === '⤷ ΦΟΡΤΩΣΗ ΤΟΠ. ×2 · Local A · Σάβ 03/10 05:00–05:30 ▸', '(18) ↻ re-reads: banner gone, the group line counts the two left: ' + (gl18 && gl18.text));
 
     console.log('\n(13) assignment popover hint');
     await page.locator('#wi-imp-recImp3 .wk3-assign').click();
@@ -525,9 +559,17 @@ async function scenarios(browser) {
     const it = relayItems(await ctxItems(page, `_wiCtx(${EV},${await rowIdOf(page, 'recExp1')})`));
     ok(it.length === 2 && it[0].t === 'Τοπική φόρτωση: αλλαγή — εξαγωγή #4320…' && it[1].t === 'Παράδοση με τοπικό οδηγό — εισαγωγή Client Z #4321…', '(20) matched pair menu: ' + JSON.stringify(it.map(x => x.t)));
     await page.evaluate(() => { const c = document.getElementById('wi-ctx'); if (c) c.style.display = 'none'; });
-    ok(/#4320/.test(await subText(page, 'recLM2') || ''), '(20) the sub-row names the export by its number: ' + await subText(page, 'recLM2'));
+    // The pair row IS the order: its sub-row does not repeat the name, the tooltip does.
+    ok(!/#4320/.test(await subText(page, 'recLM2') || '') && /Τοπική φόρτωση · #4320/.test(await subTip(page, 'recLM2')), '(20) the tooltip names the export by its number (the line does not repeat the row above): ' + await subText(page, 'recLM2'));
     const e1Row = await rowIdOf(page, 'recExp1');
     ok(/Τοπική φόρτωση #4320:/.test(await page.$eval(`#wi-row-${e1Row} .wi-rly-b`, e => e.title).catch(() => '')), '(20) the badge tooltip names it too');
+    console.log('\n(24) a group with two local drivers: one line per driver');
+    await page.evaluate(() => { const c = document.getElementById('wi-ctx'); if (c) c.style.display = 'none'; });
+    S.db[T.LM].find(r => r.id === 'recLMg2').fields.Driver = ['recDrvL2'];
+    await page.evaluate(() => _wiRelayReload()); await waitIdle(page);
+    const ga = await grpOf(page, 'recLMg1');
+    ok(ga && ga.text === '⤷ ΦΟΡΤΩΣΗ ΤΟΠ. ×2 · Local A · Σάβ 03/10 05:00–06:00 ▸', '(24) Local A\'s two loadings: one line ×2: ' + (ga && ga.text));
+    ok(await subText(page, 'recLMg2') === '⤷ ΦΟΡΤΩΣΗ ΤΟΠ. · Local B · Σάβ 03/10 05:30 · G2', '(24) Local B\'s loading stays its own line, named (the row carries three exports): ' + await subText(page, 'recLMg2'));
     ok(S.errors.length === 0, 'page A2: no page errors ' + S.errors.join(' | '));
     await page.context().close();
   }

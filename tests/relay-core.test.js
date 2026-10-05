@@ -9,6 +9,10 @@ const { test } = require('node:test');
 const assert = require('node:assert');
 const path = require('node:path');
 
+// core/data-helpers.js as the browser loads it: orderClientName is the ONE
+// client-name rule Relay.orderName and the Weekly board share (principle 3).
+// The stubs below then take over the reference data.
+require('node:vm').runInThisContext(require('node:fs').readFileSync(path.resolve(__dirname, '../core/data-helpers.js'), 'utf8'));
 // Browser globals relay.js uses at call time (utils/data-helpers/api).
 global.toLocalDate = v => String(v || '').slice(0, 10);
 global.getLinkedId = v => (Array.isArray(v) ? v[0] : v) || '';
@@ -177,4 +181,19 @@ test('orderName: Reference first, then client + order number, then the number al
     assert.strictEqual(Relay.orderName({ Client: ['recUnknown'] }), '');
     assert.strictEqual(Relay.orderName(null), '');
   } finally { delete global.getRefClients; }
+});
+
+// Screenshot review 5/10: the Weekly sub-row says only what differs from the
+// order above it; the full vehicle stays in Daily Ops, the track record and
+// the tooltip (vehicleText).
+test('diffParts: nothing when the local takes the order\'s tractor and trailer at Veroia; each difference named', () => {
+  const o = { id: 'recO', fields: { Direction: 'Import', Truck: ['recTk1'], Trailer: ['recTl1'], 'Delivery DateTime': '2026-10-05' } };
+  const same = Relay.summary({ fields: { 'Move Kind': 'relay_delivery', Trailer: ['recTl1'], 'From Location': ['recJucKOhC1zh4IP3'] } }, o);
+  assert.deepStrictEqual(Relay.diffParts(same), []);
+  assert.strictEqual(same.pointDefault, true);
+  const other = Relay.summary({ fields: { 'Move Kind': 'relay_delivery', Truck: ['recTkL'], Trailer: ['recTlX'], 'From Location': ['recN'] } }, o);
+  assert.deepStrictEqual(Relay.diffParts(other), ['άλλο φορτηγό LOC-1', 'ρυμ. —', 'από NAOUSA']);
+  // an order without a trailer: the relay's is the only one written anywhere → said
+  const noTrl = Relay.summary({ fields: { 'Move Kind': 'relay_delivery', Trailer: ['recTl1'], 'From Location': ['recJucKOhC1zh4IP3'] } }, { id: 'recO', fields: { Direction: 'Import' } });
+  assert.deepStrictEqual(Relay.diffParts(noTrl), ['ρυμ. TRL-1']);
 });

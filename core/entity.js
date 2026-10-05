@@ -316,9 +316,10 @@ const ENTITY_CONFIG = {
     },
     cardRt: true,
     cardTruckAgg: true,
-    // 060 (owner 4/10): «a track record for every driver» — his local moves,
-    // read from local_moves itself (Relay.loadForDriver, core/relay.js). No
-    // amounts, so every role that sees drivers sees it.
+    // 060 (owner 4/10, 5/10): «a track record for every driver» — anyone may
+    // do a local move, not only the locals — read from local_moves itself
+    // (Relay.loadForDriver, core/relay.js). No amounts, so every role that
+    // sees drivers sees it.
     cardLocalMoves: true,
     perm: 'drivers',
     searchFields: ['Full Name', 'License Number'],
@@ -362,20 +363,6 @@ const ENTITY_CONFIG = {
         // decides how the driver is paid, so a driver without it is not saved.
         { f: 'Type',        label: 'Τύπος', type: 'select', req: true, options: [
           { val: 'Internal', label: 'Εσωτερικός' }, { val: 'External', label: 'Εξωτερικός' }] },
-        // 060 · OWNER-Q2 answered 4/10 (both: salary = track record only,
-        // per_trip = daily ΤΟΠΙΚΟ line). Its own column (drivers.pay_basis),
-        // NOT «Τύπος» above, which holds Internal/External — a different fact
-        // (principle 3). Empty = unknown: the base pays it like per_trip so no
-        // day is lost, and Μισθοδοσία shows «τύπος αμοιβής άγνωστος».
-        // viewPerm: payroll information (coordinator 4/10) — the Worker serves
-        // the label only to roles with costs access (plOnly: owner/management/
-        // accountant), so for anyone else the field is not drawn at all: an
-        // always-empty select there would read as «unknown». verify: an older
-        // Worker drops the label with 200 OK (facade trap #1) — the save
-        // checks the returned row and says so.
-        { f: 'Pay Basis',   label: 'Τύπος αμοιβής', type: 'select', viewPerm: 'costs', verify: true, options: [
-          { val: 'salary', label: 'Μισθωτός' }, { val: 'per_trip', label: 'Ανά δρομολόγιο' }],
-          hint: 'Κενό = άγνωστο. Μισθωτός: οι τοπικές κινήσεις μένουν μόνο ως ιστορικό. Ανά δρομολόγιο ή κενό: μία γραμμή ΤΟΠΙΚΟ ανά ημέρα στη Μισθοδοσία.' },
         { f: 'Phone',       label: 'Τηλέφωνο' },
         { f: 'Salary Base', label: 'Βασικός μισθός', type: 'number',
           // ΔΙΑΦΕΡΕΙ από τα άλλα τρία: εδώ η ΣΤΗΛΗ ΔΕΝ ΥΠΑΡΧΕΙ στη βάση
@@ -2815,9 +2802,6 @@ function buildEntityModal(entityKey, recId, fields) {
       : '';
     bodyHTML += `<div class="form-grid${sec.cols === 3 ? ' cols-3' : ''}"${secLabel ? '' : ' style="margin-top:16px"'}>`;
     for (const field of sec.fields) {
-      // A field another permission owns is not drawn (and so never sent:
-      // saveEntityRecord and entityRevalidate skip fields without an element).
-      if (field.viewPerm && typeof can === 'function' && can(field.viewPerm) === 'none') continue;
       const val = fields[field.f] ?? '';
       let input = '';
       if (field.type === 'textarea') {
@@ -2987,19 +2971,15 @@ async function saveEntityRecord(entityKey, recId) {
   if (btn) { btn.textContent = cfg.v2 ? 'Αποθήκευση…' : 'Saving...'; btn.disabled = true; }
 
   try {
-    const saved = recId ? await atPatch(cfg.tableId, recId, fields) : await atCreate(cfg.tableId, fields);
+    if (recId) {
+      await atPatch(cfg.tableId, recId, fields);
+    } else {
+      await atCreate(cfg.tableId, fields);
+    }
     invalidateCache(cfg.tableId);
     closeModal();
-    // `verify` fields: the returned row IS the table's row (PostgREST
-    // representation, mapped back to labels), so a value the Worker dropped
-    // is missing from it. Checked only for a value that was sent — a cleared
-    // field is absent either way (facade trap #2).
-    const lost = (saved && saved.fields && !saved._offline)
-      ? cfg.formFields.flatMap(sc => sc.fields).filter(fl => fl.verify && fields[fl.f] != null && saved.fields[fl.f] !== fields[fl.f]).map(fl => fl.label)
-      : [];
-    if (lost.length) toast(`Η εγγραφή αποθηκεύτηκε, αλλά ΔΕΝ γράφτηκε: ${lost.join(', ')} — ο Worker δεν το γνωρίζει ακόμη`, 'error');
-    else toast(cfg.v2 ? (recId ? 'Η εγγραφή ενημερώθηκε' : 'Η εγγραφή δημιουργήθηκε')
-                      : (recId ? 'Record updated' : 'Record created'));
+    toast(cfg.v2 ? (recId ? 'Η εγγραφή ενημερώθηκε' : 'Η εγγραφή δημιουργήθηκε')
+                 : (recId ? 'Record updated' : 'Record created'));
     await renderEntity(entityKey);
   } catch(e) {
     if (btn) { btn.textContent = cfg.v2 ? 'Αποθήκευση' : 'Save'; btn.disabled = false; }
