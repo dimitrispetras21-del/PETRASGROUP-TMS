@@ -1,7 +1,14 @@
--- DRY RUN 060 (local relay, phase 1): every rule of 060 exercised on REAL live orders, then undone.
+-- RULES TEST 060 (local relay, phase 1): every rule of 060 exercised on REAL live orders, then undone.
+-- (Not the dry run: 060_local_relay_dryrun.sql runs 060 itself and undoes it, BEFORE 060. This file
+-- runs AFTER 060, the way 057_stock_lots_rules_test.sql runs after 057.)
 -- ONE statement. It ends with a deliberate RAISE EXCEPTION, so Postgres undoes ALL of it - no
 -- relay, no payroll line, no audit row, no order/RT change stays behind. The red error message
--- IS the result:  "DRY RUN 060 finished - EVERYTHING UNDONE ... Result: N OK, 0 FAIL || ...".
+-- IS the result:  "RULES TEST 060 finished - EVERYTHING UNDONE ... Result: N OK, 0 FAIL || ...".
+-- EXPECTED: "Result: N OK, 0 FAIL" with N + (the number of "skipped" items in the panel) = 64.
+--   64 = every live example exists (proven on the PGlite copy: 64 OK, 0 FAIL, nothing skipped). An
+--   example production lacks today (no pre-order, no Veroia Switch import, no cancelled order, no
+--   split, no partner, an RT without a payroll line) prints "... skipped (...)" instead of "ok".
+--   Any FAIL or ERROR = STOP, copy the panel to the coordinator.
 -- Only trace: identity/sequence numbers (local_moves ids, RT codes) are skipped.
 --
 -- DRAFT - run ONLY after 060 said "060 OK", after 15:00, with an explicit yes (it attempts writes).
@@ -25,7 +32,7 @@ DECLARE
   t1_drv bigint; e1_drv bigint; d1 bigint; d2 bigint; d3 bigint; loc bigint; loc2 bigint; trl bigint; prt bigint;
   x date; t3_day date; e_day date; f_day date; p_day date; pre_kind text; vs_ok boolean; gone_kind text; sp_kind text; any_rt bigint;
   lg bigint; lg_kind text; lg_drv bigint; lg_parent bigint; lg_by bigint;
-  rl1 bigint; rl2 bigint; rle bigint; rl3 bigint; rle2 bigint; rl4 bigint; rlg bigint; lmp bigint; lmq bigint; lid bigint;
+  rl1 bigint; rl2 bigint; rle bigint; rl3 bigint; rle2 bigint; rl4 bigint; rl5 bigint; rlg bigint; lmp bigint; lmq bigint; lid bigint;
   lm local_moves%rowtype; e dl_entries%rowtype;
   n bigint; n2 bigint; s text; j jsonb; b09_before numeric; b09_ids text[]; v numeric; ids text[];
   fp_before text; fp_after text;
@@ -43,10 +50,10 @@ DECLARE
 BEGIN
   IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public'
                   AND table_name = 'local_moves' AND column_name = 'move_kind') THEN
-    RAISE EXCEPTION 'DRY RUN 060: 060 is not applied - nothing to test';
+    RAISE EXCEPTION 'RULES TEST 060: 060 is not applied - nothing to test';
   END IF;
   IF EXISTS (SELECT 1 FROM local_moves WHERE move_kind <> 'local') THEN
-    RAISE EXCEPTION 'DRY RUN 060: real relays exist already - the expected counts below assume none; ask the coordinator';
+    RAISE EXCEPTION 'RULES TEST 060: real relays exist already - the expected counts below assume none; ask the coordinator';
   END IF;
 
   -- ---- picks (live data, by query) ----------------------------------------------------------
@@ -64,10 +71,12 @@ BEGIN
      AND (o.loading_datetime IS NULL OR o.loading_datetime <= x)
      AND NOT EXISTS (SELECT 1 FROM orders l WHERE l.parent_order_id = o.id AND l.deleted_at IS NULL)
    ORDER BY coalesce(o.status IN ('Pending', 'Assigned', 'In Transit'), false) DESC, o.delivery_datetime DESC, o.id DESC LIMIT 1;
+  -- T3 has its own truck: S14d gives that truck to the relay (truck-copy), S14e takes it away
+  -- (no-vehicle), and S14b (B-65 = 0) must not depend on the newest import being unassigned.
   SELECT o.id, o.delivery_datetime INTO t3, t3_day FROM orders o
    WHERE o.id NOT IN (t1, coalesce(t2, 0)) AND o.deleted_at IS NULL AND coalesce(o.status, '') <> 'Cancelled' AND o.direction = 'Import'
      AND NOT coalesce(o.veroia_switch, false) AND o.ops_status IS DISTINCT FROM 'Provisional'
-     AND o.parent_order_id IS NULL AND o.driver_id IS NOT NULL AND o.delivery_datetime IS NOT NULL
+     AND o.parent_order_id IS NULL AND o.driver_id IS NOT NULL AND o.truck_id IS NOT NULL AND o.delivery_datetime IS NOT NULL
      AND NOT EXISTS (SELECT 1 FROM orders l WHERE l.parent_order_id = o.id AND l.deleted_at IS NULL)
    ORDER BY o.delivery_datetime DESC, o.id DESC LIMIT 1;
   SELECT o.id, o.driver_id, o.loading_datetime INTO e1, e1_drv, e_day FROM orders o
@@ -77,7 +86,7 @@ BEGIN
      AND NOT EXISTS (SELECT 1 FROM orders l WHERE l.parent_order_id = o.id AND l.deleted_at IS NULL)
    ORDER BY o.loading_datetime DESC, o.id DESC LIMIT 1;
   IF t1 IS NULL OR t2 IS NULL OR t3 IS NULL OR e1 IS NULL THEN
-    RAISE EXCEPTION 'DRY RUN 060: no candidate orders (t1 % t2 % t3 % e1 %)', t1, t2, t3, e1;
+    RAISE EXCEPTION 'RULES TEST 060: no candidate orders (t1 % t2 % t3 % e1 %)', t1, t2, t3, e1;
   END IF;
   SELECT d.id INTO d1 FROM drivers d WHERE d.deleted_at IS NULL AND coalesce(d.active, true)
      AND d.id NOT IN (SELECT o.driver_id FROM orders o WHERE o.id IN (t1, t2, t3, e1) AND o.driver_id IS NOT NULL)
@@ -89,7 +98,7 @@ BEGIN
      AND d.id NOT IN (SELECT o.driver_id FROM orders o WHERE o.id IN (t1, t2, t3, e1) AND o.driver_id IS NOT NULL)
    ORDER BY d.id LIMIT 1;
   IF d1 IS NULL OR d2 IS NULL OR d3 IS NULL THEN
-    RAISE EXCEPTION 'DRY RUN 060: not enough free drivers (d1 % d2 % d3 %)', d1, d2, d3;
+    RAISE EXCEPTION 'RULES TEST 060: not enough free drivers (d1 % d2 % d3 %)', d1, d2, d3;
   END IF;
   SELECT id INTO loc FROM locations WHERE legacy_id = 'recJucKOhC1zh4IP3';        -- the Veroia cross-dock
   IF loc IS NULL THEN SELECT min(id) INTO loc FROM locations WHERE deleted_at IS NULL; END IF;
@@ -140,7 +149,7 @@ BEGIN
        AND e.local_move_id = rl1 AND e.source = 'auto' AND e.created_by = 'trigger:local_move' AND e.entry_type = 'trip'
        AND e.date_end = x AND e.route = w_local || sep || w_deliv || ' ' || t1 AND ascii(e.route) = 932
        AND j->>'kind' = 'local_day' AND jsonb_array_length(j->'moves') = 1 AND (j->'moves'->0->>'id')::bigint = rl1
-       AND j->'pay_basis' = 'null'::jsonb AND jsonb_typeof(j->'moves'->0->'rt_codes') = 'array'
+       AND NOT (j ? 'pay_basis') AND jsonb_typeof(j->'moves'->0->'rt_codes') = 'array'
        AND jsonb_array_length(j->'moves'->0->'rt_codes') >= 1 THEN
       ok := ok + 1; res := res || 'S1 ok'::text;
     ELSE
@@ -492,10 +501,32 @@ BEGIN
     -- B-65 really fires: the relay on T3 is given T3's own truck as its "other" tractor -> truck-copy
     UPDATE local_moves SET truck_id = (SELECT truck_id FROM orders WHERE id = t3) WHERE id = rl3;
     EXECUTE (SELECT ids_sql FROM monitoring.checks WHERE id = 'B-65') INTO ids;
-    IF (SELECT truck_id FROM orders WHERE id = t3) IS NULL THEN res := res || 'S14d skipped (T3 has no truck)'::text;
-    ELSIF ids = ARRAY[rl3::text || ':truck-copy'] THEN ok := ok + 1; res := res || 'S14d ok'::text;
+    IF ids = ARRAY[rl3::text || ':truck-copy'] THEN ok := ok + 1; res := res || 'S14d ok'::text;
     ELSE bad := bad + 1; res := res || format('S14d FAIL B-65 ids=%s', ids); END IF;
   EXCEPTION WHEN others THEN bad := bad + 1; res := res || ('S14 ERROR ' || SQLERRM);
+  END;
+
+  -- S14e. no-vehicle (review round 3, 5/10): the relay drives the ORDER's tractor (truck NULL)
+  --       while the order has none, on a day up to tomorrow -> B-65 says so. Run inside its own
+  --       sub-block that ends in a marker exception, so the order's truck and day come back at
+  --       once (the variables keep what was measured) - S15 onwards see T3 as it was.
+  BEGIN
+    got := 'not measured';
+    BEGIN
+      UPDATE local_moves SET truck_id = NULL WHERE id = rl3;
+      UPDATE orders SET truck_id = NULL, delivery_datetime = (now() AT TIME ZONE 'Europe/Athens')::date WHERE id = t3;
+      EXECUTE (SELECT ids_sql FROM monitoring.checks WHERE id = 'B-65') INTO ids;
+      got := array_to_string(ids, ',');
+      RAISE EXCEPTION 'dry-run 060: undo S14e' USING HINT = 'dry_run_undo';
+    EXCEPTION WHEN others THEN
+      GET STACKED DIAGNOSTICS hint = PG_EXCEPTION_HINT;
+      IF hint IS DISTINCT FROM 'dry_run_undo' THEN got := 'error ' || SQLERRM; END IF;
+    END;
+    IF got = rl3::text || ':no-vehicle' AND (SELECT truck_id FROM orders WHERE id = t3) IS NOT NULL
+       AND (SELECT truck_id FROM local_moves WHERE id = rl3) IS NOT NULL THEN
+      ok := ok + 1; res := res || 'S14e ok'::text;
+    ELSE bad := bad + 1; res := res || ('S14e FAIL B-65 ids=' || got); END IF;
+  EXCEPTION WHEN others THEN bad := bad + 1; res := res || ('S14e ERROR ' || SQLERRM);
   END;
 
   -- S15. The ONE exit accounting has on a local line (coordinator D3): cancel with a reason, and
@@ -649,7 +680,53 @@ BEGIN
   EXCEPTION WHEN others THEN bad := bad + 1; res := res || ('S19 ERROR ' || SQLERRM);
   END;
 
-  RAISE EXCEPTION 'DRY RUN 060 finished - EVERYTHING UNDONE, nothing kept. Result: % OK, % FAIL  ||  %',
+  -- S20. Delete -> checked -> re-added -> deleted again (review round 3, 5/10). D2's E1 line holds
+  --      money (7, S16-S17). Every time the day loses its last relay the line is flagged again:
+  --      accounting's check clears the flag but KEEPS the note, so "the reason is already in the
+  --      note" must not stop the second flag. A repeat sync while still flagged adds no second
+  --      note. Then B-64: checked and kept WITH money is accounting's decision (no orphan); the
+  --      same line without money is an orphan.
+  BEGIN
+    SELECT id INTO lid FROM dl_entries WHERE driver_id = d2 AND entry_date = e_day AND local_move_id IS NOT NULL AND deleted_at IS NULL;
+    UPDATE dl_entries SET needs_review = false WHERE id = lid;                -- checked, note kept
+    UPDATE local_moves SET deleted_at = now() WHERE id = rle2;                -- the day loses its relay
+    SELECT * INTO e FROM dl_entries WHERE id = lid;
+    n := (length(coalesce(e.review_note, '')) - length(replace(coalesce(e.review_note, ''), r_gone, ''))) / length(r_gone);
+    IF lid IS NOT NULL AND e.deleted_at IS NULL AND e.needs_review AND n = 1 AND e.trip_value = 7 THEN
+      ok := ok + 1; res := res || 'S20a ok'::text;
+    ELSE bad := bad + 1; res := res || format('S20a FAIL line=%s deleted=%s review=%s gone_notes=%s', lid, e.deleted_at, e.needs_review, n); END IF;
+
+    UPDATE dl_entries SET needs_review = false WHERE id = lid;                -- checked again, note kept
+    INSERT INTO local_moves (move_kind, parent_order_id, driver_id, trailer_id, to_location_id)
+    VALUES ('relay_loading', e1, d2, trl, loc) RETURNING id INTO rl5;         -- re-added: same order, same label
+    SELECT * INTO e FROM dl_entries WHERE id = lid;
+    IF e.deleted_at IS NULL AND NOT e.needs_review AND e.local_move_id = rl5 THEN
+      ok := ok + 1; res := res || 'S20b ok'::text;
+    ELSE bad := bad + 1; res := res || format('S20b FAIL deleted=%s review=%s anchor=%s/%s', e.deleted_at, e.needs_review, e.local_move_id, rl5); END IF;
+
+    UPDATE local_moves SET deleted_at = now() WHERE id = rl5;                 -- deleted again
+    SELECT * INTO e FROM dl_entries WHERE id = lid;
+    n := (length(coalesce(e.review_note, '')) - length(replace(coalesce(e.review_note, ''), r_gone, ''))) / length(r_gone);
+    IF e.deleted_at IS NULL AND e.needs_review AND n = 2 THEN ok := ok + 1; res := res || 'S20c ok'::text;
+    ELSE bad := bad + 1; res := res || format('S20c FAIL deleted=%s review=%s gone_notes=%s note=%s', e.deleted_at, e.needs_review, n, e.review_note); END IF;
+
+    UPDATE local_moves SET move_date = move_date WHERE id = rl5;              -- a repeat sync, still flagged
+    SELECT * INTO e FROM dl_entries WHERE id = lid;
+    n2 := (length(coalesce(e.review_note, '')) - length(replace(coalesce(e.review_note, ''), r_gone, ''))) / length(r_gone);
+    IF e.needs_review AND n2 = 2 THEN ok := ok + 1; res := res || 'S20d ok'::text;
+    ELSE bad := bad + 1; res := res || format('S20d FAIL review=%s gone_notes=%s', e.needs_review, n2); END IF;
+
+    UPDATE dl_entries SET needs_review = false WHERE id = lid;                -- checked and kept, money on it
+    EXECUTE (SELECT ids_sql FROM monitoring.checks WHERE id = 'B-64') INTO ids;
+    UPDATE dl_entries SET trip_value = 0 WHERE id = lid;                      -- "value 0": nothing owed
+    EXECUTE (SELECT ids_sql FROM monitoring.checks WHERE id = 'B-64') INTO b09_ids;
+    IF NOT (('orphan:' || lid) = ANY (ids)) AND ('orphan:' || lid) = ANY (b09_ids) THEN
+      ok := ok + 1; res := res || 'S20e ok'::text;
+    ELSE bad := bad + 1; res := res || format('S20e FAIL B-64 with money=%s without=%s', ids, b09_ids); END IF;
+  EXCEPTION WHEN others THEN bad := bad + 1; res := res || ('S20 ERROR ' || SQLERRM);
+  END;
+
+  RAISE EXCEPTION 'RULES TEST 060 finished - EVERYTHING UNDONE, nothing kept. Result: % OK, % FAIL  ||  %',
     ok, bad, array_to_string(res, '  |  ');
 END
 $dry$;
