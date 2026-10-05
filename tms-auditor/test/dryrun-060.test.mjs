@@ -35,12 +35,15 @@ test('060 dry run is regenerated from 060, never hand-edited (run: node worker/m
   // three scenarios, each in its own exception block so one error never hides the others
   const added = dry.replace(body, '');
   for (const s of ['A', 'B', 'C']) assert.ok(added.includes(`EXCEPTION WHEN others THEN bad := bad + 1; res := res || ('${s} ERROR ' || SQLERRM);`), `scenario ${s}`);
-  // B-54 is counted inside the block, never typed: 060 requires red_value = the live count before, proves +5,
-  // moves it only from that value (27 alone, 31 after 057 -> 36); the dry run checks the same +5 on the result
+  // B-54 is counted inside the block, never typed: 060 requires red_value = the live count before, proves +4,
+  // moves it only from that value (27 alone -> 31, 31 after 057 -> 35); the dry run checks the same +4 on the result
   assert.match(body, /IF NOT EXISTS \(SELECT 1 FROM monitoring\.checks WHERE id = 'B-54' AND red_value = trg_before AND baseline IS NULL\)/);
-  assert.match(body, /IF trg_after <> trg_before \+ 5 THEN/);
+  assert.match(body, /IF trg_after <> trg_before \+ 4 THEN/);
   assert.match(body, /UPDATE monitoring\.checks SET red_value = trg_after WHERE id = 'B-54' AND red_value = trg_before;/);
-  assert.ok(added.includes('dry_n = dry_trg_before + 5'), 'scenario B must check the +5');
+  assert.ok(added.includes('dry_n = dry_trg_before + 4'), 'scenario B must check the +4');
+  // C fingerprints live data mid-block: a save by someone else fails it closed, so its FAIL says what to do
+  // (round-4 review F3) - the owner reads the panel, not this file
+  assert.ok(added.includes("'C FAIL data changed during the dry run") && added.includes('wait 5 minutes and run the dry run once more'), 'scenario C FAIL names the retry');
 });
 
 test('the builder refuses a 060 it does not understand (loud, never a silent wrong copy)', () => {
@@ -85,7 +88,7 @@ test('060 writes B-09 and B-63..B-65 exactly as the catalog files say, and its m
       const want = col === 'flows' ? c.flows : (c[FIELD[col] || col] == null ? null : String(c[FIELD[col] || col]));
       assert.deepEqual(r[col], want, `${r.id}.${col}: 060 differs from tms-auditor/checks/${r.id}.sql — regenerate 060's literal`);
     }
-    // the proof in 060 section 10: md5(title|sql|ids|impact|next|exceptions|entity|red_op|red_value|severity|schedule)
+    // the proof in 060 section 9: md5(title|sql|ids|impact|next|exceptions|entity|red_op|red_value|severity|schedule)
     const fp = crypto.createHash('md5').update([r.title, r.sql_text, r.ids_sql ?? '', r.impact ?? '', r.next_step ?? '',
       r.exceptions ?? '', r.entity_table ?? '', r.red_op, String(r.red_value), r.severity, r.schedule_tag].join('|')).digest('hex');
     assert.ok(src.includes(`('${r.id}', '${fp}')`), `${r.id}: the md5 proof in 060 is not ${fp}`);

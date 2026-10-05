@@ -2,9 +2,9 @@
 -- on 4/10, verbatim) and removes everything 060 created. DRAFT - NOT EXECUTED.
 -- ASCII only. ONE DO block (all or nothing) + one read-only result SELECT.
 --
--- Refuses (and changes nothing) once 060 holds data a rollback would erase silently: relays,
--- payroll lines of local drivers, or a pay basis typed by accounting (principle 1). Those need an
--- owner decision first - never force this file past its guards.
+-- Refuses (and changes nothing) once 060 holds data a rollback would erase silently: relays or
+-- payroll lines of local drivers (principle 1). Those need an owner decision first - never force
+-- this file past its guards.
 -- Proven on the local PGlite copy of production: 060 -> rollback -> the md5 of
 -- order_soft_delete_unlink and dl_v_entries are again the 4/10 values, B-09 is again the 4/10
 -- text, the trigger count and B-54 are back, and 060 can run again.
@@ -25,10 +25,6 @@ BEGIN
   SELECT count(*) INTO n FROM public.dl_entries WHERE local_move_id IS NOT NULL;
   IF n > 0 THEN
     RAISE EXCEPTION '060 rollback: % payroll lines belong to local drivers - owner decision first', n;
-  END IF;
-  SELECT count(*) INTO n FROM public.drivers WHERE pay_basis IS NOT NULL;
-  IF n > 0 THEN
-    RAISE EXCEPTION '060 rollback: % drivers have a pay basis typed by accounting - it would be lost; owner decision first', n;
   END IF;
   SELECT count(*) INTO trg_before FROM pg_trigger t JOIN pg_class c ON c.oid = t.tgrelid
     JOIN pg_namespace ns ON ns.oid = c.relnamespace
@@ -65,7 +61,6 @@ BEGIN
 
   -- 2. TRIGGERS and the 023 text
   DROP TRIGGER dl_local_line_guard ON public.dl_entries;
-  DROP TRIGGER dl_local_pay_basis_sync ON public.drivers;
   DROP TRIGGER dl_sync_from_local_move ON public.local_moves;
   DROP TRIGGER local_moves_follow_order ON public.orders;
   DROP TRIGGER local_moves_before ON public.local_moves;
@@ -176,7 +171,6 @@ end $function$;
 
   -- 4. FUNCTIONS, INDEXES, CONSTRAINTS, COLUMNS
   DROP FUNCTION public.dl_local_line_guard();
-  DROP FUNCTION public.dl_local_pay_basis_sync();
   DROP FUNCTION public.dl_sync_from_local_move();
   DROP FUNCTION public.dl_local_day_sync(bigint, date);
   DROP FUNCTION public.local_moves_follow_order();
@@ -190,14 +184,13 @@ end $function$;
     DROP CONSTRAINT local_moves_relay_points, DROP CONSTRAINT local_moves_relay_status,
     DROP CONSTRAINT local_moves_relay_executor, DROP CONSTRAINT local_moves_relay_trailer,
     DROP COLUMN move_kind;
-  ALTER TABLE public.drivers DROP CONSTRAINT drivers_pay_basis_chk, DROP COLUMN pay_basis;
 
-  -- 5. B-54 back to the count without 060's 5 triggers
+  -- 5. B-54 back to the count without 060's 4 triggers
   SELECT count(*) INTO trg_after FROM pg_trigger t JOIN pg_class c ON c.oid = t.tgrelid
     JOIN pg_namespace ns ON ns.oid = c.relnamespace
    WHERE NOT t.tgisinternal AND t.tgenabled <> 'D' AND ns.nspname = 'public';
-  IF trg_after <> trg_before - 5 THEN
-    RAISE EXCEPTION '060 rollback proof: trigger count % -> % (expected -5)', trg_before, trg_after;
+  IF trg_after <> trg_before - 4 THEN
+    RAISE EXCEPTION '060 rollback proof: trigger count % -> % (expected -4)', trg_before, trg_after;
   END IF;
   UPDATE monitoring.checks SET red_value = trg_after WHERE id = 'B-54' AND red_value = trg_before;
   GET DIAGNOSTICS k = ROW_COUNT;
@@ -225,7 +218,6 @@ end $function$;
   END IF;
   IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public'
               AND ((table_name = 'local_moves' AND column_name = 'move_kind')
-                OR (table_name = 'drivers' AND column_name = 'pay_basis')
                 OR (table_name = 'dl_entries' AND column_name = 'local_move_id'))) THEN
     RAISE EXCEPTION '060 rollback proof: a 060 column survived';
   END IF;

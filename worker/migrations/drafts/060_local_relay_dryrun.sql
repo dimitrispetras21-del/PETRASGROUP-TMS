@@ -12,14 +12,18 @@
 -- WHY ONE DO BLOCK: the Supabase SQL editor is NOT atomic across statements (lesson 056), but ONE DO
 --   block is ONE statement: its final error undoes everything inside it.
 -- EXPECTED (the red ERROR is deliberate):
---   ERROR: P0001: DRY RUN 060 finished - EVERYTHING UNDONE, nothing kept. Result: 3 OK, 0 FAIL  ||  A ok ... | B ok B-54 T -> T+5 ... | C ok ...
+--   ERROR: P0001: DRY RUN 060 finished - EVERYTHING UNDONE, nothing kept. Result: 3 OK, 0 FAIL  ||  A ok ... | B ok B-54 T -> T+4 ... | C ok ...
 --   (T = the live trigger count: 31 after 057, 27 without it.)
 --   Anything with FAIL or ERROR in it: do NOT run 060, copy the panel to the coordinator.
+--   ONE exception: "2 OK, 1 FAIL" where the FAIL is C alone (A ok, B ok). C fingerprints live tables
+--   and every public sequence while the block runs, so ONE save by someone else in those seconds
+--   (a payroll line, an order, any nextval) turns it red - it fails closed, nothing was kept. Wait 5
+--   minutes and run the dry run once more; if C fails again, copy the panel to the coordinator.
 --   A different message altogether ("060: ...", "060 proof: ...", a lock timeout) is the guard or proof
 --   of 060 that stopped - exactly what 060 itself would have said. Do NOT run 060.
 -- AFTER: SELECT that nothing was kept - local_moves has no move_kind column, B-63..B-65 do not exist,
 --   B-54 red_value is still T (060_local_relay_verify.sql is for AFTER 060, not here).
--- Scenarios: A 060's objects exist inside the block; B B-54 moved by exactly +5 and equals the live
+-- Scenarios: A 060's objects exist inside the block; B B-54 moved by exactly +4 and equals the live
 --   count; C data 060 must not touch is unchanged (orders, payroll lines, round trips, local_moves,
 --   drivers, every auditor row but B-09/B-54/B-63..B-65, the last_value of every public sequence).
 
@@ -65,7 +69,6 @@ BEGIN
   END IF;
   IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public'
               AND ((table_name = 'local_moves' AND column_name = 'move_kind')
-                OR (table_name = 'drivers' AND column_name = 'pay_basis')
                 OR (table_name = 'dl_entries' AND column_name = 'local_move_id'))) THEN
     RAISE EXCEPTION '060: already applied (a 060 column exists)';
   END IF;
@@ -73,7 +76,6 @@ BEGIN
      OR to_regprocedure('public.local_moves_follow_order()') IS NOT NULL
      OR to_regprocedure('public.dl_local_day_sync(bigint,date)') IS NOT NULL
      OR to_regprocedure('public.dl_sync_from_local_move()') IS NOT NULL
-     OR to_regprocedure('public.dl_local_pay_basis_sync()') IS NOT NULL
      OR to_regprocedure('public.dl_local_line_guard()') IS NOT NULL
      OR to_regclass('public.local_moves_relay_once') IS NOT NULL
      OR to_regclass('public.dl_local_day_live') IS NOT NULL THEN
@@ -121,14 +123,7 @@ BEGIN
   SELECT count(*) INTO orders_before FROM public.orders WHERE deleted_at IS NULL;
   SELECT count(*) INTO rts_before FROM public.ct_round_trips;
 
-  -- 1. PAY BASIS OF A DRIVER. OWNER-Q2 answered 4/10 (both: salary = track record only,
-  --    per_trip = daily TOPIKO line). NULL = unknown = paid like per_trip until classified.
-  --    Not drivers.type: it holds Internal/External (2 rows, 79 NULL) - another meaning, and two
-  --    meanings in one column is two truths (principle 3).
-  ALTER TABLE public.drivers ADD COLUMN pay_basis text;
-  ALTER TABLE public.drivers ADD CONSTRAINT drivers_pay_basis_chk CHECK (pay_basis IN ('salary', 'per_trip'));
-
-  -- 2. WHAT A LOCAL MOVE IS. Plain rows (Weekly National) default to 'local' and keep every
+  -- 1. WHAT A LOCAL MOVE IS. Plain rows (Weekly National) default to 'local' and keep every
   --    freedom they have today; only relays are constrained.
   ALTER TABLE public.local_moves ADD COLUMN move_kind text NOT NULL DEFAULT 'local';
   ALTER TABLE public.local_moves
@@ -155,7 +150,7 @@ BEGIN
   CREATE UNIQUE INDEX local_moves_relay_once ON public.local_moves (parent_order_id, move_kind)
     WHERE deleted_at IS NULL AND status <> 'Cancelled' AND move_kind <> 'local';
 
-  -- 3. RELAY RULES AT WRITE TIME. The CHECKs above are the floor (principle 4); this trigger
+  -- 2. RELAY RULES AT WRITE TIME. The CHECKs above are the floor (principle 4); this trigger
   --    refuses first with a machine code the Worker turns into a Greek 422 (principle 1), and
   --    derives what nobody types: status from the driver, day from the order.
   CREATE FUNCTION public.local_moves_before() RETURNS trigger
@@ -269,7 +264,7 @@ BEGIN
   CREATE TRIGGER local_moves_before BEFORE INSERT OR UPDATE ON public.local_moves
     FOR EACH ROW EXECUTE FUNCTION public.local_moves_before();
 
-  -- 4. DELETING AN ORDER already has ONE home: order_soft_delete_unlink (023). Its new text is
+  -- 3. DELETING AN ORDER already has ONE home: order_soft_delete_unlink (023). Its new text is
   --    the live text (md5-guarded above) with step 6 inserted before the final return - steps
   --    1-5 are not retyped, so they cannot drift.
   tail := E'  return null;\nend $function$\n';
@@ -289,7 +284,7 @@ $s6$;
   new_unlink := replace(old_unlink, tail, step6 || tail);
   EXECUTE new_unlink;
 
-  -- 5. THE ORDER MOVES, THE RELAY FOLLOWS. Cancel and day moves only, per kind; an audit row only
+  -- 4. THE ORDER MOVES, THE RELAY FOLLOWS. Cancel and day moves only, per kind; an audit row only
   --    when something really changed. Never refuses: an order edit is never blocked by a relay.
   CREATE FUNCTION public.local_moves_follow_order() RETURNS trigger
     LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $f$
@@ -333,7 +328,7 @@ $s6$;
       OR OLD.loading_datetime IS DISTINCT FROM NEW.loading_datetime)
     EXECUTE FUNCTION public.local_moves_follow_order();
 
-  -- 6. PAYROLL: ONE line per (local driver, day), from relays only. rt_id stays NULL on purpose:
+  -- 5. PAYROLL: ONE line per (local driver, day), from relays only. rt_id stays NULL on purpose:
   --    ct_v_rt_costs and dl_rt_live key on one ledger line per RT - the international's.
   ALTER TABLE public.dl_entries ADD COLUMN local_move_id bigint REFERENCES public.local_moves (id);
   ALTER TABLE public.dl_entries
@@ -346,7 +341,7 @@ $s6$;
   CREATE FUNCTION public.dl_local_day_sync(p_driver bigint, p_day date) RETURNS void
     LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $f$
   DECLARE
-    live dl_entries%rowtype; has_money boolean; valued boolean; keep_past boolean; anchor bigint; route_txt text; salaried boolean;
+    live dl_entries%rowtype; has_money boolean; valued boolean; anchor bigint; route_txt text;
     stamp text := ' (' || to_char(now() AT TIME ZONE 'Europe/Athens', 'DD/MM/YYYY') || ')';
     sep text := ' ' || chr(183) || ' ';
     -- Greek labels from base64 (this file stays ASCII). Transliterated:
@@ -355,12 +350,8 @@ $s6$;
     w_load    text := convert_from(decode('z4bPjM+Bz4TPic+Dzrc=', 'base64'), 'UTF8');      -- fortosi
     t_gone    text := convert_from(decode('zqTOv8+AzrnOus6tz4IgzrrOuc69zq7Pg861zrnPgjogzrrOsc68zq/OsSDOts+Jzr3PhM6xzr3OriDOus6vzr3Ot8+Dzrcgz4TOt8+CIM63zrzOrc+BzrHPgg==', 'base64'), 'UTF8');
                                     -- Topikes kiniseis: kamia zontani kinisi tis imeras
-    t_salary  text := convert_from(decode('zqTOv8+AzrnOus6tz4IgzrrOuc69zq7Pg861zrnPgjogzr8gzr/OtM63zrPPjM+CIM61zq/Ovc6xzrkgzrzOuc+DzrjPic+Ez4zPgiAozrzPjM69zr8gzrnPg8+Ezr/Pgc65zrrPjCk=', 'base64'), 'UTF8');
-                                    -- Topikes kiniseis: o odigos einai misthotos (mono istoriko)
     r_gone    text := convert_from(decode('z4TOv8+AzrnOus6tz4IgzrrOuc69zq7Pg861zrnPgjogzrrOsc68zq/OsSDOts+Jzr3PhM6xzr3OriDPgM65zrE=', 'base64'), 'UTF8');
                                     -- topikes kiniseis: kamia zontani pia
-    r_salary  text := convert_from(decode('zr8gzr/OtM63zrPPjM+CIM6tzrPOuc69zrUgzrzOuc+DzrjPic+Ez4zPgiAozrzPjM69zr8gzrnPg8+Ezr/Pgc65zrrPjCk=', 'base64'), 'UTF8');
-                                    -- o odigos egine misthotos (mono istoriko)
     r_changed text := convert_from(decode('zqzOu867zrHOvs6xzr0gzr/OuSDPhM6/z4DOuc66zq3PgiDOus65zr3Ors+DzrXOuc+CIM+EzrfPgiDOt868zq3Pgc6xz4I=', 'base64'), 'UTF8');
                                     -- allaxan oi topikes kiniseis tis imeras
   BEGIN
@@ -372,10 +363,9 @@ $s6$;
     -- PostgREST must take the SAME lock.
     PERFORM pg_advisory_xact_lock(hashtext('dl_local_day'), hashtext(p_driver::text || ':' || (p_day - DATE '2000-01-01')::text));
 
-    -- OWNER-Q2 answered 4/10 (both: salary = track record only, per_trip = daily TOPIKO line).
-    -- NULL (unknown) is paid like per_trip: pay is never silently lost; B-64 lists the driver.
-    SELECT coalesce(d.pay_basis = 'salary', false) INTO salaried FROM drivers d WHERE d.id = p_driver;
-    salaried := coalesce(salaried, false);
+    -- OWNER-Q2 answered 5/10 (every relay driver: daily TOPIKO line): no driver is exempt and
+    -- nothing about the driver is read - a live relay of his that day is the only thing that
+    -- decides whether the day has a line.
 
     -- Label = order numbers only (Order No = orders.id, never renamed), so the label never goes
     -- stale and a changed label always means a changed set of relays.
@@ -397,26 +387,20 @@ $s6$;
     -- With has_money there, the new relay would be settled at 0 silently - no NULL amount (not
     -- pending), a line exists (B-64 quiet). (front review, round 2, 4/10)
     valued := live.trip_value IS NOT NULL OR live.advance IS NOT NULL OR live.expenses IS NOT NULL;
-    -- A PAST day of a driver who is salaried NOW, on a line nobody valued yet: the pay basis has no
-    -- history (coordinator D4 4/10), so he may have been per-trip that day and be owed it. Flag it
-    -- for accounting, never cancel it silently. Today and later: salaried = no line.
-    keep_past := salaried AND anchor IS NOT NULL AND p_day < (now() AT TIME ZONE 'Europe/Athens')::date
-                 AND live.trip_value IS NULL AND live.advance IS NULL AND live.expenses IS NULL;
 
-    IF anchor IS NULL OR salaried THEN                      -- nothing to pay by a line that day
+    IF anchor IS NULL THEN                                  -- no live relay left that day
       IF live.id IS NULL THEN RETURN; END IF;
-      IF has_money OR keep_past THEN                        -- possibly owed: flag, never drop silently
+      IF has_money THEN                                     -- possibly owed: flag, never drop silently
         -- Skip only while the line is STILL flagged for this reason (a repeat sync adds no second
         -- note). Not "the reason is somewhere in the note": accounting's check clears the flag and
         -- keeps the note, so after clear -> relay re-added -> relay deleted again that test would
         -- leave a paid line with no relay and no flag (review round 3, 5/10).
         UPDATE dl_entries SET needs_review = true, updated_at = now(),
-               review_note = concat_ws(sep, review_note, CASE WHEN salaried THEN r_salary ELSE r_gone END || stamp)
+               review_note = concat_ws(sep, review_note, r_gone || stamp)
          WHERE id = live.id
-           AND NOT (needs_review AND position(CASE WHEN salaried THEN r_salary ELSE r_gone END IN coalesce(review_note, '')) > 0);
+           AND NOT (needs_review AND position(r_gone IN coalesce(review_note, '')) > 0);
       ELSE
-        UPDATE dl_entries SET deleted_at = now(), updated_at = now(),
-               deleted_reason = CASE WHEN salaried THEN t_salary ELSE t_gone END
+        UPDATE dl_entries SET deleted_at = now(), updated_at = now(), deleted_reason = t_gone
          WHERE id = live.id;
       END IF;
       RETURN;
@@ -457,46 +441,18 @@ $s6$;
     END IF;
     RETURN NULL;
   END $f$;
-  -- Only what changes who/when is paid; kind and order are immutable (step 3); time, pallets,
+  -- Only what changes who/when is paid; kind and order are immutable (step 2); time, pallets,
   -- notes, trailer, truck do not touch payroll.
   CREATE TRIGGER dl_sync_from_local_move
     AFTER INSERT OR UPDATE OF driver_id, move_date, deleted_at, status ON public.local_moves
     FOR EACH ROW EXECUTE FUNCTION public.dl_sync_from_local_move();
 
-  CREATE FUNCTION public.dl_local_pay_basis_sync() RETURNS trigger
-    LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $f$
-  DECLARE d date;
-  BEGIN
-    -- OWNER-Q2 answered 4/10 (both: salary = track record only, per_trip = daily TOPIKO line).
-    -- The pay basis decides whether a relay day is paid by a line, so every such day of this
-    -- driver is re-synced and dl_local_day_sync decides per day: to 'salary' -> today's and later
-    -- lines without money are cancelled; lines with money, and PAST lines nobody valued yet, go to
-    -- review (he may have been per-trip then: no pay basis history, coordinator D4 4/10); to
-    -- per_trip/NULL -> the missing lines appear, past days included, as pending lines ("value 0"
-    -- settles a day that was not owed). Visible either way, never silent.
-    -- Ascending days = the lock order of dl_sync_from_local_move (no deadlock).
-    FOR d IN SELECT lm.move_date FROM local_moves lm
-              WHERE lm.driver_id = NEW.id AND lm.move_kind <> 'local'
-                AND lm.deleted_at IS NULL AND lm.status <> 'Cancelled'
-             UNION
-             SELECT e.entry_date FROM dl_entries e
-              WHERE e.driver_id = NEW.id AND e.local_move_id IS NOT NULL AND e.deleted_at IS NULL
-             ORDER BY 1 LOOP
-      PERFORM dl_local_day_sync(NEW.id, d);
-    END LOOP;
-    RETURN NULL;
-  END $f$;
-  CREATE TRIGGER dl_local_pay_basis_sync
-    AFTER UPDATE OF pay_basis ON public.drivers
-    FOR EACH ROW WHEN (OLD.pay_basis IS DISTINCT FROM NEW.pay_basis)
-    EXECUTE FUNCTION public.dl_local_pay_basis_sync();
-
   -- A local line belongs to the system, with ONE exit for accounting (coordinator D3 4/10): cancel
-  -- with a reason (dl_cancel_reason) when nothing is owed by a line - the driver is salaried, or no
-  -- live relay of his is left that day. A per-trip/unknown day with a live relay keeps its line
-  -- (else B-64 'unpaid'); "value 0" settles it. Never restored: dl_local_day_sync writes a new line
-  -- when a relay returns. Here, not only in the Worker, so every writer obeys it (principle 4);
-  -- dl_local_day_sync's own cancels meet exactly these conditions.
+  -- with a reason (dl_cancel_reason) when the line stands for nothing - no live relay of that driver
+  -- is left that day. A day with a live relay keeps its line, whoever the driver (owner 5/10: no
+  -- distinction between drivers; else B-64 'unpaid'); "value 0" settles it. Never restored:
+  -- dl_local_day_sync writes a new line when a relay returns. Here, not only in the Worker, so
+  -- every writer obeys it (principle 4); dl_local_day_sync's own cancels meet exactly this condition.
   CREATE FUNCTION public.dl_local_line_guard() RETURNS trigger
     LANGUAGE plpgsql SET search_path = public AS $f$
   BEGIN
@@ -505,11 +461,10 @@ $s6$;
         USING ERRCODE = '23514', HINT = 'local_relay:line_restore';
     END IF;
     IF OLD.deleted_at IS NULL AND NEW.deleted_at IS NOT NULL
-       AND NOT EXISTS (SELECT 1 FROM drivers d WHERE d.id = OLD.driver_id AND d.pay_basis = 'salary')
        AND EXISTS (SELECT 1 FROM local_moves lm
                     WHERE lm.driver_id = OLD.driver_id AND lm.move_date = OLD.entry_date AND lm.move_kind <> 'local'
                       AND lm.deleted_at IS NULL AND lm.status <> 'Cancelled') THEN
-      RAISE EXCEPTION 'local_relay: line % pays a live relay of a per-trip driver - enter value 0 or change the relay, do not cancel the line', OLD.id
+      RAISE EXCEPTION 'local_relay: line % pays a live relay of that driver and day - enter value 0 or change the relay, do not cancel the line', OLD.id
         USING ERRCODE = '23514', HINT = 'local_relay:line_has_relay';
     END IF;
     RETURN NEW;
@@ -518,16 +473,13 @@ $s6$;
     FOR EACH ROW WHEN (OLD.local_move_id IS NOT NULL AND OLD.deleted_at IS DISTINCT FROM NEW.deleted_at)
     EXECUTE FUNCTION public.dl_local_line_guard();
 
-  -- 7. THE LEDGER VIEW: the 30 columns exactly as today (deparsed text of 4/10, proven below
+  -- 6. THE LEDGER VIEW: the 30 columns exactly as today (deparsed text of 4/10, proven below
   --    against the live definition) + two appended (CREATE OR REPLACE VIEW only allows appending;
   --    owner and grants are kept). relay_info is jsonb with ASCII keys - the screens render it:
   --      LIVE local day line: {"kind":"local_day",
   --                       "moves":[{"id","move_kind","order_id","rt_codes":["RT-..",..]}]}
   --        (one entry per relay - the RT codes of its order are an array, so a relay never
-  --         repeats; moves [] = no live relay left that day = cancel allowed, dl_local_line_guard.
-  --         No pay basis here: it has ONE home, drivers.pay_basis, which the payroll card and the
-  --         Worker read directly - a copy in the view would be a second source nobody reads,
-  --         review round 3, 5/10)
+  --         repeats; moves [] = no live relay left that day = cancel allowed, dl_local_line_guard)
   --      CANCELLED local line: NULL - the day's live relays belong to the live line, not to this
   --        one (the screens show route_text, the label the line had)
   --      RT line with relays on its orders: {"kind":"rt","relays":[{"id","move_kind","order_id",
@@ -604,16 +556,16 @@ $s6$;
             WHERE l3.rt_id = e.rt_id
            HAVING count(*) > 0) rl ON e.rt_id IS NOT NULL;
 
-  -- 8. BORN CLOSED (principle 5): Supabase's default ACL gives EXECUTE on every new function to
+  -- 7. BORN CLOSED (principle 5): Supabase's default ACL gives EXECUTE on every new function to
   --    PUBLIC, anon, authenticated and service_role. Trigger functions are never called directly
   --    and EXECUTE is not checked when a trigger fires; dl_local_day_sync is callable and SECURITY
-  --    DEFINER - only its owner (postgres, via the two SECURITY DEFINER triggers) may run it.
+  --    DEFINER - only its owner (postgres, via the SECURITY DEFINER trigger dl_sync_from_local_move)
+  --    may run it.
   REVOKE ALL ON FUNCTION public.local_moves_before(), public.local_moves_follow_order(),
-    public.dl_local_day_sync(bigint, date), public.dl_sync_from_local_move(), public.dl_local_pay_basis_sync(),
-    public.dl_local_line_guard()
+    public.dl_local_day_sync(bigint, date), public.dl_sync_from_local_move(), public.dl_local_line_guard()
     FROM PUBLIC, anon, authenticated, service_role;
 
-  -- 9. AUDITOR in the SAME run, so B-09 never sees a local line first. Texts = the catalog files
+  -- 8. AUDITOR in the SAME run, so B-09 never sees a local line first. Texts = the catalog files
   --    tms-auditor/checks/B-09, B-63, B-64, B-65 .sql (generated, base64 for Greek; md5-proven below).
   --    B-09 sql/ids/exceptions only: every column the owner may have changed by hand stays.
   UPDATE monitoring.checks SET
@@ -652,30 +604,22 @@ $s6$;
      true,
      NULL),
     ($m$B-64$m$,
-     convert_from(decode('zqTOv8+AzrnOus+Mz4Igzr/OtM63zrPPjM+CIOKGlCDOvM65z4POuM6/zrTOv8+Dzq/OsSAozrTOv8+FzrvOtc65zqwgz4fPic+Bzq/PgiDOs8+BzrHOvM68zq4sIM6zz4HOsc68zrzOriDPh8+Jz4HOr8+CIM60zr/Phc67zrXOuc6sLCDOrM6zzr3Pic+Dz4TOv8+CIM+Ez43PgM6/z4IgzrHOvM6/zrnOss6uz4Ip', 'base64'), 'UTF8'),
+     convert_from(decode('zqTOv8+AzrnOus+Mz4Igzr/OtM63zrPPjM+CIOKGlCDOvM65z4POuM6/zrTOv8+Dzq/OsSAozrTOv8+FzrvOtc65zqwgz4fPic+Bzq/PgiDOs8+BzrHOvM68zq4sIM6zz4HOsc68zrzOriDPh8+Jz4HOr8+CIM60zr/Phc67zrXOuc6sKQ==', 'base64'), 'UTF8'),
      ARRAY[$m$F-22$m$,$m$F-35$m$]::text[],
-     $m$SELECT (SELECT count(*) FROM (SELECT lm.driver_id, lm.move_date FROM local_moves lm JOIN drivers d ON d.id=lm.driver_id
-   WHERE lm.move_kind<>'local' AND lm.deleted_at IS NULL AND lm.status<>'Cancelled' AND coalesce(d.pay_basis,'')<>'salary'
+     $m$SELECT (SELECT count(*) FROM (SELECT lm.driver_id, lm.move_date FROM local_moves lm
+   WHERE lm.move_kind<>'local' AND lm.deleted_at IS NULL AND lm.status<>'Cancelled' AND lm.driver_id IS NOT NULL
    GROUP BY lm.driver_id, lm.move_date) k
   WHERE NOT EXISTS (SELECT 1 FROM dl_entries e WHERE e.local_move_id IS NOT NULL AND e.deleted_at IS NULL AND e.driver_id=k.driver_id AND e.entry_date=k.move_date))
  + (SELECT count(*) FROM dl_entries e WHERE e.local_move_id IS NOT NULL AND e.deleted_at IS NULL AND NOT e.needs_review
   AND coalesce(e.trip_value,0)=0 AND coalesce(e.advance,0)=0 AND coalesce(e.expenses,0)=0
-  AND NOT EXISTS (SELECT 1 FROM local_moves lm WHERE lm.move_kind<>'local' AND lm.driver_id=e.driver_id AND lm.move_date=e.entry_date AND lm.deleted_at IS NULL AND lm.status<>'Cancelled'))
- + (SELECT count(*) FROM dl_entries e JOIN drivers d ON d.id=e.driver_id WHERE e.local_move_id IS NOT NULL AND e.deleted_at IS NULL AND NOT e.needs_review AND d.pay_basis='salary'
-  AND coalesce(e.trip_value,0)=0 AND coalesce(e.advance,0)=0 AND coalesce(e.expenses,0)=0)
- + (SELECT count(*) FROM drivers d WHERE d.pay_basis IS NULL
-  AND EXISTS (SELECT 1 FROM local_moves lm WHERE lm.driver_id=d.id AND lm.move_kind<>'local' AND lm.deleted_at IS NULL AND lm.status<>'Cancelled'))$m$,
-     $m$SELECT coalesce(array_agg(x ORDER BY x), '{}') FROM (SELECT 'unpaid:' || k.driver_id || ':' || k.move_date AS x FROM (SELECT lm.driver_id, lm.move_date FROM local_moves lm JOIN drivers d ON d.id=lm.driver_id
-   WHERE lm.move_kind<>'local' AND lm.deleted_at IS NULL AND lm.status<>'Cancelled' AND coalesce(d.pay_basis,'')<>'salary'
+  AND NOT EXISTS (SELECT 1 FROM local_moves lm WHERE lm.move_kind<>'local' AND lm.driver_id=e.driver_id AND lm.move_date=e.entry_date AND lm.deleted_at IS NULL AND lm.status<>'Cancelled'))$m$,
+     $m$SELECT coalesce(array_agg(x ORDER BY x), '{}') FROM (SELECT 'unpaid:' || k.driver_id || ':' || k.move_date AS x FROM (SELECT lm.driver_id, lm.move_date FROM local_moves lm
+   WHERE lm.move_kind<>'local' AND lm.deleted_at IS NULL AND lm.status<>'Cancelled' AND lm.driver_id IS NOT NULL
    GROUP BY lm.driver_id, lm.move_date) k
   WHERE NOT EXISTS (SELECT 1 FROM dl_entries e WHERE e.local_move_id IS NOT NULL AND e.deleted_at IS NULL AND e.driver_id=k.driver_id AND e.entry_date=k.move_date)
  UNION ALL SELECT 'orphan:' || e.id FROM dl_entries e WHERE e.local_move_id IS NOT NULL AND e.deleted_at IS NULL AND NOT e.needs_review
   AND coalesce(e.trip_value,0)=0 AND coalesce(e.advance,0)=0 AND coalesce(e.expenses,0)=0
-  AND NOT EXISTS (SELECT 1 FROM local_moves lm WHERE lm.move_kind<>'local' AND lm.driver_id=e.driver_id AND lm.move_date=e.entry_date AND lm.deleted_at IS NULL AND lm.status<>'Cancelled')
- UNION ALL SELECT 'salaried:' || e.id FROM dl_entries e JOIN drivers d ON d.id=e.driver_id WHERE e.local_move_id IS NOT NULL AND e.deleted_at IS NULL AND NOT e.needs_review AND d.pay_basis='salary'
-  AND coalesce(e.trip_value,0)=0 AND coalesce(e.advance,0)=0 AND coalesce(e.expenses,0)=0
- UNION ALL SELECT 'paybasis:' || d.id FROM drivers d WHERE d.pay_basis IS NULL
-  AND EXISTS (SELECT 1 FROM local_moves lm WHERE lm.driver_id=d.id AND lm.move_kind<>'local' AND lm.deleted_at IS NULL AND lm.status<>'Cancelled') LIMIT 50) s$m$,
+  AND NOT EXISTS (SELECT 1 FROM local_moves lm WHERE lm.move_kind<>'local' AND lm.driver_id=e.driver_id AND lm.move_date=e.entry_date AND lm.deleted_at IS NULL AND lm.status<>'Cancelled') LIMIT 50) s$m$,
      NULL,
      $m$>$m$,
      0,
@@ -683,9 +627,9 @@ $s6$;
      $m$P2$m$,
      $m$hourly$m$,
      false,
-     convert_from(decode('zqTOv8+AzrnOus+Mz4Igzr/OtM63zrPPjM+CIM+Azr/PhSDPgM67zrfPgc+Ozr3Otc+EzrHOuSDOsc69zqwgzrTPgc6/zrzOv867z4zOs865zr8gzrzOrc69zrXOuSDPh8+Jz4HOr8+CIM6zz4HOsc68zrzOriDCq86kzp/OoM6ZzprOn8K7ICjOsc+AzrvOrs+Bz4nPhM63IM60zr/Phc67zrXOuc6sKSwgzq4gz4XPgM6sz4HPh861zrkgzrPPgc6xzrzOvM6uIM+Hz4nPgc6vz4IgzrTOv8+FzrvOtc65zqwgzq4gzrrOtc69zq4gzrPPgc6xzrzOvM6uIM+DzrUgzrzOuc+DzrjPic+Ez4zCtyDOriDOvyDOv860zrfOs8+Mz4Igzq3Ous6xzr3OtSDPhM6/z4DOuc66zq4gz4fPic+Bzq/PgiDOtM63zrvPic68zq3Ovc6/IM+Ez43PgM6/IM6xzrzOv865zrLOrs+CLg==', 'base64'), 'UTF8'),
-     convert_from(decode('zpzOuc+DzrjOv860zr/Pg86vzrEg4oaSIM6/IM6/zrTOt86zz4zPgiDihpIgzrcgzrzOrc+BzrEuIG9ycGhhbiAvIHNhbGFyaWVkOiDCq86RzrrPjc+Bz4nPg863wrsgzrzOtSDOsc65z4TOuc6/zrvOv86zzq/OsSAozrcgzrLOrM+Dzrcgz4TOt869IM61z4DOuc+Ez4HOrc+AzrXOuSDOvM+Mzr3OvyDPg861IM68zrnPg864z4nPhM+MIM6uIM+DzrUgzrzOrc+BzrEgz4fPic+Bzq/PgiDOts+Jzr3PhM6xzr3OriDPhM6/z4DOuc66zq4pLiB1bnBhaWQ6IM63IM6zz4HOsc68zrzOriDOs8+BzqzPhs61z4TOsc65IM68z4zOvc63IM+EzrfPgiDigJQgzrHOvSDOu861zq/PgM61zrksIM66zr/Or8+EzrEgz4TOv869IEItNTQgKHRyaWdnZXJzKS4gcGF5YmFzaXM6IM6fzrTOt86zzr/OryDihpIgzr8gzr/OtM63zrPPjM+CIOKGkiDCq86kz43PgM6/z4IgzrHOvM6/zrnOss6uz4LCuy4=', 'base64'), 'UTF8'),
-     convert_from(decode('zpzOuc+DzrjPic+Ezr/OryAocGF5X2Jhc2lzPSdzYWxhcnknKTogzrcgz4TOv8+AzrnOus6uIM+Ezr/Phc+CIM61zq/Ovc6xzrkgzrzPjM69zr8gzrnPg8+Ezr/Pgc65zrrPjCwgzqfOqc6hzpnOoyDOs8+BzrHOvM68zq4gKG93bmVyIDQvMTApLiDOhs6zzr3Pic+Dz4TOv8+CIM+Ez43PgM6/z4IgKM66zrXOvc+MKSA9IM+DzrHOvSDOsc69zqwgzrTPgc6/zrzOv867z4zOs865zr8sIM+Oz4PPhM61IM69zrEgzrzOtyDPh86xzrjOtc6vIM+AzrvOt8+Bz4nOvM6uIOKAlCDOus6xzrkgzrHOvc6xz4bOrc+BzrXPhM6xzrkgz4nPgiDCq3BheWJhc2lzwrsgzrzOrc+Hz4HOuSDOvc6xIM60zrfOu8+JzrjOtc6vLiDOk8+BzrHOvM68zq3PgiDCq864zq3Ou861zrkgzq3Ou861zrPPh86/wrsgzrXOus+Ez4zPgiAoz4TOuc+CIM68zrXPhM+Bzqwgzr8gQi0wOCkuIG9ycGhhbiDOus6xzrkgc2FsYXJpZWQgPSDOvM+Mzr3OvyDOs8+BzrHOvM68zq4gzqfOqc6hzpnOoyDPgM6/z4PPjDogzrPPgc6xzrzOvM6uIM68zrUgz4DOv8+Dz4wgz4DOv8+FIM6tzrzOtc65zr3OtSDPh8+Jz4HOr8+CIM+Ezr/PgM65zrrOriDOriDPg861IM68zrnPg864z4nPhM+MIM+AzrfOs86xzq/Ovc61zrkgz4DPgc+Oz4TOsSDPg861IMKrzrjOrc67zrXOuSDOrc67zrXOs8+Hzr/CuyAoQi0wOCnCtyDOsc69IM+Ezr8gzrvOv86zzrnPg8+Ezq7Pgc65zr8gz4TOt869IM61zrvOrc6zzr7Otc65IM66zrHOuSDPhM63zr0gzrrPgc6xz4TOrs+DzrXOuSwgzrXOr869zrHOuSDOsc+Az4zPhs6xz4POtywgz4zPh865IM67zqzOuM6/z4Ig4oCUIM66zrHOuSDOvs6xzr3Osc68z4DOsc6vzr3Otc65IM+DzrUgzq3Ou861zrPPh86/IM68z4zOu865z4IgzrHOu867zqzOvs6/z4XOvSDOvs6xzr3OrCDOv865IM+Ezr/PgM65zrrOrc+CIM+EzrfPgiDOvM6tz4HOsc+CLiDCq86Rzr7Or86xIDDCuyA9IM+Hz4nPgc6vz4Igz4DOv8+Dz4wuIGlkczogdW5wYWlkOjzOv860zrfOs8+Mz4I+OjzOvM6tz4HOsT4gwrcgb3JwaGFuOjzOs8+BzrHOvM68zq4+IMK3IHNhbGFyaWVkOjzOs8+BzrHOvM68zq4+IMK3IHBheWJhc2lzOjzOv860zrfOs8+Mz4I+Lg==', 'base64'), 'UTF8'),
+     convert_from(decode('zp/OtM63zrPPjM+CIM+Azr/PhSDOrc66zrHOvc61IM+Ezr/PgM65zrrOriDOus6vzr3Ot8+DzrcgzrzOrc69zrXOuSDPh8+Jz4HOr8+CIM6zz4HOsc68zrzOriDCq86kzp/OoM6ZzprOn8K7IM+Dz4TOtyDOvM65z4POuM6/zrTOv8+Dzq/OsSDPhM6/z4UgKM6xz4DOu86uz4HPic+EzrcgzrTOv8+FzrvOtc65zqwpLCDOriDPhc+AzqzPgc+HzrXOuSDOs8+BzrHOvM68zq4gwqvOpM6fzqDOmc6azp/CuyDPh8+Jz4HOr8+CIM+Azr/Pg8+MIM66zrHOuSDPh8+Jz4HOr8+CIM62z4nOvc+EzrHOvc6uIM+Ezr/PgM65zrrOriDOus6vzr3Ot8+DzrcgzrXOus61zq/Ovc63IM+EzrcgzrzOrc+BzrEu', 'base64'), 'UTF8'),
+     convert_from(decode('zpzOuc+DzrjOv860zr/Pg86vzrEg4oaSIM6/IM6/zrTOt86zz4zPgiDihpIgzrcgzrzOrc+BzrEuIG9ycGhhbjogwqvOkc66z43Pgc+Jz4POt8K7IM68zrUgzrHOuc+EzrnOv867zr/Os86vzrEgKM63IM6yzqzPg863IM+EzrfOvSDOtc+AzrnPhM+Bzq3PgM61zrkgzrzPjM69zr8gz4POtSDOvM6tz4HOsSDPh8+Jz4HOr8+CIM62z4nOvc+EzrHOvc6uIM+Ezr/PgM65zrrOriDPhM6/z4Ugzr/OtM63zrPOv8+NKS4gdW5wYWlkOiDOtyDOs8+BzrHOvM68zq4gzrPPgc6sz4bOtc+EzrHOuSDOvM+Mzr3OtyDPhM63z4Ig4oCUIM6xzr0gzrvOtc6vz4DOtc65LCDOus6/zq/PhM6xIM+Ezr/OvSBCLTU0ICh0cmlnZ2Vycyku', 'base64'), 'UTF8'),
+     convert_from(decode('zprOrM64zrUgzr/OtM63zrPPjM+CIM+Azr/PhSDOus6szr3Otc65IM+Ezr/PgM65zrrOriDOus6vzr3Ot8+Dzrcgz4DOsc6vz4HOvc61zrkgzrPPgc6xzrzOvM6uIMKrzqTOn86gzpnOms6fwrsgz4PPhM63IM68zrnPg864zr/OtM6/z4POr86xIM+Ezr/PhSwgzrzOr86xIM6xzr3OrCDOvM6tz4HOsSDigJQgz4fPic+Bzq/PgiDOtM65zqzOus+BzrnPg863IM6/zrTOt86zz47OvSAob3duZXIgNS8xMCkuIM6Tz4HOsc68zrzOrc+CIMKrzrjOrc67zrXOuSDOrc67zrXOs8+Hzr/CuyDOtc66z4TPjM+CICjPhM65z4IgzrzOtc+Ez4HOrCDOvyBCLTA4KS4gb3JwaGFuID0gzrzPjM69zr8gzrPPgc6xzrzOvM6uIM6nzqnOoc6ZzqMgz4DOv8+Dz4w6IM6zz4HOsc68zrzOriDOvM61IM+Azr/Pg8+MIM+Azr/PhSDOrc68zrXOuc69zrUgz4fPic+Bzq/PgiDPhM6/z4DOuc66zq4gz4DOt86zzrHOr869zrXOuSDPgM+Bz47PhM6xIM+DzrUgwqvOuM6tzrvOtc65IM6tzrvOtc6zz4fOv8K7IChCLTA4KcK3IM6xzr0gz4TOvyDOu86/zrPOuc+Dz4TOrs+BzrnOvyDPhM63zr0gzrXOu86tzrPOvs61zrkgzrrOsc65IM+EzrfOvSDOus+BzrHPhM6uz4POtc65LCDOtc6vzr3Osc65IM6xz4DPjM+GzrHPg863LCDPjM+HzrkgzrvOrM64zr/PgiDigJQgzrrOsc65IM6+zrHOvc6xzrzPgM6xzq/Ovc61zrkgz4POtSDOrc67zrXOs8+Hzr8gzrzPjM67zrnPgiDOsc67zrvOrM6+zr/Phc69IM6+zrHOvc6sIM6/zrkgz4TOv8+AzrnOus6tz4Igz4TOt8+CIM68zq3Pgc6xz4IuIMKrzpHOvs6vzrEgMMK7ID0gz4fPic+Bzq/PgiDPgM6/z4PPjC4gaWRzOiB1bnBhaWQ6PM6/zrTOt86zz4zPgj46PM68zq3Pgc6xPiDCtyBvcnBoYW46PM6zz4HOsc68zrzOrj4u', 'base64'), 'UTF8'),
      NULL,
      true,
      NULL),
@@ -736,18 +680,18 @@ $s6$;
      NULL,
      true,
      NULL);
-  -- B-54 counts enabled non-internal triggers in public: 060 adds exactly 5.
+  -- B-54 counts enabled non-internal triggers in public: 060 adds exactly 4.
   SELECT count(*) INTO trg_after FROM pg_trigger t JOIN pg_class c ON c.oid = t.tgrelid
     JOIN pg_namespace ns ON ns.oid = c.relnamespace
    WHERE NOT t.tgisinternal AND t.tgenabled <> 'D' AND ns.nspname = 'public';
-  IF trg_after <> trg_before + 5 THEN
-    RAISE EXCEPTION '060 proof: trigger count % -> % (expected +5)', trg_before, trg_after;
+  IF trg_after <> trg_before + 4 THEN
+    RAISE EXCEPTION '060 proof: trigger count % -> % (expected +4)', trg_before, trg_after;
   END IF;
   UPDATE monitoring.checks SET red_value = trg_after WHERE id = 'B-54' AND red_value = trg_before;
   GET DIAGNOSTICS k = ROW_COUNT;
   IF k <> 1 THEN RAISE EXCEPTION '060: B-54 not updated (% rows)', k; END IF;
 
-  -- 10. PROOFS inside the block: any failure rolls back everything above.
+  -- 9. PROOFS inside the block: any failure rolls back everything above.
   SELECT count(*) INTO n FROM pg_constraint WHERE conrelid = 'public.local_moves'::regclass AND contype = 'c'
      AND conname IN ('local_moves_kind_chk', 'local_moves_kind_parent', 'local_moves_relay_points',
                      'local_moves_relay_status', 'local_moves_relay_executor', 'local_moves_relay_trailer');
@@ -758,17 +702,14 @@ $s6$;
   SELECT count(*) INTO n FROM pg_constraint
    WHERE conrelid = 'public.dl_entries'::regclass AND contype = 'f' AND confrelid = 'public.local_moves'::regclass;
   IF n <> 1 THEN RAISE EXCEPTION '060 proof: dl_entries.local_move_id FK %/1', n; END IF;
-  SELECT count(*) INTO n FROM pg_constraint WHERE conrelid = 'public.drivers'::regclass AND conname = 'drivers_pay_basis_chk';
-  IF n <> 1 THEN RAISE EXCEPTION '060 proof: drivers_pay_basis_chk missing'; END IF;
   SELECT count(*) INTO n FROM pg_index i JOIN pg_class c ON c.oid = i.indexrelid
    WHERE c.relname IN ('local_moves_relay_once', 'dl_local_day_live') AND i.indisunique AND i.indisvalid;
   IF n <> 2 THEN RAISE EXCEPTION '060 proof: unique indexes %/2', n; END IF;
   SELECT count(*) INTO n FROM pg_trigger WHERE NOT tgisinternal AND tgenabled = 'O'
      AND (   (tgrelid = 'public.local_moves'::regclass AND tgname IN ('local_moves_before', 'dl_sync_from_local_move'))
           OR (tgrelid = 'public.orders'::regclass AND tgname = 'local_moves_follow_order')
-          OR (tgrelid = 'public.drivers'::regclass AND tgname = 'dl_local_pay_basis_sync')
           OR (tgrelid = 'public.dl_entries'::regclass AND tgname = 'dl_local_line_guard'));
-  IF n <> 5 THEN RAISE EXCEPTION '060 proof: triggers %/5', n; END IF;
+  IF n <> 4 THEN RAISE EXCEPTION '060 proof: triggers %/4', n; END IF;
   -- 023 = the old text + step 6, character for character
   IF pg_get_functiondef('public.order_soft_delete_unlink()'::regprocedure) <> new_unlink
      OR position('update local_moves lm set deleted_at' IN new_unlink) = 0
@@ -796,11 +737,11 @@ $s6$;
   SELECT count(*) INTO n FROM pg_proc p
    WHERE p.oid IN ('public.local_moves_before()'::regprocedure, 'public.local_moves_follow_order()'::regprocedure,
                    'public.dl_local_day_sync(bigint,date)'::regprocedure, 'public.dl_sync_from_local_move()'::regprocedure,
-                   'public.dl_local_pay_basis_sync()'::regprocedure, 'public.dl_local_line_guard()'::regprocedure)
+                   'public.dl_local_line_guard()'::regprocedure)
      AND NOT has_function_privilege('anon', p.oid, 'EXECUTE')
      AND NOT has_function_privilege('authenticated', p.oid, 'EXECUTE')
      AND NOT has_function_privilege('service_role', p.oid, 'EXECUTE');
-  IF n <> 6 THEN RAISE EXCEPTION '060 proof: only % of 6 new functions are closed', n; END IF;
+  IF n <> 5 THEN RAISE EXCEPTION '060 proof: only % of 5 new functions are closed', n; END IF;
   IF has_table_privilege('anon', 'public.local_moves', 'SELECT') OR has_table_privilege('authenticated', 'public.local_moves', 'SELECT') THEN
     RAISE EXCEPTION '060 proof: anon/authenticated can read local_moves';
   END IF;
@@ -811,7 +752,7 @@ $s6$;
   SELECT count(*) INTO n FROM monitoring.checks k
     JOIN (VALUES
       ('B-63', '9c8b0400fcea4adcdde4dccdf90e3d09'),
-      ('B-64', '12530e38ee87f2e7e98bafa1624de15f'),
+      ('B-64', 'fe6790fbafdd54f9f0bbd0fe337784d1'),
       ('B-65', '040318725578a5707cd2ed04c571ccf8')
     ) e(id, fp) ON e.id = k.id
    WHERE md5(k.title||'|'||k.sql_text||'|'||coalesce(k.ids_sql,'')||'|'||coalesce(k.impact,'')||'|'||coalesce(k.next_step,'')||'|'||coalesce(k.exceptions,'')||'|'||coalesce(k.entity_table,'')||'|'||k.red_op||'|'||k.red_value::text||'|'||k.severity||'|'||k.schedule_tag) = e.fp AND k.enabled;
@@ -850,26 +791,27 @@ END;
   -- A: what 060 creates is there (its own proofs already raised if not; this names it in the result)
   BEGIN
     SELECT count(*) INTO dry_n FROM information_schema.columns WHERE table_schema = 'public'
-       AND ((table_name = 'local_moves' AND column_name = 'move_kind') OR (table_name = 'drivers' AND column_name = 'pay_basis')
+       AND ((table_name = 'local_moves' AND column_name = 'move_kind')
          OR (table_name = 'dl_entries' AND column_name = 'local_move_id') OR (table_name = 'dl_v_entries' AND column_name = 'relay_info'));
-    IF dry_n = 4 AND (SELECT count(*) FROM monitoring.checks WHERE id IN ('B-63', 'B-64', 'B-65')) = 3 THEN
+    IF dry_n = 3 AND (SELECT count(*) FROM monitoring.checks WHERE id IN ('B-63', 'B-64', 'B-65')) = 3 THEN
       ok := ok + 1; res := res || 'A ok columns, view column and B-63..B-65 in place'::text;
-    ELSE bad := bad + 1; res := res || format('A FAIL columns %s/4', dry_n); END IF;
+    ELSE bad := bad + 1; res := res || format('A FAIL columns %s/3', dry_n); END IF;
   EXCEPTION WHEN others THEN bad := bad + 1; res := res || ('A ERROR ' || SQLERRM);
   END;
 
-  -- B: B-54 moved by exactly the five triggers 060 adds, and equals the live count
+  -- B: B-54 moved by exactly the four triggers 060 adds, and equals the live count
   BEGIN
     SELECT count(*) INTO dry_n FROM pg_trigger t JOIN pg_class c ON c.oid = t.tgrelid
       JOIN pg_namespace ns ON ns.oid = c.relnamespace WHERE NOT t.tgisinternal AND t.tgenabled <> 'D' AND ns.nspname = 'public';
-    IF dry_n = dry_trg_before + 5 AND (SELECT red_value FROM monitoring.checks WHERE id = 'B-54') = dry_n AND dry_b54_before = dry_trg_before THEN
+    IF dry_n = dry_trg_before + 4 AND (SELECT red_value FROM monitoring.checks WHERE id = 'B-54') = dry_n AND dry_b54_before = dry_trg_before THEN
       ok := ok + 1; res := res || format('B ok B-54 %s -> %s (= live triggers)', dry_b54_before, dry_n);
     ELSE bad := bad + 1; res := res || format('B FAIL triggers %s -> %s, B-54 %s -> %s', dry_trg_before, dry_n, dry_b54_before,
                                              (SELECT red_value FROM monitoring.checks WHERE id = 'B-54')); END IF;
   EXCEPTION WHEN others THEN bad := bad + 1; res := res || ('B ERROR ' || SQLERRM);
   END;
 
-  -- C: data 060 must not touch - same fingerprint after the block as before it
+  -- C: data 060 must not touch - same fingerprint after the block as before it. A save by someone
+  --    else during these seconds also changes it (fails closed): the FAIL text says what to do.
   BEGIN
     IF (SELECT md5(
     coalesce((SELECT string_agg(concat_ws(':', id, status, driver_id, truck_id, trailer_id, partner_id, loading_datetime, delivery_datetime, deleted_at), ',' ORDER BY id) FROM public.orders), '')
@@ -881,7 +823,7 @@ END;
               WHERE id NOT IN ('B-09', 'B-54', 'B-63', 'B-64', 'B-65')), '')
  || coalesce((SELECT string_agg(s.sequencename || '=' || coalesce(s.last_value::text, '-'), ',' ORDER BY s.sequencename) FROM pg_sequences s WHERE s.schemaname = 'public'), ''))) = dry_fp_before THEN
       ok := ok + 1; res := res || 'C ok orders, payroll, round trips, local_moves, drivers, other checks, sequences unchanged'::text;
-    ELSE bad := bad + 1; res := res || 'C FAIL 060 changed data it must not touch'::text; END IF;
+    ELSE bad := bad + 1; res := res || 'C FAIL data changed during the dry run - 060 itself, or a save by someone else in those seconds: if A and B are ok, wait 5 minutes and run the dry run once more; if C fails again, stop and copy the panel to the coordinator'::text; END IF;
   EXCEPTION WHEN others THEN bad := bad + 1; res := res || ('C ERROR ' || SQLERRM);
   END;
 
