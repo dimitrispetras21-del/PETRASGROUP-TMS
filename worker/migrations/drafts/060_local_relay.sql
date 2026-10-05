@@ -82,11 +82,15 @@
 --   on local_moves: kind_locked, final, status, no_order, partner, points, no_trailer,
 --     order_gone, preorder, vs, direction, split_parent, relay_exists, same_driver, no_order_date;
 --   on dl_entries (the ledger PATCH): line_has_relay (cancel refused), line_restore.
--- Row CHECKs cannot carry a hint; the Worker maps them by constraint name:
+-- Row CHECKs cannot carry a hint; the Worker maps the local_moves ones by constraint name:
 -- local_moves_kind_chk, local_moves_kind_parent, local_moves_relay_points,
--- local_moves_relay_status, local_moves_relay_executor, local_moves_relay_trailer,
--- dl_one_origin, dl_lm_is_trip; unique (23505): local_moves_relay_once,
--- dl_local_day_live. Both paths are live, not duplicates: the trigger refuses a LIVE relay first
+-- local_moves_relay_status, local_moves_relay_executor, local_moves_relay_trailer; unique
+-- (23505): local_moves_relay_once. It deliberately maps NONE of the dl_entries ones: the
+-- local-line allow-list of /costs/ledger (worker/src/ledger-rules.mjs LOCAL_LINE_EDITABLE: no
+-- rt_id, no type, no day, no restore) keeps dl_one_origin, dl_lm_is_trip and dl_local_day_live
+-- out of reach, and dl_local_day_sync's writers are serialised by its advisory lock (a slip
+-- would be a transient race: the 500/retry path, on purpose).
+-- Both local_moves paths are live, not duplicates: the trigger refuses a LIVE relay first
 -- with its hint; a gone (deleted/cancelled) relay skips the trigger rules, so a later write to it
 -- meets the CHECK; and local_moves_relay_once answers two saves racing past the trigger.
 --
@@ -110,10 +114,10 @@
 -- changes orders_with_derived, ct_v_rt_revenue (057b: S-xx, B-13, B-15, B-34, B-34b). Any other
 -- start value (a hand edit of B-54, a red B-54 nobody looked at, a migration that added triggers
 -- without bumping) makes the guard refuse - loud, never forced.
--- Auditor mirror (tms-auditor/checks/B-54.sql "red: <> N", regenerated into 047b): each branch
--- carries the value after ITSELF alone (060: 31, 057: 31 - the same number, so an unchanged 31
--- on main does NOT mean the second one was counted); whichever merges to main SECOND sets the
--- final value 35 = 27 + 4 + 4 and regenerates 047b.
+-- Auditor mirror (tms-auditor/checks/B-54.sql "red: <> N", regenerated into 047b): 057 merged
+-- AND ran first (5/10: live 27 -> 31), so this branch, rebased on it, carries the final value
+-- 35 = 27 + 4 (057) + 4 (060) in B-54.sql and 047b. 047b must not be re-run before this block:
+-- it would set red_value 35 while 31 triggers are live, and this block's B-54 guard refuses - loud.
 -- Reverse: worker/migrations/drafts/060_local_relay_rollback.sql (refuses once relays or local
 -- payroll lines exist - data would be lost).
 
@@ -128,7 +132,7 @@ DECLARE
 BEGIN
   -- pg_get_viewdef (md5 guard below) prints names relative to the search_path: pin it.
   PERFORM set_config('search_path', 'public, extensions', true);
-  -- ALTER TABLE on drivers / dl_entries / local_moves, CREATE TRIGGER on orders and the
+  -- ALTER TABLE on dl_entries / local_moves, CREATE TRIGGER on orders and the
   -- dl_v_entries replace need strong locks: behind an idle open transaction they would wait
   -- forever while every app read of those tables queues behind them. Give up after 5 s instead -
   -- the whole block rolls back, nothing half-done; run it again later (same as 057).
