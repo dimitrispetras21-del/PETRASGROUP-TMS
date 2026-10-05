@@ -371,4 +371,7 @@ const PERMS = {
 // merged and the live proofs counted in the base. The data-based guards (a
 // piece is never invoiced alone, a lot waits for its pieces) do NOT depend on
 // this switch. Remove the switch one week after go-live.
-const FEATURES = { ORDER_SPLIT: true, GROUP_TILES: true, STOCK_LOTS: false };
+// ON since 5/10/2026 evening: 057 + 057b executed (rules test 119/119), Worker
+// d30184c6 live, live proofs on two test orders (mark, charge, unmark, delete)
+// counted in the base and cleaned to 0 (docs/stock-lots/EXECUTION-PHI1.md step 8).
+const FEATURES = { ORDER_SPLIT: true, GROUP_TILES: true, STOCK_LOTS: true };
