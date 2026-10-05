@@ -9,6 +9,14 @@
 -- screens: Weekly International's old "local move (Veroia)" form (0 rows ever written; removed by
 -- the screens of this release) can no longer save a move bound to an ORDER (local_moves_kind_parent).
 --
+-- BEFORE IT: 060_local_relay_dryrun.sql - this same block, generated from this file, undone at the end.
+-- EXPECTED (green, no red panel): NOTICE "060 OK: local relay phase 1 in place; triggers T -> T+5,
+--   B-54 = T+5; B-63/B-64/B-65 = 0" and ONE result row "060 OK | T+5 | T+5 | 0 | <live payroll lines>".
+--   T = the live count of enabled triggers in public = B-54 before it: 27 with neither 057 nor 060,
+--   31 after 057 (ORDER WITH 057 below) - so after 057 this block leaves 36. A red error = nothing
+--   changed (one DO block): stop. AFTER IT: 060_local_relay_verify.sql V1, then the rules test
+--   060_local_relay_test.sql.
+--
 -- THIS FILE IS ASCII ONLY, on purpose: a clipboard transfer corrupted Greek text on 27/9
 -- (pbcopy). Greek labels stored in the data are built from base64 (convert_from/decode);
 -- refusal messages are ASCII and carry a machine code in HINT, the Greek text per code lives in
@@ -90,7 +98,8 @@
 -- c81a268c7312574d10da6c78ef316326 (search_path pinned below); B-09 md5 b8f8d0e7.../b96ff398...;
 -- B-54 red_value 27 = 27 enabled non-internal triggers in public; B-63..B-65 free (B-59..B-62
 -- taken by 058). Tested end to end on a local PGlite copy of the production schema (catalog read
--- 4/10): this block, the dry run, the verify SELECTs and the rollback.
+-- 4/10): this block, its dry run (060_local_relay_dryrun.sql), the rules test, the verify SELECTs
+-- and the rollback.
 --
 -- ORDER WITH 057 (stock lots): BOTH migrations bump B-54 by their OWN trigger count inside their
 -- own block, so either order works. Each one counts the enabled non-internal triggers in public
@@ -474,10 +483,14 @@ $s6$;
     IF anchor IS NULL OR salaried THEN                      -- nothing to pay by a line that day
       IF live.id IS NULL THEN RETURN; END IF;
       IF has_money OR keep_past THEN                        -- possibly owed: flag, never drop silently
+        -- Skip only while the line is STILL flagged for this reason (a repeat sync adds no second
+        -- note). Not "the reason is somewhere in the note": accounting's check clears the flag and
+        -- keeps the note, so after clear -> relay re-added -> relay deleted again that test would
+        -- leave a paid line with no relay and no flag (review round 3, 5/10).
         UPDATE dl_entries SET needs_review = true, updated_at = now(),
                review_note = concat_ws(sep, review_note, CASE WHEN salaried THEN r_salary ELSE r_gone END || stamp)
          WHERE id = live.id
-           AND position(CASE WHEN salaried THEN r_salary ELSE r_gone END IN coalesce(review_note, '')) = 0;
+           AND NOT (needs_review AND position(CASE WHEN salaried THEN r_salary ELSE r_gone END IN coalesce(review_note, '')) > 0);
       ELSE
         UPDATE dl_entries SET deleted_at = now(), updated_at = now(),
                deleted_reason = CASE WHEN salaried THEN t_salary ELSE t_gone END
@@ -585,11 +598,13 @@ $s6$;
   -- 7. THE LEDGER VIEW: the 30 columns exactly as today (deparsed text of 4/10, proven below
   --    against the live definition) + two appended (CREATE OR REPLACE VIEW only allows appending;
   --    owner and grants are kept). relay_info is jsonb with ASCII keys - the screens render it:
-  --      LIVE local day line: {"kind":"local_day","pay_basis":null|"per_trip"|"salary",
+  --      LIVE local day line: {"kind":"local_day",
   --                       "moves":[{"id","move_kind","order_id","rt_codes":["RT-..",..]}]}
-  --        (pay_basis null = show "pay basis unknown" on the line - read live, never stale; one
-  --         entry per relay - the RT codes of its order are an array, so a relay never repeats;
-  --         moves [] = no live relay left that day, or salary = cancel allowed, dl_local_line_guard)
+  --        (one entry per relay - the RT codes of its order are an array, so a relay never
+  --         repeats; moves [] = no live relay left that day = cancel allowed, dl_local_line_guard.
+  --         No pay basis here: it has ONE home, drivers.pay_basis, which the payroll card and the
+  --         Worker read directly - a copy in the view would be a second source nobody reads,
+  --         review round 3, 5/10)
   --      CANCELLED local line: NULL - the day's live relays belong to the live line, not to this
   --        one (the screens show route_text, the label the line had)
   --      RT line with relays on its orders: {"kind":"rt","relays":[{"id","move_kind","order_id",
@@ -646,7 +661,6 @@ $s6$;
        -- LIVE local day line -> its relays and the RTs they serve (live, so an RT made later shows)
        LEFT JOIN LATERAL ( SELECT jsonb_build_object(
                 'kind', 'local_day',
-                'pay_basis', (SELECT d.pay_basis FROM drivers d WHERE d.id = e.driver_id),
                 'moves', coalesce(jsonb_agg(jsonb_build_object(
                     'id', lm.id, 'move_kind', lm.move_kind, 'order_id', lm.parent_order_id,
                     'rt_codes', (SELECT coalesce(jsonb_agg(r2.code ORDER BY r2.id), '[]'::jsonb)
@@ -722,6 +736,7 @@ $s6$;
    GROUP BY lm.driver_id, lm.move_date) k
   WHERE NOT EXISTS (SELECT 1 FROM dl_entries e WHERE e.local_move_id IS NOT NULL AND e.deleted_at IS NULL AND e.driver_id=k.driver_id AND e.entry_date=k.move_date))
  + (SELECT count(*) FROM dl_entries e WHERE e.local_move_id IS NOT NULL AND e.deleted_at IS NULL AND NOT e.needs_review
+  AND coalesce(e.trip_value,0)=0 AND coalesce(e.advance,0)=0 AND coalesce(e.expenses,0)=0
   AND NOT EXISTS (SELECT 1 FROM local_moves lm WHERE lm.move_kind<>'local' AND lm.driver_id=e.driver_id AND lm.move_date=e.entry_date AND lm.deleted_at IS NULL AND lm.status<>'Cancelled'))
  + (SELECT count(*) FROM dl_entries e JOIN drivers d ON d.id=e.driver_id WHERE e.local_move_id IS NOT NULL AND e.deleted_at IS NULL AND NOT e.needs_review AND d.pay_basis='salary'
   AND coalesce(e.trip_value,0)=0 AND coalesce(e.advance,0)=0 AND coalesce(e.expenses,0)=0)
@@ -732,6 +747,7 @@ $s6$;
    GROUP BY lm.driver_id, lm.move_date) k
   WHERE NOT EXISTS (SELECT 1 FROM dl_entries e WHERE e.local_move_id IS NOT NULL AND e.deleted_at IS NULL AND e.driver_id=k.driver_id AND e.entry_date=k.move_date)
  UNION ALL SELECT 'orphan:' || e.id FROM dl_entries e WHERE e.local_move_id IS NOT NULL AND e.deleted_at IS NULL AND NOT e.needs_review
+  AND coalesce(e.trip_value,0)=0 AND coalesce(e.advance,0)=0 AND coalesce(e.expenses,0)=0
   AND NOT EXISTS (SELECT 1 FROM local_moves lm WHERE lm.move_kind<>'local' AND lm.driver_id=e.driver_id AND lm.move_date=e.entry_date AND lm.deleted_at IS NULL AND lm.status<>'Cancelled')
  UNION ALL SELECT 'salaried:' || e.id FROM dl_entries e JOIN drivers d ON d.id=e.driver_id WHERE e.local_move_id IS NOT NULL AND e.deleted_at IS NULL AND NOT e.needs_review AND d.pay_basis='salary'
   AND coalesce(e.trip_value,0)=0 AND coalesce(e.advance,0)=0 AND coalesce(e.expenses,0)=0
@@ -746,7 +762,7 @@ $s6$;
      false,
      convert_from(decode('zqTOv8+AzrnOus+Mz4Igzr/OtM63zrPPjM+CIM+Azr/PhSDPgM67zrfPgc+Ozr3Otc+EzrHOuSDOsc69zqwgzrTPgc6/zrzOv867z4zOs865zr8gzrzOrc69zrXOuSDPh8+Jz4HOr8+CIM6zz4HOsc68zrzOriDCq86kzp/OoM6ZzprOn8K7ICjOsc+AzrvOrs+Bz4nPhM63IM60zr/Phc67zrXOuc6sKSwgzq4gz4XPgM6sz4HPh861zrkgzrPPgc6xzrzOvM6uIM+Hz4nPgc6vz4IgzrTOv8+FzrvOtc65zqwgzq4gzrrOtc69zq4gzrPPgc6xzrzOvM6uIM+DzrUgzrzOuc+DzrjPic+Ez4zCtyDOriDOvyDOv860zrfOs8+Mz4Igzq3Ous6xzr3OtSDPhM6/z4DOuc66zq4gz4fPic+Bzq/PgiDOtM63zrvPic68zq3Ovc6/IM+Ez43PgM6/IM6xzrzOv865zrLOrs+CLg==', 'base64'), 'UTF8'),
      convert_from(decode('zpzOuc+DzrjOv860zr/Pg86vzrEg4oaSIM6/IM6/zrTOt86zz4zPgiDihpIgzrcgzrzOrc+BzrEuIG9ycGhhbiAvIHNhbGFyaWVkOiDCq86RzrrPjc+Bz4nPg863wrsgzrzOtSDOsc65z4TOuc6/zrvOv86zzq/OsSAozrcgzrLOrM+Dzrcgz4TOt869IM61z4DOuc+Ez4HOrc+AzrXOuSDOvM+Mzr3OvyDPg861IM68zrnPg864z4nPhM+MIM6uIM+DzrUgzrzOrc+BzrEgz4fPic+Bzq/PgiDOts+Jzr3PhM6xzr3OriDPhM6/z4DOuc66zq4pLiB1bnBhaWQ6IM63IM6zz4HOsc68zrzOriDOs8+BzqzPhs61z4TOsc65IM68z4zOvc63IM+EzrfPgiDigJQgzrHOvSDOu861zq/PgM61zrksIM66zr/Or8+EzrEgz4TOv869IEItNTQgKHRyaWdnZXJzKS4gcGF5YmFzaXM6IM6fzrTOt86zzr/OryDihpIgzr8gzr/OtM63zrPPjM+CIOKGkiDCq86kz43PgM6/z4IgzrHOvM6/zrnOss6uz4LCuy4=', 'base64'), 'UTF8'),
-     convert_from(decode('zpzOuc+DzrjPic+Ezr/OryAocGF5X2Jhc2lzPSdzYWxhcnknKTogzrcgz4TOv8+AzrnOus6uIM+Ezr/Phc+CIM61zq/Ovc6xzrkgzrzPjM69zr8gzrnPg8+Ezr/Pgc65zrrPjCwgzqfOqc6hzpnOoyDOs8+BzrHOvM68zq4gKG93bmVyIDQvMTApLiDOhs6zzr3Pic+Dz4TOv8+CIM+Ez43PgM6/z4IgKM66zrXOvc+MKSA9IM+DzrHOvSDOsc69zqwgzrTPgc6/zrzOv867z4zOs865zr8sIM+Oz4PPhM61IM69zrEgzrzOtyDPh86xzrjOtc6vIM+AzrvOt8+Bz4nOvM6uIOKAlCDOus6xzrkgzrHOvc6xz4bOrc+BzrXPhM6xzrkgz4nPgiDCq3BheWJhc2lzwrsgzrzOrc+Hz4HOuSDOvc6xIM60zrfOu8+JzrjOtc6vLiDOk8+BzrHOvM68zq3PgiDCq864zq3Ou861zrkgzq3Ou861zrPPh86/wrsgzrXOus+Ez4zPgiAoz4TOuc+CIM68zrXPhM+Bzqwgzr8gQi0wOCkuIHNhbGFyaWVkID0gzrzPjM69zr8gzrPPgc6xzrzOvM6uIM6nzqnOoc6ZzqMgz4DOv8+Dz4w6IM+Azr/Pg8+MIM+DzrUgzrPPgc6xzrzOvM6uIM68zrnPg864z4nPhM6/z40gzrPPgc6sz4bOtc+EzrHOuSDOvM+Mzr3OvyDOsc+Gzr/PjSDPhM6/IM67zr/Os865z4PPhM6uz4HOuc6/IM61zrvOrc6zzr7Otc65IM+AzrHOu865zqwgzrzOrc+BzrEgwqvOsc69zqwgzrTPgc6/zrzOv867z4zOs865zr/CuyAozrHPgM+Mz4bOsc+DzrcsIM+Mz4fOuSDOu86szrjOv8+CKS4gwqvOkc6+zq/OsSAwwrsgPSDPh8+Jz4HOr8+CIM+Azr/Pg8+MLiBpZHM6IHVucGFpZDo8zr/OtM63zrPPjM+CPjo8zrzOrc+BzrE+IMK3IG9ycGhhbjo8zrPPgc6xzrzOvM6uPiDCtyBzYWxhcmllZDo8zrPPgc6xzrzOvM6uPiDCtyBwYXliYXNpczo8zr/OtM63zrPPjM+CPi4=', 'base64'), 'UTF8'),
+     convert_from(decode('zpzOuc+DzrjPic+Ezr/OryAocGF5X2Jhc2lzPSdzYWxhcnknKTogzrcgz4TOv8+AzrnOus6uIM+Ezr/Phc+CIM61zq/Ovc6xzrkgzrzPjM69zr8gzrnPg8+Ezr/Pgc65zrrPjCwgzqfOqc6hzpnOoyDOs8+BzrHOvM68zq4gKG93bmVyIDQvMTApLiDOhs6zzr3Pic+Dz4TOv8+CIM+Ez43PgM6/z4IgKM66zrXOvc+MKSA9IM+DzrHOvSDOsc69zqwgzrTPgc6/zrzOv867z4zOs865zr8sIM+Oz4PPhM61IM69zrEgzrzOtyDPh86xzrjOtc6vIM+AzrvOt8+Bz4nOvM6uIOKAlCDOus6xzrkgzrHOvc6xz4bOrc+BzrXPhM6xzrkgz4nPgiDCq3BheWJhc2lzwrsgzrzOrc+Hz4HOuSDOvc6xIM60zrfOu8+JzrjOtc6vLiDOk8+BzrHOvM68zq3PgiDCq864zq3Ou861zrkgzq3Ou861zrPPh86/wrsgzrXOus+Ez4zPgiAoz4TOuc+CIM68zrXPhM+Bzqwgzr8gQi0wOCkuIG9ycGhhbiDOus6xzrkgc2FsYXJpZWQgPSDOvM+Mzr3OvyDOs8+BzrHOvM68zq4gzqfOqc6hzpnOoyDPgM6/z4PPjDogzrPPgc6xzrzOvM6uIM68zrUgz4DOv8+Dz4wgz4DOv8+FIM6tzrzOtc65zr3OtSDPh8+Jz4HOr8+CIM+Ezr/PgM65zrrOriDOriDPg861IM68zrnPg864z4nPhM+MIM+AzrfOs86xzq/Ovc61zrkgz4DPgc+Oz4TOsSDPg861IMKrzrjOrc67zrXOuSDOrc67zrXOs8+Hzr/CuyAoQi0wOCnCtyDOsc69IM+Ezr8gzrvOv86zzrnPg8+Ezq7Pgc65zr8gz4TOt869IM61zrvOrc6zzr7Otc65IM66zrHOuSDPhM63zr0gzrrPgc6xz4TOrs+DzrXOuSwgzrXOr869zrHOuSDOsc+Az4zPhs6xz4POtywgz4zPh865IM67zqzOuM6/z4Ig4oCUIM66zrHOuSDOvs6xzr3Osc68z4DOsc6vzr3Otc65IM+DzrUgzq3Ou861zrPPh86/IM68z4zOu865z4IgzrHOu867zqzOvs6/z4XOvSDOvs6xzr3OrCDOv865IM+Ezr/PgM65zrrOrc+CIM+EzrfPgiDOvM6tz4HOsc+CLiDCq86Rzr7Or86xIDDCuyA9IM+Hz4nPgc6vz4Igz4DOv8+Dz4wuIGlkczogdW5wYWlkOjzOv860zrfOs8+Mz4I+OjzOvM6tz4HOsT4gwrcgb3JwaGFuOjzOs8+BzrHOvM68zq4+IMK3IHNhbGFyaWVkOjzOs8+BzrHOvM68zq4+IMK3IHBheWJhc2lzOjzOv860zrfOs8+Mz4I+Lg==', 'base64'), 'UTF8'),
      NULL,
      true,
      NULL),
@@ -758,7 +774,9 @@ $s6$;
  o.deleted_at IS NOT NULL OR coalesce(o.status,'')='Cancelled' OR coalesce(o.ops_status,'')='Provisional'
  OR (CASE lm.move_kind WHEN 'relay_delivery' THEN o.delivery_datetime ELSE o.loading_datetime END) IS NULL
  OR lm.move_date <> (CASE lm.move_kind WHEN 'relay_delivery' THEN o.delivery_datetime ELSE o.loading_datetime END)
- OR lm.driver_id = o.driver_id OR lm.truck_id = o.truck_id OR coalesce(o.veroia_switch,false)
+ OR lm.driver_id = o.driver_id OR lm.truck_id = o.truck_id
+ OR (lm.truck_id IS NULL AND o.truck_id IS NULL AND lm.move_date <= (now() AT TIME ZONE 'Europe/Athens')::date + 1)
+ OR coalesce(o.veroia_switch,false)
  OR coalesce(o.direction,'') <> (CASE lm.move_kind WHEN 'relay_delivery' THEN 'Import' ELSE 'Export' END)
  OR EXISTS (SELECT 1 FROM orders l WHERE l.parent_order_id=o.id AND l.deleted_at IS NULL))$m$,
      $m$SELECT coalesce(array_agg(x ORDER BY x), '{}') FROM (SELECT coalesce(lm.legacy_id, lm.id::text) || ':' || CASE
@@ -768,6 +786,7 @@ $s6$;
    OR lm.move_date <> (CASE lm.move_kind WHEN 'relay_delivery' THEN o.delivery_datetime ELSE o.loading_datetime END) THEN 'day'
  WHEN lm.driver_id = o.driver_id THEN 'same-driver'
  WHEN lm.truck_id = o.truck_id THEN 'truck-copy'
+ WHEN lm.truck_id IS NULL AND o.truck_id IS NULL AND lm.move_date <= (now() AT TIME ZONE 'Europe/Athens')::date + 1 THEN 'no-vehicle'
  WHEN coalesce(o.veroia_switch,false) THEN 'vs'
  WHEN coalesce(o.direction,'') <> (CASE lm.move_kind WHEN 'relay_delivery' THEN 'Import' ELSE 'Export' END) THEN 'direction'
  ELSE 'split' END AS x
@@ -776,7 +795,9 @@ $s6$;
  o.deleted_at IS NOT NULL OR coalesce(o.status,'')='Cancelled' OR coalesce(o.ops_status,'')='Provisional'
  OR (CASE lm.move_kind WHEN 'relay_delivery' THEN o.delivery_datetime ELSE o.loading_datetime END) IS NULL
  OR lm.move_date <> (CASE lm.move_kind WHEN 'relay_delivery' THEN o.delivery_datetime ELSE o.loading_datetime END)
- OR lm.driver_id = o.driver_id OR lm.truck_id = o.truck_id OR coalesce(o.veroia_switch,false)
+ OR lm.driver_id = o.driver_id OR lm.truck_id = o.truck_id
+ OR (lm.truck_id IS NULL AND o.truck_id IS NULL AND lm.move_date <= (now() AT TIME ZONE 'Europe/Athens')::date + 1)
+ OR coalesce(o.veroia_switch,false)
  OR coalesce(o.direction,'') <> (CASE lm.move_kind WHEN 'relay_delivery' THEN 'Import' ELSE 'Export' END)
  OR EXISTS (SELECT 1 FROM orders l WHERE l.parent_order_id=o.id AND l.deleted_at IS NULL)) LIMIT 50) s$m$,
      NULL,
@@ -786,9 +807,9 @@ $s6$;
      $m$P3$m$,
      $m$daily$m$,
      false,
-     convert_from(decode('zpcgz4TOv8+AzrnOus6uIM60zrXOvSDPhM6xzrnPgc65zqzOts61zrkgz4DOuc6xIM68zrUgz4TOt869IM+AzrHPgc6xzrPOs861zrvOr86xOiDOu86szrjOv8+CIM68zq3Pgc6xIM+Dz4TOvyDOl868zrXPgc6uz4POuc6/IM66zrHOuSDPg8+EzrcgzrzOuc+DzrjOv860zr/Pg86vzrEgz4TOv8+FIM+Ezr/PgM65zrrOv8+NLCDOriDPhM6/z4DOuc66zq4gz4DOrM69z4kgz4POtSDPgM6xz4HOsc6zzrPOtc67zq/OsSDPgM6/z4UgzrTOtc69IM64zrEgzrXOus+EzrXOu861z4PPhM61zq8gzq3PhM+Dzrku', 'base64'), 'UTF8'),
-     convert_from(decode('zpXOss60zr/OvM6xzrTOuc6xzq/OvyDOlM65zrXOuM69z47OvSDihpIgzrcgz4DOsc+BzrHOs86zzrXOu86vzrE6IM60zrnPjM+BzrjPic+DzrUgzq4gz4POss6uz4POtSDPhM63zr0gz4TOv8+AzrnOus6uICjOsc69zqzOs869z4nPg863KS4=', 'base64'), 'UTF8'),
-     convert_from(decode('aWRzID0gPM61zrPOs8+BzrHPhs6uPjo8zrvPjM6zzr/Pgj4sIM6tzr3Osc+CIM67z4zOs86/z4IgzrHOvc6sIM+Ezr/PgM65zrrOriDOvM61IM6xz4XPhM6uIM+Ezrcgz4POtc65z4HOrDogcGFyZW50ICjPg86yzrfPg868zq3Ovc63L86xzrrPhc+Bz4nOvM6tzr3OtyDPgM6xz4HOsc6zzrPOtc67zq/OsSkgwrcgcHJlb3JkZXIgwrcgZGF5ICjOvM6tz4HOsSDiiaAgzrzOrc+BzrEgz4DOtc67zqzPhM63IM6uIM66zrXOvc6uKSDCtyBzYW1lLWRyaXZlciAozr8gz4TOv8+AzrnOus+Mz4IgPSDOvyDOtM65zrXOuM69zq7PgikgwrcgdHJ1Y2stY29weSAoz4TOvyDCq86szrvOu86/wrsgz4bOv8+Bz4TOt86zz4wgPSDPhM63z4Igz4DOsc+BzrHOs86zzrXOu86vzrHPgikgwrcgdnMgwrcgZGlyZWN0aW9uIMK3IHNwbGl0ICjOtyDPgM6xz4HOsc6zzrPOtc67zq/OsSDPg8+AzqzPg8+EzrfOus61IM+DzrUgz4POus6tzrvOtykuIM6XIM6yzqzPg863IM6xz4HOvc61zq/PhM6xzrkgz4TOsSDOr860zrnOsSDPjM+EzrHOvSDOs8+BzqzPhs61z4TOsc65IM63IM+Ezr/PgM65zrrOrsK3IM61zrTPjiDPhs6xzq/Ovc6/zr3PhM6xzrkgz4zPg86xIM+Az4HOv86tzrrPhc+IzrHOvSDOsc+Az4wgzrHOu867zrHOs86uIM+EzrfPgiDPgM6xz4HOsc6zzrPOtc67zq/Osc+CIM68zrXPhM6sLg==', 'base64'), 'UTF8'),
+     convert_from(decode('zpcgz4TOv8+AzrnOus6uIM60zrXOvSDPhM6xzrnPgc65zqzOts61zrkgz4DOuc6xIM68zrUgz4TOt869IM+AzrHPgc6xzrPOs861zrvOr86xOiDOu86szrjOv8+CIM68zq3Pgc6xIM+Dz4TOvyDOl868zrXPgc6uz4POuc6/IM66zrHOuSDPg8+EzrcgzrzOuc+DzrjOv860zr/Pg86vzrEgz4TOv8+FIM+Ezr/PgM65zrrOv8+NLCDPhM6/z4DOuc66z4zPgiDPh8+Jz4HOr8+CIM+Mz4fOt868zrEsIM6uIM+Ezr/PgM65zrrOriDPgM6szr3PiSDPg861IM+AzrHPgc6xzrPOs861zrvOr86xIM+Azr/PhSDOtM61zr0gzrjOsSDOtc66z4TOtc67zrXPg8+EzrXOryDOrc+Ez4POuS4=', 'base64'), 'UTF8'),
+     convert_from(decode('zpXOss60zr/OvM6xzrTOuc6xzq/OvyDOlM65zrXOuM69z47OvSDihpIgzrcgz4DOsc+BzrHOs86zzrXOu86vzrE6IM60zrnPjM+BzrjPic+DzrUgzq4gz4POss6uz4POtSDPhM63zr0gz4TOv8+AzrnOus6uICjOsc69zqzOs869z4nPg863KS4gbm8tdmVoaWNsZTogzrHOvc6szrjOtc+DzrUgz4TOt869IM+AzrHPgc6xzrPOs861zrvOr86xIM6uIM60z47Pg861IM+Dz4TOt869IM+Ezr/PgM65zrrOriDCq86szrvOu86/wrsgz4TPgc6szrrPhM6/z4HOsS4=', 'base64'), 'UTF8'),
+     convert_from(decode('aWRzID0gPM61zrPOs8+BzrHPhs6uPjo8zrvPjM6zzr/Pgj4sIM6tzr3Osc+CIM67z4zOs86/z4IgzrHOvc6sIM+Ezr/PgM65zrrOriDOvM61IM6xz4XPhM6uIM+Ezrcgz4POtc65z4HOrDogcGFyZW50ICjPg86yzrfPg868zq3Ovc63L86xzrrPhc+Bz4nOvM6tzr3OtyDPgM6xz4HOsc6zzrPOtc67zq/OsSkgwrcgcHJlb3JkZXIgwrcgZGF5ICjOvM6tz4HOsSDiiaAgzrzOrc+BzrEgz4DOtc67zqzPhM63IM6uIM66zrXOvc6uKSDCtyBzYW1lLWRyaXZlciAozr8gz4TOv8+AzrnOus+Mz4IgPSDOvyDOtM65zrXOuM69zq7PgikgwrcgdHJ1Y2stY29weSAoz4TOvyDCq86szrvOu86/wrsgz4bOv8+Bz4TOt86zz4wgPSDPhM63z4Igz4DOsc+BzrHOs86zzrXOu86vzrHPgikgwrcgbm8tdmVoaWNsZSAozr8gz4TOv8+AzrnOus+Mz4IgzrzOtSDCq86vzrTOuc6/wrsgz4TPgc6szrrPhM6/z4HOsSwgzrHOu867zqwgzrcgz4DOsc+BzrHOs86zzrXOu86vzrEgzrTOtc69IM6tz4fOtc65IM+Ez4HOrM66z4TOv8+BzrEg4oCUIM6zzrnOsSDOvM6tz4HOsSDOrc+Jz4IgzrHPjc+BzrnOvykgwrcgdnMgwrcgZGlyZWN0aW9uIMK3IHNwbGl0ICjOtyDPgM6xz4HOsc6zzrPOtc67zq/OsSDPg8+AzqzPg8+EzrfOus61IM+DzrUgz4POus6tzrvOtykuIM6XIM6yzqzPg863IM6xz4HOvc61zq/PhM6xzrkgz4TOsSDOr860zrnOsSDPjM+EzrHOvSDOs8+BzqzPhs61z4TOsc65IM63IM+Ezr/PgM65zrrOrsK3IM61zrTPjiDPhs6xzq/Ovc6/zr3PhM6xzrkgz4zPg86xIM+Az4HOv86tzrrPhc+IzrHOvSDOsc+Az4wgzrHOu867zrHOs86uIM+EzrfPgiDPgM6xz4HOsc6zzrPOtc67zq/Osc+CIM68zrXPhM6sLiDOlc6+zrHOr8+BzrXPg863IM+Ezr8gbm8tdmVoaWNsZTogzrTOtc69IM6xz4DOsc6zzr/Pgc61z43Otc+EzrHOuSDPg8+EzrfOvSDOtc6zzrPPgc6xz4bOriAoz4DPgc6/zrPPgc6xzrzOvM6xz4TOuc+DzrzPjM+CIM+Az4HOuc69IM6xzr3Osc+EzrXOuM61zq8gzrcgz4DOsc+BzrHOs86zzrXOu86vzrEg4oCUIM+Ezr8gz4DOrM69zrXOuyDPgM+Bzr/Otc65zrTOv8+Azr/Ouc61zq8pwrcgzrPOr869zrXPhM6xzrkgzrXPjc+BzrfOvM6xIM68z4zOvc6/IM+Mz4TOsc69IM+Gz4TOrM+DzrXOuSDOtyDOvM6tz4HOsS4=', 'base64'), 'UTF8'),
      NULL,
      true,
      NULL);
@@ -867,8 +888,8 @@ $s6$;
   SELECT count(*) INTO n FROM monitoring.checks k
     JOIN (VALUES
       ('B-63', '9c8b0400fcea4adcdde4dccdf90e3d09'),
-      ('B-64', '1f1a6f75831144ab7ff665f22fb67acf'),
-      ('B-65', 'f7044ffebcb2e15e551abcc1c2a71b8e')
+      ('B-64', '12530e38ee87f2e7e98bafa1624de15f'),
+      ('B-65', '040318725578a5707cd2ed04c571ccf8')
     ) e(id, fp) ON e.id = k.id
    WHERE md5(k.title||'|'||k.sql_text||'|'||coalesce(k.ids_sql,'')||'|'||coalesce(k.impact,'')||'|'||coalesce(k.next_step,'')||'|'||coalesce(k.exceptions,'')||'|'||coalesce(k.entity_table,'')||'|'||k.red_op||'|'||k.red_value::text||'|'||k.severity||'|'||k.schedule_tag) = e.fp AND k.enabled;
   IF n <> 3 THEN RAISE EXCEPTION '060 proof: only % of B-63..B-65 match the catalog', n; END IF;
