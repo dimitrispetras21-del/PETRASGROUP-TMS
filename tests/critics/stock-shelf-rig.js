@@ -306,12 +306,15 @@ function buildStore(F, ref, opts) {
 
 // Page-side stubs: the piece form ALWAYS (see the header); everything stock
 // itself is the app's real code.
-// switchOff: FEATURES.STOCK_LOTS stays as config.js ships it (false) — the
-// side-system stubs and the captures below are still needed to drive the
-// board (a real confirm modal would wait for a human).
+// switchOff: FEATURES.STOCK_LOTS is FORCED false here, whatever config.js
+// ships (true since c916fc62, 5/10) — G-42 proves the switch-off board, so it
+// must not ride on the shipped value. OrdersStock.on() reads the flag at call
+// time and openBoard re-renders right after this, so the board it checks is
+// drawn with the switch off. The side-system stubs and the captures below are
+// still needed to drive the board (a real confirm modal would wait for a human).
 async function installStubs(page, switchOff) {
   await page.evaluate(off => {
-    if (!off) FEATURES.STOCK_LOTS = true;
+    FEATURES.STOCK_LOTS = !off;
     TABLES.STOCK_LOTS = TABLES.STOCK_LOTS || 'tblStockLots';
     window.__rig = { pieceCalls: [], toasts: [], confirms: [], opened: [], printed: [], csv: [], beforeHook: null, formMode: null };
     if (typeof OrdersStock === 'undefined') throw new Error('OrdersStock missing — this rig runs on the merged front (FRONT-ORDERS + FRONT-WEEKLY)');
@@ -389,8 +392,8 @@ async function openBoard(browser, role, F, opts) {
   });
   if (!F.built) { buildStore(F, ref, opts || {}); F.built = true; }
   F.ready = true;
-  // opts.switchOff: FEATURES.STOCK_LOTS untouched — the board as it ships
-  // today (G-42); only the side systems and captures are stubbed.
+  // opts.switchOff: FEATURES.STOCK_LOTS forced false (G-42) before the render
+  // below; only the side systems and captures are stubbed.
   await installStubs(page, !!(opts && opts.switchOff));
   await page.evaluate(async () => { invalidateCache(TABLES.ORDERS); await renderWeeklyIntl(); });
   await page.waitForTimeout(F.failLots ? 6500 : 1200);
@@ -1060,7 +1063,7 @@ if (MAIN) (async () => {
     await ctx.close();
   }
 
-  // 7) FEATURES.STOCK_LOTS = false (as config.js ships) — G-42: the three
+  // 7) FEATURES.STOCK_LOTS = false (forced by installStubs) — G-42: the three
   //    data-independent Weekly changes are proven, not just present.
   {
     const F = makeFacade();
