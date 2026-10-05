@@ -123,12 +123,11 @@ test('LOCAL MOVES: a relay POST reaches the DB with kind, parent and executor co
 });
 
 // Owner 5/10 («ας μην υπαρχει διαχωρισμος αναμεσα στους οδηγους»): there is no
-// pay basis — DRIVERS keeps exactly its pre-060 labels and no P&L-only field.
+// pay basis — no DRIVERS label for it and no P&L-only DRIVERS field. (Not an
+// exact label list: a later DRIVERS label from main must not break this test.)
 test('DRIVERS: no «Pay Basis» label, no plOnly — every driver is the same to the payroll', () => {
-  assert.deepStrictEqual(DRIVERS.fields, {
-    'Full Name': 'full_name', Phone: 'phone', Type: 'type', 'License Number': 'license_number',
-    'License Expiry': 'license_expiry', Active: 'active',
-  });
+  assert.ok(!('Pay Basis' in DRIVERS.fields));
+  assert.strictEqual(DRIVERS.fields.Type, 'type');
   assert.strictEqual(DRIVERS.plOnly, undefined);
   assert.ok(!/pay_basis/.test(src), 'no pay_basis column named anywhere in the Worker');
 });
