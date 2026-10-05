@@ -40,6 +40,10 @@
 --            destination» would count every other client delivering to the same depot. A Cancelled
 --            order moves nothing and never counts. A dead (unmarked) proof lot opens nothing: only
 --            stock_v_lots rows (live anchor, live source) define a warehouse (round 1b P3-7 kept).
+--            Round 4 (critic-3 Σ3-05): nor does a lot whose source was CANCELLED while still empty
+--            (E-04 allows it): it stays in stock_v_lots, never complete, and no piece can be drawn
+--            from it (lot_cancelled) — counted, it would make S-12/S-13/S-14 a permanent false P2
+--            for every later order of that client at that place.
 --   S-14 P2  a live, not complete lot whose warehouse location was soft-deleted (round 3, critic-3
 --            Σ2-09): «ONE live destination» (lot_no_dest) is judged when the lot or its destination
 --            is written, not when the LOCATION is deleted later (e.g. a duplicate clean-up). Every new
@@ -162,26 +166,26 @@ begin
   -- OWNER-Q5 answered 4/10 (any location can be a warehouse): S-12 / S-13 read the warehouse from
   -- the live, not complete lots of the same client (header), never from a location type.
   ('S-12', 'Απόθεμα: φόρτωση από την αποθήκη ανοιχτής παρτίδας, όχι ως κομμάτι', array['F-05','F-30'],
-   $c$SELECT count(*) FROM orders o WHERE o.deleted_at IS NULL AND o.stock_lot_id IS NULL AND o.status IS DISTINCT FROM 'Cancelled' AND EXISTS (SELECT 1 FROM stock_v_lots l JOIN stock_lots a ON a.id = l.id WHERE NOT l.complete AND l.client_id = o.client_id AND l.warehouse_location_id = o.loading_location_1_id AND o.created_at > a.created_at)$c$,
-   $c$SELECT coalesce(array_agg(x ORDER BY x),'{}') FROM (SELECT o.legacy_id AS x FROM orders o WHERE o.deleted_at IS NULL AND o.stock_lot_id IS NULL AND o.status IS DISTINCT FROM 'Cancelled' AND EXISTS (SELECT 1 FROM stock_v_lots l JOIN stock_lots a ON a.id = l.id WHERE NOT l.complete AND l.client_id = o.client_id AND l.warehouse_location_id = o.loading_location_1_id AND o.created_at > a.created_at) ORDER BY o.legacy_id LIMIT 50) s$c$,
+   $c$SELECT count(*) FROM orders o WHERE o.deleted_at IS NULL AND o.stock_lot_id IS NULL AND o.status IS DISTINCT FROM 'Cancelled' AND EXISTS (SELECT 1 FROM stock_v_lots l JOIN stock_lots a ON a.id = l.id WHERE NOT l.complete AND l.intake_status IS DISTINCT FROM 'Cancelled' AND l.client_id = o.client_id AND l.warehouse_location_id = o.loading_location_1_id AND o.created_at > a.created_at)$c$,
+   $c$SELECT coalesce(array_agg(x ORDER BY x),'{}') FROM (SELECT o.legacy_id AS x FROM orders o WHERE o.deleted_at IS NULL AND o.stock_lot_id IS NULL AND o.status IS DISTINCT FROM 'Cancelled' AND EXISTS (SELECT 1 FROM stock_v_lots l JOIN stock_lots a ON a.id = l.id WHERE NOT l.complete AND l.intake_status IS DISTINCT FROM 'Cancelled' AND l.client_id = o.client_id AND l.warehouse_location_id = o.loading_location_1_id AND o.created_at > a.created_at) ORDER BY o.legacy_id LIMIT 50) s$c$,
    'orders', '>', 0, 'P2', 'daily', true,
    'Παλέτες του ίδιου πελάτη φεύγουν από την αποθήκη μιας ανοιχτής παρτίδας με απλή παραγγελία, όχι ως κομμάτι: το απόθεμα δεν μειώνεται, ο επιμερισμός δεν τις βλέπει και η παρτίδα δεν κλείνει ποτέ σωστά — ή φορτώνουμε κάτι που δεν μπήκε ποτέ στο απόθεμα.',
    'Weekly → η παραγγελία (ανάγνωση): είναι κομμάτι που γράφτηκε ως απλή παραγγελία; Τότε «+ Κομμάτι από απόθεμα» στο ίδιο φορτηγό και σβήσιμο της απλής.',
-   'σταθερός έλεγχος SQL — δείχνει ΤΙ, όχι ΓΙΑΤΙ', '«Αποθήκη» = ο προορισμός μιας ζωντανής, μη πλήρους παρτίδας (οποιαδήποτε τοποθεσία, owner 4/10). Μετρούν μόνο παραγγελίες του ίδιου πελάτη, γραμμένες μετά την παρτίδα (Ε4: το παρελθόν δεν συνδέεται· μια διαγραμμένη παρτίδα-δοκιμή δεν μετρά). Ακυρωμένες δεν μετρούν.', true),
+   'σταθερός έλεγχος SQL — δείχνει ΤΙ, όχι ΓΙΑΤΙ', '«Αποθήκη» = ο προορισμός μιας ζωντανής, μη πλήρους, μη ακυρωμένης παρτίδας (οποιαδήποτε τοποθεσία, owner 4/10). Μετρούν μόνο παραγγελίες του ίδιου πελάτη, γραμμένες μετά την παρτίδα (Ε4: το παρελθόν δεν συνδέεται· μια διαγραμμένη παρτίδα-δοκιμή δεν μετρά). Ακυρωμένες δεν μετρούν.', true),
   ('S-13', 'Απόθεμα: παραγγελία προς την αποθήκη ανοιχτής παρτίδας χωρίς παρτίδα', array['F-05','F-30'],
-   $c$SELECT count(*) FROM orders o WHERE o.deleted_at IS NULL AND o.status IS DISTINCT FROM 'Cancelled' AND NOT EXISTS (SELECT 1 FROM stock_lots s WHERE s.order_id = o.id AND s.deleted_at IS NULL) AND EXISTS (SELECT 1 FROM stock_v_lots l JOIN stock_lots a ON a.id = l.id WHERE NOT l.complete AND l.client_id = o.client_id AND l.warehouse_location_id = o.unloading_location_1_id AND o.created_at > a.created_at)$c$,
-   $c$SELECT coalesce(array_agg(x ORDER BY x),'{}') FROM (SELECT o.legacy_id AS x FROM orders o WHERE o.deleted_at IS NULL AND o.status IS DISTINCT FROM 'Cancelled' AND NOT EXISTS (SELECT 1 FROM stock_lots s WHERE s.order_id = o.id AND s.deleted_at IS NULL) AND EXISTS (SELECT 1 FROM stock_v_lots l JOIN stock_lots a ON a.id = l.id WHERE NOT l.complete AND l.client_id = o.client_id AND l.warehouse_location_id = o.unloading_location_1_id AND o.created_at > a.created_at) ORDER BY o.legacy_id LIMIT 50) s$c$,
+   $c$SELECT count(*) FROM orders o WHERE o.deleted_at IS NULL AND o.status IS DISTINCT FROM 'Cancelled' AND NOT EXISTS (SELECT 1 FROM stock_lots s WHERE s.order_id = o.id AND s.deleted_at IS NULL) AND EXISTS (SELECT 1 FROM stock_v_lots l JOIN stock_lots a ON a.id = l.id WHERE NOT l.complete AND l.intake_status IS DISTINCT FROM 'Cancelled' AND l.client_id = o.client_id AND l.warehouse_location_id = o.unloading_location_1_id AND o.created_at > a.created_at)$c$,
+   $c$SELECT coalesce(array_agg(x ORDER BY x),'{}') FROM (SELECT o.legacy_id AS x FROM orders o WHERE o.deleted_at IS NULL AND o.status IS DISTINCT FROM 'Cancelled' AND NOT EXISTS (SELECT 1 FROM stock_lots s WHERE s.order_id = o.id AND s.deleted_at IS NULL) AND EXISTS (SELECT 1 FROM stock_v_lots l JOIN stock_lots a ON a.id = l.id WHERE NOT l.complete AND l.intake_status IS DISTINCT FROM 'Cancelled' AND l.client_id = o.client_id AND l.warehouse_location_id = o.unloading_location_1_id AND o.created_at > a.created_at) ORDER BY o.legacy_id LIMIT 50) s$c$,
    'orders', '>', 0, 'P2', 'daily', true,
    'Παραγγελία του ίδιου πελάτη παραδίδει στην αποθήκη μιας ανοιχτής παρτίδας χωρίς να είναι παρτίδα: οι παλέτες δεν φαίνονται στο ΑΠΟΘΕΜΑ, κανένα κομμάτι δεν βγαίνει από αυτές, και η παραγγελία μοιάζει έτοιμη για τιμολόγηση από την παραλαβή, ενώ ο πελάτης δεν έχει παραλάβει.',
    'Φόρμα της παραγγελίας (ανάγνωση): είναι απόθεμα πελάτη; Τότε «Παρτίδα αποθέματος». Αλλιώς ο προορισμός μπήκε λάθος.',
-   'σταθερός έλεγχος SQL — δείχνει ΤΙ, όχι ΓΙΑΤΙ', 'Μόνο παραγγελίες του ίδιου πελάτη προς τον προορισμό μιας ζωντανής, μη πλήρους παρτίδας, γραμμένες μετά από αυτήν (οποιαδήποτε τοποθεσία, owner 4/10)· ακυρωμένες δεν μετρούν. Μια δεύτερη αποστολή του πελάτη στην ίδια αποθήκη γίνεται δεύτερη παρτίδα.', true),
+   'σταθερός έλεγχος SQL — δείχνει ΤΙ, όχι ΓΙΑΤΙ', 'Μόνο παραγγελίες του ίδιου πελάτη προς τον προορισμό μιας ζωντανής, μη πλήρους, μη ακυρωμένης παρτίδας, γραμμένες μετά από αυτήν (οποιαδήποτε τοποθεσία, owner 4/10)· ακυρωμένες δεν μετρούν. Μια δεύτερη αποστολή του πελάτη στην ίδια αποθήκη γίνεται δεύτερη παρτίδα.', true),
   ('S-14', 'Απόθεμα: ανοιχτή παρτίδα με διαγραμμένη αποθήκη', array['F-05','F-30'],
-   $c$SELECT count(*) FROM stock_v_lots l JOIN locations w ON w.id = l.warehouse_location_id WHERE w.deleted_at IS NOT NULL AND NOT l.complete$c$,
-   $c$SELECT coalesce(array_agg(x ORDER BY x),'{}') FROM (SELECT l.legacy_id AS x FROM stock_v_lots l JOIN locations w ON w.id = l.warehouse_location_id WHERE w.deleted_at IS NOT NULL AND NOT l.complete ORDER BY l.legacy_id LIMIT 50) s$c$,
+   $c$SELECT count(*) FROM stock_v_lots l JOIN locations w ON w.id = l.warehouse_location_id WHERE w.deleted_at IS NOT NULL AND NOT l.complete AND l.intake_status IS DISTINCT FROM 'Cancelled'$c$,
+   $c$SELECT coalesce(array_agg(x ORDER BY x),'{}') FROM (SELECT l.legacy_id AS x FROM stock_v_lots l JOIN locations w ON w.id = l.warehouse_location_id WHERE w.deleted_at IS NOT NULL AND NOT l.complete AND l.intake_status IS DISTINCT FROM 'Cancelled' ORDER BY l.legacy_id LIMIT 50) s$c$,
    'stock_lots', '>', 0, 'P2', 'daily', false,
    'Η τοποθεσία-αποθήκη μιας ανοιχτής παρτίδας διαγράφηκε (π.χ. καθάρισμα διπλότυπων): κάθε νέο κομμάτι παίρνει φόρτωση από τη διαγραμμένη τοποθεσία και οι οθόνες δεν δείχνουν όνομα αποθήκης.',
    'Τοποθεσίες: επαναφορά της διαγραμμένης τοποθεσίας. Αν ήταν διπλότυπο και η παρτίδα δεν έχει ακόμη κομμάτια, αλλαγή του προορισμού της στη ζωντανή.',
-   'σταθερός έλεγχος SQL — δείχνει ΤΙ, όχι ΓΙΑΤΙ', 'Πλήρεις παρτίδες δεν μετρούν (δεν βγαίνει πια κομμάτι από αυτές).', true);
+   'σταθερός έλεγχος SQL — δείχνει ΤΙ, όχι ΓΙΑΤΙ', 'Πλήρεις ή ακυρωμένες παρτίδες δεν μετρούν (δεν βγαίνει πια κομμάτι από αυτές).', true);
 
   -- ── The 4 changed checks ──────────────────────────────────────────────────────────────────────
   update monitoring.checks set sql_text = sql_text || E'\n AND stock_lot_id IS NULL' where id = 'B-13';
