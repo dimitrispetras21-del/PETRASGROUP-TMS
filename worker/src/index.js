@@ -250,7 +250,12 @@ async function dbInsert(env, table, row) {
   });
   if (!res.ok) {
     const detail = await res.text().catch(() => "");
-    throw new Error(`dbInsert ${table} ${res.status}: ${detail.slice(0, 200)}`);
+    const err = new Error(`dbInsert ${table} ${res.status}: ${detail.slice(0, 200)}`);
+    // The whole PostgREST error object (code/hint/message), parsed from the
+    // FULL body: stockRuleError() needs the hint and the constraint name, and
+    // a long Greek message can push them past the 200-char cut above (057).
+    try { err.pg = JSON.parse(detail); } catch {}
+    throw err;
   }
   const rows = await res.json();
   return Array.isArray(rows) ? rows[0] : rows;
@@ -271,7 +276,10 @@ async function dbInsertMany(env, table, rows) {
   });
   if (!res.ok) {
     const detail = await res.text().catch(() => "");
-    throw new Error(`dbInsert ${table} ${res.status}: ${detail.slice(0, 200)}`);
+    const err = new Error(`dbInsert ${table} ${res.status}: ${detail.slice(0, 200)}`);
+    // Same as dbInsert: keep the parsed PostgREST error for stockRuleError().
+    try { err.pg = JSON.parse(detail); } catch {}
+    throw err;
   }
   const out = await res.json();
   return Array.isArray(out) ? out : [out];
@@ -327,7 +335,10 @@ async function dbUpdate(env, table, matchColumn, matchValue, patch) {
   });
   if (!res.ok) {
     const detail = await res.text().catch(() => "");
-    throw new Error(`dbUpdate ${table} ${res.status}: ${detail.slice(0, 200)}`);
+    const err = new Error(`dbUpdate ${table} ${res.status}: ${detail.slice(0, 200)}`);
+    // Same as dbInsert: keep the parsed PostgREST error for stockRuleError().
+    try { err.pg = JSON.parse(detail); } catch {}
+    throw err;
   }
   const rows = await res.json();
   return Array.isArray(rows) ? rows[0] || null : rows;
@@ -346,7 +357,11 @@ async function dbRpc(env, fn, args) {
   });
   if (!res.ok) {
     const detail = await res.text().catch(() => "");
-    throw new Error(`dbRpc ${fn} ${res.status}: ${detail.slice(0, 200)}`);
+    const err = new Error(`dbRpc ${fn} ${res.status}: ${detail.slice(0, 200)}`);
+    // Same as dbInsert: keep the parsed PostgREST error for stockRuleError()
+    // (delete_order_cascade soft-deletes the order, which the 057 guard may refuse).
+    try { err.pg = JSON.parse(detail); } catch {}
+    throw err;
   }
   return res.json();
 }
@@ -495,7 +510,12 @@ var PERMISSIONS = {
     // of this block even though '*': GET already covers it — the whole point
     // is that this table must NEVER get a POST/PATCH/DELETE row anywhere (see
     // the owner block's comment for why a facade write here would be a lie).
-    order_documents: ["GET"]
+    order_documents: ["GET"],
+    // STOCK LOTS (057, owner 3–4/10/2026): read-only, explicit like
+    // order_documents. Marking, unmarking and closing a lot belong to the
+    // roles that work the lot (Ε3 names dispatcher, accountant, owner) — an
+    // explicit row, so a later change to this role's "*" cannot widen it.
+    stock_lots: ["GET"]
   },
   accountant: {
     "*": ["GET"],
@@ -540,7 +560,14 @@ var PERMISSIONS = {
     // ORDER DOCUMENTS (28/9/2026): read-only, same reasoning as management —
     // '*': GET already covers it, listed explicitly so it never accidentally
     // gains a write row.
-    order_documents: ["GET"]
+    order_documents: ["GET"],
+    // STOCK LOTS (057, owner decision Ε3, 4/10/2026): «Κλείσιμο υπολοίπου»
+    // (PATCH Closed Note, reason required by the DB) may be done by whoever
+    // is working, the accountant included — she meets the lot at invoicing,
+    // where a remainder that will never leave blocks the one invoice. No
+    // POST/DELETE: marking/unmarking a lot is planning work. GET must be
+    // listed again: an explicit row REPLACES this role's "*" (trap #3).
+    stock_lots: ["GET", "PATCH"]
   },
   dispatcher: {
     // No blanket read: dispatchers must not see P&L / cost tables (R-04 scenario).
@@ -616,7 +643,15 @@ var PERMISSIONS = {
     // block comment above), so without this row order_documents would be a
     // silent 403 for the role that scans the documents in the first place.
     // GET only — real writes go through /docs/upload, never the facade.
-    order_documents: ["GET"]
+    order_documents: ["GET"],
+    // STOCK LOTS (057, owner 3–4/10/2026): dispatchers mark an order as a
+    // lot (POST), close a remainder (PATCH, Ε3) and unmark a lot entered by
+    // mistake (DELETE = facade soft delete). No wildcard here, so without
+    // this row the whole stock shelf would be a silent 403. The facade
+    // carries no money label (see tblStockLots) — the per-RT allocation is
+    // owner-only under /costs/stock-lots, so R-04 holds. The DB refuses an
+    // unmark with pieces or after invoicing (stock_guard_lots).
+    stock_lots: ["GET", "POST", "PATCH", "DELETE"]
   },
   warehouse: {
     orders: ["GET"],
@@ -1219,7 +1254,25 @@ var TABLES = {
       // column/sequence/backfill). Exposed read-only via computed — the write
       // path never looks here, so the id cannot be PATCHed through the facade.
       // Display convention: ORD-<id>. NOT chronological (insertion order).
-      "Order ID": "id"
+      "Order ID": "id",
+      // STOCK LOTS (migration 057, owner 3–4/10/2026) — view columns only.
+      // Deploy this Worker ONLY AFTER 057 ran (verify V1/V6): every ORDERS
+      // write re-reads ALL computed labels from orders_with_derived in one
+      // SELECT (shapeOneWithLinks), so a missing column there would drop
+      // Order No / Week Number from every save response, not just these.
+      // «Own Stock Lot»: rec of the live lot THIS order is the source of — a
+      // plain string, not a link array (a lot is never written from here;
+      // POST STOCK LOTS marks it). «Stock Lot Order No» / «Stock Lot Source»
+      // ('intl'|'natl'): the number of the lot a PIECE belongs to, so the
+      // Weekly and the catalog can label a piece «#N»/«Ε-N» without a second
+      // read of STOCK LOTS. «Stock Lot Reference» (round 1, 4/10): the lot
+      // SOURCE's reference — the one the foreign warehouse knows from the
+      // partner's intake sheet — printed on the piece's driver sheet instead
+      // of our internal «#N» alone (print.html).
+      "Own Stock Lot": "own_stock_lot",
+      "Stock Lot Order No": "stock_lot_order_no",
+      "Stock Lot Source": "stock_lot_source",
+      "Stock Lot Reference": "stock_lot_reference"
     },
     // Reverse link (children listed on the parent, as Airtable's reverse field
     // does): the frontend's stopsLoad reads the parent's 'ORDER STOPS' then
@@ -1375,7 +1428,15 @@ var TABLES = {
       "Unloading Location 7": { column: "unloading_location_7_id", table: "locations" },
       "Unloading Location 8": { column: "unloading_location_8_id", table: "locations" },
       "Unloading Location 9": { column: "unloading_location_9_id", table: "locations" },
-      "Unloading Location 10": { column: "unloading_location_10_id", table: "locations" }
+      "Unloading Location 10": { column: "unloading_location_10_id", table: "locations" },
+      // STOCK LOTS (057): set ONLY on a piece — an ordinary order drawn from
+      // a lot's warehouse stock. Writable on purpose: the piece form POSTs it.
+      // Whether a piece may be drawn (client, pickup = warehouse, pallets
+      // within the remainder, lot still open, never re-linked) is decided by
+      // the stock_guard_orders trigger, never here; its refusals come back as
+      // Greek 422s (stockRuleError). Not a reuse of «Parent Order» / «Group
+      // ID» / «Matched Import ID»: those keep their meaning (plan v5 §1).
+      "Stock Lot": { column: "stock_lot_id", table: "stock_lots" }
       // Omitted on purpose: TRIPS* (Wave-4 parent not built); NATIONAL ORDERS,
       // GROUPAGE LINES, CONSOLIDATED LOADS, ORDER STOPS, RAMP PLAN, PALLET LEDGER,
       // RAMP EVENTS, PARTNER ASSIGNMENTS (child/reverse links = the child's FK,
@@ -1878,6 +1939,65 @@ var TABLES = {
     },
     links: {
       Order: { column: "order_id", table: "orders" }
+    }
+  },
+  // ══════════════════════════════════════════════════════════════════════════
+  // STOCK LOTS (migration 057, owner decisions 3–4/10/2026): a lot = goods a
+  // client sends to a warehouse in ONE order (the «source»), later drawn out
+  // as pieces — ordinary ORDERS rows carrying «Stock Lot». Price, invoice and
+  // the warehouse partner's assignment stay on the source order; the lot row
+  // itself holds only the link and the close.
+  //
+  // Same view-read / base-write split as PARTNER ASSIGNMENTS: GET reads
+  // `stock_v_lots` (stock, drawn, remaining, complete… computed by the DB from
+  // the live pieces, never stored, so they cannot drift — αρχή 3), every write
+  // targets `stock_lots`. Exactly two things are writable:
+  //   - `Order` on POST = «mark this order as a lot»;
+  //   - `Closed Note` on PATCH = «Κλείσιμο υπολοίπου» with its reason — the
+  //     DB stamps closed_at itself (a client-sent time is ignored), so
+  //     «Closed At» is computed, read-only here.
+  // Every rule (one destination = the warehouse — any live location, owner
+  // 4/10; no unmark with pieces or after invoicing, close only when intake and all pieces are delivered,
+  // never re-link) lives in 057's stock_guard_lots trigger + CHECKs; the
+  // refusals come back as Greek 422s through stockRuleError().
+  //
+  // NO MONEY HERE, deliberately: dispatchers read this facade, and the lot
+  // price, the warehouse cost and the per-RT allocation (Ε1) are owner P&L.
+  // They are served only by GET /costs/stock-lots, and the lot's warehouse
+  // charge is written only by PATCH /costs/stock-lots/<rec> (COSTS_PERMS:
+  // owner only). Do not add a price/rate/revenue/charge label to this block
+  // (stock-lots.test.mjs fails if one appears).
+  //
+  // Φ1 links only international sources (`Order`). The DB already accepts a
+  // national source (nat_order_id); its «National Order» link arrives in Φ3
+  // with the NATIONAL ORDERS labels — born closed until a screen needs it.
+  // «Client Rec» / «Warehouse Rec» are plain rec strings, not link arrays:
+  // the view has already joined clients/locations, so no second lookup.
+  // Roles: owner via "*"; management GET; accountant GET+PATCH (close);
+  // dispatcher GET/POST/PATCH/DELETE; warehouse none (no wildcard → 403).
+  // ══════════════════════════════════════════════════════════════════════════
+  tblStockLots: {
+    name: "STOCK LOTS",
+    pg: "stock_lots",
+    readView: "stock_v_lots",
+    fields: { "Closed Note": "closed_note" },
+    links: { Order: { column: "order_id", table: "orders" } },
+    computed: {
+      "Lot No": "lot_no", "Source Kind": "source_kind", Reference: "reference", "Source Notes": "source_notes",
+      "Client Rec": "client_rec", "Client Name": "client_name",
+      "Warehouse Rec": "warehouse_rec", "Warehouse Name": "warehouse_name", "Warehouse City": "warehouse_city",
+      "Warehouse Country": "warehouse_country",
+      "Intake Status": "intake_status", "Intake Delivered": "intake_delivered", "Received On": "received_on",
+      "Ops Status": "ops_status",
+      "Stock Pallets": "stock_pallets", "Drawn Pallets": "drawn_pallets", "Remaining Pallets": "remaining_pallets",
+      "Delivered Pallets": "delivered_pallets", "Written Off Pallets": "written_off_pallets",
+      Pieces: "pieces", "Pieces Delivered": "pieces_delivered", "Pieces Without Truck": "pieces_without_truck",
+      // «Pieces Moving» (round 1, 4/10): pieces In Transit/Delivered with a past
+      // loading day — the ONE definition of «κομμάτια κινούνται χωρίς παραλαβή»
+      // that the Weekly chip and the auditor's S-06 both read (057 stock_v_lots).
+      "Pieces Moving": "pieces_moving",
+      "Last Piece Delivered": "last_piece_delivered", "Closed At": "closed_at",
+      Complete: "complete", "Completed On": "completed_on", Invoiced: "invoiced"
     }
   }
 };
@@ -2561,6 +2681,8 @@ async function handleFacadeCreate(request, tableId, origin, env, ctx) {
     created = await dbInsert(env, cfg.pg, row);
   } catch (e) {
     console.error(`POST facade ${cfg.name}`, e.message);
+    const rule = stockRuleError(e);
+    if (rule) return stockRuleResponse(rule, origin, env);
     return jsonError("Failed to create record: " + String(e.message || "").slice(0, 220), 500, origin, env);
   }
   await audit(env, {
@@ -2710,6 +2832,9 @@ async function facadeBatchCreate(entries, cfg, caller, origin, env, ctx) {
     createdRows = await dbInsertMany(env, cfg.pg, rows);
   } catch (e) {
     console.error(`POST batch facade ${cfg.name}`, e.message);
+    // One insert = one transaction: a refused row means NO row landed.
+    const rule = stockRuleError(e);
+    if (rule) return stockRuleResponse(rule, origin, env);
     return jsonError("Failed to create record: " + String(e.message || "").slice(0, 220), 500, origin, env);
   }
   await auditMany(env, createdRows.map((created) => ({
@@ -2811,7 +2936,11 @@ async function handleFacadeBatchUpdate(request, tableId, origin, env, ctx) {
       updated = await dbUpdate(env, cfg.pg, "legacy_id", recId, patch);
     } catch (e) {
       console.error(`PATCH batch facade ${cfg.name}`, e.message);
+      // The rows patched before this one DID land (one request per row, as
+      // today) — their audit rows are written first, refusal or not.
       await auditMany(env, auditEntries);
+      const rule = stockRuleError(e);
+      if (rule) return stockRuleResponse(rule, origin, env);
       return jsonError("Failed to update record: " + String(e.message || "").slice(0, 220), 500, origin, env);
     }
     if (!updated) {
@@ -2909,6 +3038,59 @@ function invoiceNeedsBefore(table, patch) {
   return patch.invoiced === true || "invoice_number" in patch;
 }
 __name(invoiceNeedsBefore, "invoiceNeedsBefore");
+// STOCK LOTS (migration 057, owner 3–4/10/2026): DB refusals → Greek 422.
+// The stock rules live ONLY in the base (row CHECKs + the stock_guard_*
+// triggers, αρχή 4), so every path that writes orders / national_orders /
+// stock_lots meets them. Without this mapping a refused draw came back as a
+// bare 500 «Failed to update record»: the dispatcher would retry a request
+// the DB refuses forever and never learn why (αρχή 1).
+// Recognised ONLY by machine-readable markers, never by message wording:
+//   - trigger refusals: SQLSTATE 23514 + hint «stock:<code>» (057's
+//     stock_raise). Their message is already Greek, written once in the
+//     migration — passed through as is;
+//   - row CHECKs cannot carry a hint: matched by constraint name, and the
+//     Greek text lives here. Texts only — the rule is the CHECK, so editing a
+//     text never changes what is allowed;
+//   - the one-live-lot-per-order unique indexes (23505).
+// Anything else → null, i.e. today's 500 path, unchanged — including the 043
+// invoice guard (check_violation without hint or CHECK name): giving that
+// one a 422 too is a separate owner decision (plan v5 Π7.6).
+const STOCK_CHECK_TEXT = {
+  orders_stock_piece_no_money: "Το κομμάτι δεν έχει δική του τιμή ή τιμολόγιο — τιμολογείται η παρτίδα",
+  orders_stock_piece_shape: "Κομμάτι: μία φόρτωση (η αποθήκη), χωρίς ανταλλαγή παλετών, όχι pre-order, όχι σκέλος, όχι ακύρωση",
+  national_orders_stock_piece_no_money: "Το κομμάτι δεν έχει δική του τιμή ή τιμολόγιο — τιμολογείται η παρτίδα",
+  national_orders_stock_piece_shape: "Κομμάτι: μία παραλαβή (η αποθήκη), χωρίς ανταλλαγή παλετών, όχι pre-order, όχι ακύρωση",
+  stock_lots_one_source: "Η παρτίδα δείχνει σε ακριβώς μία παραγγελία",
+  stock_lots_close_shape: "Το κλείσιμο υπολοίπου θέλει αιτιολογία"
+};
+function stockRuleError(e) {
+  const pg = e && e.pg;
+  if (!pg || typeof pg !== "object") return null;
+  const code = String(pg.code || "");
+  const message = String(pg.message || "");
+  if (code === "23514") {
+    const hint = typeof pg.hint === "string" ? pg.hint : "";
+    if (hint.startsWith("stock:")) return { code: hint.slice(6), message };
+    const m = /check constraint "([^"]+)"/.exec(message);
+    if (m && Object.prototype.hasOwnProperty.call(STOCK_CHECK_TEXT, m[1])) {
+      return { code: m[1], message: STOCK_CHECK_TEXT[m[1]] };
+    }
+    return null;
+  }
+  if (code === "23505" && /stock_lots_(order|nat)_live/.test(message)) {
+    return { code: "lot_exists", message: "Η παραγγελία είναι ήδη παρτίδα" };
+  }
+  return null;
+}
+__name(stockRuleError, "stockRuleError");
+// 422, not 400/500: the request was well-formed and the server is fine — the
+// business rule said no. `error.message` is what the front's _atRetry toasts
+// (object or string), so no front change is needed; `code` lets a screen
+// react to a specific rule (e.g. over_draw) without parsing Greek text.
+function stockRuleResponse(rule, origin, env) {
+  return jsonOk({ error: { type: "STOCK_RULE", code: rule.code, message: rule.message } }, origin, env, 422);
+}
+__name(stockRuleResponse, "stockRuleResponse");
 async function handleFacadeUpdate(request, tableId, recId, origin, env, ctx) {
   const { res, caller, cfg } = await authorizeWrite(request, tableId, "PATCH", origin, env);
   if (res) return res;
@@ -2946,6 +3128,8 @@ async function handleFacadeUpdate(request, tableId, recId, origin, env, ctx) {
     updated = await dbUpdate(env, cfg.pg, "legacy_id", recId, patch);
   } catch (e) {
     console.error(`PATCH facade ${cfg.name}`, e.message);
+    const rule = stockRuleError(e);
+    if (rule) return stockRuleResponse(rule, origin, env);
     return jsonError("Failed to update record", 500, origin, env);
   }
   if (!updated) {
@@ -2995,6 +3179,9 @@ async function handleFacadeDelete(request, tableId, recId, origin, env) {
     });
   } catch (e) {
     console.error(`DELETE facade ${cfg.name}`, e.message);
+    // e.g. unmarking a lot that already has pieces (stock_guard_lots).
+    const rule = stockRuleError(e);
+    if (rule) return stockRuleResponse(rule, origin, env);
     return jsonError("Failed to delete record", 500, origin, env);
   }
   if (!deleted) {
@@ -3025,6 +3212,11 @@ async function handleOrderCascadeDelete(request, tableId, recId, origin, env) {
     summary = await dbRpc(env, "delete_order_cascade", { p_order_legacy_id: recId });
   } catch (e) {
     console.error(`cascade-delete ORDERS ${recId}`, e.message);
+    // e.g. deleting a lot's source order while it has pieces, or a piece on
+    // a truck: the RPC is one transaction, so the refusal rolled back every
+    // cascade step too — nothing was touched.
+    const rule = stockRuleError(e);
+    if (rule) return stockRuleResponse(rule, origin, env);
     return jsonError("Failed to delete order", 500, origin, env);
   }
   if (!summary || summary.order_found === false) {
@@ -3094,7 +3286,13 @@ async function ctDbPatch(env, table, filter, patch) {
   });
   if (!res.ok) {
     const detail = await res.text().catch(() => "");
-    throw new Error(`ctDbPatch ${table} ${res.status}: ${detail.slice(0, 200)}`);
+    const err = new Error(`ctDbPatch ${table} ${res.status}: ${detail.slice(0, 200)}`);
+    // Same as dbUpdate: keep the parsed PostgREST error so a 057 refusal on a
+    // costs path (PATCH /costs/stock-lots → stock_guard_lots) reaches
+    // stockRuleError() as the Greek 422 instead of a generic 500. Callers
+    // that never look at e.pg are unaffected.
+    try { err.pg = JSON.parse(detail); } catch {}
+    throw err;
   }
   const rows = await res.json();
   return rows[0] || null;
@@ -3106,6 +3304,20 @@ function ctPick(body, fields) {
     row[f] = typeof body[f] === "string" ? body[f].trim() : body[f];
   }
   return row;
+}
+// PATCH /costs/stock-lots body: exactly {warehouse_charge: <euros> | null}.
+// Strict on purpose — ctPick would drop a null (and null is how the owner
+// clears the field), a string "150" would reach numeric() and a typo'd extra
+// key would be ignored in silence. Cents only: x*100 rounds back to x exactly
+// for every 2-decimal amount, never for a third decimal. < 1e10 is the reach
+// of numeric(12,2); past it the DB would answer a generic overflow instead.
+function stockChargeBodyOk(body) {
+  if (!body || typeof body !== "object" || Array.isArray(body)) return false;
+  const keys = Object.keys(body);
+  if (keys.length !== 1 || keys[0] !== "warehouse_charge") return false;
+  const v = body.warehouse_charge;
+  if (v === null) return true;
+  return typeof v === "number" && Number.isFinite(v) && v >= 0 && v < 1e10 && Math.round(v * 100) / 100 === v;
 }
 
 // src/routes/costs.js — COSTS Φ1 (2026-08-10, COSTS_ARCHITECTURE §5/§6)
@@ -3125,7 +3337,13 @@ var COSTS_PERMS = {
   // owner + accountant parse/commit DKV statements; management reads the
   // resulting docs list only (parity with its read-only stance on lines/rt
   // above) — no POST, it never uploads or corrects an import itself.
-  owner: { settings: ["GET", "PATCH"], rt: ["GET", "POST", "PATCH", "DELETE"], lines: ["GET", "POST", "PATCH", "DELETE"], pnl: ["GET"], "pallet-gate": ["GET"], lookups: ["GET"], ledger: ["GET", "POST", "PATCH"], import: ["GET", "POST"] },
+  // stock-lots (057, owner 3–4/10/2026, Ε1): the per-RT allocation of a stock
+  // lot's net revenue is P&L — owner only, like pnl. No other role gets a
+  // row, so dispatchers/accountant/management are a 403 here by design.
+  // PATCH (contract round 2, owner 4/10/2026) writes the lot's «Χρέωση
+  // αποθήκης» — money that feeds that same allocation, so the same owner-only
+  // row. Opening it to the accountant later is this one line, nothing else.
+  owner: { settings: ["GET", "PATCH"], rt: ["GET", "POST", "PATCH", "DELETE"], lines: ["GET", "POST", "PATCH", "DELETE"], pnl: ["GET"], "pallet-gate": ["GET"], lookups: ["GET"], ledger: ["GET", "POST", "PATCH"], import: ["GET", "POST"], "stock-lots": ["GET", "PATCH"] },
   // lines PATCH/DELETE (owner 7/9/2026, spec docs/superpowers/specs/2026-09-07-trip-expenses-design.md):
   // the accountant screen «Έξοδα Δρομολογίων» lets her fix her own typo and
   // route a parked («Χωρίς δρομολόγιο») receipt to the right trip — both go
@@ -3188,8 +3406,18 @@ async function handleCosts(request, url, origin, env) {
     // ---- PATCH /costs/settings  {key, value} (owner) ----
     if (resource === "settings" && method === "PATCH") {
       const body = await request.json().catch(() => null);
-      if (!body || !body.key || typeof body.value !== "number") {
+      // Number.isFinite: a JSON 1e999 parses to Infinity, passes typeof, and
+      // JSON.stringify would then send value:null to the DB — a setting the
+      // PnL views read would silently turn NULL (review round 2, P3-c).
+      if (!body || !body.key || typeof body.value !== "number" || !Number.isFinite(body.value)) {
         return jsonError("key + numeric value required", 400, origin, env);
+      }
+      // full_truck_pallets = F, the divisor of a stock piece's VS charge
+      // (X × min(pallets, F) / F, owner 4/10/2026, contract round 2 addendum A).
+      // 057's CHECK (value > 0 for this key) is the real guard; this only says
+      // why in Greek before the DB would answer with a generic failure.
+      if (body.key === "full_truck_pallets" && !(body.value > 0)) {
+        return jsonError("Οι παλέτες γεμάτου φορτηγού πρέπει να είναι πάνω από 0", 400, origin, env);
       }
       const before = await dbSelectRaw(env, "ct_settings", new URLSearchParams({ key: `eq.${body.key}`, select: "*" }));
       if (!before.rows.length) return jsonError("Unknown setting", 404, origin, env);
@@ -3788,6 +4016,96 @@ async function handleCosts(request, url, origin, env) {
       params.set("limit", "500");
       const { rows } = await dbSelectRaw(env, "ct_v_rt_pallet_gate", params);
       return jsonOk({ records: rows }, origin, env);
+    }
+    // ---- GET /costs/stock-lots[?lot=<stock lot rec>] — Ε1 allocation (ΜΟΝΟ OWNER) ----
+    // Reads the two 057 money views as they are: the DB computes net, the
+    // per-piece amounts (running-total rounding, so the cents always add up
+    // to net) and the in-stock / written-off remainder — nothing is
+    // recalculated here (one rule, one place). A failed read is a 500 with
+    // its own message, never an empty list: «no allocation» and «could not
+    // read the allocation» must look different on the owner's screen (αρχή 1).
+    if (resource === "stock-lots" && method === "GET" && !recId) {
+      const lot = url.searchParams.get("lot");
+      if (lot !== null && !/^rec[A-Za-z0-9]{1,32}$/.test(lot)) {
+        return jsonError("Μη έγκυρη παρτίδα", 400, origin, env);
+      }
+      const lotsParams = new URLSearchParams({ select: "*", order: "lot_id.asc" });
+      const piecesParams = new URLSearchParams({ select: "*", order: "lot_id.asc,seq.asc" });
+      if (lot) {
+        lotsParams.set("lot_rec", `eq.${lot}`);
+        piecesParams.set("lot_rec", `eq.${lot}`);
+      }
+      let lots, pieces;
+      try {
+        [{ rows: lots }, { rows: pieces }] = await Promise.all([
+          dbSelectRaw(env, "stock_v_lot_money", lotsParams),
+          dbSelectRaw(env, "stock_v_lot_alloc", piecesParams)
+        ]);
+      } catch (e) {
+        console.error("COSTS stock-lots read", e.message);
+        return jsonError("Ο επιμερισμός δεν διαβάστηκε", 500, origin, env);
+      }
+      if (!Array.isArray(lots) || !Array.isArray(pieces)) {
+        return jsonError("Ο επιμερισμός δεν διαβάστηκε", 500, origin, env);
+      }
+      return jsonOk({ lots, pieces }, origin, env);
+    }
+    // ---- PATCH /costs/stock-lots/<lotRec>  {warehouse_charge} — «Χρέωση αποθήκης» (ΜΟΝΟ OWNER) ----
+    // Contract round 2 (owner 4/10/2026). The lot's charge is ADDED to the
+    // partner assignment on its source order: this field is only what the
+    // warehouse charges that is NOT already in that assignment (storage when
+    // the warehouse partner also carried it in; everything when our own truck
+    // did) — each euro is entered once (αρχή 3). NULL = not entered (with no
+    // assignment the lot stays unallocated and the auditor says so); 0 = the
+    // warehouse charges nothing.
+    // Owner only (Ε1): it is lot money, never on the tblStockLots facade that
+    // dispatchers read. The DB keeps the last word: CHECK ≥ 0, and
+    // stock_guard_lots refuses a change on an invoiced lot (→ Greek 422).
+    if (resource === "stock-lots" && method === "PATCH" && recId) {
+      if (!/^rec[A-Za-z0-9]{1,32}$/.test(recId)) {
+        return jsonError("Μη έγκυρη παρτίδα", 400, origin, env);
+      }
+      const body = await request.json().catch(() => void 0);
+      if (!stockChargeBodyOk(body)) {
+        return jsonError("Μη έγκυρη χρέωση αποθήκης", 400, origin, env);
+      }
+      const charge = body.warehouse_charge;
+      let before;
+      try {
+        ({ rows: [before] } = await dbSelectRaw(env, "stock_lots", new URLSearchParams({ select: "id,legacy_id,warehouse_charge", legacy_id: `eq.${recId}`, deleted_at: "is.null" })));
+      } catch (e) {
+        console.error("COSTS stock-lots charge lookup", e.message);
+        return jsonError("Η χρέωση αποθήκης δεν αποθηκεύτηκε", 500, origin, env);
+      }
+      if (!before) return jsonError("Η παρτίδα δεν βρέθηκε", 404, origin, env);
+      let updated;
+      try {
+        // By the primary key just read (one row at most, whatever happens to
+        // legacy_id), and deleted_at again: a lot unmarked between the lookup
+        // and this PATCH matches 0 rows (→ 409 below), it is never written.
+        updated = await ctDbPatch(env, "stock_lots", `id=eq.${Number(before.id)}&deleted_at=is.null`, { warehouse_charge: charge });
+      } catch (e) {
+        const rule = stockRuleError(e);
+        if (rule) return stockRuleResponse(rule, origin, env);
+        console.error("COSTS stock-lots charge write", e.message);
+        return jsonError("Η χρέωση αποθήκης δεν αποθηκεύτηκε", 500, origin, env);
+      }
+      // 0 rows is a write that did not happen — loud, never a 200 (αρχή 1).
+      if (!updated) return jsonError("Η χρέωση αποθήκης δεν γράφτηκε", 409, origin, env);
+      await audit(env, { actor: caller.sub, role: caller.role, action: "update", table: "stock_lots", recordId: recId, before: { warehouse_charge: before.warehouse_charge }, after: { warehouse_charge: updated.warehouse_charge } });
+      // Read the lot back from the money view instead of echoing the body: the
+      // screen repaints from what the DB stored and recomputed (charge_total,
+      // net, per pallet, status), so a typed value is never shown as saved.
+      let lot;
+      try {
+        ({ rows: [lot] } = await dbSelectRaw(env, "stock_v_lot_money", new URLSearchParams({ select: "*", lot_rec: `eq.${recId}` })));
+      } catch (e) {
+        console.error("COSTS stock-lots charge read-back", e.message);
+      }
+      // The write landed and is audited, so «not saved» would be a lie here;
+      // say what actually failed.
+      if (!lot) return jsonError("Η χρέωση αποθήκης γράφτηκε, αλλά δεν ξαναδιαβάστηκε — άνοιξε ξανά την παραγγελία", 500, origin, env);
+      return jsonOk({ lot }, origin, env);
     }
 
     // ══════════════════════════════════════════════════════════════════════
