@@ -1,10 +1,11 @@
 -- 057 RULES TEST — ONE DO block that ALWAYS ends with an exception, so NOTHING it writes survives:
 -- every test row, every trigger side effect (audit_log rows, leg status sync) rolls back with it.
--- Run AFTER 057 (and after 057_stock_lots_verify.sql V1–V8). Expected last line of the error panel:
+-- Run AFTER 057 (and after 057_stock_lots_verify.sql V1–V8). Expected FIRST line of the error panel
+-- (the editor may prefix it with «ERROR: P0001:»):
 --
 --     RESULT: 119/119 OK
 --
--- followed by one line per case («OK  01 expected over_draw · got over_draw»). Anything less = STOP,
+-- followed by one line per case («OK   01 expected over_draw · got over_draw»). Anything less = STOP,
 -- copy the panel to the coordinator. 78 refusals + 21 accepted paths + 20 money cases (Ε1).
 -- Cases 36–49 and P11, P14 are the round-0 rules of the impact map (4/10): E-04 cancel (36, 37, P14),
 -- B-16 lot_grouped (38–43), C-15 lot_vs (44, 45, P11), C-05 piece_no_truck (46–49). 50–51: K7.

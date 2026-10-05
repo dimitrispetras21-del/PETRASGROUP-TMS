@@ -5,7 +5,7 @@
 -- WHO / WHEN / ORDER (mandatory)
 --   * The owner runs this file in the Supabase SQL editor, AFTER 15:00 (team works 05:30–14:30).
 --   * Then 057_stock_lots_verify.sql (SELECT only; run its V0 BEFORE this file too), then
---     057_stock_lots_rules_test.sql (must end with «RESULT: 119/119 OK» — it always rolls back).
+--     057_stock_lots_rules_test.sql (its error panel must start with «RESULT: 119/119 OK» — it always rolls back).
 --   * The Worker (facade labels «Stock Lot», «Own Stock Lot», «Stock Lot Reference» → stock_lot_reference,
 --     tblStockLots incl. «Pieces Moving» → pieces_moving, /costs/stock-lots) is
 --     deployed ONLY after the verify file passes. Worker first is QUIET, not loud: after every ORDERS
