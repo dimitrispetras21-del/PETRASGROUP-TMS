@@ -226,7 +226,12 @@ async function renderDashboard() {
     // ΠΡΟΘΕΣΜΙΑ = ΗΜΕΡΕΣ έως τη φόρτωση (owner 2/9 · μονάδα διορθωμένη 3/9),
     // όχι «ηλικία» από τη δημιουργία — το createdTime ήταν ανάποδο σήμα.
     // Ώρες δεν υπάρχουν στη βάση· βλ. _dashDayDiff.
-    const waiting = orders.filter(r => _unassigned(r.fields) && _open(r.fields)).map(r => {
+    // A LOOSE stock piece (no truck, back in the warehouse) is stock, not
+    // late unassigned work: «Επιστροφή στο απόθεμα» keeps the old dates, so
+    // without this it showed at 05:30 as «πέρασε». The Weekly shelf counts it
+    // (impact map 4/10 E-16). `orders` is read without fields[] → 'Stock Lot'
+    // and 'Group ID' are present once the stock Worker serves them.
+    const waiting = orders.filter(r => _unassigned(r.fields) && _open(r.fields) && !OrdersStock.isLoose(r.fields)).map(r => {
       const f = r.fields;
       const days = _dashDayDiff(f['Loading DateTime'], today);
       const dir = f['Direction'] === 'Import' ? 'IMP' : 'EXP';

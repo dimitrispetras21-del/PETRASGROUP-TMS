@@ -44,6 +44,31 @@ const OrdersCatalog = (() => {
   const PERIOD_LABEL = { '60': 'τελευταίες 60 ημέρες', '180': 'τελευταίοι 6 μήνες', all: 'όλες οι ημερομηνίες' };
 
   function _status(r) { return r.f['Status'] || (r.type === 'intl' ? 'Pending' : ''); }
+  // G-27/E-12 (impact map 4/10): a lot is «Delivered» when the WAREHOUSE
+  // received it — the client has not. Same dot, its own word, on the screen,
+  // the CSV and the paper (the raw Status is untouched: filters read it).
+  // Round 1 O5 (critic-2 E2-04): an invoiced lot reads «Τιμολογήθηκε» — next
+  // to its «✓ ΤΠΥ», «Στην αποθήκη» said the goods never left.
+  // C2-05 (round 3): a lot whose pieces are all done is no longer «in the
+  // warehouse» — «Ολοκληρώθηκε», read from the invoicing set when the page
+  // already holds it (the hub's counters load it; no request of our own). Not
+  // loaded yet → the word stays «Στην αποθήκη» (the facade row cannot know).
+  function _lotDone(r) {
+    const set = typeof OrdersData !== 'undefined' ? OrdersData._cache : null;
+    const lot = set && set.stock ? set.stock.get(OrdersStock.lotRecOfLot(r.f)) : null;
+    return !!(lot && lot.fields && lot.fields['Complete'] === true);
+  }
+  function _statusWord(r) {
+    if (r.lot && C().isInvoiced(r.f)) return 'Τιμολογήθηκε';
+    if (r.lot && r.status === 'Delivered') return _lotDone(r) ? 'Ολοκληρώθηκε' : 'Στην αποθήκη';
+    return (STATUS[r.status] || [r.status])[0] || '';
+  }
+  // The price as text for the CSV and the paper (PR-14): a piece's blank price
+  // carries its reason, as on the screen — never a bare gap next to the lot.
+  function _priceText(r) {
+    if (r.price !== null) return C().eur(r.price);
+    return r.piece ? 'στην παρτίδα ' + OrdersStock.lotNumLabel(r.f) : '';
+  }
   const _refReady = () => typeof REF_DATA !== 'undefined' && !!REF_DATA._loaded;
 
   // ΑΝΑΘΕΣΗ: the shared cell (OrdersCommon.assignOf) — the same one «Χωρίς
@@ -84,7 +109,15 @@ const OrdersCatalog = (() => {
     r.price = C().hasPrice(f) ? C().price(f) : null;
     r.week = C().weekStartOf(rec);
     r.pre = type === 'intl' && typeof isPreorder === 'function' && isPreorder(f);
+    // Stock lots (057): a piece has no price of its own — its lot is invoiced
+    // once — so it is never «χωρίς τιμή»; the lot is the order that went INTO
+    // the warehouse. Data-based, from the facade fields of the row (no request).
+    const OS = typeof OrdersStock !== 'undefined' ? OrdersStock : null;
+    r.piece = !!(OS && OS.isPiece(f));
+    r.lot = !!(OS && OS.isLot(f));
     r.tags = [];
+    if (r.piece) r.tags.push('ΑΠ');
+    if (r.lot) r.tags.push('→ ΑΠΟΘΗΚΗ');   // OWNER-Q12 answered 4/10 («→ ΑΠΟΘΗΚΗ» everywhere)
     if (type === 'intl' && f['Veroia Switch']) r.tags.push('VS');
     if (f['National Groupage']) r.tags.push('GRP');
     if (f['Pallet Exchange']) r.tags.push('PE');
@@ -99,29 +132,43 @@ const OrdersCatalog = (() => {
   // scales them when the ~480px card opens) ─────────────────────────────────
   const COLS = [
     { key: 'no',     label: 'ΑΡ.',        w: 60,  type: 'number', get: (f, r) => (r.type === 'natl' ? 1e7 : 0) + r.no },
-    { key: 'ref',    label: 'ΑΝΑΦΟΡΑ',    w: 116, type: 'text',   get: (f, r) => r.ref },
-    { key: 'client', label: 'ΠΕΛΑΤΗΣ',    w: 150, type: 'text',   get: (f, r) => r.client },
-    { key: 'load',   label: 'ΦΟΡΤΩΣΗ',    w: 168, type: 'date',   get: (f) => f['Loading DateTime'] || '' },
-    { key: 'del',    label: 'ΠΑΡΑΔΟΣΗ',   w: 168, type: 'date',   get: (f) => f['Delivery DateTime'] || '' },
+    // R2-6 / S5-04 (round 3): «→ ΑΠΟΘΗΚΗ» + «Εξαγωγή» need ~130px of text; at
+    // 116 the lot's direction was cut to «Εξ…» at 1440 (measured: 144 is the
+    // least). The 32px come from ΠΕΛΑΤΗΣ, ΦΟΡΤΩΣΗ/ΠΑΡΑΔΟΣΗ and ΤΙΜΟΛΟΓΙΟ;
+    // ΚΑΤΑΣΤΑΣΗ keeps 112 — «Στην αποθήκη» needs all of it (rig, 1440).
+    { key: 'ref',    label: 'ΑΝΑΦΟΡΑ',    w: 148, type: 'text',   get: (f, r) => r.ref },
+    { key: 'client', label: 'ΠΕΛΑΤΗΣ',    w: 134, type: 'text',   get: (f, r) => r.client },
+    { key: 'load',   label: 'ΦΟΡΤΩΣΗ',    w: 164, type: 'date',   get: (f) => f['Loading DateTime'] || '' },
+    { key: 'del',    label: 'ΠΑΡΑΔΟΣΗ',   w: 164, type: 'date',   get: (f) => f['Delivery DateTime'] || '' },
     { key: 'pal',    label: 'ΠΑΛ.',       w: 44,  type: 'number', get: (f, r) => r.pal || 0 },
     { key: 'assign', label: 'ΑΝΑΘΕΣΗ',    w: 130, type: 'text',   get: (f, r) => r.assign.text },
     { key: 'status', label: 'ΚΑΤΑΣΤΑΣΗ',  w: 112, type: 'text',   get: (f, r) => r.status },
     { key: 'price',  label: 'ΤΙΜΗ €',     w: 84,  type: 'number', get: (f, r) => r.price || 0 },
-    { key: 'inv',    label: 'ΤΙΜΟΛΟΓΙΟ',  w: 104, type: 'text',   get: (f) => String(f['Invoice Number'] || '') },
+    { key: 'inv',    label: 'ΤΙΜΟΛΟΓΙΟ',  w: 96,  type: 'text',   get: (f) => String(f['Invoice Number'] || '') },
   ];
 
   function _rowHtml(r) {
     const f = r.f;
     const sel = r.id === S.selected ? ' selected' : '';
-    const tags = r.tags.map(t => `<span class="oc-tag">${t}</span>`).join('');
-    const [stWord, stDot] = STATUS[r.status] || [r.status || '—', 'unknown'];
+    // Round 1 O11 (critic-5 S5-10): the stock tag goes BEFORE the direction —
+    // after it, «ΑΠΟΘΕΜΑ» was cut to «Εξαγωγή…» at 1440 and the lot had none.
+    const isStk = t => t === 'ΑΠ' || t === '→ ΑΠΟΘΗΚΗ';
+    const stk = r.tags.filter(isStk).map(t => `<span class="oc-tag oc-tag-lead">${t}</span>`).join('');
+    const tags = r.tags.filter(t => !isStk(t)).map(t => `<span class="oc-tag">${t}</span>`).join('');
+    const stDot = (STATUS[r.status] || [null, 'unknown'])[1], stWord = _statusWord(r) || '—';
     const statusHtml = r.pre && typeof preorderPillHtml === 'function' ? preorderPillHtml(f)
       : `<span class="oc-sdot oc-s-${stDot}"></span>${esc(stWord)}`;
     const priceHtml = r.price !== null ? esc(C().eur(r.price))
+      // O11 (critic-5 S5-10): ONE line — «στην παρτίδα<br>#N» grew the row
+      // inside the amounts column. The 84px column holds 68px of text and
+      // «στην παρτίδα #1300» measures 106px at 1440 (rig, 4/10), so the cell
+      // carries the lot number and the words go to the title; the paper and
+      // the CSV keep «στην παρτίδα #N» (_priceText), where width is no issue.
+      : r.piece ? `<span class="oc-dim oc-lotp" title="Στην παρτίδα ${esc(OrdersStock.lotNumLabel(f))} — τιμολογείται η παρτίδα">${esc(OrdersStock.lotNumLabel(f))}</span>`
       : (r.status === 'Cancelled' || r.pre ? '<span class="oc-dim">—</span>' : '<span class="oc-red">χωρίς τιμή</span>');
     return `<tr id="ocrow_${r.id}" class="oc-row${sel}" style="height:${ROW_H}px" onclick="OrdersCatalog.open('${r.type}','${r.id}')">
       <td class="oc-num"><b>${esc(r.num)}</b></td>
-      <td><span class="oc-l1" title="${esc(r.ref)}">${r.ref ? esc(r.ref) : '<span class="oc-dim">— χωρίς αναφορά</span>'}</span><span class="oc-l2">${esc(r.dir)}${tags}${r.legs ? '<span class="oc-tag" title="Σπασμένο σε 2 σκέλη — δες το Weekly International για την εκτέλεση">2 σκέλη</span>' : ''}</span></td>
+      <td><span class="oc-l1" title="${esc(r.ref)}">${r.ref ? esc(r.ref) : '<span class="oc-dim">— χωρίς αναφορά</span>'}</span><span class="oc-l2">${stk}${esc(r.dir)}${tags}${r.legs ? '<span class="oc-tag" title="Σπασμένο σε 2 σκέλη — δες το Weekly International για την εκτέλεση">2 σκέλη</span>' : ''}</span></td>
       <td><span class="oc-l1 oc-plain" title="${r.client}">${r.client}</span></td>
       <td>${r.pre ? '<span class="oc-dim">—</span>' : C().placeCell(r.load)}</td>
       <td>${r.pre ? '<span class="oc-dim">—</span>' : C().placeCell(r.del)}</td>
@@ -152,7 +199,7 @@ const OrdersCatalog = (() => {
     if (F.week) rows = rows.filter(r => r.week === F.week);
     if (F.chip === 'pa') rows = rows.filter(r => r.assign.key === 'pa' && !r.pre);
     if (F.chip === 'out') rows = rows.filter(r => r.assign.key === 'out');
-    if (F.chip === 'noprice') rows = rows.filter(r => r.price === null && r.status !== 'Cancelled' && !r.pre);
+    if (F.chip === 'noprice') rows = rows.filter(r => r.price === null && r.status !== 'Cancelled' && !r.pre && !r.piece);
     S.filtered = rows;
     _paintTable();
     _paintKpi();
@@ -165,9 +212,11 @@ const OrdersCatalog = (() => {
       intl: rows.filter(r => r.type === 'intl').length,
       natl: rows.filter(r => r.type === 'natl').length,
       transit: rows.filter(r => r.status === 'In Transit').length,
-      delivered: rows.filter(r => C().isDelivered(r.rec)).length,
+      // A lot Delivered = in the partner's warehouse, not at the client (its word
+      // is «Στην αποθήκη»): it is not counted as delivered (round-1 K2, 4/10).
+      delivered: rows.filter(r => C().isDelivered(r.rec) && !r.lot).length,
       value: live.filter(r => r.price !== null).reduce((s, r) => s + r.price, 0),
-      unpriced: live.filter(r => r.price === null && !r.pre).length,
+      unpriced: live.filter(r => r.price === null && !r.pre && !r.piece).length,
       pa: rows.filter(r => r.assign.key === 'pa' && !r.pre).length,
       out: rows.filter(r => r.assign.key === 'out').length,
     };
@@ -205,7 +254,11 @@ const OrdersCatalog = (() => {
     wrap.innerHTML = OrdersList.tableShell({
       colDefs: COLS, sortCol: S.sortCol, sortDir: S.sortDir, sortToggle: 'OrdersCatalog.sort',
       ids: { scroller: 'ocVScroll', top: 'ocTop', bottom: 'ocBottom' }, rowH: ROW_H, total: sorted.length,
-      legend: '<b>#</b> διεθνής · <b>Ε-</b> εθνική · <b>VS</b> Veroia Switch · <b>GRP</b> ομαδοποίηση · <b>PE</b> ανταλλαγή παλετών · <b>HR</b> υψηλό ρίσκο · <b class="oc-g">✓ ΤΠΥ</b> τιμολογήθηκε στο ERP',
+      // O11: «ΑΠ» / «→ ΑΠΟΘΗΚΗ» explained once the list holds a piece or a lot.
+      legend: '<b>#</b> διεθνής · <b>Ε-</b> εθνική · <b>VS</b> Veroia Switch · <b>GRP</b> ομαδοποίηση · <b>PE</b> ανταλλαγή παλετών · <b>HR</b> υψηλό ρίσκο · '
+        // S5-08: the badge is explained, not repeated («→ ΑΠΟΘΗΚΗ … σε αποθήκη»).
+        + (S.rows.some(x => x.piece || x.lot) ? '<b>ΑΠ</b> κομμάτι από απόθεμα · <b>→ ΑΠΟΘΗΚΗ</b> παρτίδα · ' : '')
+        + '<b class="oc-g">✓ ΤΠΥ</b> τιμολογήθηκε στο ERP',
       legendClass: 'oc-legend', footClass: 'oc-foot',
     });
     document.getElementById('ocVScroll').addEventListener('scroll', () => OrdersList.virtualOnScroll(S.vs, _paint), { passive: true });
@@ -396,17 +449,23 @@ const OrdersCatalog = (() => {
   const _namesBusy = () => { if (!S.namesPending) return false; if (typeof toast === 'function') toast('Φορτώνουν ακόμη τα ονόματα — δοκίμασε ξανά σε λίγα δευτερόλεπτα', 'warn'); return true; };
   function csv() {
     if (_namesBusy()) return;
-    const head = ['ΑΡ.', 'Τύπος', 'Αναφορά', 'Κατεύθυνση', 'Πελάτης', 'Φόρτωση', 'Ημ. φόρτωσης', 'Παράδοση', 'Ημ. παράδοσης', 'Παλέτες', 'Ανάθεση', 'Κατάσταση', 'Τιμή', 'ΤΠΥ', 'Ημ. ΤΠΥ'];
+    // «Σήμανση» = the row's tags (ΑΠ, → ΑΠΟΘΗΚΗ, VS, GRP, PE, HR) — PR-14: the
+    // file carries what the screen shows next to the direction. It goes LAST
+    // (round 1b): a column in the middle moved every column after it for
+    // whoever already reads this file by position.
+    const head = ['ΑΡ.', 'Τύπος', 'Αναφορά', 'Κατεύθυνση', 'Πελάτης', 'Φόρτωση', 'Ημ. φόρτωσης', 'Παράδοση', 'Ημ. παράδοσης', 'Παλέτες', 'Ανάθεση', 'Κατάσταση', 'Τιμή', 'ΤΠΥ', 'Ημ. ΤΠΥ', 'Σήμανση'];
     const rows = S.filtered.map(r => [r.num, r.type === 'intl' ? 'Διεθνής' : 'Εθνική', r.ref, r.dir, _unesc(r.client), _plain(r.load), C().ymd(r.f['Loading DateTime']),
-      _plain(r.del), C().ymd(r.f['Delivery DateTime']), r.pal || '', r.assign.text, (STATUS[r.status] || [r.status])[0] || '',
-      r.price !== null ? C().eur(r.price) : '', r.f['Invoice Number'] || '', C().ymd(r.f['Invoice Date'])]);
+      _plain(r.del), C().ymd(r.f['Delivery DateTime']), r.pal || '', r.assign.text, _statusWord(r),
+      // R4 (C2-06 / C4-08): tags joined with « · » — «→ ΑΠΟΘΗΚΗ» is two words,
+      // so a space-joined cell could not be split back into its tags.
+      _priceText(r), r.f['Invoice Number'] || '', C().ymd(r.f['Invoice Date']), r.tags.join(' · ')]);
     OrdersList.csvDownload([head, ...rows], `paraggelies_${C().today()}.csv`);
   }
   function print() {
     if (_namesBusy()) return;
-    const tr = S.filtered.map(r => `<tr><td>${esc(r.num)}</td><td>${esc(r.ref)}<br><small>${esc(r.dir)}</small></td><td>${esc(_unesc(r.client))}</td>
+    const tr = S.filtered.map(r => `<tr><td>${esc(r.num)}</td><td>${esc(r.ref)}<br><small>${esc([r.dir, ...r.tags].filter(Boolean).join(' · '))}</small></td><td>${esc(_unesc(r.client))}</td>
       <td>${esc(r.load.name)}<br><small>${esc(r.load.sub)} · ${C().dm(r.load.date)}</small></td><td>${esc(r.del.name)}<br><small>${esc(r.del.sub)} · ${C().dm(r.del.date)}</small></td>
-      <td class="r">${esc(r.pal || '')}</td><td>${esc((STATUS[r.status] || [r.status])[0] || '')}</td><td class="r">${r.price !== null ? esc(C().eur(r.price)) : '—'}</td>
+      <td class="r">${esc(r.pal || '')}</td><td>${esc(_statusWord(r))}</td><td class="r">${esc(_priceText(r) || '—')}</td>
       <td>${r.f['Invoice Number'] ? '✓ ΤΠΥ ' + esc(r.f['Invoice Number']) : ''}</td></tr>`).join('');
     OrdersList.printOpen(`<!doctype html><html lang="el"><head><meta charset="utf-8"><title>Παραγγελίες</title><style>
       @page{size:A4 landscape;margin:12mm}body{font:10px/1.35 'DM Sans',Arial,sans-serif;color:#000}h1{font-size:15px;margin:0 0 2px}
@@ -444,6 +503,8 @@ const OrdersCatalog = (() => {
 .oc-l2{display:block;font-size:11.5px;color:var(--text-mid);overflow:hidden;white-space:nowrap;text-overflow:ellipsis;line-height:1.3}
 .oc-tag{display:inline-block;margin-left:6px;padding:0 4px;border:1px solid var(--border-mid);border-radius:3px;font-size:9px;font-weight:600;letter-spacing:.3px;color:var(--text-mid);line-height:13px}
 .oc-dim{color:var(--text-dim)}.oc-red{color:var(--danger);font-weight:500}.oc-g{color:var(--ok)}
+.oc-lotp{display:inline-block;font-size:11px;font-weight:400;line-height:1.25;white-space:nowrap}
+.oc-tag.oc-tag-lead{margin-left:0;margin-right:6px}
 .oc-sdot{display:inline-block;width:6px;height:6px;border-radius:50%;margin-right:6px;vertical-align:middle}
 .oc-s-pending{border:1.5px solid var(--text-dim)}.oc-s-assigned{background:var(--accent)}.oc-s-confirmed{background:var(--text-mid)}
 .oc-s-transit{background:var(--surface-dark)}.oc-s-delivered{background:var(--ok)}.oc-s-cancelled,.oc-s-unknown{border:1.5px solid var(--border-mid)}

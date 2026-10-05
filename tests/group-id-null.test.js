@@ -27,7 +27,8 @@ const wiSrc = [
   // leg-first helper the clear paths call before touching a vehicle (tests/unmatch-leg-first.test.js)
   fn(WI, /async function _wiRtOf\(orderId\)\{[\s\S]*?\n\}\n/, '_wiRtOf'),
   fn(WI, /async function _wiRtLeave\(orderId\)\{[\s\S]*?\n\}\n/, '_wiRtLeave'),
-  fn(WI, /async function _wiCancelGroupMember\(rowId,orderId,isImportSide\)\{[\s\S]*?\n\}\n/, '_wiCancelGroupMember'),
+  // stock lots Φ1 adds an optional 4th argument (the «Επιστροφή στο απόθεμα» wording)
+  fn(WI, /async function _wiCancelGroupMember\(rowId,orderId,isImportSide(?:,ask)?\)\{[\s\S]*?\n\}\n/, '_wiCancelGroupMember'),
 ].join('\n');
 
 // The facade answers like the real one: a NULL column is absent from the

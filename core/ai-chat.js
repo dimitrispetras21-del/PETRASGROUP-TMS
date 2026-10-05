@@ -704,6 +704,7 @@ You are Nakis, the AI assistant for Petras Group TMS. You help users learn and u
 - **Groupage**: Consolidating multiple small shipments into one truck
 - **Wednesday Cutoff**: Export orders must be confirmed by Wednesday for weekend delivery
 - **Dead Kilometers**: Distance truck drives empty between delivery and next pickup
+- **Παρτίδα αποθέματος / κομμάτι (ΑΠ)**: Παρτίδα = παραγγελία πελάτη προς αποθήκη συνεργάτη· «Delivered» σε παρτίδα σημαίνει «στην αποθήκη», ΟΧΙ παράδοση στον πελάτη. Κομμάτι = μέρος των παλετών της που φεύγει από την αποθήκη με δικό μας φορτηγό· δεν έχει δική του τιμή — τιμολογείται η παρτίδα, μία φορά, όταν παραδοθούν όλα. Κομμάτι χωρίς φορτηγό = απόθεμα (ράφι ΑΠΟΘΕΜΑ στο Weekly), όχι καθυστέρηση.
 
 ## Common Questions:
 - "How do I assign a truck?" → Go to Weekly International, right-click the order row, select truck from popover
@@ -1315,10 +1316,13 @@ async function _aicRunObserver() {
         // Unassigned orders — multi-tier urgency
         const in48h = toLocalDate(new Date(Date.now() + 2 * 864e5));
         const in7d = toLocalDate(new Date(Date.now() + 7 * 864e5));
-        const unassigned = await atGetAll(TABLES.ORDERS, {
+        // Loose stock pieces (no truck, waiting in the warehouse) are stock,
+        // not unassigned work — the Weekly shelf counts them (impact map 4/10
+        // E-16). The predicate needs these labels, else it is silently false.
+        const unassigned = (await atGetAll(TABLES.ORDERS, {
           filterByFormula: `AND({Type}='International',{Truck}=BLANK(),IS_AFTER({Delivery DateTime},'${localToday()}'))`,
-          fields: ['Unloading Location 1','Delivery DateTime','Direction']
-        }, true);
+          fields: ['Unloading Location 1','Delivery DateTime','Direction','Stock Lot','Partner','Group ID','Status']
+        }, true)).filter(r => !OrdersStock.isLoose(r.fields));
 
         // CRITICAL: delivering in <48h
         const crit48 = unassigned.filter(r => toLocalDate(r.fields['Delivery DateTime']) <= in48h);

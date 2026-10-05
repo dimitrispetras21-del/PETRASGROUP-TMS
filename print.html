@@ -195,6 +195,7 @@ body{-webkit-print-color-adjust:exact;print-color-adjust:exact}
 .stop.unload .type{background:#0284C7}
 /* Group-cover per-card order tag (finding #6) — muted, next to the type badge */
 .stop .stoptag{font-size:8px;font-weight:700;letter-spacing:.3px;color:#475569;background:#EEF2F6;border-radius:3px;padding:2px 7px;margin-left:6px}
+.stop .stoptag .stk{display:block;font-size:10px;font-weight:800;letter-spacing:0;color:#0B1929;margin-top:2px}
 .stop .name{font-family:'Syne',sans-serif;font-size:14px;font-weight:800;color:#0B1929;margin:5px 0 1px}
 .stop .addr{font-size:10px;color:#475569;line-height:1.55}
 .stop .addr a{color:#0284C7;text-decoration:none;font-weight:700}
@@ -251,7 +252,7 @@ const AT_BASE='appElT5CQV6JQvym8';
 const T_ORDERS='tblgHlNmLBH3JTdIM',T_PARTNERS='tblLHl5m8bqONfhWv',
       T_TRUCKS='tblEAPExIAjiA3asD',T_TRAILERS='tblDcrqRJXzPrtYLm',
       T_DRIVERS='tbl7UGmYhc2Y82pPs',T_LOCS='tblxu8DRfTQOFRCzS',
-      T_STOPS='tblaeY5QOHAS1gyE8';
+      T_STOPS='tblaeY5QOHAS1gyE8',T_CLIENTS='tblFWKAQVUzAM8mCE';
 var orderStops=[];
 // Ονοματεπώνυμο του χρήστη που εκτυπώνει (owner 12/8) — ίδιο origin, οπότε
 // διαβάζεται το tms_user του app· fallback στον owner αν λείπει.
@@ -527,9 +528,13 @@ function buildDelHTML(f,isExport,veroiaSwitch,VEROIA,VADDR,VLAT,VLNG){
       // for its stop. Mirror buildLoadHTML's per-stop pattern exactly —
       // details (incl. goods/temp) only on the first card, order-level PE/GW
       // fallback like the loading side.
+      // Round 1 O10 (critic-4 C4-03): a LOT's delivery is the warehouse
+      // intake — no pallet exchange there (Ε5: the one exchange is at the
+      // client's loading; pallet-feed writes nothing at intake, Q7 default).
+      // YES here sent the partner's driver to claim empties the ledger never sees.
       html+=buildCard(si+1,loc,'delivery',stopDt,sf['Pallets']||'',
         fv(f['Pallet Type']),si===0,sf['Goods']||fv(f['Goods']),
-        f['Pallet Exchange']?'YES':'NO',f['Gross Weight kg'],
+        f['Pallet Exchange']&&!f['Own Stock Lot']?'YES':'NO',f['Gross Weight kg'],
         sf['Temperature']!=null?sf['Temperature']:f['Temperature °C'],f['Refrigerator Mode']);
     }
     if(html)return html;
@@ -559,6 +564,65 @@ function buildCrossdockHTML(f){
   return html;
 }
 
+// PR-05 (impact map 4/10): a stock piece leaves FROM STOCK — its sheet says so
+// and names the lot the warehouse releases. The order is read with one GET and
+// no fields[] (atGet below), so «Stock Lot» and «Stock Lot Order No» arrive
+// with every other column. No money. OWNER-Q10 answered 4/10 (client name on
+// piece driver sheet): the DRIVER sheet also names the client (stockLotText).
+// Same «#312» / «Ε-27» rule as OrdersStock.lotNumLabel (core/orders-common.js);
+// tests/orders-stock.test.js keeps the two in step (this page loads no core JS).
+// C4-06 (round 3): ONE definition of a piece, as in the app (OrdersStock.isPiece):
+// the «Stock Lot» link. A piece whose number is not served still prints as a
+// piece — «παρτίδα —» — never silently as an ordinary order.
+function stockLotLabel(f){
+  if(!f||!Array.isArray(f['Stock Lot'])||!f['Stock Lot'].length)return '';
+  var n=f['Stock Lot Order No'];
+  return n?(f['Stock Lot Source']==='natl'?'Ε-':'#')+n:'—';
+}
+// One stock text for the meta grid, the WhatsApp text and the cover's stop
+// tag (round 1 O10, critic-4 C4-02/C4-05): the warehouse knows the goods by
+// the lot's REFERENCE (printed on its intake sheet), never by our #N — so the
+// Reference leads, served by the Worker as ORDERS «Stock Lot Reference».
+// Before that label exists it is absent (facade trap #2) and the line falls
+// back to the lot number alone. No «ΑΠ ·» (it abbreviated the label next to it).
+// OWNER-Q10 answered 4/10 (client name on piece driver sheet): «Ναι, και
+// πελάτης» — the warehouse releases the goods by lot AND client. Driver sheet
+// only (the partner sheet goes to a third-party carrier and stays as it was).
+// The piece's OWN «Client» link: the base refuses a piece whose client is not
+// the lot's (piece_mismatch), so it is the lot's client. A name that could not
+// be read (a role without CLIENTS, e.g. warehouse → 403; a failed read) prints
+// «—», never a gap that reads as «no client».
+function stockLotText(f,isPartner){
+  var n=stockLotLabel(f); if(!n)return '';
+  var ref=String(f['Stock Lot Reference']||'').trim();
+  var who=isPartner?'':' · '+(pieceClients[fv(f['Client'])]||'—');
+  return (ref?'Ref '+ref+' · ':'')+(isPartner?'lot ':'παρτίδα ')+n+who;
+}
+// clientRec → name ('' = not read). Filled by loadPieceClients before any sheet is built.
+var pieceClients={};
+// One GET per client of a piece printed on a DRIVER sheet — only then, so an
+// ordinary print asks nothing more than before. Never throws: a refusal
+// (403 body without fields) or a failed fetch leaves '' → «—» on the paper.
+// C4-02 (round 3): a 403 is the role's design (warehouse) → the quiet «—»;
+// any OTHER failure (network, 5xx, expired session) also sets __clientsFailed
+// → a red banner like the locations' one: the sheet must not leave silently
+// without the name the warehouse releases the goods by.
+async function loadPieceClients(items){
+  var ids=[];
+  items.forEach(function(it){
+    var f=it.orderRec.fields||{}, cid=fv(f['Client']);
+    if(stockLotLabel(f)&&!computeIsPartner(f)&&/^rec[A-Za-z0-9]{1,32}$/.test(cid)&&ids.indexOf(cid)<0)ids.push(cid);
+  });
+  await Promise.all(ids.map(async function(cid){
+    try{
+      var r=await fetch(PROXY_URL+'/v0/'+AT_BASE+'/'+T_CLIENTS+'/'+cid,{headers:atAuthHeader()});
+      var d=r.ok?await r.json():null;
+      pieceClients[cid]=String((d&&d.fields&&d.fields['Company Name'])||'').trim();
+      if(!r.ok)console.warn('print: client of the piece not readable ('+r.status+')');
+      if(!r.ok&&r.status!==403)window.__clientsFailed=true;
+    }catch(e){console.warn('print: client of the piece not read',e);pieceClients[cid]='';window.__clientsFailed=true;}
+  }));
+}
 function badges(f){
   var b='';
   if(f['High Risk Flag'])b+='<span class="badge b-risk">! Risk</span>';
@@ -620,6 +684,7 @@ async function loadAll(){
       }
       items.push({orderRec:orderR, stops:stops});
     }
+    await loadPieceClients(items);
     var htmlArr=[]; _waArr=[];
     var isGroup=items.length>1;
     if(isGroup) htmlArr.push(buildCoverDoc(items));
@@ -673,8 +738,13 @@ function waBuild(f,isPartner,isExport,veroiaSwitch,VEROIA,VADDR,VLAT,VLNG,vehLin
   if(fv(f['Goods']))cargo.push(fv(f['Goods']));
   if(f['Temperature °C']!==''&&f['Temperature °C']!=null)cargo.push('🌡 *'+f['Temperature °C']+'°C'+(f['Refrigerator Mode']?' '+f['Refrigerator Mode']:'')+'*');
   if(cargo.length)lines.push('📦 '+cargo.join(' · '));
-  lines.push('🔁 *'+L.pe+': '+(f['Pallet Exchange']?L.yes:L.no)+'*');
+  // C4-03: a lot exchanges at the client's loading, never at the warehouse.
+  if(f['Own Stock Lot']&&f['Pallet Exchange'])lines.push('🔁 *'+L.pe+': '+L.yes+(isPartner?' at loading · ':' στη φόρτωση · ')+L.no+(isPartner?' at the warehouse':' στην αποθήκη')+'*');
+  else lines.push('🔁 *'+L.pe+': '+(f['Pallet Exchange']?L.yes:L.no)+'*');
   if(refNo)lines.push((isPartner?'Ref':'Ref')+': '+refNo);
+  // C4-02: on the phone the warehouse pickup must read as STOCK, like the paper.
+  var _stk=stockLotText(f,isPartner);
+  if(_stk)lines.push('📦 '+(isPartner?'From stock · ':'Απόθεμα · ')+_stk);
   if(f['Notes'])lines.push('📝 '+f['Notes']);
   var cb=[];
   if(OFFICE_PHONE)cb.push(L.office+' '+OFFICE_PHONE);
@@ -704,7 +774,8 @@ function generatePDF(orderRec, bare){ // bare (Wave 3): no toolbar — docs 2..N
   // Worker (legacy Airtable label — see CLAUDE.md name traps). The real
   // sequential id is 'Order No' (worker/src/index.js computed field,
   // orders_with_derived.order_no). Reference is the next best human id;
-  // the record-id fallback stays last-resort only.
+  // the record-id fallback stays last-resort only. Typed by people when it
+  // is the Reference: escaped where it enters HTML (escHtml), plain in WhatsApp.
   var orderNo=f['Order No']||f['Reference']||String(orderRec.id||orderId||'').slice(-6).toUpperCase();
   var isPartner=computeIsPartner(f);
   LBL=isPartner?LBL_EN:LBL_GR; // Συνεργάτης=EN, Οδηγός=GR (redesign 9/8)
@@ -760,7 +831,9 @@ function generatePDF(orderRec, bare){ // bare (Wave 3): no toolbar — docs 2..N
   var peYes=!!f['Pallet Exchange'];
   var chipsHTML='<div class="cargo">'+
     '<div class="chip"><div class="k">'+LBL.pal+'</div><div class="v">'+escHtml(fv(f['Total Pallets'])||'—')+' <small>× '+escHtml(fv(f['Pallet Type'])||'EUR')+'</small></div></div>'+
-    '<div class="chip '+(peYes?'pe-yes':'pe-no')+'"><div class="k">'+LBL.pe+'</div><div class="v">'+(peYes?LBL.yes:LBL.no)+'</div></div>'+
+    // C4-04 (round 3): a LOT exchanges at the client's loading, never at the
+    // warehouse (Ε5) — the chip says both, like the stop cards and WhatsApp.
+    '<div class="chip '+(peYes?'pe-yes':'pe-no')+'"><div class="k">'+LBL.pe+'</div><div class="v">'+(peYes?LBL.yes:LBL.no)+(peYes&&f['Own Stock Lot']?' <small>'+(isPartner?'at loading · ':'στη φόρτωση · ')+LBL.no+(isPartner?' at the warehouse':' στην αποθήκη')+'</small>':'')+'</div></div>'+
     ((f['Temperature °C']!==''&&f['Temperature °C']!=null)?'<div class="chip temp"><div class="k">'+LBL.temp+'</div><div class="v">'+escHtml(f['Temperature °C'])+'°C'+(f['Refrigerator Mode']?' <small>'+escHtml(f['Refrigerator Mode'])+'</small>':'')+'</div></div>':'')+
     (fv(f['Goods'])?'<div class="chip"><div class="k">'+LBL.goods+'</div><div class="v" style="font-size:11.5px">'+escHtml(fv(f['Goods']))+'</div></div>':'')+
     (f['Gross Weight kg']?'<div class="chip"><div class="k">'+LBL.gw+'</div><div class="v">'+escHtml(f['Gross Weight kg'])+' <small>KG</small></div></div>':'')+
@@ -788,8 +861,9 @@ function generatePDF(orderRec, bare){ // bare (Wave 3): no toolbar — docs 2..N
 
   var refNo=f['Reference']||'';
   var _m=isPartner
-    ?{date:'Date',week:'Week',cat:'Category',disp:'Dispatcher',ord:'Order No',ref:'Reference',flags:'Flags'}
-    :{date:'Ημερομηνία',week:'Εβδομάδα',cat:'Κατηγορία',disp:'Dispatcher',ord:'Αρ. Εντολής',ref:'Reference',flags:'Σημάνσεις'};
+    ?{date:'Date',week:'Week',cat:'Category',disp:'Dispatcher',ord:'Order No',ref:'Reference',flags:'Flags',stock:'From stock'}
+    :{date:'Ημερομηνία',week:'Εβδομάδα',cat:'Κατηγορία',disp:'Dispatcher',ord:'Αρ. Εντολής',ref:'Reference',flags:'Σημάνσεις',stock:'Απόθεμα'};
+  var stockNo=stockLotText(f,isPartner);
   var metaHTML='<div class="meta">'+
     '<div class="meta-item"><span class="meta-lbl">'+_m.date+'</span><span class="meta-val">'+new Date().toLocaleDateString('el-GR')+' '+new Date().toLocaleTimeString('el-GR',{hour:'2-digit',minute:'2-digit'})+'</span></div>'+
     '<div class="meta-item"><span class="meta-lbl">'+_m.week+'</span><span class="meta-val">W'+escHtml(wk)+'</span></div>'+
@@ -797,6 +871,7 @@ function generatePDF(orderRec, bare){ // bare (Wave 3): no toolbar — docs 2..N
     '<div class="meta-item"><span class="meta-lbl">'+_m.disp+'</span><span class="meta-val">'+DISPATCHER+'</span></div>'+
     '<div class="meta-item"><span class="meta-lbl">'+_m.ord+'</span><span class="meta-val">'+escHtml(orderNo)+'</span></div>'+
     (refNo?'<div class="meta-item"><span class="meta-lbl">'+_m.ref+'</span><span class="meta-val">'+escHtml(refNo)+'</span></div>':'')+
+    (stockNo?'<div class="meta-item"><span class="meta-lbl">'+_m.stock+'</span><span class="meta-val">'+escHtml(stockNo)+'</span></div>':'')+
     (badgeHTML&&!isPartner?'<div class="meta-item"><span class="meta-lbl">'+_m.flags+'</span><span class="meta-val">'+badgeHTML+'</span></div>':'')+
     '</div>';
 
@@ -946,17 +1021,29 @@ function buildCoverDoc(items){
   '</div>';
 
   // 4 cargo chips, totalled/merged across every order in the group.
-  var totalPallets=0, anyPE=false, temps=[], goodsList=[];
-  items.forEach(function(it){
+  // Round 1 O10 (critic-4 C4-01): the cover is what the driver reads at each
+  // stop, so its chips are built from EVERY member — the first order's pallet
+  // type and «any PE = ΝΑΙ» told him to swap pallets at a warehouse whose piece
+  // the base forbids to swap (Ε5) and to count EUR where it hands out CHEP.
+  var totalPallets=0, peRefs=[], temps=[], goodsList=[], byType={}, typeOrder=[];
+  items.forEach(function(it,i){
     var f=it.orderRec.fields;
     var p=parseFloat(fv(f['Total Pallets'])); if(!isNaN(p)) totalPallets+=p;
-    if(f['Pallet Exchange']) anyPE=true;
+    var pt=fv(f['Pallet Type'])||'EUR';
+    if(byType[pt]===undefined){byType[pt]=0;typeOrder.push(pt);}
+    if(!isNaN(p)) byType[pt]+=p;
+    if(f['Pallet Exchange']) peRefs.push(escHtml(String.fromCharCode(65+i)+' '+(f['Reference']||ordNoOf(it.orderRec))));
     if(f['Temperature °C']!==''&&f['Temperature °C']!=null&&temps.indexOf(String(f['Temperature °C']))<0) temps.push(String(f['Temperature °C']));
     if(fv(f['Goods'])&&goodsList.indexOf(fv(f['Goods']))<0) goodsList.push(fv(f['Goods']));
   });
+  var anyPE=peRefs.length>0, allPE=peRefs.length===items.length;
+  var palV=typeOrder.length>1
+    ? typeOrder.map(function(t){return byType[t]+' <small>× '+escHtml(t)+'</small>';}).join(' + ')
+    : (totalPallets||'—')+' <small>× '+escHtml(typeOrder[0]||'EUR')+'</small>';
+  var peV=!anyPE?LBL.no:allPE?LBL.yes:LBL.yes+' <small>— '+(isPartner?'only ':'μόνο ')+peRefs.join(', ')+'</small>';
   var chipsHTML='<div class="cargo">'+
-    '<div class="chip"><div class="k">'+LBL.pal+'</div><div class="v">'+(totalPallets||'—')+' <small>× '+escHtml(fv(f0['Pallet Type'])||'EUR')+'</small></div></div>'+
-    '<div class="chip '+(anyPE?'pe-yes':'pe-no')+'"><div class="k">'+LBL.pe+'</div><div class="v">'+(anyPE?LBL.yes:LBL.no)+'</div></div>'+
+    '<div class="chip"><div class="k">'+LBL.pal+'</div><div class="v">'+palV+'</div></div>'+
+    '<div class="chip '+(anyPE?'pe-yes':'pe-no')+'"><div class="k">'+LBL.pe+'</div><div class="v">'+peV+'</div></div>'+
     '<div class="chip temp"><div class="k">'+LBL.temp+'</div><div class="v">'+(temps.length?escHtml(temps.join(' / '))+'°C':'—')+'</div></div>'+
     '<div class="chip"><div class="k">'+LBL.goods+'</div><div class="v" style="font-size:11.5px">'+(goodsList.length?escHtml(goodsList.join(' · ')):'—')+'</div></div>'+
   '</div>';
@@ -998,8 +1085,13 @@ function buildCoverDoc(items){
     items.forEach(function(it,i){
       var f=it.orderRec.fields;
       var uns=stopsOfType(it.stops,'Unloading'), lastUn=uns[uns.length-1];
-      var lastName=lastUn?(resolveLoc(lastUn.fields['Location'])||{}).name:'—';
-      var tag='ΠΑΡΑΓΓΕΛΙΑ '+String.fromCharCode(65+i)+' · '+escHtml(ordNoOf(it.orderRec))+' · '+escHtml(lastName);
+      // C4-11 (round 3): an unresolved location prints «—», never «undefined».
+      var lastName=(lastUn&&(resolveLoc(lastUn.fields['Location'])||{}).name)||'—';
+      // C4-02: the piece is marked as stock on the cover too, at its stop.
+      // C4-03 (round 3): on its OWN line at 10px — the hand-over identity (lot +
+      // client) was the smallest text on the page the driver reads there.
+      var stk=stockLotText(f,isPartner);
+      var tag='ΠΑΡΑΓΓΕΛΙΑ '+String.fromCharCode(65+i)+' · '+escHtml(ordNoOf(it.orderRec))+' · '+escHtml(lastName)+(stk?'<span class="stk">'+(isPartner?'From stock · ':'Απόθεμα · ')+escHtml(stk)+'</span>':'');
       stopsOfType(it.stops,type).forEach(function(s){
         var loc=resolveLoc(s.fields['Location']); if(!loc)return;
         tlHTML+=buildCard(0,loc,dtLabel,s.fields['DateTime']||'',s.fields['Pallets']||'',
@@ -1061,6 +1153,12 @@ function renderDocs(htmlArr){
     docEl.insertAdjacentHTML('beforebegin',
       '<div style="background:#FEE2E2;border:2px solid #B91C1C;color:#7F1D1D;padding:12px 14px;margin:0 0 12px;font:700 13px system-ui;border-radius:6px">'
       + '⚠ ΟΙ ΤΟΠΟΘΕΣΙΕΣ ΔΕΝ ΦΟΡΤΩΘΗΚΑΝ — οι διευθύνσεις παρακάτω λείπουν επειδή απέτυχε η ανάγνωση, ΟΧΙ επειδή δεν υπάρχουν. ΜΗΝ δώσεις αυτό το φύλλο στον οδηγό. Κάνε ανανέωση.'
+      + '</div>');
+  }
+  if (window.__clientsFailed) {
+    docEl.insertAdjacentHTML('beforebegin',
+      '<div id="clientsFailed" style="background:#FEE2E2;border:2px solid #B91C1C;color:#7F1D1D;padding:12px 14px;margin:0 0 12px;font:700 13px system-ui;border-radius:6px">'
+      + '⚠ ΤΟ ΟΝΟΜΑ ΠΕΛΑΤΗ ΤΟΥ ΚΟΜΜΑΤΙΟΥ ΔΕΝ ΔΙΑΒΑΣΤΗΚΕ — το «—» παρακάτω είναι αποτυχία ανάγνωσης. ΜΗΝ δώσεις αυτό το φύλλο στον οδηγό. Κάνε ανανέωση.'
       + '</div>');
   }
   docEl.innerHTML=htmlArr.map(function(h,i){

@@ -11,7 +11,8 @@
 -- next: 
 -- exceptions: Γραμμές «queue: offline flush» εξαιρούνται με ΠΡΟΘΕΜΑ και όχι με app_errors.kind, γιατί η στήλη kind υπάρχει μόνο μετά τη 049 — ο έλεγχος πρέπει να τρέχει και πριν· μετά τη 049 το φίλτρο γίνεται «kind IS DISTINCT FROM 'offline'» (ουρά, 07).
 -- tolerance: 
--- source: 02b Β-34 σημείωση («νέο» = πρώτη φορά σε 7 ημέρες)
+-- source: 02b Β-34 σημείωση («νέο» = πρώτη φορά σε 7 ημέρες) · DRAFT 057b_stock_monitoring.sql (4/10, ΔΕΝ εκτελέστηκε): + «AND e.message NOT LIKE '_atRetry 422 rule%'» (impact map 4/10 AU-07)· ζωντανό μόνο μετά το 057b
 -- enabled: yes
 SELECT count(DISTINCT left(e.message,40)) FROM app_errors e WHERE e.created_at>now()-interval '1 hour' AND e.message NOT LIKE 'queue: offline flush%'
- AND NOT EXISTS (SELECT 1 FROM app_errors p WHERE left(p.message,40)=left(e.message,40) AND p.created_at BETWEEN now()-interval '8 days' AND now()-interval '1 hour');
+ AND NOT EXISTS (SELECT 1 FROM app_errors p WHERE left(p.message,40)=left(e.message,40) AND p.created_at BETWEEN now()-interval '8 days' AND now()-interval '1 hour')
+ AND e.message NOT LIKE '_atRetry 422 rule%';

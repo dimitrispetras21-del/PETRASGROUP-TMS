@@ -400,6 +400,8 @@ const OrdersNoPrice = (() => {
         ? `→ Προς τιμολόγηση · εβδ. ${OrdersCommon.weekLabel(OrdersCommon.weekStartOf(rec))}`
         : st.key === 'invoiced' ? '→ τιμολογήθηκε'
         : st.key === 'blocked' && st.reason === 'sheets' ? '→ περιμένει δελτία παλετών (Αλεξία)'
+        // Round 1 O5 (critic-2 E2-09): a priced lot is not ready — it waits for its pieces.
+        : st.key === 'blocked' && st.reason === 'stock' ? '→ περιμένει κομμάτια (παρτίδα)'
         : '';
       return `<tr>
         <td class="np-no">${_esc(OrdersCommon.numLabel(rec))}</td>
@@ -473,7 +475,11 @@ const OrdersNoPrice = (() => {
       OrdersData.invalidate();
       OrdersHub.refreshBadges();
       const lbl = _esc(_label(rec));
-      if (OrdersData.sheetsOk(V.set, rec)) toast(`Η τιμή καταχωρήθηκε — η ${lbl} πέρασε στα Προς τιμολόγηση`);
+      // O5 (critic-2 E2-09): «πέρασε στα Προς τιμολόγηση» was not true for a
+      // lot — it lands there blocked until its last piece (or a close).
+      const _st = OrdersData.stateOf(V.set, rec);
+      if (_st.key === 'blocked' && _st.reason === 'stock') toast(`Η τιμή καταχωρήθηκε — η παρτίδα ${lbl} περιμένει κομμάτια πριν τιμολογηθεί`);
+      else if (OrdersData.sheetsOk(V.set, rec)) toast(`Η τιμή καταχωρήθηκε — η ${lbl} πέρασε στα Προς τιμολόγηση`);
       else toast(`Η τιμή καταχωρήθηκε — η ${lbl} περιμένει ακόμη δελτία παλετών (Αλεξία)`, 'warn');
       _repaintFromState();
     } catch (e) {
@@ -502,6 +508,11 @@ const OrdersNoPrice = (() => {
   // ── A4 + CSV (both roles) ───────────────────────────────────────────────
   function _ordered() { return V ? V.groups.flatMap(g => g.items) : []; }
 
+  // C4-07 (round 3): the paper the owner writes prices on names a LOT — the
+  // price he writes is the whole lot's (the base of the allocation), not one
+  // delivery. Same word as everywhere (OWNER-Q12). The CSV carries it in
+  // «Τύπος», so no column moves.
+  const _isLot = r => r._type === 'intl' && typeof OrdersStock !== 'undefined' && OrdersStock.isLot(r.fields);
   function print() {
     if (!V) return;
     const recs = _ordered();
@@ -518,7 +529,7 @@ const OrdersNoPrice = (() => {
       const sub = [meta.vat ? 'ΑΦΜ ' + meta.vat : 'ΑΦΜ —', meta.terms ? 'όροι ' + meta.terms + ' ημ.' : '', f['Reference'] || 'χωρίς αναφορά'].filter(Boolean).join(' · ');
       const pal = _pallets(r);
       return `<tr class="${late ? 'late' : ''}">
-        <td class="no">${late ? '<i>★</i>' : ''}${esc(OrdersCommon.numLabel(r))}</td>
+        <td class="no">${late ? '<i>★</i>' : ''}${esc(OrdersCommon.numLabel(r))}${_isLot(r) ? '<span>→ ΑΠΟΘΗΚΗ</span>' : ''}</td>
         <td><b>${esc(_rawClientName(_clientId(r)))}</b><span>${esc(sub)}</span></td>
         <td>${placeA4(OrdersCommon.placeOf(r, 'load'))}</td>
         <td>${placeA4(OrdersCommon.placeOf(r, 'del'))}</td>
@@ -594,7 +605,7 @@ tr{page-break-inside:avoid}
       const pl = w => { const p = OrdersCommon.placeOf(r, w); return [p.name, p.sub].filter(Boolean).join(' · '); };
       const d = _days(r);
       rows.push([
-        OrdersCommon.numLabel(r), r._type === 'natl' ? 'Εθνική' : 'Διεθνής', f['Reference'] || '', _rawClientName(_clientId(r)),
+        OrdersCommon.numLabel(r), r._type === 'natl' ? 'Εθνική' : 'Διεθνής' + (_isLot(r) ? ' · → ΑΠΟΘΗΚΗ' : ''), f['Reference'] || '', _rawClientName(_clientId(r)),
         meta.vat, meta.terms === null ? '' : meta.terms, pl('load'), pl('del'),
         OrdersCommon.ymd(f['Loading DateTime']), OrdersCommon.ymd(f['Delivery DateTime']), _assign(r).text,
         _pallets(r), _goods(r), d === null ? '' : d,

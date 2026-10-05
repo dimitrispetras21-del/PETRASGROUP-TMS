@@ -170,8 +170,11 @@ test('CSV «Φύλλο ERP»: header + one row per order, blank amount when unpr
   const groups = V.groupByClient(V.baseList(items, PREV));
   const info = id => ({ recA: { 'VAT Number': 'IT04211730265', 'Adress': 'Via Emilia 12', 'City': 'Modena', 'Country': 'IT' } })[id] || null;
   const rows = V.csvRows(groups, info);
-  assert.deepStrictEqual(rows[0], ['ΑΡ.', 'Αναφορά', 'Πελάτης', 'ΑΦΜ', 'Διεύθυνση', 'Φόρτωση', 'Παράδοση', 'Ημ. παράδοσης', 'Παλέτες', 'Ποσό', 'ΤΠΥ', 'Ημ. ΤΠΥ']);
+  // C2-04 (round 3): «Κατάσταση» LAST — the columns before it keep their positions.
+  assert.deepStrictEqual(rows[0], ['ΑΡ.', 'Αναφορά', 'Πελάτης', 'ΑΦΜ', 'Διεύθυνση', 'Φόρτωση', 'Παράδοση', 'Ημ. παράδοσης', 'Παλέτες', 'Ποσό', 'ΤΠΥ', 'Ημ. ΤΠΥ', 'Κατάσταση']);
   assert.strictEqual(rows.length, 7);
+  assert.deepStrictEqual(['#1229', 'NP-1', 'PE-1'].map(k => (rows.find(r => r[0] === k || r[1] === k) || [])[12]), ['προς κοπή', 'χωρίς τιμή', 'λείπει δελτίο'], 'the print\'s words');
+  assert.strictEqual(V.stateWord(V.annotate(fixture(), () => '').find(it => it.id === 'i6')), 'ΤΠΥ 0431');
   const r1229 = rows.find(r => r[0] === '#1229');
   assert.deepStrictEqual([r1229[3], r1229[4], r1229[9]], ['IT04211730265', 'Via Emilia 12, Modena, IT', '3350.00']);
   assert.strictEqual(rows.find(r => r[1] === 'NP-1')[9], '');
@@ -190,4 +193,184 @@ test('direction words', () => {
   assert.strictEqual(V.dirWord({ Direction: 'North→South' }), 'Κάθοδος');
   assert.strictEqual(V.dirWord({ Direction: 'South→North' }), 'Άνοδος');
   assert.strictEqual(V.dirWord({}), '');
+});
+
+// ── Stock lots (057, contract §5.8): one lot + one piece ────────────────────
+// Through the REAL OrdersData.loadInvoicingSet (the one place pieces are
+// dropped), over stubbed reads — the view itself never re-filters.
+const vm = require('vm');
+vm.runInThisContext(require('fs').readFileSync(require('path').join(__dirname, '..', 'core', 'data-helpers.js'), 'utf8'));
+global.OrdersStock = require('../core/orders-common.js').OrdersStock;
+const STOCK_LOT = (complete, f) => ({ id: 'recLot1', fields: Object.assign({ 'Lot No': 1300, 'Source Kind': 'intl', 'Intake Delivered': true,
+  'Stock Pallets': 33, 'Remaining Pallets': 13, Pieces: 2, 'Pieces Delivered': 1, Complete: complete }, f) });
+async function stockSet(extra, lot) {
+  const base = fixture();
+  global.TABLES = { ORDERS: 'tblO', NAT_ORDERS: 'tblN', STOCK_LOTS: 'tblStockLots' };
+  global.FEATURES = { ORDER_SPLIT: true, STOCK_LOTS: false };
+  const strip = r => ({ id: r.id, fields: JSON.parse(JSON.stringify(r.fields)) });
+  global.atGet = async t => (t === 'tblO' ? [...base.intl, ...extra] : base.natl).map(strip);
+  global.atGetAll = async () => [lot];
+  global.plFetch = async () => ({ records: Object.values(base.gate) });
+  return OrdersData.loadInvoicingSet(true);
+}
+const LOT_ORDER = intl('iL', { 'Order No': 1300, Reference: 'LOT-1', Direction: 'Import', Client: ['recA'], Price: 3300, 'Own Stock Lot': 'recLot1', 'Total Pallets': 33, 'Loading DateTime': d(PREV, 1), 'Delivery DateTime': d(PREV, 2) });
+const PIECE_ORDER = intl('iP', { 'Order No': 1301, Reference: 'PC-1', Direction: 'Import', Client: ['recA'], 'Stock Lot': ['recLot1'], 'Stock Lot Order No': 1300, 'Total Pallets': 5, 'Loading DateTime': d(PREV, 3), 'Delivery DateTime': d(PREV, 4) });
+
+test('stock: the piece never appears and changes no total; the lot waits, then is one ready invoice', async () => {
+  const name = id => CLIENTS[id] || '';
+  const without = V.scopeFilter(V.annotate(await stockSet([LOT_ORDER], STOCK_LOT(false)), name), 'all');
+  const withPiece = V.scopeFilter(V.annotate(await stockSet([LOT_ORDER, PIECE_ORDER], STOCK_LOT(false)), name), 'all');
+  assert.ok(!withPiece.some(it => it.id === 'iP'), 'the piece is not an invoicing row');
+  assert.deepStrictEqual(withPiece.map(it => it.id), without.map(it => it.id));
+  assert.deepStrictEqual(V.kpis(V.baseList(withPiece, PREV)), V.kpis(V.baseList(without, PREV)), 'no KPI moves because of the piece');
+  assert.deepStrictEqual([...V.weekStats(withPiece)], [...V.weekStats(without)]);
+  assert.deepStrictEqual(V.metricsOf(withPiece), V.metricsOf(without));
+  assert.deepStrictEqual(V.tabCounts(V.baseList(withPiece, 'open')), V.tabCounts(V.baseList(without, 'open')));
+  const lot = withPiece.find(it => it.id === 'iL');
+  assert.deepStrictEqual([lot.state, lot.reason, lot.lot && lot.lot.id], ['blocked', 'stock', 'recLot1']);
+  assert.strictEqual(V.stockText(lot.lot), 'περιμένει κομμάτια: 13p στην αποθήκη · 1 σε κίνηση', 'O4: no zero term');
+  assert.strictEqual(V.stockText(null), 'η κατάσταση της παρτίδας δεν διαβάστηκε');
+  // a blocked lot is never in «Προς κοπή»; complete → ready, once, at the full client price
+  const k0 = V.kpis(V.baseList(withPiece, PREV));
+  const done = V.scopeFilter(V.annotate(await stockSet([LOT_ORDER, PIECE_ORDER], STOCK_LOT(true, { 'Remaining Pallets': 0, 'Pieces Delivered': 2 })), name), 'all');
+  const k1 = V.kpis(V.baseList(done, PREV));
+  assert.strictEqual(done.find(it => it.id === 'iL').state, 'ready');
+  assert.deepStrictEqual([k1.ready - k0.ready, k1.readySum - k0.readySum, k1.blocked - k0.blocked], [1, 3300, -1]);
+  assert.strictEqual(done.filter(it => it.ref === 'LOT-1' || it.ref === 'PC-1').length, 1, 'one invoice for the lot, none for the piece');
+});
+
+// E-07 (impact map 4/10): a piece returned to stock is waiting, not moving.
+test('stockText: «σε κίνηση» counts only pieces on a truck; returned ones are «χωρίς φορτηγό»', () => {
+  const lot = STOCK_LOT(false, { Pieces: 4, 'Pieces Delivered': 1, 'Pieces Without Truck': 2, 'Remaining Pallets': 7 });
+  assert.strictEqual(V.stockText(lot), 'περιμένει κομμάτια: 7p στην αποθήκη · 1 σε κίνηση · 2 χωρίς φορτηγό');
+  // O4 (critic-5 S5-04): only the non-zero terms; absent counts (facade trap
+  // #2) are 0 — never NaN, a negative, or «0 σε κίνηση · 0 χωρίς φορτηγό».
+  assert.strictEqual(V.stockText(STOCK_LOT(false, { Pieces: 2, 'Pieces Delivered': 2, 'Remaining Pallets': 2 })), 'περιμένει κομμάτια: 2p στην αποθήκη');
+  assert.strictEqual(V.stockText({ id: 'x', fields: {} }), 'περιμένει κομμάτια');
+});
+
+// OWNER-Q9 answered 4/10 (ERP = original order only): «η Ειρήνη καταχωρεί και
+// τιμολογεί το αρχικό order». The ERP sheet of a LOT is the order's own row —
+// its destination (the warehouse), its delivery date, its pallets — exactly
+// like any order; no «N παραδόσεις», no last-piece date (the OWNER-Q6 default).
+test('OWNER-Q9: the ERP row of a complete lot = the order\'s own row (warehouse, its delivery date, its pallets)', async () => {
+  const name = id => CLIENTS[id] || '';
+  const lastPiece = OrdersCommon.addDays(TODAY, -1);
+  const set = await stockSet([LOT_ORDER, PIECE_ORDER], STOCK_LOT(true, { 'Remaining Pallets': 0, Pieces: 2, 'Pieces Delivered': 2, 'Last Piece Delivered': lastPiece }));
+  const items = V.scopeFilter(V.annotate(set, name), 'all');
+  const lot = items.find(it => it.id === 'iL');
+  const own = OrdersCommon.ymd(LOT_ORDER.fields['Delivery DateTime']);
+  assert.deepStrictEqual([lot.erp.place, lot.erp.date, lot.erp.pallets], [[lot.del.name, lot.del.sub].filter(Boolean).join(' · '), own, '33']);
+  assert.ok(!/παράδοσ|κομμάτ/.test(JSON.stringify(lot.erp)), 'nothing of the pieces on the paper');
+  const rows = V.csvRows(V.groupByClient(V.baseList(items, PREV)), () => null);
+  const lotRow = rows.find(r => r[1] === 'LOT-1');
+  assert.deepStrictEqual([lotRow[6], lotRow[7], lotRow[8], lotRow[9], lotRow[12]], [lot.erp.place, own, '33', '3300.00', 'προς κοπή']);
+  assert.ok(!rows.some(r => r[1] === 'PC-1'), 'no piece row');
+  const plain = rows.find(r => r[1] === '6100118264');
+  assert.strictEqual(plain[7], OrdersCommon.ymd(fixture().intl[1].fields['Delivery DateTime']), 'an ordinary order keeps its delivery date');
+  // the lot record not read changes nothing on the paper
+  const unread = V.erpDelivery(LOT_ORDER, { name: 'Αποθήκη Χ', sub: 'Budapest HU' }, '2026-10-01');
+  assert.deepStrictEqual([unread.place, unread.date, unread.pallets], ['Αποθήκη Χ · Budapest HU', '2026-10-01', '33']);
+  // the gate keeps the lot's own date (card header, age, sort, invoice-date check)
+  assert.deepStrictEqual(lot.lotDone, { date: lastPiece });
+  assert.strictEqual(V.lotDone({ stock: null }, LOT_ORDER).date, '', 'lot record not read → no date, never the intake');
+  assert.strictEqual(V.lotDone(set, fixture().intl[1]), null, 'an ordinary order has no lot date');
+});
+
+// E-05 (impact map 4/10): a lot waits to be invoiced from «Completed On».
+test('age of a lot: none while incomplete, from «Completed On» once complete — not from the warehouse intake', async () => {
+  const name = id => CLIENTS[id] || '';
+  const old = Object.assign({}, LOT_ORDER, { fields: Object.assign({}, LOT_ORDER.fields, { 'Delivery DateTime': OrdersCommon.addDays(TODAY, -45) + 'T10:00:00' }) });
+  const open = V.scopeFilter(V.annotate(await stockSet([old], STOCK_LOT(false)), name), 'all').find(it => it.id === 'iL');
+  assert.strictEqual(open.days, null, 'an incomplete lot has no age (it cannot be invoiced yet)');
+  const done = V.scopeFilter(V.annotate(await stockSet([old], STOCK_LOT(true, { 'Completed On': OrdersCommon.addDays(TODAY, -2) })), name), 'all').find(it => it.id === 'iL');
+  assert.strictEqual(done.days, 2);
+  assert.strictEqual(V.metricsOf([done]).overdue, 0, 'not «overdue» because of the 45 days in the warehouse');
+});
+
+// OWNER-Q9 (4/10) replaces round 1 O2 on the papers: a CLOSED lot is invoiced
+// as its original order too — its own 33 pallets, no «31 + 2 χαμένες», no close
+// text. The close stays on the card (ΕΛΕΓΧΟΙ) and in the lot's own date
+// (lotDone: a zero-piece close dates from the close).
+test('OWNER-Q9: a closed lot\'s ERP row = the order\'s own pallets; the close only dates the gate', async () => {
+  const name = id => CLIENTS[id] || '';
+  const lastPiece = OrdersCommon.addDays(TODAY, -3), closedOn = OrdersCommon.addDays(TODAY, -1);
+  const closed = STOCK_LOT(true, { 'Remaining Pallets': 2, Pieces: 2, 'Pieces Delivered': 2, 'Delivered Pallets': 31, 'Written Off Pallets': 2,
+    'Last Piece Delivered': lastPiece, 'Closed At': closedOn + 'T13:00:00Z', 'Closed Note': '2 χαλασμένες', 'Completed On': closedOn });
+  const items = V.scopeFilter(V.annotate(await stockSet([LOT_ORDER], closed), name), 'all');
+  const lot = items.find(it => it.id === 'iL');
+  // C2-03 (round 3): the lot's one date is «Completed On» (the close, 1 day ago), not the last piece (3 days).
+  assert.deepStrictEqual([lot.state, lot.erp.date, lot.erp.pallets, lot.when], ['ready', OrdersCommon.ymd(LOT_ORDER.fields['Delivery DateTime']), '33', closedOn]);
+  const row = V.csvRows(V.groupByClient(V.baseList(items, PREV)), () => null).find(r => r[1] === 'LOT-1');
+  assert.strictEqual(row[8], '33', 'the CSV «Παλέτες» cell = the order\'s own pallets');
+  // zero pieces, whole lot written off (Ε3): the gate date is the close
+  const zero = STOCK_LOT(true, { 'Remaining Pallets': 33, Pieces: 0, 'Pieces Delivered': 0, 'Delivered Pallets': 0, 'Written Off Pallets': 33,
+    'Closed At': closedOn + 'T13:00:00Z', 'Closed Note': 'ο πελάτης τα πήρε', 'Completed On': closedOn });
+  assert.deepStrictEqual(V.lotDone({ stock: new Map([['recLot1', zero]]) }, LOT_ORDER), { date: closedOn });
+});
+
+// Round 1 O3 (critic-2 E2-03, critic-5 S5-05): one date per lot — the KPI
+// «Παλαιότερη εκκρεμής», the sort and the invoice-date check read the lot's
+// last delivery, never the warehouse intake (kept as a gate after OWNER-Q9).
+test('O3: a lot\'s one date (when) = its last delivery; KPI date and the invoice-date warning follow it', async () => {
+  const name = id => CLIENTS[id] || '';
+  const lastPiece = OrdersCommon.addDays(TODAY, -2);
+  const old = Object.assign({}, LOT_ORDER, { fields: Object.assign({}, LOT_ORDER.fields, { 'Delivery DateTime': OrdersCommon.addDays(TODAY, -40) + 'T10:00:00' }) });
+  const done = STOCK_LOT(true, { 'Remaining Pallets': 0, 'Pieces Delivered': 2, 'Last Piece Delivered': lastPiece, 'Completed On': lastPiece });
+  const items = V.scopeFilter(V.annotate(await stockSet([old], done), name), 'all');
+  const lot = items.find(it => it.id === 'iL');
+  // OWNER-Q9: the paper prints the order's own delivery; the gate keeps the last piece.
+  assert.deepStrictEqual([lot.when, lot.erp.date, lot.days], [lastPiece, OrdersCommon.ymd(old.fields['Delivery DateTime']), 2]);
+  const k = V.kpis([lot]);
+  assert.deepStrictEqual([k.oldestDays, k.oldestDate], [2, lastPiece], 'the KPI date is the date its days count from, not the intake 40 days ago');
+  const before = OrdersCommon.addDays(lastPiece, -1);
+  assert.ok(V.dateCheck(before, TODAY, lot.when).warn, 'an invoice dated before the last piece warns');
+  assert.ok(!V.dateCheck(before, TODAY, lot.deliv).warn, '(against the intake date it would have passed silently)');
+  const plain = items.find(it => it.id === 'i2');
+  assert.strictEqual(plain.when, plain.deliv, 'an ordinary order: its own delivery');
+});
+
+// Round 2 #1 (owner 4/10): stock_v_lot_money.allocation_status 'no_intake_cost'
+// became 'no_charge' (no partner rate AND no «Χρέωση αποθήκης»). The dead name
+// is no longer dressed up as a reason; an unknown status is shown as it is.
+test('allocation why-map: no_charge → «χωρίς χρέωση αποθήκης»; the old name is not translated', () => {
+  assert.strictEqual(V.allocWhy('no_charge'), 'χωρίς χρέωση αποθήκης');
+  assert.strictEqual(V.allocWhy('no_price'), 'χωρίς τιμή');
+  assert.strictEqual(V.allocWhy('no_pallets'), 'χωρίς παλέτες');
+  assert.strictEqual(V.allocWhy('no_intake_cost'), 'no_intake_cost');
+  assert.strictEqual(V.allocWhy(null), '—');
+});
+
+// Critic-2 C2-03 (round 3): ONE date per lot = «Completed On» (fallback the last
+// piece). Remainder closed two days after the last piece: the KPI date, the age
+// and the invoice-date check all read the close — an invoice dated between the
+// last piece and the close warns, in the lot's own words.
+test('C2-03: a lot closed after its last piece — when = Completed On; the check warns «πριν την ολοκλήρωση της παρτίδας»', async () => {
+  const name = id => CLIENTS[id] || '';
+  const lastPiece = OrdersCommon.addDays(TODAY, -3), closedOn = OrdersCommon.addDays(TODAY, -1);
+  const done = STOCK_LOT(true, { 'Remaining Pallets': 2, 'Pieces Delivered': 2, 'Last Piece Delivered': lastPiece, 'Closed At': closedOn + 'T13:00:00Z', 'Completed On': closedOn });
+  const lot = V.scopeFilter(V.annotate(await stockSet([LOT_ORDER], done), name), 'all').find(it => it.id === 'iL');
+  const k = V.kpis([lot]);
+  assert.deepStrictEqual([lot.when, lot.days, k.oldestDate, k.oldestDays], [closedOn, 1, closedOn, 1]);
+  const between = OrdersCommon.addDays(TODAY, -2);
+  assert.match(V.dateCheck(between, TODAY, lot.when, true).warn || '', /^πριν την ολοκλήρωση της παρτίδας \(/);
+  assert.match(V.dateCheck(between, TODAY, OrdersCommon.addDays(TODAY, -1)).warn || '', /^πριν την παράδοση \(/, 'an ordinary order keeps its words');
+  // still waiting: no Completed On → its last piece (sort / KPI only; no age)
+  const waiting = STOCK_LOT(false, { 'Last Piece Delivered': lastPiece });
+  assert.deepStrictEqual(V.lotDone({ stock: new Map([['recLot1', waiting]]) }, LOT_ORDER), { date: lastPiece });
+});
+
+// Critic-2 C2-04 (round 3): a lot still waiting for its pieces looks like any
+// order on the ERP sheet since OWNER-Q9 — its «Κατάσταση» says it is not ready.
+test('C2-04: the ERP CSV says «περιμένει κομμάτια» for a waiting lot', async () => {
+  const name = id => CLIENTS[id] || '';
+  const items = V.scopeFilter(V.annotate(await stockSet([LOT_ORDER], STOCK_LOT(false)), name), 'all');
+  const row = V.csvRows(V.groupByClient(V.baseList(items, 'open')), () => null).find(r => r[1] === 'LOT-1');
+  assert.strictEqual(row[12], 'περιμένει κομμάτια');
+  assert.strictEqual(V.stateWord(items.find(it => it.id === 'iL')), 'περιμένει κομμάτια');
+});
+
+// SQL S1 (round 3): an assignment without a rate has its own reason.
+test('allocation why-map: no_partner_rate → «λείπει το κόμιστρο συνεργάτη»', () => {
+  assert.strictEqual(V.allocWhy('no_partner_rate'), 'λείπει το κόμιστρο συνεργάτη');
 });

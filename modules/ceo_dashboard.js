@@ -159,8 +159,13 @@
 
       const deliveredOrders = allOrders.filter(r => r.fields['Status'] === 'Delivered');
       const prevDelivered   = prevOrders.filter(r => r.fields['Status'] === 'Delivered');
+      // «Κρίσιμα <48ω» (KPI + brief) leaves out LOOSE stock pieces: back in the
+      // warehouse with the old truck's delivery date, they are stock, not a
+      // late delivery (impact map 4/10 E-16; the Weekly shelf counts them).
+      // atGet reads every field, so 'Stock Lot'/'Group ID' are there.
+      const criticalOrders = highRiskOrders.filter(r => !OrdersStock.isLoose(r.fields));
 
-      _renderAll({ allOrders, deliveredOrders, prevOrders, prevDelivered, activeDrivers, tripCosts, maintHistory, highRiskOrders, sparkOrders });
+      _renderAll({ allOrders, deliveredOrders, prevOrders, prevDelivered, activeDrivers, tripCosts, maintHistory, highRiskOrders: criticalOrders, sparkOrders });
 
       // Name any secondary source that failed, on the timestamp line rather than
       // as a page banner: the dashboard is still usable and its primary numbers
@@ -567,7 +572,9 @@
     // in Airtable — redundant check removed to avoid false positives.
     const delivered = allOrders.filter(r => ['Delivered','Invoiced'].includes(r.fields['Status']));
     const deliveredRev = delivered.reduce((s, r) => s + (parseFloat(r.fields['Price']) || 0), 0);
-    const uninvoiced = allOrders.filter(r => r.fields['Status'] === 'Delivered');
+    // A stock PIECE is never invoiced (it has no price; its lot is) — counted
+    // here it stayed «uninvoiced» for ever (impact map 4/10 E-19).
+    const uninvoiced = allOrders.filter(r => r.fields['Status'] === 'Delivered' && !OrdersStock.isPiece(r.fields));
     const uninvoicedRev = uninvoiced.reduce((s, r) => s + (parseFloat(r.fields['Price']) || 0), 0);
     return { deliveredRev, uninvoicedCount: uninvoiced.length, uninvoicedRev };
   }

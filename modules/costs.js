@@ -366,6 +366,7 @@ async function ctReload() {
     // τρέχει ΠΡΙΝ το render ώστε οι κάρτες να βγουν κατευθείαν πλήρεις· αν
     // αποτύχει, οι κάρτες βγαίνουν με ποσά + ορατή σημείωση, ποτέ κενές.
     await ctEnrich();
+    await ctStockLoad();
     ctRenderSummary(); ctRenderVehBar(); ctRenderList();
     ctRecon();
   } catch (e) {
@@ -420,6 +421,89 @@ async function ctEnrich() {
     console.warn('[costs] enrich failed:', e && e.message);
     _ct.orderByPg = {}; _ct.enrichFail = true;
   }
+}
+
+// ── Stock lots Φ1 (057, Ε1; impact map 4/10 E-15 / D-11 / D-12) ────────────
+// After 057 the RT revenue (ct_v_rt_revenue) is NOT the order prices for a
+// stock lot: the lot's leg earns the warehouse partner's rate (its partner RT
+// → margin 0) and each piece's leg earns its pallet share of the lot's net.
+// The card's «οι τιμές των σκελών αθροίζουν …» check summed order Prices, so
+// every lot RT read «ανεξήγητη διαφορά €(net)» and a piece leg printed «—»
+// while its RT revenue held the allocation. The amounts come from
+// GET /costs/stock-lots (owner only, like this page) — the DB's own numbers,
+// nothing recomputed here. Read only when a card carries a lot or a piece
+// (never before 057 + the stock Worker: the labels do not exist then, so no
+// request is made and the page is today's). A failed read is said per leg
+// and the sum check is skipped — unknown is not «ανεξήγητη διαφορά».
+// The leg orders come from ctEnrich's ORDERS read, which has no fields[] —
+// 'Own Stock Lot' / 'Stock Lot' / 'Stock Lot Order No' are in it.
+async function ctStockLoad() {
+  _ct.stock = null; _ct.stockFailed = false;
+  if (!_ct.orderByPg) return;
+  const isStock = o => o && (OrdersStock.isLot(o.fields) || OrdersStock.isPiece(o.fields));
+  const any = Object.values(_ct.rts).some(rt => (rt.ct_rt_legs || []).some(l => l.order_id != null && isStock(_ct.orderByPg[l.order_id])));
+  if (!any) return;
+  try {
+    const r = await ctFetch('/costs/stock-lots');
+    const lots = {}, pieces = {};
+    (r.lots || []).forEach(m => { lots[m.lot_rec] = m; });
+    (r.pieces || []).forEach(p => { pieces[p.piece_rec] = p; });
+    _ct.stock = { lots, pieces };
+  } catch (e) {
+    console.warn('[costs] stock-lots failed', e && e.message);
+    _ct.stockFailed = true;
+  }
+}
+// The leg's revenue under 057, mirroring ct_v_rt_revenue: { amount (shown),
+// sum (what goes into the card's legs check), note, unread }; null for an
+// ordinary order. allocation_status ≠ 'ok' (no price / no charge at all) =
+// the DB's fallback: the whole price stays on the lot's leg, pieces earn 0.
+function ctStockLeg(o) {
+  const f = o.fields;
+  const isLot = OrdersStock.isLot(f);
+  if (!isLot && !OrdersStock.isPiece(f)) return null;
+  const num = isLot ? (f['Order No'] ? '#' + f['Order No'] : '—') : OrdersStock.lotNumLabel(f);
+  const unread = { amount: null, sum: 0, unread: true, note: `παρτίδα ${num} — ο επιμερισμός δεν διαβάστηκε` };
+  if (_ct.stockFailed || !_ct.stock) return unread;
+  // 'no_charge' (round 2 #1, owner 4/10) replaced 'no_intake_cost': neither a
+  // partner rate nor a «Χρέωση αποθήκης» on the lot. 'no_partner_rate' (round
+  // 3, SQL S1): an assignment WITHOUT a rate, not «no assignment».
+  const why = { no_price: 'χωρίς τιμή', no_charge: 'χωρίς χρέωση αποθήκης', no_partner_rate: 'λείπει το κόμιστρο συνεργάτη', no_pallets: 'χωρίς παλέτες' };
+  if (isLot) {
+    const m = _ct.stock.lots[OrdersStock.lotRecOfLot(f)];
+    if (!m) return unread;
+    if (m.allocation_status !== 'ok') {
+      const p = f['Price'] != null && f['Price'] !== '' ? Number(f['Price']) : null;
+      return { amount: p, sum: p || 0, note: `παρτίδα ${num} — χωρίς επιμερισμό (${why[m.allocation_status] || m.allocation_status}): όλο το έσοδο εδώ` };
+    }
+    // Left out of the legs sum (the lot's price is not this RT's revenue).
+    // Round 1 O11 (critic-5 S5-10): ≤ 6 words in the amounts line, the why
+    // in the tooltip. Round 2 #1 (owner 4/10): the RT that carried the lot
+    // INTO the warehouse earns partner_cost (stock_v_rt_amounts =
+    // coalesce(partner_cost, 0)). Its name is now «κόμιστρο συνεργάτη», the
+    // word every partner RT uses: «κόστος αποθήκης» would collide with the
+    // separate «Χρέωση αποθήκης» that the owner enters on the lot.
+    // Our own truck (no assignment → partner_cost NULL) earns 0 — an owner
+    // decision («μόνο τα κομμάτια»), not a gap: the warehouse charge and the
+    // net are carried by the pieces' RTs. partner_cost is NULL too when a
+    // partner carried it but no rate was entered (review P3 4/10): the
+    // wording follows the order's own Partner, never claims «δικό μας»
+    // for a partner trip. The amount is 0 either way (the DB's coalesce).
+    // Critic-5 S5-05: ≤ 6 words like the partner line — «δικό μας φορτηγό»
+    // is already the card's header, the reason is in the title.
+    if (m.partner_cost == null) {
+      const own = !f['Is Partner Trip'] && !getLinkedId(f['Partner']);
+      return { amount: 0, sum: 0, note: `παρτίδα ${num} · ${own ? 'μόνο τα κομμάτια' : 'χωρίς κόμιστρο'}`,
+        title: own ? 'Το σκέλος που πήγε την παρτίδα στην αποθήκη με δικό μας φορτηγό δεν έχει έσοδο· το καθαρό της παρτίδας μοιράζεται στα κομμάτια'
+          : 'Συνεργάτης χωρίς καταχωρημένο κόμιστρο: το σκέλος μετρά 0 μέχρι να μπει η ανάθεση· το καθαρό της παρτίδας μοιράζεται στα κομμάτια' };
+    }
+    return { amount: Number(m.partner_cost), sum: 0, note: `παρτίδα ${num} · κόμιστρο συνεργάτη`,
+      title: 'Το έσοδο του σκέλους της παρτίδας = το κόμιστρο του συνεργάτη· το καθαρό της παρτίδας μοιράζεται στα κομμάτια' };
+  }
+  const a = _ct.stock.pieces[o.id];
+  if (!a) return unread;
+  if (a.amount == null) return { amount: null, sum: 0, note: `από παρτίδα ${num} — χωρίς επιμερισμό: έσοδο 0` };
+  return { amount: Number(a.amount), sum: Number(a.amount), note: `από παρτίδα ${num}` };
 }
 
 // ── Cost-complete v1: έχει η γραμμή έστω μία καταχωρημένη γραμμή κόστους; ──
@@ -682,9 +766,12 @@ function ctLegLine(l) {
   const to = orderDelName(f, 26) || '—';
   const cc = orderLocCountry(f, 'del');
   const date = imp ? (f['Delivery DateTime'] || f['Loading DateTime']) : f['Loading DateTime'];
-  const price = f['Price'] != null && f['Price'] !== '' ? ctEur(f['Price']) : '<span style="color:var(--text-dim);font-weight:400">—</span>';
+  const stk = ctStockLeg(o);   // stock lot / piece: the DB's revenue for this leg, not the order Price
+  const amt = stk ? stk.amount : (f['Price'] != null && f['Price'] !== '' ? Number(f['Price']) : null);
+  const price = amt != null ? ctEur(amt) : '<span style="color:var(--text-dim);font-weight:400">—</span>';
+  const stkNote = stk ? ` <span style="color:var(--text-mid);font-size:12px"${stk.title ? ` title="${ctEsc(stk.title)}"` : ''}>· ${ctEsc(stk.note)}</span>` : '';
   return `<div class="ct-leg">${chip}
-    <span class="rt">${imp ? ctEsc(from) : from} <span class="arr">→</span> ${ctEsc(to)}${cc && !imp ? ' (' + cc + ')' : ''}</span>
+    <span class="rt">${imp ? ctEsc(from) : from} <span class="arr">→</span> ${ctEsc(to)}${cc && !imp ? ' (' + cc + ')' : ''}${stkNote}</span>
     <span class="ldate ct-mono">${fmtDate(date)}</span>
     <span class="lamt ct-mono">${price}</span></div>`;
 }
@@ -744,6 +831,8 @@ function ctCardHtml(t) {
   // τα νούμερα, χωρίς να τυφλώνει τον μόνο που τα χρειάζεται.
   const lockLine = gated
     ? `<div class="ct-locknote">${icon('warning', 13)} Δελτίο παλετών: λείπει σε ${gate.legs_needing_sheet - gate.legs_with_sheet} από ${gate.legs_needing_sheet} σκέλη — οι χαμένες παλέτες είναι κόστος που δεν φαίνεται ακόμη εδώ</div>` : '';
+  // O11 (critic-5 S5-10): one name for one amount — since round 2 #1 the lot
+  // leg names the partner's rate «κόμιστρο συνεργάτη» too (ctStockLeg).
   const partnerNote = t.trip_type === 'PARTNER'
     ? `<div class="ct-leg" style="color:var(--text-mid);font-size:12px">κόμιστρο συνεργάτη — καύσιμα/διόδια/οδηγός είναι δικά του κόστη, όχι ελλιπή δικά μας</div>` : '';
   // Τα σκέλη δείχνουν τιμές παραγγελιών· το έσοδο trip αφαιρεί το εσωτερικό
@@ -752,12 +841,17 @@ function ctCardHtml(t) {
   // αντιγράφεται η σταθερά (αρχή 3) — και αν δεν εξηγείται από VS, το λέμε.
   let vsNote = '';
   if (_ct.orderByPg) {
+    // Stock lot / piece legs add what the DB credits them (ctStockLeg), not
+    // the order Price; an unread allocation makes the check unknown → skipped.
+    let stockUnread = false;
     const legsSum = legs.reduce((a, l) => {
       const o = l.order_id != null && _ct.orderByPg[l.order_id];
+      const stk = o && ctStockLeg(o);
+      if (stk) { if (stk.unread) stockUnread = true; return a + stk.sum; }
       return a + (o && o.fields['Price'] != null && o.fields['Price'] !== '' ? Number(o.fields['Price']) : 0);
     }, 0);
     const diff = Math.round(legsSum - Number(t.revenue || 0));
-    if (diff > 0) {
+    if (diff > 0 && !stockUnread) {
       const hasVs = legs.some(l => { const o = l.order_id != null && _ct.orderByPg[l.order_id]; return o && o.fields['Veroia Switch']; });
       vsNote = hasVs
         ? `<div class="ct-leg" style="color:var(--text-mid);font-size:12px">Veroia Switch: −${ctEur(diff)} εσωτερική μεταφορά (δεν είναι έσοδο πελάτη), άρα έσοδο trip ${ctEur(t.revenue)}</div>`
@@ -1080,7 +1174,10 @@ async function ctOpenSettings() {
   const m = document.getElementById('ctModal');
   m.classList.add('open');
   m.innerHTML = '<div class="ct-mhead">Ρυθμίσεις COSTS <button class="ct-close" onclick="ctCloseAll()">&times;</button></div><div class="ct-mbody ct-empty">Φόρτωση…</div>';
-  const labels = { x_export: 'Χ — μεταφορά VS (εξαγωγή)', x_import: 'Χ — μεταφορά VS (εισαγωγή)', pallet_eur: 'Αξία παλέτας EUR', vat_default: 'Προεπιλογή ΦΠΑ', wear_fallback_eur_km: 'Φθορά €/km (εφεδρική τιμή)' };
+  // full_truck_pallets (057, owner Q3 4/10): F of a VS piece's share
+  // round(X × min(pallets, F) / F, 2) — computed in ct_v_rt_revenue only.
+  // S5-10: the label names the setting (≤ 4 words), not its formula.
+  const labels = { x_export: 'Χ — μεταφορά VS (εξαγωγή)', x_import: 'Χ — μεταφορά VS (εισαγωγή)', pallet_eur: 'Αξία παλέτας EUR', vat_default: 'Προεπιλογή ΦΠΑ', wear_fallback_eur_km: 'Φθορά €/km (εφεδρική τιμή)', full_truck_pallets: 'Παλέτες γεμάτου φορτηγού' };
   try {
     const s = await ctFetch('/costs/settings');
     m.querySelector('.ct-mbody').innerHTML = (s.records || []).map(r => `

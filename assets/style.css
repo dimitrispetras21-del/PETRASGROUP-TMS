@@ -3126,6 +3126,81 @@ button.ecard-meta-row-btn, .ecard-meta-row button.badge {
   text-transform:uppercase; color:var(--text-dim); }
 .wi-div { width:1px; height:34px; background:var(--border-mid); align-self:flex-end; margin:0 3px; }
 
+/* ΑΠΟΘΕΜΑ ΣΕ ΑΠΟΘΗΚΗ — Weekly International (owner 3–4/10/2026, plan
+   stock-lots-v5 §6.2). The strip is the sheet's FIRST child and sticky at its
+   top, so it stays in view while the board scrolls and in fullscreen (the
+   sheet IS the fullscreen element). Its height is a token: the column header
+   and the sticky day headers move down by exactly the strip — and by nothing
+   when there is no strip (no .has-shelf → 0px). Chips never cut a warehouse or
+   client name (DESIGN #6): they keep their width and the row scrolls sideways.
+   Tokens only; no money on this strip, ever.
+   RIGHT-aligned (owner 4/10: «η αποθήκη να είναι πάνω δεξιά, όχι αριστερά»):
+   the stock leaves as imports, so it sits above the ΑΝΑΘΕΣΗ/ΕΙΣΑΓΩΓΗ side and
+   stays off the export client column (max 75% of the sheet). The list only
+   takes the width its chips need and scrolls (with the fade) beyond that.
+   Round 1 (critic-1 C1-03, critic-5 S5-01): a chip is «▣ Αποθήκη · Πελάτης
+   18/24p» + a flag only for a problem — about half the old width, so 2–3 fit
+   at 1440 — and the label «ΑΠΟΘΕΜΑ · N» is a button that lists every lot. */
+.wk3.wi2 { --wi-shelf-h:0px; }
+.wk3.wi2.has-shelf { --wi-shelf-h:28px; }
+.wk3.wi2 .wi-shelf { position:sticky; top:0; z-index:31; height:var(--wi-shelf-h); overflow:hidden; background:var(--surface-page); }
+.wk3.wi2.has-shelf .wk3-cols { top:var(--wi-shelf-h); }
+.wk3.wi2.has-shelf .wk3-dayh { top:calc(28px + var(--wi-shelf-h)); }
+.wi-shelf-in { display:flex; align-items:center; justify-content:flex-end; gap:6px; height:28px; padding:2px 0 4px; box-sizing:border-box;
+  max-width:75%; margin-left:auto; }
+.wi-shelf-list { flex:0 1 auto; min-width:0; display:flex; align-items:center; gap:6px; overflow-x:auto; scrollbar-width:none; }
+.wi-shelf-list::-webkit-scrollbar { display:none; }
+.wi-shelf-list.ovf { -webkit-mask-image:linear-gradient(to right, black calc(100% - 32px), transparent);
+  mask-image:linear-gradient(to right, black calc(100% - 32px), transparent); }
+.wi-shelf-list.ovl { -webkit-mask-image:linear-gradient(to right, transparent, black 32px);
+  mask-image:linear-gradient(to right, transparent, black 32px); }
+.wi-shelf-list.ovl.ovf { -webkit-mask-image:linear-gradient(to right, transparent, black 32px, black calc(100% - 32px), transparent);
+  mask-image:linear-gradient(to right, transparent, black 32px, black calc(100% - 32px), transparent); }
+.wi-shelf-lbl { flex:none; font:700 11px 'Syne',sans-serif; letter-spacing:1.2px; color:var(--text-mid);
+  border:none; background:none; padding:0 2px; white-space:nowrap; }
+button.wi-shelf-lbl { cursor:pointer; }
+button.wi-shelf-lbl:hover { color:var(--text); text-decoration:underline; }
+.wi-shelf-lbl .wi-shelf-k { color:var(--warn); }
+.wi-shelf-chip { flex:none; display:inline-flex; align-items:center; gap:5px; height:22px; padding:0 8px;
+  border:1px solid var(--border); border-radius:var(--radius-full); background:var(--surface-card);
+  font:500 11px 'DM Sans',sans-serif; color:var(--text); white-space:nowrap; cursor:pointer;
+  font-variant-numeric:tabular-nums; }
+.wi-shelf-chip:hover { border-color:var(--text-dim); }
+.wi-shelf-chip:focus-visible, .wi-shelf-loose:focus-visible, .wi-shelf-fail:focus-visible, .wi-shelf-lbl:focus-visible { outline:2px solid var(--accent); outline-offset:1px; }
+.wi-shelf-chip .sep { color:var(--text-mid); }
+.wi-shelf-chip .n { font-weight:700; }
+.wi-shelf-chip .fl { font-weight:700; }
+.wi-shelf-chip.aging, .wi-shelf-chip.close { border-color:var(--warn-border); background:var(--warn-bg); }
+.wi-shelf-chip.aging .fl, .wi-shelf-chip.close .fl { color:var(--warn); }
+.wi-shelf-chip.nointake { border-color:var(--danger); background:var(--danger-bg); }
+.wi-shelf-chip.nointake .fl { color:var(--danger); }
+.wi-shelf-loose { flex:none; height:22px; padding:0 8px; border:1px dashed var(--border-dark);
+  border-radius:var(--radius-full); background:var(--surface-card); font:600 11px 'DM Sans',sans-serif;
+  color:var(--text); white-space:nowrap; cursor:pointer; }
+.wi-shelf-loose.late { border:1px solid var(--warn-border); background:var(--warn-bg); color:var(--warn); }
+.wi-shelf-fail { flex:none; height:22px; padding:0 10px; border:1px solid var(--danger); border-radius:var(--radius);
+  background:var(--danger-bg); color:var(--danger); font:700 11px 'DM Sans',sans-serif; letter-spacing:.4px; cursor:pointer; }
+@media print { .wk3.wi2 .wi-shelf { display:none; } .wk3.wi2.has-shelf { --wi-shelf-h:0px; } }
+.wi-badge.wi-b-ap { background:var(--accent-text); }
+.wi-badge.wi-b-lot { background:var(--surface-dark); }
+/* Panels of the stock entries (lot, loose pieces, «+ Κομμάτι από απόθεμα…»). */
+.wi-stk-h { font-weight:700; color:var(--text); margin-top:2px; }
+.wi-stk-bad { color:var(--danger); font-weight:700; }
+.wi-stk-warn { color:var(--warn); font-weight:600; }
+.wi-stk-opt { width:100%; border:none; background:none; text-align:left; font-family:inherit; color:inherit; }
+.wi-stk-opt[disabled] { color:var(--text-dim); cursor:not-allowed; }
+.wi-stk-opt[disabled]:hover { background:none; }
+.wi-stk-piece { justify-content:space-between; }
+.wi-stk-ref { color:var(--text-dim); }
+/* Link-weight buttons: «Άνοιγμα παρτίδας» in the lot panel, «ή κομμάτι από
+   ΑΠΟΘΕΜΑ» in an empty return box — a way on, not a main action. */
+.wi-stk-link, .wi2-gapstk-b { border:none; background:none; padding:0; font:600 11.5px 'DM Sans',sans-serif;
+  letter-spacing:0; color:var(--accent); cursor:pointer; white-space:nowrap; }
+.wi-stk-link:hover, .wi2-gapstk-b:hover { text-decoration:underline; }
+.wi-stk-link:focus-visible, .wi2-gapstk-b:focus-visible { outline:2px solid var(--accent); outline-offset:1px; }
+.wi2-gapstk { margin-left:auto; }
+.wi2-gapstk:empty { display:none; }
+
 /* dropdown */
 .wi-sd { position:relative; }
 .wi-sdi { width:162px; padding:6px 9px; font-size:var(--text-xs); border-radius:var(--radius);

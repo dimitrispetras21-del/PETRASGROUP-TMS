@@ -1,0 +1,16 @@
+-- id: S-02
+-- title: Απόθεμα: φρουροί της βάσης ανενεργοί
+-- flows: F-14,F-30
+-- severity: P1
+-- schedule: hourly
+-- red: > 0
+-- baseline:
+-- queue: no
+-- entity:
+-- impact: Χωρίς τους φρουρούς του 057 ένα κομμάτι παίρνει τιμή, ξεπερνά το απόθεμα, τιμολογείται ατελής παρτίδα, μπαίνει αρνητική χρέωση αποθήκης ή μηδενίζεται το F του VS κομματιού — σιωπηλά.
+-- next: Αν έτρεξε το R1 της επαναφοράς: ξαναμπαίνουν με το 057_stock_lots_guards_on.sql μόλις διορθωθεί το σφάλμα. Αλλιώς: ποιος άλλαξε τη βάση;
+-- exceptions: Το R1 (057_stock_lots_rollback_r1_guards_off.sql) το ανάβει σκόπιμα.
+-- tolerance:
+-- source: DRAFT 057b_stock_monitoring.sql (4/10, ΔΕΝ εκτελέστηκε) — καθρέφτης της γραμμής του· plan §6 · ζωντανό μόνο μετά τα 057 + 057b
+-- enabled: yes
+SELECT (3 - (SELECT count(*) FROM pg_trigger WHERE NOT tgisinternal AND tgenabled <> 'D' AND tgname IN ('stock_guard_lots','stock_guard_orders','stock_guard_natl'))) + (8 - (SELECT count(*) FROM pg_constraint WHERE conname IN ('orders_stock_piece_no_money','orders_stock_piece_shape','national_orders_stock_piece_no_money','national_orders_stock_piece_shape','stock_lots_one_source','stock_lots_close_shape','stock_lots_charge_nonneg','ct_settings_full_truck_pallets_positive')));

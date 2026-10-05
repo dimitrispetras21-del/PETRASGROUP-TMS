@@ -67,7 +67,9 @@ function _wiApplyFilter() {
     if (show && fs) {
       if (fs === 'pending' && row.saved) show = false;
       else if (fs === 'assigned' && !row.saved) show = false;
-      else if (fs === 'unmatched' && (row.type !== 'import' || row.matchedTo)) show = false;
+      // A lot and a piece without a truck are not «imports waiting for a
+      // truck» (stock plan §6.7): the shelf counts the loose pieces instead.
+      else if (fs === 'unmatched' && (row.type !== 'import' || row.matchedTo || _wiStockSkip(row))) show = false;
     }
     if (show && qk) show = _wi2QuickMatch(row, qk);
     el.style.display = show ? '' : 'none';
@@ -701,8 +703,12 @@ async function renderWeeklyIntl(){
     await fhLoadLocations();
 
     if (loadId !== _wiLoadId) return;
+    _wiStockPrime();
     _wiBuildRows();
     _wiPaint();
+    // Stock shelf (stock plan §6.1): after the first paint and never blocking
+    // it — same posture as the national-carriers read above.
+    _wiStockLoad();
     // Self-heal (owner 12/8): ανάθεση σε συνεργάτη που γράφτηκε ΜΕΤΑ το γέμισμα
     // της 30' cache των άλλων χρηστών ⇒ άγνωστο id ⇒ έδειχνε «—». Μία ανανέωση
     // PARTNERS χωρίς cache και repaint — μόνο όταν όντως λείπει κάποιο id.
@@ -979,25 +985,46 @@ function _wk3Tabs(currentWeek) {
 // «Τα κενά» (owner): own γύροι χωρίς φορτίο επιστροφής → δείξε τα αδιάθετα
 // imports που μπορούν να τα γεμίσουν (highlight + scroll).
 function _wk3Gaps(){
-  const imps=[...document.querySelectorAll('[id^="wi-imp-"]')];
+  // A lot import row is not filler for a gap: it goes to its warehouse with a
+  // partner, never with our truck's return load (impact map 4/10 B-19). Loose
+  // pieces are not drawn at all while the shelf is on (_wiShelved).
+  const imps=[...document.querySelectorAll('[id^="wi-imp-"]')].filter(el=>{ const r=_wiRecOf(el.id.slice(7)); return !(r&&_wiIsLot(r.fields)); });
   imps.forEach(r=>{r.style.transition='background .3s';r.style.background='var(--accent-light)';setTimeout(()=>{r.style.background='';},1800);});
   if(imps[0]) imps[0].scrollIntoView({behavior:'smooth',block:'center'});
 }
 function _wiJumpFirstUnassigned(){
-  const impRow=WINTL.rows.find(r=>r.type==='import'&&!r.saved);
+  const impRow=WINTL.rows.find(r=>r.type==='import'&&!r.saved&&!_wiShelved(r));   // a shelved piece has no row to jump to
   if(impRow&&typeof _ccJump==='function') _ccJump('wi-imp-'+impRow.orderId);
 }
 
+// The import rows «ΕΙΣΑΓΩΓΗ · N» counts — ONE list for the board's header and
+// the week's paper (critic-4 C4-07: the paper counted data.imports, i.e. every
+// lot, loose piece and GI member, so one week had two import counts). Loose
+// pieces are counted by the shelf, not here (_wiShelved, B-19).
+function _wiBoardImpRows(){
+  return WINTL.rows.filter(r=>r.type==='import'&&!r.adj&&!r.legOf&&!_wiShelved(r));
+}
 function _wiPaint(){
   const {rows,week,data}=WINTL;
   const expRows=rows.filter(r=>r.type==='export'&&!r.legOf);
-  const impRows=rows.filter(r=>r.type==='import'&&!r.adj&&!r.legOf);
+  const impRows=_wiBoardImpRows();
   const expN=expRows.length, impN=impRows.length;
   const assigned=expRows.filter(r=>r.saved).length;
   const pending=expRows.filter(r=>!r.saved).length;
-  const matched=impRows.filter(r=>r.matchedTo).length;
-  const unmatched=impRows.filter(r=>!r.matchedTo).length;
-  const total=expRows.length+impRows.length;
+  // Lots and pieces without a truck never wait for a match (stock plan §6.7):
+  // out of the matched/unmatched counters and the auto-match button's number.
+  const impPlan=impRows.filter(r=>!_wiStockSkip(r));
+  const matched=impPlan.filter(r=>r.matchedTo).length;
+  const unmatched=impPlan.filter(r=>!r.matchedTo).length;
+  // K9 (round 1): the button's number uses the auto-match's own filter
+  // (_wiMatchableImp), not «unmatched»: a truckless group holding a piece is
+  // unmatched but never auto-matched (B-05), so «(N)» promised a pair the
+  // click then could not find. Counted on this week's own rows, like the
+  // tally (round 1b): an adjacent-week or rota-leg import alone showed a
+  // button main never showed. The click still scores those rows too, as on
+  // main — the number is this week's, not a promise about them.
+  const autoN=rows.filter(r=>_wiMatchableImp(r)&&!r.adj&&!r.legOf).length;
+  const total=expRows.length+impPlan.length;
   const pct=total?Math.round((assigned+matched)/total*100):0;
 
   // Report what this planner shows. weekNumber is the week the user is looking
@@ -1046,7 +1073,7 @@ function _wiPaint(){
   // Δ2 (DESIGN): φίλτρο με μηδέν = ανενεργό. Το ενεργό μένει πατήσιμο ακόμη
   // και στο μηδέν, αλλιώς δεν ξε-επιλέγεται όταν αδειάσει η κατηγορία.
   document.getElementById('content').innerHTML=`
-    <div class="wk3 wi2 ${_wiQuietOn()?'wi-quiet':''}${localStorage.getItem('tms_wk3_fl')==='0'?' fl-off':''}${localStorage.getItem('tms_wk3_fr')==='0'?' fr-off':''}${localStorage.getItem('tms_wk3_fl')==='1'?' fl-on':''}${localStorage.getItem('tms_wk3_fr')==='1'?' fr-on':''}">
+    <div class="wk3 wi2 ${_wiQuietOn()?'wi-quiet':''}${localStorage.getItem('tms_wk3_fl')==='0'?' fl-off':''}${localStorage.getItem('tms_wk3_fr')==='0'?' fr-off':''}${localStorage.getItem('tms_wk3_fl')==='1'?' fl-on':''}${localStorage.getItem('tms_wk3_fr')==='1'?' fr-on':''}${_wiShelfHas(WINTL.data.stock)?' has-shelf':''}">
     <style>${_WI2_CSS}</style>
     <!-- ΔΥΟ ΣΕΙΡΕΣ ΠΑΝΩ ΑΠΟ ΤΟ ΦΥΛΛΟ (owner 3/10, από screenshot της οθόνης
          του: «πολύ ανεκμετάλλευτος χώρος… λίγο περιττό το ΓΡΗΓΟΡΑ ΦΙΛΤΡΑ»).
@@ -1097,13 +1124,13 @@ function _wiPaint(){
            πληροφορία. -->
       <button type="button" class="wk-sig${gaps?' warn':''}" onclick="_wk3Gaps()" title="Ιδιόκτητοι γύροι χωρίς φορτίο επιστροφής — κλικ: οι αταίριαστες εισαγωγές">ΚΕΝΑ ΓΥΡΙΣΜΑΤΑ <b>${gaps}</b>${urgN?` · ${urgN} ${urgN===1?'ΕΠΕΙΓΟΝ':'ΕΠΕΙΓΟΝΤΑ'}`:''}</button>
       ${preorderCounterHtml(preFields,"_wi2Quick('pre');preorderJump('#wi-rows .pre-leg')",WINTL.quick==='pre')}
-      ${unmatched>0?`<button class="wi2-btn" onclick="_wiAutoMatch()" title="Περιορισμένο: χωρίς συντεταγμένες τοποθεσιών (LO-1) σκοράρει μόνο με ημερομηνίες">${_ico('zap',13)} Αυτόματο ταίριασμα (${unmatched}) — χωρίς συντεταγμένες</button>`:''}
+      ${autoN>0?`<button class="wi2-btn" onclick="_wiAutoMatch()" title="Περιορισμένο: χωρίς συντεταγμένες τοποθεσιών (LO-1) σκοράρει μόνο με ημερομηνίες">${_ico('zap',13)} Αυτόματο ταίριασμα (${autoN}) — χωρίς συντεταγμένες</button>`:''}
       <span id="wi-crossweek-in"></span>
       <span class="wi2-week">Εβδομάδα ${week} · ${_wiWeekRange(week)} · Σαβ–Παρ</span>
     </div>
     ${WINTL.data._localsFailed ? `<div class="wi-lmv-fail">Οι τοπικές κινήσεις δεν φορτώθηκαν <small>— δεν σημαίνει ότι δεν υπάρχουν: ο πίνακας LOCAL_MOVES δεν είναι διαθέσιμος στον Worker. Οι παραγγελίες παραπάνω δεν επηρεάζονται.</small><button class="wi2-btn" onclick="renderWeeklyIntl()">↻ Ξαναδοκίμασε</button></div>` : ''}
     <div class="wk3-wrap">
-      <main class="wk3-sheet">
+      <main class="wk3-sheet">${_wiShelfHTML()}
         <div class="wk3-cols">
           <div class="c"></div>
           <div class="c fc" style="cursor:pointer" title="Εθνικό σκέλος προς Βέροια — κλικ: άνοιγμα/κλείσιμο στήλης" onclick="_wk3FeedTog('fl')"><span class="fc-ch">◂</span> ΠΡΟΣ ΒΕΡΟΙΑ</div>
@@ -1169,7 +1196,8 @@ function _wiPaint(){
 /* ── ALL ROWS ──────────────────────────────────────────────────────── */
 function _wiAllRowsHTML(){
   const expRows=WINTL.rows.filter(r=>r.type==='export'&&!r.legOf&&!r.splitLegOf);
-  const impRows=WINTL.rows.filter(r=>r.type==='import'&&!r.legOf&&!r.adj&&!r.splitLegOf);
+  // A loose piece is not a board row while the shelf is its home (_wiShelved, B-19).
+  const impRows=WINTL.rows.filter(r=>r.type==='import'&&!r.legOf&&!r.adj&&!r.splitLegOf&&!_wiShelved(r));
   const today=(typeof localToday==='function')?localToday():toLocalDate(new Date());
   const _f=r=>(WINTL.data.exports.find(x=>x.id===(r.orderIds?.[0]))||WINTL.data.imports.find(x=>x.id===r.orderId))?.fields||{};
 
@@ -1397,7 +1425,10 @@ function _wiImpRowHTML(row,impNo){
       : `<div class="wk3-assign" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click()}" role="button" tabindex="0" onclick="event.stopPropagation();_wiOpenImpPopover(event,'${imp.id}',${row.id})">
       ${impPill}
       ${row.orderIds.length>1
-        ? `<button class="wk3-prt r" title="Εκτύπωση ομάδας (import) — ${row.orderIds.length} έγγραφα σε ένα πακέτο" onclick="event.stopPropagation();_wiPrintImpGroup(${row.id})">⎙<sup>I</sup></button>`
+        // C4-06 (critic-4, round 1): an import-only truck's group ⎙I gets the
+        // share menu the matched export row's group ⎙I has — the packet that
+        // carries the warehouse pickup. One query builder for both.
+        ? `<button class="wk3-prt r" title="Εκτύπωση ομάδας (import) — ${row.orderIds.length} έγγραφα σε ένα πακέτο" data-shq="${_wiImpGroupPrintQuery(row)}" data-shtitle="Εντολές εισαγωγής (ομάδα) — W${WINTL.week}" onclick="event.stopPropagation();_wiPrintImpGroup(${row.id})">⎙<sup>I</sup></button>`
         : `<button class="wk3-prt r" title="Εκτύπωση εντολής (import) — δεξί κλικ: κοινή χρήση" data-shq="${printSheetQuery(imp.id,'import',!!row.partnerId)}" data-shtitle="Εντολή εισαγωγής — W${WINTL.week}" onclick="event.stopPropagation();_wiPrintImp('${imp.id}',${row.partnerId?'true':'false'})">⎙<sup>I</sup></button>`}
     </div>`}
     <div class="wk3-leg imp" style="cursor:pointer" title="Κλικ: άνοιγμα φόρμας παραγγελίας — σύρε για ταίριασμα" onclick="event.stopPropagation();_wk3Edit('${imp.id}')">${isPre?loadCard:`${loadCard}<span class="wi2-arrow">→</span>${delCard}`}</div>
@@ -1522,7 +1553,7 @@ function _wiSplitHeaderCtx(e,rowId){
   html+=_wiCtxBtn('Αλλαγή σημείου παράδοσης-παραλαβής…',`_wiPanelHandover(${rowId})`);
   // «Τα ταιριάσματα του γονέα» (owner brief): the split does not touch a
   // matched import — same _wiRemoveImport the un-split row's menu offers.
-  if(row.importId) html+=_wiCtxBtn('Αφαίρεση ταιριάσματος',`_wiRemoveImport(${rowId})`);
+  if(row.importId) html+=_wiCtxBtn('Αφαίρεση ταιριάσματος',`_wiUnmatchRow(${rowId})`);
   const ctx=document.getElementById('wi-ctx');
   ctx.innerHTML=html;
   ctx._returnFocus=e.currentTarget;
@@ -1698,6 +1729,9 @@ function _wiBadges(f,orderId){
   const veroia=f['Veroia Switch'];
   if(veroia)                b.push('<span class="wi-badge wi-b-veroia">Veroia</span>');
   if(orderId && typeof OrderDocs!=='undefined') b.push(OrderDocs.badge(orderId,{size:11}));
+  // Stock plan §6.7: «ΑΠ» on a piece, «→ ΑΠΟΘΗΚΗ» on a lot — read from the
+  // order itself, so a piece is named wherever its card is drawn.
+  b.push(_wiApBadge(f,orderId), _wiLotBadge(f));
 
   return b.join('');
 }
@@ -1891,12 +1925,7 @@ function _wk3PickDate(ev,orderId,field,curIso){
     const nd=inp.value; inp.remove(); if(!nd) return;
     try{
       let val=nd;
-      if(field!=='VS CD Date'){
-        const o=curIso?new Date(curIso):new Date(nd+'T08:00:00');
-        const [y,m,d]=nd.split('-');
-        o.setFullYear(+y,+m-1,+d);
-        val=o.toISOString();
-      }
+      if(field!=='VS CD Date') val=_wk3IsoOnDay(curIso,nd);
       const res=await atSafePatch(TABLES.ORDERS,orderId,{[field]:val});
       if(res?.error) throw new Error(res.error.message||res.error.type);
       // Same downstream sync as Daily Ops «Αλλαγή ημέρας» (daily_ops.js
@@ -1922,6 +1951,15 @@ function _wk3StFlags(f){
   return { loaded:['In Transit','Delivered','Invoiced'].includes(st),
            delivered:['Delivered','Invoiced'].includes(st),
            late:f?.['Delivery Performance']==='Delayed' };
+}
+// One day-change rule for every Weekly date write (the date chip above and the
+// stock join's new loading day): the new DAY with the old time of day, so a
+// 06:00 loading stays 06:00; no time yet → 08:00 local.
+function _wk3IsoOnDay(curIso,ymd){
+  const o=curIso?new Date(curIso):new Date(ymd+'T08:00:00');
+  const [y,m,d]=ymd.split('-');
+  o.setFullYear(+y,+m-1,+d);
+  return o.toISOString();
 }
 function _wk3D(s){return String(s);}   // zero-padding kept on purpose: equal-width chips
 function _wk3AddDays(iso,days){ const d=new Date(iso+'T12:00:00'); d.setDate(d.getDate()+days); return toLocalDate(d); }
@@ -2078,6 +2116,7 @@ function _wi2Balance(){
   WINTL._clamped=cut;
   _wi2FitStops();
   _wi2FitSegs();
+  _wiShelfFit();   // stock strip: same paint + resize moments as the fits above
 }
 let _wi2BalTimer=null;
 window.addEventListener('resize',()=>{ clearTimeout(_wi2BalTimer); _wi2BalTimer=setTimeout(_wi2Balance,150); });
@@ -2144,7 +2183,8 @@ function _wi2LegendHTML(){
     <span><b>Sync:</b> ⟳ γράφεται · ✓ γράφτηκε · ⚠ ΔΕΝ γράφτηκε (μένει ορατό)</span>
     <span><b>Παλέτες:</b> — = δεν καταγράφηκαν · πορτοκαλί ≥30 · κόκκινο >33 (χωρητικότητα 33)</span>
     <span><b>Σκέλη Βέροιας:</b> — = δεν υπάρχει εθνικό σκέλος · κάρτα = Veroia Switch (ο μεταφορέας συμπληρώνεται στο Weekly National)</span>
-    <span><b>Οδηγοί:</b> επιστροφή Χ → επόμενη αναχώρηση Χ+2 (⚡Χ+1 μόνο κατ' εξαίρεση)</span>
+    <span><b>Οδηγοί:</b> επιστροφή Χ → επόμενη αναχώρηση Χ+2 (⚡Χ+1 μόνο κατ' εξαίρεση)</span>${_wiStockOn()?`
+    <span><b>Απόθεμα:</b> ΑΠ = κομμάτι από απόθεμα · → ΑΠΟΘΗΚΗ = παρτίδα · λωρίδα ΑΠΟΘΕΜΑ = υπόλοιπο/σύνολο παλέτες ανά αποθήκη (πορτοκαλί &gt;21η ή «κλείσιμο;» · κόκκινο = κομμάτια κινούνται χωρίς παραλαβή στην αποθήκη)</span>`:''}
   </div>`;
 }
 // Footer sync tally: «Ενημερώθηκε 07:42 · 20/21 γραμμές γραμμένες · 1 δεν
@@ -2277,15 +2317,22 @@ function _wiSegDateHTML(o,kind,isImportSide){
   const iso=f[field]||'';
   return _wi2Date(o.id,field,iso,iso?_wk3D(_wiFmt(iso)):'—',cls,'Ημ. '+(kind==='load'?'φόρτωσης':'παράδοσης'));
 }
+// The place text of an order's loading/delivery — the board's chain: the
+// stops' Summary when the board injected one (_wiInjectStopSummaries), else the
+// first location, else the client. «Loading/Delivery Summary» is not a facade
+// field (the Worker map has no DERIVED fields), so whoever reads it alone
+// prints blanks (K11: the week paper's export column did).
+function _wiPlaceStr(f,kind){
+  return kind==='load'
+    ?(f['Loading Summary']||_wiFlatLocName(f['Loading Location 1'])||_wiClientName(f)||'—')
+    :(f['Delivery Summary']||_wiFlatLocName(f['Unloading Location 1'])||_wiClientName(f)||'—');
+}
 // Τόπος/υπότιτλος τμήματος — ίδια λογική με το μονό πλακάτ.
 function _wiSegPlace(o,kind,isImportSide){
   const f=o.fields||{};
   const vs=kind==='load' ? (!isImportSide&&!!f['Veroia Switch']) : (isImportSide&&!!f['Veroia Switch']);
   if(vs) return {name:'<span class="wi2-nw">Cross-Dock <span class="wk3-vsb">VS</span></span>',sub:'Βέροια, GR'};
-  const str=kind==='load'
-    ?(f['Loading Summary']||_wiFlatLocName(f['Loading Location 1'])||_wiClientName(f)||'—')
-    :(f['Delivery Summary']||_wiFlatLocName(f['Unloading Location 1'])||_wiClientName(f)||'—');
-  return _wi2Loc(_wiRaw(str),kind==='load'?'Φόρτωση':'Παράδοση',kind==='load'?f._stopsL:f._stopsD);
+  return _wi2Loc(_wiRaw(_wiPlaceStr(f,kind)),kind==='load'?'Φόρτωση':'Παράδοση',kind==='load'?f._stopsL:f._stopsD);
 }
 // Tooltip hover (item 2, owner 8/9): πελάτης, αναφορά, παλέτες, ημέρα/ώρα.
 function _wiSegTipHTML(o,kind){
@@ -2312,9 +2359,11 @@ function _wiSegHTML(o,kind,isImportSide,idx,total,rowId,draggable){
   const pl=_wiSegPlace(o,kind,isImportSide);
   const dateHTML=_wiSegDateHTML(o,kind,isImportSide);
   const pals=_wi2Pal(o.fields);
+  // «ΑΠ» leads the name (stock plan §6.7): the one place a tile never cuts.
+  const ap=_wiApBadge(o.fields,o.id);
   const body=compact
-    ?`<div class="wk3-segtop">${dateHTML}${pals}</div><div class="wi2-name">${pl.name}</div>`
-    :`<div class="wi2-name">${pl.name}</div><div class="wi2-meta">${dateHTML}<span class="wi2-sub">${pl.sub||''}</span></div>`;
+    ?`<div class="wk3-segtop">${dateHTML}${pals}</div><div class="wi2-name">${ap}${pl.name}</div>`
+    :`<div class="wi2-name">${ap}${pl.name}</div><div class="wi2-meta">${dateHTML}<span class="wi2-sub">${pl.sub||''}</span></div>`;
   const drag=draggable?`draggable="true"
     ondragstart="event.stopPropagation();_wiSegDragStart(event,${rowId},'${o.id}')"
     ondragover="event.preventDefault();event.stopPropagation();_wiSegDragOver(event,${rowId},'${o.id}')"
@@ -2503,7 +2552,11 @@ function _wiRowHTML(row,i){
   // its orderId, not re-derived) so its orderIds is the authoritative member
   // list — gated behind _wiSegOn() so a flag-off board never does this lookup
   // (byte parity with the pre-existing single-card path below).
-  const impGroupRow=(_wiSegOn()&&row.importId)?WINTL.rows.find(r=>r.type==='import'&&r.orderId===row.importId):null;
+  // Found by MEMBER, not only by the row's lead id (stock plan §6.5 defence):
+  // the export's 'Matched Import ID' names one member, and a piece joining the
+  // group must never make the board lose the pairing if the lead it sorted
+  // first differs from the member the export points at.
+  const impGroupRow=(_wiSegOn()&&row.importId)?WINTL.rows.find(r=>r.type==='import'&&(r.orderId===row.importId||(r.orderIds||[]).includes(row.importId))):null;
   // Item 1 (owner 8/9): ordered by _wiGrpOrder (GI- suffix, else Loading
   // DateTime) — NOT impGroupRow.orderIds' raw insertion order — so a drag
   // reorder done from EITHER this pill or the standalone GI- row (they write
@@ -2519,7 +2572,7 @@ function _wiRowHTML(row,i){
     // silently scope group actions (Ανάθεση…, Ακύρωση groupage, reorder) at
     // the WRONG row. «×» unmatch is the one control the standalone row
     // doesn't need (nothing to unmatch there) — kept here, wired to the same
-    // _wiRemoveImport(row.id) the classic single card below already used via
+    // _wiUnmatchRow(row.id) the classic single card below reaches via
     // _wiUnmatch. Appended INSIDE the totals block (.wk3-segwrap is a flex
     // row, CLAUDE.md file allowlist for this fix has no assets/style.css)
     // rather than as a sibling of gLoad/gDel — .wk3-leg is a fixed 3-column
@@ -2546,7 +2599,7 @@ function _wiRowHTML(row,i){
       onclick="event.stopPropagation()"
       ondragstart="event.stopPropagation();_wiImpDragStart(event,'${impGroupRow.orderId}',true)">⋮⋮</span>`;
     const gLoad=_wiSegPillWrap(impGroupRow.id,impMembers,'load',true,true,grip);
-    const unmBtn=`<button class="wk3-unm" title="Αφαίρεση ταιριάσματος (όλη η ομάδα)" onclick="event.stopPropagation();_wiRemoveImport(${row.id})">×</button>`;
+    const unmBtn=`<button class="wk3-unm" title="Αφαίρεση ταιριάσματος (όλη η ομάδα)" onclick="event.stopPropagation();_wiUnmatchRow(${row.id})">×</button>`;
     const gDel=_wiSegPillWrap(impGroupRow.id,impMembers,'del',true,true,_wiSegTotalsHTML(impMembers)+unmBtn);
     impInner=`${gLoad}<span class="wi2-arrow">→</span>${gDel}`;
   } else if(imp){
@@ -2572,7 +2625,7 @@ function _wiRowHTML(row,i){
       ? _wiPreLeg(imp,`<button class="wk3-unm" title="Αφαίρεση ταιριάσματος" onclick="event.stopPropagation();_wiUnmatch('${imp.id}')">×</button>`)
       : `${iload}<span class="wi2-arrow">→</span>${idel}`;
   } else if(gapCell){
-    impInner=`<div class="wi2-gapbox${urg?' urg':''}" title="Κενό γυρισμού — ιδιόκτητος γύρος χωρίς φορτίο επιστροφής${urg?` · ΕΠΕΙΓΟΝ: παράδοση ${_wi2When(pf,today)}, χωρίς εισαγωγή`:''}. Κλικ: νέα παραγγελία εισαγωγής (ή σύρε υπάρχουσα εισαγωγή εδώ)">ΚΕΝΟ IMPORT${urg?`<small>ΕΠΕΙΓΟΝ</small>`:''}</div>`;
+    impInner=`<div class="wi2-gapbox${urg?' urg':''}" title="Κενό γυρισμού — ιδιόκτητος γύρος χωρίς φορτίο επιστροφής${urg?` · ΕΠΕΙΓΟΝ: παράδοση ${_wi2When(pf,today)}, χωρίς εισαγωγή`:''}. Κλικ: νέα παραγγελία εισαγωγής (ή σύρε υπάρχουσα εισαγωγή εδώ)">ΚΕΝΟ IMPORT${urg?`<small>ΕΠΕΙΓΟΝ</small>`:''}<span class="wi2-gapstk" data-row="${row.id}">${_wiStockGapLink(row)}</span></div>`;
   } else if(parCell){
     impInner=`<div class="wi2-void navy" title="Ανατεθειμένο σε συνεργάτη — δεν αναμένεται δικό μας σκέλος επιστροφής"></div>`;
   } else {
@@ -2588,6 +2641,13 @@ function _wiRowHTML(row,i){
     return _wi2Card({date:_wi2Date(imp.id,'Delivery DateTime',dIso,dIso?_wk3D(_wiFmt(dIso)):'—','','Εθνικό σκέλος: ημ. τελικής διανομής'), name:de2.name, sub:de2.sub, extra:_wk3MoreStops(f2['Delivery Summary']||'',f2._stopsD,'del')}); })()
     :`<span class="wi2-dash" title="Χωρίς εθνικό σκέλος">—</span>`;
 
+  // ⎙I of a truck whose return load is an import GROUP prints the whole group
+  // (impact map 4/10 PR-01, P1): it printed only the member the export names,
+  // so a piece joined to the group (its warehouse pickup) never reached the
+  // driver's paper. Found by any member and not gated on the tiles switch —
+  // what is printed must not depend on how the board draws it.
+  const impPrintRow=row.importId?_wiImpGroupRowOf(row.importId):null;
+  const impPrintN=impPrintRow?(impPrintRow.orderIds||[]).length:0;
   const rowCls=['wk3-row',!row.saved?'wi2-un':'',urg?'wi2-rowurg':gapCell?'wi2-gap':'',stF.delivered&&!stF.late?'wk3-done':''].filter(Boolean).join(' ');
   return `
   <div id="wi-row-${row.id}" data-row-id="${row.id}" class="${rowCls}">
@@ -2605,7 +2665,9 @@ function _wiRowHTML(row,i){
         ?`<button class="wk3-prt l" title="Εκτύπωση ομάδας — ${exps.length} έγγραφα σε ένα πακέτο" onclick="event.stopPropagation();_wiPrintGroup(${row.id})">⎙</button>`
         :`<button class="wk3-prt l" title="Εκτύπωση εντολής (export) — δεξί κλικ: κοινή χρήση" data-shq="${printSheetQuery(row.orderIds[0],'export',!!(row.partnerId||row.partnerLabel))}" data-shtitle="Εντολή εξαγωγής — W${WINTL.week}" onclick="event.stopPropagation();_wiPrint(${row.id},'export')">⎙</button>`}
       ${pill}
-      ${row.importId?`<button class="wk3-prt r" title="Εκτύπωση εντολής (import) — δεξί κλικ: κοινή χρήση" data-shq="${printSheetQuery(row.importId,'import',!!(row.partnerId||row.partnerLabel))}" data-shtitle="Εντολή εισαγωγής — W${WINTL.week}" onclick="event.stopPropagation();_wiPrint(${row.id},'import')">⎙<sup>I</sup></button>`:''}
+      ${impPrintN>1
+        ?`<button class="wk3-prt r" title="Εκτύπωση ομάδας (import) — ${impPrintN} έγγραφα" data-shq="${_wiImpGroupPrintQuery(impPrintRow)}" data-shtitle="Εντολές εισαγωγής (ομάδα) — W${WINTL.week}" onclick="event.stopPropagation();_wiPrintImpGroup(${impPrintRow.id})">⎙<sup>I</sup></button>`
+        :row.importId?`<button class="wk3-prt r" title="Εκτύπωση εντολής (import) — δεξί κλικ: κοινή χρήση" data-shq="${printSheetQuery(row.importId,'import',!!(row.partnerId||row.partnerLabel))}" data-shtitle="Εντολή εισαγωγής — W${WINTL.week}" onclick="event.stopPropagation();_wiPrint(${row.id},'import')">⎙<sup>I</sup></button>`:''}
     </div>`}
     <div class="wk3-leg imp${gapCell?' gap':''}${parCell?' bgap':''}" id="wi-ci-${row.id}"
          ${imp?`style="cursor:pointer" title="Κλικ: φόρμα εισαγωγής · δεξί κλικ: μενού εισαγωγής (ρότα, εκτύπωση)" oncontextmenu="_wiMatchedImpCtx(event,${row.id})"`:''}
@@ -2715,6 +2777,11 @@ function _wiImpDragStart(e,impId,allowMatched){
   if(_wiBlockReadOnly()){ e.preventDefault(); return; }
   // Block drag if import is already matched to an export
   const imp=WINTL.rows.find(r=>r.type==='import'&&r.orderId===impId);
+  if(imp&&_wiLotHeld(imp)){
+    e.preventDefault();
+    toast('Η παρτίδα πάει στην αποθήκη — δεν ταιριάζεται','warn');
+    return;
+  }
   if(imp&&imp.matchedTo&&!allowMatched){
     e.preventDefault();
     toast('Αφαίρεσε πρώτα το ταίριασμα της εισαγωγής','warn');
@@ -2737,7 +2804,57 @@ async function _wiUnmatch(impId){
   // Find export row that has this import
   const expRow=WINTL.rows.find(r=>r.type==='export'&&r.importId===impId);
   if(!expRow) return;
-  await _wiRemoveImport(expRow.id);
+  await _wiUnmatchRow(expRow.id);
+}
+// Every USER unmatch («×», «Αφαίρεση ταιριάσματος») comes here (impact map 4/10
+// B-07). _wiRemoveImport keeps each member's Group ID, so a PIECE in the load
+// stayed glued to its group with no truck: not joinable, not deletable,
+// counted «χωρίς ταίριασμα» and auto-matchable. A piece now leaves the group
+// too and returns to stock — said in the confirm, before any write. The rest
+// is _wiRemoveImport unchanged (leg first, vehicle second), and the group that
+// stays is left as «Ακύρωση groupage» leaves it (_wiSyncGroupResidue: a lone
+// survivor is not a group). The whole-group drag onto another export
+// (_wiSaveImportMatch) calls _wiRemoveImport directly: there the piece rides
+// on with its group.
+async function _wiUnmatchRow(rowId){
+  const row=WINTL.rows.find(r=>r.id===rowId);
+  const pcs=(row&&row.importId)?_wiPieceIn([row.importId]).filter(id=>!WI_EXECUTING.includes(_wiRecOf(id)?.fields?.['Status'])):[];
+  if(!pcs.length) return _wiRemoveImport(rowId);
+  const one=pcs.length===1;
+  const lbl=pcs.map(id=>{ const f=_wiRecOf(id).fields; return `${OrdersStock.lotNumLabel(f)} (${+(f['Total Pallets']||0)}p)`; }).join(', ');
+  if(!(await confirmAction(`Αφαίρεση ταιριάσματος — η εισαγωγή φεύγει από το φορτηγό.\n\n${one?'Το κομμάτι της παρτίδας':'Τα κομμάτια των παρτίδων'} ${lbl} ${one?'βγαίνει':'βγαίνουν'} και από την ομάδα και ${one?'επιστρέφει':'επιστρέφουν'} στο απόθεμα — χωρίς φορτηγό, με όλα τα στοιχεία.`,
+    {title:'Αφαίρεση ταιριάσματος',confirmLabel:'Αφαίρεση'}))) return;
+  const grp=_wiImpGroupRowOf(row.importId), expOid=row.orderIds[0], impId=row.importId;
+  try{
+    await _wiRemoveImport(rowId);
+    let exp=null; try{ exp=await atGetOne(TABLES.ORDERS,expOid); }catch(e){ exp=null; }
+    if(exp&&String(exp.fields?.['Matched Import ID']||'')===impId) return;   // the unmatch failed: its own ⚠ says so
+    const left=[], kept=[];
+    for(const pid of pcs){
+      let f=null; try{ f=(await atGetOne(TABLES.ORDERS,pid))?.fields||null; }catch(e){ f=null; }
+      if(!f){ kept.push(pid+': δεν διαβάστηκε'); continue; }
+      // Still on a vehicle = _wiRemoveImport kept it (moving, or its leg could
+      // not leave): it stays with its group — never a piece on a truck with no group.
+      if(getLinkedId(f['Truck'])||getLinkedId(f['Partner'])){ kept.push(pid+': κρατά όχημα'); continue; }
+      if(!String(f['Group ID']||'').trim()){ left.push(pid); continue; }
+      try{
+        const res=await atSafePatch(TABLES.ORDERS,pid,{'Group ID':null});   // null, never '' (see _wiGroupPatch)
+        if(res?.error) throw new Error(res.error.message||res.error.type);
+        if(String(res?.fields?.['Group ID']||'')) throw new Error('δεν επιβεβαιώθηκε στην ανάγνωση');
+        const c=_wiRecOf(pid); if(c) c.fields['Group ID']=null;
+        left.push(pid);
+      }catch(e){ kept.push(pid+': '+((e&&e.message)||e)); }
+    }
+    if(grp&&left.length){
+      grp.orderIds=(grp.orderIds||[grp.orderId]).filter(id=>!left.includes(id));
+      if(left.includes(grp.orderId)) grp.orderId=grp.orderIds[0];
+      if(grp.orderIds.length&&!(await _wiSyncGroupResidue(grp)))
+        reportError('Τα κομμάτια επέστρεψαν στο απόθεμα αλλά η ομάδα που έμεινε ΔΕΝ ενημερώθηκε πλήρως στη βάση — έλεγξε χειροκίνητα',null);
+    }
+    if(kept.length) reportError('Το ταίριασμα αφαιρέθηκε αλλά κομμάτι ΔΕΝ επέστρεψε στο απόθεμα — έλεγξε χειροκίνητα: '+kept.join(' · '),kept);
+  }finally{ _wiNoUndo(); }   // B-13: one unmatch, not one revertible PATCH
+  _wiStockLoad();
+  await renderWeeklyIntl();
 }
 
 // Κενό κουτί εισαγωγής → νέα παραγγελία εισαγωγής, ήδη δεμένη με το export που
@@ -2916,6 +3033,11 @@ async function _wiGiGroup(impId, knownRec){
 async function _wiSaveImportMatch(rowId,impId){
   if(_wiBlockReadOnly()) return; // defense in depth — dragstart already blocks for a view-only role
   const row=WINTL.rows.find(r=>r.id===rowId);if(!row) return;
+  // The one funnel of every match (drag, panel drop, auto-match, new import,
+  // stock join): a lot travels to its warehouse, never with a truck's return
+  // load — on either side of the pair (stock plan §6.7).
+  const impRow0=WINTL.rows.find(r=>r.type==='import'&&(r.orderIds||[r.orderId]).includes(impId));
+  if(_wiLotHeld(row)||(impRow0&&_wiLotHeld(impRow0))){ toast('Η παρτίδα πάει στην αποθήκη — δεν ταιριάζεται','warn'); return; }
 
   // Lock check: verify import is still unmatched on server
   let importRec=null;
@@ -2943,6 +3065,11 @@ async function _wiSaveImportMatch(rowId,impId){
   // never silently onto a wider or narrower set than the server confirms.
   const giGroup = await _wiGiGroup(impId, importRec);
   const matchImpId = giGroup.lead;
+  // Φ1: a piece never rides a partner (WI_PIECE_OWN_ONLY, B-05) — a loose
+  // piece or a group holding one dropped on a partner export, before any write.
+  if(row.partnerId&&(_wiPieceIn([impId,...giGroup.members]).length||(importRec&&_wiIsPiece(importRec.fields)))){
+    toast(WI_PIECE_OWN_ONLY,'warn'); return;
+  }
 
   // Lock check: verify export doesn't already have a matched import on server
   try {
@@ -3181,8 +3308,10 @@ async function _wiRemoveImport(rowId){
 
 async function _wiAutoMatch() {
   const {data, rows} = WINTL;
-  const expRows = rows.filter(r => r.type === 'export' && !r.importId);
-  const impRows = rows.filter(r => r.type === 'import' && !r.matchedTo);
+  // Lots never match; a piece reaches a truck only by a person's choice
+  // («+ Κομμάτι από απόθεμα…», stock plan §6.7) — never by a score.
+  const expRows = rows.filter(r => r.type === 'export' && !r.importId && !_wiLotHeld(r));
+  const impRows = rows.filter(_wiMatchableImp);   // no lot, waiting piece, or load holding a piece (B-05)
   if (!impRows.length || !expRows.length) { toast('Δεν υπάρχουν αταίριαστα ζεύγη'); return; }
 
   toast('Υπολογισμός ταιριασμάτων…');
@@ -3405,7 +3534,7 @@ function _wiOpenPopover(e,rowId){
     <div id="wi-piz-${rowId}" class="wi2-piz"
          ondragover="event.preventDefault();this.classList.add('dh')" ondragleave="this.classList.remove('dh')"
          ondrop="event.stopPropagation();_wiDropOnPanel(event,${rowId})">${imp
-      ?`<div class="wi2-ichip"><span>${_wiClean(imp.fields['Loading Summary']||'—')} → ${_wiClean(imp.fields['Delivery Summary']||'—')}</span><small>${_wiFmt(imp.fields['Loading DateTime'])} → ${_wiFmt(imp.fields['Delivery DateTime'])} · ${('Total Pallets' in imp.fields)?imp.fields['Total Pallets']+' p':'— p'}</small><button class="wk3-unm" title="Αφαίρεση ταιριάσματος" onclick="event.stopPropagation();_wiClosePopover();_wiRemoveImport(${rowId})">×</button></div>`
+      ?`<div class="wi2-ichip"><span>${_wiClean(imp.fields['Loading Summary']||'—')} → ${_wiClean(imp.fields['Delivery Summary']||'—')}</span><small>${_wiFmt(imp.fields['Loading DateTime'])} → ${_wiFmt(imp.fields['Delivery DateTime'])} · ${('Total Pallets' in imp.fields)?imp.fields['Total Pallets']+' p':'— p'}</small><button class="wk3-unm" title="Αφαίρεση ταιριάσματος" onclick="event.stopPropagation();_wiClosePopover();_wiUnmatchRow(${rowId})">×</button></div>`
       :'σύρε εισαγωγή εδώ — ή άφησε κενό: θα μετρηθεί στα «κενά» του tally'}</div>`:''}
     <div class="wi-pop-footer">
       <span class="wi2-pop-sync">sync: ⟳ γράφεται → ✓ γράφτηκε / ⚠ ΔΕΝ γράφτηκε (μένει ορατό)</span>
@@ -3508,6 +3637,10 @@ async function _wiSaveFromPopover(rowId){
   const rateImpEl=document.getElementById(`wi-pop-rate-imp-${rowId}`);
   if(rateImpEl) row.partnerRateImp=rateImpEl.value;
   const isPartner=!!row.partnerId;
+  // Φ1: no piece on a partner (WI_PIECE_OWN_ONLY, B-05) — this row's own
+  // orders, the export's import load, and (below, before any write) the GI
+  // siblings the propagation would reach from the server.
+  if(isPartner&&_wiPieceIn([...row.orderIds,row.importId]).length){ toast(WI_PIECE_OWN_ONLY,'warn'); return; }
   if(!isPartner&&!row.truckId){toast('Επίλεξε φορτηγό ή συνεργάτη','warn');return;}
   if(isPartner&&!row.partnerRate){toast('Το κόμιστρο εξαγωγής είναι υποχρεωτικό για συνεργάτη','warn');return;}
   if(isPartner&&row.importId&&!row.partnerRateImp){toast('Το κόμιστρο εισαγωγής είναι υποχρεωτικό για συνεργάτη','warn');return;}
@@ -3516,6 +3649,20 @@ async function _wiSaveFromPopover(rowId){
   if(!isPartner){
     const conflict=_wiSameDayConflict(row);
     if(conflict && !(await confirmAction(conflict+'\n\nΣυνέχεια με την ανάθεση;',{title:'Πιθανή διπλή δέσμευση',confirmLabel:'Συνέχεια'}))) return;
+  }
+  // The GI propagation below reaches siblings this board may not hold (another
+  // week): read them now, before any write, and refuse a partner on a piece.
+  // An unreadable group refuses too — «unknown» must not put a piece on a
+  // partner truck.
+  if(isPartner){
+    const a0=row.type==='import'?WINTL.data.imports.find(x=>row.orderIds.includes(x.id)):(row.importId?WINTL.data.imports.find(x=>x.id===row.importId):null);
+    const g0=String(a0?.fields?.['Group ID']||'');
+    if(g0.indexOf('GI-')===0){
+      let sibs=null;
+      try{ sibs=await atGetAll(TABLES.ORDERS,{filterByFormula:`{Group ID}='${g0}'`},false); }catch(e){ sibs=null; }
+      if(!Array.isArray(sibs)){ toast('Η ομάδα εισαγωγών δεν διαβάστηκε — η ανάθεση σε συνεργάτη δεν έγινε','warn'); return; }
+      if(sibs.some(x=>_wiIsPiece(x.fields))){ toast(WI_PIECE_OWN_ONLY,'warn'); return; }
+    }
   }
   // «Η ανάθεση δεν κλειδώνει ποτέ» (owner 4/10/2026): re-assigning an order
   // that is already In Transit/Delivered is allowed — ONE confirm, before any
@@ -3865,8 +4012,12 @@ async function _wiClear(rowId){
 function _wiRowPals(row){
   if(!row) return 0;
   if(row.type==='import'){
-    const i=WINTL.data.imports.find(r=>r.id===row.orderId);
-    return +(i?.fields['Total Pallets']||0);
+    // D1 (stock plan §6.7): a GI group row carries every member in orderIds —
+    // the lead alone under-counted the group against the 33-pallet cap.
+    return (row.orderIds||[row.orderId]).reduce((s,oid)=>{
+      const i=WINTL.data.imports.find(r=>r.id===oid);
+      return s+(+(i?.fields['Total Pallets']||0));
+    },0);
   }
   return (row.orderIds||[]).reduce((s,oid)=>{
     const o=WINTL.data.exports.find(r=>r.id===oid);
@@ -3940,7 +4091,9 @@ function _wiPanelCtxLine(row){
   const f=o.fields||{};
   const ld=f['Loading DateTime']?_wk3D(_wiFmt(f['Loading DateTime'])):'—';
   const dd=f['Delivery DateTime']?_wk3D(_wiFmt(f['Delivery DateTime'])):'—';
-  return `${ld} ${_wiClean(f['Loading Summary']||f['Client Name']||'—')} → ${dd} ${_wiClean(f['Delivery Summary']||'—')}`;
+  // The board's place chain (_wiPlaceStr): «Loading/Delivery Summary» alone
+  // is not a facade field and read «—» on most rows (critic-5 S5-08, K11).
+  return `${ld} ${_wiClean(_wiPlaceStr(f,'load'))} → ${dd} ${_wiClean(_wiPlaceStr(f,'del'))}`;
 }
 
 function _wiPanelOpen(anchorEl,title,ctxLine,bodyHtml,footerHtml){
@@ -4114,9 +4267,13 @@ function _wiPanelRotaGo(rowId){
 function _wiPanelGroupBuild(rowId,isImp){
   const row=WINTL.rows.find(r=>r.id===rowId); if(!row) return;
   const myPals=_wiRowPals(row);
+  // A lot is never grouped (stock plan §6.7) — not offered as a candidate.
+  // Nor a piece (impact map 4/10 B-09): this path writes Group ID alone — no
+  // vehicle, no loading-day confirm, no suffix — so a piece could become a
+  // group's lead or be orphaned; pieces join only through «+ Κομμάτι».
   const others=isImp
-    ? WINTL.rows.filter(r=>r.type==='import'&&r.id!==rowId&&!r.adj&&!r.matchedTo&&(myPals+_wiRowPals(r))<=33)
-    : WINTL.rows.filter(r=>r.id!==rowId&&!r.saved&&r.type==='export'&&(myPals+_wiRowPals(r))<=33);
+    ? WINTL.rows.filter(r=>r.type==='import'&&r.id!==rowId&&!r.adj&&!r.matchedTo&&!_wiLotHeld(r)&&!_wiPieceIn(r.orderIds).length&&(myPals+_wiRowPals(r))<=33)
+    : WINTL.rows.filter(r=>r.id!==rowId&&!r.saved&&r.type==='export'&&!_wiLotHeld(r)&&(myPals+_wiRowPals(r))<=33);
   const cand=others.slice(0,6).map(o=>{
     let lbl;
     if(isImp){
@@ -4179,15 +4336,17 @@ function _wiMenuPrint(rowId,isImp){
   }
 }
 
-function _wiCtx(e,rowId){
+async function _wiCtx(e,rowId){
   e.preventDefault();e.stopPropagation();
   if(_wiBlockReadOnly()) return;
   const row=WINTL.rows.find(r=>r.id===rowId);if(!row) return;
+  if(_wiStockOn()&&document.fullscreenElement) e=await _wiLeaveFs(e);   // no await otherwise: currentTarget must survive
   if(_wiPreCtx(e,row,false)) return;
+  if(_wiLotCtx(e,row,false)) return;
   const isGroup=row.orderIds.length>1;
   const myPals=_wiRowPals(row);
   const others=WINTL.rows.filter(r=>r.id!==rowId&&!r.saved&&r.type==='export'
-    &&(myPals+_wiRowPals(r))<=33);
+    &&!_wiLotHeld(r)&&(myPals+_wiRowPals(r))<=33);
   let html='';
   html+=_wiCtxBtn('Ανάθεση…',`_wiPanelAssign(${rowId},false)`);
   html+=_wiCtxBtn('Εκτύπωση…',`_wiMenuPrint(${rowId},false)`);
@@ -4195,7 +4354,7 @@ function _wiCtx(e,rowId){
   // back to the parent's form — the parent no longer has a row of its own
   // to click on, but its info (goods/pallets/client) still needs fixing.
   if(row.splitLegOf) html+=_wiCtxBtn('Αρχική παραγγελία…',`_wk3Edit('${row.splitLegOf}')`);
-  if(row.importId) html+=_wiCtxBtn('Αφαίρεση ταιριάσματος',`_wiRemoveImport(${rowId})`);
+  if(row.importId) html+=_wiCtxBtn('Αφαίρεση ταιριάσματος',`_wiUnmatchRow(${rowId})`);
   // Item 4 (owner 7/9): a split leg's menu is the normal one minus Σπάσιμο
   // (already excluded — _wiSplitCtxItems returns '' for row.splitLegOf) AND
   // Ομαδοποίηση — grouping merges two ORDERS rows into one visual row, which
@@ -4204,6 +4363,7 @@ function _wiCtx(e,rowId){
   if(!row.splitLegOf) html+=others.length
     ? _wiCtxBtn('Ομαδοποίηση…',`_wiPanelGroupBuild(${rowId},false)`)
     : _wiCtxBtnDisabled('Ομαδοποίηση…',`Καμία συμβατή εξαγωγή — όριο 33 παλέτες (τώρα ${myPals}p)`);
+  html+=_wiStockCtxItem(row);
   html+=_wiCtxBtn('⤷ Σκέλος προώθησης (ρότα)…',`_wiPanelRota(${rowId})`);
   html+=_wiSplitCtxItems(row,rowId,_wiCtxBtn);
   // Wave 2 (owner 6/9): local movement around Βέροια tied to this order —
@@ -4294,6 +4454,11 @@ function _wiSplitCtxItems(row,rowId,btn){
     if(blocking) html+=btn(`Ένωση ξανά — μπλοκαρισμένη (σκέλος ${blocking.splitLegNo||'?'} ${_ordOf2(blocking)?.fields?.['Status']})`,`toast('Δεν γίνεται ένωση — σκέλος ήδη σε εκτέλεση/παραδόθηκε','warn')`);
     else html+=btn('Ένωση ξανά',`_wiRejoinLegs(${rowId})`);
   } else {
+    // Never offered on a piece or a lot (impact map 4/10 B-28/G-22): the base
+    // refuses both (no_split, CHECK parent_order_id is null) at the leg-1 POST
+    // — an item that can only end in a refusal is a lie on the menu.
+    const rec=_wiRecOf(row.orderIds?.[0]||row.orderId);
+    if(rec&&(_wiIsPiece(rec.fields)||_wiIsLot(rec.fields))) return '';
     html+=btn('Σπάσιμο σκέλους…',`_wiPanelSplit(${rowId})`);
   }
   return html;
@@ -5128,7 +5293,10 @@ function _wiPanelConfirmDelLocal(moveId){
 // matched one), so the standalone import menu can serve the matched card too.
 function _wiMatchedImpCtx(e,exportRowId){
   const exp=WINTL.rows.find(r=>r.id===exportRowId); if(!exp||!exp.importId) return;
-  const impRow=WINTL.rows.find(r=>r.type==='import'&&r.orderId===exp.importId);
+  // By ANY member (impact map 4/10 PR-02): the export may point at a member
+  // that is not the group's lead (a drag reorder, or a piece joined) — found by
+  // the lead id only, the menu said «δεν βρέθηκε» on a group the board draws.
+  const impRow=_wiImpGroupRowOf(exp.importId);
   if(!impRow){ e.preventDefault();e.stopPropagation(); toast('Η ταιριασμένη εισαγωγή δεν βρέθηκε στις γραμμές της εβδομάδας — άνοιξέ την από τη φόρμα','warn'); return; }
   _wiImpCtx(e,impRow.id,exportRowId);
 }
@@ -5137,12 +5305,14 @@ function _wiMatchedImpCtx(e,exportRowId){
 // ALONE (print, rota, local move). Grouping, week shift and split belong to
 // the pair's row — offering them here would write on the import while the
 // board shows the pair as one unit (αρχή 3).
-function _wiImpCtx(e,rowId,matchedExportRowId){
+async function _wiImpCtx(e,rowId,matchedExportRowId){
   e.preventDefault();e.stopPropagation();
   if(_wiBlockReadOnly()) return;
   const row=WINTL.rows.find(r=>r.id===rowId);if(!row) return;
+  if(_wiStockOn()&&document.fullscreenElement) e=await _wiLeaveFs(e);   // no await otherwise: currentTarget must survive
   // A pre-order gets its own menu wherever it sits — own row or a truck's row.
   if(_wiPreCtx(e,row,true)) return;
+  if(!matchedExportRowId&&_wiLotCtx(e,row,true)) return;
   if(matchedExportRowId){
     let html='';
     // Assignment is the PAIR's (one truck moves export+import) — open the
@@ -5151,6 +5321,9 @@ function _wiImpCtx(e,rowId,matchedExportRowId){
     html+=_wiCtxBtn('Εκτύπωση…',`_wiMenuPrint(${rowId},true)`);
     html+=_wiCtxBtn('⤷ Σκέλος προώθησης (ρότα)…',`_wiPanelRota(${rowId})`);
     if(row.orderId) html+=_wiCtxBtn('Τοπική κίνηση (Βέροια)…',`_wiAddLocal('${row.orderId}')`);
+    // The truck's row is the EXPORT's: a new piece rides with the pair.
+    html+=_wiStockCtxItem(WINTL.rows.find(r=>r.id===matchedExportRowId));
+    html+=_wiStockReturnLoneItem(row,matchedExportRowId);
     const ctx=document.getElementById('wi-ctx');
     ctx.innerHTML=html;
     ctx._returnFocus=e.currentTarget;
@@ -5163,7 +5336,10 @@ function _wiImpCtx(e,rowId,matchedExportRowId){
   }
   const myPals=_wiRowPals(row);
   const others=WINTL.rows.filter(r=>r.type==='import'&&r.id!==rowId&&!r.adj&&!r.matchedTo
-    &&(myPals+_wiRowPals(r))<=33);
+    &&!_wiLotHeld(r)&&!_wiPieceIn(r.orderIds).length&&(myPals+_wiRowPals(r))<=33);
+  // A row holding a piece gets no «Groupage εισαγωγών…» (B-09, see
+  // _wiPanelGroupBuild): a piece joins a load only through «+ Κομμάτι».
+  const hasPiece=_wiPieceIn(row.orderIds).length>0;
   let html='';
   html+=_wiCtxBtn('Ανάθεση…',`_wiPanelAssign(${rowId},true,'${row.orderId}')`);
   html+=_wiCtxBtn('Εκτύπωση…',`_wiMenuPrint(${rowId},true)`);
@@ -5173,9 +5349,12 @@ function _wiImpCtx(e,rowId,matchedExportRowId){
   // Item 4 (owner 7/9): same exclusion as the export menu — a split leg keeps
   // everything except Σπάσιμο (already gone via _wiSplitCtxItems) and its
   // grouping equivalent here, "Groupage εισαγωγών".
-  if(!row.splitLegOf) html+=others.length
+  if(!row.splitLegOf&&!hasPiece) html+=others.length
     ? _wiCtxBtn('Groupage εισαγωγών…',`_wiPanelGroupBuild(${rowId},true)`)
     : _wiCtxBtnDisabled('Groupage εισαγωγών…',`Καμία συμβατή εισαγωγή — όριο 33 παλέτες (τώρα ${myPals}p)`);
+  // An import row with our own truck and no export («ΚΕΝΟ EXPORT») is a
+  // truck too: the piece joins its import group (Case A).
+  html+=_wiStockCtxItem(row);
   html+=_wiCtxBtn('⤷ Σκέλος προώθησης (ρότα)…',`_wiPanelRota(${rowId})`);
   html+=_wiSplitCtxItems(row,rowId,_wiCtxBtn);
   // Wave 2 (owner 6/9): local movement around Βέροια tied to this import.
@@ -5248,6 +5427,8 @@ async function _wiImpGroup(rowId,otherRowId){
   if(!a||!b) return;
   const ai=WINTL.data.imports.find(r=>r.id===a.orderId), bi=WINTL.data.imports.find(r=>r.id===b.orderId);
   if(!ai||!bi) return;
+  // Never takes a piece (B-09) — even from a panel opened before the data changed.
+  if(_wiPieceIn([...a.orderIds,...b.orderIds]).length){ toast('Το κομμάτι μπαίνει σε φορτηγό μόνο με «+ Κομμάτι από απόθεμα…» — όχι με Groupage εισαγωγών','warn'); return; }
   const gid=ai.fields['Group ID']||bi.fields['Group ID']||('GI-'+Date.now().toString(36).toUpperCase());
   try{
     for(const oid of [ai.id,bi.id]){
@@ -5416,6 +5597,10 @@ async function _wiSegDrop(e,rowId,orderId){
   const ids=recs.map(x=>x.id);
   const from=ids.indexOf(d.orderId), to=ids.indexOf(orderId);
   if(from<0||to<0) return;
+  // OWNER-Q11 answered 4/10 (piece may be first stop; impact map B-10): a
+  // piece MAY be dragged first in its group — the dispatcher's order wins, no filter
+  // here. «Always last» binds only the join (_wiStockLockLead), not a person's
+  // explicit order.
   ids.splice(to,0,ids.splice(from,1)[0]);
   await _wiSaveSegOrder(row.id,ids,recs,isImp);
 }
@@ -5459,10 +5644,11 @@ async function _wiSaveSegOrder(rowId,orderedIds,exps,isImp){
 // existing group (Ομαδοποίηση/Groupage εισαγωγών, Διάλυση/Καθαρισμός — those
 // stay on the row's own menu, reached by right-clicking OUTSIDE a segment,
 // _wiCtx/_wiImpCtx unchanged), plus «Ακύρωση groupage» for THIS order alone.
-function _wiSegCtx(e,rowId,orderId,isImportSide){
+async function _wiSegCtx(e,rowId,orderId,isImportSide){
   e.preventDefault(); e.stopPropagation();
   if(_wiBlockReadOnly()) return;
   const row=WINTL.rows.find(r=>r.id===rowId); if(!row) return;
+  if(_wiStockOn()&&document.fullscreenElement) e=await _wiLeaveFs(e);   // no await otherwise: currentTarget must survive
   let html='';
   html+=_wiCtxBtn('Ανάθεση…',isImportSide?`_wiPanelAssign(${rowId},true,'${row.orderId}')`:`_wiPanelAssign(${rowId},false)`);
   html+=_wiCtxBtn('Εκτύπωση…',`_wiMenuPrint(${rowId},${isImportSide?'true':'false'})`);
@@ -5470,7 +5656,16 @@ function _wiSegCtx(e,rowId,orderId,isImportSide){
   html+=_wiCtxBtn('⤷ Σκέλος προώθησης (ρότα)…',`_wiPanelRota(${rowId})`);
   if(orderId) html+=_wiCtxBtn('Τοπική κίνηση (Βέροια)…',`_wiAddLocal('${orderId}')`);
   html+='<div class="wi-ctx-sep"></div>';
-  html+=_wiCtxBtn('Ακύρωση groupage',`_wiCancelGroupMember(${rowId},'${orderId}',${isImportSide?'true':'false'})`,true);
+  // A piece leaves its truck as «Επιστροφή στο απόθεμα» (stock plan §6.6) —
+  // the same _wiCancelGroupMember write, never a delete; the piece keeps all
+  // its data and waits on the shelf for another truck.
+  const seg=_wiRecOf(orderId);
+  if(_wiStockOn()&&OrdersStock.canWrite()&&seg&&_wiIsPiece(seg.fields)){
+    html+=WI_EXECUTING.includes(seg.fields['Status'])
+      ? _wiCtxBtnDisabled('Επιστροφή στο απόθεμα','σε κίνηση — δεν επιστρέφει')
+      : _wiCtxBtn('Επιστροφή στο απόθεμα',`_wiStockReturn(${rowId},'${orderId}',${isImportSide?'true':'false'})`,true);
+  }
+  else html+=_wiCtxBtn('Ακύρωση groupage',`_wiCancelGroupMember(${rowId},'${orderId}',${isImportSide?'true':'false'})`,true);
   const ctx=document.getElementById('wi-ctx');
   ctx.innerHTML=html;
   ctx._returnFocus=e.currentTarget;
@@ -5490,7 +5685,14 @@ async function _wiRewriteGroupSuffix(recs,isImp){
   if(recs.length<2) return true;
   const base=String(recs.find(e=>e.fields['Group ID'])?.fields['Group ID']||'').split('|')[0]
     ||((isImp?'GI-':'GRP-')+String(recs[0].id).slice(-8));
-  const gid=base+'|'+recs.map(r=>r.id).join(',');
+  // K10 (round 1): a stock PIECE is never written into the suffix — it is
+  // the last member by having no position (pos 99 in _wiGiSortRecs,
+  // _wiGrpOrder and rt-feed's _rtLegSeq), the rule of the join (§6.5). The
+  // residue of a member leaving pinned it in the middle. Every member still
+  // carries the SAME string (rows collapse by Group ID equality). Only pieces
+  // left = the lead keeps the suffix, so it is never empty.
+  const pinned=recs.filter(r=>!_wiIsPiece(r.fields));
+  const gid=base+'|'+(pinned.length?pinned:recs.slice(0,1)).map(r=>r.id).join(',');
   let ok=true;
   for(const e of recs){
     try{
@@ -5535,7 +5737,11 @@ async function _wiSyncGroupResidue(row){
 // an order stops sharing a truck. The RT leg leaves FIRST, same order as
 // _wiRotUnlink: a failed DELETE (403/409) must never leave the fields cleared
 // while the order still counts as a leg of that round trip.
-async function _wiCancelGroupMember(rowId,orderId,isImportSide){
+// `ask` (optional): the confirm's and the success toast's words for a caller
+// that names the same write differently — «Επιστροφή στο απόθεμα» for a stock
+// piece (critic-1 C1-12: it confirmed with the words of another action). The
+// write itself is identical for every caller.
+async function _wiCancelGroupMember(rowId,orderId,isImportSide,ask){
   const row=WINTL.rows.find(r=>r.id===rowId); if(!row||!row.orderIds||row.orderIds.length<2) return;
   // «Η ανάθεση δεν κλειδώνει ποτέ» (owner 4/10/2026): a member already In
   // Transit/Delivered used to leave the group «on paper only» (kept truck and
@@ -5550,8 +5756,8 @@ async function _wiCancelGroupMember(rowId,orderId,isImportSide){
     // closedOk=false: the other members stay on the trip, so on a closed one
     // the leg DELETE is refused (409) and nothing is written — the text says so.
     ? _wiExecConfirmText([live],'Αφαίρεση από το groupage παραγγελίας που έχει ήδη εκτελεστεί. Η παραγγελία φεύγει ΧΩΡΙΣ ανάθεση και βγαίνει από το δρομολόγιο της ομάδας.',false)
-    : 'Αφαίρεση αυτής της παραγγελίας από το groupage; Η παραγγελία φεύγει ΧΩΡΙΣ ανάθεση.',
-    {title:'Ακύρωση groupage', confirmLabel:'Αφαίρεση'});
+    : ((ask&&ask.text)||'Αφαίρεση αυτής της παραγγελίας από το groupage; Η παραγγελία φεύγει ΧΩΡΙΣ ανάθεση.'),
+    {title:(ask&&ask.title)||'Ακύρωση groupage', confirmLabel:(ask&&ask.label)||'Αφαίρεση'});
   if(!ok) return;
   const toPending=live.st==='Assigned';
   try{
@@ -5590,7 +5796,13 @@ async function _wiCancelGroupMember(rowId,orderId,isImportSide){
   // the export's pointer name an id no live row claims. Promote the new
   // first-by-order survivor before anything downstream reads row.orderId.
   const wasLead=row.orderId===orderId;
-  const expRow=(isImportSide&&wasLead)?WINTL.rows.find(r=>r.type==='export'&&r.importId===orderId):null;
+  // The export may point at ANY member, not only the lead: a segment drag
+  // (_wiSaveSegOrder) reorders the suffix and leaves Matched Import ID where
+  // it was, and the pill is found by any member (impGroupRow). Whoever the
+  // pointer names, if that member leaves, the pointer follows the group's
+  // lead — else the export stays matched to the order that just left the
+  // truck while the members that keep the truck show as unmatched.
+  const expRow=isImportSide?WINTL.rows.find(r=>r.type==='export'&&r.importId===orderId):null;
   if(wasLead){
     const fallbackField=isImportSide?'Loading DateTime':'Delivery DateTime';
     const remaining=_wiGrpOrder(row.orderIds.map(id=>cache.find(r=>r.id===id)).filter(Boolean),fallbackField);
@@ -5605,6 +5817,8 @@ async function _wiCancelGroupMember(rowId,orderId,isImportSide){
       for(const eOid of expRow.orderIds){
         const r2=await atSafePatch(TABLES.ORDERS,eOid,{'Matched Import ID':newLead});
         if(r2?.error) throw new Error(r2.error.message||r2.error.type);
+        // the board's own copy too: _wiStockLooseFree reads it before the next fetch
+        const ex=WINTL.data.exports.find(r=>r.id===eOid); if(ex) ex.fields['Matched Import ID']=newLead;
       }
       expRow.importId=newLead;
     }catch(e){ reportError('Ο νέος επικεφαλής της ομάδας εισαγωγών δεν ενημερώθηκε στην ταιριασμένη εξαγωγή — έλεγξε χειροκίνητα',e); }
@@ -5618,7 +5832,7 @@ async function _wiCancelGroupMember(rowId,orderId,isImportSide){
     partnerPlates:'', partnerRate:'', partnerRateImp:'',
     saved:false,
   });
-  toast('Αφαιρέθηκε από το groupage — χωρίς ανάθεση ✓');
+  toast((ask&&ask.done)||'Αφαιρέθηκε από το groupage — χωρίς ανάθεση ✓');
   _wiPaint();
 }
 
@@ -5644,9 +5858,14 @@ function _wiPrintGroup(rowId){
 function _wiPrintImpGroup(rowId){
   const row=WINTL.rows.find(r=>r.id===rowId); if(!row||row.orderIds.length<2) return;
   const base='https://dimitrispetras21-del.github.io/PETRASGROUP-TMS/print.html';
-  const sheet=row.partnerId?'partner':'driver';
+  window.open(`${base}?${_wiImpGroupPrintQuery(row)}`,'_blank');
+}
+// The packet's query — ONE producer for the print button and its share menu
+// (data-shq → /print/pdf, which takes orderIds too), so paper, PDF and text
+// list the same members in the same order.
+function _wiImpGroupPrintQuery(row){
   const ordered=_wiGrpOrder(row.orderIds.map(id=>WINTL.data.imports.find(r=>r.id===id)).filter(Boolean),'Loading DateTime').map(e=>e.id);
-  window.open(`${base}?orderIds=${(ordered.length?ordered:row.orderIds).join(',')}&leg=import&sheet=${sheet}`,'_blank');
+  return `orderIds=${(ordered.length?ordered:row.orderIds).join(',')}&leg=import&sheet=${row.partnerId?'partner':'driver'}`;
 }
 
 /* ── ΚΑΡΤΕΛΑ ΡΟΤΑΣ (owner 12/8, εγκεκριμένο πρωτότυπο grp_trip_proto) ──
@@ -5781,7 +6000,7 @@ function _wiPrintWeek(){
   const td='padding:4px 6px;border:1px solid';
   const pals=f=>('Total Pallets' in f&&f['Total Pallets']!==''&&f['Total Pallets']!=null)?f['Total Pallets']:'—';
   let html=`<h2 style="font-family:'Syne',sans-serif;margin-bottom:12px">Εβδομαδιαίο Διεθνών — W${WINTL.week}</h2>
-    <p style="font-size:12px;margin-bottom:16px">${rows.length} εξαγωγές · ${data.imports.length} εισαγωγές · Εκτύπωση ${new Date().toLocaleString('el-GR')} — αντικαθιστά κάθε προηγούμενη έκδοση</p>
+    <p style="font-size:12px;margin-bottom:16px">${rows.length} εξαγωγές · ${_wiBoardImpRows().length} εισαγωγές · Εκτύπωση ${new Date().toLocaleString('el-GR')} — αντικαθιστά κάθε προηγούμενη έκδοση</p>
     <table style="width:100%;border-collapse:collapse;font-size:11px">
       <thead><tr style="font-weight:700">
         <th style="${td};text-align:left">#</th>
@@ -5795,7 +6014,16 @@ function _wiPrintWeek(){
     const exps=row.orderIds.map(id=>data.exports.find(r=>r.id===id)).filter(Boolean);
     const primary=exps[0];if(!primary)return;
     const f=primary.fields;
-    const imp=row.importId?data.imports.find(r=>r.id===row.importId):null;
+    // Every member of the truck's import group, in the board's order (impact
+    // map 4/10 PR-10): only the member the export names was printed, so a
+    // piece joined to the group was missing from the week's paper. «ΑΠ» marks
+    // a piece; «→ ΑΠΟΘΗΚΗ» a lot (it goes to the warehouse, not the client).
+    const grpRow=row.importId?_wiImpGroupRowOf(row.importId):null;
+    const impRecs=(grpRow&&(grpRow.orderIds||[]).length>1)
+      ?_wiGrpOrder(grpRow.orderIds.map(id=>data.imports.find(r=>r.id===id)).filter(Boolean),'Loading DateTime')
+      :(row.importId?[data.imports.find(r=>r.id===row.importId)].filter(Boolean):[]);
+    const impCell=impRecs.length?impRecs.map(m=>{ const mf=m.fields;
+      return (_wiIsPiece(mf)?'ΑΠ ':'')+escapeHtml(_wiRaw(_wiPlaceStr(mf,'load')))+' → '+escapeHtml(_wiRaw(_wiPlaceStr(mf,'del')))+(_wiIsLot(mf)?' · → ΑΠΟΘΗΚΗ':''); }).join('<br>'):'—';
     // Λεξιλόγιο ΜΕΡΟΣ Ε: «ΣΥΝ.» + επωνυμία · «ΙΔ.» + πινακίδα + οδηγός · «ΠΡΟΣ ΑΝΑΘΕΣΗ»
     const partner=row.partnerLabel||(row.partnerId?'—':'');
     const plates=[row.truckLabel,row.trailerLabel].filter(Boolean).join(' / ');
@@ -5803,16 +6031,1074 @@ function _wiPrintWeek(){
       :(plates?`ΙΔ. ${plates}${row.driverLabel?' · '+row.driverLabel:''}`:'ΠΡΟΣ ΑΝΑΘΕΣΗ');
     html+=`<tr>
       <td style="${td}">${i+1}</td>
-      <td style="${td}">${escapeHtml(f['Loading Summary']||'')} → ${escapeHtml(f['Delivery Summary']||'')}</td>
+      <td style="${td}">${escapeHtml(_wiRaw(_wiPlaceStr(f,'load')))} → ${escapeHtml(_wiRaw(_wiPlaceStr(f,'del')))}${_wiIsLot(f)?' · → ΑΠΟΘΗΚΗ':''}</td>
       <td style="${td};font-variant-numeric:tabular-nums">${toLocalDate(f['Loading DateTime'])} → ${toLocalDate(f['Delivery DateTime'])}</td>
       <td style="${td};text-align:center;font-variant-numeric:tabular-nums">${pals(f)}</td>
       <td style="${td}">${escapeHtml(assign)}</td>
-      <td style="${td}">${imp?(escapeHtml(imp.fields['Loading Summary']||'')+' → '+escapeHtml(imp.fields['Delivery Summary']||'')):'—'}</td>
+      <td style="${td}">${impCell}</td>
     </tr>`;
   });
   html+='</tbody></table>';
   // WI-11: shared shell (core/utils) — one print chrome for both weekly pages.
   _printWeekShell(`Εβδομάδα ${WINTL.week} — Petras TMS`, html);
+}
+
+/* ── ΑΠΟΘΕΜΑ ΣΕ ΑΠΟΘΗΚΗ — Φ1 (owner 3–4/10/2026, .claude/plans/stock-lots-v5 §6) ──
+   A LOT is one international order delivered into a partner warehouse; its
+   PIECES are ordinary import orders that leave the warehouse on our trucks as
+   GI groupage members (the existing Group ID mechanism, no second one). This
+   screen only MIRRORS the rules: over-draw, money, invoicing, relink and
+   delete are refused by the database (migration 057 guards) and reach here as
+   the Worker's Greek 422 toast. Everything goes through OrdersStock
+   (core/orders-common.js) — the one client of the STOCK LOTS facade.
+   Gates: every ENTRY (shelf, menu items, panels) needs _wiStockOn(), so with
+   FEATURES.STOCK_LOTS off the board is today's. The data-based exclusions
+   (_wiStockSkip/_wiLotHeld: no auto-match, no grouping, out of the counters)
+   need only OrdersStock to be loaded — a piece that exists must stay out of
+   the auto-match even while the switch is rolled back.
+   No money anywhere on this screen (dispatchers never see P&L, owner 23/8). */
+function _wiStockOn(){ return typeof OrdersStock!=='undefined' && OrdersStock.on(); }
+function _wiIsPiece(f){ return typeof OrdersStock!=='undefined' && !!f && OrdersStock.isPiece(f); }
+function _wiIsLot(f){ return typeof OrdersStock!=='undefined' && !!f && OrdersStock.isLot(f); }
+function _wiRecOf(id){ return WINTL.data.exports.find(r=>r.id===id)||WINTL.data.imports.find(r=>r.id===id)||null; }
+// A lot goes to the warehouse ALONE, whoever carries it: never matched,
+// grouped, merged or given a rota leg, and only the lot menu (_wiLotCtx).
+// Round 1 (critic-3 Σ-05): this used to stop at «no truck of ours», so a lot
+// on our own truck (allowed: an ordinary lot, owner 4/10) got the full menu — and the
+// DB refuses its group/match (057 lot_grouped), after _wiGroupPatch had
+// already written the OTHER export into a one-member group.
+function _wiLotHeld(row){
+  if(!row||(row.orderIds||[]).length>1) return false;
+  const rec=_wiRecOf(row.orderIds?.[0]||row.orderId);
+  return !!rec&&_wiIsLot(rec.fields);
+}
+// Import rows that never wait for a match: every lot, and a piece that sits in
+// the warehouse (no truck, no partner, no export pointing at it). D1 (round 1):
+// a Group ID is planning, not a vehicle — a truckless piece with a stale group
+// is loose like any other (critic-3 Σ-03/Σ-04, critic-5 S5-11).
+function _wiStockSkip(row){
+  if(!row||row.type!=='import'||(row.orderIds||[]).length>1) return false;
+  const rec=WINTL.data.imports.find(r=>r.id===row.orderId), f=rec&&rec.fields;
+  if(!f) return false;
+  if(_wiIsLot(f)) return true;
+  return _wiIsPiece(f)&&!row.truckId&&!row.partnerId&&!row.matchedTo;
+}
+// D1 (round 1, ONE definition): a piece is «on a truck» when it has a Truck or
+// a Partner — nothing else. OrdersStock.isLoose drops its Group ID test in the
+// same round (core builder); the fields go in WITHOUT the Group ID so this
+// line gives the D1 answer before and after that change lands. Once
+// orders-common.js has it, the override is a no-op — never a second rule.
+function _wiLoose(f){
+  return typeof OrdersStock!=='undefined'&&!!f&&OrdersStock.isLoose(Object.assign({},f,{'Group ID':null}));
+}
+// The import row that carries `oid` — found by ANY member, never only by the
+// row's lead: an export's Matched Import ID names one member, and the lead a
+// group sorts first may be another (impact map 4/10 PR-01/PR-02).
+function _wiImpGroupRowOf(oid){
+  return oid?WINTL.rows.find(r=>r.type==='import'&&(r.orderId===oid||(r.orderIds||[]).includes(oid)))||null:null;
+}
+// Φ1 «a piece rides only our own trucks» (plan §3) on EVERY path that can put
+// one on a partner, not only «+ Κομμάτι» (impact map 4/10 B-05: the popover,
+// its GI propagation, drag/drop and auto-match all could, and the DB accepts
+// it — the piece then carried a partner cost, or a Partner with no assignment
+// row). One predicate, one message.
+const WI_PIECE_OWN_ONLY='Κομμάτι αποθέματος μόνο σε δικό μας φορτηγό';
+// The pieces in the import load of `ids`: each id plus every member of its GI
+// group row on this board.
+function _wiPieceIn(ids){
+  const all=new Set();
+  (ids||[]).filter(Boolean).forEach(id=>{ all.add(id); const g=_wiImpGroupRowOf(id); if(g) (g.orderIds||[g.orderId]).forEach(x=>all.add(x)); });
+  return [...all].filter(id=>{ const r=_wiRecOf(id); return !!r&&_wiIsPiece(r.fields); });
+}
+// An import row the auto-match may score: unmatched, not a lot or a waiting
+// piece (_wiStockSkip), and — lone OR group — holding no piece: a piece
+// reaches a truck only by a person's choice, and the score may pick a partner.
+function _wiMatchableImp(r){
+  return !!r&&r.type==='import'&&!r.matchedTo&&!_wiStockSkip(r)&&!_wiPieceIn(r.orderIds||[r.orderId]).length;
+}
+// Loose pieces live on the shelf (plan §3, impact map 4/10 B-19). A piece
+// waiting in the warehouse (OrdersStock.isLoose) is not a board row while the
+// shelf is on screen: its row sat on the day of the truck it last left, lit up
+// under «ΚΕΝΑ ΓΥΡΙΣΜΑΤΑ», counted in «ΕΙΣΑΓΩΓΗ · N» and could be dragged or
+// assigned (a partner too) past every check of «+ Κομμάτι». The shelf's «N
+// κομμάτια χωρίς φορτηγό» is its one home. No shelf (switch off, warehouse
+// role) = no home, so the row stays — else the piece would vanish unannounced.
+// A piece an export still points at keeps its place in that export's row.
+function _wiShelved(row){
+  if(!WINTL.data.stock||!row||row.type!=='import'||row.matchedTo||(row.orderIds||[]).length>1) return false;
+  const rec=WINTL.data.imports.find(r=>r.id===row.orderId);
+  return !!rec&&_wiLoose(rec.fields);
+}
+// The top-bar Undo reverts ONE cached PATCH (core/api.js atPatch → _undoSet).
+// After a stock action — several writes that only make sense together (lock +
+// join, leg off + vehicle off + group off) — it rebuilt half a group on a truck
+// outside its round trip and toasted «Reverted» (impact map 4/10 B-13). So
+// every stock action ends with clearUndo(). Not atSuppressUndo: that flag is
+// ONE boolean (a nested wrapper lowers it early), stays raised across the
+// user's confirm dialogs, cannot reach the piece form's own create
+// (orders_intl.js), and would leave the PREVIOUS, unrelated undo armed.
+function _wiNoUndo(){ if(typeof clearUndo==='function') clearUndo(); }
+
+// «ΑΠ» (piece) / «→ ΑΠΟΘΗΚΗ» (lot) badges. The piece's tooltip names its lot
+// from the shelf data when loaded, else from the order's own number.
+function _wiApTip(f){
+  const lotRec=OrdersStock.lotRecOfPiece(f);
+  const st=WINTL.data.stock;
+  const lot=(st&&st.lots||[]).find(l=>l.id===lotRec);
+  const p=+(f['Total Pallets']||0);
+  if(lot){ const lf=lot.fields||{}; return `Κομμάτι ${p}/${+(lf['Stock Pallets']||0)}p · παρτίδα ${OrdersStock.lotLabel(lot)} · ${lf['Warehouse Name']||'—'}`; }
+  return `Κομμάτι ${p}p · παρτίδα ${OrdersStock.lotNumLabel(f)}`;
+}
+function _wiApBadge(f,oid){
+  if(!_wiIsPiece(f)) return '';
+  return `<span class="wi-badge wi-b-ap"${oid?` data-oid="${escapeHtml(String(oid))}"`:''} title="${escapeHtml(_wiApTip(f))}">ΑΠ</span>`;
+}
+// The warehouse's name lives in the title, not the badge: the card right
+// beside it already shows that name as its destination, and on the narrow
+// import cell the long upper-case repeat was cut mid-word (DESIGN #6). No
+// pallets either (critic-5 S5-02): the card's own pallet cell shows them, and
+// the badge's upper case turned «33p» into «33P» next to it.
+function _wiLotBadge(f){
+  if(!_wiIsLot(f)) return '';
+  const wh=_wi2Split(_wiFlatLocName(f['Unloading Location 1'])).title||'—';
+  return `<span class="wi-badge wi-b-lot" title="Παρτίδα → αποθήκη ${escapeHtml(wh)}: παραδίδεται στην αποθήκη, όχι στον πελάτη — τα κομμάτια φεύγουν από εκεί με δικά μας φορτηγά">→ ΑΠΟΘΗΚΗ</span>`;
+}
+function _wiStockTipsRefresh(){
+  document.querySelectorAll('#wi-rows .wi-b-ap[data-oid]').forEach(el=>{ const r=_wiRecOf(el.dataset.oid); if(r) el.title=_wiApTip(r.fields); });
+}
+
+/* Shelf data (§6.1). WINTL.data.stock: null = no shelf (switch off, or the
+   warehouse role, which has no STOCK LOTS right and would see a permanent red
+   strip) · {status:'loading'|'failed'|'ok', lots, loose}. A re-render keeps the
+   last good shelf on screen while it re-reads (no 28px jump after every save);
+   a failure is never painted as «no stock». */
+function _wiStockPrime(){
+  if(!_wiStockOn()||ROLE==='warehouse'){ WINTL.data.stock=null; return; }
+  const st=WINTL.data.stock;
+  if(!st||st.status!=='ok') WINTL.data.stock={status:'loading'};
+}
+function _wiStockLoad(){
+  if(!_wiStockOn()||ROLE==='warehouse'){ WINTL.data.stock=null; _wiShelfPaint(); return; }
+  const tok={}; WINTL._stockTok=tok;   // identity guard: only the newest read may paint
+  if(!WINTL.data.stock||WINTL.data.stock.status==='failed'){ WINTL.data.stock={status:'loading'}; _wiShelfPaint(); }
+  const fail=err=>{
+    WINTL.data.stock={status:'failed',error:String((err&&err.message)||err||'').slice(0,160)};
+    if(typeof logError==='function') logError(err instanceof Error?err:new Error(String(err||'stock read failed')),'weekly intl: stock shelf');
+    _wiShelfPaint();
+  };
+  Promise.all([OrdersStock.loadOpen(),OrdersStock.loadLoosePieces()]).then(([a,b])=>{
+    if(WINTL._stockTok!==tok) return;
+    if(!a||!a.ok) return fail(a&&a.error||'STOCK LOTS');
+    if(!b||!b.ok) return fail(b&&b.error||'ORDERS (κομμάτια χωρίς φορτηγό)');
+    WINTL.data.stock={status:'ok',lots:a.lots||[],loose:b.pieces||[]};
+    _wiShelfPaint();
+  }).catch(e=>{ if(WINTL._stockTok===tok) fail(e); });
+}
+function _wiShelfHas(st){ return !!st&&(st.status!=='ok'||(st.lots||[]).length>0||(st.loose||[]).length>0); }
+function _wiShelfHTML(){
+  const st=WINTL.data.stock;
+  if(!st) return '';
+  return `<div id="wi-shelf" class="wi-shelf" role="region" aria-label="Απόθεμα σε αποθήκες">${_wiShelfInner(st)}</div>`;
+}
+// Most urgent first: pieces moving without intake, then «close?», then aging.
+const _WI_SHELF_RANK={nointake:0,close:1,aging:2,ok:3};
+// The Weekly's state of one lot = OrdersStock.chip(), except the red flag.
+// D3 (round 1): «pieces move while the intake is not marked» has ONE
+// definition — the DB's stock_v_lots.pieces_moving (pieces In Transit or
+// Delivered with a loading day before today, the S-06 threshold), served as
+// «Pieces Moving». A piece merely ASSIGNED before the intake is normal
+// planning, not a problem (critic-1 C1-01: the old «pieces > loose» rule lit
+// red the moment a piece got a truck, so the dispatcher learned to ignore
+// red). Until the Worker serves the label it is ABSENT (facade trap 2) → no
+// red, never a guess from the cache.
+function _wiLotState(l,today){
+  const c=OrdersStock.chip(l,today)||{key:'ok'};
+  const g=(l&&l.fields)||{};
+  const moving=g['Intake Delivered']!==true?(+(g['Pieces Moving']||0)||0):0;
+  const key=moving>0?'nointake':(c.key==='nointake'?'ok':c.key);
+  return Object.assign({},c,{key,moving});
+}
+// The lots in the order the strip and the list show them.
+function _wiShelfLots(st){
+  const today=localToday();
+  return (st.lots||[]).map(l=>({l,c:_wiLotState(l,today)}))
+    .sort((a,b)=>(_WI_SHELF_RANK[a.c.key]??3)-(_WI_SHELF_RANK[b.c.key]??3));
+}
+// One word per flag: only a PROBLEM gets one (critic-1 C1-03, critic-5 S5-01).
+// «σε κίνηση χωρίς παραλαβή», not «κομμάτια κινούνται χωρίς παραλαβή»: with
+// real warehouse/client names the longer flag pushed the red chip — the one
+// that matters — past the strip's edge at 1440 (rig shelf_top_right); the
+// panel and the title say the whole sentence, with the count.
+const _WI_SHELF_FLAG={nointake:'σε κίνηση χωρίς παραλαβή',close:'κλείσιμο;',aging:'>21 ημ.'};
+// A loose piece whose promised delivery day is behind us: it went back to
+// stock (a truck broke down…) and keeps the dates we gave the client — the one
+// late order no other screen lists (critic-1 C1-02).
+function _wiLooseLate(p,today){
+  const d=toLocalDate((p&&p.fields&&p.fields['Delivery DateTime'])||'');
+  return !!d&&d<(today||localToday());
+}
+function _wiShelfInner(st){
+  if(st.status==='loading') return `<div class="wi-shelf-in"><span class="wi-shelf-lbl">ΑΠΟΘΕΜΑ…</span></div>`;
+  if(st.status==='failed') return `<div class="wi-shelf-in"><button type="button" class="wi-shelf-fail" onclick="_wiStockLoad()" title="Οι παρτίδες δεν διαβάστηκαν${st.error?' ('+escapeHtml(st.error)+')':''} — αυτό ΔΕΝ σημαίνει ότι δεν υπάρχει απόθεμα. Κλικ: ξαναδοκίμασε">ΑΠΟΘΕΜΑ — δεν φορτώθηκε ↻</button></div>`;
+  if(!_wiShelfHas(st)) return '';
+  const lots=_wiShelfLots(st);
+  const nFlag=lots.filter(x=>x.c.key!=='ok').length;
+  // The count IS the list it opens (_wiStockLooseOpen): one source. The
+  // lots' «Pieces Without Truck» counted a piece in a truckless group as «on a
+  // truck», so the button said 0 while its list showed the piece.
+  const loose=st.loose||[], nLoose=loose.length;
+  const today=localToday(), nLate=loose.filter(p=>_wiLooseLate(p,today)).length;
+  // The label opens EVERY open lot (_wiStockLotsOpen): the chips scroll
+  // sideways, so a lot that does not fit is still one click away and the
+  // «· K ⚠» says how many need a look (critic-1 C1-03). The loose-pieces
+  // button only when there are some: «0 κομμάτια» was noise (S5-01).
+  const lbl=`<button type="button" class="wi-shelf-lbl" onclick="_wiStockLotsOpen(this)" title="Όλες οι ανοιχτές παρτίδες — κλικ: η λίστα">ΑΠΟΘΕΜΑ · ${lots.length}${nFlag?` <span class="wi-shelf-k">· ${nFlag} ⚠</span>`:''}</button>`;
+  const looseBtn=nLoose?`<button type="button" class="wi-shelf-loose${nLate?' late':''}" onclick="_wiStockLooseOpen(this)" title="Κομμάτια που περιμένουν φορτηγό${nLate?' — '+nLate+' με παράδοση που πέρασε':''} — κλικ: η λίστα">${nLoose} ${nLoose===1?'κομμάτι':'κομμάτια'} χωρίς φορτηγό${nLate?` · ${nLate} ${nLate===1?'εκπρόθεσμο':'εκπρόθεσμα'}`:''}</button>`:'';
+  return `<div class="wi-shelf-in">${lbl}<div class="wi-shelf-list" onscroll="_wiShelfFit()" onwheel="_wiShelfWheel(event,this)">${lots.map(x=>_wiShelfChip(x.l,x.c)).join('')}</div>${looseBtn}</div>`;
+}
+// «▣ Αποθήκη · Πελάτης 18/24p» and a flag only for a problem (critic-1 C1-03,
+// critic-5 S5-01): no bar (it repeated 18/24), no days unless they ARE the
+// problem, no country code — the full story is in the title and the panel.
+// About half the old width, so 2–3 chips fit at 1440.
+function _wiShelfChip(l,c){
+  const f=l.fields||{};
+  const cc=(typeof countryCode==='function'&&countryCode(f['Warehouse Country']))||'';
+  const rem=+(f['Remaining Pallets']||0), stock=+(f['Stock Pallets']||0);
+  const flag=_WI_SHELF_FLAG[c.key]||'';
+  const tip=[`Παρτίδα ${OrdersStock.lotLabel(l)}`,`${f['Warehouse Name']||'—'}${cc?' ('+cc+')':''}`,f['Client Name']||'—',
+    `υπόλοιπο ${rem}/${stock}p`,`${+(f['Pieces']||0)} κομμάτια, ${+(f['Pieces Delivered']||0)} παραδόθηκαν`,
+    f['Received On']?`παραλαβή ${_wiFmt(f['Received On'])}${c.days!=null?' ('+c.days+' ημ.)':''}`:'παραλαβή αναμένεται'].join(' · ')+' — κλικ: κομμάτια';
+  return `<button type="button" class="wi-shelf-chip ${escapeHtml(c.key)}" data-lot="${escapeHtml(l.id)}" onclick="_wiStockLotOpen(this,'${escapeHtml(l.id)}')" title="${escapeHtml(tip)}"><span aria-hidden="true">▣</span><b>${escapeHtml(f['Warehouse Name']||'—')}</b><span class="sep">·</span>${escapeHtml(f['Client Name']||'—')}<b class="n">${rem}/${stock}p</b>${flag?`<span class="fl">${flag}</span>`:''}</button>`;
+}
+// «ΑΠΟΘΕΜΑ · N» → every open lot, one line each, in the strip's order. A line
+// opens that lot's panel, anchored on the strip label (the clicked line lives
+// in the panel being replaced — it would anchor on a detached element).
+async function _wiStockLotsOpen(anchor){
+  if(!_wiStockOn()) return;
+  if(document.fullscreenElement){ try{ await document.exitFullscreen(); }catch(_){} }
+  const st=WINTL.data.stock; if(!st||st.status!=='ok') return;
+  const lots=_wiShelfLots(st), nFlag=lots.filter(x=>x.c.key!=='ok').length;
+  const body=lots.length
+    ? `<div class="wi-panel-list wi-stk-list">${lots.map(({l,c})=>{ const f=l.fields||{};
+        const fl=_WI_SHELF_FLAG[c.key];
+        return `<button type="button" class="wi-panel-opt wi-stk-opt" data-lot="${escapeHtml(l.id)}" onclick="_wiStockLotOpen(document.querySelector('#wi-shelf .wi-shelf-lbl'),'${escapeHtml(l.id)}')"><span>${escapeHtml(OrdersStock.lotLabel(l))} · ${escapeHtml(f['Warehouse Name']||'—')} · ${escapeHtml(f['Client Name']||'—')} · <b>${+(f['Remaining Pallets']||0)}/${+(f['Stock Pallets']||0)}p</b>${fl?` · <span class="${c.key==='nointake'?'wi-stk-bad':'wi-stk-warn'}">${fl}</span>`:''}</span></button>`; }).join('')}</div>`
+    : `<div class="wi-panel-empty">Καμία ανοιχτή παρτίδα</div>`;
+  _wiPanelOpen(anchor,'Ανοιχτές παρτίδες',`${lots.length} σε αποθήκες${nFlag?` · ${nFlag} θέλ${nFlag===1?'ει':'ουν'} προσοχή`:''}`,body,'');
+}
+// The chips scroll sideways with no scrollbar (28px leave no room for one):
+// the mouse wheel scrolls them too, and a fade on each edge says «more»
+// while any chip is out of view on that side — never a silent cut (DESIGN Κ6;
+// the right-aligned strip of 4/10 scrolls far more often, so the left needs it).
+function _wiShelfFit(){
+  const l=document.querySelector('#wi-shelf .wi-shelf-list'); if(!l) return;
+  l.classList.toggle('ovf',l.scrollLeft+l.clientWidth<l.scrollWidth-1);
+  l.classList.toggle('ovl',l.scrollLeft>1);
+}
+function _wiShelfWheel(e,el){
+  if(el.scrollWidth<=el.clientWidth||Math.abs(e.deltaY)<=Math.abs(e.deltaX)) return;
+  el.scrollLeft+=e.deltaY; e.preventDefault();
+}
+// Repaint the strip ALONE (the rows are untouched): the read finishes after
+// the board's first paint.
+function _wiShelfPaint(){
+  const host=document.querySelector('#content .wk3.wi2'); if(!host) return;
+  const st=WINTL.data.stock;
+  let box=document.getElementById('wi-shelf');
+  if(!st){ if(box) box.remove(); host.classList.remove('has-shelf'); return; }
+  if(!box){
+    const sheet=host.querySelector('main.wk3-sheet'); if(!sheet) return;
+    box=document.createElement('div'); box.id='wi-shelf'; box.className='wi-shelf';
+    box.setAttribute('role','region'); box.setAttribute('aria-label','Απόθεμα σε αποθήκες');
+    sheet.prepend(box);
+  }
+  box.innerHTML=_wiShelfInner(st);
+  host.classList.toggle('has-shelf',_wiShelfHas(st));
+  _wiStockTipsRefresh();
+  _wiStockGapLinksRefresh();
+  requestAnimationFrame(_wiShelfFit);
+}
+
+// Π7.3: in fullscreen the sheet is the only thing painted — #wi-ctx, #wi-panel
+// and every modal live outside it and would open invisibly. The stock entries
+// (chip, row, import and segment menus) leave fullscreen first; the menu is
+// then anchored on the clicked element, whose click point belonged to the
+// fullscreen layout. Callers await it ONLY in fullscreen with the switch on:
+// any await defers the handler past the event dispatch, where currentTarget
+// (the menu's focus-return anchor) is already null — so a board with the
+// switch off runs its menus exactly as before.
+async function _wiLeaveFs(e){
+  if(!_wiStockOn()||!document.fullscreenElement) return e;
+  const t=e&&e.currentTarget;
+  try{ await document.exitFullscreen(); }catch(_){}
+  const r=t&&t.getBoundingClientRect?t.getBoundingClientRect():null;
+  return {currentTarget:t,target:e&&e.target,
+    clientX:r?Math.round(r.left+Math.min(24,r.width/2)):e.clientX,
+    clientY:r?Math.round(r.top+Math.min(16,r.height/2)):e.clientY,
+    preventDefault(){},stopPropagation(){}};
+}
+function _wiCtxShow(e,html,h){
+  const ctx=document.getElementById('wi-ctx'); if(!ctx) return;
+  ctx.innerHTML=html;
+  ctx._returnFocus=e.currentTarget;
+  Object.assign(ctx.style,{display:'block',
+    left:`${Math.min(e.clientX,window.innerWidth-240)}px`,
+    top:`${Math.min(e.clientY,window.innerHeight-(h||200))}px`});
+  requestAnimationFrame(()=>{ const f=ctx.querySelector('.wi-ctx-i:not([disabled])'); if(f) f.focus(); });
+  setTimeout(()=>document.addEventListener('click',_wiCtxClose,{once:true}),10);
+}
+// A lot's row (§6.7): only what a lot needs while it travels to the warehouse.
+function _wiLotCtx(e,row,isImp){
+  if(!_wiLotHeld(row)) return false;
+  const rec=_wiRecOf(row.orderIds?.[0]||row.orderId);
+  let html=`<div class="wi-ctx-h">${escapeHtml('ΠΑΡΤΙΔΑ → ΑΠΟΘΗΚΗ · '+(_wiClientName(rec.fields)||'—'))}</div>`;
+  // A lot's «Ανάθεση…» offers own trucks too (impact map B-15): owner 4/10 —
+  // a lot carried by our own truck follows the same warehouse-charge rule.
+  html+=_wiCtxBtn('Ανάθεση…',isImp?`_wiPanelAssign(${row.id},true,'${rec.id}')`:`_wiPanelAssign(${row.id},false)`);
+  html+=_wiCtxBtn('Εκτύπωση…',`_wiMenuPrint(${row.id},${isImp?'true':'false'})`);
+  html+=_wiCtxBtn('Άνοιγμα',`_wk3Edit('${rec.id}')`);
+  if(_wiStockOn()) html+=_wiCtxBtn('Απόθεμα…',`_wiStockLotOfRow(${row.id})`);
+  _wiCtxShow(e,html,180);
+  return true;
+}
+function _wiStockLotOfRow(rowId){
+  const row=WINTL.rows.find(r=>r.id===rowId); if(!row) return;
+  const rec=_wiRecOf(row.orderIds?.[0]||row.orderId);
+  const lotRec=rec&&OrdersStock.lotRecOfLot(rec.fields);
+  if(!lotRec){ toast('Η παρτίδα δεν βρέθηκε στην παραγγελία','warn'); return; }
+  _wiStockLotOpen(_wiAnchorFor(rowId),lotRec);
+}
+
+// Chip click → the lot's panel (§6.3): header, ONE note for a problem, the
+// pieces, and the buttons the role may use (management: none · accountant:
+// close only · owner/dispatcher: all). Round 1 (critic-5 S5-07, critic-1
+// C1-04/C1-09): every fact once — the flag is said by the note, so the context
+// line drops «παραλαβή…»; no zero lines («Κομμάτια · 0», «Κανένα κομμάτι»);
+// «Κλείσιμο υπολοίπου…» is the primary button ONLY when the lot asks for it
+// (writing every pallet off was the main action of every fresh lot), and
+// «Άνοιγμα παρτίδας» leads to the lot order (the order form has no Status:
+// the intake is marked only in the Ημερήσιο — round 3, critic-1 F1).
+async function _wiStockLotOpen(anchor,lotRec){
+  if(!_wiStockOn()) return;
+  if(document.fullscreenElement){ try{ await document.exitFullscreen(); }catch(_){} }
+  let lot=(WINTL.data.stock&&WINTL.data.stock.lots||[]).find(l=>l.id===lotRec);
+  if(!lot){
+    const r=await OrdersStock.loadLots(`RECORD_ID()='${lotRec}'`);
+    if(!r||!r.ok||!(r.lots||[]).length){ reportError('Η παρτίδα δεν διαβάστηκε — δοκίμασε ξανά',r&&r.error,'warn'); return; }
+    lot=r.lots[0];
+  }
+  const f=lot.fields||{}, c=_wiLotState(lot,localToday());
+  const cc=(typeof countryCode==='function'&&countryCode(f['Warehouse Country']))||'';
+  const rem=+(f['Remaining Pallets']||0), stock=+(f['Stock Pallets']||0), nPieces=+(f['Pieces']||0);
+  WINTL._stkLot=lot;
+  const title=`${escapeHtml(OrdersStock.lotLabel(lot))} · ${escapeHtml(f['Warehouse Name']||'—')}${cc?' '+cc:''}`;
+  const recv=f['Received On']?`παραλαβή ${_wiFmt(f['Received On'])}`:'παραλαβή αναμένεται';
+  const open=getLinkedId(f['Order'])?` · <button type="button" class="wi-stk-link" onclick="_wiStockOpenLotOrder()" title="Η παραγγελία της παρτίδας">Άνοιγμα παρτίδας</button>`:'';
+  const ctxLine=`${escapeHtml(f['Client Name']||'—')} · υπόλοιπο <b>${rem}/${stock}p</b>${c.key==='nointake'?'':' · '+recv}${open}`;
+  const flag=c.key==='nointake'?`<div class="wi-panel-note wi-stk-bad">${c.moving} ${c.moving===1?'κομμάτι κινείται':'κομμάτια κινούνται'}, αλλά η παραλαβή στην αποθήκη δεν σημειώθηκε — Ημερήσιο, «Παραλαβή αποθήκης».</div>`
+    :c.key==='close'?`<div class="wi-panel-note wi-stk-warn">Όλα τα κομμάτια παραδόθηκαν — η παρτίδα τιμολογείται μετά το «Κλείσιμο υπολοίπου».</div>`
+    :c.key==='aging'?`<div class="wi-panel-note wi-stk-warn">Στην αποθήκη ${c.days} ημ. (πάνω από 21).</div>`:'';
+  const notes=f['Source Notes']?`<div class="wi-panel-note">Σημειώσεις: ${escapeHtml(String(f['Source Notes']))}</div>`:'';
+  // The pieces' header and list come from the READ below, not from the lot's
+  // counters: a lot with none shows nothing (no «Κομμάτια · 0»).
+  const body=`${flag}${notes}<div id="wi-stk-ph"></div>
+    <div class="wi-panel-list wi-stk-list" id="wi-stk-pieces">${nPieces?'<div class="wi-panel-empty">Φόρτωση κομματιών…</div>':''}</div>`;
+  const nudge=c.key==='close';
+  const btns=[];
+  if(OrdersStock.canWrite()){
+    btns.push(f['Ops Status']?`<button class="btn btn-outline" disabled title="Η παρτίδα είναι pre-order — δεν βγαίνουν κομμάτια ακόμη">+ Κομμάτι</button>`
+      :rem>0?`<button class="btn ${nudge?'btn-outline':'btn-primary'}" onclick="_wiStockNewLoose()" title="Νέο κομμάτι χωρίς φορτηγό — για φορτηγό: δεξί κλικ στη γραμμή του">+ Κομμάτι</button>`
+      :`<button class="btn btn-outline" disabled title="Δεν μένουν παλέτες στην αποθήκη">+ Κομμάτι</button>`);
+  }
+  // closable(), not the chip: a received lot with NO piece drawn (collected by
+  // the client, damaged whole) must still be closable — else never invoiced.
+  // Offered, but primary only when the chip asks for it (C1-04, S5-07).
+  if(OrdersStock.canClose()&&OrdersStock.closable(lot)) btns.push(`<button class="btn ${nudge?'btn-primary':'btn-ghost'}" onclick="_wiStockClose()">Κλείσιμο υπολοίπου…</button>`);
+  _wiPanelOpen(anchor,title,ctxLine,body,btns.join(''));
+  const tok={}; WINTL._stkPiecesTok=tok;
+  let r=null; try{ r=await OrdersStock.loadPieces(lot.id); }catch(e){ r={ok:false,error:e}; }
+  if(WINTL._stkPiecesTok!==tok) return;
+  const box=document.getElementById('wi-stk-pieces'), ph=document.getElementById('wi-stk-ph'); if(!box) return;
+  if(!r||!r.ok){ box.innerHTML=`<div class="wi-panel-empty wi-stk-bad">Τα κομμάτια δεν φορτώθηκαν — δεν σημαίνει ότι δεν υπάρχουν</div>`; return; }
+  WINTL._stkPieces=r.pieces||[];
+  const n=WINTL._stkPieces.length, done=WINTL._stkPieces.filter(p=>(p.fields||{})['Status']==='Delivered').length;
+  if(ph) ph.outerHTML=n?`<div class="wi-panel-note wi-stk-h">Κομμάτια · ${n}${done?` (${done} ${done===1?'παραδόθηκε':'παραδόθηκαν'})`:''}</div>`:'';
+  box.innerHTML=WINTL._stkPieces.map(p=>_wiStockPieceLine(p,false)).join('');
+  if(!n) box.style.display='none';
+}
+// The lot's order usually sits in ANOTHER week (it went to the warehouse days
+// ago), so it is read by id — _wk3Edit only knows this week's rows and would
+// open nothing, silently.
+async function _wiStockOpenLotOrder(){
+  const id=getLinkedId(WINTL._stkLot&&WINTL._stkLot.fields&&WINTL._stkLot.fields['Order']);
+  if(!id){ toast('Η παραγγελία της παρτίδας δεν βρέθηκε','warn'); return; }
+  _wiPanelClose();
+  if(typeof openIntlEditWith!=='function'){ reportError('Η φόρμα παραγγελίας δεν είναι διαθέσιμη — ανανέωσε τη σελίδα',null,'warn'); return; }
+  const here=_wiRecOf(id);
+  const rec=here||await _wiReadOrder(id);
+  if(!rec||!rec.fields){ reportError('Η παραγγελία της παρτίδας δεν διαβάστηκε — δοκίμασε ξανά',null,'warn'); return; }
+  openIntlEditWith(id,rec.fields);
+}
+// One piece line. «Διαγραφή» only for a piece with no truck and no movement —
+// and the base still decides (piece_on_truck / piece_executed). D1 (round 1):
+// a Group ID is not a truck — a truckless piece left in a group reads
+// «χωρίς φορτηγό» like every other screen and the DB say (critic-5 S5-11).
+function _wiStockPieceLine(p,withLot){
+  const f=p.fields||{};
+  const tr=getLinkedId(f['Truck']), pa=getLinkedId(f['Partner']);
+  const who=tr?(WINTL.data.trucks.find(t=>t.id===tr)?.label||'φορτηγό')
+    :pa?('ΣΥΝ. '+(WINTL.data.partners.find(x=>x.id===pa)?.label||'—'))
+    :'χωρίς φορτηγό';
+  const dest=(typeof OrdersCommon!=='undefined'&&OrdersCommon.placeOf(p,'del').name)||_wiFlatLocName(f['Unloading Location 1'])||'—';
+  const st=f['Status']||'Pending';
+  // A piece an export carries as its import (Case B) is on that truck even
+  // with no vehicle of its own yet — no [Διαγραφή] (impact map 4/10 DL-06).
+  const loose=!tr&&!pa&&!WI_EXECUTING.includes(st)&&!WINTL.rows.some(r=>r.type==='export'&&r.importId===p.id);
+  const ld=f['Loading DateTime']?_wk3D(_wiFmt(f['Loading DateTime'])):'';
+  // C1-02: a waiting piece whose promised delivery passed says so in red.
+  const late=!tr&&!pa&&st!=='Delivered'&&_wiLooseLate(p);
+  const dd=late?_wk3D(_wiFmt(f['Delivery DateTime'])):'';
+  const head=withLot?`${escapeHtml(OrdersStock.lotNumLabel(f))} · ${escapeHtml(_wiClientName(f)||'—')} · `:'';
+  const del=(loose&&OrdersStock.canWrite())?`<button type="button" class="wi2-unlink" onclick="event.stopPropagation();_wiStockDelPiece('${p.id}')" title="Διαγραφή κομματιού (μόνο χωρίς φορτηγό)">Διαγραφή</button>`:'';
+  return `<div class="wi-panel-opt wi-stk-piece" role="button" tabindex="0" onclick="_wiStockOpenPiece('${p.id}')" onkeydown="if(event.key==='Enter'){event.preventDefault();this.click()}" title="Κλικ: φόρμα κομματιού"><span>${head}${escapeHtml(who)} · ${escapeHtml(dest)} · ${escapeHtml(OrdersStock.statusWord(st))} · <b>${+(f['Total Pallets']||0)}p</b>${ld?` · φόρτωση ${ld}`:''}${late?` · <span class="wi-stk-bad">παράδοση ${dd} — εκπρόθεσμο</span>`:''}${f['Reference']?` · <span class="wi-stk-ref">${escapeHtml(String(f['Reference']))}</span>`:''}</span>${del}</div>`;
+}
+function _wiStockOpenPiece(id){
+  const p=(WINTL._stkPieces||[]).find(x=>x.id===id); if(!p) return;
+  _wiPanelClose();
+  if(typeof openIntlEditWith==='function') openIntlEditWith(id,p.fields);
+}
+async function _wiStockDelPiece(id){
+  _wiPanelClose();
+  if(typeof deleteIntlOrder!=='function'){ toast('Η διαγραφή δεν είναι διαθέσιμη','warn'); return; }
+  await deleteIntlOrder(id,{rerender:renderWeeklyIntl});
+}
+function _wiStockClose(){
+  const lot=WINTL._stkLot; if(!lot) return;
+  _wiPanelClose();
+  OrdersStock.openCloseModal(lot,()=>renderWeeklyIntl());
+}
+// A piece made from the panel has no truck — it waits on the shelf; the form
+// gets no context, so _wiOnPieceSaved does nothing for it.
+function _wiStockNewLoose(){
+  const lot=WINTL._stkLot; if(!lot) return;
+  _wiPanelClose();
+  _wiStockOpenForm(lot,{});
+}
+async function _wiStockLooseOpen(anchor){
+  if(!_wiStockOn()) return;
+  if(document.fullscreenElement){ try{ await document.exitFullscreen(); }catch(_){} }
+  const st=WINTL.data.stock; if(!st||st.status!=='ok') return;
+  WINTL._stkPieces=st.loose||[];
+  const body=WINTL._stkPieces.length
+    ? `<div class="wi-panel-list wi-stk-list">${WINTL._stkPieces.map(p=>_wiStockPieceLine(p,true)).join('')}</div>
+       <div class="wi-panel-note dim">Σε φορτηγό: δεξί κλικ στη γραμμή του φορτηγού → «+ Κομμάτι από απόθεμα…».</div>`
+    : `<div class="wi-panel-empty">Κανένα κομμάτι χωρίς φορτηγό</div>`;
+  _wiPanelOpen(anchor,'Κομμάτια χωρίς φορτηγό',`${WINTL._stkPieces.length} σε όλες τις εβδομάδες`,body,'');
+}
+
+// C1-05 (critic-1, round 1): an empty return trip is filled from its «ΚΕΝΟ
+// IMPORT» box — a click there opened a plain new import, and a warehouse
+// pickup typed that way is invoiced twice (the form only warns). With an open
+// lot that has pallets left, the box also offers the stock panel; a board
+// without stock looks exactly as before. Same gates as the menu item
+// (_wiStockCtxItem). Filled again by _wiShelfPaint: the shelf is read after
+// the board's first paint.
+function _wiStockGapLink(row){
+  if(!_wiStockOn()||!OrdersStock.canWrite()||!row||!row.truckId||row.partnerId||row.splitLegOf||row.hasSplitLegs||row.legOf) return '';
+  const st=WINTL.data.stock;
+  if(!st||st.status!=='ok'||!(st.lots||[]).some(l=>+(l.fields?.['Remaining Pallets']||0)>0&&!l.fields?.['Ops Status'])) return '';
+  return `<button type="button" class="wi2-gapstk-b" onclick="event.stopPropagation();_wiStockPanel(${row.id})" title="Κομμάτι από παρτίδα σε αποθήκη, σε αυτό το φορτηγό">ή κομμάτι από ΑΠΟΘΕΜΑ</button>`;
+}
+function _wiStockGapLinksRefresh(){
+  document.querySelectorAll('#wi-rows .wi2-gapstk[data-row]').forEach(el=>{ el.innerHTML=_wiStockGapLink(WINTL.rows.find(r=>r.id===+el.dataset.row)); });
+}
+
+// «+ Κομμάτι από απόθεμα…» (§6.4). Φ1: our own trucks only — no entry at all
+// on a partner row; on a row with no truck yet it shows, disabled, why.
+function _wiStockCtxItem(row){
+  if(!_wiStockOn()||!OrdersStock.canWrite()||!row) return '';
+  if(row.partnerId||row.splitLegOf||row.hasSplitLegs||row.legOf) return '';
+  // A lot's row, or a piece still waiting in the warehouse, is not a truck.
+  const lead=_wiRecOf(row.orderIds?.[0]||row.orderId);
+  if(lead&&(_wiIsLot(lead.fields)||(_wiIsPiece(lead.fields)&&!row.truckId))) return '';
+  const lbl='+ Κομμάτι από απόθεμα…';
+  const st=WINTL.data.stock;
+  if(!st||st.status!=='ok') return _wiCtxBtnDisabled(lbl,st&&st.status==='failed'?'Το απόθεμα δεν φορτώθηκε — ↻ στη λωρίδα ΑΠΟΘΕΜΑ':'Το απόθεμα φορτώνει…');
+  if(!st.lots.some(l=>+(l.fields?.['Remaining Pallets']||0)>0)&&!_wiStockLooseFree().length) return '';
+  if(!row.truckId) return _wiCtxBtnDisabled(lbl,'Πρώτα ανάθεση σε δικό μας φορτηγό');
+  // Case A (the truck already has an import) once that import moved (impact
+  // map 4/10 B-22): a new member in Assigned would join a load already In
+  // Transit or back home, and reopen its round trip. Cache test here; the
+  // join re-checks the server's lead before any write (_wiStockLockLead).
+  // Case B (no import yet) stays open: a piece on a Delivered export is real.
+  const seed=row.type==='export'?row.importId:row.orderId;
+  if(seed){
+    const g=_wiImpGroupRowOf(seed), lead=_wiRecOf(g?g.orderId:seed);
+    if(lead&&WI_EXECUTING.includes(lead.fields['Status'])) return _wiCtxBtnDisabled(lbl,'σε κίνηση — όχι νέο κομμάτι');
+  }
+  return _wiCtxBtn(lbl,`_wiStockPanel(${row.id})`);
+}
+// Lone matched piece (no Group ID): «Επιστροφή» = unmatch + empty vehicle.
+// Never offered on a matched GROUP — that would unmatch the whole group; a
+// piece inside a group returns from its own «ΑΠ» tile (_wiSegCtx).
+function _wiStockReturnLoneItem(impRow,expRowId){
+  if(!_wiStockOn()||!OrdersStock.canWrite()||!impRow||(impRow.orderIds||[]).length>1) return '';
+  const rec=_wiRecOf(impRow.orderId); if(!rec||!_wiIsPiece(rec.fields)) return '';
+  return '<div class="wi-ctx-sep"></div>'+(WI_EXECUTING.includes(rec.fields['Status'])
+    ? _wiCtxBtnDisabled('Επιστροφή στο απόθεμα','σε κίνηση — δεν επιστρέφει')
+    : _wiCtxBtn('Επιστροφή στο απόθεμα',`_wiStockReturnLone(${expRowId})`,true));
+}
+// Pieces that can still join a truck: not moving, and not the matched import
+// of any export this board knows (re-checked on the server before any write,
+// _wiStockLooseCheck). D1 (round 1): a stale Group ID does NOT keep a
+// truckless piece off a truck — the join overwrites it (critic-3 Σ-04: the
+// piece of a deleted lead was otherwise stuck for ever). A matched piece
+// stays out: joining it would leave its export pointing at a piece that rides
+// another truck.
+function _wiStockLooseFree(){
+  const st=WINTL.data.stock; if(!st||st.status!=='ok') return [];
+  return (st.loose||[]).filter(p=>{
+    const f=p.fields||{};
+    if(WI_EXECUTING.includes(f['Status'])) return false;
+    return !WINTL.data.exports.some(e=>e.fields['Matched Import ID']===p.id);
+  });
+}
+// Σ Total Pallets of EVERY import on the truck's row — the matched import and
+// all GI members. null = the import is not loaded in this view (unknown).
+function _wiImpPals(row){
+  if(!row) return null;
+  if(row.type==='import') return _wiRowPals(row);
+  if(!row.importId) return 0;
+  const g=WINTL.rows.find(r=>r.type==='import'&&(r.orderId===row.importId||(r.orderIds||[]).includes(row.importId)));
+  return g?_wiRowPals(g):null;
+}
+function _wiStockPanel(rowId){
+  const row=WINTL.rows.find(r=>r.id===rowId); if(!row) return;
+  const st=WINTL.data.stock;
+  if(!st||st.status!=='ok'){ toast('Το απόθεμα δεν φορτώθηκε — ↻ στη λωρίδα ΑΠΟΘΕΜΑ','warn'); return; }
+  const X=_wiImpPals(row), free=X==null?null:33-X;
+  const lots=st.lots.filter(l=>+(l.fields?.['Remaining Pallets']||0)>0);
+  const loose=_wiStockLooseFree();
+  WINTL._stkPick={rowId,lots,loose};
+  // 33 is a warning, never a block: the real limit depends on the trailer —
+  // said in one word, «ενδεικτικά», not an arithmetic sentence and a
+  // disclaimer (critic-5 S5-08). The sum stays in the title.
+  const space=X==null
+    ? `Ελεύθερα: <b>άγνωστα</b> — η εισαγωγή του φορτηγού δεν είναι σε αυτή την προβολή`
+    : `<span title="33 − ${X} = ${free}p · το όριο εξαρτάται από τη ρυμούλκα">Ελεύθερα <b class="${free<0?'wi-stk-bad':''}">${free}p</b> (ενδεικτικά)</span>`;
+  const over=n=>(free!=null&&n>free)?` · <span class="wi-stk-warn">πάνω από τα ελεύθερα ${Math.max(free,0)}p</span>`:'';
+  const looseHtml=loose.length
+    ? `<div class="wi-panel-list">${loose.map((p,i)=>{ const f=p.fields||{}, n=+(f['Total Pallets']||0);
+        const ld=f['Loading DateTime']?_wk3D(_wiFmt(f['Loading DateTime'])):'χωρίς ημέρα';
+        return `<button type="button" class="wi-panel-opt wi-stk-opt" onclick="_wiStockPick('piece',${i})"><span>${escapeHtml(OrdersStock.lotNumLabel(f))} · ${escapeHtml(_wiClientName(f)||'—')} · <b>${n}p</b> · φόρτωση ${ld}${over(n)}</span></button>`; }).join('')}</div>`
+    : '';
+  const lotHtml=lots.length
+    ? `<div class="wi-panel-list">${lots.map((l,i)=>{ const f=l.fields||{};
+        const cc=(typeof countryCode==='function'&&countryCode(f['Warehouse Country']))||'';
+        const lbl=`${escapeHtml(OrdersStock.lotLabel(l))} · ${escapeHtml(f['Warehouse Name']||'—')}${cc?' '+cc:''} · ${escapeHtml(f['Client Name']||'—')} · υπόλοιπο <b>${+(f['Remaining Pallets']||0)}p</b>${f['Intake Delivered']?'':' · <span class="wi-stk-warn">παραλαβή δεν σημειώθηκε</span>'}`;
+        return f['Ops Status']
+          ? `<button type="button" class="wi-panel-opt wi-stk-opt" disabled title="Η παρτίδα είναι pre-order — δεν βγαίνουν κομμάτια ακόμη"><span>${lbl}</span></button>`
+          : `<button type="button" class="wi-panel-opt wi-stk-opt" onclick="_wiStockPick('lot',${i})"><span>${lbl}</span></button>`; }).join('')}</div>`
+    : '';
+  // Empty sections are left out, not announced («Κανένα»).
+  const body=`<div class="wi-panel-note">${space}</div>
+    ${looseHtml?`<div class="wi-panel-note wi-stk-h">Κομμάτια χωρίς φορτηγό</div>${looseHtml}`:''}
+    ${lotHtml?`<div class="wi-panel-note wi-stk-h">Νέο κομμάτι από</div>${lotHtml}`:''}`;
+  _wiPanelOpen(_wiAnchorFor(rowId),'+ Κομμάτι από απόθεμα',`${escapeHtml(row.truckLabel||'—')} · ${_wiPanelCtxLine(row)}`,body,
+    `<button class="btn btn-ghost" onclick="_wiPanelClose()">Άκυρο</button>`);
+}
+function _wiStockPick(kind,i){
+  const p=WINTL._stkPick; if(!p) return;
+  const item=kind==='lot'?p.lots[i]:p.loose[i]; if(!item) return;
+  _wiPanelClose();
+  _wiStockJoin(p.rowId,kind==='lot'?{lot:item}:{piece:item});
+}
+
+// Join a piece to a truck (§6.5).
+//   Case A — the row already carries an import (lone or GI group): the piece
+//     becomes the LAST member of that group. The group's order is pinned first
+//     (a suffix of the existing members — the piece is never written into it,
+//     so pos 99 keeps it last in _wiGiSortRecs, _wiGrpOrder and rt-feed's
+//     _rtLegSeq, and the lead never changes); then ONE patch carrying that
+//     exact Group ID and the lead's vehicle — a new piece is first created
+//     bare by the form and joined after a fresh read of the lead (Σ-01).
+//   Case B — export without an import: the piece becomes its import through
+//     the ordinary match (_wiSaveImportMatch, unchanged).
+// Any failed step stops the next one and leaves a red ⚠ on the row.
+async function _wiStockJoin(rowId,pick){
+  if(_wiBlockReadOnly()||!_wiStockOn()||!OrdersStock.canWrite()) return;
+  const row=WINTL.rows.find(r=>r.id===rowId); if(!row) return;
+  if(row.partnerId||!row.truckId){ toast(WI_PIECE_OWN_ONLY,'warn'); return; }
+  // A «new import» left pending by a cancelled form (_wiNewImport) would
+  // otherwise be consumed by the piece's create and match it to THAT row.
+  window._wiPendingMatch=null;
+  const seedId=row.type==='export'?row.importId:row.orderId;
+  if(pick.piece){
+    const rec=await _wiStockLooseCheck(pick.piece.id); if(!rec) return;
+    const pf=rec.fields||{};
+    const dayIso=seedId?(_wiRecOf(seedId)?.fields?.['Loading DateTime']||''):(_wiRecOf(row.orderIds[0])?.fields?.['Delivery DateTime']||'');
+    const day=toLocalDate(dayIso||'');
+    if(!day){ toast(seedId?'Η εισαγωγή του φορτηγού δεν έχει ημέρα φόρτωσης':'Η εξαγωγή δεν έχει ημέρα παράδοσης','warn'); return; }
+    const q=toLocalDate(pf['Loading DateTime']||'')!==day?`Νέα ημέρα φόρτωσης ${_wk3D(_wiFmt(day+'T12:00:00'))};`:`Φόρτωση ${_wk3D(_wiFmt(day+'T12:00:00'))} — ίδια ημέρα.`;
+    const ok=await confirmAction(`${q}\n\nΤο κομμάτι (${+(pf['Total Pallets']||0)}p) μπαίνει στο φορτηγό ${row.truckLabel||'—'}${seedId?', μετά την υπάρχουσα εισαγωγή':''}.`,
+      {title:'+ Κομμάτι από απόθεμα',confirmLabel:'Ναι'});
+    if(!ok) return;
+    pick={piece:rec};
+  }
+  // B-13: no half-revert of the join from the top-bar Undo (_wiNoUndo). A new
+  // piece's own writes happen later, after the form — _wiOnPieceSaved clears
+  // again there.
+  try{
+    if(seedId) return await _wiStockJoinA(row,seedId,pick);
+    return await _wiStockJoinB(row,pick);
+  }finally{ _wiNoUndo(); }
+}
+// The piece must still be free on the SERVER (another dispatcher, another
+// tab): a piece, no truck or partner (D1 — a group alone is not a truck),
+// not moving, not matched by any export. A failed check refuses — joining
+// twice would put one piece on two trucks.
+async function _wiStockLooseCheck(id){
+  let rec=null, matched=null;
+  try{ rec=await atGetOne(TABLES.ORDERS,id); }catch(e){ rec=null; }
+  try{ matched=await atGetAll(TABLES.ORDERS,{filterByFormula:`{Matched Import ID}='${id}'`,fields:['Matched Import ID']},false); }catch(e){ matched=null; }
+  const f=rec&&rec.fields, why=[];
+  if(!f) why.push('δεν διαβάστηκε');
+  else{
+    if(!_wiIsPiece(f)) why.push('δεν είναι κομμάτι παρτίδας');
+    if(getLinkedId(f['Truck'])||getLinkedId(f['Partner'])) why.push('έχει ήδη φορτηγό');
+    // D1: no «ήδη σε ομάδα» — a truckless piece's Group ID is overwritten by
+    // the join (Case A) or cleared before it (Case B, _wiStockJoinB).
+    if(WI_EXECUTING.includes(f['Status'])) why.push('είναι σε κίνηση ή παραδόθηκε');
+  }
+  if(!Array.isArray(matched)) why.push('ο έλεγχος ταιριάσματος δεν διαβάστηκε');
+  else if(matched.length) why.push('είναι ήδη ταιριασμένο με εξαγωγή');
+  if(why.length){ toast('Το κομμάτι δεν μπαίνει σε φορτηγό: '+why.join(' · '),'warn'); _wiStockLoad(); return null; }
+  return rec;
+}
+// Case A, steps 1–2: read the truck's import group from the SERVER and pin
+// its order. Not _wiGiGroup: its sibling-lookup failure degrades to «the seed
+// alone», and a suffix written on the seed alone would SPLIT the group (rows
+// collapse by Group ID string equality) — here any failed read stops.
+// Lone import → «GI-<base36 now>|<lead>» returned as `lockLead`, NOT written
+// (see below) · group without «|» → «GI-xxx|<members>» on every member
+// (_wiRewriteGroupSuffix, read back) with the member the export points at
+// first · group with «|» → untouched.
+async function _wiStockLockLead(row,seedId){
+  const stop=(msg,err)=>{
+    _wiSync('wi-sync-'+row.id,'err',msg); reportError(msg,err);
+    if(typeof logError==='function') logError(err instanceof Error?err:new Error(msg),'weekly intl: stock join lock');
+    return null;
+  };
+  _wiSync('wi-sync-'+row.id,'pend','Σειρά ομάδας εισαγωγών…');
+  let seed=null;
+  try{ seed=await atGetOne(TABLES.ORDERS,seedId); }catch(e){ seed=null; }
+  if(!seed||!seed.fields) return stop('Η εισαγωγή του φορτηγού δεν διαβάστηκε — δεν γράφτηκε τίποτα');
+  const gid0=String(seed.fields['Group ID']||'').trim();
+  let recs=[seed];
+  if(gid0){
+    if(gid0.indexOf('GI-')!==0) return stop(`Η εισαγωγή του φορτηγού έχει άγνωστη ομάδα «${gid0}» — δεν γράφτηκε τίποτα`);
+    let sibs=null;
+    try{ sibs=await atGetAll(TABLES.ORDERS,{filterByFormula:`{Group ID}='${gid0}'`},false); }catch(e){ sibs=null; }
+    if(!Array.isArray(sibs)||!sibs.length) return stop('Η ομάδα εισαγωγών του φορτηγού δεν διαβάστηκε — δεν γράφτηκε τίποτα');
+    recs=sibs;
+  }
+  recs=_wiGiSortRecs(recs);
+  if(!gid0.includes('|')){
+    const named=row.type==='export'?row.importId:null;
+    const k=named?recs.findIndex(r=>r.id===named):-1;
+    if(k>0) recs.unshift(recs.splice(k,1)[0]);
+  }
+  // B-22: the lead as the SERVER has it now (read above), before any write —
+  // the menu's cache test can be minutes old.
+  if(WI_EXECUTING.includes(recs[0].fields?.['Status'])){
+    _wiSync('wi-sync-'+row.id,null);
+    toast('Η εισαγωγή του φορτηγού είναι σε κίνηση — όχι νέο κομμάτι· δεν γράφτηκε τίποτα','warn');
+    return null;
+  }
+  // Σ-07c / Σ-01 (critic-3, round 1): the piece takes the LEAD's vehicle, as
+  // the server has it. A lead with no truck gave a piece with a Group ID and
+  // no vehicle — and a green «μπήκε στο φορτηγό»; a lead on another truck than
+  // the row shows would put the piece on a truck nobody chose. Both refused
+  // here, before any write.
+  const why=_wiStockLeadBad(recs[0],row.truckId);
+  if(why){
+    _wiSync('wi-sync-'+row.id,null);
+    toast(why+' — δεν γράφτηκε τίποτα','warn');
+    return null;
+  }
+  if(!gid0.includes('|')){
+    if(recs.length===1){
+      // B-04 (impact map 4/10): the lone lead's «GI-…|lead» is NOT written
+      // here. Written before the form opened, a cancelled form or a refused
+      // POST left the lead — often a lone matched PIECE (Case B) — alone in a
+      // group for ever: not joinable («ήδη σε ομάδα»), not deletable
+      // (piece_on_truck), no tile to return it from, so its lot never closed.
+      // The caller writes it once the piece exists (_wiStockLockWrite), and
+      // only THEN puts the piece on the truck: the round-trip trigger
+      // rt_create_from_order reaches the export's trip only through the
+      // lead's Group ID — a piece carrying a truck and a Group ID that no
+      // other order has yet opens a second round trip of its own
+      // (pg_get_functiondef, read 4/10).
+      _wiSync('wi-sync-'+row.id,null);
+      return {leadId:recs[0].id,groupId:'GI-'+Date.now().toString(36).toUpperCase()+'|'+recs[0].id,lead:recs[0],lockLead:true};
+    }
+    if(!(await _wiRewriteGroupSuffix(recs,true))){
+      return stop('Η σειρά της ομάδας εισαγωγών ΔΕΝ γράφτηκε σε όλα τα μέλη — δεν δημιουργήθηκε κομμάτι· έλεγξε την ομάδα');
+    }
+    recs.forEach(r=>{ const c=WINTL.data.imports.find(x=>x.id===r.id); if(c) c.fields['Group ID']=r.fields['Group ID']; });
+  }
+  _wiSync('wi-sync-'+row.id,null);
+  const lead=recs[0];
+  return {leadId:lead.id,groupId:String(lead.fields['Group ID']||''),lead};
+}
+// Why the truck's import lead cannot take a piece NOW ('' = it can): no
+// truck, another truck than the one expected, or already moving.
+function _wiStockLeadBad(lead,truck){
+  const lf=(lead&&lead.fields)||{}, t=getLinkedId(lf['Truck'])||'';
+  if(!t) return 'Η εισαγωγή του φορτηγού δεν έχει φορτηγό στη βάση — πρώτα ανάθεση';
+  if(truck&&t!==truck) return 'Το φορτηγό της εισαγωγής άλλαξε στο μεταξύ';
+  if(WI_EXECUTING.includes(lf['Status'])) return 'Η εισαγωγή του φορτηγού είναι σε κίνηση — όχι νέο κομμάτι';
+  return '';
+}
+const _wiReadOrder=async id=>{ try{ return await atGetOne(TABLES.ORDERS,id); }catch(e){ return null; } };
+// D2 (round 1): a DB refusal (4xx) is already on screen ONCE, from core/api.js
+// _atRetry. A caller adds only the CONTEXT — what did and did not happen —
+// never the same sentence again (critic-1 C1-06, critic-5 S5-06).
+const _wiShown=e=>!!(e&&(e._rule||e._noRetry));
+// The deferred lone-lead lock (B-04), written only once the piece exists.
+// '' = written and read back; otherwise why not, in Greek.
+async function _wiStockLockWrite(leadId,gid){
+  let res=null;
+  try{ res=await atSafePatch(TABLES.ORDERS,leadId,{'Group ID':gid}); }
+  catch(e){ return _wiShown(e)?'η βάση το αρνήθηκε':String((e&&e.message)||e); }
+  if(!res) return 'καμία απάντηση';
+  if(res.conflict) return 'η εισαγωγή άλλαξε από άλλον χρήστη';
+  if(res.error) return String(res.error.message||res.error.type||'σφάλμα');
+  if(String(res.fields?.['Group ID']||'')!==gid) return 'δεν επιβεβαιώθηκε στην ανάγνωση';
+  const c=WINTL.data.imports.find(x=>x.id===leadId); if(c) c.fields['Group ID']=gid;
+  return '';
+}
+// Σ-07b (critic-3, round 1): a lock whose ANSWER was lost may have landed —
+// the lead then sat in a one-member group nobody took back. The server is
+// read and what it SAYS decides: landed = go on; not landed = why; unreadable
+// = say that too.
+async function _wiStockLockSure(leadId,gid){
+  const why=await _wiStockLockWrite(leadId,gid);
+  if(!why) return '';
+  const r=await _wiReadOrder(leadId);
+  if(r&&String(r.fields?.['Group ID']||'')===gid){
+    const c=WINTL.data.imports.find(x=>x.id===leadId); if(c) c.fields['Group ID']=gid;
+    return '';
+  }
+  return r?why:why+' — και η εισαγωγή δεν διαβάστηκε: έλεγξέ την';
+}
+// A lock whose piece then did NOT get on the truck is taken back, so the lead
+// ends as it was (B-04) — only while the lead is still alone in that group (a
+// piece that joined meanwhile keeps it). null, never '' (see _wiGroupPatch).
+async function _wiStockLockUndo(leadId,gid){
+  try{
+    const sibs=await atGetAll(TABLES.ORDERS,{filterByFormula:`{Group ID}='${gid}'`},false);
+    if(!Array.isArray(sibs)||sibs.some(x=>x.id!==leadId)) return false;
+    const res=await atSafePatch(TABLES.ORDERS,leadId,{'Group ID':null});
+    if(!res||res.error||res.conflict||String(res.fields?.['Group ID']||'')) return false;
+    const c=WINTL.data.imports.find(x=>x.id===leadId); if(c) c.fields['Group ID']=null;
+    return true;
+  }catch(e){ return false; }
+}
+const _wiLockUndoNote=(back,gid)=>back?' — η εισαγωγή του φορτηγού έμεινε όπως ήταν':` — ΠΡΟΣΟΧΗ: η εισαγωγή του φορτηγού κράτησε την ομάδα ${gid}· έλεγξέ την`;
+// The ONE join write of a piece already in the base: Group ID + the lead's
+// vehicle (B-04 order: after the lead's lock). Σ-07a (critic-3, round 1): when
+// the write fails, the piece is READ — a lost answer of a write that landed is
+// a piece ON the truck, never «ΧΩΡΙΣ φορτηγό».
+//   {ok:true} on the truck (read back) · {ok:false,found:'…'|null,err} not
+//   (found = what the read shows; null = the read failed too).
+async function _wiStockJoinWrite(pieceId,patch,ctx){
+  let err=null, res=null;
+  try{
+    res=await atSafePatch(TABLES.ORDERS,pieceId,patch);
+    if(res?.conflict) err=new Error('η εγγραφή άλλαξε από άλλον χρήστη');
+    else if(res?.error) err=new Error(res.error.message||res.error.type);
+  }catch(e){ err=e; }
+  const r=await _wiReadOrder(pieceId);
+  const bad=r?_wiStockVerify(r,ctx):null;
+  if(bad==='') return {ok:true,lost:!!err};
+  return {ok:false,found:bad,err:err||new Error(bad||'η ανάγνωση πίσω απέτυχε'),conflict:!!res?.conflict};
+}
+async function _wiStockJoinA(row,seedId,pick){
+  const lock=await _wiStockLockLead(row,seedId);
+  if(!lock) return;
+  const lf=lock.lead.fields||{};
+  const truck=getLinkedId(lf['Truck'])||'', trailer=getLinkedId(lf['Trailer'])||'', driver=getLinkedId(lf['Driver'])||'';
+  const loadIso=lf['Loading DateTime']||'', delIso=lf['Delivery DateTime']||'';
+  const ctx={rowId:row.id,kind:'A',leadId:lock.leadId,expOid:row.type==='export'?row.orderIds[0]:null,
+    groupId:lock.groupId,truck,trailer,driver,lockLead:!!lock.lockLead,at:Date.now()};
+  if(pick.lot){
+    ctx.lotRec=pick.lot.id;
+    // Σ-01 (critic-3, round 1): the form creates the piece WITHOUT group and
+    // vehicle — for a lone lead (B-04) AND a group. The vehicle read when the
+    // form opened can be minutes old by the save (06:00, four dispatchers): a
+    // new driver of the lead was written back over the whole round trip and
+    // its payroll line, a new truck opened a phantom round trip. A
+    // re-read right before the POST would need a hook in the form
+    // (orders_intl.js); instead the POST carries no vehicle and
+    // _wiOnPieceSaved joins it with ONE patch whose vehicle comes from a
+    // fresh read of the lead — or leaves it on the shelf and says why. A
+    // cancelled form or a refused POST therefore writes nothing at all.
+    _wiStockOpenForm(pick.lot,{loadingDate:loadIso||undefined,deliveryDate:delIso||undefined,lockLoadingDate:!!loadIso,context:ctx});
+    return;
+  }
+  const pc=pick.piece, pf=pc.fields||{};
+  ctx.lotRec=OrdersStock.lotRecOfPiece(pf);
+  const day=toLocalDate(loadIso||''), dday=toLocalDate(delIso||'');
+  if(!day){ _wiSync('wi-sync-'+row.id,'err','Η εισαγωγή του φορτηγού δεν έχει ημέρα φόρτωσης — το κομμάτι δεν μπήκε'); return; }
+  // D1: 'Group ID' overwrites whatever group a truckless piece still carried.
+  let patch={'Group ID':lock.groupId,'Truck':[truck],'Trailer':trailer?[trailer]:[],'Driver':driver?[driver]:[],
+    'Loading DateTime':_wk3IsoOnDay(pf['Loading DateTime'],day),'Status':'Assigned'};
+  if(dday) patch['Delivery DateTime']=_wk3IsoOnDay(pf['Delivery DateTime'],dday);
+  patch=await _wiPlanPatch(pc.id,patch);
+  // Lone lead (B-04): lock it first (the trigger walks piece → lead's Group ID
+  // → export's round trip); a refused join below takes the lock back.
+  if(lock.lockLead){
+    const why=await _wiStockLockSure(lock.leadId,lock.groupId);
+    if(why){
+      const msg='Η σειρά της εισαγωγής ΔΕΝ γράφτηκε ('+why+') — το κομμάτι δεν μπήκε, δεν γράφτηκε τίποτα';
+      _wiSync('wi-sync-'+row.id,'err',msg); reportError(msg,null); return;
+    }
+  }
+  await _wiStockApply(row,pc.id,patch,ctx);
+}
+async function _wiStockJoinB(row,pick){
+  const ef=_wiRecOf(row.orderIds[0])?.fields||{};
+  const day=toLocalDate(ef['Delivery DateTime']||'');
+  const ctx={rowId:row.id,kind:'B',expOid:row.orderIds[0],at:Date.now()};
+  if(pick.lot){
+    ctx.lotRec=pick.lot.id;
+    // The export's delivery day is only a starting value — editable in the form.
+    _wiStockOpenForm(pick.lot,{loadingDate:day||undefined,context:ctx});
+    return;
+  }
+  const pc=pick.piece, pf=pc.fields||{};
+  const cur=toLocalDate(pf['Loading DateTime']||'');
+  // D1 (round 1): a truckless piece may still carry the Group ID of a group
+  // it left (a deleted lead, Σ-04). The match (_wiSaveImportMatch) copies the
+  // vehicle to the WHOLE GI group of the import, so that stale group would
+  // drag its other members onto this truck — it is cleared first (null,
+  // never '': see _wiGroupPatch).
+  const staleGid=String(pf['Group ID']||'').trim();
+  if(cur!==day||staleGid){
+    // New loading day: the date chip's rule (_wk3IsoOnDay) and its downstream
+    // sync. The delivery moves by the same days, so it never lands before
+    // the loading.
+    const patch={};
+    if(cur!==day){
+      patch['Loading DateTime']=_wk3IsoOnDay(pf['Loading DateTime'],day);
+      const dcur=toLocalDate(pf['Delivery DateTime']||'');
+      if(dcur&&cur){
+        const delta=Math.round((new Date(day+'T12:00:00')-new Date(cur+'T12:00:00'))/864e5);
+        patch['Delivery DateTime']=_wk3IsoOnDay(pf['Delivery DateTime'],_wk3AddDays(dcur,delta));
+      }
+    }
+    if(staleGid) patch['Group ID']=null;
+    _wiSync('wi-sync-'+row.id,'pend',cur!==day?'Νέα ημέρα φόρτωσης κομματιού…':'Το κομμάτι βγαίνει από την παλιά ομάδα…');
+    try{
+      const res=await atSafePatch(TABLES.ORDERS,pc.id,patch);
+      if(res?.conflict){ _wiSync('wi-sync-'+row.id,null); toast('Η εγγραφή άλλαξε από άλλον χρήστη — ανανέωση…','warn'); await renderWeeklyIntl(); return; }
+      if(res?.error) throw new Error(res.error.message||res.error.type);
+      const fresh=await atGetOne(TABLES.ORDERS,pc.id);
+      if(toLocalDate(fresh?.fields?.['Loading DateTime']||'')!==day) throw new Error('η ανάγνωση πίσω δεν δείχνει τη νέα ημέρα');
+      if(String(fresh?.fields?.['Group ID']||'').trim()) throw new Error('η ανάγνωση πίσω δείχνει ακόμη την παλιά ομάδα');
+    }catch(e){
+      // D2: a DB refusal is already on screen (core/api.js) — here only what
+      // did not happen.
+      const shown=!!(e&&(e._rule||e._noRetry));
+      const msg='Το κομμάτι ΔΕΝ ταιριάστηκε — '+(cur!==day?'η ημέρα φόρτωσης δεν άλλαξε':'η παλιά ομάδα δεν καθαρίστηκε')+(shown?'':': '+String(e&&e.message||e));
+      _wiSync('wi-sync-'+row.id,'err',shown?msg+' ('+String(e&&e.message||e)+')':msg); reportError(msg,e); return;
+    }
+    invalidateCache(TABLES.ORDERS);
+    if(typeof syncOrderDownstream==='function') syncOrderDownstream(pc.id,{source:'intl',changedFields:Object.keys(patch),skipPA:true})
+      .catch(e=>{ if(typeof logError==='function') logError(e,'weekly intl: stock piece date sync'); });
+  }
+  await _wiSaveImportMatch(row.id,pc.id);
+  await renderWeeklyIntl();
+}
+// Server truth after a join: the piece points at its lot and, in Case A,
+// carries the group's EXACT Group ID and the lead's truck. Returns what is
+// wrong ('' = all right). Σ-07c (round 1): a Case A join without a truck is
+// never «all right» — it was the green toast of a piece with no vehicle.
+function _wiStockVerify(rec,ctx){
+  const f=rec&&rec.fields; if(!f) return 'η ανάγνωση πίσω δεν επέστρεψε την παραγγελία';
+  const miss=[];
+  if(ctx.lotRec&&getLinkedId(f['Stock Lot'])!==ctx.lotRec) miss.push('δεν δείχνει στην παρτίδα');
+  if(ctx.kind==='A'){
+    if(String(f['Group ID']||'')!==ctx.groupId) miss.push('η ομάδα (Group ID) δεν γράφτηκε');
+    if(!ctx.truck||getLinkedId(f['Truck'])!==ctx.truck) miss.push('το φορτηγό δεν γράφτηκε');
+  }
+  return miss.join(' · ');
+}
+async function _wiStockApply(row,pieceId,patch,ctx){
+  _wiSync('wi-sync-'+row.id,'pend','Ένταξη κομματιού στο φορτηγό…');
+  const w=await _wiStockJoinWrite(pieceId,patch,ctx);
+  if(!w.ok){
+    // A lock written for this join only (lone lead, B-04) does not outlive it
+    // — _wiStockLockUndo keeps it when the piece did land (it reads the group).
+    const undo=ctx.lockLead?_wiLockUndoNote(await _wiStockLockUndo(ctx.leadId,ctx.groupId),ctx.groupId):'';
+    if(w.conflict&&w.found!==null){ _wiSync('wi-sync-'+row.id,null); toast('Η εγγραφή άλλαξε από άλλον χρήστη — ανανέωση…'+undo,'warn'); await renderWeeklyIntl(); return; }
+    const e=w.err, shown=_wiShown(e), why=String((e&&e.message)||e);
+    const msg=(w.found===null
+      ?'Η ένταξη του κομματιού ΔΕΝ επιβεβαιώθηκε (η ανάγνωση απέτυχε) — έλεγξε τη λωρίδα ΑΠΟΘΕΜΑ και το φορτηγό'
+      :'Το κομμάτι ΔΕΝ μπήκε στο φορτηγό — έμεινε στο απόθεμα')+(shown?'':': '+why)+undo;
+    // The row's ⚠ keeps the reason for later (a tooltip, not a second toast).
+    _wiSync('wi-sync-'+row.id,'err',shown?msg+' · '+why:msg); reportError(msg,e);
+    // A designed refusal is already logged by _atRetry ('_atRetry 422 rule').
+    if(!shown&&typeof logError==='function') logError(e instanceof Error?e:new Error(msg),'weekly intl: stock join');
+    return;
+  }
+  _wiSync('wi-sync-'+row.id,'ok','Το κομμάτι μπήκε στο φορτηγό');
+  invalidateCache(TABLES.ORDERS);
+  if(typeof syncOrderDownstream==='function') syncOrderDownstream(pieceId,{source:'intl'})
+    .catch(e=>{ if(typeof logError==='function') logError(e,'weekly intl: stock piece sync'); });
+  if(typeof rtOnOrderSaved==='function') rtOnOrderSaved(ctx.leadId).catch(e=>console.warn('[wi stock] rt sync:',e&&e.message));
+  toast('Το κομμάτι μπήκε στο φορτηγό ✓'+(w.lost?' (η απάντηση χάθηκε — επιβεβαιώθηκε στην ανάγνωση)':''));
+  await renderWeeklyIntl();
+}
+function _wiStockOpenForm(lot,presets){
+  if(typeof openIntlPieceCreate!=='function'){ reportError('Η φόρμα κομματιού δεν είναι διαθέσιμη — ανανέωσε τη σελίδα',null,'warn'); return; }
+  window._wiPendingMatch=null;
+  openIntlPieceCreate(lot,presets);
+}
+// Called by the piece form (orders_intl.js) ONLY after a successful create,
+// before it closes and repaints this board. The truck's row is found by ORDER
+// id (row ids are renumbered on every render). No time limit, unlike
+// _wiConsumePendingMatch's 30 minutes: ctx travels inside THIS form's presets,
+// so no other create can pick it up, and every step below re-checks the board
+// or the server. Every way out that leaves the piece off its truck is SAID
+// (principle 1): the form toasts «Order created ✓» right after, and a piece
+// that silently stayed on the shelf is the lie that toast would tell.
+window._wiOnPieceSaved=async function(newId,fields,ctx){
+  if(!ctx||!ctx.kind||!newId) return;   // a piece without a truck (shelf «+ Κομμάτι»)
+  // B-13: the form's create (an Undo = delete) and the writes below are one
+  // join — the top-bar Undo must not take back half of it.
+  try{ await _wiOnPieceSavedRun(newId,ctx); }finally{ _wiNoUndo(); }
+};
+async function _wiOnPieceSavedRun(newId,ctx){
+  // noLog: a designed DB refusal is already logged by _atRetry under its own
+  // prefix — a second line here would count it as an app error (AU-07).
+  const loud=(msg,noLog)=>{
+    if(typeof showErrorToast==='function') showErrorToast(msg,'error',12000); else reportError(msg,null);
+    if(!noLog&&typeof logError==='function') logError(new Error(msg),'weekly intl: stock piece join');
+  };
+  const onBoard=typeof currentPage==='undefined'||currentPage==='weekly_intl';
+  const row=!onBoard?null:ctx.expOid
+    ? WINTL.rows.find(r=>r.type==='export'&&(r.orderIds||[]).includes(ctx.expOid))
+    : WINTL.rows.find(r=>r.type==='import'&&(r.orderIds||[r.orderId]).includes(ctx.leadId));
+  if(ctx.kind==='B'){
+    // Case B joins HERE (its POST carried no truck): no board, no row or a
+    // row that meanwhile got another import = the piece waits on the shelf.
+    const why=!onBoard?'η σελίδα άλλαξε πριν την ένταξη':!row?'η γραμμή του φορτηγού δεν βρέθηκε'
+      :row.importId?'η εξαγωγή απέκτησε στο μεταξύ άλλη εισαγωγή':'';
+    if(why){ loud(`Το κομμάτι αποθηκεύτηκε ΧΩΡΙΣ φορτηγό (${why}) — μένει στη λωρίδα ΑΠΟΘΕΜΑ· Weekly Διεθνών → δεξί κλικ στο φορτηγό → «+ Κομμάτι από απόθεμα…»`); return; }
+    await _wiSaveImportMatch(row.id,newId);
+    return;
+  }
+  const shelfMsg=why=>`Το κομμάτι αποθηκεύτηκε ΧΩΡΙΣ φορτηγό (${why}) — μένει στη λωρίδα ΑΠΟΘΕΜΑ· Weekly Διεθνών → δεξί κλικ στο φορτηγό → «+ Κομμάτι από απόθεμα…»`;
+  const fail=(msg,noLog)=>{ if(row) _wiSync('wi-sync-'+row.id,'err',msg); loud(msg,noLog); };
+  // Case A (lone lead AND group, Σ-01): the POST carried neither group nor
+  // vehicle. The lead is read NOW, right before the join writes; the vehicle
+  // comes from this read. Another truck, a lead that started moving or whose
+  // group changed while the form was open = no join: the piece waits on the
+  // shelf and the message says why.
+  const lead=await _wiReadOrder(ctx.leadId);
+  if(!lead||!lead.fields) return fail(shelfMsg('η εισαγωγή του φορτηγού δεν διαβάστηκε'));
+  const lf=lead.fields, gNow=String(lf['Group ID']||'').trim();
+  const changed=_wiStockLeadBad(lead,ctx.truck)
+    ||(ctx.lockLead?(gNow?'Η εισαγωγή του φορτηγού μπήκε στο μεταξύ σε άλλη ομάδα':''):(gNow!==ctx.groupId?'Η ομάδα εισαγωγών του φορτηγού άλλαξε στο μεταξύ':''));
+  if(changed) return fail(shelfMsg(changed.charAt(0).toLowerCase()+changed.slice(1)));
+  const tr=getLinkedId(lf['Trailer'])||'', dr=getLinkedId(lf['Driver'])||'';
+  const veh={'Group ID':ctx.groupId,'Truck':[ctx.truck],'Trailer':tr?[tr]:[],'Driver':dr?[dr]:[],'Status':'Assigned'};
+  // Lone lead (B-04): lock it first, then put the piece on the truck — in
+  // that order (_wiStockLockLead says why). Either step failing leaves the
+  // piece on the shelf, the lead as it was, and says so.
+  if(ctx.lockLead){
+    const why=await _wiStockLockSure(ctx.leadId,ctx.groupId);
+    if(why) return fail(shelfMsg('η σειρά της εισαγωγής του φορτηγού δεν γράφτηκε: '+why));
+  }
+  // A.5: the ONE join patch, read back (Σ-07a: a lost answer is decided by the
+  // read, not assumed); A.6: the lead's round trip.
+  const w=await _wiStockJoinWrite(newId,veh,ctx);
+  if(!w.ok){
+    const undo=ctx.lockLead?_wiLockUndoNote(await _wiStockLockUndo(ctx.leadId,ctx.groupId),ctx.groupId):'';
+    const e=w.err, shown=_wiShown(e), why=shown?'η βάση αρνήθηκε την ένταξη':String((e&&e.message)||e);
+    return fail((w.found===null
+      ?'Το κομμάτι αποθηκεύτηκε, αλλά η ένταξή του στο φορτηγό ΔΕΝ επιβεβαιώθηκε (η ανάγνωση απέτυχε) — έλεγξε τη λωρίδα ΑΠΟΘΕΜΑ και το φορτηγό'
+      :shelfMsg(why))+undo,shown&&!!e._rule);
+  }
+  if(row) _wiSync('wi-sync-'+row.id,'ok','Το κομμάτι μπήκε στο φορτηγό'+(w.lost?' (η απάντηση χάθηκε — επιβεβαιώθηκε στην ανάγνωση)':''));
+  if(typeof rtOnOrderSaved==='function') rtOnOrderSaved(ctx.leadId).catch(e=>console.warn('[wi stock] rt sync:',e&&e.message));
+}
+
+// «Επιστροφή στο απόθεμα» (§6.6) — never a delete. Execution beats planning:
+// a piece already In Transit/Delivered does not go back (re-read live first).
+async function _wiStockReturn(rowId,orderId,isImportSide){
+  if(!_wiStockOn()||!OrdersStock.canWrite()) return;
+  if(await _wiExecutingLive(orderId)){ toast('Το κομμάτι είναι σε κίνηση — δεν επιστρέφει στο απόθεμα','warn'); return; }
+  try{
+    await _wiCancelGroupMember(rowId,orderId,isImportSide,
+      {text:'Επιστροφή στο απόθεμα — το κομμάτι μένει χωρίς φορτηγό, με όλα του τα στοιχεία.',title:'Επιστροφή στο απόθεμα',label:'Επιστροφή',done:'Επέστρεψε στο απόθεμα ✓'});
+  }finally{ _wiNoUndo(); }   // B-13: leg off + group off + vehicle off are one return
+  _wiStockLoad();
+}
+async function _wiStockReturnLone(expRowId){
+  if(!_wiStockOn()||!OrdersStock.canWrite()) return;
+  const row=WINTL.rows.find(r=>r.id===expRowId); if(!row||!row.importId) return;
+  const pid=row.importId, expOid=row.orderIds[0];
+  if(await _wiExecutingLive(pid)){ toast('Το κομμάτι είναι σε κίνηση — δεν επιστρέφει στο απόθεμα','warn'); return; }
+  if(!(await confirmAction('Επιστροφή στο απόθεμα — το κομμάτι μένει χωρίς φορτηγό, με όλα του τα στοιχεία.',
+    {title:'Επιστροφή στο απόθεμα',confirmLabel:'Επιστροφή'}))) return;
+  let back=false;
+  try{ back=await _wiStockReturnLoneRun(pid,expOid,expRowId); }
+  finally{ _wiNoUndo(); }   // B-13: unmatch + leg off + vehicle off + group off are one return
+  if(back) toast('Επέστρεψε στο απόθεμα ✓');   // C1-12: only when the read-back says so
+  _wiStockLoad();
+  await renderWeeklyIntl();
+}
+async function _wiStockReturnLoneRun(pid,expOid,expRowId){
+  // Leg off the round trip first, vehicle second — _wiRemoveImport keeps that
+  // order (_wiRtLeave) and keeps the vehicle of a member whose leg could not
+  // leave (impact map 4/10 D-06; the rig proves the request order, D-23).
+  await _wiRemoveImport(expRowId);
+  // _wiRemoveImport empties the vehicle of the unmatched member; the board
+  // does not take that on faith (αρχή 2) — both orders are read back.
+  let exp=null,pc=null;
+  try{ exp=await atGetOne(TABLES.ORDERS,expOid); pc=await atGetOne(TABLES.ORDERS,pid); }catch(e){}
+  if(!exp||!pc){ reportError('Η επιστροφή δεν επιβεβαιώθηκε στην ανάγνωση — έλεγξε την παραγγελία',null); return false; }
+  if(String(exp.fields?.['Matched Import ID']||'')===pid) return false; // the unmatch failed: its own ⚠ already says so
+  const pf=pc.fields||{};
+  const veh=f=>getLinkedId(f['Truck'])||getLinkedId(f['Trailer'])||getLinkedId(f['Driver']);
+  // B-04: a one-member «GI-…|piece» (left by a lock written before a form
+  // that was then cancelled) goes too — else the piece is never joinable
+  // again. null, never '' (see _wiGroupPatch).
+  const hasVeh=!!veh(pf), hasGid=!!String(pf['Group ID']||'').trim();
+  if(!hasVeh&&!hasGid) return true;
+  try{
+    // A vehicle still on means _wiRemoveImport KEPT it (the piece started
+    // moving, or its leg could not leave the round trip): cleared here only
+    // after the leg is off — never the vehicle first (RT-1193, 30/9).
+    if(hasVeh){
+      if(await _wiExecutingLive(pid)) throw new Error('το κομμάτι ξεκίνησε στο μεταξύ — κρατά όχημα και γύρο');
+      const leave=await _wiRtLeave(pid);
+      if(!leave.ok) throw new Error(leave.msg+' — κρατά όχημα');
+    }
+    const patch=hasVeh?{'Truck':[],'Trailer':[],'Driver':[],'Status':'Pending'}:{};
+    if(hasGid) patch['Group ID']=null;
+    const res=await atSafePatch(TABLES.ORDERS,pid,patch);
+    if(res?.error) throw new Error(res.error.message||res.error.type);
+    const again=await atGetOne(TABLES.ORDERS,pid);
+    if(veh(again?.fields||{})||String(again?.fields?.['Group ID']||'').trim()) throw new Error('η ανάγνωση πίσω δείχνει ακόμη όχημα ή ομάδα');
+  }catch(e){
+    // D2: a DB refusal's own sentence is already on screen — only the context here.
+    reportError('Το ταίριασμα αφαιρέθηκε αλλά το κομμάτι ΔΕΝ επέστρεψε πλήρως στο απόθεμα'+(_wiShown(e)?'':': '+String((e&&e.message)||e))+' — έλεγξε χειροκίνητα',e);
+    return false;
+  }
+  return true;
 }
 
 // Expose functions used from onclick/oninput/onfocus handlers
@@ -5836,6 +7122,7 @@ window._wiNewImport = _wiNewImport;
 window._wiConsumePendingMatch = _wiConsumePendingMatch;
 window._wiRemoveImport = _wiRemoveImport;
 window._wiUnmatch = _wiUnmatch;
+window._wiUnmatchRow = _wiUnmatchRow;
 window._wiPrint = _wiPrint;
 window._wiPrintImp = _wiPrintImp;
 
@@ -5951,22 +7238,47 @@ window._wiSegDragStart = _wiSegDragStart;
 window._wiSegDragOver = _wiSegDragOver;
 window._wiSegDrop = _wiSegDrop;
 window._wiSegDragEnd = _wiSegDragEnd;
+// Stock lots Φ1 (inline handlers of the shelf, panels and menus)
+window._wiStockLoad = _wiStockLoad;
+window._wiShelfFit = _wiShelfFit;
+window._wiShelfWheel = _wiShelfWheel;
+window._wiStockLotOpen = _wiStockLotOpen;
+window._wiStockLotsOpen = _wiStockLotsOpen;
+window._wiStockOpenLotOrder = _wiStockOpenLotOrder;
+window._wiStockLooseOpen = _wiStockLooseOpen;
+window._wiStockLotOfRow = _wiStockLotOfRow;
+window._wiStockOpenPiece = _wiStockOpenPiece;
+window._wiStockDelPiece = _wiStockDelPiece;
+window._wiStockClose = _wiStockClose;
+window._wiStockNewLoose = _wiStockNewLoose;
+window._wiStockPanel = _wiStockPanel;
+window._wiStockPick = _wiStockPick;
+window._wiStockReturn = _wiStockReturn;
+window._wiStockReturnLone = _wiStockReturnLone;
 
 function _wiExportCSV() {
   const allOrders = [...WINTL.data.exports, ...WINTL.data.imports];
   if (!allOrders.length) { toast('Δεν υπάρχουν δεδομένα για εξαγωγή', 'error'); return; }
-  const rows = [['Order No','Direction','Client','Loading','Delivery','Load Date','Del Date','Pallets','Truck','Trailer','Driver','Partner','Status']];
+  // «Απόθεμα» (impact map 4/10 B-25/PR-11): the lot carries 33p into the
+  // warehouse and its pieces carry the SAME pallets out (5+15+13) — two real
+  // movements, but a column sum in Excel counted 66 for 33 with nothing to
+  // tell them apart. «Παρτίδα #N» / «Κομμάτι #N» share N (order_no = id, the
+  // number a piece's «Stock Lot Order No» carries), so the sheet can filter.
+  const rows = [['Order No','Direction','Client','Loading','Delivery','Load Date','Del Date','Pallets','Truck','Trailer','Driver','Partner','Status','Απόθεμα']];
   allOrders.forEach(r => { const f = r.fields;
+    const stock = _wiIsLot(f) ? 'Παρτίδα ' + OrdersCommon.numLabel(r) : _wiIsPiece(f) ? 'Κομμάτι ' + OrdersStock.lotNumLabel(f) : '';
     const trk = WINTL.data.trucks.find(t => t.id === ((f['Truck']||[])[0]))?.label || '';
     const trl = WINTL.data.trailers.find(t => t.id === ((f['Trailer']||[])[0]))?.label || '';
     const drv = WINTL.data.drivers.find(d => d.id === ((f['Driver']||[])[0]))?.label || '';
     const prt = WINTL.data.partners.find(p => p.id === ((f['Partner']||[])[0]))?.label || '';
     const assigned = !!(trk || prt);
-    rows.push([f['Order Number']||'', f['Direction']||'',
+    // 'Order No', not 'Order Number': no such label on the facade (CLAUDE.md
+    // name trap) — the first column was blank on every row.
+    rows.push([f['Order No']||'', f['Direction']||'',
       typeof getClientName==='function' ? getClientName((f['Client']||[])[0]) : '',
       f['Loading Summary']||'', f['Delivery Summary']||'',
       f['Loading DateTime']||'', f['Delivery DateTime']||'', ('Total Pallets' in f)?f['Total Pallets']:'',
-      trk, trl, drv, prt, assigned?'Assigned':'Unassigned',
+      trk, trl, drv, prt, assigned?'Assigned':'Unassigned', stock,
     ]); });
   const csv = rows.map(r => r.map(c => `"${String(csvSafeCell(c)).replace(/"/g,'""')}"`).join(',')).join('\n');
   const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8' });

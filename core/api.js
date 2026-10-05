@@ -368,7 +368,15 @@ async function _atRetry(fn, retries = 3) {
           where = ` · ${tname}${flt ? ' · ' + flt.slice(0, 160) : ''}`;
         } catch (_) { /* diagnostics must never break the error path */ }
         const _lv = new Error(mapped + where); _lv._req = reqId;
-        if (typeof logError === 'function') logError(_lv, `_atRetry ${res.status}`);
+        // A business rule's designed «no» (Worker 422 STOCK_RULE: over_draw,
+        // piece_on_truck, lot_has_pieces, …) is an ANSWER, not an app error. It
+        // is still logged — the trail stays — but under its own prefix, so the
+        // auditor's B-34/B-34b («σφάλματα εφαρμογής» / «νέο μήνυμα») exclude it
+        // with `message NOT LIKE '_atRetry 422 rule%'`; otherwise every refused
+        // delete of a different order trips B-34b (impact map 4/10 AU-07).
+        const _rule = res.status === 422 && errData.error && typeof errData.error === 'object' && errData.error.type === 'STOCK_RULE'
+          ? String(errData.error.code || 'rule') : null;
+        if (typeof logError === 'function') logError(_lv, _rule ? '_atRetry 422 rule' : `_atRetry ${res.status}`);
         if (typeof showErrorToast === 'function') showErrorToast(mapped, 'error');
         // Deterministic: the same body will be rejected identically on every
         // attempt, so this throw must escape the retry loop, not feed it. It fell
@@ -377,6 +385,9 @@ async function _atRetry(fn, retries = 3) {
         // failure. The flag is read in the catch; nothing else consumes it.
         const _e = new Error(mapped);
         _e._noRetry = true; _e._req = reqId;
+        // The rule's code travels with the error: a caller that logs its own
+        // failure line can skip it for a designed refusal (same reason as above).
+        if (_rule) _e._rule = _rule;
         throw _e;
       }
       if (res.status >= 500 && i < retries - 1) {
@@ -491,7 +502,7 @@ async function _atFetch(tableId, paramStr = '') {
       if (typeof logError === 'function') logError(new Error(errMsg), '_atFetch');
       // Static toast only: errMsg carries raw Airtable detail (field names, IDs).
       // The full message already went to the gated log via logError above.
-      if (typeof showErrorToast === 'function') showErrorToast('Failed to load data', 'error');
+      if (typeof showErrorToast === 'function') showErrorToast('Τα δεδομένα δεν φορτώθηκαν', 'error');
       throw new Error(errMsg);
     }
     records = records.concat(data.records || []);
@@ -739,7 +750,7 @@ async function atGetOne(tableId, recId) {
   if (data.error) {
     const errMsg = _atErrMsg(data.error, 'Unknown Airtable error');
     if (typeof logError === 'function') logError(new Error(errMsg), `atGetOne(${tableId}, ${recId})`);
-    if (typeof showErrorToast === 'function') showErrorToast('Failed to load record', 'error');
+    if (typeof showErrorToast === 'function') showErrorToast('Η εγγραφή δεν φορτώθηκε', 'error');
     throw new Error(errMsg);
   }
   return data;
@@ -1215,19 +1226,27 @@ async function undoLastAction() {
   }
 }
 
-// ── 4. Soft Delete (trash before delete) ─────────
+// ── 4. Soft Delete (delete, then trash) ──────────
 /**
- * Save record to localStorage trash, then permanently delete from Airtable.
+ * Delete the record, then keep its fields in the localStorage trash (+ undo).
  * Keeps last 50 deleted records for potential recovery.
  * @param {string} tableId - Airtable table ID
  * @param {string} recordId - Record ID to delete
  * @returns {Promise<{id:string, deleted:boolean}>} Deletion confirmation
  */
 async function atSoftDelete(tableId, recordId) {
-  // Save to trash before deleting
-  let recLabel = '';
+  // Read the record first (the trash keeps its fields), DELETE second, and only
+  // after the delete succeeded write the Κάδος entry and the «Restore» undo.
+  // Until 4/10 both were written before atDelete: a REFUSED delete (403, or a
+  // DB rule — a piece on a truck, a lot with pieces) still offered «Restore»
+  // for 60 s, and one click created a duplicate live record next to the one
+  // that was never deleted (impact map 4/10 DL-04; pre-existing for every
+  // order, made routine by migration 057's designed refusals).
+  let recLabel = '', rec = null, readErr = null;
+  try { rec = await atGetOne(tableId, recordId); } catch(e) { readErr = e; }
+  const result = await atDelete(tableId, recordId);   // throws on refusal → no trash, no undo
   try {
-    const rec = await atGetOne(tableId, recordId);
+    if (readErr) throw readErr;
     recLabel = rec.fields?.['Name'] || rec.fields?.['Order Number'] || rec.fields?.['Full Name'] || rec.fields?.['License Plate'] || recordId;
     const trash = JSON.parse(localStorage.getItem('tms_trash') || '[]');
     trash.unshift({
@@ -1243,10 +1262,19 @@ async function atSoftDelete(tableId, recordId) {
   } catch(e) {
     if (typeof logError === 'function') logError(e, 'soft delete backup');
   }
-  // Track for undo
-  _undoSet({ type: 'delete', tableId, recId: recordId, label: recLabel });
-  // Then actually delete
-  return atDelete(tableId, recordId);
+  // Track for undo — except a piece or a lot (critic-1 C1-07, round 1 X4):
+  // its restore is refused (_atNoRestore), so «Restore» could only say «no».
+  // The older undo goes too: it would revert an unrelated, earlier edit.
+  if (rec && _atNoRestore(rec.fields)) clearUndo();
+  else _undoSet({ type: 'delete', tableId, recId: recordId, label: recLabel });
+  return result;
+}
+
+// Stock lots Φ1 (impact map 4/10 DL-05): a piece or a lot is never re-created
+// from the trash. One test for the restore AND for the undo offered after the
+// delete, so the two can never disagree.
+function _atNoRestore(fields) {
+  return typeof OrdersStock !== 'undefined' && !!fields && (OrdersStock.isPiece(fields) || OrdersStock.isLot(fields));
 }
 
 /**
@@ -1277,6 +1305,16 @@ async function atRestoreFromTrash(trashIndex) {
       const msg = 'Η επαναφορά εθνικής παραγγελίας δεν γίνεται — θα έφτιαχνε νέα Ε-n χωρίς φορτίο και χωρίς στάσεις. Καταχώρισέ την ξανά από τη φόρμα· τα στοιχεία της φαίνονται στον Κάδο.';
       if (typeof showErrorToast === 'function') showErrorToast(msg, 'warn', 10000);
       else if (typeof toast === 'function') toast(msg, 'warn');
+      return null;
+    }
+    // Stock lots Φ1 (impact map 4/10 DL-05): a piece or a lot is never
+    // re-created from the trash. A POST of the saved fields makes a NEW order:
+    // a piece without its stops, judged as a fresh draw; a lot without its
+    // STOCK LOTS anchor = an ordinary full-price order to the warehouse. Both
+    // come back through the ΑΠΟΘΕΜΑ (new piece / mark the lot), which applies
+    // the lot's rules. The entry stays in the Κάδος as a record of what went.
+    if (_atNoRestore(item.fields)) {
+      if (typeof reportError === 'function') reportError('Η επαναφορά κομματιού/παρτίδας γίνεται από το ΑΠΟΘΕΜΑ — όχι από τον κάδο');
       return null;
     }
     // Re-create the record in its original table

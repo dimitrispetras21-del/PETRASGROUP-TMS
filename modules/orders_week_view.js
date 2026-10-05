@@ -35,7 +35,7 @@ const OrdersWeekView = (() => {
   const OC = () => OrdersCommon;   // resolved at call time (node tests set the global)
   const DAY_NAMES = ['ΚΥΡΙΑΚΗ', 'ΔΕΥΤΕΡΑ', 'ΤΡΙΤΗ', 'ΤΕΤΑΡΤΗ', 'ΠΕΜΠΤΗ', 'ΠΑΡΑΣΚΕΥΗ', 'ΣΑΒΒΑΤΟ'];
   const STRIP_BACK = 3, STRIP_FWD = 1;   // Figma: three weeks back, one ahead
-  const REASON = { price: 'τιμή → owner', sheets: 'δελτίο → Αλεξία' };
+  const REASON = { price: 'τιμή → owner', stock: 'παρτίδα → κομμάτια', sheets: 'δελτίο → Αλεξία' };
 
   // ══ Pure logic (node-tested in tests/orders-week-view.test.js) ═════════════
 
@@ -43,6 +43,12 @@ const OrdersWeekView = (() => {
     const p = (rec.fields || {})['Parent Order'];
     return Array.isArray(p) ? p.length > 0 : !!p;
   };
+  // A stock piece (057) has no price: its lot carries the price and the one
+  // invoice. This view reads its OWN ORDERS window (not OrdersData's set, where
+  // pieces never enter), so it drops them itself — counted as an order they
+  // would print «χωρίς τιμή» and lower every total. Its RT still shows the leg,
+  // marked «στην παρτίδα #n». Data-based (not behind FEATURES.STOCK_LOTS).
+  const isPiece = rec => typeof OrdersStock !== 'undefined' && OrdersStock.isPiece(rec.fields || {});
   // Postgres id of an ORDERS record, as a string key (RT legs carry it as a number).
   function pgIdOf(rec) {
     const f = rec.fields || {};
@@ -60,7 +66,7 @@ const OrdersWeekView = (() => {
   // Money of a set of orders. `stateOf(rec)` → OrdersData.stateOf shape.
   function totals(recs, stateOf) {
     const t = { n: 0, sum: 0, unpriced: 0, invN: 0, invSum: 0, openN: 0, readyN: 0, readySum: 0,
-      blockedN: 0, blocked: { price: 0, sheets: 0 }, pendingN: 0, oldest: null };
+      blockedN: 0, blocked: { price: 0, stock: 0, sheets: 0 }, pendingN: 0, oldest: null };
     for (const r of recs) {
       t.n++;
       const f = r.fields || {};
@@ -74,7 +80,9 @@ const OrdersWeekView = (() => {
       else if (s.key === 'blocked') { t.blockedN++; t.blocked[s.reason] = (t.blocked[s.reason] || 0) + 1; }
       else t.pendingN++;
       if (s.key === 'ready' || s.key === 'blocked') {
-        const d = OC().daysSinceDelivery(r);
+        // E-05: the page's state function carries OrdersData.ageOf (a lot
+        // waits from «Completed On»); a bare state function falls back.
+        const d = stateOf.ageOf ? stateOf.ageOf(r) : OC().daysSinceDelivery(r);
         if (d != null && (t.oldest == null || d > t.oldest)) t.oldest = d;
       }
     }
@@ -114,7 +122,7 @@ const OrdersWeekView = (() => {
   function buildWeek({ week, intl, natl, rts }) {
     const O = OC();
     const wk = r => O.weekStartOf(r);
-    const weekIntl = intl.filter(r => !isSplitLeg(r) && wk(r) === week);
+    const weekIntl = intl.filter(r => !isSplitLeg(r) && !isPiece(r) && wk(r) === week);
     const weekNatl = natl.filter(r => wk(r) === week);
 
     // pg id → record. A split leg resolves to its parent when the parent was
@@ -144,13 +152,13 @@ const OrdersWeekView = (() => {
             const rec = byPg.get(String(l.order_id)) || null;
             const dir = String(l.direction || '').toUpperCase().includes('IMP') ? 'import' : 'export';
             const w = rec ? wk(rec) : null;
-            return { dir, orderId: l.order_id, rec, week: w, inWeek: !!rec && w === week, counted: false, dupOf: null };
+            return { dir, orderId: l.order_id, rec, week: w, inWeek: !!rec && w === week, counted: false, dupOf: null, piece: !!rec && isPiece(rec) };
           });
         if (!legs.length) continue;
         const home = legs.find(l => l.dir === 'export' && l.rec) || legs.find(l => l.rec);
         if (!home) continue;                        // none of its orders is in the window
         const homeWeek = wk(home.rec);
-        const inWeek = legs.filter(l => l.inWeek);
+        const inWeek = legs.filter(l => l.inWeek && !l.piece);
         if (homeWeek !== week && !inWeek.length) continue;
         const code = rt.code || ('RT-' + rt.id);
         for (const l of inWeek) {
@@ -337,10 +345,13 @@ const OrdersWeekView = (() => {
 
   function _stateFn(set) {
     const memo = new Map();
-    return rec => {
+    const fn = rec => {
       if (!memo.has(rec)) memo.set(rec, OrdersData.stateOf(set, rec));
       return memo.get(rec);
     };
+    // «παλαιότερη εκκρεμής» with the same age rule as «Προς τιμολόγηση» (E-05).
+    fn.ageOf = rec => OrdersData.ageOf(set, rec);
+    return fn;
   }
 
   function _paint(ctx) {
@@ -354,7 +365,7 @@ const OrdersWeekView = (() => {
 
     // ── strip ──
     const today = O.today();
-    const recsOfWeek = w => [...d.intl.filter(r => !isSplitLeg(r)), ...d.natl].filter(r => inScope(r) && O.weekStartOf(r) === w);
+    const recsOfWeek = w => [...d.intl.filter(r => !isSplitLeg(r) && !isPiece(r)), ...d.natl].filter(r => inScope(r) && O.weekStartOf(r) === w);
     const prevT = totals(recsOfWeek(O.addDays(S.week, -7)), stateOf);
     const strip = d.strip.map(w => {
       const recs = recsOfWeek(w), t = totals(recs, stateOf), st = weekStatus(w, recs, stateOf, today);
@@ -373,6 +384,7 @@ const OrdersWeekView = (() => {
     if (scope !== 'intl' && d.natlFailed) banners.push('Οι εθνικές παραγγελίες δεν φορτώθηκαν — τα σύνολα παρακάτω ΔΕΝ τις περιλαμβάνουν. Δεν σημαίνει ότι δεν υπάρχουν.');
     if (scope !== 'natl' && d.parentsFailed) banners.push('Κάποιες αρχικές παραγγελίες σπασμένων σκελών δεν φορτώθηκαν — τα σκέλη τους εμφανίζονται χωρίς τιμή.');
     if (d.setFailed || d.gateFailed) banners.push('Ο έλεγχος δελτίων παλετών δεν απάντησε — η κατάσταση «μπλοκαρισμένη» βασίζεται στις σημάνσεις της παραγγελίας.');
+    if (d.set && d.set.stockFailed) banners.push('Η κατάσταση των παρτίδων αποθήκης δεν φορτώθηκε — κάθε παρτίδα εμφανίζεται μπλοκαρισμένη. Δεν σημαίνει ότι περιμένει κομμάτια· ξαναδοκίμασε.');
 
     // ── KPI band ──
     // A week still running compared to a closed one reads as a collapse (−92% on
@@ -471,7 +483,7 @@ const OrdersWeekView = (() => {
   }
 
   function _reasonsText(b) {
-    return [b.sheets ? `${REASON.sheets} (${b.sheets})` : '', b.price ? `${REASON.price} (${b.price})` : ''].filter(Boolean).join(', ');
+    return [b.sheets ? `${REASON.sheets} (${b.sheets})` : '', b.price ? `${REASON.price} (${b.price})` : '', b.stock ? `${REASON.stock} (${b.stock})` : ''].filter(Boolean).join(', ');
   }
   function _vehLabel(rec) { const v = vehicleOf(rec); return v.top + (v.sub ? ' · ' + v.sub : ''); }
 
@@ -488,7 +500,8 @@ const OrdersWeekView = (() => {
     if (!l.rec) return `<div class="owv-leg owv-leg-off"><div class="owv-l1">#${esc(l.orderId)} <span class="owv-dim">εκτός εύρους φόρτωσης</span></div></div>`;
     const f = l.rec.fields, has = O.hasPrice(f), s = stateOf(l.rec);
     let amt;
-    if (!l.inWeek) amt = `<span class="owv-dim">${has ? O.eur(O.price(f)) : '—'}</span>`;
+    if (l.piece) amt = `<span class="owv-dim" title="Τιμολογείται η παρτίδα">στην παρτίδα ${esc(OrdersStock.lotNumLabel(f))}</span>`;
+    else if (!l.inWeek) amt = `<span class="owv-dim">${has ? O.eur(O.price(f)) : '—'}</span>`;
     else if (l.dupOf) amt = `<span class="owv-dim">στο ${esc(l.dupOf)}</span>`;
     else if (!has) amt = '<span class="owv-bad">χωρίς τιμή</span>';
     else if (s.key === 'invoiced') {
@@ -497,7 +510,7 @@ const OrdersWeekView = (() => {
       // mixed RT it is shown on the leg itself so the two legs can be told apart.
       amt = `<span class="owv-ok">✓ ${verdict.kind !== 'one' && n ? 'ΤΠΥ ' + esc(n) + ' · ' : ''}${O.eur(O.price(f))}</span>`;
     } else amt = O.eur(O.price(f));
-    const other = !l.inWeek ? `<div class="owv-l2 owv-dim">εβδ. ${esc(O.weekLabel(l.week))} — μετρά εκεί</div>` : '';
+    const other = !l.inWeek && !l.piece ? `<div class="owv-l2 owv-dim">εβδ. ${esc(O.weekLabel(l.week))} — μετρά εκεί</div>` : '';
     return `<div class="owv-leg${l.inWeek ? '' : ' owv-leg-off'}" data-owvopen="intl:${esc(l.rec.id)}">
       <div class="owv-l1"><span class="owv-no">${esc(O.numLabel(l.rec))}</span> <b>${esc(clientRaw(f) || '—')}</b></div>
       <div class="owv-l2"><span class="owv-rt">${esc(routeOf(l.rec))}</span><span class="owv-amt">${amt}</span></div>${other}</div>`;

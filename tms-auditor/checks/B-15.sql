@@ -11,7 +11,6 @@
 -- next: 
 -- exceptions: 
 -- tolerance: 
--- source: 02b Β-15 · 22/9 = 58
+-- source: 02b Β-15 · 22/9 = 58 · DRAFT 057b_stock_monitoring.sql (4/10, ΔΕΝ εκτελέστηκε): νέο κείμενο — η παρτίδα μετρά από την ημέρα που έγινε ΠΛΗΡΗΣ (όχι από την παραλαβή), τα κομμάτια ποτέ· ζωντανό μόνο μετά τα 057 + 057b
 -- enabled: yes
-SELECT count(*) FROM orders WHERE deleted_at IS NULL AND status='Delivered' AND invoiced IS NOT TRUE AND parent_order_id IS NULL
- AND coalesce(actual_delivery_date,delivery_datetime) < current_date-30;
+SELECT count(*) FROM orders o LEFT JOIN stock_v_lots l ON l.order_id = o.id WHERE o.deleted_at IS NULL AND o.status='Delivered' AND o.invoiced IS NOT TRUE AND o.parent_order_id IS NULL AND o.stock_lot_id IS NULL AND CASE WHEN l.id IS NULL THEN coalesce(o.actual_delivery_date,o.delivery_datetime) < current_date-30 ELSE l.complete AND l.completed_on < current_date-30 END;

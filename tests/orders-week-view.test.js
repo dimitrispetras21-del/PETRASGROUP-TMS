@@ -162,3 +162,58 @@ test('pg id: «Order ID», else «Order No»', () => {
   assert.strictEqual(W.pgIdOf({ fields: { 'Order No': 8 } }), '8');
   assert.strictEqual(W.pgIdOf({ fields: {} }), null);
 });
+
+// ── Stock lots (057, contract §5.8): one lot + one piece ────────────────────
+// This view reads its OWN ORDERS window (not OrdersData's set), so a piece
+// reaches buildWeek: it must never be counted (no price, the lot is invoiced
+// once) — its RT shows the leg «στην παρτίδα #n» and no total moves.
+test('stock: a piece in an RT is shown, never counted; no total changes because of it; the lot blocks as «stock»', () => {
+  require('vm').runInThisContext(require('fs').readFileSync(require('path').join(__dirname, '..', 'core', 'data-helpers.js'), 'utf8'));
+  const { OrdersStock, OrdersData } = require('../core/orders-common.js');
+  global.OrdersStock = OrdersStock;
+  const LOT = o('recLot', 1300, { Direction: 'Import', 'Loading DateTime': '2026-09-20T08:00', 'Delivery DateTime': '2026-09-21T08:00', Price: 3300, Status: 'Delivered', 'Own Stock Lot': 'recLot1' });
+  const PIECE = o('recPc', 1301, { Direction: 'Import', 'Loading DateTime': '2026-09-22T08:00', 'Delivery DateTime': '2026-09-24T08:00', Status: 'Delivered', 'Stock Lot': ['recLot1'], 'Stock Lot Order No': 1300 });
+  const PIECE2 = o('recPc2', 1302, { Direction: 'Import', 'Loading DateTime': '2026-09-23T08:00', 'Delivery DateTime': '2026-09-25T08:00', Status: 'Assigned', 'Stock Lot': ['recLot1'], 'Stock Lot Order No': 1300 });
+  const rts = [...RTS,
+    // our truck: export #1240 + the piece as its import
+    { id: 90, code: 'RT-1190', date_start: '2026-09-21', status: 'open', ct_rt_legs: [{ order_id: 1240, direction: 'EXPORT', seq: 1 }, { order_id: 1301, direction: 'IMPORT', seq: 2 }] },
+    // an RT that carries only a piece: shown, worth nothing here (owner P&L only)
+    { id: 91, code: 'RT-1191', date_start: '2026-09-23', status: 'open', ct_rt_legs: [{ order_id: 1302, direction: 'IMPORT', seq: 1 }] },
+  ];
+  const m0 = W.buildWeek({ week: WEEK, intl: [...INTL, LOT], natl: NATL, rts });
+  const m1 = W.buildWeek({ week: WEEK, intl: [...INTL, LOT, PIECE, PIECE2], natl: NATL, rts });
+  assert.ok(!m1.weekIntl.some(r => r.id === 'recPc' || r.id === 'recPc2'), 'pieces are not week orders');
+  assert.deepStrictEqual(m1.weekIntl.map(r => r.id), m0.weekIntl.map(r => r.id));
+  assert.deepStrictEqual(m1.noRt.map(r => r.rec.id), m0.noRt.map(r => r.rec.id));
+  assert.deepStrictEqual(W.totals(m1.weekIntl, stateOf), W.totals(m0.weekIntl, stateOf), 'no total moves because of a piece');
+  const rt = m1.rows.find(r => r.code === 'RT-1190');
+  assert.deepStrictEqual(rt.counted.map(r => r.id), ['recN6']);
+  assert.deepStrictEqual([rt.imp[0].piece, rt.imp[0].counted, rt.imp[0].rec.id], [true, false, 'recPc']);
+  const only = m1.rows.find(r => r.code === 'RT-1191');
+  assert.ok(only && only.counted.length === 0, 'a piece-only RT is listed with nothing counted');
+  const perRow = [...m1.rows, ...m1.noRt].reduce((s, r) => s + W.totals(r.counted, stateOf).sum, 0);
+  assert.strictEqual(perRow, W.totals(m1.weekIntl, stateOf).sum, 'Σ RT rows + Χωρίς RT = the week, still');
+  // the lot itself: delivered INTO the warehouse, blocked until its pieces are delivered
+  const set = { intl: [], natl: [], gate: {}, gateFailed: false, stockFailed: false,
+    stock: new Map([['recLot1', { id: 'recLot1', fields: { Complete: false, 'Remaining Pallets': 13, Pieces: 2, 'Pieces Delivered': 1 } }]]) };
+  const t = W.totals(m1.weekIntl, r => OrdersData.stateOf(set, r));
+  assert.strictEqual(t.blocked.stock, 1);
+  assert.strictEqual(t.blocked.price, 1, 'the unpriced export is still «price»');
+});
+
+// E-05 (impact map 4/10): «παλαιότερη εκκρεμής» of a lot counts from its
+// «Completed On» (OrdersData.ageOf, carried by the page's state function) —
+// never from the warehouse intake while its pieces are still out.
+test('stock: oldest pending ignores an incomplete lot\'s intake date; a bare state function keeps the old rule', () => {
+  const { OrdersStock, OrdersData } = require('../core/orders-common.js');
+  global.OrdersStock = OrdersStock;
+  const LOT = o('recLot', 1300, { Direction: 'Import', 'Loading DateTime': '2026-09-20T08:00', 'Delivery DateTime': '2026-09-21T08:00', Price: 3300, Status: 'Delivered', 'Own Stock Lot': 'recLot1' });
+  const set = { intl: [], natl: [], gate: {}, gateFailed: false, stockFailed: false,
+    stock: new Map([['recLot1', { id: 'recLot1', fields: { Complete: false } }]]) };
+  const bare = r => OrdersData.stateOf(set, r);
+  const paged = Object.assign(r => OrdersData.stateOf(set, r), { ageOf: r => OrdersData.ageOf(set, r) });
+  assert.strictEqual(W.totals([LOT], paged).oldest, null, 'incomplete lot → no age');
+  assert.strictEqual(W.totals([LOT], bare).oldest, OrdersCommon.daysSinceDelivery(LOT), 'fallback: the delivery age');
+  set.stock.get('recLot1').fields = { Complete: true, 'Completed On': OrdersCommon.addDays(OrdersCommon.today(), -1) };
+  assert.strictEqual(W.totals([LOT], paged).oldest, 1);
+});
