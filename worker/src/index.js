@@ -968,20 +968,8 @@ var TABLES = {
       Type: "type",
       "License Number": "license_number",
       "License Expiry": "license_expiry",
-      Active: "active",
-      // 060, OWNER-Q2 answered 4/10 (both: salary = track record only,
-      // per_trip = daily ΤΟΠΙΚΟ line): 'salary' | 'per_trip' | null (unknown).
-      // A column of its own, NOT `Type` above: drivers.type holds
-      // Internal/External (a different fact, αρχή 3). Changing it re-syncs the
-      // driver's local-relay payroll lines in the DB (060 trigger), so it is
-      // written only by the roles that write drivers (owner/management/
-      // accountant — dispatcher has drivers: GET).
-      "Pay Basis": "pay_basis"
-    },
-    // Pay data, same readers as P&L (PL_READERS / cfgForRole): «Dispatcher
-    // must never see payroll» (owner) — dispatcher and warehouse get the
-    // driver without this label, cannot filter on it, cannot write it.
-    plOnly: ["Pay Basis"]
+      Active: "active"
+    }
   },
   tblEAPExIAjiA3asD: {
     name: "TRUCKS",
@@ -1853,8 +1841,10 @@ var TABLES = {
   // ρυμούλκα, μέρα = μέρα της παραγγελίας) ζουν ΜΟΝΟ στη βάση (060)· οι
   // αρνήσεις της γυρίζουν ως ελληνικά 422 μέσω stockRuleError(). Date και
   // Status των relays τα παράγει η βάση — η οθόνη δεν τα στέλνει.
-  // Ιστορικό οδηγού (track record, OWNER-Q2 answered 4/10): οι γραμμές αυτού
-  // του πίνακα ΕΙΝΑΙ το ιστορικό — μία πηγή. Ανάγνωση ανά οδηγό:
+  // Ιστορικό οδηγού (κάθε οδηγού — OWNER-Q2 answered 5/10: καμία διάκριση
+  // οδηγών, κάθε τοπική γράφει και γραμμή «ΤΟΠΙΚΟ» στη μισθοδοσία του από
+  // trigger της βάσης): οι γραμμές αυτού του πίνακα ΕΙΝΑΙ το ιστορικό — μία
+  // πηγή. Ανάγνωση ανά οδηγό:
   //   filterByFormula = FIND("<driver rec>", ARRAYJOIN({Driver}, ","))>0
   //   sort[0][field]=Date, sort[0][direction]=desc
   // (δουλεύει επειδή υπάρχει το links block: preResolveLinkTerms → driver_id).
@@ -2068,8 +2058,6 @@ __name(tableConfig, "tableConfig");
 // Allow-list, not deny-list (principle 5): a new role starts WITHOUT P&L.
 // The list mirrors the front end's costs != 'none' (config.js PERMS) — the
 // same gate orders_week_view.js uses to hide «Client Revenue».
-// Since 060 (4/10/2026) the same gate carries DRIVERS «Pay Basis»: pay data
-// is read by exactly the roles that read the payroll (/costs/ledger).
 var PL_READERS = ["owner", "management", "accountant"];
 function cfgForRole(cfg, role) {
   if (!cfg || !cfg.plOnly || PL_READERS.includes(role)) return cfg;
@@ -3163,7 +3151,7 @@ const RELAY_RULE_TEXT = {
   no_order_date: "Η παραγγελία δεν έχει ημερομηνία παράδοσης/φόρτωσης — συμπλήρωσέ την πρώτα",
   // dl_entries (060 dl_local_line_guard, coordinator D3) — reached through the
   // /costs/ledger PATCH, which answers them as 409 with these texts:
-  line_has_relay: "Η γραμμή τοπικού πληρώνει ζωντανή τοπική κίνηση οδηγού ανά δρομολόγιο — Αξία 0 αν δεν πληρώνεται χωριστά, ή σβήσε την κίνηση από το Weekly· η γραμμή δεν ακυρώνεται",
+  line_has_relay: "Η γραμμή τοπικού πληρώνει ζωντανή τοπική κίνηση του οδηγού εκείνη τη μέρα — Αξία 0 αν δεν πληρώνεται χωριστά, ή σβήσε την κίνηση από το Weekly· η γραμμή δεν ακυρώνεται",
   line_restore: "Ακυρωμένη γραμμή τοπικού δεν επαναφέρεται — ξαναγράφεται μόνη της όταν επιστρέψει τοπική κίνηση του οδηγού εκείνη τη μέρα"
 };
 const RELAY_CHECK_TEXT = {
@@ -3216,11 +3204,6 @@ function stockRuleError(e) {
     if (m[1].startsWith("local_moves_")) {
       return { type: "LOCAL_RELAY_RULE", code: m[1], message: `Η τοπική κίνηση δεν αποθηκεύτηκε: κανόνας ${m[1]}` };
     }
-    // drivers.pay_basis (060, OWNER-Q2 answered 4/10): the form offers only
-    // the allowed values; this is for any other writer.
-    if (m[1].startsWith("drivers_pay_basis")) {
-      return { type: "LOCAL_RELAY_RULE", code: m[1], message: "Τύπος αμοιβής: Μισθωτός, Ανά δρομολόγιο ή κενό (άγνωστο)" };
-    }
     return null;
   }
   if (code === "23505" && /stock_lots_(order|nat)_live/.test(message)) {
@@ -3254,7 +3237,7 @@ __name(stockRuleResponse, "stockRuleResponse");
 // column name, so an unrelated 42703 keeps today's path.
 function schemaBehind060(e) {
   const msg = String((e && e.message) || "");
-  return /"42703"/.test(msg) && /local_move_id|relay_info|move_kind|pay_basis/.test(msg);
+  return /"42703"/.test(msg) && /local_move_id|relay_info|move_kind/.test(msg);
 }
 __name(schemaBehind060, "schemaBehind060");
 // A plain string error: /costs/* is read by ctFetch (modules/costs.js), which
@@ -3547,19 +3530,17 @@ async function aiFallbackForUnparsed(unparsedPages, env) {
   return [];
 }
 __name(aiFallbackForUnparsed, "aiFallbackForUnparsed");
-// The two facts localLineCancelError (ledger-rules.mjs, coordinator D3)
-// decides on, read live: the driver's pay basis and how many of his relays are
-// still live on the line's day — the same «live relay» test as 060
-// (move_kind <> 'local', not deleted, not Cancelled). A failed read throws
-// (handleCosts' catch → 500): never «no relays» by default (αρχή 1).
+// The one fact localLineCancelError (ledger-rules.mjs, coordinator D3)
+// decides on, read live: how many of the driver's relays are still live on
+// the line's day — the same «live relay» test as 060 (move_kind <> 'local',
+// not deleted, not Cancelled). Nothing about the driver is read: owner 5/10,
+// no distinction between drivers. A failed read throws (handleCosts' catch →
+// 500): never «no relays» by default (αρχή 1).
 async function localLineCancelFacts(env, line) {
   const relays = new URLSearchParams({ select: "id", driver_id: `eq.${line.driver_id}`, move_date: `eq.${line.entry_date}`, move_kind: "neq.local", status: "neq.Cancelled" });
   relays.append("deleted_at", "is.null");
-  const [drv, lm] = await Promise.all([
-    dbSelectRaw(env, "drivers", new URLSearchParams({ select: "id,pay_basis", id: `eq.${line.driver_id}` })),
-    dbSelectRaw(env, "local_moves", relays)
-  ]);
-  return { payBasis: drv.rows.length ? drv.rows[0].pay_basis : null, liveRelays: lm.rows.length };
+  const lm = await dbSelectRaw(env, "local_moves", relays);
+  return { liveRelays: lm.rows.length };
 }
 __name(localLineCancelFacts, "localLineCancelFacts");
 async function handleCosts(request, url, origin, env) {
@@ -4163,10 +4144,10 @@ async function handleCosts(request, url, origin, env) {
       const localLock = localLineLockError(body, before.rows[0]);
       if (localLock) return jsonError(localLock, 400, origin, env);
       if (before.rows[0].deleted_at && !(body && body.restore)) return jsonError("entry is cancelled", 409, origin, env);
-      // Coordinator D3 (4/10): a local line is cancelled only when its driver
-      // is salaried or no live relay of his is left that day — read live here,
-      // decided in ledger-rules.mjs. 409: the same request may pass later
-      // (after the relay is deleted from the Weekly).
+      // Coordinator D3 (4/10), owner 5/10: a local line is cancelled only when
+      // no live relay of its driver is left that day — whoever the driver —
+      // read live here, decided in ledger-rules.mjs. 409: the same request may
+      // pass later (after the relay is deleted from the Weekly).
       if (before.rows[0].local_move_id != null && body && body.cancel) {
         const why = localLineCancelError(await localLineCancelFacts(env, before.rows[0]));
         if (why) return jsonError(why, 409, origin, env);

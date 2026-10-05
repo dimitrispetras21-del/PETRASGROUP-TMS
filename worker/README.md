@@ -113,8 +113,8 @@ build — δεν ισχύει πλέον.
 `local_relay:`).
 
 Ο Worker αυτού του branch ονομάζει στήλες **και** του 057 **και** του 060
-(`dl_v_entries.local_move_id` στην αρχική της Μισθοδοσίας· `move_kind` και
-`pay_basis` στον έλεγχο ακύρωσης γραμμής τοπικού· `stock_lot_id` και οι στήλες
+(`dl_v_entries.local_move_id` στην αρχική της Μισθοδοσίας· `move_kind` στον
+έλεγχο ακύρωσης γραμμής τοπικού· `stock_lot_id` και οι στήλες
 `orders_with_derived` / `stock_v_lots` του αποθέματος). Αν μπει πριν από το 060, η
 αρχική της Μισθοδοσίας απαντά **503 «Η βάση δεν έχει ακόμη το migration 060»** (όχι
 γενικό 500) — αλλά δεν δουλεύει. Αν μπει πριν από το 057, οι αποθηκεύσεις
@@ -123,14 +123,14 @@ build — δεν ισχύει πλέον.
 **Ακριβώς πριν από το `wrangler deploy`** (SELECT μόνο, στη Supabase):
 
 ```sql
-SELECT count(*) AS found   -- ΠΡΕΠΕΙ 12· αλλιώς ΣΤΑΜΑΤΑ
+SELECT count(*) AS found   -- ΠΡΕΠΕΙ 11· αλλιώς ΣΤΑΜΑΤΑ
 FROM information_schema.columns
 WHERE table_schema = 'public'
   AND (table_name, column_name) IN (
        ('orders','stock_lot_id'), ('national_orders','stock_lot_id'),
        ('orders_with_derived','own_stock_lot'), ('orders_with_derived','stock_lot_order_no'),
        ('orders_with_derived','stock_lot_source'), ('orders_with_derived','stock_lot_reference'),
-       ('stock_v_lots','pieces_moving'), ('local_moves','move_kind'), ('drivers','pay_basis'),
+       ('stock_v_lots','pieces_moving'), ('local_moves','move_kind'),
        ('dl_entries','local_move_id'), ('dl_v_entries','local_move_id'), ('dl_v_entries','relay_info'));
 ```
 

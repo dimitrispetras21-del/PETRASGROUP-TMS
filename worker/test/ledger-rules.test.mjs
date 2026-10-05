@@ -119,22 +119,21 @@ test('local line: the type is never patchable (dl_lm_is_trip unreachable)', () =
 // Coordinator D3 (4/10/2026): cancel passes the lock guard, and is then
 // decided on two live facts (the handler reads them).
 test('local line: cancel (+reason) passes the lock guard — localLineCancelError decides', () => {
-  assert.strictEqual(localLineLockError({ cancel: true, reason: 'μισθωτός' }, localLine), null);
-  assert.ok(validatePatch({ cancel: true, reason: 'μισθωτός' }, localLine).patch.deleted_at);
+  assert.strictEqual(localLineLockError({ cancel: true, reason: 'δεν έγινε' }, localLine), null);
+  assert.ok(validatePatch({ cancel: true, reason: 'δεν έγινε' }, localLine).patch.deleted_at);
 });
-test('local line cancel (D3): salaried driver or no live relay left → allowed; otherwise refused and explained', () => {
-  assert.strictEqual(localLineCancelError({ payBasis: 'salary', liveRelays: 3 }), null);
-  assert.strictEqual(localLineCancelError({ payBasis: 'per_trip', liveRelays: 0 }), null);
-  assert.strictEqual(localLineCancelError({ payBasis: null, liveRelays: 0 }), null);
-  for (const facts of [{ payBasis: 'per_trip', liveRelays: 1 }, { payBasis: null, liveRelays: 2 }]) {
-    const err = localLineCancelError(facts);
-    assert.match(err, /μισθωτός/, JSON.stringify(facts));
-    assert.ok(err.includes(String(facts.liveRelays)), 'names how many relays remain');
+// Owner 5/10: no distinction between drivers — the one fact is the day's live relays.
+test('local line cancel (D3, owner 5/10): no live relay left → allowed; a live relay → refused and explained', () => {
+  assert.strictEqual(localLineCancelError({ liveRelays: 0 }), null);
+  for (const liveRelays of [1, 3]) {
+    const err = localLineCancelError({ liveRelays });
+    assert.match(err, /δεν έμεινε τοπική κίνηση του οδηγού/);
+    assert.ok(err.includes('μένουν ' + liveRelays), 'names how many relays remain');
   }
-  // unknown pay basis is paid like per_trip (060): never treated as salaried
-  assert.ok(localLineCancelError({ payBasis: null, liveRelays: 1 }));
-  // no facts = no decision (never «allowed» by default, αρχή 1)
-  assert.ok(localLineCancelError(null));
+  // no facts / an unreadable count = no decision (never «allowed» by default, αρχή 1)
+  for (const facts of [null, {}, { liveRelays: undefined }, { liveRelays: '0' }]) {
+    assert.match(localLineCancelError(facts), /δεν διαβάστηκαν/, JSON.stringify(facts));
+  }
 });
 test('ordinary lines are not touched by the local-line guard', () => {
   const rtLine = { id: 51, entry_type: 'trip', local_move_id: null, rt_id: 9 };

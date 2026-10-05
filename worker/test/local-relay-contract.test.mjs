@@ -97,7 +97,7 @@ test('every 060 CHECK is either mapped to Greek or classified; every Worker CHEC
   assert.ok(checks.includes('local_moves_kind_parent'), `060 CHECKs parsed: ${checks.join(', ')}`);
   for (const name of checks) {
     if (Object.prototype.hasOwnProperty.call(NOT_FACADE, name)) continue;
-    assert.ok(name.startsWith('local_moves_') || name.startsWith('drivers_pay_basis'),
+    assert.ok(name.startsWith('local_moves_'),
       `060 CHECK «${name}» is neither mapped nor classified — add a text or a NOT_FACADE reason`);
     const r = W.stockRuleError({ pg: { code: '23514', message: `new row violates check constraint "${name}"` } });
     assert.ok(r, `${name} → null (would be the 500 path)`);

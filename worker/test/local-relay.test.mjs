@@ -122,30 +122,18 @@ test('LOCAL MOVES: a relay POST reaches the DB with kind, parent and executor co
   assert.strictEqual(rec.fields['Move Kind'], 'local', 'Weekly National filters on this label');
 });
 
-test('DRIVERS: «Pay Basis» → pay_basis, not the Internal/External «Type»', () => {
-  assert.strictEqual(DRIVERS.fields['Pay Basis'], 'pay_basis');
-  assert.strictEqual(DRIVERS.fields.Type, 'type');
-  assert.deepStrictEqual(DRIVERS.plOnly, ['Pay Basis']);
+// Owner 5/10 («ας μην υπαρχει διαχωρισμος αναμεσα στους οδηγους»): there is no
+// pay basis — DRIVERS keeps exactly its pre-060 labels and no P&L-only field.
+test('DRIVERS: no «Pay Basis» label, no plOnly — every driver is the same to the payroll', () => {
+  assert.deepStrictEqual(DRIVERS.fields, {
+    'Full Name': 'full_name', Phone: 'phone', Type: 'type', 'License Number': 'license_number',
+    'License Expiry': 'license_expiry', Active: 'active',
+  });
+  assert.strictEqual(DRIVERS.plOnly, undefined);
+  assert.ok(!/pay_basis/.test(src), 'no pay_basis column named anywhere in the Worker');
 });
 
-test('DRIVERS: «Pay Basis» reaches payroll readers only (dispatcher must never see payroll)', () => {
-  const row = { legacy_id: 'recD', full_name: 'Driver', type: 'Internal', pay_basis: 'salary', active: true };
-  for (const role of ['owner', 'management', 'accountant']) {
-    const f = W.toAirtableRecord(row, W.columnToLabel(W.cfgForRole(DRIVERS, role))).fields;
-    assert.strictEqual(f['Pay Basis'], 'salary', role);
-  }
-  for (const role of ['dispatcher', 'warehouse', undefined]) {
-    const c = W.cfgForRole(DRIVERS, role);
-    const f = W.toAirtableRecord(row, W.columnToLabel(c)).fields;
-    assert.ok(!('Pay Basis' in f), `leaked to ${role}`);
-    assert.strictEqual(f['Full Name'], 'Driver');
-    assert.ok(!('Pay Basis' in W.filterFieldMap(c)), `filterable by ${role}`);
-    assert.deepStrictEqual(W.fieldsToColumns(c, { 'Pay Basis': 'per_trip' }), {});
-  }
-  assert.strictEqual(DRIVERS.fields['Pay Basis'], 'pay_basis', 'the original config is never mutated');
-});
-
-// ── track record filter (OWNER-Q2 answered 4/10) ─────────────────────────────
+// ── track record filter (every driver's local moves, OWNER-Q2 answered 5/10) ─────────────────────────────
 async function filterAs(cfg, role, formula) {
   const c = W.cfgForRole(cfg, role);
   const params = new URLSearchParams();
@@ -217,7 +205,6 @@ async function patchLedger(line, facts, body, role = 'accountant') {
   state.selectRaw = async (e, table, params) => {
     state.reads.push({ table, params: params.toString() });
     if (table === 'dl_entries') return { rows: [line] };
-    if (table === 'drivers') return { rows: [{ id: line.driver_id, pay_basis: facts.payBasis }] };
     if (table === 'local_moves') return { rows: Array.from({ length: facts.liveRelays }, (_, i) => ({ id: i + 1 })) };
     return { rows: [] };
   };
@@ -227,13 +214,15 @@ async function patchLedger(line, facts, body, role = 'accountant') {
   } finally { state.selectRaw = null; }
 }
 
-test('ledger PATCH (D3): a local line with a live relay of a per-trip/unknown driver is not cancelled — 409, nothing written', async () => {
-  for (const payBasis of ['per_trip', null]) {
-    const r = await patchLedger(localLine, { payBasis, liveRelays: 1 }, { cancel: true, reason: 'δεν έγινε' });
-    assert.strictEqual(r.status, 409, String(payBasis));
-    assert.match(r.body.error, /μισθωτός/);
-    assert.match(r.body.error, /μένουν 1/);
+test('ledger PATCH (D3): a local line with a live relay of its driver that day is not cancelled — 409, nothing written', async () => {
+  for (const liveRelays of [1, 2]) {
+    const r = await patchLedger(localLine, { liveRelays }, { cancel: true, reason: 'δεν έγινε' });
+    assert.strictEqual(r.status, 409, String(liveRelays));
+    assert.match(r.body.error, /δεν έμεινε τοπική κίνηση του οδηγού/);
+    assert.match(r.body.error, new RegExp('μένουν ' + liveRelays));
     assert.deepStrictEqual(state.patched, [], 'nothing written');
+    // owner 5/10: nothing about the driver is read — the day's relays are the only fact
+    assert.deepStrictEqual(state.reads.map((x) => x.table), ['dl_entries', 'local_moves']);
   }
   // the «live relay» read is 060's own test: that driver, that day, relays only, not deleted, not Cancelled
   const lm = state.reads.find((x) => x.table === 'local_moves');
@@ -243,24 +232,22 @@ test('ledger PATCH (D3): a local line with a live relay of a per-trip/unknown dr
   });
 });
 
-test('ledger PATCH (D3): salaried driver, or no live relay left that day → cancelled with the reason', async () => {
-  for (const facts of [{ payBasis: 'salary', liveRelays: 2 }, { payBasis: 'per_trip', liveRelays: 0 }, { payBasis: null, liveRelays: 0 }]) {
-    for (const role of ['owner', 'management', 'accountant']) {
-      const r = await patchLedger(localLine, facts, { cancel: true, reason: 'μισθωτός' }, role);
-      assert.strictEqual(r.status, 200, JSON.stringify(facts) + ' ' + role);
-      assert.strictEqual(state.patched.length, 1);
-      assert.strictEqual(state.patched[0].table, 'dl_entries');
-      assert.strictEqual(state.patched[0].patch.deleted_reason, 'μισθωτός');
-      assert.ok(state.patched[0].patch.deleted_at);
-    }
+test('ledger PATCH (D3): no live relay left that day → cancelled with the reason', async () => {
+  for (const role of ['owner', 'management', 'accountant']) {
+    const r = await patchLedger(localLine, { liveRelays: 0 }, { cancel: true, reason: 'η κίνηση σβήστηκε' }, role);
+    assert.strictEqual(r.status, 200, role);
+    assert.strictEqual(state.patched.length, 1);
+    assert.strictEqual(state.patched[0].table, 'dl_entries');
+    assert.strictEqual(state.patched[0].patch.deleted_reason, 'η κίνηση σβήστηκε');
+    assert.ok(state.patched[0].patch.deleted_at);
   }
 });
 
 test('ledger PATCH (D3): the reason is still required, cancel stays a standalone action', async () => {
-  let r = await patchLedger(localLine, { payBasis: 'salary', liveRelays: 0 }, { cancel: true });
+  let r = await patchLedger(localLine, { liveRelays: 0 }, { cancel: true });
   assert.strictEqual(r.status, 400);
   assert.match(r.body.error, /reason required to cancel/);
-  r = await patchLedger(localLine, { payBasis: 'salary', liveRelays: 0 }, { cancel: true, reason: 'x', trip_value: 0 });
+  r = await patchLedger(localLine, { liveRelays: 0 }, { cancel: true, reason: 'x', trip_value: 0 });
   assert.strictEqual(r.status, 400);
   assert.match(r.body.error, /cancel cannot be combined/);
   assert.deepStrictEqual(state.patched, []);
@@ -268,15 +255,15 @@ test('ledger PATCH (D3): the reason is still required, cancel stays a standalone
 
 test('ledger PATCH: restore, day, route, RT of a local line stay refused (the system owns it); dispatcher 403', async () => {
   const cancelled = { ...localLine, deleted_at: '2026-10-05T10:00:00Z' };
-  let r = await patchLedger(cancelled, { payBasis: 'salary', liveRelays: 0 }, { restore: true, reason: 'λάθος' }, 'owner');
+  let r = await patchLedger(cancelled, { liveRelays: 0 }, { restore: true, reason: 'λάθος' }, 'owner');
   assert.strictEqual(r.status, 400);
   assert.match(r.body.error, /την κρατά το σύστημα/);
   for (const body of [{ entry_date: '2026-10-06', reason: 'x' }, { route: 'x' }, { rt_id: 5 }]) {
-    r = await patchLedger(localLine, { payBasis: 'per_trip', liveRelays: 1 }, body);
+    r = await patchLedger(localLine, { liveRelays: 1 }, body);
     assert.strictEqual(r.status, 400, JSON.stringify(body));
   }
   assert.deepStrictEqual(state.patched, []);
-  r = await patchLedger(localLine, { payBasis: 'salary', liveRelays: 0 }, { cancel: true, reason: 'x' }, 'dispatcher');
+  r = await patchLedger(localLine, { liveRelays: 0 }, { cancel: true, reason: 'x' }, 'dispatcher');
   assert.strictEqual(r.status, 403);
 });
 
@@ -287,7 +274,7 @@ test('ledger PATCH: the base\'s own refusal of a local line (060 dl_local_line_g
     e.pg = { code: '23514', details: null, hint: 'local_relay:' + code, message: 'local_relay: refused' };
     state.patchError = e;
     try {
-      const r = await patchLedger(localLine, { payBasis: 'per_trip', liveRelays: 0 }, { cancel: true, reason: 'x' });
+      const r = await patchLedger(localLine, { liveRelays: 0 }, { cancel: true, reason: 'x' });
       assert.strictEqual(r.status, 409, code);
       assert.strictEqual(r.body.error, W.stockRuleError(e).message);
       assert.match(r.body.error, /[α-ωΑ-Ω]/);
@@ -298,7 +285,7 @@ test('ledger PATCH: the base\'s own refusal of a local line (060 dl_local_line_g
   dup.pg = { code: '23505', message: 'duplicate key value violates unique constraint "dl_rt_live"' };
   state.patchError = dup;
   try {
-    const r = await patchLedger({ ...localLine, id: 52, local_move_id: null, rt_id: 9 }, { payBasis: null, liveRelays: 0 }, { rt_id: 10, reason: 'x' });
+    const r = await patchLedger({ ...localLine, id: 52, local_move_id: null, rt_id: 9 }, { liveRelays: 0 }, { rt_id: 10, reason: 'x' });
     assert.strictEqual(r.status, 409);
     assert.match(r.body.error, /round trip already has a ledger line/);
   } finally { state.patchError = null; }
@@ -314,9 +301,9 @@ test('ctDbPatch keeps the parsed PostgREST error (the 060 hint survives a long d
   });
 });
 
-test('ledger PATCH: an RT line cancels as before — no pay-basis or relay read', async () => {
+test('ledger PATCH: an RT line cancels as before — no relay read', async () => {
   const rtLine = { ...localLine, id: 51, local_move_id: null, rt_id: 9 };
-  const r = await patchLedger(rtLine, { payBasis: 'per_trip', liveRelays: 3 }, { cancel: true, reason: 'διπλή' });
+  const r = await patchLedger(rtLine, { liveRelays: 3 }, { cancel: true, reason: 'διπλή' });
   assert.strictEqual(r.status, 200);
   assert.deepStrictEqual(state.reads.map((x) => x.table), ['dl_entries']);
 });
@@ -377,11 +364,10 @@ test('mapper: an unknown relay code is still a loud 422 naming the code (never t
   assert.strictEqual(W.stockRuleError({ pg: { code: 'P0001', hint: 'local_relay:same_driver', message: 'x' } }).code, 'same_driver');
 });
 
-test('mapper: relay CHECKs by constraint name; other local_moves_* CHECKs named; pay basis', () => {
+test('mapper: relay CHECKs by constraint name; other local_moves_* CHECKs named', () => {
   const chk = (name) => W.stockRuleError({ pg: { code: '23514', message: `new row for relation "local_moves" violates check constraint "${name}"` } });
   for (const [name, text] of Object.entries(W.RELAY_CHECK_TEXT)) assert.strictEqual(chk(name).message, text, name);
   assert.match(chk('local_moves_future_rule').message, /local_moves_future_rule/);
-  assert.match(W.stockRuleError({ pg: { code: '23514', message: 'violates check constraint "drivers_pay_basis_check"' } }).message, /Τύπος αμοιβής/);
   const dup = W.stockRuleError({ pg: { code: '23505', message: 'duplicate key value violates unique constraint "local_moves_relay_once"' } });
   assert.strictEqual(dup.code, 'relay_exists');
   assert.strictEqual(dup.message, W.RELAY_RULE_TEXT.relay_exists, 'race floor and trigger refusal say the same');
