@@ -1172,6 +1172,19 @@ async function runOwnerCharge(browser) {
     'S5R3-01: charge refused → the order is NOT saved, the form stays open with the reason, the button is back — ' + JSON.stringify({ open: await page.evaluate(() => document.getElementById('modalOverlay').classList.contains('open')), o: cap.patches.filter(p => p.table === 'orders').length - nO1, btn: await page.innerText('#btnSubmit').catch(() => '?') }));
   await close();
 
+  // round-3 review P2: an unparseable entry with NO saved charge is not «unchanged» — the order is not saved.
+  setCharge(cap.money, null);
+  await open();
+  await fillCommon(page);
+  const nC2 = cap.chargePatches.length, nO2 = cap.patches.filter(p => p.table === 'orders').length;
+  await page.focus('#f_WhCharge'); await page.keyboard.type('75.');
+  await page.click('#btnSubmit');
+  await page.waitForFunction(() => /Μη έγκυρη χρέωση αποθήκης/.test((document.getElementById('oiLotCharge') || {}).innerText || ''), null, { timeout: 8000 });
+  await page.waitForTimeout(400);
+  ok(cap.chargePatches.length === nC2 && cap.patches.filter(p => p.table === 'orders').length === nO2 && await page.evaluate(() => document.getElementById('modalOverlay').classList.contains('open')),
+    'review P2: «75.» typed over an empty charge → nothing sent, the order NOT saved, the reason shown');
+  await close();
+
   // ── R2 + S5-06 + F3: partner AND warehouse → both named, the total once; charges over the price warn ──
   cap.money.partner_cost = '300.00'; setCharge(cap.money, 3100);
   await open();

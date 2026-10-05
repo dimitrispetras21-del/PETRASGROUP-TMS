@@ -1115,8 +1115,13 @@ function _oiChargeNote(text, kind) {
 function _oiChargeChanged() {
   const SK = INTL_ORDERS._stock, inp = document.getElementById('f_WhCharge');
   if (!SK || !SK.charge || SK.charge.status !== 'ok' || !inp) return null;
+  // An unparseable entry («75.», «1e», «-») reads as '' on a number input:
+  // against an empty saved charge it looked «unchanged» and was dropped on the
+  // order's Save without a word (round-3 review P2). It is a change — the
+  // save then refuses it with its own line.
+  if (inp.validity && inp.validity.badInput) return true;
   const saved = SK.charge.lot.warehouse_charge, raw = inp.value.trim();
-  const same = raw === '' ? saved == null : saved != null && !inp.validity.badInput && Number(raw) === Number(saved);
+  const same = raw === '' ? saved == null : saved != null && Number(raw) === Number(saved);
   return !same;
 }
 function _oiChargeDirty() {
@@ -2128,6 +2133,8 @@ async function submitIntlOrder(recId) {
   // «still changed?» would read false — the save's own answer decides.
   if (_oiChargeChanged() && !(await _oiChargeSave())) {
     if (btn) { btn.textContent = 'Αποθήκευση'; btn.disabled = false; }
+    // The reason is in the band at the top; Save is a sticky footer (review P3).
+    document.getElementById('oiLotCharge')?.scrollIntoView({ block: 'center', behavior: 'smooth' });
     return;
   }
 
