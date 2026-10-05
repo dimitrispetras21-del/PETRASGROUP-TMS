@@ -31,6 +31,11 @@
 //  (16) a sub-row click opens THAT relay even if the order's direction changed
 //  (17) the split panel warns about a relay on the parent
 //  (18) a failed re-read after a delete is said apart from a failed delete
+// Review round 3 (5/10):
+//  (19) «⇄ τοπ.» sits AFTER the international's plate/driver, never in front of the name
+//  (20) no Reference (most imports): menus, sub-row and badge name the client + order number
+//  (21) an order without a tractor: «ίδιος» stays allowed, but the panel says the local has no vehicle
+//  (22) a piece going back to stock keeps its relay → proven where the stock board is: stock-shelf-rig.js
 //
 // Run from the MAIN repo root (the .har lookup in auth.js is cwd-relative):
 //   PW_BASE_URL=http://127.0.0.1:8788/.claude/worktrees/lr-weekly/ node .claude/worktrees/lr-weekly/tests/critics/local-relay-weekly-proof.js
@@ -128,6 +133,12 @@ async function newPage(browser, opts = {}) {
   const page = await ctx.newPage();
   await page.clock.setFixedTime(new Date('2026-10-05T09:00:00+03:00'));
   const db = seed();
+  if (opts.noRef) {
+    // (20) Reference is empty on most imports: the client + Order No must name the order.
+    const f = id => db[T.ORD].find(o => o.id === id).fields;
+    delete f('recImp2').Reference; Object.assign(f('recImp2'), { 'Client Summary': 'Client Z', 'Order No': 4321 });
+    delete f('recExp1').Reference; Object.assign(f('recExp1'), { 'Order No': 4320 });
+  }
   db[T.LM].forEach(r => derive(db, r));
   const S = { db, log: [], errors: [], armed: false, lmGets: 0, failLmGets: 0 };
   page.on('pageerror', e => S.errors.push(String(e)));
@@ -482,7 +493,42 @@ async function scenarios(browser) {
     await page.locator('#wi-imp-recImpU .wk3-assign').click();
     await page.waitForTimeout(300);
     ok(await page.$('#wi-popover') !== null && await page.$('#wi-popover .wi-rly-hint') === null && /ΣΥΝΕΡΓΑΤΗΣ/.test(await page.$eval('#wi-popover', e => e.innerText).catch(() => '')), '(13) no hint on a first assignment (no driver yet)');
+    await page.keyboard.press('Escape'); await page.waitForTimeout(200);
+
+    console.log('\n(19) the badge after the international\'s name');
+    const pos = await page.$$eval('.wk3-pill .wi-rly-b', els => els.map(b => ({ last: b === b.parentElement.lastElementChild,
+      prev: b.previousElementSibling ? b.previousElementSibling.className + ':' + b.previousElementSibling.textContent.trim() : '' })));
+    ok(pos.length >= 3 && pos.every(x => x.last), '(19) every card badge is the LAST thing on its line: ' + JSON.stringify(pos));
+    ok(pos.some(x => x.prev === 'wi-rly-n:Intl 1') && pos.some(x => x.prev === 'wi-rly-n:Intl 2'), '(19) «Intl 1 ⇄ τοπ.» on the import, «Intl 2 ⇄ τοπ.» on the export: ' + JSON.stringify(pos.map(x => x.prev)));
+
+    console.log('\n(21) order without a tractor');
+    await openRelay(page, 'recImpU');
+    const p21 = await page.evaluate(() => ({ warn: (document.getElementById('rly_notrk') || {}).hidden, text: (document.getElementById('rly_notrk') || {}).textContent || '',
+      lbl: document.querySelector('input[name="rly_tm"][value="same"]').parentElement.textContent }));
+    const sameOk = await page.evaluate(() => { const r = document.querySelector('input[name="rly_tm"][value="same"]'); return !r.disabled && r.checked; });
+    ok(p21.warn === false && /χωρίς όχημα/.test(p21.text) && /κανένας ακόμη/.test(p21.lbl) && sameOk, '(21) «ίδιος (κανένας ακόμη)» allowed and the warning shown: ' + p21.text);
+    await page.check('input[name="rly_tm"][value="other"]');
+    ok(await page.$eval('#rly_notrk', e => e.hidden), '(21) «άλλος» chosen → the warning goes');
+    await page.evaluate(() => _wiPanelClose());
+    await openRelay(page, 'recImp4');
+    ok(await page.$('#rly_notrk') === null, '(21) an order WITH a tractor: no warning');
+    await page.evaluate(() => _wiPanelClose());
+
     ok(S.errors.length === 0, 'page A: no page errors ' + S.errors.join(' | '));
+    await page.context().close();
+  }
+
+  // ── Page A2: no Reference on the matched pair (review round 3) ──────────
+  {
+    console.log('\n(20) no Reference: the client and the order number name the order');
+    const { page, S } = await newPage(browser, { noRef: true });
+    const it = relayItems(await ctxItems(page, `_wiCtx(${EV},${await rowIdOf(page, 'recExp1')})`));
+    ok(it.length === 2 && it[0].t === 'Τοπική φόρτωση: αλλαγή — εξαγωγή #4320…' && it[1].t === 'Παράδοση με τοπικό οδηγό — εισαγωγή Client Z #4321…', '(20) matched pair menu: ' + JSON.stringify(it.map(x => x.t)));
+    await page.evaluate(() => { const c = document.getElementById('wi-ctx'); if (c) c.style.display = 'none'; });
+    ok(/#4320/.test(await subText(page, 'recLM2') || ''), '(20) the sub-row names the export by its number: ' + await subText(page, 'recLM2'));
+    const e1Row = await rowIdOf(page, 'recExp1');
+    ok(/Τοπική φόρτωση #4320:/.test(await page.$eval(`#wi-row-${e1Row} .wi-rly-b`, e => e.title).catch(() => '')), '(20) the badge tooltip names it too');
+    ok(S.errors.length === 0, 'page A2: no page errors ' + S.errors.join(' | '));
     await page.context().close();
   }
 

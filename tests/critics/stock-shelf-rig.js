@@ -201,7 +201,13 @@ async function installRoutes(page, F) {
     const table = seg[2], recId = seg[3];
     if (F.ready && (seg[0] === 'costs' || seg[0] === 'pallets')) return send(200, F.costs(r.method(), url));
     if (!F.ready || ![ORDERS, LOTS, 'local_moves'].includes(table)) return bridge(route);
-    if (table === 'local_moves') return send(200, { records: [] });
+    // Local relays (060, same release): none, unless a scenario plants some in F.lm — answered by
+    // {Parent Order} like the Worker, with the two fields the base derives (Date, Status).
+    if (table === 'local_moves') {
+      if (F.failLm) return send(500, { error: { type: 'SERVER_ERROR', message: 'local moves read failed (rig)' } });
+      const want = [...(url.searchParams.get('filterByFormula') || '').matchAll(/FIND\("(rec[A-Za-z0-9]+)",ARRAYJOIN\(\{Parent Order\}/g)].map(x => x[1]);
+      return send(200, { records: (F.lm || []).filter(x => want.includes(x.fields['Parent Order'][0])) });
+    }
     const m = r.method();
     if (table === LOTS) {
       if (F.failLots) return send(500, { error: { type: 'SERVER_ERROR', message: 'stock read failed (rig)' } });
@@ -1112,6 +1118,40 @@ if (MAIN) (async () => {
     // D1: P9 (stale «GI-DEAD|…», no truck) lives on the shelf, not as a board row.
     const p9row = await page.evaluate(() => !!document.getElementById('wi-imp-recRIGP9000000009'));
     ok('d1_stale_group_piece_on_shelf_not_board', !p9row, { p9row });
+
+    // 060 × stock (relay review round 3, 5/10): a relay stays on its ORDER, so a piece that goes back
+    // to stock keeps it. The confirm says so BEFORE anything is written (answered «no» here), and the
+    // loose-piece list shows «⇄ τοπ.» on a piece that carries one (P8, read by the list itself).
+    const relay = (id, oid, drv) => ({ id, fields: { 'Move Kind': 'relay_delivery', 'Parent Order': [oid], Driver: [drv],
+      'From Location': [ref.locs[3]], Date: F.orders[oid].fields['Delivery DateTime'], Status: 'Assigned' } });
+    F.lm = [relay('recRIGLM0000000P2', 'recRIGP2000000002', D3), relay('recRIGLM0000000P8', 'recRIGP8000000008', D3)];
+    await page.evaluate(async () => { await _wiRelayReload(); });
+    const nRet = F.writes.length;
+    const retAsk = await page.evaluate(async () => {
+      const c0 = window.confirmAction; let said = null;
+      window.confirmAction = async t => { said = String(t); return false; };
+      try { const row = WINTL.rows.find(r => r.type === 'import' && (r.orderIds || []).includes('recRIGP2000000002'));
+        await _wiStockReturn(row.id, 'recRIGP2000000002', true); } finally { window.confirmAction = c0; }
+      return said;
+    });
+    ok('relay_return_to_stock_confirm_warns', /Το κομμάτι έχει τοπική παράδοση \(.+ · .+\) — μένει δηλωμένη, χωρίς φορτηγό/.test(retAsk || '') && F.writes.length === nRet, { retAsk, writes: F.writes.length - nRet });
+    await page.evaluate(() => _wiStockLooseOpen(document.querySelector('#wi-shelf .wi-shelf-loose'))); await page.waitForTimeout(800);
+    const rlyLines = await page.evaluate(() => Object.fromEntries([...document.querySelectorAll('#wi-panel .wi-stk-piece')].map(x => [((x.getAttribute('onclick') || '').match(/rec[A-Za-z0-9]+/) || [''])[0], !!x.querySelector('.wi-rly-b')])));
+    await page.evaluate(() => _wiPanelClose());
+    ok('relay_loose_piece_badge', rlyLines.recRIGP8000000008 === true && Object.entries(rlyLines).filter(([k, v]) => v).length === 1, rlyLines);
+    // relays that did not load are said in the same confirm — never read as «no relay»
+    F.failLm = true;
+    await page.evaluate(async () => { await _wiRelayReload(); });
+    const retAsk2 = await page.evaluate(async () => {
+      const c0 = window.confirmAction; let said = null;
+      window.confirmAction = async t => { said = String(t); return false; };
+      try { const row = WINTL.rows.find(r => r.type === 'import' && (r.orderIds || []).includes('recRIGP2000000002'));
+        await _wiStockReturn(row.id, 'recRIGP2000000002', true); } finally { window.confirmAction = c0; }
+      return said;
+    });
+    ok('relay_not_loaded_said_in_confirm', /Οι τοπικές παραδόσεις δεν φορτώθηκαν — έλεγξε αν το κομμάτι έχει τοπική/.test(retAsk2 || '') && F.writes.length === nRet, { retAsk2 });
+    F.failLm = false; F.lm = null;
+    await page.evaluate(async () => { WINTL._stkRelays = {}; await _wiRelayReload(); });
 
     // Σ-07b: the lone lead's lock LANDS but its answer is lost → the board
     // reads I1, finds the lock, and joins P3 (it used to stop: «η σειρά ΔΕΝ

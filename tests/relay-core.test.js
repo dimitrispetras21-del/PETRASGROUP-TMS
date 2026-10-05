@@ -163,3 +163,18 @@ test('vehicleText: «ίδιο <the order\'s tractor>» or «άλλο <own>», th
   assert.strictEqual(Relay.vehicleText({ sameTractor: false, tractor: 'LOC-1', trailer: '' }), 'άλλο LOC-1');
   assert.strictEqual(Relay.vehicleText({ sameTractor: true, tractor: '', trailer: '' }), 'ίδιο φορτηγό');
 });
+
+// Review round 3 (5/10): Reference is empty on most imports, so a relay's
+// menu, sub-row and badge named nothing. orderName = Reference, else the
+// client with the order number, else the number alone.
+test('orderName: Reference first, then client + order number, then the number alone', () => {
+  global.getRefClients = () => [{ id: 'recC1', fields: { 'Company Name': 'Client A' } }];
+  try {
+    assert.strictEqual(Relay.orderName({ Reference: ' REF-9 ', Client: ['recC1'], 'Order No': 415 }), 'REF-9');
+    assert.strictEqual(Relay.orderName({ Reference: '', Client: ['recC1'], 'Order No': 415 }), 'Client A #415');
+    assert.strictEqual(Relay.orderName({ 'Client Summary': 'Client Z', 'Order No': 416 }), 'Client Z #416');
+    assert.strictEqual(Relay.orderName({ 'Order No': 417 }), '#417');
+    assert.strictEqual(Relay.orderName({ Client: ['recUnknown'] }), '');
+    assert.strictEqual(Relay.orderName(null), '');
+  } finally { delete global.getRefClients; }
+});

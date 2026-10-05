@@ -562,6 +562,12 @@ const _WI2_CSS=`
    split hand-over marker (.wi2-handover) on the same board. */
 .wk3.wi2 .wk3-pill .wi-rly-b{display:inline-block;margin-right:4px;padding:0 3px;border-radius:3px;background:rgba(255,255,255,.22);font-weight:800;letter-spacing:.2px}
 .wk3.wi2 .wk3-pill.un .wi-rly-b,.wk3.wi2 .wk3-pill.unimp .wi-rly-b{background:var(--accent-light);color:var(--accent-text)}
+/* The badge AFTER the plate/driver (_wiPillSub): the name may be cut with «…», the badge never. */
+.wk3.wi2 .wk3-pill small.wi-rly-sm{display:flex;align-items:center;gap:4px}
+.wk3.wi2 .wk3-pill small.wi-rly-sm .wi-rly-n{min-width:0;overflow:hidden;text-overflow:ellipsis}
+.wk3.wi2 .wk3-pill small.wi-rly-sm .wi-rly-b{flex:none;margin-right:0}
+/* A piece's relay in the stock panels (lot, loose pieces). */
+.wi-stk-piece .wi-rly-b{display:inline-block;padding:0 3px;border-radius:3px;background:var(--accent-light);color:var(--accent-text);font-weight:800;letter-spacing:.2px}
 .wi-rly-hint{font-size:11px;line-height:1.4;color:var(--text-mid);background:var(--surface-sunken);border-radius:var(--radius);padding:6px 8px;margin:6px 0 2px}
 `;
 
@@ -1366,9 +1372,9 @@ function _wiImpRowHTML(row,impNo){
   let impPill;
   if(row.saved){
     if(impPartner){
-      impPill=`<div class="wk3-pill par" title="Συνεργάτης: ${escapeHtml(impPartner)}${row.partnerPlates?' · '+escapeHtml(row.partnerPlates):''}${row.driverLabel?' · '+escapeHtml(row.driverLabel):''} — κλικ: αλλαγή"><span class="t">${escapeHtml(impPartner)}</span><small>${rb}${escapeHtml([row.partnerPlates,row.driverLabel].filter(Boolean).join(' · '))||'&nbsp;'}</small></div>`;
+      impPill=`<div class="wk3-pill par" title="Συνεργάτης: ${escapeHtml(impPartner)}${row.partnerPlates?' · '+escapeHtml(row.partnerPlates):''}${row.driverLabel?' · '+escapeHtml(row.driverLabel):''} — κλικ: αλλαγή"><span class="t">${escapeHtml(impPartner)}</span>${_wiPillSub(escapeHtml([row.partnerPlates,row.driverLabel].filter(Boolean).join(' · ')),rb)}</div>`;
     } else {
-      impPill=`<div class="wk3-pill own" title="Ιδιόκτητο: ${escapeHtml(plates)}${row.driverLabel?' · '+escapeHtml(row.driverLabel):''} — κλικ: αλλαγή"><span class="t">${escapeHtml(plates||'—')}</span><small>${rb}${escapeHtml(row.driverLabel||'')||'&nbsp;'}</small></div>`;
+      impPill=`<div class="wk3-pill own" title="Ιδιόκτητο: ${escapeHtml(plates)}${row.driverLabel?' · '+escapeHtml(row.driverLabel):''} — κλικ: αλλαγή"><span class="t">${escapeHtml(plates||'—')}</span>${_wiPillSub(escapeHtml(row.driverLabel||''),rb)}</div>`;
     }
   } else {
     // Β.3-3: import-without-vehicle is NOT the same red as export-without-
@@ -1378,7 +1384,7 @@ function _wiImpRowHTML(row,impNo){
     // than its neighbours (measured 26 vs 24px, rig 28/9).
     impPill=isPre
       ? `<div class="wk3-pill un" title="Pre-order εισαγωγής χωρίς όχημα — κλικ για ανάθεση"><span class="t">ΠΡΟΣ ΑΝΑΘΕΣΗ</span></div>`
-      : `<div class="wk3-pill unimp" title="Εισαγωγή χωρίς δικό όχημα — κλικ για ανάθεση"><span class="t">ΠΡΟΣ ΑΝΑΘΕΣΗ</span><small>${rb}εισαγωγή · χωρίς όχημα</small></div>`;
+      : `<div class="wk3-pill unimp" title="Εισαγωγή χωρίς δικό όχημα — κλικ για ανάθεση"><span class="t">ΠΡΟΣ ΑΝΑΘΕΣΗ</span>${_wiPillSub('εισαγωγή · χωρίς όχημα',rb)}</div>`;
   }
 
   // Left (export) cell: own vehicle with no export = empty southbound leg.
@@ -2493,9 +2499,9 @@ function _wiRowHTML(row,i){
   // με ορατό «…», ποτέ σιωπηλά.
   if(row.saved){
     if(partner){
-      pill=`<div class="wk3-pill par" title="Συνεργάτης: ${escapeHtml(partner)}${row.partnerPlates?' · '+escapeHtml(row.partnerPlates):''}${driver?' · '+escapeHtml(driver):''} — κλικ: αλλαγή ανάθεσης"><span class="t">${escapeHtml(partner)}</span><small>${rb}${escapeHtml([row.partnerPlates,driver].filter(Boolean).join(' · '))||'&nbsp;'}</small></div>`;
+      pill=`<div class="wk3-pill par" title="Συνεργάτης: ${escapeHtml(partner)}${row.partnerPlates?' · '+escapeHtml(row.partnerPlates):''}${driver?' · '+escapeHtml(driver):''} — κλικ: αλλαγή ανάθεσης"><span class="t">${escapeHtml(partner)}</span>${_wiPillSub(escapeHtml([row.partnerPlates,driver].filter(Boolean).join(' · ')),rb)}</div>`;
     } else {
-      pill=`<div class="wk3-pill own" title="Ιδιόκτητο: ${escapeHtml(plates)}${driver?' · '+escapeHtml(driver):''} — κλικ: αλλαγή ανάθεσης"><span class="t">${escapeHtml(plates||'—')}</span><small>${rb}${escapeHtml(driver||'')||'&nbsp;'}</small></div>`;
+      pill=`<div class="wk3-pill own" title="Ιδιόκτητο: ${escapeHtml(plates)}${driver?' · '+escapeHtml(driver):''} — κλικ: αλλαγή ανάθεσης"><span class="t">${escapeHtml(plates||'—')}</span>${_wiPillSub(escapeHtml(driver||''),rb)}</div>`;
     }
   } else {
     // «ΠΡΟΣ ΑΝΑΘΕΣΗ», όχι κενό (owner 4/9 αντικαθιστά το «χρώμα, όχι λόγια»
@@ -5141,7 +5147,8 @@ function _wiRelayRowHTML(rec,oid){
   const o=_wiRelayOrder(oid);
   const s=Relay.summary(rec,o);
   const bad=WINTL.relay?.syncErr?.[rec.id];
-  const ref=o?.fields?.['Reference'];
+  // Reference, else client + order number (Relay.orderName): most imports have no Reference.
+  const ref=o?Relay.orderName(o.fields):'';
   const isDel=s.kind==='relay_delivery';
   const parts=[
     `<span class="wi-rly-tag">${s.tag}</span>`,
@@ -5165,6 +5172,14 @@ function _wiRelayRowHTML(rec,oid){
     <div class="wi-rly-body">${parts}</div>
   </div>`;
 }
+// «Intl 1 ⇄ τοπ.»: the badge goes AFTER the international's plate/driver. In
+// front of the name it read as if he were the local (review round 3, 5/10);
+// payroll says it the same way — the international's RT line, then «⇄ τοπ.».
+// `text` is already escaped HTML.
+function _wiPillSub(text,rb){
+  if(!rb) return `<small>${text||'&nbsp;'}</small>`;
+  return `<small class="wi-rly-sm">${text?`<span class="wi-rly-n">${text}</span>`:''}${rb}</small>`;
+}
 // OWNER-Q4 answered 4/10 («οχι»): the international's trip value is never
 // reduced automatically when a local does the delivery/loading — this badge
 // (and the payroll's «⇄ τοπ.») is the whole signal; accounting decides.
@@ -5173,7 +5188,7 @@ function _wiRelayBadge(ids){
   const lines=[];
   ids.forEach(oid=>Relay.KINDS.forEach(k=>{
     const r=WINTL.relay.byOrder[oid]?.[k]; if(!r) return;
-    const o=_wiRelayOrder(oid), s=Relay.summary(r,o), ref=o?.fields?.['Reference'];
+    const o=_wiRelayOrder(oid), s=Relay.summary(r,o), ref=o?Relay.orderName(o.fields):'';
     lines.push(`${k==='relay_delivery'?'Τοπική παράδοση':'Τοπική φόρτωση'}${ref?' '+ref:''}: ${s.driverName||'ΠΡΟΣ ΑΝΑΘΕΣΗ'} · ${Relay.fmtDay(s.day)}${s.time?' '+s.time:''}`);
   }));
   if(!lines.length) return '';
@@ -5197,8 +5212,8 @@ function _wiRelayItems(oids,opts){
     if(Relay.isHiddenReason(why)) return;
     const kind=Relay.kindFor(o.fields), isDel=kind==='relay_delivery';
     const has=!!WINTL.relay?.byOrder?.[oid]?.[kind];
-    const ref=o.fields['Reference'];
-    const suffix=named?` — ${isDel?'εισαγωγή':'εξαγωγή'}${ref?' '+escapeHtml(String(ref)):''}`:'';
+    const ref=Relay.orderName(o.fields);
+    const suffix=named?` — ${isDel?'εισαγωγή':'εξαγωγή'}${ref?' '+escapeHtml(ref):''}`:'';
     const label=(has?(isDel?'Τοπική παράδοση: αλλαγή':'Τοπική φόρτωση: αλλαγή'):Relay.menuLabel(kind))+suffix+'…';
     if(WINTL.relay?.state==='loading') html+=_wiCtxBtnDisabled(label,'Οι τοπικές παραδόσεις/φορτώσεις φορτώνουν ακόμη — ξαναδοκίμασε σε λίγο');
     else if(WINTL.relay?.state!=='ok') html+=_wiCtxBtnDisabled(label,'Οι τοπικές παραδόσεις/φορτώσεις δεν φορτώθηκαν — ↻ Ξαναδοκίμασε στη λωρίδα πάνω από τον πίνακα');
@@ -6467,7 +6482,22 @@ function _wiStockPieceLine(p,withLot){
   const dd=late?_wk3D(_wiFmt(f['Delivery DateTime'])):'';
   const head=withLot?`${escapeHtml(OrdersStock.lotNumLabel(f))} · ${escapeHtml(_wiClientName(f)||'—')} · `:'';
   const del=(loose&&OrdersStock.canWrite())?`<button type="button" class="wi2-unlink" onclick="event.stopPropagation();_wiStockDelPiece('${p.id}')" title="Διαγραφή κομματιού (μόνο χωρίς φορτηγό)">Διαγραφή</button>`:'';
-  return `<div class="wi-panel-opt wi-stk-piece" role="button" tabindex="0" onclick="_wiStockOpenPiece('${p.id}')" onkeydown="if(event.key==='Enter'){event.preventDefault();this.click()}" title="Κλικ: φόρμα κομματιού"><span>${head}${escapeHtml(who)} · ${escapeHtml(dest)} · ${escapeHtml(OrdersStock.statusWord(st))} · <b>${+(f['Total Pallets']||0)}p</b>${ld?` · φόρτωση ${ld}`:''}${late?` · <span class="wi-stk-bad">παράδοση ${dd} — εκπρόθεσμο</span>`:''}${f['Reference']?` · <span class="wi-stk-ref">${escapeHtml(String(f['Reference']))}</span>`:''}</span>${del}</div>`;
+  return `<div class="wi-panel-opt wi-stk-piece" role="button" tabindex="0" onclick="_wiStockOpenPiece('${p.id}')" onkeydown="if(event.key==='Enter'){event.preventDefault();this.click()}" title="Κλικ: φόρμα κομματιού"><span>${head}${escapeHtml(who)}${_wiStockPieceRelay(p.id,!tr&&!pa)} · ${escapeHtml(dest)} · ${escapeHtml(OrdersStock.statusWord(st))} · <b>${+(f['Total Pallets']||0)}p</b>${ld?` · φόρτωση ${ld}`:''}${late?` · <span class="wi-stk-bad">παράδοση ${dd} — εκπρόθεσμο</span>`:''}${f['Reference']?` · <span class="wi-stk-ref">${escapeHtml(String(f['Reference']))}</span>`:''}</span>${del}</div>`;
+}
+// «⇄ τοπ.» on a piece that carries a relay (_wiRelayStockNote): from the
+// week's relays, or from the read the loose-piece list makes for pieces of
+// other weeks (WINTL._stkRelays). The «no truck» advice only on a truckless
+// piece: a lot panel also lists pieces already on a truck.
+function _wiStockPieceRelay(oid,noTruck){
+  if(typeof Relay==='undefined') return '';
+  // A piece of this week: the board's relays (re-read after every relay save);
+  // any other: the loose list's own read.
+  const inWeek=!!_wiRelayOrder(oid)&&WINTL.relay?.state==='ok';
+  const r=Object.values((inWeek?WINTL.relay.byOrder?.[oid]:WINTL._stkRelays?.[oid])||{})[0];
+  if(!r) return '';
+  const s=Relay.summary(r,_wiRelayOrder(oid)||(WINTL._stkPieces||[]).find(x=>x.id===oid));
+  const tip=`${s.kind==='relay_delivery'?'Τοπική παράδοση':'Τοπική φόρτωση'}: ${s.driverName||'ΠΡΟΣ ΑΝΑΘΕΣΗ'} · ${Relay.fmtDay(s.day)}${s.time?' '+s.time:''}${noTruck?' — δηλωμένη στο κομμάτι, χωρίς φορτηγό: διάγραψέ την ή άλλαξέ την όταν μπει σε φορτηγό.':''}`;
+  return ` <b class="wi-rly-b" title="${escapeHtml(tip)}">⇄ τοπ.</b>`;
 }
 function _wiStockOpenPiece(id){
   const p=(WINTL._stkPieces||[]).find(x=>x.id===id); if(!p) return;
@@ -6497,10 +6527,24 @@ async function _wiStockLooseOpen(anchor){
   const st=WINTL.data.stock; if(!st||st.status!=='ok') return;
   WINTL._stkPieces=st.loose||[];
   const body=WINTL._stkPieces.length
-    ? `<div class="wi-panel-list wi-stk-list">${WINTL._stkPieces.map(p=>_wiStockPieceLine(p,true)).join('')}</div>
+    ? `<div class="wi-panel-list wi-stk-list" id="wi-stk-loose">${WINTL._stkPieces.map(p=>_wiStockPieceLine(p,true)).join('')}</div>
+       <div class="wi-panel-note wi-stk-bad" id="wi-stk-loose-rly" hidden></div>
        <div class="wi-panel-note dim">Σε φορτηγό: δεξί κλικ στη γραμμή του φορτηγού → «+ Κομμάτι από απόθεμα…».</div>`
     : `<div class="wi-panel-empty">Κανένα κομμάτι χωρίς φορτηγό</div>`;
   _wiPanelOpen(anchor,'Κομμάτια χωρίς φορτηγό',`${WINTL._stkPieces.length} σε όλες τις εβδομάδες`,body,'');
+  // Loose pieces span every week, the board's relays only this one: their
+  // relays are read here (one request per 50), then the list is repainted.
+  if(!WINTL._stkPieces.length||typeof Relay==='undefined') return;
+  const pieces=WINTL._stkPieces, tok={}; WINTL._stkRelTok=tok;
+  let idx=null;
+  try{ idx=Relay.index(await Relay.loadForOrders(pieces.map(p=>p.id))); }catch(e){ if(typeof logError==='function') logError(e,'weekly intl: loose pieces relays'); }
+  if(WINTL._stkRelTok!==tok||WINTL._stkPieces!==pieces) return;
+  const box=document.getElementById('wi-stk-loose'), note=document.getElementById('wi-stk-loose-rly'); if(!box) return;
+  if(!idx){ if(note){ note.hidden=false; note.textContent='Οι τοπικές παραδόσεις των κομματιών δεν φορτώθηκαν — δεν σημαίνει ότι δεν υπάρχουν.'; } return; }
+  const m=Object.assign({},WINTL._stkRelays||{});
+  pieces.forEach(p=>{ if(idx[p.id]) m[p.id]=idx[p.id]; else delete m[p.id]; });   // a relay deleted since the last read leaves too
+  WINTL._stkRelays=m;
+  box.innerHTML=pieces.map(p=>_wiStockPieceLine(p,true)).join('');
 }
 
 // C1-05 (critic-1, round 1): an empty return trip is filled from its «ΚΕΝΟ
@@ -7043,6 +7087,21 @@ async function _wiOnPieceSavedRun(newId,ctx){
   if(typeof rtOnOrderSaved==='function') rtOnOrderSaved(ctx.leadId).catch(e=>console.warn('[wi stock] rt sync:',e&&e.message));
 }
 
+// 060 × stock (review round 3, 5/10): a relay is bound to its ORDER, and a
+// piece that goes back to stock is still that order — so its local delivery
+// stays, now on a piece with no truck («ίδιο» tractor = nobody's). The confirm
+// says so before the click, the way the split panel does for a split parent;
+// nothing is deleted on the dispatcher's behalf (the piece may go on another
+// truck the same day), and the loose-piece line keeps «⇄ τοπ.». Plain text
+// (confirmAction escapes). Relays that did not load are said, never «none».
+function _wiRelayStockNote(oid){
+  if(typeof Relay==='undefined') return '';
+  if(WINTL.relay?.state!=='ok') return '\n\nΟι τοπικές παραδόσεις δεν φορτώθηκαν — έλεγξε αν το κομμάτι έχει τοπική πριν το επιστρέψεις.';
+  const rel=Object.values(WINTL.relay.byOrder?.[oid]||{})[0];
+  if(!rel) return '';
+  const s=Relay.summary(rel,_wiRelayOrder(oid));
+  return `\n\nΤο κομμάτι έχει ${s.kind==='relay_delivery'?'τοπική παράδοση':'τοπική φόρτωση'} (${s.driverName||'ΠΡΟΣ ΑΝΑΘΕΣΗ'} · ${Relay.fmtDay(s.day)}) — μένει δηλωμένη, χωρίς φορτηγό. Διάγραψέ την ή άλλαξέ την όταν το κομμάτι μπει ξανά σε φορτηγό.`;
+}
 // «Επιστροφή στο απόθεμα» (§6.6) — never a delete. Execution beats planning:
 // a piece already In Transit/Delivered does not go back (re-read live first).
 async function _wiStockReturn(rowId,orderId,isImportSide){
@@ -7050,7 +7109,7 @@ async function _wiStockReturn(rowId,orderId,isImportSide){
   if(await _wiExecutingLive(orderId)){ toast('Το κομμάτι είναι σε κίνηση — δεν επιστρέφει στο απόθεμα','warn'); return; }
   try{
     await _wiCancelGroupMember(rowId,orderId,isImportSide,
-      {text:'Επιστροφή στο απόθεμα — το κομμάτι μένει χωρίς φορτηγό, με όλα του τα στοιχεία.',title:'Επιστροφή στο απόθεμα',label:'Επιστροφή',done:'Επέστρεψε στο απόθεμα ✓'});
+      {text:'Επιστροφή στο απόθεμα — το κομμάτι μένει χωρίς φορτηγό, με όλα του τα στοιχεία.'+_wiRelayStockNote(orderId),title:'Επιστροφή στο απόθεμα',label:'Επιστροφή',done:'Επέστρεψε στο απόθεμα ✓'});
   }finally{ _wiNoUndo(); }   // B-13: leg off + group off + vehicle off are one return
   _wiStockLoad();
 }
@@ -7059,7 +7118,7 @@ async function _wiStockReturnLone(expRowId){
   const row=WINTL.rows.find(r=>r.id===expRowId); if(!row||!row.importId) return;
   const pid=row.importId, expOid=row.orderIds[0];
   if(await _wiExecutingLive(pid)){ toast('Το κομμάτι είναι σε κίνηση — δεν επιστρέφει στο απόθεμα','warn'); return; }
-  if(!(await confirmAction('Επιστροφή στο απόθεμα — το κομμάτι μένει χωρίς φορτηγό, με όλα του τα στοιχεία.',
+  if(!(await confirmAction('Επιστροφή στο απόθεμα — το κομμάτι μένει χωρίς φορτηγό, με όλα του τα στοιχεία.'+_wiRelayStockNote(pid),
     {title:'Επιστροφή στο απόθεμα',confirmLabel:'Επιστροφή'}))) return;
   let back=false;
   try{ back=await _wiStockReturnLoneRun(pid,expOid,expRowId); }

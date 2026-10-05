@@ -423,6 +423,8 @@ const _OPS_STYLE=`<style>
   /* Two lines like every other ΑΝΑΘΕΣΗ cell (40px rows): the vehicle and the
      international share the second line, cut with «…», whole in the tooltip. */
   .do-asg .do-sl.do-rl-sub{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  /* A third line only when the ORDER has no vehicle: an alarm, not a layout. */
+  .do-asg .do-sl.do-rl-novh{margin-top:2px}
   .do-rl[role=button]{cursor:pointer}
   .do-rl[role=button]:hover{text-decoration:underline}
   .do-rl[role=button]:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
@@ -951,6 +953,16 @@ function _opsRelaySub(rel, rec){
   const line=[escapeHtml(Relay.vehicleText(Relay.summary(rel, rec))), intl].filter(Boolean).join(' · ');
   return `<span class="do-sl do-rl-sub" title="${line}">${line}</span>`;
 }
+// The ORDER itself has no vehicle — no tractor, no partner. With a relay the
+// cell leads with the local driver, and «ίδιο φορτηγό» under him read as if
+// the trip were covered; an unassigned order says so here in the same red
+// word as a row without a relay (review round 3, 5/10). Decided on the links,
+// not on resolved names (a role without TRUCKS read resolves none). A driver
+// without a tractor is named, and the missing tractor said.
+function _opsRelayNoVehicle(f){
+  if(getLinkedId(f['Truck'])||_P(f)||getLinkedId(f['Partner'])) return '';
+  return `<span class="do-sl do-rl-novh"><span class="do-tag none">${_D(f)?'διεθν. χωρίς τράκτορα':'διεθν. ΠΡΟΣ ΑΝΑΘΕΣΗ'}</span></span>`;
+}
 // The clickable part (planning:full only). A span, not a <button>: the print
 // view hides every button, and the relay must stay on paper (_opsPrint).
 function _opsRelayClick(orderId, kind){
@@ -973,7 +985,7 @@ function _opsRelayMain(rel, orderId){
 // null when the row has no relay — the caller then draws _opsAsgCell as before.
 function _opsRelayCell(rec, ctx){
   const rel=_opsRelay(rec.id, ctx); if(!rel) return null;
-  return `<td class="do-asg do-wrap">${_opsRelayMain(rel, rec.id)}${_opsRelaySub(rel, rec)}</td>`;
+  return `<td class="do-asg do-wrap">${_opsRelayMain(rel, rec.id)}${_opsRelaySub(rel, rec)}${_opsRelayNoVehicle(rec.fields)}</td>`;
 }
 // Collapsed export group: «ΤΟΠ. 2/3 · Τοπικός Α» = 2 of the 3 loadings have a
 // local driver on them. Not clickable — the members below carry their own
@@ -987,7 +999,7 @@ function _opsGroupRelayCell(g){
   const open=rels.length-withDrv.length;
   const f0=g[0].fields;
   const line=[_TT(f0), _D(f0)?'διεθν. '+_D(f0):''].filter(Boolean).join(' · ');
-  return `<td class="do-asg do-wrap"><span class="do-main"><span class="do-tag loc">ΤΟΠ.</span>${withDrv.length}/${g.length}${who?' · '+who:''}${open?` <span class="do-tag none">${open} ΠΡΟΣ ΑΝΑΘΕΣΗ</span>`:''}</span>${line?`<span class="do-sl do-rl-sub" title="${line}">${line}</span>`:''}</td>`;
+  return `<td class="do-asg do-wrap"><span class="do-main"><span class="do-tag loc">ΤΟΠ.</span>${withDrv.length}/${g.length}${who?' · '+who:''}${open?` <span class="do-tag none">${open} ΠΡΟΣ ΑΝΑΘΕΣΗ</span>`:''}</span>${line?`<span class="do-sl do-rl-sub" title="${line}">${line}</span>`:''}${_opsRelayNoVehicle(f0)}</td>`;
 }
 // Overdue zones are flex rows without an ΑΝΑΘΕΣΗ column: one inline piece.
 function _opsRelayInline(rec, ctx){

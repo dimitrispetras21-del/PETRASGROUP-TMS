@@ -85,7 +85,7 @@ const REF = {
 };
 
 // ── orders of the day (Daily Ops) ──────────────────────────────────────────
-const ORD = { I1: 'recOrdImp0001', I2: 'recOrdImp0002', I3: 'recOrdImp0003', I4: 'recOrdImp0004',
+const ORD = { I1: 'recOrdImp0001', I2: 'recOrdImp0002', I3: 'recOrdImp0003', I4: 'recOrdImp0004', I5: 'recOrdImp0005',
   E1: 'recOrdExp0011', E2: 'recOrdExp0012', E3: 'recOrdExp0013', E5: 'recOrdExp0015', OV: 'recOrdImp0009' };
 function order(id, no, o) {
   const imp = o.dir === 'Import';
@@ -102,6 +102,9 @@ const ORDERS = [
   order(ORD.I2, 416, { dir: 'Import', cli: 'recCli000B', st: 'Assigned', load: MINUS3, del: TODAY, trk: TRK.B, trl: TRL.B, drv: DRV.IB }),
   order(ORD.I3, 417, { dir: 'Import', cli: 'recCli000C', st: 'Assigned', load: MINUS3, del: TODAY, trk: TRK.A, trl: TRL.A, drv: DRV.IA }),
   order(ORD.I4, 418, { dir: 'Import', cli: 'recCli000D', st: 'Delivered', load: MINUS3, del: TODAY, trk: TRK.B, trl: TRL.B, drv: DRV.IB }),
+  // review round 3 (5/10): an import nobody runs yet (no tractor, no partner) that already has a relay
+  (o => { delete o.fields.Truck; delete o.fields.Trailer; delete o.fields.Driver; return o; })(
+    order(ORD.I5, 419, { dir: 'Import', cli: 'recCli000E', st: 'Pending', load: MINUS3, del: TODAY })),
   order(ORD.E1, 431, { dir: 'Export', cli: 'recCli000E', st: 'Assigned', load: TODAY, del: PLUS3, trk: TRK.A, trl: TRL.A, drv: DRV.IA, gid: 'GRP-77' }),
   order(ORD.E2, 432, { dir: 'Export', cli: 'recCli000F', st: 'Assigned', load: TODAY, del: PLUS3, trk: TRK.A, trl: TRL.A, drv: DRV.IA, gid: 'GRP-77' }),
   order(ORD.E3, 433, { dir: 'Export', cli: 'recCli000G', st: 'Assigned', load: TODAY, del: PLUS3, trk: TRK.A, trl: TRL.A, drv: DRV.IA, gid: 'GRP-77' }),
@@ -124,6 +127,7 @@ const MOVES = [
   lm('recLmv0000005', { 'Parent Order': [ORD.E1], 'Move Kind': 'relay_loading', Driver: [DRV.K], Trailer: [TRL.A], 'To Location': [VER], 'Time From': '06:00', Status: 'Assigned', Date: TODAY }),
   lm('recLmv0000006', { 'Parent Order': [ORD.E2], 'Move Kind': 'relay_loading', Driver: [DRV.K], Trailer: [TRL.A], 'To Location': [VER], 'Time From': '06:00', Status: 'Assigned', Date: TODAY }),
   lm('recLmv0000007', { 'Parent Order': [ORD.E5], 'Move Kind': 'relay_loading', Driver: [DRV.K], Trailer: [TRL.B], 'To Location': [VER], 'Time From': '06:00', Status: 'Assigned', Date: TODAY }),
+  lm('recLmv0000010', { 'Parent Order': [ORD.I5], 'Move Kind': 'relay_delivery', 'From Location': [VER], Status: 'Pending', Date: TODAY }),
   lm('recLmv0000008', { 'Parent Order': [ORD.OV], 'Move Kind': 'relay_delivery', Driver: [DRV.P], Trailer: [TRL.A], 'From Location': [VER], 'Time From': '07:30', Status: 'Assigned', Date: YDAY }),
   // A plain errand from Weekly National (no order) — part of P's track record.
   lm('recLmv0000009', { 'Move Kind': 'local', Driver: [DRV.P], 'From Location': [VER], 'To Location': ['recLocNao01'], Description: 'Μεταφορά παλετών', 'Time From': '13:00', Status: 'Assigned', Date: TODAY }),
@@ -317,6 +321,12 @@ async function dailyDispatcher(browser) {
   assert(fit.subs === 1 && fit.tip === 'ίδιο ΚΒΧ1001 · ρυμ. Ρ-501 · διεθν. Διεθνής Α' && fit.over <= 1, 'the relay cell is two lines like its neighbours (nothing clipped into the next row); the whole line in the tooltip — ' + JSON.stringify(fit));
   const i2 = await txt(page, `#r_${ORD.I2} td.do-asg`);
   assert(i2.includes('ΤΟΠ. ΠΡΟΣ ΑΝΑΘΕΣΗ') && await page.locator(`#r_${ORD.I2} td.do-asg .do-tag.none`).count() === 1, 'relay without a local driver: red «ΤΟΠ. ΠΡΟΣ ΑΝΑΘΕΣΗ»');
+  // review round 3: the relay must not hide that the ORDER has no vehicle
+  const i5 = await txt(page, `#r_${ORD.I5} td.do-asg`);
+  assert(i5.includes('ΤΟΠ. ΠΡΟΣ ΑΝΑΘΕΣΗ') && /διεθν\. ΠΡΟΣ ΑΝΑΘΕΣΗ/.test(i5) && await page.locator(`#r_${ORD.I5} td.do-asg .do-rl-novh .do-tag.none`).count() === 1,
+    'relay on an order with no tractor and no partner: red «διεθν. ΠΡΟΣ ΑΝΑΘΕΣΗ» under the relay — ' + JSON.stringify(i5));
+  assert(await page.locator(`#r_${ORD.I1} td.do-asg .do-rl-novh`).count() === 0 && await page.locator(`#r_${ORD.I4} td.do-asg .do-rl-novh`).count() === 0,
+    'an order with its own tractor: no such line');
   const i3 = await txt(page, `#r_${ORD.I3} td.do-asg`);
   assert(!i3.includes('ΤΟΠ.') && i3.includes('ΚΒΧ1001 / Ρ-501') && i3.includes('Διεθνής Α'), 'Cancelled relay covers nothing: the cell is the international assignment as before');
   const i4 = await txt(page, `#r_${ORD.I4} td.do-asg`);

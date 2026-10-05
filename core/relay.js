@@ -96,6 +96,22 @@ function blockReason(orderRec, opts) {
 }
 function isHiddenReason(r) { return !!r && r !== 'no_date' && r !== 'partner'; }
 
+// Which order a relay belongs to, in words a dispatcher recognises: the
+// Reference, else the client, with the order number to tell two of the same
+// client apart, else the order number alone. Reference is empty on most
+// imports (70 of 82 in review round 3, 5/10), so a menu or sub-row keyed on
+// it alone named nothing. Raw text: each screen escapes it.
+function orderName(orderFields) {
+  const f = orderFields || {};
+  const ref = String(f['Reference'] || '').trim();
+  if (ref) return ref;
+  const cid = getLinkedId(f['Client']);
+  const c = cid && typeof getRefClients === 'function' ? getRefClients().find(r => r.id === cid) : null;
+  const client = String((c && c.fields['Company Name']) || f['Client Name'] || f['Client Summary'] || '').trim();
+  const no = f['Order No'] != null && f['Order No'] !== '' ? '#' + f['Order No'] : '';
+  return [client, no].filter(Boolean).join(' ');
+}
+
 // «Done» is the ORDER's status, never copied into the relay (060 status CHECK).
 function isDone(orderFields, kind) {
   const st = orderFields && orderFields['Status'];
@@ -265,6 +281,13 @@ async function openPanel(o) {
   // A partner-run order (a relay made before the partner was assigned): no
   // own tractor exists, so «ίδιος» would record the partner's truck as ours.
   const partnerRun = isPartnerRun(of);
+  // An order with no tractor yet: «ίδιος» stays allowed — it is read live, so
+  // it becomes whatever tractor the order gets, and a relay is often planned
+  // before the international is assigned (a disabled «ίδιος» would force a
+  // tractor onto a «ΠΡΟΣ ΑΝΑΘΕΣΗ» relay). But it is said, next to the choice:
+  // until the order is assigned the local has no vehicle, and the auditor's
+  // B-65 «no-vehicle» reports it from the day before (review round 3, 5/10).
+  const noOrdTrk = !ordTrk && !partnerRun;
   const ptnId = getLinkedId(of['Partner']);
   const ptnName = ptnId && typeof getRefPartners === 'function' ? ((getRefPartners().find(r => r.id === ptnId) || {}).fields || {})['Company Name'] || '' : '';
   const useOther = !!trkVal || partnerRun;
@@ -290,10 +313,10 @@ async function openPanel(o) {
         <select class="form-select" id="rly_drv"><option value="">— ΠΡΟΣ ΑΝΑΘΕΣΗ —</option>${_opts(drivers, drvVal, ordDrv, 'ο διεθνής της παραγγελίας')}</select></div>
       <div class="wi-pf"><span class="wi-plbl">Τράκτορας</span>
         <div style="display:flex;align-items:center;gap:10px">
-          <label style="${lbl}${partnerRun ? ';opacity:.5' : ''}"${partnerRun ? ' title="Ο τράκτορας της παραγγελίας είναι του συνεργάτη"' : ''}><input type="radio" name="rly_tm" value="same"${useOther ? '' : ' checked'}${partnerRun ? ' disabled' : ''} onchange="Relay._tm()"> ίδιος${intlPlate ? ' (' + escapeHtml(intlPlate) + ')' : ''}</label>
+          <label style="${lbl}${partnerRun ? ';opacity:.5' : ''}"${partnerRun ? ' title="Ο τράκτορας της παραγγελίας είναι του συνεργάτη"' : ''}><input type="radio" name="rly_tm" value="same"${useOther ? '' : ' checked'}${partnerRun ? ' disabled' : ''} onchange="Relay._tm()"> ίδιος${intlPlate ? ' (' + escapeHtml(intlPlate) + ')' : noOrdTrk ? ' (κανένας ακόμη)' : ''}</label>
           <label style="${lbl}"><input type="radio" name="rly_tm" value="other"${useOther ? ' checked' : ''} onchange="Relay._tm()"> άλλος</label>
           <select class="form-select" id="rly_trk" style="flex:1;min-width:0"${useOther ? '' : ' disabled'}><option value="">—</option>${_opts(trucks, trkVal)}</select>
-        </div></div>
+        </div>${noOrdTrk ? `<div id="rly_notrk" role="note"${useOther ? ' hidden' : ''} style="font-size:12px;font-weight:600;color:var(--danger);line-height:1.3;margin-top:3px">Η παραγγελία δεν έχει ακόμη τράκτορα — με «ίδιος» ο τοπικός μένει χωρίς όχημα μέχρι να ανατεθεί.</div>` : ''}</div>
       <div style="display:flex;gap:8px">
         <div class="wi-pf" style="flex:1;min-width:0"><span class="wi-plbl">Ρυμούλκα</span>
           <select class="form-select" id="rly_trl"><option value="">—</option>${_opts(trailers, trlVal)}</select></div>
@@ -308,7 +331,8 @@ async function openPanel(o) {
   const footer = `<span id="rly_err" role="alert" hidden style="flex:1;min-width:0;font-size:12px;font-weight:600;color:var(--danger);line-height:1.3"></span>
     <button class="btn btn-ghost" onclick="Relay._close()">Άκυρο</button>
     <button class="btn btn-success" id="rly_submit" onclick="Relay._submit()">${existing ? 'Αποθήκευση' : 'Καταχώρηση'}</button>`;
-  const ctx = `${escapeHtml(String(of['Reference'] || ''))}${of['Reference'] ? ' · ' : ''}${escapeHtml(_short(of['Loading Summary']) || '—')} → ${escapeHtml(_short(of['Delivery Summary']) || '—')}`;
+  const name = orderName(of);
+  const ctx = `${escapeHtml(name)}${name ? ' · ' : ''}${escapeHtml(_short(of['Loading Summary']) || '—')} → ${escapeHtml(_short(of['Delivery Summary']) || '—')}`;
   o.host.open(existing ? (isDel ? 'Τοπική παράδοση — αλλαγή' : 'Τοπική φόρτωση — αλλαγή') : menuLabel(kind), ctx, body, footer);
 }
 
@@ -316,6 +340,8 @@ function _tm() {
   const other = (document.querySelector('input[name="rly_tm"]:checked') || {}).value === 'other';
   const sel = document.getElementById('rly_trk');
   if (sel) { sel.disabled = !other; if (!other) sel.value = ''; }
+  const warn = document.getElementById('rly_notrk');
+  if (warn) warn.hidden = other;
 }
 function _err(msg) {
   const el = document.getElementById('rly_err');
@@ -497,7 +523,7 @@ const HISTORY_CSS = `<style>
   .lh-t tr:last-child td{border-bottom:0}
 </style>`;
 
-const Relay = { KINDS, kindFor, orderDay, fmtDay, menuLabel, blockReason, isHiddenReason, isPartnerRun, isDone,
+const Relay = { KINDS, kindFor, orderDay, fmtDay, menuLabel, orderName, blockReason, isHiddenReason, isPartnerRun, isDone,
   loadForOrders, index, summary, vehicleText, openPanel, verify, remove,
   loadForDriver, historyTableHtml, historyListHtml, HISTORY_CSS, _submit, _close, _tm, _err };
 if (typeof window !== 'undefined') window.Relay = Relay;
