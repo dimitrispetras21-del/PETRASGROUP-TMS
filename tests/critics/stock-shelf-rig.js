@@ -520,7 +520,7 @@ if (MAIN) (async () => {
       && openedLot.join() === 'recRIGLOTA0000312', { pA, openedLot });
     await page.evaluate(() => _wiStockLotOpen(document.querySelector('#wi-shelf .wi-shelf-lbl'), 'recRIGSTOCKLOTB1')); await page.waitForTimeout(800);
     const panB = await page.evaluate(() => document.getElementById('wi-panel').innerText.replace(/\s+/g, ' '));
-    ok('w2_problem_said_once', (panB.match(/παραλαβή/g) || []).length === 1 && /1 κομμάτι κινείται, αλλά η παραλαβή στην αποθήκη δεν σημειώθηκε/.test(panB), panB.slice(0, 300));
+    ok('w2_problem_said_once', (panB.match(/παραλαβή/g) || []).length === 1 && /1 κομμάτι κινείται, αλλά η παραλαβή στην αποθήκη δεν σημειώθηκε — Ημερήσιο, «Παραλαβή αποθήκης»/.test(panB) && !/εκεί σημειώνεται η παραλαβή/.test(panB), panB.slice(0, 300));
     await page.evaluate(() => _wiPanelClose());
 
     // Counters: the lot row and the loose piece are not «unmatched».

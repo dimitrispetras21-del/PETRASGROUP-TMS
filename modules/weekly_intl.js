@@ -6375,7 +6375,8 @@ function _wiStockLotOfRow(rowId){
 // line drops «παραλαβή…»; no zero lines («Κομμάτια · 0», «Κανένα κομμάτι»);
 // «Κλείσιμο υπολοίπου…» is the primary button ONLY when the lot asks for it
 // (writing every pallet off was the main action of every fresh lot), and
-// «Άνοιγμα παρτίδας» leads to the lot order — where the intake is marked.
+// «Άνοιγμα παρτίδας» leads to the lot order (the order form has no Status:
+// the intake is marked only in the Ημερήσιο — round 3, critic-1 F1).
 async function _wiStockLotOpen(anchor,lotRec){
   if(!_wiStockOn()) return;
   if(document.fullscreenElement){ try{ await document.exitFullscreen(); }catch(_){} }
@@ -6391,9 +6392,9 @@ async function _wiStockLotOpen(anchor,lotRec){
   WINTL._stkLot=lot;
   const title=`${escapeHtml(OrdersStock.lotLabel(lot))} · ${escapeHtml(f['Warehouse Name']||'—')}${cc?' '+cc:''}`;
   const recv=f['Received On']?`παραλαβή ${_wiFmt(f['Received On'])}`:'παραλαβή αναμένεται';
-  const open=getLinkedId(f['Order'])?` · <button type="button" class="wi-stk-link" onclick="_wiStockOpenLotOrder()" title="Η παραγγελία της παρτίδας — εκεί σημειώνεται η παραλαβή">Άνοιγμα παρτίδας</button>`:'';
+  const open=getLinkedId(f['Order'])?` · <button type="button" class="wi-stk-link" onclick="_wiStockOpenLotOrder()" title="Η παραγγελία της παρτίδας">Άνοιγμα παρτίδας</button>`:'';
   const ctxLine=`${escapeHtml(f['Client Name']||'—')} · υπόλοιπο <b>${rem}/${stock}p</b>${c.key==='nointake'?'':' · '+recv}${open}`;
-  const flag=c.key==='nointake'?`<div class="wi-panel-note wi-stk-bad">${c.moving} ${c.moving===1?'κομμάτι κινείται':'κομμάτια κινούνται'}, αλλά η παραλαβή στην αποθήκη δεν σημειώθηκε.</div>`
+  const flag=c.key==='nointake'?`<div class="wi-panel-note wi-stk-bad">${c.moving} ${c.moving===1?'κομμάτι κινείται':'κομμάτια κινούνται'}, αλλά η παραλαβή στην αποθήκη δεν σημειώθηκε — Ημερήσιο, «Παραλαβή αποθήκης».</div>`
     :c.key==='close'?`<div class="wi-panel-note wi-stk-warn">Όλα τα κομμάτια παραδόθηκαν — η παρτίδα τιμολογείται μετά το «Κλείσιμο υπολοίπου».</div>`
     :c.key==='aging'?`<div class="wi-panel-note wi-stk-warn">Στην αποθήκη ${c.days} ημ. (πάνω από 21).</div>`:'';
   const notes=f['Source Notes']?`<div class="wi-panel-note">Σημειώσεις: ${escapeHtml(String(f['Source Notes']))}</div>`:'';

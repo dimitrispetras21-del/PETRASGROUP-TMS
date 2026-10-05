@@ -1108,27 +1108,34 @@ function _oiChargeNote(text, kind) {
   el.id = 'oiChargeMsg'; el.className = kind === 'dim' ? 'oi-charge-dim' : 'oi-charge-bad'; el.setAttribute('role', 'status');
   el.textContent = text;
 }
-// Typed but not saved: the order's «Αποθήκευση» does not carry it. S5-02: a
-// to-do, not an error — neutral, two words; gone again when the typed value
-// equals the saved one.
-function _oiChargeDirty() {
+// Typed but not saved yet. S5-02: a to-do, not an error — neutral, two words;
+// gone again when the typed value equals the saved one. The order's
+// «Αποθήκευση» saves it first (round 3, see submitIntlOrder).
+// The typed charge differs from the saved one (null = nothing to compare).
+function _oiChargeChanged() {
   const SK = INTL_ORDERS._stock, inp = document.getElementById('f_WhCharge');
-  if (!SK || !SK.charge || SK.charge.status !== 'ok' || !inp) return;
+  if (!SK || !SK.charge || SK.charge.status !== 'ok' || !inp) return null;
   const saved = SK.charge.lot.warehouse_charge, raw = inp.value.trim();
   const same = raw === '' ? saved == null : saved != null && !inp.validity.badInput && Number(raw) === Number(saved);
-  if (same) document.getElementById('oiChargeMsg')?.remove();
+  return !same;
+}
+function _oiChargeDirty() {
+  const ch = _oiChargeChanged();
+  if (ch === null) return;
+  if (!ch) document.getElementById('oiChargeMsg')?.remove();
   else _oiChargeNote('μη αποθηκευμένο', 'dim');
 }
+// → true only when the base now holds the sent value (the order's Save waits on it).
 async function _oiChargeSave() {
   const SK = INTL_ORDERS._stock;
-  if (!_oiChargeOn(SK) || !SK.charge || SK.charge.status !== 'ok') return;
+  if (!_oiChargeOn(SK) || !SK.charge || SK.charge.status !== 'ok') return false;
   const inp = document.getElementById('f_WhCharge'), b = document.getElementById('oiChargeSave');
-  if (!inp || !b) return;
+  if (!inp || !b) return false;
   const raw = inp.value.trim();
   // An unparseable entry reads as '' on a number input — sent, it would CLEAR the charge.
   if ((inp.validity && inp.validity.badInput) || (raw !== '' && !/^\d+(\.\d{1,2})?$/.test(raw))) {
     _oiChargeNote('Μη έγκυρη χρέωση αποθήκης — ποσό ≥ 0 με έως 2 δεκαδικά, ή κενό. Δεν στάλθηκε τίποτα.');
-    return;
+    return false;
   }
   const v = raw === '' ? null : Number(raw);
   inp.disabled = true; b.disabled = true; b.textContent = 'Αποθήκευση…';
@@ -1141,11 +1148,11 @@ async function _oiChargeSave() {
     console.error('orders intl: PATCH /costs/stock-lots', e);
     err = { text: _oiChargeErr(e), status: e && e.status };
   }
-  if (INTL_ORDERS._stock !== SK) return;
+  if (INTL_ORDERS._stock !== SK) return false;
   if (lot) {
     SK.charge = { status: 'ok', lot, msg: { kind: 'ok', text: 'Αποθηκεύτηκε' } };
     _oiChargePaint(SK);
-    return;
+    return true;
   }
   // Any answer but a 200 with the lot (integrator 4/10): the screen shows what
   // the BASE holds now — read again — never the typed value. A 5xx or a lost
@@ -1153,15 +1160,17 @@ async function _oiChargeSave() {
   // when the base now holds exactly what was sent, it was saved, and that is
   // the one line said. A 4xx is a designed «no»: its reason once + context.
   const st = await _oiChargeRead(SK.lotRec);
-  if (INTL_ORDERS._stock !== SK) return;
+  if (INTL_ORDERS._stock !== SK) return false;
   const held = st.status === 'ok' ? (st.lot.warehouse_charge == null ? null : Number(st.lot.warehouse_charge)) : undefined;
-  if (st.status === 'ok' && !(err.status >= 400 && err.status < 500) && held === v) {
+  const saved = st.status === 'ok' && !(err.status >= 400 && err.status < 500) && held === v;
+  if (saved) {
     st.msg = { kind: 'ok', text: 'Αποθηκεύτηκε (επιβεβαιώθηκε από τη βάση).' };   // S5-11: no code words
   } else {
     st.msg = { kind: 'bad', text: err.text, sub: st.status === 'ok' ? 'Ισχύει ό,τι φαίνεται.' : '' };
   }
   SK.charge = st;
   _oiChargePaint(SK);
+  return saved;
 }
 // Round 1 O6 (critic-5 S5-03): the lot is ONE checkbox in the flags row, next
 // to «⚠ Υψηλό ρίσκο» and «Veroia Switch» — the grey box with three nouns sat
@@ -2110,6 +2119,17 @@ async function submitIntlOrder(recId) {
   // The lot was unmarked (its own write, before the order save): a save that
   // fails after it must not read «δεν αποθηκεύτηκε τίποτα» — the lot is gone.
   let _unmarked = false;
+
+  // Round 3 (critic-5 S5R3-01): the owner typed a «Χρέωση αποθήκης» and pressed
+  // the ORDER's «Αποθήκευση» — the typed amount was dropped without a word when
+  // the modal closed. It is saved first, with its own result line; if that
+  // fails the order is NOT saved, so the line stays on screen to be read.
+  // The re-read after a refusal repaints the field with the base's value, so
+  // «still changed?» would read false — the save's own answer decides.
+  if (_oiChargeChanged() && !(await _oiChargeSave())) {
+    if (btn) { btn.textContent = 'Αποθήκευση'; btn.disabled = false; }
+    return;
+  }
 
   try {
     // 057: the order was saved but its lot mark was refused — this press

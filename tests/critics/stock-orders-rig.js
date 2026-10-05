@@ -1147,6 +1147,31 @@ async function runOwnerCharge(browser) {
   await page.screenshot({ path: shot('16e-owner-charge-not-read') });
   await close();
 
+  // ── round 3 (critic-5 S5R3-01): a typed charge + the ORDER's «Αποθήκευση» → the charge is saved FIRST ──
+  cap.chargeReadFail = false; setCharge(cap.money, null);
+  await open();
+  await fillCommon(page);
+  const nC0 = cap.chargePatches.length, nO0 = cap.patches.filter(p => p.table === 'orders').length;
+  await page.fill('#f_WhCharge', '75');
+  await page.click('#btnSubmit');
+  await page.waitForFunction(() => !document.getElementById('modalOverlay').classList.contains('open'), null, { timeout: 12000 });
+  ok(cap.chargePatches.length === nC0 + 1 && JSON.stringify(cap.chargePatches.at(-1).body) === '{"warehouse_charge":75}' && cap.patches.filter(p => p.table === 'orders').length > nO0,
+    'S5R3-01: the order\'s «Αποθήκευση» saves the typed charge first (PATCH {warehouse_charge:75}), then the order — ' + JSON.stringify({ c: cap.chargePatches.length - nC0, o: cap.patches.filter(p => p.table === 'orders').length - nO0, last: cap.patches.slice(-3).map(p => p.table + ':' + p.id) }));
+  // … and a refused charge stops the order save: the modal stays with the reason, the order is not written.
+  setCharge(cap.money, null);
+  await open();
+  await fillCommon(page);
+  cap.chargeFail = { status: 422, body: { error: { type: 'STOCK_RULE', code: 'lot_missing', message: 'Η παρτίδα δεν είναι ενεργή' } } };
+  const nO1 = cap.patches.filter(p => p.table === 'orders').length;
+  await page.fill('#f_WhCharge', '60');
+  await page.click('#btnSubmit');
+  await page.waitForFunction(() => /Η παρτίδα δεν είναι ενεργή/.test((document.getElementById('oiLotCharge') || {}).innerText || ''), null, { timeout: 8000 });
+  await page.waitForTimeout(500);
+  ok(await page.evaluate(() => document.getElementById('modalOverlay').classList.contains('open')) && cap.patches.filter(p => p.table === 'orders').length === nO1
+    && (await page.innerText('#btnSubmit')) === 'Αποθήκευση',
+    'S5R3-01: charge refused → the order is NOT saved, the form stays open with the reason, the button is back — ' + JSON.stringify({ open: await page.evaluate(() => document.getElementById('modalOverlay').classList.contains('open')), o: cap.patches.filter(p => p.table === 'orders').length - nO1, btn: await page.innerText('#btnSubmit').catch(() => '?') }));
+  await close();
+
   // ── R2 + S5-06 + F3: partner AND warehouse → both named, the total once; charges over the price warn ──
   cap.money.partner_cost = '300.00'; setCharge(cap.money, 3100);
   await open();
