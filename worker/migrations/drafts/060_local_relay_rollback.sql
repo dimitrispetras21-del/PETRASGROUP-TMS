@@ -12,6 +12,7 @@ DO $do$
 DECLARE n int; k int; trg_before int; trg_after int; view_acl text[]; view_acl_items aclitem[]; g record;
 BEGIN
   PERFORM set_config('search_path', 'public, extensions', true);
+  PERFORM set_config('lock_timeout', '5s', true); -- as 060: give up behind an idle transaction, never queue the app
 
   -- 0. GUARDS
   IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public'

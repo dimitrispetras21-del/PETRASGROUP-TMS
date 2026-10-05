@@ -57,7 +57,7 @@ DECLARE
 BEGIN
   -- pg_get_viewdef (md5 guard below) prints names relative to the search_path: pin it.
   PERFORM set_config('search_path', 'public, extensions', true);
-  -- ALTER TABLE on drivers / dl_entries / local_moves, CREATE TRIGGER on orders and the
+  -- ALTER TABLE on dl_entries / local_moves, CREATE TRIGGER on orders and the
   -- dl_v_entries replace need strong locks: behind an idle open transaction they would wait
   -- forever while every app read of those tables queues behind them. Give up after 5 s instead -
   -- the whole block rolls back, nothing half-done; run it again later (same as 057).
