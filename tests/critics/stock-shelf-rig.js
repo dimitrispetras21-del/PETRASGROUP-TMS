@@ -153,7 +153,12 @@ function makeFacade() {
     let m;
     if (/\{Week Number\}/.test(fm)) return [];
     if (/\{Direction\}='Export'/.test(fm)) return live.filter(o => o.fields.Direction === 'Export').map(F.read);
-    if (/\{Direction\}='Import'/.test(fm)) return live.filter(o => o.fields.Direction === 'Import').map(F.read);
+    // F.weekWindow: honour the board's import window (IS_AFTER/IS_BEFORE on Loading DateTime, ±8 days
+    // around the week) — set only by the scenario that needs a piece truly OFF the board.
+    const inWin = o => { if (!F.weekWindow) return true; const ld = athensYmd(o.fields['Loading DateTime']);
+      const a = /IS_AFTER\(\{Loading DateTime\},'([\d-]+)'\)/.exec(fm), b = /IS_BEFORE\(\{Loading DateTime\},'([\d-]+)'\)/.exec(fm);
+      return (!a || ld > a[1]) && (!b || ld < b[1]); };
+    if (/\{Direction\}='Import'/.test(fm)) return live.filter(o => o.fields.Direction === 'Import' && inWin(o)).map(F.read);
     if ((m = /^\{Group ID\}='([^']*)'$/.exec(fm))) return live.filter(o => o.fields['Group ID'] === m[1]).map(F.read);
     if ((m = /^\{Matched Import ID\}='([^']*)'$/.exec(fm))) return live.filter(o => o.fields['Matched Import ID'] === m[1]).map(F.read);
     if ((m = /FIND\("([^"]+)",ARRAYJOIN\(\{Stock Lot\},","\)\)>0/.exec(fm))) return pieces(m[1]).map(F.read);
@@ -1142,8 +1147,42 @@ if (MAIN) (async () => {
     const rlyLines = await page.evaluate(() => Object.fromEntries([...document.querySelectorAll('#wi-panel .wi-stk-piece')].map(x => [((x.getAttribute('onclick') || '').match(/rec[A-Za-z0-9]+/) || [''])[0], !!x.querySelector('.wi-rly-b')])));
     await page.evaluate(() => _wiPanelClose());
     ok('relay_loose_piece_badge', rlyLines.recRIGP8000000008 === true && Object.entries(rlyLines).filter(([k, v]) => v).length === 1, rlyLines);
+    // Review P3 #3 (relay release): the LOT panel reads its pieces' relays itself. P7 (lot #325, on a
+    // truck) moves a month out — outside the board's ±8-day import window, and not loose — so neither
+    // the board's relays nor the loose list's read know it: without the panel's own read it looked
+    // relay-less. _stkRelays is emptied first so the badge can only come from the lot panel's read.
+    F.lm.push(relay('recRIGLM0000000P7', 'recRIGP7000000007', D3));
+    const p7f = F.orders.recRIGP7000000007.fields, p7dates = [p7f['Loading DateTime'], p7f['Delivery DateTime']];
+    const plus = (iso, n) => new Date(new Date(iso).getTime() + n * 86400000).toISOString();
+    p7f['Loading DateTime'] = plus(p7dates[0], 18); p7f['Delivery DateTime'] = plus(p7dates[1], 18);
+    F.weekWindow = true;
+    await page.evaluate(async () => { invalidateCache(TABLES.ORDERS); await renderWeeklyIntl(); }); await page.waitForTimeout(1200);
+    const lotRly = async () => {
+      await page.evaluate(() => { WINTL._stkRelays = {}; _wiStockLotOpen(document.body, 'recRIGSTOCKLOTD1'); });
+      // a failed read goes through core/api.js's retries (1 s + 2 s): wait for an outcome, not a fixed time
+      await page.waitForFunction(() => { const n = document.getElementById('wi-stk-lot-rly');
+        const el = [...document.querySelectorAll('#wi-panel .wi-stk-piece')].find(x => (x.getAttribute('onclick') || '').includes('recRIGP7000000007'));
+        return (n && !n.hidden) || !!(el && el.querySelector('.wi-rly-b')); }, null, { timeout: 8000 }).catch(() => {});
+      await page.waitForTimeout(200);
+      return page.evaluate(() => {
+        const el = [...document.querySelectorAll('#wi-panel .wi-stk-piece')].find(x => (x.getAttribute('onclick') || '').includes('recRIGP7000000007'));
+        const note = document.getElementById('wi-stk-lot-rly');
+        return { offBoard: ![...WINTL.data.exports, ...WINTL.data.imports].some(r => r.id === 'recRIGP7000000007'), line: el ? el.innerText.replace(/\s+/g, ' ') : null, badge: !!(el && el.querySelector('.wi-rly-b')),
+          note: note && !note.hidden && note.getClientRects().length ? note.textContent : null };
+      });
+    };
+    const lotOk = await lotRly();
+    await shot(page, 'stock-lot-relay-other-week-1440.png'); out.screens.push('stock-lot-relay-other-week-1440.png');
+    await page.evaluate(() => _wiPanelClose());
+    ok('relay_lot_piece_other_week_badge', lotOk.offBoard && /^\S/.test(lotOk.line || '') && !/χωρίς φορτηγό/.test(lotOk.line || '') && lotOk.badge && lotOk.note === null, lotOk);
     // relays that did not load are said in the same confirm — never read as «no relay»
     F.failLm = true;
+    // …and in the lot panel: a failed relay read is a visible note, not a missing badge.
+    const lotFail = await lotRly();
+    await shot(page, 'stock-lot-relay-not-loaded-1440.png'); out.screens.push('stock-lot-relay-not-loaded-1440.png');
+    await page.evaluate(() => _wiPanelClose());
+    ok('relay_lot_read_failed_said', lotFail.offBoard && !!lotFail.line && !lotFail.badge && /Οι τοπικές παραδόσεις των κομματιών δεν φορτώθηκαν — δεν σημαίνει ότι δεν υπάρχουν/.test(lotFail.note || ''), lotFail);
+    p7f['Loading DateTime'] = p7dates[0]; p7f['Delivery DateTime'] = p7dates[1]; F.weekWindow = false;
     await page.evaluate(async () => { await _wiRelayReload(); });
     const retAsk2 = await page.evaluate(async () => {
       const c0 = window.confirmAction; let said = null;
@@ -1155,6 +1194,8 @@ if (MAIN) (async () => {
     ok('relay_not_loaded_said_in_confirm', /Οι τοπικές παραδόσεις δεν φορτώθηκαν — έλεγξε αν το κομμάτι έχει τοπική/.test(retAsk2 || '') && F.writes.length === nRet, { retAsk2 });
     F.failLm = false; F.lm = null;
     await page.evaluate(async () => { WINTL._stkRelays = {}; await _wiRelayReload(); });
+    // P7 back in its week and on the board's data, as before the lot-panel scenario.
+    await page.evaluate(async () => { invalidateCache(TABLES.ORDERS); await renderWeeklyIntl(); }); await page.waitForTimeout(1200);
 
     // Σ-07b: the lone lead's lock LANDS but its answer is lost → the board
     // reads I1, finds the lock, and joins P3 (it used to stop: «η σειρά ΔΕΝ
