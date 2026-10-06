@@ -789,7 +789,7 @@ async function runHomeFlow(browser) {
   ]);
   const csvText = fs.readFileSync(await download.path()).toString('utf8').replace(/^﻿/, '');
   const csvHeader = csvText.split(/\r?\n/)[0];
-  assert(csvHeader === 'Οδηγός;Τύπος;Υπόλοιπο;Δρομολόγια έτους;Χωρίς αξία;Τελευταία κίνηση;Τελευταία πληρωμή', 'CSV header row: ' + csvHeader);
+  assert(csvHeader === 'Οδηγός;Τύπος;Υπόλοιπο;Δρομολόγια έτους (μαζί με τοπικά);Χωρίς αξία;Τελευταία κίνηση;Τελευταία πληρωμή', 'CSV header row: ' + csvHeader);
 
   // ── .dl-card-open ανοίγει την καρτέλα v3, «← Μισθοδοσία» επιστρέφει ──
   await page.locator('.dl-card[data-driver="11"] .dl-card-open').click();

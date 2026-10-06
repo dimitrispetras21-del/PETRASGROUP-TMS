@@ -126,6 +126,10 @@ async function installRoutes(page, F, costs) {
       return costs && costs[res] ? send(200, costs[res]) : send(200, { records: [] });
     }
     const seg = url.pathname.split('/').filter(Boolean), table = seg[2], recId = seg[3];
+    // With the local relays (060) in the same release, Daily Ops reads LOCAL MOVES for the day's
+    // orders. The 28/8 HAR has no such read, so it went to the network, failed, and its retries held
+    // the re-render past this rig's waits (X3 read an empty row). No relays here: an empty answer.
+    if (table === 'local_moves') return send(200, { records: [] });
     if (![ORDERS, STOPS].includes(table)) return bridge(route);
     const store = table === ORDERS ? F.orders : F.stops;
     if (m === 'GET' && !recId) return send(200, { records: F.list(table, url.searchParams.get('filterByFormula')) });

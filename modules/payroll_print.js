@@ -65,7 +65,10 @@ function dlCsvAmt(n) { var s = dlNum(n); return s === null ? '—' : s; }
 // «Τύπος · λεπτομέρεια» — ίδια σύμβαση με το A4 (print_payroll.html, Figma
 // 601:1011, ενημέρωση συμβολαίου 14/9): μία διατύπωση παντού (αρχή 3).
 function dlCsvKinisi(e) {
-  var base = e.entry_type === 'trip' ? 'Δρομολόγιο · ' + (e.route_text || '—')
+  // 060: a local driver's day is not a «Δρομολόγιο» — the trigger's own
+  // label (dlLocalLabel, modules/payroll.js), one wording on screen and paper.
+  var base = dlIsLocal(e) ? dlLocalLabel(e)
+    : e.entry_type === 'trip' ? 'Δρομολόγιο · ' + (e.route_text || '—')
     : e.entry_type === 'payment_bank' ? 'Πληρωμή · Κατάθεση τράπεζας'
     : e.entry_type === 'payment_cash' ? 'Πληρωμή · Μετρητά'
     : 'Προσαρμογή' + (e.note ? ' · ' + e.note : '');
@@ -110,7 +113,10 @@ function dlCsvCard(driverName, entries, year, month) {
 function dlCsvDrivers(balances) {
   var rows = (balances || []).filter(function (d) { return d.has_entries; })
     .slice().sort(function (a, b) { return Number(b.balance || 0) - Number(a.balance || 0); });
-  var lines = [['Οδηγός', 'Τύπος', 'Υπόλοιπο', 'Δρομολόγια έτους', 'Χωρίς αξία', 'Τελευταία κίνηση', 'Τελευταία πληρωμή']];
+  // 060: trips_ytd (dl_v_balance) counts every trip-type line, a local
+  // driver's days too — said in the header, so it cannot disagree in silence
+  // with the card's «Δρομολόγια N · Τοπικά M».
+  var lines = [['Οδηγός', 'Τύπος', 'Υπόλοιπο', 'Δρομολόγια έτους (μαζί με τοπικά)', 'Χωρίς αξία', 'Τελευταία κίνηση', 'Τελευταία πληρωμή']];
   rows.forEach(function (d) {
     var lastPay = d.last_payment_date
       ? dlCsvDate(d.last_payment_date) + (d.last_payment_type ? ' (' + dlTypeLabel(d.last_payment_type) + ')' : '')

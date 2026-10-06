@@ -316,6 +316,11 @@ const ENTITY_CONFIG = {
     },
     cardRt: true,
     cardTruckAgg: true,
+    // 060 (owner 4/10, 5/10): «a track record for every driver» — anyone may
+    // do a local move, not only the locals — read from local_moves itself
+    // (Relay.loadForDriver, core/relay.js). No amounts, so every role that
+    // sees drivers sees it.
+    cardLocalMoves: true,
     perm: 'drivers',
     searchFields: ['Full Name', 'License Number'],
     searchHint: 'Αναζήτηση: όνομα, αρ. διπλώματος…',
@@ -2147,6 +2152,10 @@ function _renderEntityCardV2(entityKey, rec, panel) {
         <div class="ecard-sec-title">Με ποια φορτηγά</div>
         <div class="ecard-sec-body" id="ec_${recId}_agg">Φόρτωση…</div>
       </div>` : ''}
+      ${cfg.cardLocalMoves ? `<div class="ecard-sec">
+        <div class="ecard-sec-title">Τοπικές κινήσεις</div>
+        <div class="ecard-sec-body" id="ec_${recId}_lm">Φόρτωση…</div>
+      </div>` : ''}
       ${cfg.cardActivity ? `<div class="ecard-sec">
         <div class="ecard-sec-title">${cfg.cardActivityTitle || 'Δραστηριότητα'}</div>
         <div class="ecard-sec-body" id="ec_${recId}_act">Φόρτωση…</div>
@@ -2169,7 +2178,27 @@ function _renderEntityCardV2(entityKey, rec, panel) {
 
   if (cfg.cardMaint) _loadEntityCardMaint(entityKey, rec);
   if (cfg.cardRt) _loadEntityCardRT(entityKey, rec);
+  if (cfg.cardLocalMoves) _loadEntityCardLocalMoves(rec);
   if (cfg.cardActivity) _loadEntityCardActivity(entityKey, rec);
+}
+
+// The driver's track record (060): newest 10 local moves, the rest counted.
+// A failed read is said as such — «Καμία» only when the read succeeded empty.
+async function _loadEntityCardLocalMoves(rec) {
+  const body = () => document.getElementById(`ec_${rec.id}_lm`);
+  try {
+    if (typeof Relay === 'undefined') throw new Error('core/relay.js not loaded');
+    const rows = await Relay.loadForDriver(rec.id);
+    const el = body();
+    if (!el) return;
+    el.innerHTML = rows.length
+      ? Relay.HISTORY_CSS + Relay.historyListHtml(rows.slice(0, 10)) + (rows.length > 10 ? `<div class="ecard-km-sub">+${rows.length - 10} παλαιότερες</div>` : '')
+      : `<div class="ecard-empty">Καμία τοπική κίνηση.</div>`;
+  } catch (e) {
+    const el = body();
+    if (el) el.innerHTML = `<div class="ecard-fail">⚠ Δεν φόρτωσαν οι τοπικές κινήσεις${e && e.code === 'no_move_kind' ? ' — ' + escapeHtml(e.message) : ''}.</div>`;
+    if (typeof logError === 'function') logError(e, 'entity card: local moves');
+  }
 }
 
 async function _loadEntityCardMaint(entityKey, rec) {

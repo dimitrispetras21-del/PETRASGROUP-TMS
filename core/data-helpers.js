@@ -17,6 +17,25 @@ function getLocationName(id) {
 }
 
 /**
+ * An order's client, as raw text: the CLIENTS name of its linked Client, else
+ * the order's own Client Name / Client Summary, else ''. ONE rule for the
+ * Weekly board (_wiClientName) and the local relays (Relay.orderName) —
+ * they used to carry a copy each (relay review round 4, 5/10). Unlike
+ * getClientName below: not escaped, and no '—' (callers choose the fallback).
+ * @param {object} f - order fields
+ * @returns {string}
+ */
+function orderClientName(f) {
+  if (!f) return '';
+  const cid = getLinkedId(f['Client']);
+  if (cid && typeof getRefClients === 'function') {
+    const c = getRefClients().find(r => r.id === cid);
+    if (c && c.fields['Company Name']) return c.fields['Company Name'];
+  }
+  return f['Client Name'] || f['Client Summary'] || '';
+}
+
+/**
  * Get client name by record ID
  * @param {string} id - Client record ID
  * @returns {string} Client company name or '—'

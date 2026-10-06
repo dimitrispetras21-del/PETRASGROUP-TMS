@@ -15,13 +15,13 @@
 // Fields written on import drop (auto-save, independent):
 //   Matched Import ID  (stores import order record ID as text)
 //
-// LOCAL_MOVES (Wave 2, owner 6/9 — table `local_moves`, facade id
-// TABLES.LOCAL_MOVES, same table weekly_natl.js's ΤΟΠΙΚΕΣ ΠΑΡΑΔΟΣΕΙΣ writes):
-//   read Date, Sequence, Driver, Truck, Trailer, Partner, From/To Location,
-//   Pallets, Time From, Description, Status, Parent Order
-//   written: the same names on create/edit; NEVER Parent Nat Load (DB CHECK
-//   local_moves_one_parent forbids both parents at once — that link is
-//   weekly_natl.js's, this screen only ever writes Parent Order)
+// LOCAL_MOVES — local RELAYS only (migration 060, owner 4/10): «Παράδοση/
+// Φόρτωση με τοπικό οδηγό» on an order, read and written through core/relay.js
+// (Relay.*), never from this file directly. Labels: Parent Order, Move Kind,
+// Driver, Truck, Trailer, From/To Location, Time From (+ Date, Status read —
+// the base derives them). Since 060 a plain local move can no longer carry a
+// Parent Order (CHECK local_moves_kind_parent), so the old «Τοπική κίνηση
+// (Βέροια)» of this board is gone; plain local moves live in weekly_natl.js.
 // ═══════════════════════════════════════════════════════════════════════
 (function() {
 'use strict';
@@ -354,7 +354,7 @@ const _WI2_CSS=`
    έφυγε 3/10 — το σήμα της είναι πια .wk-sig). */
 .wk3.wi2 .wk3-row.wi2-rowurg{border-color:var(--danger-strong);box-shadow:inset 2px 0 0 var(--danger-strong)}
 .wk3.wi2 .wk3-row.wk3-done{background:var(--success-bg)}
-/* Legrow (σκέλος ρότας / τοπική κίνηση) πάνω στη γκρι ημέρα (28/9): το φόντο
+/* Legrow (σκέλος ρότας / τοπική παράδοση-φόρτωση) πάνω στη γκρι ημέρα (28/9): το φόντο
    του ήταν ήδη --surface-page και το περίγραμμα ερχόταν από τη γραμμή — με
    διάφανη γραμμή θα εξαφανιζόταν. Δικό του διακεκομμένο περίγραμμα. */
 .wk3.wi2 .wk3-legrow{background:transparent;border-style:dashed;border-color:var(--border-mid);min-height:24px}
@@ -546,16 +546,33 @@ const _WI2_CSS=`
    still took grid slots in the 4-column grid: every row wrapped to ~94px
    and the export card was squeezed. Same hide, stated at this scope. */
 .wk3.wi2 .wk3-feed,.wk3.wi2 .wk3-cols .c.fc{display:none}}
-/* Wave 2 (owner 6/9): local movements around Veroia, tied to an
-   international order — not costed, not invoiced, no round-trip need.
-   Sub-row reuses .wk3-legrow's look (dashed, page background) but spans the
-   whole width instead of the leg grid, since it has no export/import side. */
-.wk3.wi2 .wi-lmv-row{grid-template-columns:36px 1fr;cursor:pointer}
-.wk3.wi2 .wi-lmv-body{grid-column:2/-1;padding:0 4px;font-size:12px;color:var(--text-mid);display:flex;align-items:center;gap:4px;font-variant-numeric:tabular-nums}
-.wk3.wi2 .wi-lmv-need{color:var(--unassigned);font-weight:700}
-.wk3.wi2 .wi-lmv-row.err{border-color:var(--danger);border-style:solid}
-.wk3.wi2 .wi-lmv-row.err .wk3-num{color:var(--danger)}
-.wk3.wi2 .wi-lmv-fail{display:flex;align-items:center;gap:12px;padding:8px 16px;margin-bottom:8px;border:1px solid var(--warn-border);background:var(--warn-bg);border-radius:var(--radius);color:var(--warn);font-size:12px}
+/* Local relay (060, owner 4/10): «⤷ ΠΑΡΑΔΟΣΗ/ΦΟΡΤΩΣΗ ΤΟΠ.» under the order a
+   local driver serves. Sub-row reuses .wk3-legrow's look (dashed, page
+   background) but spans the whole width — it has no export/import side. */
+.wk3.wi2 .wi-rly-row{grid-template-columns:36px 1fr;cursor:pointer}
+.wk3.wi2 .wi-rly-body{grid-column:2/-1;padding:0 4px;font-size:12px;color:var(--text-mid);display:flex;align-items:center;gap:4px;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-variant-numeric:tabular-nums}
+.wk3.wi2 .wi-rly-tag{font-weight:800;letter-spacing:.3px;color:var(--accent-text)}
+.wk3.wi2 .wi-rly-need{color:var(--unassigned);font-weight:700}
+.wk3.wi2 .wi-rly-done{color:var(--success);font-weight:700}
+.wk3.wi2 .wi-rly-warn{color:var(--danger);font-weight:700}
+.wk3.wi2 .wi-rly-row.err{border-color:var(--danger);border-style:solid}
+.wk3.wi2 .wi-rly-row.err .wk3-num{color:var(--danger)}
+/* A group's line (one driver, one day, N relays) and its members on click:
+   the members sit indented under it, so the eye reads them as its detail. */
+.wk3.wi2 .wi-rly-grp .wi-rly-car{margin-left:6px;color:var(--text-dim);font-size:10px}
+.wk3.wi2 .wi-rly-row.wi-rly-mem .wi-rly-body{padding-left:18px}
+.wk3.wi2 .wi-rly-fail{display:flex;align-items:center;gap:12px;padding:8px 16px;margin-bottom:8px;border:1px solid var(--warn-border);background:var(--warn-bg);border-radius:var(--radius);color:var(--warn);font-size:12px}
+/* «⇄ τοπ.» on the assignment card: words, not only a glyph — «⇄» alone is the
+   split hand-over marker (.wi2-handover) on the same board. */
+.wk3.wi2 .wk3-pill .wi-rly-b{display:inline-block;margin-right:4px;padding:0 3px;border-radius:3px;background:rgba(255,255,255,.22);font-weight:800;letter-spacing:.2px}
+.wk3.wi2 .wk3-pill.un .wi-rly-b,.wk3.wi2 .wk3-pill.unimp .wi-rly-b{background:var(--accent-light);color:var(--accent-text)}
+/* The badge AFTER the plate/driver (_wiPillSub): the name may be cut with «…», the badge never. */
+.wk3.wi2 .wk3-pill small.wi-rly-sm{display:flex;align-items:center;gap:4px}
+.wk3.wi2 .wk3-pill small.wi-rly-sm .wi-rly-n{min-width:0;overflow:hidden;text-overflow:ellipsis}
+.wk3.wi2 .wk3-pill small.wi-rly-sm .wi-rly-b{flex:none;margin-right:0}
+/* A piece's relay in the stock panels (lot, loose pieces). */
+.wi-stk-piece .wi-rly-b{display:inline-block;padding:0 3px;border-radius:3px;background:var(--accent-light);color:var(--accent-text);font-weight:800;letter-spacing:.2px}
+.wi-rly-hint{font-size:11px;line-height:1.4;color:var(--text-mid);background:var(--surface-sunken);border-radius:var(--radius);padding:6px 8px;margin:6px 0 2px}
 `;
 
 // Owner audit fix: renderWeeklyIntl only ever blocked can('planning')==='none'
@@ -604,18 +621,8 @@ async function renderWeeklyIntl(){
     // εμφανίζονται σε δική τους ενότητα στο τέλος, ΔΕΝ μετράνε στο tally.
     const impFilter=`AND({Type}='International',{Direction}='Import',IS_AFTER({Loading DateTime},'${toLocalDate(new Date(ws.getTime()-8*86400000))}'),IS_BEFORE({Loading DateTime},'${toLocalDate(new Date(we.getTime()+8*86400000))}'))`;
 
-    let [,localMoves,expOrders,impOrders] = await Promise.all([
+    let [,expOrders,impOrders] = await Promise.all([
       preloadReferenceData(),
-      // Wave 2 (owner 6/9): local movements around Veroia, tied to an
-      // international order — never costed, never invoiced, no round-trip
-      // requirement. safeFetch: a dead/undeployed local_moves route must
-      // never hide the whole board (CLAUDE.md `local_moves` is listed
-      // "αμφίβολο" — needs the same production measurement as anything
-      // else before it's trusted). Sat–Fri ±1 day, like weekly_natl's own
-      // query — the move's own Date is what matters, not the order's.
-      safeFetch(() => atGetAll(TABLES.LOCAL_MOVES, {
-        filterByFormula: `AND(IS_AFTER({Date},'${toLocalDate(new Date(ws.getTime()-86400000))}'),IS_BEFORE({Date},'${toLocalDate(new Date(we.getTime()+86400000))}'))`,
-      }, false), 'weekly intl: local moves', []),
       // Σαβ–Παρ (display): date-range αντί {Week Number} — υπερσύνολο με OR
       // στα δύο dates, ακριβές κόψιμο client-side ώστε να μη χαθεί καμία
       // εγγραφή χωρίς Delivery DateTime.
@@ -638,6 +645,13 @@ async function renderWeeklyIntl(){
     WINTL.data.drivers  = getRefDrivers().filter(r=>r.fields['Active']).map(r=>({id:r.id,label:r.fields['Full Name']||r.id}));
     WINTL.data.partners = getRefPartners().map(r=>({id:r.id,label:r.fields['Company Name']||r.id}));
 
+    // Local relays (060) keyed by the orders just fetched — exact by Parent
+    // Order, not a {Date} window: an import's relay sits on its DELIVERY day,
+    // which can fall outside this week's loading window. Started here so it
+    // overlaps the ORDER_STOPS read below; never rejects (a failure becomes a
+    // banner). Off the critical path like NATIONAL LOADS above (5/9): the
+    // board paints first with the relay items closed («φορτώνουν…»).
+    const relayP = _wiRelayFetch([...expOrders, ...impOrders]);
     // ── Inject Loading/Delivery Summary from ORDER_STOPS for new orders ──
     await _wiInjectStopSummaries([...expOrders, ...impOrders]);
     // National carrier for VS legs (owner 4/9): NATIONAL LOADS keyed by Source
@@ -683,22 +697,27 @@ async function renderWeeklyIntl(){
     WINTL.data.imports = impOrders;
     WINTL._loadedAt = new Date(); // footer «Ενημερώθηκε HH:MM»
 
-    // Wave 2: local moves indexed by the order they serve. Contract #6/#7
-    // (DESIGN.md Α7): a table that did not load is an ERROR banner, not a
-    // silently empty set of sub-rows — never render a confident "no local
-    // moves" when the fetch itself failed.
-    WINTL.data._localsFailed = didFail(localMoves);
-    WINTL.data.locals = WINTL.data._localsFailed ? [] : (localMoves || []);
-    WINTL._localsByOrder = {};
-    WINTL.data.locals.forEach(m => {
-      const oid = getLinkedId(m.fields?.['Parent Order']);
-      if (oid) (WINTL._localsByOrder[oid] = WINTL._localsByOrder[oid] || []).push(m);
-    });
-    Object.values(WINTL._localsByOrder).forEach(arr => arr.sort((a,b) =>
-      (a.fields?.['Sequence']||0) - (b.fields?.['Sequence']||0)));
-    // Location names for the sub-row text and the form's dropdowns — loaded
-    // once, shared with orders_intl/natl (fhLoadLocations is idempotent).
-    // _wiInjectStopSummaries below only loads it when an order has stops, so
+    // Contract #6/#7 (DESIGN.md Α7): relays that did not load are an ERROR
+    // banner, not a silently empty set of sub-rows. Until they answer, the
+    // state is 'loading' and every relay item is shown closed. The week check
+    // comes first: a slow read of the previous week must not overwrite the
+    // relays of the week on screen, and a stale load must not reset them to
+    // 'loading' either.
+    if (loadId !== _wiLoadId) return;
+    const syncErr = WINTL.relay?.syncErr || {};
+    WINTL.relay = { state: 'loading', byOrder: {}, err: '', syncErr };
+    let boardBuilt = false;
+    relayP.then(res => {
+      if (loadId !== _wiLoadId) return;
+      WINTL.relay = Object.assign(res, { syncErr });
+      // Before this week's rows exist, their own first paint draws the
+      // relays; after it, repaint only with something to draw or to say
+      // (menus read the state when they open).
+      if (boardBuilt && (res.state === 'err' || Object.keys(res.byOrder).length)) _wiPaint();
+    }).catch(e => console.warn('[weekly intl] local relays paint:', e));
+    // Location names for the relay sub-row («από CROSS-DOCK») and its panel —
+    // loaded once, shared with orders_intl/natl (fhLoadLocations is idempotent).
+    // _wiInjectStopSummaries above only loads it when an order has stops, so
     // an all-new week with zero ORDER STOPS would otherwise leave it empty.
     await fhLoadLocations();
 
@@ -706,6 +725,7 @@ async function renderWeeklyIntl(){
     _wiStockPrime();
     _wiBuildRows();
     _wiPaint();
+    boardBuilt = true;
     // Stock shelf (stock plan §6.1): after the first paint and never blocking
     // it — same posture as the national-carriers read above.
     _wiStockLoad();
@@ -1128,7 +1148,7 @@ function _wiPaint(){
       <span id="wi-crossweek-in"></span>
       <span class="wi2-week">Εβδομάδα ${week} · ${_wiWeekRange(week)} · Σαβ–Παρ</span>
     </div>
-    ${WINTL.data._localsFailed ? `<div class="wi-lmv-fail">Οι τοπικές κινήσεις δεν φορτώθηκαν <small>— δεν σημαίνει ότι δεν υπάρχουν: ο πίνακας LOCAL_MOVES δεν είναι διαθέσιμος στον Worker. Οι παραγγελίες παραπάνω δεν επηρεάζονται.</small><button class="wi2-btn" onclick="renderWeeklyIntl()">↻ Ξαναδοκίμασε</button></div>` : ''}
+    ${WINTL.relay?.state==='err' ? `<div class="wi-rly-fail" role="alert">Οι τοπικές παραδόσεις/φορτώσεις δεν φορτώθηκαν <small>— δεν σημαίνει ότι δεν υπάρχουν (${escapeHtml(WINTL.relay.err||'σφάλμα ανάγνωσης')}). Οι παραγγελίες δεν επηρεάζονται· το «…με τοπικό οδηγό» μένει κλειστό ώσπου να φορτωθούν.</small><button class="wi2-btn" onclick="_wiRelayReload()">↻ Ξαναδοκίμασε</button></div>` : ''}
     <div class="wk3-wrap">
       <main class="wk3-sheet">${_wiShelfHTML()}
         <div class="wk3-cols">
@@ -1271,10 +1291,9 @@ function _wiAllRowsHTML(){
         const pids=[...(row.orderIds||[])]; if(row.importId) pids.push(row.importId);
         pids.forEach(pid=>{ (WINTL._legs?.[pid]||[]).forEach(lr=>{ html+=_wiLegRowHTML(lr); }); });
       }
-      // Wave 2: local moves render after route legs, keyed the same way (each
-      // order id in the group can carry its own local move).
-      const pids2=[...(row.orderIds||[])]; if(row.importId) pids2.push(row.importId);
-      pids2.forEach(pid=>{ (WINTL._localsByOrder?.[pid]||[]).forEach(m=>{ html+=_wiLocalRowHTML(m,pid); }); });
+      // Local relays (060) after the route legs: every order the row carries
+      // (group members, the matched import, a split's legs) can have its own.
+      html+=_wiRelayRowsHTML(_wiRelayIdsOfRow(row));
     });
     // Unmatched imports numbered I1… (Β.3-4) so «γραμμή I3» means something on
     // the phone between two dispatchers.
@@ -1285,7 +1304,7 @@ function _wiAllRowsHTML(){
         html+=_wiImpRowHTML(row,impIdx);
         (WINTL._legs?.[row.orderId]||[]).forEach(lr=>{ html+=_wiLegRowHTML(lr); });
       }
-      (WINTL._localsByOrder?.[row.orderId]||[]).forEach(m=>{ html+=_wiLocalRowHTML(m,row.orderId); });
+      html+=_wiRelayRowsHTML(_wiRelayIdsOfRow(row));
     });
     html+='</section>';
   });
@@ -1316,10 +1335,9 @@ function _wiAllRowsHTML(){
         const pids=[...(row.orderIds||[])]; if(row.importId) pids.push(row.importId);
         pids.forEach(pid=>{ (WINTL._legs?.[pid]||[]).forEach(lr=>{ html+=_wiLegRowHTML(lr); }); });
       }
-      // Wave 2: local moves render after route legs, keyed the same way (each
-      // order id in the group can carry its own local move).
-      const pids2=[...(row.orderIds||[])]; if(row.importId) pids2.push(row.importId);
-      pids2.forEach(pid=>{ (WINTL._localsByOrder?.[pid]||[]).forEach(m=>{ html+=_wiLocalRowHTML(m,pid); }); });
+      // Local relays (060) after the route legs: every order the row carries
+      // (group members, the matched import, a split's legs) can have its own.
+      html+=_wiRelayRowsHTML(_wiRelayIdsOfRow(row));
     });
     showImps.forEach(row=>{
       ++impIdx; WINTL._rowNo[row.orderId]='I'+impIdx;
@@ -1328,7 +1346,7 @@ function _wiAllRowsHTML(){
         html+=_wiImpRowHTML(row,impIdx);
         (WINTL._legs?.[row.orderId]||[]).forEach(lr=>{ html+=_wiLegRowHTML(lr); });
       }
-      (WINTL._localsByOrder?.[row.orderId]||[]).forEach(m=>{ html+=_wiLocalRowHTML(m,row.orderId); });
+      html+=_wiRelayRowsHTML(_wiRelayIdsOfRow(row));
     });
     html+='</section>';
   });
@@ -1354,12 +1372,13 @@ function _wiImpRowHTML(row,impNo){
   // η γενική λέξη δεν είναι επωνυμία)· το πρόθεμα ΣΥΝ. λέει ήδη το είδος.
   const impPartner =row.partnerLabel ||data.partners.find(p=>p.id===row.partnerId)?.label||(row.partnerId?'—':'');
   const plates=[impTruck,impTrailer].filter(Boolean).join(' / ');
+  const rb=_wiRelayBadge(_wiRelayIdsOfRow(row));
   let impPill;
   if(row.saved){
     if(impPartner){
-      impPill=`<div class="wk3-pill par" title="Συνεργάτης: ${escapeHtml(impPartner)}${row.partnerPlates?' · '+escapeHtml(row.partnerPlates):''}${row.driverLabel?' · '+escapeHtml(row.driverLabel):''} — κλικ: αλλαγή"><span class="t">${escapeHtml(impPartner)}</span><small>${escapeHtml([row.partnerPlates,row.driverLabel].filter(Boolean).join(' · '))||'&nbsp;'}</small></div>`;
+      impPill=`<div class="wk3-pill par" title="Συνεργάτης: ${escapeHtml(impPartner)}${row.partnerPlates?' · '+escapeHtml(row.partnerPlates):''}${row.driverLabel?' · '+escapeHtml(row.driverLabel):''} — κλικ: αλλαγή"><span class="t">${escapeHtml(impPartner)}</span>${_wiPillSub(escapeHtml([row.partnerPlates,row.driverLabel].filter(Boolean).join(' · ')),rb)}</div>`;
     } else {
-      impPill=`<div class="wk3-pill own" title="Ιδιόκτητο: ${escapeHtml(plates)}${row.driverLabel?' · '+escapeHtml(row.driverLabel):''} — κλικ: αλλαγή"><span class="t">${escapeHtml(plates||'—')}</span><small>${escapeHtml(row.driverLabel||'')||'&nbsp;'}</small></div>`;
+      impPill=`<div class="wk3-pill own" title="Ιδιόκτητο: ${escapeHtml(plates)}${row.driverLabel?' · '+escapeHtml(row.driverLabel):''} — κλικ: αλλαγή"><span class="t">${escapeHtml(plates||'—')}</span>${_wiPillSub(escapeHtml(row.driverLabel||''),rb)}</div>`;
     }
   } else {
     // Β.3-3: import-without-vehicle is NOT the same red as export-without-
@@ -1369,7 +1388,7 @@ function _wiImpRowHTML(row,impNo){
     // than its neighbours (measured 26 vs 24px, rig 28/9).
     impPill=isPre
       ? `<div class="wk3-pill un" title="Pre-order εισαγωγής χωρίς όχημα — κλικ για ανάθεση"><span class="t">ΠΡΟΣ ΑΝΑΘΕΣΗ</span></div>`
-      : `<div class="wk3-pill unimp" title="Εισαγωγή χωρίς δικό όχημα — κλικ για ανάθεση"><span class="t">ΠΡΟΣ ΑΝΑΘΕΣΗ</span><small>εισαγωγή · χωρίς όχημα</small></div>`;
+      : `<div class="wk3-pill unimp" title="Εισαγωγή χωρίς δικό όχημα — κλικ για ανάθεση"><span class="t">ΠΡΟΣ ΑΝΑΘΕΣΗ</span>${_wiPillSub('εισαγωγή · χωρίς όχημα',rb)}</div>`;
   }
 
   // Left (export) cell: own vehicle with no export = empty southbound leg.
@@ -2030,14 +2049,8 @@ function _wiFlatLocPts(f,prefix){
 // (getClientName, ~line 4356) via getRefClients() — raw (unescaped) here to
 // match this file's own convention of building raw and escaping once at the
 // render site (see fromName/toName in _wiSplitFrameHTML).
-function _wiClientName(f){
-  const cid=getLinkedId(f['Client']);
-  if(cid&&typeof getRefClients==='function'){
-    const c=getRefClients().find(r=>r.id===cid);
-    if(c&&c.fields['Company Name']) return c.fields['Company Name'];
-  }
-  return f['Client Name']||f['Client Summary']||'';
-}
+// The rule lives once, in core/data-helpers.js (Relay.orderName uses it too).
+function _wiClientName(f){ return orderClientName(f); }
 // Name line + sub line for one end of a leg. Multi-stop shows the 1st stop
 // exactly like a single stop (title, then city on line 2) plus the «+N» chip
 // — same width need, same two lines (owner 27/9, see _wk3LocHTML).
@@ -2477,21 +2490,22 @@ function _wiRowHTML(row,i){
   // λέξη δεν είναι επωνυμία (owner 4/9)· το πρόθεμα ΣΥΝ. λέει ήδη το είδος.
   const partner=row.partnerLabel||data.partners.find(p=>p.id===row.partnerId)?.label||(row.partnerId?'—':'');
   const plates=[truck,trailer].filter(Boolean).join(' / ');
+  const rb=_wiRelayBadge(_wiRelayIdsOfRow(row));
   let pill;
   // Χρώμα ΚΑΙ λέξη (DESIGN ΜΕΡΟΣ Ε, owner 4/9): «ΙΔ.» + πινακίδα + οδηγός,
   // «ΣΥΝ.» + επωνυμία. Το πλήρες κείμενο ζει στο title — το πλακίδιο κόβει
   // με ορατό «…», ποτέ σιωπηλά.
   if(row.saved){
     if(partner){
-      pill=`<div class="wk3-pill par" title="Συνεργάτης: ${escapeHtml(partner)}${row.partnerPlates?' · '+escapeHtml(row.partnerPlates):''}${driver?' · '+escapeHtml(driver):''} — κλικ: αλλαγή ανάθεσης"><span class="t">${escapeHtml(partner)}</span><small>${escapeHtml([row.partnerPlates,driver].filter(Boolean).join(' · '))||'&nbsp;'}</small></div>`;
+      pill=`<div class="wk3-pill par" title="Συνεργάτης: ${escapeHtml(partner)}${row.partnerPlates?' · '+escapeHtml(row.partnerPlates):''}${driver?' · '+escapeHtml(driver):''} — κλικ: αλλαγή ανάθεσης"><span class="t">${escapeHtml(partner)}</span>${_wiPillSub(escapeHtml([row.partnerPlates,driver].filter(Boolean).join(' · ')),rb)}</div>`;
     } else {
-      pill=`<div class="wk3-pill own" title="Ιδιόκτητο: ${escapeHtml(plates)}${driver?' · '+escapeHtml(driver):''} — κλικ: αλλαγή ανάθεσης"><span class="t">${escapeHtml(plates||'—')}</span><small>${escapeHtml(driver||'')||'&nbsp;'}</small></div>`;
+      pill=`<div class="wk3-pill own" title="Ιδιόκτητο: ${escapeHtml(plates)}${driver?' · '+escapeHtml(driver):''} — κλικ: αλλαγή ανάθεσης"><span class="t">${escapeHtml(plates||'—')}</span>${_wiPillSub(escapeHtml(driver||''),rb)}</div>`;
     }
   } else {
     // «ΠΡΟΣ ΑΝΑΘΕΣΗ», όχι κενό (owner 4/9 αντικαθιστά το «χρώμα, όχι λόγια»
     // του 12/8): εκκρεμότητα με όνομα, που ζητά κλικ — και διαβάζεται χωρίς
     // το κόκκινο.
-    pill=`<div class="wk3-pill un" title="Προς ανάθεση — κλικ για ανάθεση"><span class="t">ΠΡΟΣ ΑΝΑΘΕΣΗ</span></div>`;
+    pill=`<div class="wk3-pill un" title="Προς ανάθεση — κλικ για ανάθεση"><span class="t">ΠΡΟΣ ΑΝΑΘΕΣΗ</span>${rb?`<small>${rb}</small>`:''}</div>`;
   }
 
   const stF=_wk3StFlags(pf);
@@ -3503,6 +3517,13 @@ function _wiOpenPopover(e,rowId){
   };
   const imp=row.importId?WINTL.data.imports.find(r=>r.id===row.importId):null;
 
+  // .wi-rly-hint below (measured 4/10: 6 driver swaps on orders since 1/9,
+  // one on the same truck): swapping the driver HERE moves the whole round
+  // trip and its payroll to the new driver; the hint names the right door.
+  // Only on an order that already has a driver — that is where the swap
+  // happens; a first assignment has nothing to move. Owner Q3 4/10: no
+  // availability work for relays, so the availability lines above do not
+  // know about them.
   const pop=document.getElementById('wi-popover');
   pop.innerHTML=`
     <div class="wi-pop-header">
@@ -3517,6 +3538,7 @@ function _wiOpenPopover(e,rowId){
         <div class="wi-pop-field"><span class="wi-pop-lbl">Ρυμούλκα</span>${mkDrop('tl',trailers,row.trailerId,'Πινακίδα…')}</div>
         <div class="wi-pop-field"><span class="wi-pop-lbl">Οδηγός</span>${mkDrop('dr',drivers,row.driverId,'Όνομα…','Οδηγοί: ο κανόνας 561/2006 τηρείται — επιστροφή Χ → επόμενη αναχώρηση Χ+2 (⚡Χ+1 μόνο κατ΄ εξαίρεση)')}</div>
       </div>
+      ${row.driverId?'<div class="wi-rly-hint">Για τοπική παράδοση/φόρτωση: δεξί κλικ στη γραμμή → «…με τοπικό οδηγό». Η αλλαγή οδηγού εδώ μεταφέρει ΟΛΟ το δρομολόγιο και τη μισθοδοσία.</div>':''}
       <div class="wi-pop-section-lbl">ΣΥΝΕΡΓΑΤΗΣ</div>
       <div class="wi-pop-row">
         <div class="wi-pop-field" style="flex:2"><span class="wi-pop-lbl">Εταιρεία</span>${mkDrop('pt',partners,row.partnerId,'Εταιρεία…')}</div>
@@ -4033,8 +4055,8 @@ function _wiRowPals(row){
    of growing the menu. The panel reuses the assign popover's positioning/
    escape/outside-click plumbing (_wiOpenPopover/_wiPopoverOutside) so the two
    anchored surfaces in this screen behave identically to the user. Every
-   handler underneath (_wiMerge, _wiRotAdd, _wiDoSplit, _wiSaveLocal,
-   _wiImpShift…) is unchanged — only how the user reaches it moved. */
+   handler underneath (_wiMerge, _wiRotAdd, _wiDoSplit, _wiImpShift…) is
+   unchanged — only how the user reaches it moved. */
 function _wiCtxBtn(label,fnStr,danger){
   return `<button class="wi-ctx-i${danger?' d':''}" onclick="${fnStr};_wiCtxClose()">${label}</button>`;
 }
@@ -4366,9 +4388,9 @@ async function _wiCtx(e,rowId){
   html+=_wiStockCtxItem(row);
   html+=_wiCtxBtn('⤷ Σκέλος προώθησης (ρότα)…',`_wiPanelRota(${rowId})`);
   html+=_wiSplitCtxItems(row,rowId,_wiCtxBtn);
-  // Wave 2 (owner 6/9): local movement around Βέροια tied to this order —
-  // no cost, no invoice, no round-trip need (unlike the rota leg above).
-  if(row.orderIds?.[0]) html+=_wiCtxBtn('Τοπική κίνηση (Βέροια)…',`_wiAddLocal('${row.orderIds[0]}')`);
+  // Local relay (060): one item per order this row carries — the export(s)
+  // and, on a matched pair, the import (group) too, each named explicitly.
+  html+=_wiRelayItems([...(row.orderIds||[]),...(row.importId?_wiImpIdsOf(row.importId):[])]);
   const destr=[];
   // Owner brief (7/9): grouped visually with the other destructive item below
   // — «Διάλυση groupage» never wrote different data, it just wasn't styled
@@ -4409,7 +4431,7 @@ function _wiPreLeg(rec,extra){
 }
 
 // Pre-order menu (Figma 709:1097): header, conversion (blue), the small form,
-// delete (red — owner 28/9: orders have no «Ακύρωση», only «Διαγραφή»). Nothing else: groupage, rota, split, local move, week shift and
+// delete (red — owner 28/9: orders have no «Ακύρωση», only «Διαγραφή»). Nothing else: groupage, rota, split, local relay (060 refuses it on a pre-order), week shift and
 // print all need points a pre-order does not have yet. Assignment stays on the
 // row's own ΑΝΑΘΕΣΗ cell (owner 27/9: no blocking of assignment).
 // Returns false for anything that is not a lone pre-order (normal menu).
@@ -4474,7 +4496,12 @@ async function _wiPanelSplit(rowId){
   if(!parentRec){ toast('Δεν βρέθηκε η παραγγελία','warn'); return; }
   await fhLoadLocations();
   const opt=arr=>arr.map(x=>`<option value="${x.id}">${escapeHtml(x.label)}</option>`).join('');
-  const body=`
+  // 060: a relay stays on the order it was written for. After the split the
+  // parent is no longer delivered/loaded itself (060 refuses a new relay on
+  // it, B-65 reports the old one), so the dispatcher moves it to the leg.
+  const rel=Object.values(WINTL.relay?.byOrder?.[parentOid]||{})[0];
+  const relWarn=rel?`<div class="wi-panel-warn" style="margin-bottom:10px">Η παραγγελία έχει ${rel.fields['Move Kind']==='relay_delivery'?'τοπική παράδοση':'τοπική φόρτωση'} — μετά το σπάσιμο διάγραψέ την και δήλωσέ την ξανά στο σκέλος που την αφορά.</div>`:'';
+  const body=`${relWarn}
     <div class="wi-pf" style="width:100%">
       <span class="wi-plbl">Σημείο παράδοσης-παραλαβής *</span>
       ${fhLocSelect('wiSplitLoc','')}
@@ -4991,7 +5018,7 @@ async function _wiRotAdd(parentRowId, legOid){
 // panel confirm both end up here — the button keeps the confirmAction modal,
 // the menu's «Ακύρωση προώθησης» confirms inside its own small panel instead
 // (_wiPanelConfirmUnlink) and skips straight to the write. One write, two
-// front doors — see _wiDelLocal above for the same pattern.
+// front doors.
 async function _wiRotUnlink(e,legOid,skipConfirm){
   if(e){ e.preventDefault(); e.stopPropagation(); }
   if(!skipConfirm){
@@ -5029,6 +5056,9 @@ async function _wiRotUnlink(e,legOid,skipConfirm){
 // Flat 2-item menu for the rotation-leg row (owner 7/9 — right-click used to
 // fire the unlink directly, no menu at all). Left-click keeps opening the
 // order form (_wk3Edit); the inline «⨯ αποσύνδεση» button is untouched.
+// No «…με τοπικό οδηγό» here: rota legs get no relay item in Φ1 (coordinator
+// 4/10, DECISION_LOG 2026-10-04). A relay that exists on a leg is still drawn
+// under its row and edited from that sub-row.
 function _wiLegCtx(e,legOid){
   e.preventDefault(); e.stopPropagation();
   if(_wiBlockReadOnly()) return;
@@ -5053,220 +5083,271 @@ function _wiPanelConfirmUnlink(legOid){
   _wiPanelOpen(_wiAnchorForOrder(legOid),'Ρότα','',body,footer);
 }
 
-/* ── WAVE 2: LOCAL MOVES (owner 6/9) ───────────────────────────────────
-   «Τοπικές = γύρω από τη Βέροια (Θεσσαλονίκη/Σκύδρα/Βέροια/Νάουσα). Κινήσεις
-   που δεν κοστολογούνται και δεν τιμολογούνται, ούτε υπάρχει άμεση ανάγκη
-   για backload.» A local movement tied to an international order — same
-   `local_moves` table weekly_natl.js already ships (SPEC Δ18), writing
-   `Parent Order` instead of `Parent Nat Load` (DB CHECK
-   local_moves_one_parent forbids setting both).
-   Not extracted into a shared helper with weekly_natl.js's _wnAddLocal/
-   _wnSaveLocal: that screen is live in daily production and refactoring it
-   was out of scope for this Wave — duplicating this form keeps the whole
-   blast radius of Wave 2 inside this file. ─────────────────────────────── */
+/* ── LOCAL RELAY (migration 060, owner 4/10) ──────────────────────────
+   «Παράδοση/Φόρτωση με τοπικό οδηγό»: a local driver delivers an import (or
+   loads an export) around Veroia; the international stays on the order, its
+   round trip and its value. Data, rules and the panel live in core/relay.js
+   (one source with Daily Ops); this block only places them on the board.
+   Replaces the Wave 2 «Τοπική κίνηση (Βέροια)» of 6/9 (0 rows ever written):
+   since 060 a plain local move cannot carry a Parent Order, so that form
+   would now be refused by the base. ─────────────────────────────────── */
 
-// Location name for a linked-record id, reusing the shared cache every order
-// form already fills (core/form-helpers.js) instead of a second fetch.
-function _wiLmvLoc(id){ return id ? (_fhLocationsMap[id] || '') : ''; }
-
-// Compact sub-row under the order it belongs to — same visual family as the
-// rotation leg row (.wk3-legrow): dashed border, page background, «⤷».
-function _wiLocalRowHTML(m, orderId) {
-  const f = m.fields || {};
-  const drv = WINTL.data.drivers.find(d => d.id === getLinkedId(f['Driver']));
-  const prt = WINTL.data.partners.find(p => p.id === getLinkedId(f['Partner']));
-  const trk = WINTL.data.trucks.find(t => t.id === getLinkedId(f['Truck']));
-  // DESIGN.md ΜΕΡΟΣ Ε (Κανόνας 2 — χρώμα ΚΑΙ λέξη): ίδιο ακριβώς λεξιλόγιο
-  // με τις κάρτες ανάθεσης του ίδιου board («ΙΔ.»/«ΣΥΝ.»/«ΠΡΟΣ ΑΝΑΘΕΣΗ»).
-  const whoTxt = drv
-    ? `ΙΔ. ${escapeHtml([trk?.label, drv.label].filter(Boolean).join(' · '))}`
-    : (prt ? `ΣΥΝ. ${escapeHtml(prt.label)}` : '<span class="wi-lmv-need">ΠΡΟΣ ΑΝΑΘΕΣΗ</span>');
-  const dateTxt = f['Date'] ? _wiFmt(f['Date']) : '—';
-  const fromTxt = escapeHtml(_wiLmvLoc(getLinkedId(f['From Location'])) || '—');
-  const toTxt   = escapeHtml(_wiLmvLoc(getLinkedId(f['To Location'])) || '—');
-  // T3 twin (CLAUDE.md facade trap #1): a create/patch whose Parent Order did
-  // NOT survive the read-back stays visibly ⚠ until fixed — never disappears
-  // behind a repaint.
-  const isErr = WINTL._localsSyncErr?.has(m.id);
-  const tip = isErr
-    ? '⚠ Η σύνδεση με την παραγγελία ΔΕΝ επιβεβαιώθηκε στην ανάγνωση — έλεγξε χειροκίνητα. Κλικ: επεξεργασία.'
-    : 'Τοπική κίνηση (Βέροια) — κλικ: επεξεργασία · δεξί κλικ: μενού';
-  return `<div class="wk3-row wk3-legrow wi-lmv-row${isErr?' err':''}" data-lmv-id="${m.id}" title="${tip}"
-      oncontextmenu="_wiLmvCtx(event,'${m.id}','${orderId}')"
-      onclick="event.stopPropagation();_wiAddLocal('${orderId}','${m.id}')">
-    <div class="wk3-num" style="color:var(--accent-text);font-weight:800">⤷<span class="wi-sync" id="wi-sync-lmv-${m.id}">${isErr?'⚠':''}</span></div>
-    <div class="wi-lmv-body">τοπικό · ${dateTxt} · ${fromTxt} → ${toTxt} · ${whoTxt}</div>
+// Never rejects: {state:'ok'|'err', byOrder, err}. A failed read is a banner
+// and a closed menu item, never an empty, confident board (αρχή 1).
+async function _wiRelayFetch(orders){
+  if(typeof Relay==='undefined') return {state:'err',byOrder:{},err:'core/relay.js δεν φορτώθηκε'};
+  try{
+    const recs=await Relay.loadForOrders((orders||[]).map(r=>r.id));
+    return {state:'ok',byOrder:Relay.index(recs),err:''};
+  }catch(e){
+    if(typeof logError==='function') logError(e,'weekly intl: local relays');
+    return {state:'err',byOrder:{},err:(e&&e.message)||'σφάλμα ανάγνωσης'};
+  }
+}
+// After a save/delete: re-read the relays (not the whole week) and repaint.
+// → the new relay state, or null when the week changed meanwhile.
+async function _wiRelayReload(){
+  const loadId=_wiLoadId;
+  const res=await _wiRelayFetch([...WINTL.data.exports,...WINTL.data.imports]);
+  if(loadId!==_wiLoadId) return null;   // that load paints its own
+  WINTL.relay=Object.assign(res,{syncErr:WINTL.relay?.syncErr||{}});
+  _wiPaint();
+  return WINTL.relay;
+}
+function _wiRelayOrder(oid){
+  return WINTL.data.exports.find(r=>r.id===oid)||WINTL.data.imports.find(r=>r.id===oid)||null;
+}
+// A matched import may be a GI group whose members all travel with the export;
+// the export may point at ANY member (see _wiBuildRows A1).
+function _wiImpIdsOf(importId){
+  const r=WINTL.rows.find(x=>x.type==='import'&&(x.orderIds||[]).includes(importId));
+  return r&&r.orderIds&&r.orderIds.length?r.orderIds:[importId];
+}
+// Every order a board row carries, i.e. every order whose relay belongs under
+// it: group members, the matched import (group), rota legs, a split's legs.
+function _wiRelayIdsOfRow(row){
+  const ids=[];
+  const add=id=>{ if(id&&!ids.includes(id)) ids.push(id); };
+  (row.orderIds||[]).forEach(add); add(row.orderId);
+  if(row.importId) _wiImpIdsOf(row.importId).forEach(add);
+  [...ids].forEach(pid=>(WINTL._legs?.[pid]||[]).forEach(lr=>{ (lr.orderIds||[]).forEach(add); add(lr.orderId); }));
+  if(row.hasSplitLegs) (WINTL._splitLegs?.[row.orderIds?.[0]||row.orderId]||[]).forEach(lr=>_wiRelayIdsOfRow(lr).forEach(add));
+  return ids;
+}
+// The relay sub-rows of one board row (coordinator screenshot review 5/10:
+// the old line repeated the order above it). One line per relay — driver ·
+// day · time, then only what differs from the order (Relay.diffParts); the
+// rest is in the tooltip. The order's name only where the row carries more
+// than one order of that kind (groupage, GI group, split legs): elsewhere
+// the row above IS the order. On such a row the relays of ONE driver on ONE
+// day collapse into «ΦΟΡΤΩΣΗ ΤΟΠ. ×3 · Local A · 05:00–06:00», per member on
+// click; different drivers stay separate lines.
+function _wiRelayRowsHTML(ids){
+  if(typeof Relay==='undefined'||!WINTL.relay?.byOrder) return '';
+  const list=[], nKind={};
+  ids.forEach(oid=>{
+    const o=_wiRelayOrder(oid), k=o&&Relay.kindFor(o.fields);
+    if(k) nKind[k]=(nKind[k]||0)+1;
+    Relay.KINDS.forEach(kk=>{ const r=WINTL.relay.byOrder[oid]?.[kk]; if(r) list.push({rec:r,oid,o,s:Relay.summary(r,o)}); });
+  });
+  const groups=[], byKey={};
+  list.forEach(x=>{ const key=[x.s.kind,x.s.driverId||'',x.s.day].join('|');
+    if(!byKey[key]) groups.push(byKey[key]={key,items:[]});
+    byKey[key].items.push(x); });
+  let html='';
+  groups.forEach(g=>{
+    if(g.items.length===1){ const x=g.items[0]; html+=_wiRelayRowHTML(x,nKind[x.s.kind]>1,false); return; }
+    const gk=g.key+'|'+ids[0];
+    (WINTL._rlyGrps=WINTL._rlyGrps||{})[gk]=g.items.map(x=>({id:x.rec.id,oid:x.oid,name:x.o?Relay.orderName(x.o.fields):''}));
+    // A member whose save did not verify keeps the group open: its ⚠ is never folded away.
+    const open=g.items.some(x=>WINTL.relay?.syncErr?.[x.rec.id])||!!WINTL._rlyOpen?.has(gk);
+    html+=_wiRelayGroupRowHTML(g.items,gk,open);
+    if(open) g.items.forEach(x=>{ html+=_wiRelayRowHTML(x,true,true); });
+  });
+  return html;
+}
+// The whole relay in words: what the line leaves out lives here. Raw text.
+function _wiRelayTip(x){
+  const {o,s}=x, ref=o?Relay.orderName(o.fields):'';
+  return [`${s.kind==='relay_delivery'?'Τοπική παράδοση':'Τοπική φόρτωση'}${ref?' · '+ref:''}`,
+    `${s.driverName||'ΠΡΟΣ ΑΝΑΘΕΣΗ'} · ${Relay.fmtDay(s.day)}${s.time?' '+s.time:''}`,
+    [Relay.vehicleText(s),s.point?s.pointDir+' '+s.point:''].filter(Boolean).join(' · '),
+    'Ο διεθνής μένει στην παραγγελία και στο δρομολόγιο.'].join('\n');
+}
+// «⤷ ΠΑΡΑΔΟΣΗ ΤΟΠ. · Local A · Δευ 05/10 07:00» (+ «άλλο φορτηγό LOC-1 · ρυμ.
+// TRL-L» only when they differ). named: the row carries several orders of this
+// kind. member: drawn under its group's line.
+function _wiRelayRowHTML(x,named,member){
+  const {rec,oid,o,s}=x;
+  const bad=WINTL.relay?.syncErr?.[rec.id];
+  // Reference, else client + order number (Relay.orderName): most imports have no Reference.
+  const ref=named&&o?Relay.orderName(o.fields):'';
+  const isDel=s.kind==='relay_delivery';
+  const parts=[
+    `<span class="wi-rly-tag">${s.tag}</span>`,
+    s.driverName?escapeHtml(s.driverName):'<span class="wi-rly-need">ΠΡΟΣ ΑΝΑΘΕΣΗ</span>',
+    escapeHtml(Relay.fmtDay(s.day)+(s.time?' '+s.time:'')),
+    ...Relay.diffParts(s).map(t=>escapeHtml(t)),
+    ref?`<span class="wi2-ref">${escapeHtml(ref)}</span>`:'',
+    s.done?`<span class="wi-rly-done">✓ ${isDel?'παραδόθηκε':'φορτώθηκε'}</span>`:'',
+    s.dayMismatch?'<span class="wi-rly-warn">⚠ μέρα ≠ παραγγελίας</span>':'',
+  ].filter(Boolean).join(' · ');
+  // A save whose read-back failed stays ⚠ across repaints until fixed (αρχή 1).
+  const tip=bad
+    ?`⚠ Δεν επιβεβαιώθηκαν στην ανάγνωση: ${bad.join(', ')} — κλικ: διόρθωση\n${_wiRelayTip(x)}`
+    :`${_wiRelayTip(x)}\nΚλικ: αλλαγή · δεξί κλικ: μενού`;
+  return `<div class="wk3-row wk3-legrow wi-rly-row${member?' wi-rly-mem':''}${bad?' err':''}" data-rly-id="${rec.id}" data-rly-oid="${oid}" title="${escapeHtml(tip)}"
+      oncontextmenu="_wiRelayCtx(event,'${rec.id}','${oid}')"
+      onclick="event.stopPropagation();_wiRelayOpen('${oid}','${rec.id}')">
+    <div class="wk3-num" style="color:var(--accent-text);font-weight:800">⤷<span class="wi-sync">${bad?'⚠':''}</span></div>
+    <div class="wi-rly-body">${parts}</div>
   </div>`;
 }
-
-// Create (no moveId) or edit (moveId) — same modal either way.
-async function _wiAddLocal(orderId, moveId) {
-  await fhLoadLocations();
-  const exp = WINTL.data.exports.find(r=>r.id===orderId);
-  const imp = WINTL.data.imports.find(r=>r.id===orderId);
-  const ord = exp || imp;
-  if (!ord) { toast('Η παραγγελία δεν βρέθηκε στη μνήμη — ξαναφόρτωσε την εβδομάδα', 'warn'); return; }
-  const isImport = !!imp;
-  const of = ord.fields || {};
-  const existing = moveId ? (WINTL._localsByOrder?.[orderId]||[]).find(m=>m.id===moveId) : null;
-  const ef = existing?.fields || {};
-
-  // Prefill (owner 6/9): an IMPORT ends its international leg at its LAST
-  // unloading stop — that's where the truck sits, so a local move continues
-  // FROM there. An EXPORT starts at its FIRST loading stop — a local move
-  // feeds goods TO there before the truck departs. Only on CREATE; an
-  // existing move keeps whatever it was saved with.
-  let prefillLocId = '', prefillDate = '';
-  if (!existing) {
-    if (isImport) {
-      for (let i = 10; i >= 1; i--) { const id = getLinkedId(of[`Unloading Location ${i}`]); if (id) { prefillLocId = id; break; } }
-      prefillDate = toLocalDate(of['Delivery DateTime'] || '');
-    } else {
-      prefillLocId = getLinkedId(of['Loading Location 1']) || '';
-      prefillDate = toLocalDate(of['Loading DateTime'] || '');
-    }
-  }
-  const dateVal   = existing ? (toLocalDate(ef['Date']) || '') : prefillDate;
-  const fromVal   = existing ? (getLinkedId(ef['From Location']) || '') : (isImport ? prefillLocId : '');
-  const toVal     = existing ? (getLinkedId(ef['To Location']) || '')   : (isImport ? '' : prefillLocId);
-  const drvVal    = getLinkedId(ef['Driver']);
-  const prtVal    = getLinkedId(ef['Partner']);
-  const assignVal = drvVal ? 'd:'+drvVal : (prtVal ? 'p:'+prtVal : '');
-  const truckVal  = getLinkedId(ef['Truck']) || '';
-  const timeVal   = ef['Time From'] || '';
-  const palVal    = existing ? (ef['Pallets']||'') : (of['Total Pallets']||'');
-  const descVal   = ef['Description'] || '';
-
-  const opt = (arr, sel) => arr.map(o => `<option value="${o.id}" ${o.id===sel?'selected':''}>${escapeHtml(o.label)}</option>`).join('');
-  // Driver/truck OR partner — both optional at creation (K3: unknown stays
-  // empty, shown as ΠΡΟΣ ΑΝΑΘΕΣΗ on the board, never a fabricated default).
-  const assignOpt = `<option value="">— Χωρίς ανάθεση ακόμη (ΠΡΟΣ ΑΝΑΘΕΣΗ) —</option>`
-    + `<optgroup label="Οδηγοί">${WINTL.data.drivers.map(d=>`<option value="d:${d.id}" ${assignVal==='d:'+d.id?'selected':''}>${escapeHtml(d.label)}</option>`).join('')}</optgroup>`
-    + `<optgroup label="Συνεργάτες">${WINTL.data.partners.map(p=>`<option value="p:${p.id}" ${assignVal==='p:'+p.id?'selected':''}>${escapeHtml(p.label)}</option>`).join('')}</optgroup>`;
-
-  // Panel is ~360px wide (owner 7/9 brief) — one column of .wi-pf fields
-  // instead of the old modal's 2-col .form-grid; same ids, so _wiSaveLocal
-  // below reads them exactly as before regardless of container.
-  const anchorEl = moveId ? document.querySelector(`[data-lmv-id="${moveId}"]`) : _wiAnchorForOrder(orderId);
-  const ctxLine = `${of['Loading DateTime']?_wk3D(_wiFmt(of['Loading DateTime']))+' ':''}${_wiClean(of['Loading Summary']||of['Client Name']||'—')} → ${of['Delivery DateTime']?_wk3D(_wiFmt(of['Delivery DateTime']))+' ':''}${_wiClean(of['Delivery Summary']||'—')}`;
-  _wiPanelOpen(anchorEl, existing ? 'Επεξεργασία τοπικής κίνησης' : 'Νέα τοπική κίνηση (Βέροια)', ctxLine, `
-    <div class="wn3-pnote">Θα συνδεθεί με τη διεθνή παραγγελία — δεν κοστολογείται, δεν τιμολογείται, δεν χρειάζεται γύρισμα φορτωμένο (owner 6/9). Οδηγός/όχημα ή συνεργάτης είναι προαιρετικά.</div>
-    <div class="wi-panel-fields" style="flex-direction:column;align-items:stretch">
-      <div class="wi-pf"><span class="wi-plbl">Ημερομηνία *</span>
-        <input class="form-input" type="date" id="wilm_date" value="${dateVal||''}"></div>
-      <div class="wi-pf"><span class="wi-plbl">Ανάθεση</span>
-        <select class="form-select" id="wilm_assign">${assignOpt}</select></div>
-      <div class="wi-pf"><span class="wi-plbl">Όχημα</span>
-        <select class="form-select" id="wilm_truck"><option value="">—</option>${opt(WINTL.data.trucks, truckVal)}</select></div>
-      <div class="wi-pf"><span class="wi-plbl">Ώρα (ΩΩ:ΛΛ)</span>
-        <input class="form-input" id="wilm_time" placeholder="π.χ. 11:00" value="${escapeHtml(timeVal)}"></div>
-      <div class="wi-pf"><span class="wi-plbl">Από *</span>
-        <select class="form-select" id="wilm_from"><option value="">— Επιλογή —</option>${opt(_fhLocationsArr, fromVal)}</select></div>
-      <div class="wi-pf"><span class="wi-plbl">Προς *</span>
-        <select class="form-select" id="wilm_to"><option value="">— Επιλογή —</option>${opt(_fhLocationsArr, toVal)}</select></div>
-      <div class="wi-pf"><span class="wi-plbl">Παλέτες</span>
-        <input class="form-input" type="number" id="wilm_pal" value="${palVal||''}"></div>
-      <div class="wi-pf"><span class="wi-plbl">Περιγραφή</span>
-        <input class="form-input" id="wilm_desc" placeholder="π.χ. 2 κιβώτια Άλμη" value="${escapeHtml(descVal)}"></div>
-    </div>`,
-    `<button class="btn btn-ghost" onclick="_wiPanelClose()">Άκυρο</button>
-     <button class="btn btn-success" id="wilm_submit" onclick="_wiSaveLocal('${orderId}'${existing?`,'${existing.id}'`:''})">${existing?'Αποθήκευση':'Καταχώρηση'}</button>`);
+// «⤷ ΦΟΡΤΩΣΗ ΤΟΠ. ×3 · Local A · Σάβ 03/10 05:00–06:00 ▸» — what differs from
+// the orders said once, and only when every member says the same.
+function _wiRelayGroupRowHTML(items,gk,open){
+  const s0=items[0].s, isDel=s0.kind==='relay_delivery';
+  const times=items.map(x=>x.s.time).filter(Boolean).sort();
+  const hm=times.length?(times[0]===times[times.length-1]?times[0]:times[0]+'–'+times[times.length-1]):'';
+  const d0=Relay.diffParts(s0).join(' · ');
+  const diff=items.every(x=>Relay.diffParts(x.s).join(' · ')===d0)?d0:'';
+  const parts=[
+    `<span class="wi-rly-tag">${s0.tag} ×${items.length}</span>`,
+    s0.driverName?escapeHtml(s0.driverName):'<span class="wi-rly-need">ΠΡΟΣ ΑΝΑΘΕΣΗ</span>',
+    escapeHtml(Relay.fmtDay(s0.day)+(hm?' '+hm:'')),
+    diff?escapeHtml(diff):'',
+    items.every(x=>x.s.done)?`<span class="wi-rly-done">✓ ${isDel?'παραδόθηκαν':'φορτώθηκαν'}</span>`:'',
+    items.some(x=>x.s.dayMismatch)?'<span class="wi-rly-warn">⚠ μέρα ≠ παραγγελίας</span>':'',
+  ].filter(Boolean).join(' · ');
+  const tip=[`${isDel?'Τοπικές παραδόσεις':'Τοπικές φορτώσεις'} ×${items.length} — ${s0.driverName||'ΠΡΟΣ ΑΝΑΘΕΣΗ'} · ${Relay.fmtDay(s0.day)}`,
+    ...items.map(x=>`• ${(x.o&&Relay.orderName(x.o.fields))||'—'}${x.s.time?' '+x.s.time:''} · ${[Relay.vehicleText(x.s),x.s.point?x.s.pointDir+' '+x.s.point:''].filter(Boolean).join(' · ')}`),
+    'Ο διεθνής μένει στην παραγγελία και στο δρομολόγιο.',
+    open?'Κλικ: σύμπτυξη':'Κλικ: ανά παραγγελία · δεξί κλικ: μενού'].join('\n');
+  return `<div class="wk3-row wk3-legrow wi-rly-row wi-rly-grp" data-rly-grp="${escapeHtml(gk)}" title="${escapeHtml(tip)}" aria-expanded="${open}"
+      oncontextmenu="_wiRelayGrpCtx(event,this.dataset.rlyGrp)"
+      onclick="event.stopPropagation();_wiRelayGrpToggle(this.dataset.rlyGrp)">
+    <div class="wk3-num" style="color:var(--accent-text);font-weight:800">⤷</div>
+    <div class="wi-rly-body">${parts}<span class="wi-rly-car" aria-hidden="true">${open?'▾':'▸'}</span></div>
+  </div>`;
 }
-
-async function _wiSaveLocal(orderId, moveId) {
-  const v = id => document.getElementById(id)?.value?.trim() || '';
-  const date = v('wilm_date'), from = v('wilm_from'), to = v('wilm_to');
-  if (!date || !from || !to) { toast('Ημερομηνία, από και προς είναι υποχρεωτικά', 'warn'); return; }
-  const time = v('wilm_time');
-  if (time && !/^([01][0-9]|2[0-3]):[0-5][0-9]$/.test(time)) { toast('Ώρα σε μορφή ΩΩ:ΛΛ', 'warn'); return; }
-  const assign = v('wilm_assign');
-  const driver = assign.startsWith('d:') ? assign.slice(2) : '';
-  const partner = assign.startsWith('p:') ? assign.slice(2) : '';
-  const truck = v('wilm_truck');
-  const pal = v('wilm_pal');
-  const desc = v('wilm_desc');
-
-  // Exact labels from the deployed TABLES map (worker/src/index.js local_moves
-  // block) — confirmed before writing (CLAUDE.md facade trap #1).
-  const fields = { 'Date': date, 'From Location': [from], 'To Location': [to] };
-  if (!moveId) fields['Status'] = 'Pending';
-  if (driver) fields['Driver'] = [driver];
-  if (partner) fields['Partner'] = [partner];
-  if (driver && truck) fields['Truck'] = [truck];
-  if (time) fields['Time From'] = time;
-  if (pal) fields['Pallets'] = parseFloat(pal);
-  if (desc) fields['Description'] = desc;
-  // Never both parents (DB CHECK local_moves_one_parent) — this screen only
-  // ever writes Parent Order, never Parent Nat Load (that's weekly_natl.js).
-  if (!moveId) fields['Parent Order'] = [orderId];
-
-  const btn = document.getElementById('wilm_submit');
-  if (btn) { btn.disabled = true; btn.textContent = 'Αποθήκευση…'; }
-  try {
-    const rec = moveId
-      ? await atSafePatch(TABLES.LOCAL_MOVES, moveId, fields)
-      : await atCreate(TABLES.LOCAL_MOVES, fields);
-    if (rec?.conflict) { toast('Η εγγραφή άλλαξε από άλλον χρήστη — γίνεται ανανέωση', 'warn'); _wiPanelClose(); await renderWeeklyIntl(); return; }
-    if (rec?.error) throw new Error(rec.error.message || rec.error.type);
-    invalidateCache(TABLES.LOCAL_MOVES);
-    const id = moveId || rec.id;
-
-    // CLAUDE.md facade trap #1: an unmapped label is a SILENT no-op with a
-    // 200 OK — the create/patch response alone does not prove the link
-    // landed. Read the record back and require `Parent Order` to actually
-    // name this order before calling it saved.
-    WINTL._localsSyncErr = WINTL._localsSyncErr || new Set();
-    let verifyOk;
-    try {
-      const check = await atGetOne(TABLES.LOCAL_MOVES, id);
-      verifyOk = getLinkedId(check?.fields?.['Parent Order']) === orderId;
-    } catch (e) { verifyOk = false; console.warn('[wi local move] verify read-back failed:', e?.message); }
-    if (verifyOk) WINTL._localsSyncErr.delete(id); else WINTL._localsSyncErr.add(id);
-    _wiSync('wi-sync-lmv-'+id, verifyOk?'ok':'err', verifyOk?'Η κίνηση γράφτηκε' : 'Parent Order δεν επιβεβαιώθηκε στην ανάγνωση');
-
-    _wiPanelClose();
-    toast(verifyOk
-      ? (moveId ? 'Η τοπική κίνηση ενημερώθηκε' : 'Η τοπική κίνηση καταχωρήθηκε')
-      : 'Η κίνηση γράφτηκε αλλά η σύνδεση με την παραγγελία ΔΕΝ επιβεβαιώθηκε — έλεγξε χειροκίνητα',
-      verifyOk ? 'success' : 'error');
-    renderWeeklyIntl();
-  } catch (e) {
-    console.error('_wiSaveLocal:', e);
-    if (btn) { btn.disabled = false; btn.textContent = moveId ? 'Αποθήκευση' : 'Καταχώρηση'; }
-    toast('Η κίνηση δεν αποθηκεύτηκε', 'error');
-  }
+// Open/closed is the viewer's (WINTL._rlyOpen, kept across repaints); no write.
+function _wiRelayGrpToggle(gk){
+  const st=WINTL._rlyOpen=WINTL._rlyOpen||new Set();
+  if(st.has(gk)) st.delete(gk); else st.add(gk);
+  _wiPaint();
 }
-
-// skipConfirm (owner 7/9): the sub-row menu confirms inside the small panel
-// (_wiPanelConfirmDelLocal) instead of opening the confirmAction modal on top
-// of the flat menu — same delete either way, one function, no second copy of
-// the write (αρχή 3, CLAUDE.md).
-async function _wiDelLocal(id, skipConfirm) {
-  if (!skipConfirm && !(await confirmAction('Διαγραφή αυτής της τοπικής κίνησης;', { title:'Διαγραφή τοπικής κίνησης', confirmLabel:'Διαγραφή' }))) return;
-  try {
-    await atDelete(TABLES.LOCAL_MOVES, id);
-    invalidateCache(TABLES.LOCAL_MOVES);
-    WINTL._localsSyncErr?.delete(id);
-    toast('Διαγράφηκε', 'success');
-    renderWeeklyIntl();
-  } catch (e) {
-    console.error('_wiDelLocal:', e);
-    toast('Η διαγραφή απέτυχε', 'error');
-  }
+// The group line's menu: open/close, then «Αλλαγή — <order>…» per member.
+// Each item goes through _wiRelayOpen, which keeps the read-only gate.
+function _wiRelayGrpCtx(e,gk){
+  e.preventDefault(); e.stopPropagation();
+  const mem=WINTL._rlyGrps?.[gk]||[];
+  const ctx=document.getElementById('wi-ctx');
+  let html=_wiCtxBtn(WINTL._rlyOpen?.has(gk)?'Σύμπτυξη':`Ανά παραγγελία (${mem.length})`,`_wiRelayGrpToggle('${gk}')`);
+  html+='<div class="wi-ctx-sep"></div>';
+  mem.forEach(m=>{ html+=_wiCtxBtn(`Αλλαγή — ${escapeHtml(m.name||'—')}…`,`_wiRelayOpen('${m.oid}','${m.id}')`); });
+  ctx.innerHTML=html;
+  ctx._returnFocus=e.currentTarget;
+  Object.assign(ctx.style,{display:'block',
+    left:`${Math.min(e.clientX,window.innerWidth-220)}px`,
+    top:`${Math.min(e.clientY,window.innerHeight-100-28*mem.length)}px`});
+  requestAnimationFrame(()=>{ const f=ctx.querySelector('.wi-ctx-i:not([disabled])'); if(f) f.focus(); });
+  setTimeout(()=>document.addEventListener('click',_wiCtxClose,{once:true}),10);
 }
-
-// Flat 2-item menu (owner 7/9 — was a single bare button before): edit opens
-// the same panel as a left-click; delete is confirmed INSIDE a small panel,
-// not a browser/modal confirm, and sits last + danger-styled.
-function _wiLmvCtx(e, moveId, orderId) {
+// «Intl 1 ⇄ τοπ.»: the badge goes AFTER the international's plate/driver. In
+// front of the name it read as if he were the local (review round 3, 5/10);
+// payroll says it the same way — the international's RT line, then «⇄ τοπ.».
+// `text` is already escaped HTML.
+function _wiPillSub(text,rb){
+  if(!rb) return `<small>${text||'&nbsp;'}</small>`;
+  return `<small class="wi-rly-sm">${text?`<span class="wi-rly-n">${text}</span>`:''}${rb}</small>`;
+}
+// OWNER-Q4 answered 4/10 («οχι»): the international's trip value is never
+// reduced automatically when a local does the delivery/loading — this badge
+// (and the payroll's «⇄ τοπ.») is the whole signal; accounting decides.
+function _wiRelayBadge(ids){
+  if(typeof Relay==='undefined'||!WINTL.relay?.byOrder) return '';
+  const lines=[];
+  ids.forEach(oid=>Relay.KINDS.forEach(k=>{
+    const r=WINTL.relay.byOrder[oid]?.[k]; if(!r) return;
+    const o=_wiRelayOrder(oid), s=Relay.summary(r,o), ref=o?Relay.orderName(o.fields):'';
+    lines.push(`${k==='relay_delivery'?'Τοπική παράδοση':'Τοπική φόρτωση'}${ref?' '+ref:''}: ${s.driverName||'ΠΡΟΣ ΑΝΑΘΕΣΗ'} · ${Relay.fmtDay(s.day)}${s.time?' '+s.time:''}`);
+  }));
+  if(!lines.length) return '';
+  return `<b class="wi-rly-b" title="${escapeHtml(lines.join('\n')+'\nΟ διεθνής μένει στην παραγγελία, στο δρομολόγιο και στην αξία του.')}">⇄ τοπ.</b>`;
+}
+// Menu items for these orders. Named («— εισαγωγή I2») whenever the menu could
+// mean more than one order: a matched pair, a group, a segment.
+// Hidden where the base refuses a relay (VS, cancelled, pre-order, split
+// parent — the leg's own row offers it); disabled while the relays load, when
+// they did not load, on an order without a date, and on a partner-run order
+// (Φ1: own fleet only; an existing relay there stays editable).
+// Rota legs get no item in Φ1 (_wiLegCtx; DECISION_LOG 2026-10-04).
+function _wiRelayItems(oids,opts){
+  if(typeof Relay==='undefined') return '';
+  const uniq=[...new Set((oids||[]).filter(Boolean))];
+  const named=!!(opts&&opts.explicit)||uniq.length>1;
+  let html='';
+  uniq.forEach(oid=>{
+    const o=_wiRelayOrder(oid); if(!o) return;
+    const why=Relay.blockReason(o,{isSplitParent:!!WINTL._splitLegs?.[oid]});
+    if(Relay.isHiddenReason(why)) return;
+    const kind=Relay.kindFor(o.fields), isDel=kind==='relay_delivery';
+    const has=!!WINTL.relay?.byOrder?.[oid]?.[kind];
+    const ref=Relay.orderName(o.fields);
+    const suffix=named?` — ${isDel?'εισαγωγή':'εξαγωγή'}${ref?' '+escapeHtml(ref):''}`:'';
+    const label=(has?(isDel?'Τοπική παράδοση: αλλαγή':'Τοπική φόρτωση: αλλαγή'):Relay.menuLabel(kind))+suffix+'…';
+    if(WINTL.relay?.state==='loading') html+=_wiCtxBtnDisabled(label,'Οι τοπικές παραδόσεις/φορτώσεις φορτώνουν ακόμη — ξαναδοκίμασε σε λίγο');
+    else if(WINTL.relay?.state!=='ok') html+=_wiCtxBtnDisabled(label,'Οι τοπικές παραδόσεις/φορτώσεις δεν φορτώθηκαν — ↻ Ξαναδοκίμασε στη λωρίδα πάνω από τον πίνακα');
+    else if(why==='partner'&&!has) html+=_wiCtxBtnDisabled(label,'Την παραγγελία την εκτελεί συνεργάτης — τοπικός οδηγός μόνο σε παραγγελίες του δικού μας στόλου (Φ1)');
+    else if(why==='no_date') html+=_wiCtxBtnDisabled(label,`Η παραγγελία δεν έχει ημερομηνία ${isDel?'παράδοσης':'φόρτωσης'} — η τοπική παίρνει τη μέρα της`);
+    else html+=_wiCtxBtn(label,`_wiRelayOpen('${oid}')`);
+  });
+  return html;
+}
+// The relay record itself, by id — never re-derived from the order's
+// direction, which may have changed after the relay was written (B-65).
+function _wiRelayById(oid,relayId){
+  return Object.values(WINTL.relay?.byOrder?.[oid]||{}).find(r=>r.id===relayId)||null;
+}
+// relayId given (sub-row, its menu) = edit THAT relay; none (order menus) =
+// the order's relay of its kind, or a new one.
+function _wiRelayOpen(oid,relayId){
+  if(_wiBlockReadOnly()) return;
+  if(typeof Relay==='undefined'){ toast('Το core/relay.js δεν φορτώθηκε — ανανέωσε τη σελίδα','error'); return; }
+  const o=_wiRelayOrder(oid);
+  if(!o){ toast('Η παραγγελία δεν βρέθηκε στη μνήμη — ξαναφόρτωσε την εβδομάδα','warn'); return; }
+  const byId=relayId?_wiRelayById(oid,relayId):null;
+  if(relayId&&!byId){ toast('Η τοπική δεν είναι πια στη μνήμη — ↻ ξαναφόρτωσε την εβδομάδα','warn'); return; }
+  const kind=byId?byId.fields['Move Kind']:Relay.kindFor(o.fields);
+  const existing=byId||WINTL.relay?.byOrder?.[oid]?.[kind]||null;
+  if(!existing&&WINTL.relay?.state!=='ok'){ toast('Οι τοπικές δεν φορτώθηκαν — δεν ξέρουμε αν υπάρχει ήδη μία','warn'); return; }
+  const anchor=(existing&&document.querySelector(`[data-rly-id="${existing.id}"]`))||_wiAnchorForOrder(oid);
+  Relay.openPanel({order:o,kind,existing,
+    // close only if the panel still shows THIS form (#rly_submit) — a slow save
+    // must not shut a rota/split panel the user opened meanwhile.
+    host:{open:(t,c,b,f)=>_wiPanelOpen(anchor,t,c,b,f),close:()=>{ if(document.getElementById('rly_submit')) _wiPanelClose(); }},
+    onDone:_wiRelayDone}).catch(e=>reportError('Το πάνελ τοπικής δεν άνοιξε',e));
+}
+async function _wiRelayDone(res){
+  const se=(WINTL.relay=WINTL.relay||{state:'err',byOrder:{}}).syncErr=WINTL.relay.syncErr||{};
+  if(res.ok) delete se[res.id]; else se[res.id]=res.problems;
+  toast(res.ok
+    ?(res.created?'Η τοπική καταχωρήθηκε ✓':'Η τοπική ενημερώθηκε ✓')
+    :`Η τοπική γράφτηκε, αλλά ΔΕΝ επιβεβαιώθηκαν: ${res.problems.join(', ')} — δες το ⚠ στη γραμμή`,
+    res.ok?'success':'error');
+  await _wiRelayReload();
+}
+// Flat 2-item menu, same shape as the rota leg's: edit = a left-click; delete
+// is confirmed inside a small panel and sits last, danger-styled.
+function _wiRelayCtx(e,relayId,oid){
   e.preventDefault(); e.stopPropagation();
   if(_wiBlockReadOnly()) return;
   const ctx=document.getElementById('wi-ctx');
   let html='';
-  html+=_wiCtxBtn('Επεξεργασία…',`_wiAddLocal('${orderId}','${moveId}')`);
+  html+=_wiCtxBtn('Αλλαγή…',`_wiRelayOpen('${oid}','${relayId}')`);
   html+='<div class="wi-ctx-sep"></div>';
-  html+=_wiCtxBtn('Διαγραφή',`_wiPanelConfirmDelLocal('${moveId}')`,true);
-  ctx.innerHTML = html;
+  html+=_wiCtxBtn('Διαγραφή τοπικής',`_wiRelayConfirmDel('${relayId}','${oid}')`,true);
+  ctx.innerHTML=html;
   ctx._returnFocus=e.currentTarget;
   Object.assign(ctx.style,{display:'block',
     left:`${Math.min(e.clientX,window.innerWidth-220)}px`,
@@ -5274,12 +5355,34 @@ function _wiLmvCtx(e, moveId, orderId) {
   requestAnimationFrame(()=>{ const f=ctx.querySelector('.wi-ctx-i:not([disabled])'); if(f) f.focus(); });
   setTimeout(()=>document.addEventListener('click',_wiCtxClose,{once:true}),10);
 }
-function _wiPanelConfirmDelLocal(moveId){
-  const anchorEl=document.querySelector(`[data-lmv-id="${moveId}"]`);
-  const body=`<div class="wi-panel-warn">Διαγραφή αυτής της τοπικής κίνησης;</div>`;
+function _wiRelayConfirmDel(relayId,oid){
+  const o=_wiRelayOrder(oid);
+  const r=_wiRelayById(oid,relayId);
+  const s=r?Relay.summary(r,o):null;
+  const what=s?`${s.kind==='relay_delivery'?'τοπικής παράδοσης':'τοπικής φόρτωσης'} (${s.driverName||'ΠΡΟΣ ΑΝΑΘΕΣΗ'} · ${Relay.fmtDay(s.day)})`:'τοπικής';
+  const body=`<div class="wi-panel-warn">Διαγραφή της ${escapeHtml(what)}; Η παραγγελία και ο διεθνής δεν αλλάζουν.</div>`;
   const footer=`<button class="btn btn-ghost" onclick="_wiPanelClose()">Άκυρο</button>
-    <button class="btn btn-danger" onclick="_wiPanelClose();_wiDelLocal('${moveId}',true)">Διαγραφή</button>`;
-  _wiPanelOpen(anchorEl,'Διαγραφή τοπικής κίνησης','',body,footer);
+    <button class="btn btn-danger" onclick="_wiPanelClose();_wiRelayDel('${relayId}','${oid}')">Διαγραφή</button>`;
+  // A member folded into its group line has no element of its own: anchor on the order.
+  _wiPanelOpen(document.querySelector(`[data-rly-id="${relayId}"]`)||_wiAnchorForOrder(oid),'Διαγραφή τοπικής','',body,footer);
+}
+// The DELETE, then the relays re-read once: the re-read is the proof, and a
+// failed re-read is said apart from a failed delete.
+async function _wiRelayDel(relayId,oid){
+  if(_wiBlockReadOnly()) return;
+  try{ await Relay.remove(relayId); }
+  catch(e){
+    console.error('_wiRelayDel:',e);
+    toast('Η διαγραφή απέτυχε: '+((e&&e.message)||''),'error');
+    await _wiRelayReload();
+    return;
+  }
+  if(WINTL.relay?.syncErr) delete WINTL.relay.syncErr[relayId];
+  const res=await _wiRelayReload();
+  if(!res) return;   // the week changed meanwhile
+  if(res.state!=='ok') toast('Η τοπική διαγράφηκε, αλλά η επανανάγνωση απέτυχε — ↻ Ξαναδοκίμασε στη λωρίδα πάνω από τον πίνακα','warn');
+  else if(_wiRelayById(oid,relayId)) toast('Η διαγραφή στάλθηκε, αλλά η τοπική ΥΠΑΡΧΕΙ ακόμη στην ανάγνωση — έλεγξέ την','error');
+  else toast('Η τοπική διαγράφηκε ✓','success');
 }
 
 // Owner (10/8): δεξί κλικ σε ΕΙΣΑΓΩΓΗ → Groupage με άλλη εισαγωγή + Μεταφορά
@@ -5302,7 +5405,7 @@ function _wiMatchedImpCtx(e,exportRowId){
 }
 // `matchedExportRowId` = opened from the cards inside an export row: the
 // pair's assignment (via the export row) plus the items that act on the import
-// ALONE (print, rota, local move). Grouping, week shift and split belong to
+// ALONE (print, rota, local relay). Grouping, week shift and split belong to
 // the pair's row — offering them here would write on the import while the
 // board shows the pair as one unit (αρχή 3).
 async function _wiImpCtx(e,rowId,matchedExportRowId){
@@ -5320,7 +5423,9 @@ async function _wiImpCtx(e,rowId,matchedExportRowId){
     html+=_wiCtxBtn('Ανάθεση…',`_wiPanelAssign(${matchedExportRowId},false)`);
     html+=_wiCtxBtn('Εκτύπωση…',`_wiMenuPrint(${rowId},true)`);
     html+=_wiCtxBtn('⤷ Σκέλος προώθησης (ρότα)…',`_wiPanelRota(${rowId})`);
-    if(row.orderId) html+=_wiCtxBtn('Τοπική κίνηση (Βέροια)…',`_wiAddLocal('${row.orderId}')`);
+    // Explicit «— εισαγωγή …»: opened from the pair's row, so the words must
+    // say the local driver serves the IMPORT, not the export beside it.
+    html+=_wiRelayItems(row.orderIds,{explicit:true});
     // The truck's row is the EXPORT's: a new piece rides with the pair.
     html+=_wiStockCtxItem(WINTL.rows.find(r=>r.id===matchedExportRowId));
     html+=_wiStockReturnLoneItem(row,matchedExportRowId);
@@ -5357,8 +5462,8 @@ async function _wiImpCtx(e,rowId,matchedExportRowId){
   html+=_wiStockCtxItem(row);
   html+=_wiCtxBtn('⤷ Σκέλος προώθησης (ρότα)…',`_wiPanelRota(${rowId})`);
   html+=_wiSplitCtxItems(row,rowId,_wiCtxBtn);
-  // Wave 2 (owner 6/9): local movement around Βέροια tied to this import.
-  if(row.orderId) html+=_wiCtxBtn('Τοπική κίνηση (Βέροια)…',`_wiAddLocal('${row.orderId}')`);
+  // Local relay (060): «Παράδοση με τοπικό οδηγό…» per import of this row.
+  html+=_wiRelayItems(row.orderIds);
   html+=_wiCtxBtn('Μεταφορά εβδομάδας…',`_wiPanelWeekShift(${rowId})`);
   const ctx=document.getElementById('wi-ctx');
   ctx.innerHTML=html;
@@ -5654,7 +5759,7 @@ async function _wiSegCtx(e,rowId,orderId,isImportSide){
   html+=_wiCtxBtn('Εκτύπωση…',`_wiMenuPrint(${rowId},${isImportSide?'true':'false'})`);
   if(row.splitLegOf) html+=_wiCtxBtn('Αρχική παραγγελία…',`_wk3Edit('${row.splitLegOf}')`);
   html+=_wiCtxBtn('⤷ Σκέλος προώθησης (ρότα)…',`_wiPanelRota(${rowId})`);
-  if(orderId) html+=_wiCtxBtn('Τοπική κίνηση (Βέροια)…',`_wiAddLocal('${orderId}')`);
+  html+=_wiRelayItems([orderId],{explicit:true});
   html+='<div class="wi-ctx-sep"></div>';
   // A piece leaves its truck as «Επιστροφή στο απόθεμα» (stock plan §6.6) —
   // the same _wiCancelGroupMember write, never a delete; the piece keeps all
@@ -6459,7 +6564,22 @@ function _wiStockPieceLine(p,withLot){
   const dd=late?_wk3D(_wiFmt(f['Delivery DateTime'])):'';
   const head=withLot?`${escapeHtml(OrdersStock.lotNumLabel(f))} · ${escapeHtml(_wiClientName(f)||'—')} · `:'';
   const del=(loose&&OrdersStock.canWrite())?`<button type="button" class="wi2-unlink" onclick="event.stopPropagation();_wiStockDelPiece('${p.id}')" title="Διαγραφή κομματιού (μόνο χωρίς φορτηγό)">Διαγραφή</button>`:'';
-  return `<div class="wi-panel-opt wi-stk-piece" role="button" tabindex="0" onclick="_wiStockOpenPiece('${p.id}')" onkeydown="if(event.key==='Enter'){event.preventDefault();this.click()}" title="Κλικ: φόρμα κομματιού"><span>${head}${escapeHtml(who)} · ${escapeHtml(dest)} · ${escapeHtml(OrdersStock.statusWord(st))} · <b>${+(f['Total Pallets']||0)}p</b>${ld?` · φόρτωση ${ld}`:''}${late?` · <span class="wi-stk-bad">παράδοση ${dd} — εκπρόθεσμο</span>`:''}${f['Reference']?` · <span class="wi-stk-ref">${escapeHtml(String(f['Reference']))}</span>`:''}</span>${del}</div>`;
+  return `<div class="wi-panel-opt wi-stk-piece" role="button" tabindex="0" onclick="_wiStockOpenPiece('${p.id}')" onkeydown="if(event.key==='Enter'){event.preventDefault();this.click()}" title="Κλικ: φόρμα κομματιού"><span>${head}${escapeHtml(who)}${_wiStockPieceRelay(p.id,!tr&&!pa)} · ${escapeHtml(dest)} · ${escapeHtml(OrdersStock.statusWord(st))} · <b>${+(f['Total Pallets']||0)}p</b>${ld?` · φόρτωση ${ld}`:''}${late?` · <span class="wi-stk-bad">παράδοση ${dd} — εκπρόθεσμο</span>`:''}${f['Reference']?` · <span class="wi-stk-ref">${escapeHtml(String(f['Reference']))}</span>`:''}</span>${del}</div>`;
+}
+// «⇄ τοπ.» on a piece that carries a relay (_wiRelayStockNote): from the
+// week's relays, or from the read the loose-piece list makes for pieces of
+// other weeks (WINTL._stkRelays). The «no truck» advice only on a truckless
+// piece: a lot panel also lists pieces already on a truck.
+function _wiStockPieceRelay(oid,noTruck){
+  if(typeof Relay==='undefined') return '';
+  // A piece of this week: the board's relays (re-read after every relay save);
+  // any other: the loose list's own read.
+  const inWeek=!!_wiRelayOrder(oid)&&WINTL.relay?.state==='ok';
+  const r=Object.values((inWeek?WINTL.relay.byOrder?.[oid]:WINTL._stkRelays?.[oid])||{})[0];
+  if(!r) return '';
+  const s=Relay.summary(r,_wiRelayOrder(oid)||(WINTL._stkPieces||[]).find(x=>x.id===oid));
+  const tip=`${s.kind==='relay_delivery'?'Τοπική παράδοση':'Τοπική φόρτωση'}: ${s.driverName||'ΠΡΟΣ ΑΝΑΘΕΣΗ'} · ${Relay.fmtDay(s.day)}${s.time?' '+s.time:''}${noTruck?' — δηλωμένη στο κομμάτι, χωρίς φορτηγό: διάγραψέ την ή άλλαξέ την όταν μπει σε φορτηγό.':''}`;
+  return ` <b class="wi-rly-b" title="${escapeHtml(tip)}">⇄ τοπ.</b>`;
 }
 function _wiStockOpenPiece(id){
   const p=(WINTL._stkPieces||[]).find(x=>x.id===id); if(!p) return;
@@ -6489,10 +6609,24 @@ async function _wiStockLooseOpen(anchor){
   const st=WINTL.data.stock; if(!st||st.status!=='ok') return;
   WINTL._stkPieces=st.loose||[];
   const body=WINTL._stkPieces.length
-    ? `<div class="wi-panel-list wi-stk-list">${WINTL._stkPieces.map(p=>_wiStockPieceLine(p,true)).join('')}</div>
+    ? `<div class="wi-panel-list wi-stk-list" id="wi-stk-loose">${WINTL._stkPieces.map(p=>_wiStockPieceLine(p,true)).join('')}</div>
+       <div class="wi-panel-note wi-stk-bad" id="wi-stk-loose-rly" hidden></div>
        <div class="wi-panel-note dim">Σε φορτηγό: δεξί κλικ στη γραμμή του φορτηγού → «+ Κομμάτι από απόθεμα…».</div>`
     : `<div class="wi-panel-empty">Κανένα κομμάτι χωρίς φορτηγό</div>`;
   _wiPanelOpen(anchor,'Κομμάτια χωρίς φορτηγό',`${WINTL._stkPieces.length} σε όλες τις εβδομάδες`,body,'');
+  // Loose pieces span every week, the board's relays only this one: their
+  // relays are read here (one request per 50), then the list is repainted.
+  if(!WINTL._stkPieces.length||typeof Relay==='undefined') return;
+  const pieces=WINTL._stkPieces, tok={}; WINTL._stkRelTok=tok;
+  let idx=null;
+  try{ idx=Relay.index(await Relay.loadForOrders(pieces.map(p=>p.id))); }catch(e){ if(typeof logError==='function') logError(e,'weekly intl: loose pieces relays'); }
+  if(WINTL._stkRelTok!==tok||WINTL._stkPieces!==pieces) return;
+  const box=document.getElementById('wi-stk-loose'), note=document.getElementById('wi-stk-loose-rly'); if(!box) return;
+  if(!idx){ if(note){ note.hidden=false; note.textContent='Οι τοπικές παραδόσεις των κομματιών δεν φορτώθηκαν — δεν σημαίνει ότι δεν υπάρχουν.'; } return; }
+  const m=Object.assign({},WINTL._stkRelays||{});
+  pieces.forEach(p=>{ if(idx[p.id]) m[p.id]=idx[p.id]; else delete m[p.id]; });   // a relay deleted since the last read leaves too
+  WINTL._stkRelays=m;
+  box.innerHTML=pieces.map(p=>_wiStockPieceLine(p,true)).join('');
 }
 
 // C1-05 (critic-1, round 1): an empty return trip is filled from its «ΚΕΝΟ
@@ -7035,6 +7169,21 @@ async function _wiOnPieceSavedRun(newId,ctx){
   if(typeof rtOnOrderSaved==='function') rtOnOrderSaved(ctx.leadId).catch(e=>console.warn('[wi stock] rt sync:',e&&e.message));
 }
 
+// 060 × stock (review round 3, 5/10): a relay is bound to its ORDER, and a
+// piece that goes back to stock is still that order — so its local delivery
+// stays, now on a piece with no truck («ίδιο» tractor = nobody's). The confirm
+// says so before the click, the way the split panel does for a split parent;
+// nothing is deleted on the dispatcher's behalf (the piece may go on another
+// truck the same day), and the loose-piece line keeps «⇄ τοπ.». Plain text
+// (confirmAction escapes). Relays that did not load are said, never «none».
+function _wiRelayStockNote(oid){
+  if(typeof Relay==='undefined') return '';
+  if(WINTL.relay?.state!=='ok') return '\n\nΟι τοπικές παραδόσεις δεν φορτώθηκαν — έλεγξε αν το κομμάτι έχει τοπική πριν το επιστρέψεις.';
+  const rel=Object.values(WINTL.relay.byOrder?.[oid]||{})[0];
+  if(!rel) return '';
+  const s=Relay.summary(rel,_wiRelayOrder(oid));
+  return `\n\nΤο κομμάτι έχει ${s.kind==='relay_delivery'?'τοπική παράδοση':'τοπική φόρτωση'} (${s.driverName||'ΠΡΟΣ ΑΝΑΘΕΣΗ'} · ${Relay.fmtDay(s.day)}) — μένει δηλωμένη, χωρίς φορτηγό. Διάγραψέ την ή άλλαξέ την όταν το κομμάτι μπει ξανά σε φορτηγό.`;
+}
 // «Επιστροφή στο απόθεμα» (§6.6) — never a delete. Execution beats planning:
 // a piece already In Transit/Delivered does not go back (re-read live first).
 async function _wiStockReturn(rowId,orderId,isImportSide){
@@ -7042,7 +7191,7 @@ async function _wiStockReturn(rowId,orderId,isImportSide){
   if(await _wiExecutingLive(orderId)){ toast('Το κομμάτι είναι σε κίνηση — δεν επιστρέφει στο απόθεμα','warn'); return; }
   try{
     await _wiCancelGroupMember(rowId,orderId,isImportSide,
-      {text:'Επιστροφή στο απόθεμα — το κομμάτι μένει χωρίς φορτηγό, με όλα του τα στοιχεία.',title:'Επιστροφή στο απόθεμα',label:'Επιστροφή',done:'Επέστρεψε στο απόθεμα ✓'});
+      {text:'Επιστροφή στο απόθεμα — το κομμάτι μένει χωρίς φορτηγό, με όλα του τα στοιχεία.'+_wiRelayStockNote(orderId),title:'Επιστροφή στο απόθεμα',label:'Επιστροφή',done:'Επέστρεψε στο απόθεμα ✓'});
   }finally{ _wiNoUndo(); }   // B-13: leg off + group off + vehicle off are one return
   _wiStockLoad();
 }
@@ -7051,7 +7200,7 @@ async function _wiStockReturnLone(expRowId){
   const row=WINTL.rows.find(r=>r.id===expRowId); if(!row||!row.importId) return;
   const pid=row.importId, expOid=row.orderIds[0];
   if(await _wiExecutingLive(pid)){ toast('Το κομμάτι είναι σε κίνηση — δεν επιστρέφει στο απόθεμα','warn'); return; }
-  if(!(await confirmAction('Επιστροφή στο απόθεμα — το κομμάτι μένει χωρίς φορτηγό, με όλα του τα στοιχεία.',
+  if(!(await confirmAction('Επιστροφή στο απόθεμα — το κομμάτι μένει χωρίς φορτηγό, με όλα του τα στοιχεία.'+_wiRelayStockNote(pid),
     {title:'Επιστροφή στο απόθεμα',confirmLabel:'Επιστροφή'}))) return;
   let back=false;
   try{ back=await _wiStockReturnLoneRun(pid,expOid,expRowId); }
@@ -7215,7 +7364,7 @@ window._wiMenuPrint = _wiMenuPrint;
 window._wiPanelWeekShift = _wiPanelWeekShift;
 window._wiLegCtx = _wiLegCtx;
 window._wiPanelConfirmUnlink = _wiPanelConfirmUnlink;
-window._wiPanelConfirmDelLocal = _wiPanelConfirmDelLocal;
+window._wiRelayConfirmDel = _wiRelayConfirmDel;
 window._wk3PickDate = _wk3PickDate;
 // Αναδιπλούμενα εθνικά πάνελ (owner 10/8) — ανεξάρτητα, με μνήμη ανά χρήστη
 function _wk3FeedTog(side){
@@ -7227,10 +7376,11 @@ function _wk3FeedTog(side){
 window._wk3FeedTog = _wk3FeedTog;
 window._wiImpShift = _wiImpShift;
 window._wiImpGroup = _wiImpGroup;
-window._wiAddLocal = _wiAddLocal;
-window._wiSaveLocal = _wiSaveLocal;
-window._wiDelLocal = _wiDelLocal;
-window._wiLmvCtx = _wiLmvCtx;
+window._wiRelayOpen = _wiRelayOpen;
+window._wiRelayCtx = _wiRelayCtx;
+window._wiRelayGrpToggle = _wiRelayGrpToggle; window._wiRelayGrpCtx = _wiRelayGrpCtx;
+window._wiRelayDel = _wiRelayDel;
+window._wiRelayReload = _wiRelayReload;
 window._wiSegCtx = _wiSegCtx;
 window._wi2SegToggle = _wi2SegToggle;   // «+N» tile (inline onclick)
 window._wiCancelGroupMember = _wiCancelGroupMember;
