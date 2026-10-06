@@ -6506,7 +6506,8 @@ async function _wiStockLotOpen(anchor,lotRec){
   // The pieces' header and list come from the READ below, not from the lot's
   // counters: a lot with none shows nothing (no «Κομμάτια · 0»).
   const body=`${flag}${notes}<div id="wi-stk-ph"></div>
-    <div class="wi-panel-list wi-stk-list" id="wi-stk-pieces">${nPieces?'<div class="wi-panel-empty">Φόρτωση κομματιών…</div>':''}</div>`;
+    <div class="wi-panel-list wi-stk-list" id="wi-stk-pieces">${nPieces?'<div class="wi-panel-empty">Φόρτωση κομματιών…</div>':''}</div>
+    <div class="wi-panel-note wi-stk-bad" id="wi-stk-lot-rly" hidden></div>`;
   const nudge=c.key==='close';
   const btns=[];
   if(OrdersStock.canWrite()){
@@ -6528,7 +6529,23 @@ async function _wiStockLotOpen(anchor,lotRec){
   const n=WINTL._stkPieces.length, done=WINTL._stkPieces.filter(p=>(p.fields||{})['Status']==='Delivered').length;
   if(ph) ph.outerHTML=n?`<div class="wi-panel-note wi-stk-h">Κομμάτια · ${n}${done?` (${done} ${done===1?'παραδόθηκε':'παραδόθηκαν'})`:''}</div>`:'';
   box.innerHTML=WINTL._stkPieces.map(p=>_wiStockPieceLine(p,false)).join('');
-  if(!n) box.style.display='none';
+  if(!n){ box.style.display='none'; return; }
+  // A lot's pieces sit on trucks in ANY week, the board's relays cover only
+  // this one: without this read a piece of another week with a relay showed no
+  // «⇄ τοπ.» and looked relay-less (review P3 #3, relay release). Same read and
+  // merge as the loose-piece list (_wiStockLooseOpen); a failed read is said
+  // in the panel, never painted as «no relay».
+  if(typeof Relay==='undefined') return;
+  const pieces=WINTL._stkPieces;
+  let idx=null;
+  try{ idx=Relay.index(await Relay.loadForOrders(pieces.map(p=>p.id))); }catch(e){ if(typeof logError==='function') logError(e,'weekly intl: lot pieces relays'); }
+  if(WINTL._stkPiecesTok!==tok||WINTL._stkPieces!==pieces) return;
+  const list=document.getElementById('wi-stk-pieces'), note=document.getElementById('wi-stk-lot-rly'); if(!list) return;
+  if(!idx){ if(note){ note.hidden=false; note.textContent='Οι τοπικές παραδόσεις των κομματιών δεν φορτώθηκαν — δεν σημαίνει ότι δεν υπάρχουν.'; } return; }
+  const m=Object.assign({},WINTL._stkRelays||{});
+  pieces.forEach(p=>{ if(idx[p.id]) m[p.id]=idx[p.id]; else delete m[p.id]; });   // a relay deleted since the last read leaves too
+  WINTL._stkRelays=m;
+  list.innerHTML=pieces.map(p=>_wiStockPieceLine(p,false)).join('');
 }
 // The lot's order usually sits in ANOTHER week (it went to the warehouse days
 // ago), so it is read by id — _wk3Edit only knows this week's rows and would
@@ -6567,13 +6584,13 @@ function _wiStockPieceLine(p,withLot){
   return `<div class="wi-panel-opt wi-stk-piece" role="button" tabindex="0" onclick="_wiStockOpenPiece('${p.id}')" onkeydown="if(event.key==='Enter'){event.preventDefault();this.click()}" title="Κλικ: φόρμα κομματιού"><span>${head}${escapeHtml(who)}${_wiStockPieceRelay(p.id,!tr&&!pa)} · ${escapeHtml(dest)} · ${escapeHtml(OrdersStock.statusWord(st))} · <b>${+(f['Total Pallets']||0)}p</b>${ld?` · φόρτωση ${ld}`:''}${late?` · <span class="wi-stk-bad">παράδοση ${dd} — εκπρόθεσμο</span>`:''}${f['Reference']?` · <span class="wi-stk-ref">${escapeHtml(String(f['Reference']))}</span>`:''}</span>${del}</div>`;
 }
 // «⇄ τοπ.» on a piece that carries a relay (_wiRelayStockNote): from the
-// week's relays, or from the read the loose-piece list makes for pieces of
-// other weeks (WINTL._stkRelays). The «no truck» advice only on a truckless
-// piece: a lot panel also lists pieces already on a truck.
+// week's relays, or from the read the loose-piece list and the lot panel make
+// for pieces of other weeks (WINTL._stkRelays). The «no truck» advice only on
+// a truckless piece: a lot panel also lists pieces already on a truck.
 function _wiStockPieceRelay(oid,noTruck){
   if(typeof Relay==='undefined') return '';
   // A piece of this week: the board's relays (re-read after every relay save);
-  // any other: the loose list's own read.
+  // any other: the panel's own read.
   const inWeek=!!_wiRelayOrder(oid)&&WINTL.relay?.state==='ok';
   const r=Object.values((inWeek?WINTL.relay.byOrder?.[oid]:WINTL._stkRelays?.[oid])||{})[0];
   if(!r) return '';
