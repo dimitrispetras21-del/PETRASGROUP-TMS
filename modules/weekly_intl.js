@@ -6541,11 +6541,13 @@ async function _wiStockLotOpen(anchor,lotRec){
   try{ idx=Relay.index(await Relay.loadForOrders(pieces.map(p=>p.id))); }catch(e){ if(typeof logError==='function') logError(e,'weekly intl: lot pieces relays'); }
   if(WINTL._stkPiecesTok!==tok||WINTL._stkPieces!==pieces) return;
   const list=document.getElementById('wi-stk-pieces'), note=document.getElementById('wi-stk-lot-rly'); if(!list) return;
-  if(!idx){ if(note){ note.hidden=false; note.textContent='Οι τοπικές παραδόσεις των κομματιών δεν φορτώθηκαν — δεν σημαίνει ότι δεν υπάρχουν.'; } return; }
   const m=Object.assign({},WINTL._stkRelays||{});
-  pieces.forEach(p=>{ if(idx[p.id]) m[p.id]=idx[p.id]; else delete m[p.id]; });   // a relay deleted since the last read leaves too
+  // A failed read also drops what an EARLIER read left for these pieces: kept,
+  // a stale «⇄ τοπ.» sat right next to the «not loaded» note (review P3).
+  pieces.forEach(p=>{ if(idx&&idx[p.id]) m[p.id]=idx[p.id]; else delete m[p.id]; });   // a relay deleted since the last read leaves too
   WINTL._stkRelays=m;
   list.innerHTML=pieces.map(p=>_wiStockPieceLine(p,false)).join('');
+  if(!idx&&note){ note.hidden=false; note.textContent='Οι τοπικές παραδόσεις των κομματιών δεν φορτώθηκαν — δεν σημαίνει ότι δεν υπάρχουν.'; }
 }
 // The lot's order usually sits in ANOTHER week (it went to the warehouse days
 // ago), so it is read by id — _wk3Edit only knows this week's rows and would

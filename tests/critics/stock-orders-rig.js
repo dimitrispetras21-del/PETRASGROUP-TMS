@@ -519,7 +519,7 @@ async function runFormKeeps(browser) {
   ok(inl.bad && /— διάλεξε από τη λίστα$/.test(inl.label) && inl.marks === 1, 'A: the error is IN the form, on that field only — ' + JSON.stringify(inl));
   ok(inl.focus === 'ls_u_1' && inl.inView, 'A: focus on the offending field, scrolled into view — ' + JSON.stringify({ focus: inl.focus, inView: inl.inView }));
   const tA = await page.evaluate(() => [...(document.getElementById('tms-toast-container') || { children: [] }).children].map(t => ({ text: t.textContent, warn: /--warn/.test(t.style.background) })));
-  ok(tA.some(t => t.warn && /Παράδοση 1 «Cold»/.test(t.text) && /Δεν αποθηκεύτηκε τίποτα/.test(t.text)), 'A: a warn toast names the field and says nothing was saved — ' + JSON.stringify(tA));
+  ok(tA.some(t => t.warn && /Παράδοση 1 «Cold»/.test(t.text) && /Η παραγγελία δεν αποθηκεύτηκε\./.test(t.text)), 'A: a warn toast names the field and says the order was not saved — ' + JSON.stringify(tA));
   await page.screenshot({ path: shot('03a-unpicked-location-kept') });
   // search again in the focused field and pick from the list → the note goes; Save goes through
   await page.fill('#ls_u_1', 'Cold Hub');
@@ -838,7 +838,7 @@ async function runPiece(browser) {
   await page.screenshot({ path: shot('05-piece-over-draw') });
   const refusedBody = cap.posts.filter(p => p.table === 'orders')[nOrders].fields;
   await page.fill('#pal_l_1', '5'); await page.fill('#pal_u_1', '5');
-  // the Reference duplicate guard asks (confirmAction) — the stub answers «no duplicates» for {Reference}=
+  // the Reference duplicate guard asks (native confirm) — the stub answers «no duplicates» for {Reference}=
   await page.click('#btnSubmit');
   await page.waitForFunction(() => window._pieceCalls && window._pieceCalls.length === 1, null, { timeout: 10000 });
   const pb = cap.posts.filter(p => p.table === 'orders').at(-1).fields;
@@ -1007,6 +1007,17 @@ async function runLotEdit(browser) {
   await waitText(page, /Η παρτίδα καταργήθηκε, η παραγγελία ΔΕΝ αποθηκεύτηκε — ξαναπάτα Αποθήκευση/);
   const unTo3 = (await page.evaluate(() => (document.getElementById('tms-toast-container') || {}).innerText || '')).replace(/\s+/g, ' ');
   ok(!/δεν αποθηκεύτηκε τίποτα/.test(unTo3) && cap.deletes.length === nD + 2, '1b P3-1: 2nd refused Save still «Η παρτίδα καταργήθηκε…», no 2nd unmark — ' + unTo3);
+  // P3 (6/10): the lot is already gone and now a location is typed but not picked — the
+  // location toast says the lot was removed and the order not saved, never «τίποτα».
+  await page.fill('#ls_l_1', ''); await page.fill('#ls_l_1', 'Pack'); await page.click('#f_Goods');
+  await page.evaluate(() => { const c = document.getElementById('tms-toast-container'); if (c) c.innerHTML = ''; });
+  const nP4 = cap.patches.length;
+  await page.click('#btnSubmit');
+  await waitText(page, /Φόρτωση 1 «Pack»/);
+  const unTo4 = (await page.evaluate(() => (document.getElementById('tms-toast-container') || {}).innerText || '')).replace(/\s+/g, ' ');
+  ok(/Φόρτωση 1 «Pack».*Η παρτίδα καταργήθηκε, η παραγγελία ΔΕΝ αποθηκεύτηκε/.test(unTo4) && !/δεν αποθηκεύτηκε τίποτα/i.test(unTo4) && cap.patches.length === nP4 && cap.deletes.length === nD + 2,
+    'P3: unmarked lot + unpicked location → «Η παρτίδα καταργήθηκε, η παραγγελία ΔΕΝ αποθηκεύτηκε», nothing sent — ' + unTo4);
+  await page.evaluate(() => fhPickLinked('l_1', 'recLocGR1', 'Pack House A'));
   await page.click('#btnSubmit');
   await page.waitForFunction(() => !document.getElementById('modalOverlay').classList.contains('open'), null, { timeout: 10000 });
   ok(cap.deletes.length === nD + 2 && cap.deletes.at(-1).id === 'recLot1', 'unmark allowed → DELETE STOCK LOTS recLot1 (once, not again on the retry)');
@@ -1287,6 +1298,26 @@ async function runOwnerCharge(browser) {
   await page.waitForFunction(() => !document.getElementById('modalOverlay').classList.contains('open'), null, { timeout: 12000 });
   ok(cap.chargePatches.length === nC0 + 1 && JSON.stringify(cap.chargePatches.at(-1).body) === '{"warehouse_charge":75}' && cap.patches.filter(p => p.table === 'orders').length > nO0,
     'S5R3-01: the order\'s «Αποθήκευση» saves the typed charge first (PATCH {warehouse_charge:75}), then the order — ' + JSON.stringify({ c: cap.chargePatches.length - nC0, o: cap.patches.filter(p => p.table === 'orders').length - nO0, last: cap.patches.slice(-3).map(p => p.table + ':' + p.id) }));
+  // P3 (6/10): the typed charge IS saved by this press, then the ORDER stops on a location typed
+  // but not picked — the toast must say the order was not saved, never «Δεν αποθηκεύτηκε τίποτα».
+  setCharge(cap.money, null);
+  await open();
+  await fillCommon(page);
+  const nC3 = cap.chargePatches.length, nO3 = cap.patches.filter(p => p.table === 'orders').length;
+  await page.fill('#f_WhCharge', '65');
+  await page.fill('#ls_l_1', '');          // an emptied field drops its picked id (core/form-helpers.js)
+  await page.fill('#ls_l_1', 'Pack');      // the list opens; nothing is picked
+  await page.click('#f_Goods');
+  await page.evaluate(() => { const c = document.getElementById('tms-toast-container'); if (c) c.innerHTML = ''; });
+  await page.click('#btnSubmit');
+  await page.waitForFunction(() => /Φόρτωση 1 «Pack»/.test((document.getElementById('tms-toast-container') || {}).innerText || ''), null, { timeout: 8000 }).catch(() => {});
+  const tC = (await page.evaluate(() => (document.getElementById('tms-toast-container') || {}).innerText || '')).replace(/\s+/g, ' ');
+  const sC = { c: cap.chargePatches.length - nC3, body: (cap.chargePatches.at(-1) || {}).body, o: cap.patches.filter(p => p.table === 'orders').length - nO3,
+    open: await page.evaluate(() => document.getElementById('modalOverlay').classList.contains('open')), toast: tC };
+  ok(sC.c === 1 && JSON.stringify(sC.body) === '{"warehouse_charge":65}' && sC.o === 0 && sC.open
+    && /Φόρτωση 1 «Pack»/.test(tC) && /Η παραγγελία δεν αποθηκεύτηκε\./.test(tC) && !/δεν αποθηκεύτηκε τίποτα/i.test(tC),
+    'P3: charge saved + unpicked location → the order is not saved, and the toast does NOT say nothing was saved — ' + JSON.stringify(sC));
+  await close();
   // … and a refused charge stops the order save: the modal stays with the reason, the order is not written.
   setCharge(cap.money, null);
   await open();
