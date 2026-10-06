@@ -13,6 +13,7 @@
 // Stages (each on its own page, so one red check does not hide the others):
 // catalog/card/print/CSV (G-27, E-12, PR-14) · form warning + lazy list
 // (PR-17, G-31) · tick rules, no_split, duplicate (OWNER-Q8, G-14, G-13) ·
+// the form survives an unpicked location and a duplicate-Reference Cancel (5/10) ·
 // lot create (OWNER-Q1, G-14, mark refused + retry, OWNER-Q2, G-26) · piece
 // (G-10, PR-06, G-29, over-draw, G-32, piece edit) · lot edit + refused delete
 // (OWNER-Q1, DL-03, AU-07) · accountant (E-07, close, ERP sheet OWNER-Q9) ·
@@ -176,7 +177,12 @@ async function newPage(browser, role, view) {
       const f = (url.match(/filterByFormula=([^&]*)/) || [])[1] || '';
       if (f.includes('ARRAYJOIN({Parent Order}')) { const pr = (f.match(/FIND\("(rec[A-Za-z0-9]+)"/) || [])[1]; return json(r, { records: cap.fx.orders.filter(o => (o.fields['Parent Order'] || [])[0] === pr) }); }
       if (f.includes('ARRAYJOIN({Stock Lot}')) { const lr = (f.match(/FIND\("(rec[A-Za-z0-9]+)"/) || [])[1]; return json(r, { records: cap.fx.orders.filter(o => (o.fields['Stock Lot'] || [])[0] === lr) }); }
-      if (f.includes('{Reference}')) return json(r, { records: [] });   // duplicate guards: none
+      // duplicate guards: none, unless a stage sets cap.dupRef (runFormKeeps). cap.dupExactOnly
+      // answers only the exact {Reference}='…' guard, not findDuplicateOrders' LOWER(TRIM(…)).
+      if (f.includes('{Reference}')) {
+        const hit = cap.dupRef && f.toLowerCase().includes(cap.dupRef.toLowerCase()) && !(cap.dupExactOnly && /LOWER\(/.test(f));
+        return json(r, { records: hit ? [{ id: 'recDupOld', fields: { Reference: cap.dupRef, 'Loading DateTime': addDays(TODAY, -2) + 'T08:00:00' } }] : [] });
+      }
       return json(r, { records: cap.fx.orders });
     }
     const b = req.postDataJSON() || {};
@@ -442,6 +448,130 @@ async function runFormTick(browser) {
   ok(!(await page.$eval('#f_StockLot', e => e.checked)), 'G-13: duplicate of a lot → warning «Το αντίγραφο ΔΕΝ είναι παρτίδα…», box unticked');
   await page.evaluate(() => closeModal());
   ok(cap.errors.length === 0, 'no page errors / native dialogs — ' + cap.errors.join(' | '));
+  await page.context().close();
+}
+
+// Live 5/10 (pre-existing): two answers of the order submit drew in the SAME #modal as
+// the form (confirmAction) and wiped it — a location typed but not picked from the list,
+// and a Cancel on the duplicate-Reference question. The form must survive both with every
+// value intact; the proof is the field values and the request BODY, never a toast.
+async function runFormKeeps(browser) {
+  console.log('\n[dispatcher] form survives: unpicked location · duplicate Reference Cancel');
+  const page = await newPage(browser, 'dispatcher', 'catalog');
+  const cap = page._cap;
+  await gotoPage(page, 'orders', BASE_URL);
+  await page.waitForSelector('#ocrow_recPc1', { timeout: 20000 });
+  // Every field of the form → its value (checked for boxes/radios). Keyed by id, radios by name:value.
+  const snap = () => page.evaluate(() => {
+    const o = {};
+    document.querySelectorAll('#modalBody input, #modalBody select, #modalBody textarea').forEach((e, i) => {
+      const k = e.id || (e.name ? e.name + ':' + e.value : '#' + i);
+      o[k] = (e.type === 'checkbox' || e.type === 'radio') ? e.checked : e.value;
+    });
+    return o;
+  });
+  const state = () => page.evaluate(() => {
+    const b = document.getElementById('btnSubmit');
+    return { open: document.getElementById('modalOverlay').classList.contains('open'), form: !!document.getElementById('f_Reference'),
+      btn: b ? b.textContent.trim() + (b.disabled ? ' (disabled)' : '') : 'gone', title: document.getElementById('modalTitle').textContent };
+  });
+  const orderPosts = () => cap.posts.filter(p => p.table === 'orders');
+  const clearToasts = () => page.evaluate(() => { const c = document.getElementById('tms-toast-container'); if (c) c.innerHTML = ''; });
+  const fill = async (ref, unload) => {
+    await page.evaluate(() => openIntlCreate());
+    await page.waitForSelector('#f_StockLot', { timeout: 8000 });
+    await page.selectOption('#f_Direction', 'Export');
+    await page.evaluate(() => fhPickLinked('client', 'recCliA', 'Πελάτης Α'));
+    await page.fill('#f_Reference', ref);
+    await page.fill('#f_Goods', 'Φρέσκα λαχανικά');
+    await page.fill('#f_Price', '1800');
+    await page.fill('#f_GrossWeight', '21000');
+    await fillCommon(page);
+    await page.check('input[name="f_PalletExch"][value="no"]');
+    await page.evaluate(() => fhPickLinked('l_1', 'recLocGR1', 'Pack House A'));
+    await page.fill('#pal_l_1', '33');
+    await page.fill('#dt_l_1', addDays(TODAY, 1));
+    if (unload) await page.evaluate(() => fhPickLinked('u_1', 'recDestGR', 'Cold Hub B'));
+    await page.fill('#pal_u_1', '33');
+    await page.fill('#dt_u_1', addDays(TODAY, 3));
+  };
+
+  // ── A. a delivery location TYPED, never picked → Save → said in the form, the form stays ──
+  await fill('TEST-KEEP-1', false);
+  await page.fill('#ls_u_1', 'Cold');            // the list opens; nothing is picked
+  await page.click('#f_Goods');                   // leave the field the way a user does
+  const before = await snap();
+  await clearToasts();
+  await page.click('#btnSubmit');
+  await page.waitForTimeout(800);
+  const sA = await state();
+  ok(sA.open && sA.form && sA.title === 'Νέα διεθνής παραγγελία' && sA.btn === 'Αποθήκευση', 'A: unpicked location → the order form is still open, «Αποθήκευση» enabled — ' + JSON.stringify(sA));
+  const afterA = await snap();
+  const lostA = Object.keys(before).filter(k => before[k] !== afterA[k]);
+  ok(Object.keys(before).length > 20 && !lostA.length, 'A: every field still holds what was typed (' + Object.keys(before).length + ' fields, changed: ' + JSON.stringify(lostA) + ')');
+  ok(orderPosts().length === 0, 'A: nothing was sent (' + orderPosts().length + ' order POST)');
+  const inl = await page.evaluate(() => {
+    const s = document.getElementById('ls_u_1');
+    return { bad: s.classList.contains('oi-loc-bad'), label: s.parentElement.parentElement.querySelector('.form-label').textContent.trim(),
+      focus: document.activeElement && document.activeElement.id, marks: document.querySelectorAll('#modal .oi-loc-bad').length,
+      inView: (() => { const r = s.getBoundingClientRect(); return r.top >= 0 && r.bottom <= innerHeight; })() };
+  });
+  ok(inl.bad && /— διάλεξε από τη λίστα$/.test(inl.label) && inl.marks === 1, 'A: the error is IN the form, on that field only — ' + JSON.stringify(inl));
+  ok(inl.focus === 'ls_u_1' && inl.inView, 'A: focus on the offending field, scrolled into view — ' + JSON.stringify({ focus: inl.focus, inView: inl.inView }));
+  const tA = await page.evaluate(() => [...(document.getElementById('tms-toast-container') || { children: [] }).children].map(t => ({ text: t.textContent, warn: /--warn/.test(t.style.background) })));
+  ok(tA.some(t => t.warn && /Παράδοση 1 «Cold»/.test(t.text) && /Δεν αποθηκεύτηκε τίποτα/.test(t.text)), 'A: a warn toast names the field and says nothing was saved — ' + JSON.stringify(tA));
+  await page.screenshot({ path: shot('03a-unpicked-location-kept') });
+  // search again in the focused field and pick from the list → the note goes; Save goes through
+  await page.fill('#ls_u_1', 'Cold Hub');
+  const item = page.locator('#ls_u_1_d .linked-drop-item', { hasText: 'Cold Hub B' }).first();
+  await item.waitFor({ timeout: 8000 });
+  await item.click();
+  await page.waitForTimeout(300);
+  const cleared = await page.evaluate(() => ({ id: document.getElementById('lv_u_1').value, marks: document.querySelectorAll('#modal .oi-loc-bad, #modal .oi-loc-msg').length }));
+  ok(cleared.id === 'recDestGR' && cleared.marks === 0, 'A: picked from the list → the mark is gone before Save — ' + JSON.stringify(cleared));
+  await page.click('#btnSubmit');
+  await page.waitForFunction(() => !document.getElementById('modalOverlay').classList.contains('open'), null, { timeout: 10000 }).catch(() => {});
+  const pA = orderPosts();
+  const fA = (pA[0] || {}).fields || {};
+  ok(pA.length === 1 && JSON.stringify(fA['Unloading Location 1']) === '["recDestGR"]' && JSON.stringify(fA['Loading Location 1']) === '["recLocGR1"]'
+    && fA.Reference === 'TEST-KEEP-1' && fA.Price === 1800 && fA['Gross Weight kg'] === 21000 && fA.Direction === 'Export' && JSON.stringify(fA.Client) === '["recCliA"]'
+    && fA['Pallet Exchange'] === false && fA['Refrigerator Mode'] === 'Continuous' && fA['Temperature °C'] === 2,
+    'A: then Save → ONE order POST carrying everything typed before the error — ' + JSON.stringify({ n: pA.length, u1: fA['Unloading Location 1'], ref: fA.Reference, price: fA.Price, gw: fA['Gross Weight kg'] }));
+  ok(!(await state()).open, 'A: the form closed only after the save');
+
+  // ── B. duplicate Reference → «Ακύρωση» → the form stays (the exact guard, then both guards) ──
+  for (const [tag, exact] of [['B1 «Πιθανό διπλό»', true], ['B2 «Πιθανό duplicate»', false]]) {
+    cap.dupRef = 'TEST-DUP-' + (exact ? '1' : '2'); cap.dupExactOnly = exact;
+    await fill(cap.dupRef, true);
+    const b0 = await snap(), n0 = orderPosts().length;
+    cap.dialogs = []; cap.dismissDialog = true;
+    await page.click('#btnSubmit');
+    await page.waitForFunction(() => document.getElementById('btnSubmit') && !document.getElementById('btnSubmit').disabled, null, { timeout: 10000 }).catch(() => {});
+    await page.waitForTimeout(300);
+    cap.dismissDialog = false;
+    const sB = await state(), bB = await snap();
+    const lostB = Object.keys(b0).filter(k => b0[k] !== bB[k]);
+    ok(cap.dialogs.length === 1 && new RegExp(exact ? 'Πιθανό διπλό' : 'Πιθανό duplicate').test(cap.dialogs[0]) && cap.dialogs[0].includes(cap.dupRef),
+      tag + ': the question was asked once, without touching the form — ' + JSON.stringify(cap.dialogs.map(d => d.split('\n')[0])));
+    ok(sB.open && sB.form && sB.btn === 'Αποθήκευση' && !lostB.length && Object.keys(b0).length > 20,
+      tag + ' → Ακύρωση: the form is still open and filled, «Αποθήκευση» enabled — ' + JSON.stringify({ sB, changed: lostB }));
+    ok(orderPosts().length === n0, tag + ' → Ακύρωση: nothing was sent');
+    if (exact) await page.screenshot({ path: shot('03b-duplicate-cancel-kept') });
+    if (!exact) {
+      // «OK» to every question → the same form saves as a new order, once.
+      cap.dialogs = []; cap.acceptDialog = true;
+      await page.click('#btnSubmit');
+      await page.waitForFunction(() => !document.getElementById('modalOverlay').classList.contains('open'), null, { timeout: 10000 }).catch(() => {});
+      cap.acceptDialog = false;
+      const pB = orderPosts().slice(n0);
+      ok(cap.dialogs.length === 2 && pB.length === 1 && pB[0].fields.Reference === cap.dupRef && JSON.stringify(pB[0].fields['Unloading Location 1']) === '["recDestGR"]',
+        tag + ' → OK to both questions: ONE order POST with the typed Reference — ' + JSON.stringify({ dialogs: cap.dialogs.length, posts: pB.length }));
+    } else {
+      await page.evaluate(() => closeModal());
+    }
+  }
+  cap.dupRef = null;
+  ok(cap.errors.length === 0, 'no page errors / unexpected native dialogs — ' + cap.errors.join(' | '));
   await page.context().close();
 }
 
@@ -1539,7 +1669,7 @@ async function runPrintLotPartner(browser) {
   try {
     // RIG_ONLY=runA,runB runs those stages alone (a quick re-run while fixing one screen).
     const only = (process.env.RIG_ONLY || '').split(',').filter(Boolean);
-    for (const run of [runCatalog, runForm, runFormTick, runMarkExisting, runLotCreate, runPiece, runLotEdit, runAccountant, runOwner, runOwnerCharge, runOwnerNoCharge, runReopen, runWarehouse, runPrint, runPrintNoClients, runPrintGroup, runPrintEscape, runPrintLotPartner]) {
+    for (const run of [runCatalog, runForm, runFormTick, runFormKeeps, runMarkExisting, runLotCreate, runPiece, runLotEdit, runAccountant, runOwner, runOwnerCharge, runOwnerNoCharge, runReopen, runWarehouse, runPrint, runPrintNoClients, runPrintGroup, runPrintEscape, runPrintLotPartner]) {
       if (only.length && !only.includes(run.name)) continue;
       try { await run(browser); } catch (e) { failed++; console.log('  ✗ ' + run.name + ' threw: ' + (e && e.stack || e)); }
     }
