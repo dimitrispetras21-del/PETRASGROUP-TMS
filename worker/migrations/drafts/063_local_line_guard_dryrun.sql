@@ -4,7 +4,7 @@
 -- WHAT: 063's own DO block, statement for statement (every guard, change and proof, B-54 run as
 --   tms_check_runner), wrapped in ONE outer DO block that first fingerprints data 063 must not touch, then
 --   checks the result, and ENDS WITH A DELIBERATE ERROR. The error rolls the whole block back: NOTHING it did
---   is kept (no function text, no function setting, no trigger change).
+--   is kept (no function text, no trigger change).
 -- WHEN: the same evening, AFTER 15:00 (the team works 05:30-14:30), BEFORE 063_local_line_guard.sql. It
 --   takes the same lock as 063 (lock_timeout 5 s, then it gives up - run it again a little later).
 -- WHY ONE DO BLOCK: the Supabase SQL editor is NOT atomic across statements (lesson 056), but ONE DO
@@ -20,7 +20,7 @@
 --   A different message altogether ("063: ...", "063 proof: ...", a lock timeout) is the guard or proof of
 --   063 that stopped - exactly what 063 itself would have said. Do NOT run 063.
 -- AFTER: SELECT that nothing was kept - the trigger dl_local_line_guard is still on deleted_at only and
---   dl_local_day_sync's config is still only its search_path.
+--   dl_local_day_sync is still 060's text (md5 297954261e9e8fe2936f6217f31f1e7a, no tms.local_day_sync in it).
 -- Scenarios: A 063's changes exist inside the block; B the trigger count did not move and B-54 equals it;
 --   C data 063 must not touch is unchanged (payroll lines, local moves, every auditor row, every public
 --   sequence's last_value).
@@ -45,7 +45,23 @@ DECLARE
   n int;
   trg_before int; trg_after int; deleted_at_attnum int;
   dl_live_before bigint; dl_local_before bigint; lm_before bigint;
-  old_src text; new_src text; old_rules text;
+  old_src text; new_src text; old_rules text; old_sync text; new_sync text;
+  guard_owner oid; guard_acl text; sync_owner oid; sync_acl text;
+  -- The three additions to 060's dl_local_day_sync, as they stand in its new text below. Taking
+  -- them out of the live text after the CREATE must give back 060's md5: the proof that nothing
+  -- else in the function changed.
+  sync_add_var text := $i$    prev_flag text;      -- 063: the caller's tms.local_day_sync, given back after the relabel
+$i$;
+  sync_add_set text := $i$    -- 063: dl_local_line_guard lets a local line's relay or route change only while
+    -- tms.local_day_sync = 'on'. Set around the ONE write of this function that changes such a
+    -- column, given back right after it - no RETURN in between. Not a SET clause on the function
+    -- (a custom setting stored on a function needs superuser; the SQL editor's postgres is not) and
+    -- not set once at the top (an early RETURN would leave it 'on' for the rest of the transaction).
+    prev_flag := current_setting('tms.local_day_sync', true);
+    PERFORM set_config('tms.local_day_sync', 'on', true);
+$i$;
+  sync_add_back text := $i$    PERFORM set_config('tms.local_day_sync', coalesce(prev_flag, ''), true);
+$i$;
   r record; v numeric;
 BEGIN
   PERFORM set_config('search_path', 'public, extensions', true);
@@ -64,19 +80,20 @@ BEGIN
                      AND table_name = 'dl_entries' AND column_name = 'local_move_id') THEN
     RAISE EXCEPTION '063: 060 is not applied (dl_local_line_guard / dl_local_day_sync / dl_entries.local_move_id missing) - stop';
   END IF;
-  IF EXISTS (SELECT 1 FROM pg_proc p, unnest(p.proconfig) c
-              WHERE p.oid = 'public.dl_local_day_sync(bigint,date)'::regprocedure AND c LIKE 'tms.local_day_sync=%')
-     OR position('local_relay:line_locked' IN (SELECT prosrc FROM pg_proc WHERE oid = 'public.dl_local_line_guard()'::regprocedure)) > 0 THEN
+  SELECT prosrc, proowner, proacl::text INTO old_src, guard_owner, guard_acl
+    FROM pg_proc WHERE oid = 'public.dl_local_line_guard()'::regprocedure;
+  SELECT prosrc, proowner, proacl::text INTO old_sync, sync_owner, sync_acl
+    FROM pg_proc WHERE oid = 'public.dl_local_day_sync(bigint,date)'::regprocedure;
+  IF position('tms.local_day_sync' IN old_sync) > 0 OR position('local_relay:line_locked' IN old_src) > 0 THEN
     RAISE EXCEPTION '063: already applied';
   END IF;
   -- The guard is replaced and the rollback puts 060's text back: refuse if it is not that text.
-  SELECT prosrc INTO old_src FROM pg_proc WHERE oid = 'public.dl_local_line_guard()'::regprocedure;
   IF md5(old_src) <> '2b4de99653da7f0859f08b07a410225c' THEN
     RAISE EXCEPTION '063: dl_local_line_guard is not the 060 text (md5 %) - re-measure', md5(old_src);
   END IF;
-  -- The flag lets the sync's own writes through: what it writes was read from 060's text.
-  IF (SELECT md5(prosrc) FROM pg_proc WHERE oid = 'public.dl_local_day_sync(bigint,date)'::regprocedure)
-     <> '297954261e9e8fe2936f6217f31f1e7a'
+  -- The sync is re-created from 060's text below and the rollback puts that text back: refuse if
+  -- the live one is anything else (body, SECURITY DEFINER, its one setting).
+  IF md5(old_sync) <> '297954261e9e8fe2936f6217f31f1e7a'
      OR NOT EXISTS (SELECT 1 FROM pg_proc WHERE oid = 'public.dl_local_day_sync(bigint,date)'::regprocedure
                      AND prosecdef AND proconfig = ARRAY['search_path=public']) THEN
     RAISE EXCEPTION '063: dl_local_day_sync is not the 060 function (body, SECURITY DEFINER, search_path) - re-measure';
@@ -128,8 +145,99 @@ BEGIN
     RETURN NEW;
   END $f$;
 
-  -- 2. THE SYNC MARKS ITS OWN WRITES (function-level SET: restored by Postgres at every exit).
-  ALTER FUNCTION public.dl_local_day_sync(bigint, date) SET tms.local_day_sync = 'on';
+  -- 2. THE SYNC MARKS ITS OWN RELABEL: 060's text + the three additions above, nothing else.
+  CREATE OR REPLACE FUNCTION public.dl_local_day_sync(p_driver bigint, p_day date) RETURNS void
+    LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $f$
+  DECLARE
+    live dl_entries%rowtype; has_money boolean; valued boolean; anchor bigint; route_txt text;
+    prev_flag text;      -- 063: the caller's tms.local_day_sync, given back after the relabel
+    stamp text := ' (' || to_char(now() AT TIME ZONE 'Europe/Athens', 'DD/MM/YYYY') || ')';
+    sep text := ' ' || chr(183) || ' ';
+    -- Greek labels from base64 (this file stays ASCII). Transliterated:
+    w_local   text := convert_from(decode('zqTOn86gzpnOms6f', 'base64'), 'UTF8');          -- TOPIKO
+    w_deliv   text := convert_from(decode('z4DOsc+BzqzOtM6/z4POtw==', 'base64'), 'UTF8');  -- paradosi
+    w_load    text := convert_from(decode('z4bPjM+Bz4TPic+Dzrc=', 'base64'), 'UTF8');      -- fortosi
+    t_gone    text := convert_from(decode('zqTOv8+AzrnOus6tz4IgzrrOuc69zq7Pg861zrnPgjogzrrOsc68zq/OsSDOts+Jzr3PhM6xzr3OriDOus6vzr3Ot8+Dzrcgz4TOt8+CIM63zrzOrc+BzrHPgg==', 'base64'), 'UTF8');
+                                    -- Topikes kiniseis: kamia zontani kinisi tis imeras
+    r_gone    text := convert_from(decode('z4TOv8+AzrnOus6tz4IgzrrOuc69zq7Pg861zrnPgjogzrrOsc68zq/OsSDOts+Jzr3PhM6xzr3OriDPgM65zrE=', 'base64'), 'UTF8');
+                                    -- topikes kiniseis: kamia zontani pia
+    r_changed text := convert_from(decode('zqzOu867zrHOvs6xzr0gzr/OuSDPhM6/z4DOuc66zq3PgiDOus65zr3Ors+DzrXOuc+CIM+EzrfPgiDOt868zq3Pgc6xz4I=', 'base64'), 'UTF8');
+                                    -- allaxan oi topikes kiniseis tis imeras
+  BEGIN
+    IF p_driver IS NULL OR p_day IS NULL THEN RETURN; END IF;
+    -- Serialise every writer of this (driver, day). Without it two relays saved at once (api.js
+    -- runs requests in parallel; two dispatchers; an order day move meeting a save) both see "no
+    -- line", both INSERT, and the second dies on dl_local_day_live - taking the save with it.
+    -- The day enters the key as a number: date-to-text follows DateStyle, and the SQL editor and
+    -- PostgREST must take the SAME lock.
+    PERFORM pg_advisory_xact_lock(hashtext('dl_local_day'), hashtext(p_driver::text || ':' || (p_day - DATE '2000-01-01')::text));
+
+    -- OWNER-Q2 answered 5/10 (every relay driver: daily TOPIKO line): no driver is exempt and
+    -- nothing about the driver is read - a live relay of his that day is the only thing that
+    -- decides whether the day has a line.
+
+    -- Label = order numbers only (Order No = orders.id, never renamed), so the label never goes
+    -- stale and a changed label always means a changed set of relays.
+    SELECT min(lm.id),
+           w_local || sep || string_agg(CASE lm.move_kind WHEN 'relay_delivery' THEN w_deliv ELSE w_load END
+                                        || ' ' || lm.parent_order_id, sep ORDER BY lm.id)
+      INTO anchor, route_txt
+      FROM local_moves lm
+     WHERE lm.driver_id = p_driver AND lm.move_date = p_day AND lm.move_kind <> 'local'
+       AND lm.deleted_at IS NULL AND lm.status <> 'Cancelled';
+
+    SELECT * INTO live FROM dl_entries
+     WHERE driver_id = p_driver AND entry_date = p_day AND local_move_id IS NOT NULL AND deleted_at IS NULL;
+    -- Money = a non-zero amount. "Value 0" is accounting saying "nothing is owed": a line holding
+    -- only zeros is cancelled like an empty one, instead of waiting in review (B-08) for nothing.
+    has_money := coalesce(live.trip_value, 0) <> 0 OR coalesce(live.advance, 0) <> 0 OR coalesce(live.expenses, 0) <> 0;
+    -- Valued = accounting typed ANY amount, "value 0" included. Used for the relabel below, not for
+    -- the cancel path: a day settled at 0 that then gets ANOTHER relay must be looked at again.
+    -- With has_money there, the new relay would be settled at 0 silently - no NULL amount (not
+    -- pending), a line exists (B-64 quiet). (front review, round 2, 4/10)
+    valued := live.trip_value IS NOT NULL OR live.advance IS NOT NULL OR live.expenses IS NOT NULL;
+
+    IF anchor IS NULL THEN                                  -- no live relay left that day
+      IF live.id IS NULL THEN RETURN; END IF;
+      IF has_money THEN                                     -- possibly owed: flag, never drop silently
+        -- Skip only while the line is STILL flagged for this reason (a repeat sync adds no second
+        -- note). Not "the reason is somewhere in the note": accounting's check clears the flag and
+        -- keeps the note, so after clear -> relay re-added -> relay deleted again that test would
+        -- leave a paid line with no relay and no flag (review round 3, 5/10).
+        UPDATE dl_entries SET needs_review = true, updated_at = now(),
+               review_note = concat_ws(sep, review_note, r_gone || stamp)
+         WHERE id = live.id
+           AND NOT (needs_review AND position(r_gone IN coalesce(review_note, '')) > 0);
+      ELSE
+        UPDATE dl_entries SET deleted_at = now(), updated_at = now(), deleted_reason = t_gone
+         WHERE id = live.id;
+      END IF;
+      RETURN;
+    END IF;
+
+    IF live.id IS NULL THEN
+      -- amounts stay NULL on purpose, same rule as RT lines (owner 5/9): accounting enters them
+      INSERT INTO dl_entries (driver_id, entry_type, entry_date, date_end, route, local_move_id, source, created_by)
+      VALUES (p_driver, 'trip', p_day, p_day, route_txt, anchor, 'auto', 'trigger:local_move');
+      RETURN;
+    END IF;
+
+    -- 063: dl_local_line_guard lets a local line's relay or route change only while
+    -- tms.local_day_sync = 'on'. Set around the ONE write of this function that changes such a
+    -- column, given back right after it - no RETURN in between. Not a SET clause on the function
+    -- (a custom setting stored on a function needs superuser; the SQL editor's postgres is not) and
+    -- not set once at the top (an early RETURN would leave it 'on' for the rest of the transaction).
+    prev_flag := current_setting('tms.local_day_sync', true);
+    PERFORM set_config('tms.local_day_sync', 'on', true);
+    -- The label belongs to the trigger, not to money: always refreshed. A changed set of relays
+    -- after a value was written (even 0) goes to review (B-08); accounting clears it with a reason.
+    UPDATE dl_entries SET local_move_id = anchor, route = route_txt, updated_at = now(),
+           needs_review = needs_review OR (valued AND route IS DISTINCT FROM route_txt),
+           review_note = CASE WHEN valued AND route IS DISTINCT FROM route_txt
+                              THEN concat_ws(sep, review_note, r_changed || stamp) ELSE review_note END
+     WHERE id = live.id AND (local_move_id IS DISTINCT FROM anchor OR route IS DISTINCT FROM route_txt);
+    PERFORM set_config('tms.local_day_sync', coalesce(prev_flag, ''), true);
+  END $f$;
 
   -- 3. THE TRIGGER: the same name, now on the seven columns too.
   DROP TRIGGER dl_local_line_guard ON public.dl_entries;
@@ -150,11 +258,21 @@ BEGIN
      OR position('local_relay:line_locked' IN new_src) = 0 OR position('local_relay:line_locked' IN new_src) > position(old_rules IN new_src) THEN
     RAISE EXCEPTION '063 proof: dl_local_line_guard is not rule 1 + the 060 rules verbatim';
   END IF;
-  -- the sync: body untouched, the flag added next to its search_path
-  IF (SELECT md5(prosrc) FROM pg_proc WHERE oid = 'public.dl_local_day_sync(bigint,date)'::regprocedure) <> '297954261e9e8fe2936f6217f31f1e7a'
-     OR NOT EXISTS (SELECT 1 FROM pg_proc WHERE oid = 'public.dl_local_day_sync(bigint,date)'::regprocedure AND prosecdef
-                     AND proconfig @> ARRAY['search_path=public', 'tms.local_day_sync=on'] AND cardinality(proconfig) = 2) THEN
-    RAISE EXCEPTION '063 proof: dl_local_day_sync is not the 060 body with search_path + tms.local_day_sync';
+  -- the sync: the new text exactly (md5), and = 060's text once the three additions are taken out
+  SELECT prosrc INTO new_sync FROM pg_proc WHERE oid = 'public.dl_local_day_sync(bigint,date)'::regprocedure;
+  IF md5(new_sync) <> 'a4a62603e5b0c4ad48124fea625aa611'
+     OR md5(replace(replace(replace(new_sync, sync_add_var, ''), sync_add_set, ''), sync_add_back, '')) <> '297954261e9e8fe2936f6217f31f1e7a' THEN
+    RAISE EXCEPTION '063 proof: dl_local_day_sync is not the 060 text + the three 063 additions (md5 %)', md5(new_sync);
+  END IF;
+  -- both functions: owner and grants exactly as 060 left them (CREATE OR REPLACE keeps them - proven,
+  -- not assumed); the sync still SECURITY DEFINER with its one setting, the guard still INVOKER
+  IF NOT EXISTS (SELECT 1 FROM pg_proc WHERE oid = 'public.dl_local_day_sync(bigint,date)'::regprocedure
+                  AND prosecdef AND proconfig = ARRAY['search_path=public']
+                  AND proowner = sync_owner AND proacl::text IS NOT DISTINCT FROM sync_acl)
+     OR NOT EXISTS (SELECT 1 FROM pg_proc WHERE oid = 'public.dl_local_line_guard()'::regprocedure
+                     AND NOT prosecdef AND proconfig = ARRAY['search_path=public']
+                     AND proowner = guard_owner AND proacl::text IS NOT DISTINCT FROM guard_acl) THEN
+    RAISE EXCEPTION '063 proof: owner, grants, SECURITY DEFINER or search_path of dl_local_day_sync / dl_local_line_guard changed';
   END IF;
   -- the trigger: ONE, enabled, row BEFORE UPDATE, the guard, exactly the eight columns
   SELECT count(*) INTO n FROM pg_trigger t
@@ -164,14 +282,16 @@ BEGIN
            ON a.attrelid = t.tgrelid AND a.attnum = k)
          = ARRAY['date_end', 'deleted_at', 'driver_id', 'entry_date', 'entry_type', 'local_move_id', 'route', 'rt_id'];
   IF n <> 1 THEN RAISE EXCEPTION '063 proof: trigger dl_local_line_guard is not on the eight columns'; END IF;
-  -- born closed (060 section 7): CREATE OR REPLACE keeps the revoked ACL - prove it
-  IF has_function_privilege('anon', 'public.dl_local_line_guard()', 'EXECUTE')
+  -- born closed (060 section 7), whatever the ACL text looked like: nobody but the owner runs them
+  IF has_function_privilege('public', 'public.dl_local_line_guard()', 'EXECUTE')
+     OR has_function_privilege('anon', 'public.dl_local_line_guard()', 'EXECUTE')
      OR has_function_privilege('authenticated', 'public.dl_local_line_guard()', 'EXECUTE')
      OR has_function_privilege('service_role', 'public.dl_local_line_guard()', 'EXECUTE')
+     OR has_function_privilege('public', 'public.dl_local_day_sync(bigint,date)', 'EXECUTE')
      OR has_function_privilege('anon', 'public.dl_local_day_sync(bigint,date)', 'EXECUTE')
      OR has_function_privilege('authenticated', 'public.dl_local_day_sync(bigint,date)', 'EXECUTE')
      OR has_function_privilege('service_role', 'public.dl_local_day_sync(bigint,date)', 'EXECUTE') THEN
-    RAISE EXCEPTION '063 proof: dl_local_line_guard or dl_local_day_sync is executable by anon/authenticated/service_role';
+    RAISE EXCEPTION '063 proof: dl_local_line_guard or dl_local_day_sync is executable by PUBLIC/anon/authenticated/service_role';
   END IF;
   -- B-54: the same number of triggers, and B-54 still equals it (not touched by this block)
   SELECT count(*) INTO trg_after FROM pg_trigger t JOIN pg_class c ON c.oid = t.tgrelid
@@ -208,10 +328,9 @@ END;
     SELECT cardinality(tgattr::int2[]) INTO dry_n FROM pg_trigger
      WHERE tgrelid = 'public.dl_entries'::regclass AND tgname = 'dl_local_line_guard';
     IF dry_n = 8
-       AND EXISTS (SELECT 1 FROM pg_proc p, unnest(p.proconfig) c
-                    WHERE p.oid = 'public.dl_local_day_sync(bigint,date)'::regprocedure AND c = 'tms.local_day_sync=on')
+       AND position('tms.local_day_sync' IN (SELECT prosrc FROM pg_proc WHERE oid = 'public.dl_local_day_sync(bigint,date)'::regprocedure)) > 0
        AND position('local_relay:line_locked' IN (SELECT prosrc FROM pg_proc WHERE oid = 'public.dl_local_line_guard()'::regprocedure)) > 0 THEN
-      ok := ok + 1; res := res || 'A ok trigger on 8 columns, sync flag, guard rule line_locked in place'::text;
+      ok := ok + 1; res := res || 'A ok trigger on 8 columns, sync flags its relabel, guard rule line_locked in place'::text;
     ELSE bad := bad + 1; res := res || format('A FAIL trigger columns %s/8 or flag/rule missing', dry_n); END IF;
   EXCEPTION WHEN others THEN bad := bad + 1; res := res || ('A ERROR ' || SQLERRM);
   END;

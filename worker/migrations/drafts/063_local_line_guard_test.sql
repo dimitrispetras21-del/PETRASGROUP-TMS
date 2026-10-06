@@ -4,8 +4,8 @@
 -- ONE statement. It ends with a deliberate RAISE EXCEPTION, so Postgres undoes ALL of it - no relay, no
 -- payroll line, no audit row stays behind. The red error message IS the result:
 --   "RULES TEST 063 finished - EVERYTHING UNDONE, nothing kept. Result: N OK, 0 FAIL || ...".
--- EXPECTED: "Result: N OK, 0 FAIL" with N + (the number of "skipped" items in the panel) = 24.
---   24 = every example exists (proven on the PGlite copy: 24 OK, 0 FAIL, nothing skipped). The only
+-- EXPECTED: "Result: N OK, 0 FAIL" with N + (the number of "skipped" items in the panel) = 25.
+--   25 = every example exists (proven on the PGlite copy: 25 OK, 0 FAIL, nothing skipped). The only
 --   example production could lack is a live RT payroll line (S10c): then "S10c skipped (...)".
 --   Any FAIL or ERROR = STOP, copy the panel to the coordinator.
 -- Only trace: identity/sequence numbers (local_moves and dl_entries ids) are skipped.
@@ -21,13 +21,14 @@
 DO $dry$
 DECLARE
   t1 bigint; t1_drv bigint; x date; trl bigint; d1 bigint; d2 bigint; loc bigint; any_rt bigint;
-  r1 bigint; r2 bigint; r3 bigint; lid bigint; lid2 bigint; nid bigint; rtl bigint;
+  r1 bigint; r2 bigint; r3 bigint; r4 bigint; lid bigint; lid2 bigint; nid bigint; rtl bigint;
   e dl_entries%rowtype; n bigint; v numeric;
   st text; hint text; t record;
   ok int := 0; bad int := 0; res text[] := '{}';
 BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_proc p, unnest(p.proconfig) c
-                  WHERE p.oid = 'public.dl_local_day_sync(bigint,date)'::regprocedure AND c = 'tms.local_day_sync=on') THEN
+  -- 063 applied = its guard rule is there. Not "the sync carries the flag": a sync that lost it is a
+  -- broken 063, and S7b must say so (its relabel refused), not this line.
+  IF position('local_relay:line_locked' IN (SELECT prosrc FROM pg_proc WHERE oid = 'public.dl_local_line_guard()'::regprocedure)) = 0 THEN
     RAISE EXCEPTION 'RULES TEST 063: 063 is not applied - nothing to test';
   END IF;
 
@@ -154,7 +155,9 @@ BEGIN
   --     a) the relay is deleted while the line holds money: flagged, kept (060, unchanged);
   --     b) a relay is added again on the same order and day: the sync re-points the SAME line to it
   --        (local_move_id - a column of rule 1 - written by dl_local_day_sync);
-  --     c) right after that sync the flag is closed: a hand write of the route is still refused.
+  --     c) right after that sync the flag is closed: a hand write of the route is still refused;
+  --     d) the sync gives back the CALLER's value, not '': a block that had set the flag itself still
+  --        has it after a relabel (then undone by its own marker exception).
   BEGIN
     UPDATE local_moves SET deleted_at = now() WHERE id = r1;
     SELECT * INTO e FROM dl_entries WHERE id = lid;
@@ -181,6 +184,26 @@ BEGIN
     IF st <> 'on' AND hint = 'local_relay:line_locked' THEN ok := ok + 1; res := res || 'S7c ok'::text;
     ELSE bad := bad + 1; res := res || format('S7c FAIL flag after sync %s, hand route %s', st, hint); END IF;
   EXCEPTION WHEN others THEN bad := bad + 1; res := res || ('S7c ERROR ' || SQLERRM);
+  END;
+  BEGIN
+    st := NULL; n := NULL;
+    BEGIN
+      PERFORM set_config('tms.local_day_sync', 'on', true);
+      UPDATE local_moves SET deleted_at = now() WHERE id = r2;              -- line kept, flagged (no relabel)
+      INSERT INTO local_moves (move_kind, parent_order_id, driver_id, trailer_id, from_location_id)
+      VALUES ('relay_delivery', t1, d1, trl, loc) RETURNING id INTO r4;     -- the sync re-points the line: relabel
+      st := current_setting('tms.local_day_sync', true);
+      n := (SELECT local_move_id FROM dl_entries WHERE id = lid);
+      RAISE EXCEPTION 'rt063: undo S7d' USING HINT = 'rt063_undo';
+    EXCEPTION WHEN others THEN
+      GET STACKED DIAGNOSTICS hint = PG_EXCEPTION_HINT;
+    END;
+    IF hint = 'rt063_undo' AND st = 'on' AND n = r4
+       AND current_setting('tms.local_day_sync', true) IS DISTINCT FROM 'on'
+       AND (SELECT local_move_id FROM dl_entries WHERE id = lid) = r2 THEN
+      ok := ok + 1; res := res || 'S7d ok'::text;
+    ELSE bad := bad + 1; res := res || format('S7d FAIL caller flag after relabel %s (want on), anchor %s/%s, %s', st, n, r4, hint); END IF;
+  EXCEPTION WHEN others THEN bad := bad + 1; res := res || ('S7d ERROR ' || SQLERRM);
   END;
 
   -- S8. 060's two rules, unchanged: a) no cancel while a relay of that driver and day lives;
