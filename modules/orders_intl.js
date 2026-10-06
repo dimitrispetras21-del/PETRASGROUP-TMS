@@ -557,6 +557,45 @@ function _oiCheckSoftRequired() {
   return missing;
 }
 
+// A location typed but never picked from the list has text and no id — the
+// stop is built from the id, so saving would drop it. Marked IN the form: the
+// confirmAction this replaced drew in this same #modal, replaced the form and
+// closed it, so everything typed was lost (live 5/10). The note goes in the
+// field's label, not under it: the stop row is a bottom-aligned grid and a
+// taller cell would push «Παλέτες»/«Ημερομηνία» out of line.
+function _oiMarkUnmatchedLocs() {
+  document.querySelectorAll('#modal .oi-loc-msg').forEach(n => n.remove());
+  document.querySelectorAll('#modal .oi-loc-bad').forEach(n => n.classList.remove('oi-req-bad', 'oi-loc-bad'));
+  const bad = [];
+  for (const [t, name] of [['l', 'Φόρτωση'], ['u', 'Παράδοση']]) {
+    for (let i = 1; i <= 10; i++) {
+      const s = document.getElementById(`ls_${t}_${i}`), v = document.getElementById(`lv_${t}_${i}`);
+      const txt = s?.value?.trim();
+      if (!txt || v?.value?.trim()) continue;
+      bad.push(`${name} ${i} «${txt}»`);
+      s.classList.add('oi-req-bad', 'oi-loc-bad');
+      const msg = document.createElement('span');
+      msg.className = 'oi-req-msg oi-loc-msg';
+      msg.textContent = ' — διάλεξε από τη λίστα';
+      const lab = s.parentElement?.parentElement?.querySelector('.form-label');
+      if (lab) lab.appendChild(msg); else s.parentElement.insertAdjacentElement('afterend', msg);
+      // A pick from the list blurs the field (the item answers mousedown):
+      // the note goes then, so a corrected field is not left red until Save.
+      if (!s._oiLocClr) {
+        s._oiLocClr = true;
+        s.addEventListener('blur', () => {
+          if (!v?.value) return;
+          s.classList.remove('oi-req-bad', 'oi-loc-bad');
+          s.parentElement?.parentElement?.querySelector('.oi-loc-msg')?.remove();
+        });
+      }
+    }
+  }
+  const first = document.querySelector('#modal .oi-loc-bad');
+  if (first) { first.scrollIntoView({ block: 'center' }); first.focus({ preventScroll: true }); }
+  return bad;
+}
+
 function openIntlCreate() { _openModal(null, {}); }
 function openIntlEdit(recId) {
   const rec = INTL_ORDERS.data.find(r=>r.id===recId);
@@ -2186,19 +2225,11 @@ async function submitIntlOrder(recId) {
       return;
     }
 
-    // Validate: no unmatched location text (text input filled but hidden recId empty)
-    const unmatchedLocs = [];
-    for (let i=1;i<=10;i++) {
-      const txt = document.getElementById('ls_l_'+i)?.value?.trim();
-      const id  = document.getElementById('lv_l_'+i)?.value?.trim();
-      if (txt && !id) unmatchedLocs.push(`Loading Location ${i}: "${txt}"`);
-      const txt2 = document.getElementById('ls_u_'+i)?.value?.trim();
-      const id2  = document.getElementById('lv_u_'+i)?.value?.trim();
-      if (txt2 && !id2) unmatchedLocs.push(`Delivery Location ${i}: "${txt2}"`);
-    }
+    // Validate: no unmatched location text (text input filled but hidden recId
+    // empty) — marked inside the form, never in a dialog over it (see helper).
+    const unmatchedLocs = _oiMarkUnmatchedLocs();
     if (unmatchedLocs.length) {
-      // OI-5: app modal αντί για native alert — ίδιο κείμενο, ίδια ροή.
-      await confirmAction('Οι παρακάτω τοποθεσίες δεν έχουν επιλεγεί από τη λίστα:\n\n' + unmatchedLocs.join('\n') + '\n\nΨάξε και επίλεξε από το dropdown.', { title: 'Αδύνατη υποβολή', confirmLabel: 'ΟΚ' });
+      showErrorToast('Τοποθεσία που δεν επιλέχθηκε από τη λίστα: ' + unmatchedLocs.join(', ') + ' — διάλεξε από τη λίστα. Δεν αποθηκεύτηκε τίποτα.', 'warn', 9000);
       if (btn) { btn.textContent = 'Αποθήκευση'; btn.disabled = false; }
       throw new Error('validation');
     }
@@ -2382,13 +2413,16 @@ async function submitIntlOrder(recId) {
           return links.some(l => (l?.id||l) === recId) && r.fields.Status === 'Assigned';
         });
         if (assignedGLs.length > 0) {
-            const ok = await confirmAction(
+            // Native confirm on purpose (same trap as the unmark below):
+            // confirmAction draws in this same #modal — a Cancel left the
+            // user with the form gone and every edit lost (5/10).
+            const ok = confirm(
+              `Groupage φορτίο\n\n` +
               `Η παραγγελία αυτή έχει ήδη ενταχθεί σε groupage φορτίο.\n\n` +
               `Αν αποθηκεύσεις αλλαγές, η παραγγελία θα βγει από το φορτίο\n` +
               `ώστε να ξαναμπεί με τα νέα δεδομένα. Το φορτηγό μένει\n` +
               `αν έχει κι άλλους πελάτες.\n\n` +
-              `Θέλεις να συνεχίσεις;`,
-              { title: 'Groupage φορτίο', confirmLabel: 'Συνέχεια', danger: true }
+              `Θέλεις να συνεχίσεις;`
             );
             if (!ok) { btn.textContent = 'Αποθήκευση'; btn.disabled = false; return; }
 
@@ -2418,12 +2452,13 @@ async function submitIntlOrder(recId) {
           const f = d.fields;
           return `• ${f['Order Number'] || d.id.slice(-6)} — ${(f['Loading DateTime']||'').substring(0,10) || 'no date'}`;
         }).join('\n');
-        const ok = await confirmAction(
+        // Native confirm: a confirmAction here replaced the form, so «Ακύρωση»
+        // (fix the Reference) left nothing to fix — everything typed was lost.
+        const ok = confirm(
           `Πιθανό duplicate\n\n` +
           `Υπάρχουν ${dupes.length} παραγγελίες με Reference "${fields['Reference']}":\n\n` +
           `${list}\n\n` +
-          `Συνέχεια αποθήκευσης ως νέα παραγγελία;`,
-          { title: 'Πιθανό duplicate', confirmLabel: 'Αποθήκευση ως νέα' }
+          `Συνέχεια αποθήκευσης ως νέα παραγγελία;`
         );
         if (!ok) {
           if (btn) { btn.textContent = 'Αποθήκευση'; btn.disabled = false; }
@@ -2439,9 +2474,10 @@ async function submitIntlOrder(recId) {
         const esc = String(fields['Reference']).replace(/'/g, "\\'");
         const dups = await atGetAll(TABLES.ORDERS, { filterByFormula: `{Reference}='${esc}'` }, false);
         if (dups && dups.length) {
-          const ok2 = await confirmAction(
-            `Υπάρχει ήδη order με Reference «${fields['Reference']}» (${(() => { const d = String(dups[0].fields?.['Loading DateTime'] || '').slice(0, 10); return d ? 'φορτώνει ' + d.split('-').reverse().join('/') : 'χωρίς ημερομηνία φόρτωσης'; })()}). Σίγουρα να δημιουργηθεί δεύτερο;`,
-            { title: 'Πιθανό διπλό', confirmLabel: 'Δημιουργία ούτως ή άλλως', danger: true });
+          // Native confirm, as above: the form must survive a Cancel.
+          const ok2 = confirm(
+            `Πιθανό διπλό\n\n` +
+            `Υπάρχει ήδη order με Reference «${fields['Reference']}» (${(() => { const d = String(dups[0].fields?.['Loading DateTime'] || '').slice(0, 10); return d ? 'φορτώνει ' + d.split('-').reverse().join('/') : 'χωρίς ημερομηνία φόρτωσης'; })()}). Σίγουρα να δημιουργηθεί δεύτερο;`);
           if (!ok2) { if (btn) { btn.textContent = 'Αποθήκευση'; btn.disabled = false; } return; }
         }
       } catch (e) {}

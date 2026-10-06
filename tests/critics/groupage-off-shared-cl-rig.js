@@ -48,7 +48,8 @@ async function run(name, { otherOnTruck, shareCheckFails = false, intl = false }
   const browser = await chromium.launch();
   const ctx = await browser.newContext({ baseURL: BASE, viewport: { width: 1440, height: 960 }, serviceWorkers: 'block' });
   const page = await ctx.newPage();
-  page.on('dialog', d => d.accept());
+  const dialogs = [];
+  page.on('dialog', d => { dialogs.push(d.message()); d.accept(); });
   await preparePage(page, 'owner');
   const writes = [];
   const gl = new Map();
@@ -111,10 +112,10 @@ async function run(name, { otherOnTruck, shareCheckFails = false, intl = false }
     const t0 = window.toast; window.toast = (m, k) => { window.__toasts.push([String(m), k || '']); return t0 && t0(m, k); };
     const e0 = window.showErrorToast; window.showErrorToast = (m, k) => { window.__toasts.push([String(m), k || 'error']); return e0 && e0(m, k); };
     if (intl) {
-      // An assigned VS+GRP order saved with ANY edit — the «auto-restore» confirm = the user's «Συνέχεια».
+      // An assigned VS+GRP order saved with ANY edit — the «auto-restore» question is a native
+      // confirm (5/10: a confirmAction replaced the form); the dialog handler answers «OK».
       document.getElementById('f_VeroiaSwitch').checked = true;
       document.getElementById('f_Groupage').checked = true;
-      window.confirmAction = async () => true;
       for (let i = 0; i < 2; i++) {   // a 2nd press saves past the soft-required warning (Δ6)
         const n = window.__toasts.length;
         try { await submitIntlOrder(id); } catch (e) { window.__toasts.push(['THROW ' + e.message, 'throw']); }
@@ -127,6 +128,7 @@ async function run(name, { otherOnTruck, shareCheckFails = false, intl = false }
     return window.__toasts;
   }, [noId, intl]);
   await page.waitForTimeout(800);
+  if (intl) ok(dialogs.some(m => /^Groupage φορτίο/.test(m)), 'the auto-restore question was asked as a native confirm (the form is not replaced) — ' + JSON.stringify(dialogs.map(m => m.split('\n')[0])));
   const patchedNO = writes.find(w => w.method === 'PATCH' && w.table === SRC && w.rec === noId);
   ok(patchedNO && patchedNO.fields && patchedNO.fields['National Groupage'] === !!intl, `the order was saved (National Groupage = ${!!intl})` + (patchedNO ? '' : ' (no PATCH — toasts: ' + JSON.stringify(toasts) + ')'));
   const delCL = writes.filter(w => w.method === 'DELETE' && w.table === T.CL);
