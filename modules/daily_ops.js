@@ -57,16 +57,31 @@ function _opsBlockReadOnly(){
   return true;
 }
 
+// Load generation. The local relays (060) answer AFTER the day is drawn, so a
+// slow answer can land when the user has already moved to another day (or
+// pressed Ανανέωση): only the newest render may write OPS.relays or repaint.
+let _opsSeq = 0;
+
 async function renderDailyOps() {
   _opsNormDate();
+  const seq = ++_opsSeq;
   document.getElementById('content').innerHTML = showLoading('Φόρτωση…');
-  try { await _opsLoad(); _opsDraw(); }
+  // Draw first, relays after (reviewer P3 #4 of the relay release, 6/10): the
+  // day used to wait for LOCAL MOVES, so a 5xx there (3 tries, 1 s + 2 s) or a
+  // slow network held the whole page ~3 s behind a spinner at 05:30. Weekly
+  // International already paints first; the relays now fill ΑΝΑΘΕΣΗ when they
+  // answer. A repaint that throws still lands in the catch below, as before.
+  try {
+    const relays = await _opsLoad(seq);
+    _opsDraw();
+    if (relays && await _opsRelaysSettle(relays.pending, seq)) _opsDraw();
+  }
   // Failure ≠ empty (DESIGN.md #7): say what happened, what it does NOT mean,
   // and what to do — a bare «Σφάλμα» read as «no orders today» at 05:30.
   catch(e) { document.getElementById('content').innerHTML = `${_OPS_STYLE}<div class="do-page"><div class="do-err"><span>Το Ημερήσιο Πλάνο δεν φορτώθηκε — δεν σημαίνει ότι δεν υπάρχουν παραγγελίες σήμερα.</span><button class="do-btn" onclick="renderDailyOps()">Ξαναδοκίμασε</button></div></div>`; console.error(e); }
 }
 
-async function _opsLoad() {
+async function _opsLoad(seq) {
   if (!OPS.trucks.length) {
     await preloadReferenceData();
     OPS.trucks=getRefTrucks().filter(r=>r.fields['Active']).map(r=>({id:r.id,lb:r.fields['License Plate']||''}));
@@ -206,12 +221,34 @@ async function _opsLoad() {
   // Its failure must not take the day down either: the page renders, a zone
   // says the relays did not load, and ΑΝΑΘΕΣΗ shows only the international
   // driver — never a silent «no relay» (principle 1).
-  OPS.relays = {}; OPS.relaysErr = false;
+  // Started here, NOT awaited: renderDailyOps draws the day and then hands
+  // this promise to _opsRelaysSettle. Until it settles OPS.relaysLoading says
+  // so on screen (_opsDraw) — the cells are not yet «no relay». It never
+  // rejects. Returned wrapped in {pending}: an async function that returns a
+  // bare promise adopts it, and the day would wait for the relays again.
+  // An older load that finishes after a newer one started leaves the relay
+  // state alone: resetting it here would leave «φόρτωση…» on screen forever,
+  // since its own answer is then discarded as stale.
+  if (seq !== _opsSeq) return null;
+  OPS.relays = {}; OPS.relaysErr = false; OPS.relaysLoading = false;
   const relayIds = [...new Set(allRecs.map(r => r.id))];
-  if (relayIds.length) {
-    try { OPS.relays = await _opsLoadRelays(relayIds); }
-    catch(e) { console.warn('[ops] local relays fetch failed:', e.message); OPS.relaysErr = true; }
-  }
+  if (!relayIds.length) return null;
+  OPS.relaysLoading = true;
+  return { pending: _opsLoadRelays(relayIds).then(rel => ({ rel }), err => ({ err })) };
+}
+
+// → true when the screen should be repainted with the relays (or the banner).
+// A stale answer (another day, Ανανέωση, the panel's re-read) is dropped
+// whole: it must neither overwrite the newer day's relays nor paint over it.
+// After a move to another page the state is kept but nothing is painted —
+// #content belongs to that page now.
+async function _opsRelaysSettle(p, seq) {
+  const res = await p;
+  if (seq !== _opsSeq) return false;
+  if (res.err) { console.warn('[ops] local relays fetch failed:', res.err && res.err.message); OPS.relaysErr = true; }
+  else OPS.relays = res.rel;
+  OPS.relaysLoading = false;
+  return typeof currentPage === 'undefined' || currentPage === 'daily_ops';
 }
 
 // orderId → { relay_delivery, relay_loading }, through the ONE relay reader
@@ -569,6 +606,11 @@ function _opsDraw() {
         ${_opsSlots(r,'ovl')}</div>${OPS._expanded?.has(r.id)?_opsSubRows(r,'Loading',true):''}`;}):'';
   // 060: relays live in their own request — a failure is said, never read as «no local driver».
   const relErr=OPS.relaysErr?`<div class="do-err"><span>Οι τοπικές παραδόσεις/φορτώσεις δεν φορτώθηκαν — δεν σημαίνει ότι δεν υπάρχουν. Η στήλη ΑΝΑΘΕΣΗ δείχνει μόνο τον διεθνή οδηγό.</span><button class="do-btn" onclick="renderDailyOps()">Ξαναδοκίμασε</button></div>`:'';
+  // Still loading (drawn before the relays answer): said in the subline, not
+  // in a block above the tables — a block that vanishes a moment later would
+  // push every row (and its buttons) up under a dispatcher's cursor. The
+  // toolbar may reflow sideways when it goes; the rows stay where they are.
+  const relWait=OPS.relaysLoading?` · <span class="do-rl-wait" role="status">τοπικές παραδόσεις/φορτώσεις: φόρτωση…</span>`:'';
   const ovLErr=isToday&&OPS.overdueLoadsErr?`<div class="do-err"><span>Η ζώνη εκκρεμών φορτώσεων δεν φορτώθηκε — δεν σημαίνει ότι δεν υπάρχουν εκκρεμείς φορτώσεις. Οι υπόλοιπες ενότητες είναι ενημερωμένες.</span><button class="do-btn" onclick="renderDailyOps()">Ξαναδοκίμασε</button></div>`:'';
 
   // Quick filters with nothing behind them are disabled (D2): a choice that
@@ -584,7 +626,7 @@ function _opsDraw() {
     <div class="do-page">
     <div class="do-top">
       <h1 class="do-h1">Ημερήσιο Πλάνο</h1>
-      <span class="do-sub">${fD(tgt)} · ${total} ${total===1?'παραγγελία':'παραγγελίες'} ${_opsDayWord()}${pendN?` · <b>${pendN} ${pendN===1?'εκκρεμής':'εκκρεμείς'}</b>`:''}</span>
+      <span class="do-sub">${fD(tgt)} · ${total} ${total===1?'παραγγελία':'παραγγελίες'} ${_opsDayWord()}${pendN?` · <b>${pendN} ${pendN===1?'εκκρεμής':'εκκρεμείς'}</b>`:''}${relWait}</span>
       ${preorderCounterHtml([...new Map([...all,...(isToday?OPS.overdueLoads:[])].map(r=>[r.id,r.fields])).values()],"preorderJump('.do-page .do-pre')")}
       <div class="do-seg">
         <button class="${OPS.date==='yesterday'?'on':''}" onclick="OPS.date='yesterday';renderDailyOps()">Χθες</button>
@@ -1394,6 +1436,10 @@ async function _opsChangeDayGo(){
 function _opsPrint() {
   const content = document.querySelector('.ops-sections');
   if (!content) return;
+  // The day is now on screen before the relays (renderDailyOps): a sheet
+  // printed in that moment would carry no local driver and no word that they
+  // were missing — paper cannot repaint.
+  if (OPS.relaysLoading) { toast('Οι τοπικές παραδόσεις/φορτώσεις φορτώνουν ακόμη — ξαναδοκίμασε σε λίγο','warn'); return; }
   const win = window.open('','_blank','width=1100,height=800');
   // Το παράθυρο εκτύπωσης δεν φορτώνει το style.css — ασπρόμαυρο, χωρίς χρώματα.
   win.document.write(`<html><head><title>Ημερήσιο Πλάνο</title>
