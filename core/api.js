@@ -121,7 +121,9 @@ function _loadOfflineQueue() {
 
 async function _flushOfflineQueue() {
   // One flush at a time: 'online' can fire again while a replay is running.
-  if (_flushing || !_offlineQueue.length || !navigator.onLine) return;
+  // No session = every replay would 401 (and be logged): the queue stays in
+  // localStorage for the next login's page instead (5/10 storm, see _atRetry).
+  if (_flushing || !_offlineQueue.length || !navigator.onLine || _tmsSessionGone) return;
   _flushing = true;
   try {
   const batch = [..._offlineQueue];
@@ -295,23 +297,107 @@ function _fetchWithTimeout(url, opts = {}, ms = 30000) {
   return fetch(url, { cache: 'no-store', ...opts, signal: ctrl.signal }).finally(() => clearTimeout(to));
 }
 
+// ── Session gone: one 401 ends the session for the whole page ─────────────
+// 5/10/2026 21:11–21:15 UTC: one browser with an expired login wrote 2010 rows
+// to app_errors («preload_<TRUCKS>: Unauthorized» ×1320, TRAILERS ×666, …),
+// which kept the auditor's B-34 red for a day and buried the real errors.
+// Every request after the first 401 still went to the network, got 401 again,
+// set location.href again and was logged again by its caller. There is no
+// token-refresh path — a new login is always a new page — so after the FIRST
+// 401 nothing in this page can succeed. From then on:
+//   - every facade / costs / docs request is refused HERE, before any fetch,
+//     with the same Unauthorized error the callers already handle (_noRetry);
+//   - that error carries _sessionGone, which logError keeps out of app_errors
+//     (the callers' catch blocks are many; filtering them one by one would
+//     miss the next one written);
+//   - the expiry itself is still heard: ONE row «session expired → …» per tab
+//     (see _tmsLogSessionExpiry for why per tab, not per page);
+//   - the redirect is re-attempted at most every 5 s, not once per request.
+// auth.js sets window._tmsNoSessionAtLoad when it redirects at load (no or
+// expired login): such a page has no token at all, so it starts «gone».
+let _tmsSessionGone = !!(typeof window !== 'undefined' && window._tmsNoSessionAtLoad);
+let _tmsSessionRedirectAt = _tmsSessionGone ? Date.now() : 0;
+const _TMS_SESSION_REDIRECT_MS = 5000;
+// 10 minutes groups the page loads of one expiry; a later expiry (8 h JWT)
+// starts again at 1 and is reported again.
+const _TMS_SESSION_LOG_WINDOW_MS = 10 * 60 * 1000;
+const _TMS_SESSION_LOG_EVERY = 50;
+
+function tmsSessionGone() { return _tmsSessionGone; }
+
+function _tmsUnauthorized(req) {
+  const e = new Error('Unauthorized');
+  e._noRetry = true; e._sessionGone = true;
+  if (req) e._req = req;
+  return e;
+}
+
+function _tmsSessionRedirect() {
+  const now = Date.now();
+  if (now - _tmsSessionRedirectAt < _TMS_SESSION_REDIRECT_MS) return;
+  _tmsSessionRedirectAt = now;
+  try { window.location.href = 'index.html'; } catch (_) {}
+}
+
+// The refusal for a request made after the session is gone: no fetch, no log.
+function tmsSessionRefuse(req) {
+  _tmsSessionRedirect();
+  return _tmsUnauthorized(req);
+}
+
+// Called on a 401. The first one per page clears the login and writes the one
+// row; later ones (requests already in flight at that moment) only refuse.
+function tmsSessionExpired(where, req) {
+  if (!_tmsSessionGone) {
+    _tmsSessionGone = true;
+    try { localStorage.removeItem('tms_user'); localStorage.removeItem('tms_jwt'); } catch (_) {}
+    _tmsLogSessionExpiry(where);
+  }
+  return tmsSessionRefuse(req);
+}
+
+// Per TAB, not per page. logError already capped every page at 20 posts
+// (utils.js MAX_APP_ERROR_POSTS), so the 2010 rows of 5/10 came from ≥101
+// page loads in ~4 minutes — the tab kept loading app.html, and each load had
+// its own «first» 401. (What sent it back is not found in this repo: index.html
+// returns to app.html only with a login whose expiresAt is still ahead.)
+// One row per page would still have been ~1300 rows. sessionStorage survives
+// reloads of the same tab: the first expiry is written, then every 50th page
+// load that hits it, WITH the count — a redirect loop stays audible (principle
+// 1) without writing 8 rows a second.
+function _tmsLogSessionExpiry(where) {
+  if (typeof logError !== 'function') return;
+  const now = Date.now();
+  let n = 1, since = now;
+  try {
+    const prev = JSON.parse(sessionStorage.getItem('tms_session_expired') || 'null');
+    if (prev && now - prev.since >= 0 && now - prev.since < _TMS_SESSION_LOG_WINDOW_MS) { n = (prev.n | 0) + 1; since = prev.since; }
+    sessionStorage.setItem('tms_session_expired', JSON.stringify({ n, since }));
+  } catch (_) { /* no sessionStorage: every page reports, as before */ }
+  if (n !== 1 && n % _TMS_SESSION_LOG_EVERY !== 0) return;
+  const at = where ? ` (first 401: ${String(where).slice(0, 120)})` : '';
+  const loop = n === 1 ? '' : ` — ${n} page loads in this tab hit an expired session since ${new Date(since).toISOString().slice(11, 19)} UTC: redirect loop?`;
+  logError(new Error(`session expired → redirect to login${at}${loop}`), 'session');
+}
+
 async function _atRetry(fn, retries = 3) {
   const reqId = _newReqId();
+  if (_tmsSessionGone) throw tmsSessionRefuse(reqId);
   for (let i = 0; i < retries; i++) {
     try {
       const res = await fn(reqId + '-' + (i + 1));
       _noteWorkerCaps(res);
       if (res.status === 401) {
-        localStorage.removeItem('tms_user');
-        localStorage.removeItem('tms_jwt');
-        window.location.href = 'index.html';
         // _noRetry: δεν υπάρχει διαδρομή ανανέωσης token — η session μόλις
         // σβήστηκε και ο browser φεύγει για το index.html. Χωρίς τη σημαία, ο
         // throw έπεφτε στο κοινό catch παρακάτω, που ξαναδοκίμαζε δύο φορές
         // (1s+2s) με το ίδιο ληγμένο token, ενώ η σελίδα ήδη έφευγε.
-        const _e401 = new Error('Unauthorized');
-        _e401._noRetry = true; _e401._req = reqId;
-        throw _e401;
+        let where = '';
+        try {
+          const tid = (new URL(res.url).pathname.match(/\/v0\/[^/]+\/([^/?]+)/) || [])[1] || new URL(res.url).pathname;
+          where = (typeof _tableNameFromId === 'function' && tid) ? (_tableNameFromId(tid) || tid) : tid;
+        } catch (_) { /* diagnostics must never break the error path */ }
+        throw tmsSessionExpired(where, reqId);
       }
       // 403 = ο RBAC του Worker είπε όχι. Η ίδια αίτηση παίρνει την ίδια
       // απάντηση κάθε φορά, άρα η επανάληψη δεν σώζει τίποτα: μετρημένο 3/9 —

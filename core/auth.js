@@ -33,6 +33,11 @@ if (!user || _authSessionExpired(user) || _authRoleTampered(user)) {
   localStorage.removeItem('tms_user');
   localStorage.removeItem('tms_jwt');
   window.location.href = 'index.html';
+  // The page keeps running until the browser has left: the preload timers
+  // below and the first render still fire, with no token, and each 401 was
+  // logged (5/10 storm, 2010 rows). api.js reads this flag and refuses every
+  // request before it is sent.
+  window._tmsNoSessionAtLoad = true;
 }
 
 const ROLE = user?.role || 'dispatcher';
