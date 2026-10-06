@@ -27,8 +27,13 @@ function num(v) {
   return v == null ? 0 : Number(v);
 }
 
-// dl_v_entries rows for one month -> { [driver_id]: { trips, pending, value,
-// expenses, advance, payments, adjustments, last_payment } }. Filters
+// dl_v_entries rows for one month -> { [driver_id]: { trips, local_days,
+// pending, value, expenses, advance, payments, adjustments, last_payment } }.
+// local_days (060, owner 4/10/2026): a local driver's day line
+// (local_move_id set) is entry_type 'trip' in the DB, but it is not a trip —
+// the month card says «δρομολόγια N · τοπικά M», counted apart. Its money and
+// its «no value yet» still count in value/expenses/advance/pending: it is pay
+// awaiting accounting like any other line. Filters
 // cancelled/deleted rows itself — correct even if the caller's query forgets
 // the filter (CLAUDE.md αρχή 3: don't rely on a second copy of the same rule).
 export function aggregateMonth(rows) {
@@ -38,11 +43,12 @@ export function aggregateMonth(rows) {
     const driverId = r.driver_id;
     if (driverId == null) continue;
     if (!out[driverId]) {
-      out[driverId] = { trips: 0, pending: 0, value: 0, expenses: 0, advance: 0, payments: 0, adjustments: 0, last_payment: null };
+      out[driverId] = { trips: 0, local_days: 0, pending: 0, value: 0, expenses: 0, advance: 0, payments: 0, adjustments: 0, last_payment: null };
     }
     const d = out[driverId];
     if (r.entry_type === 'trip') {
-      d.trips += 1;
+      if (r.local_move_id != null) d.local_days += 1;
+      else d.trips += 1;
       // pending: a trip with no value yet — trust the view's flag, but also
       // recheck trip_value directly in case a raw dl_entries row (no `pending`
       // column) is ever passed in.
