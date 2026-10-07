@@ -29,15 +29,30 @@ function _authRoleTampered(u) {
   return known.role !== u.role;
 }
 
-if (!user || _authSessionExpired(user) || _authRoleTampered(user)) {
+// Why this page is turned away (null = it may stay). Not a yes/no like the
+// tests above, because api.js needs the REASON: a plain
+// expiry or no login is every morning's first page and stays silent, while a
+// tamper-guard bounce is never routine — a user missing from config.js USERS
+// is bounced at every login, and until 7/10 nothing ever said so.
+function _authRejectReason(u) {
+  if (!u) return 'no login';
+  if (_authSessionExpired(u)) return 'expired';
+  if (_authRoleTampered(u)) return USERS.some(x => x.username === u.username) ? 'role mismatch' : 'unknown username';
+  return null;
+}
+
+const _authReject = _authRejectReason(user);
+if (_authReject) {
+  // The page keeps running until the browser has left: the preload timers
+  // below and the first render still fire, with no token, and each 401 was
+  // logged (5/10 storm, 2010 rows). api.js reads this flag, refuses every
+  // request before it is sent and counts the page in the tab's streak
+  // (core/api.js _tmsStreakNote). Set BEFORE the login is removed: afterwards
+  // nothing in this page knows whose login it was.
+  window._tmsNoSessionAtLoad = { reason: _authReject, user: (user && user.username) || null, exp: (user && user.expiresAt) || null };
   localStorage.removeItem('tms_user');
   localStorage.removeItem('tms_jwt');
   window.location.href = 'index.html';
-  // The page keeps running until the browser has left: the preload timers
-  // below and the first render still fire, with no token, and each 401 was
-  // logged (5/10 storm, 2010 rows). api.js reads this flag and refuses every
-  // request before it is sent.
-  window._tmsNoSessionAtLoad = true;
 }
 
 const ROLE = user?.role || 'dispatcher';

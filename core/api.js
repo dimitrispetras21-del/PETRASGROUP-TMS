@@ -131,7 +131,7 @@ async function _flushOfflineQueue() {
   _flushRest.push(...batch);
   _saveOfflineQueue();
 
-  let failed = 0, conflicts = 0, rejected = 0;
+  let failed = 0, conflicts = 0, rejected = 0, kept = 0;
   // A refusal leaves the queue LOUDLY, naming the record (principle 1).
   const refuse = (item, status, why, head) => {
     rejected++;
@@ -142,8 +142,16 @@ async function _flushOfflineQueue() {
     const _rj = new Error(msg); _rj._req = item.req || null;
     if (typeof logError === 'function') logError(_rj, 'queue rejected');
   };
+  // Kept, unsent and unlogged, for the next login's page: once the session has
+  // ended (a 401 on an earlier item, on this item's conflict check, or on any
+  // request of the page) every later replay would only 401 too. The entry
+  // check of this function is not enough: the session usually ends DURING the
+  // replay, and each raw 401 was one more app_errors row per item and per
+  // page load of a reload loop (review 6/10 P2-2).
+  const keep = (item) => { _offlineQueue.push(item); kept++; };
   for (const item of batch) {
     try {
+      if (_tmsSessionGone) { keep(item); continue; }
       // For PATCH operations, check if record was modified since we queued
       if (item.method === 'PATCH' && item.recordId) {
         try {
@@ -167,22 +175,27 @@ async function _flushOfflineQueue() {
           // If conflict check fails, proceed with the mutation anyway
           if (typeof logError === 'function') logError(e, '_flushOfflineQueue conflict check');
         }
+        if (_tmsSessionGone) { keep(item); continue; }   // the conflict check's 401 ended the session
       }
       const res = await fetch(item.url, {
         method: item.method,
         headers: _apiHeaders(item.method, item.req ? item.req + '-q' : null),
         body: item.body ? JSON.stringify(item.body) : undefined,
       });
+      // A raw 401 is the session's end, not an answer about the change: the
+      // same helper as _atRetry (login cleared, one «session» row per tab,
+      // redirect), and the 401 itself is not logged.
+      if (res.status === 401) { tmsSessionExpired('offline queue', item.req || null); keep(item); continue; }
       // The answer is read (critic-3 Σ-02, round 1 4/10): fetch does not throw
       // on an HTTP error, so a REFUSED write (422 rule, 403, 400, 404) counted
       // as «συγχρονίστηκαν» and left the queue — the change was lost while the
       // screen said it was saved. A 4xx is the server's final «no»: replaying
       // it gets the same answer, so it leaves the queue, loudly, naming the
-      // record. 401/408/429 are not an answer about the change (session,
-      // timeout, rate limit) and 5xx is the server failing: those stay queued
-      // for the next flush, like a network error (the catch below).
+      // record. 408/429 are not an answer about the change (timeout, rate
+      // limit; 401 = the session, above) and 5xx is the server failing: those
+      // stay queued for the next flush, like a network error (the catch below).
       if (!res.ok) {
-        if (res.status >= 400 && res.status < 500 && ![401, 408, 429].includes(res.status)) {
+        if (res.status >= 400 && res.status < 500 && ![408, 429].includes(res.status)) {
           const errData = (await res.json().catch(() => null)) || {};
           refuse(item, res.status, _atErrMsg(errData.error, `HTTP ${res.status}`), 'ΑΠΟΡΡΙΦΘΗΚΕ');
           continue;
@@ -190,7 +203,7 @@ async function _flushOfflineQueue() {
         // This Worker answers a DB refusal (CHECK/trigger) with 500 too, so a
         // 5xx is not always transient: after 3 replays it leaves the queue
         // loudly instead of sitting there for ever, unseen (review 4/10, P2-1).
-        // 401/408/429 are not about the change — kept without a count.
+        // 408/429 are not about the change — kept without a count.
         if (res.status >= 500) item.tries = (item.tries || 0) + 1;
         if (item.tries >= 3) { refuse(item, res.status, `ο server απάντησε HTTP ${res.status} σε 3 προσπάθειες`, 'ΔΕΝ ΠΕΡΑΣΕ'); continue; }
         throw new Error(`offline replay HTTP ${res.status} · ${item.method} ${item.recordId || 'νέα εγγραφή'}`);   // → stays queued (catch)
@@ -204,11 +217,13 @@ async function _flushOfflineQueue() {
       _saveOfflineQueue();
     }
   }
-  const synced = batch.length - failed - conflicts - rejected;
+  const synced = batch.length - failed - conflicts - rejected - kept;
   // «Αποθηκεύτηκε τοπικά» must leave a trace centrally (principle 1): one summary line per flush, excluded
-  // from the error-rate checks by its prefix (B-34/B-34b), with the ids of the replayed actions.
-  if (batch.length && typeof logError === 'function') {
-    const _fl = new Error(`offline flush synced ${synced}, conflicts ${conflicts}, failed ${failed}${rejected ? `, rejected ${rejected}` : ''} · ${batch.map((b) => b.req).filter(Boolean).slice(0, 10).join(',')}`);
+  // from the error-rate checks by its prefix (B-34/B-34b), with the ids of the replayed actions. Not when
+  // nothing was decided (every item kept because the session ended): the «session» row says that, and a
+  // reload loop would otherwise write this line once per page load.
+  if (batch.length > kept && typeof logError === 'function') {
+    const _fl = new Error(`offline flush synced ${synced}, conflicts ${conflicts}, failed ${failed}${rejected ? `, rejected ${rejected}` : ''}${kept ? `, kept ${kept} (session ended)` : ''} · ${batch.map((b) => b.req).filter(Boolean).slice(0, 10).join(',')}`);
     _fl._kind = 'offline';                     // informational: stored with app_errors.kind='offline', not an error
     logError(_fl, 'queue');
   }
@@ -298,30 +313,28 @@ function _fetchWithTimeout(url, opts = {}, ms = 30000) {
 }
 
 // ── Session gone: one 401 ends the session for the whole page ─────────────
-// 5/10/2026 21:11–21:15 UTC: one browser with an expired login wrote 2010 rows
-// to app_errors («preload_<TRUCKS>: Unauthorized» ×1320, TRAILERS ×666, …),
-// which kept the auditor's B-34 red for a day and buried the real errors.
-// Every request after the first 401 still went to the network, got 401 again,
-// set location.href again and was logged again by its caller. There is no
-// token-refresh path — a new login is always a new page — so after the FIRST
-// 401 nothing in this page can succeed. From then on:
+// 5/10/2026 21:11–21:15 UTC: one Windows PC (Chrome 149) wrote 2010 rows to
+// app_errors («preload_<TRUCKS>: Unauthorized» ×1320, TRAILERS ×666, …), 2002
+// of them from app.html with no hash over 188 distinct seconds: a tab that
+// kept LOADING the app, not one page that kept failing. It kept the auditor's
+// B-34 red for a day and buried the real errors, yet no row said whose PC it
+// was or how the tab got back to app.html (cause still unknown on 7/10; the
+// rosters match, so the tamper guard is not it). There is no token-refresh
+// path — a new login is always a new page — so after the FIRST 401 nothing in
+// this page can succeed. From then on:
 //   - every facade / costs / docs request is refused HERE, before any fetch,
 //     with the same Unauthorized error the callers already handle (_noRetry);
 //   - that error carries _sessionGone, which logError keeps out of app_errors
 //     (the callers' catch blocks are many; filtering them one by one would
 //     miss the next one written);
-//   - the expiry itself is still heard: ONE row «session expired → …» per tab
-//     (see _tmsLogSessionExpiry for why per tab, not per page);
-//   - the redirect is re-attempted at most every 5 s, not once per request.
-// auth.js sets window._tmsNoSessionAtLoad when it redirects at load (no or
-// expired login): such a page has no token at all, so it starts «gone».
-let _tmsSessionGone = !!(typeof window !== 'undefined' && window._tmsNoSessionAtLoad);
+//   - the redirect is re-attempted at most every 5 s, not once per request;
+//   - the end of the session is still heard, per TAB (see _tmsStreakNote).
+// auth.js sets window._tmsNoSessionAtLoad = { reason, user, exp } when it
+// redirects at load: such a page has no token at all, so it starts «gone».
+const _tmsAtLoad = (typeof window !== 'undefined' && window._tmsNoSessionAtLoad) || null;
+let _tmsSessionGone = !!_tmsAtLoad;
 let _tmsSessionRedirectAt = _tmsSessionGone ? Date.now() : 0;
 const _TMS_SESSION_REDIRECT_MS = 5000;
-// 10 minutes groups the page loads of one expiry; a later expiry (8 h JWT)
-// starts again at 1 and is reported again.
-const _TMS_SESSION_LOG_WINDOW_MS = 10 * 60 * 1000;
-const _TMS_SESSION_LOG_EVERY = 50;
 
 function tmsSessionGone() { return _tmsSessionGone; }
 
@@ -345,40 +358,160 @@ function tmsSessionRefuse(req) {
   return _tmsUnauthorized(req);
 }
 
-// Called on a 401. The first one per page clears the login and writes the one
-// row; later ones (requests already in flight at that moment) only refuse.
+// Called on a 401. The first one per page reads whose login it was BEFORE
+// removing it (afterwards nothing can: the row is posted without a token, so
+// app_errors.actor stays empty — every 5/10 row said «unknown»), clears the
+// login and notes the page in the tab's streak; later ones (requests already
+// in flight at that moment) only refuse.
 function tmsSessionExpired(where, req) {
   if (!_tmsSessionGone) {
     _tmsSessionGone = true;
+    let u = null;
+    try { u = JSON.parse(localStorage.getItem('tms_user') || 'null'); } catch (_) {}
     try { localStorage.removeItem('tms_user'); localStorage.removeItem('tms_jwt'); } catch (_) {}
-    _tmsLogSessionExpiry(where);
+    _tmsStreakNote({ reason: '401', where, user: u && u.username, exp: u && u.expiresAt });
   }
   return tmsSessionRefuse(req);
 }
 
-// Per TAB, not per page. logError already capped every page at 20 posts
-// (utils.js MAX_APP_ERROR_POSTS), so the 2010 rows of 5/10 came from ≥101
-// page loads in ~4 minutes — the tab kept loading app.html, and each load had
-// its own «first» 401. (What sent it back is not found in this repo: index.html
-// returns to app.html only with a login whose expiresAt is still ahead.)
-// One row per page would still have been ~1300 rows. sessionStorage survives
-// reloads of the same tab: the first expiry is written, then every 50th page
-// load that hits it, WITH the count — a redirect loop stays audible (principle
-// 1) without writing 8 rows a second.
-function _tmsLogSessionExpiry(where) {
-  if (typeof logError !== 'function') return;
-  const now = Date.now();
-  let n = 1, since = now;
+// ── Per-tab streak of page loads that ended without a session ─────────────
+// Per TAB, not per page: logError caps every page at 20 posts (utils.js
+// MAX_APP_ERROR_POSTS), so the 2010 rows were ≥101 page loads — one row per
+// page would still have been ~1300 rows. sessionStorage survives the reloads
+// of one tab and dies with it. Every page load that ends without a session
+// (turned away at load by auth.js, or at its first 401) adds 1; the first 2xx
+// of a page that HAS a session ends the streak (_tmsSessionAlive), so a later
+// expiry in the same tab starts at 1 again and is reported again. No time
+// window: with one (it was 10 min) a loop slower than 50 loads per window
+// never reached 50 and stayed silent for ever (principle 1).
+// The «session: …» rows (B-34 excludes only the first kind, by its prefix):
+//   expired → login (user X; …)          the routine end of an 8 h login: a
+//        page's first 401 after its login's own expiry — once per streak;
+//   rejected before expiry → login (user X; … exp in N min …)   a 401 while
+//        this browser still holds the login as valid for > 5 min (a clock
+//        behind, a token the Worker refuses): NOT routine, so it never hides
+//        under the routine prefix — once per streak;
+//   login rejected at load — unknown username | role mismatch (user X; …)
+//        auth.js's tamper guard turned the page away: a user missing from
+//        config.js USERS is bounced at every login (CLAUDE.md) — once per streak;
+//   redirect loop — N loads in M s (user X, reason R; …)   every 50th load of a
+//        streak, whatever its reasons. A plain expiry or «no login» at load is
+//        silent alone: every morning's first page is one.
+// Each row carries what the 5/10 rows lacked: whose login, how the page was
+// reached (navigation type, referrer), the browser in short and the page's
+// hash. Rows wait in the streak («pending») until logError exists: auth.js
+// decides before utils.js has loaded, and a page that leaves before utils.js
+// runs hands its rows to the next app page of the tab.
+const _TMS_STREAK_KEY = 'tms_session_expired';
+const _TMS_LOOP_EVERY = 50;
+const _TMS_LOUD_AT_LOAD = ['unknown username', 'role mismatch'];
+let _tmsStreakMem = null;   // the record for this page alone, when sessionStorage throws
+let _tmsAliveSeen = false;
+
+function _tmsStreakGet() {
   try {
-    const prev = JSON.parse(sessionStorage.getItem('tms_session_expired') || 'null');
-    if (prev && now - prev.since >= 0 && now - prev.since < _TMS_SESSION_LOG_WINDOW_MS) { n = (prev.n | 0) + 1; since = prev.since; }
-    sessionStorage.setItem('tms_session_expired', JSON.stringify({ n, since }));
-  } catch (_) { /* no sessionStorage: every page reports, as before */ }
-  if (n !== 1 && n % _TMS_SESSION_LOG_EVERY !== 0) return;
-  const at = where ? ` (first 401: ${String(where).slice(0, 120)})` : '';
-  const loop = n === 1 ? '' : ` — ${n} page loads in this tab hit an expired session since ${new Date(since).toISOString().slice(11, 19)} UTC: redirect loop?`;
-  logError(new Error(`session expired → redirect to login${at}${loop}`), 'session');
+    const r = JSON.parse(sessionStorage.getItem(_TMS_STREAK_KEY) || 'null');
+    return r && typeof r === 'object' ? r : null;
+  } catch (_) { return _tmsStreakMem; }
 }
+
+function _tmsStreakPut(rec) {
+  _tmsStreakMem = rec;
+  try { sessionStorage.setItem(_TMS_STREAK_KEY, JSON.stringify(rec)); } catch (_) {}
+}
+
+// info = { reason: 'no login' | 'expired' | 'unknown username' | 'role mismatch' | '401', user, exp, where }
+function _tmsStreakNote(info) {
+  const now = Date.now();
+  const rec = _tmsStreakGet() || {};
+  rec.n = (rec.n | 0) + 1;
+  rec.since = rec.since || now;
+  const seen = rec.seen || (rec.seen = {});
+  const told = rec.told || (rec.told = []);
+  const pending = rec.pending || (rec.pending = []);
+  const reason = info.reason || 'no login';
+  seen[reason] = (seen[reason] | 0) + 1;
+  if (info.user) rec.user = String(info.user).slice(0, 40);
+  const who = `user ${rec.user || '?'}`;
+  const exp = Number(info.exp) || 0;
+  const expMin = exp ? Math.round((exp - now) / 60000) : null;   // > 0: still valid by this browser's clock
+  const tail = (expMin === null ? '' : expMin > 0 ? `; exp in ${expMin} min` : `; exp ${-expMin} min ago`) + _tmsSessionDiag();
+  if (reason === '401') {
+    const kind = expMin !== null && expMin > 5 ? 'rejected before expiry' : 'expired';
+    if (!told.includes(kind)) {
+      told.push(kind);
+      pending.push(`${kind} → login (${who}; first 401: ${String(info.where || '?').slice(0, 120)}${tail})`);
+    }
+  }
+  if (_TMS_LOUD_AT_LOAD.includes(reason) && !told.includes(reason)) {
+    told.push(reason);
+    pending.push(`login rejected at load — ${reason} (${who}${tail})`);
+  }
+  if (rec.n % _TMS_LOOP_EVERY === 0) {
+    const mix = Object.keys(seen).map((k) => `${k} ×${seen[k]}`).join(', ');
+    const why = reason === '401' ? `401 at ${String(info.where || '?').slice(0, 60)}` : reason;
+    pending.push(`redirect loop — ${rec.n} loads in ${Math.max(0, Math.round((now - rec.since) / 1000))} s (${who}, reason ${why}; ${mix}${tail})`);
+  }
+  if (pending.length > 5) pending.splice(0, pending.length - 5);   // logError never came: keep the newest
+  _tmsStreakPut(rec);
+  tmsSessionFlushPending();
+}
+
+// Hands the streak's waiting rows to logError: from _tmsStreakNote when
+// logError already exists (a 401 at run time), else from the end of utils.js.
+function tmsSessionFlushPending() {
+  if (typeof logError !== 'function') return;
+  const rec = _tmsStreakGet();
+  if (!rec || !Array.isArray(rec.pending) || !rec.pending.length) return;
+  const rows = rec.pending.splice(0);
+  _tmsStreakPut(rec);   // emptied first: each row is handed over once
+  for (const m of rows) logError(new Error(m), 'session');
+}
+
+// The first 2xx facade answer of a page that has a session ends the streak:
+// the tab works again (review 6/10 P3-1 — without this a second real expiry
+// in the same tab was never reported). A page in a loop never gets one.
+function _tmsSessionAlive() {
+  if (_tmsAliveSeen || _tmsSessionGone) return;
+  _tmsAliveSeen = true;
+  tmsSessionFlushPending();   // a row still waiting is sent, not dropped with the streak
+  _tmsStreakMem = null;
+  try { sessionStorage.removeItem(_TMS_STREAK_KEY); } catch (_) {}
+}
+
+// «; nav reload; from index.html; Win Chrome 149; #daily_ramp»: how this page
+// was reached and where it was — a reload, a forward from the login page and
+// a restored tab loop for different reasons, and the 5/10 rows could not tell
+// them apart. Never throws.
+function _tmsSessionDiag() {
+  const out = [];
+  try { const nav = performance.getEntriesByType('navigation')[0]; if (nav && nav.type) out.push('nav ' + nav.type); } catch (_) {}
+  try {
+    const r = document.referrer ? new URL(document.referrer) : null;
+    out.push('from ' + (!r ? 'none' : r.origin === location.origin ? (r.pathname.split('/').pop() || '/') : 'another site'));
+  } catch (_) {}
+  out.push(_tmsUaShort());
+  try { out.push(location.hash || 'no hash'); } catch (_) {}
+  return '; ' + out.join('; ');
+}
+
+// «Win Chrome 149». The full user agent is in app_errors.user_agent; this is
+// for the message, which is what the auditor and the owner read.
+function _tmsUaShort() {
+  try {
+    const ua = String(navigator.userAgent || '');
+    const os = /Windows NT/.test(ua) ? 'Win' : /Android/.test(ua) ? 'Android' : /iPhone|iPad|iPod/.test(ua) ? 'iOS'
+      : /Mac OS X/.test(ua) ? 'Mac' : /Linux/.test(ua) ? 'Linux' : 'other OS';
+    // Edge and Opera say «Chrome/» too, and Chrome says «Safari/»: the order of this list is the test
+    const b = [['Edge', /Edg\/(\d+)/], ['Opera', /OPR\/(\d+)/], ['Firefox', /Firefox\/(\d+)/], ['Chrome', /(?:Chrome|CriOS)\/(\d+)/], ['Safari', /Version\/(\d+)/]]
+      .find(([, re]) => re.test(ua));
+    return b ? `${os} ${b[0]} ${ua.match(b[1])[1]}` : `${os} other browser`;
+  } catch (_) { return 'no UA'; }
+}
+
+// The page auth.js already turned away: counted now (api.js is the next
+// script), written once logError exists (end of utils.js).
+if (_tmsAtLoad) _tmsStreakNote(typeof _tmsAtLoad === 'object' ? _tmsAtLoad : {});
 
 async function _atRetry(fn, retries = 3) {
   const reqId = _newReqId();
@@ -387,6 +520,7 @@ async function _atRetry(fn, retries = 3) {
     try {
       const res = await fn(reqId + '-' + (i + 1));
       _noteWorkerCaps(res);
+      if (res.ok) _tmsSessionAlive();
       if (res.status === 401) {
         // _noRetry: δεν υπάρχει διαδρομή ανανέωσης token — η session μόλις
         // σβήστηκε και ο browser φεύγει για το index.html. Χωρίς τη σημαία, ο

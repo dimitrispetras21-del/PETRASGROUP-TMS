@@ -1804,3 +1804,8 @@ function printOrderSheet(orderId, leg, hasPartner) {
 }
 window.printSheetQuery = printSheetQuery;
 window.printOrderSheet = printOrderSheet;
+
+// core/auth.js turns a page away at load and core/api.js counts it in the
+// tab's streak, both before this file has defined logError: the «session»
+// rows they decided to write wait there until now (api.js _tmsStreakNote).
+if (typeof tmsSessionFlushPending === 'function') tmsSessionFlushPending();
