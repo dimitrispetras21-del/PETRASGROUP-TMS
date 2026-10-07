@@ -267,10 +267,11 @@ const OrdersNoPrice = (() => {
     const v = r._type === 'natl' ? f['Pallets'] : f['Total Pallets'];
     return v === undefined || v === null || v === '' ? '' : String(v);
   }
+  // The temperature through OrdersCommon.tempText: an order «κατά CMR» (owner
+  // 7/10) reads «CMR» here, never a bare goods name that looks like no reefer.
   function _goods(r) {
     const f = r.fields || {};
-    const t = f['Temperature °C'];
-    return [f['Goods'] || '', t !== undefined && t !== null && t !== '' ? t + ' °C' : ''].filter(Boolean).join(' ');
+    return [f['Goods'] || '', OrdersCommon.tempText(f)].filter(Boolean).join(' ');
   }
   // ΑΝΑΘΕΣΗ: the SAME cell as the Κατάλογος (OrdersCommon.assignOf — owner
   // 29/9: «στο χωρίς τιμή δεν υπάρχει η πινακίδα/ανάθεση»; it used to be a

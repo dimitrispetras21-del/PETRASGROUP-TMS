@@ -25,6 +25,10 @@
 // PATCH, read-back, 422 once + context, 500 re-read, read failure), none for a
 // dispatcher, no «Χωρίς συνεργάτη αποθήκης» toast, the invoicing money lines,
 // and the order's own Reference escaped on the print sheet.
+// «Κατά CMR» (owner 7/10, Παντελής — runTempCmr): the tick makes the number
+// optional (emptied, locked) and the save sends 'Temp Per CMR' true with no
+// number; untick → the number is required again; a Worker that drops the label
+// is said loudly (read-back); the card and «Χωρίς τιμή» say «CMR».
 const path = require('path');
 const fs = require('fs');
 const ROOT = path.join(__dirname, '../..');   // the worktree under test
@@ -193,11 +197,14 @@ async function newPage(browser, role, view) {
       cap.fx.orders.push({ id, fields: Object.assign({}, b.fields) });
       // G-32: a Worker without the «Stock Lot» label answers 200 and drops it
       const echo = Object.assign({}, b.fields); if (cap.dropStockLot) delete echo['Stock Lot'];
+      if (cap.dropTempCmr) delete echo['Temp Per CMR'];   // 065: a Worker without the label (facade trap #1)
       return json(r, { id, fields: echo });
     }
     if (m === 'PATCH') {
       if (cap.orderPatchFail) { const e = cap.orderPatchFail; cap.orderPatchFail = null; return json(r, { error: e }, 422); }
-      cap.patches.push({ table: 'orders', id: one && one[1], fields: b.fields }); return json(r, { id: one && one[1], fields: b.fields });
+      cap.patches.push({ table: 'orders', id: one && one[1], fields: b.fields });
+      const echo = Object.assign({}, b.fields); if (cap.dropTempCmr) delete echo['Temp Per CMR'];
+      return json(r, { id: one && one[1], fields: echo });
     }
     cap.deletes.push({ table: 'orders', id: one && one[1] });
     if (cap.orderDelFail) { const e = cap.orderDelFail; cap.orderDelFail = null; return json(r, { error: e }, 422); }
@@ -1664,12 +1671,168 @@ async function runPrintLotPartner(browser) {
   await page.context().close();
 }
 
+// Owner 7/10 (Παντελής: «την επιλογή θερμοκρασίας ό,τι γράφει στο CMR»). The proof
+// is the request BODY and the field state, never a toast.
+async function runTempCmr(browser) {
+  console.log('\n[dispatcher] form: «Κατά CMR» (owner 7/10)');
+  const page = await newPage(browser, 'dispatcher', 'catalog');
+  const cap = page._cap;
+  // F: an order «κατά CMR» with a leftover number — the card must say CMR, never 2 °C
+  cap.fx.orders.push({ id: 'recCmr', fields: Object.assign({ 'Order No': 1320, Reference: 'TEST-CMR-CARD', Direction: 'Export', Type: 'International', Status: 'Pending', Client: ['recCliA'], Price: 1700, 'Total Pallets': 20, Goods: 'Μήλα', 'Temp Per CMR': true, 'Temperature °C': 2, 'Refrigerator Mode': 'Continuous', 'Loading DateTime': addDays(TODAY, 2) + 'T08:00:00', 'Delivery DateTime': addDays(TODAY, 4) + 'T08:00:00' }, route2('recLocGR1', 'recDestGR')) });
+  await gotoPage(page, 'orders', BASE_URL);
+  await page.waitForSelector('#ocrow_recPc1', { timeout: 20000 });
+  const orderPosts = () => cap.posts.filter(p => p.table === 'orders');
+  // The form's own PATCH carries the label; later PATCHes of the same order are the cascades'.
+  const formPatches = id => cap.patches.filter(p => p.table === 'orders' && p.id === id && 'Temp Per CMR' in (p.fields || {}));
+  const toastTexts = () => page.evaluate(() => [...(document.getElementById('tms-toast-container') || { children: [] }).children].map(t => ({ text: t.textContent, bg: t.style.background })));
+  const clearToasts = () => page.evaluate(() => { const c = document.getElementById('tms-toast-container'); if (c) c.innerHTML = ''; });
+  const closed = () => page.waitForFunction(() => !document.getElementById('modalOverlay').classList.contains('open'), null, { timeout: 10000 }).catch(() => {});
+  const tState = () => page.evaluate(() => {
+    const e = document.getElementById('f_Temp'), n = e.nextElementSibling;
+    return { value: e.value, disabled: e.disabled, checked: document.getElementById('f_TempCmr').checked, label: document.getElementById('f_TempLbl').textContent,
+      bad: e.classList.contains('oi-req-bad'), msg: !!(n && n.classList.contains('oi-req-msg')) };
+  });
+  const fill = async ref => {   // a complete new order — the temperature is the stage's
+    await page.evaluate(() => openIntlCreate());
+    await page.waitForSelector('#f_TempCmr', { timeout: 8000 });
+    await page.selectOption('#f_Direction', 'Export');
+    await page.evaluate(() => fhPickLinked('client', 'recCliA', 'Πελάτης Α'));
+    await page.fill('#f_Reference', ref);
+    await page.fill('#f_Goods', 'Μήλα');
+    await page.fill('#f_Price', '1800');
+    await page.selectOption('#f_ReeferMode', 'Continuous');
+    await page.selectOption('#f_PalletType', 'EUR');
+    await page.check('input[name="f_PalletExch"][value="no"]');
+    await page.evaluate(() => fhPickLinked('l_1', 'recLocGR1', 'Pack House A'));
+    await page.fill('#pal_l_1', '33');
+    await page.fill('#dt_l_1', addDays(TODAY, 1));
+    await page.evaluate(() => fhPickLinked('u_1', 'recDestGR', 'Cold Hub B'));
+    await page.fill('#pal_u_1', '33');
+    await page.fill('#dt_u_1', addDays(TODAY, 3));
+  };
+
+  // ── A. tick → no number required → ONE press saves, 'Temp Per CMR' true, no number ──
+  await fill('TEST-CMR-1');
+  let t = await tState();
+  ok(!t.checked && !t.disabled && t.label === 'Θερμοκρασία °C *', 'A: a new form — «Κατά CMR» unticked, the number open and starred — ' + JSON.stringify(t));
+  await page.fill('#f_Temp', '3');
+  await page.check('#f_TempCmr');
+  t = await tState();
+  ok(t.disabled && t.value === '' && t.label === 'Θερμοκρασία °C', 'A: ticked → the number is emptied and locked, no star — ' + JSON.stringify(t));
+  await page.evaluate(() => document.getElementById('f_TempCmr').scrollIntoView({ block: 'center' }));
+  await page.screenshot({ path: shot('16-temp-cmr-ticked') });
+  await clearToasts();
+  await page.click('#btnSubmit');
+  await closed();
+  const pA = orderPosts(), fA = (pA[0] || {}).fields || {};
+  ok(pA.length === 1 && fA['Temp Per CMR'] === true && 'Temperature °C' in fA && fA['Temperature °C'] === null,
+    'A: ONE press → ONE order POST with Temp Per CMR true and Temperature °C null — ' + JSON.stringify({ n: pA.length, cmr: fA['Temp Per CMR'], temp: fA['Temperature °C'] }));
+  const tA = await toastTexts();
+  ok(!tA.some(x => /Λείπουν υποχρεωτικά|Κατά CMR/.test(x.text)), 'A: no «Λείπουν υποχρεωτικά», no read-back warning (the Worker echoed the label) — ' + JSON.stringify(tA.map(x => x.text)));
+
+  // ── B. untick → the number is required again; a tick clears the red mark; untick gives the number back ──
+  await fill('TEST-CMR-2');
+  await page.check('#f_TempCmr');
+  await page.uncheck('#f_TempCmr');
+  t = await tState();
+  ok(!t.disabled && t.value === '' && t.label === 'Θερμοκρασία °C *', 'B: unticked → open and starred again — ' + JSON.stringify(t));
+  const nB = orderPosts().length;
+  await clearToasts();
+  await page.click('#btnSubmit');
+  await waitText(page, /Λείπουν υποχρεωτικά: Θερμοκρασία °C\./);
+  t = await tState();
+  ok(orderPosts().length === nB && t.bad && t.msg, 'B: Save → «Λείπουν υποχρεωτικά: Θερμοκρασία °C», marked under the field, nothing sent — ' + JSON.stringify(t));
+  await page.fill('#f_Temp', '4');
+  await page.check('#f_TempCmr');
+  t = await tState();
+  ok(!t.bad && !t.msg && t.value === '' && t.disabled, 'B: ticking clears the red mark — ' + JSON.stringify(t));
+  await page.uncheck('#f_TempCmr');
+  t = await tState();
+  ok(t.value === '4' && !t.disabled, 'B: an untick right after gives back the typed 4 — ' + JSON.stringify(t));
+  await page.click('#btnSubmit');
+  await closed();
+  const fB = (orderPosts().slice(nB)[0] || {}).fields || {};
+  ok(orderPosts().length === nB + 1 && fB['Temp Per CMR'] === false && fB['Temperature °C'] === 4, 'B: saved with the number — Temp Per CMR false, Temperature °C 4 — ' + JSON.stringify({ cmr: fB['Temp Per CMR'], temp: fB['Temperature °C'] }));
+
+  // ── C. edit a numbered order → tick → the PATCH clears the number ──
+  cap.extraStops = [['rpL', 'Loading', 'recLocGR1', 20, addDays(TODAY, 2) + 'T08:00:00', 'recOpen'], ['rpU', 'Unloading', 'recDestGR', 20, addDays(TODAY, 4) + 'T08:00:00', 'recOpen']];
+  const openF = Object.assign(cap.fx.orders.find(o => o.id === 'recOpen').fields, { 'ORDER STOPS': ['rpL', 'rpU'], 'Temperature °C': 4, 'Refrigerator Mode': 'Continuous', 'Pallet Type': 'EUR', 'Pallet Exchange': false });
+  await clearToasts();
+  await page.evaluate(f => openIntlEditWith('recOpen', JSON.parse(JSON.stringify(f))), openF);
+  await page.waitForSelector('#f_TempCmr', { timeout: 8000 });
+  t = await tState();
+  ok(!t.checked && t.value === '4' && !t.disabled, 'C: a numbered order opens unticked with its 4 — ' + JSON.stringify(t));
+  await page.check('#f_TempCmr');
+  await page.click('#btnSubmit');
+  await closed();
+  const fC = (formPatches('recOpen').at(-1) || {}).fields || {};
+  ok(formPatches('recOpen').length === 1 && fC['Temp Per CMR'] === true && 'Temperature °C' in fC && fC['Temperature °C'] === null, 'C: edit + tick → PATCH Temp Per CMR true, Temperature °C null (not left at 4) — ' + JSON.stringify({ cmr: fC['Temp Per CMR'], temp: fC['Temperature °C'] }));
+
+  // ── D. edit a «κατά CMR» order → opens ticked and locked; untick + number → PATCH false + number ──
+  const cmrF = Object.assign({}, openF, { 'Temp Per CMR': true, 'Temperature °C': 2 });
+  await page.evaluate(f => openIntlEditWith('recOpen', JSON.parse(JSON.stringify(f))), cmrF);
+  await page.waitForSelector('#f_TempCmr', { timeout: 8000 });
+  t = await tState();
+  ok(t.checked && t.disabled && t.value === '' && t.label === 'Θερμοκρασία °C', 'D: a CMR order opens ticked, the number locked and empty (the leftover 2 is not shown) — ' + JSON.stringify(t));
+  await page.uncheck('#f_TempCmr');
+  t = await tState();
+  ok(!t.disabled && t.value === '2', 'D: untick gives back the stored 2 — ' + JSON.stringify(t));
+  await page.fill('#f_Temp', '5');
+  await page.click('#btnSubmit');
+  await closed();
+  const fD = (formPatches('recOpen').at(-1) || {}).fields || {};
+  ok(formPatches('recOpen').length === 2 && fD['Temp Per CMR'] === false && fD['Temperature °C'] === 5, 'D: PATCH Temp Per CMR false, Temperature °C 5 — ' + JSON.stringify({ cmr: fD['Temp Per CMR'], temp: fD['Temperature °C'] }));
+
+  // ── E. a Worker without the label (facade trap #1: 200 OK, dropped) → said loudly, logged ──
+  cap.dropTempCmr = true;
+  await page.evaluate(() => { window.__logCtx = []; });
+  await fill('TEST-CMR-3');
+  await page.check('#f_TempCmr');
+  await clearToasts();
+  await page.click('#btnSubmit');
+  await closed();
+  const tE = await toastTexts(), logE = await page.evaluate(() => window.__logCtx.slice());
+  const lost = tE.find(x => /ΧΩΡΙΣ «Κατά CMR» και ΧΩΡΙΣ θερμοκρασία/.test(x.text));
+  ok(!!lost && /--danger/.test(lost.bg), 'E: ticked + dropped → a red (error) toast «…ΧΩΡΙΣ «Κατά CMR» και ΧΩΡΙΣ θερμοκρασία…» — ' + JSON.stringify(tE.map(x => x.text.slice(0, 90))));
+  ok(logE.some(c => /^submitIntlOrder temp per CMR /.test(c)), 'E: and logged (logError «submitIntlOrder temp per CMR …») — ' + JSON.stringify(logE));
+  await page.evaluate(() => { window.__logCtx = []; });
+  await fill('TEST-CMR-4');
+  await page.fill('#f_Temp', '2');
+  await clearToasts();
+  await page.click('#btnSubmit');
+  await closed();
+  const tE2 = await toastTexts(), logE2 = await page.evaluate(() => window.__logCtx.slice());
+  ok(tE2.some(x => /Ο server δεν επιστρέφει το «Κατά CMR»/.test(x.text) && /--warn/.test(x.bg)) && !tE2.some(x => /ΧΩΡΙΣ «Κατά CMR»/.test(x.text)) && logE2.some(c => /^submitIntlOrder temp per CMR /.test(c)),
+    'E: unticked + dropped → the milder warning, still logged — ' + JSON.stringify(tE2.map(x => x.text.slice(0, 90))));
+  cap.dropTempCmr = false;
+
+  // ── F. the card says «CMR», never the leftover 2 °C ──
+  await page.evaluate(() => { const c = document.getElementById('tms-toast-container'); if (c) c.innerHTML = ''; });
+  await page.click('#ocrow_recCmr');
+  await page.waitForFunction(() => /TEST-CMR-CARD/.test((document.getElementById('intlDetail') || {}).textContent || ''), null, { timeout: 8000 });
+  const kvT = await page.$$eval('#intlDetail .oi-kv', es => (es.map(e => [e.querySelector('.k').textContent, e.querySelector('.v').textContent]).find(x => x[0] === 'Θερμοκρασία') || [])[1]);
+  ok(kvT === 'CMR · Συνεχής', 'F: card «Θερμοκρασία: CMR · Συνεχής» — ' + JSON.stringify(kvT));
+  await page.screenshot({ path: shot('17-temp-cmr-card') });
+  ok(cap.errors.length === 0, 'no page errors / native dialogs — ' + cap.errors.join(' | '));
+  await page.context().close();
+
+  // ── G. «Χωρίς τιμή» (owner's view — a dispatcher never sees it): the goods cell reads «… CMR» ──
+  const np = await newPage(browser, 'owner', 'noprice');
+  np._cap.fx.orders.push({ id: 'recCmrNp', fields: Object.assign({ 'Order No': 1321, Reference: 'TEST-CMR-NP', Direction: 'Export', Type: 'International', Status: 'Delivered', Client: ['recCliA'], 'Total Pallets': 20, Goods: 'Μήλα', 'Temp Per CMR': true, 'Temperature °C': 2, 'Loading DateTime': addDays(TODAY, -6) + 'T08:00:00', 'Delivery DateTime': addDays(TODAY, -4) + 'T08:00:00' }, route2('recLocGR1', 'recDestGR')) });
+  await gotoPage(np, 'orders', BASE_URL);
+  await waitText(np, /TEST-CMR-NP/, 20000);
+  const cell = await np.evaluate(() => { const tr = [...document.querySelectorAll('tr')].find(r => /TEST-CMR-NP/.test(r.textContent)); return tr ? [...tr.querySelectorAll('.np-sub')].map(e => e.textContent) : null; });
+  ok(cell && cell.includes('Μήλα CMR') && !cell.some(x => /°C/.test(x)), '«Χωρίς τιμή»: goods cell «Μήλα CMR», no 2 °C — ' + JSON.stringify(cell));
+  ok(np._cap.errors.length === 0, 'no page errors — ' + np._cap.errors.join(' | '));
+  await np.context().close();
+}
+
 (async () => {
   const browser = await chromium.launch();
   try {
     // RIG_ONLY=runA,runB runs those stages alone (a quick re-run while fixing one screen).
     const only = (process.env.RIG_ONLY || '').split(',').filter(Boolean);
-    for (const run of [runCatalog, runForm, runFormTick, runFormKeeps, runMarkExisting, runLotCreate, runPiece, runLotEdit, runAccountant, runOwner, runOwnerCharge, runOwnerNoCharge, runReopen, runWarehouse, runPrint, runPrintNoClients, runPrintGroup, runPrintEscape, runPrintLotPartner]) {
+    for (const run of [runCatalog, runForm, runFormTick, runFormKeeps, runMarkExisting, runLotCreate, runPiece, runLotEdit, runAccountant, runOwner, runOwnerCharge, runOwnerNoCharge, runReopen, runWarehouse, runPrint, runPrintNoClients, runPrintGroup, runPrintEscape, runPrintLotPartner, runTempCmr]) {
       if (only.length && !only.includes(run.name)) continue;
       try { await run(browser); } catch (e) { failed++; console.log('  ✗ ' + run.name + ' threw: ' + (e && e.stack || e)); }
     }
