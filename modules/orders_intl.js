@@ -130,6 +130,11 @@ function _oiCss() { return `
    of #content, not a descendant of the list layout. */
 .oi-req-msg{color:var(--danger);font-size:11px;line-height:1.3;margin-top:4px}
 .oi-req-bad{border-color:var(--danger)}
+/* «Κατά CMR» (owner 7/10) shares the label row of «Θερμοκρασία °C». */
+.oi-temp-head{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.oi-cmr-tick{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text-mid);cursor:pointer;white-space:nowrap}
+.oi-cmr-tick input{width:14px;height:14px;margin:0}
+#f_Temp:disabled{background:var(--surface-sunken);color:var(--text-mid);cursor:not-allowed}
 /* Scan / duplicate banners in the modal — same three voices as the list strips. */
 .oi-banner{padding:8px 12px;border-radius:6px;margin-bottom:8px;font-size:12px;font-weight:600;border:1px solid var(--border);background:var(--surface-sunken);color:var(--text)}
 .oi-banner-warn{background:var(--warn-bg);border-color:var(--warn-border);color:var(--warn)}
@@ -351,7 +356,7 @@ function _oiCardHtml(rec, opts) {
   const miss = '— δεν έχει καταχωρηθεί';
   const kv = (k, v, cls) => `<div class="oi-kv"><span class="k">${k}</span><span class="v${cls ? ' ' + cls : ''}">${v}</span></div>`;
   const kvm = (k, v, cls) => kv(k, v || miss, v ? (cls || '') : 'miss');
-  const temp = f['Temperature °C'] != null ? escapeHtml(f['Temperature °C']) + ' °C' : '';
+  const temp = escapeHtml(OrdersCommon.tempText(f));
   const reefer = _OI_REEFER[f['Refrigerator Mode']] || f['Refrigerator Mode'] || '';
   const pal = _stopsTotalPallets(recId) || f['Total Pallets'];
   const gw = f['Gross Weight kg'];
@@ -528,7 +533,9 @@ const _OI_REQ_SOFT = [
   { id: 'f_Price',      label: 'Τιμή (€)' },
   // «Χωρίς ψύξη» is a legitimate answer that leaves the temperature empty on
   // purpose — demanding a number there would invent data.
-  { id: 'f_Temp',       label: 'Θερμοκρασία °C', skip: () => document.getElementById('f_ReeferMode')?.value === 'No temp' },
+  // «Κατά CMR» likewise: the temperature is the one on the CMR, not a number.
+  { id: 'f_Temp',       label: 'Θερμοκρασία °C', skip: () => document.getElementById('f_ReeferMode')?.value === 'No temp'
+                                                      || !!document.getElementById('f_TempCmr')?.checked },
   { id: 'f_ReeferMode', label: 'Λειτουργία ψυκτικού' },
   { id: 'f_PalletType', label: 'Τύπος παλέτας' },
 ];
@@ -555,6 +562,32 @@ function _oiCheckSoftRequired() {
   _oiReqAck = key;
   document.querySelector('#modal .oi-req-bad')?.scrollIntoView({ block: 'center' });
   return missing;
+}
+
+// «Κατά CMR» (owner 7/10, Παντελής): ticked, the number field is emptied and
+// locked so the form shows exactly what will be saved — no number (the save
+// writes 'Temperature °C' = null) — instead of a stale figure that the driver
+// paper would no longer print. The typed number is kept on the field while it
+// is locked, so an untick right after a mis-tick gives it back.
+function _oiTempCmr() {
+  const cb = document.getElementById('f_TempCmr'), el = document.getElementById('f_Temp');
+  if (!cb || !el) return;
+  const lbl = document.getElementById('f_TempLbl');
+  if (cb.checked) {
+    if (el.value !== '') el.dataset.prev = el.value;
+    el.value = '';
+    el.disabled = true;
+    el.placeholder = 'όπως γράφει το CMR';
+    // A red «Υποχρεωτικό» left by an earlier Save no longer applies.
+    el.classList.remove('oi-req-bad');
+    if (el.nextElementSibling?.classList.contains('oi-req-msg')) el.nextElementSibling.remove();
+  } else {
+    el.disabled = false;
+    el.placeholder = '';
+    if (el.value === '' && el.dataset.prev) el.value = el.dataset.prev;
+    delete el.dataset.prev;
+  }
+  if (lbl) lbl.textContent = 'Θερμοκρασία °C' + (cb.checked ? '' : ' *');
 }
 
 // A location typed but never picked from the list has text and no id — the
@@ -719,6 +752,10 @@ async function _openModal(recId, f, _clientLabelOverride, _scanPrefill, _piece) 
   };
 
   // Value/label ΧΩΡΙΣΤΑ (παγίδα Φ1): το value είναι ΤΙΜΗ ΒΑΣΗΣ και δεν μεταφράζεται ποτέ.
+  // «Κατά CMR» (owner 7/10): absent = a Worker that does not map it yet = a
+  // numbered order, as before (the base column is NOT NULL, 065).
+  const _cmr = f['Temp Per CMR'] === true;
+  const _tempNum = f['Temperature °C'] != null ? String(f['Temperature °C']) : '';
   const opt = (arr, cur) => arr.map(o=>{const v=Array.isArray(o)?o[0]:o, l=Array.isArray(o)?o[1]:o; return `<option value="${v}" ${f[cur]===v?'selected':''}>${l}</option>`;}).join('');
 
   let body = `
@@ -761,8 +798,15 @@ async function _openModal(recId, f, _clientLabelOverride, _scanPrefill, _piece) 
         <input class="form-input" type="number" id="f_GrossWeight" value="${f['Gross Weight kg']||''}">
       </div>
       <div class="form-field">
-        <label class="form-label">Θερμοκρασία °C *</label>
-        <input class="form-input" type="number" id="f_Temp" value="${f['Temperature °C']!=null?f['Temperature °C']:''}">
+        <!-- «Κατά CMR» (owner 7/10): in the label row, not beside the input —
+             the «Υποχρεωτικό» note of _oiCheckSoftRequired goes right after
+             the input and must stay under it. -->
+        <div class="oi-temp-head">
+          <label class="form-label" id="f_TempLbl" for="f_Temp">Θερμοκρασία °C${_cmr ? '' : ' *'}</label>
+          <label class="oi-cmr-tick" title="Η θερμοκρασία είναι αυτή που γράφει το CMR — χωρίς αριθμό εδώ">
+            <input type="checkbox" id="f_TempCmr" ${_cmr ? 'checked' : ''} onchange="_oiTempCmr()"> Κατά CMR</label>
+        </div>
+        <input class="form-input" type="number" id="f_Temp" value="${_cmr ? '' : escapeHtml(_tempNum)}"${_cmr ? ` disabled placeholder="όπως γράφει το CMR" data-prev="${escapeHtml(_tempNum)}"` : ''}>
       </div>
       <div class="form-field">
         <label class="form-label">Λειτουργία ψυκτικού *</label>
@@ -1336,7 +1380,9 @@ async function _oiLotCargo(SK) {
     const rec = await atGetOne(TABLES.ORDERS, src);
     const sf = (rec && rec.fields) || {}, out = {};
     // Absent = empty on the source (facade trap #2), not a failure.
-    for (const k of ['Goods', 'Temperature °C', 'Refrigerator Mode', 'Pallet Type']) if (sf[k] != null && sf[k] !== '') out[k] = sf[k];
+    // 'Temp Per CMR' (owner 7/10): a lot whose temperature is «as on the CMR»
+    // hands that on, not an empty number.
+    for (const k of ['Goods', 'Temperature °C', 'Temp Per CMR', 'Refrigerator Mode', 'Pallet Type']) if (sf[k] != null && sf[k] !== '') out[k] = sf[k];
     return out;
   } catch (e) {
     SK.cargoFailed = OrdersStock._msg(e);
@@ -2259,7 +2305,14 @@ async function submitIntlOrder(recId) {
     // Numbers
     const nv = id => { const v=document.getElementById(id)?.value; return v!==''&&v!=null?parseFloat(v):null; };
     const price = nv('f_Price');     if (price!=null)  fields['Price']          = price;
-    const temp  = nv('f_Temp');      if (temp!=null)   fields['Temperature °C'] = temp;
+    // «Κατά CMR» (owner 7/10): sent on every save, true or false, and read
+    // back after the write (below). Ticked = no number: the field is empty on
+    // screen, so the base holds none either — a stale figure would otherwise
+    // keep travelling to the national leg and the stops.
+    const _tempCmr = !!document.getElementById('f_TempCmr')?.checked;
+    fields['Temp Per CMR'] = _tempCmr;
+    const temp  = _tempCmr ? null : nv('f_Temp');
+    if (_tempCmr) fields['Temperature °C'] = null; else if (temp!=null) fields['Temperature °C'] = temp;
     const gw    = nv('f_GrossWeight');if (gw!=null)    fields['Gross Weight kg']= gw;
 
     // Checkboxes
@@ -2549,6 +2602,19 @@ async function submitIntlOrder(recId) {
     if (_pieceLost) {
       showErrorToast('Η παραγγελία αποθηκεύτηκε ΧΩΡΙΣ σύνδεση με την παρτίδα — ΔΕΝ είναι κομμάτι και δεν μπήκε στο φορτηγό. Ενημέρωσε τον διαχειριστή πριν τη χρησιμοποιήσεις.', 'error', 15000);
       if (typeof logError === 'function') logError(new Error('piece saved without its Stock Lot link (lot ' + _SK.lotRec + ')'), 'submitIntlOrder piece ' + (recId || result?.id));
+    }
+    // 065 (owner 7/10): «Temp Per CMR» is a new label — a Worker that does not
+    // map it yet answers 200 and drops it (facade trap #1). The row it returned
+    // decides (αρχή 2), loudly. Ticked and dropped is the bad case: the number
+    // was cleared on purpose, so the order now carries NO temperature at all.
+    const _cmrBack = (result?.fields || {})['Temp Per CMR'];
+    if (!result?._offline && _cmrBack !== fields['Temp Per CMR']) {
+      const _cmrLost = fields['Temp Per CMR'] === true;
+      showErrorToast(_cmrLost
+        ? 'Η παραγγελία αποθηκεύτηκε ΧΩΡΙΣ «Κατά CMR» και ΧΩΡΙΣ θερμοκρασία — ο server δεν κράτησε την επιλογή. Άνοιξέ την, γράψε θερμοκρασία σε °C και ενημέρωσε τον διαχειριστή.'
+        : 'Ο server δεν επιστρέφει το «Κατά CMR» — η παραγγελία αποθηκεύτηκε, αλλά ενημέρωσε τον διαχειριστή.',
+        _cmrLost ? 'error' : 'warn', 15000);
+      if (typeof logError === 'function') logError(new Error('Temp Per CMR not read back: sent ' + fields['Temp Per CMR'] + ', got ' + _cmrBack), 'submitIntlOrder temp per CMR ' + (recId || result?.id));
     }
     // Αρχή 2: the row the Worker returned decides, not the toast below.
     if (_wasPre && !result?._offline && result?.fields?.['Ops Status']) {
@@ -3839,6 +3905,7 @@ window._oiLotToggle = _oiLotToggle;
 window._oiLotApply = _oiLotApply;
 window._oiLotPallets = _oiLotPallets;
 window._oiWhWarn = _oiWhWarn;   // PR-17: inline handlers of the loading stops
+window._oiTempCmr = _oiTempCmr; // «Κατά CMR» tick (owner 7/10): inline onchange
 window._oiLotReopen = _oiLotReopen;   // O1: «Άνοιγμα ξανά» in the lot band
 window._oiChargeSave = _oiChargeSave;     // round 2 #1: the owner's «Χρέωση αποθήκης»
 window._oiChargeDirty = _oiChargeDirty;

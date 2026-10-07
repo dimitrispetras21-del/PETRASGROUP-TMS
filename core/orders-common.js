@@ -115,6 +115,20 @@ const OrdersCommon = {
     return (rec._type === 'natl' ? 'Ε-' : '#') + n;
   },
 
+  // ── Temperature ──────────────────────────────────────────────────────────
+  // «Κατά CMR» (owner 7/10, Παντελής): the order's temperature is whatever its
+  // CMR states, not a number we hold. Such an order has no number on purpose,
+  // so an empty cell (or a 0) would read as «no reefer» / «0 °C». ONE rule for
+  // the app's screens; print.html (no core JS) carries its own copy, ordTemp.
+  // 'Temp Per CMR' is NOT NULL in the base (065), so absent = Worker not yet
+  // mapping it = an ordinary numbered order, as before.
+  tempText(f) {
+    f = f || {};
+    if (f['Temp Per CMR'] === true) return 'CMR';
+    const t = f['Temperature °C'];
+    return t === undefined || t === null || t === '' ? '' : t + ' °C';
+  },
+
   // ── Places (owner 28/9: «κεντρικό την ονομασία, με γκρι από κάτω την πόλη,
   // χώρα») ──────────────────────────────────────────────────────────────────
   // From the flat link fields both forms write (intl: Loading/Unloading

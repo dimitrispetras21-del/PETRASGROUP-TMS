@@ -186,6 +186,10 @@ body{-webkit-print-color-adjust:exact;print-color-adjust:exact}
 .chip.pe-yes{border-color:rgba(6,118,71,.45);background:#F2FBF6}.chip.pe-yes .v{color:#067647}
 .chip.pe-no{border-color:rgba(220,38,38,.4);background:#FEF6F5}.chip.pe-no .v{color:#DC2626}
 .chip.alert{border-color:rgba(220,38,38,.4);background:#FEF6F5}.chip.alert .v{color:#DC2626;font-size:11px}
+/* «Κατά CMR» (owner 7/10): the CMR wording is longer than «2°C» — goods size */
+.chip.temp .v.cmr{font-size:11.5px}
+/* Owner 7/10: every sheet tells the driver to keep the CMR temperature */
+.cmr-keep{margin:-6px 0 14px;padding:7px 12px;border:1px solid #D6DDE6;border-left:4px solid #0284C7;border-radius:8px;background:#F4F6F9;font-size:11.5px;font-weight:800;color:#0B1929}
 .tl{position:relative;margin:2px 0 14px;padding-left:30px}
 .tl::before{content:'';position:absolute;left:10px;top:14px;bottom:14px;width:2px;background:#D6DDE6}
 .stop{position:relative;background:#FAFBFC;border:1px solid #E7EBF0;border-radius:10px;padding:11px 15px;margin-bottom:9px;page-break-inside:avoid}
@@ -351,6 +355,7 @@ var LBL_EN={coords:'Coords',cancel:'Supersedes any previous sheet for this order
   dtLoadDateOnly:'Date of loading',dtDelDateOnly:'Date of delivery',
   hours:'Opening Hours',days:'Delivery Days',goods:'Goods',pal:'Pallets',palU:'pallets',
   pe:'Pallet Exchange',gw:'Gross Weight',temp:'Temperature',refr:'Refrigerator',
+  tempCmr:'as stated on the CMR',keepCmr:'Keep the temperature stated on the CMR.',
   yes:'YES',no:'NO',from:'From',to:'To',loadSec:'Loading Place',delSec:'Delivery Place',
   maps:'Open in Maps',
   waAuto:'Automated message. If anything looks wrong, please contact the office.'};
@@ -360,6 +365,7 @@ var LBL_GR={coords:'Συντ/νες',cancel:'Ακυρώνει κάθε προη�
   dtLoadDateOnly:'Ημ/νία φόρτωσης',dtDelDateOnly:'Ημ/νία παράδοσης',
   hours:'Ωράριο',days:'Ημέρες παράδοσης',goods:'Εμπόρευμα',pal:'Παλέτες',palU:'παλέτες',
   pe:'Ανταλλαγή παλετών',gw:'Μικτό βάρος',temp:'Θερμοκρασία',refr:'Ψυγείο',
+  tempCmr:'όπως γράφει το CMR',keepCmr:'Τήρησε τη θερμοκρασία που γράφει το CMR.',
   yes:'ΝΑΙ',no:'ΟΧΙ',from:'Από',to:'Προς',loadSec:'ΦΟΡΤΩΣΗ',delSec:'ΠΑΡΑΔΟΣΗ',
   maps:'Άνοιγμα στους Χάρτες',
   waAuto:'Αυτοματοποιημένο μήνυμα. Αν κάτι σας φαίνεται λάθος, επικοινωνήστε με το γραφείο.'};
@@ -385,6 +391,23 @@ function hasTime(s){
   var t=String(s).split('T')[1]; if(!t)return false;
   t=t.slice(0,5); return t!=='00:00'&&t!=='12:00';
 }
+// «Κατά CMR» (owner 7/10, Παντελής): the order's temperature is the one its
+// CMR states — no number. The same rule as OrdersCommon.tempText in the app
+// (this page loads no core JS). The flag wins over any figure, the order's or
+// a stop's: a leftover number must never reach the driver as the temperature.
+// Returns the text to print — '2°C', the CMR wording, or '' (none) — so every
+// card, chip and cover reads one answer. 'Temp Per CMR' absent = a Worker that
+// does not map it yet = a numbered order, exactly as before.
+function tempPerCmr(f){return !!f&&f['Temp Per CMR']===true;}
+function ordTemp(f,sf){
+  var L=LBL||LBL_EN;
+  if(tempPerCmr(f))return L.tempCmr;
+  var t=(sf&&sf['Temperature']!=null)?sf['Temperature']:(f||{})['Temperature °C'];
+  return(t!==''&&t!=null)?t+'°C':'';
+}
+// Owner 7/10: EVERY sheet (and every WhatsApp text, waBuild) tells the driver
+// to keep the temperature on the CMR — with or without a number of ours.
+function keepCmrHTML(){return '<div class="cmr-keep">🌡 '+escHtml((LBL||LBL_EN).keepCmr)+'</div>';}
 // dtLabel: 'loading' | 'delivery' | 'crossdock'
 // tag (optional, group cover only — finding #6): small order-of-origin label
 // printed next to the type badge, e.g. "ΠΑΡΑΓΓΕΛΙΑ A · 269 · Lidl Ecser".
@@ -419,7 +442,8 @@ function buildCard(num,loc,dtLabel,dt,pals,palType,showDetails,goods,pe,gw,temp,
     if(goods)h+='<div class="f"><b>'+L.goods+'</b><span>'+escHtml(goods)+'</span></div>';
     h+='<div class="f"><b>'+L.pe+'</b><span class="'+(pe==='YES'?'hot':'')+'">'+(pe==='YES'?L.yes:pe==='NO'?L.no:escHtml(pe))+'</span></div>';
     if(gw)h+='<div class="f"><b>'+L.gw+'</b><span>'+escHtml(gw)+' KG</span></div>';
-    if(temp!==''&&temp!=null)h+='<div class="f"><b>'+L.temp+'</b><span class="hot">'+escHtml(temp)+'°C</span></div>';
+    // temp: the printable text from ordTemp ('2°C' / the CMR wording / '').
+    if(temp)h+='<div class="f"><b>'+L.temp+'</b><span class="hot">'+escHtml(temp)+'</span></div>';
     if(refr)h+='<div class="f"><b>'+L.refr+'</b><span>'+escHtml(refr)+'</span></div>';
   }
   h+='</div><div style="clear:both"></div></div>';return h;
@@ -483,7 +507,7 @@ function buildLoadHTML(f,isExport,veroiaSwitch,VEROIA,VADDR,VLAT,VLNG){
     var vDt=_vsReal?String(_vsReal):(dt?new Date(new Date(dt).getTime()+86400000).toISOString():'');
     return buildCard(1,{name:VEROIA,address:VADDR,lat:VLAT,lng:VLNG},'loading',vDt,
       fv(f['Total Pallets']),fv(f['Pallet Type']),true,fv(f['Goods']),
-      f['Pallet Exchange']?'YES':'NO',f['Gross Weight kg'],f['Temperature °C'],f['Refrigerator Mode']);
+      f['Pallet Exchange']?'YES':'NO',f['Gross Weight kg'],ordTemp(f),f['Refrigerator Mode']);
   }
   var loadStops=stopsOfType(orderStops,'Loading');
   if(loadStops.length){
@@ -496,14 +520,14 @@ function buildLoadHTML(f,isExport,veroiaSwitch,VEROIA,VADDR,VLAT,VLNG){
       html+=buildCard(si+1,loc,'loading',stopDt,sf['Pallets']||'',
         fv(f['Pallet Type']),si===0,sf['Goods']||fv(f['Goods']),
         f['Pallet Exchange']?'YES':'NO',f['Gross Weight kg'],
-        sf['Temperature']!=null?sf['Temperature']:f['Temperature °C'],f['Refrigerator Mode']);
+        ordTemp(f,sf),f['Refrigerator Mode']);
     }
     if(html)return html;
   }
   var flL=flatLoc(f,'Loading',false);
   return buildCard(1,flL||{name:'—',address:'',lat:'',lng:''},'loading',dt,
     fv(f['Loading Pallets 1'])||fv(f['Total Pallets']),fv(f['Pallet Type']),true,fv(f['Goods']),
-    f['Pallet Exchange']?'YES':'NO',f['Gross Weight kg'],f['Temperature °C'],f['Refrigerator Mode']);
+    f['Pallet Exchange']?'YES':'NO',f['Gross Weight kg'],ordTemp(f),f['Refrigerator Mode']);
 }
 
 function buildDelHTML(f,isExport,veroiaSwitch,VEROIA,VADDR,VLAT,VLNG){
@@ -537,7 +561,7 @@ function buildDelHTML(f,isExport,veroiaSwitch,VEROIA,VADDR,VLAT,VLNG){
       html+=buildCard(si+1,loc,'delivery',stopDt,sf['Pallets']||'',
         fv(f['Pallet Type']),si===0,sf['Goods']||fv(f['Goods']),
         f['Pallet Exchange']&&!f['Own Stock Lot']?'YES':'NO',f['Gross Weight kg'],
-        sf['Temperature']!=null?sf['Temperature']:f['Temperature °C'],f['Refrigerator Mode']);
+        ordTemp(f,sf),f['Refrigerator Mode']);
     }
     if(html)return html;
   }
@@ -561,7 +585,7 @@ function buildCrossdockHTML(f){
     html+=buildCard(si+1,loc,'crossdock',sf['DateTime']||'',sf['Pallets']||'',
       fv(f['Pallet Type']),si===0,sf['Goods']||fv(f['Goods']),
       f['Pallet Exchange']?'YES':'NO',f['Gross Weight kg'],
-      sf['Temperature']!=null?sf['Temperature']:f['Temperature °C'],f['Refrigerator Mode']);
+      ordTemp(f,sf),f['Refrigerator Mode']);
   }
   return html;
 }
@@ -746,8 +770,14 @@ function waBuild(f,isPartner,isExport,veroiaSwitch,VEROIA,VADDR,VLAT,VLNG,vehLin
   var cargo=[];
   if(f['Total Pallets'])cargo.push('*'+fv(f['Total Pallets'])+'× '+(fv(f['Pallet Type'])||'EUR')+'*');
   if(fv(f['Goods']))cargo.push(fv(f['Goods']));
-  if(f['Temperature °C']!==''&&f['Temperature °C']!=null)cargo.push('🌡 *'+f['Temperature °C']+'°C'+(f['Refrigerator Mode']?' '+f['Refrigerator Mode']:'')+'*');
+  var cmr=tempPerCmr(f);
+  if(!cmr&&f['Temperature °C']!==''&&f['Temperature °C']!=null)cargo.push('🌡 *'+f['Temperature °C']+'°C'+(f['Refrigerator Mode']?' '+f['Refrigerator Mode']:'')+'*');
   if(cargo.length)lines.push('📦 '+cargo.join(' · '));
+  // Owner 7/10 (Παντελής): «κατά CMR» has its own line — no number, plus the
+  // reefer mode — and EVERY text then tells the driver to keep the CMR
+  // temperature, with or without a number of ours (same line as the paper).
+  if(cmr)lines.push('🌡 *'+L.temp+': '+L.tempCmr+(f['Refrigerator Mode']?' · '+f['Refrigerator Mode']:'')+'*');
+  lines.push('🌡 '+L.keepCmr);
   // C4-03: a lot exchanges at the client's loading, never at the warehouse.
   if(f['Own Stock Lot']&&f['Pallet Exchange'])lines.push('🔁 *'+L.pe+': '+L.yes+(isPartner?' at loading · ':' στη φόρτωση · ')+L.no+(isPartner?' at the warehouse':' στην αποθήκη')+'*');
   else lines.push('🔁 *'+L.pe+': '+(f['Pallet Exchange']?L.yes:L.no)+'*');
@@ -844,16 +874,17 @@ function generatePDF(orderRec, bare){ // bare (Wave 3): no toolbar — docs 2..N
 
   // v2.1 chips φορτίου — PE πρώτης τάξης (εγκεκριμένο)
   var peYes=!!f['Pallet Exchange'];
+  var tempV=ordTemp(f);
   var chipsHTML='<div class="cargo">'+
     '<div class="chip"><div class="k">'+LBL.pal+'</div><div class="v">'+escHtml(fv(f['Total Pallets'])||'—')+' <small>× '+escHtml(fv(f['Pallet Type'])||'EUR')+'</small></div></div>'+
     // C4-04 (round 3): a LOT exchanges at the client's loading, never at the
     // warehouse (Ε5) — the chip says both, like the stop cards and WhatsApp.
     '<div class="chip '+(peYes?'pe-yes':'pe-no')+'"><div class="k">'+LBL.pe+'</div><div class="v">'+(peYes?LBL.yes:LBL.no)+(peYes&&f['Own Stock Lot']?' <small>'+(isPartner?'at loading · ':'στη φόρτωση · ')+LBL.no+(isPartner?' at the warehouse':' στην αποθήκη')+'</small>':'')+'</div></div>'+
-    ((f['Temperature °C']!==''&&f['Temperature °C']!=null)?'<div class="chip temp"><div class="k">'+LBL.temp+'</div><div class="v">'+escHtml(f['Temperature °C'])+'°C'+(f['Refrigerator Mode']?' <small>'+escHtml(f['Refrigerator Mode'])+'</small>':'')+'</div></div>':'')+
+    (tempV?'<div class="chip temp"><div class="k">'+LBL.temp+'</div><div class="v'+(tempPerCmr(f)?' cmr':'')+'">'+escHtml(tempV)+(f['Refrigerator Mode']?' <small>'+escHtml(f['Refrigerator Mode'])+'</small>':'')+'</div></div>':'')+
     (fv(f['Goods'])?'<div class="chip"><div class="k">'+LBL.goods+'</div><div class="v" style="font-size:11.5px">'+escHtml(fv(f['Goods']))+'</div></div>':'')+
     (f['Gross Weight kg']?'<div class="chip"><div class="k">'+LBL.gw+'</div><div class="v">'+escHtml(f['Gross Weight kg'])+' <small>KG</small></div></div>':'')+
     (f['High Risk Flag']&&!isPartner?'<div class="chip alert"><div class="k">Σημάνσεις</div><div class="v">High Risk</div></div>':'')+
-    '</div>';
+    '</div>'+keepCmrHTML();
 
   // Επικοινωνία (μόνο συμπληρωμένα)
   var contactBits=[];
@@ -1040,7 +1071,7 @@ function buildCoverDoc(items){
   // stop, so its chips are built from EVERY member — the first order's pallet
   // type and «any PE = ΝΑΙ» told him to swap pallets at a warehouse whose piece
   // the base forbids to swap (Ε5) and to count EUR where it hands out CHEP.
-  var totalPallets=0, peRefs=[], temps=[], goodsList=[], byType={}, typeOrder=[];
+  var totalPallets=0, peRefs=[], temps=[], anyCmr=false, goodsList=[], byType={}, typeOrder=[];
   items.forEach(function(it,i){
     var f=it.orderRec.fields;
     var p=parseFloat(fv(f['Total Pallets'])); if(!isNaN(p)) totalPallets+=p;
@@ -1048,7 +1079,9 @@ function buildCoverDoc(items){
     if(byType[pt]===undefined){byType[pt]=0;typeOrder.push(pt);}
     if(!isNaN(p)) byType[pt]+=p;
     if(f['Pallet Exchange']) peRefs.push(escHtml(String.fromCharCode(65+i)+' '+(f['Reference']||ordNoOf(it.orderRec))));
-    if(f['Temperature °C']!==''&&f['Temperature °C']!=null&&temps.indexOf(String(f['Temperature °C']))<0) temps.push(String(f['Temperature °C']));
+    // «Κατά CMR» (owner 7/10): such a member adds the CMR wording, never its number.
+    if(tempPerCmr(f)) anyCmr=true;
+    else if(f['Temperature °C']!==''&&f['Temperature °C']!=null&&temps.indexOf(String(f['Temperature °C']))<0) temps.push(String(f['Temperature °C']));
     if(fv(f['Goods'])&&goodsList.indexOf(fv(f['Goods']))<0) goodsList.push(fv(f['Goods']));
   });
   var anyPE=peRefs.length>0, allPE=peRefs.length===items.length;
@@ -1059,9 +1092,9 @@ function buildCoverDoc(items){
   var chipsHTML='<div class="cargo">'+
     '<div class="chip"><div class="k">'+LBL.pal+'</div><div class="v">'+palV+'</div></div>'+
     '<div class="chip '+(anyPE?'pe-yes':'pe-no')+'"><div class="k">'+LBL.pe+'</div><div class="v">'+peV+'</div></div>'+
-    '<div class="chip temp"><div class="k">'+LBL.temp+'</div><div class="v">'+(temps.length?escHtml(temps.join(' / '))+'°C':'—')+'</div></div>'+
+    '<div class="chip temp"><div class="k">'+LBL.temp+'</div><div class="v'+(anyCmr?' cmr':'')+'">'+([temps.length?escHtml(temps.join(' / '))+'°C':'',anyCmr?escHtml(LBL.tempCmr):''].filter(Boolean).join(' / ')||'—')+'</div></div>'+
     '<div class="chip"><div class="k">'+LBL.goods+'</div><div class="v" style="font-size:11.5px">'+(goodsList.length?escHtml(goodsList.join(' · ')):'—')+'</div></div>'+
-  '</div>';
+  '</div>'+keepCmrHTML();
 
   // Vehicle bar: the group shares one truck/trailer/driver once assigned
   // (a merged Weekly International row) — read from the first order.

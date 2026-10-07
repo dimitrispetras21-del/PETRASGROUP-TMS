@@ -4632,9 +4632,11 @@ async function _wiDoSplit(rowId){
   // Dropped from the old list: 'Total Pallets' (read-only view column, see
   // _wiParentPalletsTotal above). Added: 'Pallet Exchange', 'Refrigerator
   // Mode' — both are real ORDERS columns (worker/src/index.js ~1121/1151)
-  // that the split silently left off a leg before this pass.
+  // that the split silently left off a leg before this pass. 'Temp Per CMR'
+  // (owner 7/10): a leg of a «κατά CMR» order would otherwise print with no
+  // temperature at all.
   const common={};
-  ['Type','Direction','Client','Reference','Pallet Type','Pallet Exchange','Refrigerator Mode','Goods','Temperature °C','Veroia Switch']
+  ['Type','Direction','Client','Reference','Pallet Type','Pallet Exchange','Refrigerator Mode','Goods','Temperature °C','Temp Per CMR','Veroia Switch']
     .forEach(k=>{ if(pf[k]!==undefined&&pf[k]!==null&&pf[k]!=='') common[k]=pf[k]; });
 
   const parentAssigned=!!(getLinkedId(pf['Truck'])||getLinkedId(pf['Partner']));

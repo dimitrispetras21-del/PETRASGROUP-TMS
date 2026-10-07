@@ -97,6 +97,11 @@ const SHEETS = [
 // message» line. wa-text-rig.js asserts them exactly; here they are set aside
 // so (c) keeps comparing everything else with BASE_REV, which predates them.
 const waBefore0710 = s => s.replace(/\n📍 \*[^\n]*\*(?=\n📍 https:)/g, '').replace(/\n\nℹ️ [^\n]*(?=\n====\n|$)/g, '');
+// Owner 7/10 (feat/temp-per-cmr-front): every text and every paper document
+// carries «🌡 keep the temperature on the CMR» — asserted exactly by
+// wa-text-rig.js (4b); set aside here like the two lines above. The fixtures
+// hold no «κατά CMR» order, so nothing else of that change can appear here.
+const waBeforeCmr = s => s.replace(/\n🌡 (Τήρησε τη θερμοκρασία που γράφει το CMR|Keep the temperature stated on the CMR)\.(?=\n)/g, '');
 
 let pass = 0, fail = 0;
 const ok = (c, m) => { if (c) { pass++; console.log('  ✓ ' + m); } else { fail++; console.log('  ✗ ' + m); } };
@@ -127,13 +132,14 @@ async function render(browser, html, fx, qs) {
   await page.goto(BASE + 'print.html?' + qs + '&noprint=1');
   await page.waitForFunction(() => document.getElementById('doc').style.display === 'block', null, { timeout: 15000 });
   const out = await page.evaluate(() => ({
-    text: document.getElementById('doc').innerText,
+    // (feat/temp-per-cmr-front) the paper CMR line is set aside, see waBeforeCmr.
+    text: (document.querySelectorAll('#doc .cmr-keep').forEach(e => e.remove()), document.getElementById('doc').innerText),
     mk: [...document.querySelectorAll('[data-mk]')].map(e => e.tagName + ':' + e.getAttribute('data-mk')),
     urls: [...document.querySelectorAll('#doc [href], #doc [src]')].map(e => e.getAttribute('href') || e.getAttribute('src')),
     wa: (typeof _waArr !== 'undefined' ? _waArr : []).join('\n====\n'),
   }));
   await ctx.close();
-  out.wa = waBefore0710(out.wa);
+  out.wa = waBeforeCmr(waBefore0710(out.wa));
   return Object.assign(out, { errors });
 }
 
