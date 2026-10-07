@@ -79,10 +79,18 @@ async function renderDailyOps() {
     // null = a newer load started meanwhile: OPS and the screen are its own
     // (a late earlier day used to paint its rows under the newer day's date).
     if (!ld) return;
+    // The user may have left Daily Ops while the day loaded: #content is that
+    // page's now, and painting the day over it hid it (review P3, 7/10).
+    if (typeof currentPage !== 'undefined' && currentPage !== 'daily_ops') return;
     _opsDraw();
     if (ld.pending) await _opsRelaysSettle(ld.pending, seq);
   }
-  catch(e) { _opsFailed(e); }
+  // Only the newest load may say «δεν φορτώθηκε»: a late, failed earlier day
+  // used to replace a correctly drawn current day with the error (review P3).
+  catch(e) {
+    if (seq !== _opsSeq || (typeof currentPage !== 'undefined' && currentPage !== 'daily_ops')) { console.warn('[ops] stale load failed:', e && e.message); return; }
+    _opsFailed(e);
+  }
 }
 // Failure ≠ empty (DESIGN.md #7): say what happened, what it does NOT mean,
 // and what to do — a bare «Σφάλμα» read as «no orders today» at 05:30.
