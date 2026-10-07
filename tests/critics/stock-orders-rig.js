@@ -1792,8 +1792,12 @@ async function runPrintGroup(browser) {
   ok(pcTag.stk === 'Απόθεμα · Ref TEST-STOCK-LOT · παρτίδα #1300 · Πελάτης Α' && pcTag.block && pcTag.px >= 9 && tags.filter(t => /^ΠΑΡΑΓΓΕΛΙΑ A/.test(t.head)).every(t => !t.stk),
     'O10/C4-02 + OWNER-Q10 + C4-03: the piece\'s cover stop carries «Απόθεμα · … · Πελάτης Α» on its own line at ≥ 9px; the lead\'s none — ' + JSON.stringify(tags));
   ok(!/undefined/.test(docs[0]), 'no «undefined» on the cover');
+  // Owner 7/10 (feat/group-route-message): a group is ONE WhatsApp text with a
+  // cargo block per order — the stock line belongs in the piece's block only.
   const wa = await page.evaluate(() => _waArr);
-  ok(wa.length >= 2 && /Απόθεμα · Ref TEST-STOCK-LOT · παρτίδα #1300/.test(wa[wa.length - 1]) && !/Απόθεμα/.test(wa[0]), 'O10/C4-02: the piece\'s WhatsApp text (right-click share) says stock; the lead\'s does not');
+  const cargoOf = no => ((wa[0] || '').split('\n\n').find(b => b.split('\n')[0] === '*ΦΟΡΤΙΟ #' + no + '*') || '');
+  ok(wa.length === 1 && /Απόθεμα · Ref TEST-STOCK-LOT · παρτίδα #1300/.test(cargoOf(2002)) && cargoOf(2001) && !/Απόθεμα/.test(cargoOf(2001)),
+    'O10/C4-02: ONE group WhatsApp text (right-click share); the piece\'s «*ΦΟΡΤΙΟ #2002*» block says stock, the lead\'s «#2001» does not — ' + JSON.stringify([wa.length, cargoOf(2001), cargoOf(2002)]));
   await page.screenshot({ path: shot('14-print-group-packet'), fullPage: true });
   // C4-11 (round 3): a member whose last delivery location is not resolved → «—», never «undefined»
   cap.fx.orders.push({ id: 'recUnk', fields: { 'Order No': 2009, Reference: 'TEST-UNK', Direction: 'Import', Type: 'International', Status: 'Assigned', Client: ['recCliA'], Price: 900, 'Total Pallets': 5, 'Group ID': 'GI-T|recLead', 'ORDER STOPS': ['recUk1', 'recUk2'], 'Loading DateTime': addDays(TODAY, 1) + 'T07:00:00', 'Delivery DateTime': addDays(TODAY, 3) + 'T11:00:00' } });

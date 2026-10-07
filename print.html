@@ -232,7 +232,8 @@ body{-webkit-print-color-adjust:exact;print-color-adjust:exact}
 .pbar-btn.wa:hover{background:#0A5C3C}
 @page{size:A4;margin:9mm}
 @media print{
-  .pbar,.pbar-spacer{display:none}
+  .pbar,.pbar-spacer,#waGroupFailed{display:none}
+  #pageNotes{margin-top:0!important}
   #doc{padding:6px 10px;max-width:none}
   .stop-card{page-break-inside:avoid}
   .sig-table{page-break-inside:avoid}
@@ -267,7 +268,7 @@ const OFFICE_PHONE='';      // π.χ. '+30 23320 XXXXX'
 const EMERGENCY_PHONE='';   // π.χ. '+30 69X XXX XXXX'
 const OFFICE_EMAIL='vermionfresh@petrasgroup.com';  // owner 12/8
 const INVOICE_EMAIL='invoice@petrasgroup.com';          // owner 12/8
-var _waArr=[]; // WhatsApp κείμενα (ένα ανά έγγραφο ομάδας)
+var _waArr=[]; // WhatsApp texts: one per single order; a group = ONE (waGroupBuild), per-order only as its fallback
 
 const params=new URLSearchParams(window.location.search);
 const orderId=params.get('orderId');
@@ -307,6 +308,24 @@ function eur(v){if(!v&&v!==0)return'—';return parseFloat(v).toLocaleString('el
 // and stays unescaped; URLs built from data encode the data parts.
 function escHtml(s){ return s == null ? '' : String(s).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
 
+// This page loads no core/utils.js, so it has no logError. A failure that
+// changes what the driver receives is reported to the same store the app
+// uses (POST /app-errors → app_errors), so the office learns it from the log,
+// not from the driver (principle 1). Same guards as utils.js _postAppError:
+// it never throws, and a local rig (localhost/127.0.0.1, HAR replays with
+// fake ids) never writes the production log — there the console keeps it.
+function printLogError(err,ctx){
+  console.error('[print] '+ctx+':',err);
+  try{
+    if(/^(localhost|127\.0\.0\.1)$/.test(location.hostname))return;
+    var h={'Content-Type':'application/json'}, jwt=localStorage.getItem('tms_jwt');
+    if(jwt)h.Authorization='Bearer '+jwt;
+    fetch(PROXY_URL+'/app-errors',{method:'POST',headers:h,keepalive:true,body:JSON.stringify({
+      message:(ctx+': '+((err&&err.message)||String(err))).slice(0,2000),
+      stack:(err&&err.stack)||undefined,page:location.href,user_agent:navigator.userAgent
+    })}).catch(function(){});
+  }catch(_){}
+}
 // Proxy-mode auth: send the logged-in user's JWT; the Worker swaps it for the PAT.
 function atAuthHeader(){
   var jwt=localStorage.getItem('tms_jwt');
@@ -358,6 +377,9 @@ var LBL_EN={coords:'Coords',cancel:'Supersedes any previous sheet for this order
   tempCmr:'as stated on the CMR',keepCmr:'Keep the temperature stated on the CMR.',
   yes:'YES',no:'NO',from:'From',to:'To',loadSec:'Loading Place',delSec:'Delivery Place',
   maps:'Open in Maps',
+  // Group route (owner 7/10): the WhatsApp text and the cover head each part
+  // of a group's route with these — one label source for phone and paper.
+  loadsSec:'LOADINGS',delsSec:'DELIVERIES',cargoOf:'CARGO',
   waAuto:'Automated message. If anything looks wrong, please contact the office.'};
 var LBL_GR={coords:'Συντ/νες',cancel:'Ακυρώνει κάθε προηγούμενη εντολή για το ίδιο order',
   chk:'ΠΡΙΝ ΤΗΝ ΑΝΑΧΩΡΗΣΗ',office:'Γραφείο κίνησης',emrg:'Έκτακτα 24h',issued:'Έκδοση',
@@ -368,6 +390,7 @@ var LBL_GR={coords:'Συντ/νες',cancel:'Ακυρώνει κάθε προη�
   tempCmr:'όπως γράφει το CMR',keepCmr:'Τήρησε τη θερμοκρασία που γράφει το CMR.',
   yes:'ΝΑΙ',no:'ΟΧΙ',from:'Από',to:'Προς',loadSec:'ΦΟΡΤΩΣΗ',delSec:'ΠΑΡΑΔΟΣΗ',
   maps:'Άνοιγμα στους Χάρτες',
+  loadsSec:'ΦΟΡΤΩΣΕΙΣ',delsSec:'ΠΑΡΑΔΟΣΕΙΣ',cargoOf:'ΦΟΡΤΙΟ',
   waAuto:'Αυτοματοποιημένο μήνυμα. Αν κάτι σας φαίνεται λάθος, επικοινωνήστε με το γραφείο.'};
 
 // v2.1: QR ανά σημείο (εγκεκριμένο #3) — εικόνα από api.qrserver.com με το
@@ -462,6 +485,32 @@ function flatLoc(f,type,last){
   }
   return null;
 }
+// The date of an order's Veroia cross-dock stop — ONE rule for the sheet's
+// Veroia card (buildLoadHTML/buildDelHTML), its header strip (routeStrip), the
+// WhatsApp texts and the group cover (routeStops). Owner (locked 23/8): ONE
+// cross-dock column; the estimate only when it is empty — export Loading +1
+// day, import Delivery −1 day. Until 7/10 the WhatsApp text always printed the
+// estimate, so an order whose real cross-dock date differs told the driver one
+// day on the phone and another on the paper (review 7/10, finding 3).
+// The day is shifted on the written date itself, never through
+// Date→toISOString(): a local-time value («…T07:00:00», no zone) parsed in an
+// Athens browser came back 3 hours earlier in UTC («09/10 04:00»), and near
+// midnight on the wrong day. The time of day, when there is one, is kept as
+// written — fmtDT prints every other stop the same way.
+function vsCdDate(f,isExport){
+  var real=f['Cross-dock Date']||f['VS CD Date'];
+  if(real)return String(real);
+  var base=isExport?f['Loading DateTime']:f['Delivery DateTime'];
+  return base?shiftDay(base,isExport?1:-1):'';
+}
+function shiftDay(s,n){
+  s=String(s);
+  var m=s.match(/^(\d{4})-(\d{2})-(\d{2})/); if(!m)return s;
+  // UTC arithmetic on a date-only value: no local zone, no DST hour to lose.
+  var d=new Date(Date.UTC(+m[1],+m[2]-1,+m[3]+n));
+  function p(x){return (x<10?'0':'')+x;}
+  return d.getUTCFullYear()+'-'+p(d.getUTCMonth()+1)+'-'+p(d.getUTCDate())+s.slice(10);
+}
 function routeStrip(f,isExport,veroiaSwitch,VEROIA){
   var L=LBL||LBL_EN;
   function t(x){x=String(x||'').split(',')[0].trim();return x;}
@@ -487,11 +536,10 @@ function routeStrip(f,isExport,veroiaSwitch,VEROIA){
   // The Veroia legs keep the order-level base: their card does the same.
   if(!(veroiaSwitch&&isExport)){var ls=stopAt('Loading',false); if(ls&&ls.fields['DateTime']) ld=ls.fields['DateTime'];}
   if(!(veroiaSwitch&&!isExport)){var us=stopAt('Unloading',true); if(us&&us.fields['DateTime']) dd=us.fields['DateTime'];}
-  try{
-    var vcd=(f['Cross-dock Date']||f['VS CD Date'])?String(f['Cross-dock Date']||f['VS CD Date']):null;
-    if(veroiaSwitch&&isExport) ld=vcd||(ld?new Date(new Date(ld).getTime()+86400000).toISOString():ld);
-    if(veroiaSwitch&&!isExport) dd=vcd||(dd?new Date(new Date(dd).getTime()-86400000).toISOString():dd);
-  }catch(e){}
+  // The Veroia leg: vsCdDate, the one Veroia date rule (it reads the order-level
+  // dates — the stop override above skips this leg, as its card does).
+  if(veroiaSwitch&&isExport) ld=vsCdDate(f,true);
+  if(veroiaSwitch&&!isExport) dd=vsCdDate(f,false);
   return '<div class="route2">'+
     '<div class="side"><div class="k">'+L.from+'</div><div class="n">'+escHtml(from)+'</div><div class="d">'+escHtml(fmtDT(ld))+'</div></div>'+
     '<div class="mid">→</div>'+
@@ -502,9 +550,7 @@ function routeStrip(f,isExport,veroiaSwitch,VEROIA){
 function buildLoadHTML(f,isExport,veroiaSwitch,VEROIA,VADDR,VLAT,VLNG){
   var dt=f['Loading DateTime']||'';
   if(veroiaSwitch&&isExport){
-    var _vsReal=f['Cross-dock Date']||f['VS CD Date'];
-    var vDtEst=!_vsReal;
-    var vDt=_vsReal?String(_vsReal):(dt?new Date(new Date(dt).getTime()+86400000).toISOString():'');
+    var vDt=vsCdDate(f,true);
     return buildCard(1,{name:VEROIA,address:VADDR,lat:VLAT,lng:VLNG},'loading',vDt,
       fv(f['Total Pallets']),fv(f['Pallet Type']),true,fv(f['Goods']),
       f['Pallet Exchange']?'YES':'NO',f['Gross Weight kg'],ordTemp(f),f['Refrigerator Mode']);
@@ -533,9 +579,7 @@ function buildLoadHTML(f,isExport,veroiaSwitch,VEROIA,VADDR,VLAT,VLNG){
 function buildDelHTML(f,isExport,veroiaSwitch,VEROIA,VADDR,VLAT,VLNG){
   var dt=f['Delivery DateTime']||'';
   if(veroiaSwitch&&!isExport){
-    var _vsReal=f['Cross-dock Date']||f['VS CD Date'];
-    var vDtEst=!_vsReal;
-    var vDt=_vsReal?String(_vsReal):(dt?new Date(new Date(dt).getTime()-86400000).toISOString():'');
+    var vDt=vsCdDate(f,false);
     return buildCard(1,{name:VEROIA,address:VADDR,lat:VLAT,lng:VLNG},'delivery',vDt,
       fv(f['Total Pallets']),fv(f['Pallet Type']),false,'','','','','');
   }
@@ -721,52 +765,127 @@ async function loadAll(){
       // as before (toolbar on its one and only document).
       htmlArr.push(generatePDF(items[ii].orderRec, isGroup));
     }
+    // Owner 7/10: a group is ONE WhatsApp text (waGroupBuild), not one per order.
+    // If it fails, the per-order texts generatePDF built stay — never an empty
+    // text, which the 📋 button, the share menu and the Worker would hand out
+    // as if it were the message (principle 1). The failure is reported and
+    // said on the page (renderDocs): the dispatcher must know the driver gets
+    // N texts without the route order, and app_errors must show why.
+    if(isGroup){
+      var perOrder=_waArr.slice();
+      try{ _waArr=[waGroupBuild(items)]; }
+      catch(e){ _waArr=perOrder; window.__waGroupFailed=true; printLogError(e,'print: waGroupBuild'); }
+    }
     renderDocs(htmlArr);
   }catch(err){
     document.getElementById('loading').innerHTML='<span style="color:#DC2626">Error: '+escHtml(err.message)+'</span>';
   }
 }
 
-// v2.1 (εγκεκριμένο): κείμενο WhatsApp ανά έγγραφο — GR οδηγός / EN partner.
-// Τα *αστεράκια* γίνονται bold μέσα στο WhatsApp.
-function waBuild(f,isPartner,isExport,veroiaSwitch,VEROIA,VADDR,VLAT,VLNG,vehLine,orderNo,wk,refNo){
-  var L=LBL, EMO=['1️⃣','2️⃣','3️⃣','4️⃣','5️⃣','6️⃣','7️⃣'];
+// The stops of ONE order as the driver drives them: {loads, dels}, each entry
+// {name, addr, lat, lng, dt, loc, sf}. ONE producer for the single WhatsApp
+// text, the group WhatsApp text and the group cover (owner 7/10, principle 3):
+// the phone and the paper list the same places with the same dates. Veroia
+// Switch replaces the export loading / the import delivery with the cross-dock
+// on vsCdDate — the real cross-dock date, the ±1 day estimate only when it is
+// empty — the date the order's own sheet prints on its Veroia card.
+// Without ORDER STOPS: the summary's first part, else the order's own flat
+// location (flatLoc — split legs carry neither stops nor summaries; their own
+// sheet already prints the place from it, the text and the cover said «—»).
+// loc = the resolved LOCATIONS record (hours/days for the paper), sf = the
+// ORDER STOPS fields (its pallets); sf absent for a Veroia/summary/flat entry.
+// An unresolved location stays as «—» (never dropped): the driver must still
+// see that there is a stop there.
+function routeStops(f,stops,isExport,veroiaSwitch,V){
   function t(x){x=String(x||'').split(',')[0].trim();return x;}
   function fromStops(type){
-    return stopsOfType(orderStops,type)
+    return stopsOfType(stops,type)
       .map(function(r){var lc=resolveLoc(r.fields['Location'])||{};
-        return {name:lc.name||'—',addr:lc.address||'',lat:lc.lat,lng:lc.lng,dt:r.fields['DateTime']||''};});
+        return {name:lc.name||'—',addr:lc.address||'',lat:lc.lat,lng:lc.lng,dt:r.fields['DateTime']||'',loc:lc,sf:r.fields};});
+  }
+  // No stops: the summary as before (unchanged text), else the flat column.
+  function noStops(sum,fl,dt){
+    if(sum)return [{name:sum,addr:'',dt:dt}];
+    if(fl)return [{name:fl.name||'—',addr:fl.address||'',lat:fl.lat,lng:fl.lng,dt:dt,loc:fl}];
+    return [{name:'—',addr:'',dt:dt}];
   }
   var ld=f['Loading DateTime']||'', dd=f['Delivery DateTime']||'';
   var loads,dels;
   try{
-    if(veroiaSwitch&&isExport){loads=[{name:VEROIA,addr:VADDR,lat:VLAT,lng:VLNG,dt:ld?new Date(new Date(ld).getTime()+86400000).toISOString():''}];}
-    else{loads=fromStops('Loading'); if(!loads.length)loads=[{name:t(f['Loading Summary'])||'—',addr:'',dt:ld}];}
-    if(veroiaSwitch&&!isExport){dels=[{name:VEROIA,addr:VADDR,lat:VLAT,lng:VLNG,dt:dd?new Date(new Date(dd).getTime()-86400000).toISOString():''}];}
-    else{dels=fromStops('Unloading'); if(!dels.length)dels=[{name:t(f['Delivery Summary'])||'—',addr:'',dt:dd}];}
+    if(veroiaSwitch&&isExport){loads=[{name:V.name,addr:V.addr,lat:V.lat,lng:V.lng,dt:vsCdDate(f,true)}];}
+    else{loads=fromStops('Loading'); if(!loads.length)loads=noStops(t(f['Loading Summary']),flatLoc(f,'Loading',false),ld);}
+    if(veroiaSwitch&&!isExport){dels=[{name:V.name,addr:V.addr,lat:V.lat,lng:V.lng,dt:vsCdDate(f,false)}];}
+    else{dels=fromStops('Unloading'); if(!dels.length)dels=noStops(t(f['Delivery Summary']),flatLoc(f,'Unloading',true),dd);}
   }catch(e){loads=[{name:'—',dt:ld}];dels=[{name:'—',dt:dd}];}
   loads.forEach(function(x){if(!x.dt)x.dt=ld;}); dels.forEach(function(x){if(!x.dt)x.dt=dd;});
-  var lines=[];
-  lines.push('🚛 *'+(isPartner?'ORDER':'ΕΝΤΟΛΗ')+' W'+wk+' · '+(isPartner?(isExport?'EXPORT':'IMPORT'):(isExport?'ΕΞΑΓΩΓΗ':'ΕΙΣΑΓΩΓΗ'))+' · '+orderNo+'*');
-  if(vehLine)lines.push('👤 '+vehLine);
-  lines.push('');
-  var seq=0;
-  var all=loads.map(function(x){return{x:x,lbl:L.load};}).concat(dels.map(function(x){return{x:x,lbl:L.unload};}));
-  all.forEach(function(o){
-    lines.push((EMO[seq++]||'▪️')+' *'+o.lbl+'* · '+fmtDT(o.x.dt));
-    lines.push(o.x.name);
-    if(o.x.addr)lines.push(o.x.addr);
-    if(o.x.lat&&o.x.lng){
-      // Pantelis 7/10: drivers type the coordinates into the truck's GPS unit,
-      // which takes numbers, not a link. Inside the URL they were glued to
-      // «?q=» and had to be picked out by hand, so they get their own line
-      // (bold in WhatsApp, whose * markers do not show). The link stays for
-      // the phone's map app.
-      lines.push('📍 *'+o.x.lat+', '+o.x.lng+'*');
-      lines.push('📍 https://maps.google.com/?q='+o.x.lat+','+o.x.lng);
-    }
-    lines.push('');
+  return {loads:loads,dels:dels};
+}
+// Sort key of a stop date: the day, then the time when there is one. A stop
+// without a time (or with the 00:00/12:00 "unknown" sentinel, see hasTime)
+// counts as the start of its day — the same plain string order _wiGrpOrder
+// (weekly_intl.js) uses for its date fallback. A stop with no date at all goes
+// last: placing it first would send the driver there before every dated stop.
+function dtKey(s){
+  if(!s)return '￿';
+  s=String(s);
+  return s.slice(0,10)+(hasTime(s)?' '+s.split('T')[1].slice(0,5):'');
+}
+// The route of a GROUP (owner 7/10): «φόρτωση 1, 2, 3 και μετά παραδόσεις
+// 1, 2, 3 με τη σωστή σειρά όπως επιλέγει ο dispatcher». items arrive in the
+// dispatcher's order (weekly_intl.js _wiGrpOrder: the Group ID suffix of the
+// drag/Rota reorder, else the date). One order list cannot express both halves
+// when they differ (IAB4166: 461 loads first, 463 delivers first), so the
+// dispatcher's order decides the half it was set for — the pickups of an
+// IMPORT group, the drops of an EXPORT group (same split as _wiGrpOrder's
+// Loading/Delivery DateTime fallback) — and the other half follows the stops'
+// own dates. Ties: dispatcher order, then the order's stop sequence. Inside an
+// order its stops keep their sequence. Returns {loads, dels} of {e, oi, si}:
+// e = the routeStops entry, oi = the order's index in items, si = its stop index.
+// The ONLY ordering of a group: the WhatsApp text and the paper cover both read
+// it, so the phone and the paper can never disagree on the sequence.
+function groupRoute(items,isPartner,isExport){
+  var loads=[],dels=[];
+  items.forEach(function(it,oi){
+    var f=it.orderRec.fields;
+    var rs=routeStops(f,it.stops,isExport,!!f['Veroia Switch'],veroiaOf(f,isPartner));
+    rs.loads.forEach(function(e,si){loads.push({e:e,oi:oi,si:si});});
+    rs.dels.forEach(function(e,si){dels.push({e:e,oi:oi,si:si});});
   });
+  function byDate(list){
+    return list.slice().sort(function(a,b){
+      var ka=dtKey(a.e.dt), kb=dtKey(b.e.dt);
+      return ka<kb?-1:ka>kb?1:(a.oi-b.oi)||(a.si-b.si);
+    });
+  }
+  return isExport?{loads:byDate(loads),dels:dels}:{loads:loads,dels:byDate(dels)};
+}
+
+var WA_EMO=['1️⃣','2️⃣','3️⃣','4️⃣','5️⃣','6️⃣','7️⃣','8️⃣','9️⃣','🔟'];
+// The number of the k-th stop (0-based). Past the keycap emoji the number is
+// written out («#11»): the old «▪️» gave the 8th stop no number at all while
+// the paper card printed «8», so phone and paper could not be matched.
+function waNum(k){return WA_EMO[k]||('#'+(k+1));}
+// One stop of a WhatsApp text. tag (group only): the order the stop belongs to.
+function waStopLines(lines,emo,lbl,x,tag){
+  lines.push(emo+' *'+lbl+'* · '+fmtDT(x.dt)+(tag?' · '+tag:''));
+  lines.push(x.name);
+  if(x.addr)lines.push(x.addr);
+  if(x.lat&&x.lng){
+    // Pantelis 7/10: drivers type the coordinates into the truck's GPS unit,
+    // which takes numbers, not a link. Inside the URL they were glued to
+    // «?q=» and had to be picked out by hand, so they get their own line
+    // (bold in WhatsApp, whose * markers do not show). The link stays for
+    // the phone's map app.
+    lines.push('📍 *'+x.lat+', '+x.lng+'*');
+    lines.push('📍 https://maps.google.com/?q='+x.lat+','+x.lng);
+  }
+  lines.push('');
+}
+// The cargo of one order. withKeep: the «keep the CMR temperature» line sits
+// in the order's own lines on a single text; a group says it ONCE for the
+// whole truck (waGroupBuild), not once per order.
+function waCargoLines(lines,f,isPartner,refNo,withKeep){
+  var L=LBL;
   var cargo=[];
   if(f['Total Pallets'])cargo.push('*'+fv(f['Total Pallets'])+'× '+(fv(f['Pallet Type'])||'EUR')+'*');
   if(fv(f['Goods']))cargo.push(fv(f['Goods']));
@@ -777,7 +896,7 @@ function waBuild(f,isPartner,isExport,veroiaSwitch,VEROIA,VADDR,VLAT,VLNG,vehLin
   // reefer mode — and EVERY text then tells the driver to keep the CMR
   // temperature, with or without a number of ours (same line as the paper).
   if(cmr)lines.push('🌡 *'+L.temp+': '+L.tempCmr+(f['Refrigerator Mode']?' · '+f['Refrigerator Mode']:'')+'*');
-  lines.push('🌡 '+L.keepCmr);
+  if(withKeep)lines.push('🌡 '+L.keepCmr);
   // C4-03: a lot exchanges at the client's loading, never at the warehouse.
   if(f['Own Stock Lot']&&f['Pallet Exchange'])lines.push('🔁 *'+L.pe+': '+L.yes+(isPartner?' at loading · ':' στη φόρτωση · ')+L.no+(isPartner?' at the warehouse':' στην αποθήκη')+'*');
   else lines.push('🔁 *'+L.pe+': '+(f['Pallet Exchange']?L.yes:L.no)+'*');
@@ -786,6 +905,10 @@ function waBuild(f,isPartner,isExport,veroiaSwitch,VEROIA,VADDR,VLAT,VLNG,vehLin
   var _stk=stockLotText(f,isPartner);
   if(_stk)lines.push('📦 '+(isPartner?'From stock · ':'Απόθεμα · ')+_stk);
   if(f['Notes'])lines.push('📝 '+f['Notes']);
+}
+// The office line and the closing line, then the text itself.
+function waClose(lines){
+  var L=LBL;
   var cb=[];
   if(OFFICE_PHONE)cb.push(L.office+' '+OFFICE_PHONE);
   if(EMERGENCY_PHONE)cb.push(L.emrg+' '+EMERGENCY_PHONE);
@@ -793,9 +916,64 @@ function waBuild(f,isPartner,isExport,veroiaSwitch,VEROIA,VADDR,VLAT,VLNG,vehLin
   // Pantelis 7/10: the text is generated from TMS data, not written by a
   // person. Saying so makes a wrong address/date a reason to call the office,
   // instead of the driver trusting it or quietly working around it (the office
-  // then never learns the record is wrong). Always last, once per document.
+  // then never learns the record is wrong). Always last, once per text.
   lines.push('');lines.push('ℹ️ '+L.waAuto);
   return lines.join('\n').replace(/\n{3,}/g,'\n\n');
+}
+
+// v2.1 (εγκεκριμένο): κείμενο WhatsApp ανά έγγραφο — GR οδηγός / EN partner.
+// Τα *αστεράκια* γίνονται bold μέσα στο WhatsApp. A single order only: a group
+// is ONE text built by waGroupBuild (owner 7/10).
+function waBuild(f,isPartner,isExport,veroiaSwitch,VEROIA,VADDR,VLAT,VLNG,vehLine,orderNo,wk,refNo){
+  var L=LBL;
+  var rs=routeStops(f,orderStops,isExport,veroiaSwitch,{name:VEROIA,addr:VADDR,lat:VLAT,lng:VLNG});
+  var lines=[];
+  lines.push('🚛 *'+(isPartner?'ORDER':'ΕΝΤΟΛΗ')+' W'+wk+' · '+(isPartner?(isExport?'EXPORT':'IMPORT'):(isExport?'ΕΞΑΓΩΓΗ':'ΕΙΣΑΓΩΓΗ'))+' · '+orderNo+'*');
+  if(vehLine)lines.push('👤 '+vehLine);
+  lines.push('');
+  var seq=0;
+  rs.loads.forEach(function(x){waStopLines(lines,waNum(seq++),L.load,x);});
+  rs.dels.forEach(function(x){waStopLines(lines,waNum(seq++),L.unload,x);});
+  waCargoLines(lines,f,isPartner,refNo,true);
+  return waClose(lines);
+}
+// Owner 7/10 (IAB4166, orders 461 + 463): a group went out as one text per
+// order joined by «————————» — the driver had to rebuild the route himself
+// from two loading lists and two delivery lists. ONE text per group now: the
+// header and the driver/vehicle once, every LOADING of the truck numbered
+// 1..N, then every DELIVERY numbered 1..M, in groupRoute's order (the same
+// order the paper cover prints), each stop tagged with its order; then one
+// cargo block per order, the CMR line, ☎️ and the closing line once.
+// Numbering restarts per section — the owner's own words («φόρτωση 1, 2, 3 και
+// μετά παραδόσεις 1, 2, 3»): under its heading «παράδοση 2» is the second
+// drop, the number the driver and the office say on the phone; a continuous
+// 1..N+M would make the first drop «4» and the 10 emoji would run out sooner.
+// The sheet language, week, driver/vehicle and direction come from the first
+// order, as on the cover (one truck, one leg). _waArr then holds this one
+// text, so copyWA, the share menu and the Worker's /print/pdf?format=text
+// (window._waArr) all carry exactly it.
+function waGroupBuild(items){
+  var f0=items[0].orderRec.fields, isPartner=computeIsPartner(f0), isExport=leg==='export';
+  LBL=isPartner?LBL_EN:LBL_GR;
+  var L=LBL, route=groupRoute(items,isPartner,isExport);
+  var nos=items.map(function(it){return ordNoOf(it.orderRec);});
+  var lines=[];
+  lines.push('🚛 *'+(isPartner?'ORDER':'ΕΝΤΟΛΗ')+' W'+(f0['Week Number']||'—')+' · '+(isPartner?(isExport?'EXPORT':'IMPORT'):(isExport?'ΕΞΑΓΩΓΗ':'ΕΙΣΑΓΩΓΗ'))+' · '+nos.join(' + ')+'*');
+  var veh=vehLineOf(f0,isPartner);
+  if(veh)lines.push('👤 '+veh);
+  lines.push('');
+  lines.push('*'+L.loadsSec+'*');
+  route.loads.forEach(function(r,k){waStopLines(lines,waNum(k),L.load,r.e,'#'+nos[r.oi]);});
+  lines.push('*'+L.delsSec+'*');
+  route.dels.forEach(function(r,k){waStopLines(lines,waNum(k),L.unload,r.e,'#'+nos[r.oi]);});
+  items.forEach(function(it,i){
+    var f=it.orderRec.fields;
+    lines.push('*'+L.cargoOf+' #'+nos[i]+'*');
+    waCargoLines(lines,f,isPartner,f['Reference']||'',false);
+    lines.push('');
+  });
+  lines.push('🌡 '+L.keepCmr);
+  return waClose(lines);
 }
 function copyWA(btn){
   var txt=_waArr.join('\n\n————————\n\n');
@@ -808,6 +986,41 @@ function copyWA(btn){
 // pick the same driver/partner sheet the per-order docs would use.
 function computeIsPartner(f){
   return sheetParam==='partner'?true:sheetParam==='driver'?false:!!(f['Is Partner Trip']||(f['Partner']||[]).length);
+}
+// The order's number as printed on the cover and in the group WhatsApp text.
+function ordNoOf(rec){
+  var f=rec.fields;
+  return f['Order No']||f['Reference']||String(rec.id||'').slice(-6).toUpperCase();
+}
+// The Veroia cross-dock stop of an order: {name, addr, lat, lng}. Shared by
+// the order's own sheet (generatePDF) and the group route (groupRoute), so the
+// cover and the WhatsApp text name the cross-dock exactly like the sheet does.
+function veroiaOf(f,isPartner){
+  var V={name:'VERMION FRESH / CROSS-DOCK',addr:'',lat:'',lng:''};
+  if(f['Veroia Cross-dock']){
+    var vl=resolveLoc(f['Veroia Cross-dock']);
+    if(vl){V.name=vl.name;V.addr=vl.address;V.lat=vl.lat;V.lng=vl.lng;}
+  }
+  // Orders that predate the Veroia Cross-dock link fall back to the canonical
+  // LOCATIONS record (recJucKOhC1zh4IP3 — see CLAUDE.md). Data-driven: prints
+  // whatever address the record carries; nothing is invented here.
+  if(!V.addr){
+    var vfb=resolveLoc(['recJucKOhC1zh4IP3']);
+    if(vfb){if(!f['Veroia Cross-dock']){V.name=vfb.name;}V.addr=vfb.address;V.lat=V.lat||vfb.lat;V.lng=V.lng||vfb.lng;}
+  }
+  // Owner spec (Q2, 6/8): the partner sheet shows «απλά τη διεύθυνση» for the
+  // Veroia stop — no CROSS-DOCK naming, no location name, no internal brand.
+  // The card gets the ADDRESS as its title and nothing else.
+  if(isPartner){ V.name=V.addr||'Loading Point'; V.addr=''; }
+  return V;
+}
+// «👤» line of a WhatsApp text: the partner and its plates, or the driver and
+// the truck / trailer plates.
+function vehLineOf(f,isPartner){
+  return isPartner
+    ?[(allPartners.find(function(r){return f['Partner']&&r.id===f['Partner'][0];})||{fields:{}}).fields['Company Name'],f['Partner Truck Plates']].filter(Boolean).join(' · ')
+    :(function(){var d=allDrivers.find(function(r){return f['Driver']&&r.id===f['Driver'][0];}),tk=allTrucks.find(function(r){return f['Truck']&&r.id===f['Truck'][0];}),tr=allTrailers.find(function(r){return f['Trailer']&&r.id===f['Trailer'][0];});
+      return [(d&&d.fields['Full Name']),[(tk&&tk.fields['License Plate']),(tr&&tr.fields['License Plate'])].filter(Boolean).join(' / ')].filter(Boolean).join(' · ');})();
 }
 function generatePDF(orderRec, bare){ // bare (Wave 3): no toolbar — docs 2..N of a group
   var f=orderRec.fields;
@@ -827,24 +1040,10 @@ function generatePDF(orderRec, bare){ // bare (Wave 3): no toolbar — docs 2..N
   _stopSeq=0; // v2.1: συνεχής αρίθμηση σημείων ①② ανά έγγραφο
   var legLabelGr=isExport?'Εξαγωγή':'Εισαγωγή';
 
-  // Veroia
+  // Veroia (veroiaOf: the same stop the group cover and WhatsApp text use)
   var veroiaSwitch=!!(f['Veroia Switch']);
-  var VEROIA='VERMION FRESH / CROSS-DOCK',VADDR='',VLAT='',VLNG='';
-  if(f['Veroia Cross-dock']){
-    var vl=resolveLoc(f['Veroia Cross-dock']);
-    if(vl){VEROIA=vl.name;VADDR=vl.address;VLAT=vl.lat;VLNG=vl.lng;}
-  }
-  // Orders that predate the Veroia Cross-dock link fall back to the canonical
-  // LOCATIONS record (recJucKOhC1zh4IP3 — see CLAUDE.md). Data-driven: prints
-  // whatever address the record carries; nothing is invented here.
-  if(!VADDR){
-    var vfb=resolveLoc(['recJucKOhC1zh4IP3']);
-    if(vfb){if(!f['Veroia Cross-dock']){VEROIA=vfb.name;}VADDR=vfb.address;VLAT=VLAT||vfb.lat;VLNG=VLNG||vfb.lng;}
-  }
-  // Owner spec (Q2, 6/8): the partner sheet shows «απλά τη διεύθυνση» for the
-  // Veroia stop — no CROSS-DOCK naming, no location name, no internal brand.
-  // The card gets the ADDRESS as its title and nothing else.
-  if(isPartner){ VEROIA=VADDR||'Loading Point'; VADDR=''; }
+  var _V=veroiaOf(f,isPartner);
+  var VEROIA=_V.name,VADDR=_V.addr,VLAT=_V.lat,VLNG=_V.lng;
 
   var loadHTML=buildLoadHTML(f,isExport,veroiaSwitch,VEROIA,VADDR,VLAT,VLNG);
   // Finding #2: a real 'Cross-dock' ORDER STOPS row (distinct from the
@@ -1022,13 +1221,11 @@ function generatePDF(orderRec, bare){ // bare (Wave 3): no toolbar — docs 2..N
     '</div>';
   }
 
-  // v2.1: WhatsApp κείμενο για αυτό το έγγραφο
+  // v2.1: WhatsApp κείμενο για αυτό το έγγραφο. In a group (bare) loadAll
+  // replaces these with the group's ONE text (waGroupBuild); they stay only as
+  // its fallback, so a failure there never leaves the copy button empty.
   try{
-    var vehLine=isPartner
-      ?[(allPartners.find(function(r){return f['Partner']&&r.id===f['Partner'][0];})||{fields:{}}).fields['Company Name'],f['Partner Truck Plates']].filter(Boolean).join(' · ')
-      :(function(){var d=allDrivers.find(function(r){return f['Driver']&&r.id===f['Driver'][0];}),tk=allTrucks.find(function(r){return f['Truck']&&r.id===f['Truck'][0];}),tr=allTrailers.find(function(r){return f['Trailer']&&r.id===f['Trailer'][0];});
-        return [(d&&d.fields['Full Name']),[(tk&&tk.fields['License Plate']),(tr&&tr.fields['License Plate'])].filter(Boolean).join(' / ')].filter(Boolean).join(' · ');})();
-    _waArr.push(waBuild(f,isPartner,isExport,veroiaSwitch,VEROIA,VADDR,VLAT,VLNG,vehLine,orderNo,wk,refNo));
+    _waArr.push(waBuild(f,isPartner,isExport,veroiaSwitch,VEROIA,VADDR,VLAT,VLNG,vehLineOf(f,isPartner),orderNo,wk,refNo));
   }catch(e){console.warn('waBuild:',e);}
   return html; // Wave 3: assembly + print moved to renderDocs (single & group)
 }
@@ -1043,27 +1240,22 @@ function buildCoverDoc(items){
   var f0=items[0].orderRec.fields;
   var isPartner=computeIsPartner(f0);
   LBL=isPartner?LBL_EN:LBL_GR;
-  _stopSeq=0; // continuous numbering across the WHOLE cover timeline
   var isExport=leg==='export';
   var legLabel=isExport?'Export':'Import', legLabelGr=isExport?'Εξαγωγή':'Εισαγωγή';
   var wk=f0['Week Number']||'—';
 
-  function ordNoOf(rec){
-    var f=rec.fields;
-    return f['Order No']||f['Reference']||String(rec.id||'').slice(-6).toUpperCase();
-  }
-
-  // Route: first loading of the FIRST order → last unloading of the LAST
-  // order, in the given orderIds order — the group is one continuous run.
-  var firstLoads=stopsOfType(items[0].stops,'Loading');
-  var lastUnloads=stopsOfType(items[items.length-1].stops,'Unloading');
-  var fromStop=firstLoads[0], toStop=lastUnloads[lastUnloads.length-1];
-  var fromLoc=fromStop?resolveLoc(fromStop.fields['Location']):null;
-  var toLoc=toStop?resolveLoc(toStop.fields['Location']):null;
+  // Owner 7/10 (IAB4166): the cover read «first loading of the FIRST order →
+  // last unloading of the LAST order» and listed every order's stops in the
+  // orderIds order — but that order is the dispatcher's order of ONE half of
+  // the route only (_wiGrpOrder), so an import group whose first loader
+  // delivers last printed the wrong destination and the wrong drop sequence.
+  // groupRoute is the one ordering the WhatsApp text uses too (principle 3).
+  var route=groupRoute(items,isPartner,isExport);
+  var first=route.loads[0].e, last=route.dels[route.dels.length-1].e;
   var routeHTML='<div class="route2">'+
-    '<div class="side"><div class="k">'+LBL.from+'</div><div class="n">'+escHtml(fromLoc?fromLoc.name:'—')+'</div><div class="d">'+escHtml(fmtDT(fromStop?fromStop.fields['DateTime']:''))+'</div></div>'+
+    '<div class="side"><div class="k">'+LBL.from+'</div><div class="n">'+escHtml(first.name)+'</div><div class="d">'+escHtml(fmtDT(first.dt))+'</div></div>'+
     '<div class="mid">→</div>'+
-    '<div class="side to"><div class="k">'+LBL.to+'</div><div class="n">'+escHtml(toLoc?toLoc.name:'—')+'</div><div class="d">'+escHtml(fmtDT(toStop?toStop.fields['DateTime']:''))+'</div></div>'+
+    '<div class="side to"><div class="k">'+LBL.to+'</div><div class="n">'+escHtml(last.name)+'</div><div class="d">'+escHtml(fmtDT(last.dt))+'</div></div>'+
   '</div>';
 
   // 4 cargo chips, totalled/merged across every order in the group.
@@ -1108,12 +1300,21 @@ function buildCoverDoc(items){
     '<div class="c"><div class="k">Τρέιλερ</div><div class="v">'+escHtml(trf['License Plate']||'—')+'</div></div>'+
   '</div>';
 
-  // Meta grid: every order number/reference in the group + delivery sequence.
+  // The order's last ORDER STOPS delivery — the name its stop tag and the
+  // delivery sequence below identify it by.
+  // C4-11 (round 3): an unresolved location prints «—», never «undefined».
+  function lastNameOf(it){
+    var uns=stopsOfType(it.stops,'Unloading'), lastUn=uns[uns.length-1];
+    return (lastUn&&(resolveLoc(lastUn.fields['Location'])||{}).name)||'—';
+  }
+  // Meta grid: every order number/reference in the group + delivery sequence:
+  // the orders in the order their first drop comes in groupRoute — the
+  // dispatcher's order only where it decides the drops (an export group).
   var orderNos=items.map(function(it){return ordNoOf(it.orderRec);});
-  var seqNames=items.map(function(it,i){
-    var uns=stopsOfType(it.stops,'Unloading'), last=uns[uns.length-1];
-    var loc=last?resolveLoc(last.fields['Location']):null;
-    return String.fromCharCode(65+i)+'. '+escHtml(loc?loc.name:'—');
+  var seqIdx=[];
+  route.dels.forEach(function(r){if(seqIdx.indexOf(r.oi)<0)seqIdx.push(r.oi);});
+  var seqNames=seqIdx.map(function(i){
+    return String.fromCharCode(65+i)+'. '+escHtml(lastNameOf(items[i]));
   });
   var _m=isPartner
     ?{wk:'Week',cat:'Category',ord:'Order Nos',seq:'Delivery Sequence'}
@@ -1125,30 +1326,30 @@ function buildCoverDoc(items){
     '<div class="meta-item"><span class="meta-lbl">'+_m.seq+'</span><span class="meta-val">'+seqNames.join(' → ')+'</span></div>'+
   '</div>';
 
-  // Timeline: loadings of EVERY order first (in the given id order), then
-  // unloadings of every order (same order) — continuous numbering (buildCard
-  // increments the shared _stopSeq), each card tagged with its own order.
-  var tlHTML='';
-  function cardsOf(type,dtLabel){
-    items.forEach(function(it,i){
-      var f=it.orderRec.fields;
-      var uns=stopsOfType(it.stops,'Unloading'), lastUn=uns[uns.length-1];
-      // C4-11 (round 3): an unresolved location prints «—», never «undefined».
-      var lastName=(lastUn&&(resolveLoc(lastUn.fields['Location'])||{}).name)||'—';
-      // C4-02: the piece is marked as stock on the cover too, at its stop.
-      // C4-03 (round 3): on its OWN line at 10px — the hand-over identity (lot +
-      // client) was the smallest text on the page the driver reads there.
-      var stk=stockLotText(f,isPartner);
-      var tag='ΠΑΡΑΓΓΕΛΙΑ '+String.fromCharCode(65+i)+' · '+escHtml(ordNoOf(it.orderRec))+' · '+escHtml(lastName)+(stk?'<span class="stk">'+(isPartner?'From stock · ':'Απόθεμα · ')+escHtml(stk)+'</span>':'');
-      stopsOfType(it.stops,type).forEach(function(s){
-        var loc=resolveLoc(s.fields['Location']); if(!loc)return;
-        tlHTML+=buildCard(0,loc,dtLabel,s.fields['DateTime']||'',s.fields['Pallets']||'',
-          fv(f['Pallet Type']),false,'','','','','',tag);
-      });
+  // Each card tagged with its own order.
+  // C4-02: the piece is marked as stock on the cover too, at its stop.
+  // C4-03 (round 3): on its OWN line at 10px — the hand-over identity (lot +
+  // client) was the smallest text on the page the driver reads there.
+  var tags=items.map(function(it,i){
+    var stk=stockLotText(it.orderRec.fields,isPartner);
+    return 'ΠΑΡΑΓΓΕΛΙΑ '+String.fromCharCode(65+i)+' · '+escHtml(ordNoOf(it.orderRec))+' · '+escHtml(lastNameOf(it))+(stk?'<span class="stk">'+(isPartner?'From stock · ':'Απόθεμα · ')+escHtml(stk)+'</span>':'');
+  });
+  // Timeline: groupRoute's loadings, then its deliveries, each under its own
+  // heading and numbered from 1 (buildCard increments _stopSeq) — the same
+  // numbers the WhatsApp text gives the same stops (owner 7/10).
+  function cardsOf(list,dtLabel){
+    var h='';
+    _stopSeq=0;
+    list.forEach(function(r){
+      var e=r.e, f=items[r.oi].orderRec.fields, lc=e.loc||{};
+      h+=buildCard(0,{name:e.name,address:e.addr,lat:e.lat||'',lng:e.lng||'',hours:lc.hours||'',days:lc.days||''},
+        dtLabel,e.dt,e.sf?(e.sf['Pallets']||''):fv(f['Total Pallets']),
+        fv(f['Pallet Type']),false,'','','','','',tags[r.oi]);
     });
+    return h;
   }
-  cardsOf('Loading','loading');
-  cardsOf('Unloading','delivery');
+  var tlHTML='<div class="section-title load-section">'+LBL.loadsSec+'</div><div class="tl">'+cardsOf(route.loads,'loading')+'</div>'+
+    '<div class="section-title unload-section">'+LBL.delsSec+'</div><div class="tl">'+cardsOf(route.dels,'delivery')+'</div>';
 
   var chkHTML=isPartner?'':'<div class="chk"><b>'+LBL.chk+'</b>'+
     '<span>☐ Θερμογράφος σε λειτουργία</span><span>☐ Τρέιλερ καθαρό / προψυγμένο</span>'+
@@ -1185,7 +1386,7 @@ function buildCoverDoc(items){
     '</div>'+
   '</div>';
 
-  return pbarHTML+hdHTML+vbHTML+routeHTML+chipsHTML+metaHTML+'<div class="tl">'+tlHTML+'</div>'+chkHTML+contactHTML+sigsHTML;
+  return pbarHTML+hdHTML+vbHTML+routeHTML+chipsHTML+metaHTML+tlHTML+chkHTML+contactHTML+sigsHTML;
 }
 
 // Wave 3 (Π1): assemble one or many documents. Group mode: page-break between
@@ -1197,22 +1398,46 @@ function renderDocs(htmlArr){
   var N=htmlArr.length;
   // Κανόνας 7: η αποτυχία μιλάει και ξεχωρίζει από το κενό. Χωρίς τον πίνακα
   // τοποθεσιών κάθε διεύθυνση γίνεται «—» και το φύλλο έβγαινε σιωπηλά σωστό.
+  var notes=[];
   if (window.__locsFailed) {
-    docEl.insertAdjacentHTML('beforebegin',
-      '<div style="background:#FEE2E2;border:2px solid #B91C1C;color:#7F1D1D;padding:12px 14px;margin:0 0 12px;font:700 13px system-ui;border-radius:6px">'
+    notes.push(
+      '<div id="locsFailed" style="background:#FEE2E2;border:2px solid #B91C1C;color:#7F1D1D;padding:12px 14px;margin:0 0 12px;font:700 13px system-ui;border-radius:6px">'
       + '⚠ ΟΙ ΤΟΠΟΘΕΣΙΕΣ ΔΕΝ ΦΟΡΤΩΘΗΚΑΝ — οι διευθύνσεις παρακάτω λείπουν επειδή απέτυχε η ανάγνωση, ΟΧΙ επειδή δεν υπάρχουν. ΜΗΝ δώσεις αυτό το φύλλο στον οδηγό. Κάνε ανανέωση.'
       + '</div>');
   }
   if (window.__clientsFailed) {
-    docEl.insertAdjacentHTML('beforebegin',
+    notes.push(
       '<div id="clientsFailed" style="background:#FEE2E2;border:2px solid #B91C1C;color:#7F1D1D;padding:12px 14px;margin:0 0 12px;font:700 13px system-ui;border-radius:6px">'
       + '⚠ ΤΟ ΟΝΟΜΑ ΠΕΛΑΤΗ ΤΟΥ ΚΟΜΜΑΤΙΟΥ ΔΕΝ ΔΙΑΒΑΣΤΗΚΕ — το «—» παρακάτω είναι αποτυχία ανάγνωσης. ΜΗΝ δώσεις αυτό το φύλλο στον οδηγό. Κάνε ανανέωση.'
+      + '</div>');
+  }
+  if (window.__waGroupFailed) {
+    notes.push(
+      '<div id="waGroupFailed" style="background:#FEF3C7;border:2px solid #B45309;color:#78350F;padding:12px 14px;margin:0 0 12px;font:700 13px system-ui;border-radius:6px">'
+      + '⚠ ΤΟ ΕΝΙΑΙΟ ΚΕΙΜΕΝΟ WHATSAPP ΤΗΣ ΟΜΑΔΑΣ ΔΕΝ ΦΤΙΑΧΤΗΚΕ — το 📋 WhatsApp δίνει ένα κείμενο ανά παραγγελία, ΧΩΡΙΣ τη σειρά της διαδρομής. Τη σειρά των στάσεων τη δείχνει το εξώφυλλο. Ενημέρωσε το γραφείο.'
       + '</div>');
   }
   docEl.innerHTML=htmlArr.map(function(h,i){
     var tag=N>1?'<div style="font-size:9px;font-weight:800;letter-spacing:1.2px;color:#6B7280;margin:0 0 8px">ΟΜΑΔΙΚΟ ΦΟΡΤΙΟ — ΕΓΓΡΑΦΟ '+(i+1)+' / '+N+'</div>':'';
     return '<div class="p-doc" style="'+(i<N-1?'page-break-after:always;':'')+'">'+tag+h+'</div>';
   }).join('');
+  // Review 7/10: every failure note goes in ONE box, kept below the fixed
+  // toolbar. Inserted bare above #doc, the notes sat at y=0 under .pbar
+  // (position:fixed, top:0, z-index 99) — unreadable, and the page cannot
+  // scroll above 0. The gap is the bar's MEASURED height (+12px air), not a
+  // constant: the bar wraps taller on a phone (81px at 390 wide vs 54px at
+  // 1200) and changes size when the web fonts arrive, so a ResizeObserver
+  // keeps the gap in step. Paper: the bar is not printed and @media print
+  // zeroes the gap.
+  if(notes.length){
+    docEl.insertAdjacentHTML('beforebegin','<div id="pageNotes">'+notes.join('')+'</div>');
+    var notesBox=document.getElementById('pageNotes'), bar=document.querySelector('.pbar');
+    if(bar){
+      var keepBelowBar=function(){ notesBox.style.marginTop=(bar.getBoundingClientRect().height+12)+'px'; };
+      keepBelowBar();
+      if(window.ResizeObserver) new ResizeObserver(keepBelowBar).observe(bar);
+    }
+  }
   // Μενού κοινής χρήσης (owner 25/8): δεξί κλικ / long-press στο κουμπί
   // εκτύπωσης. Αριστερό κλικ = window.print(), όπως πάντα. Το payload
   // κειμένου είναι το ΙΔΙΟ _waArr του copyWA — όχι δεύτερη εκδοχή (αρχή 3).
