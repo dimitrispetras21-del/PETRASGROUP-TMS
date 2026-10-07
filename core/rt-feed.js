@@ -20,7 +20,7 @@
 // ═══════════════════════════════════════════════════════════
 'use strict';
 
-const _RT = { lookups: null, pg: {} };
+const _RT = { lookups: null, pg: {}, split: {} };
 
 async function _rtSafe(label, fn) {
   try { return await fn(); }
@@ -84,6 +84,85 @@ async function _rtFind(pgIds) {
 
 const _rtClosed = rt => rt && (rt.status === 'closed' || rt.status === 'complete');
 const _rtWarn = (msg) => { if (typeof showErrorToast === 'function') showErrorToast(msg, 'warn', 9000); };
+
+// ── A group split across round trips (live 7/10, GI-MUV7FNKE: RT-1217 + RT-1220) ──
+// The Worker refuses POST /costs/rt with 409 «legs already belong to different
+// round trips: <ids>» when the legs it is sent already sit on two live round
+// trips (worker/src/rt-rules.mjs planRtUpsert). The front cannot repair that —
+// only a merge by the owner can — and every later sync of the group hits the
+// same wall. Until 7/10 _rtSafe turned it into its generic 8-second toast and a
+// dispatcher could not add a rota leg for hours without ever seeing why. So
+// this one refusal is named: which round trips, and what to ask for, on a
+// banner that stays until it is closed (a toast fades while the cause stays),
+// plus logError so it reaches the error log. Every other failure still goes to
+// _rtSafe exactly as before.
+const _RT_SPLIT = /legs already belong to different round trips/;
+
+// The 409 names round-trip ids; people know codes (RT-1217). Mapped through the
+// same /costs/rt list _rtFind reads (newest 200 — a live split is recent). An id
+// the list cannot place is shown as «RT id N», never dropped.
+async function _rtSplitCodes(ids) {
+  const codeById = {};
+  try { ((await plFetch('/costs/rt')).records || []).forEach(r => { codeById[r.id] = r.code; }); }
+  catch (e) { console.warn('[rt-feed] split: round-trip codes not read —', e && e.message); }
+  return ids.map(id => codeById[id] || ('RT id ' + id));
+}
+
+// Own fixed column at the top: toasts sit bottom-right (showErrorToast evicts
+// past 3, which would drop this one) and order-docs' banners bottom-left.
+// One banner per split, keyed by its round trips: a group syncs on every save,
+// and a new banner per sync would bury the screen.
+function _rtPinWarn(key, msg) {
+  if (typeof document === 'undefined' || !document.body || document.getElementById(key)) return;
+  let stack = document.getElementById('rtBanners');
+  if (!stack) {
+    stack = document.createElement('div');
+    stack.id = 'rtBanners';
+    stack.style.cssText = 'position:fixed;top:16px;left:50%;transform:translateX(-50%);z-index:calc(var(--z-top) + 3);'
+      + 'width:max-content;max-width:min(560px,calc(100vw - 32px));display:flex;flex-direction:column;gap:8px';
+    document.body.appendChild(stack);
+  }
+  const el = document.createElement('div');
+  el.id = key;
+  el.setAttribute('role', 'alert');
+  el.style.cssText = 'background:var(--warn-bg);border:1px solid var(--warn-border);border-radius:6px;box-shadow:0 4px 16px rgba(0,0,0,.18);'
+    + 'padding:12px 14px;font:13px/1.4 "DM Sans",sans-serif;display:flex;align-items:flex-start;gap:10px;color:var(--text)';
+  const text = document.createElement('span');
+  text.style.cssText = 'flex:1';
+  text.textContent = msg;
+  const close = document.createElement('button');
+  close.type = 'button';
+  close.textContent = '×';
+  close.setAttribute('aria-label', 'Κλείσιμο');
+  close.style.cssText = 'background:none;border:none;color:var(--text-mid);font-size:16px;line-height:1;cursor:pointer;padding:0 2px';
+  close.onclick = () => el.remove();
+  el.appendChild(text);
+  el.appendChild(close);
+  stack.appendChild(el);
+}
+
+// POST /costs/rt. A split-group refusal is announced here and answers null, so
+// the caller stops without adding a second, vaguer toast; any other failure is
+// rethrown to _rtSafe unchanged. `key` = the order the sync was asked for —
+// what rtSplitFor() (weekly_intl.js _wiRotAdd) looks the cause up by.
+async function _rtPost(body, key) {
+  try { return await plFetch('/costs/rt', { method: 'POST', body }); }
+  catch (e) {
+    if (!_RT_SPLIT.test(String(e && e.message))) throw e;
+    // Sorted: the Worker lists ids in DB row order, and the banner key and text
+    // must not change between two syncs of the same split.
+    const ids = ((String(e.message).split(':')[1] || '').match(/\d+/g) || []).map(Number).sort((a, b) => a - b);
+    const codes = await _rtSplitCodes(ids);
+    const n = codes.length;
+    const message = 'Η ομάδα είναι μοιρασμένη σε ' + (({ 2: 'δύο', 3: 'τρία' })[n] || n || 'περισσότερα από ένα')
+      + ' δρομολόγια' + (n ? ': ' + codes.join(', ') : '') + ' — ζήτα συγχώνευση από τον owner';
+    _RT.split[key] = { codes, message };
+    console.warn('[rt-feed] split group', key, e.message);
+    if (typeof logError === 'function') logError(e, 'rt-feed: ομάδα σε ' + (codes.join(', ') || 'πολλά δρομολόγια') + ' (' + key + ')');
+    _rtPinWarn('rtSplit-' + (ids.join('-') || 'x'), message);
+    return null;
+  }
+}
 
 // ── Wave 1 (owner 6/9): a GROUP is one round trip, not one per pair ──
 // Pure — no I/O, so it can be unit-tested with plain node (same posture as
@@ -250,6 +329,10 @@ async function rtFindForOrder(orderId) {
 
 // ── Κύρια είσοδος: κάθε αποθήκευση διεθνούς παραγγελίας ──
 async function rtOnOrderSaved(orderId) {
+  // The order as asked — orderId itself is redirected to the export below.
+  // Each sync decides afresh, so a cause from an earlier sync never leaks.
+  const splitKey = orderId;
+  delete _RT.split[splitKey];
   return _rtSafe('συγχρονισμός round trip', async () => {
     let rec = await atGetOne(TABLES.ORDERS, orderId);
     if (!rec) return;
@@ -374,7 +457,8 @@ async function rtOnOrderSaved(orderId) {
       };
       if (body.trip_type === 'OWNED' && !body.truck_id) { _rtWarn('P&L: δεν βρέθηκε το φορτηγό στα lookups — το RT δεν δημιουργήθηκε (δες μετρητή)'); return; }
       if (body.trip_type === 'PARTNER' && !body.partner_id) { _rtWarn('P&L: δεν βρέθηκε ο συνεργάτης στα lookups — το RT δεν δημιουργήθηκε (δες μετρητή)'); return; }
-      const res = await plFetch('/costs/rt', { method: 'POST', body });
+      const res = await _rtPost(body, splitKey);
+      if (!res) return; // split group — already named by _rtPost
       rtRef = res.record;
       // Αυτο-ίαση: ο Worker δεν είναι transactional — αν τα legs δεν γράφτηκαν,
       // το RT είναι ορφανό (δεν θα ξαναβρεθεί ποτέ) και ακυρώνεται ΕΔΩ, φωναχτά.
@@ -417,7 +501,7 @@ async function rtOnOrderSaved(orderId) {
         // then inserts only what is missing (rt-rules.mjs planRtUpsert). Posting
         // just the new leg always created a second, separate RT (proven 6/9).
         const legsBody = legPgs.map(id => ({ direction: pgDir[id], order_id: id, seq: seqByPg[id] }));
-        const attachRes = await plFetch('/costs/rt', { method: 'POST', body: {
+        const attachRes = await _rtPost({
           scope: 'INTL', trip_type: partnerTrip ? 'PARTNER' : 'OWNED',
           // Το validateRtBody απαιτεί truck_id/partner_id ακόμα κι όταν η ενέργεια
           // θα καταλήξει attach (δεν χρησιμοποιούνται εκεί) — πέφτουμε πίσω στα
@@ -425,7 +509,8 @@ async function rtOnOrderSaved(orderId) {
           truck_id: partnerTrip ? null : (ids.truck_id || rt.truck_id),
           partner_id: partnerTrip ? (ids.partner_id || rt.partner_id) : null,
           date_start: rt.date_start, date_end: dEnd || rt.date_end, legs: legsBody
-        } });
+        }, splitKey);
+        if (!attachRes) return; // split group — already named by _rtPost, not «δεν πήρε το σκέλος»
         if (attachRes && attachRes.attached && attachRes.record) rtRef = attachRes.record;
         else _rtWarn('P&L: το ' + rt.code + ' δεν πήρε το σκέλος αυτόματα — δες το στο TRIP PnL');
       }
@@ -479,3 +564,6 @@ window.rtOnOrderSaved = rtOnOrderSaved;
 window.rtOnOrderDeleted = rtOnOrderDeleted;
 window.rtLegsForOrder = rtLegsForOrder;
 window.rtFindForOrder = rtFindForOrder;
+// Why the last rtOnOrderSaved(orderId) could not attach: { codes, message } when
+// the Worker refused it as a split group, else null (weekly_intl.js _wiRotAdd).
+window.rtSplitFor = orderId => _RT.split[orderId] || null;

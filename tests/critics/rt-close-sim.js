@@ -38,7 +38,8 @@ checks.weeklyNoClosedRevert=!/κλειστός\s*—\s*ξανάνοιγμα απ
 if(!checks.weeklyNoClosedRevert) fails.push('το weekly_intl αναιρεί ακόμη τη ρότα σε κλειστό γύρο');
 
 // 5. …αλλά ο φρουρός ορφανής ρότας (γονέας έχει RT, το σκέλος δεν μπήκε) μένει.
-checks.weeklyOrphanGuard=/if\(parentRt&&!attached\)/.test(weeklyCode);
+//    7/10: ή η ομάδα είναι μοιρασμένη σε δύο γύρους (rt-feed rtSplitFor).
+checks.weeklyOrphanGuard=/if\((parentRt|\(parentRt\|\|split\))&&!attached\)/.test(weeklyCode);
 if(!checks.weeklyOrphanGuard) fails.push('έφυγε ο φρουρός ορφανής ρότας του _wiRotAdd');
 
 // 6. Η ΜΟΝΗ χειροκίνητη διαδρομή (TRIP PnL «Κλείσιμο δρομολογίου») είναι ρητή

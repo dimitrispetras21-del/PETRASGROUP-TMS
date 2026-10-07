@@ -4968,6 +4968,11 @@ async function _wiRotAdd(parentRowId, legOid){
     if(typeof rtOnOrderSaved==='function'){
       await rtOnOrderSaved(pOid).catch(e=>console.warn('[wi rota add] rt sync:',e&&e.message));
     }
+    // 7/10 (GI-MUV7FNKE on RT-1217 + RT-1220): when the Worker refused that
+    // sync because the group already sits on two round trips, THAT is why the
+    // leg cannot go in — the revert below says so instead of a vague «δεν
+    // μπήκε», which left the dispatcher retrying for hours (rt-feed rtSplitFor).
+    const split=typeof rtSplitFor==='function'?rtSplitFor(pOid):null;
     if(typeof rtFindForOrder==='function'){
       attached=(await rtFindForOrder(legOid).catch(()=>({rt:null}))).rt;
       parentRt=(await rtFindForOrder(pOid).catch(()=>({rt:null}))).rt;
@@ -4984,8 +4989,13 @@ async function _wiRotAdd(parentRowId, legOid){
     // Μένει ΜΟΝΟ ο φρουρός ορφανής ρότας: ο γονέας ΕΧΕΙ γύρο και το σκέλος
     // ΔΕΝ μπήκε σε αυτόν — τότε η ρότα στα ORDERS θα έδειχνε σύνδεση που δεν
     // υπάρχει στο δρομολόγιο, οπότε αναιρείται και λέγεται (ποτέ πράσινο ✓).
-    if(parentRt&&!attached){
-      const why=`Το σκέλος δεν μπήκε στο δρομολόγιο ${parentRt.code||''}`;
+    // A split also reverts when the lookup found no round trip for the parent
+    // (e.g. no live loading stop for /pallets/gate): the split itself proves
+    // the group HAS live round trips, and falling through would hand-copy the
+    // vehicle below — the DB trigger rt_create_from_order would then open a
+    // THIRD round trip for the leg, the very defect of 7/10.
+    if((parentRt||split)&&!attached){
+      const why=split?split.message:`Το σκέλος δεν μπήκε στο δρομολόγιο ${parentRt.code||''}`;
       const undo=await atSafePatch(TABLES.ORDERS,legOid,{'Rotation ID':''});
       if(undo?.error){
         reportError('Η ρότα γράφτηκε, αλλά το σκέλος ΔΕΝ μπήκε στο δρομολόγιο και η αναίρεση απέτυχε — άνοιξε την παραγγελία: '+why,new Error(undo.error.message||undo.error.type));
@@ -4995,6 +5005,10 @@ async function _wiRotAdd(parentRowId, legOid){
       renderWeeklyIntl();
       return;
     }
+    // Review P2 (7/10): a leg that already had its OWN round trip is found
+    // «attached» while the group now sits on two — the rota stays (the owner
+    // merges), but a green ✓ over a split would say the opposite.
+    if(split){ toast(split.message,'warn'); renderWeeklyIntl(); return; }
     // Fallback: the parent has no round trip yet (unassigned) — nothing could
     // attach, so copy the vehicle by hand as before or the leg sits without
     // one until somebody happens to re-save the parent.
