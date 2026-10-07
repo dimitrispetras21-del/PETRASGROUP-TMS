@@ -5007,6 +5007,10 @@ async function _wiRotAdd(parentRowId, legOid){
       renderWeeklyIntl();
       return;
     }
+    // Review P2 (7/10): a leg that already had its OWN round trip is found
+    // «attached» while the group now sits on two — the rota stays (the owner
+    // merges), but a green ✓ over a split would say the opposite.
+    if(split){ toast(split.message,'warn'); renderWeeklyIntl(); return; }
     // Fallback: the parent has no round trip yet (unassigned) — nothing could
     // attach, so copy the vehicle by hand as before or the leg sits without
     // one until somebody happens to re-save the parent.

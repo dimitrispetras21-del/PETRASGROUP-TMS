@@ -211,6 +211,14 @@ test('_wiRotAdd: a split with no round trip found for the parent still reverts �
   assert.deepStrictEqual(w.wiToasts, [{ m: SPLIT_MSG + ' · η ρότα ΔΕΝ γράφτηκε', k: 'warn' }]);
 });
 
+test('_wiRotAdd: a leg that already sits on its own round trip under a split gets the split warning, never a green ✓', async () => {
+  const w = await world();
+  w.ctx.rtFindForOrder = async id => ({ pg: 1, rt: id === 'rec467' ? { id: 310, code: 'RT-1300', status: 'planned' } : { id: 301, code: 'RT-1217', status: 'planned' } });
+  await w.ctx._wiRotAdd(1, 'rec467');
+  assert.deepStrictEqual(w.wiToasts, [{ m: SPLIT_MSG, k: 'warn' }]);
+  assert.ok(!w.patches.some(p => p.id === 'rec467' && 'Truck' in p.f), 'vehicle hand-copied onto the leg');
+});
+
 test('_wiRotAdd without a split keeps its own message for any other non-attach', async () => {
   const w = await world();
   w.ctx.rtOnOrderSaved = async () => null;
