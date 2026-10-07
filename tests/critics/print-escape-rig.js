@@ -8,7 +8,13 @@
 //       from the two 7/10 lines, see waBefore0710, and carries the typed
 //       markup as typed).
 // Sheets: driver, partner, group cover (+2), Veroia Switch, flat locations
-// with a split-leg title. Backend fully stubbed; the page's clock is fixed.
+// with a split-leg title.
+// Group route (owner 7/10, feat/group-route-message): the group's cover now
+// orders its stops with groupRoute and the group is ONE WhatsApp text — so for
+// the group only the per-order documents are compared with PRINT_BASE_REV; the
+// cover's route, headings and numbering are checked against the rule (d), and
+// the one text for plain text + typed markup (c). wa-text-rig.js (5) checks the
+// text line by line. Backend fully stubbed; the page's clock is fixed.
 // Run from the MAIN repo root (its node_modules), static server on 8788:
 //   PW_BASE_URL=http://localhost:8788/.claude/worktrees/<dir>/ node <dir>/tests/critics/print-escape-rig.js
 // PRINT_REV=<git rev> tests that revision's print.html instead of the working
@@ -134,9 +140,16 @@ async function render(browser, html, fx, qs) {
   const out = await page.evaluate(() => ({
     // (feat/temp-per-cmr-front) the paper CMR line is set aside, see waBeforeCmr.
     text: (document.querySelectorAll('#doc .cmr-keep').forEach(e => e.remove()), document.getElementById('doc').innerText),
+    docs: [...document.querySelectorAll('#doc .p-doc')].map(e => e.innerText),
+    cover: document.querySelectorAll('#doc .p-doc').length > 1 ? (c => ({
+      route: [...c.querySelectorAll('.route2 .side')].map(x => x.querySelector('.n').innerText + ' | ' + x.querySelector('.d').innerText),
+      sections: [...c.querySelectorAll('.section-title')].map(x => x.innerText),
+      tls: [...c.querySelectorAll('.tl')].map(tl => [...tl.querySelectorAll('.stop')].map(x => x.querySelector('.num').innerText + ' ' + x.querySelector('.name').innerText)),
+    }))(document.querySelector('#doc .p-doc')) : null,
     mk: [...document.querySelectorAll('[data-mk]')].map(e => e.tagName + ':' + e.getAttribute('data-mk')),
     urls: [...document.querySelectorAll('#doc [href], #doc [src]')].map(e => e.getAttribute('href') || e.getAttribute('src')),
     wa: (typeof _waArr !== 'undefined' ? _waArr : []).join('\n====\n'),
+    waN: (typeof _waArr !== 'undefined' ? _waArr : []).length,
   }));
   await ctx.close();
   out.wa = waBeforeCmr(waBefore0710(out.wa));
@@ -149,14 +162,35 @@ async function render(browser, html, fx, qs) {
   console.log('print.html under test: ' + REV + ' · reference: ' + BASE_REV + ' · ' + BASE);
   for (const [name, qs] of SHEETS) {
     console.log('— ' + name);
+    const grp = name === 'group';
     const fxO = fixture(k => ORDINARY[k]);
     const a = await render(browser, html, fxO, qs), a0 = await render(browser, baseHtml, fxO, qs);
     ok(!a.errors.length, '(a) no page error' + (a.errors.length ? ': ' + a.errors[0] : ''));
-    const diffAt = [...a.text].findIndex((c, i) => c !== a0.text[i]);
-    ok(a.text === a0.text, '(a) ordinary texts print identically to ' + BASE_REV + ' (' + a.text.length + ' chars)'
-      + (a.text === a0.text ? '' : ' — first difference: ' + JSON.stringify(a.text.slice(Math.max(0, diffAt - 30), diffAt + 30)) + ' vs ' + JSON.stringify(a0.text.slice(Math.max(0, diffAt - 30), diffAt + 30))));
-    ok(a.urls.length > 0 && JSON.stringify(a.urls) === JSON.stringify(a0.urls), '(a) links and QR sources identical (' + a.urls.length + ')');
-    ok(a.wa === a0.wa && a.wa.length > 0, '(c) WhatsApp text identical to ' + BASE_REV);
+    // A group's cover is new by design (d): its per-order documents must not move.
+    const t = grp ? a.docs.slice(1).join('\n') : a.text, t0 = grp ? a0.docs.slice(1).join('\n') : a0.text;
+    const diffAt = [...t].findIndex((c, i) => c !== t0[i]);
+    ok(t === t0 && (!grp || a.docs.length === a0.docs.length), '(a) ordinary texts print identically to ' + BASE_REV + (grp ? ' (the per-order documents)' : '') + ' (' + t.length + ' chars)'
+      + (t === t0 ? '' : ' — first difference: ' + JSON.stringify(t.slice(Math.max(0, diffAt - 30), diffAt + 30)) + ' vs ' + JSON.stringify(t0.slice(Math.max(0, diffAt - 30), diffAt + 30))));
+    // The group cover holds the same cards in another order: the same links and QR sources, sorted.
+    const u = grp ? a.urls.slice().sort() : a.urls, u0 = grp ? a0.urls.slice().sort() : a0.urls;
+    ok(u.length > 0 && JSON.stringify(u) === JSON.stringify(u0), '(a) links and QR sources identical (' + u.length + ')');
+    if (!grp) ok(a.wa === a0.wa && a.wa.length > 0, '(c) WhatsApp text identical to ' + BASE_REV);
+    else {
+      ok(a.waN === 1 && a0.waN === 2, '(c) the group is ONE WhatsApp text (it was one per order)');
+      for (const v of [ORDINARY.notes, ORDINARY.ref, ORDINARY.l1name, ORDINARY.l2name, ORDINARY.l3name, ORDINARY.goods])
+        ok(a.wa.includes(v), '(c) the group text carries ' + JSON.stringify(v) + ' as typed');
+      // (d) groupRoute, EXPORT: drops in the dispatcher order (A then B); pickups by
+      // date — B's 05/10 (no time = start of the day) before A's 05/10 07:00.
+      const c = a.cover || {};
+      ok(JSON.stringify(c.route) === JSON.stringify([ORDINARY.l2name + ' | 05/10/2026', ORDINARY.l3name + ' | 08/10/2026']),
+        '(d) cover route = first loading → last delivery of the route — ' + JSON.stringify(c.route));
+      ok(JSON.stringify(c.sections) === '["ΦΟΡΤΩΣΕΙΣ","ΠΑΡΑΔΟΣΕΙΣ"]', '(d) cover headings — ' + JSON.stringify(c.sections));
+      ok(JSON.stringify(c.tls) === JSON.stringify([['1 ' + ORDINARY.l2name, '2 ' + ORDINARY.l1name], ['1 ' + ORDINARY.l2name, '2 ' + ORDINARY.l3name]]),
+        '(d) cover cards in groupRoute order, numbered from 1 in each section — ' + JSON.stringify(c.tls));
+      const waNames = a.wa.split('\n').map((l, i, ls) => /^\S+ \*(ΦΟΡΤΩΣΗ|ΠΑΡΑΔΟΣΗ)\* · /.test(l) ? ls[i + 1] : null).filter(Boolean);
+      ok(JSON.stringify(waNames) === JSON.stringify([].concat(...(c.tls || []).map(tl => tl.map(x => x.replace(/^\d+ /, ''))))),
+        '(d) the WhatsApp text lists the same stops in the same order — ' + JSON.stringify(waNames));
+    }
     for (const s of ['Αγρόκτημα Βέροιας & Υιοί', 'Trans & Co "Balkan" Α.Ε.', 'PO-77 "A&B"', "O'Neil's dock", "O'Brien Fresh Hub", 'Lidl "Ecser" DC'])
       if (a0.text.includes(s)) ok(a.text.includes(s), '(a) prints ' + JSON.stringify(s));
     const fxM = fixture(k => MARKUP[k]);
@@ -166,7 +200,9 @@ async function render(browser, html, fx, qs) {
     const shown = Object.keys(MARKUP).filter(k => MARKUP[k] !== ORDINARY[k] && b0.text.indexOf(MARKUP[k]) < 0 && b.text.includes(MARKUP[k]));
     const lost = Object.keys(MARKUP).filter(k => MARKUP[k] !== ORDINARY[k] && /^<b /.test(MARKUP[k]) && b0.mk.some(x => x.endsWith(':' + k)) && !b.text.includes(MARKUP[k]));
     ok(lost.length === 0, '(b) every field that rendered as markup now prints as typed (' + shown.length + ' fields)' + (lost.length ? ' — not as text: ' + lost.join(', ') : ''));
-    ok(b.wa === b0.wa && b.wa.includes(MARKUP.notes), '(c) WhatsApp text plain and unchanged (markup kept as typed)');
+    if (!grp) ok(b.wa === b0.wa && b.wa.includes(MARKUP.notes), '(c) WhatsApp text plain and unchanged (markup kept as typed)');
+    else ok(b.waN === 1 && [MARKUP.notes, MARKUP.ref, MARKUP.l1name, MARKUP.goods].every(v => b.wa.includes(v)) && !/&lt;|&amp;|&quot;/.test(b.wa),
+      '(c) the group text is plain text: typed markup as typed, nothing escaped');
   }
   await browser.close();
   console.log('\n' + pass + ' ✓ · ' + fail + ' ✗');

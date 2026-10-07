@@ -19,12 +19,25 @@
 //            (EN «Keep the temperature stated on the CMR.») right before the
 //            pallet-exchange line, number or not, and every document of the
 //            paper (cover included) carries the same line once, under the chips.
+//   (5) group route (owner 7/10, IAB4166 — feat/group-route-message): a group
+//       is ONE WhatsApp text — header + driver/vehicle once, «ΦΟΡΤΩΣΕΙΣ» 1..N
+//       then «ΠΑΡΑΔΟΣΕΙΣ» 1..M, each stop tagged «· #<order>», a cargo block
+//       per order, the CMR / ☎️ / closing lines once. IMPORT: pickups in the
+//       dispatcher's order, drops by date; EXPORT: drops in the dispatcher's
+//       order, pickups by date (ties: dispatcher order, then stop sequence).
+//       The paper cover prints the SAME sequence and numbers (route, sections,
+//       delivery sequence); copyWA, the share menu's «Αντιγραφή κειμένου» and
+//       the Worker's /print/pdf?format=text expression all give that one text;
+//   (6) single orders: text AND paper byte-for-byte equal to PRINT_SINGLE_REV
+//       (default 6849a9b4, the branch base) — the group change touches no
+//       single document.
 // Backend fully stubbed; the page's clock is fixed. Run from the MAIN repo root
 // (its node_modules), static server serving the worktree:
 //   PW_BASE_URL=http://127.0.0.1:8991/.claude/worktrees/<dir>/ node <dir>/tests/critics/wa-text-rig.js
 // PRINT_REV=<git rev> tests that revision's print.html instead of the working
 // file; PRINT_BASE_REV (default 2fceaafd, main before this change) is the
-// reference for (3). Exit 1 on any ✗.
+// reference for (3); PRINT_SINGLE_REV (default 6849a9b4) the reference for (6).
+// Exit 1 on any ✗.
 const { chromium } = require('playwright');
 const path = require('path');
 const fs = require('fs');
@@ -34,6 +47,7 @@ const ROOT = path.resolve(__dirname, '..', '..');
 const BASE = process.env.PW_BASE_URL || 'http://127.0.0.1:8991/';
 const REV = process.env.PRINT_REV || 'work';
 const BASE_REV = process.env.PRINT_BASE_REV || '2fceaafd';
+const SINGLE_REV = process.env.PRINT_SINGLE_REV || '6849a9b4';
 const HOST = 'petras-tms-backend-staging.petrasgroup.workers.dev';
 const T = { ORD: 'tblgHlNmLBH3JTdIM', PAR: 'tblLHl5m8bqONfhWv', TRK: 'tblEAPExIAjiA3asD', TRL: 'tblDcrqRJXzPrtYLm',
   DRV: 'tbl7UGmYhc2Y82pPs', LOC: 'tblxu8DRfTQOFRCzS', STP: 'tblaeY5QOHAS1gyE8' };
@@ -62,6 +76,14 @@ const LOCS = [
   loc('recLocB', 'Depot B', 'Plattling', 'DE', 48.8871451, 12.6252663),
   loc('recLocN', 'Client N (no coords)', 'Arad', 'RO', null, null),
   loc('recJucKOhC1zh4IP3', 'Cross-dock V', 'Kopanos', 'GR', 40.6312, -0.5),   // negative: the sign stays glued to its number only
+  // (5) the IAB4166 shape (owner 7/10): two imports loading in Austria, one
+  // delivering twice in Bulgaria, the other twice in Greece. Generic names.
+  loc('recLocVo', 'Packer V', 'Voitsberg', 'AT', 47.0446, 15.1567),
+  loc('recLocSt', 'Packer S', 'Stubenberg', 'AT', 47.2441, 15.8019),
+  loc('recLocB1', 'Client B1', 'Sofia', 'BG', 42.6977, 23.3219),
+  loc('recLocB2', 'Client B2', 'Plovdiv', 'BG', 42.1354, 24.7453),
+  loc('recLocG1', 'Client G1', 'Thessaloniki', 'GR', 40.6401, 22.9444),
+  loc('recLocG2', 'Client G2', 'Athens', 'GR', 37.9838, 23.7275),
 ];
 const stop = (id, type, n, l, dt) => ({ id, fields: { 'Stop Type': type, 'Stop Number': n, Location: [l], DateTime: dt, Pallets: 10 } });
 const stopT = (id, type, n, l, dt, t) => { const x = stop(id, type, n, l, dt); x.fields.Temperature = t; return x; };
@@ -70,6 +92,16 @@ const STOPS = [
   stop('recS3', 'Loading', 1, 'recLocA', '2026-10-08'), stop('recS4', 'Unloading', 2, 'recLocB', '2026-10-11T09:00:00'),
   // (4a) stops of a «κατά CMR» order that still carry their own figure — it must not print
   stopT('recS5', 'Loading', 1, 'recLocA', '2026-10-08T07:00:00', 5), stopT('recS6', 'Unloading', 2, 'recLocB', '2026-10-10', 5),
+  // (5) 461: loads 08/10 Voitsberg, delivers 12/10 GR ×2 · 463: loads 09/10 Stubenberg, delivers 11/10 BG ×2
+  stop('recP461L', 'Loading', 1, 'recLocVo', '2026-10-08'), stop('recP461U1', 'Unloading', 2, 'recLocG1', '2026-10-12T08:00:00'),
+  stop('recP461U2', 'Unloading', 3, 'recLocG2', '2026-10-12T14:00:00'),
+  stop('recP463L', 'Loading', 1, 'recLocSt', '2026-10-09'), stop('recP463U1', 'Unloading', 2, 'recLocB1', '2026-10-11'),
+  stop('recP463U2', 'Unloading', 3, 'recLocB2', '2026-10-11'),
+  // (5) an export group of three, dispatcher order E1, E2, E3: E2 and E3 load the
+  // same day (tie → dispatcher order), E1 a day later; E2 delivers BEFORE E1.
+  stop('recPE1L', 'Loading', 1, 'recLocA', '2026-10-10'), stop('recPE1U', 'Unloading', 2, 'recLocB', '2026-10-13'),
+  stop('recPE2L', 'Loading', 1, 'recLocG1', '2026-10-09'), stop('recPE2U', 'Unloading', 2, 'recLocN', '2026-10-12'),
+  stop('recPE3L', 'Loading', 1, 'recLocG2', '2026-10-09'), stop('recPE3U', 'Unloading', 2, 'recLocB1', '2026-10-14'),
 ];
 const order = (id, stops, extra) => ({ id, fields: Object.assign({
   'Order No': 400 + stops.length, Reference: 'REF-' + id.slice(-1), Goods: 'Apples', Notes: 'Gate 4',
@@ -84,7 +116,14 @@ const FX = {
     // (4a) «κατά CMR» with a leftover 2 °C on the order (and 5 on its stops); one without a reefer mode
     order('recOrdC', ['recS5', 'recS6'], { 'Temp Per CMR': true }),
     order('recOrdD', ['recS5', 'recS6'], { 'Temp Per CMR': true, 'Refrigerator Mode': undefined, 'Order No': 499 }),
-    order('recOrdC2', ['recS5', 'recS6'], { 'Temp Per CMR': true, 'Veroia Switch': true, 'Veroia Cross-dock': ['recJucKOhC1zh4IP3'], 'Cross-dock Date': '2026-10-09' })],
+    order('recOrdC2', ['recS5', 'recS6'], { 'Temp Per CMR': true, 'Veroia Switch': true, 'Veroia Cross-dock': ['recJucKOhC1zh4IP3'], 'Cross-dock Date': '2026-10-09' }),
+    // (5) IAB4166 shape; 463 is «κατά CMR», carries no notes and does not exchange pallets
+    order('rec461', ['recP461L', 'recP461U1', 'recP461U2'], { 'Order No': 461, Reference: 'REF-461', 'Loading DateTime': '2026-10-08', 'Delivery DateTime': '2026-10-12' }),
+    order('rec463', ['recP463L', 'recP463U1', 'recP463U2'], { 'Order No': 463, Reference: 'REF-463', Goods: 'Pears', 'Total Pallets': 20, 'Pallet Exchange': false,
+      'Temp Per CMR': true, Notes: undefined, 'Loading DateTime': '2026-10-09', 'Delivery DateTime': '2026-10-11' }),
+    order('recE1', ['recPE1L', 'recPE1U'], { 'Order No': 501, Reference: 'REF-E1' }),
+    order('recE2', ['recPE2L', 'recPE2U'], { 'Order No': 502, Reference: 'REF-E2' }),
+    order('recE3', ['recPE3L', 'recPE3U'], { 'Order No': 503, Reference: 'REF-E3' })],
   PARTNERS: [{ id: 'recPar', fields: { 'Company Name': 'Carrier P' } }],
   DRIVERS: [{ id: 'recDrv', fields: { 'Full Name': 'Driver D' } }],
   TRUCKS: [{ id: 'recTrk', fields: { 'License Plate': 'TRK-1' } }],
@@ -101,19 +140,23 @@ const SHEETS = [
   ['partner · Veroia export', 'orderId=recOrdV&leg=export&sheet=partner', 'partner', [CO(L('recJucKOhC1zh4IP3')), CO(L('recLocB'))]],
   ['driver · Veroia import', 'orderId=recOrdV&leg=import&sheet=driver', 'driver', [CO(L('recLocA')), CO(L('recJucKOhC1zh4IP3'))]],
   ['partner · Veroia import', 'orderId=recOrdV&leg=import&sheet=partner', 'partner', [CO(L('recLocA')), CO(L('recJucKOhC1zh4IP3'))]],
-  ['driver · group of 2', 'orderIds=recOrdA,recOrdV&leg=export&sheet=driver', 'driver',
-    [CO(L('recLocA')), CO(L('recJucKOhC1zh4IP3')), CO(L('recLocB'))], 'Client N (no coords)'],
+  // The group of 2 that stood here compared one text per order with the
+  // reference; a group is ONE text since (5) — it is checked there.
 ];
 
 let pass = 0, fail = 0;
 const ok = (c, m) => { if (c) { pass++; console.log('  ✓ ' + m); } else { fail++; console.log('  ✗ ' + m); } };
 const J = (r, body) => r.fulfill({ status: 200, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: JSON.stringify(body) });
 
-async function render(browser, html, qs) {
+async function render(browser, html, qs, opts) {
   const ctx = await browser.newContext({ viewport: { width: 1200, height: 900 }, serviceWorkers: 'block' });
   const page = await ctx.newPage();
   await page.clock.setFixedTime(new Date('2026-10-07T10:00:00'));
-  await page.addInitScript(() => { localStorage.setItem('tms_jwt', 'rig'); localStorage.setItem('tms_user', JSON.stringify({ name: 'Rig User' })); });
+  await page.addInitScript(() => {
+    localStorage.setItem('tms_jwt', 'rig'); localStorage.setItem('tms_user', JSON.stringify({ name: 'Rig User' }));
+    // (5) every copy (📋 WhatsApp button, share menu) lands here, not in the OS clipboard.
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: t => { (window.__copied = window.__copied || []).push(t); return Promise.resolve(); } } });
+  });
   const byTable = { [T.ORD]: FX.ORDERS, [T.PAR]: FX.PARTNERS, [T.TRK]: FX.TRUCKS, [T.TRL]: FX.TRAILERS, [T.DRV]: FX.DRIVERS, [T.LOC]: FX.LOCS, [T.STP]: FX.STOPS };
   await page.route('**/*', r => {
     const u = new URL(r.request().url());
@@ -142,8 +185,28 @@ async function render(browser, html, qs) {
     const chips = [...doc.querySelectorAll('.chip.temp .v')].map(e => e.innerText);
     const cardTemps = [...doc.querySelectorAll('.stop .f')].filter(e => /^(Θερμοκρασία|Temperature)/.test(e.innerText)).map(e => e.innerText);
     doc.querySelectorAll('.cmr-keep').forEach(e => e.remove());
-    return { text: doc.innerText, full, keep, docs, chips, cardTemps, wa: (typeof _waArr !== 'undefined' ? _waArr : []).slice() };
+    // (5) the group cover (first document of a packet): route, section headings, cards in order.
+    const cov = docs > 1 ? doc.querySelector('.p-doc') : null;
+    const cover = cov && {
+      route: [...cov.querySelectorAll('.route2 .side')].map(s => s.querySelector('.n').innerText + ' | ' + s.querySelector('.d').innerText),
+      sections: [...cov.querySelectorAll('.section-title')].map(e => e.innerText),
+      tls: [...cov.querySelectorAll('.tl')].map(tl => [...tl.querySelectorAll('.stop')].map(st => st.querySelector('.num').innerText + ' ' + st.querySelector('.name').innerText
+        + ' · ' + (st.querySelector('.stoptag') ? st.querySelector('.stoptag').innerText.split('\n')[0] : ''))),
+      seq: ([...cov.querySelectorAll('.meta-item')].find(e => /ΣΕΙΡΑ ΠΑΡΑΔΟΣΗΣ|Delivery Sequence/i.test(e.innerText)) || { innerText: '' }).innerText.split('\n').pop(),
+    };
+    return { text: doc.innerText, full, keep, docs, chips, cardTemps, cover, wa: (typeof _waArr !== 'undefined' ? _waArr : []).slice() };
   });
+  if (opts && opts.channels) {
+    // (5) the three ways the text leaves the page: the 📋 WhatsApp button (copyWA),
+    // the print button's share menu «Αντιγραφή κειμένου» (getText), and the
+    // expression the Worker evaluates for /print/pdf?format=text.
+    await page.click('.pbar-btn.wa');
+    await page.click('.pbar-btn:not(.wa)', { button: 'right' });
+    await page.click('#shMenu button:has-text("Αντιγραφή κειμένου")');
+    await page.waitForFunction(() => (window.__copied || []).length >= 2, null, { timeout: 5000 });
+    out.copied = await page.evaluate(() => window.__copied.slice());
+    out.worker = await page.evaluate(() => (window._waArr || []).join('\n\n\u2014\u2014\u2014\u2014\u2014\u2014\u2014\u2014\n\n'));
+  }
   await ctx.close();
   return Object.assign(out, { errors });
 }
@@ -156,10 +219,147 @@ const expectFromBase = (msg, foot, keep) => msg.replace(/^📍 https:\/\/maps\.g
 // The stop block (header line to the blank line) that names this place.
 const blockOf = (msg, name) => (msg.split('\n\n').find(b => b.split('\n')[1] === name) || '');
 
+// (5) The IAB4166 shape as the driver / the partner receives it — the whole
+// text, frozen: pickups in the dispatcher's order (461 then 463), drops by date
+// (463's two Bulgarian drops on 11/10 before 461's two Greek drops on 12/10).
+const EXAMPLE = {
+  driver: `🚛 *ΕΝΤΟΛΗ W41 · ΕΙΣΑΓΩΓΗ · 461 + 463*
+👤 Driver D · TRK-1 / TRL-1
+
+*ΦΟΡΤΩΣΕΙΣ*
+1️⃣ *ΦΟΡΤΩΣΗ* · 08/10/2026 · #461
+Packer V
+Street 1, Voitsberg, Αυστρία
+📍 *47.0446, 15.1567*
+📍 https://maps.google.com/?q=47.0446,15.1567
+
+2️⃣ *ΦΟΡΤΩΣΗ* · 09/10/2026 · #463
+Packer S
+Street 1, Stubenberg, Αυστρία
+📍 *47.2441, 15.8019*
+📍 https://maps.google.com/?q=47.2441,15.8019
+
+*ΠΑΡΑΔΟΣΕΙΣ*
+1️⃣ *ΠΑΡΑΔΟΣΗ* · 11/10/2026 · #463
+Client B1
+Street 1, Sofia, Βουλγαρία
+📍 *42.6977, 23.3219*
+📍 https://maps.google.com/?q=42.6977,23.3219
+
+2️⃣ *ΠΑΡΑΔΟΣΗ* · 11/10/2026 · #463
+Client B2
+Street 1, Plovdiv, Βουλγαρία
+📍 *42.1354, 24.7453*
+📍 https://maps.google.com/?q=42.1354,24.7453
+
+3️⃣ *ΠΑΡΑΔΟΣΗ* · 12/10/2026 08:00 · #461
+Client G1
+Street 1, Thessaloniki, Ελλάδα
+📍 *40.6401, 22.9444*
+📍 https://maps.google.com/?q=40.6401,22.9444
+
+4️⃣ *ΠΑΡΑΔΟΣΗ* · 12/10/2026 14:00 · #461
+Client G2
+Street 1, Athens, Ελλάδα
+📍 *37.9838, 23.7275*
+📍 https://maps.google.com/?q=37.9838,23.7275
+
+*ΦΟΡΤΙΟ #461*
+📦 *33× EUR* · Apples · 🌡 *2°C Continuous*
+🔁 *Ανταλλαγή παλετών: ΝΑΙ*
+Ref: REF-461
+📝 Gate 4
+
+*ΦΟΡΤΙΟ #463*
+📦 *20× EUR* · Pears
+🌡 *Θερμοκρασία: όπως γράφει το CMR · Continuous*
+🔁 *Ανταλλαγή παλετών: ΟΧΙ*
+Ref: REF-463
+
+🌡 Τήρησε τη θερμοκρασία που γράφει το CMR.
+
+ℹ️ Αυτοματοποιημένο μήνυμα. Αν κάτι σας φαίνεται λάθος, επικοινωνήστε με το γραφείο.`,
+  partner: `🚛 *ORDER W41 · IMPORT · 461 + 463*
+👤 Carrier P · AB-1234
+
+*LOADINGS*
+1️⃣ *LOADING* · 08/10/2026 · #461
+Packer V
+Street 1, Voitsberg, Austria
+📍 *47.0446, 15.1567*
+📍 https://maps.google.com/?q=47.0446,15.1567
+
+2️⃣ *LOADING* · 09/10/2026 · #463
+Packer S
+Street 1, Stubenberg, Austria
+📍 *47.2441, 15.8019*
+📍 https://maps.google.com/?q=47.2441,15.8019
+
+*DELIVERIES*
+1️⃣ *DELIVERY* · 11/10/2026 · #463
+Client B1
+Street 1, Sofia, Bulgaria
+📍 *42.6977, 23.3219*
+📍 https://maps.google.com/?q=42.6977,23.3219
+
+2️⃣ *DELIVERY* · 11/10/2026 · #463
+Client B2
+Street 1, Plovdiv, Bulgaria
+📍 *42.1354, 24.7453*
+📍 https://maps.google.com/?q=42.1354,24.7453
+
+3️⃣ *DELIVERY* · 12/10/2026 08:00 · #461
+Client G1
+Street 1, Thessaloniki, Greece
+📍 *40.6401, 22.9444*
+📍 https://maps.google.com/?q=40.6401,22.9444
+
+4️⃣ *DELIVERY* · 12/10/2026 14:00 · #461
+Client G2
+Street 1, Athens, Greece
+📍 *37.9838, 23.7275*
+📍 https://maps.google.com/?q=37.9838,23.7275
+
+*CARGO #461*
+📦 *33× EUR* · Apples · 🌡 *2°C Continuous*
+🔁 *Pallet Exchange: YES*
+Ref: REF-461
+📝 Gate 4
+
+*CARGO #463*
+📦 *20× EUR* · Pears
+🌡 *Temperature: as stated on the CMR · Continuous*
+🔁 *Pallet Exchange: NO*
+Ref: REF-463
+
+🌡 Keep the temperature stated on the CMR.
+
+ℹ️ Automated message. If anything looks wrong, please contact the office.`,
+};
+// The stop header lines of a group text: «1️⃣ *ΦΟΡΤΩΣΗ* · 08/10/2026 · #461» + the name below it.
+const groupStops = m => { const ls = m.split('\n'); return ls.map((l, i) => {
+  const x = l.match(/^(\S+) \*(ΦΟΡΤΩΣΗ|ΠΑΡΑΔΟΣΗ|LOADING|DELIVERY)\* · (.+) · (#\S+)$/);
+  return x && { emo: x[1], load: x[2] === 'ΦΟΡΤΩΣΗ' || x[2] === 'LOADING', dt: x[3], tag: x[4], name: ls[i + 1] };
+}).filter(Boolean); };
+const NUM = ['1️⃣', '2️⃣', '3️⃣', '4️⃣', '5️⃣', '6️⃣', '7️⃣'];
+// A cargo block «*ΦΟΡΤΙΟ #461*» … up to the blank line.
+const cargoBlock = (m, no) => (m.split('\n\n').find(b => /^\*(ΦΟΡΤΙΟ|CARGO) #/.test(b) && b.split('\n')[0].endsWith('#' + no + '*')) || '');
+
 (async () => {
   const browser = await chromium.launch();
-  const html = src(REV), baseHtml = src(BASE_REV);
-  console.log('print.html under test: ' + REV + ' · reference: ' + BASE_REV + ' · ' + BASE);
+  const html = src(REV), baseHtml = src(BASE_REV), singleHtml = src(SINGLE_REV);
+  console.log('print.html under test: ' + REV + ' · reference: ' + BASE_REV + ' · singles: ' + SINGLE_REV + ' · ' + BASE);
+  // (6) a single order: text and paper byte-for-byte as at SINGLE_REV.
+  const sameAsSingle = async (r, qs, h) => {
+    const s0 = await render(browser, h || singleHtml, qs);
+    const same = JSON.stringify(r.wa) === JSON.stringify(s0.wa) && r.full === s0.full && r.wa.length === 1;
+    ok(same, '(6) single order: WhatsApp text and paper byte-for-byte as ' + SINGLE_REV + (same ? '' : ' — got ' + JSON.stringify(r.wa).slice(0, 300)));
+  };
+  if (process.env.DUMP) {   // print the texts of a query, for a person to read (no checks)
+    const d = await render(browser, html, process.env.DUMP, { channels: true });
+    console.log(d.wa.join('\n=====\n')); console.log(JSON.stringify(d.cover, null, 1)); console.log(d.errors);
+    await browser.close(); return;
+  }
   for (const [name, qs, sheet, coords, noCoordsName] of SHEETS) {
     console.log('— ' + name);
     const a = await render(browser, html, qs), a0 = await render(browser, baseHtml, qs);
@@ -204,6 +404,7 @@ const blockOf = (msg, name) => (msg.split('\n\n').find(b => b.split('\n')[1] ===
       ok(!m.includes(KEEP[sheet === 'driver' ? 'partner' : 'driver']), '(4b) no CMR line of the other language');
     }
     ok(a.docs >= 1 && a.keep.length === a.docs && a.keep.every(t => t === KEEP[sheet]), '(4b) the paper carries the CMR line once per document (' + a.keep.length + '/' + a.docs + ') — ' + JSON.stringify(a.keep));
+    await sameAsSingle(a, qs);
   }
   // (4a) «κατά CMR» — no reference comparison (the reference has no such order).
   const CMR_SHEETS = [
@@ -226,15 +427,84 @@ const blockOf = (msg, name) => (msg.split('\n\n').find(b => b.split('\n')[1] ===
       '(4a) the temperature chip says «' + CMRW[sheet] + '» (+ mode) — ' + JSON.stringify(c.chips));
     ok(c.cardTemps.length >= 1 && c.cardTemps.every(t => t.endsWith(CMRW[sheet])), '(4a) the stop card(s) say «' + CMRW[sheet] + '» — ' + JSON.stringify(c.cardTemps));
     ok(c.keep.length === 1 && c.keep[0] === KEEP[sheet], '(4b) the paper line once — ' + JSON.stringify(c.keep));
+    await sameAsSingle(c, qs);
   }
   console.log('— driver · group: numbered + κατά CMR');
   const g = await render(browser, html, 'orderIds=recOrdA,recOrdC&leg=export&sheet=driver');
   ok(!g.errors.length, 'no page error' + (g.errors.length ? ': ' + g.errors[0] : ''));
   ok(g.chips[0] === '2°C / ' + CMRW.driver, '(4a) cover chip «2°C / ' + CMRW.driver + '» — ' + JSON.stringify(g.chips));
   ok(g.docs === 3 && g.keep.length === 3 && g.keep.every(t => t === KEEP.driver), '(4b) cover + 2 documents, the CMR line on each (' + g.keep.length + '/' + g.docs + ')');
-  ok(g.wa.length === 2 && g.wa.every(m => m.split('\n').filter(l => l === KEEP.driver).length === 1), '(4b) both WhatsApp texts carry the line once');
-  ok(/🌡 \*2°C Continuous\*/.test(g.wa[0]) && !g.wa[0].includes(CMRL.driver) && g.wa[1].includes(CMRL.driver + ' · Continuous*') && !/°C/.test(g.wa[1]),
-    '(4a) the numbered order keeps its number, the CMR order says CMR — ' + JSON.stringify(g.wa.map(m => m.split('\n').filter(l => /🌡/.test(l)))));
+  // (5) one text for the group: the CMR line once for the truck, each order's temperature in its own cargo block
+  ok(g.wa.length === 1 && g.wa[0].split('\n').filter(l => l === KEEP.driver).length === 1, '(4b/5) ONE WhatsApp text, the CMR line once');
+  // (both fixture orders are «402»: the blocks are read in the dispatcher order A, C)
+  const [gA = '', gC = ''] = (g.wa[0] || '').split('\n\n').filter(b => /^\*ΦΟΡΤΙΟ #/.test(b));
+  ok(/🌡 \*2°C Continuous\*/.test(gA) && !gA.includes(CMRL.driver) && gC.includes(CMRL.driver + ' · Continuous*') && !/°C/.test(gC),
+    '(4a) the numbered order keeps its number, the CMR order says CMR — ' + JSON.stringify([gA, gC]));
+
+  // (5) group route — the IAB4166 shape, the other half, ties, Veroia, partner.
+  const tags = (st, load) => st.filter(x => x.load === load).map(x => x.tag);
+  const names = (st, load) => st.filter(x => x.load === load).map(x => x.name);
+  const emos = (st, load) => st.filter(x => x.load === load).map(x => x.emo);
+  const coverNames = c => c ? c.tls.map(tl => tl.map(x => x.replace(/^\d+ /, '').split(' · ')[0])) : [];
+  const coverNums = c => c ? c.tls.map(tl => tl.map(x => x.split(' ')[0])) : [];
+  for (const sheet of ['driver', 'partner']) {
+    console.log('— ' + sheet + ' · group IAB4166 (import 461 + 463)');
+    const e = await render(browser, html, 'orderIds=rec461,rec463&leg=import&sheet=' + sheet, { channels: true });
+    ok(!e.errors.length, 'no page error' + (e.errors.length ? ': ' + e.errors[0] : ''));
+    const m = e.wa[0] || '', st = groupStops(m);
+    ok(e.wa.length === 1 && !m.includes('————————'), '(5) ONE WhatsApp text for the group, no «————————» joint');
+    ok(m === EXAMPLE[sheet], '(5) the whole text = the expected message' + (m === EXAMPLE[sheet] ? '' : ' — got ' + JSON.stringify(m)));
+    ok(JSON.stringify(tags(st, true)) === '["#461","#463"]', '(5) IMPORT: loadings in the dispatcher order 461 → 463 — ' + JSON.stringify(tags(st, true)));
+    ok(JSON.stringify(tags(st, false)) === '["#463","#463","#461","#461"]', '(5) IMPORT: deliveries by date 463, 463, 461, 461 — ' + JSON.stringify(tags(st, false)));
+    ok(JSON.stringify(emos(st, true)) === JSON.stringify(NUM.slice(0, 2)) && JSON.stringify(emos(st, false)) === JSON.stringify(NUM.slice(0, 4)),
+      '(5) numbering restarts per section: loadings 1–2, deliveries 1–4');
+    ok(e.copied && e.copied.length === 2 && e.copied.every(t => t === m) && e.worker === m,
+      '(5) one producer: 📋 WhatsApp, share menu «Αντιγραφή κειμένου» and the Worker expression give the same text — ' + JSON.stringify((e.copied || []).map(t => t.length).concat([(e.worker || '').length, m.length])));
+    const c = e.cover || {};
+    ok(JSON.stringify(c.route) === JSON.stringify(['Packer V | 08/10/2026', 'Client G2 | 12/10/2026 14:00']),
+      '(5) cover route: first loading → last delivery of the route, not of the last order — ' + JSON.stringify(c.route));
+    ok(JSON.stringify(c.sections) === JSON.stringify(sheet === 'driver' ? ['ΦΟΡΤΩΣΕΙΣ', 'ΠΑΡΑΔΟΣΕΙΣ'] : ['LOADINGS', 'DELIVERIES']), '(5) cover sections — ' + JSON.stringify(c.sections));
+    ok(JSON.stringify(coverNums(c)) === '[["1","2"],["1","2","3","4"]]', '(5) cover numbering restarts per section like the text — ' + JSON.stringify(coverNums(c)));
+    ok(JSON.stringify(coverNames(c)) === JSON.stringify([names(st, true), names(st, false)]),
+      '(5) cover and text list the SAME stops in the SAME order — ' + JSON.stringify(coverNames(c)));
+    ok(c.tls && /ΠΑΡΑΓΓΕΛΙΑ B · 463/.test(c.tls[1][0]) && /ΠΑΡΑΓΓΕΛΙΑ A · 461/.test(c.tls[1][3]), '(5) cover cards keep their order tag — ' + JSON.stringify(c.tls && c.tls[1]));
+    ok(/B\. Client B2 → A\. Client G2$/.test(c.seq || ''), '(5) cover delivery sequence: 463 first, then 461 — ' + JSON.stringify(c.seq));
+    ok(e.docs === 3, '(5) the per-order documents still follow the cover (' + e.docs + ')');
+  }
+  console.log('— driver · group IAB4166, dispatcher put 463 first');
+  const r = await render(browser, html, 'orderIds=rec463,rec461&leg=import&sheet=driver');
+  const rst = groupStops(r.wa[0] || '');
+  ok(!r.errors.length && r.wa.length === 1, 'no page error, one text');
+  ok(JSON.stringify(tags(rst, true)) === '["#463","#461"]', '(5) IMPORT: the dispatcher order wins for the loadings, even against the dates — ' + JSON.stringify(tags(rst, true)));
+  ok(JSON.stringify(tags(rst, false)) === '["#463","#463","#461","#461"]', '(5) IMPORT: deliveries still by date — ' + JSON.stringify(tags(rst, false)));
+  ok(/^🚛 \*ΕΝΤΟΛΗ W41 · ΕΙΣΑΓΩΓΗ · 463 \+ 461\*$/.test((r.wa[0] || '').split('\n')[0]), '(5) header lists the orders in the dispatcher order');
+  ok(JSON.stringify(coverNames(r.cover)) === JSON.stringify([names(rst, true), names(rst, false)]), '(5) cover = text — ' + JSON.stringify(coverNames(r.cover)));
+
+  console.log('— driver · export group E1, E2, E3 (dispatcher order)');
+  const x = await render(browser, html, 'orderIds=recE1,recE2,recE3&leg=export&sheet=driver', { channels: true });
+  const xst = groupStops(x.wa[0] || '');
+  ok(!x.errors.length && x.wa.length === 1, 'no page error, one text');
+  ok(JSON.stringify(tags(xst, false)) === '["#501","#502","#503"]', '(5) EXPORT: deliveries in the dispatcher order, even though 502 delivers before 501 — ' + JSON.stringify(tags(xst, false)));
+  ok(JSON.stringify(tags(xst, true)) === '["#502","#503","#501"]', '(5) EXPORT: loadings by date; 502 and 503 on the same day keep the dispatcher order — ' + JSON.stringify(tags(xst, true)));
+  ok(JSON.stringify(coverNames(x.cover)) === JSON.stringify([names(xst, true), names(xst, false)]), '(5) cover = text — ' + JSON.stringify(coverNames(x.cover)));
+  ok(JSON.stringify((x.cover || {}).route) === JSON.stringify(['Client G1 | 09/10/2026', 'Client B1 | 14/10/2026']), '(5) cover route — ' + JSON.stringify((x.cover || {}).route));
+  ok(x.copied && x.copied.every(t => t === x.wa[0]) && x.worker === x.wa[0], '(5) one producer for copy, share and the Worker');
+  ok(['501', '502', '503'].every(n => cargoBlock(x.wa[0] || '', n).includes('Ref: REF-E' + n.slice(2))), '(5) one cargo block per order, with its Ref');
+
+  console.log('— driver · group with a Veroia Switch export (A + V)');
+  const v = await render(browser, html, 'orderIds=recOrdA,recOrdV&leg=export&sheet=driver');
+  const vm = v.wa[0] || '', vst = groupStops(vm);
+  ok(!v.errors.length && v.wa.length === 1, 'no page error, one text');
+  ok(JSON.stringify(names(vst, true)) === '["Packhouse A","Cross-dock V"]', '(5) the Veroia cross-dock takes its place by its date (A 08/10 → cross-dock 09/10) — ' + JSON.stringify(vst.filter(s => s.load).map(s => s.name + ' ' + s.dt)));
+  for (const c of [CO(L('recLocA')), CO(L('recJucKOhC1zh4IP3')), CO(L('recLocB'))]) {
+    const ls = vm.split('\n'), i = ls.indexOf('📍 *' + c + '*');
+    ok(i > 0 && ls[i + 1] === '📍 https://maps.google.com/?q=' + c.replace(', ', ','), '(1) coordinates line + maps link «' + c + '»');
+  }
+  // a section heading sits on the first stop's block: set it aside
+  const nb = vm.split('\n\n').map(b => b.replace(/^\*(ΦΟΡΤΩΣΕΙΣ|ΠΑΡΑΔΟΣΕΙΣ)\*\n/, '')).find(b => b.split('\n')[1] === 'Client N (no coords)') || '';
+  ok(nb && !/📍/.test(nb), '(1) the stop without coordinates has no 📍 line — ' + JSON.stringify(nb));
+  ok(JSON.stringify(coverNames(v.cover)) === JSON.stringify([names(vst, true), names(vst, false)]), '(5) the cover shows the cross-dock where the text does — ' + JSON.stringify(coverNames(v.cover)));
+  ok(vm.split('\n').filter(l => /^ℹ️/.test(l)).length === 1 && vm.endsWith('\n\n' + FOOT.driver), '(2) the closing line once, last');
 
   // (2) with the office numbers filled in: ☎️, a blank line, then the closing line.
   console.log('— driver · office phones filled in');
@@ -243,6 +513,14 @@ const blockOf = (msg, name) => (msg.split('\n\n').find(b => b.split('\n')[1] ===
   ok(!p.errors.length, 'no page error' + (p.errors.length ? ': ' + p.errors[0] : ''));
   ok(/^☎️ /.test(pl[pl.length - 3]) && pl[pl.length - 2] === '' && pl[pl.length - 1] === FOOT.driver,
     '(2) closing line comes after the ☎️ office line — ' + JSON.stringify(pl.slice(-3)));
+  await sameAsSingle(p, 'orderId=recOrdA&leg=export&sheet=driver', withPhones(singleHtml));
+  // (5) a group with the office numbers: ☎️ once, then the closing line once, last.
+  console.log('— driver · group, office phones filled in');
+  const pg = await render(browser, withPhones(html), 'orderIds=rec461,rec463&leg=import&sheet=driver');
+  const pgl = (pg.wa[0] || '').split('\n');
+  ok(!pg.errors.length && pg.wa.length === 1, 'no page error, one text');
+  ok(pgl.filter(l => /^☎️ /.test(l)).length === 1 && /^☎️ /.test(pgl[pgl.length - 3]) && pgl[pgl.length - 1] === FOOT.driver
+    && pgl.filter(l => /^ℹ️/.test(l)).length === 1, '(5) ONE ☎️ line and ONE closing line for the whole group — ' + JSON.stringify(pgl.slice(-5)));
   await browser.close();
   console.log('\n' + pass + ' ✓ · ' + fail + ' ✗');
   process.exit(fail ? 1 : 0);
