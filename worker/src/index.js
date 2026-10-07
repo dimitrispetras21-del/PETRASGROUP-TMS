@@ -1321,6 +1321,15 @@ var TABLES = {
       Goods: "goods",
       "Gross Weight kg": "gross_weight_kg",
       "Temperature \xB0C": "temperature_c",
+      // «Temperature as stated on the CMR» (dispatcher Pantelis / owner 7/10/2026):
+      // true = the set point is the one on the CMR, so Temperature °C may stay
+      // empty. Column + orders_with_derived column come from DRAFT migration 065
+      // — deploy this Worker ONLY AFTER 065 ran: every ORDERS read comes from
+      // that view and every save writes orders, so before 065 a save naming
+      // this label or a fields[] read asking for it is a 500. NOT NULL DEFAULT
+      // false in the table, so after 065 every record carries true/false — an
+      // absent label means «this Worker/065 is not live», never «not CMR».
+      "Temp Per CMR": "temp_per_cmr",
       Reference: "reference",
       "Groupage ID": "groupage_id",
       "Matched Import ID": "matched_import_id",
