@@ -14,6 +14,7 @@
 // catalog/card/print/CSV (G-27, E-12, PR-14) · form warning + lazy list
 // (PR-17, G-31) · tick rules, no_split, duplicate (OWNER-Q8, G-14, G-13) ·
 // the form survives an unpicked location and a duplicate-Reference Cancel (5/10) ·
+// «Ανάθεση πελάτη» attached in the form, new + existing order, upload failures (7/10) ·
 // lot create (OWNER-Q1, G-14, mark refused + retry, OWNER-Q2, G-26) · piece
 // (G-10, PR-06, G-29, over-draw, G-32, piece edit) · lot edit + refused delete
 // (OWNER-Q1, DL-03, AU-07) · accountant (E-07, close, ERP sheet OWNER-Q9) ·
@@ -571,6 +572,192 @@ async function runFormKeeps(browser) {
     }
   }
   cap.dupRef = null;
+  ok(cap.errors.length === 0, 'no page errors / unexpected native dialogs — ' + cap.errors.join(' | '));
+  await page.context().close();
+}
+
+// Dispatcher 7/10 (Παντελής): «Ανάθεση πελάτη» in the order form (core/order-docs.js
+// formFieldHtml/formMount/formOrderCreated/formSettled). The proof is the requests:
+// /docs/upload's order id, source and sha256 against the bytes set here, and the
+// order POST counted BEFORE each upload — never the row text alone.
+async function runAssignUpload(browser) {
+  console.log('\n[dispatcher] «Ανάθεση πελάτη» in the order form (7/10)');
+  const crypto = require('crypto');
+  const page = await newPage(browser, 'dispatcher', 'catalog');
+  const cap = page._cap;
+  const orderPosts = () => cap.posts.filter(p => p.table === 'orders');
+  // /docs/* (the Worker's storage routes): every upload recorded with the number
+  // of order POSTs already made at that moment; cap.docsMode 'fail' = a 500.
+  cap.uploads = []; cap.docsMode = 'ok'; cap.docsList = {};
+  await page.route('**/docs/**', r => {
+    const req = r.request(), u = new URL(req.url());
+    const json = (body, status = 200) => r.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) });
+    if (u.pathname.endsWith('/docs/upload') && req.method() === 'POST') {
+      const q = u.searchParams, buf = req.postDataBuffer() || Buffer.alloc(0);
+      cap.uploads.push({ order: q.get('order'), source: q.get('source'), filename: q.get('filename'), sha256: q.get('sha256'),
+        bodySha: crypto.createHash('sha256').update(buf).digest('hex'), mime: req.headers()['content-type'], ordersBefore: orderPosts().length });
+      if (cap.docsMode === 'fail') return json({ error: 'storage backend unavailable' }, 500);
+      return json({ id: 'recDocUp' + cap.uploads.length, order_id: q.get('order'), sha256: q.get('sha256'), filename: q.get('filename'), mime: 'application/pdf', size: buf.length, source: q.get('source'), created_at: new Date().toISOString() }, 201);
+    }
+    if (u.pathname.endsWith('/docs/list')) return json({ records: cap.docsList[u.searchParams.get('order')] || [] });
+    return json({ error: 'Not found' }, 404);
+  });
+  const PDF = Buffer.from('%PDF-1.4\n% synthetic client assignment — no real data\n%%EOF\n');
+  const SHA = crypto.createHash('sha256').update(PDF).digest('hex');
+  const attach = async (name, buffer, mimeType) => {
+    const [chooser] = await Promise.all([page.waitForEvent('filechooser'), page.click('#odFormPick')]);
+    await chooser.setFiles({ name, mimeType: mimeType || 'application/pdf', buffer: buffer || PDF });
+  };
+  const rows = () => page.$$eval('#odFormList .od-frow', els => els.map(e => ({ state: e.dataset.state, text: e.innerText.replace(/\s+/g, ' ').trim() })));
+  const toastNow = () => page.evaluate(() => { const t = document.getElementById('toast'); return t ? { text: t.textContent.trim(), bg: t.style.background } : null; });
+  const banners = () => page.$$eval('.od-banner', els => els.map(e => e.querySelector('.od-banner-msg').textContent));
+  // On a timeout, say WHY the form stayed open (its toasts and button) before failing.
+  const closed = () => page.waitForFunction(() => !document.getElementById('modalOverlay').classList.contains('open'), null, { timeout: 15000 })
+    .catch(async e => {
+      const why = await page.evaluate(() => ({ btn: (document.getElementById('btnSubmit') || {}).textContent,
+        toasts: [...(document.getElementById('tms-toast-container') || { children: [] }).children].map(t => t.textContent).concat((document.getElementById('toast') || {}).textContent || []) }));
+      throw new Error('the form did not close — ' + JSON.stringify(why) + ' · page: ' + cap.errors.join(' | ') + ' · ' + e.message);
+    });
+  const fill = async ref => {
+    await page.evaluate(() => openIntlCreate());
+    await page.waitForSelector('#odFormPick', { timeout: 8000 });
+    await page.selectOption('#f_Direction', 'Export');
+    await page.evaluate(() => fhPickLinked('client', 'recCliA', 'Πελάτης Α'));
+    await page.fill('#f_Reference', ref);
+    await page.fill('#f_Price', '1800');
+    await fillCommon(page);
+    await page.check('input[name="f_PalletExch"][value="no"]');
+    await page.evaluate(() => fhPickLinked('l_1', 'recLocGR1', 'Pack House A'));
+    await page.fill('#pal_l_1', '33');
+    await page.fill('#dt_l_1', addDays(TODAY, 1));
+    await page.evaluate(() => fhPickLinked('u_1', 'recDestGR', 'Cold Hub B'));
+    await page.fill('#pal_u_1', '33');
+    await page.fill('#dt_u_1', addDays(TODAY, 3));
+  };
+  await gotoPage(page, 'orders', BASE_URL);
+  await page.waitForSelector('#ocrow_recPc1', { timeout: 20000 });
+
+  // ── 1. NEW order + file → held, then ONE upload with the new id, after the order POST ──
+  await fill('TEST-ASSIGN-1');
+  const field = await page.evaluate(() => {
+    const n = document.getElementById('f_Notes'), pick = document.getElementById('odFormPick');
+    const lab = pick.closest('.form-field').querySelector('.form-label').textContent.trim();
+    return { label: lab, sameSection: n.closest('div[style*="border-top"]') === pick.closest('div[style*="border-top"]'), below: pick.getBoundingClientRect().top > n.getBoundingClientRect().bottom,
+      hint: document.getElementById('odFormHint').textContent };
+  });
+  ok(field.label === 'Ανάθεση πελάτη (PDF ή φωτογραφία)' && field.sameSection && field.below && /μόλις αποθηκευτεί/.test(field.hint),
+    '1: the field sits under «Σημειώσεις», same section, says it uploads once the order is saved — ' + JSON.stringify(field));
+  await attach('anathesi-pelati.pdf');
+  const r1 = await rows();
+  ok(r1.length === 1 && r1[0].state === 'pending' && /anathesi-pelati\.pdf/.test(r1[0].text) && /θα ανέβει με την Αποθήκευση/.test(r1[0].text) && cap.uploads.length === 0,
+    '1: new order → the file is HELD, nothing sent yet — ' + JSON.stringify({ r1, uploads: cap.uploads.length }));
+  await page.evaluate(() => document.getElementById('odFormPick').scrollIntoView({ block: 'center' }));
+  await page.screenshot({ path: shot('20-assign-new-held') });
+  await page.click('#btnSubmit');
+  await closed();
+  const p1 = orderPosts(), newId = 'recNewOrd' + p1.length;
+  ok(p1.length === 1 && cap.uploads.length === 1, '1: Save → ONE order POST and ONE /docs/upload — ' + JSON.stringify({ posts: p1.length, uploads: cap.uploads.length }));
+  const u1 = cap.uploads[0] || {};
+  ok(u1.order === newId && u1.ordersBefore === 1 && u1.source === 'upload' && u1.filename === 'anathesi-pelati.pdf' && u1.mime === 'application/pdf',
+    '1: the upload carries the NEW order id, after the order POST, source=upload — ' + JSON.stringify(u1));
+  ok(u1.sha256 === SHA && u1.bodySha === SHA, '1: sha256 in the URL = sha256 of the bytes sent = the file set here');
+  const t1 = await toastNow();
+  ok(t1 && /Order created ✓ · ανάθεση ✓/.test(t1.text) && !(await banners()).length, '1: the last word names the assignment, no failure banner — ' + JSON.stringify(t1));
+
+  // ── 2. a file of a type the storage refuses → said, not held, nothing sent ──
+  await fill('TEST-ASSIGN-GATE');
+  await attach('anathesi.exe', Buffer.from('MZ'), 'application/octet-stream');
+  const g = await page.evaluate(() => [...(document.getElementById('tms-toast-container') || { children: [] }).children].map(t => t.textContent));
+  ok(!(await rows()).length && g.some(t => /«anathesi\.exe» δεν επισυνάφθηκε — Μη υποστηριζόμενος τύπος/.test(t)) && cap.uploads.length === 1,
+    '2: an .exe is refused in the form, with its reason — ' + JSON.stringify(g));
+  // ── 3. a file picked in a CANCELLED form never follows a later order ──
+  await attach('cancelled.pdf', Buffer.from('%PDF-1.4 cancelled'));
+  ok((await rows()).length === 1, '3: picked in a form that will be cancelled');
+  await page.click('#modalFooter .btn-ghost:has-text("Άκυρο")').catch(async () => { await page.evaluate(() => closeModal()); });
+  await page.waitForTimeout(300);
+  await fill('TEST-ASSIGN-AFTER-CANCEL');
+  ok(!(await rows()).length, '3: the next form starts empty');
+  await page.click('#btnSubmit');
+  await closed();
+  ok(orderPosts().length === 2 && cap.uploads.length === 1, '3: the later order is saved and NOTHING is uploaded — ' + JSON.stringify({ posts: orderPosts().length, uploads: cap.uploads.length }));
+
+  // ── 4. NEW order + upload FAILS → order saved, persistent banner, no green «done» ──
+  cap.docsMode = 'fail';
+  await fill('TEST-ASSIGN-FAIL');
+  await attach('anathesi-fail.pdf');
+  await page.evaluate(() => { const t = document.getElementById('toast'); if (t) t.remove(); });
+  await page.click('#btnSubmit');
+  await closed();
+  const p4 = orderPosts(), failId = 'recNewOrd' + p4.length;
+  ok(p4.length === 3 && cap.uploads.length === 2 && cap.uploads[1].order === failId && cap.uploads[1].ordersBefore === 3,
+    '4: the order IS saved (its POST went first) and the upload was tried once with its id — ' + JSON.stringify(cap.uploads[1]));
+  const t4 = await toastNow();
+  ok(t4 && /ΔΕΝ ανέβηκε/.test(t4.text) && /--warn/.test(t4.bg) && !/Order created|ανάθεση ✓/.test(t4.text),
+    '4: the last word is a WARNING that the assignment did not go up — no green «Order created ✓» — ' + JSON.stringify(t4));
+  const b4 = await banners();
+  ok(b4.length === 1 && /^Η παραγγελία TEST-ASSIGN-FAIL αποθηκεύτηκε, αλλά το έγγραφο «anathesi-fail\.pdf» ΔΕΝ ανέβηκε — storage backend unavailable/.test(b4[0]) && /επισύναψέ το ξανά/.test(b4[0]),
+    '4: a banner names the order (its Reference — the stub returns no Order No), the file, the reason, and says to attach it again — ' + JSON.stringify(b4));
+  await page.waitForTimeout(3500);
+  ok((await banners()).length === 1, '4: the banner is still there after 3.5s (not a fading toast)');
+  await page.screenshot({ path: shot('21-assign-new-upload-failed') });
+  cap.docsMode = 'ok';
+  await page.click('.od-banner .od-banner-retry');
+  await page.waitForSelector('.od-banner', { state: 'detached', timeout: 8000 });
+  ok(cap.uploads.length === 3 && cap.uploads[2].order === failId && cap.uploads[2].sha256 === cap.uploads[1].sha256,
+    '4: «Ξαναδοκίμασε» → ONE more upload, same order, same bytes — ' + JSON.stringify(cap.uploads[2]));
+
+  // ── 5. EXISTING order + file → what it holds is listed; the file uploads at ONCE, before any Save ──
+  cap.docsList.recOpen = [{ id: 'recDocOld', order_id: 'recOpen', filename: 'cmr-old.pdf', size: 2048, source: 'scan', created_at: '2026-10-06T07:30:00.000Z' }];
+  // recOpen with its two stops, so its Save passes the form's own checks (the subject here is the upload)
+  cap.fx.orders.find(o => o.id === 'recOpen').fields['ORDER STOPS'] = ['rsOpL', 'rsOpU'];
+  cap.extraStops = [['rsOpL', 'Loading', 'recLocGR1', 20, addDays(TODAY, 2) + 'T08:00:00', 'recOpen'], ['rsOpU', 'Unloading', 'recWhHU', 20, addDays(TODAY, 4) + 'T08:00:00', 'recOpen']];
+  const fxOpen = JSON.parse(JSON.stringify(cap.fx.orders.find(o => o.id === 'recOpen').fields));
+  await page.evaluate(f => openIntlEditWith('recOpen', f), fxOpen);
+  await page.waitForSelector('#odFormList .od-frow[data-state="stored"]', { timeout: 8000 });
+  const hint5 = await page.textContent('#odFormHint');
+  const r5a = await rows();
+  ok(r5a.length === 1 && /cmr-old\.pdf/.test(r5a[0].text) && /αποθηκευμένο · .*σάρωση/.test(r5a[0].text) && /αμέσως/.test(hint5),
+    '5: an existing order lists the document it already holds; the hint says «αμέσως» — ' + JSON.stringify({ r5a, hint5 }));
+  const patches0 = cap.patches.length, posts0 = orderPosts().length;
+  await attach('anathesi-existing.pdf');
+  await page.waitForSelector('#odFormList .od-frow[data-state="done"]', { timeout: 8000 });
+  const u5 = cap.uploads[3] || {};
+  ok(cap.uploads.length === 4 && u5.order === 'recOpen' && u5.source === 'upload' && u5.sha256 === SHA && cap.patches.length === patches0 && orderPosts().length === posts0,
+    '5: ONE upload on recOpen, before any Save (no order write) — ' + JSON.stringify(u5));
+  const r5b = await rows();
+  ok(r5b.length === 2 && r5b[1].state === 'done' && /✓ αποθηκεύτηκε/.test(r5b[1].text), '5: the new row reads «✓ αποθηκεύτηκε» — ' + JSON.stringify(r5b));
+  await page.evaluate(() => document.getElementById('odFormPick').scrollIntoView({ block: 'center' }));
+  await page.screenshot({ path: shot('22-assign-existing-done') });
+  await fillCommon(page);   // recOpen lacks the form's soft-required fields (Δ6 would hold the first press)
+  await page.click('#btnSubmit');
+  await closed();
+  const t5 = await toastNow();
+  const pt5 = cap.patches.slice(patches0).map(p => p.table + ':' + p.id);
+  ok(cap.uploads.length === 4 && pt5.includes('orders:recOpen') && t5 && /ανάθεση ✓/.test(t5.text),
+    '5: Save → the order PATCH, no second upload, «· ανάθεση ✓» — ' + JSON.stringify({ uploads: cap.uploads.length, patches: pt5, t5 }));
+
+  // ── 6. EXISTING order + upload FAILS → red row + banner that does NOT claim a save; Save → warning ──
+  cap.docsMode = 'fail';
+  cap.docsList.recOpen = [];
+  await page.evaluate(f => openIntlEditWith('recOpen', f), fxOpen);
+  await page.waitForSelector('#odFormPick', { timeout: 8000 });
+  await attach('anathesi-existing-fail.pdf');
+  await page.waitForSelector('#odFormList .od-frow[data-state="failed"]', { timeout: 8000 });
+  const r6 = await rows(), b6 = await banners();
+  ok(r6.length === 1 && /✗ ΔΕΝ ανέβηκε — storage backend unavailable/.test(r6[0].text), '6: the row turns red with the reason — ' + JSON.stringify(r6));
+  ok(b6.length === 1 && /^Το έγγραφο «anathesi-existing-fail\.pdf» ΔΕΝ ανέβηκε στην παραγγελία #1310 — storage backend unavailable/.test(b6[0]) && !/αποθηκεύτηκε/.test(b6[0]),
+    '6: the banner names the order by its #Order No and does not claim it was saved (nothing was) — ' + JSON.stringify(b6));
+  await page.waitForTimeout(400);   // the modal's open transition, so the shot shows the form, not a fade
+  await page.screenshot({ path: shot('23-assign-existing-failed') });
+  await page.evaluate(() => { const t = document.getElementById('toast'); if (t) t.remove(); });
+  await fillCommon(page);
+  await page.click('#btnSubmit');
+  await closed();
+  const t6 = await toastNow();
+  ok(t6 && /Η παραγγελία αποθηκεύτηκε — η ανάθεση πελάτη ΔΕΝ ανέβηκε/.test(t6.text) && /--warn/.test(t6.bg) && (await banners()).length === 1,
+    '6: Save → the order is saved, the last word is a warning, the banner stays — ' + JSON.stringify(t6));
+  cap.docsMode = 'ok';
+  await page.evaluate(() => document.querySelectorAll('.od-banner').forEach(b => b.remove()));
   ok(cap.errors.length === 0, 'no page errors / unexpected native dialogs — ' + cap.errors.join(' | '));
   await page.context().close();
 }
@@ -1700,7 +1887,7 @@ async function runPrintLotPartner(browser) {
   try {
     // RIG_ONLY=runA,runB runs those stages alone (a quick re-run while fixing one screen).
     const only = (process.env.RIG_ONLY || '').split(',').filter(Boolean);
-    for (const run of [runCatalog, runForm, runFormTick, runFormKeeps, runMarkExisting, runLotCreate, runPiece, runLotEdit, runAccountant, runOwner, runOwnerCharge, runOwnerNoCharge, runReopen, runWarehouse, runPrint, runPrintNoClients, runPrintGroup, runPrintEscape, runPrintLotPartner]) {
+    for (const run of [runCatalog, runForm, runFormTick, runFormKeeps, runAssignUpload, runMarkExisting, runLotCreate, runPiece, runLotEdit, runAccountant, runOwner, runOwnerCharge, runOwnerNoCharge, runReopen, runWarehouse, runPrint, runPrintNoClients, runPrintGroup, runPrintEscape, runPrintLotPartner]) {
       if (only.length && !only.includes(run.name)) continue;
       try { await run(browser); } catch (e) { failed++; console.log('  ✗ ' + run.name + ' threw: ' + (e && e.stack || e)); }
     }

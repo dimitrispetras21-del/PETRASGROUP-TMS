@@ -824,6 +824,12 @@ async function _openModal(recId, f, _clientLabelOverride, _scanPrefill, _piece) 
         <label class="form-label">Σημειώσεις</label>
         <textarea class="form-textarea" id="f_Notes" rows="3" placeholder="Ειδικές οδηγίες, απαιτήσεις ρυμούλκας, επαφές…" style="width:100%;resize:vertical;min-height:60px">${escapeHtml(f['Notes']||'')}</textarea>
       </div>
+      ${typeof OrderDocs !== 'undefined' ? `<!-- Dispatcher 7/10 (Παντελής): the client's assignment is attached here, in
+           the form, not only from the card after the save (core/order-docs.js). -->
+      <div class="form-field span-2" style="margin-top:12px">
+        <label class="form-label">Ανάθεση πελάτη (PDF ή φωτογραφία)</label>
+        ${OrderDocs.formFieldHtml()}
+      </div>` : ''}
     </div>`;
 
   // G-29: «Παράλειψη →» belongs to the scan queue's own forms — a piece form
@@ -849,6 +855,7 @@ async function _openModal(recId, f, _clientLabelOverride, _scanPrefill, _piece) 
     : SK.mode === 'pieceEdit' ? 'Επεξεργασία κομματιού από απόθεμα'
     : INTL_ORDERS._preConvert ? 'Μετατροπή pre-order σε παραγγελία' : isEdit ? 'Επεξεργασία παραγγελίας' : 'Νέα διεθνής παραγγελία';
   openModal(_title, body, footer);
+  if (typeof OrderDocs !== 'undefined') OrderDocs.formMount(recId || null, recId ? (f['Order No'] ? '#' + f['Order No'] : (f['Reference'] || '')) : '');
   peSyncPalletType('f', document.getElementById('f_PalletType')?.value || '');
   // A pre-order has no ORDER STOPS, so stop 1 opened with an empty date and the
   // day already agreed with the client would have to be typed again.
@@ -2559,6 +2566,13 @@ async function submitIntlOrder(recId) {
     if (!recId && result?.id && typeof OrderDocs !== 'undefined' && window._scanPendingDoc) {
       OrderDocs.handleOrderSaved(result.id);
     }
+    // Dispatcher 7/10: the client's assignment picked in THIS form goes up now
+    // that the order has an id — before the stops, so a later failing step
+    // cannot keep it from the order that exists. Not awaited here (the stops
+    // and the VS sync must not wait on a 15MB upload); _oiFinishSave waits.
+    if (!recId && result?.id && typeof OrderDocs !== 'undefined') {
+      OrderDocs.formOrderCreated(result.id, !!result._offline, result.fields?.['Order No'] ? '#' + result.fields['Order No'] : (fields['Reference'] || ''));
+    }
 
     // ── Active learning: persist scan correction (Phase 3) ──
     // If this submission was prefilled from a scan, save the user-corrected
@@ -2681,10 +2695,21 @@ async function _oiFinishSave(ctx) {
     }
   }
 
+  // Dispatcher 7/10: the save's last word waits for the assignment uploads of
+  // this form (the modal stays on «Αποθήκευση…» meanwhile). A file that did
+  // not go up already has its persistent banner; here it only must not be
+  // followed by a green «done» as if everything landed (principle 1). Same
+  // toast slot on purpose: it also replaces the green VS-sync line above.
+  const _docs = typeof OrderDocs !== 'undefined' ? await OrderDocs.formSettled() : null;
+
   document.getElementById('modal').style.maxWidth = '';
   closeModal();
   INTL_ORDERS._createdId = null;
-  toast(ctx.done || (_wasPre ? 'Το pre-order έγινε παραγγελία ✓' : recId ? 'Order updated ✓' : 'Order created ✓'));
+  if (_docs && _docs.failed) {
+    toast((recId ? 'Η παραγγελία αποθηκεύτηκε' : 'Η παραγγελία δημιουργήθηκε') + ' — η ανάθεση πελάτη ΔΕΝ ανέβηκε· επισύναψέ την ξανά από την παραγγελία', 'warn');
+  } else {
+    toast((ctx.done || (_wasPre ? 'Το pre-order έγινε παραγγελία ✓' : recId ? 'Order updated ✓' : 'Order created ✓')) + (_docs && _docs.uploaded ? ' · ανάθεση ✓' : ''));
+  }
   // Weekly v3: το modal ανοίγει και από το Weekly International — το repaint
   // πρέπει να σεβαστεί τη σελίδα που είναι ανοιχτή, όχι να τη hijack-άρει.
   if (typeof currentPage!=='undefined' && currentPage==='weekly_intl' && typeof renderWeeklyIntl==='function') { renderWeeklyIntl(); }

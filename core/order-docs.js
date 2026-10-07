@@ -209,7 +209,8 @@ function _odEnsureStyles() {
   st.textContent = `
 .od-badge{display:inline-flex;align-items:center;justify-content:center;margin-left:4px;color:var(--text-mid);cursor:pointer;vertical-align:middle}
 .od-badge:hover{color:var(--accent)}
-.od-banner{position:fixed;left:24px;bottom:88px;z-index:var(--z-top);max-width:420px;background:var(--warn-bg);border:1px solid var(--warn-border);border-radius:6px;box-shadow:0 4px 16px rgba(0,0,0,.18);padding:12px 14px;font:13px/1.4 "DM Sans",sans-serif;display:flex;align-items:flex-start;gap:10px;color:var(--text)}
+.od-banners{position:fixed;left:24px;bottom:88px;z-index:var(--z-top);max-width:420px;display:flex;flex-direction:column;gap:8px}
+.od-banner{background:var(--warn-bg);border:1px solid var(--warn-border);border-radius:6px;box-shadow:0 4px 16px rgba(0,0,0,.18);padding:12px 14px;font:13px/1.4 "DM Sans",sans-serif;display:flex;align-items:flex-start;gap:10px;color:var(--text)}
 .od-banner-msg{flex:1}
 .od-banner-retry{background:var(--accent);color:#fff;border:none;border-radius:4px;padding:4px 10px;font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap}
 .od-banner-retry:disabled{opacity:.6;cursor:default}
@@ -222,6 +223,19 @@ function _odEnsureStyles() {
 .od-row-acts{display:flex;gap:6px;flex-shrink:0}
 .od-empty{padding:24px;text-align:center;color:var(--text-mid);font-size:13px}
 .od-inline{margin-top:12px}
+.od-form-head{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.od-form-pick{display:inline-flex;align-items:center;gap:6px}
+.od-form-hint{font-size:12px;color:var(--text-mid)}
+.od-form-list{display:flex;flex-direction:column;gap:6px;margin-top:8px}
+.od-form-list:empty{display:none}
+.od-frow{display:flex;align-items:center;gap:10px;border:1px solid var(--border);border-radius:6px;padding:6px 10px;font-size:13px}
+.od-frow .od-fname{flex:1;min-width:0;max-width:none}
+.od-fsize{font-size:11px;color:var(--text-dim);white-space:nowrap}
+.od-fstate{font-size:12px;color:var(--text-mid);white-space:nowrap}
+.od-fstate.is-done{color:var(--ok);font-weight:600}
+.od-fstate.is-failed{color:var(--danger);font-weight:600;white-space:normal}
+.od-fx{background:none;border:none;color:var(--text-mid);font-size:16px;line-height:1;cursor:pointer;padding:0 2px}
+.od-fnote{font-size:12px;color:var(--text-mid)}
 `;
   document.head.appendChild(st);
 }
@@ -383,31 +397,244 @@ function attachToOrder(orderId) {
 
 // ── Persistent failure banner (principle 1: a failed write must be LOUD,
 // never a toast that fades in 3s while the order looks fully saved) ──
-function _showUploadFailedBanner(orderId, file, source, err) {
+// opts.orderSaved === false: the upload did not follow a save (the form's
+// immediate upload on an existing order), so the banner must not claim one.
+// opts.onDone: told when the retry finally lands (the form row repaints).
+// opts.label: how the dispatcher knows the order (#Order No or Reference) —
+// the tail of a record id names nothing anyone can look up.
+// Banners stack in one column: the form can attach several files, and a
+// second fixed banner drawn exactly over the first would hide that it exists.
+function _showUploadFailedBanner(orderId, file, source, err, opts) {
   _odEnsureStyles();
+  opts = opts || {};
   const is501 = err && err._status === 501;
-  const label = '#' + String(orderId || '').slice(-6);
+  const label = opts.label || ('#' + String(orderId || '').slice(-6));
+  const name = file && file.name ? `«${file.name}» ` : '';
+  const why = (err && err.message) || 'σφάλμα ανεβάσματος';
+  const again = 'Πάτα «Ξαναδοκίμασε» ή επισύναψέ το ξανά από την παραγγελία.';
   const msg = is501
     ? 'Η φύλαξη εγγράφων δεν έχει ενεργοποιηθεί ακόμη — το έγγραφο ΔΕΝ αποθηκεύτηκε.'
-    : `Η παραγγελία ${label} αποθηκεύτηκε, αλλά το έγγραφο ΔΕΝ ανέβηκε — ${(err && err.message) || 'σφάλμα ανεβάσματος'}.`;
+    : opts.orderSaved === false
+      ? `Το έγγραφο ${name}ΔΕΝ ανέβηκε στην παραγγελία ${label} — ${why}. ${again}`
+      : `Η παραγγελία ${label} αποθηκεύτηκε, αλλά το έγγραφο ${name}ΔΕΝ ανέβηκε — ${why}. ${again}`;
+  let stack = document.getElementById('odBanners');
+  if (!stack) {
+    stack = document.createElement('div');
+    stack.id = 'odBanners'; stack.className = 'od-banners';
+    document.body.appendChild(stack);
+  }
   const wrap = document.createElement('div');
   wrap.className = 'od-banner';
   wrap.innerHTML = `<span class="od-banner-msg">${escapeHtml(msg)}</span>
     <button type="button" class="od-banner-retry">Ξαναδοκίμασε</button>
     <button type="button" class="od-banner-close" aria-label="Κλείσιμο">×</button>`;
-  document.body.appendChild(wrap);
+  stack.appendChild(wrap);
   wrap.querySelector('.od-banner-close').onclick = () => wrap.remove();
   wrap.querySelector('.od-banner-retry').onclick = async () => {
     const btn = wrap.querySelector('.od-banner-retry');
     btn.disabled = true; btn.textContent = 'Ξαναπροσπάθεια…';
     try {
-      await uploadDoc(orderId, file, source); // same File object, still in memory — no re-pick needed
+      const res = await uploadDoc(orderId, file, source); // same File object, still in memory — no re-pick needed
       wrap.remove();
       toast('Το έγγραφο αποθηκεύτηκε ✓', 'success');
+      if (typeof opts.onDone === 'function') opts.onDone(res);
     } catch (e2) {
       wrap.remove();
-      _showUploadFailedBanner(orderId, file, source, e2);
+      _showUploadFailedBanner(orderId, file, source, e2, opts);
     }
+  };
+}
+
+// ── Form control: «Ανάθεση πελάτη» inside the international order form ──
+// Dispatcher Παντελής 7/10: the client's assignment (PDF or photo) is attached
+// from the order form itself, next to «Σημειώσεις» — before, only the card of
+// an already saved order offered «Επισύναψη εγγράφου». Same /docs/upload, same
+// limits (validateFile), no new backend.
+// order_documents has no kind/type column (053: source is 'scan'|'upload'
+// only), so the assignment is stored as an ordinary 'upload'; its filename is
+// the only thing telling it apart from a CMR in «Έγγραφα παραγγελίας».
+//
+// One state per OPENED form (formMount resets it, so nothing picked in a form
+// that was cancelled can follow a later order — same rule as _scanPendingDoc):
+//   existing order → each file uploads at once (it does not wait for Save);
+//   new order      → files are held, and formOrderCreated() uploads them with
+//                    the new id, called by submitIntlOrder right after the
+//                    create (the same point the scan's file goes up).
+// Every failed upload opens the persistent banner (principle 1); formSettled()
+// lets the save's last word wait for the uploads, so a failed or never-sent
+// file is never followed by a plain green «done».
+let _odF = { seq: 0, orderId: null, label: '', items: [], inflight: new Set(), listError: '' };
+
+/** Markup for the form field. Call formMount(orderId) after openModal(). */
+function formFieldHtml() {
+  _odEnsureStyles();
+  const clip = typeof icon === 'function' ? icon('paperclip', 14) : '';
+  return `<div class="od-form">
+    <div class="od-form-head">
+      <button type="button" class="btn btn-secondary btn-sm od-form-pick" id="odFormPick" onclick="OrderDocs._formPick()">${clip}<span>Επισύναψη αρχείου…</span></button>
+      <span class="od-form-hint" id="odFormHint"></span>
+    </div>
+    <div class="od-form-list" id="odFormList"></div>
+  </div>`;
+}
+
+/**
+ * @param {string|null} orderId - null for a new order
+ * @param {string} [label] - #Order No or Reference, for the failure banner
+ */
+function formMount(orderId, label) {
+  const F = _odF = { seq: _odF.seq + 1, orderId: orderId || null, label: label || '', items: [], inflight: new Set(), listError: '' };
+  _odFormPaint(F);
+  // An existing order shows what it already holds, so the assignment is not
+  // attached a second time by someone who cannot see that it is there.
+  if (F.orderId) {
+    listDocs(F.orderId).then(docs => {
+      if (F !== _odF) return;
+      const mine = new Set(F.items.map(it => it.docId).filter(Boolean));
+      const stored = docs.filter(d => !mine.has(d.id)).map(d => ({
+        key: 's' + d.id, name: d.filename || '—', size: d.size, state: 'stored',
+        note: `${_odFmtDate(d.created_at)} · ${_odSourceLabel(d.source)}`,
+      }));
+      F.items = stored.concat(F.items);
+      _odFormPaint(F);
+    }).catch(e => {
+      if (F !== _odF) return;
+      F.listError = (e && e.message) || 'σφάλμα';
+      _odFormPaint(F);
+    });
+  }
+}
+
+function _odFormRowHtml(it) {
+  const st = {
+    stored: ['', 'αποθηκευμένο · ' + (it.note || '')],
+    pending: ['', 'θα ανέβει με την Αποθήκευση'],
+    uploading: ['', 'ανεβαίνει…'],
+    done: ['is-done', '✓ αποθηκεύτηκε'],
+    failed: ['is-failed', '✗ ΔΕΝ ανέβηκε — ' + (it.error || 'σφάλμα')],
+  }[it.state] || ['', it.state];
+  // Only a held (not yet sent) file can be taken back — there is no delete
+  // route for a stored document, so no row of one offers it.
+  const rm = it.state === 'pending'
+    ? `<button type="button" class="od-fx" title="Αφαίρεση" aria-label="Αφαίρεση" onclick="OrderDocs._formRemove(${_odJsArg(it.key)})">×</button>` : '';
+  return `<div class="od-frow" data-state="${it.state}">
+    <span class="od-fname" title="${escapeHtml(it.name)}">${escapeHtml(it.name)}</span>
+    <span class="od-fsize">${_odFmtSize(it.size)}</span>
+    <span class="od-fstate ${st[0]}">${escapeHtml(st[1])}</span>${rm}
+  </div>`;
+}
+
+function _odFormPaint(F) {
+  if (F !== _odF) return; // a later form owns the screen now
+  const hint = document.getElementById('odFormHint');
+  if (hint) hint.textContent = F.orderId ? 'Ανεβαίνει αμέσως — δεν περιμένει την Αποθήκευση' : 'Ανεβαίνει μόλις αποθηκευτεί η παραγγελία';
+  const list = document.getElementById('odFormList');
+  if (!list) return;
+  list.innerHTML = F.items.map(_odFormRowHtml).join('')
+    + (F.listError ? `<div class="od-fnote">Τα έγγραφα που έχει ήδη η παραγγελία δεν φορτώθηκαν — ${escapeHtml(F.listError)}</div>` : '');
+}
+
+function _formPick() {
+  const F = _odF;
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = OD_ACCEPT;
+  input.multiple = true;
+  input.style.display = 'none';
+  document.body.appendChild(input);
+  input.addEventListener('cancel', () => input.remove(), { once: true });
+  input.addEventListener('change', () => {
+    const files = Array.from(input.files || []);
+    input.remove();
+    files.forEach(file => _odFormAdd(F, file));
+  }, { once: true });
+  input.click();
+}
+
+function _odFormAdd(F, file) {
+  if (F !== _odF) return;
+  const gate = validateFile(file);
+  if (!gate.ok) {
+    showErrorToast(`«${file.name}» δεν επισυνάφθηκε — ${gate.reason}`, 'warn', 8000);
+    return;
+  }
+  if (F.items.some(it => it.file && it.state !== 'failed' && it.file.name === file.name && it.file.size === file.size)) {
+    showErrorToast(`«${file.name}» είναι ήδη στη λίστα`, 'info', 5000);
+    return;
+  }
+  F.n = (F.n || 0) + 1; // a counter, not items.length: a removed row must not hand its key to the next file
+  const it = { key: F.seq + '_' + F.n, file, name: file.name, size: file.size, state: 'pending' };
+  F.items.push(it);
+  if (F.orderId) _odFormUpload(F, it, F.orderId, false);
+  else _odFormPaint(F);
+}
+
+function _formRemove(key) {
+  const F = _odF;
+  F.items = F.items.filter(it => !(it.key === key && it.state === 'pending'));
+  _odFormPaint(F);
+}
+
+function _odFormUpload(F, it, orderId, afterCreate) {
+  const p = (async () => {
+    it.state = 'uploading'; it.error = '';
+    _odFormPaint(F);
+    try {
+      const res = await uploadDoc(orderId, it.file, 'upload');
+      it.state = 'done'; it.docId = res && res.id;
+    } catch (e) {
+      it.state = 'failed'; it.error = (e && e.message) || 'σφάλμα ανεβάσματος';
+      _showUploadFailedBanner(orderId, it.file, 'upload', e, {
+        orderSaved: afterCreate, label: F.label,
+        onDone: res => { it.state = 'done'; it.docId = res && res.id; _odFormPaint(F); },
+      });
+    }
+    _odFormPaint(F);
+  })();
+  F.inflight.add(p);
+  p.finally(() => F.inflight.delete(p));
+  return p;
+}
+
+/**
+ * Called by submitIntlOrder right after a NEW order is created: the held
+ * files go up with the new id. From here on the form edits a real order, so a
+ * file picked later (the form stays open when a later step of the save fails)
+ * uploads at once. Never throws.
+ * @param {string} orderId
+ * @param {boolean} [offline] - the create only entered the offline queue
+ * @param {string} [label] - #Order No or Reference of the new order
+ */
+function formOrderCreated(orderId, offline, label) {
+  const F = _odF;
+  if (label) F.label = label;
+  const held = F.items.filter(it => it.state === 'pending');
+  if (offline || !orderId) {
+    // A queued create has no real id yet (core/api.js answers 'offline_…'):
+    // an upload would land on nothing. Said, never dropped quietly.
+    if (held.length) {
+      held.forEach(it => { it.state = 'failed'; it.error = 'εκτός σύνδεσης'; });
+      showErrorToast('Η παραγγελία μπήκε στην ουρά (εκτός σύνδεσης) — η ανάθεση πελάτη ΔΕΝ ανέβηκε. Επισύναψέ την ξανά από την παραγγελία όταν συγχρονιστεί.', 'error', 15000);
+      _odFormPaint(F);
+    }
+    return Promise.resolve();
+  }
+  F.orderId = orderId;
+  _odFormPaint(F);
+  return Promise.all(held.map(it => _odFormUpload(F, it, orderId, true)));
+}
+
+/**
+ * Waits for this form's uploads still in flight.
+ * @returns {Promise<{uploaded:number, failed:number}>} failed counts a file
+ *   that was held but never sent too — it did not go up either.
+ */
+async function formSettled() {
+  const F = _odF;
+  while (F.inflight.size) await Promise.allSettled([...F.inflight]);
+  return {
+    uploaded: F.items.filter(it => it.state === 'done').length,
+    failed: F.items.filter(it => it.state === 'failed' || it.state === 'pending').length,
   };
 }
 
@@ -456,6 +683,7 @@ window.OrderDocs = {
   preloadIndex, hasDocs, invalidateIndex,
   badge, sectionHtml, openViewer, attachToOrder,
   handleOrderSaved, handleNatlOrderSaved,
-  _openInline, _download,
+  formFieldHtml, formMount, formOrderCreated, formSettled,
+  _openInline, _download, _formPick, _formRemove,
 };
 })();
