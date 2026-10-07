@@ -42,7 +42,12 @@
 //            places (flatLoc) in the text and on the cover, like its own sheet;
 //       (7c) if the group text cannot be built, the per-order texts go out
 //            instead (never an empty text), the page says so and the console
-//            has the error; a local rig posts nothing to /app-errors;
+//            has the error; a local rig posts nothing to /app-errors. «Says
+//            so» = SEEN: document.elementFromPoint at the note's centre is the
+//            note, below the fixed toolbar, at 1200 and at 390 px wide — read
+//            innerText alone passed while the bar covered the note (review
+//            7/10); the locations' failure note shares the placement and the
+//            same check;
 //       (7d) stop numbers 8️⃣ 9️⃣ 🔟, then «#11» — never a number-less «▪️».
 // Backend fully stubbed; the page's clock is fixed. Run from the MAIN repo root
 // (its node_modules), static server serving the worktree:
@@ -50,6 +55,7 @@
 // PRINT_REV=<git rev> tests that revision's print.html instead of the working
 // file; PRINT_BASE_REV (default 2fceaafd, main before this change) is the
 // reference for (3); PRINT_SINGLE_REV (default 6849a9b4) the reference for (6).
+// RIG_SHOTS=<dir> also saves screenshots of the (7c) failure notes there.
 // Exit 1 on any ✗.
 const { chromium } = require('playwright');
 const path = require('path');
@@ -177,7 +183,7 @@ const ok = (c, m) => { if (c) { pass++; console.log('  ✓ ' + m); } else { fail
 const J = (r, body) => r.fulfill({ status: 200, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: JSON.stringify(body) });
 
 async function render(browser, html, qs, opts) {
-  const ctx = await browser.newContext(Object.assign({ viewport: { width: 1200, height: 900 }, serviceWorkers: 'block' },
+  const ctx = await browser.newContext(Object.assign({ viewport: (opts && opts.viewport) || { width: 1200, height: 900 }, serviceWorkers: 'block' },
     opts && opts.tz ? { timezoneId: opts.tz } : {}));
   const page = await ctx.newPage();
   await page.clock.setFixedTime(new Date('2026-10-07T10:00:00'));
@@ -186,7 +192,8 @@ async function render(browser, html, qs, opts) {
     // (5) every copy (📋 WhatsApp button, share menu) lands here, not in the OS clipboard.
     Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: t => { (window.__copied = window.__copied || []).push(t); return Promise.resolve(); } } });
   });
-  const byTable = { [T.ORD]: FX.ORDERS, [T.PAR]: FX.PARTNERS, [T.TRK]: FX.TRUCKS, [T.TRL]: FX.TRAILERS, [T.DRV]: FX.DRIVERS, [T.LOC]: FX.LOCS, [T.STP]: FX.STOPS };
+  // (7c) opts.noLocs: the LOCATIONS read comes back empty → the page's locations failure note.
+  const byTable = { [T.ORD]: FX.ORDERS, [T.PAR]: FX.PARTNERS, [T.TRK]: FX.TRUCKS, [T.TRL]: FX.TRAILERS, [T.DRV]: FX.DRIVERS, [T.LOC]: opts && opts.noLocs ? [] : FX.LOCS, [T.STP]: FX.STOPS };
   const appErrors = [];   // (7c) POSTs to the production error log
   await page.route('**/*', r => {
     const u = new URL(r.request().url());
@@ -235,9 +242,21 @@ async function render(browser, html, qs, opts) {
       strip: [...d.querySelectorAll('.route2 .side')].map(x => x.querySelector('.n').innerText + ' | ' + x.querySelector('.d').innerText),
     }));
     const n = document.getElementById('waGroupFailed');
+    // (7c) Is a failure note really SEEN? The topmost element at its centre must
+    // be the note itself (or inside it) — not the fixed toolbar over it.
+    const bar = document.querySelector('.pbar'), barBottom = bar ? Math.round(bar.getBoundingClientRect().bottom) : 0;
+    const seen = id => {
+      const e = document.getElementById(id);
+      if (!e) return null;
+      const r = e.getBoundingClientRect(), hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+      return { visible: !!hit && e.contains(hit), top: Math.round(r.top), bottom: Math.round(r.bottom), barBottom,
+        hit: hit ? hit.tagName + (hit.id ? '#' + hit.id : '') + (typeof hit.className === 'string' && hit.className ? '.' + hit.className.split(' ')[0] : '') : 'none' };
+    };
     return { text: doc.innerText, full, keep, docs, chips, cardTemps, cover, sheets, note: n ? n.innerText : '',
+      seen: { waGroupFailed: seen('waGroupFailed'), locsFailed: seen('locsFailed') },
       wa: (typeof _waArr !== 'undefined' ? _waArr : []).slice() };
   });
+  if (opts && opts.shot && process.env.RIG_SHOTS) await page.screenshot({ path: path.join(process.env.RIG_SHOTS, opts.shot) });
   if (opts && opts.channels) {
     // (5) the three ways the text leaves the page: the 📋 WhatsApp button (copyWA),
     // the print button's share menu «Αντιγραφή κειμένου» (getText), and the
@@ -625,7 +644,7 @@ const stopNums = m => m.split('\n').map(l => (l.match(/^(\S+) \*(ΦΟΡΤΩΣΗ|
   console.log('— driver · group IAB4166 with waGroupBuild forced to throw');
   const broken = html.replace('function waGroupBuild(items){', "function waGroupBuild(items){throw new Error('rig: waGroupBuild forced to fail');");
   ok(broken !== html, '(7c) the rig could inject the failure');
-  const fb = await render(browser, broken, 'orderIds=rec461,rec463&leg=import&sheet=driver', { channels: true, printMedia: true });
+  const fb = await render(browser, broken, 'orderIds=rec461,rec463&leg=import&sheet=driver', { channels: true, printMedia: true, shot: 'waGroupFailed-1200.png' });
   const s461 = await render(browser, html, 'orderId=rec461&leg=import&sheet=driver'), s463 = await render(browser, html, 'orderId=rec463&leg=import&sheet=driver');
   ok(!fb.errors.length && fb.docs === 3, 'no page error, the packet still prints (' + fb.docs + ' documents)');
   ok(fb.wa.length === 2 && fb.wa[0] === s461.wa[0] && fb.wa[1] === s463.wa[0], '(7c) _waArr = each order\'s own text, never empty — ' + JSON.stringify(fb.wa.map(m => m.length)));
@@ -637,6 +656,19 @@ const stopNums = m => m.split('\n').map(l => (l.match(/^(\S+) \*(ΦΟΡΤΩΣΗ|
   ok(fb.appErrors.length === 0, '(7c) a local rig writes nothing to the production /app-errors (' + fb.appErrors.length + ')');
   const okg = await render(browser, html, 'orderIds=rec461,rec463&leg=import&sheet=driver');
   ok(okg.note === '' && okg.wa.length === 1, '(7c) no note when the group text is built');
+  // (7c) SEEN, not just present: the note clears the fixed toolbar on a desk
+  // screen and on a phone, where the bar is a different height.
+  const SEEN_AT = [['1200', { width: 1200, height: 900 }], ['390', { width: 390, height: 844 }]];
+  const seenOk = s => !!s && s.visible && s.top >= s.barBottom;
+  for (const [w, vp] of SEEN_AT) {
+    const r = w === '1200' ? fb : await render(browser, broken, 'orderIds=rec461,rec463&leg=import&sheet=driver', { viewport: vp, shot: 'waGroupFailed-' + w + '.png' });
+    ok(seenOk(r.seen.waGroupFailed), '(7c) ' + w + 'px: elementFromPoint at the note\'s centre is the note, below the toolbar — ' + JSON.stringify(r.seen.waGroupFailed));
+  }
+  // The locations' failure note (same box, same rule): an empty LOCATIONS read.
+  for (const [w, vp] of SEEN_AT) {
+    const r = await render(browser, html, 'orderId=rec461&leg=import&sheet=driver', { viewport: vp, noLocs: true, shot: 'locsFailed-' + w + '.png' });
+    ok(!r.errors.length && seenOk(r.seen.locsFailed), '(7c) ' + w + 'px: the locations\' failure note is seen too, below the toolbar — ' + JSON.stringify(r.seen.locsFailed));
+  }
 
   // (7d) Past seven stops.
   const KEYS = ['1️⃣', '2️⃣', '3️⃣', '4️⃣', '5️⃣', '6️⃣', '7️⃣', '8️⃣', '9️⃣', '🔟'];

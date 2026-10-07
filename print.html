@@ -233,6 +233,7 @@ body{-webkit-print-color-adjust:exact;print-color-adjust:exact}
 @page{size:A4;margin:9mm}
 @media print{
   .pbar,.pbar-spacer,#waGroupFailed{display:none}
+  #pageNotes{margin-top:0!important}
   #doc{padding:6px 10px;max-width:none}
   .stop-card{page-break-inside:avoid}
   .sig-table{page-break-inside:avoid}
@@ -1397,20 +1398,21 @@ function renderDocs(htmlArr){
   var N=htmlArr.length;
   // Κανόνας 7: η αποτυχία μιλάει και ξεχωρίζει από το κενό. Χωρίς τον πίνακα
   // τοποθεσιών κάθε διεύθυνση γίνεται «—» και το φύλλο έβγαινε σιωπηλά σωστό.
+  var notes=[];
   if (window.__locsFailed) {
-    docEl.insertAdjacentHTML('beforebegin',
-      '<div style="background:#FEE2E2;border:2px solid #B91C1C;color:#7F1D1D;padding:12px 14px;margin:0 0 12px;font:700 13px system-ui;border-radius:6px">'
+    notes.push(
+      '<div id="locsFailed" style="background:#FEE2E2;border:2px solid #B91C1C;color:#7F1D1D;padding:12px 14px;margin:0 0 12px;font:700 13px system-ui;border-radius:6px">'
       + '⚠ ΟΙ ΤΟΠΟΘΕΣΙΕΣ ΔΕΝ ΦΟΡΤΩΘΗΚΑΝ — οι διευθύνσεις παρακάτω λείπουν επειδή απέτυχε η ανάγνωση, ΟΧΙ επειδή δεν υπάρχουν. ΜΗΝ δώσεις αυτό το φύλλο στον οδηγό. Κάνε ανανέωση.'
       + '</div>');
   }
   if (window.__clientsFailed) {
-    docEl.insertAdjacentHTML('beforebegin',
+    notes.push(
       '<div id="clientsFailed" style="background:#FEE2E2;border:2px solid #B91C1C;color:#7F1D1D;padding:12px 14px;margin:0 0 12px;font:700 13px system-ui;border-radius:6px">'
       + '⚠ ΤΟ ΟΝΟΜΑ ΠΕΛΑΤΗ ΤΟΥ ΚΟΜΜΑΤΙΟΥ ΔΕΝ ΔΙΑΒΑΣΤΗΚΕ — το «—» παρακάτω είναι αποτυχία ανάγνωσης. ΜΗΝ δώσεις αυτό το φύλλο στον οδηγό. Κάνε ανανέωση.'
       + '</div>');
   }
   if (window.__waGroupFailed) {
-    docEl.insertAdjacentHTML('beforebegin',
+    notes.push(
       '<div id="waGroupFailed" style="background:#FEF3C7;border:2px solid #B45309;color:#78350F;padding:12px 14px;margin:0 0 12px;font:700 13px system-ui;border-radius:6px">'
       + '⚠ ΤΟ ΕΝΙΑΙΟ ΚΕΙΜΕΝΟ WHATSAPP ΤΗΣ ΟΜΑΔΑΣ ΔΕΝ ΦΤΙΑΧΤΗΚΕ — το 📋 WhatsApp δίνει ένα κείμενο ανά παραγγελία, ΧΩΡΙΣ τη σειρά της διαδρομής. Τη σειρά των στάσεων τη δείχνει το εξώφυλλο. Ενημέρωσε το γραφείο.'
       + '</div>');
@@ -1419,6 +1421,23 @@ function renderDocs(htmlArr){
     var tag=N>1?'<div style="font-size:9px;font-weight:800;letter-spacing:1.2px;color:#6B7280;margin:0 0 8px">ΟΜΑΔΙΚΟ ΦΟΡΤΙΟ — ΕΓΓΡΑΦΟ '+(i+1)+' / '+N+'</div>':'';
     return '<div class="p-doc" style="'+(i<N-1?'page-break-after:always;':'')+'">'+tag+h+'</div>';
   }).join('');
+  // Review 7/10: every failure note goes in ONE box, kept below the fixed
+  // toolbar. Inserted bare above #doc, the notes sat at y=0 under .pbar
+  // (position:fixed, top:0, z-index 99) — unreadable, and the page cannot
+  // scroll above 0. The gap is the bar's MEASURED height (+12px air), not a
+  // constant: the bar wraps taller on a phone (81px at 390 wide vs 54px at
+  // 1200) and changes size when the web fonts arrive, so a ResizeObserver
+  // keeps the gap in step. Paper: the bar is not printed and @media print
+  // zeroes the gap.
+  if(notes.length){
+    docEl.insertAdjacentHTML('beforebegin','<div id="pageNotes">'+notes.join('')+'</div>');
+    var notesBox=document.getElementById('pageNotes'), bar=document.querySelector('.pbar');
+    if(bar){
+      var keepBelowBar=function(){ notesBox.style.marginTop=(bar.getBoundingClientRect().height+12)+'px'; };
+      keepBelowBar();
+      if(window.ResizeObserver) new ResizeObserver(keepBelowBar).observe(bar);
+    }
+  }
   // Μενού κοινής χρήσης (owner 25/8): δεξί κλικ / long-press στο κουμπί
   // εκτύπωσης. Αριστερό κλικ = window.print(), όπως πάντα. Το payload
   // κειμένου είναι το ΙΔΙΟ _waArr του copyWA — όχι δεύτερη εκδοχή (αρχή 3).
