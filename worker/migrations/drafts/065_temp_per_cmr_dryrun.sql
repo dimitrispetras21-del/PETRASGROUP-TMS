@@ -4,25 +4,30 @@
 -- WHAT: 065's own DO block, statement for statement (every guard, change and proof, B-54 run as
 --   tms_check_runner), wrapped in ONE outer DO block that first fingerprints data 065 must not touch, then
 --   checks the result, and ENDS WITH A DELIBERATE ERROR. The error rolls the whole block back: NOTHING it did
---   is kept (no column, no view change).
+--   is kept (no column, no view change, the leg sync of 020 as it was).
 -- WHEN: the same evening, AFTER 15:00 (the team works 05:30-14:30), BEFORE 065_temp_per_cmr.sql. It takes the
 --   same locks as 065 (lock_timeout 5 s, then it gives up - run it again a little later).
 -- WHY ONE DO BLOCK: the Supabase SQL editor is NOT atomic across statements (lesson 056), but ONE DO block is
 --   ONE statement: its final error undoes everything inside it.
 -- EXPECTED (the red ERROR is deliberate):
---   ERROR: P0001: DRY RUN 065 finished - EVERYTHING UNDONE, nothing kept. Result: 3 OK, 0 FAIL  ||  A ok ... | B ok triggers 35 = 35, B-54 35 | C ok ...
+--   ERROR: P0001: DRY RUN 065 finished - EVERYTHING UNDONE, nothing kept. Result: 4 OK, 0 FAIL  ||  A ok ... | B ok triggers 35 = 35, B-54 35 | C ok ... | D ok ...
 --   Anything with FAIL or ERROR in it: do NOT run 065, copy the panel to the coordinator.
---   ONE exception: "2 OK, 1 FAIL" where the FAIL is C alone (A ok, B ok). C fingerprints every order, every
+--   ONE exception: "3 OK, 1 FAIL" where the FAIL is C alone (A, B and D ok). C fingerprints every order, every
 --   row of orders_with_derived, the auditor rows and every public sequence while the block runs, so ONE save
 --   by someone else in those seconds turns it red - it fails closed, nothing was kept. Wait 5 minutes and run
 --   the dry run once more; if C fails again, copy the panel to the coordinator.
 --   A different message altogether ("065: ...", "065 proof: ...", a lock timeout) is the guard or proof of 065
 --   that stopped - exactly what 065 itself would have said. Do NOT run 065.
 -- AFTER: 065_temp_per_cmr_verify.sql V0 again - nothing was kept: orders has no temp_per_cmr and
---   orders_with_derived is still the 057 text (md5 4f82b738847c4770ccc379b1d558d542, 137 columns).
+--   orders_with_derived is still the 057 text (md5 4f82b738847c4770ccc379b1d558d542, 137 columns), and
+--   order_parent_to_legs and its trigger still 020's (md5 b1f552325162375855244a4161685fdc / a0ce809945f493872557b6e1a08001a3).
 -- Scenarios: A 065's column and view exist inside the block (view md5 = the one measured after 065);
 --   B the trigger count did not move and B-54 equals it (35); C data 065 must not touch is unchanged (every
---   order and every orders_with_derived row without the new key, every auditor row, every public sequence).
+--   order and every orders_with_derived row without the new key, every auditor row, every public sequence);
+--   D the leg sync of 020 now carries the flag (order_parent_to_legs and its trigger md5 = the ones measured
+--   after 065). D reads the catalog only: it does not save a parent to watch its legs - on production that
+--   would fire every order trigger and advance sequences that the rollback cannot give back; the PGlite
+--   harness proves the behaviour, D proves production got the same text.
 
 DO $dry$
 DECLARE
@@ -50,6 +55,17 @@ DECLARE
   -- Both strings are the deparsed form (pg_get_viewdef), so the proof below compares like with like.
   anchor_old text := E' AS stock_lot_reference\n   FROM ';
   anchor_new text := E' AS stock_lot_reference,\n    o.temp_per_cmr\n   FROM ';
+  -- The leg sync of 020 (step 3). The function gets the flag next to temperature_c in BOTH places
+  -- temperature_c is copied: the SET list and the "only real changes" test of the same UPDATE. The
+  -- trigger gets it right after temperature_c in its UPDATE OF list. Same strings in the rollback.
+  fn_set_old text := 'temperature_c = new.temperature_c,';
+  fn_set_new text := 'temperature_c = new.temperature_c, temp_per_cmr = new.temp_per_cmr,';
+  fn_dif_old text := 'temperature_c is distinct from new.temperature_c or ';
+  fn_dif_new text := 'temperature_c is distinct from new.temperature_c or temp_per_cmr is distinct from new.temp_per_cmr or ';
+  trg_col_old text := 'temperature_c, pallet_type,';
+  trg_col_new text := 'temperature_c, temp_per_cmr, pallet_type,';
+  fn_oid oid; old_fn text; new_fn text; fn_attrs text;
+  trg_oid oid; old_trg text; new_trg text; trg_comment text;
   r record; v numeric;
 BEGIN
   -- pg_get_viewdef prints names relative to the search_path (md5 guard below): pin it.
@@ -101,6 +117,38 @@ BEGIN
     RAISE EXCEPTION '065: expected 35 enabled triggers in public = B-54 red_value, no baseline (057 + 060 + 063), found % triggers, B-54 red_value % baseline % - something changed triggers or B-54 since 6/10, re-measure',
       trg_before, b54_before, b54_baseline;
   END IF;
+  -- The leg sync is re-created from its live text: refuse unless it is exactly what 020 left (the md5s
+  -- were read on production 4/10). A hand fix since then would be silently overwritten otherwise.
+  fn_oid := to_regprocedure('public.order_parent_to_legs()');
+  IF fn_oid IS NULL THEN
+    RAISE EXCEPTION '065: function public.order_parent_to_legs() does not exist (020) - stop';
+  END IF;
+  old_fn := pg_get_functiondef(fn_oid);
+  IF md5(old_fn) <> 'b1f552325162375855244a4161685fdc' THEN
+    RAISE EXCEPTION '065: order_parent_to_legs is not the text 020 left (md5 %) - someone changed the leg sync, re-measure', md5(old_fn);
+  END IF;
+  IF (length(old_fn) - length(replace(old_fn, fn_set_old, ''))) <> length(fn_set_old)
+     OR (length(old_fn) - length(replace(old_fn, fn_dif_old, ''))) <> length(fn_dif_old) THEN
+    RAISE EXCEPTION '065: the temperature_c copy in order_parent_to_legs is not where it was measured';
+  END IF;
+  -- every attribute CREATE OR REPLACE could move: proven identical after (oid, owner, grants, SECURITY
+  -- DEFINER, search_path, language, volatility, strictness, cost, return and argument types)
+  SELECT concat_ws('|', oid, proowner, proacl::text, prosecdef, proconfig::text, prolang, provolatile, proisstrict,
+                   proleakproof, proparallel, procost, prorows, prorettype, proargtypes::text, prokind)
+    INTO fn_attrs FROM pg_proc WHERE oid = fn_oid;
+  IF (SELECT count(*) FROM pg_trigger WHERE tgrelid = 'public.orders'::regclass AND tgname = 'order_parent_to_legs' AND NOT tgisinternal) <> 1 THEN
+    RAISE EXCEPTION '065: trigger order_parent_to_legs on orders is missing (020) - stop';
+  END IF;
+  SELECT oid, pg_get_triggerdef(oid), obj_description(oid, 'pg_trigger') INTO trg_oid, old_trg, trg_comment
+    FROM pg_trigger WHERE tgrelid = 'public.orders'::regclass AND tgname = 'order_parent_to_legs' AND NOT tgisinternal;
+  IF md5(old_trg) <> 'a0ce809945f493872557b6e1a08001a3'
+     OR (SELECT tgenabled FROM pg_trigger WHERE oid = trg_oid) <> 'O'
+     OR (SELECT tgfoid FROM pg_trigger WHERE oid = trg_oid) <> fn_oid THEN
+    RAISE EXCEPTION '065: trigger order_parent_to_legs is not the one 020 left, enabled, calling order_parent_to_legs() (md5 %) - re-measure', md5(old_trg);
+  END IF;
+  IF (length(old_trg) - length(replace(old_trg, trg_col_old, ''))) <> length(trg_col_old) THEN
+    RAISE EXCEPTION '065: temperature_c in the UPDATE OF list of trigger order_parent_to_legs is not where it was measured';
+  END IF;
   SELECT count(*) INTO orders_before FROM public.orders;
   SELECT count(*) INTO owd_rows_before FROM public.orders_with_derived;
 
@@ -113,7 +161,20 @@ BEGIN
   --    without the column a read asking for "Temp Per CMR" would fail (PostgREST: no such column).
   EXECUTE 'CREATE OR REPLACE VIEW public.orders_with_derived AS ' || replace(old_view, anchor_old, anchor_new);
 
-  -- 3. PROOFS inside the block: any failure rolls back everything above.
+  -- 3. THE LEG SYNC (020): a parent's flag reaches its legs as its temperature_c does. The column
+  --    exists by now (step 1), so the trigger can name it. pg_get_functiondef prints a complete
+  --    CREATE OR REPLACE FUNCTION with the live attributes, so only the body changes. The trigger is
+  --    dropped and created again in this same transaction: no other session ever sees orders without it.
+  new_fn := replace(replace(old_fn, fn_set_old, fn_set_new), fn_dif_old, fn_dif_new);
+  EXECUTE new_fn;
+  new_trg := replace(old_trg, trg_col_old, trg_col_new);
+  DROP TRIGGER order_parent_to_legs ON public.orders;
+  EXECUTE new_trg;
+  IF trg_comment IS NOT NULL THEN
+    EXECUTE format('COMMENT ON TRIGGER order_parent_to_legs ON public.orders IS %L', trg_comment);
+  END IF;
+
+  -- 4. PROOFS inside the block: any failure rolls back everything above.
   IF NOT EXISTS (SELECT 1 FROM pg_attribute a JOIN pg_attrdef d ON d.adrelid = a.attrelid AND d.adnum = a.attnum
                   WHERE a.attrelid = 'public.orders'::regclass AND a.attname = 'temp_per_cmr' AND NOT a.attisdropped
                     AND a.atttypid = 'boolean'::regtype AND a.attnotnull AND pg_get_expr(d.adbin, d.adrelid) = 'false') THEN
@@ -151,12 +212,33 @@ BEGIN
      OR NOT has_column_privilege('service_role', 'public.orders', 'temp_per_cmr', 'UPDATE') THEN
     RAISE EXCEPTION '065 proof: service_role (the Worker) cannot read the flag from orders_with_derived or write it on orders';
   END IF;
-  -- B-54: the same number of triggers, and B-54 still equals it (not touched by this block)
+  -- the leg sync: the SAME function (oid) whose text is the 020 text + the two pieces, character for
+  -- character, with every attribute as before (owner, grants, SECURITY DEFINER, search_path ...)
+  IF to_regprocedure('public.order_parent_to_legs()') IS DISTINCT FROM fn_oid
+     OR pg_get_functiondef(fn_oid) IS DISTINCT FROM new_fn THEN
+    RAISE EXCEPTION '065 proof: order_parent_to_legs is not the 020 text + the temp_per_cmr copy';
+  END IF;
+  IF (SELECT concat_ws('|', oid, proowner, proacl::text, prosecdef, proconfig::text, prolang, provolatile, proisstrict,
+                       proleakproof, proparallel, procost, prorows, prorettype, proargtypes::text, prokind)
+        FROM pg_proc WHERE oid = fn_oid) IS DISTINCT FROM fn_attrs THEN
+    RAISE EXCEPTION '065 proof: order_parent_to_legs owner, grants, SECURITY DEFINER, search_path or another attribute changed';
+  END IF;
+  -- ... and ONE trigger of that name: the 020 text + temp_per_cmr in its UPDATE OF list, enabled,
+  -- calling the same function, the same comment
+  IF (SELECT count(*) FROM pg_trigger WHERE tgrelid = 'public.orders'::regclass AND tgname = 'order_parent_to_legs' AND NOT tgisinternal) <> 1
+     OR NOT EXISTS (SELECT 1 FROM pg_trigger t
+                     WHERE t.tgrelid = 'public.orders'::regclass AND t.tgname = 'order_parent_to_legs' AND NOT t.tgisinternal
+                       AND pg_get_triggerdef(t.oid) = new_trg AND t.tgenabled = 'O' AND t.tgfoid = fn_oid
+                       AND obj_description(t.oid, 'pg_trigger') IS NOT DISTINCT FROM trg_comment) THEN
+    RAISE EXCEPTION '065 proof: trigger order_parent_to_legs is not the 020 trigger + temp_per_cmr in its UPDATE OF list';
+  END IF;
+  -- B-54: the same number of triggers (35: the leg-sync trigger was re-created under its own name, not
+  -- added), and B-54 still equals it (not touched by this block)
   SELECT count(*) INTO trg_after FROM pg_trigger t JOIN pg_class c ON c.oid = t.tgrelid
     JOIN pg_namespace ns ON ns.oid = c.relnamespace
    WHERE NOT t.tgisinternal AND t.tgenabled <> 'D' AND ns.nspname = 'public';
-  IF trg_after <> trg_before OR NOT EXISTS (SELECT 1 FROM monitoring.checks WHERE id = 'B-54' AND red_value = trg_after) THEN
-    RAISE EXCEPTION '065 proof: trigger count % -> % (expected unchanged), or B-54 moved', trg_before, trg_after;
+  IF trg_after <> 35 OR trg_after <> trg_before OR NOT EXISTS (SELECT 1 FROM monitoring.checks WHERE id = 'B-54' AND red_value = trg_after) THEN
+    RAISE EXCEPTION '065 proof: trigger count % -> % (expected 35, unchanged), or B-54 moved', trg_before, trg_after;
   END IF;
   -- B-54 runs the way run_checks (047) runs it: guard, 10 s timeout, as tms_check_runner. The text
   -- is read before the role switch (tms_check_runner cannot read schema monitoring).
@@ -171,7 +253,7 @@ BEGIN
     END IF;
   END LOOP;
 
-  RAISE NOTICE '065 OK: orders.temp_per_cmr in place (% orders, 0 marked); orders_with_derived % -> % columns, same owner/grants/options; triggers % -> %, B-54 = %',
+  RAISE NOTICE '065 OK: orders.temp_per_cmr in place (% orders, 0 marked); orders_with_derived % -> % columns, same owner/grants/options; order_parent_to_legs copies the flag to split legs (same owner/grants/SECURITY DEFINER/search_path), its trigger watches it; triggers % -> %, B-54 = %',
     k, view_cols, view_cols + 1, trg_before, trg_after, trg_after;
 END;
   -- ===== end of 065 =====
@@ -212,6 +294,18 @@ END;
       ok := ok + 1; res := res || 'C ok orders, orders_with_derived rows, auditor rows, sequences unchanged'::text;
     ELSE bad := bad + 1; res := res || 'C FAIL data changed during the dry run - 065 itself, or a save by someone else in those seconds: if A and B are ok, wait 5 minutes and run the dry run once more; if C fails again, stop and copy the panel to the coordinator'::text; END IF;
   EXCEPTION WHEN others THEN bad := bad + 1; res := res || ('C ERROR ' || SQLERRM);
+  END;
+
+  -- D: the leg sync (065 step 3) - the same texts the harness proved copy the flag to split legs
+  BEGIN
+    IF md5(pg_get_functiondef('public.order_parent_to_legs()'::regprocedure)) = '7ffe6ccd14b19f5c2b22934520ed6c9b'
+       AND (SELECT md5(pg_get_triggerdef(oid)) FROM pg_trigger WHERE tgrelid = 'public.orders'::regclass
+             AND tgname = 'order_parent_to_legs' AND NOT tgisinternal AND tgenabled = 'O') = 'cb0735f6fa07cba7d340ab9f3a3ace4c' THEN
+      ok := ok + 1; res := res || 'D ok order_parent_to_legs copies temp_per_cmr to split legs, its trigger watches it (md5s as measured)'::text;
+    ELSE bad := bad + 1; res := res || format('D FAIL order_parent_to_legs md5 %s, trigger md5 %s',
+           md5(pg_get_functiondef('public.order_parent_to_legs()'::regprocedure)),
+           (SELECT md5(pg_get_triggerdef(oid)) FROM pg_trigger WHERE tgrelid = 'public.orders'::regclass AND tgname = 'order_parent_to_legs')); END IF;
+  EXCEPTION WHEN others THEN bad := bad + 1; res := res || ('D ERROR ' || SQLERRM);
   END;
 
   RAISE EXCEPTION 'DRY RUN 065 finished - EVERYTHING UNDONE, nothing kept. Result: % OK, % FAIL  ||  %', ok, bad, array_to_string(res, '  |  ');

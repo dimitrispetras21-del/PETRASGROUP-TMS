@@ -1,6 +1,8 @@
 -- 065 - TEMPERATURE "AS ON THE CMR": an international order may say that its temperature is the
 --       one written on the CMR instead of a number. orders.temp_per_cmr (boolean NOT NULL DEFAULT
---       false), appended to orders_with_derived, the facade's ORDERS readView (label "Temp Per CMR").
+--       false), appended to orders_with_derived, the facade's ORDERS readView (label "Temp Per CMR"),
+--       and copied from a parent order to its split legs by 020's order_parent_to_legs, exactly like
+--       temperature_c.
 --
 -- DRAFT - NOT EXECUTED. The owner runs it in the Supabase SQL editor AFTER 15:00 (team works
 -- 05:30-14:30), with an explicit yes in the conversation.
@@ -36,17 +38,41 @@
 --      the 137 columns cannot drift; proven after: the new text = the old text + that line, character
 --      for character. CREATE OR REPLACE keeps owner and grants; it would reset view options, so the
 --      block refuses if the view has any (057 left none: owner-rights, reloptions NULL).
--- NOT touched: national_orders (international orders only); the leg sync of 020
--- (order_parent_to_legs copies temperature_c to split legs, not this flag - a screen that prints a
--- leg reads the flag of its parent, or a later migration extends 020; owner decides); every trigger,
--- function and grant. B-54 counts enabled non-internal triggers in public and a column adds none:
--- asserted 35 before and after (057 + 060 + 063 live since 6/10), B-54 = 35, not written.
+--   3. THE LEG SYNC OF 020 (coordinator 7/10, principle 4: the rule lives in the DB, not in each
+--      screen). A split leg has its own driver, Daily/Weekly row and WhatsApp; 020 copies the
+--      parent's temperature_c to every live leg, so without this a parent marked "CMR" with its number
+--      cleared would leave every leg with no number AND no flag - the leg's driver paper would show
+--      nothing. Two edits, both generated from the LIVE text (md5-guarded: what 020 left, read on
+--      production 4/10), not retyped:
+--      a. function order_parent_to_legs: CREATE OR REPLACE from pg_get_functiondef plus
+--         "temp_per_cmr = new.temp_per_cmr" next to "temperature_c = new.temperature_c" in the
+--         commercial-facts UPDATE and "temp_per_cmr is distinct from new.temp_per_cmr" next to the
+--         temperature_c test in its WHERE (only real changes are written, the 013/020 loop rule).
+--         Nothing else in the function moves (proven: new text = old text + those two pieces). CREATE
+--         OR REPLACE keeps the function's oid, owner and grants; SECURITY DEFINER, search_path and
+--         every other attribute come from the live header that pg_get_functiondef prints (proven equal).
+--      b. trigger order_parent_to_legs: dropped and created again with the SAME name from
+--         pg_get_triggerdef plus "temp_per_cmr" right after temperature_c in its UPDATE OF list - so a
+--         change of the flag alone fires it. Same table, timing, WHEN and function (proven: new text =
+--         old text + that one name). Still ONE trigger: the count stays 35 (asserted).
+--      Leg rows created at split time already take the flag from the form (branch
+--      feat/temp-per-cmr-front); order_leg_inherit (BEFORE INSERT of a leg) copies only client and
+--      direction, as for temperature_c - not changed here.
+-- NOT touched: national_orders (international orders only); the copies the screens write into
+-- NATIONAL LOADS (Veroia Switch), GROUPAGE LINES and CONSOLIDATED LOADS - those tables have no flag
+-- column; out of scope of 065 (a later step, owner decides); order_legs_to_parent (legs never send
+-- the temperature up, so not the flag either); every other trigger, function and grant. B-54 counts
+-- enabled non-internal triggers in public: a column adds none and re-creating order_parent_to_legs
+-- under its own name keeps one: asserted 35 before and after (057 + 060 + 063 live since 6/10),
+-- B-54 = 35, not written.
 --
 -- BEFORE IT: 065_temp_per_cmr_verify.sql V0 (the coordinator, SELECT only: the view md5 below, on
 --   production), then 065_temp_per_cmr_dryrun.sql - this same block, generated from this file, undone.
 -- EXPECTED (green, no red panel): NOTICE "065 OK: orders.temp_per_cmr in place (<n> orders, 0 marked);
---   orders_with_derived 137 -> 138 columns, same owner/grants/options; triggers 35 -> 35, B-54 = 35"
---   and ONE result row "065 OK | 35 | 35 | 138 | 0".
+--   orders_with_derived 137 -> 138 columns, same owner/grants/options; order_parent_to_legs copies
+--   the flag to split legs (same owner/grants/SECURITY DEFINER/search_path), its trigger watches it;
+--   triggers 35 -> 35, B-54 = 35"
+--   and ONE result row "065 OK | 35 | 35 | 138 | 0 | true".
 --   A red error = nothing changed (one DO block): stop, copy the panel to the coordinator.
 -- AFTER IT: 065_temp_per_cmr_verify.sql V1 (one row, every column true).
 -- Reverse: 065_temp_per_cmr_rollback.sql (screens and Worker without the label FIRST; it refuses
@@ -55,17 +81,25 @@
 -- THIS FILE IS ASCII ONLY (pbcopy corrupted Greek on 27/9). ONE DO block (056/058: the SQL editor is
 -- not atomic across statements; inside ONE DO block any RAISE rolls back everything), then ONE
 -- read-only SELECT that prints the result row. No temp tables.
--- NO SUPERUSER NEEDED (the SQL editor's postgres is rolsuper = false): ALTER TABLE and CREATE OR
--- REPLACE VIEW need only ownership of orders / orders_with_derived. The PGlite harness ran this file,
--- its dry run and its rollback as a NOSUPERUSER owner as well.
+-- NO SUPERUSER NEEDED (the SQL editor's postgres is rolsuper = false): ALTER TABLE, DROP/CREATE
+-- TRIGGER, CREATE OR REPLACE VIEW and CREATE OR REPLACE FUNCTION need only ownership of orders /
+-- orders_with_derived / order_parent_to_legs. The PGlite harness ran this file, its dry run and its
+-- rollback as a NOSUPERUSER owner as well (NOT a member of service_role), with Supabase's default
+-- privileges in place (GRANT ALL to anon/authenticated/service_role on every new table and function):
+-- neither CREATE OR REPLACE changes an existing ACL, proven inside the block.
 --
 -- Measured on the PGlite copy of production (catalog read 4/10; its pg_get_viewdef reproduces the
 -- production md5s that 057 and 060 guarded on, a47e30da... and c81a268c...), after 057 + 060 + 063 as
 -- executed 5-6/10: orders_with_derived md5(pg_get_viewdef(view)) with search_path "public, extensions"
 -- = 4f82b738847c4770ccc379b1d558d542, 137 columns, reloptions NULL, ACL
 -- {postgres=arwdDxtm/postgres,service_role=arwDxtm/postgres}; triggers 35 = B-54.
--- After 065: orders_with_derived md5 55736818891a8f4e06193b23265cacf4, 138 columns.
--- The coordinator re-reads the "before" md5 on production (verify V0) before the owner's run.
+-- order_parent_to_legs as 020 left it, read on PRODUCTION 4/10 (and reproduced by the copy):
+-- md5(pg_get_functiondef) = b1f552325162375855244a4161685fdc, SECURITY DEFINER, search_path=public;
+-- its trigger md5(pg_get_triggerdef) with search_path "public, extensions" =
+-- a0ce809945f493872557b6e1a08001a3, enabled (O).
+-- After 065: orders_with_derived md5 55736818891a8f4e06193b23265cacf4, 138 columns; order_parent_to_legs
+-- md5 7ffe6ccd14b19f5c2b22934520ed6c9b; its trigger md5 cb0735f6fa07cba7d340ab9f3a3ace4c.
+-- The coordinator re-reads the "before" md5s on production (verify V0) before the owner's run.
 
 DO $do$
 DECLARE
@@ -78,6 +112,17 @@ DECLARE
   -- Both strings are the deparsed form (pg_get_viewdef), so the proof below compares like with like.
   anchor_old text := E' AS stock_lot_reference\n   FROM ';
   anchor_new text := E' AS stock_lot_reference,\n    o.temp_per_cmr\n   FROM ';
+  -- The leg sync of 020 (step 3). The function gets the flag next to temperature_c in BOTH places
+  -- temperature_c is copied: the SET list and the "only real changes" test of the same UPDATE. The
+  -- trigger gets it right after temperature_c in its UPDATE OF list. Same strings in the rollback.
+  fn_set_old text := 'temperature_c = new.temperature_c,';
+  fn_set_new text := 'temperature_c = new.temperature_c, temp_per_cmr = new.temp_per_cmr,';
+  fn_dif_old text := 'temperature_c is distinct from new.temperature_c or ';
+  fn_dif_new text := 'temperature_c is distinct from new.temperature_c or temp_per_cmr is distinct from new.temp_per_cmr or ';
+  trg_col_old text := 'temperature_c, pallet_type,';
+  trg_col_new text := 'temperature_c, temp_per_cmr, pallet_type,';
+  fn_oid oid; old_fn text; new_fn text; fn_attrs text;
+  trg_oid oid; old_trg text; new_trg text; trg_comment text;
   r record; v numeric;
 BEGIN
   -- pg_get_viewdef prints names relative to the search_path (md5 guard below): pin it.
@@ -129,6 +174,38 @@ BEGIN
     RAISE EXCEPTION '065: expected 35 enabled triggers in public = B-54 red_value, no baseline (057 + 060 + 063), found % triggers, B-54 red_value % baseline % - something changed triggers or B-54 since 6/10, re-measure',
       trg_before, b54_before, b54_baseline;
   END IF;
+  -- The leg sync is re-created from its live text: refuse unless it is exactly what 020 left (the md5s
+  -- were read on production 4/10). A hand fix since then would be silently overwritten otherwise.
+  fn_oid := to_regprocedure('public.order_parent_to_legs()');
+  IF fn_oid IS NULL THEN
+    RAISE EXCEPTION '065: function public.order_parent_to_legs() does not exist (020) - stop';
+  END IF;
+  old_fn := pg_get_functiondef(fn_oid);
+  IF md5(old_fn) <> 'b1f552325162375855244a4161685fdc' THEN
+    RAISE EXCEPTION '065: order_parent_to_legs is not the text 020 left (md5 %) - someone changed the leg sync, re-measure', md5(old_fn);
+  END IF;
+  IF (length(old_fn) - length(replace(old_fn, fn_set_old, ''))) <> length(fn_set_old)
+     OR (length(old_fn) - length(replace(old_fn, fn_dif_old, ''))) <> length(fn_dif_old) THEN
+    RAISE EXCEPTION '065: the temperature_c copy in order_parent_to_legs is not where it was measured';
+  END IF;
+  -- every attribute CREATE OR REPLACE could move: proven identical after (oid, owner, grants, SECURITY
+  -- DEFINER, search_path, language, volatility, strictness, cost, return and argument types)
+  SELECT concat_ws('|', oid, proowner, proacl::text, prosecdef, proconfig::text, prolang, provolatile, proisstrict,
+                   proleakproof, proparallel, procost, prorows, prorettype, proargtypes::text, prokind)
+    INTO fn_attrs FROM pg_proc WHERE oid = fn_oid;
+  IF (SELECT count(*) FROM pg_trigger WHERE tgrelid = 'public.orders'::regclass AND tgname = 'order_parent_to_legs' AND NOT tgisinternal) <> 1 THEN
+    RAISE EXCEPTION '065: trigger order_parent_to_legs on orders is missing (020) - stop';
+  END IF;
+  SELECT oid, pg_get_triggerdef(oid), obj_description(oid, 'pg_trigger') INTO trg_oid, old_trg, trg_comment
+    FROM pg_trigger WHERE tgrelid = 'public.orders'::regclass AND tgname = 'order_parent_to_legs' AND NOT tgisinternal;
+  IF md5(old_trg) <> 'a0ce809945f493872557b6e1a08001a3'
+     OR (SELECT tgenabled FROM pg_trigger WHERE oid = trg_oid) <> 'O'
+     OR (SELECT tgfoid FROM pg_trigger WHERE oid = trg_oid) <> fn_oid THEN
+    RAISE EXCEPTION '065: trigger order_parent_to_legs is not the one 020 left, enabled, calling order_parent_to_legs() (md5 %) - re-measure', md5(old_trg);
+  END IF;
+  IF (length(old_trg) - length(replace(old_trg, trg_col_old, ''))) <> length(trg_col_old) THEN
+    RAISE EXCEPTION '065: temperature_c in the UPDATE OF list of trigger order_parent_to_legs is not where it was measured';
+  END IF;
   SELECT count(*) INTO orders_before FROM public.orders;
   SELECT count(*) INTO owd_rows_before FROM public.orders_with_derived;
 
@@ -141,7 +218,20 @@ BEGIN
   --    without the column a read asking for "Temp Per CMR" would fail (PostgREST: no such column).
   EXECUTE 'CREATE OR REPLACE VIEW public.orders_with_derived AS ' || replace(old_view, anchor_old, anchor_new);
 
-  -- 3. PROOFS inside the block: any failure rolls back everything above.
+  -- 3. THE LEG SYNC (020): a parent's flag reaches its legs as its temperature_c does. The column
+  --    exists by now (step 1), so the trigger can name it. pg_get_functiondef prints a complete
+  --    CREATE OR REPLACE FUNCTION with the live attributes, so only the body changes. The trigger is
+  --    dropped and created again in this same transaction: no other session ever sees orders without it.
+  new_fn := replace(replace(old_fn, fn_set_old, fn_set_new), fn_dif_old, fn_dif_new);
+  EXECUTE new_fn;
+  new_trg := replace(old_trg, trg_col_old, trg_col_new);
+  DROP TRIGGER order_parent_to_legs ON public.orders;
+  EXECUTE new_trg;
+  IF trg_comment IS NOT NULL THEN
+    EXECUTE format('COMMENT ON TRIGGER order_parent_to_legs ON public.orders IS %L', trg_comment);
+  END IF;
+
+  -- 4. PROOFS inside the block: any failure rolls back everything above.
   IF NOT EXISTS (SELECT 1 FROM pg_attribute a JOIN pg_attrdef d ON d.adrelid = a.attrelid AND d.adnum = a.attnum
                   WHERE a.attrelid = 'public.orders'::regclass AND a.attname = 'temp_per_cmr' AND NOT a.attisdropped
                     AND a.atttypid = 'boolean'::regtype AND a.attnotnull AND pg_get_expr(d.adbin, d.adrelid) = 'false') THEN
@@ -179,12 +269,33 @@ BEGIN
      OR NOT has_column_privilege('service_role', 'public.orders', 'temp_per_cmr', 'UPDATE') THEN
     RAISE EXCEPTION '065 proof: service_role (the Worker) cannot read the flag from orders_with_derived or write it on orders';
   END IF;
-  -- B-54: the same number of triggers, and B-54 still equals it (not touched by this block)
+  -- the leg sync: the SAME function (oid) whose text is the 020 text + the two pieces, character for
+  -- character, with every attribute as before (owner, grants, SECURITY DEFINER, search_path ...)
+  IF to_regprocedure('public.order_parent_to_legs()') IS DISTINCT FROM fn_oid
+     OR pg_get_functiondef(fn_oid) IS DISTINCT FROM new_fn THEN
+    RAISE EXCEPTION '065 proof: order_parent_to_legs is not the 020 text + the temp_per_cmr copy';
+  END IF;
+  IF (SELECT concat_ws('|', oid, proowner, proacl::text, prosecdef, proconfig::text, prolang, provolatile, proisstrict,
+                       proleakproof, proparallel, procost, prorows, prorettype, proargtypes::text, prokind)
+        FROM pg_proc WHERE oid = fn_oid) IS DISTINCT FROM fn_attrs THEN
+    RAISE EXCEPTION '065 proof: order_parent_to_legs owner, grants, SECURITY DEFINER, search_path or another attribute changed';
+  END IF;
+  -- ... and ONE trigger of that name: the 020 text + temp_per_cmr in its UPDATE OF list, enabled,
+  -- calling the same function, the same comment
+  IF (SELECT count(*) FROM pg_trigger WHERE tgrelid = 'public.orders'::regclass AND tgname = 'order_parent_to_legs' AND NOT tgisinternal) <> 1
+     OR NOT EXISTS (SELECT 1 FROM pg_trigger t
+                     WHERE t.tgrelid = 'public.orders'::regclass AND t.tgname = 'order_parent_to_legs' AND NOT t.tgisinternal
+                       AND pg_get_triggerdef(t.oid) = new_trg AND t.tgenabled = 'O' AND t.tgfoid = fn_oid
+                       AND obj_description(t.oid, 'pg_trigger') IS NOT DISTINCT FROM trg_comment) THEN
+    RAISE EXCEPTION '065 proof: trigger order_parent_to_legs is not the 020 trigger + temp_per_cmr in its UPDATE OF list';
+  END IF;
+  -- B-54: the same number of triggers (35: the leg-sync trigger was re-created under its own name, not
+  -- added), and B-54 still equals it (not touched by this block)
   SELECT count(*) INTO trg_after FROM pg_trigger t JOIN pg_class c ON c.oid = t.tgrelid
     JOIN pg_namespace ns ON ns.oid = c.relnamespace
    WHERE NOT t.tgisinternal AND t.tgenabled <> 'D' AND ns.nspname = 'public';
-  IF trg_after <> trg_before OR NOT EXISTS (SELECT 1 FROM monitoring.checks WHERE id = 'B-54' AND red_value = trg_after) THEN
-    RAISE EXCEPTION '065 proof: trigger count % -> % (expected unchanged), or B-54 moved', trg_before, trg_after;
+  IF trg_after <> 35 OR trg_after <> trg_before OR NOT EXISTS (SELECT 1 FROM monitoring.checks WHERE id = 'B-54' AND red_value = trg_after) THEN
+    RAISE EXCEPTION '065 proof: trigger count % -> % (expected 35, unchanged), or B-54 moved', trg_before, trg_after;
   END IF;
   -- B-54 runs the way run_checks (047) runs it: guard, 10 s timeout, as tms_check_runner. The text
   -- is read before the role switch (tms_check_runner cannot read schema monitoring).
@@ -199,20 +310,32 @@ BEGIN
     END IF;
   END LOOP;
 
-  RAISE NOTICE '065 OK: orders.temp_per_cmr in place (% orders, 0 marked); orders_with_derived % -> % columns, same owner/grants/options; triggers % -> %, B-54 = %',
+  RAISE NOTICE '065 OK: orders.temp_per_cmr in place (% orders, 0 marked); orders_with_derived % -> % columns, same owner/grants/options; order_parent_to_legs copies the flag to split legs (same owner/grants/SECURITY DEFINER/search_path), its trigger watches it; triggers % -> %, B-54 = %',
     k, view_cols, view_cols + 1, trg_before, trg_after, trg_after;
 END $do$;
 
 -- The result row (read-only). If the block above failed, the editor stops before this line.
+-- legs_copy_flag: order_parent_to_legs copies the flag and its trigger fires on it (structure only -
+-- no md5 here: pg_get_triggerdef depends on the session's search_path; verify V1 checks the md5s).
+WITH legs AS (
+  SELECT EXISTS (SELECT 1 FROM pg_proc WHERE oid = 'public.order_parent_to_legs()'::regprocedure AND prosecdef
+                  AND position('temp_per_cmr = new.temp_per_cmr' IN prosrc) > 0
+                  AND position('temp_per_cmr is distinct from new.temp_per_cmr' IN prosrc) > 0)
+     AND EXISTS (SELECT 1 FROM pg_trigger t JOIN pg_attribute a ON a.attrelid = t.tgrelid AND a.attname = 'temp_per_cmr' AND NOT a.attisdropped
+                  WHERE t.tgrelid = 'public.orders'::regclass AND t.tgname = 'order_parent_to_legs' AND t.tgenabled = 'O'
+                    AND a.attnum = ANY (t.tgattr::int2[])) AS ok
+)
 SELECT CASE WHEN EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public'
                           AND table_name = 'orders' AND column_name = 'temp_per_cmr'
                           AND data_type = 'boolean' AND is_nullable = 'NO')
              AND (SELECT attname FROM pg_attribute WHERE attrelid = 'public.orders_with_derived'::regclass
                    AND attnum = 138 AND NOT attisdropped) = 'temp_per_cmr'
+             AND (SELECT ok FROM legs)
             THEN '065 OK' ELSE '065 NOT APPLIED' END AS result,
        (SELECT count(*) FROM pg_trigger t JOIN pg_class c ON c.oid = t.tgrelid JOIN pg_namespace ns ON ns.oid = c.relnamespace
          WHERE NOT t.tgisinternal AND t.tgenabled <> 'D' AND ns.nspname = 'public') AS public_triggers,
        (SELECT red_value FROM monitoring.checks WHERE id = 'B-54') AS b54_red_value,
        (SELECT count(*) FROM pg_attribute WHERE attrelid = 'public.orders_with_derived'::regclass
          AND attnum > 0 AND NOT attisdropped) AS owd_columns,
-       (SELECT count(*) FROM public.orders WHERE temp_per_cmr) AS orders_marked_cmr;
+       (SELECT count(*) FROM public.orders WHERE temp_per_cmr) AS orders_marked_cmr,
+       (SELECT ok FROM legs) AS legs_copy_flag;

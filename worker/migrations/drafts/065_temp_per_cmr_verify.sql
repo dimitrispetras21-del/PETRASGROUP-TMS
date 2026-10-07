@@ -10,7 +10,9 @@
 --   owd_md5 4f82b738847c4770ccc379b1d558d542 | owd_columns 137 | owd_options NULL |
 --   owd_acl {postgres=arwdDxtm/postgres,service_role=arwDxtm/postgres} (as read 4/10 - any other value:
 --   065 keeps it as it is, write it down) | column_absent t | public_triggers 35 | b54_red_value 35 |
---   b54_baseline NULL
+--   b54_baseline NULL | legs_fn_md5 b1f552325162375855244a4161685fdc | legs_trg_md5
+--   a0ce809945f493872557b6e1a08001a3 (020's order_parent_to_legs and its trigger: 065 rebuilds both from
+--   their live text and refuses on any other md5)
 WITH pin AS MATERIALIZED (SELECT set_config('search_path', 'public, extensions', true) AS search_path)
 SELECT md5(pg_get_viewdef('public.orders_with_derived'::regclass)) AS owd_md5,
        (SELECT count(*) FROM pg_attribute WHERE attrelid = 'public.orders_with_derived'::regclass
@@ -22,10 +24,15 @@ SELECT md5(pg_get_viewdef('public.orders_with_derived'::regclass)) AS owd_md5,
        (SELECT count(*) FROM pg_trigger t JOIN pg_class c ON c.oid = t.tgrelid JOIN pg_namespace ns ON ns.oid = c.relnamespace
          WHERE NOT t.tgisinternal AND t.tgenabled <> 'D' AND ns.nspname = 'public') AS public_triggers,
        (SELECT red_value FROM monitoring.checks WHERE id = 'B-54') AS b54_red_value,
-       (SELECT baseline FROM monitoring.checks WHERE id = 'B-54') AS b54_baseline
+       (SELECT baseline FROM monitoring.checks WHERE id = 'B-54') AS b54_baseline,
+       md5(pg_get_functiondef('public.order_parent_to_legs()'::regprocedure)) AS legs_fn_md5,
+       (SELECT md5(pg_get_triggerdef(oid)) FROM pg_trigger WHERE tgrelid = 'public.orders'::regclass
+         AND tgname = 'order_parent_to_legs' AND NOT tgisinternal) AS legs_trg_md5
   FROM pin;
 
--- V1 - right after 065: ONE row, every boolean t; orders_marked_cmr 0 (until the screens ship).
+-- V1 - right after 065: ONE row, every boolean t; orders_marked_cmr 0 (until the screens ship);
+--      legs_flag_differs_from_parent 0 - always: a live split leg whose flag is not its parent's means a
+--      leg was created without it (the form's job) or the leg sync did not fire (principle 2: count rows).
 WITH pin AS MATERIALIZED (SELECT set_config('search_path', 'public, extensions', true) AS search_path)
 SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'orders'
                 AND column_name = 'temp_per_cmr' AND data_type = 'boolean' AND is_nullable = 'NO'
@@ -40,9 +47,14 @@ SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'pu
        (SELECT red_value FROM monitoring.checks WHERE id = 'B-54') =
        (SELECT count(*) FROM pg_trigger t JOIN pg_class c ON c.oid = t.tgrelid JOIN pg_namespace ns ON ns.oid = c.relnamespace
          WHERE NOT t.tgisinternal AND t.tgenabled <> 'D' AND ns.nspname = 'public') AS b54_green,         -- both 35
+       md5(pg_get_functiondef('public.order_parent_to_legs()'::regprocedure)) = '7ffe6ccd14b19f5c2b22934520ed6c9b' AS legs_fn_ok,
+       (SELECT md5(pg_get_triggerdef(oid)) FROM pg_trigger WHERE tgrelid = 'public.orders'::regclass
+         AND tgname = 'order_parent_to_legs' AND NOT tgisinternal AND tgenabled = 'O') = 'cb0735f6fa07cba7d340ab9f3a3ace4c' AS legs_trg_ok,
        NOT EXISTS (SELECT 1 FROM public.orders_with_derived d JOIN public.orders o ON o.id = d.id
                     WHERE d.temp_per_cmr IS DISTINCT FROM o.temp_per_cmr) AS view_reads_table,
-       (SELECT count(*) FROM public.orders WHERE temp_per_cmr) AS orders_marked_cmr
+       (SELECT count(*) FROM public.orders WHERE temp_per_cmr) AS orders_marked_cmr,
+       (SELECT count(*) FROM public.orders c JOIN public.orders p ON p.id = c.parent_order_id
+         WHERE c.deleted_at IS NULL AND c.temp_per_cmr IS DISTINCT FROM p.temp_per_cmr) AS legs_flag_differs_from_parent
   FROM pin;
 
 -- V2 - after the screens ship (and whenever in doubt): the orders marked "as on the CMR", newest
