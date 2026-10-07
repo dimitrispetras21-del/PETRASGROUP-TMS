@@ -2,23 +2,25 @@
 // The 5/10/2026 storm: between 21:11 and 21:15 UTC one Windows PC (Chrome 149) wrote 2010 rows to app_errors
 // («preload_<TRUCKS>: Unauthorized» ×1320, …), 2002 of them from app.html with no hash over 188 distinct seconds:
 // a tab that kept LOADING the app. It kept the auditor's B-34 red for a day, and no row said whose PC it was or how
-// the tab got back. Proven here, on the REAL core/constants.js + core/utils.js + core/api.js (and core/auth.js in
-// the app's own script order) in a vm with a scripted fetch, a controllable clock and timers (nothing leaves):
+// the tab got back. Proven here, on the REAL core/session-streak.js + core/constants.js + core/utils.js +
+// core/api.js (and core/auth.js in the app's own script order) in a vm with a scripted fetch, a controllable
+// clock and timers (nothing leaves) — for the pages that PASS core/auth.js and then get a 401:
 //   1. after the first 401 of a page no facade request reaches fetch; the redirect is retried ≤ every 5 s;
 //   2. the end of a session is heard per TAB (sessionStorage streak), never per request:
 //      - a page's first 401 → ONE «session: expired → login (user X; …)» row per streak (routine);
 //        a 401 while the login is still valid by this browser's clock → «session: rejected before expiry …»;
-//      - a page turned away at load: silent for a plain expiry / no login, ONE «session: login rejected at load …»
-//        row per streak for an unknown username / role mismatch (the tamper guard);
-//      - every 50th load of a streak → «session: redirect loop — N loads in M s (user X, reason R; …)», whatever
-//        the reason — also when no load ever had a login (review 6/10 P2-1);
-//      - the first 2xx of a page with a session ends the streak (P3-1); rows wait for logError (auth.js and
-//        api.js run before utils.js) and survive a page that leaves first;
-//      - every row says who (read before the login is removed), how the page was reached, the browser, the hash;
+//      - every 50th load of a streak → «session: redirect loop — N loads in M s (user X, reason R; …)»;
+//      - the first 2xx of a page with a session ends the streak (P3-1);
+//      - every row says who (read before the login is removed, or this tab's own copy when another tab
+//        already removed it), how the page was reached, the browser, the hash;
 //   3. the offline-queue replay stops at the session's end: items kept, no raw 401 sent or logged (P2-2);
 //   4. logError's burst throttle: copies 1–5 of one (message, context) within 60 s are posted, the 6th+ are
 //      counted and ONE summary row carries the right N (window close, next copy, or pagehide); another
 //      message is posted normally; a first occurrence is never held.
+// Pages core/auth.js turns away AT LOAD are NOT tested here: the browser stops parsing such a page at auth.js's
+// location.href, so nothing after auth.js runs — a vm runs every file to the end and passed for a hand-off
+// that never happens (review 6/10 round 2). Their rows are proven in real Chromium, on the intercepted POSTs:
+// tests/critics/session-at-load-rig.js.
 import { test } from 'node:test';
 import assert from 'node:assert';
 import fs from 'node:fs';
@@ -31,11 +33,11 @@ const json = (status, body) => new Response(JSON.stringify(body), { status, head
 const UA_WIN = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36';
 const T0 = 1_790_000_000_000;
 const USER_T = { name: 'Δοκιμή', username: 't', role: 'dispatcher' };
-const TEST_ORDER = ['core/constants.js', 'core/utils.js', 'core/api.js'];
-const APP_ORDER = ['core/constants.js', 'core/auth.js', 'core/api.js', 'core/utils.js'];   // app.html:112-116
+const TEST_ORDER = ['core/session-streak.js', 'core/constants.js', 'core/utils.js', 'core/api.js'];
+// app.html: config.js → session-streak.js → … constants.js → auth.js → api.js → … utils.js
+const APP_ORDER = ['core/session-streak.js', 'core/constants.js', 'core/auth.js', 'core/api.js', 'core/utils.js'];
 
 // opts.session: shared Map acting as the TAB's sessionStorage (survives «reloads» = new sandboxes)
-// opts.atLoad:  what core/auth.js sets when it turns the page away at load ({ reason, user, exp } or legacy true)
 // opts.login:   the stored tms_user (default USER_T; null = none) · opts.files: which scripts, in which order
 // opts.nav / opts.referrer / opts.hash / opts.ua: how the page was reached, and in what browser
 function sandbox(script, opts = {}) {
@@ -70,7 +72,6 @@ function sandbox(script, opts = {}) {
   };
   if (opts.users) ctx.USERS = opts.users;   // config.js's roster, read by auth.js's tamper guard
   ctx.window = { addEventListener: (ev, fn) => { (listeners[ev] = listeners[ev] || []).push(fn); }, location };
-  if (opts.atLoad) ctx.window._tmsNoSessionAtLoad = opts.atLoad;
   ctx.fetch = async (url, init = {}) => {
     calls.push({ url: String(url), method: init.method || 'GET', body: init.body ? String(init.body) : '' });
     const res = await script(String(url), init.method || 'GET');
@@ -157,86 +158,31 @@ test('a 401 while the login is still valid by this clock is NOT routine: «rejec
   assert.match(skew.posts()[0], /^session: expired → login \(user t; first 401: TRUCKS; exp in 4 min;/);
 });
 
-test('a page turned away at load for a plain expiry sends nothing and logs nothing — and is counted', async () => {
-  const tab = new Map();
-  const s = sandbox(all401, { session: tab, login: null, atLoad: { reason: 'expired', user: 't', exp: T0 - 60_000 } });
-  await Promise.all([preload(s, 'TRUCKS'), preload(s, 'TRAILERS'), preload(s, 'DRIVERS')]);
-  await settle();
-  assert.strictEqual(s.facade().length, 0, 'no facade request without a token');
-  assert.deepStrictEqual(s.posts(), [], 'every morning\'s first page: silent');
-  assert.strictEqual(streak(tab).n, 1);
-  assert.strictEqual(streak(tab).user, 't');
-});
-
-test('P2-1: a loop that NEVER has a login at load is heard — one row in 50 loads, with the count, the time and the reason', async () => {
-  const tab = new Map();
-  let rows = [], facade = 0;
-  for (let i = 0; i < 50; i++) {
-    const s = sandbox(all401, { session: tab, login: null, atLoad: { reason: 'no login', user: null, exp: null }, now: T0 + i * 1000, hash: '' });
-    await Promise.all([preload(s, 'TRUCKS'), preload(s, 'TRAILERS')]); await settle();
-    if (i < 49) assert.deepStrictEqual(s.posts(), [], `load ${i + 1} must not write`);
-    rows = rows.concat(s.posts()); facade += s.facade().length;
-  }
-  assert.strictEqual(facade, 0);
-  assert.deepStrictEqual(rows, ['session: redirect loop — 50 loads in 49 s (user ?, reason no login; no login ×50; nav navigate; from index.html; Win Chrome 149; no hash)']);
-  // the old window (10 min) would have let a slow loop stay silent for ever: no window now
-  const slow = new Map(); let slowRows = [];
-  for (let i = 0; i < 50; i++) {
-    const s = sandbox(all401, { session: slow, login: null, atLoad: { reason: 'no login' }, now: T0 + i * 60_000, nav: 'reload', referrer: '' });
-    await settle(); slowRows = slowRows.concat(s.posts());
-  }
-  assert.deepStrictEqual(slowRows, ['session: redirect loop — 50 loads in 2940 s (user ?, reason no login; no login ×50; nav reload; from none; Win Chrome 149; #dashboard)']);
-});
-
-test('P2-1: the tamper guard (real core/auth.js, app script order): unknown username → one row per streak, loop row at 50', async () => {
+test('second tab: another tab already removed the login — the row names the user from this tab\'s copy, routine kind', async () => {
   const tab = new Map();
   const users = [{ username: 't', role: 'dispatcher' }];
-  const ghost = { name: 'Ghost', username: 'ghost', role: 'dispatcher', expiresAt: T0 + 480 * 60_000 };
-  const load = async (i, login) => {
-    const s = sandbox(all401, { session: tab, files: APP_ORDER, users, login, now: T0 + i * 200 });
-    s.tick(300); await settle();   // auth.js's preload timers fire: they must send nothing
-    assert.strictEqual(s.facade().length, 0, `load ${i + 1}: nothing sent`);
-    assert.deepStrictEqual(s.hrefs, ['index.html']);
-    assert.strictEqual(s.store.has('tms_user'), false);
-    return s.posts();
-  };
-  assert.deepStrictEqual(await load(0, ghost), [`session: login rejected at load — unknown username (user ghost; exp in 480 min; ${DIAG})`]);
-  for (let i = 1; i < 49; i++) assert.deepStrictEqual(await load(i, ghost), [], `load ${i + 1} must not write`);
-  const fiftieth = await load(49, ghost);
-  assert.strictEqual(fiftieth.length, 1);
-  assert.match(fiftieth[0], /^session: redirect loop — 50 loads in 10 s \(user ghost, reason unknown username; unknown username ×50; exp in 480 min; nav navigate;/);
-  // a stored role that is not the roster's: the other tamper reason, its own row
-  const tab2 = new Map();
-  const s = sandbox(all401, { session: tab2, files: APP_ORDER, users, login: { ...USER_T, role: 'owner', expiresAt: T0 + 60 * 60_000 } });
-  await settle();
-  assert.deepStrictEqual(s.posts(), [`session: login rejected at load — role mismatch (user t; exp in 60 min; ${DIAG})`]);
+  // this page passed auth.js with a login valid for 5 more hours: auth.js copies whose page it is into the tab
+  const s = sandbox(all401, { session: tab, files: APP_ORDER, users, login: { ...USER_T, expiresAt: T0 + 300 * 60_000 } });
+  assert.strictEqual(tab.get('tms_session_tab_user'), 't');
+  assert.deepStrictEqual(s.hrefs, [], 'the page stays');
+  s.store.delete('tms_user'); s.store.delete('tms_jwt');   // the other tab's first 401, or a logout there
+  await preload(s, 'TRUCKS'); await settle();
+  // not «user ?» (review 6/10 P3); no expiry claimed for a login that is gone, so not «rejected before expiry»:
+  // the other tab's own row says whatever was not routine
+  assert.deepStrictEqual(s.posts(), [`session: expired → login (user t; login already removed by another tab; first 401: TRUCKS; ${DIAG})`]);
 });
 
-test('app script order: auth.js and api.js run before logError exists — a plain expiry stays silent, its user is kept', async () => {
+test('an engine that keeps parsing after auth.js\'s redirect: api.js sends nothing and does not count the page again', async () => {
+  // Chromium stops parsing at auth.js's location.href (tests/critics/session-at-load-rig.js); this pins the
+  // flag that keeps any other engine from a second count and a «user ?» 401 row for the same page
   const tab = new Map();
   const s = sandbox(all401, { session: tab, files: APP_ORDER, users: [{ username: 't', role: 'dispatcher' }], login: { ...USER_T, expiresAt: T0 - 60_000 } });
-  s.tick(300); await settle();
-  assert.deepStrictEqual(s.posts(), []);
-  assert.strictEqual(s.facade().length, 0);
-  assert.deepStrictEqual({ n: streak(tab).n, user: streak(tab).user, seen: streak(tab).seen, pending: streak(tab).pending },
-    { n: 1, user: 't', seen: { expired: 1 }, pending: [] });
-});
-
-test('a page that leaves before utils.js runs hands its row to the next app page of the tab (sent once)', async () => {
-  const tab = new Map();
-  const users = [{ username: 't', role: 'dispatcher' }];
-  const ghost = { name: 'Ghost', username: 'ghost', role: 'dispatcher' };
-  const cut = sandbox(all401, { session: tab, files: ['core/constants.js', 'core/auth.js', 'core/api.js'], users, login: ghost });
-  await settle();
-  assert.deepStrictEqual(cut.posts(), [], 'no logError on that page');
-  assert.strictEqual(streak(tab).pending.length, 1, 'the row waits in the tab');
-  // the user logs in properly: the next app page sends the waiting row at the end of utils.js, then works
-  const ok = (url) => (url.endsWith('/app-errors') ? json(201, {}) : json(200, { records: [] }));
-  const next = sandbox(ok, { session: tab, files: APP_ORDER, users, login: { ...USER_T, expiresAt: T0 + 60_000 * 60 } });
-  assert.deepStrictEqual(next.posts(), [`session: login rejected at load — unknown username (user ghost; ${DIAG})`]);
-  await preload(next, 'TRUCKS'); await settle();
-  assert.strictEqual(next.posts().length, 1, 'sent once');
-  assert.strictEqual(tab.has('tms_session_expired'), false, 'its first 2xx ended the streak');
+  s.tick(300);   // auth.js's preload timers fire
+  await Promise.all([preload(s, 'TRUCKS'), preload(s, 'TRAILERS')]); await settle();
+  assert.strictEqual(s.facade().length, 0, 'no facade request without a token');
+  assert.deepStrictEqual(s.posts(), [], 'a plain expiry at load: silent');
+  assert.deepStrictEqual({ n: streak(tab).n, seen: streak(tab).seen }, { n: 1, seen: { expired: 1 } }, 'counted once, by auth.js');
+  assert.strictEqual(tab.has('tms_session_tab_user'), false, 'a page turned away is not «this tab\'s user»');
 });
 
 test('a reload loop through the first 401: row at the 1st load, silence for loads 2–49, the 50th says the count', async () => {
@@ -265,21 +211,23 @@ test('P3-1: the first 2xx of a page ends the streak — a second real expiry in 
   assert.deepStrictEqual(s3.posts(), []);
 });
 
-test('P3-3: the row prefixes against the auditor\'s B-34 text — routine excluded, loop / rejected / tamper counted', async () => {
+test('P3-3: the row prefixes against the auditor\'s B-34 text — routine excluded, loop / rejected counted', async () => {
+  // the at-load rows (tamper guard, at-load loop) are checked against the same B-34 text in real Chromium:
+  // tests/critics/session-at-load-rig.js
   const sql = fs.readFileSync(path.join(ROOT, 'tms-auditor/checks/B-34.sql'), 'utf8');
   const excluded = [...sql.matchAll(/message NOT LIKE '([^']*)'/g)].map((m) => new RegExp('^' + m[1].replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/%/g, '.*').replace(/_/g, '.') + '$', 's'));
   const counted = (msg) => !excluded.some((re) => re.test(msg));
   const rows = {};
   { const s = sandbox(all401); await preload(s, 'TRUCKS'); await settle(); rows.routine = s.posts()[0]; }
   { const s = sandbox(all401, { login: { ...USER_T, expiresAt: T0 + 120 * 60_000 } }); await preload(s, 'TRUCKS'); await settle(); rows.rejected = s.posts()[0]; }
-  { const s = sandbox(all401, { atLoad: { reason: 'unknown username', user: 'ghost' }, login: null }); await settle(); rows.tamper = s.posts()[0]; }
   { const tab = new Map(); let last = [];
-    for (let i = 0; i < 50; i++) { const s = sandbox(all401, { session: tab, atLoad: { reason: 'no login' }, login: null }); await settle(); last = s.posts(); }
+    for (let i = 0; i < 50; i++) { const s = sandbox(all401, { session: tab }); await preload(s, 'TRUCKS'); await settle(); last = s.posts(); }
     rows.loop = last[0]; }
   assert.match(rows.routine, /^session: expired → login \(user t;/);
-  assert.match(rows.loop, /^session: redirect loop — 50 loads in \d+ s \(user \?, reason no login;/);
+  assert.match(rows.rejected, /^session: rejected before expiry → login \(user t;/);
+  assert.match(rows.loop, /^session: redirect loop — 50 loads in \d+ s \(user t, reason 401 at TRUCKS;/);
   assert.strictEqual(counted(rows.routine), false, 'the routine end of a login must not count in B-34');
-  for (const k of ['rejected', 'tamper', 'loop']) assert.strictEqual(counted(rows[k]), true, `${k} must count in B-34: ${rows[k]}`);
+  for (const k of ['rejected', 'loop']) assert.strictEqual(counted(rows[k]), true, `${k} must count in B-34: ${rows[k]}`);
 });
 
 test('the browser in short: the order of the tests (Edge and Opera also say Chrome, Chrome says Safari)', () => {

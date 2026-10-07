@@ -319,22 +319,26 @@ function _fetchWithTimeout(url, opts = {}, ms = 30000) {
 // kept LOADING the app, not one page that kept failing. It kept the auditor's
 // B-34 red for a day and buried the real errors, yet no row said whose PC it
 // was or how the tab got back to app.html (cause still unknown on 7/10; the
-// rosters match, so the tamper guard is not it). There is no token-refresh
-// path — a new login is always a new page — so after the FIRST 401 nothing in
-// this page can succeed. From then on:
+// rosters match, so the tamper guard is not it). In Chrome those rows can only
+// have come from pages that PASSED core/auth.js: a page it turns away runs no
+// script after it. There is no token-refresh path — a new login is always a new
+// page — so after the FIRST 401 nothing in this page can succeed. From then on:
 //   - every facade / costs / docs request is refused HERE, before any fetch,
 //     with the same Unauthorized error the callers already handle (_noRetry);
 //   - that error carries _sessionGone, which logError keeps out of app_errors
 //     (the callers' catch blocks are many; filtering them one by one would
 //     miss the next one written);
 //   - the redirect is re-attempted at most every 5 s, not once per request;
-//   - the end of the session is still heard, per TAB (see _tmsStreakNote).
-// auth.js sets window._tmsNoSessionAtLoad = { reason, user, exp } when it
-// redirects at load: such a page has no token at all, so it starts «gone».
-const _tmsAtLoad = (typeof window !== 'undefined' && window._tmsNoSessionAtLoad) || null;
-let _tmsSessionGone = !!_tmsAtLoad;
+//   - the end of the session is still heard, per TAB (core/session-streak.js).
+// window._tmsNoSessionAtLoad: set by auth.js when it turns the page away at
+// load. auth.js has already counted and reported that page; Chromium never
+// runs this file after it (measured 7/10). An engine that kept parsing until
+// the next page commits would, and the page must then start «gone»: no token,
+// nothing to send, nothing to count twice.
+let _tmsSessionGone = !!(typeof window !== 'undefined' && window._tmsNoSessionAtLoad);
 let _tmsSessionRedirectAt = _tmsSessionGone ? Date.now() : 0;
 const _TMS_SESSION_REDIRECT_MS = 5000;
+let _tmsAliveSeen = false;
 
 function tmsSessionGone() { return _tmsSessionGone; }
 
@@ -361,157 +365,43 @@ function tmsSessionRefuse(req) {
 // Called on a 401. The first one per page reads whose login it was BEFORE
 // removing it (afterwards nothing can: the row is posted without a token, so
 // app_errors.actor stays empty — every 5/10 row said «unknown»), clears the
-// login and notes the page in the tab's streak; later ones (requests already
+// login, counts the page in the tab's streak and writes the rows the streak
+// decides (core/session-streak.js tmsStreakNote); later ones (requests already
 // in flight at that moment) only refuse.
 function tmsSessionExpired(where, req) {
   if (!_tmsSessionGone) {
     _tmsSessionGone = true;
-    let u = null;
+    let u = null, note = null;
     try { u = JSON.parse(localStorage.getItem('tms_user') || 'null'); } catch (_) {}
+    // Already gone: another tab removed the shared login (its own first 401,
+    // or a logout) while this page was open. This tab's copy still names the
+    // user; no expiry is claimed, so the row stays the routine kind — the
+    // other tab's row carries whatever was not routine (review 6/10 P3).
+    if (!u && typeof tmsStreakTabUser === 'function') {
+      const name = tmsStreakTabUser();
+      if (name) { u = { username: name }; note = 'login already removed by another tab'; }
+    }
     try { localStorage.removeItem('tms_user'); localStorage.removeItem('tms_jwt'); } catch (_) {}
-    _tmsStreakNote({ reason: '401', where, user: u && u.username, exp: u && u.expiresAt });
+    const rows = typeof tmsStreakNote === 'function'
+      ? tmsStreakNote({ reason: '401', where, user: u && u.username, exp: u && u.expiresAt, note }) : [];
+    // logError exists by the time any answer arrives (utils.js is parsed long
+    // before); the direct post is only the fallback that never loses a row.
+    for (const m of rows) {
+      if (typeof logError === 'function') logError(new Error(m), 'session');
+      else if (typeof tmsStreakPost === 'function') tmsStreakPost(m);
+    }
   }
   return tmsSessionRefuse(req);
 }
 
-// ── Per-tab streak of page loads that ended without a session ─────────────
-// Per TAB, not per page: logError caps every page at 20 posts (utils.js
-// MAX_APP_ERROR_POSTS), so the 2010 rows were ≥101 page loads — one row per
-// page would still have been ~1300 rows. sessionStorage survives the reloads
-// of one tab and dies with it. Every page load that ends without a session
-// (turned away at load by auth.js, or at its first 401) adds 1; the first 2xx
-// of a page that HAS a session ends the streak (_tmsSessionAlive), so a later
-// expiry in the same tab starts at 1 again and is reported again. No time
-// window: with one (it was 10 min) a loop slower than 50 loads per window
-// never reached 50 and stayed silent for ever (principle 1).
-// The «session: …» rows (B-34 excludes only the first kind, by its prefix):
-//   expired → login (user X; …)          the routine end of an 8 h login: a
-//        page's first 401 after its login's own expiry — once per streak;
-//   rejected before expiry → login (user X; … exp in N min …)   a 401 while
-//        this browser still holds the login as valid for > 5 min (a clock
-//        behind, a token the Worker refuses): NOT routine, so it never hides
-//        under the routine prefix — once per streak;
-//   login rejected at load — unknown username | role mismatch (user X; …)
-//        auth.js's tamper guard turned the page away: a user missing from
-//        config.js USERS is bounced at every login (CLAUDE.md) — once per streak;
-//   redirect loop — N loads in M s (user X, reason R; …)   every 50th load of a
-//        streak, whatever its reasons. A plain expiry or «no login» at load is
-//        silent alone: every morning's first page is one.
-// Each row carries what the 5/10 rows lacked: whose login, how the page was
-// reached (navigation type, referrer), the browser in short and the page's
-// hash. Rows wait in the streak («pending») until logError exists: auth.js
-// decides before utils.js has loaded, and a page that leaves before utils.js
-// runs hands its rows to the next app page of the tab.
-const _TMS_STREAK_KEY = 'tms_session_expired';
-const _TMS_LOOP_EVERY = 50;
-const _TMS_LOUD_AT_LOAD = ['unknown username', 'role mismatch'];
-let _tmsStreakMem = null;   // the record for this page alone, when sessionStorage throws
-let _tmsAliveSeen = false;
-
-function _tmsStreakGet() {
-  try {
-    const r = JSON.parse(sessionStorage.getItem(_TMS_STREAK_KEY) || 'null');
-    return r && typeof r === 'object' ? r : null;
-  } catch (_) { return _tmsStreakMem; }
-}
-
-function _tmsStreakPut(rec) {
-  _tmsStreakMem = rec;
-  try { sessionStorage.setItem(_TMS_STREAK_KEY, JSON.stringify(rec)); } catch (_) {}
-}
-
-// info = { reason: 'no login' | 'expired' | 'unknown username' | 'role mismatch' | '401', user, exp, where }
-function _tmsStreakNote(info) {
-  const now = Date.now();
-  const rec = _tmsStreakGet() || {};
-  rec.n = (rec.n | 0) + 1;
-  rec.since = rec.since || now;
-  const seen = rec.seen || (rec.seen = {});
-  const told = rec.told || (rec.told = []);
-  const pending = rec.pending || (rec.pending = []);
-  const reason = info.reason || 'no login';
-  seen[reason] = (seen[reason] | 0) + 1;
-  if (info.user) rec.user = String(info.user).slice(0, 40);
-  const who = `user ${rec.user || '?'}`;
-  const exp = Number(info.exp) || 0;
-  const expMin = exp ? Math.round((exp - now) / 60000) : null;   // > 0: still valid by this browser's clock
-  const tail = (expMin === null ? '' : expMin > 0 ? `; exp in ${expMin} min` : `; exp ${-expMin} min ago`) + _tmsSessionDiag();
-  if (reason === '401') {
-    const kind = expMin !== null && expMin > 5 ? 'rejected before expiry' : 'expired';
-    if (!told.includes(kind)) {
-      told.push(kind);
-      pending.push(`${kind} → login (${who}; first 401: ${String(info.where || '?').slice(0, 120)}${tail})`);
-    }
-  }
-  if (_TMS_LOUD_AT_LOAD.includes(reason) && !told.includes(reason)) {
-    told.push(reason);
-    pending.push(`login rejected at load — ${reason} (${who}${tail})`);
-  }
-  if (rec.n % _TMS_LOOP_EVERY === 0) {
-    const mix = Object.keys(seen).map((k) => `${k} ×${seen[k]}`).join(', ');
-    const why = reason === '401' ? `401 at ${String(info.where || '?').slice(0, 60)}` : reason;
-    pending.push(`redirect loop — ${rec.n} loads in ${Math.max(0, Math.round((now - rec.since) / 1000))} s (${who}, reason ${why}; ${mix}${tail})`);
-  }
-  if (pending.length > 5) pending.splice(0, pending.length - 5);   // logError never came: keep the newest
-  _tmsStreakPut(rec);
-  tmsSessionFlushPending();
-}
-
-// Hands the streak's waiting rows to logError: from _tmsStreakNote when
-// logError already exists (a 401 at run time), else from the end of utils.js.
-function tmsSessionFlushPending() {
-  if (typeof logError !== 'function') return;
-  const rec = _tmsStreakGet();
-  if (!rec || !Array.isArray(rec.pending) || !rec.pending.length) return;
-  const rows = rec.pending.splice(0);
-  _tmsStreakPut(rec);   // emptied first: each row is handed over once
-  for (const m of rows) logError(new Error(m), 'session');
-}
-
-// The first 2xx facade answer of a page that has a session ends the streak:
-// the tab works again (review 6/10 P3-1 — without this a second real expiry
-// in the same tab was never reported). A page in a loop never gets one.
+// The first 2xx facade answer of a page that has a session ends the tab's
+// streak: the tab works again (review 6/10 P3-1 — without this a second real
+// expiry in the same tab was never reported). A page in a loop never gets one.
 function _tmsSessionAlive() {
   if (_tmsAliveSeen || _tmsSessionGone) return;
   _tmsAliveSeen = true;
-  tmsSessionFlushPending();   // a row still waiting is sent, not dropped with the streak
-  _tmsStreakMem = null;
-  try { sessionStorage.removeItem(_TMS_STREAK_KEY); } catch (_) {}
+  if (typeof tmsStreakEnd === 'function') tmsStreakEnd();
 }
-
-// «; nav reload; from index.html; Win Chrome 149; #daily_ramp»: how this page
-// was reached and where it was — a reload, a forward from the login page and
-// a restored tab loop for different reasons, and the 5/10 rows could not tell
-// them apart. Never throws.
-function _tmsSessionDiag() {
-  const out = [];
-  try { const nav = performance.getEntriesByType('navigation')[0]; if (nav && nav.type) out.push('nav ' + nav.type); } catch (_) {}
-  try {
-    const r = document.referrer ? new URL(document.referrer) : null;
-    out.push('from ' + (!r ? 'none' : r.origin === location.origin ? (r.pathname.split('/').pop() || '/') : 'another site'));
-  } catch (_) {}
-  out.push(_tmsUaShort());
-  try { out.push(location.hash || 'no hash'); } catch (_) {}
-  return '; ' + out.join('; ');
-}
-
-// «Win Chrome 149». The full user agent is in app_errors.user_agent; this is
-// for the message, which is what the auditor and the owner read.
-function _tmsUaShort() {
-  try {
-    const ua = String(navigator.userAgent || '');
-    const os = /Windows NT/.test(ua) ? 'Win' : /Android/.test(ua) ? 'Android' : /iPhone|iPad|iPod/.test(ua) ? 'iOS'
-      : /Mac OS X/.test(ua) ? 'Mac' : /Linux/.test(ua) ? 'Linux' : 'other OS';
-    // Edge and Opera say «Chrome/» too, and Chrome says «Safari/»: the order of this list is the test
-    const b = [['Edge', /Edg\/(\d+)/], ['Opera', /OPR\/(\d+)/], ['Firefox', /Firefox\/(\d+)/], ['Chrome', /(?:Chrome|CriOS)\/(\d+)/], ['Safari', /Version\/(\d+)/]]
-      .find(([, re]) => re.test(ua));
-    return b ? `${os} ${b[0]} ${ua.match(b[1])[1]}` : `${os} other browser`;
-  } catch (_) { return 'no UA'; }
-}
-
-// The page auth.js already turned away: counted now (api.js is the next
-// script), written once logError exists (end of utils.js).
-if (_tmsAtLoad) _tmsStreakNote(typeof _tmsAtLoad === 'object' ? _tmsAtLoad : {});
 
 async function _atRetry(fn, retries = 3) {
   const reqId = _newReqId();
