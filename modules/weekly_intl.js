@@ -5117,6 +5117,10 @@ function _wiRelayOrder(oid){
 }
 // A matched import may be a GI group whose members all travel with the export;
 // the export may point at ANY member (see _wiBuildRows A1).
+function _wiImpIdsOf(importId){
+  const r=WINTL.rows.find(x=>x.type==='import'&&(x.orderIds||[]).includes(importId));
+  return r&&r.orderIds&&r.orderIds.length?r.orderIds:[importId];
+}
 // Every order whose rota legs (Rotation ID) render under this row: the row's
 // own orders AND every member of its matched import group. Live 7/10: rota
 // #467 hung off #449, a NON-first member of import group GI-MUV7FNKE matched
@@ -5129,10 +5133,6 @@ function _wiLegPidsOfRow(row){
   (row.orderIds||[]).forEach(add); add(row.orderId);
   if(row.importId) _wiImpIdsOf(row.importId).forEach(add);
   return ids;
-}
-function _wiImpIdsOf(importId){
-  const r=WINTL.rows.find(x=>x.type==='import'&&(x.orderIds||[]).includes(importId));
-  return r&&r.orderIds&&r.orderIds.length?r.orderIds:[importId];
 }
 // Every order a board row carries, i.e. every order whose relay belongs under
 // it: group members, the matched import (group), rota legs, a split's legs.
