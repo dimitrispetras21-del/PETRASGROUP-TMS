@@ -30,7 +30,20 @@
 //       the Worker's /print/pdf?format=text expression all give that one text;
 //   (6) single orders: text AND paper byte-for-byte equal to PRINT_SINGLE_REV
 //       (default 6849a9b4, the branch base) — the group change touches no
-//       single document.
+//       single document, apart from the corrections of (7);
+//   (7) review 7/10 (NO_GO findings 3–6, coordinator decisions):
+//       (7a) the Veroia stop is dated by the order's Cross-dock Date — the date
+//            its sheet's Veroia card prints — and estimated (export Loading +1,
+//            import Delivery −1) only when that is empty, the day shifted on
+//            the written date: the same «09/10/2026 07:00» in Athens and in New
+//            York; text, cover and the order's own sheet agree. A single text
+//            changes only where the real date differs from the estimate;
+//       (7b) a split leg (no ORDER STOPS, no summaries) gets its flat-column
+//            places (flatLoc) in the text and on the cover, like its own sheet;
+//       (7c) if the group text cannot be built, the per-order texts go out
+//            instead (never an empty text), the page says so and the console
+//            has the error; a local rig posts nothing to /app-errors;
+//       (7d) stop numbers 8️⃣ 9️⃣ 🔟, then «#11» — never a number-less «▪️».
 // Backend fully stubbed; the page's clock is fixed. Run from the MAIN repo root
 // (its node_modules), static server serving the worktree:
 //   PW_BASE_URL=http://127.0.0.1:8991/.claude/worktrees/<dir>/ node <dir>/tests/critics/wa-text-rig.js
@@ -102,6 +115,9 @@ const STOPS = [
   stop('recPE1L', 'Loading', 1, 'recLocA', '2026-10-10'), stop('recPE1U', 'Unloading', 2, 'recLocB', '2026-10-13'),
   stop('recPE2L', 'Loading', 1, 'recLocG1', '2026-10-09'), stop('recPE2U', 'Unloading', 2, 'recLocN', '2026-10-12'),
   stop('recPE3L', 'Loading', 1, 'recLocG2', '2026-10-09'), stop('recPE3U', 'Unloading', 2, 'recLocB1', '2026-10-14'),
+  // (7d) one loading and eleven drops
+  stop('recPM0', 'Loading', 1, 'recLocA', '2026-10-09'),
+  ...Array.from({ length: 11 }, (_, i) => stop('recPM' + (i + 1), 'Unloading', i + 2, ['recLocB', 'recLocG1', 'recLocG2', 'recLocB1', 'recLocB2'][i % 5], '2026-10-12')),
 ];
 const order = (id, stops, extra) => ({ id, fields: Object.assign({
   'Order No': 400 + stops.length, Reference: 'REF-' + id.slice(-1), Goods: 'Apples', Notes: 'Gate 4',
@@ -123,7 +139,18 @@ const FX = {
       'Temp Per CMR': true, Notes: undefined, 'Loading DateTime': '2026-10-09', 'Delivery DateTime': '2026-10-11' }),
     order('recE1', ['recPE1L', 'recPE1U'], { 'Order No': 501, Reference: 'REF-E1' }),
     order('recE2', ['recPE2L', 'recPE2U'], { 'Order No': 502, Reference: 'REF-E2' }),
-    order('recE3', ['recPE3L', 'recPE3U'], { 'Order No': 503, Reference: 'REF-E3' })],
+    order('recE3', ['recPE3L', 'recPE3U'], { 'Order No': 503, Reference: 'REF-E3' }),
+    // (7a) import Veroia whose real cross-dock day (09/10) is NOT Delivery −1 (10/10)
+    order('recOrdV2', ['recS3', 'recS4'], { 'Order No': 470, Reference: 'REF-V2', 'Veroia Switch': true, 'Veroia Cross-dock': ['recJucKOhC1zh4IP3'],
+      'Cross-dock Date': '2026-10-09', 'Delivery DateTime': '2026-10-11' }),
+    // (7a) no Cross-dock Date, local-time order dates (no zone): the estimate
+    order('recOrdV3', ['recS3', 'recS4'], { 'Order No': 471, Reference: 'REF-V3', 'Veroia Switch': true, 'Veroia Cross-dock': ['recJucKOhC1zh4IP3'],
+      'Loading DateTime': '2026-10-08T07:00:00', 'Delivery DateTime': '2026-10-11T09:00:00' }),
+    // (7b) a split leg: no ORDER STOPS, no summaries — only the flat columns
+    order('recOF', [], { 'Order No': 600, Reference: 'REF-OF', 'Loading Summary': undefined, 'Delivery Summary': undefined,
+      'Loading Location 1': ['recLocVo'], 'Unloading Location 1': ['recLocB2'] }),
+    // (7d) twelve stops
+    order('recM', ['recPM0'].concat(Array.from({ length: 11 }, (_, i) => 'recPM' + (i + 1))), { 'Order No': 700, Reference: 'REF-M' })],
   PARTNERS: [{ id: 'recPar', fields: { 'Company Name': 'Carrier P' } }],
   DRIVERS: [{ id: 'recDrv', fields: { 'Full Name': 'Driver D' } }],
   TRUCKS: [{ id: 'recTrk', fields: { 'License Plate': 'TRK-1' } }],
@@ -136,10 +163,11 @@ const L = id => LOCS.find(x => x.id === id);
 const SHEETS = [
   ['driver · coords + none', 'orderId=recOrdA&leg=export&sheet=driver', 'driver', [CO(L('recLocA'))], 'Client N (no coords)'],
   ['partner · coords + none', 'orderId=recOrdA&leg=export&sheet=partner', 'partner', [CO(L('recLocA'))], 'Client N (no coords)'],
-  ['driver · Veroia export', 'orderId=recOrdV&leg=export&sheet=driver', 'driver', [CO(L('recJucKOhC1zh4IP3')), CO(L('recLocB'))]],
-  ['partner · Veroia export', 'orderId=recOrdV&leg=export&sheet=partner', 'partner', [CO(L('recJucKOhC1zh4IP3')), CO(L('recLocB'))]],
-  ['driver · Veroia import', 'orderId=recOrdV&leg=import&sheet=driver', 'driver', [CO(L('recLocA')), CO(L('recJucKOhC1zh4IP3'))]],
-  ['partner · Veroia import', 'orderId=recOrdV&leg=import&sheet=partner', 'partner', [CO(L('recLocA')), CO(L('recJucKOhC1zh4IP3'))]],
+  // 6th: (7a) the order's Cross-dock Date as printed — the Veroia stop's date in the text
+  ['driver · Veroia export', 'orderId=recOrdV&leg=export&sheet=driver', 'driver', [CO(L('recJucKOhC1zh4IP3')), CO(L('recLocB'))], null, '09/10/2026'],
+  ['partner · Veroia export', 'orderId=recOrdV&leg=export&sheet=partner', 'partner', [CO(L('recJucKOhC1zh4IP3')), CO(L('recLocB'))], null, '09/10/2026'],
+  ['driver · Veroia import', 'orderId=recOrdV&leg=import&sheet=driver', 'driver', [CO(L('recLocA')), CO(L('recJucKOhC1zh4IP3'))], null, '09/10/2026'],
+  ['partner · Veroia import', 'orderId=recOrdV&leg=import&sheet=partner', 'partner', [CO(L('recLocA')), CO(L('recJucKOhC1zh4IP3'))], null, '09/10/2026'],
   // The group of 2 that stood here compared one text per order with the
   // reference; a group is ONE text since (5) — it is checked there.
 ];
@@ -149,7 +177,8 @@ const ok = (c, m) => { if (c) { pass++; console.log('  ✓ ' + m); } else { fail
 const J = (r, body) => r.fulfill({ status: 200, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: JSON.stringify(body) });
 
 async function render(browser, html, qs, opts) {
-  const ctx = await browser.newContext({ viewport: { width: 1200, height: 900 }, serviceWorkers: 'block' });
+  const ctx = await browser.newContext(Object.assign({ viewport: { width: 1200, height: 900 }, serviceWorkers: 'block' },
+    opts && opts.tz ? { timezoneId: opts.tz } : {}));
   const page = await ctx.newPage();
   await page.clock.setFixedTime(new Date('2026-10-07T10:00:00'));
   await page.addInitScript(() => {
@@ -158,8 +187,10 @@ async function render(browser, html, qs, opts) {
     Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: t => { (window.__copied = window.__copied || []).push(t); return Promise.resolve(); } } });
   });
   const byTable = { [T.ORD]: FX.ORDERS, [T.PAR]: FX.PARTNERS, [T.TRK]: FX.TRUCKS, [T.TRL]: FX.TRAILERS, [T.DRV]: FX.DRIVERS, [T.LOC]: FX.LOCS, [T.STP]: FX.STOPS };
+  const appErrors = [];   // (7c) POSTs to the production error log
   await page.route('**/*', r => {
     const u = new URL(r.request().url());
+    if (u.hostname === HOST && u.pathname.endsWith('/app-errors')) { appErrors.push(r.request().postData()); return J(r, {}); }
     if (u.hostname === HOST) {
       const m = u.pathname.match(/\/v0\/[^/]+\/([^/]+)(?:\/([^/]+))?$/);
       if (!m) return J(r, {});
@@ -172,8 +203,9 @@ async function render(browser, html, qs, opts) {
     if (u.hostname === 'localhost' || u.hostname === '127.0.0.1') return r.continue();
     return r.abort();   // fonts, QR images: not part of the text
   });
-  const errors = [];
+  const errors = [], consoleErrors = [];
   page.on('pageerror', e => errors.push(String(e)));
+  page.on('console', m => { if (m.type() === 'error') consoleErrors.push(m.text()); });
   await page.goto(BASE + 'print.html?' + qs + '&noprint=1');
   await page.waitForFunction(() => document.getElementById('doc').style.display === 'block', null, { timeout: 15000 });
   const out = await page.evaluate(() => {
@@ -193,8 +225,18 @@ async function render(browser, html, qs, opts) {
       tls: [...cov.querySelectorAll('.tl')].map(tl => [...tl.querySelectorAll('.stop')].map(st => st.querySelector('.num').innerText + ' ' + st.querySelector('.name').innerText
         + ' · ' + (st.querySelector('.stoptag') ? st.querySelector('.stoptag').innerText.split('\n')[0] : ''))),
       seq: ([...cov.querySelectorAll('.meta-item')].find(e => /ΣΕΙΡΑ ΠΑΡΑΔΟΣΗΣ|Delivery Sequence/i.test(e.innerText)) || { innerText: '' }).innerText.split('\n').pop(),
+      // (7a) the date on each cover card
+      dts: [...cov.querySelectorAll('.tl')].map(tl => [...tl.querySelectorAll('.stop')].map(st => st.querySelector('.big').innerText)),
     };
-    return { text: doc.innerText, full, keep, docs, chips, cardTemps, cover, wa: (typeof _waArr !== 'undefined' ? _waArr : []).slice() };
+    // (7a/7b) every document's cards (name, date, address+coordinates) and its route strip
+    const sheets = [...doc.querySelectorAll('.p-doc')].map(d => ({
+      stops: [...d.querySelectorAll('.stop')].map(st => ({ name: st.querySelector('.name').innerText, dt: (st.querySelector('.big') || {}).innerText || '',
+        addr: (st.querySelector('.addr') || {}).innerText || '' })),
+      strip: [...d.querySelectorAll('.route2 .side')].map(x => x.querySelector('.n').innerText + ' | ' + x.querySelector('.d').innerText),
+    }));
+    const n = document.getElementById('waGroupFailed');
+    return { text: doc.innerText, full, keep, docs, chips, cardTemps, cover, sheets, note: n ? n.innerText : '',
+      wa: (typeof _waArr !== 'undefined' ? _waArr : []).slice() };
   });
   if (opts && opts.channels) {
     // (5) the three ways the text leaves the page: the 📋 WhatsApp button (copyWA),
@@ -207,8 +249,12 @@ async function render(browser, html, qs, opts) {
     out.copied = await page.evaluate(() => window.__copied.slice());
     out.worker = await page.evaluate(() => (window._waArr || []).join('\n\n\u2014\u2014\u2014\u2014\u2014\u2014\u2014\u2014\n\n'));
   }
+  if (opts && opts.printMedia) {   // (7c) the note speaks about the phone text: not on the paper
+    await page.emulateMedia({ media: 'print' });
+    out.notePrinted = await page.evaluate(() => { const n = document.getElementById('waGroupFailed'); return !!n && getComputedStyle(n).display !== 'none'; });
+  }
   await ctx.close();
-  return Object.assign(out, { errors });
+  return Object.assign(out, { errors, consoleErrors, appErrors });
 }
 
 // The reference text with exactly the three additions: a coordinates line above
@@ -344,15 +390,25 @@ const groupStops = m => { const ls = m.split('\n'); return ls.map((l, i) => {
 const NUM = ['1️⃣', '2️⃣', '3️⃣', '4️⃣', '5️⃣', '6️⃣', '7️⃣'];
 // A cargo block «*ΦΟΡΤΙΟ #461*» … up to the blank line.
 const cargoBlock = (m, no) => (m.split('\n\n').find(b => /^\*(ΦΟΡΤΙΟ|CARGO) #/.test(b) && b.split('\n')[0].endsWith('#' + no + '*')) || '');
+// (7a) the Veroia stop of a text: the block that holds its maps link.
+const VS_LINK = '📍 https://maps.google.com/?q=40.6312,-0.5';
+const vsBlock = m => m.split('\n\n').find(b => b.split('\n').includes(VS_LINK)) || '';
+const vsDate = m => { const h = vsBlock(m).split('\n').find(l => / \*(ΦΟΡΤΩΣΗ|ΠΑΡΑΔΟΣΗ|LOADING|DELIVERY)\* · /.test(l)) || ''; return h.replace(/^\S+ \*[^*]+\* · /, '').replace(/ · #\S+$/, ''); };
+// The reference text with the Veroia stop dated d (the deliberate (7a) correction).
+const vsFix = (m, d) => d ? m.split('\n\n').map(b => b.split('\n').includes(VS_LINK) ? b.replace(/^(\S+ \*[^*]+\* · )[^\n]*/m, '$1' + d) : b).join('\n\n') : m;
+// The Veroia card of a document: the card whose address carries its coordinates.
+const vsCard = sh => ((sh && sh.stops) || []).find(x => x.addr.includes('40.6312')) || {};
+// (7d) the stop numbers of a text, in order
+const stopNums = m => m.split('\n').map(l => (l.match(/^(\S+) \*(ΦΟΡΤΩΣΗ|ΠΑΡΑΔΟΣΗ|LOADING|DELIVERY)\* · /) || [])[1]).filter(Boolean);
 
 (async () => {
   const browser = await chromium.launch();
   const html = src(REV), baseHtml = src(BASE_REV), singleHtml = src(SINGLE_REV);
   console.log('print.html under test: ' + REV + ' · reference: ' + BASE_REV + ' · singles: ' + SINGLE_REV + ' · ' + BASE);
   // (6) a single order: text and paper byte-for-byte as at SINGLE_REV.
-  const sameAsSingle = async (r, qs, h) => {
+  const sameAsSingle = async (r, qs, h, fix) => {
     const s0 = await render(browser, h || singleHtml, qs);
-    const same = JSON.stringify(r.wa) === JSON.stringify(s0.wa) && r.full === s0.full && r.wa.length === 1;
+    const same = JSON.stringify(r.wa) === JSON.stringify(s0.wa.map(fix || (m => m))) && r.full === s0.full && r.wa.length === 1;
     ok(same, '(6) single order: WhatsApp text and paper byte-for-byte as ' + SINGLE_REV + (same ? '' : ' — got ' + JSON.stringify(r.wa).slice(0, 300)));
   };
   if (process.env.DUMP) {   // print the texts of a query, for a person to read (no checks)
@@ -360,7 +416,7 @@ const cargoBlock = (m, no) => (m.split('\n\n').find(b => /^\*(ΦΟΡΤΙΟ|CARGO
     console.log(d.wa.join('\n=====\n')); console.log(JSON.stringify(d.cover, null, 1)); console.log(d.errors);
     await browser.close(); return;
   }
-  for (const [name, qs, sheet, coords, noCoordsName] of SHEETS) {
+  for (const [name, qs, sheet, coords, noCoordsName, cd] of SHEETS) {
     console.log('— ' + name);
     const a = await render(browser, html, qs), a0 = await render(browser, baseHtml, qs);
     ok(!a.errors.length && !a0.errors.length, 'no page error' + (a.errors.length ? ': ' + a.errors[0] : ''));
@@ -392,7 +448,7 @@ const cargoBlock = (m, no) => (m.split('\n\n').find(b => /^\*(ΦΟΡΤΙΟ|CARGO
       ok(!m.includes(FOOT[sheet === 'driver' ? 'partner' : 'driver']), '(2) no closing line of the other language');
     }
     // (3) nothing else moved
-    const want = a0.wa.map(m => expectFromBase(m, FOOT[sheet], KEEP[sheet]));
+    const want = a0.wa.map(m => vsFix(expectFromBase(m, FOOT[sheet], KEEP[sheet]), cd));
     const same = JSON.stringify(a.wa) === JSON.stringify(want);
     ok(same, '(3) text = reference + exactly the three additions' + (same ? '' : ' — got ' + JSON.stringify(a.wa[0]).slice(0, 400)));
     ok(a.text === a0.text && /Συντ\/νες: |Coords: /.test(a.text), '(3) the paper (without the (4b) line) is identical to ' + BASE_REV + ' and already prints the coordinates');
@@ -404,7 +460,9 @@ const cargoBlock = (m, no) => (m.split('\n\n').find(b => /^\*(ΦΟΡΤΙΟ|CARGO
       ok(!m.includes(KEEP[sheet === 'driver' ? 'partner' : 'driver']), '(4b) no CMR line of the other language');
     }
     ok(a.docs >= 1 && a.keep.length === a.docs && a.keep.every(t => t === KEEP[sheet]), '(4b) the paper carries the CMR line once per document (' + a.keep.length + '/' + a.docs + ') — ' + JSON.stringify(a.keep));
-    await sameAsSingle(a, qs);
+    if (cd) ok(vsDate(a.wa[0]) === cd && vsCard(a.sheets[0]).dt === cd,
+      '(7a) the Veroia stop: the order\'s Cross-dock Date in the text and on its sheet\'s card — ' + JSON.stringify([vsDate(a.wa[0]), vsCard(a.sheets[0]).dt, 'reference: ' + vsDate(a0.wa[0])]));
+    await sameAsSingle(a, qs, null, m => vsFix(m, cd));
   }
   // (4a) «κατά CMR» — no reference comparison (the reference has no such order).
   const CMR_SHEETS = [
@@ -521,6 +579,80 @@ const cargoBlock = (m, no) => (m.split('\n\n').find(b => /^\*(ΦΟΡΤΙΟ|CARGO
   ok(!pg.errors.length && pg.wa.length === 1, 'no page error, one text');
   ok(pgl.filter(l => /^☎️ /.test(l)).length === 1 && /^☎️ /.test(pgl[pgl.length - 3]) && pgl[pgl.length - 1] === FOOT.driver
     && pgl.filter(l => /^ℹ️/.test(l)).length === 1, '(5) ONE ☎️ line and ONE closing line for the whole group — ' + JSON.stringify(pgl.slice(-5)));
+
+  // (7a) The Veroia date: Cross-dock Date first, the estimate only without it.
+  console.log('— driver · group import 461 + V2 (Veroia, Cross-dock Date 09/10, Delivery 11/10)');
+  const va = await render(browser, html, 'orderIds=rec461,recOrdV2&leg=import&sheet=driver');
+  const vast = groupStops(va.wa[0] || ''), vaV = vast.find(x => x.name === 'Cross-dock V') || {};
+  ok(!va.errors.length && va.wa.length === 1, 'no page error, one text');
+  ok(vaV.dt === '09/10/2026' && vaV.tag === '#470', '(7a) text: the Veroia drop on the Cross-dock Date 09/10, not the estimate 10/10 — ' + JSON.stringify(vaV));
+  ok(JSON.stringify(tags(vast, false)) === '["#470","#461","#461"]', '(7a) the real date also places it: 09/10 before 461\'s 12/10 drops — ' + JSON.stringify(tags(vast, false)));
+  const vaCov = (va.cover || { tls: [[], []], dts: [[], []] }), vaK = vaCov.tls[1].findIndex(x => /Cross-dock V/.test(x));
+  ok(vaK >= 0 && vaCov.dts[1][vaK] === '09/10/2026', '(7a) cover: the same card, the same date — ' + JSON.stringify(vaCov.dts[1]));
+  ok(vsCard(va.sheets[2]).dt === '09/10/2026', '(7a) the order\'s own sheet in the same packet says the same date — ' + JSON.stringify(vsCard(va.sheets[2])));
+  console.log('— driver · single V2 (import, Cross-dock Date ≠ estimate)');
+  const v2 = await render(browser, html, 'orderId=recOrdV2&leg=import&sheet=driver'), v20 = await render(browser, singleHtml, 'orderId=recOrdV2&leg=import&sheet=driver');
+  ok(vsDate(v2.wa[0] || '') === '09/10/2026' && vsCard(v2.sheets[0]).dt === '09/10/2026' && vsDate(v20.wa[0] || '') === '10/10/2026',
+    '(7a) single text: 09/10 like its sheet (the reference text said the estimate 10/10) — ' + JSON.stringify([vsDate(v2.wa[0] || ''), vsCard(v2.sheets[0]).dt, vsDate(v20.wa[0] || '')]));
+  ok(JSON.stringify(v2.wa) === JSON.stringify(v20.wa.map(m => vsFix(m, '09/10/2026'))) && v2.full === v20.full,
+    '(7a) nothing else moved: text = reference with that date, paper identical');
+  for (const [lg, want] of [['export', '09/10/2026 07:00'], ['import', '10/10/2026 09:00']]) {
+    console.log('— driver · single V3 ' + lg + ' (no Cross-dock Date, local-time order dates), Athens vs New York');
+    const outs = [];
+    for (const tz of ['Europe/Athens', 'America/New_York']) outs.push(await render(browser, html, 'orderId=recOrdV3&leg=' + lg + '&sheet=driver', { tz }));
+    const got = outs.map(o => [vsDate(o.wa[0] || ''), vsCard(o.sheets[0]).dt, (o.sheets[0].strip[lg === 'export' ? 0 : 1] || '').split(' | ')[1]]);
+    ok(outs.every(o => !o.errors.length) && got.every(g => g.every(x => x === want)),
+      '(7a) the estimate ' + (lg === 'export' ? 'Loading +1' : 'Delivery −1') + ' «' + want + '» in the text, on the card and in the header strip, in both zones — ' + JSON.stringify(got));
+  }
+
+  // (7b) A split leg: the flat-column places, never «—».
+  console.log('— driver · group A + split leg OF (no stops, no summaries)');
+  const sl = await render(browser, html, 'orderIds=recOrdA,recOF&leg=export&sheet=driver');
+  const slm = sl.wa[0] || '', slst = groupStops(slm);
+  const ofSt = slst.filter(x => x.tag === '#600').map(x => (x.load ? 'L ' : 'U ') + x.name);
+  ok(!sl.errors.length && sl.wa.length === 1, 'no page error, one text');
+  ok(JSON.stringify(ofSt) === '["L Packer V","U Client B2"]' && !slst.some(x => x.name === '—'), '(7b) text: the split leg\'s loading and delivery by name — ' + JSON.stringify(ofSt));
+  for (const c of [CO(L('recLocVo')), CO(L('recLocB2'))])
+    ok(slm.split('\n').includes('📍 *' + c + '*'), '(7b) …with their coordinates «' + c + '»');
+  ok(JSON.stringify(coverNames(sl.cover)) === JSON.stringify([names(slst, true), names(slst, false)]) && !JSON.stringify(coverNames(sl.cover)).includes('"—"'),
+    '(7b) cover = text, no «—» card — ' + JSON.stringify(coverNames(sl.cover)));
+  ok(JSON.stringify(sl.sheets[2].stops.map(x => x.name)) === '["Packer V","Client B2"]', '(7b) the same places its own sheet prints — ' + JSON.stringify(sl.sheets[2].stops.map(x => x.name)));
+  const ofs = await render(browser, html, 'orderId=recOF&leg=export&sheet=driver');
+  const ofn = (ofs.wa[0] || '').split('\n').map((l, i, ls) => /^\S+ \*(ΦΟΡΤΩΣΗ|ΠΑΡΑΔΟΣΗ)\* · /.test(l) ? ls[i + 1] : null).filter(Boolean);
+  ok(!ofs.errors.length && JSON.stringify(ofn) === '["Packer V","Client B2"]', '(7b) single text of the split leg too — ' + JSON.stringify(ofn));
+
+  // (7c) The group text fails: the per-order texts go out, the page says so.
+  console.log('— driver · group IAB4166 with waGroupBuild forced to throw');
+  const broken = html.replace('function waGroupBuild(items){', "function waGroupBuild(items){throw new Error('rig: waGroupBuild forced to fail');");
+  ok(broken !== html, '(7c) the rig could inject the failure');
+  const fb = await render(browser, broken, 'orderIds=rec461,rec463&leg=import&sheet=driver', { channels: true, printMedia: true });
+  const s461 = await render(browser, html, 'orderId=rec461&leg=import&sheet=driver'), s463 = await render(browser, html, 'orderId=rec463&leg=import&sheet=driver');
+  ok(!fb.errors.length && fb.docs === 3, 'no page error, the packet still prints (' + fb.docs + ' documents)');
+  ok(fb.wa.length === 2 && fb.wa[0] === s461.wa[0] && fb.wa[1] === s463.wa[0], '(7c) _waArr = each order\'s own text, never empty — ' + JSON.stringify(fb.wa.map(m => m.length)));
+  const joined = fb.wa.join('\n\n————————\n\n');
+  ok(fb.copied && fb.copied.length === 2 && fb.copied.every(t => t === joined) && fb.worker === joined && joined.length > 0, '(7c) 📋, share menu and the Worker carry those texts');
+  ok(/ΔΕΝ ΦΤΙΑΧΤΗΚΕ/.test(fb.note) && /ένα κείμενο ανά παραγγελία/.test(fb.note), '(7c) a visible note on the page — ' + JSON.stringify(fb.note));
+  ok(fb.notePrinted === false, '(7c) the note is not printed on the paper');
+  ok(fb.consoleErrors.some(t => /waGroupBuild/.test(t)), '(7c) the error is logged — ' + JSON.stringify(fb.consoleErrors.slice(0, 2)));
+  ok(fb.appErrors.length === 0, '(7c) a local rig writes nothing to the production /app-errors (' + fb.appErrors.length + ')');
+  const okg = await render(browser, html, 'orderIds=rec461,rec463&leg=import&sheet=driver');
+  ok(okg.note === '' && okg.wa.length === 1, '(7c) no note when the group text is built');
+
+  // (7d) Past seven stops.
+  const KEYS = ['1️⃣', '2️⃣', '3️⃣', '4️⃣', '5️⃣', '6️⃣', '7️⃣', '8️⃣', '9️⃣', '🔟'];
+  console.log('— driver · group M (1 + 11 drops) + A, export');
+  const mg = await render(browser, html, 'orderIds=recM,recOrdA&leg=export&sheet=driver');
+  const mgst = groupStops(mg.wa[0] || '');
+  ok(!mg.errors.length && mg.wa.length === 1, 'no page error, one text');
+  ok(JSON.stringify(emos(mgst, false)) === JSON.stringify(KEYS.concat(['#11', '#12'])) && !/▪️/.test(mg.wa[0] || ''),
+    '(7d) drops 1️⃣ … 🔟, then «#11», «#12» — no «▪️» — ' + JSON.stringify(emos(mgst, false)));
+  ok(JSON.stringify(coverNums(mg.cover)[1]) === JSON.stringify(Array.from({ length: 12 }, (_, i) => String(i + 1))), '(7d) the cover numbers the same drops 1–12');
+  console.log('— driver · single M (12 stops)');
+  const ms = await render(browser, html, 'orderId=recM&leg=export&sheet=driver'), ms0 = await render(browser, singleHtml, 'orderId=recM&leg=export&sheet=driver');
+  const strip = m => m.replace(/^\S+ (\*(ΦΟΡΤΩΣΗ|ΠΑΡΑΔΟΣΗ)\* · )/gm, 'N $1');
+  ok(JSON.stringify(stopNums(ms.wa[0] || '')) === JSON.stringify(KEYS.concat(['#11', '#12'])), '(7d) single text 1️⃣ … 🔟, #11, #12 — ' + JSON.stringify(stopNums(ms.wa[0] || '')));
+  ok(stopNums(ms0.wa[0] || '').slice(7).every(x => x === '▪️') && strip(ms.wa[0] || '') === strip(ms0.wa[0] || '') && ms.full === ms0.full,
+    '(7d) only the numbers changed (the reference gave stops 8–12 «▪️»); paper identical');
   await browser.close();
   console.log('\n' + pass + ' ✓ · ' + fail + ' ✗');
   process.exit(fail ? 1 : 0);

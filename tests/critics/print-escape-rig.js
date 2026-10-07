@@ -5,8 +5,8 @@
 //   (b) markup typed into Notes / Goods / Reference / a location name / any
 //       other field prints as that same text and creates no element;
 //   (c) the WhatsApp text stays plain text (identical to PRINT_BASE_REV apart
-//       from the two 7/10 lines, see waBefore0710, and carries the typed
-//       markup as typed).
+//       from the two 7/10 lines, see waBefore0710, and the Veroia date, see
+//       vsDateAside, and carries the typed markup as typed).
 // Sheets: driver, partner, group cover (+2), Veroia Switch, flat locations
 // with a split-leg title.
 // Group route (owner 7/10, feat/group-route-message): the group's cover now
@@ -109,6 +109,17 @@ const waBefore0710 = s => s.replace(/\n📍 \*[^\n]*\*(?=\n📍 https:)/g, '').r
 // hold no «κατά CMR» order, so nothing else of that change can appear here.
 const waBeforeCmr = s => s.replace(/\n🌡 (Τήρησε τη θερμοκρασία που γράφει το CMR|Keep the temperature stated on the CMR)\.(?=\n)/g, '');
 
+// Review 7/10 finding 3 (feat/group-route-message, coordinator decision): the
+// Veroia stop of a WhatsApp text is dated like its sheet's Veroia card — the
+// order's Cross-dock Date, the estimate (export Loading +1 day) only when that
+// is empty, the day shifted on the written date (vsCdDate). BASE_REV printed
+// the estimate even next to a real date, through toISOString() (08:30 local →
+// «06/10/2026 05:30» in Athens). That one date is set aside for (c) and
+// asserted on its own; wa-text-rig.js checks the rule in full.
+const VS_HEAD = /^(\S+ \*(ΦΟΡΤΩΣΗ|LOADING)\* · )[^\n]*(?=\n)/;
+const vsHead = (s, name) => { const b = s.split('\n\n').find(x => x.split('\n')[1] === name); return b ? b.split('\n')[0] : ''; };
+const vsDateAside = (s, name) => s.split('\n\n').map(b => b.split('\n')[1] === name ? b.replace(VS_HEAD, '$1<cross-dock date>') : b).join('\n\n');
+
 let pass = 0, fail = 0;
 const ok = (c, m) => { if (c) { pass++; console.log('  ✓ ' + m); } else { fail++; console.log('  ✗ ' + m); } };
 const J = (r, body) => r.fulfill({ status: 200, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: JSON.stringify(body) });
@@ -174,7 +185,11 @@ async function render(browser, html, fx, qs) {
     // The group cover holds the same cards in another order: the same links and QR sources, sorted.
     const u = grp ? a.urls.slice().sort() : a.urls, u0 = grp ? a0.urls.slice().sort() : a0.urls;
     ok(u.length > 0 && JSON.stringify(u) === JSON.stringify(u0), '(a) links and QR sources identical (' + u.length + ')');
-    if (!grp) ok(a.wa === a0.wa && a.wa.length > 0, '(c) WhatsApp text identical to ' + BASE_REV);
+    if (name === 'veroia') {
+      ok(vsDateAside(a.wa, ORDINARY.vsname) === vsDateAside(a0.wa, ORDINARY.vsname) && a.wa.length > 0, '(c) WhatsApp text identical to ' + BASE_REV + ' apart from the Veroia date');
+      ok(/ · 06\/10\/2026$/.test(vsHead(a.wa, ORDINARY.vsname)) && a.text.includes('06/10/2026'),
+        '(c) the Veroia stop is dated by the order\'s Cross-dock Date, as on its sheet — ' + JSON.stringify([vsHead(a.wa, ORDINARY.vsname), vsHead(a0.wa, ORDINARY.vsname)]));
+    } else if (!grp) ok(a.wa === a0.wa && a.wa.length > 0, '(c) WhatsApp text identical to ' + BASE_REV);
     else {
       ok(a.waN === 1 && a0.waN === 2, '(c) the group is ONE WhatsApp text (it was one per order)');
       for (const v of [ORDINARY.notes, ORDINARY.ref, ORDINARY.l1name, ORDINARY.l2name, ORDINARY.l3name, ORDINARY.goods])
@@ -200,7 +215,12 @@ async function render(browser, html, fx, qs) {
     const shown = Object.keys(MARKUP).filter(k => MARKUP[k] !== ORDINARY[k] && b0.text.indexOf(MARKUP[k]) < 0 && b.text.includes(MARKUP[k]));
     const lost = Object.keys(MARKUP).filter(k => MARKUP[k] !== ORDINARY[k] && /^<b /.test(MARKUP[k]) && b0.mk.some(x => x.endsWith(':' + k)) && !b.text.includes(MARKUP[k]));
     ok(lost.length === 0, '(b) every field that rendered as markup now prints as typed (' + shown.length + ' fields)' + (lost.length ? ' — not as text: ' + lost.join(', ') : ''));
-    if (!grp) ok(b.wa === b0.wa && b.wa.includes(MARKUP.notes), '(c) WhatsApp text plain and unchanged (markup kept as typed)');
+    // Veroia + markup: BASE_REV's estimate parsed the markup «Loading DateTime»,
+    // threw, and printed both stops as «—». The real Cross-dock Date needs no
+    // parsing, so the stops (and their typed markup) now reach the text.
+    if (name === 'veroia') ok(b.wa.includes(MARKUP.notes) && b.wa.includes(MARKUP.vsname) && /^(\S+) \*ΦΟΡΤΩΣΗ\* · 06\/10\/2026$/.test(vsHead(b.wa, MARKUP.vsname)) && !/&lt;|&amp;|&quot;/.test(b.wa),
+      '(c) WhatsApp text plain (markup kept as typed), the Veroia stop named and dated by the Cross-dock Date — ' + JSON.stringify(vsHead(b.wa, MARKUP.vsname)));
+    else if (!grp) ok(b.wa === b0.wa && b.wa.includes(MARKUP.notes), '(c) WhatsApp text plain and unchanged (markup kept as typed)');
     else ok(b.waN === 1 && [MARKUP.notes, MARKUP.ref, MARKUP.l1name, MARKUP.goods].every(v => b.wa.includes(v)) && !/&lt;|&amp;|&quot;/.test(b.wa),
       '(c) the group text is plain text: typed markup as typed, nothing escaped');
   }
