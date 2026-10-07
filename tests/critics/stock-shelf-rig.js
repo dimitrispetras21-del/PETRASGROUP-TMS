@@ -1148,7 +1148,7 @@ if (MAIN) (async () => {
     await page.evaluate(() => _wiPanelClose());
     ok('relay_loose_piece_badge', rlyLines.recRIGP8000000008 === true && Object.entries(rlyLines).filter(([k, v]) => v).length === 1, rlyLines);
     // Review P3 #3 (relay release): the LOT panel reads its pieces' relays itself. P7 (lot #325, on a
-    // truck) moves a month out — outside the board's ±8-day import window, and not loose — so neither
+    // truck) moves 18 days out — outside the board's ±8-day import window, and not loose — so neither
     // the board's relays nor the loose list's read know it: without the panel's own read it looked
     // relay-less. _stkRelays is emptied first so the badge can only come from the lot panel's read.
     F.lm.push(relay('recRIGLM0000000P7', 'recRIGP7000000007', D3));
@@ -1157,12 +1157,14 @@ if (MAIN) (async () => {
     p7f['Loading DateTime'] = plus(p7dates[0], 18); p7f['Delivery DateTime'] = plus(p7dates[1], 18);
     F.weekWindow = true;
     await page.evaluate(async () => { invalidateCache(TABLES.ORDERS); await renderWeeklyIntl(); }); await page.waitForTimeout(1200);
-    const lotRly = async () => {
-      await page.evaluate(() => { WINTL._stkRelays = {}; _wiStockLotOpen(document.body, 'recRIGSTOCKLOTD1'); });
+    // keep = an earlier read's _stkRelays stays: the first paint may show its badge, so only
+    // the note (the read's own outcome) ends the wait.
+    const lotRly = async keep => {
+      await page.evaluate(k => { if (!k) WINTL._stkRelays = {}; _wiStockLotOpen(document.body, 'recRIGSTOCKLOTD1'); }, !!keep);
       // a failed read goes through core/api.js's retries (1 s + 2 s): wait for an outcome, not a fixed time
-      await page.waitForFunction(() => { const n = document.getElementById('wi-stk-lot-rly');
+      await page.waitForFunction(k => { const n = document.getElementById('wi-stk-lot-rly');
         const el = [...document.querySelectorAll('#wi-panel .wi-stk-piece')].find(x => (x.getAttribute('onclick') || '').includes('recRIGP7000000007'));
-        return (n && !n.hidden) || !!(el && el.querySelector('.wi-rly-b')); }, null, { timeout: 8000 }).catch(() => {});
+        return (n && !n.hidden) || (!k && !!(el && el.querySelector('.wi-rly-b'))); }, !!keep, { timeout: 8000 }).catch(() => {});
       await page.waitForTimeout(200);
       return page.evaluate(() => {
         const el = [...document.querySelectorAll('#wi-panel .wi-stk-piece')].find(x => (x.getAttribute('onclick') || '').includes('recRIGP7000000007'));
@@ -1177,6 +1179,14 @@ if (MAIN) (async () => {
     ok('relay_lot_piece_other_week_badge', lotOk.offBoard && /^\S/.test(lotOk.line || '') && !/χωρίς φορτηγό/.test(lotOk.line || '') && lotOk.badge && lotOk.note === null, lotOk);
     // relays that did not load are said in the same confirm — never read as «no relay»
     F.failLm = true;
+    // Review P3 (6/10): a failed read also DROPS what the read above left for P7 — kept, its
+    // «⇄ τοπ.» sat next to the «not loaded» note. _stkRelays is NOT emptied first here.
+    const staleBefore = await page.evaluate(() => !!(WINTL._stkRelays || {}).recRIGP7000000007);
+    const lotStale = await lotRly(true);
+    const staleAfter = await page.evaluate(() => !!(WINTL._stkRelays || {}).recRIGP7000000007);
+    await page.evaluate(() => _wiPanelClose());
+    ok('relay_lot_read_failed_drops_stale', staleBefore && !staleAfter && !!lotStale.line && !lotStale.badge && /Οι τοπικές παραδόσεις των κομματιών δεν φορτώθηκαν/.test(lotStale.note || ''),
+      Object.assign({ staleBefore, staleAfter }, lotStale));
     // …and in the lot panel: a failed relay read is a visible note, not a missing badge.
     const lotFail = await lotRly();
     await shot(page, 'stock-lot-relay-not-loaded-1440.png'); out.screens.push('stock-lot-relay-not-loaded-1440.png');

@@ -2227,9 +2227,13 @@ async function submitIntlOrder(recId) {
 
     // Validate: no unmatched location text (text input filled but hidden recId
     // empty) — marked inside the form, never in a dialog over it (see helper).
+    // Not «nothing was saved»: this same press may already have saved the
+    // owner's «Χρέωση αποθήκης» (_oiChargeSave above), or an earlier press
+    // unmarked the lot — only the ORDER is not saved here.
     const unmatchedLocs = _oiMarkUnmatchedLocs();
     if (unmatchedLocs.length) {
-      showErrorToast('Τοποθεσία που δεν επιλέχθηκε από τη λίστα: ' + unmatchedLocs.join(', ') + ' — διάλεξε από τη λίστα. Δεν αποθηκεύτηκε τίποτα.', 'warn', 9000);
+      showErrorToast('Τοποθεσία που δεν επιλέχθηκε από τη λίστα: ' + unmatchedLocs.join(', ') + ' — διάλεξε από τη λίστα. '
+        + (_unmarked ? _OI_UNMARKED_NOT_SAVED : 'Η παραγγελία δεν αποθηκεύτηκε.'), 'warn', 9000);
       if (btn) { btn.textContent = 'Αποθήκευση'; btn.disabled = false; }
       throw new Error('validation');
     }
