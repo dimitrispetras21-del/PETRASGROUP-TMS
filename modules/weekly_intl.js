@@ -1288,8 +1288,7 @@ function _wiAllRowsHTML(){
       if(row.hasSplitLegs){ html+=_wiSplitFrameHTML(row); idx++; }
       else{
         html+=_wiRowHTML(row,idx++);
-        const pids=[...(row.orderIds||[])]; if(row.importId) pids.push(row.importId);
-        pids.forEach(pid=>{ (WINTL._legs?.[pid]||[]).forEach(lr=>{ html+=_wiLegRowHTML(lr); }); });
+        _wiLegPidsOfRow(row).forEach(pid=>{ (WINTL._legs?.[pid]||[]).forEach(lr=>{ html+=_wiLegRowHTML(lr); }); });
       }
       // Local relays (060) after the route legs: every order the row carries
       // (group members, the matched import, a split's legs) can have its own.
@@ -1302,7 +1301,7 @@ function _wiAllRowsHTML(){
       if(row.hasSplitLegs){ html+=_wiSplitFrameHTML(row); }
       else{
         html+=_wiImpRowHTML(row,impIdx);
-        (WINTL._legs?.[row.orderId]||[]).forEach(lr=>{ html+=_wiLegRowHTML(lr); });
+        _wiLegPidsOfRow(row).forEach(pid=>{ (WINTL._legs?.[pid]||[]).forEach(lr=>{ html+=_wiLegRowHTML(lr); }); });
       }
       html+=_wiRelayRowsHTML(_wiRelayIdsOfRow(row));
     });
@@ -1332,8 +1331,7 @@ function _wiAllRowsHTML(){
       if(row.hasSplitLegs){ html+=_wiSplitFrameHTML(row); idx++; }
       else{
         html+=_wiRowHTML(row,idx++);
-        const pids=[...(row.orderIds||[])]; if(row.importId) pids.push(row.importId);
-        pids.forEach(pid=>{ (WINTL._legs?.[pid]||[]).forEach(lr=>{ html+=_wiLegRowHTML(lr); }); });
+        _wiLegPidsOfRow(row).forEach(pid=>{ (WINTL._legs?.[pid]||[]).forEach(lr=>{ html+=_wiLegRowHTML(lr); }); });
       }
       // Local relays (060) after the route legs: every order the row carries
       // (group members, the matched import, a split's legs) can have its own.
@@ -1344,7 +1342,7 @@ function _wiAllRowsHTML(){
       if(row.hasSplitLegs){ html+=_wiSplitFrameHTML(row); }
       else{
         html+=_wiImpRowHTML(row,impIdx);
-        (WINTL._legs?.[row.orderId]||[]).forEach(lr=>{ html+=_wiLegRowHTML(lr); });
+        _wiLegPidsOfRow(row).forEach(pid=>{ (WINTL._legs?.[pid]||[]).forEach(lr=>{ html+=_wiLegRowHTML(lr); }); });
       }
       html+=_wiRelayRowsHTML(_wiRelayIdsOfRow(row));
     });
@@ -5119,6 +5117,19 @@ function _wiRelayOrder(oid){
 }
 // A matched import may be a GI group whose members all travel with the export;
 // the export may point at ANY member (see _wiBuildRows A1).
+// Every order whose rota legs (Rotation ID) render under this row: the row's
+// own orders AND every member of its matched import group. Live 7/10: rota
+// #467 hung off #449, a NON-first member of import group GI-MUV7FNKE matched
+// to export #438 — the board looked only at the export and the ONE matched
+// import id, so the leg was hidden from its own day (legOf) and drawn under
+// no row at all: the dispatcher saw «accepted» and then nothing.
+function _wiLegPidsOfRow(row){
+  const ids=[];
+  const add=id=>{ if(id&&!ids.includes(id)) ids.push(id); };
+  (row.orderIds||[]).forEach(add); add(row.orderId);
+  if(row.importId) _wiImpIdsOf(row.importId).forEach(add);
+  return ids;
+}
 function _wiImpIdsOf(importId){
   const r=WINTL.rows.find(x=>x.type==='import'&&(x.orderIds||[]).includes(importId));
   return r&&r.orderIds&&r.orderIds.length?r.orderIds:[importId];
