@@ -11,7 +11,10 @@
 //    same SQL.
 // 4. B-77's relation = the walks' relation: the audit allow-list has no split_part, so B-77 compares base Group
 //    IDs with a back-reference regex. Proved equal to split_part(…,'|',1) on a grid of real-shaped ids.
-// 5. B-77 on a fixture: the 7/10 incident before the repair = 1 (both orders named), after it = 0.
+// 5. B-77 on a fixture: the 7/10 incident before the repair = 1 (both orders named), after it = 0 - with a
+//    closed+closed related pair in the data (production's #268 / #302 on 7/10), which must never count.
+// 6. B-77 counts each related pair ONCE and only while one of its two trips is open (coordinator 7/10): proved
+//    on every combination of round-trip statuses, both order-id orientations, against an independent count.
 import { test } from 'node:test';
 import assert from 'node:assert';
 import fs from 'node:fs';
@@ -125,9 +128,9 @@ test('066 fingerprints = the repo texts of 033/037 and the ONE substitution, in 
   for (const f of ['066_rt_group_base_join.sql', '066_rt_group_base_join_dryrun.sql', '066_rt_group_base_join_rollback.sql', '066_rt_group_base_join_test.sql']) {
     assert.doesNotMatch(read(f).replace(/--[^\n]*/g, ''), /ALTER\s+(FUNCTION|ROLE|SYSTEM)|SET\s+SESSION\s+AUTHORIZATION/i, `${f}: superuser-only statement`);
   }
-  // the rules test: twelve scenarios, each reported once, and the header promises twelve
-  for (let i = 1; i <= 12; i++) assert.equal(rt.split(`'S${i} `).length - 1, 1, `S${i} labelled once`);
-  assert.ok(rt.includes('"Result: 12 OK, 0 FAIL"'));
+  // the rules test: thirteen scenarios, each reported once, and the header promises thirteen
+  for (let i = 1; i <= 13; i++) assert.equal(rt.split(`'S${i} `).length - 1, 1, `S${i} labelled once`);
+  assert.ok(rt.includes('"Result: 13 OK, 0 FAIL"'));
 });
 
 // ---- 066's B-77 row = the catalog file -----------------------------------------------------------------------
@@ -196,7 +199,7 @@ test('B-77 relates group ids exactly as the walks do: regex back-reference = spl
   } finally { await db.close(); }
 });
 
-test('B-77 on a fixture: the 7/10 split = 1 naming both orders; after the repair 0; deleted orders and cancelled trips never count', async () => {
+test('B-77 on a fixture: the 7/10 split = 1 naming both orders; after the repair 0; deleted orders, cancelled trips and closed+closed pairs never count', async () => {
   const db = await freshDb();
   try {
     await onlyChecks(db, ['B-77']);
@@ -228,6 +231,10 @@ test('B-77 on a fixture: the 7/10 split = 1 naming both orders; after the repair
     // noise that must never count: a deleted group member on another trip; a group member whose trip is cancelled
     const rtD = await trip('RT-D'); await leg(rtD, await order('recGA3', { g: 'GI-AAAA|recGA1', del: true }));
     const rtX = await trip('RT-X', 'cancelled'); await leg(rtX, await order('recGA4', { g: 'GI-AAAA' }));
+    // production 7/10, the reason for the open-trip rule: #268 -> #302 by a stale IMPORT->IMPORT matched_import_id
+    // (August), two trucks, two round trips, BOTH closed - settled history, not a split. The first B-77 text gave 1.
+    const rt1018 = await trip('RT-1018', 'closed'); await leg(rt1018, await order('rec81z9D1O8v3hBZw', { m: 'recAxY72UFdKbz9D0' }));
+    const rt1134 = await trip('RT-1134', 'closed'); await leg(rt1134, await order('recAxY72UFdKbz9D0'));
     // the 7/10 state: #449 alone on RT-1220
     const rt1220 = await trip('RT-1220'); await leg(rt1220, o449);
     let r = await b77();
@@ -241,5 +248,47 @@ test('B-77 on a fixture: the 7/10 split = 1 naming both orders; after the repair
     const rtV = await trip('RT-V'); await leg(rtV, await order('recGA5', { g: 'GI-AAAA|recGA5' }));
     r = await b77();
     assert.deepEqual([r.v, r.status], [2, 'red'], 'GI-AAAA|recGA5 relates to both members on RT-A: two pairs');
+    // a closed+closed pair counts again the moment one of its trips reopens (046 / 033 reopen on a new leg)
+    await q(`UPDATE ct_round_trips SET status = 'planned' WHERE id = $1`, [rt1134]);
+    r = await b77();
+    assert.deepEqual([r.v, r.status], [3, 'red'], 'closed+planned: #268/#302 count while RT-1134 is open');
+    assert.ok(r.ids.includes('rec81z9D1O8v3hBZw') && r.ids.includes('recAxY72UFdKbz9D0'));
+  } finally { await db.close(); }
+});
+
+test('B-77 counts each related pair once, and only while one of its two trips is open: every status combination', async () => {
+  const db = await freshDb();
+  try {
+    await onlyChecks(db, ['B-77']);
+    const c = loadChecks().checks.find((x) => x.id === 'B-77');
+    const q = (s, p) => db.query(s, p);
+    const ST = ['planned', 'in_progress', 'closed', 'complete', 'cancelled'];
+    const OPEN = new Set(['planned', 'in_progress']);
+    let want = 0; const wantIds = []; let n = 0;
+    // each unordered status combination, both orientations: the LOWER order id on the first status, then on the second
+    for (let i = 0; i < ST.length; i++) for (let j = i; j < ST.length; j++) for (const flip of [false, true]) {
+      n++;
+      const [s1, s2] = flip ? [ST[j], ST[i]] : [ST[i], ST[j]];
+      const g = `GI-ST${n}`;
+      const ids = [];
+      for (const [k, st] of [[1, s1], [2, s2]]) {
+        const o = (await q(`INSERT INTO orders (legacy_id, status, direction, group_id) VALUES ($1, 'Assigned', 'Import', $2) RETURNING id`,
+          [`recST${n}_${k}`, k === 1 ? g : `${g}|recST${n}_1,recST${n}_2`])).rows[0].id;
+        const t = (await q(`INSERT INTO ct_round_trips (code, scope, trip_type, date_start, status, source, created_by, updated_at)
+          VALUES ($1, 'INTL', 'OWNED', current_date, $2, 'planner', 'test', now()) RETURNING id`, [`RT-ST${n}_${k}`, st])).rows[0].id;
+        await q(`INSERT INTO ct_rt_legs (rt_id, direction, order_id) VALUES ($1, 'IMPORT', $2)`, [t, o]);
+        ids.push(`recST${n}_${k}`);
+      }
+      // the rule, written independently of the SQL: both not cancelled, at least one open
+      if (s1 !== 'cancelled' && s2 !== 'cancelled' && (OPEN.has(s1) || OPEN.has(s2))) { want++; wantIds.push(...ids); }
+    }
+    assert.equal(n, 30);
+    assert.equal(want, 14, '7 combinations x 2 orientations: open+open 3, open+closed/complete 4');
+    const v = Number((await q(c.sql)).rows[0].count);
+    assert.equal(v, want, 'B-77 = the independent count (no pair twice, none missed)');
+    await q(`SELECT monitoring.run_checks('hourly')`);
+    const r = (await all(db, `SELECT value::int AS v, status, ids FROM monitoring.results WHERE check_id = 'B-77' ORDER BY id DESC LIMIT 1`))[0];
+    assert.deepEqual([r.v, r.status], [want, 'red']);
+    assert.deepEqual(r.ids, [...wantIds].sort(), 'ids = both orders of every counted pair, nothing else');
   } finally { await db.close(); }
 });

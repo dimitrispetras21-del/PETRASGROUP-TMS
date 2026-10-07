@@ -24,7 +24,12 @@
 --   then                 the suffix reaches #449 -> rt_link_split (037) logs "split" - but the shape
 --                        (import-only vs export+import) is not its auto-merge shape -> audit row only.
 -- WHY THE BASE, AND WHY HERE: the suffix is presentation (Weekly's delivery order, GRP trips the
--- same: "GRP-xxx|recA,recB"); the group is the base - every screen reads it as .split('|')[0]. The
+-- same: "GRP-xxx|recA,recB"); the group is the base - the screens DISPLAY it as .split('|')[0].
+-- NOT every front place relates by the base yet (review 7/10): core/rt-feed.js:218 (the related-order
+-- walk) and :305 (the {Group ID}='...' filter) and modules/weekly_intl.js:811 (the row collapse) still
+-- compare the FULL text. Harmless after 066 - the trigger attaches the leg first and the front only
+-- adds legs, never removes them - but "related" still means two things front vs base (principle 3):
+-- a front follow-up, not part of this SQL (the comment at weekly_intl.js:5585 quotes the old walk). The
 -- front cannot write all members in one request through the facade, so between two members there
 -- is always a moment where one carries the suffix and the other does not; any write in that moment
 -- (a truck, a date, a rota) meets two different texts for one group. Fixing the order of the front's
@@ -48,10 +53,18 @@
 --   2. monitoring.checks B-77 (text = tms-auditor/checks/B-77.sql, md5-proven; Greek as base64).
 --      It counts pairs of DIRECTLY related orders (same base Group ID, matched_import_id or
 --      rotation_id <-> legacy_id), both not deleted, on two different live (status <> cancelled)
---      round trips. Run here as run_checks runs it (guard, 10 s timeout, tms_check_runner).
+--      round trips OF WHICH AT LEAST ONE IS STILL OPEN (status not in cancelled/closed/complete).
+--      Why two closed round trips are out (coordinator 7/10): they are settled history - payroll and
+--      expenses are booked, the owner would not act on them ("auditor report: only what is new"). The
+--      first text (closed counted too) gave 1 on production 7/10: #268 (RT-1018, truck 15) and #302
+--      (RT-1134, truck 2), linked by a stale August IMPORT->IMPORT matched_import_id - two physical
+--      trips, both closed, not a split. Side a is always the open trip (open+open counted once by
+--      b.id > a.id, open+closed once from the open side), so the cost follows the legs on open trips,
+--      not the whole history. Run here as run_checks runs it (guard, 10 s timeout, tms_check_runner).
 -- NOT changed, on purpose:
 --   - 033's "two related live round trips -> audit row, return" branch: still no automatic merge.
---     Loud now: the round trips' orders form a related pair on two RTs -> B-77; the order left
+--     Loud now: the round trips' orders form a related pair on two RTs -> B-77 (while one of the
+--     two is open); the order left
 --     WITHOUT a round trip -> B-01 (P1, fast).
 --   - 037's auto-merge shape (owner 19/9: money stays where the accountant saw it): still ONLY
 --     same vehicle + one RT export-only + the other import-only. Every other split stays an audit
@@ -59,8 +72,8 @@
 --     between members whose suffixes differ is now SEEN (before: invisible, no audit row); if such
 --     members ever formed that one shape it would merge as any related pair does (rules test S12).
 --   - 033's "related RT runs another vehicle -> separate round trip" (a separate physical trip):
---     unchanged; B-77 counts such a pair too - a group / pair / rota on two vehicles contradicts
---     its own relation (fix the vehicle or the relation).
+--     unchanged; B-77 counts such a pair too while one of the two trips is open - a group / pair /
+--     rota on two vehicles contradicts its own relation (fix the vehicle or the relation).
 --   - orders_group_id_blank_null, stock_guard_lots, stock_guard_orders (they read group_id, but not
 --     to relate orders to round trips); the Worker (its 409 compares legs, not group texts).
 --
@@ -74,7 +87,8 @@
 --   base Group ID (same oid/owner/grants/SECURITY DEFINER/search_path); triggers 35 -> 35, B-54 = 35;
 --   B-77 = 0 (ids )" and ONE result row "066 OK | 35 | 35 | 0".
 --   35 = the live trigger count = B-54 (read, not typed: asserted before = after). The last number is
---   B-77 on production: 0 after the 7/10 repair. Another number is NOT a failure of 066 (it changed
+--   B-77 on production: 0 after the 7/10 repair (the one closed+closed pair measured 7/10, #268 /
+--   #302, is out by the rule above). Another number is NOT a failure of 066 (it changed
 --   nothing in the data) - it is B-77 doing its job: copy the row and the NOTICE's ids to the
 --   coordinator. A red error = nothing changed (one DO block): stop, copy the panel.
 -- AFTER IT: 066_rt_group_base_join_test.sql (every rule, then undone).
@@ -98,7 +112,7 @@
 -- 0845ec6170fd2918d21efd56856daa3e; rt_link_split md5(def) d8a4a03dca0e8e26d4e8d227f1287590,
 -- md5(prosrc) 6f954b256f103f1c6a8f8ab400a67808.
 -- B-77 fingerprint md5(title|sql|ids|impact|next|exceptions|entity|red_op|red_value|severity|schedule)
--- cd6133b37a823e99d6ca8c80600c2f06.
+-- 06bc6d67d2913a42091c0aba197d4c45.
 
 DO $do$
 DECLARE
@@ -196,15 +210,15 @@ BEGIN
     ($m$B-77$m$,
      convert_from(decode('zqPPh861z4TOuc66zq3PgiDPgM6xz4HOsc6zzrPOtc67zq/Otc+CICjOv868zqzOtM6xL862zrXPjc6zzr/Pgi/Pgc+Mz4TOsSkgz4POtSA+MSDOts+Jzr3PhM6xzr3OrCDOtM+Bzr/OvM6/zrvPjM6zzrnOsQ==', 'base64'), 'UTF8'),
      ARRAY[$m$F-21$m$,$m$F-16$m$,$m$F-18$m$,$m$F-14$m$]::text[],
-     $m$SELECT count(*) FROM orders a JOIN ct_rt_legs la ON la.order_id=a.id JOIN ct_round_trips ra ON ra.id=la.rt_id AND ra.status<>'cancelled'
- JOIN orders b ON b.id>a.id AND b.deleted_at IS NULL JOIN ct_rt_legs lb ON lb.order_id=b.id JOIN ct_round_trips rb ON rb.id=lb.rt_id AND rb.status<>'cancelled'
- WHERE a.deleted_at IS NULL AND rb.id<>ra.id
+     $m$SELECT count(*) FROM orders a JOIN ct_rt_legs la ON la.order_id=a.id JOIN ct_round_trips ra ON ra.id=la.rt_id AND ra.status NOT IN ('cancelled','closed','complete')
+ JOIN orders b ON b.id<>a.id AND b.deleted_at IS NULL JOIN ct_rt_legs lb ON lb.order_id=b.id JOIN ct_round_trips rb ON rb.id=lb.rt_id AND rb.status<>'cancelled'
+ WHERE a.deleted_at IS NULL AND rb.id<>ra.id AND (b.id>a.id OR rb.status IN ('closed','complete'))
  AND ((a.group_id||'#'||b.group_id) ~ '^([^|#]*)(\|[^#]*)?#\1(\|[^#]*)?$'
   OR a.matched_import_id=b.legacy_id OR b.matched_import_id=a.legacy_id OR a.rotation_id=b.legacy_id OR b.rotation_id=a.legacy_id)$m$,
      $m$SELECT coalesce(array_agg(x ORDER BY x), '{}') FROM (SELECT DISTINCT coalesce(o.legacy_id, o.id::text) AS x FROM orders o JOIN (SELECT a.id AS a_id, b.id AS b_id FROM orders a
- JOIN ct_rt_legs la ON la.order_id=a.id JOIN ct_round_trips ra ON ra.id=la.rt_id AND ra.status<>'cancelled'
- JOIN orders b ON b.id>a.id AND b.deleted_at IS NULL JOIN ct_rt_legs lb ON lb.order_id=b.id JOIN ct_round_trips rb ON rb.id=lb.rt_id AND rb.status<>'cancelled'
- WHERE a.deleted_at IS NULL AND rb.id<>ra.id
+ JOIN ct_rt_legs la ON la.order_id=a.id JOIN ct_round_trips ra ON ra.id=la.rt_id AND ra.status NOT IN ('cancelled','closed','complete')
+ JOIN orders b ON b.id<>a.id AND b.deleted_at IS NULL JOIN ct_rt_legs lb ON lb.order_id=b.id JOIN ct_round_trips rb ON rb.id=lb.rt_id AND rb.status<>'cancelled'
+ WHERE a.deleted_at IS NULL AND rb.id<>ra.id AND (b.id>a.id OR rb.status IN ('closed','complete'))
  AND ((a.group_id||'#'||b.group_id) ~ '^([^|#]*)(\|[^#]*)?#\1(\|[^#]*)?$'
   OR a.matched_import_id=b.legacy_id OR b.matched_import_id=a.legacy_id OR a.rotation_id=b.legacy_id OR b.rotation_id=a.legacy_id)) p
  ON o.id IN (p.a_id, p.b_id) ORDER BY 1 LIMIT 50) s$m$,
@@ -217,7 +231,7 @@ BEGIN
      false,
      convert_from(decode('zojOvc6xIM+Gz4XPg865zrrPjCDOtM+Bzr/OvM6/zrvPjM6zzrnOvyAozr/OvM6szrTOsSwgzrbOtc+NzrPOv8+CIM61zr7Osc6zz4nOs86uz4IvzrXOuc+DzrHOs8+JzrPOrs+CIM6uIM+Bz4zPhM6xKSDOus6szrjOtc+EzrHOuSDPg861IM60z43OvyBSVDogzr8gV29ya2VyIM6xz4HOvc61zq/PhM6xzrkgzrrOrM64zrUgz4PPhc6zz4fPgc6/zr3Ouc+DzrzPjCDPhM63z4Igzr/OvM6szrTOsc+CICg0MDkpLCDOtyDPgc+Mz4TOsSDOtM61zr0gzrzPgM6xzq/Ovc61zrksIM66zrHOuSDOvM65z4POuM6/zrTOv8+Dzq/OsS/Orc6+zr/OtM6xIM+Ezr/PhSDOv860zrfOs86/z40gzrzOv865z4HOrM62zr/Ovc+EzrHOuSDPg861IM60z43OvyDOtM+Bzr/OvM6/zrvPjM6zzrnOsS4gzqDOtc+BzrnPg8+EzrHPhM65zrrPjCA3LzEwOiBHSS1NVVY3Rk5LRSwgIzQ1MSDPg8+Ezr8gUlQtMTIxNyDOus6xzrkgIzQ0OSDOvM+Mzr3OtyDPg8+Ezr8gUlQtMTIyMC4=', 'base64'), 'UTF8'),
      convert_from(decode('zpXOss60zr/OvM6xzrTOuc6xzq/OvyDOlM65zrXOuM69z47OvSDihpIgzr/OuSDPgM6xz4HOsc6zzrPOtc67zq/Otc+CIM+Ez4nOvSBpZHM6IM+Azr/Ouc6/IFJUIM61zq/Ovc6xzrkgz4TOvyDPg8+Jz4PPhM+MOyDOnM61z4TOsc+Gzr/Pgc6sIM+DzrrOrc67zr/Phc+CIM68zrUgz4TOuc+CIM61zr3PhM6/zrvOrc+CIM+Ezr/PhSBXb3JrZXIgKERFTEVURSBsZWcgKyBQT1NUIGF0dGFjaCksIM+Mz4DPic+CIM63IM61z4DOuc+DzrrOtc+Fzq4gz4TOt8+CIDcvMTAg4oCUIM68z4zOvc6/IM68zrUgwqvOvc6xzrnCuyDPhM6/z4Ugb3duZXIu', 'base64'), 'UTF8'),
-     convert_from(decode('zpbOtc+NzrPOtyDPgM6xz4HOsc6zzrPOtc67zrnPjs69ICjOus6szrjOtSDOts61z43Os86/z4IgzrzOr86xIM+Gzr/Pgc6sKSDOvM61IM6RzpzOlc6jzpcgz4PPh86tz4POtywgz4zPgM+Jz4Igz4TOtyDOss67zq3PgM6/z4XOvSDOv865IHRyaWdnZXIgMDMzLzAzNyDOvM61z4TOrCDPhM6/IDA2Njogzq/OtM65zr8gzrLOsc+DzrnOus+MIEdyb3VwIElEICjPjCzPhM65IM61zq/Ovc6xzrkgz4DPgc65zr0gz4TOvyDCq3zCuyDigJQgz4TOvyBmcm9udCDOs8+BzqzPhs61zrkgz4TOtyDPg861zrnPgc6sIM+AzrHPgc6szrTOv8+DzrfPgiDCq3xyZWNBLHJlY0LCuyDOrc69zrEgzrzOrc67zr/PgiDPhM63IM+Gzr/Pgc6sKSwgbWF0Y2hlZF9pbXBvcnRfaWQgPSBsZWdhY3lfaWQgzq4gcm90YXRpb25faWQgPSBsZWdhY3lfaWQgKM66zrHOuSDOsc69zqzPgM6/zrTOsSkuIM6azrHOuSDOv865IM60z43OvyDOvM63IM60zrnOsc6zz4HOsc68zrzOrc69zrXPgiwgzrzOtSDPg866zq3Ou86/z4Igz4POtSDOts+Jzr3PhM6xzr3PjCBSVCAoc3RhdHVzIOKJoCBjYW5jZWxsZWQpLCDPg861IM6UzpnOkc6mzp/Ooc6VzqTOmc6azpEgUlQuIM6czrXPhM+BzqwgzrrOsc65IM62zrXPjc6zzrcgz4POtSDOrM67zrvOvyDPjM+HzrfOvM6xOiDPhM6/IDAzMyDOsc69zr/Or86zzrXOuSDPhM+Mz4TOtSDPh8+Jz4HOuc+Dz4TPjCBSVCDOtc+Azq/PhM63zrTOtc+CLCDOsc67zrvOrCDOv868zqzOtM6xL862zrXPjc6zzr/Pgi/Pgc+Mz4TOsSDPg861IM60z43OvyDOv8+Hzq7OvM6xz4TOsSDOsc69z4TOuc+GzqzPg866zrXOuSDOvM61IM+Ezrcgz4PPh86tz4POtyDigJQgzrTOuc+Mz4HOuM+Jz4POtSDPjM+HzrfOvM6xIM6uIM+Dz4fOrc+DzrcuIM6gzrHPgc6xzrPOs861zrvOr86xIM+Azr/PhSDOvyAwMzMgzqzPhs63z4POtSDOp86pzqHOmc6jIFJUIM61z4DOtc65zrTOriDOv865IM+Dz4XOs86zzrXOvc61zq/PgiDPhM63z4Igzq7PhM6xzr0gzq7OtM63IM+DzrUgzrTPjc6/IFJUIM+EzrcgzrTOtc6vz4fOvc61zrkgz4TOvyBCLTAxLiBHcm91cCBJRCDPgM6/z4Ugz4DOtc+BzrnOrc+HzrXOuSDCqyPCuyDOtM61zr0gz4PPhc6zzrrPgc6vzr3Otc+EzrHOuSAozrTOuc6xz4fPic+BzrnPg8+EzrnOus+MIM+Ezr/PhSDOtc67zq3Os8+Hzr/PhTogzrcgzrvOr8+Dz4TOsSDPg8+Fzr3Osc+Bz4TOrs+DzrXPic69IM+Ezr/PhSDOtc67zrXOs866z4TOriDOtM61zr0gzq3Ph861zrkgc3BsaXRfcGFydMK3IM+Ezr8gZnJvbnQgzrPPgc6sz4bOtc65IM68z4zOvc6/IM6zz4HOrM68zrzOsc+EzrEsIM+IzrfPhs6vzrEsIMKrLcK7LCDCq3zCuyDOus6xzrkgwqsswrspLiBpZHMgPSBsZWdhY3lfaWQgzrrOsc65IM+Ez4nOvSDOtM+Nzr8gz4DOsc+BzrHOs86zzrXOu865z47OvSDOus6szrjOtSDOts61z43Os86/z4XPgi4=', 'base64'), 'UTF8'),
+     convert_from(decode('zpbOtc+NzrPOtyDPgM6xz4HOsc6zzrPOtc67zrnPjs69ICjOus6szrjOtSDOts61z43Os86/z4IgzrzOr86xIM+Gzr/Pgc6sKSDOvM61IM6RzpzOlc6jzpcgz4PPh86tz4POtywgz4zPgM+Jz4Igz4TOtyDOss67zq3PgM6/z4XOvSDOv865IHRyaWdnZXIgMDMzLzAzNyDOvM61z4TOrCDPhM6/IDA2Njogzq/OtM65zr8gzrLOsc+DzrnOus+MIEdyb3VwIElEICjPjCzPhM65IM61zq/Ovc6xzrkgz4DPgc65zr0gz4TOvyDCq3zCuyDigJQgz4TOvyBmcm9udCDOs8+BzqzPhs61zrkgz4TOtyDPg861zrnPgc6sIM+AzrHPgc6szrTOv8+DzrfPgiDCq3xyZWNBLHJlY0LCuyDOrc69zrEgzrzOrc67zr/PgiDPhM63IM+Gzr/Pgc6sKSwgbWF0Y2hlZF9pbXBvcnRfaWQgPSBsZWdhY3lfaWQgzq4gcm90YXRpb25faWQgPSBsZWdhY3lfaWQgKM66zrHOuSDOsc69zqzPgM6/zrTOsSkuIM6azrHOuSDOv865IM60z43OvyDOvM63IM60zrnOsc6zz4HOsc68zrzOrc69zrXPgiwgzrzOtSDPg866zq3Ou86/z4Igz4POtSDOts+Jzr3PhM6xzr3PjCBSVCAoc3RhdHVzIOKJoCBjYW5jZWxsZWQpLCDPg861IM6UzpnOkc6mzp/Ooc6VzqTOmc6azpEgUlQuIM6czrXPhM+BzqwgzpzOn86dzp8gz4zPhM6xzr0gz4TOv8+FzrvOrM+HzrnPg8+Ezr/OvSDOrc69zrEgzrHPgM+MIM+EzrEgzrTPjc6/IFJUIM61zq/Ovc6xzrkgzrHOus+MzrzOtyDOsc69zr/Ouc+Hz4TPjCAoc3RhdHVzIOKIiSBjYW5jZWxsZWQvY2xvc2VkL2NvbXBsZXRlKTogzrTPjc6/IM66zrvOtc65z4PPhM6sIFJUIM61zq/Ovc6xzrkgz4TOsc66z4TOv8+Azr/Ouc63zrzOrc69zrcgzrnPg8+Ezr/Pgc6vzrEg4oCUIM68zrnPg864zr/OtM6/z4POr86xIM66zrHOuSDOrc6+zr/OtM6xIM6tz4fOv8+Fzr0gzq7OtM63IM+AzrXPgc6xz4PPhM61zq8gzrrOsc65IM6/IG93bmVyIM60zrXOvSDOuM6xIM66zqzOvc61zrkgz4TOr8+Azr/PhM6xICjCq868z4zOvc6/IM+EzrEgzr3Orc6xwrspLiDOnM61z4TPgc63zrzOrc69zr8gNy8xMDogz4fPic+Bzq/PgiDOsc+Fz4TPjM69IM+Ezr/OvSDPjM+Bzr8gzr8gzq3Ou861zrPPh86/z4Igzq3OtM65zr3OtSAxIM+Dz4TOt869IM+AzrHPgc6xzrPPic6zzq4sIM+Ezr8gIzI2OCAoUlQtMTAxOCwgz4bOv8+Bz4TOt86zz4wgMTUpIOKGlCAjMzAyIChSVC0xMTM0LCDPhs6/z4HPhM63zrPPjCAyKSwgz4DOsc67zrnPjCBJTVBPUlTihpJJTVBPUlQgbWF0Y2hlZF9pbXBvcnRfaWQgz4TOv8+FIM6Rz4XOs86/z43Pg8+Ezr/PhTogzrTPjc6/IM+Gz4XPg865zrrOrCDOtM+Bzr/OvM6/zrvPjM6zzrnOsSwgzrrOsc65IM+EzrEgzrTPjc6/IM66zrvOtc65z4PPhM6sLCDPjM+HzrkgzrTOuc6sz4PPgM6xz4POty4gzpcgz4DOu861z4XPgc6sIGEgzrXOr869zrHOuSDPgM6szr3PhM6xIM+Ezr8gzrHOvc6/zrnPh8+Ez4wgUlQgKM6tzr3OsSDOts61z43Os86/z4IgzrHOvc6/zrnPh8+Ez4wrzrHOvc6/zrnPh8+Ez4wgzrzOr86xIM+Gzr/Pgc6sIM68zrUgYi5pZCA+IGEuaWQsIM6xzr3Ov865z4fPhM+MK866zrvOtc65z4PPhM+MIM68zq/OsSDPhs6/z4HOrCDOsc+Az4wgz4TOt869IM6xzr3Ov865z4fPhM6uIM+AzrvOtc+Fz4HOrCk6IM+Ezr8gzrrPjM+Dz4TOv8+CIM6xzrrOv867zr/Phc64zrXOryDPhM6xIM+DzrrOrc67zrcgz4TPic69IM6xzr3Ov865z4fPhM+Ozr0gUlQsIM+Mz4fOuSDPjM67zrcgz4TOt869IM65z4PPhM6/z4HOr86xLiDOnM61z4TPgc6sIM66zrHOuSDOts61z43Os863IM+DzrUgzqzOu867zr8gz4zPh863zrzOsTogz4TOvyAwMzMgzrHOvc6/zq/Os861zrkgz4TPjM+EzrUgz4fPic+BzrnPg8+Ez4wgUlQgzrXPgM6vz4TOt860zrXPgiwgzrHOu867zqwgzr/OvM6szrTOsS/Ots61z43Os86/z4Ivz4HPjM+EzrEgz4POtSDOtM+Nzr8gzr/Ph86uzrzOsc+EzrEgzrHOvc+EzrnPhs6sz4POus61zrkgzrzOtSDPhM63IM+Dz4fOrc+Dzrcg4oCUIM60zrnPjM+BzrjPic+DzrUgz4zPh863zrzOsSDOriDPg8+Hzq3Pg863LiDOoM6xz4HOsc6zzrPOtc67zq/OsSDPgM6/z4Ugzr8gMDMzIM6sz4bOt8+DzrUgzqfOqc6hzpnOoyBSVCDOtc+AzrXOuc60zq4gzr/OuSDPg8+FzrPOs861zr3Otc6vz4Igz4TOt8+CIM6uz4TOsc69IM6uzrTOtyDPg861IM60z43OvyBSVCDPhM63IM60zrXOr8+Hzr3Otc65IM+Ezr8gQi0wMS4gR3JvdXAgSUQgz4DOv8+FIM+AzrXPgc65zq3Ph861zrkgwqsjwrsgzrTOtc69IM+Dz4XOs866z4HOr869zrXPhM6xzrkgKM60zrnOsc+Hz4nPgc65z4PPhM65zrrPjCDPhM6/z4UgzrXOu86tzrPPh86/z4U6IM63IM67zq/Pg8+EzrEgz4PPhc69zrHPgc+Ezq7Pg861z4nOvSDPhM6/z4UgzrXOu861zrPOus+Ezq4gzrTOtc69IM6tz4fOtc65IHNwbGl0X3BhcnTCtyDPhM6/IGZyb250IM6zz4HOrM+GzrXOuSDOvM+Mzr3OvyDOs8+BzqzOvM68zrHPhM6xLCDPiM63z4bOr86xLCDCqy3Cuywgwqt8wrsgzrrOsc65IMKrLMK7KS4gaWRzID0gbGVnYWN5X2lkIM66zrHOuSDPhM+Jzr0gzrTPjc6/IM+AzrHPgc6xzrPOs861zrvOuc+Ozr0gzrrOrM64zrUgzrbOtc+NzrPOv8+Fz4Iu', 'base64'), 'UTF8'),
      NULL,
      true,
      NULL);
@@ -268,7 +282,7 @@ BEGIN
   -- 3c. the auditor row = the catalog file (md5 of the generated texts)
   IF NOT EXISTS (SELECT 1 FROM monitoring.checks k WHERE k.id = 'B-77' AND k.enabled AND NOT k.is_queue AND k.baseline IS NULL
                   AND md5(k.title||'|'||k.sql_text||'|'||coalesce(k.ids_sql,'')||'|'||coalesce(k.impact,'')||'|'||coalesce(k.next_step,'')||'|'||coalesce(k.exceptions,'')||'|'||coalesce(k.entity_table,'')||'|'||k.red_op||'|'||k.red_value::text||'|'||k.severity||'|'||k.schedule_tag)
-                      = 'cd6133b37a823e99d6ca8c80600c2f06') THEN
+                      = '06bc6d67d2913a42091c0aba197d4c45') THEN
     RAISE EXCEPTION '066 proof: B-77 does not match the catalog (tms-auditor/checks/B-77.sql)';
   END IF;
   -- 3d. nothing else moved: no order, round trip or leg written by this block
@@ -313,8 +327,8 @@ SELECT CASE WHEN md5(pg_get_functiondef('public.rt_create_from_order()'::regproc
        (SELECT count(*) FROM pg_trigger t JOIN pg_class c ON c.oid = t.tgrelid JOIN pg_namespace ns ON ns.oid = c.relnamespace
          WHERE NOT t.tgisinternal AND t.tgenabled <> 'D' AND ns.nspname = 'public') AS public_triggers,
        (SELECT red_value FROM monitoring.checks WHERE id = 'B-54') AS b54_red_value,
-       (SELECT count(*) FROM orders a JOIN ct_rt_legs la ON la.order_id=a.id JOIN ct_round_trips ra ON ra.id=la.rt_id AND ra.status<>'cancelled'
- JOIN orders b ON b.id>a.id AND b.deleted_at IS NULL JOIN ct_rt_legs lb ON lb.order_id=b.id JOIN ct_round_trips rb ON rb.id=lb.rt_id AND rb.status<>'cancelled'
- WHERE a.deleted_at IS NULL AND rb.id<>ra.id
+       (SELECT count(*) FROM orders a JOIN ct_rt_legs la ON la.order_id=a.id JOIN ct_round_trips ra ON ra.id=la.rt_id AND ra.status NOT IN ('cancelled','closed','complete')
+ JOIN orders b ON b.id<>a.id AND b.deleted_at IS NULL JOIN ct_rt_legs lb ON lb.order_id=b.id JOIN ct_round_trips rb ON rb.id=lb.rt_id AND rb.status<>'cancelled'
+ WHERE a.deleted_at IS NULL AND rb.id<>ra.id AND (b.id>a.id OR rb.status IN ('closed','complete'))
  AND ((a.group_id||'#'||b.group_id) ~ '^([^|#]*)(\|[^#]*)?#\1(\|[^#]*)?$'
   OR a.matched_import_id=b.legacy_id OR b.matched_import_id=a.legacy_id OR a.rotation_id=b.legacy_id OR b.rotation_id=a.legacy_id)) AS b77_related_on_two_rts;

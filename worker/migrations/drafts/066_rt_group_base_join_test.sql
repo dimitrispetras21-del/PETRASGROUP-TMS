@@ -4,9 +4,9 @@
 -- file runs AFTER 066, the way 063_local_line_guard_test.sql ran after 063.)
 -- ONE statement. It ends with a deliberate RAISE EXCEPTION, so Postgres undoes ALL of it - no order,
 -- round trip, leg, payroll line or audit row stays behind. The red error message IS the result:
---   "RULES TEST 066 finished - EVERYTHING UNDONE, nothing kept. Result: 12 OK, 0 FAIL || ...".
--- EXPECTED: "Result: 12 OK, 0 FAIL" (proven on the PGlite copy: 12 OK, 0 FAIL after 066; with the
---   7/10 walks the same file gives 4 OK, 8 FAIL - S1 is the 7/10 incident replayed second by second).
+--   "RULES TEST 066 finished - EVERYTHING UNDONE, nothing kept. Result: 13 OK, 0 FAIL || ...".
+-- EXPECTED: "Result: 13 OK, 0 FAIL" (proven on the PGlite copy: 13 OK, 0 FAIL after 066; with the
+--   7/10 walks the same file gives 5 OK, 8 FAIL - S1 is the 7/10 incident replayed second by second).
 --   Any FAIL or ERROR = STOP, copy the panel to the coordinator.
 -- Only trace: identity/sequence numbers (orders, round trips and their RT-n codes, legs, audit rows,
 -- payroll lines) are skipped.
@@ -27,7 +27,9 @@
 -- round trip for the newcomer, B-77 +1; S10 related round trip on another truck -> a separate round
 -- trip as today, B-77 +1; S11 rt_link_split sees the base (the 7/10 step-7 shape: import-only vs
 -- export+import) -> audit "split", NOT merged, B-77 +1; S12 rt_link_split's ONE auto-merge shape
--- (same truck, export-only + import-only), related only through the base -> merged (037, unchanged).
+-- (same truck, export-only + import-only), related only through the base -> merged (037, unchanged);
+-- S13 B-77 skips settled history (#268 / #302 shape): a related pair on two trips counts while one
+-- trip is open (open+open, closed+planned: +1) and not once both are closed (+0).
 DO $dry$
 DECLARE
   t1 bigint; t2 bigint; d1 bigint; d2 bigint; tr bigint; cl bigint; loc1 bigint; loc2 bigint; day0 date;
@@ -336,6 +338,47 @@ BEGIN
     IF hint = 'rt066_undo' AND verdict LIKE 'ok%' THEN ok := ok + 1; res := res || (lbl || ' ' || verdict);
     ELSIF hint = 'rt066_undo' THEN bad := bad + 1; res := res || (lbl || ' ' || verdict);
     ELSE bad := bad + 1; res := res || (lbl || ' ERROR ' || msg); END IF;
+  END;
+
+  -- ================================================================================================
+  -- S13. Settled history is out of B-77 (coordinator 7/10; the production pair #268 / #302): two
+  --      imports on two trucks, each on its own round trip, then a stale IMPORT->IMPORT
+  --      matched_import_id links them (rt_link_split: audit "split" only - two vehicles, no merge).
+  --      Both trips open -> B-77 +1; the first delivered (its trip auto-closes, 046) -> still +1, one
+  --      trip is open; both delivered (both trips closed) -> back to b77_0. Counted only while one
+  --      trip can still be acted on; two closed trips have their payroll/expenses booked already.
+  DECLARE v_open numeric; v_half numeric; st1h text; st2h text; st1 text; st2 text;
+  BEGIN
+    verdict := NULL; lbl := 'S13 closed+closed out, closed+open in';
+    BEGIN
+      INSERT INTO orders (legacy_id, direction, status, client_id, loading_location_1_id, unloading_location_1_id, loading_datetime, delivery_datetime, reference)
+      VALUES ('rec066T13X', 'Import', 'Pending', cl, loc2, loc1, day0, day0 + 2, 'RT066-TEST') RETURNING id INTO o1;
+      INSERT INTO orders (legacy_id, direction, status, client_id, loading_location_1_id, unloading_location_1_id, loading_datetime, delivery_datetime, reference)
+      VALUES ('rec066T13Y', 'Import', 'Pending', cl, loc2, loc1, day0 + 3, day0 + 5, 'RT066-TEST') RETURNING id INTO o2;
+      UPDATE orders SET truck_id = t1, driver_id = d1, trailer_id = tr, status = 'Assigned' WHERE id = o1;
+      UPDATE orders SET truck_id = t2, driver_id = d2, trailer_id = tr, status = 'Assigned' WHERE id = o2;
+      UPDATE orders SET matched_import_id = 'rec066T13Y' WHERE id = o1;                                       -- the stale link
+      rt1 := (SELECT l.rt_id FROM ct_rt_legs l JOIN ct_round_trips r ON r.id = l.rt_id WHERE l.order_id = o1 AND r.status <> 'cancelled');
+      rt2 := (SELECT l.rt_id FROM ct_rt_legs l JOIN ct_round_trips r ON r.id = l.rt_id WHERE l.order_id = o2 AND r.status <> 'cancelled');
+      SET LOCAL ROLE tms_check_runner; EXECUTE b77_sql INTO v_open; RESET ROLE;
+      UPDATE orders SET status = 'Delivered' WHERE id = o1;
+      SELECT status INTO st1h FROM ct_round_trips WHERE id = rt1; SELECT status INTO st2h FROM ct_round_trips WHERE id = rt2;
+      SET LOCAL ROLE tms_check_runner; EXECUTE b77_sql INTO v_half; RESET ROLE;
+      UPDATE orders SET status = 'Delivered' WHERE id = o2;
+      SELECT status INTO st1 FROM ct_round_trips WHERE id = rt1; SELECT status INTO st2 FROM ct_round_trips WHERE id = rt2;
+      SET LOCAL ROLE tms_check_runner; EXECUTE b77_sql INTO b77_v; RESET ROLE;
+      verdict := CASE WHEN rt1 IS NOT NULL AND rt2 IS NOT NULL AND rt1 <> rt2 AND st1h = 'closed' AND st2h = 'planned'
+                           AND st1 = 'closed' AND st2 = 'closed' AND v_open = b77_0 + 1 AND v_half = b77_0 + 1 AND b77_v = b77_0
+                      THEN format('ok B-77 %s -> open+open %s, closed+planned %s, closed+closed %s', b77_0, v_open, v_half, b77_v)
+                      ELSE format('FAIL rt %s / %s, %s+%s then %s+%s, B-77 %s -> open+open %s, half %s, both delivered %s',
+                                  rt1, rt2, st1h, st2h, st1, st2, b77_0, v_open, v_half, b77_v) END;
+      RAISE EXCEPTION 'rt066 undo' USING HINT = 'rt066_undo';
+    EXCEPTION WHEN others THEN
+      GET STACKED DIAGNOSTICS hint = PG_EXCEPTION_HINT, msg = MESSAGE_TEXT;
+      IF hint = 'rt066_undo' AND verdict LIKE 'ok%' THEN ok := ok + 1; res := res || (lbl || ' ' || verdict);
+      ELSIF hint = 'rt066_undo' THEN bad := bad + 1; res := res || (lbl || ' ' || verdict);
+      ELSE bad := bad + 1; res := res || (lbl || ' ERROR ' || msg); END IF;
+    END;
   END;
 
   RAISE EXCEPTION 'RULES TEST 066 finished - EVERYTHING UNDONE, nothing kept. Result: % OK, % FAIL  ||  %', ok, bad, array_to_string(res, '  |  ');
