@@ -4,8 +4,9 @@
 //       test equals the one of PRINT_BASE_REV, sheet by sheet;
 //   (b) markup typed into Notes / Goods / Reference / a location name / any
 //       other field prints as that same text and creates no element;
-//   (c) the WhatsApp text stays plain text (identical to PRINT_BASE_REV, and
-//       carries the typed markup as typed).
+//   (c) the WhatsApp text stays plain text (identical to PRINT_BASE_REV apart
+//       from the two 7/10 lines, see waBefore0710, and carries the typed
+//       markup as typed).
 // Sheets: driver, partner, group cover (+2), Veroia Switch, flat locations
 // with a split-leg title. Backend fully stubbed; the page's clock is fixed.
 // Run from the MAIN repo root (its node_modules), static server on 8788:
@@ -91,6 +92,12 @@ const SHEETS = [
   ['flat+leg', 'orderId=recOrdF&leg=import&sheet=partner'],
 ];
 
+// Pantelis 7/10 (feat/wa-coords-footer) added two WhatsApp lines on purpose:
+// the bare coordinates above each maps link and the closing «automated
+// message» line. wa-text-rig.js asserts them exactly; here they are set aside
+// so (c) keeps comparing everything else with BASE_REV, which predates them.
+const waBefore0710 = s => s.replace(/\n📍 \*[^\n]*\*(?=\n📍 https:)/g, '').replace(/\n\nℹ️ [^\n]*(?=\n====\n|$)/g, '');
+
 let pass = 0, fail = 0;
 const ok = (c, m) => { if (c) { pass++; console.log('  ✓ ' + m); } else { fail++; console.log('  ✗ ' + m); } };
 const J = (r, body) => r.fulfill({ status: 200, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: JSON.stringify(body) });
@@ -126,6 +133,7 @@ async function render(browser, html, fx, qs) {
     wa: (typeof _waArr !== 'undefined' ? _waArr : []).join('\n====\n'),
   }));
   await ctx.close();
+  out.wa = waBefore0710(out.wa);
   return Object.assign(out, { errors });
 }
 

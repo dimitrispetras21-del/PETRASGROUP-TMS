@@ -352,7 +352,8 @@ var LBL_EN={coords:'Coords',cancel:'Supersedes any previous sheet for this order
   hours:'Opening Hours',days:'Delivery Days',goods:'Goods',pal:'Pallets',palU:'pallets',
   pe:'Pallet Exchange',gw:'Gross Weight',temp:'Temperature',refr:'Refrigerator',
   yes:'YES',no:'NO',from:'From',to:'To',loadSec:'Loading Place',delSec:'Delivery Place',
-  maps:'Open in Maps'};
+  maps:'Open in Maps',
+  waAuto:'Automated message. If anything looks wrong, please contact the office.'};
 var LBL_GR={coords:'Συντ/νες',cancel:'Ακυρώνει κάθε προηγούμενη εντολή για το ίδιο order',
   chk:'ΠΡΙΝ ΤΗΝ ΑΝΑΧΩΡΗΣΗ',office:'Γραφείο κίνησης',emrg:'Έκτακτα 24h',issued:'Έκδοση',
   load:'ΦΟΡΤΩΣΗ',unload:'ΠΑΡΑΔΟΣΗ',dtLoad:'Ημ/νία & ώρα φόρτωσης',dtDel:'Ημ/νία & ώρα παράδοσης',
@@ -360,7 +361,8 @@ var LBL_GR={coords:'Συντ/νες',cancel:'Ακυρώνει κάθε προη�
   hours:'Ωράριο',days:'Ημέρες παράδοσης',goods:'Εμπόρευμα',pal:'Παλέτες',palU:'παλέτες',
   pe:'Ανταλλαγή παλετών',gw:'Μικτό βάρος',temp:'Θερμοκρασία',refr:'Ψυγείο',
   yes:'ΝΑΙ',no:'ΟΧΙ',from:'Από',to:'Προς',loadSec:'ΦΟΡΤΩΣΗ',delSec:'ΠΑΡΑΔΟΣΗ',
-  maps:'Άνοιγμα στους Χάρτες'};
+  maps:'Άνοιγμα στους Χάρτες',
+  waAuto:'Αυτοματοποιημένο μήνυμα. Αν κάτι σας φαίνεται λάθος, επικοινωνήστε με το γραφείο.'};
 
 // v2.1: QR ανά σημείο (εγκεκριμένο #3) — εικόνα από api.qrserver.com με το
 // Maps link· αν δεν φορτώσει (offline/μπλοκ) κρύβεται, το link μένει τυπωμένο.
@@ -730,7 +732,15 @@ function waBuild(f,isPartner,isExport,veroiaSwitch,VEROIA,VADDR,VLAT,VLNG,vehLin
     lines.push((EMO[seq++]||'▪️')+' *'+o.lbl+'* · '+fmtDT(o.x.dt));
     lines.push(o.x.name);
     if(o.x.addr)lines.push(o.x.addr);
-    if(o.x.lat&&o.x.lng)lines.push('📍 https://maps.google.com/?q='+o.x.lat+','+o.x.lng);
+    if(o.x.lat&&o.x.lng){
+      // Pantelis 7/10: drivers type the coordinates into the truck's GPS unit,
+      // which takes numbers, not a link. Inside the URL they were glued to
+      // «?q=» and had to be picked out by hand, so they get their own line
+      // (bold in WhatsApp, whose * markers do not show). The link stays for
+      // the phone's map app.
+      lines.push('📍 *'+o.x.lat+', '+o.x.lng+'*');
+      lines.push('📍 https://maps.google.com/?q='+o.x.lat+','+o.x.lng);
+    }
     lines.push('');
   });
   var cargo=[];
@@ -750,6 +760,11 @@ function waBuild(f,isPartner,isExport,veroiaSwitch,VEROIA,VADDR,VLAT,VLNG,vehLin
   if(OFFICE_PHONE)cb.push(L.office+' '+OFFICE_PHONE);
   if(EMERGENCY_PHONE)cb.push(L.emrg+' '+EMERGENCY_PHONE);
   if(cb.length){lines.push('');lines.push('☎️ '+cb.join(' · '));}
+  // Pantelis 7/10: the text is generated from TMS data, not written by a
+  // person. Saying so makes a wrong address/date a reason to call the office,
+  // instead of the driver trusting it or quietly working around it (the office
+  // then never learns the record is wrong). Always last, once per document.
+  lines.push('');lines.push('ℹ️ '+L.waAuto);
   return lines.join('\n').replace(/\n{3,}/g,'\n\n');
 }
 function copyWA(btn){
