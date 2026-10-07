@@ -57,16 +57,49 @@ function _opsBlockReadOnly(){
   return true;
 }
 
+// Load generation. The day and its local relays (060) answer while the user
+// may already have moved to another day (or pressed Ανανέωση): only the
+// newest render may write OPS or paint.
+let _opsSeq = 0;
+
 async function renderDailyOps() {
   _opsNormDate();
+  const seq = ++_opsSeq;
+  // The one place a load stops being current — so a relay answer still held
+  // for the older load (_opsApplyRelays) is dropped here, with its listeners.
+  _opsUnhold();
   document.getElementById('content').innerHTML = showLoading('Φόρτωση…');
-  try { await _opsLoad(); _opsDraw(); }
-  // Failure ≠ empty (DESIGN.md #7): say what happened, what it does NOT mean,
-  // and what to do — a bare «Σφάλμα» read as «no orders today» at 05:30.
-  catch(e) { document.getElementById('content').innerHTML = `${_OPS_STYLE}<div class="do-page"><div class="do-err"><span>Το Ημερήσιο Πλάνο δεν φορτώθηκε — δεν σημαίνει ότι δεν υπάρχουν παραγγελίες σήμερα.</span><button class="do-btn" onclick="renderDailyOps()">Ξαναδοκίμασε</button></div></div>`; console.error(e); }
+  // Draw first, relays after (reviewer P3 #4 of the relay release, 6/10): the
+  // day used to wait for LOCAL MOVES, so a 5xx there (3 tries, 1 s + 2 s) or a
+  // slow network held the whole page ~3 s behind a spinner at 05:30. Weekly
+  // International already paints first; the relays now fill ΑΝΑΘΕΣΗ when they
+  // answer. A repaint that throws still lands in _opsFailed, as before.
+  try {
+    const ld = await _opsLoad(seq);
+    // null = a newer load started meanwhile: OPS and the screen are its own
+    // (a late earlier day used to paint its rows under the newer day's date).
+    if (!ld) return;
+    // The user may have left Daily Ops while the day loaded: #content is that
+    // page's now, and painting the day over it hid it (review P3, 7/10).
+    if (typeof currentPage !== 'undefined' && currentPage !== 'daily_ops') return;
+    _opsDraw();
+    if (ld.pending) await _opsRelaysSettle(ld.pending, seq);
+  }
+  // Only the newest load may say «δεν φορτώθηκε»: a late, failed earlier day
+  // used to replace a correctly drawn current day with the error (review P3).
+  catch(e) {
+    if (seq !== _opsSeq || (typeof currentPage !== 'undefined' && currentPage !== 'daily_ops')) { console.warn('[ops] stale load failed:', e && e.message); return; }
+    _opsFailed(e);
+  }
 }
+// Failure ≠ empty (DESIGN.md #7): say what happened, what it does NOT mean,
+// and what to do — a bare «Σφάλμα» read as «no orders today» at 05:30.
+function _opsFailed(e) { document.getElementById('content').innerHTML = `${_OPS_STYLE}<div class="do-page"><div class="do-err"><span>Το Ημερήσιο Πλάνο δεν φορτώθηκε — δεν σημαίνει ότι δεν υπάρχουν παραγγελίες σήμερα.</span><button class="do-btn" onclick="renderDailyOps()">Ξαναδοκίμασε</button></div></div>`; console.error(e); }
 
-async function _opsLoad() {
+async function _opsLoad(seq) {
+  // The day is fixed when the load STARTS: OPS.date may change under the
+  // awaits below (another day clicked), and this load must stay one day.
+  const tgt=_opsTgt(), today=OPS.date==='today';
   if (!OPS.trucks.length) {
     await preloadReferenceData();
     OPS.trucks=getRefTrucks().filter(r=>r.fields['Active']).map(r=>({id:r.id,lb:r.fields['License Plate']||''}));
@@ -75,7 +108,6 @@ async function _opsLoad() {
   }
   // Scan round 3: paperclip index — own ~2min cache, never rejects.
   if (typeof OrderDocs !== 'undefined') await OrderDocs.preloadIndex();
-  const tgt=_opsTgt();
   // VS (owner 10/8): το διεθνές σκέλος εμφανίζεται τη μέρα του Cross-Dock
   // (VS CD Date, αλλιώς Loading+1) — φέρε και τα χθεσινά-Loading VS.
   const prev=toLocalDate(new Date(new Date(tgt).getTime()-86400000));
@@ -91,7 +123,7 @@ async function _opsLoad() {
   try{
     [intl,ov] = await Promise.all([
       atGetAll(TABLES.ORDERS,{filterByFormula:dayF,fields:OPS_FIELDS},false),
-      OPS.date==='today'?atGetAll(TABLES.ORDERS,{filterByFormula:ovF,fields:OPS_FIELDS},false):[],
+      today?atGetAll(TABLES.ORDERS,{filterByFormula:ovF,fields:OPS_FIELDS},false):[],
     ]);
   }catch(e){
     // Πριν το worker deploy του VS CD Date το νέο φίλτρο μπορεί να απορριφθεί —
@@ -99,17 +131,16 @@ async function _opsLoad() {
     console.warn('[ops] VS dayF fallback:', e.message);
     [intl,ov] = await Promise.all([
       atGetAll(TABLES.ORDERS,{filterByFormula:dayFOld,fields:OPS_FIELDS},false),
-      OPS.date==='today'?atGetAll(TABLES.ORDERS,{filterByFormula:ovF,fields:OPS_FIELDS},false):[],
+      today?atGetAll(TABLES.ORDERS,{filterByFormula:ovF,fields:OPS_FIELDS},false):[],
     ]);
   }
   // Η νέα κλήση ζει ΧΩΡΙΣΤΑ: αν αποτύχει, η ημέρα αποδίδεται κανονικά και η
   // ζώνη λέει ρητά ότι δεν φορτώθηκε (αρχή 1) — δεν ρίχνει ολόκληρη τη σελίδα.
-  let ovL=[]; OPS.overdueLoadsErr=false;
-  if(OPS.date==='today'){
+  let ovL=[], overdueLoadsErr=false;
+  if(today){
     try{ ovL=await atGetAll(TABLES.ORDERS,{filterByFormula:ovLF,fields:OPS_FIELDS},false); }
-    catch(e){ console.warn('[ops] overdue loadings fetch failed:', e.message); OPS.overdueLoadsErr=true; }
+    catch(e){ console.warn('[ops] overdue loadings fetch failed:', e.message); overdueLoadsErr=true; }
   }
-  OPS.intl=intl;
   const ids=new Set(intl.map(r=>r.id));
   // Stock lots Φ1: a LOOSE piece (back in stock, no truck and no partner —
   // decision D1, OrdersStock.isLoose) keeps the dates of the truck it left.
@@ -119,8 +150,8 @@ async function _opsLoad() {
   // it waits for is a truck and a load) with the K6 hint instead of a button
   // (_opsSlots), and is kept out of the deliveries zone so it is listed once.
   const _opsNotLoose=r=>!OrdersStock.isLoose(r.fields);
-  OPS.overdue=ov.filter(r=>!ids.has(r.id)&&_opsNotLoose(r));
-  const ovIds=new Set(OPS.overdue.map(r=>r.id));
+  let overdue=ov.filter(r=>!ids.has(r.id)&&_opsNotLoose(r));
+  const ovIds=new Set(overdue.map(r=>r.id));
   // ΔΕΝ αφαιρούνται όσες είναι ήδη στη μέρα (3/9): ακριβώς αυτές είναι το
   // ζητούμενο — φόρτωση 30/8 αδήλωτη ΚΑΙ παράδοση σήμερα. Με το παλιό
   // `!ids.has(r.id)` η ζώνη έβγαινε μονίμως άδεια και η αντίφαση έμενε
@@ -128,8 +159,8 @@ async function _opsLoad() {
   // ενότητά της — όπως ήδη φαίνεται σε ΦΟΡΤΩΣΕΙΣ και ΠΑΡΑΔΟΣΕΙΣ όταν κάνει
   // και τα δύο την ίδια μέρα: η οθόνη ομαδοποιεί κατά ΔΟΥΛΕΙΑ, όχι κατά
   // εγγραφή. Το `!ovIds` μένει: μία εκκρεμότητα, μία ζώνη.
-  OPS.overdueLoads=ovL.filter(r=>!ovIds.has(r.id));
-  OPS.loadedAt=new Date();
+  let overdueLoads=ovL.filter(r=>!ovIds.has(r.id));
+  const loadedAt=new Date();
 
   // Wave 3 (owner 6/9, FEATURES.ORDER_SPLIT): a split PARENT keeps its
   // ORIGINAL Loading/Delivery DateTime (only the legs move the hand-over
@@ -139,28 +170,27 @@ async function _opsLoad() {
   // never-split order; the only way to know is to ask which ids are SOMEONE
   // ELSE's Parent Order — one extra filtered query, entirely new and gated by
   // the flag, so the off-path fetch above is untouched.
-  OPS.legParents = new Set();
+  const legParents = new Set();
   if (typeof FEATURES !== 'undefined' && FEATURES.ORDER_SPLIT) {
-    const candidateIds=[...intl,...OPS.overdue,...OPS.overdueLoads].filter(r=>!getLinkedId(r.fields['Parent Order'])).map(r=>r.id);
+    const candidateIds=[...intl,...overdue,...overdueLoads].filter(r=>!getLinkedId(r.fields['Parent Order'])).map(r=>r.id);
     if(candidateIds.length){
       try{
         const legsF=`OR(${candidateIds.map(id=>`FIND("${id}",ARRAYJOIN({Parent Order},","))>0`).join(',')})`;
         const legs=await atGetAll(TABLES.ORDERS,{filterByFormula:legsF,fields:['Parent Order']},false);
-        legs.forEach(l=>{ const p=getLinkedId(l.fields['Parent Order']); if(p) OPS.legParents.add(p); });
+        legs.forEach(l=>{ const p=getLinkedId(l.fields['Parent Order']); if(p) legParents.add(p); });
       }catch(e){ console.warn('[ops] split-leg parent lookup:', e.message); }
     }
-    intl=intl.filter(r=>!OPS.legParents.has(r.id));
-    OPS.overdue=OPS.overdue.filter(r=>!OPS.legParents.has(r.id));
-    OPS.overdueLoads=OPS.overdueLoads.filter(r=>!OPS.legParents.has(r.id));
+    intl=intl.filter(r=>!legParents.has(r.id));
+    overdue=overdue.filter(r=>!legParents.has(r.id));
+    overdueLoads=overdueLoads.filter(r=>!legParents.has(r.id));
   }
-  OPS.intl=intl;
 
   // Κληρονομιά ανάθεσης ζεύγους (owner 13/8): σε ταιριασμένα ζεύγη η ανάθεση
   // γράφεται ΜΟΝΟ στο export (Matched Import ID) — τα imports εμφανίζονταν
   // «κενά» εδώ ενώ το Weekly τα έδειχνε ανατεθειμένα. Γεμίζουμε Truck/Driver/
   // Trailer/Partner ΜΟΝΟ στη μνήμη για την προβολή· ΔΕΝ γράφεται στη βάση.
   try{
-    const bareImps=[...intl,...OPS.overdue,...OPS.overdueLoads].filter(r=>{
+    const bareImps=[...intl,...overdue,...overdueLoads].filter(r=>{
       const f=r.fields;
       // D1 (round 1): a piece is on a truck only by its OWN Truck/Partner — the
       // DB (piece_no_truck) and the Weekly judge it so. Borrowing the matched
@@ -182,9 +212,9 @@ async function _opsLoad() {
   }catch(e){ console.warn('[ops] pair-assignment inherit:', e.message); }
 
   // Batch fetch ORDER_STOPS for location resolution
-  const allRecs = [...intl, ...OPS.overdue, ...OPS.overdueLoads];
+  const allRecs = [...intl, ...overdue, ...overdueLoads];
   const stopIds = allRecs.flatMap(r => r.fields['ORDER STOPS'] || []);
-  OPS._stopsByOrder = {};
+  const stopsByOrder = {};
   if (stopIds.length) {
     try {
       for (let b = 0; b < stopIds.length; b += 90) {
@@ -193,7 +223,7 @@ async function _opsLoad() {
         const recs = await atGetAll(TABLES.ORDER_STOPS, { filterByFormula: ff }, false);
         recs.forEach(sr => {
           const pid = (sr.fields[F.STOP_PARENT_ORDER] || [])[0];
-          if (pid) { if (!OPS._stopsByOrder[pid]) OPS._stopsByOrder[pid] = []; OPS._stopsByOrder[pid].push(sr); }
+          if (pid) { if (!stopsByOrder[pid]) stopsByOrder[pid] = []; stopsByOrder[pid].push(sr); }
         });
       }
     } catch(e) { console.warn('DailyOps ORDER_STOPS fetch:', e); }
@@ -206,13 +236,86 @@ async function _opsLoad() {
   // Its failure must not take the day down either: the page renders, a zone
   // says the relays did not load, and ΑΝΑΘΕΣΗ shows only the international
   // driver — never a silent «no relay» (principle 1).
-  OPS.relays = {}; OPS.relaysErr = false;
+  // Started here, NOT awaited: renderDailyOps draws the day and then hands
+  // this promise to _opsRelaysSettle. Until it settles OPS.relaysLoading says
+  // so on screen (_opsDraw) — the cells are not yet «no relay». It never
+  // rejects. Returned wrapped in {pending}: an async function that returns a
+  // bare promise adopts it, and the day would wait for the relays again.
+  // Everything above was read into locals; OPS takes them only HERE and only
+  // for the newest load (reviewer P3, 6/10). An older load that finishes late
+  // used to overwrite OPS.intl with its own day and then be drawn under the
+  // newer day's date — with the newer day's relays, i.e. a silent «no relay»
+  // on its rows. It now leaves OPS, the relay state and the screen alone.
+  if (seq !== _opsSeq) return null;
+  Object.assign(OPS, { intl, overdue, overdueLoads, overdueLoadsErr, loadedAt, legParents, _stopsByOrder: stopsByOrder,
+    relays: {}, relaysErr: false, relaysLoading: false });
   const relayIds = [...new Set(allRecs.map(r => r.id))];
-  if (relayIds.length) {
-    try { OPS.relays = await _opsLoadRelays(relayIds); }
-    catch(e) { console.warn('[ops] local relays fetch failed:', e.message); OPS.relaysErr = true; }
-  }
+  if (!relayIds.length) return { pending: null };
+  OPS.relaysLoading = true;
+  return { pending: _opsLoadRelays(relayIds).then(rel => ({ rel }), err => ({ err })) };
 }
+
+// The relay answer is applied (OPS + repaint) by _opsApplyRelays. A stale
+// answer (another day, Ανανέωση, the panel's re-read) is dropped whole: it
+// must neither overwrite the newer day's relays nor paint over it.
+async function _opsRelaysSettle(p, seq) {
+  const res = await p;
+  if (seq !== _opsSeq) return;
+  _opsHeld = { res, armed: false };
+  _opsApplyRelays();
+}
+
+// Reviewer P2 (6/10): the page is usable before the relays answer, and their
+// repaint replaces the whole of #content. A dispatcher typing in Advance Paid
+// at that moment lost the input — and its blur saved the PARTIAL amount
+// (typed «15», relays came, typed «0» → PATCH 15, the 0 gone, screen "" vs
+// DB 15). An open «Αλλαγή ημέρας» popover vanished the same way. So the
+// answer waits here while a field in #content has focus, a popover is open,
+// a field's save is still in flight (a repaint before it lands would draw
+// the OLD value) or a mouse button is held inside #content (a repaint
+// between mousedown and mouseup replaces the pressed button and the click is
+// lost — measured with a 250 ms press, leaving a field by clicking
+// «Παραδόθηκε» opened nothing). It is held OUTSIDE OPS on purpose: committed
+// and painted together, so «φόρτωση…» and the print guard (both read
+// relaysLoading) never claim relays the screen does not show. Filling only
+// the ΑΝΑΘΕΣΗ cells was not taken: the relays also write the status word
+// («… από τοπικό»), the button tooltips, the overdue zones and the group
+// cells.
+let _opsHeld = null, _opsSaving = 0;
+function _opsEditing() {
+  if (_opsSaving > 0 || document.querySelector('.do-pop, #content :active')) return true;
+  const a = document.activeElement, c = document.getElementById('content');
+  return !!(a && c && c.contains(a) && /^(INPUT|SELECT|TEXTAREA)$/.test(a.tagName));
+}
+// Called when the answer settles and again from every way out of «editing»:
+// focus leaving a field (focusout), the press ending (mouseup), the popover
+// closing (_opsCloseFloat), a field's save landing (_opsSvF). After a move to
+// another page the state is kept but nothing is painted — #content belongs
+// to that page now.
+function _opsApplyRelays() {
+  const h = _opsHeld; if (!h) return;
+  const onPage = typeof currentPage === 'undefined' || currentPage === 'daily_ops';
+  if (onPage && _opsEditing()) {
+    if (!h.armed) { h.armed = true; document.addEventListener('focusout', _opsRetrySoon); document.addEventListener('mouseup', _opsRetrySoon); }
+    return;
+  }
+  _opsUnhold();
+  if (h.res.err) { console.warn('[ops] local relays fetch failed:', h.res.err && h.res.err.message); OPS.relaysErr = true; }
+  else OPS.relays = h.res.rel;
+  OPS.relaysLoading = false;
+  // Outside renderDailyOps' try when deferred: a throwing repaint must still
+  // say the page failed, never leave half a page silently.
+  if (onPage) { try { _opsDraw(); } catch(e) { _opsFailed(e); } }
+}
+function _opsUnhold() {
+  if (_opsHeld && _opsHeld.armed) { document.removeEventListener('focusout', _opsRetrySoon); document.removeEventListener('mouseup', _opsRetrySoon); }
+  _opsHeld = null;
+}
+// Look again once the event is over, not inside it: during focusout the next
+// focused element is not active yet (Tab from one field to the next must keep
+// waiting) and the field's own onblur save has only just started; the click
+// a mouseup ends is dispatched after the mouseup.
+function _opsRetrySoon() { setTimeout(_opsApplyRelays, 0); }
 
 // orderId → { relay_delivery, relay_loading }, through the ONE relay reader
 // Weekly International uses (core/relay.js, principle 3): the same FIND on
@@ -569,6 +672,11 @@ function _opsDraw() {
         ${_opsSlots(r,'ovl')}</div>${OPS._expanded?.has(r.id)?_opsSubRows(r,'Loading',true):''}`;}):'';
   // 060: relays live in their own request — a failure is said, never read as «no local driver».
   const relErr=OPS.relaysErr?`<div class="do-err"><span>Οι τοπικές παραδόσεις/φορτώσεις δεν φορτώθηκαν — δεν σημαίνει ότι δεν υπάρχουν. Η στήλη ΑΝΑΘΕΣΗ δείχνει μόνο τον διεθνή οδηγό.</span><button class="do-btn" onclick="renderDailyOps()">Ξαναδοκίμασε</button></div>`:'';
+  // Still loading (drawn before the relays answer): said in the subline, not
+  // in a block above the tables — a block that vanishes a moment later would
+  // push every row (and its buttons) up under a dispatcher's cursor. The
+  // toolbar may reflow sideways when it goes; the rows stay where they are.
+  const relWait=OPS.relaysLoading?` · <span class="do-rl-wait" role="status">τοπικές παραδόσεις/φορτώσεις: φόρτωση…</span>`:'';
   const ovLErr=isToday&&OPS.overdueLoadsErr?`<div class="do-err"><span>Η ζώνη εκκρεμών φορτώσεων δεν φορτώθηκε — δεν σημαίνει ότι δεν υπάρχουν εκκρεμείς φορτώσεις. Οι υπόλοιπες ενότητες είναι ενημερωμένες.</span><button class="do-btn" onclick="renderDailyOps()">Ξαναδοκίμασε</button></div>`:'';
 
   // Quick filters with nothing behind them are disabled (D2): a choice that
@@ -584,7 +692,7 @@ function _opsDraw() {
     <div class="do-page">
     <div class="do-top">
       <h1 class="do-h1">Ημερήσιο Πλάνο</h1>
-      <span class="do-sub">${fD(tgt)} · ${total} ${total===1?'παραγγελία':'παραγγελίες'} ${_opsDayWord()}${pendN?` · <b>${pendN} ${pendN===1?'εκκρεμής':'εκκρεμείς'}</b>`:''}</span>
+      <span class="do-sub">${fD(tgt)} · ${total} ${total===1?'παραγγελία':'παραγγελίες'} ${_opsDayWord()}${pendN?` · <b>${pendN} ${pendN===1?'εκκρεμής':'εκκρεμείς'}</b>`:''}${relWait}</span>
       ${preorderCounterHtml([...new Map([...all,...(isToday?OPS.overdueLoads:[])].map(r=>[r.id,r.fields])).values()],"preorderJump('.do-page .do-pre')")}
       <div class="do-seg">
         <button class="${OPS.date==='yesterday'?'on':''}" onclick="OPS.date='yesterday';renderDailyOps()">Χθες</button>
@@ -1040,7 +1148,9 @@ async function _opsOpenRelay(orderId, kind){
 }
 
 /* ── ACTIONS ──────────────────────────────────────────────────── */
-async function _opsSvF(id,fld,v){ if(_opsBlockReadOnly()) return; try{await atSafePatch(TABLES.ORDERS,id,{[fld]:v||null});const r=OPS.intl.find(x=>x.id===id);if(r)r.fields[fld]=v;}catch(e){toast('Η αποθήκευση απέτυχε — δεν γράφτηκε τίποτα. Ξαναδοκίμασε.','danger');}}
+// _opsSaving: a relay repaint waits for this save (_opsApplyRelays) — drawn
+// before the value is in OPS, the field would show the old amount over the new.
+async function _opsSvF(id,fld,v){ if(_opsBlockReadOnly()) return; _opsSaving++; try{await atSafePatch(TABLES.ORDERS,id,{[fld]:v||null});const r=OPS.intl.find(x=>x.id===id);if(r)r.fields[fld]=v;}catch(e){toast('Η αποθήκευση απέτυχε — δεν γράφτηκε τίποτα. Ξαναδοκίμασε.','danger');}finally{_opsSaving--;_opsApplyRelays();}}
 // ── Επίδοση ΑΝΑ ΣΤΑΣΗ (owner 26/8, v2: αναπτυσσόμενες υπο-γραμμές) ──────
 // Τα σημεία ΔΕΝ παραδίδονται μαζί — το ένα σήμερα, το άλλο αύριο. Άρα:
 // καμία υποχρέωση ταυτόχρονης απόφασης (το παράθυρο-picker αφαιρέθηκε,
@@ -1274,7 +1384,10 @@ async function _opsDelFinal(id,perf,stamped){ if(_opsBlockReadOnly()) return; co
    Popover στη γραμμή, προεπιλογή «Αύριο», Enter = ό,τι έκανε το σημερινό +1
    (owner 2/9). Το ρητό checkbox αντικαθιστά την τυφλή μετακίνηση της
    παράδοσης που έκανε ο παλιός κώδικας. */
-function _opsCloseFloat(){ document.querySelectorAll('.do-pop').forEach(e=>e.remove()); document.removeEventListener('keydown',_opsPopKey); }
+// A relay answer held while the popover was open is applied now — after the
+// current task, so a popover reopened in the same click (_opsChangeDay closes
+// the old one first) still counts as open.
+function _opsCloseFloat(){ document.querySelectorAll('.do-pop').forEach(e=>e.remove()); document.removeEventListener('keydown',_opsPopKey); if(_opsHeld) setTimeout(_opsApplyRelays,0); }
 // 9/9 (dispatcher: «πάτησα Παραδόθηκε δύο φορές, έμεινε εκκρεμής»): this Enter
 // handler was page-wide, so an Enter meant for the «Παραδόθηκε;» confirm dialog
 // ran «Αλλαγή ημέρας → Αύριο» on the popover's order instead — two real orders
@@ -1394,6 +1507,10 @@ async function _opsChangeDayGo(){
 function _opsPrint() {
   const content = document.querySelector('.ops-sections');
   if (!content) return;
+  // The day is now on screen before the relays (renderDailyOps): a sheet
+  // printed in that moment would carry no local driver and no word that they
+  // were missing — paper cannot repaint.
+  if (OPS.relaysLoading) { toast('Οι τοπικές παραδόσεις/φορτώσεις φορτώνουν ακόμη — ξαναδοκίμασε σε λίγο','warn'); return; }
   const win = window.open('','_blank','width=1100,height=800');
   // Το παράθυρο εκτύπωσης δεν φορτώνει το style.css — ασπρόμαυρο, χωρίς χρώματα.
   win.document.write(`<html><head><title>Ημερήσιο Πλάνο</title>

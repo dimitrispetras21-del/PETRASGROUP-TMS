@@ -28,6 +28,21 @@
 //              re-read, dropped label said, Enter, Άκυρο · missing panel = toast ·
 //              warehouse sees, cannot open, no amounts · failed read / no
 //              «Move Kind» = visible zone, day still renders
+//   Ημερήσιο   draw first (reviewer P3 #4, 6/10): a HELD relay read → the
+//              day's rows are on screen before it answers, «φόρτωση…» in the
+//              subline, no banner, print refused; released → the same cells
+//              as above · a 503 relay read (3 tries, ~3 s) → rows while it
+//              retries, then the banner, rows still there · a day switch
+//              during a held read → the stale answer repaints nothing
+//   Ημερήσιο   no repaint under the user (reviewer P2/P3, 6/10): typing in
+//              Advance Paid when the relays answer → no PATCH, the field and
+//              its value stay, the relays wait; the blur then saves ONCE
+//              with the full amount and the relays paint around it · a button
+//              held down (leaving a field, or when the answer lands) keeps
+//              its click: the repaint waits for the release · an open
+//              «Αλλαγή ημέρας» popover survives the answer; Άκυρο paints the
+//              relays · a late earlier load (yesterday's read answering after
+//              today's) neither paints nor writes OPS nor reads relays
 //   Μισθοδοσία local line label (the trigger's route text), no ↗, Διόρθωση
 //              only while a live relay holds the day (no Επαναφορά even for
 //              owner) · Ακύρωση with a reason only when the day has no live
@@ -111,7 +126,9 @@ const ORDERS = [
 ];
 const OVERDUE = [order(ORD.OV, 409, { dir: 'Import', cli: 'recCli000C', st: 'In Transit', load: addDays(-4), del: YDAY, trk: TRK.A, trl: TRL.A, drv: DRV.IA })];
 const ALL_ORDERS = [...ORDERS, ...OVERDUE];
-const STOPS = ALL_ORDERS.flatMap(o => [
+// Yesterday's own day (only the late-load scenario answers with it, byDay).
+const YDAY_ORDERS = [order('recOrdYst0021', 421, { dir: 'Import', cli: 'recCli000D', st: 'Assigned', load: MINUS3, del: YDAY, trk: TRK.B, trl: TRL.B, drv: DRV.IB })];
+const STOPS = [...ALL_ORDERS, ...YDAY_ORDERS].flatMap(o => [
   rec('recStp' + o.fields['Order No'] + 'L', { 'Parent Order': [o.id], 'Stop Type': 'Loading', 'Stop Number': 1, Location: [o._stops[0]], DateTime: o.fields['Loading DateTime'] }),
   rec('recStp' + o.fields['Order No'] + 'U', { 'Parent Order': [o.id], 'Stop Type': 'Unloading', 'Stop Number': 1, Location: [o._stops[1]], DateTime: o.fields['Delivery DateTime'] }),
 ]);
@@ -197,7 +214,13 @@ function recordIds(formula) { return [...String(formula).matchAll(/RECORD_ID\(\)
 const strip = r => ({ id: r.id, createdTime: r.createdTime, fields: r.fields });
 
 async function installStubs(page, opts = {}) {
-  const cap = { moves: [], orders: [], ledgerGets: 0, patches: [], drivers: [], lmPatches: [], lmReads: [], dropLabels: [] };
+  const cap = { moves: [], orders: [], ledgerGets: 0, patches: [], drivers: [], lmPatches: [], lmReads: [], dropLabels: [],
+    // holdMoves: every LOCAL MOVES read waits until the test calls its
+    // resolver in cap.held (a «slow network» the test controls exactly).
+    holdMoves: !!opts.holdMoves, held: [],
+    // holdDay: the ORDERS day read of that date waits in cap.heldDay;
+    // byDay: {date: records} answers that date's day read with its own rows.
+    heldDay: [], orderPatches: [], stopReads: [], moveTimes: [] };
   // Per page: the end-to-end save below writes into its own copy, so no
   // other scenario sees a time it did not set.
   const moves = MOVES.map(r => ({ ...r, fields: { ...r.fields } }));
@@ -212,6 +235,16 @@ async function installStubs(page, opts = {}) {
     const m = p.match(/^\/v0\/[^/]+\/([^/]+)$/);
     // One LOCAL MOVES record: the panel's PATCH and its read-back (atGetOne).
     const one = p.match(/^\/v0\/[^/]+\/local_moves\/(rec[A-Za-z0-9]+)$/);
+    const oneOrd = p.match(/^\/v0\/[^/]+\/tblgHlNmLBH3JTdIM\/(rec[A-Za-z0-9]+)$/);
+    if (oneOrd) {
+      const r = ALL_ORDERS.find(x => x.id === oneOrd[1]);
+      if (!r) return json(route, { error: { type: 'NOT_FOUND', message: 'Record not found' } }, 404);
+      if (req.method() === 'GET') return json(route, strip(r));
+      if (req.method() === 'PATCH') {
+        const body = req.postDataJSON(); cap.orderPatches.push({ id: oneOrd[1], fields: body.fields });
+        return json(route, { id: r.id, createdTime: r.createdTime, fields: Object.assign({}, r.fields, body.fields) });
+      }
+    }
     if (one) {
       const r = moves.find(x => x.id === one[1]);
       if (!r) return json(route, { error: { type: 'NOT_FOUND', message: 'Record not found' } }, 404);
@@ -241,18 +274,26 @@ async function installStubs(page, opts = {}) {
         const rows = want.length ? REF.drivers.filter(r => want.includes(r.id)) : REF.drivers;
         return json(route, { records: rows.map(strip) });
       }
-      if (t === 'tblaeY5QOHAS1gyE8') { const want = recordIds(f); return json(route, { records: STOPS.filter(s => want.includes(s.id)) }); }
+      if (t === 'tblaeY5QOHAS1gyE8') { const want = recordIds(f); cap.stopReads.push(...want); return json(route, { records: STOPS.filter(s => want.includes(s.id)) }); }
       if (t === 'tblgHlNmLBH3JTdIM') {
         cap.orders.push(u.search);
-        if (/IS_SAME\(\{Loading DateTime\}/.test(f)) return json(route, { records: ORDERS.map(strip) });
+        if (/IS_SAME\(\{Loading DateTime\}/.test(f)) {
+          const day = (f.match(/IS_SAME\(\{Delivery DateTime\},'(\d{4}-\d\d-\d\d)'/) || [])[1];
+          if (opts.holdDay && day === opts.holdDay) await new Promise(res => cap.heldDay.push(res));
+          if (opts.byDay && opts.byDay[day]) return json(route, { records: opts.byDay[day].map(strip) });
+          return json(route, { records: ORDERS.map(strip) });
+        }
         if (/IS_BEFORE\(\{Delivery DateTime\}/.test(f)) return json(route, { records: OVERDUE.map(strip) });
         const want = recordIds(f);
         if (want.length) return json(route, { records: ALL_ORDERS.filter(o => want.includes(o.id)).map(strip) });
         return json(route, { records: [] });
       }
       if (t === 'local_moves') {
-        cap.moves.push(u.search);
+        cap.moves.push(u.search); cap.moveTimes.push(Date.now());
+        if (cap.holdMoves) await new Promise(res => cap.held.push(res));
         if (opts.movesFail) return json(route, { error: 'Forbidden' }, 403);
+        // A 5xx is retried by core/api.js (_atRetry: 3 tries, 1 s + 2 s).
+        if (opts.movesStatus) return json(route, { error: { type: 'SERVER_ERROR', message: 'upstream unavailable' } }, opts.movesStatus);
         // The live (pre-060) Worker has no «Move Kind» label: an unknown label
         // in a FILTER is its one loud path — 422, «Unsupported query».
         if (opts.noKind && /\{Move Kind\}/.test(f)) return json(route, { error: 'Unsupported query for this table' }, 422);
@@ -290,6 +331,13 @@ async function newPage(browser, role) {
   return { context, page, errors };
 }
 const txt = (page, sel) => page.locator(sel).first().innerText();
+// The day is drawn BEFORE the relays answer (renderDailyOps, 6/10): a check of
+// a relay cell waits for the relay read to settle, never for the row alone.
+const relaysSettled = page => page.waitForFunction(() => window.OPS && OPS.relaysLoading === false, null, { timeout: 20000 });
+async function until(cond, what, ms = 10000) {
+  const t = Date.now();
+  while (!cond()) { if (Date.now() - t > ms) throw new Error('ΑΠΟΤΥΧΙΑ (timeout): ' + what); await new Promise(r => setTimeout(r, 50)); }
+}
 
 // ═════════════════════ Daily Ops ═════════════════════
 async function dailyDispatcher(browser) {
@@ -298,6 +346,7 @@ async function dailyDispatcher(browser) {
   const cap = await installStubs(page, { role: 'dispatcher' });
   await gotoPage(page, 'daily_ops', BASE_URL);
   await page.waitForSelector(`#r_${ORD.I1}`, { timeout: 20000 });
+  await relaysSettled(page);
   assert(await page.locator('.do-sec').count() === 4, 'Daily Ops keeps exactly FOUR sections');
 
   const i1 = await txt(page, `#r_${ORD.I1} td.do-asg`);
@@ -373,6 +422,7 @@ async function dailyDispatcher(browser) {
   await page.waitForTimeout(800);
   assert(cap.moves.length > reloads, 'after the save the day is re-read (relays fetched again)');
   await page.waitForSelector(`#r_${ORD.I1}`, { timeout: 20000 });
+  await relaysSettled(page);
   const i1b = await txt(page, `#r_${ORD.I1} td.do-asg`);
   assert(/ΤΟΠ\.\s*Τοπικός Π · 07:15/.test(i1b), 'the cell shows the saved time «07:15» — ' + JSON.stringify(i1b));
 
@@ -413,6 +463,7 @@ async function dailyWarehouse(browser) {
   await installStubs(page, { role: 'warehouse' });
   await gotoPage(page, 'daily_ops', BASE_URL);
   await page.waitForSelector(`#r_${ORD.I1}`, { timeout: 20000 });
+  await relaysSettled(page);
   const i1 = await txt(page, `#r_${ORD.I1} td.do-asg`);
   assert(/ΤΟΠ\.\s*Τοπικός Π · 07:00/.test(i1), 'warehouse sees who comes: «ΤΟΠ. Τοπικός Π · 07:00»');
   assert(await page.locator('.do-rl[role=button]').count() === 0, 'warehouse: no relay is clickable (no role=button)');
@@ -440,12 +491,289 @@ async function dailyFailure(browser, mode) {
   await installStubs(page, mode === 'fail' ? { role: 'dispatcher', movesFail: true } : { role: 'dispatcher', noKind: true });
   await gotoPage(page, 'daily_ops', BASE_URL);
   await page.waitForSelector(`#r_${ORD.I1}`, { timeout: 20000 });
+  await relaysSettled(page);
   const err = await page.locator('.do-err').allInnerTexts();
   assert(err.some(t => t.includes('Οι τοπικές παραδόσεις/φορτώσεις δεν φορτώθηκαν — δεν σημαίνει ότι δεν υπάρχουν')), mode + ': the zone says the relays did not load');
   assert(await page.locator('.do-sec').count() === 4, mode + ': the day still renders its four sections');
   const i1 = await txt(page, `#r_${ORD.I1} td.do-asg`);
   assert(!i1.includes('ΤΟΠ.') && i1.includes('Διεθνής Α'), mode + ': ΑΝΑΘΕΣΗ falls back to the international driver, never a guessed relay');
   if (mode === 'fail') await page.screenshot({ path: path.join(SHOT_DIR, 'local-relay-daily-not-loaded-1440.png'), fullPage: false });
+  await context.close();
+  return errors;
+}
+
+// Draw first (reviewer P3 #4, 6/10). Before: renderDailyOps awaited LOCAL
+// MOVES, so a 5xx there (3 tries, 1 s + 2 s) or a slow network held the whole
+// day behind the spinner. Every check reads the page while the relay read is
+// provably still open (held by the stub, or retrying), not «soon after».
+const dayState = (page, id) => page.evaluate(id => ({
+  loading: OPS.relaysLoading, date: OPS.date, sec: document.querySelectorAll('.do-sec').length,
+  row: !!document.getElementById('r_' + id),
+  asg: (document.querySelector('#r_' + id + ' td.do-asg') || {}).innerText || '',
+  wait: (document.querySelector('.do-rl-wait') || {}).innerText || '',
+  relErr: [...document.querySelectorAll('.do-err')].some(e => e.innerText.includes('Οι τοπικές παραδόσεις/φορτώσεις δεν φορτώθηκαν')),
+  nRelays: Object.keys(OPS.relays || {}).length }), id);
+
+async function dailyDrawFirstSlow(browser) {
+  console.log('\n== Ημερήσιο · αργή ανάγνωση τοπικών (draw first) ==');
+  const { context, page, errors } = await newPage(browser, 'dispatcher');
+  const cap = await installStubs(page, { role: 'dispatcher', holdMoves: true });
+  await gotoPage(page, 'daily_ops', BASE_URL);
+  await page.waitForSelector(`#r_${ORD.I1}`, { timeout: 20000 });
+  await until(() => cap.held.length === 1, 'the LOCAL MOVES read reached the stub');
+  const s = await dayState(page, ORD.I1);
+  assert(s.loading === true && s.sec === 4 && s.row && await page.locator('tr[id^="r_"]').count() >= 6,
+    'relay read still open: the day is ALREADY drawn — four sections and their rows — ' + JSON.stringify(s));
+  assert(s.wait.includes('τοπικές παραδόσεις/φορτώσεις: φόρτωση'), 'the loading state is said in the subline — ' + JSON.stringify(s.wait));
+  assert(!s.relErr, 'loading is not failure: no «δεν φορτώθηκαν» banner while the read is open');
+  assert(!s.asg.includes('ΤΟΠ.') && s.asg.includes('Διεθνής Α'), 'while loading, ΑΝΑΘΕΣΗ shows the international assignment, never a guessed relay — ' + JSON.stringify(s.asg));
+  const popups = [];
+  context.on('page', p => popups.push(p));
+  await page.locator('button:has-text("Εκτύπωση")').click();
+  await page.waitForTimeout(300);
+  assert(popups.length === 0 && (await page.evaluate(() => document.body.innerText)).includes('φορτώνουν ακόμη'),
+    'Εκτύπωση while loading is refused with a word (paper cannot repaint the local drivers in)');
+  await page.screenshot({ path: path.join(SHOT_DIR, 'local-relay-daily-draw-first-loading-1440.png'), fullPage: false });
+  cap.held.shift()();
+  await relaysSettled(page);
+  const s2 = await dayState(page, ORD.I1);
+  assert(s2.wait === '' && !s2.relErr && s2.nRelays > 0, 'answer arrives → the subline note is gone, relays in place, no banner');
+  assert(/ΤΟΠ\.\s*Τοπικός Π · 07:00/.test(s2.asg), 'late fill: «ΤΟΠ. Τοπικός Π · 07:00» leads the ΑΝΑΘΕΣΗ cell — ' + JSON.stringify(s2.asg));
+  assert((await txt(page, `#r_${ORD.I2} td.do-asg`)).includes('ΤΟΠ. ΠΡΟΣ ΑΝΑΘΕΣΗ'), 'late fill: the relay without a driver reads red «ΤΟΠ. ΠΡΟΣ ΑΝΑΘΕΣΗ»');
+  assert(/διεθν\. ΠΡΟΣ ΑΝΑΘΕΣΗ/.test(await txt(page, `#r_${ORD.I5} td.do-asg`)), 'late fill: «διεθν. ΠΡΟΣ ΑΝΑΘΕΣΗ» under a relay on an order with no vehicle');
+  assert(/ΤΟΠ\.\s*2\/3 · Τοπικός Κ/.test(await txt(page, '#r_g\\:GGRP-77 td.do-asg')), 'late fill: the groupage reads «ΤΟΠ. 2/3 · Τοπικός Κ»');
+  assert(await page.locator(`#r_${ORD.E5} .do-btn[title="Φορτώθηκε από τοπικό Τοπικός Κ"]`).count() === 1, 'late fill: the ✓ button carries the local driver in its tooltip');
+  assert((await txt(page, `#r_${ORD.OV}`)).includes('Τοπικός Π'), 'late fill: the overdue zone names the local driver');
+  await page.locator(`#r_${ORD.I1} .do-rl[role=button]`).click();
+  await page.waitForSelector('#rly_drv', { timeout: 5000 });
+  assert((await page.evaluate(() => document.getElementById('rly_drv').value)) === DRV.P, 'late fill: a click on the relay opens its panel, prefilled');
+  await page.locator('#modalOverlay button:has-text("Άκυρο")').click();
+  assert(cap.moves.length === 1, 'one LOCAL MOVES request, as before (' + cap.moves.length + ')');
+  await context.close();
+  return errors;
+}
+
+async function dailyDrawFirst5xx(browser) {
+  console.log('\n== Ημερήσιο · 503 στις τοπικές (draw first) ==');
+  const { context, page, errors } = await newPage(browser, 'dispatcher');
+  const cap = await installStubs(page, { role: 'dispatcher', movesStatus: 503 });
+  // Timed IN the page (wall clock, same machine as the stub): page.goto
+  // returns on the load event, which can come seconds after the first draw on
+  // a busy machine — measured from goto, «rows» read 4.1 s and the check
+  // failed on a page that had drawn at once (6/10).
+  await page.addInitScript(() => {
+    const mark = () => {
+      if (!window.__rowsAt && document.querySelector('tr[id^="r_"]')) window.__rowsAt = Date.now();
+      if (!window.__errAt && [...document.querySelectorAll('.do-err')].some(e => e.textContent.includes('Οι τοπικές παραδόσεις/φορτώσεις δεν φορτώθηκαν'))) window.__errAt = Date.now();
+    };
+    new MutationObserver(mark).observe(document, { childList: true, subtree: true });
+  });
+  const t0 = Date.now();
+  await gotoPage(page, 'daily_ops', BASE_URL);
+  await page.waitForSelector(`#r_${ORD.I1}`, { timeout: 20000 });
+  const tRows = Date.now() - t0;
+  const s = await dayState(page, ORD.I1);
+  assert(s.loading === true && s.sec === 4 && !s.relErr, 'rows on screen while the failing relay read is still retrying (' + tRows + ' ms, try ' + cap.moves.length + '/3)');
+  await page.waitForFunction(() => [...document.querySelectorAll('.do-err')].some(e => e.innerText.includes('Οι τοπικές παραδόσεις/φορτώσεις δεν φορτώθηκαν')), null, { timeout: 20000 });
+  const tErr = Date.now() - t0;
+  const s2 = await dayState(page, ORD.I1);
+  assert(cap.moves.length === 3, '5xx: core/api.js tried 3 times (' + cap.moves.length + ')');
+  assert(s2.relErr && s2.loading === false && s2.wait === '', 'then the designed banner «δεν φορτώθηκαν — δεν σημαίνει ότι δεν υπάρχουν»; the loading note is gone (' + tErr + ' ms)');
+  assert(s2.sec === 4 && s2.row && !s2.asg.includes('ΤΟΠ.') && s2.asg.includes('Διεθνής Α'), 'rows still there, ΑΝΑΘΕΣΗ = the international driver, never «no relay» guessed');
+  const tm = await page.evaluate(() => ({ rows: window.__rowsAt, err: window.__errAt }));
+  assert(tm.rows && tm.err && tm.rows < cap.moveTimes[2] && tm.err - tm.rows > 1500,
+    'the day did not wait for the retries: rows drawn ' + (cap.moveTimes[2] - tm.rows) + ' ms before the 3rd try, banner ' + (tm.err - tm.rows) + ' ms after the rows');
+  await page.screenshot({ path: path.join(SHOT_DIR, 'local-relay-daily-draw-first-5xx-1440.png'), fullPage: false });
+  await context.close();
+  return errors;
+}
+
+async function dailyDrawFirstStale(browser) {
+  console.log('\n== Ημερήσιο · αλλαγή ημέρας με ανοιχτή ανάγνωση ==');
+  const { context, page, errors } = await newPage(browser, 'dispatcher');
+  const cap = await installStubs(page, { role: 'dispatcher', holdMoves: true });
+  await gotoPage(page, 'daily_ops', BASE_URL);
+  await page.waitForSelector(`#r_${ORD.I1}`, { timeout: 20000 });
+  await until(() => cap.held.length === 1, 'today\'s LOCAL MOVES read reached the stub');
+  await page.locator('.do-seg button:has-text("Αύριο")').click();
+  await page.waitForFunction(() => OPS.date === 'tomorrow' && (document.querySelector('.do-seg button.on') || {}).innerText === 'Αύριο' && !!document.querySelector('.do-rl-wait'), null, { timeout: 20000 });
+  await until(() => cap.held.length === 2, 'tomorrow\'s LOCAL MOVES read reached the stub');
+  // _opsDraw replaces #content's innerHTML, so «repainted» = a new .do-page
+  // node. (A MutationObserver also counts the app's own page-footer append.)
+  await page.evaluate(() => { window.__pg = document.querySelector('#content .do-page'); });
+  cap.held[0]();   // today's answer, now stale
+  await page.waitForTimeout(800);
+  const s = await page.evaluate(() => ({ same: !!window.__pg && document.querySelector('#content .do-page') === window.__pg, loading: OPS.relaysLoading, date: OPS.date, n: Object.keys(OPS.relays || {}).length,
+    wait: !!document.querySelector('.do-rl-wait'), on: (document.querySelector('.do-seg button.on') || {}).innerText }));
+  assert(s.same && s.date === 'tomorrow' && s.on === 'Αύριο', 'the stale answer of the previous day repaints nothing — ' + JSON.stringify(s));
+  assert(s.loading === true && s.wait && s.n === 0, 'and writes nothing: tomorrow still says «φόρτωση…», no relays taken from the other read');
+  cap.held[1]();
+  await relaysSettled(page);
+  const s2 = await page.evaluate(() => ({ repainted: document.querySelector('#content .do-page') !== window.__pg, date: OPS.date, n: Object.keys(OPS.relays || {}).length, wait: !!document.querySelector('.do-rl-wait') }));
+  assert(s2.repainted && s2.date === 'tomorrow' && s2.n > 0 && !s2.wait, 'tomorrow\'s own answer fills it — ' + JSON.stringify(s2));
+  await context.close();
+  return errors;
+}
+
+// Reviewer P2 (6/10), reproduced on 01237725: typed «15» in Advance Paid, the
+// relays answered, typed «0» → PATCH Advance Paid 15, the 0 lost, screen ""
+// vs DB 15 — the relay repaint removed the focused input and its onblur saved
+// the partial amount. «Answered» = the stub has sent the relay response and
+// the page has had time to process it (waitForResponse + 600 ms).
+async function releaseRelays(page, cap) {
+  const resp = page.waitForResponse(r => r.url().includes('/local_moves'), { timeout: 20000 });
+  cap.held.shift()();
+  await resp;
+  await page.waitForTimeout(600);
+}
+async function dailyNoRepaintWhileTyping(browser) {
+  console.log('\n== Ημερήσιο · πληκτρολόγηση στο Advance Paid όταν απαντούν οι τοπικές ==');
+  const { context, page, errors } = await newPage(browser, 'dispatcher');
+  const cap = await installStubs(page, { role: 'dispatcher', holdMoves: true });
+  await gotoPage(page, 'daily_ops', BASE_URL);
+  await page.waitForSelector(`#r_${ORD.E5}`, { timeout: 20000 });
+  await until(() => cap.held.length === 1, 'the LOCAL MOVES read reached the stub');
+  const sel = `#r_${ORD.E5} input.do-tinp[type=number]`;
+  await page.locator(sel).click();
+  await page.keyboard.type('15', { delay: 30 });
+  await page.evaluate(s => { window.__inp = document.querySelector(s); }, sel);
+  await releaseRelays(page, cap);
+  const s = await page.evaluate(id => ({ same: document.activeElement === window.__inp && window.__inp.isConnected, v: window.__inp.value,
+    loading: OPS.relaysLoading, wait: !!document.querySelector('.do-rl-wait'), asg: document.querySelector('#r_' + id + ' td.do-asg').innerText }), ORD.E5);
+  assert(cap.orderPatches.length === 0, 'relays answered mid-typing: NO save is sent (was PATCH «Advance Paid» 15) — ' + JSON.stringify(cap.orderPatches));
+  assert(s.same && s.v === '15', 'the same input keeps the focus and the typed «15» — ' + JSON.stringify(s));
+  assert(s.loading === true && s.wait && !s.asg.includes('ΤΟΠ.'), 'the relays wait: still «φόρτωση…», nothing painted under the cursor — ' + JSON.stringify(s));
+  await page.keyboard.type('0', { delay: 30 });
+  assert((await page.evaluate(() => window.__inp.value)) === '150' && cap.orderPatches.length === 0, 'typing goes on into the same field: «150», still no save');
+  await page.locator('.do-h1').click();   // leave the field the ordinary way
+  await until(() => cap.orderPatches.length >= 1, 'the blur saves');
+  await relaysSettled(page);
+  await page.waitForTimeout(500);
+  const p = cap.orderPatches;
+  assert(p.length === 1 && p[0].id === ORD.E5 && JSON.stringify(p[0].fields) === '{"Advance Paid":150}',
+    'leaving the field saves ONCE, with the full amount: PATCH {"Advance Paid":150} — ' + JSON.stringify(p));
+  const after = await page.evaluate(([s, id]) => ({ v: document.querySelector(s).value, fresh: document.querySelector(s) !== window.__inp,
+    mem: OPS.intl.find(x => x.id === id).fields['Advance Paid'], asg: document.querySelector('#r_' + id + ' td.do-asg').innerText,
+    wait: !!document.querySelector('.do-rl-wait') }), [sel, ORD.E5]);
+  assert(after.fresh && after.v === '150' && after.mem === 150, 'then the relays paint, and the redrawn field shows the saved 150 (screen = memory = what was sent) — ' + JSON.stringify(after));
+  assert(/ΤΟΠ\.\s*Τοπικός Κ · 06:00/.test(after.asg) && !after.wait, 'the held relays are on screen now — ' + JSON.stringify(after.asg));
+  assert(cap.moves.length === 1, 'still one LOCAL MOVES request (' + cap.moves.length + ')');
+  await context.close();
+  return errors;
+}
+
+// A repaint between mousedown and mouseup replaces the pressed button and the
+// click is lost (measured 6/10 with a 250 ms press: no confirm opened).
+// Playwright's own click() sends down and up back to back, so a human press
+// is spelled out: down, 250 ms, up.
+async function humanPress(page, sel, during) {
+  const bb = await page.locator(sel).first().boundingBox();
+  await page.mouse.move(bb.x + bb.width / 2, bb.y + bb.height / 2);
+  await page.mouse.down();
+  await page.waitForTimeout(250);
+  const r = during ? await during() : null;
+  await page.mouse.up();
+  return r;
+}
+async function dailyNoRepaintUnderPress(browser) {
+  console.log('\n== Ημερήσιο · κλικ σε κουμπί όταν απαντούν οι τοπικές ==');
+  const { context, page, errors } = await newPage(browser, 'dispatcher');
+  const cap = await installStubs(page, { role: 'dispatcher', holdMoves: true });
+  await gotoPage(page, 'daily_ops', BASE_URL);
+  await page.waitForSelector(`#r_${ORD.I2}`, { timeout: 20000 });
+  await until(() => cap.held.length === 1, 'the LOCAL MOVES read reached the stub');
+  // (a) typed amount, relays answer, the field is left by pressing a button
+  await page.locator(`#r_${ORD.E5} input.do-tinp[type=number]`).click();
+  await page.keyboard.type('20', { delay: 30 });
+  await releaseRelays(page, cap);
+  const btn = `#r_${ORD.I2} .do-btn`;
+  await page.evaluate(s => { window.__btn = document.querySelector(s); }, btn);
+  const mid = await humanPress(page, btn, () => page.evaluate(s => ({ same: document.querySelector(s) === window.__btn, loading: OPS.relaysLoading }), btn));
+  assert(mid.same, 'leaving the field by pressing «Παραδόθηκε»: no repaint while the button is held down — ' + JSON.stringify(mid));
+  await page.waitForSelector('#_cfaOk', { timeout: 5000 });
+  assert((await page.locator('#modalOverlay').innerText()).includes('Παραδόθηκε;'), 'the click lands: its confirm opens (was: nothing, the pressed button had been replaced)');
+  await page.locator('#_cfaCancel').click();
+  await relaysSettled(page);
+  assert(cap.orderPatches.length === 1 && JSON.stringify(cap.orderPatches[0].fields) === '{"Advance Paid":20}', 'the field saved once, «20» — ' + JSON.stringify(cap.orderPatches));
+  assert((await txt(page, `#r_${ORD.I2} td.do-asg`)).includes('ΤΟΠ. ΠΡΟΣ ΑΝΑΘΕΣΗ'), 'and the held relays painted after the click');
+  await context.close();
+
+  // (b) the answer lands while a button is held down (no field involved)
+  const n2 = await newPage(browser, 'dispatcher');
+  const cap2 = await installStubs(n2.page, { role: 'dispatcher', holdMoves: true });
+  await gotoPage(n2.page, 'daily_ops', BASE_URL);
+  await n2.page.waitForSelector(`#r_${ORD.I2}`, { timeout: 20000 });
+  await until(() => cap2.held.length === 1, 'the LOCAL MOVES read reached the stub');
+  await n2.page.evaluate(s => { window.__btn = document.querySelector(s); }, btn);
+  const mid2 = await humanPress(n2.page, btn, async () => { await releaseRelays(n2.page, cap2);
+    return n2.page.evaluate(s => ({ same: document.querySelector(s) === window.__btn, loading: OPS.relaysLoading }), btn); });
+  assert(mid2.same && mid2.loading === true, 'relays answering while a button is held: they wait for the release — ' + JSON.stringify(mid2));
+  await n2.page.waitForSelector('#_cfaOk', { timeout: 5000 });
+  assert((await n2.page.locator('#modalOverlay').innerText()).includes('Παραδόθηκε;'), 'the click lands (its confirm opens)');
+  await n2.page.locator('#_cfaCancel').click();
+  await relaysSettled(n2.page);
+  assert((await txt(n2.page, `#r_${ORD.I2} td.do-asg`)).includes('ΤΟΠ. ΠΡΟΣ ΑΝΑΘΕΣΗ'), 'then the relays paint');
+  await n2.context.close();
+  return [...errors, ...n2.errors];
+}
+
+// Reviewer P3 (6/10): an «Αλλαγή ημέρας» popover opened while the relays
+// load vanished when they answered (1 popover before, 0 after, OPS._pop set).
+async function dailyNoRepaintUnderPopover(browser) {
+  console.log('\n== Ημερήσιο · ανοιχτό «Αλλαγή ημέρας» όταν απαντούν οι τοπικές ==');
+  const { context, page, errors } = await newPage(browser, 'dispatcher');
+  const cap = await installStubs(page, { role: 'dispatcher', holdMoves: true });
+  await gotoPage(page, 'daily_ops', BASE_URL);
+  await page.waitForSelector(`#r_${ORD.E5}`, { timeout: 20000 });
+  await until(() => cap.held.length === 1, 'the LOCAL MOVES read reached the stub');
+  await page.locator(`#r_${ORD.E5} .do-ghost:has-text("Αλλαγή ημέρας")`).click();
+  await page.waitForSelector('.do-pop', { timeout: 5000 });
+  await page.evaluate(() => { window.__pop = document.querySelector('.do-pop'); });
+  await releaseRelays(page, cap);
+  const s = await page.evaluate(() => ({ n: document.querySelectorAll('.do-pop').length, same: document.querySelector('.do-pop') === window.__pop,
+    pop: !!OPS._pop, loading: OPS.relaysLoading }));
+  assert(s.n === 1 && s.same && s.pop, 'the popover survives the relay answer (was: 1 before, 0 after) — ' + JSON.stringify(s));
+  assert(s.loading === true, 'the relays wait while it is open');
+  await page.locator('.do-pop .do-ghost:has-text("Άκυρο")').click();
+  await relaysSettled(page);
+  const s2 = await page.evaluate(id => ({ n: document.querySelectorAll('.do-pop').length, asg: document.querySelector('#r_' + id + ' td.do-asg').innerText }), ORD.E5);
+  assert(s2.n === 0 && /ΤΟΠ\.\s*Τοπικός Κ · 06:00/.test(s2.asg), 'Άκυρο closes it and the relays paint — ' + JSON.stringify(s2));
+  assert(cap.orderPatches.length === 0, 'nothing was written');
+  await context.close();
+  return errors;
+}
+
+// Reviewer P3 (6/10), older than draw-first: a load that started earlier and
+// answers later (yesterday's read, after the user is back on today) wrote
+// OPS.intl and drew — today's date over yesterday's rows, with today's relays
+// (a silent «no relay»). Back on today = renderDailyOps again, as the router
+// does when the page is opened anew (the buttons are not on screen while a
+// day loads).
+async function dailyLateEarlierLoad(browser) {
+  console.log('\n== Ημερήσιο · αργή φόρτωση προηγούμενης ημέρας μετά την τρέχουσα ==');
+  const { context, page, errors } = await newPage(browser, 'dispatcher');
+  const cap = await installStubs(page, { role: 'dispatcher', holdDay: YDAY, byDay: { [YDAY]: YDAY_ORDERS } });
+  await gotoPage(page, 'daily_ops', BASE_URL);
+  await page.waitForSelector(`#r_${ORD.I1}`, { timeout: 20000 });
+  await relaysSettled(page);
+  await page.locator('.do-seg button:has-text("Χθες")').click();
+  await until(() => cap.heldDay.length === 1, 'yesterday\'s day read reached the stub (held)');
+  await page.evaluate(() => { OPS.date = 'today'; renderDailyOps(); });
+  await page.waitForFunction(id => { const c = document.querySelector('#r_' + id + ' td.do-asg'); return OPS.date === 'today' && OPS.relaysLoading === false && c && c.innerText.includes('ΤΟΠ.'); }, ORD.I1, { timeout: 20000 });
+  const movesBefore = cap.moves.length;
+  await page.evaluate(() => { window.__pg = document.querySelector('#content .do-page'); });
+  cap.heldDay[0]();   // yesterday's answer, now stale
+  const yStops = YDAY_ORDERS[0].fields['ORDER STOPS'];
+  await until(() => yStops.every(id => cap.stopReads.includes(id)), 'the stale load ran to its last read (its ORDER STOPS)');
+  await page.waitForTimeout(800);
+  const s = await page.evaluate(([i1, y1]) => ({ same: document.querySelector('#content .do-page') === window.__pg, date: OPS.date,
+    intl: OPS.intl.map(r => r.id), rowI1: !!document.getElementById('r_' + i1), rowY1: !!document.getElementById('r_' + y1),
+    asg: (document.querySelector('#r_' + i1 + ' td.do-asg') || {}).innerText || '', on: (document.querySelector('.do-seg button.on') || {}).innerText }),
+    [ORD.I1, YDAY_ORDERS[0].id]);
+  assert(s.same && s.date === 'today' && s.on === 'Σήμερα', 'the late earlier load paints nothing: today\'s page stays — ' + JSON.stringify({ same: s.same, date: s.date, on: s.on }));
+  assert(s.intl.includes(ORD.I1) && !s.intl.includes(YDAY_ORDERS[0].id) && s.rowI1 && !s.rowY1, 'and writes nothing: OPS.intl and the rows are still today\'s — ' + JSON.stringify(s.intl));
+  assert(/ΤΟΠ\.\s*Τοπικός Π · 07:00/.test(s.asg), 'today\'s relays stay on today\'s rows — ' + JSON.stringify(s.asg));
+  assert(cap.moves.length === movesBefore, 'the stale load asks for no relays (' + movesBefore + ' → ' + cap.moves.length + ')');
   await context.close();
   return errors;
 }
@@ -627,6 +955,13 @@ async function driversCard(browser) {
     errs.dailyWarehouse = await dailyWarehouse(browser);
     errs.dailyFail = await dailyFailure(browser, 'fail');
     errs.dailyNoKind = await dailyFailure(browser, 'noKind');
+    errs.dailyDrawFirstSlow = await dailyDrawFirstSlow(browser);
+    errs.dailyDrawFirst5xx = await dailyDrawFirst5xx(browser);
+    errs.dailyDrawFirstStale = await dailyDrawFirstStale(browser);
+    errs.dailyNoRepaintWhileTyping = await dailyNoRepaintWhileTyping(browser);
+    errs.dailyNoRepaintUnderPress = await dailyNoRepaintUnderPress(browser);
+    errs.dailyNoRepaintUnderPopover = await dailyNoRepaintUnderPopover(browser);
+    errs.dailyLateEarlierLoad = await dailyLateEarlierLoad(browser);
     errs.payrollAccountant = await payrollAccountant(browser);
     errs.payrollOwner = await payrollOwnerCancelled(browser);
     errs.payrollDispatcher = await payrollDispatcher(browser);
