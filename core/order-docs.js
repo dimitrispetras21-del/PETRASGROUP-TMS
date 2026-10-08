@@ -78,16 +78,16 @@ function _odHeaders(method) {
   return typeof _apiHeaders === 'function' ? _apiHeaders(method, req) : {};
 }
 async function _odFetch(url, opts) {
+  // Same fail-safe as _atRetry, through the same helpers (core/api.js loads
+  // first in app.html): after the page's first 401 nothing is sent and
+  // nothing is logged per request — this used to be a second copy of the 401
+  // branch, which is how the copies drift (5/10 storm, 2010 rows). typeof
+  // guards like ctFetch (modules/costs.js): a page that loads this file
+  // without api.js must get its answer, not a ReferenceError (review 6/10 P3-4).
+  if (typeof tmsSessionGone === 'function' && tmsSessionGone()) throw tmsSessionRefuse();
   const res = await fetch(url, opts);
   if (typeof tmsNoteResponse === 'function') tmsNoteResponse(res);
-  if (res.status === 401) {
-    // Same fail-safe as _atRetry (core/api.js): token is gone, session is over.
-    localStorage.removeItem('tms_user');
-    localStorage.removeItem('tms_jwt');
-    window.location.href = 'index.html';
-    const e = new Error('Unauthorized'); e._noRetry = true;
-    throw e;
-  }
+  if (res.status === 401 && typeof tmsSessionExpired === 'function') throw tmsSessionExpired('docs');
   return res;
 }
 async function _odErrMsg(res, fallback) {

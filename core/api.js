@@ -121,7 +121,9 @@ function _loadOfflineQueue() {
 
 async function _flushOfflineQueue() {
   // One flush at a time: 'online' can fire again while a replay is running.
-  if (_flushing || !_offlineQueue.length || !navigator.onLine) return;
+  // No session = every replay would 401 (and be logged): the queue stays in
+  // localStorage for the next login's page instead (5/10 storm, see _atRetry).
+  if (_flushing || !_offlineQueue.length || !navigator.onLine || _tmsSessionGone) return;
   _flushing = true;
   try {
   const batch = [..._offlineQueue];
@@ -129,7 +131,7 @@ async function _flushOfflineQueue() {
   _flushRest.push(...batch);
   _saveOfflineQueue();
 
-  let failed = 0, conflicts = 0, rejected = 0;
+  let failed = 0, conflicts = 0, rejected = 0, kept = 0;
   // A refusal leaves the queue LOUDLY, naming the record (principle 1).
   const refuse = (item, status, why, head) => {
     rejected++;
@@ -140,8 +142,16 @@ async function _flushOfflineQueue() {
     const _rj = new Error(msg); _rj._req = item.req || null;
     if (typeof logError === 'function') logError(_rj, 'queue rejected');
   };
+  // Kept, unsent and unlogged, for the next login's page: once the session has
+  // ended (a 401 on an earlier item, on this item's conflict check, or on any
+  // request of the page) every later replay would only 401 too. The entry
+  // check of this function is not enough: the session usually ends DURING the
+  // replay, and each raw 401 was one more app_errors row per item and per
+  // page load of a reload loop (review 6/10 P2-2).
+  const keep = (item) => { _offlineQueue.push(item); kept++; };
   for (const item of batch) {
     try {
+      if (_tmsSessionGone) { keep(item); continue; }
       // For PATCH operations, check if record was modified since we queued
       if (item.method === 'PATCH' && item.recordId) {
         try {
@@ -165,22 +175,27 @@ async function _flushOfflineQueue() {
           // If conflict check fails, proceed with the mutation anyway
           if (typeof logError === 'function') logError(e, '_flushOfflineQueue conflict check');
         }
+        if (_tmsSessionGone) { keep(item); continue; }   // the conflict check's 401 ended the session
       }
       const res = await fetch(item.url, {
         method: item.method,
         headers: _apiHeaders(item.method, item.req ? item.req + '-q' : null),
         body: item.body ? JSON.stringify(item.body) : undefined,
       });
+      // A raw 401 is the session's end, not an answer about the change: the
+      // same helper as _atRetry (login cleared, one «session» row per tab,
+      // redirect), and the 401 itself is not logged.
+      if (res.status === 401) { tmsSessionExpired('offline queue', item.req || null); keep(item); continue; }
       // The answer is read (critic-3 Σ-02, round 1 4/10): fetch does not throw
       // on an HTTP error, so a REFUSED write (422 rule, 403, 400, 404) counted
       // as «συγχρονίστηκαν» and left the queue — the change was lost while the
       // screen said it was saved. A 4xx is the server's final «no»: replaying
       // it gets the same answer, so it leaves the queue, loudly, naming the
-      // record. 401/408/429 are not an answer about the change (session,
-      // timeout, rate limit) and 5xx is the server failing: those stay queued
-      // for the next flush, like a network error (the catch below).
+      // record. 408/429 are not an answer about the change (timeout, rate
+      // limit; 401 = the session, above) and 5xx is the server failing: those
+      // stay queued for the next flush, like a network error (the catch below).
       if (!res.ok) {
-        if (res.status >= 400 && res.status < 500 && ![401, 408, 429].includes(res.status)) {
+        if (res.status >= 400 && res.status < 500 && ![408, 429].includes(res.status)) {
           const errData = (await res.json().catch(() => null)) || {};
           refuse(item, res.status, _atErrMsg(errData.error, `HTTP ${res.status}`), 'ΑΠΟΡΡΙΦΘΗΚΕ');
           continue;
@@ -188,7 +203,7 @@ async function _flushOfflineQueue() {
         // This Worker answers a DB refusal (CHECK/trigger) with 500 too, so a
         // 5xx is not always transient: after 3 replays it leaves the queue
         // loudly instead of sitting there for ever, unseen (review 4/10, P2-1).
-        // 401/408/429 are not about the change — kept without a count.
+        // 408/429 are not about the change — kept without a count.
         if (res.status >= 500) item.tries = (item.tries || 0) + 1;
         if (item.tries >= 3) { refuse(item, res.status, `ο server απάντησε HTTP ${res.status} σε 3 προσπάθειες`, 'ΔΕΝ ΠΕΡΑΣΕ'); continue; }
         throw new Error(`offline replay HTTP ${res.status} · ${item.method} ${item.recordId || 'νέα εγγραφή'}`);   // → stays queued (catch)
@@ -202,11 +217,13 @@ async function _flushOfflineQueue() {
       _saveOfflineQueue();
     }
   }
-  const synced = batch.length - failed - conflicts - rejected;
+  const synced = batch.length - failed - conflicts - rejected - kept;
   // «Αποθηκεύτηκε τοπικά» must leave a trace centrally (principle 1): one summary line per flush, excluded
-  // from the error-rate checks by its prefix (B-34/B-34b), with the ids of the replayed actions.
-  if (batch.length && typeof logError === 'function') {
-    const _fl = new Error(`offline flush synced ${synced}, conflicts ${conflicts}, failed ${failed}${rejected ? `, rejected ${rejected}` : ''} · ${batch.map((b) => b.req).filter(Boolean).slice(0, 10).join(',')}`);
+  // from the error-rate checks by its prefix (B-34/B-34b), with the ids of the replayed actions. Not when
+  // nothing was decided (every item kept because the session ended): the «session» row says that, and a
+  // reload loop would otherwise write this line once per page load.
+  if (batch.length > kept && typeof logError === 'function') {
+    const _fl = new Error(`offline flush synced ${synced}, conflicts ${conflicts}, failed ${failed}${rejected ? `, rejected ${rejected}` : ''}${kept ? `, kept ${kept} (session ended)` : ''} · ${batch.map((b) => b.req).filter(Boolean).slice(0, 10).join(',')}`);
     _fl._kind = 'offline';                     // informational: stored with app_errors.kind='offline', not an error
     logError(_fl, 'queue');
   }
@@ -295,23 +312,116 @@ function _fetchWithTimeout(url, opts = {}, ms = 30000) {
   return fetch(url, { cache: 'no-store', ...opts, signal: ctrl.signal }).finally(() => clearTimeout(to));
 }
 
+// ── Session gone: one 401 ends the session for the whole page ─────────────
+// 5/10/2026 21:11–21:15 UTC: one Windows PC (Chrome 149) wrote 2010 rows to
+// app_errors («preload_<TRUCKS>: Unauthorized» ×1320, TRAILERS ×666, …), 2002
+// of them from app.html with no hash over 188 distinct seconds: a tab that
+// kept LOADING the app, not one page that kept failing. It kept the auditor's
+// B-34 red for a day and buried the real errors, yet no row said whose PC it
+// was or how the tab got back to app.html (cause still unknown on 7/10; the
+// rosters match, so the tamper guard is not it). In Chrome those rows can only
+// have come from pages that PASSED core/auth.js: a page it turns away runs no
+// script after it. There is no token-refresh path — a new login is always a new
+// page — so after the FIRST 401 nothing in this page can succeed. From then on:
+//   - every facade / costs / docs request is refused HERE, before any fetch,
+//     with the same Unauthorized error the callers already handle (_noRetry);
+//   - that error carries _sessionGone, which logError keeps out of app_errors
+//     (the callers' catch blocks are many; filtering them one by one would
+//     miss the next one written);
+//   - the redirect is re-attempted at most every 5 s, not once per request;
+//   - the end of the session is still heard, per TAB (core/session-streak.js).
+// window._tmsNoSessionAtLoad: set by auth.js when it turns the page away at
+// load. auth.js has already counted and reported that page; Chromium never
+// runs this file after it (measured 7/10). An engine that kept parsing until
+// the next page commits would, and the page must then start «gone»: no token,
+// nothing to send, nothing to count twice.
+let _tmsSessionGone = !!(typeof window !== 'undefined' && window._tmsNoSessionAtLoad);
+let _tmsSessionRedirectAt = _tmsSessionGone ? Date.now() : 0;
+const _TMS_SESSION_REDIRECT_MS = 5000;
+let _tmsAliveSeen = false;
+
+function tmsSessionGone() { return _tmsSessionGone; }
+
+function _tmsUnauthorized(req) {
+  const e = new Error('Unauthorized');
+  e._noRetry = true; e._sessionGone = true;
+  if (req) e._req = req;
+  return e;
+}
+
+function _tmsSessionRedirect() {
+  const now = Date.now();
+  if (now - _tmsSessionRedirectAt < _TMS_SESSION_REDIRECT_MS) return;
+  _tmsSessionRedirectAt = now;
+  try { window.location.href = 'index.html'; } catch (_) {}
+}
+
+// The refusal for a request made after the session is gone: no fetch, no log.
+function tmsSessionRefuse(req) {
+  _tmsSessionRedirect();
+  return _tmsUnauthorized(req);
+}
+
+// Called on a 401. The first one per page reads whose login it was BEFORE
+// removing it (afterwards nothing can: the row is posted without a token, so
+// app_errors.actor stays empty — every 5/10 row said «unknown»), clears the
+// login, counts the page in the tab's streak and writes the rows the streak
+// decides (core/session-streak.js tmsStreakNote); later ones (requests already
+// in flight at that moment) only refuse.
+function tmsSessionExpired(where, req) {
+  if (!_tmsSessionGone) {
+    _tmsSessionGone = true;
+    let u = null, note = null;
+    try { u = JSON.parse(localStorage.getItem('tms_user') || 'null'); } catch (_) {}
+    // Already gone: another tab removed the shared login (its own first 401,
+    // or a logout) while this page was open. This tab's copy still names the
+    // user; no expiry is claimed, so the row stays the routine kind — the
+    // other tab's row carries whatever was not routine (review 6/10 P3).
+    if (!u && typeof tmsStreakTabUser === 'function') {
+      const name = tmsStreakTabUser();
+      if (name) { u = { username: name }; note = 'login already removed by another tab'; }
+    }
+    try { localStorage.removeItem('tms_user'); localStorage.removeItem('tms_jwt'); } catch (_) {}
+    const rows = typeof tmsStreakNote === 'function'
+      ? tmsStreakNote({ reason: '401', where, user: u && u.username, exp: u && u.expiresAt, note }) : [];
+    // logError exists by the time any answer arrives (utils.js is parsed long
+    // before); the direct post is only the fallback that never loses a row.
+    for (const m of rows) {
+      if (typeof logError === 'function') logError(new Error(m), 'session');
+      else if (typeof tmsStreakPost === 'function') tmsStreakPost(m);
+    }
+  }
+  return tmsSessionRefuse(req);
+}
+
+// The first 2xx facade answer of a page that has a session ends the tab's
+// streak: the tab works again (review 6/10 P3-1 — without this a second real
+// expiry in the same tab was never reported). A page in a loop never gets one.
+function _tmsSessionAlive() {
+  if (_tmsAliveSeen || _tmsSessionGone) return;
+  _tmsAliveSeen = true;
+  if (typeof tmsStreakEnd === 'function') tmsStreakEnd();
+}
+
 async function _atRetry(fn, retries = 3) {
   const reqId = _newReqId();
+  if (_tmsSessionGone) throw tmsSessionRefuse(reqId);
   for (let i = 0; i < retries; i++) {
     try {
       const res = await fn(reqId + '-' + (i + 1));
       _noteWorkerCaps(res);
+      if (res.ok) _tmsSessionAlive();
       if (res.status === 401) {
-        localStorage.removeItem('tms_user');
-        localStorage.removeItem('tms_jwt');
-        window.location.href = 'index.html';
         // _noRetry: δεν υπάρχει διαδρομή ανανέωσης token — η session μόλις
         // σβήστηκε και ο browser φεύγει για το index.html. Χωρίς τη σημαία, ο
         // throw έπεφτε στο κοινό catch παρακάτω, που ξαναδοκίμαζε δύο φορές
         // (1s+2s) με το ίδιο ληγμένο token, ενώ η σελίδα ήδη έφευγε.
-        const _e401 = new Error('Unauthorized');
-        _e401._noRetry = true; _e401._req = reqId;
-        throw _e401;
+        let where = '';
+        try {
+          const tid = (new URL(res.url).pathname.match(/\/v0\/[^/]+\/([^/?]+)/) || [])[1] || new URL(res.url).pathname;
+          where = (typeof _tableNameFromId === 'function' && tid) ? (_tableNameFromId(tid) || tid) : tid;
+        } catch (_) { /* diagnostics must never break the error path */ }
+        throw tmsSessionExpired(where, reqId);
       }
       // 403 = ο RBAC του Worker είπε όχι. Η ίδια αίτηση παίρνει την ίδια
       // απάντηση κάθε φορά, άρα η επανάληψη δεν σώζει τίποτα: μετρημένο 3/9 —

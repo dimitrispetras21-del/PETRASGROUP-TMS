@@ -29,10 +29,46 @@ function _authRoleTampered(u) {
   return known.role !== u.role;
 }
 
-if (!user || _authSessionExpired(user) || _authRoleTampered(user)) {
+// Why this page is turned away (null = it may stay). Not a yes/no like the
+// tests above, because the tab's streak (core/session-streak.js) needs the
+// REASON: a plain expiry or no login is every morning's first page and stays
+// silent, while a tamper-guard bounce is never routine — a user missing from
+// config.js USERS is bounced at every login, and until 7/10 nothing ever said so.
+function _authRejectReason(u) {
+  if (!u) return 'no login';
+  if (_authSessionExpired(u)) return 'expired';
+  if (_authRoleTampered(u)) return USERS.some(x => x.username === u.username) ? 'role mismatch' : 'unknown username';
+  return null;
+}
+
+const _authReject = _authRejectReason(user);
+if (_authReject) {
+  // Count, judge and report this page NOW, before the href assignment below:
+  // assigning location.href while the page is still parsing stops the
+  // parser, so no script after this one ever runs here (measured 7/10 in
+  // Chromium — the earlier hand-off to api.js/utils.js never happened and such
+  // a page wrote nothing). The row, if any, goes out with keepalive and
+  // survives the navigation (core/session-streak.js tmsStreakPost). Read
+  // BEFORE the login is removed: afterwards nothing knows whose login it was.
+  // Guarded: the redirect must happen whatever the report does.
+  try {
+    if (typeof tmsStreakNote === 'function') {
+      const rows = tmsStreakNote({ reason: _authReject, user: user && user.username, exp: user && user.expiresAt });
+      for (const m of rows) tmsStreakPost(m);
+    }
+  } catch (_) { /* reporting must never block the redirect */ }
+  // Only for an engine that keeps parsing until the next page commits (Chromium
+  // does not): core/api.js would then run on a page with no token, and this
+  // makes it send nothing and count the page no second time.
+  window._tmsNoSessionAtLoad = true;
   localStorage.removeItem('tms_user');
   localStorage.removeItem('tms_jwt');
   window.location.href = 'index.html';
+} else {
+  // The tab's own copy of whose page this is: a 401 that comes after another
+  // tab has removed the shared login still says whose it was (core/api.js
+  // tmsSessionExpired; review 6/10 P3 «user ?»).
+  try { if (typeof tmsStreakRememberUser === 'function') tmsStreakRememberUser(user.username); } catch (_) {}
 }
 
 const ROLE = user?.role || 'dispatcher';

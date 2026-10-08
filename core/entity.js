@@ -1223,6 +1223,14 @@ async function _enrichWorkshopsV2(entityKey, workshops) {
       () => atGetAll(TABLES.MAINT_HISTORY, { fields: ['Workshop', 'Cost', 'Date'] }, true),
       'workshops: maintenance history'
     );
+    // The fill lands after an await. If the user has left the Workshops list
+    // meanwhile (its table is gone) or opened it again (a newer render owns
+    // _entityState), there is nothing to fill: applyEntityFilters wrote into
+    // a null table — «Cannot set properties of null (setting 'innerHTML')»,
+    // Παντελής 6/10 06:55. Not a failure to report: a failed history read was
+    // already logged by safeFetch above, on its own line.
+    const st = _entityState[entityKey];
+    if (!document.getElementById(entityKey + '_table') || !st || st.records !== workshops) return;
     if (didFail(history)) throw new Error('maintenance history failed');
     const count = {}, spend = {}, last = {};
     for (const r of history) {

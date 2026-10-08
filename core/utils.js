@@ -526,6 +526,14 @@ function _maybeDedup(entry) {
  * @param {string} [context=''] - Where the error occurred
  */
 function logError(error, context = '') {
+  // A request refused because the session already ended (core/api.js
+  // tmsSessionRefuse/tmsSessionExpired). The expiry itself was written once, as
+  // its own «session» row; each caller's copy of «Unauthorized» says nothing
+  // more — 2010 of them on 5/10 kept B-34 red for a day. Console only.
+  if (error && typeof error === 'object' && error._sessionGone) {
+    console.warn(`[TMS] ${context}: request refused — session ended`);
+    return;
+  }
   const entry = {
     ts: new Date().toISOString(),
     msg: error?.message || String(error),
@@ -561,7 +569,63 @@ function logError(error, context = '') {
     }
   } catch(_) {}
   // Forward to the backend error store (POST /app-errors) — see _postAppError
-  _postAppError(entry);
+  if (_logBurstAdmit(entry)) _postAppError(entry);
+}
+
+// ── Burst throttle for the backend copy (6/10/2026) ─────────────────────────
+// The same (message, context) more than 5 times within 60 s from one page is
+// one fact repeated, not new facts: copies 1–5 are posted as before, the rest
+// are COUNTED, and one summary row «… — repeated N more times» goes out when
+// the window closes (timer, or the next copy after it) or the page is left
+// (pagehide; _postAppError's keepalive lets it survive the unload). The count
+// is never lost (principle 1), and a first occurrence is never held: a new
+// key, or the same key after its window, always posts. It matters beyond the
+// noise because of the 20-post cap per page below: one repeating error used to
+// spend the whole budget and silently push every DIFFERENT error of the page
+// out of app_errors (the 5/10 storm, 2010 rows, is the extreme of that).
+// localStorage + console still see every copy (they have their own dedup).
+const _LOG_BURST_MAX = 5;
+const _LOG_BURST_MS = 60 * 1000;
+const _logBursts = new Map();   // key → { start, n, held, last, timer }
+
+function _logBurstAdmit(entry) {
+  try {
+    const key = (entry.ctx || '') + '\u0000' + (entry.msg || '');
+    const now = Date.now();
+    let b = _logBursts.get(key);
+    if (b && now - b.start >= _LOG_BURST_MS) { _logBurstFlush(key); b = null; }
+    if (!b) { b = { start: now, n: 0, held: 0, last: null, timer: null }; _logBursts.set(key, b); }
+    b.n++;
+    if (b.n <= _LOG_BURST_MAX) return true;
+    b.held++;
+    b.last = entry;
+    if (!b.timer && typeof setTimeout === 'function') {
+      b.timer = setTimeout(() => _logBurstFlush(key), Math.max(0, b.start + _LOG_BURST_MS - now));
+    }
+    return false;
+  } catch (_) { return true; }   // the throttle must never cost a report
+}
+
+function _logBurstFlush(key) {
+  const b = _logBursts.get(key);
+  if (!b) return;
+  _logBursts.delete(key);
+  try { if (b.timer && typeof clearTimeout === 'function') clearTimeout(b.timer); } catch (_) {}
+  if (!b.held || !b.last) return;
+  const secs = Math.max(1, Math.round((Date.now() - b.start) / 1000));
+  _postAppError(Object.assign({}, b.last, {
+    ts: new Date().toISOString(),
+    msg: `${b.last.msg} — repeated ${b.held} more time${b.held === 1 ? '' : 's'} within ${Math.min(secs, _LOG_BURST_MS / 1000)} s (collapsed; first ${_LOG_BURST_MAX} sent)`,
+    count: b.held,
+  }));
+}
+
+function _logBurstFlushAll() {
+  for (const key of Array.from(_logBursts.keys())) _logBurstFlush(key);
+}
+
+if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
+  window.addEventListener('pagehide', _logBurstFlushAll);
 }
 
 // ── Backend error forwarding (added post-C2, 2026-07-28) ───────────────────
