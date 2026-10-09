@@ -15,6 +15,11 @@
 //   J6 race · J7 unpinned group · J8 lone import · J9 stale drag (S9) ·
 //   J10 group into group (S11) · J10b other vehicle · J11 free group (S1) ·
 //   J12 watchdog (S7) · J13 stalled paperclip index (S7, docs)
+// Review fixes (NO_GO 9/10, coordinator decisions):
+//   J10c both free on the SAME truck · J14 same-truck joiner (P1, reviewer R1)
+//   · J15 other-truck joiner · J16 drop on an EXPORT tile (P3-2, reviewer R2)
+//   · J17 matched to an export of another week (P3-3) · J18 Cancelled (P3-4)
+//   · J19 rota leg on every path (P3-5) · J20 no silent cap at 6
 // Exit code 1 when any check fails. Prints one line per check + a summary.
 const path = require('path');
 const fs = require('fs');
@@ -42,7 +47,7 @@ const IMP = (id, ref, st, truck, pal, load, extra = {}) => ({ id, fields: Object
 }, truck ? { Truck: [truck], Driver: [truck.replace('recT', 'recD')] } : {}, extra) });
 
 function seed(opts) {
-  const trucks = ['recT19', 'recT27', 'recT30', 'recT31', 'recT32', 'recT33', 'recT34'];
+  const trucks = ['recT19', 'recT27', 'recT30', 'recT31', 'recT32', 'recT33', 'recT34', 'recT35'];
   const G27 = 'GI-MUXRGWY6|recI461,recI463';
   return {
     [T.TRK]: trucks.map(id => ({ id, fields: { 'License Plate': 'TRK-' + id.slice(4), Active: true } })),
@@ -74,9 +79,24 @@ function seed(opts) {
       IMP('recIC', 'IC', 'In Transit', 'recT32', 10, '2026-10-08', { 'Group ID': 'GI-EXEC|recIC,recID' }),
       IMP('recID', 'ID', 'Delivered', 'recT32', 5, '2026-10-08', { 'Group ID': 'GI-EXEC|recIC,recID' }),
       ...(opts.two ? [
-        IMP('recIE', 'IE', 'Assigned', opts.two === 'truck' ? 'recT31' : null, 5, '2026-10-09', { 'Group ID': 'GI-TWO|recIE,recIF' }),
-        IMP('recIF', 'IF', 'Pending', opts.two === 'truck' ? 'recT31' : null, 5, '2026-10-09', { 'Group ID': 'GI-TWO|recIE,recIF' }),
+        IMP('recIE', 'IE', 'Assigned', ({ truck: 'recT31', same: 'recT32' })[opts.two] || null, 5, '2026-10-09', { 'Group ID': 'GI-TWO|recIE,recIF' }),
+        IMP('recIF', 'IF', 'Pending', ({ truck: 'recT31', same: 'recT32' })[opts.two] || null, 5, '2026-10-09', { 'Group ID': 'GI-TWO|recIE,recIF' }),
       ] : []),
+      // P1: a free import already on the load's OWN truck (it has its own RT in prod) / on another truck
+      ...(opts.same ? [IMP('recIX', 'IX', 'Assigned', 'recT27', 5, '2026-10-09')] : []),
+      ...(opts.other ? [IMP('recIY', 'IY', 'Assigned', 'recT35', 5, '2026-10-09')] : []),
+      // P3-2: a free EXPORT group (tiles in the export column), no import
+      ...(opts.expGrp ? [
+        EXP('recEA', 'EA', 'Assigned', 'recT35', { 'Group ID': 'GRP-AB|recEA,recEB', 'Total Pallets': 10 }),
+        EXP('recEB', 'EB', 'Assigned', 'recT35', { 'Group ID': 'GRP-AB|recEA,recEB', 'Total Pallets': 10 }),
+      ] : []),
+      // P3-3: 470 is matched ON THE SERVER to an export of W43 the board never loads (S.off)
+      ...(opts.offWeek ? [EXP('recEW', 'EW', 'Assigned', 'recT30', { 'Matched Import ID': 'recI470', 'Loading DateTime': '2026-10-20T08:00:00', 'Delivery DateTime': '2026-10-22T10:00:00' })] : []),
+      // P3-4 / P3-5: a Cancelled import, a rota leg (hangs under E30)
+      ...(opts.cancelled ? [IMP('recICX', 'CX', 'Cancelled', null, 4, '2026-10-08')] : []),
+      ...(opts.leg ? [IMP('recILG', 'LG', 'Assigned', null, 3, '2026-10-08', { 'Rotation ID': 'recE30' })] : []),
+      // no silent cap: eight more small free imports
+      ...(opts.many ? [1, 2, 3, 4, 5, 6, 7, 8].map(k => IMP('recIM' + k, 'M' + k, 'Pending', null, 1, '2026-10-08')) : []),
     ],
   };
 }
@@ -91,7 +111,7 @@ async function newPage(browser, opts = {}) {
   const page = await ctx.newPage();
   await page.clock.setFixedTime(new Date('2026-10-08T12:40:00+03:00'));
   const db = seed(opts);
-  const S = { db, log: [], pageErrors: [], held: [], armed: false, latency: opts.latencyMs || 0, hang: {} };
+  const S = { db, log: [], pageErrors: [], held: [], armed: false, latency: opts.latencyMs || 0, hang: {}, off: new Set(opts.offWeek ? ['recEW'] : []) };
   page.on('pageerror', e => S.pageErrors.push(String(e).slice(0, 200)));
   page.on('dialog', d => { S.log.push({ k: 'dialog', msg: d.message() }); d.accept(); });
   await preparePage(page, 'dispatcher');
@@ -117,7 +137,7 @@ async function newPage(browser, opts = {}) {
       else if ((g = f.match(/\{Matched Import ID\}='([^']+)'/))) out = tbl.filter(r => r.fields['Matched Import ID'] === g[1]);
       else if ((g = f.match(/\{Rotation ID\}='([^']+)'/))) out = tbl.filter(r => r.fields['Rotation ID'] === g[1]);
       else if (/RECORD_ID\(\)/.test(f)) { const w = new Set((f.match(/rec[A-Za-z0-9]+/g) || [])); out = tbl.filter(r => w.has(r.id)); }
-      else if ((g = f.match(/\{Direction\}='(Export|Import)'/)) && /International/.test(f)) out = tbl.filter(r => r.fields.Direction === g[1]);
+      else if ((g = f.match(/\{Direction\}='(Export|Import)'/)) && /International/.test(f)) out = tbl.filter(r => r.fields.Direction === g[1] && !S.off.has(r.id));
       return json(route, { records: JSON.parse(JSON.stringify(out)) });
     }
     if (S.armed) S.log.push({ k: m.toLowerCase(), tid, id: rid, fields: body && body.fields ? body.fields : body });
@@ -183,6 +203,16 @@ function ok(scn, name, cond, detail) {
 }
 const on = n => !want.length || want.includes(n);
 const G27 = 'GI-MUXRGWY6|recI461,recI463';
+// The P1 refusal, verbatim (coordinator 9/10).
+const ASG = (n, what) => `Η #${n} έχει ήδη ανάθεση (${what}) — πρώτα «Καθαρισμός ανάθεσης» στην #${n}, μετά πρόσθεσέ τη στο φορτίο`;
+// A refused join: nothing written, the words on screen, ONE log line, no reload.
+async function checkRefused(scn, page, S, text) {
+  const E = await ev(page);
+  ok(scn, 'nothing written', writes(S).length === 0, writes(S));
+  ok(scn, 'refusal, verbatim', E.some(e => e.k === 'errtoast' && e.type === 'warn' && e.msg === text), { want: text, got: E.filter(e => /toast/.test(e.k)) });
+  ok(scn, 'exactly one logError', E.filter(e => e.k === 'logError').length === 1, E.filter(e => e.k === 'logError'));
+  ok(scn, 'no reload spinner, final BOARD, no page errors', !E.some(e => e.k === 'SPINNER_ON') && (await state(page)) === 'BOARD' && !S.pageErrors.length, { E, err: S.pageErrors });
+}
 // The checks every successful join of 470 into E27's load must pass.
 async function checkJoin470(scn, page, S, E) {
   const P = patches(S);
@@ -400,8 +430,26 @@ async function checkJoin470(scn, page, S, E) {
     await page.waitForTimeout(2500); S.armed = false;
     const E = await ev(page);
     ok(scn, 'nothing written', writes(S).length === 0, writes(S));
-    ok(scn, 'refusal names the other vehicle', E.some(e => e.k === 'errtoast' && e.type === 'warn' && /IE\+IF έχουν ήδη άλλο όχημα \(TRK-31\)/.test(e.msg)), E);
+    ok(scn, 'refusal, verbatim (P1)', E.some(e => e.k === 'errtoast' && e.type === 'warn' && e.msg === ASG('IE', 'φορτηγό TRK-31')), E);
     ok(scn, 'exactly one logError', E.filter(e => e.k === 'logError').length === 1, E.filter(e => e.k === 'logError'));
+    await done(page);
+  }
+
+  if (on('J10c')) { // both free groups on the SAME truck (TRK-32): refused too — the joiner already has its own RT
+    const scn = 'J10c';
+    const { page, S } = await newPage(browser, { two: 'same' });
+    await page.locator('#wi-imp-recIC .wk3-num').click({ button: 'right' }); await page.waitForTimeout(300);
+    await page.locator('#wi-ctx button:has-text("Groupage εισαγωγών")').click(); await page.waitForTimeout(300);
+    const rTwo = await rowOf(page, 'recIE');
+    S.armed = true; await page.evaluate(() => window.__mark());
+    await page.locator(`.wiGrpPick[value="${rTwo}"]`).check();
+    await page.locator('#wi-panel button:has-text("Ομαδοποίηση")').click();
+    await page.waitForTimeout(2500); S.armed = false;
+    const E = await ev(page);
+    ok(scn, 'nothing written', writes(S).length === 0, writes(S));
+    ok(scn, 'refusal, verbatim (same truck)', E.some(e => e.k === 'errtoast' && e.type === 'warn' && e.msg === ASG('IE', 'φορτηγό TRK-32')), E);
+    ok(scn, 'exactly one logError, no spinner', E.filter(e => e.k === 'logError').length === 1 && !E.some(e => e.k === 'SPINNER_ON'), E);
+    ok(scn, 'db: IE/IF keep their own group', ['recIE', 'recIF'].every(id => fld(S, id, 'Group ID') === 'GI-TWO|recIE,recIF'));
     await done(page);
   }
 
@@ -451,6 +499,116 @@ async function checkJoin470(scn, page, S, E) {
     await page.waitForTimeout(3000);
     ok(scn, 'after 25 s the next render asks the index again', S.held.length === held1 + 1, { held1, held: S.held.length });
     ok(scn, 'board again', (await state(page)) === 'BOARD');
+    await done(page);
+  }
+
+  if (on('J14')) {  // P1 (reviewer R1): IX already on TRK-27 — E27's own truck — dropped on E27's load
+    const scn = 'J14';
+    const { page, S } = await newPage(browser, { same: true });
+    const e27 = await rowOf(page, 'recE27');
+    // the card menu's panel says it before any drop: listed, disabled, with the reason
+    const pts = await pointsIn(page, `#wi-ci-${e27}`);
+    await page.mouse.click(pts.free.x, pts.free.y, { button: 'right' }); await page.waitForTimeout(300);
+    await page.locator('#wi-ctx button:has-text("+ Εισαγωγή στο φορτίο")').click(); await page.waitForTimeout(300);
+    const panel = (await page.locator('#wi-panel').innerText()).replace(/\n/g, ' | ');
+    const bx = page.locator('#wi-panel .wiGrpPick[value="recIX"]');
+    ok(scn, 'panel lists IX disabled with the P1 reason', (await bx.count()) === 1 && (await bx.isDisabled()) && panel.includes(ASG('IX', 'φορτηγό TRK-27')), panel);
+    await page.evaluate(() => _wiPanelClose());
+    S.armed = true; await page.evaluate(() => window.__mark());
+    await dragTo(page, '#wi-imp-recIX .wk3-num', pts.free);
+    await page.waitForTimeout(2500); S.armed = false;
+    await checkRefused(scn, page, S, ASG('IX', 'φορτηγό TRK-27'));
+    ok(scn, 'db: IX keeps no group, its truck unchanged', !fld(S, 'recIX', 'Group ID') && JSON.stringify(fld(S, 'recIX', 'Truck')) === '["recT27"]');
+    await shot(page, 'J14-same-truck-refused');
+    await done(page);
+  }
+
+  if (on('J15')) {  // P1: IY on another truck (TRK-35) dropped on E27's load
+    const scn = 'J15';
+    const { page, S } = await newPage(browser, { other: true });
+    const e27 = await rowOf(page, 'recE27');
+    const pts = await pointsIn(page, `#wi-ci-${e27}`);
+    S.armed = true; await page.evaluate(() => window.__mark());
+    await dragTo(page, '#wi-imp-recIY .wk3-num', pts.tile);
+    await page.waitForTimeout(2500); S.armed = false;
+    await checkRefused(scn, page, S, ASG('IY', 'φορτηγό TRK-35'));
+    await done(page);
+  }
+
+  if (on('J16')) {  // P3-2 (reviewer R2): 470 dropped on an EXPORT group's tile — ignored, nothing written
+    const scn = 'J16';
+    const { page, S } = await newPage(browser, { expGrp: true });
+    const ea = await rowOf(page, 'recEA');
+    const pt = await page.evaluate(id => { const row = document.getElementById('wi-row-' + id); const seg = row && row.querySelector('.wk3-leg:not(.imp) .wk3-seg'); if (!seg) return null; seg.scrollIntoView({ block: 'center' }); const b = seg.getBoundingClientRect(); return { x: b.left + b.width / 2, y: b.top + b.height / 2 }; }, ea);
+    ok(scn, 'export tile found', !!pt, pt);
+    S.armed = true; await page.evaluate(() => window.__mark());
+    await dragTo(page, '#wi-imp-recI470 .wk3-num', pt);
+    await page.waitForTimeout(2500); S.armed = false;
+    const E = await ev(page);
+    ok(scn, 'nothing written', writes(S).length === 0, writes(S));
+    ok(scn, 'db: EA/EB carry no import, 470 no truck', !fld(S, 'recEA', 'Matched Import ID') && !fld(S, 'recEB', 'Matched Import ID') && !fld(S, 'recI470', 'Truck'));
+    ok(scn, 'board: EA\'s card unchanged (no import), 470 still free', await page.evaluate(id => { const r = WINTL.rows.find(x => x.id === id); const i = WINTL.rows.find(x => x.type === 'import' && x.orderId === 'recI470'); return !!r && !r.importId && !!i && !i.matchedTo; }, ea));
+    ok(scn, 'no spinner, no logError, drag id cleared', !E.some(e => e.k === 'SPINNER_ON' || e.k === 'logError') && (await page.evaluate(() => window._wiDragging)) === null, E);
+    await done(page);
+  }
+
+  if (on('J17')) {  // P3-3: 470 matched on the server to EW (W43), an export this board never loaded
+    const scn = 'J17';
+    const { page, S } = await newPage(browser, { offWeek: true });
+    const w = await page.evaluate(() => TmsWeek.numOf('2026-10-22T10:00:00'));
+    const text = `Η #470 είναι ήδη στο φορτίο της εξαγωγής EW της W${w} (εκτός αυτής της προβολής) — πρώτα «Αφαίρεση ταιριάσματος» εκεί· δεν γράφτηκε τίποτα`;
+    ok(scn, 'the board shows 470 free (EW not loaded)', await page.evaluate(() => { const i = WINTL.rows.find(x => x.type === 'import' && x.orderId === 'recI470'); return !!i && !i.matchedTo && !WINTL.data.exports.some(x => x.id === 'recEW'); }));
+    const e27 = await rowOf(page, 'recE27');
+    const pts = await pointsIn(page, `#wi-ci-${e27}`);
+    for (const k of [1, 2]) {   // twice: the same refusal, never a reload loop
+      S.log = []; S.armed = true; await page.evaluate(() => window.__mark());
+      await dragTo(page, '#wi-imp-recI470 .wk3-num', pts.free);
+      await page.waitForTimeout(2500); S.armed = false;
+      await checkRefused(scn + '.' + k, page, S, text);
+    }
+    ok(scn, 'W43 named', w === 43, w);
+    await done(page);
+  }
+
+  if (on('J18')) {  // P3-4: a Cancelled import is never revived — by any path
+    const scn = 'J18';
+    const { page, S } = await newPage(browser, { cancelled: true });
+    S.armed = true; await page.evaluate(() => window.__mark());
+    const r = await page.evaluate(() => _wiImpJoin('recI461', 'recE27', 'recICX'));
+    await page.waitForTimeout(500); S.armed = false;
+    ok(scn, 'the join answers false', r === false, r);
+    await checkRefused(scn, page, S, 'Η #CX είναι ακυρωμένη — ακυρωμένη παραγγελία δεν μπαίνει σε φορτίο');
+    ok(scn, 'db: CX still Cancelled, no truck, no group', fld(S, 'recICX', 'Status') === 'Cancelled' && !fld(S, 'recICX', 'Truck') && !fld(S, 'recICX', 'Group ID'));
+    await done(page);
+  }
+
+  if (on('J19')) {  // P3-5: a rota leg is refused on EVERY path — the join itself and the free-import groupage
+    const scn = 'J19';
+    const { page, S } = await newPage(browser, { leg: true });
+    ok(scn, 'LG is a rota leg on the board', await page.evaluate(() => { const r = WINTL.rows.find(x => x.type === 'import' && x.orderId === 'recILG'); return !!r && r.legOf === 'recE30'; }));
+    const text = 'Η εισαγωγή LG είναι σκέλος προώθησης (ρότα) — δεν μπαίνει σε groupage';
+    S.armed = true; await page.evaluate(() => window.__mark());
+    await page.evaluate(() => _wiImpJoin('recI461', 'recE27', 'recILG'));
+    await page.waitForTimeout(500); S.armed = false;
+    await checkRefused(scn + '.join', page, S, text);
+    S.log = []; S.armed = true; await page.evaluate(() => window.__mark());
+    await page.evaluate(() => { const a = WINTL.rows.find(x => x.type === 'import' && x.orderId === 'recI470'), b = WINTL.rows.find(x => x.type === 'import' && x.orderId === 'recILG'); return _wiImpGroup(a.id, b.id); });
+    await page.waitForTimeout(500); S.armed = false;
+    await checkRefused(scn + '.group', page, S, text);
+    await done(page);
+  }
+
+  if (on('J20')) {  // no silent cap: «Groupage εισαγωγών…» lists EVERY free import, with its count
+    const scn = 'J20';
+    const { page } = await newPage(browser, { many: true });
+    await page.locator('#wi-imp-recI470 .wk3-num').click({ button: 'right' }); await page.waitForTimeout(300);
+    await page.locator('#wi-ctx button:has-text("Groupage εισαγωγών")').click(); await page.waitForTimeout(300);
+    const n = await page.locator('#wiGrpList .wiGrpPick').count();
+    const panel = (await page.locator('#wi-panel').innerText()).replace(/\n/g, ' | ');
+    ok(scn, 'more than 6 free imports listed', n > 6, n);
+    ok(scn, 'the count on screen = the boxes listed', panel.includes(`Ελεύθερες εισαγωγές (${n}) — κύλισε`), panel);
+    ok(scn, 'all eight small imports listed (the cut at 6 hid some)', [1, 2, 3, 4, 5, 6, 7, 8].every(k => panel.includes('Load M' + k + ' (1p)')), panel);
+    await shot(page, 'J20-free-list');
     await done(page);
   }
 

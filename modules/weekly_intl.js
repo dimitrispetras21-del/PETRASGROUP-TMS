@@ -4374,7 +4374,10 @@ function _wiPanelGroupBuild(rowId,isImp){
   const others=isImp
     ? ic.free
     : WINTL.rows.filter(r=>r.id!==rowId&&!r.saved&&r.type==='export'&&!_wiLotHeld(r)&&(myPals+_wiRowPals(r))<=33);
-  const cand=others.slice(0,6).map(o=>{
+  // Imports: every free one is listed (the list scrolls, its count is on
+  // top) — the old cut at 6 hid the 7th and later with no word, and the
+  // dispatcher read «not there» (coordinator 9/10, no silent caps).
+  const cand=(isImp?others:others.slice(0,6)).map(o=>{
     let lbl;
     if(isImp){
       const oi=WINTL.data.imports.find(r=>r.id===o.orderId);
@@ -4399,7 +4402,7 @@ function _wiPanelGroupBuild(rowId,isImp){
         </label>`).join('')}</div>`
     : '';
   const body=(cand.length||loads.length)
-    ? `${cand.length?`<div class="wi-panel-list" id="wiGrpList">${cand.map(c=>`
+    ? `${(isImp&&cand.length)?`<div class="wi-panel-note" style="font-weight:600">Ελεύθερες εισαγωγές (${cand.length})${cand.length>6?' — κύλισε':''}</div>`:''}${cand.length?`<div class="wi-panel-list" id="wiGrpList">${cand.map(c=>`
         <label class="wi-panel-opt">
           <input type="checkbox" class="wiGrpPick" value="${c.id}" data-pals="${c.pals}" onchange="_wiPanelGroupSum(${myPals})">
           <span>${c.lbl} (${c.pals}p)</span>
@@ -4437,6 +4440,18 @@ async function _wiPanelGroupGo(rowId,isImp){
   const meOid=me.orderId;
   const free=picks.filter(v=>v.indexOf('L:')!==0).map(v=>(WINTL.rows.find(r=>r.id===+v)||{}).orderId).filter(Boolean);
   const load=picks.find(v=>v.indexOf('L:')===0);
+  // With a truck load picked, this row and every free pick end up joining
+  // it: each is checked against that load BEFORE the first write, so a
+  // refusal (an assigned import — P1) never leaves the free picks grouped
+  // here while the load join is refused at the end.
+  if(load){
+    const [,eOid,lOid]=load.split(':');
+    const er=WINTL.rows.find(r=>r.type==='export'&&(r.orderIds||[]).includes(eOid)), lr=_wiImpGroupRowOf(lOid);
+    for(const oid of [meOid,...free]){
+      const xr=_wiImpGroupRowOf(oid), why=(er&&lr&&xr)?_wiJoinCheck(lr,xr,er):'';
+      if(why){ _wiRefuse(why,'import join refused'); return; }
+    }
+  }
   for(const oid of free){
     const a=_wiImpGroupRowOf(meOid), b=_wiImpGroupRowOf(oid);
     if(!a||!b||!(await _wiImpGroup(a.id,b.id))) return;   // a refusal/failure already spoke
@@ -4469,7 +4484,7 @@ function _wiImpGroupCands(row){
 // «+ Εισαγωγή στο φορτίο…» (matched card and tile menus, 8/10): the free
 // imports of the board, nearest loading day to the export's delivery first,
 // each with its pallets; one that cannot join stays listed, disabled, with
-// _wiJoinCheck's reason (the sum against 33, or the vehicle).
+// _wiJoinCheck's reason (the sum against 33, an assignment of its own, …).
 function _wiPanelJoinLoad(expRowId){
   const er=WINTL.rows.find(r=>r.id===expRowId); if(!er||!er.importId) return;
   const lr=_wiImpGroupRowOf(er.importId); if(!lr) return;
@@ -5734,8 +5749,11 @@ async function _wiImpShift(rowId,days){
 // the group (D5, rig S11 — only the first-listed order of each row used to be
 // written, so a 2-member group joined with one member and left the other
 // behind under a green ✓), and the joiner takes the load's vehicle (rig S1/S5:
-// it got none). The load is the row that HAS a vehicle (the other takes it),
-// else the one already a group (its Group ID stays), else the menu's row.
+// it got none). At most ONE side may carry an assignment, and that side is
+// the load (the other takes it); with neither, the one already a group (its
+// Group ID stays), else the menu's row. With both assigned the menu's row
+// stays the load and _wiJoinCheck refuses the other side (_wiAssignLbl: an
+// assigned import already has its own round trip — P1, coordinator 9/10).
 // Pieces stay out of this path on either side (B-09): they reach a truck only
 // through «+ Κομμάτι». true = the join landed (read back).
 async function _wiImpGroup(rowId,otherRowId){
@@ -5743,9 +5761,10 @@ async function _wiImpGroup(rowId,otherRowId){
   if(!a||!b) return false;
   // Never takes a piece (B-09) — even from a panel opened before the data changed.
   if(_wiPieceIn([...a.orderIds,...b.orderIds]).length){ _wiRefuse('Το κομμάτι μπαίνει σε φορτηγό μόνο με «+ Κομμάτι από απόθεμα…» — όχι με Groupage εισαγωγών','import join refused'); return false; }
-  const veh=r=>!!(r.truckId||r.partnerId);
+  const veh=r=>_wiLoadRecs(r).some(x=>_wiAssignLbl(x.fields));
   const grp=r=>(r.orderIds||[]).length>1||!!_wiRecOf(r.orderId)?.fields?.['Group ID'];
-  const bFirst=(!veh(a)&&veh(b))||(veh(a)===veh(b)&&!grp(a)&&grp(b));
+  const va=veh(a), vb=veh(b);
+  const bFirst=(!va&&vb)||(!va&&!vb&&!grp(a)&&grp(b));
   const [load,x]=bFirst?[b,a]:[a,b];
   return _wiImpJoin(load.orderId,null,x.orderId);
 }
@@ -5783,16 +5802,30 @@ function _wiJoinPalText(load,add){
   const a=sum(load), b=sum(add), t=a+b;
   return `${load.map(ref).join('+')} = ${a} π. + ${add.map(ref).join('+')} = ${b} π. = ${t} ${t>33?'>':'≤'} 33`;
 }
-// May an import whose vehicle is `x` ride in a load that travels on `load`?
-// ({truck, partner} ids.) Yes with no vehicle of its own, or the load's own.
-// Any other vehicle means it already sits on another truck's round trip:
-// changing it would rewrite that trip and its payroll line (DB trigger
-// rt_sync_from_order) — that is «Καθαρισμός ανάθεσης» first (leg off, then
-// vehicle — RT-1193), never a side effect of a join.
-function _wiJoinVehOk(load,x){
-  if(!x.truck&&!x.partner) return true;
-  if(x.partner) return !!load.partner&&load.partner===x.partner;
-  return !load.partner&&!!load.truck&&load.truck===x.truck;
+// What an order is already assigned to, in the dispatcher's words ('' =
+// nothing): truck, partner, trailer or driver. The JOINING side of a join
+// must carry none of them — not even the load's own truck (coordinator 9/10,
+// review P1). Since 033 an import that gets a vehicle gets its OWN round trip
+// at that moment; joined later, rt_create_from_order stops early (it already
+// has a live leg) and rt_link_split (037) merges only «export-only +
+// import-only», never into a trip that already has export AND imports. The
+// result was two live RTs for one load, a Worker 409 on every later sync, the
+// banner and B-77 (the 7/10 GI-MUV7FNKE class). «Καθαρισμός ανάθεσης» first
+// (leg off, then vehicle — RT-1193), then the join adds it to the load's trip.
+function _wiAssignLbl(f){
+  const id=k=>getLinkedId(f&&f[k])||'';
+  const name=(list,x)=>(((WINTL.data&&WINTL.data[list])||[]).find(o=>o.id===x)||{}).label||'';
+  const t=id('Truck'), p=id('Partner'), tr=id('Trailer'), d=id('Driver');
+  if(t) return ('φορτηγό '+name('trucks',t)).trim();
+  if(p) return ('συνεργάτης '+name('partners',p)).trim();
+  if(tr) return ('ρυμούλκα '+name('trailers',tr)).trim();
+  if(d) return ('οδηγός '+name('drivers',d)).trim();
+  return '';
+}
+// The P1 refusal, one text for every path (drop, menus, panel, _wiImpGroup).
+function _wiAssignedText(r){
+  const n=String((r.fields&&r.fields['Reference'])||r.id);
+  return `Η #${n} έχει ήδη ανάθεση (${_wiAssignLbl(r.fields)}) — πρώτα «Καθαρισμός ανάθεσης» στην #${n}, μετά πρόσθεσέ τη στο φορτίο`;
 }
 // The assignment an import inherits from the truck row it rides with (owner
 // 13/8: «το import αναλαμβάνεται από το ίδιο όχημα»). One builder for the
@@ -5826,15 +5859,26 @@ function _wiJoinWho(recs){
   return recs.length>1?`Οι εισαγωγές ${refs}`:`Η εισαγωγή ${refs}`;
 }
 // What the board alone can refuse ('' = nothing), in the words the dispatcher
-// reads. Today's rules, truthful texts: a lot goes to its warehouse; a piece
-// joins only through «+ Κομμάτι», and never becomes the lead of a new group
-// (B-09); an import on another truck's load leaves it first; a split order is
-// not grouped (as its menus); 33 pallets is the hard groupage limit (owner
-// policy, unchanged — stated as a sum); a join never changes a vehicle.
+// reads. ONE place for every path — drop, card/tile/import menus, panels,
+// _wiImpGroup (αρχή 3: a rule kept on one path only was the review's P3-5).
+// Today's rules, truthful texts: a Cancelled order is never revived (the
+// join's Status 'Assigned' would bring it back, with a truck and an RT leg);
+// a rota leg or a split order is not grouped (as their menus); a lot goes to
+// its warehouse; a piece joins only through «+ Κομμάτι», and never becomes
+// the lead of a new group (B-09); an import on another truck's load leaves it
+// first; 33 pallets is the hard groupage limit (owner policy, unchanged —
+// stated as a sum); the joining side carries no assignment (_wiAssignLbl).
 function _wiJoinCheck(loadRow,xRow,vehRow){
   const lr=_wiLoadRecs(loadRow), xr=_wiLoadRecs(xRow), many=xr.length>1;
   const who=_wiJoinWho(xr), into=_wiJoinLoadLbl(vehRow,lr);
   const lIds=loadRow.orderIds||[loadRow.orderId], xIds=xRow.orderIds||[xRow.orderId];
+  const ref=r=>String((r.fields&&r.fields['Reference'])||r.id);
+  const xc=xr.find(r=>r.fields&&r.fields['Status']==='Cancelled');
+  if(xc) return `Η #${ref(xc)} είναι ακυρωμένη — ακυρωμένη παραγγελία δεν μπαίνει σε φορτίο`;
+  const lc=lr.find(r=>r.fields&&r.fields['Status']==='Cancelled');
+  if(lc) return `Το ${into} έχει ακυρωμένη παραγγελία (#${ref(lc)}) — δεν δέχεται εισαγωγή`;
+  if(xRow.legOf) return `${who} είναι σκέλος προώθησης (ρότα) — δεν μπαίνει σε groupage`;
+  if(loadRow.legOf) return `Το ${into} είναι σκέλος προώθησης (ρότα) — δεν δέχεται groupage`;
   if(_wiLotHeld(xRow)) return `${who} είναι παρτίδα — πάει στην αποθήκη, δεν μπαίνει σε φορτίο φορτηγού`;
   if(_wiLotHeld(loadRow)) return `Το ${into} είναι παρτίδα για την αποθήκη — δεν δέχεται άλλη εισαγωγή`;
   if(_wiPieceIn(xIds).length) return many
@@ -5851,14 +5895,8 @@ function _wiJoinCheck(loadRow,xRow,vehRow){
   if(loadRow.splitLegOf||loadRow.hasSplitLegs) return `Το ${into} είναι σπασμένη παραγγελία — δεν δέχεται groupage`;
   const sum=a=>a.reduce((s,r)=>s+(+((r.fields&&r.fields['Total Pallets'])||0)),0);
   if(sum(lr)+sum(xr)>33) return `Δεν χωράει στο ${into}: ${_wiJoinPalText(lr,xr)} — όριο 33 παλέτες`;
-  const lv={truck:(vehRow&&vehRow.truckId)||'',partner:(vehRow&&vehRow.partnerId)||''};
-  for(const r of xr){
-    const xv=_wiVehOfF(r.fields);
-    if(_wiJoinVehOk(lv,xv)) continue;
-    return (lv.truck||lv.partner)
-      ? `${who} ${many?'έχουν':'έχει'} ήδη άλλο όχημα (${_wiVehLbl(xv)}) — πρώτα «Καθαρισμός ανάθεσης» εκεί, μετά ένταξη στο ${into}`
-      : `${who} ${many?'έχουν':'έχει'} όχημα (${_wiVehLbl(xv)}), ενώ το ${into} δεν έχει ακόμη — ανάθεσε πρώτα το φορτίο`;
-  }
+  const xa=xr.find(r=>_wiAssignLbl(r.fields));
+  if(xa) return _wiAssignedText(xa);
   return '';
 }
 // The members of the import load that carries `seedId`, as the SERVER has
@@ -5949,15 +5987,29 @@ async function _wiImpJoin(loadOid,expOid,xOid){
     }
     if(srvV.truck!==lv.truck||srvV.partner!==lv.partner) return await race(`Το όχημα του φορτίου άλλαξε στο μεταξύ (άλλος χρήστης) — ανανέωση…`);
     for(const id of xIds){
-      let m=null; try{ m=await atGetAll(TABLES.ORDERS,{filterByFormula:`{Matched Import ID}='${id}'`,fields:['Matched Import ID']},false); }catch(e){ m=null; }
+      let m=null; try{ m=await atGetAll(TABLES.ORDERS,{filterByFormula:`{Matched Import ID}='${id}'`,fields:['Matched Import ID','Reference','Delivery DateTime','Loading DateTime']},false); }catch(e){ m=null; }
       if(!Array.isArray(m)) return stop('Ο έλεγχος ταιριάσματος της εισαγωγής δεν διαβάστηκε — δεν γράφτηκε τίποτα');
-      if(m.length) return await race(`${who} ταιριάστηκε στο μεταξύ με εξαγωγή (άλλος χρήστης) — ανανέωση…`);
+      if(!m.length) continue;
+      // An export the board never loaded (another week) is not a race: a
+      // reload cannot show it, so every drop used to repeat «ταιριάστηκε στο
+      // μεταξύ… ανανέωση» for ever (review P3-3). Said with its reference and
+      // week (the board's delivery-based rule), nothing written, no reload.
+      const off=m.find(r=>!_wiRecOf(r.id));
+      if(off){
+        const ef=off.fields||{}, w=_wiWeekOf(ef['Delivery DateTime']||ef['Loading DateTime']);
+        const xm=X.recs.find(r=>r.id===id), n=String((xm&&xm.fields['Reference'])||id);
+        const wk=w?`W${w}`:'άλλης εβδομάδας';
+        return refuse(`Η #${n} είναι ήδη στο φορτίο της εξαγωγής ${String(ef['Reference']||off.id)} της ${wk} (εκτός αυτής της προβολής) — πρώτα «Αφαίρεση ταιριάσματος» εκεί· δεν γράφτηκε τίποτα`);
+      }
+      return await race(`${who} ταιριάστηκε στο μεταξύ με εξαγωγή (άλλος χρήστης) — ανανέωση…`);
     }
-    // The same rules on the server's numbers and vehicles: a difference from
-    // the board is a race — the reload shows the numbers the refusal used.
+    // The same rules on the server's numbers, statuses and assignments: a
+    // difference from the board is a race — the reload shows what the
+    // refusal used, and the next try is refused by _wiJoinCheck in its words.
+    if([...L.recs,...X.recs].some(r=>r.fields['Status']==='Cancelled')) return await race('Μια παραγγελία του φορτίου ή της εισαγωγής ακυρώθηκε στο μεταξύ (άλλος χρήστης) — ανανέωση…');
     const tot=[...L.recs,...X.recs].reduce((s,r)=>s+(+(r.fields['Total Pallets']||0)),0);
     if(tot>33) return await race(`Δεν χωράει στο ${into}: ${_wiJoinPalText(L.recs,X.recs)} — οι παλέτες άλλαξαν στο μεταξύ · ανανέωση…`);
-    if(X.recs.some(r=>!_wiJoinVehOk(lv,_wiVehOfF(r.fields)))) return await race(`${who} πήρε όχημα στο μεταξύ (άλλος χρήστης) — ανανέωση…`);
+    if(X.recs.some(r=>_wiAssignLbl(r.fields))) return await race(`${who} πήρε ανάθεση στο μεταξύ (άλλος χρήστης) — ανανέωση…`);
 
     // 3. The load's Group ID, pinned before anyone joins.
     let gid=L.gid0, lockLead=null;
@@ -6170,10 +6222,19 @@ async function _wiSegDrop(e,rowId,orderId){
   // Not a tile reorder: an import dropped on a group tile joins that load
   // (8/10). The tile's stopPropagation used to end it right here, silently —
   // 62% of a matched group's cell swallowed the drop with no word (rig S10).
+  // Only an IMPORT's tile counts: one inside a truck's import cell (wi-ci-),
+  // or one of an import row's own group. An EXPORT group's tile sits in the
+  // export column — a drop there wrote a MATCH on that export and copied its
+  // truck (review P3-2), while the export card next to it is no drop target
+  // at all. Ignored there, as before 8/10: no write.
   if(!d){
     document.querySelectorAll('.wk3-leg.imp.dh').forEach(el=>el.classList.remove('dh'));
     const cell=e.currentTarget&&e.currentTarget.closest?e.currentTarget.closest('[id^="wi-ci-"]'):null;
-    return _wiDropImport(e,cell?parseInt(cell.id.slice(6),10):rowId);
+    if(cell) return _wiDropImport(e,parseInt(cell.id.slice(6),10));
+    const own=WINTL.rows.find(r=>r.id===rowId);
+    if(own&&own.type==='import') return _wiDropImport(e,rowId);
+    window._wiDragging=null;
+    return;
   }
   if(d.rowId!==rowId||d.orderId===orderId) return;
   const row=WINTL.rows.find(r=>r.id===rowId); if(!row) return;
