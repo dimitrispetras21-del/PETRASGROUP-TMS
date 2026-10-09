@@ -229,7 +229,8 @@ async function open(browser, role, route, F, costs, bootDone) {
     // once, with the K6 hint and its lot line (C4-09), never with «Φορτώθηκε».
     ok('C102_loose_piece_in_loadings_zone', s.looseInLoads && !s.looseInDels && /χωρίς φορτηγό — από το ΑΠΟΘΕΜΑ του Εβδομαδιαίου/.test(s.loose || '')
       && /ΑΠ · 4p · παρτίδα #312/.test(s.loose || '') && !/Φορτώθηκε|Παραδόθηκε/.test(s.loose || '') && s.old !== null && /Φορτώθηκε/.test(s.old || ''), { loose: s.loose, zones: s.zones });
-    ok('C108_lot_late_is_intake', /Παραλαβή \(καθυστέρηση\)/.test(s.lot || '') && !/Καθυστέρησε/.test(s.lot || '') && /Καθυστέρησε/.test(s.imp || ''), s.lot);
+    // 9/10 (Pantelis): the ordinary delivery's late button is «Καθυστέρηση» (the reasons panel); the lot keeps its words
+    ok('C108_lot_late_is_intake', /Παραλαβή \(καθυστέρηση\)/.test(s.lot || '') && !/Καθυστέρησ[ηε]/.test(s.lot || '') && /Καθυστέρηση/.test(s.imp || ''), s.lot);
     ok('C111_section_counts_like_kpi', s.heads['ΠΑΡΑΔΟΣΕΙΣ ΕΙΣΑΓΩΓΗΣ'] === '1 · 0 δηλωμένες · 1 παραλαβή αποθήκης', s.heads);
     await shot(page, 'daily-ops-stock-1440.png');
 

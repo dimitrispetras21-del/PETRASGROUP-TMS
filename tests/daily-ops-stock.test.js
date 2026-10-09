@@ -233,9 +233,10 @@ test('C1-08: on a lot the late button is a late INTAKE — «Παραλαβή (�
   const { ctx, S } = load();
   await ctx.renderDailyOps();
   const lot = rowText(S.content.innerHTML, 'recLOT0000000312');
-  assert.ok(/>Παραλαβή \(καθυστέρηση\)</.test(lot) && !/>Καθυστέρησε</.test(lot), lot);
+  assert.ok(/>Παραλαβή \(καθυστέρηση\)</.test(lot) && !/>Καθυστέρηση?</.test(lot) && !/_opsDelayOpen/.test(lot), lot);
   assert.ok(lot.includes("confirmAction('Παραλήφθηκε στην αποθήκη με καθυστέρηση;')"), lot);
-  assert.ok(/>Καθυστέρησε</.test(rowText(S.content.innerHTML, 'recIMP0000000001')), 'an ordinary delivery keeps «Καθυστέρησε»');
+  // 9/10 (Pantelis): an ordinary delivery's late button is «Καθυστέρηση» and opens the reasons panel
+  assert.ok(/_opsDelayOpen\(event,'recIMP0000000001','id'\)">Καθυστέρηση</.test(rowText(S.content.innerHTML, 'recIMP0000000001')), 'an ordinary delivery has «Καθυστέρηση» (the reasons panel)');
   await ctx._opsDel('recLOT0000000312', 'Delayed');
   assert.strictEqual(S.patches.find(p => p.t === 'tblO').f['Delivery Performance'], 'Delayed');   // same write
   assert.strictEqual(S.toasts.slice(-1)[0], 'Στην αποθήκη ✓ — με καθυστέρηση');

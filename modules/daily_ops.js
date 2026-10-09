@@ -47,6 +47,44 @@ const OPS_FIELDS = [
   'Own Stock Lot','Stock Lot','Stock Lot Order No','Stock Lot Source',
 ];
 
+// THE DELAY REASONS (dispatcher Pantelis / owner 9/10/2026, migration 067):
+// «Καθυστέρηση» asks WHY and WHOSE. The codes and their responsibility are the
+// base's — 067's generated order_stops.delay_responsibility derives it from
+// the code and its CHECK refuses any other code — so this constant only puts
+// Greek words on them. tests/daily-ops-delay.test.js pins every code and its
+// responsibility to 067's CASE (drift test): change one, change both.
+// resp order = the panel's groups; `short` is the word under a declared stop.
+const OPS_DELAY = Object.freeze({
+  resp: [
+    { code:'us',        label:'Εμείς',                short:'Εμείς' },
+    { code:'client',    label:'Πελάτης / αποστολέας', short:'Πελάτης' },
+    { code:'consignee', label:'Παραλήπτης',           short:'Παραλήπτης' },
+    { code:'borders',   label:'Σύνορα / αρχές',       short:'Σύνορα' },
+    { code:'external',  label:'Εξωτερικοί',           short:'Εξωτερικοί' },
+    { code:'other',     label:'Άλλο',                 short:'Άλλο' },
+  ],
+  reasons: [
+    { code:'vehicle_breakdown', resp:'us',        label:'Βλάβη οχήματος' },
+    { code:'driver_hours',      resp:'us',        label:'Οδηγός / ώρες οδήγησης' },
+    { code:'planning_error',    resp:'us',        label:'Λάθος προγραμματισμού' },
+    { code:'previous_stop',     resp:'us',        label:'Αργήσαμε σε προηγούμενη στάση' },
+    { code:'cargo_not_ready',   resp:'client',    label:'Το φορτίο δεν ήταν έτοιμο' },
+    { code:'loading_wait',      resp:'client',    label:'Αναμονή στη φόρτωση' },
+    { code:'order_change',      resp:'client',    label:'Αλλαγή εντολής' },
+    { code:'missing_docs',      resp:'client',    label:'Λείπουν έγγραφα' },
+    { code:'unloading_wait',    resp:'consignee', label:'Αναμονή στην εκφόρτωση' },
+    { code:'closed_refused',    resp:'consignee', label:'Κλειστά / δεν παρέλαβε' },
+    { code:'border_queue',      resp:'borders',   label:'Ουρά ή έλεγχος στα σύνορα' },
+    { code:'customs',           resp:'borders',   label:'Τελωνείο' },
+    { code:'traffic',           resp:'external',  label:'Κίνηση / ατύχημα' },
+    { code:'weather',           resp:'external',  label:'Καιρός' },
+    { code:'ferry_train',       resp:'external',  label:'Φέρι / τρένο' },
+    { code:'strike_roads',      resp:'external',  label:'Απεργία / κλειστοί δρόμοι' },
+    // «Άλλο» needs a note — the screen asks for it, the base refuses without it
+    { code:'other',             resp:'other',     label:'Άλλο' },
+  ],
+});
+
 /* ── ENTRY ────────────────────────────────────────────────────── */
 // Read-only gate for planning:view roles (13/9, Thodoris go-live audit): Daily
 // Ops showed «Φορτώθηκε/Παραδόθηκε/Αλλαγή ημέρας» to management while the
@@ -596,6 +634,27 @@ const _OPS_STYLE=`<style>
   .do-pop label small{display:block;font-size:var(--text-xs);color:var(--text-dim)}
   .do-pop .do-pfoot{display:flex;align-items:center;gap:8px;font-size:var(--text-xs);color:var(--text-dim)}
   .do-pop .do-pfoot .sp{flex:1}
+  /* «Καθυστέρηση» panel (Pantelis 9/10): the 17 reasons grouped by WHOSE they
+     are, in two columns so they fit without scrolling at 1280; each group is a
+     fieldset, so its legend is read with every option. Same popover as
+     «Αλλαγή ημέρας» (it holds the relay repaint the same way, _opsEditing). */
+  .do-pop.do-dlyp{width:560px}
+  .do-pop .do-dq{font-size:var(--text-xs);color:var(--text-mid);margin-bottom:8px}
+  .do-pop .do-dgrid{display:grid;grid-template-columns:1fr 1fr;gap:8px 24px;margin-bottom:8px}
+  .do-pop .do-dgrp{border:0;margin:0;padding:0;min-width:0}
+  .do-pop .do-dgrp legend{padding:0;margin-bottom:4px;font-size:var(--text-xs);font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--text-mid)}
+  .do-pop .do-dgrp label{margin:0;padding:2px 0;align-items:center}
+  .do-pop .do-dgrp input{margin:0;accent-color:var(--surface-dark)}
+  .do-pop .do-dgrp label:has(input:checked) span{font-weight:600}
+  .do-pop .do-dnote{flex-direction:column;align-items:stretch;gap:4px;margin-bottom:4px;cursor:default}
+  .do-pop .do-dnote small{display:inline;margin-left:4px}
+  .do-pop .do-dnote input{width:100%;box-sizing:border-box;height:28px;padding:0 8px;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface-card);font-family:inherit;font-size:var(--text-sm);color:var(--text)}
+  .do-pop .do-derr{min-height:16px;margin-bottom:4px;font-size:var(--text-xs);font-weight:600;color:var(--danger)}
+  /* A declared delay under the status / the point: the word in --danger (it
+     happened late), the reason in plain text — wraps, never cut (rule 6). */
+  .do-t td.do-st .do-sl.do-dly,.do-sl.do-dly{color:var(--text-mid);white-space:normal}
+  .do-sl.do-dly b{color:var(--danger);font-weight:600}
+  .do-dly-why{margin-left:8px;font-size:var(--text-xs);color:var(--text-mid)}
 </style>`;
 // Stock lots Φ1 (impact map 4/10 C-01): a LOT's delivery is the WAREHOUSE
 // intake — Delivered means «in the warehouse», not «the client has it». The
@@ -853,19 +912,20 @@ function _opsGroupRow(key,g,from,to,isToday,open){
 // ✓» εννοώντας κι εκείνο «τελείωσε». Το λεξιλόγιο της ΒΑΣΗΣ (Pending/Assigned/
 // In Transit/Delivered) ΔΕΝ αγγίζεται — αλλάζει μόνο η λέξη στην οθόνη.
 // Το εκκρεμές είναι το εντονότερο της στήλης: είναι η δουλειά που μένει.
-function _opsStatusWord(f, multiPill, isL, stamp, rel) {
+// dly: the delay line of the row's stops (_opsDelayLine), under the stamp.
+function _opsStatusWord(f, multiPill, isL, stamp, rel, dly) {
   const st=f['Status']||'';
   const done=isL ? (st==='In Transit'||st==='Delivered') : st==='Delivered';
   const by=stamp?`<span class="do-sl">${stamp}</span>`:'';
   // 060: the order's status says it happened, the relay says by whom.
   const loc=rel?getDriverName(getLinkedId(rel.fields['Driver'])):'';
-  if(done) return `<span class="do-st-done">${isL?'Φορτώθηκε':OrdersStock.isLot(f)?'Στην αποθήκη':'Παραδόθηκε'}${loc?' από τοπικό '+loc:''} ✓</span>${by}`;
+  if(done) return `<span class="do-st-done">${isL?'Φορτώθηκε':OrdersStock.isLot(f)?'Στην αποθήκη':'Παραδόθηκε'}${loc?' από τοπικό '+loc:''} ✓</span>${by}${dly||''}`;
   // «μετατέθηκε»: το Postponed To κρατά τη ΝΕΑ ημέρα — η γραμμή είναι ενεργή
   // εκείνη τη μέρα, με τα κουμπιά της. Μένει ως δευτερεύουσα σημείωση, όχι ως
   // τρίτη κατάσταση. Το «από 30/8» ΔΕΝ δείχνεται: θέλει write-once
   // original_loading_date ή audit_log — κανένα εγκεκριμένο (ΑΝΟΙΧΤΟ).
   const moved=f['Postponed To']?' <span class="do-st-moved">μετατέθηκε</span>':'';
-  return `<span class="do-st-wait">Εκκρεμεί</span>${moved}${multiPill?' '+multiPill:''}${by}`;
+  return `<span class="do-st-wait">Εκκρεμεί</span>${moved}${multiPill?' '+multiPill:''}${by}${dly||''}`;
 }
 // Latest stamp among the given stops: «από <Completed By> · HH:MM». Completed
 // By holds the header name (_opsUser writes tms_user.name), so it is shown as
@@ -880,7 +940,7 @@ function _opsStamp(stops, dayIso){
   return `${who?'από '+who:''}${who&&when?' · ':''}${when}`;
 }
 
-// ΕΝΕΡΓΕΙΕΣ: κύριο κουμπί, «Καθυστέρησε» στις παραδόσεις, «Αλλαγή ημέρας»
+// ΕΝΕΡΓΕΙΕΣ: κύριο κουμπί, «Καθυστέρηση» σε φορτώσεις ΚΑΙ παραδόσεις (9/10), «Αλλαγή ημέρας»
 // ΟΡΑΤΗ. Κάθε θυρίδα που αποδίδεται είναι γεμάτη — μέσα στην ενότητα όλες οι
 // ανοιχτές γραμμές έχουν το ίδιο σχήμα, άρα η στήλη διαβάζεται κάθετα.
 //
@@ -917,11 +977,17 @@ function _opsSlots(rec, ctx) {
   // local driver's name rides in its tooltip and in the confirm question.
   const _rel=_opsRelay(id,ctx), _rn=_rel?getDriverName(getLinkedId(_rel.fields['Driver'])):'';
   const tip=_rn?` title="${isL?'Φορτώθηκε':'Παραδόθηκε'} από τοπικό ${_rn}"`:'';
+  // «Καθυστέρηση» (Pantelis 9/10): on loadings AND deliveries, it opens the
+  // reasons panel — the panel is the confirmation (pick a reason, Αποθήκευση).
+  // Multi: like the main button it opens the points, each declares its own.
+  const lateBtn=multi?`<button class="do-late-btn" onclick="event.stopPropagation();_opsToggleStops('${id}')">Καθυστέρηση</button>`
+                     :`<button class="do-late-btn" onclick="_opsDelayOpen(event,'${id}','${ctx}')">Καθυστέρηση</button>`;
   if(!_opsIsFuture()){
     if(isL){
       // Multi: το κουμπί της σύνοψης ΔΕΝ δηλώνει — ανοίγει τα σημεία (owner 26/8)
       slots.push(multi?`<button class="do-btn" onclick="event.stopPropagation();_opsToggleStops('${id}')">Φορτώθηκε</button>`
                       :`<button class="do-btn"${tip} onclick="confirmAction(_opsAsk('${id}','${ctx}','Φορτώθηκε')).then(ok=>{if(ok)_opsStat('${id}','In Transit')})">Φορτώθηκε</button>`);
+      slots.push(lateBtn);
     } else {
       const okFn=isOv?`_opsOvAct('${id}','On Time')`:`_opsDel('${id}','On Time')`;
       const lateFn=isOv?`_opsOvAct('${id}','Delayed')`:`_opsDel('${id}','Delayed')`;
@@ -929,16 +995,16 @@ function _opsSlots(rec, ctx) {
       // late button too (critic-1 C1-08): on a lot «Καθυστέρησε» read at 06:00
       // as «the partner is late» — one click then WROTE the intake (Delivered,
       // pallets locked, pieces drawable) for stock that had not arrived.
+      // A lot keeps its own wording AND its confirm (9/10): the reasons are a
+      // client delivery's; a late warehouse intake is not asked why (open point).
       const lot=OrdersStock.isLot(f);
       const okW=lot?'Παραλαβή αποθήκης':'Παραδόθηκε';
-      const lateW=lot?'Παραλαβή (καθυστέρηση)':'Καθυστέρησε';
-      const lateQ=lot?'Παραλήφθηκε στην αποθήκη με καθυστέρηση;':'Καθυστέρησε;';
       // 060: the confirm question names the local driver when a relay exists.
       slots.push(multi?`<button class="do-btn" onclick="event.stopPropagation();_opsToggleStops('${id}')">${okW}</button>`
                       :`<button class="do-btn"${tip} onclick="confirmAction(_opsAsk('${id}','${ctx}','${okW}')).then(ok=>{if(ok)${okFn}})">${okW}</button>`);
-      const lateC=lot?'do-late-btn do-2l':'do-late-btn';
-      slots.push(multi?`<button class="${lateC}" onclick="event.stopPropagation();_opsToggleStops('${id}')">${lateW}</button>`
-                      :`<button class="${lateC}" onclick="confirmAction('${lateQ}').then(ok=>{if(ok)${lateFn}})">${lateW}</button>`);
+      if(!lot) slots.push(lateBtn);
+      else slots.push(multi?`<button class="do-late-btn do-2l" onclick="event.stopPropagation();_opsToggleStops('${id}')">Παραλαβή (καθυστέρηση)</button>`
+                           :`<button class="do-late-btn do-2l" onclick="confirmAction('Παραλήφθηκε στην αποθήκη με καθυστέρηση;').then(ok=>{if(ok)${lateFn}})">Παραλαβή (καθυστέρηση)</button>`);
     }
   }
   slots.push(`<button class="do-ghost" onclick="_opsChangeDay(event,'${id}','${isL?'load':'deliver'}')">Αλλαγή ημέρας</button>`);
@@ -996,7 +1062,7 @@ function _opsRow(rec,num,type,isToday,cls) {
   const pill=_opsStopsBadge(id,_stype);
   const stCell=pre
     ? `<td class="do-st">${preorderChipHtml(f)}${f['Notes']?`<span class="do-sl">${escapeHtml(String(f['Notes']))}</span>`:''}</td>`
-    : `<td class="do-st">${_opsStatusWord(f,pill,isL,_opsStamp(_mStops,_opsTgt()),_opsRelay(id,type))}</td>`;
+    : `<td class="do-st">${_opsStatusWord(f,pill,isL,_opsStamp(_mStops,_opsTgt()),_opsRelay(id,type),_opsDelayLine(_mStops))}</td>`;
   const actCell=`<td class="do-acts">${_opsSlots(rec,type)}</td>`;
 
   let mid='';
@@ -1168,14 +1234,37 @@ function _opsUser(){ try{ return JSON.parse(localStorage.getItem('tms_user')||'{
 function _opsErrWord(e){ const m=String(e&&e.message||e||''); return /403|forbidden|permission/i.test(m)?'χωρίς δικαίωμα':m.slice(0,40)||'σφάλμα'; }
 // Returns {stop, prev}: what the stop held before THIS click, so a refused
 // order write can put it back (_opsWriteOrder).
-async function _opsMarkStop(stop, perf){
+// delay {reason, note} (9/10, 067): written in the SAME PATCH as 'Delayed' —
+// the base refuses a reason on a stop that is not Delayed, so they are never
+// two requests; and `prev` then holds them too, so a refused order write puts
+// performance, reason and note back together (_opsWriteOrder).
+async function _opsMarkStop(stop, perf, delay){
   if(_opsBlockReadOnly()) return null;
   const patch={'Completed At': _opsNowOnTgt(), 'Completed By': _opsUser()};
   if(perf) patch['Performance']=perf;
+  if(delay){ patch['Delay Reason']=delay.reason; patch['Delay Note']=delay.note||null; }
   const prev={}; Object.keys(patch).forEach(k=>{ prev[k]=stop.fields[k]==null?null:stop.fields[k]; });
-  await atSafePatch(TABLES.ORDER_STOPS, stop.id, patch);
+  const back=await atSafePatch(TABLES.ORDER_STOPS, stop.id, patch);
   Object.assign(stop.fields, patch);
-  return {stop, prev};
+  if(delay) _opsDelayReadBack(stop, delay, back);
+  return {stop, prev, delay:delay||null};
+}
+// Αρχή 2: the stop the Worker RETURNED decides whether the reason stuck. A
+// Worker that does not map «Delay Reason» yet answers 200 and drops it (facade
+// trap 1): the delay itself is written (Performance), the reason is not — said
+// in red, logged, and the screen shows only what the base holds. The click is
+// not lost: the order's own write goes on. Offline: queued, nothing to read yet.
+function _opsDelayReadBack(stop, delay, back){
+  if(!back || back._offline) return true;
+  const bf=back.fields||{};
+  const okR=bf['Delay Reason']===delay.reason;
+  const okN=(bf['Delay Note']==null?null:bf['Delay Note'])===(delay.note||null);
+  for(const k of ['Delay Reason','Delay Note','Delay Responsibility']){ if(bf[k]==null) delete stop.fields[k]; else stop.fields[k]=bf[k]; }
+  if(okR&&okN) return true;
+  const msg='Η καθυστέρηση γράφτηκε, αλλά η ΑΙΤΙΑ'+(okR?' (η σημείωση)':'')+' ΔΕΝ κρατήθηκε από τον server — ενημέρωσε τον διαχειριστή.';
+  if(typeof showErrorToast==='function') showErrorToast(msg,'error',15000); else toast(msg,'danger');
+  if(typeof logError==='function') logError(new Error('Delay Reason not read back: sent '+delay.reason+(delay.note?' + note':'')+', got '+(bf['Delay Reason']==null?'nothing':bf['Delay Reason'])), 'daily-ops: delay reason '+stop.id);
+  return false;
 }
 // Σ-02 (critic-3, round 1 X1): the stop stamp is written BEFORE the order (11/9:
 // no stamp, no Delivered). When the order write is then REFUSED — a 4xx, the
@@ -1267,11 +1356,19 @@ function _opsSubRows(rec, stype, asDiv){
     const pal=f['Pallets']!=null?f['Pallets']+'p':'';
     const perf=f['Performance'];
     const okLbl=isDel?'Παραδόθηκε':'Φορτώθηκε';
+    // 9/10: every point — loading or delivery — has «Καθυστέρηση», which opens
+    // the reasons panel for THIS point. A lot's intake keeps its wording and
+    // its plain confirm (C1-08; the reasons are a client delivery's).
+    const lotDel=isDel&&OrdersStock.isLot(rec.fields);
+    const late=lotDel
+      ? `<button class="do-late-btn do-2l" onclick="event.stopPropagation();confirmAction('Παραλήφθηκε στην αποθήκη με καθυστέρηση — σημείο ${i+1};').then(ok=>{if(ok)_opsMarkStopUI('${id}','${s.id}','Delayed')})">Παραλαβή (καθυστέρηση)</button>`
+      : `<button class="do-late-btn" onclick="event.stopPropagation();_opsDelayOpen(event,'${id}','${isDel?'id':'il'}','${s.id}')">Καθυστέρηση</button>`;
+    const why=perf==='Delayed'?_opsDelayText(f):'';
     const right=perf
-      ? `<span class="do-slots"><span style="font-weight:600;color:${perf==='Delayed'?'var(--danger)':'var(--ok)'}">${perf==='Delayed'?'Καθυστέρησε':'Στην ώρα'} ✓</span>
+      ? `<span class="do-slots"><span style="font-weight:600;color:${perf==='Delayed'?'var(--danger)':'var(--ok)'}">${perf==='Delayed'?'Καθυστέρηση':'Στην ώρα'} ✓</span>${why?`<span class="do-dly-why">${why}</span>`:''}
          <span class="do-sl" style="margin:0 0 0 8px;font-size:var(--text-xs)">${escapeHtml(f['Completed By']||'')}${f['Completed At']?' · '+fmtDate(f['Completed At']):''}</span></span>`
       : `<span class="do-slots"><span class="do-slot"><button class="do-btn" onclick="event.stopPropagation();confirmAction('${okLbl} σημείο ${i+1};').then(ok=>{if(ok)_opsMarkStopUI('${id}','${s.id}','On Time')})">${okLbl}</button></span>
-         <span class="do-slot">${isDel?`<button class="do-late-btn" onclick="event.stopPropagation();confirmAction('Καθυστέρησε σημείο ${i+1};').then(ok=>{if(ok)_opsMarkStopUI('${id}','${s.id}','Delayed')})">Καθυστέρησε</button>`:''}</span>
+         <span class="do-slot">${late}</span>
          </span>`;
     const inner=`<div class="do-srow">
         <span class="do-sn">${'①②③④⑤⑥⑦⑧⑨'[i]||(i+1)}</span>
@@ -1290,13 +1387,13 @@ function _opsSubRows(rec, stype, asDiv){
 // Δήλωση ΕΝΟΣ σημείου — ανεξάρτητη: αν έμειναν άλλα, η παραγγελία δεν
 // αγγίζεται καθόλου· όταν δηλωθεί το τελευταίο, τρέχει η κανονική ροή
 // με το aggregate (καμία Delayed ⇒ On Time).
-async function _opsMarkStopUI(orderId, stopId, perf){
+async function _opsMarkStopUI(orderId, stopId, perf, delay){
   if(_opsBlockReadOnly()) return;
   _opsCloseFloat(); // 9/9: a live «Αλλαγή ημέρας» popover must never outlive the click that starts another action
   const stop=((OPS._stopsByOrder||{})[orderId]||[]).find(s=>s.id===stopId);
   if(!stop) return;
   let m;
-  try{ m=await _opsMarkStop(stop, perf); }
+  try{ m=await _opsMarkStop(stop, perf, delay); }
   catch(e){ toast('Σφάλμα δήλωσης σημείου: '+e.message,'danger'); if(typeof logError==='function') logError(e,'daily-ops: stop mark'); return; }
   const stype=stop.fields[F.STOP_TYPE];
   const all=_opsStopsOf(orderId, stype);
@@ -1312,7 +1409,7 @@ async function _opsMarkStopUI(orderId, stopId, perf){
   toast(`${n}/${all.length} — η παραγγελία μένει ως έχει μέχρι να δηλωθούν όλα`);
   _opsDraw();
 }
-async function _opsStat(id,st){
+async function _opsStat(id,st,delay){
   if(_opsBlockReadOnly()) return;
   _opsCloseFloat(); // 9/9: a live «Αλλαγή ημέρας» popover must never outlive the click that starts another action
   let m=null;
@@ -1324,9 +1421,10 @@ async function _opsStat(id,st){
     // 403 στη στάση και η παραγγελία γινόταν In Transit/Delivered χωρίς τικ —
     // μισή εγγραφή που καμία οθόνη δεν εξηγεί· αρχή 1).
     if(loads.length===1){
-      try{ m=await _opsMarkStop(loads[0], null); }
+      // «Καθυστέρηση» (9/10): the same stamp, declared Delayed with its reason.
+      try{ m=await _opsMarkStop(loads[0], delay?'Delayed':null, delay); }
       catch(e){ if(typeof logError==='function') logError(e,'daily-ops: single load stamp'); toast('Η σφραγίδα φόρτωσης ΔΕΝ γράφτηκε ('+_opsErrWord(e)+') — η παραγγελία έμεινε ως έχει','danger'); return; }
-    }
+    } else if(delay&&!loads.length) _opsDelayNowhere('φόρτωσης');
   }
   return _opsStatFinal(id,st,m);
 }
@@ -1351,8 +1449,8 @@ async function _opsStatFinal(id,st,stamped){ if(_opsBlockReadOnly()) return; try
   // Mirror Status on any linked PARTNER ASSIGNMENT
   try { await paSyncStatus({ parentType:'order', parentId:id, status:st }); }
   catch(e) { if(typeof logError==='function') logError(e,'daily-ops: PA status sync '+id); toast('Η κατάσταση γράφτηκε, αλλά η ανάθεση συνεργάτη ΔΕΝ ενημερώθηκε','warn'); }
-  toast((st==='In Transit'?'Φορτώθηκε':st)+' ✓');_opsDraw();}catch(e){toast('Η αποθήκευση απέτυχε — δεν γράφτηκε τίποτα. Ξαναδοκίμασε.','danger');}}
-async function _opsDel(id,perf){
+  toast((st==='In Transit'?(stamped&&stamped.delay?'Φορτώθηκε με καθυστέρηση':'Φορτώθηκε'):st)+' ✓'+_opsDelayTail(stamped));_opsDraw();}catch(e){toast('Η αποθήκευση απέτυχε — δεν γράφτηκε τίποτα. Ξαναδοκίμασε.','danger');}}
+async function _opsDel(id,perf,delay){
   if(_opsBlockReadOnly()) return;
   _opsCloseFloat(); // 9/9: a live «Αλλαγή ημέρας» popover must never outlive the click that starts another action
   const dels=_opsStopsOf(id,'Unloading');
@@ -1360,7 +1458,8 @@ async function _opsDel(id,perf){
   if(dels.length>1){ if(!OPS._expanded?.has(id)) _opsToggleStops(id); return; }
   // Same rule as _opsStat: no stamp, no Delivered (audit 11/9: 282/302/308).
   let m=null;
-  if(dels.length===1){ try{ m=await _opsMarkStop(dels[0], perf); }catch(e){ if(typeof logError==='function') logError(e,'daily-ops: single delivery stamp'); toast('Η σφραγίδα παράδοσης ΔΕΝ γράφτηκε ('+_opsErrWord(e)+') — η παραγγελία έμεινε ως έχει','danger'); return; } }
+  if(dels.length===1){ try{ m=await _opsMarkStop(dels[0], perf, delay); }catch(e){ if(typeof logError==='function') logError(e,'daily-ops: single delivery stamp'); toast('Η σφραγίδα παράδοσης ΔΕΝ γράφτηκε ('+_opsErrWord(e)+') — η παραγγελία έμεινε ως έχει','danger'); return; } }
+  if(!dels.length&&delay) _opsDelayNowhere('παράδοσης');
   return _opsDelFinal(id,perf,m);
 }
 async function _opsDelFinal(id,perf,stamped){ if(_opsBlockReadOnly()) return; const d=_opsTgt();
@@ -1375,9 +1474,9 @@ async function _opsDelFinal(id,perf,stamped){ if(_opsBlockReadOnly()) return; co
   const r=OPS.intl.find(x=>x.id===id);if(r){r.fields['Status']='Delivered';r.fields['Delivery Performance']=perf;if('Postponed To' in _p)r.fields['Postponed To']=null;}
   try { await paSyncStatus({ parentType:'order', parentId:id, status:'Delivered' }); }
   catch(e) { if(typeof logError==='function') logError(e,'daily-ops: PA status sync '+id); toast('Η κατάσταση γράφτηκε, αλλά η ανάθεση συνεργάτη ΔΕΝ ενημερώθηκε','warn'); }
-  // C1-08: a lot's late button records a late INTAKE — the toast says so, not «Καθυστέρησε».
+  // C1-08: a lot's late button records a late INTAKE — the toast says so, not the ordinary «Καθυστέρηση».
   const _lot=OrdersStock.isLot(_r0?.fields);
-  toast(perf==='On Time'?(_lot?'Στην αποθήκη ✓':'Παραδόθηκε ✓'):_lot?'Στην αποθήκη ✓ — με καθυστέρηση':'Καθυστέρησε — καταχωρήθηκε',perf==='Delayed'?(_lot?'warn':'danger'):'success');_opsDraw();}catch(e){toast('Η αποθήκευση απέτυχε — δεν γράφτηκε τίποτα. Ξαναδοκίμασε.','danger');}}
+  toast(perf==='On Time'?(_lot?'Στην αποθήκη ✓':'Παραδόθηκε ✓'):_lot?'Στην αποθήκη ✓ — με καθυστέρηση':'Καθυστέρηση — καταχωρήθηκε'+_opsDelayTail(stamped),perf==='Delayed'?(_lot?'warn':'danger'):'success');_opsDraw();}catch(e){toast('Η αποθήκευση απέτυχε — δεν γράφτηκε τίποτα. Ξαναδοκίμασε.','danger');}}
 
 /* ── «Αλλαγή ημέρας» popover ───────────────────────────────────────────
    Η αναβολή ΕΙΝΑΙ αλλαγή ημερομηνίας στην παραγγελία — μία πηγή (αρχή 3).
@@ -1387,7 +1486,7 @@ async function _opsDelFinal(id,perf,stamped){ if(_opsBlockReadOnly()) return; co
 // A relay answer held while the popover was open is applied now — after the
 // current task, so a popover reopened in the same click (_opsChangeDay closes
 // the old one first) still counts as open.
-function _opsCloseFloat(){ document.querySelectorAll('.do-pop').forEach(e=>e.remove()); document.removeEventListener('keydown',_opsPopKey); if(_opsHeld) setTimeout(_opsApplyRelays,0); }
+function _opsCloseFloat(){ document.querySelectorAll('.do-pop').forEach(e=>e.remove()); document.removeEventListener('keydown',_opsPopKey); document.removeEventListener('keydown',_opsDlyKey); if(_opsHeld) setTimeout(_opsApplyRelays,0); }
 // 9/9 (dispatcher: «πάτησα Παραδόθηκε δύο φορές, έμεινε εκκρεμής»): this Enter
 // handler was page-wide, so an Enter meant for the «Παραδόθηκε;» confirm dialog
 // ran «Αλλαγή ημέρας → Αύριο» on the popover's order instead — two real orders
@@ -1504,6 +1603,115 @@ async function _opsChangeDayGo(){
   toast('Μετατέθηκε → '+_DMYFull(p.choice)+syncNote, syncNote?'warn':'success');OPS._pop=null;renderDailyOps();}catch(e){toast('Η αποθήκευση απέτυχε — δεν γράφτηκε τίποτα. Ξαναδοκίμασε.','danger');}
 }
 
+/* ── «Καθυστέρηση» panel (dispatcher Pantelis / owner 9/10/2026) ──────────
+   «Καθυστέρησε» recorded THAT a stop was late, never WHY or WHOSE. Now the
+   button opens this popover: pick a reason (grouped by responsibility — the
+   responsibility follows from it, derived by the base, migration 067), a note
+   (required for «Άλλο»), Αποθήκευση. The write is the same declaration as
+   before — stamp first, then the order (_opsMarkStop → _opsWriteOrder) — with
+   Performance 'Delayed' + reason + note in the stop's ONE PATCH. Άκυρο,
+   Escape or a click outside writes nothing. Enter does NOT save (the 9/9
+   lesson of _opsPopKey: a stray Enter must never write). */
+// «Πελάτης: Αναμονή στη φόρτωση» for a point's fields — escaped HTML, '' when
+// it carries no reason. The responsibility the base derived is the one shown;
+// the constant only names it («Άλλο»: the note is the reason).
+function _opsDelayText(f){
+  const code=f&&f['Delay Reason']; if(!code) return '';
+  const r=OPS_DELAY.reasons.find(x=>x.code===code);
+  const resp=OPS_DELAY.resp.find(x=>x.code===(f['Delay Responsibility']||(r&&r.resp)));
+  const note=f['Delay Note']!=null&&f['Delay Note']!==''?String(f['Delay Note']):'';
+  const what=code==='other'?(note||'Άλλο'):(r?r.label:String(code))+(note?' — '+note:'');
+  return escapeHtml((resp?resp.short+': ':'')+what);
+}
+// The row's line under its status: «Καθυστέρηση · Πελάτης: Αναμονή στη φόρτωση»
+// from the points declared Delayed (each reason once); nothing when none was.
+// A Delayed point with no reason (before 067's screens, a lot's intake) says
+// «Καθυστέρηση» alone — true, and not «on time».
+function _opsDelayLine(stops){
+  const late=(stops||[]).filter(s=>s.fields['Performance']==='Delayed');
+  if(!late.length) return '';
+  const why=[...new Set(late.map(s=>_opsDelayText(s.fields)).filter(Boolean))];
+  return `<span class="do-sl do-dly"><b>Καθυστέρηση</b>${why.length?' · '+why.join(' · '):''}</span>`;
+}
+// The same rules the base holds (067 CHECKs), said before the request: a known
+// reason, and «Άλλο» only with a note that is more than spaces.
+function _opsDelayCheck(code, note){
+  if(!OPS_DELAY.reasons.some(x=>x.code===code)) return 'Διάλεξε αιτία καθυστέρησης';
+  if(code==='other'&&!/\S/.test(note||'')) return 'Για «Άλλο» γράψε στη σημείωση τι έγινε';
+  return '';
+}
+// The toast's tail — what the base kept (after the read-back), escaped.
+function _opsDelayTail(stamped){ const t=stamped&&stamped.delay?_opsDelayText(stamped.stop.fields):''; return t?' · '+t:''; }
+// An order with no point of that kind has nowhere to keep the reason (it lives
+// on the point): the declaration goes on, the lost reason is said and logged.
+function _opsDelayNowhere(kind){
+  const msg=kind==='φόρτωσης'
+    ?'Η φόρτωση δηλώθηκε, αλλά η καθυστέρηση και η αιτία ΔΕΝ γράφτηκαν: η παραγγελία δεν έχει σημείο φόρτωσης.'
+    :'Η καθυστέρηση δηλώθηκε, αλλά η ΑΙΤΙΑ ΔΕΝ γράφτηκε: η παραγγελία δεν έχει σημείο παράδοσης.';
+  if(typeof showErrorToast==='function') showErrorToast(msg,'error',15000); else toast(msg,'danger');
+  if(typeof logError==='function') logError(new Error('delay reason with no '+kind+' stop'),'daily-ops: delay reason nowhere');
+}
+function _opsDlyKey(e){ if(e.key==='Escape') _opsCloseFloat(); }
+// ctx: el/ed/il/id/ovd/ovl of the row; stopId: the point of a sub-row (multi).
+function _opsDelayOpen(ev, id, ctx, stopId){
+  if(_opsBlockReadOnly()) return;
+  ev.stopPropagation(); const rb=_opsRect(ev); _opsCloseFloat();
+  const r=_opsFind(id); if(!r) return;
+  const f=r.fields;
+  const isL=ctx==='el'||ctx==='il'||ctx==='ovl';
+  const stype=isL?'Loading':'Unloading';
+  const pts=_opsStopsOf(id,stype);
+  const stop=stopId?pts.find(s=>s.id===stopId):null;
+  if(stopId&&!stop) return;
+  const loc=stop?(_L((stop.fields[F.STOP_LOCATION]||[])[0])||escapeHtml(String(stop.fields['Stop Label']||''))):(_L(_opsStopLoc(id,stype))||'');
+  const pal=stop?stop.fields['Pallets']:f['Total Pallets'];
+  OPS._dly={id, isL, isOv:ctx==='ovd'||ctx==='ovl', stopId:stop?stop.id:null};
+  const groups=OPS_DELAY.resp.map(g=>`<fieldset class="do-dgrp"><legend>${escapeHtml(g.label)}</legend>${
+    OPS_DELAY.reasons.filter(x=>x.resp===g.code).map(x=>`<label><input type="radio" name="doDly" value="${escapeHtml(x.code)}" onchange="_opsDelayPick(this)"><span>${escapeHtml(x.label)}</span></label>`).join('')}</fieldset>`).join('');
+  const title=`Καθυστέρηση ${isL?'φόρτωσης':'παράδοσης'}${stop?' · σημείο '+(pts.indexOf(stop)+1):''}`;
+  const p=document.createElement('div'); p.className='do-pop do-dlyp';
+  p.setAttribute('role','dialog'); p.setAttribute('aria-label',title);
+  p.innerHTML=`<h4>${title}</h4>
+    <div class="do-psub">${_C(f)}${loc?' · '+loc:''}${pal!=null&&pal!==''?' · '+escapeHtml(String(pal))+'p':''}</div>
+    <div class="do-dq">Γιατί καθυστέρησε; Η ευθύνη ακολουθεί την αιτία.</div>
+    <div class="do-dgrid">${groups}</div>
+    <label class="do-dnote"><span>Σημείωση <small id="doDlyHint">προαιρετική</small></span><input type="text" id="doDlyNote" maxlength="300" autocomplete="off" placeholder="π.χ. τι ακριβώς έγινε"></label>
+    <div class="do-derr" id="doDlyErr" role="alert"></div>
+    <div class="do-pfoot"><span>Γράφεται στο σημείο · ιστορικό στο audit log</span><span class="sp"></span>
+      <button class="do-ghost" onclick="_opsCloseFloat()">Άκυρο</button>
+      <button class="do-btn" onclick="_opsDelayGo()">Αποθήκευση</button></div>`;
+  _opsAnchor(rb,p);
+  document.addEventListener('keydown',_opsDlyKey);
+  // A click outside closes it — only while it is still on the page: a stale
+  // listener of a closed panel must never close the NEXT popover.
+  setTimeout(()=>document.addEventListener('click',function h(e){ if(!p.isConnected) return; if(!p.contains(e.target)) _opsCloseFloat(); else document.addEventListener('click',h,{once:true}); },{once:true}),0);
+  const first=p.querySelector('input[name=doDly]'); if(first) first.focus();
+}
+function _opsDelayPick(inp){
+  const other=inp.value==='other';
+  const h=document.getElementById('doDlyHint'); if(h) h.textContent=other?'υποχρεωτική για «Άλλο»':'προαιρετική';
+  const n=document.getElementById('doDlyNote'); if(n){ n.placeholder=other?'Τι έγινε; (υποχρεωτικό)':'π.χ. τι ακριβώς έγινε'; if(other) n.focus(); }
+  const e=document.getElementById('doDlyErr'); if(e) e.textContent='';
+}
+async function _opsDelayGo(){
+  if(_opsBlockReadOnly()) return;
+  const t=OPS._dly, pop=document.querySelector('.do-dlyp'); if(!t||!pop) return;
+  const sel=pop.querySelector('input[name=doDly]:checked');
+  const code=sel?sel.value:'', note=((pop.querySelector('#doDlyNote')||{}).value||'').trim();
+  const err=_opsDelayCheck(code, note);
+  // Refused here = nothing sent: the panel stays open with the reason why.
+  if(err){ const e=pop.querySelector('#doDlyErr'); if(e) e.textContent=err; const fx=code==='other'?pop.querySelector('#doDlyNote'):pop.querySelector('input[name=doDly]'); if(fx) fx.focus(); return; }
+  OPS._dly=null; _opsCloseFloat();
+  return _opsDelayApply(t, { reason:code, note:note||null });
+}
+// The existing declarations, now carrying the reason: one point (multi), the
+// single loading, the single delivery of the day or of the overdue zone.
+function _opsDelayApply(t, delay){
+  if(t.stopId) return _opsMarkStopUI(t.id, t.stopId, 'Delayed', delay);
+  if(t.isL) return _opsStat(t.id, 'In Transit', delay);
+  return t.isOv ? _opsOvAct(t.id, 'Delayed', delay) : _opsDel(t.id, 'Delayed', delay);
+}
+
 function _opsPrint() {
   const content = document.querySelector('.ops-sections');
   if (!content) return;
@@ -1542,11 +1750,12 @@ function _opsPrint() {
   setTimeout(()=>{win.print();},400);
 }
 
-async function _opsOvAct(id,perf='Delayed'){
+async function _opsOvAct(id,perf='Delayed',delay=null){
   const dels=_opsStopsOf(id,'Unloading');
   if(dels.length>1){ if(!OPS._expanded?.has(id)) _opsToggleStops(id); return; }
   let m=null;
-  if(dels.length===1){ try{ m=await _opsMarkStop(dels[0], perf); }catch(e){ if(typeof logError==='function') logError(e,'daily-ops: overdue stamp'); toast('Η σφραγίδα παράδοσης ΔΕΝ γράφτηκε ('+_opsErrWord(e)+') — η παραγγελία έμεινε ως έχει','danger'); return; } }
+  if(dels.length===1){ try{ m=await _opsMarkStop(dels[0], perf, delay); }catch(e){ if(typeof logError==='function') logError(e,'daily-ops: overdue stamp'); toast('Η σφραγίδα παράδοσης ΔΕΝ γράφτηκε ('+_opsErrWord(e)+') — η παραγγελία έμεινε ως έχει','danger'); return; } }
+  if(!dels.length&&delay) _opsDelayNowhere('παράδοσης');
   return _opsOvActFinal(id,perf,m);
 }
 async function _opsOvActFinal(id,perf='Delayed',stamped=null){ if(_opsBlockReadOnly()) return; const d=localToday();
@@ -1563,7 +1772,7 @@ async function _opsOvActFinal(id,perf='Delayed',stamped=null){ if(_opsBlockReadO
     syncOrderDownstream(id, { source: 'intl', changedFields: ['Status'], skipVS: true, skipGRP: true, skipRamp: true })
       .catch(e => console.warn('[ops overdue sync]', e));
   }
-  OPS.overdue=OPS.overdue.filter(r=>r.id!==id);const _lot=OrdersStock.isLot(_ov?.fields);toast(_lot?(perf==='Delayed'?'Σημειώθηκε: στην αποθήκη με καθυστέρηση':'Σημειώθηκε: στην αποθήκη'):perf==='Delayed'?'Σημειώθηκε ως καθυστερημένη':'Σημειώθηκε ως παραδοθείσα');_opsDraw();}catch(e){toast('Η αποθήκευση απέτυχε — δεν γράφτηκε τίποτα. Ξαναδοκίμασε.','danger');}}
+  OPS.overdue=OPS.overdue.filter(r=>r.id!==id);const _lot=OrdersStock.isLot(_ov?.fields);toast(_lot?(perf==='Delayed'?'Σημειώθηκε: στην αποθήκη με καθυστέρηση':'Σημειώθηκε: στην αποθήκη'):perf==='Delayed'?'Σημειώθηκε ως καθυστερημένη'+_opsDelayTail(stamped):'Σημειώθηκε ως παραδοθείσα');_opsDraw();}catch(e){toast('Η αποθήκευση απέτυχε — δεν γράφτηκε τίποτα. Ξαναδοκίμασε.','danger');}}
 
 // Expose functions used from onclick/onchange handlers
 window.renderDailyOps = renderDailyOps;
@@ -1581,4 +1790,7 @@ window._opsOpenRelay = _opsOpenRelay; window._opsAsk = _opsAsk;
 window._opsMarkStopUI = _opsMarkStopUI;
 window._opsChangeDay = _opsChangeDay; window._opsChangeDayGo = _opsChangeDayGo;
 window._opsPopPick = _opsPopPick; window._opsPopOther = _opsPopOther; window._opsPopHint = _opsPopHint; window._opsCloseFloat = _opsCloseFloat;
+window._opsDelayOpen = _opsDelayOpen; window._opsDelayPick = _opsDelayPick; window._opsDelayGo = _opsDelayGo;
+// read by tests/daily-ops-delay.test.js (the drift test against 067) and the rig
+window.OPS_DELAY = OPS_DELAY; window._opsDelayApply = _opsDelayApply; window._opsDelayCheck = _opsDelayCheck;
 })();
