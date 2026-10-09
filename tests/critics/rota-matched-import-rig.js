@@ -85,24 +85,32 @@ function recordedIndex(){ const idx=new Map(); for(const e of JSON.parse(fs.read
   // CLOSED round trip and the leg does not attach → Rotation ID reverted, warn
   // toast, no «✓»; (b) leg attaches → «✓». Pure in-page: atSafePatch/toast/
   // rtOnOrderSaved/rtFindForOrder/renderWeeklyIntl replaced for the call only.
+  // 9/10 (fix/rota-leg-own-rt): _wiRotAdd first reads the leg (atGetOne) and
+  // its round trip (/costs/rt, unrecorded → no trip): the fake leg is served
+  // BARE so (a)/(b) still reach the post-write guard; (c) the same leg with a
+  // truck is refused before any write — the real check, in the page.
   const p3=await page.evaluate(async()=>{
-    const keep={atSafePatch:window.atSafePatch,toast:window.toast,rtOnOrderSaved:window.rtOnOrderSaved,rtFindForOrder:window.rtFindForOrder,renderWeeklyIntl:window.renderWeeklyIntl,reportError:window.reportError};
-    const run=async(attach)=>{
+    const keep={atSafePatch:window.atSafePatch,toast:window.toast,rtOnOrderSaved:window.rtOnOrderSaved,rtFindForOrder:window.rtFindForOrder,renderWeeklyIntl:window.renderWeeklyIntl,reportError:window.reportError,atGetOne:window.atGetOne,showErrorToast:window.showErrorToast};
+    const run=async(attach,legTruck)=>{
       const patches=[],toasts=[];
       window.atSafePatch=async(t,id,f)=>{patches.push({id,f});return {};};
       window.toast=(m,ty)=>toasts.push((ty||'success')+': '+m);
+      window.showErrorToast=(m,ty)=>toasts.push((ty||'error')+'[showErrorToast]: '+m);
       window.reportError=(m,e)=>toasts.push('error: '+m);
       window.rtOnOrderSaved=async()=>null;
       window.renderWeeklyIntl=async()=>{};
       const parent=WINTL.rows.find(r=>r.type==='import');
       const legOid='recLEGTEST00000001';
+      window.atGetOne=async(t,id)=>id===legOid?{id,fields:Object.assign({Reference:'LEGTEST','Order No':999999,'Loading DateTime':'2026-08-29T06:00:00','Delivery DateTime':'2026-08-31T06:00:00'},legTruck?{Truck:[legTruck]}:{})}:keep.atGetOne(t,id);
       window.rtFindForOrder=async(id)=>id===legOid?{pg:1,rt:attach?{id:9,code:'RT-9',status:'planned'}:null}:{pg:2,rt:{id:9,code:'RT-9',status:'closed'}};
       await _wiRotAdd(parent.id,legOid);
       return {patches:patches.map(x=>x.f),toasts};
     };
     const fail=await run(false); const ok=await run(true);
+    const truck=(WINTL.data.trucks[0]||{}).id||'recTRUCKTEST';
+    const refused=await run(true,truck);
     Object.assign(window,keep);
-    return {fail,ok};
+    return {fail,ok,refused};
   });
   await page.screenshot({path:out});
   console.log(JSON.stringify({week,PAIR,paired,listCheck,p3,matchedCards:found,hasHandler,menu,panelTitle,panelBody,errors:errs.slice(0,3)},null,1));

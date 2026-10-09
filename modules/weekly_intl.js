@@ -5190,10 +5190,49 @@ async function _wiRtLeave(orderId){
     :del.status===403?'χωρίς δικαίωμα αφαίρεσης σκέλους γύρου'
     :('το σκέλος δεν αφαιρέθηκε από τον γύρο: '+(del.error||('HTTP '+del.status)))};
 }
+// A rota leg arrives BARE (coordinator 9/10, reviewer 7/10 on main). A rota
+// leg has no assignment of its own: it rides on the parent's round trip and
+// gets the parent's vehicle from it (rt_sync_to_orders, 013). A leg that still
+// carried its own broke both ways:
+//   • parent unassigned → rtOnOrderSaved(parent) saw «not executing», found
+//     the LEG's round trip through the new Rotation ID and cancelled it while
+//     the leg still had its truck — and the dispatcher got «✓»;
+//   • parent assigned (same truck or another) → the leg's own trip (created
+//     at its assignment since 033) plus the parent's = one rota on two live
+//     trips: Worker 409 on every later sync, banner, owner merge (the 7/10
+//     GI-MUV7FNKE class); a leg with a vehicle but no trip would instead have
+//     had its truck silently overwritten by the parent's.
+// No case is safe, so ONE rule whatever the parent — the import join's rule
+// (_wiAssignLbl/_wiAssignedText): the joining side carries no assignment.
+// A vehicle-less leg still on a live trip of its own (what «Καθαρισμός
+// ανάθεσης» leaves behind on a trip it clears whole: _wiClear keeps those
+// legs) is refused too — joined, it is the same two-trip rota, and only the
+// owner can cancel that trip (a dispatcher cannot read its cost lines).
+// Read from the server, not the board: a stale board would let an assigned
+// leg through. '' = the leg may join; otherwise the refusal. A read that fails
+// refuses as well — nothing is written on a guess.
+async function _wiRotLegBare(legOid){
+  let rec=null;
+  try{ rec=await atGetOne(TABLES.ORDERS,legOid); }catch(e){ rec=null; }
+  if(!rec||!rec.fields) return 'Η παραγγελία του σκέλους δεν διαβάστηκε — η ρότα ΔΕΝ γράφτηκε';
+  const n=String(rec.fields['Reference']||legOid);
+  const what=_wiAssignLbl(rec.fields);
+  if(what) return `Η #${n} έχει ήδη δική της ανάθεση (${what}) — πρώτα «Καθαρισμός ανάθεσης» στην #${n}, μετά βάλ' τη ρότα`;
+  const at=await _wiRtOf(legOid);
+  if(!at.ok) return `Ο γύρος της #${n} δεν διαβάστηκε (${at.msg}) — η ρότα ΔΕΝ γράφτηκε`;
+  if(at.rt){
+    const code=at.rt.code||'δρομολόγιο';
+    return `Η #${n} είναι ακόμη στο δικό της δρομολόγιο ${code} — σκέλος ρότας ταξιδεύει μόνο στο δρομολόγιο του γονέα· ζήτα από τον owner να ακυρώσει το ${code}, μετά βάλ' τη ρότα`;
+  }
+  return '';
+}
 async function _wiRotAdd(parentRowId, legOid){
   const pr=WINTL.rows.find(r=>r.id===parentRowId); if(!pr) return;
   const pOid=pr.type==='import'?pr.orderId:pr.orderIds?.[0];
   try{
+    // Before any write (see _wiRotLegBare): said on screen and once in app_errors.
+    const notBare=await _wiRotLegBare(legOid);
+    if(notBare){ _wiRefuse(notBare,'rota leg refused'); return; }
     const res=await atSafePatch(TABLES.ORDERS,legOid,{'Rotation ID':pOid});
     if(res?.error) throw new Error(res.error.message||res.error.type);
     // C1 (owner 6/9): feed the PARENT — with A2's rtLegsForOrder, the leg's
@@ -5217,6 +5256,10 @@ async function _wiRotAdd(parentRowId, legOid){
     // leg cannot go in — the revert below says so instead of a vague «δεν
     // μπήκε», which left the dispatcher retrying for hours (rt-feed rtSplitFor).
     const split=typeof rtSplitFor==='function'?rtSplitFor(pOid):null;
+    // 9/10: rt-feed refused to cancel a trip a leg of which still carries a
+    // vehicle (rtHeldFor) — the leg changed between the check above and the
+    // sync. The rota cannot stand on a trip nobody settled: reverted below.
+    const held=typeof rtHeldFor==='function'?rtHeldFor(pOid):null;
     if(typeof rtFindForOrder==='function'){
       attached=(await rtFindForOrder(legOid).catch(()=>({rt:null}))).rt;
       parentRt=(await rtFindForOrder(pOid).catch(()=>({rt:null}))).rt;
@@ -5238,15 +5281,19 @@ async function _wiRotAdd(parentRowId, legOid){
     // the group HAS live round trips, and falling through would hand-copy the
     // vehicle below — the DB trigger rt_create_from_order would then open a
     // THIRD round trip for the leg, the very defect of 7/10.
-    if((parentRt||split)&&!attached){
-      const why=split?split.message:`Το σκέλος δεν μπήκε στο δρομολόγιο ${parentRt.code||''}`;
+    const revert=async why=>{
       const undo=await atSafePatch(TABLES.ORDERS,legOid,{'Rotation ID':''});
       if(undo?.error){
         reportError('Η ρότα γράφτηκε, αλλά το σκέλος ΔΕΝ μπήκε στο δρομολόγιο και η αναίρεση απέτυχε — άνοιξε την παραγγελία: '+why,new Error(undo.error.message||undo.error.type));
       } else {
-        toast(why+' · η ρότα ΔΕΝ γράφτηκε','warn');
+        // escapeHtml: toast() writes innerHTML and held.message carries order references
+        toast(escapeHtml(why)+' · η ρότα ΔΕΝ γράφτηκε','warn');
       }
       renderWeeklyIntl();
+    };
+    if(held){ await revert(held.message); return; }
+    if((parentRt||split)&&!attached){
+      await revert(split?split.message:`Το σκέλος δεν μπήκε στο δρομολόγιο ${parentRt.code||''}`);
       return;
     }
     // Review P2 (7/10): a leg that already had its OWN round trip is found

@@ -20,7 +20,7 @@
 // ═══════════════════════════════════════════════════════════
 'use strict';
 
-const _RT = { lookups: null, pg: {}, split: {} };
+const _RT = { lookups: null, pg: {}, split: {}, held: {} };
 
 async function _rtSafe(label, fn) {
   try { return await fn(); }
@@ -319,6 +319,42 @@ async function _rtGatherOrders(rec) {
   return Object.values(byId).filter(o => !_rtIsSplitParent(o, byId));
 }
 
+// ── A trip that still carries a vehicle is never cancelled (9/10) ──
+// Reviewer 7/10 on main: a rota leg with its OWN truck and round trip, added
+// under an UNASSIGNED parent, was found by _rtFind through the new Rotation ID,
+// and the «gone || !exec» branch of rtOnOrderSaved cancelled the LEG's trip —
+// the parent was the one without a vehicle, not the trip. The DB keeps one
+// vehicle on every order of a trip (013 rt_sync_from_order/rt_sync_to_orders),
+// so a trip whose orders all lost it is a discarded plan and may go; one where
+// a live order still carries a truck, trailer, driver or partner (the four of
+// weekly_intl.js _wiAssignLbl) is somebody's running assignment and may not.
+// Pure: judged on the orders this sync already read. pg → order through each
+// record's «Order No» (019: order_no = orders.id) and this sync's /pallets/gate
+// map. A leg this sync did not read (an order outside the gathered group, a
+// national-load leg) cannot be proven bare, so it holds the trip as well — the
+// cancel needs proof, not absence of evidence (αρχή 5). A Cancelled order does
+// not hold it: 013 already took its leg off.
+function _rtHeldLegs(rt, orders, pgRec) {
+  const linked = v => (Array.isArray(v) ? v[0] : v) || null;
+  const byId = {}, byPg = {};
+  (orders || []).forEach(o => {
+    if (!o || !o.id) return;
+    byId[o.id] = o;
+    const no = Number((o.fields || {})['Order No']);
+    if (no) byPg[no] = o;
+  });
+  Object.keys(pgRec || {}).forEach(pg => { if (byId[pgRec[pg]]) byPg[pg] = byId[pgRec[pg]]; });
+  const withVehicle = [], unread = [];
+  for (const l of (rt && rt.ct_rt_legs) || []) {
+    const o = l.order_id != null ? byPg[l.order_id] : null;
+    if (!o) { unread.push(l.order_id != null ? '#' + l.order_id : 'εθνικό φορτίο ' + l.nat_load_id); continue; }
+    const f = o.fields || {};
+    if (f['Status'] === 'Cancelled') continue;
+    if (['Truck', 'Trailer', 'Driver', 'Partner'].some(k => linked(f[k]))) withVehicle.push(String(f['Reference'] || o.id));
+  }
+  return { withVehicle, unread };
+}
+
 // Exposed for callers that need an order's round trip without re-implementing
 // the pg lookup (weekly_intl.js Ρότα unlink, C2 — 6/9).
 async function rtFindForOrder(orderId) {
@@ -333,6 +369,7 @@ async function rtOnOrderSaved(orderId) {
   // Each sync decides afresh, so a cause from an earlier sync never leaks.
   const splitKey = orderId;
   delete _RT.split[splitKey];
+  delete _RT.held[splitKey];
   return _rtSafe('συγχρονισμός round trip', async () => {
     let rec = await atGetOne(TABLES.ORDERS, orderId);
     if (!rec) return;
@@ -429,6 +466,25 @@ async function rtOnOrderSaved(orderId) {
 
     if (gone || !exec) {
       if (rt) {
+        // Before the cost-line read: a dispatcher gets 403 there, which used
+        // to turn this exact case into the vague _rtSafe toast (see _rtHeldLegs).
+        const { withVehicle, unread } = _rtHeldLegs(rt, Object.values(seqById), pgRec);
+        if (withVehicle.length || unread.length) {
+          const ref = String(f['Reference'] || orderId);
+          // The order itself may be the one holding (truck cleared, driver kept):
+          // then the «ενώ…» clause would name it twice.
+          const message = 'P&L: το ' + rt.code + ' ΔΕΝ ακυρώθηκε — ' + (withVehicle.length
+            ? (withVehicle.length > 1 ? 'οι ' + withVehicle.join(', ') + ' έχουν' : 'η ' + withVehicle[0] + ' έχει') + ' ακόμη όχημα ή οδηγό'
+              + (withVehicle.includes(ref) ? '' : ', ενώ η ' + ref + (gone ? ' ακυρώθηκε' : ' είναι χωρίς φορτηγό'))
+            : 'έχει σκέλη που δεν διαβάστηκαν (' + unread.join(', ') + ')') + ' · δες το στο TRIP PnL';
+          // Recorded for the caller (rtHeldFor): _wiRotAdd reverts its rota
+          // instead of a «✓» over a trip it just failed to settle.
+          _RT.held[splitKey] = { code: rt.code, message };
+          console.warn('[rt-feed] cancel refused', rt.code, message);
+          if (typeof logError === 'function') logError(new Error(message), 'rt-feed: ακύρωση ' + rt.code + ' σταμάτησε (' + splitKey + ')');
+          _rtWarn(message);
+          return;
+        }
         const lines = await plFetch('/costs/lines?rt_id=' + rt.id);
         if ((lines.records || []).length) {
           // Ποτέ ορφανά κόστη: μένει και φωνάζει.
@@ -567,3 +623,6 @@ window.rtFindForOrder = rtFindForOrder;
 // Why the last rtOnOrderSaved(orderId) could not attach: { codes, message } when
 // the Worker refused it as a split group, else null (weekly_intl.js _wiRotAdd).
 window.rtSplitFor = orderId => _RT.split[orderId] || null;
+// Why the last rtOnOrderSaved(orderId) left a trip it meant to cancel:
+// { code, message } when a leg still carries a vehicle (_rtHeldLegs), else null.
+window.rtHeldFor = orderId => _RT.held[orderId] || null;
