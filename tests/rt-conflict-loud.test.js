@@ -29,6 +29,14 @@ const PL_SRC = fs.readFileSync(path.join(ROOT, 'core/pallet-feed.js'), 'utf8');
 const WI = fs.readFileSync(process.env.WI_SRC || path.join(ROOT, 'modules/weekly_intl.js'), 'utf8');
 const ROT_ADD = (WI.match(/async function _wiRotAdd\(parentRowId, legOid\)\{[\s\S]*?\n\}\n/) || [])[0];
 if (!ROT_ADD) throw new Error('_wiRotAdd not found in weekly_intl.js');
+// 9/10 (fix/rota-leg-own-rt): _wiRotAdd first checks, on the server, that the
+// leg is bare — its helpers run verbatim too. Optional for a copy that
+// predates them (RT_SRC/WI_SRC «before» runs).
+const opt = re => (WI.match(re) || [''])[0];
+const ROT_HELPERS = [
+  opt(/async function _wiRotLegBare\([^)]*\)\{[\s\S]*?\n\}\n/), opt(/async function _wiRtOf\([^)]*\)\{[\s\S]*?\n\}\n/),
+  opt(/\nfunction _wiAssignLbl\([^)]*\)\{[\s\S]*?\n\}\n/), opt(/\nfunction _wiRefuse\([^)]*\)\{[\s\S]*?\n\}\n/),
+].join('\n');
 
 const SPLIT_MSG = 'Η ομάδα είναι μοιρασμένη σε δύο δρομολόγια: RT-1217, RT-1220 — ζήτα συγχώνευση από τον owner';
 
@@ -51,10 +59,10 @@ async function world({ listOmits = [], postFails = null } = {}) {
   const veh = { 'Truck': ['recT13'], 'Driver': ['recD16'] };
   const when = { 'Loading DateTime': '2026-10-05T06:00:00Z', 'Delivery DateTime': '2026-10-07T06:00:00Z' };
   const orders = {
-    rec438: { Reference: 'R438', Direction: 'Export', Status: 'Assigned', 'Matched Import ID': 'rec451', ...veh, ...when },
-    rec451: { Reference: 'R451', Direction: 'Import', Status: 'Assigned', 'Group ID': 'GI-MUV7FNKE|rec451,rec449', ...veh, ...when },
-    rec449: { Reference: 'R449', Direction: 'Import', Status: 'Assigned', 'Group ID': 'GI-MUV7FNKE|rec451,rec449', ...veh, ...when },
-    rec467: { Reference: 'R467', Direction: 'Export', Status: 'Pending', ...when },
+    rec438: { Reference: 'R438', 'Order No': 438, Direction: 'Export', Status: 'Assigned', 'Matched Import ID': 'rec451', ...veh, ...when },
+    rec451: { Reference: 'R451', 'Order No': 451, Direction: 'Import', Status: 'Assigned', 'Group ID': 'GI-MUV7FNKE|rec451,rec449', ...veh, ...when },
+    rec449: { Reference: 'R449', 'Order No': 449, Direction: 'Import', Status: 'Assigned', 'Group ID': 'GI-MUV7FNKE|rec451,rec449', ...veh, ...when },
+    rec467: { Reference: 'R467', 'Order No': 467, Direction: 'Export', Status: 'Pending', ...when },
   };
   const pgOf = id => Number(id.replace('rec', ''));
   const rtBase = { status: 'planned', trip_type: 'OWNED', truck_id: 13, driver_id: 16, trailer_id: null, date_start: '2026-10-05', date_end: '2026-10-07' };
@@ -87,8 +95,9 @@ async function world({ listOmits = [], postFails = null } = {}) {
     logError: (e, where) => logged.push({ msg: e && e.message, where }),
     toast: (m, k) => wiToasts.push({ m, k: k || 'success' }),
     reportError: (m) => reports.push(m),
+    escapeHtml: s => String(s),
     renderWeeklyIntl: async () => {},
-    WINTL: { rows: [{ id: 1, type: 'export', orderIds: ['rec438'], truckId: 'recT13', driverId: 'recD16' }] },
+    WINTL: { rows: [{ id: 1, type: 'export', orderIds: ['rec438'], truckId: 'recT13', driverId: 'recD16' }], data: { trucks: [], drivers: [], partners: [], trailers: [] } },
   };
   ctx.document = { body: new El('body'), createElement: t => new El(t), getElementById: id => { let hit = null; walk(ctx.document.body, e => { if (!hit && e.id === id) hit = e; }); return hit; } };
   ctx.fetch = async (url, init = {}) => {
@@ -98,7 +107,7 @@ async function world({ listOmits = [], postFails = null } = {}) {
     if (p.startsWith('/pallets/gate')) return resp(200, { records: [{ order_id: pgOf(decodeURIComponent(p.split('order_recs=')[1])) }] });
     if (p === '/costs/lookups') return resp(200, { trucks: [{ id: 13, license_plate: 'TRK-13' }], trailers: [], drivers: [{ id: 16, full_name: 'Driver 16' }], partners: [] });
     if (p.startsWith('/costs/lines')) return resp(200, { records: [] });
-    if (p === '/costs/rt' && method === 'GET') return resp(200, { records: rts.filter(r => !listOmits.includes(r.id)) });
+    if ((p === '/costs/rt' || p.startsWith('/costs/rt?')) && method === 'GET') return resp(200, { records: rts.filter(r => !listOmits.includes(r.id)) });
     if (p.startsWith('/costs/rt/') && method === 'PATCH') { const r = rts.find(x => x.id === Number(p.split('/')[3])); Object.assign(r, JSON.parse(init.body)); return resp(200, { record: r }); }
     if (p === '/costs/rt' && method === 'POST') {
       if (postFails) return resp(postFails, { error: 'boom' });
@@ -123,7 +132,7 @@ async function world({ listOmits = [], postFails = null } = {}) {
   vm.createContext(ctx);
   vm.runInContext(PL_SRC, ctx, { filename: 'core/pallet-feed.js' });
   vm.runInContext(RT_SRC, ctx, { filename: 'core/rt-feed.js' });
-  vm.runInContext(ROT_ADD + '\nwindow._wiRotAdd=_wiRotAdd;', ctx, { filename: 'modules/weekly_intl.js#_wiRotAdd' });
+  vm.runInContext(ROT_ADD + ROT_HELPERS + '\nwindow._wiRotAdd=_wiRotAdd;', ctx, { filename: 'modules/weekly_intl.js#_wiRotAdd' });
   const banners = () => { const out = []; walk(ctx.document.body, e => { if (e.getAttribute('role') === 'alert') out.push(e); }); return out; };
   return { ctx, orders, rts, calls, toasts, logged, wiToasts, reports, patches, timers, banners };
 }
