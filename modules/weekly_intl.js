@@ -4108,8 +4108,8 @@ async function _wiClear(rowId){
 }
 
 /* ── CONTEXT MENU ──────────────────────────────────────────────────── */
-// Owner (10/8): κανόνας groupage — δείξε ΜΟΝΟ συνδυασμούς με σύνολο ≤33
-// παλέτες (χωρητικότητα). «Δώρο άδωρο να εμφανίζει όλα τα φορτία».
+// Owner (10/8) listed ONLY combinations ≤33 pallets; superseded 9/10 by the
+// rule below — 33 is asked, never hidden or refused.
 function _wiRowPals(row){
   if(!row) return 0;
   if(row.type==='import'){
@@ -4124,6 +4124,48 @@ function _wiRowPals(row){
     const o=WINTL.data.exports.find(r=>r.id===oid);
     return s+(+(o?.fields['Total Pallets']||0));
   },0);
+}
+/* ── 33 PALLETS: A WARNING, NEVER A BLOCK (owner 9/10/2026) ───────────────
+   «Το φορτίο είχε 35 παλ. Ο οδηγός απλά έσπασε με τα χέρια τις 2 παλ και
+   χώρεσαν. Άρα θέλουμε να δίνεται η δυνατότητα να υπερτερούν τις 33.» A hard
+   33 refused Παντελής's real 35-pallet import groupage: what fits depends on
+   the trailer and on how the load is built, which the board cannot know.
+   Before this the cap lived in nine places of this file (only the stock
+   panel treated it as a warning) — every groupage/join path now uses THESE
+   and no 33 of its own (αρχή 3): a candidate is never hidden or disabled for
+   capacity, the running sum turns red past 33, the action asks ONCE with the
+   numbers before anything is written, the success toast says the total.
+   Cancel writes nothing. The other refusals (Cancelled, rota leg, lot, piece,
+   split, assignment, read-only) are untouched — they are facts, not a guess. */
+const WI_PAL_CAP=33;
+function _wiPalOver(n){ return (+n||0)>WI_PAL_CAP; }
+function _wiRecsPals(recs){ return (recs||[]).reduce((s,r)=>s+(+((r&&r.fields&&r.fields['Total Pallets'])||0)),0); }
+// A panel's running sum: «24p / 33p», past 33 «35p / 33p · > 33» (the caller
+// adds class `over` = red).
+function _wiPalSumText(n){ return `${n}p / ${WI_PAL_CAP}p${_wiPalOver(n)?' · > '+WI_PAL_CAP:''}`; }
+// Under a candidate that would take the load past 33 — still pickable — the
+// sum in amber, as arithmetic the dispatcher can check (_wiJoinPalText).
+function _wiPalCandNote(base,add){
+  return _wiPalOver(_wiRecsPals(base)+_wiRecsPals(add))?`<br><small class="wi-stk-warn">${escapeHtml(_wiJoinPalText(base,add))}</small>`:'';
+}
+// The success toast's tail: '' within 33, « (35 π. — πάνω από 33)» past it.
+function _wiPalNote(n){ return _wiPalOver(n)?` (${n} π. — πάνω από ${WI_PAL_CAP})`:''; }
+// The one question, asked by the action the user started (panel button or
+// drop), never once per order it writes. base = the load's records, adds =
+// one record list per picked candidate. true = within 33 (nothing asked);
+// 'over' = past 33 and the dispatcher said «Να μπει» (passed on as palOk);
+// false = cancelled: the caller writes nothing. A cancel is the dispatcher's
+// choice, not a failure — nothing goes to app_errors.
+async function _wiPalConfirm(base,adds){
+  const parts=[_wiRecsPals(base),...adds.map(_wiRecsPals)], t=parts.reduce((s,n)=>s+n,0);
+  if(!_wiPalOver(t)) return true;
+  return (await confirmAction(`Σύνολο ${parts.join(' + ')} = ${t} παλέτες — πάνω από ${WI_PAL_CAP}. Να μπει;\n\n${_wiJoinPalText(base,[].concat(...adds))}`,
+    {title:`Πάνω από ${WI_PAL_CAP} παλέτες`,confirmLabel:'Να μπει'}))?'over':false;
+}
+// Ομαδοποίηση candidates of an export row — ONE list for the menu item and
+// its panel (they were two copies of the same filter, both capped at 33).
+function _wiExpGroupCands(row){
+  return WINTL.rows.filter(r=>r.id!==row.id&&!r.saved&&r.type==='export'&&!_wiLotHeld(r));
 }
 /* ── FLAT MENU + SMALL ANCHORED PANEL (owner 7/9) ─────────────────────────
    Redesign: the right-click menus used to mix ACTIONS with inline CANDIDATE
@@ -4359,25 +4401,26 @@ function _wiPanelRotaGo(rowId){
   }
 }
 
-// Ομαδοποίηση (exports) / Groupage εισαγωγών (imports): same candidate
-// computation _wiCtx/_wiImpCtx used to list inline (≤33 pallets total),
-// checkbox multi-select with a live running sum against that cap. Confirm
+// Ομαδοποίηση (exports) / Groupage εισαγωγών (imports): the candidates
+// _wiCtx/_wiImpCtx offer (_wiExpGroupCands / _wiImpGroupCands — every one,
+// 33 is a warning since 9/10), checkbox multi-select with a live running sum
+// that turns red past 33. Confirm asks once past 33 (_wiPalConfirm), then
 // applies the SAME per-pair merge (_wiMerge/_wiImpGroup) once per checked
 // box — sequential, exactly like repeating the old single-candidate menu
 // click by hand; no new write path (αρχή 3 — «δύο πηγές αλήθειας»).
 function _wiPanelGroupBuild(rowId,isImp){
   const row=WINTL.rows.find(r=>r.id===rowId); if(!row) return;
-  const myPals=_wiRowPals(row);
+  const myPals=_wiRowPals(row), myRecs=_wiLoadRecs(row);
   // A lot is never grouped (stock plan §6.7) — not offered as a candidate.
   // Nor a piece (impact map 4/10 B-09): pieces join only through «+ Κομμάτι».
   const ic=isImp?_wiImpGroupCands(row):null;
-  const others=isImp
-    ? ic.free
-    : WINTL.rows.filter(r=>r.id!==rowId&&!r.saved&&r.type==='export'&&!_wiLotHeld(r)&&(myPals+_wiRowPals(r))<=33);
-  // Imports: every free one is listed (the list scrolls, its count is on
-  // top) — the old cut at 6 hid the 7th and later with no word, and the
-  // dispatcher read «not there» (coordinator 9/10, no silent caps).
-  const cand=(isImp?others:others.slice(0,6)).map(o=>{
+  const others=isImp?ic.free:_wiExpGroupCands(row);
+  // Every candidate is listed (the list scrolls, its count is on top) — the
+  // old cut at 6 hid the 7th and later with no word, and the dispatcher read
+  // «not there» (coordinator 9/10, no silent caps). Exports too since the 33
+  // filter that kept their list short is gone; the ones within 33 come
+  // first, so the usual pick stays on top and the rest are a scroll away.
+  const cand=others.map(o=>{
     let lbl;
     if(isImp){
       const oi=WINTL.data.imports.find(r=>r.id===o.orderId);
@@ -4386,42 +4429,42 @@ function _wiPanelGroupBuild(rowId,isImp){
       const exp=WINTL.data.exports.find(r=>r.id===o.orderIds[0]);
       lbl=_wiCut(_wiClean(exp?.fields['Delivery Summary']||`Γραμμή ${o.id}`),28);
     }
-    return {id:o.id,lbl,pals:_wiRowPals(o)};
-  });
+    return {id:o.id,lbl,pals:_wiRowPals(o),note:_wiPalCandNote(myRecs,_wiLoadRecs(o))};
+  }).sort((a,b)=>_wiPalOver(myPals+a.pals)-_wiPalOver(myPals+b.pals));
   // Truck loads (8/10): one at a time (an import rides one truck) — every
   // load listed, nearest delivery first; one it cannot join stays disabled
   // with its reason in plain sight (data-fixed: the running sum never
-  // re-enables it).
+  // re-enables it). Past 33 is not such a reason: the sum is said, amber.
   const loads=ic?ic.loads:[];
   const loadsHtml=loads.length
     ? `<div class="wi-panel-note" style="margin-top:8px;font-weight:600">Σε φορτίο φορτηγού (${loads.length})</div>
        <div class="wi-panel-list" id="wiGrpLoads" style="max-height:min(260px,38vh)">${loads.map(l=>`
-        <label class="wi-panel-opt" title="${escapeHtml(l.why||_wiJoinPalText(_wiLoadRecs(l.lr),_wiLoadRecs(row)))}">
+        <label class="wi-panel-opt" title="${escapeHtml(l.why||_wiJoinPalText(_wiLoadRecs(l.lr),myRecs))}">
           <input type="checkbox" class="wiGrpPick" data-load="1" ${l.why?'data-fixed="1" disabled':''} value="L:${l.er.orderIds[0]}:${l.er.importId}" data-pals="${l.pals}" onchange="_wiPanelLoadPick(this,${myPals})">
-          <span>${l.lbl} (${l.pals}p)${l.why?`<br><small class="wi-stk-warn">${escapeHtml(l.why)}</small>`:''}</span>
+          <span>${l.lbl} (${l.pals}p)${l.why?`<br><small class="wi-stk-warn">${escapeHtml(l.why)}</small>`:_wiPalCandNote(_wiLoadRecs(l.lr),myRecs)}</span>
         </label>`).join('')}</div>`
     : '';
   const body=(cand.length||loads.length)
-    ? `${(isImp&&cand.length)?`<div class="wi-panel-note" style="font-weight:600">Ελεύθερες εισαγωγές (${cand.length})${cand.length>6?' — κύλισε':''}</div>`:''}${cand.length?`<div class="wi-panel-list" id="wiGrpList">${cand.map(c=>`
+    ? `${cand.length?`<div class="wi-panel-note" style="font-weight:600">Ελεύθερες ${isImp?'εισαγωγές':'εξαγωγές'} (${cand.length})${cand.length>6?' — κύλισε':''}</div>`:''}${cand.length?`<div class="wi-panel-list" id="wiGrpList">${cand.map(c=>`
         <label class="wi-panel-opt">
           <input type="checkbox" class="wiGrpPick" value="${c.id}" data-pals="${c.pals}" onchange="_wiPanelGroupSum(${myPals})">
-          <span>${c.lbl} (${c.pals}p)</span>
+          <span>${c.lbl} (${c.pals}p)${c.note}</span>
         </label>`).join('')}</div>`:''}${loadsHtml}
-       <div class="wi-panel-sum" id="wiGrpSum">${myPals}p / 33p</div>`
-    : `<div class="wi-panel-empty">Καμία συμβατή ${isImp?'εισαγωγή':'εξαγωγή'} — όριο 33 παλέτες (τώρα ${myPals}p)</div>`;
+       <div class="wi-panel-sum${_wiPalOver(myPals)?' over':''}" id="wiGrpSum">${_wiPalSumText(myPals)}</div>`
+    : `<div class="wi-panel-empty">Καμία ${isImp?'ελεύθερη εισαγωγή ή φορτίο φορτηγού':'εξαγωγή χωρίς ανάθεση'} σε αυτή την εβδομάδα</div>`;
   const footer=(cand.length||loads.length)
     ? `<button class="btn btn-ghost" onclick="_wiPanelClose()">Άκυρο</button>
        <button class="btn btn-primary" onclick="_wiPanelGroupGo(${rowId},${isImp?'true':'false'})">Ομαδοποίηση</button>`
     : `<button class="btn btn-ghost" onclick="_wiPanelClose()">Κλείσιμο</button>`;
   _wiPanelOpen(_wiAnchorFor(rowId),isImp?'Groupage εισαγωγών':'Ομαδοποίηση',_wiPanelCtxLine(row),body,footer);
 }
+// The running sum. No box is ever disabled for capacity (owner 9/10): only a
+// data-fixed one (a real refusal) stays disabled, as rendered.
 function _wiPanelGroupSum(base){
-  const boxes=[...document.querySelectorAll('.wiGrpPick')];
   let sum=base;
-  boxes.forEach(b=>{ if(b.checked) sum+=+b.dataset.pals||0; });
-  boxes.forEach(b=>{ if(!b.checked&&!b.dataset.fixed) b.disabled=(sum+(+b.dataset.pals||0))>33; });
+  document.querySelectorAll('.wiGrpPick').forEach(b=>{ if(b.checked) sum+=+b.dataset.pals||0; });
   const el=document.getElementById('wiGrpSum');
-  if(el){ el.textContent=`${sum}p / 33p`; el.classList.toggle('over',sum>33); }
+  if(el){ el.textContent=_wiPalSumText(sum); el.classList.toggle('over',_wiPalOver(sum)); }
 }
 // One truck load at a time: picking a load unpicks any other load.
 function _wiPanelLoadPick(el,base){
@@ -4432,41 +4475,52 @@ async function _wiPanelGroupGo(rowId,isImp){
   const picks=[...document.querySelectorAll('.wiGrpPick:checked')].map(b=>b.value);
   if(!picks.length){ toast('Επίλεξε τουλάχιστον ένα φορτίο','warn'); return; }
   _wiPanelClose();
-  if(!isImp){ for(const v of picks) await _wiMerge(rowId,+v); return; }
+  const me=WINTL.rows.find(r=>r.id===rowId); if(!me) return;
+  if(!isImp){
+    const rows=picks.map(v=>WINTL.rows.find(r=>r.id===+v)).filter(Boolean);
+    if(!(await _wiPalConfirm(_wiLoadRecs(me),rows.map(_wiLoadRecs)))) return;
+    for(const r of rows) await _wiMerge(rowId,r.id);
+    return;
+  }
   // Resolved to ORDER ids first: every join rebuilds the rows (new row ids) —
   // the old loop kept the panel's row ids across renders (rig S6). Free
   // imports join this row first; then the whole group joins the truck load.
-  const me=WINTL.rows.find(r=>r.id===rowId); if(!me) return;
   const meOid=me.orderId;
   const free=picks.filter(v=>v.indexOf('L:')!==0).map(v=>(WINTL.rows.find(r=>r.id===+v)||{}).orderId).filter(Boolean);
   const load=picks.find(v=>v.indexOf('L:')===0);
+  const lr=load?_wiImpGroupRowOf(load.split(':')[2]):null;
   // With a truck load picked, this row and every free pick end up joining
   // it: each is checked against that load BEFORE the first write, so a
   // refusal (an assigned import — P1) never leaves the free picks grouped
   // here while the load join is refused at the end.
   if(load){
-    const [,eOid,lOid]=load.split(':');
-    const er=WINTL.rows.find(r=>r.type==='export'&&(r.orderIds||[]).includes(eOid)), lr=_wiImpGroupRowOf(lOid);
+    const [,eOid]=load.split(':');
+    const er=WINTL.rows.find(r=>r.type==='export'&&(r.orderIds||[]).includes(eOid));
     for(const oid of [meOid,...free]){
       const xr=_wiImpGroupRowOf(oid), why=(er&&lr&&xr)?_wiJoinCheck(lr,xr,er):'';
       if(why){ _wiRefuse(why,'import join refused'); return; }
     }
   }
+  // Past 33: asked once for the whole action, the load first; every join
+  // below is then told the answer (palOk) so none asks again.
+  const adds=[me,...free.map(_wiImpGroupRowOf)].filter(Boolean).map(_wiLoadRecs);
+  if(lr) adds.unshift(_wiLoadRecs(lr));
+  const pal=await _wiPalConfirm(adds[0],adds.slice(1)); if(!pal) return;
   for(const oid of free){
     const a=_wiImpGroupRowOf(meOid), b=_wiImpGroupRowOf(oid);
-    if(!a||!b||!(await _wiImpGroup(a.id,b.id))) return;   // a refusal/failure already spoke
+    if(!a||!b||!(await _wiImpGroup(a.id,b.id,pal==='over'))) return;   // a refusal/failure already spoke
   }
-  if(load){ const [,expOid,loadOid]=load.split(':'); await _wiImpJoin(loadOid,expOid,meOid); }
+  if(load){ const [,expOid,loadOid]=load.split(':'); await _wiImpJoin(loadOid,expOid,meOid,pal==='over'); }
 }
 // Where an import row can go from its «Groupage εισαγωγών…» (owner 10/8 +
-// 8/10): free import rows as before (≤ 33 together, unchanged) and — new —
-// the import loads of trucks (matched to an export: a 2nd/3rd import on a
-// truck that already carries one, Παντελής 8/10), nearest export delivery to
-// this import's loading first, each with _wiJoinCheck's reason when it cannot
-// join — «δεν χωράει» is a number on screen, never a missing line.
+// 8/10): every free import row (the ≤ 33 filter went 9/10 — 33 is asked,
+// _wiPalConfirm) and the import loads of trucks (matched to an export: a
+// 2nd/3rd import on a truck that already carries one, Παντελής 8/10), nearest
+// export delivery to this import's loading first, each with _wiJoinCheck's
+// reason when it cannot join — a sum past 33 is a number on screen, never a
+// missing line.
 function _wiImpGroupCands(row){
-  const myPals=_wiRowPals(row);
-  const free=WINTL.rows.filter(r=>r.type==='import'&&r.id!==row.id&&!r.adj&&!r.matchedTo&&!_wiLotHeld(r)&&!_wiPieceIn(r.orderIds).length&&(myPals+_wiRowPals(r))<=33);
+  const free=WINTL.rows.filter(r=>r.type==='import'&&r.id!==row.id&&!r.adj&&!r.matchedTo&&!_wiLotHeld(r)&&!_wiPieceIn(r.orderIds).length);
   const myLoad=String((_wiRecOf(row.orderId)||{fields:{}}).fields['Loading DateTime']||'');
   const loads=[];
   WINTL.rows.forEach(er=>{
@@ -4479,12 +4533,13 @@ function _wiImpGroupCands(row){
     loads.push({er,lr,lbl,pals:_wiRowPals(lr),why:_wiJoinCheck(lr,row,er),gap:(myLoad&&del)?Math.abs(new Date(del)-new Date(myLoad)):Infinity});
   });
   loads.sort((a,b)=>a.gap-b.gap);
-  return {myPals,free,loads};
+  return {free,loads};
 }
 // «+ Εισαγωγή στο φορτίο…» (matched card and tile menus, 8/10): the free
 // imports of the board, nearest loading day to the export's delivery first,
 // each with its pallets; one that cannot join stays listed, disabled, with
-// _wiJoinCheck's reason (the sum against 33, an assignment of its own, …).
+// _wiJoinCheck's reason (an assignment of its own, …). One that takes the
+// load past 33 stays pickable, its sum said in amber (owner 9/10).
 function _wiPanelJoinLoad(expRowId){
   const er=WINTL.rows.find(r=>r.id===expRowId); if(!er||!er.importId) return;
   const lr=_wiImpGroupRowOf(er.importId); if(!lr) return;
@@ -4502,9 +4557,9 @@ function _wiPanelJoinLoad(expRowId){
        <div class="wi-panel-list" id="wiJoinList" style="max-height:min(320px,45vh)">${cands.map(c=>`
         <label class="wi-panel-opt" title="${escapeHtml(c.why||_wiJoinPalText(lrecs,c.rr))}">
           <input type="checkbox" class="wiGrpPick" ${c.why?'data-fixed="1" disabled':''} value="${c.r.orderId}" data-pals="${c.pals}" onchange="_wiPanelGroupSum(${base})">
-          <span>${c.lbl} (${c.pals}p)${c.why?`<br><small class="wi-stk-warn">${escapeHtml(c.why)}</small>`:''}</span>
+          <span>${c.lbl} (${c.pals}p)${c.why?`<br><small class="wi-stk-warn">${escapeHtml(c.why)}</small>`:_wiPalCandNote(lrecs,c.rr)}</span>
         </label>`).join('')}</div>
-       <div class="wi-panel-sum" id="wiGrpSum">${base}p / 33p</div>`
+       <div class="wi-panel-sum${_wiPalOver(base)?' over':''}" id="wiGrpSum">${_wiPalSumText(base)}</div>`
     : `<div class="wi-panel-empty">Καμία ελεύθερη εισαγωγή σε αυτή την εβδομάδα</div>`;
   const footer=cands.length
     ? `<button class="btn btn-ghost" onclick="_wiPanelClose()">Άκυρο</button>
@@ -4516,7 +4571,11 @@ async function _wiPanelJoinGo(expOid,loadOid){
   const picks=[...document.querySelectorAll('.wiGrpPick:checked')].map(b=>b.value);
   if(!picks.length){ toast('Επίλεξε τουλάχιστον μία εισαγωγή','warn'); return; }
   _wiPanelClose();
-  for(const oid of picks){ if(!(await _wiImpJoin(loadOid,expOid,oid))) return; }
+  // Past 33: one question for every pick together, then no join asks again.
+  const lr=_wiImpGroupRowOf(loadOid);
+  const pal=lr?await _wiPalConfirm(_wiLoadRecs(lr),picks.map(_wiImpGroupRowOf).filter(Boolean).map(_wiLoadRecs)):true;
+  if(!pal) return;
+  for(const oid of picks){ if(!(await _wiImpJoin(loadOid,expOid,oid,pal==='over'))) return; }
 }
 
 // Ανάθεση: the menu item just opens the EXISTING assign popover (own
@@ -4549,9 +4608,7 @@ async function _wiCtx(e,rowId){
   if(_wiPreCtx(e,row,false)) return;
   if(_wiLotCtx(e,row,false)) return;
   const isGroup=row.orderIds.length>1;
-  const myPals=_wiRowPals(row);
-  const others=WINTL.rows.filter(r=>r.id!==rowId&&!r.saved&&r.type==='export'
-    &&!_wiLotHeld(r)&&(myPals+_wiRowPals(r))<=33);
+  const others=_wiExpGroupCands(row);
   let html='';
   html+=_wiCtxBtn('Ανάθεση…',`_wiPanelAssign(${rowId},false)`);
   html+=_wiCtxBtn('Εκτύπωση…',`_wiMenuPrint(${rowId},false)`);
@@ -4567,7 +4624,7 @@ async function _wiCtx(e,rowId){
   // of its own for that purpose.
   if(!row.splitLegOf) html+=others.length
     ? _wiCtxBtn('Ομαδοποίηση…',`_wiPanelGroupBuild(${rowId},false)`)
-    : _wiCtxBtnDisabled('Ομαδοποίηση…',`Καμία συμβατή εξαγωγή — όριο 33 παλέτες (τώρα ${myPals}p)`);
+    : _wiCtxBtnDisabled('Ομαδοποίηση…','Καμία εξαγωγή χωρίς ανάθεση σε αυτή την εβδομάδα');
   html+=_wiStockCtxItem(row);
   html+=_wiCtxBtn('⤷ Σκέλος προώθησης (ρότα)…',`_wiPanelRota(${rowId})`);
   html+=_wiSplitCtxItems(row,rowId,_wiCtxBtn);
@@ -5654,7 +5711,6 @@ async function _wiImpCtx(e,rowId,matchedExportRowId){
     setTimeout(()=>document.addEventListener('click',_wiCtxClose,{once:true}),10);
     return;
   }
-  const myPals=_wiRowPals(row);
   // Truck loads count as candidates too (8/10): the panel lists them, the
   // ones that cannot take this import disabled with the reason.
   const ic=_wiImpGroupCands(row);
@@ -5673,7 +5729,7 @@ async function _wiImpCtx(e,rowId,matchedExportRowId){
   // grouping equivalent here, "Groupage εισαγωγών".
   if(!row.splitLegOf&&!hasPiece) html+=others.length
     ? _wiCtxBtn('Groupage εισαγωγών…',`_wiPanelGroupBuild(${rowId},true)`)
-    : _wiCtxBtnDisabled('Groupage εισαγωγών…',`Καμία συμβατή εισαγωγή — όριο 33 παλέτες (τώρα ${myPals}p)`);
+    : _wiCtxBtnDisabled('Groupage εισαγωγών…','Καμία ελεύθερη εισαγωγή ή φορτίο φορτηγού σε αυτή την εβδομάδα');
   // An import row with our own truck and no export («ΚΕΝΟ EXPORT») is a
   // truck too: the piece joins its import group (Case A).
   html+=_wiStockCtxItem(row);
@@ -5755,8 +5811,9 @@ async function _wiImpShift(rowId,days){
 // stays the load and _wiJoinCheck refuses the other side (_wiAssignLbl: an
 // assigned import already has its own round trip — P1, coordinator 9/10).
 // Pieces stay out of this path on either side (B-09): they reach a truck only
-// through «+ Κομμάτι». true = the join landed (read back).
-async function _wiImpGroup(rowId,otherRowId){
+// through «+ Κομμάτι». true = the join landed (read back). palOk: the caller
+// already asked about 33 for the whole action (see _wiImpJoin).
+async function _wiImpGroup(rowId,otherRowId,palOk){
   const a=WINTL.rows.find(r=>r.id===rowId), b=WINTL.rows.find(r=>r.id===otherRowId);
   if(!a||!b) return false;
   // Never takes a piece (B-09) — even from a panel opened before the data changed.
@@ -5766,7 +5823,7 @@ async function _wiImpGroup(rowId,otherRowId){
   const va=veh(a), vb=veh(b);
   const bFirst=(!va&&vb)||(!va&&!vb&&!grp(a)&&grp(b));
   const [load,x]=bFirst?[b,a]:[a,b];
-  return _wiImpJoin(load.orderId,null,x.orderId);
+  return _wiImpJoin(load.orderId,null,x.orderId,palOk);
 }
 
 /* ── ONE JOIN: an import into a truck's import load (Παντελής 8/10/2026) ──
@@ -5794,13 +5851,13 @@ function _wiRefuse(msg,ctx){
 function _wiLoadRecs(row){
   return _wiGrpOrder(((row&&row.orderIds)||[row&&row.orderId]).map(id=>_wiRecOf(id)).filter(Boolean),'Loading DateTime');
 }
-// «461+463 = 24 π. + 471 = 10 π. = 34 > 33» — a groupage check as arithmetic
-// the dispatcher can read («δεν χωράει» used to be a missing line or a lock).
+// «461+463 = 24 π. + 471 = 10 π. = 34 > 33» — a groupage sum as arithmetic
+// the dispatcher can read: under a candidate past 33 and in the one question
+// (_wiPalCandNote / _wiPalConfirm). Since 9/10 it informs, it never refuses.
 function _wiJoinPalText(load,add){
   const ref=r=>String((r&&r.fields&&r.fields['Reference'])||(r&&r.id)||'—');
-  const sum=a=>a.reduce((s,r)=>s+(+((r&&r.fields&&r.fields['Total Pallets'])||0)),0);
-  const a=sum(load), b=sum(add), t=a+b;
-  return `${load.map(ref).join('+')} = ${a} π. + ${add.map(ref).join('+')} = ${b} π. = ${t} ${t>33?'>':'≤'} 33`;
+  const a=_wiRecsPals(load), b=_wiRecsPals(add), t=a+b;
+  return `${load.map(ref).join('+')} = ${a} π. + ${add.map(ref).join('+')} = ${b} π. = ${t} ${_wiPalOver(t)?'>':'≤'} ${WI_PAL_CAP}`;
 }
 // What an order is already assigned to, in the dispatcher's words ('' =
 // nothing): truck, partner, trailer or driver. The JOINING side of a join
@@ -5866,8 +5923,9 @@ function _wiJoinWho(recs){
 // a rota leg or a split order is not grouped (as their menus); a lot goes to
 // its warehouse; a piece joins only through «+ Κομμάτι», and never becomes
 // the lead of a new group (B-09); an import on another truck's load leaves it
-// first; 33 pallets is the hard groupage limit (owner policy, unchanged —
-// stated as a sum); the joining side carries no assignment (_wiAssignLbl).
+// first; the joining side carries no assignment (_wiAssignLbl). 33 pallets is
+// NOT here since 9/10 (owner: a 35-pallet load really went) — it is asked by
+// the action (_wiPalConfirm), never refused.
 function _wiJoinCheck(loadRow,xRow,vehRow){
   const lr=_wiLoadRecs(loadRow), xr=_wiLoadRecs(xRow), many=xr.length>1;
   const who=_wiJoinWho(xr), into=_wiJoinLoadLbl(vehRow,lr);
@@ -5893,8 +5951,6 @@ function _wiJoinCheck(loadRow,xRow,vehRow){
   }
   if(xRow.splitLegOf||xRow.hasSplitLegs) return `${who} ${xRow.splitLegOf?'είναι σκέλος σπασμένης παραγγελίας':'είναι σπασμένη σε σκέλη'} — δεν μπαίνει σε groupage`;
   if(loadRow.splitLegOf||loadRow.hasSplitLegs) return `Το ${into} είναι σπασμένη παραγγελία — δεν δέχεται groupage`;
-  const sum=a=>a.reduce((s,r)=>s+(+((r.fields&&r.fields['Total Pallets'])||0)),0);
-  if(sum(lr)+sum(xr)>33) return `Δεν χωράει στο ${into}: ${_wiJoinPalText(lr,xr)} — όριο 33 παλέτες`;
   const xa=xr.find(r=>_wiAssignLbl(r.fields));
   if(xa) return _wiAssignedText(xa);
   return '';
@@ -5933,7 +5989,9 @@ async function _wiJoinReadLoad(seedId){
 // The week reloads only when the server shows what the board does not (a
 // race); otherwise the board is rebuilt from its own read-back data, with no
 // «Φόρτωση εβδομάδας» spinner. true = the import is in the load (read back).
-async function _wiImpJoin(loadOid,expOid,xOid){
+// Past 33 (owner 9/10) the join asks once (_wiPalConfirm) unless the caller
+// already asked for its whole action — palOk = the dispatcher said «Να μπει».
+async function _wiImpJoin(loadOid,expOid,xOid,palOk){
   if(_wiBlockReadOnly()) return false;
   const expRow=expOid?WINTL.rows.find(r=>r.type==='export'&&(r.orderIds||[]).includes(expOid)):null;
   const loadRow=_wiImpGroupRowOf(loadOid), xRow=_wiImpGroupRowOf(xOid);
@@ -5948,7 +6006,11 @@ async function _wiImpJoin(loadOid,expOid,xOid){
   if(xIds.some(id=>loadIds.includes(id))){ toast(escapeHtml(`${who} είναι ήδη σε αυτό το φορτίο`),'info'); return false; }
   const why=_wiJoinCheck(loadRow,xRow,vehRow);
   if(why){ _wiRefuse(why,'import join refused'); return false; }
-  const into=_wiJoinLoadLbl(vehRow,_wiLoadRecs(loadRow));
+  // After every refusal (a refused join never asks), before any read or
+  // write: «Άκυρο» leaves nothing behind, not even a spinner.
+  const lr0=_wiLoadRecs(loadRow), pal=palOk?'over':await _wiPalConfirm(lr0,[xr0]);
+  if(!pal) return false;
+  const into=_wiJoinLoadLbl(vehRow,lr0);
   const slot='wi-sync-'+vehRow.id;
   let wrote=false;
   const refuse=msg=>{ _wiSync(slot,null); _wiRefuse(msg,'import join refused'); return false; };
@@ -6007,8 +6069,9 @@ async function _wiImpJoin(loadOid,expOid,xOid){
     // difference from the board is a race — the reload shows what the
     // refusal used, and the next try is refused by _wiJoinCheck in its words.
     if([...L.recs,...X.recs].some(r=>r.fields['Status']==='Cancelled')) return await race('Μια παραγγελία του φορτίου ή της εισαγωγής ακυρώθηκε στο μεταξύ (άλλος χρήστης) — ανανέωση…');
-    const tot=[...L.recs,...X.recs].reduce((s,r)=>s+(+(r.fields['Total Pallets']||0)),0);
-    if(tot>33) return await race(`Δεν χωράει στο ${into}: ${_wiJoinPalText(L.recs,X.recs)} — οι παλέτες άλλαξαν στο μεταξύ · ανανέωση…`);
+    // 33 is no refusal; a sum past it that nobody was asked about is a race:
+    // the reload shows the server's pallets and the next try asks with them.
+    if(_wiPalOver(_wiRecsPals([...L.recs,...X.recs]))&&pal!=='over') return await race(`Οι παλέτες άλλαξαν στο μεταξύ (άλλος χρήστης): ${_wiJoinPalText(L.recs,X.recs)} — ανανέωση, ξαναδοκίμασε…`);
     if(X.recs.some(r=>_wiAssignLbl(r.fields))) return await race(`${who} πήρε ανάθεση στο μεταξύ (άλλος χρήστης) — ανανέωση…`);
 
     // 3. The load's Group ID, pinned before anyone joins.
@@ -6066,9 +6129,9 @@ async function _wiImpJoin(loadOid,expOid,xOid){
     // joining a truck (and a stalled reload used to hold it for ever).
     _wiStockPrime(); _wiBuildRows(); _wiPaint();
     const nr=expRow?WINTL.rows.find(r=>r.type==='export'&&(r.orderIds||[]).includes(expRow.orderIds[0])):_wiImpGroupRowOf(loadIds[0]);
-    const nl=_wiImpGroupRowOf(loadIds[0]);
+    const nl=_wiImpGroupRowOf(loadIds[0]), nrecs=nl?_wiLoadRecs(nl):[];
     if(nr) _wiSync('wi-sync-'+nr.id,'ok',`${who} στο φορτίο ✓`);
-    toast(escapeHtml(`${who} ${many?'μπήκαν':'μπήκε'} στο ${_wiJoinLoadLbl(nr||vehRow,nl?_wiLoadRecs(nl):[])} ✓`));
+    toast(escapeHtml(`${who} ${many?'μπήκαν':'μπήκε'} στο ${_wiJoinLoadLbl(nr||vehRow,nrecs)} ✓${_wiPalNote(_wiRecsPals(nrecs))}`));
     return true;
   }finally{ if(wrote) _wiNoUndo(); }   // B-13: one join, not one revertible PATCH
 }
@@ -6109,7 +6172,7 @@ async function _wiMerge(rowId,otherId){
   if(!row||!other) return;
   other.orderIds.forEach(id=>{if(!row.orderIds.includes(id)) row.orderIds.push(id);});
   WINTL.rows=WINTL.rows.filter(r=>r.id!==otherId);
-  _wiPaint();toast('Ομαδοποιήθηκε');
+  _wiPaint();toast('Ομαδοποιήθηκε'+_wiPalNote(_wiRowPals(row)));   // past 33 the total is said (owner 9/10)
   const gid='GRP-'+String(row.orderIds[0]).slice(-8);
   const ok=await _wiGroupPatch(row.orderIds, gid, row.id);
   // A3 (owner 6/9): a group is one round trip (rtLegsForOrder, core/rt-feed.js)
@@ -7275,16 +7338,17 @@ function _wiStockPanel(rowId){
   const row=WINTL.rows.find(r=>r.id===rowId); if(!row) return;
   const st=WINTL.data.stock;
   if(!st||st.status!=='ok'){ toast('Το απόθεμα δεν φορτώθηκε — ↻ στη λωρίδα ΑΠΟΘΕΜΑ','warn'); return; }
-  const X=_wiImpPals(row), free=X==null?null:33-X;
+  const X=_wiImpPals(row), free=X==null?null:WI_PAL_CAP-X;
   const lots=st.lots.filter(l=>+(l.fields?.['Remaining Pallets']||0)>0);
   const loose=_wiStockLooseFree();
   WINTL._stkPick={rowId,lots,loose};
-  // 33 is a warning, never a block: the real limit depends on the trailer —
+  // 33 is a warning, never a block (WI_PAL_CAP — the same rule as every
+  // groupage path since 9/10): the real limit depends on the trailer —
   // said in one word, «ενδεικτικά», not an arithmetic sentence and a
   // disclaimer (critic-5 S5-08). The sum stays in the title.
   const space=X==null
     ? `Ελεύθερα: <b>άγνωστα</b> — η εισαγωγή του φορτηγού δεν είναι σε αυτή την προβολή`
-    : `<span title="33 − ${X} = ${free}p · το όριο εξαρτάται από τη ρυμούλκα">Ελεύθερα <b class="${free<0?'wi-stk-bad':''}">${free}p</b> (ενδεικτικά)</span>`;
+    : `<span title="${WI_PAL_CAP} − ${X} = ${free}p · το όριο εξαρτάται από τη ρυμούλκα">Ελεύθερα <b class="${free<0?'wi-stk-bad':''}">${free}p</b> (ενδεικτικά)</span>`;
   const over=n=>(free!=null&&n>free)?` · <span class="wi-stk-warn">πάνω από τα ελεύθερα ${Math.max(free,0)}p</span>`:'';
   const looseHtml=loose.length
     ? `<div class="wi-panel-list">${loose.map((p,i)=>{ const f=p.fields||{}, n=+(f['Total Pallets']||0);
