@@ -57,8 +57,10 @@
 --   monthly "whose delays" count would then include stops that were not late. Measured cost today
 --   (coordinator SELECT 9/10, since 1/9: Loading On Time 50, Unloading On Time 188, Unloading
 --   Delayed 2, none with a reason - the column does not exist): no row violates it, so the CHECK is
---   validated at once. Who writes performance today: ONLY modules/daily_ops.js (_opsMarkStop), and it
---   never re-marks a declared stop (a declared stop shows its result, no buttons). Its stamp rollback
+--   validated at once. Who writes performance today: ONLY modules/daily_ops.js (_opsMarkStop). It CAN
+--   re-mark a declared stop (after the top-bar Revert, or when another screen moved the order back):
+--   the front then sends reason/note = NULL in the same PATCH that writes 'On Time' (feat/delay-reasons
+--   6cf2d5b0, review F1 9/10), so this CHECK holds. Its stamp rollback
 --   (_opsWriteOrder, when the order write is refused) restores every key of the stamp in ONE PATCH -
 --   performance AND reason together - so it passes. A future correction screen must clear reason and
 --   note in the same write that moves the stop to 'On Time'; the base says so loudly (23514) if it
