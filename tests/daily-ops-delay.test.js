@@ -100,8 +100,10 @@ function load() {
         const next = Object.assign({}, S.base[id], back), bad = baseRefuses(next);
         if (bad) { S.violations.push({ id, bad, f: JSON.parse(JSON.stringify(f)) }); throw new Error('500 Failed to update record'); }
         S.base[id] = next;
+        // The base echoes the generated responsibility column (067) — inside the
+        // tblS block, or the «responsibility is never sent» assertion below is vacuous.
+        if (f['Delay Reason']) back['Delay Responsibility'] = ({ loading_wait: 'client', unloading_wait: 'consignee', traffic: 'external', other: 'other', customs: 'borders' })[f['Delay Reason']];
       }
-      else if (t === 'tblS' && f['Delay Reason']) back['Delay Responsibility'] = ({ loading_wait: 'client', unloading_wait: 'consignee', traffic: 'external', other: 'other', customs: 'borders' })[f['Delay Reason']];
       for (const k of Object.keys(back)) if (back[k] == null) delete back[k];   // trap 2: NULL is absent
       return { id, fields: back };
     },
