@@ -11,8 +11,12 @@
 //   PW_BASE_URL=http://127.0.0.1:8991/.claude/worktrees/<wt>/ \
 //     node <wt>/tests/critics/weekly-impjoin-rig.js [scenario…] [--shots <dir>]
 // Scenarios: J1 drop on the cell · J2 drop on a tile · J3 card menu ·
-//   J3b tile menu item · J4 import menu (truck load as candidate) · J5 33 ·
-//   J6 race · J7 unpinned group · J8 lone import · J9 stale drag (S9) ·
+//   J3b tile menu item · J4 import menu (truck load as candidate) ·
+//   J5 past 33 on a drop (owner 9/10: asked — «Άκυρο» writes nothing, «Να
+//   μπει» joins, the toast says the total) · J4b past 33 from the import
+//   menu's load · J5b two picks past 33, ONE question · J21 export
+//   «Ομαδοποίηση» past 33 · J6 race · J6b pallets changed past 33 meanwhile
+//   (nobody was asked → a race, not a silent over-33 write) · J7 unpinned group · J8 lone import · J9 stale drag (S9) ·
 //   J10 group into group (S11) · J10b other vehicle · J11 free group (S1) ·
 //   J12 watchdog (S7) · J13 stalled paperclip index (S7, docs)
 // Review fixes (NO_GO 9/10, coordinator decisions):
@@ -95,6 +99,11 @@ function seed(opts) {
       // P3-4 / P3-5: a Cancelled import, a rota leg (hangs under E30)
       ...(opts.cancelled ? [IMP('recICX', 'CX', 'Cancelled', null, 4, '2026-10-08')] : []),
       ...(opts.leg ? [IMP('recILG', 'LG', 'Assigned', null, 3, '2026-10-08', { 'Rotation ID': 'recE30' })] : []),
+      // 33 is a warning (owner 9/10): two unassigned exports, 20 + 15 = 35
+      ...(opts.freeExp ? [
+        EXP('recEF1', 'EF1', 'Pending', null, { 'Total Pallets': 20 }),
+        EXP('recEF2', 'EF2', 'Pending', null, { 'Total Pallets': 15 }),
+      ] : []),
       // no silent cap: eight more small free imports
       ...(opts.many ? [1, 2, 3, 4, 5, 6, 7, 8].map(k => IMP('recIM' + k, 'M' + k, 'Pending', null, 1, '2026-10-08')) : []),
     ],
@@ -161,6 +170,7 @@ async function instrument(page) {
     const wrap = (name, kind) => { const fn = window[name]; window[name] = function (m, ty) { window.__ev.push({ t: at(), k: kind, msg: String(m).slice(0, 300), type: ty || (kind === 'toast' ? 'success' : 'error') }); return fn && fn.apply(this, arguments); }; };
     wrap('toast', 'toast'); wrap('showErrorToast', 'errtoast');
     const le = window.logError; window.logError = function (e, c) { window.__ev.push({ t: at(), k: 'logError', msg: (c || '') + ': ' + (e && e.message || e) }); return le && le.apply(this, arguments); };
+    const ca = window.confirmAction; window.confirmAction = function (m) { window.__ev.push({ t: at(), k: 'confirm', msg: String(m).slice(0, 300) }); return ca.apply(this, arguments); };
     const c = document.getElementById('content'); let spin = /Φόρτωση εβδομάδας/.test(c.textContent);
     new MutationObserver(() => { const s = /Φόρτωση εβδομάδας/.test(c.textContent); if (s !== spin) { spin = s; window.__ev.push({ t: at(), k: s ? 'SPINNER_ON' : 'SPINNER_OFF', msg: s ? '' : (c.querySelector('.empty-state[role=alert]') ? 'ERROR_STATE' : 'BOARD') }); } })
       .observe(c, { childList: true, subtree: true, characterData: true });
@@ -195,6 +205,18 @@ async function dragTo(page, srcSel, pt) {
   await page.mouse.up();
 }
 const shot = async (page, name) => { if (OUT) await page.screenshot({ path: path.join(OUT, name + '.png') }); };
+// The 33 question (owner 9/10): the app's own modal (confirmAction), never
+// the browser's dialog. palAsk waits for it and returns its text.
+async function palAsk(page) {
+  await page.waitForSelector('#modalOverlay.open #_cfaOk', { timeout: 8000 });
+  return (await page.locator('#modalOverlay').innerText()).replace(/\n+/g, ' | ');
+}
+async function palAnswer(page, yes) {
+  await page.locator(yes ? '#_cfaOk' : '#_cfaCancel').click();
+  await page.waitForFunction(() => !document.getElementById('modalOverlay').classList.contains('open'), null, { timeout: 8000 });
+}
+const sumBox = page => page.evaluate(() => { const el = document.getElementById('wiGrpSum'); return el ? { text: el.textContent.trim(), over: el.classList.contains('over') } : null; });
+const capDisabled = page => page.evaluate(() => [...document.querySelectorAll('#wi-panel .wiGrpPick')].filter(b => b.disabled && !b.dataset.fixed).map(b => b.value));
 
 const results = [];
 function ok(scn, name, cond, detail) {
@@ -260,7 +282,7 @@ async function checkJoin470(scn, page, S, E) {
     const panel = (await page.locator('#wi-panel').innerText()).replace(/\n/g, ' | ');
     const box = id => page.locator(`#wi-panel .wiGrpPick[value="${id}"]`);
     ok(scn, 'panel lists 470 enabled', (await box('recI470').count()) === 1 && !(await box('recI470').isDisabled()), panel);
-    ok(scn, 'panel lists 471 disabled with the sum «34 > 33»', (await box('recI471').isDisabled()) && /461\+463 = 24 π\. \+ 471 = 10 π\. = 34 > 33/.test(panel), panel);
+    ok(scn, 'panel lists 471 ENABLED, its sum «34 > 33» on screen (owner 9/10: asked, not refused)', !(await box('recI471').isDisabled()) && /461\+463 = 24 π\. \+ 471 = 10 π\. = 34 > 33/.test(panel), panel);
     await shot(page, 'J3-panel');
     S.armed = true; await page.evaluate(() => window.__mark());
     await box('recI470').check();
@@ -293,7 +315,7 @@ async function checkJoin470(scn, page, S, E) {
     ok(scn, 'panel has the truck loads, TRK-27 among them', /Σε φορτίο φορτηγού/.test(panel) && /TRK-27/.test(panel), panel);
     const load = page.locator('#wi-panel .wiGrpPick[value="L:recE27:recI461"]');
     ok(scn, 'E27\'s load can be picked', (await load.count()) === 1 && !(await load.isDisabled()), panel);
-    ok(scn, 'E19\'s full load (34p) is listed disabled with its sum', /458\+459 = 34 π\. \+ 470 = 8 π\. = 42 > 33/.test(panel), panel);
+    ok(scn, 'E19\'s full load (34p) is listed ENABLED with its sum (owner 9/10)', /458\+459 = 34 π\. \+ 470 = 8 π\. = 42 > 33/.test(panel) && !(await page.locator('#wi-panel .wiGrpPick[value="L:recE19:recI458"]').isDisabled()), panel);
     await shot(page, 'J4-panel');
     S.armed = true; await page.evaluate(() => window.__mark());
     await load.check();
@@ -303,27 +325,141 @@ async function checkJoin470(scn, page, S, E) {
     await done(page);
   }
 
-  if (on('J5')) {   // 33: refused with the numbers, no reload, one log line
+  if (on('J5')) {   // past 33 on a drop: asked with the numbers — «Άκυρο» writes nothing, «Να μπει» joins (owner 9/10)
     const scn = 'J5';
     const { page, S } = await newPage(browser);
     const e27 = await rowOf(page, 'recE27');
     const pts = await pointsIn(page, `#wi-ci-${e27}`);
     S.armed = true; await page.evaluate(() => window.__mark());
     await dragTo(page, '#wi-imp-recI471 .wk3-num', pts.free);
-    await page.waitForTimeout(2500); S.armed = false;
-    const E = await ev(page);
-    ok(scn, 'nothing written', writes(S).length === 0, writes(S));
-    ok(scn, 'refusal states the numbers', E.some(e => e.k === 'errtoast' && e.type === 'warn' && e.msg.includes('461+463 = 24 π. + 471 = 10 π. = 34 > 33')), E);
-    ok(scn, 'no reload spinner', !E.some(e => e.k === 'SPINNER_ON'), E);
-    ok(scn, 'exactly one logError', E.filter(e => e.k === 'logError').length === 1, E.filter(e => e.k === 'logError'));
+    const ask = await palAsk(page);
+    ok(scn, 'the question states the numbers', ask.includes('Σύνολο 24 + 10 = 34 παλέτες — πάνω από 33. Να μπει;') && ask.includes('461+463 = 24 π. + 471 = 10 π. = 34 > 33'), ask);
+    await shot(page, 'J5-asked');
+    await palAnswer(page, false);
+    await page.waitForTimeout(1500); S.armed = false;
+    let E = await ev(page);
+    ok(scn, 'Άκυρο: nothing written', writes(S).length === 0, writes(S));
     // The join's own reads are record GETs and Group ID / Matched Import ID
     // lookups; the board's background polls (reference data, the shell's
     // counters) run on their own timers and are not counted.
     const rq = S.log.filter(x => x.k === 'req' && x.path.includes(T.ORD) && (/\/rec/.test(x.path) || /Group ID|Matched Import ID/.test(x.f)));
-    ok(scn, 'no ORDERS read (the board decided alone)', rq.length === 0, rq);
-    ok(scn, 'final BOARD', (await state(page)) === 'BOARD');
+    ok(scn, 'Άκυρο: no ORDERS read', rq.length === 0, rq);
+    ok(scn, 'Άκυρο: no refusal, no logError, no spinner', !E.some(e => e.k === 'errtoast' || e.k === 'logError' || e.k === 'SPINNER_ON'), E);
+    ok(scn, 'Άκυρο: 471 still free (db + board), final BOARD', !fld(S, 'recI471', 'Group ID') && (await groupOf(page, 'recI471')) === 'recI471' && (await state(page)) === 'BOARD', [fld(S, 'recI471', 'Group ID'), await groupOf(page, 'recI471')]);
     ok(scn, 'the dragged row is not left faded', (await page.evaluate(() => document.getElementById('wi-imp-recI471').style.opacity)) === '', await page.evaluate(() => document.getElementById('wi-imp-recI471').style.opacity));
-    await shot(page, 'J5-refused');
+    S.log = []; S.armed = true; await page.evaluate(() => window.__mark());
+    await dragTo(page, '#wi-imp-recI471 .wk3-num', pts.free);
+    await palAsk(page); await palAnswer(page, true);
+    await page.waitForTimeout(4000); S.armed = false;
+    E = await ev(page);
+    const P = patches(S), f = (P[0] || {}).fields || {};
+    ok(scn, 'Να μπει: one PATCH, on 471', P.length === 1 && P[0].id === 'recI471', P.map(p => p.id));
+    ok(scn, 'Να μπει: 471 gets the load\'s Group ID + TRK-27, no Status (In Transit kept)', f['Group ID'] === G27 && JSON.stringify(f.Truck) === '["recT27"]' && !('Status' in f), f);
+    ok(scn, 'Να μπει: db — 461, 463, 471 carry the base Group ID', ['recI461', 'recI463', 'recI471'].every(id => fld(S, id, 'Group ID') === G27), ['recI461', 'recI463', 'recI471'].map(id => fld(S, id, 'Group ID')));
+    ok(scn, 'Να μπει: board shows 461+463+471', (await groupOf(page, 'recI471')) === 'recI461+recI463+recI471', await groupOf(page, 'recI471'));
+    ok(scn, 'Να μπει: the toast says it is over 33', E.some(e => e.k === 'toast' && e.type === 'success' && e.msg.includes('471 μπήκε στο φορτίο TRK-27 (461+463+471 · 34 π.) ✓ (34 π. — πάνω από 33)')), E.filter(e => /toast/.test(e.k)));
+    ok(scn, 'exactly one question, no logError, no spinner, no browser dialog', E.filter(e => e.k === 'confirm').length === 1 && !E.some(e => e.k === 'logError' || e.k === 'SPINNER_ON') && !S.log.some(x => x.k === 'dialog'), E);
+    ok(scn, 'final BOARD, no page errors', (await state(page)) === 'BOARD' && !S.pageErrors.length, S.pageErrors);
+    await shot(page, 'J5-joined-over-33');
+    await done(page);
+  }
+
+  if (on('J4b')) {  // the import's menu → E19's load (34p) + 470 (8p) = 42: pickable, red sum, ONE question, joined
+    const scn = 'J4b';
+    const { page, S } = await newPage(browser);
+    await page.locator('#wi-imp-recI470 .wk3-num').click({ button: 'right' }); await page.waitForTimeout(300);
+    await page.locator('#wi-ctx button:has-text("Groupage εισαγωγών")').click(); await page.waitForTimeout(300);
+    const load = page.locator('#wi-panel .wiGrpPick[value="L:recE19:recI458"]');
+    ok(scn, 'E19\'s load is pickable', (await load.count()) === 1 && !(await load.isDisabled()));
+    await load.check();
+    const sb = await sumBox(page);
+    ok(scn, 'running sum red «42p / 33p · > 33»', sb && sb.text === '42p / 33p · > 33' && sb.over, sb);
+    ok(scn, 'no box disabled for capacity', (await capDisabled(page)).length === 0, await capDisabled(page));
+    await shot(page, 'J4b-panel-red-sum');
+    S.armed = true; await page.evaluate(() => window.__mark());
+    await page.locator('#wi-panel button:has-text("Ομαδοποίηση")').click();
+    const ask = await palAsk(page);
+    ok(scn, 'the question: load first, then 470', ask.includes('Σύνολο 34 + 8 = 42 παλέτες — πάνω από 33. Να μπει;') && ask.includes('458+459 = 34 π. + 470 = 8 π. = 42 > 33'), ask);
+    await palAnswer(page, true);
+    await page.waitForTimeout(4000); S.armed = false;
+    const E = await ev(page), P = patches(S), f = (P[0] || {}).fields || {};
+    ok(scn, 'one PATCH, on 470: E19\'s Group ID + TRK-19', P.length === 1 && P[0].id === 'recI470' && f['Group ID'] === 'GI-MUXR5RNG|recI458,recI459' && JSON.stringify(f.Truck) === '["recT19"]', P);
+    ok(scn, 'board: E19\'s load shows 458+459+470', (await groupOf(page, 'recI470')) === 'recI458+recI459+recI470', await groupOf(page, 'recI470'));
+    ok(scn, 'toast says 42 π. — πάνω από 33', E.some(e => e.k === 'toast' && e.type === 'success' && e.msg.includes('✓ (42 π. — πάνω από 33)')), E.filter(e => /toast/.test(e.k)));
+    ok(scn, 'exactly one question, no logError, no spinner', E.filter(e => e.k === 'confirm').length === 1 && !E.some(e => e.k === 'logError' || e.k === 'SPINNER_ON'), E);
+    await done(page);
+  }
+
+  if (on('J5b')) {  // the card's «+ Εισαγωγή στο φορτίο…» with two picks past 33: ONE question for both
+    const scn = 'J5b';
+    const { page, S } = await newPage(browser);
+    const e27 = await rowOf(page, 'recE27');
+    const pts = await pointsIn(page, `#wi-ci-${e27}`);
+    const open = async () => {
+      await page.mouse.click(pts.free.x, pts.free.y, { button: 'right' }); await page.waitForTimeout(300);
+      await page.locator('#wi-ctx button:has-text("+ Εισαγωγή στο φορτίο")').click(); await page.waitForTimeout(300);
+      await page.locator('#wi-panel .wiGrpPick[value="recI470"]').check();
+      await page.locator('#wi-panel .wiGrpPick[value="recI471"]').check();
+    };
+    await open();
+    const sb = await sumBox(page);
+    ok(scn, 'running sum red «42p / 33p · > 33», no box disabled for capacity', sb && sb.text === '42p / 33p · > 33' && sb.over && (await capDisabled(page)).length === 0, sb);
+    S.armed = true; await page.evaluate(() => window.__mark());
+    await page.locator('#wi-panel button:has-text("Ένταξη")').click();
+    const ask = await palAsk(page);
+    ok(scn, 'one question with every pick', /Σύνολο 24 \+ (10 \+ 8|8 \+ 10) = 42 παλέτες — πάνω από 33\. Να μπει;/.test(ask), ask);
+    await palAnswer(page, false);
+    await page.waitForTimeout(1500); S.armed = false;
+    ok(scn, 'Άκυρο: nothing written', writes(S).length === 0, writes(S));
+    await open();
+    S.log = []; S.armed = true; await page.evaluate(() => window.__mark());
+    await page.locator('#wi-panel button:has-text("Ένταξη")').click();
+    await palAsk(page); await palAnswer(page, true);
+    await page.waitForTimeout(6000); S.armed = false;
+    const E = await ev(page), P = patches(S);
+    ok(scn, 'Να μπει: two PATCHes, 470 and 471, both with the load\'s Group ID', P.map(p => p.id).sort().join(',') === 'recI470,recI471' && P.every(p => p.fields['Group ID'] === G27), P.map(p => [p.id, p.fields['Group ID']]));
+    ok(scn, 'board: 461+463+470+471', (await groupOf(page, 'recI470')) === 'recI461+recI463+recI470+recI471', await groupOf(page, 'recI470'));
+    ok(scn, 'exactly ONE question for the two joins', E.filter(e => e.k === 'confirm').length === 1, E.filter(e => e.k === 'confirm'));
+    ok(scn, 'the last toast says 42 π. — πάνω από 33', E.some(e => e.k === 'toast' && e.type === 'success' && e.msg.includes('✓ (42 π. — πάνω από 33)')), E.filter(e => /toast/.test(e.k)));
+    ok(scn, 'no logError, no spinner, no page errors', !E.some(e => e.k === 'logError' || e.k === 'SPINNER_ON') && !S.pageErrors.length, E);
+    await done(page);
+  }
+
+  if (on('J21')) {  // export «Ομαδοποίηση» past 33 (20 + 15 = 35): offered, red sum, asked, then grouped
+    const scn = 'J21';
+    const { page, S } = await newPage(browser, { freeExp: true });
+    const r1 = await rowOf(page, 'recEF1'), r2 = await rowOf(page, 'recEF2');
+    const open = async () => {
+      await page.locator(`#wi-row-${r1} .wk3-leg:not(.imp)`).first().click({ button: 'right' }); await page.waitForTimeout(300);
+      const btn = page.locator('#wi-ctx button:has-text("Ομαδοποίηση")');
+      const en = !(await btn.isDisabled());
+      await btn.click(); await page.waitForTimeout(300);
+      return en;
+    };
+    ok(scn, '«Ομαδοποίηση…» enabled (35 > 33 is no longer hidden)', await open());
+    const panel = (await page.locator('#wi-panel').innerText()).replace(/\n/g, ' | ');
+    const bx = page.locator(`#wi-panel .wiGrpPick[value="${r2}"]`);
+    ok(scn, 'EF2 listed, pickable, its sum on screen', (await bx.count()) === 1 && !(await bx.isDisabled()) && panel.includes('EF1 = 20 π. + EF2 = 15 π. = 35 > 33'), panel);
+    await bx.check();
+    const sb = await sumBox(page);
+    ok(scn, 'running sum red «35p / 33p · > 33»', sb && sb.text === '35p / 33p · > 33' && sb.over, sb);
+    await shot(page, 'J21-export-panel');
+    S.armed = true; await page.evaluate(() => window.__mark());
+    await page.locator('#wi-panel button:has-text("Ομαδοποίηση")').click();
+    const ask = await palAsk(page);
+    ok(scn, 'the question states 20 + 15 = 35', ask.includes('Σύνολο 20 + 15 = 35 παλέτες — πάνω από 33. Να μπει;'), ask);
+    await palAnswer(page, false);
+    await page.waitForTimeout(1500); S.armed = false;
+    ok(scn, 'Άκυρο: nothing written, still two rows', writes(S).length === 0 && (await rowOf(page, 'recEF1')) !== (await rowOf(page, 'recEF2')), writes(S));
+    await open(); await page.locator(`#wi-panel .wiGrpPick[value="${r2}"]`).check();
+    S.log = []; S.armed = true; await page.evaluate(() => window.__mark());
+    await page.locator('#wi-panel button:has-text("Ομαδοποίηση")').click();
+    await palAsk(page); await palAnswer(page, true);
+    await page.waitForTimeout(3000); S.armed = false;
+    const E = await ev(page), P = patches(S);
+    ok(scn, 'Να μπει: EF1 and EF2 carry one GRP- Group ID (db)', P.map(p => p.id).sort().join(',') === 'recEF1,recEF2' && /^GRP-/.test(fld(S, 'recEF1', 'Group ID') || '') && fld(S, 'recEF1', 'Group ID') === fld(S, 'recEF2', 'Group ID'), P.map(p => [p.id, p.fields]));
+    ok(scn, 'Να μπει: the toast says 35 π. — πάνω από 33', E.some(e => e.k === 'toast' && e.msg === 'Ομαδοποιήθηκε (35 π. — πάνω από 33)'), E.filter(e => /toast/.test(e.k)));
+    ok(scn, 'exactly one question, no logError, no page errors', E.filter(e => e.k === 'confirm').length === 1 && !E.some(e => e.k === 'logError') && !S.pageErrors.length, E);
     await done(page);
   }
 
@@ -339,6 +475,24 @@ async function checkJoin470(scn, page, S, E) {
     const E = await ev(page);
     ok(scn, 'nothing written', writes(S).length === 0, writes(S));
     ok(scn, 'the race reloads the week', E.some(e => e.k === 'SPINNER_ON'), E);
+    ok(scn, 'exactly one logError (race)', E.filter(e => e.k === 'logError').length === 1 && E.some(e => e.k === 'logError' && /race/.test(e.msg)), E.filter(e => e.k === 'logError'));
+    ok(scn, 'final BOARD', (await state(page)) === 'BOARD');
+    await done(page);
+  }
+
+  if (on('J6b')) {  // the board says 24 + 8 = 32 (no question); the server meanwhile has 470 at 12 → 36: race, nothing written
+    const scn = 'J6b';
+    const { page, S } = await newPage(browser);
+    const e27 = await rowOf(page, 'recE27');
+    const pts = await pointsIn(page, `#wi-ci-${e27}`);
+    S.db[T.ORD].find(r => r.id === 'recI470').fields['Total Pallets'] = 12;   // another user, meanwhile
+    S.armed = true; await page.evaluate(() => window.__mark());
+    await dragTo(page, '#wi-imp-recI470 .wk3-num', pts.free);
+    await page.waitForTimeout(4000); S.armed = false;
+    const E = await ev(page);
+    ok(scn, 'nothing written', writes(S).length === 0, writes(S));
+    ok(scn, 'no question (the board was within 33)', !E.some(e => e.k === 'confirm'), E.filter(e => e.k === 'confirm'));
+    ok(scn, 'the race says the server\'s sum and reloads', E.some(e => e.k === 'errtoast' && e.msg.includes('Οι παλέτες άλλαξαν στο μεταξύ (άλλος χρήστης): 461+463 = 24 π. + 470 = 12 π. = 36 > 33')) && E.some(e => e.k === 'SPINNER_ON'), E);
     ok(scn, 'exactly one logError (race)', E.filter(e => e.k === 'logError').length === 1 && E.some(e => e.k === 'logError' && /race/.test(e.msg)), E.filter(e => e.k === 'logError'));
     ok(scn, 'final BOARD', (await state(page)) === 'BOARD');
     await done(page);
