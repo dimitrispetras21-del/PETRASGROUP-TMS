@@ -109,10 +109,18 @@ const _OD_INDEX_TTL = 2 * 60 * 1000; // same tier as ORDERS (core/api.js SESSION
  * @param {boolean} [force]
  * @returns {Promise<Set<string>>}
  */
+// A read with no answer after this long is dropped (8/10/2026, the Weekly's
+// «Φόρτωση εβδομάδας 41…» for ever): the bare fetch below has no timeout, and
+// the in-flight promise is SHARED — one stalled read held every later caller
+// (Weekly, Daily Ops, orders list) until a page reload. The waiting callers
+// get the last known index; the next call asks again. The request itself is
+// not aborted (a timeout policy for fetches is the owner's call, core/api.js).
+const _OD_INDEX_STALL_MS = 25 * 1000;
 async function preloadIndex(force) {
   if (!force && _odIndexSet && (Date.now() - _odIndexTs) < _OD_INDEX_TTL) return _odIndexSet;
   if (_odIndexPromise) return _odIndexPromise;
-  _odIndexPromise = (async () => {
+  let answered = true;   // false = the transport failed: not an answer, never cached
+  const run = (async () => {
     const ids = new Set();
     try {
       let offset = '';
@@ -135,15 +143,32 @@ async function preloadIndex(force) {
       } while (offset);
     } catch (e) {
       console.warn('[order-docs] index fetch failed:', e && e.message);
+      answered = false;
       return ids;
     }
     return ids;
   })();
-  const result = await _odIndexPromise;
-  _odIndexSet = result;
-  _odIndexTs = Date.now();
-  _odIndexPromise = null;
-  return _odIndexSet;
+  let timer = null;
+  // `entry` is read only inside callbacks that run after it is assigned below.
+  const settled = run.then(result => {
+    if (timer) clearTimeout(timer);
+    _odIndexSet = result;
+    // A failed transport keeps the TTL expired, so the next render retries;
+    // an HTTP answer (404/403 = table not there) is cached like before.
+    _odIndexTs = answered ? Date.now() : 0;
+    if (_odIndexPromise === entry) _odIndexPromise = null;
+    return _odIndexSet;
+  });
+  const stalled = new Promise(resolve => {
+    timer = setTimeout(() => {
+      if (_odIndexPromise === entry) _odIndexPromise = null;
+      console.warn(`[order-docs] index read stalled > ${_OD_INDEX_STALL_MS / 1000} s — dropped; the next render asks again`);
+      resolve(_odIndexSet || new Set());
+    }, _OD_INDEX_STALL_MS);
+  });
+  const entry = Promise.race([settled, stalled]);
+  _odIndexPromise = entry;
+  return entry;
 }
 
 function hasDocs(orderId) { return !!(orderId && _odIndexSet && _odIndexSet.has(orderId)); }

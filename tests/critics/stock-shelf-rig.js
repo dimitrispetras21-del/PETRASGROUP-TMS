@@ -1009,7 +1009,10 @@ if (MAIN) (async () => {
     const popI7 = await tryPartner('recRIGI7000000007', 'recRIGP6000000006');
     await page.evaluate(async () => { invalidateCache(TABLES.ORDERS); await renderWeeklyIntl(); }); await page.waitForTimeout(1200);
     const drop = async (impId, expOid) => { const rid = await rowOf(expOid); const n0 = F.writes.length;
-      const t = await page.evaluate(async ([i, r]) => { const n = window.__rig.toasts.length; window._wiDragging = i; await _wiDropOnRow({ preventDefault() {} }, r); return window.__rig.toasts.slice(n); }, [impId, rid]);
+      // The dragged id rides in the drag data since 8/10 (weekly-impjoin, rig
+      // S9): a drop without it is ignored, so the fake event carries it too.
+      const t = await page.evaluate(async ([i, r]) => { const n = window.__rig.toasts.length; window._wiDragging = i;
+        await _wiDropOnRow({ preventDefault() {}, dataTransfer: { getData: ty => (ty === 'application/x-wi-import' ? i : '') } }, r); return window.__rig.toasts.slice(n); }, [impId, rid]);
       return { toasts: t, writes: writesSince(F, n0).length }; };
     const dropLoose = await drop('recRIGP3000000003', 'recRIGE5000000005');
     const dropGroup = await drop('recRIGI4000000004', 'recRIGE5000000005');
