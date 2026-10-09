@@ -13,7 +13,9 @@
 // Run at 1440 and at 1280 (both in one run). Checks: delay on a LOADING, on a DELIVERY point (multi-stop),
 // from the OVERDUE banner; «Άλλο» without a note refused; no reason refused; Άκυρο / Escape write nothing;
 // the read-back warning when the Worker drops the label; a lot keeps «Παραλαβή (καθυστέρηση)»; the word
-// «Καθυστέρησε» is gone; «Delay Responsibility» is never sent.
+// «Καθυστέρησε» is gone; «Delay Responsibility» is never sent; review F1: a delayed single delivery after the
+// real top-bar Revert, and a delayed single loading moved back, are re-stamped with the reason cleared in
+// the same PATCH (no 067 refusal, no stale «Καθυστέρηση»).
 // Screens (for the owner's approval, existing screen = the real app): the panel open, a stop after a delay
 // with its reason, the overdue banner — each at 1440 and 1280.
 const path = require('path'), fs = require('fs');
@@ -342,6 +344,65 @@ async function open(browser, W, F) {
     ok(c('readback_screen_claims_nothing'), /Παραδόθηκε ✓.*Καθυστέρηση/.test(rowDrop) && !/Τελωνείο/.test(rowDrop), rowDrop);
     await page.locator('#r_recRIGIMD0000002').scrollIntoViewIfNeeded();
     await shot('delay-readback-warning', false);
+
+    // ── 9) review F1: a declared single-stop row stamped AGAIN must be correctable ──
+    // (a) DELIVERY, through the REAL top-bar Revert (core/api.js undoLastAction): it puts back the order
+    //     write only, the stop keeps Delayed + reason; then «Παραδόθηκε». Before the fix the stop PATCH
+    //     sent On Time beside the kept reason → 067 refused it (500) and On Time was never declarable again.
+    // The app arms the Revert only for a record it holds in its read cache (core/api.js atPatch: _MEM),
+    // and every write empties that cache — so, as after a fresh page load, the day is read again first,
+    // and an older Revert (step 3's, still inside its 60 s) is dropped so it cannot be the one clicked.
+    await clearToasts();
+    await page.evaluate(async () => { clearUndo(); invalidateCache(TABLES.ORDERS); await renderDailyOps(); window.scrollTo(0, 0); });
+    await page.locator('.do-page .do-kpis').waitFor({ timeout: 15000 });
+    n0 = F.writes.length;
+    await lateBtn('recRIGIMD0000001').click();
+    await panel.waitFor({ timeout: 5000 });
+    await panel.locator('input[value="unloading_wait"]').check();
+    await panel.locator('#doDlyNote').fill('2 ώρες');
+    await panel.locator('button.do-btn', { hasText: 'Αποθήκευση' }).click();
+    await settle(async () => F.writes.slice(n0).some(x => x.table === 'ORDERS'));
+    await page.waitForTimeout(400);
+    const undoA = await page.evaluate(() => { const a = getUndoAction(); return a && { type: a.type, recId: a.recId, status: a.prevFields && a.prevFields.Status }; });
+    ok(c('revert_armed_on_the_order'), undoA && undoA.type === 'patch' && undoA.recId === 'recRIGIMD0000001' && undoA.status === 'In Transit'
+      && F.stops.recRIGSIMD1U.fields['Delay Reason'] === 'unloading_wait', { undoA, stop: F.stops.recRIGSIMD1U.fields });
+    const btnD = page.locator('#r_recRIGIMD0000001 button.do-btn', { hasText: 'Παραδόθηκε' });
+    if (undoA && undoA.recId === 'recRIGIMD0000001') await page.evaluate(() => undoLastAction());
+    const backD = await settle(async () => F.orders.recRIGIMD0000001.fields.Status === 'In Transit' && (await btnD.count()) === 1);
+    ok(c('revert_puts_the_row_back_pending'), backD, { status: F.orders.recRIGIMD0000001.fields.Status, row: await rowText('recRIGIMD0000001') });
+    await page.waitForTimeout(400);
+    const vBefore = F.violations.length;
+    n0 = F.writes.length;
+    if (backD) { await btnD.click(); await settle(async () => F.writes.slice(n0).some(x => x.table === 'ORDERS')); }
+    await page.waitForTimeout(500);
+    w = writesSince(n0);
+    const fixD = w.find(x => x.table === 'STOPS');
+    const opD = w.find(x => x.table === 'ORDERS');
+    ok(c('revert_then_delivered_clears_reason_same_patch'), fixD && fixD.recId === 'recRIGSIMD1U' && fixD.fields.Performance === 'On Time'
+      && fixD.fields['Delay Reason'] === null && fixD.fields['Delay Note'] === null && F.violations.length === vBefore
+      && F.stops.recRIGSIMD1U.fields['Delay Reason'] == null && F.stops.recRIGSIMD1U.fields['Delay Responsibility'] == null
+      && opD && opD.fields.Status === 'Delivered' && opD.fields['Delivery Performance'] === 'On Time', { w, violations: F.violations.slice(vBefore) });
+    const rowD = await rowText('recRIGIMD0000001');
+    ok(c('revert_then_delivered_row_true'), /Παραδόθηκε ✓/.test(rowD) && !/Καθυστέρηση ·|Αναμονή στην εκφόρτωση|2 ώρες/.test(rowD), rowD);
+    // (b) single LOADING whose status was moved back on another screen (the base, then a re-read):
+    //     «Φορτώθηκε» writes no Performance, so the stale Delayed + «Άλλο» note must go in the same PATCH.
+    F.orders.recRIGEXL0000002.fields.Status = 'Assigned';
+    await page.evaluate(async () => { invalidateCache(TABLES.ORDERS); await renderDailyOps(); });
+    const btnL = page.locator('#r_recRIGEXL0000002 button.do-btn', { hasText: 'Φορτώθηκε' });
+    const backL = await settle(async () => (await btnL.count()) === 1);
+    ok(c('moved_back_loading_pending_again'), backL, await rowText('recRIGEXL0000002'));
+    const vBeforeL = F.violations.length;
+    n0 = F.writes.length;
+    if (backL) { await btnL.click(); await settle(async () => F.writes.slice(n0).some(x => x.table === 'ORDERS')); }
+    await page.waitForTimeout(500);
+    w = writesSince(n0);
+    const fixL = w.find(x => x.table === 'STOPS');
+    ok(c('restamp_loading_clears_delay_same_patch'), fixL && fixL.recId === 'recRIGSEXL2L' && fixL.fields.Performance === null
+      && fixL.fields['Delay Reason'] === null && fixL.fields['Delay Note'] === null && F.violations.length === vBeforeL
+      && F.stops.recRIGSEXL2L.fields.Performance == null && F.stops.recRIGSEXL2L.fields['Delay Reason'] == null
+      && w.some(x => x.table === 'ORDERS' && x.fields.Status === 'In Transit'), { w, violations: F.violations.slice(vBeforeL) });
+    const rowL = await rowText('recRIGEXL0000002');
+    ok(c('restamp_loading_row_true'), /Φορτώθηκε ✓/.test(rowL) && !/Καθυστέρηση|Ο αποστολέας/.test(rowL), rowL);
 
     // ── 8) nothing the base would refuse was ever sent; the responsibility never written ──
     ok(c('no_base_violation'), F.violations.length === 0, F.violations);

@@ -1243,9 +1243,30 @@ async function _opsMarkStop(stop, perf, delay){
   const patch={'Completed At': _opsNowOnTgt(), 'Completed By': _opsUser()};
   if(perf) patch['Performance']=perf;
   if(delay){ patch['Delay Reason']=delay.reason; patch['Delay Note']=delay.note||null; }
+  // F1 (review 9/10): a single-stop row is stamped AGAIN after the top-bar
+  // Revert of its order write (the Revert puts back the order, never the
+  // stop), after a connection failure, or after its status moved back on
+  // another screen. A click that carries no reason must take the old one off
+  // in THIS same PATCH: 067 refuses a reason on a stop that is not Delayed
+  // (order_stops_delay_only_delayed_check), so «Παραδόθηκε» sent alone got a
+  // 500 and On Time could never be declared again — and a plain single
+  // loading (no Performance) would keep «Καθυστέρηση · <reason>» under a
+  // click that said «Φορτώθηκε». Only when the stop holds one, so the plain
+  // stamp of a never-delayed stop stays the request it always was. `prev`
+  // below captures what is cleared, so a refused order write puts
+  // performance, reason and note back together, in one PATCH the base allows.
+  if(!delay){
+    const f=stop.fields;
+    if(f['Delay Reason']!=null||f['Delay Note']!=null){ patch['Delay Reason']=null; patch['Delay Note']=null; }
+    if(!perf&&f['Performance']==='Delayed') patch['Performance']=null;
+  }
   const prev={}; Object.keys(patch).forEach(k=>{ prev[k]=stop.fields[k]==null?null:stop.fields[k]; });
   const back=await atSafePatch(TABLES.ORDER_STOPS, stop.id, patch);
   Object.assign(stop.fields, patch);
+  // The base derives the responsibility from the reason; with the reason gone
+  // it is gone too — the local copy says only what the base holds (a rollback
+  // that restores the reason shows it again via OPS_DELAY, same CASE).
+  if('Delay Reason' in patch&&patch['Delay Reason']==null) delete stop.fields['Delay Responsibility'];
   if(delay) _opsDelayReadBack(stop, delay, back);
   return {stop, prev, delay:delay||null};
 }

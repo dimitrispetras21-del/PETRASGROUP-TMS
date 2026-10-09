@@ -61,10 +61,21 @@ function fixtures() {
   };
 }
 
+// 067's CHECKs on a stop row as the base holds it after a write (the rig holds the same copy; the
+// known-code CHECK is the DRIFT test's): a write that would leave the row breaking one is answered 500 and
+// recorded in S.violations, as Postgres + the Worker do (23514 → 500) — so a test sees what the base refuses.
+function baseRefuses(row) {
+  const r = row['Delay Reason'], n = row['Delay Note'];
+  if (r === 'other' && !/\S/.test(n || '')) return 'order_stops_delay_other_note_check';
+  if ((r != null && row.Performance !== 'Delayed') || (n != null && r == null)) return 'order_stops_delay_only_delayed_check';
+  return null;
+}
+
 // S.drop: the Worker does not map the delay labels yet (drops them, 200). S.refuse(t, id, f): an Error to throw.
+// S.base: each stop row as the base holds it after the writes (merged), checked by baseRefuses.
 function load() {
   const fx = fixtures();
-  const S = { patches: [], toasts: [], errToasts: [], logged: [], content: { innerHTML: '' }, refuse: null, drop: false };
+  const S = { patches: [], toasts: [], errToasts: [], logged: [], content: { innerHTML: '' }, refuse: null, drop: false, base: {}, violations: [] };
   const clone = a => a.map(r => ({ id: r.id, fields: JSON.parse(JSON.stringify(r.fields)) }));
   const names = { recCLIA: 'Πελάτης Α', recTRK1: 'ΑΒΓ-1234', recPRT1: 'Συνεργάτης Α' };
   const ctx = {
@@ -85,6 +96,11 @@ function load() {
       const e = S.refuse && S.refuse(t, id, f); if (e) throw e;
       const back = { ...f };
       if (t === 'tblS' && S.drop) { delete back['Delay Reason']; delete back['Delay Note']; }
+      if (t === 'tblS') {
+        const next = Object.assign({}, S.base[id], back), bad = baseRefuses(next);
+        if (bad) { S.violations.push({ id, bad, f: JSON.parse(JSON.stringify(f)) }); throw new Error('500 Failed to update record'); }
+        S.base[id] = next;
+      }
       else if (t === 'tblS' && f['Delay Reason']) back['Delay Responsibility'] = ({ loading_wait: 'client', unloading_wait: 'consignee', traffic: 'external', other: 'other', customs: 'borders' })[f['Delay Reason']];
       for (const k of Object.keys(back)) if (back[k] == null) delete back[k];   // trap 2: NULL is absent
       return { id, fields: back };
@@ -258,4 +274,80 @@ test('the note is escaped wherever it is drawn (sub-row, status line, toast)', a
   const html = S.content.innerHTML;
   assert.ok(!html.includes(evil) && html.includes('Άλλο: &lt;img src=x onerror=alert(1)&gt;'), rowOf(html, 'recIMD0000000001'));
   assert.ok(!S.toasts.slice(-1)[0].includes(evil), S.toasts.slice(-1)[0]);
+});
+
+// ── 5. a declared single-stop row stamped AGAIN (review F1, 9/10) ───────────────────────────────
+// The top-bar Revert puts back the ORDER write only (core/api.js undo: the stop is not in it), so the row
+// is pending again while its one stop still holds Delayed + reason. Same after a connection failure (the
+// stamp stays) or a status moved back on another screen. Here the Revert is the order's Status put back.
+const revertOrder = (ctx, id, status) => { ctx.OPS.intl.find(r => r.id === id).fields.Status = status; };
+
+test('F1: after the Revert, «Παραδόθηκε» on a delayed single delivery clears reason and note in the SAME stop PATCH — On Time is declarable again', async () => {
+  const { ctx, S } = load();
+  await ctx.renderDailyOps();
+  await ctx._opsDelayApply({ id: 'recIMD0000000001', isL: false, isOv: false, stopId: null }, { reason: 'unloading_wait', note: 'περίμενε 3 ώρες' });
+  revertOrder(ctx, 'recIMD0000000001', 'In Transit');
+  await ctx._opsDel('recIMD0000000001', 'On Time');
+  const sp = stopPatch(S);
+  assert.strictEqual(sp.length, 2);
+  assert.strictEqual(sp[1].id, 'recSTIDU1');
+  assert.deepStrictEqual(Object.keys(sp[1].f).sort(), ['Completed At', 'Completed By', 'Delay Note', 'Delay Reason', 'Performance']);
+  assert.deepStrictEqual([sp[1].f.Performance, sp[1].f['Delay Reason'], sp[1].f['Delay Note']], ['On Time', null, null]);
+  assert.deepStrictEqual(S.violations, [], 'the base refuses nothing');
+  assert.deepStrictEqual([S.base.recSTIDU1.Performance, S.base.recSTIDU1['Delay Reason'], S.base.recSTIDU1['Delay Note']], ['On Time', null, null]);
+  const op = orderPatch(S)[1].f;
+  assert.deepStrictEqual([op.Status, op['Delivery Performance']], ['Delivered', 'On Time']);
+  const row = rowOf(S.content.innerHTML, 'recIMD0000000001');
+  assert.ok(/Παραδόθηκε ✓/.test(row) && !/Καθυστέρηση<\/b>/.test(row) && !/Αναμονή στην εκφόρτωση/.test(row), row);
+  const f = ctx.OPS._stopsByOrder.recIMD0000000001.find(s => s.id === 'recSTIDU1').fields;
+  assert.ok(f['Delay Reason'] == null && f['Delay Note'] == null && !('Delay Responsibility' in f), 'the screen keeps no reason the base dropped');
+  assert.match(S.toasts.slice(-1)[0], /Παραδόθηκε ✓/);
+  assert.deepStrictEqual(S.errToasts, []);
+});
+
+test('F1: after the Revert, «Φορτώθηκε» on a delayed single loading clears Performance, reason and note together — no stale «Καθυστέρηση»', async () => {
+  const { ctx, S } = load();
+  await ctx.renderDailyOps();
+  await ctx._opsDelayApply({ id: 'recEXL0000000001', isL: true, isOv: false, stopId: null }, { reason: 'other', note: 'άλλαξε ράμπα' });
+  revertOrder(ctx, 'recEXL0000000001', 'Assigned');
+  await ctx._opsStat('recEXL0000000001', 'In Transit');
+  const sp = stopPatch(S);
+  assert.strictEqual(sp.length, 2);
+  assert.deepStrictEqual(Object.keys(sp[1].f).sort(), ['Completed At', 'Completed By', 'Delay Note', 'Delay Reason', 'Performance']);
+  assert.deepStrictEqual([sp[1].f.Performance, sp[1].f['Delay Reason'], sp[1].f['Delay Note']], [null, null, null], 'the plain single-loading stamp: no Performance, as before 067');
+  assert.deepStrictEqual(S.violations, []);
+  assert.deepStrictEqual(orderPatch(S).map(p => p.f.Status), ['In Transit', 'In Transit']);
+  const row = rowOf(S.content.innerHTML, 'recEXL0000000001');
+  assert.ok(/Φορτώθηκε ✓/.test(row) && !/Καθυστέρηση<\/b>/.test(row) && !/άλλαξε ράμπα/.test(row), row);
+  assert.match(S.toasts.slice(-1)[0], /: Φορτώθηκε ✓$/);
+});
+
+test('F1: the correction refused by the order write puts the stamp back WITH Delayed, reason and note in one PATCH (the base allows it)', async () => {
+  const { ctx, S } = load();
+  await ctx.renderDailyOps();
+  await ctx._opsDelayApply({ id: 'recIMD0000000001', isL: false, isOv: false, stopId: null }, { reason: 'unloading_wait', note: 'περίμενε 3 ώρες' });
+  const first = stopPatch(S)[0].f;
+  revertOrder(ctx, 'recIMD0000000001', 'In Transit');
+  S.refuse = (t) => (t === 'tblO' ? Object.assign(new Error('422 rule'), { _noRetry: true }) : null);
+  await ctx._opsDel('recIMD0000000001', 'On Time');
+  const sp = stopPatch(S);
+  assert.strictEqual(sp.length, 3);
+  assert.deepStrictEqual(sp[2].f, { 'Completed At': first['Completed At'], 'Completed By': first['Completed By'], Performance: 'Delayed', 'Delay Reason': 'unloading_wait', 'Delay Note': 'περίμενε 3 ώρες' });
+  assert.deepStrictEqual(S.violations, []);
+  assert.deepStrictEqual([S.base.recSTIDU1.Performance, S.base.recSTIDU1['Delay Reason']], ['Delayed', 'unloading_wait']);
+  assert.match(S.toasts.slice(-1)[0], /σφραγίδα του σημείου αναιρέθηκε/);
+  // the screen's copy is the base's again (the responsibility then follows from the code, same CASE)
+  const f = ctx.OPS._stopsByOrder.recIMD0000000001.find(s => s.id === 'recSTIDU1').fields;
+  assert.deepStrictEqual([f.Performance, f['Delay Reason'], f['Delay Note']], ['Delayed', 'unloading_wait', 'περίμενε 3 ώρες']);
+});
+
+test('F1: a stop that never held a reason is stamped with the request it always had (no delay labels sent)', async () => {
+  const { ctx, S } = load();
+  await ctx.renderDailyOps();
+  await ctx._opsDel('recIMD0000000001', 'On Time');
+  await ctx._opsStat('recEXL0000000001', 'In Transit');
+  const sp = stopPatch(S);
+  assert.deepStrictEqual(Object.keys(sp[0].f).sort(), ['Completed At', 'Completed By', 'Performance']);
+  assert.deepStrictEqual(Object.keys(sp[1].f).sort(), ['Completed At', 'Completed By']);
+  assert.deepStrictEqual(S.violations, []);
 });
