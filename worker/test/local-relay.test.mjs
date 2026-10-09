@@ -29,7 +29,7 @@ const parts = [
   fn('columnToLabel'), fn('fieldsToColumns'), fn('filterFieldMap'), fn('toAirtableRecord'),
   lift(/\/\/ src\/lib\/formula-translate\.js[\s\S]*?(?=\/\/ src\/lib\/facade-links\.js)/, 'formula-translate section'),
   fn('preResolveLinkTerms'), fn('resolveLinksOnWrite'),
-  fn('authorizeWrite'), fn('buildWriteRow'), fn('buildWriteRows'),
+  fn('authorizeWrite'), fn('refuseReadOnly'), fn('buildWriteRow'), fn('buildWriteRows'),
   fn('invoiceMarkError'), fn('invoiceNeedsBefore'),
   // one mapper for the stock (057) and relay (060) families: all three tables
   lift(/const STOCK_CHECK_TEXT = \{[\s\S]*?\n\};\n/, 'STOCK_CHECK_TEXT'),
