@@ -89,11 +89,15 @@ function recordedIndex(){ const idx=new Map(); for(const e of JSON.parse(fs.read
   // its round trip (/costs/rt, unrecorded → no trip): the fake leg is served
   // BARE so (a)/(b) still reach the post-write guard; (c) the same leg with a
   // truck is refused before any write — the real check, in the page.
+  // fix/own-rt-join-rota: the bare leg still alone on its own trip RT-77 (what
+  // «Καθαρισμός ανάθεσης» leaves): (d) empty → the leg leaves RT-77 first
+  // (DELETE before the Rotation ID), then «✓» naming RT-77; (e) RT-77 has
+  // cost lines → refused, nothing written. /costs/* played in the page.
   const p3=await page.evaluate(async()=>{
-    const keep={atSafePatch:window.atSafePatch,toast:window.toast,rtOnOrderSaved:window.rtOnOrderSaved,rtFindForOrder:window.rtFindForOrder,renderWeeklyIntl:window.renderWeeklyIntl,reportError:window.reportError,atGetOne:window.atGetOne,showErrorToast:window.showErrorToast};
-    const run=async(attach,legTruck)=>{
+    const keep={atSafePatch:window.atSafePatch,toast:window.toast,rtOnOrderSaved:window.rtOnOrderSaved,rtFindForOrder:window.rtFindForOrder,renderWeeklyIntl:window.renderWeeklyIntl,reportError:window.reportError,atGetOne:window.atGetOne,showErrorToast:window.showErrorToast,plFetch:window.plFetch,fetch:window.fetch};
+    const run=async(attach,legTruck,log)=>{
       const patches=[],toasts=[];
-      window.atSafePatch=async(t,id,f)=>{patches.push({id,f});return {};};
+      window.atSafePatch=async(t,id,f)=>{patches.push({id,f});if(log)log.push('PATCH '+Object.keys(f).join(','));return {};};
       window.toast=(m,ty)=>toasts.push((ty||'success')+': '+m);
       window.showErrorToast=(m,ty)=>toasts.push((ty||'error')+'[showErrorToast]: '+m);
       window.reportError=(m,e)=>toasts.push('error: '+m);
@@ -109,8 +113,29 @@ function recordedIndex(){ const idx=new Map(); for(const e of JSON.parse(fs.read
     const fail=await run(false); const ok=await run(true);
     const truck=(WINTL.data.trucks[0]||{}).id||'recTRUCKTEST';
     const refused=await run(true,truck);
+    const ownTrip=async lines=>{
+      const rts=[{id:77,code:'RT-77',status:'planned',truck_id:null,driver_id:null,ledger_entry:null,ct_rt_legs:[{id:1,order_id:999999,seq:1}]}], log=[];
+      window.plFetch=async(p,o)=>{
+        log.push(((o&&o.method)||'GET')+' '+p.split('?')[0]);
+        if(p.startsWith('/costs/rt?')) return {records:JSON.parse(JSON.stringify(rts))};
+        if(p.startsWith('/costs/lines')) return {records:lines?[{id:5}]:[],next_offset:null};
+        return keep.plFetch(p,o);
+      };
+      // weekly_intl.js lives in an IIFE: its own _wiRtLegDelete cannot be
+      // replaced from here, so its DELETE is answered at fetch() instead.
+      window.fetch=async(url,init)=>{
+        const m=/\/costs\/rt\/(\d+)\/legs\?order_id=(\d+)$/.exec(String(url));
+        if(!m||!init||init.method!=='DELETE') return keep.fetch(url,init);
+        log.push('DELETE leg '+m[1]+'/'+m[2]);
+        const r=rts.find(x=>x.id===Number(m[1])); r.ct_rt_legs=r.ct_rt_legs.filter(l=>l.order_id!==Number(m[2])); if(!r.ct_rt_legs.length) r.status='cancelled';
+        return new Response(JSON.stringify({deleted:true}),{status:200,headers:{'content-type':'application/json'}});
+      };
+      const res=await run(true,null,log);
+      return {...res,log,rt77:rts[0].status};
+    };
+    const freed=await ownTrip(false), costs=await ownTrip(true);
     Object.assign(window,keep);
-    return {fail,ok,refused};
+    return {fail,ok,refused,freed,costs};
   });
   await page.screenshot({path:out});
   console.log(JSON.stringify({week,PAIR,paired,listCheck,p3,matchedCards:found,hasHandler,menu,panelTitle,panelBody,errors:errs.slice(0,3)},null,1));

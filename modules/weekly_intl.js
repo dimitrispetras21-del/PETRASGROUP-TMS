@@ -5190,6 +5190,84 @@ async function _wiRtLeave(orderId){
     :del.status===403?'χωρίς δικαίωμα αφαίρεσης σκέλους γύρου'
     :('το σκέλος δεν αφαιρέθηκε από τον γύρο: '+(del.error||('HTTP '+del.status)))};
 }
+// ── An order that is about to ride on another trip leaves its OWN first ──
+// (coordinator 9/10). Since 033 every assigned order gets its own round trip
+// at assignment, and «Καθαρισμός ανάθεσης» keeps the legs of a trip it clears
+// whole (_wiClear: nobody else rides on it) — so a cleared order sits ALONE on
+// a live trip with no vehicle. Joined to a truck's import load (_wiImpJoin)
+// or hung under a rota parent (_wiRotAdd) like that, the group ended on TWO
+// live trips: rt_create_from_order (033) stops early because a live leg
+// exists, and the Worker answers 409 on every later sync (the 7/10
+// GI-MUV7FNKE class: banner, B-77 red). Both paths ask here BEFORE their
+// first write, with the orders they just read from the server:
+//   (a) no live trip → ok, nothing done;
+//   (b) a trip that holds only orders of this move, is open, and has no
+//       payroll line and no cost line → each leg leaves FIRST through
+//       _wiRtLeave (the one leg-first path); the DB then cancels the empty
+//       trip and drops its empty payroll line (013 rt_recompute → 011
+//       dl_sync_from_rt) — what the coordinator did by hand for #449 on 7/10,
+//       «first the RT leg, then the vehicle». A re-read must then find each
+//       order on no live trip before the caller writes anything;
+//   (c) anything else → refused, nothing written, the trip named and why.
+// Every check is decided on a reading, never on its absence (αρχή 5): any
+// read that fails refuses. Payroll: /costs/rt carries the trip's live ledger
+// line (ledger_entry) but not all its amounts, so ANY live line refuses — on
+// a trip whose orders carry no driver it is one with amounts anyway, since
+// dl_sync_from_rt dropped the empty one when the driver left. Cost lines:
+// only GET /costs/lines can tell, and a dispatcher may not read it
+// (COSTS_PERMS) — that 403 refuses as well: cancelling a trip that might
+// hold costs would leave them on a cancelled trip, out of every P&L.
+// → {ok:true, freed:[«η #N βγήκε από το άδειο RT-X»]} | {ok:false, msg, wrote}
+// (wrote = a leg already left: the caller says so instead of «nothing written»).
+async function _wiOwnRtFree(recs){
+  const ref=r=>'#'+String((r&&r.fields&&r.fields['Reference'])||(r&&r.id));
+  const byRt={}, pgs=new Set();
+  for(const r of recs){
+    const at=await _wiRtOf(r.id);
+    if(!at.ok) return {ok:false,wrote:false,msg:`Ο γύρος της ${ref(r)} δεν διαβάστηκε (${at.msg})`};
+    pgs.add(at.pg);
+    if(at.rt) (byRt[at.rt.id]=byRt[at.rt.id]||{rt:at.rt,rs:[]}).rs.push(r);
+  }
+  const trips=Object.values(byRt);
+  // All trips are judged before the first leg leaves: a refusal on the second
+  // trip must not find the first one already cancelled.
+  for(const {rt,rs} of trips){
+    const code=rt.code||('RT id '+rt.id);
+    const on=`${rs.length>1?'Οι':'Η'} ${rs.map(ref).join(', ')} είναι ακόμη στο δρομολόγιο ${code}`;
+    const no=msg=>({ok:false,wrote:false,msg});
+    if((rt.ct_rt_legs||[]).some(l=>l.nat_load_id!=null||!pgs.has(Number(l.order_id))))
+      return no(`${on} μαζί με άλλες παραγγελίες — δεν βγαίνει αυτόματα· ζήτα από τον owner`);
+    if(rt.status==='closed'||rt.status==='complete') return no(`${on}, που είναι κλειστό — ζήτα από τον owner`);
+    if(rt.ledger_entry===undefined) return no(`Η μισθοδοσία του ${code} δεν διαβάστηκε`);
+    if(rt.ledger_entry) return no(`${on}, που έχει γραμμή μισθοδοσίας — ζήτα από τον owner να το ακυρώσει`);
+    let lines;
+    try{ lines=await plFetch('/costs/lines?rt_id='+rt.id+'&limit=1'); }
+    catch(e){
+      const why=String((e&&e.message)||e);
+      if(/forbidden|HTTP 403/i.test(why)) return no(`${on} και ο ρόλος σου δεν βλέπει αν έχει έξοδα — ζήτα από τον owner να το ακυρώσει`);
+      return no(`Τα έξοδα του ${code} δεν διαβάστηκαν (${why})`);
+    }
+    if(((lines&&lines.records)||[]).length||(lines&&lines.next_offset!=null))
+      return no(`${on}, που έχει έξοδα — ζήτα από τον owner να το ακυρώσει`);
+  }
+  const freed=[], left=[];
+  for(const {rt,rs} of trips){
+    const code=rt.code||('RT id '+rt.id);
+    for(const r of rs){
+      const leave=await _wiRtLeave(r.id);
+      if(!leave.ok) return {ok:false,wrote:left.length>0,msg:`${left.length?left.join(' · ')+' · ':''}Η ${ref(r)} ΔΕΝ βγήκε από το ${code} (${leave.msg})`};
+      left.push(`η ${ref(r)} βγήκε από το ${code}`);
+    }
+    // The proof is the trip list read again, not the DELETE's 200.
+    for(const r of rs){
+      const at=await _wiRtOf(r.id);
+      if(!at.ok) return {ok:false,wrote:true,msg:`Η ${ref(r)} βγήκε από το ${code}, αλλά ο έλεγχος δεν διαβάστηκε (${at.msg})`};
+      if(at.rt) return {ok:false,wrote:true,msg:`Η ${ref(r)} βγήκε από το ${code}, αλλά φαίνεται ακόμη στο δρομολόγιο ${at.rt.code||('RT id '+at.rt.id)}`};
+    }
+    freed.push(`${rs.length>1?'οι':'η'} ${rs.map(ref).join(', ')} ${rs.length>1?'βγήκαν':'βγήκε'} από το άδειο ${code}`);
+  }
+  return {ok:true,freed};
+}
 // A rota leg arrives BARE (coordinator 9/10, reviewer 7/10 on main). A rota
 // leg has no assignment of its own: it rides on the parent's round trip and
 // gets the parent's vehicle from it (rt_sync_to_orders, 013). A leg that still
@@ -5206,33 +5284,34 @@ async function _wiRtLeave(orderId){
 // (_wiAssignLbl/_wiAssignedText): the joining side carries no assignment.
 // A vehicle-less leg still on a live trip of its own (what «Καθαρισμός
 // ανάθεσης» leaves behind on a trip it clears whole: _wiClear keeps those
-// legs) is refused too — joined, it is the same two-trip rota, and only the
-// owner can cancel that trip (a dispatcher cannot read its cost lines).
+// legs) leaves that trip first when it is an empty shell, or is refused
+// (_wiOwnRtFree, shared with the import join) — joined as it is, it would be
+// the same two-trip rota. So the «Καθαρισμός ανάθεσης» advice above leads
+// somewhere: after it, the next try frees the empty trip on its own.
 // Read from the server, not the board: a stale board would let an assigned
-// leg through. '' = the leg may join; otherwise the refusal. A read that fails
-// refuses as well — nothing is written on a guess.
+// leg through. {msg:''} = the leg may join (freed: what left its own trip);
+// otherwise msg = the refusal. A read that fails refuses as well — nothing
+// is written on a guess.
 async function _wiRotLegBare(legOid){
   let rec=null;
   try{ rec=await atGetOne(TABLES.ORDERS,legOid); }catch(e){ rec=null; }
-  if(!rec||!rec.fields) return 'Η παραγγελία του σκέλους δεν διαβάστηκε — η ρότα ΔΕΝ γράφτηκε';
+  if(!rec||!rec.fields) return {msg:'Η παραγγελία του σκέλους δεν διαβάστηκε — η ρότα ΔΕΝ γράφτηκε'};
   const n=String(rec.fields['Reference']||legOid);
   const what=_wiAssignLbl(rec.fields);
-  if(what) return `Η #${n} έχει ήδη δική της ανάθεση (${what}) — πρώτα «Καθαρισμός ανάθεσης» στην #${n}, μετά βάλ' τη ρότα`;
-  const at=await _wiRtOf(legOid);
-  if(!at.ok) return `Ο γύρος της #${n} δεν διαβάστηκε (${at.msg}) — η ρότα ΔΕΝ γράφτηκε`;
-  if(at.rt){
-    const code=at.rt.code||'δρομολόγιο';
-    return `Η #${n} είναι ακόμη στο δικό της δρομολόγιο ${code} — σκέλος ρότας ταξιδεύει μόνο στο δρομολόγιο του γονέα· ζήτα από τον owner να ακυρώσει το ${code}, μετά βάλ' τη ρότα`;
-  }
-  return '';
+  if(what) return {msg:`Η #${n} έχει ήδη δική της ανάθεση (${what}) — πρώτα «Καθαρισμός ανάθεσης» στην #${n}, μετά βάλ' τη ρότα`};
+  const free=await _wiOwnRtFree([rec]);
+  if(!free.ok) return {msg:free.msg+' · η ρότα ΔΕΝ γράφτηκε'};
+  return {msg:'',freed:free.freed};
 }
 async function _wiRotAdd(parentRowId, legOid){
   const pr=WINTL.rows.find(r=>r.id===parentRowId); if(!pr) return;
   const pOid=pr.type==='import'?pr.orderId:pr.orderIds?.[0];
   try{
     // Before any write (see _wiRotLegBare): said on screen and once in app_errors.
-    const notBare=await _wiRotLegBare(legOid);
-    if(notBare){ _wiRefuse(notBare,'rota leg refused'); return; }
+    const bare=await _wiRotLegBare(legOid);
+    if(bare.msg){ _wiRefuse(bare.msg,'rota leg refused'); return; }
+    // What left its own empty trip on the way in — said with the «✓» (αρχή 1).
+    const freedNote=(bare.freed||[]).map(x=>' · '+x).join('');
     const res=await atSafePatch(TABLES.ORDERS,legOid,{'Rotation ID':pOid});
     if(res?.error) throw new Error(res.error.message||res.error.type);
     // C1 (owner 6/9): feed the PARENT — with A2's rtLegsForOrder, the leg's
@@ -5287,7 +5366,7 @@ async function _wiRotAdd(parentRowId, legOid){
         reportError('Η ρότα γράφτηκε, αλλά το σκέλος ΔΕΝ μπήκε στο δρομολόγιο και η αναίρεση απέτυχε — άνοιξε την παραγγελία: '+why,new Error(undo.error.message||undo.error.type));
       } else {
         // escapeHtml: toast() writes innerHTML and held.message carries order references
-        toast(escapeHtml(why)+' · η ρότα ΔΕΝ γράφτηκε','warn');
+        toast(escapeHtml(why+' · η ρότα ΔΕΝ γράφτηκε'+freedNote),'warn');
       }
       renderWeeklyIntl();
     };
@@ -5299,7 +5378,7 @@ async function _wiRotAdd(parentRowId, legOid){
     // Review P2 (7/10): a leg that already had its OWN round trip is found
     // «attached» while the group now sits on two — the rota stays (the owner
     // merges), but a green ✓ over a split would say the opposite.
-    if(split){ toast(split.message,'warn'); renderWeeklyIntl(); return; }
+    if(split){ toast(escapeHtml(split.message+freedNote),'warn'); renderWeeklyIntl(); return; }
     // Fallback: the parent has no round trip yet (unassigned) — nothing could
     // attach, so copy the vehicle by hand as before or the leg sits without
     // one until somebody happens to re-save the parent.
@@ -5311,9 +5390,9 @@ async function _wiRotAdd(parentRowId, legOid){
       const res2=await atSafePatch(TABLES.ORDERS,legOid,fallback);
       if(res2?.error) console.warn('[wi rota add] fallback vehicle copy failed:',res2.error.message||res2.error.type);
     }
-    toast(wasClosed&&attached
+    toast((wasClosed&&attached
       ?`⤷ Σκέλος προσαρτήθηκε — το ${attached.code||'δρομολόγιο'} ξανάνοιξε ✓`
-      :'⤷ Σκέλος συνδέθηκε στη ρότα ✓');
+      :'⤷ Σκέλος συνδέθηκε στη ρότα ✓')+escapeHtml(freedNote));
     renderWeeklyIntl();
   }catch(e){ reportError('Η σύνδεση σκέλους απέτυχε',e); }
 }
@@ -5915,7 +5994,8 @@ function _wiJoinPalText(load,add){
 // import-only», never into a trip that already has export AND imports. The
 // result was two live RTs for one load, a Worker 409 on every later sync, the
 // banner and B-77 (the 7/10 GI-MUV7FNKE class). «Καθαρισμός ανάθεσης» first
-// (leg off, then vehicle — RT-1193), then the join adds it to the load's trip.
+// (vehicle off; a solo trip keeps its leg — _wiClear), then the join takes
+// that leftover empty trip off (_wiOwnRtFree) and adds it to the load's trip.
 function _wiAssignLbl(f){
   const id=k=>getLinkedId(f&&f[k])||'';
   const name=(list,x)=>(((WINTL.data&&WINTL.data[list])||[]).find(o=>o.id===x)||{}).label||'';
@@ -6120,6 +6200,15 @@ async function _wiImpJoin(loadOid,expOid,xOid,palOk){
     // the reload shows the server's pallets and the next try asks with them.
     if(_wiPalOver(_wiRecsPals([...L.recs,...X.recs]))&&pal!=='over') return await race(`Οι παλέτες άλλαξαν στο μεταξύ (άλλος χρήστης): ${_wiJoinPalText(L.recs,X.recs)} — ανανέωση, ξαναδοκίμασε…`);
     if(X.recs.some(r=>_wiAssignLbl(r.fields))) return await race(`${who} πήρε ανάθεση στο μεταξύ (άλλος χρήστης) — ανανέωση…`);
+    // 2b. A joiner still on a live trip of its own (cleared with «Καθαρισμός
+    // ανάθεσης», which keeps a solo trip's leg) leaves it first, or the join
+    // is refused here — joined as it was, the load ended on two live trips
+    // (_wiOwnRtFree). Like the refusals of step 2, it needs the server's
+    // trips, so it may come after the 33 question.
+    const own=await _wiOwnRtFree(X.recs);
+    if(!own.ok) return own.wrote?stop(`${own.msg} · η ένταξη στο ${into} δεν έγινε`):refuse(`${own.msg} · δεν γράφτηκε τίποτα`);
+    const freedNote=own.freed.map(x=>' · '+x).join('');
+    if(own.freed.length) wrote=true;
 
     // 3. The load's Group ID, pinned before anyone joins.
     let gid=L.gid0, lockLead=null;
@@ -6129,14 +6218,14 @@ async function _wiImpJoin(loadOid,expOid,xOid,palOk){
         lockLead=L.recs[0].id;
         gid='GI-'+Date.now().toString(36).toUpperCase()+'|'+lockLead;
         const w=await _wiStockLockSure(lockLead,gid);
-        if(w) return stop(`Η ομάδα του ${into} ΔΕΝ γράφτηκε (${w}) — η ένταξη δεν έγινε, δεν γράφτηκε τίποτα`);
+        if(w) return stop(`Η ομάδα του ${into} ΔΕΝ γράφτηκε (${w}) — η ένταξη δεν έγινε${freedNote||', δεν γράφτηκε τίποτα'}`);
       }else{
         // A group with no order pinned: pinned now, the export's member
         // first, so a joiner loading earlier can never become the lead —
         // lookups that still key on the lead (_wiGiGroup) would lose the pair.
         const recs=[...L.recs]; const k=named?recs.findIndex(r=>r.id===named):-1;
         if(k>0) recs.unshift(recs.splice(k,1)[0]);
-        if(!(await _wiRewriteGroupSuffix(recs,true))) return stop(`Η σειρά του ${into} ΔΕΝ γράφτηκε σε όλα τα μέλη — η ένταξη δεν έγινε· έλεγξε το φορτίο`);
+        if(!(await _wiRewriteGroupSuffix(recs,true))) return stop(`Η σειρά του ${into} ΔΕΝ γράφτηκε σε όλα τα μέλη — η ένταξη δεν έγινε· έλεγξε το φορτίο${freedNote}`);
         gid=String(recs[0].fields['Group ID']||'');
         recs.forEach(r=>{ const c=WINTL.data.imports.find(x=>x.id===r.id); if(c) c.fields['Group ID']=r.fields['Group ID']; });
       }
@@ -6164,7 +6253,7 @@ async function _wiImpJoin(loadOid,expOid,xOid,palOk){
     }
     if(errs.length){
       const back=(!landed.length&&lockLead)?_wiLockUndoNote(await _wiStockLockUndo(lockLead,gid),gid):'';
-      stop(`Η ένταξη στο ${into} ΔΕΝ ολοκληρώθηκε — ${errs.join(' · ')}${landed.length?' · έλεγξε το φορτίο':''}${back}`,errs);
+      stop(`Η ένταξη στο ${into} ΔΕΝ ολοκληρώθηκε — ${errs.join(' · ')}${landed.length?' · έλεγξε το φορτίο':''}${back}${freedNote}`,errs);
       await renderWeeklyIntl();   // what landed and what did not: the server's word
       return false;
     }
@@ -6178,7 +6267,7 @@ async function _wiImpJoin(loadOid,expOid,xOid,palOk){
     const nr=expRow?WINTL.rows.find(r=>r.type==='export'&&(r.orderIds||[]).includes(expRow.orderIds[0])):_wiImpGroupRowOf(loadIds[0]);
     const nl=_wiImpGroupRowOf(loadIds[0]), nrecs=nl?_wiLoadRecs(nl):[];
     if(nr) _wiSync('wi-sync-'+nr.id,'ok',`${who} στο φορτίο ✓`);
-    toast(escapeHtml(`${who} ${many?'μπήκαν':'μπήκε'} στο ${_wiJoinLoadLbl(nr||vehRow,nrecs)} ✓${_wiPalNote(_wiRecsPals(nrecs))}`));
+    toast(escapeHtml(`${who} ${many?'μπήκαν':'μπήκε'} στο ${_wiJoinLoadLbl(nr||vehRow,nrecs)} ✓${_wiPalNote(_wiRecsPals(nrecs))}${freedNote}`));
     return true;
   }finally{ if(wrote) _wiNoUndo(); }   // B-13: one join, not one revertible PATCH
 }

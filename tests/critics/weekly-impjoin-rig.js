@@ -24,6 +24,12 @@
 //   · J15 other-truck joiner · J16 drop on an EXPORT tile (P3-2, reviewer R2)
 //   · J17 matched to an export of another week (P3-3) · J18 Cancelled (P3-4)
 //   · J19 rota leg on every path (P3-5) · J20 no silent cap at 6
+// The joiner's OWN round trip (fix/own-rt-join-rota, coordinator 9/10 — what
+// «Καθαρισμός ανάθεσης» leaves on a solo trip; /costs/* played in memory):
+//   J22 an empty own trip leaves first (DELETE before the PATCH, cancelled) ·
+//   J23 cost lines · J24 a dispatcher's 403 on cost lines · J25 another order
+//   on the trip · J26 the trips cannot be read · J27 a payroll line — all
+//   refused, nothing written · J28 a two-member group on one empty trip
 // Exit code 1 when any check fails. Prints one line per check + a summary.
 const path = require('path');
 const fs = require('fs');
@@ -38,14 +44,18 @@ if (OUT) fs.mkdirSync(OUT, { recursive: true });
 const BASE = process.env.PW_BASE_URL || 'http://127.0.0.1:8991/';
 const HOST = 'petras-tms-backend-staging.petrasgroup.workers.dev';
 const T = { ORD: 'tblgHlNmLBH3JTdIM', TRK: 'tblEAPExIAjiA3asD', DRV: 'tbl7UGmYhc2Y82pPs', DOCS: 'tblOrderDocuments' };
+// «Order No» = orders.id (migration 019): the round-trip lookup (_wiRtOf) needs
+// it. One stable number per record id for the whole run.
+const PGS = {}; let pgNext = 5000;
+const pgOf = id => PGS[id] || (PGS[id] = pgNext++);
 
 const EXP = (id, ref, st, truck, extra = {}) => ({ id, fields: Object.assign({
-  Type: 'International', Direction: 'Export', Client: ['recClient1'], Reference: ref, Status: st, 'Client Name': 'EXP ' + ref,
+  Type: 'International', Direction: 'Export', Client: ['recClient1'], Reference: ref, Status: st, 'Client Name': 'EXP ' + ref, 'Order No': pgOf(id),
   'Loading DateTime': '2026-10-06T08:00:00', 'Delivery DateTime': '2026-10-08T10:00:00', 'Total Pallets': 33,
   'Loading Summary': 'Veroia', 'Delivery Summary': 'Berlin',
 }, truck ? { Truck: [truck], Driver: [truck.replace('recT', 'recD')] } : {}, extra) });
 const IMP = (id, ref, st, truck, pal, load, extra = {}) => ({ id, fields: Object.assign({
-  Type: 'International', Direction: 'Import', Client: ['recClient1'], Reference: ref, Status: st, 'Client Name': 'IMP ' + ref,
+  Type: 'International', Direction: 'Import', Client: ['recClient1'], Reference: ref, Status: st, 'Client Name': 'IMP ' + ref, 'Order No': pgOf(id),
   'Loading DateTime': load + 'T08:00:00', 'Delivery DateTime': '2026-10-12T10:00:00', 'Total Pallets': pal,
   'Loading Summary': 'Load ' + ref, 'Delivery Summary': 'Athens',
 }, truck ? { Truck: [truck], Driver: [truck.replace('recT', 'recD')] } : {}, extra) });
@@ -120,7 +130,10 @@ async function newPage(browser, opts = {}) {
   const page = await ctx.newPage();
   await page.clock.setFixedTime(new Date('2026-10-08T12:40:00+03:00'));
   const db = seed(opts);
-  const S = { db, log: [], pageErrors: [], held: [], armed: false, latency: opts.latencyMs || 0, hang: {}, off: new Set(opts.offWeek ? ['recEW'] : []) };
+  const S = { db, log: [], pageErrors: [], held: [], armed: false, latency: opts.latencyMs || 0, hang: {}, off: new Set(opts.offWeek ? ['recEW'] : []),
+    // /costs/* in memory: the live round trips (rts), cost lines per trip, and
+    // switches for a failing trip read / a dispatcher's 403 on cost lines.
+    rts: JSON.parse(JSON.stringify(opts.rts || [])), lines: opts.lines || {}, rtFail: false, linesForbidden: !!opts.linesForbidden };
   page.on('pageerror', e => S.pageErrors.push(String(e).slice(0, 200)));
   page.on('dialog', d => { S.log.push({ k: 'dialog', msg: d.message() }); d.accept(); });
   await preparePage(page, 'dispatcher');
@@ -136,6 +149,23 @@ async function newPage(browser, opts = {}) {
     if (S.hang.docs && tid === T.DOCS) { S.held.push('docs'); return; }
     if (S.hang.exports && tid === T.ORD && m === 'GET' && !rid && /\{Direction\}='Export'/.test(f)) { S.held.push('exports'); return; }
     if (S.latency) await new Promise(r => setTimeout(r, S.latency));
+    // The Worker's /costs/rt + DELETE …/legs + /costs/lines, and the DB's
+    // rt_recompute (013): a trip left with no leg is cancelled.
+    if (u.pathname === '/costs/rt' && m === 'GET') return S.rtFail ? json(route, { error: 'boom' }, 500) : json(route, { records: JSON.parse(JSON.stringify(S.rts)) });
+    const legDel = u.pathname.match(/^\/costs\/rt\/(\d+)\/legs$/);
+    if (legDel && m === 'DELETE') {
+      const r = S.rts.find(x => x.id === Number(legDel[1])), pg = Number(u.searchParams.get('order_id'));
+      if (S.armed) S.log.push({ k: 'delete', tid: 'ct_rt_legs', id: legDel[1], fields: { order_id: pg } });
+      if (!r || !r.ct_rt_legs.some(l => l.order_id === pg)) return json(route, { error: 'Leg not found on this round trip' }, 404);
+      r.ct_rt_legs = r.ct_rt_legs.filter(l => l.order_id !== pg);
+      if (!r.ct_rt_legs.length) r.status = 'cancelled';
+      return json(route, { deleted: true });
+    }
+    if (u.pathname === '/costs/lines' && m === 'GET') {
+      if (S.linesForbidden) return json(route, { error: 'Forbidden' }, 403);
+      const n = S.lines[u.searchParams.get('rt_id')] || 0;
+      return json(route, { records: n ? [{ id: 1 }] : [], next_offset: n > 1 ? 1 : null });
+    }
     if (!mm) return json(route, m === 'GET' ? { records: [] } : { ok: true });
     const tbl = db[tid] || (db[tid] = []);
     if (m === 'GET') {
@@ -763,6 +793,75 @@ async function checkJoin470(scn, page, S, E) {
     ok(scn, 'the count on screen = the boxes listed', panel.includes(`Ελεύθερες εισαγωγές (${n}) — κύλισε`), panel);
     ok(scn, 'all eight small imports listed (the cut at 6 hid some)', [1, 2, 3, 4, 5, 6, 7, 8].every(k => panel.includes('Load M' + k + ' (1p)')), panel);
     await shot(page, 'J20-free-list');
+    await done(page);
+  }
+
+  // ── The joiner's OWN round trip (fix/own-rt-join-rota) ──
+  // 470's own trip, as «Καθαρισμός ανάθεσης» leaves it on a solo trip: no
+  // vehicle, the leg kept. ledger_entry = what GET /costs/rt carries (null = none).
+  const own = (legs, extra = {}) => [{ id: 1300, code: 'RT-1300', status: 'planned', trip_type: 'OWNED', truck_id: null, driver_id: null,
+    date_start: '2026-10-07', date_end: '2026-10-12', ledger_entry: null, ct_rt_legs: legs.map((id, i) => ({ id: 13000 + i, order_id: pgOf(id), seq: i + 1, direction: 'IMPORT' })), ...extra }];
+  const OWN = why => `Η #470 είναι ακόμη στο δρομολόγιο RT-1300${why} · δεν γράφτηκε τίποτα`;
+  async function drop470(page, S) {
+    const e27 = await rowOf(page, 'recE27');
+    const pts = await pointsIn(page, `#wi-ci-${e27}`);
+    S.armed = true; await page.evaluate(() => window.__mark());
+    await dragTo(page, '#wi-imp-recI470 .wk3-num', pts.free);
+    await page.waitForTimeout(4000); S.armed = false;
+  }
+
+  if (on('J22')) {  // (b) 470 alone on its empty RT-1300: the leg leaves FIRST, then the join — one live trip, not two
+    const scn = 'J22';
+    const { page, S } = await newPage(browser, { rts: own(['recI470']) });
+    await drop470(page, S);
+    const E = await ev(page), W = writes(S);
+    const del = W.findIndex(x => x.k === 'delete' && x.id === '1300' && x.fields.order_id === pgOf('recI470'));
+    const pat = W.findIndex(x => x.k === 'patch' && x.id === 'recI470');
+    ok(scn, 'the leg left RT-1300 BEFORE 470 was written', del >= 0 && pat > del, W.map(x => x.k + ' ' + x.id));
+    ok(scn, 'a trip read between the DELETE and the PATCH (the proof)', S.log.slice(S.log.indexOf(W[del]) + 1, S.log.indexOf(W[pat])).some(x => x.k === 'req' && x.path === '/costs/rt'), S.log.map(x => x.k + ' ' + (x.path || x.id)));
+    ok(scn, 'RT-1300 is cancelled (the DB, 013)', S.rts[0].status === 'cancelled', S.rts[0]);
+    await checkJoin470(scn, page, S, E);
+    ok(scn, 'the ✓ says the empty trip went', E.some(e => e.k === 'toast' && e.type === 'success' && /✓ · η #470 βγήκε από το άδειο RT-1300$/.test(e.msg)), E.filter(e => /toast/.test(e.k)));
+    await shot(page, 'J22-own-empty-trip-freed');
+    await done(page);
+  }
+
+  for (const [scn, opts, text] of [
+    ['J23', { rts: own(['recI470']), lines: { 1300: 2 } }, OWN(', που έχει έξοδα — ζήτα από τον owner να το ακυρώσει')],
+    ['J24', { rts: own(['recI470']), linesForbidden: true }, OWN(' και ο ρόλος σου δεν βλέπει αν έχει έξοδα — ζήτα από τον owner να το ακυρώσει')],
+    ['J25', { rts: own(['recI470', 'recE30']) }, OWN(' μαζί με άλλες παραγγελίες — δεν βγαίνει αυτόματα· ζήτα από τον owner')],
+    ['J26', { rts: own(['recI470']), failRt: true }, 'Ο γύρος της #470 δεν διαβάστηκε (ο γύρος δεν διαβάστηκε (boom)) · δεν γράφτηκε τίποτα'],
+    ['J27', { rts: own(['recI470'], { ledger_entry: { id: 81, expenses: null } }) }, OWN(', που έχει γραμμή μισθοδοσίας — ζήτα από τον owner να το ακυρώσει')],
+  ]) {
+    if (!on(scn)) continue;
+    const { page, S } = await newPage(browser, opts);
+    if (opts.failRt) S.rtFail = true;    // after the board loaded: only the join's own read fails
+    await drop470(page, S);
+    await checkRefused(scn, page, S, text);
+    ok(scn, 'db: 470 keeps no group, no truck; RT-1300 still holds it', !fld(S, 'recI470', 'Group ID') && !fld(S, 'recI470', 'Truck') && S.rts[0].status === 'planned' && S.rts[0].ct_rt_legs.some(l => l.order_id === pgOf('recI470')), S.rts[0]);
+    if (scn === 'J23') await shot(page, 'J23-own-trip-with-costs-refused');
+    await done(page);
+  }
+
+  if (on('J28')) {  // (b) a two-member free group IE+IF on ONE empty trip, grouped into GI-EXEC (TRK-32): both legs leave first
+    const scn = 'J28';
+    const { page, S } = await newPage(browser, { two: 'none', rts: [{ id: 1400, code: 'RT-1400', status: 'planned', trip_type: 'OWNED', truck_id: null, driver_id: null,
+      date_start: '2026-10-09', date_end: '2026-10-12', ledger_entry: null, ct_rt_legs: [{ id: 14000, order_id: pgOf('recIE'), seq: 1 }, { id: 14001, order_id: pgOf('recIF'), seq: 2 }] }] });
+    await page.locator('#wi-imp-recIC .wk3-num').click({ button: 'right' }); await page.waitForTimeout(300);
+    await page.locator('#wi-ctx button:has-text("Groupage εισαγωγών")').click(); await page.waitForTimeout(300);
+    const rTwo = await rowOf(page, 'recIE');
+    S.armed = true; await page.evaluate(() => window.__mark());
+    await page.locator(`.wiGrpPick[value="${rTwo}"]`).check();
+    await page.locator('#wi-panel button:has-text("Ομαδοποίηση")').click();
+    await page.waitForTimeout(4000); S.armed = false;
+    const W = writes(S), firstPatch = W.findIndex(x => x.k === 'patch');
+    const dels = W.filter(x => x.k === 'delete').map(x => x.fields.order_id).sort();
+    ok(scn, 'both legs left RT-1400 before any member was written', dels.join(',') === [pgOf('recIE'), pgOf('recIF')].sort().join(',') && W.slice(0, firstPatch).filter(x => x.k === 'delete').length === 2, W.map(x => x.k + ' ' + x.id));
+    ok(scn, 'RT-1400 cancelled', S.rts[0].status === 'cancelled', S.rts[0]);
+    ok(scn, 'IE and IF carry «GI-EXEC|recIC,recID» + TRK-32 (db)', ['recIE', 'recIF'].every(id => fld(S, id, 'Group ID') === 'GI-EXEC|recIC,recID' && JSON.stringify(fld(S, id, 'Truck')) === '["recT32"]'), ['recIE', 'recIF'].map(id => [fld(S, id, 'Group ID'), fld(S, id, 'Truck')]));
+    const E = await ev(page);
+    ok(scn, 'the ✓ names both and the trip', E.some(e => e.k === 'toast' && e.type === 'success' && /οι #IE, #IF βγήκαν από το άδειο RT-1400$/.test(e.msg)), E.filter(e => /toast/.test(e.k)));
+    ok(scn, 'no logError, no page errors', !E.some(e => e.k === 'logError') && !S.pageErrors.length, { E, err: S.pageErrors });
     await done(page);
   }
 

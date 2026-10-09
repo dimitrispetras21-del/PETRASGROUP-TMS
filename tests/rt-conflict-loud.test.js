@@ -31,10 +31,13 @@ const ROT_ADD = (WI.match(/async function _wiRotAdd\(parentRowId, legOid\)\{[\s\
 if (!ROT_ADD) throw new Error('_wiRotAdd not found in weekly_intl.js');
 // 9/10 (fix/rota-leg-own-rt): _wiRotAdd first checks, on the server, that the
 // leg is bare — its helpers run verbatim too. Optional for a copy that
-// predates them (RT_SRC/WI_SRC «before» runs).
+// predates them (RT_SRC/WI_SRC «before» runs). fix/own-rt-join-rota: the
+// leg's own empty trip is freed through _wiOwnRtFree → _wiRtLeave.
 const opt = re => (WI.match(re) || [''])[0];
 const ROT_HELPERS = [
   opt(/async function _wiRotLegBare\([^)]*\)\{[\s\S]*?\n\}\n/), opt(/async function _wiRtOf\([^)]*\)\{[\s\S]*?\n\}\n/),
+  opt(/async function _wiOwnRtFree\([^)]*\)\{[\s\S]*?\n\}\n/), opt(/async function _wiRtLeave\([^)]*\)\{[\s\S]*?\n\}\n/),
+  opt(/async function _wiRtLegDelete\([^)]*\)\{[\s\S]*?\n\}\n/),
   opt(/\nfunction _wiAssignLbl\([^)]*\)\{[\s\S]*?\n\}\n/), opt(/\nfunction _wiRefuse\([^)]*\)\{[\s\S]*?\n\}\n/),
 ].join('\n');
 
