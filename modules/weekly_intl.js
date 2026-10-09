@@ -5286,8 +5286,11 @@ async function _wiOwnRtFree(recs){
 // ανάθεσης» leaves behind on a trip it clears whole: _wiClear keeps those
 // legs) leaves that trip first when it is an empty shell, or is refused
 // (_wiOwnRtFree, shared with the import join) — joined as it is, it would be
-// the same two-trip rota. So the «Καθαρισμός ανάθεσης» advice above leads
-// somewhere: after it, the next try frees the empty trip on its own.
+// the same two-trip rota. After «Καθαρισμός ανάθεσης» the next try frees the
+// empty trip on its own ONLY for a role that can read /costs/lines and DELETE
+// a leg (today: owner). A dispatcher gets 403 on the cost read and is refused
+// with «ζήτα από τον owner» — safe, but the advice does not finish the job for
+// them until the Worker refuses the last-leg DELETE itself (review P2, 9/10).
 // Read from the server, not the board: a stale board would let an assigned
 // leg through. {msg:''} = the leg may join (freed: what left its own trip);
 // otherwise msg = the refusal. A read that fails refuses as well — nothing
@@ -5995,7 +5998,9 @@ function _wiJoinPalText(load,add){
 // result was two live RTs for one load, a Worker 409 on every later sync, the
 // banner and B-77 (the 7/10 GI-MUV7FNKE class). «Καθαρισμός ανάθεσης» first
 // (vehicle off; a solo trip keeps its leg — _wiClear), then the join takes
-// that leftover empty trip off (_wiOwnRtFree) and adds it to the load's trip.
+// that leftover empty trip off (_wiOwnRtFree) and adds it to the load's trip —
+// for the owner only today: a dispatcher's cost read is 403, so _wiOwnRtFree
+// refuses for them (review P2, 9/10).
 function _wiAssignLbl(f){
   const id=k=>getLinkedId(f&&f[k])||'';
   const name=(list,x)=>(((WINTL.data&&WINTL.data[list])||[]).find(o=>o.id===x)||{}).label||'';
