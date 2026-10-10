@@ -206,10 +206,15 @@ async function openBoard(browser, origin, tree, optIn) {
       return json(route, {});
     } finally { S.inflight--; }
   });
+  const t0 = Date.now();
   await page.goto('app.html');
   await page.waitForFunction(() => window.WINTL && WINTL.rows && WINTL.rows.length > 0
     && !/Φόρτωση εβδομάδας/.test(document.getElementById('content').textContent), null, { timeout: 60000 });
   await settle(page, S);
+  // core/router.js appends .page-footer to #content 2 s after navigate, if the
+  // content is tall by then: app-shell timing, not board output. Every capture
+  // starts after that timer, so it cannot land inside one tree's capture only.
+  await page.waitForTimeout(Math.max(0, 2600 - (Date.now() - t0)));
   return { page, S };
 }
 // Quiet = no facade request in flight for `quietMs` and every late source
