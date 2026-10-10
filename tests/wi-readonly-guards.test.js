@@ -10,6 +10,13 @@
 //                     one refusal per pair and a green «εφαρμόστηκαν ✓» anyway) —
 //                     REMOVED instead, owner 10/10: «δεν χρειάζομαι τελείως το
 //                     αυτόματο ταίριασμα»; the last case checks it stays gone
+//   6. order form     _wk3Edit (route/leg/import cell, split header, rota card
+//                     «Επεξεργασία») · _wiStockOpenLotOrder · _wiStockOpenPiece
+//                     (ΑΠΟΘΕΜΑ shelf, drawn for every role). Added 10/10: the
+//                     form's own «Αποθήκευση» (submitIntlOrder) asks no role,
+//                     and the Worker accepts PATCH orders from management and
+//                     accountant — so the ORDERS row was written, then the
+//                     stops/cascade writes those roles lack were refused.
 // plus «ΚΕΝΟ EXPORT», whose tooltip promises the first export to assign while
 // it jumped to the first IMPORT without a vehicle (_wiJumpFirstUnassigned).
 //
@@ -33,7 +40,8 @@ const fn = (name, optional) => {
   return m ? m[0] : '';
 };
 const NAMES = ['_wiBlockReadOnly', '_wk3PickDate', '_wk3IsoOnDay', '_wiUnmatch', '_wiUnmatchRow',
-  '_wiRotUnlink', '_wiRota', '_wiRotaSave', '_wiRotaSplit', '_wiNewImport'];
+  '_wiRotUnlink', '_wiRota', '_wiRotaSave', '_wiRotaSplit', '_wiNewImport',
+  '_wk3Edit', '_wiStockOpenLotOrder', '_wiStockOpenPiece'];
 const NEW = ['_wiFirstPendingExp', '_wiJumpFirstPendingExp'].filter(n => fn(n, true));   // absent in the «before» copy
 const SRC = NAMES.concat(NEW).map(n => fn(n)).join('\n');
 const RO = 'Μόνο ανάγνωση για τον ρόλο σου';
@@ -68,7 +76,6 @@ function world(role) {
     _wiRtLegDelete: async () => ({ ok: true, status: 200 }),
     // _wiRota / _wiRotaSave / _wiRotaSplit
     _wiGrpOrder: recs => recs,
-    _wk3Edit: id => log.opened.push('form ' + id),
     _wiRotaRender: () => log.opened.push('rota card'),
     _wiRotaClose: () => { ctx._wiRotaState = null; },
     _wiRepaintRow: () => {},
@@ -77,6 +84,11 @@ function world(role) {
     openIntlEditWith: (id, f) => log.opened.push('import form ' + (f && f.Direction)),
     // gap box
     _ccJump: id => log.jumps.push(id),
+    // order form doors (_wk3Edit / _wiStockOpenLotOrder / _wiStockOpenPiece)
+    getLinkedId: v => (Array.isArray(v) ? v[0] : v) || null,
+    _wiPanelClose: () => log.calls.push('panel close'),
+    _wiRecOf: id => ctx.WINTL.data.exports.concat(ctx.WINTL.data.imports).find(r => r.id === id) || null,
+    _wiReadOrder: async id => { log.calls.push('read ' + id); return { id, fields: {} }; },
     WINTL: {
       data: {
         exports: [{ id: 'recE1', fields: { 'Group ID': 'GRP-1' } }, { id: 'recE2', fields: { 'Group ID': 'GRP-1' } }],
@@ -211,6 +223,65 @@ test('empty import box: full role still opens the import form', () => {
 });
 test('«Αυτόματο ταίριασμα» is gone (owner 10/10): no button, no function, no window export, no scorer', () => {
   assert.doesNotMatch(WI, /Αυτόματο ταίριασμα|_wiAutoMatch|autoN|_wiMatchableImp/);
+});
+
+// 6. order form — the door is the only place a view role is stopped: the
+// form's «Αποθήκευση» asks no role and the Worker takes PATCH orders from
+// management/accountant. openIntlEditWith is re-stubbed to record id + fields.
+const formLog = (ctx, log) => { ctx.openIntlEditWith = (id, f) => log.opened.push({ id, f }); };
+test('route / leg / import cell (_wk3Edit): view role — no order form', () => {
+  const { ctx, log } = world('view'); formLog(ctx, log);
+  ctx._wk3Edit('recE1');
+  assertBlocked(log);
+});
+test('route / leg / import cell: full role still opens the form with the row\'s own fields', () => {
+  const { ctx, log } = world('full'); formLog(ctx, log);
+  ctx._wk3Edit('recI1');
+  assert.strictEqual(log.opened.length, 1);
+  assert.strictEqual(log.opened[0].id, 'recI1');
+  assert.strictEqual(log.opened[0].f, ctx.WINTL.data.imports[0].fields);
+  assert.deepStrictEqual(log.toasts, []);
+});
+test('ΑΠΟΘΕΜΑ «Άνοιγμα παρτίδας» (_wiStockOpenLotOrder): view role — no form, no read, panel left open', async () => {
+  const { ctx, log } = world('view'); formLog(ctx, log);
+  ctx.WINTL._stkLot = { fields: { Order: ['recE1'] } };
+  await ctx._wiStockOpenLotOrder();
+  assertBlocked(log);
+});
+test('ΑΠΟΘΕΜΑ «Άνοιγμα παρτίδας»: full role still opens the lot\'s order', async () => {
+  const { ctx, log } = world('full'); formLog(ctx, log);
+  ctx.WINTL._stkLot = { fields: { Order: ['recE1'] } };
+  await ctx._wiStockOpenLotOrder();
+  assert.deepStrictEqual(log.opened.map(o => o.id), ['recE1']);
+  assert.deepStrictEqual(log.calls, ['panel close']);
+});
+test('ΑΠΟΘΕΜΑ piece line (_wiStockOpenPiece): view role — no form', () => {
+  const { ctx, log } = world('view'); formLog(ctx, log);
+  ctx.WINTL._stkPieces = [{ id: 'recP1', fields: { Direction: 'Import' } }];
+  ctx._wiStockOpenPiece('recP1');
+  assertBlocked(log);
+});
+test('ΑΠΟΘΕΜΑ piece line: full role still opens the piece form', () => {
+  const { ctx, log } = world('full'); formLog(ctx, log);
+  ctx.WINTL._stkPieces = [{ id: 'recP1', fields: { Direction: 'Import' } }];
+  ctx._wiStockOpenPiece('recP1');
+  assert.deepStrictEqual(log.opened.map(o => o.id), ['recP1']);
+});
+// Caught when written, not by the next audit: a NEW door into an order form
+// fails here unless a _wiBlockReadOnly() precedes it in the same function.
+// openIntlPieceCreate is left out on purpose — its one caller _wiStockOpenForm
+// is reached only through _wiStockJoin (gated) and the «+ Κομμάτι» button,
+// which is drawn for OrdersStock.canWrite() roles only.
+test('every order-form opener in weekly_intl.js goes through _wiBlockReadOnly first', () => {
+  const lines = WI.split('\n'), opener = /\b(openIntlEditWith|openIntlCreate|openIntlScan|openPreorder)\(/;
+  const ungated = [];
+  lines.forEach((l, i) => {
+    if (!opener.test(l) || /^\s*\/\//.test(l)) return;
+    let h = i; while (h >= 0 && !/^(async )?function \w+/.test(lines[h])) h--;
+    const name = h >= 0 ? lines[h].match(/function (\w+)/)[1] : '(top level)';
+    if (h < 0 || !/_wiBlockReadOnly\(\)/.test(lines.slice(h, i + 1).join('\n'))) ungated.push(name + ' @' + (i + 1));
+  });
+  assert.deepStrictEqual(ungated, []);
 });
 
 // «ΚΕΝΟ EXPORT»

@@ -1946,6 +1946,11 @@ function _wk3MoreStops(str,arr,kind){
   }).join('')}</div>`;
 }
 function _wk3Edit(orderId){
+  // The form's own «Αποθήκευση» (submitIntlOrder) asks no role and the Worker
+  // takes PATCH orders from management/accountant (owner lock 23/8) — so this
+  // door is where a view role stops; through it, the ORDERS row was written
+  // and the stop/cascade writes those roles lack were then refused.
+  if(_wiBlockReadOnly()) return;
   if(!orderId) return;
   const rec=WINTL.data.exports.find(r=>r.id===orderId)||WINTL.data.imports.find(r=>r.id===orderId);
   if(rec&&typeof openIntlEditWith==='function') openIntlEditWith(orderId, rec.fields);
@@ -7166,6 +7171,7 @@ async function _wiStockLotOpen(anchor,lotRec){
 // ago), so it is read by id — _wk3Edit only knows this week's rows and would
 // open nothing, silently.
 async function _wiStockOpenLotOrder(){
+  if(_wiBlockReadOnly()) return;   // the shelf is drawn for every role; same door rule as _wk3Edit
   const id=getLinkedId(WINTL._stkLot&&WINTL._stkLot.fields&&WINTL._stkLot.fields['Order']);
   if(!id){ toast('Η παραγγελία της παρτίδας δεν βρέθηκε','warn'); return; }
   _wiPanelClose();
@@ -7214,6 +7220,7 @@ function _wiStockPieceRelay(oid,noTruck){
   return ` <b class="wi-rly-b" title="${escapeHtml(tip)}">⇄ τοπ.</b>`;
 }
 function _wiStockOpenPiece(id){
+  if(_wiBlockReadOnly()) return;   // the shelf is drawn for every role; same door rule as _wk3Edit
   const p=(WINTL._stkPieces||[]).find(x=>x.id===id); if(!p) return;
   _wiPanelClose();
   if(typeof openIntlEditWith==='function') openIntlEditWith(id,p.fields);
