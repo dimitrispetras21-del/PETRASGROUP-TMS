@@ -26,7 +26,9 @@ const fnIn = (src, name, optional) => {
   return m ? m[0] : '';
 };
 const fn = (name, optional) => fnIn(WI, name, optional);
-const NAMES = ['_wiBlockReadOnly', '_wk3PickDate', '_wk3IsoOnDay', '_wiUnmatch', '_wiUnmatchRow',
+// _wiDateWrite: the date chip's write moved there (WI v4, TECH_DESIGN §a.5)
+// so the v4 date panel calls the same write; the chip calls it unchanged.
+const NAMES = ['_wiBlockReadOnly', '_wk3PickDate', '_wiDateWrite', '_wk3IsoOnDay', '_wiUnmatch', '_wiUnmatchRow',
   '_wiRotUnlink', '_wiRota', '_wiRotaSave', '_wiRotaSplit', '_wiNewImport',
   '_wk3Edit', '_wiStockOpenLotOrder', '_wiStockOpenPiece', '_wiStockPieceLine'];
 const NEW = ['_wiFirstPendingExp', '_wiPendingExps', '_wiJumpFirstPendingExp']
@@ -48,6 +50,9 @@ function world(role) {
     TABLES: { ORDERS: 'tblO' },
     WI_EXECUTING: ['In Transit', 'Delivered'],
     atSafePatch: async (_t, id, f) => { log.patches.push({ id, f }); return { id, fields: f }; },
+    // v4 inactive = no _expect (the flag-'off' behaviour, §a.3): without this
+    // stub _wiDateWrite throws inside the chip's try and reportError fires.
+    _wiExpectOpt: () => undefined,
     atGetOne: async (_t, id) => ({ id, fields: {} }),
     invalidateCache() {},
     renderWeeklyIntl: async () => {},
@@ -298,4 +303,73 @@ test('owner 10/10: a view role opens the order form from a row again', () => {
   ctx._wk3Edit('recI1');
   assert.deepStrictEqual(log.opened.map(o => o.id), ['recI1'], 'the edit form, not a read-only card');
   assert.deepStrictEqual(log.toasts, []);
+});
+
+// The date chip's write as the v4 seam (TECH_DESIGN §a.5, §g.4): the real
+// _wiDateWrite with the real _wiV2Active/_wiExpectOpt. With v4 inactive the
+// PATCH carries no opts (today's request, byte for byte); with v4 active the
+// expectation is the value the user SAW (curIso), and a 409 writes nothing
+// downstream.
+function seam(active) {
+  const log = { patches: [], syncs: [], invalidated: 0 };
+  const ctx = {
+    console, TABLES: { ORDERS: 'tblO' },
+    WIV2: { active: () => active },
+    WI4: { buildExpect: (fields, rec) => {   // stand-in for WP1: checked labels only, undefined when none/no record
+      if (!rec) return undefined;
+      const o = {}; fields.filter(l => l !== 'Notes').forEach(l => { o[l] = rec.fields[l]; });
+      return Object.keys(o).length ? o : undefined; } },
+    WINTL: { data: { exports: [{ id: 'recE1', fields: { 'Loading DateTime': '2026-10-12T04:00:00.000Z' } }], imports: [] } },
+    atSafePatch: async (_t, id, f, opts) => { log.patches.push({ id, f, opts }); return ctx._answer || { id, fields: f }; },
+    invalidateCache() { log.invalidated++; },
+    syncOrderDownstream: async (id, o) => { log.syncs.push([id, o.changedFields]); },
+  };
+  vm.createContext(ctx);
+  const names = ['_wiV2Active', '_wiExpectOpt', '_wiDateWrite', '_wk3IsoOnDay'];
+  vm.runInContext(names.map(n => fn(n)).join('\n') + '\nObject.assign(this,{' + names.join(',') + '});', ctx);
+  return { ctx, log };
+}
+test('date write, v4 inactive: no opts on the PATCH, downstream sync as today', async () => {
+  const { ctx, log } = seam(false);
+  const res = await ctx._wiDateWrite('recE1', 'Loading DateTime', '2026-10-12T06:00:00.000Z', '2026-10-13');
+  assert.strictEqual(res.ok, true);
+  assert.strictEqual(log.patches.length, 1);
+  assert.strictEqual(log.patches[0].opts, undefined, 'v4 off → today\'s request');
+  assert.deepStrictEqual(JSON.parse(JSON.stringify(log.syncs)), [['recE1', ['Loading DateTime']]]);
+  assert.strictEqual(log.invalidated, 1);
+});
+test('date write, v4 active: _expect = the value the panel showed (curIso), not a second read', async () => {
+  const { ctx, log } = seam(true);
+  await ctx._wiDateWrite('recE1', 'Loading DateTime', '2026-10-12T06:00:00.000Z', '2026-10-13');
+  assert.deepStrictEqual(JSON.parse(JSON.stringify(log.patches[0].opts)), { expect: { 'Loading DateTime': '2026-10-12T06:00:00.000Z' } });
+  log.patches = [];
+  await ctx._wiDateWrite('recNOPE', 'Loading DateTime', '2026-10-12T06:00:00.000Z', '2026-10-13');
+  assert.strictEqual(log.patches[0].opts, undefined, 'a record not on this board → no _expect, the request is today\'s');
+});
+test('date write, v4 active: a 409 conflict is returned and nothing downstream runs', async () => {
+  const { ctx, log } = seam(true);
+  ctx._answer = { conflict: true, fields: ['Loading DateTime'], by: 'user', at: null, current: {} };
+  const res = await ctx._wiDateWrite('recE1', 'Loading DateTime', '2026-10-12T06:00:00.000Z', '2026-10-13');
+  assert.strictEqual(res.ok, false);
+  assert.strictEqual(res.conflict.conflict, true);
+  assert.strictEqual(log.invalidated, 0);
+  assert.deepStrictEqual(log.syncs, []);
+});
+test('date write: hh:mm sets the time (v4 panel); without it the old time of day stays; VS CD Date stays a date', async () => {
+  const { ctx, log } = seam(false);
+  await ctx._wiDateWrite('recE1', 'Delivery DateTime', '2026-10-12T06:00:00.000Z', '2026-10-14', '15:30');
+  assert.strictEqual(log.patches[0].f['Delivery DateTime'], new Date('2026-10-14T15:30:00').toISOString());
+  await ctx._wiDateWrite('recE1', 'Loading DateTime', '2026-10-12T06:00:00.000Z', '2026-10-14');
+  assert.strictEqual(log.patches[1].f['Loading DateTime'], ctx._wk3IsoOnDay('2026-10-12T06:00:00.000Z', '2026-10-14'));
+  await ctx._wiDateWrite('recE1', 'VS CD Date', '2026-10-12', '2026-10-15');
+  assert.strictEqual(log.patches[2].f['VS CD Date'], '2026-10-15');
+});
+test('the chip never shows ✓ for a conflict (only reachable while v4 sends _expect)', async () => {
+  const { ctx, log, ev } = world('full');
+  ctx._wiDateWrite = async () => ({ ok: false, conflict: { conflict: true } });
+  ctx._wk3PickDate(ev(), 'recE1', 'Loading DateTime', '2026-10-12T06:00:00Z');
+  const inp = log.appended[0]; inp.value = '2026-10-13';
+  await inp.onchange();
+  assert.ok(!log.toasts.some(t => /✓/.test(t.m)), JSON.stringify(log.toasts));
+  assert.ok(log.toasts.some(t => t.k === 'warn'), 'the conflict is said');
 });
