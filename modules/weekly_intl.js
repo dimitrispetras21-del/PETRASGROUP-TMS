@@ -1043,21 +1043,21 @@ function _wk3Gaps(){
   imps.forEach(r=>{r.style.transition='background .3s';r.style.background='var(--accent-light)';setTimeout(()=>{r.style.background='';},1800);});
   if(imps[0]) imps[0].scrollIntoView({behavior:'smooth',block:'center'});
 }
-function _wiJumpFirstUnassigned(){
-  const impRow=WINTL.rows.find(r=>r.type==='import'&&!r.saved&&!_wiShelved(r));   // a shelved piece has no row to jump to
-  if(impRow&&typeof _ccJump==='function') _ccJump('wi-imp-'+impRow.orderId);
-}
-// The first export still waiting for a vehicle — ONE rule for the header's
-// «εκκρεμή» jump and the «ΚΕΝΟ EXPORT» box. Until 10/10 the box called
-// _wiJumpFirstUnassigned (first IMPORT without a vehicle) while its tooltip
-// promised the first export to assign; an import cannot fill an empty
-// southbound leg. Nothing left to assign is said, not a click that does nothing.
+// «ΚΕΝΟ EXPORT» (own truck, no southbound load) promises the first export
+// still waiting for a vehicle. Until 10/10 it jumped to the first IMPORT
+// without a vehicle, which cannot fill an empty southbound leg. A split
+// parent has no row of its own (its legs are drawn in a frame,
+// _wiSplitFrameHTML), so it is skipped. _ccJump returns silently on a missing
+// id, so a row that is not drawn or that the filter hides is said here, and so
+// is nothing left to assign — never a click that does nothing.
 function _wiFirstPendingExp(){
-  return WINTL.rows.find(r=>r.type==='export'&&!r.legOf&&!r.saved)||null;
+  return WINTL.rows.find(r=>r.type==='export'&&!r.legOf&&!r.hasSplitLegs&&!r.saved)||null;
 }
 function _wiJumpFirstPendingExp(){
   const r=_wiFirstPendingExp();
   if(!r){ toast('Καμία εξαγωγή προς ανάθεση αυτή την εβδομάδα','info'); return; }
+  const el=document.getElementById('wi-row-'+r.id);
+  if(!el||el.style.display==='none'){ toast('Η πρώτη εξαγωγή προς ανάθεση δεν φαίνεται — κρύβεται από το φίλτρο ή την αναζήτηση','info'); return; }
   if(typeof _ccJump==='function') _ccJump('wi-row-'+r.id);
 }
 
@@ -1117,9 +1117,6 @@ function _wiPaint(){
   // Pre-order counter (owner 27/9): every order on the sheet, group members
   // included — a pre-order folded into a group is still one to complete.
   const preFields=[...expRows,...impRows].flatMap(r=>(r.orderIds||[r.orderId]).map(id=>(data.exports.find(x=>x.id===id)||data.imports.find(x=>x.id===id))?.fields||{}));
-  const firstPendingExp=_wiFirstPendingExp();
-  const firstPendingId=firstPendingExp?'wi-row-'+firstPendingExp.id:undefined;
-  const jumpPending=firstPendingId?`_ccJump('${firstPendingId}')`:'_wiJumpFirstUnassigned()';
   // «ΕΛΕΥΘΕΡΑ ΣΗΜΕΡΑ» και ο δείκτης φάσης αφαιρέθηκαν 3/9 (owner: λιγότερος
   // θόρυβος, περισσότερες εγγραφές). Έφυγαν ΚΑΙ οι υπολογισμοί τους, όχι μόνο
   // η εμφάνιση: ένας υπολογισμός που δεν διαβάζει κανείς είναι νεκρός κώδικας.
@@ -1945,13 +1942,21 @@ function _wk3MoreStops(str,arr,kind){
     return `<div class="wk3-stopline${kind==='del'?' dl':''}">${arrow}${circ(i)}${dtxt?`<b class="wk3-sld diff" title="Διαφορετική ημέρα από το 1ο σημείο">${dtxt}</b>`:''}<span class="wk3-sln">${escapeHtml(st.n)}</span></div>`;
   }).join('')}</div>`;
 }
+// A view role READS an order on this board, it never gets the edit form. The
+// form's own «Αποθήκευση» (submitIntlOrder) asks no role and the Worker takes
+// PATCH orders from management/accountant (owner lock 23/8): through the form,
+// the ORDERS row was written and the stop/cascade writes those roles lack were
+// then refused. Instead of a dead end, the same read-only card Weekly Εθνικών
+// opens for a VS load (openIntlReadOnlyCard, no actions). true = handled here.
+function _wiReadOnlyOrder(id){
+  if(can('planning')==='full') return false;
+  if(typeof openIntlReadOnlyCard==='function') openIntlReadOnlyCard(id,'Μόνο ανάγνωση για τον ρόλο σου');
+  else toast('Μόνο ανάγνωση για τον ρόλο σου','warn');
+  return true;
+}
 function _wk3Edit(orderId){
-  // The form's own «Αποθήκευση» (submitIntlOrder) asks no role and the Worker
-  // takes PATCH orders from management/accountant (owner lock 23/8) — so this
-  // door is where a view role stops; through it, the ORDERS row was written
-  // and the stop/cascade writes those roles lack were then refused.
-  if(_wiBlockReadOnly()) return;
   if(!orderId) return;
+  if(_wiReadOnlyOrder(orderId)) return;
   const rec=WINTL.data.exports.find(r=>r.id===orderId)||WINTL.data.imports.find(r=>r.id===orderId);
   if(rec&&typeof openIntlEditWith==='function') openIntlEditWith(orderId, rec.fields);
 }
@@ -7171,10 +7176,10 @@ async function _wiStockLotOpen(anchor,lotRec){
 // ago), so it is read by id — _wk3Edit only knows this week's rows and would
 // open nothing, silently.
 async function _wiStockOpenLotOrder(){
-  if(_wiBlockReadOnly()) return;   // the shelf is drawn for every role; same door rule as _wk3Edit
   const id=getLinkedId(WINTL._stkLot&&WINTL._stkLot.fields&&WINTL._stkLot.fields['Order']);
   if(!id){ toast('Η παραγγελία της παρτίδας δεν βρέθηκε','warn'); return; }
   _wiPanelClose();
+  if(_wiReadOnlyOrder(id)) return;   // the shelf is drawn for every role; same door rule as _wk3Edit
   if(typeof openIntlEditWith!=='function'){ reportError('Η φόρμα παραγγελίας δεν είναι διαθέσιμη — ανανέωσε τη σελίδα',null,'warn'); return; }
   const here=_wiRecOf(id);
   const rec=here||await _wiReadOrder(id);
@@ -7220,9 +7225,9 @@ function _wiStockPieceRelay(oid,noTruck){
   return ` <b class="wi-rly-b" title="${escapeHtml(tip)}">⇄ τοπ.</b>`;
 }
 function _wiStockOpenPiece(id){
-  if(_wiBlockReadOnly()) return;   // the shelf is drawn for every role; same door rule as _wk3Edit
   const p=(WINTL._stkPieces||[]).find(x=>x.id===id); if(!p) return;
   _wiPanelClose();
+  if(_wiReadOnlyOrder(id)) return;   // the shelf is drawn for every role; same door rule as _wk3Edit
   if(typeof openIntlEditWith==='function') openIntlEditWith(id,p.fields);
 }
 async function _wiStockDelPiece(id){
@@ -7962,7 +7967,6 @@ window._wiPreorder = _wiPreorder;
 window._wiExportCSV = _wiExportCSV;
 window._wiApplyFilter = _wiApplyFilter;
 window._wk3Gaps = _wk3Gaps;
-window._wiJumpFirstUnassigned = _wiJumpFirstUnassigned;
 window._wiJumpFirstPendingExp = _wiJumpFirstPendingExp;
 window._wi2Quick = _wi2Quick;
 window._wi2Legend = _wi2Legend;
