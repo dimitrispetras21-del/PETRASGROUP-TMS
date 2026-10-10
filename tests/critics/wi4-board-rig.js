@@ -24,7 +24,8 @@
 // The flag: config.js is served rewritten in memory (WI_V2 'on', optionally
 // WI_PRESENCE true and a 2.5 s active beat) — the repo keeps 'off'. Nothing
 // leaves the machine: fonts, Sentry and the live Worker are aborted or answered
-// here. Clock frozen at Tue 6/10/2026 09:40 Athens (W41), role dispatcher,
+// here. Clock frozen at Tue 6/10/2026 09:40 Athens (W41; presence scenarios
+// start there and let it flow, see openBoard), role dispatcher,
 // 1920×1080 with the sidebar collapsed.
 //
 // Usage (Playwright: cwd = the main repo, which has node_modules; a worktree
@@ -233,11 +234,15 @@ async function openBoard(browser, origin, opts = {}) {
   const ctx = await browser.newContext({ baseURL: origin + '/', viewport: { width: 1920, height: 1080 },
     serviceWorkers: 'block', timezoneId: 'Europe/Athens', locale: 'el-GR' });
   const page = await ctx.newPage();
-  await page.clock.setFixedTime(new Date(FIX._meta.now));
+  // Presence paces beats on Date.now() (never two closer than 2.5 s). A fixed
+  // clock makes that gap never elapse, so only the first beat would ever leave;
+  // presence scenarios start at the same instant and let the clock flow.
+  if (opts.presence) await page.clock.setSystemTime(new Date(FIX._meta.now));
+  else await page.clock.setFixedTime(new Date(FIX._meta.now));
   const db = clone(FIX.tables);
   const S = { db, log: [], inflight: 0, held: [], pageErrors: [], unknown: new Set(), mainReads: 0, beats: [],
     fail: Object.assign({ patch: {} }, opts.fail || {}), hold: Object.assign({}, opts.hold || {}),
-    expectLive: opts.expectLive !== false, triggers: !!opts.triggers, onGet: {}, delay: {}, seq: 0,
+    expectLive: opts.expectLive !== false, triggers: !!opts.triggers, onGet: {}, delay: {}, seq: 0, ready: false, readyWaiters: [],
     presence: Object.assign({ mode: 200, others: [], changes: { n: 0, last_by: null, last_at: null, auto_n: 0 }, next_ms: 2500 }, opts.presenceCfg || {}) };
   page.on('pageerror', e => S.pageErrors.push(String(e).slice(0, 300)));
   page.on('dialog', d => d.accept());
@@ -262,9 +267,16 @@ async function openBoard(browser, origin, opts = {}) {
     const f = u.searchParams.get('filterByFormula') || '';
     // A held read is not «in flight» for settle(): the test decides when it lands.
     if (S.hold.nl && tid === T.NAT_LOADS) await new Promise(r => S.held.push(r));
+    // The first beat leaves at the first v4 paint, before instrument() has
+    // replaced tmsSessionExpired: a 401 answered then runs the real one and
+    // sends the rig to the login page, so the board never settles. Beats are
+    // held until the page is instrumented, outside `inflight` like held reads.
+    if (u.pathname === '/presence') {
+      if (!S.ready) await new Promise(r => S.readyWaiters.push(r));
+      return presence(route, S, body, json);
+    }
     S.inflight++;
     try {
-      if (u.pathname === '/presence') return presence(route, S, body, json);
       if (!mm) return json(route, m === 'GET' ? { records: [] } : { ok: true });
       const tbl = db[tid] || (db[tid] = []);
       if (m === 'GET') return json(route, ...readTable(S, tid, rid, f, tbl));
@@ -284,6 +296,7 @@ async function openBoard(browser, origin, opts = {}) {
     && !/Φόρτωση εβδομάδας/.test(document.getElementById('content').textContent), null, { timeout: 60000 });
   await settle(page, S);
   await instrument(page);
+  S.ready = true; S.readyWaiters.splice(0).forEach(r => r());
   return { page, S };
 }
 
@@ -806,7 +819,7 @@ async function scnMenu(browser, origin) {
     const rcOn = rc.items.filter(i => !i.more).map(i => i.onclick).filter(Boolean).sort();
     ok(scn, 'right-click opens the same menu as the paper-plane', JSON.stringify(rcOn) === JSON.stringify(onclicks.slice().sort()), { plane: onclicks.length, right: rcOn.length });
     await page.keyboard.press('Escape'); await page.waitForTimeout(150);
-    ok(scn, 'Esc closes it', await page.evaluate(() => (document.getElementById('wi-ctx') || {}).style.display !== 'block'));
+    ok(scn, 'Esc closes it', await page.evaluate(() => ((document.getElementById('wi-ctx') || {}).style || {}).display !== 'block'));
   }
   // rota-matched-import: the matched import's section offers the rota leg panel.
   const m = await openMenu(page, 'recWiE023');
@@ -895,7 +908,7 @@ async function scnDate(browser, origin) {
 async function scnKeys(browser, origin) {
   const { page, S } = await openBoard(browser, origin);
   const st = () => page.evaluate(() => ({ focus: WINTL.ui && WINTL.ui.v4Focus, kbd: !!document.querySelector('#content .wi4.wi4-kbd'),
-    ring: document.querySelectorAll('#content .wi4 .wi4-focus').length, ctx: (document.getElementById('wi-ctx') || {}).style.display === 'block',
+    ring: document.querySelectorAll('#content .wi4 .wi4-focus').length, ctx: ((document.getElementById('wi-ctx') || {}).style || {}).display === 'block',
     pop: (() => { const p = document.getElementById('wi-popover'); return !!p && getComputedStyle(p).display !== 'none' && !!p.innerHTML.trim(); })(),
     help: !!document.querySelector('.wi4-dlg .wi4-help-row'), active: document.activeElement && document.activeElement.className }));
   await neutral(page);
@@ -940,7 +953,7 @@ async function scnKeys(browser, origin) {
   const errs0 = S.pageErrors.length;
   await page.keyboard.press('ArrowDown'); await page.keyboard.press('Enter'); await page.keyboard.press('KeyA');
   await page.waitForTimeout(300);
-  ok('keys', 'off-page: no v4 action, no error', !(await page.evaluate(() => !!document.querySelector('#content .wi4') || (document.getElementById('wi-ctx') || {}).style.display === 'block')) && S.pageErrors.length === errs0, S.pageErrors.slice(errs0));
+  ok('keys', 'off-page: no v4 action, no error', !(await page.evaluate(() => !!document.querySelector('#content .wi4') || ((document.getElementById('wi-ctx') || {}).style || {}).display === 'block')) && S.pageErrors.length === errs0, S.pageErrors.slice(errs0));
   ok('keys', 'keys wrote nothing', !writes(S).length, writes(S));
   await page.context().close();
 }
@@ -1046,7 +1059,11 @@ async function scnSaveFail(browser, origin) {
 }
 
 async function scnPresence(browser, origin) {
-  const others = [{ user_sub: 'rig_user_b', user_name: 'Χρήστης Β', role: 'dispatcher',
+  // The shape presence_beat() returns (068: jsonb_build_object('sub', 'name',
+  // 'records')) and the Worker passes through unchanged. Column names
+  // (user_sub/user_name) never reach the browser; the client drops entries
+  // without `sub`, so a fake in the column shape would prove nothing.
+  const others = [{ sub: 'rig_user_b', name: 'Χρήστης Β',
     records: [{ record: 'recWiE003', part: 'export', action: 'date:Loading DateTime', since: '2026-10-06T06:39:40.000Z' }] }];
   let scn = 'presence.live';
   {
@@ -1109,7 +1126,9 @@ async function scnConflict(browser, origin) {
     const mine = page.locator('.wi4-datep .wi4-conf button', { hasText: 'Γράψε τη δική μου' });
     ok(scn, 'buttons «Κράτα …» and «Γράψε τη δική μου»', (await mine.count()) === 1 && (await page.locator('.wi4-datep .wi4-conf button', { hasText: 'Κράτα' }).count()) === 1);
     if (await mine.count()) { await mine.click(); await page.waitForTimeout(500); await settle(page, S, 1000); }
-    const P = patches(S, 'recWiE009');
+    // Only the date writes: syncOrderDownstream's own follow-up PATCH on the
+    // order (e.g. 'National Order Created') is today's cascade, not a resend.
+    const P = patches(S, 'recWiE009').filter(p => p.fields && 'Loading DateTime' in p.fields);
     ok(scn, '«Γράψε τη δική μου» resends with _expect = the server\'s current value and writes', P.length === 2 && P[1].status === 200 && WI4.sameValue(P[1].expect['Loading DateTime'], '2026-10-07T09:00:00.000Z', 'Loading DateTime'), P);
     await page.context().close();
   }
@@ -1208,13 +1227,19 @@ async function scnFallback(browser, origin) {
   // captured WI4 at load, the forcing has no effect and the first check says so.
   const r = await page.evaluate(async () => {
     const real = window.WI4;
-    window.WI4 = new Proxy(real, { get(t, k) { const v = t[k]; return typeof v === 'function' ? () => { throw new Error('rig: forced paint failure'); } : v; } });
+    // normFlag/v2Decide are spared: they decide active() (whether v4 is asked
+    // at all), and a throw there only makes active() false; the scenario is a
+    // PAINT that throws once v4 has been chosen.
+    const spare = new Set(['normFlag', 'v2Decide']);
+    window.WI4 = new Proxy(real, { get(t, k) { const v = t[k]; return typeof v === 'function' && !spare.has(k) ? () => { throw new Error('rig: forced paint failure'); } : v; } });
     const le0 = window.__ev.filter(e => e.k === 'logError').length;
-    _wiPaint();
-    await new Promise(r => setTimeout(r, 300));
+    // _wiPaint lives inside the old module's closure (not on window); the
+    // reachable path to it is a full render, whose paint asks WIV2.paint first.
+    await WI_INTERNAL.renderWeeklyIntl();
+    await new Promise(r => setTimeout(r, 2000));
     const one = { broken: WIV2._broken === true, active: WIV2.active(), v1: !!document.querySelector('#content .wk3.wi2'), v4: !!document.querySelector('#content .wi4'),
       banners: (document.body.innerText.match(/Η νέα προβολή απέτυχε/g) || []).length, le: window.__ev.filter(e => e.k === 'logError').length - le0 };
-    _wiPaint(); await new Promise(r => setTimeout(r, 300));
+    await WI_INTERNAL.renderWeeklyIntl(); await new Promise(r => setTimeout(r, 2000));
     one.banners2 = (document.body.innerText.match(/Η νέα προβολή απέτυχε/g) || []).length;
     one.le2 = window.__ev.filter(e => e.k === 'logError').length - le0;
     window.WI4 = real;
@@ -1225,7 +1250,7 @@ async function scnFallback(browser, origin) {
   ok(scn, 'the banner once, one logError — also after a second paint', r.banners === 1 && r.banners2 === 1 && r.le === 1 && r.le2 === 1, r);
   await neutral(page);
   await page.keyboard.press('ArrowDown'); await page.keyboard.press('Enter'); await page.waitForTimeout(300);
-  ok(scn, 'no v4 hook or listener acts afterwards', await page.evaluate(() => !document.querySelector('.wi4-focus') && (document.getElementById('wi-ctx') || {}).style.display !== 'block' && !document.querySelector('.wi4-datep')));
+  ok(scn, 'no v4 hook or listener acts afterwards', await page.evaluate(() => !document.querySelector('.wi4-focus') && ((document.getElementById('wi-ctx') || {}).style || {}).display !== 'block' && !document.querySelector('.wi4-datep')));
   ok(scn, 'nothing written', !writes(S).length, writes(S));
   await page.context().close();
 }
