@@ -20,9 +20,10 @@
     "truncate": 0
   },
   "styles": {
-    "hex": 442,
-    "truncate": 28,
-    "_note_truncate": "27→28 (5/9): entity card title clamp 2 γραμμές, σκόπιμη εξαίρεση owner (Figma 122:636, commit 1baf3de) — το πλήρες όνομα διαβάζεται στο σώμα της καρτέλας"
+    "hex": 460,
+    "truncate": 29,
+    "_note_truncate": "27→28 (5/9): entity card title clamp 2 γραμμές, σκόπιμη εξαίρεση owner (Figma 122:636, commit 1baf3de) — το πλήρες όνομα διαβάζεται στο σώμα της καρτέλας · 28→29 (11/10, WP3 wi-v4): ΕΝΑΣ κανόνας text-overflow:ellipsis στο μπλοκ wi4 (.wi4-l1/.wi4-l2/.wi4-ell) — ορατό «…» αντί για σιωπηλή κοπή, και το rig του πίνακα απαιτεί title με το πλήρες κείμενο σε κάθε κομμένο κόμβο (TECH_DESIGN §h.4). ΠΡΟΣΟΧΗ: στη βάση 3465af87 μετρήθηκε ΗΔΗ κοπή 29 > 28 — .wk3.wi2 .wk3-seg .wi2-name (d45c388f, 28/9)· ΔΕΝ μπήκε σε αυτό το όριο, θέλει δική του απόφαση.",
+    "_note_hex": "442→460 (11/10, WP3 wi-v4): +18 νέα tokens του μπλοκ wi4 στο :root (TECH_DESIGN §c.2) — grey-1/2/3, line, ctl, slot, red-bg, amber, amber-bg, amber-ink, own, partner, partner-line, partner-ink, partner-sub, blue, chip, hover. Όσα ισούνται με υπάρχον token είναι var(...) και δεν μετράνε (ink, icon, line-2, red, red-ink, delay-bg, blue-ink, split-hd). Ίδια τιμή με υπάρχον token, ΑΛΛΟ νόημα (γι’ αυτό literal): --wi4-own = --bg-hover (γέμισμα κουτιού ιδιόκτητου ≠ hover)· --wi4-amber = --p-warn/--ceo-warn (scoped σε perf/CEO, απρόσιτα από .wi4)· --wi4-blue = --map-cli-1/--ceo-accent-deep (παλέτες χάρτη/CEO)· --wi4-chip = --border-row/--panel-text (περίγραμμα/κείμενο εκεί, γέμισμα chip εδώ). Το hex του styles δεν κρίνει (isStylesheetOnly)· στη βάση μετρήθηκε ήδη 457 > 442, απόκλιση παλαιότερη του WP3."
   },
   "dashboard": {
     "hex": 15,
@@ -49,6 +50,10 @@
     "truncate": 6
   },
   "payroll": {
+    "hex": 0,
+    "truncate": 0
+  },
+  "weekly_intl_v2": {
     "hex": 0,
     "truncate": 0
   }

@@ -61,4 +61,13 @@ module.exports = [
   // Κύμα 5 (5/9/2026): η Μισθοδοσία Οδηγών γεννιέται μέσα στη σουίτα, όχι
   // μετά — αλλιώς είναι η επόμενη «αόρατη» οθόνη (βλ. maint_trucks 30/8).
   { unit: 'payroll',     tier: 3, routes: ['payroll'],      files: ['modules/payroll.js'] },
+  // Weekly Intl v4 (TECH_DESIGN §c.1, 11/10/2026): born inside the suite with
+  // allowance hex 0 / truncate 0, so every colour and every «…» of the new
+  // board lives in the wi4 block of assets/style.css (counted by 'styles'),
+  // never in the module. routes is EMPTY on purpose: the board sits behind
+  // FEATURES.WI_V2='off', so the route 'weekly_intl' still paints the old
+  // board, which the 'weekly_intl' unit already drives — a second live
+  // critic on the same route would test v1 twice and call it v4. Add the
+  // route here when the flag opens for a pilot.
+  { unit: 'weekly_intl_v2', tier: 3, routes: [],          files: ['modules/weekly_intl_v2.js', 'modules/wi4_actions.js'] },
 ];
