@@ -6043,6 +6043,138 @@ async function handlePrintPdf(request, url, origin, env, ctx) {
 }
 __name(handlePrintPdf, "handlePrintPdf");
 
+// src/routes/presence.js — live presence on Weekly International v4 (§g.2).
+// «Who else is on this board, and what do they have open» — an indication,
+// never a lock (owner 10/10, option A). The table and presence_beat() are SQL
+// 068; until 068 runs, the RPC fails and the client is told 503 (paused), never
+// a 200 with an empty list that would read as «nobody else is here».
+//
+// An explicit list, no wildcard, and NOT part of PERMISSIONS: presence is not
+// a table permission, so a future role is born without it (principle 5).
+var PRESENCE_ROLES = ["owner", "management", "accountant", "dispatcher", "warehouse"];
+// The ONLY action strings a colleague's browser will ever render. The same
+// list as the SQL CHECK of 068 (a Worker test compares the two): nothing
+// free-text is stored, so nothing free-text can be painted (no XSS path).
+var PRESENCE_ACTIONS = ["view", "menu", "assign", "date:Loading DateTime", "date:Delivery DateTime", "date:VS CD Date"];
+var PRESENCE_PARTS = ["truck", "export", "import"];
+var PRESENCE_BODY_KEYS = ["board", "week", "tab", "record", "part", "action", "ttl_ms", "leave", "changes_since"];
+var PRESENCE_TAB_RE = /^[a-z0-9]{8,16}$/;
+var PRESENCE_RECORD_RE = /^rec[A-Za-z0-9]{6,30}$/;
+var PRESENCE_ISO_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}:?\d{2})$/;
+// Per-isolate pacing guard. The client already paces at ≥ 2.5 s, so this
+// only catches a misbehaving tab. The wait travels in the JSON body because
+// Retry-After is not readable cross-origin (corsHeaders exposes no headers),
+// and adding Access-Control-Expose-Headers would change every response of
+// the app for one feature.
+var PRESENCE_MIN_GAP_MS = 2e3;
+var PRESENCE_RETRY_AFTER_MS = 2500;
+var PRESENCE_TTL_MAX_MS = 6e5;
+var PRESENCE_NEXT_MIN_MS = 2500;
+var PRESENCE_NEXT_DEFAULT_MS = 5e3;
+var _presenceLastBeat = /* @__PURE__ */ new Map();
+// next_ms comes from the PRESENCE_MS plain var, so the owner can slow every
+// open tab (10 s, 30 s) from the Cloudflare dashboard without a Pages deploy
+// (request budget, §g.5). Never below 2.5 s; an unreadable value → default.
+function presenceNextMs(env) {
+  const raw = env.PRESENCE_MS;
+  if (raw === void 0 || raw === null || raw === "") return PRESENCE_NEXT_DEFAULT_MS;
+  const n = Number(raw);
+  if (!Number.isInteger(n)) {
+    console.warn("PRESENCE_MS is not an integer, using the default", String(raw).slice(0, 20));
+    return PRESENCE_NEXT_DEFAULT_MS;
+  }
+  return Math.max(PRESENCE_NEXT_MIN_MS, n);
+}
+__name(presenceNextMs, "presenceNextMs");
+// Returns an error string, or null when the body is valid. A leave (pagehide)
+// needs only the tab; a beat needs board, week, tab and ttl_ms.
+function presenceBodyError(b) {
+  if (!b || typeof b !== "object" || Array.isArray(b)) return "body must be an object";
+  for (const k of Object.keys(b)) if (!PRESENCE_BODY_KEYS.includes(k)) return `unknown key «${k}»`;
+  if (b.leave !== void 0 && typeof b.leave !== "boolean") return "leave must be boolean";
+  const leave = b.leave === true;
+  if (typeof b.tab !== "string" || !PRESENCE_TAB_RE.test(b.tab)) return "bad tab";
+  if (!leave || b.board !== void 0) {
+    if (b.board !== "weekly_intl") return "bad board";
+  }
+  if (!leave || b.week !== void 0 && b.week !== null) {
+    if (!Number.isInteger(b.week) || b.week < 1 || b.week > 53) return "bad week";
+  }
+  if (b.record !== void 0 && b.record !== null && (typeof b.record !== "string" || !PRESENCE_RECORD_RE.test(b.record))) return "bad record";
+  if (b.part !== void 0 && b.part !== null && !PRESENCE_PARTS.includes(b.part)) return "bad part";
+  if (b.action !== void 0 && b.action !== null && !PRESENCE_ACTIONS.includes(b.action)) return "bad action";
+  if (!leave || b.ttl_ms !== void 0) {
+    if (!Number.isInteger(b.ttl_ms) || b.ttl_ms <= 0 || b.ttl_ms > PRESENCE_TTL_MAX_MS) return "bad ttl_ms";
+  }
+  if (b.changes_since !== void 0 && b.changes_since !== null) {
+    if (typeof b.changes_since !== "string" || !PRESENCE_ISO_RE.test(b.changes_since) || !Number.isFinite(Date.parse(b.changes_since))) return "bad changes_since";
+  }
+  return null;
+}
+__name(presenceBodyError, "presenceBodyError");
+async function handlePresence(request, origin, env) {
+  // The owner's lever first, before any DB call: every open tab stops beating
+  // for the session at its next beat (410 {stop:true}).
+  if (env.PRESENCE_OFF === "1") return jsonOk({ stop: true }, origin, env, 410);
+  const caller = await getCaller(request, env);
+  if (!caller) return jsonError("Unauthorized", 401, origin, env);
+  if (!PRESENCE_ROLES.includes(caller.role)) return jsonError("Forbidden", 403, origin, env);
+  let body;
+  try {
+    body = await request.json();
+  } catch {
+    return jsonError("Invalid request", 400, origin, env);
+  }
+  const bad = presenceBodyError(body);
+  if (bad) return jsonError(`Invalid presence: ${bad}`, 400, origin, env);
+  const leave = body.leave === true;
+  // A leave is one request per tab lifetime (pagehide), right after a beat:
+  // refusing it would keep the row on screen until its TTL.
+  const key = `${caller.sub}|${body.tab}`;
+  const nowMs = Date.now();
+  if (!leave) {
+    const last = _presenceLastBeat.get(key);
+    if (last !== void 0 && nowMs - last < PRESENCE_MIN_GAP_MS) {
+      return jsonOk({ error: "too fast", retry_after_ms: PRESENCE_RETRY_AFTER_MS }, origin, env, 429);
+    }
+    _presenceLastBeat.set(key, nowMs);
+    if (_presenceLastBeat.size > 500) {
+      for (const [k, t] of _presenceLastBeat) if (nowMs - t > 6e4) _presenceLastBeat.delete(k);
+    }
+  }
+  const nextMs = presenceNextMs(env);
+  let out;
+  try {
+    // Name, sub and role come ONLY from the JWT, never from the body.
+    out = await dbRpc(env, "presence_beat", {
+      p_sub: caller.sub,
+      p_tab: body.tab,
+      p_name: caller.name || caller.sub,
+      p_role: caller.role,
+      p_board: "weekly_intl",
+      p_week: body.week ?? null,
+      p_record: body.record ?? null,
+      p_part: body.part ?? null,
+      p_action: body.action ?? null,
+      p_ttl_ms: body.ttl_ms ?? null,
+      p_leave: leave,
+      p_changes_since: body.changes_since ?? null,
+      // Names of colleagues follow today's /audit access (owner, management);
+      // every other role gets counts only.
+      p_names: AUDIT_READERS.includes(caller.role)
+    });
+  } catch (e) {
+    console.error("PRESENCE rpc failed", e.message);
+    return jsonError("presence unavailable", 503, origin, env);
+  }
+  // An answer without the list is not «nobody here»: say it is unavailable.
+  if (!out || typeof out !== "object" || !Array.isArray(out.others)) {
+    console.error("PRESENCE rpc answered without others", String(JSON.stringify(out)).slice(0, 200));
+    return jsonError("presence unavailable", 503, origin, env);
+  }
+  return jsonOk({ others: out.others, changes: out.changes ?? null, now: new Date(nowMs).toISOString(), next_ms: nextMs }, origin, env);
+}
+__name(handlePresence, "handlePresence");
 var FACADE_PATH = /^\/v0\/[^/]+\/([^/]+)(?:\/([^/]+))?\/?$/;
 var ORDERS_TABLE_ID = "tblgHlNmLBH3JTdIM";
 var index_default = {
@@ -6097,6 +6229,9 @@ var index_default = {
     }
     if (url.pathname === "/performance/delivery" && request.method === "GET") {
       return handlePerformance(request, url, origin, env);
+    }
+    if (url.pathname === "/presence" && request.method === "POST") {
+      return handlePresence(request, origin, env);
     }
     const facadeMatch = url.pathname.match(FACADE_PATH);
     if (facadeMatch) {
