@@ -318,14 +318,6 @@ function _oiCardHtml(rec, opts) {
   // order, so the floating card here never offers actions.
   const readOnly = !!(opts && opts.readOnly);
   const canEdit = !readOnly && can('orders') === 'full';
-  // The line that says WHY it is read-only. The default is the VS-load reason
-  // above; Weekly Διεθνών opens any order for a view role (10/10) and passes its
-  // own — «Veroia Switch … επεξεργασία από το Weekly Διεθνών» would be false there.
-  const roNote = (opts && opts.roNote) || 'Veroia Switch · μόνο ανάγνωση — επεξεργασία από το Weekly Διεθνών';
-  // Opened FROM Weekly Διεθνών (view role, 10/10): «άνοιγμα στο Εβδομαδιαίο
-  // Διεθνών →» would repaint the board under the card and close it — dropped
-  // there only; Weekly Εθνικών and this page keep it (reviewer P3, 10/10).
-  const weeklyLink = !(opts && opts.fromWeeklyIntl);
   // Δ2 (list, 3/9) applied to the card too (5/9): 'Order Number' never reaches
   // the browser, so the title printed six characters of the row id («QD3VYG»)
   // as if they were an order number. The Reference is the number the team
@@ -422,7 +414,7 @@ function _oiCardHtml(rec, opts) {
   return `
     <div class="oi-card-head">
       <div class="oi-card-title"><span>${orderNo ? orderNo + ' · ' : ''}${_clientName(f)}</span><button type="button" class="oi-close" title="Κλείσιμο (Esc)" onclick="_oiCloseCard()">×</button></div>
-      ${readOnly ? `<div class="oi-ro-note">${escapeHtml(roNote)}</div>` : ''}
+      ${readOnly ? '<div class="oi-ro-note">Veroia Switch · μόνο ανάγνωση — επεξεργασία από το Weekly Διεθνών</div>' : ''}
       <div class="oi-card-sub">${escapeHtml(_OI_DIR_W[f['Direction']] || f['Direction'] || '—')} · W${escapeHtml(f['Week Number']||'—')} · ${escapeHtml(f['Brand']||'—')}</div>
       ${f['Reference'] ? `<div class="oi-card-sub">Ref (${escapeHtml(f['Reference'])})${orderNoNum ? ' · ' + orderNoNum : ''}</div>` : (orderNoNum ? `<div class="oi-card-sub">${orderNoNum}</div>` : '')}
       <div class="oi-chips">${chips}</div>
@@ -451,7 +443,7 @@ function _oiCardHtml(rec, opts) {
       <div class="oi-links"><button type="button" class="oi-link" onclick="navigate('pallet_ledger')">Ισοζύγιο παλετών →</button></div>
     </div>` : ''}
     <div class="oi-sect"><div class="oi-sect-t">Ανάθεση</div>${assignBody}
-      ${weeklyLink ? `<div class="oi-links"><button type="button" class="oi-link" onclick="navigate('weekly_intl')">άνοιγμα στο Εβδομαδιαίο Διεθνών →</button></div>` : ''}
+      <div class="oi-links"><button type="button" class="oi-link" onclick="navigate('weekly_intl')">άνοιγμα στο Εβδομαδιαίο Διεθνών →</button></div>
     </div>
     ${f['Notes'] ? `<div class="oi-sect oi-sect-alt"><div class="oi-sect-t">Σημειώσεις</div><div class="oi-text">${escapeHtml(f['Notes'])}</div></div>` : ''}
     <div class="oi-sect"><div class="oi-sect-t">Έγγραφα</div><div class="oi-links">${typeof OrderDocs !== 'undefined' ? OrderDocs.sectionHtml(recId, { canEdit }) : ''}</div></div>
@@ -461,7 +453,7 @@ function _oiCardHtml(rec, opts) {
 // Weekly Εθνικών → VS load: show the international order WITHOUT actions.
 // Only the Weekly Διεθνών edits a VS order (owner 14/9). The Weekly page has
 // no #intlDetail, so the card floats (fixed, right) — same markup, same CSS.
-async function openIntlReadOnlyCard(recId, roNote, opts) {
+async function openIntlReadOnlyCard(recId) {
   let rec = INTL_ORDERS.data.find(r => r.id === recId);
   if (!rec) { try { rec = await atGetOne(TABLES.ORDERS, recId); } catch (e) { return; } } // atGetOne toasts + logs (403/404 heard)
   // The card's helpers assume the Διεθνείς Παραγγελίες page ran first: its
@@ -486,7 +478,7 @@ async function openIntlReadOnlyCard(recId, roNote, opts) {
     const main = document.getElementById('content');
     if (main) { const obs = new MutationObserver(() => { obs.disconnect(); panel.remove(); }); obs.observe(main, { childList: true }); }
   }
-  panel.innerHTML = _oiCardHtml(rec, { readOnly: true, roNote, fromWeeklyIntl: !!(opts && opts.fromWeeklyIntl) });
+  panel.innerHTML = _oiCardHtml(rec, { readOnly: true });
   panel.classList.remove('hidden'); panel.scrollTop = 0;
 }
 

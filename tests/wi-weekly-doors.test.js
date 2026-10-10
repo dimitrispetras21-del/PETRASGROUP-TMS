@@ -1,39 +1,18 @@
-// node --test tests/wi-readonly-guards.test.js
-// Inventory 10/10 (origin/main 21353c40): Weekly Διεθνών write paths that did
-// NOT go through _wiBlockReadOnly, the board's one rule for a role whose
-// can('planning') is not 'full' (accountant / management / warehouse = 'view'):
-//   1. date chip      _wi2Date → _wk3PickDate          PATCH order date
-//   2. inline «×»     _wiUnmatch / _wiUnmatchRow       unmatch (→ _wiRemoveImport)
-//   3. leg row        «⨯ αποσύνδεση» → _wiRotUnlink   RT leg DELETE + Rotation ID
-//   4. Καρτέλα Ρότας  _wiRota / _wiRotaSave / _wiRotaSplit   Group ID / dissolve
-//   5. softer         _wiNewImport (opens the form) · _wiAutoMatch (confirm, then
-//                     one refusal per pair and a green «εφαρμόστηκαν ✓» anyway) —
-//                     REMOVED instead, owner 10/10: «δεν χρειάζομαι τελείως το
-//                     αυτόματο ταίριασμα»; the last case checks it stays gone
-//   6. order form     _wk3Edit (route/leg/import cell, split header, rota card
-//                     «Επεξεργασία») · _wiStockOpenLotOrder · _wiStockOpenPiece
-//                     (ΑΠΟΘΕΜΑ shelf, drawn for every role). Added 10/10: the
-//                     form's own «Αποθήκευση» (submitIntlOrder) asks no role,
-//                     and the Worker accepts PATCH orders from management and
-//                     accountant — so the ORDERS row was written, then the
-//                     stops/cascade writes those roles lack were refused.
-//                     A view role gets the read-only card instead (reviewer
-//                     P3-2): openIntlReadOnlyCard, as Weekly Εθνικών does.
-// plus «ΚΕΝΟ EXPORT», whose tooltip promises the first export to assign while
-// it jumped to the first IMPORT without a vehicle (_wiJumpFirstUnassigned).
-// Follow-up 10/10 (reviewer P3s on a16a34f0): the jump walks EVERY candidate
-// to the first visible row, and says «hidden by the filter» apart from «not
-// drawn»; a door's tooltip says what the click does for the role (card for a
-// view role, _wiDoorTip); the read-only card opened FROM Weekly Διεθνών has no
-// «άνοιγμα στο Εβδομαδιαίο Διεθνών →» link (orders_intl.js, OI_SRC=<path>).
-//
-// Each case runs the REAL function, extracted verbatim from the module source,
-// once as a view role (nothing may be written, opened or confirmed; exactly one
-// «Μόνο ανάγνωση» toast) and once as 'full' (the guard lets it through to its
-// first real step). The owner's 23/8 decision stands: the Worker still lets
-// roles edit broadly — this is the front agreeing with its own rule only.
+// node --test tests/wi-weekly-doors.test.js
+// Weekly Διεθνών doors (10/10). History: that morning a guard was added on
+// eight doors so that accountant / management / warehouse could not write
+// from this board (date chip, inline «×», «⨯ αποσύνδεση», Καρτέλα Ρότας and
+// its save/dissolve, empty import box, the order form from a row and from the
+// ΑΠΟΘΕΜΑ shelf). The owner took it back the same day: «αναίρεση. δεν το
+// θέλω αυτό». Those roles act on these doors as before; the last case keeps a
+// role gate from coming back here without the owner's word.
+// What stays from that day: «Αυτόματο ταίριασμα» is gone (owner 10/10), and
+// «ΚΕΝΟ EXPORT» jumps to the first export still to assign — walking every
+// candidate, saying «hidden by the filter» apart from «not drawn» — never to
+// an import, never a click that does nothing.
+// Each case runs the REAL function, extracted verbatim from the module source.
 // UNIT ONLY: nothing leaves the process. WI_SRC=<path> runs the same cases
-// against another copy of weekly_intl.js (the «before» proof: 21353c40 fails).
+// against another copy of weekly_intl.js.
 const { test } = require('node:test');
 const assert = require('node:assert');
 const fs = require('fs');
@@ -41,7 +20,6 @@ const path = require('path');
 const vm = require('vm');
 
 const WI = fs.readFileSync(process.env.WI_SRC || path.join(__dirname, '..', 'modules/weekly_intl.js'), 'utf8');
-const OI = fs.readFileSync(process.env.OI_SRC || path.join(__dirname, '..', 'modules/orders_intl.js'), 'utf8');
 const fnIn = (src, name, optional) => {
   const m = src.match(new RegExp('(?:async )?function ' + name + '\\([^)]*\\) ?\\{[\\s\\S]*?\\n\\}\\n'));
   if (!m && !optional) throw new Error(name + ' not found');
@@ -51,10 +29,9 @@ const fn = (name, optional) => fnIn(WI, name, optional);
 const NAMES = ['_wiBlockReadOnly', '_wk3PickDate', '_wk3IsoOnDay', '_wiUnmatch', '_wiUnmatchRow',
   '_wiRotUnlink', '_wiRota', '_wiRotaSave', '_wiRotaSplit', '_wiNewImport',
   '_wk3Edit', '_wiStockOpenLotOrder', '_wiStockOpenPiece', '_wiStockPieceLine'];
-const NEW = ['_wiFirstPendingExp', '_wiPendingExps', '_wiJumpFirstPendingExp', '_wiReadOnlyOrder', '_wiDoorTip']
+const NEW = ['_wiFirstPendingExp', '_wiPendingExps', '_wiJumpFirstPendingExp']
   .filter(n => fn(n, true));   // absent in one «before» copy or the other
 const SRC = NAMES.concat(NEW).map(n => fn(n)).join('\n');
-const RO = 'Μόνο ανάγνωση για τον ρόλο σου';
 
 function world(role) {
   const log = { toasts: [], patches: [], confirms: [], opened: [], removed: [], appended: [], jumps: [], calls: [] };
@@ -95,7 +72,6 @@ function world(role) {
     // gap box
     _ccJump: id => log.jumps.push(id),
     _dom: {},   // the rows drawn on the board, by element id
-    openIntlReadOnlyCard: (id, note, o) => log.opened.push('read-only card ' + id + ' | ' + note + (o && o.fromWeeklyIntl ? ' | from Weekly Διεθνών' : '')),
     // order form doors (_wk3Edit / _wiStockOpenLotOrder / _wiStockOpenPiece)
     getLinkedId: v => (Array.isArray(v) ? v[0] : v) || null,
     _wiPanelClose: () => log.calls.push('panel close'),
@@ -117,24 +93,8 @@ function world(role) {
   vm.runInContext(SRC + '\nObject.assign(this,{' + NAMES.concat(NEW).join(',') + '});', ctx);
   return { ctx, log, ev };
 }
-// A blocked call: one «Μόνο ανάγνωση» warn, and nothing else touched.
-function assertBlocked(log) {
-  assert.deepStrictEqual(log.toasts, [{ m: RO, k: 'warn' }], 'exactly one read-only toast');
-  assert.deepStrictEqual(log.patches, [], 'no PATCH');
-  assert.deepStrictEqual(log.confirms, [], 'no confirm dialog');
-  assert.deepStrictEqual(log.opened, [], 'no form or card opened');
-  assert.deepStrictEqual(log.removed, [], 'no unmatch');
-  assert.deepStrictEqual(log.appended, [], 'no date picker');
-  assert.deepStrictEqual(log.calls, [], 'no other step');
-}
 
 // 1. date chip
-test('date chip: a view role gets no picker and no PATCH; the click still does not reach the row', () => {
-  const { ctx, log, ev } = world('view'); const e = ev();
-  ctx._wk3PickDate(e, 'recE1', 'Loading DateTime', '2026-10-12T06:00:00Z');
-  assertBlocked(log);
-  assert.ok(e.stopped && e.prevented, 'the row underneath must not open the form instead');
-});
 test('date chip: full role still opens the picker and PATCHes the new day', async () => {
   const { ctx, log, ev } = world('full');
   ctx._wk3PickDate(ev(), 'recE1', 'Loading DateTime', '2026-10-12T06:00:00Z');
@@ -147,16 +107,6 @@ test('date chip: full role still opens the picker and PATCHes the new day', asyn
 });
 
 // 2. inline «×» unmatch
-test('inline «×» on a matched import (_wiUnmatch): view role — one toast, no unmatch', async () => {
-  const { ctx, log } = world('view');
-  await ctx._wiUnmatch('recI1');
-  assertBlocked(log);
-});
-test('inline «×» on a GI group (_wiUnmatchRow): view role — one toast, no unmatch', async () => {
-  const { ctx, log } = world('view');
-  await ctx._wiUnmatchRow(1);
-  assertBlocked(log);
-});
 test('inline «×»: full role still unmatches', async () => {
   const { ctx, log } = world('full');
   await ctx._wiUnmatch('recI1');
@@ -165,17 +115,6 @@ test('inline «×»: full role still unmatches', async () => {
 });
 
 // 3. «⨯ αποσύνδεση» on a rota leg row
-test('«⨯ αποσύνδεση» (_wiRotUnlink): view role — no confirm, no leg DELETE, no Rotation ID PATCH', async () => {
-  const { ctx, log, ev } = world('view'); const e = ev();
-  await ctx._wiRotUnlink(e, 'recL1');
-  assertBlocked(log);
-  assert.ok(e.prevented && e.stopped);
-});
-test('«⨯ αποσύνδεση» with skipConfirm (panel path): view role — still nothing written', async () => {
-  const { ctx, log } = world('view');
-  await ctx._wiRotUnlink(null, 'recL1', true);
-  assertBlocked(log);
-});
 test('«⨯ αποσύνδεση»: full role still asks, then writes', async () => {
   const { ctx, log, ev } = world('full'); ctx._confirmAnswer = true;
   await ctx._wiRotUnlink(ev(), 'recL1');
@@ -184,32 +123,16 @@ test('«⨯ αποσύνδεση»: full role still asks, then writes', async ()
 });
 
 // 4. Καρτέλα Ρότας
-test('Καρτέλα Ρότας (_wiRota): view role — the card does not open', () => {
-  const { ctx, log } = world('view');
-  ctx._wiRota(1);
-  assertBlocked(log);
-  assert.ok(!ctx._wiRotaState, 'no card state');
-});
 test('Καρτέλα Ρότας: full role still opens the card', () => {
   const { ctx, log } = world('full');
   ctx._wiRota(1);
   assert.deepStrictEqual(log.opened, ['rota card']);
   assert.deepStrictEqual([...ctx._wiRotaState.ids], ['recE1', 'recE2']);
 });
-test('«Αποθήκευση σειράς» (_wiRotaSave): view role — no Group ID PATCH', async () => {
-  const { ctx, log } = world('view'); ctx._wiRotaState = { rowId: 1, ids: ['recE2', 'recE1'] };
-  await ctx._wiRotaSave();
-  assertBlocked(log);
-});
 test('«Αποθήκευση σειράς»: full role still writes the order on every member', async () => {
   const { ctx, log } = world('full'); ctx._wiRotaState = { rowId: 1, ids: ['recE2', 'recE1'] };
   await ctx._wiRotaSave();
   assert.deepStrictEqual(log.patches.map(p => [p.id, p.f['Group ID']]), [['recE2', 'GRP-1|recE2,recE1'], ['recE1', 'GRP-1|recE2,recE1']]);
-});
-test('«Διάλυση ομάδας» (_wiRotaSplit): view role — no confirm, no dissolve', async () => {
-  const { ctx, log } = world('view'); ctx._wiRotaState = { rowId: 1, ids: ['recE1', 'recE2'] };
-  await ctx._wiRotaSplit();
-  assertBlocked(log);
 });
 test('«Διάλυση ομάδας»: full role still confirms, then dissolves', async () => {
   const { ctx, log } = world('full'); ctx._confirmAnswer = true; ctx._wiRotaState = { rowId: 1, ids: ['recE1', 'recE2'] };
@@ -219,13 +142,6 @@ test('«Διάλυση ομάδας»: full role still confirms, then dissolves'
 });
 
 // 5. softer paths
-test('empty import box (_wiNewImport): view role — no form, no pending match', () => {
-  const { ctx, log } = world('view');
-  ctx.WINTL.rows[0].importId = null;
-  ctx._wiNewImport(1);
-  assertBlocked(log);
-  assert.ok(!ctx._wiPendingMatch, 'no match left waiting for a form');
-});
 test('empty import box: full role still opens the import form', () => {
   const { ctx, log } = world('full');
   ctx.WINTL.rows[0].importId = null;
@@ -237,26 +153,9 @@ test('«Αυτόματο ταίριασμα» is gone (owner 10/10): no button, 
   assert.doesNotMatch(WI, /Αυτόματο ταίριασμα|_wiAutoMatch|autoN|_wiMatchableImp/);
 });
 
-// 6. order form — the door is the only place a view role is stopped: the
-// form's «Αποθήκευση» asks no role and the Worker takes PATCH orders from
-// management/accountant. A view role reads the order on the read-only card
-// (no actions) — never the edit form, never a dead end. openIntlEditWith is
-// re-stubbed to record id + fields.
+// 6. order form doors: owner/dispatcher get the edit form with the row's own
+// fields. openIntlEditWith is re-stubbed to record id + fields.
 const formLog = (ctx, log) => { ctx.openIntlEditWith = (id, f) => log.opened.push({ id, f }); };
-// A view role at an order door: the read-only card of THAT order, nothing else.
-function assertCard(log, id) {
-  // the card's reason line is this board's, not the VS-load default («Veroia
-  // Switch …»), and the card knows it was opened from this board (no link back here)
-  assert.deepStrictEqual(log.opened, ['read-only card ' + id + ' | ' + RO + ' | from Weekly Διεθνών'], 'the read-only card, not the form');
-  assert.deepStrictEqual(log.toasts, [], 'no dead-end toast');
-  assert.deepStrictEqual(log.patches, []);
-  assert.deepStrictEqual(log.confirms, []);
-}
-test('route / leg / import cell (_wk3Edit): view role — the read-only card, no form', () => {
-  const { ctx, log } = world('view'); formLog(ctx, log);
-  ctx._wk3Edit('recE1');
-  assertCard(log, 'recE1');
-});
 test('route / leg / import cell: full role still opens the form with the row\'s own fields', () => {
   const { ctx, log } = world('full'); formLog(ctx, log);
   ctx._wk3Edit('recI1');
@@ -265,19 +164,6 @@ test('route / leg / import cell: full role still opens the form with the row\'s 
   assert.strictEqual(log.opened[0].f, ctx.WINTL.data.imports[0].fields);
   assert.deepStrictEqual(log.toasts, []);
 });
-test('order door without the read-only card loaded: a view role is told, still no form', () => {
-  const { ctx, log } = world('view'); formLog(ctx, log);
-  delete ctx.openIntlReadOnlyCard;
-  ctx._wk3Edit('recE1');
-  assertBlocked(log);
-});
-test('ΑΠΟΘΕΜΑ «Άνοιγμα παρτίδας» (_wiStockOpenLotOrder): view role — the lot order\'s read-only card, no form, no read', async () => {
-  const { ctx, log } = world('view'); formLog(ctx, log);
-  ctx.WINTL._stkLot = { fields: { Order: ['recE1'] } };
-  await ctx._wiStockOpenLotOrder();
-  assertCard(log, 'recE1');
-  assert.deepStrictEqual(log.calls, ['panel close'], 'the panel closes as for a full role; the card reads by itself');
-});
 test('ΑΠΟΘΕΜΑ «Άνοιγμα παρτίδας»: full role still opens the lot\'s order', async () => {
   const { ctx, log } = world('full'); formLog(ctx, log);
   ctx.WINTL._stkLot = { fields: { Order: ['recE1'] } };
@@ -285,33 +171,11 @@ test('ΑΠΟΘΕΜΑ «Άνοιγμα παρτίδας»: full role still opens 
   assert.deepStrictEqual(log.opened.map(o => o.id), ['recE1']);
   assert.deepStrictEqual(log.calls, ['panel close']);
 });
-test('ΑΠΟΘΕΜΑ piece line (_wiStockOpenPiece): view role — the piece\'s read-only card, no form', () => {
-  const { ctx, log } = world('view'); formLog(ctx, log);
-  ctx.WINTL._stkPieces = [{ id: 'recP1', fields: { Direction: 'Import' } }];
-  ctx._wiStockOpenPiece('recP1');
-  assertCard(log, 'recP1');
-});
 test('ΑΠΟΘΕΜΑ piece line: full role still opens the piece form', () => {
   const { ctx, log } = world('full'); formLog(ctx, log);
   ctx.WINTL._stkPieces = [{ id: 'recP1', fields: { Direction: 'Import' } }];
   ctx._wiStockOpenPiece('recP1');
   assert.deepStrictEqual(log.opened.map(o => o.id), ['recP1']);
-});
-// Caught when written, not by the next audit: a NEW door into an order form
-// fails here unless _wiBlockReadOnly() or _wiReadOnlyOrder() precedes it in
-// the same function. openIntlPieceCreate is left out on purpose — its one
-// caller _wiStockOpenForm is reached only through _wiStockJoin (gated) and the
-// «+ Κομμάτι» button, which is drawn for OrdersStock.canWrite() roles only.
-test('every order-form opener in weekly_intl.js is gated for a view role first', () => {
-  const lines = WI.split('\n'), opener = /\b(openIntlEditWith|openIntlCreate|openIntlScan|openPreorder)\(/;
-  const ungated = [];
-  lines.forEach((l, i) => {
-    if (!opener.test(l) || /^\s*\/\//.test(l)) return;
-    let h = i; while (h >= 0 && !/^(async )?function \w+/.test(lines[h])) h--;
-    const name = h >= 0 ? lines[h].match(/function (\w+)/)[1] : '(top level)';
-    if (h < 0 || !/_wiBlockReadOnly\(\)|_wiReadOnlyOrder\(/.test(lines.slice(h, i + 1).join('\n'))) ungated.push(name + ' @' + (i + 1));
-  });
-  assert.deepStrictEqual(ungated, []);
 });
 
 // «ΚΕΝΟ EXPORT»
@@ -412,80 +276,26 @@ test('«ΚΕΝΟ EXPORT» with none visible: «hidden by the filter» and «not 
   assert.notStrictEqual(hidden, none);
 });
 
-// P3-2: a view role clicking a door gets the read-only card (_wiReadOnlyOrder);
-// a title still saying «φόρμα» tells it something the click no longer does.
-test('ΑΠΟΘΕΜΑ piece line: the tooltip says the card for a view role, the form for a full one', () => {
-  for (const [role, want, wrong] of [['view', /^Κλικ: καρτέλα κομματιού \(μόνο ανάγνωση\)$/, /φόρμα/], ['full', /^Κλικ: φόρμα κομματιού$/, /μόνο ανάγνωση/]]) {
-    const { ctx } = world(role);
-    Object.assign(ctx, {
-      escapeHtml: s => String(s == null ? '' : s), _wiFlatLocName: () => 'Αποθήκη Χ', _wiLooseLate: () => false,
-      _wiStockPieceRelay: () => '', OrdersStock: { statusWord: s => s, canWrite: () => false, lotNumLabel: () => '#1' },
-    });
-    const html = ctx._wiStockPieceLine({ id: 'recP1', fields: { Status: 'Pending' } }, false);
-    const title = (html.match(/class="wi-panel-opt wi-stk-piece"[^>]*?title="([^"]*)"/) || [])[1];
-    assert.match(title, want, role + ': ' + title);
-    assert.doesNotMatch(title, wrong, role + ': ' + title);
-  }
-});
-test('_wiDoorTip: a view role reads the order card (or the given view text), a full role the given title', () => {
-  assert.strictEqual(typeof world('view').ctx._wiDoorTip, 'function', '_wiDoorTip missing');
-  assert.strictEqual(world('full').ctx._wiDoorTip('Κλικ: φόρμα παραγγελίας'), 'Κλικ: φόρμα παραγγελίας');
-  assert.strictEqual(world('view').ctx._wiDoorTip('Κλικ: φόρμα παραγγελίας'), 'Κλικ: καρτέλα παραγγελίας (μόνο ανάγνωση)');
-  assert.strictEqual(world('view').ctx._wiDoorTip('Κλικ: καρτέλα ρότας ομάδας', RO), RO);
-});
-// Caught when written: a NEW «κλικ … φόρμα» title on this board fails here
-// unless it goes through _wiDoorTip (route cell, import card, leg row, GI
-// member line, matched import, ΑΠΟΘΕΜΑ piece — six doors on 10/10).
-test('no tooltip on the board promises a form to a role that gets the card: every «κλικ … φόρμα» title goes through _wiDoorTip', () => {
-  const bad = [];
-  WI.split('\n').forEach((l, i) => {
-    if (/^\s*\/\//.test(l)) return;
-    for (const m of l.matchAll(/title="([^"]*)"/g)) {
-      if (/[Κκ]λικ[^"]*φόρμ/.test(m[1]) && !/^\$\{_wiDoorTip\(/.test(m[1])) bad.push((i + 1) + ': ' + m[1].slice(0, 70));
-    }
-  });
-  assert.deepStrictEqual(bad, []);
+// Owner 10/10 «αναίρεση. δεν το θέλω αυτό»: no role gate on these doors. A
+// gate coming back here is the owner's decision, not a refactor.
+test('owner 10/10: no role gate on the date chip, «×», «⨯ αποσύνδεση», Καρτέλα Ρότας, empty import box or the order-form doors', () => {
+  for (const n of ['_wk3PickDate', '_wiUnmatchRow', '_wiNewImport', '_wiRotUnlink', '_wiRota', '_wiRotaSave', '_wiRotaSplit',
+    '_wk3Edit', '_wiStockOpenLotOrder', '_wiStockOpenPiece'])
+    assert.doesNotMatch(fn(n), /_wiBlockReadOnly\(\)|_wiReadOnlyOrder\(/, n + ' carries a role gate');
+  assert.doesNotMatch(WI, /function _wiReadOnlyOrder|function _wiDoorTip/);
 });
 
-// P3-3: the card's «άνοιγμα στο Εβδομαδιαίο Διεθνών →» repaints the board the
-// card was opened from and closes the card — hidden there, kept everywhere else.
-const WEEKLY_LINK = 'άνοιγμα στο Εβδομαδιαίο Διεθνών';
-function cardWorld() {
-  const panel = { innerHTML: '', scrollTop: 5, classList: { remove() {} } };
-  const rec = { id: 'recE1', fields: { Direction: 'Export', Reference: 'R-1', Truck: ['recT1'] } };
-  const ctx = {
-    console: { log() {}, warn() {}, error() {} },
-    escapeHtml: s => String(s == null ? '' : s),
-    can: () => 'full',
-    OrdersCommon: { isInvoiced: () => false, tempText: () => '' },
-    _OI_STATUS: {}, _OI_REEFER: {}, _OI_DIR_W: {},
-    isPreorder: () => false, preorderChipHtml: () => '',
-    _stopsTotalPallets: () => 0, _oiLocOf: () => ({}), _oiDate: () => '', _oiStops: () => [],
-    F: { STOP_PARENT_ORDER: 'Parent Order' },
-    _cleanSummary: s => s || '—', _clientName: () => 'Πελάτης Α', _oiIsPiece: () => false, _oiMoney: v => String(v),
-    INTL_ORDERS: { data: [rec] },
-    atGetOne: async () => { throw new Error('the record is in INTL_ORDERS — no read expected'); },
-    TABLES: { ORDERS: 'tblO' },
-    _oiEnsureStyles() {}, fhLoadLocations: async () => {}, fhBatchResolveClients: async () => {}, stopsLoad: async () => [],
-    document: { getElementById: id => (id === 'intlDetail' ? panel : null) },
-  };
-  ctx.window = ctx;
-  vm.createContext(ctx);
-  vm.runInContext(fnIn(OI, '_oiCardHtml') + '\n' + fnIn(OI, 'openIntlReadOnlyCard') + '\nObject.assign(this,{_oiCardHtml,openIntlReadOnlyCard});', ctx);
-  return { ctx, panel, rec };
-}
-test('read-only card opened FROM Weekly Διεθνών: no link back to the same board; the reason line and «Ανάθεση» stay', async () => {
-  const { ctx, panel } = cardWorld();
-  await ctx.openIntlReadOnlyCard('recE1', RO, { fromWeeklyIntl: true });   // the call _wiReadOnlyOrder makes
-  assert.ok(!panel.innerHTML.includes(WEEKLY_LINK), 'the link would repaint the board and close the card');
-  assert.ok(panel.innerHTML.includes(RO), 'reason line');
-  assert.match(panel.innerHTML, /oi-sect-t">Ανάθεση</);
-  assert.doesNotMatch(panel.innerHTML, /data-oi-act=/, 'still no actions');
+// The same owner decision, as behaviour: a view role reaches the real first
+// step at these doors again (picker opens; the edit form opens).
+test('owner 10/10: a view role opens the date picker again', async () => {
+  const { ctx, log, ev } = world('view');
+  ctx._wk3PickDate(ev(), 'recE1', 'Loading DateTime', '2026-10-08');
+  assert.strictEqual(log.appended.length, 1, 'the date picker is opened');
+  assert.deepStrictEqual(log.toasts, [], 'no read-only toast');
 });
-test('read-only card from Weekly Εθνικών (VS load, no opts) and the Orders page card keep the link to Weekly Διεθνών', async () => {
-  const { ctx, panel, rec } = cardWorld();
-  await ctx.openIntlReadOnlyCard('recE1');   // weekly_natl.js
-  assert.ok(panel.innerHTML.includes(WEEKLY_LINK), 'Weekly Εθνικών → the VS order is edited on Weekly Διεθνών');
-  assert.ok(panel.innerHTML.includes('Veroia Switch · μόνο ανάγνωση'), 'VS default reason line');
-  assert.ok(ctx._oiCardHtml(rec).includes(WEEKLY_LINK), 'Orders page card');
+test('owner 10/10: a view role opens the order form from a row again', () => {
+  const { ctx, log } = world('view'); formLog(ctx, log);
+  ctx._wk3Edit('recI1');
+  assert.deepStrictEqual(log.opened.map(o => o.id), ['recI1'], 'the edit form, not a read-only card');
+  assert.deepStrictEqual(log.toasts, []);
 });
