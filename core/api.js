@@ -403,7 +403,13 @@ function _tmsSessionAlive() {
   if (typeof tmsStreakEnd === 'function') tmsStreakEnd();
 }
 
-async function _atRetry(fn, retries = 3) {
+// opts.conflict (Weekly Intl v4, TECH_DESIGN §g.3): only a PATCH that carries
+// `_expect` passes it. Its 409 is the Worker's «someone changed what you saw»
+// answer: the same body gets the same 409 on every attempt, and the caller
+// shows its own «Ποια κρατάμε;» dialog, so it goes back at once — no retry, no
+// toast. Without opts a 409 keeps today's path (silent retry → «Save failed»),
+// so no other page changes behaviour.
+async function _atRetry(fn, retries = 3, opts) {
   const reqId = _newReqId();
   if (_tmsSessionGone) throw tmsSessionRefuse(reqId);
   for (let i = 0; i < retries; i++) {
@@ -411,6 +417,7 @@ async function _atRetry(fn, retries = 3) {
       const res = await fn(reqId + '-' + (i + 1));
       _noteWorkerCaps(res);
       if (res.ok) _tmsSessionAlive();
+      if (res.status === 409 && opts && opts.conflict === true) return res;
       if (res.status === 401) {
         // _noRetry: δεν υπάρχει διαδρομή ανανέωσης token — η session μόλις
         // σβήστηκε και ο browser φεύγει για το index.html. Χωρίς τη σημαία, ο
@@ -729,7 +736,13 @@ function atSuppressUndo(fn) {
   return async (...args) => { _atSuppressUndo = true; try { return await fn(...args); } finally { _atSuppressUndo = false; } };
 }
 
-async function atPatch(tableId, recId, fields) {
+// opts.expect (Weekly Intl v4, TECH_DESIGN §g.3): {label: value the user saw}.
+// It travels as the top-level body key `_expect`, and the Worker answers 409
+// instead of writing when the server value moved on. Without opts the body is
+// byte-identical to before — every other caller is untouched.
+let _atExpectIgnoredLogged = false;
+async function atPatch(tableId, recId, fields, opts) {
+  const _expect = opts && opts.expect ? opts.expect : null;
   _auditLog('PATCH', tableId, recId, fields);
   // Capture pre-state for undo (from cache only — no extra fetch)
   let _undoPrev = null;
@@ -754,20 +767,49 @@ async function atPatch(tableId, recId, fields) {
     }
   }
   if (!_isOnline()) {
+    // The queued body never carries `_expect`, on purpose: the replay happens
+    // minutes or hours later, and comparing against what the user saw THEN
+    // would raise a false «someone changed it» for every intervening edit.
     _queueOffline('PATCH', _apiUrl(`/v0/${AT_BASE}/${tableId}/${recId}`), { fields }, recId);
     return { id: recId, fields, _offline: true };
   }
   const res = await _enqueue(() => _atRetry((_r) => _fetchWithTimeout(_apiUrl(`/v0/${AT_BASE}/${tableId}/${recId}`), {
     method: 'PATCH',
     headers: _apiHeaders('PATCH', _r),
-    body: JSON.stringify({ fields, typecast: true })
-  })));
+    body: JSON.stringify(_expect ? { fields, typecast: true, _expect } : { fields, typecast: true })
+  }), undefined, _expect ? { conflict: true } : undefined));
   const data = await res.json();
+  // A conflict is an ANSWER, not a failure: nothing was written, and the v4
+  // caller asks «Ποια κρατάμε;». So no «Save failed» toast — but one app_errors
+  // line, so the trail of who collided with whom survives the dialog.
+  if (_expect && res.status === 409 && data && data.error && typeof data.error === 'object' && data.error.type === 'conflict') {
+    const c = data.error;
+    const conflict = { fields: Array.isArray(c.fields) ? c.fields : [], by: c.by == null ? null : c.by, at: c.at == null ? null : c.at, current: c.current || {} };
+    if (typeof logError === 'function') logError(new Error(`${tableId} · ${recId} · ${conflict.fields.join(', ') || '?'}`), 'atPatch 409 conflict');
+    const e = new Error('conflict');
+    e.conflict = conflict;
+    e._noRetry = true;
+    throw e;
+  }
   if (data.error) {
     const errMsg = _atErrMsg(data.error, 'Unknown Airtable error');
     if (typeof logError === 'function') logError(new Error(errMsg), `atPatch(${tableId}, ${recId})`);
     if (typeof showErrorToast === 'function') showErrorToast('Save failed', 'error');
     throw new Error(errMsg);
+  }
+  // Capability detection: a Worker without the check ignores `_expect` and
+  // writes anyway, which would make «το άλλαξε άλλος» a promise nobody keeps.
+  // true = checked; 'skipped' (the Worker's before-read failed) leaves the
+  // flag as it was — the caller reads data._expectChecked for its quiet note.
+  if (_expect && typeof window !== 'undefined') {
+    if (data._expectChecked === true) window.TMS_EXPECT_LIVE = true;
+    else if (data._expectChecked !== 'skipped') {
+      window.TMS_EXPECT_LIVE = false;
+      if (!_atExpectIgnoredLogged) {
+        _atExpectIgnoredLogged = true;
+        if (typeof logError === 'function') logError(new Error(`${tableId} · ${recId}: the Worker wrote without checking _expect`), 'atPatch _expect ignored');
+      }
+    }
   }
   // Track for undo
   if (_undoPrev && typeof _undoSet === 'function') {
@@ -1191,7 +1233,15 @@ function atTrackVersions(records) {
   if (Array.isArray(records)) records.forEach(r => atTrackVersion(r));
 }
 
-async function atSafePatch(tableId, recId, fields) {
+// opts.expect (Weekly Intl v4, TECH_DESIGN §g.3): the Worker's 409 replaces
+// the version check below, and the conflict comes back as the RETURN value
+// {conflict:true, fields, by, at, current} — the shape the existing
+// `if(res?.conflict)` branches of weekly_intl.js already handle.
+async function atSafePatch(tableId, recId, fields, opts) {
+  if (opts && opts.expect) {
+    try { return await atPatch(tableId, recId, fields, opts); }
+    catch (e) { if (e && e.conflict) return { conflict: true, ...e.conflict }; throw e; }
+  }
   // Check if record was modified by someone else
   const tracked = _recordVersions[recId];
   if (tracked) {
