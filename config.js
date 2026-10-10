@@ -374,4 +374,20 @@ const PERMS = {
 // ON since 5/10/2026 evening: 057 + 057b executed (rules test 119/119), Worker
 // d30184c6 live, live proofs on two test orders (mark, charge, unmark, delete)
 // counted in the base and cleaned to 0 (docs/stock-lots/EXECUTION-PHI1.md step 8).
-const FEATURES = { ORDER_SPLIT: true, GROUP_TILES: true, STOCK_LOTS: true };
+// WI_V2 (Weekly International v4, docs/weekly-intl-redesign/TECH_DESIGN.md §b):
+// three states, 'off' | 'pilot' | 'on'. 'off' is the central kill switch: it
+// overrides every per-browser opt-in (?wi4=1 → localStorage tms_wi4), so the
+// owner never has to visit each browser to stop the new board. Any other value
+// (a typo, true, undefined, a cached config.js without the key) is read as
+// 'off' — unknown = closed (principle 5). Born 'off': with it the old board
+// renders byte-for-byte as before, proved by the identity rig.
+// WI_PRESENCE: live «who else is here» heartbeats (§g). Born false: it costs
+// Worker requests on the Free plan (100k/day for the WHOLE app), so it waits
+// for the owner's 14-day Cloudflare number, SQL 068 and the presence Worker.
+const FEATURES = { ORDER_SPLIT: true, GROUP_TILES: true, STOCK_LOTS: true, WI_V2: 'off', WI_PRESENCE: false };
+// Pilot usernames for FEATURES.WI_V2 === 'pilot' (PLAN §2.1). Empty = nobody.
+const WI_V2_USERS = [];
+// Presence beat pacing in ms (§g.4): every 5 s while the user is active, 30 s
+// once idle for 2 minutes. The Worker's next_ms can only slow it down, and the
+// client never beats faster than every 2.5 s whatever these say.
+const WI_PRESENCE_MS = { active: 5000, idle: 30000, idleAfter: 120000 };

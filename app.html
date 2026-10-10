@@ -106,7 +106,7 @@
   crossorigin="anonymous"
   defer></script>
 <!-- 1. Config (credentials, table IDs, role matrix) -->
-<script src="config.js?v=1791221901"></script>
+<script src="config.js?v=1791665848"></script>
 <!-- 1b. Session streak: BEFORE auth.js, because a page auth.js turns away runs no script after it -->
 <script src="core/session-streak.js?v=1791464457"></script>
 <!-- 2. Core: constants → auth → api → utils → ui → entity → router -->
@@ -141,10 +141,15 @@
 <script src="core/pallet-feed.js?v=1791177599"></script>
 <script src="core/rt-feed.js?v=1791569572"></script>
 <script src="core/relay.js?v=1791230000"></script>
+<!-- 2b. Weekly International v4 (TECH_DESIGN §a.1): pure logic + presence client. Inert while FEATURES.WI_V2 is 'off'. -->
+<script src="core/wi4-logic.js?v=1791665848"></script>
+<script src="core/wi4-presence.js?v=1791665848"></script>
 <!-- 3. Modules -->
 <script src="modules/preorder.js?v=1790658873"></script>
 <script src="modules/dashboard.js?v=1791177599"></script>
 <script src="modules/weekly_intl.js?v=1791638588"></script>
+<script src="modules/weekly_intl_v2.js?v=1791665848"></script>
+<script src="modules/wi4_actions.js?v=1791665848"></script>
 <script src="modules/weekly_natl.js?v=1791147854"></script>
   <script src="modules/daily_ramp.js?v=1791142914"></script>
   <script src="modules/costs.js?v=1791464457"></script>
