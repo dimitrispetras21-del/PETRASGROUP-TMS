@@ -345,6 +345,33 @@ async function dbUpdate(env, table, matchColumn, matchValue, patch) {
   return Array.isArray(rows) ? rows[0] || null : rows;
 }
 __name(dbUpdate, "dbUpdate");
+// Sibling of dbUpdate for a PATCH matched by several filters at once: the
+// compare-and-set of the «_expect» conflict check (wi-v4 §g.2). The caller
+// builds `params` with URLSearchParams, so values such as «+00:00» or spaces
+// are encoded. dbUpdate stays as it is for every other caller. 0 rows → null:
+// the caller decides what a write that did not happen means (never a 200).
+async function dbUpdateWhere(env, table, params, patch) {
+  const url = `${env.SUPABASE_URL}/rest/v1/${table}?${params.toString()}`;
+  const res = await fetch(url, {
+    method: "PATCH",
+    headers: {
+      apikey: env.SUPABASE_SERVICE_KEY,
+      Authorization: `Bearer ${env.SUPABASE_SERVICE_KEY}`,
+      "Content-Type": "application/json",
+      Prefer: "return=representation"
+    },
+    body: JSON.stringify(patch)
+  });
+  if (!res.ok) {
+    const detail = await res.text().catch(() => "");
+    const err = new Error(`dbUpdateWhere ${table} ${res.status}: ${detail.slice(0, 200)}`);
+    try { err.pg = JSON.parse(detail); } catch {}
+    throw err;
+  }
+  const rows = await res.json();
+  return Array.isArray(rows) ? rows[0] || null : rows;
+}
+__name(dbUpdateWhere, "dbUpdateWhere");
 async function dbRpc(env, fn, args) {
   const url = `${env.SUPABASE_URL}/rest/v1/rpc/${fn}`;
   const res = await fetch(url, {
@@ -2697,6 +2724,36 @@ async function shapeOneWithLinks(row, cfg, env) {
   return record;
 }
 __name(shapeOneWithLinks, "shapeOneWithLinks");
+// The same shaping as shapeOneWithLinks, but it THROWS where that one only
+// logs (wi-v4 §g.2). The «_expect» conflict check compares what the user saw
+// with this record: a link resolve that failed for a transient PostgREST
+// error would otherwise drop «Truck» from the record and turn into a false 409
+// that shows the current truck as empty. The caller treats a throw as
+// «could not check» (write proceeds, _expectChecked: "skipped").
+// shapeOneWithLinks itself is unchanged: every other path stays forgiving.
+async function shapeOneStrict(row, cfg, env) {
+  const record = toAirtableRecord(row, columnToLabel(cfg));
+  if (cfg.computed && Object.keys(cfg.computed).length && row?.legacy_id) {
+    const params = new URLSearchParams();
+    params.set("select", ["legacy_id", ...Object.values(cfg.computed)].join(","));
+    params.set("legacy_id", `eq.${row.legacy_id}`);
+    params.set("limit", "1");
+    const { rows: viewRows } = await dbSelectRaw(env, readRelation(cfg), params);
+    if (viewRows?.[0]) {
+      for (const [label, column] of Object.entries(cfg.computed)) {
+        const v = viewRows[0][column];
+        if (v !== null && v !== void 0) record.fields[label] = v;
+      }
+    }
+  }
+  if (cfg.links && Object.keys(cfg.links).length) {
+    const byRow = await resolveLinksOnRead(env, dbSelectRaw, [row], cfg.links);
+    const extra = byRow.get(row);
+    if (extra) Object.assign(record.fields, extra);
+  }
+  return record;
+}
+__name(shapeOneStrict, "shapeOneStrict");
 async function handleFacadeCreate(request, tableId, origin, env, ctx) {
   const { res, caller, cfg } = await authorizeWrite(request, tableId, "POST", origin, env);
   if (res) return res;
@@ -3256,6 +3313,166 @@ function schemaBehind060Response(origin, env) {
   return jsonError("Η βάση δεν έχει ακόμη το migration 060 (τοπικές παραδόσεις) — ο Worker μπήκε πριν από το SQL· ενημέρωσε τον Δημήτρη (060_missing)", 503, origin, env);
 }
 __name(schemaBehind060Response, "schemaBehind060Response");
+// ── «_expect»: the «someone else changed it» check (Weekly Intl v4, §g.2) ──
+// A PATCH may carry, as a TOP-LEVEL body key (never inside `fields`, so
+// buildWriteRow never sees it and it is never logged as an unknown field),
+// `_expect: {label: value-the-user-saw}`. If the row no longer holds what the
+// user saw, the write is refused with a 409 and nothing is written. It is an
+// indication, never a lock: when the Worker cannot read the row, the write
+// goes ahead and says `_expectChecked: "skipped"` (a failed read must never
+// block work at 06:00). Requests without `_expect` take exactly today's path.
+var EXPECT_MAX_LABELS = 12;
+// The comparator. It MUST stay equal to the front's WI4.sameValue: both run
+// worker/test/fixtures/expect-vectors.json (one file, principle 3).
+var EXPECT_DATE_LABELS = ["Loading DateTime", "Delivery DateTime", "VS CD Date"];
+var EXPECT_CHECKBOX_LABELS = ["Is Partner Trip"];
+// Strict on purpose: V8's Date.parse accepts strings like '12' or 'AB 1 2',
+// so a looser rule would make two different plates «equal» and hide a real
+// conflict. Only date labels, and only when BOTH sides match, compare by time.
+var EXPECT_ISO_RE = /^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}:?\d{2})?)?$/;
+function expectEpoch(s) {
+  let v = s;
+  // A datetime without a zone is read as UTC, the way Postgres (session
+  // timezone UTC) stores it. Left to Date.parse, it would be LOCAL time, so a
+  // browser in Athens and the Worker (UTC) would disagree on the same pair.
+  if (v.includes("T") && !/(Z|[+-]\d{2}:?\d{2})$/.test(v)) v += "Z";
+  v = v.replace(/([+-]\d{2})(\d{2})$/, "$1:$2");
+  return Date.parse(v);
+}
+__name(expectEpoch, "expectEpoch");
+function expectSame(label, a, b) {
+  if (EXPECT_CHECKBOX_LABELS.includes(label)) {
+    // A nullable boolean that rt_sync coalesces to false: absent ≡ false.
+    if (a === false) a = null;
+    if (b === false) b = null;
+  }
+  const empty = /* @__PURE__ */ __name((v) => v === null || v === void 0 || v === "" || Array.isArray(v) && v.length === 0, "empty");
+  if (empty(a) && empty(b)) return true;
+  if (empty(a) || empty(b)) return false;
+  if (Array.isArray(a) || Array.isArray(b)) {
+    const norm = /* @__PURE__ */ __name((v) => (Array.isArray(v) ? v : [v]).map((x) => String(x).trim()).sort().join("\0"), "norm");
+    return norm(a) === norm(b);
+  }
+  if (typeof a === "number" || typeof b === "number") {
+    const num = /* @__PURE__ */ __name((v) => typeof v === "number" ? v : String(v).trim() === "" ? NaN : Number(v), "num");
+    const na = num(a), nb = num(b);
+    if (Number.isFinite(na) && Number.isFinite(nb)) return na === nb;
+  }
+  if (EXPECT_DATE_LABELS.includes(label) && typeof a === "string" && typeof b === "string" && EXPECT_ISO_RE.test(a.trim()) && EXPECT_ISO_RE.test(b.trim())) {
+    const ea = expectEpoch(a.trim()), eb = expectEpoch(b.trim());
+    if (Number.isFinite(ea) && Number.isFinite(eb)) return ea === eb;
+  }
+  if (typeof a === "object" || typeof b === "object") return JSON.stringify(a) === JSON.stringify(b);
+  return String(a).trim() === String(b).trim();
+}
+__name(expectSame, "expectSame");
+// label → {column, readLabel}. Labels are canonicalised before comparing:
+// ORDERS has two labels on ONE column ('Cross-dock Date' and 'VS CD Date'),
+// and columnToLabel keeps only the last, so the shaped record carries
+// 'VS CD Date' only. Without this step an _expect on 'Cross-dock Date' (a
+// valid label) would always conflict. Link labels are emitted as they are by
+// resolveLinksOnRead, so they are their own read label. null = not a label of
+// this table (→ 400: a typo must never switch the check off silently).
+function expectCanon(cfg, label) {
+  const column = cfg.fields[label] || (cfg.aliases || {})[label];
+  if (column) {
+    const readLabel = columnToLabel(cfg)[column];
+    return readLabel ? { column, readLabel } : null;
+  }
+  const link = (cfg.links || {})[label];
+  if (link) return { column: link.column, readLabel: label, link: true };
+  return null;
+}
+__name(expectCanon, "expectCanon");
+// Validates body._expect. Returns {labels, canon} or {error}.
+function expectParse(cfg, raw) {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return { error: "_expect must be an object of labels" };
+  const labels = Object.keys(raw);
+  if (!labels.length) return { error: "_expect is empty" };
+  if (labels.length > EXPECT_MAX_LABELS) return { error: `_expect has more than ${EXPECT_MAX_LABELS} labels` };
+  const canon = {};
+  for (const label of labels) {
+    const c = expectCanon(cfg, label);
+    if (!c) return { error: `_expect: unknown label «${label}»` };
+    canon[label] = c;
+  }
+  return { labels, canon };
+}
+__name(expectParse, "expectParse");
+// The newest audit row on this record that changed one of `columns`.
+// Both key styles: Worker rows store record_id = legacy id (after_data as
+// JSON text), trigger rows store id::text (jsonb, actor «trigger:…», role
+// «system»). No row → by/at null: the dialog then says «άλλαξε από τότε που
+// το άνοιξες» instead of guessing a colleague from yesterday. A name is
+// returned only to the roles that read /audit today (AUDIT_READERS); every
+// other role gets 'user' — no role gains anything through this path.
+async function expectAttribution(env, cfg, recId, beforeRow, columns, callerRole) {
+  try {
+    const quote = /* @__PURE__ */ __name((v) => `"${String(v).replace(/["\\]/g, (m) => "\\" + m)}"`, "quote");
+    const keys = [quote(recId)];
+    if (beforeRow && beforeRow.id != null) keys.push(quote(beforeRow.id));
+    const params = new URLSearchParams();
+    params.set("select", "actor,role,created_at,before_data,after_data");
+    params.set("table_name", `eq.${cfg.pg}`);
+    params.set("record_id", `in.(${keys.join(",")})`);
+    params.set("order", "created_at.desc");
+    params.set("limit", "50");
+    const { rows } = await dbSelectRaw(env, "audit_log", params);
+    const parse = /* @__PURE__ */ __name((v) => {
+      if (typeof v !== "string") return v && typeof v === "object" ? v : null;
+      try { return JSON.parse(v); } catch { return null; }
+    }, "parse");
+    for (const r of rows || []) {
+      const b = parse(r.before_data) || {}, a = parse(r.after_data) || {};
+      const touched = columns.some((c) => (c in a || c in b) && JSON.stringify(a[c] ?? null) !== JSON.stringify(b[c] ?? null));
+      if (!touched) continue;
+      const actor = String(r.actor || "");
+      const auto = r.role === "system" || actor.startsWith("trigger:") || actor.startsWith("migration:");
+      const by = auto ? "auto" : AUDIT_READERS.includes(callerRole) ? actor : "user";
+      return { by, at: r.created_at || null };
+    }
+  } catch (e) {
+    console.error(`EXPECT attribution read failed ${cfg.pg} ${recId}`, e.message);
+  }
+  return { by: null, at: null };
+}
+__name(expectAttribution, "expectAttribution");
+// The labels whose value the user would lose: the server no longer holds what
+// the user saw AND the user is not writing what the server already holds (if
+// the server already has the user's value, nothing can be lost — most own-
+// cascade false positives, e.g. a trigger that already set the same truck).
+function expectDiff(exp, labels, canon, cur, bodyByColumn) {
+  return labels.filter((l) => {
+    const now = cur.fields[canon[l].readLabel];
+    if (expectSame(l, exp[l], now)) return false;
+    const col = canon[l].column;
+    if (Object.prototype.hasOwnProperty.call(bodyByColumn, col) && expectSame(l, bodyByColumn[col], now)) return false;
+    return true;
+  });
+}
+__name(expectDiff, "expectDiff");
+// The 409 body, in the caller's own labels. A value the row does not hold is
+// an explicit null, so «Γράψε τη δική μου» can resend _expect = current and
+// still check every label.
+function expectConflictBody(fields, labels, canon, cur, attribution) {
+  const current = {};
+  for (const l of labels) {
+    const v = cur ? cur.fields[canon[l].readLabel] : void 0;
+    current[l] = v === void 0 ? null : v;
+  }
+  return { error: { type: "conflict", fields, by: attribution.by, at: attribution.at, current } };
+}
+__name(expectConflictBody, "expectConflictBody");
+// The cfg the check shapes the row with: the full field map (so canonical
+// read labels match), only the links of the labels being checked (one
+// resolve per checked link table instead of every link of ORDERS), and no
+// computed re-read (an _expect label is a field, alias or link, never computed).
+function expectShapeCfg(cfg, labels, canon) {
+  const links = {};
+  for (const l of labels) if (canon[l].link) links[l] = cfg.links[l];
+  return { ...cfg, computed: void 0, links };
+}
+__name(expectShapeCfg, "expectShapeCfg");
 async function handleFacadeUpdate(request, tableId, recId, origin, env, ctx) {
   const { res, caller, cfg } = await authorizeWrite(request, tableId, "PATCH", origin, env);
   if (res) return res;
@@ -3264,6 +3481,13 @@ async function handleFacadeUpdate(request, tableId, recId, origin, env, ctx) {
     body = await request.json();
   } catch {
     return jsonError("Invalid request", 400, origin, env);
+  }
+  // `_expect` is validated before anything else happens: a bad one is a 400
+  // with no side effect, never a write that silently skipped the check.
+  let expect = null;
+  if (body && body._expect !== void 0) {
+    expect = expectParse(cfg, body._expect);
+    if (expect.error) return jsonError(expect.error, 400, origin, env);
   }
   const { row: patch, error, dropped } = await buildWriteRow(cfg, body.fields, origin, env);
   // This is the deadliest shape of the bug: one good field + one wrong field
@@ -3288,14 +3512,98 @@ async function handleFacadeUpdate(request, tableId, recId, origin, env, ctx) {
   }
   const invErr = invoiceMarkError(cfg.pg, patch, before);
   if (invErr) return jsonError(invErr, 422, origin, env);
+  // _expectChecked: true (checked) | "skipped" (could not check) | undefined
+  // (no _expect: today's path and today's response, byte for byte).
+  let expectChecked;
+  let cas = null;
+  if (expect) {
+    if (before === void 0) {
+      // The before-read failed: write as today, say so (the front shows a quiet note).
+      expectChecked = "skipped";
+    } else if (before !== null) {
+      // before === null (no such row) falls through to today's 404 path.
+      const { labels, canon } = expect;
+      const shapeCfg = expectShapeCfg(cfg, labels, canon);
+      let cur = null;
+      try {
+        cur = await shapeOneStrict(before, shapeCfg, env);
+      } catch (e) {
+        console.error(`EXPECT shape failed ${cfg.name} ${recId}`, e.message);
+        expectChecked = "skipped";
+      }
+      if (cur) {
+        const bodyByColumn = {};
+        for (const [label, value] of Object.entries(body.fields || {})) {
+          const c = expectCanon(cfg, label);
+          if (c) bodyByColumn[c.column] = value;
+        }
+        const diff = expectDiff(body._expect, labels, canon, cur, bodyByColumn);
+        if (diff.length) {
+          const who = await expectAttribution(env, cfg, recId, before, diff.map((l) => canon[l].column), caller.role);
+          return jsonOk(expectConflictBody(diff, labels, canon, cur, who), origin, env, 409);
+        }
+        // Atomic compare-and-set (same idea as the stock-lot charge write):
+        // the PATCH matches only while every checked column still holds the
+        // raw value just read, so no check-then-write window remains and the
+        // request count stays the same. A column the user writes with the
+        // value the server already holds cannot be lost, so it is left out.
+        const params = new URLSearchParams();
+        params.set("legacy_id", `eq.${recId}`);
+        const casColumns = [];
+        for (const l of labels) {
+          const col = canon[l].column;
+          if (casColumns.includes(col)) continue;
+          if (Object.prototype.hasOwnProperty.call(bodyByColumn, col) && expectSame(l, bodyByColumn[col], cur.fields[canon[l].readLabel])) continue;
+          const raw = before[col];
+          // A json/array column has no reliable eq. filter: it stays checked
+          // above but outside the atomic match. No _expect label of the
+          // Weekly board is such a column.
+          if (raw !== null && typeof raw === "object") continue;
+          params.append(col, raw === null || raw === void 0 ? "is.null" : `eq.${raw}`);
+          casColumns.push(col);
+        }
+        cas = { params, cur, labels, canon, bodyByColumn, casColumns };
+        expectChecked = true;
+      }
+    }
+  }
   let updated;
   try {
-    updated = await dbUpdate(env, cfg.pg, "legacy_id", recId, patch);
+    updated = cas ? await dbUpdateWhere(env, cfg.pg, cas.params, patch) : await dbUpdate(env, cfg.pg, "legacy_id", recId, patch);
   } catch (e) {
     console.error(`PATCH facade ${cfg.name}`, e.message);
     const rule = stockRuleError(e);
     if (rule) return stockRuleResponse(rule, origin, env);
     return jsonError("Failed to update record", 500, origin, env);
+  }
+  if (!updated && cas) {
+    // The row changed between the read and the write: the same 409, nothing
+    // written. The row is read again so the dialog shows what it holds NOW;
+    // answering with the value read before would make «Γράψε τη δική μου»
+    // resend a stale _expect and fail forever.
+    const after = await readRowBefore(env, cfg.pg, recId);
+    if (after === null) return jsonError("Record not found", 404, origin, env);
+    const { labels, canon, bodyByColumn } = cas;
+    let now = null;
+    if (after !== void 0) {
+      try {
+        now = await shapeOneStrict(after, expectShapeCfg(cfg, labels, canon), env);
+      } catch (e) {
+        console.error(`EXPECT re-shape failed ${cfg.name} ${recId}`, e.message);
+      }
+    }
+    let diff = now ? expectDiff(body._expect, labels, canon, now, bodyByColumn) : [];
+    if (!diff.length) {
+      // 0 rows yet no visible difference: say which columns were matched,
+      // and leave a trace — this must never pass silently (principle 1).
+      console.error(`EXPECT CAS matched 0 rows ${cfg.name} ${recId}`, cas.casColumns.join(","));
+      diff = labels.filter((l) => cas.casColumns.includes(canon[l].column));
+      if (!diff.length) diff = labels.slice();
+    }
+    const who = await expectAttribution(env, cfg, recId, after || before, diff.map((l) => canon[l].column), caller.role);
+    // If the re-read failed, `current` is the value read before: a resend
+    // with it can only 409 again, it can never overwrite.
+    return jsonOk(expectConflictBody(diff, labels, canon, now || cas.cur, who), origin, env, 409);
   }
   if (!updated) {
     return jsonError("Record not found", 404, origin, env);
@@ -3310,6 +3618,9 @@ async function handleFacadeUpdate(request, tableId, recId, origin, env, ctx) {
     after: updated
   });
   const record = await shapeOneWithLinks(updated, cfg, env);
+  // The front detects an old Worker by the ABSENCE of this key on a 2xx answer
+  // to a request that carried _expect (window.TMS_EXPECT_LIVE = false).
+  if (expectChecked !== void 0) record._expectChecked = expectChecked;
   return jsonOk(record, origin, env);
 }
 __name(handleFacadeUpdate, "handleFacadeUpdate");
