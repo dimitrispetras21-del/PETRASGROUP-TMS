@@ -1,0 +1,261 @@
+// node --test tests/wi-readonly-guards.test.js
+// Inventory 10/10 (origin/main 21353c40): Weekly Διεθνών write paths that did
+// NOT go through _wiBlockReadOnly, the board's one rule for a role whose
+// can('planning') is not 'full' (accountant / management / warehouse = 'view'):
+//   1. date chip      _wi2Date → _wk3PickDate          PATCH order date
+//   2. inline «×»     _wiUnmatch / _wiUnmatchRow       unmatch (→ _wiRemoveImport)
+//   3. leg row        «⨯ αποσύνδεση» → _wiRotUnlink   RT leg DELETE + Rotation ID
+//   4. Καρτέλα Ρότας  _wiRota / _wiRotaSave / _wiRotaSplit   Group ID / dissolve
+//   5. softer         _wiNewImport (opens the form) · _wiAutoMatch (confirm, then
+//                     one refusal per pair and a green «εφαρμόστηκαν ✓» anyway)
+// plus «ΚΕΝΟ EXPORT», whose tooltip promises the first export to assign while
+// it jumped to the first IMPORT without a vehicle (_wiJumpFirstUnassigned).
+//
+// Each case runs the REAL function, extracted verbatim from the module source,
+// once as a view role (nothing may be written, opened or confirmed; exactly one
+// «Μόνο ανάγνωση» toast) and once as 'full' (the guard lets it through to its
+// first real step). The owner's 23/8 decision stands: the Worker still lets
+// roles edit broadly — this is the front agreeing with its own rule only.
+// UNIT ONLY: nothing leaves the process. WI_SRC=<path> runs the same cases
+// against another copy of weekly_intl.js (the «before» proof: 21353c40 fails).
+const { test } = require('node:test');
+const assert = require('node:assert');
+const fs = require('fs');
+const path = require('path');
+const vm = require('vm');
+
+const WI = fs.readFileSync(process.env.WI_SRC || path.join(__dirname, '..', 'modules/weekly_intl.js'), 'utf8');
+const fn = (name, optional) => {
+  const m = WI.match(new RegExp('(?:async )?function ' + name + '\\([^)]*\\) ?\\{[\\s\\S]*?\\n\\}\\n'));
+  if (!m && !optional) throw new Error(name + ' not found');
+  return m ? m[0] : '';
+};
+const NAMES = ['_wiBlockReadOnly', '_wk3PickDate', '_wk3IsoOnDay', '_wiUnmatch', '_wiUnmatchRow',
+  '_wiRotUnlink', '_wiRota', '_wiRotaSave', '_wiRotaSplit', '_wiNewImport', '_wiAutoMatch'];
+const NEW = ['_wiFirstPendingExp', '_wiJumpFirstPendingExp'].filter(n => fn(n, true));   // absent in the «before» copy
+const SRC = NAMES.concat(NEW).map(n => fn(n)).join('\n');
+const RO = 'Μόνο ανάγνωση για τον ρόλο σου';
+
+function world(role) {
+  const log = { toasts: [], patches: [], confirms: [], opened: [], removed: [], appended: [], jumps: [], calls: [] };
+  const ev = () => { const e = { clientX: 10, clientY: 10, stopped: 0, prevented: 0 };
+    e.stopPropagation = () => { e.stopped++; }; e.preventDefault = () => { e.prevented++; }; return e; };
+  const ctx = {
+    console: { log() {}, warn() {}, error() {} },
+    innerWidth: 1200, innerHeight: 800,
+    can: area => (area === 'planning' ? role : 'none'),
+    toast: (m, k) => log.toasts.push({ m, k: k || 'success' }),
+    reportError: (m) => log.toasts.push({ m, k: 'error' }),
+    confirmAction: async (m) => { log.confirms.push(m); return ctx._confirmAnswer; },
+    _confirmAnswer: false,
+    TABLES: { ORDERS: 'tblO' },
+    WI_EXECUTING: ['In Transit', 'Delivered'],
+    atSafePatch: async (_t, id, f) => { log.patches.push({ id, f }); return { id, fields: f }; },
+    atGetOne: async (_t, id) => ({ id, fields: {} }),
+    invalidateCache() {},
+    renderWeeklyIntl: async () => {},
+    document: {
+      createElement: tag => ({ tag, style: {}, value: '', focus() {}, showPicker() {}, remove() {} }),
+      body: { appendChild: el => { log.appended.push(el); } },
+      getElementById: () => null,
+    },
+    // _wiUnmatchRow
+    _wiPieceIn: () => [],
+    _wiRemoveImport: async rowId => { log.removed.push(rowId); return true; },
+    // _wiRotUnlink (rtFindForOrder left undefined: straight to the Rotation ID PATCH)
+    _wiRtLegDelete: async () => ({ ok: true, status: 200 }),
+    // _wiRota / _wiRotaSave / _wiRotaSplit
+    _wiGrpOrder: recs => recs,
+    _wk3Edit: id => log.opened.push('form ' + id),
+    _wiRotaRender: () => log.opened.push('rota card'),
+    _wiRotaClose: () => { ctx._wiRotaState = null; },
+    _wiRepaintRow: () => {},
+    _wiSplit: async rid => { log.calls.push('split ' + rid); },
+    // _wiNewImport
+    openIntlEditWith: (id, f) => log.opened.push('import form ' + (f && f.Direction)),
+    // _wiAutoMatch
+    _wiLotHeld: () => false,
+    _wiMatchableImp: r => r.type === 'import' && !r.matchedTo,
+    preloadReferenceData: async () => { log.calls.push('preload'); },
+    getRefLocations: () => [],
+    toLocalDate: v => (v ? String(v).slice(0, 10) : ''),
+    haversineKm: () => 9999, F: {}, _wiCut: s => s, _wiClean: s => s,
+    _wiSaveImportMatch: async () => { log.calls.push('save match'); },
+    // gap box
+    _ccJump: id => log.jumps.push(id),
+    WINTL: {
+      data: {
+        exports: [{ id: 'recE1', fields: { 'Group ID': 'GRP-1' } }, { id: 'recE2', fields: { 'Group ID': 'GRP-1' } }],
+        imports: [{ id: 'recI1', fields: {} }],
+      },
+      rows: [
+        { id: 1, type: 'export', orderIds: ['recE1', 'recE2'], importId: 'recI1', saved: true },
+        { id: 2, type: 'import', orderId: 'recI1', orderIds: ['recI1'], matchedTo: 'recE1', saved: true },
+      ],
+    },
+  };
+  ctx.window = ctx;
+  vm.createContext(ctx);
+  vm.runInContext(SRC + '\nObject.assign(this,{' + NAMES.concat(NEW).join(',') + '});', ctx);
+  return { ctx, log, ev };
+}
+// A blocked call: one «Μόνο ανάγνωση» warn, and nothing else touched.
+function assertBlocked(log) {
+  assert.deepStrictEqual(log.toasts, [{ m: RO, k: 'warn' }], 'exactly one read-only toast');
+  assert.deepStrictEqual(log.patches, [], 'no PATCH');
+  assert.deepStrictEqual(log.confirms, [], 'no confirm dialog');
+  assert.deepStrictEqual(log.opened, [], 'no form or card opened');
+  assert.deepStrictEqual(log.removed, [], 'no unmatch');
+  assert.deepStrictEqual(log.appended, [], 'no date picker');
+  assert.deepStrictEqual(log.calls, [], 'no other step');
+}
+
+// 1. date chip
+test('date chip: a view role gets no picker and no PATCH; the click still does not reach the row', () => {
+  const { ctx, log, ev } = world('view'); const e = ev();
+  ctx._wk3PickDate(e, 'recE1', 'Loading DateTime', '2026-10-12T06:00:00Z');
+  assertBlocked(log);
+  assert.ok(e.stopped && e.prevented, 'the row underneath must not open the form instead');
+});
+test('date chip: full role still opens the picker and PATCHes the new day', async () => {
+  const { ctx, log, ev } = world('full');
+  ctx._wk3PickDate(ev(), 'recE1', 'Loading DateTime', '2026-10-12T06:00:00Z');
+  assert.strictEqual(log.appended.length, 1, 'picker opened');
+  const inp = log.appended[0]; inp.value = '2026-10-13';
+  await inp.onchange();
+  assert.strictEqual(log.patches.length, 1);
+  assert.strictEqual(log.patches[0].id, 'recE1');
+  assert.ok('Loading DateTime' in log.patches[0].f);
+});
+
+// 2. inline «×» unmatch
+test('inline «×» on a matched import (_wiUnmatch): view role — one toast, no unmatch', async () => {
+  const { ctx, log } = world('view');
+  await ctx._wiUnmatch('recI1');
+  assertBlocked(log);
+});
+test('inline «×» on a GI group (_wiUnmatchRow): view role — one toast, no unmatch', async () => {
+  const { ctx, log } = world('view');
+  await ctx._wiUnmatchRow(1);
+  assertBlocked(log);
+});
+test('inline «×»: full role still unmatches', async () => {
+  const { ctx, log } = world('full');
+  await ctx._wiUnmatch('recI1');
+  assert.deepStrictEqual(log.removed, [1]);
+  assert.deepStrictEqual(log.toasts, []);
+});
+
+// 3. «⨯ αποσύνδεση» on a rota leg row
+test('«⨯ αποσύνδεση» (_wiRotUnlink): view role — no confirm, no leg DELETE, no Rotation ID PATCH', async () => {
+  const { ctx, log, ev } = world('view'); const e = ev();
+  await ctx._wiRotUnlink(e, 'recL1');
+  assertBlocked(log);
+  assert.ok(e.prevented && e.stopped);
+});
+test('«⨯ αποσύνδεση» with skipConfirm (panel path): view role — still nothing written', async () => {
+  const { ctx, log } = world('view');
+  await ctx._wiRotUnlink(null, 'recL1', true);
+  assertBlocked(log);
+});
+test('«⨯ αποσύνδεση»: full role still asks, then writes', async () => {
+  const { ctx, log, ev } = world('full'); ctx._confirmAnswer = true;
+  await ctx._wiRotUnlink(ev(), 'recL1');
+  assert.strictEqual(log.confirms.length, 1);
+  assert.deepStrictEqual(JSON.parse(JSON.stringify(log.patches)), [{ id: 'recL1', f: { 'Rotation ID': '' } }]);
+});
+
+// 4. Καρτέλα Ρότας
+test('Καρτέλα Ρότας (_wiRota): view role — the card does not open', () => {
+  const { ctx, log } = world('view');
+  ctx._wiRota(1);
+  assertBlocked(log);
+  assert.ok(!ctx._wiRotaState, 'no card state');
+});
+test('Καρτέλα Ρότας: full role still opens the card', () => {
+  const { ctx, log } = world('full');
+  ctx._wiRota(1);
+  assert.deepStrictEqual(log.opened, ['rota card']);
+  assert.deepStrictEqual([...ctx._wiRotaState.ids], ['recE1', 'recE2']);
+});
+test('«Αποθήκευση σειράς» (_wiRotaSave): view role — no Group ID PATCH', async () => {
+  const { ctx, log } = world('view'); ctx._wiRotaState = { rowId: 1, ids: ['recE2', 'recE1'] };
+  await ctx._wiRotaSave();
+  assertBlocked(log);
+});
+test('«Αποθήκευση σειράς»: full role still writes the order on every member', async () => {
+  const { ctx, log } = world('full'); ctx._wiRotaState = { rowId: 1, ids: ['recE2', 'recE1'] };
+  await ctx._wiRotaSave();
+  assert.deepStrictEqual(log.patches.map(p => [p.id, p.f['Group ID']]), [['recE2', 'GRP-1|recE2,recE1'], ['recE1', 'GRP-1|recE2,recE1']]);
+});
+test('«Διάλυση ομάδας» (_wiRotaSplit): view role — no confirm, no dissolve', async () => {
+  const { ctx, log } = world('view'); ctx._wiRotaState = { rowId: 1, ids: ['recE1', 'recE2'] };
+  await ctx._wiRotaSplit();
+  assertBlocked(log);
+});
+test('«Διάλυση ομάδας»: full role still confirms, then dissolves', async () => {
+  const { ctx, log } = world('full'); ctx._confirmAnswer = true; ctx._wiRotaState = { rowId: 1, ids: ['recE1', 'recE2'] };
+  await ctx._wiRotaSplit();
+  assert.strictEqual(log.confirms.length, 1);
+  assert.deepStrictEqual(log.calls, ['split 1']);
+});
+
+// 5. softer paths
+test('empty import box (_wiNewImport): view role — no form, no pending match', () => {
+  const { ctx, log } = world('view');
+  ctx.WINTL.rows[0].importId = null;
+  ctx._wiNewImport(1);
+  assertBlocked(log);
+  assert.ok(!ctx._wiPendingMatch, 'no match left waiting for a form');
+});
+test('empty import box: full role still opens the import form', () => {
+  const { ctx, log } = world('full');
+  ctx.WINTL.rows[0].importId = null;
+  ctx._wiNewImport(1);
+  assert.deepStrictEqual(log.opened, ['import form Import']);
+  assert.strictEqual(ctx._wiPendingMatch.rowId, 1);
+});
+test('«Αυτόματο ταίριασμα» (_wiAutoMatch): view role — no work, no confirm, no «εφαρμόστηκαν ✓»', async () => {
+  const { ctx, log } = world('view');
+  ctx.WINTL.rows = [{ id: 1, type: 'export', orderIds: ['recE1'], importId: null }, { id: 2, type: 'import', orderId: 'recI1', matchedTo: null }];
+  await ctx._wiAutoMatch();
+  assertBlocked(log);
+});
+test('«Αυτόματο ταίριασμα»: full role still runs', async () => {
+  const { ctx, log } = world('full');
+  ctx.WINTL.rows = [{ id: 1, type: 'export', orderIds: ['recE1'], importId: null }, { id: 2, type: 'import', orderId: 'recI1', matchedTo: null }];
+  await ctx._wiAutoMatch();
+  assert.ok(log.calls.includes('preload'), 'reached the scoring step');
+});
+
+// «ΚΕΝΟ EXPORT»
+test('«ΚΕΝΟ EXPORT» jumps to the first export still to assign — never to an import', () => {
+  const { ctx, log } = world('view');   // a jump is reading: no role gate
+  assert.strictEqual(typeof ctx._wiJumpFirstPendingExp, 'function', '_wiJumpFirstPendingExp missing');
+  ctx.WINTL.rows = [
+    { id: 1, type: 'import', orderId: 'recI9', saved: false },               // what the old jump picked
+    { id: 2, type: 'export', orderIds: ['recE2'], saved: true },
+    { id: 3, type: 'export', orderIds: ['recE3'], saved: false, legOf: 9 },  // a rota leg is not a row to assign
+    { id: 4, type: 'export', orderIds: ['recE4'], saved: false },
+  ];
+  ctx._wiJumpFirstPendingExp();
+  assert.deepStrictEqual(log.jumps, ['wi-row-4']);
+  assert.deepStrictEqual(log.toasts, []);
+});
+test('«ΚΕΝΟ EXPORT» with nothing to assign says so instead of doing nothing', () => {
+  const { ctx, log } = world('full');
+  assert.strictEqual(typeof ctx._wiJumpFirstPendingExp, 'function', '_wiJumpFirstPendingExp missing');
+  ctx.WINTL.rows = [{ id: 1, type: 'import', orderId: 'recI9', saved: false }, { id: 2, type: 'export', orderIds: ['recE2'], saved: true }];
+  ctx._wiJumpFirstPendingExp();
+  assert.deepStrictEqual(log.jumps, []);
+  assert.strictEqual(log.toasts.length, 1);
+  assert.strictEqual(log.toasts[0].k, 'info');
+});
+test('«ΚΕΝΟ EXPORT» box calls the export jump, and the header «εκκρεμή» uses the same rule', () => {
+  const box = WI.split('\n').find(l => l.includes('>ΚΕΝΟ EXPORT<'));
+  assert.ok(box, 'ΚΕΝΟ EXPORT box not found');
+  assert.match(box, /_wiJumpFirstPendingExp\(\)/);
+  assert.doesNotMatch(box, /_wiJumpFirstUnassigned\(\)/);
+  assert.match(fn('_wiPaint'), /_wiFirstPendingExp\(\)/, 'header and box must share one «first export to assign»');
+  assert.match(WI, /window\._wiJumpFirstPendingExp\s*=\s*_wiJumpFirstPendingExp;/, 'inline onclick needs the window export');
+});

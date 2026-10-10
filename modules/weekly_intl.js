@@ -1047,6 +1047,19 @@ function _wiJumpFirstUnassigned(){
   const impRow=WINTL.rows.find(r=>r.type==='import'&&!r.saved&&!_wiShelved(r));   // a shelved piece has no row to jump to
   if(impRow&&typeof _ccJump==='function') _ccJump('wi-imp-'+impRow.orderId);
 }
+// The first export still waiting for a vehicle — ONE rule for the header's
+// «εκκρεμή» jump and the «ΚΕΝΟ EXPORT» box. Until 10/10 the box called
+// _wiJumpFirstUnassigned (first IMPORT without a vehicle) while its tooltip
+// promised the first export to assign; an import cannot fill an empty
+// southbound leg. Nothing left to assign is said, not a click that does nothing.
+function _wiFirstPendingExp(){
+  return WINTL.rows.find(r=>r.type==='export'&&!r.legOf&&!r.saved)||null;
+}
+function _wiJumpFirstPendingExp(){
+  const r=_wiFirstPendingExp();
+  if(!r){ toast('Καμία εξαγωγή προς ανάθεση αυτή την εβδομάδα','info'); return; }
+  if(typeof _ccJump==='function') _ccJump('wi-row-'+r.id);
+}
 
 // The import rows «ΕΙΣΑΓΩΓΗ · N» counts — ONE list for the board's header and
 // the week's paper (critic-4 C4-07: the paper counted data.imports, i.e. every
@@ -1095,7 +1108,6 @@ function _wiPaint(){
   });
 
   const _ico = (n, s) => (typeof icon === 'function') ? icon(n, s || 14) : '';
-  const _firstExp = (pred) => { const r = expRows.find(pred); return r ? 'wi-row-'+r.id : undefined; };
   const today=(typeof localToday==='function')?localToday():toLocalDate(new Date());
   const _fOf=r=>(data.exports.find(x=>x.id===(r.orderIds?.[0]))||data.imports.find(x=>x.id===r.orderId))?.fields||{};
   // Busy map per paint — the popover availability lines and the free-fleet
@@ -1113,7 +1125,8 @@ function _wiPaint(){
   // Pre-order counter (owner 27/9): every order on the sheet, group members
   // included — a pre-order folded into a group is still one to complete.
   const preFields=[...expRows,...impRows].flatMap(r=>(r.orderIds||[r.orderId]).map(id=>(data.exports.find(x=>x.id===id)||data.imports.find(x=>x.id===id))?.fields||{}));
-  const firstPendingId=_firstExp(r=>!r.saved);
+  const firstPendingExp=_wiFirstPendingExp();
+  const firstPendingId=firstPendingExp?'wi-row-'+firstPendingExp.id:undefined;
   const jumpPending=firstPendingId?`_ccJump('${firstPendingId}')`:'_wiJumpFirstUnassigned()';
   // «ΕΛΕΥΘΕΡΑ ΣΗΜΕΡΑ» και ο δείκτης φάσης αφαιρέθηκαν 3/9 (owner: λιγότερος
   // θόρυβος, περισσότερες εγγραφές). Έφυγαν ΚΑΙ οι υπολογισμοί τους, όχι μόνο
@@ -1422,7 +1435,7 @@ function _wiImpRowHTML(row,impNo){
 
   // Left (export) cell: own vehicle with no export = empty southbound leg.
   let leftInner, leftCls='';
-  if(row.saved&&!impPartner){ leftCls=' gap'; leftInner=`<div class="wi2-gapbox" title="Ιδιόκτητο όχημα χωρίς εξαγωγή — κενό σκέλος καθόδου. Κλικ: πρώτη εξαγωγή προς ανάθεση" onclick="event.stopPropagation();_wiJumpFirstUnassigned()">ΚΕΝΟ EXPORT</div>`; }
+  if(row.saved&&!impPartner){ leftCls=' gap'; leftInner=`<div class="wi2-gapbox" title="Ιδιόκτητο όχημα χωρίς εξαγωγή — κενό σκέλος καθόδου. Κλικ: πρώτη εξαγωγή προς ανάθεση" onclick="event.stopPropagation();_wiJumpFirstPendingExp()">ΚΕΝΟ EXPORT</div>`; }
   else if(row.saved&&impPartner){ leftCls=' bgap'; leftInner=`<div class="wi2-void navy" title="Ανατεθειμένο σε συνεργάτη — δεν αναμένεται δικό μας σκέλος εξαγωγής"></div>`; }
   else leftInner=`<div class="wi2-void"></div>`;
 
@@ -1963,6 +1976,7 @@ function _wk3VsCd(f,dir){
 // σκέτη ημερομηνία.
 function _wk3PickDate(ev,orderId,field,curIso){
   ev.stopPropagation(); ev.preventDefault();
+  if(_wiBlockReadOnly()) return;   // after stopPropagation: the blocked click must not open the row's form either
   if(!orderId) return;
   const inp=document.createElement('input'); inp.type='date';
   inp.value=String(curIso||'').slice(0,10);
@@ -2881,6 +2895,7 @@ async function _wiUnmatch(impId){
 // (_wiSaveImportMatch) calls _wiRemoveImport directly: there the piece rides
 // on with its group.
 async function _wiUnmatchRow(rowId){
+  if(_wiBlockReadOnly()) return; // the inline «×» calls land here directly; also covers _wiUnmatch, which delegates here
   const row=WINTL.rows.find(r=>r.id===rowId);
   const pcs=(row&&row.importId)?_wiPieceIn([row.importId]).filter(id=>!WI_EXECUTING.includes(_wiRecOf(id)?.fields?.['Status'])):[];
   if(!pcs.length) return _wiRemoveImport(rowId);
@@ -2925,6 +2940,7 @@ async function _wiUnmatchRow(rowId){
 // την άνοιξε (owner 3/9). Δεν γράφεται τίποτα εδώ: κρατάμε ΠΟΙΟ export περιμένει
 // και το ταίριασμα εκτελείται μόνο αν η φόρμα όντως δημιουργήσει εγγραφή.
 function _wiNewImport(rowId){
+  if(_wiBlockReadOnly()) return; // same gate as «+ Νέα παραγγελία» (_wiNewOrder)
   const row=WINTL.rows.find(r=>r.id===rowId);
   if(!row) return;
   if(row.importId){ toast('Η γραμμή έχει ήδη ταιριασμένη εισαγωγή','warn'); return; }
@@ -3400,6 +3416,10 @@ async function _wiRemoveImport(rowId){
 // Distance via canonical haversineKm (core/utils.js); local copy removed.
 
 async function _wiAutoMatch() {
+  // Up front, not per pair: _wiSaveImportMatch refuses each pair on its own,
+  // so a view role used to get the confirm, N refusals and then the green
+  // «N ταιριάσματα εφαρμόστηκαν ✓» for a run that wrote nothing.
+  if(_wiBlockReadOnly()) return;
   const {data, rows} = WINTL;
   // Lots never match; a piece reaches a truck only by a person's choice
   // («+ Κομμάτι από απόθεμα…», stock plan §6.7) — never by a score.
@@ -5406,6 +5426,7 @@ async function _wiRotAdd(parentRowId, legOid){
 // front doors.
 async function _wiRotUnlink(e,legOid,skipConfirm){
   if(e){ e.preventDefault(); e.stopPropagation(); }
+  if(_wiBlockReadOnly()) return;   // the leg row's ⨯ button is drawn for every role; the menu door is already gated (_wiLegCtx)
   if(!skipConfirm){
     const ok=await confirmAction('Αποσύνδεση του σκέλους από τη ρότα; (Η ανάθεση οχήματος μένει ως έχει.)',
       {title:'Ρότα',confirmLabel:'Αποσύνδεση'});
@@ -6729,6 +6750,7 @@ function _wiImpGroupPrintQuery(row){
    της ομάδας — Επεξεργασία ανά order + σειρά παράδοσης με ↑↓. Η σειρά
    αποθηκεύεται στο suffix του Group ID (βλ. _wiGrpOrder). */
 function _wiRota(rowId){
+  if(_wiBlockReadOnly()) return; // one of the «split/rota/group panels» _wiBlockReadOnly names — the card's buttons write Group ID / dissolve
   const row=WINTL.rows.find(r=>r.id===rowId); if(!row) return;
   const exps=_wiGrpOrder(row.orderIds.map(id=>WINTL.data.exports.find(r=>r.id===id)).filter(Boolean));
   if(exps.length<2){ _wk3Edit(row.orderIds[0]); return; }
@@ -6789,6 +6811,7 @@ function _wiRotaMv(i,d){
   _wiRotaRender();
 }
 async function _wiRotaSave(){
+  if(_wiBlockReadOnly()) return; // defense in depth — the card itself no longer opens for a view-only role
   const st=window._wiRotaState; if(!st) return;
   const exps=st.ids.map(id=>WINTL.data.exports.find(r=>r.id===id)).filter(Boolean);
   if(exps.length<2){ _wiRotaClose(); return; }
@@ -6816,6 +6839,7 @@ function _wiRotaClose(){ document.getElementById('wiRotaOv')?.remove(); window._
 // (πλέον μόνιμο μετά το view fix), οπότε τα φορτία ξαναγίνονται απλές γραμμές
 // και μετά από refresh. GL/CL δεν αγγίζονται — UI-level ομαδοποίηση μόνο.
 async function _wiRotaSplit(){
+  if(_wiBlockReadOnly()) return; // defense in depth — the card itself no longer opens for a view-only role
   const st=window._wiRotaState; if(!st) return;
   const ok=await confirmAction('Διάλυση της ομάδας; Τα φορτία επιστρέφουν ως ανεξάρτητες γραμμές. (Η ανάθεση μένει στην πρώτη γραμμή — οι υπόλοιπες θέλουν δική τους.)',
     {title:'Groupage', confirmLabel:'Διάλυση'});
@@ -8095,6 +8119,7 @@ window._wiExportCSV = _wiExportCSV;
 window._wiApplyFilter = _wiApplyFilter;
 window._wk3Gaps = _wk3Gaps;
 window._wiJumpFirstUnassigned = _wiJumpFirstUnassigned;
+window._wiJumpFirstPendingExp = _wiJumpFirstPendingExp;
 window._wi2Quick = _wi2Quick;
 window._wi2Legend = _wi2Legend;
 window._wi2PopWarn = _wi2PopWarn;
