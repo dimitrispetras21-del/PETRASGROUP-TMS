@@ -21,6 +21,11 @@
 //                     P3-2): openIntlReadOnlyCard, as Weekly Εθνικών does.
 // plus «ΚΕΝΟ EXPORT», whose tooltip promises the first export to assign while
 // it jumped to the first IMPORT without a vehicle (_wiJumpFirstUnassigned).
+// Follow-up 10/10 (reviewer P3s on a16a34f0): the jump walks EVERY candidate
+// to the first visible row, and says «hidden by the filter» apart from «not
+// drawn»; a door's tooltip says what the click does for the role (card for a
+// view role, _wiDoorTip); the read-only card opened FROM Weekly Διεθνών has no
+// «άνοιγμα στο Εβδομαδιαίο Διεθνών →» link (orders_intl.js, OI_SRC=<path>).
 //
 // Each case runs the REAL function, extracted verbatim from the module source,
 // once as a view role (nothing may be written, opened or confirmed; exactly one
@@ -36,15 +41,18 @@ const path = require('path');
 const vm = require('vm');
 
 const WI = fs.readFileSync(process.env.WI_SRC || path.join(__dirname, '..', 'modules/weekly_intl.js'), 'utf8');
-const fn = (name, optional) => {
-  const m = WI.match(new RegExp('(?:async )?function ' + name + '\\([^)]*\\) ?\\{[\\s\\S]*?\\n\\}\\n'));
+const OI = fs.readFileSync(process.env.OI_SRC || path.join(__dirname, '..', 'modules/orders_intl.js'), 'utf8');
+const fnIn = (src, name, optional) => {
+  const m = src.match(new RegExp('(?:async )?function ' + name + '\\([^)]*\\) ?\\{[\\s\\S]*?\\n\\}\\n'));
   if (!m && !optional) throw new Error(name + ' not found');
   return m ? m[0] : '';
 };
+const fn = (name, optional) => fnIn(WI, name, optional);
 const NAMES = ['_wiBlockReadOnly', '_wk3PickDate', '_wk3IsoOnDay', '_wiUnmatch', '_wiUnmatchRow',
   '_wiRotUnlink', '_wiRota', '_wiRotaSave', '_wiRotaSplit', '_wiNewImport',
-  '_wk3Edit', '_wiStockOpenLotOrder', '_wiStockOpenPiece'];
-const NEW = ['_wiFirstPendingExp', '_wiJumpFirstPendingExp', '_wiReadOnlyOrder'].filter(n => fn(n, true));   // absent in the «before» copy
+  '_wk3Edit', '_wiStockOpenLotOrder', '_wiStockOpenPiece', '_wiStockPieceLine'];
+const NEW = ['_wiFirstPendingExp', '_wiPendingExps', '_wiJumpFirstPendingExp', '_wiReadOnlyOrder', '_wiDoorTip']
+  .filter(n => fn(n, true));   // absent in one «before» copy or the other
 const SRC = NAMES.concat(NEW).map(n => fn(n)).join('\n');
 const RO = 'Μόνο ανάγνωση για τον ρόλο σου';
 
@@ -87,7 +95,7 @@ function world(role) {
     // gap box
     _ccJump: id => log.jumps.push(id),
     _dom: {},   // the rows drawn on the board, by element id
-    openIntlReadOnlyCard: (id, note) => log.opened.push('read-only card ' + id + ' | ' + note),
+    openIntlReadOnlyCard: (id, note, o) => log.opened.push('read-only card ' + id + ' | ' + note + (o && o.fromWeeklyIntl ? ' | from Weekly Διεθνών' : '')),
     // order form doors (_wk3Edit / _wiStockOpenLotOrder / _wiStockOpenPiece)
     getLinkedId: v => (Array.isArray(v) ? v[0] : v) || null,
     _wiPanelClose: () => log.calls.push('panel close'),
@@ -237,8 +245,9 @@ test('«Αυτόματο ταίριασμα» is gone (owner 10/10): no button, 
 const formLog = (ctx, log) => { ctx.openIntlEditWith = (id, f) => log.opened.push({ id, f }); };
 // A view role at an order door: the read-only card of THAT order, nothing else.
 function assertCard(log, id) {
-  // the card's reason line is this board's, not the VS-load default («Veroia Switch …»)
-  assert.deepStrictEqual(log.opened, ['read-only card ' + id + ' | ' + RO], 'the read-only card, not the form');
+  // the card's reason line is this board's, not the VS-load default («Veroia
+  // Switch …»), and the card knows it was opened from this board (no link back here)
+  assert.deepStrictEqual(log.opened, ['read-only card ' + id + ' | ' + RO + ' | from Weekly Διεθνών'], 'the read-only card, not the form');
   assert.deepStrictEqual(log.toasts, [], 'no dead-end toast');
   assert.deepStrictEqual(log.patches, []);
   assert.deepStrictEqual(log.confirms, []);
@@ -357,4 +366,126 @@ test('«ΚΕΝΟ EXPORT» box calls the export jump; the dead header jump and th
   assert.match(box, /_wiJumpFirstPendingExp\(\)/);
   assert.doesNotMatch(WI, /jumpPending|_wiJumpFirstUnassigned/);
   assert.match(WI, /window\._wiJumpFirstPendingExp\s*=\s*_wiJumpFirstPendingExp;/, 'inline onclick needs the window export');
+});
+
+// ── Follow-up 10/10 (reviewer P3s on a16a34f0) ──────────────────────────────
+// P3-1: the jump stopped at the FIRST candidate — hidden or never drawn, a
+// later visible export was never reached and the toast blamed the filter even
+// when no filter was on.
+const exps = ids => ids.map(id => ({ id, type: 'export', orderIds: ['recE' + id], saved: false }));
+test('«ΚΕΝΟ EXPORT»: the first export to assign is hidden by the filter — it jumps to the next VISIBLE one', () => {
+  const { ctx, log } = world('full');
+  ctx.WINTL.rows = exps([4, 7]);
+  ctx._dom['wi-row-4'] = { style: { display: 'none' } };
+  ctx._dom['wi-row-7'] = { style: {} };
+  ctx._wiJumpFirstPendingExp();
+  assert.deepStrictEqual(log.jumps, ['wi-row-7']);
+  assert.deepStrictEqual(log.toasts, []);
+});
+test('«ΚΕΝΟ EXPORT»: the first export to assign is not drawn — it jumps to the next drawn, visible one', () => {
+  const { ctx, log } = world('full');
+  ctx.WINTL.rows = exps([8, 9]);
+  ctx._dom['wi-row-9'] = { style: {} };
+  ctx._wiJumpFirstPendingExp();
+  assert.deepStrictEqual(log.jumps, ['wi-row-9']);
+  assert.deepStrictEqual(log.toasts, []);
+});
+test('«ΚΕΝΟ EXPORT» with none visible: «hidden by the filter» and «not drawn» are two different messages, neither the «nothing to assign» one', () => {
+  const run = (rows, dom) => {
+    const { ctx, log } = world('full');
+    ctx.WINTL.rows = rows; Object.assign(ctx._dom, dom);
+    ctx._wiJumpFirstPendingExp();
+    assert.deepStrictEqual(log.jumps, []);
+    assert.strictEqual(log.toasts.length, 1);
+    assert.strictEqual(log.toasts[0].k, 'info');
+    return log.toasts[0].m;
+  };
+  const hidden = run(exps([4, 5]), { 'wi-row-4': { style: { display: 'none' } }, 'wi-row-5': { style: { display: 'none' } } });
+  // one hidden + one not drawn: clearing the filter WOULD show one, so the filter is what to say
+  const mixed = run(exps([4, 5]), { 'wi-row-5': { style: { display: 'none' } } });
+  const notDrawn = run(exps([4, 5]), {});
+  const none = run([], {});
+  assert.match(hidden, /φίλτρο|αναζήτηση/);
+  assert.strictEqual(mixed, hidden);
+  assert.doesNotMatch(notDrawn, /φίλτρο|αναζήτηση/, 'no filter is on — the toast must not blame it');
+  assert.notStrictEqual(notDrawn, none);
+  assert.notStrictEqual(hidden, none);
+});
+
+// P3-2: a view role clicking a door gets the read-only card (_wiReadOnlyOrder);
+// a title still saying «φόρμα» tells it something the click no longer does.
+test('ΑΠΟΘΕΜΑ piece line: the tooltip says the card for a view role, the form for a full one', () => {
+  for (const [role, want, wrong] of [['view', /^Κλικ: καρτέλα κομματιού \(μόνο ανάγνωση\)$/, /φόρμα/], ['full', /^Κλικ: φόρμα κομματιού$/, /μόνο ανάγνωση/]]) {
+    const { ctx } = world(role);
+    Object.assign(ctx, {
+      escapeHtml: s => String(s == null ? '' : s), _wiFlatLocName: () => 'Αποθήκη Χ', _wiLooseLate: () => false,
+      _wiStockPieceRelay: () => '', OrdersStock: { statusWord: s => s, canWrite: () => false, lotNumLabel: () => '#1' },
+    });
+    const html = ctx._wiStockPieceLine({ id: 'recP1', fields: { Status: 'Pending' } }, false);
+    const title = (html.match(/class="wi-panel-opt wi-stk-piece"[^>]*?title="([^"]*)"/) || [])[1];
+    assert.match(title, want, role + ': ' + title);
+    assert.doesNotMatch(title, wrong, role + ': ' + title);
+  }
+});
+test('_wiDoorTip: a view role reads the order card (or the given view text), a full role the given title', () => {
+  assert.strictEqual(typeof world('view').ctx._wiDoorTip, 'function', '_wiDoorTip missing');
+  assert.strictEqual(world('full').ctx._wiDoorTip('Κλικ: φόρμα παραγγελίας'), 'Κλικ: φόρμα παραγγελίας');
+  assert.strictEqual(world('view').ctx._wiDoorTip('Κλικ: φόρμα παραγγελίας'), 'Κλικ: καρτέλα παραγγελίας (μόνο ανάγνωση)');
+  assert.strictEqual(world('view').ctx._wiDoorTip('Κλικ: καρτέλα ρότας ομάδας', RO), RO);
+});
+// Caught when written: a NEW «κλικ … φόρμα» title on this board fails here
+// unless it goes through _wiDoorTip (route cell, import card, leg row, GI
+// member line, matched import, ΑΠΟΘΕΜΑ piece — six doors on 10/10).
+test('no tooltip on the board promises a form to a role that gets the card: every «κλικ … φόρμα» title goes through _wiDoorTip', () => {
+  const bad = [];
+  WI.split('\n').forEach((l, i) => {
+    if (/^\s*\/\//.test(l)) return;
+    for (const m of l.matchAll(/title="([^"]*)"/g)) {
+      if (/[Κκ]λικ[^"]*φόρμ/.test(m[1]) && !/^\$\{_wiDoorTip\(/.test(m[1])) bad.push((i + 1) + ': ' + m[1].slice(0, 70));
+    }
+  });
+  assert.deepStrictEqual(bad, []);
+});
+
+// P3-3: the card's «άνοιγμα στο Εβδομαδιαίο Διεθνών →» repaints the board the
+// card was opened from and closes the card — hidden there, kept everywhere else.
+const WEEKLY_LINK = 'άνοιγμα στο Εβδομαδιαίο Διεθνών';
+function cardWorld() {
+  const panel = { innerHTML: '', scrollTop: 5, classList: { remove() {} } };
+  const rec = { id: 'recE1', fields: { Direction: 'Export', Reference: 'R-1', Truck: ['recT1'] } };
+  const ctx = {
+    console: { log() {}, warn() {}, error() {} },
+    escapeHtml: s => String(s == null ? '' : s),
+    can: () => 'full',
+    OrdersCommon: { isInvoiced: () => false, tempText: () => '' },
+    _OI_STATUS: {}, _OI_REEFER: {}, _OI_DIR_W: {},
+    isPreorder: () => false, preorderChipHtml: () => '',
+    _stopsTotalPallets: () => 0, _oiLocOf: () => ({}), _oiDate: () => '', _oiStops: () => [],
+    F: { STOP_PARENT_ORDER: 'Parent Order' },
+    _cleanSummary: s => s || '—', _clientName: () => 'Πελάτης Α', _oiIsPiece: () => false, _oiMoney: v => String(v),
+    INTL_ORDERS: { data: [rec] },
+    atGetOne: async () => { throw new Error('the record is in INTL_ORDERS — no read expected'); },
+    TABLES: { ORDERS: 'tblO' },
+    _oiEnsureStyles() {}, fhLoadLocations: async () => {}, fhBatchResolveClients: async () => {}, stopsLoad: async () => [],
+    document: { getElementById: id => (id === 'intlDetail' ? panel : null) },
+  };
+  ctx.window = ctx;
+  vm.createContext(ctx);
+  vm.runInContext(fnIn(OI, '_oiCardHtml') + '\n' + fnIn(OI, 'openIntlReadOnlyCard') + '\nObject.assign(this,{_oiCardHtml,openIntlReadOnlyCard});', ctx);
+  return { ctx, panel, rec };
+}
+test('read-only card opened FROM Weekly Διεθνών: no link back to the same board; the reason line and «Ανάθεση» stay', async () => {
+  const { ctx, panel } = cardWorld();
+  await ctx.openIntlReadOnlyCard('recE1', RO, { fromWeeklyIntl: true });   // the call _wiReadOnlyOrder makes
+  assert.ok(!panel.innerHTML.includes(WEEKLY_LINK), 'the link would repaint the board and close the card');
+  assert.ok(panel.innerHTML.includes(RO), 'reason line');
+  assert.match(panel.innerHTML, /oi-sect-t">Ανάθεση</);
+  assert.doesNotMatch(panel.innerHTML, /data-oi-act=/, 'still no actions');
+});
+test('read-only card from Weekly Εθνικών (VS load, no opts) and the Orders page card keep the link to Weekly Διεθνών', async () => {
+  const { ctx, panel, rec } = cardWorld();
+  await ctx.openIntlReadOnlyCard('recE1');   // weekly_natl.js
+  assert.ok(panel.innerHTML.includes(WEEKLY_LINK), 'Weekly Εθνικών → the VS order is edited on Weekly Διεθνών');
+  assert.ok(panel.innerHTML.includes('Veroia Switch · μόνο ανάγνωση'), 'VS default reason line');
+  assert.ok(ctx._oiCardHtml(rec).includes(WEEKLY_LINK), 'Orders page card');
 });

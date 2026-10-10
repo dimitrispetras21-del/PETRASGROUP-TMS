@@ -1050,15 +1050,26 @@ function _wk3Gaps(){
 // _wiSplitFrameHTML), so it is skipped. _ccJump returns silently on a missing
 // id, so a row that is not drawn or that the filter hides is said here, and so
 // is nothing left to assign — never a click that does nothing.
-function _wiFirstPendingExp(){
-  return WINTL.rows.find(r=>r.type==='export'&&!r.legOf&&!r.hasSplitLegs&&!r.saved)||null;
+// Every candidate is walked, not just the first (reviewer P3, 10/10): a hidden
+// or undrawn first export used to stop the jump while a later one was on
+// screen. With none visible, «the filter hides them» is said only when at
+// least one is drawn — clearing the filter would show it; otherwise no filter
+// is to blame and the toast must not send the user to clear one.
+function _wiPendingExps(){
+  return WINTL.rows.filter(r=>r.type==='export'&&!r.legOf&&!r.hasSplitLegs&&!r.saved);
 }
 function _wiJumpFirstPendingExp(){
-  const r=_wiFirstPendingExp();
-  if(!r){ toast('Καμία εξαγωγή προς ανάθεση αυτή την εβδομάδα','info'); return; }
-  const el=document.getElementById('wi-row-'+r.id);
-  if(!el||el.style.display==='none'){ toast('Η πρώτη εξαγωγή προς ανάθεση δεν φαίνεται — κρύβεται από το φίλτρο ή την αναζήτηση','info'); return; }
-  if(typeof _ccJump==='function') _ccJump('wi-row-'+r.id);
+  const cands=_wiPendingExps();
+  if(!cands.length){ toast('Καμία εξαγωγή προς ανάθεση αυτή την εβδομάδα','info'); return; }
+  const els=cands.map(r=>document.getElementById('wi-row-'+r.id));
+  const i=els.findIndex(el=>el&&el.style.display!=='none');
+  if(i<0){
+    toast(els.some(Boolean)
+      ?'Οι εξαγωγές προς ανάθεση κρύβονται από το φίλτρο ή την αναζήτηση'
+      :'Οι εξαγωγές προς ανάθεση δεν εμφανίζονται σε αυτόν τον πίνακα','info');
+    return;
+  }
+  if(typeof _ccJump==='function') _ccJump('wi-row-'+cands[i].id);
 }
 
 // The import rows «ΕΙΣΑΓΩΓΗ · N» counts — ONE list for the board's header and
@@ -1481,7 +1492,7 @@ function _wiImpRowHTML(row,impNo){
         ? `<button class="wk3-prt r" title="Εκτύπωση ομάδας (import) — ${row.orderIds.length} έγγραφα σε ένα πακέτο" data-shq="${_wiImpGroupPrintQuery(row)}" data-shtitle="Εντολές εισαγωγής (ομάδα) — W${WINTL.week}" onclick="event.stopPropagation();_wiPrintImpGroup(${row.id})">⎙<sup>I</sup></button>`
         : `<button class="wk3-prt r" title="Εκτύπωση εντολής (import) — δεξί κλικ: κοινή χρήση" data-shq="${printSheetQuery(imp.id,'import',!!row.partnerId)}" data-shtitle="Εντολή εισαγωγής — W${WINTL.week}" onclick="event.stopPropagation();_wiPrintImp('${imp.id}',${row.partnerId?'true':'false'})">⎙<sup>I</sup></button>`}
     </div>`}
-    <div class="wk3-leg imp" style="cursor:pointer" title="Κλικ: άνοιγμα φόρμας παραγγελίας — σύρε για ταίριασμα" onclick="event.stopPropagation();_wk3Edit('${imp.id}')">${isPre?loadCard:`${loadCard}<span class="wi2-arrow">→</span>${delCard}`}</div>
+    <div class="wk3-leg imp" style="cursor:pointer" title="${_wiDoorTip('Κλικ: άνοιγμα φόρμας παραγγελίας — σύρε για ταίριασμα')}" onclick="event.stopPropagation();_wk3Edit('${imp.id}')">${isPre?loadCard:`${loadCard}<span class="wi2-arrow">→</span>${delCard}`}</div>
     <div class="wk3-feed r" title="${impVS2?'Εθνική διανομή από Βέροια — τελικός προορισμός. Ο μεταφορέας συμπληρώνεται στο Weekly National.':'Χωρίς εθνικό σκέλος'}">${feedR}${(typeof impVS2!=="undefined"?impVS2:(imp&&impVS))?_wi2Carrier(imp.id):''}</div>
   </div>`;
 }
@@ -1501,7 +1512,7 @@ function _wiLegRowHTML(legRow){
   // διαδρομής (3/4), σκέλος εισαγωγής στη στήλη εισαγωγών (5/6).
   const legCell=`<div class="wk3-leg" style="grid-column:${dir==='import'?'5/6':'3/4'};cursor:pointer" onclick="event.stopPropagation();_wk3Edit('${o.id}')">${cards}</div>`;
   const unlink=`<div class="wk3-assign"><button class="wi2-unlink" title="Ακύρωση προώθησης — αποσύνδεση σκέλους από τη ρότα" onclick="_wiRotUnlink(event,'${o.id}')">⨯ αποσύνδεση</button></div>`;
-  return `<div class="wk3-row wk3-legrow" data-row-id="${legRow.id}" title="Σκέλος ρότας (άλλος πελάτης) — κλικ: φόρμα · δεξί κλικ: μενού"
+  return `<div class="wk3-row wk3-legrow" data-row-id="${legRow.id}" title="${_wiDoorTip('Σκέλος ρότας (άλλος πελάτης) — κλικ: φόρμα · δεξί κλικ: μενού','Σκέλος ρότας (άλλος πελάτης) — κλικ: καρτέλα παραγγελίας (μόνο ανάγνωση)')}"
       oncontextmenu="_wiLegCtx(event,'${o.id}')">
     <div class="wk3-num" style="color: var(--accent-text);font-weight:800">⤷</div>
     <div class="wk3-feed l"></div>
@@ -1948,11 +1959,21 @@ function _wk3MoreStops(str,arr,kind){
 // the ORDERS row was written and the stop/cascade writes those roles lack were
 // then refused. Instead of a dead end, the same read-only card Weekly Εθνικών
 // opens for a VS load (openIntlReadOnlyCard, no actions). true = handled here.
+// fromWeeklyIntl: the card drops its «άνοιγμα στο Εβδομαδιαίο Διεθνών →» —
+// from here it would repaint this board and close the card (reviewer P3, 10/10).
 function _wiReadOnlyOrder(id){
   if(can('planning')==='full') return false;
-  if(typeof openIntlReadOnlyCard==='function') openIntlReadOnlyCard(id,'Μόνο ανάγνωση για τον ρόλο σου');
+  if(typeof openIntlReadOnlyCard==='function') openIntlReadOnlyCard(id,'Μόνο ανάγνωση για τον ρόλο σου',{fromWeeklyIntl:true});
   else toast('Μόνο ανάγνωση για τον ρόλο σου','warn');
   return true;
+}
+// The title of an order door says what the click does FOR THIS ROLE (reviewer
+// P3, 10/10): a view role gets the read-only card above, not the form, and its
+// right-click and drag are refused (_wiBlockReadOnly) — so its title offers
+// none of them. `full` is the title for a role that edits; `view` overrides
+// the order-card default where the click does something else.
+function _wiDoorTip(full,view){
+  return can('planning')==='full'?full:(view||'Κλικ: καρτέλα παραγγελίας (μόνο ανάγνωση)');
 }
 function _wk3Edit(orderId){
   if(!orderId) return;
@@ -2581,7 +2602,7 @@ function _wiRowHTML(row,i){
   const members=(isGroup&&ui.openGroup===row.id)?exps.map((m,k)=>{const mf=m.fields;
     const ml=mf['Loading DateTime']?`<b class="wk3-ld">${_wk3D(_wiFmt(mf['Loading DateTime']))}</b> `:'';
     const md=mf['Delivery DateTime']?`<b class="wk3-ld">${_wk3D(_wiFmt(mf['Delivery DateTime']))}</b> `:'';
-    return `<div class="wk3-stopline wk3-gm" title="Κλικ: φόρμα παραγγελίας" onclick="event.stopPropagation();_wk3Edit('${m.id}')"><span class="wk3-gmn">${k+1}</span><span class="wk3-gmc">${ml}${(_wiClean(mf['Loading Summary']||mf['Client Name']||'—'))}</span><span class="wk3-sep">→</span><span class="wk3-gmc">${md}${(_wiClean(mf['Delivery Summary']||'—'))}</span><span class="wk3-gmp">${_wi2Pal(mf)}</span></div>`;}).join(''):'';
+    return `<div class="wk3-stopline wk3-gm" title="${_wiDoorTip('Κλικ: φόρμα παραγγελίας')}" onclick="event.stopPropagation();_wk3Edit('${m.id}')"><span class="wk3-gmn">${k+1}</span><span class="wk3-gmc">${ml}${(_wiClean(mf['Loading Summary']||mf['Client Name']||'—'))}</span><span class="wk3-sep">→</span><span class="wk3-gmc">${md}${(_wiClean(mf['Delivery Summary']||'—'))}</span><span class="wk3-gmp">${_wi2Pal(mf)}</span></div>`;}).join(''):'';
   let delCard;
   if(segOn){
     delCard=_wiSegPillWrap(row.id,exps,'del',false,true,_wiSegTotalsHTML(exps));
@@ -2713,7 +2734,7 @@ function _wiRowHTML(row,i){
   <div id="wi-row-${row.id}" data-row-id="${row.id}" class="${rowCls}">
     <div class="wk3-num">${isPre?'P':i+1}${isGroup?`<button class="wk3-grpb" title="Groupage ×${exps.length} — κλικ: μέλη ομάδας (βάση: το πρώτο-παραδιδόμενο)" onclick="event.stopPropagation();_wiToggleGroup(${row.id})">×${exps.length}</button>`:''}<span class="wi-sync" id="wi-sync-${row.id}"></span></div>
     <div class="wk3-feed l" title="${vsExp?'Εθνικό σκέλος προς Βέροια — φόρτωση από τον αρχικό πελάτη. Ο μεταφορέας συμπληρώνεται στο Weekly National.':'Χωρίς εθνικό σκέλος — δεν είναι Veroia Switch'}">${feedL}${vsExp?_wi2Carrier(pid):''}</div>
-    <div class="wk3-leg${isGroup?' grp':''}" style="cursor:pointer" title="${isGroup?'Κλικ: καρτέλα ρότας ομάδας · δεξί κλικ: groupage/ρότα':'Κλικ: άνοιγμα φόρμας παραγγελίας · δεξί κλικ: groupage/ρότα'}" oncontextmenu="_wiCtx(event,${row.id})" onclick="event.stopPropagation();${isGroup?`_wiRota(${row.id})`:`_wk3Edit('${pid}')`}">${isPre?loadCard:`${loadCard}<span class="wi2-arrow">→</span>${delCard}`}</div>
+    <div class="wk3-leg${isGroup?' grp':''}" style="cursor:pointer" title="${_wiDoorTip(isGroup?'Κλικ: καρτέλα ρότας ομάδας · δεξί κλικ: groupage/ρότα':'Κλικ: άνοιγμα φόρμας παραγγελίας · δεξί κλικ: groupage/ρότα',isGroup?'Μόνο ανάγνωση για τον ρόλο σου':'')}" oncontextmenu="_wiCtx(event,${row.id})" onclick="event.stopPropagation();${isGroup?`_wiRota(${row.id})`:`_wk3Edit('${pid}')`}">${isPre?loadCard:`${loadCard}<span class="wi2-arrow">→</span>${delCard}`}</div>
     ${row.hasSplitLegs
       // Wave 3: the parent no longer executes — no assign popover, no print
       // (nothing to hand a driver for a row that is not itself moving). The
@@ -2730,7 +2751,7 @@ function _wiRowHTML(row,i){
         :row.importId?`<button class="wk3-prt r" title="Εκτύπωση εντολής (import) — δεξί κλικ: κοινή χρήση" data-shq="${printSheetQuery(row.importId,'import',!!(row.partnerId||row.partnerLabel))}" data-shtitle="Εντολή εισαγωγής — W${WINTL.week}" onclick="event.stopPropagation();_wiPrint(${row.id},'import')">⎙<sup>I</sup></button>`:''}
     </div>`}
     <div class="wk3-leg imp${gapCell?' gap':''}${parCell?' bgap':''}" id="wi-ci-${row.id}"
-         ${imp?`style="cursor:pointer" title="Κλικ: φόρμα εισαγωγής · δεξί κλικ: μενού εισαγωγής (ρότα, εκτύπωση)" oncontextmenu="_wiMatchedImpCtx(event,${row.id})"`:''}
+         ${imp?`style="cursor:pointer" title="${_wiDoorTip('Κλικ: φόρμα εισαγωγής · δεξί κλικ: μενού εισαγωγής (ρότα, εκτύπωση)')}" oncontextmenu="_wiMatchedImpCtx(event,${row.id})"`:''}
          onclick="event.stopPropagation();${imp?`_wk3Edit('${row.importId}')`:parCell?``:`_wiNewImport(${row.id})`}"
          ondragover="event.preventDefault();document.getElementById('wi-ci-${row.id}').classList.add('dh')"
          ondragleave="document.getElementById('wi-ci-${row.id}').classList.remove('dh')"
@@ -7207,7 +7228,7 @@ function _wiStockPieceLine(p,withLot){
   const dd=late?_wk3D(_wiFmt(f['Delivery DateTime'])):'';
   const head=withLot?`${escapeHtml(OrdersStock.lotNumLabel(f))} · ${escapeHtml(_wiClientName(f)||'—')} · `:'';
   const del=(loose&&OrdersStock.canWrite())?`<button type="button" class="wi2-unlink" onclick="event.stopPropagation();_wiStockDelPiece('${p.id}')" title="Διαγραφή κομματιού (μόνο χωρίς φορτηγό)">Διαγραφή</button>`:'';
-  return `<div class="wi-panel-opt wi-stk-piece" role="button" tabindex="0" onclick="_wiStockOpenPiece('${p.id}')" onkeydown="if(event.key==='Enter'){event.preventDefault();this.click()}" title="Κλικ: φόρμα κομματιού"><span>${head}${escapeHtml(who)}${_wiStockPieceRelay(p.id,!tr&&!pa)} · ${escapeHtml(dest)} · ${escapeHtml(OrdersStock.statusWord(st))} · <b>${+(f['Total Pallets']||0)}p</b>${ld?` · φόρτωση ${ld}`:''}${late?` · <span class="wi-stk-bad">παράδοση ${dd} — εκπρόθεσμο</span>`:''}${f['Reference']?` · <span class="wi-stk-ref">${escapeHtml(String(f['Reference']))}</span>`:''}</span>${del}</div>`;
+  return `<div class="wi-panel-opt wi-stk-piece" role="button" tabindex="0" onclick="_wiStockOpenPiece('${p.id}')" onkeydown="if(event.key==='Enter'){event.preventDefault();this.click()}" title="${_wiDoorTip('Κλικ: φόρμα κομματιού','Κλικ: καρτέλα κομματιού (μόνο ανάγνωση)')}"><span>${head}${escapeHtml(who)}${_wiStockPieceRelay(p.id,!tr&&!pa)} · ${escapeHtml(dest)} · ${escapeHtml(OrdersStock.statusWord(st))} · <b>${+(f['Total Pallets']||0)}p</b>${ld?` · φόρτωση ${ld}`:''}${late?` · <span class="wi-stk-bad">παράδοση ${dd} — εκπρόθεσμο</span>`:''}${f['Reference']?` · <span class="wi-stk-ref">${escapeHtml(String(f['Reference']))}</span>`:''}</span>${del}</div>`;
 }
 // «⇄ τοπ.» on a piece that carries a relay (_wiRelayStockNote): from the
 // week's relays, or from the read the loose-piece list and the lot panel make
