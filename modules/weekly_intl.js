@@ -1076,18 +1076,10 @@ function _wiPaint(){
   const assigned=expRows.filter(r=>r.saved).length;
   const pending=expRows.filter(r=>!r.saved).length;
   // Lots and pieces without a truck never wait for a match (stock plan §6.7):
-  // out of the matched/unmatched counters and the auto-match button's number.
+  // out of the matched/unmatched counters.
   const impPlan=impRows.filter(r=>!_wiStockSkip(r));
   const matched=impPlan.filter(r=>r.matchedTo).length;
   const unmatched=impPlan.filter(r=>!r.matchedTo).length;
-  // K9 (round 1): the button's number uses the auto-match's own filter
-  // (_wiMatchableImp), not «unmatched»: a truckless group holding a piece is
-  // unmatched but never auto-matched (B-05), so «(N)» promised a pair the
-  // click then could not find. Counted on this week's own rows, like the
-  // tally (round 1b): an adjacent-week or rota-leg import alone showed a
-  // button main never showed. The click still scores those rows too, as on
-  // main — the number is this week's, not a promise about them.
-  const autoN=rows.filter(r=>_wiMatchableImp(r)&&!r.adj&&!r.legOf).length;
   const total=expRows.length+impPlan.length;
   const pct=total?Math.round((assigned+matched)/total*100):0;
 
@@ -1188,7 +1180,6 @@ function _wiPaint(){
            πληροφορία. -->
       <button type="button" class="wk-sig${gaps?' warn':''}" onclick="_wk3Gaps()" title="Ιδιόκτητοι γύροι χωρίς φορτίο επιστροφής — κλικ: οι αταίριαστες εισαγωγές">ΚΕΝΑ ΓΥΡΙΣΜΑΤΑ <b>${gaps}</b>${urgN?` · ${urgN} ${urgN===1?'ΕΠΕΙΓΟΝ':'ΕΠΕΙΓΟΝΤΑ'}`:''}</button>
       ${preorderCounterHtml(preFields,"_wi2Quick('pre');preorderJump('#wi-rows .pre-leg')",WINTL.quick==='pre')}
-      ${autoN>0?`<button class="wi2-btn" onclick="_wiAutoMatch()" title="Περιορισμένο: χωρίς συντεταγμένες τοποθεσιών (LO-1) σκοράρει μόνο με ημερομηνίες">${_ico('zap',13)} Αυτόματο ταίριασμα (${autoN}) — χωρίς συντεταγμένες</button>`:''}
       <span id="wi-crossweek-in"></span>
       <span class="wi2-week">Εβδομάδα ${week} · ${_wiWeekRange(week)} · Σαβ–Παρ</span>
     </div>
@@ -2887,7 +2878,7 @@ async function _wiUnmatch(impId){
 // Every USER unmatch («×», «Αφαίρεση ταιριάσματος») comes here (impact map 4/10
 // B-07). _wiRemoveImport keeps each member's Group ID, so a PIECE in the load
 // stayed glued to its group with no truck: not joinable, not deletable,
-// counted «χωρίς ταίριασμα» and auto-matchable. A piece now leaves the group
+// counted «χωρίς ταίριασμα». A piece now leaves the group
 // too and returns to stock — said in the confirm, before any write. The rest
 // is _wiRemoveImport unchanged (leg first, vehicle second), and the group that
 // stays is left as «Ακύρωση groupage» leaves it (_wiSyncGroupResidue: a lone
@@ -3131,9 +3122,9 @@ async function _wiGiGroup(impId, knownRec){
 async function _wiSaveImportMatch(rowId,impId){
   if(_wiBlockReadOnly()) return; // defense in depth — dragstart already blocks for a view-only role
   const row=WINTL.rows.find(r=>r.id===rowId);if(!row) return;
-  // The one funnel of every match (drag, panel drop, auto-match, new import,
-  // stock join): a lot travels to its warehouse, never with a truck's return
-  // load — on either side of the pair (stock plan §6.7).
+  // The one funnel of every match (drag, panel drop, new import, stock join):
+  // a lot travels to its warehouse, never with a truck's return load — on
+  // either side of the pair (stock plan §6.7).
   const impRow0=WINTL.rows.find(r=>r.type==='import'&&(r.orderIds||[r.orderId]).includes(impId));
   if(_wiLotHeld(row)||(impRow0&&_wiLotHeld(impRow0))){ _wiRefuse('Η παρτίδα πάει στην αποθήκη — δεν ταιριάζεται','match refused'); return; }
 
@@ -3410,153 +3401,6 @@ async function _wiRemoveImport(rowId){
     return clearErrors.length===0;
   }
   return false;
-}
-
-/* ── AUTO-MATCH ALGORITHM ─────────────────────────────────────────── */
-// Distance via canonical haversineKm (core/utils.js); local copy removed.
-
-async function _wiAutoMatch() {
-  // Up front, not per pair: _wiSaveImportMatch refuses each pair on its own,
-  // so a view role used to get the confirm, N refusals and then the green
-  // «N ταιριάσματα εφαρμόστηκαν ✓» for a run that wrote nothing.
-  if(_wiBlockReadOnly()) return;
-  const {data, rows} = WINTL;
-  // Lots never match; a piece reaches a truck only by a person's choice
-  // («+ Κομμάτι από απόθεμα…», stock plan §6.7) — never by a score.
-  const expRows = rows.filter(r => r.type === 'export' && !r.importId && !_wiLotHeld(r));
-  const impRows = rows.filter(_wiMatchableImp);   // no lot, waiting piece, or load holding a piece (B-05)
-  if (!impRows.length || !expRows.length) { toast('Δεν υπάρχουν αταίριαστα ζεύγη'); return; }
-
-  toast('Υπολογισμός ταιριασμάτων…');
-
-  // Load locations with coordinates (from ref data cache)
-  await preloadReferenceData();
-  const locs = getRefLocations();
-  const locMap = {};
-  locs.forEach(r => { locMap[r.id] = { lat: r.fields['Latitude'], lng: r.fields['Longitude'], name: r.fields['Name']||'', country: r.fields['Country']||'' }; });
-
-  // Batch-fetch ORDER_STOPS for all orders to get stop locations
-  const allOrders = [...data.exports, ...data.imports];
-  const allStopIds = allOrders.flatMap(r => r.fields['ORDER STOPS'] || []);
-  const stopsByOrder = {}; // orderId → {Loading: [locId,...], Unloading: [locId,...]}
-  if (allStopIds.length) {
-    try {
-      const chunks = [];
-      // 90 per chunk, matching the sibling batch loop above (the other OR() builder
-      // uses 90). Airtable's OR() formula has a practical length ceiling; 90 stays
-      // safely under it. Keep both batchers on the same number.
-      for (let i = 0; i < allStopIds.length; i += 90) chunks.push(allStopIds.slice(i, i + 90));
-      const allStops = [];
-      for (const chunk of chunks) {
-        const f = `OR(${chunk.map(id => `RECORD_ID()="${id}"`).join(',')})`;
-        const recs = await atGetAll(TABLES.ORDER_STOPS, { filterByFormula: f }, false);
-        allStops.push(...recs);
-      }
-      for (const s of allStops) {
-        const pid = (s.fields[F.STOP_PARENT_ORDER] || [])[0];
-        if (!pid) continue;
-        if (!stopsByOrder[pid]) stopsByOrder[pid] = { Loading: [], Unloading: [] };
-        const type = s.fields[F.STOP_TYPE];
-        if (type === 'Loading' || type === 'Unloading') {
-          stopsByOrder[pid][type].push(s);
-        }
-      }
-      // Sort each by stop number
-      for (const pid of Object.keys(stopsByOrder)) {
-        stopsByOrder[pid].Loading.sort((a, b) => (a.fields[F.STOP_NUMBER] || 0) - (b.fields[F.STOP_NUMBER] || 0));
-        stopsByOrder[pid].Unloading.sort((a, b) => (a.fields[F.STOP_NUMBER] || 0) - (b.fields[F.STOP_NUMBER] || 0));
-      }
-    } catch (e) { console.warn('Auto-match: ORDER_STOPS fetch failed', e); }
-  }
-
-  // Get coords from ORDER_STOPS for an order
-  const _getCoordsEx = (orderId, fields, stopType) => {
-    const stops = stopsByOrder[orderId]?.[stopType];
-    if (stops && stops.length) {
-      const locArr = stops[0].fields[F.STOP_LOCATION];
-      const locId = Array.isArray(locArr) ? locArr[0] : null;
-      if (locId && locMap[locId]) {
-        const loc = locMap[locId];
-        if (loc.lat && loc.lng) return loc;
-      }
-    }
-    return null;
-  };
-
-  // Score each export-import pair
-  const suggestions = [];
-  for (const expRow of expRows) {
-    const exp = data.exports.find(r => r.id === expRow.orderIds[0]);
-    if (!exp) continue;
-    const ef = exp.fields;
-    const expDelLoc = _getCoordsEx(exp.id, ef, 'Unloading');
-    const expDelDate = toLocalDate(ef['Delivery DateTime']);
-
-    let bestImp = null, bestScore = 0, bestDist = Infinity;
-    for (const impRow of impRows) {
-      if (impRow.matchedTo) continue;
-      const imp = data.imports.find(r => r.id === impRow.orderId);
-      if (!imp) continue;
-      const imf = imp.fields;
-      let score = 0;
-      let dist = Infinity;
-
-      // DISTANCE: export delivery → import loading (max 70 points — primary factor)
-      const impLoadLoc = _getCoordsEx(imp.id, imf, 'Loading');
-      if (expDelLoc && impLoadLoc) {
-        dist = haversineKm(expDelLoc.lat, expDelLoc.lng, impLoadLoc.lat, impLoadLoc.lng);
-        if (dist <= 50)       score += 70;  // <50km = same city
-        else if (dist <= 150) score += 55;  // <150km = nearby
-        else if (dist <= 300) score += 40;  // <300km = same region
-        else if (dist <= 500) score += 20;  // <500km = reachable
-      }
-
-      // DATE: import loading within ±1 day of export delivery (max 30 points)
-      const impLoadDate = toLocalDate(imf['Loading DateTime']);
-      if (expDelDate && impLoadDate) {
-        const diff = Math.abs(new Date(expDelDate+'T12:00:00') - new Date(impLoadDate+'T12:00:00')) / 864e5;
-        if (diff <= 1) score += 30;
-        else if (diff <= 2) score += 15;
-      }
-
-      if (score > bestScore || (score === bestScore && dist < bestDist)) {
-        bestScore = score; bestImp = impRow; bestDist = dist;
-      }
-    }
-
-    if (bestImp && bestScore >= 40) {
-      suggestions.push({ expRow, impRow: bestImp, score: bestScore, dist: bestDist });
-      bestImp.matchedTo = '__suggested__';
-    }
-  }
-
-  // Reset temp marks
-  suggestions.forEach(s => { s.impRow.matchedTo = null; });
-
-  if (!suggestions.length) { toast('Δεν βρέθηκαν καλά ταιριάσματα (score <40)'); return; }
-
-  // Show confirmation dialog with distance info
-  const imp_label = (impRow) => {
-    const imp = data.imports.find(r => r.id === impRow.orderId);
-    return imp ? _wiCut(_wiClean(imp.fields['Loading Summary'] || ''), 25) : '?';
-  };
-  const exp_label = (expRow) => {
-    const exp = data.exports.find(r => r.id === expRow.orderIds[0]);
-    return exp ? _wiCut(_wiClean(exp.fields['Delivery Summary'] || ''), 25) : '?';
-  };
-
-  const msg = suggestions.map((s, i) =>
-    `${i+1}. ${exp_label(s.expRow)} ↔ ${imp_label(s.impRow)} (${s.dist < 9999 ? Math.round(s.dist)+'km' : '?'} · score ${s.score})`
-  ).join('\n');
-
-  if (!(await confirmAction(`Το αυτόματο ταίριασμα βρήκε ${suggestions.length} ζεύγη:\n\n${msg}\n\nΕφαρμογή;`, { title: 'Αυτόματο ταίριασμα', confirmLabel: 'Εφαρμογή' }))) return;
-
-  // Apply all matches
-  for (const s of suggestions) {
-    await _wiSaveImportMatch(s.expRow.id, s.impRow.orderId);
-  }
-
-  toast(`${suggestions.length} ταιριάσματα εφαρμόστηκαν ✓`, 'success');
 }
 
 /* ── SAVE ASSIGNMENT ───────────────────────────────────────────────── */
@@ -6933,9 +6777,9 @@ function _wiPrintWeek(){
    (core/orders-common.js) — the one client of the STOCK LOTS facade.
    Gates: every ENTRY (shelf, menu items, panels) needs _wiStockOn(), so with
    FEATURES.STOCK_LOTS off the board is today's. The data-based exclusions
-   (_wiStockSkip/_wiLotHeld: no auto-match, no grouping, out of the counters)
+   (_wiStockSkip/_wiLotHeld: no matching, no grouping, out of the counters)
    need only OrdersStock to be loaded — a piece that exists must stay out of
-   the auto-match even while the switch is rolled back.
+   them even while the switch is rolled back.
    No money anywhere on this screen (dispatchers never see P&L, owner 23/8). */
 function _wiStockOn(){ return typeof OrdersStock!=='undefined' && OrdersStock.on(); }
 function _wiIsPiece(f){ return typeof OrdersStock!=='undefined' && !!f && OrdersStock.isPiece(f); }
@@ -6979,9 +6823,9 @@ function _wiImpGroupRowOf(oid){
 }
 // Φ1 «a piece rides only our own trucks» (plan §3) on EVERY path that can put
 // one on a partner, not only «+ Κομμάτι» (impact map 4/10 B-05: the popover,
-// its GI propagation, drag/drop and auto-match all could, and the DB accepts
-// it — the piece then carried a partner cost, or a Partner with no assignment
-// row). One predicate, one message.
+// its GI propagation, drag/drop and the auto-match, removed 10/10, all could,
+// and the DB accepts it — the piece then carried a partner cost, or a Partner
+// with no assignment row). One predicate, one message.
 const WI_PIECE_OWN_ONLY='Κομμάτι αποθέματος μόνο σε δικό μας φορτηγό';
 // The pieces in the import load of `ids`: each id plus every member of its GI
 // group row on this board.
@@ -6989,12 +6833,6 @@ function _wiPieceIn(ids){
   const all=new Set();
   (ids||[]).filter(Boolean).forEach(id=>{ all.add(id); const g=_wiImpGroupRowOf(id); if(g) (g.orderIds||[g.orderId]).forEach(x=>all.add(x)); });
   return [...all].filter(id=>{ const r=_wiRecOf(id); return !!r&&_wiIsPiece(r.fields); });
-}
-// An import row the auto-match may score: unmatched, not a lot or a waiting
-// piece (_wiStockSkip), and — lone OR group — holding no piece: a piece
-// reaches a truck only by a person's choice, and the score may pick a partner.
-function _wiMatchableImp(r){
-  return !!r&&r.type==='import'&&!r.matchedTo&&!_wiStockSkip(r)&&!_wiPieceIn(r.orderIds||[r.orderId]).length;
 }
 // Loose pieces live on the shelf (plan §3, impact map 4/10 B-19). A piece
 // waiting in the warehouse (OrdersStock.isLoose) is not a board row while the
@@ -8048,7 +7886,6 @@ async function _wiStockReturnLoneRun(pid,expOid,expRowId){
 // Expose functions used from onclick/oninput/onfocus handlers
 window.renderWeeklyIntl = renderWeeklyIntl;
 window.WINTL = WINTL;
-window._wiAutoMatch = _wiAutoMatch;
 window._wiPrintWeek = _wiPrintWeek;
 window._wiToggleGroup = _wiToggleGroup;
 window._wiRota = _wiRota;

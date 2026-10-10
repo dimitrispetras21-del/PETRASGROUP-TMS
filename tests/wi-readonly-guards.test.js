@@ -7,7 +7,9 @@
 //   3. leg row        «⨯ αποσύνδεση» → _wiRotUnlink   RT leg DELETE + Rotation ID
 //   4. Καρτέλα Ρότας  _wiRota / _wiRotaSave / _wiRotaSplit   Group ID / dissolve
 //   5. softer         _wiNewImport (opens the form) · _wiAutoMatch (confirm, then
-//                     one refusal per pair and a green «εφαρμόστηκαν ✓» anyway)
+//                     one refusal per pair and a green «εφαρμόστηκαν ✓» anyway) —
+//                     REMOVED instead, owner 10/10: «δεν χρειάζομαι τελείως το
+//                     αυτόματο ταίριασμα»; the last case checks it stays gone
 // plus «ΚΕΝΟ EXPORT», whose tooltip promises the first export to assign while
 // it jumped to the first IMPORT without a vehicle (_wiJumpFirstUnassigned).
 //
@@ -31,7 +33,7 @@ const fn = (name, optional) => {
   return m ? m[0] : '';
 };
 const NAMES = ['_wiBlockReadOnly', '_wk3PickDate', '_wk3IsoOnDay', '_wiUnmatch', '_wiUnmatchRow',
-  '_wiRotUnlink', '_wiRota', '_wiRotaSave', '_wiRotaSplit', '_wiNewImport', '_wiAutoMatch'];
+  '_wiRotUnlink', '_wiRota', '_wiRotaSave', '_wiRotaSplit', '_wiNewImport'];
 const NEW = ['_wiFirstPendingExp', '_wiJumpFirstPendingExp'].filter(n => fn(n, true));   // absent in the «before» copy
 const SRC = NAMES.concat(NEW).map(n => fn(n)).join('\n');
 const RO = 'Μόνο ανάγνωση για τον ρόλο σου';
@@ -73,14 +75,6 @@ function world(role) {
     _wiSplit: async rid => { log.calls.push('split ' + rid); },
     // _wiNewImport
     openIntlEditWith: (id, f) => log.opened.push('import form ' + (f && f.Direction)),
-    // _wiAutoMatch
-    _wiLotHeld: () => false,
-    _wiMatchableImp: r => r.type === 'import' && !r.matchedTo,
-    preloadReferenceData: async () => { log.calls.push('preload'); },
-    getRefLocations: () => [],
-    toLocalDate: v => (v ? String(v).slice(0, 10) : ''),
-    haversineKm: () => 9999, F: {}, _wiCut: s => s, _wiClean: s => s,
-    _wiSaveImportMatch: async () => { log.calls.push('save match'); },
     // gap box
     _ccJump: id => log.jumps.push(id),
     WINTL: {
@@ -215,17 +209,8 @@ test('empty import box: full role still opens the import form', () => {
   assert.deepStrictEqual(log.opened, ['import form Import']);
   assert.strictEqual(ctx._wiPendingMatch.rowId, 1);
 });
-test('«Αυτόματο ταίριασμα» (_wiAutoMatch): view role — no work, no confirm, no «εφαρμόστηκαν ✓»', async () => {
-  const { ctx, log } = world('view');
-  ctx.WINTL.rows = [{ id: 1, type: 'export', orderIds: ['recE1'], importId: null }, { id: 2, type: 'import', orderId: 'recI1', matchedTo: null }];
-  await ctx._wiAutoMatch();
-  assertBlocked(log);
-});
-test('«Αυτόματο ταίριασμα»: full role still runs', async () => {
-  const { ctx, log } = world('full');
-  ctx.WINTL.rows = [{ id: 1, type: 'export', orderIds: ['recE1'], importId: null }, { id: 2, type: 'import', orderId: 'recI1', matchedTo: null }];
-  await ctx._wiAutoMatch();
-  assert.ok(log.calls.includes('preload'), 'reached the scoring step');
+test('«Αυτόματο ταίριασμα» is gone (owner 10/10): no button, no function, no window export, no scorer', () => {
+  assert.doesNotMatch(WI, /Αυτόματο ταίριασμα|_wiAutoMatch|autoN|_wiMatchableImp/);
 });
 
 // «ΚΕΝΟ EXPORT»

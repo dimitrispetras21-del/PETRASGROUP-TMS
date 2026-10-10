@@ -45,8 +45,9 @@
 // words (W4); a re-read of the lead before the join, lost answers decided by a
 // read, no join on a truckless lead (W5, Σ-01/Σ-07); D1 — a stale Group ID is
 // not a truck (W6); a lot on our own truck gets the lot menu (W7); a DB refusal
-// on screen once (W8, D2); prints (W9: C4-06, C4-07, K11); the auto-match
-// count and no piece in a rewritten suffix (W10: K9, K10); «ή κομμάτι από
+// on screen once (W8, D2); prints (W9: C4-06, C4-07, K11); no auto-match
+// button (removed, owner 10/10 — was K9) and no piece in a rewritten suffix
+// (W10: K10); «ή κομμάτι από
 // ΑΠΟΘΕΜΑ» in an empty return box (W11, C1-05).
 const path = require('path'), fs = require('fs');
 const ROOT = path.join(__dirname, '../..');
@@ -539,13 +540,12 @@ if (MAIN) (async () => {
 
     // Counters: the lot row and the loose piece are not «unmatched».
     const counters = await page.evaluate(() => {
-      const btn = [...document.querySelectorAll('.wk3-sub .wi2-btn')].find(b => /Αυτόματο ταίριασμα/.test(b.textContent));
       WINTL.filterStatus = 'unmatched'; _wiApplyFilter();
       const vis = [...document.querySelectorAll('#wi-rows [data-row-id]')].filter(el => el.style.display !== 'none' && el.id.startsWith('wi-imp-')).map(el => el.id.replace('wi-imp-', ''));
       WINTL.filterStatus = ''; _wiApplyFilter();
-      return { autoBtn: btn ? btn.textContent.trim() : null, unmatchedVisible: vis };
+      return { unmatchedVisible: vis };
     });
-    ok('counters_exclude_lot_and_loose', /\(1\)/.test(counters.autoBtn || '') && counters.unmatchedVisible.length === 1 && counters.unmatchedVisible[0] === 'recRIGI5000000005', counters);
+    ok('counters_exclude_lot_and_loose', counters.unmatchedVisible.length === 1 && counters.unmatchedVisible[0] === 'recRIGI5000000005', counters);
 
     // Badges: «ΑΠ» on the piece tile, «→ ΑΠΟΘΗΚΗ» on the lot row.
     const badges = await page.evaluate(() => ({
@@ -934,29 +934,13 @@ if (MAIN) (async () => {
     const { ctx, page } = await openBoard(browser, 'dispatcher', F, { extra: true });
     const rowOf = oid => rowIdOf(page, oid);
 
-    // K9 (round 1): «Αυτόματο ταίριασμα (N)» = what the auto-match will take:
-    // unmatched import rows holding no lot and no piece. The truckless group
-    // I7 + P6 is unmatched but never auto-matched — it is not in N.
-    const k9 = await page.evaluate(() => {
-      const btn = [...document.querySelectorAll('.wk3-sub .wi2-btn')].find(b => /Αυτόματο ταίριασμα/.test(b.textContent));
-      const stockIn = r => (r.orderIds || [r.orderId]).some(id => { const x = WINTL.data.imports.find(i => i.id === id); return !!x && (OrdersStock.isPiece(x.fields) || OrdersStock.isLot(x.fields)); });
-      const want = WINTL.rows.filter(r => r.type === 'import' && !r.matchedTo && !stockIn(r)).map(r => r.orderId);
-      return { btn: btn ? btn.textContent.trim() : null, n: btn ? +((/\((\d+)\)/.exec(btn.textContent) || [])[1]) : 0, want };
-    });
-    ok('k9_auto_match_count_is_what_it_takes', k9.n === k9.want.length && !k9.want.includes('recRIGI7000000007'), k9);
-    // Round 1b (reviewer P3-1): an adjacent-week import is not in the tally, so not in «(N)» either —
-    // alone it showed a button main never showed. I8 (plain, unmatched) moves to another plan week.
-    const autoCnt = () => page.evaluate(() => { const b = [...document.querySelectorAll('.wk3-sub .wi2-btn')].find(x => /Αυτόματο ταίριασμα/.test(x.textContent)); return b ? +((/\((\d+)\)/.exec(b.textContent) || [])[1]) : 0; });
-    const rerender = () => page.evaluate(async () => { invalidateCache(TABLES.ORDERS); await renderWeeklyIntl(); });
-    const k9before = await autoCnt();
-    const i8 = F.orders.recRIGI8000000008.fields;
-    const ws = await page.evaluate(() => WINTL._range.ws);
-    const nextWs = (() => { const t = new Date(ws + 'T12:00:00'); t.setDate(t.getDate() + 7); return t.toISOString().slice(0, 10); })();
-    i8['Plan Week Start'] = nextWs; await rerender();
-    const k9adj = { before: k9before, after: await autoCnt(), adjRow: await page.evaluate(() => !!WINTL.rows.find(r => r.orderId === 'recRIGI8000000008' && r.adj)) };
-    delete i8['Plan Week Start']; await rerender();
-    k9adj.restored = await autoCnt();
-    ok('k9_1b_adjacent_week_not_counted', k9adj.adjRow && k9adj.after === k9adj.before - 1 && k9adj.restored === k9adj.before, k9adj);
+    // K9 retired (owner 10/10: the auto-match was removed). What stays true:
+    // no button, no window function — a board with a piece, a lot and a
+    // truckless group offers no scorer that could put them on a truck.
+    const k9 = await page.evaluate(() => ({
+      btn: [...document.querySelectorAll('.wk3-sub .wi2-btn')].some(b => /Αυτόματο ταίριασμα/.test(b.textContent)),
+      fn: typeof window._wiAutoMatch }));
+    ok('k9_auto_match_removed', !k9.btn && k9.fn === 'undefined', k9);
 
     // C4-06 (round 1): the import-only group's ⎙I (I7 + P6) has the share
     // menu query, like the matched export row's.
