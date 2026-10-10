@@ -1143,12 +1143,9 @@ function _wiPaint(){
   // «Τα κενά» (owner): own round trips that will return empty — no import.
   // A partner row is never a gap (owner 9/8), so the denominator is own rows.
   const ownRows=expRows.filter(r=>r.saved&&!r.partnerId);
-  const parRows=expRows.filter(r=>r.saved&&r.partnerId);
   const gapRows=ownRows.filter(r=>!r.importId);
   const urgN=gapRows.filter(r=>_wi2Urgent(_fOf(r),today)).length;
   const gaps=gapRows.length;
-  const delivN=[...expRows,...impRows].filter(r=>_wk3StFlags(_fOf(r)).delivered).length;
-  const lateN=[...expRows,...impRows].filter(r=>_wk3StFlags(_fOf(r)).late).length;
   // Pre-order counter (owner 27/9): every order on the sheet, group members
   // included — a pre-order folded into a group is still one to complete.
   const preFields=[...expRows,...impRows].flatMap(r=>(r.orderIds||[r.orderId]).map(id=>(data.exports.find(x=>x.id===id)||data.imports.find(x=>x.id===id))?.fields||{}));
