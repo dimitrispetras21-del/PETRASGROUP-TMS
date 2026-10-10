@@ -7517,3 +7517,378 @@ button.btn-icon:focus-visible { outline:2px solid var(--accent); outline-offset:
 .doc-viewer-text { margin: 0; padding: 12px; font: 13px/1.5 'DM Sans', monospace; white-space: pre-wrap; word-break: break-word; color: var(--text); }
 .doc-viewer-unsupported { padding: 24px; text-align: center; color: var(--text-mid); font-size: var(--text-sm); }
 .doc-viewer-unsupported .btn { margin-top: 12px; }
+
+/* ── Weekly Intl v4 (wi4-*) — FEATURES.WI_V2 ── */
+/* Spec: docs/weekly-intl-redesign/TECH_DESIGN.md §c (owner: WP3). Visual target:
+   Figma KO7l2AfucR3HJEDIg1Yptr, board «ΕΚΔΟΧΗ 9/10» 1097:2254, sheets 14–16.
+
+   WHY a separate block with its own prefix: the v4 board is a second renderer
+   behind FEATURES.WI_V2 (born 'off'). Every selector below starts with .wi4,
+   .wi4-*, :root (tokens) or body.wi4-on (overlays). No shared wi-*, wk3-*, wi2-*
+   rule is edited — Weekly National renders through those, and with the flag
+   off nothing here can match a single element, so the old boards stay
+   byte-identical. Φ9 cleanup deletes the old rules, never these.
+
+   Class vocabulary for the renderer (WP4) and the actions (WP5). A class used
+   by the JS that is not listed here gets no style — add it here, never as a
+   hex or inline style in the module (static ratchet: weekly_intl_v2 = 0 hex).
+     root      .wi4 (+ .wi4-fl-off/.wi4-fr-off national columns, .wi4-kbd keyboard mode)
+     bar       .wi4-bar .wi4-title .wi4-range .wi4-upd(.chg/.err) .wi4-tabs .wi4-tab(.on)
+               .wi4-tab-b .wi4-btn(.pri/.sm) .wi4-cnt .wi4-pres(.paused) .wi4-av(.sm) .wi4-pres-t
+     banner    .wi4-banner (relay/unknown source/fallback) .wi4-link
+     queue     .wi4-q .wi4-q-hd .wi4-q-n .wi4-search .wi4-search-n .wi4-key .wi4-qcard .wi4-qcard-t
+               .wi4-q-all · panel .wi4-qp .wi4-qp-h .wi4-qp-i(.on)
+     shelf     .wi4-shelf (wraps #wi-shelf from _wiShelfInner)
+     grid      .wi4-cols .wi4-ftog .wi4-n · .wi4-day(.closed/.today) .wi4-dayh .wi4-chev
+               .wi4-dayh-c .wi4-today .wi4-day-body .wi4-dayempty
+     rows      .wi4-row .wi4-subrow .wi4-splithd .wi4-msg .wi4-trace · columns .wi4-c-idx
+               .wi4-c-fl .wi4-c-exp .wi4-c-asg .wi4-c-imp .wi4-c-fr .wi4-c-span
+               · rails .wi4-r-red (solid) .wi4-r-amb (dashed) · .wi4-dim .wi4-focus .wi4-hl .wi4-mhl
+     leg       .wi4-leg · .wi4-l-date .wi4-l-from .wi4-l-arr .wi4-l-to .wi4-l-pal .wi4-l-span
+               · text .wi4-l1 .wi4-l2 .wi4-ell .wi4-ref .wi4-t-red/.wi4-t-amb/.wi4-t-blue/.wi4-t-g2
+     points    .wi4-pts(.wi4-noplace) .wi4-pt .wi4-pt-n .wi4-more .wi4-ok .wi4-delay
+     chips     .wi4-dc(.fut/.est/.done/.past/.red) .wi4-pal(.over) .wi4-pe .wi4-att
+     assign    .wi4-asg .wi4-box(.own/.par/.un/.split) .wi4-plate .wi4-plane
+     national  .wi4-nat .wi4-nat-day .wi4-tile(.own/.par/.un/.un.red/.unk) .wi4-natdot
+     cells     .wi4-gap(.amb) .wi4-gap-act .wi4-void .wi4-noexp · drag .wi4-dh
+     sub-rows  .wi4-tag .wi4-legidx .wi4-unlink
+     overlays  .wi4-datep .wi4-datep-hd .wi4-seg .wi4-datep-id .wi4-cal .wi4-cal-h .wi4-cal-d
+               (.out/.today/.cur/.sel) .wi4-time .wi4-datep-note .wi4-pnote .wi4-conf .wi4-datep-ft
+               · .wi4-dlg-back .wi4-dlg .wi4-dlg-ft · .wi4-help-row
+               · menu inside #wi-ctx: .wi4-m-hd .wi4-m-sec .wi4-m-more .wi4-m-sub(.open) .wi4-m-ic .wi4-m-k
+   Legacy class names v4 may emit are only the contract hooks of §a.7 (wi-sync,
+   wk3-prt, wi2-gapstk, wi-b-ap, wi-ctx-i) plus what old builders return
+   (_wk3MoreStops fold, _wiShelfInner); each is sized below under .wi4. */
+
+/* Tokens (§c.2). Rule «one value, one source»: a measured value equal to an
+   existing token is var(--existing) and adds no hex. A literal that equals an
+   existing token's value is kept only where the MEANING differs, and each is
+   named in docs/redesign/baseline.json styles._note_hex:
+     --wi4-own   = --bg-hover's value: an own-fleet box fill must not change when
+                   someone retunes the generic hover colour (and the reverse);
+     --wi4-amber = --p-warn/--ceo-warn's value: both are scoped to the
+                   performance/CEO wraps, unreachable from .wi4;
+     --wi4-blue  = --map-cli-1/--ceo-accent-deep's value: map and CEO palettes;
+     --wi4-chip  = --border-row's (and dark-panel --panel-text's) value: a
+                   border / text colour there, a chip fill here.
+   «Unassigned» keeps the system meaning: there is deliberately NO
+   --wi4-unassigned alias. The «ΠΡΟΣ ΑΝΑΘΕΣΗ» box is --wi4-red-bg fill +
+   --wi4-red (= --danger) border + --wi4-red-ink (= --unassigned) text. */
+:root {
+  --wi4-ink:          var(--surface-dark);
+  --wi4-grey-1:       #344054;
+  --wi4-grey-2:       #5b6b7f;   /* line 2, headers, meta — 5.3:1 on white */
+  --wi4-grey-3:       #98a2b3;   /* placeholders/disabled ONLY — 2.6:1, never information */
+  --wi4-icon:         var(--text-dim);   /* icons only, never text (2.57:1) */
+  --wi4-line:         #eef1f5;
+  --wi4-line-2:       var(--border);
+  --wi4-ctl:          #d0d5dd;
+  --wi4-slot:         #cbd5e1;
+  --wi4-red:          var(--danger);
+  --wi4-red-bg:       #fef2f2;
+  --wi4-red-ink:      var(--unassigned);
+  --wi4-amber:        #b45309;
+  --wi4-amber-bg:     #fff7ed;
+  --wi4-amber-ink:    #7c2d12;
+  --wi4-delay-bg:     var(--warn-bg);
+  --wi4-own:          #eef2f6;
+  --wi4-partner:      #ddefe3;
+  --wi4-partner-line: #bfdcc9;
+  --wi4-partner-ink:  #14532d;
+  --wi4-partner-sub:  #3f6b52;
+  --wi4-blue:         #027bbd;
+  --wi4-blue-ink:     var(--accent-text);
+  --wi4-chip:         #f1f5f9;
+  --wi4-split-hd:     var(--bg-row-alt);
+  --wi4-hover:        #f6f9fc;
+}
+
+/* Root. National columns are 140px open / 18px collapsed (as today's
+   collapse); the memory stays in localStorage tms_wk3_fl/fr, read by WP4. No
+   media query collapses them: §e #20 keeps «as today, open» until the owner's
+   1440 Figma exists. */
+.wi4 { --wi4-fl:140px; --wi4-fr:140px; font-family:'DM Sans',sans-serif; font-size:12px; color:var(--wi4-ink);
+  background:var(--surface-card); font-variant-numeric:tabular-nums; }
+.wi4.wi4-fl-off { --wi4-fl:18px; }
+.wi4.wi4-fr-off { --wi4-fr:18px; }
+.wi4 button { font:inherit; color:inherit; }
+
+/* The ONE truncation rule of the block (styles.truncate +1). A visible «…»
+   instead of a silent cut (DESIGN.md Κ6): a dispatcher must see that a name
+   continues. WP4 puts the full text in `title` on every node that overflows —
+   the board rig's overflow scan fails otherwise (§h.4). */
+.wi4 .wi4-l1, .wi4 .wi4-l2, .wi4 .wi4-ell { min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+
+/* Title bar (§e #1) */
+.wi4-bar { display:flex; align-items:center; gap:12px; min-height:56px; padding:0 16px; border-bottom:1px solid var(--wi4-line-2); }
+.wi4-title { font:700 18px 'Syne',sans-serif; color:var(--wi4-ink); white-space:nowrap; }
+.wi4-range { font-size:13px; color:var(--wi4-grey-2); white-space:nowrap; }
+.wi4-upd { font-size:11px; color:var(--wi4-grey-2); white-space:nowrap; }
+.wi4-upd.chg { color:var(--wi4-amber); font-weight:600; cursor:pointer; }
+.wi4-upd.err { color:var(--wi4-red); font-weight:600; }
+.wi4-tabs { display:flex; align-items:center; gap:2px; padding:3px; margin:0 auto; border:1px solid var(--wi4-line-2); border-radius:8px; background:var(--wi4-chip); }
+.wi4-tab { height:28px; padding:0 12px; border:1px solid transparent; border-radius:6px; background:none; color:var(--wi4-grey-1); font-weight:500; cursor:pointer; display:inline-flex; align-items:center; gap:4px; }
+.wi4-tab:hover { color:var(--wi4-ink); }
+.wi4-tab.on { background:var(--surface-card); border-color:var(--wi4-line-2); color:var(--wi4-ink); font-weight:700; }
+.wi4-tab-b { min-width:14px; height:14px; padding:0 3px; border-radius:7px; background:var(--wi4-red-bg); color:var(--wi4-red-ink); font-size:10px; font-weight:700; line-height:14px; text-align:center; }
+.wi4-btn { height:32px; padding:0 12px; display:inline-flex; align-items:center; gap:6px; border:1px solid var(--wi4-ctl); border-radius:6px;
+  background:var(--surface-card); color:var(--wi4-grey-1); font-weight:600; cursor:pointer; white-space:nowrap; }
+.wi4-btn:hover { border-color:var(--wi4-grey-2); color:var(--wi4-ink); }
+.wi4-btn.pri { background:var(--wi4-ink); border-color:var(--wi4-ink); color:var(--surface-card); }
+.wi4-btn.pri:hover { background:var(--navy-light); }
+.wi4-btn.sm { height:24px; padding:0 8px; font-size:11px; }
+.wi4-btn:disabled { color:var(--wi4-grey-3); cursor:default; }
+.wi4-cnt { min-width:16px; height:16px; padding:0 4px; border-radius:8px; background:var(--wi4-chip); color:var(--wi4-grey-1); font-size:10px; font-weight:700; line-height:16px; text-align:center; }
+
+/* Presence (§e #18). Never a lock and never «κανείς»: these rules only draw
+   who IS there; an empty strip is drawn by drawing nothing. */
+.wi4-pres { display:flex; align-items:center; gap:6px; }
+.wi4-av { width:22px; height:22px; border-radius:50%; display:inline-grid; place-items:center; background:var(--wi4-ink);
+  color:var(--surface-card); font-size:10px; font-weight:700; border:2px solid var(--surface-card); flex:none; }
+.wi4-av + .wi4-av { margin-left:-8px; }
+.wi4-av.sm { width:18px; height:18px; font-size:9px; border-width:1px; }
+.wi4-pres-t { font-size:11px; color:var(--wi4-grey-2); white-space:nowrap; }
+.wi4-pres.paused .wi4-pres-t { color:var(--wi4-amber); }
+
+/* Banner (§e #21, §d.2a unknown sources, sticky fallback). Amber + words:
+   «δεν φορτώθηκε» is an unknown, not an error the user made. */
+.wi4-banner { display:flex; align-items:center; gap:12px; margin:8px 16px 0; padding:6px 12px; border:1px solid var(--warn-border);
+  border-radius:6px; background:var(--wi4-amber-bg); color:var(--wi4-amber-ink); font-size:12px; }
+.wi4-link { border:none; background:none; padding:0; color:var(--wi4-blue-ink); font-weight:600; cursor:pointer; }
+.wi4-link:hover { text-decoration:underline; }
+
+/* Queue band (§e #2) and «Όλα N ▾» panel (§e #3) */
+.wi4-q { display:flex; align-items:center; gap:8px; padding:8px 16px; border-bottom:1px solid var(--wi4-line-2); }
+.wi4-q-hd { display:flex; flex-direction:column; gap:2px; flex:none; font-size:10px; font-weight:600; letter-spacing:.6px; text-transform:uppercase; color:var(--wi4-grey-2); }
+.wi4-q-n { font-size:11px; font-weight:400; letter-spacing:0; text-transform:none; color:var(--wi4-grey-2); white-space:nowrap; }
+.wi4-search { flex:none; width:240px; height:32px; display:flex; align-items:center; gap:6px; padding:0 8px; border:1px solid var(--wi4-ctl); border-radius:6px; background:var(--surface-card); }
+.wi4-search input { flex:1; min-width:0; border:0; outline:0; background:transparent; font:inherit; color:var(--wi4-ink); }
+.wi4-search input::placeholder { color:var(--wi4-grey-3); }
+.wi4-search:focus-within { border-color:var(--wi4-blue); box-shadow:0 0 0 2px var(--accent-light); }
+.wi4-search-n { font-size:11px; color:var(--wi4-grey-2); white-space:nowrap; }
+.wi4-key { display:inline-block; min-width:16px; padding:0 4px; border:1px solid var(--wi4-ctl); border-radius:3px; font-size:10px; font-weight:600; line-height:16px; text-align:center; color:var(--wi4-grey-2); background:var(--surface-card); }
+.wi4-qcard { position:relative; flex:1 1 0; min-width:0; height:34px; display:flex; align-items:center; gap:8px; padding:0 6px 0 12px;
+  border:1px solid var(--wi4-line-2); border-radius:6px; background:var(--surface-card); cursor:pointer; }
+.wi4-qcard:hover { background:var(--wi4-hover); }
+.wi4-qcard-t { flex:1 1 auto; min-width:0; display:flex; flex-direction:column; }
+.wi4-q-all { flex:none; }
+.wi4-qp { position:fixed; z-index:var(--z-top); width:440px; max-height:70vh; overflow:auto; padding:6px 0; background:var(--surface-card);
+  border:1px solid var(--wi4-line-2); border-radius:8px; box-shadow:var(--shadow-lift); font-family:'DM Sans',sans-serif; font-size:12px; color:var(--wi4-ink); }
+.wi4-qp-h { padding:8px 14px 4px; font-size:10px; font-weight:600; letter-spacing:.6px; text-transform:uppercase; color:var(--wi4-grey-2); }
+.wi4-qp-i { position:relative; display:flex; align-items:center; gap:8px; min-height:32px; padding:0 10px 0 14px; cursor:pointer; }
+.wi4-qp-i:hover, .wi4-qp-i.on { background:var(--wi4-hover); }
+.wi4-qp-i.on { outline:2px solid var(--wi4-blue); outline-offset:-2px; }
+
+/* Stock strip (§e #4): the inner markup and its words come unchanged from
+   _wiShelfInner (global .wi-shelf-* rules). Only the frame is v4's: the
+   sticky/height part of today's strip is scoped to .wk3.wi2 and would not
+   apply here. */
+.wi4-shelf { height:28px; padding:0 16px; border-bottom:1px solid var(--wi4-line-2); }
+.wi4 .wi-shelf { height:28px; overflow:hidden; }
+
+/* Column header (§e #5) and the shared 10-track grid at 1920 (§c.2):
+   idx · ΠΡΟΣ ΒΕΡΟΙΑ · gap · ΕΞΑΓΩΓΗ · gap · ΑΝΑΘΕΣΗ · gap · ΕΙΣΑΓΩΓΗ · gap · ΑΠΟ ΒΕΡΟΙΑ.
+   Gap tracks are real tracks, so cells are placed by column class, never by
+   source order (a missing cell must not slide the next one left). */
+.wi4-cols, .wi4-row, .wi4-subrow, .wi4-splithd {
+  display:grid; grid-template-columns:32px var(--wi4-fl) 12px minmax(0,1fr) 12px 204px 12px minmax(0,1fr) 12px var(--wi4-fr); align-items:center; }
+.wi4-c-idx { grid-column:1; } .wi4-c-fl { grid-column:2; min-width:0; } .wi4-c-exp { grid-column:4; min-width:0; }
+.wi4-c-asg { grid-column:6; min-width:0; } .wi4-c-imp { grid-column:8; min-width:0; } .wi4-c-fr { grid-column:10; min-width:0; }
+.wi4-c-span { grid-column:2 / -1; min-width:0; }
+.wi4-cols { position:sticky; top:0; z-index:30; height:28px; padding:0 16px; background:var(--surface-card); border-bottom:1px solid var(--wi4-line-2);
+  font-size:10px; font-weight:600; letter-spacing:.6px; text-transform:uppercase; color:var(--wi4-grey-2); }
+.wi4-n { font-weight:400; letter-spacing:0; text-transform:none; }
+.wi4-ftog { cursor:pointer; white-space:nowrap; }
+.wi4-ftog:hover { color:var(--wi4-ink); }
+
+/* Day (§e #6). Collapsed only when WI4.collapsible says so; empty = one line. */
+.wi4-day { padding:0 16px; }
+.wi4-dayh { height:32px; display:flex; align-items:center; gap:8px; cursor:pointer; font-size:12.5px; font-weight:600; letter-spacing:.4px; color:var(--wi4-ink); }
+.wi4-chev { color:var(--wi4-icon); transition:transform var(--duration-fast) var(--ease-out); }
+.wi4-day.closed .wi4-chev { transform:rotate(-90deg); }
+.wi4-dayh-c { font-size:12px; font-weight:400; letter-spacing:0; color:var(--wi4-grey-2); }
+.wi4-today { font-weight:500; letter-spacing:0; color:var(--wi4-blue-ink); }
+.wi4-day-body { border:1px solid var(--wi4-line-2); border-radius:6px; background:var(--surface-card); margin-bottom:8px; }
+.wi4-day.today .wi4-day-body { border-top:2px solid var(--wi4-blue); }
+.wi4-day.closed .wi4-day-body { display:none; }
+.wi4-dayempty { height:24px; display:flex; align-items:center; padding:0 12px; font-size:11px; color:var(--wi4-grey-2); }
+
+/* Rows (§e #7). 32px is locked (owner). One separator under every row, none
+   under the last row of a day (§e #7 f). */
+.wi4-row { position:relative; height:32px; border-bottom:1px solid var(--wi4-line); }
+.wi4-subrow, .wi4-splithd { position:relative; height:28px; border-bottom:1px solid var(--wi4-line); font-size:10.5px; color:var(--wi4-grey-1); }
+.wi4-splithd { background:var(--wi4-split-hd); }
+.wi4-day-body > :last-child { border-bottom:none; }
+.wi4-row:hover, .wi4-subrow:hover { background:var(--wi4-hover); }
+.wi4-c-idx { font-size:11px; font-weight:500; color:var(--wi4-grey-2); display:flex; align-items:center; justify-content:center; gap:2px; }
+/* contract hook: _wiSync writes into <span class="wi-sync" id="wi-sync-{row.id}"> */
+.wi4 .wi4-c-idx .wi-sync { display:inline; margin:0; min-height:0; font-size:11px; }
+/* Rails (§c.2): severity carries BOTH shape and colour — red and amber
+   measured 1.2:1 for red-green colour-blind readers (10/10). */
+.wi4-r-red::before, .wi4-r-amb::before { content:''; position:absolute; left:0; top:0; bottom:0; }
+.wi4-r-red::before { border-left:3px solid var(--wi4-red); }
+.wi4-r-amb::before { border-left:3px dashed var(--wi4-amber); }
+.wi4-dim { opacity:.35; }
+.wi4.wi4-kbd .wi4-focus { outline:2px solid var(--wi4-blue); outline-offset:-2px; }
+.wi4-hl, .wi4 .wi4-mhl { background:var(--accent-light); }
+
+/* Inside a leg (§c.2): date/ref · loadings · arrow · deliveries · pallets+PE+attachment */
+.wi4-leg { display:grid; grid-template-columns:70px 8px minmax(0,1fr) 8px 13px 8px minmax(0,1fr) 8px 72px; align-items:center; min-width:0; height:100%; }
+.wi4-l-date { grid-column:1; min-width:0; display:flex; flex-direction:column; align-items:flex-start; justify-content:center; }
+.wi4-l-from { grid-column:3; position:relative; min-width:0; }
+.wi4-l-arr  { grid-column:5; color:var(--wi4-icon); text-align:center; }
+.wi4-l-to   { grid-column:7; position:relative; min-width:0; }
+.wi4-l-pal  { grid-column:9; display:flex; align-items:center; justify-content:flex-end; gap:4px; }
+.wi4-l-span { grid-column:1 / -1; min-width:0; }
+.wi4-l1 { display:block; font-size:12px; font-weight:500; line-height:14px; color:var(--wi4-ink); }
+.wi4-l2 { display:block; font-size:10.5px; line-height:13px; color:var(--wi4-grey-2); }
+.wi4-ref { font-size:10.5px; line-height:13px; color:var(--wi4-grey-2); }
+.wi4-t-red { color:var(--wi4-red); } .wi4-t-amb { color:var(--wi4-amber); }
+.wi4-t-blue { color:var(--wi4-blue-ink); } .wi4-t-g2 { color:var(--wi4-grey-2); }
+
+/* Points (§d.1): min 56px each, 8px gap; badge 12px; «+N» chip 34px. */
+.wi4-pts { display:flex; gap:8px; min-width:0; }
+.wi4-pt { flex:1 1 0; min-width:56px; display:grid; grid-template-columns:12px minmax(0,1fr); column-gap:4px; }
+.wi4-pt-n { grid-row:1; font-size:10.5px; font-weight:600; line-height:14px; color:var(--wi4-grey-2); }
+.wi4-pt > .wi4-l1, .wi4-pt > .wi4-l2 { grid-column:2; }
+.wi4-pts.wi4-noplace .wi4-l2 { display:none; }
+.wi4-more { flex:0 0 34px; width:34px; border:none; background:none; padding:0; text-align:center; cursor:pointer; line-height:13px; }
+.wi4-more b { display:block; font-size:12px; color:var(--wi4-ink); }
+.wi4-more span { display:block; font-size:10.5px; color:var(--wi4-grey-2); }
+.wi4-ok { color:var(--wi4-icon); font-size:10px; }
+.wi4-delay { display:inline-block; padding:0 3px; border-radius:3px; background:var(--wi4-delay-bg); color:var(--warn); font-size:10px; font-weight:700; line-height:13px; }
+/* «+N» opens today's _wk3MoreStops fold. Its global rules indent 40px and cut
+   names; today's .wk3.wi2 overrides (which un-cut them) do not reach .wi4, so
+   they are restated here, and the fold floats so the row stays 32px. */
+.wi4 .wk3-xfold.open { position:absolute; z-index:40; top:100%; left:0; min-width:200px; max-width:360px; padding:6px 8px;
+  background:var(--surface-card); border:1px solid var(--wi4-line-2); border-radius:6px; box-shadow:var(--shadow-lift); }
+.wi4 .wk3-stopline, .wi4 .wk3-stopline.dl { padding-left:0; font-size:11px; line-height:1.15; }
+.wi4 .wk3-stopline .wk3-sln { white-space:normal; overflow:visible; }
+.wi4 .wk3-sld { font-size:11px; }
+.wi4 .wk3-stopn { width:12px; height:12px; font-size:11px; line-height:12px; }
+
+/* Date chip (§c.2: 18px, radius 4) and pallets. A done date (✓) is plain grey
+   text with no frame; the chip turns red ONLY when the row has no truck
+   (§e #7 d). */
+.wi4-dc { height:18px; display:inline-flex; align-items:center; gap:3px; padding:0 5px; border:1px solid transparent; border-radius:4px;
+  background:none; font-size:10.5px; font-weight:500; line-height:16px; color:var(--wi4-grey-1); white-space:nowrap; cursor:pointer; }
+.wi4-dc.fut  { border-color:var(--wi4-blue); color:var(--wi4-blue-ink); background:var(--surface-card); }
+.wi4-dc.est  { border:1px dashed var(--wi4-slot); background:var(--wi4-chip); color:var(--wi4-grey-1); }
+.wi4-dc.past { background:var(--wi4-chip); }
+.wi4-dc.done { padding:0; color:var(--wi4-grey-2); }
+.wi4-dc.red  { border-color:var(--wi4-red); background:var(--wi4-red-bg); color:var(--wi4-red-ink); }
+.wi4-pal { font-size:12px; font-weight:500; color:var(--wi4-ink); }
+.wi4-pal.over { color:var(--wi4-amber); font-weight:700; }
+.wi4-pe { padding:0 4px; border:1px solid var(--wi4-ctl); border-radius:3px; font-size:10px; font-weight:600; line-height:14px; color:var(--wi4-grey-1); }
+.wi4-att { color:var(--wi4-icon); }
+.wi4 .wi-badge { font-size:10px; padding:0 4px; border-radius:4px; line-height:14px; letter-spacing:.4px; }
+
+/* Assignment (§e #8): box 28px radius 5 + paper-plane 22px radius 5.
+   «ΠΡΟΣ ΑΝΑΘΕΣΗ» is the strongest element on the board: its border is 2px,
+   because a 1.5px border renders as 1px on 1x office monitors (measured in
+   Chromium) and the box would read weaker than a partner box. */
+.wi4-asg { display:flex; align-items:center; gap:6px; min-width:0; }
+.wi4-box { flex:1 1 auto; min-width:0; height:28px; display:flex; flex-direction:column; justify-content:center; padding:0 8px;
+  border:1px solid transparent; border-radius:5px; background:none; text-align:left; cursor:pointer; }
+.wi4-box.own { background:var(--wi4-own); }
+.wi4-box.par { background:var(--wi4-partner); border-color:var(--wi4-partner-line); }
+.wi4-box.par .wi4-l1 { color:var(--wi4-partner-ink); }
+.wi4-box.par .wi4-l2 { color:var(--wi4-partner-sub); }
+.wi4-box.un { background:var(--wi4-red-bg); border:2px solid var(--wi4-red); color:var(--wi4-red-ink); font-size:12px; font-weight:700; letter-spacing:.3px; }
+.wi4-box.split { background:var(--wi4-chip); color:var(--wi4-grey-1); font-weight:600; }
+.wi4-plate { font-family:'DM Mono',ui-monospace,SFMono-Regular,Menlo,monospace; font-weight:500; font-size:12px; letter-spacing:.2px; color:var(--wi4-ink); }
+.wi4-plane { flex:none; width:22px; height:22px; display:inline-grid; place-items:center; border:none; border-radius:5px; background:none; color:var(--wi4-icon); cursor:pointer; }
+.wi4-plane:hover { background:var(--wi4-chip); color:var(--wi4-grey-1); }
+/* contract hook: print buttons keep .wk3-prt + data-shq (share menu); today's
+   bordered look is scoped to .wk3.wi2, so it is restated for .wi4. */
+.wi4 .wk3-prt { border:1px solid var(--wi4-ctl); border-radius:5px; padding:1px 3px; font-size:12px; background:var(--surface-card); }
+
+/* National columns (§e #12). Never «ΠΡΟΣ ΑΝΑΘΕΣΗ» for an unread leg: .unk
+   is the «—» of §d.2a. Collapsed column = a dot where a leg exists. */
+.wi4-nat { min-width:0; display:flex; flex-direction:column; gap:1px; }
+.wi4-nat-day { font-size:10.5px; color:var(--wi4-grey-2); flex:none; }
+.wi4-tile { align-self:flex-start; max-width:100%; height:16px; padding:0 4px; border:1px solid transparent; border-radius:3px; font-size:10.5px; font-weight:500; line-height:14px; }
+.wi4-tile.own { background:var(--wi4-own); color:var(--wi4-ink); font-family:'DM Mono',ui-monospace,SFMono-Regular,Menlo,monospace; }
+.wi4-tile.par { background:var(--wi4-partner); color:var(--wi4-partner-ink); }
+.wi4-tile.un { background:var(--wi4-amber-bg); border:1px dashed var(--wi4-amber); color:var(--wi4-amber-ink); font-weight:700; }
+.wi4-tile.un.red { background:var(--wi4-red-bg); border:1px solid var(--wi4-red); color:var(--wi4-red-ink); }
+.wi4-tile.unk { color:var(--wi4-grey-2); padding:0; }
+.wi4-natdot { display:none; width:6px; height:6px; margin:0 auto; border-radius:50%; background:var(--wi4-blue); }
+.wi4.wi4-fl-off .wi4-c-fl > :not(.wi4-natdot), .wi4.wi4-fr-off .wi4-c-fr > :not(.wi4-natdot) { display:none; }
+.wi4.wi4-fl-off .wi4-c-fl > .wi4-natdot, .wi4.wi4-fr-off .wi4-c-fr > .wi4-natdot { display:block; }
+
+/* Empty return / void cells (§e #13) — the cell is the drop target (§f). */
+.wi4-gap { height:24px; display:flex; align-items:center; gap:6px; padding:0 10px; border:1px solid var(--wi4-line-2); border-radius:5px; font-size:12px; color:var(--wi4-ink); min-width:0; }
+.wi4-gap .wi4-t-red, .wi4-gap .wi4-t-amb { font-weight:500; }
+.wi4-gap-act { margin-left:auto; flex:none; border:none; background:none; padding:0; color:var(--wi4-blue-ink); font-weight:600; cursor:pointer; white-space:nowrap; }
+.wi4-gap-act:hover { text-decoration:underline; }
+.wi4-void { font-size:10.5px; color:var(--wi4-grey-2); }
+.wi4-noexp { height:24px; display:flex; align-items:center; gap:6px; padding:0 10px; border:1px dashed var(--wi4-slot); border-radius:5px; font-size:12px; color:var(--wi4-grey-1); }
+/* Drag hover. v4's own document dragend/drop listener clears these three
+   (§f): the old handlers only clear .wk3-* classes v4 does not emit. */
+.wi4 .wi4-dh, .wi4 .dragover { outline:2px dashed var(--wi4-blue); outline-offset:-2px; background:var(--accent-light); }
+.wi4 .dragging { opacity:.4; }
+
+/* Sub-rows (§e #11): relay, rota leg, split header and legs. */
+.wi4-tag { font-size:10px; font-weight:700; letter-spacing:.5px; text-transform:uppercase; color:var(--wi4-grey-1); white-space:nowrap; }
+.wi4-legidx { font-size:11px; color:var(--wi4-grey-2); }
+.wi4-unlink { height:20px; padding:0 6px; border:1px solid var(--wi4-ctl); border-radius:4px; background:var(--surface-card); font-size:10.5px; color:var(--wi4-grey-1); cursor:pointer; }
+.wi4-unlink:hover { border-color:var(--wi4-red); color:var(--wi4-red); }
+
+/* Save failure line (§e.14) and moved-row trace (§e #15): 24px. */
+.wi4-msg, .wi4-trace { grid-column:2 / -1; height:24px; display:flex; align-items:center; gap:8px; padding:0 12px; font-size:11px; }
+.wi4-msg { background:var(--wi4-red-bg); color:var(--wi4-red-ink); }
+.wi4-trace { background:var(--accent-light); color:var(--wi4-blue-ink); cursor:pointer; }
+
+/* Date panel (§e #10). A v4 element anchored in #wi-panel space. */
+.wi4-datep { position:fixed; z-index:var(--z-top); width:320px; padding:12px 14px; background:var(--surface-card); border:1px solid var(--wi4-line-2);
+  border-radius:8px; box-shadow:var(--shadow-lift); font-family:'DM Sans',sans-serif; font-size:12px; color:var(--wi4-ink); }
+.wi4-datep-hd { font-size:13px; font-weight:600; margin-bottom:8px; }
+.wi4-seg { display:flex; gap:2px; padding:2px; margin-bottom:8px; border:1px solid var(--wi4-line-2); border-radius:6px; background:var(--wi4-chip); }
+.wi4-seg button { flex:1; height:24px; border:1px solid transparent; border-radius:4px; background:none; color:var(--wi4-grey-1); font-weight:500; cursor:pointer; }
+.wi4-seg button.on { background:var(--surface-card); border-color:var(--wi4-line-2); color:var(--wi4-ink); font-weight:700; }
+.wi4-datep-id { font-size:11px; color:var(--wi4-grey-2); margin-bottom:8px; }
+.wi4-cal { display:grid; grid-template-columns:repeat(7,1fr); gap:2px; margin-bottom:8px; }
+.wi4-cal-h { height:20px; font-size:10px; font-weight:600; text-align:center; line-height:20px; color:var(--wi4-grey-2); }
+.wi4-cal-d { height:28px; border:1px solid transparent; border-radius:4px; background:none; color:var(--wi4-ink); cursor:pointer; }
+.wi4-cal-d:hover { background:var(--wi4-hover); }
+.wi4-cal-d.out { color:var(--wi4-grey-3); }
+.wi4-cal-d.today { border-color:var(--wi4-blue); }
+.wi4-cal-d.cur { border-style:dashed; border-color:var(--wi4-slot); }
+.wi4-cal-d.sel { background:var(--wi4-blue); border-color:var(--wi4-blue); color:var(--surface-card); font-weight:700; }
+.wi4-time { height:28px; padding:0 8px; border:1px solid var(--wi4-ctl); border-radius:5px; font:inherit; color:var(--wi4-ink); }
+.wi4-datep-note { font-size:10.5px; line-height:1.4; color:var(--wi4-grey-2); margin:8px 0; }
+.wi4-pnote { padding:6px 8px; margin:8px 0; border-radius:5px; background:var(--wi4-amber-bg); color:var(--wi4-amber-ink); font-size:11px; line-height:1.4; }
+.wi4-conf { padding:8px 10px; margin:8px 0; border:1px solid var(--wi4-red); border-radius:5px; background:var(--wi4-red-bg); color:var(--wi4-red-ink); font-size:11.5px; line-height:1.4; }
+.wi4-datep-ft, .wi4-dlg-ft { display:flex; justify-content:flex-end; gap:8px; margin-top:10px; }
+
+/* Conflict dialog (§g.4) and «?» shortcuts sheet (§e #17) */
+.wi4-dlg-back { position:fixed; inset:0; z-index:var(--z-top); background:rgba(11,25,41,.32); display:grid; place-items:center; }
+.wi4-dlg { width:420px; max-width:calc(100vw - 32px); padding:16px; background:var(--surface-card); border:1px solid var(--wi4-line-2); border-radius:8px;
+  box-shadow:var(--shadow-lift); font-family:'DM Sans',sans-serif; font-size:12.5px; line-height:1.45; color:var(--wi4-ink); }
+.wi4-help-row { display:grid; grid-template-columns:80px 1fr; align-items:center; gap:8px; min-height:26px; }
+
+/* Per-load menu (§e.9) lives INSIDE #wi-ctx with .wi-ctx-i buttons, so
+   _wiCtxKeydown/_wiCtxShow/_wiCtxClose keep working. #wi-ctx sits outside
+   .wi4, hence body.wi4-on, a class v4 sets while active and removes on page
+   change. .wi-ctx-i keeps display:block (no layout change to moved nodes);
+   the key hint floats right. */
+body.wi4-on #wi-ctx .wi4-m-hd { padding:8px 14px 6px; border-bottom:1px solid var(--wi4-line-2); margin-bottom:4px; font-size:12px; font-weight:600; color:var(--wi4-ink); }
+body.wi4-on #wi-ctx .wi4-m-hd .wi4-l2 { font-weight:400; }
+body.wi4-on #wi-ctx .wi4-m-sec { padding:6px 14px 2px; font-size:10px; font-weight:600; letter-spacing:.6px; text-transform:uppercase; color:var(--wi4-grey-2); }
+body.wi4-on #wi-ctx .wi4-m-sub { display:none; padding-left:12px; }
+body.wi4-on #wi-ctx .wi4-m-sub.open { display:block; }
+body.wi4-on #wi-ctx .wi4-m-ic { display:inline-block; width:16px; margin-right:6px; text-align:center; color:var(--wi4-icon); }
+body.wi4-on #wi-ctx .wi4-m-k { float:right; margin-left:12px; }
+/* Equivalent of today's `.wk3.wi2 .wi-ctx-h{font-size:11px}` (§c.3). It is
+   the only .wk3/.wk3.wi2-scoped rule that reaches #wi-ctx, #wi-panel or
+   #wi-popover content: measured 11/10 over every class emitted by the 37
+   menu/panel/popover builders of weekly_intl.js. The board rig's computed-style
+   comparison (WP10) is the proof; any further difference it finds is added
+   here, keyed the same way. */
+body.wi4-on #wi-ctx .wi-ctx-h { font-size:11px; }
+
+@media print {
+  .wi4-q, .wi4-shelf, .wi4-plane, .wi4-banner, .wi4-pres { display:none; }
+  .wi4-cols { position:static; }
+}
