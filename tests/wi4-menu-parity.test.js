@@ -264,12 +264,72 @@ test('checker self-test: parity holds for a faithful merge and fails loudly on e
   assert.match(parityViolations([oldA, oldB], wrongOpen).join('|'), /v4-only _wk3Edit labelled «Φόρμα»/);
 });
 
-test('v4 per-load menu (WP5) meets the parity rules on every fixture load', t => {
-  // WP0's placeholder carries __wi4Placeholder. Until WP5 lands, this case
-  // stays a visible TODO, never a silent pass: the rules above are ready for
-  // WP5 to feed with the menu its openRowMenu builds for each fixture load.
-  const src = read('modules/wi4_actions.js');
-  if (/__wi4Placeholder/.test(src)) { t.todo('WP5 not integrated: modules/wi4_actions.js is the WP0 placeholder'); return; }
-  assert.fail('WP5 landed: wire WI4Actions.openRowMenu output for every fixture load into parityViolations() here');
+test('v4 per-load menu (WP5) meets the parity rules on every fixture load', () => {
+  // WP5 wiring. WI4Actions._gather(orderId) is the model openRowMenu draws
+  // (the same parsed <button> nodes, moved, relabelled). It runs here on the
+  // real builders with: a regex DOMParser for the builders' flat <button>
+  // markup; a WIV2 whose rowIdOf finds the row that owns the order; and a WI4
+  // whose menuSection follows §e.9 rule 5 (core/wi4-logic.js is WP1's).
+  // Lists given to the checker: the truck section is `main`; each load
+  // section and each «▸» submenu is its own list, because Figma draws the
+  // same per-load label («Εκτύπωση / WhatsApp…») under ΕΞΑΓΩΓΗ and under
+  // ΕΙΣΑΓΩΓΗ and the section header tells them apart. Uniqueness of onclick
+  // across the WHOLE menu is asserted on top.
+  const { ctx, W } = world(); fill(W);
+  const dec = x => String(x).replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&');
+  ctx.DOMParser = function () {};
+  ctx.DOMParser.prototype.parseFromString = html => {
+    const nodes = [];
+    for (const m of String(html).matchAll(/<button\b([^>]*)>([\s\S]*?)<\/button>/g)) {
+      const at = {};
+      for (const a of m[1].matchAll(/([\w-]+)(?:="([^"]*)")?/g)) at[a[1]] = a[2] === undefined ? '' : dec(a[2]);
+      if (!/(^|\s)wi-ctx-i(\s|$)/.test(at.class || '')) continue;
+      nodes.push({ getAttribute: n => (n in at ? at[n] : null), hasAttribute: n => n in at, disabled: 'disabled' in at, textContent: dec(m[2].replace(/<[^>]+>/g, '')) });
+    }
+    return { querySelectorAll: () => nodes };
+  };
+  ctx.WI4 = { KEYMAP: { KeyA: 'assign', KeyP: 'print', KeyO: 'open' }, MENU_ICON: {},
+    menuSection: fn => (/^(_wiPanelAssign|_wiClear|_wiStockPanel)$/.test(fn) ? 'truck' : /^(_wiUnmatchRow|_wiUnmatch)$/.test(fn) ? 'import' : 'export') };
+  ctx.WIV2 = { active: () => false, _broken: false,
+    rowIdOf: oid => { const r = W.WINTL.rows.find(x => (x.orderIds || []).includes(oid) || x.orderId === oid); return r ? r.id : null; } };
+  vm.runInContext(read('modules/wi4_actions.js'), ctx, { filename: 'modules/wi4_actions.js' });
+  const A = ctx.WI4Actions;
+  const html = items => items.filter(i => i.onclick).map(i => `<button class="wi-ctx-i" onclick="${i.onclick}">${i.label}</button>`).join('');
+  const oidsOf = r => ((r.orderIds && r.orderIds.length) ? r.orderIds : [r.orderId]);
+  let loads = 0;
+  for (const row of W.WINTL.rows) {
+    if (row.type === 'import' && row.matchedTo) continue;   // drawn inside its export row, no plane of its own
+    const oid = oidsOf(row)[0];
+    // What the old openers show for this load (their own routing).
+    const old = [];
+    if (row.legOf) old.push(W.preCtxItems({ orderIds: [oid] }) || W.legCtxItems(oid));
+    else if (row.hasSplitLegs) old.push(W.splitHeaderCtxItems(row));
+    else if (row.type === 'import') {
+      const own = W.preCtxItems(row) || W.lotCtxItems(row, true);
+      old.push(own || W.impCtxItems(row, undefined));
+      if (!own && row.orderIds.length > 1) for (const m of row.orderIds) old.push(W.segCtxItems(row.id, m, true));
+    } else {
+      const own = W.preCtxItems(row) || W.lotCtxItems(row, false);
+      old.push(own || W.ctxItems(row));
+      if (!own && row.orderIds.length > 1) for (const m of row.orderIds) old.push(W.segCtxItems(row.id, m, false));
+      if (row.importId) {
+        const imp = W.impGroupRowOf(row.importId);
+        const pre = W.preCtxItems(imp);
+        old.push(pre || W.impCtxItems(imp, row.id));
+        if (!pre && imp.orderIds.length > 1) for (const m of imp.orderIds) old.push(W.segCtxItems(imp.id, m, true));
+      }
+    }
+    for (const o of W.relayIdsOfRow(row)) for (const rec of Object.values(W.WINTL.relay.byOrder[o] || {})) old.push(W.relayCtxItems(rec.id, o));
+    const m = A._gather(oid);
+    assert.ok(m, 'no menu for ' + oid);
+    const lists = m.sections.flatMap(s => [s.items, ...s.subs.map(x => x.items)]);
+    assert.deepStrictEqual(parityViolations(old, { main: html(m.truck), submenus: lists.map(html) }), [], 'parity, load ' + oid);
+    const all = [m.truck, ...lists].flat().filter(i => i.onclick).map(i => i.onclick);
+    assert.strictEqual(new Set(all).size, all.length, 'an onclick twice in the menu of ' + oid);
+    loads++;
+  }
+  assert.ok(loads >= 10, `only ${loads} loads checked — the fixture lost coverage`);
+  // The relabel map's keys exist in some builder output or panel string.
+  for (const k of Object.keys(A._RELABEL.menu)) assert.ok(WI_SRC.includes(k), 'relabel key gone from weekly_intl.js: ' + k);
+  for (const k of Object.keys(A._RELABEL.panelTitle)) assert.ok(WI_SRC.includes("'" + k + "'"), 'panel title gone: ' + k);
 });
-
