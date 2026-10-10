@@ -1191,84 +1191,30 @@ function invalidateRefData() {
 }
 
 // ═══════════════════════════════════════════════
-// MULTI-USER: Auto-Refresh, Conflict Detection, Presence
+// MULTI-USER: Conflict check, Presence
 // ═══════════════════════════════════════════════
 
-// ── 1. Auto-Refresh ────────────────────────────────
-// Pages register a callback; every 60s we invalidate dynamic caches
-// and call the callback so the page re-renders with fresh data.
-let _autoRefreshCb = null;
-let _autoRefreshTimer = null;
+// ── Conflict check ─────────────────────────────────
+// atAutoRefresh/atStopAutoRefresh, atTrackVersion(s) and the 'Last Modified'
+// version check that lived here were removed (Weekly Intl v4 WP6, PLAN §2.9):
+// nothing in core/, modules/ or app.html called atAutoRefresh or
+// atTrackVersion(s), so _recordVersions stayed empty and the check never ran —
+// and the Worker has no 'Last Modified' label, so it could not have run anyway.
+// It made atSafePatch look like a conflict guard while it guarded nothing
+// (principle 8). The real check is the Worker's `_expect` 409 (§g.2/§g.3).
+// router.js still calls atStopAutoRefresh behind a typeof guard: a no-op now.
 
-function atAutoRefresh(callback, intervalMs = 60000) {
-  _autoRefreshCb = callback;
-  if (_autoRefreshTimer) clearInterval(_autoRefreshTimer);
-  _autoRefreshTimer = setInterval(() => {
-    // Invalidate dynamic table caches (not stable/long)
-    Object.keys(_MEM).forEach(k => {
-      const tableId = k.substring(0, 17); // tblXXXXXXXXXXXXX
-      if (!_isStable(tableId)) delete _MEM[k];
-    });
-    if (_autoRefreshCb) _autoRefreshCb();
-  }, intervalMs);
-}
-
-function atStopAutoRefresh() {
-  if (_autoRefreshTimer) { clearInterval(_autoRefreshTimer); _autoRefreshTimer = null; }
-  _autoRefreshCb = null;
-}
-
-// ── 2. Conflict Detection (Optimistic Locking) ────
-// Before PATCH, fetch current record and compare Modified time.
-// If someone else changed it since we loaded, warn the user.
-const _recordVersions = {}; // { recId: lastModifiedTime }
-
-function atTrackVersion(record) {
-  if (record && record.id) {
-    _recordVersions[record.id] = record.fields?.['Last Modified'] || record.fields?.['Modified'] || null;
-  }
-}
-
-function atTrackVersions(records) {
-  if (Array.isArray(records)) records.forEach(r => atTrackVersion(r));
-}
-
-// opts.expect (Weekly Intl v4, TECH_DESIGN §g.3): the Worker's 409 replaces
-// the version check below, and the conflict comes back as the RETURN value
-// {conflict:true, fields, by, at, current} — the shape the existing
-// `if(res?.conflict)` branches of weekly_intl.js already handle.
+// opts.expect (Weekly Intl v4, TECH_DESIGN §g.3): the Worker compares the
+// values the user saw and answers 409 instead of writing, and the conflict
+// comes back as the RETURN value {conflict:true, fields, by, at, current} —
+// the shape the existing `if(res?.conflict)` branches of weekly_intl.js
+// already handle. Without opts this is exactly atPatch.
 async function atSafePatch(tableId, recId, fields, opts) {
   if (opts && opts.expect) {
     try { return await atPatch(tableId, recId, fields, opts); }
     catch (e) { if (e && e.conflict) return { conflict: true, ...e.conflict }; throw e; }
   }
-  // Check if record was modified by someone else
-  const tracked = _recordVersions[recId];
-  if (tracked) {
-    try {
-      const res = await _enqueue(() => _atRetry((_r) =>
-        fetch(_apiUrl(`/v0/${AT_BASE}/${tableId}/${recId}`), {
-          headers: _apiHeaders('GET', _r)
-        })
-      ));
-      const current = await res.json();
-      const currentMod = current.fields?.['Last Modified'] || current.fields?.['Modified'] || null;
-      if (currentMod && tracked && currentMod !== tracked) {
-        const proceed = confirm(
-          'This record was modified by another user since you loaded it.\n' +
-          'Save anyway? (Cancel to reload first)'
-        );
-        if (!proceed) return { conflict: true, current };
-      }
-    } catch(e) { if (typeof logError === 'function') logError(e, 'atSafePatch version check'); } // If check fails, proceed anyway
-  }
-
-  const result = await atPatch(tableId, recId, fields);
-  // Update tracked version
-  if (result && result.fields) {
-    _recordVersions[recId] = result.fields['Last Modified'] || result.fields['Modified'] || null;
-  }
-  return result;
+  return atPatch(tableId, recId, fields);
 }
 
 // ── 3. Online Presence ─────────────────────────────
@@ -1306,7 +1252,6 @@ function atPresenceStart() {
     _presenceChannel.onmessage = (e) => {
       if (e.data?.type === 'invalidate' && e.data?.table) {
         invalidateCache(e.data.table);
-        if (_autoRefreshCb) _autoRefreshCb();
       }
     };
   } catch(e) { if (typeof logError === 'function') logError(e, 'BroadcastChannel init'); } // BroadcastChannel not supported in all browsers
