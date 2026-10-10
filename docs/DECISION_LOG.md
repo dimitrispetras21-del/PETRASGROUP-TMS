@@ -3103,7 +3103,7 @@ Owner αυτολεξεί: «οκ προχωρα με τις τοπικες πα�
     γραμμή κρυμμένη από φίλτρο/αναζήτηση ή μη σχεδιασμένη = μήνυμα.
   - **P2-2:** νεκρά `firstPendingId`/`jumpPending` και το ορφανό `_wiJumpFirstUnassigned` έφυγαν (αρχή 8).
   - **P3-1:** ο βοηθός AI (`core/ai-chat.js`) δεν περιγράφει πια «Auto Match».
-  - **Απόδειξη:** wi-readonly-guards 30/30 (6 αποτυχίες στο f4a472e4)· unit 418/418· stock-shelf-rig 91/91·
+  - **Απόδειξη:** wi-readonly-guards 30/30 (6 αποτυχίες στο f4a472e4)· unit 429/429 (όλο το glob tests/*.test.js, *.test.mjs, critics/*.test.js — επανέλεγχος 10/10)· stock-shelf-rig 91/91·
     local-relay-weekly-proof 107/107· stock-orders-rig 323/323· rig HAR: management κελί διαδρομής → καρτέλα «Μόνο ανάγνωση
     για τον ρόλο σου» χωρίς Ενέργειες, 0 εγγραφές, 0 σφάλματα· dispatcher → «Επεξεργασία παραγγελίας».
 
