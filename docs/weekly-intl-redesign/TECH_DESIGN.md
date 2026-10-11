@@ -455,6 +455,16 @@ Tests: `tests/wi4-logic.test.js` (`node --test`, zero dependencies).
 | `LATE` | amber | `Delivery Performance = Delayed` | «καθυστέρηση» |
 | `PREORDER` | `preorderLevel` (≤1 day red, 2–3 amber, else none) | unconverted pre-order | «pre-order χωρίς μετατροπή» |
 | `SAVE_FAILED` | red | `syncErr` | «δεν αποθηκεύτηκε» |
+| `MATCH_UNREAD` (round 2) | amber, act `open` | the export's matched import is not in this week's read (loads outside ±8 days, or cancelled): `matchUnread` | «εισαγωγή εκτός προβολής» |
+| `PALLETS_UNKNOWN` (round 2) | amber, act `open` | `palletsUnknown > 0` and the known sum is 28–33 (above 33 it is `OVER_33`) | «παλέτες χωρίς καταγραφή» |
+
+- **Every counted reason is named on its row** (round 2, P1): the word sits where the reason
+  applies, with `data-r="<CODE>"` — «ΠΡΟΣ ΑΝΑΘΕΣΗ» box (NO_TRUCK), the empty-return cell, the
+  national tile, the VS warning, the pallets (OVER_33 / PALLETS_UNKNOWN), «ίδια μέρα» in the
+  assignment box (SAME_DAY), «καθυστέρηση» after the last shown delivery point (LATE), «PRE»
+  before the first shown loading point (PREORDER), the relay's «ΠΡΟΣ ΑΝΑΘΕΣΗ», the unread
+  matched import. The day header carries `data-codes`; the board rig proves counted = named,
+  per day and code. The row number's title lists every reason of the row.
 
 - Not flags: a past date without ✓ is grey «δεν δηλώθηκε» on the chip (status lag ≠ delay,
   rules sheet); a partner without import shows «Μόνο εξαγωγή · συνεργάτης».
@@ -1474,3 +1484,53 @@ claim in the finding is factually wrong, and the reason is given.
 | 42 | P3 | menu icons/hints, verbatim presence note | accepted | §e.9, §e #10 |
 | 43 | P3 | `changes` counts automatic writes; «#N» messages | accepted | §g.1, §e.14, §j.8 |
 | 44 | P3 | provenance of ΕΚΔΟΧΗ; city/Inter questions; dead counters | accepted. The DECISION_LOG entry belongs to the coordinator (shared file), so the choice is a morning question. Dead counters are removed in WP2's separate commit | §j.6, §g.3, §i |
+
+## l. Build review log (fix round 2, 11/10 — on `feat/wi-v4`)
+
+46 findings of the critics on the built board (2 P1, 17 P2, 27 P3). Proof for each fix is the
+board rig (`tests/critics/wi4-board-rig.js`, 369+ checks, GO) or a unit test; the identity rig
+stays GO (flag off = byte-identical). Every old-module change is behind `_wiV2Active()` or a
+default that keeps today's output.
+
+| Finding (short) | Outcome |
+|---|---|
+| P1 per-load menu ~820px, v1 stop dump in section lines | **fixed**: `#wi-ctx` 320px (sheet 14: 300), one-line section/header lines with title, Figma summaries from `WIV2._ends` («ΠΕΛΑΤΗΣ · Φόρτωση → Παράδοση · Pπ.», «N φορτία → Τόπος, Πόλη · Pπ.»), horizontal + upward clamp; a disabled item («+ Κομμάτι από απόθεμα…») keeps its truck section and icon (`DISABLED_AS`) |
+| P1 reasons counted but not named on rows | **fixed**: §d.2 «Every counted reason is named»; rig invariant counted = named per day |
+| P2 stock strip pushed right; «p»; dot | **fixed** (left edge, `opt.unit 'π'` on `_wiShelfInner`, client grey). **Partly rejected:** the «·» stays — sheet 15 draws it, light grey |
+| P2 ΑΠΟ ΒΕΡΟΙΑ flush to the border; «‹» cut | **fixed**: 8px inset inside the 140px track (legs stay 621px); the header's inline `text-align` removed, so the collapsed chevron centres |
+| P2 three date formats | **fixed**: relay sub-row and menu header/relay title use `WI4.dayLabel`; SAME_DAY queue text «ίδια μέρα · TST-1014 · Τετ 7/10» (old sentence in the title) |
+| P2 tabs jump with presence | **fixed**: the bar is a 3-track grid, tabs in the centre track |
+| P2 first paint scrolls 166px (two findings) | **fixed**: scrollTop 0 when the target is the first day card or already on the first screen; only a day below the fold is scrolled to |
+| P2 one failed save = four messages | **fixed**: `opts.quiet` in `core/api.js` (generic retry/«Save failed» toasts held back, 403/422 kept, every failure still logged); `_wiExpectOpt` returns `quiet:true`; the old catch toasts skip in v4; the line is one short red sentence with an alert icon naming what stayed as it was |
+| P2 date panel 5-line subtitle; «07:00 AM» | **fixed**: one line «client · place — place»; the time is a 24-hour `HH:MM` text field (`_hhmm` validates; a bad time is said, never dropped) |
+| P2 failed match shown as clean in counts/queue | **fixed**: `_unconfirmed(row)` — a failed write whose link the table does not hold counts from WINTL.data; the optimistic import keeps counting in its own day as a ghost entry (never drawn); `onSync('err')` refreshes counts and the row's rail |
+| P2 coverage (split, rota, piece, relay, unmatch, queue buttons, Q, print) | **added** to the rig: `twins` (v1 = v4 writes and final ORDERS/LOCAL_MOVES), `queue` (cards after a row-id shift, Q order, Print/WhatsApp to the right order). The rig's facade learned the batch create and the «ORDER STOPS» reverse link the split needs |
+| P2 presence alt-tab beats a failing endpoint | **fixed**: `S.nextAt`; a paused/backing-off tab keeps its wait across hide/show (unit test) |
+| P2 offline date save shows ✓ | **fixed**: v4 `_wiDateWrite` returns `{ok:false, offline:true}` before any downstream sync; the panel says it is queued |
+| P2 stale `_wiPendingMatch` blocks the re-read for the session | **fixed**: it holds the re-read 2 min at most; after ~1 min of «something open» the line says «δεν ξέρουμε τι γράφτηκε» (rig case `savefail.stalePending`) |
+| P2 matched import not loaded = open drop slot | **fixed**: «εισαγωγή εκτός προβολής · άνοιγμα» + `MATCH_UNREAD` (rig case `unread`) |
+| P2 menu header «ΠΡΟΣ ΑΝΑΘΕΣΗ» for an assigned row off the Active list; «Συνεργάτης» | **fixed** («—») |
+| P3 queue cards two lines, button-like «Όλα» | **fixed** (one line with Pπ; `wi4-link`) |
+| P3 navy avatars; «↻» drawn as «υ» | **fixed** (tinted discs; refresh icon in the strip and beside «Ενημερώθηκε», alert icon on the error counter) |
+| P3 split header under ΠΡΟΣ ΒΕΡΟΙΑ; «+N» bare; ✓ glued | **fixed** (span from the export column; chip «+N»; the ✓ is the 10px icon everywhere) |
+| P3 in-row print on the assignment box | **fixed**: not drawn (`display:none`, the `.wk3-prt`/`data-shq` hook stays in the DOM); Print/WhatsApp = menu + P |
+| P3 «σήμερα» without separator | **fixed** («· σήμερα ·») |
+| P3 fixture lacks Summary strings | **rejected as stated, root cause fixed:** the Worker never returns Loading/Delivery Summary (derived fields), and the fixture check forbids them for exactly that reason. The fixture's locations are production-shaped; the board could not parse the production label «Όνομα, Πόλη, Χώρα» (Greek country names miss `_WK3CC`), so line 2 was empty in production too. `_splitName` now falls back to `countryCode()`; line 2 follows «χώρα μόνο εκτός GR»; rig asserts every single point with room shows its place |
+| P3 toasts stay after a successful retry | **fixed**: the generic retry toasts go when the failed source reads again |
+| P3 «πριν 0″»; name the user | **fixed** «μόλις τώρα». **Rejected:** naming from presence — a guess, against «never a guessed name» (§d.5) |
+| P3 groupage labels collide («Alpha …» ×3) | **left to the owner** (the lock allows both); line 2 now adds the place and pallets |
+| P3 `_tickT` on `_live()` | **fixed**: `WIV2.active()`, interval stopped by `_cleanup`, restarted by paint |
+| P3 rig conflict.own (a) used the same truck | **fixed**: another truck, and the leg's `_expect` must carry the cascaded truck |
+| P3 own 409 blamed on «άλλος» | **fixed**: `describeConflict(me)` «Την άλλαξες εσύ…», button «Κράτα την τρέχουσα» (unit test) |
+| P3 grip-path match: unmatch written before a possible 409 | **fixed** (v4): the lock-check read is compared with WINTL.data before any write; a match dialog offers only «Κράτα την τρέχουσα» |
+| P3 `_wiDateWrite` replaced the server truth with any curIso | **fixed**: 6th parameter `seen`, passed only by the v4 panel (contract stub updated) |
+| P3 `feedTog` without try/catch; placeholder test | **fixed** |
+| P3 unknown cache entries drawn as nothing | **fixed** (driver/trailer/truck «—» with a title) |
+| P3 × on a failed line deletes the log while unverified | **fixed**: hidden only, dropped once the re-read lands |
+| P3 closed-panel ✓ without read-back; time not verified | **fixed** (`_dpVerified` day + time) |
+| P3 relay summary throws / Relay missing | **fixed** with the relays' `SOURCE_UNKNOWN` item, a «δεν διαβάστηκε» sub-row and no folding day — **deviation:** not `SAVE_FAILED` (an unread relay was not a failed save) |
+| P3 unknown `TMS_EXPECT_LIVE` treated as checked | **fixed**: notes and the ✓ toast say «δεν έχει επιβεβαιωθεί»/«χωρίς έλεγχο» unless `true`; the verbatim promise only when confirmed |
+| P3 silent queue/keyboard branches | **fixed** (a toast in each) |
+| P3 33π with unwritten members | **fixed** (`PALLETS_UNKNOWN`) |
+| P3 header «ΕΞΑΓΩΓΗ · N» counted split parent + legs | **fixed** for v4 (numbered rows); `reportPageMetrics` unchanged |
+| rig: menu computed-style flake (70 ms focus fade) | **fixed**: captured at rest |
