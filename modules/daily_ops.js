@@ -1351,6 +1351,18 @@ async function _opsStatFinal(id,st,stamped){ if(_opsBlockReadOnly()) return; try
   // Mirror Status on any linked PARTNER ASSIGNMENT
   try { await paSyncStatus({ parentType:'order', parentId:id, status:st }); }
   catch(e) { if(typeof logError==='function') logError(e,'daily-ops: PA status sync '+id); toast('Η κατάσταση γράφτηκε, αλλά η ανάθεση συνεργάτη ΔΕΝ ενημερώθηκε','warn'); }
+  // WP-A (plan §3.4): no writer of the Veroia day without the VS chain. This
+  // stamp wrote the cross-dock and stopped — the national load, its Veroia
+  // stop and the Ramp kept the old day. Same downstream as the Weekly
+  // International date write (_wiDateWrite), awaited so a national load that
+  // did not follow is said instead of a plain ✓ (the failed stage is already
+  // one app_errors line, via syncOrderDownstream's run()).
+  if(patch['VS CD Date'] && typeof syncOrderDownstream==='function'){
+    let ds=null;
+    try{ ds=await syncOrderDownstream(id,{ source:'intl', changedFields:['VS CD Date'], skipPA:true }); }
+    catch(e){ ds={ok:false,failed:['sync']}; if(typeof logError==='function') logError(e,'daily-ops: VS chain after the Veroia day '+id); }
+    if(!ds||!ds.ok){ toast('Φορτώθηκε — αλλά το εθνικό φορτίο ΔΕΝ ακολούθησε την ημέρα Βέροιας. Ξαναδοκίμασε από το Εβδομαδιαίο Διεθνών.','warn'); _opsDraw(); return; }
+  }
   toast((st==='In Transit'?'Φορτώθηκε':st)+' ✓');_opsDraw();}catch(e){toast('Η αποθήκευση απέτυχε — δεν γράφτηκε τίποτα. Ξαναδοκίμασε.','danger');}}
 async function _opsDel(id,perf){
   if(_opsBlockReadOnly()) return;
