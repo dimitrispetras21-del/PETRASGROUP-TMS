@@ -31,6 +31,9 @@ const APP_SHELL = [
   '/PETRASGROUP-TMS/core/ui.js',
   '/PETRASGROUP-TMS/core/entity.js',
   '/PETRASGROUP-TMS/core/pa-helpers.js',
+  // The Veroia day rule (WP-A): orders_intl.js and its VS sync call it — an
+  // offline shell without it would fail every order save's national sync.
+  '/PETRASGROUP-TMS/core/vs-dates.js',
   // Local relays (060): Weekly International, Daily Ops, the Drivers card and
   // the payroll card read (and the first two edit) them through it.
   '/PETRASGROUP-TMS/core/relay.js',
