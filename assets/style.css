@@ -7703,6 +7703,15 @@ body.wi4-on .topbar { height:60px; padding:0 20px 0 28px; gap:8px; position:rela
 body.wi4-top-on #topbarTitle, body.wi4-top-on #topbarBreadcrumb { display:none; }
 body.wi4-on .topbar .wi4-top { flex:1; min-width:0; align-self:stretch; display:flex; align-items:center; background:transparent; }
 body.wi4-on .topbar .wi4-top > .wi4-bar { flex:1; min-width:0; min-height:60px; border-bottom:0; }
+/* Figma 1097:2283 centres the week switcher between the title's left edge and
+   the avatar's right edge (the bell and the avatar are INSIDE Actions 1097:2309).
+   The slot runs on under .topbar-right by its width + the top bar's gap
+   (--wi4-tr, _topFit) and the actions step back by as much, so the grid's two
+   side tracks are equal again (r2/topbar-switcher-off-centre: −41px at 1920).
+   .topbar-right stays on top of the slot for the pointer and the paint. */
+body.wi4-top-on .topbar .wi4-top { margin-right:calc(-1 * var(--wi4-tr, 0px)); }
+body.wi4-top-on .wi4-top .wi4-bar-r { margin-right:var(--wi4-tr, 0px); }
+body.wi4-top-on .topbar .topbar-right { position:relative; z-index:1; }
 /* .topbar button's 44px touch floor (SH-3) is for the app's own chrome; on the
    board's controls it made 44px tabs in a 56px pill (Figma: 34 / 32px). */
 body.wi4-on .topbar .wi4-top button { min-height:0; min-width:0; }
@@ -7735,7 +7744,9 @@ body.wi4-top-on .topbar .notif-bell svg { width:15px; height:15px; }
 body.wi4-top-on .topbar .notif-dot { top:11px; right:11px; }
 body.wi4-top-on .topbar .user-chip { margin-right:-8px; }   /* avatar edge = the gutter */
 body.wi4-top-on .topbar .user-avatar { width:28px; height:28px; font-size:10.5px; font-weight:600; background:var(--wi4-ink); color:var(--surface-card); }
-.wi4-umenu { position:absolute; top:calc(100% + 4px); right:0; min-width:200px; padding:6px 0; background:var(--surface-card); border:1px solid var(--wi4-line-2); border-radius:8px; box-shadow:0 8px 24px rgba(11,25,41,.14); z-index:40; font-family:'DM Sans',sans-serif; font-size:12px; color:var(--wi4-ink); cursor:default; }
+/* right:8px: the chip's 44px box overhangs the 28px avatar by 8px, so right:0
+   put the menu's edge 8px past the avatar's (r2/topbar-avatar-menu-keyboard). */
+.wi4-umenu { position:absolute; top:calc(100% + 4px); right:8px; min-width:200px; padding:6px 0; background:var(--surface-card); border:1px solid var(--wi4-line-2); border-radius:8px; box-shadow:0 8px 24px rgba(11,25,41,.14); z-index:40; font-family:'DM Sans',sans-serif; font-size:12px; color:var(--wi4-ink); cursor:default; }
 .wi4-umenu[hidden] { display:none; }
 .wi4-umenu-h { padding:6px 14px 8px; border-bottom:1px solid var(--wi4-line-2); margin-bottom:4px; white-space:nowrap; }
 .wi4-umenu-h span { color:var(--wi4-grey-2); }
@@ -7795,7 +7806,13 @@ body.wi4-on #wi-ctx .wi4-m-sec .wi4-l2, body.wi4-on #wi-ctx .wi4-m-hd .wi4-l2 { 
    then the range (shrink 1000, its whole text in title), «Ενημερώθηκε» at
    ≤1600; a state word and the sync token never shrink. */
 .wi4-range { font-size:12.5px; color:var(--wi4-grey-2); flex:0 1000 auto; margin-left:10px; }
-.wi4-upd { display:inline-flex; align-items:center; gap:5px; font-size:11px; color:var(--wi4-grey-2); white-space:nowrap; flex:none; margin-left:12px; }
+/* Figma 1115:2700: a 13px refresh icon, gap 5, «Ενημερώθηκε πριν 2΄» ONE
+   DM Sans 12 text; «↻ ζωντανά» 11.5 (1123:2730). The two words are two spans
+   (the first gives way at 1440): the right margin turns the 5px flex gap
+   into a word space (r2/topbar-sync-token-type). */
+.wi4-upd { display:inline-flex; align-items:center; gap:5px; font-size:12px; color:var(--wi4-grey-2); white-space:nowrap; flex:none; margin-left:12px; }
+.wi4-upd.live { font-size:11.5px; }
+.wi4-upd:not(.chg) > .wi4-upd-l { margin-right:calc(.25em - 5px); }
 .wi4-upd svg { flex:none; }
 /* A narrow bar (1440) says «↻ μόλις τώρα»: «Ενημερώθηκε» goes whole, never
    half-cut (its time is in the title). */
@@ -7816,7 +7833,10 @@ body.wi4-on #wi-ctx .wi4-m-sec .wi4-l2, body.wi4-on #wi-ctx .wi4-m-hd .wi4-l2 { 
 /* The ‹ › steppers (1097:2288/2307): a 15px chevron, 27px wide (F2). */
 .wi4-tab[aria-label] { padding:0 5px; color:var(--text-mid); }
 .wi4-tab:hover, .wi4-tab[aria-label]:hover { color:var(--wi4-ink); }
-.wi4-tab.on { background:var(--surface-card); border-color:var(--wi4-slot); box-shadow:0 1px 2px rgba(15,23,42,.08); color:var(--wi4-ink); font-weight:600; }
+.wi4-tab.on { background:var(--surface-card); border-color:var(--wi4-slot); box-shadow:0 1px 2px rgba(15,23,42,.08); color:var(--wi4-ink); font-weight:600; gap:5px; }
+/* The current week: Figma 1097:2298, a 5×5 #027BBD disc 5px after «W41» (the
+   «•» glyph was a ~3px speck, r2/topbar-current-week-dot). */
+.wi4-tab-cur { flex:none; width:5px; height:5px; border-radius:50%; background:var(--wi4-blue); }
 /* A narrow bar (1440): W−3 and W+3 go (‹ › still step a week), so the title
    group keeps room for the presence words and the sync token (fix round 3). */
 @media (max-width:1600px) { .wi4-tab[data-d="-3"], .wi4-tab[data-d="3"] { display:none; } }
@@ -7848,7 +7868,9 @@ body.wi4-on #wi-ctx .wi4-m-sec .wi4-l2, body.wi4-on #wi-ctx .wi4-m-hd .wi4-l2 { 
    rest of a paused/forbidden sentence before the range, names (whole, F4)
    before the range, the state word and the sync token never (review 11/10). */
 .wi4-pres { display:contents; }
-.wi4-pres > * { margin-left:6px; }
+/* 14px between the pieces (sheet 16 A 1123:2720: avatars → names; A2
+   1123:2731: dot → sentence) — 6px read as one cramped run (r2/presence-gaps). */
+.wi4-pres > * { margin-left:14px; }
 .wi4-pres > :first-child { margin-left:12px; }
 /* Light tinted discs (sheet 16 A), the same look as the row's .wi4-av.sm —
    a navy disc read as «owned» (navy = own fleet). */
@@ -7876,9 +7898,11 @@ body.wi4-on #wi-ctx .wi4-m-sec .wi4-l2, body.wi4-on #wi-ctx .wi4-m-hd .wi4-l2 { 
    (.wi4-pres-nofit, _presFit) — never «Παντελής, Ει…»; the title keeps them. */
 .wi4-pres-n + .wi4-pres-w { margin-left:.25em; }
 .wi4-pres.wi4-pres-nofit .wi4-pres-n { display:none; }
-.wi4-pres.wi4-pres-nofit .wi4-pres-n + .wi4-pres-w { margin-left:6px; }
-/* «↻ ζωντανά» behind a 1×16 rule when someone is there (sheet 16 A, 1123:2729). */
-.wi4-pres:not(:empty) ~ .wi4-upd.live { border-left:1px solid var(--wi4-line-2); padding-left:12px; line-height:16px; }
+.wi4-pres.wi4-pres-nofit .wi4-pres-n + .wi4-pres-w { margin-left:14px; }
+/* «↻ ζωντανά» behind a 1×16 rule when someone is there (sheet 16 A, 1123:2729),
+   14px on either side of the rule like every gap of the strip (names end 552
+   → rule 566 → text 581; r2/topbar-presence-gaps). */
+.wi4-pres:not(:empty) ~ .wi4-upd.live { border-left:1px solid var(--wi4-line-2); margin-left:14px; padding-left:14px; line-height:16px; }
 /* Shrink is weighted by width: at 5000 a ~280px sentence still took ~15px
    from the 94px range at 1920 (F13). 1e6 makes the order strict — the
    sentence gives way whole before the range loses a pixel. */
