@@ -619,14 +619,18 @@ function menuSection(fn, from) {
 }
 
 // handler name → core/icons.js key. «⤷» in old labels gives way to these.
+// Glyphs as Figma's menu 1097:3858 / sheet 14 draws them (parity r1, F5): the
+// order opens as a load (package), print is a printer, «Καθαρισμός» an x,
+// the stock piece a plus, groupage a package, the rota leg corner-down-right,
+// the split leg split, unmatch a link, the local relay users.
 const MENU_ICON = freeze({
-  _wiPanelAssign: 'truck', _wiClear: 'trash', _wiStockPanel: 'package',
-  _wk3Edit: 'edit', _wiMenuPrint: 'file_text', _wiPrintSplitAll: 'file_text',
-  _wiUnmatchRow: 'x', _wiUnmatch: 'x', _wiPanelJoinLoad: 'plus',
-  _wiPanelGroupBuild: 'layout_grid', _wiSplit: 'x', _wiCancelGroupMember: 'x',
-  _wiPanelRota: 'route', _wiPanelConfirmUnlink: 'x', _wiPanelSplit: 'route',
+  _wiPanelAssign: 'truck', _wiClear: 'x', _wiStockPanel: 'plus',
+  _wk3Edit: 'package', _wiMenuPrint: 'printer', _wiPrintSplitAll: 'printer',
+  _wiUnmatchRow: 'link', _wiUnmatch: 'link', _wiPanelJoinLoad: 'plus',
+  _wiPanelGroupBuild: 'package', _wiSplit: 'x', _wiCancelGroupMember: 'x',
+  _wiPanelRota: 'corner_down_right', _wiPanelConfirmUnlink: 'x', _wiPanelSplit: 'split',
   _wiRejoinLegs: 'route', _wiPanelHandover: 'map_pin', _wiPanelWeekShift: 'clock',
-  _wiRelayOpen: 'user', _wiRelayGrpToggle: 'users', _wiRelayConfirmDel: 'trash',
+  _wiRelayOpen: 'users', _wiRelayGrpToggle: 'users', _wiRelayConfirmDel: 'trash',
   _wiStockReturn: 'package', _wiStockReturnLone: 'package', _wiStockLotOfRow: 'package',
   editPreorder: 'edit', deletePreorder: 'trash',
   // Not handlers: the «▸» line of a groupage member (a load = the box icon)

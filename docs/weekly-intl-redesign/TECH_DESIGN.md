@@ -387,6 +387,14 @@ Type and geometry:
   rules are keyed on `body.wi4-on` (a class v4 sets while it is active and removes on page
   change). The overlays are **never** wrapped in `.wk3.wi2`, because that would also pull in
   the old layout rules.
+- Intended v4 differences, left out of the equality and checked on their own (`scnStyles`):
+  - the popover's primary is navy (`--wi4-ink`), the board's one primary;
+  - per-load menu items are DM Sans 13 regular with 12px sides (Figma 1097:3864; parity r1
+    F4). `#wi-ctx` sits outside `.wi4`, so the board's button reset never reaches it and v1's
+    items draw in the browser's button font (Arial 12) with 14px sides. Their top/bottom
+    padding, borders and background stay v1's;
+  - «Αφαίρεση ταιριάσματος» is red (`.d`) in v4 and plain in v1 (Figma 1097:3933; parity r1
+    F6). Its 0px borders take the text colour, so their colour follows.
 - v4 markup never uses a `wk3-*` or `wi2-*` layout class, so those global rules cannot touch it.
 - The only legacy class names v4 emits are the contract hooks of §a.7: `wi-sync`, `wk3-prt`,
   `wi2-gapstk`, `wi-b-ap`, and `wi-ctx-i` for menu items (§e #9). Each sits inside a `.wi4-*`
@@ -669,14 +677,24 @@ need it. It never reflows per stop the way `_wi2FitStops` does.
 | 22 | **Unknown sources** (§d.2a): «—» cells with an explanatory title; one queue item per failed source | §d.2a. |
 
 ### e.9 Per-load actions menu
-**Layout** (Figma 1047:1926 / sheet 14):
-- header «ΑΒΓ1234 · Οδηγός Α / Σάβ 3/10 → Τρί 6/10 · 2 εξαγωγές · 1 εισαγωγή»;
+**Layout** (Figma 1047:1926 / sheet 14; menu 1097:3858):
+- a 300px card, docked to the arrow when opened from it (right edges flush, just under it;
+  opened upward when the room under it is short); a right-click opens it at the pointer;
+- header «ΑΒΓ1234 · Οδηγός Α / Σάβ 3/10 → Τρί 6/10 · 2 εξαγωγές · 1 εισαγωγή» (an own
+  truck's whole first line in DM Mono);
 - section **truck**;
 - section **ΕΞΑΓΩΓΗ · φορτίο**, or «GROUPAGE ΕΞΑΓΩΓΗΣ · 2 φορτία → …» with one «▸» line per
-  member, each opening its own submenu;
+  member, each opening its own submenu as a 260px flyout beside the menu (sheet 14
+  1064:2376), headed «ΦΟΡΤΙΟ N ΤΗΣ ΟΜΑΔΑΣ»; one flyout at a time, the menu never moves;
 - section **ΕΙΣΑΓΩΓΗ · φορτίο**.
+- every list reads: the order's opener, print, the rest in builder order, a local relay's
+  «▸», red items (`.d`, incl. «Αφαίρεση ταιριάσματος»), then the members' «▸» lines;
+- inside one load's list, a relay label drops its « — εξαγωγή/εισαγωγή REF-…» tail.
 
-Hovering a section highlights its load in the row.
+Hovering a section highlights its load in the row; hovering a member's «▸» line (or its
+flyout) highlights only that load's points, or the «+N» chip that holds a folded one.
+With the menu open, → on a «▸» line opens its flyout and ← returns. No ←/→ changes the
+week behind an open menu.
 
 **Where it renders.** Inside the existing `#wi-ctx`, with `.wi-ctx-i` buttons; submenus are
 nested `.wi-ctx-i` groups.

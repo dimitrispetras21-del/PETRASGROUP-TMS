@@ -328,19 +328,46 @@ function _gather(orderId) {
 
   // Labels and key hints.
   const hinted = new Set();
-  const label = (it, ctx) => {
+  // own = the direction word a load list may drop (parity r1, F13): inside
+  // ONE load's list (a single-load section, a member submenu) the builder's
+  // « — εξαγωγή REF-…» only repeats the section head and cut the label at
+  // 300px (Figma 1097:3897 / 1064:2396: «Φόρτωση με τοπικό οδηγό…»). The
+  // other direction's word stays: there it names a different order.
+  const label = (it, ctx, own) => {
     let t = RELABEL.menu[it.label] || it.label;
     if (it.name === '_wiMenuPrint' && ctx && ctx.group) t = RELABEL.menu['Εκτύπωση όλων'];
     // Same handler on a row that is already a group: «(πρόσθεση)» is derived
     // from row state, not a new action (§e.9 relabel table).
     if (it.name === '_wiPanelGroupBuild' && /,\s*false\s*\)$/.test(it.fn) && ctx && ctx.group) t = 'Groupage εξαγωγών… (πρόσθεση)';
+    if (own) t = t.replace(new RegExp(' — ' + own + '(?: .*?)?(…?)$'), '$1');
     it.label = t;
     const act = it.name === '_wiPanelAssign' ? 'assign' : it.name === '_wiMenuPrint' ? 'print' : it.v4only ? 'open' : null;
     it.hint = '';
     if (act && !hinted.has(act)) { const h = _hintFor(act); if (h) { it.hint = h; hinted.add(act); } }
   };
+  const word = (s) => (s.kind === 'export' ? 'εξαγωγή' : s.kind === 'import' ? 'εισαγωγή' : '');
   truck.forEach((it) => label(it, null));
-  for (const s of sections) { s.items.forEach((it) => label(it, s)); for (const sub of s.subs) sub.items.forEach((it) => label(it, null)); }
+  for (const s of sections) {
+    s.items.forEach((it) => label(it, s, s.group ? '' : word(s)));
+    for (const sub of s.subs) sub.items.forEach((it) => label(it, null, sub.kind === 'member' ? word(s) : ''));
+  }
+
+  // Red and order (parity r1, F6; Figma 1097:3858, sheet 14 1064:2376).
+  // «Αφαίρεση ταιριάσματος» undoes a match like «Καθαρισμός», «Διάλυση» and
+  // «Βγάλε από το groupage» undo theirs, so it is red in v4 too (v1 keeps its
+  // plain item). Every list reads the same way: the order's opener stays on
+  // top (the rig and the O key rely on it), print second, the rest in the
+  // builder's order, the red items last — never a red line between two
+  // ordinary ones.
+  const isDanger = (it) => it.danger || /(^|\s)d(\s|$)/.test((it.node && it.node.getAttribute && it.node.getAttribute('class')) || '');
+  const isPrint = (it) => it.name === '_wiMenuPrint' || it.name === '_wiPrintSplitAll';
+  const ordered = (list) => {
+    list.forEach((it) => { if (it.name === '_wiUnmatchRow' || it.name === '_wiUnmatch' || isDanger(it)) it.danger = true; });
+    const head = list.length && list[0].name === '_wk3Edit' ? list.slice(0, 1) : [];
+    const rest = list.slice(head.length);
+    return head.concat(rest.filter(isPrint), rest.filter((it) => !isPrint(it) && !it.danger), rest.filter((it) => !isPrint(it) && it.danger));
+  };
+  for (const s of sections) { s.items = ordered(s.items); for (const sub of s.subs) sub.items = ordered(sub.items); }
 
   return { rowId: row.id, oid: orderId, row, header: _menuHeader(row, impRow, expOids, impOids), truck, sections };
 }
@@ -392,11 +419,13 @@ function _menuHeader(row, impRow, expOids, impOids) {
   // acts from; a partner missing from the cache is «—», never the generic
   // «Συνεργάτης» (owner 4/9).
   // l1p: the same line in parts, the plates marked for DM Mono (sheet 14:
-  // «TST-1001 · Driver Test 01»); l1 stays the plain text.
+  // «TST-1001 · Driver Test 01»); l1 stays the plain text. An own truck's
+  // WHOLE line is one mono run, driver included (Figma 1097:3860, parity r1
+  // F10); a partner's company name keeps the sans.
   let l1p;
   if (row.hasSplitLegs) l1p = [{ t: 'Σπασμένη παραγγελία' }];
   else if (row.partnerId) l1p = [{ t: row.partnerLabel || '—' }].concat(row.partnerPlates ? [{ t: ' · ' }, { t: row.partnerPlates, mono: true }] : []);
-  else if (row.saved) l1p = [{ t: row.truckLabel || '—', mono: !!row.truckLabel }].concat(row.driverLabel ? [{ t: ' · ' + row.driverLabel }] : []);
+  else if (row.saved) l1p = [{ t: (row.truckLabel || '—') + (row.driverLabel ? ' · ' + row.driverLabel : ''), mono: !!row.truckLabel }];
   else l1p = [{ t: 'ΠΡΟΣ ΑΝΑΘΕΣΗ' }];
   l1 = l1p.map((x) => x.t).join('');
   const first = _fieldsOf(expOids[0] || impOids[0]);
@@ -415,7 +444,9 @@ function _iconEl(name) {
   const span = document.createElement('span');
   span.className = 'wi4-m-ic';
   const v = (L().MENU_ICON || {})[name];
-  if (v && typeof icon === 'function' && /^[a-z][\w-]*$/.test(v)) span.innerHTML = icon(v, 14);
+  // 15px with a 1.875 stroke = Figma's 15×15 lucide icons at 1.17px
+  // (1097:3858, parity r1 F5); icons.js's 1.75 drew them thinner.
+  if (v && typeof icon === 'function' && /^[a-z][\w-]*$/.test(v)) span.innerHTML = icon(v, 15, '', 1.875);
   else if (v) span.textContent = v;
   return span;
 }
@@ -428,6 +459,8 @@ function _itemNode(it) {
     b.className = 'wi-ctx-i';
     b.setAttribute('onclick', it.onclick);
   }
+  // A v4-red item the builder draws plain (unmatch, F6): .d = v1's own red.
+  if (it.danger) b.classList.add('d');
   b.textContent = '';
   b.appendChild(_iconEl(it.name || it.as || ''));
   // The label in its own span: ONE line, cut with «…» (review 11/10: long
@@ -447,9 +480,10 @@ function _secHead(title, sub) {
     // Section titles are upper-case words written as such (CSS upper-casing
     // keeps the Greek tonos in some browsers); the line under them is normal
     // text, so it undoes the section's caps style for itself. One line, cut
-    // with «…»: the whole of it is the title (the menu is ~320px, sheet 14).
+    // with «…»: the whole of it is the title (the menu is 300px, sheet 14).
+    // Medium 11.5/15 in ink: Figma 1097:3878 (parity r1 F11).
     const s = document.createElement('div'); s.className = 'wi4-l2'; s.textContent = sub; s.title = sub;
-    Object.assign(s.style, { textTransform: 'none', letterSpacing: '0', fontWeight: '400', fontSize: '11px', color: 'var(--wi4-ink)' });
+    Object.assign(s.style, { textTransform: 'none', letterSpacing: '0', fontWeight: '500', fontSize: '11.5px', lineHeight: '15px', color: 'var(--wi4-ink)' });
     d.appendChild(s);
   }
   return d;
@@ -458,28 +492,103 @@ function _secHead(title, sub) {
 let _menuHl = [];
 let _menuObs = null;
 function _hlClear() { _menuHl.forEach((el) => el.classList.remove('wi4-mhl')); _menuHl = []; }
-function _hlSet(oids) {
+// member = a groupage member's «▸» line (sheet 14 note 1064:2416: «το φορτίο
+// αυτό φωτίζεται μπλε στη σειρά»): only THAT load's points, which carry
+// data-order-id; the row and its index carry the group's first order in
+// data-oid, so lighting them suggested every load (parity r1 F3). A point
+// folded behind «+N» is not drawn: the chip that holds it lights instead.
+// A section lights its row (data-oid) and its loads' points.
+function _hlSet(oids, member) {
   _hlClear();
+  const add = (el) => { if (el && !el.classList.contains('wi4-mhl')) { el.classList.add('wi4-mhl'); _menuHl.push(el); } };
   for (const oid of oids || []) {
     if (!REC.test(oid)) continue;
-    document.querySelectorAll('#content .wi4 [data-oid="' + oid + '"]').forEach((el) => { el.classList.add('wi4-mhl'); _menuHl.push(el); });
+    document.querySelectorAll('#content .wi4 [data-order-id="' + oid + '"]').forEach((el) => {
+      const pts = el.getClientRects().length ? null : el.closest('.wi4-pts');
+      add(pts ? pts.querySelector('.wi4-more') || el : el);
+    });
+    if (!member) document.querySelectorAll('#content .wi4 [data-oid="' + oid + '"]').forEach(add);
   }
 }
-function _hoverable(el, oids) {
-  el.addEventListener('mouseenter', () => _hlSet(oids));
-  el.addEventListener('mouseleave', _hlClear);
+// back = the section's loads: a «▸» line and its flyout sit INSIDE the
+// section's box, so leaving them for the section's own lines fires no new
+// mouseenter on the box — the section lights again here instead of going dark.
+// Leaving the menu altogether clears after it (the box's own mouseleave).
+function _hoverable(el, oids, member, back) {
+  el.addEventListener('mouseenter', () => _hlSet(oids, member));
+  el.addEventListener('mouseleave', () => (back ? _hlSet(back) : _hlClear()));
 }
 // The menu never runs past the window: it scrolls inside only when it is
 // taller than the window (CSS max-height); otherwise it OPENS UPWARD as far as
-// the room under it is short — also when a submenu makes it taller — and it
-// moves left when it would cross the right edge (_wiCtxShow places it for a
-// 240px menu; v4's is wider, review 11/10).
+// the room under it is short, and it moves left when it would cross the right
+// edge (_wiCtxShow places it for a 240px menu; v4's is wider, review 11/10) —
+// or right, when docked to an arrow near the left edge (F14).
 function _fitMenu() {
   const ctx = document.getElementById('wi-ctx');
   if (!ctx || ctx.style.display !== 'block') return;
   const r = ctx.getBoundingClientRect();
   if (r.bottom > window.innerHeight - 8) ctx.style.top = Math.max(8, Math.round(window.innerHeight - 8 - r.height)) + 'px';
   if (r.right > window.innerWidth - 8) ctx.style.left = Math.max(8, Math.round(window.innerWidth - 8 - r.width)) + 'px';
+  else if (r.left < 8) ctx.style.left = '8px';
+}
+// A member's / relay's submenu is a FLYOUT beside its «▸» line (Figma sheet
+// 14 1064:2376: 260px at menu right − 6, line top − 6), not an accordion that
+// grew the menu and made it jump up (parity r1 F2). It stays inside #wi-ctx
+// in the DOM — _wiCtxKeydown's ↑↓, the click-outside close and the item's own
+// _wiCtxClose keep working — and escapes #wi-ctx's overflow by being
+// position:fixed (nothing above #wi-ctx has a transform, filter or contain).
+// Mirrored to the menu's left when the window has no room on the right;
+// clamped inside the window vertically.
+function _placeSub(body) {
+  const ctx = document.getElementById('wi-ctx');
+  const more = body && body._more;
+  if (!ctx || !more || !body.classList.contains('open')) return;
+  const m = ctx.getBoundingClientRect(), l = more.getBoundingClientRect();
+  const w = body.offsetWidth, h = body.offsetHeight;
+  let left = m.right - 6;
+  if (left + w > window.innerWidth - 8) left = m.left + 6 - w;
+  const top = Math.max(8, Math.min(l.top - 6, window.innerHeight - 8 - h));
+  body.style.left = Math.round(Math.max(8, left)) + 'px';
+  body.style.top = Math.round(top) + 'px';
+}
+// The menu scrolls inside on a short window: the open flyout follows its line.
+function _menuScroll() {
+  const ctx = document.getElementById('wi-ctx');
+  _placeSub(ctx && ctx.querySelector('.wi4-m-sub.open'));
+}
+// ←/→ while the menu is open (parity r1 F1; sheet 14: → opens a «▸» line's
+// submenu, ← returns). ui.js changes the WEEK on ←/→ from a bubble-phase
+// document listener, so → on a member line threw the menu and the week away.
+// A capture-phase window listener — the date panel's pattern — takes every ←/→
+// while #wi-ctx is shown, whatever has the focus: the week never moves behind
+// an open menu. It leaves with the menu (the close hook), or by itself when
+// the menu was hidden or repainted without that hook running.
+let _menuKey = null;
+function _menuKeyOff() { if (_menuKey) window.removeEventListener('keydown', _menuKey, true); _menuKey = null; }
+function _menuKeyOn(ctx) {
+  _menuKeyOff();
+  const onKey = (ev) => {
+    if (!ctx.isConnected || ctx.style.display !== 'block') { if (_menuKey === onKey) _menuKeyOff(); return; }
+    if (ev.key !== 'ArrowLeft' && ev.key !== 'ArrowRight') return;
+    ev.preventDefault(); ev.stopPropagation();
+    const a = document.activeElement;
+    if (!a || !ctx.contains(a)) return;
+    if (ev.key === 'ArrowRight') {
+      const more = a.closest('.wi4-m-more');
+      if (!more || !more._sub) return;
+      if (more.getAttribute('aria-expanded') !== 'true') more.click();
+      const first = more._sub.querySelector('.wi-ctx-i:not([disabled])');
+      if (first) first.focus();
+      return;
+    }
+    const sub = a.closest('.wi4-m-sub.open');
+    const more = sub ? sub._more : (a.matches('.wi4-m-more[aria-expanded="true"]') ? a : null);
+    if (!more) return;
+    if (more.getAttribute('aria-expanded') === 'true') more.click();
+    more.focus();
+  };
+  _menuKey = onKey;
+  window.addEventListener('keydown', onKey, true);
 }
 
 function _renderMenu(model) {
@@ -495,16 +604,25 @@ function _renderMenu(model) {
   frag.appendChild(hd);
   model.truck.forEach((it) => frag.appendChild(_itemNode(it)));
   let openSub = null;
+  const closeSub = () => {
+    if (!openSub) return;
+    openSub.classList.remove('open'); openSub.textContent = ''; openSub._more.setAttribute('aria-expanded', 'false');
+    openSub = null;
+  };
   for (const s of model.sections) {
     const box = document.createElement('div');
     box.appendChild(_secHead(s.title, s.sub));
-    s.items.forEach((it) => box.appendChild(_itemNode(it)));
+    // Line order (parity r1 F6, Figma 1097:3858 / sheet 14): the section's
+    // items, a local relay's «▸» where its plain item would stand, the red
+    // items, then the groupage members' «▸» lines (1064:2312 sits under
+    // «Διάλυση groupage»).
+    const lines = { relay: [], member: [] };
     for (const sub of s.subs) {
-      // The «▸» line toggles its submenu inline. Its items are inserted only
-      // while open, so _wiCtxKeydown's ↑↓ never lands on a hidden button.
-      // No onclick attribute: it is not an action, and the parity test
-      // counts every onclick as one. A member line carries the load's box
-      // icon and a trailing chevron, so it reads as «opens», not as a fact.
+      // The «▸» line opens its submenu as a flyout (_placeSub). Its items are
+      // inserted only while open, so _wiCtxKeydown's ↑↓ never lands on a
+      // hidden button. No onclick attribute: it is not an action, and the
+      // parity test counts every onclick as one. A member line carries the
+      // load's box icon and a trailing chevron, so it reads as «opens».
       const more = document.createElement('button');
       more.className = 'wi-ctx-i wi4-m-more' + (sub.kind === 'member' ? ' wi4-m-mem' : '');
       more.setAttribute('aria-expanded', 'false');
@@ -521,21 +639,27 @@ function _renderMenu(model) {
       const nodes = [_secHead(sub.head || '', sub.sub)].concat(sub.items.map(_itemNode));
       more.addEventListener('click', (ev) => {
         // Keep the menu open: _wiCtxShow closes it on the next document click.
+        // One flyout at a time; a second click on its line closes it.
         ev.stopPropagation();
-        const opening = !body.classList.contains('open');
-        if (openSub && openSub !== body) { openSub.classList.remove('open'); openSub.textContent = ''; openSub._more.setAttribute('aria-expanded', 'false'); }
-        body.textContent = '';
-        if (opening) nodes.forEach((n) => body.appendChild(n));
-        body.classList.toggle('open', opening);
-        more.setAttribute('aria-expanded', String(opening));
-        openSub = opening ? body : null;
-        _fitMenu();
+        const opening = openSub !== body;
+        closeSub();
+        if (!opening) return;
+        nodes.forEach((n) => body.appendChild(n));
+        body.classList.add('open');
+        more.setAttribute('aria-expanded', 'true');
+        openSub = body;
+        _placeSub(body);
       });
-      body._more = more;
-      _hoverable(more, sub.oids);
-      box.appendChild(more);
-      box.appendChild(body);
+      body._more = more; more._sub = body;
+      const member = sub.kind === 'member';
+      _hoverable(more, sub.oids, member, s.oids);
+      _hoverable(body, sub.oids, member, s.oids);
+      lines[member ? 'member' : 'relay'].push(more, body);
     }
+    s.items.filter((it) => !it.danger).forEach((it) => box.appendChild(_itemNode(it)));
+    lines.relay.forEach((n) => box.appendChild(n));
+    s.items.filter((it) => it.danger).forEach((it) => box.appendChild(_itemNode(it)));
+    lines.member.forEach((n) => box.appendChild(n));
     _hoverable(box, s.oids);
     frag.appendChild(box);
   }
@@ -556,6 +680,12 @@ async function openRowMenu(e, orderId) {
   // shareMenuDelegate on the document): the row's menu steps aside and lets
   // the event bubble on — Λήψη PDF · Κοινή χρήση, for every role (11/10).
   if (e && e.type === 'contextmenu' && e.target && e.target.closest && e.target.closest('.wk3-prt[data-shq]')) return;
+  // Opened from the arrow (its click, or Enter: run('menu') sends the arrow as
+  // currentTarget) the menu docks to it — right edges flush, just under it —
+  // over the assignment column (Figma 1097:3858, parity r1 F14), never over
+  // the import the ΕΙΣΑΓΩΓΗ section talks about. A right-click keeps the
+  // pointer. Read now: currentTarget is gone after the first await.
+  const plane = e && e.type !== 'contextmenu' && e.currentTarget && e.currentTarget.closest ? e.currentTarget.closest('.wi4-plane') : null;
   if (e && e.preventDefault) e.preventDefault();
   if (e && e.stopPropagation) e.stopPropagation();
   const I = W();
@@ -578,13 +708,22 @@ async function openRowMenu(e, orderId) {
   _hlClear();
   I.ctxShow(e, '', Math.min(window.innerHeight - 16, est));
   ctx.appendChild(_renderMenu(model));
+  if (plane && plane.isConnected) {
+    const p = plane.getBoundingClientRect();
+    ctx.style.left = Math.round(p.right - ctx.offsetWidth) + 'px';
+    ctx.style.top = Math.round(p.bottom + 4) + 'px';
+  }
   _fitMenu();
+  _menuKeyOn(ctx);
+  ctx.addEventListener('scroll', _menuScroll);
   // Close bookkeeping: _wiCtxClose only hides #wi-ctx, so watch its style to
-  // drop the row highlight and the presence context with it.
+  // drop the row highlight, the ←/→ guard, the flyout's scroll follower and
+  // the presence context with it.
   if (_menuObs) _menuObs.disconnect();
   _menuObs = new MutationObserver(() => {
     if (ctx.style.display === 'block') return;
-    _menuObs.disconnect(); _menuObs = null; _hlClear(); _presenceCtx(null, null, 'view');
+    _menuObs.disconnect(); _menuObs = null; _hlClear(); _menuKeyOff(); ctx.removeEventListener('scroll', _menuScroll);
+    _presenceCtx(null, null, 'view');
   });
   _menuObs.observe(ctx, { attributes: true, attributeFilter: ['style'] });
   ctx.addEventListener('click', _hlClear, { once: true, capture: true });
