@@ -7611,7 +7611,16 @@ button.btn-icon:focus-visible { outline:2px solid var(--accent); outline-offset:
   background:var(--surface-card); font-variant-numeric:tabular-nums; }
 .wi4.wi4-fl-off { --wi4-fl:18px; }
 .wi4.wi4-fr-off { --wi4-fr:18px; }
-.wi4 button { font:inherit; color:inherit; }
+/* :where() keeps this at (0,0,1): every class rule on a button (.btn-new-order,
+   .wi4-dc, .wi4-plane, .wi4-gap-act…) wins again. As `.wi4 button` (0,1,1) it
+   beat them all — dark text on the navy «Νέα παραγγελία», dates as loud as
+   client names (review 11/10). */
+:where(.wi4) button { font:inherit; color:inherit; }
+/* Board geometry at 1920 = Figma 1097:2254: a 1808px surface whose rows sit
+   inside a 1px border (1806px), legs 621px. #content is 1864px wide there (the
+   collapsed sidebar is 56px, Figma's 64px), so the gutter is 28px instead of
+   today's 36px. v4 only (body.wi4-on), which leaves with the page. */
+body.wi4-on .content { padding-left:28px; padding-right:28px; }
 
 /* The ONE truncation rule of the block (styles.truncate +1). A visible «…»
    instead of a silent cut (DESIGN.md Κ6): a dispatcher must see that a name
@@ -7619,8 +7628,14 @@ button.btn-icon:focus-visible { outline:2px solid var(--accent); outline-offset:
    the board rig's overflow scan fails otherwise (§h.4). */
 .wi4 .wi4-l1, .wi4 .wi4-l2, .wi4 .wi4-ell { min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 
-/* Title bar (§e #1) */
-.wi4-bar { display:flex; align-items:center; gap:12px; min-height:56px; padding:0 16px; border-bottom:1px solid var(--wi4-line-2); }
+/* Title bar (§e #1). Bar, queue band, stock strip, column header and day
+   cards share ONE left edge, the gutter (Figma: everything at x=24). */
+.wi4-bar { display:flex; align-items:center; gap:12px; min-height:56px; padding:0; border-bottom:1px solid var(--wi4-line-2); }
+/* Σάρωση and Νέα παραγγελία at the bar's one height (32px); Σάρωση neutral so
+   the solid navy primary is the only primary (sheet 15). The shared buttons
+   stay as they are everywhere else (owner 29/9). */
+.wi4-bar .btn-scan, .wi4-bar .btn-new-order { height:32px; min-height:32px; padding:0 12px; font-size:12px; }
+.wi4-bar .btn-scan { border-color:var(--wi4-ctl); color:var(--wi4-grey-1); }
 .wi4-title { font:700 18px 'Syne',sans-serif; color:var(--wi4-ink); white-space:nowrap; }
 .wi4-range { font-size:13px; color:var(--wi4-grey-2); white-space:nowrap; }
 .wi4-upd { font-size:11px; color:var(--wi4-grey-2); white-space:nowrap; }
@@ -7646,19 +7661,22 @@ button.btn-icon:focus-visible { outline:2px solid var(--accent); outline-offset:
 .wi4-av { width:22px; height:22px; border-radius:50%; display:inline-grid; place-items:center; background:var(--wi4-ink);
   color:var(--surface-card); font-size:10px; font-weight:700; border:2px solid var(--surface-card); flex:none; }
 .wi4-av + .wi4-av { margin-left:-8px; }
-.wi4-av.sm { width:18px; height:18px; font-size:9px; border-width:1px; }
+.wi4-av.more { background:var(--wi4-chip); color:var(--wi4-grey-1); }
+/* In a row's index and in the conflict panel: a light tinted disc (sheet
+   16 B), lighter than anything else in the index column. */
+.wi4-av.sm { width:18px; height:18px; font-size:9px; border:none; background:var(--accent-light); color:var(--wi4-blue-ink); }
 .wi4-pres-t { font-size:11px; color:var(--wi4-grey-2); white-space:nowrap; }
 .wi4-pres.paused .wi4-pres-t { color:var(--wi4-amber); }
 
 /* Banner (§e #21, §d.2a unknown sources, sticky fallback). Amber + words:
    «δεν φορτώθηκε» is an unknown, not an error the user made. */
-.wi4-banner { display:flex; align-items:center; gap:12px; margin:8px 16px 0; padding:6px 12px; border:1px solid var(--warn-border);
+.wi4-banner { display:flex; align-items:center; gap:12px; margin:8px 0 0; padding:6px 12px; border:1px solid var(--warn-border);
   border-radius:6px; background:var(--wi4-amber-bg); color:var(--wi4-amber-ink); font-size:12px; }
 .wi4-link { border:none; background:none; padding:0; color:var(--wi4-blue-ink); font-weight:600; cursor:pointer; }
 .wi4-link:hover { text-decoration:underline; }
 
 /* Queue band (§e #2) and «Όλα N ▾» panel (§e #3) */
-.wi4-q { display:flex; align-items:center; gap:8px; padding:8px 16px; border-bottom:1px solid var(--wi4-line-2); }
+.wi4-q { display:flex; align-items:center; gap:8px; padding:8px 0; border-bottom:1px solid var(--wi4-line-2); }
 .wi4-q-hd { display:flex; flex-direction:column; gap:2px; flex:none; font-size:10px; font-weight:600; letter-spacing:.6px; text-transform:uppercase; color:var(--wi4-grey-2); }
 .wi4-q-n { font-size:11px; font-weight:400; letter-spacing:0; text-transform:none; color:var(--wi4-grey-2); white-space:nowrap; }
 .wi4-search { flex:none; width:240px; height:32px; display:flex; align-items:center; gap:6px; padding:0 8px; border:1px solid var(--wi4-ctl); border-radius:6px; background:var(--surface-card); }
@@ -7677,14 +7695,21 @@ button.btn-icon:focus-visible { outline:2px solid var(--accent); outline-offset:
 .wi4-qp-h { padding:8px 14px 4px; font-size:10px; font-weight:600; letter-spacing:.6px; text-transform:uppercase; color:var(--wi4-grey-2); }
 .wi4-qp-i { position:relative; display:flex; align-items:center; gap:8px; min-height:32px; padding:0 10px 0 14px; cursor:pointer; }
 .wi4-qp-i:hover, .wi4-qp-i.on { background:var(--wi4-hover); }
+/* «Προβολή ▾»'s note that the conflict check is not live: a sentence. */
+.wi4-view-note { max-width:260px; padding:6px 14px; font-size:11px; font-weight:600; line-height:1.4; white-space:normal; }
 .wi4-qp-i.on { outline:2px solid var(--wi4-blue); outline-offset:-2px; }
 
 /* Stock strip (§e #4): the inner markup and its words come unchanged from
    _wiShelfInner (global .wi-shelf-* rules). Only the frame is v4's: the
    sticky/height part of today's strip is scoped to .wk3.wi2 and would not
    apply here. */
-.wi4-shelf { height:28px; padding:0 16px; border-bottom:1px solid var(--wi4-line-2); }
+.wi4-shelf { height:28px; padding:0; border-bottom:1px solid var(--wi4-line-2); }
 .wi4 .wi-shelf { height:28px; overflow:hidden; }
+/* Sheet 15: label and lot chips from the LEFT, the loose-pieces pill on the
+   right (today's strip inherits flex-end). Words and numbers unchanged. */
+.wi4 .wi-shelf-in { justify-content:flex-start; }
+.wi4 .wi-shelf-list { flex:1 1 auto; min-width:0; }
+.wi4 .wi-shelf-loose.late { background:var(--surface-card); border-color:var(--wi4-ctl); color:var(--wi4-red); }
 
 /* Column header (§e #5) and the shared 10-track grid at 1920 (§c.2):
    idx · ΠΡΟΣ ΒΕΡΟΙΑ · gap · ΕΞΑΓΩΓΗ · gap · ΑΝΑΘΕΣΗ · gap · ΕΙΣΑΓΩΓΗ · gap · ΑΠΟ ΒΕΡΟΙΑ.
@@ -7695,19 +7720,36 @@ button.btn-icon:focus-visible { outline:2px solid var(--accent); outline-offset:
 .wi4-c-idx { grid-column:1; } .wi4-c-fl { grid-column:2; min-width:0; } .wi4-c-exp { grid-column:4; min-width:0; }
 .wi4-c-asg { grid-column:6; min-width:0; } .wi4-c-imp { grid-column:8; min-width:0; } .wi4-c-fr { grid-column:10; min-width:0; }
 .wi4-c-span { grid-column:2 / -1; min-width:0; }
-.wi4-cols { position:sticky; top:0; z-index:30; height:28px; padding:0 16px; background:var(--surface-card); border-bottom:1px solid var(--wi4-line-2);
+/* Sticky header: .content (the scroller) has 32px of top padding, and a sticky
+   element sticks INSIDE that padding — at top:0 rows scrolled through the
+   32px strip above it. top = minus that padding puts it at the scroller's edge
+   (the same tie as .entity-layout); change both together. The 1px side
+   padding lines the tracks up with the rows inside the day card's border. */
+.wi4-cols { position:sticky; top:-32px; z-index:30; height:28px; padding:0 1px; background:var(--surface-card); border-bottom:1px solid var(--wi4-line-2);
   font-size:10px; font-weight:600; letter-spacing:.6px; text-transform:uppercase; color:var(--wi4-grey-2); }
 .wi4-n { font-weight:400; letter-spacing:0; text-transform:none; }
 .wi4-ftog { cursor:pointer; white-space:nowrap; }
 .wi4-ftog:hover { color:var(--wi4-ink); }
+/* A collapsed national column keeps its toggle in the header as a chevron
+   (18px wide), so it reopens where it was (rules: «ανοιγοκλείνουν με κλικ
+   στην κεφαλίδα»). The label stays in aria-label/title. */
+.wi4.wi4-fl-off .wi4-cols .wi4-c-fl .wi4-ftog-t, .wi4.wi4-fr-off .wi4-cols .wi4-c-fr .wi4-ftog-t { display:none; }
+.wi4.wi4-fl-off .wi4-cols .wi4-c-fl .wi4-ftog::before { content:'›'; font-size:13px; }
+.wi4.wi4-fr-off .wi4-cols .wi4-c-fr .wi4-ftog::before { content:'‹'; font-size:13px; }
+.wi4.wi4-fl-off .wi4-cols .wi4-c-fl, .wi4.wi4-fr-off .wi4-cols .wi4-c-fr { text-align:center; }
 
-/* Day (§e #6). Collapsed only when WI4.collapsible says so; empty = one line. */
-.wi4-day { padding:0 16px; }
+/* Day (§e #6). Collapsed only when WI4.collapsible says so; empty = one line.
+   scroll-margin: a day or row scrolled into view (first paint, queue card,
+   keyboard) stops BELOW the 28px sticky column header, never under it. */
+.wi4-day { padding:0; scroll-margin-top:29px; }
+.wi4-row, .wi4-subrow { scroll-margin-top:29px; }
 .wi4-dayh { height:32px; display:flex; align-items:center; gap:8px; cursor:pointer; font-size:12.5px; font-weight:600; letter-spacing:.4px; color:var(--wi4-ink); }
-.wi4-chev { color:var(--wi4-icon); transition:transform var(--duration-fast) var(--ease-out); }
+.wi4-chev { display:inline-grid; place-items:center; color:var(--wi4-icon); transition:transform var(--duration-fast) var(--ease-out); }
 .wi4-day.closed .wi4-chev { transform:rotate(-90deg); }
 .wi4-dayh-c { font-size:12px; font-weight:400; letter-spacing:0; color:var(--wi4-grey-2); }
 .wi4-today { font-weight:500; letter-spacing:0; color:var(--wi4-blue-ink); }
+/* Today's whole header is blue (board 1097:2254), not only «σήμερα». */
+.wi4-day.today .wi4-dayh { color:var(--wi4-blue-ink); }
 .wi4-day-body { border:1px solid var(--wi4-line-2); border-radius:6px; background:var(--surface-card); margin-bottom:8px; }
 .wi4-day.today .wi4-day-body { border-top:2px solid var(--wi4-blue); }
 .wi4-day.closed .wi4-day-body { display:none; }
@@ -7736,7 +7778,7 @@ button.btn-icon:focus-visible { outline:2px solid var(--accent); outline-offset:
 .wi4-leg { display:grid; grid-template-columns:70px 8px minmax(0,1fr) 8px 13px 8px minmax(0,1fr) 8px 72px; align-items:center; min-width:0; height:100%; }
 .wi4-l-date { grid-column:1; min-width:0; display:flex; flex-direction:column; align-items:flex-start; justify-content:center; }
 .wi4-l-from { grid-column:3; position:relative; min-width:0; }
-.wi4-l-arr  { grid-column:5; color:var(--wi4-icon); text-align:center; }
+.wi4-l-arr  { grid-column:5; display:grid; place-items:center; color:var(--wi4-icon); }
 .wi4-l-to   { grid-column:7; position:relative; min-width:0; }
 .wi4-l-pal  { grid-column:9; display:flex; align-items:center; justify-content:flex-end; gap:4px; }
 .wi4-l-span { grid-column:1 / -1; min-width:0; }
@@ -7755,7 +7797,12 @@ button.btn-icon:focus-visible { outline:2px solid var(--accent); outline-offset:
 .wi4-more { flex:0 0 34px; width:34px; border:none; background:none; padding:0; text-align:center; cursor:pointer; line-height:13px; }
 .wi4-more b { display:block; font-size:12px; color:var(--wi4-ink); }
 .wi4-more span { display:block; font-size:10.5px; color:var(--wi4-grey-2); }
-.wi4-ok { color:var(--wi4-icon); font-size:10px; }
+/* ✓ carries meaning («done»): a graphic at ≥3:1 (grey-2), not the icon grey. */
+.wi4-ok { display:inline-flex; vertical-align:-1px; margin-right:2px; color:var(--wi4-grey-2); }
+/* A groupage's «+N» fold holds the hidden members as the same draggable
+   tiles, one per line. */
+.wi4 .wi4-fold.open { display:flex; flex-direction:column; gap:4px; }
+.wi4 .wi4-fold .wi4-pt { min-width:0; cursor:grab; }
 .wi4-delay { display:inline-block; padding:0 3px; border-radius:3px; background:var(--wi4-delay-bg); color:var(--warn); font-size:10px; font-weight:700; line-height:13px; }
 /* «+N» opens today's _wk3MoreStops fold. Its global rules indent 40px and cut
    names; today's .wk3.wi2 overrides (which un-cut them) do not reach .wi4, so
@@ -7781,13 +7828,16 @@ button.btn-icon:focus-visible { outline:2px solid var(--accent); outline-offset:
 .wi4-pal.over { color:var(--wi4-amber); font-weight:700; }
 .wi4-pe { padding:0 4px; border:1px solid var(--wi4-ctl); border-radius:3px; font-size:10px; font-weight:600; line-height:14px; color:var(--wi4-grey-1); }
 .wi4-att { color:var(--wi4-icon); }
-.wi4 .wi-badge { font-size:10px; padding:0 4px; border-radius:4px; line-height:14px; letter-spacing:.4px; }
+/* «→ ΑΠΟΘΗΚΗ» and the other leg badges: outlined like PE — never a solid dark
+   chip, which out-shouted «ΠΡΟΣ ΑΝΑΘΕΣΗ» (the locked strongest element). */
+.wi4 .wi-badge { font-size:10px; padding:0 4px; border-radius:4px; line-height:14px; letter-spacing:.4px;
+  background:none; border:1px solid var(--wi4-ctl); color:var(--wi4-grey-1); font-weight:600; }
 
 /* Assignment (§e #8): box 28px radius 5 + paper-plane 22px radius 5.
    «ΠΡΟΣ ΑΝΑΘΕΣΗ» is the strongest element on the board: its border is 2px,
    because a 1.5px border renders as 1px on 1x office monitors (measured in
    Chromium) and the box would read weaker than a partner box. */
-.wi4-asg { display:flex; align-items:center; gap:6px; min-width:0; }
+.wi4-asg { position:relative; display:flex; align-items:center; gap:6px; min-width:0; }
 .wi4-box { flex:1 1 auto; min-width:0; height:28px; display:flex; flex-direction:column; justify-content:center; padding:0 8px;
   border:1px solid transparent; border-radius:5px; background:none; text-align:left; cursor:pointer; }
 .wi4-box.own { background:var(--wi4-own); }
@@ -7800,12 +7850,20 @@ button.btn-icon:focus-visible { outline:2px solid var(--accent); outline-offset:
 .wi4-plane { flex:none; width:22px; height:22px; display:inline-grid; place-items:center; border:none; border-radius:5px; background:none; color:var(--wi4-icon); cursor:pointer; }
 .wi4-plane:hover { background:var(--wi4-chip); color:var(--wi4-grey-1); }
 /* contract hook: print buttons keep .wk3-prt + data-shq (share menu); today's
-   bordered look is scoped to .wk3.wi2, so it is restated for .wi4. */
+   bordered look is scoped to .wk3.wi2, so it is restated for .wi4. It is out
+   of the flow and shows on hover/keyboard focus only: Figma draws box +
+   paper-plane, and in the flow it cut every trailer plate («TRL-20…»).
+   Print is also in the per-load menu and on P. */
 .wi4 .wk3-prt { border:1px solid var(--wi4-ctl); border-radius:5px; padding:1px 3px; font-size:12px; background:var(--surface-card); }
+.wi4 .wi4-asg .wk3-prt { position:absolute; right:28px; top:50%; transform:translateY(-50%); opacity:0; pointer-events:none; }
+.wi4 .wi4-row:hover .wi4-asg .wk3-prt, .wi4 .wi4-focus .wi4-asg .wk3-prt, .wi4 .wi4-asg .wk3-prt:focus-visible { opacity:1; pointer-events:auto; }
 
 /* National columns (§e #12). Never «ΠΡΟΣ ΑΝΑΘΕΣΗ» for an unread leg: .unk
    is the «—» of §d.2a. Collapsed column = a dot where a leg exists. */
 .wi4-nat { min-width:0; display:flex; flex-direction:column; gap:1px; }
+/* Line 1: the name (cut, title on it) and the day kept whole on the right. */
+.wi4-nat-h { display:flex; align-items:baseline; gap:4px; min-width:0; }
+.wi4-nat-h .wi4-l1 { flex:1 1 auto; }
 .wi4-nat-day { font-size:10.5px; color:var(--wi4-grey-2); flex:none; }
 .wi4-tile { align-self:flex-start; max-width:100%; height:16px; padding:0 4px; border:1px solid transparent; border-radius:3px; font-size:10.5px; font-weight:500; line-height:14px; }
 .wi4-tile.own { background:var(--wi4-own); color:var(--wi4-ink); font-family:'DM Mono',ui-monospace,SFMono-Regular,Menlo,monospace; }
@@ -7814,13 +7872,22 @@ button.btn-icon:focus-visible { outline:2px solid var(--accent); outline-offset:
 .wi4-tile.un.red { background:var(--wi4-red-bg); border:1px solid var(--wi4-red); color:var(--wi4-red-ink); }
 .wi4-tile.unk { color:var(--wi4-grey-2); padding:0; }
 .wi4-natdot { display:none; width:6px; height:6px; margin:0 auto; border-radius:50%; background:var(--wi4-blue); }
-.wi4.wi4-fl-off .wi4-c-fl > :not(.wi4-natdot), .wi4.wi4-fr-off .wi4-c-fr > :not(.wi4-natdot) { display:none; }
+/* Rows only: the column header keeps its toggle (see .wi4-cols above). */
+.wi4.wi4-fl-off :is(.wi4-row, .wi4-subrow, .wi4-splithd) > .wi4-c-fl > :not(.wi4-natdot),
+.wi4.wi4-fr-off :is(.wi4-row, .wi4-subrow, .wi4-splithd) > .wi4-c-fr > :not(.wi4-natdot) { display:none; }
 .wi4.wi4-fl-off .wi4-c-fl > .wi4-natdot, .wi4.wi4-fr-off .wi4-c-fr > .wi4-natdot { display:block; }
 
 /* Empty return / void cells (§e #13) — the cell is the drop target (§f). */
-.wi4-gap { height:24px; display:flex; align-items:center; gap:6px; padding:0 10px; border:1px solid var(--wi4-line-2); border-radius:5px; font-size:12px; color:var(--wi4-ink); min-width:0; }
+/* Dashed light border, the blue «+ Νέα εισαγωγή» at the right end, and the
+   stock link quiet right after it (board 1097:2254). */
+.wi4-gap { height:24px; display:flex; align-items:center; gap:6px; padding:0 10px; border:1px dashed var(--wi4-slot); border-radius:5px; font-size:12px; color:var(--wi4-ink); min-width:0; }
 .wi4-gap .wi4-t-red, .wi4-gap .wi4-t-amb { font-weight:500; }
 .wi4-gap-act { margin-left:auto; flex:none; border:none; background:none; padding:0; color:var(--wi4-blue-ink); font-weight:600; cursor:pointer; white-space:nowrap; }
+.wi4 .wi4-gap .wi2-gapstk { flex:none; margin-left:8px; font-size:11px; color:var(--wi4-grey-2); }
+.wi4 .wi4-gap .wi2-gapstk:empty { display:none; }
+/* its button keeps today's words; quiet grey-2 (5.3:1) after the blue action —
+   its own accent colour measured 4.1:1 on white */
+.wi4 .wi4-gap .wi2-gapstk-b { font:500 11px 'DM Sans',sans-serif; color:var(--wi4-grey-2); }
 .wi4-gap-act:hover { text-decoration:underline; }
 .wi4-void { font-size:10.5px; color:var(--wi4-grey-2); }
 .wi4-noexp { height:24px; display:flex; align-items:center; gap:6px; padding:0 10px; border:1px dashed var(--wi4-slot); border-radius:5px; font-size:12px; color:var(--wi4-grey-1); }
@@ -7843,7 +7910,7 @@ button.btn-icon:focus-visible { outline:2px solid var(--accent); outline-offset:
 /* Date panel (§e #10). A v4 element anchored in #wi-panel space. */
 .wi4-datep { position:fixed; z-index:var(--z-top); width:320px; padding:12px 14px; background:var(--surface-card); border:1px solid var(--wi4-line-2);
   border-radius:8px; box-shadow:var(--shadow-lift); font-family:'DM Sans',sans-serif; font-size:12px; color:var(--wi4-ink); }
-.wi4-datep-hd { font-size:13px; font-weight:600; margin-bottom:8px; }
+.wi4-datep-hd { font:600 15px 'Syne',sans-serif; margin-bottom:8px; }
 .wi4-seg { display:flex; gap:2px; padding:2px; margin-bottom:8px; border:1px solid var(--wi4-line-2); border-radius:6px; background:var(--wi4-chip); }
 .wi4-seg button { flex:1; height:24px; border:1px solid transparent; border-radius:4px; background:none; color:var(--wi4-grey-1); font-weight:500; cursor:pointer; }
 .wi4-seg button.on { background:var(--surface-card); border-color:var(--wi4-line-2); color:var(--wi4-ink); font-weight:700; }
@@ -7852,20 +7919,32 @@ button.btn-icon:focus-visible { outline:2px solid var(--accent); outline-offset:
 .wi4-cal-h { height:20px; font-size:10px; font-weight:600; text-align:center; line-height:20px; color:var(--wi4-grey-2); }
 .wi4-cal-d { height:28px; border:1px solid transparent; border-radius:4px; background:none; color:var(--wi4-ink); cursor:pointer; }
 .wi4-cal-d:hover { background:var(--wi4-hover); }
-.wi4-cal-d.out { color:var(--wi4-grey-3); }
+/* Days of the next/previous month are clickable text: grey-2 (5.3:1), still
+   quieter than the month's own ink days — never the 2.6:1 placeholder grey. */
+.wi4-cal-d.out { color:var(--wi4-grey-2); }
 .wi4-cal-d.today { border-color:var(--wi4-blue); }
 .wi4-cal-d.cur { border-style:dashed; border-color:var(--wi4-slot); }
-.wi4-cal-d.sel { background:var(--wi4-blue); border-color:var(--wi4-blue); color:var(--surface-card); font-weight:700; }
+/* Selected = navy fill; blue stays the «today» outline (sheet 16 D). */
+.wi4-cal-d.sel { background:var(--wi4-ink); border-color:var(--wi4-ink); color:var(--surface-card); font-weight:700; }
 .wi4-time { height:28px; padding:0 8px; border:1px solid var(--wi4-ctl); border-radius:5px; font:inherit; color:var(--wi4-ink); }
 .wi4-datep-note { font-size:10.5px; line-height:1.4; color:var(--wi4-grey-2); margin:8px 0; }
 .wi4-pnote { padding:6px 8px; margin:8px 0; border-radius:5px; background:var(--wi4-amber-bg); color:var(--wi4-amber-ink); font-size:11px; line-height:1.4; }
-.wi4-conf { padding:8px 10px; margin:8px 0; border:1px solid var(--wi4-red); border-radius:5px; background:var(--wi4-red-bg); color:var(--wi4-red-ink); font-size:11.5px; line-height:1.4; }
+/* «Ποια κρατάμε;» (sheet 16 E): a calm amber panel — news that someone else
+   changed it, not an error the user made. The date panel's failure line
+   keeps the red (.wi4-conf[role=alert]). */
+.wi4-conf { padding:8px 10px; margin:8px 0; border:1px solid var(--warn-border); border-radius:5px; background:var(--wi4-amber-bg); color:var(--wi4-amber-ink); font-size:11.5px; line-height:1.4; }
+.wi4-conf[role="alert"] { border-color:var(--wi4-red); background:var(--wi4-red-bg); color:var(--wi4-red-ink); }
+.wi4-conf-lead { display:flex; align-items:center; gap:6px; font-weight:600; }
+.wi4-conf-q { margin-top:4px; font-weight:600; }
 .wi4-datep-ft, .wi4-dlg-ft { display:flex; justify-content:flex-end; gap:8px; margin-top:10px; }
 
 /* Conflict dialog (§g.4) and «?» shortcuts sheet (§e #17) */
 .wi4-dlg-back { position:fixed; inset:0; z-index:var(--z-top); background:rgba(11,25,41,.32); display:grid; place-items:center; }
 .wi4-dlg { width:420px; max-width:calc(100vw - 32px); padding:16px; background:var(--surface-card); border:1px solid var(--wi4-line-2); border-radius:8px;
   box-shadow:var(--shadow-lift); font-family:'DM Sans',sans-serif; font-size:12.5px; line-height:1.45; color:var(--wi4-ink); }
+.wi4-dlg-hd { display:flex; align-items:center; justify-content:space-between; gap:8px; }
+.wi4-dlg-t { font:600 15px 'Syne',sans-serif; }
+.wi4-dlg-x { font-size:18px; line-height:1; padding:0 4px; color:var(--wi4-grey-1); }
 .wi4-help-row { display:grid; grid-template-columns:80px 1fr; align-items:center; gap:8px; min-height:26px; }
 
 /* Per-load menu (§e.9) lives INSIDE #wi-ctx with .wi-ctx-i buttons, so
@@ -7873,13 +7952,21 @@ button.btn-icon:focus-visible { outline:2px solid var(--accent); outline-offset:
    .wi4, hence body.wi4-on, a class v4 sets while active and removes on page
    change. .wi-ctx-i keeps display:block (no layout change to moved nodes);
    the key hint floats right. */
+/* The menu never runs past the window: it scrolls inside, and WI4Actions
+   moves it up when a submenu makes it taller than the room under it. */
+body.wi4-on #wi-ctx { max-height:calc(100vh - 16px); overflow-y:auto; }
 body.wi4-on #wi-ctx .wi4-m-hd { padding:8px 14px 6px; border-bottom:1px solid var(--wi4-line-2); margin-bottom:4px; font-size:12px; font-weight:600; color:var(--wi4-ink); }
 body.wi4-on #wi-ctx .wi4-m-hd .wi4-l2 { font-weight:400; }
-body.wi4-on #wi-ctx .wi4-m-sec { padding:6px 14px 2px; font-size:10px; font-weight:600; letter-spacing:.6px; text-transform:uppercase; color:var(--wi4-grey-2); }
+/* A divider above every section (sheet 14). */
+body.wi4-on #wi-ctx .wi4-m-sec { padding:6px 14px 2px; margin-top:4px; border-top:1px solid var(--wi4-line-2); font-size:10px; font-weight:600; letter-spacing:.6px; text-transform:uppercase; color:var(--wi4-grey-2); }
 body.wi4-on #wi-ctx .wi4-m-sub { display:none; padding-left:12px; }
+body.wi4-on #wi-ctx .wi4-m-sub > .wi4-m-sec { border-top:none; margin-top:0; }
 body.wi4-on #wi-ctx .wi4-m-sub.open { display:block; }
-body.wi4-on #wi-ctx .wi4-m-ic { display:inline-block; width:16px; margin-right:6px; text-align:center; color:var(--wi4-icon); }
+body.wi4-on #wi-ctx .wi4-m-ic { display:inline-block; width:16px; margin-right:6px; text-align:center; color:var(--wi4-icon); vertical-align:-2px; }
 body.wi4-on #wi-ctx .wi4-m-k { float:right; margin-left:12px; }
+/* A «▸» line opens a submenu: its chevron at the right, turned when open. */
+body.wi4-on #wi-ctx .wi4-m-chev { float:right; margin-left:12px; color:var(--wi4-grey-2); transition:transform var(--duration-fast) var(--ease-out); }
+body.wi4-on #wi-ctx .wi4-m-more[aria-expanded="true"] .wi4-m-chev { transform:rotate(90deg); }
 /* Equivalent of today's `.wk3.wi2 .wi-ctx-h{font-size:11px}` (§c.3). It is
    the only .wk3/.wk3.wi2-scoped rule that reaches #wi-ctx, #wi-panel or
    #wi-popover content: measured 11/10 over every class emitted by the 37
