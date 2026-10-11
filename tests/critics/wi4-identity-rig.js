@@ -170,6 +170,13 @@ async function openBoard(browser, origin, tree, optIn) {
   await page.addInitScript(initScript, { optIn });
   // Nothing leaves the machine: fonts, Sentry, the live Worker — all answered here or aborted.
   await page.route(u => !u.href.startsWith(origin) && !u.href.includes(HOST), route => route.abort());
+  // The repo ships WI_V2 'on' since 11/10 (owner). This rig proves the 'off'
+  // kill switch, so the candidate's flag is rewritten to 'off' in memory —
+  // a tree without the key (the pre-v4 baseline) is served as it is.
+  await page.route(u => u.href.startsWith(origin) && /\/config\.js$/.test(new URL(u.href).pathname), async route => {
+    const r = await route.fetch(); const body = (await r.text()).replace(/WI_V2:\s*'(?:on|pilot)'/, "WI_V2: 'off'");
+    await route.fulfill({ status: 200, contentType: 'text/javascript; charset=utf-8', body });
+  });
   const json = (route, body, status = 200) => route.fulfill({ status, contentType: 'application/json',
     headers: { 'access-control-allow-origin': '*' }, body: JSON.stringify(body) });
   await page.route(`**/${HOST}/**`, async route => {

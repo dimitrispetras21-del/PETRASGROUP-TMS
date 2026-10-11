@@ -261,7 +261,7 @@ async function openBoard(browser, origin, opts = {}) {
   await page.route(u => u.href.startsWith(origin) && new URL(u.href).pathname === '/config.js', async route => {
     const r = await route.fetch(); let body = await r.text();
     const sub = (re, to) => { if (!re.test(body)) throw new Error('config.js changed: the rig cannot find ' + re); body = body.replace(re, to); };
-    sub(/WI_V2:\s*'off'/, `WI_V2: '${flag}'`);
+    sub(/WI_V2:\s*'(?:off|pilot|on)'/, `WI_V2: '${flag}'`);
     if (opts.presence) { sub(/WI_PRESENCE:\s*false/, 'WI_PRESENCE: true'); sub(/active:\s*5000/, 'active: 2500'); }
     await route.fulfill({ status: 200, contentType: 'text/javascript; charset=utf-8', body });
   });
@@ -516,7 +516,7 @@ async function scnPaint(browser, origin) {
     const sc = (() => { let el = document.querySelector('#content .wi4'); while (el && el !== document.body) { const cs = getComputedStyle(el); if (/(auto|scroll)/.test(cs.overflowY) && el.scrollHeight > el.clientHeight) return el; el = el.parentElement; } return document.scrollingElement; })();
     const q = document.querySelector('#content .wi4 .wi4-q').getBoundingClientRect();
     const t = document.getElementById('wi4-tabs').getBoundingClientRect();
-    const b = document.querySelector('#content .wi4 .wi4-bar').getBoundingClientRect();
+    const b = document.querySelector('.wi4-bar').getBoundingClientRect();
     return { top: sc.scrollTop, qTop: q.top, qBottom: q.bottom, tabs: t.left + t.width / 2, bar: b.left + b.width / 2, h: innerHeight,
       first: (document.querySelector('#content .wi4 #wi-rows .wi4-day') || {}).dataset.day };
   });
@@ -611,7 +611,7 @@ async function scnPaint(browser, origin) {
     const met = WI_INTERNAL.paintMetrics(); const ids = new Set();
     met.expRows.concat(met.impRows).forEach(r => (r.orderIds || [r.orderId]).forEach(id => ids.add(id)));
     const want = [...ids].filter(id => { const r = WI_INTERNAL.recOf(id); return r && typeof isPreorder === 'function' && isPreorder(r.fields); }).length;
-    const btn = [...document.querySelectorAll('#content .wi4 .wi4-bar-r .wi4-btn')].find(b => /Pre-order/.test(b.textContent));
+    const btn = [...document.querySelectorAll('.wi4-bar-r .wi4-btn')].find(b => /Pre-order/.test(b.textContent));
     const got = btn ? Number(((btn.querySelector('.wi4-cnt') || {}).textContent) || 0) : null;
     return { maxStack: Math.max(0, ...stacks), n: stacks.length, over, want, got };
   }, [ROW_JS]);
@@ -702,7 +702,7 @@ async function scnInvariants(browser, origin) {
         // «1 κενό γύρισμα» / «2 κενά γυρίσματα»: the accent moves (γύρισμα, γυρίσματα).
         hdrEmpty: num(/(\d+) κεν(?:ό γύρισμα|ά γυρίσματα)/), qEmpty: items.filter(q => q.code === 'EMPTY_RETURN').length, empty: /Καμία κίνηση/.test(day.innerText) };
     });
-    const tabB = [...document.querySelectorAll('#content .wi4 .wi4-tab')].map(t => ({ t: t.innerText, b: (t.querySelector('.wi4-tab-b') || {}).textContent || '' }));
+    const tabB = [...document.querySelectorAll('.wi4-top .wi4-tab')].map(t => ({ t: t.innerText, b: (t.querySelector('.wi4-tab-b') || {}).textContent || '' }));
     return { un, days, tabB, qn: Q.length, codes: Q.map(q => q.code), text: document.querySelector('#content .wi4').innerText };
   });
   ok(scn, 'every «ΠΡΟΣ ΑΝΑΘΕΣΗ» box has a rail AND a NO_TRUCK queue item (§d.2)', r.un.length >= 4 && r.un.every(x => x.rail && x.q), r.un.filter(x => !x.rail || !x.q));
@@ -888,7 +888,7 @@ async function scnUnknown(browser, origin) {
     await page.waitForTimeout(1000); await settle(page, S, 2600);   // the W+1 read has no state seam: wait out its retries
     const r = await page.evaluate(() => ({ q: WIV2.queueItems().filter(q => q.code === 'SOURCE_UNKNOWN').map(q => q.source),
       hd: (document.querySelector('#content .wi4 .wi4-q') || {}).innerText || '',
-      tabB: [...document.querySelectorAll('#content .wi4 .wi4-tab')].map(t => (t.querySelector('.wi4-tab-b') || {}).textContent || '').filter(Boolean) }));
+      tabB: [...document.querySelectorAll('.wi4-top .wi4-tab')].map(t => (t.querySelector('.wi4-tab-b') || {}).textContent || '').filter(Boolean) }));
     ok(scn, 'W+1 read 500 → one SOURCE_UNKNOWN item, the counter reads «≥N», the tab badge «—»', r.q.length === 1 && /≥/.test(r.hd) && r.tabB.includes('—'), r);
     await page.context().close();
   }
@@ -1590,7 +1590,7 @@ async function scnSaveFail(browser, origin) {
     await page.waitForTimeout(200);
     const r = await page.evaluate(([js]) => ({ msg: (() => { const row = eval(js)('recWiE006'); const n = row && (row.querySelector('.wi4-msg') || (row.nextElementSibling && row.nextElementSibling.classList.contains('wi4-msg') ? row.nextElementSibling : null)); return n ? n.innerText : ''; })(),
       msgH: (() => { const n = document.querySelector('#content .wi4 .wi4-msg'); return n ? Math.round(n.getBoundingClientRect().height) : null; })(),
-      upd: (document.querySelector('#content .wi4 .wi4-upd.err') || {}).innerText || '',
+      upd: (document.querySelector('.wi4-upd.err') || {}).innerText || '',
       pop: (() => { const p = document.getElementById('wi-popover'); return !!p && getComputedStyle(p).display !== 'none' && !!p.innerHTML.trim(); })(), rows: WINTL.rows.length }), [ROW_JS]);
     ok(scn, 'a 24px line under E006 «Δεν αποθηκεύτηκε …»', /Δεν αποθηκεύτηκε/.test(r.msg) && r.msgH === 24, r);
     // ONE message (sheet 14 #5): it names what stayed as it was — from the
@@ -1702,8 +1702,8 @@ async function scnPresence(browser, origin) {
   {
     const { page, S } = await openBoard(browser, origin, { presence: true, presenceCfg: { others } });
     await page.waitForTimeout(3500);
-    const r = await page.evaluate(([js]) => ({ av: document.querySelectorAll('#content .wi4 .wi4-pres .wi4-av').length,
-      t: (document.querySelector('#content .wi4 .wi4-pres') || {}).innerText || '',
+    const r = await page.evaluate(([js]) => ({ av: document.querySelectorAll('.wi4-pres .wi4-av').length,
+      t: (document.querySelector('.wi4-pres') || {}).innerText || '',
       idx: (() => { const row = eval(js)('recWiE003'); const c = row && row.querySelector('.wi4-c-idx'); return c ? { t: c.innerText, title: c.title || (c.querySelector('[title]') || {}).title || '' } : null; })(),
       text: document.querySelector('#content .wi4').innerText }), [ROW_JS]);
     ok(scn, 'avatars + «Χρήστης Β · εδώ τώρα»', r.av >= 1 && /Χρήστης Β/.test(r.t) && /εδώ τώρα/.test(r.t), r);
@@ -1723,7 +1723,7 @@ async function scnPresence(browser, origin) {
     await page.evaluate(() => { delete window.TMS_EXPECT_LIVE; });
     // The week tabs stay in the centre of the bar with the presence strip in
     // it (they jumped ~105px when it arrived, review 11/10).
-    const tc = await page.evaluate(() => { const b = document.querySelector('#content .wi4 .wi4-bar').getBoundingClientRect(), t = document.getElementById('wi4-tabs').getBoundingClientRect(); return { bar: b.left + b.width / 2, tabs: t.left + t.width / 2 }; });
+    const tc = await page.evaluate(() => { const b = document.querySelector('.wi4-bar').getBoundingClientRect(), t = document.getElementById('wi4-tabs').getBoundingClientRect(); return { bar: b.left + b.width / 2, tabs: t.left + t.width / 2 }; });
     ok(scn, 'the week tabs keep the centre of the bar with the presence strip shown', Math.abs(tc.bar - tc.tabs) <= 1.5, tc);
     // A beat never repaints: popover, focus and scroll survive three beats.
     await openPopover(page, 'recWiE007');
@@ -1749,9 +1749,9 @@ async function scnPresence(browser, origin) {
     await page.waitForTimeout(6500);
     // The strip shows its state WORD (fix round 3) and carries the whole
     // sentence of §e #18 in the title of each piece.
-    const r = await page.evaluate(() => ({ cls: (document.querySelector('#content .wi4 .wi4-pres') || { className: '' }).className,
-      t: (document.querySelector('#content .wi4 .wi4-pres') || {}).textContent || '', av: document.querySelectorAll('#content .wi4 .wi4-pres .wi4-av').length,
-      title: ((document.querySelector('#content .wi4 .wi4-pres .wi4-pres-w') || {}).title) || '',
+    const r = await page.evaluate(() => ({ cls: (document.querySelector('.wi4-pres') || { className: '' }).className,
+      t: (document.querySelector('.wi4-pres') || {}).textContent || '', av: document.querySelectorAll('.wi4-pres .wi4-av').length,
+      title: ((document.querySelector('.wi4-pres .wi4-pres-w') || {}).title) || '',
       text: (document.querySelector('#content .wi4') || {}).innerText || '' }));
     await check(scn, r, S, await evs(page, 'expired'));
     ok(scn, 'never «κανείς»', !/κανείς/i.test(r.text));
@@ -1784,12 +1784,13 @@ async function scnPresence(browser, origin) {
     for (const vw of [1920, 1440]) {
       await page.setViewportSize({ width: vw, height: 1080 }); await page.waitForTimeout(400);
       const r = await page.evaluate(() => {
-        const bar = document.querySelector('#content .wi4 .wi4-bar-l').getBoundingClientRect();
-        const w = document.querySelector('#content .wi4 .wi4-pres .wi4-pres-w'), u = document.getElementById('wi4-upd');
-        const tabs = document.getElementById('wi4-tabs').getBoundingClientRect(), right = document.querySelector('#content .wi4 .wi4-bar-r').getBoundingClientRect();
+        const bar = document.querySelector('.wi4-bar-l').getBoundingClientRect();
+        const w = document.querySelector('.wi4-pres .wi4-pres-w'), u = document.getElementById('wi4-upd');
+        const tabs = document.getElementById('wi4-tabs').getBoundingClientRect(), right = document.querySelector('.wi4-bar-r').getBoundingClientRect();
         const whole = el => !!el && el.scrollWidth <= el.clientWidth + 1 && el.getBoundingClientRect().right <= bar.right + 1 && el.getBoundingClientRect().width > 0;
         return { word: w ? w.textContent : '', wordWhole: whole(w), token: u ? u.textContent : '', tokenWhole: whole(u),
-          refresh: document.querySelectorAll('#content .wi4 .wi4-bar-l svg').length, overlap: tabs.right > right.left + 1 };
+          refresh: document.querySelectorAll('.wi4-bar-l svg').length, overlap: tabs.right > right.left + 1,
+          dbg: { barL: Math.round(bar.width), kids: [...document.querySelector('.wi4-bar-l').children].map(c => [c.className.toString().slice(0, 18), Math.round(c.getBoundingClientRect().width), c.scrollWidth]), tok: u ? [u.scrollWidth, u.clientWidth, Math.round(u.getBoundingClientRect().right), Math.round(bar.right)] : null, tabsL: Math.round(tabs.left), rightW: Math.round(right.width) } };
       });
       ok(scn, `${vw}: the state word is whole («${r.word}»), the sync token is whole and in the bar, one ↻ while live, the tabs clear of the actions`,
         word.test(r.word) && r.wordWhole && token.test(r.token) && r.tokenWhole && !r.overlap && (!/^live/.test(name) || r.refresh === 1), r);
@@ -1923,7 +1924,7 @@ async function scnConflict(browser, origin) {
     await openDatePanel(page, 'recWiE009'); await page.keyboard.press('ArrowRight');
     await page.locator('.wi4-datep .wi4-datep-ft .wi4-btn.pri').click(); await page.waitForTimeout(300); await settle(page, S, 1500);
     ok(scn, 'a 2xx without _expectChecked sets TMS_EXPECT_LIVE = false', await page.evaluate(() => window.TMS_EXPECT_LIVE === false));
-    const view = page.locator('#content .wi4 .wi4-btn', { hasText: 'Προβολή' });
+    const view = page.locator('.wi4-top .wi4-btn', { hasText: 'Προβολή' });
     if (await view.count()) { await view.first().click(); await page.waitForTimeout(300); }
     const vm = await page.evaluate(() => { const m = document.getElementById('wi4-view'); return { open: !!m && !m.hidden, text: m ? m.innerText : null, panel: !!document.querySelector('.wi4-datep'), live: window.TMS_EXPECT_LIVE }; });
     ok(scn, '«Προβολή ▾» says «ο έλεγχος "το άλλαξε άλλος" δεν είναι ενεργός ακόμη»', vm.open && /ο έλεγχος .το άλλαξε άλλος. δεν είναι ενεργός ακόμη/.test(vm.text || ''), vm);
@@ -2263,7 +2264,7 @@ async function scnW1440(browser, origin) {
   const r = await page.evaluate(([js]) => eval(js)('#content .wi4'), [SCAN_JS]);
   ok(scn, 'overflow scan at 1440: every overflowing text has its full text in a title', r.n === 1 && !r.over.length, r.over.slice(0, 15));
   ok(scn, 'contrast scan at 1440: text ≥ 4.5:1', r.n === 1 && !r.low.length, r.low.slice(0, 15));
-  const g = await page.evaluate(() => { const t = document.getElementById('wi4-tabs').getBoundingClientRect(), a = document.querySelector('#content .wi4 .wi4-bar-r').getBoundingClientRect();
+  const g = await page.evaluate(() => { const t = document.getElementById('wi4-tabs').getBoundingClientRect(), a = document.querySelector('.wi4-bar-r').getBoundingClientRect();
     const rows = [...document.querySelectorAll('#content .wi4 .wi4-row')].map(e => Math.round(e.getBoundingClientRect().height));
     return { overlap: t.right > a.left + 1, rowsOk: rows.every(h => h === 32), n: rows.length }; });
   ok(scn, 'week tabs clear of the actions; rows still 32px', !g.overlap && g.rowsOk && g.n > 10, g);
@@ -2282,6 +2283,76 @@ async function scnW1440(browser, origin) {
   } else ok(scn, 'a row near the bottom of the window to open the popover from', false, 'none found');
   ok(scn, 'no page errors', !S.pageErrors.length, S.pageErrors);
   await page.context().close();
+}
+
+// Live parity (owner 11/10: «τσέκαρε την πραγματική οθόνη… μέχρι το αποτέλεσμα
+// του Figma»). The owner's real screen (Chrome, 80% zoom on 1440×900 = 1800×800
+// CSS px) showed what the earlier rounds never measured: the app's own top bar
+// stacked over the board's bar, the collapsed sidebar without its icon rail,
+// the chat button over the rows, plates without DM Mono. Figma 1097:2254:
+// ONE 60px top bar (title · weeks · actions · bell · avatar), content from
+// y = 60 + 12, a 64px rail with every page's icon.
+async function scnParity(browser, origin) {
+  const fontLink = /fonts\.googleapis\.com\/css2\?[^"']*family=DM\+Mono/.test(fs.readFileSync(path.join(TREE, 'app.html'), 'utf8'));
+  ok('parity', 'app.html loads DM Mono (the plates\' face in Figma) with Syne and DM Sans', fontLink);
+  for (const vp of [{ width: 1920, height: 1080 }, { width: 1800, height: 800 }, { width: 1440, height: 900 }]) {
+    const scn = 'parity.' + vp.width;
+    const { page, S } = await openBoard(browser, origin, { viewport: vp });
+    await shot(page, 'parity-' + vp.width);
+    const g = await page.evaluate(() => {
+      const r = (el) => { if (!el) return null; const b = el.getBoundingClientRect(); return { x: Math.round(b.x), y: Math.round(b.y), w: Math.round(b.width), h: Math.round(b.height), r: Math.round(b.right), b: Math.round(b.bottom) }; };
+      const vis = (el) => !!el && el.getClientRects().length > 0 && getComputedStyle(el).visibility !== 'hidden' && +getComputedStyle(el).opacity > 0.05;
+      const bar = document.querySelector('.wi4-bar');
+      const tb = document.querySelector('.topbar');
+      const items = [...document.querySelectorAll('#sidebarNav .nav-item')];
+      const shown = items.filter((a) => { const b = a.getBoundingClientRect(); const ic = a.querySelector('.nav-icon svg'); const g = a.closest('.nav-group-items'); const gb = g ? g.getBoundingClientRect() : b; const ib = ic ? ic.getBoundingClientRect() : null;
+        return vis(a) && b.height > 0 && ib && ib.width > 0 && ib.left >= b.left - 0.5 && ib.right <= b.right + 0.5 && (!g || (+getComputedStyle(g).opacity > 0.05 && ib.top >= gb.top - 0.5 && ib.bottom <= gb.bottom + 0.5)); });
+      const fab = document.getElementById('aic-toggle');
+      const rows = [...document.querySelectorAll('#content .wi4 .wi4-row')].map((e) => e.getBoundingClientRect());
+      const fb = fab && vis(fab) ? fab.getBoundingClientRect() : null;
+      const hit = fb ? rows.filter((b) => b.bottom > fb.top && b.top < fb.bottom && b.right > fb.left && b.left < fb.right).length : 0;
+      const q = document.querySelector('#content .wi4 .wi4-q');
+      return { bar: r(bar), barInTopbar: !!(bar && tb && tb.contains(bar)), topbarShown: vis(tb) ? r(tb) : null,
+        title: vis(document.getElementById('topbarTitle')), crumbs: vis(document.getElementById('topbarBreadcrumb')),
+        bell: vis(document.querySelector('.notif-bell')) ? r(document.querySelector('.notif-bell')) : null, avatar: vis(document.getElementById('userAvatar')) ? r(document.getElementById('userAvatar')) : null,
+        name: vis(document.getElementById('userName')), logout: vis(document.querySelector('.btn-logout')),
+        q: r(q), items: items.length, shown: shown.length, navDbg: items.map((a) => [a.id, Math.round(a.getBoundingClientRect().y), Math.round(a.getBoundingClientRect().height), (a.querySelector('.nav-icon') || {}).innerHTML ? a.querySelector('.nav-icon').innerHTML.length : 0, getComputedStyle(a.closest('.nav-group-items') || a).maxHeight]), fabHitsRows: hit, fab: fb ? r(fab) : null };
+    });
+    ok(scn, 'ONE top bar: the board\'s bar sits at y=0 in the app\'s top bar (Figma Top bar 1097:2283)', g.barInTopbar && g.bar && g.bar.y <= 1 && !g.title && !g.crumbs, g);
+    ok(scn, 'the top bar is 60px and ends with the bell and the avatar', g.topbarShown && Math.abs(g.topbarShown.h - 60) <= 1 && g.bell && g.avatar && g.avatar.x > g.bell.x, g);
+    ok(scn, 'the queue starts 12px under the bar (Figma content y = 60 + 12)', g.q && Math.abs(g.q.y - 72) <= 2, { q: g.q });
+    ok(scn, 'the collapsed sidebar is an icon rail: every page\'s icon visible', g.items > 0 && g.shown === g.items, { items: g.items, shown: g.shown, nav: g.navDbg });
+    ok(scn, 'the chat button covers no row of the board', g.fabHitsRows === 0, { fab: g.fab, hits: g.fabHitsRows });
+    // The rail's last icon can always scroll clear of the parked chat button.
+    const rail = await page.evaluate(() => {
+      const nav = document.getElementById('sidebarNav'), fab = document.getElementById('aic-toggle');
+      if (!nav || !fab) return { ok: false, why: 'nav or chat button missing' };
+      nav.scrollTop = nav.scrollHeight;
+      const last = [...nav.querySelectorAll('.nav-item')].pop().getBoundingClientRect(), f = fab.getBoundingClientRect();
+      return { ok: last.bottom <= f.top + 0.5 || last.top >= f.bottom - 0.5, last: Math.round(last.bottom), fabTop: Math.round(f.top) };
+    });
+    ok(scn, 'scrolled to the end, the rail\'s last icon clears the chat button', rail.ok, rail);
+    if (vp.width === 1920) {
+      // Avatar menu: name and role from the chip, one «Αποσύνδεση»; any click
+      // elsewhere closes it. «Προβολή ▾» opens ABOVE the board, not under it.
+      await page.click('.topbar .user-chip');
+      const um = await page.evaluate(() => { const m = document.querySelector('.topbar .wi4-umenu'); return { open: !!m && !m.hidden, text: m ? m.innerText : '', btn: !!m && /Αποσύνδεση/.test(m.innerText) }; });
+      await page.mouse.click(900, 600);
+      const closed = await page.evaluate(() => { const m = document.querySelector('.topbar .wi4-umenu'); return !m || m.hidden; });
+      ok(scn, 'the avatar opens name · role · «Αποσύνδεση»; a click elsewhere closes it', um.open && um.btn && /Rig/.test(um.text) && closed, { um, closed });
+      await page.click('.wi4-top .wk-more-t');
+      const vm = await page.evaluate(() => { const m = document.getElementById('wi4-view'); if (!m || m.hidden) return { open: false }; const b = m.getBoundingClientRect(); const top = document.elementFromPoint(b.left + b.width / 2, b.top + Math.min(b.height - 2, 40)); return { open: true, onTop: !!top && m.contains(top), b: [Math.round(b.left), Math.round(b.top), Math.round(b.width), Math.round(b.height)] }; });
+      ok(scn, '«Προβολή ▾» opens above the board', vm.open && vm.onTop, vm);
+      await page.mouse.click(900, 600);
+      // Leaving the page gives the app its own title back and takes the bar out.
+      await page.evaluate(() => navigate('dashboard'));
+      await page.waitForTimeout(400);
+      const left = await page.evaluate(() => ({ slot: !!document.getElementById('wi4-top'), on: document.body.classList.contains('wi4-on'), title: getComputedStyle(document.getElementById('topbarTitle')).display !== 'none', menu: !!document.querySelector('.wi4-umenu'), chipRole: document.querySelector('.topbar .user-chip').getAttribute('role') }));
+      ok(scn, 'leaving the page: no board bar in the app\'s top bar, the page title back, no avatar menu', !left.slot && !left.on && left.title && !left.menu && !left.chipRole, left);
+    }
+    ok(scn, 'no page errors', !S.pageErrors.length, S.pageErrors);
+    await page.context().close();
+  }
 }
 
 (async () => {
@@ -2312,7 +2383,7 @@ async function scnW1440(browser, origin) {
     const S = { paint: scnPaint, invariants: scnInvariants, relay: scnRelay, scans: scnScans, unknown: scnUnknown, drops: scnDrops, join: scnJoin, menu: scnMenu,
       date: scnDate, keys: scnKeys, search: scnSearch, savefail: scnSaveFail, presence: scnPresence, conflict: scnConflict, fallback: scnFallback, styles: scnStyles,
       twins: scnTwins, queue: scnQueue, unread: scnUnread,
-      print: scnPrint, shift: scnShift, late: scnLate, offline: scnOffline, quiet: scnQuiet, natmissing: scnNatMissing, w1440: scnW1440 };
+      print: scnPrint, shift: scnShift, late: scnLate, offline: scnOffline, quiet: scnQuiet, natmissing: scnNatMissing, w1440: scnW1440, parity: scnParity };
     // A watchdog per scenario: one missing locator or one write that never
     // settles fails THAT scenario, closes its pages, and the run goes on.
     const WATCHDOG_MS = 360000;

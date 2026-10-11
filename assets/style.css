@@ -613,6 +613,22 @@ body {
 .sidebar.collapsed .nav-label { opacity: 0; }
 .sidebar.collapsed .nav-item { justify-content: center; padding: 8px 0; margin: 1px 6px; }
 .sidebar.collapsed .nav-item.active::before { left: -6px; }
+/* Collapsed on desktop = an icon rail (Figma 1097:2255; owner 11/10, live
+   parity). The label kept its width at opacity 0 and pushed the icon out of
+   the 44px item (overflow hidden + centred): the rail showed empty squares.
+   Section headers kept their height as invisible gaps, and a closed group hid
+   its pages with no header left to open it. Desktop only: ≤1024px has its own
+   icon bar and ≤768px turns .collapsed into the wide drawer with labels. */
+@media (min-width: 1025px) {
+  .sidebar.collapsed .nav-item > :not(.nav-icon) { display: none; }
+  .sidebar.collapsed .nav-section { display: none; }
+  .sidebar.collapsed .nav-group-items.collapsed-items { max-height: none; opacity: 1; padding: 2px 0 4px; }
+  /* The wide logo cut at 56px showed half the emblem, read as a broken image:
+     shifted so the emblem alone sits centred in the rail (logo.png keeps a
+     125px transparent margin left of it, 31px at the 84px height); the clip
+     ends right of the emblem, before the «P» of the name. */
+  .sidebar.collapsed .sidebar-logo img { margin-left: -27px; clip-path: inset(0 calc(100% - 57px) 0 0); }
+}
 
 /* Tooltip on collapsed */
 .sidebar.collapsed .nav-item:hover::after {
@@ -7623,7 +7639,49 @@ button.btn-icon:focus-visible { outline:2px solid var(--accent); outline-offset:
    inside a 1px border (1806px), legs 621px. #content is 1864px wide there (the
    collapsed sidebar is 56px, Figma's 64px), so the gutter is 28px instead of
    today's 36px. v4 only (body.wi4-on), which leaves with the page. */
-body.wi4-on .content { padding-left:28px; padding-right:28px; }
+body.wi4-on .content { padding-left:28px; padding-right:28px; padding-top:12px; }
+/* ONE top bar (Figma Top bar 1097:2283; owner 11/10, live parity): the app's
+   bar stacked over the board's cost ~80px of an 800px screen. WIV2 moves the
+   board's bar into the app's bar (#wi4-top, its own .wi4 wrapper so every
+   `.wi4 …` rule still reaches it); the page title and breadcrumb give way, the
+   bar is 60px and ends with the bell and the avatar. Name, role and Sign out
+   sit behind the avatar (.wi4-umenu); the idle undo hides until there is
+   something to undo. */
+body.wi4-on .topbar { height:60px; padding:0 24px 0 28px; gap:12px; position:relative; z-index:30; }
+body.wi4-on #topbarTitle, body.wi4-on #topbarBreadcrumb { display:none; }
+body.wi4-on .topbar .wi4-top { flex:1; min-width:0; align-self:stretch; display:flex; align-items:center; background:transparent; }
+body.wi4-on .topbar .wi4-top > .wi4-bar { flex:1; min-width:0; min-height:60px; border-bottom:0; }
+/* .topbar button's 44px touch floor (SH-3) is for the app's own chrome; on the
+   board's controls it made 44px tabs in a 56px pill (Figma: 34 / 32px). */
+body.wi4-on .topbar .wi4-top button { min-height:0; min-width:0; }
+body.wi4-on .topbar-right { gap:4px; }
+/* 1440: the bell and the avatar take ~90px from the bar the board had alone;
+   the gutters give back what the longest sync token («3 αλλαγές από … ·
+   Ανανέωση») needs to stay whole (rig presence.layout.changes). */
+@media (max-width:1600px) {
+  body.wi4-on .topbar { padding:0 16px 0 20px; gap:8px; }
+  /* «Σάρωση» keeps its camera and its title; the word gives way (it is still
+     the button's accessible name — font-size, not display). */
+  body.wi4-on .wi4-top .btn-scan { font-size:0; gap:0; padding:0 9px; }
+  body.wi4-on .wi4-top .wi4-bar { column-gap:8px; }
+  body.wi4-on .wi4-top .wi4-title { font-size:16px; }
+}
+body.wi4-on #undoBtn.undo-btn-idle { display:none; }
+body.wi4-on .topbar .notif-wrap { margin-right:0 !important; }
+body.wi4-on .topbar .user-chip { padding:0; border:0; background:transparent; cursor:pointer; position:relative; min-width:44px; min-height:44px; justify-content:center; }
+body.wi4-on .topbar .user-chip > #userName, body.wi4-on .topbar .user-chip > .role-badge, body.wi4-on .topbar .btn-logout { display:none; }
+body.wi4-on .topbar .user-avatar { width:32px; height:32px; font-size:11px; }
+.wi4-umenu { position:absolute; top:calc(100% + 4px); right:0; min-width:200px; padding:6px 0; background:var(--surface-card); border:1px solid var(--wi4-line-2); border-radius:8px; box-shadow:0 8px 24px rgba(11,25,41,.14); z-index:40; font-family:'DM Sans',sans-serif; font-size:12px; color:var(--wi4-ink); cursor:default; }
+.wi4-umenu[hidden] { display:none; }
+.wi4-umenu-h { padding:6px 14px 8px; border-bottom:1px solid var(--wi4-line-2); margin-bottom:4px; white-space:nowrap; }
+.wi4-umenu-h span { color:var(--wi4-grey-2); }
+.wi4-umenu button { display:block; width:100%; padding:7px 14px; text-align:left; background:none; border:0; font:inherit; color:inherit; cursor:pointer; }
+.wi4-umenu button:hover, .wi4-umenu button:focus-visible { background:var(--wi4-hover); }
+/* The chat button parks in the rail on the board: bottom-right it covered the
+   pallets of the last rows (parity scan, 11/10: 3 rows at 1920). */
+body.wi4-on .aic-btn { left:8px; right:auto; bottom:64px; width:40px; height:40px; }
+/* …and the rail's last icons scroll clear of it. */
+body.wi4-on .sidebar-nav { padding-bottom:56px; }
 
 /* The ONE truncation rule of the block (styles.truncate +1). A visible «…»
    instead of a silent cut (DESIGN.md Κ6): a dispatcher must see that a name
@@ -7749,6 +7807,13 @@ body.wi4-on #wi-ctx .wi4-m-sec .wi4-l2, body.wi4-on #wi-ctx .wi4-m-hd .wi4-l2 { 
 .wi4-qcard-t { flex:1 1 auto; min-width:0; display:flex; flex-direction:row; align-items:baseline; gap:6px; }
 .wi4-qcard-t > .wi4-l1 { flex:0 1 auto; max-width:none; }
 .wi4-qcard-t > .wi4-l2 { flex:0 0 auto; max-width:55%; }
+/* 1440 (live parity 11/10): three cards read «ΠΕΛΑΤ… 34π · φορτώ…» — no
+   name, no reason. The search box gives 80px and the card's day chip goes
+   (the reason already says «αύριο» / «ήταν χθες»; the row keeps its chip). */
+@media (max-width:1600px) {
+  .wi4-search { width:160px; }
+  .wi4-qcard > .wi4-dc { display:none; }
+}
 .wi4-q-all { flex:none; white-space:nowrap; }
 /* Sheet 15 B: ~600px, one line per item, opening under the queue band from
    its left edge (WI4Actions.queuePanel places it). */
@@ -8016,6 +8081,10 @@ body.wi4-on #wi-ctx .wi4-m-sec .wi4-l2, body.wi4-on #wi-ctx .wi4-m-hd .wi4-l2 { 
 /* its button keeps today's words; quiet grey-2 (5.3:1) after the blue action —
    its own accent colour measured 4.1:1 on white */
 .wi4 .wi4-gap .wi2-gapstk-b { font:500 11px 'DM Sans',sans-serif; color:var(--wi4-grey-2); }
+/* 1440: the day and the place are why the cell exists, yet they were cut to
+   «· α…» while «ή κομμάτι από ΑΠΟΘΕΜΑ» stayed whole. The stock link gives way
+   (the row's menu keeps «+ Κομμάτι από απόθεμα…»). */
+@media (max-width:1600px) { .wi4 .wi4-gap .wi2-gapstk { display:none; } }
 .wi4-gap-act:hover { text-decoration:underline; }
 .wi4-void { font-size:10.5px; color:var(--wi4-grey-2); }
 .wi4-noexp { height:24px; display:flex; align-items:center; gap:6px; padding:0 10px; border:1px dashed var(--wi4-slot); border-radius:5px; font-size:12px; color:var(--wi4-grey-1); }

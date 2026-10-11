@@ -1709,6 +1709,7 @@ function _paint() {
     '<div id="wi-ctx"></div><div id="wi-popover"></div><div id="wi-panel" class="wi-panel"></div>';
   window._wiDragging = null;   // as _wiPaint: a repaint ends any drag
   document.body.classList.add('wi4-on');
+  _topMount();
   _install();
   _tick();
   _layout(false);
@@ -1884,8 +1885,80 @@ function _scroller() {
   }
   return document.scrollingElement || document.documentElement;
 }
+// ONE top bar (Figma 1097:2283; owner 11/10, live parity). The bar is painted
+// with the board — one render, its ids unique — and then moved into the app's
+// top bar, inside its own `.wi4` wrapper so every `.wi4 …` rule still reaches
+// it. The bar is looked up by id and the board by `#content .wi4`, so neither
+// notices the move; _cleanup (page left, «Παλιά προβολή», a failed paint)
+// takes it out and the app's own title comes back.
+function _topMount() {
+  const tb = document.querySelector('.main > .topbar');
+  const bar = document.querySelector('#content .wi4 > .wi4-bar');
+  if (!tb || !bar) return;
+  let slot = document.getElementById('wi4-top');
+  if (!slot) {
+    slot = document.createElement('div');
+    slot.id = 'wi4-top';
+    slot.className = 'wi4 wi4-top';
+    tb.insertBefore(slot, tb.querySelector('.topbar-right'));
+  }
+  slot.replaceChildren(bar);
+  _umenuMount();
+}
+function _topUnmount() {
+  const slot = document.getElementById('wi4-top');
+  if (slot) slot.remove();
+  _umenuUnmount();
+}
+// Name, role and Sign out behind the avatar (Figma ends the bar with the
+// avatar alone). Built from what the app wrote in the chip, so it never
+// disagrees with it.
+let _umenu = null;
+function _umenuTog(ev) {
+  if (!_umenu) return;
+  if (ev && ev.target && _umenu.contains(ev.target)) return;
+  if (ev) ev.stopPropagation();
+  const open = _umenu.hidden;
+  _umenu.hidden = !open;
+  if (open) document.addEventListener('click', _umenuClose, { once: true });
+}
+function _umenuClose() { if (_umenu) _umenu.hidden = true; }
+function _umenuKey(ev) { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); _umenuTog(ev); } else if (ev.key === 'Escape') _umenuClose(); }
+function _umenuMount() {
+  const chip = document.querySelector('.topbar .user-chip');
+  if (!chip || _umenu) return;
+  const name = (document.getElementById('userName') || {}).textContent || '';
+  const role = (document.getElementById('roleBadge') || {}).textContent || '';
+  const m = document.createElement('div');
+  m.className = 'wi4-umenu';
+  m.hidden = true;
+  m.setAttribute('role', 'menu');
+  m.innerHTML = `<div class="wi4-umenu-h">${_esc(name)}${role ? ` <span>· ${_esc(role)}</span>` : ''}</div>` +
+    '<button type="button" role="menuitem" onclick="logout()">Αποσύνδεση</button>';
+  chip.appendChild(m);
+  chip.setAttribute('role', 'button');
+  chip.setAttribute('tabindex', '0');
+  chip.setAttribute('aria-haspopup', 'true');
+  chip.title = name ? name + ' — Αποσύνδεση' : 'Αποσύνδεση';
+  chip.addEventListener('click', _umenuTog);
+  chip.addEventListener('keydown', _umenuKey);
+  _umenu = m;
+}
+function _umenuUnmount() {
+  if (!_umenu) return;
+  const chip = _umenu.parentElement;
+  _umenu.remove();
+  _umenu = null;
+  document.removeEventListener('click', _umenuClose);
+  if (!chip) return;
+  chip.removeEventListener('click', _umenuTog);
+  chip.removeEventListener('keydown', _umenuKey);
+  ['role', 'tabindex', 'aria-haspopup', 'title'].forEach((a) => chip.removeAttribute(a));
+}
+
 function _cleanup() {
   try { document.body.classList.remove('wi4-on'); } catch (_) {}
+  try { _topUnmount(); } catch (e) { _logErr(e, 'wi4: top bar unmount'); }
   if (_tickT) { clearInterval(_tickT); _tickT = null; }
   if (_lateT) { clearTimeout(_lateT); _lateT = null; }
   _presStop();
