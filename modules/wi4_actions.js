@@ -121,12 +121,18 @@ function _plural(n, one, many) {
   if (typeof lg.plural === 'function') { try { const s = lg.plural(n, one); if (s) return s; } catch (_) {} }
   return n + ' ' + (n === 1 ? one : many);
 }
-const _place = (f, kind) => W().raw(W().placeStr(f, kind));
+const GONE = 'Η σειρά δεν βρίσκεται πια στον πίνακα — ανανέωσε';
 
 // Parse builder HTML into item descriptors. The parsed <button> NODES are
 // kept and later MOVED into the v4 menu (importNode): re-emitting a decoded
 // onclick into a new attribute would break on quotes (§e.9 step 3).
 // Headers (.wi-ctx-h) and separators are dropped: v4 draws its own sections.
+// A builder returns some items DISABLED (no onclick, the reason in the title,
+// e.g. «+ Κομμάτι από απόθεμα…» on a row with no truck yet). They still
+// belong to a section and carry an icon: the label names the handler they
+// stand for (sheet 14 draws it with the truck items, its icon in the icon
+// column — review 11/10: it fell under ΕΞΑΓΩΓΗ, out of line, iconless).
+const DISABLED_AS = Object.freeze({ '+ Κομμάτι από απόθεμα…': '_wiStockPanel' });
 function _parseItems(html, src) {
   if (!html) return [];
   const doc = new DOMParser().parseFromString('<div>' + html + '</div>', 'text/html');
@@ -135,7 +141,9 @@ function _parseItems(html, src) {
     const onclick = b.getAttribute('onclick') || '';
     const label = String(b.textContent || '').trim();
     const fn = _handlerOf(onclick);
-    out.push({ node: b, onclick, fn, name: _nameOf(fn), label, disabled: !!b.disabled || b.hasAttribute('disabled'),
+    const disabled = !!b.disabled || b.hasAttribute('disabled');
+    out.push({ node: b, onclick, fn, name: _nameOf(fn), label, disabled,
+      as: !onclick && disabled ? (DISABLED_AS[label] || '') : '',
       key: onclick ? 'on:' + onclick : 'dis:' + label, src });
   }
   return out;
@@ -235,7 +243,7 @@ function _gather(orderId) {
     const keep = [];
     for (const it of s.items) {
       if (!take(it)) continue;
-      const sec = lg.menuSection(it.name);
+      const sec = lg.menuSection(it.name || it.as || '');
       if (sec === 'truck') { truck.push(it); continue; }
       const toImp = s.kind === 'export' && byKind('import') &&
         (sec === 'import' || _recIdsIn(it.fn).some((id) => impOids.includes(id)));
@@ -252,11 +260,11 @@ function _gather(orderId) {
   const memberSubs = (sec, groupRow, isImp) => {
     oidsOf(groupRow).forEach((m, i) => {
       const items = _parseItems(I.segCtxItems(groupRow.id, m, isImp), isImp ? 'segI' : 'segE')
-        .filter((it) => lg.menuSection(it.name) !== 'truck' && take(it));
+        .filter((it) => lg.menuSection(it.name || it.as || '') !== 'truck' && take(it));
       const f = _fieldsOf(m);
       const p = 'Total Pallets' in f ? ' · ' + (+f['Total Pallets'] || 0) + ' π.' : '';
       sec.subs.push({ kind: 'member', title: (i + 1) + ' · ' + (I.clientName(f) || m) + p, head: 'ΦΟΡΤΙΟ ' + (i + 1) + ' ΤΗΣ ΟΜΑΔΑΣ',
-        sub: _routeLine(m), oids: [m], items });
+        sub: _memberLine(m), oids: [m], items });
     });
   };
   const e = byKind('export'), im = byKind('import');
@@ -333,38 +341,60 @@ function _gather(orderId) {
   return { rowId: row.id, oid: orderId, row, header: _menuHeader(row, impRow, expOids, impOids), truck, sections };
 }
 
+// Section lines in the row's own words (sheet 14, menu ≈ 300px): a load is
+// «ΠΕΛΑΤΗΣ · Φόρτωση → Παράδοση · 18 π.», never the v1 dump of every stop with
+// its country spelled out (review 11/10: «Alpha Farm, Veria, Ελλάδα → Beta
+// Market, Berlin, Γερμανία, Zeta Store, …» made the menu 820px wide). The
+// names come from WIV2._ends — the same parser and «χώρα μόνο εκτός GR» rule
+// as the row. Only the first loading and the last delivery point: «+N» on
+// the row holds the rest.
+const _pi = (p) => (p == null ? '' : ' · ' + p + ' π.');
+function _endsOf(oid) { const v = V(); try { return v && typeof v._ends === 'function' ? v._ends(oid) : null; } catch (e) { _logErr(e, 'wi4 menu: ends'); return null; } }
 function _routeLine(oid) {
-  const f = _fieldsOf(oid);
-  if (!Object.keys(f).length) return '';
-  const I = W();
-  const p = 'Total Pallets' in f ? ' · ' + (+f['Total Pallets'] || 0) + ' π.' : '';
-  return (I.clientName(f) || '—') + ' · ' + _place(f, 'load') + ' → ' + _place(f, 'del') + p;
+  const e = _endsOf(oid);
+  if (!e) return '';
+  const from = e.vsExp ? 'Βέροια' : e.from.title, to = e.vsImp ? 'Βέροια' : e.to.title;
+  // «Ίδιος πελάτης μία φορά» (rules): no client before a loading point with its name.
+  const who = e.client && e.client !== from ? e.client + ' · ' : '';
+  return who + from + ' → ' + to + _pi(e.pallets);
 }
-function _groupLine(oids, kind) {
-  const last = _fieldsOf(oids[oids.length - 1]);
-  const pals = _pals(oids);
-  return _plural(oids.length, 'φορτίο', 'φορτία') + ' → ' + _place(last, kind) + (pals == null ? '' : ' · ' + pals + ' π.');
+function _groupLine(oids) {
+  const e = _endsOf(oids[oids.length - 1]);
+  const to = e ? (e.vsImp ? 'Βέροια' : [e.to.title, e.to.place].filter(Boolean).join(', ')) : '—';
+  return _plural(oids.length, 'φορτίο', 'φορτία') + ' → ' + to + _pi(_pals(oids));
 }
+// A member's own line (sheet 14 submenu): «VERMION FRUITS, Agios Georgios → DARKOM · 13 π.».
+function _memberLine(oid) {
+  const e = _endsOf(oid);
+  if (!e) return '';
+  const from = e.vsExp ? 'Βέροια' : [e.from.title, e.from.city].filter(Boolean).join(', ');
+  return from + ' → ' + (e.vsImp ? 'Βέροια' : e.to.title) + _pi(e.pallets);
+}
+// «Σάβ 3/10»: the board's ONE day format (WI4.dayLabel) — never a second one.
+const _dl = (d) => { const lg = L(); return d && typeof lg.dayLabel === 'function' ? lg.dayLabel(d) : ''; };
 function _relayTitle(rec, oid) {
   try {
     const o = W().relayOrder(oid);
     const s = (typeof Relay !== 'undefined' && Relay.summary) ? Relay.summary(rec, o) : null;
     if (s) return (s.kind === 'relay_delivery' ? 'Τοπική παράδοση' : 'Τοπική φόρτωση') + ' · ' + (s.driverName || 'ΠΡΟΣ ΑΝΑΘΕΣΗ') +
-      (s.day && Relay.fmtDay ? ' · ' + Relay.fmtDay(s.day) : '');
+      (s.day && _dl(s.day) ? ' · ' + _dl(s.day) : '');
   } catch (e) { _logErr(e, 'wi4 menu: relay title'); }
   return 'Τοπική';
 }
 function _menuHeader(row, impRow, expOids, impOids) {
-  const I = W();
   let l1;
+  // An assigned row whose truck is not in the cache (the list holds Active
+  // trucks only) is «—», never «ΠΡΟΣ ΑΝΑΘΕΣΗ» in the very place the dispatcher
+  // acts from; a partner missing from the cache is «—», never the generic
+  // «Συνεργάτης» (owner 4/9).
   if (row.hasSplitLegs) l1 = 'Σπασμένη παραγγελία';
-  else if (row.partnerId) l1 = (row.partnerLabel || 'Συνεργάτης') + (row.partnerPlates ? ' · ' + row.partnerPlates : '');
-  else if (row.truckLabel) l1 = row.truckLabel + (row.driverLabel ? ' · ' + row.driverLabel : '');
+  else if (row.partnerId) l1 = (row.partnerLabel || '—') + (row.partnerPlates ? ' · ' + row.partnerPlates : '');
+  else if (row.saved) l1 = (row.truckLabel || '—') + (row.driverLabel ? ' · ' + row.driverLabel : '');
   else l1 = 'ΠΡΟΣ ΑΝΑΘΕΣΗ';
   const first = _fieldsOf(expOids[0] || impOids[0]);
   const lastF = _fieldsOf(impOids.length ? impOids[impOids.length - 1] : expOids[expOids.length - 1]);
-  const from = first['Loading DateTime'] ? I.fmt(first['Loading DateTime']) : '—';
-  const to = lastF['Delivery DateTime'] ? I.fmt(lastF['Delivery DateTime']) : '—';
+  const from = _dl(_dayOf('Loading DateTime', first['Loading DateTime'])) || '—';
+  const to = _dl(_dayOf('Delivery DateTime', lastF['Delivery DateTime'])) || '—';
   const n = [];
   if (expOids.length) n.push(expOids.length + ' ' + (expOids.length === 1 ? 'εξαγωγή' : 'εξαγωγές'));
   if (impOids.length) n.push(impOids.length + ' ' + (impOids.length === 1 ? 'εισαγωγή' : 'εισαγωγές'));
@@ -391,7 +421,7 @@ function _itemNode(it) {
     b.setAttribute('onclick', it.onclick);
   }
   b.textContent = '';
-  b.appendChild(_iconEl(it.name));
+  b.appendChild(_iconEl(it.name || it.as || ''));
   b.appendChild(document.createTextNode(it.label));
   if (it.hint) { const k = document.createElement('span'); k.className = 'wi4-key wi4-m-k'; k.textContent = it.hint; b.appendChild(k); }
   return b;
@@ -403,8 +433,9 @@ function _secHead(title, sub) {
   if (sub) {
     // Section titles are upper-case words written as such (CSS upper-casing
     // keeps the Greek tonos in some browsers); the line under them is normal
-    // text, so it undoes the section's caps style for itself.
-    const s = document.createElement('div'); s.className = 'wi4-l2'; s.textContent = sub;
+    // text, so it undoes the section's caps style for itself. One line, cut
+    // with «…»: the whole of it is the title (the menu is ~320px, sheet 14).
+    const s = document.createElement('div'); s.className = 'wi4-l2'; s.textContent = sub; s.title = sub;
     Object.assign(s.style, { textTransform: 'none', letterSpacing: '0', fontWeight: '400', fontSize: '11px', color: 'var(--wi4-ink)' });
     d.appendChild(s);
   }
@@ -425,13 +456,17 @@ function _hoverable(el, oids) {
   el.addEventListener('mouseenter', () => _hlSet(oids));
   el.addEventListener('mouseleave', _hlClear);
 }
-// The menu never runs past the window: it scrolls inside (CSS max-height) and
-// moves up when a submenu makes it taller than the room under it.
+// The menu never runs past the window: it scrolls inside only when it is
+// taller than the window (CSS max-height); otherwise it OPENS UPWARD as far as
+// the room under it is short — also when a submenu makes it taller — and it
+// moves left when it would cross the right edge (_wiCtxShow places it for a
+// 240px menu; v4's is wider, review 11/10).
 function _fitMenu() {
   const ctx = document.getElementById('wi-ctx');
   if (!ctx || ctx.style.display !== 'block') return;
   const r = ctx.getBoundingClientRect();
   if (r.bottom > window.innerHeight - 8) ctx.style.top = Math.max(8, Math.round(window.innerHeight - 8 - r.height)) + 'px';
+  if (r.right > window.innerWidth - 8) ctx.style.left = Math.max(8, Math.round(window.innerWidth - 8 - r.width)) + 'px';
 }
 
 function _renderMenu(model) {
@@ -439,7 +474,7 @@ function _renderMenu(model) {
   const hd = document.createElement('div');
   hd.className = 'wi4-m-hd';
   hd.textContent = model.header.l1;
-  const l2 = document.createElement('div'); l2.className = 'wi4-l2'; l2.textContent = model.header.l2;
+  const l2 = document.createElement('div'); l2.className = 'wi4-l2'; l2.textContent = model.header.l2; l2.title = model.header.l2;
   hd.appendChild(l2);
   frag.appendChild(hd);
   model.truck.forEach((it) => frag.appendChild(_itemNode(it)));
@@ -566,17 +601,22 @@ function _fmtConflict(label, v) {
 // → {lead, body, question}: the dialog puts the question on its own line
 // (sheet 16 E). `expected` is what the user saw (the _expect sent), `mine`
 // what they chose; both come from the caller, never re-read.
+// The signed-in username: a 409 whose author is me (a second tab, a board
+// that did not re-read) is never «άλλος χρήστης» (commit 11300633's goal).
+function _me() { try { return (typeof user !== 'undefined' && user && user.username) || ''; } catch (_) { return ''; } }
+function _byMe(by) { const me = _me(); return !!me && typeof by === 'string' && by === me; }
 function _conflictParts(conflict, ctx) {
   const lg = L();
   try {
     if (typeof lg.describeConflict === 'function') {
-      const d = lg.describeConflict(Object.assign({}, conflict, { mine: (ctx && ctx.mine) || {}, expected: (ctx && ctx.expected) || {}, now: Date.now() }), LABELS_GR, _fmtConflict);
+      const d = lg.describeConflict(Object.assign({}, conflict, { mine: (ctx && ctx.mine) || {}, expected: (ctx && ctx.expected) || {}, now: Date.now(), me: _me() }), LABELS_GR, _fmtConflict);
       if (d && d.lead) return { lead: d.lead, body: d.body || '', question: d.question || 'Ποια κρατάμε;' };
     }
   } catch (e) { _logErr(e, 'wi4: describeConflict'); }
   return { lead: 'Η εγγραφή άλλαξε από τότε που την άνοιξες', body: '', question: 'Ποια κρατάμε;' };
 }
 function _keepLabel(by) {
+  if (_byMe(by)) return 'Κράτα την τρέχουσα';   // never «Κράτα του <me>»
   if (typeof by === 'string' && by && by !== 'user' && by !== 'auto') return 'Κράτα του ' + by;
   if (by === 'user') return 'Κράτα του άλλου χρήστη';
   if (by === 'auto') return 'Κράτα την αυτόματη';
@@ -608,7 +648,7 @@ function conflictDialog(conflict, ctx) {
     // Who changed it (a username only when the Worker sent one), then what,
     // then the question on its own line. Amber: it is news, not the user's error.
     const lead = document.createElement('div'); lead.className = 'wi4-conf-lead';
-    if (typeof c.by === 'string' && c.by && c.by !== 'user' && c.by !== 'auto') {
+    if (typeof c.by === 'string' && c.by && c.by !== 'user' && c.by !== 'auto' && !_byMe(c.by)) {
       const av = document.createElement('span'); av.className = 'wi4-av sm'; av.textContent = c.by.trim().charAt(0).toUpperCase();
       lead.appendChild(av);
     }
@@ -621,6 +661,9 @@ function conflictDialog(conflict, ctx) {
     else { const q = document.createElement('div'); q.className = 'wi4-conf-q'; q.textContent = parts.question; box.appendChild(q); }
     const ft = document.createElement('div'); ft.className = 'wi4-dlg-ft';
     if (ctx && ctx.stale) ft.appendChild(_btn('wi4-btn sm pri', 'Ανανέωση', () => _dlgClose('refresh')));
+    // A match has nothing to «reopen»: reopening the ASSIGNMENT popover is not
+    // a match. One button — the screen already shows the current match.
+    else if (kind === 'match') ft.appendChild(_btn('wi4-btn sm pri', 'Κράτα την τρέχουσα', () => _dlgClose('keep')));
     else {
       ft.appendChild(_btn('wi4-btn sm', _keepLabel(c.by), () => _dlgClose('keep')));
       if (kind === 'date') ft.appendChild(_btn('wi4-btn sm pri', 'Γράψε τη δική μου', () => _dlgClose('mine')));
@@ -672,20 +715,36 @@ function _timeOf(field, iso) {
   return isNaN(d.getTime()) ? '' : _pad(d.getHours()) + ':' + _pad(d.getMinutes());
 }
 function _hasVs(f) { return !!f['Veroia Switch']; }
+// A typed time → «HH:MM» (24-hour), or '' when it is not one: «0730» and
+// «7:30» are accepted, «25:99» and «7.30pm» are not.
+function _hhmm(v) {
+  let s = String(v || '').trim();
+  if (/^\d{4}$/.test(s)) s = s.slice(0, 2) + ':' + s.slice(2);
+  else if (/^\d:\d{2}$/.test(s)) s = '0' + s;
+  return /^([01]\d|2[0-3]):[0-5]\d$/.test(s) ? s : '';
+}
+// The panel's identity line in the row's words (WIV2._ends).
+function _panelLine(oid, f) {
+  const e = _endsOf(oid);
+  if (!e) return W().clientName(f) || '—';
+  return (e.client || '—') + ' · ' + (e.from.place || e.from.title) + ' — ' + (e.to.place || e.to.title);
+}
 
 // The write arguments of the panel's current state, or null when nothing
 // changed. hhmm is passed ONLY when the time was changed (or when resending
 // «Γράψε τη δική μου»), so a day-only change sends exactly today's body:
-// _wiDateWrite keeps the old time of day itself (_wk3IsoOnDay).
+// _wiDateWrite keeps the old time of day itself (_wk3IsoOnDay). The 6th
+// argument (`seen`) is the value the panel SHOWED, sent as _expect: only this
+// caller passes it (§g.4).
 function _dpWriteArgs(st) {
   if (!st || !st.sel) return null;
   const curIso = st.cur[st.field] == null ? null : st.cur[st.field];
   const curDay = _dayOf(st.field, curIso);
-  const t = st.field === 'VS CD Date' ? '' : String(st.time || '');
-  const timeChanged = st.field !== 'VS CD Date' && t !== st.time0 && /^\d{2}:\d{2}$/.test(t);
+  const t = st.field === 'VS CD Date' ? '' : _hhmm(st.time);
+  const timeChanged = st.field !== 'VS CD Date' && !!t && t !== st.time0;
   if (st.sel === curDay && !timeChanged && !st.force) return null;
-  const hhmm = (timeChanged || (st.force && /^\d{2}:\d{2}$/.test(t))) ? t : undefined;
-  return [st.oid, st.field, curIso, st.sel, hhmm];
+  const hhmm = (timeChanged || (st.force && t)) ? t : undefined;
+  return [st.oid, st.field, curIso, st.sel, hhmm, curIso];
 }
 
 function _dpGroupDay(f) {
@@ -778,8 +837,11 @@ function _dpRender() {
   const el = st.el;
   el.textContent = '';
   const hd = document.createElement('div'); hd.className = 'wi4-datep-hd'; hd.textContent = FIELD[st.field].title; el.appendChild(hd);
+  // One line (sheet 16 D: «J&T KOUP FRUITS · Larisa — Tempi»), the row's own
+  // words: client · first loading place — last delivery place, «…» + title
+  // for the rest. It was every stop with its country over 5 lines.
   const id = document.createElement('div'); id.className = 'wi4-datep-id';
-  id.textContent = (I.clientName(f) || '—') + ' · ' + _place(f, 'load') + ' — ' + _place(f, 'del');
+  id.textContent = _panelLine(st.oid, f); id.title = id.textContent;
   el.appendChild(id);
 
   const seg = document.createElement('div'); seg.className = 'wi4-seg'; seg.setAttribute('role', 'tablist');
@@ -832,11 +894,17 @@ function _dpRender() {
   }
   el.appendChild(cal);
 
-  // VS CD Date stays date-only, as today (§e #10).
+  // VS CD Date stays date-only, as today (§e #10). The time is a 24-hour
+  // HH:MM text field: a native time input follows the BROWSER's locale and
+  // showed «07:00 AM» on an en-US browser (the same trap that showed dates
+  // «ανάποδα», memory 27/9). Label on its own line, field full width (16 D).
   if (st.field !== 'VS CD Date') {
-    const lab = document.createElement('label'); lab.className = 'wi4-datep-id'; lab.textContent = 'Ώρα ';
-    const t = document.createElement('input'); t.type = 'time'; t.className = 'wi4-time'; t.value = st.time;
+    const lab = document.createElement('label'); lab.className = 'wi4-time-l'; lab.textContent = 'Ώρα';
+    const t = document.createElement('input'); t.type = 'text'; t.className = 'wi4-time'; t.value = st.time;
+    t.setAttribute('inputmode', 'numeric'); t.setAttribute('maxlength', '5'); t.setAttribute('placeholder', 'ΩΩ:ΛΛ');
+    t.setAttribute('autocomplete', 'off'); t.setAttribute('aria-label', 'Ώρα (24ωρη, ΩΩ:ΛΛ)');
     t.addEventListener('input', () => { st.time = t.value; });
+    t.addEventListener('change', () => { const n = _hhmm(t.value); if (n) { t.value = n; st.time = n; } });
     lab.appendChild(t);
     el.appendChild(lab);
   }
@@ -882,24 +950,57 @@ function _dpClose() {
   if (st.anchor && st.anchor.isConnected && st.anchor.focus) { try { st.anchor.focus(); } catch (_) {} }
 }
 
+// The table's answer = what the user picked? The day ALWAYS; the time when
+// one was sent (args[4]) — a changed time that the server did not store is
+// not a ✓ either (review 11/10).
+function _dpVerified(st, args, w) {
+  const rec = w && w.rec && w.rec.fields ? w.rec.fields : null;
+  const got = rec ? _dayOf(st.field, rec[st.field]) : null;
+  if (got !== args[3]) return 'η εγγραφή δεν επιβεβαιώθηκε (' + (got || 'κενό') + ')';
+  if (args[4] && _timeOf(st.field, rec[st.field]) !== args[4]) return 'η ώρα δεν επιβεβαιώθηκε (' + (_timeOf(st.field, rec[st.field]) || 'κενό') + ')';
+  return '';
+}
+// One toast for a save (toast() shows ONE message and the second replaced
+// the first: the «χωρίς έλεγχο» note was never seen). Unknown = not checked.
+function _dpOkText(w) {
+  if (w.rec && w.rec._expectChecked === 'skipped') return 'Ημερομηνία ενημερώθηκε ✓ · ο έλεγχος «το άλλαξε άλλος» δεν έγινε σε αυτή την αποθήκευση';
+  if (typeof window !== 'undefined' && window.TMS_EXPECT_LIVE !== true) return 'Ημερομηνία ενημερώθηκε ✓ · χωρίς έλεγχο «το άλλαξε άλλος» (δεν είναι ενεργός ακόμη)';
+  return 'Ημερομηνία ενημερώθηκε ✓';
+}
+const DP_OFFLINE = 'Χωρίς σύνδεση — η αλλαγή μπήκε σε αναμονή και θα σταλεί όταν επανέλθει· δεν είναι ακόμη στη βάση';
 async function _dpSave() {
   const st = _dp; if (!st || st.busy || st.conflicting) return;
+  // A typed time that is not HH:MM is said, never silently dropped.
+  if (st.field !== 'VS CD Date' && String(st.time || '').trim() && !_hhmm(st.time)) {
+    st.err = 'Η ώρα θέλει μορφή ΩΩ:ΛΛ (24ωρη), π.χ. 07:30.'; _dpRender(); return;
+  }
   const args = _dpWriteArgs(st);
   if (!args) { _dpClose(); return; }
   const I = W(), v = V();
   st.busy = true; st.err = ''; _dpRender();
   const f = st.rec.fields || {};
   try {
-    if (v && typeof v.noteMove === 'function') v.noteMove(st.oid, _dpGroupDay(f), (I.clientName(f) || '—') + ' → ' + _place(f, 'del'));
+    if (v && typeof v.noteMove === 'function') { const e = _endsOf(st.oid); v.noteMove(st.oid, _dpGroupDay(f), (I.clientName(f) || '—') + ' → ' + (e ? (e.vsImp ? 'Βέροια' : e.to.title) : '—')); }
     const w = await I.dateWrite.apply(null, args);
     if (_dp !== st) {
       // The panel was closed meanwhile (a page change): the answer is still
-      // said, and the board shows what the table now holds.
-      // Re-read only on this board: renderWeeklyIntl paints into #content,
-      // which now belongs to another page.
+      // said — with the SAME read-back as the open panel — and the board
+      // shows what the table now holds. Re-read only on this board:
+      // renderWeeklyIntl paints into #content, which may belong to another page.
       const here = typeof currentPage === 'undefined' || currentPage === 'weekly_intl';
       if (w && w.conflict) { _toast('Η ημερομηνία δεν άλλαξε — την είχε αλλάξει άλλος', 'warn'); if (here) I.renderWeeklyIntl(); }
-      else if (w && w.ok) { _toast('Ημερομηνία ενημερώθηκε ✓'); if (here) I.renderWeeklyIntl(); }
+      else if (w && w.offline) _toast(DP_OFFLINE, 'info');
+      else if (w && w.ok) {
+        const bad = _dpVerified(st, args, w);
+        if (bad) { _logErr(new Error(bad), 'wi4 date panel'); _toast('Η αλλαγή ημερομηνίας δεν επιβεβαιώθηκε — ' + bad, 'warn'); }
+        else _toast(_dpOkText(w));
+        if (here) I.renderWeeklyIntl();
+      }
+      return;
+    }
+    if (w && w.offline) {
+      // atPatch QUEUED it (no network): not a write, so no ✓ (principle 2).
+      st.busy = false; st.err = DP_OFFLINE; _dpRender();
       return;
     }
     if (w && w.conflict) {
@@ -924,19 +1025,20 @@ async function _dpSave() {
       return;
     }
     if (!w || !w.ok) throw new Error('η εγγραφή δεν επιβεβαιώθηκε');
-    // The proof is the table (principle 2): the ✓ needs the day the server
-    // answered with to be the day the user picked.
-    const got = w.rec && w.rec.fields ? _dayOf(st.field, w.rec.fields[st.field]) : null;
-    if (got !== args[3]) throw new Error('η εγγραφή δεν επιβεβαιώθηκε (' + (got || 'κενό') + ')');
-    // A Worker that could not run the check says so (§g.3): a quiet note for
-    // this save, never a silent «checked».
-    if (w.rec && w.rec._expectChecked === 'skipped') _toast('Ο έλεγχος «το άλλαξε άλλος» δεν έγινε σε αυτή την αποθήκευση', 'info');
-    else if (typeof window !== 'undefined' && window.TMS_EXPECT_LIVE === false) _toast('Αποθηκεύτηκε χωρίς έλεγχο «το άλλαξε άλλος» (δεν είναι ενεργός ακόμη)', 'info');
+    // The proof is the table (principle 2): the ✓ needs the day (and the
+    // time, when one was sent) the server answered with to be the user's.
+    const bad = _dpVerified(st, args, w);
+    if (bad) throw new Error(bad);
+    // A Worker that could not run the check says so (§g.3), in the ✓'s own
+    // toast: never a silent «checked».
     _dpClose();
-    _toast('Ημερομηνία ενημερώθηκε ✓');
+    _toast(_dpOkText(w));
     I.renderWeeklyIntl();
   } catch (e) {
-    if (typeof reportError === 'function') reportError('Η αλλαγή ημερομηνίας απέτυχε', e); else _logErr(e, 'wi4 date panel');
+    // The panel says it inline, red, with the reason: one message, not a
+    // second stacked toast (review 11/10). The trail goes to app_errors.
+    if (_dp === st) _logErr(e, 'wi4 date panel');
+    else if (typeof reportError === 'function') { reportError('Η αλλαγή ημερομηνίας απέτυχε', e); _logErr(e, 'wi4 date panel'); }
     if (_dp !== st) return;
     st.busy = false;
     st.err = 'Δεν αποθηκεύτηκε — ' + ((e && e.message) || 'σφάλμα') + '. Η ημερομηνία έμεινε όπως ήταν.';
@@ -961,12 +1063,14 @@ function _refreshPresence() {
     const ago = hit.since ? Math.max(0, Math.round((Date.now() - new Date(hit.since).getTime()) / 1000)) : null;
     const when = ago == null ? '' : ' από πριν ' + (ago < 60 ? ago + '″' : Math.round(ago / 60) + '΄');
     slot.className = 'wi4-pnote';
-    // The promise «θα σου πει ποια μένει» holds only while the Worker checks
-    // _expect. A write that answered without the check (TMS_EXPECT_LIVE false)
-    // makes the note say what really happens instead.
-    const tail = typeof window !== 'undefined' && window.TMS_EXPECT_LIVE === false
-      ? '. Ο έλεγχος «το άλλαξε άλλος» δεν είναι ενεργός — όποιος αποθηκεύσει τελευταίος μένει.'
-      : '. Αν αποθηκεύσετε και οι δύο, θα σου πει ποια μένει.';
+    // The promise «θα σου πει ποια μένει» holds only while the Worker CHECKS
+    // _expect — confirmed by a save (TMS_EXPECT_LIVE true). Unknown = closed
+    // (principle 5): before any save nobody has confirmed it, so the note
+    // never promises it then either (review 11/10).
+    const live = typeof window !== 'undefined' ? window.TMS_EXPECT_LIVE : undefined;
+    const tail = live === true ? '. Αν αποθηκεύσετε και οι δύο, θα σου πει ποια μένει.'
+      : live === false ? '. Ο έλεγχος «το άλλαξε άλλος» δεν είναι ενεργός — όποιος αποθηκεύσει τελευταίος μένει.'
+      : '. Ο έλεγχος «το άλλαξε άλλος» δεν έχει επιβεβαιωθεί ακόμη — μπορεί να μείνει όποιος αποθηκεύσει τελευταίος.';
     slot.textContent = 'Ο ' + (p.name || p.user_name || 'άλλος χρήστης') + ' έχει ανοιχτή αυτή την ημερομηνία' + when + tail;
     return;
   }
@@ -986,7 +1090,8 @@ function _queueAct(it) {
   const anchor = _rowEl(oid);
   switch (it.act) {
     case 'assign': return _assign(oid);
-    case 'newImport': { const id = v && v.rowIdOf(oid); if (id != null) I.newImport(id); return; }
+    // Principle 1: a card whose row is gone says so, never a click that does nothing.
+    case 'newImport': { const id = v && v.rowIdOf(oid); if (id != null) I.newImport(id); else _toast(GONE, 'warn'); return; }
     case 'pieces': return I.stockLooseOpen(anchor || document.querySelector('#content .wi4 #wi-shelf'));
     case 'lot': {
       const st = I.WINTL.data.stock;
@@ -996,7 +1101,7 @@ function _queueAct(it) {
     }
     case 'national': if (typeof navigate === 'function') navigate('weekly_natl'); return;
     case 'date': return datePanel(oid, it.field || 'Loading DateTime', anchor && anchor.querySelector('.wi4-dc') || anchor);
-    case 'open': case 'convert': if (REC.test(oid)) I.edit(oid); return;
+    case 'open': case 'convert': if (REC.test(oid)) I.edit(oid); else _toast(GONE, 'warn'); return;
     // A local relay's item opens THAT relay (edit, driver, delete live there).
     case 'relay': if (it.relayId && REC.test(oid)) { I.relayOpen(oid, it.relayId); return; } break;
     case 'retry':
@@ -1008,7 +1113,7 @@ function _queueAct(it) {
       if (it.code === 'SAVE_FAILED' && v && REC.test(oid)) return v._retry(oid);
       return I.renderWeeklyIntl();
     // A W+1 load: its assignment lives in its own week's board.
-    case 'week': if (Number.isInteger(it.week)) { I.WINTL.week = it.week; I.renderWeeklyIntl(); } return;
+    case 'week': if (Number.isInteger(it.week)) { I.WINTL.week = it.week; I.renderWeeklyIntl(); } else _toast('Η εβδομάδα του φορτίου δεν είναι γνωστή — ανανέωσε', 'warn'); return;
   }
   if (!(v && oid && v.focusRow(oid))) _toast('Η σειρά δεν βρίσκεται σε αυτή την εβδομάδα — ανανέωσε ή άλλαξε εβδομάδα', 'info');
 }
@@ -1040,10 +1145,13 @@ function queuePanel() {
       const r = document.createElement('div');
       r.className = 'wi4-qp-i ' + (lvl === 'red' ? 'wi4-r-red' : 'wi4-r-amb');
       r.tabIndex = -1;
+      // One line per item, as the band's cards (sheet 15 B): name, then
+      // «Nπ · reason» in grey — the same words, the same pallets.
       const t = document.createElement('div'); t.className = 'wi4-qcard-t';
       const l1 = document.createElement('span'); l1.className = 'wi4-l1 wi4-ell'; l1.textContent = it.text || it.title || it.code; l1.title = l1.textContent;
       t.appendChild(l1);
-      if (it.sub) { const l2 = document.createElement('span'); l2.className = 'wi4-l2 wi4-ell'; l2.textContent = it.sub; l2.title = it.sub; t.appendChild(l2); }
+      const sub = [it.pal != null ? it.pal + 'π' : '', it.sub || ''].filter(Boolean).join(' · ');
+      if (sub) { const l2 = document.createElement('span'); l2.className = 'wi4-l2 wi4-ell'; l2.textContent = sub; l2.title = sub + (it.tip ? ' — ' + it.tip : ''); t.appendChild(l2); }
       r.appendChild(t);
       if (_actLabel(it)) {
         r.appendChild(_btn('wi4-btn sm', _actLabel(it), (ev) => { ev.stopPropagation(); _qpClose(); _queueAct(it); }));
@@ -1253,7 +1361,7 @@ function run(action) {
     case 'print': {
       const id = v.rowIdOf(oid);
       const row = id == null ? null : I.WINTL.rows.find((r) => r.id === id);
-      if (row) I.menuPrint(row.id, row.type === 'import');
+      if (row) I.menuPrint(row.id, row.type === 'import'); else _toast(GONE, 'warn');
       return;
     }
     case 'newImport': {

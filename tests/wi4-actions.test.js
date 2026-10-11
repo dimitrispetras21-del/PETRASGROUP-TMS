@@ -155,14 +155,15 @@ test('date panel args: a day-only change sends no time; a time change does; no c
   const { A } = world();
   const st = (o) => Object.assign({ oid: 'recE01', field: 'Loading DateTime', cur: { 'Loading DateTime': '2026-10-05T08:00:00.000Z' },
     sel: '2026-10-06', time: '11:00', time0: '11:00', force: false }, o);
-  eq(A._dpWriteArgs(st()), ['recE01', 'Loading DateTime', '2026-10-05T08:00:00.000Z', '2026-10-06', undefined]);
+  // 6th = `seen`: the value the panel SHOWED, sent as _expect (only this caller passes it).
+  eq(A._dpWriteArgs(st()), ['recE01', 'Loading DateTime', '2026-10-05T08:00:00.000Z', '2026-10-06', undefined, '2026-10-05T08:00:00.000Z']);
   eq(A._dpWriteArgs(st({ time: '14:30' }))[4], '14:30');
   // «Γράψε τη δική μου» resends the chosen time explicitly, so the value
   // stays mine even though _expect is now the other user's.
   eq(A._dpWriteArgs(st({ force: true }))[4], '11:00');
   // VS CD Date is date-only: a time never travels with it.
   const vs = A._dpWriteArgs(st({ field: 'VS CD Date', cur: { 'VS CD Date': '2026-10-06' }, sel: '2026-10-07', time: '09:00' }));
-  eq(vs, ['recE01', 'VS CD Date', '2026-10-06', '2026-10-07', undefined]);
+  eq(vs, ['recE01', 'VS CD Date', '2026-10-06', '2026-10-07', undefined, '2026-10-06']);
   assert.strictEqual(A._dpWriteArgs(st({ sel: null })), null);
 });
 
@@ -192,7 +193,7 @@ test('date write body = today\'s body; _expect only while v4 is active (real _wi
   await W.dateWrite.apply(null, A._dpWriteArgs(st));
   const v4on = calls.filter((c) => c[0] === 'patch').pop();
   eq(v4on.slice(0, 4), today.slice(0, 4), 'same table, record and fields');
-  eq(v4on[4], { expect: { 'Loading DateTime': cur } }, 'plus _expect = the value the panel showed');
+  eq(v4on[4], { expect: { 'Loading DateTime': cur }, quiet: true }, 'plus _expect = the value the panel showed (quiet: the panel says a failure itself)');
 });
 
 // ── 2. The per-load menu model ───────────────────────────────────────────
