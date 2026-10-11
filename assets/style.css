@@ -7626,11 +7626,21 @@ body.wi4-on .content { padding-left:28px; padding-right:28px; }
    instead of a silent cut (DESIGN.md Κ6): a dispatcher must see that a name
    continues. WP4 puts the full text in `title` on every node that overflows —
    the board rig's overflow scan fails otherwise (§h.4). */
-.wi4 .wi4-l1, .wi4 .wi4-l2, .wi4 .wi4-ell { min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+/* Round 2 (11/10): the presence text and the one-line identity lines of the
+   overlays (date panel, per-load menu) join THIS rule — still the one
+   truncation rule of the block, each node with its full text in `title`. */
+.wi4 .wi4-l1, .wi4 .wi4-l2, .wi4 .wi4-ell, .wi4 .wi4-pres-t, .wi4-datep-id,
+body.wi4-on #wi-ctx .wi4-m-sec .wi4-l2, body.wi4-on #wi-ctx .wi4-m-hd .wi4-l2 { min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 
 /* Title bar (§e #1). Bar, queue band, stock strip, column header and day
    cards share ONE left edge, the gutter (Figma: everything at x=24). */
-.wi4-bar { display:flex; align-items:center; gap:12px; min-height:56px; padding:0; border-bottom:1px solid var(--wi4-line-2); }
+/* Three tracks: title group · week tabs · actions. The tabs own the centre
+   track, so the presence strip appearing or leaving with a beat never moves
+   them (review 11/10: ~105px jump under the cursor). The left group cuts its
+   own text (presence first) instead of pushing the tabs. */
+.wi4-bar { display:grid; grid-template-columns:minmax(0,1fr) auto minmax(0,1fr); align-items:center; column-gap:12px; min-height:56px; padding:0; border-bottom:1px solid var(--wi4-line-2); }
+.wi4-bar-l { display:flex; align-items:center; gap:12px; min-width:0; overflow:hidden; }
+.wi4-bar-r { display:flex; align-items:center; gap:12px; justify-self:end; }
 /* Σάρωση and Νέα παραγγελία at the bar's one height (32px); Σάρωση neutral so
    the solid navy primary is the only primary (sheet 15). The shared buttons
    stay as they are everywhere else (owner 29/9). */
@@ -7638,10 +7648,11 @@ body.wi4-on .content { padding-left:28px; padding-right:28px; }
 .wi4-bar .btn-scan { border-color:var(--wi4-ctl); color:var(--wi4-grey-1); }
 .wi4-title { font:700 18px 'Syne',sans-serif; color:var(--wi4-ink); white-space:nowrap; }
 .wi4-range { font-size:13px; color:var(--wi4-grey-2); white-space:nowrap; }
-.wi4-upd { font-size:11px; color:var(--wi4-grey-2); white-space:nowrap; }
-.wi4-upd.chg { color:var(--wi4-amber); font-weight:600; cursor:pointer; }
+.wi4-upd { display:inline-flex; align-items:center; gap:5px; font-size:11px; color:var(--wi4-grey-2); white-space:nowrap; flex:none; }
+.wi4-upd svg { flex:none; }
+.wi4-upd.chg { color:var(--wi4-amber); font-weight:600; cursor:pointer; border:none; background:none; padding:0; }
 .wi4-upd.err { color:var(--wi4-red); font-weight:600; }
-.wi4-tabs { display:flex; align-items:center; gap:2px; padding:3px; margin:0 auto; border:1px solid var(--wi4-line-2); border-radius:8px; background:var(--wi4-chip); }
+.wi4-tabs { display:flex; align-items:center; gap:2px; padding:3px; margin:0; border:1px solid var(--wi4-line-2); border-radius:8px; background:var(--wi4-chip); }
 .wi4-tab { height:28px; padding:0 12px; border:1px solid transparent; border-radius:6px; background:none; color:var(--wi4-grey-1); font-weight:500; cursor:pointer; display:inline-flex; align-items:center; gap:4px; }
 .wi4-tab:hover { color:var(--wi4-ink); }
 .wi4-tab.on { background:var(--surface-card); border-color:var(--wi4-line-2); color:var(--wi4-ink); font-weight:700; }
@@ -7657,16 +7668,20 @@ body.wi4-on .content { padding-left:28px; padding-right:28px; }
 
 /* Presence (§e #18). Never a lock and never «κανείς»: these rules only draw
    who IS there; an empty strip is drawn by drawing nothing. */
-.wi4-pres { display:flex; align-items:center; gap:6px; }
-.wi4-av { width:22px; height:22px; border-radius:50%; display:inline-grid; place-items:center; background:var(--wi4-ink);
-  color:var(--surface-card); font-size:10px; font-weight:700; border:2px solid var(--surface-card); flex:none; }
+.wi4-pres { display:flex; align-items:center; gap:6px; min-width:0; }
+/* Light tinted discs (sheet 16 A), the same look as the row's .wi4-av.sm —
+   a navy disc read as «owned» (navy = own fleet). */
+.wi4-av { width:22px; height:22px; border-radius:50%; display:inline-grid; place-items:center; background:var(--accent-light);
+  color:var(--wi4-blue-ink); font-size:10px; font-weight:700; border:2px solid var(--surface-card); flex:none; }
 .wi4-av + .wi4-av { margin-left:-8px; }
 .wi4-av.more { background:var(--wi4-chip); color:var(--wi4-grey-1); }
 /* In a row's index and in the conflict panel: a light tinted disc (sheet
    16 B), lighter than anything else in the index column. */
 .wi4-av.sm { width:18px; height:18px; font-size:9px; border:none; background:var(--accent-light); color:var(--wi4-blue-ink); }
-.wi4-pres-t { font-size:11px; color:var(--wi4-grey-2); white-space:nowrap; }
+.wi4-pres-t { font-size:11px; color:var(--wi4-grey-2); }
 .wi4-pres.paused .wi4-pres-t { color:var(--wi4-amber); }
+/* «↻» as the refresh icon: the glyph fell back to a font that drew a «υ». */
+.wi4-live { display:inline-flex; vertical-align:-2px; margin-right:3px; }
 
 /* Banner (§e #21, §d.2a unknown sources, sticky fallback). Amber + words:
    «δεν φορτώθηκε» is an unknown, not an error the user made. */
@@ -7688,8 +7703,13 @@ body.wi4-on .content { padding-left:28px; padding-right:28px; }
 .wi4-qcard { position:relative; flex:1 1 0; min-width:0; height:34px; display:flex; align-items:center; gap:8px; padding:0 6px 0 12px;
   border:1px solid var(--wi4-line-2); border-radius:6px; background:var(--surface-card); cursor:pointer; }
 .wi4-qcard:hover { background:var(--wi4-hover); }
-.wi4-qcard-t { flex:1 1 auto; min-width:0; display:flex; flex-direction:column; }
-.wi4-q-all { flex:none; }
+/* One line per card and per panel item (sheet 15): «Πελάτης → Τόπος» then
+   «10π · φόρτωση ήταν χθες» in grey; the name gives way first only up to
+   60%, so the reason always shows. */
+.wi4-qcard-t { flex:1 1 auto; min-width:0; display:flex; flex-direction:row; align-items:baseline; gap:6px; }
+.wi4-qcard-t > .wi4-l1 { flex:0 1 auto; max-width:60%; }
+.wi4-qcard-t > .wi4-l2 { flex:1 1 0; }
+.wi4-q-all { flex:none; white-space:nowrap; }
 .wi4-qp { position:fixed; z-index:var(--z-top); width:440px; max-height:70vh; overflow:auto; padding:6px 0; background:var(--surface-card);
   border:1px solid var(--wi4-line-2); border-radius:8px; box-shadow:var(--shadow-lift); font-family:'DM Sans',sans-serif; font-size:12px; color:var(--wi4-ink); }
 .wi4-qp-h { padding:8px 14px 4px; font-size:10px; font-weight:600; letter-spacing:.6px; text-transform:uppercase; color:var(--wi4-grey-2); }
@@ -7705,11 +7725,19 @@ body.wi4-on .content { padding-left:28px; padding-right:28px; }
    apply here. */
 .wi4-shelf { height:28px; padding:0; border-bottom:1px solid var(--wi4-line-2); }
 .wi4 .wi-shelf { height:28px; overflow:hidden; }
-/* Sheet 15: label and lot chips from the LEFT, the loose-pieces pill on the
-   right (today's strip inherits flex-end). Words and numbers unchanged. */
-.wi4 .wi-shelf-in { justify-content:flex-start; }
+/* Sheet 15: label and lot chips from the LEFT edge — the same x as the search
+   box and the column header — and the loose-pieces pill on the right. The
+   global strip is pushed right (max-width:75%, margin-left:auto, for today's
+   board): both are undone here, or «ΑΠΟΘΕΜΑ» started 25% in (review 11/10). */
+.wi4 .wi-shelf-in { justify-content:flex-start; max-width:none; margin-left:0; }
 .wi4 .wi-shelf-list { flex:1 1 auto; min-width:0; }
+.wi4 .wi-shelf-loose { margin-left:auto; }
 .wi4 .wi-shelf-loose.late { background:var(--surface-card); border-color:var(--wi4-ctl); color:var(--wi4-red); }
+/* Chip (sheet 15): warehouse and figure bold in ink, the client in grey, a
+   light «·» between them — words from _wiShelfChip, «π» from its v4 option. */
+.wi4 .wi-shelf-chip { gap:6px; color:var(--wi4-grey-1); }
+.wi4 .wi-shelf-chip b { color:var(--wi4-ink); }
+.wi4 .wi-shelf-chip .sep { color:var(--wi4-grey-2); }
 
 /* Column header (§e #5) and the shared 10-track grid at 1920 (§c.2):
    idx · ΠΡΟΣ ΒΕΡΟΙΑ · gap · ΕΞΑΓΩΓΗ · gap · ΑΝΑΘΕΣΗ · gap · ΕΙΣΑΓΩΓΗ · gap · ΑΠΟ ΒΕΡΟΙΑ.
@@ -7719,7 +7747,15 @@ body.wi4-on .content { padding-left:28px; padding-right:28px; }
   display:grid; grid-template-columns:32px var(--wi4-fl) 12px minmax(0,1fr) 12px 204px 12px minmax(0,1fr) 12px var(--wi4-fr); align-items:center; }
 .wi4-c-idx { grid-column:1; } .wi4-c-fl { grid-column:2; min-width:0; } .wi4-c-exp { grid-column:4; min-width:0; }
 .wi4-c-asg { grid-column:6; min-width:0; } .wi4-c-imp { grid-column:8; min-width:0; } .wi4-c-fr { grid-column:10; min-width:0; }
+/* ΑΠΟ ΒΕΡΟΙΑ keeps 8px from the day card's border (board: «Δευ» ~10px
+   inside it). Inside its own 140px track (border-box), so the legs keep their
+   621px; collapsed (18px) it is a centred dot/chevron with no inset. */
+.wi4-c-fr { padding-right:8px; }
+.wi4.wi4-fr-off .wi4-c-fr { padding-right:0; }
 .wi4-c-span { grid-column:2 / -1; min-width:0; }
+/* The split frame's header starts at the export leg, like the relay tags
+   (board: «ΣΠΑΣΜΕΝΗ ΣΕ 2 ΣΚΕΛΗ» at the export column, not under ΠΡΟΣ ΒΕΡΟΙΑ). */
+.wi4-splithd .wi4-c-span { grid-column:4 / -1; }
 /* Sticky header: .content (the scroller) has 32px of top padding, and a sticky
    element sticks INSIDE that padding — at top:0 rows scrolled through the
    32px strip above it. top = minus that padding puts it at the scroller's edge
@@ -7736,6 +7772,9 @@ body.wi4-on .content { padding-left:28px; padding-right:28px; }
 .wi4.wi4-fl-off .wi4-cols .wi4-c-fl .wi4-ftog-t, .wi4.wi4-fr-off .wi4-cols .wi4-c-fr .wi4-ftog-t { display:none; }
 .wi4.wi4-fl-off .wi4-cols .wi4-c-fl .wi4-ftog::before { content:'›'; font-size:13px; }
 .wi4.wi4-fr-off .wi4-cols .wi4-c-fr .wi4-ftog::before { content:'‹'; font-size:13px; }
+/* «ΑΠΟ ΒΕΡΟΙΑ ›» right-aligned (it was an inline style, which beat the
+   collapsed rule and pushed the «‹» against the edge). */
+.wi4-cols .wi4-c-fr { text-align:right; }
 .wi4.wi4-fl-off .wi4-cols .wi4-c-fl, .wi4.wi4-fr-off .wi4-cols .wi4-c-fr { text-align:center; }
 
 /* Day (§e #6). Collapsed only when WI4.collapsible says so; empty = one line.
@@ -7794,11 +7833,24 @@ body.wi4-on .content { padding-left:28px; padding-right:28px; }
 .wi4-pt-n { grid-row:1; font-size:10.5px; font-weight:600; line-height:14px; color:var(--wi4-grey-2); }
 .wi4-pt > .wi4-l1, .wi4-pt > .wi4-l2 { grid-column:2; }
 .wi4-pts.wi4-noplace .wi4-l2 { display:none; }
-.wi4-more { flex:0 0 34px; width:34px; border:none; background:none; padding:0; text-align:center; cursor:pointer; line-height:13px; }
+/* «+N» is a light chip (board: «+3» over «18π»), not bare text. */
+.wi4-more { flex:0 0 34px; width:34px; height:28px; align-self:center; border:none; border-radius:4px; background:var(--wi4-chip); padding:0; text-align:center; cursor:pointer; line-height:13px; }
+.wi4-more:hover { background:var(--wi4-line-2); }
 .wi4-more b { display:block; font-size:12px; color:var(--wi4-ink); }
 .wi4-more span { display:block; font-size:10.5px; color:var(--wi4-grey-2); }
-/* ✓ carries meaning («done»): a graphic at ≥3:1 (grey-2), not the icon grey. */
-.wi4-ok { display:inline-flex; vertical-align:-1px; margin-right:2px; color:var(--wi4-grey-2); }
+/* ✓ carries meaning («done»): a graphic at ≥3:1 (grey-2), not the icon grey.
+   A visible gap before the day («✓ Σάβ 3/10», board). */
+.wi4-ok { display:inline-flex; vertical-align:-1px; margin-right:4px; color:var(--wi4-grey-2); }
+/* A reason named on its point (P1 review 11/10): line 1 becomes a flex row,
+   so the NAME is cut and the word never is. «PRE» outlined like PE; the
+   amber words in the amber ink the rules give «προσοχή». */
+.wi4 .wi4-l1f { display:flex; align-items:baseline; gap:4px; overflow:hidden; text-overflow:clip; }
+.wi4 .wi4-l1f > .wi4-ell { flex:0 1 auto; min-width:0; }
+.wi4 .wi4-l1f > .wi4-flag, .wi4 .wi4-l1f > .wi4-delay { flex:none; }
+.wi4-flag { padding:0 3px; border:1px solid var(--wi4-ctl); border-radius:3px; font-size:9.5px; font-weight:700; line-height:12px; letter-spacing:.3px; color:var(--wi4-grey-1); white-space:nowrap; }
+.wi4-flag.amb { border:none; padding:0; font-size:10.5px; font-weight:600; letter-spacing:0; color:var(--wi4-amber); }
+/* On the own-fleet box fill the amber is 4.46:1 (contrast scan): its ink. */
+.wi4-box .wi4-flag.amb { color:var(--wi4-amber-ink); }
 /* A groupage's «+N» fold holds the hidden members as the same draggable
    tiles, one per line. */
 .wi4 .wi4-fold.open { display:flex; flex-direction:column; gap:4px; }
@@ -7823,9 +7875,12 @@ body.wi4-on .content { padding-left:28px; padding-right:28px; }
 .wi4-dc.est  { border:1px dashed var(--wi4-slot); background:var(--wi4-chip); color:var(--wi4-grey-1); }
 .wi4-dc.past { background:var(--wi4-chip); }
 .wi4-dc.done { padding:0; color:var(--wi4-grey-2); }
+.wi4-dc .wi4-ok { margin-right:1px; }   /* + the chip's 3px gap = the point's 4px */
 .wi4-dc.red  { border-color:var(--wi4-red); background:var(--wi4-red-bg); color:var(--wi4-red-ink); }
 .wi4-pal { font-size:12px; font-weight:500; color:var(--wi4-ink); }
 .wi4-pal.over { color:var(--wi4-amber); font-weight:700; }
+/* Near 33 with members not written («30+?»): the same amber as the flag. */
+.wi4-pal.unk { color:var(--wi4-amber); font-weight:600; }
 .wi4-pe { padding:0 4px; border:1px solid var(--wi4-ctl); border-radius:3px; font-size:10px; font-weight:600; line-height:14px; color:var(--wi4-grey-1); }
 .wi4-att { color:var(--wi4-icon); }
 /* «→ ΑΠΟΘΗΚΗ» and the other leg badges: outlined like PE — never a solid dark
@@ -7849,14 +7904,13 @@ body.wi4-on .content { padding-left:28px; padding-right:28px; }
 .wi4-plate { font-family:'DM Mono',ui-monospace,SFMono-Regular,Menlo,monospace; font-weight:500; font-size:12px; letter-spacing:.2px; color:var(--wi4-ink); }
 .wi4-plane { flex:none; width:22px; height:22px; display:inline-grid; place-items:center; border:none; border-radius:5px; background:none; color:var(--wi4-icon); cursor:pointer; }
 .wi4-plane:hover { background:var(--wi4-chip); color:var(--wi4-grey-1); }
-/* contract hook: print buttons keep .wk3-prt + data-shq (share menu); today's
-   bordered look is scoped to .wk3.wi2, so it is restated for .wi4. It is out
-   of the flow and shows on hover/keyboard focus only: Figma draws box +
-   paper-plane, and in the flow it cut every trailer plate («TRL-20…»).
-   Print is also in the per-load menu and on P. */
-.wi4 .wk3-prt { border:1px solid var(--wi4-ctl); border-radius:5px; padding:1px 3px; font-size:12px; background:var(--surface-card); }
-.wi4 .wi4-asg .wk3-prt { position:absolute; right:28px; top:50%; transform:translateY(-50%); opacity:0; pointer-events:none; }
-.wi4 .wi4-row:hover .wi4-asg .wk3-prt, .wi4 .wi4-focus .wi4-asg .wk3-prt, .wi4 .wi4-asg .wk3-prt:focus-visible { opacity:1; pointer-events:auto; }
+/* contract hook: print buttons keep .wk3-prt + data-shq in the DOM (the
+   share menu and the old print code read them), but the row does not draw
+   them: Figma draws box + paper-plane only, and on hover the button sat on
+   the 2px red «ΠΡΟΣ ΑΝΑΘΕΣΗ» border and the partner fill — a stray icon on
+   the strongest element of the board (review 11/10). Print / WhatsApp is the
+   per-load menu's «Εκτύπωση / WhatsApp…» and the P key. */
+.wi4 .wi4-asg .wk3-prt { display:none; }
 
 /* National columns (§e #12). Never «ΠΡΟΣ ΑΝΑΘΕΣΗ» for an unread leg: .unk
    is the «—» of §d.2a. Collapsed column = a dot where a leg exists. */
@@ -7902,9 +7956,16 @@ body.wi4-on .content { padding-left:28px; padding-right:28px; }
 .wi4-unlink { height:20px; padding:0 6px; border:1px solid var(--wi4-ctl); border-radius:4px; background:var(--surface-card); font-size:10.5px; color:var(--wi4-grey-1); cursor:pointer; }
 .wi4-unlink:hover { border-color:var(--wi4-red); color:var(--wi4-red); }
 
-/* Save failure line (§e.14) and moved-row trace (§e #15): 24px. */
+/* Save failure line (§e.14) and moved-row trace (§e #15): 24px. The failure
+   is one short line in red on white with an alert icon (sheet 14 #5) — no
+   band: a full-width red band read as a second error on top of the ⚠. */
 .wi4-msg, .wi4-trace { grid-column:2 / -1; height:24px; display:flex; align-items:center; gap:8px; padding:0 12px; font-size:11px; }
-.wi4-msg { background:var(--wi4-red-bg); color:var(--wi4-red-ink); }
+/* Starts under the export leg (index 32 + ΠΡΟΣ ΒΕΡΟΙΑ + 12 gap), open or collapsed. */
+.wi4-msg { background:none; color:var(--wi4-red-ink); padding-left:calc(44px + var(--wi4-fl)); }
+.wi4-msg > svg { flex:none; color:var(--wi4-red); }
+.wi4-msg > .wi4-ell { flex:0 1 auto; min-width:0; font-weight:500; }
+.wi4-msg .wi4-link { flex:none; }
+.wi4-msg .wi4-msg-x { color:var(--wi4-grey-2); font-weight:500; }
 .wi4-trace { background:var(--accent-light); color:var(--wi4-blue-ink); cursor:pointer; }
 
 /* Date panel (§e #10). A v4 element anchored in #wi-panel space. */
@@ -7914,7 +7975,10 @@ body.wi4-on .content { padding-left:28px; padding-right:28px; }
 .wi4-seg { display:flex; gap:2px; padding:2px; margin-bottom:8px; border:1px solid var(--wi4-line-2); border-radius:6px; background:var(--wi4-chip); }
 .wi4-seg button { flex:1; height:24px; border:1px solid transparent; border-radius:4px; background:none; color:var(--wi4-grey-1); font-weight:500; cursor:pointer; }
 .wi4-seg button.on { background:var(--surface-card); border-color:var(--wi4-line-2); color:var(--wi4-ink); font-weight:700; }
+/* One identity line (sheet 16 D), «…» + title for the rest. */
 .wi4-datep-id { font-size:11px; color:var(--wi4-grey-2); margin-bottom:8px; }
+/* «Ώρα» on its own line, the 24-hour field full width under it (16 D). */
+.wi4-time-l { display:block; font-size:11px; font-weight:600; color:var(--wi4-grey-2); margin-bottom:8px; }
 .wi4-cal { display:grid; grid-template-columns:repeat(7,1fr); gap:2px; margin-bottom:8px; }
 .wi4-cal-h { height:20px; font-size:10px; font-weight:600; text-align:center; line-height:20px; color:var(--wi4-grey-2); }
 .wi4-cal-d { height:28px; border:1px solid transparent; border-radius:4px; background:none; color:var(--wi4-ink); cursor:pointer; }
@@ -7926,7 +7990,9 @@ body.wi4-on .content { padding-left:28px; padding-right:28px; }
 .wi4-cal-d.cur { border-style:dashed; border-color:var(--wi4-slot); }
 /* Selected = navy fill; blue stays the «today» outline (sheet 16 D). */
 .wi4-cal-d.sel { background:var(--wi4-ink); border-color:var(--wi4-ink); color:var(--surface-card); font-weight:700; }
-.wi4-time { height:28px; padding:0 8px; border:1px solid var(--wi4-ctl); border-radius:5px; font:inherit; color:var(--wi4-ink); }
+.wi4-time { display:block; width:100%; height:28px; margin-top:4px; padding:0 8px; border:1px solid var(--wi4-ctl); border-radius:5px; font:inherit; font-weight:400; color:var(--wi4-ink); font-variant-numeric:tabular-nums; }
+.wi4-time::placeholder { color:var(--wi4-grey-3); }
+.wi4-time:focus { outline:none; border-color:var(--wi4-blue); box-shadow:0 0 0 2px var(--accent-light); }
 .wi4-datep-note { font-size:10.5px; line-height:1.4; color:var(--wi4-grey-2); margin:8px 0; }
 .wi4-pnote { padding:6px 8px; margin:8px 0; border-radius:5px; background:var(--wi4-amber-bg); color:var(--wi4-amber-ink); font-size:11px; line-height:1.4; }
 /* «Ποια κρατάμε;» (sheet 16 E): a calm amber panel — news that someone else
@@ -7954,7 +8020,11 @@ body.wi4-on .content { padding-left:28px; padding-right:28px; }
    the key hint floats right. */
 /* The menu never runs past the window: it scrolls inside, and WI4Actions
    moves it up when a submenu makes it taller than the room under it. */
-body.wi4-on #wi-ctx { max-height:calc(100vh - 16px); overflow-y:auto; }
+/* Width (sheet 14: a 300px menu): a section line that named every stop with
+   its country grew the menu to ~820px, over half the board (review 11/10).
+   Section and header lines are one line, cut with «…», the whole in title;
+   item labels wrap rather than hide. WI4Actions clamps it inside the window. */
+body.wi4-on #wi-ctx { width:320px; max-width:calc(100vw - 16px); max-height:calc(100vh - 16px); overflow-y:auto; }
 body.wi4-on #wi-ctx .wi4-m-hd { padding:8px 14px 6px; border-bottom:1px solid var(--wi4-line-2); margin-bottom:4px; font-size:12px; font-weight:600; color:var(--wi4-ink); }
 body.wi4-on #wi-ctx .wi4-m-hd .wi4-l2 { font-weight:400; }
 /* A divider above every section (sheet 14). */
