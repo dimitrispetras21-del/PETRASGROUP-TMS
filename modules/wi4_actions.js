@@ -299,7 +299,8 @@ function _gather(orderId) {
         if (!items.length) continue;
         const host = (im && im.oids.includes(oid)) ? im : (e || sections[0]);
         if (!host) continue;
-        host.subs.push({ kind: 'relay', title: _relayTitle(rec, oid), head: 'ΤΟΠΙΚΗ', sub: _routeLine(oid), oids: [oid], items });
+        const parts = _relayParts(rec, oid);
+        host.subs.push({ kind: 'relay', title: parts.join(''), parts, head: 'ΤΟΠΙΚΗ', sub: _routeLine(oid), oids: [oid], items });
       }
     }
   }
@@ -403,14 +404,19 @@ function _memberLine(oid) {
 }
 // «Σάβ 3/10»: the board's ONE day format (WI4.dayLabel) — never a second one.
 const _dl = (d) => { const lg = L(); return d && typeof lg.dayLabel === 'function' ? lg.dayLabel(d) : ''; };
-function _relayTitle(rec, oid) {
+// A relay's «▸» line as [kind · driver, « · day»] (finding menu-relay-line-
+// cuts-date): the board cuts names, never dates, so the line draws the two
+// parts apart — the first one shrinks with «…», the day stays whole (a
+// two-word driver cut the whole date off the one string). The joined parts
+// are the line's title.
+function _relayParts(rec, oid) {
   try {
     const o = W().relayOrder(oid);
     const s = (typeof Relay !== 'undefined' && Relay.summary) ? Relay.summary(rec, o) : null;
-    if (s) return (s.kind === 'relay_delivery' ? 'Τοπική παράδοση' : 'Τοπική φόρτωση') + ' · ' + (s.driverName || 'ΠΡΟΣ ΑΝΑΘΕΣΗ') +
-      (s.day && _dl(s.day) ? ' · ' + _dl(s.day) : '');
+    if (s) return [(s.kind === 'relay_delivery' ? 'Τοπική παράδοση' : 'Τοπική φόρτωση') + ' · ' + (s.driverName || 'ΠΡΟΣ ΑΝΑΘΕΣΗ'),
+      s.day && _dl(s.day) ? ' · ' + _dl(s.day) : ''];
   } catch (e) { _logErr(e, 'wi4 menu: relay title'); }
-  return 'Τοπική';
+  return ['Τοπική', ''];
 }
 function _menuHeader(row, impRow, expOids, impOids) {
   let l1;
@@ -490,16 +496,24 @@ function _secHead(title, sub) {
 }
 
 let _menuHl = [];
+let _menuSec = null;
 let _menuObs = null;
-function _hlClear() { _menuHl.forEach((el) => el.classList.remove('wi4-mhl')); _menuHl = []; }
+function _hlClear() {
+  _menuHl.forEach((el) => el.classList.remove('wi4-mhl')); _menuHl = [];
+  if (_menuSec) { _menuSec.classList.remove('wi4-m-on'); _menuSec = null; }
+}
 // member = a groupage member's «▸» line (sheet 14 note 1064:2416: «το φορτίο
 // αυτό φωτίζεται μπλε στη σειρά»): only THAT load's points, which carry
 // data-order-id; the row and its index carry the group's first order in
 // data-oid, so lighting them suggested every load (parity r1 F3). A point
 // folded behind «+N» is not drawn: the chip that holds it lights instead.
 // A section lights its row (data-oid) and its loads' points.
-function _hlSet(oids, member) {
+// sec = the menu's section head the pointer / focus is in: it carries the
+// blue dot (Figma 1097:3907, 6×6 accent at left 4 of ΕΙΣΑΓΩΓΗ; finding
+// menu-section-dot-missing), so the menu says which load the row lights.
+function _hlSet(oids, member, sec) {
   _hlClear();
+  if (sec) { sec.classList.add('wi4-m-on'); _menuSec = sec; }
   const add = (el) => { if (el && !el.classList.contains('wi4-mhl')) { el.classList.add('wi4-mhl'); _menuHl.push(el); } };
   for (const oid of oids || []) {
     if (!REC.test(oid)) continue;
@@ -514,20 +528,39 @@ function _hlSet(oids, member) {
 // section's box, so leaving them for the section's own lines fires no new
 // mouseenter on the box — the section lights again here instead of going dark.
 // Leaving the menu altogether clears after it (the box's own mouseleave).
-function _hoverable(el, oids, member, back) {
-  el.addEventListener('mouseenter', () => _hlSet(oids, member));
-  el.addEventListener('mouseleave', () => (back ? _hlSet(back) : _hlClear()));
+// Focus takes the SAME path as the pointer (finding menu-keyboard-no-row-
+// highlight: ↓ onto a «▸» line lit nothing, sheet 15 drives the board by
+// keyboard). focusin/focusout bubble, so the innermost hoverable owns the
+// event: a section box ignores what a member line or flyout inside it
+// already handled, or the box would light the whole section over the member.
+// Focus leaving the menu altogether clears, like the pointer leaving it.
+function _hoverable(el, oids, member, back, sec) {
+  el._wi4Hov = true;
+  const mine = (t) => { for (let n = t; n && n !== el; n = n.parentNode) if (n._wi4Hov) return false; return true; };
+  const on = () => _hlSet(oids, member, sec);
+  const off = () => (back ? _hlSet(back, false, sec) : _hlClear());
+  el.addEventListener('mouseenter', on);
+  el.addEventListener('mouseleave', off);
+  el.addEventListener('focusin', (ev) => { if (mine(ev.target)) on(); });
+  el.addEventListener('focusout', (ev) => {
+    const to = ev.relatedTarget, ctx = el.closest('#wi-ctx');
+    if (!to || !ctx || !ctx.contains(to)) { _hlClear(); return; }
+    if (mine(ev.target) && !el.contains(to)) off();
+  });
 }
 // The menu never runs past the window: it scrolls inside only when it is
-// taller than the window (CSS max-height); otherwise it OPENS UPWARD as far as
-// the room under it is short, and it moves left when it would cross the right
+// taller than the window (CSS max-height); otherwise a menu at the pointer
+// OPENS UPWARD as far as the room under it is short, and it moves left when
+// it would cross the right
 // edge (_wiCtxShow places it for a 240px menu; v4's is wider, review 11/10) —
 // or right, when docked to an arrow near the left edge (F14).
+// A menu docked to its arrow is placed whole by openRowMenu (above / below /
+// clamped, never over the arrow): pushing it up here put it over its own row.
 function _fitMenu() {
   const ctx = document.getElementById('wi-ctx');
   if (!ctx || ctx.style.display !== 'block') return;
   const r = ctx.getBoundingClientRect();
-  if (r.bottom > window.innerHeight - 8) ctx.style.top = Math.max(8, Math.round(window.innerHeight - 8 - r.height)) + 'px';
+  if (!ctx._wi4Docked && r.bottom > window.innerHeight - 8) ctx.style.top = Math.max(8, Math.round(window.innerHeight - 8 - r.height)) + 'px';
   if (r.right > window.innerWidth - 8) ctx.style.left = Math.max(8, Math.round(window.innerWidth - 8 - r.width)) + 'px';
   else if (r.left < 8) ctx.style.left = '8px';
 }
@@ -565,10 +598,38 @@ function _menuScroll() {
 // the menu was hidden or repainted without that hook running.
 let _menuKey = null;
 function _menuKeyOff() { if (_menuKey) window.removeEventListener('keydown', _menuKey, true); _menuKey = null; }
+// The letter an item shows works while the menu is open (Figma 1097:3867 «A»,
+// 1097:3885 «P»; finding menu-hint-keys-dead): WI4.keyAction steps aside
+// under an open menu and _wiCtxKeydown takes only Esc/↑↓, so A/O/P did
+// nothing. By e.code (Greek Α/Ο/Π are the same keys), matched against the
+// SAME label the item draws (_keyLabel), and run as that item's own click —
+// the keyboard reaches only what the pointer reaches. The open flyout is
+// searched first, then the focused item's section, then the whole menu.
+function _menuHintKey(ctx, ev) {
+  if (ev.ctrlKey || ev.metaKey || ev.altKey) return false;
+  const t = ev.target || {};
+  if (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(String(t.tagName || '').toUpperCase())) return false;
+  const combo = (ev.shiftKey ? 'Shift+' : '') + ev.code;
+  if (!_keyEntries().some((x) => x.combo === combo)) return false;
+  const want = _keyLabel(combo);
+  const hit = (root) => (root ? [...root.querySelectorAll('.wi-ctx-i:not([disabled])')].find((b) => {
+    const k = b.querySelector(':scope > .wi4-m-k');
+    return !!k && k.textContent === want && b.getClientRects().length > 0;
+  }) : null);
+  let box = document.activeElement;
+  if (!box || !ctx.contains(box)) box = null;
+  while (box && box.parentNode !== ctx) box = box.parentNode;
+  const b = hit(ctx.querySelector('.wi4-m-sub.open')) || (box && box.tagName === 'DIV' ? hit(box) : null) || hit(ctx);
+  if (!b) return false;
+  ev.preventDefault(); ev.stopPropagation();
+  b.click();
+  return true;
+}
 function _menuKeyOn(ctx) {
   _menuKeyOff();
   const onKey = (ev) => {
     if (!ctx.isConnected || ctx.style.display !== 'block') { if (_menuKey === onKey) _menuKeyOff(); return; }
+    if (_menuHintKey(ctx, ev)) return;
     if (ev.key !== 'ArrowLeft' && ev.key !== 'ArrowRight') return;
     ev.preventDefault(); ev.stopPropagation();
     const a = document.activeElement;
@@ -611,7 +672,7 @@ function _renderMenu(model) {
   };
   for (const s of model.sections) {
     const box = document.createElement('div');
-    box.appendChild(_secHead(s.title, s.sub));
+    const head = box.appendChild(_secHead(s.title, s.sub));
     // Line order (parity r1 F6, Figma 1097:3858 / sheet 14): the section's
     // items, a local relay's «▸» where its plain item would stand, the red
     // items, then the groupage members' «▸» lines (1064:2312 sits under
@@ -627,7 +688,13 @@ function _renderMenu(model) {
       more.className = 'wi-ctx-i wi4-m-more' + (sub.kind === 'member' ? ' wi4-m-mem' : '');
       more.setAttribute('aria-expanded', 'false');
       more.appendChild(_iconEl(sub.kind === 'member' ? 'member' : sub.kind === 'relay' ? 'relay' : 'submenu'));
-      const ml = document.createElement('span'); ml.className = 'wi4-m-l'; ml.textContent = sub.title;
+      const ml = document.createElement('span'); ml.className = 'wi4-m-l';
+      if (sub.parts && sub.parts[1]) {
+        // A relay's day stays whole; only kind · driver is cut (_relayParts).
+        const who = document.createElement('span'); who.className = 'wi4-ell'; who.textContent = sub.parts[0];
+        const day = document.createElement('span'); day.textContent = sub.parts[1];
+        ml.append(who, day);
+      } else ml.textContent = sub.title;
       more.appendChild(ml); more.setAttribute('title', sub.title);
       const chev = document.createElement('span');
       chev.className = 'wi4-m-chev';
@@ -652,15 +719,15 @@ function _renderMenu(model) {
       });
       body._more = more; more._sub = body;
       const member = sub.kind === 'member';
-      _hoverable(more, sub.oids, member, s.oids);
-      _hoverable(body, sub.oids, member, s.oids);
+      _hoverable(more, sub.oids, member, s.oids, head);
+      _hoverable(body, sub.oids, member, s.oids, head);
       lines[member ? 'member' : 'relay'].push(more, body);
     }
     s.items.filter((it) => !it.danger).forEach((it) => box.appendChild(_itemNode(it)));
     lines.relay.forEach((n) => box.appendChild(n));
     s.items.filter((it) => it.danger).forEach((it) => box.appendChild(_itemNode(it)));
     lines.member.forEach((n) => box.appendChild(n));
-    _hoverable(box, s.oids);
+    _hoverable(box, s.oids, false, null, head);
     frag.appendChild(box);
   }
   return frag;
@@ -681,7 +748,8 @@ async function openRowMenu(e, orderId) {
   // the event bubble on — Λήψη PDF · Κοινή χρήση, for every role (11/10).
   if (e && e.type === 'contextmenu' && e.target && e.target.closest && e.target.closest('.wk3-prt[data-shq]')) return;
   // Opened from the arrow (its click, or Enter: run('menu') sends the arrow as
-  // currentTarget) the menu docks to it — right edges flush, just under it —
+  // currentTarget) the menu docks to it — right edges flush, under it (above
+  // it when the room under it is short) —
   // over the assignment column (Figma 1097:3858, parity r1 F14), never over
   // the import the ΕΙΣΑΓΩΓΗ section talks about. A right-click keeps the
   // pointer. Read now: currentTarget is gone after the first await.
@@ -706,12 +774,32 @@ async function openRowMenu(e, orderId) {
   // with its line 34, an item 30); _fitMenu then measures the real box.
   const est = 44 + 30 * model.truck.length + model.sections.reduce((n, s) => n + 34 + 30 * (s.items.length + s.subs.length), 0);
   _hlClear();
+  ctx.style.maxHeight = ''; ctx._wi4Docked = false;
   I.ctxShow(e, '', Math.min(window.innerHeight - 16, est));
   ctx.appendChild(_renderMenu(model));
   if (plane && plane.isConnected) {
-    const p = plane.getBoundingClientRect();
+    // Never over its own arrow and row (finding menu-covers-own-row: pushed up
+    // to fit, 8 of 11 menus at 1800×800 sat on the row they talk about, and
+    // opened under the pointer). Under the arrow when it fits, else above it
+    // (bottom 4px over the arrow), else on the roomier side, scrolling inside.
+    // The load's own sub-rows under it (a local relay «↳») light with it, so
+    // a menu below hangs under the last of them, not over them.
+    const p = plane.getBoundingClientRect(), h = ctx.offsetHeight;
+    const lit = new Set(model.sections.flatMap((s) => s.oids));
+    let pb = p.bottom;
+    for (let n = plane.closest('.wi4-row'); (n = n && n.nextElementSibling) && n.classList.contains('wi4-subrow');) {
+      if (lit.has(n.getAttribute('data-oid'))) pb = Math.max(pb, n.getBoundingClientRect().bottom);
+    }
+    const below = window.innerHeight - 8 - (pb + 4), above = p.top - 4 - 8;
+    let top = pb + 4;
+    if (h > below) {
+      if (h <= above) top = p.top - 4 - h;
+      else if (above > below) { ctx.style.maxHeight = Math.floor(above) + 'px'; top = 8; }
+      else ctx.style.maxHeight = Math.floor(below) + 'px';
+    }
     ctx.style.left = Math.round(p.right - ctx.offsetWidth) + 'px';
-    ctx.style.top = Math.round(p.bottom + 4) + 'px';
+    ctx.style.top = Math.round(top) + 'px';
+    ctx._wi4Docked = true;
   }
   _fitMenu();
   _menuKeyOn(ctx);
@@ -723,6 +811,8 @@ async function openRowMenu(e, orderId) {
   _menuObs = new MutationObserver(() => {
     if (ctx.style.display === 'block') return;
     _menuObs.disconnect(); _menuObs = null; _hlClear(); _menuKeyOff(); ctx.removeEventListener('scroll', _menuScroll);
+    // The docked height cap must not follow #wi-ctx into a v1 menu.
+    ctx.style.maxHeight = ''; ctx._wi4Docked = false;
     _presenceCtx(null, null, 'view');
   });
   _menuObs.observe(ctx, { attributes: true, attributeFilter: ['style'] });
