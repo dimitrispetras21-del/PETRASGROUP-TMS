@@ -1430,9 +1430,10 @@ function _updHTML() {
   // Presence live: ONE sync token, «↻ ζωντανά» (sheet 16 A) — the load time
   // stays in the title. Beside «↻ Ενημερώθηκε μόλις τώρα» it said the same
   // thing twice and pushed the names out of the bar (review 11/10).
-  if (_presState().status === 'live') return `<span class="wi4-upd live" id="wi4-upd" title="Ζωντανή εικόνα · ο πίνακας φορτώθηκε στις ${_esc(hm)}">${_ico('refresh', 12)}ζωντανά</span>`;
+  // A 13px refresh icon, as Figma 1115:2701 draws it (r2/topbar-sync-token-type).
+  if (_presState().status === 'live') return `<span class="wi4-upd live" id="wi4-upd" title="Ζωντανή εικόνα · ο πίνακας φορτώθηκε στις ${_esc(hm)}">${_ico('refresh', 13)}ζωντανά</span>`;
   // «Ενημερώθηκε» gives way before «πριν 2΄» when the bar is narrow (1440).
-  return `<span class="wi4-upd" id="wi4-upd" title="Ενημερώθηκε στις ${_esc(hm)}">${_ico('refresh', 12)}<span class="wi4-upd-l">Ενημερώθηκε</span><span>${ago}</span></span>`;
+  return `<span class="wi4-upd" id="wi4-upd" title="Ενημερώθηκε στις ${_esc(hm)}">${_ico('refresh', 13)}<span class="wi4-upd-l">Ενημερώθηκε</span><span>${ago}</span></span>`;
 }
 function _tabsHTML(m) {
   const I = W(), D = _D(), wk = D.week, cur = I.currentWeek();
@@ -1452,7 +1453,9 @@ function _tabsHTML(m) {
     }
     // data-d: the distance from the week on screen — a narrow bar (1440) drops
     // W−3 and W+3 (‹ › still step), so the actions never cover the tabs.
-    h += `<button type="button" class="wi4-tab${w === wk ? ' on' : ''}" data-d="${w - wk}" onclick="${go(w)}" title="${_esc(I.weekRange(w) || '')}">W${w}${w === cur ? ' <span class="wi4-t-blue" aria-label="τρέχουσα">•</span>' : ''}${badge}</button>`;
+    // The current week: a 5px blue disc 5px after «W41» (Figma 1097:2298) —
+    // the «•» glyph drew a ~3px speck (r2/topbar-current-week-dot).
+    h += `<button type="button" class="wi4-tab${w === wk ? ' on' : ''}" data-d="${w - wk}" onclick="${go(w)}" title="${_esc(I.weekRange(w) || '')}">W${w}${w === cur ? '<span class="wi4-tab-cur" role="img" aria-label="τρέχουσα"></span>' : ''}${badge}</button>`;
   }
   h += `<button type="button" class="wi4-tab" onclick="${go(wk + 1)}" title="Επόμενη εβδομάδα" aria-label="Επόμενη εβδομάδα">${_ico('chevron_right', 15)}</button>`;
   // «Σήμερα» is not on the Figma tabs; kept because it is today's button.
@@ -1681,7 +1684,8 @@ function _presHTML() {
     return `<div class="wi4-pres ${p.status}" id="wi4-pres">` +
       `<span class="wi4-pres-ic" aria-hidden="true"${t}>${p.status === 'paused' ? '' : _ico('alert_circle', 12)}</span>` +
       // «ζωντανή εικόνα» gives way on a narrow bar (1440), the word never.
-      `<span class="wi4-pres-w" role="status"${t}><span class="wi4-pres-wl">ζωντανή εικόνα </span><b>${_esc(p.word)}</b></span>` +
+      // It opens the sentence, so a capital «Ζ» (Figma A2 1123:2735).
+      `<span class="wi4-pres-w" role="status"${t}><span class="wi4-pres-wl">Ζωντανή εικόνα </span><b>${_esc(p.word)}</b></span>` +
       (rest ? `<span class="wi4-pres-r"${t}>— ${_esc(rest)}</span>` : '') + '</div>';
   }
   const ps = _presState();
@@ -1728,8 +1732,20 @@ function _presFit() {
   s.classList.remove('wi4-pres-nofit');
   const row = s.parentElement, g = row && row.querySelector('.wi4-range');
   if ((row && row.scrollWidth > row.clientWidth) || (g && g.scrollWidth > g.clientWidth)) s.classList.add('wi4-pres-nofit');
+  _topWatch();
+}
+// ONE observer on the app's top bar and on its right end: the presence names
+// (above) and the board bar's right gutter (_topFit) both follow their widths.
+// .topbar-right is watched too — the undo button appears there without the
+// top bar itself changing size (r2/topbar-switcher-off-centre). Created by
+// whichever comes first, the bar's mount or a presence strip.
+function _topWatch() {
   const tb = !_presRO && typeof ResizeObserver === 'function' && document.querySelector('.main > .topbar');
-  if (tb) { _presRO = new ResizeObserver(() => { if (_live()) _presFit(); }); _presRO.observe(tb); }
+  if (!tb) return;
+  _presRO = new ResizeObserver(() => { _topFit(); if (_live()) _presFit(); });
+  _presRO.observe(tb);
+  const tr = tb.querySelector('.topbar-right');
+  if (tr) _presRO.observe(tr);
 }
 // Called by every paint: start() is idempotent — it takes the CURRENT week
 // and re-observes the new #wi-popover (every full paint re-creates it). No
@@ -2017,6 +2033,25 @@ function _topMount() {
   slot.replaceChildren(bar);
   document.body.classList.add('wi4-top-on');
   _umenuMount();
+  // Measured after wi4-top-on: that class hides the name, the role and Sign
+  // out, which changes .topbar-right's width.
+  _topFit();
+  _topWatch();
+}
+// Figma 1097:2283 centres the week switcher between the title's left edge and
+// the avatar's right edge: Title and Actions are both 656 wide and the bell
+// and the avatar sit INSIDE Actions. Here they are the app's .topbar-right,
+// outside the bar's grid, so the right track was ~82px short and the tabs sat
+// ~41px left of centre (r2/topbar-switcher-off-centre). The slot reaches under
+// .topbar-right by its width plus the top bar's gap (--wi4-tr) and the actions
+// step back by the same amount (CSS). The variable lives on the slot, so it
+// leaves with it in _topUnmount.
+function _topFit() {
+  const slot = document.getElementById('wi4-top');
+  const tb = slot && slot.parentElement, tr = tb && tb.querySelector('.topbar-right');
+  if (!tr) return;
+  const w = tr.getBoundingClientRect().width + (parseFloat(getComputedStyle(tb).columnGap) || 0);
+  slot.style.setProperty('--wi4-tr', w + 'px');
 }
 // Also while v4 stays active but #content holds no board — a re-read's
 // spinner, the load-error card: a bar still saying «Ενημερώθηκε μόλις τώρα»
@@ -2050,13 +2085,39 @@ function _umenuClose() {
 // opens a row); every other key goes on, so «/», the arrows and ⌘K still work
 // with the chip focused. Inside the menu the button keeps its own Enter/Space —
 // handled on the chip they cancelled «Αποσύνδεση» from the keyboard (review 11/10).
+// The OPEN menu owns ↓/↑/Home/End, the model of «Προβολή ▾» (core/ui.js
+// wkMoreToggle): a keyboard open lands on the first item, the arrows move, Esc
+// gives the chip back. Before, the focus stayed on the chip and ↓ did nothing
+// (r2/topbar-avatar-menu-keyboard).
 function _umenuKey(ev) {
-  if (!_umenu || (ev.key !== 'Escape' && ev.key !== 'Enter' && ev.key !== ' ')) return;
-  ev.stopPropagation();
+  if (!_umenu) return;
   const chip = _umenu.parentElement;
+  if (!_umenu.hidden && ['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(ev.key)) {
+    const its = [..._umenu.querySelectorAll('[role="menuitem"]')];
+    if (!its.length) return;
+    ev.preventDefault(); ev.stopPropagation();
+    const i = its.indexOf(document.activeElement), last = its.length - 1;
+    const k = ev.key === 'Home' ? 0 : ev.key === 'End' ? last
+      : ev.key === 'ArrowDown' ? (i < 0 || i === last ? 0 : i + 1) : (i <= 0 ? last : i - 1);
+    its[k].focus();
+    return;
+  }
+  if (ev.key !== 'Escape' && ev.key !== 'Enter' && ev.key !== ' ') return;
+  ev.stopPropagation();
   if (ev.key === 'Escape') { ev.preventDefault(); _umenuClose(); if (chip) chip.focus(); return; }
   if (_umenu.contains(ev.target)) return;
-  if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); _umenuTog(ev); }
+  ev.preventDefault(); _umenuTog(ev);
+  if (!_umenu.hidden) { const f = _umenu.querySelector('[role="menuitem"]'); if (f) f.focus(); }
+}
+// Tab out of the chip and its menu closes it, as a click elsewhere does (Tab
+// past «Αποσύνδεση» left it open over the search box). Only a focus that MOVED
+// outside closes it: a null relatedTarget (a window blur, or a browser that
+// does not focus a clicked button) must not hide the item under the pointer
+// before its click lands.
+function _umenuOut(ev) {
+  if (!_umenu || _umenu.hidden) return;
+  const chip = _umenu.parentElement;
+  if (ev.relatedTarget && chip && !chip.contains(ev.relatedTarget)) _umenuClose();
 }
 function _umenuMount() {
   const chip = document.querySelector('.topbar .user-chip');
@@ -2077,6 +2138,7 @@ function _umenuMount() {
   chip.title = name ? name + ' — Αποσύνδεση' : 'Αποσύνδεση';
   chip.addEventListener('click', _umenuTog);
   chip.addEventListener('keydown', _umenuKey);
+  chip.addEventListener('focusout', _umenuOut);
   _umenu = m;
 }
 function _umenuUnmount() {
@@ -2088,6 +2150,7 @@ function _umenuUnmount() {
   if (!chip) return;
   chip.removeEventListener('click', _umenuTog);
   chip.removeEventListener('keydown', _umenuKey);
+  chip.removeEventListener('focusout', _umenuOut);
   ['role', 'tabindex', 'aria-haspopup', 'aria-expanded', 'title'].forEach((a) => chip.removeAttribute(a));
 }
 

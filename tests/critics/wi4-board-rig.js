@@ -2435,7 +2435,15 @@ async function scnPresence(browser, origin) {
           tints: [...document.querySelectorAll('.wi4-pres .wi4-av')].map(a => (a.className.match(/\bt\d\b/) || [''])[0]),
           // F13: paused / forbidden keep the range whole and some of the sentence.
           range: (() => { const g = document.querySelector('.wi4-range'); return g ? { whole: g.scrollWidth <= g.clientWidth + 1, w: Math.round(g.getBoundingClientRect().width) } : null; })(),
-          restW: (() => { const x = document.querySelector('.wi4-pres .wi4-pres-r'); return x ? Math.round(x.getBoundingClientRect().width) : null; })() };
+          restW: (() => { const x = document.querySelector('.wi4-pres .wi4-pres-r'); return x ? Math.round(x.getBoundingClientRect().width) : null; })(),
+          // r2/topbar-presence-gaps, -sync-token-type, -paused-word-lowercase.
+          gaps: (() => { const R = (s) => { const e = document.querySelector(s); return e && e.getClientRects().length ? e.getBoundingClientRect() : null; };
+            const avs = [...document.querySelectorAll('.wi4-pres .wi4-av')], la = avs.length ? avs[avs.length - 1].getBoundingClientRect() : null;
+            const n = R('.wi4-pres .wi4-pres-n'), ic = R('.wi4-pres .wi4-pres-ic'), pw = R('.wi4-pres .wi4-pres-w'), up = document.getElementById('wi4-upd'), sv = up && up.querySelector('svg');
+            const d = (a, b) => (a && b ? Math.round((b.left - a.right) * 10) / 10 : null);
+            return { avToNames: d(la, n), dotToWord: ic && pw ? d(ic, pw) : null, wl: ((document.querySelector('.wi4-pres .wi4-pres-wl') || {}).textContent) || null,
+              tokFs: up ? getComputedStyle(up).fontSize : null, tokIcon: sv ? Math.round(sv.getBoundingClientRect().width) : 0,
+              wordToRule: up && pw ? d(pw, up.getBoundingClientRect()) : null, ruleToIcon: up && sv ? Math.round((sv.getBoundingClientRect().left - up.getBoundingClientRect().left - parseFloat(getComputedStyle(up).borderLeftWidth)) * 10) / 10 : null }; })() };
       });
       ok(scn, `${vw}: the state word is whole («${r.word}»), the sync token is whole and in the bar, one ↻ while live, the tabs clear of the actions`,
         word.test(r.word) && r.wordWhole && token.test(r.token) && r.tokenWhole && !r.overlap && (!/^live/.test(name) || r.refresh === 1), r);
@@ -2445,6 +2453,13 @@ async function scnPresence(browser, origin) {
       }
       if (vw === 1920 && (name === 'paused' || name === 'forbidden'))
         ok(scn, '1920: the range is whole and some of the sentence shows', !!r.range && r.range.whole && r.restW > 0, { range: r.range, restW: r.restW });
+      // Figma sheet 16 A 1123:2720 (avatars → names → rule → text, 14 each), 1123:2730
+      // («↻ ζωντανά» 11.5, a 13px icon); A2 1123:2731 (dot → sentence 14,
+      // «Ζωντανή» capital, 1123:2735), the token 12px (1115:2700).
+      if (vw === 1920 && name === 'live')
+        ok(scn, '1920: 14px from the avatars to the names and on either side of the rule; «↻ ζωντανά» 11.5px with a 13px icon', Math.abs(r.gaps.avToNames - 14) <= 0.6 && Math.abs(r.gaps.wordToRule - 14) <= 0.6 && Math.abs(r.gaps.ruleToIcon - 14) <= 0.6 && r.gaps.tokFs === '11.5px' && r.gaps.tokIcon === 13, r.gaps);
+      if (vw === 1920 && name === 'paused')
+        ok(scn, '1920: 14px from the amber dot to «Ζωντανή εικόνα σε παύση» (capital Ζ); the token 12px with a 13px icon', Math.abs(r.gaps.dotToWord - 14) <= 0.6 && /^Ζωντανή εικόνα/.test(r.gaps.wl || '') && r.gaps.tokFs === '12px' && r.gaps.tokIcon === 13, r.gaps);
     }
     await page.context().close();
   }
@@ -3100,6 +3115,37 @@ async function scnParity(browser, origin) {
         q: r(q), items: items.length, shown: shown.length, navDbg: items.map((a) => [a.id, Math.round(a.getBoundingClientRect().y), Math.round(a.getBoundingClientRect().height), (a.querySelector('.nav-icon') || {}).innerHTML ? a.querySelector('.nav-icon').innerHTML.length : 0, getComputedStyle(a.closest('.nav-group-items') || a).maxHeight]), fabHitsRows: hit, fab: fb ? r(fab) : null };
     });
     ok(scn, 'ONE top bar: the board\'s bar sits at y=0 in the app\'s top bar (Figma Top bar 1097:2283)', g.barInTopbar && g.bar && g.bar.y <= 1 && !g.title && !g.crumbs, g);
+    // r2/topbar-switcher-off-centre: Figma 1097:2287 centres the switcher
+    // between the title's left edge and the avatar's right edge (the bell and
+    // the avatar are inside Actions 1097:2309); live it sat 41px left at 1920.
+    // At 1440 the actions win the room (max-content) — no centring claimed,
+    // only that nothing of the bar covers the bell or the avatar.
+    const cg = await page.evaluate(() => {
+      const R = (el) => el && el.getBoundingClientRect();
+      const t = R(document.querySelector('.wi4-top .wi4-title')), tabs = R(document.getElementById('wi4-tabs')), av = R(document.getElementById('userAvatar'));
+      const bell = document.querySelector('.topbar .notif-bell'), chip = document.querySelector('.topbar .user-chip'), bb = R(bell);
+      const hits = (a, b) => a.right > b.left + 0.5 && a.left < b.right - 0.5 && a.bottom > b.top + 0.5 && a.top < b.bottom - 0.5;
+      const rBoxes = [document.querySelector('.wi4-top .wi4-bar-r'), ...document.querySelectorAll('.wi4-top .wi4-bar-r *')].filter((e) => e.getClientRects().length).map(R);
+      const at = (b) => document.elementFromPoint(b.left + b.width / 2, b.top + b.height / 2);
+      return { mid: (t.left + av.right) / 2, tabs: (tabs.left + tabs.right) / 2, title: Math.round(t.left), avatarR: Math.round(av.right),
+        cover: rBoxes.filter((b) => hits(b, bb) || hits(b, av)).length, bellHit: !!bell && bell.contains(at(bb)), avatarHit: !!chip && chip.contains(at(av)) };
+    });
+    if (vp.width !== 1440) ok(scn, 'the week tabs are centred between the title\'s left edge and the avatar\'s right edge (±3px, Figma 1097:2287)', Math.abs(cg.tabs - cg.mid) <= 3, cg);
+    ok(scn, 'no box of the bar\'s actions covers the bell or the avatar; both answer a click at their centre', cg.cover === 0 && cg.bellHit && cg.avatarHit, cg);
+    // r2/topbar-current-week-dot (Figma 1097:2298): a 5×5 #027BBD disc 5px
+    // after «W41», named «τρέχουσα»; r2/topbar-sync-token-type (1115:2700):
+    // DM Sans 12, a 13px icon, «Ενημερώθηκε πριν…» spaced as ONE text.
+    const tk = await page.evaluate(() => {
+      const d = document.querySelector('.wi4-top .wi4-tab.on .wi4-tab-cur'), b = d && d.getBoundingClientRect(), cs = d && getComputedStyle(d);
+      const tab = d && d.parentElement, tn = tab && [...tab.childNodes].find((n) => n.nodeType === 3 && /W\d/.test(n.textContent));
+      const rg = tn && document.createRange(); if (rg) rg.selectNodeContents(tn);
+      const u = document.getElementById('wi4-upd'), l = u && u.querySelector('.wi4-upd-l'), nx = l && l.nextElementSibling, sv = u && u.querySelector('svg');
+      return { dot: d ? { w: b.width, h: b.height, round: cs.borderTopLeftRadius, bg: cs.backgroundColor, role: d.getAttribute('role'), name: d.getAttribute('aria-label'), gap: rg ? Math.round((b.left - rg.getBoundingClientRect().right) * 10) / 10 : null } : null,
+        upd: u ? { fs: getComputedStyle(u).fontSize, icon: sv ? Math.round(sv.getBoundingClientRect().width) : 0, wordGap: l && nx && l.getClientRects().length ? Math.round((nx.getBoundingClientRect().left - l.getBoundingClientRect().right) * 10) / 10 : null } : null };
+    });
+    ok(scn, 'the current week\'s tab holds a 5×5 round rgb(2, 123, 189) dot named «τρέχουσα», 5px after the week (Figma 1097:2298)', !!tk.dot && tk.dot.w === 5 && tk.dot.h === 5 && tk.dot.round === '50%' && tk.dot.bg === 'rgb(2, 123, 189)' && tk.dot.role === 'img' && tk.dot.name === 'τρέχουσα' && tk.dot.gap !== null && Math.abs(tk.dot.gap - 5) <= 0.6, tk.dot);
+    // ≤1600 «Ενημερώθηκε» gives way (wordGap null): the type is still checked.
+    ok(scn, 'sync token: 12px with a 13px refresh icon; «Ενημερώθηκε» and the time a word space apart, not the 5px gap (Figma 1115:2700)', !!tk.upd && tk.upd.fs === '12px' && tk.upd.icon === 13 && (vp.width <= 1600 ? tk.upd.wordGap === null : tk.upd.wordGap !== null && tk.upd.wordGap >= 2 && tk.upd.wordGap <= 4.5), tk.upd);
     ok(scn, 'the top bar is 60px and ends with the bell and the avatar', g.topbarShown && Math.abs(g.topbarShown.h - 60) <= 1 && g.bell && g.avatar && g.avatar.x > g.bell.x, g);
     ok(scn, 'the queue starts 8px under the bar (sheet 15 A 1115:2706: band y = 60 + 8)', g.q && Math.abs(g.q.y - 68) <= 2, { q: g.q });
     ok(scn, 'the collapsed sidebar is an icon rail: every page\'s icon visible', g.items > 0 && g.shown === g.items, { items: g.items, shown: g.shown, nav: g.navDbg });
@@ -3185,21 +3231,32 @@ async function scnParity(browser, origin) {
       await page.evaluate(() => { if (typeof _toggleNotifPanel === 'function' && getComputedStyle(document.getElementById('notifPanel')).display !== 'none') _toggleNotifPanel(); });
       ok(scn, 'scrolled: «Προβολή ▾» and the bell\'s panel open over the sticky header', vs.open && vs.onTop && np.open && np.onTop, { vs, np });
       await page.evaluate(() => { document.getElementById('content').scrollTop = 0; });
-      // Keyboard: chip → Enter opens, Tab reaches «Αποσύνδεση», Enter signs
-      // out (review 11/10, P2: the chip's key handler cancelled it). Esc on
-      // the menu closes it and leaves the board's search alone.
+      // Keyboard, the «Προβολή ▾» model (r2/topbar-avatar-menu-keyboard): Enter
+      // on the chip opens the menu ON its first item, ↓/Home/End stay on the
+      // items, Esc closes it, gives the chip back and leaves the board's
+      // search alone; Enter on «Αποσύνδεση» signs out (review 11/10, P2: the
+      // chip's key handler once cancelled it); Tab out closes it.
       await page.evaluate(() => { window.__lo = 0; window.logout = () => { window.__lo++; }; });
       await page.fill('#wi4-search', 'Alpha');
+      const km = () => page.evaluate(() => { const m = document.querySelector('.topbar .wi4-umenu'), c = document.querySelector('.topbar .user-chip'), a = document.activeElement;
+        return { open: !!m && !m.hidden, exp: c.getAttribute('aria-expanded'), item: !!m && a && a.getAttribute('role') === 'menuitem' && m.contains(a), onChip: a === c, inChip: c.contains(a), week: WINTL.week, q: document.getElementById('wi4-search').value }; });
       await page.focus('.topbar .user-chip'); await page.keyboard.press('Enter');
-      const kOpen = await page.evaluate(() => { const m = document.querySelector('.topbar .wi4-umenu'); return !!m && !m.hidden && document.querySelector('.topbar .user-chip').getAttribute('aria-expanded') === 'true'; });
+      const kOpen = await km();
+      await page.keyboard.press('ArrowDown'); const kDown = await km();
+      await page.keyboard.press('End'); await page.keyboard.press('Home'); const kHome = await km();
       await page.keyboard.press('Escape');
-      const kEsc = await page.evaluate(() => ({ closed: document.querySelector('.topbar .wi4-umenu').hidden, q: document.getElementById('wi4-search').value }));
-      await page.keyboard.press('Enter'); await page.keyboard.press('Tab'); await page.keyboard.press('Enter');
+      const kEsc = await km();
+      await page.keyboard.press('Enter'); await page.keyboard.press('Enter');
       const lo = await page.evaluate(() => window.__lo);
+      const kLo = await km();
+      await page.focus('.topbar .user-chip'); await page.keyboard.press('Enter'); await page.keyboard.press('Tab');
+      const kTab = await km();
       // …and with the chip focused, «/» still reaches the board (search).
       await page.focus('.topbar .user-chip'); await page.keyboard.press('/');
       const slash = await page.evaluate(() => document.activeElement && document.activeElement.id === 'wi4-search');
-      ok(scn, 'keyboard: Enter opens the avatar menu, Esc closes it without clearing the search, Tab + Enter signs out', kOpen && kEsc.closed && kEsc.q === 'Alpha' && lo === 1 && slash, { kOpen, kEsc, lo, slash });
+      ok(scn, 'keyboard: Enter opens the avatar menu on its first item, ↓/End/Home stay on the items, Esc closes it onto the chip (search kept), Enter on the item signs out, Tab out closes it',
+        kOpen.open && kOpen.exp === 'true' && kOpen.item && kDown.open && kDown.item && kHome.open && kHome.item && kDown.week === kOpen.week
+        && !kEsc.open && kEsc.exp === 'false' && kEsc.onChip && kEsc.q === 'Alpha' && lo === 1 && !kLo.open && !kTab.open && !kTab.inChip && slash, { kOpen, kDown, kHome, kEsc, lo, kLo, kTab, slash });
       await page.fill('#wi4-search', '');
       await page.mouse.click(900, 600);
       // A read that fails while v4 stays active: the error card must not sit
@@ -3221,10 +3278,14 @@ async function scnParity(browser, origin) {
       // Avatar menu: name and role from the chip, one «Αποσύνδεση»; any click
       // elsewhere closes it. «Προβολή ▾» opens ABOVE the board, not under it.
       await page.click('.topbar .user-chip');
-      const um = await page.evaluate(() => { const m = document.querySelector('.topbar .wi4-umenu'); return { open: !!m && !m.hidden, text: m ? m.innerText : '', btn: !!m && /Αποσύνδεση/.test(m.innerText) }; });
+      const um = await page.evaluate(() => { const m = document.querySelector('.topbar .wi4-umenu'), mb = m && m.getBoundingClientRect(), av = document.getElementById('userAvatar').getBoundingClientRect();
+        return { open: !!m && !m.hidden, text: m ? m.innerText : '', btn: !!m && /Αποσύνδεση/.test(m.innerText), right: mb ? Math.round(mb.right * 10) / 10 : null, avatarR: Math.round(av.right * 10) / 10 }; });
       await page.mouse.click(900, 600);
       const closed = await page.evaluate(() => { const m = document.querySelector('.topbar .wi4-umenu'); return !m || m.hidden; });
       ok(scn, 'the avatar opens name · role · «Αποσύνδεση»; a click elsewhere closes it', um.open && um.btn && /Rig/.test(um.text) && closed, { um, closed });
+      // Figma ends the bar with the avatar at R−20 (1097:2324): the menu's
+      // right edge is the avatar's, not the 44px chip's 8px further out.
+      ok(scn, 'the avatar menu\'s right edge is the avatar\'s right edge (±1px)', um.right !== null && Math.abs(um.right - um.avatarR) <= 1, um);
       await page.click('.wi4-top .wk-more-t');
       const vm = await page.evaluate(() => { const m = document.getElementById('wi4-view'); if (!m || m.hidden) return { open: false }; const b = m.getBoundingClientRect(); const top = document.elementFromPoint(b.left + b.width / 2, b.top + Math.min(b.height - 2, 40)); return { open: true, onTop: !!top && m.contains(top), b: [Math.round(b.left), Math.round(b.top), Math.round(b.width), Math.round(b.height)] }; });
       ok(scn, '«Προβολή ▾» opens above the board', vm.open && vm.onTop, vm);
