@@ -522,10 +522,11 @@ async function scnPaint(browser, origin) {
   ok(scn, 'first paint: the first red day is the first card → no scroll; bar and ΕΠΟΜΕΝΑ band in view', open.first === '2026-10-03' && open.top === 0 && open.qTop >= 0 && open.qBottom <= open.h, open);
   ok(scn, 'the week tabs sit in the centre of the bar (their own grid track)', Math.abs(open.tabs - open.bar) <= 1.5, open);
   // Line 2 = the place, from the LOCATIONS label «Όνομα, Πόλη, Χώρα» the
-  // board reads in production (Greek country names): «Veria», «Berlin DE»
-  // (Figma line 2: «Kecskemét HU 6π», fix round 3) — «χώρα μόνο εκτός GR»
-  // (rules 958:747). Every single point whose column has room for a place
-  // shows one (the fixture's locations all have a city).
+  // board reads in production (Greek country names): «Veria», «Berlin, DE» —
+  // a single stop keeps the comma as Figma writes it (1097:2668 «Veverská
+  // Bitýška, CZ», parity r2); «Kecskemét HU 6π» is Figma's multi-stop line —
+  // «χώρα μόνο εκτός GR» (rules 958:747). Every single point whose column has
+  // room for a place shows one (the fixture's locations all have a city).
   const l2 = await page.evaluate(([js]) => {
     const row = eval(js);
     const empty = [...document.querySelectorAll('#content .wi4 #wi-rows .wi4-row .wi4-pts:not(.wi4-noplace) > .wi4-pt')]
@@ -534,7 +535,7 @@ async function scnPaint(browser, origin) {
     return { empty, e1from: t('recWiE001', 'from'), e1to: t('recWiE001', 'to'), shown: document.querySelectorAll('#content .wi4 #wi-rows .wi4-pts:not(.wi4-noplace) .wi4-l2').length };
   }, [ROW_JS]);
   ok(scn, 'line 2 shows the place on every single point with room (production label format)', !l2.empty.length && l2.shown > 20, l2);
-  ok(scn, '«χώρα μόνο εκτός GR»: E001 loads at «Veria» (no GR), delivers to «Berlin DE» (no comma, Figma line 2)', /Veria$/.test(l2.e1from || '') && !/GR/.test(l2.e1from || '') && /^Berlin DE$/.test(l2.e1to || ''), l2);
+  ok(scn, '«χώρα μόνο εκτός GR»: E001 loads at «Veria» (no GR), delivers to «Berlin, DE» (one stop: comma, Figma 1097:2668)', /Veria$/.test(l2.e1from || '') && !/GR/.test(l2.e1from || '') && /^Berlin, DE$/.test(l2.e1to || ''), l2);
   // Line 2 of a groupage member keeps its pallets whole: the PLACE is cut,
   // never «· 10π» (review 11/10: «Milan, IT…», «Zagreb, …»).
   const palCut = await page.evaluate(() => [...document.querySelectorAll('#content .wi4 #wi-rows .wi4-pts:not(.wi4-noplace) .wi4-l2f.wi4-l2p')]
