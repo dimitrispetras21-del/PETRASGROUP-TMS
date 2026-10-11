@@ -7229,6 +7229,9 @@ function _wiLooseLate(p,today){
 // opt.unit: the pallet letter of the chips. Today's board writes «p»; the v4
 // board writes «π» like every other pallet figure on it (rules «παλέτες
 // πάντα 33π»). Without opt the strip is byte-identical to today's.
+// opt.flagWords (v4, Figma 1115:2749): «· 2 προς έλεγχο» instead of «· 2 ⚠».
+// opt.lateSpan (v4, Figma 1115:2777): «· 1 εκπρόθεσμο» in its own span, so
+// only the late part is red and the count of waiting pieces stays neutral.
 function _wiShelfInner(st,opt){
   if(st.status==='loading') return `<div class="wi-shelf-in"><span class="wi-shelf-lbl">ΑΠΟΘΕΜΑ…</span></div>`;
   if(st.status==='failed') return `<div class="wi-shelf-in"><button type="button" class="wi-shelf-fail" onclick="_wiStockLoad()" title="Οι παρτίδες δεν διαβάστηκαν${st.error?' ('+escapeHtml(st.error)+')':''} — αυτό ΔΕΝ σημαίνει ότι δεν υπάρχει απόθεμα. Κλικ: ξαναδοκίμασε">ΑΠΟΘΕΜΑ — δεν φορτώθηκε ↻</button></div>`;
@@ -7244,8 +7247,10 @@ function _wiShelfInner(st,opt){
   // sideways, so a lot that does not fit is still one click away and the
   // «· K ⚠» says how many need a look (critic-1 C1-03). The loose-pieces
   // button only when there are some: «0 κομμάτια» was noise (S5-01).
-  const lbl=`<button type="button" class="wi-shelf-lbl" onclick="_wiStockLotsOpen(this)" title="Όλες οι ανοιχτές παρτίδες — κλικ: η λίστα">ΑΠΟΘΕΜΑ · ${lots.length}${nFlag?` <span class="wi-shelf-k">· ${nFlag} ⚠</span>`:''}</button>`;
-  const looseBtn=nLoose?`<button type="button" class="wi-shelf-loose${nLate?' late':''}" onclick="_wiStockLooseOpen(this)" title="Κομμάτια που περιμένουν φορτηγό${nLate?' — '+nLate+' με παράδοση που πέρασε':''} — κλικ: η λίστα">${nLoose} ${nLoose===1?'κομμάτι':'κομμάτια'} χωρίς φορτηγό${nLate?` · ${nLate} ${nLate===1?'εκπρόθεσμο':'εκπρόθεσμα'}`:''}</button>`:'';
+  const lbl=`<button type="button" class="wi-shelf-lbl" onclick="_wiStockLotsOpen(this)" title="Όλες οι ανοιχτές παρτίδες — κλικ: η λίστα">ΑΠΟΘΕΜΑ · ${lots.length}${nFlag?` <span class="wi-shelf-k">· ${nFlag} ${opt&&opt.flagWords?'προς έλεγχο':'⚠'}</span>`:''}</button>`;
+  const lateTxt=nLate?`· ${nLate} ${nLate===1?'εκπρόθεσμο':'εκπρόθεσμα'}`:'';
+  const late=!nLate?'':opt&&opt.lateSpan?` <span class="wi-shelf-late">${lateTxt}</span>`:` ${lateTxt}`;
+  const looseBtn=nLoose?`<button type="button" class="wi-shelf-loose${nLate?' late':''}" onclick="_wiStockLooseOpen(this)" title="Κομμάτια που περιμένουν φορτηγό${nLate?' — '+nLate+' με παράδοση που πέρασε':''} — κλικ: η λίστα">${nLoose} ${nLoose===1?'κομμάτι':'κομμάτια'} χωρίς φορτηγό${late}</button>`:'';
   return `<div class="wi-shelf-in">${lbl}<div class="wi-shelf-list" onscroll="_wiShelfFit()" onwheel="_wiShelfWheel(event,this)">${lots.map(x=>_wiShelfChip(x.l,x.c,opt&&opt.unit)).join('')}</div>${looseBtn}</div>`;
 }
 // «▣ Αποθήκη · Πελάτης 18/24p» and a flag only for a problem (critic-1 C1-03,
