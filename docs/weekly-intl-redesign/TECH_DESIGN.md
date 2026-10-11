@@ -417,13 +417,16 @@ Tests: `tests/wi4-logic.test.js` (`node --test`, zero dependencies).
   6. A single stop has no number badge: the name and place render as today.
   7. A click on «+N» opens the full list through the existing `_wk3MoreStops(str, arr, kind)`
      (1946), the same as today's «+N». The `title` of the chip lists the hidden stops.
-- **Measured outcome at 1920:** with both national columns open, a points column is about
-  207–217px. Four points need `4×56 + 3×8 = 248px`, so on the main screen a 4-stop column
-  shows 3 + «+1». All 4 show only with the national columns collapsed (about 310px each).
-  The rule allows this («μόνο αν ούτε έτσι χωράνε»), but the owner said «ως 4 σημεία
-  φαίνονται όλα», so it goes to him before the pilot (§j.6). 4-stop orders are 3% of the 300
-  measured.
-- **Cases:** 1/2/3/4 stops at 207px · 4 stops at 200px (→ 3 + «+1») · 5 and 9 stops ·
+- **Measured outcome at 1920** (corrected in review round 1, 11/10; owner lock «up to 4 all
+  shown with min 56px IF they fit, otherwise as many as fit + «+N»»): with both national
+  columns open, a points column is about 207–217px (legs 621px: `(621 − 187) / 2 = 217`).
+  Four points need `4×56 + 3×8 = 248px`, and three points plus the chip need
+  `3×56 + 3×8 + 34 = 226px`, so a 4-stop column shows **2 + «+2»**, and 5+ stops show
+  2 + «+N» (the first 3 only where 3 fit). Three stops show in full (`184 ≤ 217`). All 4
+  show with the national columns collapsed (about 278px each). Revision 2 said «3 + «+1»»:
+  that was arithmetic, not the rule. The board rig derives its expectation from `WI4.points`
+  at the measured width. 4-stop orders are 3% of the 300 measured.
+- **Cases:** 1/2/3/4 stops at 207px · 4 stops at 200px (→ 2 + «+2») · 5 and 9 stops ·
   4 stops at 170px with places hidden · single loading with `dateTick` (no ✓ on the point) ·
   two stops, both done (✓ on each) · delay chip «+4ω» kept on a shown point.
 
@@ -726,13 +729,15 @@ both to «Groupage εισαγωγών…», and in the merged menu both can appe
 - Tonight: `_wiPanelGroupBuild(..,true)` = «Groupage εισαγωγών…», and `_wiPanelJoinLoad` =
   «Groupage εισαγωγών · σε αυτό το φορτίο…».
 - The final wording goes to the owner (§j.6).
-- The parity test asserts **labels are unique per menu**.
+- The parity test asserts **labels are unique per section** (and per submenu): «Άνοιγμα
+  παραγγελίας» and «Εκτύπωση / WhatsApp…» open every load section by design, so a matched
+  pair repeats them once per load, and the section header tells them apart.
 
 **Parity test** (`tests/wi4-menu-parity.test.js`, per fixture row):
 - every old handler string appears at least once in the v4 menu (except truck handlers in
   member submenus, by rule 5);
 - no `onclick` appears twice in one menu;
-- labels are unique per menu;
+- labels are unique per section and per submenu;
 - every relabel-map key occurs in some builder's output **or panel string** (a rename in old
   code fails loudly);
 - the only v4-only `onclick` is `_wk3Edit(...)` for «Άνοιγμα παραγγελίας».
@@ -1267,7 +1272,7 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON public.presence TO service_role;
      reviewed by an independent visual critic who scores and lists differences, in rounds
      until no P1/P2 remains. The critic's brief lists the **known, intended differences**, so
      they are not reported as defects: EMPTY_RETURN «από σήμερα» amber, not red (§d.2); no E/I,
-     ←→, [ ] or ⌘Z in the «?» sheet (§d.4); 4 stops show as 3 + «+1» with the national columns
+     ←→, [ ] or ⌘Z in the «?» sheet (§d.4); 4 stops show as 2 + «+2» with the national columns
      open (§d.1); no «Όλα στην W42 →» (§e #2); «Άνοιγμα παραγγελίας» present (§e.9).
 6. **The five data-path questions, for every write v4 can trigger** (PR table; SELECT counts
    after the pilot, never writes tonight):
@@ -1361,9 +1366,10 @@ Order of the night:
      χρήστης». Should dispatchers see names?
    - `_wiPanelJoinLoad` and `_wiPanelGroupBuild(..,true)` are two actions; tonight they are
      «Groupage εισαγωγών · σε αυτό το φορτίο…» and «Groupage εισαγωγών…». One name or two?
-   - 4 stops at 1920 with the national columns open show 3 + «+1» (the column is ~207px, 4
-     points need 248px). All 4 show only with the national columns collapsed. Accept, or
-     narrow the national columns?
+   - ~~4 stops at 1920~~ **decided (owner lock, relayed in review round 1, 11/10):** up to 4
+     all shown with min 56px if they fit, otherwise as many as fit + «+N»; 5+ = the first 3
+     only if 3 fit. At the ~207–217px column that is 2 + «+2» for 4 stops (§d.1); all 4 show
+     with the national columns collapsed.
    - EMPTY_RETURN «από σήμερα»: the rules sheet says amber, and board/sheet 15 draw it red.
      Tonight: amber (rules sheet).
    - amber volume: NO_TRUCK is now amber for every unassigned load beyond tomorrow. If the
