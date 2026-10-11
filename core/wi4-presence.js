@@ -62,6 +62,12 @@ const TEXT = Object.freeze({
   live: '↻ ζωντανά',
   paused: 'Ζωντανή εικόνα σε παύση — δεν ξέρουμε ποιος άλλος είναι μέσα · ξαναδοκιμάζει',
   forbidden: 'Η ζωντανή εικόνα δεν είναι διαθέσιμη για τον ρόλο σου',
+  // The state WORD each sentence starts from, for a title bar too narrow for
+  // the whole sentence (review 11/10: «… · εδώ τώρα · ↻ ζ…» at 1920). The
+  // board keeps the word whole and puts the sentence in its title.
+  liveWord: 'ζωντανά',
+  pausedWord: 'σε παύση',
+  forbiddenWord: 'μη διαθέσιμη',
 });
 
 let _tab = null;                     // per browser tab, survives reloads of the tab
@@ -474,8 +480,25 @@ function stripText(max) {
   return names.length ? shown + ' · ' + TEXT.here + ' · ' + TEXT.live : TEXT.live;
 }
 
+/**
+ * The strip in PARTS (plain text: escape before HTML), so the title bar can
+ * keep the state word whole and let names give way first (review 11/10):
+ * {status, word, full, names, more, here}. `full` is stripText's sentence
+ * (the title), `word` the part that must always show. null = draw nothing —
+ * off, pending, or live with nobody else seen («κανείς» is never said).
+ */
+function parts(max) {
+  const st = _status();
+  if (st === 'paused') return { status: st, word: TEXT.pausedWord, full: TEXT.paused, names: [], more: 0, here: '' };
+  if (st === 'forbidden') return { status: st, word: TEXT.forbiddenWord, full: TEXT.forbidden, names: [], more: 0, here: '' };
+  if (st !== 'live' || !S.others.length) return null;
+  const all = S.others.map((p) => p.name);
+  const cap = Number.isInteger(max) && max > 0 ? max : all.length;
+  return { status: st, word: TEXT.liveWord, full: stripText(max), names: all.slice(0, cap), more: Math.max(0, all.length - cap), here: TEXT.here };
+}
+
 window.WI4Presence = Object.freeze({
-  start, stop, setContext, reattach, others, state, actionText, tipText, stripText, tabId,
+  start, stop, setContext, reattach, others, state, actionText, tipText, stripText, parts, tabId,
   ACTIONS: Object.freeze(Object.keys(ACTION_TEXT)), MIN_GAP_MS,
 });
 })();

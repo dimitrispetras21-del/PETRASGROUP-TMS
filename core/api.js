@@ -541,6 +541,14 @@ async function _atRetry(fn, retries = 3, opts) {
       await new Promise(r => setTimeout(r, 1000 * (i + 1)));
     }
   }
+  // Only a 429 on the LAST attempt leaves the loop (its `continue`): every
+  // other path returns or throws. It used to fall out here and return
+  // undefined, so the caller crashed on res.json() and the one trace was
+  // «Cannot read properties of undefined (reading 'json')» (review 11/10).
+  const e429 = new Error('Πολλά αιτήματα — ο διακομιστής δεν δέχτηκε το αίτημα· ξαναδοκίμασε σε λίγο');
+  e429._req = reqId;
+  if (typeof logError === 'function') logError(e429, 'API 429 exhausted');
+  throw e429;
 }
 
 // ── API URL builder (direct vs proxy) ─────────────
@@ -1211,7 +1219,7 @@ function invalidateRefData() {
 // and the Worker has no 'Last Modified' label, so it could not have run anyway.
 // It made atSafePatch look like a conflict guard while it guarded nothing
 // (principle 8). The real check is the Worker's `_expect` 409 (§g.2/§g.3).
-// router.js still calls atStopAutoRefresh behind a typeof guard: a no-op now.
+// router.js's guarded atStopAutoRefresh call went too (fix round 3, 11/10).
 
 // opts.expect (Weekly Intl v4, TECH_DESIGN §g.3): the Worker compares the
 // values the user saw and answers 409 instead of writing, and the conflict

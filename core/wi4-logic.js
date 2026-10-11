@@ -127,6 +127,10 @@ const TEXT = freeze({
   NO_TRUCK: 'χωρίς φορτηγό',
   EMPTY_RETURN: 'κενό γύρισμα',
   NAT_NO_CARRIER: 'σκέλος χωρίς μεταφορέα',
+  // A VS order whose NATIONAL LOADS row was never created (or the chain
+  // failed): nothing to assign on Weekly National — the fault is the missing
+  // load itself, so it is named as such, never «χωρίς μεταφορέα» (11/10).
+  NAT_MISSING: 'εθνικό φορτίο δεν βρέθηκε',
   NAT_UNKNOWN: 'Τα εθνικά σκέλη δεν φορτώθηκαν — δεν σημαίνει ότι δεν έχουν μεταφορέα',
   DATE_MISMATCH: 'ασυνέπεια ημερομηνιών',
   OVER_33: 'πάνω από 33π',
@@ -146,7 +150,7 @@ const TEXT = freeze({
 // the existing opener — one name per action, the SAME names it switches on
 // (a 'loose' here once matched no case there). Never a write by itself.
 const ACT = freeze({
-  NO_TRUCK: 'assign', EMPTY_RETURN: 'newImport', NAT_NO_CARRIER: 'national',
+  NO_TRUCK: 'assign', EMPTY_RETURN: 'newImport', NAT_NO_CARRIER: 'national', NAT_MISSING: 'open',
   NAT_UNKNOWN: 'retry', SOURCE_UNKNOWN: 'retry', DATE_MISMATCH: 'date',
   OVER_33: 'open', SAME_DAY: 'open', LATE: 'open', PREORDER: 'convert',
   SAVE_FAILED: 'retry', STOCK_LATE: 'pieces', STOCK_LOOSE: 'pieces', STOCK_LOT: 'lot',
@@ -165,7 +169,7 @@ const nearLevel = (d, today) => { const k = dayDiff(today, d); return k === null
  * facts (built impurely by WIV2.factsOf):
  *   {kind:'export'|'import'|'leg'|'split'|'relay', saved, partner, loadDate,
  *    delDate, returnDate, returnPlace?, hasReturn,
- *    natLegs:[{side:'to'|'from', date, carrier:boolean}], natState,
+ *    natLegs:[{side:'to'|'from', date, carrier:boolean, missing?:boolean}], natState,
  *    stockState, pallets, palletsUnknown?, vsCdDate, natDelDate, natLoadDate?,
  *    sameDayClash:string|null, late, preorder:{level}|null, syncErr, executing,
  *    matchUnread?}
@@ -201,9 +205,13 @@ function flags(facts, today) {
 
   // NAT_NO_CARRIER — only on a READ national state (§d.2a). 'loading'/'err'
   // say nothing per row: an unread leg is not a leg without a carrier.
+  // NAT_MISSING — the read answered and holds NO national load for this VS
+  // order (leg.missing): the same date rule, its own words and act ('open':
+  // saving the order re-runs the Veroia Switch chain). Never both on one leg.
   if (f.natState === 'ok' && Array.isArray(f.natLegs)) {
     for (const leg of f.natLegs) {
-      if (leg && !leg.carrier) out.push(reason('NAT_NO_CARRIER', nearLevel(leg.date, today), TEXT.NAT_NO_CARRIER, leg.date, { side: leg.side }));
+      if (leg && leg.missing) out.push(reason('NAT_MISSING', nearLevel(leg.date, today), TEXT.NAT_MISSING, leg.date, { side: leg.side }));
+      else if (leg && !leg.carrier) out.push(reason('NAT_NO_CARRIER', nearLevel(leg.date, today), TEXT.NAT_NO_CARRIER, leg.date, { side: leg.side }));
     }
   }
 
@@ -263,6 +271,7 @@ const PLURAL = freeze({
   urgent: freeze(['επείγον', 'επείγοντα']),
   day: freeze(['ημέρα', 'ημέρες']),
   relayNoDriver: freeze(['τοπική χωρίς οδηγό', 'τοπικές χωρίς οδηγό']),
+  natMissing: freeze(['εθνικό φορτίο δεν βρέθηκε', 'εθνικά φορτία δεν βρέθηκαν']),
 });
 function plural(n, key) {
   const w = PLURAL[key];
@@ -309,8 +318,11 @@ function dayText(counts, opts) {
     const paren = c.todayEmpty ? ` (${c.todayEmpty} από σήμερα)` : c.emptyOldest > 0 ? ` (${plural(c.emptyOldest, 'day')})` : '';
     parts.push(plural(by.EMPTY_RETURN, 'emptyReturn') + paren);
   }
+  // Still loading is said as loading: «δεν φορτώθηκαν» read as the failure
+  // words while the read was merely in flight (review 11/10).
   const nat = opts && opts.natState;
-  if (nat === 'err' || nat === 'loading') parts.push('εθνικά σκέλη: δεν φορτώθηκαν');
+  if (nat === 'err') parts.push('εθνικά σκέλη: δεν φορτώθηκαν');
+  else if (nat === 'loading') parts.push('εθνικά σκέλη: φορτώνουν…');
   else if (by.NAT_NO_CARRIER) parts.push(plural(by.NAT_NO_CARRIER, 'natNoCarrier'));
   return parts.join(' · ');
 }
@@ -318,7 +330,7 @@ function dayText(counts, opts) {
 // Queue groups: what stops a load, what costs, what wants a look. Any code
 // not listed is 'look'; an item may carry its own `group`.
 const GROUP = freeze({
-  NO_TRUCK: 'stop', NAT_NO_CARRIER: 'stop', SAVE_FAILED: 'stop', RELAY_NO_DRIVER: 'stop',
+  NO_TRUCK: 'stop', NAT_NO_CARRIER: 'stop', NAT_MISSING: 'stop', SAVE_FAILED: 'stop', RELAY_NO_DRIVER: 'stop',
   EMPTY_RETURN: 'cost', STOCK_LATE: 'cost',
 });
 const GROUP_ORDER = freeze({ stop: 0, cost: 1, look: 2 });

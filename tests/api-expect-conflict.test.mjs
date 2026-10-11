@@ -211,3 +211,17 @@ test('opts.quiet without expect: same body as no opts; a 403 keeps its toast (it
   await f.run(A(`atSafePatch('tblO', 'recTEST0001', ${JSON.stringify(FIELDS)}, { quiet: true })`));
   assert.ok(f.toasts.some((t) => /Δεν έχετε δικαίωμα/.test(t)), f.toasts.join(' / '));
 });
+
+// A 429 on the LAST attempt used to fall out of the retry loop: _atRetry
+// returned undefined and atPatch crashed on res.json() — the only trace a
+// JavaScript message (review 11/10, fix round 3). Now: an explicit error the
+// caller can show, and one «API 429 exhausted» line.
+test('_atRetry: 429 on every attempt throws an explicit error and logs it once (never undefined)', async () => {
+  const s = sandbox(answerV0(() => json(429, { error: { type: 'RATE_LIMIT', message: 'slow down' } })));
+  const r = JSON.parse(await s.run(A(`atSafePatch('tblO', 'recTEST0001', ${JSON.stringify(FIELDS)}, { quiet: true })`)));
+  await flush();
+  assert.ok(r.err && /Πολλά αιτήματα/.test(r.err.m) && !/undefined/.test(r.err.m), JSON.stringify(r));
+  assert.strictEqual(s.patches().length, 3, 'three attempts, as today');
+  const logged = appErrors(s.calls).filter((m) => /Πολλά αιτήματα/.test(m));
+  assert.strictEqual(logged.length, 1, JSON.stringify(appErrors(s.calls)));
+});

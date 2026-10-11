@@ -201,6 +201,29 @@ test('NAT_NO_CARRIER: red up to tomorrow, amber beyond, only when national legs 
   }
 });
 
+// Fix round 3 (11/10): a VS order whose NATIONAL LOADS row the read did not
+// return is not «χωρίς μεταφορέα» — there is nothing to assign. Its own reason,
+// same date rule, act 'open' (saving the order re-runs the VS chain), and
+// never both reasons on one leg.
+test('NAT_MISSING: a read leg with no national load is its own reason, never NAT_NO_CARRIER', () => {
+  const want = { '-1': 'red', 0: 'red', 1: 'red', 2: 'amber', 3: 'amber', 6: 'amber' };
+  for (const k of OFFS) {
+    const r = WI4.flags(exp({ natLegs: [{ side: 'from', date: add(T, k), carrier: false, missing: true }] }), T);
+    assert.strictEqual(reasonOf(r, 'NAT_MISSING').level, want[k]);
+    assert.strictEqual(reasonOf(r, 'NAT_MISSING').side, 'from');
+    assert.strictEqual(reasonOf(r, 'NAT_MISSING').act, 'open');
+    assert.strictEqual(reasonOf(r, 'NAT_MISSING').text, 'εθνικό φορτίο δεν βρέθηκε');
+    assert.ok(!codes(r).includes('NAT_NO_CARRIER'), 'one reason per leg');
+  }
+  for (const st of ['loading', 'err', undefined]) {
+    const r = WI4.flags(exp({ natState: st, natLegs: [{ side: 'to', date: T, carrier: false, missing: true }] }), T);
+    assert.ok(!codes(r).includes('NAT_MISSING'), `natState ${st}: unread is unknown, not «missing»`);
+  }
+  const it = WI4.items(exp({ natLegs: [{ side: 'to', date: T, carrier: false, missing: true }] }), T, { key: 'recA1234567' })[0];
+  assert.strictEqual(it.group, 'stop');
+  assert.strictEqual(WI4.collapsible([exp({ natLegs: [{ side: 'to', date: add(T, 5), carrier: false, missing: true }] })], T), false);
+});
+
 test('sourceReasons: \'err\' → exactly one NAT_UNKNOWN; one SOURCE_UNKNOWN per failed source', () => {
   const nat = WI4.sourceReasons({ natState: 'err' });
   assert.deepStrictEqual(nat.map((r) => r.code), ['NAT_UNKNOWN']);
@@ -294,6 +317,7 @@ test('plural: n=1 and n=2 for every key', () => {
     natNoCarrier: ['1 σκέλος χωρίς μεταφορέα', '2 σκέλη χωρίς μεταφορέα'],
     pending: ['1 εκκρεμές', '2 εκκρεμή'], urgent: ['1 επείγον', '2 επείγοντα'], day: ['1 ημέρα', '2 ημέρες'],
     relayNoDriver: ['1 τοπική χωρίς οδηγό', '2 τοπικές χωρίς οδηγό'],
+    natMissing: ['1 εθνικό φορτίο δεν βρέθηκε', '2 εθνικά φορτία δεν βρέθηκαν'],
   };
   assert.deepStrictEqual(Object.keys(WI4.PLURAL).sort(), Object.keys(want).sort());
   for (const [k, [one, two]] of Object.entries(want)) {
@@ -325,6 +349,8 @@ test('dayCounts + dayText: both parenthesis forms and the national legs', () => 
   assert.strictEqual(WI4.dayText(WI4.dayCounts([exp({ saved: false, loadDate: T })], T)), '1 φορτηγό · 1 χωρίς φορτηγό');
   // Unread legs: words instead of a count (never 0, never a number).
   assert.strictEqual(WI4.dayText(c2, { natState: 'err' }), '2 φορτηγά · 1 κενό γύρισμα (3 ημέρες) · εθνικά σκέλη: δεν φορτώθηκαν');
+  // Still in flight is said as such — never the failure words (fix round 3).
+  assert.strictEqual(WI4.dayText(c2, { natState: 'loading' }), '2 φορτηγά · 1 κενό γύρισμα (3 ημέρες) · εθνικά σκέλη: φορτώνουν…');
   assert.strictEqual(WI4.dayText({ trucks: 0, byCode: {} }), '0 φορτηγά');
 });
 
