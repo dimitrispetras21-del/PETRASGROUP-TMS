@@ -513,3 +513,61 @@ test('never «κανείς»: no state, text or tooltip ever claims an empty boa
   assert.strictEqual(w.P.stripText(), '↻ ζωντανά', 'live with nobody else seen says only that it is live');
   for (const s of seen) assert.ok(!/κανείς|κανένας|nobody/i.test(s), 'claims an empty board: ' + s);
 });
+
+// ─── round 1 fixes (feat/wi-v4 review 11/10) ───────────────────────────
+test('a beat that never answers is aborted after 10 s: «σε παύση», and the next beat still leaves', async () => {
+  const w = world();
+  // An AbortController in this realm, and a fetch that hangs until aborted.
+  w.ctx.AbortController = function () { const self = this; this.signal = { aborted: false, _on: null }; this.abort = () => { self.signal.aborted = true; if (self.signal._on) self.signal._on(); }; };
+  w.P.start({ week: 41 }); await w.advance(0);
+  assert.strictEqual(w.P.state().status, 'live');
+  const realFetch = w.ctx.fetch;
+  let hung = 0;
+  w.ctx.fetch = (url, init) => { hung++; w.calls.push({ url, init, body: JSON.parse(init.body), at: w.now() });
+    return new Promise((_, rej) => { init.signal._on = () => rej(new Error('aborted')); }); };
+  w.input(); await w.advance(5000);
+  assert.strictEqual(hung, 1, 'the second beat left and hangs');
+  await w.advance(10000);
+  assert.strictEqual(w.P.state().status, 'paused', 'an aborted beat is a network failure, not a frozen «live»');
+  w.ctx.fetch = realFetch;
+  await w.advance(20000);
+  assert.ok(w.beats().length >= 3, 'beats resume after the abort: ' + w.beats().length);
+  assert.strictEqual(w.P.state().status, 'live');
+});
+
+test('«live» without a fresh answer turns into «σε παύση» by itself (frozen list never shown)', async () => {
+  const w = world({ responder: () => live([{ sub: 'xa', name: 'Χρήστης Α', records: [] }]) });
+  w.P.start({ week: 41 }); await w.advance(0);
+  assert.strictEqual(w.P.others().length, 1);
+  // Every answer from now on is a 429: our own pacing, not an outage — but
+  // after 20 s nothing confirms who is here any more.
+  w.respond(() => ({ status: 429, body: { retry_after_ms: 2500 } }));
+  w.input(); await w.advance(12000);
+  assert.strictEqual(w.P.state().status, 'live', 'a few seconds of 429 keep the list');
+  w.input(); await w.advance(12000);
+  assert.strictEqual(w.P.state().status, 'paused');
+  assert.deepStrictEqual(plain(w.P.others()), []);
+  assert.match(w.P.stripText(), /σε παύση/);
+});
+
+test('changes: the count only grows until the board re-reads (the server clamps its window to 15΄)', async () => {
+  let n = 3;
+  const w = world({ responder: () => live([], { changes: { n, last_by: 'Χρήστης Α', last_at: 'x', auto_n: 1 } }) });
+  w.P.start({ week: 41 }); await w.advance(0);
+  assert.strictEqual(w.P.state().changes.n, 3);
+  n = 1;                                            // two changes fell out of the 15-minute window
+  w.input(); await w.advance(5000);
+  assert.strictEqual(w.P.state().changes.n, 3, 'never lowered while changes_since is the same');
+  assert.strictEqual(w.P.state().changes.last_by, 'Χρήστης Α');
+  w.ctx.WI_INTERNAL.WINTL._loadedAt = new w.ctx.Date(LOADED + 600000);   // the board re-read
+  w.input(); await w.advance(5000);
+  assert.strictEqual(w.P.state().changes.n, 1, 'a new changes_since starts a new count');
+});
+
+test('stripText(max): more people than shown are counted, never dropped', async () => {
+  const people = ['Α', 'Β', 'Γ', 'Δ'].map((x) => ({ sub: 'x' + x.charCodeAt(0), name: 'Χρήστης ' + x, records: [] }));
+  const w = world({ responder: () => live(people) });
+  w.P.start({ week: 41 }); await w.advance(0);
+  assert.strictEqual(w.P.stripText(2), 'Χρήστης Α, Χρήστης Β +2 · εδώ τώρα · ↻ ζωντανά');
+  assert.strictEqual(w.P.stripText(), 'Χρήστης Α, Χρήστης Β, Χρήστης Γ, Χρήστης Δ · εδώ τώρα · ↻ ζωντανά');
+});

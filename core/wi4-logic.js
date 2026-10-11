@@ -133,15 +133,18 @@ const TEXT = freeze({
   LATE: 'καθυστέρηση',
   PREORDER: 'pre-order χωρίς μετατροπή',
   SAVE_FAILED: 'δεν αποθηκεύτηκε',
+  RELAY_NO_DRIVER: 'τοπική χωρίς οδηγό',
 });
 
-// The one button a queue card offers (§e #2); WI4Actions maps it to the
-// existing opener. Never a write by itself.
+// The one button a queue card offers (§e #2); WI4Actions._queueAct maps it to
+// the existing opener — one name per action, the SAME names it switches on
+// (a 'loose' here once matched no case there). Never a write by itself.
 const ACT = freeze({
   NO_TRUCK: 'assign', EMPTY_RETURN: 'newImport', NAT_NO_CARRIER: 'national',
   NAT_UNKNOWN: 'retry', SOURCE_UNKNOWN: 'retry', DATE_MISMATCH: 'date',
   OVER_33: 'open', SAME_DAY: 'open', LATE: 'open', PREORDER: 'convert',
-  SAVE_FAILED: 'retry', STOCK_LATE: 'loose', STOCK_LOOSE: 'loose', STOCK_LOT: 'lot',
+  SAVE_FAILED: 'retry', STOCK_LATE: 'pieces', STOCK_LOOSE: 'pieces', STOCK_LOT: 'lot',
+  RELAY_NO_DRIVER: 'relay',
 });
 
 const RANK = freeze({ red: 2, amber: 1 });
@@ -209,6 +212,10 @@ function flags(facts, today) {
   if (Number(f.pallets) > 33) out.push(reason('OVER_33', 'amber', TEXT.OVER_33, f.loadDate));
   if (f.sameDayClash) out.push(reason('SAME_DAY', 'amber', String(f.sameDayClash), f.loadDate));
   if (f.late) out.push(reason('LATE', 'amber', TEXT.LATE, f.delDate));
+  // A local relay (live since 6/10) drawn «ΠΡΟΣ ΑΝΑΘΕΣΗ»: the same shape as
+  // NO_TRUCK — red today–tomorrow, amber beyond, never silent — or a day of
+  // assigned trucks would read «nothing to do» and fold the red sub-row away.
+  if (f.kind === 'relay' && f.relayNoDriver) out.push(reason('RELAY_NO_DRIVER', nearLevel(f.loadDate, today), TEXT.RELAY_NO_DRIVER, f.loadDate));
   const pl = f.preorder && f.preorder.level;
   if (pl === 'red' || pl === 'amber') out.push(reason('PREORDER', pl, TEXT.PREORDER, f.loadDate));
   if (f.syncErr) out.push(reason('SAVE_FAILED', 'red', TEXT.SAVE_FAILED, f.loadDate, { detail: String(f.syncErr) }));
@@ -244,6 +251,7 @@ const PLURAL = freeze({
   pending: freeze(['εκκρεμές', 'εκκρεμή']),
   urgent: freeze(['επείγον', 'επείγοντα']),
   day: freeze(['ημέρα', 'ημέρες']),
+  relayNoDriver: freeze(['τοπική χωρίς οδηγό', 'τοπικές χωρίς οδηγό']),
 });
 function plural(n, key) {
   const w = PLURAL[key];
@@ -299,7 +307,7 @@ function dayText(counts, opts) {
 // Queue groups: what stops a load, what costs, what wants a look. Any code
 // not listed is 'look'; an item may carry its own `group`.
 const GROUP = freeze({
-  NO_TRUCK: 'stop', NAT_NO_CARRIER: 'stop', SAVE_FAILED: 'stop',
+  NO_TRUCK: 'stop', NAT_NO_CARRIER: 'stop', SAVE_FAILED: 'stop', RELAY_NO_DRIVER: 'stop',
   EMPTY_RETURN: 'cost', STOCK_LATE: 'cost',
 });
 const GROUP_ORDER = freeze({ stop: 0, cost: 1, look: 2 });
@@ -528,7 +536,9 @@ function describeConflict(c, labelsGreek, fmt) {
     mine: show(l, x.mine ? x.mine[l] : undefined),
   }));
   const body = lines.map((ln) => `${lines.length > 1 ? ln.name + ': ' : ''}${ln.before} → ${ln.theirs} · Η δική σου επιλογή: ${ln.mine}`).join(' · ');
-  return { lead, lines, text: `${lead}${body ? ': ' + body : ''}. Ποια κρατάμε;` };
+  // `question` is returned on its own so the dialog can put it on its own
+  // line (sheet 16 E); `text` stays the one-line form.
+  return { lead, lines, body, question: 'Ποια κρατάμε;', text: `${lead}${body ? ': ' + body : ''}. Ποια κρατάμε;` };
 }
 
 // ─── §d.5 / §g.4 Presence pacing ───────────────────────────────────────
@@ -589,6 +599,9 @@ const MENU_ICON = freeze({
   _wiRelayOpen: 'user', _wiRelayGrpToggle: 'users', _wiRelayConfirmDel: 'trash',
   _wiStockReturn: 'package', _wiStockReturnLone: 'package', _wiStockLotOfRow: 'package',
   editPreorder: 'edit', deletePreorder: 'trash',
+  // Not handlers: the «▸» line of a groupage member (a load = the box icon)
+  // and of a local relay; the trailing chevron is drawn by WI4Actions.
+  member: 'package', relay: 'user', submenu: 'chevron_right',
 });
 
 const WI4 = freeze({
