@@ -335,9 +335,12 @@ const WIV2 = {
   /** Hook in the three `if(res?.conflict)` branches (§a.4), in this order:
    *  _wiSync(ctx.slot,'') → closePopover → await renderWeeklyIntl() →
    *  WI4Actions.conflictDialog(res, ctx); on 'reopen' reopens the popover for
-   *  ctx.orderId on fresh truth.
+   *  ctx.orderId on fresh truth. Resolves once the dialog is SHOWN (the old
+   *  write function never waits for the user's answer — review 11/10).
+   *  ctx.mine (optional) = the fields of the refused PATCH, for «Η δική σου
+   *  επιλογή».
    *  @param {WiConflictResult} res
-   *  @param {{slot:string, orderId:string, kind:'match'|'assign'}} ctx
+   *  @param {{slot:string, orderId:string, kind:'match'|'assign', mine?:Object}} ctx
    *  @returns {Promise<void>} */
   conflict(res, ctx) { return resolved(undefined); },
   /** Mast switch markup (§b): '' unless the flag allows a switch. Inserted
@@ -388,10 +391,13 @@ const WI4Actions = {
   /** «Ποια κρατάμε;» (§g.4). Pure UI: returns the choice, the caller acts.
    *  Closing in any way (Esc, ×, outside click) = 'keep'. Every value through
    *  escapeHtml; the name only when conflict.by is a username.
+   *  Values are shown as plates, names and days — never a record id.
    *  @param {WiConflict} conflict
-   *  @param {{orderId:string, kind:'date'|'assign'|'match', mine?:Object<string,*>}} ctx
-   *  @returns {Promise<'keep'|'mine'|'reopen'>} 'mine' only for kind 'date',
-   *    'reopen' only for 'assign'/'match' */
+   *  @param {{orderId:string, kind:'date'|'assign'|'match', mine?:Object<string,*>,
+   *    expected?:Object<string,*>, stale?:boolean}} ctx  expected = the _expect
+   *    sent (what the user saw); stale = the re-read behind it failed
+   *  @returns {Promise<'keep'|'mine'|'reopen'|'refresh'>} 'mine' only for kind
+   *    'date', 'reopen' only for 'assign'/'match', 'refresh' only when stale */
   conflictDialog(conflict, ctx) { return resolved('keep'); },
   /** «Όλα N ▾» panel (§e #3) over WIV2.queueItems(): ΤΩΡΑ / ΠΡΟΣΟΧΗ, Q = next, Esc closes. */
   queuePanel() {},

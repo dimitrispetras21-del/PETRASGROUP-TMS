@@ -55,6 +55,11 @@ const _q = (oid) => (REC.test(String(oid || '')) ? String(oid) : '');   // safe 
 // Paper plane (per-load menu). Inline SVG with currentColor: core/icons.js has
 // no plane, and a colour literal here would break the ratchet.
 const PLANE = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4 20-7z"/></svg>';
+// The leg arrow, as a thin icon (Figma) — not a «→» glyph: a text glyph in
+// the icon grey is TEXT at 2.6:1, and the rules allow that grey for icons only.
+const ARROW = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="m13 6 6 6-6 6"/></svg>';
+// The presence strip names this many people; the rest are counted («+N»).
+const PRES_MAX = 6;
 
 // ─── Copy (UI in Greek) ───────────────────────────────────────────────
 const DOW_SHORT = ['Κυρ', 'Δευ', 'Τρί', 'Τετ', 'Πέμ', 'Παρ', 'Σάβ'];
@@ -63,31 +68,23 @@ const DOW_SHORT = ['Κυρ', 'Δευ', 'Τρί', 'Τετ', 'Πέμ', 'Παρ', '
 const DOW_HEAD = ['ΚΥΡΙΑΚΗ', 'ΔΕΥΤΕΡΑ', 'ΤΡΙΤΗ', 'ΤΕΤΑΡΤΗ', 'ΠΕΜΠΤΗ', 'ΠΑΡΑΣΚΕΥΗ', 'ΣΑΒΒΑΤΟ'];
 const DOW_ACC = ['την Κυριακή', 'τη Δευτέρα', 'την Τρίτη', 'την Τετάρτη', 'την Πέμπτη', 'την Παρασκευή', 'το Σάββατο'];
 const MONTH_GEN = ['Ιανουαρίου', 'Φεβρουαρίου', 'Μαρτίου', 'Απριλίου', 'Μαΐου', 'Ιουνίου', 'Ιουλίου', 'Αυγούστου', 'Σεπτεμβρίου', 'Οκτωβρίου', 'Νοεμβρίου', 'Δεκεμβρίου'];
-// Queue card buttons (§e #2). The ONE dispatcher is WI4Actions._queueAct (the
-// «Όλα N ▾» panel uses it too); only 'week' (a W+1 load) is handled here,
-// because the panel has no button for a load that is not on this board.
-const ACT_LABEL = Object.freeze({
-  assign: 'Ανάθεση', newImport: 'Νέα εισαγωγή', pieces: 'Κομμάτια', national: 'Εθνικά →', date: 'Ημερομηνία',
-  open: 'Άνοιγμα', lot: 'Παρτίδα', convert: 'Μετατροπή', retry: 'Ξαναδοκίμασε',
-});
+// Queue card buttons (§e #2): the labels and the ONE dispatcher live in
+// WI4Actions (_ACT_LABEL, _queueAct), which the «Όλα N ▾» panel uses too —
+// one copy, so a card and the panel never name or do the same item twice.
+const _actLabel = (it) => { const a = A(); return a && typeof a._actLabel === 'function' ? a._actLabel(it) : ''; };
 // Day-header words for the reasons WI4.dayText does not spell (it covers the
 // truck count, NO_TRUCK, EMPTY_RETURN and the national legs). Every reason of a
 // day is said in its header, so header = queue = rails (§d.3 invariant).
 const EXTRA_WORDS = Object.freeze({
   DATE_MISMATCH: 'ασυνέπεια ημερομηνιών', OVER_33: 'πάνω από 33π', SAME_DAY: 'ίδια μέρα',
   LATE: 'καθυστέρηση', PREORDER: 'pre-order χωρίς μετατροπή', SAVE_FAILED: 'δεν αποθηκεύτηκε',
+  RELAY_NO_DRIVER: 'τοπική χωρίς οδηγό',
 });
+// Header words that agree with their number (WI4.PLURAL), the rest are fixed.
+const EXTRA_PLURAL = Object.freeze({ RELAY_NO_DRIVER: 'relayNoDriver' });
 // Words of the stock strip's flags — the SAME words _wiShelfInner shows
 // (weekly_intl.js _WI_SHELF_FLAG), so the queue and the strip say one thing.
 const LOT_WORDS = Object.freeze({ nointake: 'σε κίνηση χωρίς παραλαβή', close: 'κλείσιμο;', aging: '>21 ημ.' });
-// Presence tooltip text is looked up from the whitelisted action, never taken
-// from a server string (§e #18, §g.1).
-const PRES_ACTION = Object.freeze({
-  view: 'βλέπει την παραγγελία', menu: 'έχει ανοιχτό το μενού', assign: 'αλλάζει την ανάθεση',
-  'date:Loading DateTime': 'αλλάζει την ημερομηνία φόρτωσης',
-  'date:Delivery DateTime': 'αλλάζει την ημερομηνία εκφόρτωσης',
-  'date:VS CD Date': 'αλλάζει την ημερομηνία Βέροιας',
-});
 const STATUS_OPTS = [['', 'Όλες'], ['pending', 'Χωρίς ανάθεση'], ['assigned', 'Ανατεθειμένα'], ['unmatched', 'Εισαγωγές χωρίς ταίριασμα']];
 
 // ─── Session state (closure-private) ──────────────────────────────────
@@ -102,8 +99,9 @@ let _qRaw = '';              // the search box text as typed (WINTL.filter is lo
 let _xw = null;              // W+1 read: {key, state:'loading'|'ok'|'err', recs}
 let _installed = false, _bannerShown = false, _warned = false;
 let _resizeT = null, _tickT = null, _rereadT = null, _rereadFailed = false;
-let _popObs = null, _presOn = false;
 let _scrolledWeek = null;
+let _auto = null;            // auto-collapse of the week: {week, frozen, closed:{date:true}}
+const _missLogged = new Set();   // rows logged once as «no record» (a repaint must not spam app_errors)
 const _moves = {};           // oid → {oldDay, label, at} (§e #15)
 
 // ─── Small date helpers ───────────────────────────────────────────────
@@ -337,7 +335,14 @@ function _compute() {
         if (!rec) return;
         let s = null; try { s = Relay.summary(rec, o); } catch (err) { _logErr(err, 'wi4: relay summary'); }
         if (!s) return;
-        const e = { t: 'relay', x: { rec, oid, o, s }, parent, day, facts: [] };
+        // A relay drawn «ΠΡΟΣ ΑΝΑΘΕΣΗ» or «⚠ δεν επιβεβαιώθηκε» is work: it has
+        // facts like any row, so it reaches the rail, the day header, the queue
+        // and the collapse rule — keyed by its own record (relayId), because it
+        // shares its order id with the row it hangs under.
+        const bad = !!(D.relay.syncErr && D.relay.syncErr[rec.id]);
+        const f = { kind: 'relay', relayNoDriver: !s.driverName && !s.done, syncErr: bad ? 'δεν επιβεβαιώθηκε' : null,
+          loadDate: DAY_RE.test(s.day || '') ? s.day : '', relayKind: s.kind };
+        const e = { t: 'relay', x: { rec, oid, o, s }, parent, day, facts: [{ oid, relayId: rec.id, f, row: parent }] };
         day.entries.push(e); entries.push(e);
       });
     });
@@ -392,7 +397,9 @@ function _compute() {
     // «εθνικά σκέλη: δεν φορτώθηκαν» only on a day that HAS national legs:
     // elsewhere it would announce an unknown that does not exist.
     day.text = lg.dayText(c, { natState: fl.some((f) => f.natLegs && f.natLegs.length) ? natState : 'ok' });
-    day.collapsible = lg.collapsible(fl, today);
+    // Never «all fine» on an unknown: a day without a date, or any day while
+    // the local relays did not load (a driverless relay could hide in it).
+    day.collapsible = lg.collapsible(fl, today) && DAY_RE.test(day.date || '') && !(D.relay && D.relay.state === 'err');
   }
 
   // Queue (§e #2): every row and sub-row, the matched imports, stock, the W+1
@@ -404,6 +411,15 @@ function _compute() {
     it.rowKey = x.oid || null;
     it.key = x.oid || '';
     it.why = it.text;
+    if (x.relayId) {
+      // Items of a local relay: they open that relay (its own menu has edit
+      // and delete), and belong to its sub-row, not to the row above it.
+      it.relayId = x.relayId;
+      it.text = _loadLabel(x.oid);
+      it.sub = (x.f.relayKind === 'relay_delivery' ? 'τοπική παράδοση' : 'τοπική φόρτωση') +
+        (it.code === 'RELAY_NO_DRIVER' ? ' χωρίς οδηγό' : ' · ' + it.why) + (it.date ? ' · ' + _dayLabel(it.date) : '');
+      return it;
+    }
     if (it.code === 'EMPTY_RETURN') {
       it.text = [r.truckLabel, r.driverLabel].filter(Boolean).join(' · ') || _loadLabel(x.oid);
       it.sub = it.why;
@@ -496,28 +512,38 @@ function _chipHTML(c, today) {
 // the points nodes once the column width is measured (never per stop reflow).
 function _ptsHTML(side) {
   const k = 'p' + (++_pk);
-  const d = { stops: side.stops || [], dateTick: !!side.dateTick, showPal: !!side.showPal };
+  // A groupage side (its points are member tiles, drag sources and targets)
+  // draws its own «+N» fold with the SAME tiles: a member hidden behind «+N»
+  // must stay draggable — today's fold (_wk3MoreStops) is plain text.
+  const group = (side.stops || []).some((s) => s && s.drag);
+  const d = { stops: side.stops || [], dateTick: !!side.dateTick, showPal: !!side.showPal, group };
   _pts.set(k, d);
   const r = L().points(d.stops, _ptsW || 0, { dateTick: d.dateTick });
-  return `<div class="wi4-pts${r.hidePlace ? ' wi4-noplace' : ''}" data-pk="${k}">${_ptsInner(r, d)}</div>${side.xfold || ''}`;
+  return `<div class="wi4-pts${r.hidePlace ? ' wi4-noplace' : ''}" data-pk="${k}">${_ptsInner(r, d)}</div>${group ? '' : (side.xfold || '')}`;
 }
 function _ptsInner(r, d) {
   let h = r.shown.map((s) => _ptHTML(s, d)).join('');
-  if (r.more) h += `<button type="button" class="wi4-more" title="${_esc('Όλα τα σημεία:\n' + r.more.title)}" onclick="event.stopPropagation();WIV2._more(this)"><b>+${r.more.count}</b>${r.more.pallets ? `<span>${r.more.pallets}π</span>` : ''}</button>`;
+  if (r.more) {
+    h += `<button type="button" class="wi4-more" title="${_esc('Όλα τα σημεία:\n' + r.more.title)}" onclick="event.stopPropagation();WIV2._more(this)"><b>+${r.more.count}</b>${r.more.pallets ? `<span>${r.more.pallets}π</span>` : ''}</button>`;
+    if (d.group) h += `<div class="wk3-xfold wi4-fold">${r.more.hidden.map((s) => _ptHTML(Object.assign({}, s, { badge: s.n, tick: !!s.done }), d)).join('')}</div>`;
+  }
   return h;
 }
 function _ptHTML(s, d) {
   const oid = _q(s.oid);
-  const tick = s.tick ? '<span class="wi4-ok" aria-label="ολοκληρώθηκε">✓</span> ' : '';
+  // ✓ is a meaningful graphic (aria-label), not text in the icon grey.
+  const tick = s.tick ? `<span class="wi4-ok" role="img" aria-label="ολοκληρώθηκε">${_ico('check', 11)}</span>` : '';
   const delay = s.delayH ? ` <span class="wi4-delay">+${_esc(s.delayH)}ω</span>` : '';
   const pal = d.showPal && s.pallets != null ? ` · ${s.pallets}π` : '';
   const placeTxt = (s.place || '') + pal;
+  // With no place the ✓ goes before the name, never alone on an empty line 2.
+  const tickL1 = tick && !placeTxt && !s.warn;
   let l2;
   if (s.warn) {
     const w = _q(s.warn.oid);
     l2 = `<span class="wi4-l2 wi4-t-amb" title="${_esc('ασυνέπεια ημερομηνιών · ' + s.warn.text)}"${w ? ` onclick="event.stopPropagation();WI4Actions.datePanel('${w}','VS CD Date',this)" style="cursor:pointer"` : ''}>! ${_esc(s.warn.text)}</span>`;
-  } else l2 = `<span class="wi4-l2" title="${_esc(placeTxt)}">${tick}${_esc(placeTxt)}</span>`;
-  const l1 = `<span class="wi4-l1" title="${_esc(s.label)}">${_esc(s.label)}${delay}</span>`;
+  } else l2 = placeTxt ? `<span class="wi4-l2" title="${_esc(placeTxt)}">${tick}${_esc(placeTxt)}</span>` : '';
+  const l1 = `<span class="wi4-l1" title="${_esc(s.label)}">${tickL1 ? tick : ''}${_esc(s.label)}${delay}</span>`;
   const click = oid ? ` onclick="event.stopPropagation();WI_INTERNAL.edit('${oid}')"` : '';
   // Group member tiles: today's drag strings verbatim (§f), rowId = the
   // GROUP's own row id. Without preventDefault in ondragover the drop never
@@ -572,7 +598,7 @@ function _legHTML(s, today) {
   return `<div class="wi4-leg"${click}>` +
     `<div class="wi4-l-date">${_chipHTML(s.chip, today)}${s.ref ? _ell('wi4-ref wi4-ell', s.ref) : ''}</div>` +
     `<div class="wi4-l-from">${_ptsHTML(s.from)}</div>` +
-    '<span class="wi4-l-arr" aria-hidden="true">→</span>' +
+    `<span class="wi4-l-arr" aria-hidden="true">${ARROW}</span>` +
     `<div class="wi4-l-to">${_ptsHTML(s.to)}</div>` +
     `<div class="wi4-l-pal">${s.pal || ''}</div></div>`;
 }
@@ -615,7 +641,9 @@ function _impLegHTML(host, imp, today) {
 function _natHTML(oid, name, day, today) {
   const st = _natState();
   const dayS = DAY_RE.test(day || '') ? DOW_SHORT[_dow(day)] : '';
-  const head = `<span class="wi4-l1" title="${_esc(name + (day ? ' · ' + _dayLabel(day) : ''))}">${_esc(name)}${dayS ? ` <span class="wi4-nat-day">${dayS}</span>` : ''}</span>`;
+  // The day sits OUTSIDE the cut name (Figma: name left, «Τετ» right): inside
+  // it, a long client name ate the day («Omicron Dairy → Βέρο…»).
+  const head = `<div class="wi4-nat-h">${_ell('wi4-l1', name)}${dayS ? `<span class="wi4-nat-day" title="${_esc(_dayLabel(day))}">${dayS}</span>` : ''}</div>`;
   let tile;
   if (st !== 'ok') {
     const t = st === 'err' ? 'απέτυχε — δεν σημαίνει ότι δεν έχουν μεταφορέα' : 'δεν φορτώθηκε ακόμη';
@@ -680,10 +708,21 @@ function _idxHTML(oid, no, rowId) {
 }
 
 // ═══ Markup: rows (§e #7, #11, #13) ═════════════════════════════════════
+// A row whose record is not in WINTL.data is never silently left out: its
+// facts were already counted (the queue points at it), so the board shows a
+// line that says so, and app_errors gets it once per session (principle 1).
+function _missingHTML(e, oid, sub) {
+  const key = String((e.row && e.row.id) || '') + '/' + oid;
+  if (!_missLogged.has(key)) { _missLogged.add(key); _logErr(new Error('wi4: row ' + key + ' has no record in WINTL.data'), 'wi4: row skipped'); }
+  const rid = e.row && Number.isInteger(e.row.id) ? e.row.id : null;
+  return `<div class="${sub ? 'wi4-subrow' : 'wi4-row'}"${rid != null && !sub ? ` data-row-id="${rid}"` : ''} data-oid="${_q(oid)}" data-qi="${e.qi}">` +
+    (sub ? '<div class="wi4-c-idx"><span class="wi4-legidx">↳</span></div>' : _idxHTML(oid, e.no, rid)) +
+    '<div class="wi4-c-span wi4-t-g2">— η παραγγελία δεν φορτώθηκε · <button type="button" class="wi4-link" onclick="WI_INTERNAL.renderWeeklyIntl()">Ανανέωση</button></div></div>';
+}
 function _expRowHTML(e, today) {
   const I = W(), D = _D(), row = e.row;
   const exps = _memberRecs(row);
-  if (!exps.length) return '';
+  if (!exps.length) return _missingHTML(e, (row.orderIds || [])[0] || row.orderId);
   const isGroup = exps.length > 1, pf = exps[0].fields || {}, pid = exps[0].id;
   const st = I.stFlags(pf), vs = !!pf['Veroia Switch'];
   const noTruck = !row.saved;
@@ -743,7 +782,7 @@ function _gapHTML(row, e, today) {
 function _impRowHTML(e, today) {
   const I = W(), D = _D(), row = e.row;
   const imp = D.data.imports.find((r) => r.id === row.orderId);
-  if (!imp) return '';
+  if (!imp) return _missingHTML(e, row.orderId);
   const f = imp.fields || {}, oid = imp.id, q = _q(oid);
   const own = row.saved && !row.partnerId;
   const left = `<div class="wi4-noexp"${own ? ' onclick="event.stopPropagation();WI_INTERNAL.jumpFirstPendingExp()" style="cursor:pointer" title="Ιδιόκτητο όχημα χωρίς εξαγωγή — κλικ: η πρώτη εξαγωγή προς ανάθεση"' : ''}><span>Χωρίς εξαγωγή</span><span class="wi4-t-g2">· αυτή την εβδομάδα</span></div>`;
@@ -780,7 +819,7 @@ function _legRowHTML(e, today) {
   const I = W(), lr = e.row;
   const oid = (lr.orderIds || [])[0] || lr.orderId, q = _q(oid);
   const r = _rec(oid);
-  if (!r) return '';
+  if (!r) return _missingHTML(e, oid, true);
   const f = r.fields || {}, isImp = f['Direction'] === 'Import';
   const st = I.stFlags(f);
   const leg = _legHTML({
@@ -800,7 +839,7 @@ function _legRowHTML(e, today) {
 // Local driver (§e #11): «ΤΟΠΙΚΗ ΦΟΡΤΩΣΗ · Οδηγός · Σάβ 3/10 05:00» in the
 // export column, «ΤΟΠΙΚΗ ΠΑΡΑΔΟΣΗ · … · άλλο φορτηγό ΧΥΖ» in the import
 // column. Only what differs from the order is added (Relay.diffParts).
-function _relayRowHTML(e) {
+function _relayRowHTML(e, today) {
   const I = W(), D = _D();
   const { rec, oid, s } = e.x;
   const isDel = s.kind === 'relay_delivery';
@@ -815,7 +854,9 @@ function _relayRowHTML(e) {
   const cell = `<span class="wi4-ell" style="display:block" title="${_esc(tip || tag + ' · ' + parts.join(' · '))}"><span class="wi4-tag">${tag}</span> · ${parts.map((p, i) => (i === 0 && !s.driverName ? `<span class="wi4-t-red">${_esc(p)}</span>` : _esc(p))).join(' · ')}</span>`;
   const q = _q(oid), rid = SAFE.test(String(rec.id || '')) ? rec.id : '';
   const acts = q && rid ? ` onclick="WI_INTERNAL.relayOpen('${q}','${rid}')" oncontextmenu="_wiRelayCtx(event,'${rid}','${q}')"` : '';
-  return `<div class="wi4-subrow${bad ? ' wi4-r-red' : ''}" data-oid="${q}"${acts}>` +
+  // Its rail is its own facts (WI4.flags), the same rule as the day header
+  // and the queue item it raises.
+  return `<div class="wi4-subrow${_rail(_levelOf(e.facts, today))}" data-oid="${q}"${rid ? ` data-relay="${rid}"` : ''}${acts}>` +
     '<div class="wi4-c-idx"><span class="wi4-legidx">↳</span></div><div class="wi4-c-fl"></div>' +
     `<div class="wi4-c-exp">${isDel ? '' : cell}</div><div class="wi4-c-asg"></div>` +
     `<div class="wi4-c-imp">${isDel ? cell : ''}</div><div class="wi4-c-fr"></div></div>`;
@@ -826,7 +867,7 @@ function _entryHTML(e, today) {
     case 'imp': return _impRowHTML(e, today);
     case 'split': return _splitHTML(e);
     case 'leg': return _legRowHTML(e, today);
-    case 'relay': return _relayRowHTML(e);
+    case 'relay': return _relayRowHTML(e, today);
   }
   return '';
 }
@@ -847,15 +888,42 @@ function _dayCountHTML(day) {
   const by = day.counts.byCode || {};
   Object.keys(EXTRA_WORDS).forEach((code) => {
     if (!by[code]) return;
-    out.push(`<span class="${day.levels[code] === 'red' ? 'wi4-t-red' : 'wi4-t-amb'}">${by[code]} ${_esc(EXTRA_WORDS[code])}</span>`);
+    const words = EXTRA_PLURAL[code] ? _plural(by[code], EXTRA_PLURAL[code]) : by[code] + ' ' + EXTRA_WORDS[code];
+    out.push(`<span class="${day.levels[code] === 'red' ? 'wi4-t-red' : 'wi4-t-amb'}">${_esc(words)}</span>`);
   });
   return '· ' + out.join(' · ');
+}
+// Day open state (§e #6). A user toggle wins (WINTL.ui.v4Days). Otherwise a
+// day with anything to do is open, and a «collapsible» day follows the
+// week's auto decision: while the week's sources are still landing it tracks
+// WI4.collapsible; once they have all answered the closed set is FROZEN. From
+// then on a day can only open by itself (it gained a reason), never close.
+// Why (11/10): the optimistic paint of a match made Tuesday «collapsible»
+// and folded away the row the user had just dropped on — with its ⟳ and, when
+// the write then failed, its «Δεν αποθηκεύτηκε» line.
+function _autoSettle(days) {
+  const D = _D();
+  if (_auto && _auto.week !== D.week) _auto = null;
+  if (!_auto) _auto = { week: D.week, frozen: false, closed: {} };
+  if (_auto.frozen) return;
+  _auto.closed = {};
+  days.forEach((d) => { if (d.collapsible && DAY_RE.test(d.date || '')) _auto.closed[d.date] = true; });
+  if (_natState() !== 'loading' && !(D.relay && D.relay.state === 'loading')) _auto.frozen = true;
+}
+// A write in flight or failed, or the keyboard focus, keeps its day open.
+function _dayHeld(day) {
+  const D = _D(), log = D._syncLog || {}, foc = D.ui && D.ui.v4Focus;
+  return day.entries.some((e) => (e.facts || []).some((x) => {
+    const s = log[x.oid];
+    return x.oid === foc || (s && (s.state === 'pend' || s.state === 'err'));
+  }));
 }
 function _dayOpen(day) {
   const ui = _D().ui || {};
   const m = ui.v4Days || {};
   if (Object.prototype.hasOwnProperty.call(m, day.date)) return !!m[day.date];
-  return !day.collapsible;
+  if (!day.collapsible || _dayHeld(day)) return true;
+  return !(_auto && _auto.week === _D().week && _auto.closed[day.date]);
 }
 function _dayHTML(day, today) {
   const dw = _dow(day.date);
@@ -863,14 +931,16 @@ function _dayHTML(day, today) {
   const wk = day.extra && day.date ? W().weekOf(day.date + 'T12:00:00') : null;
   const extra = day.extra ? `<span class="wi4-dayh-c" title="Μεταφέρθηκε σε αυτή την προβολή (Μεταφορά εβδομάδας) — η πραγματική ημέρα είναι εκτός Σαβ–Παρ">μεταφέρθηκε${wk != null ? ' · W' + wk : ''}</span>` : '';
   const q = DAY_RE.test(day.date || '') ? day.date : '';
+  // The chevron is an icon (aria-hidden), never a «▾» glyph in the icon grey.
+  const chev = `<span class="wi4-chev" aria-hidden="true">${_ico('chevron_down', 14)}</span>`;
   if (day.empty) {
-    return `<section class="wi4-day${day.today ? ' today' : ''}" data-day="${q}"><div class="wi4-dayh"><span class="wi4-chev" aria-hidden="true">▾</span><span>${name}</span>${day.today ? '<span class="wi4-today">σήμερα</span>' : ''}<span class="wi4-dayh-c">· Καμία κίνηση</span></div></section>`;
+    return `<section class="wi4-day${day.today ? ' today' : ''}" data-day="${q}"><div class="wi4-dayh">${chev}<span>${name}</span>${day.today ? '<span class="wi4-today">σήμερα</span>' : ''}<span class="wi4-dayh-c">· Καμία κίνηση</span></div></section>`;
   }
   const open = _dayOpen(day);
   const body = day.entries.map((e) => _entryHTML(e, today) + (e.facts[0] && (e.t === 'exp' || e.t === 'imp') ? _msgHTML(e.facts[0].oid) : '')).join('');
   return `<section class="wi4-day${day.today ? ' today' : ''}${open ? '' : ' closed'}" data-day="${q}">` +
     `<div class="wi4-dayh" role="button" tabindex="0" aria-expanded="${open}" onclick="WIV2._dayTog('${q}')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();WIV2._dayTog('${q}')}">` +
-    `<span class="wi4-chev" aria-hidden="true">▾</span><span>${name}</span>${day.today ? '<span class="wi4-today">σήμερα</span>' : ''}${extra}` +
+    `${chev}<span>${name}</span>${day.today ? '<span class="wi4-today">σήμερα</span>' : ''}${extra}` +
     `<span class="wi4-dayh-c" data-dc="${q}">${_dayCountHTML(day)}</span></div>` +
     `<div class="wi4-day-body">${body}</div></section>`;
 }
@@ -892,7 +962,10 @@ function _updHTML() {
     const words = [];
     if (+ch.n > 0) words.push(`${+ch.n} ${+ch.n === 1 ? 'αλλαγή' : 'αλλαγές'}${ch.last_by ? ' από ' + ch.last_by : ''}`);
     if (+ch.auto_n > 0) words.push(`${+ch.auto_n} ${+ch.auto_n === 1 ? 'αυτόματη ενημέρωση' : 'αυτόματες ενημερώσεις'}`);
-    return `<button type="button" class="wi4-upd chg" id="wi4-upd" onclick="WI_INTERNAL.renderWeeklyIntl()" title="Άλλαξαν παραγγελίες της εβδομάδας από τότε που φόρτωσε η σελίδα — κλικ: ανανέωση">${_esc(words.join(' · '))} · Ανανέωση</button>`;
+    // The server counts every International order (not only this week's)
+    // and looks back at most 15΄ per beat (068); the client never lowers the
+    // count until a re-read. The tooltip claims exactly that much.
+    return `<button type="button" class="wi4-upd chg" id="wi4-upd" onclick="WI_INTERNAL.renderWeeklyIntl()" title="Άλλαξαν διεθνείς παραγγελίες από τότε που φόρτωσε η σελίδα — κλικ: ανανέωση">${_esc(words.join(' · '))} · Ανανέωση</button>`;
   }
   const at = D._loadedAt instanceof Date ? D._loadedAt : null;
   if (!at) return '<span class="wi4-upd" id="wi4-upd"></span>';
@@ -934,7 +1007,9 @@ function _viewMenuHTML() {
     `<button type="button" role="menuitemcheckbox" aria-checked="${fr}" onclick="_wk3FeedTog('fr')">${fr ? '✓ ' : ''}ΑΠΟ ΒΕΡΟΙΑ</button>` +
     '<button type="button" role="menuitem" onclick="WIV2._switch(\'0\')">Παλιά προβολή</button>';
   // A Worker that ignores the conflict check is said, never assumed (§g.3).
-  if (typeof window !== 'undefined' && window.TMS_EXPECT_LIVE === false) h += '<div class="wi4-qp-h wi4-t-amb" role="note">ο έλεγχος «το άλλαξε άλλος» δεν είναι ενεργός ακόμη</div>';
+  // A sentence, not a section header: never upper-cased (CSS caps would also
+  // keep the Greek tonos in some browsers).
+  if (typeof window !== 'undefined' && window.TMS_EXPECT_LIVE === false) h += '<div class="wi4-view-note wi4-t-amb" role="note">ο έλεγχος «το άλλαξε άλλος» δεν είναι ενεργός ακόμη</div>';
   return h;
 }
 function _barHTML(m) {
@@ -955,16 +1030,19 @@ function _qwrapHTML(m) {
   const q = m.queue, n = q.length;
   const red = q.filter((x) => x.level === 'red').length, amb = n - red;
   const unk = q.some((x) => x.code === 'SOURCE_UNKNOWN' || x.code === 'NAT_UNKNOWN');
-  let h = `<div class="wi4-q-hd">ΕΠΟΜΕΝΑ · ${unk ? '≥' : ''}${n}<span class="wi4-q-n">${_esc(_plural(red, 'urgent'))} · ${amb} προσοχή${m.loading ? ' · φορτώνει…' : ''}</span></div>`;
-  if (!n) h += '<div class="wi4-qcard" style="cursor:default"><span class="wi4-l2">Τίποτα επείγον αυτή την εβδομάδα</span></div>';
+  // A source still in flight is not «nothing»: the number is a lower bound
+  // («≥») and an empty list says it is still loading (§d.2a).
+  const atLeast = unk || m.loading ? '≥' : '';
+  let h = `<div class="wi4-q-hd">ΕΠΟΜΕΝΑ · ${atLeast}${n}<span class="wi4-q-n">${_esc(_plural(red, 'urgent'))} · ${amb} προσοχή${m.loading ? ' · φορτώνει…' : ''}</span></div>`;
+  if (!n) h += `<div class="wi4-qcard" style="cursor:default"><span class="wi4-l2">${m.loading ? 'Φορτώνει — η λίστα δεν είναι πλήρης ακόμη' : 'Τίποτα επείγον αυτή την εβδομάδα'}</span></div>`;
   q.slice(0, 3).forEach((it, i) => {
-    const btn = it.act === 'week' ? `W${it.week} →` : ACT_LABEL[it.act];
+    const btn = _actLabel(it);
     h += `<div class="wi4-qcard ${it.level === 'red' ? 'wi4-r-red' : 'wi4-r-amb'}" role="button" tabindex="0" onclick="WIV2._qGo(${i})" onkeydown="if(event.key==='Enter'){event.preventDefault();WIV2._qGo(${i})}">` +
       (it.date ? `<span class="wi4-dc ${it.code === 'NO_TRUCK' ? 'red' : 'fut'}" style="cursor:inherit">${_esc(_dayLabel(it.date))}</span>` : '') +
       `<div class="wi4-qcard-t">${_ell('wi4-l1', it.text || it.code)}${it.sub ? _ell('wi4-l2', it.sub) : ''}</div>` +
       (btn ? `<button type="button" class="wi4-btn sm" onclick="event.stopPropagation();WIV2._qAct(${i})">${_esc(btn)}</button>` : '') + '</div>';
   });
-  if (n > 3) h += `<button type="button" class="wi4-btn wi4-q-all" onclick="event.stopPropagation();WI4Actions.queuePanel()" aria-haspopup="dialog">Όλα ${unk ? '≥' : ''}${n} ▾</button>`;
+  if (n > 3) h += `<button type="button" class="wi4-btn wi4-q-all" onclick="event.stopPropagation();WI4Actions.queuePanel()" aria-haspopup="dialog">Όλα ${atLeast}${n} ▾</button>`;
   return h;
 }
 function _qbandHTML(m) {
@@ -980,13 +1058,18 @@ function _shelfWrapHTML() {
 function _colsHTML(m) {
   const lg = L();
   const met = m.metrics || {};
+  // The toggles stay in the header when their column is collapsed (as a
+  // chevron, the label kept for screen readers): the way back is where the
+  // column was, never only inside «Προβολή ▾» (rules: «ανοιγοκλείνουν με κλικ
+  // στην κεφαλίδα»).
+  const tog = (side, text, title) => `<span class="wi4-ftog" role="button" tabindex="0" aria-label="${_esc(title)}" onclick="_wk3FeedTog('${side}')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();_wk3FeedTog('${side}')}" title="${_esc(title)}"><span class="wi4-ftog-t">${text}</span></span>`;
   return '<div class="wi4-cols" role="row">' +
     '<div class="wi4-c-idx"></div>' +
-    '<div class="wi4-c-fl"><span class="wi4-ftog" role="button" tabindex="0" onclick="_wk3FeedTog(\'fl\')" title="Εθνικό σκέλος προς Βέροια — κλικ: άνοιγμα/κλείσιμο στήλης">‹ ΠΡΟΣ ΒΕΡΟΙΑ</span></div>' +
+    `<div class="wi4-c-fl">${tog('fl', '‹ ΠΡΟΣ ΒΕΡΟΙΑ', 'Εθνικό σκέλος προς Βέροια — κλικ: άνοιγμα/κλείσιμο στήλης ΠΡΟΣ ΒΕΡΟΙΑ')}</div>` +
     `<div class="wi4-c-exp"><div class="wi4-leg"><span class="wi4-l-span" style="display:flex;justify-content:space-between"><span>ΕΞΑΓΩΓΗ <span class="wi4-n">· ${_esc(lg.plural(met.expN || 0, 'load'))} · ανά ημέρα εκφόρτωσης</span></span><span>ΠΑΛ.</span></span></div></div>` +
     '<div class="wi4-c-asg">ΑΝΑΘΕΣΗ · ΕΝΤΟΛΗ</div>' +
     `<div class="wi4-c-imp"><div class="wi4-leg"><span class="wi4-l-span" style="display:flex;justify-content:space-between"><span>ΕΙΣΑΓΩΓΗ <span class="wi4-n">· ${_esc(lg.plural(met.impN || 0, 'load'))}</span></span><span>ΠΑΛ.</span></span></div></div>` +
-    '<div class="wi4-c-fr" style="text-align:right"><span class="wi4-ftog" role="button" tabindex="0" onclick="_wk3FeedTog(\'fr\')" title="Εθνική διανομή από Βέροια — κλικ: άνοιγμα/κλείσιμο στήλης">ΑΠΟ ΒΕΡΟΙΑ ›</span></div></div>';
+    `<div class="wi4-c-fr" style="text-align:right">${tog('fr', 'ΑΠΟ ΒΕΡΟΙΑ ›', 'Εθνική διανομή από Βέροια — κλικ: άνοιγμα/κλείσιμο στήλης ΑΠΟ ΒΕΡΟΙΑ')}</div></div>`;
 }
 function _relayBannerHTML() {
   const D = _D();
@@ -1012,60 +1095,43 @@ function _msgHTML(oid) {
 function _presEnabled() {
   return typeof FEATURES !== 'undefined' && FEATURES && FEATURES.WI_PRESENCE === true && typeof WI4Presence !== 'undefined' && !WI4Presence.__wi4Placeholder;
 }
+// Status, list and texts come from WI4Presence alone (state(), stripText(),
+// tipText()): the board keeps no second copy of the rules or the words, so
+// the strip says what the unit-tested client says — 'pending' (no answer
+// yet) and 'off' draw nothing, never «↻ ζωντανά» before a successful beat.
 function _presState() {
   if (!_presEnabled()) return { status: 'off', others: [], changes: null };
   try {
     const s = typeof WI4Presence.state === 'function' ? (WI4Presence.state() || {}) : {};
-    const o = typeof WI4Presence.others === 'function' ? (WI4Presence.others() || []) : (s.others || []);
-    return { status: s.status || 'off', others: Array.isArray(o) ? o.slice(0, 6) : [], changes: s.changes || null };
+    return { status: s.status || 'off', others: Array.isArray(s.others) ? s.others : [], changes: s.changes || null };
   } catch (e) { _logErr(e, 'wi4: presence state'); return { status: 'off', others: [], changes: null }; }
 }
 const _pName = (p) => String((p && (p.name || p.user_name || p.user)) || 'άλλος χρήστης');
 function _presHTML() {
   const ps = _presState();
-  if (ps.status === 'off') return '<div class="wi4-pres" id="wi4-pres"></div>';
-  if (ps.status === 'forbidden') return '<div class="wi4-pres" id="wi4-pres"><span class="wi4-pres-t">Η ζωντανή εικόνα δεν είναι διαθέσιμη για τον ρόλο σου</span></div>';
-  if (ps.status === 'paused') return '<div class="wi4-pres paused" id="wi4-pres"><span class="wi4-pres-t">Ζωντανή εικόνα σε παύση — δεν ξέρουμε ποιος άλλος είναι μέσα · ξαναδοκιμάζει</span></div>';
-  const names = ps.others.map(_pName);
-  const av = ps.others.map((p) => `<span class="wi4-av" title="${_esc(_pName(p))}">${_esc(_pName(p).trim().charAt(0).toUpperCase())}</span>`).join('');
-  const t = (names.length ? names.join(', ') + ' · εδώ τώρα · ' : '') + '↻ ζωντανά';
-  return `<div class="wi4-pres" id="wi4-pres">${av}<span class="wi4-pres-t" title="${_esc(t)}">${_esc(t)}</span></div>`;
+  let text = '';
+  try { if (ps.status !== 'off' && typeof WI4Presence.stripText === 'function') text = WI4Presence.stripText(PRES_MAX) || ''; }
+  catch (e) { _logErr(e, 'wi4: presence text'); }
+  if (!text || (ps.status !== 'live' && ps.status !== 'paused' && ps.status !== 'forbidden')) return '<div class="wi4-pres" id="wi4-pres"></div>';
+  if (ps.status !== 'live') return `<div class="wi4-pres${ps.status === 'paused' ? ' paused' : ''}" id="wi4-pres"><span class="wi4-pres-t">${_esc(text)}</span></div>`;
+  const shown = ps.others.slice(0, PRES_MAX), rest = ps.others.slice(PRES_MAX);
+  const av = shown.map((p) => `<span class="wi4-av" title="${_esc(_pName(p))}">${_esc(_pName(p).trim().charAt(0).toUpperCase())}</span>`).join('') +
+    (rest.length ? `<span class="wi4-av more" title="${_esc(rest.map(_pName).join(', '))}">+${rest.length}</span>` : '');
+  const full = ps.others.map(_pName).join(', ');
+  return `<div class="wi4-pres" id="wi4-pres">${av}<span class="wi4-pres-t" title="${_esc(full || text)}">${_esc(text)}</span></div>`;
 }
+// Called by every paint: start() is idempotent — it takes the CURRENT week
+// and re-observes the new #wi-popover (every full paint re-creates it). No
+// «already started» flag here: one went stale when presence stopped itself
+// (a tab left the page) and silenced it for the session, and it kept the
+// first week for every later beat (11/10).
 function _presStart() {
-  if (!_presEnabled() || _presOn) return;
-  try { if (typeof WI4Presence.start === 'function') { WI4Presence.start({ week: _D().week, onChange: () => WIV2.presencePatch() }); _presOn = true; } }
+  if (!_presEnabled()) return;
+  try { if (typeof WI4Presence.start === 'function') WI4Presence.start({ week: _D().week, onPatch: () => WIV2.presencePatch() }); }
   catch (e) { _logErr(e, 'wi4: presence start'); }
 }
 function _presStop() {
-  if (!_presOn) return;
-  _presOn = false;
-  try { if (typeof WI4Presence !== 'undefined' && typeof WI4Presence.stop === 'function') WI4Presence.stop(); } catch (e) { _logErr(e, 'wi4: presence stop'); }
-}
-function _presCtx(record, action) {
-  if (!_presEnabled() || typeof WI4Presence.setContext !== 'function') return;
-  try {
-    const f = _f(record);
-    WI4Presence.setContext({ week: _D().week, record: _q(record) || null, part: record ? (f['Direction'] === 'Import' ? 'import' : 'export') : null, action: action || 'view' });
-  } catch (e) { _logErr(e, 'wi4: presence context'); }
-}
-// #wi-popover lives inside #content and is re-created by every full paint, so
-// the observer is re-attached at the end of every paint (disconnected first).
-function _popWatch() {
-  if (_popObs) { _popObs.disconnect(); _popObs = null; }
-  if (!_presEnabled()) return;
-  const pop = document.getElementById('wi-popover');
-  if (!pop) return;
-  let was = false;
-  _popObs = new MutationObserver(() => {
-    const open = pop.style.display === 'block';
-    if (open === was) return;
-    was = open;
-    if (!open) { _presCtx(null, 'view'); return; }
-    const m = /_p_(\d+)/.exec(pop.innerHTML || '');
-    const row = m ? (_D().rows || []).find((r) => r.id === +m[1]) : null;
-    _presCtx(row ? ((row.orderIds || [])[0] || row.orderId) : null, 'assign');
-  });
-  _popObs.observe(pop, { attributes: true, attributeFilter: ['style'], childList: true });
+  try { if (typeof WI4Presence !== 'undefined' && typeof WI4Presence.stop === 'function') WI4Presence.stop('page'); } catch (e) { _logErr(e, 'wi4: presence stop'); }
 }
 
 // ═══ paint() (§a.4, §e) ═════════════════════════════════════════════════
@@ -1119,6 +1185,7 @@ function _paint() {
   const m = _compute();
   m.metrics = met;
   _m = m; _queue = m.queue;
+  _autoSettle(m.days);
   const today = m.today;
   _qi = [];
   m.entries.forEach((e) => { e.qi = _qi.length; _qi.push({ row: e.row || (e.parent || null), blob: _blobOf(e) }); });
@@ -1129,19 +1196,26 @@ function _paint() {
     : `<div class="wi4-dayempty">Άδειο φύλλο — W${D.week} · Καμία διεθνής παραγγελία ακόμη. Οι νέες εμφανίζονται εδώ μόλις καταχωρηθούν.</div>`;
   // _WI2_CSS once, like _wiPaint: its global part styles the reused popover
   // and panels; its .wk3.wi2-scoped part does not reach v4 (§c.3).
+  // The reused menu, popover and panel sit OUTSIDE the v4 root (still in
+  // #content, the §a.7 contract): inside it they inherited v4's 12px type and
+  // ink, and the old popover/panels changed size with no design (11/10).
   content.innerHTML = `<div class="wi4${fl}${fr}" data-week="${D.week}"><style>${I.css}</style>` +
     _barHTML(m) + _relayBannerHTML() + _qbandHTML(m) + _shelfWrapHTML() + _colsHTML(m) +
-    `<div id="wi-rows">${rowsHTML}</div>` +
-    '<div id="wi-ctx"></div><div id="wi-popover"></div><div id="wi-panel" class="wi-panel"></div></div>';
+    `<div id="wi-rows">${rowsHTML}</div></div>` +
+    '<div id="wi-ctx"></div><div id="wi-popover"></div><div id="wi-panel" class="wi-panel"></div>';
   window._wiDragging = null;   // as _wiPaint: a repaint ends any drag
   document.body.classList.add('wi4-on');
   _install();
   _layout(false);
   _afterRows();
   try { I.shelfFit(); } catch (_) {}
-  _popWatch();
   _presStart();
   const a = A(); if (a && typeof a.attach === 'function') a.attach();
+  // Measured again once the browser has laid the board out (the column can
+  // still be settling — the sidebar collapsing after the first paint drew a
+  // 3-member groupage as 2 + «+1», 11/10); a width that did not change costs
+  // nothing (_layout compares).
+  if (typeof requestAnimationFrame === 'function') requestAnimationFrame(() => { if (_live()) _layout(false); });
   // First paint of a week: open where the work is (the first day with a red
   // reason, else today) — once, so a repaint never moves the user.
   if (_scrolledWeek !== D.week) {
@@ -1226,13 +1300,25 @@ function _install() {
     if (ev.clientY < top + 60) sc.scrollTop -= 14;
     else if (ev.clientY > bot - 60) sc.scrollTop += 14;
   }, true);
-  window.addEventListener('resize', () => {
+  const relayout = () => {
     if (!_live()) return;
     clearTimeout(_resizeT);
-    _resizeT = setTimeout(() => { if (!_live()) return; _layout(true); try { W().shelfFit(); } catch (_) {} }, 150);
-  });
-  // «Ενημερώθηκε πριν N΄» stays true, and leaving the page drops the v4 body
-  // class and the presence beats (the router has no leave hook).
+    _resizeT = setTimeout(() => { if (!_live()) return; _layout(false); try { W().shelfFit(); } catch (_) {} }, 120);
+  };
+  window.addEventListener('resize', relayout);
+  const host = document.getElementById('content');
+  // The board's width changes without a window resize too (the sidebar
+  // collapsing or expanding, a scrollbar appearing): #content is watched,
+  // so the points always follow the column they are drawn in.
+  if (host && typeof ResizeObserver === 'function') new ResizeObserver(relayout).observe(host);
+  // Leaving the page (the router has no leave hook): every page renders into
+  // #content, so its first change while v4 is no longer active ends v4's
+  // session state — the body class, the presence beats, the v4 overlays —
+  // at once, not at the next 30-second tick. A re-read of this board (a
+  // spinner in #content) keeps v4 active and changes nothing.
+  if (host && typeof MutationObserver === 'function') new MutationObserver(() => { if (!WIV2.active()) _cleanup(); }).observe(host, { childList: true });
+  // «Ενημερώθηκε πριν N΄» stays true; the tick is also the backstop of the
+  // page-leave rule above.
   _tickT = setInterval(() => {
     if (!_live()) { _cleanup(); return; }
     const u = document.getElementById('wi4-upd');
@@ -1251,7 +1337,10 @@ function _scroller() {
 function _cleanup() {
   try { document.body.classList.remove('wi4-on'); } catch (_) {}
   _presStop();
-  if (_popObs) { _popObs.disconnect(); _popObs = null; }
+  // The date panel, «Όλα» panel, «?» sheet and conflict dialog live on <body>:
+  // they must not stay on top of the next page.
+  const a = A(); if (a && typeof a._closeAll === 'function') { try { a._closeAll(); } catch (e) { _logErr(e, 'wi4: close overlays'); } }
+  _auto = null;   // coming back decides the week's collapse afresh
 }
 
 // ═══ W+1 read (§e #1/#2, §d.2a) ═════════════════════════════════════════
@@ -1260,6 +1349,13 @@ function _xwPrime() {
   if (D.week !== I.currentWeek()) { _xw = null; return; }
   const key = D.week + '|' + (D._loadedAt instanceof Date ? D._loadedAt.getTime() : '');
   if (_xw && _xw.key === key) return;
+  // The W+1 of a year's last week is W1 of the NEXT year, and a {Week Number}
+  // filter carries no year: that read cannot be made, so it is «unknown»
+  // (one queue item, «—» on the tab), never a confident zero.
+  try {
+    const ws = I.weekStart(D.week + 1);
+    if (typeof TmsWeek !== 'undefined' && ws instanceof Date && !isNaN(ws) && TmsWeek.numOf(ws) !== D.week + 1) { _xw = { key, state: 'err', recs: [] }; return; }
+  } catch (_) { /* the read below decides */ }
   const st = { key, state: 'loading', recs: [] };
   _xw = st;
   Promise.resolve(I.crossWeekIncoming(D.week)).then((res) => {
@@ -1527,22 +1623,41 @@ async function conflict(res, ctx) {
   const I = W();
   try { if (c.slot) I.sync(c.slot, ''); } catch (e) { _logErr(e, 'wi4 conflict: slot'); }
   try { I.closePopover(); } catch (e) { _logErr(e, 'wi4 conflict: popover'); }
+  // renderWeeklyIntl swallows its own failure (error card): an unchanged
+  // _loadedAt means the screen is NOT the server's truth, and the dialog says
+  // so instead of asking «keep what you see».
+  // What the user saw — the _expect that was sent — is read from WINTL.data
+  // BEFORE the re-read replaces it: the dialog says «it was X, now it is Y».
+  let expected = null;
+  try {
+    const d = _D().data, rec = (d.exports || []).find((r) => r.id === c.orderId) || (d.imports || []).find((r) => r.id === c.orderId);
+    if (rec && res && Array.isArray(res.fields)) expected = L().buildExpect(res.fields, rec) || null;
+  } catch (e) { _logErr(e, 'wi4 conflict: expected'); }
+  const before = _D()._loadedAt;
   try { await I.renderWeeklyIntl(); } catch (e) { _logErr(e, 'wi4 conflict: re-read'); }
+  const stale = _D()._loadedAt === before;
   const a = A();
   if (!a || typeof a.conflictDialog !== 'function') {
     if (typeof toast === 'function') toast('Η εγγραφή άλλαξε από άλλον χρήστη — δείχνουμε την τρέχουσα', 'warn');
     return;
   }
-  const choice = await a.conflictDialog(res || {}, { orderId: c.orderId, kind: c.kind === 'match' ? 'match' : 'assign' });
-  if (choice !== 'reopen' || !_live()) return;
-  // Reopen on the fresh truth, the row resolved by ORDER id now (§f).
-  const id = rowIdOf(c.orderId);
-  const row = id == null ? null : (_D().rows || []).find((r) => r.id === id);
-  const el = row ? _rowEl(c.orderId) : null;
-  const box = el && (el.querySelector('.wi4-asg .wi4-box') || el);
-  if (!row || !box) { if (typeof toast === 'function') toast('Η σειρά δεν βρίσκεται πια στον πίνακα — ανανέωσε', 'warn'); return; }
-  const ev = { currentTarget: box, target: box, stopPropagation() {}, preventDefault() {} };
-  if (row.type === 'import') I.openImpPopover(ev, row.orderId, row.id); else I.openPopover(ev, row.id);
+  // The old write function returns once the question is ON SCREEN: it must
+  // never stay pending while the user thinks (a caller that awaited it hung
+  // until a click, 11/10). The answer is handled here, keyed by ORDER id.
+  a.conflictDialog(res || {}, { orderId: c.orderId, kind: c.kind === 'match' ? 'match' : 'assign', mine: c.mine || null, expected, stale })
+    .then((choice) => {
+      if (choice === 'refresh') { I.renderWeeklyIntl(); return; }
+      if (choice !== 'reopen' || !_live()) return;
+      // Reopen on the fresh truth, the row resolved by ORDER id now (§f).
+      const id = rowIdOf(c.orderId);
+      const row = id == null ? null : (_D().rows || []).find((r) => r.id === id);
+      const el = row ? _rowEl(c.orderId) : null;
+      const box = el && (el.querySelector('.wi4-asg .wi4-box') || el);
+      if (!row || !box) { if (typeof toast === 'function') toast('Η σειρά δεν βρίσκεται πια στον πίνακα — ανανέωσε', 'warn'); return; }
+      const ev = { currentTarget: box, target: box, stopPropagation() {}, preventDefault() {} };
+      if (row.type === 'import') I.openImpPopover(ev, row.orderId, row.id); else I.openPopover(ev, row.id);
+    })
+    .catch((e) => _logErr(e, 'wi4 conflict: dialog'));
 }
 function presencePatch() {
   const root = _root(); if (!root || !_live()) return;
@@ -1560,10 +1675,9 @@ function presencePatch() {
       const no = cell.querySelector('.wi4-no'); if (!no) return;
       const hit = by[cell.dataset.oid];
       if (!hit) { if (no.dataset.p) { no.textContent = cell.dataset.no || ''; delete no.dataset.p; no.removeAttribute('title'); } return; }
-      const at = hit.since ? new Date(hit.since) : null;
-      const hm = at && !isNaN(at) ? at.toLocaleTimeString('el-GR', { hour: '2-digit', minute: '2-digit', hour12: false }) : '';
       no.innerHTML = `<span class="wi4-av sm">${_esc(hit.name.trim().charAt(0).toUpperCase())}</span>`;
-      no.title = [hit.name, PRES_ACTION[hit.action] || PRES_ACTION.view, hm ? 'από ' + hm : ''].filter(Boolean).join(' · ');
+      // Tooltip words from the client's whitelist (one source with the strip).
+      no.title = typeof WI4Presence.tipText === 'function' ? WI4Presence.tipText(hit.name, { action: hit.action, since: hit.since }) : hit.name;
       no.dataset.p = '1';
     });
     const a = A(); if (a && typeof a._refreshPresence === 'function') a._refreshPresence();
@@ -1627,7 +1741,6 @@ function _qGo(i) {
 }
 function _qAct(i) {
   const it = _queue[i]; if (!it) return;
-  if (it.act === 'week') { _D().week = it.week; W().renderWeeklyIntl(); return; }
   const a = A(); if (a && typeof a._queueAct === 'function') a._queueAct(it);
 }
 
@@ -1637,6 +1750,8 @@ const WIV2 = {
   rowIdOf, presencePatch, noteMove, factsOf, search, queueItems, rowOrder, focusRow, searchFocus,
   // Inline-handler seams (not part of the frozen contract).
   _switch, _dayTog, _more, _qGo, _qAct, _searchKey, _status, _retry, _msgClose,
+  // For the «Όλα N ▾» panel: a source still loading makes its count «≥N».
+  _queueLoading: () => !!(_m && _m.loading),
 };
 window.WIV2 = WIV2;
 })();
