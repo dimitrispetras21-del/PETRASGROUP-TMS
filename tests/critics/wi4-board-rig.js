@@ -1289,26 +1289,35 @@ async function scnQueue(browser, origin) {
           btn: bs ? [bs.fontSize, bs.borderTopLeftRadius, bs.paddingLeft] : null, rail: [rail.left, rail.top, rail.bottom] }; };
       const all = document.querySelector('#content .wi4 .wi4-q-all'), hd = document.querySelector('#content .wi4 .wi4-q-hd'), qn = document.querySelector('#content .wi4 .wi4-q-n');
       const lbl = document.querySelector('#content .wi4 .wi-shelf-lbl'), k = lbl && lbl.querySelector('.wi-shelf-k');
-      const chips = [...document.querySelectorAll('#content .wi4 .wi-shelf-chip')].map(c => { const s = cs(c), gl = c.querySelector('span[aria-hidden]'), fl = c.querySelector('.fl');
+      const chipEls = [...document.querySelectorAll('#content .wi4 .wi-shelf-chip')];
+      const chips = chipEls.map(c => { const s = cs(c), gl = c.querySelector('span[aria-hidden]'), fl = c.querySelector('.fl');
         return { cls: c.className.replace('wi-shelf-chip', '').trim(), h: px(R(c).height), radius: s.borderTopLeftRadius, bg: s.backgroundColor, border: s.borderTopColor, gap: s.columnGap,
-          fw: s.fontWeight, b: cs(c.querySelector('b')).fontWeight, glyph: gl ? [cs(gl).fontSize, cs(gl).color] : null, fl: fl ? [cs(fl).color, cs(fl).fontWeight] : null }; });
+          fw: s.fontWeight, b: cs(c.querySelector('b')).fontWeight, glyph: gl ? [cs(gl).fontSize, cs(gl).color] : null, fl: fl ? [cs(fl).color, cs(fl).fontWeight] : null, text: c.textContent }; });
+      // Parity r2 (Figma 1115:2746): chip → chip, and the label's TEXT end → the first chip.
+      const chipGaps = chipEls.slice(1).map((c, i) => px(R(c).left - R(chipEls[i]).right));
+      const rg = lbl && document.createRange(); if (rg) rg.selectNodeContents(lbl);
+      const lblToChip = rg && chipEls[0] ? px(R(chipEls[0]).left - rg.getBoundingClientRect().right) : null;
+      const sv = document.querySelector('#content .wi4 .wi4-search > svg');
+      const stockSub = WIV2.queueItems().filter(q => q.code === 'STOCK_LOT').map(q => [q.lotId, q.sub]);
       const lo = document.querySelector('#content .wi4 .wi-shelf-loose'), late = lo && lo.querySelector('.wi-shelf-late'), los = lo && cs(lo);
       return { cards: cards.map(card), all: all ? [cs(all).fontSize, cs(all).fontWeight] : null,
         hd: hd ? { fs: cs(hd).fontSize, ls: cs(hd).letterSpacing, color: cs(hd).color, w: px(R(hd).width), n: qn && cs(qn).fontSize } : null,
         lbl: lbl ? { ff: cs(lbl).fontFamily, fs: cs(lbl).fontSize, fw: cs(lbl).fontWeight, ls: cs(lbl).letterSpacing, color: cs(lbl).color, text: lbl.textContent,
           k: k ? [k.textContent, cs(k).color, cs(k).fontSize, cs(k).fontWeight] : null } : null,
-        chips, loose: lo ? { text: lo.textContent, h: px(R(lo).height), radius: los.borderTopLeftRadius, border: [los.borderTopStyle, los.borderTopColor], bg: los.backgroundColor,
+        chips, chipGaps, lblToChip, searchIco: sv ? cs(sv).color : null, stockSub, loose: lo ? { text: lo.textContent, h: px(R(lo).height), radius: los.borderTopLeftRadius, border: [los.borderTopStyle, los.borderTopColor], bg: los.backgroundColor,
           color: los.color, late: late ? [late.textContent, cs(late).color] : null } : null };
     });
     const c = g.cards;
-    // F7 (Figma 1115:2710): pl 10 / pr 8, gap 10, border #eaecf0 (--wi4-line), a 70px centred chip so every
+    // F7 (Figma 1115:2710): pl 10 / pr 8, gap 10, border #eaecf0 (--wi4-line-3, parity r2), a 70px centred chip so every
     // name starts at the same x (1 + 10 + 70 + 10 = 91), the rail over the card's own border.
-    ok(scn, 'F7 queue card: pl 10 · pr 8 · gap 10 · border --wi4-line · the text at x=91 on every card (70px chip)', c.length === 3 && c.every(x => x.padL === '10px' && x.padR === '8px' && x.gap === '10px'
-      && x.border === 'rgb(238, 241, 245)' && x.chipW >= 70 && Math.abs(x.textX - 91) <= 1), c);
+    ok(scn, 'F7 queue card: pl 10 · pr 8 · gap 10 · border --wi4-line-3 #eaecf0 · the text at x=91 on every card (70px chip)', c.length === 3 && c.every(x => x.padL === '10px' && x.padR === '8px' && x.gap === '10px'
+      && x.border === 'rgb(234, 236, 240)' && x.chipW >= 70 && Math.abs(x.textX - 91) <= 1), c);
     ok(scn, 'F7 queue card type: name 12.5px, reason 11px, button 12px radius 4 px 10; the rail covers the border (−1px); «Όλα» 12.5px 500',
       c.every(x => x.l1 === '12.5px' && x.l2 === '11px' && x.btn && x.btn.join() === '12px,4px,10px' && x.rail.join() === '-1px,-1px,-1px') && !!g.all && g.all.join() === '12.5px,500', { c, all: g.all });
     // F8 (1115:2707): label column 150px, ΕΠΟΜΕΝΑ 10.5px / .42 in #344054, sub 11.5px.
     ok(scn, 'F8 queue label: 150px column, 10.5px, tracking .42px, --wi4-grey-1; sub 11.5px', !!g.hd && g.hd.w >= 150 && g.hd.fs === '10.5px' && g.hd.ls === '0.42px' && g.hd.color === 'rgb(52, 64, 84)' && g.hd.n === '11.5px', g.hd);
+    // Parity r2 (Figma 1115:2735): the search magnifier is stroked #5B6B7F, not the box's ink.
+    ok(scn, 'F8 search icon: --wi4-grey-2 rgb(91, 107, 127)', g.searchIco === 'rgb(91, 107, 127)', g.searchIco);
     // F4 (1115:2748/2749): DM Sans 600 10.5 / .42 #344054; «· 2 προς έλεγχο» Medium 11 in amber — words, never «⚠».
     const L4 = g.lbl;
     ok(scn, 'F4 ΑΠΟΘΕΜΑ: DM Sans 600 10.5px, tracking .42px, --wi4-grey-1; «· 2 προς έλεγχο» 500 11px --wi4-amber', !!L4 && /DM Sans/.test(L4.ff) && !/Syne/.test(L4.ff) && L4.fs === '10.5px' && L4.fw === '600'
@@ -1320,6 +1329,13 @@ async function scnQueue(browser, origin) {
     ok(scn, 'F5 lot chips: nointake outlined #fca5a5 with its flag in --wi4-red; close outlined #fcd34d with its flag in --wi4-amber; ok #E2E8F0',
       !!by('nointake') && by('nointake').border === 'rgb(252, 165, 165)' && by('nointake').fl.join() === 'rgb(185, 28, 28),600'
       && !!by('close') && by('close').border === 'rgb(252, 211, 77)' && by('close').fl.join() === 'rgb(180, 83, 9),600' && !!by('ok') && by('ok').border === 'rgb(226, 232, 240)', g.chips);
+    // Parity r2 (Figma 1115:2746): chips 8px apart; 16px from the label's text to the first chip (pr 8 + gap 8).
+    ok(scn, 'F5 lot chips 8±1px apart; label text end → first chip 16±1px', g.chipGaps.length >= 2 && g.chipGaps.every(v => Math.abs(v - 8) <= 1) && g.lblToChip != null && Math.abs(g.lblToChip - 16) <= 1,
+      { gaps: g.chipGaps, lblToChip: g.lblToChip });
+    // Parity r2 (Figma 1115:2763 / 1117:2799): «να κλείσει;» on the chip AND on the queue's STOCK_LOT item — one word list (LOT_WORDS).
+    const s902 = g.stockSub.find(x => x[0] === 'recWiLOT902');
+    ok(scn, 'F5 close lot: the chip ends «να κλείσει;» and its STOCK_LOT queue item says the same', !!by('close') && /να κλείσει;$/.test(by('close').text) && !!s902 && s902[1] === 'να κλείσει;',
+      { chip: by('close') && by('close').text, stockSub: g.stockSub });
     // F6 (1115:2777): the count stays neutral, only «· 1 εκπρόθεσμο» is red.
     const lo = g.loose;
     ok(scn, 'F6 loose pieces: 24px, radius 4, solid --wi4-ctl, white, --wi4-grey-1; only «· 1 εκπρόθεσμο» in --wi4-red', !!lo && lo.h === 24 && lo.radius === '4px' && lo.border.join() === 'solid,rgb(208, 213, 221)'
@@ -1361,6 +1377,20 @@ async function scnQueue(browser, origin) {
     ok(scn, 'F2 panel buttons: 11.5px 500, radius 5, px 9, 23px tall', !!p && !!p.btn && p.btn.join() === '11.5px,500,5px,9px,23', p && p.btn);
     ok(scn, 'F9 panel: 640px, radius 10; selected line #f0f9ff with no outline; group labels 10.5px / .42; reason 11px', !!p && p.w === 640 && p.radius === '10px'
       && p.onBg === 'rgb(240, 249, 255)' && p.onOutline === 'none' && !!p.grp && p.grp.join() === '10.5px,0.42px' && p.l2 === '11px', p);
+    // Parity r2: at 1800×800 the panel holds fewer lines than it has and macOS
+    // hides the scrollbar — .ovf (a fade at the visible bottom) says more
+    // follow; scrolled to the end it goes. Scrolled back after, for the checks below.
+    const ov0 = await pg.evaluate(() => { const el = document.querySelector('.wi4-qp'); return el && { ovf: el.classList.contains('ovf'), sh: el.scrollHeight, ch: el.clientHeight,
+      fade: getComputedStyle(el, '::after').position }; });
+    await pg.evaluate(() => { const el = document.querySelector('.wi4-qp'); if (el) el.scrollTop = el.scrollHeight; });
+    await pg.waitForTimeout(150);
+    await shot(pg, 'queue-panel-1800-end');
+    const ov1 = await pg.evaluate(() => { const el = document.querySelector('.wi4-qp'); return el && { ovf: el.classList.contains('ovf'), top: el.scrollTop }; });
+    await pg.evaluate(() => { const el = document.querySelector('.wi4-qp'); if (el) el.scrollTop = 0; });
+    await pg.waitForTimeout(150);
+    const ov2 = await pg.evaluate(() => { const el = document.querySelector('.wi4-qp'); return !!el && el.classList.contains('ovf'); });
+    ok(scn, 'F9 panel taller than the window: .ovf (sticky fade) while lines remain below, none at the end, back at the top again', !!ov0 && ov0.sh > ov0.ch && ov0.ovf && ov0.fade === 'sticky'
+      && !!ov1 && !ov1.ovf && ov1.top > 0 && ov2, { ov0, ov1, ov2 });
     // Tab stays inside the panel: it went to the ΑΠΟΘΕΜΑ label and scrolled the board 769 → 0.
     for (let i = 0; i < 40; i++) await pg.keyboard.press('Tab');
     const tab = await pg.evaluate(() => ({ inside: !!document.querySelector('.wi4-qp') && document.querySelector('.wi4-qp').contains(document.activeElement), top: document.getElementById('content').scrollTop }));
@@ -1377,6 +1407,13 @@ async function scnQueue(browser, origin) {
       return { open: !!el, idx: rows.indexOf(on), oid, inView: !!rr && rr.bottom > sc.top && rr.top < sc.bottom, inside: !!el && el.contains(document.activeElement) };
     });
     ok(scn, 'F1 Q with the panel open: the next line is selected, its row is focused and in view, the panel stays', q.open && q.idx === (want.i + 1) % want.n && !!q.oid && q.inView && q.inside, { want, q });
+    // Parity r2: ↓ onto a line under the fade scrolls the panel so that line stops ABOVE the fade (scroll-padding 24).
+    const below = await pg.evaluate(() => { const el = document.querySelector('.wi4-qp'); if (!el) return null; const r = [...el.querySelectorAll('.wi4-qp-i')];
+      const lim = el.getBoundingClientRect().bottom - 1 - 24; return { on: r.findIndex(x => x.classList.contains('on')), first: r.findIndex(x => x.getBoundingClientRect().bottom > lim) }; });
+    if (below && below.first > below.on) for (let i = below.on; i < below.first; i++) { await pg.keyboard.press('ArrowDown'); await pg.waitForTimeout(60); }
+    const fd = await pg.evaluate(() => { const el = document.querySelector('.wi4-qp'), on = el && el.querySelector('.wi4-qp-i.on'); if (!on) return null;
+      return { ovf: el.classList.contains('ovf'), top: el.scrollTop, gap: Math.round(el.getBoundingClientRect().bottom - 1 - on.getBoundingClientRect().bottom) }; });
+    ok(scn, 'F9 ↓ onto a line under the fade: the panel scrolls and the line stops ≥23px above the bottom (above the fade)', !!below && below.first > below.on && !!fd && fd.ovf && fd.top > 0 && fd.gap >= 23, { below, fd });
     // A wheel over the board (outside the panel) closes it: the panel must not float over rows that moved.
     await pg.mouse.move(1700, 600); await pg.mouse.wheel(0, 400); await pg.waitForTimeout(300);
     const wh = await pg.evaluate(() => ({ open: !!document.querySelector('.wi4-qp'), exp: (document.querySelector('#content .wi4 .wi4-q-all') || {}).getAttribute && document.querySelector('#content .wi4 .wi4-q-all').getAttribute('aria-expanded') }));
@@ -2990,24 +3027,50 @@ async function scnParity(browser, origin) {
           firstCard: fb ? Math.round(fb.getBoundingClientRect().top - cols.top) : null, gaps: [...new Set(gaps)],
           chevX: ch && fb ? Math.round(ch.getBoundingClientRect().left - fb.getBoundingClientRect().left) : null, nameX: nm && fb ? Math.round(nm.getBoundingClientRect().left - fb.getBoundingClientRect().left) : null,
           todayTop: today ? [getComputedStyle(today).borderTopWidth, getComputedStyle(today).borderTopColor] : null,
+          todaySide: today ? [getComputedStyle(today).borderLeftWidth, getComputedStyle(today).borderLeftColor, getComputedStyle(today).borderBottomColor] : null,
+          // Chrome snaps a border width down to whole device pixels in the computed value: 1.5px reads «1px» at DPR 1.
+          todaySnap: Math.floor(1.5 * devicePixelRatio) / devicePixelRatio + 'px',
+          todayRule: (() => { for (const sh of document.styleSheets) { let rs; try { rs = sh.cssRules; } catch (_) { continue; }
+            for (const r of rs) if (r.selectorText === '.wi4-day.today .wi4-day-body') return r.style.borderTop; } return null; })(),
           dayn: dn ? [dn.fontFamily, dn.letterSpacing] : null, dayd: dd ? dd.fontFamily : null };
       });
-      ok(scn, 'grey page: .wi4 transparent, #content rgb(244, 246, 249); every day card white, 1px border, 6px radius', fr.wi4 === 'rgba(0, 0, 0, 0)' && fr.content === 'rgb(244, 246, 249)'
-        && fr.cards.length === 1 && fr.cards[0] === 'rgb(255, 255, 255)|1px|solid|6px', fr);
+      // Parity r2: radius 8 (Figma Surface 1097:2462 / 2645 / 3592).
+      ok(scn, 'grey page: .wi4 transparent, #content rgb(244, 246, 249); every day card white, 1px border, 8px radius', fr.wi4 === 'rgba(0, 0, 0, 0)' && fr.content === 'rgb(244, 246, 249)'
+        && fr.cards.length === 1 && fr.cards[0] === 'rgb(255, 255, 255)|1px|solid|8px', fr);
       ok(scn, 'no full-width rules under the queue, the stock strip or the column header', fr.rules.every(w => w === '0px'), fr.rules);
       ok(scn, 'bands 8px apart (sheet 15 A): stock strip y 110±2, column header y 146±2', Math.abs(fr.shelf - 110) <= 2 && Math.abs(fr.cols - 146) <= 2, { shelf: fr.shelf, cols: fr.cols });
       // Figma 1097:2448: column header 24 + gap 8 + name 16 + 6 = the first card
       // 54px under the header's top; card → card 36px (name 16 between).
       ok(scn, 'day rhythm: first card 54±2px under the column header, open cards 36±1px apart', Math.abs(fr.firstCard - 54) <= 2 && fr.gaps.length > 0 && fr.gaps.every(v => Math.abs(v - 36) <= 1), { firstCard: fr.firstCard, gaps: fr.gaps });
       ok(scn, 'day header: chevron at x4, name at x26 (Figma 1097:2640); Syne tracking .8 + DM Sans date (1097:2642)', fr.chevX === 4 && fr.nameX === 26 && fr.dayn && /Syne/.test(fr.dayn[0]) && fr.dayn[1] === '0.8px' && /DM Sans/.test(fr.dayd || ''), fr);
-      ok(scn, 'today\'s card: a 1px blue hairline on top', fr.todayTop && fr.todayTop[0] === '1px' && fr.todayTop[1] === 'rgb(2, 123, 189)', fr.todayTop);
+      // Parity r2 (Figma 1097:3592): 1.5px accent at 55% on top (as the browser snaps it to device pixels), no side /
+      // bottom line (1px transparent keeps the tracks).
+      ok(scn, 'today\'s card: 1.5px (device-snapped) rgba(2, 123, 189, 0.55) on top; sides and bottom transparent, sides still 1px', !!fr.todayTop && fr.todayTop[0] === fr.todaySnap && /^1\.5px solid/.test(fr.todayRule || '')
+        && fr.todayTop[1] === 'rgba(2, 123, 189, 0.55)' && !!fr.todaySide && fr.todaySide.join() === '1px,rgba(0, 0, 0, 0),rgba(0, 0, 0, 0)', { top: fr.todayTop, snap: fr.todaySnap, rule: fr.todayRule, side: fr.todaySide });
       // Rails on a card's first/last row follow the card's curve (Figma 1097:2648).
       const rc = await page.evaluate(() => [...document.querySelectorAll('#content .wi4 #wi-rows .wi4-day-body')].flatMap(b => {
         const out = [], f = b.firstElementChild, l = b.lastElementChild, rail = (e) => e && /wi4-r-(red|amb)/.test(e.className);
-        if (rail(f)) out.push(['first', getComputedStyle(f, '::before').borderTopLeftRadius]);
-        if (rail(l)) out.push(['last', getComputedStyle(l, '::before').borderBottomLeftRadius]);
+        const st = (e) => { const s = getComputedStyle(e, '::before'); return [s.width, s.borderLeftWidth, s.borderLeftStyle, s.borderLeftColor, /wi4-r-red/.test(e.className) ? 'red' : 'amb']; };
+        if (rail(f)) out.push(['first', getComputedStyle(f, '::before').borderTopLeftRadius, ...st(f)]);
+        if (rail(l)) out.push(['last', getComputedStyle(l, '::before').borderBottomLeftRadius, ...st(l)]);
         return out; }));
-      ok(scn, 'a rail on a card\'s first/last row is rounded 5px with the card', rc.length > 0 && rc.every(x => x[1] === '5px'), rc);
+      // Parity r2: the card's 7px inner curve (8 − 1px border) on an 8px box, so the radius is not scaled down;
+      // the stripe itself is still 3px (red solid / amber dashed).
+      ok(scn, 'a rail on a card\'s first/last row is rounded 7px with the card (8px box); the stripe still 3px rgb(185, 28, 28) / dashed amber', rc.length > 0
+        && rc.every(x => x[1] === '7px' && x[2] === '8px' && x[3] === '3px' && (x[6] === 'red' ? x[4] === 'solid' && x[5] === 'rgb(185, 28, 28)' : x[4] === 'dashed' && x[5] === 'rgb(180, 83, 9)')), rc);
+      // Parity r2, column header and top bar: «ΑΝΑΘΕΣΗ · ΕΝΤΟΛΗ» 10px into its track (Figma 1097:2433), in line with
+      // the pills; the Regular «· N φορτία…» keeps the header's .7px tracking (1097:2428); the Pre-order count
+      // on #eaecf0 (1097:2313).
+      const ch = await page.evaluate(() => {
+        const asg = document.querySelector('#content .wi4 .wi4-cols .wi4-c-asg'), card = document.querySelector('#content .wi4 #wi-rows .wi4-day-body');
+        const rg = asg && document.createRange(); if (rg) rg.selectNodeContents(asg);
+        const n = [...document.querySelectorAll('#content .wi4 .wi4-cols .wi4-n')].map(e => getComputedStyle(e).letterSpacing);
+        const pre = [...document.querySelectorAll('.wi4-bar .wi4-btn')].find(b => /Pre-order/.test(b.textContent)), cnt = pre && pre.querySelector('.wi4-cnt');
+        return { asgX: rg && card ? Math.round(rg.getBoundingClientRect().left - card.getBoundingClientRect().left) : null, n, cnt: cnt ? getComputedStyle(cnt).backgroundColor : null };
+      });
+      ok(scn, 'column header: «ΑΝΑΘΕΣΗ · ΕΝΤΟΛΗ» text 828±2px from the card\'s left (Figma 1097:2433 px 10)', ch.asgX != null && Math.abs(ch.asgX - 828) <= 2, ch);
+      ok(scn, 'column header: the Regular «· N φορτία…» spans keep tracking 0.7px (Figma 1097:2428 / 2439)', ch.n.length >= 2 && ch.n.every(v => v === '0.7px'), ch.n);
+      ok(scn, 'top bar: the Pre-order count on #eaecf0 rgb(234, 236, 240) (Figma 1097:2313)', ch.cnt === 'rgb(234, 236, 240)', ch);
       await page.evaluate(() => { document.getElementById('content').scrollTop = 700; });
       await page.waitForTimeout(150);
       // Scrolled: the header sits right under the bar. The bar's menus must

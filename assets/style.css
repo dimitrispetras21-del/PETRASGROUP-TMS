@@ -7614,6 +7614,12 @@ button.btn-icon:focus-visible { outline:2px solid var(--accent); outline-offset:
   --wi4-av-t3-bg:     #e2e8f0;  --wi4-av-t3:  #334155;
   --wi4-line:         #eef1f5;
   --wi4-line-2:       var(--border);
+  /* Parity r2: Figma's light outline / count fill (1115:2710 queue card,
+     1097:2313 Pre-order count) — --wi4-line read one shade too pale there. */
+  --wi4-line-3:       #eaecf0;
+  /* Today's card frame (Figma 1097:3592 draws it in the accent at 55%): the
+     full-strength 1px --wi4-blue hairline it replaces read heavier than Figma. */
+  --wi4-today-line:   rgba(2,123,189,.55);
   --wi4-ctl:          #d0d5dd;
   --wi4-slot:         #cbd5e1;
   --wi4-red:          var(--danger);
@@ -7839,7 +7845,7 @@ body.wi4-on #wi-ctx .wi4-m-sec .wi4-l2, body.wi4-on #wi-ctx .wi4-m-hd .wi4-l2 { 
 .wi4-bar .wi4-btn { color:var(--wi4-ink); border-color:var(--wi4-line-2); border-radius:8px; padding:0 13px 0 11px; font-size:12.5px; }
 .wi4-bar .wi4-btn:hover { border-color:var(--wi4-grey-2); }
 .wi4-bar .wi4-btn svg { flex:none; color:var(--text-mid); }
-.wi4-bar .wi4-cnt { background:var(--wi4-line); font-weight:600; height:15px; line-height:15px; border-radius:7.5px; }
+.wi4-bar .wi4-cnt { background:var(--wi4-line-3); font-weight:600; height:15px; line-height:15px; border-radius:7.5px; }
 
 /* Presence (§e #18). Never a lock and never «κανείς»: these rules only draw
    who IS there; an empty strip is drawn by drawing nothing. */
@@ -7917,6 +7923,9 @@ body.wi4-on #wi-ctx .wi4-m-sec .wi4-l2, body.wi4-on #wi-ctx .wi4-m-hd .wi4-l2 { 
 /* F8 (1115:2734): 240×30, radius 7, the light #e2e8f0 outline (with the
    control grey #d0d5dd the box was the loudest thing in the band), 9/7 insets. */
 .wi4-search { flex:none; width:240px; height:30px; display:flex; align-items:center; gap:7px; padding:0 7px 0 9px; border:1px solid var(--wi4-line-2); border-radius:7px; background:var(--surface-card); }
+/* Parity r2 (Figma 1115:2735): the magnifier is stroked #5B6B7F; inheriting
+   the box's ink it was the darkest mark in the band. */
+.wi4-search > svg { flex:none; color:var(--wi4-grey-2); }
 .wi4-search input { flex:1; min-width:0; border:0; outline:0; background:transparent; font:inherit; font-size:12.5px; color:var(--wi4-ink); }
 .wi4-search input::placeholder { color:var(--wi4-grey-3); }
 .wi4-search:focus-within { border-color:var(--wi4-blue); box-shadow:0 0 0 2px var(--accent-light); }
@@ -7924,9 +7933,10 @@ body.wi4-on #wi-ctx .wi4-m-sec .wi4-l2, body.wi4-on #wi-ctx .wi4-m-hd .wi4-l2 { 
 .wi4-key { display:inline-block; min-width:16px; padding:0 4px; border:1px solid var(--wi4-ctl); border-radius:3px; font-size:10px; font-weight:600; line-height:16px; text-align:center; color:var(--wi4-grey-2); background:var(--surface-card); }
 /* F8: the «/» cap of the search box is 17×16 in Figma (the shared key is 18px). */
 .wi4-search .wi4-key { border-color:var(--wi4-line-2); border-radius:4px; padding:0 5px; font-size:10.5px; font-weight:500; line-height:14px; }
-/* F7 (Figma 1115:2710): 10 / 8 insets, 10px gaps, the light #eaecf0 outline. */
+/* F7 (Figma 1115:2710): 10 / 8 insets, 10px gaps, the light #eaecf0 outline
+   (--wi4-line-3; parity r2: --wi4-line drew #eef1f5 while this said #eaecf0). */
 .wi4-qcard { position:relative; flex:1 1 0; min-width:0; height:34px; display:flex; align-items:center; gap:10px; padding:0 8px 0 10px;
-  border:1px solid var(--wi4-line); border-radius:6px; background:var(--surface-card); cursor:pointer; }
+  border:1px solid var(--wi4-line-3); border-radius:6px; background:var(--surface-card); cursor:pointer; }
 .wi4-qcard:hover { background:var(--wi4-hover); }
 /* One line per card and per panel item (sheet 15): «Alpha Dairy → Beta…»
    then «10π · φόρτωση ήταν χθες» in grey right after it. The NAME gives way
@@ -7968,6 +7978,17 @@ body.wi4-on #wi-ctx .wi4-m-sec .wi4-l2, body.wi4-on #wi-ctx .wi4-m-hd .wi4-l2 { 
    left edge (WI4Actions.queuePanel places it). */
 .wi4-qp { position:fixed; z-index:var(--z-top); width:min(640px, calc(100vw - 32px)); max-height:70vh; overflow:auto; padding:8px 0; background:var(--surface-card);
   border:1px solid var(--wi4-line-2); border-radius:10px; box-shadow:0 8px 24px rgba(15,23,41,.12); font-family:'DM Sans',sans-serif; font-size:12px; color:var(--wi4-ink); }
+/* Parity r2: Figma 1117:2676 has no overflow state, but 70vh holds 560 of
+   952px at 1800×800 and macOS hides the scrollbar — the panel ended mid-line
+   with nothing saying more follow. A sticky fade at the visible bottom while
+   lines remain below (.ovf, WI4Actions.queuePanel). Not mask-image: a mask
+   would clip the panel's own border and shadow. bottom −8px = the panel's
+   padding: a sticky box stops at the padding edge, and at 0 the cut line
+   showed crisp in the 8px under the fade. */
+.wi4-qp.ovf::after { content:''; display:block; position:sticky; bottom:-8px; height:24px; margin-top:-24px; background:linear-gradient(transparent,var(--surface-card)); pointer-events:none; }
+/* Q / ↑↓ bring the selected line into view with scrollIntoView(nearest): it
+   stops above the fade, not under it. */
+.wi4-qp.ovf { scroll-padding-bottom:24px; }
 /* F3 (1117:2677): the panel's first line is a sentence with key caps —
    «ΕΠΟΜΕΝΑ · 17  [Q] επόμενο  [Esc] κλείσιμο» — not a section label: as a
    .wi4-qp-h it was upper-cased into «[Q] ΕΠΟΜΕΝΟ [ESC] ΚΛΕΙΣΙΜΟ». */
@@ -8005,6 +8026,10 @@ body.wi4-on #wi-ctx .wi4-m-sec .wi4-l2, body.wi4-on #wi-ctx .wi4-m-hd .wi4-l2 { 
    strip as in Figma (y=2); the global 2/4 split was for 22px pills. */
 .wi4 .wi-shelf-in { justify-content:flex-start; max-width:none; margin-left:0; padding:2px 0; }
 .wi4 .wi-shelf-list { flex:1 1 auto; min-width:0; }
+/* Parity r2 (Figma 1115:2746): 8px between lot chips and 16px from the
+   label's text to the first chip (label pr 8 + gap 8); the old board's 6px
+   gaps and 2px label inset packed the chips into one run. */
+.wi4 .wi-shelf-in, .wi4 .wi-shelf-list { gap:8px; }
 .wi4 .wi-shelf-loose { margin-left:auto; }
 /* F6 (1115:2777): one neutral 24px box; only «· 1 εκπρόθεσμο» is red (its own
    span, SHELF_OPT.lateSpan). The whole sentence in red painted the plain
@@ -8013,7 +8038,7 @@ body.wi4-on #wi-ctx .wi4-m-sec .wi4-l2, body.wi4-on #wi-ctx .wi4-m-hd .wi4-l2 { 
 .wi4 .wi-shelf-loose .wi-shelf-late { color:var(--wi4-red); }
 /* F4 (1115:2748/2749): a DM Sans caps label like the queue's «ΕΠΟΜΕΝΑ», not
    the old board's Syne; «· 2 προς έλεγχο» (SHELF_OPT.flagWords, not «⚠») in amber. */
-.wi4 .wi-shelf-lbl { font:600 10.5px 'DM Sans',sans-serif; letter-spacing:.42px; color:var(--wi4-grey-1); }
+.wi4 .wi-shelf-lbl { font:600 10.5px 'DM Sans',sans-serif; letter-spacing:.42px; color:var(--wi4-grey-1); padding-right:8px; }
 .wi4 .wi-shelf-lbl .wi-shelf-k { font-weight:500; font-size:11px; letter-spacing:0; color:var(--wi4-amber); }
 /* Chip (sheet 15): warehouse and figure bold in ink, the client in grey, a
    light «·» between them — words from _wiShelfChip, «π» from its v4 option.
@@ -8079,7 +8104,14 @@ body.wi4-on #wi-ctx .wi4-m-sec .wi4-l2, body.wi4-on #wi-ctx .wi4-m-hd .wi4-l2 { 
   .wi4-cols::after { animation:wi4-sh linear both; animation-timeline:scroll(nearest); animation-range:0 24px; }
 }
 @keyframes wi4-sh { to { opacity:1; } }
-.wi4-n { font-weight:400; letter-spacing:0; text-transform:none; }
+/* Parity r2 (Figma 1097:2428/2439): «· 22 φορτία · ανά ημέρα εκφόρτωσης» is
+   the header's Regular span and keeps its .7px tracking; at 0 it ran ~24px
+   short of Figma's. */
+.wi4-n { font-weight:400; text-transform:none; }
+/* Parity r2 (Figma 1097:2433, px 10): «ΑΝΑΘΕΣΗ · ΕΝΤΟΛΗ» starts in line with
+   the assignment pills' text, not on the track edge 10px left of it. Header
+   only — the row pills keep their own 0 inset. */
+.wi4-cols .wi4-c-asg { padding-left:10px; box-sizing:border-box; }
 .wi4-ftog { cursor:pointer; white-space:nowrap; }
 .wi4-ftog:hover { color:var(--wi4-ink); }
 /* A collapsed national column keeps its toggle in the header as a chevron
@@ -8135,18 +8167,23 @@ body.wi4-on #wi-ctx .wi4-m-sec .wi4-l2, body.wi4-on #wi-ctx .wi4-m-hd .wi4-l2 { 
 .wi4-today { font-size:12px; font-weight:400; letter-spacing:0; color:var(--wi4-blue-ink); }
 /* Today's whole header is blue (board 1097:2254), not only «σήμερα». */
 .wi4-day.today .wi4-dayh { color:var(--wi4-blue-ink); }
-.wi4-day-body { border:1px solid var(--wi4-line-2); border-radius:6px; background:var(--surface-card); margin-bottom:0; }
-/* Today's card: a 1px blue hairline on top (Figma, today's day card). */
-.wi4-day.today .wi4-day-body { border-top:1px solid var(--wi4-blue); }
+/* Radius 8 (parity r2, Figma Surface 1097:2462 / 2645 / 3592). */
+.wi4-day-body { border:1px solid var(--wi4-line-2); border-radius:8px; background:var(--surface-card); margin-bottom:0; }
+/* Today's card (parity r2, Figma 1097:3592): a 1.5px accent-at-55% line on
+   top that tapers round the corners, and NO side or bottom line — the card's
+   sides sit white on the page. The sides stay 1px (transparent), so today's
+   rows keep the same tracks as every other card's. */
+.wi4-day.today .wi4-day-body { border-color:transparent; border-top:1.5px solid var(--wi4-today-line); }
 .wi4-day.closed .wi4-day-body { display:none; }
-/* Rails on a card's first/last row follow the card's 5px inner curve (Figma
-   rail 1097:2648) instead of poking out square. Not overflow:hidden on the
-   card: it would clip the «+N» fold opened on a last row (.wk3-xfold.open,
-   absolute under its row) and the drag outlines. The 2px of width lets the
-   5px radius apply unscaled to the 3px stripe (a radius wider than its box
-   shrinks). */
-.wi4-day-body > :is(.wi4-r-red, .wi4-r-amb):first-child::before { width:2px; border-top-left-radius:5px; }
-.wi4-day-body > :is(.wi4-r-red, .wi4-r-amb):last-child::before { width:2px; border-bottom-left-radius:5px; }
+/* Rails on a card's first/last row follow the card's 7px inner curve (8px
+   radius − 1px border; Figma rail 1097:2648, the stripe clipped by the card)
+   instead of poking out square. Not overflow:hidden on the card: it would
+   clip the «+N» fold opened on a last row (.wk3-xfold.open, absolute under its
+   row) and the drag outlines. The box is 8px wide (border-box: the 3px stripe
+   + 5px transparent) so the 7px radius applies unscaled — on the bare 3px
+   stripe a radius wider than its box shrinks to fit. */
+.wi4-day-body > :is(.wi4-r-red, .wi4-r-amb):first-child::before { width:8px; border-top-left-radius:7px; }
+.wi4-day-body > :is(.wi4-r-red, .wi4-r-amb):last-child::before { width:8px; border-bottom-left-radius:7px; }
 .wi4-dayempty { height:24px; display:flex; align-items:center; padding:0 12px; font-size:11px; color:var(--wi4-grey-2); }
 
 /* Rows (§e #7). 32px is locked (owner). One separator under every row, none
