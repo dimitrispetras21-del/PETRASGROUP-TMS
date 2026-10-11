@@ -338,13 +338,31 @@ test('date write, v4 inactive: no opts on the PATCH, downstream sync as today', 
   assert.deepStrictEqual(JSON.parse(JSON.stringify(log.syncs)), [['recE1', ['Loading DateTime']]]);
   assert.strictEqual(log.invalidated, 1);
 });
-test('date write, v4 active: _expect = the value the panel showed (curIso), not a second read', async () => {
+test('date write, v4 active: _expect = the value the panel showed (seen), not a second read', async () => {
+  const { ctx, log } = seam(true);
+  await ctx._wiDateWrite('recE1', 'Loading DateTime', '2026-10-12T06:00:00.000Z', '2026-10-13', undefined, '2026-10-12T06:00:00.000Z');
+  assert.deepStrictEqual(JSON.parse(JSON.stringify(log.patches[0].opts)), { expect: { 'Loading DateTime': '2026-10-12T06:00:00.000Z' }, quiet: true });
+  log.patches = [];
+  await ctx._wiDateWrite('recNOPE', 'Loading DateTime', '2026-10-12T06:00:00.000Z', '2026-10-13', undefined, '2026-10-12T06:00:00.000Z');
+  assert.strictEqual(log.patches[0].opts, undefined, 'a record not on this board → no _expect, the request is today\'s');
+});
+test('date write, v4 active, no `seen` (any caller but the v4 panel): _expect = WINTL.data, never the displayed curIso', async () => {
+  // The v1 chip passes the DISPLAYED day as curIso — for an empty VS CD Date
+  // that is the Loading+1 estimate, which would 409 against the NULL in the table.
   const { ctx, log } = seam(true);
   await ctx._wiDateWrite('recE1', 'Loading DateTime', '2026-10-12T06:00:00.000Z', '2026-10-13');
-  assert.deepStrictEqual(JSON.parse(JSON.stringify(log.patches[0].opts)), { expect: { 'Loading DateTime': '2026-10-12T06:00:00.000Z' } });
-  log.patches = [];
-  await ctx._wiDateWrite('recNOPE', 'Loading DateTime', '2026-10-12T06:00:00.000Z', '2026-10-13');
-  assert.strictEqual(log.patches[0].opts, undefined, 'a record not on this board → no _expect, the request is today\'s');
+  assert.deepStrictEqual(JSON.parse(JSON.stringify(log.patches[0].opts)), { expect: { 'Loading DateTime': '2026-10-12T04:00:00.000Z' }, quiet: true });
+});
+test('date write, v4 active, offline: queued is not written — no downstream sync, no ok', async () => {
+  const { ctx, log } = seam(true);
+  ctx._answer = { id: 'recE1', fields: { 'Loading DateTime': 'x' }, _offline: true };
+  const res = await ctx._wiDateWrite('recE1', 'Loading DateTime', '2026-10-12T06:00:00.000Z', '2026-10-13', undefined, '2026-10-12T06:00:00.000Z');
+  assert.deepStrictEqual(JSON.parse(JSON.stringify(res)), { ok: false, offline: true });
+  assert.deepStrictEqual(log.syncs, []);
+  assert.strictEqual(log.invalidated, 0);
+  const off = seam(false);
+  off.ctx._answer = { id: 'recE1', fields: {}, _offline: true };
+  assert.strictEqual((await off.ctx._wiDateWrite('recE1', 'Loading DateTime', '2026-10-12T06:00:00.000Z', '2026-10-13')).ok, true, 'v1 keeps today\'s path');
 });
 test('date write, v4 active: a 409 conflict is returned and nothing downstream runs', async () => {
   const { ctx, log } = seam(true);
