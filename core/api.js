@@ -409,8 +409,15 @@ function _tmsSessionAlive() {
 // shows its own «Ποια κρατάμε;» dialog, so it goes back at once — no retry, no
 // toast. Without opts a 409 keeps today's path (silent retry → «Save failed»),
 // so no other page changes behaviour.
+// opts.quiet (Weekly Intl v4 only): the caller reports a failed write on the
+// row itself («Δεν αποθηκεύτηκε …» + the title-bar counter), so the GENERIC
+// toasts of this request — «Σφάλμα server» per retry, «Πολλά αιτήματα»,
+// «Σφάλμα σύνδεσης» — stay off: one failed save was four stacked messages
+// (review 11/10). A 403/400/422 keeps its toast: it carries a reason the row
+// line does not. Every failure is still logged (logError) — quiet ≠ silent.
 async function _atRetry(fn, retries = 3, opts) {
   const reqId = _newReqId();
+  const quiet = !!(opts && opts.quiet === true);
   if (_tmsSessionGone) throw tmsSessionRefuse(reqId);
   for (let i = 0; i < retries; i++) {
     try {
@@ -449,7 +456,7 @@ async function _atRetry(fn, retries = 3, opts) {
         throw _e403;
       }
       if (res.status === 429) {
-        if (typeof showErrorToast === 'function') {
+        if (!quiet && typeof showErrorToast === 'function') {
           showErrorToast('\u03A0\u03BF\u03BB\u03BB\u03AC \u03B1\u03B9\u03C4\u03AE\u03BC\u03B1\u03C4\u03B1 \u2014 \u03B1\u03C5\u03C4\u03CC\u03BC\u03B1\u03C4\u03B7 \u03B5\u03C0\u03B1\u03BD\u03AC\u03BB\u03B7\u03C8\u03B7...', 'warn');
         }
         const wait = Math.pow(2, i) * 1000 + Math.random() * 500;
@@ -508,7 +515,7 @@ async function _atRetry(fn, retries = 3, opts) {
         throw _e;
       }
       if (res.status >= 500 && i < retries - 1) {
-        if (typeof showErrorToast === 'function') {
+        if (!quiet && typeof showErrorToast === 'function') {
           showErrorToast('\u03A3\u03C6\u03AC\u03BB\u03BC\u03B1 server \u2014 \u03B4\u03BF\u03BA\u03B9\u03BC\u03AC\u03C3\u03C4\u03B5 \u03BE\u03B1\u03BD\u03AC', 'error');
         }
         await new Promise(r => setTimeout(r, 1000 * (i + 1)));
@@ -526,7 +533,7 @@ async function _atRetry(fn, retries = 3, opts) {
       if (i === retries - 1) {
         try { if (e && typeof e === 'object' && !e._req) e._req = reqId; } catch (_) {}
         if (typeof logError === 'function') logError(e, 'API retry exhausted');
-        if (typeof showErrorToast === 'function') {
+        if (!quiet && typeof showErrorToast === 'function') {
           showErrorToast('\u03A3\u03C6\u03AC\u03BB\u03BC\u03B1 \u03C3\u03CD\u03BD\u03B4\u03B5\u03C3\u03B7\u03C2 \u2014 \u03B4\u03BF\u03BA\u03B9\u03BC\u03AC\u03C3\u03C4\u03B5 \u03BE\u03B1\u03BD\u03AC', 'error');
         }
         throw e;
@@ -743,6 +750,7 @@ function atSuppressUndo(fn) {
 let _atExpectIgnoredLogged = false;
 async function atPatch(tableId, recId, fields, opts) {
   const _expect = opts && opts.expect ? opts.expect : null;
+  const _quiet = !!(opts && opts.quiet === true);
   _auditLog('PATCH', tableId, recId, fields);
   // Capture pre-state for undo (from cache only — no extra fetch)
   let _undoPrev = null;
@@ -777,7 +785,7 @@ async function atPatch(tableId, recId, fields, opts) {
     method: 'PATCH',
     headers: _apiHeaders('PATCH', _r),
     body: JSON.stringify(_expect ? { fields, typecast: true, _expect } : { fields, typecast: true })
-  }), undefined, _expect ? { conflict: true } : undefined));
+  }), undefined, _expect ? (_quiet ? { conflict: true, quiet: true } : { conflict: true }) : (_quiet ? { quiet: true } : undefined)));
   const data = await res.json();
   // A conflict is an ANSWER, not a failure: nothing was written, and the v4
   // caller asks «Ποια κρατάμε;». So no «Save failed» toast — but one app_errors
@@ -794,7 +802,8 @@ async function atPatch(tableId, recId, fields, opts) {
   if (data.error) {
     const errMsg = _atErrMsg(data.error, 'Unknown Airtable error');
     if (typeof logError === 'function') logError(new Error(errMsg), `atPatch(${tableId}, ${recId})`);
-    if (typeof showErrorToast === 'function') showErrorToast('Save failed', 'error');
+    // quiet: the v4 row says «Δεν αποθηκεύτηκε» itself (see _atRetry).
+    if (!_quiet && typeof showErrorToast === 'function') showErrorToast('Save failed', 'error');
     throw new Error(errMsg);
   }
   // Capability detection: a Worker without the check ignores `_expect` and
@@ -1214,7 +1223,8 @@ async function atSafePatch(tableId, recId, fields, opts) {
     try { return await atPatch(tableId, recId, fields, opts); }
     catch (e) { if (e && e.conflict) return { conflict: true, ...e.conflict }; throw e; }
   }
-  return atPatch(tableId, recId, fields);
+  // opts.quiet alone (v4): no _expect, only the generic toasts held back.
+  return opts && opts.quiet === true ? atPatch(tableId, recId, fields, { quiet: true }) : atPatch(tableId, recId, fields);
 }
 
 // ── 3. Online Presence ─────────────────────────────

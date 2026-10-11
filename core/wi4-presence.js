@@ -78,6 +78,7 @@ const S = {
   ctx: { week: null, record: null, part: null, action: 'view' },
   opts: {},
   timer: null, timerAt: 0,
+  nextAt: 0,                         // the earliest next beat the last answer allowed (back-off included)
   inFlight: false,
   dirty: false,                      // context changed while a beat was in flight
   lastSentAt: -Infinity,
@@ -309,7 +310,11 @@ async function _beat() {
   // A context change during the flight goes out at the next allowed moment,
   // but never earlier than a 429 asked, and never while the endpoint is down.
   if (S.dirty && kind === 200) wait = Math.min(wait, _gapLeft());
-  _schedule(Math.max(wait, _gapLeft()));
+  const nextMs = Math.max(wait, _gapLeft());
+  // Remembered across a hidden spell: hiding the tab clears the timer, and
+  // without this the back-off was lost on every alt-tab (review 11/10).
+  S.nextAt = _now() + nextMs;
+  _schedule(nextMs);
 }
 
 function _headers() {
@@ -339,7 +344,12 @@ const _onInput = () => { S.lastInputAt = _now(); };
 function _onVisibility() {
   if (!S.running) return;
   if (!_visible()) { _clearTimer(); return; }
-  _schedule(_gapLeft());                       // resume with an immediate beat
+  // A live tab resumes with an immediate beat. A tab in back-off (404/5xx/
+  // network, or a 429 that asked to wait) keeps the wait it was given:
+  // dispatchers switch tabs dozens of times an hour, and an outage is the
+  // worst moment to add load to the Free plan's shared 100k/day.
+  const backoff = (S.status === 'paused' || S.failures > 0 || S.retryAfterMs) ? Math.max(0, (S.nextAt || 0) - _now()) : 0;
+  _schedule(Math.max(_gapLeft(), backoff));
 }
 const _onPageHide = () => _leave();
 
