@@ -2068,7 +2068,10 @@ async function scnDate(browser, origin) {
     // 24-hour HH:MM whatever the browser's locale (a native time input showed
     // «07:00 AM», review 11/10); one identity line «client · from — to».
     if (field !== 'VS CD Date') ok(scn, 'the time reads 24-hour «HH:MM» (a text field, not the locale\'s time input)', info && info.timeType === 'text' && /^([01]\d|2[0-3]):[0-5]\d$/.test(info.timeVal || '') && !/AM|PM/i.test(info.timeVal || ''), info);
-    ok(scn, 'the identity line is one line, «client · place — place», no country names', info && info.idH <= 16 && / · .+ — .+/.test(info.id) && !/Ελλάδα|Γερμανία/.test(info.id), info && [info.id, info.idH]);
+    // One line = the text box: since parity r2 the id line also carries the
+    // head's 12px + the divider under the text (Figma 1125:2803).
+    const idc = await page.evaluate(() => { const e = document.querySelector('.wi4-datep-id'), s = e && getComputedStyle(e); return e ? Math.round(e.clientHeight - parseFloat(s.paddingTop) - parseFloat(s.paddingBottom)) : 0; });
+    ok(scn, 'the identity line is one line, «client · place — place», no country names', info && idc > 0 && idc <= 16 && / · .+ — .+/.test(info.id) && !/Ελλάδα|Γερμανία/.test(info.id), info && [info.id, info.idH, idc]);
     ok(scn, 'the panel says what changes and what does not', info && /Η Εβδομάδα δεν αλλάζει από εδώ/.test(info.note), info && info.note);
     // Per field (review 11/10: the Βέροια field said «…και τη Βέροια»).
     if (field === 'VS CD Date') ok(scn, 'the Βέροια note names what a Βέροια change moves — never «τις στάσεις»', info && /ημερομηνία Βέροιας/.test(info.note) && /εθνικού σκέλους/.test(info.note) && !/στάσεις/.test(info.note), info && info.note);
@@ -2128,6 +2131,25 @@ async function scnDate(browser, origin) {
     const g = await page.evaluate(() => { const p = document.querySelector('.wi4-datep'); if (!p) return null; const t = p.querySelector('.wi4-time');
       return { w: p.getBoundingClientRect().width, pad: getComputedStyle(p).paddingLeft, time: t ? t.getBoundingClientRect().height : null, cell: getComputedStyle(p.querySelectorAll('.wi4-cal')[1].querySelector('.wi4-cal-d')).fontSize }; });
     ok('date.geometry', 'panel 300px wide with a 16px inset, time field 32px (Figma 1125:2799)', !!g && Math.abs(g.w - 300) <= 1 && g.pad === '16px' && Math.abs(g.time - 32) <= 1, g);
+    // Parity r2 (1125:2799): three bands — head closed by a full-width
+    // divider, body, a grey footer band flush with the panel's bottom.
+    const bd = await page.evaluate(() => { const p = document.querySelector('.wi4-datep'); if (!p) return null;
+      const cs = el => getComputedStyle(el), pb = p.getBoundingClientRect(), bw = parseFloat(cs(p).borderLeftWidth), inner = pb.width - 2 * bw;
+      const hd = p.querySelector('.wi4-datep-hd'), id = p.querySelector('.wi4-datep-id'), ft = p.querySelector('.wi4-datep-ft'), t = p.querySelector('.wi4-time'), tl = p.querySelector('.wi4-time-l'), n = p.querySelector('.wi4-datep-note');
+      const ib = id.getBoundingClientRect(), fb = ft.getBoundingClientRect();
+      return { head: cs(hd).fontWeight + ' ' + cs(hd).fontSize, div: { w: cs(id).borderBottomWidth, c: cs(id).borderBottomColor, span: Math.round(ib.width - inner), x: Math.round(ib.left - pb.left - bw) },
+        ft: { bg: cs(ft).backgroundColor, span: Math.round(ft.getBoundingClientRect().width - inner), x: Math.round(fb.left - pb.left - bw), gap: Math.round(pb.bottom - bw - fb.bottom),
+          r: [cs(ft).borderBottomLeftRadius, cs(ft).borderBottomRightRadius], want: (parseFloat(cs(p).borderBottomLeftRadius) - bw) + 'px' },
+        btn: [...ft.querySelectorAll('.wi4-btn')].map(b => cs(b).borderTopLeftRadius + ' ' + cs(b).fontSize),
+        time: [cs(t).fontSize, cs(t).borderTopLeftRadius, cs(t).paddingLeft].join(' '), label: cs(tl).fontSize + ' ' + cs(tl).letterSpacing, note: cs(n).fontSize }; });
+    ok('date.geometry', 'head 700 15px; a 1px #f2f4f7 divider under the identity line across the full inner width (1125:2803)',
+      !!bd && bd.head === '700 15px' && bd.div.w === '1px' && bd.div.c === 'rgb(242, 244, 247)' && Math.abs(bd.div.span) <= 1 && Math.abs(bd.div.x) <= 1, bd);
+    ok('date.geometry', 'footer band rgb(249, 250, 251) across the inner width, flush with the bottom, corners = panel radius − border; buttons radius 4px, 12.5px (1125:2879)',
+      !!bd && bd.ft.bg === 'rgb(249, 250, 251)' && Math.abs(bd.ft.span) <= 1 && Math.abs(bd.ft.x) <= 1 && Math.abs(bd.ft.gap) <= 1 && bd.ft.r.every(r => r === bd.ft.want)
+      && bd.btn.length === 2 && bd.btn.every(b => b === '4px 12.5px'), bd);
+    ok('date.geometry', 'time 12.5px, radius 4px, 10px in; «Ώρα» 10.5px tracked .525px; note 11.5px (1125:2873/2878)',
+      !!bd && bd.time === '12.5px 4px 10px' && bd.label === '10.5px 0.525px' && bd.note === '11.5px', bd);
+    if (OUT) await page.locator('.wi4-datep').screenshot({ path: path.join(OUT, 'date-panel-crop.png') });
     const pb = await fams('.wi4-datep button');
     ok('date.fonts', 'every date-panel button (days, switch, footer) is DM Sans; the day cells 12px', dm(pb) && !!g && g.cell === '12px', pb.filter(b => !/^"?DM Sans/.test(b.fam)).concat([g && g.cell]));
     await page.keyboard.press('Escape'); await page.waitForTimeout(150);
@@ -2224,16 +2246,26 @@ async function scnKeys(browser, origin) {
   // the live keymap, at the foot of the board; a mouse press takes it away.
   const kh = await page.evaluate(() => { const h = document.querySelector('#content .wi4 .wi4-khint'); if (!h) return null; const b = h.getBoundingClientRect();
     const sc = document.getElementById('content'), end = sc.scrollHeight - sc.scrollTop - sc.clientHeight < 2;
-    return { keys: [...h.querySelectorAll('.wi4-key')].map(k => k.textContent.trim()), h: Math.round(b.height), bottom: Math.round(b.bottom), vh: innerHeight, end, vis: getComputedStyle(h).visibility }; });
+    return { keys: [...h.querySelectorAll('.wi4-key')].map(k => k.textContent.trim()), h: Math.round(b.height), bottom: Math.round(b.bottom), vh: innerHeight, end, vis: getComputedStyle(h).visibility,
+      w: Math.round(b.width), radius: getComputedStyle(h).borderTopLeftRadius, bt: getComputedStyle(h).borderTopWidth }; });
   // On the window's bottom edge while the board scrolls on (in the flow under the last row at the end).
   ok('keys', '↓ shows the key-hint strip (≥5 keys from the keymap, 32px, on the window\'s bottom edge)', !!kh && kh.keys.length >= 5 && kh.keys.includes('Enter') && kh.keys.includes('?') && kh.h === 32 && kh.vis === 'visible' && kh.bottom <= kh.vh && (kh.end || kh.bottom >= kh.vh - 1), kh);
   const endChk = await page.evaluate(() => new Promise((res) => { const sc = document.getElementById('content'); const top0 = sc.scrollTop; sc.scrollTop = sc.scrollHeight;
     requestAnimationFrame(() => { const last = document.getElementById('wi-rows').getBoundingClientRect(), h = document.querySelector('#content .wi4 .wi4-khint');
       const out = { lastBottom: Math.round(last.bottom), stripTop: h ? Math.round(h.getBoundingClientRect().top) : null }; sc.scrollTop = top0; res(out); }); }));
   ok('keys', 'at the end of the scroll the strip sits under the last row, never on it', endChk.stripTop != null && endChk.stripTop >= endChk.lastBottom, endChk);
+  // Parity r2 (1119:2812): a pill the size of its keys (Figma 719), radius 6,
+  // no rule over it — not a full-width band.
+  ok('keys', 'the key-hint strip is sized to its keys (<900px), radius 6px, no top border', !!kh && kh.w < 900 && kh.radius === '6px' && kh.bt === '0px', kh);
+  if (OUT) await page.screenshot({ path: path.join(OUT, 'keys-hint-strip.png'), clip: { x: 0, y: 1080 - 120, width: 1920, height: 120 } });
   await page.keyboard.press('ArrowDown');
   const s2 = await st();
   ok('keys', '↓ again moves to the next row', !!s2.focus && s2.focus !== s1.focus, [s1.focus, s2.focus]);
+  // Figma 1119:2676 row 16: a step shows the ring only — the 1.5 s flash of
+  // each row left both rows lit after ↓↓ (well inside the 1.5 s).
+  const trail = await page.evaluate(() => { const f = document.querySelectorAll('#content .wi4 .wi4-focus');
+    return { hl: document.querySelectorAll('#content .wi4 .wi4-hl').length, ring: f.length, on: f.length ? (f[0].dataset.oid || (f[0].closest('[data-oid]') || { dataset: {} }).dataset.oid) : null, focus: WINTL.ui && WINTL.ui.v4Focus }; });
+  ok('keys', 'after ↓↓ no row is flashed (.wi4-hl) and only the focused row has the ring', trail.hl === 0 && trail.ring === 1 && trail.on === trail.focus, trail);
   await page.keyboard.press('Enter'); await page.waitForTimeout(200);
   ok('keys', 'Enter opens the per-load menu', (await st()).ctx);
   await page.keyboard.press('Escape'); await page.waitForTimeout(100);
@@ -2242,6 +2274,10 @@ async function scnKeys(browser, origin) {
   await page.waitForTimeout(300);
   ok('keys', 'A (Greek «α», code KeyA) opens the assignment popover', (await st()).pop);
   await page.evaluate(() => { if (typeof _wiClosePopover === 'function') _wiClosePopover(); });
+  // A jump keeps the flash: the eye must find where the board landed.
+  await page.keyboard.press('KeyQ'); await page.waitForTimeout(150);
+  const qf = await page.evaluate(() => { const el = document.querySelector('#content .wi4 .wi4-focus'); return { focus: WINTL.ui && WINTL.ui.v4Focus, hl: !!el && el.classList.contains('wi4-hl') }; });
+  ok('keys', 'Q (a jump to the queue\'s next) still flashes the row it lands on', !!qf.focus && qf.hl, qf);
   await page.keyboard.press('Shift+Slash'); await page.waitForTimeout(200);
   const help = await page.evaluate(() => [...document.querySelectorAll('.wi4-dlg .wi4-help-row')].map(r => [...r.querySelectorAll('.wi4-key')].map(k => k.textContent.trim()).join('+')));
   const keymap = await page.evaluate(() => WI4.KEYMAP.map(k => k.keys));
@@ -2255,6 +2291,14 @@ async function scnKeys(browser, origin) {
     return d ? { w: Math.round(d.getBoundingClientRect().width), title: c(t).fontSize + '/' + c(t).fontWeight + ' ' + c(t).fontFamily.split(',')[0].replace(/"/g, ''),
       key: c(row).gridTemplateColumns.split(' ')[0], cap: c(k).fontSize + ' ' + c(k).fontFamily.split(',')[0].replace(/"/g, ''), esc: c(esc).fontFamily.split(',')[0].replace(/"/g, '') } : null; });
   ok('keys', '«?» sheet: 600 wide, Syne 17/700 title, 110px key column, DM Mono 11 caps (Esc too)', !!hg && hg.w === 600 && hg.title === '17px/700 Syne' && hg.key === '110px' && hg.cap === '11px DM Mono' && hg.esc === 'DM Mono', hg);
+  // Figma 1119:2907: ΓΕΝΙΚΑ reads ⌘K · Esc · ? (its ⌘Z is not bound).
+  const gen = await page.evaluate(() => { const out = []; let on = false;
+    for (const el of document.querySelectorAll('.wi4-dlg.wi4-help > *')) {
+      if (el.classList.contains('wi4-qp-h')) { on = el.textContent.trim() === 'ΓΕΝΙΚΑ'; continue; }
+      if (on && el.classList.contains('wi4-help-row')) out.push([...el.querySelectorAll('.wi4-key')].map(k => k.textContent.trim()).join('+'));
+    }
+    return out; });
+  ok('keys', '«?» ΓΕΝΙΚΑ in Figma\'s order: ⌘K, Esc, ?', gen.length === 3 && /^(⌘K|Ctrl\+K)$/.test(gen[0]) && gen[1] === 'Esc' && gen[2] === '?', gen);
   await page.keyboard.press('Escape'); await page.waitForTimeout(100);
   await page.keyboard.press('Slash'); await page.waitForTimeout(100);
   ok('keys', '/ focuses the search box', await page.evaluate(() => !!document.activeElement && !!document.activeElement.closest('.wi4-search')));
@@ -2735,13 +2779,19 @@ async function scnConflict(browser, origin) {
       const lead = c.querySelector('.wi4-conf-lead'), kids = [...c.children].filter(k => !k.classList.contains('wi4-conf-lead') && !k.classList.contains('wi4-dlg-ft'));
       const pb = p.getBoundingClientRect(), cb = c.getBoundingClientRect(), bw = parseFloat(getComputedStyle(p).borderLeftWidth);
       return { lead: lead ? lead.textContent : '', leadW: lead ? getComputedStyle(lead).fontWeight : null, lines: kids.map(k => ({ t: k.textContent, w: getComputedStyle(k).fontWeight })),
-        border: getComputedStyle(c).borderTopColor, want: t('--wi4-conf-line'), radius: getComputedStyle(c).borderTopLeftRadius, inner: pb.width - 2 * bw, w: cb.width, x: cb.left - pb.left - bw,
-        btn: [...c.querySelectorAll('button')].map(b => ({ fam: getComputedStyle(b).fontFamily, size: getComputedStyle(b).fontSize, w: getComputedStyle(b).fontWeight, h: b.getBoundingClientRect().height, out: b.getBoundingClientRect().left < cb.left || b.getBoundingClientRect().right > cb.right })) }; }, [TOKEN_JS]);
+        border: getComputedStyle(c).borderTopColor, want: t('--wi4-conf-line'), radius: getComputedStyle(c).borderTopLeftRadius, inner: pb.width - 2 * bw, w: cb.width, x: cb.left - pb.left - bw, boxH: Math.round(cb.height),
+        btn: [...c.querySelectorAll('button')].map(b => ({ t: b.textContent, top: Math.round(b.getBoundingClientRect().top), fam: getComputedStyle(b).fontFamily, size: getComputedStyle(b).fontSize, w: getComputedStyle(b).fontWeight, h: b.getBoundingClientRect().height, out: b.getBoundingClientRect().left < cb.left || b.getBoundingClientRect().right > cb.right })) }; }, [TOKEN_JS]);
     ok(scn, 'the lead names who AND both dates («… : Τετ 7/10 06:00 → Τετ 7/10 12:00»), SemiBold', !!cf && /άλλαξε/.test(cf.lead) && /:\s*\S+ \d{1,2}\/\d{1,2}.*→.*\d{1,2}\/\d{1,2}/.test(cf.lead) && cf.leadW === '600', cf);
     ok(scn, '«Η δική σου επιλογή: … Ποια κρατάμε;» is ONE regular line', !!cf && cf.lines.length === 1 && /^Η δική σου επιλογή: .+\. Ποια κρατάμε;$/.test(cf.lines[0].t) && cf.lines[0].w === '400', cf && cf.lines);
     ok(scn, 'box: conf-line border, radius 6, the panel\'s inner width; buttons DM Sans Medium 11.5, 25px, inside the box',
       !!cf && cf.border === cf.want && cf.radius === '6px' && Math.abs(cf.w - cf.inner) <= 2 && Math.abs(cf.x) <= 1 && cf.btn.length === 2
       && cf.btn.every(b => /^"?DM Sans/.test(b.fam) && b.size === '11.5px' && b.w === '500' && Math.abs(b.h - 25) <= 0.5 && !b.out), cf);
+    // Parity r2 (Figma 1125:2982): the rig's 409 is anonymous (by 'user');
+    // «Κράτα του άλλου χρήστη» stacked the two buttons and pushed the
+    // calendar down. «Κράτα την τρέχουσα» keeps them on one row.
+    ok(scn, 'anonymous 409: «Κράτα την τρέχουσα» + «Γράψε τη δική μου» on ONE row, box ≤110px tall (1125:2982)',
+      !!cf && cf.btn.length === 2 && cf.btn[0].t === 'Κράτα την τρέχουσα' && Math.abs(cf.btn[0].top - cf.btn[1].top) <= 1 && cf.boxH <= 110, cf && { btn: cf.btn.map(b => [b.t, b.top]), boxH: cf.boxH });
+    if (OUT) await page.locator('.wi4-datep').screenshot({ path: path.join(OUT, 'conflict-date-panel-crop.png') });
     const mine = page.locator('.wi4-datep .wi4-conf button', { hasText: 'Γράψε τη δική μου' });
     ok(scn, 'buttons «Κράτα …» and «Γράψε τη δική μου»', (await mine.count()) === 1 && (await page.locator('.wi4-datep .wi4-conf button', { hasText: 'Κράτα' }).count()) === 1);
     if (await mine.count()) { await mine.click(); await page.waitForTimeout(500); await settle(page, S, 1000); }
@@ -2749,6 +2799,16 @@ async function scnConflict(browser, origin) {
     // order (e.g. 'National Order Created') is today's cascade, not a resend.
     const P = patches(S, 'recWiE009').filter(p => p.fields && 'Loading DateTime' in p.fields);
     ok(scn, '«Γράψε τη δική μου» resends with _expect = the server\'s current value and writes', P.length === 2 && P[1].status === 200 && WI4.sameValue(P[1].expect['Loading DateTime'], '2026-10-07T09:00:00.000Z', 'Loading DateTime'), P);
+    // The keep label itself: a named author stays «Κράτα του Χ»; only the
+    // anonymous one became «Κράτα την τρέχουσα».
+    const keep = await page.evaluate(async () => { const out = {};
+      for (const by of ['Χρήστης Β', 'user']) {
+        const p = WI4Actions.conflictDialog({ by, fields: [] }, { kind: 'assign' });
+        const b = document.querySelector('.wi4-dlg .wi4-conf .wi4-dlg-ft .wi4-btn:not(.pri)'); out[by] = b ? b.textContent : null;
+        window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' })); await p;
+      }
+      return out; });
+    ok(scn, 'keep button: «Κράτα του Χρήστης Β» for a named author, «Κράτα την τρέχουσα» for an anonymous one', keep['Χρήστης Β'] === 'Κράτα του Χρήστης Β' && keep.user === 'Κράτα την τρέχουσα', keep);
     await page.context().close();
   }
   scn = 'conflict.assign';

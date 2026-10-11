@@ -877,7 +877,10 @@ function _conflictParts(conflict, ctx) {
 function _keepLabel(by) {
   if (_byMe(by)) return 'Κράτα την τρέχουσα';   // never «Κράτα του <me>»
   if (typeof by === 'string' && by && by !== 'user' && by !== 'auto') return 'Κράτα του ' + by;
-  if (by === 'user') return 'Κράτα του άλλου χρήστη';
+  // Anonymous ('user'): falls through to «Κράτα την τρέχουσα». «Κράτα του
+  // άλλου χρήστη» + «Γράψε τη δική μου» (285px) did not fit the date panel's
+  // 276px row and stacked (Figma 1125:2982: one row); the lead already says
+  // «Άλλος χρήστης την άλλαξε», and what is current IS that user's value.
   if (by === 'auto') return 'Κράτα την αυτόματη';
   return 'Κράτα την τρέχουσα';
 }
@@ -1595,8 +1598,15 @@ function _helpOpen() {
     });
   }
   for (const g of ['ΠΛΟΗΓΗΣΗ', 'ΣΤΗ ΣΕΙΡΑ', 'ΓΕΝΙΚΑ']) {
-    const its = rows.filter((r) => r.group === g);
+    let its = rows.filter((r) => r.group === g);
     if (!its.length) continue;
+    // Figma 1119:2907 reads ΓΕΝΙΚΑ ⌘K · (⌘Z, not bound) · Esc · ?. KEYMAP
+    // lists ? before Esc and keeps that order (core/wi4-logic.js; the hint
+    // strip reads it), so the sheet moves Esc then ? to the end here.
+    if (g === 'ΓΕΝΙΚΑ') {
+      const end = [ACTION_TEXT.escape, ACTION_TEXT.help];
+      its = its.filter((r) => !end.includes(r.text)).concat(end.map((t) => its.find((r) => r.text === t)).filter(Boolean));
+    }
     const gh = document.createElement('div'); gh.className = 'wi4-qp-h'; gh.textContent = g;
     dlg.appendChild(gh);
     for (const r of its) {
@@ -1693,7 +1703,15 @@ function run(action) {
       if (!order.length) return;
       const i = order.indexOf(oid);
       const n = i < 0 ? (action === 'rowNext' ? 0 : order.length - 1) : Math.max(0, Math.min(order.length - 1, i + (action === 'rowNext' ? 1 : -1)));
-      v.focusRow(order[n]);
+      // No flash on a step (Figma 1119:2676 row 16: the keyboard selection
+      // is the ring alone): focusRow's 1.5 s flash — right for a jump (Q, a
+      // queue line, search) — left a lit trail of rows behind ↓↓. Taken off
+      // in the same task, so it never paints. Not a focusRow option: its
+      // arity is the WP contract (tests/wi4-contract.stub.js).
+      if (v.focusRow(order[n])) {
+        const el = document.querySelector('#content .wi4 .wi4-focus');
+        if (el) el.classList.remove('wi4-hl');
+      }
       return;
     }
     case 'queueNext': {

@@ -8578,16 +8578,27 @@ body.wi4-on #wi-ctx .wi4-m-sec .wi4-l2, body.wi4-on #wi-ctx .wi4-m-hd .wi4-l2 { 
 /* Date panel (§e #10). A v4 element anchored in #wi-panel space. 300 wide
    with a 16px inset (Figma 1125:2799): the calendar and the time field are
    the 266px between the insets. */
-.wi4-datep { position:fixed; z-index:var(--z-top); width:300px; padding:12px 16px; background:var(--surface-card); border:1px solid var(--wi4-line-2);
-  border-radius:8px; box-shadow:var(--shadow-lift); font-family:'DM Sans',sans-serif; font-size:12px; color:var(--wi4-ink); }
-.wi4-datep-hd { font:600 15px 'Syne',sans-serif; margin-bottom:8px; }
+/* Parity r2 (Figma 1125:2799): three bands, not one padded block — a head
+   closed by a full-width divider, the body, a grey footer band. So the
+   vertical padding lives in the head (14 top) and the footer (10/12), and
+   the panel keeps only the 16px side inset. Border, divider and the deeper
+   shadow are the frame's own values; local properties, not :root tokens
+   (the token block belongs to another package). */
+.wi4-datep { position:fixed; z-index:var(--z-top); width:300px; padding:0 16px; background:var(--surface-card); border:1px solid var(--wi4-datep-line);
+  border-radius:8px; box-shadow:0 12px 32px -6px rgba(15,23,41,.14); font-family:'DM Sans',sans-serif; font-size:12px; color:var(--wi4-ink);
+  --wi4-datep-line:#eaecf0; --wi4-datep-div:#f2f4f7; }
+.wi4-datep-hd { font:700 15px 'Syne',sans-serif; padding-top:14px; margin-bottom:3px; }
 .wi4-seg { display:flex; gap:2px; padding:2px; margin-bottom:8px; border:1px solid var(--wi4-line-2); border-radius:6px; background:var(--wi4-chip); }
 .wi4-seg button { flex:1; height:24px; border:1px solid transparent; border-radius:4px; background:none; color:var(--wi4-grey-1); font-weight:500; cursor:pointer; }
 .wi4-seg button.on { background:var(--surface-card); border-color:var(--wi4-line-2); color:var(--wi4-ink); font-weight:700; }
-/* One identity line (sheet 16 D), «…» + title for the rest. */
-.wi4-datep-id { font-size:11px; color:var(--wi4-grey-2); margin-bottom:8px; }
-/* «Ώρα» on its own line, the 24-hour field full width under it (16 D). */
-.wi4-time-l { display:block; font-size:11px; font-weight:600; color:var(--wi4-grey-2); margin-bottom:8px; }
+/* One identity line (sheet 16 D), «…» + title for the rest. It closes the
+   head: the divider under it runs edge to edge (1125:2803, x1 w298), so the
+   side margins undo the panel's inset and the padding puts the text back on
+   it. Grey-2, not Figma's #667085: the contrast-safe grey of the block. */
+.wi4-datep-id { font-size:12px; color:var(--wi4-grey-2); margin:0 -16px 12px; padding:0 16px 12px; border-bottom:1px solid var(--wi4-datep-div); }
+/* «Ώρα» on its own line, the 24-hour field full width under it (16 D);
+   a tracked SemiBold 10.5 label as in 1125:2874. */
+.wi4-time-l { display:block; font-size:10.5px; letter-spacing:.525px; font-weight:600; color:var(--wi4-grey-2); margin-bottom:8px; }
 .wi4-cal { display:grid; grid-template-columns:repeat(7,1fr); gap:2px; margin-bottom:8px; }
 .wi4-cal-h { height:20px; font-size:10px; font-weight:600; text-align:center; line-height:20px; color:var(--wi4-grey-2); }
 .wi4-cal-d { height:28px; border:1px solid transparent; border-radius:4px; background:none; color:var(--wi4-ink); cursor:pointer; }
@@ -8599,10 +8610,12 @@ body.wi4-on #wi-ctx .wi4-m-sec .wi4-l2, body.wi4-on #wi-ctx .wi4-m-hd .wi4-l2 { 
 .wi4-cal-d.cur { border-style:dashed; border-color:var(--wi4-slot); }
 /* Selected = navy fill; blue stays the «today» outline (sheet 16 D). */
 .wi4-cal-d.sel { background:var(--wi4-ink); border-color:var(--wi4-ink); color:var(--surface-card); font-weight:700; }
-.wi4-time { display:block; width:100%; height:32px; margin-top:4px; padding:0 8px; border:1px solid var(--wi4-ctl); border-radius:5px; font:inherit; font-weight:400; color:var(--wi4-ink); font-variant-numeric:tabular-nums; }
+/* 1125:2875: 12.5 text 10px in, radius 4. Its own size after font:inherit:
+   the field sits inside the 10.5 label and took the label's size. */
+.wi4-time { display:block; width:100%; height:32px; margin-top:4px; padding:0 10px; border:1px solid var(--wi4-ctl); border-radius:4px; font:inherit; font-size:12.5px; font-weight:400; color:var(--wi4-ink); font-variant-numeric:tabular-nums; }
 .wi4-time::placeholder { color:var(--wi4-grey-3); }
 .wi4-time:focus { outline:none; border-color:var(--wi4-blue); box-shadow:0 0 0 2px var(--accent-light); }
-.wi4-datep-note { font-size:10.5px; line-height:1.4; color:var(--wi4-grey-2); margin:8px 0; }
+.wi4-datep-note { font-size:11.5px; line-height:1.4; color:var(--wi4-grey-2); margin:8px 0; }
 .wi4-pnote { padding:6px 8px; margin:8px 0; border-radius:5px; background:var(--wi4-amber-bg); color:var(--wi4-amber-ink); font-size:11px; line-height:1.4; }
 /* Confirmed check: news, not a warning (Figma 1125:2885) — light blue, the
    colleague's avatar before the sentence. */
@@ -8622,6 +8635,12 @@ body.wi4-on #wi-ctx .wi4-m-sec .wi4-l2, body.wi4-on #wi-ctx .wi4-m-hd .wi4-l2 { 
 .wi4-conf-lead { display:flex; align-items:flex-start; gap:8px; font-weight:600; }
 .wi4-conf-q { font-weight:600; }
 .wi4-datep-ft, .wi4-dlg-ft { display:flex; justify-content:flex-end; gap:8px; margin-top:10px; }
+/* The date panel's footer is a band (1125:2879): #f9fafb (the key-cap fill,
+   same value) across the inner width, 10/16/12, closing the panel. Bottom
+   corners 7 = the panel's 8 minus its 1px border, so the grey follows the
+   inner curve with no white sliver. Scoped: the dialog's .wi4-dlg-ft stays. */
+.wi4-datep .wi4-datep-ft { margin:12px -16px 0; padding:10px 16px 12px; background:var(--wi4-kcap); border-radius:0 0 7px 7px; }
+.wi4-datep .wi4-datep-ft .wi4-btn { border-radius:4px; font-size:12.5px; }
 /* Left-aligned as in Figma, and wrapping: «Κράτα του άλλου χρήστη» +
    «Γράψε τη δική μου» are wider than the box and ran out of its left edge. */
 .wi4-conf > .wi4-dlg-ft { margin-top:0; justify-content:flex-start; flex-wrap:wrap; }
@@ -8656,8 +8675,12 @@ body.wi4-on #wi-ctx .wi4-m-sec .wi4-l2, body.wi4-on #wi-ctx .wi4-m-hd .wi4-l2 { 
    together — at bottom:0 it floated 148px above the edge over the rows).
    pointer-events:none: a hint is never a target — a click on a row under it
    reaches the row (and the press takes the strip away, _onMouse). */
-.wi4-khint { position:sticky; bottom:-148px; z-index:20; pointer-events:none; display:flex; align-items:center; gap:6px; height:32px; padding:0 12px; margin-top:8px;
-  border-top:1px solid var(--wi4-line-2); background:var(--surface-page); font-size:11.5px; color:var(--wi4-grey-2); white-space:nowrap; overflow:hidden; }
+/* Parity r2: a pill the size of its keys (1119:2812, 719 wide, radius 6, no
+   border), not a full-width band with a rule over it. Over white day cards
+   the grey fill alone has no edge, hence the 1px ring (a shadow: no border,
+   no height change). */
+.wi4-khint { position:sticky; bottom:-148px; z-index:20; pointer-events:none; display:flex; align-items:center; gap:6px; width:max-content; max-width:100%; height:32px; padding:0 12px; margin-top:8px;
+  border-radius:6px; box-shadow:0 0 0 1px var(--wi4-line-2); background:var(--surface-page); font-size:11.5px; color:var(--wi4-grey-2); white-space:nowrap; overflow:hidden; }
 .wi4-khint > span:not(.wi4-key) { margin-right:9px; }
 /* Shown only while the keyboard is in use; hidden, not removed, so a mouse
    press never changes the board's height under the pointer. */
