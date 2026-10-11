@@ -619,9 +619,11 @@ function _fmtConflict(label, v) {
   const s = ids.join(', ');
   return /rec[A-Za-z0-9]{6,}/.test(s) ? 'άλλη τιμή' : s;
 }
-// → {lead, body, question}: the dialog puts the question on its own line
-// (sheet 16 E). `expected` is what the user saw (the _expect sent), `mine`
-// what they chose; both come from the caller, never re-read.
+// → {lead, change, mine, question} (sheet 16 E, Figma 1125:2976): who AND
+// what changed is the bold lead («Ο Χ την άλλαξε πριν 5″: Πέμ 8/10 → Παρ
+// 9/10»), the user's own pick and the question one regular line under it.
+// `expected` is what the user saw (the _expect sent), `mine` what they chose;
+// both come from the caller, never re-read.
 // The signed-in username: a 409 whose author is me (a second tab, a board
 // that did not re-read) is never «άλλος χρήστης» (commit 11300633's goal).
 function _me() { try { return (typeof user !== 'undefined' && user && user.username) || ''; } catch (_) { return ''; } }
@@ -631,10 +633,17 @@ function _conflictParts(conflict, ctx) {
   try {
     if (typeof lg.describeConflict === 'function') {
       const d = lg.describeConflict(Object.assign({}, conflict, { mine: (ctx && ctx.mine) || {}, expected: (ctx && ctx.expected) || {}, now: Date.now(), me: _me() }), LABELS_GR, _fmtConflict);
-      if (d && d.lead) return { lead: d.lead, body: d.body || '', question: d.question || 'Ποια κρατάμε;' };
+      if (d && d.lead) {
+        // The same words describeConflict puts in `body`, split at «Η δική
+        // σου επιλογή» (several fields keep their names, joined by « · »).
+        const ln = Array.isArray(d.lines) ? d.lines : [];
+        const nm = (x) => (ln.length > 1 ? x.name + ': ' : '');
+        return { lead: d.lead, change: ln.map((x) => nm(x) + x.before + ' → ' + x.theirs).join(' · '),
+          mine: ln.length ? 'Η δική σου επιλογή: ' + ln.map((x) => nm(x) + x.mine).join(' · ') : '', question: d.question || 'Ποια κρατάμε;' };
+      }
     }
   } catch (e) { _logErr(e, 'wi4: describeConflict'); }
-  return { lead: 'Η εγγραφή άλλαξε από τότε που την άνοιξες', body: '', question: 'Ποια κρατάμε;' };
+  return { lead: 'Η εγγραφή άλλαξε από τότε που την άνοιξες', change: '', mine: '', question: 'Ποια κρατάμε;' };
 }
 function _keepLabel(by) {
   if (_byMe(by)) return 'Κράτα την τρέχουσα';   // never «Κράτα του <me>»
@@ -666,20 +675,24 @@ function conflictDialog(conflict, ctx) {
     box.className = 'wi4-conf';
     box.setAttribute('role', 'alertdialog');
     const parts = _conflictParts(c, ctx);
-    // Who changed it (a username only when the Worker sent one), then what,
-    // then the question on its own line. Amber: it is news, not the user's error.
+    // Who changed it (a username only when the Worker sent one) and from →
+    // to in one bold lead, then «Η δική σου επιλογή: … Ποια κρατάμε;» as one
+    // regular line. Amber: it is news, not the user's error.
     const lead = document.createElement('div'); lead.className = 'wi4-conf-lead';
     if (typeof c.by === 'string' && c.by && c.by !== 'user' && c.by !== 'auto' && !_byMe(c.by)) {
       const av = document.createElement('span'); av.className = 'wi4-av sm'; av.textContent = c.by.trim().charAt(0).toUpperCase();
       lead.appendChild(av);
     }
-    lead.appendChild(document.createTextNode(parts.lead + (parts.body ? ':' : '.')));
+    const lt = document.createElement('span'); lt.textContent = parts.lead + (parts.change ? ': ' + parts.change : '.');
+    lead.appendChild(lt);
     box.appendChild(lead);
-    if (parts.body) { const b = document.createElement('div'); b.textContent = parts.body; box.appendChild(b); }
+    const stale = !!(ctx && ctx.stale);
+    // Stale: no question here — the bold line below replaces it.
+    const line = [parts.mine ? parts.mine + '.' : '', stale ? '' : parts.question].filter(Boolean).join(' ');
+    if (line) { const b = document.createElement('div'); b.textContent = line; box.appendChild(b); }
     // The re-read behind the question failed: the screen is not the server's
     // truth, so «keep what you see» would be an empty promise.
-    if (ctx && ctx.stale) { const s = document.createElement('div'); s.className = 'wi4-conf-q'; s.textContent = 'Δεν ξαναδιαβάστηκε — ό,τι βλέπεις μπορεί να μην είναι η τρέχουσα τιμή.'; box.appendChild(s); }
-    else { const q = document.createElement('div'); q.className = 'wi4-conf-q'; q.textContent = parts.question; box.appendChild(q); }
+    if (stale) { const s = document.createElement('div'); s.className = 'wi4-conf-q'; s.textContent = 'Δεν ξαναδιαβάστηκε — ό,τι βλέπεις μπορεί να μην είναι η τρέχουσα τιμή.'; box.appendChild(s); }
     const ft = document.createElement('div'); ft.className = 'wi4-dlg-ft';
     if (ctx && ctx.stale) ft.appendChild(_btn('wi4-btn sm pri', 'Ανανέωση', () => _dlgClose('refresh')));
     // A match has nothing to «reopen»: reopening the ASSIGNMENT popover is not
@@ -1103,16 +1116,24 @@ function _refreshPresence() {
     if (!hit) continue;
     const ago = hit.since ? Math.max(0, Math.round((Date.now() - new Date(hit.since).getTime()) / 1000)) : null;
     const when = ago == null ? '' : ' από πριν ' + (ago < 60 ? ago + '″' : Math.round(ago / 60) + '΄');
-    slot.className = 'wi4-pnote';
     // The promise «θα σου πει ποια μένει» holds only while the Worker CHECKS
     // _expect — confirmed by a save (TMS_EXPECT_LIVE true). Unknown = closed
     // (principle 5): before any save nobody has confirmed it, so the note
     // never promises it then either (review 11/10).
     const live = typeof window !== 'undefined' ? window.TMS_EXPECT_LIVE : undefined;
+    // Confirmed, it is news: light blue with the colleague's avatar, the same
+    // disc the row shows (Figma 1125:2885, sheet 16 B). Unconfirmed / off it
+    // is a real warning and stays amber.
+    slot.className = live === true ? 'wi4-pnote info' : 'wi4-pnote';
     const tail = live === true ? '. Αν αποθηκεύσετε και οι δύο, θα σου πει ποια μένει.'
       : live === false ? '. Ο έλεγχος «το άλλαξε άλλος» δεν είναι ενεργός — όποιος αποθηκεύσει τελευταίος μένει.'
       : '. Ο έλεγχος «το άλλαξε άλλος» δεν έχει επιβεβαιωθεί ακόμη — μπορεί να μείνει όποιος αποθηκεύσει τελευταίος.';
-    slot.textContent = 'Ο ' + (p.name || p.user_name || 'άλλος χρήστης') + ' έχει ανοιχτή αυτή την ημερομηνία' + when + tail;
+    const who = p.name || p.user_name || '';
+    const ini = live === true ? String(who).trim().charAt(0).toUpperCase() : '';
+    if (ini) { const av = document.createElement('span'); av.className = 'wi4-av sm'; av.setAttribute('aria-hidden', 'true'); av.textContent = ini; slot.appendChild(av); }
+    const t = document.createElement('span');
+    t.textContent = 'Ο ' + (who || 'άλλος χρήστης') + ' έχει ανοιχτή αυτή την ημερομηνία' + when + tail;
+    slot.appendChild(t);
     return;
   }
 }

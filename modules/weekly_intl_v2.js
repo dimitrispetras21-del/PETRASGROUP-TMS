@@ -1153,7 +1153,10 @@ function _splitHTML(e) {
   const txt = [(I.clientName(f) || '—') + ' → ' + _lastStop(f, 'del').title, p.known ? p.n + 'π' : '', hand && hand !== '—' ? 'αλλαγή φορτηγού στο σημείο ' + hand : ''].filter(Boolean).join(' · ');
   return `<div class="wi4-splithd" data-row-id="${row.id}" data-oid="${q}"${q ? ` onclick="WI_INTERNAL.edit('${q}')" oncontextmenu="WI4Actions.openRowMenu(event,'${q}')"` : ''} title="Σπασμένη σε ${legs.length || 2} σκέλη — κλικ: αρχική παραγγελία · δεξί κλικ: μενού">` +
     _idxHTML(pid, e.no, null) +
-    `<div class="wi4-c-span"><span class="wi4-ell" style="display:block" title="${_esc('ΣΠΑΣΜΕΝΗ ΣΕ ' + (legs.length || 2) + ' ΣΚΕΛΗ · ' + txt)}"><span class="wi4-tag">ΣΠΑΣΜΕΝΗ ΣΕ ${legs.length || 2} ΣΚΕΛΗ</span> · ${_esc(txt)}</span></div></div>`;
+    // Figma 1097:3388: the label, then the route · pallets · handover point —
+    // the decision info — in ink, 8px apart and no «·» between them. Only the
+    // body is cut; its title keeps the whole line (overflow scan).
+    `<div class="wi4-c-span"><span class="wi4-tag">ΣΠΑΣΜΕΝΗ ΣΕ ${legs.length || 2} ΣΚΕΛΗ</span><span class="wi4-split-t wi4-ell" title="${_esc('ΣΠΑΣΜΕΝΗ ΣΕ ' + (legs.length || 2) + ' ΣΚΕΛΗ · ' + txt)}">${_esc(txt)}</span></div></div>`;
 }
 // Rota leg (§e #11): «ΣΚΕΛΟΣ ΡΟΤΑΣ · ίδιο φορτηγό» + «× αποσύνδεση», the leg
 // itself in the column of its direction.
@@ -1170,7 +1173,9 @@ function _legRowHTML(e, today) {
     ref: f['Reference'] || '', from: _sideOf([r], 'load'), to: _sideOf([r], 'del'), pal: _palHTML([f], oid), rs,
   }, today);
   // The tag sits in the OTHER column, leaning towards the assignment cell.
-  const tag = `<span class="wi4-ell" style="display:block;text-align:${isImp ? 'right' : 'left'}" title="ΣΚΕΛΟΣ ΡΟΤΑΣ · ίδιο φορτηγό — σκέλος ρότας, το ίδιο φορτηγό"><span class="wi4-tag">ΣΚΕΛΟΣ ΡΟΤΑΣ</span> <span class="wi4-t-g2">· ίδιο φορτηγό</span></span>`;
+  // One run, «ίδιο φορτηγό» in the label's own weight (Figma 1097:3052): not
+  // a .wi4-tag, whose uppercase would shout «ΙΔΙΟ ΦΟΡΤΗΓΟ».
+  const tag = `<span class="wi4-ell wi4-sub-leg-t" style="display:block;text-align:${isImp ? 'right' : 'left'}" title="ΣΚΕΛΟΣ ΡΟΤΑΣ · ίδιο φορτηγό — σκέλος ρότας, το ίδιο φορτηγό">ΣΚΕΛΟΣ ΡΟΤΑΣ · ίδιο φορτηγό</span>`;
   const lvl = _levelOf(e.facts, today);
   const unlink = q ? `<button type="button" class="wi4-unlink" title="Ακύρωση προώθησης — αποσύνδεση σκέλους από τη ρότα" onclick="event.stopPropagation();WI_INTERNAL.rotUnlink(event,'${q}')">× αποσύνδεση</button>` : '';
   // A leg rides its RT's truck: a same-day clash is said here, by the unlink.
@@ -1180,7 +1185,9 @@ function _legRowHTML(e, today) {
   const nat = f['Veroia Switch'] ? (isImp ? _natHTML(oid, _lastStop(f, 'del').title, _day(f['Delivery DateTime']), today)
     : _natHTML(oid, _firstTitle(f, 'load') + ' → Βέροια', _day(f['Loading DateTime']), today)) : '';
   const why = _whyOf(e.facts, today);
-  return `<div class="wi4-subrow${_rail(lvl)}" data-row-id="${lr.id}" data-oid="${q}" data-qi="${e.qi}"${q ? ` onclick="WI_INTERNAL.edit('${q}')" oncontextmenu="WI4Actions.openRowMenu(event,'${q}')"` : ''}>` +
+  // wi4-sub-leg: 32px — it carries a whole leg (chip + two-line stops), not
+  // a 24px note line (Figma 1097:3046).
+  return `<div class="wi4-subrow wi4-sub-leg${_rail(lvl)}" data-row-id="${lr.id}" data-oid="${q}" data-qi="${e.qi}"${q ? ` onclick="WI_INTERNAL.edit('${q}')" oncontextmenu="WI4Actions.openRowMenu(event,'${q}')"` : ''}>` +
     `<div class="wi4-c-idx"><span class="wi4-legidx"${why ? ` title="${_esc(why)}"` : ''}>↳</span></div><div class="wi4-c-fl">${isImp ? '' : nat}</div>` +
     `<div class="wi4-c-exp">${isImp ? tag : leg}</div>` +
     `<div class="wi4-c-asg"><div class="wi4-asg">${sd}${unlink}</div></div>` +
@@ -1199,7 +1206,7 @@ function _relayRowHTML(e, today) {
     // Relay.summary could not read it (see relaysOf): said, never left out.
     const cell = `<span class="wi4-ell wi4-t-amb" style="display:block" title="${_esc(tag + ' · δεν διαβάστηκε — η τοπική κίνηση δεν διαβάστηκε · κλικ: άνοιγμα')}"><span class="wi4-tag">${tag}</span> · δεν διαβάστηκε</span>`;
     const acts = q && rid ? ` onclick="WI_INTERNAL.relayOpen('${q}','${rid}')"` : '';
-    return `<div class="wi4-subrow" data-oid="${q}"${rid ? ` data-relay="${rid}"` : ''}${acts}>` +
+    return `<div class="wi4-subrow wi4-sub-rl" data-oid="${q}"${rid ? ` data-relay="${rid}"` : ''}${acts}>` +
       '<div class="wi4-c-idx"><span class="wi4-legidx">↳</span></div><div class="wi4-c-fl"></div>' +
       `<div class="wi4-c-exp">${isDel ? '' : cell}</div><div class="wi4-c-asg"></div>` +
       `<div class="wi4-c-imp">${isDel ? cell : ''}</div><div class="wi4-c-fr"></div></div>`;
@@ -1216,16 +1223,22 @@ function _relayRowHTML(e, today) {
   try { tip = I.relayTip(e.x); } catch (err) { _logErr(err, 'wi4: relay tip'); }
   const word = (p, i) => {
     if (i === 0 && !s.driverName) return `<span class="wi4-t-red"${rs.RELAY_NO_DRIVER ? ' data-r="RELAY_NO_DRIVER"' : ''}>${_esc(p)}</span>`;
+    // Who drives the local leg is what this line decides (Figma 1097:2830):
+    // the name in ink and weight, never the grey of «άλλο φορτηγό…».
+    if (i === 0) return `<b class="wi4-rl-drv">${_esc(p)}</b>`;
     if (bad && p === '⚠ δεν επιβεβαιώθηκε') return `<span${rs.SAVE_FAILED ? ' data-r="SAVE_FAILED"' : ''}>${_esc(p)}</span>`;
     return _esc(p);
   };
   // The visible words first, the old board's tip after them: a cell cut on
   // a narrow screen keeps its whole text in the title (overflow scan).
-  const cell = `<span class="wi4-ell" style="display:block" title="${_esc(tag + ' · ' + parts.join(' · ') + (tip ? ' — ' + tip : ''))}"><span class="wi4-tag">${tag}</span> · ${parts.map(word).join(' · ')}</span>`;
+  // The «·» in --wi4-grey-2, quieter than the words (Figma's lighter grey is
+  // 2.6:1; a text glyph must keep 4.5:1 — contrast scan).
+  const sep = ' <span class="wi4-rl-sep">·</span> ';
+  const cell = `<span class="wi4-ell" style="display:block" title="${_esc(tag + ' · ' + parts.join(' · ') + (tip ? ' — ' + tip : ''))}"><span class="wi4-tag">${tag}</span>${sep}${parts.map(word).join(sep)}</span>`;
   const acts = q && rid ? ` onclick="WI_INTERNAL.relayOpen('${q}','${rid}')" oncontextmenu="_wiRelayCtx(event,'${rid}','${q}')"` : '';
   // Its rail is its own facts (WI4.flags), the same rule as the day header
   // and the queue item it raises.
-  return `<div class="wi4-subrow${_rail(_levelOf(e.facts, today))}" data-oid="${q}"${rid ? ` data-relay="${rid}"` : ''}${acts}>` +
+  return `<div class="wi4-subrow wi4-sub-rl${_rail(_levelOf(e.facts, today))}" data-oid="${q}"${rid ? ` data-relay="${rid}"` : ''}${acts}>` +
     '<div class="wi4-c-idx"><span class="wi4-legidx">↳</span></div><div class="wi4-c-fl"></div>' +
     `<div class="wi4-c-exp">${isDel ? '' : cell}</div><div class="wi4-c-asg"></div>` +
     `<div class="wi4-c-imp">${isDel ? cell : ''}</div><div class="wi4-c-fr"></div></div>`;
@@ -1558,7 +1571,7 @@ function _msgHTML(oid) {
   const base = _msgText(oid);
   const text = base + (_rereadFailed && !/δεν ξέρουμε/.test(base) ? ' · ' + tail : '');
   const tip = [_loadLabel(oid), s.msg || '', tail].filter(Boolean).join(' · ');
-  return `<div class="wi4-msg" role="alert" data-msg="${_q(oid)}">${_ico('alert_circle', 12)}<span class="wi4-ell" title="${_esc(text + ' — ' + tip)}">${_esc(text)}</span>` +
+  return `<div class="wi4-msg" role="alert" data-msg="${_q(oid)}">${_ico('alert_circle', 11)}<span class="wi4-ell" title="${_esc(text + ' — ' + tip)}">${_esc(text)}</span>` +
     `<button type="button" class="wi4-link" onclick="WIV2._retry('${_q(oid)}')">Ξαναδοκίμασε</button>` +
     (_rereadFailed ? '<button type="button" class="wi4-link" onclick="WI_INTERNAL.renderWeeklyIntl()">Ανανέωση</button>' : '') +
     `<button type="button" class="wi4-link wi4-msg-x" aria-label="Κλείσιμο" onclick="WIV2._msgClose('${_q(oid)}')">· κλείσιμο ×</button></div>`;
