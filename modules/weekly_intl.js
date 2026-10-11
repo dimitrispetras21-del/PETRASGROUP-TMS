@@ -2362,6 +2362,25 @@ function _wiExpectOpt(orderId,fields){
   const expect=WI4.buildExpect(fields,rec);
   return expect?{expect}:undefined;
 }
+// After a CONFIRMED write, the WINTL.data record takes what the server now
+// holds for the labels written — the same rule as _wiCancelGroupMember's own
+// copy. Without it a match (or an unmatch) leaves the board's copy of OUR
+// write stale, and the next decision write sends that stale value as
+// _expect: the Worker answers 409 and the dialog blames «another user» for the
+// dispatcher's own match a moment earlier (review 11/10, P1). `rec` is the
+// server's record (PATCH answer or read-back); a label it omits is NULL there
+// (facade trap 2). A no-op while v4 is inactive: v1 never sends _expect, and
+// its state stays byte-identical.
+function _wiDataSet(orderId,fields,rec){
+  if(!_wiV2Active()||!rec||rec._offline||!rec.fields) return;
+  const d=WINTL.data;
+  const r=(d.exports||[]).find(x=>x.id===orderId)||(d.imports||[]).find(x=>x.id===orderId);
+  if(!r||!r.fields) return;
+  Object.keys(fields||{}).forEach(k=>{
+    const v=rec.fields[k];
+    if(v===undefined||v===null||v===''||(Array.isArray(v)&&!v.length)) delete r.fields[k]; else r.fields[k]=v;
+  });
+}
 // T3: per-row sync state — what you see has (or has not) reached the server.
 // Logged per ORDER id (row ids are renumbered on every rebuild) so the footer
 // can count written/failed rows and a repaint re-applies the ⚠: a failed write
@@ -3343,8 +3362,9 @@ async function _wiSaveImportMatch(rowId,impId){
     try{
       // _expect on the FIRST export PATCH only (§g.4): a 409 there writes nothing.
       const res=await atSafePatch(TABLES.ORDERS,orderId,{'Matched Import ID':matchImpId},orderId===row.orderIds[0]?_wiExpectOpt(orderId,['Matched Import ID']):undefined);
-      if(res?.conflict){ if(_wiV2Active()) return WIV2.conflict(res,{slot:'wi-sync-'+rowId,orderId,kind:'match'}); _wiRefuse('Η εγγραφή άλλαξε από άλλον χρήστη — ανανέωση…','match race'); await renderWeeklyIntl(); return; }
+      if(res?.conflict){ if(_wiV2Active()) return WIV2.conflict(res,{slot:'wi-sync-'+rowId,orderId,kind:'match',mine:{'Matched Import ID':matchImpId}}); _wiRefuse('Η εγγραφή άλλαξε από άλλον χρήστη — ανανέωση…','match race'); await renderWeeklyIntl(); return; }
       if(res?.error) throw new Error(res.error.message||res.error.type);
+      _wiDataSet(orderId,{'Matched Import ID':matchImpId},res);
       // Central sync — matching link can affect downstream planning
       if (typeof syncOrderDownstream === 'function') {
         syncOrderDownstream(orderId, { source: 'intl', changedFields: ['Matched Import ID'], skipPA: true, skipVS: true, skipGRP: true, skipPL: true })
@@ -3379,12 +3399,14 @@ async function _wiSaveImportMatch(rowId,impId){
         // Through _wiPlanPatch (13/9 audit): a sibling already In Transit keeps
         // its Status — this raw patch regressed it to Assigned (design 8/9:
         // execution beats planning); the vehicle correction still lands.
-        const ri=await atSafePatch(TABLES.ORDERS,memberId,await _wiPlanPatch(memberId,inh));
+        const pp=await _wiPlanPatch(memberId,inh);
+        const ri=await atSafePatch(TABLES.ORDERS,memberId,pp);
         if(ri?.error) throw new Error(ri.error.message||ri.error.type);
         const fresh=await atGetOne(TABLES.ORDERS,memberId);
         const wrote=row.partnerId?getLinkedId(fresh?.fields?.['Partner'])===row.partnerId
           :getLinkedId(fresh?.fields?.['Truck'])===row.truckId;
         if(!wrote) throw new Error('η ανάγνωση πίσω δεν έδειξε την ανάθεση');
+        _wiDataSet(memberId,pp,fresh);
       }catch(err){ giErrors.push(memberId+': '+(err&&err.message||err)); }
     }
     if(giErrors.length){
@@ -3430,6 +3452,7 @@ async function _wiRemoveImport(rowId){
     try{
       const res=await atSafePatch(TABLES.ORDERS,orderId,{'Matched Import ID':''});
       if(res?.error){ ok=false; throw new Error(res.error.message||res.error.type); }
+      _wiDataSet(orderId,{'Matched Import ID':''},res);
       if (typeof syncOrderDownstream === 'function') {
         syncOrderDownstream(orderId, { source: 'intl', changedFields: ['Matched Import ID'], skipPA: true, skipVS: true, skipGRP: true, skipPL: true })
           .catch(e => console.warn('[wi unmatch sync]', e));
@@ -3465,11 +3488,13 @@ async function _wiRemoveImport(rowId){
         // A failed leg removal leaves this member's assignment untouched.
         const leave=await _wiRtLeave(memberId);
         if(!leave.ok){ clearErrors.push(memberId+': '+leave.msg+' — η ανάθεσή του ΔΕΝ καθαρίστηκε'); continue; }
-        const rc=await atSafePatch(TABLES.ORDERS,memberId,{
+        const clr={
           'Truck':[],'Trailer':[],'Driver':[],'Partner':[],
           'Is Partner Trip':false,'Partner Truck Plates':'','Status':'Pending',
-        });
+        };
+        const rc=await atSafePatch(TABLES.ORDERS,memberId,clr);
         if(rc?.error) throw new Error(rc.error.message||rc.error.type);
+        _wiDataSet(memberId,clr,rc);
       }catch(err){ clearErrors.push(memberId+': '+(err&&err.message||err)); }
     }
     if(clearErrors.length) reportError('Το ταίριασμα αφαιρέθηκε αλλά η ανάθεση ΔΕΝ καθαρίστηκε σε όλα τα μέλη του groupage εισαγωγών — έλεγξε χειροκίνητα: '+clearErrors.join(' · '),clearErrors);
@@ -3765,7 +3790,7 @@ async function _wiSaveFromPopover(rowId){
       // _expect on the primary order's PATCH only (§g.4): group members and the
       // matched import follow without it, and a 409 here writes nothing.
       const res=await atSafePatch(TABLES.ORDERS,orderId,await _wiPlanPatch(orderId,expFields),orderId===row.orderIds[0]?_wiExpectOpt(orderId,['Truck','Trailer','Driver','Partner','Partner Truck Plates','Is Partner Trip']):undefined);
-      if(res?.conflict){ if(_wiV2Active()) return WIV2.conflict(res,{slot:'wi-sync-'+rowId,orderId,kind:'assign'}); toast('Η εγγραφή άλλαξε από άλλον χρήστη — ανανέωση…','warn'); await renderWeeklyIntl(); return; }
+      if(res?.conflict){ if(_wiV2Active()) return WIV2.conflict(res,{slot:'wi-sync-'+rowId,orderId,kind:'assign',mine:expFields}); toast('Η εγγραφή άλλαξε από άλλον χρήστη — ανανέωση…','warn'); await renderWeeklyIntl(); return; }
       if(res?.error) throw new Error(res.error.message||res.error.type||JSON.stringify(res.error));
       if (typeof plOnIntlPartnerAssigned === 'function') plOnIntlPartnerAssigned(orderId);
     }catch(err){errors.push(err.message);}
@@ -3773,7 +3798,7 @@ async function _wiSaveFromPopover(rowId){
   if(row.importId && !row.orderIds.includes(row.importId)){
     try{
       const res=await atSafePatch(TABLES.ORDERS,row.importId,await _wiPlanPatch(row.importId,impFields));
-      if(res?.conflict){ if(_wiV2Active()) return WIV2.conflict(res,{slot:'wi-sync-'+rowId,orderId:row.importId,kind:'assign'}); toast('Η εγγραφή άλλαξε από άλλον χρήστη — ανανέωση…','warn'); await renderWeeklyIntl(); return; }
+      if(res?.conflict){ if(_wiV2Active()) return WIV2.conflict(res,{slot:'wi-sync-'+rowId,orderId:row.importId,kind:'assign',mine:impFields}); toast('Η εγγραφή άλλαξε από άλλον χρήστη — ανανέωση…','warn'); await renderWeeklyIntl(); return; }
       if(res?.error) throw new Error(res.error.message||res.error.type||JSON.stringify(res.error));
       // Το σκέλος εισαγωγής είναι ΑΚΡΙΒΩΣ η περίπτωση PARTNER_DROPOFF (ο partner
       // μάς φέρνει φορτίο): χωρίς αυτό το κάλεσμα καταγραφόταν μόνο η μισή ροή.
