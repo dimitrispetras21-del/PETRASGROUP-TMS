@@ -1554,14 +1554,14 @@ async function scnMenu(browser, origin) {
   await page.keyboard.press('Escape'); await page.waitForTimeout(150);
   // Parity r1 F14 (Figma 1097:3858): opened by the arrow the menu docks to it
   // — right edges flush, just under it; where the room under it is short it
-  // opens upward as before (bottom 8px off the window edge). A right-click
-  // keeps the pointer.
+  // opens ABOVE the arrow (r2 finding menu-covers-own-row: no longer pushed
+  // up over it). A right-click keeps the pointer.
   for (const oid of ['recWiE010', 'recWiE001']) {
     await openMenu(page, oid);
-    const pl = await page.evaluate(([js, oid]) => { const r = eval(js)(oid); const p = r && r.querySelector('.wi4-plane'); if (!p) return null; const b = p.getBoundingClientRect(); return { right: Math.round(b.right), bottom: Math.round(b.bottom) }; }, [ROW_JS, oid]);
+    const pl = await page.evaluate(([js, oid]) => { const r = eval(js)(oid); const p = r && r.querySelector('.wi4-plane'); if (!p) return null; const b = p.getBoundingClientRect(); return { top: Math.round(b.top), right: Math.round(b.right), bottom: Math.round(b.bottom) }; }, [ROW_JS, oid]);
     const mr = await page.evaluate(() => { const b = document.getElementById('wi-ctx').getBoundingClientRect(); return { left: Math.round(b.left), top: Math.round(b.top), right: Math.round(b.right), bottom: Math.round(b.bottom), vh: innerHeight }; });
-    const below = pl && mr.top >= pl.bottom, up = pl && mr.bottom === mr.vh - 8;
-    ok('menu.anchor', `${oid.slice(-4)} via the arrow: right edge on the arrow's, top under it (or opened upward when the room is short)`, !!pl && Math.abs(mr.right - pl.right) <= 2 && (below || up) && (oid !== 'recWiE010' || below), { pl, mr });
+    const below = pl && mr.top >= pl.bottom, up = pl && mr.bottom <= pl.top && mr.top >= 8;
+    ok('menu.anchor', `${oid.slice(-4)} via the arrow: right edge on the arrow's, top under it (or above it when the room under it is short)`, !!pl && Math.abs(mr.right - pl.right) <= 2 && (below || up) && (oid !== 'recWiE010' || below), { pl, mr });
     await page.keyboard.press('Escape'); await page.waitForTimeout(150);
   }
   {
@@ -1684,6 +1684,219 @@ async function scnMenu(browser, origin) {
     ok('menu.keys', 'after Esc, → changes the week again (the guard left with the menu)', w4 === s0.week + 1, { w0: s0.week, w4 });
     await settle(page, S);
     await page.keyboard.press('ArrowLeft'); await page.waitForTimeout(300); await settle(page, S);
+  }
+  // Parity r2 (load-menu). Finding menu-covers-own-row (Figma 1097:3858: the
+  // card hangs under its arrow, the load stays visible): for EVERY visible
+  // arrow at 1920×1080 and 1800×800 (the owner's screen) the menu never
+  // touches its arrow, stays inside the window, and nothing it lights in the
+  // row (hovering each section) sits under it.
+  for (const vp of [{ width: 1920, height: 1080 }, { width: 1800, height: 800 }]) {
+    await page.setViewportSize(vp); await page.waitForTimeout(500);
+    await page.mouse.move(5, 5);
+    const oids = await page.evaluate(() => [...new Set([...document.querySelectorAll('#content .wi4 .wi4-plane')].filter(p => {
+      const b = p.getBoundingClientRect(); if (!b.width || b.top < 0 || b.bottom > innerHeight) return false;
+      const on = document.elementFromPoint(b.left + b.width / 2, b.top + b.height / 2); return !!on && p.contains(on);
+    }).map(p => { const r = p.closest('[data-oid]'); return r && r.getAttribute('data-oid'); }).filter(Boolean))]);
+    const bad = [], seen = [];
+    for (const oid of oids) {
+      const m = await openMenu(page, oid);
+      if (!m.ok || m.how !== 'plane') { bad.push([oid.slice(-4), 'not opened by its arrow', m.how]); await page.keyboard.press('Escape'); continue; }
+      const g = await page.evaluate(([js, oid]) => {
+        const p = eval(js)(oid).querySelector('.wi4-plane').getBoundingClientRect(), c = document.getElementById('wi-ctx').getBoundingClientRect();
+        return { p: [p.left, p.top, p.right, p.bottom].map(Math.round), c: [c.left, c.top, c.right, c.bottom].map(Math.round), vw: innerWidth, vh: innerHeight,
+          hit: !(c.bottom <= p.top || c.top >= p.bottom || c.right <= p.left || c.left >= p.right), side: c.top >= p.bottom ? 'below' : 'above' };
+      }, [ROW_JS, oid]);
+      const inside = g.c[0] >= 0 && g.c[1] >= 0 && g.c[2] <= g.vw && g.c[3] <= g.vh;
+      const under = [];
+      const nSec = await page.evaluate(() => document.querySelectorAll('#wi-ctx > div > .wi4-m-sec').length);
+      for (let k = 0; k < nSec; k++) {
+        await page.locator('#wi-ctx > div > .wi4-m-sec').nth(k).hover(); await page.waitForTimeout(60);
+        under.push(...await page.evaluate(() => [...document.querySelectorAll('#content .wi4 .wi4-mhl')].filter(el => {
+          const b = el.getBoundingClientRect(); const on = document.elementFromPoint(b.left + b.width / 2, b.top + b.height / 2);
+          return !!on && !!on.closest('#wi-ctx');
+        }).map(el => el.className.slice(0, 40))));
+      }
+      if (vp.height === 800 && oid === 'recWiE001') await shot(page, 'menu-E001-1800x800');
+      seen.push([oid.slice(-4), g.side]);
+      if (g.hit || !inside || under.length) bad.push({ oid: oid.slice(-4), g, inside, under });
+      await page.mouse.move(5, 5); await page.keyboard.press('Escape'); await page.waitForTimeout(120);
+    }
+    ok('menu.place', `${vp.width}×${vp.height}: ${seen.length} menus by their arrow — none over its arrow, all inside the window, nothing lit under the menu`, oids.length >= 6 && !bad.length, { bad, seen });
+  }
+  // The owner's screen with a menu taller than the room on either side of
+  // its arrow: the roomier side, capped there, scrolling inside, never over
+  // the arrow; the next open (right-click) loses the cap again.
+  {
+    await page.setViewportSize({ width: 1800, height: 560 }); await page.waitForTimeout(500);
+    const oid = 'recWiE001';
+    await page.evaluate(([js, oid]) => { const r = eval(js)(oid); r.scrollIntoView({ block: 'center' }); }, [ROW_JS, oid]); await page.waitForTimeout(200);
+    await openMenu(page, oid);
+    const g = await page.evaluate(([js, oid]) => {
+      const p = eval(js)(oid).querySelector('.wi4-plane').getBoundingClientRect(), ctx = document.getElementById('wi-ctx'), c = ctx.getBoundingClientRect();
+      return { p: [p.top, p.bottom].map(Math.round), c: [c.top, c.bottom].map(Math.round), vh: innerHeight, cap: ctx.style.maxHeight, scrolls: ctx.scrollHeight > ctx.clientHeight + 1 };
+    }, [ROW_JS, oid]);
+    await shot(page, 'menu-capped-1800x560');
+    ok('menu.place', '1800×560: a menu taller than both sides takes the roomier one, capped and scrolling, 4px off its arrow, inside the window',
+      !!g.cap && g.scrolls && (g.c[1] <= g.p[0] - 3 || g.c[0] >= g.p[1] + 3) && g.c[0] >= 7 && g.c[1] <= g.vh - 7, g);
+    await page.keyboard.press('Escape'); await page.waitForTimeout(150);
+    await openMenu(page, 'recWiE010', 'right');
+    const cap2 = await page.evaluate(() => document.getElementById('wi-ctx').style.maxHeight);
+    ok('menu.place', 'the next open (right-click) has no height cap left over', cap2 === '', cap2);
+    await page.keyboard.press('Escape'); await page.waitForTimeout(150);
+    await page.setViewportSize({ width: 1920, height: 1080 }); await page.waitForTimeout(500);
+  }
+  // A load's own sub-rows (E001's two local relays «↳») light with it: with
+  // the row near the top of the board the menu opens below and hangs under
+  // the last of them, never over them (1920 / 1800×800 / 1440).
+  for (const vp of [{ width: 1920, height: 1080 }, { width: 1800, height: 800 }, { width: 1440, height: 900 }]) {
+    await page.setViewportSize(vp); await page.waitForTimeout(500);
+    await page.evaluate(([js, oid]) => { const r = eval(js)(oid); r.scrollIntoView({ block: 'start' });
+      let sc = r.parentNode; while (sc && sc !== document.body && !(sc.scrollHeight > sc.clientHeight + 2 && /auto|scroll/.test(getComputedStyle(sc).overflowY))) sc = sc.parentNode;
+      if (sc && sc !== document.body) sc.scrollTop -= 60; }, [ROW_JS, 'recWiE001']);
+    await page.waitForTimeout(150);
+    await openMenu(page, 'recWiE001');
+    const g = await page.evaluate(([js, oid]) => { const r = eval(js)(oid), p = r.querySelector('.wi4-plane').getBoundingClientRect(), c = document.getElementById('wi-ctx').getBoundingClientRect();
+      const subs = []; for (let n = r; (n = n.nextElementSibling) && n.classList.contains('wi4-subrow');) subs.push(Math.round(n.getBoundingClientRect().bottom));
+      return { p: [Math.round(p.top), Math.round(p.bottom)], c: [Math.round(c.top), Math.round(c.bottom)], subs }; }, [ROW_JS, 'recWiE001']);
+    const under = [];
+    const nSec = await page.evaluate(() => document.querySelectorAll('#wi-ctx > div > .wi4-m-sec').length);
+    for (let k = 0; k < nSec; k++) {
+      await page.locator('#wi-ctx > div > .wi4-m-sec').nth(k).hover(); await page.waitForTimeout(60);
+      under.push(...await page.evaluate(() => [...document.querySelectorAll('#content .wi4 .wi4-mhl')].filter(el => { const b = el.getBoundingClientRect();
+        const on = document.elementFromPoint(b.left + b.width / 2, b.top + b.height / 2); return !!on && !!on.closest('#wi-ctx'); }).map(el => el.className.slice(0, 40))));
+    }
+    const litSubs = await page.evaluate(() => { const r = document.querySelector('[data-rig-row="recWiE001"]'); const out = [];
+      for (let n = r; (n = n.nextElementSibling) && n.classList.contains('wi4-subrow');) out.push(n.getAttribute('data-oid')); return out; });
+    ok('menu.place', `${vp.width}: E001 near the top — the menu hangs under its relay sub-rows (4px), nothing it lights under it`,
+      g.subs.length >= 2 && Math.abs(g.c[0] - (Math.max(...g.subs) + 4)) <= 1 && !under.length, { g, under, litSubs });
+    await page.mouse.move(5, 5); await page.keyboard.press('Escape'); await page.waitForTimeout(150);
+  }
+  await page.setViewportSize({ width: 1920, height: 1080 }); await page.waitForTimeout(500);
+  // Finding menu-hint-keys-dead (Figma 1097:3867 «A», 1097:3885 «P»): the
+  // letter an item shows runs that item while the menu is open, by e.code
+  // (a Greek layout sends Α/Ο/Π on the same keys); the week never moves.
+  {
+    await page.evaluate(() => { window.__prints = []; window.printOrderSheet = function () { window.__prints.push([...arguments]); };
+      window.__opens = []; window.open = function (u) { window.__opens.push(String(u)); return null; }; });
+    const st = () => page.evaluate(() => { const p = document.getElementById('wi-popover');
+      return { ctx: document.getElementById('wi-ctx').style.display === 'block', pop: !!p && getComputedStyle(p).display !== 'none' && !!p.innerHTML.trim(),
+        modal: !!(document.querySelector('#modalOverlay.open') || document.querySelector('.mf-overlay')), prints: window.__prints.slice(), opens: window.__opens.slice(), week: WINTL.week }; });
+    const reset = () => page.evaluate(() => { if (typeof _wiClosePopover === 'function') _wiClosePopover(); if (typeof closeModal === 'function') closeModal(); window.__prints.length = 0; window.__opens.length = 0; });
+    const w0 = writes(S).length, wk0 = (await st()).week;
+    await openMenu(page, 'recWiE010'); await page.waitForTimeout(100);
+    const hints = await page.evaluate(() => [...document.querySelectorAll('#wi-ctx .wi4-m-k')].map(k => [k.textContent, k.closest('.wi-ctx-i').querySelector('.wi4-m-l').textContent]));
+    const inMenu = await page.evaluate(() => document.getElementById('wi-ctx').contains(document.activeElement));
+    await page.keyboard.press('KeyA'); await page.waitForTimeout(400);
+    const a = await st();
+    ok('menu.hintkeys', 'E010: A with the menu open (focus on an item) → «Ανάθεση…»: #wi-popover open, menu closed', inMenu && a.pop && !a.ctx, { hints, inMenu, a });
+    await reset(); await page.keyboard.press('Escape'); await page.waitForTimeout(150);
+    await openMenu(page, 'recWiE010'); await page.waitForTimeout(100);
+    await page.keyboard.press('KeyO'); await page.waitForTimeout(600);
+    const o = await st();
+    ok('menu.hintkeys', 'E010: O → «Άνοιγμα παραγγελίας» (the order form opens, menu closed)', o.modal && !o.ctx, o);
+    await reset(); await page.waitForTimeout(300);
+    await openMenu(page, 'recWiE010'); await page.waitForTimeout(100);
+    await page.keyboard.press('KeyP'); await page.waitForTimeout(300);
+    const p = await st();
+    ok('menu.hintkeys', 'E010: P → «Εκτύπωση / WhatsApp…» = the sheet of E010 (export), menu closed', p.prints.length === 1 && p.prints[0][0] === 'recWiE010' && p.prints[0][1] === 'export' && !p.ctx, p);
+    await reset();
+    await openMenu(page, 'recWiE011'); await page.waitForTimeout(100);
+    await page.keyboard.press('KeyP'); await page.waitForTimeout(300);
+    const pg = await st();
+    const grp = await page.evaluate(() => WINTL.rows.find(r => (r.orderIds || []).includes('recWiE011')).orderIds);
+    ok('menu.hintkeys', 'E011 (groupage): P → «Εκτύπωση / WhatsApp όλων…» = one packet of the whole group', pg.opens.length === 1 && grp.every(id => pg.opens[0].includes(id)) && !pg.prints.length && !pg.ctx, { pg, grp });
+    await reset();
+    await openMenu(page, 'recWiE010'); await page.waitForTimeout(100);
+    await page.evaluate(() => (document.activeElement || document.body).dispatchEvent(new KeyboardEvent('keydown', { key: 'α', code: 'KeyA', bubbles: true, cancelable: true })));
+    await page.waitForTimeout(400);
+    const g = await st();
+    ok('menu.hintkeys', 'Greek layout: e.key «α» with e.code KeyA → «Ανάθεση…» as well', g.pop && !g.ctx, g);
+    await reset(); await page.keyboard.press('Escape'); await page.waitForTimeout(150);
+    await openMenu(page, 'recWiE010'); await page.waitForTimeout(100);
+    await page.keyboard.press('KeyQ'); await page.waitForTimeout(200);
+    const q = await st();
+    ok('menu.hintkeys', 'a bound key no item shows (Q) does nothing while the menu is open', q.ctx && !q.pop && !q.modal && !q.prints.length, q);
+    await page.keyboard.press('Escape'); await page.waitForTimeout(150);
+    ok('menu.hintkeys', 'the letters wrote nothing and never moved the week', writes(S).length === w0 && (await st()).week === wk0, writes(S).slice(w0));
+  }
+  // Finding menu-item-empty-key-track (Figma 1097:3870/3873/3881 x 37 w 249;
+  // 1097:3866 «Ανάθεση…» w 231 next to its «A»): no key → the label runs the
+  // full 249px; with a key → 249 − key − 10.
+  {
+    await openMenu(page, 'recWiE001');
+    const lw = await page.evaluate(() => [...document.querySelectorAll('#wi-ctx .wi-ctx-i')].filter(b => b.getClientRects().length).map(b => {
+      const l = b.querySelector('.wi4-m-l'), k = b.querySelector(':scope > .wi4-m-k'), ch = b.querySelector(':scope > .wi4-m-chev');
+      return { t: l.textContent.slice(0, 30), w: Math.round(l.getBoundingClientRect().width * 10) / 10, k: k ? k.getBoundingClientRect().width : null, ch: !!ch };
+    }));
+    const plain = lw.filter(x => x.k == null && !x.ch), keyed = lw.filter(x => x.k != null);
+    ok('menu.track', 'E001: an item without a key: label 249px (±1); with a key: 249 − key − 10 (±1)', plain.length >= 5 && keyed.length >= 2
+      && plain.every(x => Math.abs(x.w - 249) <= 1) && keyed.every(x => Math.abs(x.w - (249 - x.k - 10)) <= 1), lw);
+    await page.keyboard.press('Escape'); await page.waitForTimeout(150);
+  }
+  // Finding menu-relay-line-cuts-date: a relay «▸» line cuts the driver,
+  // never the day — at 1920, 1800 and 1440, and with a long driver name.
+  for (const vp of [{ width: 1920, height: 1080 }, { width: 1800, height: 800 }, { width: 1440, height: 900 }]) {
+    await page.setViewportSize(vp); await page.waitForTimeout(500);
+    await openMenu(page, 'recWiE001');
+    const r = await page.evaluate(() => {
+      const lines = [...document.querySelectorAll('#wi-ctx .wi4-m-more:not(.wi4-m-mem)')].filter(b => /^Τοπική/.test(b.title));
+      const whole = (l) => { const who = l.querySelector('.wi4-ell'), day = who && who.nextElementSibling, lb = l.getBoundingClientRect();
+        return day ? { day: day.textContent, sw: day.scrollWidth, cw: day.clientWidth, inLabel: day.getBoundingClientRect().right <= lb.right + 1, cut: who.scrollWidth > who.clientWidth + 1 } : null; };
+      const out = lines.map(b => whole(b.querySelector('.wi4-m-l')));
+      // Stress: a long two-word Greek driver on the same line (CSS under test).
+      const l0 = lines[0] && lines[0].querySelector('.wi4-m-l .wi4-ell');
+      if (l0) l0.textContent = 'Τοπική φόρτωση · Κωνσταντινος Παπαδοπουλος-Αναστασιαδης';
+      return { out, long: lines[0] ? whole(lines[0].querySelector('.wi4-m-l')) : null, titles: lines.map(b => b.title) };
+    });
+    const good = (x) => !!x && /^ · \S+ \d{1,2}\/\d{1,2}$/.test(x.day) && x.sw <= x.cw + 1 && x.inLabel;
+    ok('menu.relay', `${vp.width}: every relay «▸» line keeps its day whole (a long driver is cut, the day is not)`, r.out.length >= 1 && r.out.every(good) && good(r.long) && r.long.cut, r);
+    await page.keyboard.press('Escape'); await page.waitForTimeout(150);
+  }
+  await page.setViewportSize({ width: 1920, height: 1080 }); await page.waitForTimeout(500);
+  // Finding menu-section-dot-missing (Figma 1097:3907: 6×6 #0284C7 at left 4,
+  // 14px under the divider): the section the pointer is in, and only it.
+  {
+    await openMenu(page, 'recWiE001');
+    const dots = async () => page.evaluate(([tok]) => { const on = [...document.querySelectorAll('#wi-ctx .wi4-m-sec.wi4-m-on')];
+      const all = [...document.querySelectorAll('#wi-ctx > div > .wi4-m-sec')];
+      const b = on[0] && getComputedStyle(on[0], '::before');
+      return { n: on.length, idx: on.map(s => all.indexOf(s)), dot: b ? [b.width, b.height, b.left, b.top, b.borderTopLeftRadius, b.backgroundColor === eval(tok)('--accent')] : null }; }, [TOKEN_JS]);
+    await page.evaluate(() => [...document.querySelectorAll('#wi-ctx > div > .wi4-m-sec')].forEach((s, k) => {
+      const it = [...s.parentNode.children].find(c => c.matches('.wi-ctx-i')); if (it) it.setAttribute('data-rig-it', String(k)); }));
+    await page.locator('[data-rig-it="1"]').hover(); await page.waitForTimeout(100);
+    const d1 = await dots();
+    await page.locator('[data-rig-it="0"]').hover(); await page.waitForTimeout(100);
+    const d0 = await dots();
+    await shot(page, 'menu-E001-section-dot');
+    await page.mouse.move(5, 5); await page.waitForTimeout(100);
+    const dn = await dots();
+    ok('menu.dot', 'hovering an item of a section shows exactly one dot, on that section (6×6 accent, left 4, top 14); none off the menu',
+      d1.n === 1 && d1.idx[0] === 1 && d0.n === 1 && d0.idx[0] === 0 && !!d1.dot && d1.dot.slice(0, 4).join() === '6px,6px,4px,14px' && d1.dot[5] && dn.n === 0, { d1, d0, dn });
+    await page.keyboard.press('Escape'); await page.waitForTimeout(150);
+  }
+  // Finding menu-keyboard-no-row-highlight (sheet 14: the pointer on a «▸»
+  // line lights that load; sheet 15: the board is keyboard-driven): ↓ onto
+  // member k lights exactly member k's points, like the pointer; leaving the
+  // menu clears them.
+  {
+    await page.mouse.move(5, 5);
+    await openMenu(page, 'recWiE011'); await page.mouse.move(5, 5); await page.waitForTimeout(100);
+    const res = [];
+    for (let k = 0; k < 3; k++) {
+      await page.evaluate(k => { const items = [...document.querySelectorAll('#wi-ctx .wi-ctx-i:not([disabled])')];
+        const mem = document.querySelectorAll('#wi-ctx .wi4-m-mem')[k]; items[items.indexOf(mem) - 1].focus(); }, k);
+      await page.keyboard.press('ArrowDown'); await page.waitForTimeout(100);
+      res.push(await page.evaluate(k => {
+        const oid = WINTL.rows.find(r => (r.orderIds || []).includes('recWiE011')).orderIds[k];
+        const want = new Set([...document.querySelectorAll('#content .wi4 [data-order-id="' + oid + '"]')].map(p => (p.getClientRects().length ? p : p.closest('.wi4-pts').querySelector('.wi4-more'))));
+        const lit = [...document.querySelectorAll('#content .wi4 .wi4-mhl')];
+        return { k, onMember: document.activeElement === document.querySelectorAll('#wi-ctx .wi4-m-mem')[k], want: want.size, lit: lit.length,
+          same: lit.length === want.size && lit.every(el => want.has(el)), dot: document.querySelectorAll('#wi-ctx .wi4-m-sec.wi4-m-on').length };
+      }, k));
+    }
+    await page.keyboard.press('Escape'); await page.waitForTimeout(150);
+    const after = await page.evaluate(() => ({ lit: document.querySelectorAll('#content .wi4 .wi4-mhl').length, dot: document.querySelectorAll('#wi-ctx .wi4-m-on').length }));
+    ok('menu.kbdlight', 'E011: ↓ onto member k lights exactly member k\'s points (and its section\'s dot); Esc clears them', res.every(r => r.onMember && r.want > 0 && r.same && r.dot === 1) && !after.lit && !after.dot, { res, after });
   }
   ok('menu', 'opening menus wrote nothing; no page errors', !writes(S).length && !S.pageErrors.length, { w: writes(S), e: S.pageErrors });
   await page.context().close();
@@ -2859,6 +3072,7 @@ async function scnNatMissing(browser, origin) {
 
 // §e #20: 1440 is not designed yet (Φ8, the owner's Figma) — but nothing on it
 // may be cut without its title, overlap, or break the 32px rows.
+
 async function scnW1440(browser, origin) {
   const scn = 'w1440';
   const { page, S } = await openBoard(browser, origin, { viewport: { width: 1440, height: 900 } });

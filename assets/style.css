@@ -8573,6 +8573,13 @@ body.wi4-on #wi-ctx .wi4-m-hd .wi4-l2 { font-weight:400; font-size:11px; line-he
 /* A divider above every section (sheet 14): 4px · line · 4px, then the
    section's own 6px (1097:3876, parity r1 F11). */
 body.wi4-on #wi-ctx .wi4-m-sec { padding:10px 12px 4px; margin-top:4px; border-top:1px solid var(--wi4-line-2); font-size:10px; font-weight:600; letter-spacing:.6px; text-transform:uppercase; color:var(--wi4-grey-2); }
+/* The section the pointer / keyboard focus is in carries a 6px accent dot at
+   its left (Figma 1097:3907: x 4, y 10 of a frame that starts 4px under the
+   divider = 14px under it; here the divider is .wi4-m-sec's own border-top,
+   so top counts from its inner edge; finding menu-section-dot-missing).
+   WI4Actions sets .wi4-m-on together with the row's light. */
+body.wi4-on #wi-ctx .wi4-m-sec { position:relative; }
+body.wi4-on #wi-ctx .wi4-m-sec.wi4-m-on::before { content:''; position:absolute; left:4px; top:14px; width:6px; height:6px; border-radius:50%; background:var(--accent); }
 /* A «▸» line's submenu is a flyout card beside the menu (sheet 14 1064:2376,
    parity r1 F2): fixed, placed by WI4Actions from its line, the menu's card
    style, 260px; its head has no divider. Its line stays lit while open. */
@@ -8590,12 +8597,24 @@ body.wi4-on #wi-ctx .wi4-m-more[aria-expanded="true"] { background:var(--wi4-chi
    builders' (§c.3), so the ≤768px touch rows keep theirs. */
 body.wi4-on #wi-ctx .wi-ctx-i { display:grid; grid-template-columns:15px minmax(0,1fr) auto; column-gap:10px; align-items:center; white-space:nowrap;
   padding-left:12px; padding-right:12px; font:400 13px/normal 'DM Sans',sans-serif; }
+/* An item without a key letter or chevron has no third track: its label
+   runs the full 249px (Figma 1097:3870/3873/3881 at x 37, w 249; finding
+   menu-item-empty-key-track — the empty auto track still took the 10px gap,
+   so «Groupage εισαγωγών · σε αυτό το φορτίο…» was cut at 239). */
+body.wi4-on #wi-ctx .wi-ctx-i:not(:has(> .wi4-m-k, > .wi4-m-chev)) { grid-template-columns:15px minmax(0,1fr); }
+/* A relay's «▸» line (_relayParts): kind · driver shrinks with «…», the day
+   after it never (board rule: names are cut, dates never; finding
+   menu-relay-line-cuts-date). */
+body.wi4-on #wi-ctx .wi4-m-l:has(> .wi4-ell) { display:flex; }
+body.wi4-on #wi-ctx .wi4-m-l > .wi4-ell { flex:0 1 auto; min-width:0; overflow:hidden; text-overflow:ellipsis; }
+body.wi4-on #wi-ctx .wi4-m-l > .wi4-ell + span { flex:none; }
 /* Icons in --text-mid, red on a red item (1097:3872 / 3932). */
 body.wi4-on #wi-ctx .wi4-m-ic { display:inline-block; width:15px; text-align:center; color:var(--text-mid); vertical-align:-2px; }
 body.wi4-on #wi-ctx .wi-ctx-i.d .wi4-m-ic { color:var(--danger); }
 /* The key hint is a plain letter at the right edge (1097:3867 «A»), not the
-   board's boxed .wi4-key chip (parity r1 F12). */
-body.wi4-on #wi-ctx .wi4-m-k { margin-left:4px; border:0; background:none; padding:0; min-width:0; font-size:11px; font-weight:500; line-height:14px; color:var(--wi4-grey-2); }
+   board's boxed .wi4-key chip (parity r1 F12). Only the grid's 10px gap
+   before it: «Ανάθεση…» is 231 = 249 − 8 − 10 wide (1097:3866). */
+body.wi4-on #wi-ctx .wi4-m-k { margin-left:0; border:0; background:none; padding:0; min-width:0; font-size:11px; font-weight:500; line-height:14px; color:var(--wi4-grey-2); }
 /* A «▸» line opens a submenu: its chevron at the right. */
 body.wi4-on #wi-ctx .wi4-m-chev { display:inline-flex; color:var(--wi4-grey-2); }
 /* The header's plates in DM Mono (sheet 14: «TST-1001 · Driver Test 01»):
