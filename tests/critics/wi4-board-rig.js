@@ -35,8 +35,12 @@
 // WI4_TREE defaults to the tree this file lives in; the rig serves it itself.
 // Scenarios: v1 · paint · invariants · relay · scans · unknown · drops · join · menu ·
 //   date · keys · search · savefail · presence · conflict · fallback · styles ·
-//   twins (unmatch, rota, split, stock piece, local relay: v1 = v4 writes) ·
-//   queue (card buttons after a row-id shift, Q, Print / WhatsApp)
+//   twins (unmatch, rota, split, stock piece, dissolve, member out, groupage
+//   build, local relay, new import: v1 = v4 writes) ·
+//   queue (card buttons after a row-id shift, Q, Print / WhatsApp) ·
+//   fix round 3: print (view role, share menu) · shift (a save fails across a
+//   re-read) · late (relays empty / national while a popover is open) ·
+//   offline · quiet (a group member fails) · natmissing · w1440
 // Exit: 0 all green · 1 a check failed · 2 usage · 3 NOT READY (v4 inactive).
 'use strict';
 const path = require('path');
@@ -216,8 +220,9 @@ const link = v => (Array.isArray(v) ? v[0] : v) || null;
 const canon = l => (l === 'Cross-dock Date' ? 'VS CD Date' : l);
 
 // Runs in the page BEFORE any script: session, collapsed sidebar, recorders.
-function initScript() {
-  localStorage.setItem('tms_user', JSON.stringify({ name: 'Rig', role: 'dispatcher', username: 'demo_dispatcher',
+function initScript(role) {
+  const r = role || 'dispatcher';   // a demo_* roster user (config.js) — the tamper guard knows it
+  localStorage.setItem('tms_user', JSON.stringify({ name: 'Rig', role: r, username: 'demo_' + r,
     loginAt: Date.now(), expiresAt: Date.now() + 8 * 3600 * 1000 }));
   localStorage.setItem('tms_jwt', 'rig.board.no-real-token');
   localStorage.setItem('tms_page', 'weekly_intl');
@@ -229,11 +234,12 @@ function initScript() {
 }
 
 // One page on one fresh copy of the week. opts:
-//   flag 'on'|'off' · presence bool · fail {patch:{rec:500}, nl, relay, crossWeek, stock}
-//   hold {nl} · expectLive (default true) · triggers (rt_sync / 028 emulation)
+//   flag 'on'|'off' · presence bool · fail {patch:{rec:500}, get:{rec:500}, nl, relay, crossWeek, stock}
+//   hold {nl, relay} · expectLive (default true) · triggers (rt_sync / 028 emulation)
+//   role (default 'dispatcher') · viewport (default 1920×1080)
 async function openBoard(browser, origin, opts = {}) {
   const flag = opts.flag || 'on';
-  const ctx = await browser.newContext({ baseURL: origin + '/', viewport: { width: 1920, height: 1080 },
+  const ctx = await browser.newContext({ baseURL: origin + '/', viewport: opts.viewport || { width: 1920, height: 1080 },
     serviceWorkers: 'block', timezoneId: 'Europe/Athens', locale: 'el-GR' });
   const page = await ctx.newPage();
   // Presence paces beats on Date.now() (never two closer than 2.5 s). A fixed
@@ -243,13 +249,13 @@ async function openBoard(browser, origin, opts = {}) {
   else await page.clock.setFixedTime(new Date(FIX._meta.now));
   const db = clone(FIX.tables);
   if (typeof opts.mutate === 'function') opts.mutate(db);   // a scenario's own variant of the week
-  const S = { db, log: [], inflight: 0, held: [], pageErrors: [], unknown: new Set(), mainReads: 0, beats: [],
-    fail: Object.assign({ patch: {} }, opts.fail || {}), hold: Object.assign({}, opts.hold || {}),
+  const S = { db, log: [], inflight: 0, held: [], heldRelay: [], pageErrors: [], unknown: new Set(), mainReads: 0, beats: [],
+    fail: Object.assign({ patch: {}, get: {} }, opts.fail || {}), hold: Object.assign({}, opts.hold || {}),
     expectLive: opts.expectLive !== false, triggers: !!opts.triggers, onGet: {}, delay: {}, seq: 0, ready: false, readyWaiters: [],
     presence: Object.assign({ mode: 200, others: [], changes: { n: 0, last_by: null, last_at: null, auto_n: 0 }, next_ms: 2500 }, opts.presenceCfg || {}) };
   page.on('pageerror', e => S.pageErrors.push(String(e).slice(0, 300)));
   page.on('dialog', d => d.accept());
-  await page.addInitScript(initScript);
+  await page.addInitScript(initScript, opts.role || 'dispatcher');
   await page.route(u => !u.href.startsWith(origin) && !u.href.includes(HOST), route => route.abort());
   // The flag lives in config.js; it is rewritten in memory, never on disk.
   await page.route(u => u.href.startsWith(origin) && new URL(u.href).pathname === '/config.js', async route => {
@@ -270,6 +276,7 @@ async function openBoard(browser, origin, opts = {}) {
     const f = u.searchParams.get('filterByFormula') || '';
     // A held read is not «in flight» for settle(): the test decides when it lands.
     if (S.hold.nl && tid === T.NAT_LOADS) await new Promise(r => S.held.push(r));
+    if (S.hold.relay && tid === T.LOCAL_MOVES) await new Promise(r => S.heldRelay.push(r));
     // The first beat leaves at the first v4 paint, before instrument() has
     // replaced tmsSessionExpired: a 401 answered then runs the real one and
     // sends the rig to the login page, so the board never settles. Beats are
@@ -317,6 +324,7 @@ async function openBoard(browser, origin, opts = {}) {
 
 function readTable(S, tid, rid, f, tbl) {
   if (rid) {
+    if (S.fail.get && S.fail.get[rid]) return [{ error: { type: 'SERVER_ERROR', message: 'rig: forced read failure' } }, S.fail.get[rid]];
     const r = tbl.find(x => x.id === rid);
     const out = r ? [clone(r)] : [{ error: { type: 'NOT_FOUND' } }, 404];
     if (S.onGet[rid]) { const fn = S.onGet[rid]; delete S.onGet[rid]; fn(); }   // a concurrent write lands AFTER this read
@@ -430,8 +438,8 @@ const evs = (page, k) => page.evaluate(k => window.__ev.filter(e => !k || e.k ==
 async function settle(page, S, quietMs = 700, timeout = 30000) {
   const t0 = Date.now(); let quietSince = 0;
   while (Date.now() - t0 < timeout) {
-    const busy = S.inflight > 0 || !(await page.evaluate(held => !!window.WINTL && WINTL.relay && WINTL.relay.state !== 'loading'
-      && !(WINTL.data.stock && WINTL.data.stock.status === 'loading') && (held || WINTL.data.nlState !== 'loading'), !!S.hold.nl).catch(() => false));
+    const busy = S.inflight > 0 || !(await page.evaluate(([held, heldRelay]) => !!window.WINTL && WINTL.relay && (heldRelay || WINTL.relay.state !== 'loading')
+      && !(WINTL.data.stock && WINTL.data.stock.status === 'loading') && (held || WINTL.data.nlState !== 'loading'), [!!S.hold.nl, !!S.hold.relay]).catch(() => false));
     if (busy) quietSince = 0; else if (!quietSince) quietSince = Date.now(); else if (Date.now() - quietSince > quietMs) return;
     await page.waitForTimeout(100);
   }
@@ -515,9 +523,10 @@ async function scnPaint(browser, origin) {
   ok(scn, 'first paint: the first red day is the first card → no scroll; bar and ΕΠΟΜΕΝΑ band in view', open.first === '2026-10-03' && open.top === 0 && open.qTop >= 0 && open.qBottom <= open.h, open);
   ok(scn, 'the week tabs sit in the centre of the bar (their own grid track)', Math.abs(open.tabs - open.bar) <= 1.5, open);
   // Line 2 = the place, from the LOCATIONS label «Όνομα, Πόλη, Χώρα» the
-  // board reads in production (Greek country names): «Veria», «Berlin, DE»
-  // — «χώρα μόνο εκτός GR» (rules 958:747). Every single point whose column
-  // has room for a place shows one (the fixture's locations all have a city).
+  // board reads in production (Greek country names): «Veria», «Berlin DE»
+  // (Figma line 2: «Kecskemét HU 6π», fix round 3) — «χώρα μόνο εκτός GR»
+  // (rules 958:747). Every single point whose column has room for a place
+  // shows one (the fixture's locations all have a city).
   const l2 = await page.evaluate(([js]) => {
     const row = eval(js);
     const empty = [...document.querySelectorAll('#content .wi4 #wi-rows .wi4-row .wi4-pts:not(.wi4-noplace) > .wi4-pt')]
@@ -526,7 +535,13 @@ async function scnPaint(browser, origin) {
     return { empty, e1from: t('recWiE001', 'from'), e1to: t('recWiE001', 'to'), shown: document.querySelectorAll('#content .wi4 #wi-rows .wi4-pts:not(.wi4-noplace) .wi4-l2').length };
   }, [ROW_JS]);
   ok(scn, 'line 2 shows the place on every single point with room (production label format)', !l2.empty.length && l2.shown > 20, l2);
-  ok(scn, '«χώρα μόνο εκτός GR»: E001 loads at «Veria» (no GR), delivers to «Berlin, DE»', /Veria$/.test(l2.e1from || '') && !/GR/.test(l2.e1from || '') && /Berlin, DE/.test(l2.e1to || ''), l2);
+  ok(scn, '«χώρα μόνο εκτός GR»: E001 loads at «Veria» (no GR), delivers to «Berlin DE» (no comma, Figma line 2)', /Veria$/.test(l2.e1from || '') && !/GR/.test(l2.e1from || '') && /^Berlin DE$/.test(l2.e1to || ''), l2);
+  // Line 2 of a groupage member keeps its pallets whole: the PLACE is cut,
+  // never «· 10π» (review 11/10: «Milan, IT…», «Zagreb, …»).
+  const palCut = await page.evaluate(() => [...document.querySelectorAll('#content .wi4 #wi-rows .wi4-pts:not(.wi4-noplace) .wi4-l2f.wi4-l2p')]
+    .map(l => { const pal = l.querySelector('.wi4-pt-pal'); return pal && (pal.scrollWidth > pal.clientWidth + 1 || pal.getBoundingClientRect().right > l.getBoundingClientRect().right + 1) ? l.title : null; }).filter(Boolean));
+  const palN = await page.evaluate(() => document.querySelectorAll('#content .wi4 #wi-rows .wi4-pt-pal').length);
+  ok(scn, 'point line 2: the pallets are never cut (the place gives way)', palN > 3 && !palCut.length, { palN, palCut });
   // The stock strip starts at the board's left edge, chips in «π» (sheet 15).
   const sh = await page.evaluate(() => {
     const lbl = document.querySelector('#content .wi4 .wi-shelf-lbl'), srch = document.querySelector('#content .wi4 .wi4-search');
@@ -585,6 +600,24 @@ async function scnPaint(browser, origin) {
   ok(scn, '(e) own-fleet plates dark: --wi4-ink (WP3 vocabulary)', d.plates.length > 3 && d.plates.every(c => c === d.ink), { plates: [...new Set(d.plates)], ink: d.ink });
   ok(scn, '(f) no separator under the last row of a day', d.lastSep.length >= 6 && d.lastSep.every(w => w === '0px'), d.lastSep);
   ok(scn, 'PE sits next to the pallets', d.pe);
+  // Fix round 3 (11/10): a chip with ΑΝΑΦ. under it fits the 32px row with
+  // room (≤ 28px; it was 31 and touched the next row's border); over 33 is a
+  // shape as well as a colour (the alert icon before the number).
+  const z = await page.evaluate(([js]) => {
+    const stacks = [...document.querySelectorAll('#content .wi4 #wi-rows .wi4-l-date')].filter(c => c.querySelector('.wi4-ref') && c.offsetParent)
+      .map(c => { const a = c.querySelector('.wi4-dc'), b = c.querySelector('.wi4-ref'); return a ? Math.round(b.getBoundingClientRect().bottom - a.getBoundingClientRect().top) : 0; });
+    const over = [...document.querySelectorAll('#content .wi4 #wi-rows .wi4-pal.over')].map(x => !!x.querySelector('.wi4-pal-ic svg'));
+    // The SAME count as v1's preFields (_wiPaint): export rows + board import rows, each order once.
+    const met = WI_INTERNAL.paintMetrics(); const ids = new Set();
+    met.expRows.concat(met.impRows).forEach(r => (r.orderIds || [r.orderId]).forEach(id => ids.add(id)));
+    const want = [...ids].filter(id => { const r = WI_INTERNAL.recOf(id); return r && typeof isPreorder === 'function' && isPreorder(r.fields); }).length;
+    const btn = [...document.querySelectorAll('#content .wi4 .wi4-bar-r .wi4-btn')].find(b => /Pre-order/.test(b.textContent));
+    const got = btn ? Number(((btn.querySelector('.wi4-cnt') || {}).textContent) || 0) : null;
+    return { maxStack: Math.max(0, ...stacks), n: stacks.length, over, want, got };
+  }, [ROW_JS]);
+  ok(scn, 'chip + ΑΝΑΦ. under it ≤ 28px inside the 32px row', z.n > 5 && z.maxStack <= 28, z);
+  ok(scn, 'over 33: the alert icon before the number (shape + colour)', z.over.length >= 1 && z.over.every(Boolean), z.over);
+  ok(scn, 'the Pre-order counter = v1\'s count (each order once — a matched import is not counted twice)', z.got === z.want && z.want >= 1, z);
 
   // Points (§d.1, owner lock): up to 4 all shown with ≥56px each IF they fit,
   // otherwise as many as fit + «+N»; 5+ = the first 3 + «+N» only if 3 fit.
@@ -595,11 +628,17 @@ async function scnPaint(browser, origin) {
     if (!to) return null; const w = to.clientWidth; const k = WI4.points(Array.from({ length: total }, (_, i) => ({ n: i + 1, label: 'x' })), w).shown.length;
     return { w, total, want: k, n: to.querySelectorAll('.wi4-pt').length, more: (to.querySelector('.wi4-more b') || {}).textContent || '', title: (to.querySelector('.wi4-more') || { title: '' }).title, badge: !!to.querySelector('.wi4-pt-n') }; };
     return { e19: P('recWiE019', want.e19), e20: P('recWiE020', want.e20), e01: P('recWiE001', want.e01) }; }, [ROW_JS, { e19: STOPS.recWiE019[1], e20: STOPS.recWiE020[1], e01: STOPS.recWiE001[1] }]);
-  const fits = x => !!x && x.n === x.want && (x.total === x.n ? !x.more : x.more === '+' + (x.total - x.n));
+  // The OWNER'S table (§d.1 lock), written out here — never WI4.points, the
+  // code under test (review 11/10: it was its own oracle, and the pinned case
+  // was vacuous from 226px up). min 56 · gap 8 · «+N» chip 34:
+  //   4 stops: all 4 from 248px · 3 + «+1» from 226 · 2 + «+2» from 162 · else 1 + «+3»
+  //   9 stops: 3 + «+6» from 226 · 2 + «+7» from 162 · else 1 + «+8»
+  const own4 = w => (w >= 248 ? 4 : w >= 226 ? 3 : w >= 162 ? 2 : 1);
+  const own9 = w => (w >= 226 ? 3 : w >= 162 ? 2 : 1);
+  const table = (x, n) => !!x && x.n === n && (x.total === n ? !x.more : x.more === '+' + (x.total - n));
   let p = await pts();
-  ok(scn, `4 stops, national columns open: as many as fit + «+N» (WI4.points at ${p.e19 && p.e19.w}px → ${p.e19 && p.e19.want})`, fits(p.e19) && p.e19.total === 4, p.e19);
-  ok(scn, '…which at the ~207–217px column of 1920 is 2 + «+2» (owner rule, §d.1)', p.e19 && (p.e19.w < 226 ? p.e19.n === 2 && p.e19.more === '+2' : true), p.e19);
-  ok(scn, `9 stops: the first 3 only if 3 fit, else as many as fit + «+N»; title lists the hidden ones`, fits(p.e20) && p.e20.total === 9 && /Iota|Kappa|Lambda|Mu|Xi/.test(p.e20.title), p.e20);
+  ok(scn, `4 stops at ${p.e19 && p.e19.w}px = the owner table (all from 248, 3 + «+1» from 226, else 2 + «+2»)`, !!p.e19 && p.e19.total === 4 && table(p.e19, own4(p.e19.w)), p.e19);
+  ok(scn, `9 stops at ${p.e20 && p.e20.w}px = the owner table (3 + «+6» from 226, 2 + «+7» from 162); title lists the hidden ones`, !!p.e20 && p.e20.total === 9 && table(p.e20, own9(p.e20.w)) && /Iota|Kappa|Lambda|Mu|Xi/.test(p.e20.title), p.e20);
   ok(scn, 'a single stop has no number badge', p.e01 && p.e01.n <= 1 && !p.e01.badge, p.e01);
   // One week is drawn one way: the points of the first paint equal those after
   // a full re-render (the column is re-measured when the board resizes —
@@ -610,7 +649,7 @@ async function scnPaint(browser, origin) {
   const g1 = await grp();
   ok(scn, 'groupage ×3: the same points on first paint and after renderWeeklyIntl()', !!g0 && !!g1 && g0.n === g1.n && g0.more === g1.more, { g0, g1 });
   // Plates are the key of the assignment column: «TST-1005 · TRL-2005» whole at
-  // 1920 (the print button is out of the flow, box + paper-plane only).
+  // 1920 — with the print slot reserved beside the paper plane (fix round 3).
   const cut = await page.evaluate(() => [...document.querySelectorAll('#content .wi4 #wi-rows .wi4-box.own .wi4-plate')].filter(p => p.scrollWidth > p.clientWidth + 1).map(p => p.textContent));
   ok(scn, 'own-fleet plates (truck · trailer) are never cut at 1920', !cut.length, cut);
   // A groupage member hidden behind «+N» stays a drag tile (its fold draws the
@@ -689,7 +728,7 @@ async function scnInvariants(browser, origin) {
 
 // The reason codes each day header counts (data-codes, the SAME WI4.flags
 // output) against the words drawn on its rows (data-r), visible ones only.
-const REASON_CODES = ['NO_TRUCK', 'EMPTY_RETURN', 'NAT_NO_CARRIER', 'DATE_MISMATCH', 'OVER_33', 'SAME_DAY', 'LATE', 'PREORDER',
+const REASON_CODES = ['NO_TRUCK', 'EMPTY_RETURN', 'NAT_NO_CARRIER', 'NAT_MISSING', 'DATE_MISMATCH', 'OVER_33', 'SAME_DAY', 'LATE', 'PREORDER',
   'RELAY_NO_DRIVER', 'MATCH_UNREAD', 'PALLETS_UNKNOWN'];
 const reasonsNamed = page => page.evaluate(codes => {
   const days = [], bad = [], seen = new Set(), railNoTitle = [];
@@ -763,6 +802,24 @@ async function scnScans(browser, origin) {
   let r = await page.evaluate(([js]) => eval(js)('#content .wi4'), [SCAN_JS]);
   ok(scn, 'overflow scan (board): every overflowing text has its full text in a title', r.n === 1 && !r.over.length, r.over.slice(0, 15));
   ok(scn, 'contrast scan (board): text ≥ 4.5:1', r.n === 1 && !r.low.length, r.low.slice(0, 15));
+  // The queue cards cut the NAME, never the reason (review 11/10: «34π ·
+  // φορτώνει αύριο · χωρ…»); a NO_TRUCK card leaves «χωρίς φορτηγό» to its
+  // chip and button (sheet 15).
+  const qc = await page.evaluate(() => [...document.querySelectorAll('#content .wi4 #wi4-qwrap .wi4-qcard')].map(c => {
+    const l2 = c.querySelector('.wi4-qcard-t > .wi4-l2');
+    return { t: l2 ? l2.textContent : '', cut: !!l2 && l2.scrollWidth > l2.clientWidth + 1 }; }));
+  ok(scn, 'queue cards at 1920: the reason is whole on every card; a card never repeats «χωρίς φορτηγό»', qc.length === 3 && qc.every(c => !c.cut && !/χωρίς φορτηγό/.test(c.t)), qc);
+  // «Όλα N ▾» (sheet 15 B, fix round 3): ~600px, under the queue band from its
+  // LEFT edge, one line per item (it was 440px at «Όλα»'s right edge, over the
+  // import column, and wrapped every second item).
+  await page.locator('#content .wi4 .wi4-q-all').click(); await page.waitForTimeout(250);
+  const qp = await page.evaluate(() => { const p = document.querySelector('.wi4-qp'), q = document.querySelector('#content .wi4 .wi4-q');
+    if (!p || !q) return null; const b = p.getBoundingClientRect(), qb = q.getBoundingClientRect();
+    const items = [...p.querySelectorAll('.wi4-qp-i')].map(i => Math.round(i.getBoundingClientRect().height));
+    const cut = [...p.querySelectorAll('.wi4-qp-i .wi4-l2')].filter(l => l.scrollWidth > l.clientWidth + 1 && !l.title).length;
+    return { w: Math.round(b.width), left: Math.round(b.left), qLeft: Math.round(qb.left), top: Math.round(b.top), qBottom: Math.round(qb.bottom), tall: items.filter(h => h > 34).length, n: items.length, cut }; });
+  ok(scn, '«Όλα» opens ~600px under the queue band from its left edge, one line per item', !!qp && qp.w >= 560 && qp.w <= 600 && Math.abs(qp.left - qp.qLeft) <= 2 && qp.top >= qp.qBottom && qp.n > 10 && !qp.tall && !qp.cut, qp);
+  await page.keyboard.press('Escape'); await page.waitForTimeout(150);
   // Overlays too: the per-load menu and the date panel.
   await page.locator('#content .wi4 .wi4-plane').first().click(); await page.waitForTimeout(300);
   r = await page.evaluate(([js]) => eval(js)('#wi-ctx'), [SCAN_JS]);
@@ -784,11 +841,16 @@ async function scnUnknown(browser, origin) {
       q: WIV2.queueItems().filter(q => q.code === 'SOURCE_UNKNOWN').map(q => q.source) }));
     ok(scn, 'relay read 500 → banner «… δεν φορτώθηκαν … δεν σημαίνει ότι δεν υπάρχουν»', /δεν φορτώθηκαν/.test(r.banner) && /δεν σημαίνει ότι δεν υπάρχουν/.test(r.banner), r.banner);
     ok(scn, 'one SOURCE_UNKNOWN queue item for the relays', r.q.filter(s => /relay/.test(String(s))).length === 1, r.q);
+    // The evidence is the FAILURE (review 11/10: the shot was taken after the retry).
+    await shot(page, 'unknown-relay');
     S.fail.relay = 0;
     const retry = page.locator('#content .wi4 .wi4-banner .wi4-link, #content .wi4 .wi4-banner button').first();
     if (await retry.count()) { await retry.click(); await settle(page, S); }
     ok(scn, '«Ξαναδοκίμασε» re-reads and the banner goes', !(await page.evaluate(() => /δεν φορτώθηκαν/.test((document.querySelector('#content .wi4') || {}).innerText || ''))));
-    await shot(page, 'unknown-relay');
+    // …and the failed read's own toasts go with it: the board now HAS the data.
+    const stale = await page.evaluate(() => [...((document.getElementById('tms-toast-container') || {}).children || [])].map(t => (t.textContent || '').trim()).filter(t => /Τα δεδομένα δεν φορτώθηκαν|Σφάλμα (server|σύνδεσης)/.test(t)));
+    ok(scn, 'after a successful retry no stale «Τα δεδομένα δεν φορτώθηκαν» / «Σφάλμα …» toast is left', !stale.length, stale);
+    await shot(page, 'unknown-relay-retried');
     await page.context().close();
   }
   scn = 'unknown.national';
@@ -812,6 +874,8 @@ async function scnUnknown(browser, origin) {
       codes: WIV2.queueItems().map(q => q.code), q: ((document.querySelector('#content .wi4 .wi4-q') || {}).innerText || '') }));
     ok(scn, 'while the national read is pending: «—» titled «δεν φορτώθηκε ακόμη», no «ΠΡΟΣ ΑΝΑΘΕΣΗ»', r.un === 0 && r.unk.length >= 3 && r.unk.every(t => /δεν φορτώθηκε ακόμη/.test(t)), r);
     ok(scn, 'no NAT_* item while loading; the queue header says «φορτώνει»', !r.codes.some(c => /^NAT_/.test(c)) && /φορτώνει/.test(r.q), r);
+    const heads = await page.evaluate(() => [...document.querySelectorAll('#content .wi4 .wi4-dayh')].map(h => h.innerText));
+    ok(scn, 'day headers say «εθνικά σκέλη: φορτώνουν…» — never the failure words while the read is in flight', heads.some(h => /εθνικά σκέλη: φορτώνουν…/.test(h)) && !heads.some(h => /δεν φορτώθηκαν/.test(h)), heads);
     S.hold.nl = false; S.held.splice(0).forEach(fn => fn()); await settle(page, S);
     const after = await page.evaluate(js => { const row = eval(js); const t = (oid, sel) => { const r = row(oid); return !!(r && r.querySelector(sel)); };
       return { e14own: t('recWiE014', '.wi4-c-fl .wi4-tile.own'), i05un: t('recWiE014', '.wi4-c-fr .wi4-tile.un'), codes: WIV2.queueItems().map(q => q.code) }; }, ROW_JS);
@@ -970,6 +1034,20 @@ async function scnTwins(browser, origin) {
         const clicked = await btn.click({ timeout: 5000 }).then(() => true, () => false);
         await confirmIfAsked(page, 3000); await page.waitForTimeout(1200); return { clicked }; },
       check: (S) => fld(S, 'recWiE006', 'Matched Import ID') === 'recWiI012' && link(fld(S, 'recWiI012', 'Truck')) === 'recWiT006' },
+    // Fix round 3 (review 11/10, coverage): the groupage writes — dissolve, one
+    // member out, a new groupage built through the panel.
+    { scn: 'twins.dissolve', oid: 'recWiE011', label: /^Διάλυση groupage$/,
+      act: async (page) => { await confirmIfAsked(page, 3000); await page.waitForTimeout(1200); return {}; },
+      check: (S) => ['recWiE011', 'recWiE012', 'recWiE013'].every(id => !fld(S, id, 'Group ID')) },
+    { scn: 'twins.member', oid: 'recWiE011', label: /^Βγάλε από το groupage$/,
+      act: async (page) => { await confirmIfAsked(page, 3000); await page.waitForTimeout(1500); return {}; },
+      check: (S) => { const g = ['recWiE011', 'recWiE012', 'recWiE013'].map(id => fld(S, id, 'Group ID') || null); return g.filter(Boolean).length === 2 && new Set(g.filter(Boolean)).size === 1; } },
+    { scn: 'twins.groupBuild', oid: 'recWiE007', label: /^Groupage εξαγωγών…$/,
+      act: async (page) => {
+        const pick = await page.evaluate(() => { const i = document.querySelector('#wi-panel .wiGrpPick'); if (i) { i.checked = true; i.dispatchEvent(new Event('change', { bubbles: true })); } return i ? i.value : null; });
+        const clicked = !!pick && await page.locator('#wi-panel .wi-panel-ft .btn-primary').click({ timeout: 5000 }).then(() => true, () => false);
+        await confirmIfAsked(page, 2000); await page.waitForTimeout(1500); return { pick, clicked }; },
+      check: (S) => !!fld(S, 'recWiE007', 'Group ID') && S.db[T.ORDERS].filter(o => o.fields['Group ID'] && o.fields['Group ID'] === fld(S, 'recWiE007', 'Group ID')).length >= 2 },
     { scn: 'twins.relay', oid: 'recWiE007', label: /τοπικό οδηγό/,
       act: async (page) => {
         await page.waitForSelector('#rly_submit', { timeout: 6000 }).catch(() => {});
@@ -997,6 +1075,29 @@ async function scnTwins(browser, origin) {
     const brief = res.on.w.map(w => { const [k, tid, id, f] = JSON.parse(w); return `${k} ${String(tid).slice(-5)} ${id} {${Object.keys(f || {}).join(',').slice(0, 60)}}`; });
     ok(c.scn, 'the table says so', c.check(res.on.S, res.on.r), { r: res.on.r, writes: brief, toasts: (res.on.toasts || []).slice(-4) });
     ok(c.scn, 'no page errors', !res.on.errs.length && !res.off.errs.length, { v1: res.off.errs, v4: res.on.errs });
+  }
+  // «+ Νέα εισαγωγή» on an empty return (the gap cell, not a menu item): the
+  // pending match the order form consumes. The rig does not type the whole
+  // form: the record is created as orders_intl does, then the match consumed.
+  {
+    const scn = 'twins.newImport';
+    const res = await twin(browser, origin, scn, async (page, S) => {
+      const rid = await rowOf(page, 'recWiE008');
+      await page.evaluate(id => WI_INTERNAL.newImport(id), rid); await page.waitForTimeout(800);
+      const pending = await page.evaluate(id => !!window._wiPendingMatch && window._wiPendingMatch.rowId === id, rid);
+      S.db[T.ORDERS].push({ id: 'recWiNEW902', fields: { Type: 'International', Direction: 'Import', Status: 'Pending',
+        'Loading DateTime': '2026-10-08T05:00:00.000Z', 'Delivery DateTime': '2026-10-10T07:00:00.000Z', 'Total Pallets': 4 } });
+      await page.evaluate(() => _wiConsumePendingMatch('recWiNEW902', { Direction: 'Import' }));
+      await page.evaluate(() => { if (typeof closeModal === 'function') closeModal(); });
+      await page.waitForTimeout(1500);
+      return { pending };
+    });
+    ok(scn, 'the form held the pending match for E008 on both boards', res.off.r.pending === true && res.on.r.pending === true, { v1: res.off.r, v4: res.on.r });
+    ok(scn, 'something was written', res.on.w.length > 0, res.on.w);
+    ok(scn, 'v4 writes = v1 writes (table, record, fields)', JSON.stringify(res.on.w) === JSON.stringify(res.off.w), { v1: res.off.w, v4: res.on.w });
+    ok(scn, 'final ORDERS table identical', res.on.db === res.off.db);
+    ok(scn, 'the table says so: E008 is matched to the new import', fld(res.on.S, 'recWiE008', 'Matched Import ID') === 'recWiNEW902', res.on.w);
+    ok(scn, 'no page errors', !res.on.errs.length && !res.off.errs.length, { v1: res.off.errs, v4: res.on.errs });
   }
 }
 
@@ -1180,6 +1281,17 @@ async function scnMenu(browser, origin) {
   await page.setViewportSize({ width: 1920, height: 1080 }); await page.waitForTimeout(300);
   // Hovering a section highlights its load in the row.
   await openMenu(page, 'recWiE001');
+  // Fix round 3 (11/10): every item on ONE line (label cut with «…», whole in
+  // its title — long labels wrapped under the icon), the header's plate in
+  // DM Mono (sheet 14 «IAZ4471 · Papadopoulos Georgios»).
+  const mi = await page.evaluate(() => {
+    const items = [...document.querySelectorAll('#wi-ctx .wi-ctx-i')].filter(b => b.offsetParent);
+    const plate = document.querySelector('#wi-ctx .wi4-m-hd .wi4-m-plate');
+    return { tall: items.filter(b => b.getBoundingClientRect().height > 34).map(b => b.textContent.trim().slice(0, 50)), n: items.length,
+      untitled: items.filter(b => { const l = b.querySelector('.wi4-m-l'); return l && l.scrollWidth > l.clientWidth + 1 && !b.title; }).length,
+      plate: plate ? { t: plate.textContent, fam: getComputedStyle(plate).fontFamily } : null };
+  });
+  ok('menu.lines', 'menu items are one line each (cut ones carry their title); the plate in the header is DM Mono', mi.n > 3 && !mi.tall.length && !mi.untitled && !!mi.plate && /TST-1001/.test(mi.plate.t) && /DM Mono|mono/i.test(mi.plate.fam), mi);
   const sec = page.locator('#wi-ctx .wi4-m-sec').nth(1);
   if (await sec.count()) { await sec.hover(); await page.waitForTimeout(150); }
   ok('menu.hover', 'hovering a section highlights its load in the row', await page.evaluate(() => !!document.querySelector('#content .wi4 .wi4-mhl')));
@@ -1224,6 +1336,8 @@ async function scnDate(browser, origin) {
     if (field !== 'VS CD Date') ok(scn, 'the time reads 24-hour «HH:MM» (a text field, not the locale\'s time input)', info && info.timeType === 'text' && /^([01]\d|2[0-3]):[0-5]\d$/.test(info.timeVal || '') && !/AM|PM/i.test(info.timeVal || ''), info);
     ok(scn, 'the identity line is one line, «client · place — place», no country names', info && info.idH <= 16 && / · .+ — .+/.test(info.id) && !/Ελλάδα|Γερμανία/.test(info.id), info && [info.id, info.idH]);
     ok(scn, 'the panel says what changes and what does not', info && /Η Εβδομάδα δεν αλλάζει από εδώ/.test(info.note), info && info.note);
+    // Per field (review 11/10: the Βέροια field said «…και τη Βέροια»).
+    if (field === 'VS CD Date') ok(scn, 'the Βέροια note names what a Βέροια change moves — never «τις στάσεις»', info && /ημερομηνία Βέροιας/.test(info.note) && /εθνικού σκέλους/.test(info.note) && !/στάσεις/.test(info.note), info && info.note);
     const week0 = await page.evaluate(() => WINTL.week);
     await page.keyboard.press('ArrowRight'); await page.waitForTimeout(150);
     ok(scn, '→ moves one day in the calendar and never changes the week (capture listener, §d.4)', (await page.evaluate(() => WINTL.week)) === week0 && (await panelInfo(page)).sel !== info.sel, [(await panelInfo(page)).sel, info.sel]);
@@ -1271,6 +1385,25 @@ async function scnDate(browser, origin) {
   }
   ok('date', 'no page errors', !S.pageErrors.length, S.pageErrors);
   await page.context().close();
+  // A downstream stage that fails (review 11/10, P2): the national load did
+  // not move, so the panel says so — never «Ημερομηνία ενημερώθηκε ✓» (the
+  // Λάβδας 7/9 incident). The VS chain re-reads the order; that read fails.
+  {
+    const scn2 = 'date.downstream';
+    const { page: p2, S: S2 } = await openBoard(browser, origin);
+    await p2.evaluate(() => { window.__ev.length = 0; });
+    ok(scn2, 'E014\'s chip opens the date panel', await openDatePanel(p2, 'recWiE014'));
+    await p2.locator('.wi4-datep .wi4-seg button', { hasText: /^Φόρτωση$/ }).click(); await p2.waitForTimeout(150);
+    await p2.keyboard.press('ArrowRight');
+    S2.fail.get.recWiE014 = 500;
+    await p2.locator('.wi4-datep .wi4-datep-ft .wi4-btn.pri').click();
+    const t0 = Date.now(); let toasts = [];
+    while (Date.now() - t0 < 15000) { toasts = (await evs(p2, 'toast')).map(e => String(e.a[0])); if (toasts.some(t => /Ημερομηνία|ημερομηνία/.test(t))) break; await p2.waitForTimeout(250); }
+    S2.fail.get = {};
+    ok(scn2, 'the date IS written (one PATCH, 200), and the failed VS chain is said instead of the ✓', patches(S2, 'recWiE014').some(x => x.status === 200 && x.fields && x.fields['Loading DateTime'])
+      && toasts.some(t => /Η ημερομηνία άλλαξε — ο συγχρονισμός του εθνικού φορτίου απέτυχε/.test(t)) && !toasts.some(t => /Ημερομηνία ενημερώθηκε ✓/.test(t)), toasts);
+    await p2.context().close();
+  }
 }
 
 async function scnKeys(browser, origin) {
@@ -1397,6 +1530,45 @@ async function openPopover(page, oid) {
   await page.locator(`[data-rig-box="${oid}"]`).click(); await page.waitForTimeout(300);
   return page.evaluate(() => { const p = document.getElementById('wi-popover'); return !!p && getComputedStyle(p).display !== 'none' && !!p.innerHTML.trim(); });
 }
+// After a FAILED match E006 ← I004 (review 11/10, P2): the board must not
+// contradict itself. E006's import cell says what the table holds («δεν
+// αποθηκεύτηκε — η REF-I004 είναι ακόμη ελεύθερη», naming E006's EMPTY_RETURN),
+// I004 is drawn as a ghost line in its own loading day (naming its NO_TRUCK),
+// and per day: counted = named, header = queue.
+const dayAgree = page => page.evaluate(() => {
+  const Q = WIV2.queueItems();
+  const idsOf = el => { const rid = Number(el.getAttribute('data-row-id')); const row = WINTL.rows.find(x => x.id === rid); const oid = el.getAttribute('data-oid');
+    // A row whose match FAILED does not own the import it still draws.
+    const ns = !!(el.querySelector && el.querySelector('.wi4-ns'));
+    const imp = row && row.importId && !ns ? (WINTL.rows.find(x => x.type === 'import' && (x.orderIds || []).includes(row.importId)) || { orderIds: [row.importId] }).orderIds : [];
+    return [...new Set([...(row ? (row.orderIds || [row.orderId]) : []), ...imp, ...(oid ? [oid] : [])])]; };
+  const qOf = (ids, el) => (el && el.dataset.relay ? Q.filter(q => q.relayId === el.dataset.relay) : Q.filter(q => !q.relayId && (ids.includes(q.key) || ids.includes(q.rowKey))));
+  return [...document.querySelectorAll('#content .wi4 #wi-rows .wi4-day')].map(day => {
+    const head = (day.querySelector('.wi4-dayh') || {}).innerText || '';
+    const els = [...day.querySelectorAll('.wi4-row,.wi4-subrow,.wi4-ghost')];
+    const items = [...new Set(els.flatMap(el => qOf(idsOf(el), el)))];
+    const num = re => { const m = head.match(re); return m ? Number(m[1]) : 0; };
+    return { day: day.dataset.day, head, hdrNoTruck: num(/(\d+) χωρίς φορτηγό/), qNoTruck: items.filter(q => q.code === 'NO_TRUCK').length,
+      hdrEmpty: num(/(\d+) κεν(?:ό γύρισμα|ά γυρίσματα)/), qEmpty: items.filter(q => q.code === 'EMPTY_RETURN').length };
+  });
+});
+async function savefailBoard(page, scn, r6) {
+  const b = await page.evaluate(([rid]) => {
+    const cell = document.getElementById('wi-ci-' + rid);
+    const ns = cell && cell.querySelector('.wi4-ns');
+    const g = document.querySelector('#content .wi4 .wi4-ghost[data-oid="recWiI004"]');
+    const gd = g && g.closest('.wi4-day');
+    return { ns: ns ? ns.textContent : '', nsR: ns ? ns.getAttribute('data-r') : null, leg: !!(cell && cell.querySelector('.wi4-leg')),
+      ghost: g ? g.textContent : '', ghostR: g ? [...g.querySelectorAll('[data-r]')].map(x => x.getAttribute('data-r')) : [], ghostDay: gd ? gd.dataset.day : null,
+      ghostH: g ? Math.round(g.getBoundingClientRect().height) : 0, rows: WINTL.rows.length };
+  }, [r6]);
+  ok(scn, 'E006\'s import cell says what the TABLE holds: «δεν αποθηκεύτηκε — η REF-I004 είναι ακόμη ελεύθερη», naming its EMPTY_RETURN', /δεν αποθηκεύτηκε — η REF-I004 είναι ακόμη ελεύθερη/.test(b.ns) && b.nsR === 'EMPTY_RETURN' && !b.leg, b);
+  ok(scn, 'I004 is a 24px ghost line in its own loading day, naming its NO_TRUCK', /REF-I004/.test(b.ghost) && b.ghostR.includes('NO_TRUCK') && !!b.ghostDay && b.ghostH === 24, b);
+  const named = await reasonsNamed(page);
+  ok(scn, 'per day after the failure: every reason the header counts is named on exactly that many rows', named.bad.length === 0, named.bad);
+  const agree = await dayAgree(page);
+  ok(scn, 'per day after the failure: header counts = queue items (χωρίς φορτηγό, κενά γυρίσματα)', agree.every(d => d.hdrNoTruck === d.qNoTruck && d.hdrEmpty === d.qEmpty), agree.filter(d => d.hdrNoTruck !== d.qNoTruck || d.hdrEmpty !== d.qEmpty));
+}
 async function scnSaveFail(browser, origin) {
   let scn = 'savefail.popover';
   {
@@ -1437,7 +1609,12 @@ async function scnSaveFail(browser, origin) {
     // (an optimistic paint can make it «collapsible»).
     ok(scn, 'E006\'s day stayed open through the match and the failure', await page.evaluate(js => { const r = eval(js)('recWiE006'); const d = r && r.closest('.wi4-day'); return !!d && !d.classList.contains('closed'); }, ROW_JS));
     ok(scn, 'title bar «1 αλλαγή δεν αποθηκεύτηκε»', /1 αλλαγή δεν αποθηκεύτηκε/.test(r.upd), r.upd);
+    await savefailBoard(page, scn, r6);
     await shot(page, 'save-failure');
+    // The title bar too (review 11/10: the shot was scrolled past it).
+    await page.evaluate(() => { const sc = document.scrollingElement; const c = document.querySelector('.content'); if (c) c.scrollTop = 0; if (sc) sc.scrollTop = 0; });
+    await page.waitForTimeout(150);
+    await shot(page, 'save-failure-title');
     ok(scn, 'E007\'s popover stays open; no re-read while it is open (§e.14)', r.pop && S.mainReads === reads0, { pop: r.pop, reads: S.mainReads - reads0 });
     ok(scn, 'the row ids did not move', (await rowOf(page, 'recWiE007')) === r7);
     S.fail.patch = {}; S.log = [];
@@ -1465,6 +1642,8 @@ async function scnSaveFail(browser, origin) {
     await htmlDrag(page, '#wi-imp-recWiI004', `#wi-ci-${r6}`);
     await page.waitForTimeout(500); await settle(page, S, 2600);
     ok(scn, 'no re-read while the form is open; the row ids did not move', S.mainReads === reads0 && (await rowOf(page, 'recWiE008')) === r8, { reads: S.mainReads - reads0 });
+    await syncSettled(page, 'recWiE006');
+    await savefailBoard(page, scn, r6);
     // The form's create, as orders_intl does it: the record exists, then the
     // pending match is consumed (the rig does not type the whole order form).
     S.fail.patch = {}; S.log = [];
@@ -1568,21 +1747,55 @@ async function scnPresence(browser, origin) {
     const scn = 'presence.' + mode;
     const { page, S } = await openBoard(browser, origin, { presence: true, presenceCfg: { mode } });
     await page.waitForTimeout(6500);
+    // The strip shows its state WORD (fix round 3) and carries the whole
+    // sentence of §e #18 in the title of each piece.
     const r = await page.evaluate(() => ({ cls: (document.querySelector('#content .wi4 .wi4-pres') || { className: '' }).className,
-      t: (document.querySelector('#content .wi4 .wi4-pres') || {}).innerText || '', av: document.querySelectorAll('#content .wi4 .wi4-pres .wi4-av').length,
+      t: (document.querySelector('#content .wi4 .wi4-pres') || {}).textContent || '', av: document.querySelectorAll('#content .wi4 .wi4-pres .wi4-av').length,
+      title: ((document.querySelector('#content .wi4 .wi4-pres .wi4-pres-w') || {}).title) || '',
       text: (document.querySelector('#content .wi4') || {}).innerText || '' }));
     await check(scn, r, S, await evs(page, 'expired'));
     ok(scn, 'never «κανείς»', !/κανείς/i.test(r.text));
     await page.context().close();
   };
-  await quiet(404, (s, r) => ok(s, '404 → «Ζωντανή εικόνα σε παύση — δεν ξέρουμε ποιος άλλος είναι μέσα»', /paused/.test(r.cls) && /Ζωντανή εικόνα σε παύση/.test(r.t), r));
+  await quiet(404, (s, r) => ok(s, '404 → «σε παύση» shown; title «Ζωντανή εικόνα σε παύση — δεν ξέρουμε ποιος άλλος είναι μέσα»', /paused/.test(r.cls) && /σε παύση/.test(r.t) && /^Ζωντανή εικόνα σε παύση — δεν ξέρουμε ποιος άλλος είναι μέσα/.test(r.title), r));
   await quiet(429, (s, r, S) => {
     ok(s, '429 → not paused (our own pacing), beats continue', !/paused/.test(r.cls) && S.beats.length >= 2, { r, beats: S.beats.length });
     // Every beat answered 429: no successful beat yet, so no claim either way.
     ok(s, 'before a successful beat the strip claims nothing (no «↻ ζωντανά»)', !/ζωντανά/.test(r.t) && r.av === 0, r);
   });
   await quiet(401, (s, r, S, ex) => ok(s, '401 → session expiry once, then no more beats', ex.length === 1 && S.beats.length === 1, { expired: ex.length, beats: S.beats.length }));
-  await quiet(403, (s, r, S) => ok(s, '403 → «Η ζωντανή εικόνα δεν είναι διαθέσιμη για τον ρόλο σου», no more beats', /δεν είναι διαθέσιμη για τον ρόλο σου/.test(r.t) && S.beats.length === 1, { r, beats: S.beats.length }));
+  await quiet(403, (s, r, S) => ok(s, '403 → «μη διαθέσιμη» shown, title «Η ζωντανή εικόνα δεν είναι διαθέσιμη για τον ρόλο σου», no more beats', /μη διαθέσιμη/.test(r.t) && r.title === 'Η ζωντανή εικόνα δεν είναι διαθέσιμη για τον ρόλο σου' && S.beats.length === 1, { r, beats: S.beats.length }));
+  // Review 11/10 (P2): at 1920 ONE colleague already cut the strip to «… · ↻
+  // ζ…», and the paused / forbidden sentences — the «unknown ≠ empty»
+  // warnings — would shrink to a few letters. For every state, at 1920 and
+  // 1440, the state word is whole, the sync token is whole and inside the bar,
+  // and there is one ↻ (never «↻ ζωντανά» beside «↻ Ενημερώθηκε»).
+  const STATES = [
+    ['live', { others: [{ sub: 'rig_b', name: 'Χρήστης Β', records: [] }] }, /εδώ τώρα/, /ζωντανά/],
+    ['live3', { others: ['Παντελής', 'Ειρήνη', 'Θοδωρής'].map((n, i) => ({ sub: 'rig_' + i, name: n, records: [] })) }, /εδώ τώρα/, /ζωντανά/],
+    ['paused', { mode: 404 }, /σε παύση/, /μόλις τώρα|πριν/],
+    ['forbidden', { mode: 403 }, /μη διαθέσιμη/, /μόλις τώρα|πριν/],
+    ['changes', { others: [{ sub: 'rig_b', name: 'Χρήστης Β', records: [] }], changes: { n: 3, last_by: 'Χρήστης Γ', last_at: '2026-10-06T06:30:00Z', auto_n: 0 } }, /εδώ τώρα/, /3 αλλαγές/],
+  ];
+  for (const [name, cfg, word, token] of STATES) {
+    const scn = 'presence.layout.' + name;
+    const { page } = await openBoard(browser, origin, { presence: true, presenceCfg: cfg });
+    await page.waitForTimeout(6500);
+    for (const vw of [1920, 1440]) {
+      await page.setViewportSize({ width: vw, height: 1080 }); await page.waitForTimeout(400);
+      const r = await page.evaluate(() => {
+        const bar = document.querySelector('#content .wi4 .wi4-bar-l').getBoundingClientRect();
+        const w = document.querySelector('#content .wi4 .wi4-pres .wi4-pres-w'), u = document.getElementById('wi4-upd');
+        const tabs = document.getElementById('wi4-tabs').getBoundingClientRect(), right = document.querySelector('#content .wi4 .wi4-bar-r').getBoundingClientRect();
+        const whole = el => !!el && el.scrollWidth <= el.clientWidth + 1 && el.getBoundingClientRect().right <= bar.right + 1 && el.getBoundingClientRect().width > 0;
+        return { word: w ? w.textContent : '', wordWhole: whole(w), token: u ? u.textContent : '', tokenWhole: whole(u),
+          refresh: document.querySelectorAll('#content .wi4 .wi4-bar-l svg').length, overlap: tabs.right > right.left + 1 };
+      });
+      ok(scn, `${vw}: the state word is whole («${r.word}»), the sync token is whole and in the bar, one ↻ while live, the tabs clear of the actions`,
+        word.test(r.word) && r.wordWhole && token.test(r.token) && r.tokenWhole && !r.overlap && (!/^live/.test(name) || r.refresh === 1), r);
+    }
+    await page.context().close();
+  }
   await quiet(410, (s, r, S) => ok(s, '410 → stop for the session, nothing drawn', r.av === 0 && !r.t.trim() && S.beats.length === 1, { r, beats: S.beats.length }));
 }
 
@@ -1758,12 +1971,16 @@ async function scnFallback(browser, origin) {
 async function scnStyles(browser, origin) {
   const PROPS = ['fontFamily', 'fontSize', 'fontWeight', 'color', 'backgroundColor', 'paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft',
     'borderTopWidth', 'borderTopStyle', 'borderTopColor', 'borderBottomWidth', 'borderBottomColor'];
-  const cap = (page, rootSel) => page.evaluate(([sel, props]) => {
+  // The popover's primary («Ενημέρωση/Αποθήκευση ανάθεσης») is navy in v4 —
+  // the board's ONE primary (fix round 3, review 11/10): an intended
+  // difference, so it is left out here and checked on its own below.
+  const SKIN = '.wi-pop-save';
+  const cap = (page, rootSel) => page.evaluate(([sel, props, skin]) => {
     const root = document.querySelector(sel); if (!root) return null;
     const out = {}; const walk = (el, p) => { [...el.children].forEach((c, i) => { const k = p + '/' + c.tagName + i; const s = getComputedStyle(c);
-      out[k] = props.map(x => s[x]).join('|'); walk(c, k); }); };
+      if (!c.matches(skin)) out[k] = props.map(x => s[x]).join('|'); walk(c, k); }); };
     walk(root, ''); return out;
-  }, [rootSel, PROPS]);
+  }, [rootSel, PROPS, SKIN]);
   const menuStyles = page => page.evaluate(props => Object.fromEntries([...document.querySelectorAll('#wi-ctx .wi-ctx-i[onclick]')].map(b => {
     const s = getComputedStyle(b); return [b.getAttribute('onclick'), props.map(x => s[x]).join('|')]; })), PROPS);
   const caps = {};
@@ -1774,6 +1991,7 @@ async function scnStyles(browser, origin) {
     const ev = `({currentTarget:document.getElementById('wi-row-${r7}')||document.body,target:document.body,stopPropagation(){},preventDefault(){},clientX:400,clientY:300})`;
     await page.evaluate(e => _wiOpenPopover((0, eval)(e), WINTL.rows.find(x => (x.orderIds || []).includes('recWiE007')).id), ev); await page.waitForTimeout(300);
     C.popover = await cap(page, '#wi-popover');
+    C.save = await page.evaluate(([tok]) => { const b = document.querySelector('#wi-popover .wi-pop-save'); return b ? { bg: getComputedStyle(b).backgroundColor, ink: eval(tok)('--wi4-ink') } : null; }, [TOKEN_JS]);
     await page.evaluate(() => _wiClosePopover());
     // Both menus open the same way (a synthetic event, no pointer), and the
     // item focus that _wiCtxShow sets is dropped before the capture: which
@@ -1797,12 +2015,273 @@ async function scnStyles(browser, origin) {
     }
     await page.context().close();
   }
+  ok('styles', 'v4 skin: the popover\'s primary is navy (--wi4-ink), v1\'s stays as it was', !!caps.on.save && caps.on.save.bg === caps.on.save.ink && !!caps.off.save && caps.off.save.bg !== caps.on.save.bg, { v1: caps.off.save, v4: caps.on.save });
   for (const k of Object.keys(caps.off)) {
+    if (k === 'save') continue;
     const a = caps.off[k] || {}, b = caps.on[k] || {};
     const keys = Object.keys(a).filter(x => x in b);
     const diff = keys.filter(x => a[x] !== b[x]).map(x => `${x}: v1 ${a[x]} ≠ v4 ${b[x]}`);
     ok('styles', `${k}: computed styles v4 = v1 (${keys.length} nodes compared)`, keys.length > 0 && !diff.length, diff.slice(0, 8));
   }
+}
+
+
+// ═══ Fix round 3 (11/10) ═══════════════════════════════════════════════
+// Roles with planning:'view' print by mouse only through the row's print
+// button (review 11/10, P2): the per-load menu is behind _wiBlockReadOnly,
+// exactly like v1's row menu — no role gains or loses a right. A right-click
+// on the button is the share menu, for every role.
+async function scnPrint(browser, origin) {
+  let scn = 'print.view';
+  {
+    const { page, S } = await openBoard(browser, origin, { role: 'accountant' });
+    await page.evaluate(() => { window.__prints = []; window.printOrderSheet = function () { window.__prints.push([...arguments]); }; });
+    const has = await page.evaluate(([js]) => { const r = eval(js)('recWiE001'); if (r) { r.setAttribute('data-rig-row', 'E001'); r.scrollIntoView({ block: 'center' }); } return !!r; }, [ROW_JS]);
+    const rowL = page.locator('[data-rig-row="E001"]');
+    await rowL.hover({ position: { x: 600, y: 16 } }); await page.waitForTimeout(150);
+    const btn = rowL.locator('.wi4-asg .wk3-prt');
+    const vis = await btn.evaluate(b => getComputedStyle(b).visibility).catch(() => 'missing');
+    const clicked = await btn.click({ timeout: 4000 }).then(() => true, () => false);
+    await page.waitForTimeout(250);
+    const prints = await page.evaluate(() => window.__prints);
+    ok(scn, 'accountant (planning:view): hovering E001 shows the print button; a mouse click prints E001 (export)', has && vis === 'visible' && clicked && prints.length === 1 && prints[0][0] === 'recWiE001' && prints[0][1] === 'export', { vis, clicked, prints });
+    await rowL.locator('.wi4-plane').click(); await page.waitForTimeout(250);
+    const menu = await page.evaluate(() => ((document.getElementById('wi-ctx') || {}).style || {}).display === 'block');
+    const ro = (await evs(page, 'toast')).some(e => /Μόνο ανάγνωση/.test(String(e.a[0])));
+    ok(scn, 'the per-load menu keeps today\'s read-only gate for this role («Μόνο ανάγνωση»): no gate added, none removed', !menu && ro, { menu, ro });
+    ok(scn, 'nothing written; no page errors', !writes(S).length && !S.pageErrors.length, { w: writes(S), e: S.pageErrors });
+    await page.context().close();
+  }
+  scn = 'print.share';
+  {
+    const { page, S } = await openBoard(browser, origin);
+    await page.evaluate(([js]) => { const r = eval(js)('recWiE001'); if (r) { r.setAttribute('data-rig-row', 'E001'); r.scrollIntoView({ block: 'center' }); } }, [ROW_JS]);
+    const rowL = page.locator('[data-rig-row="E001"]');
+    await rowL.hover({ position: { x: 600, y: 16 } }); await page.waitForTimeout(150);
+    await rowL.locator('.wi4-asg .wk3-prt').click({ button: 'right', timeout: 4000 }).catch(() => {});
+    await page.waitForTimeout(250);
+    const r = await page.evaluate(() => { const m = document.getElementById('shMenu');
+      return { sh: !!m, items: m ? [...m.querySelectorAll('button')].map(b => b.textContent) : [], ctx: ((document.getElementById('wi-ctx') || {}).style || {}).display === 'block' }; });
+    ok(scn, 'right-click on the row\'s print button opens the share menu (Λήψη PDF · Κοινή χρήση), not the per-load menu', r.sh && !r.ctx && r.items.some(t => /Κοινή χρήση/.test(t)), r);
+    ok(scn, 'nothing written', !writes(S).length, writes(S));
+    await page.context().close();
+  }
+}
+
+// P1 review 11/10: a write takes its row id at the start and reports after
+// its awaits. A re-read in between (a week tab, «Ανανέωση», another row's
+// date save) renumbers the rows: the result must land on the ORDER that was
+// written — never under another load, never a ⟳ for ever — and be heard.
+async function scnShift(browser, origin) {
+  const scn = 'shift';
+  const { page, S } = await openBoard(browser, origin);
+  const r7 = await rowOf(page, 'recWiE007');
+  ok(scn, 'E007\'s popover opens', await openPopover(page, 'recWiE007'));
+  ok(scn, 'the popover form accepts a truck', await setPopoverTruck(page, r7, 'recWiT016', 'TST-1016'));
+  await page.evaluate(() => { window.__ev.length = 0; });
+  S.fail.patch.recWiE007 = 500; S.delay.recWiE007 = 2500; S.log = [];
+  await page.locator('#wi-popover [onclick*="_wiSaveFromPopover"]').first().click(); await confirmIfAsked(page, 1000);
+  // While the first attempt is held: an export delivered on Saturday sorts
+  // first (every row id after it moves), and the board re-reads.
+  S.db[T.ORDERS].push({ id: 'recWiZZZ002', fields: { Type: 'International', Direction: 'Export', Status: 'Pending', Client: ['recWiC001'],
+    'Loading DateTime': '2026-10-02T05:00:00.000Z', 'Delivery DateTime': '2026-10-03T06:00:00.000Z', 'Total Pallets': 10, Reference: 'REF-Z002' } });
+  await page.evaluate(() => WI_INTERNAL.renderWeeklyIntl());
+  const st = await syncSettled(page, 'recWiE007', 20000);
+  await page.waitForTimeout(500);
+  const r = await page.evaluate(([js]) => {
+    const log = WINTL._syncLog || {};
+    const row = eval(js)('recWiE007');
+    const msg = document.querySelector('#content .wi4 [data-msg="recWiE007"]');
+    let prev = msg && msg.previousElementSibling; while (prev && !prev.classList.contains('wi4-row')) prev = prev.previousElementSibling;
+    return { r7now: WIV2.rowIdOf('recWiE007'), keys: Object.entries(log).filter(([, x]) => x && (x.state === 'err' || x.state === 'pend')).map(([k, x]) => k + ':' + x.state),
+      msg: msg ? msg.textContent : '', under: !!(prev && prev.getAttribute('data-oid') === 'recWiE007'), slot: row ? ((row.querySelector('.wi-sync') || {}).textContent || '') : null,
+      others: [...document.querySelectorAll('#content .wi4 [data-msg]')].map(m => m.getAttribute('data-msg')).filter(o => o !== 'recWiE007') };
+  }, [ROW_JS]);
+  ok(scn, 'the re-read renumbered the rows while the write was in flight', r.r7now != null && r.r7now !== r7, { r7, now: r.r7now });
+  ok(scn, 'the result is logged on the ORDER written (E007 err); no other load is ⚠ or ⟳', st === 'err' && r.keys.length === 1 && r.keys[0] === 'recWiE007:err', r.keys);
+  ok(scn, 'the failure line sits under E007 and no other load carries one; E007\'s slot says ⚠', r.under && !r.others.length && /Δεν αποθηκεύτηκε/.test(r.msg) && r.slot === '⚠', r);
+  const heard = (await evs(page)).filter(e => e.k === 'reportError' || e.k === 'toast').map(e => String(e.a[0]));
+  ok(scn, 'the row moved under the write, so the failure is ALSO a toast — it surely reaches the user', heard.some(t => /Σφάλμα αποθήκευσης αντιστοίχισης/.test(t)), heard);
+  ok(scn, 'no page errors', !S.pageErrors.length, S.pageErrors);
+  await page.context().close();
+  // The other write paths key their slot the same way (join, groupage, stock
+  // piece): a dissolve (_wiGroupPatch) whose first PATCH fails while a re-read
+  // renumbers the rows is logged on the group's OWN order.
+  {
+    const scn2 = 'shift.group';
+    const { page: p2, S: S2 } = await openBoard(browser, origin);
+    const g = await p2.evaluate(() => { const id = WIV2.rowIdOf('recWiE011'); const r = WINTL.rows.find(x => x.id === id); return r ? { id, ids: [...(r.orderIds || [])] } : null; });
+    ok(scn2, 'E011 heads a groupage row', !!(g && g.ids.length > 1 && g.ids[0] === 'recWiE011'), g);
+    if (g && g.ids[0] === 'recWiE011') {
+      S2.fail.patch.recWiE011 = 500; S2.delay.recWiE011 = 2500; S2.log = [];
+      await p2.evaluate((id) => { _wiSplit(id); }, g.id);
+      S2.db[T.ORDERS].push({ id: 'recWiZZZ003', fields: { Type: 'International', Direction: 'Export', Status: 'Pending', Client: ['recWiC001'],
+        'Loading DateTime': '2026-10-02T05:00:00.000Z', 'Delivery DateTime': '2026-10-03T06:00:00.000Z', 'Total Pallets': 10, Reference: 'REF-Z003' } });
+      await p2.evaluate(() => WI_INTERNAL.renderWeeklyIntl());
+      const st = await syncSettled(p2, 'recWiE011', 20000);
+      await p2.waitForTimeout(800);
+      const r = await p2.evaluate(() => ({
+        keys: Object.entries(WINTL._syncLog || {}).filter(([, x]) => x && (x.state === 'err' || x.state === 'pend')).map(([k, x]) => k + ':' + x.state),
+        others: [...document.querySelectorAll('#content .wi4 [data-msg]')].map(m => m.getAttribute('data-msg')).filter(o => o !== 'recWiE011') }));
+      ok(scn2, 'the dissolve\'s failure is logged on E011; no other load is ⚠ or ⟳, and none carries a failure line', st === 'err' && r.keys.length === 1 && r.keys[0] === 'recWiE011:err' && !r.others.length, r);
+    }
+    ok(scn2, 'no page errors', !S2.pageErrors.length, S2.pageErrors);
+    await p2.context().close();
+  }
+}
+
+// A late source landing (review 11/10): relays answering last and EMPTY left
+// the queue on «≥N … φορτώνει…» for ever (P2); a national read landing while
+// a popover was open repainted #content and closed it (P3).
+async function scnLate(browser, origin) {
+  let scn = 'late.relayEmpty';
+  {
+    const { page, S } = await openBoard(browser, origin, { hold: { relay: true }, mutate: db => { db[T.LOCAL_MOVES] = []; } });
+    const before = await page.evaluate(() => (document.querySelector('#content .wi4 .wi4-q-hd') || {}).innerText || '');
+    ok(scn, 'while the relay read is pending the queue says «≥N … φορτώνει…»', /≥/.test(before) && /φορτώνει/.test(before), before);
+    S.hold.relay = false; S.heldRelay.splice(0).forEach(fn => fn()); await settle(page, S); await page.waitForTimeout(400);
+    const after = await page.evaluate(() => ({ hd: (document.querySelector('#content .wi4 .wi4-q-hd') || {}).innerText || '', st: WINTL.relay.state, n: Object.keys(WINTL.relay.byOrder || {}).length }));
+    ok(scn, 'relays answer ok and EMPTY after the first paint → the header loses «≥» and «φορτώνει…»', after.st === 'ok' && after.n === 0 && !/≥/.test(after.hd) && !/φορτώνει/.test(after.hd), after);
+    ok(scn, 'no page errors', !S.pageErrors.length, S.pageErrors);
+    await page.context().close();
+  }
+  scn = 'late.nlPopover';
+  {
+    const { page, S } = await openBoard(browser, origin, { hold: { nl: true } });
+    ok(scn, 'E007\'s popover is open while the national read is pending', await openPopover(page, 'recWiE007'));
+    await setPopoverTruck(page, await rowOf(page, 'recWiE007'), 'recWiT016', 'TST-1016');   // the user is typing in it
+    S.hold.nl = false; S.held.splice(0).forEach(fn => fn()); await settle(page, S); await page.waitForTimeout(800);
+    const mid = await page.evaluate(([js]) => { const p = document.getElementById('wi-popover'); const v = p && document.getElementById('wsd-v-tk_p_' + p.dataset.rowId);
+      const row = eval(js)('recWiE014'); return { pop: !!p && getComputedStyle(p).display !== 'none' && !!p.innerHTML.trim(), typed: v ? v.value : null,
+        tile: row ? ((row.querySelector('.wi4-c-fl .wi4-tile') || {}).className || '') : '', nl: WINTL.data.nlState }; }, [ROW_JS]);
+    ok(scn, 'the national read landed with the popover open: the popover and what was typed stay; the board waits', mid.nl === 'ok' && mid.pop && mid.typed === 'recWiT016' && /unk/.test(mid.tile), mid);
+    const named0 = await reasonsNamed(page);
+    ok(scn, 'meanwhile header and rows agree (no national count without its tile)', named0.bad.length === 0, named0.bad);
+    await page.evaluate(() => _wiClosePopover()); await page.waitForTimeout(1800);
+    const after = await page.evaluate(([js]) => { const row = eval(js)('recWiE014'); return row ? ((row.querySelector('.wi4-c-fl .wi4-tile') || {}).className || '') : ''; }, [ROW_JS]);
+    ok(scn, 'once the popover closes the board repaints with the carriers', /own/.test(after), after);
+    ok(scn, 'nothing written; no page errors', !writes(S).length && !S.pageErrors.length, { w: writes(S), e: S.pageErrors });
+    await page.context().close();
+  }
+}
+
+// Offline, atPatch QUEUES the change and echoes the body: not a write. The
+// assignment and the match say so — no ✓, no «γράφτηκε», no downstream sync —
+// as the date panel already did (P3 review 11/10).
+async function scnOffline(browser, origin) {
+  let scn = 'offline.assign';
+  {
+    const { page, S } = await openBoard(browser, origin);
+    ok(scn, 'E007\'s popover opens', await openPopover(page, 'recWiE007'));
+    await setPopoverTruck(page, await rowOf(page, 'recWiE007'), 'recWiT016', 'TST-1016');
+    await page.evaluate(() => { window.__ev.length = 0; });
+    await page.context().setOffline(true);
+    S.log = [];
+    await page.locator('#wi-popover [onclick*="_wiSaveFromPopover"]').first().click(); await confirmIfAsked(page, 800);
+    const st = await syncSettled(page, 'recWiE007', 20000);
+    const r = await page.evaluate(() => (WINTL._syncLog || {}).recWiE007 || null);
+    const ev = await evs(page);
+    const ticks = ev.filter(e => e.k === 'toast' && /✓/.test(String(e.a[0]))).map(e => String(e.a[0]));
+    ok(scn, 'logged «Χωρίς σύνδεση — … μπήκε σε αναμονή, δεν είναι ακόμη στη βάση», never «η ανάθεση γράφτηκε»', st === 'err' && !!r && /Χωρίς σύνδεση/.test(r.msg), r);
+    ok(scn, 'no ✓ toast, no downstream sync, zero PATCHes at the facade (queued only)', !ticks.length && !ev.some(e => e.k === 'sync') && !patches(S).length, { ticks, p: patches(S) });
+    await page.context().setOffline(false);
+    await page.context().close();
+  }
+  scn = 'offline.match';
+  {
+    const { page, S } = await openBoard(browser, origin);
+    await page.evaluate(() => { window.__ev.length = 0; });
+    const r6 = await rowOf(page, 'recWiE006');
+    await page.context().setOffline(true);
+    S.log = [];
+    await htmlDrag(page, '#wi-imp-recWiI004', `#wi-ci-${r6}`);
+    const st = await syncSettled(page, 'recWiE006', 30000);
+    const r = await page.evaluate(() => (WINTL._syncLog || {}).recWiE006 || null);
+    const ev = await evs(page);
+    ok(scn, 'the match is logged «Χωρίς σύνδεση — … μπήκε σε αναμονή», not «Αποθηκεύτηκε»', st === 'err' && !!r && /Χωρίς σύνδεση/.test(r.msg), r);
+    ok(scn, 'no downstream sync for it, zero PATCHes at the facade', !ev.some(e => e.k === 'sync') && !patches(S).length, patches(S));
+    await page.context().setOffline(false);
+    await page.context().close();
+  }
+}
+
+// One failed save is ONE message (review 11/10): the follow-up PATCHes of a
+// group are quiet like its first — a 500 on the 2nd member of three stacked
+// «Σφάλμα server — δοκιμάστε ξανά» toasts on each retry.
+async function scnQuiet(browser, origin) {
+  const scn = 'quiet';
+  const { page, S } = await openBoard(browser, origin);
+  const rg = await rowOf(page, 'recWiE011');
+  ok(scn, 'the groupage row\'s popover opens', await openPopover(page, 'recWiE011'));
+  await setPopoverTruck(page, rg, 'recWiT016', 'TST-1016');
+  await page.evaluate(() => { window.__ev.length = 0; });
+  S.fail.patch.recWiE012 = 500; S.log = [];
+  await page.locator('#wi-popover [onclick*="_wiSaveFromPopover"]').first().click(); await confirmIfAsked(page);
+  const st = await syncSettled(page, 'recWiE011', 20000);
+  await page.waitForTimeout(400);
+  const ev = await evs(page);
+  const loud = ev.filter(e => e.k === 'errtoast' || e.k === 'reportError' || (e.k === 'toast' && /Σφάλμα|Save failed|απέτυχε/.test(String(e.a[0])))).map(e => e.k + ': ' + String(e.a[0]));
+  const r = await page.evaluate(() => ({ msgs: [...document.querySelectorAll('#content .wi4 [data-msg]')].map(m => m.textContent) }));
+  ok(scn, 'the 2nd member of a 3-member groupage fails (500): the save is logged failed on the group', st === 'err', st);
+  ok(scn, 'ONE message — the line under the row, «1 από 3» — and no stacked toast («Σφάλμα server», «Save failed»)', r.msgs.length === 1 && /1 από 3/.test(r.msgs[0]) && !loud.length, { msgs: r.msgs, loud });
+  ok(scn, 'the table: E011 and E013 written, E012 not', patches(S, 'recWiE011').some(x => x.status === 200) && patches(S, 'recWiE013').some(x => x.status === 200) && patches(S, 'recWiE012').every(x => x.status === 500),
+    S.log.filter(x => x.k === 'patch').map(x => [x.id, x.status]));
+  // Once the table is read again, the line says what LANDED — 2 of 3 — never
+  // «έμεινε όπως ήταν» (review 11/10, P2: the words came from the screen).
+  const reads0 = S.mainReads;
+  await page.evaluate(() => { if (typeof _wiClosePopover === 'function') _wiClosePopover(); });
+  const t0 = Date.now(); while (S.mainReads === reads0 && Date.now() - t0 < 8000) await page.waitForTimeout(200);
+  await settle(page, S, 800); await page.waitForTimeout(300);
+  const after = await page.evaluate(() => [...document.querySelectorAll('#content .wi4 [data-msg]')].map(m => m.textContent));
+  ok(scn, 'after the re-read: «γράφτηκε σε 2 από 3 · έλεγξε», from the table', S.mainReads > reads0 && after.length === 1 && /γράφτηκε σε 2 από 3/.test(after[0]) && !/έμεινε όπως ήταν/.test(after[0]), { reads: S.mainReads - reads0, after });
+  await page.context().close();
+}
+
+// A VS order whose NATIONAL LOADS row the read did not return (the chain never
+// created it, or failed) is not «χωρίς μεταφορέα» — there is nothing to assign
+// on Weekly National. Its own reason, NAT_MISSING (review 11/10, P2).
+async function scnNatMissing(browser, origin) {
+  const scn = 'natmissing';
+  const { page, S } = await openBoard(browser, origin, { mutate: db => { db[T.NAT_LOADS] = db[T.NAT_LOADS].filter(n => n.id !== 'recWiN002'); } });
+  const r = await page.evaluate(([js]) => { const row = eval(js)('recWiI005'); const t = row && row.querySelector('.wi4-c-fr .wi4-tile');
+    return { tile: t ? t.textContent : '', r: t ? t.getAttribute('data-r') : null,
+      q: WIV2.queueItems().filter(q => q.key === 'recWiI005' && /^NAT_/.test(q.code)).map(q => [q.code, q.level, q.act]) }; }, [ROW_JS]);
+  ok(scn, 'I005\'s national tile says «δεν υπάρχει εθνικό» (data-r NAT_MISSING), never «ΠΡΟΣ ΑΝΑΘΕΣΗ»', r.tile === 'δεν υπάρχει εθνικό' && r.r === 'NAT_MISSING', r);
+  ok(scn, 'one NAT_MISSING queue item that opens the order; no NAT_NO_CARRIER for it', r.q.length === 1 && r.q[0][0] === 'NAT_MISSING' && r.q[0][2] === 'open', r.q);
+  const named = await reasonsNamed(page);
+  ok(scn, 'counted = named per day, NAT_MISSING included', named.bad.length === 0 && named.seen.includes('NAT_MISSING'), named);
+  ok(scn, 'nothing written; no page errors', !writes(S).length && !S.pageErrors.length, { w: writes(S), e: S.pageErrors });
+  await page.context().close();
+}
+
+// §e #20: 1440 is not designed yet (Φ8, the owner's Figma) — but nothing on it
+// may be cut without its title, overlap, or break the 32px rows.
+async function scnW1440(browser, origin) {
+  const scn = 'w1440';
+  const { page, S } = await openBoard(browser, origin, { viewport: { width: 1440, height: 900 } });
+  await shot(page, 'paint-1440');
+  const r = await page.evaluate(([js]) => eval(js)('#content .wi4'), [SCAN_JS]);
+  ok(scn, 'overflow scan at 1440: every overflowing text has its full text in a title', r.n === 1 && !r.over.length, r.over.slice(0, 15));
+  ok(scn, 'contrast scan at 1440: text ≥ 4.5:1', r.n === 1 && !r.low.length, r.low.slice(0, 15));
+  const g = await page.evaluate(() => { const t = document.getElementById('wi4-tabs').getBoundingClientRect(), a = document.querySelector('#content .wi4 .wi4-bar-r').getBoundingClientRect();
+    const rows = [...document.querySelectorAll('#content .wi4 .wi4-row')].map(e => Math.round(e.getBoundingClientRect().height));
+    return { overlap: t.right > a.left + 1, rowsOk: rows.every(h => h === 32), n: rows.length }; });
+  ok(scn, 'week tabs clear of the actions; rows still 32px', !g.overlap && g.rowsOk && g.n > 10, g);
+  // The reused popover places itself for a 380px form; its real form is
+  // taller. Opened from a row near the window's bottom it ran past the edge,
+  // its Save out of reach (review 11/10): v4 lifts it back inside.
+  const low = await page.evaluate(() => { const rows = [...document.querySelectorAll('#content .wi4 #wi-rows .wi4-row')].filter(r => r.querySelector('.wi4-box'));
+    const r = rows.find(x => { const b = x.getBoundingClientRect(); return b.top > innerHeight - 140 && b.bottom < innerHeight - 4; }) || rows.find(x => x.getBoundingClientRect().bottom < innerHeight - 4 && x.getBoundingClientRect().top > innerHeight / 2);
+    if (!r) return null; r.querySelector('.wi4-box').setAttribute('data-rig-low', '1'); return Math.round(r.getBoundingClientRect().top); });
+  if (low != null) {
+    await page.locator('[data-rig-low="1"]').click(); await page.waitForTimeout(500);
+    const pb = await page.evaluate(() => { const p = document.getElementById('wi-popover'); if (!p || getComputedStyle(p).display === 'none') return null;
+      const b = p.getBoundingClientRect(), s = p.querySelector('.wi-pop-save'); return { top: Math.round(b.top), bottom: Math.round(b.bottom), h: innerHeight, save: s ? Math.round(s.getBoundingClientRect().bottom) : null }; });
+    ok(scn, 'a popover opened from a low row stays inside the window, its Save in reach', !!pb && pb.top >= 11 && pb.bottom <= pb.h - 11 && pb.save != null && pb.save <= pb.h, { low, pb });
+    await page.evaluate(() => { if (typeof _wiClosePopover === 'function') _wiClosePopover(); });
+  } else ok(scn, 'a row near the bottom of the window to open the popover from', false, 'none found');
+  ok(scn, 'no page errors', !S.pageErrors.length, S.pageErrors);
+  await page.context().close();
 }
 
 (async () => {
@@ -1832,7 +2311,8 @@ async function scnStyles(browser, origin) {
     ranV4 = true;
     const S = { paint: scnPaint, invariants: scnInvariants, relay: scnRelay, scans: scnScans, unknown: scnUnknown, drops: scnDrops, join: scnJoin, menu: scnMenu,
       date: scnDate, keys: scnKeys, search: scnSearch, savefail: scnSaveFail, presence: scnPresence, conflict: scnConflict, fallback: scnFallback, styles: scnStyles,
-      twins: scnTwins, queue: scnQueue, unread: scnUnread };
+      twins: scnTwins, queue: scnQueue, unread: scnUnread,
+      print: scnPrint, shift: scnShift, late: scnLate, offline: scnOffline, quiet: scnQuiet, natmissing: scnNatMissing, w1440: scnW1440 };
     // A watchdog per scenario: one missing locator or one write that never
     // settles fails THAT scenario, closes its pages, and the run goes on.
     const WATCHDOG_MS = 360000;
