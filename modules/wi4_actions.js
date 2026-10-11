@@ -111,10 +111,14 @@ function _handlerOf(onclick) {
 const _nameOf = (fn) => (/^\s*([A-Za-z_$][\w$]*)\s*\(/.exec(fn) || [])[1] || '';
 const _recIdsIn = (fn) => (String(fn).match(/'(rec[A-Za-z0-9]+)'/g) || []).map((s) => s.slice(1, -1));
 function _fieldsOf(oid) { const r = W().recOf(oid); return (r && r.fields) || {}; }
+// The group line's pallets with the BOARD's rule (WIV2._pals, one source):
+// «28+? π.» when a member has no figure — the row's cell says «28+?» for the
+// same load, and «· 28 π.» here made it two numbers (review 11/10).
 function _pals(oids) {
-  let n = 0, known = false;
-  for (const id of oids) { const f = _fieldsOf(id); if ('Total Pallets' in f) { known = true; n += +f['Total Pallets'] || 0; } }
-  return known ? n : null;
+  const v = V(), list = oids.map(_fieldsOf);
+  const p = v && typeof v._pals === 'function' ? v._pals(list) : null;
+  if (!p) return null;
+  return p.known ? String(p.n) + (p.miss ? '+?' : '') : null;
 }
 function _plural(n, one, many) {
   const lg = L();
@@ -387,10 +391,14 @@ function _menuHeader(row, impRow, expOids, impOids) {
   // trucks only) is «—», never «ΠΡΟΣ ΑΝΑΘΕΣΗ» in the very place the dispatcher
   // acts from; a partner missing from the cache is «—», never the generic
   // «Συνεργάτης» (owner 4/9).
-  if (row.hasSplitLegs) l1 = 'Σπασμένη παραγγελία';
-  else if (row.partnerId) l1 = (row.partnerLabel || '—') + (row.partnerPlates ? ' · ' + row.partnerPlates : '');
-  else if (row.saved) l1 = (row.truckLabel || '—') + (row.driverLabel ? ' · ' + row.driverLabel : '');
-  else l1 = 'ΠΡΟΣ ΑΝΑΘΕΣΗ';
+  // l1p: the same line in parts, the plates marked for DM Mono (sheet 14:
+  // «IAZ4471 · Papadopoulos Georgios»); l1 stays the plain text.
+  let l1p;
+  if (row.hasSplitLegs) l1p = [{ t: 'Σπασμένη παραγγελία' }];
+  else if (row.partnerId) l1p = [{ t: row.partnerLabel || '—' }].concat(row.partnerPlates ? [{ t: ' · ' }, { t: row.partnerPlates, mono: true }] : []);
+  else if (row.saved) l1p = [{ t: row.truckLabel || '—', mono: !!row.truckLabel }].concat(row.driverLabel ? [{ t: ' · ' + row.driverLabel }] : []);
+  else l1p = [{ t: 'ΠΡΟΣ ΑΝΑΘΕΣΗ' }];
+  l1 = l1p.map((x) => x.t).join('');
   const first = _fieldsOf(expOids[0] || impOids[0]);
   const lastF = _fieldsOf(impOids.length ? impOids[impOids.length - 1] : expOids[expOids.length - 1]);
   const from = _dl(_dayOf('Loading DateTime', first['Loading DateTime'])) || '—';
@@ -398,7 +406,7 @@ function _menuHeader(row, impRow, expOids, impOids) {
   const n = [];
   if (expOids.length) n.push(expOids.length + ' ' + (expOids.length === 1 ? 'εξαγωγή' : 'εξαγωγές'));
   if (impOids.length) n.push(impOids.length + ' ' + (impOids.length === 1 ? 'εισαγωγή' : 'εισαγωγές'));
-  return { l1, l2: from + ' → ' + to + (n.length ? ' · ' + n.join(' · ') : '') };
+  return { l1, l1p, l2: from + ' → ' + to + (n.length ? ' · ' + n.join(' · ') : '') };
 }
 
 // Icon of an item from WI4.MENU_ICON (keyed on handler name). A word is a
@@ -422,7 +430,12 @@ function _itemNode(it) {
   }
   b.textContent = '';
   b.appendChild(_iconEl(it.name || it.as || ''));
-  b.appendChild(document.createTextNode(it.label));
+  // The label in its own span: ONE line, cut with «…» (review 11/10: long
+  // labels wrapped under the icon); the whole label is the title unless the
+  // builder gave one (a disabled item's reason).
+  const l = document.createElement('span'); l.className = 'wi4-m-l'; l.textContent = it.label;
+  b.appendChild(l);
+  if (!b.getAttribute('title')) b.setAttribute('title', it.label);
   if (it.hint) { const k = document.createElement('span'); k.className = 'wi4-key wi4-m-k'; k.textContent = it.hint; b.appendChild(k); }
   return b;
 }
@@ -473,7 +486,10 @@ function _renderMenu(model) {
   const frag = document.createDocumentFragment();
   const hd = document.createElement('div');
   hd.className = 'wi4-m-hd';
-  hd.textContent = model.header.l1;
+  (model.header.l1p || [{ t: model.header.l1 }]).forEach((x) => {
+    if (!x.mono) { hd.appendChild(document.createTextNode(x.t)); return; }
+    const m = document.createElement('span'); m.className = 'wi4-m-plate'; m.textContent = x.t; hd.appendChild(m);
+  });
   const l2 = document.createElement('div'); l2.className = 'wi4-l2'; l2.textContent = model.header.l2; l2.title = model.header.l2;
   hd.appendChild(l2);
   frag.appendChild(hd);
@@ -493,7 +509,8 @@ function _renderMenu(model) {
       more.className = 'wi-ctx-i wi4-m-more' + (sub.kind === 'member' ? ' wi4-m-mem' : '');
       more.setAttribute('aria-expanded', 'false');
       more.appendChild(_iconEl(sub.kind === 'member' ? 'member' : sub.kind === 'relay' ? 'relay' : 'submenu'));
-      more.appendChild(document.createTextNode(sub.title));
+      const ml = document.createElement('span'); ml.className = 'wi4-m-l'; ml.textContent = sub.title;
+      more.appendChild(ml); more.setAttribute('title', sub.title);
       const chev = document.createElement('span');
       chev.className = 'wi4-m-chev';
       chev.setAttribute('aria-hidden', 'true');
@@ -535,6 +552,10 @@ function _presenceCtx(record, part, action) {
 const _partOf = (oid) => (String(_fieldsOf(oid)['Direction'] || '') === 'Import' ? 'import' : 'export');
 
 async function openRowMenu(e, orderId) {
+  // A right-click on a print button belongs to the SHARE menu (§a.7,
+  // shareMenuDelegate on the document): the row's menu steps aside and lets
+  // the event bubble on — Λήψη PDF · Κοινή χρήση, for every role (11/10).
+  if (e && e.type === 'contextmenu' && e.target && e.target.closest && e.target.closest('.wk3-prt[data-shq]')) return;
   if (e && e.preventDefault) e.preventDefault();
   if (e && e.stopPropagation) e.stopPropagation();
   const I = W();
@@ -909,7 +930,12 @@ function _dpRender() {
     el.appendChild(lab);
   }
   const note = document.createElement('div'); note.className = 'wi4-datep-note';
-  note.textContent = 'Αλλάζει και τις στάσεις και τη Βέροια όπου υπάρχει. Η Εβδομάδα δεν αλλάζει από εδώ.';
+  // What a change of THIS field moves (review 11/10: the Βέροια field said
+  // «…και τη Βέροια»). A VS CD change moves the national leg's day there —
+  // the Veroia Switch chain reads it (orders_intl _syncVeroiaSwitch).
+  note.textContent = st.field === 'VS CD Date'
+    ? 'Αλλάζει την ημερομηνία Βέροιας και την ημέρα του εθνικού σκέλους εκεί. Η Εβδομάδα δεν αλλάζει από εδώ.'
+    : 'Αλλάζει και τις στάσεις και τη Βέροια όπου υπάρχει. Η Εβδομάδα δεν αλλάζει από εδώ.';
   el.appendChild(note);
   if (st.err) {
     const er = document.createElement('div'); er.className = 'wi4-conf'; er.setAttribute('role', 'alert'); er.textContent = st.err;
@@ -968,6 +994,18 @@ function _dpOkText(w) {
   return 'Ημερομηνία ενημερώθηκε ✓';
 }
 const DP_OFFLINE = 'Χωρίς σύνδεση — η αλλαγή μπήκε σε αναμονή και θα σταλεί όταν επανέλθει· δεν είναι ακόμη στη βάση';
+// The chain a date change waits for (_wiDateWrite returns syncOrderDownstream's
+// {ok, failed}): a stage that failed is said in the user's words, never a ✓
+// over a national load that did not move (review 11/10, the Λάβδας 7/9 case).
+const SYNC_WHAT = Object.freeze({ 'VS chain': 'του εθνικού φορτίου', 'GRP→GL→CL→NL cascade': 'του groupage εθνικών',
+  'RAMP sync': 'της ράμπας', 'PL feed sync': 'των παλετών', paSyncStatus: 'των αναθέσεων συνεργατών', sync: '' });
+function _syncFail(w) {
+  const ds = w && w.downstream;
+  if (!ds || ds.ok !== false) return '';
+  const what = (ds.failed || []).map((l) => (Object.prototype.hasOwnProperty.call(SYNC_WHAT, l) ? SYNC_WHAT[l] : l)).filter(Boolean).join(', ');
+  _logErr(new Error('date change written, downstream failed: ' + (ds.failed || []).join(', ')), 'wi4 date panel');
+  return 'Η ημερομηνία άλλαξε — ο συγχρονισμός' + (what ? ' ' + what : '') + ' απέτυχε· έλεγξε το Εβδομαδιαίο Εθνικών';
+}
 async function _dpSave() {
   const st = _dp; if (!st || st.busy || st.conflicting) return;
   // A typed time that is not HH:MM is said, never silently dropped.
@@ -991,8 +1029,9 @@ async function _dpSave() {
       if (w && w.conflict) { _toast('Η ημερομηνία δεν άλλαξε — την είχε αλλάξει άλλος', 'warn'); if (here) I.renderWeeklyIntl(); }
       else if (w && w.offline) _toast(DP_OFFLINE, 'info');
       else if (w && w.ok) {
-        const bad = _dpVerified(st, args, w);
+        const bad = _dpVerified(st, args, w), sf = bad ? '' : _syncFail(w);
         if (bad) { _logErr(new Error(bad), 'wi4 date panel'); _toast('Η αλλαγή ημερομηνίας δεν επιβεβαιώθηκε — ' + bad, 'warn'); }
+        else if (sf) _toast(sf, 'warn');
         else _toast(_dpOkText(w));
         if (here) I.renderWeeklyIntl();
       }
@@ -1030,9 +1069,11 @@ async function _dpSave() {
     const bad = _dpVerified(st, args, w);
     if (bad) throw new Error(bad);
     // A Worker that could not run the check says so (§g.3), in the ✓'s own
-    // toast: never a silent «checked».
+    // toast: never a silent «checked». A downstream stage that failed is said
+    // instead of the ✓ (the date IS written: the panel closes).
     _dpClose();
-    _toast(_dpOkText(w));
+    const sf = _syncFail(w);
+    _toast(sf || _dpOkText(w), sf ? 'warn' : undefined);
     I.renderWeeklyIntl();
   } catch (e) {
     // The panel says it inline, red, with the reason: one message, not a
@@ -1170,9 +1211,14 @@ function queuePanel() {
   document.body.appendChild(el);
   const a = document.querySelector('#content .wi4 .wi4-q-all');
   const ar = a && a.getBoundingClientRect ? a.getBoundingClientRect() : null;
-  const w = el.offsetWidth || 440;
-  el.style.left = Math.max(10, Math.min(window.innerWidth - w - 12, ar ? ar.right - w : window.innerWidth - w - 24)) + 'px';
-  el.style.top = (ar ? ar.bottom + 6 : 80) + 'px';
+  // Sheet 15 B: under the queue band, from its LEFT edge (the search box) —
+  // anchored to «Όλα»'s right edge it covered the import column (11/10).
+  const band = document.querySelector('#content .wi4 .wi4-q');
+  const br = band && band.getBoundingClientRect ? band.getBoundingClientRect() : null;
+  const w = el.offsetWidth || 600;
+  const left = br ? br.left : ar ? ar.right - w : window.innerWidth - w - 24;
+  el.style.left = Math.max(10, Math.min(window.innerWidth - w - 12, left)) + 'px';
+  el.style.top = ((br ? br.bottom : ar ? ar.bottom : 74) + 6) + 'px';
   _qp = { el, rows, on: -1, anchor: a };
   _qp.onKey = (ev) => {
     if (!_qp || ev.ctrlKey || ev.metaKey || ev.altKey) return;
@@ -1424,7 +1470,19 @@ function _relabelPanel(panel) {
     if (btn.textContent !== want) btn.textContent = want;
   }
 }
-let _panelObs = null;
+// The reused assignment popover places itself for a 380px form (old code,
+// §c.3); its real form is taller, so a row low on the screen put its
+// «Αποθήκευση» below the window (review 11/10). v4 lifts it back inside —
+// position only; the popover's code and markup are untouched. Idempotent: it
+// writes only when the box overflows, so its own write cannot loop.
+function _fitPopover(pop) {
+  if (!_live() || !pop || pop.style.display !== 'block') return;
+  const r = pop.getBoundingClientRect(), max = window.innerHeight - 12;
+  if (r.bottom <= max + 0.5) return;
+  const top = Math.max(12, Math.round(max - r.height)) + 'px';
+  if (pop.style.top !== top) pop.style.top = top;
+}
+let _panelObs = null, _popObs = null;
 let _attached = false;
 function attach() {
   if (!_attached) {
@@ -1433,8 +1491,14 @@ function attach() {
     document.addEventListener('keydown', _onKey);
     document.addEventListener('mousedown', _onMouse, true);
   }
-  // #wi-panel is re-created by every full paint (it lives in #content), so
-  // the observer is re-attached on each call (disconnected first).
+  // #wi-panel and #wi-popover are re-created by every full paint (they live
+  // in #content), so their observers are re-attached on each call.
+  if (_popObs) _popObs.disconnect();
+  const pop = document.getElementById('wi-popover');
+  if (pop) {
+    _popObs = new MutationObserver(() => _fitPopover(pop));
+    _popObs.observe(pop, { attributes: true, attributeFilter: ['style'], childList: true, subtree: true });
+  }
   if (_panelObs) _panelObs.disconnect();
   const panel = document.getElementById('wi-panel');
   if (!panel) return;
