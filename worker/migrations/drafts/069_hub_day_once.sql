@@ -9,7 +9,8 @@
 --   3. 069_hub_day_once_verify.sql          read-only; before the repair it shows the 7
 --   4. 069_hub_day_once_test.sql            the rules on TEST rows, ends in a deliberate error: nothing kept
 --   5. 069_hub_day_once_repair_dryrun.sql -> 069_hub_day_once_repair.sql -> 069_hub_day_once_verify.sql (all 0)
---   6. the push of the WP-A front (branch feat/wn4-wpa) - THE SAME EVENING (see LIMIT below).
+--   6. the push of the WP-A front (branch feat/wn4-wpa-on-parity: WP-A on fix/wi4-live-parity) - THE SAME
+--      EVENING (see LIMIT below).
 -- No Worker change goes with it (both labels "Cross-dock Date" and "VS CD Date" already write
 -- cross_dock_date). ASCII only (clipboard-safe). ONE DO block = ONE statement: an error anywhere
 -- undoes all of it (the SQL editor is not atomic across statements - lesson 056).
