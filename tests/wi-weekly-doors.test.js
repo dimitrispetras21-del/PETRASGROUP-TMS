@@ -382,6 +382,32 @@ test('date write: hh:mm sets the time (v4 panel); without it the old time of day
   await ctx._wiDateWrite('recE1', 'VS CD Date', '2026-10-12', '2026-10-15');
   assert.strictEqual(log.patches[2].f['VS CD Date'], '2026-10-15');
 });
+// Fix round 3 (11/10): the v4 date panel waits for the downstream chain and
+// gets its {ok, failed}; v1 keeps today's fire-and-forget.
+test('date write, v4 active: the downstream result comes back (a failed VS chain is said, never a ✓)', async () => {
+  const { ctx, log } = seam(true);
+  ctx.syncOrderDownstream = async (id, o) => { log.syncs.push([id, o.changedFields]); return { ok: false, failed: ['VS chain'] }; };
+  const res = await ctx._wiDateWrite('recE1', 'Loading DateTime', '2026-10-12T06:00:00.000Z', '2026-10-13', undefined, '2026-10-12T06:00:00.000Z');
+  assert.strictEqual(res.ok, true);
+  assert.deepStrictEqual(JSON.parse(JSON.stringify(res.downstream)), { ok: false, failed: ['VS chain'] });
+  const off = seam(false);
+  const r1 = await off.ctx._wiDateWrite('recE1', 'Loading DateTime', '2026-10-12T06:00:00.000Z', '2026-10-13');
+  assert.strictEqual(r1.downstream, undefined, 'v1: fire-and-forget, as today');
+});
+// What the ✓ of a v4 assignment/match may claim about «το άλλαξε άλλος».
+test('_wiExpectNote: \'\' with v4 off; with v4 on it never claims a check that did not run', () => {
+  const mk = (active, live) => {
+    const ctx = { WIV2: { active: () => active }, window: { TMS_EXPECT_LIVE: live } };
+    vm.createContext(ctx);
+    vm.runInContext(['_wiV2Active', '_wiExpectNote'].map(n => fn(n)).join('\n') + '\nthis._wiExpectNote=_wiExpectNote;', ctx);
+    return ctx._wiExpectNote;
+  };
+  assert.strictEqual(mk(false, undefined)(false, undefined), '', 'v1: today\'s words');
+  assert.match(mk(true, true)(false, undefined), /χωρίς έλεγχο .το άλλαξε άλλος. σε αυτή την αποθήκευση/, 'no _expect sent (record not on the board)');
+  assert.match(mk(true, true)(true, 'skipped'), /δεν έγινε σε αυτή την αποθήκευση/);
+  assert.match(mk(true, false)(true, undefined), /δεν είναι ενεργός ακόμη/);
+  assert.strictEqual(mk(true, true)(true, true), '', 'checked and confirmed: the plain ✓');
+});
 test('the chip never shows ✓ for a conflict (only reachable while v4 sends _expect)', async () => {
   const { ctx, log, ev } = world('full');
   ctx._wiDateWrite = async () => ({ ok: false, conflict: { conflict: true } });
