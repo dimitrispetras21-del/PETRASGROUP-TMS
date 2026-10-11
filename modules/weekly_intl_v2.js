@@ -63,8 +63,10 @@ const PRINTER = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" str
 const ARROW = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="m13 6 6 6-6 6"/></svg>';
 // The presence strip names this many people; the rest are counted («+N»).
 const PRES_MAX = 6;
-// The stock strip's chips in this board's pallet letter (_wiShelfInner opt).
-const SHELF_OPT = Object.freeze({ unit: 'π' });
+// The stock strip's chips in this board's pallet letter (_wiShelfInner opt);
+// the flag count in words and the late pieces in their own span (Figma sheet
+// 15, 1115:2749 / 1115:2777 — parity r1 F4, F6). Today's board passes none.
+const SHELF_OPT = Object.freeze({ unit: 'π', flagWords: true, lateSpan: true });
 // §e.14 re-read after a failed save: a pending new-import match holds it at
 // most this long; after this many 1.5 s polls of «something is open» the
 // line stops promising «θα ξαναδιαβαστεί» and says we do not know (~1 min).
@@ -1515,8 +1517,11 @@ function _qwrapHTML(m) {
       `<div class="wi4-qcard-t">${_ell('wi4-l1', it.text || it.code)}${sub ? `<span class="wi4-l2" title="${_esc(full + (it.tip ? ' — ' + it.tip : ''))}">${_esc(sub)}</span>` : ''}</div>` +
       (btn ? `<button type="button" class="wi4-btn sm" onclick="event.stopPropagation();WIV2._qAct(${i})">${_esc(btn)}</button>` : '') + '</div>';
   });
-  // A link, not a fourth button (sheet 15: blue text «Όλα 17 ▾»).
-  if (n > 3) h += `<button type="button" class="wi4-link wi4-q-all" onclick="event.stopPropagation();WI4Actions.queuePanel()" aria-haspopup="dialog">Όλα ${atLeast}${n} ▾</button>`;
+  // A link, not a fourth button (sheet 15: blue text «Όλα 17 ▾»). Its
+  // aria-expanded says whether the panel is open (parity r1 F10); a band
+  // repainted while the panel is open (a save, a beat) must not say «closed».
+  const open = !!document.querySelector('body > .wi4-qp');
+  if (n > 3) h += `<button type="button" class="wi4-link wi4-q-all" onclick="event.stopPropagation();WI4Actions.queuePanel()" aria-haspopup="dialog" aria-expanded="${open}">Όλα ${atLeast}${n} ▾</button>`;
   return h;
 }
 function _qbandHTML(m) {

@@ -1189,11 +1189,14 @@ function queuePanel() {
   const el = document.createElement('div');
   el.className = 'wi4-qp';
   el.setAttribute('role', 'dialog');
-  const hd = document.createElement('div'); hd.className = 'wi4-qp-h';
-  hd.textContent = 'ΕΠΟΜΕΝΑ · ' + (items.some(_isUnknown) || loading ? '≥' : '') + items.length + ' ';
-  const kq = document.createElement('span'); kq.className = 'wi4-key'; kq.textContent = 'Q';
-  const ke = document.createElement('span'); ke.className = 'wi4-key'; ke.textContent = 'Esc';
-  hd.appendChild(kq); hd.appendChild(document.createTextNode(' επόμενο ')); hd.appendChild(ke); hd.appendChild(document.createTextNode(' κλείσιμο'));
+  el.setAttribute('aria-label', 'Επόμενες ενέργειες');
+  // Its own head class (parity r1 F3, Figma 1117:2677): as a .wi4-qp-h
+  // section label it was upper-cased into «[Q] ΕΠΟΜΕΝΟ [ESC] ΚΛΕΙΣΙΜΟ».
+  const hd = document.createElement('div'); hd.className = 'wi4-qp-hd';
+  const span = (cls, text) => { const s = document.createElement('span'); s.className = cls; s.textContent = text; return s; };
+  hd.appendChild(span('wi4-qp-hn', 'ΕΠΟΜΕΝΑ · ' + (items.some(_isUnknown) || loading ? '≥' : '') + items.length));
+  hd.appendChild(span('wi4-key', 'Q')); hd.appendChild(span('wi4-qp-kt', 'επόμενο'));
+  hd.appendChild(span('wi4-key', 'Esc')); hd.appendChild(span('wi4-qp-kt', 'κλείσιμο'));
   el.appendChild(hd);
   const rows = [];
   const lvls = [['red', 'ΤΩΡΑ'], ['amber', 'ΠΡΟΣΟΧΗ']];
@@ -1240,10 +1243,22 @@ function queuePanel() {
   const left = br ? br.left : ar ? ar.right - w : window.innerWidth - w - 24;
   el.style.left = Math.max(10, Math.min(window.innerWidth - w - 12, left)) + 'px';
   el.style.top = ((br ? br.bottom : ar ? ar.bottom : 74) + 6) + 'px';
-  _qp = { el, rows, on: -1, anchor: a };
+  _qp = { el, rows, on: -1, anchor: a, sc: document.getElementById('content') };
   _qp.onKey = (ev) => {
     if (!_qp || ev.ctrlKey || ev.metaKey || ev.altKey) return;
     if (ev.key === 'Escape') { ev.preventDefault(); ev.stopPropagation(); _qpClose(); return; }
+    // The panel is the keyboard target while open (parity r1 F10): Tab cycles
+    // inside it. Leaving it, Tab reached the ΑΠΟΘΕΜΑ label and scrolled the
+    // board 769 → 0 under the open panel.
+    if (ev.key === 'Tab') {
+      const f = [...el.querySelectorAll('button, [tabindex="0"]')].filter((x) => !x.disabled);
+      const i = f.indexOf(document.activeElement);
+      const n = i < 0 ? (ev.shiftKey ? f.length - 1 : 0) : i + (ev.shiftKey ? -1 : 1);
+      if (!f.length || (i >= 0 && n >= 0 && n < f.length)) return;
+      ev.preventDefault(); ev.stopPropagation();
+      f[(n + f.length) % f.length].focus({ preventScroll: true });
+      return;
+    }
     if (ev.code === 'KeyQ' || ev.key === 'ArrowDown') { ev.preventDefault(); ev.stopPropagation(); _qpOn(_qp.on + 1); return; }
     if (ev.key === 'ArrowUp') { ev.preventDefault(); ev.stopPropagation(); _qpOn(_qp.on - 1); return; }
     if (ev.key === 'Enter' && _qp.on >= 0 && !(ev.target && ev.target.tagName === 'BUTTON')) {
@@ -1254,23 +1269,63 @@ function queuePanel() {
   _qp.onDown = (ev) => { if (_qp && !el.contains(ev.target) && !(a && a.contains(ev.target))) _qpClose(); };
   window.addEventListener('keydown', _qp.onKey, true);
   setTimeout(() => { if (_qp && _qp.el === el) document.addEventListener('mousedown', _qp.onDown, true); }, 0);
-  if (rows.length) _qpOn(0);
+  // The panel hangs from the band (parity r1 F1, sheet 15 B): it is fixed, so
+  // a board that scrolls under it leaves it floating over the wrong rows (a
+  // wheel moved the board 769px under a pinned panel). A scroll the USER makes
+  // closes it — a wheel or a swipe, or any scroll that is not the one our own
+  // Q / ↑↓ / click just made (_qpOn records where that one left the board).
+  const sc = _qp.sc;
+  if (sc) {
+    _qp.top = sc.scrollTop;
+    _qp.onWheel = () => _qpClose();
+    _qp.onScroll = () => { if (_qp && Math.abs(sc.scrollTop - _qp.top) > 1) _qpClose(); };
+    sc.addEventListener('wheel', _qp.onWheel, { passive: true });
+    sc.addEventListener('touchmove', _qp.onWheel, { passive: true });
+    sc.addEventListener('scroll', _qp.onScroll, { passive: true });
+  }
+  if (a) a.setAttribute('aria-expanded', 'true');
+  // Opening only SELECTS the first line (sheet 15 B: line 1 on --wi4-sel,
+  // nothing moves). Focusing its board row here scrolled #content 0 → 145 at
+  // 1800×800 and left the band — and the panel's anchor — above the window.
+  if (rows.length) _qpOn(0, { board: false });
 }
-function _qpOn(i) {
+// opt.board === false: select the line only, leave the board where it is.
+function _qpOn(i, opt) {
   const q = _qp; if (!q || !q.rows.length) return;
   q.on = (i + q.rows.length) % q.rows.length;
-  q.rows.forEach((r, k) => r.classList.toggle('on', k === q.on));
+  // Roving tabindex (F10): the selected line is the panel's one tab stop and
+  // holds the focus, so Q / ↑↓ / Enter / Tab act inside the panel. No
+  // browser scroll: the panel scrolls itself (nearest), the board never.
+  q.rows.forEach((r, k) => { r.classList.toggle('on', k === q.on); r.tabIndex = k === q.on ? 0 : -1; });
   const r = q.rows[q.on];
   if (r.scrollIntoView) r.scrollIntoView({ block: 'nearest' });
+  if (r.focus) r.focus({ preventScroll: true });
+  if (opt && opt.board === false) return;
   const v = V(), it = r._it;
   if (v && it && it.rowKey) v.focusRow(it.rowKey);
+  // Our own scroll (focusRow brings the row into view): not the user's.
+  if (q.sc) q.top = q.sc.scrollTop;
 }
 function _qpClose() {
   const q = _qp; if (!q) return;
   _qp = null;
   window.removeEventListener('keydown', q.onKey, true);
   document.removeEventListener('mousedown', q.onDown, true);
+  if (q.sc) {
+    q.sc.removeEventListener('wheel', q.onWheel);
+    q.sc.removeEventListener('touchmove', q.onWheel);
+    q.sc.removeEventListener('scroll', q.onScroll);
+  }
+  const had = q.el.contains(document.activeElement);
   if (q.el.parentNode) q.el.parentNode.removeChild(q.el);
+  // A band repainted while the panel was open drew a new «Όλα»: the anchor
+  // captured at open may be detached by now.
+  const a = q.anchor && q.anchor.isConnected ? q.anchor : document.querySelector('#content .wi4 .wi4-q-all');
+  if (a) a.setAttribute('aria-expanded', 'false');
+  // Focus back where the panel came from (F10) — only when it was inside the
+  // panel: a click elsewhere keeps its own target. No scroll: «Όλα» may be
+  // above the window after a Q.
+  if (had && a && a.focus) a.focus({ preventScroll: true });
 }
 
 // ═══ «?» shortcuts sheet (§e #17) ═══════════════════════════════════════

@@ -7610,6 +7610,13 @@ button.btn-icon:focus-visible { outline:2px solid var(--accent); outline-offset:
   --wi4-amber:        #b45309;
   --wi4-amber-bg:     #fff7ed;
   --wi4-amber-ink:    #7c2d12;
+  /* Parity round 1 (queue-stock, Figma sheet 15): soft severity OUTLINES on
+     white — a filled chip in the band read as a second, louder alarm. Borders
+     and fills only, never text (the text keeps --wi4-red / --wi4-amber). */
+  --wi4-red-line:     #fca5a5;
+  --wi4-amber-line:   #fcd34d;
+  --wi4-sel:          #f0f9ff;   /* the keyboard-selected line («Όλα» panel) */
+  --wi4-kcap:         #f9fafb;   /* key-cap fill (Q / Esc, the «?» sheet) */
   --wi4-delay-bg:     var(--warn-bg);
   --wi4-own:          #eef2f6;
   --wi4-partner:      #ddefe3;
@@ -7823,16 +7830,25 @@ body.wi4-on #wi-ctx .wi4-m-sec .wi4-l2, body.wi4-on #wi-ctx .wi4-m-hd .wi4-l2 { 
    bands sit on the grey page 8px apart (sheet 15 A: band y=68 h34, stock
    y=110, column header y=146) — the white cards and chips carry the edges. */
 .wi4-q { display:flex; align-items:center; gap:8px; padding:0; border-bottom:0; margin-bottom:8px; }
-.wi4-q-hd { display:flex; flex-direction:column; gap:2px; flex:none; font-size:10px; font-weight:600; letter-spacing:.6px; text-transform:uppercase; color:var(--wi4-grey-2); }
-.wi4-q-n { font-size:11px; font-weight:400; letter-spacing:0; text-transform:none; color:var(--wi4-grey-2); white-space:nowrap; }
-.wi4-search { flex:none; width:240px; height:32px; display:flex; align-items:center; gap:6px; padding:0 8px; border:1px solid var(--wi4-ctl); border-radius:6px; background:var(--surface-card); }
-.wi4-search input { flex:1; min-width:0; border:0; outline:0; background:transparent; font:inherit; color:var(--wi4-ink); }
+/* Parity r1 F8 (Figma 1115:2707): 10.5px / .42 in --wi4-grey-1, and a 150px
+   column so the cards start where Figma's do (search + 406px). A MIN width,
+   not a width: «… · φορτώνει…» is longer than 150px and must push the cards,
+   never paint over the first one. */
+.wi4-q-hd { display:flex; flex-direction:column; gap:2px; flex:none; min-width:150px; font-size:10.5px; font-weight:600; letter-spacing:.42px; text-transform:uppercase; color:var(--wi4-grey-1); }
+.wi4-q-n { font-size:11.5px; font-weight:400; letter-spacing:0; text-transform:none; color:var(--wi4-grey-2); white-space:nowrap; }
+/* F8 (1115:2734): 240×30, radius 7, the light #e2e8f0 outline (with the
+   control grey #d0d5dd the box was the loudest thing in the band), 9/7 insets. */
+.wi4-search { flex:none; width:240px; height:30px; display:flex; align-items:center; gap:7px; padding:0 7px 0 9px; border:1px solid var(--wi4-line-2); border-radius:7px; background:var(--surface-card); }
+.wi4-search input { flex:1; min-width:0; border:0; outline:0; background:transparent; font:inherit; font-size:12.5px; color:var(--wi4-ink); }
 .wi4-search input::placeholder { color:var(--wi4-grey-3); }
 .wi4-search:focus-within { border-color:var(--wi4-blue); box-shadow:0 0 0 2px var(--accent-light); }
 .wi4-search-n { font-size:11px; color:var(--wi4-grey-2); white-space:nowrap; }
 .wi4-key { display:inline-block; min-width:16px; padding:0 4px; border:1px solid var(--wi4-ctl); border-radius:3px; font-size:10px; font-weight:600; line-height:16px; text-align:center; color:var(--wi4-grey-2); background:var(--surface-card); }
-.wi4-qcard { position:relative; flex:1 1 0; min-width:0; height:34px; display:flex; align-items:center; gap:8px; padding:0 6px 0 12px;
-  border:1px solid var(--wi4-line-2); border-radius:6px; background:var(--surface-card); cursor:pointer; }
+/* F8: the «/» cap of the search box is 17×16 in Figma (the shared key is 18px). */
+.wi4-search .wi4-key { border-color:var(--wi4-line-2); border-radius:4px; padding:0 5px; font-size:10.5px; font-weight:500; line-height:14px; }
+/* F7 (Figma 1115:2710): 10 / 8 insets, 10px gaps, the light #eaecf0 outline. */
+.wi4-qcard { position:relative; flex:1 1 0; min-width:0; height:34px; display:flex; align-items:center; gap:10px; padding:0 8px 0 10px;
+  border:1px solid var(--wi4-line); border-radius:6px; background:var(--surface-card); cursor:pointer; }
 .wi4-qcard:hover { background:var(--wi4-hover); }
 /* One line per card and per panel item (sheet 15): «Alpha Dairy → Beta…»
    then «10π · φόρτωση ήταν χθες» in grey right after it. The NAME gives way
@@ -7841,24 +7857,61 @@ body.wi4-on #wi-ctx .wi4-m-sec .wi4-l2, body.wi4-on #wi-ctx .wi4-m-hd .wi4-l2 { 
 .wi4-qcard-t { flex:1 1 auto; min-width:0; display:flex; flex-direction:row; align-items:baseline; gap:6px; }
 .wi4-qcard-t > .wi4-l1 { flex:0 1 auto; max-width:none; }
 .wi4-qcard-t > .wi4-l2 { flex:0 0 auto; max-width:55%; }
+/* F7, band cards only (the «Όλα» panel keeps the reason right after the
+   name, sheet 15 B): the name takes the slack, so the reason sits by the
+   button as in Figma — and the name still gives way first. 8px name → reason. */
+.wi4-qcard > .wi4-qcard-t { gap:8px; }
+.wi4-qcard > .wi4-qcard-t > .wi4-l1 { flex:1 1 auto; }
+.wi4-qcard .wi4-l1 { font-size:12.5px; }
+.wi4-qcard .wi4-l2 { font-size:11px; }
+/* F7: the day chip is a fixed 70px column (text centred), so every card's
+   name starts at the same x; a «Πέμ 8/10» card and a «Σάβ 10/10» card
+   started their names at different places. Before the ≤1600 block, which
+   hides the chip there (decided 11/10). */
+.wi4-qcard > .wi4-dc { min-width:70px; justify-content:center; padding:0 6px; box-sizing:border-box; }
+.wi4-qcard > .wi4-btn.sm { font-size:12px; border-radius:4px; padding:0 10px; }
+/* F7: the severity rail covers the card's own border (Figma: x=0 of the
+   card, full height); inside it, a 1px grey sliver showed to its left. No
+   overflow:hidden on the card — it would clip this rail. */
+.wi4-qcard.wi4-r-red::before, .wi4-qcard.wi4-r-amb::before { left:-1px; top:-1px; bottom:-1px; border-top-left-radius:6px; border-bottom-left-radius:6px; }
 /* 1440 (live parity 11/10): three cards read «ΠΕΛΑΤ… 34π · φορτώ…» — no
    name, no reason. The search box gives 80px and the card's day chip goes
-   (the reason already says «αύριο» / «ήταν χθες»; the row keeps its chip). */
+   (the reason already says «αύριο» / «ήταν χθες»; the row keeps its chip).
+   The label gives up its 150px column too (F8): the cards need the room. */
 @media (max-width:1600px) {
   .wi4-search { width:160px; }
   .wi4-qcard > .wi4-dc { display:none; }
+  .wi4-q-hd { min-width:0; }
 }
-.wi4-q-all { flex:none; white-space:nowrap; }
-/* Sheet 15 B: ~600px, one line per item, opening under the queue band from
-   its left edge (WI4Actions.queuePanel places it). */
-.wi4-qp { position:fixed; z-index:var(--z-top); width:min(600px, calc(100vw - 32px)); max-height:70vh; overflow:auto; padding:6px 0; background:var(--surface-card);
-  border:1px solid var(--wi4-line-2); border-radius:8px; box-shadow:var(--shadow-lift); font-family:'DM Sans',sans-serif; font-size:12px; color:var(--wi4-ink); }
-.wi4-qp-h { padding:8px 14px 4px; font-size:10px; font-weight:600; letter-spacing:.6px; text-transform:uppercase; color:var(--wi4-grey-2); }
-.wi4-qp-i { position:relative; display:flex; align-items:center; gap:8px; min-height:32px; padding:0 10px 0 14px; cursor:pointer; }
-.wi4-qp-i:hover, .wi4-qp-i.on { background:var(--wi4-hover); }
+/* F7: «Όλα 17 ▾» Medium 12.5 — a link, lighter than the cards' buttons. */
+.wi4-q-all { flex:none; white-space:nowrap; font-size:12.5px; font-weight:500; }
+/* Sheet 15 B (1117:2676, parity r1 F9): 640px, radius 10, the deeper
+   0 8 24 shadow, one line per item, opening under the queue band from its
+   left edge (WI4Actions.queuePanel places it). */
+.wi4-qp { position:fixed; z-index:var(--z-top); width:min(640px, calc(100vw - 32px)); max-height:70vh; overflow:auto; padding:8px 0; background:var(--surface-card);
+  border:1px solid var(--wi4-line-2); border-radius:10px; box-shadow:0 8px 24px rgba(15,23,41,.12); font-family:'DM Sans',sans-serif; font-size:12px; color:var(--wi4-ink); }
+/* F3 (1117:2677): the panel's first line is a sentence with key caps —
+   «ΕΠΟΜΕΝΑ · 17  [Q] επόμενο  [Esc] κλείσιμο» — not a section label: as a
+   .wi4-qp-h it was upper-cased into «[Q] ΕΠΟΜΕΝΟ [ESC] ΚΛΕΙΣΙΜΟ». */
+.wi4-qp-hd { display:flex; align-items:center; gap:8px; padding:4px 14px 8px; font:600 11px 'DM Sans',sans-serif; color:var(--wi4-grey-1); text-transform:none; }
+.wi4-qp-hn { margin-right:18px; }   /* + the 8px gap = Figma's 10px spacer between two gaps */
+.wi4-qp-kt { font-weight:400; color:var(--wi4-grey-2); }
+/* Key caps 19×18 (Figma «Key»): DM Mono on the light cap fill. */
+.wi4-qp .wi4-key { font:500 10.5px/14px 'DM Mono',monospace; background:var(--wi4-kcap); border-color:var(--wi4-ctl); border-radius:4px; padding:1px 5px; color:var(--wi4-grey-1); text-transform:none; }
+.wi4-qp-h { padding:8px 14px 4px; font-size:10.5px; font-weight:600; letter-spacing:.42px; text-transform:uppercase; color:var(--wi4-grey-2); }
+/* F9: 5 / 10 / 5 / 14 insets and a 10px gap — a line with its 23px button is 33px. */
+.wi4-qp-i { position:relative; display:flex; align-items:center; gap:10px; min-height:32px; padding:5px 10px 5px 14px; cursor:pointer; }
+.wi4-qp-i:hover { background:var(--wi4-hover); }
+.wi4-qp .wi4-l2 { font-size:11px; }
+/* F2 (1117:2693): 11.5px Medium, radius 5, 9px insets, 23px tall. */
+.wi4-qp .wi4-btn.sm { font-size:11.5px; font-weight:500; border-radius:5px; padding:0 9px; height:23px; }
 /* «Προβολή ▾»'s note that the conflict check is not live: a sentence. */
 .wi4-view-note { max-width:260px; padding:6px 14px; font-size:11px; font-weight:600; line-height:1.4; white-space:normal; }
-.wi4-qp-i.on { outline:2px solid var(--wi4-blue); outline-offset:-2px; }
+/* F9: the selected line is a pale blue fill (Figma #f0f9ff), not a 2px blue
+   box, which read as a second, louder focus than the row's own ring. The
+   ring is for the keyboard only (:focus-visible; focus follows the line). */
+.wi4-qp-i.on { background:var(--wi4-sel); }
+.wi4-qp-i:focus-visible { outline:2px solid var(--wi4-blue); outline-offset:-2px; }
 
 /* Stock strip (§e #4): the inner markup and its words come unchanged from
    _wiShelfInner (global .wi-shelf-* rules). Only the frame is v4's: the
@@ -7870,15 +7923,37 @@ body.wi4-on #wi-ctx .wi4-m-sec .wi4-l2, body.wi4-on #wi-ctx .wi4-m-hd .wi4-l2 { 
    box and the column header — and the loose-pieces pill on the right. The
    global strip is pushed right (max-width:75%, margin-left:auto, for today's
    board): both are undone here, or «ΑΠΟΘΕΜΑ» started 25% in (review 11/10). */
-.wi4 .wi-shelf-in { justify-content:flex-start; max-width:none; margin-left:0; }
+/* Parity r1: 2px above and below, so the 24px chips sit centred in the 28px
+   strip as in Figma (y=2); the global 2/4 split was for 22px pills. */
+.wi4 .wi-shelf-in { justify-content:flex-start; max-width:none; margin-left:0; padding:2px 0; }
 .wi4 .wi-shelf-list { flex:1 1 auto; min-width:0; }
 .wi4 .wi-shelf-loose { margin-left:auto; }
-.wi4 .wi-shelf-loose.late { background:var(--surface-card); border-color:var(--wi4-ctl); color:var(--wi4-red); }
+/* F6 (1115:2777): one neutral 24px box; only «· 1 εκπρόθεσμο» is red (its own
+   span, SHELF_OPT.lateSpan). The whole sentence in red painted the plain
+   count of waiting pieces as an alarm too. */
+.wi4 .wi-shelf-loose, .wi4 .wi-shelf-loose.late { height:24px; border:1px solid var(--wi4-ctl); border-radius:4px; background:var(--surface-card); color:var(--wi4-grey-1); }
+.wi4 .wi-shelf-loose .wi-shelf-late { color:var(--wi4-red); }
+/* F4 (1115:2748/2749): a DM Sans caps label like the queue's «ΕΠΟΜΕΝΑ», not
+   the old board's Syne; «· 2 προς έλεγχο» (SHELF_OPT.flagWords, not «⚠») in amber. */
+.wi4 .wi-shelf-lbl { font:600 10.5px 'DM Sans',sans-serif; letter-spacing:.42px; color:var(--wi4-grey-1); }
+.wi4 .wi-shelf-lbl .wi-shelf-k { font-weight:500; font-size:11px; letter-spacing:0; color:var(--wi4-amber); }
 /* Chip (sheet 15): warehouse and figure bold in ink, the client in grey, a
-   light «·» between them — words from _wiShelfChip, «π» from its v4 option. */
-.wi4 .wi-shelf-chip { gap:6px; color:var(--wi4-grey-1); }
+   light «·» between them — words from _wiShelfChip, «π» from its v4 option.
+   F5 (1115:2750/2757/2764): 24px boxes with radius 4, not 22px pills; the
+   client Regular, names and figures SemiBold. */
+.wi4 .wi-shelf-chip { height:24px; border-radius:4px; gap:5px; font-weight:400; color:var(--wi4-grey-1); }
 .wi4 .wi-shelf-chip b { color:var(--wi4-ink); }
+.wi4 .wi-shelf-chip b, .wi4 .wi-shelf-chip .fl { font-weight:600; }
 .wi4 .wi-shelf-chip .sep { color:var(--wi4-grey-2); }
+/* ▣ is a TEXT node: Figma's #98a2b3 would fail the 4.5:1 contrast scan. */
+.wi4 .wi-shelf-chip > span[aria-hidden] { font-size:10px; color:var(--wi4-grey-2); }
+/* F5: the severity is an OUTLINE on a white chip (owner 11/10: chips stay
+   white on the grey page) and the flag's words in red / amber; a filled
+   chip read as a second alarm next to the queue's red rails. */
+.wi4 .wi-shelf-chip.aging, .wi4 .wi-shelf-chip.close { background:var(--surface-card); border-color:var(--wi4-amber-line); }
+.wi4 .wi-shelf-chip.aging .fl, .wi4 .wi-shelf-chip.close .fl { color:var(--wi4-amber); }
+.wi4 .wi-shelf-chip.nointake { background:var(--surface-card); border-color:var(--wi4-red-line); }
+.wi4 .wi-shelf-chip.nointake .fl { color:var(--wi4-red); }
 
 /* Column header (§e #5) and the shared 10-track grid at 1920 (§c.2):
    idx · ΠΡΟΣ ΒΕΡΟΙΑ · gap · ΕΞΑΓΩΓΗ · gap · ΑΝΑΘΕΣΗ · gap · ΕΙΣΑΓΩΓΗ · gap · ΑΠΟ ΒΕΡΟΙΑ.
