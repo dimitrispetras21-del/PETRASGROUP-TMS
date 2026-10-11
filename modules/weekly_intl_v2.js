@@ -829,9 +829,13 @@ function _sideOf(recs, kind, opt) {
   // the warehouse it names), which «+N» never folds away. Single orders only,
   // as before (_palHTML drew it only for one order with an id).
   const lot = kind === 'del' && r && r.id ? I.lotBadge(f) : '';
+  // ONE stop on this end reads «City, CC», as Figma writes a single stop
+  // (1097:2663 / 2668: «Veverská Bitýška, CZ», «Köln, DE»); several stops keep
+  // the multi-stop «City CC» (parity r2, place-line-city-cc-format).
+  const one = L0.length === 1;
   const stops = (L0.length ? L0 : [{ n: I.clientName(f) || '—' }]).map((x, i) => {
     const nm = _splitName(x.n);
-    return { n: i + 1, label: nm.title, place: nm.place, pallets: null, done: kind === 'load' ? st.loaded : st.delivered, oid: r && r.id, lot: i === 0 ? lot : '' };
+    return { n: i + 1, label: nm.title, place: one ? nm.placeC : nm.place, pallets: null, done: kind === 'load' ? st.loaded : st.delivered, oid: r && r.id, lot: i === 0 ? lot : '' };
   });
   return { stops, dateTick: kind === 'load', showPal: false, xfold: I.moreStops(I.placeStr(f, kind), kind === 'load' ? f._stopsL : f._stopsD, kind) };
 }

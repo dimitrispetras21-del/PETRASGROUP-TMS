@@ -2977,12 +2977,18 @@ async function scnW1440(browser, origin) {
       const pe = p.querySelector('.wi4-pe'), sv = p.querySelector('.wi4-att svg'); if (!pe || !sv) return null;
       return { dx: Math.round((R(sv).left - R(pe).right) * 10) / 10, c: getComputedStyle(sv).color, w: Math.round(R(sv).width) };
     }).filter(Boolean);
-    return { lots, clips };
+    // A single stop with a country reads «City, CC» (Figma 1097:2663 / 2668).
+    // scnPaint's «Berlin DE» check took Figma's multi-stop line («Kecskemét
+    // HU 6π») for the single-stop rule; with this rule it reads «Berlin, DE».
+    const places = [...document.querySelectorAll('#content .wi4 #wi-rows .wi4-pts')].filter(p => vis(p) && p.querySelectorAll(':scope > .wi4-pt').length === 1 && !p.querySelector('.wi4-more, .wi4-pt-n'))
+      .map(p => (p.querySelector('.wi4-pt-pl') || {}).textContent || '').filter(t => /\S [A-Z]{2}$/.test(t) || /, [A-Z]{2}$/.test(t));
+    return { lots, clips, places };
   });
   const p14 = await pc();
   ok(scn, '1440: every lot point\'s warehouse name ≥56px; the badge a 22px chip inside its delivery column, its title kept', p14.lots.length >= 1 && p14.lots.every(l => l.name >= 56 && l.w === 22 && l.inCol && l.title), p14.lots);
   ok(scn, 'the lot badge is PE\'s family: white fill, the #e2e8f0 line, radius 3, 17px', p14.lots.every(l => l.bg === 'rgb(255, 255, 255)' && l.bd === 'rgb(226, 232, 240)' && l.r === '3px' && l.h === 17), p14.lots);
   ok(scn, '1440: the paperclip sits 4±1px after PE, rgb(91, 107, 127), 12px', p14.clips.length >= 1 && p14.clips.every(c => Math.abs(c.dx - 4) <= 1 && c.c === 'rgb(91, 107, 127)' && c.w === 12), p14.clips);
+  ok(scn, 'single-stop place lines with a country read «City, CC»', p14.places.length >= 3 && p14.places.every(t => /, [A-Z]{2}$/.test(t)), p14.places);
   // 1920: the badge keeps its words (unchanged above 1600).
   await page.setViewportSize({ width: 1920, height: 1080 }); await page.waitForTimeout(400);
   const p19 = await pc();
