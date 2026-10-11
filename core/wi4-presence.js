@@ -48,6 +48,12 @@ const TAB_KEY = 'tms_wi4_tab';
 // 500 ms debounce against that guard produced 429s in normal use (§g.4).
 const MIN_GAP_MS = 2500;
 const TTL_MAX_MS = 600000;           // the Worker's upper bound for ttl_ms
+// A beat that never answers must not hold `inFlight` for ever (every later
+// beat would return early and the strip would keep a frozen «ζωντανά").
+const BEAT_TIMEOUT_MS = 10000;
+// «live» is a claim about NOW: without a fresh answer it turns into «σε παύση»
+// by itself — max(20 s, 3 × the wait we last scheduled).
+const FRESH_MIN_MS = 20000;
 const DEFAULT_CFG = Object.freeze({ active: 5000, idle: 30000, idleAfter: 120000 });
 const INPUT_EVENTS = ['pointerdown', 'keydown', 'wheel', 'mousemove', 'touchstart'];
 
@@ -79,6 +85,7 @@ const S = {
   failures: 0,
   retryAfterMs: null,
   serverNextMs: null,
+  lastDelay: null,                   // the wait scheduled after the last good answer
   lastInputAt: 0,
   obs: null,
   listeners: [],
@@ -180,9 +187,23 @@ function _sessionStop(status) {
   _teardown();
 }
 
+// `changes` counts what the server saw since changes_since, but the server
+// clamps that window to 15 minutes (068): a change counted at one beat can
+// fall out of the next. The count therefore only grows until the board
+// re-reads (a new changes_since), so the button never vanishes with nothing
+// refreshed.
+function _latchChanges(prev, next, since) {
+  const same = !!prev && prev._since === since;
+  if (!next) return same ? prev : null;
+  const n = Math.max(+next.n || 0, same ? +prev.n || 0 : 0);
+  const auto = Math.max(+next.auto_n || 0, same ? +prev.auto_n || 0 : 0);
+  const newer = +next.n > 0 || !same;
+  return { n, auto_n: auto, last_by: newer ? next.last_by || null : prev.last_by, last_at: newer ? next.last_at || null : prev.last_at, _since: since };
+}
+
 // Every answer lands here. Unknown is never drawn as empty: a failure clears
 // the list and says «σε παύση»; only a 2xx carrying an `others` array is live.
-function _handle(status, body) {
+function _handle(status, body, since) {
   const ok = status >= 200 && status < 300;
   if (status === 410 || (body && body.stop === true)) { _sessionStop('off'); return 'stop'; }
   if (status === 401) {
@@ -207,7 +228,7 @@ function _handle(status, body) {
   if (ok && body && Array.isArray(body.others)) {
     S.status = 'live';
     S.others = _dedupe(body.others);
-    S.changes = body.changes && typeof body.changes === 'object' ? body.changes : null;
+    S.changes = _latchChanges(S.changes, body.changes && typeof body.changes === 'object' ? body.changes : null, since == null ? null : since);
     S.lastOk = _now();
     S.failures = 0;
     S.serverNextMs = Number(body.next_ms) > 0 ? Number(body.next_ms) : null;
@@ -263,21 +284,28 @@ async function _beat() {
     changes_since: _changesSince(),
   };
   S.inFlight = true; S.dirty = false; S.lastSentAt = _now(); S.beaten = true;
-  let status = 0, json = null;
+  let status = 0, json = null, tmo = null;
   try {
     // Plain fetch, never _enqueue/_atRetry: a beat must not queue behind
-    // writes, retry, or toast.
-    const res = await fetch(PROXY_URL + '/presence', { method: 'POST', headers: _headers(), body: JSON.stringify(body) });
+    // writes, retry, or toast. An answer that never comes is aborted and
+    // counted as a network failure (status 0 → «σε παύση»).
+    const ac = typeof AbortController === 'function' ? new AbortController() : null;
+    if (ac) tmo = setTimeout(() => { try { ac.abort(); } catch (_) {} }, BEAT_TIMEOUT_MS);
+    const init = { method: 'POST', headers: _headers(), body: JSON.stringify(body) };
+    if (ac) init.signal = ac.signal;
+    const res = await fetch(PROXY_URL + '/presence', init);
     status = res.status;
     try { json = await res.json(); } catch (_) { json = null; }
   } catch (_) { status = 0; }
+  finally { if (tmo) clearTimeout(tmo); }
   S.inFlight = false;
   if (!S.running) return;                     // stopped while in flight: drop the answer
-  const kind = _handle(status, json);
+  const kind = _handle(status, json, body.changes_since);
   _patch();
   if (kind === 'stop' || !S.running) return;
   let wait = _delay(kind);
   if (wait == null || wait === 'stop') return;
+  if (kind === 200) S.lastDelay = wait;
   // A context change during the flight goes out at the next allowed moment,
   // but never earlier than a 429 asked, and never while the endpoint is down.
   if (S.dirty && kind === 200) wait = Math.min(wait, _gapLeft());
@@ -394,8 +422,19 @@ function reattach(resolve) {
   return true;
 }
 
-function others() { return S.status === 'live' ? S.others.map((p) => Object.assign({}, p, { records: p.records.slice() })) : []; }
-function state() { return { status: S.status, others: others(), changes: S.changes, lastOk: S.lastOk }; }
+// What we can claim NOW: a 'live' list older than its freshness window (a run
+// of 429s, a hidden tab coming back, a stalled answer) is reported as
+// 'paused' — never the frozen faces of a minute ago.
+function _status() {
+  if (S.status !== 'live') return S.status;
+  const win = Math.max(FRESH_MIN_MS, 3 * (S.lastDelay || DEFAULT_CFG.active));
+  return S.lastOk != null && _now() - S.lastOk <= win ? 'live' : 'paused';
+}
+function others() { return _status() === 'live' ? S.others.map((p) => Object.assign({}, p, { records: p.records.slice() })) : []; }
+function state() {
+  const c = S.changes ? { n: S.changes.n, auto_n: S.changes.auto_n, last_by: S.changes.last_by, last_at: S.changes.last_at } : null;
+  return { status: _status(), others: others(), changes: c, lastOk: S.lastOk };
+}
 function actionText(action) { return Object.prototype.hasOwnProperty.call(ACTION_TEXT, action) ? ACTION_TEXT[action] : ''; }
 
 /** «Χρήστης Α · αλλάζει την ημερομηνία φόρτωσης · από 08:41» (plain text: escape before HTML). */
@@ -413,12 +452,16 @@ function tipText(name, rec) {
  * off, pending, or nobody else seen while live — and «κανείς» is never said,
  * because a beat that saw nobody cannot prove the board is empty.
  */
-function stripText() {
-  if (S.status === 'paused') return TEXT.paused;
-  if (S.status === 'forbidden') return TEXT.forbidden;
-  if (S.status !== 'live') return '';
+function stripText(max) {
+  const st = _status();
+  if (st === 'paused') return TEXT.paused;
+  if (st === 'forbidden') return TEXT.forbidden;
+  if (st !== 'live') return '';
   const names = S.others.map((p) => p.name);
-  return names.length ? names.join(', ') + ' · ' + TEXT.here + ' · ' + TEXT.live : TEXT.live;
+  // More people than the strip shows: the count is said, never dropped.
+  const cap = Number.isInteger(max) && max > 0 ? max : names.length;
+  const shown = names.slice(0, cap).join(', ') + (names.length > cap ? ' +' + (names.length - cap) : '');
+  return names.length ? shown + ' · ' + TEXT.here + ' · ' + TEXT.live : TEXT.live;
 }
 
 window.WI4Presence = Object.freeze({

@@ -236,6 +236,32 @@ test('PREORDER follows preorderLevel; SAVE_FAILED is red', () => {
   assert.strictEqual(sf.text, 'δεν αποθηκεύτηκε');
 });
 
+test('RELAY_NO_DRIVER: a local relay without a driver — red up to tomorrow, amber beyond, never silent; it keeps the day open', () => {
+  const rel = (o) => Object.assign({ kind: 'relay', relayNoDriver: true, loadDate: T }, o);
+  assert.strictEqual(reasonOf(WI4.flags(rel({}), T), 'RELAY_NO_DRIVER').level, 'red');
+  assert.strictEqual(reasonOf(WI4.flags(rel({ loadDate: add(T, 1) }), T), 'RELAY_NO_DRIVER').level, 'red');
+  assert.strictEqual(reasonOf(WI4.flags(rel({ loadDate: add(T, 4) }), T), 'RELAY_NO_DRIVER').level, 'amber');
+  assert.strictEqual(reasonOf(WI4.flags(rel({ loadDate: '' }), T), 'RELAY_NO_DRIVER').level, 'red', 'no date is never «plenty of time»');
+  assert.deepStrictEqual(WI4.flags(rel({ relayNoDriver: false }), T), { level: null, reasons: [] }, 'a relay with a driver says nothing');
+  assert.ok(!codes(WI4.flags(exp({ relayNoDriver: true }), T)).includes('RELAY_NO_DRIVER'), 'only relay facts carry it');
+  assert.strictEqual(reasonOf(WI4.flags(rel({ syncErr: 'δεν επιβεβαιώθηκε' }), T), 'SAVE_FAILED').level, 'red', 'a relay save error is SAVE_FAILED');
+  const day = [exp({}), rel({})];
+  assert.strictEqual(WI4.collapsible(day, T), false, 'a day of assigned trucks with a driverless relay is not «done»');
+  const c = WI4.dayCounts(day, T);
+  assert.strictEqual(c.trucks, 1, 'a relay is not a truck');
+  assert.strictEqual(c.byCode.RELAY_NO_DRIVER, 1);
+  const it = WI4.items(rel({}), T, { key: 'recA1234567' })[0];
+  assert.strictEqual(it.group, 'stop');
+  assert.strictEqual(it.act, 'relay');
+});
+
+test('ACT: one action name per reason, the names WI4Actions._queueAct switches on', () => {
+  const known = ['assign', 'newImport', 'national', 'retry', 'date', 'open', 'convert', 'pieces', 'lot', 'relay'];
+  for (const [code, act] of Object.entries(WI4.ACT)) assert.ok(known.includes(act), `${code} → «${act}» has no case in _queueAct`);
+  const src = fs.readFileSync(path.join(ROOT, 'modules/wi4_actions.js'), 'utf8');
+  for (const act of new Set(Object.values(WI4.ACT))) assert.match(src, new RegExp(`case '${act}'`), `_queueAct has no case '${act}'`);
+});
+
 test('two reasons → the worst wins; a clean row has level null', () => {
   const r = WI4.flags(exp({ pallets: 34, saved: false, loadDate: T }), T);
   assert.deepStrictEqual(codes(r).sort(), ['NO_TRUCK', 'OVER_33']);
@@ -252,6 +278,7 @@ test('plural: n=1 and n=2 for every key', () => {
     emptyReturn: ['1 κενό γύρισμα', '2 κενά γυρίσματα'],
     natNoCarrier: ['1 σκέλος χωρίς μεταφορέα', '2 σκέλη χωρίς μεταφορέα'],
     pending: ['1 εκκρεμές', '2 εκκρεμή'], urgent: ['1 επείγον', '2 επείγοντα'], day: ['1 ημέρα', '2 ημέρες'],
+    relayNoDriver: ['1 τοπική χωρίς οδηγό', '2 τοπικές χωρίς οδηγό'],
   };
   assert.deepStrictEqual(Object.keys(WI4.PLURAL).sort(), Object.keys(want).sort());
   for (const [k, [one, two]] of Object.entries(want)) {
