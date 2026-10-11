@@ -765,9 +765,18 @@ function _ptHTML(s, d) {
   let l2;
   if (s.warn) {
     const w = _q(s.warn.oid);
+    // A flex row (Figma 1097:2975): alert icon, then the words and the two
+    // dates. The dates are what make it a mismatch, so they never give way;
+    // the words are cut first (at 1440 one ellipsized string kept «φτάνει»
+    // and cut «παράδοση 8/10» to the tooltip). Split on the dates, so the
+    // export's «Βέροια … · εθνικό φορτώνει …» variant is drawn the same way.
+    // Joined by spaces: not drawn between flex items (the gap is), but kept
+    // in the text a screen reader or a copy reads («φτάνει 9/10», not «φτάνει9/10»).
+    const parts = String(s.warn.text).split(/(\d{1,2}\/\d{1,2})/).map((t) => t.trim()).filter(Boolean)
+      .map((t) => (/^\d{1,2}\/\d{1,2}$/.test(t) ? `<span class="wi4-l2w-d">${_esc(t)}</span>` : `<span class="wi4-ell">${_esc(t)}</span>`)).join(' ');
     // A warning that is not one of the leg's DATE_MISMATCH reasons is drawn
     // without the marker (data-r is only what the header counts).
-    l2 = `<span class="wi4-l2 wi4-t-amb" title="${_esc('! ' + s.warn.text + ' — ασυνέπεια ημερομηνιών')}"${s.warn.r ? ' data-r="DATE_MISMATCH"' : ''}${w ? ` onclick="event.stopPropagation();WI4Actions.datePanel('${w}','VS CD Date',this)" style="cursor:pointer"` : ''}>! ${_esc(s.warn.text)}</span>`;
+    l2 = `<span class="wi4-l2 wi4-l2w wi4-t-amb" title="${_esc(s.warn.text + ' — ασυνέπεια ημερομηνιών')}"${s.warn.r ? ' data-r="DATE_MISMATCH"' : ''}${w ? ` onclick="event.stopPropagation();WI4Actions.datePanel('${w}','VS CD Date',this)" style="cursor:pointer"` : ''}>${_ico('alert_circle', 11)}${parts}</span>`;
   } else if (place || palN) {
     const full = [place, palN].filter(Boolean).join(' ');
     l2 = `<span class="wi4-l2 wi4-l2f${palN ? ' wi4-l2p' : ''}" title="${_esc(full)}">${tick}${place ? `<span class="wi4-ell wi4-pt-pl">${_esc(place)}</span>` : ''}${palN ? `<span class="wi4-pt-pal">${_esc(palN)}</span>` : ''}</span>`;
@@ -776,8 +785,12 @@ function _ptHTML(s, d) {
   // turns into a flex row so the NAME is cut, never the word.
   const pre = s.pre ? `<span class="wi4-flag" data-r="PREORDER" title="${_esc(s.pre)}">PRE</span>` : '';
   const late = s.late ? `<span class="wi4-flag amb" data-r="LATE" title="${_esc(s.late)}">καθυστέρηση</span>` : '';
-  const l1 = pre || late || delay
-    ? `<span class="wi4-l1 wi4-l1f">${pre}<span class="wi4-ell" title="${_esc(s.label)}">${tickL1 ? tick : ''}${_esc(s.label)}</span>${delay}${late}</span>`
+  // «→ ΑΠΟΘΗΚΗ» (s.lot, from _sideOf) rides beside the delivery name like
+  // «καθυστέρηση»: in the 72px pallets track it spilled into the delivery
+  // column (Figma 1097:2254 keeps that track for PE, attachment and figure).
+  const lot = s.lot || '';
+  const l1 = pre || late || delay || lot
+    ? `<span class="wi4-l1 wi4-l1f">${pre}<span class="wi4-ell" title="${_esc(s.label)}">${tickL1 ? tick : ''}${_esc(s.label)}</span>${delay}${late}${lot}</span>`
     : `<span class="wi4-l1" title="${_esc(s.label)}">${tickL1 ? tick : ''}${_esc(s.label)}</span>`;
   const click = oid ? ` onclick="event.stopPropagation();WI_INTERNAL.edit('${oid}')"` : '';
   // Group member tiles: today's drag strings verbatim (§f), rowId = the
@@ -810,9 +823,13 @@ function _sideOf(recs, kind, opt) {
   const r = recs[0], f = (r && r.fields) || {};
   const st = I.stFlags(f);
   const L0 = _stopsOf(f, kind);
+  // A lot's badge goes on its FIRST delivery point (Unloading Location 1 is
+  // the warehouse it names), which «+N» never folds away. Single orders only,
+  // as before (_palHTML drew it only for one order with an id).
+  const lot = kind === 'del' && r && r.id ? I.lotBadge(f) : '';
   const stops = (L0.length ? L0 : [{ n: I.clientName(f) || '—' }]).map((x, i) => {
     const nm = _splitName(x.n);
-    return { n: i + 1, label: nm.title, place: nm.place, pallets: null, done: kind === 'load' ? st.loaded : st.delivered, oid: r && r.id };
+    return { n: i + 1, label: nm.title, place: nm.place, pallets: null, done: kind === 'load' ? st.loaded : st.delivered, oid: r && r.id, lot: i === 0 ? lot : '' };
   });
   return { stops, dateTick: kind === 'load', showPal: false, xfold: I.moreStops(I.placeStr(f, kind), kind === 'load' ? f._stopsL : f._stopsD, kind) };
 }
@@ -821,9 +838,12 @@ function _palHTML(fieldsList, oid) {
   const p = _pals(fieldsList);
   const one = fieldsList.length === 1 ? fieldsList[0] : null;
   let h = '';
-  if (one && oid) h += I.lotBadge(one) + I.apBadge(one, oid);
+  // The lot badge is drawn on the delivery point (_sideOf → _ptHTML); «ΑΠ»
+  // stays here: _wiStockTipsRefresh finds .wi-b-ap[data-oid] inside #wi-rows.
+  if (one && oid) h += I.apBadge(one, oid);
   if (fieldsList.some((f) => f && f['Pallet Exchange'])) h += '<span class="wi4-pe" title="Ανταλλαγή παλετών">PE</span>';
-  if (oid && typeof OrderDocs !== 'undefined') { try { const b = OrderDocs.badge(oid, { size: 11 }); if (b) h += `<span class="wi4-att">${b}</span>`; } catch (e) { _logErr(e, 'wi4: docs badge'); } }
+  // 12px paperclip (Figma 1097:2880).
+  if (oid && typeof OrderDocs !== 'undefined') { try { const b = OrderDocs.badge(oid, { size: 12 }); if (b) h += `<span class="wi4-att">${b}</span>`; } catch (e) { _logErr(e, 'wi4: docs badge'); } }
   if (!p.known) h += '<span class="wi4-pal wi4-t-g2" title="Οι παλέτες δεν έχουν καταγραφεί">—</span>';
   else {
     // The SAME thresholds as WI4.flags OVER_33 / PALLETS_UNKNOWN (one source of
@@ -876,7 +896,9 @@ function _impLegHTML(host, imp, today, rs) {
   if (!isGroup && f['Veroia Switch']) {
     const warn = _vsWarn(f, imp.id);
     if (warn && rs.DATE_MISMATCH) warn.r = true;
-    to = { stops: [{ n: 1, label: 'Βέροια', place: 'μετά εθνικό: ' + _lastStop(f, 'del').title, done: st.delivered, warn, oid: imp.id }], dateTick: false };
+    // The lot badge moved out of the pallets track to the delivery point
+    // (_sideOf); a VS import's delivery point is this one.
+    to = { stops: [{ n: 1, label: 'Βέροια', place: 'μετά εθνικό: ' + _lastStop(f, 'del').title, done: st.delivered, warn, oid: imp.id, lot: I.lotBadge(f) }], dateTick: false };
   } else to = _sideOf(members, 'del', { dragRowId: dragRow });
   let pal = _palHTML(members.map((r) => r.fields || {}), isGroup ? null : imp.id);
   // Whole matched group to another export (§f): today's grip string.
@@ -897,10 +919,15 @@ function _natHTML(oid, name, day, today) {
   // The day sits OUTSIDE the cut name (Figma: name left, «Τετ» right): inside
   // it, a long client name ate the day («Omicron Dairy → Βέρο…»).
   const head = `<div class="wi4-nat-h">${_ell('wi4-l1', name)}${dayS ? `<span class="wi4-nat-day" title="${_esc(_dayLabel(day))}">${dayS}</span>` : ''}</div>`;
-  let tile;
+  // The collapsed column's dot carries the tile's state, words and reason
+  // (dot = cls / words / r): a same blue dot for every leg said «a leg
+  // exists» for one with no carrier. Only the VISIBLE one of tile and dot
+  // shows, so a reason is named once, open or collapsed.
+  let tile, dot;
   if (st !== 'ok') {
     const t = st === 'err' ? 'απέτυχε — δεν σημαίνει ότι δεν έχουν μεταφορέα' : 'δεν φορτώθηκε ακόμη';
     tile = `<span class="wi4-tile unk" title="${t}">—</span>`;
+    dot = { cls: 'unk', words: t, r: '' };
   } else {
     const c = _carrierOf(oid);
     if (c && c.kind === 'missing') {
@@ -910,14 +937,18 @@ function _natHTML(oid, name, day, today) {
       const red = k === null || k <= 1;
       const q = _q(oid);
       tile = `<span class="wi4-tile un${red ? ' red' : ''}" data-r="NAT_MISSING" title="Δεν υπάρχει εθνικό φορτίο για αυτή την παραγγελία — άνοιξέ την και αποθήκευσε, ώστε να δημιουργηθεί ξανά"${q ? ` onclick="event.stopPropagation();WI_INTERNAL.edit('${q}')" style="cursor:pointer"` : ''}>δεν υπάρχει εθνικό</span>`;
-    } else if (c) tile = `<span class="wi4-tile ${c.kind} wi4-ell" title="${_esc((c.kind === 'par' ? 'Εθνικός μεταφορέας — συνεργάτης: ' : 'Εθνικός μεταφορέας — ιδιόκτητο: ') + c.text)}">${_esc(c.text)}</span>`;
-    else {
+      dot = { cls: 'un' + (red ? ' red' : ''), words: 'δεν υπάρχει εθνικό', r: 'NAT_MISSING' };
+    } else if (c) {
+      tile = `<span class="wi4-tile ${c.kind} wi4-ell" title="${_esc((c.kind === 'par' ? 'Εθνικός μεταφορέας — συνεργάτης: ' : 'Εθνικός μεταφορέας — ιδιόκτητο: ') + c.text)}">${_esc(c.text)}</span>`;
+      dot = { cls: '', words: c.text, r: '' };
+    } else {
       const k = L().dayDiff(today, day);
       const red = k === null || k <= 1;
       tile = `<span class="wi4-tile un${red ? ' red' : ''}" data-r="NAT_NO_CARRIER" title="Εθνικό σκέλος χωρίς μεταφορέα — ανατίθεται στο Εβδομαδιαίο Εθνικών">ΠΡΟΣ ΑΝΑΘΕΣΗ</span>`;
+      dot = { cls: 'un' + (red ? ' red' : ''), words: 'ΠΡΟΣ ΑΝΑΘΕΣΗ', r: 'NAT_NO_CARRIER' };
     }
   }
-  return `<div class="wi4-nat">${head}${tile}</div><span class="wi4-natdot" title="${_esc('Εθνικό σκέλος · ' + name)}"></span>`;
+  return `<div class="wi4-nat">${head}${tile}</div><span class="wi4-natdot${dot.cls ? ' ' + dot.cls : ''}"${dot.r ? ` data-r="${dot.r}"` : ''} title="${_esc('Εθνικό σκέλος · ' + name + ' · ' + dot.words)}"></span>`;
 }
 
 // Assignment cell (§e #8): box + print (share-menu contract) + paper plane.
@@ -1117,7 +1148,8 @@ function _gapHTML(row, e, today) {
     // The title holds the visible words: cut on a narrow screen (1440), the
     // whole line is still readable (overflow scan, fix round 3).
     '<span>Κενό γύρισμα</span>' + (detail ? `<span class="${t} wi4-ell" title="${_esc('Κενό γύρισμα · ' + detail)}">· ${_esc(detail)}</span>` : '') +
-    `<button type="button" class="wi4-gap-act" onclick="event.stopPropagation();WI_INTERNAL.newImport(${row.id})">+ Νέα εισαγωγή</button>` +
+    // The plus is the 12px icon, not a typed «+ » (Figma 1097:2685).
+    `<button type="button" class="wi4-gap-act" onclick="event.stopPropagation();WI_INTERNAL.newImport(${row.id})">${_ico('plus', 12)}Νέα εισαγωγή</button>` +
     `<span class="wi2-gapstk" data-row="${row.id}">${W().stockGapLink(row)}</span></div>`;
 }
 function _impRowHTML(e, today) {
@@ -1488,13 +1520,13 @@ function _colsHTML(m) {
   const tog = (side, text, title) => `<span class="wi4-ftog" role="button" tabindex="0" aria-label="${_esc(title)}" onclick="_wk3FeedTog('${side}')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();_wk3FeedTog('${side}')}" title="${_esc(title)}"><span class="wi4-ftog-t">${text}</span></span>`;
   return '<div class="wi4-cols" role="row">' +
     '<div class="wi4-c-idx"></div>' +
-    `<div class="wi4-c-fl">${tog('fl', '‹ ΠΡΟΣ ΒΕΡΟΙΑ', 'Εθνικό σκέλος προς Βέροια — κλικ: άνοιγμα/κλείσιμο στήλης ΠΡΟΣ ΒΕΡΟΙΑ')}</div>` +
+    `<div class="wi4-c-fl">${tog('fl', '◂ ΠΡΟΣ ΒΕΡΟΙΑ', 'Εθνικό σκέλος προς Βέροια — κλικ: άνοιγμα/κλείσιμο στήλης ΠΡΟΣ ΒΕΡΟΙΑ')}</div>` +
     `<div class="wi4-c-exp"><div class="wi4-leg"><span class="wi4-l-span" style="display:flex;justify-content:space-between"><span>ΕΞΑΓΩΓΗ <span class="wi4-n">· ${_esc(lg.plural(met.expN || 0, 'load'))} · ανά ημέρα εκφόρτωσης</span></span><span>ΠΑΛ.</span></span></div></div>` +
     '<div class="wi4-c-asg">ΑΝΑΘΕΣΗ · ΕΝΤΟΛΗ</div>' +
     `<div class="wi4-c-imp"><div class="wi4-leg"><span class="wi4-l-span" style="display:flex;justify-content:space-between"><span>ΕΙΣΑΓΩΓΗ <span class="wi4-n">· ${_esc(lg.plural(met.impN || 0, 'load'))}</span></span><span>ΠΑΛ.</span></span></div></div>` +
-    // Right-aligned by CSS (.wi4-cols .wi4-c-fr), not inline: an inline
-    // text-align beat the collapsed rule and pushed the «‹» against the edge.
-    `<div class="wi4-c-fr">${tog('fr', 'ΑΠΟ ΒΕΡΟΙΑ ›', 'Εθνική διανομή από Βέροια — κλικ: άνοιγμα/κλείσιμο στήλης ΑΠΟ ΒΕΡΟΙΑ')}</div></div>`;
+    // Aligned by CSS (.wi4-cols .wi4-c-fr: left, on its tiles' edge, Figma
+    // 1097:2445), never inline: an inline text-align beat the collapsed rule.
+    `<div class="wi4-c-fr">${tog('fr', 'ΑΠΟ ΒΕΡΟΙΑ ▸', 'Εθνική διανομή από Βέροια — κλικ: άνοιγμα/κλείσιμο στήλης ΑΠΟ ΒΕΡΟΙΑ')}</div></div>`;
 }
 function _relayBannerHTML() {
   const D = _D();
