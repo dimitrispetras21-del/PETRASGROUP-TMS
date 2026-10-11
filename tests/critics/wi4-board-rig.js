@@ -693,24 +693,34 @@ async function scnInvariants(browser, origin) {
     const un = [...document.querySelectorAll('#content .wi4 .wi4-box.un')].map(b => { const el = b.closest('.wi4-row,.wi4-subrow'); const ids = el ? rowIdsOf(el) : [];
       return { ids, rail: !!el && (el.classList.contains('wi4-r-red') || el.classList.contains('wi4-r-amb')), q: qOf(ids, el).some(q => q.code === 'NO_TRUCK') }; });
     const days = [...document.querySelectorAll('#content .wi4 .wi4-day')].map(day => {
-      const head = (day.querySelector('.wi4-dayh') || {}).innerText || '';
+      // Owner 11/10: the visible header is name + date (+ «σήμερα»); the
+      // header's words live in the closed-day marker's label (_dayCountHTML),
+      // read here whether the day is open (marker hidden) or not.
+      const head = ((day.querySelector('.wi4-dayh') || {}).innerText || '').replace(/\s+/g, ' ').trim();
+      const dot = day.querySelector('[data-dc] .wi4-dayh-dot');
+      const words = dot ? dot.getAttribute('aria-label') || '' : '';
       const rows = [...day.querySelectorAll('.wi4-row,.wi4-subrow')].map(el => ({ el, ids: rowIdsOf(el), rail: el.classList.contains('wi4-r-red') || el.classList.contains('wi4-r-amb') }));
       const items = [...new Set(rows.flatMap(x => qOf(x.ids, x.el)))];
-      const num = re => { const m = head.match(re); return m ? Number(m[1]) : 0; };
-      return { head, railsWithoutItem: rows.filter(x => x.rail && !qOf(x.ids, x.el).length).map(x => x.ids), itemsWithoutRail: rows.filter(x => !x.rail && qOf(x.ids, x.el).length).map(x => x.ids),
+      const num = re => { const m = words.match(re); return m ? Number(m[1]) : 0; };
+      return { day: day.dataset.day, head, words, tip: (day.querySelector('.wi4-dayn') || {}).title || '',
+        body: !!day.querySelector('.wi4-day-body'), chev: !!day.querySelector('.wi4-chev'),
+        railsWithoutItem: rows.filter(x => x.rail && !qOf(x.ids, x.el).length).map(x => x.ids), itemsWithoutRail: rows.filter(x => !x.rail && qOf(x.ids, x.el).length).map(x => x.ids),
         hdrNoTruck: num(/(\d+) χωρίς φορτηγό/), qNoTruck: items.filter(q => q.code === 'NO_TRUCK').length,
         // «1 κενό γύρισμα» / «2 κενά γυρίσματα»: the accent moves (γύρισμα, γυρίσματα).
-        hdrEmpty: num(/(\d+) κεν(?:ό γύρισμα|ά γυρίσματα)/), qEmpty: items.filter(q => q.code === 'EMPTY_RETURN').length, empty: /Καμία κίνηση/.test(day.innerText) };
+        hdrEmpty: num(/(\d+) κεν(?:ό γύρισμα|ά γυρίσματα)/), qEmpty: items.filter(q => q.code === 'EMPTY_RETURN').length };
     });
     const tabB = [...document.querySelectorAll('.wi4-top .wi4-tab')].map(t => ({ t: t.innerText, b: (t.querySelector('.wi4-tab-b') || {}).textContent || '' }));
     return { un, days, tabB, qn: Q.length, codes: Q.map(q => q.code), text: document.querySelector('#content .wi4').innerText };
   });
   ok(scn, 'every «ΠΡΟΣ ΑΝΑΘΕΣΗ» box has a rail AND a NO_TRUCK queue item (§d.2)', r.un.length >= 4 && r.un.every(x => x.rail && x.q), r.un.filter(x => !x.rail || !x.q));
   ok(scn, 'per day: every railed row has a queue item and every row with an item has a rail', r.days.every(d => !d.railsWithoutItem.length && !d.itemsWithoutRail.length), r.days.filter(d => d.railsWithoutItem.length || d.itemsWithoutRail.length));
-  ok(scn, 'per day: header counts = queue items (χωρίς φορτηγό, κενά γυρίσματα)', r.days.every(d => d.hdrNoTruck === d.qNoTruck && d.hdrEmpty === d.qEmpty), r.days.map(d => [d.head, d.hdrNoTruck, d.qNoTruck, d.hdrEmpty, d.qEmpty]));
+  ok(scn, 'per day: header counts = queue items (χωρίς φορτηγό, κενά γυρίσματα)', r.days.every(d => d.hdrNoTruck === d.qNoTruck && d.hdrEmpty === d.qEmpty), r.days.map(d => [d.head, d.words, d.hdrNoTruck, d.qNoTruck, d.hdrEmpty, d.qEmpty]));
+  // Owner 11/10 (decision 1): a day header shows its name and date only —
+  // never a count, a reason or «Καμία κίνηση».
+  ok(scn, 'every day header reads only «DAY d/m» (+ «· σήμερα») or «ΧΩΡΙΣ ΗΜΕΡΟΜΗΝΙΑ»', r.days.length >= 7 && r.days.every(d => /^(?:[Α-Ω]+ \d{1,2}\/\d{1,2}|ΧΩΡΙΣ ΗΜΕΡΟΜΗΝΙΑ)(?: ?· σήμερα)?$/.test(d.head)), r.days.map(d => d.head));
   ok(scn, 'today\'s header says «σήμερα»', r.days.some(d => /6\/10/.test(d.head) && /σήμερα/.test(d.head)), r.days.map(d => d.head));
-  ok(scn, 'the empty day is one line «Καμία κίνηση»', r.days.some(d => /4\/10/.test(d.head) && d.empty), r.days.map(d => d.head));
-  ok(scn, 'today\'s empty return reads «(N από σήμερα)»', r.days.some(d => /από σήμερα/.test(d.head)), r.days.map(d => d.head));
+  ok(scn, 'the empty day 4/10 is its header alone: name + date, no card, no chevron', r.days.some(d => d.day === '2026-10-04' && d.head === 'ΚΥΡΙΑΚΗ 4/10' && !d.body && !d.chev), r.days.map(d => [d.day, d.head, d.body, d.chev]));
+  ok(scn, 'today\'s empty return reads «(N από σήμερα)» (closed-day marker label)', r.days.some(d => /από σήμερα/.test(d.words)), r.days.map(d => d.words));
   ok(scn, 'the W+1 tab badge = 1 (W+1 loads today–tomorrow)', r.tabB.some(t => /42/.test(t.t) && t.b.trim() === '1'), r.tabB);
   // P1 review 11/10: «1 καθυστέρηση», «1 ίδια μέρα», «2 pre-order» were in the
   // headers with no row saying which load. Every reason a header counts is
@@ -719,7 +729,29 @@ async function scnInvariants(browser, origin) {
   ok(scn, 'per day: every reason the header counts is named on exactly that many rows (λωρίδα, λέξη, κεφαλίδα = ίδιο επίπεδο)', named.days.length >= 6 && named.bad.length === 0, named.bad);
   ok(scn, 'the fixture\'s reasons are all exercised (LATE, PREORDER, SAME_DAY, DATE_MISMATCH, OVER_33, NAT_NO_CARRIER)', ['LATE', 'PREORDER', 'SAME_DAY', 'DATE_MISMATCH', 'OVER_33', 'NAT_NO_CARRIER'].every(c => named.seen.includes(c)), named.seen);
   ok(scn, 'every railed row names its reasons in the title of its number', named.railNoTitle.length === 0, named.railNoTitle);
-  ok(scn, 'the «μεταφέρθηκε» section is drawn', /μεταφέρθηκε/.test(r.text));
+  ok(scn, 'the moved-in day is drawn; «μεταφέρθηκε · W…» is in its date\'s title', r.days.some(d => /μεταφέρθηκε · W\d+/.test(d.tip)), r.days.map(d => [d.day, d.tip]));
+  // A day the user closes keeps saying it holds work: one marker whose label
+  // names its reasons; it goes again when the day reopens. Monday 5/10
+  // carries an empty return, a date mismatch and a late load.
+  const RX = { NO_TRUCK: /χωρίς φορτηγό/, EMPTY_RETURN: /κεν(?:ό γύρισμα|ά γυρίσματα)/, NAT_NO_CARRIER: /χωρίς μεταφορέα/, DATE_MISMATCH: /ασυνέπει/,
+    OVER_33: /πάνω από 33π/, SAME_DAY: /ίδια μέρα/, LATE: /καθυστέρησ/, PREORDER: /pre-order/, RELAY_NO_DRIVER: /χωρίς οδηγό/, MATCH_UNREAD: /εκτός προβολής/,
+    PALLETS_UNKNOWN: /παλέτες χωρίς καταγραφή/, NAT_MISSING: /δεν βρέθηκ/, SAVE_FAILED: /δεν αποθηκεύτηκ/ };
+  const mon = () => page.evaluate(() => { const day = document.querySelector('#content .wi4 .wi4-day[data-day="2026-10-05"]'); const dot = day && day.querySelector('[data-dc] .wi4-dayh-dot');
+    const b = dot && dot.getBoundingClientRect();
+    return { closed: !!day && day.classList.contains('closed'), codes: day ? (day.querySelector('[data-codes]') || {}).getAttribute('data-codes') : null,
+      dot: dot ? { cls: dot.className, label: dot.getAttribute('aria-label') || '', title: dot.title, shown: dot.getClientRects().length > 0, w: Math.round(b.width), h: Math.round(b.height) } : null,
+      head: ((day && day.querySelector('.wi4-dayh')) || {}).innerText || '' }; });
+  const m0 = await mon();
+  await page.click('#content .wi4 .wi4-day[data-day="2026-10-05"] .wi4-dayh');
+  const m1 = await mon();
+  await shot(page, 'invariants-closed-day');
+  await page.click('#content .wi4 .wi4-day[data-day="2026-10-05"] .wi4-dayh');
+  const m2 = await mon();
+  const named5 = m1.dot ? (m1.codes || '').split(',').filter(Boolean).map(p => p.split(':')[0]).every(c => RX[c] && RX[c].test(m1.dot.label)) : false;
+  ok(scn, 'Monday 5/10 open: its marker exists but is hidden', !m0.closed && !!m0.dot && !m0.dot.shown && !!m0.codes, m0);
+  ok(scn, 'closed by the user: one 6px marker after the date, its label naming every counted reason, data-codes unchanged', m1.closed && m1.dot && m1.dot.shown && m1.dot.w === 6 && m1.dot.h === 6
+    && /\b(red|amb)\b/.test(m1.dot.cls) && m1.dot.title === m1.dot.label && named5 && m1.codes === m0.codes && (m1.codes || '').split(',').filter(Boolean).length >= 3, m1);
+  ok(scn, 'reopened: the marker hides again', !m2.closed && m2.dot && !m2.dot.shown && m2.codes === m0.codes, m2);
   ok(scn, 'never «κανείς» on the board', !/κανείς/i.test(r.text));
   ok(scn, 'no auto-match: nothing written at load', !writes(S).length, writes(S));
   ok(scn, 'no page errors', !S.pageErrors.length, S.pageErrors);
@@ -754,11 +786,12 @@ async function scnRelay(browser, origin) {
     const day = sub && sub.closest('.wi4-day');
     const q = WIV2.queueItems().filter(x => x.relayId === 'recWiM002');
     return { sub: !!sub, rail: sub ? ['wi4-r-red', 'wi4-r-amb'].filter(c => sub.classList.contains(c)) : [], text: sub ? sub.innerText : '',
-      q: q.map(x => [x.code, x.level, x.act, x.rowKey]), head: day ? (day.querySelector('.wi4-dayh') || {}).innerText || '' : '', open: !!day && !day.classList.contains('closed') };
+      // The header's words: the closed-day marker's label (owner 11/10, name + date visible).
+      q: q.map(x => [x.code, x.level, x.act, x.rowKey]), head: day ? ((day.querySelector('[data-dc] .wi4-dayh-dot') || { getAttribute: () => '' }).getAttribute('aria-label') || '') : '', open: !!day && !day.classList.contains('closed') };
   });
   ok(scn, 'the driverless relay sub-row is drawn «ΠΡΟΣ ΑΝΑΘΕΣΗ» with a dashed amber rail (Παρ 9/10 = today+3)', r.sub && /ΠΡΟΣ ΑΝΑΘΕΣΗ/.test(r.text) && r.rail.join() === 'wi4-r-amb', r);
   ok(scn, 'one queue item RELAY_NO_DRIVER (amber, «Τοπικός οδηγός» → relayOpen), keyed by the relay record', r.q.length === 1 && r.q[0][0] === 'RELAY_NO_DRIVER' && r.q[0][1] === 'amber' && r.q[0][2] === 'relay', r.q);
-  ok(scn, 'its day says «1 τοπική χωρίς οδηγό» and stays open', /1 τοπική χωρίς οδηγό/.test(r.head) && r.open, r);
+  ok(scn, 'its day\'s header words (closed-day marker) say «1 τοπική χωρίς οδηγό» and it stays open', /1 τοπική χωρίς οδηγό/.test(r.head) && r.open, r);
   const named = await reasonsNamed(page);
   ok(scn, 'the relay\'s RELAY_NO_DRIVER is named on its sub-row (counted = named, per day)', named.bad.length === 0 && named.seen.includes('RELAY_NO_DRIVER'), named);
   ok(scn, 'no page errors; nothing written', !S.pageErrors.length && !writes(S).length, { e: S.pageErrors, w: writes(S) });
@@ -859,11 +892,11 @@ async function scnUnknown(browser, origin) {
     await settle(page, S, 2600);
     const r = await page.evaluate(() => ({ un: document.querySelectorAll('#content .wi4 .wi4-tile.un').length,
       unk: [...document.querySelectorAll('#content .wi4 .wi4-tile.unk')].map(t => t.title || (t.closest('[title]') || {}).title || ''),
-      codes: WIV2.queueItems().map(q => q.code), heads: [...document.querySelectorAll('#content .wi4 .wi4-dayh')].map(h => h.innerText) }));
+      codes: WIV2.queueItems().map(q => q.code), heads: [...document.querySelectorAll('#content .wi4 [data-dc] .wi4-dayh-dot')].map(h => h.getAttribute('aria-label') || '') }));
     ok(scn, 'national read 500 → never «ΠΡΟΣ ΑΝΑΘΕΣΗ» on an unread leg', r.un === 0, r.un);
     ok(scn, '«—» tiles titled «απέτυχε — δεν σημαίνει ότι δεν έχουν μεταφορέα»', r.unk.length >= 3 && r.unk.every(t => /απέτυχε/.test(t) && /δεν σημαίνει/.test(t)), r.unk);
     ok(scn, 'exactly one NAT_UNKNOWN, zero NAT_NO_CARRIER', r.codes.filter(c => c === 'NAT_UNKNOWN').length === 1 && !r.codes.includes('NAT_NO_CARRIER'), r.codes);
-    ok(scn, 'day headers say «εθνικά σκέλη: δεν φορτώθηκαν» instead of a count', r.heads.some(h => /εθνικά σκέλη: δεν φορτώθηκαν/.test(h)), r.heads);
+    ok(scn, 'day header words (closed-day markers) say «εθνικά σκέλη: δεν φορτώθηκαν» instead of a count', r.heads.some(h => /εθνικά σκέλη: δεν φορτώθηκαν/.test(h)), r.heads);
     await page.context().close();
   }
   scn = 'unknown.national-slow';
@@ -874,8 +907,14 @@ async function scnUnknown(browser, origin) {
       codes: WIV2.queueItems().map(q => q.code), q: ((document.querySelector('#content .wi4 .wi4-q') || {}).innerText || '') }));
     ok(scn, 'while the national read is pending: «—» titled «δεν φορτώθηκε ακόμη», no «ΠΡΟΣ ΑΝΑΘΕΣΗ»', r.un === 0 && r.unk.length >= 3 && r.unk.every(t => /δεν φορτώθηκε ακόμη/.test(t)), r);
     ok(scn, 'no NAT_* item while loading; the queue header says «φορτώνει»', !r.codes.some(c => /^NAT_/.test(c)) && /φορτώνει/.test(r.q), r);
-    const heads = await page.evaluate(() => [...document.querySelectorAll('#content .wi4 .wi4-dayh')].map(h => h.innerText));
-    ok(scn, 'day headers say «εθνικά σκέλη: φορτώνουν…» — never the failure words while the read is in flight', heads.some(h => /εθνικά σκέλη: φορτώνουν…/.test(h)) && !heads.some(h => /δεν φορτώθηκαν/.test(h)), heads);
+    const dots = await page.evaluate(() => [...document.querySelectorAll('#content .wi4 [data-dc] .wi4-dayh-dot')].map(h => ({ l: h.getAttribute('aria-label') || '', c: h.className, codes: h.parentElement.getAttribute('data-codes') || '' })));
+    const heads = dots.map(d => d.l);
+    ok(scn, 'day header words (closed-day markers) say «εθνικά σκέλη: φορτώνουν…» — never the failure words while the read is in flight', heads.some(h => /εθνικά σκέλη: φορτώνουν…/.test(h)) && !heads.some(h => /δεν φορτώθηκαν/.test(h)), heads);
+    // The grey ring (unk) is for a day whose ONLY words are the unread legs;
+    // a day that also has reasons keeps their level — an unknown never softens
+    // a known warning. (The synthetic week has no legs-only day.)
+    const withLegs = dots.filter(d => /εθνικά σκέλη/.test(d.l));
+    ok(scn, 'a marker naming unread legs AND reasons keeps the reasons\' level (red/amb), never the grey ring', withLegs.length > 0 && withLegs.every(d => d.codes ? /\b(red|amb)\b/.test(d.c) : /\bunk\b/.test(d.c)), dots);
     S.hold.nl = false; S.held.splice(0).forEach(fn => fn()); await settle(page, S);
     const after = await page.evaluate(js => { const row = eval(js); const t = (oid, sel) => { const r = row(oid); return !!(r && r.querySelector(sel)); };
       return { e14own: t('recWiE014', '.wi4-c-fl .wi4-tile.own'), i05un: t('recWiE014', '.wi4-c-fr .wi4-tile.un'), codes: WIV2.queueItems().map(q => q.code) }; }, ROW_JS);
@@ -1544,7 +1583,9 @@ const dayAgree = page => page.evaluate(() => {
     return [...new Set([...(row ? (row.orderIds || [row.orderId]) : []), ...imp, ...(oid ? [oid] : [])])]; };
   const qOf = (ids, el) => (el && el.dataset.relay ? Q.filter(q => q.relayId === el.dataset.relay) : Q.filter(q => !q.relayId && (ids.includes(q.key) || ids.includes(q.rowKey))));
   return [...document.querySelectorAll('#content .wi4 #wi-rows .wi4-day')].map(day => {
-    const head = (day.querySelector('.wi4-dayh') || {}).innerText || '';
+    // The header's words = the closed-day marker's label (owner 11/10).
+    const dot = day.querySelector('[data-dc] .wi4-dayh-dot');
+    const head = dot ? dot.getAttribute('aria-label') || '' : '';
     const els = [...day.querySelectorAll('.wi4-row,.wi4-subrow,.wi4-ghost')];
     const items = [...new Set(els.flatMap(el => qOf(idsOf(el), el)))];
     const num = re => { const m = head.match(re); return m ? Number(m[1]) : 0; };
@@ -1684,7 +1725,7 @@ async function scnUnread(browser, origin) {
     const day = row && row.closest('.wi4-day');
     return { cell: cell ? cell.innerText : '', marker: !!(cell && cell.querySelector('[data-r="MATCH_UNREAD"]')), gap: !!(cell && cell.querySelector('.wi4-gap')),
       q: WIV2.queueItems().filter(x => x.code === 'MATCH_UNREAD').map(x => [x.key, x.level, x.act]), open: !!day && !day.classList.contains('closed'),
-      head: day ? (day.querySelector('.wi4-dayh') || {}).innerText || '' : '' }; }, [ROW_JS]);
+      head: day ? ((day.querySelector('[data-dc] .wi4-dayh-dot') || { getAttribute: () => '' }).getAttribute('aria-label') || '') : '' }; }, [ROW_JS]);
   ok(scn, 'the cell says «εισαγωγή εκτός προβολής · άνοιγμα», never the open drop slot or an empty return', /εισαγωγή εκτός προβολής/.test(r.cell) && r.marker && !r.gap, r);
   ok(scn, 'one amber MATCH_UNREAD item that opens it; the header names it; the day stays open', r.q.length === 1 && r.q[0][0] === 'recWiI099' && r.q[0][1] === 'amber' && r.q[0][2] === 'open' && /εισαγωγή εκτός προβολής/.test(r.head) && r.open, r);
   ok(scn, 'no page errors; nothing written', !S.pageErrors.length && !writes(S).length, { e: S.pageErrors, w: writes(S) });
@@ -2320,7 +2361,7 @@ async function scnParity(browser, origin) {
     });
     ok(scn, 'ONE top bar: the board\'s bar sits at y=0 in the app\'s top bar (Figma Top bar 1097:2283)', g.barInTopbar && g.bar && g.bar.y <= 1 && !g.title && !g.crumbs, g);
     ok(scn, 'the top bar is 60px and ends with the bell and the avatar', g.topbarShown && Math.abs(g.topbarShown.h - 60) <= 1 && g.bell && g.avatar && g.avatar.x > g.bell.x, g);
-    ok(scn, 'the queue starts 12px under the bar (Figma content y = 60 + 12)', g.q && Math.abs(g.q.y - 72) <= 2, { q: g.q });
+    ok(scn, 'the queue starts 8px under the bar (sheet 15 A 1115:2706: band y = 60 + 8)', g.q && Math.abs(g.q.y - 68) <= 2, { q: g.q });
     ok(scn, 'the collapsed sidebar is an icon rail: every page\'s icon visible', g.items > 0 && g.shown === g.items, { items: g.items, shown: g.shown, nav: g.navDbg });
     ok(scn, 'the chat button covers no row of the board', g.fabHitsRows === 0, { fab: g.fab, hits: g.fabHitsRows });
     // The parked chat button has its own slot: the rail's scroll area ends
@@ -2339,8 +2380,59 @@ async function scnParity(browser, origin) {
     await page.waitForTimeout(150);
     const st = await page.evaluate(() => { const sc = document.getElementById('content'), c = sc.getBoundingClientRect(), h = document.querySelector('#content .wi4 .wi4-cols').getBoundingClientRect();
       return { scrolled: sc.scrollTop, cTop: Math.round(c.top), hTop: Math.round(h.top), hBot: Math.round(h.bottom) }; });
-    ok(scn, 'scrolled, the column header stays whole at the board\'s top edge', st.scrolled > 100 && Math.abs(st.hTop - st.cTop) <= 1 && st.hBot - st.hTop >= 27, st);
+    ok(scn, 'scrolled, the column header stays whole at the board\'s top edge', st.scrolled > 100 && Math.abs(st.hTop - st.cTop) <= 1 && st.hBot - st.hTop >= 31, st);
+    // Figma 1097:3856 «Scrolled shadow»: under the header only once scrolled.
+    const shAt = () => page.evaluate(() => +getComputedStyle(document.querySelector('#content .wi4 .wi4-cols'), '::after').opacity);
+    const sh700 = await shAt();
+    await page.evaluate(() => { document.getElementById('content').scrollTop = 0; });
+    await page.waitForTimeout(150);
+    const sh0 = await shAt();
+    ok(scn, 'the column header\'s shadow shows when scrolled (opacity > .5) and not at the top (< .1)', sh700 > 0.5 && sh0 < 0.1, { sh700, sh0 });
+    await page.evaluate(() => { document.getElementById('content').scrollTop = 700; });
+    await page.waitForTimeout(150);
     if (vp.width === 1920) {
+      // Owner 11/10 (decision 2), Figma 1097:2254 / sheet 15 A: the board on
+      // the grey page, only the day cards white; bands 8px apart, no rules.
+      // Measured unscrolled; the scrolled checks below scroll back to 700.
+      await page.evaluate(() => { document.getElementById('content').scrollTop = 0; });
+      await page.waitForTimeout(150);
+      const fr = await page.evaluate(() => {
+        const cs = (sel) => { const e = document.querySelector(sel); return e ? getComputedStyle(e) : null; };
+        const y = (sel) => { const e = document.querySelector(sel); return e ? Math.round(e.getBoundingClientRect().y) : null; };
+        const cards = [...document.querySelectorAll('#content .wi4 #wi-rows .wi4-day-body')].filter(b => b.getClientRects().length).map(b => { const s = getComputedStyle(b); return [s.backgroundColor, s.borderLeftWidth, s.borderLeftStyle, s.borderTopLeftRadius].join('|'); });
+        const day = [...document.querySelectorAll('#content .wi4 #wi-rows .wi4-day')];
+        const open = day.filter(d => d.querySelector('.wi4-day-body') && !d.classList.contains('closed'));
+        const gaps = open.slice(0, -1).map(d => { const nx = d.nextElementSibling; const nb = nx && !nx.classList.contains('closed') && nx.querySelector('.wi4-day-body');
+          return nb ? Math.round(nb.getBoundingClientRect().top - d.querySelector('.wi4-day-body').getBoundingClientRect().bottom) : null; }).filter(v => v != null);
+        const first = day[0], fb = first && first.querySelector('.wi4-day-body'), cols = document.querySelector('#content .wi4 .wi4-cols').getBoundingClientRect();
+        const nm = first && first.querySelector('.wi4-dayn'), ch = first && first.querySelector('.wi4-chev');
+        const today = document.querySelector('#content .wi4 .wi4-day.today .wi4-day-body');
+        const dn = cs('#content .wi4 .wi4-dayn'), dd = cs('#content .wi4 .wi4-dayd');
+        return { wi4: cs('#content .wi4').backgroundColor, content: cs('#content').backgroundColor, cards: [...new Set(cards)],
+          rules: ['.wi4-q', '.wi4-shelf', '.wi4-cols'].map(c => (cs('#content .wi4 ' + c) || {}).borderBottomWidth), shelf: y('#content .wi4 .wi4-shelf'), cols: Math.round(cols.y),
+          firstCard: fb ? Math.round(fb.getBoundingClientRect().top - cols.top) : null, gaps: [...new Set(gaps)],
+          chevX: ch && fb ? Math.round(ch.getBoundingClientRect().left - fb.getBoundingClientRect().left) : null, nameX: nm && fb ? Math.round(nm.getBoundingClientRect().left - fb.getBoundingClientRect().left) : null,
+          todayTop: today ? [getComputedStyle(today).borderTopWidth, getComputedStyle(today).borderTopColor] : null,
+          dayn: dn ? [dn.fontFamily, dn.letterSpacing] : null, dayd: dd ? dd.fontFamily : null };
+      });
+      ok(scn, 'grey page: .wi4 transparent, #content rgb(244, 246, 249); every day card white, 1px border, 6px radius', fr.wi4 === 'rgba(0, 0, 0, 0)' && fr.content === 'rgb(244, 246, 249)'
+        && fr.cards.length === 1 && fr.cards[0] === 'rgb(255, 255, 255)|1px|solid|6px', fr);
+      ok(scn, 'no full-width rules under the queue, the stock strip or the column header', fr.rules.every(w => w === '0px'), fr.rules);
+      ok(scn, 'bands 8px apart (sheet 15 A): stock strip y 110±2, column header y 146±2', Math.abs(fr.shelf - 110) <= 2 && Math.abs(fr.cols - 146) <= 2, { shelf: fr.shelf, cols: fr.cols });
+      // Figma 1097:2448: column header 24 + gap 8 + name 16 + 6 = the first card
+      // 54px under the header's top; card → card 36px (name 16 between).
+      ok(scn, 'day rhythm: first card 54±2px under the column header, open cards 36±1px apart', Math.abs(fr.firstCard - 54) <= 2 && fr.gaps.length > 0 && fr.gaps.every(v => Math.abs(v - 36) <= 1), { firstCard: fr.firstCard, gaps: fr.gaps });
+      ok(scn, 'day header: chevron at x4, name at x26 (Figma 1097:2640); Syne tracking .8 + DM Sans date (1097:2642)', fr.chevX === 4 && fr.nameX === 26 && fr.dayn && /Syne/.test(fr.dayn[0]) && fr.dayn[1] === '0.8px' && /DM Sans/.test(fr.dayd || ''), fr);
+      ok(scn, 'today\'s card: a 1px blue hairline on top', fr.todayTop && fr.todayTop[0] === '1px' && fr.todayTop[1] === 'rgb(2, 123, 189)', fr.todayTop);
+      // Rails on a card's first/last row follow the card's curve (Figma 1097:2648).
+      const rc = await page.evaluate(() => [...document.querySelectorAll('#content .wi4 #wi-rows .wi4-day-body')].flatMap(b => {
+        const out = [], f = b.firstElementChild, l = b.lastElementChild, rail = (e) => e && /wi4-r-(red|amb)/.test(e.className);
+        if (rail(f)) out.push(['first', getComputedStyle(f, '::before').borderTopLeftRadius]);
+        if (rail(l)) out.push(['last', getComputedStyle(l, '::before').borderBottomLeftRadius]);
+        return out; }));
+      ok(scn, 'a rail on a card\'s first/last row is rounded 5px with the card', rc.length > 0 && rc.every(x => x[1] === '5px'), rc);
+      await page.evaluate(() => { document.getElementById('content').scrollTop = 700; });
+      await page.waitForTimeout(150);
       // Scrolled: the header sits right under the bar. The bar's menus must
       // open OVER it (review 11/10, P2: same z-index, DOM order lost).
       await page.click('.wi4-top .wk-more-t');

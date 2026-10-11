@@ -1245,27 +1245,31 @@ function _entryHTML(e, today) {
 }
 
 // ═══ Markup: day headers, chrome (§e #1–#6, #20, #21) ═════════════════════
+// Owner 11/10 (decision 1): a day header is its name and date only. The
+// reasons already live on the rows' rails, in the ΕΠΟΜΕΝΑ band and in the
+// cells; the header no longer repeats them. What is left is ONE marker, shown
+// by CSS only on a CLOSED day (.wi4-day:not(.closed) .wi4-dayh-c), so a
+// folded day never hides work silently. A day never folds by itself while it
+// has a reason (WI4.collapsible needs none, _dayHeld keeps writes and focus
+// open, a queue card reopens its day), so in practice the marker shows on a
+// day the USER closed. Its label is the header's former words (WI4.dayText +
+// EXTRA_WORDS): hover and screen readers still say what is inside, and the
+// rig still checks «header = queue = rails» against it. Shape as well as
+// colour (§c.2, colour-blind rule): red = filled, amber = ring, grey ring =
+// only the national legs are unread or loading (unknown, not a warning).
 function _dayCountHTML(day) {
-  const parts = String(day.text || '').split(' · ');
-  const out = [];
-  parts.forEach((p, i) => {
-    if (i === 0) { out.push(_esc(p)); return; }
-    let code = null;
-    if (p.includes('χωρίς φορτηγό')) code = 'NO_TRUCK';
-    else if (/γύρισμα|γυρίσματα/.test(p)) code = 'EMPTY_RETURN';
-    else if (p.includes('χωρίς μεταφορέα')) code = 'NAT_NO_CARRIER';
-    // «εθνικά σκέλη: φορτώνουν…» is a read in flight, not a warning: grey.
-    if (/φορτώνουν/.test(p)) { out.push(`<span class="wi4-t-g2">${_esc(p)}</span>`); return; }
-    const lvl = code ? day.levels[code] : 'amber';
-    out.push(`<span class="${lvl === 'red' ? 'wi4-t-red' : 'wi4-t-amb'}">${_esc(p)}</span>`);
-  });
   const by = day.counts.byCode || {};
+  const words = [String(day.text || '')];
   Object.keys(EXTRA_WORDS).forEach((code) => {
     if (!by[code]) return;
-    const words = EXTRA_PLURAL[code] ? _plural(by[code], EXTRA_PLURAL[code]) : by[code] + ' ' + EXTRA_WORDS[code];
-    out.push(`<span class="${day.levels[code] === 'red' ? 'wi4-t-red' : 'wi4-t-amb'}">${_esc(words)}</span>`);
+    words.push(EXTRA_PLURAL[code] ? _plural(by[code], EXTRA_PLURAL[code]) : by[code] + ' ' + EXTRA_WORDS[code]);
   });
-  return '· ' + out.join(' · ');
+  const codes = Object.keys(by).filter((c) => by[c]);
+  const natUnread = /εθνικά σκέλη:/.test(day.text || '');
+  if (!codes.length && !natUnread) return '';
+  const lvl = codes.some((c) => day.levels[c] === 'red') ? 'red' : codes.length ? 'amb' : 'unk';
+  const label = _esc(words.filter(Boolean).join(' · '));
+  return `<span class="wi4-dayh-dot ${lvl}" role="img" aria-label="${label}" title="${label}"></span>`;
 }
 // Day open state (§e #6). A user toggle wins (WINTL.ui.v4Days). Otherwise a
 // day with anything to do is open, and a «collapsible» day follows the
@@ -1301,17 +1305,23 @@ function _dayOpen(day) {
 }
 function _dayHTML(day, today) {
   const dw = _dow(day.date);
-  const name = dw == null ? 'ΧΩΡΙΣ ΗΜΕΡΟΜΗΝΙΑ' : DOW_HEAD[dw] + ' ' + _dm(day.date);
+  // Figma 1097:2642: the day name is a Syne caps label, the date DM Sans.
+  const name = dw == null ? 'ΧΩΡΙΣ ΗΜΕΡΟΜΗΝΙΑ' : `${DOW_HEAD[dw]} <span class="wi4-dayd">${_dm(day.date)}</span>`;
   const wk = day.extra && day.date ? W().weekOf(day.date + 'T12:00:00') : null;
-  const extra = day.extra ? `<span class="wi4-dayh-c" title="Μεταφέρθηκε σε αυτή την προβολή (Μεταφορά εβδομάδας) — η πραγματική ημέρα είναι εκτός Σαβ–Παρ">μεταφέρθηκε${wk != null ? ' · W' + wk : ''}</span>` : '';
+  // Owner 11/10: name + date only, so the moved-in section's «μεταφέρθηκε ·
+  // W42» moves into the title of its name; the date, after Friday, already
+  // shows it lies outside Σαβ–Παρ.
+  const tip = day.extra ? ` title="μεταφέρθηκε${wk != null ? ' · W' + wk : ''}: εμφανίζεται σε αυτή την προβολή (Μεταφορά εβδομάδας) — η πραγματική ημέρα είναι εκτός Σαβ–Παρ"` : '';
   const q = DAY_RE.test(day.date || '') ? day.date : '';
   // The chevron is an icon (aria-hidden), never a «▾» glyph in the icon grey.
   const chev = `<span class="wi4-chev" aria-hidden="true">${_ico('chevron_down', 14)}</span>`;
-  // «ΤΡΙΤΗ 6/10 · σήμερα · 2 φορτηγά» (board 1097:2254): the same grey «·»
-  // as the counts after it, never a bare «σήμερα» glued to the date.
-  const todayW = day.today ? '<span class="wi4-today"><span class="wi4-t-g2">·</span> σήμερα</span>' : '';
+  // «ΠΑΡΑΣΚΕΥΗ 9/10 · σήμερα» (Figma 1097:3590): dot and word in today's
+  // blue. The dot was grey to match the counts after it; they are gone.
+  const todayW = day.today ? '<span class="wi4-today">· σήμερα</span>' : '';
   if (day.empty) {
-    return `<section class="wi4-day${day.today ? ' today' : ''}" data-day="${q}"><div class="wi4-dayh">${chev}<span>${name}</span>${todayW}<span class="wi4-dayh-c">· Καμία κίνηση</span></div></section>`;
+    // Owner 11/10: no «Καμία κίνηση», and no chevron — there is nothing to
+    // open. A 14px spacer keeps the name in line with the other days.
+    return `<section class="wi4-day empty${day.today ? ' today' : ''}" data-day="${q}"><div class="wi4-dayh"><span class="wi4-dayh-sp" aria-hidden="true"></span><span class="wi4-dayn">${name}</span>${todayW}</div></section>`;
   }
   const open = _dayOpen(day);
   // A failed write's line goes under the row it belongs to, once per order
@@ -1320,7 +1330,7 @@ function _dayHTML(day, today) {
   const body = day.entries.map((e) => _entryHTML(e, today) + msgs(e)).join('');
   return `<section class="wi4-day${day.today ? ' today' : ''}${open ? '' : ' closed'}" data-day="${q}">` +
     `<div class="wi4-dayh" role="button" tabindex="0" aria-expanded="${open}" onclick="WIV2._dayTog('${q}')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();WIV2._dayTog('${q}')}">` +
-    `${chev}<span>${name}</span>${todayW}${extra}` +
+    `${chev}<span class="wi4-dayn"${tip}>${name}</span>${todayW}` +
     `<span class="wi4-dayh-c" data-dc="${q}" data-codes="${_esc(day.codes || '')}">${_dayCountHTML(day)}</span></div>` +
     `<div class="wi4-day-body">${body}</div></section>`;
 }
