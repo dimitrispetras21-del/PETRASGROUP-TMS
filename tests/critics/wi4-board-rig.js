@@ -919,7 +919,52 @@ async function scnRelay(browser, origin) {
   ok(scn, 'the relay\'s RELAY_NO_DRIVER is named on its sub-row (counted = named, per day)', named.bad.length === 0 && named.seen.includes('RELAY_NO_DRIVER'), named);
   ok(scn, 'no page errors; nothing written', !S.pageErrors.length && !writes(S).length, { e: S.pageErrors, w: writes(S) });
   await page.context().close();
+  // Parity r2 (relay-subrow-cuts-status / -cut-at-1440 / -text-glyphs): the
+  // status came last in one ellipsized string — «✓ φορτώθηκε» cut at 1800,
+  // everything after «άλλο φορτηγ…» at 1440. A second week where both relays
+  // carry a status: M001 loaded (✓), M002's day ≠ its order's (⚠).
+  {
+    const scn2 = 'relay.fit';
+    const { page: p2, S: S2 } = await openBoard(browser, origin, { mutate: db => { db[T.LOCAL_MOVES].find(r => r.id === 'recWiM002').fields.Date = '2026-10-08'; } });
+    for (const width of [1800, 1440]) {
+      await p2.setViewportSize({ width, height: width === 1800 ? 800 : 900 }); await p2.waitForTimeout(400);
+      const f = await relayFit(p2);
+      const by = id => f.find(x => x.id === id) || { st: [], diff: [] };
+      // At 1440 a ⚠ plus two «what differs» parts no longer fit a 514px
+      // delivery cell: the parts give way, the status never does (the
+      // fixture's own week keeps «άλλο φορτηγό …» whole at 1440 — w1440).
+      ok(scn2, `${width}: both relays drawn as a flex line, each status whole and inside its row${width === 1800 ? ', the first «άλλο φορτηγό …» whole' : ''}`,
+        f.length === 2 && f.every(x => x.flex && x.st.length >= 1 && x.st.every(s => s.whole) && x.diff.length >= 1 && /^άλλο φορτηγό /.test(x.diff[0].t) && (width !== 1800 || x.diff[0].whole)), f);
+      ok(scn2, `${width}: done = the 10px check icon in .wi4-ok (no «✓» glyph on screen); ⚠ = the alert icon (no «⚠» glyph)`,
+        by('recWiM001').st.some(s => /φορτώθηκε/.test(s.t) && s.okSvg === 10) && by('recWiM002').st.some(s => /μέρα ≠ παραγγελίας/.test(s.t) && s.svg === 11) && f.every(x => !/[✓⚠]/.test(x.text)), f);
+      ok(scn2, `${width}: the text takes the empty track (pickup: ΕΞΑΓΩΓΗ + ΑΝΑΘΕΣΗ, delivery: ΕΙΣΑΓΩΓΗ + ΑΠΟ ΒΕΡΟΙΑ); the whole sentence stays in the title`,
+        by('recWiM001').span === 'exp+asg' && by('recWiM002').span === 'imp+fr' && f.every(x => /^ΤΟΠΙΚΗ (ΦΟΡΤΩΣΗ|ΠΑΡΑΔΟΣΗ) · /.test(x.title) && /[✓⚠]/.test(x.title)), f);
+      await shot(p2, 'relay-fit-' + width);
+    }
+    const r = await p2.evaluate(([js]) => eval(js)('#content .wi4'), [SCAN_JS]);
+    ok(scn2, '1440: overflow scan green with the relay statuses drawn', r.n === 1 && !r.over.length, r.over.slice(0, 10));
+    ok(scn2, 'no page errors; nothing written', !S2.pageErrors.length && !writes(S2).length, { e: S2.pageErrors, w: writes(S2) });
+    await p2.context().close();
+  }
 }
+// Each read relay sub-row (.wi4-rlf): its statuses (whole = not cut and
+// inside the visible line and the row), its «what differs» parts, which
+// tracks the text spans (by the column header's cells), its icons.
+const relayFit = page => page.evaluate(() => {
+  const R = e => e.getBoundingClientRect();
+  const hd = c => R(document.querySelector('#content .wi4 .wi4-cols .wi4-c-' + c));
+  return [...document.querySelectorAll('#content .wi4 #wi-rows .wi4-sub-rl[data-relay]')].filter(e => e.getClientRects().length).map(sub => {
+    const f = sub.querySelector('.wi4-rlf'); if (!f) return { id: sub.dataset.relay, flex: false, st: [], diff: [] };
+    const fr = R(f), row = R(sub), cell = R(f.parentElement);
+    const whole = x => x.scrollWidth <= x.clientWidth + 1 && R(x).left >= fr.left - 0.5 && R(x).right <= fr.right + 0.5 && R(x).right <= row.right;
+    const near = (a, b) => Math.abs(a - b) <= 11;
+    const span = near(cell.left, hd('exp').left) && near(cell.right, hd('asg').right) ? 'exp+asg' : near(cell.left, hd('imp').left) && near(cell.right, hd('fr').right) ? 'imp+fr' : 'other';
+    return { id: sub.dataset.relay, flex: getComputedStyle(f).display === 'flex', text: f.innerText, title: f.title, span,
+      st: [...f.querySelectorAll(':scope > .wi4-rl-st')].map(x => { const ok = x.querySelector('.wi4-ok > svg'), sv = x.querySelector(':scope > svg');
+        return { t: x.textContent, whole: whole(x), okSvg: ok ? Math.round(R(ok).width) : null, svg: sv ? Math.round(R(sv).width) : null }; }),
+      diff: [...f.querySelectorAll(':scope > .wi4-ell')].map(x => ({ t: x.textContent, whole: whole(x), title: x.title })) };
+  });
+});
 
 // Overflow: every node whose text overflows carries the full text in a title.
 // Contrast: text ≥ 4.5:1 against its effective background (placeholders and
@@ -2089,15 +2134,17 @@ async function openPopover(page, oid) {
   return page.evaluate(() => { const p = document.getElementById('wi-popover'); return !!p && getComputedStyle(p).display !== 'none' && !!p.innerHTML.trim(); });
 }
 // After a FAILED match E006 ← I004 (review 11/10, P2): the board must not
-// contradict itself. E006's import cell says what the table holds («δεν
-// αποθηκεύτηκε — η REF-I004 είναι ακόμη ελεύθερη», naming E006's EMPTY_RETURN),
-// I004 is drawn as a ghost line in its own loading day (naming its NO_TRUCK),
-// and per day: counted = named, header = queue.
+// contradict itself. E006's import cell draws what the table holds — the
+// empty-return slot, naming E006's EMPTY_RETURN (Figma sheet 14 #5: the row
+// goes back to what is written; parity r2) — the failure is the ONE line under
+// it, I004 is drawn as a ghost line in its own loading day (naming its
+// NO_TRUCK), and per day: counted = named, header = queue.
 const dayAgree = page => page.evaluate(() => {
   const Q = WIV2.queueItems();
   const idsOf = el => { const rid = Number(el.getAttribute('data-row-id')); const row = WINTL.rows.find(x => x.id === rid); const oid = el.getAttribute('data-oid');
-    // A row whose match FAILED does not own the import it still draws.
-    const ns = !!(el.querySelector && el.querySelector('.wi4-ns'));
+    // A row whose match FAILED does not own the import it still holds
+    // (its import cell is marked data-unconfirmed: it draws the table).
+    const ns = !!(el.querySelector && el.querySelector('[data-unconfirmed]'));
     const imp = row && row.importId && !ns ? (WINTL.rows.find(x => x.type === 'import' && (x.orderIds || []).includes(row.importId)) || { orderIds: [row.importId] }).orderIds : [];
     return [...new Set([...(row ? (row.orderIds || [row.orderId]) : []), ...imp, ...(oid ? [oid] : [])])]; };
   const qOf = (ids, el) => (el && el.dataset.relay ? Q.filter(q => q.relayId === el.dataset.relay) : Q.filter(q => !q.relayId && (ids.includes(q.key) || ids.includes(q.rowKey))));
@@ -2115,14 +2162,25 @@ const dayAgree = page => page.evaluate(() => {
 async function savefailBoard(page, scn, r6) {
   const b = await page.evaluate(([rid]) => {
     const cell = document.getElementById('wi-ci-' + rid);
-    const ns = cell && cell.querySelector('.wi4-ns');
+    const gap = cell && cell.querySelector('.wi4-gap');
+    const vis = e => !!e && e.getClientRects().length > 0;
+    const msg = document.querySelector('#content .wi4 [data-msg="recWiE006"]');
     const g = document.querySelector('#content .wi4 .wi4-ghost[data-oid="recWiI004"]');
     const gd = g && g.closest('.wi4-day');
-    return { ns: ns ? ns.textContent : '', nsR: ns ? ns.getAttribute('data-r') : null, leg: !!(cell && cell.querySelector('.wi4-leg')),
+    return { unc: cell ? cell.getAttribute('data-unconfirmed') : null, cell: cell ? cell.textContent : '', gap: gap ? gap.textContent : '', gapR: gap ? gap.getAttribute('data-r') : null,
+      act: vis(cell && cell.querySelector('.wi4-gap-act')), stk: vis(cell && cell.querySelector('.wi2-gapstk')), drop: !!(cell && cell.getAttribute('ondrop')),
+      leg: !!(cell && cell.querySelector('.wi4-leg')), msg: msg ? msg.textContent : '',
       ghost: g ? g.textContent : '', ghostR: g ? [...g.querySelectorAll('[data-r]')].map(x => x.getAttribute('data-r')) : [], ghostDay: gd ? gd.dataset.day : null,
       ghostH: g ? Math.round(g.getBoundingClientRect().height) : 0, rows: WINTL.rows.length };
   }, [r6]);
-  ok(scn, 'E006\'s import cell says what the TABLE holds: «δεν αποθηκεύτηκε — η REF-I004 είναι ακόμη ελεύθερη», naming its EMPTY_RETURN', /δεν αποθηκεύτηκε — η REF-I004 είναι ακόμη ελεύθερη/.test(b.ns) && b.nsR === 'EMPTY_RETURN' && !b.leg, b);
+  // Parity r2 (savefail-slot-hides-written-state): the cell is what is
+  // WRITTEN — no match, an own truck: «Κενό γύρισμα» with its EMPTY_RETURN —
+  // and the failure is said once, by the line under the row.
+  ok(scn, 'E006\'s import cell draws what the TABLE holds: «Κενό γύρισμα» (data-r EMPTY_RETURN), no failure words inside it, still the drop target', b.unc === '1' && /Κενό γύρισμα/.test(b.gap) && b.gapR === 'EMPTY_RETURN' && !/αποθηκεύτηκε/.test(b.cell) && !b.leg && b.drop, b);
+  ok(scn, 'the failure is the ONE line under E006 and names REF-I004', /Δεν αποθηκεύτηκε/.test(b.msg) && /REF-I004/.test(b.msg), b.msg);
+  // «+ Νέα εισαγωγή» would be refused there (_wiNewImport: row.importId is
+  // the failed I004), and the stock panel would count I004 on the truck.
+  ok(scn, 'the unconfirmed slot offers no «+ Νέα εισαγωγή» / stock link (both would act on the unsaved match)', !b.act && !b.stk, b);
   ok(scn, 'I004 is a 24px ghost line in its own loading day, naming its NO_TRUCK', /REF-I004/.test(b.ghost) && b.ghostR.includes('NO_TRUCK') && !!b.ghostDay && b.ghostH === 24, b);
   const named = await reasonsNamed(page);
   ok(scn, 'per day after the failure: every reason the header counts is named on exactly that many rows', named.bad.length === 0, named.bad);
@@ -2967,6 +3025,37 @@ async function scnW1440(browser, origin) {
     ok(scn, 'a popover opened from a low row stays inside the window, its Save in reach', !!pb && pb.top >= 11 && pb.bottom <= pb.h - 11 && pb.save != null && pb.save <= pb.h, { low, pb });
     await page.evaluate(() => { if (typeof _wiClosePopover === 'function') _wiClosePopover(); });
   } else ok(scn, 'a row near the bottom of the window to open the popover from', false, 'none found');
+  // Parity r2 (row-cells). Relay sub-rows on the fixture's week: each status
+  // whole, the first «άλλο φορτηγό …» whole (it hid everything after
+  // «άλλο φορτηγ…» at 1440).
+  const rf = await relayFit(page);
+  ok(scn, '1440: both fixture relays — statuses whole and inside the row, the first «άλλο φορτηγό …» whole',
+    rf.length === 2 && rf.every(x => x.flex && x.st.every(s => s.whole) && x.diff.length >= 1 && /^άλλο φορτηγό /.test(x.diff[0].t) && x.diff[0].whole) && rf.some(x => x.st.length), rf);
+  // «→ ΑΠΟΘΗΚΗ» ≤1600 is a 22px icon chip (lot-badge-eats-name-1440): the
+  // warehouse name keeps ≥56px (rules 985:1117), the chip stays in its column.
+  const pc = () => page.evaluate(() => {
+    const R = e => e.getBoundingClientRect(), vis = e => e.getClientRects().length > 0;
+    const lots = [...document.querySelectorAll('#content .wi4 #wi-rows .wi4-pt .wi4-l1f > .wi-b-lot')].filter(vis).map(b => {
+      const nm = b.parentElement.querySelector(':scope > .wi4-ell'), to = b.closest('.wi4-l-to'), cs = getComputedStyle(b);
+      return { name: nm ? Math.round(R(nm).width * 10) / 10 : 0, w: Math.round(R(b).width), fs: cs.fontSize, inCol: !!to && R(b).left >= R(to).left - 0.5 && R(b).right <= R(to).right + 0.5,
+        bg: cs.backgroundColor, bd: cs.borderTopColor, r: cs.borderTopLeftRadius, h: Math.round(R(b).height), title: !!b.title };
+    });
+    // The paperclip 4px after PE, in grey-2 (pallets-track-clip-gap, Figma 1097:2878).
+    const clips = [...document.querySelectorAll('#content .wi4 #wi-rows .wi4-l-pal')].filter(vis).map(p => {
+      const pe = p.querySelector('.wi4-pe'), sv = p.querySelector('.wi4-att svg'); if (!pe || !sv) return null;
+      return { dx: Math.round((R(sv).left - R(pe).right) * 10) / 10, c: getComputedStyle(sv).color, w: Math.round(R(sv).width) };
+    }).filter(Boolean);
+    return { lots, clips };
+  });
+  const p14 = await pc();
+  ok(scn, '1440: every lot point\'s warehouse name ≥56px; the badge a 22px chip inside its delivery column, its title kept', p14.lots.length >= 1 && p14.lots.every(l => l.name >= 56 && l.w === 22 && l.inCol && l.title), p14.lots);
+  ok(scn, 'the lot badge is PE\'s family: white fill, the #e2e8f0 line, radius 3, 17px', p14.lots.every(l => l.bg === 'rgb(255, 255, 255)' && l.bd === 'rgb(226, 232, 240)' && l.r === '3px' && l.h === 17), p14.lots);
+  ok(scn, '1440: the paperclip sits 4±1px after PE, rgb(91, 107, 127), 12px', p14.clips.length >= 1 && p14.clips.every(c => Math.abs(c.dx - 4) <= 1 && c.c === 'rgb(91, 107, 127)' && c.w === 12), p14.clips);
+  // 1920: the badge keeps its words (unchanged above 1600).
+  await page.setViewportSize({ width: 1920, height: 1080 }); await page.waitForTimeout(400);
+  const p19 = await pc();
+  ok(scn, '1920: «→ ΑΠΟΘΗΚΗ» keeps its words (10px), inside its column; the paperclip still 4±1px after PE',
+    p19.lots.length >= 1 && p19.lots.every(l => l.fs === '10px' && l.w > 22 && l.inCol) && p19.clips.length >= 1 && p19.clips.every(c => Math.abs(c.dx - 4) <= 1), { lots: p19.lots, clips: p19.clips });
   ok(scn, 'no page errors', !S.pageErrors.length, S.pageErrors);
   await page.context().close();
 }

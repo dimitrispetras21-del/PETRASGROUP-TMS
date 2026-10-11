@@ -1038,24 +1038,33 @@ function _expRowHTML(e, today) {
   // Import side: not saved · matched load · not read · empty return · partner only · open slot.
   const imp = row.importId ? D.data.imports.find((r) => r.id === row.importId) : null;
   const hasPartner = !!(row.partnerId || row.partnerLabel);
+  // A match (or an unmatch) that FAILED (_unconfirmed): the row keeps its
+  // optimistic state (§e.14: never rebuilt), but this cell draws what the
+  // TABLE holds, as a row with that match draws it — Figma sheet 14 #5
+  // 1089:2531: the row goes back to what is written, and the failure is said
+  // ONCE, by the .wi4-msg line under the row and the ⚠ in its number slot
+  // (parity r2, savefail-slot-hides-written-state). mid = the import this
+  // cell draws: the row's own, or the table's while the write is unconfirmed
+  // (null there = no match: an own truck gets the empty-return slot, whose
+  // EMPTY_RETURN the facts count — factsOf hasReturn).
+  const unc = _unconfirmed(row);
+  const mid = unc ? _srvMatch(row) : row.importId;
   let impInner;
-  // A match (or an unmatch) that FAILED: the row keeps its optimistic state
-  // (§e.14: never rebuilt), but this cell says what the TABLE holds — the
-  // board no longer counts one thing and draws another (review 11/10, P2).
-  if (_unconfirmed(row)) impInner = _notSavedHTML(row, rsE);
-  else if (imp) impInner = _impLegHTML(row, imp, today, _rsAt(e, row.importId, today));
-  else if (row.importId && !imp) {
+  if (unc && mid) impInner = _notSavedHTML(row, mid);
+  else if (imp && !unc) impInner = _impLegHTML(row, imp, today, _rsAt(e, row.importId, today));
+  else if (mid) {
     // Matched to an import this week's read does not hold (it loads outside
     // ±8 days, or it was cancelled): unknown ≠ empty (§d.2a) — never the open
     // «σύρε εισαγωγή εδώ» slot it used to look like.
     const ri = _q(row.importId);
     impInner = `<span class="wi4-void wi4-t-amb wi4-ell" data-r="MATCH_UNREAD" title="Η ταιριασμένη εισαγωγή δεν φορτώθηκε σε αυτή την εβδομάδα — φορτώνει εκτός ±8 ημερών ή ακυρώθηκε">εισαγωγή εκτός προβολής${ri ? ` · <button type="button" class="wi4-link" onclick="event.stopPropagation();WI_INTERNAL.edit('${ri}')">άνοιγμα</button>` : ''}</span>`;
   }
-  else if (row.saved && !hasPartner && !row.importId) impInner = _gapHTML(row, e, today);
+  else if (row.saved && !hasPartner) impInner = _gapHTML(row, e, today);
   else if (row.saved && hasPartner) impInner = '<span class="wi4-void">Μόνο εξαγωγή · συνεργάτης</span>';
   else impInner = '<span class="wi4-void" title="Σύρε εισαγωγή εδώ για ταίριασμα"></span>';
   // The import cell is the drop target (§f): empty = match, a load = join.
-  const impCell = `<div id="wi-ci-${row.id}" class="wi4-c-imp wi4-imp" ondragover="event.preventDefault();this.classList.add('wi4-dh')" ondragleave="this.classList.remove('wi4-dh')" ondrop="event.stopPropagation();_wiDropOnRow(event,${row.id})">${impInner}</div>`;
+  // data-unconfirmed: it draws the table, not the row (CSS, tools, the rig).
+  const impCell = `<div id="wi-ci-${row.id}" class="wi4-c-imp wi4-imp"${unc ? ' data-unconfirmed="1"' : ''} ondragover="event.preventDefault();this.classList.add('wi4-dh')" ondragleave="this.classList.remove('wi4-dh')" ondrop="event.stopPropagation();_wiDropOnRow(event,${row.id})">${impInner}</div>`;
 
   const fl = vs && !isGroup ? _natHTML(pid, _firstTitle(pf, 'load') + ' → Βέροια', _day(pf['Loading DateTime']), today) : '';
   // The matched import's national leg belongs to the import: not drawn here
@@ -1071,24 +1080,24 @@ function _expRowHTML(e, today) {
     impCell +
     `<div class="wi4-c-fr">${fr}</div></div>`;
 }
-// The import cell of a row whose match/unmatch FAILED (_unconfirmed): what the
-// table holds, in words — «δεν αποθηκεύτηκε — η REF-I004 είναι ακόμη
-// ελεύθερη» — with data-r for the reason the header counts there (an own
-// truck with no import in the table = EMPTY_RETURN). Dashed, like an open
-// slot: it is still the drop target (§f).
+// «REF-I004» — how a failure names an import (here and in _ghostHTML).
 function _impRef(id) {
   const f = _f(id);
   return f['Reference'] ? String(f['Reference']) : (W().clientName(f) || 'η εισαγωγή');
 }
-function _notSavedHTML(row, rs) {
-  const srv = _srvMatch(row);
-  let txt;
-  if (row.importId) txt = `δεν αποθηκεύτηκε — η ${_impRef(row.importId)} είναι ακόμη ελεύθερη` + (srv ? ` · μένει η ${_impRef(srv)}` : '');
-  else txt = srv ? `δεν αποθηκεύτηκε — η ${_impRef(srv)} μένει ταιριασμένη εδώ` : 'δεν αποθηκεύτηκε';
-  const er = (rs || {}).EMPTY_RETURN;
-  const r = er ? ` data-r="EMPTY_RETURN"` : '';
-  const why = er ? ' · ' + er.text : '';
-  return `<span class="wi4-ns${er && er.level === 'red' ? ' wi4-t-red' : er ? ' wi4-t-amb' : ' wi4-t-g2'}"${r} title="${_esc('Η αλλαγή δεν αποθηκεύτηκε — το κελί δείχνει ό,τι είναι γραμμένο στη βάση' + why)}">${_ico('alert_circle', 11)}<span class="wi4-ell">${_esc(txt)}</span></span>`;
+// The import cell of a failed match/unmatch whose TABLE still holds another
+// match (srv). That import is counted where the optimistic rows draw it, not
+// with this row (_rowFacts leaves an unconfirmed match out), so its leg is
+// not drawn here — reasons nobody counts. The words say what is written
+// instead (unknown ≠ empty, §d.2a). The table holds a match, so there is no
+// EMPTY_RETURN to name. Dashed, like an open slot: it is still the drop
+// target (§f).
+function _notSavedHTML(row, srv) {
+  const txt = row.importId
+    ? `δεν αποθηκεύτηκε — η ${_impRef(row.importId)} είναι ακόμη ελεύθερη · μένει η ${_impRef(srv)}`
+    : `δεν αποθηκεύτηκε — η ${_impRef(srv)} μένει ταιριασμένη εδώ`;
+  // The words lead the title: cut on a narrow screen, they stay readable.
+  return `<span class="wi4-ns wi4-t-g2" title="${_esc(txt + ' · το κελί δείχνει ό,τι είναι γραμμένο στη βάση')}">${_ico('alert_circle', 11)}<span class="wi4-ell">${_esc(txt)}</span></span>`;
 }
 // The GHOST of a failed match (_compute ghosts): the import is still free in
 // the table, in its own loading day — counted there, so it is drawn there too:
@@ -1220,33 +1229,46 @@ function _relayRowHTML(e, today) {
   const rs = _rsOf(e.facts[0] && e.facts[0].f, today);
   // «Σάβ 3/10 05:00»: the board's ONE day format (WI4.dayLabel), never
   // Relay.fmtDay's «Σάβ 03/10» beside a chip that says «Σάβ 3/10».
-  const parts = [s.driverName || 'ΠΡΟΣ ΑΝΑΘΕΣΗ', (_dayLabel(s.day) || '') + (s.time ? ' ' + s.time : '')].concat(Relay.diffParts(s) || []);
-  if (s.done) parts.push('✓ ' + (isDel ? 'παραδόθηκε' : 'φορτώθηκε'));
-  if (s.dayMismatch) parts.push('⚠ μέρα ≠ παραγγελίας');
-  if (bad) parts.push('⚠ δεν επιβεβαιώθηκε');
+  const drv = s.driverName || 'ΠΡΟΣ ΑΝΑΘΕΣΗ';
+  const day = (_dayLabel(s.day) || '') + (s.time ? ' ' + s.time : '');
+  const diff = Relay.diffParts(s) || [];
+  // The status comes BEFORE what differs from the order (parity r2,
+  // relay-subrow-cuts-status): appended last, «✓ φορτώθηκε» was the first
+  // thing cut (at 1800 and, with «άλλο φορτηγό…», at 1440). Drawn as icons
+  // (Figma: icon/check 10px 1097:2660, icon/alert-circle 11px 1097:2924 —
+  // TECH_DESIGN «the ✓ is the 10px icon everywhere»); the plain ✓/⚠ stay in
+  // the title. t = the words for the title, h = the markup.
+  const sts = [];
+  if (s.done) { const w = isDel ? 'παραδόθηκε' : 'φορτώθηκε'; sts.push({ t: '✓ ' + w, h: `<span class="wi4-rl-st"><span class="wi4-ok" role="img" aria-label="ολοκληρώθηκε">${_ico('check', 10)}</span>${w}</span>` }); }
+  if (s.dayMismatch) sts.push({ t: '⚠ μέρα ≠ παραγγελίας', h: `<span class="wi4-rl-st amb">${_ico('alert_circle', 11)}μέρα ≠ παραγγελίας</span>` });
+  if (bad) sts.push({ t: '⚠ δεν επιβεβαιώθηκε', h: `<span class="wi4-rl-st red"${rs.SAVE_FAILED ? ' data-r="SAVE_FAILED"' : ''}>${_ico('alert_circle', 11)}δεν επιβεβαιώθηκε</span>` });
   let tip = '';
   try { tip = I.relayTip(e.x); } catch (err) { _logErr(err, 'wi4: relay tip'); }
-  const word = (p, i) => {
-    if (i === 0 && !s.driverName) return `<span class="wi4-t-red"${rs.RELAY_NO_DRIVER ? ' data-r="RELAY_NO_DRIVER"' : ''}>${_esc(p)}</span>`;
-    // Who drives the local leg is what this line decides (Figma 1097:2830):
-    // the name in ink and weight, never the grey of «άλλο φορτηγό…».
-    if (i === 0) return `<b class="wi4-rl-drv">${_esc(p)}</b>`;
-    if (bad && p === '⚠ δεν επιβεβαιώθηκε') return `<span${rs.SAVE_FAILED ? ' data-r="SAVE_FAILED"' : ''}>${_esc(p)}</span>`;
-    return _esc(p);
-  };
-  // The visible words first, the old board's tip after them: a cell cut on
-  // a narrow screen keeps its whole text in the title (overflow scan).
+  // Who drives the local leg is what this line decides (Figma 1097:2830):
+  // the name in ink and weight, never the grey of «άλλο φορτηγό…».
+  const drvH = s.driverName ? `<b class="wi4-rl-drv">${_esc(drv)}</b>` : `<span class="wi4-t-red"${rs.RELAY_NO_DRIVER ? ' data-r="RELAY_NO_DRIVER"' : ''}>${_esc(drv)}</span>`;
+  // A flex row (.wi4-rlf): tag, driver, day and status are never cut; each
+  // part of Relay.diffParts is its own cut span with its own title, so they
+  // give way first, the last one first (CSS). One ellipsized string hid
+  // everything after «άλλο φορτηγ…» at 1440 (review r2). A part's «·» is its
+  // own ::before (CSS), so a part cut to nothing leaves no «·» behind.
   // The «·» in --wi4-grey-2, quieter than the words (Figma's lighter grey is
-  // 2.6:1; a text glyph must keep 4.5:1 — contrast scan).
-  const sep = ' <span class="wi4-rl-sep">·</span> ';
-  const cell = `<span class="wi4-ell" style="display:block" title="${_esc(tag + ' · ' + parts.join(' · ') + (tip ? ' — ' + tip : ''))}"><span class="wi4-tag">${tag}</span>${sep}${parts.map(word).join(sep)}</span>`;
+  // 2.6:1; a text glyph must keep 4.5:1 — contrast scan). Joined by spaces:
+  // not drawn between flex items, but kept for a screen reader or a copy.
+  const items = [`<span class="wi4-tag">${tag}</span>`, drvH, `<span>${_esc(day)}</span>`].concat(sts.map((x) => x.h));
+  // The whole sentence, then the old board's tip, in the cell's title.
+  const words = [drv, day].concat(sts.map((x) => x.t), diff);
+  const cell = `<span class="wi4-rlf" title="${_esc(tag + ' · ' + words.join(' · ') + (tip ? ' — ' + tip : ''))}">${items.join(' <span class="wi4-rl-sep">·</span> ')}` +
+    diff.map((p) => ` <span class="wi4-ell" title="${_esc(p)}">${_esc(p)}</span>`).join('') + '</span>';
   const acts = q && rid ? ` onclick="WI_INTERNAL.relayOpen('${q}','${rid}')" oncontextmenu="_wiRelayCtx(event,'${rid}','${q}')"` : '';
   // Its rail is its own facts (WI4.flags), the same rule as the day header
-  // and the queue item it raises.
+  // and the queue item it raises. The text takes the empty track beside it
+  // (CSS .wi4-sub-rl): a pickup has no ΑΝΑΘΕΣΗ cell, a delivery no ΑΠΟ
+  // ΒΕΡΟΙΑ cell — both were empty in every relay sub-row.
   return `<div class="wi4-subrow wi4-sub-rl${_rail(_levelOf(e.facts, today))}" data-oid="${q}"${rid ? ` data-relay="${rid}"` : ''}${acts}>` +
     '<div class="wi4-c-idx"><span class="wi4-legidx">↳</span></div><div class="wi4-c-fl"></div>' +
-    `<div class="wi4-c-exp">${isDel ? '' : cell}</div><div class="wi4-c-asg"></div>` +
-    `<div class="wi4-c-imp">${isDel ? cell : ''}</div><div class="wi4-c-fr"></div></div>`;
+    (isDel ? '<div class="wi4-c-exp"></div><div class="wi4-c-asg"></div>' : `<div class="wi4-c-exp">${cell}</div>`) +
+    (isDel ? `<div class="wi4-c-imp">${cell}</div>` : '<div class="wi4-c-imp"></div><div class="wi4-c-fr"></div>') + '</div>';
 }
 function _entryHTML(e, today) {
   switch (e.t) {
