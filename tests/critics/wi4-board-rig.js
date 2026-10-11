@@ -159,8 +159,7 @@ function checkFixture() {
     const f = r.fields, isExp = f.Direction === 'Export';
     return { kind: isExp ? 'export' : 'import', saved: !!(link(f.Truck) || link(f.Partner)), partner: !!link(f.Partner),
       loadDate: ld(r), delDate: athensDay(f['Delivery DateTime']), returnDate: athensDay(f['Delivery DateTime']),
-      hasReturn: !!f['Matched Import ID'], natState: 'ok', natLegs: [], pallets: f['Total Pallets'],
-      vsCdDate: f['VS CD Date'] || null, natDelDate: athensDay(f['Delivery DateTime']), natLoadDate: ld(r),
+      hasReturn: !!f['Matched Import ID'], pallets: f['Total Pallets'],
       late: f['Delivery Performance'] === 'Delayed',
       preorder: f['Ops Status'] === 'Provisional' ? { level: (() => { const n = Math.round((Date.parse(ld(r)) - Date.parse(TODAY)) / 86400000); return n <= 1 ? 'red' : n <= 3 ? 'amber' : 'normal'; })() } : null };
   };
@@ -612,12 +611,7 @@ async function scnPaint(browser, origin) {
     const txt = (oid, sel) => { const r = row(oid); const e = r && r.querySelector(sel); return e ? e.textContent.trim() : null; };
     const outsideChip = [...document.querySelectorAll('#content .wi4 .wi4-row .wi4-leg')].flatMap(leg => {
       const w = document.createTreeWalker(leg, NodeFilter.SHOW_TEXT); const hits = []; let n;
-      // The VS warning is a flex row (.wi4-l2w): its dates are their own
-      // nodes, so the warning's words are read from the row, not the node.
-      while ((n = w.nextNode())) if (/\b\d{1,2}\/\d{1,2}\b/.test(n.nodeValue) && !n.parentElement.closest('.wi4-dc, .wi4-gap, .wi4-noexp')) {
-        const lw = n.parentElement.closest('.wi4-l2w');
-        hits.push(lw ? lw.textContent.trim() : n.nodeValue.trim());
-      }
+      while ((n = w.nextNode())) if (/\b\d{1,2}\/\d{1,2}\b/.test(n.nodeValue) && !n.parentElement.closest('.wi4-dc, .wi4-gap, .wi4-noexp')) hits.push(n.nodeValue.trim());
       return hits;
     });
     const done = row('recWiE001') && row('recWiE001').querySelector('.wi4-c-exp .wi4-dc.done');
@@ -634,11 +628,27 @@ async function scnPaint(browser, origin) {
   }, [ROW_JS, TOKEN_JS]);
   ok(scn, '(a) a groupage shows «3 φορτία» in place of ΑΝΑΦ.', /3 φορτία/.test(d.grpRef || ''), d.grpRef);
   ok(scn, '(b) ΑΝΑΦ. also under the matched import\'s date', /REF-I001/.test(d.impRef || ''), d.impRef);
-  ok(scn, '(c) the only date outside a chip is the VS warning (DATE_MISMATCH) — the place line never carries one', d.outsideChip.every(t => /φτάνει|εθνικό φορτώνει/.test(t)), d.outsideChip);
+  // Owner 11/10 21:20: the VS date warning («φτάνει …») left with DATE_MISMATCH,
+  // so no date at all sits outside a chip.
+  ok(scn, '(c) no date outside a chip — no VS warning (DATE_MISMATCH gone, owner 11/10 21:20), the place line never carries one', d.outsideChip.length === 0, d.outsideChip);
   ok(scn, '(d) a done date is plain grey (no frame); red chips only on rows without a truck', d.done && !d.doneFrame && d.redChipRows.every(Boolean), d);
   ok(scn, '(e) own-fleet plates dark: --wi4-ink (WP3 vocabulary)', d.plates.length > 3 && d.plates.every(c => c === d.ink), { plates: [...new Set(d.plates)], ink: d.ink });
   ok(scn, '(f) no separator under the last row of a day', d.lastSep.length >= 6 && d.lastSep.every(w => w === '0px'), d.lastSep);
   ok(scn, 'PE sits next to the pallets', d.pe);
+  // Finding qcard-reason-verb-eats-name (r2): the band's NO_TRUCK card says
+  // «Nπ · σήμερα / αύριο» without the verb, as Figma 1115:2722 / 1115:2730
+  // («φορτώνει αύριο» took 111px and cut the destination at 1800); the
+  // «Όλα» panel sentence keeps it (1117:2699 «φορτώνει σήμερα · χωρίς φορτηγό»).
+  const qv = await page.evaluate(() => {
+    const items = WIV2.queueItems().slice(0, 3);
+    const cards = [...document.querySelectorAll('#content .wi4 #wi4-qwrap .wi4-qcard')].filter(c => c.querySelector('.wi4-qcard-t'));
+    return cards.map((c, i) => ({ code: items[i] && items[i].code, sub: items[i] && items[i].sub, l2: ((c.querySelector('.wi4-qcard-t > .wi4-l2') || {}).textContent || '').trim(),
+      l1w: Math.round(((c.querySelector('.wi4-l1') || { getBoundingClientRect: () => ({ width: 0 }) }).getBoundingClientRect()).width * 10) / 10 }));
+  });
+  const nt = qv.filter(c => c.code === 'NO_TRUCK');
+  ok(scn, 'queue band: a NO_TRUCK card reads «Nπ · αύριο» (no «φορτώνει»), the panel sentence keeps «φορτώνει αύριο · χωρίς φορτηγό»',
+    nt.length >= 1 && nt.every(c => /^\d+π · (σήμερα|αύριο|[Α-Ωα-ωά-ώ]{3} \d{1,2}\/\d{1,2}|φόρτωση ήταν .+)$/.test(c.l2) && !/φορτώνει/.test(c.l2)
+      && /^(φορτώνει (σήμερα|αύριο|.+)|φόρτωση ήταν .+) · χωρίς φορτηγό$/.test(c.sub)), qv);
   // Fix round 3 (11/10): a chip with ΑΝΑΦ. under it fits the 32px row with
   // room (≤ 28px; it was 31 and touched the next row's border); over 33 is a
   // shape as well as a colour (the alert icon before the number).
@@ -737,10 +747,10 @@ async function scnPaint(browser, origin) {
     ok(scn, 'national columns collapsed → all 4 points of E019, no «+N»', p.e19 && p.e19.n === 4 && !p.e19.more, p.e19);
     await shot(page, 'paint-nat-collapsed');
     // A collapsed column still tells the truth: the dot takes its tile's
-    // state (E014's ΑΠΟ leg has no carrier → amber ring), and the reasons
-    // the headers count are named by the dots now (counted = named).
+    // state (E014's ΑΠΟ leg has no carrier → amber ring), as information
+    // only (owner 11/10 21:20): no data-r, never red.
     const dot = await page.evaluate(js => { const r = eval(js)('recWiE014'); const d = r && r.querySelector('.wi4-c-fr .wi4-natdot'); return d ? { cls: d.className, r: d.getAttribute('data-r'), t: d.title } : null; }, ROW_JS);
-    ok(scn, 'collapsed: E014\'s ΑΠΟ dot is «un» (no carrier), its title says so', !!dot && /\bun\b/.test(dot.cls) && /ΠΡΟΣ ΑΝΑΘΕΣΗ/.test(dot.t), dot);
+    ok(scn, 'collapsed: E014\'s ΑΠΟ dot is «un» (no carrier), its title says so; no data-r, never red', !!dot && /\bun\b/.test(dot.cls) && !/\bred\b/.test(dot.cls) && dot.r === null && /ΠΡΟΣ ΑΝΑΘΕΣΗ/.test(dot.t), dot);
     const namedC = await reasonsNamed(page);
     ok(scn, 'collapsed: per day, every reason the header counts is still named (by the dots)', namedC.bad.length === 0, namedC.bad);
     // Collapsed, the header still offers the way back (rules «ανοιγοκλείνουν με
@@ -749,6 +759,17 @@ async function scnPaint(browser, origin) {
     await page.waitForTimeout(300);
     ok(scn, 'collapsed columns reopen from their header toggle', back && await page.evaluate(() => { const r = document.querySelector('#content .wi4'); return !!r && !r.classList.contains('wi4-fl-off') && !r.classList.contains('wi4-fr-off'); }));
   } else ok(scn, 'two national column toggles (ΠΡΟΣ / ΑΠΟ ΒΕΡΟΙΑ) in the column header', false, await toggles.count());
+  // Finding group-grip-always-visible (r2): the matched group's «⋮⋮» shows
+  // on row hover only (Figma sheet 14 1065:2257; Row 18 1097:2921 at rest
+  // holds only the figure). Opacity, so the drag (drops.grip) still finds it.
+  const gripSel = '#content .wi4 #wi-rows .wi4-grip[ondragstart*="_wiImpDragStart"]';
+  const grip0 = await page.evaluate(sel => { const g = document.querySelector(sel); if (!g) return null; g.closest('.wi4-row').setAttribute('data-rig-grip', '1');
+    return { op: getComputedStyle(g).opacity, drag: g.getAttribute('draggable'), cur: getComputedStyle(g).cursor }; }, gripSel);
+  if (grip0) await page.hover('[data-rig-grip="1"] .wi4-c-exp');
+  const grip1 = grip0 ? await page.evaluate(sel => getComputedStyle(document.querySelector(sel)).opacity, gripSel) : null;
+  await page.mouse.move(5, 5);
+  ok(scn, 'the group grip «⋮⋮» is hidden at rest (opacity 0) and shows on row hover (1); still draggable, cursor grab',
+    !!grip0 && grip0.op === '0' && grip1 === '1' && grip0.drag === 'true' && grip0.cur === 'grab', { grip0, grip1 });
   ok(scn, 'no page errors', !S.pageErrors.length, S.pageErrors);
   await page.context().close();
 }
@@ -802,15 +823,39 @@ async function scnInvariants(browser, origin) {
   // NAMED on its row (data-r): per day, per code, counted = named, exactly.
   const named = await reasonsNamed(page);
   ok(scn, 'per day: every reason the header counts is named on exactly that many rows (λωρίδα, λέξη, κεφαλίδα = ίδιο επίπεδο)', named.days.length >= 6 && named.bad.length === 0, named.bad);
-  ok(scn, 'the fixture\'s reasons are all exercised (LATE, PREORDER, SAME_DAY, DATE_MISMATCH, OVER_33, NAT_NO_CARRIER)', ['LATE', 'PREORDER', 'SAME_DAY', 'DATE_MISMATCH', 'OVER_33', 'NAT_NO_CARRIER'].every(c => named.seen.includes(c)), named.seen);
+  ok(scn, 'the fixture\'s reasons are all exercised (LATE, PREORDER, SAME_DAY, OVER_33)', ['LATE', 'PREORDER', 'SAME_DAY', 'OVER_33'].every(c => named.seen.includes(c)), named.seen);
+  // Owner 11/10 21:20: Weekly Intl carries NO national work. The fixture
+  // still holds a leg without carrier (E014's ΑΠΟ = I005) and a VS date
+  // mismatch (I006): neither may reach the queue, a row's data-r, a closed-day
+  // marker or the band count, and the tile stays the amber info chip.
+  const nat = await page.evaluate(([js, codes]) => {
+    const row = eval(js), hit = c => codes.includes(c);
+    const tile = (() => { const r = row('recWiE014'); const t = r && r.querySelector('.wi4-c-fr .wi4-tile'); if (!t) return null;
+      const cs = getComputedStyle(t); return { cls: t.className, t: t.textContent, r: t.getAttribute('data-r'), bg: cs.backgroundColor, bs: cs.borderTopStyle, c: cs.color, w: cs.fontWeight }; })();
+    const marks = [...document.querySelectorAll('#content .wi4 #wi-rows [data-codes]')];
+    const hd = (document.querySelector('#content .wi4 .wi4-q-hd') || {}).innerText || '';
+    return { q: WIV2.queueItems().map(q => q.code).filter(hit),
+      dr: [...document.querySelectorAll('#content .wi4 #wi-rows [data-r]')].map(e => e.getAttribute('data-r')).filter(hit),
+      codes: marks.map(m => m.getAttribute('data-codes') || '').filter(c => codes.some(k => c.includes(k))),
+      labels: marks.map(m => { const d = m.querySelector('.wi4-dayh-dot'); return d ? d.getAttribute('aria-label') || '' : ''; }).filter(l => /εθνικ|μεταφορέα|δεν βρέθηκ|ασυνέπει/.test(l)),
+      bandN: (hd.match(/ΕΠΟΜΕΝΑ · ≥?(\d+)/) || [])[1], qn: WIV2.queueItems().length, hd,
+      redNat: document.querySelectorAll('#content .wi4 .wi4-tile.un.red, #content .wi4 .wi4-natdot.un.red').length, tile };
+  }, [ROW_JS, NAT_CODES]);
+  ok(scn, 'no national code (NAT_NO_CARRIER / NAT_MISSING / NAT_UNKNOWN / DATE_MISMATCH) in the queue, on a row (data-r) or in a marker (data-codes, aria-label)',
+    !nat.q.length && !nat.dr.length && !nat.codes.length && !nat.labels.length, nat);
+  ok(scn, '«ΕΠΟΜΕΝΑ · N» = WIV2.queueItems().length (counter = board)', nat.bandN != null && +nat.bandN === nat.qn, { hd: nat.hd, qn: nat.qn });
+  ok(scn, 'E014\'s ΑΠΟ tile (I005) still reads «ΠΡΟΣ ΑΝΑΘΕΣΗ» as information: amber dashed chip (#fff7ed, #b45309, 600), no data-r, never red',
+    !!nat.tile && nat.tile.t === 'ΠΡΟΣ ΑΝΑΘΕΣΗ' && nat.tile.cls === 'wi4-tile un' && nat.tile.r === null && nat.tile.bg === 'rgb(255, 247, 237)'
+    && nat.tile.bs === 'dashed' && nat.tile.c === 'rgb(180, 83, 9)' && nat.tile.w === '600' && nat.redNat === 0, nat.tile);
   ok(scn, 'every railed row names its reasons in the title of its number', named.railNoTitle.length === 0, named.railNoTitle);
   ok(scn, 'the moved-in day is drawn; «μεταφέρθηκε · W…» is in its date\'s title', r.days.some(d => /μεταφέρθηκε · W\d+/.test(d.tip)), r.days.map(d => [d.day, d.tip]));
   // A day the user closes keeps saying it holds work: one marker whose label
   // names its reasons; it goes again when the day reopens. Monday 5/10
-  // carries an empty return, a date mismatch and a late load.
-  const RX = { NO_TRUCK: /χωρίς φορτηγό/, EMPTY_RETURN: /κεν(?:ό γύρισμα|ά γυρίσματα)/, NAT_NO_CARRIER: /χωρίς μεταφορέα/, DATE_MISMATCH: /ασυνέπει/,
+  // carries an empty return and a late load (its VS date mismatch is no
+  // reason any more, owner 11/10 21:20).
+  const RX = { NO_TRUCK: /χωρίς φορτηγό/, EMPTY_RETURN: /κεν(?:ό γύρισμα|ά γυρίσματα)/,
     OVER_33: /πάνω από 33π/, SAME_DAY: /ίδια μέρα/, LATE: /καθυστέρησ/, PREORDER: /pre-order/, RELAY_NO_DRIVER: /χωρίς οδηγό/, MATCH_UNREAD: /εκτός προβολής/,
-    PALLETS_UNKNOWN: /παλέτες χωρίς καταγραφή/, NAT_MISSING: /δεν βρέθηκ/, SAVE_FAILED: /δεν αποθηκεύτηκ/ };
+    PALLETS_UNKNOWN: /παλέτες χωρίς καταγραφή/, SAVE_FAILED: /δεν αποθηκεύτηκ/ };
   const mon = () => page.evaluate(() => { const day = document.querySelector('#content .wi4 .wi4-day[data-day="2026-10-05"]'); const dot = day && day.querySelector('[data-dc] .wi4-dayh-dot');
     const b = dot && dot.getBoundingClientRect();
     return { closed: !!day && day.classList.contains('closed'), codes: day ? (day.querySelector('[data-codes]') || {}).getAttribute('data-codes') : null,
@@ -825,7 +870,7 @@ async function scnInvariants(browser, origin) {
   const named5 = m1.dot ? (m1.codes || '').split(',').filter(Boolean).map(p => p.split(':')[0]).every(c => RX[c] && RX[c].test(m1.dot.label)) : false;
   ok(scn, 'Monday 5/10 open: its marker exists but is hidden', !m0.closed && !!m0.dot && !m0.dot.shown && !!m0.codes, m0);
   ok(scn, 'closed by the user: one 6px marker after the date, its label naming every counted reason, data-codes unchanged', m1.closed && m1.dot && m1.dot.shown && m1.dot.w === 6 && m1.dot.h === 6
-    && /\b(red|amb)\b/.test(m1.dot.cls) && m1.dot.title === m1.dot.label && named5 && m1.codes === m0.codes && (m1.codes || '').split(',').filter(Boolean).length >= 3, m1);
+    && /\b(red|amb)\b/.test(m1.dot.cls) && m1.dot.title === m1.dot.label && named5 && m1.codes === m0.codes && (m1.codes || '').split(',').filter(Boolean).length >= 2, m1);
   ok(scn, 'reopened: the marker hides again', !m2.closed && m2.dot && !m2.dot.shown && m2.codes === m0.codes, m2);
   ok(scn, 'never «κανείς» on the board', !/κανείς/i.test(r.text));
   ok(scn, 'no auto-match: nothing written at load', !writes(S).length, writes(S));
@@ -835,8 +880,11 @@ async function scnInvariants(browser, origin) {
 
 // The reason codes each day header counts (data-codes, the SAME WI4.flags
 // output) against the words drawn on its rows (data-r), visible ones only.
-const REASON_CODES = ['NO_TRUCK', 'EMPTY_RETURN', 'NAT_NO_CARRIER', 'NAT_MISSING', 'DATE_MISMATCH', 'OVER_33', 'SAME_DAY', 'LATE', 'PREORDER',
+const REASON_CODES = ['NO_TRUCK', 'EMPTY_RETURN', 'OVER_33', 'SAME_DAY', 'LATE', 'PREORDER',
   'RELAY_NO_DRIVER', 'MATCH_UNREAD', 'PALLETS_UNKNOWN'];
+// Codes that no longer exist on Weekly Intl (owner 11/10 21:20): national work
+// lives on Weekly National, DATE_MISMATCH is obsolete (one synchronized VS date).
+const NAT_CODES = ['NAT_NO_CARRIER', 'NAT_MISSING', 'NAT_UNKNOWN', 'DATE_MISMATCH'];
 const reasonsNamed = page => page.evaluate(codes => {
   const days = [], bad = [], seen = new Set(), railNoTitle = [];
   document.querySelectorAll('#content .wi4 #wi-rows .wi4-day').forEach(day => {
@@ -967,33 +1015,36 @@ async function scnUnknown(browser, origin) {
     await settle(page, S, 2600);
     const r = await page.evaluate(() => ({ un: document.querySelectorAll('#content .wi4 .wi4-tile.un').length,
       unk: [...document.querySelectorAll('#content .wi4 .wi4-tile.unk')].map(t => t.title || (t.closest('[title]') || {}).title || ''),
-      codes: WIV2.queueItems().map(q => q.code), heads: [...document.querySelectorAll('#content .wi4 [data-dc] .wi4-dayh-dot')].map(h => h.getAttribute('aria-label') || '') }));
+      codes: WIV2.queueItems().map(q => q.code), hd: (document.querySelector('#content .wi4 .wi4-q-hd') || {}).innerText || '',
+      heads: [...document.querySelectorAll('#content .wi4 [data-dc] .wi4-dayh-dot')].map(h => h.getAttribute('aria-label') || '') }));
     ok(scn, 'national read 500 → never «ΠΡΟΣ ΑΝΑΘΕΣΗ» on an unread leg', r.un === 0, r.un);
     ok(scn, '«—» tiles titled «απέτυχε — δεν σημαίνει ότι δεν έχουν μεταφορέα»', r.unk.length >= 3 && r.unk.every(t => /απέτυχε/.test(t) && /δεν σημαίνει/.test(t)), r.unk);
-    ok(scn, 'exactly one NAT_UNKNOWN, zero NAT_NO_CARRIER', r.codes.filter(c => c === 'NAT_UNKNOWN').length === 1 && !r.codes.includes('NAT_NO_CARRIER'), r.codes);
-    ok(scn, 'day header words (closed-day markers) say «εθνικά σκέλη: δεν φορτώθηκαν» instead of a count', r.heads.some(h => /εθνικά σκέλη: δεν φορτώθηκαν/.test(h)), r.heads);
+    // Owner 11/10 21:20: a failed national read is said on its tiles only —
+    // never an intl queue item, a «≥» on the band or a closed-day marker.
+    ok(scn, 'zero NAT_UNKNOWN (no national code at all) in the queue', !r.codes.some(c => NAT_CODES.includes(c)), r.codes);
+    ok(scn, 'no «≥» on the band caused by the national read alone', !/≥/.test(r.hd) && !/φορτώνει/.test(r.hd), r.hd);
+    ok(scn, 'no closed-day marker says «εθνικά σκέλη»', !r.heads.some(h => /εθνικ/.test(h)), r.heads);
     await page.context().close();
   }
   scn = 'unknown.national-slow';
   {
     const { page, S } = await openBoard(browser, origin, { hold: { nl: true } });
+    await settle(page, S);   // every other source answered: only the national read is in flight
     const r = await page.evaluate(() => ({ un: document.querySelectorAll('#content .wi4 .wi4-tile.un').length,
       unk: [...document.querySelectorAll('#content .wi4 .wi4-tile.unk')].map(t => t.title || (t.closest('[title]') || {}).title || ''),
-      codes: WIV2.queueItems().map(q => q.code), q: ((document.querySelector('#content .wi4 .wi4-q') || {}).innerText || '') }));
+      codes: WIV2.queueItems().map(q => q.code), q: ((document.querySelector('#content .wi4 .wi4-q-hd') || {}).innerText || ''),
+      heads: [...document.querySelectorAll('#content .wi4 [data-dc] .wi4-dayh-dot')].map(h => (h.getAttribute('aria-label') || '') + ' ' + h.className) }));
     ok(scn, 'while the national read is pending: «—» titled «δεν φορτώθηκε ακόμη», no «ΠΡΟΣ ΑΝΑΘΕΣΗ»', r.un === 0 && r.unk.length >= 3 && r.unk.every(t => /δεν φορτώθηκε ακόμη/.test(t)), r);
-    ok(scn, 'no NAT_* item while loading; the queue header says «φορτώνει»', !r.codes.some(c => /^NAT_/.test(c)) && /φορτώνει/.test(r.q), r);
-    const dots = await page.evaluate(() => [...document.querySelectorAll('#content .wi4 [data-dc] .wi4-dayh-dot')].map(h => ({ l: h.getAttribute('aria-label') || '', c: h.className, codes: h.parentElement.getAttribute('data-codes') || '' })));
-    const heads = dots.map(d => d.l);
-    ok(scn, 'day header words (closed-day markers) say «εθνικά σκέλη: φορτώνουν…» — never the failure words while the read is in flight', heads.some(h => /εθνικά σκέλη: φορτώνουν…/.test(h)) && !heads.some(h => /δεν φορτώθηκαν/.test(h)), heads);
-    // The grey ring (unk) is for a day whose ONLY words are the unread legs;
-    // a day that also has reasons keeps their level — an unknown never softens
-    // a known warning. (The synthetic week has no legs-only day.)
-    const withLegs = dots.filter(d => /εθνικά σκέλη/.test(d.l));
-    ok(scn, 'a marker naming unread legs AND reasons keeps the reasons\' level (red/amb), never the grey ring', withLegs.length > 0 && withLegs.every(d => d.codes ? /\b(red|amb)\b/.test(d.c) : /\bunk\b/.test(d.c)), dots);
+    // Owner 11/10 21:20: a national read in flight is not intl work — no
+    // «≥N · φορτώνει…» on the band and no marker words because of it.
+    ok(scn, 'no national item while loading; the band says neither «≥» nor «φορτώνει» because of the national read alone', !r.codes.some(c => NAT_CODES.includes(c)) && !/≥/.test(r.q) && !/φορτώνει/.test(r.q), r);
+    ok(scn, 'no closed-day marker says «εθνικά σκέλη» or wears the grey ring', !r.heads.some(h => /εθνικ|\bunk\b/.test(h)), r.heads);
     S.hold.nl = false; S.held.splice(0).forEach(fn => fn()); await settle(page, S);
-    const after = await page.evaluate(js => { const row = eval(js); const t = (oid, sel) => { const r = row(oid); return !!(r && r.querySelector(sel)); };
-      return { e14own: t('recWiE014', '.wi4-c-fl .wi4-tile.own'), i05un: t('recWiE014', '.wi4-c-fr .wi4-tile.un'), codes: WIV2.queueItems().map(q => q.code) }; }, ROW_JS);
-    ok(scn, 'after it lands: carrier tile own, the missing carrier becomes «ΠΡΟΣ ΑΝΑΘΕΣΗ» + a NAT_NO_CARRIER item', after.e14own && after.i05un && after.codes.includes('NAT_NO_CARRIER'), after);
+    const after = await page.evaluate(([js, codes]) => { const row = eval(js); const el = (oid, sel) => { const r = row(oid); return r && r.querySelector(sel); };
+      const fr = el('recWiE014', '.wi4-c-fr .wi4-tile.un');
+      return { e14own: !!el('recWiE014', '.wi4-c-fl .wi4-tile.own'), i05un: !!fr && fr.textContent === 'ΠΡΟΣ ΑΝΑΘΕΣΗ' && fr.getAttribute('data-r') === null && !/\bred\b/.test(fr.className),
+        nat: WIV2.queueItems().filter(q => codes.includes(q.code) || q.key === 'recWiI005').map(q => q.code) }; }, [ROW_JS, NAT_CODES]);
+    ok(scn, 'after it lands: E014\'s own carrier tile, I005\'s «ΠΡΟΣ ΑΝΑΘΕΣΗ» (no data-r, not red) and NO queue item for it', after.e14own && after.i05un && !after.nat.length, after);
     await page.context().close();
   }
   scn = 'unknown.w1';
@@ -1240,13 +1291,12 @@ async function scnQueue(browser, origin) {
       const p = document.getElementById('wi-popover'); const open = !!p && getComputedStyle(p).display !== 'none' && !!p.innerHTML.trim();
       const row = open ? WINTL.rows.find(r => r.id === Number(p.dataset.rowId)) : null;
       return { pop: open, popOrders: row ? (row.orderIds || [row.orderId]) : [], pending: window._wiPendingMatch ? window._wiPendingMatch.rowId : null,
-        modal: !!(document.querySelector('#modalOverlay.open') || document.querySelector('.mf-overlay')), datep: !!document.querySelector('.wi4-datep') };
+        modal: !!(document.querySelector('#modalOverlay.open') || document.querySelector('.mf-overlay')) };
     });
     const target = await page.evaluate(k => WIV2.rowIdOf(k), c.key);
     const okAct = c.act === 'assign' ? got.pop && got.popOrders.includes(c.key)
       : c.act === 'newImport' ? got.pending === target
-      : c.act === 'open' || c.act === 'convert' ? got.modal
-      : c.act === 'date' ? got.datep : true;
+      : c.act === 'open' || c.act === 'convert' ? got.modal : true;
     ok(scn, `card ${i + 1} «${c.code}» → its action on ${c.key.slice(-4)} (resolved at click time)`, clicked && okAct, { c, got, target });
     await page.evaluate(() => { if (typeof _wiClosePopover === 'function') _wiClosePopover(); if (typeof closeModal === 'function') closeModal(); window._wiPendingMatch = null; });
     await page.keyboard.press('Escape'); await page.waitForTimeout(150);
@@ -2842,17 +2892,37 @@ async function scnQuiet(browser, origin) {
 
 // A VS order whose NATIONAL LOADS row the read did not return (the chain never
 // created it, or failed) is not «χωρίς μεταφορέα» — there is nothing to assign
-// on Weekly National. Its own reason, NAT_MISSING (review 11/10, P2).
+// on Weekly National (review 11/10, P2). Owner 11/10 21:20: it is INFORMATION
+// on Weekly Intl — the tile says «δεν υπάρχει εθνικό» and opens the order, but
+// it is no reason: no data-r, never red, no queue item. The same week also
+// takes E014's national carrier away: its ΠΡΟΣ leg loaded 5/10 (yesterday),
+// which the old rule drew as a RED «ΠΡΟΣ ΑΝΑΘΕΣΗ» with a red NAT_NO_CARRIER.
 async function scnNatMissing(browser, origin) {
   const scn = 'natmissing';
-  const { page, S } = await openBoard(browser, origin, { mutate: db => { db[T.NAT_LOADS] = db[T.NAT_LOADS].filter(n => n.id !== 'recWiN002'); } });
+  const { page, S } = await openBoard(browser, origin, { mutate: db => {
+    db[T.NAT_LOADS] = db[T.NAT_LOADS].filter(n => n.id !== 'recWiN002');
+    delete db[T.NAT_LOADS].find(n => n.id === 'recWiN001').fields.Truck;
+  } });
   const r = await page.evaluate(([js]) => { const row = eval(js)('recWiI005'); const t = row && row.querySelector('.wi4-c-fr .wi4-tile');
-    return { tile: t ? t.textContent : '', r: t ? t.getAttribute('data-r') : null,
-      q: WIV2.queueItems().filter(q => q.key === 'recWiI005' && /^NAT_/.test(q.code)).map(q => [q.code, q.level, q.act]) }; }, [ROW_JS]);
-  ok(scn, 'I005\'s national tile says «δεν υπάρχει εθνικό» (data-r NAT_MISSING), never «ΠΡΟΣ ΑΝΑΘΕΣΗ»', r.tile === 'δεν υπάρχει εθνικό' && r.r === 'NAT_MISSING', r);
-  ok(scn, 'one NAT_MISSING queue item that opens the order; no NAT_NO_CARRIER for it', r.q.length === 1 && r.q[0][0] === 'NAT_MISSING' && r.q[0][2] === 'open', r.q);
+    if (t) t.setAttribute('data-rig-natmiss', '1');
+    return { tile: t ? t.textContent : '', r: t ? t.getAttribute('data-r') : null, cls: t ? t.className : '', bg: t ? getComputedStyle(t).backgroundColor : '',
+      q: WIV2.queueItems().filter(q => q.key === 'recWiI005' || q.rowKey === 'recWiI005').map(q => [q.code, q.level, q.act]) }; }, [ROW_JS]);
+  ok(scn, 'I005\'s national tile says «δεν υπάρχει εθνικό», never «ΠΡΟΣ ΑΝΑΘΕΣΗ»; no data-r, not red (amber info chip)', r.tile === 'δεν υπάρχει εθνικό' && r.r === null && r.cls === 'wi4-tile un' && r.bg === 'rgb(255, 247, 237)', r);
+  ok(scn, 'zero queue items for I005', !r.q.length, r.q);
+  const e14 = await page.evaluate(([js, codes]) => { const row = eval(js)('recWiE014'); const t = row && row.querySelector('.wi4-c-fl .wi4-tile');
+    const cs = t && getComputedStyle(t);
+    return { tile: t ? t.textContent : '', cls: t ? t.className : '', r: t ? t.getAttribute('data-r') : null, bg: cs ? cs.backgroundColor : '', bs: cs ? cs.borderTopStyle : '',
+      red: document.querySelectorAll('#content .wi4 .wi4-tile.red, #content .wi4 .wi4-natdot.red').length,
+      q: WIV2.queueItems().filter(q => codes.includes(q.code)).map(q => [q.code, q.key]) }; }, [ROW_JS, NAT_CODES]);
+  ok(scn, 'E014\'s ΠΡΟΣ leg without carrier, loaded yesterday: the amber dashed «ΠΡΟΣ ΑΝΑΘΕΣΗ» chip, no data-r — no red national tile or dot anywhere',
+    e14.tile === 'ΠΡΟΣ ΑΝΑΘΕΣΗ' && e14.cls === 'wi4-tile un' && e14.r === null && e14.bg === 'rgb(255, 247, 237)' && e14.bs === 'dashed' && e14.red === 0, e14);
+  ok(scn, 'no national code in the queue', !e14.q.length, e14.q);
+  await shot(page, 'natmissing');
   const named = await reasonsNamed(page);
-  ok(scn, 'counted = named per day, NAT_MISSING included', named.bad.length === 0 && named.seen.includes('NAT_MISSING'), named);
+  ok(scn, 'counted = named per day', named.bad.length === 0, named);
+  await page.click('[data-rig-natmiss="1"]'); await page.waitForTimeout(500);
+  const opened = await page.evaluate(() => !!(document.querySelector('#modalOverlay.open') || document.querySelector('.mf-overlay')));
+  ok(scn, 'a click on «δεν υπάρχει εθνικό» opens the order (saving it re-runs the Veroia Switch chain)', opened);
   ok(scn, 'nothing written; no page errors', !writes(S).length && !S.pageErrors.length, { w: writes(S), e: S.pageErrors });
   await page.context().close();
 }
@@ -2871,21 +2941,19 @@ async function scnW1440(browser, origin) {
     return { overlap: t.right > a.left + 1, rowsOk: rows.every(h => h === 32), n: rows.length }; });
   ok(scn, 'week tabs clear of the actions; rows still 32px', !g.overlap && g.rowsOk && g.n > 10, g);
   // Parity r1 (legs-national): at 1440 «→ ΑΠΟΘΗΚΗ» stays inside its
-  // delivery column (it read «Phi Warehouse→ ΑΠΟΘΗΚΗ»), nothing spills out
-  // of the pallets track, and the VS warning keeps both dates whole (it cut
-  // «παράδοση 8/10» to the tooltip).
+  // delivery column (it read «Phi Warehouse→ ΑΠΟΘΗΚΗ») and nothing spills
+  // out of the pallets track. The VS warning («! ¢ 9/10 ·.. 8/10» at 1440) is
+  // gone with DATE_MISMATCH (owner 11/10 21:20): none may be drawn.
   const lg = await page.evaluate(() => {
     const R = e => e.getBoundingClientRect(), vis = e => e.getClientRects().length > 0;
     const lots = [...document.querySelectorAll('#content .wi4 #wi-rows .wi-b-lot')].filter(vis);
     const lotOut = lots.filter(b => { const to = b.closest('.wi4-l-to'); return !to || R(b).left < R(to).left - 0.5 || R(b).right > R(to).right + 0.5; }).map(b => b.textContent);
     const palOver = [...document.querySelectorAll('#content .wi4 #wi-rows .wi4-l-pal')].filter(vis)
       .flatMap(p => [...p.children].filter(c => R(c).left < R(p).left - 0.5 || R(c).right > R(p).right + 0.5).map(c => c.className || c.tagName));
-    const warns = [...document.querySelectorAll('#content .wi4 #wi-rows .wi4-l2w')].filter(vis);
-    const dates = warns.flatMap(w => [...w.querySelectorAll('.wi4-l2w-d')].map(d => ({ t: d.textContent, whole: d.scrollWidth <= d.clientWidth + 1 && R(d).right <= R(w).right + 0.5 })));
-    return { lots: lots.length, lotOut, palOver, warns: warns.length, dates };
+    return { lots: lots.length, lotOut, palOver, warns: document.querySelectorAll('#content .wi4 .wi4-l2w').length };
   });
   ok(scn, 'at 1440 every «→ ΑΠΟΘΗΚΗ» lies inside its delivery column; nothing in the pallets track overflows it', lg.lots >= 1 && !lg.lotOut.length && !lg.palOver.length, lg);
-  ok(scn, 'at 1440 every date of every VS warning is whole', lg.warns >= 1 && lg.dates.length >= 2 && lg.dates.every(d => d.whole), lg);
+  ok(scn, 'no .wi4-l2w (VS date warning) on the board', lg.warns === 0, lg);
   // The reused popover places itself for a 380px form; its real form is
   // taller. Opened from a row near the window's bottom it ran past the edge,
   // its Save out of reach (review 11/10): v4 lifts it back inside.

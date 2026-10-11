@@ -73,7 +73,7 @@ const ACTION_GROUP = Object.freeze({
 // Queue card / panel buttons (§e #2): one existing action per item. The ONE
 // copy: the band's cards (WIV2) read it through _actLabel.
 const ACT_LABEL = Object.freeze({
-  assign: 'Ανάθεση', newImport: 'Νέα εισαγωγή', pieces: 'Κομμάτια', national: 'Εθνικά →', date: 'Ημερομηνία',
+  assign: 'Ανάθεση', newImport: 'Νέα εισαγωγή', pieces: 'Κομμάτια',
   open: 'Άνοιγμα', lot: 'Παρτίδα', convert: 'Μετατροπή', retry: 'Ξαναδοκίμασε', relay: 'Τοπικός οδηγός',
 });
 const _actLabel = (it) => (!it ? '' : it.act === 'week' ? 'W' + (it.week || '+1') + ' →' : (ACT_LABEL[it.act] || ''));
@@ -1279,7 +1279,8 @@ function _refreshPresence() {
 
 // ═══ Queue panel «Όλα N ▾» (§e #3) ══════════════════════════════════════
 let _qp = null;   // {el, items, on, onKey, onDown}
-const _isUnknown = (it) => it && (it.code === 'SOURCE_UNKNOWN' || it.code === 'NAT_UNKNOWN');
+// No NAT_UNKNOWN (owner 11/10 21:20): a failed national read is not intl work.
+const _isUnknown = (it) => it && it.code === 'SOURCE_UNKNOWN';
 
 // The ONE dispatcher of queue actions (band cards and «Όλα» panel alike). The
 // case names are WI4.ACT's — tests/wi4-logic.test.js checks every one has a
@@ -1300,8 +1301,6 @@ function _queueAct(it) {
       if (!lot) { _toast('Η παρτίδα δεν βρέθηκε στο απόθεμα — ανανέωσε', 'warn'); return; }
       return I.stockLotOpen(anchor || document.querySelector('#content .wi4 #wi-shelf'), lot);
     }
-    case 'national': if (typeof navigate === 'function') navigate('weekly_natl'); return;
-    case 'date': return datePanel(oid, it.field || 'Loading DateTime', anchor && anchor.querySelector('.wi4-dc') || anchor);
     case 'open': case 'convert': if (REC.test(oid)) I.edit(oid); else _toast(GONE, 'warn'); return;
     // A local relay's item opens THAT relay (edit, driver, delete live there).
     case 'relay': if (it.relayId && REC.test(oid)) { I.relayOpen(oid, it.relayId); return; } break;

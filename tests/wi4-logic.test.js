@@ -140,7 +140,7 @@ test('points: an unmeasured width never shrinks on a guess', () => {
 });
 
 // ─── §d.2 flags ────────────────────────────────────────────────────────
-const exp = (o) => Object.assign({ kind: 'export', saved: true, partner: false, hasReturn: true, natState: 'ok', natLegs: [], pallets: 20 }, o);
+const exp = (o) => Object.assign({ kind: 'export', saved: true, partner: false, hasReturn: true, pallets: 20 }, o);
 const OFFS = [-1, 0, 1, 2, 3, 6];
 
 test('NO_TRUCK: red up to tomorrow (past included), amber beyond — never silent', () => {
@@ -186,68 +186,57 @@ test('EMPTY_RETURN: a partner row never gets it; an import never gets it', () =>
   assert.ok(!codes(WI4.flags({ kind: 'import', saved: true, hasReturn: false, returnDate: add(T, -2) }, T)).includes('EMPTY_RETURN'));
 });
 
-test('NAT_NO_CARRIER: red up to tomorrow, amber beyond, only when national legs were read', () => {
-  const want = { '-1': 'red', 0: 'red', 1: 'red', 2: 'amber', 3: 'amber', 6: 'amber' };
+// Owner 11/10 21:20: Weekly Intl carries NO national work. A leg without
+// carrier, a missing national load, an unread national read and a VS date
+// pair (DATE_MISMATCH, obsolete under the one synchronized VS date) raise no
+// reason here — national work lives on Weekly National. These guard against
+// reintroduction: the facts that USED to raise them are fed in on purpose.
+const NAT_CODES = ['NAT_NO_CARRIER', 'NAT_MISSING', 'NAT_UNKNOWN', 'DATE_MISMATCH'];
+const vsFacts = (o) => exp(Object.assign({
+  natState: 'ok', natLegs: [{ side: 'to', date: T, carrier: false }, { side: 'from', date: add(T, -1), carrier: false, missing: true }],
+  vsCdDate: add(T, 3), natDelDate: add(T, 1), natLoadDate: add(T, 4),
+}, o));
+
+test('no national reason on Weekly Intl: legs without carrier / missing / a VS date pair emit none of the four codes', () => {
   for (const k of OFFS) {
-    const r = WI4.flags(exp({ natLegs: [{ side: 'to', date: add(T, k), carrier: false }] }), T);
-    assert.strictEqual(reasonOf(r, 'NAT_NO_CARRIER').level, want[k]);
-    assert.strictEqual(reasonOf(r, 'NAT_NO_CARRIER').side, 'to');
+    const r = WI4.flags(vsFacts({ natLegs: [{ side: 'to', date: add(T, k), carrier: false }, { side: 'from', date: add(T, k), carrier: false, missing: true }] }), T);
+    assert.deepStrictEqual(codes(r).filter((c) => NAT_CODES.includes(c)), [], `today${k >= 0 ? '+' : ''}${k}`);
+    assert.strictEqual(r.level, null, 'a clean VS row with national gaps is not intl work');
   }
-  const two = WI4.flags(exp({ natLegs: [{ side: 'to', date: T, carrier: false }, { side: 'from', date: add(T, 4), carrier: false }, { side: 'from', date: T, carrier: true }] }), T);
-  assert.strictEqual(two.reasons.filter((x) => x.code === 'NAT_NO_CARRIER').length, 2, 'one reason per leg, a leg with carrier none');
-  for (const st of ['loading', 'err', undefined]) {
-    const r = WI4.flags(exp({ natState: st, natLegs: [{ side: 'to', date: T, carrier: false }] }), T);
-    assert.ok(!codes(r).includes('NAT_NO_CARRIER'), `natState ${st}: an unread leg is not «χωρίς μεταφορέα»`);
+  for (const kind of ['export', 'import']) {
+    const r = WI4.flags(vsFacts({ kind, natState: 'err' }), T);
+    assert.deepStrictEqual(codes(r), [], kind + ': no reason at all');
   }
+  assert.deepStrictEqual(WI4.items(vsFacts(), T, { key: 'recA1234567' }), [], 'no queue item');
 });
 
-// Fix round 3 (11/10): a VS order whose NATIONAL LOADS row the read did not
-// return is not «χωρίς μεταφορέα» — there is nothing to assign. Its own reason,
-// same date rule, act 'open' (saving the order re-runs the VS chain), and
-// never both reasons on one leg.
-test('NAT_MISSING: a read leg with no national load is its own reason, never NAT_NO_CARRIER', () => {
-  const want = { '-1': 'red', 0: 'red', 1: 'red', 2: 'amber', 3: 'amber', 6: 'amber' };
-  for (const k of OFFS) {
-    const r = WI4.flags(exp({ natLegs: [{ side: 'from', date: add(T, k), carrier: false, missing: true }] }), T);
-    assert.strictEqual(reasonOf(r, 'NAT_MISSING').level, want[k]);
-    assert.strictEqual(reasonOf(r, 'NAT_MISSING').side, 'from');
-    assert.strictEqual(reasonOf(r, 'NAT_MISSING').act, 'open');
-    assert.strictEqual(reasonOf(r, 'NAT_MISSING').text, 'εθνικό φορτίο δεν βρέθηκε');
-    assert.ok(!codes(r).includes('NAT_NO_CARRIER'), 'one reason per leg');
-  }
-  for (const st of ['loading', 'err', undefined]) {
-    const r = WI4.flags(exp({ natState: st, natLegs: [{ side: 'to', date: T, carrier: false, missing: true }] }), T);
-    assert.ok(!codes(r).includes('NAT_MISSING'), `natState ${st}: unread is unknown, not «missing»`);
-  }
-  const it = WI4.items(exp({ natLegs: [{ side: 'to', date: T, carrier: false, missing: true }] }), T, { key: 'recA1234567' })[0];
-  assert.strictEqual(it.group, 'stop');
-  assert.strictEqual(WI4.collapsible([exp({ natLegs: [{ side: 'to', date: add(T, 5), carrier: false, missing: true }] })], T), false);
-});
-
-test('sourceReasons: \'err\' → exactly one NAT_UNKNOWN; one SOURCE_UNKNOWN per failed source', () => {
-  const nat = WI4.sourceReasons({ natState: 'err' });
-  assert.deepStrictEqual(nat.map((r) => r.code), ['NAT_UNKNOWN']);
-  assert.strictEqual(nat[0].level, 'amber');
-  assert.strictEqual(nat[0].text, 'Τα εθνικά σκέλη δεν φορτώθηκαν — δεν σημαίνει ότι δεν έχουν μεταφορέα');
+test('sourceReasons: the national read is never a source; one SOURCE_UNKNOWN per failed source', () => {
+  assert.deepStrictEqual(WI4.sourceReasons({ natState: 'err' }), []);
   assert.deepStrictEqual(WI4.sourceReasons({ natState: 'loading' }), []);
-  const all = WI4.sourceReasons({ natState: 'ok', crossWeekOk: false, relayState: 'err', stockState: 'failed' });
+  const all = WI4.sourceReasons({ natState: 'err', crossWeekOk: false, relayState: 'err', stockState: 'failed' });
   assert.deepStrictEqual(all.map((r) => [r.code, r.source]), [['SOURCE_UNKNOWN', 'crossWeek'], ['SOURCE_UNKNOWN', 'relay'], ['SOURCE_UNKNOWN', 'stock']]);
   assert.strictEqual(all[0].text, 'Δεν φορτώθηκε: φορτώσεις W+1 — δεν σημαίνει ότι δεν υπάρχουν');
   assert.ok(all.every((r) => r.act === 'retry'));
   assert.deepStrictEqual(WI4.sourceReasons({ crossWeekOk: true, relayState: 'ok', stockState: 'ok' }), []);
 });
 
-test('the amber reasons: DATE_MISMATCH, OVER_33 (33 allowed), SAME_DAY, LATE', () => {
-  assert.ok(codes(WI4.flags({ kind: 'import', saved: true, vsCdDate: add(T, 2), natDelDate: add(T, 1) }, T)).includes('DATE_MISMATCH'));
-  assert.ok(!codes(WI4.flags({ kind: 'import', saved: true, vsCdDate: add(T, 1), natDelDate: add(T, 1) }, T)).includes('DATE_MISMATCH'));
-  assert.ok(codes(WI4.flags(exp({ vsCdDate: T, natLoadDate: add(T, 1) }), T)).includes('DATE_MISMATCH'));
-  assert.ok(!codes(WI4.flags(exp({ vsCdDate: add(T, 1), natLoadDate: T }), T)).includes('DATE_MISMATCH'));
+test('TEXT / ACT / GROUP / PLURAL hold no national key', () => {
+  for (const c of NAT_CODES) {
+    assert.ok(!(c in WI4.TEXT), 'TEXT.' + c);
+    assert.ok(!(c in WI4.ACT), 'ACT.' + c);
+    assert.ok(!(c in WI4.GROUP), 'GROUP.' + c);
+  }
+  for (const k of ['natNoCarrier', 'natMissing']) assert.ok(!(k in WI4.PLURAL), 'PLURAL.' + k);
+  assert.ok(!Object.values(WI4.ACT).some((a) => a === 'national' || a === 'date'), 'no queue act opens Weekly National or a VS date');
+});
+
+test('the amber reasons: OVER_33 (33 allowed), SAME_DAY, LATE', () => {
   assert.ok(!codes(WI4.flags(exp({ pallets: 33 }), T)).includes('OVER_33'));
   assert.strictEqual(reasonOf(WI4.flags(exp({ pallets: 34 }), T), 'OVER_33').text, 'πάνω από 33π');
   const sd = reasonOf(WI4.flags(exp({ sameDayClash: 'Ίδιο φορτηγό σε δύο φορτώσεις την ίδια μέρα' }), T), 'SAME_DAY');
   assert.strictEqual(sd.text, 'Ίδιο φορτηγό σε δύο φορτώσεις την ίδια μέρα');
   assert.strictEqual(reasonOf(WI4.flags(exp({ late: true }), T), 'LATE').level, 'amber');
-  for (const c of ['DATE_MISMATCH', 'OVER_33', 'SAME_DAY', 'LATE']) assert.strictEqual(WI4.GROUP[c] || 'look', 'look');
+  for (const c of ['OVER_33', 'SAME_DAY', 'LATE']) assert.strictEqual(WI4.GROUP[c] || 'look', 'look');
 });
 
 test('PALLETS_UNKNOWN: near 33 with an unwritten member is a look; over 33 stays OVER_33; nothing written at all says nothing', () => {
@@ -294,7 +283,7 @@ test('RELAY_NO_DRIVER: a local relay without a driver — red up to tomorrow, am
 });
 
 test('ACT: one action name per reason, the names WI4Actions._queueAct switches on', () => {
-  const known = ['assign', 'newImport', 'national', 'retry', 'date', 'open', 'convert', 'pieces', 'lot', 'relay'];
+  const known = ['assign', 'newImport', 'retry', 'open', 'convert', 'pieces', 'lot', 'relay'];
   for (const [code, act] of Object.entries(WI4.ACT)) assert.ok(known.includes(act), `${code} → «${act}» has no case in _queueAct`);
   const src = fs.readFileSync(path.join(ROOT, 'modules/wi4_actions.js'), 'utf8');
   for (const act of new Set(Object.values(WI4.ACT))) assert.match(src, new RegExp(`case '${act}'`), `_queueAct has no case '${act}'`);
@@ -314,10 +303,8 @@ test('plural: n=1 and n=2 for every key', () => {
   const want = {
     truck: ['1 φορτηγό', '2 φορτηγά'], load: ['1 φορτίο', '2 φορτία'],
     emptyReturn: ['1 κενό γύρισμα', '2 κενά γυρίσματα'],
-    natNoCarrier: ['1 σκέλος χωρίς μεταφορέα', '2 σκέλη χωρίς μεταφορέα'],
     pending: ['1 εκκρεμές', '2 εκκρεμή'], urgent: ['1 επείγον', '2 επείγοντα'], day: ['1 ημέρα', '2 ημέρες'],
     relayNoDriver: ['1 τοπική χωρίς οδηγό', '2 τοπικές χωρίς οδηγό'],
-    natMissing: ['1 εθνικό φορτίο δεν βρέθηκε', '2 εθνικά φορτία δεν βρέθηκαν'],
   };
   assert.deepStrictEqual(Object.keys(WI4.PLURAL).sort(), Object.keys(want).sort());
   for (const [k, [one, two]] of Object.entries(want)) {
@@ -327,30 +314,35 @@ test('plural: n=1 and n=2 for every key', () => {
   assert.throws(() => WI4.plural(2, 'nope'), /unknown key/);
 });
 
-test('dayCounts + dayText: both parenthesis forms and the national legs', () => {
+test('dayCounts + dayText: both parenthesis forms; national legs say nothing', () => {
   // Figma: «4 φορτηγά · 2 κενά γυρίσματα (1 από σήμερα)».
   const day = [
     exp({ hasReturn: false, returnDate: T }),
     exp({ hasReturn: false, returnDate: add(T, -3) }),
-    exp({}), { kind: 'import', saved: true, partner: false, natState: 'ok' },
-    { kind: 'relay', saved: true, natState: 'ok' },
+    exp({}), { kind: 'import', saved: true, partner: false },
+    { kind: 'relay', saved: true },
   ];
   const c = WI4.dayCounts(day, T);
   assert.deepStrictEqual(c, { trucks: 4, byCode: { EMPTY_RETURN: 2 }, todayEmpty: 1, emptyOldest: 3 });
   assert.strictEqual(WI4.dayText(c), '4 φορτηγά · 2 κενά γυρίσματα (1 από σήμερα)');
   // «(N ημέρες)» with the oldest gap when none starts today.
-  const c2 = WI4.dayCounts([exp({ hasReturn: false, returnDate: add(T, -3) }), exp({ natLegs: [{ side: 'to', date: T, carrier: false }] })], T);
-  assert.strictEqual(WI4.dayText(c2), '2 φορτηγά · 1 κενό γύρισμα (3 ημέρες) · 1 σκέλος χωρίς μεταφορέα');
+  // A VS row with a leg without carrier counts as a truck, never as a reason
+  // (owner 11/10 21:20).
+  const c2 = WI4.dayCounts([exp({ hasReturn: false, returnDate: add(T, -3) }), vsFacts()], T);
+  assert.strictEqual(WI4.dayText(c2), '2 φορτηγά · 1 κενό γύρισμα (3 ημέρες)');
   const c3 = WI4.dayCounts([exp({ hasReturn: false, returnDate: add(T, -1) })], T);
   assert.strictEqual(WI4.dayText(c3), '1 φορτηγό · 1 κενό γύρισμα (1 ημέρα)');
   // No parenthesis when every gap is still ahead.
   assert.strictEqual(WI4.dayText(WI4.dayCounts([exp({ hasReturn: false, returnDate: add(T, 2) })], T)), '1 φορτηγό · 1 κενό γύρισμα');
   // NO_TRUCK is counted in words, never dropped from the header.
   assert.strictEqual(WI4.dayText(WI4.dayCounts([exp({ saved: false, loadDate: T })], T)), '1 φορτηγό · 1 χωρίς φορτηγό');
-  // Unread legs: words instead of a count (never 0, never a number).
-  assert.strictEqual(WI4.dayText(c2, { natState: 'err' }), '2 φορτηγά · 1 κενό γύρισμα (3 ημέρες) · εθνικά σκέλη: δεν φορτώθηκαν');
-  // Still in flight is said as such — never the failure words (fix round 3).
-  assert.strictEqual(WI4.dayText(c2, { natState: 'loading' }), '2 φορτηγά · 1 κενό γύρισμα (3 ημέρες) · εθνικά σκέλη: φορτώνουν…');
+  // No national words, whatever the national read did (a stale caller's
+  // second argument is ignored).
+  for (const st of ['ok', 'err', 'loading']) {
+    const t = WI4.dayText(WI4.dayCounts([vsFacts({ natState: st }), vsFacts({ kind: 'import', natState: st })], T), { natState: st });
+    assert.doesNotMatch(t, /εθνικ|μεταφορέα/, st);
+    assert.strictEqual(t, '2 φορτηγά', st);
+  }
   assert.strictEqual(WI4.dayText({ trucks: 0, byCode: {} }), '0 φορτηγά');
 });
 
@@ -362,8 +354,8 @@ test('queue 1: red before amber', () => {
   assert.deepStrictEqual(order([it('NO_TRUCK', 'amber', add(T, 3), 'a'), it('LATE', 'red', add(T, 5), 'b')]), ['LATE:b', 'NO_TRUCK:a']);
 });
 test('queue 2: inside a level, stop → cost → look', () => {
-  assert.deepStrictEqual(order([it('OVER_33', 'amber', T, 'a'), it('EMPTY_RETURN', 'amber', T, 'b', { age: 0 }), it('NAT_NO_CARRIER', 'amber', add(T, 4), 'c')]),
-    ['NAT_NO_CARRIER:c', 'EMPTY_RETURN:b', 'OVER_33:a']);
+  assert.deepStrictEqual(order([it('OVER_33', 'amber', T, 'a'), it('EMPTY_RETURN', 'amber', T, 'b', { age: 0 }), it('NO_TRUCK', 'amber', add(T, 4), 'c')]),
+    ['NO_TRUCK:c', 'EMPTY_RETURN:b', 'OVER_33:a']);
 });
 test('queue 3: stop — nearest loading first', () => {
   assert.deepStrictEqual(order([it('NO_TRUCK', 'red', add(T, 1), 'a'), it('SAVE_FAILED', 'red', T, 'z'), it('NO_TRUCK', 'red', add(T, -1), 'b')]),
@@ -390,18 +382,18 @@ test('queue 8: items without a level are dropped', () => {
   assert.deepStrictEqual(order([it('LATE', null, T, 'a'), it('LATE', 'amber', T, 'b'), null]), ['LATE:b']);
 });
 test('queue 9: an unknown code is «look»; an explicit group wins; unknown sources sit with the looks', () => {
-  const src = WI4.sourceReasons({ natState: 'err', crossWeekOk: false }).map((r, i) => Object.assign({}, r, { key: 'src' + i }));
+  const src = WI4.sourceReasons({ natState: 'err', crossWeekOk: false, relayState: 'err' }).map((r, i) => Object.assign({}, r, { key: 'src' + i }));
   assert.deepStrictEqual(order([it('NEXT_WEEK', 'amber', T, 'n', { group: undefined }), it('STOCK_LOOSE', 'amber', T, 'm', { group: 'cost' }), ...src, it('NO_TRUCK', 'amber', add(T, 5), 'x')]),
-    ['NO_TRUCK:x', 'STOCK_LOOSE:m', 'NAT_UNKNOWN:src0', 'SOURCE_UNKNOWN:src1', 'NEXT_WEEK:n']);
+    ['NO_TRUCK:x', 'STOCK_LOOSE:m', 'SOURCE_UNKNOWN:src0', 'SOURCE_UNKNOWN:src1', 'NEXT_WEEK:n']);
 });
 test('queue 10: a full board — fixed order whatever the input order, input untouched', () => {
   const board = [
     it('OVER_33', 'amber', add(T, 2), 'r5'), it('EMPTY_RETURN', 'amber', add(T, 1), 'r4', { age: 0 }),
     it('NO_TRUCK', 'red', add(T, 1), 'r2'), it('PREORDER', 'red', T, 'r9'),
     it('EMPTY_RETURN', 'red', add(T, -2), 'r3', { age: 2 }), it('NO_TRUCK', 'amber', add(T, 4), 'r6'),
-    it('NAT_NO_CARRIER', 'red', T, 'r1'), it('LATE', 'amber', T, 'r7'),
+    it('RELAY_NO_DRIVER', 'red', T, 'r1'), it('LATE', 'amber', T, 'r7'),
   ];
-  const want = ['NAT_NO_CARRIER:r1', 'NO_TRUCK:r2', 'EMPTY_RETURN:r3', 'PREORDER:r9', 'NO_TRUCK:r6', 'EMPTY_RETURN:r4', 'LATE:r7', 'OVER_33:r5'];
+  const want = ['RELAY_NO_DRIVER:r1', 'NO_TRUCK:r2', 'EMPTY_RETURN:r3', 'PREORDER:r9', 'NO_TRUCK:r6', 'EMPTY_RETURN:r4', 'LATE:r7', 'OVER_33:r5'];
   const snapshot = JSON.stringify(board);
   assert.deepStrictEqual(order(board), want);
   assert.deepStrictEqual(order(board.slice().reverse()), want);
@@ -413,7 +405,8 @@ test('items: one queue item per reason, keyed by order id; a day\'s counts equal
   const day = [
     { f: exp({ saved: false, loadDate: T, pallets: 34 }), key: 'recA1234567', rowKey: 1 },
     { f: exp({ hasReturn: false, returnDate: add(T, -1) }), key: 'recB1234567', rowKey: 2 },
-    { f: exp({ natLegs: [{ side: 'from', date: add(T, 3), carrier: false }] }), key: 'recC1234567', rowKey: 3 },
+    // A VS row with national gaps adds its intl reason only (LATE), to both.
+    { f: vsFacts({ late: true, delDate: add(T, 3) }), key: 'recC1234567', rowKey: 3 },
   ];
   const all = day.flatMap((d) => WI4.items(d.f, T, { key: d.key, rowKey: d.rowKey }));
   const c = WI4.dayCounts(day.map((d) => d.f), T);
@@ -426,11 +419,12 @@ test('items: one queue item per reason, keyed by order id; a day\'s counts equal
 
 // ─── §d.3 collapsible, openDay ─────────────────────────────────────────
 test('collapsible: only a fully clean day', () => {
-  assert.strictEqual(WI4.collapsible([exp({}), exp({ partner: true, saved: false, hasReturn: false }), { kind: 'import', saved: true, natState: 'ok' }], T), true);
+  assert.strictEqual(WI4.collapsible([exp({}), exp({ partner: true, saved: false, hasReturn: false }), { kind: 'import', saved: true }], T), true);
   assert.strictEqual(WI4.collapsible([exp({}), exp({ saved: false, loadDate: add(T, 5) })], T), false, 'NO_TRUCK');
   assert.strictEqual(WI4.collapsible([exp({ hasReturn: false, returnDate: add(T, 5) })], T), false, 'no return, even before the flag shows');
   assert.strictEqual(WI4.collapsible([exp({ late: true })], T), false, 'any reason');
-  assert.strictEqual(WI4.collapsible([exp({ natState: 'loading' })], T), false, 'unread legs keep the day open');
+  // The national read does not hold an intl day open (owner 11/10 21:20).
+  for (const st of ['err', 'loading']) assert.strictEqual(WI4.collapsible([vsFacts({ natState: st })], T), true, 'natState ' + st);
   assert.strictEqual(WI4.collapsible([], T), false, 'an empty day is «Καμία κίνηση», not collapsed');
 });
 
