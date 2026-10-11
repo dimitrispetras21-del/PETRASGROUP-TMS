@@ -677,6 +677,9 @@ async function _openModal(recId, f, _clientLabelOverride, _scanPrefill, _piece) 
   INTL_ORDERS._createdId = null; // a fresh modal never inherits a previous attempt's order
   INTL_ORDERS._markPending = null; // nor a lot mark that failed in another one
   INTL_ORDERS._whPool = null;      // nor the warehouse list of another form
+  // The record this form was opened with (WP-A): the save decides from it
+  // whether the order already HAS a Veroia day to keep (VsDates.vsCdOnSave).
+  INTL_ORDERS._loadedFields = recId ? (f || null) : null;
   // Bug 11/8: από το Weekly η φόρμα άνοιγε ΠΡΙΝ φορτωθούν οι τοποθεσίες
   // (το init της σελίδας Orders δεν έχει τρέξει) → η αναζήτηση έδειχνε κενά.
   try { await fhLoadLocations(); } catch(e) { console.warn('locations preload:', e.message); }
@@ -1677,18 +1680,18 @@ function _vsToLocalDate(raw) {
   const y = d.getFullYear(), m = String(d.getMonth()+1).padStart(2,'0'), day = String(d.getDate()).padStart(2,'0');
   return `${y}-${m}-${day}`;
 }
-function _vsAddDays(dateStr, days) {
-  if (!dateStr) return null;
-  const d = new Date(dateStr + 'T12:00:00');
-  d.setDate(d.getDate() + days);
-  const y = d.getFullYear(), m = String(d.getMonth()+1).padStart(2,'0'), day = String(d.getDate()).padStart(2,'0');
-  return `${y}-${m}-${day}`;
-}
 
 // Semaphore: prevent concurrent VS syncs on the same order
 const _syncingOrders = new Set();
 
-async function _syncVeroiaSwitch(orderId, fields) {
+// ONE argument (WP-A, plan §3.4): the sync reads the order ITSELF. Every
+// caller used to pass its own copy of the fields, and the Weekly International
+// assignment asked for a list without the cross-dock — a NULL column is simply
+// absent from a facade answer, so «empty cross-dock» and «not asked for» look
+// the same and the national load was rewritten to the ±1 estimate on every
+// truck change. With the read in here no caller can starve it again;
+// tests/vs-sync-callers.test.js fails the build on a second argument.
+async function _syncVeroiaSwitch(orderId) {
   if (_syncingOrders.has(orderId)) {
     if (typeof showErrorToast === 'function') showErrorToast('Sync already in progress for this order', 'warn');
     else console.warn('VS sync already in progress for', orderId);
@@ -1703,6 +1706,13 @@ async function _syncVeroiaSwitch(orderId, fields) {
   if (typeof _atSuppressUndo !== 'undefined') _atSuppressUndo = true;
 
   try {
+  // The only read of the order (all fields). A failed read throws (atGetOne
+  // toasts and logs it): the national load was not updated, and every caller
+  // hears it — the form and the assignment in their catch, the «VS chain»
+  // stage of syncOrderDownstream as a failed stage.
+  const _orderRec = await atGetOne(TABLES.ORDERS, orderId);
+  const fields = _orderRec && _orderRec.fields;
+  if (!fields) throw new Error(`VS sync: order ${orderId} was read without fields — the national load was not updated`);
   const veroiaSwitch = fields[F.VEROIA_SWITCH];
   const direction    = fields['Direction'];
   const isIntl       = fields['Type'] === 'International';
@@ -1824,6 +1834,29 @@ async function _syncVeroiaSwitch(orderId, fields) {
     if (typeof logError === 'function') logError(new Error(`VS sync: no stops for order ${orderId}`), 'orders_intl._syncVSDirect');
     return;
   }
+  // The international drops in ITS order (Stop Number) — the day check below
+  // ("do the stops agree with the order?") reads the first of these.
+  const _unlIntl = _vsStops.filter(s => s.fields[F.STOP_TYPE] === 'Unloading')
+    .sort((a,b) => (a.fields[F.STOP_NUMBER]||0) - (b.fields[F.STOP_NUMBER]||0));
+  // The national load's drops in the NATIONAL dispatcher's order, matched by
+  // place (plan §2.4, VsDates.vsNatDropOrder). The sync used to rewrite them
+  // by position in the international order, silently undoing every drag on
+  // the Weekly National (_wnSaveSegOrder). Read only when it can matter: an
+  // existing import load with two drops or more (one drop has one order; an
+  // export's only drop is Veroia). A failed read THROWS — falling back to the
+  // international order would undo the drag without a word (principle 1).
+  let _unl = _unlIntl;
+  if (direction !== 'Export' && existingNL.length && _unlIntl.length > 1) {
+    const _natStops = await atGetAll(TABLES.ORDER_STOPS, {
+      filterByFormula: `FIND("${existingNL[0].id}",ARRAYJOIN({${F.STOP_PARENT_NL}},","))>0`,
+      fields: [F.STOP_TYPE, F.STOP_NUMBER, F.STOP_LOCATION],
+    }, false);
+    const _natLocs = _natStops.filter(s => s.fields[F.STOP_TYPE] === 'Unloading')
+      .sort((a,b) => (a.fields[F.STOP_NUMBER]||0) - (b.fields[F.STOP_NUMBER]||0))
+      .map(s => _lid((s.fields[F.STOP_LOCATION]||[])[0]));
+    _unl = VsDates.vsNatDropOrder(_unlIntl.map(s => _lid((s.fields[F.STOP_LOCATION]||[])[0])), _natLocs)
+      .map(i => _unlIntl[i]);
+  }
   if (direction === 'Export') {
     // ΑΝΟΔΟΣ: supplier(s) → Veroia
     _vsStops.filter(s => s.fields[F.STOP_TYPE] === 'Loading')
@@ -1833,32 +1866,19 @@ async function _syncVeroiaSwitch(orderId, fields) {
   } else {
     // ΚΑΘΟΔΟΣ: Veroia → client(s)
     pickupLocs.push(F.VEROIA_LOC);
-    _vsStops.filter(s => s.fields[F.STOP_TYPE] === 'Unloading')
-      .sort((a,b) => (a.fields[F.STOP_NUMBER]||0) - (b.fields[F.STOP_NUMBER]||0))
-      .forEach(s => { const loc = (s.fields[F.STOP_LOCATION]||[])[0]; if (loc) delivLocs.push(loc); });
+    _unl.forEach(s => { const loc = (s.fields[F.STOP_LOCATION]||[])[0]; if (loc) delivLocs.push(loc); });
   }
 
-  // Calculate National leg dates
-  // Export (ΑΝΟΔΟΣ): natLoad = intlLoad, natDel = intlLoad + 1
-  // Import (ΚΑΘΟΔΟΣ): natLoad = intlDel - 1, natDel = intlDel
-  // 9/9 (owner: «Λάβδας / ΑΒ-Αντζουλάτος-Foodlink, ημερομηνίες λάθος»): the
-  // Cross-Dock day is ONE column, `cross_dock_date` (locked decision 23/8;
-  // label «Cross-dock Date», and «VS CD Date» once the Worker maps it as a
-  // synonym). The +1/−1 estimate is the FALLBACK, not the rule — using it here
-  // while the board showed the real column produced two different Cross-Dock
-  // days for the same load. A cross-dock that no longer fits the order's dates
-  // (e.g. delivery moved before it) is stale and the estimate wins.
-  let natLoadDt = null, natDelDt = null;
-  const _cd = _vsToLocalDate(fields['Cross-dock Date'] || fields['VS CD Date'] || '');
-  if (direction === 'Export') {
-    const localLoad = _vsToLocalDate(fields['Loading DateTime']);
-    natLoadDt = localLoad;
-    natDelDt  = (_cd && _cd > localLoad) ? _cd : _vsAddDays(localLoad, 1);
-  } else {
-    const localDel = _vsToLocalDate(fields['Delivery DateTime']);
-    natDelDt  = localDel;
-    natLoadDt = (_cd && _cd < localDel) ? _cd : _vsAddDays(localDel, -1);
-  }
+  // National leg dates — ONE rule (core/vs-dates.js, owner 11/10 21:10: one
+  // Veroia day per VS load, `cross_dock_date`, read with cdOf because the
+  // Worker answers it only as «VS CD Date»). The cross-dock is taken as it is;
+  // ±1 only when it is empty. Until WP-A a cross-dock on/after the delivery
+  // (import) or on/before the loading (export) was silently replaced by the
+  // estimate: the International board showed one Veroia day and the National
+  // another, with no word (7 of 63 on 11/10). Such a day is now asked about
+  // where it is set (vsHubBad), never rewritten here.
+  const _nd = VsDates.vsNatDates(direction, fields['Loading DateTime'], fields['Delivery DateTime'], VsDates.cdOf(fields));
+  const natLoadDt = _nd.natLoad, natDelDt = _nd.natDel;
 
   // Resolve client name for the Name field
   let clientName = '';
@@ -1898,28 +1918,31 @@ async function _syncVeroiaSwitch(orderId, fields) {
     nlFields['Delivery Location '+(i+1)] = [id];
   });
 
-  // Duplicate prevention: update if exists, create if not
+  // Duplicate prevention: update if exists, create if not.
+  // A failed write of the national load THROWS (WP-A, independent review
+  // 11/10). It used to be a toast only: the «VS chain» stage was reported
+  // «ok» and the form then said «Το εθνικό φορτίο συγχρονίστηκε ✓» over a load
+  // whose dates and Pallet Exchange did not move. atPatch/atCreate already
+  // throw on a refused write; an answer that carries `.error` is the same.
   let nlId = null;
   if (existingNL.length > 0) {
     // Don't overwrite Status if it was changed by dispatcher
     delete nlFields['Status'];
     const upd = await atPatch(TABLES.NAT_LOADS, existingNL[0].id, nlFields);
-    if (upd?.error) reportError('Σφάλμα ενημέρωσης NAT_LOADS — δοκιμάστε ξανά', upd.error);
-    else nlId = existingNL[0].id;
+    if (upd?.error) throw new Error('VS sync: the national load was not updated — ' + (upd.error.message || upd.error.type || JSON.stringify(upd.error)));
+    nlId = existingNL[0].id;
     _tmsLog('NAT_LOADS updated:', nlId);
   } else {
     const cre = await atCreate(TABLES.NAT_LOADS, nlFields);
-    if (cre?.error) {
-      reportError('Σφάλμα δημιουργίας NAT_LOADS — δοκιμάστε ξανά', { error: cre.error, fields: nlFields });
-    } else {
-      nlId = cre.id;
-      _createdIds.push({ table: TABLES.NAT_LOADS, id: cre.id });
-      await atPatch(TABLES.ORDERS, orderId, {'National Order Created': true});
-      _tmsLog('NAT_LOADS created:', nlId);
-    }
+    if (cre?.error) throw new Error('VS sync: the national load was not created — ' + (cre.error.message || cre.error.type || JSON.stringify(cre.error)));
+    nlId = cre.id;
+    _createdIds.push({ table: TABLES.NAT_LOADS, id: cre.id });
+    await atPatch(TABLES.ORDERS, orderId, {'National Order Created': true});
+    _tmsLog('NAT_LOADS created:', nlId);
   }
 
   // Write ORDER_STOPS for the NAT_LOADS record (national leg stops)
+  let _stopsErr = null;
   if (nlId) {
     const _nlStops = [];
     const _totalPal = _vsStops.filter(s => s.fields[F.STOP_TYPE] === 'Loading')
@@ -1946,10 +1969,11 @@ async function _syncVeroiaSwitch(orderId, fields) {
     // order (first drop = the order's delivery day). After a board/Daily Ops
     // date change the stops can lag the order (migration 028 makes them follow);
     // until then every drop takes the order's day rather than a stale one.
-    const _unl = _vsStops.filter(s => s.fields[F.STOP_TYPE] === 'Unloading')
-      .sort((a,b) => (a.fields[F.STOP_NUMBER]||0) - (b.fields[F.STOP_NUMBER]||0));
-    const _stopsAgree = direction === 'Import' && _unl.length
-      && _vsToLocalDate(_unl[0].fields[F.STOP_DATETIME] || '') === natDelDt;
+    // The check reads the INTERNATIONAL first drop; each national drop then
+    // takes pallets and day from the international stop of the SAME place
+    // (_unl is in the national order, plan §2.4).
+    const _stopsAgree = direction === 'Import' && _unlIntl.length
+      && _vsToLocalDate(_unlIntl[0].fields[F.STOP_DATETIME] || '') === natDelDt;
     delivLocs.forEach((locId, i) => {
       let pals = _totalPal, dt = _delDtISO;
       if (direction === 'Import' && _vsStops.length) {
@@ -1962,8 +1986,14 @@ async function _syncVeroiaSwitch(orderId, fields) {
         pallets: pals, dateTime: dt, clientId: _clientId, goods: _goods, temp: _temp, ref: _ref });
     });
     if (_nlStops.length) {
+      // Was console.warn only: the load's line moved while its Veroia stop —
+      // what the Ramp reads — stayed on the old day, and nobody heard. Now
+      // the sync FAILS (thrown after the cleanup below, so nothing else of
+      // this run changes). The load itself IS written (dates, Pallet
+      // Exchange): it is kept, never rolled back — a retry patches it and
+      // rewrites the stops; deleting it would lose a correct load.
       try { await stopsSave(nlId, _nlStops, F.STOP_PARENT_NL); }
-      catch(e) { console.warn('NL ORDER_STOPS write error:', e); }
+      catch(e) { _stopsErr = e; }
     }
   }
 
@@ -1973,10 +2003,18 @@ async function _syncVeroiaSwitch(orderId, fields) {
 
   invalidateCache(TABLES.NAT_LOADS);
 
+  if (_stopsErr) {
+    _createdIds.length = 0;   // the load stays (see above): nothing to roll back
+    throw new Error('VS sync: the national load\'s stops were not written (its Veroia stop and the Ramp stay on the old day) — ' + ((_stopsErr && _stopsErr.message) || _stopsErr));
+  }
+
   } catch (err) {
     // Rollback: delete all records created during this sync.
     // Track orphaned records so user is informed if cleanup partially fails.
     const rollbackFailed = [];
+    // Nothing created = nothing rolled back (a failed PATCH of an existing
+    // load, a failed stops write): the toast must not claim a rollback.
+    const _rolled = _createdIds.length > 0;
     for (const item of _createdIds.reverse()) {
       try {
         await atDelete(item.table, item.id);
@@ -1990,7 +2028,7 @@ async function _syncVeroiaSwitch(orderId, fields) {
     }
     const msg = rollbackFailed.length
       ? `VS sync failed; rollback left ${rollbackFailed.length} orphan(s) — check Error Log`
-      : 'VS sync failed and was rolled back';
+      : _rolled ? 'VS sync failed and was rolled back' : 'VS sync failed';
     if (typeof showErrorToast === 'function') showErrorToast(msg, 'error');
     else console.error(msg, err);
     throw err;
@@ -2361,18 +2399,22 @@ async function submitIntlOrder(recId) {
     // Auto-create Cross-dock stop for Veroia Switch orders
     if (_vs) {
       const _cdPal = _formStops.filter(s => s.stopType === 'Loading').reduce((sum, s) => sum + (s.pallets || 0), 0);
-      // Cross-dock Date rule: Export = Loading +1 day, Import = Delivery -1 day
-      let _cdDate = null;
-      const _dir = fields['Direction'];
-      if (_dir === 'Export') {
-        const ld = _formStops.find(s => s.stopType === 'Loading' && s.dateTime);
-        if (ld) _cdDate = _vsAddDays(_vsToLocalDate(ld.dateTime), 1);
-      } else {
-        const ud = _formStops.find(s => s.stopType === 'Unloading' && s.dateTime);
-        if (ud) _cdDate = _vsAddDays(_vsToLocalDate(ud.dateTime), -1);
-      }
-      const _cdDt = _cdDate ? _cdDate + 'T12:00:00.000Z' : null;
-      fields['Cross-dock Date'] = _cdDt;
+      // The Veroia day (WP-A, VsDates.vsCdOnSave): the estimate (Export =
+      // Loading +1, Import = Delivery −1) only on a new order, VS just on, an
+      // empty cross-dock or a direction change. An existing VS order with a
+      // cross-dock does NOT send it: the form used to send the estimate on
+      // EVERY save, erasing a day set on the boards, and in the same write
+      // trigger 028 moved it a second time (the 7 «double moved» cross-docks,
+      // plan §3.2). If the delivery/loading moved, the base moves the
+      // cross-dock by the same Δ, once (069_hub_day_once). The Cross-dock stop
+      // then goes without DateTime (_stopObjToFields leaves an empty one out),
+      // so stopsSave keeps the day the base gave it.
+      const _ld = _formStops.find(s => s.stopType === 'Loading' && s.dateTime);
+      const _ud = _formStops.find(s => s.stopType === 'Unloading' && s.dateTime);
+      const _cdRule = VsDates.vsCdOnSave(recId ? INTL_ORDERS._loadedFields : null,
+        { vs: true, dir: fields['Direction'], loading: _ld && _ld.dateTime, delivery: _ud && _ud.dateTime });
+      const _cdDt = _cdRule.send && _cdRule.cd ? _cdRule.cd + 'T12:00:00.000Z' : null;
+      if (_cdRule.send) fields['Cross-dock Date'] = _cdDt;
       _formStops.push({ stopNumber: 1, stopType: 'Cross-dock', locationId: F.VEROIA_LOC, pallets: _cdPal, dateTime: _cdDt, clientId: clientId || null, ref: _stopRef || null, goods: _stopGoods || null, temp: _stopTemp ? parseFloat(_stopTemp) : null });
     } else {
       fields['Cross-dock Date'] = null;
@@ -2689,10 +2731,9 @@ async function submitIntlOrder(recId) {
 
     try {
       toast('Συγχρονισμός εθνικού φορτίου VS…', 'info');
-      const rec = await atGetOne(TABLES.ORDERS, savedOrderId);
-      _tmsLog('SYNC: fetched record', savedOrderId, rec.fields?.[F.VEROIA_SWITCH], rec.fields?.['Direction'], rec.fields?.['Type']);
-      if (!rec.fields) { toast('Ο συγχρονισμός απέτυχε — η παραγγελία επέστρεψε χωρίς πεδία', 'warn'); return; }
-      await _syncVeroiaSwitch(savedOrderId, rec.fields);
+      // The sync reads the saved order itself (WP-A): same one GET as before,
+      // now in one place for every caller.
+      await _syncVeroiaSwitch(savedOrderId);
       // Central sync — RAMP trigger + PL cleanup (if PE=OFF) + cache invalidation
       if (typeof syncOrderDownstream === 'function') {
         syncOrderDownstream(savedOrderId, { source: 'intl', skipVS: true, skipGRP: true })
@@ -2701,6 +2742,9 @@ async function submitIntlOrder(recId) {
       toast('Το εθνικό φορτίο συγχρονίστηκε ✓');
     } catch(e) {
       console.error('VS sync error:', e);
+      // One app_errors line (reportError is a toast only): a national load
+      // that did not follow its order must be findable after the toast is gone.
+      if (typeof logError === 'function') logError(e, 'orders_intl form: VS sync');
       reportError('Ο συγχρονισμός εθνικού φορτίου απέτυχε', e, 'warn');
     }
 

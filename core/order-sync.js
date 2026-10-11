@@ -64,16 +64,13 @@ const _orderSync = (function() {
           if (typeof toast === 'function') toast('Ο συγχρονισμός Veroia Switch δεν έτρεξε — ενημέρωσε το Weekly National χειροκίνητα', 'warn');
           return;
         }
-        const rec = await atGetOne(TABLES.ORDERS, orderId).catch(e => {
-          console.warn('[order-sync] VS chain fetch failed:', e && e.message);
-          return null;
-        });
-        // An order that could not be re-read never reached its national load:
-        // a FAILED stage (run() logs it and lists it in `failed`), never a
-        // silent return that the caller reports as done (review 11/10 — the
-        // Weekly date panel showed ✓ over a national load that did not move).
-        if (!rec) throw new Error('order re-read failed — the national load was not updated');
-        await _syncVeroiaSwitch(orderId, rec.fields);
+        // The sync re-reads the order ITSELF (WP-A, plan §3.4): one reader for
+        // every caller, so no caller can hand it a field list without the
+        // cross-dock again. A failed re-read throws from inside it — still a
+        // FAILED stage (run() logs it and lists it in `failed`), never a
+        // silent return the caller reports as done (review 11/10 — the Weekly
+        // date panel showed ✓ over a national load that did not move).
+        await _syncVeroiaSwitch(orderId);
       });
     }
 

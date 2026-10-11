@@ -4024,18 +4024,14 @@ async function _wiSaveFromPopover(rowId){
   // closed). v1 sends no _expect and keeps today's words.
   toast((row.saved?'Ενημερώθηκε ✓':'Αποθηκεύτηκε ✓')+_wiExpectNote(expSent,expChecked));
 
-  // Sync Veroia Switch → NAT_LOADS
+  // Sync Veroia Switch → NAT_LOADS. The sync reads the order itself (WP-A):
+  // this list used to ask for the order WITHOUT the cross-dock, so every truck
+  // change rewrote the national load to the ±1 estimate — an assignment must
+  // never move the Veroia day. Same one GET per order, now inside the sync.
   try {
     for (const oid of row.orderIds) {
-      const recs = await atGetAll(TABLES.ORDERS, {
-        filterByFormula: 'RECORD_ID()="'+oid+'"',
-        fields: ['Direction','Type','Veroia Switch','National Order Created',
-          'Client','Goods','Total Pallets','Temperature °C','Pallet Exchange',
-          'National Groupage','Loading DateTime','Delivery DateTime','Reference',
-        ],
-      }, false);
-      if (recs.length > 0 && typeof _syncVeroiaSwitch === 'function')
-        await _syncVeroiaSwitch(oid, recs[0].fields);
+      if (typeof _syncVeroiaSwitch === 'function')
+        await _syncVeroiaSwitch(oid);
     }
   } catch(e) {
     // The order save already succeeded; only the downstream VS→NAT_LOADS sync
