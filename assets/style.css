@@ -7899,9 +7899,9 @@ body.wi4-on #wi-ctx .wi4-m-sec .wi4-l2, body.wi4-on #wi-ctx .wi4-m-hd .wi4-l2 { 
    of a sentence (.wi4-pres-r) that give way first; the whole is the title. */
 .wi4-pres-n, .wi4-pres-w, .wi4-pres-r { font-size:11.5px; color:var(--wi4-grey-2); white-space:nowrap; }
 .wi4-pres-n { flex:none; }
-/* «Παντελής, Ειρήνη · εδώ τώρα» is one phrase in Figma: one space before «·»,
+/* «Χρήστης Α, Χρήστης Β · εδώ τώρα» is one phrase in Figma: one space before «·»,
    not the 6px gap of the pieces. Names that do not fit go WHOLE
-   (.wi4-pres-nofit, _presFit) — never «Παντελής, Ει…»; the title keeps them. */
+   (.wi4-pres-nofit, _presFit) — never «Χρήστης Α, Χρ…»; the title keeps them. */
 .wi4-pres-n + .wi4-pres-w { margin-left:.25em; }
 .wi4-pres.wi4-pres-nofit .wi4-pres-n { display:none; }
 .wi4-pres.wi4-pres-nofit .wi4-pres-n + .wi4-pres-w { margin-left:14px; }

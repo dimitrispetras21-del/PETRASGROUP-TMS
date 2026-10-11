@@ -1976,9 +1976,9 @@ async function scnMenu(browser, origin) {
       const whole = (l) => { const who = l.querySelector('.wi4-ell'), day = who && who.nextElementSibling, lb = l.getBoundingClientRect();
         return day ? { day: day.textContent, sw: day.scrollWidth, cw: day.clientWidth, inLabel: day.getBoundingClientRect().right <= lb.right + 1, cut: who.scrollWidth > who.clientWidth + 1 } : null; };
       const out = lines.map(b => whole(b.querySelector('.wi4-m-l')));
-      // Stress: a long two-word Greek driver on the same line (CSS under test).
+      // Stress: a long invented driver name on the same line (CSS under test).
       const l0 = lines[0] && lines[0].querySelector('.wi4-m-l .wi4-ell');
-      if (l0) l0.textContent = 'Τοπική φόρτωση · Κωνσταντινος Παπαδοπουλος-Αναστασιαδης';
+      if (l0) l0.textContent = 'Τοπική φόρτωση · Driver Test 99 Μακρύ-Επώνυμο-Δοκιμής-Οδηγού';
       return { out, long: lines[0] ? whole(lines[0].querySelector('.wi4-m-l')) : null, titles: lines.map(b => b.title) };
     });
     const good = (x) => !!x && /^ · \S+ \d{1,2}\/\d{1,2}$/.test(x.day) && x.sw <= x.cw + 1 && x.inLabel;

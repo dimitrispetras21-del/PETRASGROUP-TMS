@@ -1076,11 +1076,11 @@ function _expRowHTML(e, today) {
   // data-unconfirmed: it draws the table, not the row (CSS, tools, the rig).
   const impCell = `<div id="wi-ci-${row.id}" class="wi4-c-imp wi4-imp"${unc ? ' data-unconfirmed="1"' : ''} ondragover="event.preventDefault();this.classList.add('wi4-dh')" ondragleave="this.classList.remove('wi4-dh')" ondrop="event.stopPropagation();_wiDropOnRow(event,${row.id})">${impInner}</div>`;
 
-  const fl = vs && !isGroup ? _natHTML(pid, _firstTitle(pf, 'load') + ' → Βέροια', _day(pf['Loading DateTime']), today) : '';
+  const fl = vs && !isGroup ? _natHTML(pid, _firstTitle(pf, 'load') + ' → Βέροια', _day(pf['Loading DateTime'])) : '';
   // The matched import's national leg belongs to the import: not drawn here
   // while the match is unconfirmed (it is counted with the ghost, not here).
   const imf = imp && !_unconfirmed(row) ? (imp.fields || {}) : null;
-  const fr = imf && imf['Veroia Switch'] ? _natHTML(imp.id, _lastStop(imf, 'del').title, _day(imf['Delivery DateTime']), today) : '';
+  const fr = imf && imf['Veroia Switch'] ? _natHTML(imp.id, _lastStop(imf, 'del').title, _day(imf['Delivery DateTime'])) : '';
   const lvl = _levelOf(e.facts, today);
   return `<div id="wi-row-${row.id}" data-row-id="${row.id}" data-oid="${_q(pid)}" data-qi="${e.qi}" class="wi4-row${_rail(lvl)}"${_q(pid) ? ` oncontextmenu="WI4Actions.openRowMenu(event,'${_q(pid)}')"` : ''}>` +
     _idxHTML(pid, e.no, row.id, _whyOf(e.facts, today)) +
@@ -1151,7 +1151,7 @@ function _impRowHTML(e, today) {
   const f = imp.fields || {}, oid = imp.id, q = _q(oid);
   const own = row.saved && !row.partnerId;
   const left = `<div class="wi4-noexp"${own ? ' onclick="event.stopPropagation();WI_INTERNAL.jumpFirstPendingExp()" style="cursor:pointer" title="Ιδιόκτητο όχημα χωρίς εξαγωγή — κλικ: η πρώτη εξαγωγή προς ανάθεση"' : ''}><span>Χωρίς εξαγωγή</span><span class="wi4-t-g2">· αυτή την εβδομάδα</span></div>`;
-  const fr = f['Veroia Switch'] ? _natHTML(oid, _lastStop(f, 'del').title, _day(f['Delivery DateTime']), today) : '';
+  const fr = f['Veroia Switch'] ? _natHTML(oid, _lastStop(f, 'del').title, _day(f['Delivery DateTime'])) : '';
   const lvl = _levelOf(e.facts, today);
   const rs = _rsOf(e.facts[0] && e.facts[0].f, today);   // facts[0] = the row's own (_rowFacts)
   // A free import row is a drag source (§f); split legs are not free imports.
@@ -1206,8 +1206,8 @@ function _legRowHTML(e, today) {
   const sd = rs.SAME_DAY ? `<span class="wi4-flag amb" data-r="SAME_DAY" title="${_esc(rs.SAME_DAY.text)}">ίδια μέρα</span>` : '';
   // A VS leg has a national leg like any VS row: drawn in its column, so a
   // missing carrier the header counts is also named here.
-  const nat = f['Veroia Switch'] ? (isImp ? _natHTML(oid, _lastStop(f, 'del').title, _day(f['Delivery DateTime']), today)
-    : _natHTML(oid, _firstTitle(f, 'load') + ' → Βέροια', _day(f['Loading DateTime']), today)) : '';
+  const nat = f['Veroia Switch'] ? (isImp ? _natHTML(oid, _lastStop(f, 'del').title, _day(f['Delivery DateTime']))
+    : _natHTML(oid, _firstTitle(f, 'load') + ' → Βέροια', _day(f['Loading DateTime']))) : '';
   const why = _whyOf(e.facts, today);
   // wi4-sub-leg: 32px — it carries a whole leg (chip + two-line stops), not
   // a 24px note line (Figma 1097:3046).
