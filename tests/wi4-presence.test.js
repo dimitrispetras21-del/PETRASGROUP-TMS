@@ -587,3 +587,23 @@ test('stripText(max): more people than shown are counted, never dropped', async 
   assert.strictEqual(w.P.stripText(2), 'Χρήστης Α, Χρήστης Β +2 · εδώ τώρα · ↻ ζωντανά');
   assert.strictEqual(w.P.stripText(), 'Χρήστης Α, Χρήστης Β, Χρήστης Γ, Χρήστης Δ · εδώ τώρα · ↻ ζωντανά');
 });
+
+// Fix round 3 (11/10): the title bar keeps the STATE word whole and lets the
+// names give way — parts() gives it the pieces, from the same words.
+test('parts(max): the state word, the full sentence and the names, from the client\'s own words', async () => {
+  const people = ['Α', 'Β', 'Γ'].map((x) => ({ sub: 'x' + x.charCodeAt(0), name: 'Χρήστης ' + x, records: [] }));
+  const w = world({ responder: () => live(people) });
+  assert.strictEqual(w.P.parts(), null, 'not started: nothing either way');
+  w.P.start({ week: 41 }); await w.advance(0);
+  assert.deepStrictEqual(plain(w.P.parts(2)), { status: 'live', word: 'ζωντανά', full: w.P.stripText(2), names: ['Χρήστης Α', 'Χρήστης Β'], more: 1, here: 'εδώ τώρα' });
+  const alone = world({ responder: () => live([]) });
+  alone.P.start({ week: 41 }); await alone.advance(0);
+  assert.strictEqual(alone.P.parts(), null, 'live with nobody else: no strip (the board says «↻ ζωντανά» once, never «κανείς»)');
+  const p = world({ responder: () => ({ status: 503, body: {} }) });
+  p.P.start({ week: 41 }); await p.advance(0);
+  assert.deepStrictEqual(plain(p.P.parts()), { status: 'paused', word: 'σε παύση', full: p.P.stripText(), names: [], more: 0, here: '' });
+  const f = world({ responder: () => ({ status: 403, body: {} }) });
+  f.P.start({ week: 41 }); await f.advance(0);
+  assert.strictEqual(f.P.parts().word, 'μη διαθέσιμη');
+  assert.strictEqual(f.P.parts().full, 'Η ζωντανή εικόνα δεν είναι διαθέσιμη για τον ρόλο σου');
+});

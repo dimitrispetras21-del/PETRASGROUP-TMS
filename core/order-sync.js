@@ -68,7 +68,11 @@ const _orderSync = (function() {
           console.warn('[order-sync] VS chain fetch failed:', e && e.message);
           return null;
         });
-        if (!rec) return;
+        // An order that could not be re-read never reached its national load:
+        // a FAILED stage (run() logs it and lists it in `failed`), never a
+        // silent return that the caller reports as done (review 11/10 — the
+        // Weekly date panel showed ✓ over a national load that did not move).
+        if (!rec) throw new Error('order re-read failed — the national load was not updated');
         await _syncVeroiaSwitch(orderId, rec.fields);
       });
     }

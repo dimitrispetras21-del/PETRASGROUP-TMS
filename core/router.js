@@ -458,7 +458,6 @@ function navigate(page) {
  */
 function logout() {
   if (typeof clearApiCaches === 'function') clearApiCaches();
-  if (typeof atStopAutoRefresh === 'function') atStopAutoRefresh();
   localStorage.removeItem('tms_user'); localStorage.removeItem('tms_jwt'); localStorage.removeItem('tms_page');
   window.location.href = 'index.html';
 }
