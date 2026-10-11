@@ -86,10 +86,11 @@ function vsNatDates(dir, loading, delivery, cd) {
 /**
  * A Veroia day that does not hold: an import leaving Veroia AFTER it is
  * delivered, an export reaching Veroia BEFORE it is loaded. The same day is
- * fine (a near customer). Same verdict as DATE_MISMATCH of the Weekly
- * International v4 (core/wi4-logic.js) — one rule, proven equal by
- * tests/vs-dates.test.js, not a second one. Unknown days are not «bad»:
- * this only decides whether to ask a question.
+ * fine (a near customer). One rule, not a second one: while the Weekly
+ * International v4 raises DATE_MISMATCH (core/wi4-logic.js) the two are
+ * proven equal by tests/vs-dates.test.js; its parity branch drops that flag
+ * (owner 11/10 21:20) and then this is the only copy. Unknown days are not
+ * «bad»: this only decides whether to ask a question.
  */
 function vsHubBad(dir, loading, delivery, hub) {
   const h = day(hub);

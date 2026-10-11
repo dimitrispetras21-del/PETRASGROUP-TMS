@@ -140,29 +140,51 @@ test('no dates → no invented day', () => {
   assert.deepStrictEqual(V.vsNatDates('Export', null, null, null), { natLoad: null, natDel: null, hub: null });
 });
 
-// ─── vsHubBad ≡ DATE_MISMATCH of the Weekly International v4 ─────────────
+// ─── vsHubBad: the one «does not hold» rule ─────────────────────────────
+// The rule written out as expected values (import: Veroia AFTER the delivery;
+// export: Veroia BEFORE the loading; the same day is fine), so vsHubBad is
+// pinned by itself, whatever the Weekly International v4 does with it.
+const expectBad = (dir, loading, delivery, cd) => (dir === 'Import' ? cd > delivery : cd < loading);
+test('vsHubBad on the live 63 (raw and repaired cross-docks)', () => {
+  let bad = 0;
+  for (const v of LIVE_63) for (const cd of [v[3], rowHub(v)]) {
+    const a = V.vsHubBad(DIR[v[0]], v[1], v[2], cd);
+    assert.strictEqual(a, expectBad(DIR[v[0]], v[1], v[2], cd), JSON.stringify([v, cd]));
+    if (a) bad++;
+  }
+  assert.ok(bad > 0, 'the live data holds at least one «does not hold» day (nl 131: 14/10 after a 12/10 delivery)');
+});
+test('vsHubBad on a ±3-day grid around both ends, both directions', () => {
+  for (const dir of ['Import', 'Export']) for (let k = -3; k <= 3; k++) {
+    const ld = '2026-10-05', dl = '2026-10-08';
+    const cd = add(dir === 'Import' ? dl : ld, k);
+    assert.strictEqual(V.vsHubBad(dir, ld, dl, cd), dir === 'Import' ? k > 0 : k < 0, dir + ' ' + k);
+  }
+});
+// Plan §3.4: ONE rule, not a second one. While the Weekly International v4
+// raises DATE_MISMATCH, it must say exactly what vsHubBad says. The Weekly
+// International v4 parity branch (owner 11/10 21:20) drops DATE_MISMATCH as
+// obsolete under the one synchronized day: then this proves it is really gone
+// (no reason with that code for a day that does not hold), and vsHubBad is the
+// only copy of the rule — never two copies that drift.
 const mismatch = (dir, loading, delivery, cd) => {
   const imp = dir === 'Import';
   const r = WI4.flags({ kind: imp ? 'import' : 'export', saved: true, hasReturn: true,
     vsCdDate: cd || '', natDelDate: imp ? delivery : '', natLoadDate: imp ? '' : loading }, '2026-10-06');
   return r.reasons.some((x) => x.code === 'DATE_MISMATCH');
 };
-test('vsHubBad = DATE_MISMATCH on the live 63 (raw and repaired cross-docks)', () => {
-  let bad = 0;
-  for (const v of LIVE_63) for (const cd of [v[3], rowHub(v)]) {
-    const a = V.vsHubBad(DIR[v[0]], v[1], v[2], cd);
-    assert.strictEqual(a, mismatch(DIR[v[0]], v[1], v[2], cd), JSON.stringify([v, cd]));
-    if (a) bad++;
-  }
-  assert.ok(bad > 0, 'the live data holds at least one «does not hold» day (nl 131: 14/10 after a 12/10 delivery)');
-});
-test('vsHubBad = DATE_MISMATCH on a ±3-day grid around both ends, both directions', () => {
-  for (const dir of ['Import', 'Export']) for (let k = -3; k <= 3; k++) {
-    const ld = '2026-10-05', dl = '2026-10-08';
-    const cd = add(dir === 'Import' ? dl : ld, k);
-    assert.strictEqual(V.vsHubBad(dir, ld, dl, cd), mismatch(dir, ld, dl, cd), dir + ' ' + k);
-  }
-});
+const VECTORS = LIVE_63.flatMap((v) => [v[3], rowHub(v)].map((cd) => [DIR[v[0]], v[1], v[2], cd]))
+  .concat(['Import', 'Export'].flatMap((dir) => [-3, -2, -1, 0, 1, 2, 3].map((k) => [dir, '2026-10-05', '2026-10-08', add(dir === 'Import' ? '2026-10-08' : '2026-10-05', k)])));
+if (WI4.TEXT && WI4.TEXT.DATE_MISMATCH) {
+  test('vsHubBad = DATE_MISMATCH of the Weekly International v4 (same vectors: live 63 + the grid)', () => {
+    for (const x of VECTORS) assert.strictEqual(V.vsHubBad(...x), mismatch(...x), JSON.stringify(x));
+  });
+} else {
+  test('the Weekly International v4 no longer raises DATE_MISMATCH (owner 11/10 21:20) — vsHubBad is the one copy of the rule', () => {
+    assert.ok(VECTORS.some((x) => V.vsHubBad(...x)), 'vectors with a day that does not hold');
+    for (const x of VECTORS) assert.strictEqual(mismatch(...x), false, JSON.stringify(x));
+  });
+}
 test('vsHubBad: the same day is fine; one day past is bad; unknown is not bad', () => {
   assert.strictEqual(V.vsHubBad('Import', '2026-10-05', '2026-10-08', '2026-10-08'), false);
   assert.strictEqual(V.vsHubBad('Import', '2026-10-05', '2026-10-08', '2026-10-09'), true);
