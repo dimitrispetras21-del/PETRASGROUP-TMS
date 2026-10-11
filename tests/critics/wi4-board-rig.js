@@ -578,7 +578,12 @@ async function scnPaint(browser, origin) {
     const txt = (oid, sel) => { const r = row(oid); const e = r && r.querySelector(sel); return e ? e.textContent.trim() : null; };
     const outsideChip = [...document.querySelectorAll('#content .wi4 .wi4-row .wi4-leg')].flatMap(leg => {
       const w = document.createTreeWalker(leg, NodeFilter.SHOW_TEXT); const hits = []; let n;
-      while ((n = w.nextNode())) if (/\b\d{1,2}\/\d{1,2}\b/.test(n.nodeValue) && !n.parentElement.closest('.wi4-dc, .wi4-gap, .wi4-noexp')) hits.push(n.nodeValue.trim());
+      // The VS warning is a flex row (.wi4-l2w): its dates are their own
+      // nodes, so the warning's words are read from the row, not the node.
+      while ((n = w.nextNode())) if (/\b\d{1,2}\/\d{1,2}\b/.test(n.nodeValue) && !n.parentElement.closest('.wi4-dc, .wi4-gap, .wi4-noexp')) {
+        const lw = n.parentElement.closest('.wi4-l2w');
+        hits.push(lw ? lw.textContent.trim() : n.nodeValue.trim());
+      }
       return hits;
     });
     const done = row('recWiE001') && row('recWiE001').querySelector('.wi4-c-exp .wi4-dc.done');
@@ -617,6 +622,35 @@ async function scnPaint(browser, origin) {
   }, [ROW_JS]);
   ok(scn, 'chip + ΑΝΑΦ. under it ≤ 28px inside the 32px row', z.n > 5 && z.maxStack <= 28, z);
   ok(scn, 'over 33: the alert icon before the number (shape + colour)', z.over.length >= 1 && z.over.every(Boolean), z.over);
+  // Parity r1 (legs-national): the leg sits 10px inside its 621px track
+  // (Figma 1097:2658), every row chip is the 70px DateChip (898:12), «→
+  // ΑΠΟΘΗΚΗ» rides on the delivery point (it spilled out of the 72px pallets
+  // track), and the national columns sit 8px inside theirs with the ΑΠΟ label
+  // on its tiles' edge (1097:2445).
+  const lg = await page.evaluate(([js]) => {
+    const row = eval(js), R = e => e.getBoundingClientRect();
+    const vis = e => e.getClientRects().length > 0;
+    const lotEls = [...document.querySelectorAll('#content .wi4 #wi-rows .wi-b-lot')].filter(vis);
+    const lotOut = lotEls.filter(b => { const to = b.closest('.wi4-l-to'); return !to || R(b).left < R(to).left - 0.5 || R(b).right > R(to).right + 0.5; }).map(b => b.textContent);
+    const palOver = [...document.querySelectorAll('#content .wi4 #wi-rows .wi4-l-pal')].filter(vis)
+      .flatMap(p => [...p.children].filter(c => R(c).left < R(p).left - 0.5 || R(c).right > R(p).right + 0.5).map(c => c.className || c.tagName));
+    const r1 = row('recWiE001'), cell = r1 && r1.querySelector('.wi4-c-exp');
+    const chip = cell && cell.querySelector('.wi4-l-date .wi4-dc'), pal = cell && cell.querySelector('.wi4-l-pal');
+    const e1 = cell && chip && pal ? { chipIn: +(R(chip).left - R(cell).left).toFixed(1), palIn: +(R(cell).right - R(pal).right).toFixed(1) } : null;
+    const chips = [...document.querySelectorAll('#content .wi4 #wi-rows .wi4-l-date .wi4-dc')].filter(vis).map(c => +R(c).width.toFixed(1));
+    const apo = [...document.querySelectorAll('#content .wi4 #wi-rows .wi4-row .wi4-c-fr .wi4-nat')].filter(vis).map(n => {
+      const p = n.closest('.wi4-row').querySelector('.wi4-c-imp .wi4-l-pal'); const last = p && p.lastElementChild;
+      return last ? +(R(n.querySelector('.wi4-l1')).left - R(last).right).toFixed(1) : null; }).filter(x => x != null);
+    const pros = [...document.querySelectorAll('#content .wi4 #wi-rows .wi4-row .wi4-c-fl .wi4-tile')].filter(vis).map(t => {
+      const c = t.closest('.wi4-row').querySelector('.wi4-c-exp .wi4-l-date .wi4-dc'); return c ? +(R(c).left - R(t).right).toFixed(1) : null; }).filter(x => x != null);
+    const hd = document.querySelector('#content .wi4 .wi4-cols .wi4-c-fr .wi4-ftog-t'), t0 = document.querySelector('#content .wi4 #wi-rows .wi4-row .wi4-c-fr .wi4-nat');
+    return { e1, chips, apo, pros, apoHdr: hd && t0 ? +(R(hd).left - R(t0).left).toFixed(1) : null, lots: lotEls.length, lotOut, palOver };
+  }, [ROW_JS]);
+  ok(scn, 'E001: the export date chip starts 10±1px inside its cell, the pallets end 10±1px before its right edge (Figma px 10)', !!lg.e1 && Math.abs(lg.e1.chipIn - 10) <= 1 && Math.abs(lg.e1.palIn - 10) <= 1, lg.e1);
+  ok(scn, 'every row date chip is 70±1px wide (Figma DateChip)', lg.chips.length > 10 && lg.chips.every(w => Math.abs(w - 70) <= 1), [...new Set(lg.chips)]);
+  ok(scn, 'the import pallets end ≥24px before the ΑΠΟ ΒΕΡΟΙΑ name', lg.apo.length >= 1 && lg.apo.every(g => g >= 24), lg.apo);
+  ok(scn, 'every «→ ΑΠΟΘΗΚΗ» lies inside its delivery column; nothing in the pallets track overflows it', lg.lots >= 1 && !lg.lotOut.length && !lg.palOver.length, lg);
+  ok(scn, '«ΑΠΟ ΒΕΡΟΙΑ» in the header starts within 2px of its tiles; a ΠΡΟΣ tile ends ≥20px before the export date chip', lg.apoHdr != null && Math.abs(lg.apoHdr) <= 2 && lg.pros.length >= 1 && lg.pros.every(g => g >= 20), { apoHdr: lg.apoHdr, pros: lg.pros });
   ok(scn, 'the Pre-order counter = v1\'s count (each order once — a matched import is not counted twice)', z.got === z.want && z.want >= 1, z);
 
   // Points (§d.1, owner lock): up to 4 all shown with ≥56px each IF they fit,
@@ -668,6 +702,13 @@ async function scnPaint(browser, origin) {
     p = await pts();
     ok(scn, 'national columns collapsed → all 4 points of E019, no «+N»', p.e19 && p.e19.n === 4 && !p.e19.more, p.e19);
     await shot(page, 'paint-nat-collapsed');
+    // A collapsed column still tells the truth: the dot takes its tile's
+    // state (E014's ΑΠΟ leg has no carrier → amber ring), and the reasons
+    // the headers count are named by the dots now (counted = named).
+    const dot = await page.evaluate(js => { const r = eval(js)('recWiE014'); const d = r && r.querySelector('.wi4-c-fr .wi4-natdot'); return d ? { cls: d.className, r: d.getAttribute('data-r'), t: d.title } : null; }, ROW_JS);
+    ok(scn, 'collapsed: E014\'s ΑΠΟ dot is «un» (no carrier), its title says so', !!dot && /\bun\b/.test(dot.cls) && /ΠΡΟΣ ΑΝΑΘΕΣΗ/.test(dot.t), dot);
+    const namedC = await reasonsNamed(page);
+    ok(scn, 'collapsed: per day, every reason the header counts is still named (by the dots)', namedC.bad.length === 0, namedC.bad);
     // Collapsed, the header still offers the way back (rules «ανοιγοκλείνουν με
     // κλικ στην κεφαλίδα») — never only through «Προβολή ▾».
     const back = await toggles.first().click({ timeout: 5000 }).then(() => true, () => false) && await toggles.last().click({ timeout: 5000 }).then(() => true, () => false);
@@ -2309,6 +2350,22 @@ async function scnW1440(browser, origin) {
     const rows = [...document.querySelectorAll('#content .wi4 .wi4-row')].map(e => Math.round(e.getBoundingClientRect().height));
     return { overlap: t.right > a.left + 1, rowsOk: rows.every(h => h === 32), n: rows.length }; });
   ok(scn, 'week tabs clear of the actions; rows still 32px', !g.overlap && g.rowsOk && g.n > 10, g);
+  // Parity r1 (legs-national): at 1440 «→ ΑΠΟΘΗΚΗ» stays inside its
+  // delivery column (it read «Phi Warehouse→ ΑΠΟΘΗΚΗ»), nothing spills out
+  // of the pallets track, and the VS warning keeps both dates whole (it cut
+  // «παράδοση 8/10» to the tooltip).
+  const lg = await page.evaluate(() => {
+    const R = e => e.getBoundingClientRect(), vis = e => e.getClientRects().length > 0;
+    const lots = [...document.querySelectorAll('#content .wi4 #wi-rows .wi-b-lot')].filter(vis);
+    const lotOut = lots.filter(b => { const to = b.closest('.wi4-l-to'); return !to || R(b).left < R(to).left - 0.5 || R(b).right > R(to).right + 0.5; }).map(b => b.textContent);
+    const palOver = [...document.querySelectorAll('#content .wi4 #wi-rows .wi4-l-pal')].filter(vis)
+      .flatMap(p => [...p.children].filter(c => R(c).left < R(p).left - 0.5 || R(c).right > R(p).right + 0.5).map(c => c.className || c.tagName));
+    const warns = [...document.querySelectorAll('#content .wi4 #wi-rows .wi4-l2w')].filter(vis);
+    const dates = warns.flatMap(w => [...w.querySelectorAll('.wi4-l2w-d')].map(d => ({ t: d.textContent, whole: d.scrollWidth <= d.clientWidth + 1 && R(d).right <= R(w).right + 0.5 })));
+    return { lots: lots.length, lotOut, palOver, warns: warns.length, dates };
+  });
+  ok(scn, 'at 1440 every «→ ΑΠΟΘΗΚΗ» lies inside its delivery column; nothing in the pallets track overflows it', lg.lots >= 1 && !lg.lotOut.length && !lg.palOver.length, lg);
+  ok(scn, 'at 1440 every date of every VS warning is whole', lg.warns >= 1 && lg.dates.length >= 2 && lg.dates.every(d => d.whole), lg);
   // The reused popover places itself for a 380px form; its real form is
   // taller. Opened from a row near the window's bottom it ran past the edge,
   // its Save out of reach (review 11/10): v4 lifts it back inside.

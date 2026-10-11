@@ -7872,11 +7872,17 @@ body.wi4-on #wi-ctx .wi4-m-sec .wi4-l2, body.wi4-on #wi-ctx .wi4-m-hd .wi4-l2 { 
   display:grid; grid-template-columns:32px var(--wi4-fl) 12px minmax(0,1fr) 12px 204px 12px minmax(0,1fr) 12px var(--wi4-fr); align-items:center; }
 .wi4-c-idx { grid-column:1; } .wi4-c-fl { grid-column:2; min-width:0; } .wi4-c-exp { grid-column:4; min-width:0; }
 .wi4-c-asg { grid-column:6; min-width:0; } .wi4-c-imp { grid-column:8; min-width:0; } .wi4-c-fr { grid-column:10; min-width:0; }
-/* ΑΠΟ ΒΕΡΟΙΑ keeps 8px from the day card's border (board: «Δευ» ~10px
-   inside it). Inside its own 140px track (border-box), so the legs keep their
-   621px; collapsed (18px) it is a centred dot/chevron with no inset. */
-.wi4-c-fr { padding-right:8px; }
-.wi4.wi4-fr-off .wi4-c-fr { padding-right:0; }
+/* A leg sits 10px inside its 621px track (Figma legs 1097:2658 / 2506: px 10,
+   so 207px stops), and so does everything else drawn in it — the column
+   header label, the slots, the relay text, the rota tag — one rule for all.
+   Without it the import pallets touched the ΑΠΟ name («20 Xi Fruit»). */
+.wi4 .wi4-c-exp, .wi4 .wi4-c-imp { padding:0 10px; box-sizing:border-box; }
+/* National columns: px 8 inside their 140px tracks (Figma Feed 1097:2650 /
+   2927), both sides — the ΠΡΟΣ tile ran to the export date chip, the ΑΠΟ name
+   started on the track edge. Collapsed (18px) it is a centred dot/chevron
+   with no inset. */
+.wi4 .wi4-c-fl, .wi4 .wi4-c-fr { padding:0 8px; box-sizing:border-box; }
+.wi4.wi4-fl-off .wi4-c-fl, .wi4.wi4-fr-off .wi4-c-fr { padding:0; }
 .wi4-c-span { grid-column:2 / -1; min-width:0; }
 /* The split frame's header starts at the export leg, like the relay tags
    (board: «ΣΠΑΣΜΕΝΗ ΣΕ 2 ΣΚΕΛΗ» at the export column, not under ΠΡΟΣ ΒΕΡΟΙΑ). */
@@ -7911,11 +7917,13 @@ body.wi4-on #wi-ctx .wi4-m-sec .wi4-l2, body.wi4-on #wi-ctx .wi4-m-hd .wi4-l2 { 
    (18px wide), so it reopens where it was (rules: «ανοιγοκλείνουν με κλικ
    στην κεφαλίδα»). The label stays in aria-label/title. */
 .wi4.wi4-fl-off .wi4-cols .wi4-c-fl .wi4-ftog-t, .wi4.wi4-fr-off .wi4-cols .wi4-c-fr .wi4-ftog-t { display:none; }
-.wi4.wi4-fl-off .wi4-cols .wi4-c-fl .wi4-ftog::before { content:'›'; font-size:13px; }
-.wi4.wi4-fr-off .wi4-cols .wi4-c-fr .wi4-ftog::before { content:'‹'; font-size:13px; }
-/* «ΑΠΟ ΒΕΡΟΙΑ ›» right-aligned (it was an inline style, which beat the
-   collapsed rule and pushed the «‹» against the edge). */
-.wi4-cols .wi4-c-fr { text-align:right; }
+.wi4.wi4-fl-off .wi4-cols .wi4-c-fl .wi4-ftog::before { content:'▸'; font-size:13px; }
+.wi4.wi4-fr-off .wi4-cols .wi4-c-fr .wi4-ftog::before { content:'◂'; font-size:13px; }
+/* «ΑΠΟ ΒΕΡΟΙΑ ▸» left-aligned on the same edge as its tiles (Figma 1097:2445,
+   x8): right-aligned it sat ~50px right of them. SemiBold 10.5, tracking
+   .525 (Figma), on the national labels only. */
+.wi4-cols .wi4-c-fr { text-align:left; }
+.wi4-cols .wi4-c-fl, .wi4-cols .wi4-c-fr { font-size:10.5px; letter-spacing:.525px; }
 .wi4.wi4-fl-off .wi4-cols .wi4-c-fl, .wi4.wi4-fr-off .wi4-cols .wi4-c-fr { text-align:center; }
 
 /* Day (§e #6). Collapsed only when WI4.collapsible says so; an empty day is
@@ -7998,7 +8006,15 @@ body.wi4-on #wi-ctx .wi4-m-sec .wi4-l2, body.wi4-on #wi-ctx .wi4-m-hd .wi4-l2 { 
    11/10: 18 + 13 = 31px and the ref touched the next row's border). The
    chip keeps 18px everywhere else (queue cards). */
 .wi4-l-date .wi4-dc { height:16px; line-height:14px; }
-.wi4-l-date .wi4-ref { line-height:12px; }
+/* Every row chip is the 70px DateChip (Figma 898:12 / 898:14: w70, px 6,
+   centred): sized to its text (51–61px) the date column looked ragged, and
+   the done chip's padding 0 put its ✓ on the cell edge. Rows only — the
+   queue's chips keep their own size. */
+.wi4-l-date .wi4-dc { width:70px; justify-content:center; padding:0 6px; box-sizing:border-box; }
+.wi4-l-date .wi4-dc.done { padding:0 6px; }
+/* ΑΝΑΦ. = Regular 10 / 11, 6px in (Figma 1097:2662): the text starts under
+   the chip's text, not its frame. Stack 16 + 11 = 27 ≤ 28. */
+.wi4-l-date .wi4-ref { padding-left:6px; font-size:10px; line-height:11px; }
 .wi4-l-from { grid-column:3; position:relative; min-width:0; }
 .wi4-l-arr  { grid-column:5; display:grid; place-items:center; color:var(--wi4-icon); }
 .wi4-l-to   { grid-column:7; position:relative; min-width:0; }
@@ -8012,9 +8028,15 @@ body.wi4-on #wi-ctx .wi4-m-sec .wi4-l2, body.wi4-on #wi-ctx .wi4-m-hd .wi4-l2 { 
 
 /* Points (§d.1): min 56px each, 8px gap; badge 12px; «+N» chip 34px. */
 .wi4-pts { display:flex; gap:8px; min-width:0; }
-.wi4-pt { flex:1 1 0; min-width:56px; display:grid; grid-template-columns:12px minmax(0,1fr); column-gap:4px; }
-.wi4-pt-n { grid-row:1; font-size:10.5px; font-weight:600; line-height:14px; color:var(--wi4-grey-2); }
-.wi4-pt > .wi4-l1, .wi4-pt > .wi4-l2 { grid-column:2; }
+/* Line 2 starts at x0, UNDER the number (Figma 1097:2474 / 2896): in the
+   number's column it lost 16px of every place («Mil…», «Zagre…»). The
+   number column hugs its digit (SemiBold 11). */
+.wi4-pt { flex:1 1 0; min-width:56px; display:grid; grid-template-columns:auto minmax(0,1fr); column-gap:4px; }
+.wi4-pt-n { grid-row:1; font-size:11px; font-weight:600; line-height:14px; color:var(--wi4-grey-2); }
+.wi4-pt > .wi4-l1 { grid-column:2; }
+.wi4-pt > .wi4-l2 { grid-column:1 / -1; }
+/* «→ ΑΠΟΘΗΚΗ» on line 1 of the delivery point: whole, the name is cut. */
+.wi4 .wi4-pt .wi4-l1f > .wi-badge { flex:none; }
 /* Line 2 of a point is a flex row: the place is cut, the pallets never
    (review 11/10). With no room for a place (.wi4-noplace) the place goes and
    the pallets stay. */
@@ -8024,11 +8046,18 @@ body.wi4-on #wi-ctx .wi4-m-sec .wi4-l2, body.wi4-on #wi-ctx .wi4-m-hd .wi4-l2 { 
 .wi4-pt-pal { flex:none; font-weight:500; color:var(--wi4-grey-1); }
 .wi4-pts.wi4-noplace .wi4-l2:not(.wi4-l2p) { display:none; }
 .wi4-pts.wi4-noplace .wi4-pt-pl { display:none; }
+/* The VS date warning (Figma 1097:2975): alert icon 11 + gap 4, Medium 11.
+   The words are cut, the two dates never (they ARE the mismatch). */
+.wi4 .wi4-l2w { display:flex; align-items:center; gap:4px; font-size:11px; font-weight:500; overflow:hidden; text-overflow:clip; }
+.wi4 .wi4-l2w > .wi4-ell { flex:0 1 auto; min-width:0; }
+.wi4 .wi4-l2w > svg, .wi4 .wi4-l2w > .wi4-l2w-d { flex:none; }
 /* «+N» is a light chip (board: «+3» over «18π»), not bare text. */
-.wi4-more { flex:0 0 34px; width:34px; height:28px; align-self:center; border:none; border-radius:4px; background:var(--wi4-chip); padding:0; text-align:center; cursor:pointer; line-height:13px; }
+.wi4-more { flex:0 0 34px; width:34px; height:28px; align-self:center; border:none; border-radius:3px; background:var(--wi4-chip); padding:0; text-align:center; cursor:pointer; line-height:13px; }
 .wi4-more:hover { background:var(--wi4-line-2); }
-.wi4-more b { display:block; font-size:12px; color:var(--wi4-ink); }
-.wi4-more span { display:block; font-size:10.5px; color:var(--wi4-grey-2); }
+/* Figma More 1097:2913: «+3» SemiBold 12 / 15, «18π» Medium 10.5 in the
+   pallets ink of the points (grey-1), 15 + 13 = the chip's 28px. */
+.wi4-more b { display:block; font-size:12px; font-weight:600; line-height:15px; color:var(--wi4-ink); }
+.wi4-more span { display:block; font-size:10.5px; font-weight:500; color:var(--wi4-grey-1); }
 /* ✓ carries meaning («done»): a graphic at ≥3:1 (grey-2), not the icon grey.
    A visible gap before the day («✓ Σάβ 3/10», board). */
 .wi4-ok { display:inline-flex; vertical-align:-1px; margin-right:4px; color:var(--wi4-grey-2); }
@@ -8070,14 +8099,20 @@ body.wi4-on #wi-ctx .wi4-m-sec .wi4-l2, body.wi4-on #wi-ctx .wi4-m-hd .wi4-l2 { 
 .wi4-dc.past { background:var(--wi4-chip); }
 .wi4-dc.done { padding:0; color:var(--wi4-grey-2); }
 .wi4-dc .wi4-ok { margin-right:1px; }   /* + the chip's 3px gap = the point's 4px */
-.wi4-dc.red  { border-color:var(--wi4-red); background:var(--wi4-red-bg); color:var(--wi4-red-ink); }
-.wi4-pal { font-size:12px; font-weight:500; color:var(--wi4-ink); }
-.wi4-pal.over { color:var(--wi4-amber); font-weight:700; }
+/* Late chip border = the light red line (Figma DateChip Late 898:16,
+   #fca5a5): the --danger frame read as the strongest thing on the row. */
+.wi4-dc.red  { border-color:var(--wi4-red-line); background:var(--wi4-red-bg); color:var(--wi4-red-ink); }
+/* The figure is SemiBold 12.5 (Figma 1097:2677); over 33 the same weight in
+   amber with the icon 3px before it (1097:2922) — shape + colour, as before. */
+.wi4-pal { font-size:12.5px; font-weight:600; color:var(--wi4-ink); }
+.wi4-pal.over { color:var(--wi4-amber); font-weight:600; }
 /* «ⓘ34» (Figma): a shape before the number, not colour alone. */
-.wi4-pal-ic { display:inline-flex; vertical-align:-1px; margin-right:2px; }
+.wi4-pal-ic { display:inline-flex; vertical-align:-1px; margin-right:3px; }
 /* Near 33 with members not written («30+?»): the same amber as the flag. */
 .wi4-pal.unk { color:var(--wi4-amber); font-weight:600; }
-.wi4-pe { padding:0 4px; border:1px solid var(--wi4-ctl); border-radius:3px; font-size:10px; font-weight:600; line-height:14px; color:var(--wi4-grey-1); }
+/* PE = a white chip with the light line (Figma 1097:2879: 1px #e2e8f0,
+   px 5, tracking .4, 17px high). */
+.wi4-pe { padding:0 5px; border:1px solid var(--wi4-line-2); border-radius:3px; background:var(--surface-card); font-size:10px; font-weight:600; line-height:15px; letter-spacing:.4px; color:var(--wi4-grey-1); }
 .wi4-att { color:var(--wi4-icon); }
 /* «→ ΑΠΟΘΗΚΗ» and the other leg badges: outlined like PE — never a solid dark
    chip, which out-shouted «ΠΡΟΣ ΑΝΑΘΕΣΗ» (the locked strongest element). */
@@ -8120,33 +8155,48 @@ body.wi4-on #wi-ctx .wi4-m-sec .wi4-l2, body.wi4-on #wi-ctx .wi4-m-hd .wi4-l2 { 
 @media (hover:none) { .wi4 .wi4-asg .wk3-prt { visibility:visible; } }
 
 /* National columns (§e #12). Never «ΠΡΟΣ ΑΝΑΘΕΣΗ» for an unread leg: .unk
-   is the «—» of §d.2a. Collapsed column = a dot where a leg exists. */
+   is the «—» of §d.2a. Collapsed column = a dot where a leg exists, in the
+   state of its tile (below). */
 .wi4-nat { min-width:0; display:flex; flex-direction:column; gap:1px; }
-/* Line 1: the name (cut, title on it) and the day kept whole on the right. */
-.wi4-nat-h { display:flex; align-items:baseline; gap:4px; min-width:0; }
+/* Line 1: the name (cut, title on it) and the day kept whole on the right.
+   Figma Feed 1097:2928: gap 6, name Medium 11.5 / 14, day Medium 10.5. */
+.wi4-nat-h { display:flex; align-items:baseline; gap:6px; min-width:0; }
 .wi4-nat-h .wi4-l1 { flex:1 1 auto; }
-.wi4-nat-day { font-size:10.5px; color:var(--wi4-grey-2); flex:none; }
-.wi4-tile { align-self:flex-start; max-width:100%; height:16px; padding:0 4px; border:1px solid transparent; border-radius:3px; font-size:10.5px; font-weight:500; line-height:14px; }
+.wi4-nat .wi4-l1 { font-size:11.5px; }
+.wi4-nat-day { font-size:10.5px; font-weight:500; color:var(--wi4-grey-2); flex:none; }
+/* The carrier chip: h15, px 6 (Figma 1097:3712). */
+.wi4-tile { align-self:flex-start; max-width:100%; height:15px; padding:0 6px; border:1px solid transparent; border-radius:3px; font-size:10.5px; font-weight:500; line-height:13px; }
 .wi4-tile.own { background:var(--wi4-own); color:var(--wi4-ink); font-family:'DM Mono',ui-monospace,SFMono-Regular,Menlo,monospace; }
-.wi4-tile.par { background:var(--wi4-partner); color:var(--wi4-partner-ink); }
-.wi4-tile.un { background:var(--wi4-amber-bg); border:1px dashed var(--wi4-amber); color:var(--wi4-amber-ink); font-weight:700; }
-.wi4-tile.un.red { background:var(--wi4-red-bg); border:1px solid var(--wi4-red); color:var(--wi4-red-ink); }
+/* A partner reads as the carrier chip (Figma 1097:3712: its line, DM Mono),
+   not a label. */
+.wi4-tile.par { background:var(--wi4-partner); border-color:var(--wi4-partner-line); color:var(--wi4-partner-ink); font-family:'DM Mono',ui-monospace,SFMono-Regular,Menlo,monospace; }
+/* No carrier: amber text SemiBold on the dashed amber line (Figma 1097:2932).
+   Red within today–tomorrow keeps its ink and weight (locked). */
+.wi4-tile.un { background:var(--wi4-amber-bg); border:1px dashed var(--wi4-amber); color:var(--wi4-amber); font-weight:600; }
+.wi4-tile.un.red { background:var(--wi4-red-bg); border:1px solid var(--wi4-red); color:var(--wi4-red-ink); font-weight:700; }
 .wi4-tile.unk { color:var(--wi4-grey-2); padding:0; }
+/* Collapsed: blue = a carrier; amber ring = none yet; red fill = none and it
+   loads today–tomorrow; grey ring = not read (unknown ≠ empty). */
 .wi4-natdot { display:none; width:6px; height:6px; margin:0 auto; border-radius:50%; background:var(--wi4-blue); }
+.wi4-natdot.un { background:var(--wi4-amber-bg); border:1px solid var(--wi4-amber); }
+.wi4-natdot.un.red { background:var(--wi4-red); border:none; }
+.wi4-natdot.unk { background:none; border:1px solid var(--wi4-grey-2); }
 /* Rows only: the column header keeps its toggle (see .wi4-cols above). */
 .wi4.wi4-fl-off :is(.wi4-row, .wi4-subrow, .wi4-splithd) > .wi4-c-fl > :not(.wi4-natdot),
 .wi4.wi4-fr-off :is(.wi4-row, .wi4-subrow, .wi4-splithd) > .wi4-c-fr > :not(.wi4-natdot) { display:none; }
 .wi4.wi4-fl-off .wi4-c-fl > .wi4-natdot, .wi4.wi4-fr-off .wi4-c-fr > .wi4-natdot { display:block; }
 
 /* Empty return / void cells (§e #13) — the cell is the drop target (§f). */
-/* Dashed light border, the blue «+ Νέα εισαγωγή» at the right end, and the
-   stock link quiet right after it (board 1097:2254). */
-.wi4-gap { height:24px; display:flex; align-items:center; gap:6px; padding:0 10px; border:1px dashed var(--wi4-slot); border-radius:5px; font-size:12px; color:var(--wi4-ink); min-width:0; }
+/* Dashed light border and the blue «+ Νέα εισαγωγή» at the right end (board
+   1097:2254, slot 1097:2685). The stock link after it is a LIVE-ONLY
+   addition — Figma's slot has none — kept quiet pending an owner decision. */
+.wi4-gap { height:24px; display:flex; align-items:center; gap:8px; padding:0 10px; border:1px dashed var(--wi4-slot); border-radius:5px; font-size:12px; color:var(--wi4-ink); min-width:0; }
 /* «Κενό γύρισμα» is one word-group, never two lines (it wrapped at 1440);
-   the detail after it gives way, cut with «…» and whole in its title. */
-.wi4-gap > span:first-child { flex:none; white-space:nowrap; }
-.wi4-gap .wi4-t-red, .wi4-gap .wi4-t-amb { font-weight:500; }
-.wi4-gap-act { margin-left:auto; flex:none; border:none; background:none; padding:0; color:var(--wi4-blue-ink); font-weight:600; cursor:pointer; white-space:nowrap; }
+   the detail after it gives way, cut with «…» and whole in its title.
+   Figma 1097:2685: label Medium, detail SemiBold, action Medium + plus 12. */
+.wi4-gap > span:first-child { flex:none; white-space:nowrap; font-weight:500; }
+.wi4-gap .wi4-t-red, .wi4-gap .wi4-t-amb { font-weight:600; }
+.wi4-gap-act { margin-left:auto; flex:none; display:inline-flex; align-items:center; gap:4px; border:none; background:none; padding:0; color:var(--wi4-blue-ink); font-weight:500; cursor:pointer; white-space:nowrap; }
 .wi4 .wi4-gap .wi2-gapstk { flex:none; margin-left:8px; font-size:11px; color:var(--wi4-grey-2); }
 .wi4 .wi4-gap .wi2-gapstk:empty { display:none; }
 /* its button keeps today's words; quiet grey-2 (5.3:1) after the blue action —
@@ -8158,7 +8208,9 @@ body.wi4-on #wi-ctx .wi4-m-sec .wi4-l2, body.wi4-on #wi-ctx .wi4-m-hd .wi4-l2 { 
 @media (max-width:1600px) { .wi4 .wi4-gap .wi2-gapstk { display:none; } }
 .wi4-gap-act:hover { text-decoration:underline; }
 .wi4-void { font-size:10.5px; color:var(--wi4-grey-2); }
-.wi4-noexp { height:24px; display:flex; align-items:center; gap:6px; padding:0 10px; border:1px dashed var(--wi4-slot); border-radius:5px; font-size:12px; color:var(--wi4-grey-1); }
+.wi4-noexp { height:24px; display:flex; align-items:center; gap:8px; padding:0 10px; border:1px dashed var(--wi4-slot); border-radius:5px; font-size:12px; color:var(--wi4-grey-1); }
+/* «Χωρίς εξαγωγή» Medium in ink, «· αυτή την εβδομάδα» quiet (Figma 1097:3555). */
+.wi4-noexp > span:first-child { font-weight:500; color:var(--wi4-ink); }
 /* Drag hover. v4's own document dragend/drop listener clears these three
    (§f): the old handlers only clear .wk3-* classes v4 does not emit. */
 .wi4 .wi4-dh, .wi4 .dragover { outline:2px dashed var(--wi4-blue); outline-offset:-2px; background:var(--accent-light); }
