@@ -227,6 +227,21 @@ test('the amber reasons: DATE_MISMATCH, OVER_33 (33 allowed), SAME_DAY, LATE', (
   for (const c of ['DATE_MISMATCH', 'OVER_33', 'SAME_DAY', 'LATE']) assert.strictEqual(WI4.GROUP[c] || 'look', 'look');
 });
 
+test('PALLETS_UNKNOWN: near 33 with an unwritten member is a look; over 33 stays OVER_33; nothing written at all says nothing', () => {
+  const pu = reasonOf(WI4.flags(exp({ pallets: 30, palletsUnknown: 1 }), T), 'PALLETS_UNKNOWN');
+  assert.ok(pu && pu.level === 'amber' && pu.act === 'open' && pu.text === 'παλέτες χωρίς καταγραφή', JSON.stringify(pu));
+  assert.deepStrictEqual(codes(WI4.flags(exp({ pallets: 34, palletsUnknown: 1 }), T)).filter((c) => /33|PALLETS/.test(c)), ['OVER_33'], 'over 33 even with a gap');
+  assert.ok(!codes(WI4.flags(exp({ pallets: 20, palletsUnknown: 1 }), T)).includes('PALLETS_UNKNOWN'), 'far from 33: the cell says «N+?», no flag');
+  assert.ok(!codes(WI4.flags(exp({ pallets: null, palletsUnknown: 2 }), T)).includes('PALLETS_UNKNOWN'), 'all unknown: «—» in the cell, no number to judge');
+  assert.ok(!WI4.collapsible([exp({ pallets: 30, palletsUnknown: 1, hasReturn: true })], T), 'a look keeps the day open');
+});
+
+test('MATCH_UNREAD: a matched import outside the week is an amber look, never an open slot', () => {
+  const r = reasonOf(WI4.flags({ kind: 'import', saved: true, matchUnread: true, loadDate: add(T, 1) }, T), 'MATCH_UNREAD');
+  assert.ok(r && r.level === 'amber' && r.act === 'open' && r.text === 'εισαγωγή εκτός προβολής', JSON.stringify(r));
+  assert.ok(!WI4.collapsible([{ kind: 'import', saved: true, matchUnread: true }], T));
+});
+
 test('PREORDER follows preorderLevel; SAVE_FAILED is red', () => {
   assert.strictEqual(reasonOf(WI4.flags(exp({ preorder: { level: 'red' } }), T), 'PREORDER').level, 'red');
   assert.strictEqual(reasonOf(WI4.flags(exp({ preorder: { level: 'amber' } }), T), 'PREORDER').level, 'amber');
@@ -487,9 +502,15 @@ test('describeConflict: who, when, theirs vs mine — never a guessed name', () 
   const base = { fields: ['Loading DateTime'], at: '2026-10-06T06:00:00Z', now: Date.parse('2026-10-06T06:00:05Z'),
     expected: { 'Loading DateTime': 'Πέμ 8/10' }, current: { 'Loading DateTime': 'Παρ 9/10' }, mine: { 'Loading DateTime': 'Σάβ 10/10' } };
   const named = WI4.describeConflict(Object.assign({ by: 'Χρήστης Α' }, base));
-  assert.strictEqual(named.text, 'Χρήστης Α την άλλαξε πριν 5″: Πέμ 8/10 → Παρ 9/10 · Η δική σου επιλογή: Σάβ 10/10. Ποια κρατάμε;');
+  // Under a minute is «μόλις τώρα» (review 11/10: «πριν 0″» read as a glitch).
+  assert.strictEqual(named.text, 'Χρήστης Α την άλλαξε μόλις τώρα: Πέμ 8/10 → Παρ 9/10 · Η δική σου επιλογή: Σάβ 10/10. Ποια κρατάμε;');
   assert.deepStrictEqual(named.lines[0], { label: 'Loading DateTime', name: 'ημερομηνία φόρτωσης', before: 'Πέμ 8/10', theirs: 'Παρ 9/10', mine: 'Σάβ 10/10' });
-  assert.match(WI4.describeConflict(Object.assign({ by: 'user' }, base)).lead, /^Άλλος χρήστης την άλλαξε πριν 5″$/);
+  assert.match(WI4.describeConflict(Object.assign({ by: 'user' }, base)).lead, /^Άλλος χρήστης την άλλαξε μόλις τώρα$/);
+  assert.match(WI4.describeConflict(Object.assign({}, base, { by: 'user', now: Date.parse('2026-10-06T06:03:00Z') })).lead, /πριν 3΄$/);
+  // My own earlier write (a second tab, a board that did not re-read): never «another user».
+  const me = WI4.describeConflict(Object.assign({ by: 'demo_dispatcher', me: 'demo_dispatcher' }, base));
+  assert.strictEqual(me.lead, 'Την άλλαξες εσύ (άλλη καρτέλα ή πριν την ανανέωση)');
+  assert.match(WI4.describeConflict(Object.assign({ by: 'Χρήστης Α', me: 'demo_dispatcher' }, base)).lead, /^Χρήστης Α την άλλαξε/);
   assert.match(WI4.describeConflict(Object.assign({ by: 'auto' }, base)).lead, /^Άλλαξε από αυτόματη ενημέρωση/);
   assert.strictEqual(WI4.describeConflict(Object.assign({ by: null }, base)).lead, 'Άλλαξε από τότε που την άνοιξες');
   const multi = WI4.describeConflict({ fields: ['Truck', 'Driver'], by: 'user', current: { Truck: ['recX1234567'] }, mine: {}, expected: {} });

@@ -183,3 +183,31 @@ test('_atRetry: opts.conflict returns a 409 at once; without it the 409 is retri
   assert.strictEqual(s.patches().length, 4, 'without opts: 3 attempts, as today');
   assert.deepStrictEqual(s.toasts, []);
 });
+
+// v4 reports a failed write on the row («Δεν αποθηκεύτηκε …» + the counter):
+// one failed save was four stacked messages (review 11/10). opts.quiet holds
+// back the GENERIC toasts of that request only; the failure is still thrown
+// and logged, and a specific refusal (403/422) keeps its toast and reason.
+test('opts.quiet: a 500 write shows no «Σφάλμα server» / «Save failed» toast, still throws and logs', async () => {
+  const boom = () => json(500, { error: { type: 'SERVER_ERROR', message: 'boom' } });
+  const loud = sandbox(answerV0(boom));
+  await loud.run(A(`atSafePatch('tblO', 'recTEST0001', ${JSON.stringify(FIELDS)}, { expect: ${JSON.stringify(SEEN)} })`));
+  assert.ok(loud.toasts.some((t) => /Save failed/.test(t)) && loud.toasts.some((t) => /Σφάλμα server/.test(t)), 'without quiet: today\'s toasts');
+  const s = sandbox(answerV0(boom));
+  const r = JSON.parse(await s.run(A(`atSafePatch('tblO', 'recTEST0001', ${JSON.stringify(FIELDS)}, { expect: ${JSON.stringify(SEEN)}, quiet: true })`)));
+  await flush();
+  assert.ok(r.err && /boom/.test(r.err.m), JSON.stringify(r));
+  assert.deepStrictEqual(s.toasts, [], 'no generic toast: the v4 row says it');
+  assert.strictEqual(s.patches().length, 3, 'retries are unchanged');
+  assert.ok(appErrors(s.calls).some((m) => /boom/.test(m)), 'still logged');
+  assert.strictEqual(s.patches()[0].raw, JSON.stringify({ fields: FIELDS, typecast: true, _expect: SEEN }), 'quiet never travels in the body');
+});
+
+test('opts.quiet without expect: same body as no opts; a 403 keeps its toast (it carries the reason)', async () => {
+  const s = sandbox(answerV0(() => okRec()));
+  await s.run(`atSafePatch('tblO', 'recTEST0001', ${JSON.stringify(FIELDS)}, { quiet: true })`);
+  assert.strictEqual(s.patches()[0].raw, JSON.stringify({ fields: FIELDS, typecast: true }));
+  const f = sandbox(answerV0(() => json(403, { error: { type: 'FORBIDDEN', message: 'Forbidden' } })));
+  await f.run(A(`atSafePatch('tblO', 'recTEST0001', ${JSON.stringify(FIELDS)}, { quiet: true })`));
+  assert.ok(f.toasts.some((t) => /Δεν έχετε δικαίωμα/.test(t)), f.toasts.join(' / '));
+});

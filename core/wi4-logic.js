@@ -134,6 +134,12 @@ const TEXT = freeze({
   PREORDER: 'pre-order χωρίς μετατροπή',
   SAVE_FAILED: 'δεν αποθηκεύτηκε',
   RELAY_NO_DRIVER: 'τοπική χωρίς οδηγό',
+  // An export whose matched import was not read with this week (outside the
+  // ±8-day window, or cancelled): unknown ≠ empty (§d.2a), never an open slot.
+  MATCH_UNREAD: 'εισαγωγή εκτός προβολής',
+  // A load near capacity with members whose pallets were never written: «28»
+  // may be 35 (review 11/10) — a look, not a verdict.
+  PALLETS_UNKNOWN: 'παλέτες χωρίς καταγραφή',
 });
 
 // The one button a queue card offers (§e #2); WI4Actions._queueAct maps it to
@@ -144,7 +150,7 @@ const ACT = freeze({
   NAT_UNKNOWN: 'retry', SOURCE_UNKNOWN: 'retry', DATE_MISMATCH: 'date',
   OVER_33: 'open', SAME_DAY: 'open', LATE: 'open', PREORDER: 'convert',
   SAVE_FAILED: 'retry', STOCK_LATE: 'pieces', STOCK_LOOSE: 'pieces', STOCK_LOT: 'lot',
-  RELAY_NO_DRIVER: 'relay',
+  RELAY_NO_DRIVER: 'relay', MATCH_UNREAD: 'open', PALLETS_UNKNOWN: 'open',
 });
 
 const RANK = freeze({ red: 2, amber: 1 });
@@ -160,8 +166,9 @@ const nearLevel = (d, today) => { const k = dayDiff(today, d); return k === null
  *   {kind:'export'|'import'|'leg'|'split'|'relay', saved, partner, loadDate,
  *    delDate, returnDate, returnPlace?, hasReturn,
  *    natLegs:[{side:'to'|'from', date, carrier:boolean}], natState,
- *    stockState, pallets, vsCdDate, natDelDate, natLoadDate?,
- *    sameDayClash:string|null, late, preorder:{level}|null, syncErr, executing}
+ *    stockState, pallets, palletsUnknown?, vsCdDate, natDelDate, natLoadDate?,
+ *    sameDayClash:string|null, late, preorder:{level}|null, syncErr, executing,
+ *    matchUnread?}
  * → {level:'red'|'amber'|null, reasons:[{code, level, text, act, date}]}
  *
  * NAT_UNKNOWN / SOURCE_UNKNOWN are board-level (one per board / per failed
@@ -208,8 +215,12 @@ function flags(facts, today) {
     if (bad) out.push(reason('DATE_MISMATCH', 'amber', TEXT.DATE_MISMATCH, f.vsCdDate));
   }
 
-  // 33 pallets is allowed (decision 9/10); only more is a flag.
+  // 33 pallets is allowed (decision 9/10); only more is a flag. `pallets`
+  // sums the members that HAVE a figure, so a load over 33 with one member
+  // unwritten is still OVER_33; near 33 with a gap it is a look, never «fine».
   if (Number(f.pallets) > 33) out.push(reason('OVER_33', 'amber', TEXT.OVER_33, f.loadDate));
+  else if (Number(f.palletsUnknown) > 0 && Number(f.pallets) >= 28) out.push(reason('PALLETS_UNKNOWN', 'amber', TEXT.PALLETS_UNKNOWN, f.loadDate));
+  if (f.matchUnread) out.push(reason('MATCH_UNREAD', 'amber', TEXT.MATCH_UNREAD, f.loadDate));
   if (f.sameDayClash) out.push(reason('SAME_DAY', 'amber', String(f.sameDayClash), f.loadDate));
   if (f.late) out.push(reason('LATE', 'amber', TEXT.LATE, f.delDate));
   // A local relay (live since 6/10) drawn «ΠΡΟΣ ΑΝΑΘΕΣΗ»: the same shape as
@@ -491,7 +502,8 @@ function ago(atIso, nowMs) {
   const at = Date.parse(String(atIso || ''));
   if (!Number.isFinite(at) || !Number.isFinite(nowMs)) return '';
   const s = Math.max(0, Math.round((nowMs - at) / 1000));
-  if (s < 60) return `πριν ${s}″`;
+  // «πριν 0″» read as a glitch (review 11/10): under a minute is «μόλις τώρα».
+  if (s < 60) return 'μόλις τώρα';
   const m = Math.round(s / 60);
   if (m < 60) return `πριν ${m}΄`;
   return `πριν ${Math.round(m / 60)}ω`;
@@ -499,7 +511,8 @@ function ago(atIso, nowMs) {
 
 /**
  * c = the 409 body's error {fields, by, at, current} plus what the dialog
- *     knows: expected (the _expect sent), mine (the user's new values), now (ms).
+ *     knows: expected (the _expect sent), mine (the user's new values), now (ms),
+ *     me (the signed-in username, so my own earlier write is never «άλλος»).
  * labelsGreek = {label: 'λέξη'} (defaults to LABELS_GR); fmt(label, v)
  *     optional value formatter (names for record ids; dates as «Πέμ 8/10»).
  * → {lead, lines:[{label, name, before, theirs, mine}], text}. PLAIN text:
@@ -522,11 +535,16 @@ function describeConflict(c, labelsGreek, fmt) {
   const when = ago(x.at, x.now);
   const by = x.by;
   let lead;
-  if (by === 'auto') lead = 'Άλλαξε από αυτόματη ενημέρωση';
+  // `me` = the signed-in username. A 409 whose author is me is my own earlier
+  // write (a second tab, or a board that did not re-read): never «another
+  // user» — that contradicts the dispatcher's own memory of the click.
+  const mine = typeof by === 'string' && by && by !== 'user' && by !== 'auto' && x.me && by === x.me;
+  if (mine) lead = 'Την άλλαξες εσύ (άλλη καρτέλα ή πριν την ανανέωση)';
+  else if (by === 'auto') lead = 'Άλλαξε από αυτόματη ενημέρωση';
   else if (by === 'user') lead = 'Άλλος χρήστης την άλλαξε';
   else if (by) lead = `${by} την άλλαξε`;
   else lead = 'Άλλαξε από τότε που την άνοιξες';
-  if (when && by) lead += ' ' + when;
+  if (when && by && !mine) lead += ' ' + when;
   const fields = Array.isArray(x.fields) ? x.fields : [];
   const lines = fields.map((l) => ({
     label: l,

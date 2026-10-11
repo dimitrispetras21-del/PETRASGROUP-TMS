@@ -388,6 +388,22 @@ test('hidden tab sends nothing; visible again → an immediate beat', async () =
   assert.strictEqual(w.beats()[1].at, w.now());
 });
 
+test('a tab in back-off keeps it across hide/show: alt-tab never beats a failing endpoint early', async () => {
+  const w = world();
+  w.P.start({ week: 41 }); await w.advance(0);
+  w.respond(() => ({ status: 404, body: { error: 'Not found' } }));
+  w.input(); await w.advance(5000);                       // the 404: back-off 60 s from here
+  const n = w.beats().length, failedAt = w.beats()[n - 1].at;
+  for (let i = 0; i < 5; i++) {                           // five alt-tabs inside the minute
+    w.doc.visibilityState = 'hidden'; w.fire('visibilitychange'); await w.advance(4000);
+    w.doc.visibilityState = 'visible'; w.fire('visibilitychange'); await w.advance(1000);
+  }
+  assert.strictEqual(w.beats().length, n, 'no beat before the 60 s back-off ends');
+  await w.advance(60000);
+  assert.strictEqual(w.beats().length, n + 1);
+  assert.strictEqual(w.beats()[n].at - failedAt, 60000, 'the back-off ends where it was set, not at the last tab switch');
+});
+
 test('stop() (page change): one keepalive leave, timers/listeners/observer gone, status off', async () => {
   const w = world();
   w.P.start({ week: 41 }); await w.advance(0);
