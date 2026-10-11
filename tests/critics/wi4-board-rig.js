@@ -2323,15 +2323,15 @@ async function scnParity(browser, origin) {
     ok(scn, 'the queue starts 12px under the bar (Figma content y = 60 + 12)', g.q && Math.abs(g.q.y - 72) <= 2, { q: g.q });
     ok(scn, 'the collapsed sidebar is an icon rail: every page\'s icon visible', g.items > 0 && g.shown === g.items, { items: g.items, shown: g.shown, nav: g.navDbg });
     ok(scn, 'the chat button covers no row of the board', g.fabHitsRows === 0, { fab: g.fab, hits: g.fabHitsRows });
-    // The rail's last icon can always scroll clear of the parked chat button.
+    // The parked chat button has its own slot: the rail's scroll area ends
+    // above it, so no icon is ever under it, at any scroll (live 11/10).
     const rail = await page.evaluate(() => {
       const nav = document.getElementById('sidebarNav'), fab = document.getElementById('aic-toggle');
       if (!nav || !fab) return { ok: false, why: 'nav or chat button missing' };
-      nav.scrollTop = nav.scrollHeight;
-      const last = [...nav.querySelectorAll('.nav-item')].pop().getBoundingClientRect(), f = fab.getBoundingClientRect();
-      return { ok: last.bottom <= f.top + 0.5 || last.top >= f.bottom - 0.5, last: Math.round(last.bottom), fabTop: Math.round(f.top) };
+      const scroller = nav.closest('.sidebar-nav') || nav, n = scroller.getBoundingClientRect(), f = fab.getBoundingClientRect();
+      return { ok: n.bottom <= f.top + 0.5, navBottom: Math.round(n.bottom), fabTop: Math.round(f.top) };
     });
-    ok(scn, 'scrolled to the end, the rail\'s last icon clears the chat button', rail.ok, rail);
+    ok(scn, 'the rail\'s scroll area ends above the parked chat button', rail.ok, rail);
     // Review 11/10 (P1): .wi4-cols sticks at minus the scroller's top padding;
     // with the padding at 12px and the offset left at -32px the header slid
     // 20px out of view on any scroll. No other scenario scrolls the board.
@@ -2364,7 +2364,10 @@ async function scnParity(browser, origin) {
       const kEsc = await page.evaluate(() => ({ closed: document.querySelector('.topbar .wi4-umenu').hidden, q: document.getElementById('wi4-search').value }));
       await page.keyboard.press('Enter'); await page.keyboard.press('Tab'); await page.keyboard.press('Enter');
       const lo = await page.evaluate(() => window.__lo);
-      ok(scn, 'keyboard: Enter opens the avatar menu, Esc closes it without clearing the search, Tab + Enter signs out', kOpen && kEsc.closed && kEsc.q === 'Alpha' && lo === 1, { kOpen, kEsc, lo });
+      // …and with the chip focused, «/» still reaches the board (search).
+      await page.focus('.topbar .user-chip'); await page.keyboard.press('/');
+      const slash = await page.evaluate(() => document.activeElement && document.activeElement.id === 'wi4-search');
+      ok(scn, 'keyboard: Enter opens the avatar menu, Esc closes it without clearing the search, Tab + Enter signs out', kOpen && kEsc.closed && kEsc.q === 'Alpha' && lo === 1 && slash, { kOpen, kEsc, lo, slash });
       await page.fill('#wi4-search', '');
       await page.mouse.click(900, 600);
       // A read that fails while v4 stays active: the error card must not sit

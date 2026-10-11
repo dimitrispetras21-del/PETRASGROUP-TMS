@@ -1934,11 +1934,12 @@ function _umenuClose() {
   _umenu.hidden = true;
   if (_umenu.parentElement) _umenu.parentElement.setAttribute('aria-expanded', 'false');
 }
-// Keys never reach the board's shortcuts from here (Esc there clears the
-// search). Inside the menu the button keeps its own Enter/Space — handled on
-// the chip they cancelled «Αποσύνδεση» from the keyboard (review 11/10).
+// Esc, Enter and Space stop here (on the board Esc clears the search, Enter
+// opens a row); every other key goes on, so «/», the arrows and ⌘K still work
+// with the chip focused. Inside the menu the button keeps its own Enter/Space —
+// handled on the chip they cancelled «Αποσύνδεση» from the keyboard (review 11/10).
 function _umenuKey(ev) {
-  if (!_umenu) return;
+  if (!_umenu || (ev.key !== 'Escape' && ev.key !== 'Enter' && ev.key !== ' ')) return;
   ev.stopPropagation();
   const chip = _umenu.parentElement;
   if (ev.key === 'Escape') { ev.preventDefault(); _umenuClose(); if (chip) chip.focus(); return; }

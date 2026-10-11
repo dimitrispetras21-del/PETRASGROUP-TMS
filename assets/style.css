@@ -7687,9 +7687,11 @@ body.wi4-top-on .topbar .user-avatar { width:32px; height:32px; font-size:11px; 
    pallets of the last rows (parity scan, 11/10: 3 rows at 1920). */
 /* Desktop only: ≤1024px has no rail to park in. */
 @media (min-width:1025px) {
-  body.wi4-on .aic-btn { left:8px; right:auto; bottom:64px; width:40px; height:40px; }
-  /* …and the rail's last icons scroll clear of it. */
-  body.wi4-on .sidebar-nav { padding-bottom:56px; }
+  /* Its own slot above the collapse toggle (44px): the nav ends 52px higher,
+     so no icon sits under the button at any scroll (live screen 11/10: at
+     scroll 0 it covered an icon in the middle of the rail). */
+  body.wi4-on .aic-btn { left:8px; right:auto; bottom:50px; width:40px; height:40px; }
+  body.wi4-on .sidebar-toggle { margin-top:52px; }
 }
 
 /* The ONE truncation rule of the block (styles.truncate +1). A visible «…»
