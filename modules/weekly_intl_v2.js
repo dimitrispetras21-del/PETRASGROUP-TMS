@@ -66,7 +66,11 @@ const PRES_MAX = 6;
 // The stock strip's chips in this board's pallet letter (_wiShelfInner opt);
 // the flag count in words and the late pieces in their own span (Figma sheet
 // 15, 1115:2749 / 1115:2777 — parity r1 F4, F6). Today's board passes none.
-const SHELF_OPT = Object.freeze({ unit: 'π', flagWords: true, lateSpan: true });
+// flagText: the chips' flag words are LOT_WORDS, the queue's — one copy, so
+// the strip and the queue cannot drift apart (parity r2, Figma 1115:2763). A
+// getter: LOT_WORDS is declared further down (a plain reference here would
+// throw in its temporal dead zone).
+const SHELF_OPT = Object.freeze({ unit: 'π', flagWords: true, lateSpan: true, get flagText() { return LOT_WORDS; } });
 // §e.14 re-read after a failed save: a pending new-import match holds it at
 // most this long; after this many 1.5 s polls of «something is open» the
 // line stops promising «θα ξαναδιαβαστεί» and says we do not know (~1 min).
@@ -103,9 +107,11 @@ const EXTRA_PLURAL = Object.freeze({ RELAY_NO_DRIVER: 'relayNoDriver' });
 // Words of a failed match's GHOST line (_ghostHTML): a reason in the short
 // form the rows use; any other reason says its WI4.flags text.
 const GHOST_WORDS = Object.freeze({ NO_TRUCK: 'χωρίς φορτηγό', OVER_33: 'πάνω από 33π', LATE: 'καθυστέρηση' });
-// Words of the stock strip's flags — the SAME words _wiShelfInner shows
-// (weekly_intl.js _WI_SHELF_FLAG), so the queue and the strip say one thing.
-const LOT_WORDS = Object.freeze({ nointake: 'σε κίνηση χωρίς παραλαβή', close: 'κλείσιμο;', aging: '>21 ημ.' });
+// Words of the stock strip's flags: the queue's STOCK_LOT items AND this
+// board's chips (SHELF_OPT.flagText → _wiShelfInner), so the queue and the
+// strip say one thing. «να κλείσει;» (Figma 1115:2763 / 1117:2799) names the
+// lot's state; the old board keeps its own «κλείσιμο;» (_WI_SHELF_FLAG).
+const LOT_WORDS = Object.freeze({ nointake: 'σε κίνηση χωρίς παραλαβή', close: 'να κλείσει;', aging: '>21 ημ.' });
 const STATUS_OPTS = [['', 'Όλες'], ['pending', 'Χωρίς ανάθεση'], ['assigned', 'Ανατεθειμένα'], ['unmatched', 'Εισαγωγές χωρίς ταίριασμα']];
 
 // ─── Session state (closure-private) ──────────────────────────────────

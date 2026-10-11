@@ -7232,6 +7232,8 @@ function _wiLooseLate(p,today){
 // opt.flagWords (v4, Figma 1115:2749): «· 2 προς έλεγχο» instead of «· 2 ⚠».
 // opt.lateSpan (v4, Figma 1115:2777): «· 1 εκπρόθεσμο» in its own span, so
 // only the late part is red and the count of waiting pieces stays neutral.
+// opt.flagText (v4, Figma 1115:2763): the chips' flag words by key, the same
+// map as that board's queue («να κλείσει;»); a key it lacks says ours.
 function _wiShelfInner(st,opt){
   if(st.status==='loading') return `<div class="wi-shelf-in"><span class="wi-shelf-lbl">ΑΠΟΘΕΜΑ…</span></div>`;
   if(st.status==='failed') return `<div class="wi-shelf-in"><button type="button" class="wi-shelf-fail" onclick="_wiStockLoad()" title="Οι παρτίδες δεν διαβάστηκαν${st.error?' ('+escapeHtml(st.error)+')':''} — αυτό ΔΕΝ σημαίνει ότι δεν υπάρχει απόθεμα. Κλικ: ξαναδοκίμασε">ΑΠΟΘΕΜΑ — δεν φορτώθηκε ↻</button></div>`;
@@ -7251,18 +7253,18 @@ function _wiShelfInner(st,opt){
   const lateTxt=nLate?`· ${nLate} ${nLate===1?'εκπρόθεσμο':'εκπρόθεσμα'}`:'';
   const late=!nLate?'':opt&&opt.lateSpan?` <span class="wi-shelf-late">${lateTxt}</span>`:` ${lateTxt}`;
   const looseBtn=nLoose?`<button type="button" class="wi-shelf-loose${nLate?' late':''}" onclick="_wiStockLooseOpen(this)" title="Κομμάτια που περιμένουν φορτηγό${nLate?' — '+nLate+' με παράδοση που πέρασε':''} — κλικ: η λίστα">${nLoose} ${nLoose===1?'κομμάτι':'κομμάτια'} χωρίς φορτηγό${late}</button>`:'';
-  return `<div class="wi-shelf-in">${lbl}<div class="wi-shelf-list" onscroll="_wiShelfFit()" onwheel="_wiShelfWheel(event,this)">${lots.map(x=>_wiShelfChip(x.l,x.c,opt&&opt.unit)).join('')}</div>${looseBtn}</div>`;
+  return `<div class="wi-shelf-in">${lbl}<div class="wi-shelf-list" onscroll="_wiShelfFit()" onwheel="_wiShelfWheel(event,this)">${lots.map(x=>_wiShelfChip(x.l,x.c,opt&&opt.unit,opt&&opt.flagText&&opt.flagText[x.c.key])).join('')}</div>${looseBtn}</div>`;
 }
 // «▣ Αποθήκη · Πελάτης 18/24p» and a flag only for a problem (critic-1 C1-03,
 // critic-5 S5-01): no bar (it repeated 18/24), no days unless they ARE the
 // problem, no country code — the full story is in the title and the panel.
 // About half the old width, so 2–3 chips fit at 1440.
-function _wiShelfChip(l,c,unit){
+function _wiShelfChip(l,c,unit,flagText){
   const f=l.fields||{};
   const u=unit==='π'?'π':'p';
   const cc=(typeof countryCode==='function'&&countryCode(f['Warehouse Country']))||'';
   const rem=+(f['Remaining Pallets']||0), stock=+(f['Stock Pallets']||0);
-  const flag=_WI_SHELF_FLAG[c.key]||'';
+  const flag=flagText||_WI_SHELF_FLAG[c.key]||'';
   const tip=[`Παρτίδα ${OrdersStock.lotLabel(l)}`,`${f['Warehouse Name']||'—'}${cc?' ('+cc+')':''}`,f['Client Name']||'—',
     `υπόλοιπο ${rem}/${stock}${u}`,`${+(f['Pieces']||0)} κομμάτια, ${+(f['Pieces Delivered']||0)} παραδόθηκαν`,
     f['Received On']?`παραλαβή ${_wiFmt(f['Received On'])}${c.days!=null?' ('+c.days+' ημ.)':''}`:'παραλαβή αναμένεται'].join(' · ')+' — κλικ: κομμάτια';

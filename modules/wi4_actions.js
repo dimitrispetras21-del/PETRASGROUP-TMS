@@ -1381,6 +1381,12 @@ function queuePanel() {
   const left = br ? br.left : ar ? ar.right - w : window.innerWidth - w - 24;
   el.style.left = Math.max(10, Math.min(window.innerWidth - w - 12, left)) + 'px';
   el.style.top = ((br ? br.bottom : ar ? ar.bottom : 74) + 6) + 'px';
+  // Parity r2: 70vh holds 560 of 952px at 1800×800 and macOS hides the
+  // scrollbar, so the panel ended mid-line with no sign of more. .ovf draws a
+  // fade at the visible bottom while lines remain below; at the end it goes.
+  // The listener dies with the element (_qpClose removes it).
+  const ovf = () => el.classList.toggle('ovf', el.scrollTop + el.clientHeight < el.scrollHeight - 1);
+  ovf(); el.addEventListener('scroll', ovf, { passive: true });
   _qp = { el, rows, on: -1, anchor: a, sc: document.getElementById('content') };
   _qp.onKey = (ev) => {
     if (!_qp || ev.ctrlKey || ev.metaKey || ev.altKey) return;
