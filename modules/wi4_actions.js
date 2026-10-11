@@ -70,11 +70,13 @@ const ACTION_GROUP = Object.freeze({
   menu: 'ΣΤΗ ΣΕΙΡΑ', assign: 'ΣΤΗ ΣΕΙΡΑ', date: 'ΣΤΗ ΣΕΙΡΑ', print: 'ΣΤΗ ΣΕΙΡΑ', newImport: 'ΣΤΗ ΣΕΙΡΑ', open: 'ΣΤΗ ΣΕΙΡΑ',
   escape: 'ΓΕΝΙΚΑ', help: 'ΓΕΝΙΚΑ',
 });
-// Queue card / panel buttons (§e #2): one existing action per item.
+// Queue card / panel buttons (§e #2): one existing action per item. The ONE
+// copy: the band's cards (WIV2) read it through _actLabel.
 const ACT_LABEL = Object.freeze({
   assign: 'Ανάθεση', newImport: 'Νέα εισαγωγή', pieces: 'Κομμάτια', national: 'Εθνικά →', date: 'Ημερομηνία',
-  open: 'Άνοιγμα', lot: 'Παρτίδα', convert: 'Μετατροπή', retry: 'Ξαναδοκίμασε',
+  open: 'Άνοιγμα', lot: 'Παρτίδα', convert: 'Μετατροπή', retry: 'Ξαναδοκίμασε', relay: 'Τοπικός οδηγός',
 });
+const _actLabel = (it) => (!it ? '' : it.act === 'week' ? 'W' + (it.week || '+1') + ' →' : (ACT_LABEL[it.act] || ''));
 
 // ─── Relabels (§e.9, decision 10/10: one name per thing) ───────────────
 // Keys are today's exact strings; tests/wi4-menu-parity.test.js checks that
@@ -260,6 +262,19 @@ function _gather(orderId) {
   const e = byKind('export'), im = byKind('import');
   if (e && e.group && expUsedNormal) memberSubs(e, row, false);
   if (im && im.group && impUsedNormal) memberSubs(im, impRow, true);
+  // An item of the group section that names ONE member and nothing else (e.g.
+  // «Φόρτωση με τοπικό οδηγό — εξαγωγή REF-…») acts on that load, so it lives
+  // in that member's submenu (sheet 14), not three times in the group list.
+  for (const s of [e, im]) {
+    if (!s || !s.subs.length) continue;
+    s.items = s.items.filter((it) => {
+      const ids = [...new Set(_recIdsIn(it.fn))];
+      const sub = ids.length === 1 && s.subs.find((x) => x.kind === 'member' && x.oids[0] === ids[0]);
+      if (!sub) return true;
+      sub.items.push(it);
+      return false;
+    });
+  }
 
   // Local relays drawn under this row: one «▸» per relay, with the relay's own
   // menu (_wiRelayCtx items). Edit and delete of a relay live there today.
@@ -287,11 +302,16 @@ function _gather(orderId) {
     seen.add('on:' + onclick);
     return { onclick, fn: _handlerOf(onclick), name: '_wk3Edit', label: 'Άνοιγμα παραγγελίας', disabled: false, key: 'on:' + onclick, v4only: true };
   };
+  // Where the builder already holds that _wk3Edit (a pre-order's
+  // «Μετατροπή…», a lot's «Άνοιγμα», a split leg's «Αρχική παραγγελία…»), THAT
+  // item moves first: the order always opens from the top of its section.
+  const openFirst = (list) => { const i = list.findIndex((it) => it.name === '_wk3Edit'); if (i > 0) list.unshift(list.splice(i, 1)[0]); };
   for (const s of sections) {
-    if ((s.kind === 'export' || s.kind === 'import') && !s.group && !s.splitLeg) {
-      const o = openItem(s.oids[0]); if (o) s.items.unshift(o);
+    if ((s.kind === 'export' || s.kind === 'import') && !s.group) {
+      const o = s.splitLeg ? null : openItem(s.oids[0]);
+      if (o) s.items.unshift(o); else openFirst(s.items);
     }
-    for (const sub of s.subs) if (sub.kind === 'member') { const o = openItem(sub.oids[0]); if (o) sub.items.unshift(o); }
+    for (const sub of s.subs) if (sub.kind === 'member') { const o = openItem(sub.oids[0]); if (o) sub.items.unshift(o); else openFirst(sub.items); }
   }
 
   // Labels and key hints.
@@ -405,6 +425,14 @@ function _hoverable(el, oids) {
   el.addEventListener('mouseenter', () => _hlSet(oids));
   el.addEventListener('mouseleave', _hlClear);
 }
+// The menu never runs past the window: it scrolls inside (CSS max-height) and
+// moves up when a submenu makes it taller than the room under it.
+function _fitMenu() {
+  const ctx = document.getElementById('wi-ctx');
+  if (!ctx || ctx.style.display !== 'block') return;
+  const r = ctx.getBoundingClientRect();
+  if (r.bottom > window.innerHeight - 8) ctx.style.top = Math.max(8, Math.round(window.innerHeight - 8 - r.height)) + 'px';
+}
 
 function _renderMenu(model) {
   const frag = document.createDocumentFragment();
@@ -424,12 +452,18 @@ function _renderMenu(model) {
       // The «▸» line toggles its submenu inline. Its items are inserted only
       // while open, so _wiCtxKeydown's ↑↓ never lands on a hidden button.
       // No onclick attribute: it is not an action, and the parity test
-      // counts every onclick as one.
+      // counts every onclick as one. A member line carries the load's box
+      // icon and a trailing chevron, so it reads as «opens», not as a fact.
       const more = document.createElement('button');
-      more.className = 'wi-ctx-i wi4-m-more';
+      more.className = 'wi-ctx-i wi4-m-more' + (sub.kind === 'member' ? ' wi4-m-mem' : '');
       more.setAttribute('aria-expanded', 'false');
-      more.appendChild(_iconEl('submenu'));
+      more.appendChild(_iconEl(sub.kind === 'member' ? 'member' : sub.kind === 'relay' ? 'relay' : 'submenu'));
       more.appendChild(document.createTextNode(sub.title));
+      const chev = document.createElement('span');
+      chev.className = 'wi4-m-chev';
+      chev.setAttribute('aria-hidden', 'true');
+      if (typeof icon === 'function') chev.innerHTML = icon('chevron_right', 12);
+      more.appendChild(chev);
       const body = document.createElement('div');
       body.className = 'wi4-m-sub';
       const nodes = [_secHead(sub.head || '', sub.sub)].concat(sub.items.map(_itemNode));
@@ -443,6 +477,7 @@ function _renderMenu(model) {
         body.classList.toggle('open', opening);
         more.setAttribute('aria-expanded', String(opening));
         openSub = opening ? body : null;
+        _fitMenu();
       });
       body._more = more;
       _hoverable(more, sub.oids);
@@ -481,10 +516,13 @@ async function openRowMenu(e, orderId) {
   if (I.stockOn() && document.fullscreenElement) e = await I.leaveFs(e);
   const ctx = document.getElementById('wi-ctx');
   if (!ctx) return;
-  const rows = 2 + model.truck.length + model.sections.reduce((n, s) => n + 2 + s.items.length + s.subs.length, 0);
+  // Height estimate for _wiCtxShow's placement (header 44, a section head
+  // with its line 34, an item 30); _fitMenu then measures the real box.
+  const est = 44 + 30 * model.truck.length + model.sections.reduce((n, s) => n + 34 + 30 * (s.items.length + s.subs.length), 0);
   _hlClear();
-  I.ctxShow(e, '', Math.min(window.innerHeight - 20, rows * 28));
+  I.ctxShow(e, '', Math.min(window.innerHeight - 16, est));
   ctx.appendChild(_renderMenu(model));
+  _fitMenu();
   // Close bookkeeping: _wiCtxClose only hides #wi-ctx, so watch its style to
   // drop the row highlight and the presence context with it.
   if (_menuObs) _menuObs.disconnect();
@@ -499,13 +537,44 @@ async function openRowMenu(e, orderId) {
 
 // ═══ Conflict dialog «Ποια κρατάμε;» (§g.4) ═════════════════════════════
 let _dlg = null;   // {back, resolve, onKey}
-function _conflictText(conflict, ctx) {
+// Values as the board shows them — plates, names, «Πέμ 8/10 09:00» — never an
+// internal id (rules «Μηνύματα»). A link the board cannot name reads «άλλη
+// τιμή»: a guess at a plate is worse than saying we do not know which.
+function _fmtConflict(label, v) {
+  const I = W(), D = (I.WINTL && I.WINTL.data) || {};
+  if (v === null || v === undefined || v === '' || (Array.isArray(v) && !v.length)) return 'κενό';
+  if (label === 'Is Partner Trip') return v ? 'ναι' : 'όχι';
+  if (FIELD[label]) {
+    const s = String(v);
+    let day, t = '';
+    if (/^\d{4}-\d{2}-\d{2}$/.test(s)) day = s;                               // a day the user picked
+    else if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/.test(s)) { day = s.slice(0, 10); t = s.slice(11); }
+    else { day = _dayOf(label, s); t = _timeOf(label, s); }
+    const lg = L();
+    const dl = day && typeof lg.dayLabel === 'function' ? lg.dayLabel(day) : '';
+    return dl ? dl + (t && label !== 'VS CD Date' ? ' ' + t : '') : 'άλλη τιμή';
+  }
+  const ids = Array.isArray(v) ? v : [v];
+  const lists = { Truck: D.trucks, Trailer: D.trailers, Driver: D.drivers, Partner: D.partners };
+  if (lists[label]) return ids.map((id) => ((lists[label] || []).find((x) => x.id === id) || {}).label || 'άλλη τιμή').join(', ');
+  if (label === 'Matched Import ID') {
+    return ids.map((id) => { const f = _fieldsOf(id); return Object.keys(f).length ? [I.clientName(f) || '—', f['Reference'] ? 'ΑΝΑΦ. ' + f['Reference'] : ''].filter(Boolean).join(' · ') : 'άλλη εισαγωγή'; }).join(', ');
+  }
+  const s = ids.join(', ');
+  return /rec[A-Za-z0-9]{6,}/.test(s) ? 'άλλη τιμή' : s;
+}
+// → {lead, body, question}: the dialog puts the question on its own line
+// (sheet 16 E). `expected` is what the user saw (the _expect sent), `mine`
+// what they chose; both come from the caller, never re-read.
+function _conflictParts(conflict, ctx) {
   const lg = L();
-  let d = null;
-  try { if (typeof lg.describeConflict === 'function') d = lg.describeConflict(Object.assign({}, conflict, { mine: ctx && ctx.mine }), LABELS_GR); }
-  catch (e) { _logErr(e, 'wi4: describeConflict'); }
-  const txt = typeof d === 'string' ? d : (d && d.text);
-  return txt || 'Η εγγραφή άλλαξε από τότε που την άνοιξες. Ποια κρατάμε;';
+  try {
+    if (typeof lg.describeConflict === 'function') {
+      const d = lg.describeConflict(Object.assign({}, conflict, { mine: (ctx && ctx.mine) || {}, expected: (ctx && ctx.expected) || {}, now: Date.now() }), LABELS_GR, _fmtConflict);
+      if (d && d.lead) return { lead: d.lead, body: d.body || '', question: d.question || 'Ποια κρατάμε;' };
+    }
+  } catch (e) { _logErr(e, 'wi4: describeConflict'); }
+  return { lead: 'Η εγγραφή άλλαξε από τότε που την άνοιξες', body: '', question: 'Ποια κρατάμε;' };
 }
 function _keepLabel(by) {
   if (typeof by === 'string' && by && by !== 'user' && by !== 'auto') return 'Κράτα του ' + by;
@@ -535,11 +604,28 @@ function conflictDialog(conflict, ctx) {
     const box = document.createElement('div');
     box.className = 'wi4-conf';
     box.setAttribute('role', 'alertdialog');
-    const p = document.createElement('div'); p.textContent = _conflictText(c, ctx); box.appendChild(p);
+    const parts = _conflictParts(c, ctx);
+    // Who changed it (a username only when the Worker sent one), then what,
+    // then the question on its own line. Amber: it is news, not the user's error.
+    const lead = document.createElement('div'); lead.className = 'wi4-conf-lead';
+    if (typeof c.by === 'string' && c.by && c.by !== 'user' && c.by !== 'auto') {
+      const av = document.createElement('span'); av.className = 'wi4-av sm'; av.textContent = c.by.trim().charAt(0).toUpperCase();
+      lead.appendChild(av);
+    }
+    lead.appendChild(document.createTextNode(parts.lead + (parts.body ? ':' : '.')));
+    box.appendChild(lead);
+    if (parts.body) { const b = document.createElement('div'); b.textContent = parts.body; box.appendChild(b); }
+    // The re-read behind the question failed: the screen is not the server's
+    // truth, so «keep what you see» would be an empty promise.
+    if (ctx && ctx.stale) { const s = document.createElement('div'); s.className = 'wi4-conf-q'; s.textContent = 'Δεν ξαναδιαβάστηκε — ό,τι βλέπεις μπορεί να μην είναι η τρέχουσα τιμή.'; box.appendChild(s); }
+    else { const q = document.createElement('div'); q.className = 'wi4-conf-q'; q.textContent = parts.question; box.appendChild(q); }
     const ft = document.createElement('div'); ft.className = 'wi4-dlg-ft';
-    ft.appendChild(_btn('wi4-btn sm', _keepLabel(c.by), () => _dlgClose('keep')));
-    if (kind === 'date') ft.appendChild(_btn('wi4-btn sm pri', 'Γράψε τη δική μου', () => _dlgClose('mine')));
-    else ft.appendChild(_btn('wi4-btn sm pri', 'Ξανάνοιξε την ανάθεση', () => _dlgClose('reopen')));
+    if (ctx && ctx.stale) ft.appendChild(_btn('wi4-btn sm pri', 'Ανανέωση', () => _dlgClose('refresh')));
+    else {
+      ft.appendChild(_btn('wi4-btn sm', _keepLabel(c.by), () => _dlgClose('keep')));
+      if (kind === 'date') ft.appendChild(_btn('wi4-btn sm pri', 'Γράψε τη δική μου', () => _dlgClose('mine')));
+      else ft.appendChild(_btn('wi4-btn sm pri', 'Ξανάνοιξε την ανάθεση', () => _dlgClose('reopen')));
+    }
     box.appendChild(ft);
     const onKey = (ev) => { if (ev.key === 'Escape') { ev.preventDefault(); ev.stopPropagation(); _dlgClose('keep'); } };
     let back = null;
@@ -552,9 +638,13 @@ function conflictDialog(conflict, ctx) {
       back = document.createElement('div');
       back.className = 'wi4-dlg-back';
       const dlg = document.createElement('div'); dlg.className = 'wi4-dlg';
-      const x = _btn('wi4-link', '×', () => _dlgClose('keep'));
-      x.setAttribute('aria-label', 'Κλείσιμο'); x.style.float = 'right';
-      dlg.appendChild(x); dlg.appendChild(box);
+      // × in a header row of its own, never floated over the panel's corner.
+      const hd = document.createElement('div'); hd.className = 'wi4-dlg-hd';
+      const t = document.createElement('span'); t.className = 'wi4-dlg-t'; t.textContent = 'Άλλαξε στο μεταξύ';
+      const x = _btn('wi4-link wi4-dlg-x', '×', () => _dlgClose('keep'));
+      x.setAttribute('aria-label', 'Κλείσιμο');
+      hd.appendChild(t); hd.appendChild(x);
+      dlg.appendChild(hd); dlg.appendChild(box);
       back.appendChild(dlg);
       // Closing in any way = «Κράτα του Χ»: that is what the screen already shows.
       back.addEventListener('mousedown', (ev) => { if (ev.target === back) _dlgClose('keep'); });
@@ -605,6 +695,9 @@ function _dpGroupDay(f) {
 
 function datePanel(orderId, field, anchorEl) {
   const I = W();
+  // A save in flight is never dropped by opening another panel: its answer
+  // would land on nobody (no ✓, no repaint) while the table changed.
+  if (_dp && _dp.busy) { _toast('Η προηγούμενη αλλαγή ημερομηνίας αποθηκεύεται ακόμη', 'info'); return; }
   const rec = (I.WINTL.data.exports || []).find((r) => r.id === orderId) || (I.WINTL.data.imports || []).find((r) => r.id === orderId);
   if (!rec) { _toast('Η παραγγελία δεν βρίσκεται στην εβδομάδα — ανανέωσε', 'warn'); return; }
   const f = rec.fields || {};
@@ -630,7 +723,14 @@ function datePanel(orderId, field, anchorEl) {
   st.onKey = (ev) => {
     if (_dp !== st) return;
     if (ev.ctrlKey || ev.metaKey || ev.altKey) return;
-    if (ev.key === 'Escape') { ev.preventDefault(); ev.stopPropagation(); if (_dlg) _dlgClose('keep'); else _dpClose(); return; }
+    if (ev.key === 'Escape') {
+      ev.preventDefault(); ev.stopPropagation();
+      // While «Αποθηκεύεται…» the panel stays: Esc cannot cancel a write that
+      // has left, and closing would hide its answer.
+      if (st.busy) return;
+      if (_dlg) _dlgClose('keep'); else _dpClose();
+      return;
+    }
     if (ev.key !== 'ArrowLeft' && ev.key !== 'ArrowRight') return;
     ev.stopPropagation();
     // Inside the time field the arrows move the caret; ui.js ignores inputs.
@@ -792,14 +892,23 @@ async function _dpSave() {
   try {
     if (v && typeof v.noteMove === 'function') v.noteMove(st.oid, _dpGroupDay(f), (I.clientName(f) || '—') + ' → ' + _place(f, 'del'));
     const w = await I.dateWrite.apply(null, args);
-    if (_dp !== st) return;
+    if (_dp !== st) {
+      // The panel was closed meanwhile (a page change): the answer is still
+      // said, and the board shows what the table now holds.
+      // Re-read only on this board: renderWeeklyIntl paints into #content,
+      // which now belongs to another page.
+      const here = typeof currentPage === 'undefined' || currentPage === 'weekly_intl';
+      if (w && w.conflict) { _toast('Η ημερομηνία δεν άλλαξε — την είχε αλλάξει άλλος', 'warn'); if (here) I.renderWeeklyIntl(); }
+      else if (w && w.ok) { _toast('Ημερομηνία ενημερώθηκε ✓'); if (here) I.renderWeeklyIntl(); }
+      return;
+    }
     if (w && w.conflict) {
       // While «Ποια κρατάμε;» is open the panel stays locked (no day click,
       // no second «Αλλαγή»): a re-render would drop the question, and a second
       // write would compare against the value the user just learned is stale.
       st.busy = false; st.conflicting = true; _dpRender();
       const mine = args[3] + (args[4] ? ' ' + args[4] : '');
-      const choice = await conflictDialog(w.conflict, { orderId: st.oid, kind: 'date', mine: { [st.field]: mine } });
+      const choice = await conflictDialog(w.conflict, { orderId: st.oid, kind: 'date', mine: { [st.field]: mine }, expected: { [st.field]: args[2] } });
       if (_dp !== st) return;
       st.conflicting = false;
       if (choice === 'mine') {
@@ -815,9 +924,14 @@ async function _dpSave() {
       return;
     }
     if (!w || !w.ok) throw new Error('η εγγραφή δεν επιβεβαιώθηκε');
+    // The proof is the table (principle 2): the ✓ needs the day the server
+    // answered with to be the day the user picked.
+    const got = w.rec && w.rec.fields ? _dayOf(st.field, w.rec.fields[st.field]) : null;
+    if (got !== args[3]) throw new Error('η εγγραφή δεν επιβεβαιώθηκε (' + (got || 'κενό') + ')');
     // A Worker that could not run the check says so (§g.3): a quiet note for
     // this save, never a silent «checked».
     if (w.rec && w.rec._expectChecked === 'skipped') _toast('Ο έλεγχος «το άλλαξε άλλος» δεν έγινε σε αυτή την αποθήκευση', 'info');
+    else if (typeof window !== 'undefined' && window.TMS_EXPECT_LIVE === false) _toast('Αποθηκεύτηκε χωρίς έλεγχο «το άλλαξε άλλος» (δεν είναι ενεργός ακόμη)', 'info');
     _dpClose();
     _toast('Ημερομηνία ενημερώθηκε ✓');
     I.renderWeeklyIntl();
@@ -847,8 +961,13 @@ function _refreshPresence() {
     const ago = hit.since ? Math.max(0, Math.round((Date.now() - new Date(hit.since).getTime()) / 1000)) : null;
     const when = ago == null ? '' : ' από πριν ' + (ago < 60 ? ago + '″' : Math.round(ago / 60) + '΄');
     slot.className = 'wi4-pnote';
-    slot.textContent = 'Ο ' + (p.name || p.user_name || 'άλλος χρήστης') + ' έχει ανοιχτή αυτή την ημερομηνία' + when +
-      '. Αν αποθηκεύσετε και οι δύο, θα σου πει ποια μένει.';
+    // The promise «θα σου πει ποια μένει» holds only while the Worker checks
+    // _expect. A write that answered without the check (TMS_EXPECT_LIVE false)
+    // makes the note say what really happens instead.
+    const tail = typeof window !== 'undefined' && window.TMS_EXPECT_LIVE === false
+      ? '. Ο έλεγχος «το άλλαξε άλλος» δεν είναι ενεργός — όποιος αποθηκεύσει τελευταίος μένει.'
+      : '. Αν αποθηκεύσετε και οι δύο, θα σου πει ποια μένει.';
+    slot.textContent = 'Ο ' + (p.name || p.user_name || 'άλλος χρήστης') + ' έχει ανοιχτή αυτή την ημερομηνία' + when + tail;
     return;
   }
 }
@@ -857,6 +976,9 @@ function _refreshPresence() {
 let _qp = null;   // {el, items, on, onKey, onDown}
 const _isUnknown = (it) => it && (it.code === 'SOURCE_UNKNOWN' || it.code === 'NAT_UNKNOWN');
 
+// The ONE dispatcher of queue actions (band cards and «Όλα» panel alike). The
+// case names are WI4.ACT's — tests/wi4-logic.test.js checks every one has a
+// case here, so a renamed action fails loudly instead of doing nothing.
 function _queueAct(it) {
   if (!it) return;
   const I = W(), v = V();
@@ -875,21 +997,33 @@ function _queueAct(it) {
     case 'national': if (typeof navigate === 'function') navigate('weekly_natl'); return;
     case 'date': return datePanel(oid, it.field || 'Loading DateTime', anchor && anchor.querySelector('.wi4-dc') || anchor);
     case 'open': case 'convert': if (REC.test(oid)) I.edit(oid); return;
-    case 'retry': return it.source === 'relays' ? I.relayReload() : I.renderWeeklyIntl();
-    default:
-      if (v && oid) v.focusRow(oid);
+    // A local relay's item opens THAT relay (edit, driver, delete live there).
+    case 'relay': if (it.relayId && REC.test(oid)) { I.relayOpen(oid, it.relayId); return; } break;
+    case 'retry':
+      // sourceReasons names the relays source 'relay'; a failed save reopens
+      // that load's actions (as the row's own «Ξαναδοκίμασε»), never a blind
+      // reload that leaves the failure where it was.
+      if (it.source === 'relay') return I.relayReload();
+      if (it.relayId && REC.test(oid)) { I.relayOpen(oid, it.relayId); return; }
+      if (it.code === 'SAVE_FAILED' && v && REC.test(oid)) return v._retry(oid);
+      return I.renderWeeklyIntl();
+    // A W+1 load: its assignment lives in its own week's board.
+    case 'week': if (Number.isInteger(it.week)) { I.WINTL.week = it.week; I.renderWeeklyIntl(); } return;
   }
+  if (!(v && oid && v.focusRow(oid))) _toast('Η σειρά δεν βρίσκεται σε αυτή την εβδομάδα — ανανέωσε ή άλλαξε εβδομάδα', 'info');
 }
 
 function queuePanel() {
   if (_qp) { _qpClose(); return; }
   const v = V(); if (!v) return;
   const items = (v.queueItems() || []).slice();
+  // Same rule as the band: a source still loading or unread makes it «≥N».
+  const loading = typeof v._queueLoading === 'function' && v._queueLoading();
   const el = document.createElement('div');
   el.className = 'wi4-qp';
   el.setAttribute('role', 'dialog');
   const hd = document.createElement('div'); hd.className = 'wi4-qp-h';
-  hd.textContent = 'ΕΠΟΜΕΝΑ · ' + (items.some(_isUnknown) ? '≥' : '') + items.length + ' ';
+  hd.textContent = 'ΕΠΟΜΕΝΑ · ' + (items.some(_isUnknown) || loading ? '≥' : '') + items.length + ' ';
   const kq = document.createElement('span'); kq.className = 'wi4-key'; kq.textContent = 'Q';
   const ke = document.createElement('span'); ke.className = 'wi4-key'; ke.textContent = 'Esc';
   hd.appendChild(kq); hd.appendChild(document.createTextNode(' επόμενο ')); hd.appendChild(ke); hd.appendChild(document.createTextNode(' κλείσιμο'));
@@ -911,8 +1045,8 @@ function queuePanel() {
       t.appendChild(l1);
       if (it.sub) { const l2 = document.createElement('span'); l2.className = 'wi4-l2 wi4-ell'; l2.textContent = it.sub; l2.title = it.sub; t.appendChild(l2); }
       r.appendChild(t);
-      if (ACT_LABEL[it.act]) {
-        r.appendChild(_btn('wi4-btn sm', ACT_LABEL[it.act], (ev) => { ev.stopPropagation(); _qpClose(); _queueAct(it); }));
+      if (_actLabel(it)) {
+        r.appendChild(_btn('wi4-btn sm', _actLabel(it), (ev) => { ev.stopPropagation(); _qpClose(); _queueAct(it); }));
       }
       // A click on the body goes to the row and highlights it (sheet 15 B).
       r.addEventListener('click', () => { _qpOn(rows.indexOf(r)); });
@@ -921,7 +1055,8 @@ function queuePanel() {
     }
   }
   if (!items.length) {
-    const r = document.createElement('div'); r.className = 'wi4-qp-i wi4-t-g2'; r.textContent = 'Τίποτα επείγον αυτή την εβδομάδα';
+    const r = document.createElement('div'); r.className = 'wi4-qp-i wi4-t-g2';
+    r.textContent = loading ? 'Φορτώνει — η λίστα δεν είναι πλήρης ακόμη' : 'Τίποτα επείγον αυτή την εβδομάδα';
     el.appendChild(r);
   }
   document.body.appendChild(el);
@@ -1107,7 +1242,14 @@ function run(action) {
       return;
     }
     case 'assign': _assign(oid); return;
-    case 'date': datePanel(oid, 'Loading DateTime', (el && el.querySelector('.wi4-dc')) || el); return;
+    case 'date': {
+      // D opens the field of the row's OWN chip (a VS export's chip is the
+      // Βέροια day, §e #7): mouse and keyboard reach the same field.
+      const chip = el && el.querySelector('.wi4-c-exp .wi4-dc, .wi4-dc');
+      const f = chip && /datePanel\('rec[A-Za-z0-9]+','([^']+)'/.exec(chip.getAttribute('onclick') || '');
+      datePanel(oid, f && FIELD[f[1]] ? f[1] : 'Loading DateTime', chip || el);
+      return;
+    }
     case 'print': {
       const id = v.rowIdOf(oid);
       const row = id == null ? null : I.WINTL.rows.find((r) => r.id === id);
@@ -1131,11 +1273,21 @@ function _evOf(e) {
   return { code: e.code, key: e.key, shift: !!e.shiftKey, ctrl: !!e.ctrlKey, meta: !!e.metaKey, alt: !!e.altKey,
     targetTag: String(t.tagName || '').toLowerCase(), editable: !!t.isContentEditable };
 }
+// The overlay state is read BEFORE any other handler runs (capture phase):
+// _wiCtxKeydown closes #wi-ctx on Esc first, and this bubble-phase listener
+// then saw «no menu open», read Esc as «escape» and dropped the keyboard
+// focus — Enter → Esc → A lost the row (11/10). A key another handler already
+// took (defaultPrevented) is never acted on twice.
+let _keySnap = null;
+function _onKeySnap(e) { _keySnap = _live() ? { e, st: _state() } : null; }
 function _onKey(e) {
   if (!_live()) return;
   const lg = L();
   if (typeof lg.keyAction !== 'function') return;
-  const act = lg.keyAction(_evOf(e), _state());
+  const st = _keySnap && _keySnap.e === e ? _keySnap.st : _state();
+  _keySnap = null;
+  if (e.defaultPrevented) return;
+  const act = lg.keyAction(_evOf(e), st);
   if (!act) return;
   e.preventDefault();
   // The blue ring shows only after keyboard use (sheet 15 C).
@@ -1169,6 +1321,7 @@ let _attached = false;
 function attach() {
   if (!_attached) {
     _attached = true;
+    document.addEventListener('keydown', _onKeySnap, true);
     document.addEventListener('keydown', _onKey);
     document.addEventListener('mousedown', _onMouse, true);
   }
@@ -1184,11 +1337,22 @@ function attach() {
 
 function isOpen() { return !!(_dp || _qp || _dlg || _help); }
 
+// Page change (WIV2._cleanup): the v4 overlays live on <body>, and none of
+// them may stay on top of the next page. A date save in flight still reports
+// its answer (the `_dp !== st` branch of _dpSave).
+function _closeAll() {
+  if (_dlg) _dlgClose('keep');
+  if (_dp) _dpClose();
+  _qpClose();
+  _helpClose();
+}
+
 window.WI4Actions = Object.freeze({
   openRowMenu, datePanel, conflictDialog, queuePanel, run, attach, isOpen,
   // Seams for tests and for WP4 (underscore = not part of the frozen
-  // contract). _queueAct is the ONE dispatcher of queue actions, for the
-  // band cards and the «Όλα» panel alike (principle 3).
-  _gather, _dpWriteArgs, _queueAct, _refreshPresence, _keyEntries, _RELABEL: RELABEL,
+  // contract). _queueAct is the ONE dispatcher of queue actions, and
+  // _actLabel the one label of each, for the band cards and the «Όλα»
+  // panel alike (principle 3).
+  _gather, _dpWriteArgs, _queueAct, _actLabel, _refreshPresence, _keyEntries, _closeAll, _RELABEL: RELABEL,
 });
 })();
