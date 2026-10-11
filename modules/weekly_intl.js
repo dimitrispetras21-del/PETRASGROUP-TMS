@@ -715,15 +715,19 @@ async function renderWeeklyIntl(){
         fields: ['Source Order','Truck','Driver','Partner','Partner Truck Plates','Is Partner Trip'] }, false),
         'weekly intl: national carriers', []);
       if (WINTL.data.nlBySrc !== nlMap) return;
-      if (didFail(nl)) { WINTL.data.nlState = 'err'; if(_wiV2Active()) _wiPaint(); return; }
+      // v4 repaints through WIV2._lateLanded: at once, or — when a popover,
+      // panel or menu is open — once it closes (a full paint replaces
+      // #content and closed the popover a dispatcher was typing in, review
+      // 11/10). v1 keeps today's paint, only with carriers to show.
+      if (didFail(nl)) { WINTL.data.nlState = 'err'; if(_wiV2Active()) WIV2._lateLanded(); return; }
       nl.forEach(r => { const src = (r.fields['Source Order'] || [])[0]; if (src) nlMap[src] = r; });
       WINTL.data.nlState = 'ok';
-      if (Object.keys(nlMap).length) _wiPaint();
-      else if(_wiV2Active()) _wiPaint();
+      if(_wiV2Active()) WIV2._lateLanded();
+      else if (Object.keys(nlMap).length) _wiPaint();
     })().catch(e => {
       console.warn('[weekly intl] national carriers:', e);
       // A throw after the read must not leave v4 on «φορτώνει» for ever.
-      if (WINTL.data.nlBySrc === nlMap && WINTL.data.nlState === 'loading') { WINTL.data.nlState = 'err'; if(_wiV2Active()) _wiPaint(); }
+      if (WINTL.data.nlBySrc === nlMap && WINTL.data.nlState === 'loading') { WINTL.data.nlState = 'err'; if(_wiV2Active()) WIV2._lateLanded(); }
     });
 
     // Ακριβές όριο εβδομάδας (Σαβ–Παρ) στην effective ημερομηνία (Delivery ή Loading).
@@ -760,8 +764,12 @@ async function renderWeeklyIntl(){
       WINTL.relay = Object.assign(res, { syncErr });
       // Before this week's rows exist, their own first paint draws the
       // relays; after it, repaint only with something to draw or to say
-      // (menus read the state when they open).
-      if (boardBuilt && (res.state === 'err' || Object.keys(res.byOrder).length)) _wiPaint();
+      // (menus read the state when they open). v4 counts a source still
+      // loading («≥N … φορτώνει…»), so an empty answer must reach it too —
+      // through its deferred repaint (review 11/10: the header stayed on
+      // «φορτώνει…» for ever when the relays answered last, and empty).
+      if (boardBuilt && _wiV2Active()) WIV2._lateLanded();
+      else if (boardBuilt && (res.state === 'err' || Object.keys(res.byOrder).length)) _wiPaint();
     }).catch(e => console.warn('[weekly intl] local relays paint:', e));
     // Location names for the relay sub-row («από CROSS-DOCK») and its panel —
     // loaded once, shared with orders_intl/natl (fhLoadLocations is idempotent).
@@ -2063,6 +2071,17 @@ async function _wiDateWrite(orderId,field,curIso,ymd,hhmm,seen){
   // load stayed on 6/9→7/9 on Weekly National. Fire-and-forget, like there.
   invalidateCache(TABLES.ORDERS);
   if (typeof syncOrderDownstream === 'function') {
+    // v4 (review 11/10): the date panel promises «Αλλάζει και τις στάσεις και
+    // τη Βέροια» — so it WAITS for the chain and gets its {ok, failed}: a
+    // stage that failed (the national load, the ramp) is said instead of a ✓
+    // over a load that did not move. syncOrderDownstream never rejects; a
+    // throw is still caught. v1 keeps today's fire-and-forget.
+    if(_wiV2Active()){
+      let downstream=null;
+      try{ downstream=await syncOrderDownstream(orderId, { source: 'intl', changedFields: [field], skipPA: true }); }
+      catch(e){ downstream={ok:false,failed:['sync']}; if (typeof logError === 'function') logError(e, 'weekly intl: date sync'); }
+      return {ok:true,rec:res,downstream};
+    }
     syncOrderDownstream(orderId, { source: 'intl', changedFields: [field], skipPA: true })
       .catch(e => { if (typeof logError === 'function') logError(e, 'weekly intl: date sync'); });
   }
@@ -2373,6 +2392,26 @@ function _wiExpectOpt(orderId,fields){
   // this request — one failed save was four stacked messages (review 11/10).
   return expect?{expect,quiet:true}:undefined;
 }
+// The FOLLOW-UP PATCHes of one v4 action (group members, the matched import,
+// the GI siblings, the joiners) are quiet like its first: one failed save
+// stays ONE message, the line under the row — a 500 on the 2nd member of a
+// group still stacked «Σφάλμα server» toasts on each retry (review 11/10).
+// undefined while v4 is inactive: today's request, byte for byte.
+function _wiQuietOpt(){
+  return _wiV2Active()?{quiet:true}:undefined;
+}
+// What the ✓ of a v4 assignment or match may claim about «το άλλαξε άλλος»
+// (§g.3): the check ran only when _expect was SENT (a record not on this
+// board sends none) and the Worker answered true; 'skipped' = it could not
+// run this time. Unknown = closed (principle 5). '' while v4 is inactive:
+// today's words, byte for byte.
+function _wiExpectNote(sent,checked){
+  if(!_wiV2Active()) return '';
+  if(!sent) return ' · χωρίς έλεγχο «το άλλαξε άλλος» σε αυτή την αποθήκευση';
+  if(checked==='skipped') return ' · ο έλεγχος «το άλλαξε άλλος» δεν έγινε σε αυτή την αποθήκευση';
+  if(checked!==true&&window.TMS_EXPECT_LIVE!==true) return ' · χωρίς έλεγχο «το άλλαξε άλλος» (δεν είναι ενεργός ακόμη)';
+  return '';
+}
 // After a CONFIRMED write, the WINTL.data record takes what the server now
 // holds for the labels written — the same rule as _wiCancelGroupMember's own
 // copy. Without it a match (or an unmatch) leaves the board's copy of OUR
@@ -2396,17 +2435,25 @@ function _wiDataSet(orderId,fields,rec){
 // Logged per ORDER id (row ids are renumbered on every rebuild) so the footer
 // can count written/failed rows and a repaint re-applies the ⚠: a failed write
 // must never disappear behind a refresh («μένει ορατό», contract §7).
-function _wiSync(id, state, msg){
+function _wiSync(id, state, msg, oid0){
   const rowId=parseInt(String(id).replace('wi-sync-',''),10);
-  const row=WINTL.rows.find(r=>r.id===rowId);
-  const oid=row?(row.orderIds?.[0]||row.orderId):null;
+  // v4 (review 11/10, P1): a write passes the ORDER it wrote, captured when it
+  // started (oid0). Row ids are a per-build sequence, and a re-read between
+  // the start and the answer (a week tab, «Ανανέωση», another row's date
+  // save) renumbers them: the row-id lookup put «Δεν αποθηκεύτηκε» under
+  // another load while the real one stayed on ⟳ for the session. The slot is
+  // found again by order id. v1 keeps today's lookup (identity, §b).
+  const v4=!!oid0&&_wiV2Active();
+  const row=v4?null:WINTL.rows.find(r=>r.id===rowId);
+  const oid=v4?oid0:(row?(row.orderIds?.[0]||row.orderId):null);
   if(oid){
     WINTL._syncLog=WINTL._syncLog||{};
     if(state) WINTL._syncLog[oid]={state,msg:msg||'',at:Date.now()}; else delete WINTL._syncLog[oid];
     _wi2FootSync();
   }
   if(_wiV2Active()) WIV2.onSync(oid,state,msg);
-  const el=document.getElementById(id); if(!el) return;
+  const slotRow=v4?WIV2.rowIdOf(oid0):null;
+  const el=v4?(slotRow==null?null:document.getElementById('wi-sync-'+slotRow)):document.getElementById(id); if(!el) return;
   el.className='wi-sync'+(state?' wi-sync--'+state:'');
   el.textContent=state==='pend'?'⟳':state==='ok'?'✓':state==='err'?'⚠':'';
   el.title=msg||'';
@@ -3235,6 +3282,7 @@ async function _wiGiGroup(impId, knownRec){
 async function _wiSaveImportMatch(rowId,impId){
   if(_wiBlockReadOnly()) return; // defense in depth — dragstart already blocks for a view-only role
   const row=WINTL.rows.find(r=>r.id===rowId);if(!row) return;
+  const oid0=(row.orderIds&&row.orderIds[0])||row.orderId;   // the slot's order, at the start (P1, _wiSync)
   // The one funnel of every match (drag, panel drop, new import, stock join):
   // a lot travels to its warehouse, never with a truck's return load — on
   // either side of the pair (stock plan §6.7).
@@ -3346,8 +3394,13 @@ async function _wiSaveImportMatch(rowId,impId){
     const seen=_wiExpectOpt(row.orderIds[0],['Matched Import ID']);
     if(seen&&!WI4.sameValue(seen.expect['Matched Import ID'],expMatchRead,'Matched Import ID'))
       return WIV2.conflict({conflict:true,fields:['Matched Import ID'],by:null,at:null,current:{'Matched Import ID':expMatchRead}},
-        {slot:'wi-sync-'+rowId,orderId:row.orderIds[0],kind:'match',mine:{'Matched Import ID':matchImpId}});
+        {slot:'wi-sync-'+rowId,slotOid:oid0,orderId:row.orderIds[0],kind:'match',mine:{'Matched Import ID':matchImpId}});
   }
+  // The lock read above FAILED (expMatchRead undefined, the catch let it
+  // proceed): unknown blocks here, or the old export's unmatch is written
+  // first and the _expect PATCH may still 409 — the group matched to nothing
+  // (review 11/10). v4 only; v1 keeps today's best-effort path.
+  if(oldExpRow&&_wiV2Active()&&expMatchRead===undefined){ _wiRefuse('Δεν διαβάστηκε η εξαγωγή — δοκίμασε ξανά','match refused'); return; }
   if(oldExpRow&&!(await _wiRemoveImport(oldExpRow.id))){
     // The old match did not fully come off (a member is still on the old trip):
     // writing this export's vehicle onto it now would copy it onto the old
@@ -3378,16 +3431,22 @@ async function _wiSaveImportMatch(rowId,impId){
   // T3 (Wave 2): the optimistic paint above shows «matched» BEFORE the server
   // write. The sync slot tells the truth per row: ⟳ writing → ✓ saved / ⚠
   // failed (kept visible — this was PREMORTEM T3: UI said matched, DB didn't).
-  _wiSync('wi-sync-'+rowId,'pend','Αποθήκευση ταιριάσματος…');
-  let matchFailed=false;
+  _wiSync('wi-sync-'+rowId,'pend','Αποθήκευση ταιριάσματος…',oid0);
+  let matchFailed=false, matchOffline=false, mExpSent=false, mExpChecked;
 
   // Save to ALL export orders in group
   for(const orderId of row.orderIds){
     try{
       // _expect on the FIRST export PATCH only (§g.4): a 409 there writes nothing.
-      const res=await atSafePatch(TABLES.ORDERS,orderId,{'Matched Import ID':matchImpId},orderId===row.orderIds[0]?_wiExpectOpt(orderId,['Matched Import ID']):undefined);
-      if(res?.conflict){ if(_wiV2Active()) return WIV2.conflict(res,{slot:'wi-sync-'+rowId,orderId,kind:'match',mine:{'Matched Import ID':matchImpId}}); _wiRefuse('Η εγγραφή άλλαξε από άλλον χρήστη — ανανέωση…','match race'); await renderWeeklyIntl(); return; }
+      const opt=orderId===row.orderIds[0]?_wiExpectOpt(orderId,['Matched Import ID']):undefined;
+      const res=await atSafePatch(TABLES.ORDERS,orderId,{'Matched Import ID':matchImpId},opt||_wiQuietOpt());
+      if(res?.conflict){ if(_wiV2Active()) return WIV2.conflict(res,{slot:'wi-sync-'+rowId,slotOid:oid0,orderId,kind:'match',mine:{'Matched Import ID':matchImpId}}); _wiRefuse('Η εγγραφή άλλαξε από άλλον χρήστη — ανανέωση…','match race'); await renderWeeklyIntl(); return; }
       if(res?.error) throw new Error(res.error.message||res.error.type);
+      // v4: offline, atPatch QUEUED it and echoed the body — not a write. Every
+      // member is still queued (the loop goes on); no downstream sync for a
+      // change that exists only in this browser (principle 2).
+      if(res?._offline&&_wiV2Active()){ matchOffline=true; continue; }
+      if(opt){ mExpSent=true; mExpChecked=res?._expectChecked; }
       _wiDataSet(orderId,{'Matched Import ID':matchImpId},res);
       // Central sync — matching link can affect downstream planning
       if (typeof syncOrderDownstream === 'function') {
@@ -3397,13 +3456,21 @@ async function _wiSaveImportMatch(rowId,impId){
     }catch(err){
       matchFailed=true;
       console.error('Import match save failed:',err.message);
-      // v4 says it under the row (+ the title-bar counter): no stacked toast.
-      if(!_wiV2Active()) toast('Το ταίριασμα δεν γράφτηκε: '+err.message.slice(0,50),'warn');
+      // v4 says it under the row (+ the title-bar counter): no stacked toast —
+      // unless the board was re-read meanwhile and the row moved: then the
+      // toast is the one message that surely reaches the user (P1, 11/10).
+      if(!_wiV2Active()||WIV2.rowIdOf(oid0)!==rowId) toast('Το ταίριασμα δεν γράφτηκε: '+err.message.slice(0,50),'warn');
       if(typeof logError==='function') logError(err,'weekly intl: match save failed');
     }
   }
+  if(matchOffline&&!matchFailed){
+    // v4 only (matchOffline is set only then): queued is not written — no ✓,
+    // no inherited vehicle, no RT link for a match the base does not hold yet.
+    _wiSync('wi-sync-'+rowId,'err','Χωρίς σύνδεση — το ταίριασμα μπήκε σε αναμονή, δεν είναι ακόμη στη βάση',oid0);
+    return;
+  }
   _wiSync('wi-sync-'+rowId, matchFailed?'err':'ok',
-    matchFailed?'Το ταίριασμα ΔΕΝ γράφτηκε στη βάση — ξαναπροσπάθησε ή κάνε Ανανέωση':'Αποθηκεύτηκε');
+    matchFailed?'Το ταίριασμα ΔΕΝ γράφτηκε στη βάση — ξαναπροσπάθησε ή κάνε Ανανέωση':'Αποθηκεύτηκε'+_wiExpectNote(mExpSent,mExpChecked),oid0);
 
   // Ταίριασμα σε ΗΔΗ ανατεθειμένο export (owner 13/8): το import αναλαμβάνεται
   // από το ίδιο όχημα — κληρονομεί την ανάθεση στη βάση. Το κόμιστρο import
@@ -3425,7 +3492,7 @@ async function _wiSaveImportMatch(rowId,impId){
         // its Status — this raw patch regressed it to Assigned (design 8/9:
         // execution beats planning); the vehicle correction still lands.
         const pp=await _wiPlanPatch(memberId,inh);
-        const ri=await atSafePatch(TABLES.ORDERS,memberId,pp);
+        const ri=await atSafePatch(TABLES.ORDERS,memberId,pp,_wiQuietOpt());
         if(ri?.error) throw new Error(ri.error.message||ri.error.type);
         const fresh=await atGetOne(TABLES.ORDERS,memberId);
         const wrote=row.partnerId?getLinkedId(fresh?.fields?.['Partner'])===row.partnerId
@@ -3462,6 +3529,7 @@ async function _wiRemoveImport(rowId){
   if(!row){ toast('Η γραμμή δεν βρέθηκε','warn'); return false; }
   if(!row.importId){ toast('Δεν υπάρχει ταιριασμένη εισαγωγή','warn'); return false; }
   const impId=row.importId;
+  const oid0=(row.orderIds&&row.orderIds[0])||row.orderId;   // the slot's order, at the start (P1, _wiSync)
   row.importId=null;
 
   // Update import row UI
@@ -3469,7 +3537,7 @@ async function _wiRemoveImport(rowId){
   if(impRow) impRow.matchedTo=null;
 
   _wiPaint();
-  _wiSync('wi-sync-'+rowId,'pend','Αφαίρεση ταιριάσματος…'); // T3
+  _wiSync('wi-sync-'+rowId,'pend','Αφαίρεση ταιριάσματος…',oid0); // T3
 
   // Clear from ORDERS (patch export order)
   let ok=true;
@@ -3488,7 +3556,7 @@ async function _wiRemoveImport(rowId){
     }
   }
   _wiSync('wi-sync-'+rowId, ok?'ok':'err',
-    ok?'Αφαιρέθηκε':'Η αφαίρεση ΔΕΝ γράφτηκε στη βάση — κάνε Ανανέωση'); // T3
+    ok?'Αφαιρέθηκε':'Η αφαίρεση ΔΕΝ γράφτηκε στη βάση — κάνε Ανανέωση',oid0); // T3
   if(ok){
     // Ξεταίριασμα = το import δεν ταξιδεύει πια με αυτό το όχημα (owner 13/8):
     // καθαρίζεται η κληρονομημένη ανάθεσή του για να μην μείνει ορφανή.
@@ -3717,6 +3785,7 @@ async function _wiSaveFromPopover(rowId){
   if(_wiBlockReadOnly()) return; // defense in depth — the popover itself no longer opens for a view-only role
   const row=WINTL.rows.find(r=>r.id===rowId);
   if(!row){return;}
+  const oid0=(row.orderIds&&row.orderIds[0])||row.orderId;   // the slot's order, at the start (P1, _wiSync)
   const syncPop=(p,f,l)=>{
     const uid=`${p}_p_${rowId}`;
     const val=document.getElementById(`wsd-v-${uid}`)?.value||'';
@@ -3792,7 +3861,7 @@ async function _wiSaveFromPopover(rowId){
   const btn=document.getElementById(`wi-pop-btn-${rowId}`);
   const spin=document.getElementById(`wi-pop-spin-${rowId}`);
   if(btn){btn.disabled=true;if(spin)spin.style.display='block';}
-  _wiSync('wi-sync-'+rowId,'pend','Αποθήκευση ανάθεσης…'); // T3
+  _wiSync('wi-sync-'+rowId,'pend','Αποθήκευση ανάθεσης…',oid0); // T3
   // Stamp Assigned At only on first assignment (preserve for accurate assignment-speed metric)
   const isFirstAssignment = !row.saved;
   const assignedAtStamp = isFirstAssignment ? { 'Assigned At': new Date().toISOString() } : {};
@@ -3810,34 +3879,62 @@ async function _wiSaveFromPopover(rowId){
   if(isPartner) impFields['Partner Rate']=row.partnerRateImp?parseFloat(row.partnerRateImp):null;
 
   const errors=[];
+  // v4 only (each is set only then): the change was QUEUED offline, and what
+  // the ✓ may claim about the conflict check (§g.3) — sent, and answered.
+  let asgOffline=false, expSent=false, expChecked;
+  const asgIds=[...row.orderIds].concat(row.importId&&!row.orderIds.includes(row.importId)?[row.importId]:[]);
   for(const orderId of row.orderIds){
     try{
       // _expect on the primary order's PATCH only (§g.4): group members and the
       // matched import follow without it, and a 409 here writes nothing.
-      const res=await atSafePatch(TABLES.ORDERS,orderId,await _wiPlanPatch(orderId,expFields),orderId===row.orderIds[0]?_wiExpectOpt(orderId,['Truck','Trailer','Driver','Partner','Partner Truck Plates','Is Partner Trip']):undefined);
-      if(res?.conflict){ if(_wiV2Active()) return WIV2.conflict(res,{slot:'wi-sync-'+rowId,orderId,kind:'assign',mine:expFields}); toast('Η εγγραφή άλλαξε από άλλον χρήστη — ανανέωση…','warn'); await renderWeeklyIntl(); return; }
+      const pp=await _wiPlanPatch(orderId,expFields);
+      const opt=orderId===row.orderIds[0]?_wiExpectOpt(orderId,['Truck','Trailer','Driver','Partner','Partner Truck Plates','Is Partner Trip']):undefined;
+      const res=await atSafePatch(TABLES.ORDERS,orderId,pp,opt||_wiQuietOpt());
+      if(res?.conflict){ if(_wiV2Active()) return WIV2.conflict(res,{slot:'wi-sync-'+rowId,slotOid:oid0,orderId,kind:'assign',mine:expFields}); toast('Η εγγραφή άλλαξε από άλλον χρήστη — ανανέωση…','warn'); await renderWeeklyIntl(); return; }
       if(res?.error) throw new Error(res.error.message||res.error.type||JSON.stringify(res.error));
+      if(res?._offline&&_wiV2Active()){ asgOffline=true; continue; }
+      if(opt){ expSent=true; expChecked=res?._expectChecked; }
       if (typeof plOnIntlPartnerAssigned === 'function') plOnIntlPartnerAssigned(orderId);
     }catch(err){errors.push(err.message);}
   }
   if(row.importId && !row.orderIds.includes(row.importId)){
     try{
-      const res=await atSafePatch(TABLES.ORDERS,row.importId,await _wiPlanPatch(row.importId,impFields));
-      if(res?.conflict){ if(_wiV2Active()) return WIV2.conflict(res,{slot:'wi-sync-'+rowId,orderId:row.importId,kind:'assign',mine:impFields}); toast('Η εγγραφή άλλαξε από άλλον χρήστη — ανανέωση…','warn'); await renderWeeklyIntl(); return; }
+      const res=await atSafePatch(TABLES.ORDERS,row.importId,await _wiPlanPatch(row.importId,impFields),_wiQuietOpt());
+      if(res?.conflict){ if(_wiV2Active()) return WIV2.conflict(res,{slot:'wi-sync-'+rowId,slotOid:oid0,orderId:row.importId,kind:'assign',mine:impFields}); toast('Η εγγραφή άλλαξε από άλλον χρήστη — ανανέωση…','warn'); await renderWeeklyIntl(); return; }
       if(res?.error) throw new Error(res.error.message||res.error.type||JSON.stringify(res.error));
       // Το σκέλος εισαγωγής είναι ΑΚΡΙΒΩΣ η περίπτωση PARTNER_DROPOFF (ο partner
       // μάς φέρνει φορτίο): χωρίς αυτό το κάλεσμα καταγραφόταν μόνο η μισή ροή.
-      if (typeof plOnIntlPartnerAssigned === 'function') plOnIntlPartnerAssigned(row.importId);
+      if(res?._offline&&_wiV2Active()) asgOffline=true;
+      else if (typeof plOnIntlPartnerAssigned === 'function') plOnIntlPartnerAssigned(row.importId);
     }catch(err){errors.push(err.message);}
   }
+  // v4: what was attempted, so the line under the row can say from the TABLE —
+  // once re-read — what landed: «έμεινε όπως ήταν» only when nothing did
+  // (review 11/10: the words came from the screen's assumption).
+  const attempt=()=>({ids:asgIds,truck:isPartner?'':(row.truckId||''),partner:isPartner?(row.partnerId||''):'',failed:errors.length,offline:asgOffline});
   if(errors.length){
     if(btn){btn.disabled=false;if(spin)spin.style.display='none';}
-    _wiSync('wi-sync-'+rowId,'err','Η ανάθεση ΔΕΝ γράφτηκε στη βάση — ξαναπροσπάθησε'); // T3: stays visible
+    _wiSync('wi-sync-'+rowId,'err',_wiV2Active()?`Η ανάθεση ΔΕΝ γράφτηκε σε ${errors.length} από ${asgIds.length}`:'Η ανάθεση ΔΕΝ γράφτηκε στη βάση — ξαναπροσπάθησε',oid0); // T3: stays visible
     // v4 says it on the row (the line under it + the title-bar counter): no
-    // second, stacked toast — the full list goes to app_errors instead.
-    if(_wiV2Active()){ if(typeof logError==='function') logError(new Error(errors.join(' · ')),'weekly intl: assign save failed'); return; }
+    // second, stacked toast — the full list goes to app_errors instead. If the
+    // board was re-read meanwhile and the row moved, the toast is the one
+    // message that surely reaches the user (P1, 11/10).
+    if(_wiV2Active()){
+      WIV2._noteAttempt(oid0,attempt());
+      if(WIV2.rowIdOf(oid0)===rowId){ if(typeof logError==='function') logError(new Error(errors.join(' · ')),'weekly intl: assign save failed'); return; }
+    }
     // Full error list goes to the gated log; user sees a short message only.
     reportError('Σφάλμα αποθήκευσης αντιστοίχισης — δοκιμάστε ξανά', errors);
+    return;
+  }
+  if(asgOffline){
+    // v4 only (asgOffline is set only then): atPatch QUEUED the change — not
+    // a write. No ✓, no group propagation, no partner assignment, no RT and
+    // no VS sync for an assignment the base does not hold yet (principle 2).
+    if(btn){btn.disabled=false;if(spin)spin.style.display='none';}
+    _wiClosePopover();
+    _wiSync('wi-sync-'+rowId,'err','Χωρίς σύνδεση — η ανάθεση μπήκε σε αναμονή, δεν είναι ακόμη στη βάση',oid0);
+    WIV2._noteAttempt(oid0,attempt());
     return;
   }
   // Owner audit fix: import groupage (_wiImpGroup, Group ID prefix 'GI-') has
@@ -3880,7 +3977,7 @@ async function _wiSaveFromPopover(rowId){
         for(const sib of siblings){
           if(written.includes(sib.id)) continue; // already written above
           try{
-            const res=await atSafePatch(TABLES.ORDERS,sib.id,await _wiPlanPatch(sib.id,groupFields));
+            const res=await atSafePatch(TABLES.ORDERS,sib.id,await _wiPlanPatch(sib.id,groupFields),_wiQuietOpt());
             if(res?.error) throw new Error(res.error.message||res.error.type);
             const fresh=await atGetOne(TABLES.ORDERS,sib.id);
             const wrote=isPartner?getLinkedId(fresh?.fields?.['Partner'])===row.partnerId
@@ -3919,11 +4016,11 @@ async function _wiSaveFromPopover(rowId){
     catch(e){ console.warn('PA delete error:',e.message); }
   }
 
-  _wiSync('wi-sync-'+rowId,'ok','Η ανάθεση γράφτηκε'); // T3
+  _wiSync('wi-sync-'+rowId,'ok','Η ανάθεση γράφτηκε',oid0); // T3
   // v4 sent _expect: a Worker that did not confirm the check (or one not yet
   // asked) is said with the ✓, never assumed (§g.3, principle 5 — unknown =
   // closed). v1 sends no _expect and keeps today's words.
-  toast((row.saved?'Ενημερώθηκε ✓':'Αποθηκεύτηκε ✓')+(_wiV2Active()&&window.TMS_EXPECT_LIVE!==true?' · χωρίς έλεγχο «το άλλαξε άλλος» (δεν είναι ενεργός ακόμη)':''));
+  toast((row.saved?'Ενημερώθηκε ✓':'Αποθηκεύτηκε ✓')+_wiExpectNote(expSent,expChecked));
 
   // Sync Veroia Switch → NAT_LOADS
   try {
@@ -4022,6 +4119,7 @@ async function _wiDeletePartnerAssignments(orderIds){
 //     place; this function only adds the per-RT decision.
 async function _wiClear(rowId){
   const row=WINTL.rows.find(r=>r.id===rowId);if(!row) return;
+  const oid0=(row.orderIds&&row.orderIds[0])||row.orderId;   // the slot's order, at the start (P1, _wiSync)
   const allOrderIds=[...row.orderIds];
   const add=id=>{ if(id&&!allOrderIds.includes(id)) allOrderIds.push(id); };
   add(row.importId);
@@ -4065,13 +4163,13 @@ async function _wiClear(rowId){
     ? _wiExecConfirmText(execs,'Καθαρισμός ανάθεσης ('+allOrderIds.length+(allOrderIds.length===1?' παραγγελία':' παραγγελίες')+') — περιλαμβάνει παραγγελία που έχει ήδη εκτελεστεί. Αφαιρείται το όχημα.',true)
     : (allOrderIds.length>1?'Καθαρισμός ανάθεσης; Αδειάζουν '+allOrderIds.length+' παραγγελίες (όλα τα μέλη της ομάδας).':'Καθαρισμός ανάθεσης;');
   if(!(await confirmAction(ask,{title:execs.length?'Καθαρισμός σε εκτελεσμένη':'Επιβεβαίωση',confirmLabel:'Καθαρισμός'}))) return;
-  _wiSync('wi-sync-'+rowId,'pend','Καθαρισμός ανάθεσης…');
+  _wiSync('wi-sync-'+rowId,'pend','Καθαρισμός ανάθεσης…',oid0);
 
   for(const {rt,oids} of mixed){
     for(const oid of oids){
       const leave=await _wiRtLeave(oid);
       if(!leave.ok){
-        _wiSync('wi-sync-'+rowId,'err','Ο καθαρισμός ΔΕΝ έγινε');
+        _wiSync('wi-sync-'+rowId,'err','Ο καθαρισμός ΔΕΝ έγινε',oid0);
         toast('Ο καθαρισμός σταμάτησε ('+(rt.code||'δρομολόγιο')+' έχει κι άλλα σκέλη) — '+leave.msg,'warn');
         return;
       }
@@ -4097,7 +4195,7 @@ async function _wiClear(rowId){
       if (typeof plOnIntlPartnerAssigned === 'function') plOnIntlPartnerAssigned(orderId);
     }catch(err){ errors.push(err.message); }
   }
-  if(errors.length){ _wiSync('wi-sync-'+rowId,'err','Ο καθαρισμός ΔΕΝ γράφτηκε στη βάση'); toast('Ο καθαρισμός απέτυχε: '+errors[0].slice(0,50),'warn');return;}
+  if(errors.length){ _wiSync('wi-sync-'+rowId,'err','Ο καθαρισμός ΔΕΝ γράφτηκε στη βάση',oid0); toast('Ο καθαρισμός απέτυχε: '+errors[0].slice(0,50),'warn');return;}
 
   // PARTNER ASSIGNMENT rows of EXECUTING orders stay (review 4/10, M3): a
   // partner trip that already ran is a payable (its rate reaches the RT P&L as
@@ -4107,7 +4205,7 @@ async function _wiClear(rowId){
   try{ await _wiDeletePartnerAssignments(allOrderIds.filter(id=>!execIds.includes(id))); }
   catch(e){ console.warn('PA delete error:',e.message); }
 
-  _wiSync('wi-sync-'+rowId,'ok','Η ανάθεση καθαρίστηκε');
+  _wiSync('wi-sync-'+rowId,'ok','Η ανάθεση καθαρίστηκε',oid0);
   toast(allOrderIds.length>1?'Η ανάθεση καθαρίστηκε σε '+allOrderIds.length+' παραγγελίες ✓':'Η ανάθεση καθαρίστηκε ✓');
   WINTL.ui.openRow=null;
   await renderWeeklyIntl();
@@ -5933,12 +6031,13 @@ function _wiPanelWeekShift(rowId){
 // small panel is the confirmation now (two explicit choices, not a yes/no).
 async function _wiImpShift(rowId,days){
   const row=WINTL.rows.find(r=>r.id===rowId);if(!row) return;
+  const oid0=(row.orderIds&&row.orderIds[0])||row.orderId;   // the slot's order, at the start (P1, _wiSync)
   const imp=WINTL.data.imports.find(r=>r.id===row.orderId);if(!imp) return;
   const w=WINTL.week+(days>0?1:-1);
   const natWeek=_wiWeekOf(imp.fields['Loading DateTime']);
   const clearing=natWeek===w;
   const targetPws=clearing?null:toLocalDate(_wiWeekStart(w));
-  _wiSync('wi-sync-'+rowId,'pend','Μεταφορά εβδομάδας…');
+  _wiSync('wi-sync-'+rowId,'pend','Μεταφορά εβδομάδας…',oid0);
   try{
     const res=await atPatch(TABLES.ORDERS,imp.id,{'Plan Week Start':targetPws});
     if(res?.error) throw new Error(res.error.message||res.error.type);
@@ -5947,15 +6046,15 @@ async function _wiImpShift(rowId,days){
     if(targetPws!=null){
       const fresh=await atGetOne(TABLES.ORDERS,imp.id);
       if(!fresh || !fresh.fields || !fresh.fields['Plan Week Start']){
-        _wiSync('wi-sync-'+rowId,'err','Η μεταφορά ΔΕΝ αποθηκεύτηκε — ο Worker δεν γνωρίζει ακόμη το πεδίο Plan Week Start');
+        _wiSync('wi-sync-'+rowId,'err','Η μεταφορά ΔΕΝ αποθηκεύτηκε — ο Worker δεν γνωρίζει ακόμη το πεδίο Plan Week Start',oid0);
         toast('Η μεταφορά δεν αποθηκεύτηκε — ο Worker δεν γνωρίζει ακόμη το πεδίο','warn');
         return;
       }
     }
-    _wiSync('wi-sync-'+rowId,'ok','Η μεταφορά αποθηκεύτηκε');
+    _wiSync('wi-sync-'+rowId,'ok','Η μεταφορά αποθηκεύτηκε',oid0);
     toast(`Θα εμφανίζεται στην W${w} ✓`);
     renderWeeklyIntl();
-  }catch(e){ _wiSync('wi-sync-'+rowId,'err','Η μεταφορά ΔΕΝ γράφτηκε στη βάση'); reportError('Η μεταφορά απέτυχε',e); }
+  }catch(e){ _wiSync('wi-sync-'+rowId,'err','Η μεταφορά ΔΕΝ γράφτηκε στη βάση',oid0); reportError('Η μεταφορά απέτυχε',e); }
 }
 // «Groupage εισαγωγών» of two free import rows is the same join as adding an
 // import to a truck's load (_wiImpJoin): every member of BOTH rows ends in
@@ -6172,15 +6271,18 @@ async function _wiImpJoin(loadOid,expOid,xOid,palOk){
   if(!pal) return false;
   const into=_wiJoinLoadLbl(vehRow,lr0);
   const slot='wi-sync-'+vehRow.id;
+  // v4 keys the slot by ORDER (_wiSync, P1 review 11/10): the reads below can
+  // outlive a re-read that renumbers the rows.
+  const oid0=(vehRow.orderIds&&vehRow.orderIds[0])||vehRow.orderId;
   let wrote=false;
-  const refuse=msg=>{ _wiSync(slot,null); _wiRefuse(msg,'import join refused'); return false; };
-  const race=async msg=>{ _wiSync(slot,null); _wiRefuse(msg,'import join race'); await renderWeeklyIntl(); return false; };
+  const refuse=msg=>{ _wiSync(slot,null,undefined,oid0); _wiRefuse(msg,'import join refused'); return false; };
+  const race=async msg=>{ _wiSync(slot,null,undefined,oid0); _wiRefuse(msg,'import join race'); await renderWeeklyIntl(); return false; };
   const stop=(msg,err)=>{
-    _wiSync(slot,'err',msg); reportError(msg,err);
+    _wiSync(slot,'err',msg,oid0); reportError(msg,err);
     if(typeof logError==='function') logError(err instanceof Error?err:new Error(msg),'weekly intl: import join failed');
     return false;
   };
-  _wiSync(slot,'pend','Ένταξη εισαγωγής στο φορτίο…');
+  _wiSync(slot,'pend','Ένταξη εισαγωγής στο φορτίο…',oid0);
   try{
     // 1. The export still carries THIS load, on the vehicle the board shows.
     const lv={truck:vehRow.truckId||'',partner:vehRow.partnerId||''};
@@ -6270,7 +6372,7 @@ async function _wiImpJoin(loadOid,expOid,xOid,palOk){
       const ref=String(r.fields['Reference']||r.id);
       try{
         const patch=await _wiPlanPatch(r.id,Object.assign({'Group ID':gid},inh));
-        const res=await atSafePatch(TABLES.ORDERS,r.id,patch);
+        const res=await atSafePatch(TABLES.ORDERS,r.id,patch,_wiQuietOpt());
         if(res&&res.conflict) throw new Error('η εγγραφή άλλαξε από άλλον χρήστη');
         if(res&&res.error) throw new Error(res.error.message||res.error.type);
         const fresh=await atGetOne(TABLES.ORDERS,r.id);
@@ -6290,7 +6392,7 @@ async function _wiImpJoin(loadOid,expOid,xOid,palOk){
       await renderWeeklyIntl();   // what landed and what did not: the server's word
       return false;
     }
-    _wiSync(slot,null);
+    _wiSync(slot,null,undefined,oid0);
     invalidateCache(TABLES.ORDERS);
     if(typeof rtOnOrderSaved==='function') rtOnOrderSaved(expRow?expRow.orderIds[0]:L.recs[0].id).catch(e=>console.warn('[wi join] rt sync:',e&&e.message));
     // Rebuilt from the board's own, read-back data — no fetch: the
@@ -6323,7 +6425,7 @@ async function _wiImpJoin(loadOid,expOid,xOid,palOk){
 // separately; this keeps new '' from being written meanwhile.
 async function _wiGroupPatch(orderIds, gid, rowId){
   gid=gid||null; // a dissolve must never send '' (see above)
-  _wiSync('wi-sync-'+rowId,'pend', gid?'Αποθήκευση ομάδας…':'Διάλυση ομάδας…');
+  _wiSync('wi-sync-'+rowId,'pend', gid?'Αποθήκευση ομάδας…':'Διάλυση ομάδας…',orderIds[0]);
   let failed=false;
   for(const oid of orderIds){
     try{
@@ -6332,7 +6434,7 @@ async function _wiGroupPatch(orderIds, gid, rowId){
     }catch(err){ failed=true; console.warn('Group ID save:',err.message); }
   }
   _wiSync('wi-sync-'+rowId, failed?'err':'ok',
-    failed?'Η ομάδα ΔΕΝ αποθηκεύτηκε στη βάση (λείπει το πεδίο Group ID στον Worker/DB;) — θα χαθεί στην ανανέωση':'Η ομάδα αποθηκεύτηκε');
+    failed?'Η ομάδα ΔΕΝ αποθηκεύτηκε στη βάση (λείπει το πεδίο Group ID στον Worker/DB;) — θα χαθεί στην ανανέωση':'Η ομάδα αποθηκεύτηκε',orderIds[0]);
   if(failed) toast('Η ομάδα δεν αποθηκεύτηκε στη βάση — θα ισχύει μόνο μέχρι την ανανέωση','warn');
   return !failed;
 }
@@ -7628,12 +7730,13 @@ async function _wiStockLooseCheck(id){
 // (_wiRewriteGroupSuffix, read back) with the member the export points at
 // first · group with «|» → untouched.
 async function _wiStockLockLead(row,seedId){
+  const oid0=(row.orderIds&&row.orderIds[0])||row.orderId;   // v4 slot by ORDER (_wiSync)
   const stop=(msg,err)=>{
-    _wiSync('wi-sync-'+row.id,'err',msg); reportError(msg,err);
+    _wiSync('wi-sync-'+row.id,'err',msg,oid0); reportError(msg,err);
     if(typeof logError==='function') logError(err instanceof Error?err:new Error(msg),'weekly intl: stock join lock');
     return null;
   };
-  _wiSync('wi-sync-'+row.id,'pend','Σειρά ομάδας εισαγωγών…');
+  _wiSync('wi-sync-'+row.id,'pend','Σειρά ομάδας εισαγωγών…',oid0);
   let seed=null;
   try{ seed=await atGetOne(TABLES.ORDERS,seedId); }catch(e){ seed=null; }
   if(!seed||!seed.fields) return stop('Η εισαγωγή του φορτηγού δεν διαβάστηκε — δεν γράφτηκε τίποτα');
@@ -7655,7 +7758,7 @@ async function _wiStockLockLead(row,seedId){
   // B-22: the lead as the SERVER has it now (read above), before any write —
   // the menu's cache test can be minutes old.
   if(WI_EXECUTING.includes(recs[0].fields?.['Status'])){
-    _wiSync('wi-sync-'+row.id,null);
+    _wiSync('wi-sync-'+row.id,null,undefined,oid0);
     toast('Η εισαγωγή του φορτηγού είναι σε κίνηση — όχι νέο κομμάτι· δεν γράφτηκε τίποτα','warn');
     return null;
   }
@@ -7666,7 +7769,7 @@ async function _wiStockLockLead(row,seedId){
   // here, before any write.
   const why=_wiStockLeadBad(recs[0],row.truckId);
   if(why){
-    _wiSync('wi-sync-'+row.id,null);
+    _wiSync('wi-sync-'+row.id,null,undefined,oid0);
     toast(why+' — δεν γράφτηκε τίποτα','warn');
     return null;
   }
@@ -7683,7 +7786,7 @@ async function _wiStockLockLead(row,seedId){
       // lead's Group ID — a piece carrying a truck and a Group ID that no
       // other order has yet opens a second round trip of its own
       // (pg_get_functiondef, read 4/10).
-      _wiSync('wi-sync-'+row.id,null);
+      _wiSync('wi-sync-'+row.id,null,undefined,oid0);
       return {leadId:recs[0].id,groupId:'GI-'+Date.now().toString(36).toUpperCase()+'|'+recs[0].id,lead:recs[0],lockLead:true};
     }
     if(!(await _wiRewriteGroupSuffix(recs,true))){
@@ -7691,7 +7794,7 @@ async function _wiStockLockLead(row,seedId){
     }
     recs.forEach(r=>{ const c=WINTL.data.imports.find(x=>x.id===r.id); if(c) c.fields['Group ID']=r.fields['Group ID']; });
   }
-  _wiSync('wi-sync-'+row.id,null);
+  _wiSync('wi-sync-'+row.id,null,undefined,oid0);
   const lead=recs[0];
   return {leadId:lead.id,groupId:String(lead.fields['Group ID']||''),lead};
 }
@@ -7794,7 +7897,8 @@ async function _wiStockJoinA(row,seedId,pick){
   const pc=pick.piece, pf=pc.fields||{};
   ctx.lotRec=OrdersStock.lotRecOfPiece(pf);
   const day=toLocalDate(loadIso||''), dday=toLocalDate(delIso||'');
-  if(!day){ _wiSync('wi-sync-'+row.id,'err','Η εισαγωγή του φορτηγού δεν έχει ημέρα φόρτωσης — το κομμάτι δεν μπήκε'); return; }
+  const oid0=(row.orderIds&&row.orderIds[0])||row.orderId;   // v4 slot by ORDER (_wiSync)
+  if(!day){ _wiSync('wi-sync-'+row.id,'err','Η εισαγωγή του φορτηγού δεν έχει ημέρα φόρτωσης — το κομμάτι δεν μπήκε',oid0); return; }
   // D1: 'Group ID' overwrites whatever group a truckless piece still carried.
   let patch={'Group ID':lock.groupId,'Truck':[truck],'Trailer':trailer?[trailer]:[],'Driver':driver?[driver]:[],
     'Loading DateTime':_wk3IsoOnDay(pf['Loading DateTime'],day),'Status':'Assigned'};
@@ -7806,7 +7910,7 @@ async function _wiStockJoinA(row,seedId,pick){
     const why=await _wiStockLockSure(lock.leadId,lock.groupId);
     if(why){
       const msg='Η σειρά της εισαγωγής ΔΕΝ γράφτηκε ('+why+') — το κομμάτι δεν μπήκε, δεν γράφτηκε τίποτα';
-      _wiSync('wi-sync-'+row.id,'err',msg); reportError(msg,null); return;
+      _wiSync('wi-sync-'+row.id,'err',msg,oid0); reportError(msg,null); return;
     }
   }
   await _wiStockApply(row,pc.id,patch,ctx);
@@ -7843,10 +7947,11 @@ async function _wiStockJoinB(row,pick){
       }
     }
     if(staleGid) patch['Group ID']=null;
-    _wiSync('wi-sync-'+row.id,'pend',cur!==day?'Νέα ημέρα φόρτωσης κομματιού…':'Το κομμάτι βγαίνει από την παλιά ομάδα…');
+    const oid0=row.orderIds[0];   // v4 slot by ORDER (_wiSync)
+    _wiSync('wi-sync-'+row.id,'pend',cur!==day?'Νέα ημέρα φόρτωσης κομματιού…':'Το κομμάτι βγαίνει από την παλιά ομάδα…',oid0);
     try{
       const res=await atSafePatch(TABLES.ORDERS,pc.id,patch);
-      if(res?.conflict){ _wiSync('wi-sync-'+row.id,null); toast('Η εγγραφή άλλαξε από άλλον χρήστη — ανανέωση…','warn'); await renderWeeklyIntl(); return; }
+      if(res?.conflict){ _wiSync('wi-sync-'+row.id,null,undefined,oid0); toast('Η εγγραφή άλλαξε από άλλον χρήστη — ανανέωση…','warn'); await renderWeeklyIntl(); return; }
       if(res?.error) throw new Error(res.error.message||res.error.type);
       const fresh=await atGetOne(TABLES.ORDERS,pc.id);
       if(toLocalDate(fresh?.fields?.['Loading DateTime']||'')!==day) throw new Error('η ανάγνωση πίσω δεν δείχνει τη νέα ημέρα');
@@ -7856,7 +7961,7 @@ async function _wiStockJoinB(row,pick){
       // did not happen.
       const shown=!!(e&&(e._rule||e._noRetry));
       const msg='Το κομμάτι ΔΕΝ ταιριάστηκε — '+(cur!==day?'η ημέρα φόρτωσης δεν άλλαξε':'η παλιά ομάδα δεν καθαρίστηκε')+(shown?'':': '+String(e&&e.message||e));
-      _wiSync('wi-sync-'+row.id,'err',shown?msg+' ('+String(e&&e.message||e)+')':msg); reportError(msg,e); return;
+      _wiSync('wi-sync-'+row.id,'err',shown?msg+' ('+String(e&&e.message||e)+')':msg,oid0); reportError(msg,e); return;
     }
     invalidateCache(TABLES.ORDERS);
     if(typeof syncOrderDownstream==='function') syncOrderDownstream(pc.id,{source:'intl',changedFields:Object.keys(patch),skipPA:true})
@@ -7880,24 +7985,25 @@ function _wiStockVerify(rec,ctx){
   return miss.join(' · ');
 }
 async function _wiStockApply(row,pieceId,patch,ctx){
-  _wiSync('wi-sync-'+row.id,'pend','Ένταξη κομματιού στο φορτηγό…');
+  const oid0=(row.orderIds&&row.orderIds[0])||row.orderId;   // v4 slot by ORDER (_wiSync)
+  _wiSync('wi-sync-'+row.id,'pend','Ένταξη κομματιού στο φορτηγό…',oid0);
   const w=await _wiStockJoinWrite(pieceId,patch,ctx);
   if(!w.ok){
     // A lock written for this join only (lone lead, B-04) does not outlive it
     // — _wiStockLockUndo keeps it when the piece did land (it reads the group).
     const undo=ctx.lockLead?_wiLockUndoNote(await _wiStockLockUndo(ctx.leadId,ctx.groupId),ctx.groupId):'';
-    if(w.conflict&&w.found!==null){ _wiSync('wi-sync-'+row.id,null); toast('Η εγγραφή άλλαξε από άλλον χρήστη — ανανέωση…'+undo,'warn'); await renderWeeklyIntl(); return; }
+    if(w.conflict&&w.found!==null){ _wiSync('wi-sync-'+row.id,null,undefined,oid0); toast('Η εγγραφή άλλαξε από άλλον χρήστη — ανανέωση…'+undo,'warn'); await renderWeeklyIntl(); return; }
     const e=w.err, shown=_wiShown(e), why=String((e&&e.message)||e);
     const msg=(w.found===null
       ?'Η ένταξη του κομματιού ΔΕΝ επιβεβαιώθηκε (η ανάγνωση απέτυχε) — έλεγξε τη λωρίδα ΑΠΟΘΕΜΑ και το φορτηγό'
       :'Το κομμάτι ΔΕΝ μπήκε στο φορτηγό — έμεινε στο απόθεμα')+(shown?'':': '+why)+undo;
     // The row's ⚠ keeps the reason for later (a tooltip, not a second toast).
-    _wiSync('wi-sync-'+row.id,'err',shown?msg+' · '+why:msg); reportError(msg,e);
+    _wiSync('wi-sync-'+row.id,'err',shown?msg+' · '+why:msg,oid0); reportError(msg,e);
     // A designed refusal is already logged by _atRetry ('_atRetry 422 rule').
     if(!shown&&typeof logError==='function') logError(e instanceof Error?e:new Error(msg),'weekly intl: stock join');
     return;
   }
-  _wiSync('wi-sync-'+row.id,'ok','Το κομμάτι μπήκε στο φορτηγό');
+  _wiSync('wi-sync-'+row.id,'ok','Το κομμάτι μπήκε στο φορτηγό',oid0);
   invalidateCache(TABLES.ORDERS);
   if(typeof syncOrderDownstream==='function') syncOrderDownstream(pieceId,{source:'intl'})
     .catch(e=>{ if(typeof logError==='function') logError(e,'weekly intl: stock piece sync'); });
@@ -7945,7 +8051,9 @@ async function _wiOnPieceSavedRun(newId,ctx){
     return;
   }
   const shelfMsg=why=>`Το κομμάτι αποθηκεύτηκε ΧΩΡΙΣ φορτηγό (${why}) — μένει στη λωρίδα ΑΠΟΘΕΜΑ· Weekly Διεθνών → δεξί κλικ στο φορτηγό → «+ Κομμάτι από απόθεμα…»`;
-  const fail=(msg,noLog)=>{ if(row) _wiSync('wi-sync-'+row.id,'err',msg); loud(msg,noLog); };
+  // v4 slot by ORDER (_wiSync): the form closes and repaints while this runs.
+  const oid0=row?((row.orderIds&&row.orderIds[0])||row.orderId):null;
+  const fail=(msg,noLog)=>{ if(row) _wiSync('wi-sync-'+row.id,'err',msg,oid0); loud(msg,noLog); };
   // Case A (lone lead AND group, Σ-01): the POST carried neither group nor
   // vehicle. The lead is read NOW, right before the join writes; the vehicle
   // comes from this read. Another truck, a lead that started moving or whose
@@ -7976,7 +8084,7 @@ async function _wiOnPieceSavedRun(newId,ctx){
       ?'Το κομμάτι αποθηκεύτηκε, αλλά η ένταξή του στο φορτηγό ΔΕΝ επιβεβαιώθηκε (η ανάγνωση απέτυχε) — έλεγξε τη λωρίδα ΑΠΟΘΕΜΑ και το φορτηγό'
       :shelfMsg(why))+undo,shown&&!!e._rule);
   }
-  if(row) _wiSync('wi-sync-'+row.id,'ok','Το κομμάτι μπήκε στο φορτηγό'+(w.lost?' (η απάντηση χάθηκε — επιβεβαιώθηκε στην ανάγνωση)':''));
+  if(row) _wiSync('wi-sync-'+row.id,'ok','Το κομμάτι μπήκε στο φορτηγό'+(w.lost?' (η απάντηση χάθηκε — επιβεβαιώθηκε στην ανάγνωση)':''),oid0);
   if(typeof rtOnOrderSaved==='function') rtOnOrderSaved(ctx.leadId).catch(e=>console.warn('[wi stock] rt sync:',e&&e.message));
 }
 

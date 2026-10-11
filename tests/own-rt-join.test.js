@@ -103,6 +103,8 @@ function world({ rts = [], role = 'owner', lines = {}, rtListFails = false, legD
     _wiPalConfirm: async () => true,
     _wiSync: (slot, st, msg) => syncs.push([slot, st, msg]),
     _wiPlanPatch: async (_oid, f) => f,
+    // v4 seam: quiet follow-up PATCHes — undefined while v4 is inactive (this world).
+    _wiQuietOpt: () => undefined,
     _wiWeekOf: () => 41,
     _wiStockLockSure: async () => '', _wiRewriteGroupSuffix: async () => true, _wiStockLockUndo: async () => null, _wiLockUndoNote: () => '',
     _wiStockPrime() {}, _wiBuildRows() {}, _wiPaint() {}, _wiNoUndo() {},

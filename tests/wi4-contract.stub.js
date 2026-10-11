@@ -302,8 +302,13 @@ const WI_INTERNAL = {
   splitHeaderCtxItems(row) { return ''; },
 
   // ── Sync state ──
-  /** id = 'wi-sync-'+rowId; state 'pend'|'ok'|'err'|'' (origin 2293). */
-  sync(id, state, msg) {},
+  /** id = 'wi-sync-'+rowId; state 'pend'|'ok'|'err'|'' (origin 2293).
+   *  oid (fix round 3, 11/10, P1): the ORDER the write started on. With v4
+   *  active it keys WINTL._syncLog and finds the slot again by order id
+   *  (WIV2.rowIdOf), because a re-read between the start of a write and its
+   *  answer renumbers row ids. Without it (and always with v4 off) the row-id
+   *  lookup of today runs, byte for byte. */
+  sync(id, state, msg, oid) {},
   /** NEW (§a.5/§g.4): the opts argument of the first PATCH of a decision write.
    *  undefined when v4 is inactive, when the record is not in WINTL.data, or
    *  when no label is checked — then the request is byte-identical to today.
