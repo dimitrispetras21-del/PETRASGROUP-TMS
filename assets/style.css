@@ -8159,6 +8159,28 @@ body.wi4-on #wi-ctx .wi4-m-sec .wi4-l2, body.wi4-on #wi-ctx .wi4-m-hd .wi4-l2 { 
    row's 32px, a split header is a 22px band. The 28px base stays only for a
    sub-row whose record did not load (_missingHTML). */
 .wi4-subrow.wi4-sub-rl { height:24px; }
+/* Relay text (Figma 1097:2830 / 3291; parity r2, relay-subrow-*): it takes
+   the empty track beside it — a pickup the ΑΝΑΘΕΣΗ track, a delivery the ΑΠΟ
+   ΒΕΡΟΙΑ one (_relayRowHTML leaves those cells out). A flex row: tag, driver,
+   day and status never give way; the «what differs» parts (.wi4-ell) do, the
+   later ones first — a shrink weight that leaves an earlier part not even a
+   fraction of a pixel short, which would already cost it its «…». gap 3 +
+   the «·»'s own 3px margin = Figma's 6px. A part carries its «·» as ::before,
+   so a part cut to nothing takes its «·» with it. Only the read relay
+   (.wi4-rlf): the «δεν διαβάστηκε» line keeps its cells. */
+.wi4-sub-rl > .wi4-c-exp:has(> .wi4-rlf) { grid-column:4 / 7; }
+.wi4-sub-rl > .wi4-c-imp:has(> .wi4-rlf) { grid-column:8 / 11; }
+.wi4 .wi4-rlf { display:flex; align-items:center; gap:3px; min-width:0; overflow:hidden; white-space:nowrap; }
+.wi4 .wi4-rlf > * { flex:none; }
+.wi4 .wi4-rlf > .wi4-ell { flex:0 1 auto; min-width:0; }
+.wi4 .wi4-rlf > .wi4-ell ~ .wi4-ell { flex-shrink:1000000; }
+.wi4 .wi4-rlf > .wi4-ell::before { content:'·'; margin:0 6px 0 3px; color:var(--wi4-grey-2); }
+/* ✓ 10px + 4px + the word (Figma 1097:2670); a warning's icon carries the
+   colour (amber = the day differs, red = the save failed), the words stay. */
+.wi4 .wi4-rl-st { display:inline-flex; align-items:center; gap:4px; }
+.wi4 .wi4-rl-st > .wi4-ok { margin-right:0; }
+.wi4 .wi4-rl-st > svg { flex:none; color:var(--wi4-amber); }
+.wi4 .wi4-rl-st.red > svg { color:var(--wi4-red); }
 .wi4-subrow.wi4-sub-leg { height:32px; }
 /* A row that owns the sub-row under it ends on a dashed hairline (Figma
    1097:2781 / 3243 / 2990): every row had the same solid line, so a sub-row
@@ -8224,6 +8246,19 @@ body.wi4-on #wi-ctx .wi4-m-sec .wi4-l2, body.wi4-on #wi-ctx .wi4-m-hd .wi4-l2 { 
 .wi4-pt > .wi4-l2 { grid-column:1 / -1; }
 /* «→ ΑΠΟΘΗΚΗ» on line 1 of the delivery point: whole, the name is cut. */
 .wi4 .wi4-pt .wi4-l1f > .wi-badge { flex:none; }
+/* ≤1600 the 78px word left the warehouse name 5px of an 87px column at 1440
+   (parity r2, lot-badge-eats-name-1440; rules 985:1117: a name is cut, «όχι
+   κάτω από 56px»). The badge turns into a 22px chip with the 12px package
+   icon (core/icons.js «package»), drawn as a mask in the text colour; the
+   words stay in the DOM (font-size 0) for a screen reader, and its title
+   still explains it. _wiLotBadge (shared with the old board) is unchanged. */
+@media (max-width:1600px) {
+  .wi4 .wi4-pt .wi4-l1f > .wi-b-lot { align-self:center; display:inline-flex; align-items:center; justify-content:center; box-sizing:border-box;
+    width:22px; height:17px; padding:0; font-size:0; letter-spacing:0; }
+  .wi4 .wi4-pt .wi4-l1f > .wi-b-lot::before { content:''; flex:none; width:12px; height:12px; background:currentColor;
+    -webkit-mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.75' stroke-linecap='round' stroke-linejoin='round'%3E%3Cline x1='16.5' y1='9.4' x2='7.5' y2='4.21'/%3E%3Cpath d='M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z'/%3E%3Cpolyline points='3.27 6.96 12 12.01 20.73 6.96'/%3E%3Cline x1='12' y1='22.08' x2='12' y2='12'/%3E%3C/svg%3E") center / 12px 12px no-repeat;
+    mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.75' stroke-linecap='round' stroke-linejoin='round'%3E%3Cline x1='16.5' y1='9.4' x2='7.5' y2='4.21'/%3E%3Cpath d='M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z'/%3E%3Cpolyline points='3.27 6.96 12 12.01 20.73 6.96'/%3E%3Cline x1='12' y1='22.08' x2='12' y2='12'/%3E%3C/svg%3E") center / 12px 12px no-repeat; }
+}
 /* Line 2 of a point is a flex row: the place is cut, the pallets never
    (review 11/10). With no room for a place (.wi4-noplace) the place goes and
    the pallets stay. */
@@ -8300,11 +8335,18 @@ body.wi4-on #wi-ctx .wi4-m-sec .wi4-l2, body.wi4-on #wi-ctx .wi4-m-hd .wi4-l2 { 
 /* PE = a white chip with the light line (Figma 1097:2879: 1px #e2e8f0,
    px 5, tracking .4, 17px high). */
 .wi4-pe { padding:0 5px; border:1px solid var(--wi4-line-2); border-radius:3px; background:var(--surface-card); font-size:10px; font-weight:600; line-height:15px; letter-spacing:.4px; color:var(--wi4-grey-1); }
-.wi4-att { color:var(--wi4-icon); }
-/* «→ ΑΠΟΘΗΚΗ» and the other leg badges: outlined like PE — never a solid dark
-   chip, which out-shouted «ΠΡΟΣ ΑΝΑΘΕΣΗ» (the locked strongest element). */
-.wi4 .wi-badge { font-size:10px; padding:0 4px; border-radius:4px; line-height:14px; letter-spacing:.4px;
-  background:none; border:1px solid var(--wi4-ctl); color:var(--wi4-grey-1); font-weight:600; }
+/* Paperclip 12px, 4px after PE, stroke #5B6B7F (Figma 1097:2878; parity
+   r2, pallets-track-clip-gap): the shared .od-badge (core/order-docs.js) adds
+   its own 4px and --text-mid, which won over a colour set on .wi4-att. Its
+   hover colour (.od-badge:hover) is kept. */
+.wi4 .wi4-att .od-badge { margin-left:0; }
+.wi4 .wi4-att .od-badge:not(:hover) { color:var(--wi4-grey-2); }
+/* «→ ΑΠΟΘΗΚΗ» and the other leg badges (ΑΠ): ONE family with PE — a white
+   chip, 1px #e2e8f0, px 5, r3, 17px (Figma tag 1097:2879; parity r2,
+   lot-badge-not-like-pe) — never a solid dark chip, which out-shouted
+   «ΠΡΟΣ ΑΝΑΘΕΣΗ» (the locked strongest element). */
+.wi4 .wi-badge { font-size:10px; padding:0 5px; border-radius:3px; line-height:15px; letter-spacing:.4px;
+  background:var(--surface-card); border:1px solid var(--wi4-line-2); color:var(--wi4-grey-1); font-weight:600; }
 
 /* Assignment (§e #8): box 28px radius 5 + paper-plane 22px radius 5.
    «ΠΡΟΣ ΑΝΑΘΕΣΗ» is the strongest element on the board: its border is 2px,
@@ -8413,9 +8455,18 @@ body.wi4-on #wi-ctx .wi4-m-sec .wi4-l2, body.wi4-on #wi-ctx .wi4-m-hd .wi4-l2 { 
    (§f): the old handlers only clear .wk3-* classes v4 does not emit. */
 .wi4 .wi4-dh, .wi4 .dragover { outline:2px dashed var(--wi4-blue); outline-offset:-2px; background:var(--accent-light); }
 .wi4 .dragging { opacity:.4; }
-/* A failed match/unmatch (_unconfirmed): the import cell says what the table
-   holds, dashed like a slot (it is still the drop target), red-bordered like
-   the failure line. Its words carry the row's EMPTY_RETURN colour. */
+/* A failed match/unmatch (_unconfirmed) draws the table in its import cell
+   (data-unconfirmed). With no match in the table that is the empty-return
+   slot; its two actions are hidden there, because both would act on the
+   row's optimistic, unsaved match: «+ Νέα εισαγωγή» is refused by
+   _wiNewImport («έχει ήδη ταιριασμένη εισαγωγή» — row.importId is the failed
+   one) and the stock panel counts that import's pallets as on the truck
+   (_wiImpPals). «Ξαναδοκίμασε» on the line under the row is the way on, and
+   the re-read brings them back (parity r2, savefail-slot-hides-written-state). */
+.wi4 .wi4-imp[data-unconfirmed] :is(.wi4-gap-act, .wi2-gapstk) { display:none; }
+/* With another match still in the table (_notSavedHTML): the words, dashed
+   like a slot (it is still the drop target), red-bordered like the failure
+   line. */
 .wi4-ns { height:24px; display:flex; align-items:center; gap:6px; padding:0 10px; border:1px dashed var(--wi4-red); border-radius:5px; font-size:11px; font-weight:500; min-width:0; }
 .wi4-ns > svg { flex:none; color:var(--wi4-red); }
 /* Its GHOST: the import, still free in the table, as a 24px line in its own
