@@ -343,18 +343,42 @@ function showComingSoon(label, opts) {
 // open/close cycles never pile listeners up on document. The listener goes on
 // synchronously: stopPropagation keeps THIS click from reaching document, and a
 // setTimeout here left a gap in which a fast second click did not close.
+// An open menu owns its keys (Figma sheets 14/15, live audit 11/10: Esc left it
+// open, ↓ stayed on the toggle, ← changed the week under it). A CAPTURE-phase
+// listener exists only while the menu is open, so it runs before the board's
+// and the week's key handlers, and close() always removes it.
 function wkMoreToggle(ev) {
   ev.stopPropagation();
   const btn = ev.currentTarget, m = btn && btn.nextElementSibling;
   if (!m) return;
   if (!m.hidden) { btn._wkClose && btn._wkClose(); return; }
+  const items = () => [...m.querySelectorAll('[role^="menuitem"]')].filter((b) => !b.disabled && b.getClientRects().length);
+  const onKey = (e) => {
+    // A repaint replaced the menu while it was open: let go, take no key.
+    if (!m.isConnected) { close(); return; }
+    if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); close(); btn.focus(); return; }
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      const its = items(); if (!its.length) return;
+      e.preventDefault(); e.stopPropagation();
+      const i = its.indexOf(document.activeElement), last = its.length - 1;
+      its[e.key === 'ArrowDown' ? (i < 0 || i === last ? 0 : i + 1) : (i <= 0 ? last : i - 1)].focus();
+      return;
+    }
+    // Tab out of the toggle + menu closes it, as a click elsewhere does.
+    if (e.key === 'Tab') setTimeout(() => { if (!m.hidden && !(m.parentElement || m).contains(document.activeElement)) close(); }, 0);
+  };
   const close = () => {
     m.hidden = true; btn.setAttribute('aria-expanded', 'false');
     document.removeEventListener('click', close);
+    document.removeEventListener('keydown', onKey, true);
   };
   btn._wkClose = close;
   m.hidden = false; btn.setAttribute('aria-expanded', 'true');
   document.addEventListener('click', close, { once: true });
+  document.addEventListener('keydown', onKey, true);
+  // Opened from the keyboard (Enter/Space → a click with detail 0): the focus
+  // goes into the menu, so ↓/↑ and Enter work at once.
+  if (ev.detail === 0) { const f = items()[0]; if (f) f.focus(); }
 }
 
 // ── Toast with success animation (A5) ───────────
@@ -416,6 +440,12 @@ document.addEventListener('keydown', e => {
   }
   // Arrow left/right for week navigation (only on weekly pages)
   if ((e.key === 'ArrowLeft' || e.key === 'ArrowRight') && !e.target.closest('input,select,textarea')) {
+    // ←/→ = week ONLY when no overlay is open (owner, locked). Checked here,
+    // at the lowest level, so every menu, panel and dialog of both weekly
+    // boards is covered, also the ones added later: under an open «Προβολή»,
+    // the avatar menu or the «Όλα» panel the week changed and the menu vanished
+    // (live audit 11/10). A key another handler already took is not reused.
+    if (e.defaultPrevented || _wkOverlayOpen()) return;
     if (currentPage === 'weekly_intl' && typeof WINTL !== 'undefined') {
       WINTL.week += e.key === 'ArrowLeft' ? -1 : 1;
       renderWeeklyIntl();
@@ -428,6 +458,21 @@ document.addEventListener('keydown', e => {
     }
   }
 });
+// Visible = it has boxes and is not visibility:hidden. A closed menu is
+// [hidden], a closed #modal sits inside display:none #modalOverlay, closed
+// #wi-ctx/#wi-panel/#wi-popover (and the national #wn-*) are display:none —
+// none of them has boxes, so a closed overlay never blocks the arrows.
+const _WK_OVERLAYS = '[role="menu"],[role="dialog"],[role="alertdialog"],#wi-ctx,#wi-panel,#wi-popover,#wn-ctx,#wn-popover';
+function _wkOverlayOpen() {
+  for (const el of document.querySelectorAll(_WK_OVERLAYS)) {
+    if (el.getClientRects().length && getComputedStyle(el).visibility !== 'hidden') return true;
+  }
+  return false;
+}
+// The keys this file binds, for the board's «?» sheet (Figma 1119:2842): one
+// source per binding, so the sheet cannot list a key that does not work.
+const UI_GLOBAL_KEYS = Object.freeze([Object.freeze({ keys: '← →', label: 'προηγούμενη / επόμενη εβδομάδα' })]);
+if (typeof window !== 'undefined') window.UI_GLOBAL_KEYS = UI_GLOBAL_KEYS;
 
 // Expose empty state helper
 if (typeof window !== 'undefined') {

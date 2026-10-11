@@ -7599,6 +7599,18 @@ button.btn-icon:focus-visible { outline:2px solid var(--accent); outline-offset:
   --wi4-grey-2:       #5b6b7f;   /* line 2, headers, meta — 5.3:1 on white */
   --wi4-grey-3:       #98a2b3;   /* placeholders/disabled ONLY — 2.6:1, never information */
   --wi4-icon:         var(--text-dim);   /* icons only, never text (2.57:1) */
+  /* Top bar (Figma 1097:2287 week switcher). --wi4-tabs-bg has --wi4-own's
+     value but another meaning (a control's well, not «own fleet»). */
+  --wi4-tabs-bg:      #eef2f6;
+  --wi4-badge-bg:     #fee4e2;   /* W+1 badge (1097:2301) */
+  --wi4-badge-ink:    #b42318;   /* 5.4:1 on --wi4-badge-bg */
+  /* Presence tints, one per person (sheet 16 A): t0/t1 are Figma's; t2/t3 avoid
+     the board's meaning colours (green = partner, red/amber = severity, navy =
+     own). Every ink ≥ 6:1 on its fill. */
+  --wi4-av-t0-bg:     #e0f2fe;  --wi4-av-t0:  #075985;
+  --wi4-av-t1-bg:     #ede9fe;  --wi4-av-t1:  #5b21b6;
+  --wi4-av-t2-bg:     #fce7f3;  --wi4-av-t2:  #9d174d;
+  --wi4-av-t3-bg:     #e2e8f0;  --wi4-av-t3:  #334155;
   --wi4-line:         #eef1f5;
   --wi4-line-2:       var(--border);
   --wi4-ctl:          #d0d5dd;
@@ -7653,7 +7665,11 @@ body.wi4-on .content { padding-left:28px; padding-right:28px; padding-top:12px; 
    wi4-top-on — set only while the board's bar is IN the top bar, so a re-read
    or a load-error card shows the app's own title and Sign out, never a stale
    week (review 11/10). */
-body.wi4-on .topbar { height:60px; padding:0 24px 0 28px; gap:12px; position:relative; z-index:35; }
+/* Figma 1097:2283: one 1px #e2e8f0 line under the bar — the app-wide blue
+   shadow drew a second, tinted line at y=60 on the board (F9). Right gutter 20
+   and the 8px step between the actions, the divider, the bell and the avatar
+   (1097:2309, F11). */
+body.wi4-on .topbar { height:60px; padding:0 20px 0 28px; gap:8px; position:relative; z-index:35; box-shadow:none; }
 body.wi4-top-on #topbarTitle, body.wi4-top-on #topbarBreadcrumb { display:none; }
 body.wi4-on .topbar .wi4-top { flex:1; min-width:0; align-self:stretch; display:flex; align-items:center; background:transparent; }
 body.wi4-on .topbar .wi4-top > .wi4-bar { flex:1; min-width:0; min-height:60px; border-bottom:0; }
@@ -7676,7 +7692,19 @@ body.wi4-top-on #undoBtn.undo-btn-idle { display:none; }
 body.wi4-on .topbar .notif-wrap { margin-right:0 !important; }
 body.wi4-top-on .topbar .user-chip { padding:0; border:0; background:transparent; cursor:pointer; position:relative; min-width:44px; min-height:44px; justify-content:center; }
 body.wi4-top-on .topbar .user-chip > #userName, body.wi4-top-on .topbar .user-chip > .role-badge, body.wi4-top-on .topbar .btn-logout { display:none; }
-body.wi4-top-on .topbar .user-avatar { width:32px; height:32px; font-size:11px; }
+/* The tail of Figma 1097:2309 (F11): a 1×22 divider, the bell (15px icon,
+   #475569 — the 18px #94a3b8 bell read at 2.6:1), the 28px navy avatar. The
+   44px hit areas stay (SH-3); negative margins put the VISIBLE icons where
+   Figma has them: the avatar's edge on the 20px gutter, the bell 8px from it.
+   The two 44px boxes overlap by 8px of empty space — the avatar (later in the
+   DOM) takes it; neither icon is under the other's box. */
+body.wi4-top-on .topbar .notif-wrap { display:flex; align-items:center; margin-right:-12px !important; }
+body.wi4-top-on .topbar .notif-wrap::before { content:''; flex:none; width:1px; height:22px; margin-right:1px; background:var(--wi4-line-2); }
+body.wi4-top-on .topbar .notif-bell { color:var(--text-mid); padding:0; display:inline-flex; align-items:center; justify-content:center; }
+body.wi4-top-on .topbar .notif-bell svg { width:15px; height:15px; }
+body.wi4-top-on .topbar .notif-dot { top:11px; right:11px; }
+body.wi4-top-on .topbar .user-chip { margin-right:-8px; }   /* avatar edge = the gutter */
+body.wi4-top-on .topbar .user-avatar { width:28px; height:28px; font-size:10.5px; font-weight:600; background:var(--wi4-ink); color:var(--surface-card); }
 .wi4-umenu { position:absolute; top:calc(100% + 4px); right:0; min-width:200px; padding:6px 0; background:var(--surface-card); border:1px solid var(--wi4-line-2); border-radius:8px; box-shadow:0 8px 24px rgba(11,25,41,.14); z-index:40; font-family:'DM Sans',sans-serif; font-size:12px; color:var(--wi4-ink); cursor:default; }
 .wi4-umenu[hidden] { display:none; }
 .wi4-umenu-h { padding:6px 14px 8px; border-bottom:1px solid var(--wi4-line-2); margin-bottom:4px; white-space:nowrap; }
@@ -7721,33 +7749,48 @@ body.wi4-on #wi-ctx .wi4-m-sec .wi4-l2, body.wi4-on #wi-ctx .wi4-m-hd .wi4-l2 { 
 /* Spacing by margins, not gap: the presence strip is display:contents (its
    pieces are items of THIS row, each with its own shrink priority). */
 .wi4-bar-l { display:flex; align-items:center; gap:0; min-width:0; overflow:hidden; }
-.wi4-bar-r { display:flex; align-items:center; gap:12px; justify-self:end; }
+/* 8px between the actions (Figma 1097:2309, F11). */
+.wi4-bar-r { display:flex; align-items:center; gap:8px; justify-self:end; }
 /* Σάρωση and Νέα παραγγελία at the bar's one height (32px); Σάρωση neutral so
    the solid navy primary is the only primary (sheet 15). The shared buttons
    stay as they are everywhere else (owner 29/9). */
 .wi4-bar .btn-scan, .wi4-bar .btn-new-order { height:32px; min-height:32px; padding:0 12px; font-size:12px; }
 .wi4-bar .btn-scan { border-color:var(--wi4-ctl); color:var(--wi4-grey-1); }
-.wi4-title { font:700 18px 'Syne',sans-serif; color:var(--wi4-ink); white-space:nowrap; flex:none; }
+/* Figma 1097:2285: Syne Bold 17, tracking −0.1; the range 10px after it in
+   DM Sans 12.5 (F12). */
+.wi4-title { font:700 17px 'Syne',sans-serif; letter-spacing:-.1px; color:var(--wi4-ink); white-space:nowrap; flex:none; }
 /* Priorities in the left group (review 11/10: the presence state was cut to
-   «… · ↻ ζ…» at 1920): the range gives way first (shrink 1000, its whole text
-   in title), then «Ενημερώθηκε», then names; a state word and the sync token
-   never shrink. */
-.wi4-range { font-size:13px; color:var(--wi4-grey-2); flex:0 1000 auto; margin-left:12px; }
+   «… · ↻ ζ…» at 1920): the rest of a paused/forbidden sentence gives way
+   first, colleagues' names go WHOLE before the range is cut (_presFit, F4),
+   then the range (shrink 1000, its whole text in title), «Ενημερώθηκε» at
+   ≤1600; a state word and the sync token never shrink. */
+.wi4-range { font-size:12.5px; color:var(--wi4-grey-2); flex:0 1000 auto; margin-left:10px; }
 .wi4-upd { display:inline-flex; align-items:center; gap:5px; font-size:11px; color:var(--wi4-grey-2); white-space:nowrap; flex:none; margin-left:12px; }
 .wi4-upd svg { flex:none; }
 /* A narrow bar (1440) says «↻ μόλις τώρα»: «Ενημερώθηκε» goes whole, never
    half-cut (its time is in the title). */
 @media (max-width:1600px) { .wi4-upd-l { display:none; } }
 .wi4-upd.chg { color:var(--wi4-amber); font-weight:600; cursor:pointer; border:none; background:none; padding:0; }
-.wi4-upd.err { color:var(--wi4-red); font-weight:600; }
-.wi4-tabs { display:flex; align-items:center; gap:2px; padding:3px; margin:0; border:1px solid var(--wi4-line-2); border-radius:8px; background:var(--wi4-chip); }
-.wi4-tab { height:28px; padding:0 12px; border:1px solid transparent; border-radius:6px; background:none; color:var(--wi4-grey-1); font-weight:500; cursor:pointer; display:inline-flex; align-items:center; gap:4px; }
-.wi4-tab:hover { color:var(--wi4-ink); }
-.wi4-tab.on { background:var(--surface-card); border-color:var(--wi4-line-2); color:var(--wi4-ink); font-weight:700; }
+/* A failed save, in its own slot beside the token (sheet 14 #9, 1089:8565:
+   DM Sans 12 #B91C1C, an 11px alert icon). It never shrinks: a failure is
+   never cut (F5). Empty = no failure, no box. */
+.wi4-upd-err { display:inline-flex; align-items:center; gap:5px; font-size:12px; font-weight:400; color:var(--wi4-red); white-space:nowrap; flex:none; margin-left:12px; }
+.wi4-upd-err:empty { display:none; }
+.wi4-upd-err svg { flex:none; }
+/* Figma 1097:2287 (F10): a borderless #eef2f6 well, radius 9, 34px tall;
+   tabs DM Sans Medium 12.5, past weeks quieter; the week on screen a white
+   card with a #cbd5e1 line and a soft shadow, SemiBold. */
+.wi4-tabs { display:flex; align-items:center; gap:2px; padding:3px; margin:0; border:0; border-radius:9px; background:var(--wi4-tabs-bg); }
+.wi4-tab { height:28px; padding:0 12px; border:1px solid transparent; border-radius:6px; background:none; color:var(--wi4-grey-1); font-size:12.5px; font-weight:500; cursor:pointer; display:inline-flex; align-items:center; gap:4px; }
+.wi4-tab[data-d^="-"] { color:var(--wi4-grey-2); }
+/* The ‹ › steppers (1097:2288/2307): a 15px chevron, 27px wide (F2). */
+.wi4-tab[aria-label] { padding:0 5px; color:var(--text-mid); }
+.wi4-tab:hover, .wi4-tab[aria-label]:hover { color:var(--wi4-ink); }
+.wi4-tab.on { background:var(--surface-card); border-color:var(--wi4-slot); box-shadow:0 1px 2px rgba(15,23,42,.08); color:var(--wi4-ink); font-weight:600; }
 /* A narrow bar (1440): W−3 and W+3 go (‹ › still step a week), so the title
    group keeps room for the presence words and the sync token (fix round 3). */
 @media (max-width:1600px) { .wi4-tab[data-d="-3"], .wi4-tab[data-d="3"] { display:none; } }
-.wi4-tab-b { min-width:14px; height:14px; padding:0 3px; border-radius:7px; background:var(--wi4-red-bg); color:var(--wi4-red-ink); font-size:10px; font-weight:700; line-height:14px; text-align:center; }
+.wi4-tab-b { min-width:16px; height:15px; padding:0 3px; border-radius:7.5px; background:var(--wi4-badge-bg); color:var(--wi4-badge-ink); font-size:10px; font-weight:600; line-height:15px; text-align:center; }
 /* W+1 read in flight: «…», neutral — never no badge, which read as zero. */
 .wi4-tab-b.ld { background:var(--wi4-chip); color:var(--wi4-grey-1); }
 .wi4-btn { height:32px; padding:0 12px; display:inline-flex; align-items:center; gap:6px; border:1px solid var(--wi4-ctl); border-radius:6px;
@@ -7758,12 +7801,21 @@ body.wi4-on #wi-ctx .wi4-m-sec .wi4-l2, body.wi4-on #wi-ctx .wi4-m-hd .wi4-l2 { 
 .wi4-btn.sm { height:24px; padding:0 8px; font-size:11px; }
 .wi4-btn:disabled { color:var(--wi4-grey-3); cursor:default; }
 .wi4-cnt { min-width:16px; height:16px; padding:0 4px; border-radius:8px; background:var(--wi4-chip); color:var(--wi4-grey-1); font-size:10px; font-weight:700; line-height:16px; text-align:center; }
+/* The bar's OWN buttons («Προβολή», «Pre-order») as Figma 1097:2310 / sheet
+   15 draws them (F3): ink text 12.5, a #e2e8f0 line, a #475569 15px icon and
+   the 8px radius of the shared Σάρωση / Νέα παραγγελία beside them (the
+   shared ones are not restyled). Bar-scoped: the base .wi4-btn/.wi4-cnt
+   serve the queue, the panels and the dialogs. */
+.wi4-bar .wi4-btn { color:var(--wi4-ink); border-color:var(--wi4-line-2); border-radius:8px; padding:0 13px 0 11px; font-size:12.5px; }
+.wi4-bar .wi4-btn:hover { border-color:var(--wi4-grey-2); }
+.wi4-bar .wi4-btn svg { flex:none; color:var(--text-mid); }
+.wi4-bar .wi4-cnt { background:var(--wi4-line); font-weight:600; height:15px; line-height:15px; border-radius:7.5px; }
 
 /* Presence (§e #18). Never a lock and never «κανείς»: these rules only draw
    who IS there; an empty strip is drawn by drawing nothing. */
 /* display:contents: avatars, names, the state word and the rest of a sentence
    are items of the title row itself, so each has its own priority — the
-   range gives way before names, the rest of a paused/forbidden sentence
+   rest of a paused/forbidden sentence before the range, names (whole, F4)
    before the range, the state word and the sync token never (review 11/10). */
 .wi4-pres { display:contents; }
 .wi4-pres > * { margin-left:6px; }
@@ -7772,7 +7824,14 @@ body.wi4-on #wi-ctx .wi4-m-sec .wi4-l2, body.wi4-on #wi-ctx .wi4-m-hd .wi4-l2 { 
    a navy disc read as «owned» (navy = own fleet). */
 .wi4-av { width:22px; height:22px; border-radius:50%; display:inline-grid; place-items:center; background:var(--accent-light);
   color:var(--wi4-blue-ink); font-size:10px; font-weight:700; border:2px solid var(--surface-card); flex:none; }
-.wi4-av + .wi4-av { margin-left:-8px; }
+.wi4-av + .wi4-av { margin-left:-6px; }
+/* The strip's discs (sheet 16 A, F4): initials SemiBold 10.5, a tint per
+   person (t0–t3, picked in _presHTML); the row's .sm disc keeps its own. */
+.wi4-pres .wi4-av { font-size:10.5px; font-weight:600; }
+.wi4-av.t0 { background:var(--wi4-av-t0-bg); color:var(--wi4-av-t0); }
+.wi4-av.t1 { background:var(--wi4-av-t1-bg); color:var(--wi4-av-t1); }
+.wi4-av.t2 { background:var(--wi4-av-t2-bg); color:var(--wi4-av-t2); }
+.wi4-av.t3 { background:var(--wi4-av-t3-bg); color:var(--wi4-av-t3); }
 .wi4-av.more { background:var(--wi4-chip); color:var(--wi4-grey-1); }
 /* In a row's index and in the conflict panel: a light tinted disc (sheet
    16 B), lighter than anything else in the index column. */
@@ -7780,13 +7839,30 @@ body.wi4-on #wi-ctx .wi4-m-sec .wi4-l2, body.wi4-on #wi-ctx .wi4-m-hd .wi4-l2 { 
 /* The strip's words: a fixed state word (.wi4-pres-w: «· εδώ τώρα», «σε
    παύση», «μη διαθέσιμη») that always shows, names (.wi4-pres-n) and the rest
    of a sentence (.wi4-pres-r) that give way first; the whole is the title. */
-.wi4-pres-n, .wi4-pres-w, .wi4-pres-r { font-size:11px; color:var(--wi4-grey-2); white-space:nowrap; }
-.wi4-pres-n { flex:0 1 auto; }
-.wi4-pres-r { flex:0 5000 auto; }
+.wi4-pres-n, .wi4-pres-w, .wi4-pres-r { font-size:11.5px; color:var(--wi4-grey-2); white-space:nowrap; }
+.wi4-pres-n { flex:none; }
+/* «Παντελής, Ειρήνη · εδώ τώρα» is one phrase in Figma: one space before «·»,
+   not the 6px gap of the pieces. Names that do not fit go WHOLE
+   (.wi4-pres-nofit, _presFit) — never «Παντελής, Ει…»; the title keeps them. */
+.wi4-pres-n + .wi4-pres-w { margin-left:.25em; }
+.wi4-pres.wi4-pres-nofit .wi4-pres-n { display:none; }
+.wi4-pres.wi4-pres-nofit .wi4-pres-n + .wi4-pres-w { margin-left:6px; }
+/* «↻ ζωντανά» behind a 1×16 rule when someone is there (sheet 16 A, 1123:2729). */
+.wi4-pres:not(:empty) ~ .wi4-upd.live { border-left:1px solid var(--wi4-line-2); padding-left:12px; line-height:16px; }
+/* Shrink is weighted by width: at 5000 a ~280px sentence still took ~15px
+   from the 94px range at 1920 (F13). 1e6 makes the order strict — the
+   sentence gives way whole before the range loses a pixel. */
+.wi4-pres-r { flex:0 1000000 auto; }
 .wi4-pres-w { flex:none; }
 .wi4-pres-w b { font-weight:600; }
 .wi4-pres-ic { display:inline-flex; flex:none; color:var(--wi4-grey-2); }
 .wi4-pres.paused .wi4-pres-w, .wi4-pres.paused .wi4-pres-r, .wi4-pres.paused .wi4-pres-ic { color:var(--wi4-amber); }
+/* Paused (sheet 16 A2, 1123:2731, F13): an 8px amber dot, the sentence in
+   Medium 11.5, and no «Ενημερώθηκε» beside it — that word took the room the
+   sentence needed and cut the range at 1920 (the time stays). */
+.wi4-pres.paused .wi4-pres-ic { width:8px; height:8px; border-radius:50%; background:var(--wi4-amber); }
+.wi4-pres.paused .wi4-pres-w, .wi4-pres.paused .wi4-pres-w b, .wi4-pres.paused .wi4-pres-r { font-weight:500; }
+.wi4-pres.paused ~ .wi4-upd .wi4-upd-l, .wi4-pres.forbidden ~ .wi4-upd .wi4-upd-l { display:none; }
 /* A narrow bar (1440) keeps «σε παύση» / «μη διαθέσιμη» and drops «ζωντανή
    εικόνα» before it (the sentence stays whole in the title). */
 @media (max-width:1600px) { .wi4-pres-wl { display:none; } }
@@ -8181,6 +8257,33 @@ body.wi4-on #wi-ctx .wi4-m-sec .wi4-l2, body.wi4-on #wi-ctx .wi4-m-hd .wi4-l2 { 
 .wi4-dlg-t { font:600 15px 'Syne',sans-serif; }
 .wi4-dlg-x { font-size:18px; line-height:1; padding:0 4px; color:var(--wi4-grey-1); }
 .wi4-help-row { display:grid; grid-template-columns:80px 1fr; align-items:center; gap:8px; min-height:26px; }
+/* The «?» sheet at Figma 1119:2836's geometry (F6): 600 wide, padding 20/24,
+   radius 12, Syne Bold 17 title with the Esc cap at its right, group heads
+   SemiBold 10.5 tracked .42, a 110px key column, DM Mono caps on a light
+   fill. Its own class: the conflict dialog keeps .wi4-dlg, the queue keeps
+   .wi4-key. --wi4-kcap (#f9fafb) is the queue-stock package's token. */
+.wi4-dlg.wi4-help { width:600px; padding:20px 24px; border-radius:12px; }
+.wi4-help .wi4-dlg-t { display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:6px; font:700 17px 'Syne',sans-serif; color:var(--wi4-ink); }
+.wi4-help .wi4-qp-h { padding:8px 0 2px; font-size:10.5px; letter-spacing:.42px; }
+.wi4-help .wi4-help-row { grid-template-columns:110px 1fr; gap:10px; }
+.wi4-help .wi4-key, .wi4-khint .wi4-key { min-width:0; font:500 11px 'DM Mono',monospace; color:var(--wi4-grey-1); background:var(--wi4-kcap); border-color:var(--wi4-ctl); border-radius:4px; padding:2px 6px; line-height:normal; }
+.wi4-help .wi4-datep-note { font-size:11.5px; }
+/* Sheet 15 C (1119:2812, F8): while the keyboard is in use, the main keys at
+   the board's foot — sticky, so it stays in view, and in the flow, so at the
+   end of the scroll it sits UNDER the last row, never on it. A row brought
+   into view by ↑/↓ keeps clear of it (scroll-margin). A sticky box sticks
+   inside the scroller's padding: bottom = minus .content's 148px bottom
+   padding puts it on the window's edge (as .wi4-cols' top:-12px; change both
+   together — at bottom:0 it floated 148px above the edge over the rows).
+   pointer-events:none: a hint is never a target — a click on a row under it
+   reaches the row (and the press takes the strip away, _onMouse). */
+.wi4-khint { position:sticky; bottom:-148px; z-index:20; pointer-events:none; display:flex; align-items:center; gap:6px; height:32px; padding:0 12px; margin-top:8px;
+  border-top:1px solid var(--wi4-line-2); background:var(--surface-page); font-size:11.5px; color:var(--wi4-grey-2); white-space:nowrap; overflow:hidden; }
+.wi4-khint > span:not(.wi4-key) { margin-right:9px; }
+/* Shown only while the keyboard is in use; hidden, not removed, so a mouse
+   press never changes the board's height under the pointer. */
+.wi4:not(.wi4-kbd) .wi4-khint { visibility:hidden; }
+.wi4.wi4-kbd .wi4-focus { scroll-margin-bottom:40px; }
 
 /* Per-load menu (§e.9) lives INSIDE #wi-ctx with .wi-ctx-i buttons, so
    _wiCtxKeydown/_wiCtxShow/_wiCtxClose keep working. #wi-ctx sits outside
