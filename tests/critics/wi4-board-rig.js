@@ -40,7 +40,9 @@
 //   queue (card buttons after a row-id shift, Q, Print / WhatsApp) ·
 //   fix round 3: print (view role, share menu) · shift (a save fails across a
 //   re-read) · late (relays empty / national while a popover is open) ·
-//   offline · quiet (a group member fails) · natmissing · w1440
+//   offline · quiet (a group member fails) · natmissing · w1440 ·
+//   vs (WP-A of the Weekly National v4 plan: one Veroia day — assignment,
+//   form, drop order by place, loud failures, Pallet Exchange)
 // Exit: 0 all green · 1 a check failed · 2 usage · 3 NOT READY (v4 inactive).
 'use strict';
 const path = require('path');
@@ -236,6 +238,8 @@ function initScript(role) {
 //   flag 'on'|'off' · presence bool · fail {patch:{rec:500}, get:{rec:500}, nl, relay, crossWeek, stock}
 //   hold {nl, relay} · expectLive (default true) · triggers (rt_sync / 028 emulation)
 //   role (default 'dispatcher') · viewport (default 1920×1080)
+//   vs (WP-A: the base after 069_hub_day_once — 028 moves the cross-dock once,
+//       order_cd_stop_follow, ramp_follows_stop; see runVsTriggers)
 async function openBoard(browser, origin, opts = {}) {
   const flag = opts.flag || 'on';
   const ctx = await browser.newContext({ baseURL: origin + '/', viewport: opts.viewport || { width: 1920, height: 1080 },
@@ -250,7 +254,7 @@ async function openBoard(browser, origin, opts = {}) {
   if (typeof opts.mutate === 'function') opts.mutate(db);   // a scenario's own variant of the week
   const S = { db, log: [], inflight: 0, held: [], heldRelay: [], pageErrors: [], unknown: new Set(), mainReads: 0, beats: [],
     fail: Object.assign({ patch: {}, get: {} }, opts.fail || {}), hold: Object.assign({}, opts.hold || {}),
-    expectLive: opts.expectLive !== false, triggers: !!opts.triggers, onGet: {}, delay: {}, seq: 0, ready: false, readyWaiters: [],
+    expectLive: opts.expectLive !== false, triggers: !!opts.triggers, vs: !!opts.vs, gets: [], onGet: {}, delay: {}, seq: 0, ready: false, readyWaiters: [],
     presence: Object.assign({ mode: 200, others: [], changes: { n: 0, last_by: null, last_at: null, auto_n: 0 }, next_ms: 2500 }, opts.presenceCfg || {}) };
   page.on('pageerror', e => S.pageErrors.push(String(e).slice(0, 300)));
   page.on('dialog', d => d.accept());
@@ -288,12 +292,27 @@ async function openBoard(browser, origin, opts = {}) {
     try {
       if (!mm) return json(route, m === 'GET' ? { records: [] } : { ok: true });
       const tbl = db[tid] || (db[tid] = []);
-      if (m === 'GET') return json(route, ...readTable(S, tid, rid, f, tbl));
+      if (m === 'GET') {
+        const want = u.searchParams.getAll('fields[]');
+        S.gets.push({ tid, rid, f, fields: want });
+        const ans = readTable(S, tid, rid, f, tbl);
+        // Scenario vs: a list read with fields[] answers ONLY those labels, as the
+        // Worker's select does. The Weekly International assignment asked for a
+        // list WITHOUT the cross-dock: a fake that answered every field hid it.
+        if (S.vs && want.length && ans[0] && Array.isArray(ans[0].records))
+          ans[0].records.forEach(r => { r.fields = Object.fromEntries(Object.entries(r.fields).filter(([k]) => want.includes(k))); });
+        return json(route, ...ans);
+      }
       if (m === 'PATCH' && rid) return await patchRecord(route, S, tid, rid, body, tbl, json);
+      if (m === 'PATCH' && body && Array.isArray(body.records)) return patchBatch(route, S, tid, body, tbl, json);
       if (m === 'POST') {
+        if (S.fail.natStops && tid === T.ORDER_STOPS && body && Array.isArray(body.records) && body.records.some(x => x && x.fields && x.fields['Parent Nat Load'])) {
+          S.log.push({ k: 'post', tid, id: null, fields: clone(body.records), status: 500 });
+          return json(route, { error: { type: 'SERVER_ERROR', message: 'rig: forced national stops failure' } }, 500);
+        }
         const make = (fields) => {
           const id = 'recWiNEW' + String(++S.seq).padStart(3, '0');
-          const rec = { id, fields: Object.assign({}, fields || {}) };
+          const rec = { id, fields: Object.assign({}, canonWrite(tid, fields || {})) };
           tbl.push(rec); S.log.push({ k: 'post', tid, id, fields: rec.fields });
           // The Worker serves an order's «ORDER STOPS» as the reverse link of
           // the stops' «Parent Order» (stopsLoad reads it back that way).
@@ -326,6 +345,9 @@ function readTable(S, tid, rid, f, tbl) {
     if (S.fail.get && S.fail.get[rid]) return [{ error: { type: 'SERVER_ERROR', message: 'rig: forced read failure' } }, S.fail.get[rid]];
     const r = tbl.find(x => x.id === rid);
     const out = r ? [clone(r)] : [{ error: { type: 'NOT_FOUND' } }, 404];
+    // The Worker serves a national load's «ORDER STOPS» as the reverse link of
+    // its stops' «Parent Nat Load» (TABLES reverseLinks) — computed, never stored.
+    if (r && tid === T.NAT_LOADS) out[0].fields['ORDER STOPS'] = (S.db[T.ORDER_STOPS] || []).filter(s => link(s.fields['Parent Nat Load']) === rid).map(s => s.id);
     if (S.onGet[rid]) { const fn = S.onGet[rid]; delete S.onGet[rid]; fn(); }   // a concurrent write lands AFTER this read
     return out;
   }
@@ -351,6 +373,10 @@ function readTable(S, tid, rid, f, tbl) {
     } else { S.unknown.add('ORDERS ' + f.slice(0, 120)); out = []; }
   } else {
     if (tid === T.NAT_LOADS && S.fail.nl) return [{ error: { type: 'SERVER_ERROR', message: 'rig: forced national failure' } }, 500];
+    // {Source Record}="rec…": the Worker's alias filters the load's source order
+    // (aliases + linkAliases). Answering every load here made a VS sync patch
+    // the FIRST national load of the week, whatever order it was for.
+    if (tid === T.NAT_LOADS && (g = f.match(/^\{Source Record\}="(rec[A-Za-z0-9]+)"$/))) return [{ records: clone(tbl.filter(r => link(r.fields['Source Order']) === g[1] || r.fields['Source Record'] === g[1])) }];
     if (tid === T.LOCAL_MOVES && S.fail.relay) return [{ error: { type: 'SERVER_ERROR', message: 'rig: forced relay failure' } }, 500];
     if (tid === T.STOCK_LOTS && S.fail.stock) return [{ error: { type: 'SERVER_ERROR', message: 'rig: forced stock failure' } }, 500];
     if (/RECORD_ID\(\)/.test(f)) out = tbl.filter(r => ids.has(r.id));
@@ -387,12 +413,115 @@ async function patchRecord(route, S, tid, rid, body, tbl, json) {
     }
   }
   const before = clone(r.fields);
-  applyFields(r.fields, fields);
+  applyFields(r.fields, canonWrite(tid, fields));
   if (S.triggers) runTriggers(S, r, before);
+  if (S.vs) runVsTriggers(S, tid, r, before);
   entry.status = 200;
   const res = clone(r);
   if (body && body._expect && S.expectLive) res._expectChecked = true;
   return json(route, res);
+}
+// What the Worker stores for a label (WP-A): «Cross-dock Date» and «VS CD Date»
+// write the SAME column and a read answers it ONLY as «VS CD Date» (the last
+// label of the column wins in columnToLabel). A fake that echoed the written
+// label back would hide exactly the trap core/vs-dates.js cdOf exists for.
+// «Source Record» on a national load is a write alias of the «Source Order» link.
+function canonWrite(tid, fields) {
+  const out = Object.assign({}, fields || {});
+  if (tid === T.ORDERS && 'Cross-dock Date' in out) {
+    if (!('VS CD Date' in out)) out['VS CD Date'] = out['Cross-dock Date'];
+    delete out['Cross-dock Date'];
+  }
+  if (tid === T.NAT_LOADS && 'Source Record' in out) {
+    out['Source Order'] = out['Source Record'] ? [out['Source Record']] : [];
+    delete out['Source Record'];
+  }
+  return out;
+}
+// Batch PATCH {records:[{id, fields}]} (atPatchBatch — e.g. stopsSave), answered
+// {records} as the Worker does; each row goes through the same triggers.
+function patchBatch(route, S, tid, body, tbl, json) {
+  const natStop = (id) => { const r = tbl.find(x => x.id === id); return r && link(r.fields['Parent Nat Load']); };
+  if (S.fail.natStops && tid === T.ORDER_STOPS && body.records.some(x => x && natStop(x.id))) {
+    S.log.push({ k: 'patchBatch', tid, id: null, fields: clone(body.records), status: 500 });
+    return json(route, { error: { type: 'SERVER_ERROR', message: 'rig: forced national stops failure' } }, 500);
+  }
+  const out = [];
+  for (const x of body.records) {
+    const r = tbl.find(y => y.id === x.id);
+    S.log.push({ k: 'patch', tid, id: x.id, fields: clone(x.fields || {}), batch: true, status: r ? 200 : 404 });
+    if (!r) continue;
+    const before = clone(r.fields);
+    applyFields(r.fields, canonWrite(tid, x.fields));
+    if (S.vs) runVsTriggers(S, tid, r, before);
+    out.push(clone(r));
+  }
+  return json(route, { records: out });
+}
+// The base after 069_hub_day_once (WP-A), for scenario `vs` only:
+//  · 028: an order's loading/delivery moving by Δ days moves its stops of that
+//    side (the Cross-dock stop only while the cross-dock is EMPTY), its
+//    cross-dock by Δ ONCE (not when the same write set it), and its Pending
+//    Direct national load with that load's stops;
+//  · order_cd_stop_follow: the order's Cross-dock stop = a dated cross-dock;
+//  · ramp_follows_stop: a stop's Planned, not postponed Ramp line of its OLD day
+//    follows it; never two lines of one stop on one day.
+// The SQL itself is proven by 069_hub_day_once_test.sql; this mirrors it so the
+// browser's writes meet the base they will meet in production.
+const RAMP_T = 'tblT8W5WcuToBQNiY';
+const dayOf = (v) => (!v ? null : /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : athensDay(v));
+const shiftDay = (d, n) => { const t = new Date(Date.UTC(+d.slice(0, 4), +d.slice(5, 7) - 1, +d.slice(8, 10) + n)); return t.toISOString().slice(0, 10); };
+const shiftIso = (v, n) => (/^\d{4}-\d{2}-\d{2}$/.test(v) ? shiftDay(v, n) : new Date(Date.parse(v) + n * 86400000).toISOString());
+const dDays = (a, b) => (dayOf(a) && dayOf(b) ? Math.round((Date.parse(dayOf(b)) - Date.parse(dayOf(a))) / 86400000) : 0);
+function vsRampFollow(S, stopId, oldDay, newDay) {
+  if (!oldDay || !newDay || oldDay === newDay) return;
+  const ramp = S.db[RAMP_T] || [];
+  const mine = ramp.filter(x => x.fields.Notes === 'STOP:' + stopId && !x.fields._deleted);
+  const old = mine.filter(x => x.fields.Status === 'Planned' && !x.fields['Postponed To'] && dayOf(x.fields['Plan Date']) === oldDay);
+  if (!old.length) return;
+  let keep = mine.find(x => dayOf(x.fields['Plan Date']) === newDay);
+  if (!keep) { keep = old[0]; keep.fields['Plan Date'] = newDay; S.log.push({ k: 'trigger', name: 'ramp_follows_stop', id: keep.id, to: newDay }); }
+  old.filter(x => x !== keep).forEach(x => { x.fields._deleted = true; S.log.push({ k: 'trigger', name: 'ramp_follows_stop', id: x.id, deleted: true }); });
+}
+function vsMoveStop(S, s, n) {
+  const was = dayOf(s.fields.DateTime);
+  s.fields.DateTime = shiftIso(s.fields.DateTime, n);
+  vsRampFollow(S, s.id, was, dayOf(s.fields.DateTime));
+}
+function vsCdStopFollow(S, oid, cd) {
+  (S.db[T.ORDER_STOPS] || []).filter(s => link(s.fields['Parent Order']) === oid && s.fields['Stop Type'] === 'Cross-dock').forEach(s => {
+    const was = dayOf(s.fields.DateTime);
+    if (was === cd) return;
+    s.fields.DateTime = cd;
+    S.log.push({ k: 'trigger', name: 'order_cd_stop_follow', id: s.id, to: cd });
+    vsRampFollow(S, s.id, was, cd);
+  });
+}
+function runVsTriggers(S, tid, r, before) {
+  const f = r.fields;
+  if (tid === T.ORDER_STOPS) { vsRampFollow(S, r.id, dayOf(before.DateTime), dayOf(f.DateTime)); return; }
+  if (tid !== T.ORDERS) return;
+  const cd0 = before['VS CD Date'] || null, cd1 = f['VS CD Date'] || null;
+  if (cd1 && dayOf(cd1) !== dayOf(cd0)) vsCdStopFollow(S, r.id, dayOf(cd1));   // order_cd_stop_follow fires first (name order)
+  const dl = before['Loading DateTime'] && f['Loading DateTime'] ? dDays(before['Loading DateTime'], f['Loading DateTime']) : 0;
+  const dd = before['Delivery DateTime'] && f['Delivery DateTime'] ? dDays(before['Delivery DateTime'], f['Delivery DateTime']) : 0;
+  if (!dl && !dd) return;
+  const dcd = f.Direction === 'Export' ? dl : dd;
+  (S.db[T.ORDER_STOPS] || []).filter(s => link(s.fields['Parent Order']) === r.id && s.fields.DateTime).forEach(s => {
+    const t = s.fields['Stop Type'];
+    const n = t === 'Loading' ? dl : t === 'Unloading' ? dd : (cd1 ? 0 : dcd);
+    if (n) vsMoveStop(S, s, n);
+  });
+  if (dcd && cd1 && dayOf(cd1) === dayOf(cd0)) {
+    f['VS CD Date'] = shiftDay(dayOf(cd1), dcd);
+    S.log.push({ k: 'trigger', name: '028 cross-dock', id: r.id, to: f['VS CD Date'] });
+    vsCdStopFollow(S, r.id, f['VS CD Date']);
+  }
+  if (dcd && f['Veroia Switch']) (S.db[T.NAT_LOADS] || []).filter(nl => link(nl.fields['Source Order']) === r.id && nl.fields['Source Type'] === 'Direct' && nl.fields.Status === 'Pending').forEach(nl => {
+    ['Loading DateTime', 'Delivery DateTime'].forEach(k => { if (nl.fields[k]) nl.fields[k] = shiftIso(nl.fields[k], dcd); });
+    S.log.push({ k: 'trigger', name: '028 national load', id: nl.id, by: dcd });
+    (S.db[T.ORDER_STOPS] || []).filter(s => link(s.fields['Parent Nat Load']) === nl.id && s.fields.DateTime).forEach(s => vsMoveStop(S, s, dcd));
+  });
 }
 // Emulated triggers, ON only where a scenario needs its own cascade: rt_sync
 // copies the vehicle to rota legs (013), 028 keeps VS CD Date next to the date
@@ -3639,6 +3768,177 @@ async function scnParity(browser, origin) {
   }
 }
 
+// ═══ WP-A — one Veroia day (Weekly National v4 plan §3.6, §6.2) ═══════════
+// One VS import of its own, added to the week by `mutate`: delivery Fri 9/10,
+// Veroia day Wed 7/10 — TWO days before the delivery, where the ±1 estimate
+// would say Thu 8/10 (the assignment bug's case); two drops whose national
+// order is the REVERSE of the international one (the national dispatcher's
+// drag); Pallet Exchange ON; one Planned Ramp line per Veroia stop. The fake
+// answers the cross-dock only as «VS CD Date» and runs the base after
+// 069_hub_day_once (opts.vs). Invented names only.
+const VS = { O: 'recWiVA01', NL: 'recWiVN01', L: 'recWiVS01', U1: 'recWiVS02', U2: 'recWiVS03', CD: 'recWiVS04',
+  H: 'recWiVS11', N1: 'recWiVS12', N2: 'recWiVS13', R1: 'recWiVR01', R2: 'recWiVR02', HUB: 'recJucKOhC1zh4IP3' };
+function vsWorld(db) {
+  const add = (tid, id, fields) => (db[tid] || (db[tid] = [])).push({ id, fields });
+  add(T.LOCATIONS, VS.HUB, { Name: 'Hub Test', City: 'Veria', Country: 'GR' });
+  add(T.ORDERS, VS.O, { Type: 'International', Direction: 'Import', Status: 'Assigned', Client: ['recWiC001'], Reference: 'REF-VA01', 'Order No': 9901,
+    'Total Pallets': 20, 'Temperature °C': 2, Goods: 'TEST GOODS', Price: 1200, 'Refrigerator Mode': 'Continuous', 'Pallet Type': 'EUR', 'Loading DateTime': '2026-10-05T05:00:00.000Z', 'Delivery DateTime': '2026-10-09T07:00:00.000Z',
+    'Loading Location 1': ['recWiL003'], 'Unloading Location 1': ['recWiL004'], 'Unloading Location 2': ['recWiL005'],
+    Truck: ['recWiT019'], Driver: ['recWiD019'], Trailer: ['recWiR019'], 'Veroia Switch': true, 'VS CD Date': '2026-10-07', 'Pallet Exchange': true,
+    'ORDER STOPS': [VS.L, VS.U1, VS.U2, VS.CD] });
+  add(T.ORDER_STOPS, VS.L, { 'Parent Order': [VS.O], 'Stop Type': 'Loading', 'Stop Number': 1, Location: ['recWiL003'], Pallets: 20, DateTime: '2026-10-05T05:00:00.000Z' });
+  add(T.ORDER_STOPS, VS.U1, { 'Parent Order': [VS.O], 'Stop Type': 'Unloading', 'Stop Number': 1, Location: ['recWiL004'], Pallets: 12, DateTime: '2026-10-09T07:00:00.000Z' });
+  add(T.ORDER_STOPS, VS.U2, { 'Parent Order': [VS.O], 'Stop Type': 'Unloading', 'Stop Number': 2, Location: ['recWiL005'], Pallets: 8, DateTime: '2026-10-09T07:00:00.000Z' });
+  add(T.ORDER_STOPS, VS.CD, { 'Parent Order': [VS.O], 'Stop Type': 'Cross-dock', 'Stop Number': 1, Location: [VS.HUB], Pallets: 20, DateTime: '2026-10-07' });
+  add(T.NAT_LOADS, VS.NL, { Name: 'ΠΕΛΑΤΗΣ Α — 2026-10-07', Direction: 'North→South', 'Source Type': 'Direct', 'Source Order': [VS.O], Status: 'Pending',
+    'Loading DateTime': '2026-10-07T12:00:00.000Z', 'Delivery DateTime': '2026-10-09T12:00:00.000Z', 'Pallet Exchange': true, 'Total Pallets': 20,
+    'Pickup Location 1': [VS.HUB], 'Delivery Location 1': ['recWiL005'], 'Delivery Location 2': ['recWiL004'] });
+  add(T.ORDER_STOPS, VS.H, { 'Parent Nat Load': [VS.NL], 'Stop Type': 'Loading', 'Stop Number': 1, Location: [VS.HUB], Pallets: 20, DateTime: '2026-10-07' });
+  add(T.ORDER_STOPS, VS.N1, { 'Parent Nat Load': [VS.NL], 'Stop Type': 'Unloading', 'Stop Number': 1, Location: ['recWiL005'], Pallets: 8, DateTime: '2026-10-09' });
+  add(T.ORDER_STOPS, VS.N2, { 'Parent Nat Load': [VS.NL], 'Stop Type': 'Unloading', 'Stop Number': 2, Location: ['recWiL004'], Pallets: 12, DateTime: '2026-10-09' });
+  add(RAMP_T, VS.R1, { 'Plan Date': '2026-10-07', Type: 'Φόρτωση', Status: 'Planned', Notes: 'STOP:' + VS.H });
+  add(RAMP_T, VS.R2, { 'Plan Date': '2026-10-07', Type: 'Παραλαβή', Status: 'Planned', Notes: 'STOP:' + VS.CD });
+}
+const vsRow = (S, tid, id) => ((S.db[tid] || []).find(r => r.id === id) || { fields: {} }).fields;
+const vsNlPatches = (S, from) => S.log.slice(from).filter(x => x.k === 'patch' && x.tid === T.NAT_LOADS && x.id === VS.NL && !x.batch);
+// The national load's drops as the table holds them, in stop order.
+const vsDrops = S => (S.db[T.ORDER_STOPS] || []).filter(s => link(s.fields['Parent Nat Load']) === VS.NL && s.fields['Stop Type'] === 'Unloading')
+  .sort((a, b) => a.fields['Stop Number'] - b.fields['Stop Number']).map(s => [link(s.fields.Location), s.fields.Pallets, dayOf(s.fields.DateTime)]);
+async function vsOpenForm(page) {
+  await page.evaluate(id => { const r = [...(WINTL.data.imports || []), ...(WINTL.data.exports || [])].find(x => x.id === id); openIntlEditWith(id, r.fields); }, VS.O);
+  await page.waitForSelector('#btnSubmit', { timeout: 15000 });
+  await page.waitForTimeout(400);
+}
+async function vsSubmit(page, S) {
+  const t0 = await page.evaluate(() => window.__ev.length);
+  await page.evaluate(id => { window.__p = submitIntlOrder(id); }, VS.O);
+  await page.evaluate(() => Promise.resolve(window.__p).catch(() => {}));
+  await settle(page, S, 1500);
+  return page.evaluate(n => window.__ev.slice(n), t0);
+}
+const vsSaid = (evs, re) => evs.some(e => (e.k === 'toast' || e.k === 'errtoast' || e.k === 'reportError') && re.test(String(e.a[0])));
+const vsLogged = (evs, re) => evs.some(e => e.k === 'logError' && re.test(JSON.stringify(e.a)));
+async function scnVs(browser, origin) {
+  let scn = 'vs.assign';
+  const { page, S } = await openBoard(browser, origin, { vs: true, mutate: vsWorld });
+  {
+    // A truck change on the Weekly International: the national day STAYS (7/10, not the
+    // ±1 estimate 8/10), the order is read ONCE, inside _syncVeroiaSwitch, and the
+    // national drop order (the dispatcher's) is kept.
+    const ok0 = await openPopover(page, VS.O);
+    ok(scn, 'the VS import opens its assignment popover', ok0);
+    const rid = await rowOf(page, VS.O);
+    const g0 = S.gets.length, l0 = S.log.length;
+    await setPopoverTruck(page, rid, 'recWiT015', 'TST-1015');
+    await page.evaluate(id => { window.__p = _wiSaveFromPopover(id); }, rid); await confirmIfAsked(page);
+    await waitP(page, scn, 'assignment save'); await settle(page, S, 1500);
+    const gets = S.gets.slice(g0).filter(g => g.tid === T.ORDERS);
+    ok(scn, 'the truck change reached the table', link(vsRow(S, T.ORDERS, VS.O).Truck) === 'recWiT015', vsRow(S, T.ORDERS, VS.O).Truck);
+    ok(scn, 'the order is read by id inside the sync — the old field-list read (no cross-dock) is gone',
+      gets.some(g => g.rid === VS.O) && !gets.some(g => !g.rid && g.f.includes(VS.O) && g.fields.length), gets);
+    const np = vsNlPatches(S, l0);
+    ok(scn, 'one national PATCH, Veroia day 7/10 kept (the estimate would be 8/10)', np.length === 1 && athensDay(np[0].fields['Loading DateTime']) === '2026-10-07'
+      && athensDay(vsRow(S, T.NAT_LOADS, VS.NL)['Loading DateTime']) === '2026-10-07', np.map(x => x.fields['Loading DateTime']));
+    ok(scn, 'Pallet Exchange travels with the assignment: the order\'s current value (true), never false by omission', np[0] && np[0].fields['Pallet Exchange'] === true, np[0] && np[0].fields);
+    ok(scn, 'the national drop order is the national dispatcher\'s (L005 then L004), matched by place',
+      np[0] && JSON.stringify([np[0].fields['Delivery Location 1'], np[0].fields['Delivery Location 2']]) === '[["recWiL005"],["recWiL004"]]', np[0] && np[0].fields);
+    ok(scn, 'the drops keep their place, pallets and day (L005 8 · L004 12, both 9/10)', JSON.stringify(vsDrops(S)) === JSON.stringify([['recWiL005', 8, '2026-10-09'], ['recWiL004', 12, '2026-10-09']]), vsDrops(S));
+    ok(scn, 'the national stops were read once, by the load, before they were written', S.gets.slice(g0).filter(g => g.tid === T.ORDER_STOPS && g.f.includes('FIND("' + VS.NL + '",ARRAYJOIN({Parent Nat Load}')).length === 1, S.gets.slice(g0).filter(g => g.tid === T.ORDER_STOPS).map(g => g.f));
+    ok(scn, 'the Veroia stop and the Ramp stay on 7/10', dayOf(vsRow(S, T.ORDER_STOPS, VS.H).DateTime) === '2026-10-07' && vsRow(S, RAMP_T, VS.R1)['Plan Date'] === '2026-10-07');
+  }
+  scn = 'vs.form';
+  {
+    // A save of the international form WITHOUT a date change: no 'Cross-dock Date' in
+    // the order's PATCH, the Cross-dock stop goes without DateTime, the day stays.
+    await vsOpenForm(page);
+    const l0 = S.log.length;
+    const ev = await vsSubmit(page, S);
+    const op = S.log.slice(l0).filter(x => x.k === 'patch' && x.tid === T.ORDERS && x.id === VS.O && x.fields && 'Direction' in x.fields);
+    ok(scn, 'the form saved the order', op.length === 1 && op[0].status === 200, op.map(x => x.status));
+    ok(scn, 'no cross-dock in the order\'s PATCH (it already has one)', op[0] && !('Cross-dock Date' in op[0].fields) && !('VS CD Date' in op[0].fields), op[0] && Object.keys(op[0].fields));
+    const cdw = S.log.slice(l0).filter(x => x.k === 'patch' && x.id === VS.CD);
+    ok(scn, 'the Cross-dock stop is written WITHOUT DateTime', cdw.length >= 1 && cdw.every(x => !('DateTime' in x.fields)), cdw.map(x => x.fields));
+    ok(scn, 'the Veroia day stays 7/10 everywhere (order, its stop, national load, Veroia stop, Ramp)', vsRow(S, T.ORDERS, VS.O)['VS CD Date'] === '2026-10-07'
+      && dayOf(vsRow(S, T.ORDER_STOPS, VS.CD).DateTime) === '2026-10-07' && athensDay(vsRow(S, T.NAT_LOADS, VS.NL)['Loading DateTime']) === '2026-10-07'
+      && dayOf(vsRow(S, T.ORDER_STOPS, VS.H).DateTime) === '2026-10-07' && vsRow(S, RAMP_T, VS.R2)['Plan Date'] === '2026-10-07');
+    ok(scn, 'the form says «Το εθνικό φορτίο συγχρονίστηκε ✓» after a sync that went through', vsSaid(ev, /Το εθνικό φορτίο συγχρονίστηκε ✓/), ev.filter(e => /toast/i.test(e.k)).map(e => e.a[0]));
+    ok(scn, 'the national drop order survives a form save', JSON.stringify(vsDrops(S).map(d => d[0])) === '["recWiL005","recWiL004"]', vsDrops(S));
+    ok(scn, 'the base never holds «Cross-dock Date» (the Worker answers only «VS CD Date»)', !(S.db[T.ORDERS] || []).some(r => 'Cross-dock Date' in r.fields));
+
+    // Delivery +1 (both drops): the base moves the cross-dock by the same Δ, ONCE (7 → 8),
+    // the stop, the national load, its Veroia stop and both Ramp lines follow — no copy.
+    scn = 'vs.form.delivery';
+    await vsOpenForm(page);
+    const moved = await page.evaluate(() => [1, 2].map(i => { const el = document.getElementById('dt_u_' + i); if (!el || !el.value) return null;
+      const v = el.value; const d = new Date(Date.UTC(+v.slice(0, 4), +v.slice(5, 7) - 1, +v.slice(8, 10) + 1)).toISOString().slice(0, 10);
+      el.value = d + v.slice(10); el.dispatchEvent(new Event('change', { bubbles: true })); return [v, el.value]; }));
+    ok(scn, 'both delivery dates moved one day in the form', moved.every(Boolean), moved);
+    const l1 = S.log.length;
+    await vsSubmit(page, S);
+    const op2 = S.log.slice(l1).filter(x => x.k === 'patch' && x.tid === T.ORDERS && x.id === VS.O && x.fields && 'Direction' in x.fields);
+    ok(scn, 'still no cross-dock in the order\'s PATCH', op2[0] && !('Cross-dock Date' in op2[0].fields) && !('VS CD Date' in op2[0].fields), op2[0] && op2[0].fields);
+    const trig = S.log.slice(l1).filter(x => x.k === 'trigger' && x.name === '028 cross-dock');
+    ok(scn, 'the cross-dock moved ONCE (7/10 → 8/10)', trig.length === 1 && vsRow(S, T.ORDERS, VS.O)['VS CD Date'] === '2026-10-08', [trig, vsRow(S, T.ORDERS, VS.O)['VS CD Date']]);
+    ok(scn, 'its Cross-dock stop, the national load, its Veroia stop and both Ramp lines on 8/10, no second line',
+      dayOf(vsRow(S, T.ORDER_STOPS, VS.CD).DateTime) === '2026-10-08' && athensDay(vsRow(S, T.NAT_LOADS, VS.NL)['Loading DateTime']) === '2026-10-08'
+      && dayOf(vsRow(S, T.ORDER_STOPS, VS.H).DateTime) === '2026-10-08' && vsRow(S, RAMP_T, VS.R1)['Plan Date'] === '2026-10-08'
+      && vsRow(S, RAMP_T, VS.R2)['Plan Date'] === '2026-10-08' && !(S.db[RAMP_T] || []).some(x => x.fields._deleted),
+      { cdStop: vsRow(S, T.ORDER_STOPS, VS.CD).DateTime, nl: vsRow(S, T.NAT_LOADS, VS.NL)['Loading DateTime'], h: vsRow(S, T.ORDER_STOPS, VS.H).DateTime, r1: vsRow(S, RAMP_T, VS.R1), r2: vsRow(S, RAMP_T, VS.R2) });
+    ok(scn, 'the drops keep the national order, each with its own pallets, on the new day', JSON.stringify(vsDrops(S)) === JSON.stringify([['recWiL005', 8, '2026-10-10'], ['recWiL004', 12, '2026-10-10']]), vsDrops(S));
+  }
+  scn = 'vs.pe';
+  {
+    // Pallet Exchange follows the order: OFF then ON from the form, OFF from the VS chain
+    // stage, and NULL (absent from the answer — facade trap 2) → false. Each national PATCH
+    // carries the order's value AT THAT MOMENT; the Weekly National reads it from the load.
+    const pe = async (val) => { await vsOpenForm(page); await page.evaluate(v => { const r = document.querySelector(`input[name="f_PalletExch"][value="${v}"]`); if (r) { r.checked = true; r.dispatchEvent(new Event('change', { bubbles: true })); } return !!r; }, val);
+      const l = S.log.length; await vsSubmit(page, S); return vsNlPatches(S, l); };
+    let np = await pe('no');
+    ok(scn, 'form: PE OFF → the national PATCH carries false, the load holds false', np.length === 1 && np[0].fields['Pallet Exchange'] === false && vsRow(S, T.NAT_LOADS, VS.NL)['Pallet Exchange'] !== true, np.map(x => x.fields['Pallet Exchange']));
+    np = await pe('yes');
+    ok(scn, 'form: PE ON → the national PATCH carries true', np.length === 1 && np[0].fields['Pallet Exchange'] === true && vsRow(S, T.NAT_LOADS, VS.NL)['Pallet Exchange'] === true, np.map(x => x.fields['Pallet Exchange']));
+    let l = S.log.length;
+    const r1 = await page.evaluate(async id => { await atPatch(TABLES.ORDERS, id, { 'Pallet Exchange': false }); return syncOrderDownstream(id, { source: 'intl', changedFields: ['Pallet Exchange'], skipPA: true }); }, VS.O);
+    np = vsNlPatches(S, l);
+    ok(scn, 'VS chain stage: PE OFF on the order → the national PATCH carries false', r1 && np.length === 1 && np[0].fields['Pallet Exchange'] === false, { r1, pe: np.map(x => x.fields['Pallet Exchange']) });
+    // A date change from the Weekly International v4 panel (the chain): PE stays what the order says.
+    l = S.log.length;
+    const w = await page.evaluate(id => WI_INTERNAL.dateWrite(id, 'VS CD Date', '2026-10-08', '2026-10-07'), VS.O);
+    np = vsNlPatches(S, l);
+    ok(scn, 'a Veroia day change (v4 panel, VS chain): the national load follows (7/10) and carries the order\'s PE (false), never a default',
+      w && w.ok && np.length === 1 && athensDay(np[0].fields['Loading DateTime']) === '2026-10-07' && np[0].fields['Pallet Exchange'] === false, { w: w && w.downstream, np: np.map(x => x.fields) });
+    delete vsRow(S, T.ORDERS, VS.O)['Pallet Exchange'];   // NULL in the base = absent from the answer
+    l = S.log.length;
+    const r2 = await page.evaluate(id => syncOrderDownstream(id, { source: 'intl', changedFields: ['VS CD Date'], skipPA: true, skipGRP: true, skipRamp: true }), VS.O);
+    np = vsNlPatches(S, l);
+    ok(scn, 'PE NULL on the order (absent from the answer) → false on the national load, as today', r2 && r2.ok && np.length === 1 && np[0].fields['Pallet Exchange'] === false, { r2, np: np.map(x => x.fields['Pallet Exchange']) });
+  }
+  scn = 'vs.fail';
+  {
+    // The national stops write fails: the load's line moved, its Veroia stop did not — the
+    // form must NOT say «συγχρονίστηκε ✓»; one app_errors line names it.
+    S.fail.natStops = true;
+    await vsOpenForm(page);
+    const ev = await vsSubmit(page, S);
+    ok(scn, 'stops write fails (form): no «συγχρονίστηκε ✓», the failure is said', !vsSaid(ev, /συγχρονίστηκε ✓/) && vsSaid(ev, /συγχρονισμός εθνικού φορτίου απέτυχε/), ev.filter(e => /toast|reportError/.test(e.k)).map(e => e.a[0]));
+    ok(scn, 'stops write fails (form): one app_errors line from the form', vsLogged(ev, /orders_intl form: VS sync/), ev.filter(e => e.k === 'logError').map(e => e.a));
+    const t0 = await page.evaluate(() => window.__ev.length);
+    const st = await page.evaluate(id => syncOrderDownstream(id, { source: 'intl', changedFields: ['VS CD Date'], skipPA: true, skipGRP: true, skipRamp: true }), VS.O);
+    let ev2 = await page.evaluate(n => window.__ev.slice(n), t0);
+    ok(scn, 'stops write fails (VS chain stage): the stage is «failed» with an app_errors line, never «ok»', st && !st.ok && st.failed.includes('VS chain') && vsLogged(ev2, /order-sync\.VS chain/), { st, logs: ev2.filter(e => e.k === 'logError').map(e => e.a) });
+    S.fail.natStops = false;
+    // The national load's own PATCH fails (500 after the retries): failed + app_errors.
+    S.fail.patch[VS.NL] = 500;
+    const t1 = await page.evaluate(() => window.__ev.length);
+    const st2 = await page.evaluate(id => syncOrderDownstream(id, { source: 'intl', changedFields: ['VS CD Date'], skipPA: true, skipGRP: true, skipRamp: true }), VS.O);
+    ev2 = await page.evaluate(n => window.__ev.slice(n), t1);
+    ok(scn, 'the national PATCH fails: the stage is «failed» with an app_errors line', st2 && !st2.ok && st2.failed.includes('VS chain') && vsLogged(ev2, /order-sync\.VS chain/), { st2 });
+    delete S.fail.patch[VS.NL];
+    ok(scn, 'no page errors', !S.pageErrors.length, S.pageErrors);
+  }
+  await page.context().close();
+}
+
 (async () => {
   const srv = await serve();
   const origin = `http://127.0.0.1:${srv.address().port}`;
@@ -3667,7 +3967,8 @@ async function scnParity(browser, origin) {
     const S = { paint: scnPaint, invariants: scnInvariants, relay: scnRelay, scans: scnScans, unknown: scnUnknown, drops: scnDrops, join: scnJoin, menu: scnMenu,
       date: scnDate, keys: scnKeys, search: scnSearch, savefail: scnSaveFail, presence: scnPresence, conflict: scnConflict, fallback: scnFallback, styles: scnStyles,
       twins: scnTwins, queue: scnQueue, unread: scnUnread,
-      print: scnPrint, shift: scnShift, late: scnLate, offline: scnOffline, quiet: scnQuiet, natmissing: scnNatMissing, w1440: scnW1440, parity: scnParity };
+      print: scnPrint, shift: scnShift, late: scnLate, offline: scnOffline, quiet: scnQuiet, natmissing: scnNatMissing, w1440: scnW1440, parity: scnParity,
+      vs: scnVs };
     // A watchdog per scenario: one missing locator or one write that never
     // settles fails THAT scenario, closes its pages, and the run goes on.
     const WATCHDOG_MS = 360000;
