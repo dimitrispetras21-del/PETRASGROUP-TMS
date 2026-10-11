@@ -2037,17 +2037,25 @@ function _wk3PickDate(ev,orderId,field,curIso){
 // DateTime field; without it the old time of day is kept. A 409 conflict is
 // RETURNED (v4 only — without _expect no request can conflict) and nothing
 // downstream runs, because nothing was written.
-async function _wiDateWrite(orderId,field,curIso,ymd,hhmm){
+async function _wiDateWrite(orderId,field,curIso,ymd,hhmm,seen){
   let val=ymd;
   if(field!=='VS CD Date') val=hhmm?new Date(ymd+'T'+hhmm+':00').toISOString():_wk3IsoOnDay(curIso,ymd);
-  // The value the user SAW is the expectation (the v4 panel captured it from
-  // WINTL.data at open, or conflict.current on «Γράψε τη δική μου»), so curIso
-  // replaces what _wiExpectOpt read. undefined when v4 is off: today's request.
+  // `seen` (the v4 date panel only) is the value the user SAW: captured from
+  // WINTL.data at open, or conflict.current on «Γράψε τη δική μου». It
+  // replaces what _wiExpectOpt read. Any other caller keeps _wiExpectOpt's
+  // server value: the v1 chip passes the DISPLAYED day as curIso, which for an
+  // empty VS CD Date is the Loading+1 / Delivery−1 estimate — as _expect that
+  // would 409 against the NULL in the table on every change (review 11/10).
+  // undefined opt when v4 is off: today's request, byte for byte.
   const opt=_wiExpectOpt(orderId,[field]);
-  if(opt) opt.expect={[field]:curIso||null};
+  if(opt&&seen!==undefined) opt.expect={[field]:seen||null};
   const res=await atSafePatch(TABLES.ORDERS,orderId,{[field]:val},opt);
   if(res?.conflict) return {ok:false,conflict:res};
   if(res?.error) throw new Error(res.error.message||res.error.type);
+  // v4 only: offline, atPatch QUEUES the change and echoes the body back. That
+  // is not a write — no downstream sync and no ✓ for a change that exists
+  // only in this browser (principle 2). v1 keeps today's path unchanged.
+  if(res?._offline&&_wiV2Active()) return {ok:false,offline:true};
   // Same downstream sync as Daily Ops «Αλλαγή ημέρας» (daily_ops.js
   // _opsChangeDay): a date change on a Veroia Switch order must recompute
   // its national load (and ramp/RT). Until 7/9 this path patched the order
@@ -2360,7 +2368,10 @@ function _wiExpectOpt(orderId,fields){
   const rec=(d.exports||[]).find(r=>r.id===orderId)||(d.imports||[]).find(r=>r.id===orderId);
   if(!rec) return undefined;
   const expect=WI4.buildExpect(fields,rec);
-  return expect?{expect}:undefined;
+  // quiet: v4 says a failed write on the row itself (the line under it and
+  // the title-bar counter), so core/api.js holds back its generic toasts for
+  // this request — one failed save was four stacked messages (review 11/10).
+  return expect?{expect,quiet:true}:undefined;
 }
 // After a CONFIRMED write, the WINTL.data record takes what the server now
 // holds for the labels written — the same rule as _wiCancelGroupMember's own
@@ -3266,9 +3277,11 @@ async function _wiSaveImportMatch(rowId,impId){
   }
 
   // Lock check: verify export doesn't already have a matched import on server
+  let expMatchRead;   // the export's match as this read saw it (undefined = not read)
   try {
     const exportRec = await atGetOne(TABLES.ORDERS, row.orderIds[0]);
     const existingExpMatch = exportRec.fields?.['Matched Import ID'];
+    expMatchRead = existingExpMatch || null;
     // A link to an import that no longer exists (deleted) is not a match.
     // Migration 023 releases such links in the base; this is the screen's own
     // guard for a stale read (owner 7/9: «έχει ήδη ταιριασμένη εισαγωγή» on a
@@ -3324,6 +3337,17 @@ async function _wiSaveImportMatch(rowId,impId){
   // begin. Not reachable from the ordinary drag — an already-matched import
   // never renders its own row to drag FROM — only from the new grip.
   const oldExpRow=WINTL.rows.find(r=>r.type==='export'&&r.id!==rowId&&r.importId===matchImpId);
+  // v4 (§g.4): the first export PATCH below carries _expect, so it CAN answer
+  // 409 — and on the grip path that answer would come after the old export's
+  // unmatch was already written, leaving the group matched to nothing. The
+  // lock check above has just read this export: a match that is not the one
+  // the board painted from is the conflict, said now, before any write.
+  if(oldExpRow&&_wiV2Active()&&expMatchRead!==undefined&&typeof WI4!=='undefined'){
+    const seen=_wiExpectOpt(row.orderIds[0],['Matched Import ID']);
+    if(seen&&!WI4.sameValue(seen.expect['Matched Import ID'],expMatchRead,'Matched Import ID'))
+      return WIV2.conflict({conflict:true,fields:['Matched Import ID'],by:null,at:null,current:{'Matched Import ID':expMatchRead}},
+        {slot:'wi-sync-'+rowId,orderId:row.orderIds[0],kind:'match',mine:{'Matched Import ID':matchImpId}});
+  }
   if(oldExpRow&&!(await _wiRemoveImport(oldExpRow.id))){
     // The old match did not fully come off (a member is still on the old trip):
     // writing this export's vehicle onto it now would copy it onto the old
@@ -3373,7 +3397,8 @@ async function _wiSaveImportMatch(rowId,impId){
     }catch(err){
       matchFailed=true;
       console.error('Import match save failed:',err.message);
-      toast('Το ταίριασμα δεν γράφτηκε: '+err.message.slice(0,50),'warn');
+      // v4 says it under the row (+ the title-bar counter): no stacked toast.
+      if(!_wiV2Active()) toast('Το ταίριασμα δεν γράφτηκε: '+err.message.slice(0,50),'warn');
       if(typeof logError==='function') logError(err,'weekly intl: match save failed');
     }
   }
@@ -3808,6 +3833,9 @@ async function _wiSaveFromPopover(rowId){
   if(errors.length){
     if(btn){btn.disabled=false;if(spin)spin.style.display='none';}
     _wiSync('wi-sync-'+rowId,'err','Η ανάθεση ΔΕΝ γράφτηκε στη βάση — ξαναπροσπάθησε'); // T3: stays visible
+    // v4 says it on the row (the line under it + the title-bar counter): no
+    // second, stacked toast — the full list goes to app_errors instead.
+    if(_wiV2Active()){ if(typeof logError==='function') logError(new Error(errors.join(' · ')),'weekly intl: assign save failed'); return; }
     // Full error list goes to the gated log; user sees a short message only.
     reportError('Σφάλμα αποθήκευσης αντιστοίχισης — δοκιμάστε ξανά', errors);
     return;
@@ -3892,7 +3920,10 @@ async function _wiSaveFromPopover(rowId){
   }
 
   _wiSync('wi-sync-'+rowId,'ok','Η ανάθεση γράφτηκε'); // T3
-  toast(row.saved?'Ενημερώθηκε ✓':'Αποθηκεύτηκε ✓');
+  // v4 sent _expect: a Worker that did not confirm the check (or one not yet
+  // asked) is said with the ✓, never assumed (§g.3, principle 5 — unknown =
+  // closed). v1 sends no _expect and keeps today's words.
+  toast((row.saved?'Ενημερώθηκε ✓':'Αποθηκεύτηκε ✓')+(_wiV2Active()&&window.TMS_EXPECT_LIVE!==true?' · χωρίς έλεγχο «το άλλαξε άλλος» (δεν είναι ενεργός ακόμη)':''));
 
   // Sync Veroia Switch → NAT_LOADS
   try {
@@ -7091,7 +7122,10 @@ function _wiLooseLate(p,today){
   const d=toLocalDate((p&&p.fields&&p.fields['Delivery DateTime'])||'');
   return !!d&&d<(today||localToday());
 }
-function _wiShelfInner(st){
+// opt.unit: the pallet letter of the chips. Today's board writes «p»; the v4
+// board writes «π» like every other pallet figure on it (rules «παλέτες
+// πάντα 33π»). Without opt the strip is byte-identical to today's.
+function _wiShelfInner(st,opt){
   if(st.status==='loading') return `<div class="wi-shelf-in"><span class="wi-shelf-lbl">ΑΠΟΘΕΜΑ…</span></div>`;
   if(st.status==='failed') return `<div class="wi-shelf-in"><button type="button" class="wi-shelf-fail" onclick="_wiStockLoad()" title="Οι παρτίδες δεν διαβάστηκαν${st.error?' ('+escapeHtml(st.error)+')':''} — αυτό ΔΕΝ σημαίνει ότι δεν υπάρχει απόθεμα. Κλικ: ξαναδοκίμασε">ΑΠΟΘΕΜΑ — δεν φορτώθηκε ↻</button></div>`;
   if(!_wiShelfHas(st)) return '';
@@ -7108,21 +7142,22 @@ function _wiShelfInner(st){
   // button only when there are some: «0 κομμάτια» was noise (S5-01).
   const lbl=`<button type="button" class="wi-shelf-lbl" onclick="_wiStockLotsOpen(this)" title="Όλες οι ανοιχτές παρτίδες — κλικ: η λίστα">ΑΠΟΘΕΜΑ · ${lots.length}${nFlag?` <span class="wi-shelf-k">· ${nFlag} ⚠</span>`:''}</button>`;
   const looseBtn=nLoose?`<button type="button" class="wi-shelf-loose${nLate?' late':''}" onclick="_wiStockLooseOpen(this)" title="Κομμάτια που περιμένουν φορτηγό${nLate?' — '+nLate+' με παράδοση που πέρασε':''} — κλικ: η λίστα">${nLoose} ${nLoose===1?'κομμάτι':'κομμάτια'} χωρίς φορτηγό${nLate?` · ${nLate} ${nLate===1?'εκπρόθεσμο':'εκπρόθεσμα'}`:''}</button>`:'';
-  return `<div class="wi-shelf-in">${lbl}<div class="wi-shelf-list" onscroll="_wiShelfFit()" onwheel="_wiShelfWheel(event,this)">${lots.map(x=>_wiShelfChip(x.l,x.c)).join('')}</div>${looseBtn}</div>`;
+  return `<div class="wi-shelf-in">${lbl}<div class="wi-shelf-list" onscroll="_wiShelfFit()" onwheel="_wiShelfWheel(event,this)">${lots.map(x=>_wiShelfChip(x.l,x.c,opt&&opt.unit)).join('')}</div>${looseBtn}</div>`;
 }
 // «▣ Αποθήκη · Πελάτης 18/24p» and a flag only for a problem (critic-1 C1-03,
 // critic-5 S5-01): no bar (it repeated 18/24), no days unless they ARE the
 // problem, no country code — the full story is in the title and the panel.
 // About half the old width, so 2–3 chips fit at 1440.
-function _wiShelfChip(l,c){
+function _wiShelfChip(l,c,unit){
   const f=l.fields||{};
+  const u=unit==='π'?'π':'p';
   const cc=(typeof countryCode==='function'&&countryCode(f['Warehouse Country']))||'';
   const rem=+(f['Remaining Pallets']||0), stock=+(f['Stock Pallets']||0);
   const flag=_WI_SHELF_FLAG[c.key]||'';
   const tip=[`Παρτίδα ${OrdersStock.lotLabel(l)}`,`${f['Warehouse Name']||'—'}${cc?' ('+cc+')':''}`,f['Client Name']||'—',
-    `υπόλοιπο ${rem}/${stock}p`,`${+(f['Pieces']||0)} κομμάτια, ${+(f['Pieces Delivered']||0)} παραδόθηκαν`,
+    `υπόλοιπο ${rem}/${stock}${u}`,`${+(f['Pieces']||0)} κομμάτια, ${+(f['Pieces Delivered']||0)} παραδόθηκαν`,
     f['Received On']?`παραλαβή ${_wiFmt(f['Received On'])}${c.days!=null?' ('+c.days+' ημ.)':''}`:'παραλαβή αναμένεται'].join(' · ')+' — κλικ: κομμάτια';
-  return `<button type="button" class="wi-shelf-chip ${escapeHtml(c.key)}" data-lot="${escapeHtml(l.id)}" onclick="_wiStockLotOpen(this,'${escapeHtml(l.id)}')" title="${escapeHtml(tip)}"><span aria-hidden="true">▣</span><b>${escapeHtml(f['Warehouse Name']||'—')}</b><span class="sep">·</span>${escapeHtml(f['Client Name']||'—')}<b class="n">${rem}/${stock}p</b>${flag?`<span class="fl">${flag}</span>`:''}</button>`;
+  return `<button type="button" class="wi-shelf-chip ${escapeHtml(c.key)}" data-lot="${escapeHtml(l.id)}" onclick="_wiStockLotOpen(this,'${escapeHtml(l.id)}')" title="${escapeHtml(tip)}"><span aria-hidden="true">▣</span><b>${escapeHtml(f['Warehouse Name']||'—')}</b><span class="sep">·</span>${escapeHtml(f['Client Name']||'—')}<b class="n">${rem}/${stock}${u}</b>${flag?`<span class="fl">${flag}</span>`:''}</button>`;
 }
 // «ΑΠΟΘΕΜΑ · N» → every open lot, one line each, in the strip's order. A line
 // opens that lot's panel, anchored on the strip label (the clicked line lives

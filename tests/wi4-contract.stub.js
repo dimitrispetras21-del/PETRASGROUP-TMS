@@ -210,8 +210,13 @@ const WI_INTERNAL = {
    *  v4 is active (via expectOpt).
    *  @param {string} orderId @param {WiDateField} field @param {string|null} curIso
    *  @param {string} ymd YYYY-MM-DD @param {string} [hhmm] HH:MM (none for VS CD Date)
-   *  @returns {Promise<{ok:boolean, rec?:Object, conflict?:WiConflictResult}>} */
-  dateWrite(orderId, field, curIso, ymd, hhmm) { return resolved({ ok: false }); },
+   *  @param {string|null} [seen] round 2 (11/10, coordinator-reviewed fix): the
+   *    value the v4 date panel SHOWED, sent as _expect. Omitted by every other
+   *    caller, which then keeps expectOpt's server value (the v1 chip passes a
+   *    displayed estimate as curIso).
+   *  @returns {Promise<{ok:boolean, rec?:Object, conflict?:WiConflictResult, offline?:true}>}
+   *    offline:true (v4 only) = queued in this browser, not written. */
+  dateWrite(orderId, field, curIso, ymd, hhmm, seen) { return resolved({ ok: false }); },
   pickDate(ev, orderId, field, curIso) {},
 
   // ── Drag and drop (§f) ──
@@ -263,8 +268,10 @@ const WI_INTERNAL = {
   stockLotOpen(anchor, lotRec) { return resolved(undefined); },
   stockLooseOpen(anchor) { return resolved(undefined); },
   stockOpenPiece(id) {},
-  /** @returns {string} the strip HTML for <div id="wi-shelf"> */
-  shelfInner(st) { return ''; },
+  /** @param {Object} st @param {{unit?:'π'}} [opt] round 2 (11/10): v4 writes
+   *  «π» on the chips like every other pallet figure; omitted = today's «p».
+   *  @returns {string} the strip HTML for <div id="wi-shelf"> */
+  shelfInner(st, opt) { return ''; },
   shelfFit() {},
   shelfWheel(e, el) {},
 
@@ -301,8 +308,10 @@ const WI_INTERNAL = {
    *  undefined when v4 is inactive, when the record is not in WINTL.data, or
    *  when no label is checked — then the request is byte-identical to today.
    *  Reads WINTL.data (server truth), never the optimistic row.* fields.
+   *  quiet:true (round 2, 11/10): core/api.js holds back its generic failure
+   *  toasts for this request — v4 says the failure on the row itself.
    *  @param {string} orderId @param {string[]} fields labels
-   *  @returns {{expect:Object<string,*>}|undefined} */
+   *  @returns {{expect:Object<string,*>, quiet:true}|undefined} */
   expectOpt(orderId, fields) { return undefined; },
 };
 
@@ -397,7 +406,8 @@ const WI4Actions = {
    *    expected?:Object<string,*>, stale?:boolean}} ctx  expected = the _expect
    *    sent (what the user saw); stale = the re-read behind it failed
    *  @returns {Promise<'keep'|'mine'|'reopen'|'refresh'>} 'mine' only for kind
-   *    'date', 'reopen' only for 'assign'/'match', 'refresh' only when stale */
+   *    'date', 'reopen' only for 'assign' (round 2, 11/10: a match has nothing
+   *    to reopen — its one button keeps the current match), 'refresh' only when stale */
   conflictDialog(conflict, ctx) { return resolved('keep'); },
   /** «Όλα N ▾» panel (§e #3) over WIV2.queueItems(): ΤΩΡΑ / ΠΡΟΣΟΧΗ, Q = next, Esc closes. */
   queuePanel() {},
