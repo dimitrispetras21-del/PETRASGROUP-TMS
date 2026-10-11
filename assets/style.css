@@ -7570,9 +7570,10 @@ button.btn-icon:focus-visible { outline:2px solid var(--accent); outline-offset:
      national  .wi4-nat .wi4-nat-day .wi4-tile(.own/.par/.un/.un.red/.unk) .wi4-natdot
      cells     .wi4-gap(.amb) .wi4-gap-act .wi4-void .wi4-noexp .wi4-ns (failed match) · drag .wi4-dh
      ghost     .wi4-ghost .wi4-ghost-t (a failed match's import, in its own day)
-     sub-rows  .wi4-tag .wi4-legidx .wi4-unlink
+     sub-rows  .wi4-tag .wi4-legidx .wi4-unlink · rota .wi4-sub-leg .wi4-sub-leg-t · relay .wi4-sub-rl
+               .wi4-rl-drv .wi4-rl-sep · split .wi4-split-t (+ the ↳1/↳2 connector)
      overlays  .wi4-datep .wi4-datep-hd .wi4-seg .wi4-datep-id .wi4-cal .wi4-cal-h .wi4-cal-d
-               (.out/.today/.cur/.sel) .wi4-time .wi4-datep-note .wi4-pnote .wi4-conf .wi4-datep-ft
+               (.out/.today/.cur/.sel) .wi4-time .wi4-datep-note .wi4-pnote(.info) .wi4-conf .wi4-datep-ft
                · .wi4-dlg-back .wi4-dlg .wi4-dlg-ft · .wi4-help-row
                · menu inside #wi-ctx: .wi4-m-hd .wi4-m-plate .wi4-m-sec .wi4-m-more .wi4-m-sub(.open) .wi4-m-ic .wi4-m-l .wi4-m-k
    Legacy class names v4 may emit are only the contract hooks of §a.7 (wi-sync,
@@ -7620,6 +7621,13 @@ button.btn-icon:focus-visible { outline:2px solid var(--accent); outline-offset:
   --wi4-chip:         #f1f5f9;
   --wi4-split-hd:     var(--bg-row-alt);
   --wi4-hover:        #f6f9fc;
+  /* «someone else has this open» is news, not a problem (Figma 1125:2885):
+     a light-blue band, ink 7.1:1 on its fill. The conflict box keeps amber
+     with a softer border (1125:2976). */
+  --wi4-info-bg:      #f0f9ff;
+  --wi4-info-line:    #bae6fd;
+  --wi4-info-ink:     #075985;
+  --wi4-conf-line:    #f5d9b8;
 }
 
 /* Root. National columns are 140px open / 18px collapsed (as today's
@@ -7635,8 +7643,16 @@ button.btn-icon:focus-visible { outline:2px solid var(--accent); outline-offset:
 /* :where() keeps this at (0,0,1): every class rule on a button (.btn-new-order,
    .wi4-dc, .wi4-plane, .wi4-gap-act…) wins again. As `.wi4 button` (0,1,1) it
    beat them all — dark text on the navy «Νέα παραγγελία», dates as loud as
-   client names (review 11/10). */
-:where(.wi4) button { font:inherit; color:inherit; }
+   client names (review 11/10). The overlays v4 appends to <body> (queue
+   panel, date panel, dialog backdrop) sit outside .wi4, so their buttons
+   fell back to the UA font (Arial 13.33px day cells, Arial 11px conflict
+   buttons; Figma 1125:2843 / 1125:2983 / 1117:2693 are DM Sans). Same zero
+   specificity. Not #wi-ctx (the menu sets its own 13px) nor #wi-popover /
+   #wi-panel (scnStyles holds them equal to v1). */
+:where(.wi4, .wi4-qp, .wi4-datep, .wi4-dlg-back) button { font:inherit; color:inherit; }
+/* In the overlays a button is body text even under a Syne heading: the «?»
+   sheet's Esc cap sits in its title and inherited Syne from it. */
+:where(.wi4-qp, .wi4-datep, .wi4-dlg-back) button { font-family:'DM Sans',sans-serif; }
 /* Board geometry at 1920 = Figma 1097:2254: a 1808px surface whose rows sit
    inside a 1px border (1806px), legs 621px. #content is 1864px wide there (the
    collapsed sidebar is 56px, Figma's 64px), so the gutter is 28px instead of
@@ -7886,7 +7902,7 @@ body.wi4-on #wi-ctx .wi4-m-sec .wi4-l2, body.wi4-on #wi-ctx .wi4-m-hd .wi4-l2 { 
 .wi4-c-span { grid-column:2 / -1; min-width:0; }
 /* The split frame's header starts at the export leg, like the relay tags
    (board: «ΣΠΑΣΜΕΝΗ ΣΕ 2 ΣΚΕΛΗ» at the export column, not under ΠΡΟΣ ΒΕΡΟΙΑ). */
-.wi4-splithd .wi4-c-span { grid-column:4 / -1; }
+.wi4-splithd .wi4-c-span { grid-column:4 / -1; display:flex; align-items:center; gap:8px; padding-left:10px; }
 /* Sticky header: .content (the scroller) has 8px of top padding on the board
    (body.wi4-on .content, the one top bar), and a sticky element sticks INSIDE
    that padding — at top:0 rows scrolled through the strip above it. top =
@@ -7984,7 +8000,25 @@ body.wi4-on #wi-ctx .wi4-m-sec .wi4-l2, body.wi4-on #wi-ctx .wi4-m-hd .wi4-l2 { 
    under the last row of a day (§e #7 f). */
 .wi4-row { position:relative; height:32px; border-bottom:1px solid var(--wi4-line); }
 .wi4-subrow, .wi4-splithd { position:relative; height:28px; border-bottom:1px solid var(--wi4-line); font-size:10.5px; color:var(--wi4-grey-1); }
-.wi4-splithd { background:var(--wi4-split-hd); }
+.wi4-splithd { background:var(--wi4-split-hd); height:22px; }
+/* Per-kind heights (Figma 1097:2830, 1097:3046, 1097:3388): a relay is a
+   24px note line, a rota leg carries a whole leg (chip + two-line stops) in a
+   row's 32px, a split header is a 22px band. The 28px base stays only for a
+   sub-row whose record did not load (_missingHTML). */
+.wi4-subrow.wi4-sub-rl { height:24px; }
+.wi4-subrow.wi4-sub-leg { height:32px; }
+/* A row that owns the sub-row under it ends on a dashed hairline (Figma
+   1097:2781 / 3243 / 2990): every row had the same solid line, so a sub-row
+   did not read as belonging to the row above it. */
+.wi4-row:has(+ .wi4-subrow) { border-bottom-style:dashed; border-bottom-color:var(--wi4-line-2); }
+.wi4-splithd .wi4-c-idx { font-size:11.5px; }
+/* Split connector (Figma 1104:4229): a 1px line down the index column from
+   the top of leg ↳1 to the middle of leg ↳2 ties the two legs to their header
+   (only leg 1 carries its rail). Read off data-no, which _idxHTML already
+   writes; the index cell is not positioned, so the line spans the 32px row. */
+.wi4-row > .wi4-c-idx[data-no="↳1"]::after, .wi4-row > .wi4-c-idx[data-no="↳2"]::after {
+  content:''; position:absolute; left:5px; top:0; bottom:-1px; border-left:1px solid var(--wi4-line-2); pointer-events:none; }
+.wi4-row > .wi4-c-idx[data-no="↳2"]::after { bottom:50%; }
 .wi4-day-body > :last-child { border-bottom:none; }
 .wi4-row:hover, .wi4-subrow:hover { background:var(--wi4-hover); }
 .wi4-c-idx { font-size:11px; font-weight:500; color:var(--wi4-grey-2); display:flex; align-items:center; justify-content:center; gap:2px; }
@@ -8231,24 +8265,43 @@ body.wi4-on #wi-ctx .wi4-m-sec .wi4-l2, body.wi4-on #wi-ctx .wi4-m-hd .wi4-l2 { 
 
 /* Sub-rows (§e #11): relay, rota leg, split header and legs. */
 .wi4-tag { font-size:10px; font-weight:700; letter-spacing:.5px; text-transform:uppercase; color:var(--wi4-grey-1); white-space:nowrap; }
-.wi4-legidx { font-size:11px; color:var(--wi4-grey-2); }
-.wi4-unlink { height:20px; padding:0 6px; border:1px solid var(--wi4-ctl); border-radius:4px; background:var(--surface-card); font-size:10.5px; color:var(--wi4-grey-1); cursor:pointer; }
+/* Figma's «⤷» is SemiBold 12 #98a2b3; «↳» in --wi4-grey-2 is kept on purpose:
+   ⤷ may be missing from DM Sans, and 2.6:1 grey fails the contrast scan. */
+.wi4-legidx { font-size:12px; font-weight:600; color:var(--wi4-grey-2); }
+/* Figma 1097:3055: 93×22, padding 0 8, Medium 11, 4px off the assignment
+   cell's edge. «×» stays (⨯ may be missing from DM Sans). */
+.wi4-unlink { height:22px; padding:0 8px; margin-left:4px; border:1px solid var(--wi4-ctl); border-radius:4px; background:var(--surface-card); font-size:11px; font-weight:500; color:var(--wi4-grey-1); cursor:pointer; }
 .wi4-unlink:hover { border-color:var(--wi4-red); color:var(--wi4-red); }
+/* Relay (Figma 1097:2830 / 3291) and split header (1097:3388) labels:
+   SemiBold 10.5, no tracking — the 10px/700 tracked tag read louder than
+   the words it labels. The rota label is one run, «ίδιο φορτηγό» included. */
+.wi4-sub-rl .wi4-tag, .wi4-splithd .wi4-tag { font-size:10.5px; font-weight:600; letter-spacing:0; }
+.wi4-splithd .wi4-tag { flex:none; }
+.wi4-sub-leg-t { font-size:10.5px; font-weight:600; color:var(--wi4-grey-1); }
+.wi4-rl-drv { font-size:11px; font-weight:600; color:var(--wi4-ink); }
+/* Spaces + 3px ≈ Figma's 6px either side of the «·». */
+.wi4-rl-sep { margin:0 3px; color:var(--wi4-grey-2); }
+.wi4-split-t { flex:0 1 auto; min-width:0; font-size:11.5px; font-weight:500; color:var(--wi4-ink); }
 
 /* Save failure line (§e.14) and moved-row trace (§e #15): 24px. The failure
    is one short line in red on white with an alert icon (sheet 14 #5) — no
    band: a full-width red band read as a second error on top of the ⚠. */
 .wi4-msg, .wi4-trace { grid-column:2 / -1; height:24px; display:flex; align-items:center; gap:8px; padding:0 12px; font-size:11px; }
 /* Starts under the export leg (index 32 + ΠΡΟΣ ΒΕΡΟΙΑ + 12 gap), open or collapsed. */
-.wi4-msg { background:none; color:var(--wi4-red-ink); padding-left:calc(44px + var(--wi4-fl)); }
+.wi4-msg { background:none; color:var(--wi4-red-ink); padding-left:calc(44px + var(--wi4-fl)); font-size:12px; }
 .wi4-msg > svg { flex:none; color:var(--wi4-red); }
-.wi4-msg > .wi4-ell { flex:0 1 auto; min-width:0; font-weight:500; }
+/* Figma 1089:2576: Medium 12 #B91C1C (6.5:1 on white), «Ξαναδοκίμασε» 12/600,
+   «· κλείσιμο ×» 11.5. The link keeps --wi4-blue-ink and the close grey-2
+   (Figma's #0284C7 is 4.1:1 — contrast scan). */
+.wi4-msg > .wi4-ell { flex:0 1 auto; min-width:0; font-weight:500; color:var(--wi4-red); }
 .wi4-msg .wi4-link { flex:none; }
-.wi4-msg .wi4-msg-x { color:var(--wi4-grey-2); font-weight:500; }
+.wi4-msg .wi4-msg-x { color:var(--wi4-grey-2); font-weight:500; font-size:11.5px; }
 .wi4-trace { background:var(--accent-light); color:var(--wi4-blue-ink); cursor:pointer; }
 
-/* Date panel (§e #10). A v4 element anchored in #wi-panel space. */
-.wi4-datep { position:fixed; z-index:var(--z-top); width:320px; padding:12px 14px; background:var(--surface-card); border:1px solid var(--wi4-line-2);
+/* Date panel (§e #10). A v4 element anchored in #wi-panel space. 300 wide
+   with a 16px inset (Figma 1125:2799): the calendar and the time field are
+   the 266px between the insets. */
+.wi4-datep { position:fixed; z-index:var(--z-top); width:300px; padding:12px 16px; background:var(--surface-card); border:1px solid var(--wi4-line-2);
   border-radius:8px; box-shadow:var(--shadow-lift); font-family:'DM Sans',sans-serif; font-size:12px; color:var(--wi4-ink); }
 .wi4-datep-hd { font:600 15px 'Syne',sans-serif; margin-bottom:8px; }
 .wi4-seg { display:flex; gap:2px; padding:2px; margin-bottom:8px; border:1px solid var(--wi4-line-2); border-radius:6px; background:var(--wi4-chip); }
@@ -8269,19 +8322,34 @@ body.wi4-on #wi-ctx .wi4-m-sec .wi4-l2, body.wi4-on #wi-ctx .wi4-m-hd .wi4-l2 { 
 .wi4-cal-d.cur { border-style:dashed; border-color:var(--wi4-slot); }
 /* Selected = navy fill; blue stays the «today» outline (sheet 16 D). */
 .wi4-cal-d.sel { background:var(--wi4-ink); border-color:var(--wi4-ink); color:var(--surface-card); font-weight:700; }
-.wi4-time { display:block; width:100%; height:28px; margin-top:4px; padding:0 8px; border:1px solid var(--wi4-ctl); border-radius:5px; font:inherit; font-weight:400; color:var(--wi4-ink); font-variant-numeric:tabular-nums; }
+.wi4-time { display:block; width:100%; height:32px; margin-top:4px; padding:0 8px; border:1px solid var(--wi4-ctl); border-radius:5px; font:inherit; font-weight:400; color:var(--wi4-ink); font-variant-numeric:tabular-nums; }
 .wi4-time::placeholder { color:var(--wi4-grey-3); }
 .wi4-time:focus { outline:none; border-color:var(--wi4-blue); box-shadow:0 0 0 2px var(--accent-light); }
 .wi4-datep-note { font-size:10.5px; line-height:1.4; color:var(--wi4-grey-2); margin:8px 0; }
 .wi4-pnote { padding:6px 8px; margin:8px 0; border-radius:5px; background:var(--wi4-amber-bg); color:var(--wi4-amber-ink); font-size:11px; line-height:1.4; }
+/* Confirmed check: news, not a warning (Figma 1125:2885) — light blue, the
+   colleague's avatar before the sentence. */
+.wi4-pnote.info { display:flex; align-items:center; gap:8px; padding:7px 10px; border:1px solid var(--wi4-info-line); border-radius:6px;
+  background:var(--wi4-info-bg); color:var(--wi4-info-ink); font-size:11.5px; }
+/* The presence and conflict bands span the panel's inner width (Figma
+   1125:2885 / 1125:2976 at x1, w298): the side margins undo the padding.
+   Only inside the panel — in the modal the conflict box keeps its inset. */
+.wi4-datep .wi4-pnote, .wi4-datep .wi4-conf { margin-left:-16px; margin-right:-16px; }
 /* «Ποια κρατάμε;» (sheet 16 E): a calm amber panel — news that someone else
    changed it, not an error the user made. The date panel's failure line
    keeps the red (.wi4-conf[role=alert]). */
-.wi4-conf { padding:8px 10px; margin:8px 0; border:1px solid var(--warn-border); border-radius:5px; background:var(--wi4-amber-bg); color:var(--wi4-amber-ink); font-size:11.5px; line-height:1.4; }
+/* Figma 1125:2976: border #F5D9B8, radius 6, blocks 8px apart; the lead
+   («who · from → to», 600) keeps its avatar on its first line. */
+.wi4-conf { display:flex; flex-direction:column; gap:8px; padding:8px 10px; margin:8px 0; border:1px solid var(--wi4-conf-line); border-radius:6px; background:var(--wi4-amber-bg); color:var(--wi4-amber-ink); font-size:11.5px; line-height:1.4; }
 .wi4-conf[role="alert"] { border-color:var(--wi4-red); background:var(--wi4-red-bg); color:var(--wi4-red-ink); }
-.wi4-conf-lead { display:flex; align-items:center; gap:6px; font-weight:600; }
-.wi4-conf-q { margin-top:4px; font-weight:600; }
+.wi4-conf-lead { display:flex; align-items:flex-start; gap:8px; font-weight:600; }
+.wi4-conf-q { font-weight:600; }
 .wi4-datep-ft, .wi4-dlg-ft { display:flex; justify-content:flex-end; gap:8px; margin-top:10px; }
+/* Left-aligned as in Figma, and wrapping: «Κράτα του άλλου χρήστη» +
+   «Γράψε τη δική μου» are wider than the box and ran out of its left edge. */
+.wi4-conf > .wi4-dlg-ft { margin-top:0; justify-content:flex-start; flex-wrap:wrap; }
+/* Buttons Medium 11.5, 25px, radius 5 (Figma 1125:2983 / 2985). */
+.wi4-conf .wi4-btn { height:25px; padding:0 10px; border-radius:5px; font-size:11.5px; font-weight:500; }
 
 /* Conflict dialog (§g.4) and «?» shortcuts sheet (§e #17) */
 .wi4-dlg-back { position:fixed; inset:0; z-index:var(--z-top); background:rgba(11,25,41,.32); display:grid; place-items:center; }

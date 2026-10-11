@@ -566,7 +566,41 @@ async function scnPaint(browser, origin) {
   const W = [32, 140, 621, 204, 621, 140], at = [0, 1, 3, 5, 7, 9];
   ok(scn, 'grid at 1920 (sidebar collapsed): 32/140/621/204/621/140 ±1px', g.tracks.length === 10 && at.every((i, k) => Math.abs(g.tracks[i] - W[k]) <= 1), g.tracks);
   ok(scn, 'rows 32px', g.row.length > 10 && g.row.every(x => Math.abs(x - 32) <= 0.5), [...new Set(g.row)]);
-  ok(scn, 'sub-rows 28px', g.sub.length > 0 && g.sub.every(x => Math.abs(x - 28) <= 0.5), [...new Set(g.sub)]);
+  // Per-kind heights (Figma 1097:2830 relay 24, 1097:3046 rota 32, 1097:3388
+  // split header 22): one 28px for all of them read as one more row.
+  ok(scn, 'sub-rows are a relay (24) or a rota leg (32), never the old 28px', g.sub.length > 0 && g.sub.every(x => Math.abs(x - 24) <= 0.5 || Math.abs(x - 32) <= 0.5), [...new Set(g.sub)]);
+  const sk = await page.evaluate(() => {
+    const h = sel => [...document.querySelectorAll('#content .wi4 ' + sel)].filter(e => e.offsetParent).map(e => Math.round(e.getBoundingClientRect().height * 10) / 10);
+    const owners = [...document.querySelectorAll('#content .wi4 #wi-rows .wi4-row')].filter(r => r.nextElementSibling && r.nextElementSibling.classList.contains('wi4-subrow'));
+    const conn = [...document.querySelectorAll('#content .wi4 .wi4-row > .wi4-c-idx')].filter(c => c.dataset.no === '↳1' || c.dataset.no === '↳2')
+      .map(c => { const a = getComputedStyle(c, '::after'); return { no: c.dataset.no, on: a.content !== 'none' && a.borderLeftWidth === '1px', h: Math.round(parseFloat(a.height)) }; });
+    return { relay: h('.wi4-subrow.wi4-sub-rl'), relayAttr: document.querySelectorAll('#content .wi4 .wi4-subrow[data-relay]:not(.wi4-sub-rl)').length,
+      leg: h('.wi4-subrow.wi4-sub-leg'), split: h('.wi4-splithd'), owners: owners.map(r => getComputedStyle(r).borderBottomStyle), conn };
+  });
+  const each = (a, v) => a.length > 0 && a.every(x => Math.abs(x - v) <= 0.5);
+  ok(scn, 'relay sub-rows 24px, rota legs 32px, split headers 22px (each kind present)', each(sk.relay, 24) && !sk.relayAttr && each(sk.leg, 32) && each(sk.split, 22), sk);
+  ok(scn, 'a row followed by its sub-row ends on a dashed hairline (Figma 1097:2781)', sk.owners.length > 0 && sk.owners.every(s => s === 'dashed'), sk.owners);
+  ok(scn, 'split legs ↳1 → ↳2 are tied by the 1px connector (full ↳1, half ↳2)', sk.conn.length >= 2 && sk.conn.every(c => c.on) && sk.conn.some(c => c.no === '↳1' && c.h >= 32) && sk.conn.some(c => c.no === '↳2' && c.h >= 15 && c.h <= 17), sk.conn);
+  // Sub-row type (Figma 1097:2830, 1097:3388, 1097:3046/3055).
+  const ty = await page.evaluate(([tok]) => {
+    const token = eval(tok);
+    const cs = e => { if (!e) return null; const s = getComputedStyle(e); return { size: s.fontSize, w: s.fontWeight, ls: s.letterSpacing, c: s.color }; };
+    const q = sel => document.querySelector('#content .wi4 ' + sel);
+    const un = q('.wi4-sub-leg .wi4-unlink'), asg = un && un.closest('.wi4-c-asg');
+    return { ink: token('--wi4-ink'), g1: token('--wi4-grey-1'), g2: token('--wi4-grey-2'),
+      rlTag: cs(q('.wi4-sub-rl .wi4-tag')), rlDrv: cs(q('.wi4-sub-rl .wi4-rl-drv')), rlSep: cs(q('.wi4-sub-rl .wi4-rl-sep')),
+      spTag: cs(q('.wi4-splithd .wi4-tag')), spBody: cs(q('.wi4-splithd .wi4-split-t')), spBodyTitle: !!(q('.wi4-splithd .wi4-split-t') || {}).title,
+      spInset: q('.wi4-splithd .wi4-tag') ? Math.round(q('.wi4-splithd .wi4-tag').getBoundingClientRect().left - q('.wi4-cols .wi4-c-exp').getBoundingClientRect().left) : null,
+      legT: cs(q('.wi4-sub-leg .wi4-sub-leg-t')), legTxt: (q('.wi4-sub-leg .wi4-sub-leg-t') || {}).textContent || '', idx: cs(q('.wi4-legidx')),
+      un: un ? Object.assign(cs(un), { h: un.getBoundingClientRect().height, pad: getComputedStyle(un).paddingLeft, dx: Math.round(un.getBoundingClientRect().left - asg.getBoundingClientRect().left) }) : null };
+  }, [TOKEN_JS]);
+  ok(scn, 'relay: tag SemiBold 10.5 untracked, the driver SemiBold 11 in ink, «·» in grey-2',
+    !!ty.rlTag && ty.rlTag.size === '10.5px' && ty.rlTag.w === '600' && ty.rlTag.ls === 'normal' && !!ty.rlDrv && ty.rlDrv.size === '11px' && ty.rlDrv.w === '600' && ty.rlDrv.c === ty.ink && !!ty.rlSep && ty.rlSep.c === ty.g2, ty);
+  ok(scn, 'split header: tag SemiBold 10.5 untracked 10px inside the leg; route Medium 11.5 in ink, cut with a title',
+    !!ty.spTag && ty.spTag.size === '10.5px' && ty.spTag.w === '600' && ty.spTag.ls === 'normal' && ty.spInset === 10 && !!ty.spBody && ty.spBody.size === '11.5px' && ty.spBody.w === '500' && ty.spBody.c === ty.ink && ty.spBodyTitle, ty);
+  ok(scn, 'rota: «ΣΚΕΛΟΣ ΡΟΤΑΣ · ίδιο φορτηγό» one SemiBold 10.5 run; unlink 22px, padding 8, Medium 11, 4px off the cell; «↳» 12 SemiBold',
+    !!ty.legT && ty.legT.size === '10.5px' && ty.legT.w === '600' && ty.legT.c === ty.g1 && ty.legTxt === 'ΣΚΕΛΟΣ ΡΟΤΑΣ · ίδιο φορτηγό' && !!ty.un && Math.abs(ty.un.h - 22) <= 0.5 && ty.un.pad === '8px'
+    && ty.un.size === '11px' && ty.un.w === '500' && ty.un.dx === 4 && !!ty.idx && ty.idx.size === '12px' && ty.idx.w === '600', ty);
   ok(scn, 'line 1 = DM Sans 12 Medium; line 2 = 10.5; day header 12.5 SemiBold; column header 10 SemiBold; plates DM Mono',
     g.l1 && /DM Sans/.test(g.l1.fam) && g.l1.size === '12px' && g.l1.w === '500' && g.l2 && g.l2.size === '10.5px'
     && g.dayh && g.dayh.size === '12.5px' && g.dayh.w === '600' && g.colh && g.colh.size === '10px' && g.colh.w === '600' && g.plate && /DM Mono/.test(g.plate.fam), g);
@@ -1463,6 +1497,29 @@ async function scnDate(browser, origin) {
     await page.waitForTimeout(10500);
     ok('date.trace', 'the trace goes after 10 s', await page.evaluate(() => ![...document.querySelectorAll('#content .wi4 .wi4-trace')].some(t => /ΠΕΛΑΤΗΣ Γ/.test(t.innerText))));
   }
+  // The overlays live on <body>, outside .wi4: their buttons fell back to the
+  // UA font (Arial 13.33px day cells). Figma 1125:2799 / 2843: 300 wide,
+  // 16px inset, day cells DM Sans 12, a 32px time field.
+  {
+    const fams = sel => page.evaluate(s => [...document.querySelectorAll(s)].map(b => ({ t: b.textContent.trim().slice(0, 16), fam: getComputedStyle(b).fontFamily, size: getComputedStyle(b).fontSize })), sel);
+    const dm = list => list.length > 0 && list.every(b => /^"?DM Sans/.test(b.fam));
+    await neutral(page);
+    ok('date.geometry', 'the date panel opens', await openDatePanel(page, 'recWiE003'));
+    const g = await page.evaluate(() => { const p = document.querySelector('.wi4-datep'); if (!p) return null; const t = p.querySelector('.wi4-time');
+      return { w: p.getBoundingClientRect().width, pad: getComputedStyle(p).paddingLeft, time: t ? t.getBoundingClientRect().height : null, cell: getComputedStyle(p.querySelectorAll('.wi4-cal')[1].querySelector('.wi4-cal-d')).fontSize }; });
+    ok('date.geometry', 'panel 300px wide with a 16px inset, time field 32px (Figma 1125:2799)', !!g && Math.abs(g.w - 300) <= 1 && g.pad === '16px' && Math.abs(g.time - 32) <= 1, g);
+    const pb = await fams('.wi4-datep button');
+    ok('date.fonts', 'every date-panel button (days, switch, footer) is DM Sans; the day cells 12px', dm(pb) && !!g && g.cell === '12px', pb.filter(b => !/^"?DM Sans/.test(b.fam)).concat([g && g.cell]));
+    await page.keyboard.press('Escape'); await page.waitForTimeout(150);
+    await neutral(page); await page.keyboard.press('Shift+Slash'); await page.waitForTimeout(250);
+    const hb = await fams('.wi4-dlg-back button');
+    ok('date.fonts', 'the «?» sheet\'s buttons (the Esc cap) are DM Sans', dm(hb), hb);
+    await page.keyboard.press('Escape'); await page.waitForTimeout(150);
+    await page.evaluate(() => WI4Actions.queuePanel()); await page.waitForTimeout(250);
+    const qb = await fams('.wi4-qp button');
+    ok('date.fonts', 'the «Όλα» panel\'s buttons are DM Sans', dm(qb), qb.filter(b => !/^"?DM Sans/.test(b.fam)).concat([qb.length]));
+    await page.keyboard.press('Escape'); await page.waitForTimeout(150);
+  }
   ok('date', 'no page errors', !S.pageErrors.length, S.pageErrors);
   await page.context().close();
   // A downstream stage that fails (review 11/10, P2): the national load did
@@ -1796,11 +1853,20 @@ async function scnPresence(browser, origin) {
     // Before any save nobody has confirmed the Worker checks _expect: unknown =
     // closed (principle 5) — the note never promises «θα σου πει ποια μένει».
     const p0 = await openDatePanel(page, 'recWiE003') && await panelInfo(page);
-    ok(scn, 'date panel note while the check is unconfirmed: no promise, says so', !!p0 && /Χρήστης Β έχει ανοιχτή αυτή την ημερομηνία/.test(p0.pnote) && !/θα σου πει ποια μένει/.test(p0.pnote) && /δεν έχει επιβεβαιωθεί/.test(p0.pnote), p0);
+    // Unconfirmed, the note is a real warning: it keeps the amber fill.
+    const bg0 = await page.evaluate(([tok]) => { const n = document.querySelector('.wi4-datep .wi4-pnote'); return n ? { bg: getComputedStyle(n).backgroundColor, amber: eval(tok)('--wi4-amber-bg'), info: n.classList.contains('info') } : null; }, [TOKEN_JS]);
+    ok(scn, 'date panel note while the check is unconfirmed: no promise, says so — amber, a warning', !!p0 && /Χρήστης Β έχει ανοιχτή αυτή την ημερομηνία/.test(p0.pnote) && !/θα σου πει ποια μένει/.test(p0.pnote) && /δεν έχει επιβεβαιωθεί/.test(p0.pnote)
+      && !!bg0 && bg0.bg === bg0.amber && !bg0.info, [p0, bg0]);
     await page.keyboard.press('Escape');
     // A Worker that confirmed the check (TMS_EXPECT_LIVE true): the verbatim promise.
     await page.evaluate(() => { window.TMS_EXPECT_LIVE = true; });
     ok(scn, 'date panel note, verbatim shape (§e #10) once the check is confirmed', await openDatePanel(page, 'recWiE003') && /Χρήστης Β έχει ανοιχτή αυτή την ημερομηνία/.test((await panelInfo(page)).pnote) && /θα σου πει ποια μένει/.test((await panelInfo(page)).pnote), await panelInfo(page));
+    // Confirmed, it is news (Figma 1125:2885): light blue, the colleague's
+    // avatar (the row marker's disc), the panel's full inner width.
+    const pn = await page.evaluate(([tok]) => { const p = document.querySelector('.wi4-datep'), n = p && p.querySelector('.wi4-pnote'); if (!n) return null;
+      const pb = p.getBoundingClientRect(), nb = n.getBoundingClientRect(), bw = parseFloat(getComputedStyle(p).borderLeftWidth), av = n.querySelector('.wi4-av');
+      return { info: n.classList.contains('info'), ini: av ? av.textContent : null, bg: getComputedStyle(n).backgroundColor, want: eval(tok)('--wi4-info-bg'), inner: pb.width - 2 * bw, w: nb.width, x: nb.left - pb.left - bw }; }, [TOKEN_JS]);
+    ok(scn, 'the confirmed note is light blue with the colleague\'s avatar, across the panel\'s inner width', !!pn && pn.info && pn.ini === 'Χ' && pn.bg === pn.want && Math.abs(pn.w - pn.inner) <= 2 && Math.abs(pn.x) <= 1, pn);
     await page.keyboard.press('Escape');
     await page.evaluate(() => { delete window.TMS_EXPECT_LIVE; });
     // The week tabs stay in the centre of the bar with the presence strip in
@@ -1894,6 +1960,20 @@ async function scnConflict(browser, origin) {
     await page.waitForTimeout(500); await settle(page, S, 1000);
     const info = await panelInfo(page);
     ok(scn, '409 → «Ποια κρατάμε;» inside the panel; nothing written', !!info && /Ποια κρατάμε|άλλαξε/.test(info.conf) && fld(S, 'recWiE009', 'Loading DateTime') === '2026-10-07T09:00:00.000Z', { info, log: S.log.filter(x => x.k === 'patch') });
+    // Figma 1125:2976: who AND from → to in the bold lead, «Η δική σου
+    // επιλογή: … Ποια κρατάμε;» one regular line, buttons DM Sans Medium
+    // 11.5 / 25px, the --wi4-conf-line border, across the panel's inner width.
+    const cf = await page.evaluate(([tok]) => { const p = document.querySelector('.wi4-datep'), c = p && p.querySelector('.wi4-conf'); if (!c) return null; const t = eval(tok);
+      const lead = c.querySelector('.wi4-conf-lead'), kids = [...c.children].filter(k => !k.classList.contains('wi4-conf-lead') && !k.classList.contains('wi4-dlg-ft'));
+      const pb = p.getBoundingClientRect(), cb = c.getBoundingClientRect(), bw = parseFloat(getComputedStyle(p).borderLeftWidth);
+      return { lead: lead ? lead.textContent : '', leadW: lead ? getComputedStyle(lead).fontWeight : null, lines: kids.map(k => ({ t: k.textContent, w: getComputedStyle(k).fontWeight })),
+        border: getComputedStyle(c).borderTopColor, want: t('--wi4-conf-line'), radius: getComputedStyle(c).borderTopLeftRadius, inner: pb.width - 2 * bw, w: cb.width, x: cb.left - pb.left - bw,
+        btn: [...c.querySelectorAll('button')].map(b => ({ fam: getComputedStyle(b).fontFamily, size: getComputedStyle(b).fontSize, w: getComputedStyle(b).fontWeight, h: b.getBoundingClientRect().height, out: b.getBoundingClientRect().left < cb.left || b.getBoundingClientRect().right > cb.right })) }; }, [TOKEN_JS]);
+    ok(scn, 'the lead names who AND both dates («… : Τετ 7/10 06:00 → Τετ 7/10 12:00»), SemiBold', !!cf && /άλλαξε/.test(cf.lead) && /:\s*\S+ \d{1,2}\/\d{1,2}.*→.*\d{1,2}\/\d{1,2}/.test(cf.lead) && cf.leadW === '600', cf);
+    ok(scn, '«Η δική σου επιλογή: … Ποια κρατάμε;» is ONE regular line', !!cf && cf.lines.length === 1 && /^Η δική σου επιλογή: .+\. Ποια κρατάμε;$/.test(cf.lines[0].t) && cf.lines[0].w === '400', cf && cf.lines);
+    ok(scn, 'box: conf-line border, radius 6, the panel\'s inner width; buttons DM Sans Medium 11.5, 25px, inside the box',
+      !!cf && cf.border === cf.want && cf.radius === '6px' && Math.abs(cf.w - cf.inner) <= 2 && Math.abs(cf.x) <= 1 && cf.btn.length === 2
+      && cf.btn.every(b => /^"?DM Sans/.test(b.fam) && b.size === '11.5px' && b.w === '500' && Math.abs(b.h - 25) <= 0.5 && !b.out), cf);
     const mine = page.locator('.wi4-datep .wi4-conf button', { hasText: 'Γράψε τη δική μου' });
     ok(scn, 'buttons «Κράτα …» and «Γράψε τη δική μου»', (await mine.count()) === 1 && (await page.locator('.wi4-datep .wi4-conf button', { hasText: 'Κράτα' }).count()) === 1);
     if (await mine.count()) { await mine.click(); await page.waitForTimeout(500); await settle(page, S, 1000); }
@@ -1920,6 +2000,13 @@ async function scnConflict(browser, origin) {
     // Rules «Μηνύματα»: a plate, a reference or a client — never an internal id;
     // «Η δική σου επιλογή» is what the user picked, not «κενό».
     ok(scn, 'the dialog names plates (theirs TST-1015, mine TST-1016), never a record id', /TST-1015/.test(r.dlg) && /TST-1016/.test(r.dlg) && !/rec[A-Za-z0-9]{8,}/.test(r.dlg), r.dlg);
+    // Same split as in the panel; the modal lives on <body>, so its buttons
+    // were Arial until the overlay reset (F1).
+    const md = await page.evaluate(() => { const c = document.querySelector('.wi4-dlg .wi4-conf');
+      return c ? { lead: (c.querySelector('.wi4-conf-lead') || {}).textContent || '', line: [...c.children].filter(k => !k.className).map(k => k.textContent).join('|'),
+        fams: [...document.querySelectorAll('.wi4-dlg-back button')].map(b => getComputedStyle(b).fontFamily) } : null; });
+    ok(scn, 'modal: «…: TST-1007 → TST-1015» in the lead, «Η δική σου επιλογή: TST-1016. Ποια κρατάμε;» under it, every button DM Sans',
+      !!md && /→ TST-1015/.test(md.lead) && md.line === 'Η δική σου επιλογή: TST-1016. Ποια κρατάμε;' && md.fams.length >= 3 && md.fams.every(f => /^"?DM Sans/.test(f)), md);
     await shot(page, 'conflict-dialog-assign');
     ok(scn, 'table keeps the other user\'s truck; only the first PATCH was tried', link(fld(S, 'recWiE007', 'Truck')) === 'recWiT015' && patches(S, 'recWiE007').length === 1 && patches(S, 'recWiE007')[0].status === 409, patches(S));
     await page.keyboard.press('Escape'); await page.waitForTimeout(200);
