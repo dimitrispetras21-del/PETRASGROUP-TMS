@@ -381,10 +381,12 @@ const PERMS = {
 // (a typo, true, undefined, a cached config.js without the key) is read as
 // 'off' — unknown = closed (principle 5). Born 'off': with it the old board
 // renders byte-for-byte as before, proved by the identity rig.
+// 'on' since 11/10/2026 by the owner («α», for everyone). Rollback = set 'off'
+// again (+ config.js ?v= and SW_VERSION); each user can pick «Παλιά προβολή».
 // WI_PRESENCE: live «who else is here» heartbeats (§g). Born false: it costs
 // Worker requests on the Free plan (100k/day for the WHOLE app), so it waits
 // for the owner's 14-day Cloudflare number, SQL 068 and the presence Worker.
-const FEATURES = { ORDER_SPLIT: true, GROUP_TILES: true, STOCK_LOTS: true, WI_V2: 'off', WI_PRESENCE: false };
+const FEATURES = { ORDER_SPLIT: true, GROUP_TILES: true, STOCK_LOTS: true, WI_V2: 'on', WI_PRESENCE: false };
 // Pilot usernames for FEATURES.WI_V2 === 'pilot' (PLAN §2.1). Empty = nobody.
 const WI_V2_USERS = [];
 // Presence beat pacing in ms (§g.4): every 5 s while the user is active, 30 s

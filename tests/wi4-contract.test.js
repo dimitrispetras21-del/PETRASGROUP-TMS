@@ -170,12 +170,12 @@ function loadNewFiles() {
   return { ctx, added };
 }
 
-test('config.js: every new value is born closed (§b, principle 5)', () => {
+test('config.js: WI_V2 is the owner\'s choice, every other new value is born closed (§b, principle 5)', () => {
   const { ctx } = loadNewFiles();
   const v = (e) => vm.runInContext(e, ctx);
   // Opening the flag is an owner decision (§j.5): it changes this line in the
-  // same commit, so the switch never moves without a trace.
-  assert.strictEqual(v('FEATURES.WI_V2'), 'off', 'WI_V2 must ship \'off\' until the owner opens the pilot');
+  // same commit, so the switch never moves without a trace. Owner 11/10/2026: «α» → 'on' for everyone.
+  assert.strictEqual(v('FEATURES.WI_V2'), 'on', 'WI_V2 is \'on\' by the owner (11/10); change this line with the flag');
   assert.strictEqual(v('FEATURES.WI_PRESENCE'), false);
   assert.deepStrictEqual(v('JSON.stringify(WI_V2_USERS)'), '[]');
   assert.deepStrictEqual(JSON.parse(v('JSON.stringify(WI_PRESENCE_MS)')), { active: 5000, idle: 30000, idleAfter: 120000 });
