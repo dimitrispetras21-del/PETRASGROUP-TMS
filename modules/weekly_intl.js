@@ -3117,7 +3117,9 @@ async function _wiConsumePendingMatch(newId,fields){
 // Fullscreen on #content only (owner 4/9): the browser hides sidebar/topbar for
 // us, Esc exits natively. No layout of our own to maintain.
 function _wiFullscreen(){
-  const el=document.querySelector('.wk3.wi2 .wk3-sheet')||document.getElementById('content')||document.documentElement;
+  // v4 keeps its week tabs and «Προβολή ▾» (with «Έξοδος») in the app's top
+  // bar, outside #content: full screen takes .main, bar included (11/10).
+  const el=document.querySelector('.wk3.wi2 .wk3-sheet')||(_wiV2Active()&&document.querySelector('.main'))||document.getElementById('content')||document.documentElement;
   if(document.fullscreenElement){ document.exitFullscreen?.(); return; }
   (el.requestFullscreen||el.webkitRequestFullscreen)?.call(el);
 }

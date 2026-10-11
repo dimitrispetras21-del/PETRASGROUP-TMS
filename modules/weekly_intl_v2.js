@@ -1859,7 +1859,7 @@ function _install() {
   // session state — the body class, the presence beats, the v4 overlays —
   // at once, not at the next 30-second tick. A re-read of this board (a
   // spinner in #content) keeps v4 active and changes nothing.
-  if (host && typeof MutationObserver === 'function') new MutationObserver(() => { if (!WIV2.active()) _cleanup(); }).observe(host, { childList: true });
+  if (host && typeof MutationObserver === 'function') new MutationObserver(() => { if (!WIV2.active()) _cleanup(); else if (!_root()) _topUnmount(); }).observe(host, { childList: true });
 }
 // «Ενημερώθηκε πριν N΄» stays true; the tick is also the backstop of the
 // page-leave rule above. It tests WIV2.active(), as the observer does — not
@@ -1871,7 +1871,7 @@ function _tick() {
   if (_tickT) return;
   _tickT = setInterval(() => {
     if (!WIV2.active()) { _cleanup(); return; }
-    if (!_root()) return;
+    if (!_root()) { _topUnmount(); return; }
     const u = document.getElementById('wi4-upd');
     if (u && !u.classList.contains('err') && !u.classList.contains('chg')) u.outerHTML = _updHTML();
   }, 30000);
@@ -1903,11 +1903,17 @@ function _topMount() {
     tb.insertBefore(slot, tb.querySelector('.topbar-right'));
   }
   slot.replaceChildren(bar);
+  document.body.classList.add('wi4-top-on');
   _umenuMount();
 }
+// Also while v4 stays active but #content holds no board — a re-read's
+// spinner, the load-error card: a bar still saying «Ενημερώθηκε μόλις τώρα»
+// over a week that did not load would be a lie (principle 1, review 11/10).
+// The app's own title and Sign out show until the next paint mounts it again.
 function _topUnmount() {
   const slot = document.getElementById('wi4-top');
   if (slot) slot.remove();
+  try { document.body.classList.remove('wi4-top-on'); } catch (_) {}
   _umenuUnmount();
 }
 // Name, role and Sign out behind the avatar (Figma ends the bar with the
@@ -1920,10 +1926,25 @@ function _umenuTog(ev) {
   if (ev) ev.stopPropagation();
   const open = _umenu.hidden;
   _umenu.hidden = !open;
+  if (_umenu.parentElement) _umenu.parentElement.setAttribute('aria-expanded', String(open));
   if (open) document.addEventListener('click', _umenuClose, { once: true });
 }
-function _umenuClose() { if (_umenu) _umenu.hidden = true; }
-function _umenuKey(ev) { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); _umenuTog(ev); } else if (ev.key === 'Escape') _umenuClose(); }
+function _umenuClose() {
+  if (!_umenu) return;
+  _umenu.hidden = true;
+  if (_umenu.parentElement) _umenu.parentElement.setAttribute('aria-expanded', 'false');
+}
+// Keys never reach the board's shortcuts from here (Esc there clears the
+// search). Inside the menu the button keeps its own Enter/Space — handled on
+// the chip they cancelled «Αποσύνδεση» from the keyboard (review 11/10).
+function _umenuKey(ev) {
+  if (!_umenu) return;
+  ev.stopPropagation();
+  const chip = _umenu.parentElement;
+  if (ev.key === 'Escape') { ev.preventDefault(); _umenuClose(); if (chip) chip.focus(); return; }
+  if (_umenu.contains(ev.target)) return;
+  if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); _umenuTog(ev); }
+}
 function _umenuMount() {
   const chip = document.querySelector('.topbar .user-chip');
   if (!chip || _umenu) return;
@@ -1939,6 +1960,7 @@ function _umenuMount() {
   chip.setAttribute('role', 'button');
   chip.setAttribute('tabindex', '0');
   chip.setAttribute('aria-haspopup', 'true');
+  chip.setAttribute('aria-expanded', 'false');
   chip.title = name ? name + ' — Αποσύνδεση' : 'Αποσύνδεση';
   chip.addEventListener('click', _umenuTog);
   chip.addEventListener('keydown', _umenuKey);
@@ -1953,7 +1975,7 @@ function _umenuUnmount() {
   if (!chip) return;
   chip.removeEventListener('click', _umenuTog);
   chip.removeEventListener('keydown', _umenuKey);
-  ['role', 'tabindex', 'aria-haspopup', 'title'].forEach((a) => chip.removeAttribute(a));
+  ['role', 'tabindex', 'aria-haspopup', 'aria-expanded', 'title'].forEach((a) => chip.removeAttribute(a));
 }
 
 function _cleanup() {

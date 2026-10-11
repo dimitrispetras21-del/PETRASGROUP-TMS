@@ -2332,7 +2332,57 @@ async function scnParity(browser, origin) {
       return { ok: last.bottom <= f.top + 0.5 || last.top >= f.bottom - 0.5, last: Math.round(last.bottom), fabTop: Math.round(f.top) };
     });
     ok(scn, 'scrolled to the end, the rail\'s last icon clears the chat button', rail.ok, rail);
+    // Review 11/10 (P1): .wi4-cols sticks at minus the scroller's top padding;
+    // with the padding at 12px and the offset left at -32px the header slid
+    // 20px out of view on any scroll. No other scenario scrolls the board.
+    await page.evaluate(() => { document.getElementById('content').scrollTop = 700; });
+    await page.waitForTimeout(150);
+    const st = await page.evaluate(() => { const sc = document.getElementById('content'), c = sc.getBoundingClientRect(), h = document.querySelector('#content .wi4 .wi4-cols').getBoundingClientRect();
+      return { scrolled: sc.scrollTop, cTop: Math.round(c.top), hTop: Math.round(h.top), hBot: Math.round(h.bottom) }; });
+    ok(scn, 'scrolled, the column header stays whole at the board\'s top edge', st.scrolled > 100 && Math.abs(st.hTop - st.cTop) <= 1 && st.hBot - st.hTop >= 27, st);
     if (vp.width === 1920) {
+      // Scrolled: the header sits right under the bar. The bar's menus must
+      // open OVER it (review 11/10, P2: same z-index, DOM order lost).
+      await page.click('.wi4-top .wk-more-t');
+      const vs = await page.evaluate(() => { const m = document.getElementById('wi4-view'); if (!m || m.hidden) return { open: false }; const it = m.querySelector('button, [role="menuitem"], a') || m; const b = it.getBoundingClientRect(); const top = document.elementFromPoint(b.left + b.width / 2, b.top + b.height / 2); return { open: true, onTop: !!top && m.contains(top) }; });
+      await page.mouse.click(900, 600);
+      await page.click('.topbar .notif-bell');
+      // The panel shows once its list is read (_toggleNotifPanel → _refreshNotifs).
+      await page.waitForFunction(() => getComputedStyle(document.getElementById('notifPanel')).display !== 'none', null, { timeout: 4000 }).catch(() => {});
+      const np = await page.evaluate(() => { const p = document.getElementById('notifPanel'); if (!p || getComputedStyle(p).display === 'none') return { open: false }; const b = p.getBoundingClientRect(); const top = document.elementFromPoint(b.left + b.width / 2, Math.min(b.bottom - 2, b.top + 16)); return { open: true, onTop: !!top && p.contains(top) }; });
+      await page.evaluate(() => { if (typeof _toggleNotifPanel === 'function' && getComputedStyle(document.getElementById('notifPanel')).display !== 'none') _toggleNotifPanel(); });
+      ok(scn, 'scrolled: «Προβολή ▾» and the bell\'s panel open over the sticky header', vs.open && vs.onTop && np.open && np.onTop, { vs, np });
+      await page.evaluate(() => { document.getElementById('content').scrollTop = 0; });
+      // Keyboard: chip → Enter opens, Tab reaches «Αποσύνδεση», Enter signs
+      // out (review 11/10, P2: the chip's key handler cancelled it). Esc on
+      // the menu closes it and leaves the board's search alone.
+      await page.evaluate(() => { window.__lo = 0; window.logout = () => { window.__lo++; }; });
+      await page.fill('#wi4-search', 'Alpha');
+      await page.focus('.topbar .user-chip'); await page.keyboard.press('Enter');
+      const kOpen = await page.evaluate(() => { const m = document.querySelector('.topbar .wi4-umenu'); return !!m && !m.hidden && document.querySelector('.topbar .user-chip').getAttribute('aria-expanded') === 'true'; });
+      await page.keyboard.press('Escape');
+      const kEsc = await page.evaluate(() => ({ closed: document.querySelector('.topbar .wi4-umenu').hidden, q: document.getElementById('wi4-search').value }));
+      await page.keyboard.press('Enter'); await page.keyboard.press('Tab'); await page.keyboard.press('Enter');
+      const lo = await page.evaluate(() => window.__lo);
+      ok(scn, 'keyboard: Enter opens the avatar menu, Esc closes it without clearing the search, Tab + Enter signs out', kOpen && kEsc.closed && kEsc.q === 'Alpha' && lo === 1, { kOpen, kEsc, lo });
+      await page.fill('#wi4-search', '');
+      await page.mouse.click(900, 600);
+      // A read that fails while v4 stays active: the error card must not sit
+      // under the previous week's bar (review 11/10, P2) — the app's title and
+      // Sign out show; the next good paint mounts the bar again.
+      const rr = await page.evaluate(async () => {
+        const orig = window.atGetAll; window.atGetAll = () => Promise.reject(new Error('rig: the read fails'));
+        try { WINTL.week += 1; await renderWeeklyIntl(); } catch (_) {}
+        await new Promise((r) => setTimeout(r, 400));
+        const res = { root: !!document.querySelector('#content .wi4'), slot: !!document.getElementById('wi4-top'), topOn: document.body.classList.contains('wi4-top-on'),
+          title: getComputedStyle(document.getElementById('topbarTitle')).display !== 'none', logout: getComputedStyle(document.querySelector('.btn-logout')).display !== 'none' };
+        window.atGetAll = orig; WINTL.week -= 1;
+        try { await renderWeeklyIntl(); } catch (_) {}
+        await new Promise((r) => setTimeout(r, 400));
+        res.back = !!document.getElementById('wi4-top') && document.body.classList.contains('wi4-top-on') && !!document.querySelector('#content .wi4');
+        return res;
+      });
+      ok(scn, 'a failed read: no board bar over the error card, the app\'s title and Sign out instead; the next paint brings the bar back', !rr.root && !rr.slot && !rr.topOn && rr.title && rr.logout && rr.back, rr);
       // Avatar menu: name and role from the chip, one «Αποσύνδεση»; any click
       // elsewhere closes it. «Προβολή ▾» opens ABOVE the board, not under it.
       await page.click('.topbar .user-chip');

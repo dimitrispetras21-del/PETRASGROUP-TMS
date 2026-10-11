@@ -7647,8 +7647,14 @@ body.wi4-on .content { padding-left:28px; padding-right:28px; padding-top:12px; 
    bar is 60px and ends with the bell and the avatar. Name, role and Sign out
    sit behind the avatar (.wi4-umenu); the idle undo hides until there is
    something to undo. */
-body.wi4-on .topbar { height:60px; padding:0 24px 0 28px; gap:12px; position:relative; z-index:30; }
-body.wi4-on #topbarTitle, body.wi4-on #topbarBreadcrumb { display:none; }
+/* z-index above the board's sticky header (.wi4-cols, 30): the «Προβολή ▾»
+   menu and the bell panel open over it. Height and gutters follow wi4-on, so
+   the bar never jumps; the title, the chip and the idle undo follow
+   wi4-top-on — set only while the board's bar is IN the top bar, so a re-read
+   or a load-error card shows the app's own title and Sign out, never a stale
+   week (review 11/10). */
+body.wi4-on .topbar { height:60px; padding:0 24px 0 28px; gap:12px; position:relative; z-index:35; }
+body.wi4-top-on #topbarTitle, body.wi4-top-on #topbarBreadcrumb { display:none; }
 body.wi4-on .topbar .wi4-top { flex:1; min-width:0; align-self:stretch; display:flex; align-items:center; background:transparent; }
 body.wi4-on .topbar .wi4-top > .wi4-bar { flex:1; min-width:0; min-height:60px; border-bottom:0; }
 /* .topbar button's 44px touch floor (SH-3) is for the app's own chrome; on the
@@ -7666,11 +7672,11 @@ body.wi4-on .topbar-right { gap:4px; }
   body.wi4-on .wi4-top .wi4-bar { column-gap:8px; }
   body.wi4-on .wi4-top .wi4-title { font-size:16px; }
 }
-body.wi4-on #undoBtn.undo-btn-idle { display:none; }
+body.wi4-top-on #undoBtn.undo-btn-idle { display:none; }
 body.wi4-on .topbar .notif-wrap { margin-right:0 !important; }
-body.wi4-on .topbar .user-chip { padding:0; border:0; background:transparent; cursor:pointer; position:relative; min-width:44px; min-height:44px; justify-content:center; }
-body.wi4-on .topbar .user-chip > #userName, body.wi4-on .topbar .user-chip > .role-badge, body.wi4-on .topbar .btn-logout { display:none; }
-body.wi4-on .topbar .user-avatar { width:32px; height:32px; font-size:11px; }
+body.wi4-top-on .topbar .user-chip { padding:0; border:0; background:transparent; cursor:pointer; position:relative; min-width:44px; min-height:44px; justify-content:center; }
+body.wi4-top-on .topbar .user-chip > #userName, body.wi4-top-on .topbar .user-chip > .role-badge, body.wi4-top-on .topbar .btn-logout { display:none; }
+body.wi4-top-on .topbar .user-avatar { width:32px; height:32px; font-size:11px; }
 .wi4-umenu { position:absolute; top:calc(100% + 4px); right:0; min-width:200px; padding:6px 0; background:var(--surface-card); border:1px solid var(--wi4-line-2); border-radius:8px; box-shadow:0 8px 24px rgba(11,25,41,.14); z-index:40; font-family:'DM Sans',sans-serif; font-size:12px; color:var(--wi4-ink); cursor:default; }
 .wi4-umenu[hidden] { display:none; }
 .wi4-umenu-h { padding:6px 14px 8px; border-bottom:1px solid var(--wi4-line-2); margin-bottom:4px; white-space:nowrap; }
@@ -7679,9 +7685,12 @@ body.wi4-on .topbar .user-avatar { width:32px; height:32px; font-size:11px; }
 .wi4-umenu button:hover, .wi4-umenu button:focus-visible { background:var(--wi4-hover); }
 /* The chat button parks in the rail on the board: bottom-right it covered the
    pallets of the last rows (parity scan, 11/10: 3 rows at 1920). */
-body.wi4-on .aic-btn { left:8px; right:auto; bottom:64px; width:40px; height:40px; }
-/* …and the rail's last icons scroll clear of it. */
-body.wi4-on .sidebar-nav { padding-bottom:56px; }
+/* Desktop only: ≤1024px has no rail to park in. */
+@media (min-width:1025px) {
+  body.wi4-on .aic-btn { left:8px; right:auto; bottom:64px; width:40px; height:40px; }
+  /* …and the rail's last icons scroll clear of it. */
+  body.wi4-on .sidebar-nav { padding-bottom:56px; }
+}
 
 /* The ONE truncation rule of the block (styles.truncate +1). A visible «…»
    instead of a silent cut (DESIGN.md Κ6): a dispatcher must see that a name
@@ -7863,12 +7872,14 @@ body.wi4-on #wi-ctx .wi4-m-sec .wi4-l2, body.wi4-on #wi-ctx .wi4-m-hd .wi4-l2 { 
 /* The split frame's header starts at the export leg, like the relay tags
    (board: «ΣΠΑΣΜΕΝΗ ΣΕ 2 ΣΚΕΛΗ» at the export column, not under ΠΡΟΣ ΒΕΡΟΙΑ). */
 .wi4-splithd .wi4-c-span { grid-column:4 / -1; }
-/* Sticky header: .content (the scroller) has 32px of top padding, and a sticky
-   element sticks INSIDE that padding — at top:0 rows scrolled through the
-   32px strip above it. top = minus that padding puts it at the scroller's edge
-   (the same tie as .entity-layout); change both together. The 1px side
-   padding lines the tracks up with the rows inside the day card's border. */
-.wi4-cols { position:sticky; top:-32px; z-index:30; height:28px; padding:0 1px; background:var(--surface-card); border-bottom:1px solid var(--wi4-line-2);
+/* Sticky header: .content (the scroller) has 12px of top padding on the board
+   (body.wi4-on .content, the one top bar), and a sticky element sticks INSIDE
+   that padding — at top:0 rows scrolled through the strip above it. top =
+   minus that padding puts it at the scroller's edge; change both together
+   (it was -32px for the old 32px padding: the header slid away, review 11/10).
+   The 1px side padding lines the tracks up with the rows inside the day card's
+   border. */
+.wi4-cols { position:sticky; top:-12px; z-index:30; height:28px; padding:0 1px; background:var(--surface-card); border-bottom:1px solid var(--wi4-line-2);
   font-size:10px; font-weight:600; letter-spacing:.6px; text-transform:uppercase; color:var(--wi4-grey-2); }
 .wi4-n { font-weight:400; letter-spacing:0; text-transform:none; }
 .wi4-ftog { cursor:pointer; white-space:nowrap; }
