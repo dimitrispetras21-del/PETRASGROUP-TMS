@@ -1333,6 +1333,22 @@ async function _opsStat(id,st){
 // Βρες την εγγραφή σε όποια λίστα ζει (ημέρα ή εκκρεμείς φορτώσεις).
 function _opsConvert(id){ if(_opsBlockReadOnly()) return; convertPreorder(id); }
 function _opsFind(id){ return OPS.intl.find(x=>x.id===id)||OPS.overdueLoads.find(x=>x.id===id)||OPS.overdue.find(x=>x.id===id); }
+// The words for the chain that «Σε μεταφορά» awaits after writing the Veroia
+// day ('' = nothing failed). Only the 'VS chain' stage moves the national
+// load, so only it may say «ΔΕΝ ακολούθησε»; a groupage, ramp, pallet or
+// partner stage that failed is said as itself (WP-A gate 11/10, plan §5.2 D:
+// another stage is never reported as «δεν ακολούθησε»). A thrown chain
+// ('sync') is unknown, not «did not follow» — the dispatcher checks.
+const _OPS_SYNC_WHAT={'GRP→GL→CL→NL cascade':'το groupage εθνικών','RAMP sync':'η ράμπα','PL feed sync':'οι παλέτες',paSyncStatus:'οι αναθέσεις συνεργατών'};
+function _opsVsChainNote(ds){
+  if(ds&&ds.ok) return '';
+  const failed=(ds&&ds.failed&&ds.failed.length)?ds.failed:['sync'];
+  const others=failed.filter(l=>l!=='VS chain'&&l!=='sync').map(l=>_OPS_SYNC_WHAT[l]||l);
+  const tail=others.length?' Δεν ενημερώθηκε επίσης: '+others.join(', ')+'.':'';
+  if(failed.includes('VS chain')) return 'Φορτώθηκε — αλλά το εθνικό φορτίο ΔΕΝ ακολούθησε την ημέρα Βέροιας. Ξαναδοκίμασε από το Εβδομαδιαίο Διεθνών.'+tail;
+  if(failed.includes('sync')) return 'Φορτώθηκε — ο συγχρονισμός δεν ολοκληρώθηκε· έλεγξε το Εβδομαδιαίο Εθνικών.'+tail;
+  return 'Φορτώθηκε — δεν ενημερώθηκε: '+others.join(', ')+'.';
+}
 async function _opsStatFinal(id,st,stamped){ if(_opsBlockReadOnly()) return; try{
   const r0=_opsFind(id);
   const patch={'Status':st};
@@ -1354,14 +1370,15 @@ async function _opsStatFinal(id,st,stamped){ if(_opsBlockReadOnly()) return; try
   // WP-A (plan §3.4): no writer of the Veroia day without the VS chain. This
   // stamp wrote the cross-dock and stopped — the national load, its Veroia
   // stop and the Ramp kept the old day. Same downstream as the Weekly
-  // International date write (_wiDateWrite), awaited so a national load that
-  // did not follow is said instead of a plain ✓ (the failed stage is already
-  // one app_errors line, via syncOrderDownstream's run()).
+  // International date write (_wiDateWrite), awaited so a failed stage is
+  // said instead of a plain ✓ — each in its own words (_opsVsChainNote; the
+  // failed stage is already one app_errors line, via syncOrderDownstream's run()).
   if(patch['VS CD Date'] && typeof syncOrderDownstream==='function'){
     let ds=null;
     try{ ds=await syncOrderDownstream(id,{ source:'intl', changedFields:['VS CD Date'], skipPA:true }); }
     catch(e){ ds={ok:false,failed:['sync']}; if(typeof logError==='function') logError(e,'daily-ops: VS chain after the Veroia day '+id); }
-    if(!ds||!ds.ok){ toast('Φορτώθηκε — αλλά το εθνικό φορτίο ΔΕΝ ακολούθησε την ημέρα Βέροιας. Ξαναδοκίμασε από το Εβδομαδιαίο Διεθνών.','warn'); _opsDraw(); return; }
+    const note=_opsVsChainNote(ds);
+    if(note){ toast(note,'warn'); _opsDraw(); return; }
   }
   toast((st==='In Transit'?'Φορτώθηκε':st)+' ✓');_opsDraw();}catch(e){toast('Η αποθήκευση απέτυχε — δεν γράφτηκε τίποτα. Ξαναδοκίμασε.','danger');}}
 async function _opsDel(id,perf){
