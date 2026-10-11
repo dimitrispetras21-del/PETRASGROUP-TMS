@@ -7625,9 +7625,11 @@ button.btn-icon:focus-visible { outline:2px solid var(--accent); outline-offset:
 /* Root. National columns are 140px open / 18px collapsed (as today's
    collapse); the memory stays in localStorage tms_wk3_fl/fr, read by WP4. No
    media query collapses them: §e #20 keeps «as today, open» until the owner's
-   1440 Figma exists. */
+   1440 Figma exists. Transparent (owner 11/10, decision 2; Figma 1097:2254):
+   the board sits on the grey page, only the day cards are white — a white
+   root made the whole board one sheet and the days stopped reading as cards. */
 .wi4 { --wi4-fl:140px; --wi4-fr:140px; font-family:'DM Sans',sans-serif; font-size:12px; color:var(--wi4-ink);
-  background:var(--surface-card); font-variant-numeric:tabular-nums; }
+  background:transparent; font-variant-numeric:tabular-nums; }
 .wi4.wi4-fl-off { --wi4-fl:18px; }
 .wi4.wi4-fr-off { --wi4-fr:18px; }
 /* :where() keeps this at (0,0,1): every class rule on a button (.btn-new-order,
@@ -7638,8 +7640,11 @@ button.btn-icon:focus-visible { outline:2px solid var(--accent); outline-offset:
 /* Board geometry at 1920 = Figma 1097:2254: a 1808px surface whose rows sit
    inside a 1px border (1806px), legs 621px. #content is 1864px wide there (the
    collapsed sidebar is 56px, Figma's 64px), so the gutter is 28px instead of
-   today's 36px. v4 only (body.wi4-on), which leaves with the page. */
-body.wi4-on .content { padding-left:28px; padding-right:28px; padding-top:12px; }
+   today's 36px. v4 only (body.wi4-on), which leaves with the page. Top 8px:
+   the ΕΠΟΜΕΝΑ band at y = 60 + 8 (sheet 15 A 1115:2706). The grey is explicit,
+   not inherited: full screen takes .main (weekly_intl.js _wiFullscreen), where
+   a transparent board would show the black ::backdrop. */
+body.wi4-on .content { padding-left:28px; padding-right:28px; padding-top:8px; background:var(--surface-page); }
 /* ONE top bar (Figma Top bar 1097:2283; owner 11/10, live parity): the app's
    bar stacked over the board's cost ~80px of an 800px screen. WIV2 moves the
    board's bar into the app's bar (#wi4-top, its own .wi4 wrapper so every
@@ -7798,8 +7803,10 @@ body.wi4-on #wi-ctx .wi4-m-sec .wi4-l2, body.wi4-on #wi-ctx .wi4-m-hd .wi4-l2 { 
 .wi4-link { border:none; background:none; padding:0; color:var(--wi4-blue-ink); font-weight:600; cursor:pointer; }
 .wi4-link:hover { text-decoration:underline; }
 
-/* Queue band (§e #2) and «Όλα N ▾» panel (§e #3) */
-.wi4-q { display:flex; align-items:center; gap:8px; padding:8px 0; border-bottom:1px solid var(--wi4-line-2); }
+/* Queue band (§e #2) and «Όλα N ▾» panel (§e #3). No padding, no rule: the
+   bands sit on the grey page 8px apart (sheet 15 A: band y=68 h34, stock
+   y=110, column header y=146) — the white cards and chips carry the edges. */
+.wi4-q { display:flex; align-items:center; gap:8px; padding:0; border-bottom:0; margin-bottom:8px; }
 .wi4-q-hd { display:flex; flex-direction:column; gap:2px; flex:none; font-size:10px; font-weight:600; letter-spacing:.6px; text-transform:uppercase; color:var(--wi4-grey-2); }
 .wi4-q-n { font-size:11px; font-weight:400; letter-spacing:0; text-transform:none; color:var(--wi4-grey-2); white-space:nowrap; }
 .wi4-search { flex:none; width:240px; height:32px; display:flex; align-items:center; gap:6px; padding:0 8px; border:1px solid var(--wi4-ctl); border-radius:6px; background:var(--surface-card); }
@@ -7841,7 +7848,7 @@ body.wi4-on #wi-ctx .wi4-m-sec .wi4-l2, body.wi4-on #wi-ctx .wi4-m-hd .wi4-l2 { 
    _wiShelfInner (global .wi-shelf-* rules). Only the frame is v4's: the
    sticky/height part of today's strip is scoped to .wk3.wi2 and would not
    apply here. */
-.wi4-shelf { height:28px; padding:0; border-bottom:1px solid var(--wi4-line-2); }
+.wi4-shelf { height:28px; padding:0; border-bottom:0; margin-bottom:8px; }
 .wi4 .wi-shelf { height:28px; overflow:hidden; }
 /* Sheet 15: label and lot chips from the LEFT edge — the same x as the search
    box and the column header — and the loose-pieces pill on the right. The
@@ -7874,15 +7881,29 @@ body.wi4-on #wi-ctx .wi4-m-sec .wi4-l2, body.wi4-on #wi-ctx .wi4-m-hd .wi4-l2 { 
 /* The split frame's header starts at the export leg, like the relay tags
    (board: «ΣΠΑΣΜΕΝΗ ΣΕ 2 ΣΚΕΛΗ» at the export column, not under ΠΡΟΣ ΒΕΡΟΙΑ). */
 .wi4-splithd .wi4-c-span { grid-column:4 / -1; }
-/* Sticky header: .content (the scroller) has 12px of top padding on the board
+/* Sticky header: .content (the scroller) has 8px of top padding on the board
    (body.wi4-on .content, the one top bar), and a sticky element sticks INSIDE
    that padding — at top:0 rows scrolled through the strip above it. top =
    minus that padding puts it at the scroller's edge; change both together
    (it was -32px for the old 32px padding: the header slid away, review 11/10).
    The 1px side padding lines the tracks up with the rows inside the day card's
-   border. */
-.wi4-cols { position:sticky; top:-12px; z-index:30; height:28px; padding:0 1px; background:var(--surface-card); border-bottom:1px solid var(--wi4-line-2);
-  font-size:10px; font-weight:600; letter-spacing:.6px; text-transform:uppercase; color:var(--wi4-grey-2); }
+   border. Figma 1097:2421: labels in a 24px band (4px above, 20px tall), no
+   fill, no rule — the page grey here is only because a sticky header must be
+   opaque. The 8px under the labels is the gap to the scroll viewport
+   (1097:2447), kept INSIDE the header so rows never show through it, and the
+   10px shadow (1097:3856 «Scrolled shadow») hangs under it only once the
+   board has scrolled (its scroll-driven animation below). Height and
+   scroll-margin-top (.wi4-day, .wi4-row) change together. */
+.wi4-cols { position:sticky; top:-8px; z-index:30; height:32px; padding:4px 1px 8px; box-sizing:border-box; background:var(--surface-page); border-bottom:0;
+  font-size:10px; font-weight:600; letter-spacing:.7px; text-transform:uppercase; color:var(--wi4-grey-2); }
+.wi4-cols::after { content:''; position:absolute; left:0; right:0; top:100%; height:10px; pointer-events:none;
+  background:linear-gradient(rgba(15,23,41,.07),rgba(15,23,41,0)); opacity:0; }
+/* Without scroll timelines the time-based fallback would end at opacity 1 —
+   a shadow on an unscrolled board. Such a browser gets no shadow instead. */
+@supports (animation-timeline: scroll()) {
+  .wi4-cols::after { animation:wi4-sh linear both; animation-timeline:scroll(nearest); animation-range:0 24px; }
+}
+@keyframes wi4-sh { to { opacity:1; } }
 .wi4-n { font-weight:400; letter-spacing:0; text-transform:none; }
 .wi4-ftog { cursor:pointer; white-space:nowrap; }
 .wi4-ftog:hover { color:var(--wi4-ink); }
@@ -7897,21 +7918,58 @@ body.wi4-on #wi-ctx .wi4-m-sec .wi4-l2, body.wi4-on #wi-ctx .wi4-m-hd .wi4-l2 { 
 .wi4-cols .wi4-c-fr { text-align:right; }
 .wi4.wi4-fl-off .wi4-cols .wi4-c-fl, .wi4.wi4-fr-off .wi4-cols .wi4-c-fr { text-align:center; }
 
-/* Day (§e #6). Collapsed only when WI4.collapsible says so; empty = one line.
-   scroll-margin: a day or row scrolled into view (first paint, queue card,
-   keyboard) stops BELOW the 28px sticky column header, never under it. */
-.wi4-day { padding:0; scroll-margin-top:29px; }
-.wi4-row, .wi4-subrow { scroll-margin-top:29px; }
-.wi4-dayh { height:32px; display:flex; align-items:center; gap:8px; cursor:pointer; font-size:12.5px; font-weight:600; letter-spacing:.4px; color:var(--wi4-ink); }
-.wi4-chev { display:inline-grid; place-items:center; color:var(--wi4-icon); transition:transform var(--duration-fast) var(--ease-out); }
+/* Day (§e #6). Collapsed only when WI4.collapsible says so; an empty day is
+   its header alone. scroll-margin: a day or row scrolled into view (first
+   paint, queue card, keyboard) stops BELOW the 32px sticky column header,
+   never under it. */
+.wi4-day { padding:0; scroll-margin-top:33px; }
+.wi4-row, .wi4-subrow { scroll-margin-top:33px; }
+/* Rhythm of Figma 1097:2448: card bottom → day name 14px, name 16px, name →
+   card 6px (36px per day, it was 40). The first day's name sits right under
+   the column header's own 8px gap; a closed or empty day has no card under
+   it, so no 6px either (closed days stack 30px apart, as Figma's do). The
+   name's top never moves when a day opens or closes. */
+.wi4-dayh { height:36px; box-sizing:border-box; padding:14px 0 6px 4px; display:flex; align-items:center; gap:8px; cursor:pointer; font-size:12.5px; font-weight:600; letter-spacing:.4px; color:var(--wi4-ink); }
+.wi4-day:first-child > .wi4-dayh { height:22px; padding-top:0; }
+.wi4-day:is(.closed, .empty) > .wi4-dayh { height:30px; padding-bottom:0; }
+.wi4-day:first-child:is(.closed, .empty) > .wi4-dayh { height:16px; }
+.wi4-day.empty > .wi4-dayh { cursor:default; }
+/* Figma 1097:2642: «ΤΡΙΤΗ » Syne SemiBold, tracking .8; the date in DM Sans
+   inside the same run (so the same tracking). Size and weight stay on
+   .wi4-dayh (12.5/600). */
+.wi4-dayn { font-family:'Syne',sans-serif; letter-spacing:.8px; white-space:nowrap; }
+.wi4-dayd { font-family:'DM Sans',sans-serif; }
+/* Figma 1097:2640: chevron 14px at x4, name at x26; stroke #5B6B7F — after
+   owner decision 1 it is the only sign that a day folds, so not the 2.4:1
+   icon grey. The empty day keeps the 14px as a spacer (nothing to open). */
+.wi4-chev { display:inline-grid; place-items:center; color:var(--wi4-grey-2); transition:transform var(--duration-fast) var(--ease-out); }
+.wi4-dayh-sp { flex:none; width:14px; }
 .wi4-day.closed .wi4-chev { transform:rotate(-90deg); }
-.wi4-dayh-c { font-size:12px; font-weight:400; letter-spacing:0; color:var(--wi4-grey-2); }
-.wi4-today { font-weight:500; letter-spacing:0; color:var(--wi4-blue-ink); }
+/* The closed-day marker (_dayCountHTML): hidden on an open day — its rows
+   carry the rails — and one 6px dot after the date on a closed one.
+   Red filled, amber ring, grey ring (unread national legs): shape + colour. */
+.wi4-dayh-c { display:inline-flex; align-items:center; }
+.wi4-day:not(.closed) .wi4-dayh-c { display:none; }
+.wi4-dayh-dot { flex:none; width:6px; height:6px; box-sizing:border-box; border-radius:50%; }
+.wi4-dayh-dot.red { background:var(--wi4-red); }
+.wi4-dayh-dot.amb { border:1.5px solid var(--wi4-amber); }
+.wi4-dayh-dot.unk { border:1.5px solid var(--wi4-grey-2); }
+/* Figma 1097:3590: «· σήμερα» DM Sans Regular 12. */
+.wi4-today { font-size:12px; font-weight:400; letter-spacing:0; color:var(--wi4-blue-ink); }
 /* Today's whole header is blue (board 1097:2254), not only «σήμερα». */
 .wi4-day.today .wi4-dayh { color:var(--wi4-blue-ink); }
-.wi4-day-body { border:1px solid var(--wi4-line-2); border-radius:6px; background:var(--surface-card); margin-bottom:8px; }
-.wi4-day.today .wi4-day-body { border-top:2px solid var(--wi4-blue); }
+.wi4-day-body { border:1px solid var(--wi4-line-2); border-radius:6px; background:var(--surface-card); margin-bottom:0; }
+/* Today's card: a 1px blue hairline on top (Figma, today's day card). */
+.wi4-day.today .wi4-day-body { border-top:1px solid var(--wi4-blue); }
 .wi4-day.closed .wi4-day-body { display:none; }
+/* Rails on a card's first/last row follow the card's 5px inner curve (Figma
+   rail 1097:2648) instead of poking out square. Not overflow:hidden on the
+   card: it would clip the «+N» fold opened on a last row (.wk3-xfold.open,
+   absolute under its row) and the drag outlines. The 2px of width lets the
+   5px radius apply unscaled to the 3px stripe (a radius wider than its box
+   shrinks). */
+.wi4-day-body > :is(.wi4-r-red, .wi4-r-amb):first-child::before { width:2px; border-top-left-radius:5px; }
+.wi4-day-body > :is(.wi4-r-red, .wi4-r-amb):last-child::before { width:2px; border-bottom-left-radius:5px; }
 .wi4-dayempty { height:24px; display:flex; align-items:center; padding:0 12px; font-size:11px; color:var(--wi4-grey-2); }
 
 /* Rows (§e #7). 32px is locked (owner). One separator under every row, none
