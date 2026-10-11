@@ -1787,8 +1787,13 @@ async function scnDate(browser, origin) {
     ok('date.fonts', 'every date-panel button (days, switch, footer) is DM Sans; the day cells 12px', dm(pb) && !!g && g.cell === '12px', pb.filter(b => !/^"?DM Sans/.test(b.fam)).concat([g && g.cell]));
     await page.keyboard.press('Escape'); await page.waitForTimeout(150);
     await neutral(page); await page.keyboard.press('Shift+Slash'); await page.waitForTimeout(250);
-    const hb = await fams('.wi4-dlg-back button');
-    ok('date.fonts', 'the «?» sheet\'s buttons (the Esc cap) are DM Sans', dm(hb), hb);
+    // The Esc cap is a key cap: DM Mono like every cap of the sheet (Figma
+    // 1119:2841, DM Mono Medium 11 — `keys` checks it); any other button is
+    // DM Sans. What this guards is the fallback: never Syne from the title,
+    // never the UA font.
+    const hb = await page.evaluate(() => [...document.querySelectorAll('.wi4-dlg-back button')].map(b => ({ t: b.textContent.trim().slice(0, 16), cap: b.classList.contains('wi4-key'), fam: getComputedStyle(b).fontFamily, size: getComputedStyle(b).fontSize })));
+    ok('date.fonts', 'the «?» sheet\'s buttons: key caps (the Esc cap) DM Mono, the rest DM Sans — none Syne or the UA font',
+      hb.length > 0 && hb.every(b => (b.cap ? /^"?DM Mono/ : /^"?DM Sans/).test(b.fam)), hb);
     await page.keyboard.press('Escape'); await page.waitForTimeout(150);
     await page.evaluate(() => WI4Actions.queuePanel()); await page.waitForTimeout(250);
     const qb = await fams('.wi4-qp button');

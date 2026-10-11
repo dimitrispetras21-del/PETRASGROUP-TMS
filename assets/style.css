@@ -7670,7 +7670,9 @@ button.btn-icon:focus-visible { outline:2px solid var(--accent); outline-offset:
    #wi-panel (scnStyles holds them equal to v1). */
 :where(.wi4, .wi4-qp, .wi4-datep, .wi4-dlg-back) button { font:inherit; color:inherit; }
 /* In the overlays a button is body text even under a Syne heading: the «?»
-   sheet's Esc cap sits in its title and inherited Syne from it. */
+   sheet's Esc cap sits in its title and inherited Syne from it. This is the
+   floor only — the cap itself is a key cap, DM Mono by .wi4-help .wi4-key
+   (Figma 1119:2841). */
 :where(.wi4-qp, .wi4-datep, .wi4-dlg-back) button { font-family:'DM Sans',sans-serif; }
 /* Board geometry at 1920 = Figma 1097:2254: a 1808px surface whose rows sit
    inside a 1px border (1806px), legs 621px. #content is 1864px wide there (the
@@ -8537,7 +8539,7 @@ body.wi4-on #wi-ctx .wi4-m-sec .wi4-l2, body.wi4-on #wi-ctx .wi4-m-hd .wi4-l2 { 
    end of the scroll it sits UNDER the last row, never on it. A row brought
    into view by ↑/↓ keeps clear of it (scroll-margin). A sticky box sticks
    inside the scroller's padding: bottom = minus .content's 148px bottom
-   padding puts it on the window's edge (as .wi4-cols' top:-12px; change both
+   padding puts it on the window's edge (as .wi4-cols' top:-8px; change both
    together — at bottom:0 it floated 148px above the edge over the rows).
    pointer-events:none: a hint is never a target — a click on a row under it
    reaches the row (and the press takes the strip away, _onMouse). */
