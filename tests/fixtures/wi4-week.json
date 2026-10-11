@@ -376,18 +376,14 @@
    }
   },
   "date_mismatch": {
-   "h2": "a date mismatch",
+   "h2": "a VS date mismatch — no flag on the intl board (owner 11/10 21:20)",
    "ids": [
     "recWiI006"
    ],
    "expect": {
     "vsCdDate": "2026-10-09",
     "natDelDate": "2026-10-08",
-    "flags": {
-     "recWiI006": {
-      "DATE_MISMATCH": "amber"
-     }
-    }
+    "flags": {}
    }
   },
   "empty_day": {

@@ -123,16 +123,15 @@ function points(stops, widthPx, opts) {
 // ─── §d.2 Flags ────────────────────────────────────────────────────────
 // Words: today's vocabulary (rules sheet 958:747). One table, read by the row
 // rail, the day header and the queue.
+// No national code (owner 11/10 21:20, overrides Figma sheet 15 1117:2676 and
+// rule 985:1114): a leg without carrier, a missing national load or an unread
+// national read is Weekly National's work, and DATE_MISMATCH is obsolete under
+// the one synchronized VS date. Removed HERE, at the one source, so the queue,
+// its count, the closed-day marker and the rails all drop them together; the
+// ΠΡΟΣ/ΑΠΟ ΒΕΡΟΙΑ tiles still show the national state, as information.
 const TEXT = freeze({
   NO_TRUCK: 'χωρίς φορτηγό',
   EMPTY_RETURN: 'κενό γύρισμα',
-  NAT_NO_CARRIER: 'σκέλος χωρίς μεταφορέα',
-  // A VS order whose NATIONAL LOADS row was never created (or the chain
-  // failed): nothing to assign on Weekly National — the fault is the missing
-  // load itself, so it is named as such, never «χωρίς μεταφορέα» (11/10).
-  NAT_MISSING: 'εθνικό φορτίο δεν βρέθηκε',
-  NAT_UNKNOWN: 'Τα εθνικά σκέλη δεν φορτώθηκαν — δεν σημαίνει ότι δεν έχουν μεταφορέα',
-  DATE_MISMATCH: 'ασυνέπεια ημερομηνιών',
   OVER_33: 'πάνω από 33π',
   LATE: 'καθυστέρηση',
   PREORDER: 'pre-order χωρίς μετατροπή',
@@ -150,8 +149,7 @@ const TEXT = freeze({
 // the existing opener — one name per action, the SAME names it switches on
 // (a 'loose' here once matched no case there). Never a write by itself.
 const ACT = freeze({
-  NO_TRUCK: 'assign', EMPTY_RETURN: 'newImport', NAT_NO_CARRIER: 'national', NAT_MISSING: 'open',
-  NAT_UNKNOWN: 'retry', SOURCE_UNKNOWN: 'retry', DATE_MISMATCH: 'date',
+  NO_TRUCK: 'assign', EMPTY_RETURN: 'newImport', SOURCE_UNKNOWN: 'retry',
   OVER_33: 'open', SAME_DAY: 'open', LATE: 'open', PREORDER: 'convert',
   SAVE_FAILED: 'retry', STOCK_LATE: 'pieces', STOCK_LOOSE: 'pieces', STOCK_LOT: 'lot',
   RELAY_NO_DRIVER: 'relay', MATCH_UNREAD: 'open', PALLETS_UNKNOWN: 'open',
@@ -169,14 +167,17 @@ const nearLevel = (d, today) => { const k = dayDiff(today, d); return k === null
  * facts (built impurely by WIV2.factsOf):
  *   {kind:'export'|'import'|'leg'|'split'|'relay', saved, partner, loadDate,
  *    delDate, returnDate, returnPlace?, hasReturn,
- *    natLegs:[{side:'to'|'from', date, carrier:boolean, missing?:boolean}], natState,
- *    stockState, pallets, palletsUnknown?, vsCdDate, natDelDate, natLoadDate?,
+ *    stockState, pallets, palletsUnknown?,
  *    sameDayClash:string|null, late, preorder:{level}|null, syncErr, executing,
  *    matchUnread?}
  * → {level:'red'|'amber'|null, reasons:[{code, level, text, act, date}]}
  *
- * NAT_UNKNOWN / SOURCE_UNKNOWN are board-level (one per board / per failed
- * source), never per row: see sourceReasons().
+ * No national fact is read (owner 11/10 21:20, see TEXT): a national leg —
+ * with or without carrier, missing, unread — and a VS date pair never raise
+ * a reason on Weekly Intl.
+ *
+ * SOURCE_UNKNOWN is board-level (one per failed source), never per row: see
+ * sourceReasons().
  */
 function flags(facts, today) {
   const f = facts || {};
@@ -203,26 +204,6 @@ function flags(facts, today) {
     }
   }
 
-  // NAT_NO_CARRIER — only on a READ national state (§d.2a). 'loading'/'err'
-  // say nothing per row: an unread leg is not a leg without a carrier.
-  // NAT_MISSING — the read answered and holds NO national load for this VS
-  // order (leg.missing): the same date rule, its own words and act ('open':
-  // saving the order re-runs the Veroia Switch chain). Never both on one leg.
-  if (f.natState === 'ok' && Array.isArray(f.natLegs)) {
-    for (const leg of f.natLegs) {
-      if (leg && leg.missing) out.push(reason('NAT_MISSING', nearLevel(leg.date, today), TEXT.NAT_MISSING, leg.date, { side: leg.side }));
-      else if (leg && !leg.carrier) out.push(reason('NAT_NO_CARRIER', nearLevel(leg.date, today), TEXT.NAT_NO_CARRIER, leg.date, { side: leg.side }));
-    }
-  }
-
-  // DATE_MISMATCH — VS import reaches Βέροια after its national delivery, or
-  // a VS export's cross-dock day comes before its national loading.
-  if (DAY_RE.test(String(f.vsCdDate || ''))) {
-    const bad = (f.kind === 'import' && dayDiff(f.natDelDate, f.vsCdDate) > 0)
-      || (f.kind === 'export' && dayDiff(f.vsCdDate, f.natLoadDate) > 0);
-    if (bad) out.push(reason('DATE_MISMATCH', 'amber', TEXT.DATE_MISMATCH, f.vsCdDate));
-  }
-
   // 33 pallets is allowed (decision 9/10); only more is a flag. `pallets`
   // sums the members that HAVE a figure, so a load over 33 with one member
   // unwritten is still OVER_33; near 33 with a gap it is a look, never «fine».
@@ -244,14 +225,15 @@ function flags(facts, today) {
 
 /**
  * Board-level reasons for sources that did not load (§d.2a «Άγνωστο ≠ άδειο»).
- * src = {natState, crossWeekOk, relayState, stockState}. One reason per failed
- * source: a failed read is never a smaller number, it is an item that says so.
+ * src = {crossWeekOk, relayState, stockState}. One reason per failed source:
+ * a failed read is never a smaller number, it is an item that says so. The
+ * national read is not one of them (owner 11/10 21:20): its failure is said on
+ * the national tiles («—», titled «απέτυχε …»), never as Weekly Intl work.
  */
 const SOURCE_NAMES = freeze({ crossWeek: 'φορτώσεις W+1', relay: 'τοπικές παραδόσεις/φορτώσεις', stock: 'απόθεμα' });
 function sourceReasons(src) {
   const s = src || {};
   const out = [];
-  if (s.natState === 'err') out.push(reason('NAT_UNKNOWN', 'amber', TEXT.NAT_UNKNOWN, null, { source: 'national' }));
   const unk = (source) => out.push(reason('SOURCE_UNKNOWN', 'amber',
     `Δεν φορτώθηκε: ${SOURCE_NAMES[source]} — δεν σημαίνει ότι δεν υπάρχουν`, null, { source }));
   if (s.crossWeekOk === false) unk('crossWeek');
@@ -266,12 +248,10 @@ const PLURAL = freeze({
   truck: freeze(['φορτηγό', 'φορτηγά']),
   load: freeze(['φορτίο', 'φορτία']),
   emptyReturn: freeze(['κενό γύρισμα', 'κενά γυρίσματα']),
-  natNoCarrier: freeze(['σκέλος χωρίς μεταφορέα', 'σκέλη χωρίς μεταφορέα']),
   pending: freeze(['εκκρεμές', 'εκκρεμή']),
   urgent: freeze(['επείγον', 'επείγοντα']),
   day: freeze(['ημέρα', 'ημέρες']),
   relayNoDriver: freeze(['τοπική χωρίς οδηγό', 'τοπικές χωρίς οδηγό']),
-  natMissing: freeze(['εθνικό φορτίο δεν βρέθηκε', 'εθνικά φορτία δεν βρέθηκαν']),
 });
 function plural(n, key) {
   const w = PLURAL[key];
@@ -281,8 +261,8 @@ function plural(n, key) {
 }
 
 /**
- * rowsFacts = every facts object of ONE day: rows, sub-rows, split legs and
- * national legs all count, so the totals equal the queue (round 11).
+ * rowsFacts = every facts object of ONE day: rows, sub-rows and split legs
+ * all count, so the totals equal the queue (round 11).
  * → {trucks, byCode:{CODE:n}, todayEmpty, emptyOldest}
  *   trucks      = full rows (export / import-only) of the day;
  *   todayEmpty  = empty returns that start today;
@@ -304,10 +284,9 @@ function dayCounts(rowsFacts, today) {
   return { trucks, byCode, todayEmpty, emptyOldest };
 }
 
-/** «4 φορτηγά · 1 χωρίς φορτηγό · 2 κενά γυρίσματα (1 από σήμερα) · 1 σκέλος χωρίς μεταφορέα».
- *  opts.natState 'loading'|'err' replaces the leg count: an unread leg is
- *  never counted, and never counted as zero either (§d.2a). */
-function dayText(counts, opts) {
+/** «4 φορτηγά · 1 χωρίς φορτηγό · 2 κενά γυρίσματα (1 από σήμερα)». No
+ *  national words (owner 11/10 21:20): national legs are Weekly National's. */
+function dayText(counts) {
   const c = counts || {};
   const by = c.byCode || {};
   const parts = [plural(c.trucks || 0, 'truck')];
@@ -318,19 +297,13 @@ function dayText(counts, opts) {
     const paren = c.todayEmpty ? ` (${c.todayEmpty} από σήμερα)` : c.emptyOldest > 0 ? ` (${plural(c.emptyOldest, 'day')})` : '';
     parts.push(plural(by.EMPTY_RETURN, 'emptyReturn') + paren);
   }
-  // Still loading is said as loading: «δεν φορτώθηκαν» read as the failure
-  // words while the read was merely in flight (review 11/10).
-  const nat = opts && opts.natState;
-  if (nat === 'err') parts.push('εθνικά σκέλη: δεν φορτώθηκαν');
-  else if (nat === 'loading') parts.push('εθνικά σκέλη: φορτώνουν…');
-  else if (by.NAT_NO_CARRIER) parts.push(plural(by.NAT_NO_CARRIER, 'natNoCarrier'));
   return parts.join(' · ');
 }
 
 // Queue groups: what stops a load, what costs, what wants a look. Any code
 // not listed is 'look'; an item may carry its own `group`.
 const GROUP = freeze({
-  NO_TRUCK: 'stop', NAT_NO_CARRIER: 'stop', NAT_MISSING: 'stop', SAVE_FAILED: 'stop', RELAY_NO_DRIVER: 'stop',
+  NO_TRUCK: 'stop', SAVE_FAILED: 'stop', RELAY_NO_DRIVER: 'stop',
   EMPTY_RETURN: 'cost', STOCK_LATE: 'cost',
 });
 const GROUP_ORDER = freeze({ stop: 0, cost: 1, look: 2 });
@@ -371,13 +344,13 @@ function queue(list, today) {
 /** Rules sheet «Σύμπτυξη ημέρας»: true only when every full row has a truck
  *  (or a partner), every export has a return (or a partner), and nothing on
  *  the day has any reason. An empty day is not collapsible (it is one line
- *  «Καμία κίνηση»). Unread national legs keep the day open: unknown ≠ fine. */
+ *  «Καμία κίνηση»). The national read does not hold a day open (owner 11/10
+ *  21:20): national state would then be driving the intl day header. */
 function collapsible(dayFacts, today) {
   const list = dayFacts || [];
   if (!list.length) return false;
   return list.every((f) => {
     if (!f) return false;
-    if (f.natState && f.natState !== 'ok') return false;
     if (f.kind === 'export' || f.kind === 'import') {
       if (!f.saved && !f.partner) return false;
       if (f.kind === 'export' && !f.partner && !f.hasReturn) return false;

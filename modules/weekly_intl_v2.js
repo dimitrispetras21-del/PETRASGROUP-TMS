@@ -88,20 +88,21 @@ const MONTH_GEN = ['Ιανουαρίου', 'Φεβρουαρίου', 'Μαρτί
 // WI4Actions (_ACT_LABEL, _queueAct), which the «Όλα N ▾» panel uses too —
 // one copy, so a card and the panel never name or do the same item twice.
 const _actLabel = (it) => { const a = A(); return a && typeof a._actLabel === 'function' ? a._actLabel(it) : ''; };
-// Day-header words for the reasons WI4.dayText does not spell (it covers the
-// truck count, NO_TRUCK, EMPTY_RETURN and the national legs). Every reason of a
-// day is said in its header, so header = queue = rails (§d.3 invariant).
+// Closed-day marker words for the reasons WI4.dayText does not spell (it
+// covers the truck count, NO_TRUCK and EMPTY_RETURN). Every reason of a day is
+// said in its marker, so marker = queue = rails (§d.3 invariant). No national
+// code is a reason here any more (owner 11/10 21:20, WI4.TEXT).
 const EXTRA_WORDS = Object.freeze({
-  DATE_MISMATCH: 'ασυνέπεια ημερομηνιών', OVER_33: 'πάνω από 33π', SAME_DAY: 'ίδια μέρα',
+  OVER_33: 'πάνω από 33π', SAME_DAY: 'ίδια μέρα',
   LATE: 'καθυστέρηση', PREORDER: 'pre-order χωρίς μετατροπή', SAVE_FAILED: 'δεν αποθηκεύτηκε',
   RELAY_NO_DRIVER: 'τοπική χωρίς οδηγό', MATCH_UNREAD: 'εισαγωγή εκτός προβολής',
-  PALLETS_UNKNOWN: 'παλέτες χωρίς καταγραφή', NAT_MISSING: 'εθνικό φορτίο δεν βρέθηκε',
+  PALLETS_UNKNOWN: 'παλέτες χωρίς καταγραφή',
 });
 // Header words that agree with their number (WI4.PLURAL), the rest are fixed.
-const EXTRA_PLURAL = Object.freeze({ RELAY_NO_DRIVER: 'relayNoDriver', NAT_MISSING: 'natMissing' });
+const EXTRA_PLURAL = Object.freeze({ RELAY_NO_DRIVER: 'relayNoDriver' });
 // Words of a failed match's GHOST line (_ghostHTML): a reason in the short
 // form the rows use; any other reason says its WI4.flags text.
-const GHOST_WORDS = Object.freeze({ NO_TRUCK: 'χωρίς φορτηγό', NAT_NO_CARRIER: 'σκέλος χωρίς μεταφορέα', OVER_33: 'πάνω από 33π', LATE: 'καθυστέρηση' });
+const GHOST_WORDS = Object.freeze({ NO_TRUCK: 'χωρίς φορτηγό', OVER_33: 'πάνω από 33π', LATE: 'καθυστέρηση' });
 // Words of the stock strip's flags — the SAME words _wiShelfInner shows
 // (weekly_intl.js _WI_SHELF_FLAG), so the queue and the strip say one thing.
 const LOT_WORDS = Object.freeze({ nointake: 'σε κίνηση χωρίς παραλαβή', close: 'κλείσιμο;', aging: '>21 ημ.' });
@@ -144,7 +145,6 @@ function _today() {
 }
 // A datetime → its LOCAL day (never a slice of a UTC string near midnight).
 function _day(iso) { if (!iso) return ''; try { return (typeof toLocalDate === 'function' ? toLocalDate(iso) : String(iso).slice(0, 10)) || ''; } catch (_) { return ''; } }
-const _dateOnly = (v) => (v ? String(v).slice(0, 10) : '');
 function _utc(d) { return new Date(Date.UTC(+d.slice(0, 4), +d.slice(5, 7) - 1, +d.slice(8, 10))); }
 function _addDays(d, n) { if (!DAY_RE.test(d || '')) return ''; const t = _utc(d); t.setUTCDate(t.getUTCDate() + n); return t.toISOString().slice(0, 10); }
 const _dow = (d) => (DAY_RE.test(d || '') ? _utc(d).getUTCDay() : null);
@@ -276,7 +276,8 @@ function _carrierOf(oid) {
   const D = _D().data, nl = D.nlBySrc && D.nlBySrc[oid];
   // The read ANSWERED and holds no national load for this VS order (the
   // chain never created it, or failed): not «a load without a carrier» —
-  // there is nothing to assign on Weekly National (review 11/10, NAT_MISSING).
+  // there is nothing to assign on Weekly National (review 11/10; the tile
+  // says «δεν υπάρχει εθνικό», as information — owner 11/10 21:20).
   if (!nl) return _natState() === 'ok' ? { kind: 'missing' } : null;
   const f = nl.fields || {}, pid = (f['Partner'] || [])[0], tid = (f['Truck'] || [])[0], did = (f['Driver'] || [])[0];
   if (pid || f['Is Partner Trip']) return { kind: 'par', text: [(D.partners.find((x) => x.id === pid) || {}).label || '—', f['Partner Truck Plates'] || ''].filter(Boolean).join(' · ') };
@@ -357,17 +358,14 @@ function factsOf(row) {
   const isImp = row.type === 'import';
   const st = I.stFlags(pf);
   const vs = !!pf['Veroia Switch'];
-  // A row without a national leg has nothing unread: 'ok', so an unread
-  // NATIONAL LOADS never keeps such a day open or says «unknown» about it.
-  const natState = vs ? _natState() : 'ok';
   let loadDate = _day(pf['Loading DateTime']);
   // A VS export's truck loads at Βέροια: «how near» is the cross-dock day.
   if (!isImp && vs) { const v = I.vsCd(pf, 'exp'); if (v && v.iso) loadDate = v.iso; }
   const delDate = _day(lastF['Delivery DateTime']);
   const pid = recs[0] ? recs[0].id : row.orderId;
-  const car = vs ? _carrierOf(pid) : null;
-  const natLegs = vs ? [{ side: isImp ? 'from' : 'to', date: isImp ? delDate : _day(pf['Loading DateTime']),
-    carrier: !!car && car.kind !== 'missing', missing: !!car && car.kind === 'missing' }] : [];
+  // No national leg, national read state or VS date pair in the facts (owner
+  // 11/10 21:20): WI4.flags raises no national reason on this board, so the
+  // tiles (_natHTML) read the national state themselves, as information.
   const p = _pals(recs.map((r) => r.fields || {}));
   const ret = _lastStop(lastF, 'del');
   // A failed match/unmatch counts what the table holds (§e.14, _unconfirmed).
@@ -377,14 +375,11 @@ function factsOf(row) {
     saved: !!row.saved, partner: !!row.partnerId,
     loadDate, delDate,
     returnDate: delDate, returnPlace: ret.placeC || ret.title || '', hasReturn,
-    natLegs, natState,
     stockState: (D.data.stock && D.data.stock.status) || null,
     pallets: p.known ? p.n : null,
     // Members without a pallet figure: the cell says «N+?» and, near 33, the
     // flag says so (WI4.flags PALLETS_UNKNOWN) — never «fine» on a gap.
     palletsUnknown: p.known ? p.miss : 0,
-    vsCdDate: vs ? _dateOnly(pf['VS CD Date']) : '',
-    natDelDate: isImp ? delDate : '', natLoadDate: !isImp ? _day(pf['Loading DateTime']) : '',
     sameDayClash: (row.truckId || row.driverId) ? I.sameDayConflict(row) : null,
     late: !!st.late,
     preorder: recs.length <= 1 && _isPre(pf) ? { level: _preLevel(pf) } : null,
@@ -392,15 +387,15 @@ function factsOf(row) {
     executing: !!(st.loaded && !st.delivered),
   };
 }
-// The matched import of an export row has its own reasons (late, pallets, a
-// VS date mismatch, its national leg). It shares the export's truck, so it is
+// The matched import of an export row has its own reasons (late, pallets,
+// pre-order). It shares the export's truck, so it is
 // `saved:true` (no second NO_TRUCK) and it is never counted as a truck.
 function _impFacts(row) {
   const I = W();
   // The matched import was not read with this week (loads outside ±8 days,
   // or cancelled): unknown ≠ empty (§d.2a). One amber look that opens it,
   // and its day never folds — never the blank facts of a missing record.
-  if (!I.recOf(row.importId)) return { kind: 'import', saved: true, partner: !!row.partnerId, hasReturn: true, natLegs: [], natState: 'ok', matchUnread: true, _matched: true, unread: true };
+  if (!I.recOf(row.importId)) return { kind: 'import', saved: true, partner: !!row.partnerId, hasReturn: true, matchUnread: true, _matched: true, unread: true };
   const g = I.impGroupRowOf(row.importId);
   const base = g || { type: 'import', orderId: row.importId, orderIds: [row.importId] };
   const f = factsOf(Object.assign({}, base, { type: 'import', saved: true, partnerId: row.partnerId, truckId: '', driverId: '', legOf: null, hasSplitLegs: false }));
@@ -537,7 +532,6 @@ function _compute() {
   Object.values(extra).sort(byDate).forEach((g) => fill(g, true));
 
   // Day counts, collapse rule, header words (§d.3).
-  const natState = _natState();
   for (const day of days) {
     const fl = [];
     day.entries.forEach((e) => e.facts.forEach((x) => fl.push(x.f)));
@@ -548,9 +542,7 @@ function _compute() {
     day.levels = {};
     // Worst level per code: the header word takes the colour of its worst case.
     fl.forEach((f) => lg.flags(f, today).reasons.forEach((r) => { if (r.level === 'red' || !day.levels[r.code]) day.levels[r.code] = r.level; }));
-    // «εθνικά σκέλη: δεν φορτώθηκαν» only on a day that HAS national legs:
-    // elsewhere it would announce an unknown that does not exist.
-    day.text = lg.dayText(c, { natState: fl.some((f) => f.natLegs && f.natLegs.length) ? natState : 'ok' });
+    day.text = lg.dayText(c);
     // Never «all fine» on an unknown: a day without a date, or any day while
     // the local relays did not load (a driverless relay could hide in it).
     day.collapsible = lg.collapsible(fl, today) && DAY_RE.test(day.date || '') && _relayState() !== 'err' && !relayBroken;
@@ -581,17 +573,20 @@ function _compute() {
     if (it.code === 'EMPTY_RETURN') {
       it.text = [r.truckLabel, r.driverLabel].filter(Boolean).join(' · ') || _loadLabel(x.oid);
       it.sub = it.why;
-    } else if (it.code === 'NAT_NO_CARRIER' || it.code === 'NAT_MISSING') {
-      const f = _f(x.oid);
-      it.text = it.side === 'to' ? _firstTitle(f, 'load') + ' → Βέροια' : 'Βέροια → ' + _lastStop(f, 'del').title;
-      it.sub = 'εθνικό ' + _dayLabel(it.date) + ' · ' + it.why;
     } else {
       it.text = _loadLabel(x.oid);
       // The band's card leaves «χωρίς φορτηγό» out (sheet 15: «10π · φόρτωση
       // ήταν χθες»): its red chip and «Ανάθεση» button say it; the «Όλα»
-      // panel keeps the whole sentence (subCard vs sub).
-      if (it.code === 'NO_TRUCK') it.subCard = _rel(it.date, today, { past: 'φόρτωση ήταν', now: 'φορτώνει', none: 'χωρίς ημερομηνία φόρτωσης' });
-      it.sub = it.code === 'NO_TRUCK' ? it.subCard + ' · ' + it.why : it.why;
+      // panel keeps the whole sentence (subCard vs sub). The card also drops
+      // the verb for today and ahead, as Figma draws it («33π · W42 · σήμερα»
+      // 1115:2722, «26π · W42 · αύριο» 1115:2730): «φορτώνει αύριο» took 111px
+      // and cut the destination at 1800 (finding qcard-reason-verb-eats-name).
+      // The panel sentence keeps it («W42 · φορτώνει σήμερα · χωρίς φορτηγό»,
+      // 1117:2699).
+      if (it.code === 'NO_TRUCK') {
+        it.subCard = _rel(it.date, today, { past: 'φόρτωση ήταν', now: '', none: 'χωρίς ημερομηνία φόρτωσης' }).trim();
+        it.sub = _rel(it.date, today, { past: 'φόρτωση ήταν', now: 'φορτώνει', none: 'χωρίς ημερομηνία φόρτωσης' }) + ' · ' + it.why;
+      } else it.sub = it.why;
       // «ίδια μέρα · TST-1014 · Τετ 7/10» in the words of every other card,
       // never the old sentence with its «(10-07)»: that stays in the title.
       if (it.code === 'SAME_DAY') {
@@ -602,7 +597,6 @@ function _compute() {
     }
     // Pallets on the card (sheet 15: «Alpha Dairy → Beta… 10π · φόρτωση ήταν χθες»).
     if (x.f && Number.isFinite(Number(x.f.pallets)) && x.f.pallets != null && !x.relayId) it.pal = Number(x.f.pallets);
-    if (it.code === 'DATE_MISMATCH') it.field = 'VS CD Date';
     return it;
   };
   entries.forEach((e) => e.facts.forEach((x) => lg.items(x.f, today, { key: x.oid, rowKey: x.oid }).forEach((it) => items.push(decorate(it, x)))));
@@ -635,11 +629,13 @@ function _compute() {
   }
   const xw = _xwItems(today);
   xw.forEach((it) => items.push(it));
-  lg.sourceReasons({ natState, crossWeekOk: _xw ? (_xw.state === 'err' ? false : _xw.state === 'ok' ? true : undefined) : undefined,
+  lg.sourceReasons({ crossWeekOk: _xw ? (_xw.state === 'err' ? false : _xw.state === 'ok' ? true : undefined) : undefined,
     relayState: relayBroken ? 'err' : _relayState(), stockState: st && st.status })
     .forEach((it) => items.push(Object.assign({}, it, { key: '', rowKey: null, group: 'look', sub: '' })));
   const queue = lg.queue(items, today);
-  const loading = natState === 'loading' || _relayState() === 'loading' || (st && st.status === 'loading') || (_xw && _xw.state === 'loading');
+  // A national read in flight is not intl work (owner 11/10 21:20): it never
+  // turns the band into «≥N · φορτώνει…»; its tiles say «—» meanwhile.
+  const loading = _relayState() === 'loading' || (st && st.status === 'loading') || (_xw && _xw.state === 'loading');
   // Column-header counts = the rows the board NUMBERS: a split order is one
   // row (its legs are ↳1/↳2), where the shared metric counts parent + legs
   // (3). reportPageMetrics keeps the old numbers (identity, §a.5).
@@ -763,23 +759,11 @@ function _ptHTML(s, d) {
   const palN = d.showPal && s.pallets != null ? s.pallets + 'π' : '';
   const place = s.place || '';
   // With no place the ✓ goes before the name, never alone on an empty line 2.
-  const tickL1 = tick && !place && !palN && !s.warn;
+  // Line 2 is place and pallets only: the VS date warning («φτάνει …») left
+  // with DATE_MISMATCH (owner 11/10 21:20, one synchronized VS date).
+  const tickL1 = tick && !place && !palN;
   let l2;
-  if (s.warn) {
-    const w = _q(s.warn.oid);
-    // A flex row (Figma 1097:2975): alert icon, then the words and the two
-    // dates. The dates are what make it a mismatch, so they never give way;
-    // the words are cut first (at 1440 one ellipsized string kept «φτάνει»
-    // and cut «παράδοση 8/10» to the tooltip). Split on the dates, so the
-    // export's «Βέροια … · εθνικό φορτώνει …» variant is drawn the same way.
-    // Joined by spaces: not drawn between flex items (the gap is), but kept
-    // in the text a screen reader or a copy reads («φτάνει 9/10», not «φτάνει9/10»).
-    const parts = String(s.warn.text).split(/(\d{1,2}\/\d{1,2})/).map((t) => t.trim()).filter(Boolean)
-      .map((t) => (/^\d{1,2}\/\d{1,2}$/.test(t) ? `<span class="wi4-l2w-d">${_esc(t)}</span>` : `<span class="wi4-ell">${_esc(t)}</span>`)).join(' ');
-    // A warning that is not one of the leg's DATE_MISMATCH reasons is drawn
-    // without the marker (data-r is only what the header counts).
-    l2 = `<span class="wi4-l2 wi4-l2w wi4-t-amb" title="${_esc(s.warn.text + ' — ασυνέπεια ημερομηνιών')}"${s.warn.r ? ' data-r="DATE_MISMATCH"' : ''}${w ? ` onclick="event.stopPropagation();WI4Actions.datePanel('${w}','VS CD Date',this)" style="cursor:pointer"` : ''}>${_ico('alert_circle', 11)}${parts}</span>`;
-  } else if (place || palN) {
+  if (place || palN) {
     const full = [place, palN].filter(Boolean).join(' ');
     l2 = `<span class="wi4-l2 wi4-l2f${palN ? ' wi4-l2p' : ''}" title="${_esc(full)}">${tick}${place ? `<span class="wi4-ell wi4-pt-pl">${_esc(place)}</span>` : ''}${palN ? `<span class="wi4-pt-pal">${_esc(palN)}</span>` : ''}</span>`;
   } else l2 = '';
@@ -875,13 +859,6 @@ function _legHTML(s, today) {
     `<div class="wi4-l-pal">${s.pal || ''}</div></div>`;
 }
 
-// VS import arrival vs its national delivery (§e #7 c): the only date allowed
-// outside the chip.
-function _vsWarn(f, oid) {
-  const vs = _dateOnly(f['VS CD Date']), del = _day(f['Delivery DateTime']);
-  return vs && del && vs > del ? { text: `φτάνει ${_dm(vs)} · παράδοση ${_dm(del)}`, oid } : null;
-}
-
 // One import load (matched in an export row, or an import-only row's own).
 // rs = the reasons of the import's own fact (_rsOf).
 function _impLegHTML(host, imp, today, rs) {
@@ -896,16 +873,16 @@ function _impLegHTML(host, imp, today, rs) {
   const from = _sideOf(members, 'load', { dragRowId: dragRow });
   let to;
   if (!isGroup && f['Veroia Switch']) {
-    const warn = _vsWarn(f, imp.id);
-    if (warn && rs.DATE_MISMATCH) warn.r = true;
     // The lot badge moved out of the pallets track to the delivery point
     // (_sideOf); a VS import's delivery point is this one.
-    to = { stops: [{ n: 1, label: 'Βέροια', place: 'μετά εθνικό: ' + _lastStop(f, 'del').title, done: st.delivered, warn, oid: imp.id, lot: I.lotBadge(f) }], dateTick: false };
+    to = { stops: [{ n: 1, label: 'Βέροια', place: 'μετά εθνικό: ' + _lastStop(f, 'del').title, done: st.delivered, oid: imp.id, lot: I.lotBadge(f) }], dateTick: false };
   } else to = _sideOf(members, 'del', { dragRowId: dragRow });
   let pal = _palHTML(members.map((r) => r.fields || {}), isGroup ? null : imp.id);
-  // Whole matched group to another export (§f): today's grip string.
+  // Whole matched group to another export (§f): today's grip string. Shown on
+  // row hover / focus only (.wi4-grip, Figma sheet 14 1065:2257 «Εμφανίζεται
+  // η λαβή ⋮⋮»; Row 18 1097:2921 holds only the figure at rest).
   if (isGroup && _gtOn() && host.type === 'export' && _q(g.orderId)) {
-    pal = `<span draggable="true" class="wi4-t-g2" style="cursor:grab" title="Σύρε ολόκληρη την ομάδα σε άλλη εξαγωγή" onclick="event.stopPropagation()" ondragstart="event.stopPropagation();_wiImpDragStart(event,'${_q(g.orderId)}',true)" ondragend="_wiImpDragEnd()">⋮⋮</span>` + pal;
+    pal = `<span draggable="true" class="wi4-t-g2 wi4-grip" title="Σύρε ολόκληρη την ομάδα σε άλλη εξαγωγή" onclick="event.stopPropagation()" ondragstart="event.stopPropagation();_wiImpDragStart(event,'${_q(g.orderId)}',true)" ondragend="_wiImpDragEnd()">⋮⋮</span>` + pal;
   }
   return _legHTML({
     chip: { oid: lead.id, field: 'Loading DateTime', day: _day(f['Loading DateTime']), done: st.loaded, noTruck: !host.saved, what: 'Ημερομηνία φόρτωσης εισαγωγής' },
@@ -915,42 +892,41 @@ function _impLegHTML(host, imp, today, rs) {
 }
 
 // National leg cell (§e #12). Never «ΠΡΟΣ ΑΝΑΘΕΣΗ» for an unread leg (§d.2a).
-function _natHTML(oid, name, day, today) {
+// INFORMATION only (owner 11/10 21:20): national work is Weekly National's,
+// so no tile carries a reason (no data-r, never red) — it is not counted by
+// the queue, the closed-day marker or the rail.
+function _natHTML(oid, name, day) {
   const st = _natState();
   const dayS = DAY_RE.test(day || '') ? DOW_SHORT[_dow(day)] : '';
   // The day sits OUTSIDE the cut name (Figma: name left, «Τετ» right): inside
   // it, a long client name ate the day («Omicron Dairy → Βέρο…»).
   const head = `<div class="wi4-nat-h">${_ell('wi4-l1', name)}${dayS ? `<span class="wi4-nat-day" title="${_esc(_dayLabel(day))}">${dayS}</span>` : ''}</div>`;
-  // The collapsed column's dot carries the tile's state, words and reason
-  // (dot = cls / words / r): a same blue dot for every leg said «a leg
-  // exists» for one with no carrier. Only the VISIBLE one of tile and dot
-  // shows, so a reason is named once, open or collapsed.
+  // The collapsed column's dot carries the tile's state and words (dot =
+  // cls / words): a same blue dot for every leg said «a leg exists» for one
+  // with no carrier. The un-tile is always Figma's amber dashed chip
+  // (1097:2927 / 1097:2932), whatever the date: red is for intl work only.
   let tile, dot;
   if (st !== 'ok') {
     const t = st === 'err' ? 'απέτυχε — δεν σημαίνει ότι δεν έχουν μεταφορέα' : 'δεν φορτώθηκε ακόμη';
     tile = `<span class="wi4-tile unk" title="${t}">—</span>`;
-    dot = { cls: 'unk', words: t, r: '' };
+    dot = { cls: 'unk', words: t };
   } else {
     const c = _carrierOf(oid);
     if (c && c.kind === 'missing') {
       // No NATIONAL LOADS row for this VS order: there is nothing to assign —
       // the order is opened (saving it re-runs the Veroia Switch chain).
-      const k = L().dayDiff(today, day);
-      const red = k === null || k <= 1;
       const q = _q(oid);
-      tile = `<span class="wi4-tile un${red ? ' red' : ''}" data-r="NAT_MISSING" title="Δεν υπάρχει εθνικό φορτίο για αυτή την παραγγελία — άνοιξέ την και αποθήκευσε, ώστε να δημιουργηθεί ξανά"${q ? ` onclick="event.stopPropagation();WI_INTERNAL.edit('${q}')" style="cursor:pointer"` : ''}>δεν υπάρχει εθνικό</span>`;
-      dot = { cls: 'un' + (red ? ' red' : ''), words: 'δεν υπάρχει εθνικό', r: 'NAT_MISSING' };
+      tile = `<span class="wi4-tile un" title="Δεν υπάρχει εθνικό φορτίο για αυτή την παραγγελία — άνοιξέ την και αποθήκευσε, ώστε να δημιουργηθεί ξανά"${q ? ` onclick="event.stopPropagation();WI_INTERNAL.edit('${q}')" style="cursor:pointer"` : ''}>δεν υπάρχει εθνικό</span>`;
+      dot = { cls: 'un', words: 'δεν υπάρχει εθνικό' };
     } else if (c) {
       tile = `<span class="wi4-tile ${c.kind} wi4-ell" title="${_esc((c.kind === 'par' ? 'Εθνικός μεταφορέας — συνεργάτης: ' : 'Εθνικός μεταφορέας — ιδιόκτητο: ') + c.text)}">${_esc(c.text)}</span>`;
-      dot = { cls: '', words: c.text, r: '' };
+      dot = { cls: '', words: c.text };
     } else {
-      const k = L().dayDiff(today, day);
-      const red = k === null || k <= 1;
-      tile = `<span class="wi4-tile un${red ? ' red' : ''}" data-r="NAT_NO_CARRIER" title="Εθνικό σκέλος χωρίς μεταφορέα — ανατίθεται στο Εβδομαδιαίο Εθνικών">ΠΡΟΣ ΑΝΑΘΕΣΗ</span>`;
-      dot = { cls: 'un' + (red ? ' red' : ''), words: 'ΠΡΟΣ ΑΝΑΘΕΣΗ', r: 'NAT_NO_CARRIER' };
+      tile = '<span class="wi4-tile un" title="Εθνικό σκέλος χωρίς μεταφορέα — ανατίθεται στο Εβδομαδιαίο Εθνικών">ΠΡΟΣ ΑΝΑΘΕΣΗ</span>';
+      dot = { cls: 'un', words: 'ΠΡΟΣ ΑΝΑΘΕΣΗ' };
     }
   }
-  return `<div class="wi4-nat">${head}${tile}</div><span class="wi4-natdot${dot.cls ? ' ' + dot.cls : ''}"${dot.r ? ` data-r="${dot.r}"` : ''} title="${_esc('Εθνικό σκέλος · ' + name + ' · ' + dot.words)}"></span>`;
+  return `<div class="wi4-nat">${head}${tile}</div><span class="wi4-natdot${dot.cls ? ' ' + dot.cls : ''}" title="${_esc('Εθνικό σκέλος · ' + name + ' · ' + dot.words)}"></span>`;
 }
 
 // Assignment cell (§e #8): box + print (share-menu contract) + paper plane.
@@ -1048,12 +1024,7 @@ function _expRowHTML(e, today) {
     const v = I.vsCd(pf, 'exp') || {};
     chip = { oid: pid, field: 'VS CD Date', day: v.iso, est: v.est, done: st.loaded, noTruck, what: 'Ημερομηνία φόρτωσης από Βέροια' };
     const o = _splitName((_stopsOf(pf, 'load')[0] || {}).n || I.clientName(pf));
-    // The mirror of the VS import's «φτάνει …» (DATE_MISMATCH): the truck
-    // loads at Βέροια before the national leg has even left. Named on the
-    // Βέροια point, the one place where the two days meet.
-    const vsDay = _dateOnly(pf['VS CD Date']), natDay = _day(pf['Loading DateTime']);
-    const warn = rsE.DATE_MISMATCH && vsDay && natDay ? { text: `Βέροια ${_dm(vsDay)} · εθνικό φορτώνει ${_dm(natDay)}`, oid: pid, r: true } : null;
-    from = { stops: [{ n: 1, label: 'Βέροια', place: 'από ' + [o.title, o.city].filter(Boolean).join(', '), done: st.loaded, warn, oid: pid }], dateTick: true };
+    from = { stops: [{ n: 1, label: 'Βέροια', place: 'από ' + [o.title, o.city].filter(Boolean).join(', '), done: st.loaded, oid: pid }], dateTick: true };
   } else {
     chip = { oid: pid, field: 'Loading DateTime', day: _day(pf['Loading DateTime']), done: st.loaded, noTruck, what: 'Ημερομηνία φόρτωσης' };
     from = _sideOf(exps, 'load', { dragRowId: isGroup && _gtOn() ? row.id : null });
@@ -1302,8 +1273,9 @@ function _entryHTML(e, today) {
 // day the USER closed. Its label is the header's former words (WI4.dayText +
 // EXTRA_WORDS): hover and screen readers still say what is inside, and the
 // rig still checks «header = queue = rails» against it. Shape as well as
-// colour (§c.2, colour-blind rule): red = filled, amber = ring, grey ring =
-// only the national legs are unread or loading (unknown, not a warning).
+// colour (§c.2, colour-blind rule): red = filled, amber = ring. No grey
+// «national unread» ring any more (owner 11/10 21:20): national state is not
+// intl work, so it never marks an intl day.
 function _dayCountHTML(day) {
   const by = day.counts.byCode || {};
   const words = [String(day.text || '')];
@@ -1312,9 +1284,8 @@ function _dayCountHTML(day) {
     words.push(EXTRA_PLURAL[code] ? _plural(by[code], EXTRA_PLURAL[code]) : by[code] + ' ' + EXTRA_WORDS[code]);
   });
   const codes = Object.keys(by).filter((c) => by[c]);
-  const natUnread = /εθνικά σκέλη:/.test(day.text || '');
-  if (!codes.length && !natUnread) return '';
-  const lvl = codes.some((c) => day.levels[c] === 'red') ? 'red' : codes.length ? 'amb' : 'unk';
+  if (!codes.length) return '';
+  const lvl = codes.some((c) => day.levels[c] === 'red') ? 'red' : 'amb';
   const label = _esc(words.filter(Boolean).join(' · '));
   return `<span class="wi4-dayh-dot ${lvl}" role="img" aria-label="${label}" title="${label}"></span>`;
 }
@@ -1333,7 +1304,9 @@ function _autoSettle(days) {
   if (_auto.frozen) return;
   _auto.closed = {};
   days.forEach((d) => { if (d.collapsible && DAY_RE.test(d.date || '')) _auto.closed[d.date] = true; });
-  if (_natState() !== 'loading' && _relayState() !== 'loading') _auto.frozen = true;
+  // Frozen once the relays answered: the national read no longer decides a
+  // collapse (owner 11/10 21:20, WI4.collapsible), so it does not hold it.
+  if (_relayState() !== 'loading') _auto.frozen = true;
 }
 // A write in flight or failed, or the keyboard focus, keeps its day open.
 function _dayHeld(day) {
@@ -1515,7 +1488,7 @@ function _barHTML(m) {
 function _qwrapHTML(m) {
   const q = m.queue, n = q.length;
   const red = q.filter((x) => x.level === 'red').length, amb = n - red;
-  const unk = q.some((x) => x.code === 'SOURCE_UNKNOWN' || x.code === 'NAT_UNKNOWN');
+  const unk = q.some((x) => x.code === 'SOURCE_UNKNOWN');
   // A source still in flight is not «nothing»: the number is a lower bound
   // («≥») and an empty list says it is still loading (§d.2a).
   const atLeast = unk || m.loading ? '≥' : '';

@@ -442,11 +442,12 @@ Tests: `tests/wi4-logic.test.js` (`node --test`, zero dependencies).
 - `facts` is built impurely in v4 (`WIV2.factsOf(row)`) from the row and its records:
   ```
   {kind:'export'|'import'|'leg'|'split'|'relay', saved, partner, loadDate, delDate,
-   returnDate, hasReturn, natLegs:[{side:'to'|'from', date, carrier:boolean}],
-   natState:'loading'|'ok'|'err', stockState:'loading'|'ok'|'failed'|null,
-   pallets, vsCdDate, natDelDate, sameDayClash:string|null, late:boolean,
+   returnDate, hasReturn, stockState:'loading'|'ok'|'failed'|null,
+   pallets, sameDayClash:string|null, late:boolean,
    preorder:{level}|null, syncErr:string|null, executing:boolean}
   ```
+  No national fact (`natLegs`, `natState`, `vsCdDate`, `natDelDate`, `natLoadDate`) since the
+  owner's decision of 11/10 21:20 — see «No national work on Weekly Intl» below.
 - **One function, three readers:** the row rail, the day header and the queue all read it
   (principle 3). The reasons:
 
@@ -454,10 +455,7 @@ Tests: `tests/wi4-logic.test.js` (`node --test`, zero dependencies).
 |---|---|---|---|
 | `NO_TRUCK` | red if `loadDate ≤ today+1` (past included); **amber otherwise, never none** | unassigned export or own import | «χωρίς φορτηγό» |
 | `EMPTY_RETURN` | none while `returnDate > today+2`; amber `today ∈ [R−2, R]`; red `today > R` | own truck, no import (`hasReturn=false`, `partner=false`) | «κενό γύρισμα · από <μέρα> · τόπος» |
-| `NAT_NO_CARRIER` | red if leg date `≤ today+1`; amber otherwise. **Only when `natState==='ok'`** (§d.2a) | a national leg without carrier | «σκέλος χωρίς μεταφορέα» |
-| `NAT_UNKNOWN` | amber, one per board (not per row) | `natState==='err'` | «Τα εθνικά σκέλη δεν φορτώθηκαν — δεν σημαίνει ότι δεν έχουν μεταφορέα» |
 | `SOURCE_UNKNOWN` | amber, one per failed source | W+1 cross-week read (`ok:false`), relays (`WINTL.relay.state==='err'`), stock read (`WINTL.data.stock.status==='failed'`) | «Δεν φορτώθηκε: <πηγή> — δεν σημαίνει ότι δεν υπάρχουν» |
-| `DATE_MISMATCH` | amber | VS import reaches Βέροια after its national delivery date (or an export's VS CD date before its national loading) | «ασυνέπεια ημερομηνιών» |
 | `OVER_33` | amber | pallets > 33. 33 is allowed (decision 9/10). | «πάνω από 33π» |
 | `SAME_DAY` | amber | `sameDayClash` (from `_wiSameDayConflict`) | the existing sentence |
 | `LATE` | amber | `Delivery Performance = Delayed` | «καθυστέρηση» |
@@ -465,11 +463,25 @@ Tests: `tests/wi4-logic.test.js` (`node --test`, zero dependencies).
 | `SAVE_FAILED` | red | `syncErr` | «δεν αποθηκεύτηκε» |
 | `MATCH_UNREAD` (round 2) | amber, act `open` | the export's matched import is not in this week's read (loads outside ±8 days, or cancelled): `matchUnread` | «εισαγωγή εκτός προβολής» |
 | `PALLETS_UNKNOWN` (round 2) | amber, act `open` | `palletsUnknown > 0` and the known sum is 28–33 (above 33 it is `OVER_33`) | «παλέτες χωρίς καταγραφή» |
-| `NAT_MISSING` (round 3) | as `NAT_NO_CARRIER`, act `open` (saving the order re-runs the Veroia Switch chain). **Only when `natState==='ok'`** | a VS order with no NATIONAL LOADS row at all (`leg.missing`: the chain never created it, or failed). Never `NAT_NO_CARRIER` on the same leg; the tile says «δεν υπάρχει εθνικό» | «εθνικό φορτίο δεν βρέθηκε» |
+
+- **No national work on Weekly Intl (owner 11/10 21:20; overrides Figma sheet 15 B 1117:2676,
+  Row 19 1097:2975 and rule 985:1114).** `NAT_NO_CARRIER` («σκέλος χωρίς μεταφορέα»),
+  `NAT_MISSING` («εθνικό φορτίο δεν βρέθηκε»), `NAT_UNKNOWN` («Τα εθνικά σκέλη δεν
+  φορτώθηκαν…») and `DATE_MISMATCH` («ασυνέπεια ημερομηνιών», obsolete under the one
+  synchronized VS date) no longer exist. They were removed at the one source
+  (`core/wi4-logic.js`: `flags`, `sourceReasons`, `TEXT`, `ACT`, `GROUP`, `PLURAL`, `dayText`,
+  `collapsible`), so the ΕΠΟΜΕΝΑ band and its count, the «Όλα» panel, the closed-day marker,
+  the rails, auto-collapse and `openDay` drop them together. National work lives on Weekly
+  National (which does not load `wi4-logic.js`). The ΠΡΟΣ / ΑΠΟ ΒΕΡΟΙΑ tiles still show the
+  national state as **information**: the carrier, the amber dashed «ΠΡΟΣ ΑΝΑΘΕΣΗ» chip at any
+  date (Figma 1097:2927 / 1097:2932, never red), «δεν υπάρχει εθνικό» (click opens the order),
+  «—» while unread or failed (titled) — no `data-r`, never counted. The inline VS warning
+  («φτάνει … · παράδοση …») is gone with `DATE_MISMATCH`; a national read in flight no longer
+  puts «≥ · φορτώνει…» on the band.
 
 - **Every counted reason is named on its row** (round 2, P1): the word sits where the reason
-  applies, with `data-r="<CODE>"` — «ΠΡΟΣ ΑΝΑΘΕΣΗ» box (NO_TRUCK), the empty-return cell, the
-  national tile, the VS warning, the pallets (OVER_33 / PALLETS_UNKNOWN), «ίδια μέρα» in the
+  applies, with `data-r="<CODE>"` — «ΠΡΟΣ ΑΝΑΘΕΣΗ» box (NO_TRUCK), the empty-return cell,
+  the pallets (OVER_33 / PALLETS_UNKNOWN), «ίδια μέρα» in the
   assignment box (SAME_DAY), «καθυστέρηση» after the last shown delivery point (LATE), «PRE»
   before the first shown loading point (PREORDER), the relay's «ΠΡΟΣ ΑΝΑΘΕΣΗ», the unread
   matched import. The day header carries `data-codes`; the board rig proves counted = named,
@@ -483,7 +495,7 @@ Tests: `tests/wi4-logic.test.js` (`node --test`, zero dependencies).
   no rail, no day count and no queue item would break that rule. It would also make the
   «χωρίς φορτηγό» total smaller than today's «εκκρεμή» count (`_wiPaint` counts every pending
   row). The ΕΚΔΟΧΗ 9/10 rule is «κόκκινο μόνο για σήμερα–αύριο»: further out is amber, not
-  nothing, the same shape as `NAT_NO_CARRIER`. If the amber volume worries anyone, that is an
+  nothing, the same shape as `RELAY_NO_DRIVER`. If the amber volume worries anyone, that is an
   owner question, never a silent cutoff.
 - **EMPTY_RETURN vs Figma:** the rules sheet makes «από σήμερα» amber (`today ∈ [R−2, R]`),
   while board 1097:2254 and sheet 15 draw it red under ΤΩΡΑ. The rules sheet wins tonight. The
@@ -491,8 +503,9 @@ Tests: `tests/wi4-logic.test.js` (`node --test`, zero dependencies).
   reported as a defect.
 - **Cases:** each code at the boundaries (today−1, today, today+1, today+2, today+3, today+6) ·
   NO_TRUCK at today+3 and today+6 → amber · a partner row never gets `EMPTY_RETURN` · an
-  executing row with no truck · two reasons → worst wins · `natState` 'loading' and 'err' → no
-  `NAT_NO_CARRIER` on any row, and on 'err' exactly one `NAT_UNKNOWN`.
+  executing row with no truck · two reasons → worst wins · VS facts with a leg without
+  carrier, a missing national load and a late VS date → none of the four national codes;
+  `sourceReasons({natState:'err'})` → nothing.
 - **Fixture invariant:** every «ΠΡΟΣ ΑΝΑΘΕΣΗ» box in the fixture paint has a rail and a queue
   item, and the board rig asserts it.
 
@@ -502,7 +515,7 @@ principle 1).
 
 | Source | State seam | While loading | On failure |
 |---|---|---|---|
-| national legs (`nlBySrc`) | `WINTL.data.nlState` (§a.4 hook) | national cells show «—» with title «δεν φορτώθηκε ακόμη»; no flag, no count; day headers say «εθνικά σκέλη: φορτώνουν…» (round 3: never the failure words while the read is in flight) | cells «—» with title «απέτυχε — δεν σημαίνει ότι δεν έχουν μεταφορέα»; one `NAT_UNKNOWN` queue item; day headers say «εθνικά σκέλη: δεν φορτώθηκαν» instead of a count |
+| national legs (`nlBySrc`) | `WINTL.data.nlState` (§a.4 hook) | national cells show «—» with title «δεν φορτώθηκε ακόμη»; no flag, no count, no marker words, no «φορτώνει…» on the band (owner 11/10 21:20) | cells «—» with title «απέτυχε — δεν σημαίνει ότι δεν έχουν μεταφορέα»; nothing else — no queue item, no «≥», no marker (owner 11/10 21:20: national work is Weekly National's) |
 | stock | `WINTL.data.stock.status` (exists) | strip as today (`_wiShelfInner` already renders loading) | strip as today (failed text) + one `SOURCE_UNKNOWN` |
 | relays | `WINTL.relay.state` (exists) | relay items closed, as today | the banner of §e #21 + one `SOURCE_UNKNOWN` |
 | W+1 loads | `_wiCrossWeekIncoming().ok` | not counted yet | one `SOURCE_UNKNOWN` «φορτώσεις W+1»; the queue counter shows «≥N» |
