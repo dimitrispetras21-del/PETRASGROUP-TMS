@@ -8232,20 +8232,27 @@ body.wi4-on #wi-ctx .wi4-m-sec .wi4-l2, body.wi4-on #wi-ctx .wi4-m-hd .wi4-l2 { 
    «ΠΡΟΣ ΑΝΑΘΕΣΗ» is the strongest element on the board: its border is 2px,
    because a 1.5px border renders as 1px on 1x office monitors (measured in
    Chromium) and the box would read weaker than a partner box. */
+/* Figma Assign 1097:2501 (parity r1 F7): a 176px pill (padding 0 9), 6px,
+   the 22px arrow — 204px, the cell. It shrinks only where a cell is narrower. */
 .wi4-asg { position:relative; display:flex; align-items:center; gap:6px; min-width:0; }
-.wi4-box { flex:1 1 auto; min-width:0; height:28px; display:flex; flex-direction:column; justify-content:center; padding:0 8px;
+.wi4-box { flex:0 1 176px; min-width:0; height:28px; display:flex; flex-direction:column; justify-content:center; padding:0 9px;
   border:1px solid transparent; border-radius:5px; background:none; text-align:left; cursor:pointer; }
 .wi4-box.own { background:var(--wi4-own); }
 .wi4-box.par { background:var(--wi4-partner); border-color:var(--wi4-partner-line); }
+/* Type as Figma draws the pill (parity r1 F8): line 2 11/12 (own 1097:2502:
+   DM Sans; partner 1097:2772: DM Mono Medium); plates and «ΠΡΟΣ ΑΝΑΘΕΣΗ»
+   untracked, the latter SemiBold (1097:3561) — tracking added ~4px per plate
+   pair and cut names Figma shows whole. */
+.wi4-box .wi4-l2 { font-size:11px; line-height:12px; }
 /* Partner (Figma «PARTNER TEST / PRT-4410»): the name semibold in partner
    ink, the plates in DM Mono like an own truck's — the two tiles read alike.
    The «ίδια μέρα» word keeps the sans. */
 .wi4-box.par .wi4-l1 { color:var(--wi4-partner-ink); font-weight:600; }
-.wi4-box.par .wi4-l2 { color:var(--wi4-partner-sub); font-family:'DM Mono',ui-monospace,SFMono-Regular,Menlo,monospace; font-size:11.5px; }
+.wi4-box.par .wi4-l2 { color:var(--wi4-partner-sub); font-family:'DM Mono',ui-monospace,SFMono-Regular,Menlo,monospace; font-size:11px; font-weight:500; }
 .wi4-box.par .wi4-flag { font-family:'DM Sans',sans-serif; }
-.wi4-box.un { background:var(--wi4-red-bg); border:2px solid var(--wi4-red); color:var(--wi4-red-ink); font-size:12px; font-weight:700; letter-spacing:.3px; }
+.wi4-box.un { background:var(--wi4-red-bg); border:2px solid var(--wi4-red); color:var(--wi4-red-ink); font-size:12px; font-weight:600; letter-spacing:0; }
 .wi4-box.split { background:var(--wi4-chip); color:var(--wi4-grey-1); font-weight:600; }
-.wi4-plate { font-family:'DM Mono',ui-monospace,SFMono-Regular,Menlo,monospace; font-weight:500; font-size:12px; letter-spacing:.2px; color:var(--wi4-ink); }
+.wi4-plate { font-family:'DM Mono',ui-monospace,SFMono-Regular,Menlo,monospace; font-weight:500; font-size:12px; letter-spacing:0; color:var(--wi4-ink); }
 .wi4-plane { flex:none; width:22px; height:22px; display:inline-grid; place-items:center; border:none; border-radius:5px; background:none; color:var(--wi4-icon); cursor:pointer; }
 .wi4-plane:hover { background:var(--wi4-chip); color:var(--wi4-grey-1); }
 /* Print (contract hook .wk3-prt + data-shq: the share menu reads them). Fix
@@ -8254,11 +8261,15 @@ body.wi4-on #wi-ctx .wi4-m-sec .wi4-l2, body.wi4-on #wi-ctx .wi4-m-hd .wi4-l2 { 
    mouse path to print, and right-click / long-press on it is the share menu
    for everyone. Its own slot RIGHT of the paper plane, never on the box (round
    2: on the box it sat on the red «ΠΡΟΣ ΑΝΑΘΕΣΗ» border); shown on row hover
-   or keyboard focus, always on a touch screen. The slot is reserved
-   (visibility, not display): the box never resizes under the pointer. */
-.wi4 .wi4-asg { gap:2px; }
-.wi4 .wi4-asg .wk3-prt { flex:none; width:18px; height:22px; padding:0; display:inline-grid; place-items:center; border:none; border-radius:5px;
+   or keyboard focus, always on a touch screen (visibility, not display).
+   Out of the flow, in the 12px gutter past the cell (parity r1 F7): Figma
+   draws no print slot, and the reserved 18px + 2px gaps took 16px from the
+   pill (text room 142px, now 156), cutting names Figma shows whole. 12px
+   wide with a 12px glyph: exactly the gutter, so it never sits on the import
+   cell's first chip, whatever inset that cell has. */
+.wi4 .wi4-asg .wk3-prt { position:absolute; left:100%; top:50%; margin-top:-11px; width:12px; height:22px; padding:0; display:inline-grid; place-items:center; border:none; border-radius:5px;
   background:none; color:var(--wi4-icon); cursor:pointer; visibility:hidden; }
+.wi4 .wi4-asg .wk3-prt svg { width:12px; height:12px; }
 .wi4 .wi4-row:hover .wi4-asg .wk3-prt, .wi4 .wi4-row:focus-within .wi4-asg .wk3-prt, .wi4.wi4-kbd .wi4-focus .wi4-asg .wk3-prt { visibility:visible; }
 .wi4 .wi4-asg .wk3-prt:hover { color:var(--wi4-grey-1); background:var(--wi4-chip); }
 @media (hover:none) { .wi4 .wi4-asg .wk3-prt { visibility:visible; } }
@@ -8441,30 +8452,50 @@ body.wi4-on #wi-ctx .wi4-m-sec .wi4-l2, body.wi4-on #wi-ctx .wi4-m-hd .wi4-l2 { 
    change. .wi-ctx-i keeps display:block (no layout change to moved nodes);
    the key hint floats right. */
 /* The menu never runs past the window: it scrolls inside, and WI4Actions
-   moves it up when a submenu makes it taller than the room under it. */
+   moves it up when it is taller than the room under it. */
 /* Width (sheet 14: a 300px menu): a section line that named every stop with
    its country grew the menu to ~820px, over half the board (review 11/10).
    Section and header lines are one line, cut with «…», the whole in title;
-   item labels wrap rather than hide. WI4Actions clamps it inside the window. */
-body.wi4-on #wi-ctx { width:320px; max-width:calc(100vw - 16px); max-height:calc(100vh - 16px); overflow-y:auto; }
-body.wi4-on #wi-ctx .wi4-m-hd { padding:8px 14px 6px; border-bottom:1px solid var(--wi4-line-2); margin-bottom:4px; font-size:12px; font-weight:600; color:var(--wi4-ink); }
-body.wi4-on #wi-ctx .wi4-m-hd .wi4-l2 { font-weight:400; }
-/* A divider above every section (sheet 14). */
-body.wi4-on #wi-ctx .wi4-m-sec { padding:6px 14px 2px; margin-top:4px; border-top:1px solid var(--wi4-line-2); font-size:10px; font-weight:600; letter-spacing:.6px; text-transform:uppercase; color:var(--wi4-grey-2); }
-body.wi4-on #wi-ctx .wi4-m-sub { display:none; padding-left:12px; }
-body.wi4-on #wi-ctx .wi4-m-sub > .wi4-m-sec { border-top:none; margin-top:0; }
-body.wi4-on #wi-ctx .wi4-m-sub.open { display:block; }
+   item labels too. WI4Actions clamps it inside the window. The card itself
+   is Figma 1097:3858's (parity r1 F9): 300px, 1px --border, radius 10, its
+   soft slate shadow, 6px above the header and under the last item. */
+body.wi4-on #wi-ctx { width:300px; max-width:calc(100vw - 16px); max-height:calc(100vh - 16px); overflow-y:auto;
+  border-color:var(--border); border-radius:10px; box-shadow:0 12px 32px rgba(15,23,42,.18); padding:6px 0; }
+/* Header (1097:3859, parity r1 F10): 6px 12px, the two lines 15 + 1 + 14, then
+   8px + 4px down to the divider and 4px after it. */
+body.wi4-on #wi-ctx .wi4-m-hd { padding:6px 12px 12px; border-bottom:1px solid var(--wi4-line-2); margin-bottom:4px; font-size:12px; font-weight:600; line-height:15px; color:var(--wi4-ink); }
+body.wi4-on #wi-ctx .wi4-m-hd .wi4-l2 { font-weight:400; font-size:11px; line-height:14px; margin-top:1px; }
+/* A divider above every section (sheet 14): 4px · line · 4px, then the
+   section's own 6px (1097:3876, parity r1 F11). */
+body.wi4-on #wi-ctx .wi4-m-sec { padding:10px 12px 4px; margin-top:4px; border-top:1px solid var(--wi4-line-2); font-size:10px; font-weight:600; letter-spacing:.6px; text-transform:uppercase; color:var(--wi4-grey-2); }
+/* A «▸» line's submenu is a flyout card beside the menu (sheet 14 1064:2376,
+   parity r1 F2): fixed, placed by WI4Actions from its line, the menu's card
+   style, 260px; its head has no divider. Its line stays lit while open. */
+body.wi4-on #wi-ctx .wi4-m-sub { display:none; }
+body.wi4-on #wi-ctx .wi4-m-sub.open { display:block; position:fixed; z-index:1; width:260px; max-width:calc(100vw - 16px); max-height:calc(100vh - 16px); overflow-y:auto;
+  padding:6px 0; background:var(--bg-card); border:1px solid var(--border); border-radius:10px; box-shadow:0 12px 32px rgba(15,23,42,.18); }
+body.wi4-on #wi-ctx .wi4-m-sub > .wi4-m-sec { border-top:none; margin-top:0; padding-top:6px; }
+body.wi4-on #wi-ctx .wi4-m-more[aria-expanded="true"] { background:var(--wi4-chip); }
 /* An item is a 3-column grid — icon · label · key/chevron — on ONE line, the
    label cut with «…» and whole in the button's title (review 11/10: long
-   labels wrapped under the icon). Paddings stay the old builders' (§c.3). */
-body.wi4-on #wi-ctx .wi-ctx-i { display:grid; grid-template-columns:16px minmax(0,1fr) auto; column-gap:8px; align-items:center; white-space:nowrap; }
-body.wi4-on #wi-ctx .wi4-m-ic { display:inline-block; width:16px; text-align:center; color:var(--wi4-icon); vertical-align:-2px; }
-body.wi4-on #wi-ctx .wi4-m-k { margin-left:4px; }
-/* A «▸» line opens a submenu: its chevron at the right, turned when open. */
-body.wi4-on #wi-ctx .wi4-m-chev { display:inline-flex; color:var(--wi4-grey-2); transition:transform var(--duration-fast) var(--ease-out); }
-/* The header's plate in DM Mono (sheet 14: «TST-1001 · Driver Test 01»). */
-body.wi4-on #wi-ctx .wi4-m-plate { font-family:'DM Mono',ui-monospace,SFMono-Regular,Menlo,monospace; font-size:12px; font-weight:500; }
-body.wi4-on #wi-ctx .wi4-m-more[aria-expanded="true"] .wi4-m-chev { transform:rotate(90deg); }
+   labels wrapped under the icon). Figma 1097:3864 (parity r1 F4/F5): DM Sans
+   13 regular — #wi-ctx sits outside .wi4, so the board's button reset never
+   reached it and items drew in the browser's Arial 12 — 12px sides, a 15px
+   icon 10px before the label (x 12 / 37). Top/bottom paddings stay the old
+   builders' (§c.3), so the ≤768px touch rows keep theirs. */
+body.wi4-on #wi-ctx .wi-ctx-i { display:grid; grid-template-columns:15px minmax(0,1fr) auto; column-gap:10px; align-items:center; white-space:nowrap;
+  padding-left:12px; padding-right:12px; font:400 13px/normal 'DM Sans',sans-serif; }
+/* Icons in --text-mid, red on a red item (1097:3872 / 3932). */
+body.wi4-on #wi-ctx .wi4-m-ic { display:inline-block; width:15px; text-align:center; color:var(--text-mid); vertical-align:-2px; }
+body.wi4-on #wi-ctx .wi-ctx-i.d .wi4-m-ic { color:var(--danger); }
+/* The key hint is a plain letter at the right edge (1097:3867 «A»), not the
+   board's boxed .wi4-key chip (parity r1 F12). */
+body.wi4-on #wi-ctx .wi4-m-k { margin-left:4px; border:0; background:none; padding:0; min-width:0; font-size:11px; font-weight:500; line-height:14px; color:var(--wi4-grey-2); }
+/* A «▸» line opens a submenu: its chevron at the right. */
+body.wi4-on #wi-ctx .wi4-m-chev { display:inline-flex; color:var(--wi4-grey-2); }
+/* The header's plates in DM Mono (sheet 14: «TST-1001 · Driver Test 01»):
+   an own truck's whole line, Medium 11.5 (1097:3860, parity r1 F10). */
+body.wi4-on #wi-ctx .wi4-m-plate { font-family:'DM Mono',ui-monospace,SFMono-Regular,Menlo,monospace; font-size:11.5px; font-weight:500; }
 /* Equivalent of today's `.wk3.wi2 .wi-ctx-h{font-size:11px}` (§c.3). It is
    the only .wk3/.wk3.wi2-scoped rule that reaches #wi-ctx, #wi-panel or
    #wi-popover content: measured 11/10 over every class emitted by the 37

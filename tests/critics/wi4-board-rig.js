@@ -1417,7 +1417,7 @@ const readMenu = page => page.evaluate(() => {
     if (el.classList.contains('wi4-m-sec')) { sec = (el.firstChild && el.firstChild.nodeType === 3 ? el.firstChild.nodeValue : el.textContent).trim(); continue; }
     if (el.classList.contains('wi4-m-more')) { items.push({ more: true, member: el.classList.contains('wi4-m-mem'), label: el.textContent.trim(), sec, icon: !!el.querySelector('.wi4-m-ic svg') && !!el.querySelector('.wi4-m-chev svg') }); continue; }
     const c = el.cloneNode(true); c.querySelectorAll('.wi4-m-k,.wi4-m-ic').forEach(x => x.remove());
-    items.push({ label: c.textContent.trim(), onclick: el.getAttribute('onclick') || '', sec, sub: !!el.closest('.wi4-m-sub') });
+    items.push({ label: c.textContent.trim(), onclick: el.getAttribute('onclick') || '', sec, sub: !!el.closest('.wi4-m-sub'), d: el.classList.contains('d') });
   }
   return { ok: shown, header: (ctx && ctx.querySelector('.wi4-m-hd') || {}).innerText || '', items };
 });
@@ -1463,6 +1463,24 @@ async function scnMenu(browser, origin) {
       { top: top.map(i => [i.sec, i.label]), subs: memberSubs.map(s => s.items.map(i => i.label)) });
     ok(scn, 'no truck item inside a member submenu', !subItems.some(i => TRUCK.test(i.onclick)), subItems.filter(i => TRUCK.test(i.onclick)));
     ok(scn, 'no «Καθυστέρηση…», no old «Ομαδοποίηση…»', !top.concat(subItems).some(i => /Καθυστέρηση|^Ομαδοποίηση/.test(i.label)), top.map(i => i.label));
+    // Parity r1 F6 (Figma 1097:3858, sheet 14 1064:2376): every list reads the
+    // same way — the opener first, print next to it (first in a groupage
+    // list), red items after every plain one. F13: inside one load's list no
+    // « — εξαγωγή REF-…» tail repeats the section head (cut at 300px).
+    const lists = {}; top.concat(subItems).forEach(i => { const k = (i.sub ? 'sub:' : 'top:') + (i.sec || '—'); (lists[k] = lists[k] || []).push(i); });
+    const badOrder = Object.entries(lists).filter(([, l]) => {
+      const p = l.findIndex(i => /^Εκτύπωση/.test(i.label)), d = l.findIndex(i => i.d);
+      return !(p < 0 || p === 0 || (p === 1 && /^_wk3Edit\(/.test(l[0].onclick))) || (d >= 0 && l.slice(d).some(i => !i.d));
+    }).map(([k, l]) => [k, l.map(i => (i.d ? '(d) ' : '') + i.label)]);
+    ok(scn, 'order in every list: opener, print, the rest, red items last', !badOrder.length, badOrder);
+    ok(scn, 'no label carries a « — εξαγωγή/εισαγωγή REF-…» tail', !top.concat(subItems).some(i => / — (εξαγωγή|εισαγωγή) REF-/.test(i.label)), top.concat(subItems).map(i => i.label).filter(l => / — /.test(l)));
+    if (oid === 'recWiE001' || oid === 'recWiE023') {
+      const imp = m.items.filter(i => i.sec === 'ΕΙΣΑΓΩΓΗ'), last = imp[imp.length - 1] || {};
+      ok(scn, 'the last ΕΙΣΑΓΩΓΗ line is «Αφαίρεση ταιριάσματος», red (Figma 1097:3933)', last.label === 'Αφαίρεση ταιριάσματος' && last.d === true, imp.map(i => (i.d ? '(d) ' : '') + i.label));
+    }
+    if (oid === 'recWiE011') {
+      ok(scn, 'every member submenu ends with «Βγάλε από το groupage» (sheet 14 1064:2413)', memberSubs.length === 3 && memberSubs.every(s => (s.items[s.items.length - 1] || {}).label === 'Βγάλε από το groupage'), memberSubs.map(s => s.items.map(i => i.label)));
+    }
     if (oid === 'recWiE011') {
       await shot(page, 'menu-E011-groupage-member-open');
       const mem = m.items.filter(i => i.member);
@@ -1533,7 +1551,140 @@ async function scnMenu(browser, origin) {
   const sec = page.locator('#wi-ctx .wi4-m-sec').nth(1);
   if (await sec.count()) { await sec.hover(); await page.waitForTimeout(150); }
   ok('menu.hover', 'hovering a section highlights its load in the row', await page.evaluate(() => !!document.querySelector('#content .wi4 .wi4-mhl')));
-  await page.keyboard.press('Escape');
+  await page.keyboard.press('Escape'); await page.waitForTimeout(150);
+  // Parity r1 F14 (Figma 1097:3858): opened by the arrow the menu docks to it
+  // — right edges flush, just under it; where the room under it is short it
+  // opens upward as before (bottom 8px off the window edge). A right-click
+  // keeps the pointer.
+  for (const oid of ['recWiE010', 'recWiE001']) {
+    await openMenu(page, oid);
+    const pl = await page.evaluate(([js, oid]) => { const r = eval(js)(oid); const p = r && r.querySelector('.wi4-plane'); if (!p) return null; const b = p.getBoundingClientRect(); return { right: Math.round(b.right), bottom: Math.round(b.bottom) }; }, [ROW_JS, oid]);
+    const mr = await page.evaluate(() => { const b = document.getElementById('wi-ctx').getBoundingClientRect(); return { left: Math.round(b.left), top: Math.round(b.top), right: Math.round(b.right), bottom: Math.round(b.bottom), vh: innerHeight }; });
+    const below = pl && mr.top >= pl.bottom, up = pl && mr.bottom === mr.vh - 8;
+    ok('menu.anchor', `${oid.slice(-4)} via the arrow: right edge on the arrow's, top under it (or opened upward when the room is short)`, !!pl && Math.abs(mr.right - pl.right) <= 2 && (below || up) && (oid !== 'recWiE010' || below), { pl, mr });
+    await page.keyboard.press('Escape'); await page.waitForTimeout(150);
+  }
+  {
+    const pt = await page.evaluate(([js]) => { const r = eval(js)('recWiE010').getBoundingClientRect(); return { x: Math.round(r.left + 300), y: Math.round(r.top + 12) }; }, [ROW_JS]);
+    await openMenu(page, 'recWiE010', 'right');
+    const mr = await page.evaluate(() => { const b = document.getElementById('wi-ctx').getBoundingClientRect(); return { left: Math.round(b.left), top: Math.round(b.top) }; });
+    ok('menu.anchor', 'E010 by right-click: at the pointer', Math.abs(mr.left - pt.x) <= 1 && Math.abs(mr.top - pt.y) <= 1, { pt, mr });
+    await page.keyboard.press('Escape'); await page.waitForTimeout(150);
+  }
+  // Parity r1 F4/F5/F9–F12 (Figma 1097:3858): the card, the header, the
+  // section lines, the items, icons and key letters as Figma draws them.
+  // Fonts are blocked here: families are judged from computed style.
+  {
+    await openMenu(page, 'recWiE001');
+    const t = await page.evaluate(([tok]) => {
+      const c = document.getElementById('wi-ctx'), cs = getComputedStyle(c), q = s => c.querySelector(s), st = s => getComputedStyle(q(s));
+      const items = [...c.querySelectorAll('.wi-ctx-i')].map(b => getComputedStyle(b));
+      const ic = q('.wi-ctx-i:not(.d) .wi4-m-ic svg'), icd = q('.wi-ctx-i.d .wi4-m-ic');
+      const k = q('.wi4-m-k'), plate = q('.wi4-m-hd .wi4-m-plate'), secL = q('.wi4-m-sec .wi4-l2');
+      return {
+        card: [Math.round(c.getBoundingClientRect().width), cs.borderTopLeftRadius, cs.paddingTop, cs.borderTopColor === eval(tok)('--border')],
+        items: items.every(s => /DM Sans/.test(s.fontFamily) && s.fontSize === '13px' && s.fontWeight === '400' && s.paddingLeft === '12px' && s.paddingRight === '12px'),
+        icon: ic ? [ic.getAttribute('width'), getComputedStyle(ic.parentNode).color === eval(tok)('--text-mid')] : null,
+        iconRed: icd ? getComputedStyle(icd).color === eval(tok)('--danger') : null,
+        key: k ? [getComputedStyle(k).borderTopWidth, getComputedStyle(k).fontSize, getComputedStyle(k).fontWeight, getComputedStyle(k).color === eval(tok)('--wi4-grey-2')] : null,
+        plate: plate ? [plate.textContent, getComputedStyle(plate).fontSize, getComputedStyle(plate).fontWeight] : null,
+        hdL2: st('.wi4-m-hd .wi4-l2').fontSize,
+        sec: secL ? [getComputedStyle(secL).fontSize, getComputedStyle(secL).fontWeight, getComputedStyle(secL).lineHeight] : null,
+      };
+    }, [TOKEN_JS]);
+    ok('menu.type', 'card 300px, radius 10, 6px padding, --border line (F9)', t.card[0] === 300 && t.card[1] === '10px' && t.card[2] === '6px' && t.card[3], t.card);
+    ok('menu.type', 'every item DM Sans 13 regular, 12px sides (F4)', t.items, t);
+    ok('menu.type', 'icons 15px in --text-mid, a red item\'s icon red (F5)', !!t.icon && t.icon[0] === '15' && t.icon[1] && t.iconRed === true, t);
+    ok('menu.type', 'key letter plain: no box, Medium 11 in --wi4-grey-2 (F12)', !!t.key && t.key[0] === '0px' && t.key[1] === '11px' && t.key[2] === '500' && t.key[3], t.key);
+    ok('menu.type', 'header: the own truck\'s whole line mono 11.5/500, line 2 11px (F10); section line Medium 11.5/15 (F11)', !!t.plate && /TST-1001 · Driver Test 01/.test(t.plate[0]) && t.plate[1] === '11.5px' && t.plate[2] === '500' && t.hdL2 === '11px'
+      && !!t.sec && t.sec[0] === '11.5px' && t.sec[1] === '500' && t.sec[2] === '15px', t);
+    await page.keyboard.press('Escape'); await page.waitForTimeout(150);
+  }
+  // Parity r1 F2/F1 (sheet 14 1064:2376): a member's submenu is a flyout
+  // beside the menu, the menu does not move; → on its line opens it, ←
+  // returns; the week never changes behind an open menu (←/→ used to throw
+  // the menu AND the week away).
+  {
+    await openMenu(page, 'recWiE011');
+    const st = () => page.evaluate(() => {
+      const c = document.getElementById('wi-ctx'), b = c.getBoundingClientRect(), a = document.activeElement, sub = c.querySelector('.wi4-m-sub.open');
+      const s = sub && sub.getBoundingClientRect();
+      const on = sub ? document.elementFromPoint(s.left + s.width / 2, s.top + s.height / 2) : null;
+      return { week: WINTL.week, open: c.style.display === 'block', rect: [b.left, b.top, b.width, b.height].map(Math.round),
+        sub: s ? [s.left, s.top, s.width, s.height].map(Math.round) : null, onTop: !!(on && sub.contains(on)),
+        head: sub ? (sub.querySelector('.wi4-m-sec') || {}).firstChild.nodeValue : '', inSub: !!(a && a.closest && a.closest('.wi4-m-sub.open')),
+        lit: !!c.querySelector('.wi4-m-more[aria-expanded="true"]') && getComputedStyle(c.querySelector('.wi4-m-more[aria-expanded="true"]')).backgroundColor !== 'rgba(0, 0, 0, 0)',
+        focus: a ? a.textContent.trim().slice(0, 30) : '', vw: innerWidth, vh: innerHeight };
+    });
+    await page.evaluate(() => document.querySelectorAll('#wi-ctx .wi4-m-mem')[2].focus());
+    const s0 = await st();
+    await page.keyboard.press('ArrowRight'); await page.waitForTimeout(150);
+    const s1 = await st();
+    await shot(page, 'menu-E011-flyout-member3');
+    ok('menu.keys', '→ on member 3\'s line opens its submenu with the focus inside; the menu stays, the week stays', s1.open && !!s1.sub && s1.inSub && s1.week === s0.week, { s0, s1 });
+    ok('menu.flyout', 'opening member 3 leaves the menu\'s box as it was (no growth, no jump)', JSON.stringify(s0.rect) === JSON.stringify(s1.rect), { before: s0.rect, after: s1.rect });
+    const [x, y, w, h] = s1.sub || [], [mx, , mw] = s1.rect;
+    ok('menu.flyout', 'the flyout: 260px beside the menu (6px over its edge), on top, inside the window, «ΦΟΡΤΙΟ 3 ΤΗΣ ΟΜΑΔΑΣ», its line lit', !!s1.sub && Math.abs(w - 260) <= 1
+      && (Math.abs(x - (mx + mw - 6)) <= 1 || Math.abs(x + w - (mx + 6)) <= 1) && x >= 0 && x + w <= s1.vw && y >= 0 && y + h <= s1.vh && s1.onTop && s1.head === 'ΦΟΡΤΙΟ 3 ΤΗΣ ΟΜΑΔΑΣ' && s1.lit, s1);
+    // A menu against the window's right edge mirrors its flyout to the left.
+    await page.evaluate(() => { const c = document.getElementById('wi-ctx'); c.style.left = (innerWidth - 8 - c.offsetWidth) + 'px';
+      const m = c.querySelector('.wi4-m-sub.open')._more; m.click(); m.click(); m.focus(); });
+    await page.waitForTimeout(120);
+    const sf = await st();
+    ok('menu.flyout', 'against the right edge the flyout opens on the menu\'s left (6px over its edge), inside the window', !!sf.sub && Math.abs(sf.sub[0] + sf.sub[2] - (sf.rect[0] + 6)) <= 1 && sf.sub[0] >= 0, sf);
+    await page.keyboard.press('ArrowLeft'); await page.waitForTimeout(150);
+    const s2 = await st();
+    ok('menu.keys', '← inside the flyout closes it and gives the focus back to its line', s2.open && !s2.sub && /^3 ·/.test(s2.focus) && s2.week === s0.week, s2);
+    await page.evaluate(() => [...document.querySelectorAll('#wi-ctx .wi-ctx-i')].find(b => !b.classList.contains('wi4-m-more') && !b.disabled).focus());
+    await page.keyboard.press('ArrowRight'); await page.waitForTimeout(100);
+    await page.keyboard.press('ArrowLeft'); await page.waitForTimeout(400);
+    const s3 = await st();
+    ok('menu.keys', 'on a plain item ←/→ leave the week and the menu as they are', s3.open && !s3.sub && s3.week === s0.week, s3);
+    // F3 (sheet 14 note 1064:2416): pointing at member k lights only that
+    // load's points (or the «+N» chip a folded one sits behind), never the row.
+    const hov = [];
+    for (let k = 0; k < 3; k++) {
+      await page.locator('#wi-ctx .wi4-m-mem').nth(k).hover(); await page.waitForTimeout(120);
+      hov.push(await page.evaluate(k => {
+        const oid = WINTL.rows.find(r => (r.orderIds || []).includes('recWiE011')).orderIds[k];
+        const want = new Set([...document.querySelectorAll('#content .wi4 [data-order-id="' + oid + '"]')].map(p => (p.getClientRects().length ? p : p.closest('.wi4-pts').querySelector('.wi4-more'))));
+        const lit = [...document.querySelectorAll('#content .wi4 .wi4-mhl')];
+        return { oid, want: want.size, lit: lit.length, same: lit.length === want.size && lit.every(el => want.has(el)), row: lit.some(el => el.matches('.wi4-row, .wi4-c-idx, [data-oid]')) };
+      }, k));
+    }
+    ok('menu.hover', 'hovering member k lights exactly member k\'s point(s) (or its «+N» chip), never the row', hov.every(r => r.want > 0 && r.same && !r.row), hov);
+    const dark = () => page.evaluate(() => !document.querySelector('#content .wi4 .wi4-mhl'));
+    await page.mouse.move(5, 5); await page.waitForTimeout(120);
+    const gone1 = await dark();
+    await page.locator('#wi-ctx .wi4-m-mem').nth(1).hover(); await page.waitForTimeout(120);
+    await page.locator('#wi-ctx .wi4-m-sec').first().hover(); await page.waitForTimeout(120);
+    const back = await page.evaluate(() => !!document.querySelector('#content .wi4 .wi4-row.wi4-mhl, #content .wi4 .wi4-c-idx.wi4-mhl'));
+    await page.mouse.move(5, 5); await page.waitForTimeout(120);
+    const gone2 = await dark();
+    ok('menu.hover', 'from a member line back to its section head the section lights again; off the menu (from a member line or the head) nothing stays lit', back && gone1 && gone2, { back, gone1, gone2 });
+    // At 1440 members 2–3 of E011 sit behind «+N»: pointing at one lights the
+    // chip that holds it.
+    await page.keyboard.press('Escape'); await page.waitForTimeout(150);
+    await page.setViewportSize({ width: 1440, height: 900 }); await page.waitForTimeout(600);
+    await openMenu(page, 'recWiE011');
+    await page.locator('#wi-ctx .wi4-m-mem').nth(1).hover(); await page.waitForTimeout(150);
+    const fold = await page.evaluate(() => {
+      const oid = WINTL.rows.find(r => (r.orderIds || []).includes('recWiE011')).orderIds[1];
+      const pts = [...document.querySelectorAll('#content .wi4 [data-order-id="' + oid + '"]')];
+      const lit = [...document.querySelectorAll('#content .wi4 .wi4-mhl')];
+      return { oid, folded: pts.filter(p => !p.getClientRects().length).length, chips: lit.filter(el => el.classList.contains('wi4-more')).length, lit: lit.length,
+        hiddenLit: lit.some(el => !el.getClientRects().length), row: lit.some(el => el.matches('.wi4-row, .wi4-c-idx, [data-oid]')) };
+    });
+    ok('menu.hover', '1440: pointing at a member folded behind «+N» lights that «+N» chip (nothing hidden, never the row)', fold.folded > 0 && fold.chips > 0 && !fold.hiddenLit && !fold.row, fold);
+    await page.keyboard.press('Escape'); await page.waitForTimeout(150);
+    await page.setViewportSize({ width: 1920, height: 1080 }); await page.waitForTimeout(600);
+    await page.keyboard.press('Escape'); await page.waitForTimeout(300);
+    await page.keyboard.press('ArrowRight'); await page.waitForTimeout(300);
+    const w4 = await page.evaluate(() => WINTL.week);
+    ok('menu.keys', 'after Esc, → changes the week again (the guard left with the menu)', w4 === s0.week + 1, { w0: s0.week, w4 });
+    await settle(page, S);
+    await page.keyboard.press('ArrowLeft'); await page.waitForTimeout(300); await settle(page, S);
+  }
   ok('menu', 'opening menus wrote nothing; no page errors', !writes(S).length && !S.pageErrors.length, { w: writes(S), e: S.pageErrors });
   await page.context().close();
 }
@@ -2312,6 +2463,7 @@ async function scnStyles(browser, origin) {
     // board, opaque on the other — a flake, not a style). At rest, both boards.
     await page.waitForTimeout(300);
     C.menu = await menuStyles(page);
+    C.danger = await page.evaluate(([tok]) => eval(tok)('--danger'), [TOKEN_JS]);
     await page.evaluate(() => _wiCtxClose());
     const r23 = await rowOf(page, 'recWiE023'), r24 = await rowOf(page, 'recWiE024'), r14 = await rowOf(page, 'recWiI014');
     for (const h of [`_wiPanelGroupBuild(${r7},false)`, `_wiPanelGroupBuild(${r14},true)`, `_wiPanelRota(${r23})`, `_wiPanelJoinLoad(${r24})`]) {
@@ -2322,8 +2474,31 @@ async function scnStyles(browser, origin) {
     await page.context().close();
   }
   ok('styles', 'v4 skin: the popover\'s primary is navy (--wi4-ink), v1\'s stays as it was', !!caps.on.save && caps.on.save.bg === caps.on.save.ink && !!caps.off.save && caps.off.save.bg !== caps.on.save.bg, { v1: caps.off.save, v4: caps.on.save });
+  // The per-load menu's intended v4 differences (parity r1, Figma 1097:3858;
+  // TECH_DESIGN §c.3), checked on their own like the navy primary:
+  //   F4  every item DM Sans 13 regular with 12px sides — #wi-ctx sits outside
+  //       .wi4, so v1's items draw in the browser's button font (Arial 12) at 14px;
+  //   F6  «Αφαίρεση ταιριάσματος» red (.d) in v4, plain in v1 (its 0px
+  //       borders take the text colour, so their colour follows).
+  // Everything else — top/bottom padding, borders, background, and the colour
+  // of every other item — stays v1's.
+  {
+    const P = i => PROPS.indexOf(i);
+    const FONT = [P('fontFamily'), P('fontSize'), P('fontWeight')], SIDES = [P('paddingLeft'), P('paddingRight')];
+    const INK = [P('color'), P('borderTopColor'), P('borderBottomColor')];
+    const a = caps.off.menu || {}, b = caps.on.menu || {};
+    const keys = Object.keys(a).filter(x => x in b);
+    const UNMATCH = /^_wiUnmatch(Row)?\(/;
+    const diff = keys.flatMap(x => { const va = a[x].split('|'), vb = b[x].split('|');
+      return PROPS.map((p, i) => (FONT.includes(i) || SIDES.includes(i) || (INK.includes(i) && UNMATCH.test(x)) || va[i] === vb[i] ? null : `${x} ${p}: v1 ${va[i]} ≠ v4 ${vb[i]}`)).filter(Boolean); });
+    ok('styles', `menu: computed styles v4 = v1 apart from the intended differences (${keys.length} nodes compared)`, keys.length > 0 && !diff.length, diff.slice(0, 8));
+    const v4 = Object.values(b).map(s => s.split('|'));
+    ok('styles', 'menu (intended, F4): every v4 item is DM Sans 13px 400 with 12px sides', v4.length > 0 && v4.every(s => /DM Sans/.test(s[P('fontFamily')]) && s[P('fontSize')] === '13px' && s[P('fontWeight')] === '400' && s[P('paddingLeft')] === '12px' && s[P('paddingRight')] === '12px'), v4.slice(0, 3));
+    const un = keys.find(x => UNMATCH.test(x));
+    ok('styles', 'menu (intended, F6): «Αφαίρεση ταιριάσματος» is red (--danger) in v4, plain in v1', !!un && b[un].split('|')[P('color')] === caps.on.danger && a[un].split('|')[P('color')] !== caps.on.danger, { un, v1: un && a[un], v4: un && b[un], danger: caps.on.danger });
+  }
   for (const k of Object.keys(caps.off)) {
-    if (k === 'save') continue;
+    if (k === 'save' || k === 'menu' || k === 'danger') continue;
     const a = caps.off[k] || {}, b = caps.on[k] || {};
     const keys = Object.keys(a).filter(x => x in b);
     const diff = keys.filter(x => a[x] !== b[x]).map(x => `${x}: v1 ${a[x]} ≠ v4 ${b[x]}`);
@@ -2369,6 +2544,20 @@ async function scnPrint(browser, origin) {
     const r = await page.evaluate(() => { const m = document.getElementById('shMenu');
       return { sh: !!m, items: m ? [...m.querySelectorAll('button')].map(b => b.textContent) : [], ctx: ((document.getElementById('wi-ctx') || {}).style || {}).display === 'block' }; });
     ok(scn, 'right-click on the row\'s print button opens the share menu (Λήψη PDF · Κοινή χρήση), not the per-load menu', r.sh && !r.ctx && r.items.some(t => /Κοινή χρήση/.test(t)), r);
+    // Parity r1 F7 (Figma Assign 1097:2501): pill 176, 6px, the arrow; print
+    // out of the flow, in the gutter past the cell — on neither the pill nor
+    // the arrow, and clear of the import cell's first chip.
+    await page.mouse.click(5, 5); await page.waitForTimeout(150);
+    await rowL.hover({ position: { x: 600, y: 16 } }); await page.waitForTimeout(150);
+    const g = await rowL.evaluate(row => {
+      const R = el => { if (!el) return null; const b = el.getBoundingClientRect(); return { l: Math.round(b.left), r: Math.round(b.right), w: Math.round(b.width) }; };
+      const asg = row.querySelector('.wi4-asg');
+      const chip = row.querySelector('.wi4-c-imp .wi4-dc, .wi4-c-imp button, .wi4-c-imp .wi4-gap');
+      return { cell: R(asg), box: R(asg.querySelector('.wi4-box')), plane: R(asg.querySelector('.wi4-plane')), prt: R(asg.querySelector('.wk3-prt')), chip: R(chip),
+        vis: getComputedStyle(asg.querySelector('.wk3-prt')).visibility };
+    });
+    ok(scn, 'at 1920 the pill is 176±1 wide, the arrow 6±1px after it; print sits past the cell, on neither, clear of the import\'s first chip', !!g.box && Math.abs(g.box.w - 176) <= 1
+      && Math.abs(g.plane.l - g.box.r - 6) <= 1 && g.prt.l >= g.plane.r && g.prt.l >= g.cell.r - 1 && (!g.chip || g.prt.r <= g.chip.l) && g.vis === 'visible', g);
     ok(scn, 'nothing written', !writes(S).length, writes(S));
     await page.context().close();
   }
