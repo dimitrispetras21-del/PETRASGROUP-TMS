@@ -1390,11 +1390,25 @@ function _range(week) {
     ? `${ws.getDate()}–${we.getDate()} ${MONTH_GEN[we.getMonth()]}`
     : `${ws.getDate()} ${MONTH_GEN[ws.getMonth()]} – ${we.getDate()} ${MONTH_GEN[we.getMonth()]}`;
 }
+// A failed save has its OWN slot (#wi4-upd-err) beside the sync token (sheet
+// 14 #9, 1089:8565). It used to replace the token: freshness and «N αλλαγές
+// από …» vanished exactly when another dispatcher's change is the likeliest
+// cause of the failure (review 11/10). Empty = no failure (CSS hides it).
+function _updErr() {
+  const errs = Object.values(_D()._syncLog || {}).filter((s) => s && s.state === 'err').length;
+  return errs ? `${_ico('alert_circle', 11)}${errs} ${errs === 1 ? 'αλλαγή δεν αποθηκεύτηκε' : 'αλλαγές δεν αποθηκεύτηκαν'}` : '';
+}
+// Token and failure slot together, at every site that redraws the token. The
+// failure slot is refreshed in place (innerHTML): role=status announces a
+// change of its content, never a node swapped under it.
+function _updRefresh() {
+  const u = document.getElementById('wi4-upd'); if (u) u.outerHTML = _updHTML();
+  const e = document.getElementById('wi4-upd-err'); if (e) e.innerHTML = _updErr();
+  _presFit();   // a wider token or a failure can leave the names no room
+}
 function _updHTML() {
   const D = _D();
-  const errs = Object.values(D._syncLog || {}).filter((s) => s && s.state === 'err').length;
-  // Icons as sheet 14 #9 draws them: alert for a failure, refresh beside «Ενημερώθηκε».
-  if (errs) return `<span class="wi4-upd err" id="wi4-upd" role="status">${_ico('alert_circle', 12)}${errs} ${errs === 1 ? 'αλλαγή δεν αποθηκεύτηκε' : 'αλλαγές δεν αποθηκεύτηκαν'}</span>`;
+  // Icons as sheet 14 #9 draws them: refresh beside «Ενημερώθηκε».
   const ch = _presState().changes;
   if (ch && (+ch.n > 0 || +ch.auto_n > 0)) {
     const words = [];
@@ -1424,7 +1438,9 @@ function _updHTML() {
 function _tabsHTML(m) {
   const I = W(), D = _D(), wk = D.week, cur = I.currentWeek();
   const go = (w) => `WI_INTERNAL.WINTL.week=${Math.min(53, Math.max(1, w))};WI_INTERNAL.renderWeeklyIntl()`;
-  let h = `<button type="button" class="wi4-tab" onclick="${go(wk - 1)}" title="Προηγούμενη εβδομάδα" aria-label="Προηγούμενη εβδομάδα">‹</button>`;
+  // Steppers as Figma 1097:2288/2307 draws them: 15px chevron icons (the ‹ ›
+  // glyphs read as two faint specks, review 11/10).
+  let h = `<button type="button" class="wi4-tab" onclick="${go(wk - 1)}" title="Προηγούμενη εβδομάδα" aria-label="Προηγούμενη εβδομάδα">${_ico('chevron_left', 15)}</button>`;
   for (let w = wk - 3; w <= wk + 3; w++) {
     if (w < 1 || w > 53) continue;
     let badge = '';
@@ -1439,7 +1455,7 @@ function _tabsHTML(m) {
     // W−3 and W+3 (‹ › still step), so the actions never cover the tabs.
     h += `<button type="button" class="wi4-tab${w === wk ? ' on' : ''}" data-d="${w - wk}" onclick="${go(w)}" title="${_esc(I.weekRange(w) || '')}">W${w}${w === cur ? ' <span class="wi4-t-blue" aria-label="τρέχουσα">•</span>' : ''}${badge}</button>`;
   }
-  h += `<button type="button" class="wi4-tab" onclick="${go(wk + 1)}" title="Επόμενη εβδομάδα" aria-label="Επόμενη εβδομάδα">›</button>`;
+  h += `<button type="button" class="wi4-tab" onclick="${go(wk + 1)}" title="Επόμενη εβδομάδα" aria-label="Επόμενη εβδομάδα">${_ico('chevron_right', 15)}</button>`;
   // «Σήμερα» is not on the Figma tabs; kept because it is today's button.
   if (wk !== cur) h += `<button type="button" class="wi4-tab wi4-t-blue" onclick="${go(cur)}">Σήμερα</button>`;
   return h;
@@ -1486,11 +1502,14 @@ function _barHTML(m) {
   const range = _range(D.week);
   return '<div class="wi4-bar">' +
     `<div class="wi4-bar-l"><span class="wi4-title">Εβδομαδιαίο Διεθνών</span><span class="wi4-range" title="${_esc(range)}">${_esc(range)}</span>` +
-    _presHTML() + _updHTML() + '</div>' +
+    _presHTML() + _updHTML() + `<span class="wi4-upd-err" id="wi4-upd-err" role="status">${_updErr()}</span></div>` +
     `<nav class="wi4-tabs" id="wi4-tabs" aria-label="Εβδομάδες">${_tabsHTML(m)}</nav>` +
-    '<div class="wi4-bar-r"><div class="wk-more"><button type="button" class="wi4-btn wk-more-t" onclick="wkMoreToggle(event)" aria-haspopup="true" aria-expanded="false">Προβολή ▾</button>' +
+    // The board's own buttons carry Figma's icons (1097:2311 calendar, sheet
+    // 15 «Προβολή ⌄»); the ▾ glyph was text. Σάρωση / Νέα παραγγελία stay the
+    // shared OrdersCommon buttons (owner 29/9).
+    `<div class="wi4-bar-r"><div class="wk-more"><button type="button" class="wi4-btn wk-more-t" onclick="wkMoreToggle(event)" aria-haspopup="true" aria-expanded="false">Προβολή${_ico('chevron_down', 15)}</button>` +
     `<div class="wk-more-m" role="menu" id="wi4-view" hidden>${_viewMenuHTML()}</div></div>` +
-    `<button type="button" class="wi4-btn" onclick="WI_INTERNAL.preorder()" title="Φορτίο που ανακοινώθηκε — λεπτομέρειες αργότερα">Pre-order${preN ? ` <span class="wi4-cnt">${preN}</span>` : ''}</button>` +
+    `<button type="button" class="wi4-btn" onclick="WI_INTERNAL.preorder()" title="Φορτίο που ανακοινώθηκε — λεπτομέρειες αργότερα">${_ico('calendar', 15)}Pre-order${preN ? ` <span class="wi4-cnt">${preN}</span>` : ''}</button>` +
     scan + neu + '</div></div>';
 }
 function _qwrapHTML(m) {
@@ -1659,25 +1678,59 @@ function _presHTML() {
     const head = p.status === 'paused' ? 'Ζωντανή εικόνα σε παύση' : 'Η ζωντανή εικόνα δεν είναι διαθέσιμη';
     const rest = String(p.full || '').replace(head, '').replace(/^\s*—\s*/, '').trim();
     const t = ` title="${_esc(p.full)}"`;   // on each piece: the strip itself is display:contents
+    // Paused: an 8px amber dot (sheet 16 A2, 1123:2734), drawn by CSS.
     return `<div class="wi4-pres ${p.status}" id="wi4-pres">` +
-      `<span class="wi4-pres-ic" aria-hidden="true"${t}>${_ico(p.status === 'paused' ? 'pause_circle' : 'alert_circle', 12)}</span>` +
+      `<span class="wi4-pres-ic" aria-hidden="true"${t}>${p.status === 'paused' ? '' : _ico('alert_circle', 12)}</span>` +
       // «ζωντανή εικόνα» gives way on a narrow bar (1440), the word never.
       `<span class="wi4-pres-w" role="status"${t}><span class="wi4-pres-wl">ζωντανή εικόνα </span><b>${_esc(p.word)}</b></span>` +
       (rest ? `<span class="wi4-pres-r"${t}>— ${_esc(rest)}</span>` : '') + '</div>';
   }
   const ps = _presState();
   const shown = ps.others.slice(0, PRES_MAX), more = ps.others.slice(PRES_MAX);
-  const av = shown.map((o) => `<span class="wi4-av" title="${_esc(_pName(o))}">${_esc(_pName(o).trim().charAt(0).toUpperCase())}</span>`).join('') +
+  // A tint per person (sheet 16 A: two people, two tints) — every disc was the
+  // same blue, so two colleagues with one initial looked alike. Picked by a
+  // stable hash of the user's sub (the same person keeps a tint from beat to
+  // beat); a tint already taken on the strip moves to the next free one.
+  const used = new Set();
+  const tint = (o) => {
+    let h = 0;
+    for (const c of String((o && o.sub) || _pName(o))) h = (h * 31 + c.charCodeAt(0)) >>> 0;
+    let k = h % PRES_TINTS;
+    for (let i = 0; i < PRES_TINTS && used.has(k); i++) k = (k + 1) % PRES_TINTS;
+    used.add(k);
+    return k;
+  };
+  const av = shown.map((o) => `<span class="wi4-av t${tint(o)}" title="${_esc(_pName(o))}">${_esc(_pName(o).trim().charAt(0).toUpperCase())}</span>`).join('') +
     (more.length ? `<span class="wi4-av more" title="${_esc(more.map(_pName).join(', '))}">+${more.length}</span>` : '');
-  // One colleague: «Χρήστης Β · εδώ τώρα», the NAME gives way first. Two or
-  // more: the avatars carry the initials and every name is in the title
-  // («Π Ε · εδώ τώρα»), never a list cut mid-name.
+  // Names + «· εδώ τώρα», as Figma draws it (sheet 16 A) for one colleague or
+  // several. The round-3 rule stays: a list is never cut mid-name — when the
+  // names do not fit whole they go whole (_presFit), and every name is in
+  // the title of each piece.
   const names = (p.names || []).join(', ') + (p.more ? ' +' + p.more : '');
   const t = ` title="${_esc(p.full)}"`;
-  const who = ps.others.length === 1
-    ? `<span class="wi4-pres-n"${t}>${_esc(names)}</span><span class="wi4-pres-w"${t}>· ${_esc(p.here)}</span>`
-    : `<span class="wi4-pres-w"${t}>${_esc(p.here)}</span>`;
+  const who = `<span class="wi4-pres-n"${t}>${_esc(names)}</span><span class="wi4-pres-w"${t}>· ${_esc(p.here)}</span>`;
+  // Measured once the strip is on screen: every strip — a paint's or a beat's —
+  // is built here, so this one call covers both.
+  if (typeof requestAnimationFrame === 'function') requestAnimationFrame(_presFit);
   return `<div class="wi4-pres" id="wi4-pres">${av}${who}</div>`;
+}
+const PRES_TINTS = 4;   // .wi4-av.t0–t3 in style.css
+// Names whole or not at all. They never shrink (CSS), so they are never cut;
+// when the row does not hold them — the range would be cut or the row would
+// overflow — they go whole (a class on the strip) and the title keeps them.
+// A shrinking name list was cut by slivers («Θοδωρ…») whenever the range gave
+// way, since flex shares a deficit by weight × width. The bar's width changes
+// without a beat (window resize, the sidebar), so the app's top bar — which
+// outlives every paint — is watched too; a token that grows calls this too.
+let _presRO = null;
+function _presFit() {
+  const s = document.getElementById('wi4-pres'), n = s && s.querySelector('.wi4-pres-n');
+  if (!n) return;
+  s.classList.remove('wi4-pres-nofit');
+  const row = s.parentElement, g = row && row.querySelector('.wi4-range');
+  if ((row && row.scrollWidth > row.clientWidth) || (g && g.scrollWidth > g.clientWidth)) s.classList.add('wi4-pres-nofit');
+  const tb = !_presRO && typeof ResizeObserver === 'function' && document.querySelector('.main > .topbar');
+  if (tb) { _presRO = new ResizeObserver(() => { if (_live()) _presFit(); }); _presRO.observe(tb); }
 }
 // Called by every paint: start() is idempotent — it takes the CURRENT week
 // and re-observes the new #wi-popover (every full paint re-creates it). No
@@ -1933,7 +1986,7 @@ function _tick() {
     if (!WIV2.active()) { _cleanup(); return; }
     if (!_root()) { _topUnmount(); return; }
     const u = document.getElementById('wi4-upd');
-    if (u && !u.classList.contains('err') && !u.classList.contains('chg')) u.outerHTML = _updHTML();
+    if (u && !u.classList.contains('chg')) _updRefresh();
   }, 30000);
 }
 function _scroller() {
@@ -2082,7 +2135,7 @@ function _refresh() {
   m.metrics = _m ? _m.metrics : {};
   _m = Object.assign(_m || {}, { queue: m.queue, xwCount: m.xwCount, loading: m.loading, days: m.days });
   _queue = m.queue;
-  const u = document.getElementById('wi4-upd'); if (u) u.outerHTML = _updHTML();
+  _updRefresh();
   const t = document.getElementById('wi4-tabs'); if (t) t.innerHTML = _tabsHTML(m);
   const q = document.getElementById('wi4-qwrap'); if (q) q.innerHTML = _qwrapHTML(m);
   m.days.forEach((d) => {
@@ -2266,7 +2319,7 @@ function onSync(oid, state, msg) {
       if (old) old.outerHTML = html;
       else { const el = _rowEl(oid); if (el && html) el.insertAdjacentHTML('afterend', html); }
     } else if (old && state !== 'pend') old.remove();
-    const u = document.getElementById('wi4-upd'); if (u) u.outerHTML = _updHTML();
+    _updRefresh();
     // The counts, the queue and the row's rail follow the TABLE at once — a
     // failed match must not keep the optimistic «all fine» until the re-read
     // (review 11/10). Still no rebuild: the rail is a class on the drawn row,
@@ -2439,7 +2492,7 @@ function _dropLog(oid) {
   const r = row0(oid);
   const slot = r && document.getElementById('wi-sync-' + r.id);
   if (slot) { slot.className = 'wi-sync'; slot.textContent = ''; slot.title = ''; }
-  const u = document.getElementById('wi4-upd'); if (u) u.outerHTML = _updHTML();
+  _updRefresh();
 }
 function feedTog(side) {
   // Hooks never throw into the old function that called them (§a.4).
@@ -2500,7 +2553,7 @@ function presencePatch() {
   const root = _root(); if (!root || !_live()) return;
   try {
     const p = document.getElementById('wi4-pres'); if (p) p.outerHTML = _presHTML();
-    const u = document.getElementById('wi4-upd'); if (u && !u.classList.contains('err')) u.outerHTML = _updHTML();
+    _updRefresh();
     const ps = _presState();
     const by = {};
     ps.others.forEach((o) => {

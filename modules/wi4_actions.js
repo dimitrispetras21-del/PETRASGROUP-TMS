@@ -1472,9 +1472,11 @@ let _help = null;
 function _helpOpen() {
   if (_help) { _helpClose(); return; }
   const back = document.createElement('div'); back.className = 'wi4-dlg-back';
-  const dlg = document.createElement('div'); dlg.className = 'wi4-dlg'; dlg.setAttribute('role', 'dialog');
-  const hd = document.createElement('div'); hd.className = 'wi4-datep-hd'; hd.textContent = 'Συντομεύσεις ';
-  const esc = _btn('wi4-key', 'Esc', () => _helpClose()); esc.style.float = 'right'; esc.setAttribute('aria-label', 'Κλείσιμο');
+  // Its own class: the sheet's geometry is Figma 1119:2836's (600 wide, Syne
+  // 17 title, 110px key column, DM Mono caps); the conflict dialog keeps .wi4-dlg.
+  const dlg = document.createElement('div'); dlg.className = 'wi4-dlg wi4-help'; dlg.setAttribute('role', 'dialog');
+  const hd = document.createElement('div'); hd.className = 'wi4-dlg-t'; hd.textContent = 'Συντομεύσεις';
+  const esc = _btn('wi4-key', 'Esc', () => _helpClose()); esc.setAttribute('aria-label', 'Κλείσιμο');
   hd.appendChild(esc);
   dlg.appendChild(hd);
   // Built from the live keymap: only keys that work are listed (§d.4).
@@ -1485,10 +1487,22 @@ function _helpOpen() {
     if (prevRow) prevRow.keys.push(_keyLabel(e.combo));
     else rows.push({ group: ACTION_GROUP[e.action] || 'ΓΕΝΙΚΑ', text, keys: [_keyLabel(e.combo)] });
   }
+  // Keys bound outside the board work here too and were missing (Figma lists
+  // them): ←/→ from core/ui.js, ⌘K from the command palette — each read from
+  // the constant next to its own binding. Placed as Figma places them: the
+  // week with navigation before «/», the palette first in ΓΕΝΙΚΑ.
+  const ext = [[window.UI_GLOBAL_KEYS, 'ΠΛΟΗΓΗΣΗ', ACTION_TEXT.search], [window.PALETTE_KEYS, 'ΓΕΝΙΚΑ', null]];
+  for (const [list, group, before] of ext) {
+    (Array.isArray(list) ? list : []).forEach((g) => {
+      const at = rows.findIndex((r) => r.group === group && (before == null || r.text === before));
+      const row = { group, text: String(g.label), keys: String(g.keys).split(/\s+/) };
+      if (at < 0) rows.push(row); else rows.splice(at, 0, row);
+    });
+  }
   for (const g of ['ΠΛΟΗΓΗΣΗ', 'ΣΤΗ ΣΕΙΡΑ', 'ΓΕΝΙΚΑ']) {
     const its = rows.filter((r) => r.group === g);
     if (!its.length) continue;
-    const gh = document.createElement('div'); gh.className = 'wi4-qp-h'; gh.style.padding = '8px 0 2px'; gh.textContent = g;
+    const gh = document.createElement('div'); gh.className = 'wi4-qp-h'; gh.textContent = g;
     dlg.appendChild(gh);
     for (const r of its) {
       const row = document.createElement('div'); row.className = 'wi4-help-row';
@@ -1559,8 +1573,12 @@ function _state() {
   const shown = (id) => { const el = document.getElementById(id); return !!(el && el.style.display === 'block'); };
   const mo = document.getElementById('modalOverlay');
   const pal = document.getElementById('cmdk-overlay');
+  // The bar's «Προβολή» and avatar menus count as open menus too: they own
+  // their keys, and Esc/↓ under them acted on the board (live audit 11/10).
+  const view = document.getElementById('wi4-view');
+  const barMenu = !!(view && !view.hidden) || !!document.querySelector('.topbar .wi4-umenu:not([hidden])');
   return {
-    menuOpen: shown('wi-ctx'), panelOpen: shown('wi-panel'), popoverOpen: shown('wi-popover'),
+    menuOpen: shown('wi-ctx') || barMenu, panelOpen: shown('wi-panel'), popoverOpen: shown('wi-popover'),
     dialogOpen: !!(_dlg || _help || _qp), datePanelOpen: !!_dp,
     modalOpen: !!((mo && mo.classList.contains('open')) || document.querySelector('.mf-overlay')),
     paletteOpen: !!(pal && pal.style.display && pal.style.display !== 'none'),
@@ -1659,15 +1677,42 @@ function _onKey(e) {
   const act = lg.keyAction(_evOf(e), st);
   if (!act) return;
   e.preventDefault();
-  // The blue ring shows only after keyboard use (sheet 15 C).
+  // The blue ring shows only after keyboard use (sheet 15 C), and with it the
+  // key-hint strip (note 1119:2834).
   const root = document.querySelector('#content .wi4');
-  if (root) root.classList.add('wi4-kbd');
+  if (root) { root.classList.add('wi4-kbd'); _khint(root); }
   run(act);
 }
 function _onMouse() {
   if (!_live()) return;
   const root = document.querySelector('#content .wi4');
+  // The key-hint strip goes with the class (CSS hides it); the node stays, so
+  // a press never changes the board's height under the pointer — removing it
+  // at mousedown shifted a board scrolled to its end, and the click landed on
+  // another row (rig date.chip).
   if (root) root.classList.remove('wi4-kbd');
+}
+// Sheet 15 C (1119:2812): while the keyboard is in use, a strip at the foot of
+// the board names the main keys — before, they were found only through «?».
+// Built once per board on the first key; shown only with .wi4-kbd (CSS).
+// The caps come from the sheet's own source (_hintFor → WI4.KEYMAP), so the
+// strip and «?» never disagree; an unbound action drops out. The labels are
+// Figma's short ones. Figma's «← → εξαγωγή / εισαγωγή» is not bound (←/→ =
+// week, owner) and so is not here.
+const KHINT = Object.freeze([[['rowPrev', 'rowNext'], 'σειρά'], [['menu'], 'μενού'], [['assign'], 'ανάθεση'],
+  [['date'], 'ημερομηνία'], [['queueNext'], 'επόμενο της ουράς'], [['help'], 'όλες']]);
+function _khint(root) {
+  if (document.getElementById('wi4-khint')) return;
+  const bar = document.createElement('div');
+  bar.id = 'wi4-khint'; bar.className = 'wi4-khint'; bar.setAttribute('aria-hidden', 'true');
+  for (const [acts, text] of KHINT) {
+    const keys = acts.map(_hintFor).filter(Boolean);
+    if (keys.length !== acts.length) continue;
+    const k = document.createElement('span'); k.className = 'wi4-key'; k.textContent = keys.join(' ');
+    const t = document.createElement('span'); t.textContent = text;
+    bar.appendChild(k); bar.appendChild(t);
+  }
+  if (bar.childNodes.length) root.appendChild(bar);
 }
 
 // ═══ #wi-panel relabel (§e.9) ═══════════════════════════════════════════

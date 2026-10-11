@@ -150,6 +150,14 @@
     _render();
   }
 
+  // The binding below, for the Weekly board's «?» sheet (Figma 1119:2907): one
+  // source, so the sheet names a key that works. It accepts ⌘ or Ctrl; a
+  // non-Mac keyboard has no ⌘, so there the sheet says Ctrl K.
+  const PALETTE_KEYS = Object.freeze([Object.freeze({
+    keys: /Mac|iPhone|iPad|iPod/.test((typeof navigator !== 'undefined' && navigator.platform) || '') ? '⌘K' : 'Ctrl K',
+    label: 'μετάβαση σε σελίδα',
+  })]);
+  if (typeof window !== 'undefined') window.PALETTE_KEYS = PALETTE_KEYS;
   // Keyboard listener
   document.addEventListener('keydown', e => {
     const modifier = e.metaKey || e.ctrlKey;

@@ -1824,10 +1824,63 @@ async function scnKeys(browser, origin) {
     ring: document.querySelectorAll('#content .wi4 .wi4-focus').length, ctx: ((document.getElementById('wi-ctx') || {}).style || {}).display === 'block',
     pop: (() => { const p = document.getElementById('wi-popover'); return !!p && getComputedStyle(p).display !== 'none' && !!p.innerHTML.trim(); })(),
     help: !!document.querySelector('.wi4-dlg .wi4-help-row'), active: document.activeElement && document.activeElement.className }));
+  // The bar's own buttons (Figma 1097:2310, sheet 15; F3): Pre-order carries
+  // its 15px calendar, «Προβολή» a chevron, and they share the 8px radius of
+  // the shared Σάρωση / Νέα παραγγελία beside them.
+  const own = await page.evaluate(() => { const bs = [...document.querySelectorAll('.wi4-bar-r .wi4-btn')], pre = bs.find(b => /Pre-order/.test(b.textContent));
+    const sv = pre && pre.querySelector('svg'), r = el => el ? getComputedStyle(el).borderTopLeftRadius : null;
+    return { preSvg: sv ? Math.round(sv.getBoundingClientRect().width) : 0, viewSvg: !!document.querySelector('.wi4-bar .wk-more-t svg'),
+      radii: [...bs, document.querySelector('.wi4-bar .btn-scan'), document.querySelector('.wi4-bar .btn-new-order')].map(r) }; });
+  ok('keys', 'bar buttons: Pre-order has a 15px icon, «Προβολή» a chevron, all four share an 8px radius', own.preSvg === 15 && own.viewSvg && own.radii.length === 4 && own.radii.every(x => x === '8px'), own);
+  // «Προβολή» owns its keys (sheets 14/15, F1): Enter opens it with the focus
+  // on the first item, ↓ moves, Esc closes it and gives the toggle back.
+  const vk = () => page.evaluate(() => { const m = document.getElementById('wi4-view'), t = document.querySelector('.wi4-top .wk-more-t'), a = document.activeElement, its = m ? [...m.querySelectorAll('[role^="menuitem"]')] : [];
+    return { hidden: !!m && m.hidden, exp: t.getAttribute('aria-expanded'), onToggle: a === t, item: its.indexOf(a), week: WINTL.week }; });
+  await page.focus('.wi4-top .wk-more-t'); await page.keyboard.press('Enter'); await page.waitForTimeout(100);
+  const v1 = await vk();
+  await page.keyboard.press('ArrowDown'); await page.waitForTimeout(50);
+  const v2 = await vk();
+  await page.keyboard.press('Escape'); await page.waitForTimeout(50);
+  const v3 = await vk();
+  ok('keys', '«Προβολή»: Enter opens it on its first item, ↓ moves to the next, Esc closes it (aria-expanded false) and focuses the toggle',
+    !v1.hidden && v1.exp === 'true' && v1.item === 0 && v2.item === 1 && v3.hidden && v3.exp === 'false' && v3.onToggle, { v1, v2, v3 });
+  // ←/→ = week only when no overlay is open (owner, locked): under the open
+  // «Προβολή», the avatar menu or the «Όλα» panel the week stays.
+  const wk0 = await page.evaluate(() => WINTL.week);
+  // Each key read on its own: ← then → would cancel out and hide a step.
+  const under = async (open, close) => { await open(); await page.waitForTimeout(100); const r = [];
+    for (const k of ['ArrowLeft', 'ArrowRight']) { await page.keyboard.press(k); await page.waitForTimeout(600); r.push(await page.evaluate(() => WINTL.week)); }
+    await close(); await page.waitForTimeout(100);
+    if (r.some(w => w !== wk0)) { await page.evaluate(w => { WINTL.week = w; return renderWeeklyIntl(); }, wk0); await settle(page, S); }
+    return r; };
+  // Closed by a click that lands on nothing (a click on the board could open a cell's panel).
+  const away = () => page.evaluate(() => document.body.click());
+  const wView = await under(() => page.click('.wi4-top .wk-more-t'), away);
+  const wUser = await under(() => page.click('.topbar .user-chip'), away);
+  const wAll = await under(() => page.evaluate(() => WI4Actions.queuePanel()), () => page.keyboard.press('Escape'));
+  ok('keys', '←/→ under an open «Προβολή», avatar menu or «Όλα» panel leave the week unchanged', [wView, wUser, wAll].every(r => r.every(w => w === wk0)), { wk0, wView, wUser, wAll });
+  await neutral(page);
+  const open0 = await page.evaluate(() => [...document.querySelectorAll('[role="menu"],[role="dialog"],[role="alertdialog"],#wi-ctx,#wi-panel,#wi-popover')]
+    .filter(el => el.getClientRects().length && getComputedStyle(el).visibility !== 'hidden').map(el => el.id || el.className));
+  await page.keyboard.press('ArrowRight'); await page.waitForTimeout(1500);
+  const wNone = await page.evaluate(() => WINTL.week);
+  if (wNone !== wk0) { await page.evaluate(w => { WINTL.week = w; return renderWeeklyIntl(); }, wk0); await settle(page, S); }
+  ok('keys', 'with nothing open → still steps the week (locked)', wNone === wk0 + 1, { wk0, wNone, open0 });
   await neutral(page);
   await page.keyboard.press('ArrowDown');
   let s1 = await st();
   ok('keys', '↓ focuses the first row, blue ring only after a key (wi4-kbd)', !!s1.focus && s1.kbd && s1.ring === 1, s1);
+  // Sheet 15 C (F8): the key-hint strip shows with the keyboard, built from
+  // the live keymap, at the foot of the board; a mouse press takes it away.
+  const kh = await page.evaluate(() => { const h = document.querySelector('#content .wi4 .wi4-khint'); if (!h) return null; const b = h.getBoundingClientRect();
+    const sc = document.getElementById('content'), end = sc.scrollHeight - sc.scrollTop - sc.clientHeight < 2;
+    return { keys: [...h.querySelectorAll('.wi4-key')].map(k => k.textContent.trim()), h: Math.round(b.height), bottom: Math.round(b.bottom), vh: innerHeight, end, vis: getComputedStyle(h).visibility }; });
+  // On the window's bottom edge while the board scrolls on (in the flow under the last row at the end).
+  ok('keys', '↓ shows the key-hint strip (≥5 keys from the keymap, 32px, on the window\'s bottom edge)', !!kh && kh.keys.length >= 5 && kh.keys.includes('Enter') && kh.keys.includes('?') && kh.h === 32 && kh.vis === 'visible' && kh.bottom <= kh.vh && (kh.end || kh.bottom >= kh.vh - 1), kh);
+  const endChk = await page.evaluate(() => new Promise((res) => { const sc = document.getElementById('content'); const top0 = sc.scrollTop; sc.scrollTop = sc.scrollHeight;
+    requestAnimationFrame(() => { const last = document.getElementById('wi-rows').getBoundingClientRect(), h = document.querySelector('#content .wi4 .wi4-khint');
+      const out = { lastBottom: Math.round(last.bottom), stripTop: h ? Math.round(h.getBoundingClientRect().top) : null }; sc.scrollTop = top0; res(out); }); }));
+  ok('keys', 'at the end of the scroll the strip sits under the last row, never on it', endChk.stripTop != null && endChk.stripTop >= endChk.lastBottom, endChk);
   await page.keyboard.press('ArrowDown');
   const s2 = await st();
   ok('keys', '↓ again moves to the next row', !!s2.focus && s2.focus !== s1.focus, [s1.focus, s2.focus]);
@@ -1842,13 +1895,27 @@ async function scnKeys(browser, origin) {
   await page.keyboard.press('Shift+Slash'); await page.waitForTimeout(200);
   const help = await page.evaluate(() => [...document.querySelectorAll('.wi4-dlg .wi4-help-row')].map(r => [...r.querySelectorAll('.wi4-key')].map(k => k.textContent.trim()).join('+')));
   const keymap = await page.evaluate(() => WI4.KEYMAP.map(k => k.keys));
-  ok('keys', '«?» lists exactly the live keymap (no E/I, ←→, [ ], ⌘Z)', help.length > 0 && keymap.every(k => help.some(h => h.includes(k))) && !help.some(h => /^(E|I|←|→|\[|\]|⌘Z)$/.test(h)), { help, keymap });
+  // F7: the keys bound outside the board (←/→ week in core/ui.js, ⌘K in the
+  // palette) are listed too; keys nothing binds (E, I, [ ], ⌘Z) never.
+  ok('keys', '«?» lists the live keymap + ← → (εβδομάδα) + ⌘K, and no E, I, [ ], ⌘Z', help.length > 0 && keymap.every(k => help.some(h => h.includes(k)))
+    && help.includes('←+→') && help.some(h => /^(⌘K|Ctrl\+K)$/.test(h)) && !help.some(h => /^(E|I|\[|\]|\[\+\]|⌘Z|Ctrl\+Z)$/.test(h)), { help, keymap });
+  // F6: the sheet's geometry is Figma 1119:2836's.
+  const hg = await page.evaluate(() => { const d = document.querySelector('.wi4-dlg.wi4-help'), t = d && d.querySelector('.wi4-dlg-t'), row = d && d.querySelector('.wi4-help-row'), k = row && row.querySelector('.wi4-key'), esc = t && t.querySelector('.wi4-key');
+    const c = el => el && getComputedStyle(el);
+    return d ? { w: Math.round(d.getBoundingClientRect().width), title: c(t).fontSize + '/' + c(t).fontWeight + ' ' + c(t).fontFamily.split(',')[0].replace(/"/g, ''),
+      key: c(row).gridTemplateColumns.split(' ')[0], cap: c(k).fontSize + ' ' + c(k).fontFamily.split(',')[0].replace(/"/g, ''), esc: c(esc).fontFamily.split(',')[0].replace(/"/g, '') } : null; });
+  ok('keys', '«?» sheet: 600 wide, Syne 17/700 title, 110px key column, DM Mono 11 caps (Esc too)', !!hg && hg.w === 600 && hg.title === '17px/700 Syne' && hg.key === '110px' && hg.cap === '11px DM Mono' && hg.esc === 'DM Mono', hg);
   await page.keyboard.press('Escape'); await page.waitForTimeout(100);
   await page.keyboard.press('Slash'); await page.waitForTimeout(100);
   ok('keys', '/ focuses the search box', await page.evaluate(() => !!document.activeElement && !!document.activeElement.closest('.wi4-search')));
   await page.keyboard.type('a'); await page.waitForTimeout(150);
   ok('keys', 'typing inside the search box triggers no action', !(await st()).pop && !(await st()).ctx);
   await page.keyboard.press('Escape'); await neutral(page);
+  // A press that lands on nothing (a real click here could open a row's cell).
+  await page.evaluate(() => document.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }))); await page.waitForTimeout(100);
+  // Hidden, not removed: the board's height never changes under the pointer.
+  ok('keys', 'a mouse press takes the key-hint strip away', await page.evaluate(() => { const h = document.querySelector('#content .wi4 .wi4-khint'); return !h || getComputedStyle(h).visibility === 'hidden'; }));
+  await neutral(page);
   const f0 = (await st()).focus;
   await page.keyboard.press('Meta+ArrowDown');
   ok('keys', 'with ⌘ held nothing acts', (await st()).focus === f0);
@@ -1861,6 +1928,18 @@ async function scnKeys(browser, origin) {
   await page.keyboard.press('ArrowDown');
   ok('keys', 'with the command palette open nothing acts', (await st()).focus === f0);
   await page.evaluate(() => { const p = document.getElementById('cmdk-overlay'); if (p) { p.style.display = 'none'; if (p.dataset.rig) p.remove(); } });
+  // core/ui.js is shared on purpose: Weekly National's ⋯ menu gets the same
+  // keys — Esc closes it, ← under it leaves WNATL.week (F1).
+  await page.evaluate(() => navigate('weekly_natl')); await page.waitForTimeout(2500);
+  const wn = await page.evaluate(() => ({ btn: !!document.querySelector('#content .wk-more-t'), week: typeof WNATL !== 'undefined' ? WNATL.week : null }));
+  if (wn.btn) {
+    await page.click('#content .wk-more-t'); await page.waitForTimeout(100);
+    await page.keyboard.press('ArrowLeft'); await page.waitForTimeout(600);
+    const wl = await page.evaluate(() => ({ week: WNATL.week, open: !document.querySelector('#content .wk-more-m').hidden }));
+    await page.keyboard.press('Escape'); await page.waitForTimeout(100);
+    const we = await page.evaluate(() => { const t = document.querySelector('#content .wk-more-t'); return { open: !document.querySelector('#content .wk-more-m').hidden, exp: t.getAttribute('aria-expanded'), focus: document.activeElement === t }; });
+    ok('keys', 'Weekly National ⋯: ← under it leaves WNATL.week, Esc closes it and focuses ⋯', wl.week === wn.week && wl.open && !we.open && we.exp === 'false' && we.focus, { wn, wl, we });
+  } else ok('keys', 'Weekly National renders its ⋯ menu in the rig', false, wn);
   // Off the page: a v4 key must never act on another page.
   await page.evaluate(() => navigate('dashboard')); await page.waitForTimeout(1200);
   const errs0 = S.pageErrors.length;
@@ -2016,7 +2095,7 @@ async function scnSaveFail(browser, origin) {
     await page.waitForTimeout(200);
     const r = await page.evaluate(([js]) => ({ msg: (() => { const row = eval(js)('recWiE006'); const n = row && (row.querySelector('.wi4-msg') || (row.nextElementSibling && row.nextElementSibling.classList.contains('wi4-msg') ? row.nextElementSibling : null)); return n ? n.innerText : ''; })(),
       msgH: (() => { const n = document.querySelector('#content .wi4 .wi4-msg'); return n ? Math.round(n.getBoundingClientRect().height) : null; })(),
-      upd: (document.querySelector('.wi4-upd.err') || {}).innerText || '',
+      upd: (document.getElementById('wi4-upd-err') || {}).innerText || '', tok: (document.getElementById('wi4-upd') || {}).innerText || '',
       pop: (() => { const p = document.getElementById('wi-popover'); return !!p && getComputedStyle(p).display !== 'none' && !!p.innerHTML.trim(); })(), rows: WINTL.rows.length }), [ROW_JS]);
     ok(scn, 'a 24px line under E006 «Δεν αποθηκεύτηκε …»', /Δεν αποθηκεύτηκε/.test(r.msg) && r.msgH === 24, r);
     // ONE message (sheet 14 #5): it names what stayed as it was — from the
@@ -2035,6 +2114,10 @@ async function scnSaveFail(browser, origin) {
     // (an optimistic paint can make it «collapsible»).
     ok(scn, 'E006\'s day stayed open through the match and the failure', await page.evaluate(js => { const r = eval(js)('recWiE006'); const d = r && r.closest('.wi4-day'); return !!d && !d.classList.contains('closed'); }, ROW_JS));
     ok(scn, 'title bar «1 αλλαγή δεν αποθηκεύτηκε»', /1 αλλαγή δεν αποθηκεύτηκε/.test(r.upd), r.upd);
+    // Sheet 14 #9 (F5): the failure has its own slot; the freshness / changes
+    // token stays beside it — it vanished exactly when another dispatcher's
+    // change is the likeliest cause of the failure.
+    ok(scn, 'title bar shows the failure AND the freshness token side by side', /1 αλλαγή δεν αποθηκεύτηκε/.test(r.upd) && /μόλις τώρα|πριν|αλλαγ|ζωντανά/.test(r.tok) && !/δεν αποθηκεύτηκε/.test(r.tok), { upd: r.upd, tok: r.tok });
     await savefailBoard(page, scn, r6);
     await shot(page, 'save-failure');
     // The title bar too (review 11/10: the shot was scrolled past it).
@@ -2051,6 +2134,13 @@ async function scnSaveFail(browser, origin) {
     ok(scn, 'the popover\'s PATCH targets E007 — never the failed row', truckWrites.length >= 1 && truckWrites[0].id === 'recWiE007' && !truckWrites.some(p => p.id === 'recWiE006'), truckWrites);
     ok(scn, 'table: E007 has TST-1016', link(fld(S, 'recWiE007', 'Truck')) === 'recWiT016');
     ok(scn, 'once nothing is open, the row is re-read (debounced)', S.mainReads > reads0, S.mainReads - reads0);
+    // The same match again, now accepted: the failure slot empties (F5).
+    await settle(page, S, 1500);
+    const r6b = await rowOf(page, 'recWiE006');
+    await htmlDrag(page, '#wi-imp-recWiI004', `#wi-ci-${r6b}`);
+    await page.waitForTimeout(500); await settle(page, S, 1500);
+    const ue = await page.evaluate(() => ({ err: (document.getElementById('wi4-upd-err') || {}).textContent, log: JSON.parse(JSON.stringify(WINTL._syncLog || {})) }));
+    ok(scn, 'after a successful retry #wi4-upd-err is empty', ue.err === '' && link(fld(S, 'recWiE006', 'Matched Import ID')) === 'recWiI004', { ue, matched: fld(S, 'recWiE006', 'Matched Import ID') });
     await page.context().close();
   }
   scn = 'savefail.pendingMatch';
@@ -2225,10 +2315,23 @@ async function scnPresence(browser, origin) {
         const whole = el => !!el && el.scrollWidth <= el.clientWidth + 1 && el.getBoundingClientRect().right <= bar.right + 1 && el.getBoundingClientRect().width > 0;
         return { word: w ? w.textContent : '', wordWhole: whole(w), token: u ? u.textContent : '', tokenWhole: whole(u),
           refresh: document.querySelectorAll('.wi4-bar-l svg').length, overlap: tabs.right > right.left + 1,
-          dbg: { barL: Math.round(bar.width), kids: [...document.querySelector('.wi4-bar-l').children].map(c => [c.className.toString().slice(0, 18), Math.round(c.getBoundingClientRect().width), c.scrollWidth]), tok: u ? [u.scrollWidth, u.clientWidth, Math.round(u.getBoundingClientRect().right), Math.round(bar.right)] : null, tabsL: Math.round(tabs.left), rightW: Math.round(right.width) } };
+          dbg: { barL: Math.round(bar.width), kids: [...document.querySelector('.wi4-bar-l').children].map(c => [c.className.toString().slice(0, 18), Math.round(c.getBoundingClientRect().width), c.scrollWidth]), tok: u ? [u.scrollWidth, u.clientWidth, Math.round(u.getBoundingClientRect().right), Math.round(bar.right)] : null, tabsL: Math.round(tabs.left), rightW: Math.round(right.width) },
+          // F4: names whole or hidden whole (their title still lists them); a tint per person.
+          names: (() => { const n = document.querySelector('.wi4-pres .wi4-pres-n'); if (!n) return null; const shown = n.getClientRects().length > 0;
+            const w = document.querySelector('.wi4-pres .wi4-pres-w'); return { text: n.textContent, shown, whole: shown && n.scrollWidth <= n.clientWidth + 1, titled: !!w && n.textContent.split(',').every(x => w.title.includes(x.trim())) }; })(),
+          tints: [...document.querySelectorAll('.wi4-pres .wi4-av')].map(a => (a.className.match(/\bt\d\b/) || [''])[0]),
+          // F13: paused / forbidden keep the range whole and some of the sentence.
+          range: (() => { const g = document.querySelector('.wi4-range'); return g ? { whole: g.scrollWidth <= g.clientWidth + 1, w: Math.round(g.getBoundingClientRect().width) } : null; })(),
+          restW: (() => { const x = document.querySelector('.wi4-pres .wi4-pres-r'); return x ? Math.round(x.getBoundingClientRect().width) : null; })() };
       });
       ok(scn, `${vw}: the state word is whole («${r.word}»), the sync token is whole and in the bar, one ↻ while live, the tabs clear of the actions`,
         word.test(r.word) && r.wordWhole && token.test(r.token) && r.tokenWhole && !r.overlap && (!/^live/.test(name) || r.refresh === 1), r);
+      if (/^live/.test(name)) {
+        ok(scn, `${vw}: names whole or hidden whole (title lists them), never cut`, !!r.names && (r.names.whole || (!r.names.shown && r.names.titled)), r.names);
+        ok(scn, `${vw}: every avatar has a tint, two people never the same one`, r.tints.length >= 1 && r.tints.every(Boolean) && new Set(r.tints).size === r.tints.length, r.tints);
+      }
+      if (vw === 1920 && (name === 'paused' || name === 'forbidden'))
+        ok(scn, '1920: the range is whole and some of the sentence shows', !!r.range && r.range.whole && r.restW > 0, { range: r.range, restW: r.restW });
     }
     await page.context().close();
   }
