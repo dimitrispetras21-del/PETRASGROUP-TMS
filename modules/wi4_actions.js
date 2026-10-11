@@ -367,7 +367,7 @@ function _groupLine(oids) {
   const to = e ? (e.vsImp ? 'Βέροια' : [e.to.title, e.to.place].filter(Boolean).join(', ')) : '—';
   return _plural(oids.length, 'φορτίο', 'φορτία') + ' → ' + to + _pi(_pals(oids));
 }
-// A member's own line (sheet 14 submenu): «VERMION FRUITS, Agios Georgios → DARKOM · 13 π.».
+// A member's own line (sheet 14 submenu): «Alpha Farm, Veria → Beta Market · 13 π.».
 function _memberLine(oid) {
   const e = _endsOf(oid);
   if (!e) return '';
@@ -392,7 +392,7 @@ function _menuHeader(row, impRow, expOids, impOids) {
   // acts from; a partner missing from the cache is «—», never the generic
   // «Συνεργάτης» (owner 4/9).
   // l1p: the same line in parts, the plates marked for DM Mono (sheet 14:
-  // «IAZ4471 · Papadopoulos Georgios»); l1 stays the plain text.
+  // «TST-1001 · Driver Test 01»); l1 stays the plain text.
   let l1p;
   if (row.hasSplitLegs) l1p = [{ t: 'Σπασμένη παραγγελία' }];
   else if (row.partnerId) l1p = [{ t: row.partnerLabel || '—' }].concat(row.partnerPlates ? [{ t: ' · ' }, { t: row.partnerPlates, mono: true }] : []);
@@ -858,7 +858,7 @@ function _dpRender() {
   const el = st.el;
   el.textContent = '';
   const hd = document.createElement('div'); hd.className = 'wi4-datep-hd'; hd.textContent = FIELD[st.field].title; el.appendChild(hd);
-  // One line (sheet 16 D: «J&T KOUP FRUITS · Larisa — Tempi»), the row's own
+  // One line (sheet 16 D: «Gamma Fruits · City — Town»), the row's own
   // words: client · first loading place — last delivery place, «…» + title
   // for the rest. It was every stop with its country over 5 lines.
   const id = document.createElement('div'); id.className = 'wi4-datep-id';

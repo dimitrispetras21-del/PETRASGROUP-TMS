@@ -212,7 +212,7 @@ function _splitName(n) {
     if (c) { cc = c; if (parts.length >= 3) city = parts[parts.length - 2]; title = parts.slice(0, Math.max(1, parts.length - (parts.length >= 3 ? 2 : 1))).join(', '); }
   }
   // Points and menus draw «City CC» (Figma line 2: «Kecskemét HU 6π», menu
-  // «DARKOM, Novi Sad RS»); the empty-return words keep «City, CC» (board:
+  // «Beta Market, City RS»); the empty-return words keep «City, CC» (board:
   // «Κενό γύρισμα · από Τρί 6/10 · Veverská Bítýška, CZ») — placeC.
   const cc2 = cc && cc !== 'GR' ? cc : '';
   const place = [city, cc2].filter(Boolean).join(' ');
@@ -598,7 +598,7 @@ function _compute() {
         it.tip = it.why;
       }
     }
-    // Pallets on the card (sheet 15: «MADETA → Arti… 10π · φόρτωση ήταν χθες»).
+    // Pallets on the card (sheet 15: «Alpha Dairy → Beta… 10π · φόρτωση ήταν χθες»).
     if (x.f && Number.isFinite(Number(x.f.pallets)) && x.f.pallets != null && !x.relayId) it.pal = Number(x.f.pallets);
     if (it.code === 'DATE_MISMATCH') it.field = 'VS CD Date';
     return it;
@@ -1447,7 +1447,7 @@ function _qwrapHTML(m) {
   if (!n) h += `<div class="wi4-qcard" style="cursor:default"><span class="wi4-l2">${m.loading ? 'Φορτώνει — η λίστα δεν είναι πλήρης ακόμη' : 'Τίποτα επείγον αυτή την εβδομάδα'}</span></div>`;
   q.slice(0, 3).forEach((it, i) => {
     const btn = _actLabel(it);
-    // One line (sheet 15): «MADETA A.S. → Arti…  10π · φόρτωση ήταν χθες
+    // One line (sheet 15): «Alpha Dairy → Beta…  10π · φόρτωση ήταν χθες
     // [Ανάθεση]» — the NAME gives way, the reason stays whole, and «χωρίς
     // φορτηγό» is left to the red chip and the button (subCard).
     const sub = [it.pal != null ? it.pal + 'π' : '', it.subCard || it.sub || ''].filter(Boolean).join(' · ');

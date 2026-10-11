@@ -1283,7 +1283,7 @@ async function scnMenu(browser, origin) {
   await openMenu(page, 'recWiE001');
   // Fix round 3 (11/10): every item on ONE line (label cut with «…», whole in
   // its title — long labels wrapped under the icon), the header's plate in
-  // DM Mono (sheet 14 «IAZ4471 · Papadopoulos Georgios»).
+  // DM Mono (sheet 14 «TST-1001 · Driver Test 01»).
   const mi = await page.evaluate(() => {
     const items = [...document.querySelectorAll('#wi-ctx .wi-ctx-i')].filter(b => b.offsetParent);
     const plate = document.querySelector('#wi-ctx .wi4-m-hd .wi4-m-plate');

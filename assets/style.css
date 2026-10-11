@@ -7742,7 +7742,7 @@ body.wi4-on #wi-ctx .wi4-m-sec .wi4-l2, body.wi4-on #wi-ctx .wi4-m-hd .wi4-l2 { 
 .wi4-qcard { position:relative; flex:1 1 0; min-width:0; height:34px; display:flex; align-items:center; gap:8px; padding:0 6px 0 12px;
   border:1px solid var(--wi4-line-2); border-radius:6px; background:var(--surface-card); cursor:pointer; }
 .wi4-qcard:hover { background:var(--wi4-hover); }
-/* One line per card and per panel item (sheet 15): «MADETA A.S. → Arti…»
+/* One line per card and per panel item (sheet 15): «Alpha Dairy → Beta…»
    then «10π · φόρτωση ήταν χθες» in grey right after it. The NAME gives way
    (review 11/10: the reason was cut instead); the reason keeps its width up
    to 55% of the line. */
@@ -7957,7 +7957,7 @@ body.wi4-on #wi-ctx .wi4-m-sec .wi4-l2, body.wi4-on #wi-ctx .wi4-m-hd .wi4-l2 { 
   border:1px solid transparent; border-radius:5px; background:none; text-align:left; cursor:pointer; }
 .wi4-box.own { background:var(--wi4-own); }
 .wi4-box.par { background:var(--wi4-partner); border-color:var(--wi4-partner-line); }
-/* Partner (Figma «TRANS-ALPHA OE / KZX 4410»): the name semibold in partner
+/* Partner (Figma «PARTNER TEST / PRT-4410»): the name semibold in partner
    ink, the plates in DM Mono like an own truck's — the two tiles read alike.
    The «ίδια μέρα» word keeps the sans. */
 .wi4-box.par .wi4-l1 { color:var(--wi4-partner-ink); font-weight:600; }
@@ -8127,7 +8127,7 @@ body.wi4-on #wi-ctx .wi4-m-ic { display:inline-block; width:16px; text-align:cen
 body.wi4-on #wi-ctx .wi4-m-k { margin-left:4px; }
 /* A «▸» line opens a submenu: its chevron at the right, turned when open. */
 body.wi4-on #wi-ctx .wi4-m-chev { display:inline-flex; color:var(--wi4-grey-2); transition:transform var(--duration-fast) var(--ease-out); }
-/* The header's plate in DM Mono (sheet 14: «IAZ4471 · Papadopoulos Georgios»). */
+/* The header's plate in DM Mono (sheet 14: «TST-1001 · Driver Test 01»). */
 body.wi4-on #wi-ctx .wi4-m-plate { font-family:'DM Mono',ui-monospace,SFMono-Regular,Menlo,monospace; font-size:12px; font-weight:500; }
 body.wi4-on #wi-ctx .wi4-m-more[aria-expanded="true"] .wi4-m-chev { transform:rotate(90deg); }
 /* Equivalent of today's `.wk3.wi2 .wi-ctx-h{font-size:11px}` (§c.3). It is
