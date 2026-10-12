@@ -8151,7 +8151,7 @@ body.wi4-on #wi-ctx .wi4-m-sec .wi4-l2, body.wi4-on #wi-ctx .wi4-m-hd .wi4-l2 { 
 .wi4-cols .wi4-c-fl, .wi4-cols .wi4-c-fr { font-size:10.5px; letter-spacing:.525px; }
 .wi4.wi4-fl-off .wi4-cols .wi4-c-fl, .wi4.wi4-fr-off .wi4-cols .wi4-c-fr { text-align:center; }
 
-/* Day (§e #6). Collapsed only when WI4.collapsible says so; an empty day is
+/* Day (§e #6). Closed only by the user's click (owner 12/10); an empty day is
    its header alone. scroll-margin: a day or row scrolled into view (first
    paint, queue card, keyboard) stops BELOW the 32px sticky column header,
    never under it. */

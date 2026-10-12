@@ -214,7 +214,7 @@ function flags(facts, today) {
   if (f.late) out.push(reason('LATE', 'amber', TEXT.LATE, f.delDate));
   // A local relay (live since 6/10) drawn «ΠΡΟΣ ΑΝΑΘΕΣΗ»: the same shape as
   // NO_TRUCK — red today–tomorrow, amber beyond, never silent — or a day of
-  // assigned trucks would read «nothing to do» and fold the red sub-row away.
+  // assigned trucks would read «nothing to do» with a driverless relay in it.
   if (f.kind === 'relay' && f.relayNoDriver) out.push(reason('RELAY_NO_DRIVER', nearLevel(f.loadDate, today), TEXT.RELAY_NO_DRIVER, f.loadDate));
   const pl = f.preorder && f.preorder.level;
   if (pl === 'red' || pl === 'amber') out.push(reason('PREORDER', pl, TEXT.PREORDER, f.loadDate));
@@ -341,26 +341,10 @@ function queue(list, today) {
     });
 }
 
-/** Rules sheet «Σύμπτυξη ημέρας»: true only when every full row has a truck
- *  (or a partner), every export has a return (or a partner), and nothing on
- *  the day has any reason. An empty day is not collapsible (it is one line
- *  «Καμία κίνηση»). The national read does not hold a day open (owner 11/10
- *  21:20): national state would then be driving the intl day header. */
-function collapsible(dayFacts, today) {
-  const list = dayFacts || [];
-  if (!list.length) return false;
-  return list.every((f) => {
-    if (!f) return false;
-    if (f.kind === 'export' || f.kind === 'import') {
-      if (!f.saved && !f.partner) return false;
-      if (f.kind === 'export' && !f.partner && !f.hasReturn) return false;
-    }
-    return flags(f, today).reasons.length === 0;
-  });
-}
-
 /** days = [{date, facts:[…]}] → the first day (by date) holding a red reason,
- *  else today. */
+ *  else today. It only picks where the board scrolls to: no rule closes a
+ *  day any more — every day is open until the user closes it (owner 12/10;
+ *  the rules sheet's «Σύμπτυξη ημέρας», WI4.collapsible, is gone). */
 function openDay(days, today) {
   const sorted = (days || []).filter((d) => d && DAY_RE.test(String(d.date || ''))).slice().sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
   const hit = sorted.find((d) => (d.facts || []).some((f) => flags(f, today).level === 'red'));
@@ -619,7 +603,7 @@ const WI4 = freeze({
   // §d.2 / §d.2a
   TEXT, ACT, flags, sourceReasons,
   // §d.3
-  PLURAL, plural, dayCounts, dayText, GROUP, items, queue, collapsible, openDay,
+  PLURAL, plural, dayCounts, dayText, GROUP, items, queue, openDay,
   // §d.4
   KEYMAP, keyAction, keyHint,
   // §d.5

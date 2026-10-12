@@ -128,7 +128,6 @@ let _installed = false, _bannerShown = false, _warned = false;
 let _resizeT = null, _tickT = null, _rereadT = null, _rereadFailed = false;
 let _scrolledWeek = null;
 let _srcErrSeen = false;     // a late source (relays, national, stock) failed since the last clean paint
-let _auto = null;            // auto-collapse of the week: {week, frozen, closed:{date:true}}
 const _missLogged = new Set();   // rows logged once as «no record» (a repaint must not spam app_errors)
 const _moves = {};           // oid → {oldDay, label, at} (§e #15)
 // The late-source states the DRAWN board shows (national legs, local relays),
@@ -462,8 +461,8 @@ function _compute() {
   };
   // A relay that cannot be read (Relay.summary threw or gave nothing, or the
   // Relay module itself is missing while relays loaded) is an UNKNOWN, never
-  // «nothing»: its sub-row says «δεν διαβάστηκε», the queue gets the relays'
-  // SOURCE_UNKNOWN item and no day folds as «all fine» over it (§d.2a).
+  // «nothing»: its sub-row says «δεν διαβάστηκε» and the queue gets the
+  // relays' SOURCE_UNKNOWN item (§d.2a).
   let relayBroken = false;
   const relaysOf = (row, parent, day) => {
     if (!D.relay || _relayState() !== 'ok') return;   // while loading: closed, as today
@@ -485,9 +484,9 @@ function _compute() {
           return;
         }
         // A relay drawn «ΠΡΟΣ ΑΝΑΘΕΣΗ» or «⚠ δεν επιβεβαιώθηκε» is work: it has
-        // facts like any row, so it reaches the rail, the day header, the queue
-        // and the collapse rule — keyed by its own record (relayId), because it
-        // shares its order id with the row it hangs under.
+        // facts like any row, so it reaches the rail, the day header and the
+        // queue — keyed by its own record (relayId), because it shares its
+        // order id with the row it hangs under.
         const bad = !!(D.relay.syncErr && D.relay.syncErr[rec.id]);
         const f = { kind: 'relay', relayNoDriver: !s.driverName && !s.done, syncErr: bad ? 'δεν επιβεβαιώθηκε' : null,
           loadDate: DAY_RE.test(s.day || '') ? s.day : '', relayKind: s.kind };
@@ -537,7 +536,7 @@ function _compute() {
   Object.values(groups).sort(byDate).forEach((g) => fill(g, false));
   Object.values(extra).sort(byDate).forEach((g) => fill(g, true));
 
-  // Day counts, collapse rule, header words (§d.3).
+  // Day counts and header words (§d.3).
   for (const day of days) {
     const fl = [];
     day.entries.forEach((e) => e.facts.forEach((x) => fl.push(x.f)));
@@ -549,9 +548,6 @@ function _compute() {
     // Worst level per code: the header word takes the colour of its worst case.
     fl.forEach((f) => lg.flags(f, today).reasons.forEach((r) => { if (r.level === 'red' || !day.levels[r.code]) day.levels[r.code] = r.level; }));
     day.text = lg.dayText(c);
-    // Never «all fine» on an unknown: a day without a date, or any day while
-    // the local relays did not load (a driverless relay could hide in it).
-    day.collapsible = lg.collapsible(fl, today) && DAY_RE.test(day.date || '') && _relayState() !== 'err' && !relayBroken;
     // For tests and tools: the reason codes this header counts, and how many.
     // The board rig checks that each one is NAMED on exactly that many rows
     // (rules: «λωρίδα, λέξη, κεφαλίδα, μετρητής = ίδιο επίπεδο»).
@@ -1299,10 +1295,9 @@ function _entryHTML(e, today) {
 // reasons already live on the rows' rails, in the ΕΠΟΜΕΝΑ band and in the
 // cells; the header no longer repeats them. What is left is ONE marker, shown
 // by CSS only on a CLOSED day (.wi4-day:not(.closed) .wi4-dayh-c), so a
-// folded day never hides work silently. A day never folds by itself while it
-// has a reason (WI4.collapsible needs none, _dayHeld keeps writes and focus
-// open, a queue card reopens its day), so in practice the marker shows on a
-// day the USER closed. Its label is the header's former words (WI4.dayText +
+// folded day never hides work silently. Only the user folds a day (owner
+// 12/10, _dayOpen), so the marker shows only on a day the USER closed while
+// it holds work. Its label is the header's former words (WI4.dayText +
 // EXTRA_WORDS): hover and screen readers still say what is inside, and the
 // rig still checks «header = queue = rails» against it. Shape as well as
 // colour (§c.2, colour-blind rule): red = filled, amber = ring. No grey
@@ -1321,39 +1316,16 @@ function _dayCountHTML(day) {
   const label = _esc(words.filter(Boolean).join(' · '));
   return `<span class="wi4-dayh-dot ${lvl}" role="img" aria-label="${label}" title="${label}"></span>`;
 }
-// Day open state (§e #6). A user toggle wins (WINTL.ui.v4Days). Otherwise a
-// day with anything to do is open, and a «collapsible» day follows the
-// week's auto decision: while the week's sources are still landing it tracks
-// WI4.collapsible; once they have all answered the closed set is FROZEN. From
-// then on a day can only open by itself (it gained a reason), never close.
-// Why (11/10): the optimistic paint of a match made Tuesday «collapsible»
-// and folded away the row the user had just dropped on — with its ⟳ and, when
-// the write then failed, its «Δεν αποθηκεύτηκε» line.
-function _autoSettle(days) {
-  const D = _D();
-  if (_auto && _auto.week !== D.week) _auto = null;
-  if (!_auto) _auto = { week: D.week, frozen: false, closed: {} };
-  if (_auto.frozen) return;
-  _auto.closed = {};
-  days.forEach((d) => { if (d.collapsible && DAY_RE.test(d.date || '')) _auto.closed[d.date] = true; });
-  // Frozen once the relays answered: the national read no longer decides a
-  // collapse (owner 11/10 21:20, WI4.collapsible), so it does not hold it.
-  if (_relayState() !== 'loading') _auto.frozen = true;
-}
-// A write in flight or failed, or the keyboard focus, keeps its day open.
-function _dayHeld(day) {
-  const D = _D(), log = D._syncLog || {}, foc = D.ui && D.ui.v4Focus;
-  return day.entries.some((e) => (e.facts || []).some((x) => {
-    const s = log[x.oid];
-    return x.oid === foc || (s && (s.state === 'pend' || s.state === 'err'));
-  }));
-}
+// Day open state (§e #6). Every day is open on every load, week change and
+// repaint; a day closes ONLY by the user's own click on its header, and opens
+// again the same way (WINTL.ui.v4Days, kept for the session). Owner 12/10:
+// «οι ημέρες να είναι μόνιμα ανοιχτές από προεπιλογή και αν θέλω να τις
+// κλείσω, θα το κάνω μόνος χειροκίνητα». The auto-collapse of «clean» days
+// (WI4.collapsible) is gone with it: the code never closes a day.
 function _dayOpen(day) {
   const ui = _D().ui || {};
   const m = ui.v4Days || {};
-  if (Object.prototype.hasOwnProperty.call(m, day.date)) return !!m[day.date];
-  if (!day.collapsible || _dayHeld(day)) return true;
-  return !(_auto && _auto.week === _D().week && _auto.closed[day.date]);
+  return !Object.prototype.hasOwnProperty.call(m, day.date) || !!m[day.date];
 }
 function _dayHTML(day, today) {
   const dw = _dow(day.date);
@@ -1823,7 +1795,6 @@ function _paint() {
   const m = _compute();
   m.metrics = met;
   _m = m; _queue = m.queue;
-  _autoSettle(m.days);
   const today = m.today;
   _qi = [];
   m.entries.forEach((e) => { e.qi = _qi.length; _qi.push({ row: e.row || (e.parent || null), blob: _blobOf(e) }); });
@@ -1857,8 +1828,9 @@ function _paint() {
   // 3-member groupage as 2 + «+1», 11/10); a width that did not change costs
   // nothing (_layout compares).
   if (typeof requestAnimationFrame === 'function') requestAnimationFrame(() => { if (_live()) _layout(false); });
-  // First paint of a week: open where the work is (the first day with a red
-  // reason, else today) — once, so a repaint never moves the user.
+  // First paint of a week: scroll to where the work is (the first day with a
+  // red reason, else today) — once, so a repaint never moves the user. It
+  // only scrolls: every day is already open (owner 12/10, _dayOpen).
   if (_scrolledWeek !== D.week) {
     _scrolledWeek = D.week;
     _openWhereWork(m, today);
@@ -1998,8 +1970,8 @@ function _install() {
 // «Ενημερώθηκε πριν N΄» stays true; the tick is also the backstop of the
 // page-leave rule above. It tests WIV2.active(), as the observer does — not
 // _live(): during a re-read #content holds the old module's spinner (no .wi4)
-// while v4 is still active, and a tick landing there ended presence, closed
-// the v4 overlays and forgot the user's open/closed days (review 11/10).
+// while v4 is still active, and a tick landing there ended presence and
+// closed the v4 overlays (review 11/10).
 // Started by every paint, stopped by _cleanup: no timer runs on other pages.
 function _tick() {
   if (_tickT) return;
@@ -2169,7 +2141,6 @@ function _cleanup() {
   // The date panel, «Όλα» panel, «?» sheet and conflict dialog live on <body>:
   // they must not stay on top of the next page.
   const a = A(); if (a && typeof a._closeAll === 'function') { try { a._closeAll(); } catch (e) { _logErr(e, 'wi4: close overlays'); } }
-  _auto = null;   // coming back decides the week's collapse afresh
 }
 
 // ═══ W+1 read (§e #1/#2, §d.2a) ═════════════════════════════════════════

@@ -904,6 +904,16 @@ async function scnPaint(browser, origin) {
   await page.context().close();
 }
 
+// Each day section as drawn: open/closed, card, the reason codes it counts,
+// aria-expanded, and whether its closed-day marker is on screen.
+const daysOf = pg => pg.evaluate(() => [...document.querySelectorAll('#content .wi4 #wi-rows .wi4-day')].map(d => {
+  const c = d.querySelector('[data-codes]'), h = d.querySelector('.wi4-dayh[aria-expanded]');
+  return { day: d.dataset.day, closed: d.classList.contains('closed'), body: !!d.querySelector('.wi4-day-body'),
+    codes: c ? c.getAttribute('data-codes') : null, exp: h ? h.getAttribute('aria-expanded') : null,
+    dot: [...d.querySelectorAll('[data-dc] .wi4-dayh-dot')].some(x => x.getClientRects().length > 0) };
+}));
+const allOpenDays = ds => ds.every(d => !d.closed && (!d.body || d.exp === 'true'));
+
 async function scnInvariants(browser, origin) {
   const scn = 'invariants';
   const { page, S } = await openBoard(browser, origin);
@@ -991,12 +1001,36 @@ async function scnInvariants(browser, origin) {
     return { closed: !!day && day.classList.contains('closed'), codes: day ? (day.querySelector('[data-codes]') || {}).getAttribute('data-codes') : null,
       dot: dot ? { cls: dot.className, label: dot.getAttribute('aria-label') || '', title: dot.title, shown: dot.getClientRects().length > 0, w: Math.round(b.width), h: Math.round(b.height) } : null,
       head: ((day && day.querySelector('.wi4-dayh')) || {}).innerText || '' }; });
+  // Owner 12/10: every day is open on every load, week change and repaint;
+  // a day closes ONLY by the user's click and opens again the same way
+  // (WI4.collapsible, the auto-collapse, is removed). A quiet day is proven
+  // open on its own board below (invariants.quiet): this week has none.
+  const d0 = await daysOf(page);
+  ok(scn, 'first paint: every day is open (no .closed, aria-expanded true on every card)', d0.length >= 7 && allOpenDays(d0), d0);
+  ok(scn, 'the empty Sunday 4/10 is never closed (its header alone)', d0.some(d => d.day === '2026-10-04' && !d.body && !d.closed), d0.map(d => [d.day, d.body, d.closed]));
+  ok(scn, 'first paint: no closed-day marker is shown anywhere', d0.every(d => !d.dot), d0.filter(d => d.dot).map(d => d.day));
   const m0 = await mon();
   await page.click('#content .wi4 .wi4-day[data-day="2026-10-05"] .wi4-dayh');
   const m1 = await mon();
   await shot(page, 'invariants-closed-day');
+  // The user's close is kept for the session: a repaint and a full re-read
+  // draw Monday closed again, and every other day still open.
+  await page.evaluate(() => WIV2.paint()); await settle(page, S);
+  const dRp = await daysOf(page);
+  await page.evaluate(() => WI_INTERNAL.renderWeeklyIntl()); await settle(page, S);
+  const dRd = await daysOf(page);
+  const onlyMon = ds => ds.length >= 7 && ds.every(d => d.closed === (d.day === '2026-10-05')) && ds.filter(d => d.dot).map(d => d.day).join() === '2026-10-05';
+  ok(scn, 'repaint: Monday stays as the user left it (closed, its marker shown); every other day open', onlyMon(dRp), dRp.map(d => [d.day, d.closed, d.dot]));
+  ok(scn, 'full re-read: the same — only the user\'s Monday closed', onlyMon(dRd), dRd.map(d => [d.day, d.closed, d.dot]));
   await page.click('#content .wi4 .wi4-day[data-day="2026-10-05"] .wi4-dayh');
   const m2 = await mon();
+  // A week change draws every day open, and so does coming back.
+  await page.evaluate(() => { WINTL.week = 42; return WI_INTERNAL.renderWeeklyIntl(); }); await settle(page, S);
+  const d42 = await daysOf(page);
+  await page.evaluate(() => { WINTL.week = 41; return WI_INTERNAL.renderWeeklyIntl(); }); await settle(page, S);
+  const d41 = await daysOf(page);
+  ok(scn, 'week change: W42 opens with every day open, no marker shown', d42.length >= 1 && allOpenDays(d42) && d42.every(d => !d.dot), d42);
+  ok(scn, 'back to W41: every day open again, no marker shown', d41.length >= 7 && allOpenDays(d41) && d41.every(d => !d.dot), d41);
   const named5 = m1.dot ? (m1.codes || '').split(',').filter(Boolean).map(p => p.split(':')[0]).every(c => RX[c] && RX[c].test(m1.dot.label)) : false;
   ok(scn, 'Monday 5/10 open: its marker exists but is hidden', !m0.closed && !!m0.dot && !m0.dot.shown && !!m0.codes, m0);
   ok(scn, 'closed by the user: one 6px marker after the date, its label naming every counted reason, data-codes unchanged', m1.closed && m1.dot && m1.dot.shown && m1.dot.w === 6 && m1.dot.h === 6
@@ -1006,6 +1040,34 @@ async function scnInvariants(browser, origin) {
   ok(scn, 'no auto-match: nothing written at load', !writes(S).length, writes(S));
   ok(scn, 'no page errors', !S.pageErrors.length, S.pageErrors);
   await page.context().close();
+  // A quiet day — a card with no reason at all — is what the removed
+  // auto-collapse folded by itself. Saturday 3/10 holds one export (E010)
+  // whose only reason is its empty return; carried by a partner it has none.
+  {
+    const scn2 = 'invariants.quiet', SAT = '2026-10-03';
+    const { page: p2, S: S2 } = await openBoard(browser, origin, { mutate: db => {
+      const f = db[T.ORDERS].find(r => r.id === 'recWiE010').fields;
+      delete f.Truck; delete f.Driver; delete f.Trailer;
+      Object.assign(f, { Partner: ['recWiP001'], 'Is Partner Trip': true, 'Partner Truck Plates': 'PRT-310', 'Partner Rate': 900 });
+    } });
+    const sat = ds => ds.find(d => d.day === SAT) || {};
+    const q0 = await daysOf(p2);
+    ok(scn2, 'Saturday 3/10 is quiet (a card, no reason counted) and open on first paint; every day open', sat(q0).body && sat(q0).codes === '' && !sat(q0).closed && sat(q0).exp === 'true' && allOpenDays(q0), q0.map(d => [d.day, d.codes, d.closed]));
+    await p2.evaluate(() => WIV2.paint()); await settle(p2, S2);
+    const q1 = await daysOf(p2);
+    await p2.evaluate(() => WI_INTERNAL.renderWeeklyIntl()); await settle(p2, S2);
+    const q2 = await daysOf(p2);
+    ok(scn2, 'still open after a repaint and after a full re-read (nothing folds by itself)', !sat(q1).closed && !sat(q2).closed && allOpenDays(q1) && allOpenDays(q2), { q1: sat(q1), q2: sat(q2) });
+    const satH = `#content .wi4 .wi4-day[data-day="${SAT}"] .wi4-dayh`;
+    await p2.click(satH);
+    const q3 = await daysOf(p2);
+    await p2.click(satH);
+    const q4 = await daysOf(p2);
+    ok(scn2, 'closed by the user: closed, aria-expanded false, and NO marker (no work under it)', sat(q3).closed && sat(q3).exp === 'false' && !sat(q3).dot, sat(q3));
+    ok(scn2, 'the same click opens it again', !sat(q4).closed && sat(q4).exp === 'true', sat(q4));
+    ok(scn2, 'no page errors; nothing written', !S2.pageErrors.length && !writes(S2).length, { e: S2.pageErrors, w: writes(S2) });
+    await p2.context().close();
+  }
 }
 
 // The reason codes each day header counts (data-codes, the SAME WI4.flags
@@ -2647,8 +2709,8 @@ async function scnSaveFail(browser, origin) {
     const noSave = c => Object.fromEntries(Object.entries(c).map(([d, s]) => [d, s.split(',').filter(x => x && !/^SAVE_FAILED:/.test(x)).join(',')]));
     ok(scn, 'after the failed match the day counts equal the counts before it (SAVE_FAILED aside)', JSON.stringify(noSave(codes1)) === JSON.stringify(noSave(codes0)), { before: codes0, after: codes1 });
     ok(scn, 'the queue still holds I004\'s NO_TRUCK and E006\'s EMPTY_RETURN, plus the SAVE_FAILED item', JSON.stringify(q1.filter(x => !/^SAVE_FAILED:/.test(x))) === JSON.stringify(q0) && q1.some(x => /^SAVE_FAILED:recWiE006$/.test(x)), { q0, q1 });
-    // The day of the row the user just acted on never folds away under them
-    // (an optimistic paint can make it «collapsible»).
+    // The day of the row the user just acted on never folds away under them:
+    // no day folds by itself at all (owner 12/10).
     ok(scn, 'E006\'s day stayed open through the match and the failure', await page.evaluate(js => { const r = eval(js)('recWiE006'); const d = r && r.closest('.wi4-day'); return !!d && !d.classList.contains('closed'); }, ROW_JS));
     ok(scn, 'title bar «1 αλλαγή δεν αποθηκεύτηκε»', /1 αλλαγή δεν αποθηκεύτηκε/.test(r.upd), r.upd);
     // Sheet 14 #9 (F5): the failure has its own slot; the freshness / changes

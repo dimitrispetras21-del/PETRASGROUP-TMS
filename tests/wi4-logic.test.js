@@ -245,13 +245,11 @@ test('PALLETS_UNKNOWN: near 33 with an unwritten member is a look; over 33 stays
   assert.deepStrictEqual(codes(WI4.flags(exp({ pallets: 34, palletsUnknown: 1 }), T)).filter((c) => /33|PALLETS/.test(c)), ['OVER_33'], 'over 33 even with a gap');
   assert.ok(!codes(WI4.flags(exp({ pallets: 20, palletsUnknown: 1 }), T)).includes('PALLETS_UNKNOWN'), 'far from 33: the cell says «N+?», no flag');
   assert.ok(!codes(WI4.flags(exp({ pallets: null, palletsUnknown: 2 }), T)).includes('PALLETS_UNKNOWN'), 'all unknown: «—» in the cell, no number to judge');
-  assert.ok(!WI4.collapsible([exp({ pallets: 30, palletsUnknown: 1, hasReturn: true })], T), 'a look keeps the day open');
 });
 
 test('MATCH_UNREAD: a matched import outside the week is an amber look, never an open slot', () => {
   const r = reasonOf(WI4.flags({ kind: 'import', saved: true, matchUnread: true, loadDate: add(T, 1) }, T), 'MATCH_UNREAD');
   assert.ok(r && r.level === 'amber' && r.act === 'open' && r.text === 'εισαγωγή εκτός προβολής', JSON.stringify(r));
-  assert.ok(!WI4.collapsible([{ kind: 'import', saved: true, matchUnread: true }], T));
 });
 
 test('PREORDER follows preorderLevel; SAVE_FAILED is red', () => {
@@ -263,7 +261,7 @@ test('PREORDER follows preorderLevel; SAVE_FAILED is red', () => {
   assert.strictEqual(sf.text, 'δεν αποθηκεύτηκε');
 });
 
-test('RELAY_NO_DRIVER: a local relay without a driver — red up to tomorrow, amber beyond, never silent; it keeps the day open', () => {
+test('RELAY_NO_DRIVER: a local relay without a driver — red up to tomorrow, amber beyond, never silent', () => {
   const rel = (o) => Object.assign({ kind: 'relay', relayNoDriver: true, loadDate: T }, o);
   assert.strictEqual(reasonOf(WI4.flags(rel({}), T), 'RELAY_NO_DRIVER').level, 'red');
   assert.strictEqual(reasonOf(WI4.flags(rel({ loadDate: add(T, 1) }), T), 'RELAY_NO_DRIVER').level, 'red');
@@ -273,7 +271,6 @@ test('RELAY_NO_DRIVER: a local relay without a driver — red up to tomorrow, am
   assert.ok(!codes(WI4.flags(exp({ relayNoDriver: true }), T)).includes('RELAY_NO_DRIVER'), 'only relay facts carry it');
   assert.strictEqual(reasonOf(WI4.flags(rel({ syncErr: 'δεν επιβεβαιώθηκε' }), T), 'SAVE_FAILED').level, 'red', 'a relay save error is SAVE_FAILED');
   const day = [exp({}), rel({})];
-  assert.strictEqual(WI4.collapsible(day, T), false, 'a day of assigned trucks with a driverless relay is not «done»');
   const c = WI4.dayCounts(day, T);
   assert.strictEqual(c.trucks, 1, 'a relay is not a truck');
   assert.strictEqual(c.byCode.RELAY_NO_DRIVER, 1);
@@ -417,15 +414,12 @@ test('items: one queue item per reason, keyed by order id; a day\'s counts equal
     [['NO_TRUCK', 'stop', 'recA1234567', 1], ['OVER_33', 'look', 'recA1234567', 1]]);
 });
 
-// ─── §d.3 collapsible, openDay ─────────────────────────────────────────
-test('collapsible: only a fully clean day', () => {
-  assert.strictEqual(WI4.collapsible([exp({}), exp({ partner: true, saved: false, hasReturn: false }), { kind: 'import', saved: true }], T), true);
-  assert.strictEqual(WI4.collapsible([exp({}), exp({ saved: false, loadDate: add(T, 5) })], T), false, 'NO_TRUCK');
-  assert.strictEqual(WI4.collapsible([exp({ hasReturn: false, returnDate: add(T, 5) })], T), false, 'no return, even before the flag shows');
-  assert.strictEqual(WI4.collapsible([exp({ late: true })], T), false, 'any reason');
-  // The national read does not hold an intl day open (owner 11/10 21:20).
-  for (const st of ['err', 'loading']) assert.strictEqual(WI4.collapsible([vsFacts({ natState: st })], T), true, 'natState ' + st);
-  assert.strictEqual(WI4.collapsible([], T), false, 'an empty day is «Καμία κίνηση», not collapsed');
+// ─── §d.3 no auto-collapse, openDay ───────────────────────────────────
+// Owner 12/10: every day is open by default; only the user closes one. The
+// rule that decided a «clean» day folds by itself is gone, not just unused —
+// a leftover export would invite the next change to call it again.
+test('no auto-collapse rule: WI4 has no collapsible', () => {
+  assert.strictEqual(WI4.collapsible, undefined);
 });
 
 test('openDay: the first day holding a red reason, else today', () => {
