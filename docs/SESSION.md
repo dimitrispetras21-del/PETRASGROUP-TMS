@@ -20,6 +20,7 @@
 - Weekly International v4 fixes (`fix/wi4-*`): Dimitris.
 - Session rules and this file (`docs/session-rules`): Valuedriven.
 - Importing the Valuedriven backend, tests and CI into this repo: Valuedriven, PR planned this week.
+- Orders › «Εβδομάδα» v4 (one row = one RT), Figma only (`design/orders-week-v4`): waiting for Dimitris's approval, no code.
 
 **Do not touch**
 - GROUPAGE LINES are never deleted, only set to `Unassigned`.
@@ -29,6 +30,13 @@
 **Who gets called** when production or the nightly backup breaks: to agree (Dimitris, Nick).
 
 ## Log
+
+### 2026-10-12 · Orders › Εβδομάδα v4 design (Figma only)
+- Figma frames on «Screens» (y ≈ 47.500): 1440 `1510:9821`, 1920 `1510:10624`, states `1513:9821`, today ↔ new `1513:10538`. Images in `docs/orders-week-v4/shots/`.
+- Row = RT, mirrored like Weekly v4: export | ΑΝΑΘΕΣΗ (RT · Σ) | import. Per-order amount and ΤΠΥ; nationals in a separate section, paired κάθοδος ↔ άνοδος by `Matched Load`.
+- Decided (Claude, owner to confirm): the ΤΠΥ column uses the code's states (προς κοπή, σε εξέλιξη and the rest) instead of one «χωρίς ΤΠΥ». Critic round 1: accounting 7/10, data truth 5/10; every critical and important finding fixed.
+- Found, not design: `orders_week_view.js:9-11` comment is false (invoicing shows delivered only); the 0 € rule differs between Εβδομάδα and Προς τιμολόγηση. Both need an owner decision.
+- Left: owner approval before any code. Details in `docs/DECISION_LOG.md` (12/10, Orders › Εβδομάδα v4).
 
 ### 2026-10-12 · on-site day 1 · session rules and this file
 - Added ΚΑΝΟΝΕΣ SESSION at the top of `CLAUDE.md`, this file, and `AGENTS.md` (points Codex to `CLAUDE.md`).
