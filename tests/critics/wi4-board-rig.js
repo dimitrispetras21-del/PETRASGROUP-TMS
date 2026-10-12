@@ -3600,6 +3600,42 @@ async function scnParity(browser, origin) {
       return { ok: n.bottom <= f.top + 0.5, navBottom: Math.round(n.bottom), fabTop: Math.round(f.top) };
     });
     ok(scn, 'the rail\'s scroll area ends above the parked chat button', rail.ok, rail);
+    // Owner 12/10 («όπως το Wels», Figma points sheet): every number of a
+    // multi-stop cell is a dark box with a white digit, ≥4.5:1, 14px tall,
+    // radius 3; a single stop has no number. Read from computed style, in
+    // the row and in each kind of «+N» fold (a groupage's tiles reuse
+    // .wi4-pt-n; any other cell's fold lists the stops as .wk3-stopn).
+    const bx = await page.evaluate(() => {
+      const rgb = (s) => (String(s).match(/[\d.]+/g) || []).map(Number);
+      const lum = (c) => { const f = (v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); }; return 0.2126 * f(c[0]) + 0.7152 * f(c[1]) + 0.0722 * f(c[2]); };
+      const vis = (e) => e.getClientRects().length > 0;
+      const look = (n) => { const s = getComputedStyle(n), b = n.getBoundingClientRect(), bg = rgb(s.backgroundColor), fg = rgb(s.color), L1 = lum(fg), L2 = lum(bg);
+        return { t: n.textContent, bg: s.backgroundColor, fg: s.color, h: Math.round(b.height * 10) / 10, w: Math.round(b.width * 10) / 10, r: s.borderTopLeftRadius,
+          cr: Math.round(((Math.max(L1, L2) + 0.05) / (Math.min(L1, L2) + 0.05)) * 10) / 10, solid: bg.length < 4 || bg[3] === 1, tab: s.fontVariantNumeric, al: s.textAlign }; };
+      const cells = [...document.querySelectorAll('#content .wi4 #wi-rows .wi4-pts')].filter(vis);
+      const multi = cells.filter((p) => p.querySelectorAll(':scope > .wi4-pt').length > 1 || p.querySelector(':scope > .wi4-more'));
+      const single = cells.filter((p) => !multi.includes(p));
+      const shown = multi.flatMap((p) => [...p.querySelectorAll(':scope > .wi4-pt')]);
+      const out = { multi: multi.length, single: single.length, unnumbered: shown.filter((t) => !t.querySelector(':scope > .wi4-pt-n')).length,
+        singleNumbered: single.filter((p) => p.querySelector('.wi4-pt-n')).length, row: shown.map((t) => t.querySelector(':scope > .wi4-pt-n')).filter(Boolean).map(look) };
+      // One fold of each kind, opened the way a click opens it, then closed.
+      const fold = (grp) => { const btn = [...document.querySelectorAll('#content .wi4 #wi-rows .wi4-pts > .wi4-more')].filter(vis)
+          .find((b) => { const f = b.closest('.wi4-l-from, .wi4-l-to').querySelector('.wk3-xfold'); return f && f.classList.contains('wi4-fold') === grp; });
+        if (!btn) return null; btn.click(); const f = btn.closest('.wi4-l-from, .wi4-l-to').querySelector('.wk3-xfold.open');
+        const r = f ? [...f.querySelectorAll(grp ? '.wi4-pt-n' : '.wk3-stopn')].map(look) : [];
+        document.querySelectorAll('#content .wi4 .wk3-xfold.open').forEach((x) => x.classList.remove('open')); return r; };
+      out.foldGroup = fold(true); out.foldStops = fold(false);
+      return out;
+    });
+    const dark = (b) => b.bg === 'rgb(11, 25, 41)' && b.solid && b.fg === 'rgb(255, 255, 255)' && b.cr >= 4.5 && b.h === 14 && b.w >= 14 && b.r === '3px' && b.tab === 'tabular-nums' && b.al === 'center';
+    ok(scn, 'multi-stop cells: every shown point carries a number, each a 14px rgb(11, 25, 41) box with a white tabular digit (≥4.5:1, radius 3); no single stop is numbered',
+      bx.multi >= 3 && bx.single >= 3 && bx.unnumbered === 0 && bx.singleNumbered === 0 && bx.row.length >= 6 && bx.row.every(dark),
+      { multi: bx.multi, single: bx.single, unnumbered: bx.unnumbered, singleNumbered: bx.singleNumbered, bad: bx.row.filter((b) => !dark(b)).slice(0, 5) });
+    // The fixture's 9-stop export folds at every width; the groupage of
+    // three folds only once its column is narrow (1440, scnPaint).
+    ok(scn, '«+N» fold: its numbers are the same dark boxes' + (vp.width === 1440 ? ' (a groupage\'s tiles and a plain cell\'s list)' : ''),
+      !!bx.foldStops && bx.foldStops.length >= 2 && bx.foldStops.every(dark) && (vp.width !== 1440 || (!!bx.foldGroup && bx.foldGroup.length >= 1)) && (!bx.foldGroup || bx.foldGroup.every(dark)),
+      { foldStops: bx.foldStops, foldGroup: bx.foldGroup });
     // Review 11/10 (P1): .wi4-cols sticks at minus the scroller's top padding;
     // with the padding at 12px and the offset left at -32px the header slid
     // 20px out of view on any scroll. No other scenario scrolls the board.

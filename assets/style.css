@@ -8296,13 +8296,25 @@ body.wi4-on #wi-ctx .wi4-m-sec .wi4-l2, body.wi4-on #wi-ctx .wi4-m-hd .wi4-l2 { 
 .wi4-t-red { color:var(--wi4-red); } .wi4-t-amb { color:var(--wi4-amber); }
 .wi4-t-blue { color:var(--wi4-blue-ink); } .wi4-t-g2 { color:var(--wi4-grey-2); }
 
-/* Points (§d.1): min 56px each, 8px gap; badge 12px; «+N» chip 34px. */
+/* Points (§d.1): min 56px each, 8px gap; number box 14px; «+N» chip 34px. */
 .wi4-pts { display:flex; gap:8px; min-width:0; }
 /* Line 2 starts at x0, UNDER the number (Figma 1097:2474 / 2896): in the
    number's column it lost 16px of every place («Mil…», «Zagre…»). The
-   number column hugs its digit (SemiBold 11). */
+   number column hugs its box. */
 .wi4-pt { flex:1 1 0; min-width:56px; display:grid; grid-template-columns:auto minmax(0,1fr); column-gap:4px; }
-.wi4-pt-n { grid-row:1; font-size:11px; font-weight:600; line-height:14px; color:var(--wi4-grey-2); }
+/* Every number of a multi-stop cell is a dark box with a white digit (owner
+   12/10, «όπως το Wels» on the Figma points sheet): as grey text the number
+   read as part of the name. 14px = line 1's line-height, so no row grows; a
+   single stop still has no number (wi4-logic points, rule 6). The «+N» fold
+   of a non-groupage cell lists the same stops with today's .wk3-stopn
+   circles (accent for delivery: white on it is 4.1:1): one rule draws both,
+   so the numbers of one cell never come in two looks. A browser print drops
+   backgrounds by default and would leave a white digit on white paper, hence
+   print-color-adjust. */
+.wi4-pt-n, .wi4 .wk3-stopn { box-sizing:border-box; width:auto; min-width:14px; height:14px; padding:0 3px; border-radius:3px;
+  background:var(--wi4-ink); color:var(--text-inverse); font-size:11px; font-weight:600; line-height:14px; text-align:center;
+  font-variant-numeric:tabular-nums; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+.wi4-pt-n { grid-row:1; align-self:start; }
 .wi4-pt > .wi4-l1 { grid-column:2; }
 .wi4-pt > .wi4-l2 { grid-column:1 / -1; }
 /* «→ ΑΠΟΘΗΚΗ» on line 1 of the delivery point: whole, the name is cut. */
@@ -8362,7 +8374,6 @@ body.wi4-on #wi-ctx .wi4-m-sec .wi4-l2, body.wi4-on #wi-ctx .wi4-m-hd .wi4-l2 { 
 .wi4 .wk3-stopline, .wi4 .wk3-stopline.dl { padding-left:0; font-size:11px; line-height:1.15; }
 .wi4 .wk3-stopline .wk3-sln { white-space:normal; overflow:visible; }
 .wi4 .wk3-sld { font-size:11px; }
-.wi4 .wk3-stopn { width:12px; height:12px; font-size:11px; line-height:12px; }
 
 /* Date chip (§c.2: 18px, radius 4) and pallets. A done date (✓) is plain grey
    text with no frame; red ONLY for a day that passed with no truck (§e #7 d,
