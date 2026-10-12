@@ -1,9 +1,21 @@
 # PETRAS GROUP TMS — Claude Code Context
 
+## ΚΑΝΟΝΕΣ SESSION: ισχύουν για κάθε agent (Cowork, Claude Code, Codex, ValueDriven)
+
+1. **Αρχή:** διάβασε αυτό το αρχείο και το μπλοκ «Now» του `docs/SESSION.md`. Καμία δουλειά πριν τα διαβάσεις και τα δύο.
+2. **Τέλος:** ενημέρωσε το «Now» και γράψε μία εγγραφή στο `docs/SESSION.md`, έως 5 κουκκίδες: τι άλλαξε, τι αποφασίστηκε, τι μένει.
+3. **Ένα θέμα ανά session.** Για το επόμενο θέμα ξεκίνα νέο session αντί να συνεχίζεις ένα μακρύ.
+4. **Η μνήμη είναι το repo.** Ό,τι πρέπει να θυμόμαστε γράφεται στο `docs/SESSION.md` ή στο `docs/DECISION_LOG.md`, όχι μόνο στη μνήμη του Cowork.
+5. **Αλλαγές στη βάση:** πρώτα έλεγχος ότι υπάρχει σημερινό backup, μετά dry run, μετά εκτέλεση μετά τις 15:00. Μόλις εκτελεστεί, το αρχείο βγαίνει από το `drafts/`.
+6. **Μόνο στο git clone:** ο φάκελος του project είναι το clone του `PETRASGROUP-TMS`, ποτέ αντίγραφο.
+7. **Ποτέ push στο `main`.** Νέο branch, push του branch, PR (`gh pr create`). Το merge το κάνει ο Δημήτρης. Αν το push απορριφθεί ως «protected branch», σταμάτα και πες το. Ποτέ απενεργοποίηση της προστασίας, ποτέ force push.
+
+---
+
 ## PRIME DIRECTIVE
 Ask before making performance, caching, architecture, or infrastructure changes.
 Only make the specific change requested. No unrequested improvements.
-After every file change: bump its `?v=TIMESTAMP` in app.html + git add/commit/push.
+After every file change: bump its `?v=TIMESTAMP` in app.html and SW_VERSION in sw.js, then branch, commit, push the branch and open a PR (ΚΑΝΟΝΕΣ SESSION, κανόνας 7).
 
 ---
 
@@ -447,11 +459,13 @@ filterByFormula = `{National Groupage}=1`   // 1, όχι TRUE()
 
 ### Deploy pattern (front end)
 ```bash
-# 1. Edit module file
-# 2. Bump ?v= στο app.html:  modules/orders_natl.js?v=TIMESTAMP
+# 1. git checkout -b <fix|feat>/<short-name> origin/main
+# 2. Edit, then bump ?v= στο app.html:  modules/orders_natl.js?v=TIMESTAMP
 #    ΚΑΙ το SW_VERSION στο sw.js με το ίδιο TIMESTAMP — αλλιώς ο service worker
 #    σερβίρει το παλιό app.html και το νέο module «δεν υπάρχει» (5/9/2026)
-# 3. git add . && git commit -m "..." && git push
+# 3. git add <files> && git commit -m "..." && git push -u origin HEAD
+# 4. gh pr create --fill
+# 5. Ο Δημήτρης κάνει merge· το GitHub Pages δημοσιεύει το main σε 1 έως 3 λεπτά
 ```
 Το `CLAUDE.md` και τα `docs/` **δεν** φορτώνονται από το app.html — δεν θέλουν
 bump.
