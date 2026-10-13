@@ -126,12 +126,14 @@ test('% vs the previous week only when the previous week had turnover', () => {
   assert.deepStrictEqual(prev.map(r => r.id), ['recP7']);
 });
 
-test('strip = three weeks back, one ahead; status of past/current weeks', () => {
+test('strip = three weeks back, one ahead; the cell word comes from the totals, never «ανοιχτά»', () => {
   assert.deepStrictEqual(W.stripWeeks(WEEK), ['2026-08-29', '2026-09-05', '2026-09-12', '2026-09-19', '2026-09-26']);
-  assert.strictEqual(W.weekStatus(WEEK, model.weekIntl, stateOf, '2026-09-28').kind, 'open');
-  assert.strictEqual(W.weekStatus(WEEK, model.weekIntl, stateOf, '2026-09-28').n, 5);
-  assert.strictEqual(W.weekStatus(NEXT, [], stateOf, '2026-09-28').kind, 'progress');
-  assert.strictEqual(W.weekStatus('2026-09-12', [INTL[8]], stateOf, '2026-09-28').kind, 'all');
+  const st = recs => W.weekStatus(W.totals(recs, stateOf));
+  assert.deepStrictEqual(st(model.weekIntl), { kind: 'ready', n: 3, text: '3 προς κοπή' });
+  assert.strictEqual(st([]).text, 'χωρίς παραγγελίες');
+  assert.strictEqual(st([INTL[8]]).text, 'όλα τιμολογημένα');
+  assert.strictEqual(st([INTL[3]]).text, '1 σε εξέλιξη');
+  assert.strictEqual(st([INTL[4]]).text, '1 μπλοκ');
 });
 
 test('RT read failed → no RT rows, every order of the week listed on its own', () => {
@@ -216,4 +218,227 @@ test('stock: oldest pending ignores an incomplete lot\'s intake date; a bare sta
   assert.strictEqual(W.totals([LOT], bare).oldest, OrdersCommon.daysSinceDelivery(LOT), 'fallback: the delivery age');
   set.stock.get('recLot1').fields = { Complete: true, 'Completed On': OrdersCommon.addDays(OrdersCommon.today(), -1) };
   assert.strictEqual(W.totals([LOT], paged).oldest, 1);
+});
+
+// ══ v4 (owner 13/10, Figma 1514:8013) ═══════════════════════════════════════
+
+test('0 € = no price everywhere: never summed, counted apart (owner 13/10 α)', () => {
+  const zero = o('recZ', 1400, { Direction: 'Export', 'Delivery DateTime': '2026-09-21T08:00', Price: 0, Status: 'Delivered' });
+  const t = W.totals([zero, INTL[0]], stateOf);
+  assert.strictEqual(t.sum, 3200);
+  assert.strictEqual(t.unpriced, 1);
+  assert.deepStrictEqual(t.unpricedRecs.map(r => r.id), ['recZ']);
+  assert.strictEqual(t.blocked.price, 1, 'a delivered 0 € order is blocked on price, like an empty one');
+});
+
+test('totals reconcile: τζίρος = τιμολογημένα + ατιμολόγητα (priced, in-week, invoiceable)', () => {
+  for (const recs of [model.weekIntl, model.weekNatl, [...model.weekIntl, ...model.weekNatl], []]) {
+    const t = W.totals(recs, stateOf);
+    assert.strictEqual(Math.round((t.invSum + t.openSum) * 100), Math.round(t.sum * 100));
+    assert.strictEqual(t.invN + t.openN, t.n);
+    assert.strictEqual(t.openSum, t.readySum + t.pendingSum + t.blockedSum.price + t.blockedSum.stock + t.blockedSum.sheets);
+  }
+  const tI = W.totals(model.weekIntl, stateOf);
+  assert.strictEqual(tI.openSum, 3350 + 2650 + 2800 + 1000);
+});
+
+test('national Type «Veroia Switch»: shown, but out of every total, count and verdict (decision 3)', () => {
+  const vs = n('recVS', { Type: 'Veroia Switch', 'Loading DateTime': '2026-09-21T08:00', 'Delivery DateTime': '2026-09-21T15:00', Price: 900, Status: 'Delivered' });
+  assert.strictEqual(W.isVsNational(vs), true);
+  assert.strictEqual(W.isVsNational(NATL[0]), false);
+  assert.strictEqual(W.isVsNational(o('x', 1, { Type: 'Veroia Switch' })), false, 'only national records');
+  const m = W.buildWeek({ week: WEEK, intl: INTL, natl: [...NATL, vs], rts: RTS });
+  assert.ok(m.weekNatl.some(r => r.id === 'recVS'), 'still listed');
+  assert.deepStrictEqual(W.totals(m.weekNatl, stateOf), W.totals(NATL, stateOf));
+  assert.strictEqual(W.rtInvoicing([vs], stateOf).kind, 'none');
+  assert.strictEqual(W.tpyOf(vs, stateOf(vs)).text, 'δεν τιμολογείται');
+});
+
+test('an amount of another week: shown on the leg, out of the RT Σ (flag for «*»)', () => {
+  const r = row('RT-1188');
+  const other = r.legs.find(l => l.rec && !l.inWeek);
+  assert.ok(other && other.rec.id === 'recI2' && other.week === NEXT);
+  assert.strictEqual(other.counted, false);
+  assert.strictEqual(W.totals(r.counted, stateOf).sum, 3350, 'Σ RT = the export only');
+});
+
+test('day sections: always Saturday → Friday, empty days kept; moved rows after Friday (§09)', () => {
+  const sec = W.daySections(WEEK, model.rows);
+  assert.deepStrictEqual(sec.days.map(d => d.day), ['2026-09-19', '2026-09-20', '2026-09-21', '2026-09-22', '2026-09-23', '2026-09-24', '2026-09-25']);
+  assert.deepStrictEqual(sec.days.map(d => d.rows.map(r => r.code)), [[], ['RT-1183'], ['RT-1181', 'RT-1185'], [], [], ['RT-1187'], ['RT-1188']]);
+  const empty = W.daySections('2026-10-17', []);
+  assert.strictEqual(empty.days.length, 7);
+  assert.ok(empty.days.every(d => d.rows.length === 0));
+  // An import moved into this week by «Plan Week Start» (its own loading is the week before)
+  const mv = o('recMv', 1500, { Direction: 'Import', 'Loading DateTime': '2026-09-17T08:00', 'Delivery DateTime': '2026-09-19T08:00', 'Plan Week Start': '2026-09-19', Price: 1500, Status: 'In Transit' });
+  assert.strictEqual(W.naturalDateOf(mv), '2026-09-17');
+  const rts = [...RTS, { id: 95, code: 'RT-1195', date_start: '2026-09-17', status: 'open', ct_rt_legs: [{ order_id: 1500, direction: 'IMPORT', seq: 1 }] }];
+  const m = W.buildWeek({ week: WEEK, intl: [...INTL, mv], natl: [], rts });
+  const s2 = W.daySections(WEEK, m.rows);
+  assert.deepStrictEqual(s2.moved.map(r => r.code), ['RT-1195']);
+  assert.strictEqual(s2.moved[0].day, '2026-09-17', 'shown with its real date, not on Saturday');
+  assert.ok(!s2.days[0].rows.some(r => r.code === 'RT-1195'));
+});
+
+test('verdict under the assignment: «1 από 2 παραγγ.», block priority, hidden for one order (§06)', () => {
+  const v = code => W.rtInvoicing(row(code).counted, stateOf);
+  assert.strictEqual(W.verdictText(v('RT-1187'), 2), '1 από 2 παραγγ. · ατιμολόγητα 2.800,00');
+  assert.ok(!/\d\/\d/.test(W.verdictText(v('RT-1187'), 2)), 'never «1/2»');
+  assert.strictEqual(W.verdictText(v('RT-1183'), 1), 'τιμή → owner');
+  assert.strictEqual(W.verdictText(v('RT-1181'), 1), '', 'one invoiced order: the ΤΠΥ cell says it');
+  assert.strictEqual(W.verdictText(v('RT-1188'), 1), '');
+  // a slip block wins over a price block
+  assert.deepStrictEqual(W.rtInvoicing([INTL[4], INTL[6]], r => r.id === 'recI5' ? { key: 'blocked', reason: 'sheets' } : stateOf(r)).reasons, ['sheets', 'price']);
+  // rank 4 before 5: one delivered + one on the road = «σε εξέλιξη», not «προς κοπή»
+  assert.strictEqual(W.rtInvoicing([INTL[1], INTL[3]], stateOf).kind, 'progress');
+  assert.strictEqual(W.verdictText({ kind: 'progress' }, 2), 'σε εξέλιξη');
+  assert.strictEqual(W.verdictText({ kind: 'ready' }, 2), 'προς κοπή');
+});
+
+test('ΤΠΥ vocabulary (§06)', () => {
+  const t = (rec, s) => W.tpyOf(rec, s);
+  assert.deepStrictEqual([t(INTL[0], { key: 'invoiced' }).cls, t(INTL[0], { key: 'invoiced' }).text], ['ok', '✓ 0431']);
+  assert.strictEqual(t(o('a', 1, { Invoiced: true }), { key: 'invoiced' }).text, 'τιμολογήθηκε');
+  assert.strictEqual(t(INTL[1], { key: 'ready' }).text, 'προς κοπή');
+  assert.strictEqual(t(INTL[3], { key: 'pending' }).text, 'σε εξέλιξη');
+  assert.deepStrictEqual([t(INTL[4], { key: 'blocked', reason: 'price' }).cls, t(INTL[4], { key: 'blocked', reason: 'price' }).text], ['bad', 'τιμή']);
+  assert.strictEqual(t(INTL[4], { key: 'blocked', reason: 'sheets' }).text, 'δελτίο');
+  assert.strictEqual(t(INTL[4], { key: 'blocked', reason: 'stock' }).text, 'παρτίδα');
+});
+
+test('word-safe route truncation: never below the destination\'s first word (§12 #06)', () => {
+  assert.deepStrictEqual(W.routeSplit('Naoussa', 'München DE'), { head: 'Naoussa → München', tail: ' DE' });
+  assert.deepStrictEqual(W.routeSplit('Rotterdam NL', 'Amsterdam'), { head: 'Rotterdam NL → Amsterdam', tail: '' });
+  assert.deepStrictEqual(W.routeSplit('Veroia', 'Veverská Bítýška CZ'), { head: 'Veroia → Veverská', tail: ' Bítýška CZ' });
+  assert.strictEqual(W.routeSplit('', '').head, '— → —');
+  assert.strictEqual(W.placeText({ name: 'X', city: 'Veroia', cc: 'GR' }), 'Veroia', 'no country inside Greece');
+  assert.strictEqual(W.placeText({ name: 'X', city: 'Kraków', cc: 'PL' }), 'Kraków PL');
+  assert.strictEqual(W.placeText({ name: 'Depot', city: '', cc: '' }), 'Depot');
+});
+
+// ── National pairs via «Matched Load» (owner 13/10) ─────────────────────────
+global.getLinkedId = v => (Array.isArray(v) ? v[0] : v) || null;
+const NWEEK = '2026-10-03';   // Sat 3/10 – Fri 9/10
+const nn = (id, dir, f) => n(id, Object.assign({ Direction: dir }, f));
+const NO = [
+  nn('rK1', 'North→South', { 'Loading DateTime': '2026-10-05T08:00', 'Delivery DateTime': '2026-10-06T08:00', Price: 620, Invoiced: true, 'Invoice Number': '0462', Status: 'Delivered' }),
+  nn('rA1', 'South→North', { 'Loading DateTime': '2026-10-07T08:00', 'Delivery DateTime': '2026-10-08T08:00', Price: 480, Status: 'Delivered' }),
+  nn('rK2', 'North→South', { 'Loading DateTime': '2026-10-08T08:00', 'Delivery DateTime': '2026-10-09T08:00', Price: 620 }),
+  nn('rA2', 'South→North', { 'Loading DateTime': '2026-10-12T08:00', 'Delivery DateTime': '2026-10-13T08:00', Price: 480 }),   // next week
+  nn('rK3', 'North→South', { 'Loading DateTime': '2026-10-03T08:00', 'Delivery DateTime': '2026-10-04T08:00', Price: 560 }),   // VS partner
+  nn('rK4', 'North→South', { 'Loading DateTime': '2026-10-09T08:00', 'Delivery DateTime': '2026-10-10T08:00', Price: 560 }),   // load, no pair
+  nn('rK5', 'North→South', { 'Loading DateTime': '2026-10-09T09:00', 'Delivery DateTime': '2026-10-10T08:00', Price: 300 }),   // no load
+  nn('rA3', 'South→North', { 'Loading DateTime': '2026-10-06T08:00', 'Delivery DateTime': '2026-10-07T08:00', Price: 390, 'National Groupage': true }),
+];
+const NL = [
+  { id: 'nl1', fields: { 'Source National Order': ['rK1'], 'Matched Load': 'nl2', Truck: ['t1'] } },
+  { id: 'nl2', fields: { 'Source National Order': ['rA1'], 'Matched Load': 'nl1' } },
+  // one-sided: only the ΑΝΟΔΟΣ names its pair
+  { id: 'nl3', fields: { 'Source National Order': ['rK2'] } },
+  { id: 'nl4', fields: { 'Source National Order': ['rA2'], 'Matched Load': 'nl3' } },
+  { id: 'nl5', fields: { 'Source National Order': ['rK3'], 'Matched Load': 'nlVS' } },
+  { id: 'nlVS', fields: { 'Source Type': 'Direct', 'Source Order': ['recIntl'], Direction: 'South→North' } },
+  { id: 'nl6', fields: { 'Source National Order': ['rK4'] } },
+];
+const INTL_VS = [o('recIntl', 1250, { Direction: 'Export', 'Delivery DateTime': '2026-10-05T08:00', Price: 3000 })];
+const pairs = W.pairNationals({ week: NWEEK, natl: NO, loads: NL, intl: INTL_VS });
+const pairOf = id => pairs.find(p => [p.kat, p.ano].some(s => s && s.rec && s.rec.id === id));
+
+test('national pairs: ΚΑΘΟΔΟΣ ↔ ΑΝΟΔΟΣ through Matched Load, each order once', () => {
+  const p = pairOf('rK1');
+  assert.strictEqual(p.kat.rec.id, 'rK1'); assert.strictEqual(p.ano.rec.id, 'rA1');
+  assert.strictEqual(p.assign.kind, 'load'); assert.strictEqual(p.assign.load.id, 'nl1', 'ΑΝΑΘΕΣΗ from the ΚΑΘΟΔΟΣ load');
+  assert.deepStrictEqual(p.counted.map(r => r.id), ['rK1', 'rA1']);
+  assert.strictEqual(p.day, '2026-10-05');
+  const ids = pairs.flatMap(x => [x.kat, x.ano]).filter(s => s && s.rec).map(s => s.rec.id);
+  assert.strictEqual(new Set(ids).size, ids.length, 'no order on two rows');
+});
+
+test('national pairs: one-sided Matched Load still pairs; a partner of another week is grey, not counted', () => {
+  const p = pairOf('rK2');
+  assert.strictEqual(p.ano.rec.id, 'rA2');
+  assert.strictEqual(p.ano.inWeek, false); assert.strictEqual(p.ano.week, '2026-10-10');
+  assert.deepStrictEqual(p.counted.map(r => r.id), ['rK2']);
+});
+
+test('national pairs: a VS partner is text only; no pair; no load; groupage; loads not read', () => {
+  const vs = pairOf('rK3');
+  assert.deepStrictEqual([vs.ano.kind, vs.ano.dir, vs.ano.intlRec.id], ['vs', 'up', 'recIntl']);
+  assert.deepStrictEqual(vs.counted.map(r => r.id), ['rK3'], 'the VS price is on the international order');
+  const lone = pairOf('rK4');
+  assert.strictEqual(lone.ano, null, '«Χωρίς άνοδο»'); assert.strictEqual(lone.assign.kind, 'load');
+  assert.strictEqual(pairOf('rK5').assign.kind, 'out', '«εκτός φορτίου»');
+  const g = pairOf('rA3');
+  assert.strictEqual(g.kat, null); assert.strictEqual(g.assign.kind, 'grp', '«μέσω ομαδοποίησης»');
+  const failed = W.pairNationals({ week: NWEEK, natl: NO, loads: null, intl: [] });
+  assert.ok(failed.every(p => p.assign.kind === 'failed' && p.loadsFailed), 'never «εκτός φορτίου» when the loads were not read');
+  assert.strictEqual(failed.length, NO.filter(r => OrdersCommon.weekStartOf(r) === NWEEK).length, 'every order of the week still listed');
+});
+
+test('page subtitle: the week in words', () => {
+  assert.strictEqual(W.weekTitle('2026-10-03'), '3 – 9 Οκτωβρίου');
+  assert.strictEqual(W.weekTitle('2026-09-26'), '26 Σεπτεμβρίου – 2 Οκτωβρίου');
+});
+
+// ══ Fix round 1 (critics 13/10) ═════════════════════════════════════════════
+
+test('national pairs: a stale one-sided Matched Load never steals a two-sided pair, whatever the order', () => {
+  // lA ↔ lC two-sided; lB → lA left over from an old pairing. rB loads FIRST.
+  const recs = [
+    nn('rB', 'North→South', { 'Loading DateTime': '2026-10-04T08:00', 'Delivery DateTime': '2026-10-05T08:00', Price: 100 }),
+    nn('rA', 'North→South', { 'Loading DateTime': '2026-10-05T08:00', 'Delivery DateTime': '2026-10-06T08:00', Price: 200 }),
+    nn('rC', 'South→North', { 'Loading DateTime': '2026-10-07T08:00', 'Delivery DateTime': '2026-10-08T08:00', Price: 300 }),
+  ];
+  const loads = [
+    { id: 'lB', fields: { 'Source National Order': ['rB'], 'Matched Load': 'lA' } },
+    { id: 'lA', fields: { 'Source National Order': ['rA'], 'Matched Load': 'lC' } },
+    { id: 'lC', fields: { 'Source National Order': ['rC'], 'Matched Load': 'lA' } },
+  ];
+  for (const ls of [loads, loads.slice().reverse()]) {
+    const rows = W.pairNationals({ week: NWEEK, natl: recs, loads: ls, intl: [] });
+    const a = rows.find(r => r.kat && r.kat.rec && r.kat.rec.id === 'rA');
+    assert.strictEqual(a.ano.rec.id, 'rC');
+    const b = rows.find(r => r.kat && r.kat.rec && r.kat.rec.id === 'rB');
+    assert.strictEqual(b.ano, null, 'the stale side has no pair («Χωρίς άνοδο»)');
+    assert.strictEqual(rows.length, 2);
+  }
+});
+
+test('ORDERS window also reads orders moved INTO the window by «Plan Week Start» (§09)', () => {
+  const f = W.ordersFormula('2026-09-01', '2026-10-30');
+  assert.ok(/IS_AFTER\(\{Plan Week Start\},'2026-09-01'\),IS_BEFORE\(\{Plan Week Start\},'2026-10-30'\)/.test(f));
+  assert.ok(f.startsWith("AND({Type}='International',OR("));
+  // and such an order lands in the planned week's «ΜΕΤΑΦΕΡΘΗΚΕ» even with dates months away
+  const far = o('recFar', 1600, { Direction: 'Import', 'Loading DateTime': '2026-06-02T08:00', 'Plan Week Start': WEEK, Price: 900, Status: 'Assigned' });
+  const m = W.buildWeek({ week: WEEK, intl: [far], natl: [], rts: [{ id: 160, code: 'RT-1600', status: 'open', ct_rt_legs: [{ order_id: 1600, direction: 'IMPORT', seq: 1 }] }] });
+  assert.deepStrictEqual(m.weekIntl.map(r => r.id), ['recFar']);
+  assert.deepStrictEqual(W.daySections(WEEK, m.rows).moved.map(r => r.code), ['RT-1600']);
+});
+
+test('a cancelled order on an RT leg or as a split parent is «ακυρωμένη», never «εκτός εύρους», never counted', () => {
+  const dead = o('recX', 1700, { Direction: 'Import', 'Loading DateTime': '2026-09-22T08:00', Price: 999, Status: 'Cancelled' });
+  const deadParent = o('recXP', 1701, { Direction: 'Export', 'Delivery DateTime': '2026-09-22T08:00', Price: 999, Status: 'Cancelled' });
+  const leg = o('recXL', 1702, { Direction: 'Export', 'Delivery DateTime': '2026-09-22T08:00', 'Parent Order': ['recXP'] });
+  const rts = [{ id: 170, code: 'RT-1700', status: 'open', ct_rt_legs: [{ order_id: 1240, direction: 'EXPORT', seq: 1 }, { order_id: 1700, direction: 'IMPORT', seq: 2 }, { order_id: 1702, direction: 'EXPORT', seq: 3 }] }];
+  const m = W.buildWeek({ week: WEEK, intl: [...INTL, leg], natl: [], rts, cancelled: [dead, deadParent] });
+  const r = m.rows.find(x => x.code === 'RT-1700');
+  const imp = r.imp[0];
+  assert.deepStrictEqual([imp.cancelled, imp.counted, imp.rec.id], [true, false, 'recX']);
+  const sp = r.exp.find(l => l.orderId === 1702);
+  assert.deepStrictEqual([sp.cancelled, sp.rec.id], [true, 'recXP']);
+  assert.deepStrictEqual(r.counted.map(x => x.id), ['recN6']);
+});
+
+test('a split leg puts its RT in the LEG\'s week; the parent is counted in its own week (guest row there)', () => {
+  const parent = o('recSP', 1800, { Direction: 'Export', 'Delivery DateTime': '2026-09-29T08:00', Price: 4000, Status: 'Delivered' });   // next week
+  const leg = o('recSL', 1801, { Direction: 'Export', 'Delivery DateTime': '2026-09-22T08:00', 'Parent Order': ['recSP'] });             // this week
+  const rts = [{ id: 180, code: 'RT-1800', status: 'open', ct_rt_legs: [{ order_id: 1801, direction: 'EXPORT', seq: 1 }] }];
+  const here = W.buildWeek({ week: WEEK, intl: [parent, leg], natl: [], rts });
+  const r = here.rows.find(x => x.code === 'RT-1800');
+  assert.ok(r && !r.guest && r.day === '2026-09-22');
+  assert.deepStrictEqual(r.counted, [], 'the parent counts next week');
+  const there = W.buildWeek({ week: NEXT, intl: [parent, leg], natl: [], rts });
+  const g = there.rows.find(x => x.code === 'RT-1800');
+  assert.ok(g && g.guest && g.homeWeek === WEEK);
+  assert.deepStrictEqual(g.counted.map(x => x.id), ['recSP']);
 });

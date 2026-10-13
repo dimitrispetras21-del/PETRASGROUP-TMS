@@ -8786,3 +8786,175 @@ body.wi4-on #wi-popover .wi-pop-save:hover { background:var(--navy-light); }
   .wi4-q, .wi4-shelf, .wi4-plane, .wi4-banner, .wi4-pres { display:none; }
   .wi4-cols { position:static; }
 }
+
+/* ═══ Παραγγελίες › Εβδομάδα v4 (.ow4) — modules/orders_week_view.js ═════════
+   Figma 1514:8013: 1518:8013 (1440), 1518:9099 (1920), states 1519:8013.
+   One row = one RT, mirrored like Weekly v4: RT | ΕΞΑΓΩΓΗ ‖ ΑΝΑΘΕΣΗ ‖ ΕΙΣΑΓΩΓΗ.
+   The two sides are equal halves at 1440 (measured on the frame: 480 · 292 ·
+   478); every sub-row of a side uses the side's own grid, so groupage orders
+   (§02) line up under one header. Colour only where it says something (§06
+   «Χρώμα»): green only on «✓ ΤΠΥ», red only for an invoicing block (dot + 2px
+   bar) and a failed read, blue only for what is clicked. Reuses the --wi4-*
+   tokens. Numbers tabular (§12 #05). */
+/* Three widths, by the BOARD's own width (container query), not the
+   window's: the app's open sidebar (216px) turns a 1440 screen into ~1140px.
+   ≥1500 = the 1920 frame (13px, 24px gaps) · 1241–1499 = the 1440 frame (12px
+   lines, 20px gaps, §12 #06/#09) · ≤1240 = open sidebar at 1440 (12px gaps,
+   §12 #09 allows going under 20 only to keep whole words). Route/client
+   widths per row come from _fitSide (modules/orders_week_view.js). */
+.ow4 { --ow4-rt:80px; --ow4-asg:292px; --ow4-tpy:64px; --ow4-amt:68px; --ow4-gap:20px; --ow4-fs:12px;
+  container:ow4 / inline-size; display:flex; flex-direction:column; gap:14px; font-family:'DM Sans',sans-serif; font-size:12px;
+  color:var(--wi4-ink); font-variant-numeric:tabular-nums; }
+
+/* §10 strips: white, a red dot for a failed read, grey for a fact. */
+.ow4-fail { display:flex; align-items:baseline; gap:6px; background:var(--bg-card); border:1px solid var(--border);
+  border-radius:8px; padding:10px 14px; font-size:12.5px; color:var(--wi4-grey-1); }
+.ow4-fail b { color:var(--wi4-ink); font-weight:600; }
+.ow4-fail .ow4-link { margin-left:auto; }
+.ow4-info .ow4-dot { background:var(--wi4-grey-2); }
+.ow4-dot { display:inline-block; flex:none; width:6px; height:6px; border-radius:50%; background:var(--danger); margin-right:5px; vertical-align:1px; }
+.ow4-link { border:none; background:none; padding:0; font:inherit; font-weight:500; color:var(--accent-text); cursor:pointer; white-space:nowrap; }
+.ow4-link:hover { text-decoration:underline; }
+
+/* Week strip: five weeks, the selected one boxed in blue (it is clicked). */
+.ow4-strip { display:flex; align-items:center; gap:8px; background:var(--bg-card); border:1px solid var(--border); border-radius:10px; padding:6px 10px; }
+.ow4-arr { flex:0 0 28px; height:28px; border:1px solid var(--wi4-ctl); background:var(--bg-card); border-radius:6px; color:var(--wi4-grey-1); cursor:pointer; font-size:15px; }
+.ow4-wk { flex:1; min-width:0; text-align:left; border:1px solid transparent; background:transparent; border-radius:6px; padding:5px 12px;
+  cursor:pointer; display:flex; flex-direction:column; gap:2px; font:inherit; color:var(--wi4-ink); }
+.ow4-wk:hover { background:var(--wi4-hover); }
+.ow4-wk.on { border:2px solid var(--accent); padding:4px 11px; }
+.ow4-wk.on .ow4-wk-r { color:var(--accent-text); }
+.ow4-wk-r { font-size:13px; font-weight:500; }
+.ow4-wk-v { font-size:11px; color:var(--wi4-grey-1); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+
+/* The summary line (owner α — words of OrdersData.stateOf). */
+.ow4-sum { display:flex; flex-wrap:wrap; align-items:baseline; column-gap:22px; row-gap:4px; font-size:13px; color:var(--wi4-ink); padding:2px 0; }
+.ow4-sum-h { font-weight:600; }
+.ow4-sum-r { margin-left:auto; display:flex; gap:20px; align-items:baseline; }
+.ow4-num { font-variant-numeric:tabular-nums; }
+
+/* Section titles: Syne (Weekly v4 convention), meta in DM Sans grey. */
+.ow4-h { margin:6px 0 8px; font:600 15px 'Syne',sans-serif; color:var(--wi4-ink); }
+.ow4-h span { margin-left:12px; font:400 13px 'DM Sans',sans-serif; color:var(--wi4-grey-2); }
+.ow4-card { background:var(--bg-card); border:1px solid var(--border); border-radius:10px; }
+.ow4-row { display:grid; grid-template-columns:var(--ow4-rt) minmax(0,1fr) var(--ow4-asg) minmax(0,1fr); border-top:1px solid var(--wi4-line-3); }
+/* 1920 (1518:9099): the import half is the wider one and nothing is cut. */
+@container ow4 (min-width:1500px) {
+  .ow4-card { --ow4-asg:305px; --ow4-gap:24px; --ow4-fs:13px; --ow4-tpy:80px; --ow4-amt:84px; }
+  .ow4-row { grid-template-columns:var(--ow4-rt) minmax(0,1fr) var(--ow4-asg) minmax(0,1.12fr); }
+}
+.ow4-row[data-owvopen] { cursor:pointer; }
+.ow4-row[data-owvopen]:hover { background:var(--wi4-hover); }
+.ow4-blk { box-shadow:inset 2px 0 0 var(--danger); }
+.ow4-c-rt { padding:9px 4px 7px 10px; min-width:0; overflow:hidden; }
+.ow4-c-rt .ow4-l2 { overflow:hidden; text-overflow:ellipsis; }
+.ow4-side { display:flex; flex-direction:column; min-width:0; }
+.ow4-sub { display:grid; align-items:start; column-gap:var(--ow4-gap); min-height:48px; box-sizing:border-box; padding:9px 10px 7px; }
+/* --ow4-rw (route width) is set per row by _fitSide; unset (header, print
+   before a fit) the shared split applies. Declared here, on the row grid, so
+   the per-row value is the one read. */
+.ow4-l .ow4-sub { grid-template-columns:var(--ow4-rw, minmax(0,1fr)) minmax(0,1.1fr) var(--ow4-tpy) var(--ow4-amt); }
+.ow4-r .ow4-sub { grid-template-columns:var(--ow4-tpy) var(--ow4-amt) minmax(0,1.15fr) var(--ow4-rw, minmax(0,.9fr)); }
+.ow4-sub + .ow4-sub { border-top:1px solid var(--wi4-line); }
+.ow4-sub.ow4-none { display:block; }
+.ow4-c { min-width:0; overflow:hidden; }
+.ow4-n { text-align:right; }
+.ow4-asg { min-width:0; padding:9px 10px 7px; border-left:1px solid var(--wi4-line-3); border-right:1px solid var(--wi4-line-3);
+  display:flex; flex-direction:column; }
+.ow4-l1 { font-size:var(--ow4-fs); line-height:16px; white-space:nowrap; color:var(--wi4-ink); }
+.ow4-l2 { font-size:11px; line-height:14px; margin-top:2px; white-space:nowrap; color:var(--wi4-grey-2); }
+.ow4-ell { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.ow4-g { color:var(--wi4-grey-2); }
+.ow4-d { color:var(--text-dim); }
+.ow4-ar { color:var(--text-dim); margin:0 3px; }
+/* §12 #06: the route is cut first, and never below the destination's first
+   word — .ow4-rh never shrinks, only the rest (.ow4-rt) takes the «…». */
+.ow4-route { display:flex; min-width:0; }
+.ow4-rh { flex:none; }
+.ow4-rt { flex:0 1 auto; min-width:0; margin-left:.28em; overflow:hidden; }
+.ow4-rt:empty { display:none; }
+/* Points of a multi-stop end: the dark box of Weekly v4 (.wi4-pt-n, owner 12/10). */
+.ow4-pn { flex:none; display:inline-block; box-sizing:border-box; min-width:14px; height:14px; padding:0 3px; margin-left:4px; border-radius:3px;
+  background:var(--wi4-ink); color:var(--text-inverse); font-size:10px; font-weight:600; line-height:14px; text-align:center; vertical-align:1px;
+  -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+.ow4-tpy { display:block; font-size:var(--ow4-fs); line-height:16px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; color:var(--wi4-ink); }
+/* Words in the amount column («στην παρτίδα #1172», «ακυρωμένη»…): «…» + title. */
+.ow4-sub > .ow4-n > .ow4-d, .ow4-sub > .ow4-n > .ow4-l2 { display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.ow4-tpy.ok { color:var(--ok); font-weight:500; }
+.ow4-tpy.dim { color:var(--wi4-grey-2); }
+.ow4-sub > .ow4-n { font-size:var(--ow4-fs); line-height:16px; }
+.ow4-hd .ow4-sub > .ow4-n { font-size:inherit; line-height:inherit; }
+/* A leg of another week (§04): grey, its amount out of the Σ. */
+.ow4-off .ow4-l1, .ow4-off .ow4-tpy, .ow4-off .ow4-tpy.ok { color:var(--text-mid); }
+.ow4-off-amt { display:block; color:var(--text-dim); }
+.ow4-veh { display:flex; align-items:baseline; gap:8px; min-width:0; }
+/* DM Mono has no Greek: the .wi4-plate stack, so ΚΗΙ never falls to a serif. */
+.ow4-plate { flex:none; font-family:'DM Mono',ui-monospace,SFMono-Regular,Menlo,monospace; font-weight:500; font-size:12.5px; color:var(--wi4-ink); }
+.ow4-who { min-width:0; color:var(--wi4-grey-1); }
+.ow4-asg-pa { color:var(--wi4-ink); }
+.ow4-asg-none { color:var(--wi4-grey-2); }
+.ow4-asg-b { display:flex; justify-content:space-between; align-items:baseline; gap:8px; margin-top:4px; }
+.ow4-vd { flex:1 1 auto; font-size:11px; color:var(--wi4-grey-1); min-width:0; overflow:hidden; white-space:nowrap; }
+.ow4-sig { flex:none; white-space:nowrap; font-size:13px; font-weight:600; color:var(--wi4-ink); }
+.ow4-mk { font-size:10px; font-weight:400; color:var(--text-dim); margin-left:1px; }
+
+/* Column header: group label above, column labels below; sticky. */
+.ow4-hd { position:sticky; top:0; z-index:3; background:var(--bg-card); border-top:0; border-radius:10px 10px 0 0;
+  font-size:10.5px; font-weight:600; letter-spacing:.04em; text-transform:uppercase; color:var(--wi4-grey-2); }
+.ow4-hd .ow4-asg { border-color:transparent; }
+.ow4-hd i { display:block; height:14px; font-style:normal; font-weight:700; color:var(--wi4-ink); padding:0 10px; }
+.ow4-hd i span { font-weight:400; color:var(--wi4-grey-2); margin-left:4px; }
+.ow4-hd .ow4-c-rt i { padding:0; }
+.ow4-hd .ow4-asg i { padding:0; }
+.ow4-hd .ow4-c-rt, .ow4-hd .ow4-asg { padding-top:10px; padding-bottom:8px; }
+.ow4-hd .ow4-side { padding-top:10px; }
+.ow4-hd .ow4-sub { min-height:0; padding-top:6px; padding-bottom:8px; }
+.ow4-hd .ow4-c-rt b { display:block; margin-top:6px; font-weight:600; }
+.ow4-hd b { font-weight:600; }
+.ow4-asg-h { display:flex; justify-content:space-between; margin-top:6px; }
+
+/* Day sections (§01/§11): always seven; an empty day is one quiet line. */
+.ow4-day { padding:8px 12px; border-top:1px solid var(--wi4-line-3); background:var(--bg-row-alt);
+  font-size:11px; font-weight:700; letter-spacing:.04em; color:var(--wi4-ink); }
+.ow4-day span { font-weight:400; letter-spacing:0; color:var(--wi4-grey-2); margin-left:6px; }
+.ow4-day-0 { background:transparent; font-weight:400; letter-spacing:0; color:var(--wi4-grey-2); }
+
+/* «Κατάσταση εβδομάδας»: an accounting statement — single rule above the
+   total, double below; no hero numbers (DECISION_LOG 13/10). */
+.ow4-state { border-top:1px solid var(--border); padding-top:12px; }
+/* fixed: _alignState sizes the first two columns so ΤΖΙΡΟΣ ends under Σ RT. */
+.ow4-st { width:100%; border-collapse:collapse; font-size:13px; table-layout:fixed; }
+.ow4-st th, .ow4-st td { padding:7px 12px; text-align:right; font-weight:400; }
+.ow4-st th:first-child { text-align:left; padding-left:0; }
+.ow4-st thead th { background:none; font-size:10.5px; font-weight:600; letter-spacing:.04em; color:var(--wi4-grey-2); border-bottom:1px solid var(--border); padding-bottom:9px; }
+.ow4-st tbody th { font-weight:400; }
+.ow4-st tfoot th { font-weight:600; }
+.ow4-st tfoot td { font-weight:700; border-top:1px solid var(--wi4-ink); border-bottom:3px double var(--wi4-ink); padding-top:10px; padding-bottom:10px; }
+.ow4-note { margin:10px 0 0; font-size:11.5px; color:var(--wi4-grey-2); }
+.ow4-foot { margin-top:14px; font-size:11px; color:var(--wi4-grey-2); }
+.ow4-foot p { margin:0 0 3px; }
+
+/* The frames assume the 64px closed sidebar (§12 open question 5); with the
+   app's open sidebar a 1440 screen leaves ~1080px. The fixed columns tighten
+   first; if a route head still does not fit, _fitRoutes marks the card
+   .ow4-scroll and it scrolls sideways inside itself (the page never does) —
+   never a destination cut mid-word. A scrolling card cannot keep a sticky
+   header, so it is static there. */
+@container ow4 (max-width:1240px) {
+  .ow4-card { --ow4-rt:80px; --ow4-asg:266px; --ow4-tpy:62px; --ow4-amt:66px; --ow4-gap:12px; }
+  .ow4-sub, .ow4-asg { padding-left:8px; padding-right:8px; }
+}
+}
+.ow4-card.ow4-scroll { overflow-x:auto; }
+.ow4-card.ow4-scroll > .ow4-row, .ow4-card.ow4-scroll > .ow4-day { min-width:var(--ow4-minw, 1180px); }
+.ow4-card.ow4-scroll .ow4-hd { position:static; }
+@media (max-width:1279px) {
+  .ow4-strip { overflow-x:auto; }
+  .ow4-wk { min-width:140px; }
+}
+@media print {
+  .ow4-strip, .ow4-fail .ow4-link, .ow4-sum-r .ow4-link { display:none; }
+  .ow4-hd { position:static; }
+  .ow4-row { break-inside:avoid; }
+  .ow4-row[data-owvopen]:hover { background:none; }
+}
