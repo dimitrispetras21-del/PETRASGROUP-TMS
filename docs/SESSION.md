@@ -35,7 +35,8 @@
 - Owner approved the design on Figma page `1514:8013` (1440 `1518:8013`, 1920 `1518:9099`, states `1519:8013`); images in `docs/orders-week-v4/shots/`.
 - Row = RT, mirrored like Weekly v4; nationals in a separate section; net amounts only (no VAT); «ατιμολόγητα», never parentheses.
 - The parallel design on «Screens» (`1510:9821`…) was not chosen; its critic's code findings are kept in `docs/DECISION_LOG.md`.
-- Left: owner decision on the 0 € rule; implementation in a new session (branch + PR).
+- Owner 13/10: 0 € = no price everywhere (Προς τιμολόγηση follows `hasPrice`).
+- Left: implementation in a new session (branch + PR).
 
 ### 2026-10-12 · on-site day 1 · session rules and this file
 - Added ΚΑΝΟΝΕΣ SESSION at the top of `CLAUDE.md`, this file, and `AGENTS.md` (points Codex to `CLAUDE.md`).
