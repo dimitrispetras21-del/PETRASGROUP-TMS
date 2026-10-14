@@ -414,16 +414,61 @@ const OrdersCatalog = (() => {
     if (type === 'intl') { if (typeof closeNatlDetail === 'function') closeNatlDetail(); selectIntlOrder(id); }
     else { if (typeof _oiCloseCard === 'function') _oiCloseCard(); selectNatlOrder(id); }
   }
-  function search(v) { S.filters.qRaw = v; S.filters.q = String(v || '').toLowerCase().trim(); _apply(); }
+  // One rule for the whole app (Nick 13/10, walkthrough #20): a search always
+  // searches every record, whatever period the list shows. Orders 153, 161 and
+  // 186 looked deleted because the default 60-day window hid them AND the search
+  // only searched what that window had loaded. A non-empty search now widens to
+  // «Όλα» in the background (the toolbar is not redrawn, so typing goes on);
+  // emptying the search returns to the period the user had. Phase 2 (T29): the
+  // search runs in the database through the Worker, before the 1,000-row cap.
+  function search(v) {
+    S.filters.qRaw = v; S.filters.q = String(v || '').toLowerCase().trim();
+    if (S.filters.q && S.period !== 'all') _widenForSearch();
+    else if (!S.filters.q && S.widenedFrom) { S.period = S.widenedFrom; S.widenedFrom = null; OrdersHub.refresh(); return; }
+    _apply();
+  }
+  async function _widenForSearch() {
+    if (S.widening) return;
+    S.widening = true;
+    const ctx = S.ctx, from = S.period;
+    if (ctx) ctx.setSub('Διεθνείς και εθνικές · αναζήτηση σε όλες τις ημερομηνίες…');
+    try {
+      const [ri, rn] = await Promise.allSettled([loadOrdersIntlData('all'), loadOrdersNatlData('all')]);
+      if (!ctx || !ctx.isCurrent() || S.period !== from) return;
+      if (ri.status !== 'fulfilled' || rn.status !== 'fulfilled') {
+        // Say it, and keep searching the loaded period: never an empty result
+        // that reads as «no such order» (DESIGN.md #7).
+        const box = document.getElementById('ocWarns');
+        if (box) box.insertAdjacentHTML('beforeend', `<div class="oc-warn">⚠ ${esc('Η αναζήτηση σε όλες τις ημερομηνίες δεν φορτώθηκε. Ψάχνει μόνο στην περίοδο «' + PERIOD_LABEL[from] + '».')}</div>`);
+        if (typeof logError === 'function') logError(ri.reason || rn.reason, 'orders catalog: widen for search');
+        ctx.setSub(`Διεθνείς και εθνικές · ${OrdersList.countLabel(S.rows.filter(_inScope).length)} · ${PERIOD_LABEL[from]}`);
+        return;
+      }
+      const intl = ri.value, natl = rn.value;
+      S.period = 'all'; S.widenedFrom = from;
+      S.noLoad = natl.noLoad || new Set(); S.loads = natl.loads || new Map(); S.legParents = intl.legParents || null;
+      S.rows = [...intl.records.map(r => _row(r, 'intl')), ...natl.records.map(r => _row(r, 'natl'))];
+      const sel = document.querySelector('.oc-toolbar select[onchange^="OrdersCatalog.period"]');
+      if (sel) sel.value = 'all';
+      ctx.setSub(`Διεθνείς και εθνικές · ${OrdersList.countLabel(S.rows.filter(_inScope).length)} · αναζήτηση σε όλες τις ημερομηνίες`);
+      _apply();
+      // Older orders may name clients the warm cache does not hold yet: the
+      // loaders resolve namesReady once they do, as in render().
+      Promise.all([intl.namesReady, natl.namesReady].map(x => x || Promise.resolve([]))).then(() => {
+        if (!ctx.isCurrent() || S.period !== 'all') return;
+        S.rows = S.rows.map(r => _row(r.rec, r.type)); _apply();
+      });
+    } finally { S.widening = false; }
+  }
   function filter(k, v) { if (v) S.filters[k] = v; else delete S.filters[k]; _apply(); }
   function chip(k) { S.filters.chip = S.filters.chip === k ? '' : k; _apply(); }
   function clear() {
-    S.filters = {};
+    S.filters = {}; S.widenedFrom = null;
     // Same rule as the two lists (OI-4): «clear» also widens the period, which
     // needs a refetch, not a re-filter.
     if (S.period !== 'all') { S.period = 'all'; OrdersHub.refresh(); } else { _apply(); }
   }
-  function period(v) { S.period = v; OrdersHub.refresh(); }
+  function period(v) { S.period = v; S.widenedFrom = null; OrdersHub.refresh(); }
   function sort(key) {
     if (S.sortCol === key) { S.sortDir = (S.sortDir + 1) % 3; if (S.sortDir === 0) S.sortCol = null; }
     else { S.sortCol = key; S.sortDir = 1; }
