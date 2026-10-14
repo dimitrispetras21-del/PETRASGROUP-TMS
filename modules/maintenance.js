@@ -187,6 +187,13 @@ button.mnt-kpi:hover { background:var(--surface-sunken); }
 .mnt-bad { color:var(--danger); font-weight:500; }
 .mnt-warn { color:var(--warn); font-weight:500; }
 .mnt-ok { color:var(--ok); font-weight:700; }
+/* Expiry scale (_dueText band): solid colours, text ≥ 6.4:1 on each; printed as shown. */
+.mnt-due { display:inline-block; padding:1px 6px; border-radius:4px; font-weight:600; line-height:1.4; white-space:nowrap; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+.mnt-due-g { background:#DCFCE7; color:#166534; }
+.mnt-due-lg { background:#ECFCCB; color:#3F6212; }
+.mnt-due-o { background:#FFEDD5; color:#9A3412; }
+.mnt-due-r { background:#FEE2E2; color:#991B1B; }
+.mnt-due-x { background:#B91C1C; color:#FFFFFF; }
 .mnt-cell-edit { cursor:pointer; }
 .mnt-cell-edit:hover { text-decoration:underline dotted; }
 .mnt-section { display:flex; align-items:center; gap:var(--space-2); height:26px; }
@@ -328,11 +335,17 @@ function _relDays(dateStr) {
   return `πριν ${(ago / 365).toFixed(1).replace('.', ',')} χρ.`;
 }
 // Expiry wording, one place: expired → danger, ≤30 days → warning, else dim.
+// band: the background scale the users know from their Excel (walkthrough
+// 13/10, item 8: «ξεκινάει από πράσινο … κόκκινο, μέχρι να λήξει»), drawn as a
+// pill by the Λήξεις cells and the worst-6 card. Thresholds are our proposal
+// until his sheet's are known: over 60 green, 31-60 light green, 15-30 orange,
+// 0-14 red, expired dark red. The words stay, so colour never carries it alone.
 function _dueText(days) {
-  if (days === null) return { cls: 'mnt-dim', text: '—' };
-  if (days < 0) return { cls: 'mnt-bad', text: `ληγμένο ${-days} ημ.` };
-  if (days <= 30) return { cls: 'mnt-warn', text: `σε ${days} ημ.` };
-  return { cls: 'mnt-dim', text: `σε ${days} ημ.` };
+  if (days === null) return { cls: 'mnt-dim', band: '', text: '—' };
+  if (days < 0) return { cls: 'mnt-bad', band: 'mnt-due mnt-due-x', text: `ληγμένο ${-days} ημ.` };
+  const band = 'mnt-due ' + (days <= 14 ? 'mnt-due-r' : days <= 30 ? 'mnt-due-o' : days <= 60 ? 'mnt-due-lg' : 'mnt-due-g');
+  if (days <= 30) return { cls: 'mnt-warn', band, text: `σε ${days} ημ.` };
+  return { cls: 'mnt-dim', band, text: `σε ${days} ημ.` };
 }
 function _pctOf(n, d) { return d ? Math.round(n / d * 100) : null; }
 function _wsRec(wsArr) {
@@ -652,7 +665,7 @@ function _expiryPaint() {
     const editAttr = `onclick="_expInlineEdit(event,'${r.id}','${d.field}','${r.vType}')"`;
     if (!d.date) return `<td class="mnt-cell-edit" ${editAttr} title="Κλικ για καταχώρηση"><span class="mnt-dim">—</span></td>`;
     const due = _dueText(d.days);
-    return `<td class="mnt-cell-edit mnt-num" ${editAttr} title="Κλικ για αλλαγή">${_fmtDMY(d.date)} <span class="${due.cls}" style="font-size:var(--text-sm);margin-left:4px">${due.text}</span></td>`;
+    return `<td class="mnt-cell-edit mnt-num" ${editAttr} title="Κλικ για αλλαγή">${_fmtDMY(d.date)} <span class="${due.band || due.cls}" style="font-size:var(--text-sm);margin-left:4px">${due.text}</span></td>`;
   };
   const renewCell = (plate) => {
     const rn = renewals[String(plate).toUpperCase()];
@@ -1642,7 +1655,7 @@ function _maintDashPaint() {
           return `<div class="mnt-row click" style="height:32px" onclick="_expiryGoto(${d.days < 0 ? "'expired'" : "'all'"}, '', '${escapeHtml(r.plate)}')">
             <span class="w110">${escapeHtml(r.plate)}</span>
             <span class="w80">${EXPIRY_DOC_GR[d.label] || d.label}</span>
-            <span class="${due.cls}" style="font-weight:700">${due.text}</span>
+            <span class="${due.band || due.cls}" style="font-weight:700">${due.text}</span>
             <span class="grow"></span>
             <span class="mnt-link">άνοιγμα →</span>
           </div>`;
