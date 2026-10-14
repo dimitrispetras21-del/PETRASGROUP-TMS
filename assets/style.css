@@ -7636,7 +7636,11 @@ button.btn-icon:focus-visible { outline:2px solid var(--accent); outline-offset:
   --wi4-line-3:       #eaecf0;
   /* Today's card frame (Figma 1097:3592 draws it in the accent at 55%): the
      full-strength 1px --wi4-blue hairline it replaces read heavier than Figma. */
-  --wi4-today-line:   rgba(2,123,189,.55);
+  --wi4-today-line:   var(--wi4-blue);
+  /* Today's whole day (walkthrough C4, Nick 14/10): a background that reads at a
+     glance while scrolling, and its own hover, darker, so a hovered row still shows. */
+  --wi4-today-bg:     rgba(2,123,189,.10);
+  --wi4-today-hover:  rgba(2,123,189,.16);
   --wi4-ctl:          #d0d5dd;
   --wi4-slot:         #cbd5e1;
   --wi4-red:          var(--danger);
@@ -8204,17 +8208,22 @@ body.wi4-on #wi-ctx .wi4-m-sec .wi4-l2, body.wi4-on #wi-ctx .wi4-m-hd .wi4-l2 { 
 .wi4-dayh-dot { flex:none; width:6px; height:6px; box-sizing:border-box; border-radius:50%; }
 .wi4-dayh-dot.red { background:var(--wi4-red); }
 .wi4-dayh-dot.amb { border:1.5px solid var(--wi4-amber); }
-/* Figma 1097:3590: «· σήμερα» DM Sans Regular 12. */
-.wi4-today { font-size:12px; font-weight:400; letter-spacing:0; color:var(--wi4-blue-ink); }
+/* «· σήμερα» (owner 11/10: words, not a «ΣΗΜΕΡΑ» pill). Was Regular 12 in the
+   light blue ink; Pantelis 13/10 «Φαίνεται πολύ αχνά», so bold and dark (C4). */
+.wi4-today { font-size:12px; font-weight:700; letter-spacing:0; color:var(--text); }
 /* Today's whole header is blue (board 1097:2254), not only «σήμερα». */
 .wi4-day.today .wi4-dayh { color:var(--wi4-blue-ink); }
 /* Radius 8 (parity r2, Figma Surface 1097:2462 / 2645 / 3592). */
 .wi4-day-body { border:1px solid var(--wi4-line-2); border-radius:8px; background:var(--surface-card); margin-bottom:0; }
-/* Today's card (parity r2, Figma 1097:3592): a 1.5px accent-at-55% line on
-   top that tapers round the corners, and NO side or bottom line — the card's
-   sides sit white on the page. The sides stay 1px (transparent), so today's
-   rows keep the same tracks as every other card's. */
-.wi4-day.today .wi4-day-body { border-color:transparent; border-top:1.5px solid var(--wi4-today-line); }
+/* Today's whole day (walkthrough C4, Nick 14/10): the card carries a blue
+   background and a frame (2px on top, 1px sides and bottom), the way the old
+   board framed today, so the line between past and coming days shows at any
+   scroll position. The sides stay 1px, so today's rows keep the same tracks as
+   every other card's; rows are transparent, so the background shows through,
+   and white boxes inside a row (assignment, date chips) stay white. */
+/* 8px above the first row and below the last (Nick 14/10): the rows do not touch the frame. */
+.wi4-day.today .wi4-day-body { background:var(--wi4-today-bg); border-color:var(--wi4-today-line); border-top:2px solid var(--wi4-today-line); padding:var(--space-2) 0; }
+.wi4-day.today .wi4-row:hover, .wi4-day.today .wi4-subrow:hover { background:var(--wi4-today-hover); }
 .wi4-day.closed .wi4-day-body { display:none; }
 /* Rails on a card's first/last row follow the card's 7px inner curve (8px
    radius − 1px border; Figma rail 1097:2648, the stripe clipped by the card)
