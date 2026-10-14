@@ -2906,6 +2906,13 @@ button.ecard-meta-row-btn, .ecard-meta-row button.badge {
 .wk3-feed.bgap{background:var(--navy-mid,#0B1929) !important}
 .wk3-ordn{font-size:9px;font-weight:500;color:var(--text-dim);font-style:italic;margin-left:6px}
 .wk3-assign{padding:0 8px;display:flex;justify-content:center;align-self:stretch;align-items:center;gap:2px;cursor:pointer}
+/* Copy plates (item 16) at the assign cell's right edge, on row hover or focus;
+   absolute, so the pill stays centred as on rows without one. */
+.wk3-assign:has(.wn-cpy){position:relative}
+.wk3-assign .wn-cpy{position:absolute;right:2px;top:50%;margin-top:-10px;width:20px;height:20px;padding:0;display:inline-grid;place-items:center;border:1px solid #CBD5E1;border-radius:4px;background:#FFFFFF;color:#475569;cursor:pointer;visibility:hidden}
+.wk3-assign .wn-cpy svg{width:12px;height:12px}
+.wk3-row:hover .wk3-assign .wn-cpy,.wk3-assign:focus-within .wn-cpy{visibility:visible}
+.wk3-assign .wn-cpy:hover{color:#0B1929;border-color:#94A3B8}
 .wk3-pill{width:100%;max-width:100%;min-width:0;height:24px;border-radius:6px;display:flex;align-items:center;justify-content:center;
   gap:6px;font-size:10.5px;font-weight:700;color:#fff;padding:0 10px;white-space:nowrap;overflow:hidden;
   transition:transform .15s,box-shadow .15s,background .2s}
@@ -8508,6 +8515,12 @@ body.wi4-on #wi-ctx .wi4-m-sec .wi4-l2, body.wi4-on #wi-ctx .wi4-m-hd .wi4-l2 { 
 .wi4 .wi4-row:hover .wi4-asg .wk3-prt, .wi4 .wi4-row:focus-within .wi4-asg .wk3-prt, .wi4.wi4-kbd .wi4-focus .wi4-asg .wk3-prt { visibility:visible; }
 .wi4 .wi4-asg .wk3-prt:hover { color:var(--wi4-grey-1); background:var(--wi4-chip); }
 @media (hover:none) { .wi4 .wi4-asg .wk3-prt { visibility:visible; } }
+/* Copy plates (item 16): over the box's right end, left of the plane, on hover or
+   focus only (a touch screen uses the per-load menu: the icon would cover the text). */
+.wi4 .wi4-asg .wi4-cpy { position:absolute; right:30px; top:50%; margin-top:-10px; width:20px; height:20px; padding:0; display:inline-grid; place-items:center; border:1px solid #CBD5E1; border-radius:4px; background:#FFFFFF; color:#475569; cursor:pointer; visibility:hidden; }
+.wi4 .wi4-asg .wi4-cpy svg { width:12px; height:12px; }
+.wi4 .wi4-row:hover .wi4-asg .wi4-cpy, .wi4 .wi4-row:focus-within .wi4-asg .wi4-cpy, .wi4.wi4-kbd .wi4-focus .wi4-asg .wi4-cpy { visibility:visible; }
+.wi4 .wi4-asg .wi4-cpy:hover { color:#0B1929; border-color:#94A3B8; }
 
 /* National columns (§e #12). Never «ΠΡΟΣ ΑΝΑΘΕΣΗ» for an unread leg: .unk
    is the «—» of §d.2a. Collapsed column = a dot where a leg exists, in the

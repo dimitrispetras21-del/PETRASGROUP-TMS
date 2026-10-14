@@ -1028,6 +1028,11 @@ function _asgHTML(row, rs) {
     if (rs.NO_TRUCK) r = ' data-r="NO_TRUCK"';
   }
   const box = `<button type="button" class="wi4-box ${cls}"${r} title="${_esc(title)}"${open ? ` onclick="event.stopPropagation();${open}"` : ''}>${inner}</button>`;
+  // Copy the plates in one click (walkthrough 13/10 item 16, C5): on row hover,
+  // over the box's right end, so no width on the board moves. Every role, as it
+  // writes nothing; the per-load menu has the same action for the keyboard.
+  const pls = row.saved && typeof platesText === 'function' ? (partner ? platesText('', '', row.partnerPlates) : platesText(truck, trailer)) : '';
+  const cpy = pls ? `<button type="button" class="wi4-cpy" title="Αντιγραφή πινακίδων: ${_esc(pls)}" aria-label="Αντιγραφή πινακίδων ${_esc(pls)}" data-plates="${_esc(pls)}" onclick="event.stopPropagation();copyPlates(this.dataset.plates)">${_ico('clipboard', 12)}</button>` : '';
   // Print keeps .wk3-prt + data-shq (right-click / long-press share menu,
   // §a.7) and is DRAWN again (review 11/10, P2): on row hover, in its own slot
   // right of the paper plane, never on the box. Roles with planning:'view'
@@ -1048,7 +1053,7 @@ function _asgHTML(row, rs) {
       : pb('Εκτύπωση εντολής εξαγωγής — δεξί κλικ: κοινή χρήση', `${shq(oid, 'export')} data-shtitle="Εντολή εξαγωγής — W${_D().week}"`, `WI_INTERNAL.print(${row.id},'export')`);
   }
   const plane = _q(oid) ? `<button type="button" class="wi4-plane" title="Ενέργειες φορτίου" aria-label="Ενέργειες φορτίου" onclick="event.stopPropagation();WI4Actions.openRowMenu(event,'${_q(oid)}')">${PLANE}</button>` : '';
-  return `<div class="wi4-asg">${box}${plane}${prt}</div>`;
+  return `<div class="wi4-asg">${box}${cpy}${plane}${prt}</div>`;
 }
 // why = every reason of the row in one line (_whyOf): the rail is a colour
 // and a shape, the title of the number beside it says what they mean.

@@ -4708,12 +4708,23 @@ function _wiMenuPrint(rowId,isImp){
 // The item-building half of _wiCtx (TECH_DESIGN §a.5): the same HTML, now
 // callable by the v4 per-load menu, which gathers items instead of copying
 // them (principle 3). `row.id` stands where `rowId` stood — the same value.
+// The plates of a row as clients and the border want them (item 16, 13/10).
+function _wiPlatesOf(row){
+  if(!row||!row.saved||typeof platesText!=='function') return '';
+  const D=WINTL.data;
+  const partner=row.partnerLabel||D.partners.find(p=>p.id===row.partnerId)?.label||'';
+  return partner?platesText('','',row.partnerPlates)
+    :platesText(row.truckLabel||D.trucks.find(t=>t.id===row.truckId)?.label||'',row.trailerLabel||D.trailers.find(t=>t.id===row.trailerId)?.label||'');
+}
+function _wiCopyPlates(rowId){ copyPlates(_wiPlatesOf(WINTL.rows.find(r=>r.id===rowId))); }
 function _wiCtxItems(row){
   const isGroup=row.orderIds.length>1;
   const others=_wiExpGroupCands(row);
   let html='';
   html+=_wiCtxBtn('Ανάθεση…',`_wiPanelAssign(${row.id},false)`);
   html+=_wiCtxBtn('Εκτύπωση…',`_wiMenuPrint(${row.id},false)`);
+  // Item 16 (13/10): copy the plates; v4 gathers this item into its per-load menu.
+  if(_wiPlatesOf(row)) html+=_wiCtxBtn('Αντιγραφή πινακίδων',`_wiCopyPlates(${row.id})`);
   // Owner 7/9: a leg's own menu keeps every normal action AND gains a way
   // back to the parent's form — the parent no longer has a row of its own
   // to click on, but its info (goods/pallets/client) still needs fixing.
@@ -8287,6 +8298,8 @@ window._wiPanelGroupSum = _wiPanelGroupSum;
 window._wiPanelGroupGo = _wiPanelGroupGo;
 window._wiPanelAssign = _wiPanelAssign;
 window._wiMenuPrint = _wiMenuPrint;
+// Item 16 (13/10): the row menu's «Αντιγραφή πινακίδων» (inline onclick).
+window._wiCopyPlates = _wiCopyPlates;
 window._wiPanelWeekShift = _wiPanelWeekShift;
 window._wiLegCtx = _wiLegCtx;
 window._wiPanelConfirmUnlink = _wiPanelConfirmUnlink;

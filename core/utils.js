@@ -244,6 +244,29 @@ function formatCurrency(v, currency = '€') {
   return currency + ' ' + Number(v).toLocaleString('el-GR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
+// A load's plates for clients and the border (walkthrough 13/10 item 16, the
+// dispatcher's C5): our own fleet «truck / trailer», a partner's plates as he
+// typed them (20 of 21 already read «truck/trailer», 14/10). No driver name.
+function platesText(truck, trailer, partnerPlates) {
+  const p = String(partnerPlates || '').trim();
+  if (p) return p;
+  return [truck, trailer].map(x => String(x || '').trim()).filter(x => x && x !== '—').join(' / ');
+}
+// One click copies them. A refused clipboard (http, an old browser) falls back
+// to a box to copy from, never a silent nothing; no plates says so.
+async function copyPlates(text) {
+  const t = String(text || '').trim();
+  if (!t) { if (typeof toast === 'function') toast('Δεν υπάρχουν πινακίδες σε αυτή την ανάθεση', 'warn'); return false; }
+  try {
+    await navigator.clipboard.writeText(t);
+    if (typeof toast === 'function') toast('Αντιγράφηκε: ' + t, 'success');
+    return true;
+  } catch (e) {
+    window.prompt('Αντιγραφή πινακίδων (Ctrl+C):', t);
+    return false;
+  }
+}
+
 function expiryClass(dateStr) {
   if (!dateStr) return '';
   const days = Math.ceil((new Date(dateStr) - new Date()) / 86400000);

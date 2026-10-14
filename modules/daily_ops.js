@@ -518,6 +518,11 @@ const _OPS_STYLE=`<style>
   .do-tag{display:inline-block;height:16px;line-height:16px;padding:0 8px;border-radius:var(--radius-full);font-size:var(--text-xs);font-weight:700;letter-spacing:.04em;color:var(--surface-card);vertical-align:1px;margin-right:4px}
   .do-tag.prt{background:var(--chip-partner)}
   .do-asg.prt .do-main{color:var(--chip-partner)}
+  .do-asg{position:relative}
+  .do-cpy{position:absolute;right:4px;top:50%;margin-top:-10px;width:20px;height:20px;padding:0;display:inline-grid;place-items:center;border:1px solid #CBD5E1;border-radius:4px;background:#FFFFFF;color:#475569;cursor:pointer;visibility:hidden}
+  .do-cpy svg{width:12px;height:12px}
+  .do-t tr.do-hover:hover .do-cpy,.do-asg:focus-within .do-cpy{visibility:visible}
+  .do-cpy:hover{color:#0B1929;border-color:#94A3B8}
   .do-tag.none{background:var(--unassigned)}
   .do-tag.lot{background:var(--surface-dark)}
   /* 060 local relay: its own word AND colour (DESIGN.md E) — ink, not the
@@ -1018,16 +1023,26 @@ function _opsRow(rec,num,type,isToday,cls) {
 // «Partner Truck Plates» is NOT requested in OPS_FIELDS (the request must stay
 // byte-identical to the 28/8 recording), so the partner line shows only the
 // company; when the pair-inherit above brought plates in memory, they appear.
+// Copy the plates in one click (walkthrough 13/10 item 16, C5), on row hover.
+// Raw plates from the record (the cell's `truck` is escaped HTML); a partner's
+// only when «Partner Truck Plates» is in memory (it is not in OPS_FIELDS).
+function _opsCpy(f, partner){
+  if(typeof platesText!=='function') return '';
+  const trId=getLinkedId(f['Trailer']), tr=trId?(getRefTrailers().find(r=>r.id===trId)||{}).fields||{}:{};
+  const t=partner?platesText('','',f['Partner Truck Plates']):platesText(getTruckPlate(getLinkedId(f['Truck']))||'',tr['License Plate']||'');
+  if(!t) return '';
+  return `<button type="button" class="do-cpy" title="Αντιγραφή πινακίδων: ${escapeHtml(t)}" aria-label="Αντιγραφή πινακίδων ${escapeHtml(t)}" data-plates="${escapeHtml(t)}" onclick="event.stopPropagation();copyPlates(this.dataset.plates)">${typeof icon==='function'?icon('clipboard',12):'⧉'}</button>`;
+}
 function _opsAsgCell(f, truck, driver, partner) {
   const sub=s=>s?`<span class="do-sl">${s}</span>`:'';
   if(partner){
     const name=getPartnerName(getLinkedId(f['Partner']))||'—';
     const plates=escapeHtml(String(f['Partner Truck Plates']||''));
-    return `<td class="do-asg do-wrap prt"><span class="do-main"><span class="do-tag prt">ΣΥΝ.</span>${name}</span>${sub([plates,driver].filter(Boolean).join(' · '))}</td>`;
+    return `<td class="do-asg do-wrap prt"><span class="do-main"><span class="do-tag prt">ΣΥΝ.</span>${name}</span>${sub([plates,driver].filter(Boolean).join(' · '))}${_opsCpy(f,true)}</td>`;
   }
   if(truck||driver){
     // `truck` is already «plate / trailer», escaped by the ref helpers.
-    return `<td class="do-asg do-wrap"><span class="do-main">${truck||'—'}</span>${sub(driver)}</td>`;
+    return `<td class="do-asg do-wrap"><span class="do-main">${truck||'—'}</span>${sub(driver)}${_opsCpy(f,false)}</td>`;
   }
   return `<td class="do-asg do-wrap"><span class="do-main"><span class="do-tag none">ΠΡΟΣ ΑΝΑΘΕΣΗ</span></span></td>`;
 }
