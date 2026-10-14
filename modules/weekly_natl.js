@@ -1820,7 +1820,8 @@ function _wnGrpLines(dels, noInfo, stopLine) {
     const known = own.filter(s => s.fields[F.STOP_PALLETS] != null);
     const p = known.reduce((a, s) => a + s.fields[F.STOP_PALLETS], 0);
     const inf = noInfo[id];
-    const price = (typeof inf.price === 'number') ? ' — ' + inf.price.toLocaleString('el-GR') + ' €' : '';
+    // 0 € = no price (owner 13/10): one rule, OrdersCommon.hasPrice.
+    const price = OrdersCommon.hasPrice({ Price: inf.price }) ? ' — ' + OrdersCommon.price({ Price: inf.price }).toLocaleString('el-GR') + ' €' : '';
     html += `<div class="st"><span class="p">${known.length ? p + 'p' : '—'}</span>`
           + `<span><b>${escapeHtml(inf.client || 'πελάτης')}</b>${price}</span>`
           + `<span class="o">${own.length} σημεί${own.length===1?'ο':'α'}</span></div>`

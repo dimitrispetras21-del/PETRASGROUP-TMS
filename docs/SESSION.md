@@ -20,6 +20,7 @@
 - Weekly International v4 fixes (`fix/wi4-*`): Dimitris.
 - Session rules and this file (`docs/session-rules`): Valuedriven.
 - Importing the Valuedriven backend, tests and CI into this repo: Valuedriven, PR planned this week.
+- Orders › «Εβδομάδα» v4 (one row = one RT): built on `feat/orders-week-v4`, PR open, merge = Dimitris; after merge: live check (totals vs SELECT, 0 console errors).
 
 **Do not touch**
 - GROUPAGE LINES are never deleted, only set to `Unassigned`.
@@ -29,6 +30,20 @@
 **Who gets called** when production or the nightly backup breaks: to agree (Dimitris, Nick).
 
 ## Log
+
+### 2026-10-13 · Orders › Εβδομάδα v4 implemented (PR, not merged)
+- Rebuilt `modules/orders_week_view.js` + `.ow4` CSS: one row = one RT, nationals paired by NATIONAL LOADS `Matched Load` (owner), no flag / no old view (owner).
+- 0 € = no price everywhere via `OrdersCommon.hasPrice` (Προς τιμολόγηση, order cards, Weekly National groupage lines, Costs P&L); 75 intl orders at 0 € now read «χωρίς τιμή».
+- Every read failure is a visible strip; ORDERS also read by `Plan Week Start`; `/costs/rt` window narrowed with a 500-cap strip.
+- Proof: node 583/583, browser rig 74/74, DOM check 0 sub-word cuts at 1440/1920.
+- Left: invoicing design (owner), «≠ Weekly» mark and closed sidebar at 1440 (deferred); at 1440 with the sidebar open the intl card scrolls sideways.
+
+### 2026-10-13 · Orders › Εβδομάδα v4 design approved
+- Owner approved the design on Figma page `1514:8013` (1440 `1518:8013`, 1920 `1518:9099`, states `1519:8013`); images in `docs/orders-week-v4/shots/`.
+- Row = RT, mirrored like Weekly v4; nationals in a separate section; net amounts only (no VAT); «ατιμολόγητα», never parentheses.
+- The parallel design on «Screens» (`1510:9821`…) was not chosen; its critic's code findings are kept in `docs/DECISION_LOG.md`.
+- Owner 13/10: 0 € = no price everywhere (Προς τιμολόγηση follows `hasPrice`).
+- Left: implementation in a new session (branch + PR).
 
 ### 2026-10-12 · on-site day 1 · session rules and this file
 - Added ΚΑΝΟΝΕΣ SESSION at the top of `CLAUDE.md`, this file, and `AGENTS.md` (points Codex to `CLAUDE.md`).

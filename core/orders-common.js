@@ -277,13 +277,15 @@ const OrdersCommon = {
   // (Source National Order, Truck, Driver, Partner, Partner Truck Plates).
   // Batches of 90 — one OR() over every candidate blew past the formula limit
   // (22/9). Shared by orders_natl.js (the «εκτός» check) and OrdersData, so
-  // «is it on the board / who drives it» is asked one way only.
-  async natLoadsFor(natlRecs) {
+  // «is it on the board / who drives it» is asked one way only. `fields`:
+  // the «Εβδομάδα» view asks for more labels (pair, status) through the SAME
+  // query instead of a copy of it; without it the request is unchanged.
+  async natLoadsFor(natlRecs, fields) {
     const out = new Map();
     const cand = (natlRecs || []).filter(r => !(r.fields || {})['National Groupage']);
     for (const part of OrdersList.chunk(cand, 90)) {
       const ff = `OR(${part.map(r => `FIND("${r.id}",ARRAYJOIN({Source National Order},","))>0`).join(',')})`;
-      const nls = await atGetAll(TABLES.NAT_LOADS, { filterByFormula: ff, fields: ['Source National Order', 'Truck', 'Driver', 'Partner', 'Partner Truck Plates'] }, false);
+      const nls = await atGetAll(TABLES.NAT_LOADS, { filterByFormula: ff, fields: fields || ['Source National Order', 'Truck', 'Driver', 'Partner', 'Partner Truck Plates'] }, false);
       nls.forEach(n => { const id = getLinkedId(n.fields['Source National Order']); if (id && !out.has(id)) out.set(id, n); });
     }
     return out;

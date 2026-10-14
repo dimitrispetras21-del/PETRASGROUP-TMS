@@ -272,6 +272,9 @@ function selectNatlOrder(recId) {
     pId ? routeRow(f['Loading DateTime'], 'ΠΑΡΑΛΑΒΗ', pId, palTotal) : '',
     ...delivIds.map(id => routeRow(f['Delivery DateTime'], 'ΠΑΡΑΔΟΣΗ', id, delivIds.length === 1 ? palTotal : '')),
   ].join('') || `<div class="on-row"><span class="on-row-v dim">${_ON_NA}</span></div>`;
+  // 0 € = no price (owner 13/10): OrdersCommon.hasPrice, the invoicing gate's
+  // rule — a 0 € load must read «—» here, not «0 €», while invoicing blocks it.
+  const priced = OrdersCommon.hasPrice(f);
 
   panel.innerHTML = `
     <div class="on-card-head">
@@ -290,7 +293,7 @@ function selectNatlOrder(recId) {
       ${_onDF('Εμπόρευμα', f['Goods'] ? escapeHtml(f['Goods']) : _ON_NA, !f['Goods'])}
       ${_onDF('Παλέτες', f['Pallets'] != null ? escapeHtml(String(f['Pallets'])) : _ON_NA, f['Pallets'] == null)}
       ${_onDF('Θερμοκρασία', f['Temperature °C'] != null ? escapeHtml(String(f['Temperature °C'])) + ' °C' : _ON_NA, f['Temperature °C'] == null)}
-      ${can('costs')!=='none' ? _onDF('Τιμή', f['Price'] != null ? Number(f['Price']).toLocaleString('el-GR') + ' €' : _ON_NA, f['Price'] == null) : ''}
+      ${can('costs')!=='none' ? _onDF('Τιμή', priced ? Number(f['Price']).toLocaleString('el-GR') + ' €' : _ON_NA, !priced) : ''}
       ${_onDF('Τιμολογήθηκε', f['Invoiced'] ? 'Ναι' : 'Όχι')}
     </div>
     <div class="on-sec sunken">

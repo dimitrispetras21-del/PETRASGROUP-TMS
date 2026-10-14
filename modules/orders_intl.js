@@ -360,7 +360,10 @@ function _oiCardHtml(rec, opts) {
   const reefer = _OI_REEFER[f['Refrigerator Mode']] || f['Refrigerator Mode'] || '';
   const pal = _stopsTotalPallets(recId) || f['Total Pallets'];
   const gw = f['Gross Weight kg'];
-  const hasPrice = f['Price'] !== null && f['Price'] !== undefined && f['Price'] !== '';
+  // 0 € is «no price» (owner 13/10): one rule, OrdersCommon.hasPrice, the same
+  // as the invoicing gate — a 0 € order must not read «Τιμή 0,00» here while
+  // «Προς τιμολόγηση» blocks it for a missing price.
+  const hasPrice = OrdersCommon.hasPrice(f);
   let peV = 'Όχι', peCls = '';
   if (pe) {
     const pend = [];
