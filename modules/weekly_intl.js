@@ -174,7 +174,8 @@ async function _wiInjectStopSummaries(allOrders) {
         const namesOf=t=>stops.filter(s=>s.fields[F.STOP_TYPE]===t)
           .sort((a,b)=>(a.fields[F.STOP_NUMBER]||0)-(b.fields[F.STOP_NUMBER]||0))
           .map(s=>{const lid=Array.isArray(s.fields[F.STOP_LOCATION])?s.fields[F.STOP_LOCATION][0]:null;
-            return {n:lid?(_fhLocationsMap[lid]||''):'', dt:s.fields[F.STOP_DATETIME]||''};})
+            // p: the stop's own pallets, so a groupage row on v4 can show them per stop (item 23, 14/10).
+            return {n:lid?(_fhLocationsMap[lid]||''):'', dt:s.fields[F.STOP_DATETIME]||'', p:s.fields[F.STOP_PALLETS]};})
           .filter(x=>x.n);
         const L=namesOf('Loading'), D=namesOf('Unloading');
         if(L.length) r.fields._stopsL=L;

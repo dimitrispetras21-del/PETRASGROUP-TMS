@@ -197,7 +197,7 @@ function _stopsOf(f, kind) {
   return L0.map((x) => {
     const src = Array.isArray(arr) && arr.length ? arr[x._i] : null;
     const raw = src ? (typeof src === 'string' ? src : src.n) : (L0.length === 1 ? I.raw(str) : x.n);
-    return { n: raw || x.n, dt: x.dt, _i: x._i };
+    return { n: raw || x.n, dt: x.dt, _i: x._i, pal: src && typeof src === 'object' ? src.p : null };
   });
 }
 // A stop name → {title, city, cc, place}. Two producers write stop names
@@ -789,23 +789,42 @@ function _ptHTML(s, d) {
   if (s.badge == null) return `<div class="wi4-pt" style="display:block"${click}${drag}>${l1}${l2}</div>`;
   return `<div class="wi4-pt"${click}${drag}><span class="wi4-pt-n">${_esc(s.badge)}</span>${l1}${l2}</div>`;
 }
-// Stops of one end: a single order's points, or one point per MEMBER of a
-// groupage (the old board's rule: ① = 1st member, never a city parsed out of
-// the first member's summary).
+// Stops of one end: a single order's points, or EVERY stop of every member of
+// a groupage. Until 14/10 a groupage drew one point per member (its first
+// loading or last delivery) with the member's total, so 462 + 471 read «2+2»
+// with 26π on one stop while the orders had 3 + 3 (walkthrough item 23, Nick
+// 14/10). Now: each member's own stops with their own pallets (an order's only
+// stop on this end takes its total), in the order the paper and the WhatsApp
+// text use (print.html groupRoute): an export's loadings and an import's
+// deliveries by date, the other end in member order, ties by member then stop.
+// Every point stays its member's drag tile; past the row's room the fold «+N»
+// keeps them (his 11/10 rule, _ptsHTML). Display only: no stop is written.
 function _sideOf(recs, kind, opt) {
   const o = opt || {};
   const I = W();
   if (recs.length > 1) {
-    const stops = recs.map((r, i) => {
+    const isExport = ((recs[0] && recs[0].fields) || {})['Direction'] === 'Export';
+    const byDate = (kind === 'load') === isExport;
+    const pts = [];
+    recs.forEach((r, mi) => {
       const f = r.fields || {};
       const L0 = _stopsOf(f, kind);
-      const nm = L0.length ? _splitName(L0[kind === 'load' ? 0 : L0.length - 1].n) : { title: I.clientName(f) || '—', place: '' };
       const st = I.stFlags(f);
       const p = _pals([f]);
-      return { n: i + 1, label: nm.title, place: nm.place, pallets: p.known ? p.n : null, done: kind === 'load' ? st.loaded : st.delivered,
-        oid: r.id, drag: o.dragRowId != null ? { rowId: o.dragRowId } : null };
+      const list = L0.length ? L0 : [{ n: I.clientName(f) || '—', _none: true }];
+      const orderDt = f[kind === 'load' ? 'Loading DateTime' : 'Delivery DateTime'] || '';
+      list.forEach((x, si) => {
+        const nm = x._none ? { title: x.n, place: '' } : _splitName(x.n);
+        const own = x.pal != null && x.pal !== '' && isFinite(+x.pal) ? +x.pal : null;
+        pts.push({ mi, si, dt: x.dt || orderDt, label: nm.title, place: nm.place,
+          pallets: own != null ? own : (list.length === 1 && p.known ? p.n : null),
+          done: kind === 'load' ? st.loaded : st.delivered, oid: r.id,
+          drag: o.dragRowId != null ? { rowId: o.dragRowId } : null });
+      });
     });
-    const arr = recs.map((r) => ({ n: stops[recs.indexOf(r)].label, dt: (r.fields || {})[kind === 'load' ? 'Loading DateTime' : 'Delivery DateTime'] }));
+    if (byDate) pts.sort((a, b) => String(a.dt || '9').slice(0, 10).localeCompare(String(b.dt || '9').slice(0, 10)) || a.mi - b.mi || a.si - b.si);
+    const stops = pts.map((s, i) => ({ n: i + 1, label: s.label, place: s.place, pallets: s.pallets, done: s.done, oid: s.oid, drag: s.drag }));
+    const arr = pts.map((s) => ({ n: s.label, dt: s.dt }));
     return { stops, dateTick: kind === 'load', showPal: true, xfold: I.moreStops(arr.map((x) => x.n).join(', '), arr, kind) };
   }
   const r = recs[0], f = (r && r.fields) || {};
