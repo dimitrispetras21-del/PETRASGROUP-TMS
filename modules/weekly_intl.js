@@ -1494,7 +1494,7 @@ function _wiImpRowHTML(row,impNo){
   let loadCard=segOn
     ? _wiSegPillWrap(row.id,members,'load',true,true)
     : _wi2Card({cls:stR.loaded?'ok':'', date:_wi2Date(imp.id,'Loading DateTime',lIso,lIso?_wk3D(_wiFmt(lIso)):'—',stR.loaded?' done':'','Ημ. φόρτωσης'+(stR.loaded?' — φορτώθηκε ✓':'')), name:lo.name, sub:lo.sub, extra:_wk3MoreStops(fromStr,f._stopsL,'load')});
-  const right=`<span class="wi2-flags">${_wiBadges(f,imp.id,row.orderIds&&row.orderIds.length>1?row.orderIds:null)}</span>${_wi2Pal(f)}${f['Reference']?`<span class="wi2-ref" title="Κωδικός αναφοράς">${escapeHtml(String(f['Reference']))}</span>`:''}`;
+  const right=`<span class="wi2-flags">${_wiBadges(f,imp.id,row.orderIds&&row.orderIds.length>1?row.orderIds.map(id=>data.imports.find(r=>r.id===id)||id):null)}</span>${_wi2Pal(f)}${f['Reference']?`<span class="wi2-ref" title="Κωδικός αναφοράς">${escapeHtml(String(f['Reference']))}</span>`:''}`;
   let delCard;
   if(segOn){
     delCard=_wiSegPillWrap(row.id,members,'del',true,true,_wiSegTotalsHTML(members));

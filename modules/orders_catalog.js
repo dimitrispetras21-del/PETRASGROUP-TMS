@@ -375,8 +375,7 @@ const OrdersCatalog = (() => {
     S.namesPending = !_refReady() || !_fhLocationsArr.length || allRecs.some(r => { const c = (r.fields['Client'] || [])[0]; return c && !_fhClientsMap[c]; });
     S.rows = [...intl.records.map(r => _row(r, 'intl')), ...natl.records.map(r => _row(r, 'natl'))];
     ctx.setActions(_actionsHtml());
-    const warnHtml = ws => ws.map(w => `<div class="oc-warn">⚠ ${esc(w)}</div>`).join('');
-    ctx.body.innerHTML = `<div id="ocWarns">${warnHtml([...(intl.warns || []), ...(natl.warns || [])])}</div>` + _layoutHtml();
+    ctx.body.innerHTML = `<div id="ocWarns">${_warnHtml([...(intl.warns || []), ...(natl.warns || [])])}</div>` + _layoutHtml();
     _apply();
     C().whenDocs(() => { if (ctx.isCurrent()) _apply(); });
     const n = S.rows.filter(_inScope).length;
@@ -388,7 +387,7 @@ const OrdersCatalog = (() => {
         const was = S.namesPending;
         S.namesPending = false;
         const late = ws.flat();
-        if (late.length) { const box = document.getElementById('ocWarns'); if (box) box.insertAdjacentHTML('beforeend', warnHtml(late)); }
+        if (late.length) { const box = document.getElementById('ocWarns'); if (box) box.insertAdjacentHTML('beforeend', _warnHtml(late)); }
         if (!was) return;
         S.rows = S.rows.map(r => _row(r.rec, r.type));
         _apply();
@@ -403,6 +402,8 @@ const OrdersCatalog = (() => {
     S.rows[i] = _row(rec, type);
     _apply();
   }
+
+  const _warnHtml = ws => ws.map(w => `<div class="oc-warn">⚠ ${esc(w)}</div>`).join('');
 
   // ── Public handlers (inline onclick) ─────────────────────────────────────
   async function open(type, id) {
@@ -436,6 +437,9 @@ const OrdersCatalog = (() => {
     try {
       const [ri, rn] = await Promise.allSettled([loadOrdersIntlData('all'), loadOrdersNatlData('all')]);
       if (!ctx || !ctx.isCurrent() || S.period !== from) return;
+      // Cleared while loading: the user is back on their period, so the
+      // all-dates rows must not land over it, and the subtitle says so.
+      if (!S.filters.q) { ctx.setSub(`Διεθνείς και εθνικές · ${OrdersList.countLabel(S.rows.filter(_inScope).length)} · ${PERIOD_LABEL[from]}`); return; }
       if (ri.status !== 'fulfilled' || rn.status !== 'fulfilled') {
         // Say it, and keep searching the loaded period: never an empty result
         // that reads as «no such order» (DESIGN.md #7).
@@ -448,6 +452,13 @@ const OrdersCatalog = (() => {
       const intl = ri.value, natl = rn.value;
       S.period = 'all'; S.widenedFrom = from;
       S.noLoad = natl.noLoad || new Set(); S.loads = natl.loads || new Map(); S.legParents = intl.legParents || null;
+      // The new rows replace the period's, so their loaders' warnings replace
+      // the period's too (a failed national-loads read must still say that the
+      // vehicle column cannot be trusted), and names are pending as in render().
+      const box = document.getElementById('ocWarns');
+      if (box) box.innerHTML = _warnHtml([...(intl.warns || []), ...(natl.warns || [])]);
+      const allRecs = [...intl.records, ...natl.records];
+      S.namesPending = !_refReady() || !_fhLocationsArr.length || allRecs.some(r => { const c = (r.fields['Client'] || [])[0]; return c && !_fhClientsMap[c]; });
       S.rows = [...intl.records.map(r => _row(r, 'intl')), ...natl.records.map(r => _row(r, 'natl'))];
       const sel = document.querySelector('.oc-toolbar select[onchange^="OrdersCatalog.period"]');
       if (sel) sel.value = 'all';
@@ -455,8 +466,11 @@ const OrdersCatalog = (() => {
       _apply();
       // Older orders may name clients the warm cache does not hold yet: the
       // loaders resolve namesReady once they do, as in render().
-      Promise.all([intl.namesReady, natl.namesReady].map(x => x || Promise.resolve([]))).then(() => {
+      S.namesP = Promise.all([intl.namesReady, natl.namesReady].map(x => x || Promise.resolve([]))).then(ws => {
         if (!ctx.isCurrent() || S.period !== 'all') return;
+        S.namesPending = false;
+        const late = ws.flat();
+        if (late.length) { const b = document.getElementById('ocWarns'); if (b) b.insertAdjacentHTML('beforeend', _warnHtml(late)); }
         S.rows = S.rows.map(r => _row(r.rec, r.type)); _apply();
       });
     } finally { S.widening = false; }

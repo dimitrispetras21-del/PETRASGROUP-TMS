@@ -49,6 +49,9 @@
 //            7/10); the locations' failure note shares the placement and the
 //            same check;
 //       (7d) stop numbers 8️⃣ 9️⃣ 🔟, then «#11» — never a number-less «▪️».
+//   (8) walkthrough item 26 (14/10): every stop line ends with that stop's
+//       pallets («· *10 παλέτες*», «pallets» on the partner text). (3) and (6)
+//       compare with that suffix taken off, so they still prove nothing else moved.
 // Backend fully stubbed; the page's clock is fixed. Run from the MAIN repo root
 // (its node_modules), static server serving the worktree:
 //   PW_BASE_URL=http://127.0.0.1:8991/.claude/worktrees/<dir>/ node <dir>/tests/critics/wa-text-rig.js
@@ -281,6 +284,9 @@ async function render(browser, html, qs, opts) {
 // the closing line at the end of each document.
 const expectFromBase = (msg, foot, keep) => msg.replace(/^📍 https:\/\/maps\.google\.com\/\?q=([^,\n]+),([^\n]+)$/gm, '📍 *$1, $2*\n$&')
   .replace(/^🔁 /m, keep + '\n🔁 ') + '\n\n' + foot;
+// (8) the per-stop pallets suffix; (3)/(6) compare against references without it.
+const PAL_RE = / · \*\d+ (παλέτες|παλέτα|pallets|pallet)\*$/gm;
+const noPal = m => m.replace(PAL_RE, '');
 // The stop block (header line to the blank line) that names this place.
 const blockOf = (msg, name) => (msg.split('\n\n').find(b => b.split('\n')[1] === name) || '');
 
@@ -292,38 +298,38 @@ const EXAMPLE = {
 👤 Driver D · TRK-1 / TRL-1
 
 *ΦΟΡΤΩΣΕΙΣ*
-1️⃣ *ΦΟΡΤΩΣΗ* · 08/10/2026 · #461
+1️⃣ *ΦΟΡΤΩΣΗ* · 08/10/2026 · #461 · *10 παλέτες*
 Packer V
 Street 1, Voitsberg, Αυστρία
 📍 *47.0446, 15.1567*
 📍 https://maps.google.com/?q=47.0446,15.1567
 
-2️⃣ *ΦΟΡΤΩΣΗ* · 09/10/2026 · #463
+2️⃣ *ΦΟΡΤΩΣΗ* · 09/10/2026 · #463 · *10 παλέτες*
 Packer S
 Street 1, Stubenberg, Αυστρία
 📍 *47.2441, 15.8019*
 📍 https://maps.google.com/?q=47.2441,15.8019
 
 *ΠΑΡΑΔΟΣΕΙΣ*
-1️⃣ *ΠΑΡΑΔΟΣΗ* · 11/10/2026 · #463
+1️⃣ *ΠΑΡΑΔΟΣΗ* · 11/10/2026 · #463 · *10 παλέτες*
 Client B1
 Street 1, Sofia, Βουλγαρία
 📍 *42.6977, 23.3219*
 📍 https://maps.google.com/?q=42.6977,23.3219
 
-2️⃣ *ΠΑΡΑΔΟΣΗ* · 11/10/2026 · #463
+2️⃣ *ΠΑΡΑΔΟΣΗ* · 11/10/2026 · #463 · *10 παλέτες*
 Client B2
 Street 1, Plovdiv, Βουλγαρία
 📍 *42.1354, 24.7453*
 📍 https://maps.google.com/?q=42.1354,24.7453
 
-3️⃣ *ΠΑΡΑΔΟΣΗ* · 12/10/2026 08:00 · #461
+3️⃣ *ΠΑΡΑΔΟΣΗ* · 12/10/2026 08:00 · #461 · *10 παλέτες*
 Client G1
 Street 1, Thessaloniki, Ελλάδα
 📍 *40.6401, 22.9444*
 📍 https://maps.google.com/?q=40.6401,22.9444
 
-4️⃣ *ΠΑΡΑΔΟΣΗ* · 12/10/2026 14:00 · #461
+4️⃣ *ΠΑΡΑΔΟΣΗ* · 12/10/2026 14:00 · #461 · *10 παλέτες*
 Client G2
 Street 1, Athens, Ελλάδα
 📍 *37.9838, 23.7275*
@@ -348,38 +354,38 @@ Ref: REF-463
 👤 Carrier P · AB-1234
 
 *LOADINGS*
-1️⃣ *LOADING* · 08/10/2026 · #461
+1️⃣ *LOADING* · 08/10/2026 · #461 · *10 pallets*
 Packer V
 Street 1, Voitsberg, Austria
 📍 *47.0446, 15.1567*
 📍 https://maps.google.com/?q=47.0446,15.1567
 
-2️⃣ *LOADING* · 09/10/2026 · #463
+2️⃣ *LOADING* · 09/10/2026 · #463 · *10 pallets*
 Packer S
 Street 1, Stubenberg, Austria
 📍 *47.2441, 15.8019*
 📍 https://maps.google.com/?q=47.2441,15.8019
 
 *DELIVERIES*
-1️⃣ *DELIVERY* · 11/10/2026 · #463
+1️⃣ *DELIVERY* · 11/10/2026 · #463 · *10 pallets*
 Client B1
 Street 1, Sofia, Bulgaria
 📍 *42.6977, 23.3219*
 📍 https://maps.google.com/?q=42.6977,23.3219
 
-2️⃣ *DELIVERY* · 11/10/2026 · #463
+2️⃣ *DELIVERY* · 11/10/2026 · #463 · *10 pallets*
 Client B2
 Street 1, Plovdiv, Bulgaria
 📍 *42.1354, 24.7453*
 📍 https://maps.google.com/?q=42.1354,24.7453
 
-3️⃣ *DELIVERY* · 12/10/2026 08:00 · #461
+3️⃣ *DELIVERY* · 12/10/2026 08:00 · #461 · *10 pallets*
 Client G1
 Street 1, Thessaloniki, Greece
 📍 *40.6401, 22.9444*
 📍 https://maps.google.com/?q=40.6401,22.9444
 
-4️⃣ *DELIVERY* · 12/10/2026 14:00 · #461
+4️⃣ *DELIVERY* · 12/10/2026 14:00 · #461 · *10 pallets*
 Client G2
 Street 1, Athens, Greece
 📍 *37.9838, 23.7275*
@@ -403,7 +409,7 @@ Ref: REF-463
 };
 // The stop header lines of a group text: «1️⃣ *ΦΟΡΤΩΣΗ* · 08/10/2026 · #461» + the name below it.
 const groupStops = m => { const ls = m.split('\n'); return ls.map((l, i) => {
-  const x = l.match(/^(\S+) \*(ΦΟΡΤΩΣΗ|ΠΑΡΑΔΟΣΗ|LOADING|DELIVERY)\* · (.+) · (#\S+)$/);
+  const x = l.match(/^(\S+) \*(ΦΟΡΤΩΣΗ|ΠΑΡΑΔΟΣΗ|LOADING|DELIVERY)\* · (.+?) · (#\S+)(?: · \*\d+ \S+\*)?$/);
   return x && { emo: x[1], load: x[2] === 'ΦΟΡΤΩΣΗ' || x[2] === 'LOADING', dt: x[3], tag: x[4], name: ls[i + 1] };
 }).filter(Boolean); };
 const NUM = ['1️⃣', '2️⃣', '3️⃣', '4️⃣', '5️⃣', '6️⃣', '7️⃣'];
@@ -412,7 +418,7 @@ const cargoBlock = (m, no) => (m.split('\n\n').find(b => /^\*(ΦΟΡΤΙΟ|CARGO
 // (7a) the Veroia stop of a text: the block that holds its maps link.
 const VS_LINK = '📍 https://maps.google.com/?q=40.6312,-0.5';
 const vsBlock = m => m.split('\n\n').find(b => b.split('\n').includes(VS_LINK)) || '';
-const vsDate = m => { const h = vsBlock(m).split('\n').find(l => / \*(ΦΟΡΤΩΣΗ|ΠΑΡΑΔΟΣΗ|LOADING|DELIVERY)\* · /.test(l)) || ''; return h.replace(/^\S+ \*[^*]+\* · /, '').replace(/ · #\S+$/, ''); };
+const vsDate = m => { const h = vsBlock(m).split('\n').find(l => / \*(ΦΟΡΤΩΣΗ|ΠΑΡΑΔΟΣΗ|LOADING|DELIVERY)\* · /.test(l)) || ''; return noPal(h).replace(/^\S+ \*[^*]+\* · /, '').replace(/ · #\S+$/, ''); };
 // The reference text with the Veroia stop dated d (the deliberate (7a) correction).
 const vsFix = (m, d) => d ? m.split('\n\n').map(b => b.split('\n').includes(VS_LINK) ? b.replace(/^(\S+ \*[^*]+\* · )[^\n]*/m, '$1' + d) : b).join('\n\n') : m;
 // The Veroia card of a document: the card whose address carries its coordinates.
@@ -427,7 +433,7 @@ const stopNums = m => m.split('\n').map(l => (l.match(/^(\S+) \*(ΦΟΡΤΩΣΗ|
   // (6) a single order: text and paper byte-for-byte as at SINGLE_REV.
   const sameAsSingle = async (r, qs, h, fix) => {
     const s0 = await render(browser, h || singleHtml, qs);
-    const same = JSON.stringify(r.wa) === JSON.stringify(s0.wa.map(fix || (m => m))) && r.full === s0.full && r.wa.length === 1;
+    const same = JSON.stringify(r.wa.map(noPal)) === JSON.stringify(s0.wa.map(fix || (m => m))) && r.full === s0.full && r.wa.length === 1;
     ok(same, '(6) single order: WhatsApp text and paper byte-for-byte as ' + SINGLE_REV + (same ? '' : ' — got ' + JSON.stringify(r.wa).slice(0, 300)));
   };
   if (process.env.DUMP) {   // print the texts of a query, for a person to read (no checks)
@@ -456,7 +462,7 @@ const stopNums = m => m.split('\n').map(l => (l.match(/^(\S+) \*(ΦΟΡΤΩΣΗ|
     if (noCoordsName) {
       for (const m of a.wa.filter(m => blockOf(m, noCoordsName))) {
         const b = blockOf(m, noCoordsName), b0 = blockOf(a0.wa[a.wa.indexOf(m)], noCoordsName);
-        ok(!/📍/.test(b) && b === b0, '(1) the stop without coordinates prints as before — ' + JSON.stringify(b));
+        ok(!/📍/.test(b) && noPal(b) === b0, '(1) the stop without coordinates prints as before — ' + JSON.stringify(b));
       }
     }
     // (2) the closing line
@@ -466,9 +472,14 @@ const stopNums = m => m.split('\n').map(l => (l.match(/^(\S+) \*(ΦΟΡΤΩΣΗ|
       ok(ls.filter(l => /^ℹ️/.test(l)).length === 1, '(2) the closing line appears once per document');
       ok(!m.includes(FOOT[sheet === 'driver' ? 'partner' : 'driver']), '(2) no closing line of the other language');
     }
+    // (8) the pallets on every stop line (every fixture stop holds 10)
+    for (const m of a.wa) {
+      const hs = m.split('\n').filter(l => /^\S+ \*(ΦΟΡΤΩΣΗ|ΠΑΡΑΔΟΣΗ|LOADING|DELIVERY)\* · /.test(l));
+      ok(hs.length > 0 && hs.every(l => / · \*\d+ (παλέτες|παλέτα|pallets|pallet)\*$/.test(l)), '(8) every stop line ends with its pallets — ' + JSON.stringify(hs.filter(l => !/ · \*\d+ \S+\*$/.test(l)).slice(0, 2)));
+    }
     // (3) nothing else moved
     const want = a0.wa.map(m => vsFix(expectFromBase(m, FOOT[sheet], KEEP[sheet]), cd));
-    const same = JSON.stringify(a.wa) === JSON.stringify(want);
+    const same = JSON.stringify(a.wa.map(noPal)) === JSON.stringify(want);
     ok(same, '(3) text = reference + exactly the three additions' + (same ? '' : ' — got ' + JSON.stringify(a.wa[0]).slice(0, 400)));
     ok(a.text === a0.text && /Συντ\/νες: |Coords: /.test(a.text), '(3) the paper (without the (4b) line) is identical to ' + BASE_REV + ' and already prints the coordinates');
     // (4b) on a numbered order: the line follows the cargo line with its number, in the sheet's language

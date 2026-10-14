@@ -247,7 +247,9 @@ const OrdersNoPrice = (() => {
     ctx.setActions(`<button type="button" class="${printCls}" onclick="OrdersNoPrice.print()">Εκτύπωση</button>`
       + '<button type="button" class="btn btn-secondary btn-sm" onclick="OrdersNoPrice.csv()">CSV</button>');
     _paint();
-    OrdersCommon.whenDocs(() => { if (ctx.isCurrent()) _paint(); });
+    // The index can land while a price is being typed: repaint with what is
+    // typed, and give the box its focus back.
+    OrdersCommon.whenDocs(() => { if (ctx.isCurrent()) _repaintKeepingInput(); });
   }
 
   const _rawClientName = id => {
@@ -493,6 +495,17 @@ const OrdersNoPrice = (() => {
       if (e && e._ours) reportError('Η τιμή δεν αποθηκεύτηκε', e);
       input.focus();
     }
+  }
+
+  function _repaintKeepingInput() {
+    const key = i => i.dataset.type + ':' + i.dataset.id;
+    const keep = {}, a = document.activeElement;
+    const ak = a && a.classList && a.classList.contains('np-in') ? key(a) : null;
+    V.ctx.body.querySelectorAll('input.np-in').forEach(i => { if (i.value) keep[key(i)] = i.value; });
+    _paint(keep);
+    if (!ak) return;
+    const el = [...V.ctx.body.querySelectorAll('input.np-in')].find(i => key(i) === ak);
+    if (el) { el.focus(); el.setSelectionRange(el.value.length, el.value.length); }
   }
 
   // Move the saved row without a reload, keeping what the owner already typed

@@ -301,7 +301,10 @@ function badge(orderId, opts) {
  */
 function badgeAny(items, opts) {
   const seen = new Set(), list = [];
-  for (const x of items || []) {
+  // An item that carries its fields also covers its split parent (docIdsOf),
+  // so a leg inside a group gets the same clip as the leg on its own row.
+  const all = (items || []).flatMap(x => (x && typeof x === 'object' && x.fields && !x.label) ? docIdsOf(x.id, x.fields) : [x]);
+  for (const x of all) {
     const id = x && typeof x === 'object' ? x.id : x;
     // Ids go into an onclick string: plain ids only (numeric or recXXXX).
     if (!id || seen.has(String(id)) || !/^[A-Za-z0-9_-]+$/.test(String(id)) || !hasDocs(id)) continue;

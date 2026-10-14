@@ -403,7 +403,9 @@ const OrdersInvoicingView = (() => {
       S.stripEnd = after > cur ? (S.sel > cur ? S.sel : cur) : after;
     }
     paint();
-    OC().whenDocs(() => { if (ctx.isCurrent()) paint(); });
+    // Only the table draws paperclips: repainting it alone leaves the search
+    // box and the card's ΤΠΥ box (and whatever is being typed there) alone.
+    OC().whenDocs(() => { if (ctx.isCurrent()) paintTable(view()); });
   }
   function rebuild() {
     S.all = annotate(S.set, clientName);

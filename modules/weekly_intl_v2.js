@@ -731,7 +731,7 @@ function _ptsHTML(side) {
   const k = 'p' + (++_pk);
   // A groupage side (its points are member tiles, drag sources and targets)
   // draws its own «+N» fold with the SAME tiles: a member hidden behind «+N»
-  // must stay draggable — today's fold (_wk3MoreStops) is plain text.
+  // must stay draggable, so its rows reuse the points' _ptEvents.
   const group = (side.stops || []).some((s) => s && s.drag);
   // pre/late: the leg's PREORDER / LATE reason. They ride on the first /
   // last SHOWN point, so a point folded behind «+N» never hides the word.
@@ -743,8 +743,8 @@ function _ptsHTML(side) {
 // «+N» (Nick 14/10): the tooltip said «Όλα τα σημεία» but listed only the
 // hidden points, and a groupage's panel held only those. Both now give the
 // WHOLE route of that end, numbered as on the row, with each point's place and
-// (groupage) pallets, so one hover or one click shows the route at once. A
-// single order's panel already listed every stop (_wk3MoreStops).
+// (groupage) pallets, so one click shows the route at once (no hover: one
+// trigger, one result). A single order opens the same table.
 // A point's click (open its order) and, for a groupage member, its drag tile:
 // one source, so a row of the «+N» table behaves exactly like the point on the row.
 function _ptEvents(s) {
@@ -785,7 +785,6 @@ function _ptsInner(r, d) {
   return h;
 }
 function _ptHTML(s, d) {
-  const oid = _q(s.oid);
   // ✓ is a meaningful graphic (aria-label), not text in the icon grey.
   const tick = s.tick ? `<span class="wi4-ok" role="img" aria-label="ολοκληρώθηκε">${_ico('check', 11)}</span>` : '';
   const delay = s.delayH ? ` <span class="wi4-delay">+${_esc(s.delayH)}ω</span>` : '';
