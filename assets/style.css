@@ -4553,6 +4553,13 @@ button.sidebar-toggle {
 }
 .entity-table-wrap thead th.sorted .sort-indicator { opacity: 1; color: var(--accent-text); }
 
+/* TableSort (core/ui.js): the same click-to-sort look as the entity lists above,
+   for any simple table that opts in with data-sort-id / data-sort (14/10). */
+table[data-sort-id] thead th[data-sort] { cursor: pointer; user-select: none; }
+table[data-sort-id] thead th[data-sort]:hover,
+table[data-sort-id] thead th[data-sort]:focus-visible { color: var(--accent-text); background: var(--accent-light); outline: none; }
+table[data-sort-id] thead th .ts-ind { color: var(--accent-text); }
+
 /* Sticky first column for wide tables */
 .entity-table-wrap table.sticky-first th:first-child,
 .entity-table-wrap table.sticky-first td:first-child {
@@ -7116,27 +7123,37 @@ button.dash-kpi:focus-visible {
 }
 
 /* ═══════════════════════════════════════════════════════════════
-   NOTIFICATION ACTION CHIPS — small action buttons in panel cards
+   NOTIFICATION CARD HIDE BUTTON — the card itself opens its page; the ✕ only
+   hides it (T70, 14/10). It sits inside .topbar, so it opts out of the
+   44px touch floor (.topbar button) that made the old Open/Snooze 44px tall.
 ═══════════════════════════════════════════════════════════════ */
-.notif-btn {
-  font: 600 11px 'DM Sans', sans-serif;
-  padding: 4px 10px;
-  border-radius: var(--radius);
-  border: 1px solid transparent;
-  cursor: pointer;
-  transition: filter 0.12s, background 0.12s;
+.topbar .notif-x {
+  order: 3; flex: none; align-self: flex-start;
+  min-height: 0; min-width: 0; width: 22px; height: 22px;
+  display: inline-flex; align-items: center; justify-content: center;
+  font: 600 12px 'DM Sans', sans-serif; line-height: 1;
+  color: var(--text-dim); background: transparent;
+  border: 1px solid transparent; border-radius: var(--radius-sm);
+  cursor: pointer; opacity: 0; transition: opacity 0.12s, background 0.12s;
 }
-.notif-btn-primary {
-  background: var(--accent);
-  color: #fff;
+.notif-item:hover .notif-x, .notif-x:focus-visible { opacity: 1; }
+.topbar .notif-x:hover { background: var(--bg-hover); color: var(--text); border-color: var(--border); }
+@media (hover: none) { .topbar .notif-x { opacity: 1; } }
+/* The panel is a column inside its 420px cap: header, a list that takes what is
+   left and scrolls, then the footer. With block layout the list's own 420px
+   max-height filled the panel and overflow:hidden cut the footer off (T71). */
+.topbar .notif-panel { flex-direction: column; }
+.topbar .notif-panel .notif-header { flex: none; }
+.topbar .notif-panel .notif-list { flex: 1 1 auto; min-height: 0; max-height: none; }
+.topbar .notif-panel .notif-all { flex: none; }
+/* Foot of the bell: the way to the full «Ειδοποιήσεις» page (T71, 14/10). */
+.topbar .notif-all {
+  display: block; width: 100%; min-height: 0; min-width: 0;
+  padding: 10px 16px; border: none; border-top: 1px solid var(--border);
+  background: var(--surface-sunken, var(--bg)); color: var(--accent);
+  font: 600 12px 'DM Sans', sans-serif; text-align: center; cursor: pointer;
 }
-.notif-btn-primary:hover { filter: brightness(1.1); }
-.notif-btn-ghost {
-  background: transparent;
-  color: var(--text-dim);
-  border-color: var(--border);
-}
-.notif-btn-ghost:hover { background: var(--bg-hover); color: var(--text); }
+.topbar .notif-all:hover { background: var(--bg-hover); }
 .notif-item.grouped { background: rgba(2,123,189,0.04); }
 .notif-children .notif-child:hover { background: var(--bg-hover); border-radius: var(--radius-sm); }
 
