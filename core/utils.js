@@ -1239,13 +1239,16 @@ let _notifItems = [];
 // no refresh has run yet in this tab.
 let _notifRaw = [];
 let _notifBuiltAt = 0;
+let _notifDueCount = 0;   // alerts not put «Αργότερα»: the bell footer's number, same as the page's «Όλες»
 
 // Read / «Αργότερα» state for the alerts, PER BROWSER and per username
 // (localStorage). Phase 1 of the notifications page (T71, Nick 14/10); phase 2
 // (T72) moves this to the database, so every caller goes through these four
 // functions and the swap stays inside this object. Alerts are computed live and
-// carry no id, so the key is _notifKey (title + start of sub): an alert whose
-// text changes is a new alert, which is what «ώσπου να αλλάξει» relies on.
+// carry no id of their own, so the key is the RECORD they are about (rid: order,
+// work order, vehicle + document) plus the alert's title; two orders with the same
+// text are two alerts. «Ώσπου να λυθεί» = hidden while that alert is still raised:
+// prune() forgets the state once the alert is gone.
 const NotifStore = (() => {
   const KEEP_MS = 30 * 864e5;   // forget state older than 30 days
   const lsKey = () => 'tms_notif_state_' + ((typeof user !== 'undefined' && user && user.username) || '').toLowerCase();
@@ -1270,6 +1273,13 @@ const NotifStore = (() => {
     },
     markRead(keys, on = true) { const s = load(); keys.forEach(k => { if (on) s.read[k] = Date.now(); else delete s.read[k]; }); save(s); },
     snooze(keys, until) { const s = load(); keys.forEach(k => { if (until == null) delete s.snooze[k]; else s.snooze[k] = { until, at: Date.now() }; }); save(s); },
+    // Drop state for keys not raised any more (only after a complete refresh).
+    prune(liveKeys) {
+      const s = load(); let n = 0;
+      for (const k of Object.keys(s.read)) if (!liveKeys.has(k)) { delete s.read[k]; n++; }
+      for (const k of Object.keys(s.snooze)) if (!liveKeys.has(k)) { delete s.snooze[k]; n++; }
+      if (n) save(s);
+    },
   };
 })();
 if (typeof window !== 'undefined') window.NotifStore = NotifStore;
@@ -1328,6 +1338,9 @@ async function _refreshNotifs() {
   const isEquip     = username === 'thodoris'   || isOwner || role === 'maintenance' || role === 'management';
   const isInvoicing = username === 'eirini'     || isOwner || role === 'accountant';
 
+  // False when any source failed: state for alerts missing from this refresh is
+  // then kept, because missing may mean «not loaded», not «resolved».
+  let _buildOk = true;
   try {
     // Fetch base data + extras only for users that need them
     const promises = [
@@ -1357,7 +1370,7 @@ async function _refreshNotifs() {
     }).forEach(r => {
       const f = r.fields;
       const route = orderRoute(f, 20);
-      items.push({ type: 'danger', title: `${escapeHtml(f['Direction']||'Order')} χωρίς ανάθεση`, sub: escapeHtml(route), page: 'orders_intl' });
+      items.push({ rid: r.id, type: 'danger', title: `${escapeHtml(f['Direction']||'Order')} χωρίς ανάθεση`, sub: escapeHtml(route), page: 'orders_intl' });
     });
 
     // ── 2. KELESMITOS — Master Planner ──
@@ -1370,7 +1383,7 @@ async function _refreshNotifs() {
                !f['Matched Import ID'] && f['Status'] !== 'Delivered' && f['Status'] !== 'Cancelled';
       }).slice(0, 5).forEach(r => {
         const f = r.fields;
-        items.push({ type: 'warn', title: 'Export χωρίς return load',
+        items.push({ rid: r.id, type: 'warn', title: 'Export χωρίς return load',
           sub: escapeHtml(`${orderDelName(f, 30)} — βρες import`), page: 'weekly_intl' });
       });
     }
@@ -1385,7 +1398,7 @@ async function _refreshNotifs() {
                f['Status'] !== 'Cancelled' && f['Status'] !== 'Delivered';
       }).slice(0, 5).forEach(r => {
         const f = r.fields;
-        items.push({ type: 'warn', title: 'Οδηγός μη ενημερωμένος',
+        items.push({ rid: r.id, type: 'warn', title: 'Οδηγός μη ενημερωμένος',
           sub: escapeHtml(`Φόρτωση σήμερα: ${orderLoadName(f, 25)}`), page: 'daily_ops' });
       });
 
@@ -1397,7 +1410,7 @@ async function _refreshNotifs() {
                f['Status'] !== 'Delivered' && f['Status'] !== 'Cancelled';
       }).slice(0, 5).forEach(r => {
         const f = r.fields;
-        items.push({ type: 'warn', title: 'Πελάτης μη ενημερωμένος',
+        items.push({ rid: r.id, type: 'warn', title: 'Πελάτης μη ενημερωμένος',
           sub: escapeHtml(`Παράδοση σήμερα: ${orderDelName(f, 25)}`), page: 'daily_ops' });
       });
 
@@ -1412,7 +1425,7 @@ async function _refreshNotifs() {
         return dayDiff >= 0 && dayDiff <= 3;
       }).slice(0, 5).forEach(r => {
         const f = r.fields;
-        items.push({ type: 'info', title: 'CMR εκκρεμεί',
+        items.push({ rid: r.id, type: 'info', title: 'CMR εκκρεμεί',
           sub: escapeHtml(`${f['Order Number']||''} ${(f['Delivery Summary']||'').slice(0,20)}`), page: 'daily_ops' });
       });
     }
@@ -1430,7 +1443,7 @@ async function _refreshNotifs() {
         return dayDiff >= 0 && dayDiff <= 3;
       }).slice(0, 5).forEach(r => {
         const f = r.fields;
-        items.push({ type: 'info', title: 'National χωρίς Performance',
+        items.push({ rid: r.id, type: 'info', title: 'National χωρίς Performance',
           sub: escapeHtml(`${f['Direction']||''} — ορίσε On-Time/Delayed`), page: 'weekly_natl' });
       });
 
@@ -1447,8 +1460,8 @@ async function _refreshNotifs() {
       }).slice(0, 5).forEach(r => {
         const f = r.fields;
         const what = [f['Vehicle Plate'], f['Description']].filter(Boolean).join(' · ');
-        items.push({ type: 'danger', title: `Κρίσιμη βλάβη · ${escapeHtml(f['Priority']||'')}`,
-          sub: escapeHtml(what.slice(0, 80) || 'Ανοιχτή εντολή εργασίας'), page: 'maint_req' });
+        items.push({ rid: r.id, type: 'danger', title: `Κρίσιμη βλάβη · ${escapeHtml(f['Priority']||'')}`,
+          sub: escapeHtml(Array.from(what).slice(0, 80).join('') || 'Ανοιχτή εντολή εργασίας'), page: 'maint_req' });
       });
     }
 
@@ -1462,9 +1475,9 @@ async function _refreshNotifs() {
             if (dt) {
               const days = Math.ceil((new Date(dt) - now) / 864e5);
               if (days < 0) {
-                items.push({ type: 'danger', title: `${escapeHtml(t.fields[plateField])} — ${escapeHtml(field.replace(' Expiry',''))} ΛΗΓΜΕΝΟ`, sub: `Εληξε ${Math.abs(days)} μερες πριν`, page: 'maint_expiry' });
+                items.push({ rid: t.id + ':' + field, type: 'danger', title: `${escapeHtml(t.fields[plateField])} — ${escapeHtml(field.replace(' Expiry',''))} ΛΗΓΜΕΝΟ`, sub: `Εληξε ${Math.abs(days)} μερες πριν`, page: 'maint_expiry' });
               } else if (days <= 14) {
-                items.push({ type: 'warn', title: `${escapeHtml(t.fields[plateField])} — ${escapeHtml(field.replace(' Expiry',''))} ληγει σε ${days}μ`, sub: escapeHtml(dt), page: 'maint_expiry' });
+                items.push({ rid: t.id + ':' + field, type: 'warn', title: `${escapeHtml(t.fields[plateField])} — ${escapeHtml(field.replace(' Expiry',''))} ληγει σε ${days}μ`, sub: escapeHtml(dt), page: 'maint_expiry' });
               }
             }
           });
@@ -1487,7 +1500,7 @@ async function _refreshNotifs() {
         return dayDiff >= 0 && dayDiff <= 14;
       }).slice(0, 8).forEach(r => {
         const f = r.fields;
-        items.push({ type: 'warn', title: 'Παραγγελία χωρίς τιμολόγιο',
+        items.push({ rid: r.id, type: 'warn', title: 'Παραγγελία χωρίς τιμολόγιο',
           sub: escapeHtml(`${f['Reference']||''} — ${(f['Client Summary']||f['Client Name']||'').slice(0,25)}`), page: 'invoicing' });
       });
     }
@@ -1503,6 +1516,7 @@ async function _refreshNotifs() {
       didFail(maint)    && 'αιτήματα συντήρησης',
     ].filter(Boolean);
     if (_failedSources.length) {
+      _buildOk = false;
       items.push({
         type: 'warn',
         title: 'Έλεγχος ειδοποιήσεων ελλιπής',
@@ -1515,16 +1529,21 @@ async function _refreshNotifs() {
     const reminders = JSON.parse(localStorage.getItem('tms_reminders') || '[]');
     const nowMs = Date.now();
     reminders.filter(r => new Date(r.time).getTime() <= nowMs && !r.dismissed).forEach(r => {
-      items.push({ type: 'info', title: 'Υπενθύμιση', sub: escapeHtml(r.text), page: null });
+      items.push({ rid: 'reminder:' + (r.id || r.time), type: 'info', title: 'Υπενθύμιση', sub: escapeHtml(r.text), page: null });
     });
 
-  } catch(e) { console.warn('Notif refresh error:', e); }
+  } catch(e) { _buildOk = false; console.warn('Notif refresh error:', e); }
 
   // The page lists everything; the dropdown leaves out what was put «Αργότερα»
   // on the page (persistent). The dropdown's own ✕ stays a per-tab hide.
   _notifRaw = items.slice();
   _notifBuiltAt = Date.now();
+  // An alert that is no longer raised is resolved: forget its read / «Αργότερα»
+  // state, so it starts fresh if it ever comes back (the code-review of 14/10:
+  // a snooze must never outlive its alert and hide a later one).
+  if (_buildOk) NotifStore.prune(new Set(_notifRaw.map(_notifKey)));
   const _stillDue = items.filter(it => !NotifStore.snoozedUntil(_notifKey(it)));
+  _notifDueCount = _stillDue.length;
   items.length = 0;
   items.push(..._stillDue);
 
@@ -1668,7 +1687,7 @@ async function _refreshNotifs() {
             </div>`;
         }).join('') : '<div class="notif-empty">Δεν υπαρχουν εκκρεμότητες · καλή δουλειά!</div>'}
       </div>
-      <button type="button" class="notif-all" onclick="event.stopPropagation();_notifOpen=false;document.getElementById('notifPanel').style.display='none';navigate('notifications')">Όλες οι ειδοποιήσεις (${_notifRaw.length}) →</button>`;
+      <button type="button" class="notif-all" onclick="event.stopPropagation();_notifOpen=false;document.getElementById('notifPanel').style.display='none';navigate('notifications')">Όλες οι ειδοποιήσεις (${_notifDueCount}) →</button>`;
   }
   // An open «Ειδοποιήσεις» page redraws from the same refresh, so the page and
   // the bell never disagree.
@@ -1680,7 +1699,11 @@ const _notifSnoozed = new Set();   // keys of snoozed items (cleared on reload)
 const _notifExpanded = {};         // idx → bool (group expanded)
 
 function _notifKey(n) {
-  return (n.title || '') + '|' + (n.sub || '').slice(0, 50);
+  // Record-based alerts: type + record + title (see NotifStore). Text only for the
+  // few with no record (a failed source, a group card); sliced by code point, so
+  // an emoji is never cut in half (a half surrogate breaks encodeURIComponent).
+  if (n.rid) return `${n.type}|${n.rid}|${n.title || ''}`;
+  return (n.title || '') + '|' + Array.from(n.sub || '').slice(0, 50).join('');
 }
 function _notifSnooze(idx) {
   const n = _notifItems[idx];

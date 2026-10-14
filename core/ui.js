@@ -487,9 +487,13 @@ if (typeof window !== 'undefined') {
 //   <table data-sort-id="<unique id>"> … <th data-sort="text|num|date">
 //   a cell may carry data-sort-value="…" when its text is not what should sort
 //   (a severity rank, an ISO date behind a «3/10» label).
-// It sorts the rows already in the DOM, so a page needs no sort code of its
-// own; a page that redraws its table calls TableSort.apply(root) after the
-// redraw to keep the user's choice. Boards and tables with grouped or nested
+// It sorts the rows already in the DOM. Clicks work from the markup alone; the
+// page calls TableSort.apply(root) after drawing the table so the headers get
+// keyboard focus, the ▲/▼ and aria-sort, and after every redraw to keep the
+// user's choice.
+// Parsing limits: «num» reads Greek numbers («1.234,56»), so an English decimal
+// («0.125») reads as 125; a year-less date («28/12») takes the current year, so
+// such a column sorts wrong across New Year. Boards and tables with grouped or nested
 // rows are not "simple" and should not opt in.
 const TableSort = (() => {
   const state = {};   // sort id → { col, dir: 1 asc | 2 desc }
@@ -558,6 +562,8 @@ const TableSort = (() => {
     });
     document.addEventListener('keydown', (e) => {
       if (e.key !== 'Enter' && e.key !== ' ') return;
+      // Same exemption as the click: a field inside a sortable header keeps its keys.
+      if (e.target.closest && e.target.closest('input, select, button, textarea')) return;
       const th = e.target.closest && e.target.closest('table[data-sort-id] thead th[data-sort]');
       if (th) { e.preventDefault(); toggle(th); }
     });

@@ -1,8 +1,8 @@
 // ============================================================================
 // notifications.js, «Ειδοποιήσεις»: every alert the bell computes, as one page
 // ----------------------------------------------------------------------------
-// Opened from «Όλες οι ειδοποιήσεις» at the foot of the bell (not in the
-// sidebar, Nick 14/10). The bell's dropdown shows at most 20 grouped cards; this
+// Opened from «Όλες οι ειδοποιήσεις» at the foot of the bell and from
+// Διαχείριση › Ειδοποιήσεις in the sidebar, every role (Nick 14/10). The bell's dropdown shows at most 20 grouped cards; this
 // page lists every alert of the same refresh, ungrouped, with tabs, category
 // chips, search and the usual notification-centre actions.
 //
@@ -12,7 +12,8 @@
 // So the page and the bell can never disagree, and no role sees an alert the
 // bell would not have shown them (per-username rules unchanged).
 //
-// STATE: read / «Αργότερα» live per browser in NotifStore (core/utils.js). This
+// STATE: read / «Αργότερα» live per browser in NotifStore (core/utils.js), keyed by
+// the record an alert is about, and forgotten once the alert is no longer raised. This
 // is phase 1 (T71). Phase 2 (T72) stores alerts and their state in the
 // database for history and audit; only NotifStore changes then.
 //
@@ -42,7 +43,8 @@ const NotifPage = (() => {
 
   let tab = 'all';
   let cat = '';
-  let q = '';
+  let q = '';      // normalised, for matching
+  let qRaw = '';   // as typed, for the input (spaces and capitals survive a redraw)
   const picked = new Set();
 
   const catOf = (n) => n.page ? (CAT_BY_PAGE[n.page] || 'Άλλα')
@@ -51,7 +53,8 @@ const NotifPage = (() => {
   // Plain text for search: titles and subs are stored already HTML-escaped by
   // _refreshNotifs (that is how the bell inserts them), so decode once here.
   // encodeURIComponent leaves ' as is, and these keys go inside onclick='…' strings.
-  const enc = (s) => encodeURIComponent(s).replace(/'/g, '%27');
+  // try/catch: a lone surrogate (half an emoji from user text) makes encodeURIComponent throw.
+  const enc = (s) => { try { return encodeURIComponent(s).replace(/'/g, '%27'); } catch (_) { return encodeURIComponent(Array.from(s).filter(c => c.length === 2 || !/[\ud800-\udfff]/.test(c)).join('')).replace(/'/g, '%27'); } };
 
   const plain = (html) => { const d = document.createElement('div'); d.innerHTML = html || ''; return d.textContent.toLowerCase(); };
 
@@ -75,7 +78,7 @@ const NotifPage = (() => {
   }
 
   const fmtUntil = (u) => {
-    if (u === 'change') return 'ώσπου να αλλάξει';
+    if (u === 'change') return 'ώσπου να λυθεί';
     const d = new Date(u);
     const p = (x) => String(x).padStart(2, '0');
     return `ως ${p(d.getDate())}/${p(d.getMonth() + 1)} ${p(d.getHours())}:${p(d.getMinutes())}`;
@@ -94,7 +97,7 @@ const NotifPage = (() => {
     return `${open}
       <button type="button" class="btn btn-ghost btn-sm" onclick="NotifPage.act('${r.read ? 'unread' : 'read'}',['${k}'])">${r.read ? 'Μη αναγνωσμένη' : 'Αναγνωσμένη'}</button>
       <select class="filter-select nc-later" aria-label="Αργότερα" onchange="NotifPage.act(this.value,['${k}']);this.selectedIndex=0">
-        <option value="">Αργότερα…</option><option value="h1">1 ώρα</option><option value="tomorrow">Ως αύριο</option><option value="change">Ώσπου να αλλάξει</option>
+        <option value="">Αργότερα…</option><option value="h1">1 ώρα</option><option value="tomorrow">Ως αύριο</option><option value="change">Ώσπου να λυθεί</option>
       </select>`;
   }
 
@@ -147,7 +150,7 @@ const NotifPage = (() => {
         <h2 class="nc-h">Ειδοποιήσεις</h2>
         <span class="nc-sub-h">${due.filter(r => r.n.type === 'danger').length} κρίσιμες · ${due.filter(r => r.n.type === 'warn').length} προς ενέργεια · ${due.filter(r => r.n.type === 'info').length} ενημέρωση${updated ? ` · ενημερώθηκε ${updated}` : ''}</span>
         <span class="nc-spacer"></span>
-        <input id="ncSearch" class="search-input nc-search" placeholder="Αναζήτηση…" value="${escapeHtml(q)}" oninput="NotifPage.search(this.value)">
+        <input id="ncSearch" class="search-input nc-search" placeholder="Αναζήτηση…" value="${escapeHtml(qRaw)}" oninput="NotifPage.search(this.value)">
         <button type="button" class="btn btn-ghost btn-sm" onclick="NotifPage.allRead()" ${due.some(r => !r.read) ? '' : 'disabled'}>Σήμανση όλων ως αναγνωσμένες</button>
       </div>
       <div class="nc-tabs" role="tablist">${tabs}</div>
@@ -173,8 +176,9 @@ const NotifPage = (() => {
     return undefined;
   };
 
-  // Every change also refreshes the bell's dropdown from the list already in
-  // memory (no new reads), so a «Αργότερα» here drops the card there too.
+  // The dropdown reads the same NotifStore, so a «Αργότερα» here is left out of
+  // it the next time the bell opens (opening refreshes). The red dot keeps its
+  // colour until that refresh or the 5-minute one.
   function apply(how, keys) {
     if (!how || !keys.length) return;
     if (how === 'read' || how === 'unread') NotifStore.markRead(keys, how === 'read');
@@ -191,7 +195,7 @@ const NotifPage = (() => {
     redraw,
     tab(t) { tab = t; picked.clear(); redraw(); },
     cat(c) { cat = decodeURIComponent(c); redraw(); },
-    search(v) { q = (v || '').trim().toLowerCase(); redraw(); },
+    search(v) { qRaw = v || ''; q = qRaw.trim().toLowerCase(); redraw(); },
     pick(k, on) { k = decodeURIComponent(k); on ? picked.add(k) : picked.delete(k); redraw(); },
     pickAll(on) { picked.clear(); if (on) visible(rows()).forEach(r => picked.add(r.key)); redraw(); },
     clearPick() { picked.clear(); redraw(); },
