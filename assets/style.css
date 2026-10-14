@@ -8231,18 +8231,21 @@ body.wi4-on #wi-ctx .wi4-m-sec .wi4-l2, body.wi4-on #wi-ctx .wi4-m-hd .wi4-l2 { 
    darker inside today only (6.2:1). Colour tokens stay as they are, so every
    other use of --wi4-amber (rails, borders) is unchanged. */
 .wi4-day.today .wi4-t-amb { color:#92400e; }
-/* «+N» route table on hover / focus (_rtipShow, Nick 14/10): number box | name |
-   place | pallets, 8px row padding and a line between rows. */
-.wi4-rtip { position:fixed; z-index:var(--z-float); display:none; pointer-events:none; background:var(--surface-card);
-  border:1px solid var(--border); border-radius:6px; box-shadow:var(--shadow-lg); padding:4px 8px; max-width:480px; }
-.wi4-rtip table { border-collapse:collapse; }
-.wi4-rtip th { padding:4px 8px; font:600 11px 'DM Sans',sans-serif; text-transform:uppercase; letter-spacing:0; color:var(--wi4-grey-2); text-align:left; background:none; border:none; }
-.wi4-rtip td { padding:8px; font-size:12px; color:var(--text); border-top:1px solid var(--wi4-line); white-space:nowrap; vertical-align:middle; }
-.wi4-rtip td.n { width:1%; }
-.wi4-rtip td.nm { font-weight:600; }
-.wi4-rtip td.pl { color:var(--wi4-grey-2); }
-.wi4-rtip .pa { text-align:right; font-variant-numeric:tabular-nums; font-weight:600; }
-.wi4-rtip .wi4-pt-n { display:inline-block; }
+/* «+N» on click: the route table (_routeTable, Nick 14/10), number box | name |
+   place | pallets | day, 8px row padding and a line between rows. It opens in
+   the fold's place (.wk3-xfold.open, absolute under its cell). */
+.wi4 .wk3-xfold.wi4-rfold.open { display:block; max-width:520px; padding:4px 8px; }
+.wi4-rtab { border-collapse:collapse; }
+.wi4-rtab th { padding:4px 8px; font:600 11px 'DM Sans',sans-serif; text-transform:uppercase; letter-spacing:0; color:var(--wi4-grey-2); text-align:left; background:none; border:none; white-space:nowrap; }
+.wi4-rtab td { padding:8px; font-size:12px; color:var(--text); border-top:1px solid var(--wi4-line); white-space:nowrap; vertical-align:middle; }
+.wi4-rtab td.n { width:1%; }
+.wi4-rtab td.nm { font-weight:600; }
+.wi4-rtab td.pl, .wi4-rtab td.dy { color:var(--wi4-grey-2); }
+.wi4-rtab .pa { text-align:right; font-variant-numeric:tabular-nums; font-weight:600; }
+.wi4-rtab .wi4-pt-n, .wi4-rtab .wk3-stopn { display:inline-block; }
+.wi4-rtab tr.wi4-rrow[onclick] { cursor:pointer; }
+.wi4-rtab tr.wi4-rrow[draggable="true"] { cursor:grab; }
+.wi4-rtab tr.wi4-rrow:hover td { background:var(--wi4-hover); }
 .wi4-day.closed .wi4-day-body { display:none; }
 /* Rails on a card's first/last row follow the card's 7px inner curve (8px
    radius − 1px border; Figma rail 1097:2648, the stripe clipped by the card)
