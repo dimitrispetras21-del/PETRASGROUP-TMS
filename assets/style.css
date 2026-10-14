@@ -2725,6 +2725,8 @@ button.ecard-meta-row-btn, .ecard-meta-row button.badge {
 /* Π2: second line inside truck/driver dropdown options — where the asset is
    already committed this week. 10px, no new column (density rule). */
 .wi-sdo-sub { font-size:11px; color:var(--warning); opacity:.95; margin-top:1px; }
+/* Assign-picker warnings (items 3, 4): open work order, document due; 6.5:1 on white. */
+.wi-sdo-sub.wi-sdo-warn { color:var(--danger); opacity:1; }
 .wi-sdo--busy { border-left:2px solid var(--warning-soft); }
 
 /* Ήσυχη προβολή (owner 8/8): τα per-row chips των Κυμάτων 1-2 κρύβονται από

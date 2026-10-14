@@ -597,6 +597,9 @@ async function _wiLoadAssets(){
   WINTL.data.trailers = getRefTrailers().map(r=>({id:r.id,label:r.fields['License Plate']||r.id}));
   WINTL.data.drivers  = getRefDrivers().filter(r=>r.fields['Active']).map(r=>({id:r.id,label:r.fields['Full Name']||r.id}));
   WINTL.data.partners = getRefPartners().map(r=>({id:r.id,label:r.fields['Company Name']||r.id}));
+  // Assign-picker warnings (items 3, 4): work orders read in the background,
+  // only for roles that can open the assign popover.
+  if(typeof preloadOpenWorkOrders==='function' && (typeof can!=='function' || can('planning')==='full')) preloadOpenWorkOrders();
 }
 
 /* ── MAIN ENTRY ────────────────────────────────────────────────────── */
@@ -681,6 +684,9 @@ async function renderWeeklyIntl(){
     WINTL.data.trailers = getRefTrailers().map(r=>({id:r.id,label:r.fields['License Plate']||r.id}));
     WINTL.data.drivers  = getRefDrivers().filter(r=>r.fields['Active']).map(r=>({id:r.id,label:r.fields['Full Name']||r.id}));
     WINTL.data.partners = getRefPartners().map(r=>({id:r.id,label:r.fields['Company Name']||r.id}));
+    // Assign-picker warnings (items 3, 4): the board's own load path (v4 too)
+    // starts the work-order read; only for roles that can open the popover.
+    if(typeof preloadOpenWorkOrders==='function' && (typeof can!=='function' || can('planning')==='full')) preloadOpenWorkOrders();
 
     // Local relays (060) keyed by the orders just fetched — exact by Parent
     // Order, not a {Date} window: an import's relay sits on its DELIVERY day,
@@ -3656,7 +3662,10 @@ function _wiOpenPopover(e,rowId){
       const l=(x.label||'').replace(/"/g,'&quot;');
       const a=showAv?avail(px,x.id):null;
       const s=a?`<div class="wi-sdo-sub${a.free?' free':''}">${a.txt}</div>`:'';
-      return `<div class="wi-sdo${a&&!a.free?' wi-sdo--busy':''}" data-id="${x.id}" data-lbl="${l}">${l}${s}</div>`;
+      // Items 3, 4 (13/10): open work order, document expired or due in 14 days. Warning only.
+      const vw=(px==='tk'||px==='tl')&&typeof vehicleWarnings==='function'?vehicleWarnings(px==='tl'?'trailer':'truck',x.id):[];
+      const w=vw.length?`<div class="wi-sdo-sub wi-sdo-warn">${escapeHtml(vw.join(' · '))}</div>`:'';
+      return `<div class="wi-sdo${a&&!a.free?' wi-sdo--busy':''}" data-id="${x.id}" data-lbl="${l}">${l}${s}${w}</div>`;
     }).join('');
     return `<div class="wi-sd" id="wsd-${uid}">
       <input type="text" class="wi-pop-inp wi-sdi" placeholder="${ph}" value="${sel.replace(/"/g,'&quot;')}"
