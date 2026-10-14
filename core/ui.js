@@ -478,3 +478,100 @@ if (typeof window !== 'undefined') window.UI_GLOBAL_KEYS = UI_GLOBAL_KEYS;
 if (typeof window !== 'undefined') {
   window.showEmpty = showEmpty;
 }
+
+// ─── TableSort: click-to-sort for any simple table (Nick 14/10) ───────────
+// One behaviour for every plain table, copied from the entity list pages
+// (core/entity.js entitySortToggle): click a header for ▲, again for ▼, a third
+// time back to the order the page drew; Enter/Space do the same; aria-sort
+// tells a screen reader. Opt-in by markup only:
+//   <table data-sort-id="<unique id>"> … <th data-sort="text|num|date">
+//   a cell may carry data-sort-value="…" when its text is not what should sort
+//   (a severity rank, an ISO date behind a «3/10» label).
+// It sorts the rows already in the DOM. Clicks work from the markup alone; the
+// page calls TableSort.apply(root) after drawing the table so the headers get
+// keyboard focus, the ▲/▼ and aria-sort, and after every redraw to keep the
+// user's choice.
+// Parsing limits: «num» reads Greek numbers («1.234,56»), so an English decimal
+// («0.125») reads as 125; a year-less date («28/12») takes the current year, so
+// such a column sorts wrong across New Year. Boards and tables with grouped or nested
+// rows are not "simple" and should not opt in.
+const TableSort = (() => {
+  const state = {};   // sort id → { col, dir: 1 asc | 2 desc }
+
+  // «1.234,56», «12», «-3» → number; anything else → NaN
+  const num = (s) => { const t = String(s).replace(/[^\d,.\-]/g, '').replace(/\.(?=\d{3}(\D|$))/g, '').replace(',', '.'); return t === '' ? NaN : Number(t); };
+  // «14/10», «14/10/2026», «2026-10-14» → sortable number; else NaN
+  const dt = (s) => {
+    s = String(s).trim();
+    let m = s.match(/^(\d{4})-(\d{2})-(\d{2})/); if (m) return +m[1] * 1e4 + +m[2] * 100 + +m[3];
+    m = s.match(/^(\d{1,2})\/(\d{1,2})(?:\/(\d{2,4}))?/); if (m) { const y = m[3] ? (m[3].length === 2 ? 2000 + +m[3] : +m[3]) : new Date().getFullYear(); return y * 1e4 + +m[2] * 100 + +m[1]; }
+    return NaN;
+  };
+  const cellVal = (tr, i) => { const td = tr.children[i]; if (!td) return ''; return td.hasAttribute('data-sort-value') ? td.getAttribute('data-sort-value') : td.textContent.trim(); };
+
+  function sortTable(table) {
+    const id = table.getAttribute('data-sort-id');
+    const tbody = table.tBodies[0];
+    if (!id || !tbody) return;
+    const rows = [...tbody.rows];
+    rows.forEach((r, i) => { if (!r.hasAttribute('data-sort-orig')) r.setAttribute('data-sort-orig', i); });
+    const s = state[id];
+    const ths = [...table.tHead.rows[0].cells];
+    ths.forEach((th, i) => {
+      if (!th.hasAttribute('data-sort')) return;
+      const on = s && s.col === i;
+      th.setAttribute('aria-sort', on ? (s.dir === 1 ? 'ascending' : 'descending') : 'none');
+      th.classList.toggle('ts-on', !!on);
+      let ind = th.querySelector('.ts-ind');
+      if (!ind) { ind = document.createElement('span'); ind.className = 'ts-ind'; th.appendChild(ind); }
+      ind.textContent = on ? (s.dir === 1 ? ' ▲' : ' ▼') : '';
+    });
+    let ordered;
+    if (!s) ordered = rows.sort((a, b) => a.getAttribute('data-sort-orig') - b.getAttribute('data-sort-orig'));
+    else {
+      const type = ths[s.col].getAttribute('data-sort') || 'text';
+      const key = (r) => { const v = cellVal(r, s.col); return type === 'num' ? num(v) : type === 'date' ? dt(v) : v; };
+      ordered = rows.sort((a, b) => {
+        const x = key(a), y = key(b);
+        // empty / unreadable values always last, whichever direction
+        const ex = x === '' || (typeof x === 'number' && isNaN(x)), ey = y === '' || (typeof y === 'number' && isNaN(y));
+        if (ex || ey) return ex === ey ? a.getAttribute('data-sort-orig') - b.getAttribute('data-sort-orig') : ex ? 1 : -1;
+        const c = typeof x === 'number' ? x - y : String(x).localeCompare(String(y), 'el', { numeric: true, sensitivity: 'base' });
+        return (s.dir === 1 ? c : -c) || a.getAttribute('data-sort-orig') - b.getAttribute('data-sort-orig');
+      });
+    }
+    ordered.forEach(r => tbody.appendChild(r));
+  }
+
+  function toggle(th) {
+    const table = th.closest('table[data-sort-id]');
+    if (!table) return;
+    const id = table.getAttribute('data-sort-id');
+    const i = [...th.parentNode.cells].indexOf(th);
+    const s = state[id];
+    if (!s || s.col !== i) state[id] = { col: i, dir: 1 };
+    else if (s.dir === 1) s.dir = 2;
+    else delete state[id];
+    sortTable(table);
+  }
+
+  if (typeof document !== 'undefined') {
+    document.addEventListener('click', (e) => {
+      const th = e.target.closest && e.target.closest('table[data-sort-id] thead th[data-sort]');
+      if (th && !e.target.closest('input, select, button')) toggle(th);
+    });
+    document.addEventListener('keydown', (e) => {
+      if (e.key !== 'Enter' && e.key !== ' ') return;
+      // Same exemption as the click: a field inside a sortable header keeps its keys.
+      if (e.target.closest && e.target.closest('input, select, button, textarea')) return;
+      const th = e.target.closest && e.target.closest('table[data-sort-id] thead th[data-sort]');
+      if (th) { e.preventDefault(); toggle(th); }
+    });
+  }
+
+  return {
+    // Re-apply the user's choice after a page redrew its table(s).
+    apply(root) { (root || document).querySelectorAll('table[data-sort-id]').forEach(t => { t.querySelectorAll('thead th[data-sort]').forEach(th => { th.tabIndex = 0; }); sortTable(t); }); },
+  };
+})();
+if (typeof window !== 'undefined') window.TableSort = TableSort;

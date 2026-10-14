@@ -93,6 +93,11 @@ const NAV = [
     // Distinct from Metrics Audit (data-consistency checks) and Error Log (JS
     // errors): this is who-changed-what, read from the server-side trail.
     { id: 'audit_trail',   label: 'Ιστορικό Ενεργειών',  icon: 'clock' },
+    // Every role has a bell, so every role gets the page (Nick 14/10). perm:
+    // 'planning' because it is the one section every role holds (config.js
+    // PERMS); without an item perm the group's 'settings' would hide it from
+    // dispatcher, accountant and warehouse. The page shows only the user's own alerts.
+    { id: 'notifications', label: 'Ειδοποιήσεις',        icon: 'bell', perm: 'planning' },
   ]},
 ];
 
@@ -426,6 +431,11 @@ function navigate(page) {
       // και ανοιχτά υπόλοιπα, μαζί.
       if ((typeof ROLE !== 'undefined' ? ROLE : '') !== 'owner') { c.innerHTML = showAccessDenied(); break; }
       renderMetricsAudit();
+      break;
+    case 'notifications':
+      // No can() gate: every role has a bell, and the page lists only that
+      // user's own alerts (built by _refreshNotifs from the same reads).
+      renderNotifications();
       break;
     case 'audit_trail':
       // No can() gate here on purpose: the trail spans every table, so it is

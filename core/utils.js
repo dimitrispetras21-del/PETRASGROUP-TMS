@@ -1234,6 +1234,55 @@ if (typeof window !== 'undefined') {
 // ═══ NOTIFICATION CENTER ═══
 let _notifOpen = false;
 let _notifItems = [];
+// Every alert of the last refresh, ungrouped and before any hiding: what the
+// «Ειδοποιήσεις» page lists (modules/notifications.js). _notifBuiltAt = 0 means
+// no refresh has run yet in this tab.
+let _notifRaw = [];
+let _notifBuiltAt = 0;
+let _notifDueCount = 0;   // alerts not put «Αργότερα»: the bell footer's number, same as the page's «Όλες»
+
+// Read / «Αργότερα» state for the alerts, PER BROWSER and per username
+// (localStorage). Phase 1 of the notifications page (T71, Nick 14/10); phase 2
+// (T72) moves this to the database, so every caller goes through these four
+// functions and the swap stays inside this object. Alerts are computed live and
+// carry no id of their own, so the key is the RECORD they are about (rid: order,
+// work order, vehicle + document) plus the alert's title; two orders with the same
+// text are two alerts. «Ώσπου να λυθεί» = hidden while that alert is still raised:
+// prune() forgets the state once the alert is gone.
+const NotifStore = (() => {
+  const KEEP_MS = 30 * 864e5;   // forget state older than 30 days
+  const lsKey = () => 'tms_notif_state_' + ((typeof user !== 'undefined' && user && user.username) || '').toLowerCase();
+  const load = () => {
+    try { const s = JSON.parse(localStorage.getItem(lsKey()) || '{}'); return { read: s.read || {}, snooze: s.snooze || {} }; }
+    catch (_) { return { read: {}, snooze: {} }; }
+  };
+  const save = (s) => {
+    const cut = Date.now() - KEEP_MS;
+    for (const k of Object.keys(s.read)) if (s.read[k] < cut) delete s.read[k];
+    for (const k of Object.keys(s.snooze)) { const v = s.snooze[k]; if (v.until !== 'change' && v.until < Date.now()) delete s.snooze[k]; else if (v.at < cut) delete s.snooze[k]; }
+    try { localStorage.setItem(lsKey(), JSON.stringify(s)); } catch (_) { /* private mode / full: state lives for this page only */ }
+  };
+  return {
+    isRead(key) { return !!load().read[key]; },
+    // until: a time in ms, or 'change' (hidden while the alert's text stays the same)
+    snoozedUntil(key) {
+      const v = load().snooze[key];
+      if (!v) return null;
+      if (v.until === 'change' || v.until > Date.now()) return v.until;
+      return null;
+    },
+    markRead(keys, on = true) { const s = load(); keys.forEach(k => { if (on) s.read[k] = Date.now(); else delete s.read[k]; }); save(s); },
+    snooze(keys, until) { const s = load(); keys.forEach(k => { if (until == null) delete s.snooze[k]; else s.snooze[k] = { until, at: Date.now() }; }); save(s); },
+    // Drop state for keys not raised any more (only after a complete refresh).
+    prune(liveKeys) {
+      const s = load(); let n = 0;
+      for (const k of Object.keys(s.read)) if (!liveKeys.has(k)) { delete s.read[k]; n++; }
+      for (const k of Object.keys(s.snooze)) if (!liveKeys.has(k)) { delete s.snooze[k]; n++; }
+      if (n) save(s);
+    },
+  };
+})();
+if (typeof window !== 'undefined') window.NotifStore = NotifStore;
 
 function _toggleNotifPanel() {
   _notifOpen = !_notifOpen;
@@ -1243,7 +1292,9 @@ function _toggleNotifPanel() {
     // Lazy permission prompt — only when user actively engages with notifications.
     // Avoids the annoying "this site wants to show notifications" on every page load.
     _maybeRequestPushPermission();
-    _refreshNotifs().then(() => { panel.style.display = 'block'; });
+    // flex, not block: the panel is a column so the «Όλες οι ειδοποιήσεις» footer
+    // stays inside its 420px (style.css .notif-panel, T71).
+    _refreshNotifs().then(() => { panel.style.display = 'flex'; });
     setTimeout(() => document.addEventListener('click', _closeNotifOutside, { once: true }), 50);
   } else {
     panel.style.display = 'none';
@@ -1287,6 +1338,9 @@ async function _refreshNotifs() {
   const isEquip     = username === 'thodoris'   || isOwner || role === 'maintenance' || role === 'management';
   const isInvoicing = username === 'eirini'     || isOwner || role === 'accountant';
 
+  // False when any source failed: state for alerts missing from this refresh is
+  // then kept, because missing may mean «not loaded», not «resolved».
+  let _buildOk = true;
   try {
     // Fetch base data + extras only for users that need them
     const promises = [
@@ -1303,7 +1357,7 @@ async function _refreshNotifs() {
       // appear. safeFetch's tag separates the two cases without changing what
       // the not-entitled branch returns.
       (isChiefOps) ? safeFetch(() => atGetAll(TABLES.NAT_LOADS, { fields: ['Direction','Status','Delivery DateTime'] }, true), 'dashboard alerts: national loads') : Promise.resolve([]),
-      (isChiefOps || isEquip) ? safeFetch(() => atGetAll(TABLES.MAINT_REQ, { fields: ['Status','Priority','Date Reported'] }, true), 'dashboard alerts: maintenance requests') : Promise.resolve([]),
+      (isChiefOps || isEquip) ? safeFetch(() => atGetAll(TABLES.MAINT_REQ, { fields: ['Status','Priority','Date Reported','Vehicle Plate','Description'] }, true), 'dashboard alerts: maintenance requests') : Promise.resolve([]),
     ];
     const [orders, trucks, trailers, natLoads, maint] = await Promise.all(promises);
 
@@ -1316,7 +1370,7 @@ async function _refreshNotifs() {
     }).forEach(r => {
       const f = r.fields;
       const route = orderRoute(f, 20);
-      items.push({ type: 'danger', title: `${escapeHtml(f['Direction']||'Order')} χωρίς ανάθεση`, sub: escapeHtml(route), page: 'orders_intl' });
+      items.push({ rid: r.id, type: 'danger', title: `${escapeHtml(f['Direction']||'Order')} χωρίς ανάθεση`, sub: escapeHtml(route), page: 'orders_intl' });
     });
 
     // ── 2. KELESMITOS — Master Planner ──
@@ -1329,7 +1383,7 @@ async function _refreshNotifs() {
                !f['Matched Import ID'] && f['Status'] !== 'Delivered' && f['Status'] !== 'Cancelled';
       }).slice(0, 5).forEach(r => {
         const f = r.fields;
-        items.push({ type: 'warn', title: 'Export χωρίς return load',
+        items.push({ rid: r.id, type: 'warn', title: 'Export χωρίς return load',
           sub: escapeHtml(`${orderDelName(f, 30)} — βρες import`), page: 'weekly_intl' });
       });
     }
@@ -1344,7 +1398,7 @@ async function _refreshNotifs() {
                f['Status'] !== 'Cancelled' && f['Status'] !== 'Delivered';
       }).slice(0, 5).forEach(r => {
         const f = r.fields;
-        items.push({ type: 'warn', title: 'Οδηγός μη ενημερωμένος',
+        items.push({ rid: r.id, type: 'warn', title: 'Οδηγός μη ενημερωμένος',
           sub: escapeHtml(`Φόρτωση σήμερα: ${orderLoadName(f, 25)}`), page: 'daily_ops' });
       });
 
@@ -1356,7 +1410,7 @@ async function _refreshNotifs() {
                f['Status'] !== 'Delivered' && f['Status'] !== 'Cancelled';
       }).slice(0, 5).forEach(r => {
         const f = r.fields;
-        items.push({ type: 'warn', title: 'Πελάτης μη ενημερωμένος',
+        items.push({ rid: r.id, type: 'warn', title: 'Πελάτης μη ενημερωμένος',
           sub: escapeHtml(`Παράδοση σήμερα: ${orderDelName(f, 25)}`), page: 'daily_ops' });
       });
 
@@ -1371,7 +1425,7 @@ async function _refreshNotifs() {
         return dayDiff >= 0 && dayDiff <= 3;
       }).slice(0, 5).forEach(r => {
         const f = r.fields;
-        items.push({ type: 'info', title: 'CMR εκκρεμεί',
+        items.push({ rid: r.id, type: 'info', title: 'CMR εκκρεμεί',
           sub: escapeHtml(`${f['Order Number']||''} ${(f['Delivery Summary']||'').slice(0,20)}`), page: 'daily_ops' });
       });
     }
@@ -1389,21 +1443,25 @@ async function _refreshNotifs() {
         return dayDiff >= 0 && dayDiff <= 3;
       }).slice(0, 5).forEach(r => {
         const f = r.fields;
-        items.push({ type: 'info', title: 'National χωρίς Performance',
+        items.push({ rid: r.id, type: 'info', title: 'National χωρίς Performance',
           sub: escapeHtml(`${f['Direction']||''} — ορίσε On-Time/Delayed`), page: 'weekly_natl' });
       });
 
-      // Critical maintenance issues open
+      // Critical maintenance issues open.
+      // The work-order form stores Priority as SOS / Άμεσα / Κανονικό and Status as
+      // Pending / In Progress / Done (modules/maintenance.js MREQ_PRIORITIES,
+      // MREQ_STATUSES). This filter used to match high/critical/urgent, values the
+      // form never writes, so the alert never fired (walkthrough 13/10, item 3).
+      const MAINT_URGENT = ['SOS', 'Άμεσα'];
       maint.filter(r => {
         const f = r.fields;
-        const st = (f['Status']||'').toLowerCase();
-        if (st === 'done' || st === 'closed' || st === 'resolved' || st === 'completed') return false;
-        const prio = (f['Priority']||'').toLowerCase();
-        return prio === 'high' || prio === 'critical' || prio === 'urgent';
+        if ((f['Status'] || '').trim() === 'Done') return false;
+        return MAINT_URGENT.includes((f['Priority'] || '').normalize('NFC').trim());
       }).slice(0, 5).forEach(r => {
         const f = r.fields;
-        items.push({ type: 'danger', title: `Κρίσιμη βλάβη — ${escapeHtml(f['Priority']||'')}`,
-          sub: escapeHtml(`Status: ${f['Status']||'Open'}`), page: 'maint_req' });
+        const what = [f['Vehicle Plate'], f['Description']].filter(Boolean).join(' · ');
+        items.push({ rid: r.id, type: 'danger', title: `Κρίσιμη βλάβη · ${escapeHtml(f['Priority']||'')}`,
+          sub: escapeHtml(Array.from(what).slice(0, 80).join('') || 'Ανοιχτή εντολή εργασίας'), page: 'maint_req' });
       });
     }
 
@@ -1417,9 +1475,9 @@ async function _refreshNotifs() {
             if (dt) {
               const days = Math.ceil((new Date(dt) - now) / 864e5);
               if (days < 0) {
-                items.push({ type: 'danger', title: `${escapeHtml(t.fields[plateField])} — ${escapeHtml(field.replace(' Expiry',''))} ΛΗΓΜΕΝΟ`, sub: `Εληξε ${Math.abs(days)} μερες πριν`, page: 'maint_expiry' });
+                items.push({ rid: t.id + ':' + field, type: 'danger', title: `${escapeHtml(t.fields[plateField])} — ${escapeHtml(field.replace(' Expiry',''))} ΛΗΓΜΕΝΟ`, sub: `Εληξε ${Math.abs(days)} μερες πριν`, page: 'maint_expiry' });
               } else if (days <= 14) {
-                items.push({ type: 'warn', title: `${escapeHtml(t.fields[plateField])} — ${escapeHtml(field.replace(' Expiry',''))} ληγει σε ${days}μ`, sub: escapeHtml(dt), page: 'maint_expiry' });
+                items.push({ rid: t.id + ':' + field, type: 'warn', title: `${escapeHtml(t.fields[plateField])} — ${escapeHtml(field.replace(' Expiry',''))} ληγει σε ${days}μ`, sub: escapeHtml(dt), page: 'maint_expiry' });
               }
             }
           });
@@ -1442,7 +1500,7 @@ async function _refreshNotifs() {
         return dayDiff >= 0 && dayDiff <= 14;
       }).slice(0, 8).forEach(r => {
         const f = r.fields;
-        items.push({ type: 'warn', title: 'Παραγγελία χωρίς τιμολόγιο',
+        items.push({ rid: r.id, type: 'warn', title: 'Παραγγελία χωρίς τιμολόγιο',
           sub: escapeHtml(`${f['Reference']||''} — ${(f['Client Summary']||f['Client Name']||'').slice(0,25)}`), page: 'invoicing' });
       });
     }
@@ -1458,6 +1516,7 @@ async function _refreshNotifs() {
       didFail(maint)    && 'αιτήματα συντήρησης',
     ].filter(Boolean);
     if (_failedSources.length) {
+      _buildOk = false;
       items.push({
         type: 'warn',
         title: 'Έλεγχος ειδοποιήσεων ελλιπής',
@@ -1470,10 +1529,23 @@ async function _refreshNotifs() {
     const reminders = JSON.parse(localStorage.getItem('tms_reminders') || '[]');
     const nowMs = Date.now();
     reminders.filter(r => new Date(r.time).getTime() <= nowMs && !r.dismissed).forEach(r => {
-      items.push({ type: 'info', title: 'Υπενθύμιση', sub: escapeHtml(r.text), page: null });
+      items.push({ rid: 'reminder:' + (r.id || r.time), type: 'info', title: 'Υπενθύμιση', sub: escapeHtml(r.text), page: null });
     });
 
-  } catch(e) { console.warn('Notif refresh error:', e); }
+  } catch(e) { _buildOk = false; console.warn('Notif refresh error:', e); }
+
+  // The page lists everything; the dropdown leaves out what was put «Αργότερα»
+  // on the page (persistent). The dropdown's own ✕ stays a per-tab hide.
+  _notifRaw = items.slice();
+  _notifBuiltAt = Date.now();
+  // An alert that is no longer raised is resolved: forget its read / «Αργότερα»
+  // state, so it starts fresh if it ever comes back (the code-review of 14/10:
+  // a snooze must never outlive its alert and hide a later one).
+  if (_buildOk) NotifStore.prune(new Set(_notifRaw.map(_notifKey)));
+  const _stillDue = items.filter(it => !NotifStore.snoozedUntil(_notifKey(it)));
+  _notifDueCount = _stillDue.length;
+  items.length = 0;
+  items.push(..._stillDue);
 
   // ── Smart grouping: collapse N items with same title prefix into one ──
   // e.g. 5 separate "KTEO expires" notifications → "5 trucks need KTEO renewal"
@@ -1494,7 +1566,7 @@ async function _refreshNotifs() {
       groupedItems.push({
         type: arr[0].type,
         title: `${arr.length}× ${arr[0].title}`,
-        sub: `Tap to expand · ${arr.map(x => x.sub).filter(Boolean).slice(0,2).join(' · ').slice(0,60)}…`,
+        sub: `Πάτησε για όλα · ${arr.map(x => x.sub).filter(Boolean).slice(0,2).join(' · ').slice(0,60)}…`,
         page: arr[0].page,
         children: arr,
         grouped: true,
@@ -1576,9 +1648,12 @@ async function _refreshNotifs() {
         </div>
       </div>
       <div class="notif-list">
-        ${items.length ? items.slice(0, 20).map((n, idx) => {
-          // Snoozed items (in-memory) — skip rendering
-          if (_notifSnoozed.has(_notifKey(n))) return '';
+        ${items.length ? items.map((n, idx) => [n, idx])
+          // Hidden (✕) items are dropped BEFORE the 20 cap, so hiding one lets the
+          // 21st move up; idx stays the item's index in _notifItems, which
+          // _notifSnooze and _notifToggleGroup look up (Nick 14/10).
+          .filter(([n]) => !_notifSnoozed.has(_notifKey(n)))
+          .slice(0, 20).map(([n, idx]) => {
 
           // Top-level notification card
           const navClick = n.page
@@ -1593,13 +1668,12 @@ async function _refreshNotifs() {
           return `
             <div class="notif-item ${n.grouped ? 'grouped' : ''}" data-notif-idx="${idx}" ${onClick ? `onclick="${onClick}"` : ''}>
               <div class="notif-icon ${n.type}">${n.type==='danger'?'!':n.type==='warn'?'!':'i'}</div>
+              <!-- The whole card opens its page (navClick above), so it carries no «Open»
+                   button; the ✕ only hides it, until the next reload (Nick 14/10, T70). -->
+              <button type="button" class="notif-x" onclick="event.stopPropagation();_notifSnooze(${idx})" title="Απόκρυψη μέχρι την επόμενη φόρτωση" aria-label="Απόκρυψη">✕</button>
               <div class="notif-body">
                 <div class="notif-title">${n.title}${n.grouped ? ` <span style="opacity:0.5;font-size:10px">${expanded?'▾':'▸'}</span>` : ''}</div>
                 <div class="notif-sub">${n.sub}</div>
-                <div class="notif-actions" style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap" onclick="event.stopPropagation()">
-                  ${n.page ? `<button class="notif-btn notif-btn-primary" onclick="_notifOpen=false;document.getElementById('notifPanel').style.display='none';navigate('${n.page}')">Open</button>` : ''}
-                  <button class="notif-btn notif-btn-ghost" onclick="_notifSnooze(${idx})" title="Hide for this session">Snooze</button>
-                </div>
                 ${n.grouped && expanded ? `
                   <div class="notif-children" style="margin-top:8px;border-left:2px solid var(--border);padding-left:8px">
                     ${n.children.map(c => `
@@ -1612,8 +1686,12 @@ async function _refreshNotifs() {
               </div>
             </div>`;
         }).join('') : '<div class="notif-empty">Δεν υπαρχουν εκκρεμότητες · καλή δουλειά!</div>'}
-      </div>`;
+      </div>
+      <button type="button" class="notif-all" onclick="event.stopPropagation();_notifOpen=false;document.getElementById('notifPanel').style.display='none';navigate('notifications')">Όλες οι ειδοποιήσεις (${_notifDueCount}) →</button>`;
   }
+  // An open «Ειδοποιήσεις» page redraws from the same refresh, so the page and
+  // the bell never disagree.
+  if (typeof currentPage !== 'undefined' && currentPage === 'notifications' && typeof NotifPage !== 'undefined') NotifPage.redraw();
 }
 
 // ─── Per-session snooze + expand state ───────────────────────────
@@ -1621,14 +1699,18 @@ const _notifSnoozed = new Set();   // keys of snoozed items (cleared on reload)
 const _notifExpanded = {};         // idx → bool (group expanded)
 
 function _notifKey(n) {
-  return (n.title || '') + '|' + (n.sub || '').slice(0, 50);
+  // Record-based alerts: type + record + title (see NotifStore). Text only for the
+  // few with no record (a failed source, a group card); sliced by code point, so
+  // an emoji is never cut in half (a half surrogate breaks encodeURIComponent).
+  if (n.rid) return `${n.type}|${n.rid}|${n.title || ''}`;
+  return (n.title || '') + '|' + Array.from(n.sub || '').slice(0, 50).join('');
 }
 function _notifSnooze(idx) {
   const n = _notifItems[idx];
   if (!n) return;
   _notifSnoozed.add(_notifKey(n));
   _refreshNotifs();
-  toast('Hidden for this session');
+  toast('Κρύφτηκε μέχρι την επόμενη φόρτωση');
 }
 function _notifToggleGroup(idx) {
   _notifExpanded[idx] = !_notifExpanded[idx];
