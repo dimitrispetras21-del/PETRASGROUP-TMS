@@ -1553,7 +1553,7 @@ async function _refreshNotifs() {
             if (dt) {
               const days = Math.ceil((new Date(dt) - now) / 864e5);
               if (days < 0) {
-                items.push({ rid: t.id + ':' + field, type: 'danger', title: `${escapeHtml(t.fields[plateField])} — ${escapeHtml(field.replace(' Expiry',''))} ΛΗΓΜΕΝΟ`, sub: `Εληξε ${Math.abs(days)} μερες πριν`, page: 'maint_expiry' });
+                items.push({ rid: t.id + ':' + field, type: 'danger', title: `${escapeHtml(t.fields[plateField])} — ${escapeHtml(field.replace(' Expiry',''))} ΛΗΓΜΕΝΟ`, sub: `Έληξε πριν από ${Math.abs(days)} ${Math.abs(days) === 1 ? 'ημέρα' : 'ημέρες'}`, page: 'maint_expiry' });
               } else if (days <= 14) {
                 items.push({ rid: t.id + ':' + field, type: 'warn', title: `${escapeHtml(t.fields[plateField])} — ${escapeHtml(field.replace(' Expiry',''))} ληγει σε ${days}μ`, sub: escapeHtml(dt), page: 'maint_expiry' });
               }
