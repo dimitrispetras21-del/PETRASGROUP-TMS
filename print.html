@@ -866,8 +866,9 @@ var WA_EMO=['1️⃣','2️⃣','3️⃣','4️⃣','5️⃣','6️⃣','7️⃣
 // the paper card printed «8», so phone and paper could not be matched.
 function waNum(k){return WA_EMO[k]||('#'+(k+1));}
 // One stop of a WhatsApp text. tag (group only): the order the stop belongs to.
-function waStopLines(lines,emo,lbl,x,tag){
-  lines.push(emo+' *'+lbl+'* · '+fmtDT(x.dt)+(tag?' · '+tag:''));
+// pal: that stop's pallets (waStopPal), '' when unknown.
+function waStopLines(lines,emo,lbl,x,tag,pal){
+  lines.push(emo+' *'+lbl+'* · '+fmtDT(x.dt)+(tag?' · '+tag:'')+(pal?' · *'+pal+'*':''));
   lines.push(x.name);
   if(x.addr)lines.push(x.addr);
   if(x.lat&&x.lng){
@@ -880,6 +881,21 @@ function waStopLines(lines,emo,lbl,x,tag){
     lines.push('📍 https://maps.google.com/?q='+x.lat+','+x.lng);
   }
   lines.push('');
+}
+// Pallets on the stop line (walkthrough 13/10 item 26 and Pantelis C3, Nick
+// 14/10): the text gave the pallets once per order, so a driver with two drops
+// could not tell what to leave where; the paper card already printed them per
+// stop. The stop's own ORDER STOPS «Pallets» first; a stop with none of its own
+// (Βέροια, a summary) takes the order's total ONLY when it is the order's only
+// stop on that side, so the number is never a guess. Unknown or 0 → nothing
+// (DESIGN.md #3, #4); the order total stays in the cargo block.
+function waStopPal(x,f,sideCount){
+  var v=x&&x.sf?x.sf['Pallets']:null;
+  if((v===''||v==null)&&sideCount===1&&f)v=f['Total Pallets'];
+  var n=Number(v);
+  if(v===''||v==null||!isFinite(n)||n<=0)return '';
+  var en=(typeof LBL!=='undefined'&&LBL===LBL_EN);
+  return fv(v)+' '+(n===1?(en?'pallet':'παλέτα'):(en?'pallets':'παλέτες'));
 }
 // The cargo of one order. withKeep: the «keep the CMR temperature» line sits
 // in the order's own lines on a single text; a group says it ONCE for the
@@ -932,8 +948,8 @@ function waBuild(f,isPartner,isExport,veroiaSwitch,VEROIA,VADDR,VLAT,VLNG,vehLin
   if(vehLine)lines.push('👤 '+vehLine);
   lines.push('');
   var seq=0;
-  rs.loads.forEach(function(x){waStopLines(lines,waNum(seq++),L.load,x);});
-  rs.dels.forEach(function(x){waStopLines(lines,waNum(seq++),L.unload,x);});
+  rs.loads.forEach(function(x){waStopLines(lines,waNum(seq++),L.load,x,null,waStopPal(x,f,rs.loads.length));});
+  rs.dels.forEach(function(x){waStopLines(lines,waNum(seq++),L.unload,x,null,waStopPal(x,f,rs.dels.length));});
   waCargoLines(lines,f,isPartner,refNo,true);
   return waClose(lines);
 }
@@ -962,10 +978,16 @@ function waGroupBuild(items){
   var veh=vehLineOf(f0,isPartner);
   if(veh)lines.push('👤 '+veh);
   lines.push('');
+  // How many stops each order has on each side: waStopPal uses the order's
+  // total only for an order's single stop.
+  var nL={},nD={};
+  route.loads.forEach(function(r){nL[r.oi]=(nL[r.oi]||0)+1;});
+  route.dels.forEach(function(r){nD[r.oi]=(nD[r.oi]||0)+1;});
+  var fOf=function(r){return items[r.oi]&&items[r.oi].orderRec?items[r.oi].orderRec.fields:null;};
   lines.push('*'+L.loadsSec+'*');
-  route.loads.forEach(function(r,k){waStopLines(lines,waNum(k),L.load,r.e,'#'+nos[r.oi]);});
+  route.loads.forEach(function(r,k){waStopLines(lines,waNum(k),L.load,r.e,'#'+nos[r.oi],waStopPal(r.e,fOf(r),nL[r.oi]));});
   lines.push('*'+L.delsSec+'*');
-  route.dels.forEach(function(r,k){waStopLines(lines,waNum(k),L.unload,r.e,'#'+nos[r.oi]);});
+  route.dels.forEach(function(r,k){waStopLines(lines,waNum(k),L.unload,r.e,'#'+nos[r.oi],waStopPal(r.e,fOf(r),nD[r.oi]));});
   items.forEach(function(it,i){
     var f=it.orderRec.fields;
     lines.push('*'+L.cargoOf+' #'+nos[i]+'*');

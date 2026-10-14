@@ -174,7 +174,8 @@ async function _wiInjectStopSummaries(allOrders) {
         const namesOf=t=>stops.filter(s=>s.fields[F.STOP_TYPE]===t)
           .sort((a,b)=>(a.fields[F.STOP_NUMBER]||0)-(b.fields[F.STOP_NUMBER]||0))
           .map(s=>{const lid=Array.isArray(s.fields[F.STOP_LOCATION])?s.fields[F.STOP_LOCATION][0]:null;
-            return {n:lid?(_fhLocationsMap[lid]||''):'', dt:s.fields[F.STOP_DATETIME]||''};})
+            // p: the stop's own pallets, so a groupage row on v4 can show them per stop (item 23, 14/10).
+            return {n:lid?(_fhLocationsMap[lid]||''):'', dt:s.fields[F.STOP_DATETIME]||'', p:s.fields[F.STOP_PALLETS]};})
           .filter(x=>x.n);
         const L=namesOf('Loading'), D=namesOf('Unloading');
         if(L.length) r.fields._stopsL=L;
@@ -596,6 +597,9 @@ async function _wiLoadAssets(){
   WINTL.data.trailers = getRefTrailers().map(r=>({id:r.id,label:r.fields['License Plate']||r.id}));
   WINTL.data.drivers  = getRefDrivers().filter(r=>r.fields['Active']).map(r=>({id:r.id,label:r.fields['Full Name']||r.id}));
   WINTL.data.partners = getRefPartners().map(r=>({id:r.id,label:r.fields['Company Name']||r.id}));
+  // Assign-picker warnings (items 3, 4): work orders read in the background,
+  // only for roles that can open the assign popover.
+  if(typeof preloadOpenWorkOrders==='function' && (typeof can!=='function' || can('planning')==='full')) preloadOpenWorkOrders();
 }
 
 /* ── MAIN ENTRY ────────────────────────────────────────────────────── */
@@ -680,6 +684,9 @@ async function renderWeeklyIntl(){
     WINTL.data.trailers = getRefTrailers().map(r=>({id:r.id,label:r.fields['License Plate']||r.id}));
     WINTL.data.drivers  = getRefDrivers().filter(r=>r.fields['Active']).map(r=>({id:r.id,label:r.fields['Full Name']||r.id}));
     WINTL.data.partners = getRefPartners().map(r=>({id:r.id,label:r.fields['Company Name']||r.id}));
+    // Assign-picker warnings (items 3, 4): the board's own load path (v4 too)
+    // starts the work-order read; only for roles that can open the popover.
+    if(typeof preloadOpenWorkOrders==='function' && (typeof can!=='function' || can('planning')==='full')) preloadOpenWorkOrders();
 
     // Local relays (060) keyed by the orders just fetched — exact by Parent
     // Order, not a {Date} window: an import's relay sits on its DELIVERY day,
@@ -1493,7 +1500,7 @@ function _wiImpRowHTML(row,impNo){
   let loadCard=segOn
     ? _wiSegPillWrap(row.id,members,'load',true,true)
     : _wi2Card({cls:stR.loaded?'ok':'', date:_wi2Date(imp.id,'Loading DateTime',lIso,lIso?_wk3D(_wiFmt(lIso)):'—',stR.loaded?' done':'','Ημ. φόρτωσης'+(stR.loaded?' — φορτώθηκε ✓':'')), name:lo.name, sub:lo.sub, extra:_wk3MoreStops(fromStr,f._stopsL,'load')});
-  const right=`<span class="wi2-flags">${_wiBadges(f,imp.id)}</span>${_wi2Pal(f)}${f['Reference']?`<span class="wi2-ref" title="Κωδικός αναφοράς">${escapeHtml(String(f['Reference']))}</span>`:''}`;
+  const right=`<span class="wi2-flags">${_wiBadges(f,imp.id,row.orderIds&&row.orderIds.length>1?row.orderIds.map(id=>data.imports.find(r=>r.id===id)||id):null)}</span>${_wi2Pal(f)}${f['Reference']?`<span class="wi2-ref" title="Κωδικός αναφοράς">${escapeHtml(String(f['Reference']))}</span>`:''}`;
   let delCard;
   if(segOn){
     delCard=_wiSegPillWrap(row.id,members,'del',true,true,_wiSegTotalsHTML(members));
@@ -1824,14 +1831,16 @@ async function _wiDoHandoverChange(rowId){
 // when core/order-docs.js is loaded and that order has a stored document.
 // Rendered through OrderDocs.badge (own markup/class/stopPropagation) so
 // Weekly's drag&drop and right-click handlers on the card stay untouched.
-function _wiBadges(f,orderId){
+// docIds (C6, 14/10): the orders the paperclip covers; a groupage passes all its
+// members, a single order covers itself and, as a split leg, its parent.
+function _wiBadges(f,orderId,docIds){
   const b=[];
   if(f['High Risk Flag'])   b.push('<span class="wi-badge wi-b-risk" title="Υψηλό ρίσκο">!</span>');
   if(f['Pallet Exchange'])  b.push('<span class="wi-badge wi-b-pe">PE</span>');
   if(f['National Groupage'])b.push('<span class="wi-badge wi-b-grpg">GRP</span>');
   const veroia=f['Veroia Switch'];
   if(veroia)                b.push('<span class="wi-badge wi-b-veroia">Veroia</span>');
-  if(orderId && typeof OrderDocs!=='undefined') b.push(OrderDocs.badge(orderId,{size:11}));
+  if((orderId||docIds) && typeof OrderDocs!=='undefined') b.push(OrderDocs.badgeAny(docIds||OrderDocs.docIdsOf(orderId,f),{size:11}));
   // Stock plan §6.7: «ΑΠ» on a piece, «→ ΑΠΟΘΗΚΗ» on a lot — read from the
   // order itself, so a piece is named wherever its card is drawn.
   b.push(_wiApBadge(f,orderId), _wiLotBadge(f));
@@ -2740,7 +2749,7 @@ function _wiRowHTML(row,i){
     delCard=_wi2Card({cls:stF.late?'late':stF.delivered?'ok':'',
       name:de.name+(stF.late?'<span class="wi2-late" title="Καθυστέρησε (Delivery Performance = Delayed)">! καθυστέρηση</span>':stF.delivered?'<span class="wk3-okc" title="Παραδόθηκε">✓</span>':''),
       sub:de.sub, extra:_wk3MoreStops(isGroup?gDs:toStr,isGroup?gD:pf._stopsD,'del')+members,
-      right:`${refs?`<span class="wi2-ref" title="Κωδικός αναφοράς">${escapeHtml(String(refs))}</span>`:''}${_wiCrossChip(pf)}${_wiExecChip(pf,row.saved)}<span class="wi2-flags">${isGroup?'':_wiBadges(pf,pid)}</span>${isGroup?_wi2PalGroup(exps):_wi2Pal(pf)}`});
+      right:`${refs?`<span class="wi2-ref" title="Κωδικός αναφοράς">${escapeHtml(String(refs))}</span>`:''}${_wiCrossChip(pf)}${_wiExecChip(pf,row.saved)}<span class="wi2-flags">${isGroup?(typeof OrderDocs!=='undefined'?OrderDocs.badgeAny(exps,{size:11}):''):_wiBadges(pf,pid)}</span>${isGroup?_wi2PalGroup(exps):_wi2Pal(pf)}`});
   }
 
   if(isPre) loadCard=_wiPreLeg(primary);
@@ -3653,7 +3662,10 @@ function _wiOpenPopover(e,rowId){
       const l=(x.label||'').replace(/"/g,'&quot;');
       const a=showAv?avail(px,x.id):null;
       const s=a?`<div class="wi-sdo-sub${a.free?' free':''}">${a.txt}</div>`:'';
-      return `<div class="wi-sdo${a&&!a.free?' wi-sdo--busy':''}" data-id="${x.id}" data-lbl="${l}">${l}${s}</div>`;
+      // Items 3, 4 (13/10): open work order, document expired or due in 14 days. Warning only.
+      const vw=(px==='tk'||px==='tl')&&typeof vehicleWarnings==='function'?vehicleWarnings(px==='tl'?'trailer':'truck',x.id):[];
+      const w=vw.length?`<div class="wi-sdo-sub wi-sdo-warn">${escapeHtml(vw.join(' · '))}</div>`:'';
+      return `<div class="wi-sdo${a&&!a.free?' wi-sdo--busy':''}" data-id="${x.id}" data-lbl="${l}">${l}${s}${w}</div>`;
     }).join('');
     return `<div class="wi-sd" id="wsd-${uid}">
       <input type="text" class="wi-pop-inp wi-sdi" placeholder="${ph}" value="${sel.replace(/"/g,'&quot;')}"
@@ -4705,12 +4717,23 @@ function _wiMenuPrint(rowId,isImp){
 // The item-building half of _wiCtx (TECH_DESIGN §a.5): the same HTML, now
 // callable by the v4 per-load menu, which gathers items instead of copying
 // them (principle 3). `row.id` stands where `rowId` stood — the same value.
+// The plates of a row as clients and the border want them (item 16, 13/10).
+function _wiPlatesOf(row){
+  if(!row||!row.saved||typeof platesText!=='function') return '';
+  const D=WINTL.data;
+  const partner=row.partnerLabel||D.partners.find(p=>p.id===row.partnerId)?.label||'';
+  return partner?platesText('','',row.partnerPlates)
+    :platesText(row.truckLabel||D.trucks.find(t=>t.id===row.truckId)?.label||'',row.trailerLabel||D.trailers.find(t=>t.id===row.trailerId)?.label||'');
+}
+function _wiCopyPlates(rowId){ copyPlates(_wiPlatesOf(WINTL.rows.find(r=>r.id===rowId))); }
 function _wiCtxItems(row){
   const isGroup=row.orderIds.length>1;
   const others=_wiExpGroupCands(row);
   let html='';
   html+=_wiCtxBtn('Ανάθεση…',`_wiPanelAssign(${row.id},false)`);
   html+=_wiCtxBtn('Εκτύπωση…',`_wiMenuPrint(${row.id},false)`);
+  // Item 16 (13/10): copy the plates; v4 gathers this item into its per-load menu.
+  if(_wiPlatesOf(row)) html+=_wiCtxBtn('Αντιγραφή πινακίδων',`_wiCopyPlates(${row.id})`);
   // Owner 7/9: a leg's own menu keeps every normal action AND gains a way
   // back to the parent's form — the parent no longer has a row of its own
   // to click on, but its info (goods/pallets/client) still needs fixing.
@@ -8284,6 +8307,8 @@ window._wiPanelGroupSum = _wiPanelGroupSum;
 window._wiPanelGroupGo = _wiPanelGroupGo;
 window._wiPanelAssign = _wiPanelAssign;
 window._wiMenuPrint = _wiMenuPrint;
+// Item 16 (13/10): the row menu's «Αντιγραφή πινακίδων» (inline onclick).
+window._wiCopyPlates = _wiCopyPlates;
 window._wiPanelWeekShift = _wiPanelWeekShift;
 window._wiLegCtx = _wiLegCtx;
 window._wiPanelConfirmUnlink = _wiPanelConfirmUnlink;

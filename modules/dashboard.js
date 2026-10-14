@@ -252,13 +252,17 @@ async function renderDashboard() {
     // (χωρίς εσωτερική κύλιση, χωρίς slice — εύρημα 26/8).
     const alerts = [];
     const horizon = toLocalDate(new Date(Date.now() + 30 * 864e5));
-    const docLabel = { 'KTEO Expiry': 'ΚΤΕΟ', 'KEK Expiry': 'ΚΕΚ', 'Insurance Expiry': 'Ασφάλεια', 'FRC Expiry': 'FRC' };
+    // 'Tachograph Expiry' joined TRUCK_EXPIRY_FIELDS on 6/9 but not this map,
+    // so every truck's tachograph alert read «undefined» (issue log 12/10);
+    // the field name is the fallback, so a new document never reads «undefined».
+    const docLabel = { 'KTEO Expiry': 'ΚΤΕΟ', 'KEK Expiry': 'ΚΕΚ', 'Insurance Expiry': 'Ασφάλεια', 'FRC Expiry': 'FRC', 'Tachograph Expiry': 'Ταχογράφος' };
+    const docOf = field => docLabel[field] || field.replace(/ Expiry$/, '');
     const pushDoc = (plate, kind, field, f) => {
       const dt = (f[field] || '').substring(0, 10);
-      if (!dt) { alerts.push({ plate, kind, doc: docLabel[field], state: 'unknown', days: null }); return; }
+      if (!dt) { alerts.push({ plate, kind, doc: docOf(field), state: 'unknown', days: null }); return; }
       if (dt > horizon) return;
       const days = Math.ceil((new Date(dt) - now) / 864e5);
-      alerts.push({ plate, kind, doc: docLabel[field], state: days < 0 ? 'expired' : 'soon', days });
+      alerts.push({ plate, kind, doc: docOf(field), state: days < 0 ? 'expired' : 'soon', days });
     };
     activeTrucks.forEach(t => TRUCK_EXPIRY_NAMES.forEach(fl => pushDoc(t.fields['License Plate'] || '—', 'truck', fl, t.fields)));
     // Ρυμούλκες: `!== false` ώστε ασυμπλήρωτο Active να ΕΙΔΟΠΟΙΕΙ. Το FRC
@@ -435,7 +439,7 @@ async function renderDashboard() {
               <span class="n">${waiting.length} ανοιχτές · χωρίς φορτηγό ΚΑΙ χωρίς συνεργάτη${waitingLate ? ` · ${waitingLate} πέρασαν` : ''}${waitingSoon ? ` · ${waitingSoon} φορτώνουν εντός 2 ημερών` : ''} · ORDERS 30 ημ</span>
             </div>
             ${waiting.length ? `<table class="dh-tbl">
-              <thead><tr><th>ΦΟΡΤΙΟ</th><th>ΠΕΛΑΤΗΣ / ΔΡΟΜΟΛΟΓΙΟ</th><th>ΠΑΡΑΔΟΣΗ</th><th style="text-align:right">PAL</th><th style="text-align:right">ΠΡΟΘΕΣΜΙΑ</th></tr></thead>
+              <thead><tr><th>ΦΟΡΤΙΟ</th><th>ΠΕΛΑΤΗΣ / ΔΡΟΜΟΛΟΓΙΟ</th><th>ΠΑΡΑΔΟΣΗ</th><th style="text-align:right">ΠΑΛ.</th><th style="text-align:right">ΠΡΟΘΕΣΜΙΑ</th></tr></thead>
               <tbody>${waiting.map(w => `<tr ${_KB} aria-label="${_esc(w.label)} — άνοιγμα παραγγελίας" onclick="window._dashNav={dir:'${w.direction === 'Import' ? 'Import' : 'Export'}',trip:'unassigned'};navigate('orders_intl')">
                 <td class="dh-lbl">${_esc(w.label)}</td>
                 <td><span class="c">${_esc(w.client)}</span> <span class="r">${_esc(w.route)}</span></td>

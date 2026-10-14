@@ -173,6 +173,8 @@ async function preloadIndex(force) {
 
 function hasDocs(orderId) { return !!(orderId && _odIndexSet && _odIndexSet.has(orderId)); }
 function invalidateIndex() { _odIndexSet = null; _odIndexTs = 0; }
+// True once a document index is in memory (badges can be drawn without waiting).
+function isIndexed() { return !!_odIndexSet; }
 
 // ── Upload / list / fetch ──
 
@@ -234,6 +236,9 @@ function _odEnsureStyles() {
   st.textContent = `
 .od-badge{display:inline-flex;align-items:center;justify-content:center;margin-left:4px;color:var(--text-mid);cursor:pointer;vertical-align:middle}
 .od-badge:hover{color:var(--accent)}
+.od-badge .od-n{font:600 10px 'DM Sans',sans-serif;margin-left:1px;font-variant-numeric:tabular-nums}
+.od-sec+.od-sec{margin-top:16px}
+.od-sec-h{font-weight:600;color:var(--text);margin:0 0 6px}
 .od-banners{position:fixed;left:24px;bottom:88px;z-index:var(--z-top);max-width:420px;display:flex;flex-direction:column;gap:8px}
 .od-banner{background:var(--warn-bg);border:1px solid var(--warn-border);border-radius:6px;box-shadow:0 4px 16px rgba(0,0,0,.18);padding:12px 14px;font:13px/1.4 "DM Sans",sans-serif;display:flex;align-items:flex-start;gap:10px;color:var(--text)}
 .od-banner-msg{flex:1}
@@ -280,6 +285,48 @@ function badge(orderId, opts) {
   // click (select row), drag (Weekly reorder) and right-click (context menu)
   // handlers — the badge must never trigger any of them.
   return `<span class="od-badge" title="Έγγραφα παραγγελίας" onclick="event.stopPropagation();OrderDocs.openViewer('${orderId}')">${svg}</span>`;
+}
+
+// ── Badge for several orders at once (Nick 14/10, walkthrough C6) ──
+// A groupage row stands for 2+ orders and a split leg also carries its parent's
+// file, but badge() takes one order, so the boards drew NO paperclip on a group:
+// 5 of 28 stored documents were invisible (Pantelis uploaded one and thought it
+// was lost). One order with documents → the usual badge; several → one badge
+// with their count that opens all of them in one viewer, a section per order.
+/**
+ * @param {Array<string|{id:string,fields?:object,label?:string}>} items  the row's
+ *   orders: ids, or records (then the viewer names each by its order number)
+ * @param {{size?:number}} [opts]
+ * @returns {string} '' when none of them has a document
+ */
+function badgeAny(items, opts) {
+  const seen = new Set(), list = [];
+  // An item that carries its fields also covers its split parent (docIdsOf),
+  // so a leg inside a group gets the same clip as the leg on its own row.
+  const all = (items || []).flatMap(x => (x && typeof x === 'object' && x.fields && !x.label) ? docIdsOf(x.id, x.fields) : [x]);
+  for (const x of all) {
+    const id = x && typeof x === 'object' ? x.id : x;
+    // Ids go into an onclick string: plain ids only (numeric or recXXXX).
+    if (!id || seen.has(String(id)) || !/^[A-Za-z0-9_-]+$/.test(String(id)) || !hasDocs(id)) continue;
+    seen.add(String(id));
+    const f = x && typeof x === 'object' ? x.fields : null;
+    const raw = (x && x.label) || (f && (f['Order ID'] || f['Order No'])) || '';
+    // The label rides in the same onclick: letters, digits, spaces only.
+    list.push({ id: String(id), label: String(raw).replace(/[^\p{L}\p{N} ]/gu, '').slice(0, 24) });
+  }
+  if (!list.length) return '';
+  if (list.length === 1) return badge(list[0].id, opts);
+  _odEnsureStyles();
+  const size = (opts && opts.size) || 13;
+  const svg = typeof icon === 'function' ? icon('paperclip', size) : '';
+  const arg = list.map(o => o.label ? `${o.id}~${o.label}` : o.id).join(',');
+  return `<span class="od-badge" title="Έγγραφα ${list.length} παραγγελιών" onclick="event.stopPropagation();OrderDocs.openViewerMany('${arg}')">${svg}<span class="od-n">${list.length}</span></span>`;
+}
+// What a single order's paperclip should cover: the order itself and, for a split
+// leg, the order it was split from (Parent Order).
+function docIdsOf(orderId, fields) {
+  const parent = fields && typeof getLinkedId === 'function' ? getLinkedId(fields['Parent Order']) : null;
+  return [{ id: orderId, fields }, parent ? { id: parent, label: 'Αρχική παραγγελία' } : null].filter(Boolean);
 }
 
 // ── Detail-card section (orders_intl.js card) ──
@@ -346,6 +393,31 @@ async function openViewer(orderId) {
     const body = document.getElementById(BODY);
     if (body) body.innerHTML = `<div class="od-empty">Τα έγγραφα δεν φορτώθηκαν — ${escapeHtml(e.message || '')}.</div>`;
   }
+}
+
+// One viewer for several orders (badgeAny): a section per order, each listed
+// independently, so one failed list never hides the others.
+async function openViewerMany(list) {
+  _odEnsureStyles();
+  const parts = String(list || '').split(',').filter(Boolean).map(s => { const i = s.indexOf('~'); return i < 0 ? { id: s, label: '' } : { id: s.slice(0, i), label: s.slice(i + 1) }; });
+  const ids = parts.map(o => o.id);
+  if (ids.length === 1) return openViewer(ids[0]);
+  const BODY = '_odViewerBody';
+  openModal('Έγγραφα παραγγελιών', `<div id="${BODY}">${typeof showLoading === 'function' ? showLoading('Φόρτωση…') : 'Φόρτωση…'}</div>`,
+    `<button type="button" class="btn btn-ghost" onclick="closeModal()">Κλείσιμο</button>`);
+  const res = await Promise.allSettled(ids.map(id => listDocs(id)));
+  const body = document.getElementById(BODY);
+  if (!body) return; // modal was closed while the requests were in flight
+  body.innerHTML = ids.map((id, i) => {
+    const r = res[i];
+    const inner = r.status === 'fulfilled'
+      ? (r.value.length ? _odListHtml(r.value) : '<div class="od-empty">Δεν βρέθηκαν έγγραφα.</div>')
+      : `<div class="od-empty">Τα έγγραφα δεν φορτώθηκαν — ${escapeHtml((r.reason && r.reason.message) || '')}.</div>`;
+    if (r.status !== 'fulfilled') console.warn('[order-docs] list failed:', id, r.reason && r.reason.message);
+    const lb = parts[i].label;
+    const head = !lb ? `Παραγγελία ${id}` : /^\d+$/.test(lb) ? `Παραγγελία ${lb}` : lb;
+    return `<div class="od-sec"><div class="od-sec-h">${escapeHtml(head)}</div>${inner}</div>`;
+  }).join('');
 }
 
 async function _openInline(id, filename) {
@@ -705,8 +777,8 @@ function handleNatlOrderSaved() {
 window.OrderDocs = {
   ACCEPT: OD_ACCEPT,
   validateFile, uploadDoc, listDocs, fetchFileBlob,
-  preloadIndex, hasDocs, invalidateIndex,
-  badge, sectionHtml, openViewer, attachToOrder,
+  preloadIndex, hasDocs, invalidateIndex, isIndexed,
+  badge, badgeAny, docIdsOf, sectionHtml, openViewer, openViewerMany, attachToOrder,
   handleOrderSaved, handleNatlOrderSaved,
   formFieldHtml, formMount, formOrderCreated, formSettled,
   _openInline, _download, _formPick, _formRemove,

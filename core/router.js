@@ -354,6 +354,11 @@ function navigate(page) {
   c.style.height = '';
   c.style.minHeight = '';
 
+  // T83 (14/10): a page module that failed to load (network drop, a broken
+  // deploy, a stale service worker) leaves its render function undefined, so
+  // the call below threw a ReferenceError and the page stayed blank with no
+  // word. Say so, offer a reload, and log it once per page and session.
+  try {
   switch (page) {
     // Planning
     case 'dashboard':      renderDashboard();            break;
@@ -452,6 +457,12 @@ function navigate(page) {
         : showComingSoon(label) + `<div style="text-align:center;color:var(--text-dim);font-size:12px;margin-top:-28px">
             Ζητήθηκε: <code>${escapeHtml(String(page))}</code> — ο σύνδεσμος είναι λάθος ή η σελίδα καταργήθηκε.
           </div>`;
+  }
+  } catch (e) {
+    if (!(e instanceof ReferenceError)) throw e;
+    c.innerHTML = showError(`Η σελίδα «${label}» δεν φόρτωσε σωστά: λείπει ένα αρχείο της εφαρμογής. Κάνε ανανέωση με Ctrl+Shift+R· αν μένει, το σφάλμα έχει καταγραφεί.`);
+    window._routerMissLogged = window._routerMissLogged || {};
+    if (!window._routerMissLogged[page] && typeof logError === 'function') { window._routerMissLogged[page] = true; logError(e, 'router: page module missing: ' + page); }
   }
 
   // Inject footer after page renders (delay for async renderers)

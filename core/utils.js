@@ -244,6 +244,84 @@ function formatCurrency(v, currency = '€') {
   return currency + ' ' + Number(v).toLocaleString('el-GR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
+// A load's plates for clients and the border (walkthrough 13/10 item 16, the
+// dispatcher's C5): our own fleet «truck / trailer», a partner's plates as he
+// typed them (20 of 21 already read «truck/trailer», 14/10). No driver name.
+function platesText(truck, trailer, partnerPlates) {
+  const p = String(partnerPlates || '').trim();
+  if (p) return p;
+  return [truck, trailer].map(x => String(x || '').trim()).filter(x => x && x !== '—').join(' / ');
+}
+// One click copies them. A refused clipboard (http, an old browser) falls back
+// to a box to copy from, never a silent nothing; no plates says so.
+async function copyPlates(text) {
+  const t = String(text || '').trim();
+  if (!t) { if (typeof toast === 'function') toast('Δεν υπάρχουν πινακίδες σε αυτή την ανάθεση', 'warn'); return false; }
+  try {
+    await navigator.clipboard.writeText(t);
+    if (typeof toast === 'function') toast('Αντιγράφηκε: ' + t, 'success');
+    return true;
+  } catch (e) {
+    window.prompt('Αντιγραφή πινακίδων (Ctrl+C):', t);
+    return false;
+  }
+}
+
+// ── Assign-picker warnings (walkthrough 13/10 items 3 and 4; Nick 14/10:
+// warning only, never a block) ──
+// A truck or trailer in the assign popovers says, on its own line, when it has
+// an open work order or a document expired or due within 14 days (the window
+// of the bell and the work-order list). Work orders match by plate text, as
+// the bell does: maint_req has no vehicle link (19 of 19 plates resolve, 14/10).
+const _VW_WINDOW_DAYS = 14;
+const _VW_DOC_GR = { KTEO: 'ΚΤΕΟ', KEK: 'ΚΕΚ', Insurance: 'Ασφάλεια', FRC: 'FRC', 'ΤΑΧΟΓΡΑΦΟΣ': 'Ταχογράφος' };
+const _vwPlate = s => String(s || '').normalize('NFC').toUpperCase().replace(/[\s-]/g, '');
+let _vwOpenWO = null, _vwOpenWOts = 0, _vwOpenWOp = null;
+// One read per 5 minutes; a failed or refused read leaves the work-order line
+// out (logged), never «no work orders».
+function preloadOpenWorkOrders() {
+  if (_vwOpenWOp) return _vwOpenWOp;
+  if (_vwOpenWO && Date.now() - _vwOpenWOts < 5 * 60e3) return Promise.resolve(_vwOpenWO);
+  const rank = { 'SOS': 0, 'Άμεσα': 1 };
+  _vwOpenWOp = atGetAll(TABLES.MAINT_REQ, { fields: ['Vehicle Plate', 'Priority', 'Status'] }, true)
+    .then(recs => {
+      const m = new Map();
+      (recs || []).forEach(r => {
+        const f = r.fields || {};
+        if ((f['Status'] || '').trim() === 'Done') return;
+        const k = _vwPlate(f['Vehicle Plate']); if (!k) return;
+        const pr = (f['Priority'] || '').normalize('NFC').trim(), cur = m.get(k);
+        if (cur === undefined || (rank[pr] ?? 9) < (rank[cur] ?? 9)) m.set(k, pr);
+      });
+      _vwOpenWO = m; _vwOpenWOts = Date.now(); return m;
+    })
+    .catch(e => { if (typeof logError === 'function') logError(e, 'assign pickers: open work orders'); return null; })
+    .finally(() => { _vwOpenWOp = null; });
+  return _vwOpenWOp;
+}
+function _vwDays(v) {
+  const d = new Date(String(v).slice(0, 10) + 'T00:00:00');
+  if (isNaN(d.getTime())) return null;
+  const n = new Date(), t = new Date(n.getFullYear(), n.getMonth(), n.getDate());
+  return Math.round((d - t) / 864e5);
+}
+// kind 'truck' | 'trailer', id = the reference record id; returns plain text lines.
+function vehicleWarnings(kind, id) {
+  const out = [];
+  const list = kind === 'trailer' ? getRefTrailers() : getRefTrucks();
+  const rec = (list || []).find(r => r.id === id); if (!rec) return out;
+  const f = rec.fields || {};
+  if (_vwOpenWO) { const pr = _vwOpenWO.get(_vwPlate(f['License Plate'])); if (pr !== undefined) out.push('🔧 ανοιχτή εντολή εργασίας' + (pr ? ' (' + pr + ')' : '')); }
+  const due = (kind === 'trailer' ? TRAILER_EXPIRY_FIELDS : TRUCK_EXPIRY_FIELDS)
+    .map(e => ({ doc: _VW_DOC_GR[e.label] || e.label, d: f[e.field] ? _vwDays(f[e.field]) : null }))
+    .filter(x => x.d !== null && x.d <= _VW_WINDOW_DAYS).sort((a, b) => a.d - b.d);
+  if (due.length) {
+    const w = due[0], more = due.length > 1 ? ' · +' + (due.length - 1) + ' ακόμα' : '';
+    out.push('📄 ' + w.doc + (w.d < 0 ? ' έληξε' : w.d === 0 ? ' λήγει σήμερα' : ' λήγει σε ' + w.d + ' ημ.') + more);
+  }
+  return out;
+}
+
 function expiryClass(dateStr) {
   if (!dateStr) return '';
   const days = Math.ceil((new Date(dateStr) - new Date()) / 86400000);
@@ -1475,7 +1553,7 @@ async function _refreshNotifs() {
             if (dt) {
               const days = Math.ceil((new Date(dt) - now) / 864e5);
               if (days < 0) {
-                items.push({ rid: t.id + ':' + field, type: 'danger', title: `${escapeHtml(t.fields[plateField])} — ${escapeHtml(field.replace(' Expiry',''))} ΛΗΓΜΕΝΟ`, sub: `Εληξε ${Math.abs(days)} μερες πριν`, page: 'maint_expiry' });
+                items.push({ rid: t.id + ':' + field, type: 'danger', title: `${escapeHtml(t.fields[plateField])} — ${escapeHtml(field.replace(' Expiry',''))} ΛΗΓΜΕΝΟ`, sub: `Έληξε πριν από ${Math.abs(days)} ${Math.abs(days) === 1 ? 'ημέρα' : 'ημέρες'}`, page: 'maint_expiry' });
               } else if (days <= 14) {
                 items.push({ rid: t.id + ':' + field, type: 'warn', title: `${escapeHtml(t.fields[plateField])} — ${escapeHtml(field.replace(' Expiry',''))} ληγει σε ${days}μ`, sub: escapeHtml(dt), page: 'maint_expiry' });
               }

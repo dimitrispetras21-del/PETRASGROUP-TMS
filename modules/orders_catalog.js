@@ -167,7 +167,7 @@ const OrdersCatalog = (() => {
       : r.piece ? `<span class="oc-dim oc-lotp" title="Στην παρτίδα ${esc(OrdersStock.lotNumLabel(f))} — τιμολογείται η παρτίδα">${esc(OrdersStock.lotNumLabel(f))}</span>`
       : (r.status === 'Cancelled' || r.pre ? '<span class="oc-dim">—</span>' : '<span class="oc-red">χωρίς τιμή</span>');
     return `<tr id="ocrow_${r.id}" class="oc-row${sel}" style="height:${ROW_H}px" onclick="OrdersCatalog.open('${r.type}','${r.id}')">
-      <td class="oc-num"><b>${esc(r.num)}</b></td>
+      <td class="oc-num"><b>${esc(r.num)}</b>${C().docClip(r.rec, r.type)}</td>
       <td><span class="oc-l1" title="${esc(r.ref)}">${r.ref ? esc(r.ref) : '<span class="oc-dim">— χωρίς αναφορά</span>'}</span><span class="oc-l2">${stk}${esc(r.dir)}${tags}${r.legs ? '<span class="oc-tag" title="Σπασμένο σε 2 σκέλη — δες το Weekly International για την εκτέλεση">2 σκέλη</span>' : ''}</span></td>
       <td><span class="oc-l1 oc-plain" title="${r.client}">${r.client}</span></td>
       <td>${r.pre ? '<span class="oc-dim">—</span>' : C().placeCell(r.load)}</td>
@@ -375,9 +375,9 @@ const OrdersCatalog = (() => {
     S.namesPending = !_refReady() || !_fhLocationsArr.length || allRecs.some(r => { const c = (r.fields['Client'] || [])[0]; return c && !_fhClientsMap[c]; });
     S.rows = [...intl.records.map(r => _row(r, 'intl')), ...natl.records.map(r => _row(r, 'natl'))];
     ctx.setActions(_actionsHtml());
-    const warnHtml = ws => ws.map(w => `<div class="oc-warn">⚠ ${esc(w)}</div>`).join('');
-    ctx.body.innerHTML = `<div id="ocWarns">${warnHtml([...(intl.warns || []), ...(natl.warns || [])])}</div>` + _layoutHtml();
+    ctx.body.innerHTML = `<div id="ocWarns">${_warnHtml([...(intl.warns || []), ...(natl.warns || [])])}</div>` + _layoutHtml();
     _apply();
+    C().whenDocs(() => { if (ctx.isCurrent()) _apply(); });
     const n = S.rows.filter(_inScope).length;
     ctx.setSub(`Διεθνείς και εθνικές · ${OrdersList.countLabel(n)} · ${PERIOD_LABEL[S.period]}`);
     // Both loaders' namesReady never reject; each resolves to its warnings.
@@ -387,7 +387,7 @@ const OrdersCatalog = (() => {
         const was = S.namesPending;
         S.namesPending = false;
         const late = ws.flat();
-        if (late.length) { const box = document.getElementById('ocWarns'); if (box) box.insertAdjacentHTML('beforeend', warnHtml(late)); }
+        if (late.length) { const box = document.getElementById('ocWarns'); if (box) box.insertAdjacentHTML('beforeend', _warnHtml(late)); }
         if (!was) return;
         S.rows = S.rows.map(r => _row(r.rec, r.type));
         _apply();
@@ -403,6 +403,8 @@ const OrdersCatalog = (() => {
     _apply();
   }
 
+  const _warnHtml = ws => ws.map(w => `<div class="oc-warn">⚠ ${esc(w)}</div>`).join('');
+
   // ── Public handlers (inline onclick) ─────────────────────────────────────
   async function open(type, id) {
     S.selected = id;
@@ -414,16 +416,74 @@ const OrdersCatalog = (() => {
     if (type === 'intl') { if (typeof closeNatlDetail === 'function') closeNatlDetail(); selectIntlOrder(id); }
     else { if (typeof _oiCloseCard === 'function') _oiCloseCard(); selectNatlOrder(id); }
   }
-  function search(v) { S.filters.qRaw = v; S.filters.q = String(v || '').toLowerCase().trim(); _apply(); }
+  // One rule for the whole app (Nick 13/10, walkthrough #20): a search always
+  // searches every record, whatever period the list shows. Orders 153, 161 and
+  // 186 looked deleted because the default 60-day window hid them AND the search
+  // only searched what that window had loaded. A non-empty search now widens to
+  // «Όλα» in the background (the toolbar is not redrawn, so typing goes on);
+  // emptying the search returns to the period the user had. Phase 2 (T29): the
+  // search runs in the database through the Worker, before the 1,000-row cap.
+  function search(v) {
+    S.filters.qRaw = v; S.filters.q = String(v || '').toLowerCase().trim();
+    if (S.filters.q && S.period !== 'all') _widenForSearch();
+    else if (!S.filters.q && S.widenedFrom) { S.period = S.widenedFrom; S.widenedFrom = null; OrdersHub.refresh(); return; }
+    _apply();
+  }
+  async function _widenForSearch() {
+    if (S.widening) return;
+    S.widening = true;
+    const ctx = S.ctx, from = S.period;
+    if (ctx) ctx.setSub('Διεθνείς και εθνικές · αναζήτηση σε όλες τις ημερομηνίες…');
+    try {
+      const [ri, rn] = await Promise.allSettled([loadOrdersIntlData('all'), loadOrdersNatlData('all')]);
+      if (!ctx || !ctx.isCurrent() || S.period !== from) return;
+      // Cleared while loading: the user is back on their period, so the
+      // all-dates rows must not land over it, and the subtitle says so.
+      if (!S.filters.q) { ctx.setSub(`Διεθνείς και εθνικές · ${OrdersList.countLabel(S.rows.filter(_inScope).length)} · ${PERIOD_LABEL[from]}`); return; }
+      if (ri.status !== 'fulfilled' || rn.status !== 'fulfilled') {
+        // Say it, and keep searching the loaded period: never an empty result
+        // that reads as «no such order» (DESIGN.md #7).
+        const box = document.getElementById('ocWarns');
+        if (box) box.insertAdjacentHTML('beforeend', `<div class="oc-warn">⚠ ${esc('Η αναζήτηση σε όλες τις ημερομηνίες δεν φορτώθηκε. Ψάχνει μόνο στην περίοδο «' + PERIOD_LABEL[from] + '».')}</div>`);
+        if (typeof logError === 'function') logError(ri.reason || rn.reason, 'orders catalog: widen for search');
+        ctx.setSub(`Διεθνείς και εθνικές · ${OrdersList.countLabel(S.rows.filter(_inScope).length)} · ${PERIOD_LABEL[from]}`);
+        return;
+      }
+      const intl = ri.value, natl = rn.value;
+      S.period = 'all'; S.widenedFrom = from;
+      S.noLoad = natl.noLoad || new Set(); S.loads = natl.loads || new Map(); S.legParents = intl.legParents || null;
+      // The new rows replace the period's, so their loaders' warnings replace
+      // the period's too (a failed national-loads read must still say that the
+      // vehicle column cannot be trusted), and names are pending as in render().
+      const box = document.getElementById('ocWarns');
+      if (box) box.innerHTML = _warnHtml([...(intl.warns || []), ...(natl.warns || [])]);
+      const allRecs = [...intl.records, ...natl.records];
+      S.namesPending = !_refReady() || !_fhLocationsArr.length || allRecs.some(r => { const c = (r.fields['Client'] || [])[0]; return c && !_fhClientsMap[c]; });
+      S.rows = [...intl.records.map(r => _row(r, 'intl')), ...natl.records.map(r => _row(r, 'natl'))];
+      const sel = document.querySelector('.oc-toolbar select[onchange^="OrdersCatalog.period"]');
+      if (sel) sel.value = 'all';
+      ctx.setSub(`Διεθνείς και εθνικές · ${OrdersList.countLabel(S.rows.filter(_inScope).length)} · αναζήτηση σε όλες τις ημερομηνίες`);
+      _apply();
+      // Older orders may name clients the warm cache does not hold yet: the
+      // loaders resolve namesReady once they do, as in render().
+      S.namesP = Promise.all([intl.namesReady, natl.namesReady].map(x => x || Promise.resolve([]))).then(ws => {
+        if (!ctx.isCurrent() || S.period !== 'all') return;
+        S.namesPending = false;
+        const late = ws.flat();
+        if (late.length) { const b = document.getElementById('ocWarns'); if (b) b.insertAdjacentHTML('beforeend', _warnHtml(late)); }
+        S.rows = S.rows.map(r => _row(r.rec, r.type)); _apply();
+      });
+    } finally { S.widening = false; }
+  }
   function filter(k, v) { if (v) S.filters[k] = v; else delete S.filters[k]; _apply(); }
   function chip(k) { S.filters.chip = S.filters.chip === k ? '' : k; _apply(); }
   function clear() {
-    S.filters = {};
+    S.filters = {}; S.widenedFrom = null;
     // Same rule as the two lists (OI-4): «clear» also widens the period, which
     // needs a refetch, not a re-filter.
     if (S.period !== 'all') { S.period = 'all'; OrdersHub.refresh(); } else { _apply(); }
   }
-  function period(v) { S.period = v; OrdersHub.refresh(); }
+  function period(v) { S.period = v; S.widenedFrom = null; OrdersHub.refresh(); }
   function sort(key) {
     if (S.sortCol === key) { S.sortDir = (S.sortDir + 1) % 3; if (S.sortDir === 0) S.sortCol = null; }
     else { S.sortCol = key; S.sortDir = 1; }

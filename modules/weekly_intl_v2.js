@@ -197,7 +197,7 @@ function _stopsOf(f, kind) {
   return L0.map((x) => {
     const src = Array.isArray(arr) && arr.length ? arr[x._i] : null;
     const raw = src ? (typeof src === 'string' ? src : src.n) : (L0.length === 1 ? I.raw(str) : x.n);
-    return { n: raw || x.n, dt: x.dt, _i: x._i };
+    return { n: raw || x.n, dt: x.dt, _i: x._i, pal: src && typeof src === 'object' ? src.p : null };
   });
 }
 // A stop name → {title, city, cc, place}. Two producers write stop names
@@ -731,26 +731,60 @@ function _ptsHTML(side) {
   const k = 'p' + (++_pk);
   // A groupage side (its points are member tiles, drag sources and targets)
   // draws its own «+N» fold with the SAME tiles: a member hidden behind «+N»
-  // must stay draggable — today's fold (_wk3MoreStops) is plain text.
+  // must stay draggable, so its rows reuse the points' _ptEvents.
   const group = (side.stops || []).some((s) => s && s.drag);
   // pre/late: the leg's PREORDER / LATE reason. They ride on the first /
   // last SHOWN point, so a point folded behind «+N» never hides the word.
   const d = { stops: side.stops || [], dateTick: !!side.dateTick, showPal: !!side.showPal, group, pre: side.pre || null, late: side.late || null };
   _pts.set(k, d);
   const r = L().points(d.stops, _ptsW || 0, { dateTick: d.dateTick });
-  return `<div class="wi4-pts${r.hidePlace ? ' wi4-noplace' : ''}" data-pk="${k}">${_ptsInner(r, d)}</div>${group ? '' : (side.xfold || '')}`;
+  return `<div class="wi4-pts${r.hidePlace ? ' wi4-noplace' : ''}" data-pk="${k}">${_ptsInner(r, d)}</div>${group || r.more ? '' : (side.xfold || '')}`;
+}
+// «+N» (Nick 14/10): the tooltip said «Όλα τα σημεία» but listed only the
+// hidden points, and a groupage's panel held only those. Both now give the
+// WHOLE route of that end, numbered as on the row, with each point's place and
+// (groupage) pallets, so one click shows the route at once (no hover: one
+// trigger, one result). A single order opens the same table.
+// A point's click (open its order) and, for a groupage member, its drag tile:
+// one source, so a row of the «+N» table behaves exactly like the point on the row.
+function _ptEvents(s) {
+  const oid = _q(s.oid);
+  const click = oid ? ` onclick="event.stopPropagation();WI_INTERNAL.edit('${oid}')"` : '';
+  const rid = s.drag && Number.isInteger(s.drag.rowId) ? s.drag.rowId : null;
+  const drag = rid != null && oid ? ` data-order-id="${oid}" draggable="true" ondragstart="event.stopPropagation();_wiSegDragStart(event,${rid},'${oid}')" ondragover="event.preventDefault();event.stopPropagation();_wiSegDragOver(event,${rid},'${oid}')" ondragleave="event.stopPropagation();this.classList.remove('dragover')" ondrop="event.stopPropagation();_wiSegDrop(event,${rid},'${oid}')" ondragend="event.stopPropagation();_wiSegDragEnd(event)"` : '';
+  return { click, drag };
+}
+// «+N» on click (Nick 14/10): the whole route of that end as a table, number box
+// | name | place | pallets (groupage) | day (only when the stops' days differ,
+// which the old list marked), 8px row padding with a line between rows. A
+// groupage's rows stay its members' drag tiles. Number class per kind, as his
+// rig reads them: .wi4-pt-n in a groupage fold, .wk3-stopn in a plain cell's.
+function _routeTable(d) {
+  const st = d.stops || [];
+  const pal = !!d.showPal;
+  const days = st.map((x) => _day(x.dt));
+  const dayCol = new Set(days.filter(Boolean)).size > 1;
+  const box = d.group ? 'wi4-pt-n' : 'wk3-stopn';
+  const rows = st.map((x, i) => { const ev = _ptEvents(x);
+    return `<tr class="wi4-rrow"${ev.click}${ev.drag}><td class="n"><span class="${box}">${_esc(String(x.n || i + 1))}</span></td>` +
+      `<td class="nm">${_esc(x.label || '—')}</td><td class="pl">${_esc(x.place || '')}</td>` +
+      (pal ? `<td class="pa">${x.pallets != null ? _esc(String(x.pallets)) + 'π' : '—'}</td>` : '') +
+      (dayCol ? `<td class="dy">${_esc(_dayLabel(days[i]))}</td>` : '') + '</tr>'; }).join('');
+  return `<table class="wi4-rtab"><thead><tr><th>#</th><th>Σημείο</th><th>Τόπος</th>${pal ? '<th class="pa">Παλέτες</th>' : ''}${dayCol ? '<th>Ημέρα</th>' : ''}</tr></thead><tbody>${rows}</tbody></table>`;
+}
+function _routeTitle(d) {
+  return 'Όλα τα σημεία:\n' + (d.stops || []).map((s, i) => [`${s.n || i + 1}. ${s.label || '—'}`, s.place, d.showPal && s.pallets != null ? s.pallets + 'π' : ''].filter(Boolean).join(' · ')).join('\n');
 }
 function _ptsInner(r, d) {
   const last = r.shown.length - 1;
   let h = r.shown.map((s, i) => _ptHTML(Object.assign({}, s, { pre: i === 0 ? d.pre : null, late: i === last ? d.late : null }), d)).join('');
   if (r.more) {
-    h += `<button type="button" class="wi4-more" title="${_esc('Όλα τα σημεία:\n' + r.more.title)}" onclick="event.stopPropagation();WIV2._more(this)"><b>+${r.more.count}</b>${r.more.pallets ? `<span>${r.more.pallets}π</span>` : ''}</button>`;
-    if (d.group) h += `<div class="wk3-xfold wi4-fold">${r.more.hidden.map((s) => _ptHTML(Object.assign({}, s, { badge: s.n, tick: !!s.done }), d)).join('')}</div>`;
+    h += `<button type="button" class="wi4-more" aria-label="${_esc(_routeTitle(d))}" onclick="event.stopPropagation();WIV2._more(this)"><b>+${r.more.count}</b>${r.more.pallets ? `<span>${r.more.pallets}π</span>` : ''}</button>`;
+    h += `<div class="wk3-xfold wi4-rfold${d.group ? ' wi4-fold' : ''}">${_routeTable(d)}</div>`;
   }
   return h;
 }
 function _ptHTML(s, d) {
-  const oid = _q(s.oid);
   // ✓ is a meaningful graphic (aria-label), not text in the icon grey.
   const tick = s.tick ? `<span class="wi4-ok" role="img" aria-label="ολοκληρώθηκε">${_ico('check', 11)}</span>` : '';
   const delay = s.delayH ? ` <span class="wi4-delay">+${_esc(s.delayH)}ω</span>` : '';
@@ -780,32 +814,49 @@ function _ptHTML(s, d) {
   const l1 = pre || late || delay || lot
     ? `<span class="wi4-l1 wi4-l1f">${pre}<span class="wi4-ell" title="${_esc(s.label)}">${tickL1 ? tick : ''}${_esc(s.label)}</span>${delay}${late}${lot}</span>`
     : `<span class="wi4-l1" title="${_esc(s.label)}">${tickL1 ? tick : ''}${_esc(s.label)}</span>`;
-  const click = oid ? ` onclick="event.stopPropagation();WI_INTERNAL.edit('${oid}')"` : '';
+  const { click, drag } = _ptEvents(s);
   // Group member tiles: today's drag strings verbatim (§f), rowId = the
   // GROUP's own row id. Without preventDefault in ondragover the drop never
   // fires. No `wk3-seg` class: it is a global layout rule (§a.7).
-  const rid = s.drag && Number.isInteger(s.drag.rowId) ? s.drag.rowId : null;
-  const drag = rid != null && oid ? ` data-order-id="${oid}" draggable="true" ondragstart="event.stopPropagation();_wiSegDragStart(event,${rid},'${oid}')" ondragover="event.preventDefault();event.stopPropagation();_wiSegDragOver(event,${rid},'${oid}')" ondragleave="event.stopPropagation();this.classList.remove('dragover')" ondrop="event.stopPropagation();_wiSegDrop(event,${rid},'${oid}')" ondragend="event.stopPropagation();_wiSegDragEnd(event)"` : '';
   if (s.badge == null) return `<div class="wi4-pt" style="display:block"${click}${drag}>${l1}${l2}</div>`;
   return `<div class="wi4-pt"${click}${drag}><span class="wi4-pt-n">${_esc(s.badge)}</span>${l1}${l2}</div>`;
 }
-// Stops of one end: a single order's points, or one point per MEMBER of a
-// groupage (the old board's rule: ① = 1st member, never a city parsed out of
-// the first member's summary).
+// Stops of one end: a single order's points, or EVERY stop of every member of
+// a groupage. Until 14/10 a groupage drew one point per member (its first
+// loading or last delivery) with the member's total, so 462 + 471 read «2+2»
+// with 26π on one stop while the orders had 3 + 3 (walkthrough item 23, Nick
+// 14/10). Now: each member's own stops with their own pallets (an order's only
+// stop on this end takes its total), in the order the paper and the WhatsApp
+// text use (print.html groupRoute): an export's loadings and an import's
+// deliveries by date, the other end in member order, ties by member then stop.
+// Every point stays its member's drag tile; past the row's room the fold «+N»
+// keeps them (his 11/10 rule, _ptsHTML). Display only: no stop is written.
 function _sideOf(recs, kind, opt) {
   const o = opt || {};
   const I = W();
   if (recs.length > 1) {
-    const stops = recs.map((r, i) => {
+    const isExport = ((recs[0] && recs[0].fields) || {})['Direction'] === 'Export';
+    const byDate = (kind === 'load') === isExport;
+    const pts = [];
+    recs.forEach((r, mi) => {
       const f = r.fields || {};
       const L0 = _stopsOf(f, kind);
-      const nm = L0.length ? _splitName(L0[kind === 'load' ? 0 : L0.length - 1].n) : { title: I.clientName(f) || '—', place: '' };
       const st = I.stFlags(f);
       const p = _pals([f]);
-      return { n: i + 1, label: nm.title, place: nm.place, pallets: p.known ? p.n : null, done: kind === 'load' ? st.loaded : st.delivered,
-        oid: r.id, drag: o.dragRowId != null ? { rowId: o.dragRowId } : null };
+      const list = L0.length ? L0 : [{ n: I.clientName(f) || '—', _none: true }];
+      const orderDt = f[kind === 'load' ? 'Loading DateTime' : 'Delivery DateTime'] || '';
+      list.forEach((x, si) => {
+        const nm = x._none ? { title: x.n, place: '' } : _splitName(x.n);
+        const own = x.pal != null && x.pal !== '' && isFinite(+x.pal) ? +x.pal : null;
+        pts.push({ mi, si, dt: x.dt || orderDt, label: nm.title, place: nm.place,
+          pallets: own != null ? own : (list.length === 1 && p.known ? p.n : null),
+          done: kind === 'load' ? st.loaded : st.delivered, oid: r.id,
+          drag: o.dragRowId != null ? { rowId: o.dragRowId } : null });
+      });
     });
-    const arr = recs.map((r) => ({ n: stops[recs.indexOf(r)].label, dt: (r.fields || {})[kind === 'load' ? 'Loading DateTime' : 'Delivery DateTime'] }));
+    if (byDate) pts.sort((a, b) => String(a.dt || '9').slice(0, 10).localeCompare(String(b.dt || '9').slice(0, 10)) || a.mi - b.mi || a.si - b.si);
+    const stops = pts.map((s, i) => ({ n: i + 1, label: s.label, place: s.place, pallets: s.pallets, done: s.done, oid: s.oid, drag: s.drag, dt: s.dt }));
+    const arr = pts.map((s) => ({ n: s.label, dt: s.dt }));
     return { stops, dateTick: kind === 'load', showPal: true, xfold: I.moreStops(arr.map((x) => x.n).join(', '), arr, kind) };
   }
   const r = recs[0], f = (r && r.fields) || {};
@@ -821,11 +872,13 @@ function _sideOf(recs, kind, opt) {
   const one = L0.length === 1;
   const stops = (L0.length ? L0 : [{ n: I.clientName(f) || '—' }]).map((x, i) => {
     const nm = _splitName(x.n);
-    return { n: i + 1, label: nm.title, place: one ? nm.placeC : nm.place, pallets: null, done: kind === 'load' ? st.loaded : st.delivered, oid: r && r.id, lot: i === 0 ? lot : '' };
+    return { n: i + 1, label: nm.title, place: one ? nm.placeC : nm.place, pallets: null, done: kind === 'load' ? st.loaded : st.delivered, oid: r && r.id, lot: i === 0 ? lot : '', dt: x.dt || '' };
   });
   return { stops, dateTick: kind === 'load', showPal: false, xfold: I.moreStops(I.placeStr(f, kind), kind === 'load' ? f._stopsL : f._stopsD, kind) };
 }
-function _palHTML(fieldsList, oid) {
+// docIds: the orders the paperclip covers (a groupage passes all its members);
+// left out, it is the order itself plus, for a split leg, its parent (C6, 14/10).
+function _palHTML(fieldsList, oid, docIds) {
   const I = W();
   const p = _pals(fieldsList);
   const one = fieldsList.length === 1 ? fieldsList[0] : null;
@@ -835,7 +888,8 @@ function _palHTML(fieldsList, oid) {
   if (one && oid) h += I.apBadge(one, oid);
   if (fieldsList.some((f) => f && f['Pallet Exchange'])) h += '<span class="wi4-pe" title="Ανταλλαγή παλετών">PE</span>';
   // 12px paperclip (Figma 1097:2880).
-  if (oid && typeof OrderDocs !== 'undefined') { try { const b = OrderDocs.badge(oid, { size: 12 }); if (b) h += `<span class="wi4-att">${b}</span>`; } catch (e) { _logErr(e, 'wi4: docs badge'); } }
+  const ids = docIds || (oid ? (typeof OrderDocs !== 'undefined' && OrderDocs.docIdsOf ? OrderDocs.docIdsOf(oid, one) : [oid]) : null);
+  if (ids && typeof OrderDocs !== 'undefined') { try { const b = OrderDocs.badgeAny(ids, { size: 12 }); if (b) h += `<span class="wi4-att">${b}</span>`; } catch (e) { _logErr(e, 'wi4: docs badge'); } }
   if (!p.known) h += '<span class="wi4-pal wi4-t-g2" title="Οι παλέτες δεν έχουν καταγραφεί">—</span>';
   else {
     // The SAME thresholds as WI4.flags OVER_33 / PALLETS_UNKNOWN (one source of
@@ -883,7 +937,7 @@ function _impLegHTML(host, imp, today, rs) {
     // (_sideOf); a VS import's delivery point is this one.
     to = { stops: [{ n: 1, label: 'Βέροια', place: 'μετά εθνικό: ' + _lastStop(f, 'del').title, done: st.delivered, oid: imp.id, lot: I.lotBadge(f) }], dateTick: false };
   } else to = _sideOf(members, 'del', { dragRowId: dragRow });
-  let pal = _palHTML(members.map((r) => r.fields || {}), isGroup ? null : imp.id);
+  let pal = _palHTML(members.map((r) => r.fields || {}), isGroup ? null : imp.id, isGroup ? members : null);
   // Whole matched group to another export (§f): today's grip string. Shown on
   // row hover / focus only (.wi4-grip, Figma sheet 14 1065:2257 «Εμφανίζεται
   // η λαβή ⋮⋮»; Row 18 1097:2921 holds only the figure at rest).
@@ -974,6 +1028,11 @@ function _asgHTML(row, rs) {
     if (rs.NO_TRUCK) r = ' data-r="NO_TRUCK"';
   }
   const box = `<button type="button" class="wi4-box ${cls}"${r} title="${_esc(title)}"${open ? ` onclick="event.stopPropagation();${open}"` : ''}>${inner}</button>`;
+  // Copy the plates in one click (walkthrough 13/10 item 16, C5): on row hover,
+  // over the box's right end, so no width on the board moves. Every role, as it
+  // writes nothing; the per-load menu has the same action for the keyboard.
+  const pls = row.saved && typeof platesText === 'function' ? (partner ? platesText('', '', row.partnerPlates) : platesText(truck, trailer)) : '';
+  const cpy = pls ? `<button type="button" class="wi4-cpy" title="Αντιγραφή πινακίδων: ${_esc(pls)}" aria-label="Αντιγραφή πινακίδων ${_esc(pls)}" data-plates="${_esc(pls)}" onclick="event.stopPropagation();copyPlates(this.dataset.plates)">${_ico('clipboard', 12)}</button>` : '';
   // Print keeps .wk3-prt + data-shq (right-click / long-press share menu,
   // §a.7) and is DRAWN again (review 11/10, P2): on row hover, in its own slot
   // right of the paper plane, never on the box. Roles with planning:'view'
@@ -994,7 +1053,7 @@ function _asgHTML(row, rs) {
       : pb('Εκτύπωση εντολής εξαγωγής — δεξί κλικ: κοινή χρήση', `${shq(oid, 'export')} data-shtitle="Εντολή εξαγωγής — W${_D().week}"`, `WI_INTERNAL.print(${row.id},'export')`);
   }
   const plane = _q(oid) ? `<button type="button" class="wi4-plane" title="Ενέργειες φορτίου" aria-label="Ενέργειες φορτίου" onclick="event.stopPropagation();WI4Actions.openRowMenu(event,'${_q(oid)}')">${PLANE}</button>` : '';
-  return `<div class="wi4-asg">${box}${plane}${prt}</div>`;
+  return `<div class="wi4-asg">${box}${cpy}${plane}${prt}</div>`;
 }
 // why = every reason of the row in one line (_whyOf): the rail is a colour
 // and a shape, the title of the number beside it says what they mean.
@@ -1038,7 +1097,7 @@ function _expRowHTML(e, today) {
   const to = _sideOf(exps, 'del', { dragRowId: isGroup && _gtOn() ? row.id : null });
   // (a) a groupage shows «N φορτία» where ΑΝΑΦ. goes.
   const ref = isGroup ? _plural(exps.length, 'load') : (pf['Reference'] || '');
-  const leg = _legHTML({ chip, ref, from, to, rs: rsE, pal: _palHTML(exps.map((r) => r.fields || {}), isGroup ? null : pid),
+  const leg = _legHTML({ chip, ref, from, to, rs: rsE, pal: _palHTML(exps.map((r) => r.fields || {}), isGroup ? null : pid, isGroup ? exps : null),
     click: isGroup ? `WI_INTERNAL.rota(${row.id})` : (_q(pid) ? `WI_INTERNAL.edit('${_q(pid)}')` : '') }, today);
 
   // Import side: not saved · matched load · not read · empty return · partner only · open slot.

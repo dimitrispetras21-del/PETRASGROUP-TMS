@@ -832,9 +832,11 @@ async function scnPaint(browser, origin) {
   // The expectation is the rule itself (WI4.points) at the MEASURED column
   // width, never a number: at ~217px 4 stops are 2 + «+2» (3 + chip = 226px).
   const STOPS = FIX.cases.stops_1_to_9.expect.stops;
+  // «title» reads the «+N» route from aria-label: since 14/10 a click draws the
+  // route as a table and the button carries it as aria-label, not title.
   const pts = () => page.evaluate(([js, want]) => { const row = eval(js); const P = (oid, total) => { const r = row(oid); const to = r && r.querySelector('.wi4-c-exp .wi4-l-to');
     if (!to) return null; const w = to.clientWidth; const k = WI4.points(Array.from({ length: total }, (_, i) => ({ n: i + 1, label: 'x' })), w).shown.length;
-    return { w, total, want: k, n: to.querySelectorAll('.wi4-pt').length, more: (to.querySelector('.wi4-more b') || {}).textContent || '', title: (to.querySelector('.wi4-more') || { title: '' }).title, badge: !!to.querySelector('.wi4-pt-n') }; };
+    return { w, total, want: k, n: to.querySelectorAll('.wi4-pt').length, more: (to.querySelector('.wi4-more b') || {}).textContent || '', title: ((to.querySelector('.wi4-more') || { getAttribute: () => '' }).getAttribute('aria-label') || ''), badge: !!to.querySelector('.wi4-pt-n') }; };
     return { e19: P('recWiE019', want.e19), e20: P('recWiE020', want.e20), e01: P('recWiE001', want.e01) }; }, [ROW_JS, { e19: STOPS.recWiE019[1], e20: STOPS.recWiE020[1], e01: STOPS.recWiE001[1] }]);
   // The OWNER'S table (§d.1 lock), written out here — never WI4.points, the
   // code under test (review 11/10: it was its own oracle, and the pinned case

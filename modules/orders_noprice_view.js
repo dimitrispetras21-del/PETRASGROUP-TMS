@@ -247,6 +247,9 @@ const OrdersNoPrice = (() => {
     ctx.setActions(`<button type="button" class="${printCls}" onclick="OrdersNoPrice.print()">Εκτύπωση</button>`
       + '<button type="button" class="btn btn-secondary btn-sm" onclick="OrdersNoPrice.csv()">CSV</button>');
     _paint();
+    // The index can land while a price is being typed: repaint with what is
+    // typed, and give the box its focus back.
+    OrdersCommon.whenDocs(() => { if (ctx.isCurrent()) _repaintKeepingInput(); });
   }
 
   const _rawClientName = id => {
@@ -369,7 +372,7 @@ const OrdersNoPrice = (() => {
             onkeydown="OrdersNoPrice.onKey(event)" oninput="OrdersNoPrice.clearMsg(this)">
           <div class="np-msg" id="npMsg_${_esc(r._type + '_' + r.id)}"></div></td>` : '';
       return `<tr class="np-row${_overdue(r) ? ' np-late' : ''}" data-key="${_esc(key)}">
-        <td class="np-no">${_esc(OrdersCommon.numLabel(r))}</td>
+        <td class="np-no">${_esc(OrdersCommon.numLabel(r))}${OrdersCommon.docClip(r, r._type)}</td>
         <td>${f['Reference'] ? `<span class="np-ref">${_esc(f['Reference'])}</span>` : '<span class="np-dim">— χωρίς</span>'}</td>
         <td>${OrdersCommon.placeCell(OrdersCommon.placeOf(r, 'load'), { noDate: true })}</td>
         <td>${OrdersCommon.placeCell(OrdersCommon.placeOf(r, 'del'), { noDate: true })}</td>
@@ -405,7 +408,7 @@ const OrdersNoPrice = (() => {
         : st.key === 'blocked' && st.reason === 'stock' ? '→ περιμένει κομμάτια (παρτίδα)'
         : '';
       return `<tr>
-        <td class="np-no">${_esc(OrdersCommon.numLabel(rec))}</td>
+        <td class="np-no">${_esc(OrdersCommon.numLabel(rec))}${OrdersCommon.docClip(rec, rec._type)}</td>
         <td>${rec.fields['Reference'] ? `<span class="np-ref">${_esc(rec.fields['Reference'])}</span>` : '<span class="np-dim">— χωρίς</span>'}</td>
         <td>${OrdersCommon.placeCell(OrdersCommon.placeOf(rec, 'load'), { noDate: true })}</td>
         <td>${OrdersCommon.placeCell(OrdersCommon.placeOf(rec, 'del'), { noDate: true })}</td>
@@ -494,6 +497,17 @@ const OrdersNoPrice = (() => {
     }
   }
 
+  function _repaintKeepingInput() {
+    const key = i => i.dataset.type + ':' + i.dataset.id;
+    const keep = {}, a = document.activeElement;
+    const ak = a && a.classList && a.classList.contains('np-in') ? key(a) : null;
+    V.ctx.body.querySelectorAll('input.np-in').forEach(i => { if (i.value) keep[key(i)] = i.value; });
+    _paint(keep);
+    if (!ak) return;
+    const el = [...V.ctx.body.querySelectorAll('input.np-in')].find(i => key(i) === ak);
+    if (el) { el.focus(); el.setSelectionRange(el.value.length, el.value.length); }
+  }
+
   // Move the saved row without a reload, keeping what the owner already typed
   // in other rows, then put the cursor on the next empty box.
   function _repaintFromState() {
@@ -530,7 +544,7 @@ const OrdersNoPrice = (() => {
       const sub = [meta.vat ? 'ΑΦΜ ' + meta.vat : 'ΑΦΜ —', meta.terms ? 'όροι ' + meta.terms + ' ημ.' : '', f['Reference'] || 'χωρίς αναφορά'].filter(Boolean).join(' · ');
       const pal = _pallets(r);
       return `<tr class="${late ? 'late' : ''}">
-        <td class="no">${late ? '<i>★</i>' : ''}${esc(OrdersCommon.numLabel(r))}${_isLot(r) ? '<span>→ ΑΠΟΘΗΚΗ</span>' : ''}</td>
+        <td class="no">${late ? '<i>★</i>' : ''}${esc(OrdersCommon.numLabel(r))}${OrdersCommon.docClip(r, r._type)}${_isLot(r) ? '<span>→ ΑΠΟΘΗΚΗ</span>' : ''}</td>
         <td><b>${esc(_rawClientName(_clientId(r)))}</b><span>${esc(sub)}</span></td>
         <td>${placeA4(OrdersCommon.placeOf(r, 'load'))}</td>
         <td>${placeA4(OrdersCommon.placeOf(r, 'del'))}</td>

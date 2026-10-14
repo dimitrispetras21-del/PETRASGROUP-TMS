@@ -79,8 +79,9 @@ if (typeof window !== 'undefined') window.modalSetBusy = modalSetBusy;
  * Replaces `if (!confirm(msg)) return;` with
  * `if (!(await confirmAction(msg))) return;` so call sites keep their existing
  * control flow (one line, no split into show/do functions). Resolves true on
- * confirm, false on cancel, Escape, or overlay click (dismiss = cancel, matching
- * native confirm semantics). Reuses openModal so styling/focus-trap come for free.
+ * confirm, false on cancel or Escape. A click on the overlay does nothing (the
+ * openModal rule since 19/5, a half-filled form was lost to a stray click).
+ * Reuses openModal so styling/focus-trap come for free.
  *
  * NOTE: not a replacement for the native blocking confirm on irreversible
  * cascade deletes, those are intentionally left as native confirm() (a hard
@@ -413,7 +414,9 @@ function toast(msg, type = 'success') {
   const shown = colors[kind] ? kind : 'info';
   if (!colors[kind]) console.warn('toast: unknown type', type);
   el.style.background = colors[shown];
-  el.style.color = 'var(--text-on-dark)';
+  // White, not --text-on-dark (#E2E8F0): on the success green that was 4.07:1,
+  // under 4.5:1 for 13px text; white is 5.0:1 there and higher on the others.
+  el.style.color = 'var(--text-inverse)';
   el.innerHTML = icons[shown] + `<span>${msg}</span>`;
   // Animate in
   requestAnimationFrame(() => {

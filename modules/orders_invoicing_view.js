@@ -403,6 +403,9 @@ const OrdersInvoicingView = (() => {
       S.stripEnd = after > cur ? (S.sel > cur ? S.sel : cur) : after;
     }
     paint();
+    // Only the table draws paperclips: repainting it alone leaves the search
+    // box and the card's ΤΠΥ box (and whatever is being typed there) alone.
+    OC().whenDocs(() => { if (ctx.isCurrent()) paintTable(view()); });
   }
   function rebuild() {
     S.all = annotate(S.set, clientName);
@@ -541,7 +544,7 @@ const OrdersInvoicingView = (() => {
           const pal = it.type === 'intl' ? it.f['Total Pallets'] : it.f['Pallets'];
           const on = it.id === S.selId;
           return `<tr class="oiv-r${on ? ' on' : ''}" data-id="${esc(it.id)}" onclick="OrdersInvoicingView.select('${esc(it.id)}')">
-            <td class="num">${esc(it.num)}</td>
+            <td class="num">${esc(it.num)}${OC().docClip(it.rec, it.type)}</td>
             <td><span class="oc-pname">${esc(it.ref || '—')}</span><span class="oiv-sub">${isLotIt(it) ? '<span class="oiv-tag">→ ΑΠΟΘΗΚΗ</span>' : ''}${esc(dirWord(it.f))}</span></td>
             <td>${OC().placeCell(it.load)}</td>
             <td>${OC().placeCell(it.del)}</td>
