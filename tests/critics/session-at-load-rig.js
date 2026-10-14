@@ -89,9 +89,11 @@ const check = (ok, what, detail) => {
   const streak = (p) => p.evaluate(() => JSON.parse(sessionStorage.getItem('tms_session_expired') || 'null'));
 
   const probe = await newTab();
+  // index.html no longer carries a roster (its hashes were public); config.js does.
+  await probe.addScriptTag({ url: BASE + 'config.js' });
   const users = await probe.evaluate(() => (typeof USERS !== 'undefined' ? USERS : []).map((u) => ({ username: u.username, role: u.role })));
   await probe.close();
-  if (!users.length) throw new Error('index.html exposes no USERS roster');
+  if (!users.length) throw new Error('config.js exposes no USERS roster');
   const real = users[0];
   const otherRole = ['owner', 'dispatcher', 'management', 'accountant', 'warehouse'].find((r) => r !== real.role);
   const H = 3600e3;
