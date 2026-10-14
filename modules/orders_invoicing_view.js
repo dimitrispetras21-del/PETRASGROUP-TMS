@@ -48,7 +48,11 @@ const OrdersInvoicingView = (() => {
         rec, id: rec.id, type: rec._type, f,
         state: st.key, reason: st.reason || '', lot: st.lot || null,
         week: OC.weekStartOf(rec) || '',
-        price: OC.price(f),
+        // null unless OC.hasPrice (owner 13/10: 0 € = no price, everywhere).
+        // Every check below reads `it.price === null`; normalising here keeps
+        // them on the SAME rule as stateOf's price block, so a 0 € order is
+        // never counted as priced while it is blocked for its price.
+        price: OC.hasPrice(f) ? OC.price(f) : null,
         clientId, client,
         deliv,
         // E-05: a lot's age counts from «Completed On», none while incomplete.

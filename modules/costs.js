@@ -480,7 +480,9 @@ function ctStockLeg(o) {
     const m = _ct.stock.lots[OrdersStock.lotRecOfLot(f)];
     if (!m) return unread;
     if (m.allocation_status !== 'ok') {
-      const p = f['Price'] != null && f['Price'] !== '' ? Number(f['Price']) : null;
+      // 0 € = no price (owner 13/10): shown as «—» like a missing one, via the
+      // one shared rule, so this card never disagrees with the orders pages.
+      const p = OrdersCommon.hasPrice(f) ? Number(f['Price']) : null;
       return { amount: p, sum: p || 0, note: `παρτίδα ${num} — χωρίς επιμερισμό (${why[m.allocation_status] || m.allocation_status}): όλο το έσοδο εδώ` };
     }
     // Left out of the legs sum (the lot's price is not this RT's revenue).
@@ -774,7 +776,9 @@ function ctLegLine(l) {
   const cc = orderLocCountry(f, 'del');
   const date = imp ? (f['Delivery DateTime'] || f['Loading DateTime']) : f['Loading DateTime'];
   const stk = ctStockLeg(o);   // stock lot / piece: the DB's revenue for this leg, not the order Price
-  const amt = stk ? stk.amount : (f['Price'] != null && f['Price'] !== '' ? Number(f['Price']) : null);
+  // 0 € = no price (owner 13/10, OrdersCommon.hasPrice): a «0,00» leg would read
+  // as a priced free trip. A stock leg's 0 is the DB's credit, not a price — kept.
+  const amt = stk ? stk.amount : (OrdersCommon.hasPrice(f) ? Number(f['Price']) : null);
   const price = amt != null ? ctEur(amt) : '<span style="color:var(--text-dim);font-weight:400">—</span>';
   const stkNote = stk ? ` <span style="color:var(--text-mid);font-size:12px"${stk.title ? ` title="${ctEsc(stk.title)}"` : ''}>· ${ctEsc(stk.note)}</span>` : '';
   return `<div class="ct-leg">${chip}

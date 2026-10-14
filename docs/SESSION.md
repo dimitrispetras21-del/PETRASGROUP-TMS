@@ -14,9 +14,9 @@ What is live (commit, versions, flags) is not kept here: it goes stale within ho
 **In flight** (who · branch · topic)
 - dimitris · `docs/wn4-plan-rev6` · Weekly National v4 plan (WP-A, one Veroia day, live since 12/10 morning)
 - dimitris · `fix/wi4-*` · Weekly International v4 fixes
-- vd-nick · `vd/session-rules-v2` · session rules v2: parallel work, per-session files
-- vd-nick · `fix/remove-public-hashes` (PR #39) · roster cleanup, `nick` account
-- vd-nick · (not started) · import the Valuedriven backend, tests and CI into this repo
+- dimitris · `feat/orders-week-v4` (PR #43) · Orders › «Εβδομάδα» v4, one row = one RT; after merge: live check (totals vs SELECT, 0 console errors)
+- vd-nick · `vd/session-rules-v2` (PR #40) · session rules v2: parallel work, per-session files
+- vd-nick · (not started, PR planned this week) · import the Valuedriven backend, tests and CI into this repo
 
 **Do not touch**
 - GROUPAGE LINES are never deleted, only set to `Unassigned`.
