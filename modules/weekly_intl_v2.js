@@ -740,12 +740,20 @@ function _ptsHTML(side) {
   const r = L().points(d.stops, _ptsW || 0, { dateTick: d.dateTick });
   return `<div class="wi4-pts${r.hidePlace ? ' wi4-noplace' : ''}" data-pk="${k}">${_ptsInner(r, d)}</div>${group ? '' : (side.xfold || '')}`;
 }
+// «+N» (Nick 14/10): the tooltip said «Όλα τα σημεία» but listed only the
+// hidden points, and a groupage's panel held only those. Both now give the
+// WHOLE route of that end, numbered as on the row, with each point's place and
+// (groupage) pallets, so one hover or one click shows the route at once. A
+// single order's panel already listed every stop (_wk3MoreStops).
+function _routeTitle(d) {
+  return 'Όλα τα σημεία:\n' + (d.stops || []).map((s, i) => [`${s.n || i + 1}. ${s.label || '—'}`, s.place, d.showPal && s.pallets != null ? s.pallets + 'π' : ''].filter(Boolean).join(' · ')).join('\n');
+}
 function _ptsInner(r, d) {
   const last = r.shown.length - 1;
   let h = r.shown.map((s, i) => _ptHTML(Object.assign({}, s, { pre: i === 0 ? d.pre : null, late: i === last ? d.late : null }), d)).join('');
   if (r.more) {
-    h += `<button type="button" class="wi4-more" title="${_esc('Όλα τα σημεία:\n' + r.more.title)}" onclick="event.stopPropagation();WIV2._more(this)"><b>+${r.more.count}</b>${r.more.pallets ? `<span>${r.more.pallets}π</span>` : ''}</button>`;
-    if (d.group) h += `<div class="wk3-xfold wi4-fold">${r.more.hidden.map((s) => _ptHTML(Object.assign({}, s, { badge: s.n, tick: !!s.done }), d)).join('')}</div>`;
+    h += `<button type="button" class="wi4-more" title="${_esc(_routeTitle(d))}" onclick="event.stopPropagation();WIV2._more(this)"><b>+${r.more.count}</b>${r.more.pallets ? `<span>${r.more.pallets}π</span>` : ''}</button>`;
+    if (d.group) h += `<div class="wk3-xfold wi4-fold">${d.stops.map((s) => _ptHTML(Object.assign({}, s, { badge: s.n, tick: !!s.done }), d)).join('')}</div>`;
   }
   return h;
 }
