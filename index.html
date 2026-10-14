@@ -322,53 +322,11 @@
 const USE_PROXY  = true;
 const PROXY_URL  = 'https://petras-tms-backend-staging.petrasgroup.workers.dev';
 
-// Passwords stored as SHA-256 hashes only — never plaintext in source
-const USERS = [
-  { username: 'dimitris',   hash: 'b7e480feeff4e9f28cde7b5f10c8b46d4e81eac0f44fc91d9b6ca20648dc75ca', role: 'owner',      name: 'Dimitris Petras' },
-  { username: 'pantelis',   hash: 'fa1db14f60e798c8f3c582586fd7d4c70cf8431249ffc7787befa93e6dbfd215', role: 'dispatcher', name: 'Pantelis Tsanaktsidis' },
-  { username: 'sotiris',    hash: 'a5b2ee26884135591d0c8213b30802060d379074e151c08d8bc07757aea77ead', role: 'dispatcher', name: 'Sotiris Koulouriotis' },
-  { username: 'thodoris',   hash: '699d7aab30ff342aa3656f63b1b72b6fcfa83ca26fa75313ec89a4b7d5fc0c10', role: 'management', name: 'Thodoris Vainas' },
-  { username: 'eirini',     hash: '172f322617cd908a2cefceab73f655b875f9f4c55cbc37d129f9072aee57512a', role: 'accountant', name: 'Eirini Papazoi' },
-  { username: 'alexia',     hash: '5db05ad60742b1618c0e30f1f4f09ae8d056e7b1108fb57bbca72c8655f4b9ee', role: 'accountant', name: 'Alexia' },
-  { username: 'kelesmitos', hash: '00ad77798c78b32aecb433e682eabecae8338ed965dafebb4d31a697974a892a', role: 'dispatcher', name: 'Dimitris Kelesmitos' },
-
-  // ── Demo accounts, one per role (added 2026-07-27) ──────────────────────
-  // Present so any role can be demonstrated or tested without borrowing a real
-  // person's login. They share one password, and they MUST be listed here as
-  // well as in the backend `users` table: the two rosters are independent, and
-  // `auth.js _authRoleTampered()` logs out any username missing from THIS array
-  // even after a valid backend login (finding F-E3). Seeded backend-side by
-  // petras-tms-backend/ops/seed-demo-users.sh.
-  //
-  // `demo_warehouse` is the only warehouse account that exists: no real person
-  // holds that role (confirmed 2026-07-27), so it is the only way to exercise
-  // the warehouse deny path, which is the half of RBAC worth proving.
-  //
-  // NOT a sandbox: these carry the real permissions of their role against real
-  // data. Do not publish the password or reuse it. To rotate, change
-  // TMS_PW_DEMO, re-run the seed script against both environments, and update
-  // the shared hash below.
-  { username: 'demo_owner',      hash: '5e92d9e6a898eeaaceb1b5b6f39f22cf694706da227ebb98577a5613f6445c43', role: 'owner',      name: 'Demo Owner' },
-  { username: 'demo_management', hash: '5e92d9e6a898eeaaceb1b5b6f39f22cf694706da227ebb98577a5613f6445c43', role: 'management', name: 'Demo Management' },
-  { username: 'demo_accountant', hash: '5e92d9e6a898eeaaceb1b5b6f39f22cf694706da227ebb98577a5613f6445c43', role: 'accountant', name: 'Demo Accountant' },
-  { username: 'demo_dispatcher', hash: '5e92d9e6a898eeaaceb1b5b6f39f22cf694706da227ebb98577a5613f6445c43', role: 'dispatcher', name: 'Demo Dispatcher' },
-  { username: 'demo_warehouse',  hash: '5e92d9e6a898eeaaceb1b5b6f39f22cf694706da227ebb98577a5613f6445c43', role: 'warehouse',  name: 'Demo Warehouse' },
-];
+// No user list here: the backend verifies every login (verify_login, bcrypt inside
+// Postgres). This page used to carry a roster with unsalted SHA-256 password hashes
+// for an Airtable-era "direct mode"; anyone could download and crack them.
 
 const SESSION_TTL = 8 * 60 * 60 * 1000; // 8 hours
-
-async function sha256(text) {
-  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text));
-  return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
-}
-
-// Per-user-salted SHA-256 — prevents rainbow-table attacks AND identical
-// passwords across users producing identical hashes.
-// To migrate: once each user logs in, the salted hash is printed to console
-// so the admin can paste it into config.js/index.html as `saltedHash`.
-async function sha256Salted(username, password) {
-  return sha256((username || '').toLowerCase() + ':tms:' + password);
-}
 
 function showError(msg) {
   const err = document.getElementById('errMsg');
@@ -423,15 +381,12 @@ async function doLogin() {
 }
 
 async function _doLoginInner(u, p) {
-  const inputHash = await sha256(p);
-
   if (USE_PROXY) {
     // ── Proxy mode: authenticate via the Cloudflare Worker (Stage 2 backend) ──
     // The Worker verifies the password with bcrypt INSIDE Postgres (verify_login),
     // so we send the plaintext over HTTPS, NOT a client-side hash. The old
-    // SHA-256 `passwordHash` was for direct client-side comparison (the else
-    // branch below); the new backend deliberately replaced that scheme, so
-    // sending a hash here fails with "Username and password required".
+    // client-side SHA-256 scheme is gone; sending a hash here fails with
+    // "Username and password required".
     try {
       const res = await fetch(`${PROXY_URL}/auth/login`, {
         method: 'POST',
@@ -468,39 +423,8 @@ async function _doLoginInner(u, p) {
         : 'Δεν υπάρχει σύνδεση στο internet');
     }
   } else {
-    // ── Direct mode: client-side hash comparison ──
-    // Dual-hash support (migration path):
-    //   1. Try saltedHash (new format): SHA-256(username:tms:password)
-    //   2. Fall back to legacy hash: SHA-256(password)
-    // On legacy match, log the new saltedHash so admin can upgrade config.js.
-    const saltedInput = await sha256Salted(u, p);
-    let user = USERS.find(x => x.username === u && x.saltedHash && x.saltedHash === saltedInput);
-    let usedLegacy = false;
-    if (!user) {
-      user = USERS.find(x => x.username === u && x.hash === inputHash);
-      if (user) usedLegacy = true;
-    }
-    if (user) {
-      if (usedLegacy) {
-        console.info(
-          '[SECURITY] User "%s" authenticated with legacy hash. ' +
-          'Add this line to the USERS array to enable per-user salting:\n' +
-          '  saltedHash: "%s"',
-          u, saltedInput
-        );
-      }
-      const session = {
-        name: user.name,
-        role: user.role,
-        username: user.username,
-        loginAt: Date.now(),
-        expiresAt: Date.now() + SESSION_TTL
-      };
-      localStorage.setItem('tms_user', JSON.stringify(session));
-      window.location.href = 'app.html';
-    } else {
-      showError();
-    }
+    // Direct mode (client-side password check) was removed with its hashes.
+    showError('Η σύνδεση γίνεται μόνο μέσω του διακομιστή');
   }
 }
 
