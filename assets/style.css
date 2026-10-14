@@ -7638,9 +7638,12 @@ button.btn-icon:focus-visible { outline:2px solid var(--accent); outline-offset:
      full-strength 1px --wi4-blue hairline it replaces read heavier than Figma. */
   --wi4-today-line:   var(--wi4-blue);
   /* Today's whole day (walkthrough C4, Nick 14/10): a background that reads at a
-     glance while scrolling, and its own hover, darker, so a hovered row still shows. */
-  --wi4-today-bg:     rgba(2,123,189,.10);
-  --wi4-today-hover:  rgba(2,123,189,.16);
+     glance while scrolling, and its own hover, darker, so a hovered row still shows.
+     SOLID (the board blue at 10% / 14% over white), not rgba: over the grey page a
+     transparent tint came out darker and took the meta grey under 4.5:1. Measured
+     with --wi4-grey-2: 4.78:1 on the day, 4.54:1 on the hover. */
+  --wi4-today-bg:     #E6F2F8;
+  --wi4-today-hover:  #DCEDF6;
   --wi4-ctl:          #d0d5dd;
   --wi4-slot:         #cbd5e1;
   --wi4-red:          var(--danger);
@@ -8224,6 +8227,10 @@ body.wi4-on #wi-ctx .wi4-m-sec .wi4-l2, body.wi4-on #wi-ctx .wi4-m-hd .wi4-l2 { 
 /* 8px above the first row and below the last (Nick 14/10): the rows do not touch the frame. */
 .wi4-day.today .wi4-day-body { background:var(--wi4-today-bg); border-color:var(--wi4-today-line); border-top:2px solid var(--wi4-today-line); padding:var(--space-2) 0; }
 .wi4-day.today .wi4-row:hover, .wi4-day.today .wi4-subrow:hover { background:var(--wi4-today-hover); }
+/* The amber reason text («· από σήμερα») is 4.4:1 on today's tint: one step
+   darker inside today only (6.2:1). Colour tokens stay as they are, so every
+   other use of --wi4-amber (rails, borders) is unchanged. */
+.wi4-day.today .wi4-t-amb { color:#92400e; }
 .wi4-day.closed .wi4-day-body { display:none; }
 /* Rails on a card's first/last row follow the card's 7px inner curve (8px
    radius − 1px border; Figma rail 1097:2648, the stripe clipped by the card)
