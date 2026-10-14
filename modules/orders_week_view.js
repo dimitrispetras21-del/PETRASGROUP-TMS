@@ -644,6 +644,7 @@ const OrdersWeekView = (() => {
     }
     S.data = data;
     _paint(ctx);
+    OC().whenDocs(() => { if (ctx.isCurrent()) _paint(ctx); });
   }
 
   function _paintModeToggle(ctx) {
@@ -1004,7 +1005,7 @@ const OrdersWeekView = (() => {
       cells.route = `<div class="ow4-l1 ow4-route" title="${esc(full)}" data-tail="${esc(split.tail.trim())}"><span class="ow4-rh">${fromHtml}${headRest.replace('→', '<span class="ow4-ar">→</span>')}</span><span class="ow4-rt">${esc(split.tail.trim())}</span>${nBox(e.nTo)}</div><div class="ow4-l2 ow4-ell">${dates}</div>`;
       const cl = clientRaw(f) || '—';
       const refs = [O.numLabel(l.rec), f['Reference'], f['Veroia Switch'] ? 'VS' : ''].filter(Boolean).join(' · ');
-      cells.client = `<div class="ow4-l1 ow4-ell ow4-cl1" title="${esc(cl)}">${esc(cl)}</div><div class="ow4-l2 ow4-ell ow4-cl2" title="${esc(refs)}">${esc(refs)}</div>`;
+      cells.client = `<div class="ow4-l1 ow4-ell ow4-cl1" title="${esc(cl)}">${esc(cl)}</div><div class="ow4-l2 ow4-ell ow4-cl2" title="${esc(refs)}">${O.docClip(l.rec, l.rec && l.rec._type)}${esc(refs)}</div>`;
       const has = O.hasPrice(f), st = stateOf(l.rec), tp = tpyOf(l.rec, st);
       cells.tpy = `<span class="ow4-tpy${tp.cls ? ' ' + tp.cls : ''}" title="${esc(tp.title)}">${tp.cls === 'bad' ? '<span class="ow4-dot"></span>' : ''}${esc(tp.text)}</span>`;
       if (l.cancelled) cells.amt = '<span class="ow4-d" title="Ακυρωμένη — δεν αθροίζεται">ακυρωμένη</span>';

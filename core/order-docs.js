@@ -173,6 +173,8 @@ async function preloadIndex(force) {
 
 function hasDocs(orderId) { return !!(orderId && _odIndexSet && _odIndexSet.has(orderId)); }
 function invalidateIndex() { _odIndexSet = null; _odIndexTs = 0; }
+// True once a document index is in memory (badges can be drawn without waiting).
+function isIndexed() { return !!_odIndexSet; }
 
 // ── Upload / list / fetch ──
 
@@ -772,7 +774,7 @@ function handleNatlOrderSaved() {
 window.OrderDocs = {
   ACCEPT: OD_ACCEPT,
   validateFile, uploadDoc, listDocs, fetchFileBlob,
-  preloadIndex, hasDocs, invalidateIndex,
+  preloadIndex, hasDocs, invalidateIndex, isIndexed,
   badge, badgeAny, docIdsOf, sectionHtml, openViewer, openViewerMany, attachToOrder,
   handleOrderSaved, handleNatlOrderSaved,
   formFieldHtml, formMount, formOrderCreated, formSettled,

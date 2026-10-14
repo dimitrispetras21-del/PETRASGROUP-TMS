@@ -231,6 +231,21 @@ const OrdersCommon = {
     return `<button type="button" class="btn-new-order" onclick="${fn}"${title ? ` title="${esc(title)}"` : ''}>${esc(label)}</button>`;
   },
 
+  // Paperclip next to an order number on every Orders tab (walkthrough item 10,
+  // Nick 14/10). INTERNATIONAL orders only: order_documents link to ORDERS, and a
+  // national order's numeric id can equal an international one's, so the type is
+  // passed explicitly, never guessed. A split leg's clip also covers its parent.
+  docClip(rec, type) {
+    if (!rec || (type || rec._type) !== 'intl' || typeof OrderDocs === 'undefined' || !OrderDocs.badgeAny) return '';
+    try { return OrderDocs.badgeAny(OrderDocs.docIdsOf(rec.id, rec.fields), { size: 12 }); } catch (e) { return ''; }
+  },
+  // Call after a tab's first paint: when the document index is not in memory
+  // yet, load it and repaint ONCE so the clips appear; when it is, do nothing
+  // (the clips were drawn already). The first paint is never held for it.
+  whenDocs(repaint) {
+    if (typeof OrderDocs === 'undefined' || !OrderDocs.preloadIndex || (OrderDocs.isIndexed && OrderDocs.isIndexed())) return;
+    OrderDocs.preloadIndex().then(repaint, () => {});
+  },
   assignOf(rec, opts) {
     const o = opts || {};
     const f = rec.fields || {};

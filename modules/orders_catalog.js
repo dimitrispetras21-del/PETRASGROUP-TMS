@@ -167,7 +167,7 @@ const OrdersCatalog = (() => {
       : r.piece ? `<span class="oc-dim oc-lotp" title="Στην παρτίδα ${esc(OrdersStock.lotNumLabel(f))} — τιμολογείται η παρτίδα">${esc(OrdersStock.lotNumLabel(f))}</span>`
       : (r.status === 'Cancelled' || r.pre ? '<span class="oc-dim">—</span>' : '<span class="oc-red">χωρίς τιμή</span>');
     return `<tr id="ocrow_${r.id}" class="oc-row${sel}" style="height:${ROW_H}px" onclick="OrdersCatalog.open('${r.type}','${r.id}')">
-      <td class="oc-num"><b>${esc(r.num)}</b></td>
+      <td class="oc-num"><b>${esc(r.num)}</b>${C().docClip(r.rec, r.type)}</td>
       <td><span class="oc-l1" title="${esc(r.ref)}">${r.ref ? esc(r.ref) : '<span class="oc-dim">— χωρίς αναφορά</span>'}</span><span class="oc-l2">${stk}${esc(r.dir)}${tags}${r.legs ? '<span class="oc-tag" title="Σπασμένο σε 2 σκέλη — δες το Weekly International για την εκτέλεση">2 σκέλη</span>' : ''}</span></td>
       <td><span class="oc-l1 oc-plain" title="${r.client}">${r.client}</span></td>
       <td>${r.pre ? '<span class="oc-dim">—</span>' : C().placeCell(r.load)}</td>
@@ -378,6 +378,7 @@ const OrdersCatalog = (() => {
     const warnHtml = ws => ws.map(w => `<div class="oc-warn">⚠ ${esc(w)}</div>`).join('');
     ctx.body.innerHTML = `<div id="ocWarns">${warnHtml([...(intl.warns || []), ...(natl.warns || [])])}</div>` + _layoutHtml();
     _apply();
+    C().whenDocs(() => { if (ctx.isCurrent()) _apply(); });
     const n = S.rows.filter(_inScope).length;
     ctx.setSub(`Διεθνείς και εθνικές · ${OrdersList.countLabel(n)} · ${PERIOD_LABEL[S.period]}`);
     // Both loaders' namesReady never reject; each resolves to its warnings.
