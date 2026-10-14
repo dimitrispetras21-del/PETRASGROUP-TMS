@@ -825,7 +825,9 @@ function _sideOf(recs, kind, opt) {
   });
   return { stops, dateTick: kind === 'load', showPal: false, xfold: I.moreStops(I.placeStr(f, kind), kind === 'load' ? f._stopsL : f._stopsD, kind) };
 }
-function _palHTML(fieldsList, oid) {
+// docIds: the orders the paperclip covers (a groupage passes all its members);
+// left out, it is the order itself plus, for a split leg, its parent (C6, 14/10).
+function _palHTML(fieldsList, oid, docIds) {
   const I = W();
   const p = _pals(fieldsList);
   const one = fieldsList.length === 1 ? fieldsList[0] : null;
@@ -835,7 +837,8 @@ function _palHTML(fieldsList, oid) {
   if (one && oid) h += I.apBadge(one, oid);
   if (fieldsList.some((f) => f && f['Pallet Exchange'])) h += '<span class="wi4-pe" title="Ανταλλαγή παλετών">PE</span>';
   // 12px paperclip (Figma 1097:2880).
-  if (oid && typeof OrderDocs !== 'undefined') { try { const b = OrderDocs.badge(oid, { size: 12 }); if (b) h += `<span class="wi4-att">${b}</span>`; } catch (e) { _logErr(e, 'wi4: docs badge'); } }
+  const ids = docIds || (oid ? (typeof OrderDocs !== 'undefined' && OrderDocs.docIdsOf ? OrderDocs.docIdsOf(oid, one) : [oid]) : null);
+  if (ids && typeof OrderDocs !== 'undefined') { try { const b = OrderDocs.badgeAny(ids, { size: 12 }); if (b) h += `<span class="wi4-att">${b}</span>`; } catch (e) { _logErr(e, 'wi4: docs badge'); } }
   if (!p.known) h += '<span class="wi4-pal wi4-t-g2" title="Οι παλέτες δεν έχουν καταγραφεί">—</span>';
   else {
     // The SAME thresholds as WI4.flags OVER_33 / PALLETS_UNKNOWN (one source of
@@ -883,7 +886,7 @@ function _impLegHTML(host, imp, today, rs) {
     // (_sideOf); a VS import's delivery point is this one.
     to = { stops: [{ n: 1, label: 'Βέροια', place: 'μετά εθνικό: ' + _lastStop(f, 'del').title, done: st.delivered, oid: imp.id, lot: I.lotBadge(f) }], dateTick: false };
   } else to = _sideOf(members, 'del', { dragRowId: dragRow });
-  let pal = _palHTML(members.map((r) => r.fields || {}), isGroup ? null : imp.id);
+  let pal = _palHTML(members.map((r) => r.fields || {}), isGroup ? null : imp.id, isGroup ? members : null);
   // Whole matched group to another export (§f): today's grip string. Shown on
   // row hover / focus only (.wi4-grip, Figma sheet 14 1065:2257 «Εμφανίζεται
   // η λαβή ⋮⋮»; Row 18 1097:2921 holds only the figure at rest).
@@ -1038,7 +1041,7 @@ function _expRowHTML(e, today) {
   const to = _sideOf(exps, 'del', { dragRowId: isGroup && _gtOn() ? row.id : null });
   // (a) a groupage shows «N φορτία» where ΑΝΑΦ. goes.
   const ref = isGroup ? _plural(exps.length, 'load') : (pf['Reference'] || '');
-  const leg = _legHTML({ chip, ref, from, to, rs: rsE, pal: _palHTML(exps.map((r) => r.fields || {}), isGroup ? null : pid),
+  const leg = _legHTML({ chip, ref, from, to, rs: rsE, pal: _palHTML(exps.map((r) => r.fields || {}), isGroup ? null : pid, isGroup ? exps : null),
     click: isGroup ? `WI_INTERNAL.rota(${row.id})` : (_q(pid) ? `WI_INTERNAL.edit('${_q(pid)}')` : '') }, today);
 
   // Import side: not saved · matched load · not read · empty return · partner only · open slot.

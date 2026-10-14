@@ -839,7 +839,7 @@ function _opsGroupRow(key,g,from,to,isToday,open){
     :`<span class="do-pill" onclick="event.stopPropagation();_opsToggleStops('${id}')" title="Κλικ: οι φορτώσεις μία-μία — δηλώνεις όποια έγινε, οι άλλες περιμένουν">${done}/${g.length} φορτώθηκαν ${open?'▾':'▸'}</span>`)+by;
   // ΠΡΟΚ. € and «Αλλαγή ημέρας» belong to one order each — not on the summary.
   const act=!_opsIsFuture()&&!all?`<div class="do-slots"><span class="do-slot"><button class="do-btn" onclick="event.stopPropagation();_opsToggleStops('${id}')">Φορτώθηκε</button></span></div>`:'';
-  return `<tr id="r_${id}" class="do-hover do-grp${open?' do-open':''}" style="cursor:pointer" onclick="if(!event.target.closest('button,input,select,a'))_opsToggleStops('${id}')"><td class="do-num">${from}–${to}</td><td class="do-wrap"><span class="do-main">${g.length} φορτώσεις</span><span class="do-sl">${clients}</span></td><td class="do-wrap"><span class="do-main">${locs||'—'}</span></td>${_opsGroupRelayCell(g)||_opsAsgCell(f0,_TT(f0),_D(f0),_P(f0))}<td>${pal}</td><td>—</td><td class="do-st">${st}</td><td class="do-acts">${act}</td></tr>`;
+  return `<tr id="r_${id}" class="do-hover do-grp${open?' do-open':''}" style="cursor:pointer" onclick="if(!event.target.closest('button,input,select,a'))_opsToggleStops('${id}')"><td class="do-num">${from}–${to}</td><td class="do-wrap"><span class="do-main">${g.length} φορτώσεις${typeof OrderDocs!=='undefined'?OrderDocs.badgeAny(g,{size:12}):''}</span><span class="do-sl">${clients}</span></td><td class="do-wrap"><span class="do-main">${locs||'—'}</span></td>${_opsGroupRelayCell(g)||_opsAsgCell(f0,_TT(f0),_D(f0),_P(f0))}<td>${pal}</td><td>—</td><td class="do-st">${st}</td><td class="do-acts">${act}</td></tr>`;
 }
 
 /* ── ROW ──────────────────────────────────────────────────────── */
@@ -975,7 +975,8 @@ function _opsRow(rec,num,type,isToday,cls) {
   // Scan round 3: paperclip badge — every row here is an international ORDERS
   // record (module docstring: "International ORDERS only"), so the plain
   // record id is always the right key for OrderDocs.
-  const docBadge=typeof OrderDocs!=='undefined'?OrderDocs.badge(id,{size:12}):'';
+  // C6 (14/10): a split leg's row also carries its parent order's file.
+  const docBadge=typeof OrderDocs!=='undefined'?OrderDocs.badgeAny(OrderDocs.docIdsOf(id,f),{size:12}):'';
   const cl=`<td class="do-wrap"><span class="do-main">${client}${docBadge}</span>${sub?`<span class="do-sl">${sub}</span>`:''}</td>`;
   // Χωρίς ώρα δεν αποδίδεται ΤΙΠΟΤΑ — όπως ήδη κάνει η υπογραμμή πελάτη.
   // Οι στήλες loading_datetime/delivery_datetime είναι `date` στη βάση, άρα

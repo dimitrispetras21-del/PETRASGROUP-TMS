@@ -1493,7 +1493,7 @@ function _wiImpRowHTML(row,impNo){
   let loadCard=segOn
     ? _wiSegPillWrap(row.id,members,'load',true,true)
     : _wi2Card({cls:stR.loaded?'ok':'', date:_wi2Date(imp.id,'Loading DateTime',lIso,lIso?_wk3D(_wiFmt(lIso)):'—',stR.loaded?' done':'','Ημ. φόρτωσης'+(stR.loaded?' — φορτώθηκε ✓':'')), name:lo.name, sub:lo.sub, extra:_wk3MoreStops(fromStr,f._stopsL,'load')});
-  const right=`<span class="wi2-flags">${_wiBadges(f,imp.id)}</span>${_wi2Pal(f)}${f['Reference']?`<span class="wi2-ref" title="Κωδικός αναφοράς">${escapeHtml(String(f['Reference']))}</span>`:''}`;
+  const right=`<span class="wi2-flags">${_wiBadges(f,imp.id,row.orderIds&&row.orderIds.length>1?row.orderIds:null)}</span>${_wi2Pal(f)}${f['Reference']?`<span class="wi2-ref" title="Κωδικός αναφοράς">${escapeHtml(String(f['Reference']))}</span>`:''}`;
   let delCard;
   if(segOn){
     delCard=_wiSegPillWrap(row.id,members,'del',true,true,_wiSegTotalsHTML(members));
@@ -1824,14 +1824,16 @@ async function _wiDoHandoverChange(rowId){
 // when core/order-docs.js is loaded and that order has a stored document.
 // Rendered through OrderDocs.badge (own markup/class/stopPropagation) so
 // Weekly's drag&drop and right-click handlers on the card stay untouched.
-function _wiBadges(f,orderId){
+// docIds (C6, 14/10): the orders the paperclip covers; a groupage passes all its
+// members, a single order covers itself and, as a split leg, its parent.
+function _wiBadges(f,orderId,docIds){
   const b=[];
   if(f['High Risk Flag'])   b.push('<span class="wi-badge wi-b-risk" title="Υψηλό ρίσκο">!</span>');
   if(f['Pallet Exchange'])  b.push('<span class="wi-badge wi-b-pe">PE</span>');
   if(f['National Groupage'])b.push('<span class="wi-badge wi-b-grpg">GRP</span>');
   const veroia=f['Veroia Switch'];
   if(veroia)                b.push('<span class="wi-badge wi-b-veroia">Veroia</span>');
-  if(orderId && typeof OrderDocs!=='undefined') b.push(OrderDocs.badge(orderId,{size:11}));
+  if((orderId||docIds) && typeof OrderDocs!=='undefined') b.push(OrderDocs.badgeAny(docIds||OrderDocs.docIdsOf(orderId,f),{size:11}));
   // Stock plan §6.7: «ΑΠ» on a piece, «→ ΑΠΟΘΗΚΗ» on a lot — read from the
   // order itself, so a piece is named wherever its card is drawn.
   b.push(_wiApBadge(f,orderId), _wiLotBadge(f));
@@ -2740,7 +2742,7 @@ function _wiRowHTML(row,i){
     delCard=_wi2Card({cls:stF.late?'late':stF.delivered?'ok':'',
       name:de.name+(stF.late?'<span class="wi2-late" title="Καθυστέρησε (Delivery Performance = Delayed)">! καθυστέρηση</span>':stF.delivered?'<span class="wk3-okc" title="Παραδόθηκε">✓</span>':''),
       sub:de.sub, extra:_wk3MoreStops(isGroup?gDs:toStr,isGroup?gD:pf._stopsD,'del')+members,
-      right:`${refs?`<span class="wi2-ref" title="Κωδικός αναφοράς">${escapeHtml(String(refs))}</span>`:''}${_wiCrossChip(pf)}${_wiExecChip(pf,row.saved)}<span class="wi2-flags">${isGroup?'':_wiBadges(pf,pid)}</span>${isGroup?_wi2PalGroup(exps):_wi2Pal(pf)}`});
+      right:`${refs?`<span class="wi2-ref" title="Κωδικός αναφοράς">${escapeHtml(String(refs))}</span>`:''}${_wiCrossChip(pf)}${_wiExecChip(pf,row.saved)}<span class="wi2-flags">${isGroup?(typeof OrderDocs!=='undefined'?OrderDocs.badgeAny(exps,{size:11}):''):_wiBadges(pf,pid)}</span>${isGroup?_wi2PalGroup(exps):_wi2Pal(pf)}`});
   }
 
   if(isPre) loadCard=_wiPreLeg(primary);
