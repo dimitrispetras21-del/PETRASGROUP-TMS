@@ -1780,12 +1780,13 @@ async function scnMenu(browser, origin) {
     const dup = Object.entries(bySec).filter(([, l]) => new Set(l).size !== l.length);
     ok(scn, 'labels unique within each section and submenu', !dup.length, dup);
     // A groupage section opens no single order (which one?): its members do,
-    // each in its own «▸» submenu. A split leg keeps «Αρχική παραγγελία…».
+    // each in its own «▸» submenu. A split leg keeps «Αρχική παραγγελία…»; a
+    // split header's menu (its ✈ since 15/10) opens its own order, «Άνοιγμα παραγγελίας».
     // The order opens from the FIRST item of every single-load section: the
     // v4 «Άνοιγμα παραγγελίας», or the builder's own _wk3Edit where one exists
     // (a pre-order's «Μετατροπή…», a lot's «Άνοιγμα», a split leg's «Αρχική
     // παραγγελία…»), which v4 moves first instead of adding a twin.
-    const loadSecs = [...new Set(top.filter(i => /ΕΞΑΓΩΓΗ|ΕΙΣΑΓΩΓΗ/.test(i.sec || '') && !/^GROUPAGE/.test(i.sec || '')).map(i => i.sec))];
+    const loadSecs = [...new Set(top.filter(i => /ΕΞΑΓΩΓΗ|ΕΙΣΑΓΩΓΗ|^ΣΠΑΣΜΕΝΗ/.test(i.sec || '') && !/^GROUPAGE/.test(i.sec || '')).map(i => i.sec))];
     const firstOk = loadSecs.every(s => { const f = top.find(i => i.sec === s); return f && /^_wk3Edit\(/.test(f.onclick); });
     const memberSubs = subs.filter((s, k) => (m.items.filter(i => i.more)[k] || {}).member);
     const subFirstOk = memberSubs.every(s => s.items[0] && /^_wk3Edit\(/.test(s.items[0].onclick));

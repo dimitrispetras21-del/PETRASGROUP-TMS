@@ -324,6 +324,9 @@ function _gather(orderId) {
       const o = s.splitLeg ? null : openItem(s.oids[0]);
       if (o) s.items.unshift(o); else openFirst(s.items);
     }
+    // A split header is the original order (its click opens it): with its own ✈
+    // (15/10) its menu opens with «Άνοιγμα παραγγελίας» too, the one v4-only item.
+    if (s.kind === 'split') { const o = openItem(s.oids[0]); if (o) s.items.unshift(o); else openFirst(s.items); }
     for (const sub of s.subs) if (sub.kind === 'member') { const o = openItem(sub.oids[0]); if (o) sub.items.unshift(o); else openFirst(sub.items); }
   }
 
