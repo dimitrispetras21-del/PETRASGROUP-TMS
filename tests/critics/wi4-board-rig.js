@@ -3754,8 +3754,10 @@ async function scnParity(browser, origin) {
           dayn: dn ? [dn.fontFamily, dn.letterSpacing] : null, dayd: dd ? dd.fontFamily : null };
       });
       // Parity r2: radius 8 (Figma Surface 1097:2462 / 2645 / 3592).
-      ok(scn, 'grey page: .wi4 transparent, #content rgb(244, 246, 249); every day card white, 1px border, 8px radius', fr.wi4 === 'rgba(0, 0, 0, 0)' && fr.content === 'rgb(244, 246, 249)'
-        && fr.cards.length === 1 && fr.cards[0] === 'rgb(255, 255, 255)|1px|solid|8px', fr);
+      // Today's card is tinted (walkthrough C4, Nick 14/10, shipped in PR #45): every
+      // other card white. This check failed on main from #45 until it was updated (15/10).
+      ok(scn, 'grey page: .wi4 transparent, #content rgb(244, 246, 249); every day card white (today\'s tinted rgb(230, 242, 248)), 1px border, 8px radius', fr.wi4 === 'rgba(0, 0, 0, 0)' && fr.content === 'rgb(244, 246, 249)'
+        && fr.cards.includes('rgb(255, 255, 255)|1px|solid|8px') && fr.cards.every(c => c === 'rgb(255, 255, 255)|1px|solid|8px' || c === 'rgb(230, 242, 248)|1px|solid|8px'), fr);
       ok(scn, 'no full-width rules under the queue, the stock strip or the column header', fr.rules.every(w => w === '0px'), fr.rules);
       ok(scn, 'bands 8px apart (sheet 15 A): stock strip y 110±2, column header y 146±2', Math.abs(fr.shelf - 110) <= 2 && Math.abs(fr.cols - 146) <= 2, { shelf: fr.shelf, cols: fr.cols });
       // Figma 1097:2448: column header 24 + gap 8 + name 16 + 6 = the first card
@@ -3764,8 +3766,10 @@ async function scnParity(browser, origin) {
       ok(scn, 'day header: chevron at x4, name at x26 (Figma 1097:2640); Syne tracking .8 + DM Sans date (1097:2642)', fr.chevX === 4 && fr.nameX === 26 && fr.dayn && /Syne/.test(fr.dayn[0]) && fr.dayn[1] === '0.8px' && /DM Sans/.test(fr.dayd || ''), fr);
       // Parity r2 (Figma 1097:3592): 1.5px accent at 55% on top (as the browser snaps it to device pixels), no side /
       // bottom line (1px transparent keeps the tracks).
-      ok(scn, 'today\'s card: 1.5px (device-snapped) rgba(2, 123, 189, 0.55) on top; sides and bottom transparent, sides still 1px', !!fr.todayTop && fr.todayTop[0] === fr.todaySnap && /^1\.5px solid/.test(fr.todayRule || '')
-        && fr.todayTop[1] === 'rgba(2, 123, 189, 0.55)' && !!fr.todaySide && fr.todaySide.join() === '1px,rgba(0, 0, 0, 0),rgba(0, 0, 0, 0)', { top: fr.todayTop, snap: fr.todaySnap, rule: fr.todayRule, side: fr.todaySide });
+      // Today framed (walkthrough C4, Nick 14/10, PR #45): a 2px accent line on top and
+      // a 1px accent frame on the sides and bottom (was Figma 1097:3592: 1.5px at 55%, open sides).
+      ok(scn, 'today\'s card: 2px rgb(2, 123, 189) on top, framed 1px in the same accent on the sides and bottom', !!fr.todayTop && fr.todayTop[0] === '2px' && /^2px solid/.test(fr.todayRule || '')
+        && fr.todayTop[1] === 'rgb(2, 123, 189)' && !!fr.todaySide && fr.todaySide.join() === '1px,rgb(2, 123, 189),rgb(2, 123, 189)', { top: fr.todayTop, rule: fr.todayRule, side: fr.todaySide });
       // Rails on a card's first/last row follow the card's curve (Figma 1097:2648).
       const rc = await page.evaluate(() => [...document.querySelectorAll('#content .wi4 #wi-rows .wi4-day-body')].flatMap(b => {
         const out = [], f = b.firstElementChild, l = b.lastElementChild, rail = (e) => e && /wi4-r-(red|amb)/.test(e.className);
