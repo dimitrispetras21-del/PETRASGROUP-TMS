@@ -692,10 +692,11 @@ async function scnPaint(browser, origin) {
       l1: cs('#wi-rows .wi4-l1'), l2: cs('#wi-rows .wi4-l2'), dayh: cs('.wi4-dayh'), colh: cs('.wi4-cols'), plate: cs('.wi4-plate'),
       rowsText: [...document.querySelectorAll('#content .wi4 .wi4-row')].map(e => e.innerText).join('\n') };
   });
-  // Row start 56px (number + the row's ✈) and ΑΝΑΦΕΣΗ 176px, Nick 15/10: the 28px the
-  // ✈ freed in the middle pays for the row cell, so the legs keep their width (+2).
-  const W = [56, 140, 623, 176, 623, 140], at = [0, 1, 3, 5, 7, 9];
-  ok(scn, 'grid at 1920 (sidebar collapsed): 56/140/623/176/623/140 ±1px', g.tracks.length === 10 && at.every((i, k) => Math.abs(g.tracks[i] - W[k]) <= 1), g.tracks);
+  // Row start 64px (number + the row's ✈ button) and ΑΝΑΘΕΣΗ 176px, Nick 15/10: the 28px
+  // the ✈ freed in the middle and 4px from each national column pay for the row cell,
+  // so the legs keep their width (+2).
+  const W = [64, 136, 623, 176, 623, 136], at = [0, 1, 3, 5, 7, 9];
+  ok(scn, 'grid at 1920 (sidebar collapsed): 64/136/623/176/623/136 ±1px', g.tracks.length === 10 && at.every((i, k) => Math.abs(g.tracks[i] - W[k]) <= 1), g.tracks);
   ok(scn, 'rows 36px (Nick 15/10; Figma 32)', g.row.length > 10 && g.row.every(x => Math.abs(x - 36) <= 0.5), [...new Set(g.row)]);
   // Per-kind heights (Figma 1097:2830 relay 24, 1097:3046 rota 32, 1097:3388
   // split header 22): one 28px for all of them read as one more row.
@@ -3797,8 +3798,8 @@ async function scnParity(browser, origin) {
         const pre = [...document.querySelectorAll('.wi4-bar .wi4-btn')].find(b => /Pre-order/.test(b.textContent)), cnt = pre && pre.querySelector('.wi4-cnt');
         return { asgX: rg && card ? Math.round(rg.getBoundingClientRect().left - card.getBoundingClientRect().left) : null, n, cnt: cnt ? getComputedStyle(cnt).backgroundColor : null };
       });
-      // 56 + 140 + 8 + 623 + 16 + 10 + 1 (row start 56px and 16px gaps, Nick 15/10).
-      ok(scn, 'column header: «ΑΝΑΘΕΣΗ · ΕΝΤΟΛΗ» text 854±2px from the card\'s left (Figma 1097:2433 px 10, tracks of 15/10)', ch.asgX != null && Math.abs(ch.asgX - 854) <= 2, ch);
+      // 64 + 136 + 8 + 623 + 16 + 10 + 1 (row start 64px, national 136px, 16px gaps, Nick 15/10).
+      ok(scn, 'column header: «ΑΝΑΘΕΣΗ · ΕΝΤΟΛΗ» text 858±2px from the card\'s left (Figma 1097:2433 px 10, tracks of 15/10)', ch.asgX != null && Math.abs(ch.asgX - 858) <= 2, ch);
       ok(scn, 'column header: the Regular «· N φορτία…» spans keep tracking 0.7px (Figma 1097:2428 / 2439)', ch.n.length >= 2 && ch.n.every(v => v === '0.7px'), ch.n);
       ok(scn, 'top bar: the Pre-order count on #eaecf0 rgb(234, 236, 240) (Figma 1097:2313)', ch.cnt === 'rgb(234, 236, 240)', ch);
       await page.evaluate(() => { document.getElementById('content').scrollTop = 700; });

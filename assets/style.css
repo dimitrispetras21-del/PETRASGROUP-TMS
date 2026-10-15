@@ -7708,7 +7708,7 @@ button.btn-icon:focus-visible { outline:2px solid var(--accent); outline-offset:
    1440 Figma exists. Transparent (owner 11/10, decision 2; Figma 1097:2254):
    the board sits on the grey page, only the day cards are white — a white
    root made the whole board one sheet and the days stopped reading as cards. */
-.wi4 { --wi4-fl:140px; --wi4-fr:140px; font-family:'DM Sans',sans-serif; font-size:12px; color:var(--wi4-ink);
+.wi4 { --wi4-fl:136px; --wi4-fr:136px; font-family:'DM Sans',sans-serif; font-size:12px; color:var(--wi4-ink);
   background:transparent; font-variant-numeric:tabular-nums; }
 .wi4.wi4-fl-off { --wi4-fl:18px; }
 .wi4.wi4-fr-off { --wi4-fr:18px; }
@@ -8134,7 +8134,7 @@ body.wi4-on #wi-ctx .wi4-m-sec .wi4-l2, body.wi4-on #wi-ctx .wi4-m-hd .wi4-l2 { 
    Gap tracks are real tracks, so cells are placed by column class, never by
    source order (a missing cell must not slide the next one left). */
 .wi4-cols, .wi4-row, .wi4-subrow, .wi4-splithd {
-  display:grid; grid-template-columns:56px var(--wi4-fl) 8px minmax(0,1fr) 16px 176px 16px minmax(0,1fr) 8px var(--wi4-fr); align-items:center; }
+  display:grid; grid-template-columns:64px var(--wi4-fl) 8px minmax(0,1fr) 16px 176px 16px minmax(0,1fr) 8px var(--wi4-fr); align-items:center; }
 .wi4-c-idx { grid-column:1; } .wi4-c-fl { grid-column:2; min-width:0; } .wi4-c-exp { grid-column:4; min-width:0; }
 .wi4-c-asg { grid-column:6; min-width:0; } .wi4-c-imp { grid-column:8; min-width:0; } .wi4-c-fr { grid-column:10; min-width:0; }
 /* A leg sits 10px inside its 621px track (Figma legs 1097:2658 / 2506: px 10,
@@ -8336,7 +8336,13 @@ body.wi4-on #wi-ctx .wi4-m-sec .wi4-l2, body.wi4-on #wi-ctx .wi4-m-hd .wi4-l2 { 
    the ✈ and its gap freed in the ΑΝΑΘΕΣΗ column (204 → 176px), so no leg and no
    national column narrows. Rails (::before on the row) still paint over it. */
 .wi4-row > .wi4-c-idx, .wi4-subrow > .wi4-c-idx { align-self:stretch; background:var(--wi4-chip); }
-.wi4-c-idx.wi4-idx-act { justify-content:space-between; padding:0 3px 0 8px; }
+/* 64px (Nick 15/10, «more padding, the plane more visible»): the 8px came from the
+   two national columns (140 → 136px); the legs could not give any (a lot's
+   warehouse name must keep 56px at 1440). The ✈ is a white 26px button with a
+   border on the band, ink-grey icon (#344054), so it reads as a control. */
+.wi4-c-idx.wi4-idx-act { justify-content:space-between; padding:0 8px 0 12px; }
+.wi4 .wi4-c-idx .wi4-plane { width:26px; height:26px; background:#fff; border:1px solid var(--wi4-ctl); border-radius:6px; color:var(--wi4-grey-1); box-shadow:0 1px 1px rgba(16,24,40,.06); }
+.wi4 .wi4-c-idx .wi4-plane:hover { border-color:#98A2B3; background:#fff; color:var(--wi4-ink); }
 .wi4-day.today :is(.wi4-row, .wi4-subrow) > .wi4-c-idx { background:var(--wi4-today-hover); }
 /* contract hook: _wiSync writes into <span class="wi-sync" id="wi-sync-{row.id}"> */
 .wi4 .wi4-c-idx .wi-sync { display:inline; margin:0; min-height:0; font-size:11px; }
@@ -8641,7 +8647,7 @@ body.wi4-on #wi-ctx .wi4-m-sec .wi4-l2, body.wi4-on #wi-ctx .wi4-m-hd .wi4-l2 { 
 .wi4-ns > svg { flex:none; color:var(--wi4-red); }
 /* Its GHOST: the import, still free in the table, as a 24px line in its own
    loading day (in the import column), naming what that day counts for it. */
-.wi4-ghost { display:grid; grid-template-columns:56px var(--wi4-fl) 8px minmax(0,1fr) 16px 176px 16px minmax(0,1fr) 8px var(--wi4-fr); align-items:center;
+.wi4-ghost { display:grid; grid-template-columns:64px var(--wi4-fl) 8px minmax(0,1fr) 16px 176px 16px minmax(0,1fr) 8px var(--wi4-fr); align-items:center;
   height:24px; border-bottom:1px dashed var(--wi4-slot); font-size:11px; color:var(--wi4-ink); cursor:pointer; }
 .wi4-ghost > .wi4-c-idx > svg { color:var(--wi4-red); }
 .wi4-ghost-t { display:flex; align-items:center; gap:4px; min-width:0; white-space:nowrap; }
@@ -8673,7 +8679,7 @@ body.wi4-on #wi-ctx .wi4-m-sec .wi4-l2, body.wi4-on #wi-ctx .wi4-m-hd .wi4-l2 { 
    band: a full-width red band read as a second error on top of the ⚠. */
 .wi4-msg, .wi4-trace { grid-column:2 / -1; height:24px; display:flex; align-items:center; gap:8px; padding:0 12px; font-size:11px; }
 /* Starts under the export leg (index 32 + ΠΡΟΣ ΒΕΡΟΙΑ + 12 gap), open or collapsed. */
-.wi4-msg { background:none; color:var(--wi4-red-ink); padding-left:calc(44px + var(--wi4-fl)); font-size:12px; }
+.wi4-msg { background:none; color:var(--wi4-red-ink); padding-left:calc(72px + var(--wi4-fl)); font-size:12px; }   /* row cell 64 + gap 8 */
 .wi4-msg > svg { flex:none; color:var(--wi4-red); }
 /* Figma 1089:2576: Medium 12 #B91C1C (6.5:1 on white), «Ξαναδοκίμασε» 12/600,
    «· κλείσιμο ×» 11.5. The link keeps --wi4-blue-ink and the close grey-2
