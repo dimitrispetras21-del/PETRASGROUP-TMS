@@ -251,6 +251,7 @@ function _odEnsureStyles() {
 .od-fname{font-family:'Syne',sans-serif;font-weight:700;font-size:13px;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:260px}
 .od-meta{font-size:11px;color:var(--text-dim);margin-top:2px}
 .od-row-acts{display:flex;gap:6px;flex-shrink:0}
+@media (max-width:560px){.od-row{flex-wrap:wrap}.od-row-main{flex:1 1 100%}.od-fname{max-width:none}.od-row-acts{flex:1 1 100%;flex-wrap:wrap}}
 .od-empty{padding:24px;text-align:center;color:var(--text-mid);font-size:13px}
 .od-inline{margin-top:12px}
 .od-form-head{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
@@ -372,6 +373,7 @@ function _odListHtml(docs) {
       </div>
       <div class="od-row-acts">
         <button type="button" class="btn btn-secondary btn-sm" onclick="OrderDocs._openInline(${_odJsArg(d.id)},${_odJsArg(d.filename)})">Προβολή</button>
+        ${_odTabViewable(d.filename) ? `<button type="button" class="btn btn-ghost btn-sm" title="Ανοίγει σε νέα καρτέλα, όπου γίνεται μεγέθυνση, εκτύπωση και αναζήτηση" onclick="OrderDocs._openNewWindow(${_odJsArg(d.id)},${_odJsArg(d.filename)})">Νέο παράθυρο ↗</button>` : ''}
         <button type="button" class="btn btn-ghost btn-sm" onclick="OrderDocs._download(${_odJsArg(d.id)},${_odJsArg(d.filename || 'document')})">Λήψη</button>
       </div>
     </div>
@@ -441,6 +443,35 @@ async function _openInline(id, filename) {
   } catch (e) {
     console.warn('[order-docs] file fetch failed:', e && e.message);
     holder.innerHTML = `<div class="od-empty">Το έγγραφο δεν φορτώθηκε — ${escapeHtml(e.message || '')}.</div>`;
+  }
+}
+
+// T91 (Nick 15/10): «Προβολή» draws a PDF as fixed-size pages, so it cannot be
+// zoomed. «Νέο παράθυρο» opens the same file in a browser tab, whose own viewer
+// zooms, prints and searches. Only for what a browser shows (PDF, images); a
+// .docx or .eml would just download, which «Λήψη» already does.
+function _odTabViewable(filename) {
+  return /\.(pdf|png|jpe?g|gif|webp)$/i.test(filename || '');
+}
+async function _openNewWindow(id, filename) {
+  // The tab is opened BEFORE the fetch: one opened after an await is no longer
+  // tied to the click, and the browser may block it as a popup.
+  const win = window.open('', '_blank');
+  if (!win) {
+    if (typeof showErrorToast === 'function') showErrorToast('Ο browser μπλόκαρε το νέο παράθυρο: επιτρέψτε τα αναδυόμενα για την εφαρμογή', 'error');
+    return;
+  }
+  win.document.title = filename || 'Έγγραφο';
+  win.document.body.textContent = 'Φόρτωση εγγράφου…';
+  try {
+    const { blob, mime } = await fetchFileBlob(id);
+    // The type must be the file's own, or the tab downloads instead of showing it.
+    const url = URL.createObjectURL(new Blob([blob], { type: mime || blob.type }));
+    win.location.href = url;
+    setTimeout(() => URL.revokeObjectURL(url), 10 * 60 * 1000);
+  } catch (e) {
+    console.warn('[order-docs] new window failed:', e && e.message);
+    win.document.body.textContent = 'Το έγγραφο δεν φορτώθηκε: ' + ((e && e.message) || '');
   }
 }
 
@@ -781,6 +812,6 @@ window.OrderDocs = {
   badge, badgeAny, docIdsOf, sectionHtml, openViewer, openViewerMany, attachToOrder,
   handleOrderSaved, handleNatlOrderSaved,
   formFieldHtml, formMount, formOrderCreated, formSettled,
-  _openInline, _download, _formPick, _formRemove,
+  _openInline, _openNewWindow, _download, _formPick, _formRemove,
 };
 })();
