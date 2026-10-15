@@ -1937,8 +1937,18 @@ function _mreqPrint(recId) {
   const f = r.fields;
   const sos = _normP(f['Priority']) === 'SOS';
   const rows = _mreqSheetFields(f).map(([k, v]) => `<tr><th>${escapeHtml(k)}</th><td>${escapeHtml(String(v))}</td></tr>`).join('');
-  const win = window.open('', '_blank');
-  if (!win) { toast('Ο browser μπλόκαρε το παράθυρο εκτύπωσης', 'error'); return; }
+  // Printed from a hidden frame, not a new tab (Nick 15/10: a bare HTML tab
+  // looked strange): the click opens the browser's print dialog straight over
+  // the page, where «Save as PDF» gives the PDF. One frame, reused.
+  let fr = document.getElementById('mreqPrintFrame');
+  if (fr) fr.remove();
+  fr = document.createElement('iframe');
+  fr.id = 'mreqPrintFrame';
+  fr.setAttribute('aria-hidden', 'true');
+  fr.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0;visibility:hidden';
+  document.body.appendChild(fr);
+  const win = fr.contentWindow;
+  win.document.open();
   win.document.write(`<!DOCTYPE html><html lang="el"><head><meta charset="utf-8"><title>Εντολή εργασίας ${escapeHtml(f['Vehicle Plate'] || '')}</title>
     <style>
       @page { size: A4; margin: 16mm; }
@@ -1966,7 +1976,7 @@ function _mreqPrint(recId) {
     <div class="sign"><div>Υπογραφή συνεργείου</div><div>Ημερομηνία παράδοσης</div><div>Παρέλαβε (Petras Group)</div></div>
     </body></html>`);
   win.document.close();
-  setTimeout(() => win.print(), 400);
+  setTimeout(() => { win.focus(); win.print(); }, 250);
 }
 // The share menu's options for one work order (text only, see above).
 function _mreqShareOpts(recId) {
