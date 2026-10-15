@@ -104,7 +104,7 @@ test('E-16 CEO «Κρίσιμα <48ω»: the loose piece is out of the list hand
     _period: 'month', _loadId: 0, _getPeriodRange: () => ({ start: new Date(), end: new Date() }), _iso: d => ymd(d),
     document: { getElementById: () => null }, safeFetch: f => f(), didFail: () => false, logError() {},
     atGet: async (t, formula) => (t === 'tblO' && /IS_BEFORE\(\{Delivery DateTime\}/.test(formula) ? clone([LOOSE, NORMAL, ONTRUCK]) : []),
-    _renderAll: d => { rendered = d; },
+    _renderAll: d => { rendered = d; }, _onDashboard: () => true,   // still on the page (vd 16/10 guard)
   };
   vm.runInNewContext('var _loadId = 0, _period = "month";\n' + loadAll + '\nthis._loadAll = _loadAll;', ctx);
   await ctx._loadAll();
