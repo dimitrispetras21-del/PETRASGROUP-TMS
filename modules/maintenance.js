@@ -1023,7 +1023,7 @@ function _svcOpenForm(editId, opts) {
   const allVehicles = [
     ...MAINT.trucks.map(t => ({ plate: t.fields['License Plate']||'', type: 'Truck' })),
     ...MAINT.trailers.map(t => ({ plate: t.fields['License Plate']||'', type: 'Trailer' })),
-  ].filter(v => v.plate).sort((a,b) => a.plate.localeCompare(b.plate));
+  ].filter(v => v.plate).sort((a,b) => (a.type === b.type ? 0 : a.type === 'Truck' ? -1 : 1) || a.plate.localeCompare(b.plate));
 
   const wsOpts = MAINT.workshops
     .filter(w => w.fields['Active'])
@@ -1078,6 +1078,8 @@ function _svcOpenForm(editId, opts) {
         </div>
       </div>
     </div>`;
+  // T33 (owner 13/10): type to find the plate; the select stays what _svcSave reads.
+  fhSelectSearch(document.getElementById('mf-vehicle'));
   if (opts && opts.scan) document.getElementById('mf-scanfile')?.click();
 }
 
@@ -1904,7 +1906,7 @@ function _mreqOpenForm(editId) {
   const allVehicles = [
     ...MAINT.trucks.filter(t=>t.fields['Active']).map(t => ({ plate: t.fields['License Plate']||'', type: 'Truck' })),
     ...MAINT.trailers.filter(t=>t.fields['Active']).map(t => ({ plate: t.fields['License Plate']||'', type: 'Trailer' })),
-  ].filter(v => v.plate).sort((a, b) => a.plate.localeCompare(b.plate));
+  ].filter(v => v.plate).sort((a, b) => (a.type === b.type ? 0 : a.type === 'Truck' ? -1 : 1) || a.plate.localeCompare(b.plate));
   const known = allVehicles.some(v => v.plate === f['Vehicle Plate']);
   const custom = !!(f['Vehicle Plate'] && !known);
 
@@ -1949,6 +1951,9 @@ function _mreqOpenForm(editId) {
       </div>
     </div>
   </div>`;
+  // T33 (owner 13/10): type to find the plate. «Άλλο όχημα» stays listed whatever is
+  // typed, and picking it carries the typed plate into the free-text box.
+  fhSelectSearch(document.getElementById('mreq-plate'), { keep: { __custom: 'mreq-plate-custom' } });
 }
 
 async function _mreqSave(editId) {
