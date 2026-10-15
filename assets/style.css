@@ -8342,6 +8342,8 @@ body.wi4-on #wi-ctx .wi4-m-sec .wi4-l2, body.wi4-on #wi-ctx .wi4-m-hd .wi4-l2 { 
    sub-rows) broke the column (Nick 15/10, rows 6 and 14). */
 :is(.wi4-row, .wi4-subrow, .wi4-splithd) > .wi4-c-idx { justify-content:flex-start; padding:0 8px 0 12px; }
 .wi4 .wi4-c-idx .wi4-plane { margin-left:auto; }
+/* The line's number reads (Nick 15/10): 13px semibold ink-grey #344054, was 11px grey. */
+.wi4 :is(.wi4-row, .wi4-subrow, .wi4-splithd) > .wi4-c-idx { font-size:13px; font-weight:600; color:var(--wi4-grey-1); }
 /* 64px (Nick 15/10, «more padding, the plane more visible»): the 8px came from the
    two national columns (140 → 136px); the legs could not give any (a lot's
    warehouse name must keep 56px at 1440). The ✈ is a white 26px button with a
@@ -8442,6 +8444,12 @@ body.wi4-on #wi-ctx .wi4-m-sec .wi4-l2, body.wi4-on #wi-ctx .wi4-m-hd .wi4-l2 { 
 /* ✓ carries meaning («done»): a graphic at ≥3:1 (grey-2), not the icon grey.
    A visible gap before the day («✓ Σάβ 3/10», board). */
 .wi4-ok { display:inline-flex; vertical-align:-1px; margin-right:4px; color:var(--wi4-grey-2); }
+/* Done ticks green (Nick 15/10, T58 option 1; walkthrough 27 / Pantelis C8): the ✓ on
+   a done date chip and on a done point in --ok #15803D (5.0:1 on white), its line
+   heavier (2.5) so it reads at 10px; the date and the names stay grey. A tick never
+   sits inside a partner box, so it does not compete with the partner green. */
+.wi4 .wi4-ok { color:var(--ok); }
+.wi4 .wi4-ok svg { stroke-width:2.5; }
 /* A reason named on its point (P1 review 11/10): line 1 becomes a flex row,
    so the NAME is cut and the word never is. «PRE» outlined like PE; the
    amber words in the amber ink the rules give «προσοχή». */
