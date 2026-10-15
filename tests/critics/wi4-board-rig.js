@@ -3255,7 +3255,8 @@ async function scnPrint(browser, origin) {
     const has = await page.evaluate(([js]) => { const r = eval(js)('recWiE001'); if (r) { r.setAttribute('data-rig-row', 'E001'); r.scrollIntoView({ block: 'center' }); } return !!r; }, [ROW_JS]);
     const rowL = page.locator('[data-rig-row="E001"]');
     await rowL.hover({ position: { x: 600, y: 16 } }); await page.waitForTimeout(150);
-    const btn = rowL.locator('.wi4-asg .wk3-prt');
+    // One printer per leg (Nick 15/10): the export's sits LEFT of the pill.
+    const btn = rowL.locator('.wi4-asg .wk3-prt.wi4-prt-l');
     const vis = await btn.evaluate(b => getComputedStyle(b).visibility).catch(() => 'missing');
     const clicked = await btn.click({ timeout: 4000 }).then(() => true, () => false);
     await page.waitForTimeout(250);
@@ -3274,25 +3275,30 @@ async function scnPrint(browser, origin) {
     await page.evaluate(([js]) => { const r = eval(js)('recWiE001'); if (r) { r.setAttribute('data-rig-row', 'E001'); r.scrollIntoView({ block: 'center' }); } }, [ROW_JS]);
     const rowL = page.locator('[data-rig-row="E001"]');
     await rowL.hover({ position: { x: 600, y: 16 } }); await page.waitForTimeout(150);
-    await rowL.locator('.wi4-asg .wk3-prt').click({ button: 'right', timeout: 4000 }).catch(() => {});
+    await rowL.locator('.wi4-asg .wk3-prt.wi4-prt-l').click({ button: 'right', timeout: 4000 }).catch(() => {});
     await page.waitForTimeout(250);
     const r = await page.evaluate(() => { const m = document.getElementById('shMenu');
       return { sh: !!m, items: m ? [...m.querySelectorAll('button')].map(b => b.textContent) : [], ctx: ((document.getElementById('wi-ctx') || {}).style || {}).display === 'block' }; });
     ok(scn, 'right-click on the row\'s print button opens the share menu (Λήψη PDF · Κοινή χρήση), not the per-load menu', r.sh && !r.ctx && r.items.some(t => /Κοινή χρήση/.test(t)), r);
-    // Parity r1 F7 (Figma Assign 1097:2501): pill 176, 6px, the arrow; print
-    // out of the flow, in the gutter past the cell — on neither the pill nor
-    // the arrow, and clear of the import cell's first chip.
+    // Parity r1 F7 (Figma Assign 1097:2501): pill 176, 6px, the arrow. One
+    // printer per leg (Nick 15/10), each out of the flow in the 12px gutter on
+    // its side: the export's left of the pill, clear of the export cell's text;
+    // the matched import's right of the arrow, clear of the import's first chip.
     await page.mouse.click(5, 5); await page.waitForTimeout(150);
     await rowL.hover({ position: { x: 600, y: 16 } }); await page.waitForTimeout(150);
     const g = await rowL.evaluate(row => {
       const R = el => { if (!el) return null; const b = el.getBoundingClientRect(); return { l: Math.round(b.left), r: Math.round(b.right), w: Math.round(b.width) }; };
       const asg = row.querySelector('.wi4-asg');
       const chip = row.querySelector('.wi4-c-imp .wi4-dc, .wi4-c-imp button, .wi4-c-imp .wi4-gap');
-      return { cell: R(asg), box: R(asg.querySelector('.wi4-box')), plane: R(asg.querySelector('.wi4-plane')), prt: R(asg.querySelector('.wk3-prt')), chip: R(chip),
-        vis: getComputedStyle(asg.querySelector('.wk3-prt')).visibility };
+      const expLeaves = [...row.querySelectorAll('.wi4-c-exp *')].filter(x => !x.children.length && x.getBoundingClientRect().width > 0);
+      const pL = asg.querySelector('.wk3-prt.wi4-prt-l'), pR = asg.querySelector('.wk3-prt:not(.wi4-prt-l)');
+      return { cell: R(asg), box: R(asg.querySelector('.wi4-box')), plane: R(asg.querySelector('.wi4-plane')), prtL: R(pL), prtR: R(pR), chip: R(chip),
+        expEnd: expLeaves.length ? Math.max(...expLeaves.map(x => Math.round(x.getBoundingClientRect().right))) : null,
+        vis: [pL, pR].map(x => x ? getComputedStyle(x).visibility : 'missing') };
     });
-    ok(scn, 'at 1920 the pill is 176±1 wide, the arrow 6±1px after it; print sits past the cell, on neither, clear of the import\'s first chip', !!g.box && Math.abs(g.box.w - 176) <= 1
-      && Math.abs(g.plane.l - g.box.r - 6) <= 1 && g.prt.l >= g.plane.r && g.prt.l >= g.cell.r - 1 && (!g.chip || g.prt.r <= g.chip.l) && g.vis === 'visible', g);
+    ok(scn, 'at 1920 the pill is 176±1 wide, the arrow 6±1px after it; the export printer sits left of the pill (clear of the export text), the import printer past the arrow (clear of the import\'s first chip)', !!g.box && Math.abs(g.box.w - 176) <= 1
+      && Math.abs(g.plane.l - g.box.r - 6) <= 1 && !!g.prtL && g.prtL.r <= g.box.l && (g.expEnd == null || g.prtL.l >= g.expEnd)
+      && (!g.prtR || (g.prtR.l >= g.plane.r && (!g.chip || g.prtR.r <= g.chip.l))) && g.vis[0] === 'visible', g);
     ok(scn, 'nothing written', !writes(S).length, writes(S));
     await page.context().close();
   }

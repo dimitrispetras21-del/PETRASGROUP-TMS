@@ -1034,26 +1034,39 @@ function _asgHTML(row, rs) {
   const pls = row.saved && typeof platesText === 'function' ? (partner ? platesText('', '', row.partnerPlates) : platesText(truck, trailer)) : '';
   const cpy = pls ? `<button type="button" class="wi4-cpy" title="Αντιγραφή πινακίδων: ${_esc(pls)}" aria-label="Αντιγραφή πινακίδων ${_esc(pls)}" data-plates="${_esc(pls)}" onclick="event.stopPropagation();copyPlates(this.dataset.plates)">${_ico('clipboard', 12)}</button>` : '';
   // Print keeps .wk3-prt + data-shq (right-click / long-press share menu,
-  // §a.7) and is DRAWN again (review 11/10, P2): on row hover, in its own slot
-  // right of the paper plane, never on the box. Roles with planning:'view'
-  // print by mouse only here — the per-load menu sits behind
-  // _wiBlockReadOnly, exactly as v1's row menu does.
-  let prt = '';
+  // §a.7) and is DRAWN (review 11/10, P2): on row hover, never on the box.
+  // Roles with planning:'view' print by mouse only here — the per-load menu
+  // sits behind _wiBlockReadOnly, exactly as v1's row menu does.
   const group = (row.orderIds || []).length > 1;
   const hasP = !!(row.partnerId || row.partnerLabel);
   const shq = (id, leg) => (typeof printSheetQuery === 'function' && _q(id) ? ` data-shq="${_esc(printSheetQuery(id, leg, hasP))}"` : '');
-  const pb = (title, attrs, click) => `<button type="button" class="wk3-prt wi4-prt" title="${_esc(title)}" aria-label="${_esc(title)}"${attrs} onclick="event.stopPropagation();${click}">${PRINTER}</button>`;
-  if (isImp) {
-    prt = group
-      ? pb(`Εκτύπωση ομάδας εισαγωγής — ${row.orderIds.length} έγγραφα`, '', `WI_INTERNAL.printImpGroup(${row.id})`)
-      : (_q(oid) ? pb('Εκτύπωση εντολής εισαγωγής — δεξί κλικ: κοινή χρήση', `${shq(oid, 'import')} data-shtitle="Εντολή εισαγωγής — W${_D().week}"`, `WI_INTERNAL.printImp('${_q(oid)}',${hasP ? 'true' : 'false'})`) : '');
-  } else {
-    prt = group
-      ? pb(`Εκτύπωση ομάδας — ${row.orderIds.length} έγγραφα`, '', `WI_INTERNAL.printGroup(${row.id})`)
-      : pb('Εκτύπωση εντολής εξαγωγής — δεξί κλικ: κοινή χρήση', `${shq(oid, 'export')} data-shtitle="Εντολή εξαγωγής — W${_D().week}"`, `WI_INTERNAL.print(${row.id},'export')`);
+  // One printer per leg, beside the assignment on that leg's side (Nick 15/10,
+  // walkthrough C1/C2, his TECH_DESIGN round 3 #14): export LEFT of the pill,
+  // the matched import RIGHT of the arrow, as the old view drew ⎙ and ⎙ᴵ
+  // (weekly_intl.js _wiRowHTML). Each sits out of the flow in the 12px gutter on
+  // its side, so no column narrows and the pill keeps its Figma 176px. Each is
+  // .wk3-prt + data-shq: right-click / long-press is that leg's share menu.
+  const pb = (title, attrs, click, side) => `<button type="button" class="wk3-prt wi4-prt${side === 'l' ? ' wi4-prt-l' : ''}" title="${_esc(title)}" aria-label="${_esc(title)}"${attrs} onclick="event.stopPropagation();${click}">${PRINTER}</button>`;
+  let prtL = '';
+  if (!isImp) {
+    prtL = group
+      ? pb(`Εξαγωγή: εκτύπωση ομάδας, ${row.orderIds.length} έγγραφα`, '', `WI_INTERNAL.printGroup(${row.id})`, 'l')
+      : pb('Εξαγωγή: εκτύπωση εντολής (δεξί κλικ: κοινή χρήση)', `${shq(oid, 'export')} data-shtitle="Εντολή εξαγωγής — W${_D().week}"`, `WI_INTERNAL.print(${row.id},'export')`, 'l');
   }
+  const impPrint = (impRow, impId) => {
+    const n = impRow ? (impRow.orderIds || []).length : 0;
+    if (n > 1) {
+      const q = typeof _wiImpGroupPrintQuery === 'function' ? ` data-shq="${_esc(_wiImpGroupPrintQuery(impRow))}" data-shtitle="Εντολές εισαγωγής (ομάδα) — W${_D().week}"` : '';
+      return pb(`Εισαγωγή: εκτύπωση ομάδας, ${n} έγγραφα`, q, `WI_INTERNAL.printImpGroup(${impRow.id})`, 'r');
+    }
+    return _q(impId) ? pb('Εισαγωγή: εκτύπωση εντολής (δεξί κλικ: κοινή χρήση)', `${shq(impId, 'import')} data-shtitle="Εντολή εισαγωγής — W${_D().week}"`, `WI_INTERNAL.printImp('${_q(impId)}',${hasP ? 'true' : 'false'})`, 'r') : '';
+  };
+  // An import row prints itself; an export row prints its matched import, as a
+  // packet when that import travels in an import group.
+  const prtR = isImp ? impPrint(group ? row : null, oid)
+    : (row.importId ? impPrint(typeof I.impGroupRowOf === 'function' ? I.impGroupRowOf(row.importId) : null, row.importId) : '');
   const plane = _q(oid) ? `<button type="button" class="wi4-plane" title="Ενέργειες φορτίου" aria-label="Ενέργειες φορτίου" onclick="event.stopPropagation();WI4Actions.openRowMenu(event,'${_q(oid)}')">${PLANE}</button>` : '';
-  return `<div class="wi4-asg">${box}${cpy}${plane}${prt}</div>`;
+  return `<div class="wi4-asg">${prtL}${box}${cpy}${plane}${prtR}</div>`;
 }
 // why = every reason of the row in one line (_whyOf): the rail is a colour
 // and a shape, the title of the number beside it says what they mean.
