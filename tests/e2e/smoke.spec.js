@@ -14,8 +14,10 @@
 // Do NOT reintroduce a fake session — a green run would then prove nothing.
 //
 // Credentials come from the environment, never from the repo:
-//   PW_TMS_USER=demo_owner PW_TMS_PASS=<TMS_PW_DEMO> npx playwright test tests/e2e/smoke.spec.js
-// (passwords live in the ops repo `.env` as TMS_PW_*; demo_owner sees every page)
+//   PW_TMS_USER=<account> PW_TMS_PASS=<password> npx playwright test tests/e2e/smoke.spec.js
+// Use a real, active account with an owner or management role. The demo_* accounts
+// are active=false since 9/2026, and a disabled account fails exactly like a wrong
+// password. Run it against the local copy (PW_BASE_URL) before production.
 //
 // Tests run against the live GitHub Pages deploy by default (playwright.config.js);
 // override with PW_BASE_URL. They are READ-ONLY: they navigate and assert on
@@ -87,6 +89,9 @@ test.describe('TMS smoke tests', () => {
     'dashboard', 'weekly_intl', 'weekly_natl', 'daily_ops', 'daily_ramp',
     'orders_intl', 'orders_natl', 'performance', 'invoicing', 'locations',
     'clients', 'partners', 'drivers', 'trucks', 'trailers', 'ceo_dashboard',
+    // The sidebar since 8/2026 (vd 16/10): maintenance, workshops, money, history.
+    'maint_dash', 'maint_req', 'maint_expiry', 'maint_svc', 'workshops',
+    'payroll', 'expenses', 'pallet_ledger', 'notifications', 'audit_trail',
   ];
 
   for (const id of pagesToTest) {
