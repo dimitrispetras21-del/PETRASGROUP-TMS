@@ -288,6 +288,9 @@ function fhPickLinked(id, recId, label) {
 // Plates are stored in Latin letters (76 of 76, 14/10), but a Greek keyboard types
 // the look-alike letter (Η for H, Ρ for P), so query and options both go through
 // _fhPlateNorm. Spaces and dashes are ignored: «ΙΑΒ 12» finds «IAB-1234».
+// RULE for every vehicle dropdown, new ones included: put data-fh-search on the
+// <select> and call fhSelectSearch on it (or fhSelectSearchIn on the container)
+// right after the markup is in the page. tests/plate-search.test.js fails otherwise.
 const _FH_PLATE_GR = { 'Α':'A','Β':'B','Ε':'E','Ζ':'Z','Η':'H','Ι':'I','Κ':'K','Μ':'M','Ν':'N','Ο':'O','Ρ':'P','Τ':'T','Υ':'Y','Χ':'X' };
 function _fhPlateNorm(s) {
   return String(s || '').toUpperCase().normalize('NFD').replace(/[̀-ͯ]/g, '')

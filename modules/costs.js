@@ -229,7 +229,7 @@ async function renderTripPnl() {
         <button data-s="MIX" onclick="ctSetScope('MIX')">Μικτά</button>
       </div>
       <span class="ct-vr"></span>
-      <select id="ctVehSel" onchange="ctSetVeh(this.value)"><option value="ALL">Όλος ο στόλος</option></select>
+      <select id="ctVehSel" data-fh-search onchange="ctSetVeh(this.value)"><option value="ALL">Όλος ο στόλος</option></select>
       <select id="ctGroup" onchange="_ct.group=this.value;ctRenderList()">
         <option value="trip">Δρομολόγια</option>
         <option value="truck">Ανά φορτηγό / συνεργάτη</option>
@@ -1144,8 +1144,8 @@ function ctOpenRtModal() {
       <div class="ct-fgrid">
         <label>Πεδίο<select id="ctFscope"><option value="INTL">Διεθνές</option><option value="NATL">Εθνικό</option></select></label>
         <label>Τύπος<select id="ctFtype" onchange="document.getElementById('ctFpartnerWrap').style.display=this.value==='PARTNER'?'':'none'"><option value="OWNED">Ιδιόκτητο</option><option value="PARTNER">Συνεργάτης</option></select></label>
-        <label>Φορτηγό<select id="ctFtruck">${opt(lk.trucks, 'license_plate')}</select></label>
-        <label>Τρέιλερ<select id="ctFtrailer">${opt(lk.trailers, 'license_plate')}</select></label>
+        <label>Φορτηγό<select id="ctFtruck" data-fh-search>${opt(lk.trucks, 'license_plate')}</select></label>
+        <label>Τρέιλερ<select id="ctFtrailer" data-fh-search>${opt(lk.trailers, 'license_plate')}</select></label>
         <label>Οδηγός<select id="ctFdriver">${opt(lk.drivers, 'full_name')}</select></label>
         <label id="ctFpartnerWrap" style="display:none">Συνεργάτης<select id="ctFpartner">${opt(lk.partners, 'company_name')}</select></label>
         <label>Έναρξη<input type="date" id="ctFstart" value="${today}"></label>

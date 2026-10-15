@@ -330,11 +330,11 @@ async function openPanel(o) {
         <div style="display:flex;align-items:center;gap:10px">
           <label style="${lbl}${partnerRun ? ';opacity:.5' : ''}"${partnerRun ? ' title="Ο τράκτορας της παραγγελίας είναι του συνεργάτη"' : ''}><input type="radio" name="rly_tm" value="same"${useOther ? '' : ' checked'}${partnerRun ? ' disabled' : ''} onchange="Relay._tm()"> ίδιος${intlPlate ? ' (' + escapeHtml(intlPlate) + ')' : noOrdTrk ? ' (κανένας ακόμη)' : ''}</label>
           <label style="${lbl}"><input type="radio" name="rly_tm" value="other"${useOther ? ' checked' : ''} onchange="Relay._tm()"> άλλος</label>
-          <select class="form-select" id="rly_trk" style="flex:1;min-width:0"${useOther ? '' : ' disabled'}><option value="">—</option>${_opts(trucks, trkVal)}</select>
+          <select class="form-select" id="rly_trk" data-fh-search style="flex:1;min-width:0"${useOther ? '' : ' disabled'}><option value="">—</option>${_opts(trucks, trkVal)}</select>
         </div>${noOrdTrk ? `<div id="rly_notrk" role="note"${useOther ? ' hidden' : ''} style="font-size:12px;font-weight:600;color:var(--danger);line-height:1.3;margin-top:3px">Η παραγγελία δεν έχει ακόμη τράκτορα — με «ίδιος» ο τοπικός μένει χωρίς όχημα μέχρι να ανατεθεί.</div>` : ''}</div>
       <div style="display:flex;gap:8px">
         <div class="wi-pf" style="flex:1;min-width:0"><span class="wi-plbl">Ρυμούλκα</span>
-          <select class="form-select" id="rly_trl"><option value="">—</option>${_opts(trailers, trlVal)}</select></div>
+          <select class="form-select" id="rly_trl" data-fh-search><option value="">—</option>${_opts(trailers, trlVal)}</select></div>
         <div class="wi-pf" style="flex:0 0 92px"><span class="wi-plbl">Ώρα</span>
           <input class="form-input" id="rly_time" placeholder="07:00" value="${escapeHtml(timeVal)}"></div>
       </div>

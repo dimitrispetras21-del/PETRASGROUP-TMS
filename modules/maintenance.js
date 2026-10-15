@@ -1045,7 +1045,7 @@ function _svcOpenForm(editId, opts) {
             <span id="mf-scanstatus" class="mnt-dim">συμπληρώνει μόνο τα κενά πεδία — ο χρήστης ελέγχει πριν την αποθήκευση</span>
           </div>
           <div class="mf-row">
-            ${field('Όχημα *', `<select class="form-select" id="mf-vehicle">
+            ${field('Όχημα *', `<select class="form-select" id="mf-vehicle" data-fh-search>
                 <option value="">Επιλογή οχήματος…</option>
                 ${allVehicles.map(v => `<option value="${escapeHtml(v.plate)}|${v.type}"${vPlate===v.plate?' selected':''}>${escapeHtml(v.plate)} (${_mntTypeGr(v.type)})</option>`).join('')}
               </select>`, '<div class="ef-err" id="mf-err-vehicle"></div>')}
@@ -1335,7 +1335,7 @@ function _historyPaint(vType) {
   document.getElementById('content').innerHTML = `
     <div class="mnt-head">
       <span class="mnt-title">${vType === 'trucks' ? 'Ιστορικό Φορτηγών' : 'Ιστορικό Ρυμουλκών'}</span>
-      <select class="mnt-select wide" id="hist-vehicle-${vType}" title="Όχημα" onchange="_historyVehicle['${vType}']=this.value;_historyFilter['${vType}']={};_historyPaint('${vType}')">
+      <select class="mnt-select wide" id="hist-vehicle-${vType}" data-fh-search title="Όχημα" onchange="_historyVehicle['${vType}']=this.value;_historyFilter['${vType}']={};_historyPaint('${vType}')">
         <option value="">Επίλεξε ${vTypeGr}…</option>
         ${vehicleOpts}
       </select>
@@ -1921,7 +1921,7 @@ function _mreqOpenForm(editId) {
         <button type="button" class="mnt-drawer-x" onclick="_mntCloseModal()" aria-label="Κλείσιμο">✕</button></div>
       <div class="mf-body">
         <div class="mf-row">
-          ${field('Όχημα *', `<select class="form-select" id="mreq-plate" onchange="document.getElementById('mreq-plate-custom-wrap').style.display=this.value==='__custom'?'':'none'">
+          ${field('Όχημα *', `<select class="form-select" id="mreq-plate" data-fh-search onchange="document.getElementById('mreq-plate-custom-wrap').style.display=this.value==='__custom'?'':'none'">
               <option value="">— Επιλογή —</option>
               ${allVehicles.map(v => `<option value="${escapeHtml(v.plate)}"${f['Vehicle Plate']===v.plate?' selected':''}>${escapeHtml(v.plate)} (${_mntTypeGr(v.type)})</option>`).join('')}
               <option value="__custom"${custom ? ' selected' : ''}>Άλλο όχημα (πληκτρολόγηση)</option>

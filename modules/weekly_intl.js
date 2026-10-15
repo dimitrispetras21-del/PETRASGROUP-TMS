@@ -4903,8 +4903,8 @@ async function _wiPanelSplit(rowId){
       </select>
     </div>
     <div id="wiSplitOwn" style="display:none;margin-top:8px">
-      <select class="form-input" id="wiSplitTruck" style="margin-bottom:6px;width:100%"><option value="">Φορτηγό…</option>${opt(WINTL.data.trucks)}</select>
-      <select class="form-input" id="wiSplitTrailer" style="margin-bottom:6px;width:100%"><option value="">Ρυμούλκα…</option>${opt(WINTL.data.trailers)}</select>
+      <select class="form-input" id="wiSplitTruck" data-fh-search style="margin-bottom:6px;width:100%"><option value="">Φορτηγό…</option>${opt(WINTL.data.trucks)}</select>
+      <select class="form-input" id="wiSplitTrailer" data-fh-search style="margin-bottom:6px;width:100%"><option value="">Ρυμούλκα…</option>${opt(WINTL.data.trailers)}</select>
       <select class="form-input" id="wiSplitDriver" style="width:100%"><option value="">Οδηγός…</option>${opt(WINTL.data.drivers)}</select>
     </div>
     <div id="wiSplitPartner" style="display:none;margin-top:8px">
