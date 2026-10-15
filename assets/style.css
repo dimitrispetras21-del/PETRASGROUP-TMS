@@ -8134,7 +8134,7 @@ body.wi4-on #wi-ctx .wi4-m-sec .wi4-l2, body.wi4-on #wi-ctx .wi4-m-hd .wi4-l2 { 
    Gap tracks are real tracks, so cells are placed by column class, never by
    source order (a missing cell must not slide the next one left). */
 .wi4-cols, .wi4-row, .wi4-subrow, .wi4-splithd {
-  display:grid; grid-template-columns:32px var(--wi4-fl) 12px minmax(0,1fr) 12px 204px 12px minmax(0,1fr) 12px var(--wi4-fr); align-items:center; }
+  display:grid; grid-template-columns:32px var(--wi4-fl) 8px minmax(0,1fr) 16px 204px 16px minmax(0,1fr) 8px var(--wi4-fr); align-items:center; }
 .wi4-c-idx { grid-column:1; } .wi4-c-fl { grid-column:2; min-width:0; } .wi4-c-exp { grid-column:4; min-width:0; }
 .wi4-c-asg { grid-column:6; min-width:0; } .wi4-c-imp { grid-column:8; min-width:0; } .wi4-c-fr { grid-column:10; min-width:0; }
 /* A leg sits 10px inside its 621px track (Figma legs 1097:2658 / 2506: px 10,
@@ -8528,13 +8528,15 @@ body.wi4-on #wi-ctx .wi4-m-sec .wi4-l2, body.wi4-on #wi-ctx .wi4-m-hd .wi4-l2 { 
 .wi4 .wi4-asg .wk3-prt { position:absolute; left:100%; top:50%; margin-top:-11px; width:12px; height:22px; padding:0; display:inline-grid; place-items:center; border:none; border-radius:5px;
   background:none; color:var(--wi4-icon); cursor:pointer; visibility:hidden; }
 .wi4 .wi4-asg .wk3-prt svg { width:12px; height:12px; }
-/* Breathing room (Nick 15/10): each printer sits 4px off its neighbour (the
-   arrow on the right, the pill on the left) in a 16px slot with the 12px glyph
-   centred, so the hover chip no longer touches either. Every row is measured
-   against the next cell's first text (tests/critics/wi4-board-rig.js, print.share). */
-.wi4 .wi4-asg .wk3-prt { width:16px; left:calc(100% + 4px); }
-/* The export's printer: the same slot, in the gutter LEFT of the pill. */
-.wi4 .wi4-asg .wk3-prt.wi4-prt-l { left:auto; right:calc(100% + 4px); }
+/* Breathing room (Nick 15/10): the gaps either side of the ΑΝΑΘΕΣΗ column are
+   16px, taken from the two outer gaps (12 → 8px, beside ΠΡΟΣ / ΑΠΟ ΒΕΡΟΙΑ), so the
+   leg cells keep their Figma width and a lot's warehouse name its 56px (his rig:
+   20px gaps taken from the legs cut it to 53px). Each printer, a 16px slot with
+   the 12px glyph centred, sits 5px off its neighbour (the arrow on the right, the
+   pill on the left) and 5px off the next cell's text, on every row at 1440 and 1920. */
+.wi4 .wi4-asg .wk3-prt { width:16px; left:calc(100% + 5px); }
+/* The export's printer: the same slot, in the gap LEFT of the pill. */
+.wi4 .wi4-asg .wk3-prt.wi4-prt-l { left:auto; right:calc(100% + 5px); }
 .wi4 .wi4-row:hover .wi4-asg .wk3-prt, .wi4 .wi4-row:focus-within .wi4-asg .wk3-prt, .wi4.wi4-kbd .wi4-focus .wi4-asg .wk3-prt { visibility:visible; }
 .wi4 .wi4-asg .wk3-prt:hover { color:var(--wi4-grey-1); background:var(--wi4-chip); }
 @media (hover:none) { .wi4 .wi4-asg .wk3-prt { visibility:visible; } }
@@ -8628,7 +8630,7 @@ body.wi4-on #wi-ctx .wi4-m-sec .wi4-l2, body.wi4-on #wi-ctx .wi4-m-hd .wi4-l2 { 
 .wi4-ns > svg { flex:none; color:var(--wi4-red); }
 /* Its GHOST: the import, still free in the table, as a 24px line in its own
    loading day (in the import column), naming what that day counts for it. */
-.wi4-ghost { display:grid; grid-template-columns:32px var(--wi4-fl) 12px minmax(0,1fr) 12px 204px 12px minmax(0,1fr) 12px var(--wi4-fr); align-items:center;
+.wi4-ghost { display:grid; grid-template-columns:32px var(--wi4-fl) 8px minmax(0,1fr) 16px 204px 16px minmax(0,1fr) 8px var(--wi4-fr); align-items:center;
   height:24px; border-bottom:1px dashed var(--wi4-slot); font-size:11px; color:var(--wi4-ink); cursor:pointer; }
 .wi4-ghost > .wi4-c-idx > svg { color:var(--wi4-red); }
 .wi4-ghost-t { display:flex; align-items:center; gap:4px; min-width:0; white-space:nowrap; }
