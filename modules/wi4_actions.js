@@ -784,7 +784,11 @@ async function openRowMenu(e, orderId) {
     // (bottom 4px over the arrow), else on the roomier side, scrolling inside.
     // The load's own sub-rows under it (a local relay «↳») light with it, so
     // a menu below hangs under the last of them, not over them.
-    const p = plane.getBoundingClientRect(), h = ctx.offsetHeight;
+    const p0 = plane.getBoundingClientRect(), h = ctx.offsetHeight;
+    // Measured from the ROW's edges, not the arrow's: in a 36px row the arrow
+    // ends 7px above the row's bottom, and «4px under the arrow» sat on the row.
+    const rowEl = plane.closest('.wi4-row'), rr = rowEl ? rowEl.getBoundingClientRect() : p0;
+    const p = { left: p0.left, right: p0.right, top: Math.min(p0.top, rr.top), bottom: Math.max(p0.bottom, rr.bottom) };
     const lit = new Set(model.sections.flatMap((s) => s.oids));
     let pb = p.bottom;
     for (let n = plane.closest('.wi4-row'); (n = n && n.nextElementSibling) && n.classList.contains('wi4-subrow');) {
@@ -797,7 +801,12 @@ async function openRowMenu(e, orderId) {
       else if (above > below) { ctx.style.maxHeight = Math.floor(above) + 'px'; top = 8; }
       else ctx.style.maxHeight = Math.floor(below) + 'px';
     }
-    ctx.style.left = Math.round(p.right - ctx.offsetWidth) + 'px';
+    // The ✈ sits at the start of the row (Nick 15/10): the menu hangs to the RIGHT
+    // from it, never left past the board's edge. Elsewhere it keeps its old
+    // alignment to the arrow's right edge.
+    const atStart = !!plane.closest('.wi4-c-idx');
+    const left = atStart ? Math.min(p.left, window.innerWidth - 8 - ctx.offsetWidth) : p.right - ctx.offsetWidth;
+    ctx.style.left = Math.round(left) + 'px';
     ctx.style.top = Math.round(top) + 'px';
     ctx._wi4Docked = true;
   }

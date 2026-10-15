@@ -692,12 +692,14 @@ async function scnPaint(browser, origin) {
       l1: cs('#wi-rows .wi4-l1'), l2: cs('#wi-rows .wi4-l2'), dayh: cs('.wi4-dayh'), colh: cs('.wi4-cols'), plate: cs('.wi4-plate'),
       rowsText: [...document.querySelectorAll('#content .wi4 .wi4-row')].map(e => e.innerText).join('\n') };
   });
-  const W = [32, 140, 621, 204, 621, 140], at = [0, 1, 3, 5, 7, 9];
-  ok(scn, 'grid at 1920 (sidebar collapsed): 32/140/621/204/621/140 ±1px', g.tracks.length === 10 && at.every((i, k) => Math.abs(g.tracks[i] - W[k]) <= 1), g.tracks);
-  ok(scn, 'rows 32px', g.row.length > 10 && g.row.every(x => Math.abs(x - 32) <= 0.5), [...new Set(g.row)]);
+  // Row start 56px (number + the row's ✈) and ΑΝΑΦΕΣΗ 176px, Nick 15/10: the 28px the
+  // ✈ freed in the middle pays for the row cell, so the legs keep their width (+2).
+  const W = [56, 140, 623, 176, 623, 140], at = [0, 1, 3, 5, 7, 9];
+  ok(scn, 'grid at 1920 (sidebar collapsed): 56/140/623/176/623/140 ±1px', g.tracks.length === 10 && at.every((i, k) => Math.abs(g.tracks[i] - W[k]) <= 1), g.tracks);
+  ok(scn, 'rows 36px (Nick 15/10; Figma 32)', g.row.length > 10 && g.row.every(x => Math.abs(x - 36) <= 0.5), [...new Set(g.row)]);
   // Per-kind heights (Figma 1097:2830 relay 24, 1097:3046 rota 32, 1097:3388
   // split header 22): one 28px for all of them read as one more row.
-  ok(scn, 'sub-rows are a relay (24) or a rota leg (32), never the old 28px', g.sub.length > 0 && g.sub.every(x => Math.abs(x - 24) <= 0.5 || Math.abs(x - 32) <= 0.5), [...new Set(g.sub)]);
+  ok(scn, 'sub-rows are a relay (24) or a rota leg (36, as a row), never the old 28px', g.sub.length > 0 && g.sub.every(x => Math.abs(x - 24) <= 0.5 || Math.abs(x - 36) <= 0.5), [...new Set(g.sub)]);
   const sk = await page.evaluate(() => {
     const h = sel => [...document.querySelectorAll('#content .wi4 ' + sel)].filter(e => e.offsetParent).map(e => Math.round(e.getBoundingClientRect().height * 10) / 10);
     const owners = [...document.querySelectorAll('#content .wi4 #wi-rows .wi4-row')].filter(r => r.nextElementSibling && r.nextElementSibling.classList.contains('wi4-subrow'));
@@ -707,9 +709,9 @@ async function scnPaint(browser, origin) {
       leg: h('.wi4-subrow.wi4-sub-leg'), split: h('.wi4-splithd'), owners: owners.map(r => getComputedStyle(r).borderBottomStyle), conn };
   });
   const each = (a, v) => a.length > 0 && a.every(x => Math.abs(x - v) <= 0.5);
-  ok(scn, 'relay sub-rows 24px, rota legs 32px, split headers 22px (each kind present)', each(sk.relay, 24) && !sk.relayAttr && each(sk.leg, 32) && each(sk.split, 22), sk);
+  ok(scn, 'relay sub-rows 24px, rota legs 36px, split headers 22px (each kind present)', each(sk.relay, 24) && !sk.relayAttr && each(sk.leg, 36) && each(sk.split, 22), sk);
   ok(scn, 'a row followed by its sub-row ends on a dashed hairline (Figma 1097:2781)', sk.owners.length > 0 && sk.owners.every(s => s === 'dashed'), sk.owners);
-  ok(scn, 'split legs ↳1 → ↳2 are tied by the 1px connector (full ↳1, half ↳2)', sk.conn.length >= 2 && sk.conn.every(c => c.on) && sk.conn.some(c => c.no === '↳1' && c.h >= 32) && sk.conn.some(c => c.no === '↳2' && c.h >= 15 && c.h <= 17), sk.conn);
+  ok(scn, 'split legs ↳1 → ↳2 are tied by the 1px connector (full ↳1, half ↳2)', sk.conn.length >= 2 && sk.conn.every(c => c.on) && sk.conn.some(c => c.no === '↳1' && c.h >= 36) && sk.conn.some(c => c.no === '↳2' && c.h >= 17 && c.h <= 19), sk.conn);
   // Sub-row type (Figma 1097:2830, 1097:3388, 1097:3046/3055).
   const ty = await page.evaluate(([tok]) => {
     const token = eval(tok);
@@ -1884,10 +1886,12 @@ async function scnMenu(browser, origin) {
   // up over it). A right-click keeps the pointer.
   for (const oid of ['recWiE010', 'recWiE001']) {
     await openMenu(page, oid);
-    const pl = await page.evaluate(([js, oid]) => { const r = eval(js)(oid); const p = r && r.querySelector('.wi4-plane'); if (!p) return null; const b = p.getBoundingClientRect(); return { top: Math.round(b.top), right: Math.round(b.right), bottom: Math.round(b.bottom) }; }, [ROW_JS, oid]);
+    const pl = await page.evaluate(([js, oid]) => { const r = eval(js)(oid); const p = r && r.querySelector('.wi4-plane'); if (!p) return null; const b = p.getBoundingClientRect(); return { top: Math.round(b.top), left: Math.round(b.left), right: Math.round(b.right), bottom: Math.round(b.bottom) }; }, [ROW_JS, oid]);
     const mr = await page.evaluate(() => { const b = document.getElementById('wi-ctx').getBoundingClientRect(); return { left: Math.round(b.left), top: Math.round(b.top), right: Math.round(b.right), bottom: Math.round(b.bottom), vh: innerHeight }; });
     const below = pl && mr.top >= pl.bottom, up = pl && mr.bottom <= pl.top && mr.top >= 8;
-    ok('menu.anchor', `${oid.slice(-4)} via the arrow: right edge on the arrow's, top under it (or above it when the room under it is short)`, !!pl && Math.abs(mr.right - pl.right) <= 2 && (below || up) && (oid !== 'recWiE010' || below), { pl, mr });
+    // Row start (Nick 15/10): the ✈ is the first thing in the row, so its menu hangs
+    // to the RIGHT from it (left edges flush) instead of reaching left past the board.
+    ok('menu.anchor', `${oid.slice(-4)} via the arrow: left edge on the arrow's (✈ at the row start), top under it (or above it when the room under it is short)`, !!pl && Math.abs(mr.left - pl.left) <= 2 && (below || up) && (oid !== 'recWiE010' || below), { pl, mr });
     await page.keyboard.press('Escape'); await page.waitForTimeout(150);
   }
   {
@@ -3280,10 +3284,11 @@ async function scnPrint(browser, origin) {
     const r = await page.evaluate(() => { const m = document.getElementById('shMenu');
       return { sh: !!m, items: m ? [...m.querySelectorAll('button')].map(b => b.textContent) : [], ctx: ((document.getElementById('wi-ctx') || {}).style || {}).display === 'block' }; });
     ok(scn, 'right-click on the row\'s print button opens the share menu (Λήψη PDF · Κοινή χρήση), not the per-load menu', r.sh && !r.ctx && r.items.some(t => /Κοινή χρήση/.test(t)), r);
-    // Parity r1 F7 (Figma Assign 1097:2501): pill 176, 6px, the arrow. One
-    // printer per leg (Nick 15/10), each out of the flow in the 12px gutter on
-    // its side: the export's left of the pill, clear of the export cell's text;
-    // the matched import's right of the arrow, clear of the import's first chip.
+    // Parity r1 F7 (Figma Assign 1097:2501): the pill 176px. Row start (Nick 15/10):
+    // the row's ✈ sits in the row's own cell, not beside the pill. One printer per
+    // leg, each out of the flow in the gap on its side: the export's left of the
+    // pill, clear of the export cell's text; the matched import's right of the pill,
+    // clear of the import's first chip.
     await page.mouse.click(5, 5); await page.waitForTimeout(150);
     await rowL.hover({ position: { x: 600, y: 16 } }); await page.waitForTimeout(150);
     const g = await rowL.evaluate(row => {
@@ -3292,13 +3297,14 @@ async function scnPrint(browser, origin) {
       const chip = row.querySelector('.wi4-c-imp .wi4-dc, .wi4-c-imp button, .wi4-c-imp .wi4-gap');
       const expLeaves = [...row.querySelectorAll('.wi4-c-exp *')].filter(x => !x.children.length && x.getBoundingClientRect().width > 0);
       const pL = asg.querySelector('.wk3-prt.wi4-prt-l'), pR = asg.querySelector('.wk3-prt:not(.wi4-prt-l)');
-      return { cell: R(asg), box: R(asg.querySelector('.wi4-box')), plane: R(asg.querySelector('.wi4-plane')), prtL: R(pL), prtR: R(pR), chip: R(chip),
+      return { cell: R(asg), box: R(asg.querySelector('.wi4-box')), prtL: R(pL), prtR: R(pR), chip: R(chip),
+        planeInAsg: !!asg.querySelector('.wi4-plane'), planeAtStart: !!row.querySelector('.wi4-c-idx .wi4-plane'),
         expEnd: expLeaves.length ? Math.max(...expLeaves.map(x => Math.round(x.getBoundingClientRect().right))) : null,
         vis: [pL, pR].map(x => x ? getComputedStyle(x).visibility : 'missing') };
     });
-    ok(scn, 'at 1920 the pill is 176±1 wide, the arrow 6±1px after it; the export printer sits left of the pill (clear of the export text), the import printer past the arrow (clear of the import\'s first chip)', !!g.box && Math.abs(g.box.w - 176) <= 1
-      && Math.abs(g.plane.l - g.box.r - 6) <= 1 && !!g.prtL && g.prtL.r <= g.box.l && (g.expEnd == null || g.prtL.l >= g.expEnd)
-      && (!g.prtR || (g.prtR.l >= g.plane.r && (!g.chip || g.prtR.r <= g.chip.l))) && g.vis[0] === 'visible', g);
+    ok(scn, 'at 1920 the pill is 176±1 wide and the row\'s ✈ sits at the row start, not beside it; the export printer left of the pill (clear of the export text), the import printer right of the pill (clear of the import\'s first chip)', !!g.box && Math.abs(g.box.w - 176) <= 1
+      && !g.planeInAsg && g.planeAtStart && !!g.prtL && g.prtL.r <= g.box.l && (g.expEnd == null || g.prtL.l >= g.expEnd)
+      && (!g.prtR || (g.prtR.l >= g.box.r && (!g.chip || g.prtR.r <= g.chip.l))) && g.vis[0] === 'visible', g);
     ok(scn, 'nothing written', !writes(S).length, writes(S));
     await page.context().close();
   }
@@ -3522,8 +3528,8 @@ async function scnW1440(browser, origin) {
   ok(scn, 'contrast scan at 1440: text ≥ 4.5:1', r.n === 1 && !r.low.length, r.low.slice(0, 15));
   const g = await page.evaluate(() => { const t = document.getElementById('wi4-tabs').getBoundingClientRect(), a = document.querySelector('.wi4-bar-r').getBoundingClientRect();
     const rows = [...document.querySelectorAll('#content .wi4 .wi4-row')].map(e => Math.round(e.getBoundingClientRect().height));
-    return { overlap: t.right > a.left + 1, rowsOk: rows.every(h => h === 32), n: rows.length }; });
-  ok(scn, 'week tabs clear of the actions; rows still 32px', !g.overlap && g.rowsOk && g.n > 10, g);
+    return { overlap: t.right > a.left + 1, rowsOk: rows.every(h => h === 36), n: rows.length }; });
+  ok(scn, 'week tabs clear of the actions; rows still 36px', !g.overlap && g.rowsOk && g.n > 10, g);
   // Parity r1 (legs-national): at 1440 «→ ΑΠΟΘΗΚΗ» stays inside its
   // delivery column (it read «Phi Warehouse→ ΑΠΟΘΗΚΗ») and nothing spills
   // out of the pallets track. The VS warning («! ¢ 9/10 ·.. 8/10» at 1440) is
@@ -3791,7 +3797,8 @@ async function scnParity(browser, origin) {
         const pre = [...document.querySelectorAll('.wi4-bar .wi4-btn')].find(b => /Pre-order/.test(b.textContent)), cnt = pre && pre.querySelector('.wi4-cnt');
         return { asgX: rg && card ? Math.round(rg.getBoundingClientRect().left - card.getBoundingClientRect().left) : null, n, cnt: cnt ? getComputedStyle(cnt).backgroundColor : null };
       });
-      ok(scn, 'column header: «ΑΝΑΘΕΣΗ · ΕΝΤΟΛΗ» text 828±2px from the card\'s left (Figma 1097:2433 px 10)', ch.asgX != null && Math.abs(ch.asgX - 828) <= 2, ch);
+      // 56 + 140 + 8 + 623 + 16 + 10 + 1 (row start 56px and 16px gaps, Nick 15/10).
+      ok(scn, 'column header: «ΑΝΑΘΕΣΗ · ΕΝΤΟΛΗ» text 854±2px from the card\'s left (Figma 1097:2433 px 10, tracks of 15/10)', ch.asgX != null && Math.abs(ch.asgX - 854) <= 2, ch);
       ok(scn, 'column header: the Regular «· N φορτία…» spans keep tracking 0.7px (Figma 1097:2428 / 2439)', ch.n.length >= 2 && ch.n.every(v => v === '0.7px'), ch.n);
       ok(scn, 'top bar: the Pre-order count on #eaecf0 rgb(234, 236, 240) (Figma 1097:2313)', ch.cnt === 'rgb(234, 236, 240)', ch);
       await page.evaluate(() => { document.getElementById('content').scrollTop = 700; });

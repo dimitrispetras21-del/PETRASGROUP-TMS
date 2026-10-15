@@ -1065,16 +1065,20 @@ function _asgHTML(row, rs) {
   // packet when that import travels in an import group.
   const prtR = isImp ? impPrint(group ? row : null, oid)
     : (row.importId ? impPrint(typeof I.impGroupRowOf === 'function' ? I.impGroupRowOf(row.importId) : null, row.importId) : '');
-  const plane = _q(oid) ? `<button type="button" class="wi4-plane" title="Ενέργειες φορτίου" aria-label="Ενέργειες φορτίου" onclick="event.stopPropagation();WI4Actions.openRowMenu(event,'${_q(oid)}')">${PLANE}</button>` : '';
-  return `<div class="wi4-asg">${prtL}${box}${cpy}${plane}${prtR}</div>`;
+  return `<div class="wi4-asg">${prtL}${box}${cpy}${prtR}</div>`;
 }
 // why = every reason of the row in one line (_whyOf): the rail is a colour
 // and a shape, the title of the number beside it says what they mean.
 // presencePatch borrows that title for «who has it open» and gives it back
 // (data-why).
-function _idxHTML(oid, no, rowId, why) {
+// withPlane: the row's ✈ «Ενέργειες φορτίου» sits here, at the start of the row,
+// on the cell's light background (Nick 15/10): it is the whole row's menu (truck,
+// export, import), so it lives with the row, not beside the assignment, where it
+// read as the import's. Per-leg actions stay beside each leg (the printers).
+function _idxHTML(oid, no, rowId, why, withPlane) {
   const w = why ? ` title="${_esc(why)}" data-why="${_esc(why)}"` : '';
-  return `<div class="wi4-c-idx" data-oid="${_q(oid)}" data-no="${_esc(no)}"><span class="wi4-no"${w}>${_esc(no)}</span>${rowId != null ? `<span class="wi-sync" id="wi-sync-${rowId}"></span>` : ''}</div>`;
+  const plane = withPlane && _q(oid) ? `<button type="button" class="wi4-plane" title="Ενέργειες φορτίου" aria-label="Ενέργειες φορτίου" onclick="event.stopPropagation();WI4Actions.openRowMenu(event,'${_q(oid)}')">${PLANE}</button>` : '';
+  return `<div class="wi4-c-idx${plane ? ' wi4-idx-act' : ''}" data-oid="${_q(oid)}" data-no="${_esc(no)}"><span class="wi4-no"${w}>${_esc(no)}</span>${rowId != null ? `<span class="wi-sync" id="wi-sync-${rowId}"></span>` : ''}${plane}</div>`;
 }
 
 // ═══ Markup: rows (§e #7, #11, #13) ═════════════════════════════════════
@@ -1151,7 +1155,7 @@ function _expRowHTML(e, today) {
   const fr = imf && imf['Veroia Switch'] ? _natHTML(imp.id, _lastStop(imf, 'del').title, _day(imf['Delivery DateTime'])) : '';
   const lvl = _levelOf(e.facts, today);
   return `<div id="wi-row-${row.id}" data-row-id="${row.id}" data-oid="${_q(pid)}" data-qi="${e.qi}" class="wi4-row${_rail(lvl)}"${_q(pid) ? ` oncontextmenu="WI4Actions.openRowMenu(event,'${_q(pid)}')"` : ''}>` +
-    _idxHTML(pid, e.no, row.id, _whyOf(e.facts, today)) +
+    _idxHTML(pid, e.no, row.id, _whyOf(e.facts, today), !row.hasSplitLegs) +
     `<div class="wi4-c-fl">${fl}</div>` +
     `<div class="wi4-c-exp">${leg}</div>` +
     `<div class="wi4-c-asg">${_asgHTML(row, rsE)}</div>` +
@@ -1225,7 +1229,7 @@ function _impRowHTML(e, today) {
   // A free import row is a drag source (§f); split legs are not free imports.
   const drag = q && !e.split ? ` draggable="true" ondragstart="event.stopPropagation();_wiImpDragStart(event,'${q}')" ondragend="_wiImpDragEnd()"` : '';
   return `<div id="wi-imp-${q}" data-row-id="${row.id}" data-oid="${q}" data-qi="${e.qi}" class="wi4-row${_rail(lvl)}"${drag}${q ? ` oncontextmenu="WI4Actions.openRowMenu(event,'${q}')"` : ''}>` +
-    _idxHTML(oid, e.no, row.id, _whyOf(e.facts, today)) +
+    _idxHTML(oid, e.no, row.id, _whyOf(e.facts, today), !row.hasSplitLegs) +
     '<div class="wi4-c-fl"></div>' +
     `<div class="wi4-c-exp">${left}</div>` +
     `<div class="wi4-c-asg">${_asgHTML(row, rs)}</div>` +
