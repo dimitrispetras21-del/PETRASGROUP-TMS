@@ -1150,6 +1150,7 @@ function _wnAddLocal(dateISO, parentNlId, driverId) {
     </div>`,
     `<button class="btn btn-ghost" onclick="closeModal()">Άκυρο</button>
      <button class="btn btn-success" id="lm_submit" onclick="_wnSaveLocal('${parentNlId||''}')">Καταχώρηση</button>`);
+  fhSelectSearch(document.getElementById('lm_truck')); // T33: type to find the plate
 }
 
 async function _wnSaveLocal(parentNlId) {
@@ -1210,6 +1211,7 @@ function _wnCoverLocal(moveId) {
     </div>`,
     `<button class="btn btn-ghost" onclick="closeModal()">Άκυρο</button>
      <button class="btn btn-success" id="lc_submit" onclick="_wnSaveCover('${moveId}')">Ανάθεση</button>`);
+  fhSelectSearch(document.getElementById('lc_truck')); // T33: type to find the plate
 }
 
 async function _wnSaveCover(moveId) {

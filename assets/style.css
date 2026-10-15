@@ -2088,7 +2088,8 @@ button.ecard-meta-row-btn, .ecard-meta-row button.badge {
   background-repeat: no-repeat; background-position: right 12px center;
 }
 .fh-cb-input:focus { cursor: text; }
-.fh-cb-list { max-height: 280px; }
+/* At least as wide as the box, wider when the entries need it (toolbar filters). */
+.fh-cb-list { max-height: 280px; right: auto; min-width: 100%; width: max-content; max-width: min(420px, 90vw); }
 .fh-cb-opt.on { background: var(--bg-hover); }
 .fh-cb-opt.sel { font-weight: 600; }
 .fh-cb-none { padding: 8px 12px; font-size: var(--text-sm); color: var(--text-dim); }

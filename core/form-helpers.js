@@ -305,22 +305,53 @@ function _fhPlateNorm(s) {
  *   whatever is typed (e.g. «Άλλο όχημα»); picking one copies the typed text into
  *   that input when it is empty, so the user does not type the plate twice
  */
+let _fhCbSeq = 0;
 function fhSelectSearch(sel, opts) {
-  if (!sel || sel._fhSearch) return;
+  if (!sel || sel._fhSearch || !sel.parentNode) return;
   sel._fhSearch = true;
   const keep = (opts && opts.keep) || {};
   const proto = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value');
+  const base = sel.id || ('fhcb' + (++_fhCbSeq));
+  // The box takes the select's place and look on every screen (form, toolbar,
+  // table row): its classes, its inline layout (flex:1, margins) on the wrapper,
+  // and, where the select had no class (styled by a «.toolbar select» rule that
+  // an input does not match), its computed look.
+  const cs = getComputedStyle(sel);
+  const shown = sel.offsetWidth > 0;
+  const pcs = getComputedStyle(sel.parentNode);
+  const room = sel.parentNode.clientWidth - parseFloat(pcs.paddingLeft || 0) - parseFloat(pcs.paddingRight || 0);
+  const fills = !shown || sel.offsetWidth >= room - 2;
   const wrap = document.createElement('div');
   wrap.className = 'fh-cb';
+  wrap.style.cssText = sel.style.cssText;
+  if (!fills) {
+    wrap.style.display = 'inline-block';
+    wrap.style.verticalAlign = 'middle';
+    if (!sel.style.width) wrap.style.width = sel.offsetWidth + 'px';
+  }
   const inp = document.createElement('input');
   inp.type = 'text';
-  inp.className = 'form-input fh-cb-input';
-  inp.id = sel.id + '__q';
+  inp.className = (sel.className ? sel.className + ' ' : '') + 'fh-cb-input';
+  if (!sel.className && shown) {
+    ['fontFamily', 'fontSize', 'fontWeight', 'color', 'backgroundColor', 'height', 'paddingTop', 'paddingBottom', 'paddingLeft',
+     'borderTopWidth', 'borderTopStyle', 'borderTopColor', 'borderRightWidth', 'borderRightStyle', 'borderRightColor',
+     'borderBottomWidth', 'borderBottomStyle', 'borderBottomColor', 'borderLeftWidth', 'borderLeftStyle', 'borderLeftColor',
+     'borderRadius'].forEach(k => { inp.style[k] = cs[k]; });
+  }
+  // Inline, so a class using the «background:» or «padding:» shorthand cannot hide the ▾.
+  inp.style.width = '100%';
+  inp.style.boxSizing = 'border-box';
+  inp.style.paddingRight = '28px';
+  inp.style.backgroundImage = "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath d='M2.5 4.5 6 8l3.5-3.5' fill='none' stroke='%2364748B' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E\")";
+  inp.style.backgroundRepeat = 'no-repeat';
+  inp.style.backgroundPosition = 'right 10px center';
+  inp.id = base + '__q';
+  if (sel.title) inp.title = sel.title;
   inp.autocomplete = 'off';
   inp.spellcheck = false;
   const list = document.createElement('div');
   list.className = 'linked-drop fh-cb-list';
-  list.id = sel.id + '__l';
+  list.id = base + '__l';
   list.setAttribute('role', 'listbox');
   list.style.display = 'none';
   inp.setAttribute('role', 'combobox');
@@ -329,10 +360,13 @@ function fhSelectSearch(sel, opts) {
   inp.setAttribute('aria-controls', list.id);
   sel.parentNode.insertBefore(wrap, sel);
   wrap.append(sel, inp, list);
-  sel.style.display = 'none';
+  // Invisible but not display:none: Playwright's selectOption (his proof tests,
+  // e.g. tests/critics/pnl-natl-intl-proof.js on #ctVehSel) refuses hidden elements.
+  sel.style.cssText = 'position:absolute;left:0;bottom:0;width:1px;height:1px;margin:0;padding:0;border:0;opacity:0;pointer-events:none';
   sel.tabIndex = -1;
-  const empty = [...sel.options].find(o => o.value === '');
-  const hint = empty ? empty.text : 'Αναζήτηση…';
+  sel.setAttribute('aria-hidden', 'true');
+  let empty = [...sel.options].find(o => o.value === '');
+  let hint = empty ? empty.text : 'Αναζήτηση…';
   inp.placeholder = hint;
 
   let items = [], act = -1, query = '', edited = false;
@@ -355,8 +389,13 @@ function fhSelectSearch(sel, opts) {
   const paint = q => {
     query = q;
     const nq = _fhPlateNorm(q);
-    items = [...sel.options].filter(o => o.value !== '' && !o.disabled &&
-      (!nq || keep[o.value] !== undefined || (o._fhN || (o._fhN = _fhPlateNorm(o.text))).includes(nq)));
+    const all = [...sel.options].filter(o => o.value !== '' && !o.disabled);
+    // While typing, real matches come first and the always-listed entries after,
+    // so Enter takes the first plate, never «Όλος ο στόλος».
+    items = nq
+      ? all.filter(o => keep[o.value] === undefined && (o._fhN || (o._fhN = _fhPlateNorm(o.text))).includes(nq))
+          .concat(all.filter(o => keep[o.value] !== undefined))
+      : all;
     const cur = proto.get.call(sel);
     act = nq ? (items.length ? 0 : -1) : items.findIndex(o => o.value === cur);
     list.innerHTML = items.length
@@ -424,9 +463,23 @@ function fhSelectSearch(sel, opts) {
     const el = e.target.closest('[data-i]');
     if (el) pick(+el.dataset.i);
   });
+  // A change made on the select itself (a test's selectOption, selectedIndex + change).
+  sel.addEventListener('change', () => { if (!isOpen()) sync(); });
+  // Screens that fill the options later (TRIP PnL fleet filter) or toggle
+  // disabled (relay «άλλο φορτηγό») keep the box in step with the select.
+  new MutationObserver(() => {
+    empty = [...sel.options].find(o => o.value === '');
+    hint = empty ? empty.text : 'Αναζήτηση…';
+    if (isOpen()) paint(query); else { inp.placeholder = hint; sync(); }
+  }).observe(sel, { childList: true, subtree: true, attributes: true, attributeFilter: ['disabled'] });
   sync();
 }
-if (typeof window !== 'undefined') { window.fhSelectSearch = fhSelectSearch; window._fhPlateNorm = _fhPlateNorm; }
+// For screens that draw a picker from several templates into several containers:
+// mark the select with data-fh-search and call this on the container just drawn.
+function fhSelectSearchIn(root) {
+  if (root && root.querySelectorAll) root.querySelectorAll('select[data-fh-search]').forEach(s => fhSelectSearch(s));
+}
+if (typeof window !== 'undefined') { window.fhSelectSearch = fhSelectSearch; window.fhSelectSearchIn = fhSelectSearchIn; window._fhPlateNorm = _fhPlateNorm; }
 
 // ─── Pallet Exchange: explicit ΝΑΙ / ΟΧΙ (owner 27/9) ─────────────────────
 // Was a checkbox, where «not ticked» and «forgot to tick» both saved as

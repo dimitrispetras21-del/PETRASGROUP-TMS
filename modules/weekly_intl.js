@@ -4909,6 +4909,9 @@ async function _wiPanelSplit(rowId){
   const footer=`<button class="btn btn-ghost" onclick="_wiPanelClose()">Άκυρο</button>
     <button class="btn btn-primary" id="wiSplitGo" onclick="_wiDoSplit(${rowId})">Σπάσιμο</button>`;
   _wiPanelOpen(_wiAnchorFor(rowId),'Σπάσιμο σκέλους',_wiPanelCtxLine(row),body,footer);
+  // T33: type to find the plate; _wiDoSplit still reads the two selects.
+  fhSelectSearch(document.getElementById('wiSplitTruck'));
+  fhSelectSearch(document.getElementById('wiSplitTrailer'));
 }
 function _wiSplitModeChange(){
   const m=document.getElementById('wiSplitMode')?.value;

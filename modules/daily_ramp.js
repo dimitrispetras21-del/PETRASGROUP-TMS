@@ -869,6 +869,7 @@ function _rampAddNew(type){
     </div>`,
     `<button class="btn btn-ghost" onclick="closeModal()">Άκυρο</button>
      <button class="btn btn-primary" onclick="_rampSaveNew('${type}')">Αποθήκευση</button>`);
+  fhSelectSearch(document.getElementById('nr_truck')); // T33: type to find the plate
 }
 
 async function _rampSaveNew(type){

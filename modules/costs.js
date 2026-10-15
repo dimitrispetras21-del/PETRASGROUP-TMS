@@ -642,6 +642,9 @@ function ctRenderVehBar() {
     trucks.map(id => `<option value="${id}">${ctEsc(ctTruckName(id))}</option>`).join('') +
     '<option value="PARTNERS">Συνεργάτες</option>';
   sel.value = String(_ct.veh);
+  // T33: type to find the truck; «Όλος ο στόλος» and «Συνεργάτες» stay listed.
+  // Once per select: later refills reach the box through its observer.
+  fhSelectSearch(sel, { keep: { ALL: '', PARTNERS: '' } });
   // A quick filter with zero trips behind it is disabled, not merely empty
   // (DESIGN.md Δ2): a clickable «Εθνικά» that opens an empty list reads as a
   // bug. The active one stays enabled so the user can always see where they are.
@@ -1156,6 +1159,8 @@ function ctOpenRtModal() {
         <button class="ct-btn ct-primary" onclick="ctCreateRt()">Δημιουργία</button>
       </div>
     </div>`;
+  fhSelectSearch(document.getElementById('ctFtruck')); // T33: type to find the plate
+  fhSelectSearch(document.getElementById('ctFtrailer'));
 }
 
 async function ctCreateRt() {

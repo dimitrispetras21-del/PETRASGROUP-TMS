@@ -1335,7 +1335,7 @@ function _historyPaint(vType) {
   document.getElementById('content').innerHTML = `
     <div class="mnt-head">
       <span class="mnt-title">${vType === 'trucks' ? 'Ιστορικό Φορτηγών' : 'Ιστορικό Ρυμουλκών'}</span>
-      <select class="mnt-select wide" title="Όχημα" onchange="_historyVehicle['${vType}']=this.value;_historyFilter['${vType}']={};_historyPaint('${vType}')">
+      <select class="mnt-select wide" id="hist-vehicle-${vType}" title="Όχημα" onchange="_historyVehicle['${vType}']=this.value;_historyFilter['${vType}']={};_historyPaint('${vType}')">
         <option value="">Επίλεξε ${vTypeGr}…</option>
         ${vehicleOpts}
       </select>
@@ -1423,6 +1423,7 @@ function _historyPaint(vType) {
         })}</td></tr>`}</tbody>
       </table>
     `}`;
+  fhSelectSearch(document.getElementById('hist-vehicle-' + vType)); // T33: type to find the plate
 
   // Ένα όχημα τη φορά: εδώ οι στήλες αδειάζουν πολύ πιο εύκολα από ό,τι στο
   // συνολικό Ιστορικό — γι' αυτό ο κανόνας κρίνει τις ΟΡΑΤΕΣ γραμμές και όχι

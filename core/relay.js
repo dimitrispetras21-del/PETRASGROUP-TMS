@@ -350,6 +350,9 @@ async function openPanel(o) {
   const name = orderName(of);
   const ctx = `${escapeHtml(name)}${name ? ' · ' : ''}${escapeHtml(_short(of['Loading Summary']) || '—')} → ${escapeHtml(_short(of['Delivery Summary']) || '—')}`;
   o.host.open(existing ? (isDel ? 'Τοπική παράδοση — αλλαγή' : 'Τοπική φόρτωση — αλλαγή') : menuLabel(kind), ctx, body, footer);
+  // T33: type to find the plate; _submit still reads the selects, and _tm's
+  // disabled toggle reaches the search box too.
+  if (typeof fhSelectSearch === 'function') { fhSelectSearch(document.getElementById('rly_trk')); fhSelectSearch(document.getElementById('rly_trl')); }
 }
 
 function _tm() {
