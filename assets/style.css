@@ -8286,7 +8286,8 @@ body.wi4-on #wi-ctx .wi4-m-sec .wi4-l2, body.wi4-on #wi-ctx .wi4-m-hd .wi4-l2 { 
 /* 36px (Nick 15/10: more room per row; was 32px, Figma). */
 .wi4-row { position:relative; height:36px; border-bottom:1px solid var(--wi4-line); }
 .wi4-subrow, .wi4-splithd { position:relative; height:28px; border-bottom:1px solid var(--wi4-line); font-size:10.5px; color:var(--wi4-grey-1); }
-.wi4-splithd { background:var(--wi4-split-hd); height:22px; }
+/* 28px (Nick 15/10; Figma 22): room for the line's ✈ button (26px). */
+.wi4-splithd { background:var(--wi4-split-hd); height:28px; }
 /* Per-kind heights (Figma 1097:2830, 1097:3046, 1097:3388): a relay is a
    24px note line, a rota leg carries a whole leg (chip + two-line stops) in a
    row's 32px, a split header is a 22px band. The 28px base stays only for a
@@ -8335,15 +8336,19 @@ body.wi4-on #wi-ctx .wi4-m-sec .wi4-l2, body.wi4-on #wi-ctx .wi4-m-hd .wi4-l2 { 
    from each leg's own (the printers beside the assignment). 56px wide: the 28px
    the ✈ and its gap freed in the ΑΝΑΘΕΣΗ column (204 → 176px), so no leg and no
    national column narrows. Rails (::before on the row) still paint over it. */
-.wi4-row > .wi4-c-idx, .wi4-subrow > .wi4-c-idx { align-self:stretch; background:var(--wi4-chip); }
+:is(.wi4-row, .wi4-subrow, .wi4-splithd) > .wi4-c-idx { align-self:stretch; background:var(--wi4-chip); }
+/* Every line's number at the same x (12px in) and its ✈ on the right, whether or
+   not the line has one: a centred number on the lines without a ✈ (split headers,
+   sub-rows) broke the column (Nick 15/10, rows 6 and 14). */
+:is(.wi4-row, .wi4-subrow, .wi4-splithd) > .wi4-c-idx { justify-content:flex-start; padding:0 8px 0 12px; }
+.wi4 .wi4-c-idx .wi4-plane { margin-left:auto; }
 /* 64px (Nick 15/10, «more padding, the plane more visible»): the 8px came from the
    two national columns (140 → 136px); the legs could not give any (a lot's
    warehouse name must keep 56px at 1440). The ✈ is a white 26px button with a
    border on the band, ink-grey icon (#344054), so it reads as a control. */
-.wi4-c-idx.wi4-idx-act { justify-content:space-between; padding:0 8px 0 12px; }
 .wi4 .wi4-c-idx .wi4-plane { width:26px; height:26px; background:#fff; border:1px solid var(--wi4-ctl); border-radius:6px; color:var(--wi4-grey-1); box-shadow:0 1px 1px rgba(16,24,40,.06); }
 .wi4 .wi4-c-idx .wi4-plane:hover { border-color:#98A2B3; background:#fff; color:var(--wi4-ink); }
-.wi4-day.today :is(.wi4-row, .wi4-subrow) > .wi4-c-idx { background:var(--wi4-today-hover); }
+.wi4-day.today :is(.wi4-row, .wi4-subrow, .wi4-splithd) > .wi4-c-idx { background:var(--wi4-today-hover); }
 /* contract hook: _wiSync writes into <span class="wi-sync" id="wi-sync-{row.id}"> */
 .wi4 .wi4-c-idx .wi-sync { display:inline; margin:0; min-height:0; font-size:11px; }
 /* Rails (§c.2): severity carries BOTH shape and colour — red and amber

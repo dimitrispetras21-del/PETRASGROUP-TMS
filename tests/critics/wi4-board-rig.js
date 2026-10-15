@@ -710,7 +710,8 @@ async function scnPaint(browser, origin) {
       leg: h('.wi4-subrow.wi4-sub-leg'), split: h('.wi4-splithd'), owners: owners.map(r => getComputedStyle(r).borderBottomStyle), conn };
   });
   const each = (a, v) => a.length > 0 && a.every(x => Math.abs(x - v) <= 0.5);
-  ok(scn, 'relay sub-rows 24px, rota legs 36px, split headers 22px (each kind present)', each(sk.relay, 24) && !sk.relayAttr && each(sk.leg, 36) && each(sk.split, 22), sk);
+  // Split headers 28px (Nick 15/10; Figma 22): room for the line's ✈ button.
+  ok(scn, 'relay sub-rows 24px, rota legs 36px, split headers 28px (each kind present)', each(sk.relay, 24) && !sk.relayAttr && each(sk.leg, 36) && each(sk.split, 28), sk);
   ok(scn, 'a row followed by its sub-row ends on a dashed hairline (Figma 1097:2781)', sk.owners.length > 0 && sk.owners.every(s => s === 'dashed'), sk.owners);
   ok(scn, 'split legs ↳1 → ↳2 are tied by the 1px connector (full ↳1, half ↳2)', sk.conn.length >= 2 && sk.conn.every(c => c.on) && sk.conn.some(c => c.no === '↳1' && c.h >= 36) && sk.conn.some(c => c.no === '↳2' && c.h >= 17 && c.h <= 19), sk.conn);
   // Sub-row type (Figma 1097:2830, 1097:3388, 1097:3046/3055).

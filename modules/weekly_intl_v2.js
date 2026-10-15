@@ -1078,7 +1078,7 @@ function _asgHTML(row, rs) {
 function _idxHTML(oid, no, rowId, why, withPlane) {
   const w = why ? ` title="${_esc(why)}" data-why="${_esc(why)}"` : '';
   const plane = withPlane && _q(oid) ? `<button type="button" class="wi4-plane" title="Ενέργειες φορτίου" aria-label="Ενέργειες φορτίου" onclick="event.stopPropagation();WI4Actions.openRowMenu(event,'${_q(oid)}')">${PLANE}</button>` : '';
-  return `<div class="wi4-c-idx${plane ? ' wi4-idx-act' : ''}" data-oid="${_q(oid)}" data-no="${_esc(no)}"><span class="wi4-no"${w}>${_esc(no)}</span>${rowId != null ? `<span class="wi-sync" id="wi-sync-${rowId}"></span>` : ''}${plane}</div>`;
+  return `<div class="wi4-c-idx" data-oid="${_q(oid)}" data-no="${_esc(no)}"><span class="wi4-no"${w}>${_esc(no)}</span>${rowId != null ? `<span class="wi-sync" id="wi-sync-${rowId}"></span>` : ''}${plane}</div>`;
 }
 
 // ═══ Markup: rows (§e #7, #11, #13) ═════════════════════════════════════
@@ -1248,7 +1248,8 @@ function _splitHTML(e) {
   const p = _pals([f]);
   const txt = [(I.clientName(f) || '—') + ' → ' + _lastStop(f, 'del').title, p.known ? p.n + 'π' : '', hand && hand !== '—' ? 'αλλαγή φορτηγού στο σημείο ' + hand : ''].filter(Boolean).join(' · ');
   return `<div class="wi4-splithd" data-row-id="${row.id}" data-oid="${q}"${q ? ` onclick="WI_INTERNAL.edit('${q}')" oncontextmenu="WI4Actions.openRowMenu(event,'${q}')"` : ''} title="Σπασμένη σε ${legs.length || 2} σκέλη — κλικ: αρχική παραγγελία · δεξί κλικ: μενού">` +
-    _idxHTML(pid, e.no, null) +
+    // The split header is a numbered line too: same cell, same ✈, its own split menu.
+    _idxHTML(pid, e.no, null, undefined, true) +
     // Figma 1097:3388: the label, then the route · pallets · handover point —
     // the decision info — in ink, 8px apart and no «·» between them. Only the
     // body is cut; its title keeps the whole line (overflow scan).
