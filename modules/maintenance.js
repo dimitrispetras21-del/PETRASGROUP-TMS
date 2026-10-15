@@ -881,13 +881,13 @@ function _svcRowHtml(r, showVehicle) {
        <td>${descCell}</td>`;
   const parts = escapeHtml(f['Parts'] || '');
   return `<tr class="click" onclick="_svcOpenCard('${r.id}')">
-    <td class="mnt-num">${_fmtDMY(f['Date'])}</td>
+    <td class="mnt-num" data-sort-value="${escapeHtml(String(f['Date'] || '').slice(0, 10))}">${_fmtDMY(f['Date'])}</td>
     ${first}
     <td>${_wsCell(f['Workshop'])}</td>
     <td class="mnt-mid" style="font-size:var(--text-sm)">${parts ? `<span class="mnt-clip" title="${parts}">${parts}</span>` : '<span class="mnt-dim">—</span>'}</td>
     <td class="r mnt-num" style="font-weight:500">${_fmtCost(f['Cost'])}</td>
     <td class="r mnt-num mnt-mid">${f['Odometer km'] ? Number(f['Odometer km']).toLocaleString('el-GR') : '<span class="mnt-dim">—</span>'}</td>
-    <td><div class="mnt-cell2"><span class="mnt-mid" style="font-size:var(--text-sm)">${escapeHtml(status)}</span>${review}</div></td>
+    <td data-sort-value="${escapeHtml(status)}"><div class="mnt-cell2"><span class="mnt-mid" style="font-size:var(--text-sm)">${escapeHtml(status)}</span>${review}</div></td>
   </tr>`;
 }
 
@@ -949,10 +949,10 @@ function _svcPaint() {
       ${_mntRefreshBtn("MAINT.history=[];renderServiceRecords()")}
     </div>
 
-    <table class="mnt-table mnt-fixed" id="svc-tbl">
+    <table class="mnt-table mnt-fixed" id="svc-tbl" data-sort-id="maint_svc">
       <thead><tr>
-        <th style="width:100px">ΗΜ/ΝΙΑ</th><th style="width:150px">ΟΧΗΜΑ</th><th>ΕΡΓΑΣΙΑ</th><th style="width:200px">ΣΥΝΕΡΓΕΙΟ</th>
-        <th style="width:130px">ΑΡ. ΑΝΤ/ΚΟΥ</th><th class="r" style="width:110px">ΚΟΣΤΟΣ</th><th class="r" style="width:120px">ΟΔΟΜΕΤΡΟ</th><th style="width:140px">ΚΑΤΑΣΤΑΣΗ</th>
+        <th style="width:100px" data-sort="date">ΗΜ/ΝΙΑ</th><th style="width:150px" data-sort="text">ΟΧΗΜΑ</th><th data-sort="text">ΕΡΓΑΣΙΑ</th><th style="width:200px" data-sort="text">ΣΥΝΕΡΓΕΙΟ</th>
+        <th style="width:130px" data-sort="text">ΑΡ. ΑΝΤ/ΚΟΥ</th><th class="r" style="width:110px" data-sort="num">ΚΟΣΤΟΣ</th><th class="r" style="width:120px" data-sort="num">ΟΔΟΜΕΤΡΟ</th><th style="width:140px" data-sort="text">ΚΑΤΑΣΤΑΣΗ</th>
       </tr></thead>
       <tbody>${records.length ? records.map(r => _svcRowHtml(r, true)).join('') : `<tr><td colspan="8" style="height:auto;padding:0">${showEmpty({
             illustration: 'order',
@@ -967,6 +967,8 @@ function _svcPaint() {
   // μόνο στο 100%. Θα κρυφτούν μόνοι τους όταν ένα φίλτρο αφήσει ορατές μόνο
   // γραμμές χωρίς τιμή — εκεί όντως δεν λένε τίποτα.
   collapseEmptyColumns('svc-tbl', 'maint:svc');
+  // Click a header to sort (T73, Nick 14/10: every simple table, one way).
+  if (typeof TableSort !== 'undefined') TableSort.apply(document.getElementById('content'));
 }
 
 // ── Record card (w2-maint-service-record-card 196:754) ──────────
@@ -1868,12 +1870,12 @@ function _mreqPaint() {
     const desc = escapeHtml(f['Description'] || ''), notes = escapeHtml(f['Notes'] || ''), wsn = escapeHtml(f['Workshop'] || '');
     const who = escapeHtml(_mreqCreatorLine(r.id, f['Date Reported']));
     return `<tr class="click ${isSos ? 'sos' : ''}" onclick="_mreqOpenForm('${r.id}')">
-      <td>${_mreqPrioHtml(f['Priority'])}</td>
+      <td data-sort-value="${po[_normP(f['Priority'])] ?? 2}">${_mreqPrioHtml(f['Priority'])}</td>
       <td><div class="mnt-cell2"><span class="mnt-main">${escapeHtml(f['Vehicle Plate'] || '—')}</span><span class="mnt-dim">${_mntTypeGr(vt) || 'εκτός ενεργού στόλου'}</span></div></td>
       <td><div class="mnt-cell2"><span class="mnt-clip" title="${desc}">${desc || '—'}</span>${notes ? `<span class="mnt-dim mnt-clip" title="${notes}">${notes}</span>` : ''}</div></td>
       <td class="mnt-mid">${wsn ? `<span class="mnt-clip" title="${wsn}">${wsn}</span>` : '<span class="mnt-dim" style="font-size:var(--text-sm)">δεν έχει οριστεί</span>'}</td>
-      <td class="mnt-mid mnt-num">${who ? `<div class="mnt-cell2"><span>${_fmtDMY(f['Date Reported'])}</span><span class="mnt-dim mnt-clip" title="${who}">${who}</span></div>` : _fmtDMY(f['Date Reported'])}</td>
-      <td onclick="event.stopPropagation()">
+      <td class="mnt-mid mnt-num" data-sort-value="${escapeHtml(String(f['Date Reported'] || '').slice(0, 10))}">${who ? `<div class="mnt-cell2"><span>${_fmtDMY(f['Date Reported'])}</span><span class="mnt-dim mnt-clip" title="${who}">${who}</span></div>` : _fmtDMY(f['Date Reported'])}</td>
+      <td onclick="event.stopPropagation()" data-sort-value="${escapeHtml(status)}">
         <div style="display:flex;align-items:center;gap:var(--space-2)">
           <span style="font-weight:${f['Status'] === 'In Progress' ? 500 : 400}">${escapeHtml(status)}</span>
           ${_mreqPrintBtn(r.id)}
@@ -1898,9 +1900,9 @@ function _mreqPaint() {
       ${_mntRefreshBtn("MREQ._loaded=false;renderMaintRequests()")}
     </div>
 
-    <table class="mnt-table mnt-fixed">
+    <table class="mnt-table mnt-fixed" data-sort-id="maint_req">
       <thead><tr>
-        <th style="width:150px">ΠΡΟΤΕΡΑΙΟΤΗΤΑ</th><th style="width:170px">ΟΧΗΜΑ</th><th>ΠΕΡΙΓΡΑΦΗ</th><th style="width:200px">ΣΥΝΕΡΓΕΙΟ</th><th style="width:150px">ΑΝΑΦΕΡΘΗΚΕ</th><th style="width:250px">ΚΑΤΑΣΤΑΣΗ</th>
+        <th style="width:150px" data-sort="num">ΠΡΟΤΕΡΑΙΟΤΗΤΑ</th><th style="width:170px" data-sort="text">ΟΧΗΜΑ</th><th data-sort="text">ΠΕΡΙΓΡΑΦΗ</th><th style="width:200px" data-sort="text">ΣΥΝΕΡΓΕΙΟ</th><th style="width:150px" data-sort="date">ΑΝΑΦΕΡΘΗΚΕ</th><th style="width:250px">ΚΑΤΑΣΤΑΣΗ</th>
       </tr></thead>
       <tbody>${filtered.length ? rows : `<tr><td colspan="6" style="height:auto;padding:0">${showEmpty({
             illustration: 'truck',
@@ -1940,6 +1942,8 @@ function _mreqPaint() {
   // One listener on the table, which is redrawn on every paint.
   const tbl = document.querySelector('#content .mnt-table');
   if (tbl && typeof shareMenuDelegate === 'function') shareMenuDelegate(tbl, '.mreq-prt', el => _mreqShareOpts(el.dataset.rec));
+  // Click a header to sort (T73); the drawn order (priority, then newest) is the third click.
+  if (typeof TableSort !== 'undefined') TableSort.apply(document.getElementById('content'));
 }
 
 async function _mreqDismissExpiry(plate, docType, desc) {
