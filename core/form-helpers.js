@@ -411,7 +411,13 @@ function fhSelectSearch(sel, opts) {
     inp.removeAttribute('aria-activedescendant');
   };
   const set = v => {
-    const changed = v !== proto.get.call(sel);
+    const prev = proto.get.call(sel);
+    const changed = v !== prev;
+    // Leaving «Άλλο όχημα» empties its free-text box: _mreqSave reads that hidden
+    // box whenever the select is empty, so a cleared field would otherwise save a
+    // plate the user can no longer see (measured 15/10: «XY9999ZZ» after clearing).
+    const left = changed && keep[prev] && document.getElementById(keep[prev]);
+    if (left) left.value = '';
     proto.set.call(sel, v);
     sync();
     if (changed) sel.dispatchEvent(new Event('change', { bubbles: true }));
