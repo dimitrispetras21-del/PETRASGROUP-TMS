@@ -1704,12 +1704,63 @@ async function _mreqLoad(force) {
   }
 }
 
+// Who entered each work order (walkthrough item 5, T37, option 3): read from
+// the audit log, which holds the creator of every live work order since 13/9
+// (19 of 19 on 15/10). No column, no Worker change; GET /audit answers only
+// owner and management (AUDIT_READERS), so the other roles never call it and
+// see the list as before. A failed read shows no stamp and is logged, never a
+// wrong name. Map: record id → {actor, at}.
+const MREQ_CREATORS = { by: null, loading: false };
+async function _mreqLoadCreators() {
+  if (typeof ROLE === 'undefined' || !['owner', 'management'].includes(ROLE)) return;
+  if (MREQ_CREATORS.loading) return;
+  const token = localStorage.getItem('tms_jwt');
+  if (!token || typeof PROXY_URL === 'undefined') return;
+  MREQ_CREATORS.loading = true;
+  try {
+    const by = new Map();
+    // The route pages at 200; read until a short page (5 pages = 1,000 orders).
+    for (let off = 0, page = 0; page < 5; page++, off += 200) {
+      const res = await fetch(`${PROXY_URL}/audit?table=maint_req&action=create&limit=200&offset=${off}`, { headers: { Authorization: `Bearer ${token}` } });
+      if (!res.ok) throw new Error('audit read ' + res.status);
+      const rows = ((await res.json()) || {}).entries || [];
+      // Newest first: the oldest create of a record wins (a re-created id keeps its first author).
+      for (const e of rows) if (e && e.record_id) by.set(String(e.record_id), { actor: e.actor || '', at: e.created_at || '' });
+      if (rows.length < 200) break;
+    }
+    MREQ_CREATORS.by = by;
+    if (typeof currentPage === 'undefined' || currentPage === 'maint_req') _mreqPaint();
+  } catch (e) {
+    if (typeof logError === 'function') logError(e, 'maint_req: creators from audit');
+  } finally {
+    MREQ_CREATORS.loading = false;
+  }
+}
+// «από Thodoris · 10:48» in Athens time, or '' when unknown. The day is added
+// («· 12/10 10:48») only when it differs from «Αναφέρθηκε» right above it: the
+// 150px column cut the repeated day's time.
+function _mreqCreatorLine(recId, reported) {
+  const c = MREQ_CREATORS.by && MREQ_CREATORS.by.get(String(recId));
+  if (!c || !c.actor) return '';
+  const name = typeof userDisplayName === 'function' ? userDisplayName(c.actor) : c.actor;
+  let when = '';
+  const d = c.at ? new Date(c.at) : null;
+  if (d && !isNaN(d)) {
+    const tz = { timeZone: 'Europe/Athens' };
+    const hm = d.toLocaleTimeString('el-GR', Object.assign({ hour: '2-digit', minute: '2-digit', hour12: false }, tz));
+    const sameDay = String(reported || '').slice(0, 10) === d.toLocaleDateString('en-CA', tz);
+    when = ' · ' + (sameDay ? '' : d.toLocaleDateString('el-GR', Object.assign({ day: '2-digit', month: '2-digit' }, tz)) + ' ') + hm;
+  }
+  return 'από ' + name + when;
+}
+
 async function renderMaintRequests() {
   document.getElementById('content').innerHTML = showLoading('Φόρτωση εντολών εργασίας…');
   try {
     await _mreqLoad();
     if (!MAINT._loaded) await _maintLoad();
     _mreqPaint();
+    _mreqLoadCreators();
   } catch(e) {
     document.getElementById('content').innerHTML = _mntErrorHtml('οι εντολές εργασίας', 'δεν υπάρχουν εντολές', 'renderMaintRequests()');
     if (typeof logError === 'function') logError(e, 'maintenance requests load');
@@ -1801,12 +1852,13 @@ function _mreqPaint() {
     const isSos = _normP(f['Priority']) === 'SOS' && f['Status'] !== 'Done';
     const status = MREQ_STATUS_LABEL[f['Status']] || f['Status'] || '—';
     const desc = escapeHtml(f['Description'] || ''), notes = escapeHtml(f['Notes'] || ''), wsn = escapeHtml(f['Workshop'] || '');
+    const who = escapeHtml(_mreqCreatorLine(r.id, f['Date Reported']));
     return `<tr class="click ${isSos ? 'sos' : ''}" onclick="_mreqOpenForm('${r.id}')">
       <td>${_mreqPrioHtml(f['Priority'])}</td>
       <td><div class="mnt-cell2"><span class="mnt-main">${escapeHtml(f['Vehicle Plate'] || '—')}</span><span class="mnt-dim">${_mntTypeGr(vt) || 'εκτός ενεργού στόλου'}</span></div></td>
       <td><div class="mnt-cell2"><span class="mnt-clip" title="${desc}">${desc || '—'}</span>${notes ? `<span class="mnt-dim mnt-clip" title="${notes}">${notes}</span>` : ''}</div></td>
       <td class="mnt-mid">${wsn ? `<span class="mnt-clip" title="${wsn}">${wsn}</span>` : '<span class="mnt-dim" style="font-size:var(--text-sm)">δεν έχει οριστεί</span>'}</td>
-      <td class="mnt-mid mnt-num">${_fmtDMY(f['Date Reported'])}</td>
+      <td class="mnt-mid mnt-num">${who ? `<div class="mnt-cell2"><span>${_fmtDMY(f['Date Reported'])}</span><span class="mnt-dim mnt-clip" title="${who}">${who}</span></div>` : _fmtDMY(f['Date Reported'])}</td>
       <td onclick="event.stopPropagation()">
         <div style="display:flex;align-items:center;gap:var(--space-2)">
           <span style="font-weight:${f['Status'] === 'In Progress' ? 500 : 400}">${escapeHtml(status)}</span>
@@ -2086,6 +2138,7 @@ async function _mreqSave(editId) {
       const created = await atCreate(TABLES.MAINT_REQ, fields);
       MREQ.data.push(created);
       toast('Η εντολή δημιουργήθηκε ✓');
+      _mreqLoadCreators();   // the new order's own audit row names its author
     }
     _mntCloseModal();
     _mreqPaint();
