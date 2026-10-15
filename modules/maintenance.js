@@ -1810,6 +1810,7 @@ function _mreqPaint() {
       <td onclick="event.stopPropagation()">
         <div style="display:flex;align-items:center;gap:var(--space-2)">
           <span style="font-weight:${f['Status'] === 'In Progress' ? 500 : 400}">${escapeHtml(status)}</span>
+          ${_mreqPrintBtn(r.id)}
           ${f['Status'] !== 'Done' ? `<button type="button" class="btn btn-ghost btn-sm" title="Σήμανση ως ολοκληρωμένη" onclick="_mreqQuickStatus('${r.id}','Done')">✓ Ολοκληρώθηκε</button>` : ''}
         </div>
       </td>
@@ -1869,6 +1870,10 @@ function _mreqPaint() {
       </table>
       ${expiryAlerts.length > 10 ? `<button type="button" class="mnt-link" style="display:block;width:100%;text-align:center;padding:var(--space-2) 0" onclick="_expiryGoto('expired')">Δες και τα άλλα ${expiryAlerts.length - 10} στις Λήξεις Εγγράφων →</button>` : ''}
     </details>` : ''}`;
+  // Right-click / long-press on a row's printer: the share menu (print rule).
+  // One listener on the table, which is redrawn on every paint.
+  const tbl = document.querySelector('#content .mnt-table');
+  if (tbl && typeof shareMenuDelegate === 'function') shareMenuDelegate(tbl, '.mreq-prt', el => _mreqShareOpts(el.dataset.rec));
 }
 
 async function _mreqDismissExpiry(plate, docType, desc) {
@@ -1897,6 +1902,79 @@ async function _mreqQuickStatus(recId, newStatus) {
     if (rec) rec.fields['Status'] = newStatus;
     _mreqPaint();
   } catch(e) { reportError('Η αλλαγή κατάστασης απέτυχε', e); }
+}
+
+// ── Print: one A4 sheet per work order, for the workshop (T34) ───────
+// Walkthrough 13/10 item 2: «εδώ πέρα δεν υπάρχει κουμπί για εκτύπωση… να τη
+// δώσει σε κάποιον και να την αναθέσει». A document print, so it follows the
+// print rule (Nick 15/10): a printer icon beside the work order; click prints,
+// right-click / long-press is the share menu with the same order as text, for
+// WhatsApp to the workshop (no PDF: the Worker's /print/pdf knows only orders).
+// It prints the SAVED record: open edits print after «Αποθήκευση».
+function _mreqRec(recId) { return MREQ.data.find(r => r.id === recId) || null; }
+function _mreqSheetFields(f) {
+  const vt = _mntTypeGr(_mntVehicleType(f['Vehicle Plate'], f['Vehicle Type']));
+  return [
+    ['Όχημα', [f['Vehicle Plate'] || '—', vt].filter(Boolean).join(' · ')],
+    ['Προτεραιότητα', _normP(f['Priority']) || 'Κανονικό'],
+    ['Κατάσταση', MREQ_STATUS_LABEL[f['Status']] || f['Status'] || '—'],
+    ['Ημ. αναφοράς', _fmtDMY(f['Date Reported'], true)],
+    ['Συνεργείο', f['Workshop'] || '—'],
+    ['Εκτ. κόστος', _fmtCost(f['Estimated Cost'])],
+  ];
+}
+function _mreqText(recId) {
+  const r = _mreqRec(recId); if (!r) return '';
+  const f = r.fields;
+  return ['ΕΝΤΟΛΗ ΕΡΓΑΣΙΑΣ · PETRAS GROUP',
+    ..._mreqSheetFields(f).map(([k, v]) => `${k}: ${v}`),
+    `Περιγραφή: ${f['Description'] || '—'}`,
+    ...(f['Notes'] ? [`Σημειώσεις: ${f['Notes']}`] : [])].join('\n');
+}
+function _mreqPrint(recId) {
+  const r = _mreqRec(recId);
+  if (!r) { toast('Η εντολή δεν βρέθηκε: ανανέωσε τη σελίδα', 'warn'); return; }
+  const f = r.fields;
+  const sos = _normP(f['Priority']) === 'SOS';
+  const rows = _mreqSheetFields(f).map(([k, v]) => `<tr><th>${escapeHtml(k)}</th><td>${escapeHtml(String(v))}</td></tr>`).join('');
+  const win = window.open('', '_blank');
+  if (!win) { toast('Ο browser μπλόκαρε το παράθυρο εκτύπωσης', 'error'); return; }
+  win.document.write(`<!DOCTYPE html><html lang="el"><head><meta charset="utf-8"><title>Εντολή εργασίας ${escapeHtml(f['Vehicle Plate'] || '')}</title>
+    <style>
+      @page { size: A4; margin: 16mm; }
+      * { -webkit-print-color-adjust: exact; print-color-adjust: exact; box-sizing: border-box; }
+      body { font: 13px/1.45 'DM Sans', Arial, sans-serif; color: #0B1929; margin: 0; }
+      .hd { display: flex; justify-content: space-between; align-items: baseline; border-bottom: 2px solid #0B1929; padding-bottom: 8px; margin-bottom: 14px; }
+      .hd h1 { font-size: 20px; margin: 0; letter-spacing: .5px; }
+      .hd .co { font-weight: 700; } .hd .pr { color: #475569; font-size: 11px; }
+      .sos { display: inline-block; background: #DC2626; color: #fff; font-weight: 700; padding: 2px 10px; border-radius: 4px; margin-left: 8px; font-size: 13px; }
+      table { border-collapse: collapse; width: 100%; margin-bottom: 14px; }
+      th, td { text-align: left; border: 1px solid #CBD5E1; padding: 7px 10px; vertical-align: top; }
+      th { width: 32%; background: #F1F5F9; font-weight: 600; }
+      h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .4px; margin: 14px 0 6px; }
+      .txt { border: 1px solid #CBD5E1; padding: 8px 10px; min-height: 56px; white-space: pre-wrap; }
+      .lines div { border-bottom: 1px solid #94A3B8; height: 28px; }
+      .sign { display: flex; gap: 24px; margin-top: 28px; }
+      .sign div { flex: 1; border-top: 1px solid #0B1929; padding-top: 4px; font-size: 11px; color: #475569; }
+    </style></head><body>
+    <div class="hd"><div><h1>ΕΝΤΟΛΗ ΕΡΓΑΣΙΑΣ${sos ? '<span class="sos">SOS</span>' : ''}</h1><span class="co">PETRAS GROUP</span></div>
+      <div class="pr">Εκτύπωση ${escapeHtml(_fmtDMY(localToday(), true))}</div></div>
+    <table>${rows}</table>
+    <h2>Περιγραφή</h2><div class="txt">${escapeHtml(f['Description'] || '—')}</div>
+    ${f['Notes'] ? `<h2>Σημειώσεις</h2><div class="txt">${escapeHtml(f['Notes'])}</div>` : ''}
+    <h2>Παρατηρήσεις συνεργείου</h2><div class="lines"><div></div><div></div><div></div><div></div><div></div></div>
+    <div class="sign"><div>Υπογραφή συνεργείου</div><div>Ημερομηνία παράδοσης</div><div>Παρέλαβε (Petras Group)</div></div>
+    </body></html>`);
+  win.document.close();
+  setTimeout(() => win.print(), 400);
+}
+// The share menu's options for one work order (text only, see above).
+function _mreqShareOpts(recId) {
+  const r = _mreqRec(recId); if (!r) return null;
+  return { title: 'Εντολή εργασίας ' + (r.fields['Vehicle Plate'] || ''), getText: async () => _mreqText(recId), onPrint: () => _mreqPrint(recId) };
+}
+function _mreqPrintBtn(recId, withLabel) {
+  return `<button type="button" class="btn btn-ghost btn-sm mreq-prt" data-rec="${escapeHtml(recId)}" title="Εκτύπωση εντολής (δεξί κλικ: κοινή χρήση)" aria-label="Εκτύπωση εντολής" onclick="event.stopPropagation();_mreqPrint('${recId}')">${icon('printer', 14)}${withLabel ? ' Εκτύπωση' : ''}</button>`;
 }
 
 // ── Form (w2-maint-request-form 165:769) ─────────────────────────
@@ -1946,12 +2024,14 @@ function _mreqOpenForm(editId) {
         ${field('Σημειώσεις', `<textarea class="form-textarea" id="mreq-notes" rows="2">${escapeHtml(f['Notes']||'')}</textarea>`)}
       </div>
       <div class="mf-foot">
-        ${editId?`<button type="button" class="btn btn-ghost btn-sm" style="color:var(--danger)" onclick="_mreqDelete('${editId}')">Διαγραφή</button>`:''}
+        ${editId?`<button type="button" class="btn btn-ghost btn-sm" style="color:var(--danger)" onclick="_mreqDelete('${editId}')">Διαγραφή</button>${_mreqPrintBtn(editId, true)}`:''}
         <button type="button" class="btn btn-ghost btn-sm" onclick="_mntCloseModal()">Άκυρο</button>
         <button type="button" class="btn btn-primary btn-sm" onclick="_mreqSave('${editId||''}')">Αποθήκευση</button>
       </div>
     </div>
   </div>`;
+  const prt = editId && document.querySelector('.mf-modal .mreq-prt');
+  if (prt && typeof attachShareMenu === 'function') { const o = _mreqShareOpts(editId); if (o) attachShareMenu(prt, o); }
   // T33 (owner 13/10): type to find the plate. «Άλλο όχημα» stays listed whatever is
   // typed, and picking it carries the typed plate into the free-text box.
   fhSelectSearch(document.getElementById('mreq-plate'), { keep: { __custom: 'mreq-plate-custom' } });
