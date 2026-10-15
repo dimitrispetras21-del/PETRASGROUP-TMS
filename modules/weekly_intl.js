@@ -2938,9 +2938,14 @@ function _wiSdO(uid){
 function _wiSdF(uid,q){
   const lst=document.getElementById('wsd-l-'+uid);
   if(!lst||lst.style.display==='none') _wiSdO(uid);
-  const ql=q.toLowerCase();
+  // T33: truck and trailer fields (tk_, tl_; Weekly Διεθνών and Εθνικών) match like
+  // every other plate picker: Greek look-alike letters, spaces and dashes ignored
+  // (_fhPlateNorm, core/form-helpers.js). Drivers and partners keep the plain match.
+  const px=uid.split('_')[0];
+  const norm=(px==='tk'||px==='tl')&&typeof _fhPlateNorm==='function'?_fhPlateNorm:(s=>String(s).toLowerCase());
+  const ql=norm(q);
   lst.querySelectorAll('.wi-sdo').forEach(el=>{
-    el.style.display=(el.dataset.lbl||el.textContent).toLowerCase().includes(ql)?'':'none';
+    el.style.display=norm(el.dataset.lbl||el.textContent).includes(ql)?'':'none';
   });
 }
 function _wiSdP(uid,recId,label){
