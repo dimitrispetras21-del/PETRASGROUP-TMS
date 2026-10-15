@@ -2938,9 +2938,14 @@ function _wiSdO(uid){
 function _wiSdF(uid,q){
   const lst=document.getElementById('wsd-l-'+uid);
   if(!lst||lst.style.display==='none') _wiSdO(uid);
-  const ql=q.toLowerCase();
+  // T33: truck and trailer fields (tk_, tl_; Weekly Διεθνών and Εθνικών) match like
+  // every other plate picker: Greek look-alike letters, spaces and dashes ignored
+  // (_fhPlateNorm, core/form-helpers.js). Drivers and partners keep the plain match.
+  const px=uid.split('_')[0];
+  const norm=(px==='tk'||px==='tl')&&typeof _fhPlateNorm==='function'?_fhPlateNorm:(s=>String(s).toLowerCase());
+  const ql=norm(q);
   lst.querySelectorAll('.wi-sdo').forEach(el=>{
-    el.style.display=(el.dataset.lbl||el.textContent).toLowerCase().includes(ql)?'':'none';
+    el.style.display=norm(el.dataset.lbl||el.textContent).includes(ql)?'':'none';
   });
 }
 function _wiSdP(uid,recId,label){
@@ -4898,8 +4903,8 @@ async function _wiPanelSplit(rowId){
       </select>
     </div>
     <div id="wiSplitOwn" style="display:none;margin-top:8px">
-      <select class="form-input" id="wiSplitTruck" style="margin-bottom:6px;width:100%"><option value="">Φορτηγό…</option>${opt(WINTL.data.trucks)}</select>
-      <select class="form-input" id="wiSplitTrailer" style="margin-bottom:6px;width:100%"><option value="">Ρυμούλκα…</option>${opt(WINTL.data.trailers)}</select>
+      <select class="form-input" id="wiSplitTruck" data-fh-search style="margin-bottom:6px;width:100%"><option value="">Φορτηγό…</option>${opt(WINTL.data.trucks)}</select>
+      <select class="form-input" id="wiSplitTrailer" data-fh-search style="margin-bottom:6px;width:100%"><option value="">Ρυμούλκα…</option>${opt(WINTL.data.trailers)}</select>
       <select class="form-input" id="wiSplitDriver" style="width:100%"><option value="">Οδηγός…</option>${opt(WINTL.data.drivers)}</select>
     </div>
     <div id="wiSplitPartner" style="display:none;margin-top:8px">
@@ -4909,6 +4914,9 @@ async function _wiPanelSplit(rowId){
   const footer=`<button class="btn btn-ghost" onclick="_wiPanelClose()">Άκυρο</button>
     <button class="btn btn-primary" id="wiSplitGo" onclick="_wiDoSplit(${rowId})">Σπάσιμο</button>`;
   _wiPanelOpen(_wiAnchorFor(rowId),'Σπάσιμο σκέλους',_wiPanelCtxLine(row),body,footer);
+  // T33: type to find the plate; _wiDoSplit still reads the two selects.
+  fhSelectSearch(document.getElementById('wiSplitTruck'));
+  fhSelectSearch(document.getElementById('wiSplitTrailer'));
 }
 function _wiSplitModeChange(){
   const m=document.getElementById('wiSplitMode')?.value;

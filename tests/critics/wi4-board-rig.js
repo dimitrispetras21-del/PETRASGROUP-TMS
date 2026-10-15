@@ -3255,7 +3255,8 @@ async function scnPrint(browser, origin) {
     const has = await page.evaluate(([js]) => { const r = eval(js)('recWiE001'); if (r) { r.setAttribute('data-rig-row', 'E001'); r.scrollIntoView({ block: 'center' }); } return !!r; }, [ROW_JS]);
     const rowL = page.locator('[data-rig-row="E001"]');
     await rowL.hover({ position: { x: 600, y: 16 } }); await page.waitForTimeout(150);
-    const btn = rowL.locator('.wi4-asg .wk3-prt');
+    // One printer per leg (Nick 15/10): the export's sits LEFT of the pill.
+    const btn = rowL.locator('.wi4-asg .wk3-prt.wi4-prt-l');
     const vis = await btn.evaluate(b => getComputedStyle(b).visibility).catch(() => 'missing');
     const clicked = await btn.click({ timeout: 4000 }).then(() => true, () => false);
     await page.waitForTimeout(250);
@@ -3274,25 +3275,30 @@ async function scnPrint(browser, origin) {
     await page.evaluate(([js]) => { const r = eval(js)('recWiE001'); if (r) { r.setAttribute('data-rig-row', 'E001'); r.scrollIntoView({ block: 'center' }); } }, [ROW_JS]);
     const rowL = page.locator('[data-rig-row="E001"]');
     await rowL.hover({ position: { x: 600, y: 16 } }); await page.waitForTimeout(150);
-    await rowL.locator('.wi4-asg .wk3-prt').click({ button: 'right', timeout: 4000 }).catch(() => {});
+    await rowL.locator('.wi4-asg .wk3-prt.wi4-prt-l').click({ button: 'right', timeout: 4000 }).catch(() => {});
     await page.waitForTimeout(250);
     const r = await page.evaluate(() => { const m = document.getElementById('shMenu');
       return { sh: !!m, items: m ? [...m.querySelectorAll('button')].map(b => b.textContent) : [], ctx: ((document.getElementById('wi-ctx') || {}).style || {}).display === 'block' }; });
     ok(scn, 'right-click on the row\'s print button opens the share menu (Λήψη PDF · Κοινή χρήση), not the per-load menu', r.sh && !r.ctx && r.items.some(t => /Κοινή χρήση/.test(t)), r);
-    // Parity r1 F7 (Figma Assign 1097:2501): pill 176, 6px, the arrow; print
-    // out of the flow, in the gutter past the cell — on neither the pill nor
-    // the arrow, and clear of the import cell's first chip.
+    // Parity r1 F7 (Figma Assign 1097:2501): pill 176, 6px, the arrow. One
+    // printer per leg (Nick 15/10), each out of the flow in the 12px gutter on
+    // its side: the export's left of the pill, clear of the export cell's text;
+    // the matched import's right of the arrow, clear of the import's first chip.
     await page.mouse.click(5, 5); await page.waitForTimeout(150);
     await rowL.hover({ position: { x: 600, y: 16 } }); await page.waitForTimeout(150);
     const g = await rowL.evaluate(row => {
       const R = el => { if (!el) return null; const b = el.getBoundingClientRect(); return { l: Math.round(b.left), r: Math.round(b.right), w: Math.round(b.width) }; };
       const asg = row.querySelector('.wi4-asg');
       const chip = row.querySelector('.wi4-c-imp .wi4-dc, .wi4-c-imp button, .wi4-c-imp .wi4-gap');
-      return { cell: R(asg), box: R(asg.querySelector('.wi4-box')), plane: R(asg.querySelector('.wi4-plane')), prt: R(asg.querySelector('.wk3-prt')), chip: R(chip),
-        vis: getComputedStyle(asg.querySelector('.wk3-prt')).visibility };
+      const expLeaves = [...row.querySelectorAll('.wi4-c-exp *')].filter(x => !x.children.length && x.getBoundingClientRect().width > 0);
+      const pL = asg.querySelector('.wk3-prt.wi4-prt-l'), pR = asg.querySelector('.wk3-prt:not(.wi4-prt-l)');
+      return { cell: R(asg), box: R(asg.querySelector('.wi4-box')), plane: R(asg.querySelector('.wi4-plane')), prtL: R(pL), prtR: R(pR), chip: R(chip),
+        expEnd: expLeaves.length ? Math.max(...expLeaves.map(x => Math.round(x.getBoundingClientRect().right))) : null,
+        vis: [pL, pR].map(x => x ? getComputedStyle(x).visibility : 'missing') };
     });
-    ok(scn, 'at 1920 the pill is 176±1 wide, the arrow 6±1px after it; print sits past the cell, on neither, clear of the import\'s first chip', !!g.box && Math.abs(g.box.w - 176) <= 1
-      && Math.abs(g.plane.l - g.box.r - 6) <= 1 && g.prt.l >= g.plane.r && g.prt.l >= g.cell.r - 1 && (!g.chip || g.prt.r <= g.chip.l) && g.vis === 'visible', g);
+    ok(scn, 'at 1920 the pill is 176±1 wide, the arrow 6±1px after it; the export printer sits left of the pill (clear of the export text), the import printer past the arrow (clear of the import\'s first chip)', !!g.box && Math.abs(g.box.w - 176) <= 1
+      && Math.abs(g.plane.l - g.box.r - 6) <= 1 && !!g.prtL && g.prtL.r <= g.box.l && (g.expEnd == null || g.prtL.l >= g.expEnd)
+      && (!g.prtR || (g.prtR.l >= g.plane.r && (!g.chip || g.prtR.r <= g.chip.l))) && g.vis[0] === 'visible', g);
     ok(scn, 'nothing written', !writes(S).length, writes(S));
     await page.context().close();
   }
@@ -3748,8 +3754,10 @@ async function scnParity(browser, origin) {
           dayn: dn ? [dn.fontFamily, dn.letterSpacing] : null, dayd: dd ? dd.fontFamily : null };
       });
       // Parity r2: radius 8 (Figma Surface 1097:2462 / 2645 / 3592).
-      ok(scn, 'grey page: .wi4 transparent, #content rgb(244, 246, 249); every day card white, 1px border, 8px radius', fr.wi4 === 'rgba(0, 0, 0, 0)' && fr.content === 'rgb(244, 246, 249)'
-        && fr.cards.length === 1 && fr.cards[0] === 'rgb(255, 255, 255)|1px|solid|8px', fr);
+      // Today's card is tinted (walkthrough C4, Nick 14/10, shipped in PR #45): every
+      // other card white. This check failed on main from #45 until it was updated (15/10).
+      ok(scn, 'grey page: .wi4 transparent, #content rgb(244, 246, 249); every day card white (today\'s tinted rgb(230, 242, 248)), 1px border, 8px radius', fr.wi4 === 'rgba(0, 0, 0, 0)' && fr.content === 'rgb(244, 246, 249)'
+        && fr.cards.includes('rgb(255, 255, 255)|1px|solid|8px') && fr.cards.every(c => c === 'rgb(255, 255, 255)|1px|solid|8px' || c === 'rgb(230, 242, 248)|1px|solid|8px'), fr);
       ok(scn, 'no full-width rules under the queue, the stock strip or the column header', fr.rules.every(w => w === '0px'), fr.rules);
       ok(scn, 'bands 8px apart (sheet 15 A): stock strip y 110±2, column header y 146±2', Math.abs(fr.shelf - 110) <= 2 && Math.abs(fr.cols - 146) <= 2, { shelf: fr.shelf, cols: fr.cols });
       // Figma 1097:2448: column header 24 + gap 8 + name 16 + 6 = the first card
@@ -3758,8 +3766,10 @@ async function scnParity(browser, origin) {
       ok(scn, 'day header: chevron at x4, name at x26 (Figma 1097:2640); Syne tracking .8 + DM Sans date (1097:2642)', fr.chevX === 4 && fr.nameX === 26 && fr.dayn && /Syne/.test(fr.dayn[0]) && fr.dayn[1] === '0.8px' && /DM Sans/.test(fr.dayd || ''), fr);
       // Parity r2 (Figma 1097:3592): 1.5px accent at 55% on top (as the browser snaps it to device pixels), no side /
       // bottom line (1px transparent keeps the tracks).
-      ok(scn, 'today\'s card: 1.5px (device-snapped) rgba(2, 123, 189, 0.55) on top; sides and bottom transparent, sides still 1px', !!fr.todayTop && fr.todayTop[0] === fr.todaySnap && /^1\.5px solid/.test(fr.todayRule || '')
-        && fr.todayTop[1] === 'rgba(2, 123, 189, 0.55)' && !!fr.todaySide && fr.todaySide.join() === '1px,rgba(0, 0, 0, 0),rgba(0, 0, 0, 0)', { top: fr.todayTop, snap: fr.todaySnap, rule: fr.todayRule, side: fr.todaySide });
+      // Today framed (walkthrough C4, Nick 14/10, PR #45): a 2px accent line on top and
+      // a 1px accent frame on the sides and bottom (was Figma 1097:3592: 1.5px at 55%, open sides).
+      ok(scn, 'today\'s card: 2px rgb(2, 123, 189) on top, framed 1px in the same accent on the sides and bottom', !!fr.todayTop && fr.todayTop[0] === '2px' && /^2px solid/.test(fr.todayRule || '')
+        && fr.todayTop[1] === 'rgb(2, 123, 189)' && !!fr.todaySide && fr.todaySide.join() === '1px,rgb(2, 123, 189),rgb(2, 123, 189)', { top: fr.todayTop, rule: fr.todayRule, side: fr.todaySide });
       // Rails on a card's first/last row follow the card's curve (Figma 1097:2648).
       const rc = await page.evaluate(() => [...document.querySelectorAll('#content .wi4 #wi-rows .wi4-day-body')].flatMap(b => {
         const out = [], f = b.firstElementChild, l = b.lastElementChild, rail = (e) => e && /wi4-r-(red|amb)/.test(e.className);

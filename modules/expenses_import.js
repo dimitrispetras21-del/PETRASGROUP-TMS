@@ -226,6 +226,7 @@ function eiRenderShell() {
   if (!c) return;
   c.style.padding = '0';
   c.innerHTML = eiStyles() + (_ei.step === 'preview' ? eiPreviewHtml() : eiUploadHtml());
+  fhSelectSearchIn(c); // T33: the plate pickers (data-fh-search) take a search box
 }
 
 // ═══════════════════ ΑΝΕΒΑΣΜΑ + ΕΞΑΓΩΓΗ ΚΕΙΜΕΝΟΥ ═══════════════════
@@ -940,7 +941,7 @@ function eiPlateEditorHtml(l) {
   const trucks = (_ex.lookups && _ex.lookups.trucks) || [];
   const opts = trucks.map((t) => `<option value="${t.id}">${escapeHtml(t.license_plate)}</option>`).join('');
   return `<div class="ei-rtedit">
-    <select id="eiPlateSel_${l.id}" onchange="eiConfirmPlateLink(${l.id}, this.value)">
+    <select id="eiPlateSel_${l.id}" data-fh-search onchange="eiConfirmPlateLink(${l.id}, this.value)">
       <option value="" disabled selected>— σύνδεση με φορτηγό —</option>
       ${opts}
     </select>
@@ -1034,7 +1035,7 @@ function eiRtEditorHtml(l) {
     .map((r) => `<option value="${r.id}">${candIds.has(r.id) ? '★ ' : ''}${escapeHtml(eiRtOptionLabel(r))}</option>`).join('');
   return `<div class="ei-rtedit ei-rtedit2">
     <label class="s">Φορτηγό</label>
-    <select id="eiRtTruckSel_${l.id}" onchange="eiRtTruckChange(${l.id}, this.value)">${truckOpts}</select>
+    <select id="eiRtTruckSel_${l.id}" data-fh-search onchange="eiRtTruckChange(${l.id}, this.value)">${truckOpts}</select>
     <label class="s">Δρομολόγιο</label>
     <input type="text" class="ei-rtsearch" id="eiRtSearch_${l.id}" placeholder="οδηγός / RT / ημερομηνία…" oninput="eiFilterRtOther(${l.id}, this.value)">
     <select id="eiRtOtherSel_${l.id}" onchange="eiConfirmRtChange(${l.id}, this.value)">

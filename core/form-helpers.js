@@ -278,6 +278,218 @@ function fhPickLinked(id, recId, label) {
   if (d) d.style.display = 'none';
 }
 
+// ─── Searchable select: type to filter a long list (T33, walkthrough 13/10 #1) ─
+// Owner 13/10 on the work-order vehicle list: «δεν μπορεί να πληκτρολογείς ο
+// χρήστης για να βρει γρήγορα το όχημα». fhSelectSearch(sel) draws a type-to-filter
+// box OVER an existing <select> and keeps that select as the only source of truth:
+// every reader (sel.value, sel.options), every programmatic write (sel.value = x,
+// e.g. the invoice scan) and every onchange handler keep working unchanged, so no
+// save path changes when a screen adopts it.
+// Plates are stored in Latin letters (76 of 76, 14/10), but a Greek keyboard types
+// the look-alike letter (Η for H, Ρ for P), so query and options both go through
+// _fhPlateNorm. Spaces and dashes are ignored: «ΙΑΒ 12» finds «IAB-1234».
+// RULE for every vehicle dropdown, new ones included: put data-fh-search on the
+// <select> and call fhSelectSearch on it (or fhSelectSearchIn on the container)
+// right after the markup is in the page. tests/plate-search.test.js fails otherwise.
+const _FH_PLATE_GR = { 'Α':'A','Β':'B','Ε':'E','Ζ':'Z','Η':'H','Ι':'I','Κ':'K','Μ':'M','Ν':'N','Ο':'O','Ρ':'P','Τ':'T','Υ':'Y','Χ':'X' };
+function _fhPlateNorm(s) {
+  return String(s || '').toUpperCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .replace(/[\s\-]/g, '').replace(/[ΑΒΕΖΗΙΚΜΝΟΡΤΥΧ]/g, c => _FH_PLATE_GR[c]);
+}
+
+/**
+ * Turn an existing <select> into a searchable one: click opens the whole list,
+ * typing narrows it, ↑/↓ + Enter pick, Esc or leaving the field keeps the last pick.
+ * Text that matches nothing is never saved: the select only ever holds one of its
+ * own options. An emptied field selects the empty option, when the select has one.
+ * @param {HTMLSelectElement} sel - The select, already in the DOM
+ * @param {Object} [opts]
+ * @param {Object} [opts.keep] - {optionValue: inputId}: options always listed,
+ *   whatever is typed (e.g. «Άλλο όχημα»); picking one copies the typed text into
+ *   that input when it is empty, so the user does not type the plate twice
+ */
+let _fhCbSeq = 0;
+function fhSelectSearch(sel, opts) {
+  if (!sel || sel._fhSearch || !sel.parentNode) return;
+  sel._fhSearch = true;
+  const keep = (opts && opts.keep) || {};
+  const proto = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value');
+  const base = sel.id || ('fhcb' + (++_fhCbSeq));
+  // The box takes the select's place and look on every screen (form, toolbar,
+  // table row): its classes, its inline layout (flex:1, margins) on the wrapper,
+  // and, where the select had no class (styled by a «.toolbar select» rule that
+  // an input does not match), its computed look.
+  const cs = getComputedStyle(sel);
+  const shown = sel.offsetWidth > 0;
+  const pcs = getComputedStyle(sel.parentNode);
+  const room = sel.parentNode.clientWidth - parseFloat(pcs.paddingLeft || 0) - parseFloat(pcs.paddingRight || 0);
+  const fills = !shown || sel.offsetWidth >= room - 2;
+  const wrap = document.createElement('div');
+  wrap.className = 'fh-cb';
+  wrap.style.cssText = sel.style.cssText;
+  if (!fills) {
+    wrap.style.display = 'inline-block';
+    wrap.style.verticalAlign = 'middle';
+    if (!sel.style.width) wrap.style.width = sel.offsetWidth + 'px';
+  }
+  const inp = document.createElement('input');
+  inp.type = 'text';
+  inp.className = (sel.className ? sel.className + ' ' : '') + 'fh-cb-input';
+  if (!sel.className && shown) {
+    ['fontFamily', 'fontSize', 'fontWeight', 'color', 'backgroundColor', 'height', 'paddingTop', 'paddingBottom', 'paddingLeft',
+     'borderTopWidth', 'borderTopStyle', 'borderTopColor', 'borderRightWidth', 'borderRightStyle', 'borderRightColor',
+     'borderBottomWidth', 'borderBottomStyle', 'borderBottomColor', 'borderLeftWidth', 'borderLeftStyle', 'borderLeftColor',
+     'borderRadius'].forEach(k => { inp.style[k] = cs[k]; });
+  }
+  // Inline, so a class using the «background:» or «padding:» shorthand cannot hide the ▾.
+  inp.style.width = '100%';
+  inp.style.boxSizing = 'border-box';
+  inp.style.paddingRight = '28px';
+  inp.style.backgroundImage = "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath d='M2.5 4.5 6 8l3.5-3.5' fill='none' stroke='%2364748B' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E\")";
+  inp.style.backgroundRepeat = 'no-repeat';
+  inp.style.backgroundPosition = 'right 10px center';
+  inp.id = base + '__q';
+  if (sel.title) inp.title = sel.title;
+  inp.autocomplete = 'off';
+  inp.spellcheck = false;
+  const list = document.createElement('div');
+  list.className = 'linked-drop fh-cb-list';
+  list.id = base + '__l';
+  list.setAttribute('role', 'listbox');
+  list.style.display = 'none';
+  inp.setAttribute('role', 'combobox');
+  inp.setAttribute('aria-autocomplete', 'list');
+  inp.setAttribute('aria-expanded', 'false');
+  inp.setAttribute('aria-controls', list.id);
+  sel.parentNode.insertBefore(wrap, sel);
+  wrap.append(sel, inp, list);
+  // Invisible but not display:none: Playwright's selectOption (his proof tests,
+  // e.g. tests/critics/pnl-natl-intl-proof.js on #ctVehSel) refuses hidden elements.
+  sel.style.cssText = 'position:absolute;left:0;bottom:0;width:1px;height:1px;margin:0;padding:0;border:0;opacity:0;pointer-events:none';
+  sel.tabIndex = -1;
+  sel.setAttribute('aria-hidden', 'true');
+  let empty = [...sel.options].find(o => o.value === '');
+  let hint = empty ? empty.text : 'Αναζήτηση…';
+  inp.placeholder = hint;
+
+  let items = [], act = -1, query = '', edited = false;
+  const label = () => { const o = sel.selectedOptions[0]; return o && o.value !== '' ? o.text : ''; };
+  const sync = () => { inp.value = label(); inp.disabled = sel.disabled; };
+  // Code that sets sel.value (scan prefill, «Νέο service» from a vehicle) must
+  // also move the visible text, or the box would show one plate and save another.
+  Object.defineProperty(sel, 'value', {
+    configurable: true,
+    get() { return proto.get.call(this); },
+    set(v) { proto.set.call(this, v); sync(); },
+  });
+  const mark = () => {
+    [...list.children].forEach((el, i) => el.classList.toggle('on', i === act));
+    const on = list.children[act];
+    if (on && on.scrollIntoView) on.scrollIntoView({ block: 'nearest' });
+    if (act >= 0) inp.setAttribute('aria-activedescendant', list.id + '_' + act);
+    else inp.removeAttribute('aria-activedescendant');
+  };
+  const paint = q => {
+    query = q;
+    const nq = _fhPlateNorm(q);
+    const all = [...sel.options].filter(o => o.value !== '' && !o.disabled);
+    // While typing, real matches come first and the always-listed entries after,
+    // so Enter takes the first plate, never «Όλος ο στόλος».
+    items = nq
+      ? all.filter(o => keep[o.value] === undefined && (o._fhN || (o._fhN = _fhPlateNorm(o.text))).includes(nq))
+          .concat(all.filter(o => keep[o.value] !== undefined))
+      : all;
+    const cur = proto.get.call(sel);
+    act = nq ? (items.length ? 0 : -1) : items.findIndex(o => o.value === cur);
+    list.innerHTML = items.length
+      ? items.map((o, i) => `<div class="linked-drop-item fh-cb-opt${o.value === cur ? ' sel' : ''}" role="option" id="${list.id}_${i}" data-i="${i}">${escapeHtml(o.text)}</div>`).join('')
+      : '<div class="fh-cb-none">Κανένα αποτέλεσμα</div>';
+    list.style.display = 'block';
+    inp.setAttribute('aria-expanded', 'true');
+    mark();
+  };
+  const close = () => {
+    list.style.display = 'none';
+    inp.setAttribute('aria-expanded', 'false');
+    inp.removeAttribute('aria-activedescendant');
+  };
+  const set = v => {
+    const prev = proto.get.call(sel);
+    const changed = v !== prev;
+    // Leaving «Άλλο όχημα» empties its free-text box: _mreqSave reads that hidden
+    // box whenever the select is empty, so a cleared field would otherwise save a
+    // plate the user can no longer see (measured 15/10: «XY9999ZZ» after clearing).
+    const left = changed && keep[prev] && document.getElementById(keep[prev]);
+    if (left) left.value = '';
+    proto.set.call(sel, v);
+    sync();
+    if (changed) sel.dispatchEvent(new Event('change', { bubbles: true }));
+  };
+  const pick = i => {
+    const o = items[i];
+    if (!o) return;
+    const typed = query.trim();
+    close();
+    edited = false;
+    inp.placeholder = hint;
+    set(o.value);
+    const carry = keep[o.value] && document.getElementById(keep[o.value]);
+    if (carry && !carry.value && typed) carry.value = typed;
+    // Focus stays here after a pick: select the label so a new key replaces it.
+    if (document.activeElement === inp) inp.select();
+  };
+  const isOpen = () => list.style.display !== 'none';
+
+  // On focus the box empties and the current pick moves to the placeholder, so
+  // the first key starts a new search instead of appending to the old label.
+  const open = () => { edited = false; inp.placeholder = label() || hint; inp.value = ''; paint(''); };
+  inp.addEventListener('focus', open);
+  inp.addEventListener('click', () => { if (!isOpen()) open(); });
+  inp.addEventListener('input', () => { edited = true; paint(inp.value); });
+  inp.addEventListener('keydown', e => {
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      if (!isOpen()) { open(); return; }
+      if (!items.length) return;
+      act = e.key === 'ArrowDown' ? Math.min(act + 1, items.length - 1) : Math.max(act - 1, 0);
+      mark();
+    } else if (e.key === 'Enter') {
+      if (isOpen() && act >= 0) { e.preventDefault(); pick(act); }
+    } else if (e.key === 'Escape') {
+      if (isOpen()) { e.preventDefault(); e.stopPropagation(); close(); edited = false; inp.placeholder = hint; sync(); inp.select(); }
+    }
+  });
+  inp.addEventListener('blur', () => {
+    close();
+    inp.placeholder = hint;
+    // Only text the user typed and then deleted clears the pick; focus and leave keeps it.
+    if (edited && !inp.value.trim() && empty && proto.get.call(sel) !== '') set('');
+    else sync();
+  });
+  // mousedown, not click: picking must happen before the input's blur restores the text.
+  list.addEventListener('mousedown', e => {
+    e.preventDefault();
+    const el = e.target.closest('[data-i]');
+    if (el) pick(+el.dataset.i);
+  });
+  // A change made on the select itself (a test's selectOption, selectedIndex + change).
+  sel.addEventListener('change', () => { if (!isOpen()) sync(); });
+  // Screens that fill the options later (TRIP PnL fleet filter) or toggle
+  // disabled (relay «άλλο φορτηγό») keep the box in step with the select.
+  new MutationObserver(() => {
+    empty = [...sel.options].find(o => o.value === '');
+    hint = empty ? empty.text : 'Αναζήτηση…';
+    if (isOpen()) paint(query); else { inp.placeholder = hint; sync(); }
+  }).observe(sel, { childList: true, subtree: true, attributes: true, attributeFilter: ['disabled'] });
+  sync();
+}
+// For screens that draw a picker from several templates into several containers:
+// mark the select with data-fh-search and call this on the container just drawn.
+function fhSelectSearchIn(root) {
+  if (root && root.querySelectorAll) root.querySelectorAll('select[data-fh-search]').forEach(s => fhSelectSearch(s));
+}
+if (typeof window !== 'undefined') { window.fhSelectSearch = fhSelectSearch; window.fhSelectSearchIn = fhSelectSearchIn; window._fhPlateNorm = _fhPlateNorm; }
+
 // ─── Pallet Exchange: explicit ΝΑΙ / ΟΧΙ (owner 27/9) ─────────────────────
 // Was a checkbox, where «not ticked» and «forgot to tick» both saved as
 // Pallet Exchange = false. PE drives the pallet-ledger feeders and the

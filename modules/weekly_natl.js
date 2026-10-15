@@ -1136,7 +1136,7 @@ function _wnAddLocal(dateISO, parentNlId, driverId) {
       <div class="form-field"><label class="form-label">Οδηγός${parentNlId?'':' *'}</label>
         <select class="form-select" id="lm_driver"><option value="">${parentNlId?'— Χωρίς οδηγό ακόμη (χρειάζεται τοπικό) —':'— Επιλογή —'}</option>${opt(WNATL.data.drivers, driverId||'')}</select></div>
       <div class="form-field"><label class="form-label">Όχημα</label>
-        <select class="form-select" id="lm_truck"><option value="">—</option>${opt(WNATL.data.trucks,'')}</select></div>
+        <select class="form-select" id="lm_truck" data-fh-search><option value="">—</option>${opt(WNATL.data.trucks,'')}</select></div>
       <div class="form-field"><label class="form-label">Ώρα (ΩΩ:ΛΛ)</label>
         <input class="form-input" id="lm_time" placeholder="π.χ. 11:00"></div>
       <div class="form-field"><label class="form-label">Από *</label>
@@ -1150,6 +1150,7 @@ function _wnAddLocal(dateISO, parentNlId, driverId) {
     </div>`,
     `<button class="btn btn-ghost" onclick="closeModal()">Άκυρο</button>
      <button class="btn btn-success" id="lm_submit" onclick="_wnSaveLocal('${parentNlId||''}')">Καταχώρηση</button>`);
+  fhSelectSearch(document.getElementById('lm_truck')); // T33: type to find the plate
 }
 
 async function _wnSaveLocal(parentNlId) {
@@ -1206,10 +1207,11 @@ function _wnCoverLocal(moveId) {
       <div class="form-field"><label class="form-label">Οδηγός *</label>
         <select class="form-select" id="lc_driver"><option value="">— Επιλογή —</option>${opt(WNATL.data.drivers)}</select></div>
       <div class="form-field"><label class="form-label">Όχημα</label>
-        <select class="form-select" id="lc_truck"><option value="">—</option>${opt(WNATL.data.trucks)}</select></div>
+        <select class="form-select" id="lc_truck" data-fh-search><option value="">—</option>${opt(WNATL.data.trucks)}</select></div>
     </div>`,
     `<button class="btn btn-ghost" onclick="closeModal()">Άκυρο</button>
      <button class="btn btn-success" id="lc_submit" onclick="_wnSaveCover('${moveId}')">Ανάθεση</button>`);
+  fhSelectSearch(document.getElementById('lc_truck')); // T33: type to find the plate
 }
 
 async function _wnSaveCover(moveId) {
