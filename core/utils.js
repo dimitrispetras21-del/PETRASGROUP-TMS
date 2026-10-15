@@ -95,6 +95,18 @@ function reportError(userMessage, detail, type = 'error') {
   if (detail !== undefined && typeof _tmsLog === 'function') {
     _tmsLog('[reportError]', userMessage, detail);
   }
+  // A failure the user was told about also reaches app_errors (T13): before,
+  // a half-finished dissolve, split, rejoin, rota, clear or cancel-member showed
+  // a toast and left no row anyone could read. Failures only: a 'warn' or
+  // 'info' toast is a refusal or a note, not an error. logError writes each
+  // error object once, so the 19 callers that also call logError themselves
+  // (before or after this) still leave one row.
+  if (type === 'error' && typeof logError === 'function') {
+    const err = detail instanceof Error ? detail
+      : (detail && typeof detail === 'object' && typeof detail.message === 'string') ? detail
+      : new Error(userMessage);
+    logError(err, 'reportError: ' + userMessage);
+  }
 }
 if (typeof window !== 'undefined') window.reportError = reportError;
 
@@ -611,6 +623,12 @@ function logError(error, context = '') {
   if (error && typeof error === 'object' && error._sessionGone) {
     console.warn(`[TMS] ${context}: request refused — session ended`);
     return;
+  }
+  // One failure, one row: the same error object passed twice (a caller's
+  // logError plus reportError, in either order) is written the first time only.
+  if (error && typeof error === 'object') {
+    if (error._tmsLogged) return;
+    try { error._tmsLogged = true; } catch (_) {}
   }
   const entry = {
     ts: new Date().toISOString(),
