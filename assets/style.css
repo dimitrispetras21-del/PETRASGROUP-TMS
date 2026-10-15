@@ -8528,8 +8528,13 @@ body.wi4-on #wi-ctx .wi4-m-sec .wi4-l2, body.wi4-on #wi-ctx .wi4-m-hd .wi4-l2 { 
 .wi4 .wi4-asg .wk3-prt { position:absolute; left:100%; top:50%; margin-top:-11px; width:12px; height:22px; padding:0; display:inline-grid; place-items:center; border:none; border-radius:5px;
   background:none; color:var(--wi4-icon); cursor:pointer; visibility:hidden; }
 .wi4 .wi4-asg .wk3-prt svg { width:12px; height:12px; }
-/* The export's printer: the same 12px slot, in the gutter LEFT of the pill (Nick 15/10). */
-.wi4 .wi4-asg .wk3-prt.wi4-prt-l { left:auto; right:100%; }
+/* Breathing room (Nick 15/10): each printer sits 4px off its neighbour (the
+   arrow on the right, the pill on the left) in a 16px slot with the 12px glyph
+   centred, so the hover chip no longer touches either. Every row is measured
+   against the next cell's first text (tests/critics/wi4-board-rig.js, print.share). */
+.wi4 .wi4-asg .wk3-prt { width:16px; left:calc(100% + 4px); }
+/* The export's printer: the same slot, in the gutter LEFT of the pill. */
+.wi4 .wi4-asg .wk3-prt.wi4-prt-l { left:auto; right:calc(100% + 4px); }
 .wi4 .wi4-row:hover .wi4-asg .wk3-prt, .wi4 .wi4-row:focus-within .wi4-asg .wk3-prt, .wi4.wi4-kbd .wi4-focus .wi4-asg .wk3-prt { visibility:visible; }
 .wi4 .wi4-asg .wk3-prt:hover { color:var(--wi4-grey-1); background:var(--wi4-chip); }
 @media (hover:none) { .wi4 .wi4-asg .wk3-prt { visibility:visible; } }
