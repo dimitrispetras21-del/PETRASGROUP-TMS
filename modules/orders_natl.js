@@ -1811,7 +1811,8 @@ function openNatlScan() {
       ondragleave="document.getElementById('natlScanDrop').style.borderColor='var(--border-dark)'"
       ondrop="_natlScanDrop(event)">
       <div style="font-size:13px;font-weight:500;color:var(--text-mid)">Σύρε το αρχείο εδώ ή κάνε κλικ για επιλογή</div>
-      <div style="font-size:12px;color:var(--text-dim);margin-top:4px">JPG · PNG · PDF — max 10MB</div>
+      <!-- T103: Word listed exactly when the input below accepts it (scan v2). -->
+      <div style="font-size:12px;color:var(--text-dim);margin-top:4px">JPG · PNG · PDF${typeof scanEngineV2On === 'function' && scanEngineV2On() ? ' · Word' : ''} — max 10MB</div>
       <button type="button" class="btn btn-ghost btn-sm" style="margin-top:12px"
         onclick="event.stopPropagation();document.getElementById('natlScanCamera').click()">
         ${(typeof icon === 'function') ? icon('camera', 14) : ''} Λήψη με κάμερα

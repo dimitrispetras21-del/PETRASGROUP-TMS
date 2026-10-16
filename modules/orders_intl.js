@@ -2877,7 +2877,9 @@ function openIntlScan() {
       ondrop="_scanDrop(event)">
       <div style="font-size:30px;margin-bottom:8px;opacity:0.35">📎</div>
       <div style="font-size:13px;font-weight:500;color:var(--text-mid)">Σύρε αρχεία εδώ ή κάνε κλικ για μεταφόρτωση</div>
-      <div style="font-size:12px;color:var(--text-mid);margin-top:4px">JPG · PNG · PDF — έως 10MB · έως 10 αρχεία μαζί (π.χ. 10 παραγγελίες Lidl)</div>
+      <!-- T103: the hint lists Word exactly when the input below accepts it (scan v2). Kelesmitos turned
+           customers' Word orders into PDF by hand because this line said only JPG · PNG · PDF. -->
+      <div style="font-size:12px;color:var(--text-mid);margin-top:4px">JPG · PNG · PDF${typeof scanEngineV2On === 'function' && scanEngineV2On() ? ' · Word' : ''} — έως 10MB · έως 10 αρχεία μαζί (π.χ. 10 παραγγελίες Lidl)</div>
       <button type="button" class="btn btn-ghost btn-sm" style="margin-top:12px"
         onclick="event.stopPropagation();document.getElementById('scanCamera').click()">
         📷 &nbsp;Λήψη με κάμερα
