@@ -8428,18 +8428,17 @@ body.wi4-on #wi-ctx .wi4-m-sec .wi4-l2, body.wi4-on #wi-ctx .wi4-m-hd .wi4-l2 { 
 /* Line 2 of a point is a flex row: the place is cut, the pallets never
    (review 11/10). The place is never hidden for width any more (Nick 15/10,
    T98): under every point the same line 2, ✓ and place, cut with «…», so all
-   first stops read alike. .wi4-noplace stays on the node for the layout pass. */
+   first stops read alike. The .wi4-noplace class is still set on narrow columns;
+   no style reads it now, only the board rig (tests/critics/wi4-board-rig.js). */
 .wi4 .wi4-l2f { display:flex; align-items:baseline; gap:4px; overflow:hidden; text-overflow:clip; }
 .wi4 .wi4-l2f > .wi4-ell { flex:0 1 auto; min-width:0; }
 .wi4 .wi4-l2f > .wi4-ok { flex:none; margin-right:0; }
 .wi4-pt-pal { flex:none; font-weight:500; color:var(--wi4-grey-1); }
-/* «+N» is a light chip (board: «+3» over «18π»), not bare text. */
+/* «+N» is a light chip, not bare text; since T98 it carries the count only (no «18π»). */
 .wi4-more { flex:0 0 34px; width:34px; height:28px; align-self:center; border:none; border-radius:3px; background:var(--wi4-chip); padding:0; text-align:center; cursor:pointer; line-height:13px; }
 .wi4-more:hover { background:var(--wi4-line-2); }
-/* Figma More 1097:2913: «+3» SemiBold 12 / 15, «18π» Medium 10.5 in the
-   pallets ink of the points (grey-1), 15 + 13 = the chip's 28px. */
+/* Figma More 1097:2913: «+3» SemiBold 12 / 15, centred in the 28px chip. */
 .wi4-more b { display:block; font-size:12px; font-weight:600; line-height:15px; color:var(--wi4-ink); }
-.wi4-more span { display:block; font-size:10.5px; font-weight:500; color:var(--wi4-grey-1); }
 /* ✓ carries meaning («done»): a graphic at ≥3:1 (grey-2), not the icon grey.
    A visible gap before the day («✓ Σάβ 3/10», board). */
 .wi4-ok { display:inline-flex; vertical-align:-1px; margin-right:4px; color:var(--wi4-grey-2); }
