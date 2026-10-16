@@ -330,8 +330,11 @@ const USERS = [
   { username: 'alexia',     role: 'accountant', name: 'Alexia' },
   { username: 'kelesmitos', role: 'dispatcher', name: 'Dimitris Kelesmitos' },
   // Valuedriven account for reproducing issues on production (approved 12/10/2026).
-  // management, not owner: it can read everything without owner's delete rights.
-  { username: 'nick',       role: 'management', name: 'Nick Melistas' },
+  // owner since 16/10 (Nick, to test every page incl. the owner-only ones): the
+  // delete argument of 12/10 no longer separates the roles, management and the
+  // dispatchers delete orders too (owner 22/9, 28/9). The backend `users` row is
+  // set to owner in the same release, or the tamper guard logs nick out.
+  { username: 'nick',       role: 'owner',      name: 'Nick Melistas' },
   // Demo accounts, one per role, mirroring index.html + the backend seed
   // (ops/seed-demo-users.sh). The tamper guard needs the username+role pair.
   { username: 'demo_owner',      role: 'owner',      name: 'Demo Owner' },
