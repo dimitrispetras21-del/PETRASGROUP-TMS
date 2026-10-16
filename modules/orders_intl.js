@@ -3482,7 +3482,8 @@ async function _scanPreview(data) {
 function _scanStopRow(key, rowHtml, s) {
   if (!rowHtml) return '';
   if (s._locId || typeof locScanNewHTML !== 'function') return rowHtml;
-  const wrap = 'scanStop_' + key;
+  // Unique per render: a slow save from the previous scan must repaint its own row, not this one.
+  const wrap = 'scanStop_' + key + '_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
   return `<div id="${wrap}">${rowHtml}</div>` + locScanNewHTML('i' + key, s, (item) => {
     s._locId = item.id; s._locLabel = item.label;
     const v = document.querySelector('#' + wrap + ' .detail-field-value');

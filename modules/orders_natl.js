@@ -2201,8 +2201,8 @@ async function _natlScanPreviewV2(data) {
       ${row('Client', escapeHtml(clientLabel || data.client_name || ''), fc.client_name)}
       ${data.reference ? row('Reference', escapeHtml(String(data.reference)), fc.reference) : ''}
       ${row('Direction', escapeHtml(data.direction || ''), null)}
-      ${pickup ? row('Pickup', escapeHtml(pickup.location_name || pickup.city || ''), fc.loading_stops) + _natlScanNewPlace('P', pickup) : ''}
-      ${deliveries.map((s, i) => row(`Delivery ${deliveries.length > 1 ? i + 1 : ''}`, escapeHtml(s.location_name || s.city || ''), fc.delivery_stops) + _natlScanNewPlace('D' + i, s)).join('')}
+      ${pickup ? _natlScanNewPlace('P', row('Pickup', escapeHtml(pickup.location_name || pickup.city || ''), fc.loading_stops), pickup) : ''}
+      ${deliveries.map((s, i) => _natlScanNewPlace('D' + i, row(`Delivery ${deliveries.length > 1 ? i + 1 : ''}`, escapeHtml(s.location_name || s.city || ''), fc.delivery_stops), s)).join('')}
       ${row('Load Date', escapeHtml((pickup && pickup.date) || ''), fc.dates)}
       ${row('Pallets', data.pallets != null ? String(data.pallets) : '', fc.pallets)}
       ${row('Goods', escapeHtml(data.goods || ''), null)}
@@ -2240,12 +2240,20 @@ async function _natlScanPreviewV2(data) {
   }
 }
 
-// An unmatched v2 stop gets the inline «νέα τοποθεσία» control (T44,
-// modules/locations.js locScanNewHTML); on save its location_id is set, which
-// is what _natlScanOpenFormV2 puts in the form.
-function _natlScanNewPlace(key, s) {
-  if (!s || s.location_id || typeof locScanNewHTML !== 'function') return '';
-  return locScanNewHTML('n' + key, s, (item) => { s.location_id = item.id; });
+// A stop row of the v2 preview; an unmatched stop gets the inline «νέα
+// τοποθεσία» control (T44, modules/locations.js locScanNewHTML). On save its
+// location_id is set, which is what _natlScanOpenFormV2 puts in the form, and
+// its row shows the new label with ✓.
+function _natlScanNewPlace(key, rowHtml, s) {
+  if (!rowHtml) return '';
+  if (!s || s.location_id || typeof locScanNewHTML !== 'function') return rowHtml;
+  // Unique per render: a slow save from the previous scan must repaint its own row, not this one.
+  const wrap = 'natlScanStop_' + key + '_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+  return `<div id="${wrap}">${rowHtml}</div>` + locScanNewHTML('n' + key, s, (item) => {
+    s.location_id = item.id;
+    const v = document.querySelector('#' + wrap + ' .detail-field-value');
+    if (v) v.innerHTML = `${escapeHtml(item.label)} <span style="color:var(--ok)">✓</span>`;
+  });
 }
 
 async function _natlScanOpenForm() {
