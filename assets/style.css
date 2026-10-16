@@ -8426,14 +8426,13 @@ body.wi4-on #wi-ctx .wi4-m-sec .wi4-l2, body.wi4-on #wi-ctx .wi4-m-hd .wi4-l2 { 
     mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.75' stroke-linecap='round' stroke-linejoin='round'%3E%3Cline x1='16.5' y1='9.4' x2='7.5' y2='4.21'/%3E%3Cpath d='M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z'/%3E%3Cpolyline points='3.27 6.96 12 12.01 20.73 6.96'/%3E%3Cline x1='12' y1='22.08' x2='12' y2='12'/%3E%3C/svg%3E") center / 12px 12px no-repeat; }
 }
 /* Line 2 of a point is a flex row: the place is cut, the pallets never
-   (review 11/10). With no room for a place (.wi4-noplace) the place goes and
-   the pallets stay. */
+   (review 11/10). The place is never hidden for width any more (Nick 15/10,
+   T98): under every point the same line 2, ✓ and place, cut with «…», so all
+   first stops read alike. .wi4-noplace stays on the node for the layout pass. */
 .wi4 .wi4-l2f { display:flex; align-items:baseline; gap:4px; overflow:hidden; text-overflow:clip; }
 .wi4 .wi4-l2f > .wi4-ell { flex:0 1 auto; min-width:0; }
 .wi4 .wi4-l2f > .wi4-ok { flex:none; margin-right:0; }
 .wi4-pt-pal { flex:none; font-weight:500; color:var(--wi4-grey-1); }
-.wi4-pts.wi4-noplace .wi4-l2:not(.wi4-l2p) { display:none; }
-.wi4-pts.wi4-noplace .wi4-pt-pl { display:none; }
 /* «+N» is a light chip (board: «+3» over «18π»), not bare text. */
 .wi4-more { flex:0 0 34px; width:34px; height:28px; align-self:center; border:none; border-radius:3px; background:var(--wi4-chip); padding:0; text-align:center; cursor:pointer; line-height:13px; }
 .wi4-more:hover { background:var(--wi4-line-2); }
