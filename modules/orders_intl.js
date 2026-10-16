@@ -3394,8 +3394,8 @@ async function _scanPreview(data) {
       ${/* s.country is whatever spelling the AI extracted from the document; countryName()
             returns it unchanged when unrecognised (K3), so this only ever improves the
             fallback line and never masks a real extraction miss. */''}
-      ${loadStops.map((s,i)=>row('Loading '+(loadStops.length>1?i+1:''), escapeHtml(s._locLabel||s.city+(s.country?', '+(typeof countryName==='function'?countryName(s.country):s.country):'')), !!s._locId)).join('')}
-      ${delStops.map((s,i)=>row('Delivery '+(delStops.length>1?i+1:''), escapeHtml(s._locLabel||s.city+(s.country?', '+(typeof countryName==='function'?countryName(s.country):s.country):'')), !!s._locId)).join('')}
+      ${loadStops.map((s,i)=>_scanStopRow('L'+i, row('Loading '+(loadStops.length>1?i+1:''), escapeHtml(s._locLabel||s.city+(s.country?', '+(typeof countryName==='function'?countryName(s.country):s.country):'')), !!s._locId), s)).join('')}
+      ${delStops.map((s,i)=>_scanStopRow('D'+i, row('Delivery '+(delStops.length>1?i+1:''), escapeHtml(s._locLabel||s.city+(s.country?', '+(typeof countryName==='function'?countryName(s.country):s.country):'')), !!s._locId), s)).join('')}
       ${row('Load Date',  escapeHtml(data.loading_date),  true)}
       ${row('Del Date',   escapeHtml(data.delivery_date),  true)}
       ${row('Goods',      escapeHtml(data.goods),          true)}
@@ -3406,7 +3406,7 @@ async function _scanPreview(data) {
       ${data.notes?`<div style="margin-top:8px;font-size:11px;color:var(--text-dim);font-style:italic">ℹ ${escapeHtml(data.notes)}</div>`:''}
     </div>
     <div style="font-size:11px;color:var(--text-dim);text-align:center;padding-top:4px">
-      ⚠ = δεν βρέθηκε match · επιλογή χειροκίνητα στη φόρμα
+      ⚠ = δεν βρέθηκε match · αποθήκευση ως νέα τοποθεσία, ή επιλογή στη φόρμα
     </div>`;
 
   // Store result globally — avoids JSON encoding issues in onclick
@@ -3473,6 +3473,22 @@ async function _scanPreview(data) {
         </div>`);
     });
   }
+}
+
+// A stop row of the scan preview; an unmatched stop gets the inline
+// «νέα τοποθεσία» control (T44, modules/locations.js locScanNewHTML). On save
+// the stop is linked (its _locId is what _scanOpen puts on the order's stop)
+// and its row turns ✓ with the new label.
+function _scanStopRow(key, rowHtml, s) {
+  if (!rowHtml) return '';
+  if (s._locId || typeof locScanNewHTML !== 'function') return rowHtml;
+  // Unique per render: a slow save from the previous scan must repaint its own row, not this one.
+  const wrap = 'scanStop_' + key + '_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+  return `<div id="${wrap}">${rowHtml}</div>` + locScanNewHTML('i' + key, s, (item) => {
+    s._locId = item.id; s._locLabel = item.label;
+    const v = document.querySelector('#' + wrap + ' .detail-field-value');
+    if (v) v.innerHTML = `${escapeHtml(item.label)} <span style="font-size:11px;font-weight:600;color:var(--ok);letter-spacing:0.5px">✓</span>`;
+  });
 }
 
 async function _scanOpenStored() {

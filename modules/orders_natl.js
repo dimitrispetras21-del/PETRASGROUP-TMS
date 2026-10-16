@@ -2201,8 +2201,8 @@ async function _natlScanPreviewV2(data) {
       ${row('Client', escapeHtml(clientLabel || data.client_name || ''), fc.client_name)}
       ${data.reference ? row('Reference', escapeHtml(String(data.reference)), fc.reference) : ''}
       ${row('Direction', escapeHtml(data.direction || ''), null)}
-      ${pickup ? row('Pickup', escapeHtml(pickup.location_name || pickup.city || ''), fc.loading_stops) : ''}
-      ${deliveries.map((s, i) => row(`Delivery ${deliveries.length > 1 ? i + 1 : ''}`, escapeHtml(s.location_name || s.city || ''), fc.delivery_stops)).join('')}
+      ${pickup ? _natlScanNewPlace('P', row('Pickup', escapeHtml(pickup.location_name || pickup.city || ''), fc.loading_stops), pickup) : ''}
+      ${deliveries.map((s, i) => _natlScanNewPlace('D' + i, row(`Delivery ${deliveries.length > 1 ? i + 1 : ''}`, escapeHtml(s.location_name || s.city || ''), fc.delivery_stops), s)).join('')}
       ${row('Load Date', escapeHtml((pickup && pickup.date) || ''), fc.dates)}
       ${row('Pallets', data.pallets != null ? String(data.pallets) : '', fc.pallets)}
       ${row('Goods', escapeHtml(data.goods || ''), null)}
@@ -2238,6 +2238,22 @@ async function _natlScanPreviewV2(data) {
         </div>`);
     });
   }
+}
+
+// A stop row of the v2 preview; an unmatched stop gets the inline «νέα
+// τοποθεσία» control (T44, modules/locations.js locScanNewHTML). On save its
+// location_id is set, which is what _natlScanOpenFormV2 puts in the form, and
+// its row shows the new label with ✓.
+function _natlScanNewPlace(key, rowHtml, s) {
+  if (!rowHtml) return '';
+  if (!s || s.location_id || typeof locScanNewHTML !== 'function') return rowHtml;
+  // Unique per render: a slow save from the previous scan must repaint its own row, not this one.
+  const wrap = 'natlScanStop_' + key + '_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+  return `<div id="${wrap}">${rowHtml}</div>` + locScanNewHTML('n' + key, s, (item) => {
+    s.location_id = item.id;
+    const v = document.querySelector('#' + wrap + ' .detail-field-value');
+    if (v) v.innerHTML = `${escapeHtml(item.label)} <span style="color:var(--ok)">✓</span>`;
+  });
 }
 
 async function _natlScanOpenForm() {
@@ -2317,7 +2333,9 @@ async function _natlScanOpenFormV2(r) {
   // a blank box next to a hidden id (same trick orders_intl.js uses).
   if (matched.clientId && matched.clientLabel) _fhClientsMap[matched.clientId] = matched.clientLabel;
   const allLocs = (typeof getRefLocations === 'function' ? getRefLocations() : []) || [];
-  const labelFor = id => { const l = allLocs.find(x => x.id === id); return l ? (l.fields?.['Name'] || l.fields?.['City'] || '') : ''; };
+  // A place just created from the scan (T44) is not in the ref cache yet: keep
+  // the label its save put in _fhLocationsMap rather than blanking it.
+  const labelFor = id => { const l = allLocs.find(x => x.id === id); return l ? (l.fields?.['Name'] || l.fields?.['City'] || '') : (_fhLocationsMap[id] || ''); };
   if (pickup && pickup.location_id) _fhLocationsMap[pickup.location_id] = labelFor(pickup.location_id);
   (matched.deliveries || []).forEach(s => { if (s.location_id) _fhLocationsMap[s.location_id] = labelFor(s.location_id); });
 
