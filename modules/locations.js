@@ -546,6 +546,139 @@ async function _locGeocode() {
   finally { if (btn) { btn.textContent = 'Εύρεση συντεταγμένων από όνομα + πόλη'; btn.disabled = false; } }
 }
 
+// ── New place from an order scan (T44, walkthrough item 16) ──────────────────
+// A scanned stop that matched no location can be saved as one from the scan
+// preview itself, instead of leaving the scan, creating it on Τοποθεσίες and
+// scanning again. It cannot reuse the form above: openModal is a single modal
+// (it would replace the preview) and _locSave is bound to this page (LOC.records,
+// its filters, closeModal). So this is its own small inline path. A person
+// checks name, city and country before anything is written; the map pin is
+// looked up on save, because the order's WhatsApp text prints one per stop.
+const _LOC_SCAN = {};   // key → { onSaved(item) }; one entry per unmatched stop shown
+
+/**
+ * Nominatim lookup → {lat, lon} or null; never throws. Tries name + city +
+ * country (what the form's «Εύρεση συντεταγμένων» sends), then the street
+ * address + city + country: OpenStreetMap rarely knows a client's company
+ * name, but a scanned document usually carries the address. Never the city
+ * alone: a pin in the town centre would send the driver to the wrong place.
+ */
+async function _locGeocodeQuery(name, city, country, address) {
+  const countryQ = country && typeof countryName === 'function' ? countryName(country, 'en') : country;
+  const tries = [
+    { q: [name, city, countryQ], house: false },
+    // The address try must hit a building: a vague address otherwise lands on
+    // a road or a postcode area (measured 16/10: «Odos 5, 41222, Larisa» gave
+    // the Larisa ring road). No house number, no pin.
+    { q: address ? [address, city, countryQ] : [], house: true },
+  ].filter((t) => t.q[0]);
+  for (const t of tries) {
+    try {
+      const q = t.q.filter(Boolean).join(', ');
+      const r = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(q)}&format=json&limit=1&addressdetails=1`);
+      const d = await r.json();
+      const hit = d && d[0];
+      if (hit && (!t.house || (hit.address && hit.address.house_number))) {
+        return { lat: +parseFloat(hit.lat).toFixed(6), lon: +parseFloat(hit.lon).toFixed(6) };
+      }
+    } catch (e) { /* network or rate limit: try the next form, else save without a pin */ }
+  }
+  return null;
+}
+
+/**
+ * The «+ Αποθήκευση ως νέα τοποθεσία» control under one unmatched scan stop.
+ * key: unique per stop in this preview ([A-Za-z0-9_]); stop: the scan's stop
+ * ({location_name, address, postcode, city, country}); onSaved({id, label}):
+ * the caller links the stop and repaints its own row.
+ */
+function locScanNewHTML(key, stop, onSaved) {
+  _LOC_SCAN[key] = { onSaved };
+  const s = stop || {};
+  const id = (p) => `locScan_${key}_${p}`;
+  const addr = [s.address, s.postcode].filter(Boolean).join(', ');
+  return `<div class="loc-scan-new" id="${id('box')}">
+    <button type="button" class="btn btn-ghost btn-sm" id="${id('open')}" onclick="locScanToggle('${key}')">+ Αποθήκευση ως νέα τοποθεσία</button>
+    <div class="loc-scan-form" id="${id('form')}" hidden>
+      <div class="form-grid">
+        <div class="form-field span-2"><label class="form-label">Όνομα *</label>
+          <input id="${id('name')}" class="form-input" value="${_locEsc(s.location_name || '')}"></div>
+        <div class="form-field"><label class="form-label">Πόλη</label>
+          <input id="${id('city')}" class="form-input" value="${_locEsc(s.city || '')}"></div>
+        <div class="form-field"><label class="form-label">Χώρα</label>
+          <select id="${id('country')}" class="form-input">${countryOptionsHtml(s.country || '')}</select></div>
+        <div class="form-field span-2"><label class="form-label">Διεύθυνση</label>
+          <input id="${id('address')}" class="form-input" value="${_locEsc(addr)}"></div>
+      </div>
+      <div class="loc-scan-hint">Λατινικοί χαρακτήρες, όπως όλες οι τοποθεσίες· οι συντεταγμένες βρίσκονται κατά την αποθήκευση.</div>
+      <div class="loc-scan-actions">
+        <button type="button" class="btn btn-ghost btn-sm" onclick="locScanToggle('${key}')">Άκυρο</button>
+        <button type="button" class="btn btn-primary btn-sm" id="${id('save')}" onclick="locScanSave('${key}')">Αποθήκευση τοποθεσίας</button>
+      </div>
+    </div>
+  </div>`;
+}
+
+function locScanToggle(key) {
+  const form = document.getElementById(`locScan_${key}_form`);
+  const open = document.getElementById(`locScan_${key}_open`);
+  if (!form) return;
+  form.hidden = !form.hidden;
+  if (open) open.hidden = !form.hidden;
+  if (!form.hidden) document.getElementById(`locScan_${key}_name`)?.focus();
+}
+
+async function locScanSave(key) {
+  const ctx = _LOC_SCAN[key];
+  if (!ctx) return;
+  const v = (p) => (document.getElementById(`locScan_${key}_${p}`)?.value || '').trim();
+  let name = v('name');
+  if (!name) { toast('Το όνομα είναι υποχρεωτικό', 'danger'); return; }
+  // Latin-only names (owner 9/8), as _locSave: transliterate, never refuse.
+  if (/[Ͱ-Ͽ]/.test(name) && typeof _fhTranslit === 'function') {
+    name = _fhTranslit(name);
+    toast('Το όνομα γράφτηκε με λατινικούς χαρακτήρες: ' + name, 'info');
+  }
+  const city = v('city'), country = v('country'), address = v('address');
+  // The label the order form's pickers use (core/form-helpers.js fhLoadLocations).
+  const label = [name, city, typeof countryName === 'function' ? countryName(country) : country].filter(Boolean).join(', ');
+  // The same place already exists under the same label: link it instead of a
+  // second record (no duplicate check exists on create anywhere else).
+  const same = _fhLocationsArr.find((l) => _fhNorm(l.label) === _fhNorm(label));
+  if (same) { _locScanLinked(key, same, 'Υπάρχει ήδη αυτή η τοποθεσία, συνδέθηκε με τη στάση', 'info'); return; }
+  const btn = document.getElementById(`locScan_${key}_save`);
+  if (btn) { btn.textContent = 'Αποθήκευση…'; btn.disabled = true; }
+  try {
+    const fields = { Name: name };
+    if (city) fields.City = city;
+    if (country) fields.Country = country;
+    if (address) fields.Address = address;
+    const geo = await _locGeocodeQuery(name, city, country, address);
+    if (geo) { fields.Latitude = geo.lat; fields.Longitude = geo.lon; }
+    const rec = await atCreate(TABLES.LOCATIONS, fields);
+    if (!rec || rec.error || !rec.id) throw new Error((rec && rec.error && rec.error.message) || 'Η αποθήκευση απέτυχε');
+    const item = { id: rec.id, label };
+    // The pickers read this shared list; without the push the stop still could
+    // not be picked in the order form until the next reload.
+    _fhLocationsArr.push(item);
+    _fhLocationsMap[rec.id] = label;
+    _locScanLinked(key, item, geo ? 'Η τοποθεσία δημιουργήθηκε ✓'
+      : 'Η τοποθεσία δημιουργήθηκε χωρίς συντεταγμένες· συμπλήρωσέ τες στις Τοποθεσίες', geo ? 'success' : 'warn');
+  } catch (e) {
+    reportError('Η τοποθεσία δεν αποθηκεύτηκε', e);
+    if (btn) { btn.textContent = 'Αποθήκευση τοποθεσίας'; btn.disabled = false; }
+  }
+}
+
+function _locScanLinked(key, item, msg, kind) {
+  const ctx = _LOC_SCAN[key];
+  if (ctx && typeof ctx.onSaved === 'function') ctx.onSaved(item);
+  const box = document.getElementById(`locScan_${key}_box`);
+  if (box) box.innerHTML = `<span class="loc-scan-done">✓ ${escapeHtml(item.label)}</span>`;
+  delete _LOC_SCAN[key];
+  toast(msg, kind || 'success');
+}
+
 // ── Delete ─────────────────────────────────────
 function _locConfirmDelete(id, name) {
   openModal('Διαγραφή τοποθεσίας;',
