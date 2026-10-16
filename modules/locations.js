@@ -552,8 +552,11 @@ async function _locGeocode() {
 // scanning again. It cannot reuse the form above: openModal is a single modal
 // (it would replace the preview) and _locSave is bound to this page (LOC.records,
 // its filters, closeModal). So this is its own small inline path. A person
-// checks name, city and country before anything is written; the map pin is
-// looked up on save, because the order's WhatsApp text prints one per stop.
+// checks name, city and country before anything is written. The map pin is
+// looked up when the form opens and SHOWN, with what was found and a map link,
+// in two fields the person keeps, corrects or clears (Dimitris 16/10 call
+// [00:04:35]: «να αφήνει κενό μόνο τις συντεταγμένες»); the save writes what the
+// form holds, because the order's WhatsApp text prints one pin per stop.
 const _LOC_SCAN = {};          // uid → { onSaved(item) }; one entry per unmatched stop on screen
 const _LOC_SCAN_PENDING = {};  // normalized label → the create in flight, so one place is created once
 let _locScanSeq = 0;           // makes every control unique: a re-scan reuses stop positions (L0, D0…)
@@ -563,8 +566,8 @@ const _LOC_GEO_VAGUE = new Set(['city', 'town', 'village', 'hamlet', 'municipali
   'country', 'postcode', 'suburb', 'quarter', 'neighbourhood', 'road']);
 
 /**
- * Nominatim lookup → {lat, lon} or null; never throws, never waits more than
- * 4 s per try (the save must not hang on it). Tries name + city + country
+ * Nominatim lookup → {lat, lon, found} or null (found = the address
+ * OpenStreetMap matched); never throws, never waits more than 4 s per try. Tries name + city + country
  * (what the form's «Εύρεση συντεταγμένων» sends), then the street address +
  * city + country: OpenStreetMap rarely knows a client's company name, but a
  * scanned document usually carries the address. A hit that is only a town,
@@ -588,8 +591,8 @@ async function _locGeocodeQuery(name, city, country, address) {
       if (!hit) continue;
       if (_LOC_GEO_VAGUE.has(hit.addresstype) || hit.class === 'boundary' || hit.class === 'place' || hit.class === 'highway') continue;
       if (t.house && !(hit.address && hit.address.house_number)) continue;
-      return { lat: +parseFloat(hit.lat).toFixed(6), lon: +parseFloat(hit.lon).toFixed(6) };
-    } catch (e) { /* timeout, network or rate limit: try the next form, else save without a pin */ }
+      return { lat: +parseFloat(hit.lat).toFixed(6), lon: +parseFloat(hit.lon).toFixed(6), found: String(hit.display_name || '') };
+    } catch (e) { /* timeout, network or rate limit: try the next form, else no pin */ }
   }
   return null;
 }
@@ -618,8 +621,17 @@ function locScanNewHTML(key, stop, onSaved) {
           <select id="${id('country')}" class="form-input">${countryOptionsHtml(s.country || '')}</select></div>
         <div class="form-field span-2"><label class="form-label">Διεύθυνση</label>
           <input id="${id('address')}" class="form-input" value="${_locEsc(addr)}"></div>
+        <div class="form-field"><label class="form-label">Γεωγρ. πλάτος (Latitude)</label>
+          <input id="${id('lat')}" class="form-input" type="number" step="any" oninput="locScanMapLink('${uid}')"></div>
+        <div class="form-field"><label class="form-label">Γεωγρ. μήκος (Longitude)</label>
+          <input id="${id('lon')}" class="form-input" type="number" step="any" oninput="locScanMapLink('${uid}')"></div>
+        <div class="form-field span-2 loc-scan-geo">
+          <span id="${id('geo')}" class="loc-scan-geo-msg"></span>
+          <a id="${id('map')}" class="loc-geo-link" target="_blank" rel="noopener" hidden>δες στον χάρτη</a>
+          <button type="button" class="loc-geo-link" onclick="locScanFind('${uid}')">Εύρεση ξανά</button>
+        </div>
       </div>
-      <div class="loc-scan-hint">Λατινικοί χαρακτήρες, όπως όλες οι τοποθεσίες· οι συντεταγμένες βρίσκονται κατά την αποθήκευση.</div>
+      <div class="loc-scan-hint">Λατινικοί χαρακτήρες, όπως όλες οι τοποθεσίες. Έλεγξε τις συντεταγμένες στον χάρτη· άφησέ τες κενές αν δεν είσαι σίγουρος.</div>
       <div class="loc-scan-actions">
         <button type="button" class="btn btn-ghost btn-sm" onclick="locScanToggle('${uid}')">Άκυρο</button>
         <button type="button" class="btn btn-primary btn-sm" id="${id('save')}" onclick="locScanSave('${uid}')">Αποθήκευση τοποθεσίας</button>
@@ -635,6 +647,39 @@ function locScanToggle(uid) {
   form.hidden = !form.hidden;
   if (open) open.hidden = !form.hidden;
   if (!form.hidden) document.getElementById(`locScan_${uid}_name`)?.focus();
+  const ctx = _LOC_SCAN[uid];
+  if (!form.hidden && ctx && !ctx.looked) { ctx.looked = true; locScanFind(uid); }
+}
+
+// The map link follows whatever the two fields hold, typed or found.
+function locScanMapLink(uid) {
+  const a = document.getElementById(`locScan_${uid}_map`);
+  if (!a) return;
+  const lat = parseFloat(document.getElementById(`locScan_${uid}_lat`)?.value);
+  const lon = parseFloat(document.getElementById(`locScan_${uid}_lon`)?.value);
+  const ok = isFinite(lat) && isFinite(lon);
+  a.hidden = !ok;
+  if (ok) a.href = `https://maps.google.com/?q=${lat},${lon}`;
+}
+
+// Look the pin up from the form's current name, city, country and address and
+// show what was found; a person decides. Nothing reliable: the fields are left
+// empty (a value the person typed is never overwritten by «nothing found»).
+async function locScanFind(uid) {
+  const v = (p) => (document.getElementById(`locScan_${uid}_${p}`)?.value || '').trim();
+  const msg = document.getElementById(`locScan_${uid}_geo`);
+  const lat = document.getElementById(`locScan_${uid}_lat`), lon = document.getElementById(`locScan_${uid}_lon`);
+  if (!msg || !lat || !lon) return;
+  msg.textContent = 'Αναζήτηση συντεταγμένων…';
+  const geo = await _locGeocodeQuery(v('name'), v('city'), v('country'), v('address'));
+  if (!document.getElementById(`locScan_${uid}_geo`)) return;   // the form was saved or replaced meanwhile
+  if (geo) {
+    lat.value = geo.lat; lon.value = geo.lon;
+    msg.textContent = 'Βρέθηκε: ' + (geo.found || `${geo.lat}, ${geo.lon}`);
+  } else {
+    msg.textContent = 'Δεν βρέθηκε αξιόπιστο σημείο· συμπλήρωσε τις συντεταγμένες ή άφησέ τες κενές.';
+  }
+  locScanMapLink(uid);
 }
 
 // The same place already exists: same label AND, when both have one, the same
@@ -671,6 +716,16 @@ async function locScanSave(uid) {
       toast('Το όνομα γράφτηκε με λατινικούς χαρακτήρες: ' + name, 'info');
     }
     const city = v('city'), country = v('country'), address = v('address');
+    // The pin is what the form holds: found and checked, typed, or empty.
+    const latS = v('lat'), lonS = v('lon');
+    let geo = null;
+    if (latS || lonS) {
+      const la = parseFloat(latS), lo = parseFloat(lonS);
+      if (!isFinite(la) || !isFinite(lo) || Math.abs(la) > 90 || Math.abs(lo) > 180) {
+        throw new Error('Συμπλήρωσε και τις δύο συντεταγμένες σωστά (πλάτος -90 έως 90, μήκος -180 έως 180) ή άφησέ τες κενές');
+      }
+      geo = { lat: la, lon: lo };
+    }
     // The label the order form's pickers use (core/form-helpers.js fhLoadLocations).
     const label = [name, city, typeof countryName === 'function' ? countryName(country) : country].filter(Boolean).join(', ');
     const same = _locScanExisting(label, address);
@@ -683,7 +738,6 @@ async function locScanSave(uid) {
         if (city) fields.City = city;
         if (country) fields.Country = country;
         if (address) fields.Address = address;
-        const geo = await _locGeocodeQuery(name, city, country, address);
         if (geo) { fields.Latitude = geo.lat; fields.Longitude = geo.lon; }
         const rec = await atCreate(TABLES.LOCATIONS, fields);
         // Offline, atCreate queues the write and returns a temporary id that no
@@ -701,10 +755,10 @@ async function locScanSave(uid) {
         if (typeof preloadReferenceData === 'function') {
           try { await preloadReferenceData(); } catch (e) { if (typeof logError === 'function') logError(e, 'locScanSave: reference reload'); }
         }
-        return { item, geo };
+        return { item };
       })().finally(() => { delete _LOC_SCAN_PENDING[pkey]; });
     }
-    const { item, geo } = await job;
+    const { item } = await job;
     _locScanLinked(uid, ctx, item, geo ? 'Η τοποθεσία δημιουργήθηκε ✓'
       : 'Η τοποθεσία δημιουργήθηκε χωρίς συντεταγμένες· συμπλήρωσέ τες στις Τοποθεσίες', geo ? 'success' : 'warn');
   } catch (e) {
