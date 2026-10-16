@@ -9083,3 +9083,8 @@ body.wi4-on #wi-popover .wi-pop-save:hover { background:var(--navy-light); }
 .loc-scan-hint { font-size: var(--text-xs); color: var(--text-dim); margin-top: var(--space-2); }
 .loc-scan-actions { display: flex; justify-content: flex-end; gap: var(--space-2); margin-top: var(--space-2); }
 .loc-scan-done { font-size: var(--text-xs); font-weight: 600; color: var(--ok); }
+/* The pin line of the scan's new-place form (T44 follow-up): what was found, the map link, «Εύρεση ξανά». */
+.loc-scan-form .loc-scan-geo { flex-direction: row; align-items: baseline; gap: var(--space-3); flex-wrap: wrap; font-size: var(--text-xs); }
+.loc-scan-geo-msg { color: var(--text-mid); }
+.loc-scan-form .loc-geo-link { background: none; border: none; padding: 0; font: inherit; font-weight: 600; color: var(--accent); cursor: pointer; }
+.loc-scan-form .loc-geo-link:hover { text-decoration: underline; }
