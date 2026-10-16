@@ -7286,16 +7286,25 @@ function _wiShelfInner(st,opt){
 // critic-5 S5-01): no bar (it repeated 18/24), no days unless they ARE the
 // problem, no country code — the full story is in the title and the panel.
 // About half the old width, so 2–3 chips fit at 1440.
+// The lot's own reference (walkthrough item 30, T61): the order reference the
+// lot came in on, «Ref 4500403460», the same words the driver's sheet and the
+// WhatsApp text of a piece already print. Empty when the lot has none. One
+// builder for the chip, the open-lots list, the lot panel and «+ Κομμάτι».
+function _wiLotRef(f){
+  const r=f&&f['Reference']!=null?String(f['Reference']).trim():'';
+  return r?'Ref '+r:'';
+}
 function _wiShelfChip(l,c,unit,flagText){
   const f=l.fields||{};
   const u=unit==='π'?'π':'p';
   const cc=(typeof countryCode==='function'&&countryCode(f['Warehouse Country']))||'';
   const rem=+(f['Remaining Pallets']||0), stock=+(f['Stock Pallets']||0);
   const flag=flagText||_WI_SHELF_FLAG[c.key]||'';
-  const tip=[`Παρτίδα ${OrdersStock.lotLabel(l)}`,`${f['Warehouse Name']||'—'}${cc?' ('+cc+')':''}`,f['Client Name']||'—',
+  const ref=_wiLotRef(f);
+  const tip=[`Παρτίδα ${OrdersStock.lotLabel(l)}`,`${f['Warehouse Name']||'—'}${cc?' ('+cc+')':''}`,f['Client Name']||'—',ref,
     `υπόλοιπο ${rem}/${stock}${u}`,`${+(f['Pieces']||0)} κομμάτια, ${+(f['Pieces Delivered']||0)} παραδόθηκαν`,
     f['Received On']?`παραλαβή ${_wiFmt(f['Received On'])}${c.days!=null?' ('+c.days+' ημ.)':''}`:'παραλαβή αναμένεται'].join(' · ')+' — κλικ: κομμάτια';
-  return `<button type="button" class="wi-shelf-chip ${escapeHtml(c.key)}" data-lot="${escapeHtml(l.id)}" onclick="_wiStockLotOpen(this,'${escapeHtml(l.id)}')" title="${escapeHtml(tip)}"><span aria-hidden="true">▣</span><b>${escapeHtml(f['Warehouse Name']||'—')}</b><span class="sep">·</span>${escapeHtml(f['Client Name']||'—')}<b class="n">${rem}/${stock}${u}</b>${flag?`<span class="fl">${flag}</span>`:''}</button>`;
+  return `<button type="button" class="wi-shelf-chip ${escapeHtml(c.key)}" data-lot="${escapeHtml(l.id)}" onclick="_wiStockLotOpen(this,'${escapeHtml(l.id)}')" title="${escapeHtml(tip)}"><span aria-hidden="true">▣</span><b>${escapeHtml(f['Warehouse Name']||'—')}</b><span class="sep">·</span>${escapeHtml(f['Client Name']||'—')}${ref?`<span class="sep">·</span>${escapeHtml(ref)}`:''}<b class="n">${rem}/${stock}${u}</b>${flag?`<span class="fl">${flag}</span>`:''}</button>`;
 }
 // «ΑΠΟΘΕΜΑ · N» → every open lot, one line each, in the strip's order. A line
 // opens that lot's panel, anchored on the strip label (the clicked line lives
@@ -7308,7 +7317,7 @@ async function _wiStockLotsOpen(anchor){
   const body=lots.length
     ? `<div class="wi-panel-list wi-stk-list">${lots.map(({l,c})=>{ const f=l.fields||{};
         const fl=_WI_SHELF_FLAG[c.key];
-        return `<button type="button" class="wi-panel-opt wi-stk-opt" data-lot="${escapeHtml(l.id)}" onclick="_wiStockLotOpen(document.querySelector('#wi-shelf .wi-shelf-lbl'),'${escapeHtml(l.id)}')"><span>${escapeHtml(OrdersStock.lotLabel(l))} · ${escapeHtml(f['Warehouse Name']||'—')} · ${escapeHtml(f['Client Name']||'—')} · <b>${+(f['Remaining Pallets']||0)}/${+(f['Stock Pallets']||0)}p</b>${fl?` · <span class="${c.key==='nointake'?'wi-stk-bad':'wi-stk-warn'}">${fl}</span>`:''}</span></button>`; }).join('')}</div>`
+        return `<button type="button" class="wi-panel-opt wi-stk-opt" data-lot="${escapeHtml(l.id)}" onclick="_wiStockLotOpen(document.querySelector('#wi-shelf .wi-shelf-lbl'),'${escapeHtml(l.id)}')"><span>${escapeHtml(OrdersStock.lotLabel(l))} · ${escapeHtml(f['Warehouse Name']||'—')} · ${escapeHtml(f['Client Name']||'—')}${_wiLotRef(f)?' · '+escapeHtml(_wiLotRef(f)):''} · <b>${+(f['Remaining Pallets']||0)}/${+(f['Stock Pallets']||0)}p</b>${fl?` · <span class="${c.key==='nointake'?'wi-stk-bad':'wi-stk-warn'}">${fl}</span>`:''}</span></button>`; }).join('')}</div>`
     : `<div class="wi-panel-empty">Καμία ανοιχτή παρτίδα</div>`;
   _wiPanelOpen(anchor,'Ανοιχτές παρτίδες',`${lots.length} σε αποθήκες${nFlag?` · ${nFlag} θέλ${nFlag===1?'ει':'ουν'} προσοχή`:''}`,body,'');
 }
@@ -7427,7 +7436,7 @@ async function _wiStockLotOpen(anchor,lotRec){
   const title=`${escapeHtml(OrdersStock.lotLabel(lot))} · ${escapeHtml(f['Warehouse Name']||'—')}${cc?' '+cc:''}`;
   const recv=f['Received On']?`παραλαβή ${_wiFmt(f['Received On'])}`:'παραλαβή αναμένεται';
   const open=getLinkedId(f['Order'])?` · <button type="button" class="wi-stk-link" onclick="_wiStockOpenLotOrder()" title="Η παραγγελία της παρτίδας">Άνοιγμα παρτίδας</button>`:'';
-  const ctxLine=`${escapeHtml(f['Client Name']||'—')} · υπόλοιπο <b>${rem}/${stock}p</b>${c.key==='nointake'?'':' · '+recv}${open}`;
+  const ctxLine=`${escapeHtml(f['Client Name']||'—')}${_wiLotRef(f)?' · '+escapeHtml(_wiLotRef(f)):''} · υπόλοιπο <b>${rem}/${stock}p</b>${c.key==='nointake'?'':' · '+recv}${open}`;
   const flag=c.key==='nointake'?`<div class="wi-panel-note wi-stk-bad">${c.moving} ${c.moving===1?'κομμάτι κινείται':'κομμάτια κινούνται'}, αλλά η παραλαβή στην αποθήκη δεν σημειώθηκε — Ημερήσιο, «Παραλαβή αποθήκης».</div>`
     :c.key==='close'?`<div class="wi-panel-note wi-stk-warn">Όλα τα κομμάτια παραδόθηκαν — η παρτίδα τιμολογείται μετά το «Κλείσιμο υπολοίπου».</div>`
     :c.key==='aging'?`<div class="wi-panel-note wi-stk-warn">Στην αποθήκη ${c.days} ημ. (πάνω από 21).</div>`:'';
@@ -7677,7 +7686,7 @@ function _wiStockPanel(rowId){
   const lotHtml=lots.length
     ? `<div class="wi-panel-list">${lots.map((l,i)=>{ const f=l.fields||{};
         const cc=(typeof countryCode==='function'&&countryCode(f['Warehouse Country']))||'';
-        const lbl=`${escapeHtml(OrdersStock.lotLabel(l))} · ${escapeHtml(f['Warehouse Name']||'—')}${cc?' '+cc:''} · ${escapeHtml(f['Client Name']||'—')} · υπόλοιπο <b>${+(f['Remaining Pallets']||0)}p</b>${f['Intake Delivered']?'':' · <span class="wi-stk-warn">παραλαβή δεν σημειώθηκε</span>'}`;
+        const lbl=`${escapeHtml(OrdersStock.lotLabel(l))} · ${escapeHtml(f['Warehouse Name']||'—')}${cc?' '+cc:''} · ${escapeHtml(f['Client Name']||'—')}${_wiLotRef(f)?' · '+escapeHtml(_wiLotRef(f)):''} · υπόλοιπο <b>${+(f['Remaining Pallets']||0)}p</b>${f['Intake Delivered']?'':' · <span class="wi-stk-warn">παραλαβή δεν σημειώθηκε</span>'}`;
         return f['Ops Status']
           ? `<button type="button" class="wi-panel-opt wi-stk-opt" disabled title="Η παρτίδα είναι pre-order — δεν βγαίνουν κομμάτια ακόμη"><span>${lbl}</span></button>`
           : `<button type="button" class="wi-panel-opt wi-stk-opt" onclick="_wiStockPick('lot',${i})"><span>${lbl}</span></button>`; }).join('')}</div>`

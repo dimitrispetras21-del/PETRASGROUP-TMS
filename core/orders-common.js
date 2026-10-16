@@ -262,11 +262,16 @@ const OrdersCommon = {
         const plates = String(x['Partner Truck Plates'] || '').trim() || (pr ? 'συνεργάτης' : '');
         return two(name, plates, 'partner', [name, plates].filter(Boolean).join(' · '));
       }
-      const tid = (x['Truck'] || [])[0], did = (x['Driver'] || [])[0];
+      const tid = (x['Truck'] || [])[0], did = (x['Driver'] || [])[0], rid = (x['Trailer'] || [])[0];
       if (!tid && !did) return null;
       const t = tid ? (typeof getRefTrucks === 'function' ? getRefTrucks() : []).find(v => v.id === tid) : null;
       const d = did ? (typeof getRefDrivers === 'function' ? getRefDrivers() : []).find(v => v.id === did) : null;
-      const plate = t?.fields?.['License Plate'] || '—';
+      const tr = rid ? (typeof getRefTrailers === 'function' ? getRefTrailers() : []).find(v => v.id === rid) : null;
+      // One way to write an own-fleet assignment (Nick 16/10, Q73): «truck ·
+      // trailer» on top, the driver under it. The driver is the stored full name:
+      // names are stored in either order and two drivers share a surname
+      // (Touratzidis), so a surname alone would be a guess.
+      const plate = [t?.fields?.['License Plate'] || '—', tr?.fields?.['License Plate']].filter(Boolean).join(' · ');
       const drv = String(d?.fields?.['Full Name'] || '').trim();
       return two(plate, drv, 'own', [plate, drv].filter(Boolean).join(' · '));
     };

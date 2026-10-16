@@ -165,6 +165,13 @@
       // atGet reads every field, so 'Stock Lot'/'Group ID' are there.
       const criticalOrders = highRiskOrders.filter(r => !OrdersStock.isLoose(r.fields));
 
+      // The reads above take seconds. If the user left meanwhile, the dashboard's
+      // elements are gone and #content belongs to another page: draw nothing.
+      // Before this, _renderAll's first write threw on a null element and the
+      // catch below painted «Ο πίνακας διοίκησης δεν φόρτωσε» over the page the
+      // user had moved to (app_errors: 14 rows «CEO Dashboard loadAll: Cannot set
+      // properties of null», 3/8 to 25/8, all dimitris).
+      if (!_onDashboard()) return;
       _renderAll({ allOrders, deliveredOrders, prevOrders, prevDelivered, activeDrivers, tripCosts, maintHistory, highRiskOrders: criticalOrders, sparkOrders });
 
       // Name any secondary source that failed, on the timestamp line rather than
@@ -195,6 +202,9 @@
       // the data.
       const isTimeout = err && err.message === 'CEO_LOAD_TIMEOUT';
       if (typeof logError === 'function') logError(err, 'CEO Dashboard loadAll');
+      // A failure that lands after the user left is logged, never painted over
+      // the next page.
+      if (!_onDashboard()) return;
       const c = document.getElementById('content');
       // DESIGN rule 7 / dashboard pattern: what happened · what it does NOT
       // mean · what to do. «Κάτι πήγε στραβά» told the reader none of the three.
@@ -214,6 +224,13 @@
   }
 
   // ── Full page render ─────────────────────────────────────────
+  // Still on the CEO dashboard, with its shell drawn (currentPage alone is not
+  // enough: a re-open redraws the shell under the same page name).
+  function _onDashboard() {
+    if (typeof currentPage !== 'undefined' && currentPage !== 'ceo_dashboard') return false;
+    return !!document.getElementById('brand-speed-val');
+  }
+
   function _renderAll(data) {
     const el = id => document.getElementById(id);
 

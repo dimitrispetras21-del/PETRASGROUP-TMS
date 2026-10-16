@@ -388,7 +388,9 @@ const OrdersInvoicingView = (() => {
     const set = await OrdersData.loadInvoicingSet();
     if (!ctx.isCurrent()) return;
     S.pieces.clear(); S.alloc.clear();
-    await loadClientInfo(set);
+    // National loads carry a national order's truck (ΑΝΑΘΕΣΗ, T49); read with
+    // the client info, once per cached set, as «Χωρίς τιμή» does.
+    await Promise.all([loadClientInfo(set), OrdersData.loadNatLoads(set)]);
     if (!ctx.isCurrent()) return;
     S.set = set;
     rebuild();
@@ -409,6 +411,8 @@ const OrdersInvoicingView = (() => {
   }
   function rebuild() {
     S.all = annotate(S.set, clientName);
+    // The search also finds an order by plate or driver (T49, note option 7).
+    for (const it of S.all) { const t = assignOfIt(it).text; if (t) it.search += ' ' + fold(t); }
     S.items = scopeFilter(S.all, S.ctx ? S.ctx.scope : 'all');
   }
 
@@ -439,7 +443,7 @@ const OrdersInvoicingView = (() => {
             <div class="oiv-kpis" id="oivKpis"></div>
             <div class="oiv-bar">
               <div class="oiv-seg" id="oivTabs" role="tablist"></div>
-              <label class="oiv-search"><input id="oivQ" type="search" autocomplete="off" placeholder="Πελάτης, αριθμός, τόπος, ΤΠΥ" value="${esc(S.q)}" oninput="OrdersInvoicingView.search(this.value)"></label>
+              <label class="oiv-search"><input id="oivQ" type="search" autocomplete="off" placeholder="Πελάτης, αριθμός, τόπος, πινακίδα, ΤΠΥ" value="${esc(S.q)}" oninput="OrdersInvoicingView.search(this.value)"></label>
             </div>
             <div class="oiv-tablewrap">
               <table class="oiv-t">
@@ -522,6 +526,19 @@ const OrdersInvoicingView = (() => {
     return `<span class="oiv-st"><i class="oiv-dot"></i>προς κοπή${d}</span>`;
   }
 
+  // Who carried it (walkthrough item 18, T49), in the card and the search, the
+  // shared OrdersCommon.assignOf. Not a table column: with the card open the
+  // table cannot spare 176px at 1440 (ΦΟΡΤΩΣΗ and ΠΑΡΑΔΟΣΗ fell to 55px each).
+  // Format:
+  // own fleet «truck · trailer» / driver, a partner by name. A national order's
+  // vehicle is on its national load; when those did not load, «—» (unknown),
+  // never «προς ανάθεση».
+  function assignOfIt(it) {
+    if (it.type !== 'natl') return OC().assignOf(it.rec);
+    const loads = S.set && S.set.natLoads;
+    if (!loads) return { key: 'unknown', text: '', html: '<span class="oc-adim">—</span>' };
+    return OC().assignOf(it.rec, { load: loads.get(it.rec.id) || null });
+  }
   function paintTable(v) {
     const body = document.getElementById('oivBody'); if (!body) return;
     const eur = OC().eur;
@@ -755,6 +772,7 @@ const OrdersInvoicingView = (() => {
     const order = kv('Αναφορά πελάτη', esc(it.ref || '—'))
       + kv('Φόρτωση ' + (it.load.date ? dm(it.load.date) : ''), place(it.load))
       + kv('Παράδοση ' + (it.del.date ? dm(it.del.date) : ''), place(it.del))
+      + kv('Ανάθεση', assignOfIt(it).html)
       + kv('Παλέτες', `${pal == null || pal === '' ? '—' : esc(pal)} · ${f['Pallet Exchange'] ? 'με ανταλλαγή' : 'χωρίς ανταλλαγή'}`)
       + kv('Ποσό', it.price === null ? '<span class="oiv-bad">χωρίς τιμή</span>' : `<span class="oiv-amt">${eurSym(it.price)}</span>`);
 
