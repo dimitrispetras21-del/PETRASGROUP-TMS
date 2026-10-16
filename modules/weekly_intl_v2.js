@@ -767,7 +767,9 @@ function _routeTable(d) {
   const box = d.group ? 'wi4-pt-n' : 'wk3-stopn';
   const rows = st.map((x, i) => { const ev = _ptEvents(x);
     return `<tr class="wi4-rrow"${ev.click}${ev.drag}><td class="n"><span class="${box}">${_esc(String(x.n || i + 1))}</span></td>` +
-      `<td class="nm">${_esc(x.label || '—')}</td><td class="pl">${_esc(x.place || '')}</td>` +
+      // ✓ per row by the board's own rule (Nick 15/10, T98): the point's done is its order's status, so a
+      // popup row and its point on the row never disagree.
+      `<td class="nm">${x.done ? `<span class="wi4-ok" role="img" aria-label="ολοκληρώθηκε">${_ico('check', 11)}</span>` : ''}${_esc(x.label || '—')}</td><td class="pl">${_esc(x.place || '')}</td>` +
       (pal ? `<td class="pa">${x.pallets != null ? _esc(String(x.pallets)) + 'π' : '—'}</td>` : '') +
       (dayCol ? `<td class="dy">${_esc(_dayLabel(days[i]))}</td>` : '') + '</tr>'; }).join('');
   return `<table class="wi4-rtab"><thead><tr><th>#</th><th>Σημείο</th><th>Τόπος</th>${pal ? '<th class="pa">Παλέτες</th>' : ''}${dayCol ? '<th>Ημέρα</th>' : ''}</tr></thead><tbody>${rows}</tbody></table>`;
@@ -777,9 +779,13 @@ function _routeTitle(d) {
 }
 function _ptsInner(r, d) {
   const last = r.shown.length - 1;
-  let h = r.shown.map((s, i) => _ptHTML(Object.assign({}, s, { pre: i === 0 ? d.pre : null, late: i === last ? d.late : null }), d)).join('');
+  // An end folded behind «+N» shows no per-stop pallets on its points or on the chip (Nick 15/10, T98): the
+  // first point's «5π» read as the whole order's and the chip's «12π» as nothing. The ΠΑΛ column keeps the
+  // total and the «+N» popup each stop's.
+  const noPal = !!r.more;
+  let h = r.shown.map((s, i) => _ptHTML(Object.assign({}, s, { pre: i === 0 ? d.pre : null, late: i === last ? d.late : null, noPal }), d)).join('');
   if (r.more) {
-    h += `<button type="button" class="wi4-more" aria-label="${_esc(_routeTitle(d))}" onclick="event.stopPropagation();WIV2._more(this)"><b>+${r.more.count}</b>${r.more.pallets ? `<span>${r.more.pallets}π</span>` : ''}</button>`;
+    h += `<button type="button" class="wi4-more" aria-label="${_esc(_routeTitle(d))}" onclick="event.stopPropagation();WIV2._more(this)"><b>+${r.more.count}</b></button>`;
     h += `<div class="wk3-xfold wi4-rfold${d.group ? ' wi4-fold' : ''}">${_routeTable(d)}</div>`;
   }
   return h;
@@ -790,9 +796,9 @@ function _ptHTML(s, d) {
   const delay = s.delayH ? ` <span class="wi4-delay">+${_esc(s.delayH)}ω</span>` : '';
   // Line 2 is a flex row (review 11/10): the PLACE is cut, the pallets never
   // are — «Kecskemét HU 6π» (Figma), where one ellipsized string cut «· 6π»
-  // first («Milan, IT…»). A place hidden for width (.wi4-noplace) still
-  // leaves the pallets.
-  const palN = d.showPal && s.pallets != null ? s.pallets + 'π' : '';
+  // first («Milan, IT…»). The place is always there, cut with «…» when the
+  // column is narrow (T98: every first stop reads alike).
+  const palN = d.showPal && !s.noPal && s.pallets != null ? s.pallets + 'π' : '';
   const place = s.place || '';
   // With no place the ✓ goes before the name, never alone on an empty line 2.
   // Line 2 is place and pallets only: the VS date warning («φτάνει …») left
