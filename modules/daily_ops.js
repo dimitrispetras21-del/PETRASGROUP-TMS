@@ -211,6 +211,24 @@ async function _opsLoad(seq) {
     }
   }catch(e){ console.warn('[ops] pair-assignment inherit:', e.message); }
 
+  // Partner plates (Παντελής 19/10: «οι πινακίδες αν και περασμένες στο weekly
+  // στο daily στις εκκρεμείς παραδόσεις δεν φαίνονται»). The Weekly writes them
+  // to the order's own «Partner Truck Plates»; OPS_FIELDS never asks for it, so
+  // a partner order showed only the company. A SEPARATE request, like the
+  // relays (OPS_FIELDS stays byte-identical), filled in memory only, never
+  // written. A pair-inherited partner already brought its plates above. A
+  // failure costs the plates on screen, never the day.
+  try{
+    const noPl=[...intl,...overdue,...overdueLoads].filter(r=>getLinkedId(r.fields['Partner']) && r.fields['Partner Truck Plates']==null);
+    const plIds=[...new Set(noPl.map(r=>r.id))];
+    if(plIds.length){
+      const pf=`OR(${plIds.map(id=>`RECORD_ID()="${id}"`).join(',')})`;
+      const pls=await atGetAll(TABLES.ORDERS,{filterByFormula:pf,fields:['Partner Truck Plates']},false);
+      const byId={}; pls.forEach(p=>{ byId[p.id]=p.fields['Partner Truck Plates']; });
+      noPl.forEach(r=>{ if(byId[r.id]!=null) r.fields['Partner Truck Plates']=byId[r.id]; });
+    }
+  }catch(e){ console.warn('[ops] partner plates:', e.message); }
+
   // Batch fetch ORDER_STOPS for location resolution
   const allRecs = [...intl, ...overdue, ...overdueLoads];
   const stopIds = allRecs.flatMap(r => r.fields['ORDER STOPS'] || []);
@@ -1020,12 +1038,11 @@ function _opsRow(rec,num,type,isToday,cls) {
 // Own fleet = a plate or a driver on a non-partner trip. A plate without a
 // driver is still own fleet — the truck is ours, the driver line just stays
 // empty. No «ΙΔ.» tag (Παντελής 22/9): own is the default, the plate says it.
-// «Partner Truck Plates» is NOT requested in OPS_FIELDS (the request must stay
-// byte-identical to the 28/8 recording), so the partner line shows only the
-// company; when the pair-inherit above brought plates in memory, they appear.
+// «Partner Truck Plates» is not in OPS_FIELDS (the request stays byte-identical
+// to the 28/8 recording); _opsLoad fills it in memory from its own request
+// («Partner plates», 19/10) or from the matched export (pair-inherit).
 // Copy the plates in one click (walkthrough 13/10 item 16, C5), on row hover.
-// Raw plates from the record (the cell's `truck` is escaped HTML); a partner's
-// only when «Partner Truck Plates» is in memory (it is not in OPS_FIELDS).
+// Raw plates from the record (the cell's `truck` is escaped HTML).
 function _opsCpy(f, partner){
   if(typeof platesText!=='function') return '';
   const trId=getLinkedId(f['Trailer']), tr=trId?(getRefTrailers().find(r=>r.id===trId)||{}).fields||{}:{};
