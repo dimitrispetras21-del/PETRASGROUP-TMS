@@ -82,9 +82,12 @@ function _rtFleetIds(f, lk) {
 // older order's trip was not in it, so unlink/cancel/delete went on as «no RT»
 // and the order stayed on its trip. The leg search below stays: a Worker
 // deployed before order_ids ignores it and answers the bare list, as before.
+// Same id test as the Worker (1 to 9 digits, at most 50): anything else, or more
+// ids, sends the bare list as before rather than a 400 or a truncated filter.
 async function _rtFind(pgIds) {
-  const ids = (pgIds || []).filter(x => Number.isInteger(Number(x)) && x !== null && x !== '').slice(0, 50);
-  const r = await plFetch('/costs/rt' + (ids.length ? '?order_ids=' + ids.join(',') : ''));
+  const ids = (pgIds || []).map(String);
+  const ok = ids.length > 0 && ids.length <= 50 && ids.every(x => /^\d{1,9}$/.test(x));
+  const r = await plFetch('/costs/rt' + (ok ? '?order_ids=' + ids.join(',') : ''));
   return (r.records || []).find(rt => rt.status !== 'cancelled' && (rt.ct_rt_legs || []).some(l => pgIds.includes(l.order_id))) || null;
 }
 
@@ -105,7 +108,7 @@ const _rtWarn = (msg) => { if (typeof showErrorToast === 'function') showErrorTo
 const _RT_SPLIT = /legs already belong to different round trips/;
 
 // The 409 names round-trip ids; people know codes (RT-1217). Mapped through the
-// same /costs/rt list _rtFind reads (newest 200 — a live split is recent). An id
+// bare /costs/rt list (newest 200 of everyone — a live split is recent). An id
 // the list cannot place is shown as «RT id N», never dropped.
 async function _rtSplitCodes(ids) {
   const codeById = {};

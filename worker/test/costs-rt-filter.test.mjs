@@ -104,7 +104,7 @@ test('trailer_id filters the trips in the database', async () => {
 });
 
 test('a non-integer driver_id or trailer_id is a 400 before any DB call', async () => {
-  for (const q of ['driver_id=7,8', 'trailer_id=abc', 'driver_id=', 'driver_id=1)']) {
+  for (const q of ['driver_id=7,8', 'trailer_id=abc', 'driver_id=', 'driver_id=1)', 'driver_id=12345678901']) {
     calls = [];
     const r = await call('owner', `/costs/rt?${q}`);
     assert.equal(r.status, 400, `${q}: ${r.text}`);
@@ -137,7 +137,7 @@ test('order_ids with no trip: empty, and no ct_round_trips read', async () => {
 });
 
 test('a malformed order_ids is a 400 before any DB call', async () => {
-  for (const q of ['order_ids=', 'order_ids=1,,2', 'order_ids=1)', 'order_ids=a', 'order_ids=' + Array.from({ length: 51 }, (_, i) => i + 1).join(',')]) {
+  for (const q of ['order_ids=', 'order_ids=1,,2', 'order_ids=1)', 'order_ids=a', 'order_ids=1,12345678901', 'order_ids=' + Array.from({ length: 51 }, (_, i) => i + 1).join(',')]) {
     calls = [];
     const r = await call('owner', `/costs/rt?${q}`);
     assert.equal(r.status, 400, `${q.slice(0, 30)}: ${r.text}`);
