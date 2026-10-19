@@ -3760,8 +3760,22 @@ async function handleCosts(request, url, origin, env) {
       for (const col of ["driver_id", "trailer_id"]) {
         const v = q.get(col);
         if (v === null) continue;
-        if (!/^\d+$/.test(v)) return jsonError(`Μη έγκυρο ${col}`, 400, origin, env);
+        if (!/^\d{1,9}$/.test(v)) return jsonError(`Μη έγκυρο ${col}`, 400, origin, env);
         params.append(col, `eq.${v}`);
+      }
+      // order_ids (19/10): the round trips that hold any of these orders. The
+      // browser's _rtFind (unlink, rejoin, cancel, delete) read the newest 200
+      // trips of everyone and searched their legs, so past 200 an older order's
+      // trip was not found and the order stayed on it. Legs first, then trips by
+      // id, so each trip still carries ALL its legs.
+      const orderIdsQ = q.get("order_ids");
+      if (orderIdsQ !== null) {
+        // 1 to 9 digits each: a longer number would fail in Postgres as a 500.
+        if (!/^\d{1,9}(,\d{1,9}){0,49}$/.test(orderIdsQ)) return jsonError("Μη έγκυρο order_ids", 400, origin, env);
+        const legRows = await dbSelectRaw(env, "ct_rt_legs", new URLSearchParams({ select: "rt_id", order_id: `in.(${orderIdsQ})` }));
+        const rtIds = [...new Set(legRows.rows.map((l) => l.rt_id).filter((x) => x != null))];
+        if (!rtIds.length) return jsonOk({ records: [] }, origin, env);
+        params.append("id", `in.(${rtIds.join(",")})`);
       }
       if (q.get("status")) params.append("status", `eq.${q.get("status")}`);
       const { rows } = await dbSelectRaw(env, "ct_round_trips", params);

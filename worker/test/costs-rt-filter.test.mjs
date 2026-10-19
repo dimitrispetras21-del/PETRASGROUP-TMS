@@ -49,6 +49,12 @@ const TRIPS = [
   { id: 2, driver_id: 8, trailer_id: 31, truck_id: 51, date_start: '2026-10-14' },
   { id: 3, driver_id: 7, trailer_id: 31, truck_id: 50, date_start: '2026-10-13' },
 ];
+// Legs: order 100 sits on trip 1 (with 102), order 101 on trip 3.
+const LEGS = [
+  { id: 11, rt_id: 1, order_id: 100, direction: 'Export', seq: 1 },
+  { id: 12, rt_id: 1, order_id: 102, direction: 'Import', seq: 2 },
+  { id: 13, rt_id: 3, order_id: 101, direction: 'Export', seq: 1 },
+];
 const json = (rows, status = 200) => new Response(JSON.stringify(rows), { status, headers: { 'content-type': 'application/json' } });
 let calls;
 const realConsole = { log: console.log, error: console.error, warn: console.warn };
@@ -66,7 +72,13 @@ beforeEach(() => {
         const f = u.searchParams.get(col);
         if (f) rows = rows.filter((r) => String(r[col]) === f.replace(/^eq\./, ''));
       }
-      return json(rows);
+      const idIn = u.searchParams.get('id');
+      if (idIn) { const set = idIn.replace(/^in\.\(|\)$/g, '').split(','); rows = rows.filter((r) => set.includes(String(r.id))); }
+      return json(rows.map((r) => ({ ...r, ct_rt_legs: LEGS.filter((l) => l.rt_id === r.id) })));
+    }
+    if (method === 'GET' && table === 'ct_rt_legs') {
+      const set = (u.searchParams.get('order_id') || '').replace(/^in\.\(|\)$/g, '').split(',');
+      return json(LEGS.filter((l) => set.includes(String(l.order_id))).map((l) => ({ rt_id: l.rt_id })));
     }
     if (method === 'GET' && table === 'dl_v_rt_route') return json([]);
     throw new Error(`unmocked fetch: ${method} ${table}?${u.searchParams}`);
@@ -92,7 +104,7 @@ test('trailer_id filters the trips in the database', async () => {
 });
 
 test('a non-integer driver_id or trailer_id is a 400 before any DB call', async () => {
-  for (const q of ['driver_id=7,8', 'trailer_id=abc', 'driver_id=', 'driver_id=1)']) {
+  for (const q of ['driver_id=7,8', 'trailer_id=abc', 'driver_id=', 'driver_id=1)', 'driver_id=12345678901']) {
     calls = [];
     const r = await call('owner', `/costs/rt?${q}`);
     assert.equal(r.status, 400, `${q}: ${r.text}`);
@@ -106,4 +118,29 @@ test('no parameter: no driver or trailer filter (unchanged)', async () => {
   assert.equal(r.json.records.length, 3);
   assert.equal(rtCall().params.get('driver_id'), null);
   assert.equal(rtCall().params.get('trailer_id'), null);
+});
+
+test('order_ids: only the trips holding those orders, each with ALL its legs', async () => {
+  const r = await call('owner', '/costs/rt?order_ids=100');
+  assert.equal(r.status, 200, r.text);
+  assert.deepEqual(r.json.records.map((x) => x.id), [1]);
+  assert.deepEqual(r.json.records[0].ct_rt_legs.map((l) => l.order_id), [100, 102], 'the trip keeps its other leg');
+  const r2 = await call('owner', '/costs/rt?order_ids=100,101');
+  assert.deepEqual(r2.json.records.map((x) => x.id).sort(), [1, 3]);
+});
+
+test('order_ids with no trip: empty, and no ct_round_trips read', async () => {
+  const r = await call('owner', '/costs/rt?order_ids=999');
+  assert.equal(r.status, 200, r.text);
+  assert.deepEqual(r.json.records, []);
+  assert.equal(calls.filter((c) => c.table === 'ct_round_trips').length, 0);
+});
+
+test('a malformed order_ids is a 400 before any DB call', async () => {
+  for (const q of ['order_ids=', 'order_ids=1,,2', 'order_ids=1)', 'order_ids=a', 'order_ids=1,12345678901', 'order_ids=' + Array.from({ length: 51 }, (_, i) => i + 1).join(',')]) {
+    calls = [];
+    const r = await call('owner', `/costs/rt?${q}`);
+    assert.equal(r.status, 400, `${q.slice(0, 30)}: ${r.text}`);
+    assert.equal(calls.length, 0, `${q.slice(0, 30)}: no DB call`);
+  }
 });
