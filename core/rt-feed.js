@@ -77,8 +77,14 @@ function _rtFleetIds(f, lk) {
 // one sees «no RT» and proceeds without a DELETE and without a warning — a
 // closed/complete RT (real financial history, _rtClosed above) is still
 // found and still warns.
+// order_ids (19/10): the Worker returns only the trips holding these orders.
+// Bare, /costs/rt is the newest 200 trips of every driver, and past 200 an
+// older order's trip was not in it, so unlink/cancel/delete went on as «no RT»
+// and the order stayed on its trip. The leg search below stays: a Worker
+// deployed before order_ids ignores it and answers the bare list, as before.
 async function _rtFind(pgIds) {
-  const r = await plFetch('/costs/rt');
+  const ids = (pgIds || []).filter(x => Number.isInteger(Number(x)) && x !== null && x !== '').slice(0, 50);
+  const r = await plFetch('/costs/rt' + (ids.length ? '?order_ids=' + ids.join(',') : ''));
   return (r.records || []).find(rt => rt.status !== 'cancelled' && (rt.ct_rt_legs || []).some(l => pgIds.includes(l.order_id))) || null;
 }
 
