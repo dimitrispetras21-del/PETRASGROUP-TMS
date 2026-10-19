@@ -2337,9 +2337,13 @@ async function _loadEntityCardRT(entityKey, rec) {
       if (aggE) aggE.innerHTML = noMatch;
       return;
     }
-    // Fetch round trips filtered by the Postgres ID; for trucks, the worker
-    // handles the filter server-side. For drivers/trailers, filter client-side.
-    const res = await ctFetch(isTrailer || isDriver ? '/costs/rt' : '/costs/rt?truck_id=' + pgId);
+    // Round trips filtered by the Postgres ID in the Worker (19/10): /costs/rt
+    // answers the newest 200 trips, and unfiltered that was 200 over every
+    // driver, so a card lost its older trips and its per-truck counts once the
+    // base passed 200. The browser filter stays: a Worker deployed before
+    // driver_id/trailer_id ignores them, and the card is then as before.
+    const rtQ = isTrailer ? 'trailer_id=' : isDriver ? 'driver_id=' : 'truck_id=';
+    const res = await ctFetch('/costs/rt?' + rtQ + encodeURIComponent(pgId));
     el = body();
     if (!el) return;
     let recsAll = res.records || [];

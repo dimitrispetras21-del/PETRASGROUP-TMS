@@ -3753,6 +3753,16 @@ async function handleCosts(request, url, origin, env) {
         if (q.get("to")) params.append("date_start", `lte.${q.get("to")}`);
       }
       if (q.get("truck_id")) params.append("truck_id", `eq.${q.get("truck_id")}`);
+      // driver_id / trailer_id (19/10): the driver and trailer cards read ALL
+      // trips and filtered in the browser, so with limit 200 over every driver
+      // (188 trips on 19/10, 15 to 22 a week) a card lost its older trips and
+      // its per-truck counts. Filtered here, the 200 is one driver's or trailer's.
+      for (const col of ["driver_id", "trailer_id"]) {
+        const v = q.get(col);
+        if (v === null) continue;
+        if (!/^\d+$/.test(v)) return jsonError(`Μη έγκυρο ${col}`, 400, origin, env);
+        params.append(col, `eq.${v}`);
+      }
       if (q.get("status")) params.append("status", `eq.${q.get("status")}`);
       const { rows } = await dbSelectRaw(env, "ct_round_trips", params);
       // Route detail (leg blocks) lives in dl_v_rt_route, built for the driver
