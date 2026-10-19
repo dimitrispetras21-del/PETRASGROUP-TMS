@@ -676,7 +676,13 @@ function _opsDraw() {
   // w11 θέμα 8 (Παντελής/owner 21/9): WHO carries the load — plates + driver —
   // on the overdue DELIVERIES exactly as on the overdue LOADINGS (2/9 wrote
   // it only there), both in bold parentheses so the eye finds it at once.
-  const _opsWho=f=>{ const who=[_TT(f),_D(f)].filter(Boolean).join(' · '); return who?` <b class="do-who">(${who})</b>`:''; };
+  // A partner trip names the partner and its plates (Παντελής 19/10: the plates
+  // were missing exactly here, «στις εκκρεμείς παραδόσεις»): own truck and
+  // trailer are empty on a partner trip, so the parentheses used to vanish.
+  // getPartnerName/_D return escaped text; the plates are raw.
+  const _opsWho=f=>{ const who=(_P(f)
+    ? ['ΣΥΝ. '+(getPartnerName(getLinkedId(f['Partner']))||'—'), escapeHtml(String(f['Partner Truck Plates']||'').trim()), _D(f)]
+    : [_TT(f),_D(f)]).filter(Boolean).join(' · '); return who?` <b class="do-who">(${who})</b>`:''; };
   const zone=(key,rows,title,note,rowHtml)=>{
     if(!rows.length) return '';
     const open=OPS._zoneOpen?.[key]!==false;
