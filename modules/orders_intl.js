@@ -292,6 +292,15 @@ function _intlRepaintOne(rec) {
   if (typeof OrdersCatalog !== 'undefined' && rec) OrdersCatalog.updateRecord('intl', rec);
 }
 
+// Accountant «Διόρθωση» (owner 20/10, core/order-quick-edit.js): one PATCH on
+// the order row; the list row and the open card repaint from the saved record.
+function intlQuickEdit(recId) {
+  const rec = (INTL_ORDERS.data || []).find(r => r.id === recId);
+  // Never a dead button: say it, so a missing record is heard, not guessed.
+  if (!rec) { console.error('intlQuickEdit: record not loaded', recId); toast('Η παραγγελία δεν φορτώθηκε — άνοιξε ξανά τη λίστα', 'error'); return; }
+  OrderQuickEdit.open(TABLES.ORDERS, rec, r => { _intlRepaintOne(r); if (INTL_ORDERS.selectedId === r.id) selectIntlOrder(r.id); });
+}
+
 // ─── Detail Panel (card, Figma 204:1395 · pattern w2-location-card 230:821) ──
 function selectIntlOrder(recId) {
   INTL_ORDERS.selectedId = recId;
@@ -412,7 +421,10 @@ function _oiCardHtml(rec, opts) {
     pre ? `<button type="button" class="oi-link" data-oi-act="pre-edit" onclick="editPreorder('${recId}')">Επεξεργασία pre-order</button>` : '',
     _oiIsPiece(f) ? '' : `<button type="button" class="oi-link" data-oi-act="dup" onclick="duplicateIntlOrder('${recId}')">Διπλασιασμός</button>`,
     `<button type="button" class="oi-link oi-link-danger" data-oi-act="delete" title="Διαγραφή με cascade — NL/GL/CL/Ramp/Παλέτες" onclick="deleteIntlOrder('${recId}')">Διαγραφή</button>`,
-  ].filter(Boolean).join('<span class="oi-sep">·</span>') : '';
+  ].filter(Boolean).join('<span class="oi-sep">·</span>')
+    // Accountant (owner 20/10): no full form — the five-field «Διόρθωση».
+    : !readOnly && typeof OrderQuickEdit !== 'undefined' && OrderQuickEdit.can()
+      ? `<button type="button" class="oi-link" data-oi-act="quick-edit" onclick="intlQuickEdit('${recId}')">Διόρθωση</button>` : '';
 
   return `
     <div class="oi-card-head">
@@ -3979,6 +3991,7 @@ window._oiWhPick = _oiWhPick;
 window._oiWhTyped = _oiWhTyped;
 window.duplicateIntlOrder = duplicateIntlOrder;
 window.selectIntlOrder = selectIntlOrder;
+window.intlQuickEdit = intlQuickEdit;
 window._oiCloseCard = _oiCloseCard;
 window.openIntlReadOnlyCard = openIntlReadOnlyCard;
 window._oiBalanceUpdate = _oiBalanceUpdate;
