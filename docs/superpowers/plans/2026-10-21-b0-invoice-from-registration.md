@@ -3296,7 +3296,7 @@ SELECT legacy_id, status, invoiced, invoice_number, invoice_date, price FROM ord
 
 - [ ] **Βήμα 1:** revert του PR στο `main` (νέο PR revert, με bump `SW_VERSION`, merge από τον Δημήτρη). **Πρώτα το front**, ώστε η οθόνη να μην προσφέρει ό,τι θα αρνηθεί η βάση.
 - [ ] **Βήμα 2:** owner, μετά τις 15:00, ρητό «ναι»: `071a_invoice_from_registration_rollback.sql` → NOTICE `071a ROLLBACK OK: …`, και μετά verify → όλα `before`.
-- [ ] **Βήμα 3:** όσες παρτίδες τιμολογήθηκαν όσο ζούσε το 071a και δεν είναι πλήρεις κάνουν το S-03 κόκκινο στον επόμενο ωριαίο έλεγχο. Με τον παλιό κανόνα αυτό **είναι** εύρημα, όχι βλάβη. Τα κομμάτια τους δεν κινούνται μέχρι να αναιρεθεί το τιμολόγιο (owner).
+- [ ] **Βήμα 3:** αν υπάρχουν παρτίδες τιμολογημένες όσο ζούσε το 071a και όχι πλήρεις, το rollback **αρνείται** («071a ROLLBACK refused: N invoiced lot(s) not complete: <ids> …», review 22/10). Ο owner αποφασίζει: ή αναιρεί πρώτα τα τιμολόγια, ή δέχεται ότι τα κομμάτια τους θα παγώσουν, τρέχοντας στην ίδια επικόλληση, πριν το DO block, `SELECT set_config('tms.rollback_071a_accept_freeze', '<ακριβώς αυτά τα ids>', false);`. Η αποδοχή ισχύει μόνο για τη λίστα που ονομάστηκε, και το rollback τις αναφέρει σε NOTICE. Μετά το S-03 τις δείχνει κόκκινες: με τον παλιό κανόνα αυτό **είναι** εύρημα.
 
 ---
 
@@ -3315,8 +3315,8 @@ SELECT legacy_id, status, invoiced, invoice_number, invoice_date, price FROM ord
 
 ## Εκτός πλάνου (ερωτήσεις για τον owner, χωρίς αλλαγή εδώ)
 
-- **Dashboards:** το `core/metrics.js` `revenueReadyToInvoice` (με παλιό έλεγχο δελτίων και εκτός παρτίδων) και το `overdueInvoices`, καθώς και το CEO «αδρανούν σε παραδοθέντα», μένουν «παραδομένα». Είναι άλλο μέτρο (παραδόθηκε και δεν τιμολογήθηκε = ρίσκο ταμείου), αλλά το σχόλιο του `metrics.js:58-63` («a LOT … is invoiced once, only when COMPLETE») γίνεται ψευδές. Να αποφασιστεί αν ευθυγραμμίζεται.
-- **`orders_week_view.js`:** τα κλειδιά `stock` (και `sheets`, από 20/10) στα `REASON`/`REASON_ORDER`/`totals` δεν παράγονται πια από το `stateOf`, και από 22/10 ούτε το `pending` («σε εξέλιξη», `rtInvoicing` / `weekStatus` / `stLabel`). Είναι νεκρά· αφαίρεση σε επόμενο PR μαζί με τα tests τους.
+- ~~Dashboards~~ **Έγινε στο review 22/10 (owner):** τα `revenueReadyToInvoice` και `overdueInvoices` του `core/metrics.js` καλούν πλέον τα `OrdersData.stateOf`/`ageOf` (ένας κανόνας). Μένει το CEO «αδρανούν σε παραδοθέντα», που είναι άλλο μέτρο (ρίσκο ταμείου).
+- ~~`orders_week_view.js` νεκρά κλειδιά~~ **Έγινε στο review 22/10:** αφαιρέθηκαν τα `pending`/«σε εξέλιξη», `stock`, `sheets` και τα tests τους.
 - **B-16** («Πύλη παλετών: παραδομένες μπλοκαρισμένες», ουρά): μετρά σωστά τις παραδομένες χωρίς δελτίο, αλλά ο τίτλος λέει «μπλοκαρισμένες». Αλλαγή τίτλου σε επόμενο seed.
 - **Worker:** το `/pallets/override` είναι νεκρό από 20/10 (session 20/10), και αφαιρείται στο επόμενο deploy της αλυσίδας Worker.
 - **Rigs, προϋπάρχουσες αποτυχίες:** «CSV header = the 12 ERP columns» (invoicing) και «C2-02 … χωρίς τιμή → owner» (stock). Υπήρχαν ήδη στο `62d09f9d`, δεν τις αγγίζει αυτό το PR.

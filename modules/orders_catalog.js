@@ -48,7 +48,11 @@ const OrdersCatalog = (() => {
   // received it — the client has not. Same dot, its own word, on the screen,
   // the CSV and the paper (the raw Status is untouched: filters read it).
   // Round 1 O5 (critic-2 E2-04): an invoiced lot reads «Τιμολογήθηκε» — next
-  // to its «✓ ΤΠΥ», «Στην αποθήκη» said the goods never left.
+  // to its «✓ ΤΠΥ», «Στην αποθήκη» said the goods never left. Since B0 (owner
+  // 21/10/2026) a lot is invoiced from its registration, so «invoiced» no
+  // longer means «finished»: only a COMPLETE invoiced lot reads «Τιμολογήθηκε»;
+  // otherwise «Τιμολογήθηκε · στην αποθήκη» (or where it is), like the
+  // invoicing card's «Περιμένει κομμάτια n/m» beside its ΤΠΥ.
   // C2-05 (round 3): a lot whose pieces are all done is no longer «in the
   // warehouse» — «Ολοκληρώθηκε», read from the invoicing set when the page
   // already holds it (the hub's counters load it; no request of our own). Not
@@ -59,7 +63,12 @@ const OrdersCatalog = (() => {
     return !!(lot && lot.fields && lot.fields['Complete'] === true);
   }
   function _statusWord(r) {
-    if (r.lot && C().isInvoiced(r.f)) return 'Τιμολογήθηκε';
+    if (r.lot && C().isInvoiced(r.f)) {
+      if (_lotDone(r)) return 'Τιμολογήθηκε';
+      const where = r.status === 'Delivered' ? 'στην αποθήκη'
+        : r.status === 'Invoiced' ? '' : ((STATUS[r.status] || [r.status])[0] || '').toLowerCase();
+      return where ? 'Τιμολογήθηκε · ' + where : 'Τιμολογήθηκε';
+    }
     if (r.lot && r.status === 'Delivered') return _lotDone(r) ? 'Ολοκληρώθηκε' : 'Στην αποθήκη';
     return (STATUS[r.status] || [r.status])[0] || '';
   }

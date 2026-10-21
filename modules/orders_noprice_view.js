@@ -49,7 +49,8 @@ const OrdersNoPrice = (() => {
     return Number.isFinite(n) && n > 0 ? n : null;
   }
 
-  // The list: delivered, not invoiced, no price > 0 (stateOf decides), in scope.
+  // The list: registered (B0, owner 21/10/2026), not invoiced, no price > 0
+  // (stateOf decides), in scope.
   function selectNoPrice(records, stateOf, scope) {
     return (records || []).filter(r => {
       if (scope && scope !== 'all' && r._type !== scope) return false;
@@ -290,7 +291,9 @@ const OrdersNoPrice = (() => {
     if (!loads) return { key: 'unknown', text: '', html: '<span class="oc-adim">—</span>' };
     return OrdersCommon.assignOf(r, { load: loads.get(r.id) || null, missingLoad: !r.fields['National Groupage'] && !loads.has(r.id) });
   }
-  const _days = r => OrdersCommon.daysSinceDelivery(r);
+  // The same age as «Προς τιμολόγηση» (OrdersData.ageOf): since B0 an order not
+  // yet delivered is listed too, and it shows «—», never «-3».
+  const _days = r => OrdersData.ageOf(null, r);
   const _overdue = r => { const d = _days(r); return d !== null && d > OVERDUE_DAYS; };
   // «#1209», «Ε-427», or the reference when the national number is not served yet.
   function _label(r) {
@@ -310,12 +313,12 @@ const OrdersNoPrice = (() => {
       const type = typeOfTable(x.table);
       if (V.ctx.scope !== 'all' && V.ctx.scope !== type) continue;
       const rec = V.all.find(r => r.id === x.recordId && r._type === type);
-      // Only orders that belong to THIS list's world: delivered (in the set) and
-      // no longer missing a price. A price typed today on an order still in
-      // planning is a dispatcher's normal edit, not a «συμπλήρωση» from here.
+      // Only orders that belong to THIS list's world: registered (in the set —
+      // since B0 an order in planning and a pre-order are in it too) and no
+      // longer missing a price. A cancelled order stays out.
       if (!rec) continue;
       const st = OrdersData.stateOf(V.set, rec);
-      if (st.key === 'pending' || st.key === 'cancelled' || (st.key === 'blocked' && st.reason === 'price')) continue;
+      if (st.key === 'cancelled' || (st.key === 'blocked' && st.reason === 'price')) continue;
       out.push({ x, rec, st });
     }
     return out;
@@ -405,8 +408,6 @@ const OrdersNoPrice = (() => {
       const next = st.key === 'ready'
         ? `→ Προς τιμολόγηση · εβδ. ${OrdersCommon.weekLabel(OrdersCommon.weekStartOf(rec))}`
         : st.key === 'invoiced' ? '→ τιμολογήθηκε'
-        // Round 1 O5 (critic-2 E2-09): a priced lot is not ready — it waits for its pieces.
-        : st.key === 'blocked' && st.reason === 'stock' ? '→ περιμένει κομμάτια (παρτίδα)'
         : '';
       return `<tr>
         <td class="np-no">${_esc(OrdersCommon.numLabel(rec))}${OrdersCommon.docClip(rec, rec._type)}</td>
@@ -479,11 +480,8 @@ const OrdersNoPrice = (() => {
       OrdersData.invalidate();
       OrdersHub.refreshBadges();
       const lbl = _esc(_label(rec));
-      // O5 (critic-2 E2-09): «πέρασε στα Προς τιμολόγηση» was not true for a
-      // lot — it lands there blocked until its last piece (or a close).
-      const _st = OrdersData.stateOf(V.set, rec);
-      if (_st.key === 'blocked' && _st.reason === 'stock') toast(`Η τιμή καταχωρήθηκε — η παρτίδα ${lbl} περιμένει κομμάτια πριν τιμολογηθεί`);
-      else toast(`Η τιμή καταχωρήθηκε — η ${lbl} πέρασε στα Προς τιμολόγηση`);
+      // B0 (21/10): a priced order — a lot too — is «προς κοπή» at once.
+      toast(`Η τιμή καταχωρήθηκε — η ${lbl} πέρασε στα Προς τιμολόγηση`);
       _repaintFromState();
     } catch (e) {
       input.disabled = false;

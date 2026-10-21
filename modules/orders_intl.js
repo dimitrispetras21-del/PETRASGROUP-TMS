@@ -991,7 +991,7 @@ function _oiIsPiece(f) { return typeof OrdersStock !== 'undefined' && OrdersStoc
 async function _oiStockCtx(recId, f, piece) {
   f = f || {};
   const sk = { mode: 'none', recId: recId || null, lot: null, lotRec: null, failed: false, presets: {}, section: false, wasLot: false, frozen: false, ownPallets: 0,
-    srcInvoiced: !!f['Invoiced'], srcLeg: !!getLinkedId(f['Parent Order']) };
+    srcLeg: !!getLinkedId(f['Parent Order']) };
   if (typeof OrdersStock === 'undefined') return sk;
   if (piece && !recId) {
     Object.assign(sk, { mode: 'pieceNew', lot: piece.lot, lotRec: piece.lot.id, presets: piece.presets || {} });
@@ -1013,12 +1013,13 @@ async function _oiStockCtx(recId, f, piece) {
   // G-10: the «Παρτίδα» box exists only on an ordinary order and on a lot —
   // never on a piece (new or edited): ticked there it would save the piece INTO
   // a warehouse and the mark would be refused (lot_is_piece).
-  // OWNER-Q8 answered 4/10 (owner+dispatcher, also after delivery, never
-  // invoiced) — impact map G-30: the box is on a new order and on any existing
+  // OWNER-Q8 answered 4/10 (owner+dispatcher, also after delivery; «never
+  // invoiced» lifted by 071a, owner 21/10/2026: invoicing starts at
+  // registration) — impact map G-30: the box is on a new order and on any existing
   // ordinary order, Delivered too (goods already sitting in a warehouse are
   // marked after the fact). On an existing order it is ENABLED only when the
   // order already has the lot's shape (R1, _oiMarkShape) — otherwise disabled,
-  // its title saying why (invoiced included).
+  // its title saying why.
   sk.section = OrdersStock.on() && OrdersStock.canWrite() && (sk.mode === 'lotEdit' || sk.mode === 'none');
   return sk;
 }
@@ -1029,14 +1030,13 @@ async function _oiStockCtx(recId, f, piece) {
 // delivery pallets of an order already delivered — with no word on screen.
 // Now the box is offered only on the lot's shape: ONE delivery stop abroad,
 // which becomes the warehouse as it is (shown read-only), no VS, no leg, no
-// group, not invoiced. The save then sends ONLY the mark (POST STOCK LOTS).
+// group (invoiced or not, since 071a). The save then sends ONLY the mark (POST STOCK LOTS).
 // New orders keep the picker and the stop rewrite (nothing executed yet).
 function _oiMarkExisting(SK) { return !!SK && SK.mode === 'none' && !!SK.recId; }
 // → SK.markWhy ('' = may be marked; else ≤ 8 words for the box's title) and,
 // when it may, the warehouse = the one delivery stop, its pallets, the order No.
 async function _oiMarkShape(SK, f, unloads) {
-  let why = f['Invoiced'] ? 'Τιμολογήθηκε'
-    : f['Veroia Switch'] ? 'Έχει Veroia Switch — βγάλ\' το πρώτα'
+  let why = f['Veroia Switch'] ? 'Έχει Veroia Switch — βγάλ\' το πρώτα'
     : getLinkedId(f['Parent Order']) ? 'Σκέλος παραγγελίας'
     : String(f['Group ID'] || '').trim() ? 'Σε ομάδα φορτηγού — βγάλ\' την πρώτα'
     : INTL_ORDERS._stopsFail === SK.recId ? 'Οι στάσεις δεν φορτώθηκαν'
@@ -2475,11 +2475,10 @@ async function submitIntlOrder(recId) {
       // leaves an ordinary order to the warehouse, invoiced at full price on
       // intake with no stock behind it. So the base's mark refusals are
       // mirrored here, before anything is saved (057 stock_guard_lots:
-      // lot_empty, lot_invoiced, no_split; the base still decides).
+      // lot_empty, no_split; the base still decides — 071a lifted lot_invoiced).
       if (!_SK.wasLot) {
         const _lotPals = _loadStops.reduce((a, st) => a + (st.pallets || 0), 0);
         if (_lotPals <= 0) _vErrors.push('Παρτίδα χωρίς παλέτες — συμπλήρωσε τις παλέτες φόρτωσης');
-        if (_SK.srcInvoiced) _vErrors.push('Τιμολογημένη παραγγελία δεν γίνεται παρτίδα');
         if (_SK.srcLeg) _vErrors.push('Σκέλος παραγγελίας δεν γίνεται παρτίδα');
       }
     }

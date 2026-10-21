@@ -453,7 +453,8 @@ function _runAllMetrics(d) {
     add('fin', 'fin.revenue_invoiced_30d', 'Έσοδα τιμολογημένα (30ημ)', eur(rev30));
 
     const ready = metrics.revenueReadyToInvoice(d.orders);
-    add('fin', 'fin.revenue_ready', 'Έσοδα έτοιμα για τιμολόγηση', eur(ready), 'Παραδόθηκαν + δελτία εντάξει');
+    // B0 review #1 (owner 22/10/2026): the rule of «Προς τιμολόγηση» (OrdersData.stateOf).
+    add('fin', 'fin.revenue_ready', 'Έσοδα έτοιμα για τιμολόγηση', eur(ready), 'Με τιμή, από την καταχώρηση — όπως «Προς τιμολόγηση»');
 
     const overdueInv = metrics.overdueInvoices(d.orders);
     add('fin', 'fin.overdue_invoices', 'Εκπρόθεσμα τιμολόγια (>30ημ)', overdueInv.length);

@@ -12,7 +12,7 @@
 -- exceptions:
 -- tolerance:
 -- source: DRAFT 057b_stock_monitoring.sql (4/10, ΔΕΝ εκτελέστηκε) — καθρέφτης της γραμμής του· plan §6 · ζωντανό μόνο μετά τα 057 + 057b
--- enabled: yes
+-- enabled: no: 071a (owner 21/10/2026): κάθε παραγγελία τιμολογείται από την καταχώρηση, και η παρτίδα επίσης· τιμολογημένη παρτίδα που περιμένει ακόμη κομμάτια είναι πλέον κανονική κατάσταση, όχι εύρημα.
 SELECT count(*) FROM stock_v_lots WHERE invoiced AND NOT complete
 -- @ids
 SELECT coalesce(array_agg(x ORDER BY x),'{}') FROM (SELECT legacy_id AS x FROM stock_v_lots WHERE invoiced AND NOT complete ORDER BY legacy_id LIMIT 50) s

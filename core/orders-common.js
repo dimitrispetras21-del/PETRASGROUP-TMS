@@ -554,9 +554,9 @@ const OrdersStock = {
   },
   // «Άνοιγμα ξανά» (round 1 O1, critic-2 E2-01 / critic-1 C1-04): one click
   // at 06:00 wrote a whole lot off with no way back but SQL, although the base
-  // already accepts a reopen until the lot is invoiced (057 stock_guard_lots:
-  // closed_note → NULL clears closed_at; reopen_invoiced refuses after the
-  // invoice). The read-back decides: reopened only when «Closed At» is gone
+  // already accepts a reopen (057 stock_guard_lots: closed_note → NULL clears
+  // closed_at; since 071a also after the invoice). The read-back decides:
+  // reopened only when «Closed At» is gone
   // (NULL = absent on the facade). No undo entry, same reason as closeLot —
   // the global «Undo» would PATCH the old note back = a close nobody chose.
   async reopenLot(lotRec) {
@@ -574,11 +574,12 @@ const OrdersStock = {
     }
   },
   // A closed lot may be reopened by whoever may write stock, while it is not
-  // invoiced (the base refuses after — reopen_invoiced). The accountant closes
-  // (Ε3) but does not reopen: owner/dispatcher decide whether pallets move.
+  // invoiced or not: since 071a (owner 21/10/2026, B0) the base no longer
+  // ties the close to the invoice (reopen_invoiced is gone). The accountant
+  // closes (Ε3) but does not reopen: owner/dispatcher decide whether pallets move.
   reopenable(lot) {
     const g = (lot && lot.fields) || {};
-    return !!g['Closed At'] && g['Invoiced'] !== true && OrdersStock.canWrite();
+    return !!g['Closed At'] && OrdersStock.canWrite();
   },
   // The close as one line, for every screen that shows a closed lot (round 1
   // O2): «Κλείσιμο υπολοίπου: 2 παλ. · <reason> · 4/10». '' when not closed.
@@ -595,7 +596,7 @@ const OrdersStock = {
   _closing: null,
   // Round 1 O1 (critic-2 E2-01, critic-1 C1-04): the modal names what the
   // click does — the pallets are written off, the lot gives no more pieces
-  // (lot_closed in the base), and it reopens only until invoiced. With no
+  // (lot_closed in the base), and it can be reopened (071a: invoiced too). With no
   // piece drawn it says the WHOLE lot goes, the case an early click hits.
   closeText(lot) {
     const g = (lot && lot.fields) || {};
@@ -605,7 +606,7 @@ const OrdersStock = {
     const head = n(g['Pieces']) === 0
       ? `Κλείνει ΟΛΗ η παρτίδα (${pal(left)}) — δεν βγήκε κανένα κομμάτι.`
       : `Μένουν ${pal(left)} στην αποθήκη.`;
-    return [head, 'Γράφονται χαμένες· η παρτίδα δεν δίνει άλλα κομμάτια.', 'Ανοίγει ξανά μέχρι να τιμολογηθεί.'];
+    return [head, 'Γράφονται χαμένες· η παρτίδα δεν δίνει άλλα κομμάτια.', 'Ανοίγει ξανά αν χρειαστεί.'];
   },
   openCloseModal(lot, onDone) {
     const g = (lot && lot.fields) || {};
@@ -649,9 +650,10 @@ const OrdersStock = {
 
 // ── The data set of «Προς τιμολόγηση» and «Χωρίς τιμή» ──────────────────────
 // Both views (and the page's counters) read the SAME records with the SAME
-// pallet gate — loaded once per render, deduped while in flight. Same query as
-// invoicing.js had: every delivered/invoiced international order, and every
-// national order whose delivery date passed (nationals never get «Delivered»).
+// rules — loaded once per render, deduped while in flight. Owner 21/10/2026
+// (B0): every order is invoiced from its registration, so the set is every
+// order that is not cancelled (international and national alike); the
+// delivery no longer filters.
 const OrdersData = {
   _inflight: null,
   _cache: null,           // { at, intl, natl, natlFailed, gate, gateFailed }
@@ -672,9 +674,11 @@ const OrdersData = {
     if (!force && OrdersData._cache && Date.now() - OrdersData._cache.at < 60000) return OrdersData._cache;
     if (OrdersData._inflight) return OrdersData._inflight;
     OrdersData._inflight = (async () => {
-      const today = OrdersCommon.today();
-      const intlF = 'OR({Status}="Delivered",{Status}="Invoiced",{Invoiced}=1)';
-      const natlF = `OR({Status}="Delivered",{Status}="Invoiced",{Invoiced}=1,AND(IS_BEFORE({Delivery DateTime},'${today}'),{Status}!="Cancelled"))`;
+      // Not cancelled, or invoiced (a cancelled order that was invoiced stays in
+      // «Τιμολογημένες», as before). The facade turns != into «neq OR is null»,
+      // so an order with no Status is in the set (all 6 national orders on 22/10).
+      const intlF = 'OR({Status}!="Cancelled",{Invoiced}=1)';
+      const natlF = intlF;
       if (typeof preloadReferenceData === 'function') { try { await preloadReferenceData(); } catch (e) { console.warn('orders data: ref', e); } }
       const [intl, natlRes] = await Promise.all([
         atGet(TABLES.ORDERS, intlF, false),
@@ -698,11 +702,14 @@ const OrdersData = {
     })();
     try { return await OrdersData._inflight; } finally { OrdersData._inflight = null; }
   },
-  // Pallet-slip gate (docs/PALLETS_ARCHITECTURE.md §4.1): /pallets/gate for the
-  // not-yet-invoiced international orders with pallet exchange. On failure the
-  // old per-order check applies and the view shows a banner (gateFailed).
+  // Pallet-slip check (docs/PALLETS_ARCHITECTURE.md §4.1): /pallets/gate for the
+  // DELIVERED, not-yet-invoiced international orders with pallet exchange. It
+  // blocks nothing since 20/10 (the card says «δελτίο → Αλεξία»); before the
+  // delivery no slip can exist, so those orders are not asked about (B0, 21/10)
+  // — a «λείπει δελτίο» on an order still on the road would be noise. On
+  // failure the old per-order check applies and the view shows a banner.
   async _loadGate(set) {
-    const ids = set.intl.filter(r => r.fields['Pallet Exchange'] && !OrdersCommon.isInvoiced(r.fields)).map(r => r.id);
+    const ids = set.intl.filter(r => r.fields['Pallet Exchange'] && !OrdersCommon.isInvoiced(r.fields) && OrdersCommon.isDelivered(r)).map(r => r.id);
     if (!ids.length) return;
     try {
       for (let i = 0; i < ids.length; i += 300) {
@@ -721,9 +728,9 @@ const OrdersData = {
   // counters and the week view's states all read this set. Data-based, not
   // behind FEATURES.STOCK_LOTS (a piece that exists is a piece).
   withoutPieces(recs) { return recs.filter(r => !OrdersStock.isPiece(r.fields)); },
-  // The lots of the set: their completeness decides whether they may be
-  // invoiced. Read only when the set holds a lot. A failed read blocks every
-  // lot (stockFailed) and the view says so — never «ready» on a guess.
+  // The lots of the set, for the card (pieces, close, reopen). Since 21/10
+  // (B0) their completeness no longer decides the invoice. Read only when the
+  // set holds a lot; a failed read is said on the card (stockFailed).
   async _loadStock(set) {
     set.stock = new Map(); set.stockFailed = false;
     const lots = set.intl.filter(r => OrdersStock.isLot(r.fields));
@@ -731,7 +738,7 @@ const OrdersData = {
     // G-07 (impact map 4/10): the warehouse role has no STOCK LOTS grant in the
     // Worker (no row, no wildcard) — the read would 403 and _atRetry would toast
     // «Δεν έχετε δικαίωμα» on every render of «Παραγγελίες». The warehouse does
-    // not invoice: its lots stay blocked ('stock', lot null), never «ready».
+    // not invoice: its cards would show no lot state.
     if (typeof ROLE !== 'undefined' && ROLE === 'warehouse') return;
     // The open lots ({Invoiced}=0) decide the states. The invoiced lots of the
     // set are read by id as well: the ERP sheet of an invoiced lot names its
@@ -750,17 +757,20 @@ const OrdersData = {
       res.lots.forEach(l => set.stock.set(l.id, l));
     }
   },
-  // Days a delivered record has waited to be invoiced (null = no age). A lot
-  // (057) is «Delivered» when the WAREHOUSE received it, but it may be invoiced
-  // only once complete — so its wait starts at «Completed On», and there is no
-  // age while it is incomplete (E-05, impact map 4/10; the auditor's B-15
-  // counts a lot from completed_on too). One rule for every invoicing KPI.
+  // Days an order has waited since its delivery (null = not delivered yet, or
+  // no date). Owner 21/10/2026 (B0): a lot is an order like any other — its
+  // age counts from its own delivery into the warehouse, no longer from the
+  // day it became complete. The auditor's B-15 counts the same way since 071a
+  // (one rule: «Παλαιότερη εκκρεμής» and the queue cannot disagree). Only a
+  // DELIVERED order has an age (isDelivered: Status for international, the
+  // date for national): an order still in transit past its planned date is not
+  // late to invoice, and a future delivery would read «-3 ημέρες». B-15 counts
+  // status 'Delivered' too. `set` is kept so the callers (week view, «Προς
+  // τιμολόγηση», «Χωρίς τιμή», metrics.js) stay unchanged.
   ageOf(set, rec) {
-    const f = rec.fields || {};
-    if (!OrdersStock.isLot(f)) return OrdersCommon.daysSinceDelivery(rec);
-    const lot = set && set.stock ? set.stock.get(OrdersStock.lotRecOfLot(f)) : null;
-    const done = lot && lot.fields && lot.fields['Completed On'];
-    return done ? OrdersCommon.daysBetween(OrdersCommon.ymd(done), OrdersCommon.today()) : null;
+    if (!OrdersCommon.isDelivered(rec)) return null;
+    const d = OrdersCommon.daysSinceDelivery(rec);
+    return d !== null && d >= 0 ? d : null;
   },
   sheetsOk(set, rec) {
     const f = rec.fields;
@@ -769,28 +779,24 @@ const OrdersData = {
     const g = set.gate[rec.id];
     return !g || g.sheets_ok === true;   // absent = no loading stops = nothing to gate
   },
-  // One state per record, one reason per blocked record (with who unblocks it).
-  //   'invoiced' · 'ready' (noSheets: slip missing, 20/10) · 'blocked' (reason:
-  //   'price', 'stock' → the lot's pieces) · 'pending' (not delivered)
-  // A lot (057) is delivered when the WAREHOUSE received it, but it is invoiced
-  // once, only when complete (every piece delivered and nothing left, or the
-  // remainder closed) — the same rule stock_guard_orders enforces on
-  // «Invoiced»; 'stock' carries the lot record (null = not read) for the text.
+  // One state per record — owner 21/10/2026 (B0): every order is invoiced from
+  // its registration; not the delivery, not the stock, not the pallet slip.
+  //   'invoiced' · 'cancelled' · 'blocked' (reason 'price': no price > 0, the
+  //   one thing that stops an invoice — the Worker's invoiceMarkError and 043
+  //   refuse it too) · 'ready' (noSheets: delivered with a pallet slip missing
+  //   — the card still chases it, 20/10). No 'pending' any more: a pre-order
+  //   (Ops Status Provisional) is invoiced like any order (owner 22/10/2026).
+  //   'pending' stays a key the callers know (week view «σε εξέλιξη»); this
+  //   function no longer returns it.
+  // A lot (057) is an order like any other here: since 071a the base no longer
+  // refuses its invoice before its pieces arrive. Decided HERE so the hub
+  // badge, the Weekly, «Χωρίς τιμή» and «Προς τιμολόγηση» cannot disagree.
   stateOf(set, rec) {
     const f = rec.fields;
     if (OrdersCommon.isInvoiced(f)) return { key: 'invoiced' };
     if (f['Status'] === 'Cancelled') return { key: 'cancelled' };
-    if (!OrdersCommon.isDelivered(rec)) return { key: 'pending' };
     if (!OrdersCommon.hasPrice(f)) return { key: 'blocked', reason: 'price' };
-    if (OrdersStock.isLot(f)) {
-      const lot = (set.stock && set.stock.get(OrdersStock.lotRecOfLot(f))) || null;
-      if (set.stockFailed || !lot || lot.fields['Complete'] !== true) return { key: 'blocked', reason: 'stock', lot };
-    }
-    // Owner 20/10/2026: the ERP invoice no longer waits for the pallet slip —
-    // Eirini invoices, Alexia uploads after. Ready, with noSheets so every view
-    // still says «λείπει δελτίο». Decided HERE so the hub badge, the Weekly,
-    // «Χωρίς τιμή» and «Προς τιμολόγηση» cannot disagree.
-    if (!OrdersData.sheetsOk(set, rec)) return { key: 'ready', noSheets: true };
+    if (OrdersCommon.isDelivered(rec) && !OrdersData.sheetsOk(set, rec)) return { key: 'ready', noSheets: true };
     return { key: 'ready' };
   },
   all(set) { return [...set.intl, ...set.natl]; },

@@ -3,7 +3,8 @@
 //   E-16  a LOOSE piece (no truck, back in the warehouse, old dates) is stock — not counted by the
 //         Dashboard «Αναμονή ανάθεσης», metrics.js unassigned/overdue/high-risk, the CEO «Κρίσιμα <48ω»
 //         list or Nakis' critical «unassigned — delivery <48h» alert. A piece ON a truck still is work.
-//   E-17  metrics.js money: pieces never invoiced; lots out of «ready»/«overdue» (Προς τιμολόγηση decides);
+//   E-17  metrics.js money: pieces never invoiced; since B0 (owner 21/10/2026, review #1 22/10) a lot is in
+//         «ready»/«overdue» like any order — the rule is OrdersData's (tests/metrics-invoicing-rule.test.js);
 //         a lot's price still counts in «Ανεξόφλητο».
 //   E-19  CEO cash card: «uninvoiced» count leaves pieces out.
 //   E-22  Nakis' APP_KNOWLEDGE explains lot/piece and stays under its 5000-char cut.
@@ -21,7 +22,7 @@ const ROOT = path.join(__dirname, '..');
 const src = f => fs.readFileSync(path.join(ROOT, f), 'utf8');
 vm.runInThisContext(src('core/data-helpers.js'));
 global.TmsWeek = require('../core/tms-week.js');
-const { OrdersStock } = require('../core/orders-common.js');
+const { OrdersStock, OrdersData } = require('../core/orders-common.js');
 const fn = (text, re, name) => { const m = text.match(re); if (!m) throw new Error(name + ' not found'); return m[0]; };
 const plain = v => JSON.parse(JSON.stringify(v));
 
@@ -38,7 +39,7 @@ const NORMAL_SOON = { id: 'recNORMAL0000002', fields: { Direction: 'Export', Typ
 const clone = a => a.map(r => ({ id: r.id, createdTime: '2026-10-01T00:00:00.000Z', fields: JSON.parse(JSON.stringify(r.fields)) }));
 
 function metricsLib() {
-  const ctx = { OrdersStock, getLinkedId, FEATURES: { ORDER_SPLIT: true }, TmsWeek, localToday: () => dayOff(0), console };
+  const ctx = { OrdersStock, OrdersData, getLinkedId, FEATURES: { ORDER_SPLIT: true }, TmsWeek, localToday: () => dayOff(0), console };
   vm.runInNewContext(src('core/metrics.js') + '\nthis.metrics = metrics;', ctx);
   return ctx.metrics;
 }
@@ -55,14 +56,14 @@ test('round-1 K5 metrics.assignmentRate: a loose piece is not «unassigned»; a 
   assert.deepStrictEqual(plain(m.assignmentRate(clone([LOOSE, NORMAL, ONTRUCK]))), { assigned: 1, total: 2, pct: 50 });
 });
 
-test('E-17 metrics.js money: pieces out of everything, lots out of ready/overdue, a lot still owed', () => {
+test('E-17 metrics.js money: pieces out of everything; a lot is ready/overdue like any order (B0); a lot still owed', () => {
   const m = metricsLib();
   const old = dayOff(-45);
   const lot = { id: 'recLOT000000312', fields: { Status: 'Delivered', Price: 3300, 'Own Stock Lot': 'recSTOCKLOT1', 'Delivery DateTime': old } };
   const piece = { id: 'recPIECE0000001', fields: { Status: 'Delivered', 'Stock Lot': ['recSTOCKLOT1'], 'Delivery DateTime': old } };
   const ord = { id: 'recORD000000001', fields: { Status: 'Delivered', Price: 1200, 'Delivery DateTime': old } };
-  assert.deepStrictEqual(m.overdueInvoices(clone([lot, piece, ord])).map(r => r.id), ['recORD000000001']);
-  assert.strictEqual(m.revenueReadyToInvoice(clone([lot, piece, ord])), 1200);
+  assert.deepStrictEqual(m.overdueInvoices(clone([lot, piece, ord])).map(r => r.id), ['recLOT000000312', 'recORD000000001']);
+  assert.strictEqual(m.revenueReadyToInvoice(clone([lot, piece, ord])), 4500);
   assert.strictEqual(m.outstandingBalance(clone([lot, piece, ord])), 4500);
 });
 
