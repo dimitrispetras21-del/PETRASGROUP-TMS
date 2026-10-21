@@ -1044,8 +1044,14 @@ function _opsRow(rec,num,type,isToday,cls) {
     : `<td class="do-st">${_opsStatusWord(f,pill,isL,_opsStamp(_mStops,_opsTgt()),_opsRelay(id,type))}</td>`;
   const actCell=_opsActsCell(_opsSlots(rec,type), docBadge);
 
+  // Export loadings name WHERE each load goes (Pantelis 21/10): several rows
+  // read «VERMION FRESH A.E. · VERMION FRUITS» and could not be told apart.
+  // First delivery stop, «+N» for the rest; a pre-order already shows its country.
+  // A grey sub-line under the loading name: inline it wrapped the cell to 3 lines.
+  const _uN=_opsStopsOf(id,'Unloading').length;
+  const toL=!pre&&delivL?`(→ ${delivL}${_uN>1?' +'+(_uN-1):''})`:'';
   let mid='';
-  if(isL&&isExp) mid=`${locCell(loadL,f['Loading DateTime'],pieceSub)}${asgCell}<td>${pal}</td><td>${!partner?amtInp('Advance Paid',f['Advance Paid']):''}</td>`;
+  if(isL&&isExp) mid=`${locCell(loadL,f['Loading DateTime'],[toL,pieceSub].filter(Boolean).join(' · '))}${asgCell}<td>${pal}</td><td>${!partner?amtInp('Advance Paid',f['Advance Paid']):''}</td>`;
   else if(isL)   mid=`${locCell(loadL,f['Loading DateTime'],pieceSub)}${asgCell}<td colspan="2">${timeSelect('ETA',f['ETA'])}</td>`;
   else           mid=`${locCell(lotTag+(delivL||'—'),f['Delivery DateTime'])}${asgCell}<td colspan="2">${timeSelect('ETA',f['ETA'])}</td>`;
 
