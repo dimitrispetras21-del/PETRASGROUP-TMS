@@ -14,8 +14,7 @@ What is live (commit, versions, flags) is not kept here: it goes stale within ho
 **In flight** (who · branch · topic)
 - dimitris · `docs/wn4-plan-rev6` · Weekly National v4 plan (WP-A, one Veroia day, live since 12/10 morning)
 - dimitris · `fix/wi4-*` · Weekly International v4 fixes
-- dimitris · `feat/wi4-executed-dimmed` · Weekly International v4: executed = dimmed 40% (owner 21/10, Figma 2022:7736); front end only
-- dimitris · `fix/wi4-search-normalize` · Weekly International search ignores accents, case, spaces, dashes (`docs/sessions/2026-10-21-dimitris-wi4-search-normalize.md`); Pantelis 21/10 fixes merged (#64, #65)
+- dimitris · `docs/national-v5-spec-plan` · National v5: approved spec, owner decisions 21/10, master plan (`docs/superpowers/plans/2026-10-21-national-v5-master.md`); next B0 (invoice from registration) and F0 (Figma). WI v4 dimmed + search are merged (#63–#66)
 - dimitris · `feat/orders-week-v4` (PR #43) · Orders › «Εβδομάδα» v4, one row = one RT; after merge: live check (totals vs SELECT, 0 console errors)
 - vd-nick · `vd/session-rules-v2` (PR #40) · session rules v2: parallel work, per-session files
 - vd-nick · (not started, PR planned this week) · import the Valuedriven backend, tests and CI into this repo
