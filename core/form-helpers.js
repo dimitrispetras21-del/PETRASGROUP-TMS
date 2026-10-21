@@ -211,6 +211,13 @@ function _fhNorm(s) {
   t = t.replace(/ου/g, 'ou').replace(/αυ/g, 'av').replace(/ευ/g, 'ev').replace(/(^|\s)μπ/g, '$1b').replace(/(^|\s)ντ/g, '$1d').replace(/γγ/g, 'ng').replace(/γκ/g, 'gk');
   return t.replace(/[α-ω]/g, c => _FH_EL[c] || c);
 }
+// One search rule for the Weekly boards (v4 and v1, Pantelis 21/10): _fhNorm
+// (any case, no accents, Greek → Latin like the stored place names, so
+// «Βέροια» finds «Veroia») and no spaces, dashes, dots or slashes («iaz4471»
+// finds «IAZ 4471»). A text of several fields keeps them apart with a char no
+// query can hold, so a query never matches across two fields (truck+trailer).
+function fhSearchNorm(s) { return _fhNorm(s).replace(/[\s\-‐-―./]+/g, ''); }
+function fhSearchBlob(parts) { return parts.filter(Boolean).map(fhSearchNorm).join('\u0001'); }
 function fhLocDrop(id, q) {
   const nq = _fhNorm(q.trim());
   const pool = nq

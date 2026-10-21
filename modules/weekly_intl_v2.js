@@ -2042,15 +2042,10 @@ function _afterRows() {
   _traces();
   WIV2.presencePatch();
 }
-// Search text, both sides alike (Pantelis 21/10): any case, no accents, no
-// spaces/dashes/dots/slashes — «πελατης» finds «Πελάτης», «iaz4471» finds
-// «IAZ 4471», «tst 1017» finds «TST-1017». Final «ς» counts as «σ». The query
-// is kept as typed in WINTL.filter (the old board reads it too) and normalised
-// only where it is compared (_applyDim).
-function _sNorm(s) {
-  return String(s == null ? '' : s).normalize('NFD').replace(/[\u0300-\u036f]/g, '')
-    .toLowerCase().replace(/ς/g, 'σ').replace(/[\s\-\u2010-\u2015.\/]+/g, '');
-}
+// The row's search text: fhSearchBlob / fhSearchNorm (core/form-helpers.js,
+// Pantelis 21/10) — any case, no accents, Greek → Latin like the stored place
+// names, no spaces/dashes; each field kept apart, so a query never matches
+// across two of them. The old board's _wiApplyFilter uses the same rule.
 function _blobOf(e) {
   const I = W();
   const r = e.row || e.parent;
@@ -2064,7 +2059,7 @@ function _blobOf(e) {
     parts.push(I.clientName(f), f['Loading Summary'], f['Delivery Summary'], f['Reference'], I.placeStr(f, 'load'), I.placeStr(f, 'del'));
   });
   if (e.x && e.x.s) parts.push(e.x.s.driverName, e.x.s.tractor);
-  return _sNorm(parts.filter(Boolean).join(' '));
+  return fhSearchBlob(parts);
 }
 
 // Points layout pass (§e): measured ONCE per paint from a points column;
@@ -2355,7 +2350,9 @@ function _statusOk(row) {
 }
 function _applyDim() {
   const root = _root(); if (!root) return { count: 0, index: 0 };
-  const q = _sNorm(_D().filter || '');
+  // WINTL.filter holds the query lower-cased (search()); it is normalised here,
+  // where it is compared, so the old board can keep reading it.
+  const q = fhSearchNorm(_D().filter || '');
   const seen = new Set();
   _sMatches = [];
   root.querySelectorAll('#wi-rows [data-qi]').forEach((el) => {
