@@ -6,8 +6,9 @@
 // Replaces the screen of modules/invoicing.js and keeps its proven rules:
 // the ERP number (ΤΠΥ) is typed every time, never pre-filled, never in bulk;
 // no invoice without a price (> 0, same rule as Worker invoiceMarkError and
-// migration 043); the pallet-slip gate (/pallets/gate) blocks; only the owner
-// may override that gate, and the override is recorded BEFORE the write.
+// migration 043). A missing pallet slip (/pallets/gate) no longer blocks the
+// invoice (owner 20/10/2026): the order is «προς κοπή» and its card keeps the
+// red «δελτίο → Αλεξία» check, so the slip is still chased after the invoice.
 //
 // Data: OrdersData.loadInvoicingSet() — the SAME records and the SAME states as
 // the page counters, so a tab badge can never disagree with this list.
@@ -46,7 +47,7 @@ const OrdersInvoicingView = (() => {
       const done = lotDone(set, rec);
       return {
         rec, id: rec.id, type: rec._type, f,
-        state: st.key, reason: st.reason || '', lot: st.lot || null,
+        state: st.key, reason: st.reason || '', noSheets: !!st.noSheets, lot: st.lot || null,
         week: OC.weekStartOf(rec) || '',
         // null unless OC.hasPrice (owner 13/10: 0 € = no price, everywhere).
         // Every check below reads `it.price === null`; normalising here keeps
@@ -303,7 +304,7 @@ const OrdersInvoicingView = (() => {
   function stateWord(it) {
     return it.state === 'invoiced' ? 'ΤΠΥ ' + (it.f['Invoice Number'] || '—')
       : it.state === 'blocked' ? (it.reason === 'price' ? 'χωρίς τιμή' : it.reason === 'stock' ? 'περιμένει κομμάτια' : 'λείπει δελτίο')
-      : 'προς κοπή';
+      : it.noSheets ? 'προς κοπή · λείπει δελτίο' : 'προς κοπή';
   }
   // Why a lot is not allocated: one reason per status the base can return
   // (stock_v_lot_money.allocation_status); an unknown one is shown as it is,
@@ -324,7 +325,7 @@ const OrdersInvoicingView = (() => {
     ctx: null, set: null, all: [], items: [],
     sel: '', stripEnd: '', tab: 'ready', q: '',
     selId: null, closed: false,
-    busy: false, formErr: '', edit: null, override: null,
+    busy: false, formErr: '', edit: null,
     draft: null,            // {id, num, d} kept across a refused write so she does not retype
     clientInfo: new Map(), clientsFailed: false,
     undo: null,
@@ -755,9 +756,10 @@ const OrdersInvoicingView = (() => {
     const doneWord = isLotIt(it) ? 'Ολοκληρώθηκε' : 'Παραδόθηκε';
     if (it.state === 'invoiced') status = `<span><i class="oiv-dot ok"></i>Τιμολογήθηκε ${f['Invoice Date'] ? dm(f['Invoice Date']) : ''}</span><span><i class="oiv-dot hollow"></i>${f['Invoice Number'] ? 'ΤΠΥ ' + esc(f['Invoice Number']) : 'χωρίς αριθμό'}</span>`;
     else if (lotWaiting) status = `<span><i class="oiv-dot ok"></i>Στην αποθήκη ${dm(it.deliv)}</span><span><i class="oiv-dot hollow"></i>${waitWord}</span>`
-      + (it.reason === 'price' ? '<span><i class="oiv-dot bad"></i>χωρίς τιμή → owner</span>' : '');
-    else if (it.state === 'blocked') status = `<span><i class="oiv-dot ok"></i>${isLotIt(it) ? doneWord + ' ' + dm(it.when) : 'Παραδόθηκε ' + dm(it.deliv)}</span><span><i class="oiv-dot bad"></i>${it.reason === 'price' ? 'χωρίς τιμή → owner' : 'δελτίο → Αλεξία'}</span>`;
-    else status = `<span><i class="oiv-dot ok"></i>${doneWord} ${dm(it.when)}</span><span><i class="oiv-dot hollow"></i>προς κοπή${it.days !== null ? ' · ' + it.days + (it.days === 1 ? ' ημέρα' : ' ημέρες') : ''}</span>`;
+      + (it.reason === 'price' ? '<span><i class="oiv-dot bad"></i>χωρίς τιμή</span>' : '');
+    else if (it.state === 'blocked') status = `<span><i class="oiv-dot ok"></i>${isLotIt(it) ? doneWord + ' ' + dm(it.when) : 'Παραδόθηκε ' + dm(it.deliv)}</span><span><i class="oiv-dot bad"></i>${it.reason === 'price' ? 'χωρίς τιμή' : 'παρτίδα → κομμάτια'}</span>`;
+    else status = `<span><i class="oiv-dot ok"></i>${doneWord} ${dm(it.when)}</span><span><i class="oiv-dot hollow"></i>προς κοπή${it.days !== null ? ' · ' + it.days + (it.days === 1 ? ' ημέρα' : ' ημέρες') : ''}</span>`
+      + (it.noSheets ? '<span><i class="oiv-dot bad"></i>δελτίο → Αλεξία</span>' : '');
 
     // ΣΤΟΙΧΕΙΑ ΓΙΑ ΤΟ ERP
     const c = it.clientId ? info(it.clientId) : null;
@@ -788,7 +790,7 @@ const OrdersInvoicingView = (() => {
       sheets = ck(false, `Δελτίο παλετών λείπει${miss} → Αλεξία`);
     }
     const checks = ck(delivered, delivered ? (isLotIt(it) ? 'Παραλήφθηκε στην αποθήκη ' : 'Παραδόθηκε ') + dm(it.deliv) : 'Δεν έχει παραδοθεί')
-      + ck(OC().hasPrice(f), OC().hasPrice(f) ? 'Τιμή ' + eurSym(it.price) : 'Χωρίς τιμή → την καταχωρεί ο owner')
+      + ck(OC().hasPrice(f), OC().hasPrice(f) ? 'Τιμή ' + eurSym(it.price) : 'Χωρίς τιμή → καταχώρισέ τη στο «Χωρίς τιμή»')
       + lotCheck(it)
       + sheets;
 
@@ -849,7 +851,7 @@ const OrdersInvoicingView = (() => {
     }
     if (it.state === 'blocked') {
       let who;
-      if (it.reason === 'price') who = 'Χωρίς τιμή — την καταχωρεί ο owner. Χωρίς τιμή δεν καταχωρείται τιμολόγιο.';
+      if (it.reason === 'price') who = 'Χωρίς τιμή — καταχώρισέ τη στο «Χωρίς τιμή». Χωρίς τιμή δεν καταχωρείται τιμολόγιο.';
       else if (it.reason === 'stock') {
         // Ε3: whoever is working closes a remainder that will never leave;
         // the base refuses while a piece or the intake is not delivered.
@@ -859,23 +861,10 @@ const OrdersInvoicingView = (() => {
         const btn = canCl ? `<button type="button" class="oiv-warn-btn" onclick="OrdersInvoicingView.closeRemainder('${esc(it.id)}')">Κλείσιμο υπολοίπου…</button>` : '';
         // O4: the reason lives in ΕΛΕΓΧΟΙ; here only the rule, neutral.
         return `<section><div class="oiv-muted small" role="note">Τιμολογείται μία φορά, μετά το τελευταίο κομμάτι.</div>${btn}</section>`;
-      } else {
-        const g = S.set.gate[it.id];
-        who = (g ? `Λείπει δελτίο παλετών σε ${(g.loading_stops || 0) - (g.covered_stops || 0)} από ${g.loading_stops || 0} φορτώσεις` : 'Λείπει δελτίο παλετών')
-          + ' — το ανεβάζει η Αλεξία. Μέχρι τότε δεν τιμολογείται.';
       }
-      let ov = '';
-      // Owner-only gate override (docs/PALLETS_ARCHITECTURE.md §4.1), for the
-      // sheets gate ONLY — a missing price is never overridable (043 refuses it).
-      if (it.reason === 'sheets' && isOwner() && canWrite() && OC().hasPrice(f)) {
-        ov = S.override === it.id
-          ? `<div class="oiv-edit"><label class="oiv-full">Αιτιολογία παράκαμψης (υποχρεωτική)<textarea id="oivOvReason" rows="2"></textarea></label>
-              <div class="oiv-fr"><label>Αριθμός (ΤΠΥ)<input id="oivOvNum" autocomplete="off"></label><label>Ημερομηνία<input id="oivOvDate" type="date" max="${today()}" value="${today()}"></label></div>
-              ${err}
-              <div class="oiv-btns"><button type="button" class="btn btn-ghost btn-sm" onclick="OrdersInvoicingView.cancelEdit()">Άκυρο</button><button type="button" class="oiv-primary sm" onclick="OrdersInvoicingView.submitOverride()">Καταχώριση με παράκαμψη</button></div></div>`
-          : `<button type="button" class="oiv-warn-btn" onclick="OrdersInvoicingView.startOverride()">Τιμολόγηση με παράκαμψη (owner)</button>`;
-      }
-      return `<section><div class="oiv-block" role="note">${esc(who)}</div>${ov}</section>`;
+      // No sheets branch: since 20/10 a missing slip is «ready» (stateOf), so
+      // the owner-only override it needed is gone with it.
+      return `<section><div class="oiv-block" role="note">${esc(who)}</div></section>`;
     }
     return '';
   }
@@ -926,10 +915,10 @@ const OrdersInvoicingView = (() => {
         { title: 'Ο ΤΠΥ υπάρχει ήδη', confirmLabel: 'Καταχώριση', danger: true });
       if (!ok) { const el = document.getElementById('oivNum'); if (el) el.focus(); return; }
     }
-    await writeInvoice(it, num, d, false);
+    await writeInvoice(it, num, d);
   }
 
-  async function writeInvoice(it, num, d, viaOverride) {
+  async function writeInvoice(it, num, d) {
     S.busy = true; S.formErr = '';
     const btn = document.getElementById('oivSave'); if (btn) { btn.disabled = true; btn.textContent = 'Καταχώριση…'; }
     const fields = invoiceFields(num, d);
@@ -947,12 +936,11 @@ const OrdersInvoicingView = (() => {
     S.busy = false; S.draft = null;
     Object.assign(it.rec.fields, fields);
     afterWrite();
-    S.override = null;
     const v = view();
     const nx = nextReady(v.groups, it.id, it.clientId);
     S.selId = nx ? nx.id : it.id; S.closed = false;
     if (S.ctx.isCurrent()) paintParts();
-    if (S.ctx.isCurrent()) showUndo(it, num, d, viaOverride);
+    if (S.ctx.isCurrent()) showUndo(it, num, d);
     return true;
   }
 
@@ -983,7 +971,7 @@ const OrdersInvoicingView = (() => {
   }
 
   function startEdit() { S.edit = S.selId; S.formErr = ''; paintCard(); const el = document.getElementById('oivEditNum'); if (el) { el.focus(); el.select(); } }
-  function cancelEdit() { S.edit = null; S.override = null; S.formErr = ''; paintCard(); }
+  function cancelEdit() { S.edit = null; S.formErr = ''; paintCard(); }
   async function saveEdit() {
     const it = itemById(S.edit); if (!it || S.busy || !canWrite()) return;
     const num = (document.getElementById('oivEditNum').value || '').trim();
@@ -1006,39 +994,13 @@ const OrdersInvoicingView = (() => {
     toast(`Ο ΤΠΥ της ${escapeHtml(it.num)} διορθώθηκε σε ${escapeHtml(num)}`);
   }
 
-  function startOverride() { if (!isOwner() || !canWrite()) return; S.override = S.selId; S.formErr = ''; paintCard(); const el = document.getElementById('oivOvReason'); if (el) el.focus(); }
-  // Same shape as invoicing.js _invOverrideInvoice: the override is recorded
-  // BEFORE the invoice write and is not undone if the write fails — it is an
-  // audit entry («who skipped the check and why»), not a lock. Recording an
-  // unused override is harmless; invoicing without a recorded reason is not.
-  async function submitOverride() {
-    const it = itemById(S.override); if (!it || S.busy || !isOwner() || !canWrite()) return;
-    const reason = (document.getElementById('oivOvReason').value || '').trim();
-    const num = (document.getElementById('oivOvNum').value || '').trim();
-    const d = document.getElementById('oivOvDate').value || '';
-    if (!reason) { S.formErr = 'Η παράκαμψη χρειάζεται αιτιολογία'; paintCard(); return; }
-    if (!num) { S.formErr = 'Συμπλήρωσε τον αριθμό ΤΠΥ του ERP'; paintCard(); return; }
-    const dc = dateCheck(d, today(), it.when, isLotIt(it));
-    if (dc.error) { S.formErr = 'Ημερομηνία ' + dc.error; paintCard(); return; }
-    if (!OC().hasPrice(it.f)) { S.formErr = 'Χωρίς τιμή δεν καταχωρείται τιμολόγιο'; paintCard(); return; }
-    // Same duplicate rule as the normal path, asked BEFORE the override is
-    // recorded — a cancelled confirm must leave no audit entry behind.
-    const dup = dupCheck(S.all, num, it);
-    if (dup.other.length && !(await confirmAction(`Ο ΤΠΥ ${num} υπάρχει ήδη στην ${dup.other[0].num} άλλου πελάτη (${dup.other[0].client}). Καταχώριση παρ' όλα αυτά;`, { title: 'Ο ΤΠΥ υπάρχει ήδη', confirmLabel: 'Καταχώριση', danger: true }))) return;
-    S.busy = true;
-    try { await plFetch('/pallets/override', { method: 'POST', body: { order_rec: it.id, reason } }); }
-    catch (e) { S.busy = false; S.formErr = 'Η παράκαμψη δεν καταγράφηκε — δεν έγινε καταχώριση. ' + ((e && e.message) || ''); if (S.ctx.isCurrent()) paintCard(); return; }
-    S.busy = false;
-    await writeInvoice(it, num, d, true);
-  }
-
   // ── Undo bar (toast with an action — core toast() has none) ────────────
-  function showUndo(it, num, d, viaOverride) {
+  function showUndo(it, num, d) {
     hideUndo();
     const bar = document.createElement('div');
     bar.id = 'oivUndo'; bar.className = 'oiv-undo'; bar.setAttribute('role', 'status');
     let left = 10;
-    bar.innerHTML = `<div><div class="t">Καταχωρήθηκε ΤΠΥ ${esc(num)}${viaOverride ? ' · με παράκαμψη' : ''}</div><div class="s">${esc(it.num)} · ${esc(it.client)} · ${esc(OC().dm(d))}</div></div>
+    bar.innerHTML = `<div><div class="t">Καταχωρήθηκε ΤΠΥ ${esc(num)}</div><div class="s">${esc(it.num)} · ${esc(it.client)} · ${esc(OC().dm(d))}</div></div>
       ${canWrite() ? `<button type="button" onclick="OrdersInvoicingView.undoInvoice('${esc(it.id)}', false)">Αναίρεση</button>` : ''}<span class="c">${left}″</span>`;
     document.body.appendChild(bar);
     const tick = setInterval(() => {
@@ -1053,7 +1015,7 @@ const OrdersInvoicingView = (() => {
   }
 
   // ── Interactions ────────────────────────────────────────────────────────
-  function select(id) { S.selId = id; S.closed = false; S.edit = null; S.override = null; S.formErr = ''; S.draft = null; S.reopenErr = null;
+  function select(id) { S.selId = id; S.closed = false; S.edit = null; S.formErr = ''; S.draft = null; S.reopenErr = null;
     document.querySelectorAll('#oivBody tr.oiv-r').forEach(tr => tr.classList.toggle('on', tr.dataset.id === id));
     paintCard(); }
   function close() { S.selId = null; S.closed = true; paintCard(); document.querySelectorAll('#oivBody tr.oiv-r.on').forEach(tr => tr.classList.remove('on')); }
@@ -1262,7 +1224,7 @@ const OrdersInvoicingView = (() => {
   }
 
   const api = { pure, render, select, close, setTab, pickWeek, shift, search, formInput, formKey, submit, undoInvoice,
-    startEdit, cancelEdit, saveEdit, startOverride, submitOverride, copyErp, exportCsv, print, closeRemainder, reopenLot };
+    startEdit, cancelEdit, saveEdit, copyErp, exportCsv, print, closeRemainder, reopenLot };
   return api;
 })();
 

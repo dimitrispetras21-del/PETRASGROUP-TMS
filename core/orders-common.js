@@ -770,8 +770,8 @@ const OrdersData = {
     return !g || g.sheets_ok === true;   // absent = no loading stops = nothing to gate
   },
   // One state per record, one reason per blocked record (with who unblocks it).
-  //   'invoiced' · 'ready' · 'blocked' (reason: 'price' → owner, 'stock' → the
-  //   lot's pieces, 'sheets' → Αλεξία) · 'pending' (not delivered)
+  //   'invoiced' · 'ready' (noSheets: slip missing, 20/10) · 'blocked' (reason:
+  //   'price', 'stock' → the lot's pieces) · 'pending' (not delivered)
   // A lot (057) is delivered when the WAREHOUSE received it, but it is invoiced
   // once, only when complete (every piece delivered and nothing left, or the
   // remainder closed) — the same rule stock_guard_orders enforces on
@@ -786,7 +786,11 @@ const OrdersData = {
       const lot = (set.stock && set.stock.get(OrdersStock.lotRecOfLot(f))) || null;
       if (set.stockFailed || !lot || lot.fields['Complete'] !== true) return { key: 'blocked', reason: 'stock', lot };
     }
-    if (!OrdersData.sheetsOk(set, rec)) return { key: 'blocked', reason: 'sheets' };
+    // Owner 20/10/2026: the ERP invoice no longer waits for the pallet slip —
+    // Eirini invoices, Alexia uploads after. Ready, with noSheets so every view
+    // still says «λείπει δελτίο». Decided HERE so the hub badge, the Weekly,
+    // «Χωρίς τιμή» and «Προς τιμολόγηση» cannot disagree.
+    if (!OrdersData.sheetsOk(set, rec)) return { key: 'ready', noSheets: true };
     return { key: 'ready' };
   },
   all(set) { return [...set.intl, ...set.natl]; },
