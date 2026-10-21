@@ -471,7 +471,10 @@ SECTIONS.push(async browser => {
   ok([d, dn, t, tn, a, x, xc].every(r => r.errors.length === 0), 'no page errors');
 });
 
-// ── owner 4/10 «(α) Ακριβώς σαν ανατεθειμένο» · Delivered is invisible on the board ──
+// ── owner 4/10 «(α) Ακριβώς σαν ανατεθειμένο» · a WRITTEN Delivered is invisible on the board ──
+// Still true after owner 21/10 («executed = dimmed»): the trigger copies the
+// international order's Delivered, so only the DATE (and In Transit, stamped
+// stops) say executed — the twins below fade alike, by their shared date.
 SECTIONS.push(async browser => {
   console.log('\n── owner 4/10 · an auto-Delivered load looks EXACTLY like an Assigned one');
   const { page, S } = await openBoard(browser);
@@ -786,6 +789,50 @@ SECTIONS.push(async browser => {
     ok(S.writes.slice(before).some(x => x.m === 'DELETE' && x.tid === T.PA && x.rid === 'recPAsA000000001'), 'its PA row (planned) deleted');
     await page.context().close();
   }
+});
+
+// ── owner 21/10 · executed = dimmed, and the search dims + raises (as the Weekly International) ──
+SECTIONS.push(async browser => {
+  console.log('\n── owner 21/10 · executed = dimmed; search dims the rest and raises its matches');
+  // NS-P (partner, one-way) moved to 2–3/10: its whole trip ran → the whole row fades.
+  const { page } = await openBoard(browser, { mutate: db => {
+    Object.assign(db[T.NL].find(r => r.id === 'recNlP000000000A').fields, { 'Loading DateTime': '2026-10-03T05:00:00.000Z', 'Delivery DateTime': '2026-10-03T11:00:00.000Z' });
+  } });
+  const look = async recId => {
+    const rowId = await rowIdOf(page, recId);
+    return page.$eval('#wn-row-' + rowId, el => {
+      const op = x => x ? getComputedStyle(x).opacity : null;
+      const legs = el.querySelectorAll(':scope > .wk3-leg'), card = legs[0] && legs[0].querySelector('.wn4-card');
+      return { row: el.classList.contains('wn-xd'), rowOp: op(el), down: legs[0].classList.contains('wn-xd'), downOp: op(legs[0]),
+        card: !!card && card.classList.contains('wn-xd'), cardOp: op(card), any: !!el.querySelector('.wn-xd') || el.classList.contains('wn-xd') };
+    });
+  };
+  const tw = await look('recNlTwinAssign0');
+  ok(tw.down && tw.downOp === '0.4' && !tw.row, 'delivery day passed, own truck, no up-leg yet: the ΚΑΘΟΔΟΣ leg fades (0.4), the row stays bold (open ΑΝΟΔΟΣ slot) — ' + JSON.stringify(tw));
+  const it = await look('recNlT000000000A');
+  ok(it.card && it.cardOp === '0.4' && !it.down && !it.row, 'In Transit, delivery ahead: only the pickup card fades — ' + JSON.stringify(it));
+  const nt = await look('recNlSat00000000');
+  ok(!nt.any, 'no truck and its day passed: open work, nothing fades — ' + JSON.stringify(nt));
+  const pp = await look('recNlP000000000A');
+  ok(pp.row && pp.rowOp === '0.4', 'one-way partner trip that ran: the whole row fades (0.4) — ' + JSON.stringify(pp));
+  // WN_SHOTS=<dir>: screenshots for a person to look at (no checks).
+  const shot = async n => { if (process.env.WN_SHOTS) await page.screenshot({ path: require('path').join(process.env.WN_SHOTS, n + '.png') }); };
+  await shot('wn-executed-dimmed');
+  // Search: Greek → Latin, dims (never hides), raises the match at full strength.
+  await page.fill('#wn-search', 'ΝΣ Τ'); await page.dispatchEvent('#wn-search', 'input'); await page.waitForTimeout(200);
+  const s1 = await page.evaluate(() => ({ sm: [...document.querySelectorAll('#wn-rows .wk3-row.wn-sm')].map(r => r.id),
+    dim: document.querySelectorAll('#wn-rows .wk3-row.wn-dim').length, rows: document.querySelectorAll('#wn-rows .wk3-row').length,
+    hidden: [...document.querySelectorAll('#wn-rows .wk3-row')].filter(r => r.style.display === 'none').length,
+    pillDim: document.querySelectorAll('#wn-rows .wk3-segpill.wn-dim').length }));
+  ok(s1.sm.length >= 1 && s1.dim === s1.rows - s1.sm.length && s1.hidden === 0 && s1.pillDim === 0, 'search «ΝΣ Τ» (Greek) finds «NS-T»: the rest dims, nothing hidden, no pill dimmed twice — ' + JSON.stringify(s1));
+  await page.fill('#wn-search', 'twin'); await page.dispatchEvent('#wn-search', 'input'); await page.waitForTimeout(200);
+  const s2 = await page.evaluate(id => { const r = document.getElementById('wn-row-' + id); const l = r && r.querySelector(':scope > .wk3-leg');
+    return { sm: !!r && r.classList.contains('wn-sm'), legOp: l ? getComputedStyle(l).opacity : null, shadow: r ? getComputedStyle(r).boxShadow !== 'none' : false }; }, await rowIdOf(page, 'recNlTwinAssign0'));
+  await shot('wn-search-twin');
+  ok(s2.sm && s2.legOp === '1' && s2.shadow, 'an executed match is raised at full strength (its faded leg back to 1, a shadow) — ' + JSON.stringify(s2));
+  await page.fill('#wn-search', ''); await page.dispatchEvent('#wn-search', 'input'); await page.waitForTimeout(200);
+  ok(await page.evaluate(() => !document.querySelector('#wn-rows .wn-dim, #wn-rows .wn-sm')), 'empty search: no dim, no card');
+  await page.context().close();
 });
 
 (async () => {

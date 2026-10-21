@@ -58,17 +58,22 @@ function _wnBlockReadOnly(){
   return true;
 }
 
+// Search (Pantelis 21/10, the Weekly International's rule): fhSearchNorm /
+// fhSearchBlob (core/form-helpers.js) — any case, no accents, Greek → Latin like
+// the stored place names, no spaces/dashes, fields kept apart. A search DIMS
+// the rows it leaves out and raises its matches (.wn-dim / .wn-sm), never
+// hides them; the status select still hides, as before. Rows only: the
+// segmented pill carries data-row-id too and must not be dimmed a second time.
 function _wnApplyFilter() {
-  const q = (WNATL.filter||'').toLowerCase();
+  const q = fhSearchNorm(WNATL.filter||'');
   const fs = WNATL.filterStatus||'';
-  document.querySelectorAll('#wn-rows [data-row-id]').forEach(el => {
+  document.querySelectorAll('#wn-rows .wk3-row[data-row-id]').forEach(el => {
     const row = WNATL.rows.find(r => String(r.id) === el.dataset.rowId);
-    if (!row) { el.style.display=''; return; }
+    if (!row) { el.style.display=''; el.classList.remove('wn-dim','wn-sm'); return; }
     let show = true;
-    if (q) {
-      const blob = [row.truckLabel, row.driverLabel, row.partnerLabel, row.client||'', row.route||'', row.ref||''].join(' ').toLowerCase();
-      if (!blob.includes(q)) show = false;
-    }
+    const hit = !q || fhSearchBlob([row.truckLabel, row.driverLabel, row.partnerLabel, row.client, row.route, row.ref]).includes(q);
+    el.classList.toggle('wn-dim', !hit);
+    el.classList.toggle('wn-sm', !!q && hit);
     if (show && fs) {
       if (fs === 'pending' && row.saved) show = false;
       else if (fs === 'assigned' && !row.saved) show = false;
@@ -615,6 +620,21 @@ function _wnCss() { return `<style id="wn4-css">
 .wn4-segp{font-size:9px;color:var(--text-dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .wn4-segtot{font-size:11px;font-weight:700;color:var(--text);white-space:nowrap}
 .wn4 .wk3-num .xn{font-size:10px;font-weight:700;color:var(--text-dim)}
+/* Executed = dimmed (owner 21/10, _wnXdOf): the same 40% as the Ημερήσιο and
+   the Weekly International. A row, a leg, a pickup card, or one stamped
+   delivery stop (.wk3-seg.ok). Never a second fade inside a faded or
+   search-dimmed ancestor; back to full on hover, focus or as a search match. */
+.wn4{--wn4-done:.4}
+.wn4 .wk3-row.wn-xd,.wn4 .wk3-leg.wn-xd,.wn4 .wn4-card.wn-xd,.wn4 .wk3-seg.ok{opacity:var(--wn4-done)}
+.wn4 :is(.wk3-row.wn-xd,.wk3-leg.wn-xd,.wk3-row.wn-dim,.wk3-row:hover,.wk3-row:focus-within,.wk3-row.wn-sm) :is(.wk3-leg.wn-xd,.wn4-card.wn-xd,.wk3-seg.ok),
+.wn4 .wk3-row.wn-xd:not(.wn-dim):is(:hover,:focus-within,.wn-sm){opacity:1}
+/* Search (Pantelis 21/10, as on the Weekly International): the rows left out
+   dim to 35%, never hidden; a match is raised as a card with a soft shadow, at
+   full strength even when it was executed. */
+.wn4 .wk3-row.wn-dim{opacity:.35}
+.wn4 #wn-rows .wk3-row.wn-sm{position:relative;z-index:2;box-shadow:0 0 0 1px rgba(11,25,41,.07),0 1px 2px rgba(11,25,41,.06),0 6px 18px -6px rgba(11,25,41,.18)}
+.wn4 #wn-rows .wk3-row.wn-sm>.wk3-num{color:var(--text);font-weight:700}
+@media (prefers-reduced-motion:no-preference){.wn4 #wn-rows .wk3-row{transition:box-shadow .12s ease-out}}
 @media print{.wn4-acts,.wk3-sub{display:none}}
 </style>`; }
 
@@ -637,10 +657,25 @@ function _wnRowElId(r) { return r.type==='southnorth' ? 'wn-sn-'+r.orderId : 'wn
 // Delivered on national loads now — the trigger national_load_follow_order
 // copies it from the international order onto the VS leg (45 loads, 4/10).
 // So the date alone decides here (the Status shortcut left deliveredByDate),
-// and nothing on this board shows a written Delivered: such a load looks
-// exactly like an Assigned one (no ✓, no tick, same chips, same counters).
+// and a written Delivered draws exactly like an Assigned load. Owner 21/10/2026:
+// what was EXECUTED (by date, In Transit, a stamped stop) now fades, as on the
+// Weekly International (_wnXdOf below) — the written Delivered still does not count.
 function _wnIsDelivered(row) {
   return OrdersCommon.deliveredByDate(row.status, _wnOrd(row)?.fields?.['Delivery DateTime']);
+}
+// Executed = dimmed (owner 21/10, same rule as the Weekly International):
+// a leg whose delivery day has passed (deliveredByDate — «παραδόθηκε = πέρασε
+// η μέρα») fades whole; one only loaded (Status In Transit) fades its pickup
+// card; a delivery stop stamped by the Ημερήσιο («Completed At») fades alone
+// (.wk3-seg.ok). A WRITTEN «Delivered» is not a signal here (4/10 still holds
+// for it): the trigger national_load_follow_order copies it from the
+// international order, so on a VS import leg it says «delivered» when the
+// truck reached Veroia, before the national delivery. Such a load draws
+// exactly like an Assigned one, and fades only by its own date.
+function _wnXdOf(f) {
+  if (!f) return '';
+  if (OrdersCommon.deliveredByDate(f['Status'], f['Delivery DateTime'])) return 'done';
+  return f['Status'] === 'In Transit' ? 'half' : '';
 }
 
 function _wnPaint() {
@@ -1281,7 +1316,8 @@ function _wnExecChip(f, saved){
   const st=f['Status']||'';
   if(!saved) return '<span class="wi-exec wi-exec--late" title="Η ώρα φόρτωσης πέρασε χωρίς ανάθεση">⚠ φόρτωση χωρίς ανάθεση</span>';
   // owner 4/10 «(α) Ακριβώς σαν ανατεθειμένο»: an auto-Delivered load gets the
-  // same chip as an Assigned one — no visible difference on this board.
+  // same chip as an Assigned one — a written Delivered is not a signal on this
+  // board (it is copied from the international order, see _wnXdOf).
   if(st==='Assigned'||st==='Pending'||st==='Delivered') return '<span class="wi-exec wi-exec--stale" title="Η ώρα φόρτωσης πέρασε χωρίς εξέλιξη κατάστασης">⏱ πέρασε η φόρτωση · χωρίς εξέλιξη</span>';
   return '';
 }
@@ -1600,9 +1636,12 @@ function _wnRowHTML(row, i) {
   // Unknown ≠ 0 (contract #8): no Total Pallets → no «p» at all, never «0 p».
   const pals = f['Total Pallets'];
   const st = f['Status'] || '';
-  // owner 4/10: a Delivered load looks exactly like an Assigned one — the
-  // «φορτώθηκε» tick is In Transit only, and the delivery card has no ✓.
+  // The «φορτώθηκε» tick is In Transit only (the delivery card has no ✓);
+  // what was executed fades instead (_wnXdOf, owner 21/10).
   const loaded = st === 'In Transit';
+  // Only an ASSIGNED load can have been executed: one with no truck whose day
+  // passed is open work («φόρτωση χωρίς ανάθεση»), never faded.
+  const xdDown = row.saved ? _wnXdOf(f) : '', xdUp = sn && row.saved ? _wnXdOf(sn.fields) : '';
   const loadDt = f['Loading DateTime'] ? _wnFmt(f['Loading DateTime']) : '';
   const delDt  = f['Delivery DateTime'] ? _wnFmt(f['Delivery DateTime']) : '';
 
@@ -1615,6 +1654,10 @@ function _wnRowHTML(row, i) {
   //   «δεν ταιριάχτηκε ακόμη» — όλα τα υπόλοιπα. Καλεί σε drag.
   const isOneWay = !sn && row.saved && isPartner;
   const snCell = sn ? _wnSnInlineCell(sn, row.id) : _wnDragCell(isOneWay, row.id);
+  // The WHOLE row fades only when every leg it draws is done and nothing on it
+  // still needs work: no truck («ΠΡΟΣ ΑΝΑΘΕΣΗ»), «χρειάζεται τοπικό», or an
+  // unmatched up-leg slot (own truck) keep it bold; then only the done leg fades.
+  const xdRow = xdDown === 'done' && row.saved && !row.needsLocal && (sn ? xdUp === 'done' : isOneWay);
 
   // Φέτα 4 (Δ9): πολυστάσιο φορτίο → συμπτυγμένο σήμα «▸ N σημεία · x/33».
   // Το γέμισμα από το Total Pallets της γραμμής (κανονικό <30 · πορτοκαλί ≥30
@@ -1639,6 +1682,7 @@ function _wnRowHTML(row, i) {
     date: loadDt, dateTitle: 'Ημ. φόρτωσης',
     name: fromP.name || (isGroup ? escapeHtml(f['Name'] || '') : '') || '—', sub: fromP.sub,
     appt: f['Loading Appointment'], ok: loaded, okTitle: 'Φορτώθηκε (Status: '+escapeHtml(st)+')',
+    cls: xdDown === 'half' ? 'wn-xd' : '',
   });
   const toCard = segStops
     ? _wnSegPillWrap(row, primary.id, segStops, _wnCoveredChip(row) + needChip + `<span class="wk3-flags">${_wnBadges(f)}${_wnCrossChip(f)}${_wnExecChip(f,row.saved)}</span>`)
@@ -1659,17 +1703,17 @@ function _wnRowHTML(row, i) {
   // the sheet (and its WhatsApp share). Hidden until national printing exists;
   // the empty <span>s keep the 40px | pill | 40px grid of the cell.
   return `
-  <div id="wn-row-${row.id}" data-row-id="${row.id}" class="wk3-row${row.needsLocal?' hot':''}"
+  <div id="wn-row-${row.id}" data-row-id="${row.id}" class="wk3-row${row.needsLocal?' hot':''}${xdRow?' wn-xd':''}"
     draggable="true"
     ondragstart="_wnDragStart(event,'${row.orderId||primary?.id||''}')">
     <div class="wk3-num">${i+1}${nDel>1?`<span class="xn" title="${nDel} σημεία παράδοσης">×${nDel}</span>`:''}${row.src==='vs'?'<span class="wn4-src vs" title="Φορτίο Veroia Switch — τα στοιχεία αλλάζουν από το Weekly Διεθνών">VS</span>':row.src==='grp'?'<span class="wn4-src grp" title="Groupage">GRP</span>':''}${_wnSyncSlot('wn-sync-'+row.id)}</div>
-    <div class="wk3-leg" style="cursor:pointer" onclick="_wnOpenRow(${row.id})" oncontextmenu="_wnCtx(event,${row.id})">${fromCard}<span class="wn4-arrow">→</span>${toCard}</div>
+    <div class="wk3-leg${!xdRow && xdDown === 'done' ? ' wn-xd' : ''}" style="cursor:pointer" onclick="_wnOpenRow(${row.id})" oncontextmenu="_wnCtx(event,${row.id})">${fromCard}<span class="wn4-arrow">→</span>${toCard}</div>
     <div class="wk3-assign" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click()}" role="button" tabindex="0" onclick="event.stopPropagation();_wnOpenPopover(event,${row.id})">
       <span></span>
       ${pill}
       <span></span>${_wnCpy(row)}
     </div>
-    <div class="wk3-leg${sn?'':(isOneWay?' bgap':' void')}" id="wn-ci-${row.id}"
+    <div class="wk3-leg${sn?'':(isOneWay?' bgap':' void')}${sn && !xdRow && xdUp === 'done' ? ' wn-xd' : ''}" id="wn-ci-${row.id}"
          onclick="event.stopPropagation()"
          ondragover="event.preventDefault();document.getElementById('wn-ci-${row.id}').classList.add('dh')"
          ondragleave="document.getElementById('wn-ci-${row.id}').classList.remove('dh')"
@@ -1851,6 +1895,7 @@ function _wnSnInlineCell(snRec, rowId) {
     date: f['Loading DateTime'] ? _wnFmt(f['Loading DateTime']) : '', dateTitle: 'Ημ. φόρτωσης ανόδου',
     name: fromP.name || (isGroupage ? escapeHtml(f['Name'] || '') : '') || '—', sub: fromP.sub,
     appt: f['Loading Appointment'], ok: st === 'In Transit', okTitle: 'Φορτώθηκε (Status: '+escapeHtml(st)+')',
+    cls: _wnXdOf(f) === 'half' ? 'wn-xd' : '',
   });
   const toCard = _wnCard({
     date: f['Delivery DateTime'] ? _wnFmt(f['Delivery DateTime']) : '', dateTitle: 'Ημ. παράδοσης',
@@ -1981,11 +2026,15 @@ function _wnSnRowHTML(row, snNo) {
   const fromP = _wnLocParts(f, 'Pickup'), toP = _wnLocParts(f, 'Delivery');
   const st = f['Status'] || '';
   const pill = _wnPill(row);
+  // Executed = dimmed (owner 21/10, _wnXdOf): the row fades when its up-leg is
+  // done and nothing on it needs work (no truck, «χρειάζεται τοπικό»).
+  const xd = row.saved ? _wnXdOf(f) : '', xdRow = xd === 'done' && !row.needsLocal;
 
   const fromCard = _wnCard({
     date: f['Loading DateTime'] ? _wnFmt(f['Loading DateTime']) : '', dateTitle: 'Ημ. φόρτωσης',
     name: fromP.name || (isGroupage ? escapeHtml(f['Name'] || '') : '') || '—', sub: fromP.sub,
     appt: f['Loading Appointment'], ok: st === 'In Transit', okTitle: 'Φορτώθηκε (Status: '+escapeHtml(st)+')',
+    cls: xd === 'half' ? 'wn-xd' : '',
   });
   const toCard = _wnCard({
     date: f['Delivery DateTime'] ? _wnFmt(f['Delivery DateTime']) : '', dateTitle: 'Ημ. παράδοσης',
@@ -1999,7 +2048,7 @@ function _wnSnRowHTML(row, snNo) {
   // Το ΑΡΙΣΤΕΡΟ κελί μένει navy — «δεν αναμένεται σκέλος καθόδου» (contract #8,
   // owner 8/8). Handlers αυτούσιοι.
   return `<div id="wn-sn-${ord.id}" data-row-id="${row.id}"
-    class="wk3-row sn${row.needsLocal?' hot':''}"
+    class="wk3-row sn${row.needsLocal?' hot':''}${xdRow?' wn-xd':''}"
     style="cursor:grab"
     draggable="true"
     ondragstart="_wnDragStart(event,'${ord.id}')"
@@ -2011,7 +2060,7 @@ function _wnSnRowHTML(row, snNo) {
       ${pill}
       <span></span>${_wnCpy(row)}
     </div>
-    <div class="wk3-leg" style="cursor:pointer" onclick="_wnOpenRow(${row.id})">${fromCard}<span class="wn4-arrow">→</span>${toCard}</div>
+    <div class="wk3-leg${!xdRow && xd === 'done' ? ' wn-xd' : ''}" style="cursor:pointer" onclick="_wnOpenRow(${row.id})">${fromCard}<span class="wn4-arrow">→</span>${toCard}</div>
   </div>`;
 }
 
