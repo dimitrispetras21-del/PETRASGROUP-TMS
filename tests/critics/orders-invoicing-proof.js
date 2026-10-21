@@ -299,7 +299,8 @@ async function runAccountant(browser) {
   await page.screenshot({ path: shot('04-blocked-sheets') });
   await rowOf(page, '#1240').click();
   card = await cardText(page);
-  assert(/Χωρίς τιμή — καταχώρισέ τη στο «Χωρίς τιμή»/.test(card) && /χωρίς τιμή/.test(card), 'price-blocked card: owner');
+  assert(await page.locator('#oivPrice').count() === 1 && await page.locator('#oivNum').count() === 0 && /πρώτη φορά|τελευταία τιμή/.test(card), 'price-blocked card (accountant, 21/10): a price box here, no ΤΠΥ yet');
+  assert(/χωρίς τιμή/.test(await rowOf(page, '#1240').innerText()) && !/owner/.test(await rowOf(page, '#1240').innerText()), 'price-blocked row: «χωρίς τιμή», no «→ owner»');
 
   // invoiced week
   await page.locator('.oiv-wk', { hasText: weekLabel(PREV2) }).click();
@@ -394,6 +395,20 @@ async function runOwner(browser) {
   assert(cap.overrides.length === 0, 'no POST /pallets/override any more');
   const p = cap.patches.find(x => x.id === 'recO6');
   assert(p && JSON.stringify(p.fields) === JSON.stringify({ Invoiced: true, 'Invoice Number': '0440', 'Invoice Date': TODAY }), 'slip missing → the same 3-field PATCH');
+  // 21/10: price from the card → the same card turns into the ΤΠΥ form
+  await page.click('.oiv-seg-b[data-tab="blocked"]');
+  await rowOf(page, '#1240').click();
+  await page.waitForSelector('#oivPrice');
+  await page.screenshot({ path: shot('09a-card-price-box') });
+  await page.fill('#oivPrice', 'abc'); await page.press('#oivPrice', 'Enter');
+  assert(!cap.patches.some(x => x.id === 'recO5') && /μεγαλύτερο του 0/.test(await txt(page, '#oivCard .oiv-err')), 'card price «abc» → message, no PATCH');
+  await page.fill('#oivPrice', '2.650,00'); await page.press('#oivPrice', 'Enter');
+  await page.waitForSelector('#oivNum', { timeout: 8000 }).catch(() => {});
+  const pp = cap.patches.filter(x => x.id === 'recO5');
+  assert(pp.length === 1 && JSON.stringify(pp[0].fields) === JSON.stringify({ Price: 2650 }), 'card price → one PATCH {Price: 2650} — ' + JSON.stringify(pp.map(x => x.fields)));
+  assert(/#1240/.test(await txt(page, '#oivCard .oiv-ch-t')) && await page.locator('#oivNum').count() === 1
+    && await page.evaluate(() => document.activeElement && document.activeElement.id) === 'oivNum', 'same card, now the ΤΠΥ form, ΤΠΥ box focused');
+  await page.screenshot({ path: shot('09-card-price-then-tpy') });
   assert(cap.errors.length === 0, 'owner: no page errors ' + JSON.stringify(cap.errors));
   await page.context().close();
 }
