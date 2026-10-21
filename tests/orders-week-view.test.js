@@ -169,7 +169,7 @@ test('pg id: «Order ID», else «Order No»', () => {
 // This view reads its OWN ORDERS window (not OrdersData's set), so a piece
 // reaches buildWeek: it must never be counted (no price, the lot is invoiced
 // once) — its RT shows the leg «στην παρτίδα #n» and no total moves.
-test('stock: a piece in an RT is shown, never counted; no total changes because of it; the lot blocks as «stock»', () => {
+test('stock: a piece in an RT is shown, never counted; no total changes because of it; the lot is «ready» like any priced order (B0)', () => {
   require('vm').runInThisContext(require('fs').readFileSync(require('path').join(__dirname, '..', 'core', 'data-helpers.js'), 'utf8'));
   const { OrdersStock, OrdersData } = require('../core/orders-common.js');
   global.OrdersStock = OrdersStock;
@@ -195,18 +195,17 @@ test('stock: a piece in an RT is shown, never counted; no total changes because 
   assert.ok(only && only.counted.length === 0, 'a piece-only RT is listed with nothing counted');
   const perRow = [...m1.rows, ...m1.noRt].reduce((s, r) => s + W.totals(r.counted, stateOf).sum, 0);
   assert.strictEqual(perRow, W.totals(m1.weekIntl, stateOf).sum, 'Σ RT rows + Χωρίς RT = the week, still');
-  // the lot itself: delivered INTO the warehouse, blocked until its pieces are delivered
+  // the lot itself (B0, owner 21/10/2026): invoiced from its registration — never blocked on its pieces
   const set = { intl: [], natl: [], gate: {}, gateFailed: false, stockFailed: false,
     stock: new Map([['recLot1', { id: 'recLot1', fields: { Complete: false, 'Remaining Pallets': 13, Pieces: 2, 'Pieces Delivered': 1 } }]]) };
   const t = W.totals(m1.weekIntl, r => OrdersData.stateOf(set, r));
-  assert.strictEqual(t.blocked.stock, 1);
+  assert.strictEqual(t.blocked.stock, 0);
   assert.strictEqual(t.blocked.price, 1, 'the unpriced export is still «price»');
 });
 
-// E-05 (impact map 4/10): «παλαιότερη εκκρεμής» of a lot counts from its
-// «Completed On» (OrdersData.ageOf, carried by the page's state function) —
-// never from the warehouse intake while its pieces are still out.
-test('stock: oldest pending ignores an incomplete lot\'s intake date; a bare state function keeps the old rule', () => {
+// B0 (owner 21/10/2026): «παλαιότερη εκκρεμής» of a lot counts from its own
+// delivery, like every order (OrdersData.ageOf, carried by the page's state function).
+test('stock: oldest pending counts a lot from its own delivery, like every order (B0)', () => {
   const { OrdersStock, OrdersData } = require('../core/orders-common.js');
   global.OrdersStock = OrdersStock;
   const LOT = o('recLot', 1300, { Direction: 'Import', 'Loading DateTime': '2026-09-20T08:00', 'Delivery DateTime': '2026-09-21T08:00', Price: 3300, Status: 'Delivered', 'Own Stock Lot': 'recLot1' });
@@ -214,10 +213,10 @@ test('stock: oldest pending ignores an incomplete lot\'s intake date; a bare sta
     stock: new Map([['recLot1', { id: 'recLot1', fields: { Complete: false } }]]) };
   const bare = r => OrdersData.stateOf(set, r);
   const paged = Object.assign(r => OrdersData.stateOf(set, r), { ageOf: r => OrdersData.ageOf(set, r) });
-  assert.strictEqual(W.totals([LOT], paged).oldest, null, 'incomplete lot → no age');
-  assert.strictEqual(W.totals([LOT], bare).oldest, OrdersCommon.daysSinceDelivery(LOT), 'fallback: the delivery age');
+  assert.strictEqual(W.totals([LOT], paged).oldest, OrdersCommon.daysSinceDelivery(LOT), 'incomplete lot → its delivery age');
+  assert.strictEqual(W.totals([LOT], bare).oldest, OrdersCommon.daysSinceDelivery(LOT), 'the bare state function agrees');
   set.stock.get('recLot1').fields = { Complete: true, 'Completed On': OrdersCommon.addDays(OrdersCommon.today(), -1) };
-  assert.strictEqual(W.totals([LOT], paged).oldest, 1);
+  assert.strictEqual(W.totals([LOT], paged).oldest, OrdersCommon.daysSinceDelivery(LOT), '«Completed On» no longer counts');
 });
 
 // ══ v4 (owner 13/10, Figma 1514:8013) ═══════════════════════════════════════
