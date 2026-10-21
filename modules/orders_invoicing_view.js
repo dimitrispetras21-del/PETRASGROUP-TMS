@@ -327,6 +327,7 @@ const OrdersInvoicingView = (() => {
     selId: null, closed: false,
     busy: false, formErr: '', edit: null,
     draft: null,            // {id, num, d} kept across a refused write so she does not retype
+    draftPrice: null,       // {id, v} the same for the card's price box (21/10)
     clientInfo: new Map(), clientsFailed: false,
     undo: null,
     reopenErr: null,        // {id, msg} — «Άνοιγμα ξανά» refused, said under the close line
@@ -516,12 +517,10 @@ const OrdersInvoicingView = (() => {
     if (it.state === 'invoiced') return OC().invCell(it.f);
     if (it.state === 'blocked') {
       // O4 (critic-2 E2-10): a lot waiting for its pieces is normal work in
-      // progress nobody can act on here — neutral, not the red of «τιμή →
-      // owner» / «δελτίο → Αλεξία». A false red teaches to ignore red.
+      // progress nobody can act on here — neutral, not the red of «χωρίς
+      // τιμή». A false red teaches to ignore red.
       if (it.reason === 'stock') return `<span class="oiv-st wait" title="${esc(stockText(it.lot))}"><i class="oiv-dot wait"></i>περιμένει κομμάτια</span>`;
-      return it.reason === 'price'
-        ? '<span class="oiv-st bad"><i class="oiv-dot fill"></i>τιμή → owner</span>'
-        : '<span class="oiv-st bad"><i class="oiv-dot fill"></i>δελτίο → Αλεξία</span>';
+      return '<span class="oiv-st bad"><i class="oiv-dot fill"></i>χωρίς τιμή</span>';
     }
     const d = it.days === null ? '' : ' · ' + it.days + ' ημ.';
     return `<span class="oiv-st"><i class="oiv-dot"></i>προς κοπή${d}</span>`;
@@ -790,7 +789,7 @@ const OrdersInvoicingView = (() => {
       sheets = ck(false, `Δελτίο παλετών λείπει${miss} → Αλεξία`);
     }
     const checks = ck(delivered, delivered ? (isLotIt(it) ? 'Παραλήφθηκε στην αποθήκη ' : 'Παραδόθηκε ') + dm(it.deliv) : 'Δεν έχει παραδοθεί')
-      + ck(OC().hasPrice(f), OC().hasPrice(f) ? 'Τιμή ' + eurSym(it.price) : 'Χωρίς τιμή → καταχώρισέ τη στο «Χωρίς τιμή»')
+      + ck(OC().hasPrice(f), OC().hasPrice(f) ? 'Τιμή ' + eurSym(it.price) : (canWrite() ? 'Χωρίς τιμή → γράψε τη παρακάτω' : 'Χωρίς τιμή'))
       + lotCheck(it)
       + sheets;
 
@@ -811,6 +810,8 @@ const OrdersInvoicingView = (() => {
     if (isLotIt(it)) { ensurePieces(it); if (isOwner()) ensureAlloc(it); }
     const inp = document.getElementById('oivNum');
     if (inp && !S.busy) { formInput(); if (focus !== false) inp.focus(); }
+    const pin = document.getElementById('oivPrice');
+    if (pin && !S.busy && focus !== false) pin.focus();
     // A refusal must be SEEN: the card body scrolls, so bring the message up.
     const errEl = el.querySelector('.oiv-err');
     if (errEl) errEl.scrollIntoView({ block: 'nearest' });
@@ -851,7 +852,18 @@ const OrdersInvoicingView = (() => {
     }
     if (it.state === 'blocked') {
       let who;
-      if (it.reason === 'price') who = 'Χωρίς τιμή — καταχώρισέ τη στο «Χωρίς τιμή». Χωρίς τιμή δεν καταχωρείται τιμολόγιο.';
+      if (it.reason === 'price') {
+        // Owner 21/10/2026: Eirini types the price HERE and the ΤΠΥ form opens
+        // in the same card — no trip to «Χωρίς τιμή». Same write and the same
+        // proof as that view (savePrice: the price that comes back = typed).
+        if (!canWrite()) return `<section><div class="oiv-block" role="note">Χωρίς τιμή. Χωρίς τιμή δεν καταχωρείται τιμολόγιο.</div></section>`;
+        const last = typeof OrdersNoPrice !== 'undefined' && OrdersNoPrice.lastPriceHint ? OrdersNoPrice.lastPriceHint(it.rec, S.set ? OrdersData.all(S.set) : []) : null;
+        const lastTxt = last ? `τελευταία τιμή ίδιας διαδρομής ${OC().eurSym(last.price)}` : 'πρώτη φορά αυτή η διαδρομή';
+        return `<section><div class="oiv-sh"><span>Τιμή</span></div>
+          <div class="oiv-edit"><div class="oiv-fr"><label>Τιμή €<input id="oivPrice" inputmode="decimal" autocomplete="off" value="${S.draftPrice && S.draftPrice.id === it.id ? esc(S.draftPrice.v) : ''}" placeholder="${last ? esc(OC().eur(last.price)) : 'π.χ. 1.250,00'}" onkeydown="if(event.key==='Enter'){event.preventDefault();OrdersInvoicingView.savePrice()}"></label></div>
+          <div class="oiv-muted small">${esc(lastTxt)} · Enter → μετά ο ΤΠΥ</div>${err}
+          <div class="oiv-btns"><button type="button" class="oiv-primary sm" id="oivPriceSave" onclick="OrdersInvoicingView.savePrice()">Καταχώριση τιμής</button></div></div></section>`;
+      }
       else if (it.reason === 'stock') {
         // Ε3: whoever is working closes a remainder that will never leave;
         // the base refuses while a piece or the intake is not delivered.
@@ -992,6 +1004,47 @@ const OrdersInvoicingView = (() => {
     afterWrite();
     if (S.ctx.isCurrent()) paintParts();
     toast(`Ο ΤΠΥ της ${escapeHtml(it.num)} διορθώθηκε σε ${escapeHtml(num)}`);
+  }
+
+  // Price from the card (owner 21/10/2026). Same rules as «Χωρίς τιμή» save():
+  // > 0, «1.250,00» accepted, an offline stand-in is not success, and the price
+  // the Worker returns must be the one typed (an unmapped label is a 200).
+  async function savePrice() {
+    const it = itemById(S.selId);
+    if (!it || S.busy || !canWrite() || it.state !== 'blocked' || it.reason !== 'price') return;
+    const el = document.getElementById('oivPrice');
+    const n = typeof OrdersNoPrice !== 'undefined' ? OrdersNoPrice.parsePrice(el ? el.value : '') : null;
+    // Kept across a refused write, like S.draft for the ΤΠΥ: she never retypes.
+    S.draftPrice = { id: it.id, v: el ? el.value : '' };
+    if (n === null) { S.formErr = 'Γράψε ποσό μεγαλύτερο του 0 — π.χ. 950 ή 1.250,00'; paintCard(); return; }
+    S.busy = true; S.formErr = '';
+    const btn = document.getElementById('oivPriceSave'); if (btn) { btn.disabled = true; btn.textContent = 'Αποθήκευση…'; }
+    try {
+      const res = await atPatch(tableOf(it), it.id, { 'Price': n });
+      if (res && res._offline) throw new Error('Εκτός σύνδεσης — η τιμή δεν γράφτηκε ακόμη');
+      const back = OC().price(res && res.fields);
+      if (!(back > 0)) throw new Error('ο διακομιστής δεν επέστρεψε την τιμή');
+      if (Math.abs(back - n) > 0.005) throw new Error(`γράφτηκε ${OC().eur(back)} αντί για ${OC().eur(n)}`);
+      it.rec.fields['Price'] = back;
+      S.draftPrice = null;
+      if (typeof OrdersNoPrice !== 'undefined' && OrdersNoPrice.noteFilled) OrdersNoPrice.noteFilled(it.type, it.id, back);
+    } catch (e) {
+      S.busy = false; S.formErr = 'Δεν αποθηκεύτηκε: ' + ((e && e.message) || 'άγνωστο σφάλμα');
+      if (S.ctx.isCurrent()) paintCard();
+      return;
+    }
+    S.busy = false;
+    afterWrite();
+    // Same card, now ready: the ΤΠΥ box takes the focus (paintCard). From the
+    // «Μπλοκαρισμένες» tab it would vanish from the list — follow it to «Προς κοπή».
+    const now0 = itemById(it.id);
+    if (now0 && now0.state === 'ready' && S.tab === 'blocked') S.tab = 'ready';
+    S.selId = it.id; S.closed = false;
+    if (S.ctx.isCurrent()) paintParts();
+    const now = itemById(it.id);
+    toast(now && now.state === 'ready' ? `Η τιμή ${OC().eurSym(n)} καταχωρήθηκε — γράψε τον ΤΠΥ`
+      : now && now.state === 'blocked' && now.reason === 'stock' ? `Η τιμή ${OC().eurSym(n)} καταχωρήθηκε — η παρτίδα περιμένει κομμάτια πριν τιμολογηθεί`
+      : `Η τιμή ${OC().eurSym(n)} καταχωρήθηκε`);
   }
 
   // ── Undo bar (toast with an action — core toast() has none) ────────────
@@ -1224,7 +1277,7 @@ const OrdersInvoicingView = (() => {
   }
 
   const api = { pure, render, select, close, setTab, pickWeek, shift, search, formInput, formKey, submit, undoInvoice,
-    startEdit, cancelEdit, saveEdit, copyErp, exportCsv, print, closeRemainder, reopenLot };
+    startEdit, cancelEdit, saveEdit, savePrice, copyErp, exportCsv, print, closeRemainder, reopenLot };
   return api;
 })();
 

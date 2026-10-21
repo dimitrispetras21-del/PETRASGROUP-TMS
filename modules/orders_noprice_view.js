@@ -691,6 +691,9 @@ tr{page-break-inside:avoid}
   return {
     // view
     render, onKey, clearMsg, save, print, csv,
+    // A price typed in the «Προς τιμολόγηση» card (21/10) counts in «Συμπληρώθηκαν
+    // σήμερα» too — the accountant cannot read /audit, this list is all she has.
+    noteFilled(type, id, price) { _sessionItems().push({ recordId: id, table: tableOfType(type), price, actor: _username(), at: new Date().toISOString() }); },
     // pure (also exported for node:test below)
     parsePrice, selectNoPrice, groupByClient, routeKey, lastPriceHint, filledFromAudit, mergeFilled, OVERDUE_DAYS,
   };

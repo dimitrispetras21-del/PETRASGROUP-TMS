@@ -284,7 +284,7 @@ test('verdict under the assignment: «1 από 2 παραγγ.», block priority
   const v = code => W.rtInvoicing(row(code).counted, stateOf);
   assert.strictEqual(W.verdictText(v('RT-1187'), 2), '1 από 2 παραγγ. · ατιμολόγητα 2.800,00');
   assert.ok(!/\d\/\d/.test(W.verdictText(v('RT-1187'), 2)), 'never «1/2»');
-  assert.strictEqual(W.verdictText(v('RT-1183'), 1), 'τιμή → owner');
+  assert.strictEqual(W.verdictText(v('RT-1183'), 1), 'τιμή → owner/λογιστήριο');
   assert.strictEqual(W.verdictText(v('RT-1181'), 1), '', 'one invoiced order: the ΤΠΥ cell says it');
   assert.strictEqual(W.verdictText(v('RT-1188'), 1), '');
   // a slip block wins over a price block

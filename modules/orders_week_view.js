@@ -60,7 +60,7 @@ const OrdersWeekView = (() => {
   const MONTHS_GEN = ['Ιανουαρίου', 'Φεβρουαρίου', 'Μαρτίου', 'Απριλίου', 'Μαΐου', 'Ιουνίου', 'Ιουλίου', 'Αυγούστου', 'Σεπτεμβρίου', 'Οκτωβρίου', 'Νοεμβρίου', 'Δεκεμβρίου'];
   const STRIP_BACK = 3, STRIP_FWD = 1;   // Figma: three weeks back, one ahead
   // §06: who unblocks — the verdict under the assignment and the summary line.
-  const REASON = { sheets: 'δελτίο → λογιστήριο', price: 'τιμή → owner', stock: 'παρτίδα → κομμάτια' };
+  const REASON = { sheets: 'δελτίο → λογιστήριο', price: 'τιμή → owner/λογιστήριο', stock: 'παρτίδα → κομμάτια' };
   const REASON_TPY = { sheets: 'δελτίο', price: 'τιμή', stock: 'παρτίδα' };
   // §06 rank 1: a slip block names the accountant, so it wins over price/stock.
   const REASON_ORDER = ['sheets', 'price', 'stock'];
