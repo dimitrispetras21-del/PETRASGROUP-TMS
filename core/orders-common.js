@@ -761,10 +761,14 @@ const OrdersData = {
   // no date). Owner 21/10/2026 (B0): a lot is an order like any other — its
   // age counts from its own delivery into the warehouse, no longer from the
   // day it became complete. The auditor's B-15 counts the same way since 071a
-  // (one rule: «Παλαιότερη εκκρεμής» and the queue cannot disagree). A future
-  // delivery has no age: «-3 ημέρες» would read as a typo. `set` is kept so
-  // the callers (week view, «Προς τιμολόγηση», «Χωρίς τιμή») stay unchanged.
+  // (one rule: «Παλαιότερη εκκρεμής» and the queue cannot disagree). Only a
+  // DELIVERED order has an age (isDelivered: Status for international, the
+  // date for national): an order still in transit past its planned date is not
+  // late to invoice, and a future delivery would read «-3 ημέρες». B-15 counts
+  // status 'Delivered' too. `set` is kept so the callers (week view, «Προς
+  // τιμολόγηση», «Χωρίς τιμή», metrics.js) stay unchanged.
   ageOf(set, rec) {
+    if (!OrdersCommon.isDelivered(rec)) return null;
     const d = OrdersCommon.daysSinceDelivery(rec);
     return d !== null && d >= 0 ? d : null;
   },

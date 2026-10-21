@@ -92,6 +92,11 @@ test('age: days since the order\'s own delivery, a lot too; none before the deli
   assert.strictEqual(OrdersData.ageOf(SET(), intl('a', { Status: 'Delivered', 'Delivery DateTime': at(-5) })), 5);
   assert.strictEqual(OrdersData.ageOf(SET(), intl('b', { Status: 'Assigned', 'Delivery DateTime': at(3) })), null, 'never «-3 ημέρες»');
   assert.strictEqual(OrdersData.ageOf(SET(), intl('c', { Status: 'Pending' })), null);
+  // Review B0 #2: the age is a delivered order's age — a date that passed on an order still on the road
+  // is no delivery (it would make «καθυστέρηση > 30» and «Παλαιότερη εκκρεμής» count a truck in transit).
+  assert.strictEqual(OrdersData.ageOf(SET(), intl('d', { Status: 'In Transit', 'Delivery DateTime': at(-40) })), null, 'in transit past its date: no age');
+  assert.strictEqual(OrdersData.ageOf(SET(), natl('e', { 'Delivery DateTime': at(-7) })), 7, 'a national is delivered by its date');
+  assert.strictEqual(OrdersData.ageOf(SET(), natl('f', { Status: 'Cancelled', 'Delivery DateTime': at(-7) })), null, 'a cancelled national: no age');
   const lot = intl('L', { Status: 'Delivered', 'Own Stock Lot': 'recLot1', 'Delivery DateTime': at(-40) });
   assert.strictEqual(OrdersData.ageOf(SET({ stock: new Map([['recLot1', { id: 'recLot1', fields: { Complete: false } }]]) }), lot), 40,
     'from its own delivery into the warehouse (B-15 counts the same since 071a)');

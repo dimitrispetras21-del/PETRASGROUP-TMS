@@ -102,8 +102,9 @@ const OrdersInvoicingView = (() => {
     const own = rec._type === 'intl' ? f['Total Pallets'] : f['Pallets'];
     return { place: [del.name, del.sub].filter(Boolean).join(' · '), date: deliv || '', pallets: own == null || own === '' ? '' : String(own) };
   }
-  // Only what this view is about: every registered order (B0, 21/10) and the
-  // invoiced ones. Cancelled orders and pre-orders never belong here.
+  // Only what this view is about: every registered order (B0, 21/10) — a
+  // pre-order (Ops Status Provisional) too, owner 22/10 — and the invoiced
+  // ones. Only a cancelled order never belongs here.
   const inView = it => it.state === 'ready' || it.state === 'blocked' || it.state === 'invoiced';
   const isOpen = it => it.state === 'ready' || it.state === 'blocked';
   function scopeFilter(items, scope) {
