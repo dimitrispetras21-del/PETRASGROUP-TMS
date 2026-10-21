@@ -8391,14 +8391,38 @@ body.wi4-on #wi-ctx .wi4-m-sec .wi4-l2, body.wi4-on #wi-ctx .wi4-m-hd .wi4-l2 { 
    day. The dividers around it go, so it reads as one lifted card. #wi-rows
    outranks today's hover fill; the keyboard focus outline still shows. Only
    while a search is typed (JS _applyDim). */
-.wi4 #wi-rows :is(.wi4-row, .wi4-subrow).wi4-sm,
-.wi4 #wi-rows :is(.wi4-row, .wi4-subrow).wi4-sm:hover {
-  background:var(--surface-card); border-radius:6px; border-bottom-color:transparent; z-index:2;
-  box-shadow:0 0 0 1px rgba(11,25,41,.07), 0 1px 2px rgba(11,25,41,.06), 0 6px 18px -6px rgba(11,25,41,.18);
-  transition:box-shadow .12s ease-out; }
+/* A row and its matched ↳ sub-rows are ONE card (review 21/10): each piece
+   draws its sides; the first its top and top corners, the last its bottom,
+   bottom corners and the drop shadow — no seam, no stacked cards. */
+.wi4 #wi-rows :is(.wi4-row, .wi4-subrow).wi4-sm {
+  --sm-ring:rgba(11,25,41,.07);
+  --sm-top:0 -1px 0 0 var(--sm-ring);
+  --sm-bot:0 1px 0 0 var(--sm-ring), 0 1px 2px rgba(11,25,41,.06), 0 6px 18px -6px rgba(11,25,41,.18);
+  background:var(--surface-card); border-bottom-color:transparent; z-index:2;
+  box-shadow:-1px 0 0 0 var(--sm-ring), 1px 0 0 0 var(--sm-ring);
+  transition:box-shadow .12s ease-out, background-color .12s ease-out; }
+.wi4 #wi-rows .wi4-row.wi4-sm { border-top-left-radius:6px; border-top-right-radius:6px; }
+.wi4 #wi-rows :is(.wi4-row, .wi4-subrow).wi4-sm:not(:has(+ .wi4-subrow.wi4-sm)) { border-bottom-left-radius:6px; border-bottom-right-radius:6px; }
+.wi4 #wi-rows .wi4-row.wi4-sm:has(+ .wi4-subrow.wi4-sm) { box-shadow:-1px 0 0 0 var(--sm-ring), 1px 0 0 0 var(--sm-ring), var(--sm-top); }
+.wi4 #wi-rows .wi4-subrow.wi4-sm:not(:has(+ .wi4-subrow.wi4-sm)) { box-shadow:-1px 0 0 0 var(--sm-ring), 1px 0 0 0 var(--sm-ring), var(--sm-bot); }
+.wi4 #wi-rows .wi4-row.wi4-sm:not(:has(+ .wi4-subrow.wi4-sm)) { box-shadow:0 0 0 1px var(--sm-ring), 0 1px 2px rgba(11,25,41,.06), 0 6px 18px -6px rgba(11,25,41,.18); }
+/* A ↳ sub-row that matched while the row above did not (a rota leg found by
+   its own reference) is the card's FIRST piece: it takes the top edge too. */
+.wi4 #wi-rows .wi4-subrow.wi4-sm:not(.wi4-sm + .wi4-subrow) { border-top-left-radius:6px; border-top-right-radius:6px; box-shadow:-1px 0 0 0 var(--sm-ring), 1px 0 0 0 var(--sm-ring), var(--sm-top); }
+.wi4 #wi-rows .wi4-subrow.wi4-sm:not(.wi4-sm + .wi4-subrow):not(:has(+ .wi4-subrow.wi4-sm)) { box-shadow:0 0 0 1px var(--sm-ring), 0 1px 2px rgba(11,25,41,.06), 0 6px 18px -6px rgba(11,25,41,.18); }
+/* Hover still answers on the rows the dispatcher is about to click (review 21/10). */
+.wi4 #wi-rows :is(.wi4-row, .wi4-subrow).wi4-sm:hover { background:var(--wi4-hover); }
 .wi4 #wi-rows :is(.wi4-row, .wi4-subrow):has(+ .wi4-sm) { border-bottom-color:transparent; }
 .wi4 #wi-rows .wi4-sm > .wi4-c-idx { background:transparent; }
 .wi4 #wi-rows .wi4-sm > .wi4-c-idx .wi4-no { color:var(--wi4-ink); font-weight:700; }
+/* The red/amber rail follows the card's rounded corners instead of poking out
+   square (same 8px box as on a day's first/last row, above). */
+.wi4 #wi-rows .wi4-row.wi4-sm:is(.wi4-r-red, .wi4-r-amb)::before { width:8px; border-top-left-radius:6px; }
+.wi4 #wi-rows .wi4-row.wi4-sm:is(.wi4-r-red, .wi4-r-amb):not(:has(+ .wi4-subrow.wi4-sm))::before { border-bottom-left-radius:6px; }
+/* A «+N» fold opened from ANY row stays above a raised card: a dimmed row is
+   its own stacking context (opacity), so its fold (z 40 inside it) would
+   otherwise sit under the card's z-index 2 (review 21/10). */
+.wi4 #wi-rows :is(.wi4-row, .wi4-subrow):has(.wk3-xfold.open) { z-index:3; }
 @media (prefers-reduced-motion: reduce) { .wi4 #wi-rows .wi4-sm { transition:none; } }
 .wi4.wi4-kbd .wi4-focus { outline:2px solid var(--wi4-blue); outline-offset:-2px; }
 .wi4-hl, .wi4 .wi4-mhl { background:var(--accent-light); }

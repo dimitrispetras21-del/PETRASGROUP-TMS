@@ -1796,8 +1796,9 @@ async function runPrintGroup(browser) {
   // each order's cargo — since owner 21/10 inside its FIRST loading's block —
   // and the stock line belongs in the piece's cargo only.
   const wa = await page.evaluate(() => _waArr);
-  const cargoOf = no => ((wa[0] || '').split('\n\n').map(b => b.replace(/^\*ΦΟΡΤΩΣΕΙΣ\*\n/, ''))
-    .find(b => /^\S+ \*ΦΟΡΤΩΣΗ\* · /.test(b) && b.split('\n')[0].includes(' · #' + no) && /\n(Ref: |📦 )/.test(b)) || '');
+  // (owner 21/10: a section title above numbered stops «1️⃣ date · #tag»)
+  const cargoOf = no => ((wa[0] || '').split('\n\n').map(b => b.replace(/^\*(ΦΟΡΤΩΣΗ|ΦΟΡΤΩΣΕΙΣ)\*\n/, ''))
+    .find(b => /^((?:\d\uFE0F\u20E3)+|🔟) /.test(b) && b.split('\n')[0].includes(' · #' + no) && /\n(Ref: |📦 )/.test(b)) || '');
   ok(wa.length === 1 && /Απόθεμα · Ref TEST-STOCK-LOT · παρτίδα #1300/.test(cargoOf(2002)) && cargoOf(2001) && !/Απόθεμα/.test(cargoOf(2001)),
     'O10/C4-02: ONE group WhatsApp text (right-click share); the piece\'s cargo (its loading #2002) says stock, the lead\'s #2001 does not — ' + JSON.stringify([wa.length, cargoOf(2001), cargoOf(2002)]));
   await page.screenshot({ path: shot('14-print-group-packet'), fullPage: true });

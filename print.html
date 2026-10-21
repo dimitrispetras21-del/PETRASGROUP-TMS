@@ -400,7 +400,7 @@ function stopQR(lat,lng){
   var u='https://maps.google.com/?q='+encodeURIComponent(lat)+','+encodeURIComponent(lng);
   return '<img class="stop-qr" alt="" onerror="this.style.display=\'none\'" src="https://api.qrserver.com/v1/create-qr-code/?size=148x148&margin=0&data='+encodeURIComponent(u)+'">';
 }
-var _stopSeq=0; // συνεχής αρίθμηση σημείων ανά έγγραφο (①②③…)
+var _stopSeq=0; // αρίθμηση σημείων ανά ενότητα (φορτώσεις 1.., παραδόσεις 1.., owner 21/10)
 // Shared filter+sort used by buildLoadHTML/buildDelHTML/buildCrossdockHTML,
 // routeStrip and waBuild — was duplicated inline in each (audit finding #6).
 function stopsOfType(stops,type){
@@ -861,16 +861,19 @@ function groupRoute(items,isPartner,isExport){
 }
 
 var WA_EMO=['1️⃣','2️⃣','3️⃣','4️⃣','5️⃣','6️⃣','7️⃣','8️⃣','9️⃣','🔟'];
-// The number of the k-th stop (0-based). Past the keycap emoji the number is
-// written out («#11»): the old «▪️» gave the 8th stop no number at all while
-// the paper card printed «8», so phone and paper could not be matched.
-function waNum(k){return WA_EMO[k]||('#'+(k+1));}
-// One stop of a WhatsApp text. tag (group only): the order the stop belongs to.
-// pal: that stop's pallets (waStopPal), '' when unknown.
+// The number of the k-th stop (0-based). Past 🔟 the digits are keycaps too
+// («1️⃣1️⃣»): the old «▪️» gave the 8th stop no number at all, and «#11» read
+// like an order tag («#11 … · #463») once the stop line lost its word (21/10).
+var WA_DIG=['0️⃣','1️⃣','2️⃣','3️⃣','4️⃣','5️⃣','6️⃣','7️⃣','8️⃣','9️⃣'];
+function waNum(k){return WA_EMO[k]||String(k+1).split('').map(function(d){return WA_DIG[+d];}).join('');}
+// One stop of a WhatsApp text: its number, date, tag (group only: the order
+// the stop belongs to) and pallets (waStopPal, '' when unknown). The word
+// «ΦΟΡΤΩΣΗ»/«ΠΑΡΑΔΟΣΗ» is the SECTION title above the numbers (waSection,
+// owner 21/10), not repeated on every stop line.
 // after(lines): extra lines inside the stop block, before its blank line — the
 // order's cargo under its first LOADING (owner 21/10, see waBuild).
-function waStopLines(lines,emo,lbl,x,tag,pal,after){
-  lines.push(emo+' *'+lbl+'* · '+fmtDT(x.dt)+(tag?' · '+tag:'')+(pal?' · *'+pal+'*':''));
+function waStopLines(lines,emo,x,tag,pal,after){
+  lines.push(emo+' '+fmtDT(x.dt)+(tag?' · '+tag:'')+(pal?' · *'+pal+'*':''));
   lines.push(x.name);
   if(x.addr)lines.push(x.addr);
   if(x.lat&&x.lng){
@@ -885,6 +888,11 @@ function waStopLines(lines,emo,lbl,x,tag,pal,after){
   if(after)after(lines);
   lines.push('');
 }
+// Owner 21/10: «ΤΙΤΛΟΣ ΦΟΡΤΩΣΗ και από κάτω αριθμός για κάθε σημείο φόρτωσης,
+// ΤΙΤΛΟΣ ΠΑΡΑΔΟΣΗ και μετά αριθμός για κάθε σημείο» — on a single order too,
+// numbered from 1 in each section. One stop → «ΦΟΡΤΩΣΗ», several → «ΦΟΡΤΩΣΕΙΣ»
+// (the paper cover's word). An empty side prints no title.
+function waSection(lines,n,one,many){if(n)lines.push('*'+(n===1?one:many)+'*');}
 // Pallets on the stop line (walkthrough 13/10 item 26 and Pantelis C3, Nick
 // 14/10): the text gave the pallets once per order, so a driver with two drops
 // could not tell what to leave where; the paper card already printed them per
@@ -955,10 +963,11 @@ function waBuild(f,isPartner,isExport,veroiaSwitch,VEROIA,VADDR,VLAT,VLNG,vehLin
   // not in a cargo block after the deliveries that he scrolls back to at the
   // gate. Under the FIRST loading only; with no loading stop the cargo stays
   // after the stops, so it is never dropped. The CMR line is said once, last.
-  var seq=0;
   var cargo=function(ls){waCargoLines(ls,f,isPartner,refNo);};
-  rs.loads.forEach(function(x,i){waStopLines(lines,waNum(seq++),L.load,x,null,waStopPal(x,f,rs.loads.length),i===0?cargo:null);});
-  rs.dels.forEach(function(x){waStopLines(lines,waNum(seq++),L.unload,x,null,waStopPal(x,f,rs.dels.length));});
+  waSection(lines,rs.loads.length,L.load,L.loadsSec);
+  rs.loads.forEach(function(x,i){waStopLines(lines,waNum(i),x,null,waStopPal(x,f,rs.loads.length),i===0?cargo:null);});
+  waSection(lines,rs.dels.length,L.unload,L.delsSec);
+  rs.dels.forEach(function(x,i){waStopLines(lines,waNum(i),x,null,waStopPal(x,f,rs.dels.length));});
   if(!rs.loads.length){cargo(lines);lines.push('');}
   lines.push('🌡 '+L.keepCmr);
   return waClose(lines);
@@ -999,14 +1008,14 @@ function waGroupBuild(items){
   // the «ΦΟΡΤΙΟ #n» block after the deliveries stays only for an order that has
   // no loading stop on this route, so no cargo is ever dropped.
   var shown={};
-  lines.push('*'+L.loadsSec+'*');
+  waSection(lines,route.loads.length,L.load,L.loadsSec);
   route.loads.forEach(function(r,k){
     var f=fOf(r), first=f&&!shown[r.oi];
     if(first)shown[r.oi]=true;
-    waStopLines(lines,waNum(k),L.load,r.e,'#'+nos[r.oi],waStopPal(r.e,f,nL[r.oi]),first?function(ls){waCargoLines(ls,f,isPartner,f['Reference']||'');}:null);
+    waStopLines(lines,waNum(k),r.e,'#'+nos[r.oi],waStopPal(r.e,f,nL[r.oi]),first?function(ls){waCargoLines(ls,f,isPartner,f['Reference']||'');}:null);
   });
-  lines.push('*'+L.delsSec+'*');
-  route.dels.forEach(function(r,k){waStopLines(lines,waNum(k),L.unload,r.e,'#'+nos[r.oi],waStopPal(r.e,fOf(r),nD[r.oi]));});
+  waSection(lines,route.dels.length,L.unload,L.delsSec);
+  route.dels.forEach(function(r,k){waStopLines(lines,waNum(k),r.e,'#'+nos[r.oi],waStopPal(r.e,fOf(r),nD[r.oi]));});
   items.forEach(function(it,i){
     if(shown[i])return;
     var f=it.orderRec.fields;
@@ -1079,7 +1088,7 @@ function generatePDF(orderRec, bare){ // bare (Wave 3): no toolbar — docs 2..N
   var orderNo=f['Order No']||f['Reference']||String(orderRec.id||orderId||'').slice(-6).toUpperCase();
   var isPartner=computeIsPartner(f);
   LBL=isPartner?LBL_EN:LBL_GR; // Συνεργάτης=EN, Οδηγός=GR (redesign 9/8)
-  _stopSeq=0; // v2.1: συνεχής αρίθμηση σημείων ①② ανά έγγραφο
+  _stopSeq=0; // loadings numbered from 1; reset again before the deliveries (below)
   var legLabelGr=isExport?'Εξαγωγή':'Εισαγωγή';
 
   // Veroia (veroiaOf: the same stop the group cover and WhatsApp text use)
@@ -1090,9 +1099,12 @@ function generatePDF(orderRec, bare){ // bare (Wave 3): no toolbar — docs 2..N
   var loadHTML=buildLoadHTML(f,isExport,veroiaSwitch,VEROIA,VADDR,VLAT,VLNG);
   // Finding #2: a real 'Cross-dock' ORDER STOPS row (distinct from the
   // simulated Veroia-Switch leg above) goes between loading and unloading,
-  // in the timeline order the driver actually visits them, with continuous
-  // numbering — buildCard increments _stopSeq as each function is called.
+  // in the timeline order the driver actually visits them, numbered on from
+  // the loadings — buildCard increments _stopSeq as each function is called.
   var cdHTML=buildCrossdockHTML(f);
+  // Owner 21/10: the deliveries are numbered from 1 again, as in the WhatsApp
+  // text («ΠΑΡΑΔΟΣΗ 2» on the phone = card 2 here), not on from the loadings.
+  _stopSeq=0;
   var delHTML=buildDelHTML(f,isExport,veroiaSwitch,VEROIA,VADDR,VLAT,VLNG);
   var badgeHTML=badges(f);
   var rawNotes=f['Notes']||'';
@@ -1390,8 +1402,9 @@ function buildCoverDoc(items){
     });
     return h;
   }
-  var tlHTML='<div class="section-title load-section">'+LBL.loadsSec+'</div><div class="tl">'+cardsOf(route.loads,'loading')+'</div>'+
-    '<div class="section-title unload-section">'+LBL.delsSec+'</div><div class="tl">'+cardsOf(route.dels,'delivery')+'</div>';
+  // Section titles by the WhatsApp text's rule (waSection): one stop → «ΦΟΡΤΩΣΗ».
+  var tlHTML='<div class="section-title load-section">'+(route.loads.length===1?LBL.load:LBL.loadsSec)+'</div><div class="tl">'+cardsOf(route.loads,'loading')+'</div>'+
+    '<div class="section-title unload-section">'+(route.dels.length===1?LBL.unload:LBL.delsSec)+'</div><div class="tl">'+cardsOf(route.dels,'delivery')+'</div>';
 
   var chkHTML=isPartner?'':'<div class="chk"><b>'+LBL.chk+'</b>'+
     '<span>☐ Θερμογράφος σε λειτουργία</span><span>☐ Τρέιλερ καθαρό / προψυγμένο</span>'+

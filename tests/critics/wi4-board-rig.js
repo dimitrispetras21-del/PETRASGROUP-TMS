@@ -2585,6 +2585,35 @@ async function scnSearch(browser, origin) {
   ok('search', 'plate: matches the E024 row', /^1\/\d+$/.test((await st()).n), await st());
   await box.fill('REF-E019'); await page.waitForTimeout(300);
   ok('search', 'ΑΝΑΦ.: «1/1»', (await st()).n === '1/1', await st());
+  // Partial words find (substring, any case): «alpha fa» → the Alpha Farm rows.
+  await box.fill('alpha fa'); await page.waitForTimeout(300);
+  ok('search', 'part of a name, any case: «alpha fa» finds rows', /^1\/\d+$/.test((await st()).n), await st());
+  // An EXECUTED match (REF-E010: export delivered, faded before the search) is
+  // raised at full strength — no faded piece left inside it (Pantelis 21/10).
+  await box.fill('REF-E010'); await page.waitForTimeout(300);
+  const ex = await page.evaluate(() => {
+    const r = document.querySelector('#content .wi4 .wi4-row.wi4-sm');
+    if (!r) return null;
+    const doneBefore = !!r.querySelector('.wi4-xd-done, .wi4-xd-half, .wi4-xd-pt') || r.classList.contains('wi4-xd');
+    let op = 1; for (let n = r.querySelector('.wi4-l-to') || r; n && n !== document.body; n = n.parentElement) op *= +getComputedStyle(n).opacity;
+    return { doneBefore, op: Math.round(op * 100) / 100, bg: getComputedStyle(r).backgroundColor };
+  });
+  ok('search', 'an executed match is raised at full strength (it was faded; effective opacity 1)', !!ex && ex.doneBefore && ex.op === 1 && ex.bg === 'rgb(255, 255, 255)', ex);
+  await shot(page, 'search-executed-1920');
+  // Review 21/10: a matched row and its matched ↳ sub-rows read as ONE card —
+  // the row keeps its top corners only, the last piece its bottom corners.
+  // TST-1002 = row 3 and its rota leg (ΣΚΕΛΟΣ ΡΟΤΑΣ · ίδιο φορτηγό) on Monday.
+  await box.fill('TST-1002'); await page.waitForTimeout(300);
+  const grp = await page.evaluate(() => {
+    const r = [...document.querySelectorAll('#content .wi4 .wi4-row.wi4-sm')].find(x => x.nextElementSibling && x.nextElementSibling.matches('.wi4-subrow.wi4-sm'));
+    if (!r) return null;
+    let last = r; while (last.nextElementSibling && last.nextElementSibling.matches('.wi4-subrow.wi4-sm')) last = last.nextElementSibling;
+    const cs = getComputedStyle(r), cl = getComputedStyle(last);
+    return { rowTop: cs.borderTopLeftRadius, rowBot: cs.borderBottomLeftRadius, lastBot: cl.borderBottomLeftRadius, lastBg: cl.backgroundColor };
+  });
+  await shot(page, 'search-group-1920');
+  ok('search', 'row + ↳ sub-rows matched: one card (row top 6px / bottom 0, last piece bottom 6px, white)',
+    !!grp && (grp.rowTop === '6px' && grp.rowBot === '0px' && grp.lastBot === '6px' && grp.lastBg === 'rgb(255, 255, 255)'), grp);
   await box.fill('Driver Test 18'); await page.waitForTimeout(300);
   ok('search', 'driver: matches', /^1\/\d+$/.test((await st()).n), await st());
   await box.press('Escape'); await page.waitForTimeout(200);
