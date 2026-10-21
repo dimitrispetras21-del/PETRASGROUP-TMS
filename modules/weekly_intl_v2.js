@@ -909,6 +909,25 @@ function _palHTML(fieldsList, oid, docIds) {
   }
   return h;
 }
+// Executed = dimmed (owner 21/10, Figma 2022:7736 / rule 2024:8134): what the
+// Ημερήσιο already marked done fades to 40%, so the dispatcher's eye skips past
+// work. The ONLY source is Status, which the Ημερήσιο buttons write
+// («Φορτώθηκε» → In Transit, «Παραδόθηκε» → Delivered); the board has no
+// button of its own. 'done' = EVERY member delivered (all stops of the side:
+// one Status per order today, so a 3-drop order fades at once); 'half' = every
+// member loaded → only date/ref and loadings fade, the consignee and pallets
+// stay bold because the job is still running. A leg holding a RED mark of its
+// own (red «PRE», a failed save of that order) never fades: it still needs
+// work. Red marks drawn in OTHER cells («Κενό γύρισμα», «ΠΡΟΣ ΑΝΑΘΕΣΗ») stay
+// bold there and do not hold the leg (Figma row 14: export faded, gap bold).
+const XD_HOLD = ['PREORDER', 'SAVE_FAILED'];
+function _xdOf(recs, rs) {
+  if (!recs || !recs.length) return '';
+  if (Object.values(rs || {}).some((r) => r.level === 'red' && XD_HOLD.includes(r.code))) return '';
+  const s = recs.map((r) => W().stFlags((r && r.fields) || {}));
+  if (s.every((x) => x.delivered)) return 'done';
+  return s.every((x) => x.loaded) ? 'half' : '';
+}
 function _legHTML(s, today) {
   const click = s.click ? ` onclick="event.stopPropagation();${s.click}" style="cursor:pointer"` : '';
   // The leg's own reasons, named where they apply (s.rs = _rsOf of its fact):
@@ -917,7 +936,7 @@ function _legHTML(s, today) {
   const rs = s.rs || {};
   if (rs.PREORDER) s.from = Object.assign({}, s.from, { pre: 'Pre-order χωρίς μετατροπή — λεπτομέρειες αργότερα' });
   if (rs.LATE) s.to = Object.assign({}, s.to, { late: 'Καθυστέρηση παράδοσης' });
-  return `<div class="wi4-leg"${click}>` +
+  return `<div class="wi4-leg${s.xd ? ' wi4-xd-' + s.xd : ''}"${click}>` +
     `<div class="wi4-l-date">${_chipHTML(s.chip, today)}${s.ref ? _ell('wi4-ref wi4-ell', s.ref) : ''}</div>` +
     `<div class="wi4-l-from">${_ptsHTML(s.from)}</div>` +
     `<span class="wi4-l-arr" aria-hidden="true">${ARROW}</span>` +
@@ -927,11 +946,18 @@ function _legHTML(s, today) {
 
 // One import load (matched in an export row, or an import-only row's own).
 // rs = the reasons of the import's own fact (_rsOf).
-function _impLegHTML(host, imp, today, rs) {
+// The import load's members: its import group's, else the import alone.
+function _impMembers(imp) {
   const I = W(), D = _D();
+  const g = I.impGroupRowOf(imp.id);
+  return g && (g.orderIds || []).length > 1 ? I.grpOrder(g.orderIds.map((id) => D.data.imports.find((r) => r.id === id)).filter(Boolean), 'Loading DateTime') : [imp];
+}
+// xdOff: the whole row already fades (_expRowHTML), so the leg adds none.
+function _impLegHTML(host, imp, today, rs, xdOff) {
+  const I = W();
   rs = rs || {};
   const g = I.impGroupRowOf(imp.id);
-  const members = g && (g.orderIds || []).length > 1 ? I.grpOrder(g.orderIds.map((id) => D.data.imports.find((r) => r.id === id)).filter(Boolean), 'Loading DateTime') : [imp];
+  const members = _impMembers(imp);
   const lead = members[0] || imp, f = lead.fields || {};
   const st = I.stFlags(f);
   const isGroup = members.length > 1;
@@ -953,7 +979,7 @@ function _impLegHTML(host, imp, today, rs) {
   return _legHTML({
     chip: { oid: lead.id, field: 'Loading DateTime', day: _day(f['Loading DateTime']), done: st.loaded, noTruck: !host.saved, what: 'Ημερομηνία φόρτωσης εισαγωγής' },
     ref: isGroup ? _plural(members.length, 'load') : (f['Reference'] || ''),
-    from, to, pal, rs, click: _q(lead.id) ? `WI_INTERNAL.edit('${_q(lead.id)}')` : '',
+    from, to, pal, rs, xd: xdOff ? '' : _xdOf(members, rs), click: _q(lead.id) ? `WI_INTERNAL.edit('${_q(lead.id)}')` : '',
   }, today);
 }
 
@@ -1120,12 +1146,28 @@ function _expRowHTML(e, today) {
   const to = _sideOf(exps, 'del', { dragRowId: isGroup && _gtOn() ? row.id : null });
   // (a) a groupage shows «N φορτία» where ΑΝΑΦ. goes.
   const ref = isGroup ? _plural(exps.length, 'load') : (pf['Reference'] || '');
-  const leg = _legHTML({ chip, ref, from, to, rs: rsE, pal: _palHTML(exps.map((r) => r.fields || {}), isGroup ? null : pid, isGroup ? exps : null),
-    click: isGroup ? `WI_INTERNAL.rota(${row.id})` : (_q(pid) ? `WI_INTERNAL.edit('${_q(pid)}')` : '') }, today);
-
   // Import side: not saved · matched load · not read · empty return · partner only · open slot.
   const imp = row.importId ? D.data.imports.find((r) => r.id === row.importId) : null;
   const hasPartner = !!(row.partnerId || row.partnerLabel);
+  const unc = _unconfirmed(row);
+  const lvl = _levelOf(e.facts, today);
+  // Executed = dimmed (owner 21/10, _xdOf). The WHOLE row (assignment and the
+  // ΠΡΟΣ/ΑΠΟ ΒΕΡΟΙΑ tiles too) fades only when every leg it draws is
+  // delivered and nothing on it still needs work: a red rail, «ΠΡΟΣ
+  // ΑΝΑΘΕΣΗ», a «Κενό γύρισμα» or an unread/failed match keep it bold, and
+  // then only the leg that was done fades. A national tile counts as done
+  // only with a carrier READ (unknown ≠ done). A split parent executes
+  // nowhere (its legs are rows of their own), so it never fades.
+  const natDone = (oid) => { const c = _natState() === 'ok' ? _carrierOf(oid) : null; return !!c && c.kind !== 'missing'; };
+  const impShown = !!(imp && !unc);
+  const xdE = row.hasSplitLegs ? '' : _xdOf(exps, rsE);
+  const xdI = impShown ? _xdOf(_impMembers(imp), _rsAt(e, row.importId, today)) : '';
+  const xdRow = !!(row.saved && !row.hasSplitLegs && lvl !== 'red' && xdE === 'done' &&
+    (impShown ? xdI === 'done' : (!row.importId && hasPartner)) &&
+    (!vs || isGroup || natDone(pid)) && (!impShown || !(imp.fields || {})['Veroia Switch'] || natDone(imp.id)));
+  const leg = _legHTML({ chip, ref, from, to, rs: rsE, xd: xdRow ? '' : xdE, pal: _palHTML(exps.map((r) => r.fields || {}), isGroup ? null : pid, isGroup ? exps : null),
+    click: isGroup ? `WI_INTERNAL.rota(${row.id})` : (_q(pid) ? `WI_INTERNAL.edit('${_q(pid)}')` : '') }, today);
+
   // A match (or an unmatch) that FAILED (_unconfirmed): the row keeps its
   // optimistic state (§e.14: never rebuilt), but this cell draws what the
   // TABLE holds, as a row with that match draws it — Figma sheet 14 #5
@@ -1135,11 +1177,10 @@ function _expRowHTML(e, today) {
   // cell draws: the row's own, or the table's while the write is unconfirmed
   // (null there = no match: an own truck gets the empty-return slot, whose
   // EMPTY_RETURN the facts count — factsOf hasReturn).
-  const unc = _unconfirmed(row);
   const mid = unc ? _srvMatch(row) : row.importId;
   let impInner;
   if (unc && mid) impInner = _notSavedHTML(row, mid);
-  else if (imp && !unc) impInner = _impLegHTML(row, imp, today, _rsAt(e, row.importId, today));
+  else if (imp && !unc) impInner = _impLegHTML(row, imp, today, _rsAt(e, row.importId, today), xdRow);
   else if (mid) {
     // Matched to an import this week's read does not hold (it loads outside
     // ±8 days, or it was cancelled): unknown ≠ empty (§d.2a) — never the open
@@ -1159,8 +1200,7 @@ function _expRowHTML(e, today) {
   // while the match is unconfirmed (it is counted with the ghost, not here).
   const imf = imp && !_unconfirmed(row) ? (imp.fields || {}) : null;
   const fr = imf && imf['Veroia Switch'] ? _natHTML(imp.id, _lastStop(imf, 'del').title, _day(imf['Delivery DateTime'])) : '';
-  const lvl = _levelOf(e.facts, today);
-  return `<div id="wi-row-${row.id}" data-row-id="${row.id}" data-oid="${_q(pid)}" data-qi="${e.qi}" class="wi4-row${_rail(lvl)}"${_q(pid) ? ` oncontextmenu="WI4Actions.openRowMenu(event,'${_q(pid)}')"` : ''}>` +
+  return `<div id="wi-row-${row.id}" data-row-id="${row.id}" data-oid="${_q(pid)}" data-qi="${e.qi}" class="wi4-row${_rail(lvl)}${xdRow ? ' wi4-xd' : ''}"${_q(pid) ? ` oncontextmenu="WI4Actions.openRowMenu(event,'${_q(pid)}')"` : ''}>` +
     _idxHTML(pid, e.no, row.id, _whyOf(e.facts, today), !row.hasSplitLegs) +
     `<div class="wi4-c-fl">${fl}</div>` +
     `<div class="wi4-c-exp">${leg}</div>` +
@@ -1273,7 +1313,7 @@ function _legRowHTML(e, today) {
   const rs = _rsOf(e.facts[0] && e.facts[0].f, today);
   const leg = _legHTML({
     chip: { oid, field: 'Loading DateTime', day: _day(f['Loading DateTime']), done: st.loaded, noTruck: false, what: 'Ημερομηνία φόρτωσης σκέλους' },
-    ref: f['Reference'] || '', from: _sideOf([r], 'load'), to: _sideOf([r], 'del'), pal: _palHTML([f], oid), rs,
+    ref: f['Reference'] || '', from: _sideOf([r], 'load'), to: _sideOf([r], 'del'), pal: _palHTML([f], oid), rs, xd: _xdOf([r], rs),
   }, today);
   // The tag sits in the OTHER column, leaning towards the assignment cell.
   // One run, «ίδιο φορτηγό» in the label's own weight (Figma 1097:3052): not

@@ -40,7 +40,7 @@
 //   queue (card buttons after a row-id shift, Q, Print / WhatsApp) ·
 //   fix round 3: print (view role, share menu) · shift (a save fails across a
 //   re-read) · late (relays empty / national while a popover is open) ·
-//   offline · quiet (a group member fails) · natmissing · w1440 ·
+//   offline · quiet (a group member fails) · natmissing · done (executed = dimmed) · w1440 ·
 //   vs (WP-A of the Weekly National v4 plan: one Veroia day — assignment,
 //   form, drop order by place, loud failures, Pallet Exchange)
 // Exit: 0 all green · 1 a check failed · 2 usage · 3 NOT READY (v4 inactive).
@@ -3519,6 +3519,71 @@ async function scnNatMissing(browser, origin) {
   await page.context().close();
 }
 
+// Executed = dimmed (owner 21/10, Figma 2022:7736 / rule 2024:8134): what the
+// Ημερήσιο marked done fades to 40%, read from Status alone. Judged on computed
+// opacity — the EFFECTIVE one (product up to the board), so a double fade or a
+// fade that leaks into «Κενό γύρισμα» shows as a number, not as «looks right».
+async function scnDone(browser, origin) {
+  const scn = 'done';
+  const set = (db, id, st) => { db[T.ORDERS].find(r => r.id === id).fields.Status = st; };
+  const { page, S } = await openBoard(browser, origin, { mutate: db => {
+    set(db, 'recWiE002', 'Delivered');   // partner, no import: every leg it draws is done
+    set(db, 'recWiE001', 'Delivered');   // export delivered …
+    set(db, 'recWiI001', 'In Transit');  // … its matched import loaded, not delivered
+    set(db, 'recWiE006', 'Delivered');   // own truck, no import: «Κενό γύρισμα» still open
+    set(db, 'recWiE010', 'In Transit');  // red «Κενό γύρισμα» rail, export loaded, not delivered
+  } });
+  const read = () => page.evaluate(([js]) => {
+    const row = eval(js);
+    const op = el => (el ? +getComputedStyle(el).opacity : null);
+    const eff = el => { let v = 1; for (let x = el; x && !x.classList.contains('wi4'); x = x.parentElement) v *= +getComputedStyle(x).opacity; return Math.round(v * 100) / 100; };
+    const q = (oid, sel) => { const r = row(oid); return r && r.querySelector(sel); };
+    return {
+      e2: { xd: !!(row('recWiE002') || {}).classList?.contains('wi4-xd'), row: op(row('recWiE002')), asg: eff(q('recWiE002', '.wi4-box')), leg: eff(q('recWiE002', '.wi4-c-exp .wi4-leg')) },
+      e1: { xd: row('recWiE001').classList.contains('wi4-xd'), row: op(row('recWiE001')), exp: eff(q('recWiE001', '.wi4-c-exp .wi4-leg')),
+        iDate: eff(q('recWiE001', '.wi4-c-imp .wi4-l-date')), iFrom: eff(q('recWiE001', '.wi4-c-imp .wi4-l-from')),
+        iTo: eff(q('recWiE001', '.wi4-c-imp .wi4-l-to')), iPal: eff(q('recWiE001', '.wi4-c-imp .wi4-l-pal')), asg: eff(q('recWiE001', '.wi4-box')) },
+      e6: { xd: row('recWiE006').classList.contains('wi4-xd'), exp: eff(q('recWiE006', '.wi4-c-exp .wi4-leg')), gap: q('recWiE006', '.wi4-gap') ? eff(q('recWiE006', '.wi4-gap')) : null },
+      // E010: In Transit, red rail (EMPTY_RETURN red): the red lives in the gap, so the loaded half still fades.
+      e10: { red: row('recWiE010').classList.contains('wi4-r-red'), row: op(row('recWiE010')), date: eff(q('recWiE010', '.wi4-c-exp .wi4-l-date')),
+        from: eff(q('recWiE010', '.wi4-c-exp .wi4-l-from')), to: eff(q('recWiE010', '.wi4-c-exp .wi4-l-to')), gap: eff(q('recWiE010', '.wi4-gap')) },
+      // ΠΡΟΣ ΑΝΑΘΕΣΗ / Χωρίς εξαγωγή / red rails anywhere on the board: never faded.
+      work: [...document.querySelectorAll('#content .wi4 :is(.wi4-box.un, .wi4-noexp, .wi4-gap, .wi4-r-red)')].map(eff).filter(v => v < 1).length,
+    };
+  }, [ROW_JS]);
+  const r = await read();
+  ok(scn, 'every leg drawn delivered (partner, no import): the WHOLE row fades to 0.4, assignment included, no second fade inside', r.e2.xd && r.e2.row === 0.4 && r.e2.asg === 0.4 && r.e2.leg === 0.4, r.e2);
+  ok(scn, 'export Delivered: its leg 0.4; the row stays (its import is still running)', !r.e1.xd && r.e1.row === 1 && r.e1.exp === 0.4 && r.e1.asg === 1, r.e1);
+  ok(scn, 'import In Transit: only the left half fades (date/ref + loadings 0.4), consignee and pallets stay 1', r.e1.iDate === 0.4 && r.e1.iFrom === 0.4 && r.e1.iTo === 1 && r.e1.iPal === 1, r.e1);
+  ok(scn, 'a row with «Κενό γύρισμα» never fades whole: the delivered export 0.4, the gap 1', !r.e6.xd && r.e6.exp === 0.4 && r.e6.gap === 1, r.e6);
+  ok(scn, 'red rail from «Κενό γύρισμα» (E010, In Transit): row and rail at 1, the loaded half 0.4, the gap 1', r.e10.red && r.e10.row === 1 && r.e10.date === 0.4 && r.e10.from === 0.4 && r.e10.to === 1 && r.e10.gap === 1, r.e10);
+  ok(scn, 'nothing that needs work is faded (ΠΡΟΣ ΑΝΑΘΕΣΗ, Χωρίς εξαγωγή, Κενό γύρισμα, red rail)', r.work === 0, r);
+  await shot(page, 'done');
+  // Hover brings a faded row back to full.
+  await page.evaluate(([js]) => eval(js)('recWiE002').setAttribute('data-rig-done', '1'), [ROW_JS]);
+  await page.hover('[data-rig-done="1"] .wi4-c-exp');
+  const hov = await page.evaluate(() => +getComputedStyle(document.querySelector('[data-rig-done="1"]')).opacity);
+  ok(scn, 'hover: the faded row is back at 1', hov === 1, hov);
+  await page.mouse.move(5, 5);
+  // A search that leaves them out: .35, never .35 × .4.
+  const box = page.locator('#content .wi4 .wi4-search input');
+  await box.fill('REF-E019'); await page.waitForTimeout(300);
+  const dim = await page.evaluate(([js]) => {
+    const row = eval(js);
+    const eff = el => { let v = 1; for (let x = el; x && !x.classList.contains('wi4'); x = x.parentElement) v *= +getComputedStyle(x).opacity; return Math.round(v * 100) / 100; };
+    return { e2: eff(row('recWiE002')), e2leg: eff(row('recWiE002').querySelector('.wi4-c-exp .wi4-leg')), e1exp: eff(row('recWiE001').querySelector('.wi4-c-exp .wi4-leg')),
+      e1iTo: eff(row('recWiE001').querySelector('.wi4-c-imp .wi4-l-to')) };
+  }, [ROW_JS]);
+  ok(scn, 'search-dimmed rows: 0.35 everywhere, never a second fade (0.14)', dim.e2 === 0.35 && dim.e2leg === 0.35 && dim.e1exp === 0.35 && dim.e1iTo === 0.35, dim);
+  await box.fill(''); await page.waitForTimeout(300);
+  // Still clickable: a click on the faded leg opens its order, as before.
+  await page.click('[data-rig-done="1"] .wi4-c-exp .wi4-leg .wi4-l-to'); await page.waitForTimeout(500);
+  const opened = await page.evaluate(() => !!(document.querySelector('#modalOverlay.open') || document.querySelector('.mf-overlay')));
+  ok(scn, 'a click on a faded leg still opens its order', opened);
+  ok(scn, 'display only: nothing written; no page errors', !writes(S).length && !S.pageErrors.length, { w: writes(S), e: S.pageErrors });
+  await page.context().close();
+}
+
 // §e #20: 1440 is not designed yet (Φ8, the owner's Figma) — but nothing on it
 // may be cut without its title, overlap, or break the 32px rows.
 
@@ -4087,7 +4152,7 @@ async function scnVs(browser, origin) {
     const S = { paint: scnPaint, invariants: scnInvariants, relay: scnRelay, scans: scnScans, unknown: scnUnknown, drops: scnDrops, join: scnJoin, menu: scnMenu,
       date: scnDate, keys: scnKeys, search: scnSearch, savefail: scnSaveFail, presence: scnPresence, conflict: scnConflict, fallback: scnFallback, styles: scnStyles,
       twins: scnTwins, queue: scnQueue, unread: scnUnread,
-      print: scnPrint, shift: scnShift, late: scnLate, offline: scnOffline, quiet: scnQuiet, natmissing: scnNatMissing, w1440: scnW1440, parity: scnParity,
+      print: scnPrint, shift: scnShift, late: scnLate, offline: scnOffline, quiet: scnQuiet, natmissing: scnNatMissing, done: scnDone, w1440: scnW1440, parity: scnParity,
       vs: scnVs };
     // A watchdog per scenario: one missing locator or one write that never
     // settles fails THAT scenario, closes its pages, and the run goes on.

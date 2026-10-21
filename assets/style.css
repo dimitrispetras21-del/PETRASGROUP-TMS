@@ -7693,6 +7693,9 @@ button.btn-icon:focus-visible { outline:2px solid var(--accent); outline-offset:
   --wi4-chip:         #f1f5f9;
   --wi4-split-hd:     var(--bg-row-alt);
   --wi4-hover:        #f6f9fc;
+  /* Executed = dimmed (owner 21/10): the SAME 40% as .ops-t / .ramp-t tr.done,
+     so «done» reads alike on the Ημερήσιο, the Ράμπα and the Weekly. */
+  --wi4-done:         .4;
   /* «someone else has this open» is news, not a problem (Figma 1125:2885):
      a light-blue band, ink 7.1:1 on its fill. The conflict box keeps amber
      with a softer border (1125:2976). */
@@ -8359,6 +8362,23 @@ body.wi4-on #wi-ctx .wi4-m-sec .wi4-l2, body.wi4-on #wi-ctx .wi4-m-hd .wi4-l2 { 
 .wi4-r-red::before { border-left:3px solid var(--wi4-red); }
 .wi4-r-amb::before { border-left:3px dashed var(--wi4-amber); }
 .wi4-dim { opacity:.35; }
+/* Executed = dimmed (owner 21/10, Figma 2022:7736; JS _xdOf). .wi4-xd = the
+   whole row; on a leg, -done = all of it, -half = loaded, not delivered: only
+   the date/ref and the loadings fade (left of the arrow), the consignee and
+   the pallets stay bold. Opacity only: every click works as before. */
+.wi4-row.wi4-xd,
+.wi4-leg.wi4-xd-done,
+.wi4-leg.wi4-xd-half > :is(.wi4-l-date, .wi4-l-from) { opacity:var(--wi4-done); }
+/* Back to full on hover, keyboard focus, or while its «+N» fold is open: an
+   ancestor's opacity would make the open fold translucent and stack it under
+   the next rows once the mouse leaves. Also inside a search-dimmed row
+   (.wi4-dim): .35 × .4 would be a second fade (the rule panel: with a filter
+   on, «done» need not stand out). */
+:is(.wi4-row, .wi4-subrow):is(:hover, :focus-within, .wi4-focus, :has(.wk3-xfold.open), .wi4-dim)
+  :is(.wi4-leg.wi4-xd-done, .wi4-leg.wi4-xd-half > .wi4-l-date, .wi4-leg.wi4-xd-half > .wi4-l-from),
+.wi4-row.wi4-xd:is(:hover, :focus-within, .wi4-focus, :has(.wk3-xfold.open)) { opacity:1; }
+/* The search fade wins over the done fade on a whole row: .35, never .4. */
+.wi4-row.wi4-xd.wi4-dim { opacity:.35; }
 .wi4.wi4-kbd .wi4-focus { outline:2px solid var(--wi4-blue); outline-offset:-2px; }
 .wi4-hl, .wi4 .wi4-mhl { background:var(--accent-light); }
 
