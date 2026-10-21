@@ -413,10 +413,10 @@ test('stateOf with stock: complete → ready; price first; not delivered → pen
   // a set built without stock (old callers) still blocks a lot, never readies it
   const bare = OrdersData.stateOf({ intl: [], natl: [], gate: {}, gateFailed: false }, lot('a'));
   assert.deepStrictEqual([bare.key, bare.reason, bare.lot], ['blocked', 'stock', null]);
-  // the pallet-slip gate still applies after the lot is complete (Ε5: PE at the lot's loading)
+  // a complete lot with a missing slip is ready, flagged (owner 20/10: the slip no longer blocks)
   const pe = lot('a'); pe.fields['Pallet Exchange'] = true;
   const s2 = set(lotRec('recLot1', { Complete: true })); s2.gate = { a: { sheets_ok: false } };
-  assert.deepStrictEqual(OrdersData.stateOf(s2, pe), { key: 'blocked', reason: 'sheets' });
+  assert.deepStrictEqual(OrdersData.stateOf(s2, pe), { key: 'ready', noSheets: true });
 });
 
 test('withoutPieces is the one filter; data-based (switch off changes nothing)', () => {

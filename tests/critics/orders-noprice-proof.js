@@ -343,13 +343,14 @@ async function runAccountant(browser) {
   await openView(page);
   const txt = await rows(page).allInnerTexts();
   assert(txt.length === 3, 'same 3 rows');
-  assert(await page.locator('input.np-in').count() === 0 && await page.locator('th', { hasText: 'ΤΙΜΗ €' }).count() === 0, 'NO price inputs / no ΤΙΜΗ € column');
-  assert(/τύπωσέ τη για τον owner/.test(await page.locator('#ohSub').innerText()), 'subtitle for the accountant');
-  assert(/Ο owner συμπληρώνει τις τιμές/.test(await page.locator('.np-knote').innerText()), 'KPI note for the accountant');
+  // Owner 20/10/2026: the accountant types prices too (same box as the owner).
+  assert(await page.locator('input.np-in').count() === 3 && await page.locator('th', { hasText: 'ΤΙΜΗ €' }).count() === 1, 'price inputs + ΤΙΜΗ € column for the accountant (20/10)');
+  assert(/γράψε τιμή και Enter/.test(await page.locator('#ohSub').innerText()), 'subtitle for the accountant: type a price');
+  assert(/Γράψε την τιμή στο κουτάκι/.test(await page.locator('.np-knote').innerText()), 'KPI note for the accountant');
   assert(S.auditCalls.length === 0, 'no /audit call (accountant is not an audit reader → would be 403)');
   assert(await kpiVal(page, 'Συμπληρώθηκαν σήμερα') === '—' && await page.locator('.np-note, .np-banner').count() === 0, 'Συμπληρώθηκαν σήμερα «—» (not a false 0), no error note/banner for her');
   assert(/φαίνονται στα «Προς τιμολόγηση»/.test(await page.locator('#npFilled').innerText()), 'filled section explains where today\'s fills show for her');
-  assert(await page.locator('#ohActions .btn-primary', { hasText: 'Εκτύπωση' }).count() === 1, 'Εκτύπωση is her primary action (navy)');
+  assert(await page.locator('#ohActions .btn-primary', { hasText: 'Εκτύπωση' }).count() === 0, 'Εκτύπωση is secondary — the price box is her primary action now');
   await page.screenshot({ path: shot('04-accountant-1440'), fullPage: true });
   await page.evaluate(() => { window.__printed = ''; });
   await page.click('#ohActions button:has-text("Εκτύπωση")');
@@ -358,7 +359,14 @@ async function runAccountant(browser) {
   assert(/ΑΦΜ BG 204567891 · όροι 30 ημ\. · BG-0852/.test(html) && /950,00/.test(html), 'A4 row: ΑΦΜ · όροι · reference, last price 950,00');
   fs.writeFileSync(path.join(SHOT_DIR, 'noprice-a4.html'), html);
   await renderA4(browser, html, '05-a4');
-  assert(S.patches.length === 0 && page._errors.length === 0, 'accountant: no writes, no page errors');
+  assert(S.patches.length === 0 && page._errors.length === 0, 'accountant: nothing written while only reading/printing');
+  // 20/10: her price goes out as the same one-field PATCH as the owner's
+  const inA = page.locator('input.np-in[data-id="recX2"]');
+  await inA.fill('2800'); await inA.press('Enter');
+  await page.waitForTimeout(400);
+  assert(S.patches.length === 1 && S.patches[0].id === 'recX2' && JSON.stringify(S.patches[0].body.fields) === JSON.stringify({ Price: 2800 }), 'accountant: price + Enter → one PATCH {Price: 2800} — ' + JSON.stringify(S.patches.map(x => x.body && x.body.fields)));
+  assert(page._errors.length === 0, 'accountant: no page errors');
+  ORDERS.find(r => r.id === 'recX2').fields.Price = undefined;   // the in-memory «server» took it — reset for the next role
   assert(page._console.length === 0, 'accountant: no console errors: ' + JSON.stringify(page._console.slice(0, 5)));
   await page.context().close();
 }

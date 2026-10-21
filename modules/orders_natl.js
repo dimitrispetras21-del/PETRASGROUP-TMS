@@ -208,6 +208,18 @@ function _onDF(label, valueHtml, dim) {
 }
 const _ON_NA = '— δεν έχει καταχωρηθεί';
 
+// Accountant «Διόρθωση» (owner 20/10, core/order-quick-edit.js) — same as
+// intlQuickEdit: one PATCH, then the row and the open card repaint.
+function natlQuickEdit(recId) {
+  const rec = (NATL_ORDERS.data || []).find(r => r.id === recId);
+  // Never a dead button: say it, so a missing record is heard, not guessed.
+  if (!rec) { console.error('natlQuickEdit: record not loaded', recId); toast('Η παραγγελία δεν φορτώθηκε — άνοιξε ξανά τη λίστα', 'error'); return; }
+  OrderQuickEdit.open(TABLES.NAT_ORDERS, rec, r => {
+    if (typeof OrdersCatalog !== 'undefined') OrdersCatalog.updateRecord('natl', r);
+    if (NATL_ORDERS.selectedId === r.id) selectNatlOrder(r.id);
+  });
+}
+
 function selectNatlOrder(recId) {
   const wasClosed = !NATL_ORDERS.selectedId;
   NATL_ORDERS.selectedId = recId;
@@ -280,7 +292,8 @@ function selectNatlOrder(recId) {
     <div class="on-card-head">
       <div class="on-card-title-row">
         <div class="on-card-title">${escapeHtml(name)}${client ? ' · ' + escapeHtml(client) : ''}</div>
-        ${canEdit ? `<button type="button" class="on-head-edit" onclick="openNatlEdit('${recId}')">Επεξεργασία</button>` : ''}
+        ${canEdit ? `<button type="button" class="on-head-edit" onclick="openNatlEdit('${recId}')">Επεξεργασία</button>`
+          : typeof OrderQuickEdit !== 'undefined' && OrderQuickEdit.can() ? `<button type="button" class="on-head-edit" onclick="natlQuickEdit('${recId}')">Διόρθωση</button>` : ''}
         <button type="button" class="on-card-x" title="Κλείσιμο (Esc)" onclick="closeNatlDetail()">×</button>
       </div>
       ${subParts.length ? `<div class="on-card-sub">${escapeHtml(subParts.join(' · '))}</div>` : ''}
@@ -2395,6 +2408,7 @@ window.openNatlCreate = openNatlCreate;
 window.openNatlCreateWith = f => _openNatlModal(null, f || {}); // 9/9: Weekly National «νέα άνοδος» prefill
 window.openNatlEdit = openNatlEdit;
 window.selectNatlOrder = selectNatlOrder;
+window.natlQuickEdit = natlQuickEdit;
 // The card's «×» is an inline onclick, so it resolves in the global scope.
 // Without this the × threw «closeNatlDetail is not defined» (app_errors 5/9
 // 17:40, 6/9 16:35).

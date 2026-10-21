@@ -211,6 +211,24 @@ async function _opsLoad(seq) {
     }
   }catch(e){ console.warn('[ops] pair-assignment inherit:', e.message); }
 
+  // Partner plates (Παντελής 19/10: «οι πινακίδες αν και περασμένες στο weekly
+  // στο daily στις εκκρεμείς παραδόσεις δεν φαίνονται»). The Weekly writes them
+  // to the order's own «Partner Truck Plates»; OPS_FIELDS never asks for it, so
+  // a partner order showed only the company. A SEPARATE request, like the
+  // relays (OPS_FIELDS stays byte-identical), filled in memory only, never
+  // written. A pair-inherited partner already brought its plates above. A
+  // failure costs the plates on screen, never the day.
+  try{
+    const noPl=[...intl,...overdue,...overdueLoads].filter(r=>getLinkedId(r.fields['Partner']) && r.fields['Partner Truck Plates']==null);
+    const plIds=[...new Set(noPl.map(r=>r.id))];
+    if(plIds.length){
+      const pf=`OR(${plIds.map(id=>`RECORD_ID()="${id}"`).join(',')})`;
+      const pls=await atGetAll(TABLES.ORDERS,{filterByFormula:pf,fields:['Partner Truck Plates']},false);
+      const byId={}; pls.forEach(p=>{ byId[p.id]=p.fields['Partner Truck Plates']; });
+      noPl.forEach(r=>{ if(byId[r.id]!=null) r.fields['Partner Truck Plates']=byId[r.id]; });
+    }
+  }catch(e){ console.warn('[ops] partner plates:', e.message); }
+
   // Batch fetch ORDER_STOPS for location resolution
   const allRecs = [...intl, ...overdue, ...overdueLoads];
   const stopIds = allRecs.flatMap(r => r.fields['ORDER STOPS'] || []);
@@ -547,6 +565,11 @@ const _OPS_STYLE=`<style>
      edge, the same in every section — the eye finds them in one place. */
   .do-slots{display:flex;align-items:center;justify-content:flex-end;gap:4px}
   .do-t td.do-acts{text-align:right}
+  /* The paperclip slot after «Αλλαγή ημέρας» (_opsActsCell): fixed width, so
+     a row without documents keeps the same right edge for its buttons. Wide
+     enough for the clip with a count («📎 2») on a group row. */
+  .do-acts-row{display:flex;align-items:center;justify-content:flex-end;gap:4px}
+  .do-doc{flex:none;width:28px;display:inline-flex;justify-content:center}
   /* Stamp under the status word: «από Παντελής · 07:12» from the stop's
      Completed By/At (owner 15/9). Nothing when there is no stamp — not «—». */
   .do-t td.do-st .do-sl{margin-top:2px}
@@ -653,7 +676,13 @@ function _opsDraw() {
   // w11 θέμα 8 (Παντελής/owner 21/9): WHO carries the load — plates + driver —
   // on the overdue DELIVERIES exactly as on the overdue LOADINGS (2/9 wrote
   // it only there), both in bold parentheses so the eye finds it at once.
-  const _opsWho=f=>{ const who=[_TT(f),_D(f)].filter(Boolean).join(' · '); return who?` <b class="do-who">(${who})</b>`:''; };
+  // A partner trip names the partner and its plates (Παντελής 19/10: the plates
+  // were missing exactly here, «στις εκκρεμείς παραδόσεις»): own truck and
+  // trailer are empty on a partner trip, so the parentheses used to vanish.
+  // getPartnerName/_D return escaped text; the plates are raw.
+  const _opsWho=f=>{ const who=(_P(f)
+    ? ['ΣΥΝ. '+(getPartnerName(getLinkedId(f['Partner']))||'—'), escapeHtml(String(f['Partner Truck Plates']||'').trim()), _D(f)]
+    : [_TT(f),_D(f)]).filter(Boolean).join(' · '); return who?` <b class="do-who">(${who})</b>`:''; };
   const zone=(key,rows,title,note,rowHtml)=>{
     if(!rows.length) return '';
     const open=OPS._zoneOpen?.[key]!==false;
@@ -844,7 +873,7 @@ function _opsGroupRow(key,g,from,to,isToday,open){
     :`<span class="do-pill" onclick="event.stopPropagation();_opsToggleStops('${id}')" title="Κλικ: οι φορτώσεις μία-μία — δηλώνεις όποια έγινε, οι άλλες περιμένουν">${done}/${g.length} φορτώθηκαν ${open?'▾':'▸'}</span>`)+by;
   // ΠΡΟΚ. € and «Αλλαγή ημέρας» belong to one order each — not on the summary.
   const act=!_opsIsFuture()&&!all?`<div class="do-slots"><span class="do-slot"><button class="do-btn" onclick="event.stopPropagation();_opsToggleStops('${id}')">Φορτώθηκε</button></span></div>`:'';
-  return `<tr id="r_${id}" class="do-hover do-grp${open?' do-open':''}" style="cursor:pointer" onclick="if(!event.target.closest('button,input,select,a'))_opsToggleStops('${id}')"><td class="do-num">${from}–${to}</td><td class="do-wrap"><span class="do-main">${g.length} φορτώσεις${typeof OrderDocs!=='undefined'?OrderDocs.badgeAny(g,{size:12}):''}</span><span class="do-sl">${clients}</span></td><td class="do-wrap"><span class="do-main">${locs||'—'}</span></td>${_opsGroupRelayCell(g)||_opsAsgCell(f0,_TT(f0),_D(f0),_P(f0))}<td>${pal}</td><td>—</td><td class="do-st">${st}</td><td class="do-acts">${act}</td></tr>`;
+  return `<tr id="r_${id}" class="do-hover do-grp${open?' do-open':''}" style="cursor:pointer" onclick="if(!event.target.closest('button,input,select,a'))_opsToggleStops('${id}')"><td class="do-num">${from}–${to}</td><td class="do-wrap"><span class="do-main">${g.length} φορτώσεις</span><span class="do-sl">${clients}</span></td><td class="do-wrap"><span class="do-main">${locs||'—'}</span></td>${_opsGroupRelayCell(g)||_opsAsgCell(f0,_TT(f0),_D(f0),_P(f0))}<td>${pal}</td><td>—</td><td class="do-st">${st}</td>${_opsActsCell(act, typeof OrderDocs!=='undefined'?OrderDocs.badgeAny(g,{size:12}):'')}</tr>`;
 }
 
 /* ── ROW ──────────────────────────────────────────────────────── */
@@ -950,6 +979,15 @@ function _opsSlots(rec, ctx) {
   return `<div class="do-slots">${slots.map(s=>`<span class="do-slot">${s}</span>`).join('')}</div>`;
 }
 
+// ΕΝΕΡΓΕΙΕΣ cell: the action slots, then the order's paperclip at the far right,
+// after «Αλλαγή ημέρας» (Παντελής 16/10: «τον συνδετήρα τέρμα δεξιά δίπλα από
+// την αλλαγή ημέρας»). The clip slot is drawn on every row, empty when the order
+// has no documents, so «Αλλαγή ημέρας» stays on one vertical down the section.
+// A delivered row has no slots but keeps its clip.
+function _opsActsCell(slotsHtml, docBadge) {
+  return `<td class="do-acts"><div class="do-acts-row">${slotsHtml||''}<span class="do-doc">${docBadge||''}</span></div></td>`;
+}
+
 function _opsRow(rec,num,type,isToday,cls) {
   const f=rec.fields, id=rec.id;
   const client=_C(f), sub=_CSub(f);
@@ -981,8 +1019,9 @@ function _opsRow(rec,num,type,isToday,cls) {
   // record (module docstring: "International ORDERS only"), so the plain
   // record id is always the right key for OrderDocs.
   // C6 (14/10): a split leg's row also carries its parent order's file.
+  // Drawn at the far right of ΕΝΕΡΓΕΙΕΣ, after «Αλλαγή ημέρας» (_opsActsCell).
   const docBadge=typeof OrderDocs!=='undefined'?OrderDocs.badgeAny(OrderDocs.docIdsOf(id,f),{size:12}):'';
-  const cl=`<td class="do-wrap"><span class="do-main">${client}${docBadge}</span>${sub?`<span class="do-sl">${sub}</span>`:''}</td>`;
+  const cl=`<td class="do-wrap"><span class="do-main">${client}</span>${sub?`<span class="do-sl">${sub}</span>`:''}</td>`;
   // Χωρίς ώρα δεν αποδίδεται ΤΙΠΟΤΑ — όπως ήδη κάνει η υπογραμμή πελάτη.
   // Οι στήλες loading_datetime/delivery_datetime είναι `date` στη βάση, άρα
   // το `_HM` γυρίζει πάντα κενό: το «—» κρεμόταν κάτω από ΚΑΘΕ τοποθεσία σε
@@ -1003,7 +1042,7 @@ function _opsRow(rec,num,type,isToday,cls) {
   const stCell=pre
     ? `<td class="do-st">${preorderChipHtml(f)}${f['Notes']?`<span class="do-sl">${escapeHtml(String(f['Notes']))}</span>`:''}</td>`
     : `<td class="do-st">${_opsStatusWord(f,pill,isL,_opsStamp(_mStops,_opsTgt()),_opsRelay(id,type))}</td>`;
-  const actCell=`<td class="do-acts">${_opsSlots(rec,type)}</td>`;
+  const actCell=_opsActsCell(_opsSlots(rec,type), docBadge);
 
   let mid='';
   if(isL&&isExp) mid=`${locCell(loadL,f['Loading DateTime'],pieceSub)}${asgCell}<td>${pal}</td><td>${!partner?amtInp('Advance Paid',f['Advance Paid']):''}</td>`;
@@ -1020,12 +1059,11 @@ function _opsRow(rec,num,type,isToday,cls) {
 // Own fleet = a plate or a driver on a non-partner trip. A plate without a
 // driver is still own fleet — the truck is ours, the driver line just stays
 // empty. No «ΙΔ.» tag (Παντελής 22/9): own is the default, the plate says it.
-// «Partner Truck Plates» is NOT requested in OPS_FIELDS (the request must stay
-// byte-identical to the 28/8 recording), so the partner line shows only the
-// company; when the pair-inherit above brought plates in memory, they appear.
+// «Partner Truck Plates» is not in OPS_FIELDS (the request stays byte-identical
+// to the 28/8 recording); _opsLoad fills it in memory from its own request
+// («Partner plates», 19/10) or from the matched export (pair-inherit).
 // Copy the plates in one click (walkthrough 13/10 item 16, C5), on row hover.
-// Raw plates from the record (the cell's `truck` is escaped HTML); a partner's
-// only when «Partner Truck Plates» is in memory (it is not in OPS_FIELDS).
+// Raw plates from the record (the cell's `truck` is escaped HTML).
 function _opsCpy(f, partner){
   if(typeof platesText!=='function') return '';
   const trId=getLinkedId(f['Trailer']), tr=trId?(getRefTrailers().find(r=>r.id===trId)||{}).fields||{}:{};

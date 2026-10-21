@@ -1139,7 +1139,7 @@ const OrdersWeekView = (() => {
     const m = S.model; if (!m) return;
     const O = OC(), scope = S.ctx ? S.ctx.scope : 'all';
     const stateOf = _stateFn(S.data.set);
-    const stLabel = r => { if (isVsNational(r)) return 'δεν τιμολογείται'; const s = stateOf(r); return s.key === 'invoiced' ? 'τιμολογήθηκε' : s.key === 'blocked' ? 'μπλοκαρισμένη: ' + (REASON[s.reason] || s.reason) : s.key === 'ready' ? 'προς κοπή' : 'σε εξέλιξη'; };
+    const stLabel = r => { if (isVsNational(r)) return 'δεν τιμολογείται'; const s = stateOf(r); return s.key === 'invoiced' ? 'τιμολογήθηκε' : s.key === 'blocked' ? 'μπλοκαρισμένη: ' + (REASON[s.reason] || s.reason) : s.key === 'ready' ? (s.noSheets ? 'προς κοπή · λείπει δελτίο' : 'προς κοπή') : 'σε εξέλιξη'; };
     const line = (rt, r, vrec, counts) => {
       const f = r.fields, v = vehicleOf(vrec), e = endsOf(r);
       return [O.weekLabel(m.week), O.ymd(O.weekDateOf(r)), rt, r._type === 'natl' ? (f['Direction'] === 'South→North' ? 'Άνοδος' : 'Κάθοδος') : (f['Direction'] === 'Import' ? 'Εισαγωγή' : 'Εξαγωγή'),

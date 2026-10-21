@@ -167,6 +167,9 @@ const OrdersNoPrice = (() => {
 
   const _role = () => (typeof ROLE !== 'undefined' ? ROLE : '');
   const _isOwner = () => _role() === 'owner';
+  // Owner 20/10/2026: the accountant (Eirini, Alexia) types prices too — the
+  // Worker already let her PATCH orders/national_orders; only this screen said no.
+  const _canPrice = () => _isOwner() || _role() === 'accountant';
   const _esc = s => escapeHtml(String(s == null ? '' : s));
   const _username = () => { try { return JSON.parse(localStorage.getItem('tms_user') || '{}').username || ''; } catch (_) { return ''; } };
   function _sessionItems() {
@@ -230,9 +233,9 @@ const OrdersNoPrice = (() => {
 
   // ── Render ──────────────────────────────────────────────────────────────
   async function render(ctx) {
-    const owner = _isOwner();
+    const owner = _canPrice();
     ctx.setSub(owner
-      ? 'Όλες οι εβδομάδες · γράψε τιμή και Enter — η παραγγελία περνά στα «Προς τιμολόγηση» της Ειρήνης'
+      ? 'Όλες οι εβδομάδες · γράψε τιμή και Enter — η παραγγελία περνά στα «Προς τιμολόγηση»'
       : 'Όλες οι εβδομάδες · παραδομένες χωρίς τιμή — τύπωσέ τη για τον owner');
     const set = await OrdersData.loadInvoicingSet();
     if (!ctx.isCurrent()) return;
@@ -325,9 +328,8 @@ const OrdersNoPrice = (() => {
     const typed = keep || {};
     const owner = V.canWrite;
     const filled = _filledRows();
-    // Accountant: /audit is closed to her role (Worker AUDIT_READERS) and she
-    // never writes prices, so a «0» here would read as «the owner filled
-    // nothing today» — a false zero. Say «—» and why, without an error banner:
+    // Accountant: /audit is closed to her role (Worker AUDIT_READERS), so a
+    // «0» here would read as «nobody filled anything today» — a false zero. Say «—» and why, without an error banner:
     // nothing failed.
     const noHistory = !!V.audit.skipped && !filled.length;
     const oldest = V.list.reduce((m, r) => { const d = _days(r); return d !== null && (m === null || d > _days(m)) ? r : m; }, null);
@@ -349,7 +351,7 @@ const OrdersNoPrice = (() => {
       <div class="np-k"><div class="np-kl">Συμπληρώθηκαν σήμερα</div><div class="np-kv">${noHistory
         ? '<span class="np-dim" id="npFilledCount" title="Το ιστορικό αλλαγών το διαβάζουν μόνο owner και management">—</span>'
         : `<span class="${filled.length ? 'np-green' : ''}" id="npFilledCount">${filled.length}</span>`}</div></div>
-      <div class="np-knote">${owner ? 'Η Ειρήνη βλέπει την ίδια λίστα χωρίς πεδία τιμής και την τυπώνει για εσένα' : 'Ο owner συμπληρώνει τις τιμές· τύπωσε τη λίστα για εκείνον'}</div>
+      <div class="np-knote">${owner ? 'Γράψε την τιμή στο κουτάκι, ή τύπωσε τη λίστα για συμπλήρωση στο χαρτί' : 'Τις τιμές τις συμπληρώνουν ο owner και το λογιστήριο· τύπωσε τη λίστα για εκείνους'}</div>
     </div>`;
 
     const cols = ['np-c-no', 'np-c-ref', 'np-c-pl', 'np-c-pl', 'np-c-dt', 'np-c-as', 'np-c-pal', 'np-c-days', 'np-c-last'].concat(owner ? ['np-c-in'] : []).concat(['np-c-open']);
@@ -403,7 +405,6 @@ const OrdersNoPrice = (() => {
       const next = st.key === 'ready'
         ? `→ Προς τιμολόγηση · εβδ. ${OrdersCommon.weekLabel(OrdersCommon.weekStartOf(rec))}`
         : st.key === 'invoiced' ? '→ τιμολογήθηκε'
-        : st.key === 'blocked' && st.reason === 'sheets' ? '→ περιμένει δελτία παλετών (Αλεξία)'
         // Round 1 O5 (critic-2 E2-09): a priced lot is not ready — it waits for its pieces.
         : st.key === 'blocked' && st.reason === 'stock' ? '→ περιμένει κομμάτια (παρτίδα)'
         : '';
@@ -419,7 +420,7 @@ const OrdersNoPrice = (() => {
         <td class="np-r"><button type="button" class="np-open" onclick="OrdersHub.openOrder('${rec._type}','${_esc(rec.id)}')">Άνοιγμα →</button></td>
       </tr>`;
     }).join('') : `<tr><td colspan="${ncol}" class="np-empty np-empty-s">${noHistory
-      ? 'Οι σημερινές συμπληρώσεις του owner φαίνονται στα «Προς τιμολόγηση» — το ιστορικό αλλαγών δεν ανοίγει στον ρόλο σου.'
+      ? 'Οι σημερινές συμπληρώσεις των άλλων φαίνονται στα «Προς τιμολόγηση» — το ιστορικό αλλαγών δεν ανοίγει στον ρόλο σου.'
       : 'Καμία συμπλήρωση σήμερα.'}</td></tr>`;
 
     ctx.body.innerHTML = `
@@ -436,7 +437,7 @@ const OrdersNoPrice = (() => {
       <div class="np-foot">Σειρά: παλαιότερη πρώτα · κόκκινη γραμμή = πάνω από ${OVERDUE_DAYS} ημέρες από την παράδοση · «τελευταία τιμή» = η πιο πρόσφατη του ίδιου πελάτη για ίδια φόρτωση και παράδοση (ενδεικτική, δεν γράφεται αυτόματα)</div>`;
   }
 
-  // ── Write (owner only) ──────────────────────────────────────────────────
+  // ── Write (owner + accountant) ──────────────────────────────────────────────────
   function _msgEl(input) { return document.getElementById('npMsg_' + input.dataset.type + '_' + input.dataset.id); }
   function clearMsg(input) { const m = _msgEl(input); if (m) { m.textContent = ''; m.className = 'np-msg'; } input.classList.remove('np-in-err'); }
   function _showMsg(input, text, kind) {
@@ -451,8 +452,7 @@ const OrdersNoPrice = (() => {
   }
 
   async function save(input) {
-    // The Worker would accept a PATCH from the accountant too (she has PATCH on
-    // orders); the owner decides prices (27/9), so the screen never offers it.
+    // owner + accountant (20/10); the Worker checks the role again on PATCH.
     if (!V || !V.canWrite || input.disabled) return;
     const type = input.dataset.type, id = input.dataset.id;
     const rec = V.all.find(r => r.id === id && r._type === type);
@@ -483,8 +483,7 @@ const OrdersNoPrice = (() => {
       // lot — it lands there blocked until its last piece (or a close).
       const _st = OrdersData.stateOf(V.set, rec);
       if (_st.key === 'blocked' && _st.reason === 'stock') toast(`Η τιμή καταχωρήθηκε — η παρτίδα ${lbl} περιμένει κομμάτια πριν τιμολογηθεί`);
-      else if (OrdersData.sheetsOk(V.set, rec)) toast(`Η τιμή καταχωρήθηκε — η ${lbl} πέρασε στα Προς τιμολόγηση`);
-      else toast(`Η τιμή καταχωρήθηκε — η ${lbl} περιμένει ακόμη δελτία παλετών (Αλεξία)`, 'warn');
+      else toast(`Η τιμή καταχωρήθηκε — η ${lbl} πέρασε στα Προς τιμολόγηση`);
       _repaintFromState();
     } catch (e) {
       input.disabled = false;

@@ -7,7 +7,7 @@
 //   - Offline banner via postMessage to all clients
 // ═══════════════════════════════════════════════════════════
 
-const SW_VERSION = '1792159195';
+const SW_VERSION = '1792529441';
 
 // Το vendor/leaflet/* ΔΕΝ μπαίνει στο APP_SHELL επίτηδες: το pre-cache στο
 // install θα κατέβαζε 228 KB σε κάθε χρήστη, ακυρώνοντας το lazy loading της
@@ -57,6 +57,7 @@ const APP_SHELL = [
   // draw a list — without these the dispatchers' main screen fails offline.
   '/PETRASGROUP-TMS/core/orders-list.js',
   '/PETRASGROUP-TMS/core/orders-common.js',
+  '/PETRASGROUP-TMS/core/order-quick-edit.js',
   '/PETRASGROUP-TMS/modules/orders_hub.js',
   '/PETRASGROUP-TMS/modules/orders_catalog.js',
   '/PETRASGROUP-TMS/modules/orders_invoicing_view.js',

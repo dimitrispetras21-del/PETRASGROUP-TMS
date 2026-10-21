@@ -52,11 +52,12 @@ function fixture() {
 const annotated = () => V.annotate(fixture(), id => CLIENTS[id] || '');
 const byId = (items, id) => items.find(it => it.id === id);
 
-test('states: ready / blocked(price) / blocked(sheets) / invoiced; cancelled and in-transit leave the view', () => {
+test('states: ready / blocked(price) / slip-only = ready+noSheets (owner 20/10) / invoiced; cancelled and in-transit leave the view', () => {
   const all = annotated();
   assert.strictEqual(byId(all, 'i1').state, 'ready');
   assert.deepStrictEqual([byId(all, 'i4').state, byId(all, 'i4').reason], ['blocked', 'price']);
-  assert.deepStrictEqual([byId(all, 'i5').state, byId(all, 'i5').reason], ['blocked', 'sheets']);
+  assert.deepStrictEqual([byId(all, 'i5').state, byId(all, 'i5').reason, byId(all, 'i5').noSheets], ['ready', '', true]);
+  assert.strictEqual(byId(all, 'i1').noSheets, false);
   assert.strictEqual(byId(all, 'i6').state, 'invoiced');
   const inView = V.scopeFilter(all, 'all').map(it => it.id);
   assert.ok(!inView.includes('i7') && !inView.includes('i8'));
@@ -79,10 +80,10 @@ test('scope filter splits the types', () => {
 test('week strip counts, words and the default week', () => {
   const items = V.scopeFilter(annotated(), 'all');
   const st = V.weekStats(items);
-  assert.deepStrictEqual(st.get(PREV), { ready: 4, blocked: 2, invoiced: 0, total: 6 });
+  assert.deepStrictEqual(st.get(PREV), { ready: 5, blocked: 1, invoiced: 0, total: 6 });   // i5 slip-only → ready (20/10)
   assert.deepStrictEqual(st.get(PREV2), { ready: 1, blocked: 0, invoiced: 1, total: 2 });
   assert.strictEqual(V.defaultWeek(items, TODAY), PREV, 'most recent week ≤ today with ready orders');
-  assert.strictEqual(V.weekWord(st.get(PREV), PREV, true, CUR), '4 προς κοπή');
+  assert.strictEqual(V.weekWord(st.get(PREV), PREV, true, CUR), '5 προς κοπή');
   assert.strictEqual(V.weekWord(st.get(PREV), PREV, false, CUR), '6 ανοιχτές');
   assert.strictEqual(V.weekWord(st.get(CUR), CUR, false, CUR), 'σε εξέλιξη');
   assert.strictEqual(V.weekWord({ ready: 0, blocked: 0, invoiced: 3, total: 3 }, PREV2, false, CUR), 'κλειστή');
@@ -96,18 +97,18 @@ test('base list: a week, or every open order of every week', () => {
   const items = V.scopeFilter(annotated(), 'all');
   assert.strictEqual(V.baseList(items, PREV).length, 6);
   const open = V.baseList(items, 'open');
-  assert.strictEqual(open.length, 7);                         // 5 ready + 2 blocked, all weeks
+  assert.strictEqual(open.length, 7);                         // 6 ready + 1 blocked, all weeks
   assert.ok(open.every(it => it.state !== 'invoiced'));
-  assert.deepStrictEqual(V.tabCounts(V.baseList(items, PREV)), { ready: 4, blocked: 2, invoiced: 0, all: 6 });
+  assert.deepStrictEqual(V.tabCounts(V.baseList(items, PREV)), { ready: 5, blocked: 1, invoiced: 0, all: 6 });
 });
 
 test('KPIs: unpriced orders are never summed — ready total, per type, oldest pending', () => {
   const items = V.scopeFilter(annotated(), 'all');
   const k = V.kpis(V.baseList(items, PREV));
-  assert.strictEqual(k.ready, 4);
-  assert.strictEqual(k.readySum, 3350 + 3350 + 2650 + 560);
-  assert.deepStrictEqual([k.intl, k.intlSum, k.natl, k.natlSum], [3, 9350, 1, 560]);
-  assert.strictEqual(k.blocked, 2);
+  assert.strictEqual(k.ready, 5);
+  assert.strictEqual(k.readySum, 3350 + 3350 + 2650 + 560 + 1000);   // + i5, slip-only
+  assert.deepStrictEqual([k.intl, k.intlSum, k.natl, k.natlSum], [4, 10350, 1, 560]);
+  assert.strictEqual(k.blocked, 1);
   const oldest = V.baseList(items, PREV).filter(it => it.state !== 'invoiced').reduce((m, it) => Math.max(m, it.days), -1);
   assert.strictEqual(k.oldestDays, oldest);
   const k2 = V.kpis(V.baseList(items, PREV2));
@@ -148,7 +149,7 @@ test('duplicate ΤΠΥ: same client allowed (note), another client flagged', () 
 test('next order after an invoice: same client first, else the next ready one', () => {
   const items = V.scopeFilter(annotated(), 'all');
   const groups = V.groupByClient(V.baseList(items, PREV));
-  assert.strictEqual(V.nextReady(groups, 'i1', 'recA').id, 'i2');
+  assert.strictEqual(V.nextReady(groups, 'i1', 'recA').id, 'i5');   // i5 (recA) is ready since 20/10
   const nx = V.nextReady(groups, 'i3', 'recB');
   assert.ok(nx && nx.state === 'ready' && nx.clientId !== 'recB');
 });
@@ -173,7 +174,7 @@ test('CSV «Φύλλο ERP»: header + one row per order, blank amount when unpr
   // C2-04 (round 3): «Κατάσταση» LAST — the columns before it keep their positions.
   assert.deepStrictEqual(rows[0], ['ΑΡ.', 'Αναφορά', 'Πελάτης', 'ΑΦΜ', 'Διεύθυνση', 'Φόρτωση', 'Παράδοση', 'Ημ. παράδοσης', 'Παλέτες', 'Ποσό', 'ΤΠΥ', 'Ημ. ΤΠΥ', 'Κατάσταση']);
   assert.strictEqual(rows.length, 7);
-  assert.deepStrictEqual(['#1229', 'NP-1', 'PE-1'].map(k => (rows.find(r => r[0] === k || r[1] === k) || [])[12]), ['προς κοπή', 'χωρίς τιμή', 'λείπει δελτίο'], 'the print\'s words');
+  assert.deepStrictEqual(['#1229', 'NP-1', 'PE-1'].map(k => (rows.find(r => r[0] === k || r[1] === k) || [])[12]), ['προς κοπή', 'χωρίς τιμή', 'προς κοπή · λείπει δελτίο'], 'the print\'s words');
   assert.strictEqual(V.stateWord(V.annotate(fixture(), () => '').find(it => it.id === 'i6')), 'ΤΠΥ 0431');
   const r1229 = rows.find(r => r[0] === '#1229');
   assert.deepStrictEqual([r1229[3], r1229[4], r1229[9]], ['IT04211730265', 'Via Emilia 12, Modena, IT', '3350.00']);
@@ -184,7 +185,7 @@ test('CSV «Φύλλο ERP»: header + one row per order, blank amount when unpr
 test('metrics for the audit: overdue is an age across ready and blocked', () => {
   const items = V.scopeFilter(annotated(), 'all');
   const m = V.metricsOf(items);
-  assert.deepStrictEqual([m.total, m.ready, m.blocked, m.invoiced], [8, 5, 2, 1]);
+  assert.deepStrictEqual([m.total, m.ready, m.blocked, m.invoiced], [8, 6, 1, 1]);   // i5 slip-only → ready (owner 20/10)
   assert.strictEqual(m.overdue, items.filter(it => it.state !== 'invoiced' && it.days > 30).length);
 });
 
