@@ -73,8 +73,8 @@ const WH = `INSERT INTO locations (id, name) VALUES (9001, 'TEST 071a warehouse'
 const SRC_O = (inv) => `INSERT INTO orders (id, legacy_id, status, client_id, unloading_location_1_id, loading_pallets_1, price, invoiced, invoice_number)
   VALUES (9101, 'recT071aSRC', 'Pending', 7, 9001, 33, 3300, ${inv}, ${inv ? "'T-071a'" : 'NULL'});`;
 const LOT = `INSERT INTO stock_lots (id, legacy_id, order_id) VALUES (9301, 'recT071aLOT', 9101);`;
-const VLOT = (inv) => `INSERT INTO stock_v_lots (id, order_id, client_id, warehouse_location_id, invoiced, stock_pallets, intake_status, intake_delivered, pieces, pieces_delivered, complete)
-  VALUES (9301, 9101, 7, 9001, ${inv}, 33, 'Pending', false, 0, 0, false);`;
+const VLOT = (inv) => `INSERT INTO stock_v_lots (id, legacy_id, order_id, client_id, warehouse_location_id, invoiced, stock_pallets, intake_status, intake_delivered, pieces, pieces_delivered, complete)
+  VALUES (9301, 'recT071aLOT', 9101, 7, 9001, ${inv}, 33, 'Pending', false, 0, 0, false);`;
 const PIECE = (status, truck) => `INSERT INTO orders (id, legacy_id, status, client_id, loading_location_1_id, loading_pallets_1, stock_lot_id, truck_id)
   VALUES (9201, 'recT071aP1', '${status}', 7, 9001, 5, 9301, ${truck ? 55 : 'NULL'});
   INSERT INTO stock_v_pieces (lot_id, piece_kind, piece_id, pallets, status, delivered, on_truck) VALUES (9301, 'intl', 9201, 5, '${status}', ${status === 'Delivered'}, ${!!truck});`;
@@ -160,4 +160,27 @@ test('the rollback gives 057\'s guards back byte for byte, and the old refusals 
   assert.strictEqual((await check(db, 'B-15')).m, LIVE_B15_MD5);
   for (const [name, setup, action, before] of CASES) assert.strictEqual(await attempt(db, setup, action), before, `${name} (after the rollback)`);
   await assert.rejects(db.exec(FILE('rollback')), /is not the 071a text/, 'a second rollback refuses');
+});
+
+// B0 review #3 (owner 22/10/2026): no silent freeze. A lot invoiced while 071a was live and still incomplete
+// would, under 057, have its pieces frozen until the invoice is undone. The rollback names such lots and
+// refuses; the owner decides (undo the invoices, or accept the freeze by naming exactly those lots).
+test('the rollback refuses while an invoiced lot is not complete, naming it; the owner can accept the freeze explicitly', async () => {
+  const db = await db057();
+  await db.exec(FILE('apply'));
+  await db.exec('BEGIN');
+  try {
+    await db.exec(`SET LOCAL session_replication_role = replica;\n${INV_LOT}\nSET LOCAL session_replication_role = origin;`);
+    await db.exec('SAVEPOINT s1');
+    await assert.rejects(db.exec(FILE('rollback')), /071a ROLLBACK refused: 1 invoiced lot\(s\) not complete: recT071aLOT\b[\s\S]*owner/);
+    await db.exec('ROLLBACK TO SAVEPOINT s1');
+    for (const fn of FNS) assert.strictEqual(await srcMd5(db, fn), md5(g[fn].next), `${fn}: still 071a after the refusal`);
+    // accepting a DIFFERENT list is no acceptance
+    await db.exec(`SELECT set_config('tms.rollback_071a_accept_freeze', 'recOTHER', true)`);
+    await assert.rejects(db.exec(FILE('rollback')), /071a ROLLBACK refused/);
+    await db.exec('ROLLBACK TO SAVEPOINT s1');
+    await db.exec(`SELECT set_config('tms.rollback_071a_accept_freeze', 'recT071aLOT', true)`);
+    await db.exec(FILE('rollback'));
+    for (const fn of FNS) assert.strictEqual(await srcMd5(db, fn), LIVE_MD5[fn], `${fn}: back to 057 once the owner accepted`);
+  } finally { await db.exec('ROLLBACK'); }
 });

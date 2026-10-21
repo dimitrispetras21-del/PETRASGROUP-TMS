@@ -480,16 +480,25 @@ export function buildRollback(g, a) {
 -- again, B-15 back to its 057b text. ONE DO block, ASCII only, after 15:00, explicit yes.
 -- ORDER: revert the front end of fix/invoice-from-registration FIRST (PR revert, SW_VERSION bump), then this file,
 -- then 071a_invoice_from_registration_verify.sql (every line "before").
--- WARNING (the truth, not a fault): any lot invoiced while 071a was live and still incomplete makes S-03 red at its
--- next hourly run - under the old rule that IS a finding. The old guards judge only future writes: such a lot's
--- pieces can then neither be drawn nor change status until its invoice is undone (owner).
+-- NO SILENT FREEZE (B0 review #3, owner 22/10/2026): a lot invoiced while 071a was live and still incomplete would,
+-- under 057, have its pieces frozen (no draw, no status change) until its invoice is undone, and S-03 red every hour.
+-- So this block first counts them (S-03's own predicate) and REFUSES, naming them. The owner decides: undo those
+-- invoices first, or accept the freeze by running, in the SAME paste, before the DO block, the exact line the error
+-- prints:  SELECT set_config('tms.rollback_071a_accept_freeze', '<the lots, as listed>', false);
+-- The acceptance holds only for exactly the lots listed (a new one invoiced meanwhile refuses again).
 
 DO $do$
 DECLARE
-  r record; src text; m text; k int; acl_before text;
+  r record; src text; m text; k int; acl_before text; stuck text; n_stuck int;
   want CONSTANT jsonb := '{${want(g)}}';
 BEGIN
   PERFORM set_config('lock_timeout', '5s', true);
+  SELECT count(*), string_agg(coalesce(legacy_id, id::text), ', ' ORDER BY coalesce(legacy_id, id::text))
+    INTO n_stuck, stuck
+    FROM stock_v_lots WHERE invoiced AND NOT complete;
+  IF n_stuck > 0 AND current_setting('tms.rollback_071a_accept_freeze', true) IS DISTINCT FROM stuck THEN
+    RAISE EXCEPTION '071a ROLLBACK refused: % invoiced lot(s) not complete: %. Under 057 their pieces can neither be drawn nor change status until the invoice is undone, and S-03 turns red. The owner decides: undo those invoices first, or accept the freeze by running this line in the same paste, before the DO block: SELECT set_config(''tms.rollback_071a_accept_freeze'', ''%'', false);', n_stuck, stuck, stuck;
+  END IF;
   FOR r IN SELECT * FROM (VALUES
 ${rows}
     ) AS s(fname, body_b64) LOOP
@@ -514,6 +523,9 @@ ${rows}
    WHERE id = 'B-15' AND md5(sql_text) = '${md5(a.b15Sql)}';
   GET DIAGNOSTICS k = ROW_COUNT;
   IF k <> 1 THEN RAISE EXCEPTION '071a ROLLBACK: B-15 not restored (% rows)', k; END IF;
+  IF n_stuck > 0 THEN
+    RAISE NOTICE '071a ROLLBACK: the owner accepted the freeze of % invoiced lot(s) not complete: %', n_stuck, stuck;
+  END IF;
   RAISE NOTICE '071a ROLLBACK OK: the three stock guards hold 057''s text again, S-03 enabled, B-15 restored';
 END $do$;
 `;

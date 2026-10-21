@@ -88,3 +88,12 @@ test('071a writes S-03 and B-15 exactly as tms-auditor/checks say; the rollback 
   assert.ok(rollback.includes(`SET sql_text = '${LIVE_B15_SQL.replace(/'/g, "''")}'`), 'rollback: B-15 back to 22/10');
   assert.match(a.s03Reason, /^071a \(owner 21\/10\/2026\)/, 'the verify file matches the reason by this prefix');
 });
+
+test('B0 review #3: the rollback refuses while an invoiced lot is not complete (no silent freeze), before it writes', () => {
+  const rollback = read(DO_FILES[2]);
+  const at = rollback.indexOf('FROM stock_v_lots WHERE invoiced AND NOT complete');
+  assert.ok(at > 0, 'counts the invoiced, not complete lots (S-03\'s own predicate)');
+  assert.ok(at < rollback.indexOf('CREATE OR REPLACE FUNCTION'), 'before any guard is rewritten');
+  assert.match(rollback, /RAISE EXCEPTION '071a ROLLBACK refused: % invoiced lot\(s\) not complete: %/);
+  assert.match(rollback, /current_setting\('tms\.rollback_071a_accept_freeze', true\) IS DISTINCT FROM stuck/, 'accepted only for exactly those lots');
+});
