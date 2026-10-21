@@ -867,7 +867,9 @@ var WA_EMO=['1️⃣','2️⃣','3️⃣','4️⃣','5️⃣','6️⃣','7️⃣
 function waNum(k){return WA_EMO[k]||('#'+(k+1));}
 // One stop of a WhatsApp text. tag (group only): the order the stop belongs to.
 // pal: that stop's pallets (waStopPal), '' when unknown.
-function waStopLines(lines,emo,lbl,x,tag,pal){
+// after(lines): extra lines inside the stop block, before its blank line — the
+// order's cargo under its first LOADING (owner 21/10, see waBuild).
+function waStopLines(lines,emo,lbl,x,tag,pal,after){
   lines.push(emo+' *'+lbl+'* · '+fmtDT(x.dt)+(tag?' · '+tag:'')+(pal?' · *'+pal+'*':''));
   lines.push(x.name);
   if(x.addr)lines.push(x.addr);
@@ -880,6 +882,7 @@ function waStopLines(lines,emo,lbl,x,tag,pal){
     lines.push('📍 *'+x.lat+', '+x.lng+'*');
     lines.push('📍 https://maps.google.com/?q='+x.lat+','+x.lng);
   }
+  if(after)after(lines);
   lines.push('');
 }
 // Pallets on the stop line (walkthrough 13/10 item 26 and Pantelis C3, Nick
@@ -897,11 +900,13 @@ function waStopPal(x,f,sideCount){
   var en=(typeof LBL!=='undefined'&&LBL===LBL_EN);
   return fv(v)+' '+(n===1?(en?'pallet':'παλέτα'):(en?'pallets':'παλέτες'));
 }
-// The cargo of one order. withKeep: the «keep the CMR temperature» line sits
-// in the order's own lines on a single text; a group says it ONCE for the
-// whole truck (waGroupBuild), not once per order.
-function waCargoLines(lines,f,isPartner,refNo,withKeep){
+// The cargo of one order, written inside its first loading's block (owner
+// 21/10). The «keep the CMR temperature» line is NOT here: every text says it
+// once, after the stops (waBuild, waGroupBuild).
+function waCargoLines(lines,f,isPartner,refNo){
   var L=LBL;
+  // Ref first (Pantelis 21/10): it is what the driver gives at the loading gate.
+  if(refNo)lines.push('Ref: '+refNo);
   var cargo=[];
   if(f['Total Pallets'])cargo.push('*'+fv(f['Total Pallets'])+'× '+(fv(f['Pallet Type'])||'EUR')+'*');
   if(fv(f['Goods']))cargo.push(fv(f['Goods']));
@@ -912,11 +917,9 @@ function waCargoLines(lines,f,isPartner,refNo,withKeep){
   // reefer mode — and EVERY text then tells the driver to keep the CMR
   // temperature, with or without a number of ours (same line as the paper).
   if(cmr)lines.push('🌡 *'+L.temp+': '+L.tempCmr+(f['Refrigerator Mode']?' · '+f['Refrigerator Mode']:'')+'*');
-  if(withKeep)lines.push('🌡 '+L.keepCmr);
   // C4-03: a lot exchanges at the client's loading, never at the warehouse.
   if(f['Own Stock Lot']&&f['Pallet Exchange'])lines.push('🔁 *'+L.pe+': '+L.yes+(isPartner?' at loading · ':' στη φόρτωση · ')+L.no+(isPartner?' at the warehouse':' στην αποθήκη')+'*');
   else lines.push('🔁 *'+L.pe+': '+(f['Pallet Exchange']?L.yes:L.no)+'*');
-  if(refNo)lines.push((isPartner?'Ref':'Ref')+': '+refNo);
   // C4-02: on the phone the warehouse pickup must read as STOCK, like the paper.
   var _stk=stockLotText(f,isPartner);
   if(_stk)lines.push('📦 '+(isPartner?'From stock · ':'Απόθεμα · ')+_stk);
@@ -947,10 +950,17 @@ function waBuild(f,isPartner,isExport,veroiaSwitch,VEROIA,VADDR,VLAT,VLNG,vehLin
   lines.push('🚛 *'+(isPartner?'ORDER':'ΕΝΤΟΛΗ')+' W'+wk+' · '+(isPartner?(isExport?'EXPORT':'IMPORT'):(isExport?'ΕΞΑΓΩΓΗ':'ΕΙΣΑΓΩΓΗ'))+' · '+orderNo+'*');
   if(vehLine)lines.push('👤 '+vehLine);
   lines.push('');
+  // Owner 21/10 (Pantelis): what the driver needs AT THE LOADING (Ref, pallets,
+  // goods, temperature, pallet exchange, notes) sits inside that loading's block,
+  // not in a cargo block after the deliveries that he scrolls back to at the
+  // gate. Under the FIRST loading only; with no loading stop the cargo stays
+  // after the stops, so it is never dropped. The CMR line is said once, last.
   var seq=0;
-  rs.loads.forEach(function(x){waStopLines(lines,waNum(seq++),L.load,x,null,waStopPal(x,f,rs.loads.length));});
+  var cargo=function(ls){waCargoLines(ls,f,isPartner,refNo);};
+  rs.loads.forEach(function(x,i){waStopLines(lines,waNum(seq++),L.load,x,null,waStopPal(x,f,rs.loads.length),i===0?cargo:null);});
   rs.dels.forEach(function(x){waStopLines(lines,waNum(seq++),L.unload,x,null,waStopPal(x,f,rs.dels.length));});
-  waCargoLines(lines,f,isPartner,refNo,true);
+  if(!rs.loads.length){cargo(lines);lines.push('');}
+  lines.push('🌡 '+L.keepCmr);
   return waClose(lines);
 }
 // Owner 7/10 (IAB4166, orders 461 + 463): a group went out as one text per
@@ -958,8 +968,9 @@ function waBuild(f,isPartner,isExport,veroiaSwitch,VEROIA,VADDR,VLAT,VLNG,vehLin
 // from two loading lists and two delivery lists. ONE text per group now: the
 // header and the driver/vehicle once, every LOADING of the truck numbered
 // 1..N, then every DELIVERY numbered 1..M, in groupRoute's order (the same
-// order the paper cover prints), each stop tagged with its order; then one
-// cargo block per order, the CMR line, ☎️ and the closing line once.
+// order the paper cover prints), each stop tagged with its order, each order's
+// cargo inside its FIRST loading (owner 21/10); then the CMR line, ☎️ and the
+// closing line once.
 // Numbering restarts per section — the owner's own words («φόρτωση 1, 2, 3 και
 // μετά παραδόσεις 1, 2, 3»): under its heading «παράδοση 2» is the second
 // drop, the number the driver and the office say on the phone; a continuous
@@ -984,14 +995,23 @@ function waGroupBuild(items){
   route.loads.forEach(function(r){nL[r.oi]=(nL[r.oi]||0)+1;});
   route.dels.forEach(function(r){nD[r.oi]=(nD[r.oi]||0)+1;});
   var fOf=function(r){return items[r.oi]&&items[r.oi].orderRec?items[r.oi].orderRec.fields:null;};
+  // Each order's cargo under ITS first loading (owner 21/10, as in waBuild);
+  // the «ΦΟΡΤΙΟ #n» block after the deliveries stays only for an order that has
+  // no loading stop on this route, so no cargo is ever dropped.
+  var shown={};
   lines.push('*'+L.loadsSec+'*');
-  route.loads.forEach(function(r,k){waStopLines(lines,waNum(k),L.load,r.e,'#'+nos[r.oi],waStopPal(r.e,fOf(r),nL[r.oi]));});
+  route.loads.forEach(function(r,k){
+    var f=fOf(r), first=f&&!shown[r.oi];
+    if(first)shown[r.oi]=true;
+    waStopLines(lines,waNum(k),L.load,r.e,'#'+nos[r.oi],waStopPal(r.e,f,nL[r.oi]),first?function(ls){waCargoLines(ls,f,isPartner,f['Reference']||'');}:null);
+  });
   lines.push('*'+L.delsSec+'*');
   route.dels.forEach(function(r,k){waStopLines(lines,waNum(k),L.unload,r.e,'#'+nos[r.oi],waStopPal(r.e,fOf(r),nD[r.oi]));});
   items.forEach(function(it,i){
+    if(shown[i])return;
     var f=it.orderRec.fields;
     lines.push('*'+L.cargoOf+' #'+nos[i]+'*');
-    waCargoLines(lines,f,isPartner,f['Reference']||'',false);
+    waCargoLines(lines,f,isPartner,f['Reference']||'');
     lines.push('');
   });
   lines.push('🌡 '+L.keepCmr);

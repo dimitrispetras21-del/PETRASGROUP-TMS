@@ -661,6 +661,16 @@ function _xwItems(today) {
 // Every text node that can overflow carries its full text in `title` (the
 // board rig's overflow scan fails otherwise, §h.4).
 function _ell(cls, text, extra) { return `<span class="${cls}" title="${_esc(text)}"${extra || ''}>${_esc(text)}</span>`; }
+// The reference under the date (Pantelis 21/10): one order's Reference can hold
+// several of the client's numbers («2087, 1839, 2103, 2104, …» — 3 of 184 orders
+// in 30 days, measured 21/10), which the 70px column cut into an unreadable
+// run. The first number, then «+N»; all of them in the title. Only commas and
+// semicolons split: a space or a dash is part of one number («TA 1138630»).
+function _refHTML(ref) {
+  const all = String(ref).split(/\s*[,;]\s*/).filter(Boolean);
+  if (all.length < 2) return _ell('wi4-ref wi4-ell', ref);
+  return `<span class="wi4-ref wi4-ell" title="${_esc(all.join(', '))}">${_esc(all[0])} +${all.length - 1}</span>`;
+}
 function _levelOf(facts, today) {
   const lg = L(); let lvl = null;
   for (const x of facts) { const l = lg.flags(x.f, today).level; if (l === 'red') return 'red'; if (l === 'amber') lvl = 'amber'; }
@@ -947,7 +957,7 @@ function _legHTML(s, today) {
   if (rs.PREORDER) s.from = Object.assign({}, s.from, { pre: 'Pre-order χωρίς μετατροπή — λεπτομέρειες αργότερα' });
   if (rs.LATE) s.to = Object.assign({}, s.to, { late: 'Καθυστέρηση παράδοσης' });
   return `<div class="wi4-leg${s.xd ? ' wi4-xd-' + s.xd : ''}"${click}>` +
-    `<div class="wi4-l-date">${_chipHTML(s.chip, today)}${s.ref ? _ell('wi4-ref wi4-ell', s.ref) : ''}</div>` +
+    `<div class="wi4-l-date">${_chipHTML(s.chip, today)}${s.ref ? _refHTML(s.ref) : ''}</div>` +
     `<div class="wi4-l-from">${_ptsHTML(s.from)}</div>` +
     `<span class="wi4-l-arr" aria-hidden="true">${ARROW}</span>` +
     `<div class="wi4-l-to">${_ptsHTML(s.to)}</div>` +
