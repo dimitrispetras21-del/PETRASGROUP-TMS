@@ -900,10 +900,10 @@ function waStopPal(x,f,sideCount){
   var en=(typeof LBL!=='undefined'&&LBL===LBL_EN);
   return fv(v)+' '+(n===1?(en?'pallet':'παλέτα'):(en?'pallets':'παλέτες'));
 }
-// The cargo of one order. withKeep: the «keep the CMR temperature» line sits
-// in the order's own lines on a single text; a group says it ONCE for the
-// whole truck (waGroupBuild), not once per order.
-function waCargoLines(lines,f,isPartner,refNo,withKeep){
+// The cargo of one order, written inside its first loading's block (owner
+// 21/10). The «keep the CMR temperature» line is NOT here: every text says it
+// once, after the stops (waBuild, waGroupBuild).
+function waCargoLines(lines,f,isPartner,refNo){
   var L=LBL;
   // Ref first (Pantelis 21/10): it is what the driver gives at the loading gate.
   if(refNo)lines.push('Ref: '+refNo);
@@ -917,7 +917,6 @@ function waCargoLines(lines,f,isPartner,refNo,withKeep){
   // reefer mode — and EVERY text then tells the driver to keep the CMR
   // temperature, with or without a number of ours (same line as the paper).
   if(cmr)lines.push('🌡 *'+L.temp+': '+L.tempCmr+(f['Refrigerator Mode']?' · '+f['Refrigerator Mode']:'')+'*');
-  if(withKeep)lines.push('🌡 '+L.keepCmr);
   // C4-03: a lot exchanges at the client's loading, never at the warehouse.
   if(f['Own Stock Lot']&&f['Pallet Exchange'])lines.push('🔁 *'+L.pe+': '+L.yes+(isPartner?' at loading · ':' στη φόρτωση · ')+L.no+(isPartner?' at the warehouse':' στην αποθήκη')+'*');
   else lines.push('🔁 *'+L.pe+': '+(f['Pallet Exchange']?L.yes:L.no)+'*');
@@ -957,7 +956,7 @@ function waBuild(f,isPartner,isExport,veroiaSwitch,VEROIA,VADDR,VLAT,VLNG,vehLin
   // gate. Under the FIRST loading only; with no loading stop the cargo stays
   // after the stops, so it is never dropped. The CMR line is said once, last.
   var seq=0;
-  var cargo=function(ls){waCargoLines(ls,f,isPartner,refNo,false);};
+  var cargo=function(ls){waCargoLines(ls,f,isPartner,refNo);};
   rs.loads.forEach(function(x,i){waStopLines(lines,waNum(seq++),L.load,x,null,waStopPal(x,f,rs.loads.length),i===0?cargo:null);});
   rs.dels.forEach(function(x){waStopLines(lines,waNum(seq++),L.unload,x,null,waStopPal(x,f,rs.dels.length));});
   if(!rs.loads.length){cargo(lines);lines.push('');}
@@ -969,8 +968,9 @@ function waBuild(f,isPartner,isExport,veroiaSwitch,VEROIA,VADDR,VLAT,VLNG,vehLin
 // from two loading lists and two delivery lists. ONE text per group now: the
 // header and the driver/vehicle once, every LOADING of the truck numbered
 // 1..N, then every DELIVERY numbered 1..M, in groupRoute's order (the same
-// order the paper cover prints), each stop tagged with its order; then one
-// cargo block per order, the CMR line, ☎️ and the closing line once.
+// order the paper cover prints), each stop tagged with its order, each order's
+// cargo inside its FIRST loading (owner 21/10); then the CMR line, ☎️ and the
+// closing line once.
 // Numbering restarts per section — the owner's own words («φόρτωση 1, 2, 3 και
 // μετά παραδόσεις 1, 2, 3»): under its heading «παράδοση 2» is the second
 // drop, the number the driver and the office say on the phone; a continuous
@@ -1003,7 +1003,7 @@ function waGroupBuild(items){
   route.loads.forEach(function(r,k){
     var f=fOf(r), first=f&&!shown[r.oi];
     if(first)shown[r.oi]=true;
-    waStopLines(lines,waNum(k),L.load,r.e,'#'+nos[r.oi],waStopPal(r.e,f,nL[r.oi]),first?function(ls){waCargoLines(ls,f,isPartner,f['Reference']||'',false);}:null);
+    waStopLines(lines,waNum(k),L.load,r.e,'#'+nos[r.oi],waStopPal(r.e,f,nL[r.oi]),first?function(ls){waCargoLines(ls,f,isPartner,f['Reference']||'');}:null);
   });
   lines.push('*'+L.delsSec+'*');
   route.dels.forEach(function(r,k){waStopLines(lines,waNum(k),L.unload,r.e,'#'+nos[r.oi],waStopPal(r.e,fOf(r),nD[r.oi]));});
@@ -1011,7 +1011,7 @@ function waGroupBuild(items){
     if(shown[i])return;
     var f=it.orderRec.fields;
     lines.push('*'+L.cargoOf+' #'+nos[i]+'*');
-    waCargoLines(lines,f,isPartner,f['Reference']||'',false);
+    waCargoLines(lines,f,isPartner,f['Reference']||'');
     lines.push('');
   });
   lines.push('🌡 '+L.keepCmr);
