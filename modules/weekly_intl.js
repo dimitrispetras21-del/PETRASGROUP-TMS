@@ -44,7 +44,8 @@ const WINTL = {
 
 // Search / status select / pre-order counter — all by hiding rows, no rebuild.
 function _wiApplyFilter() {
-  const q = (WINTL.filter || '').toLowerCase();
+  // Same search rule as v4 (fhSearchNorm, core/form-helpers.js, Pantelis 21/10).
+  const q = fhSearchNorm(WINTL.filter || '');
   const fs = WINTL.filterStatus || '';
   const qk = WINTL.quick || '';
   document.querySelectorAll('#wi-rows [data-row-id]').forEach(el => {
@@ -52,7 +53,7 @@ function _wiApplyFilter() {
     if (!row) { el.style.display = ''; return; }
     let show = true;
     if (q) {
-      const blob = [
+      const blob = fhSearchBlob([
         row.truckLabel, row.driverLabel, row.partnerLabel,
         ...(row.orderIds || []).map(oid => {
           const o = WINTL.data.exports.find(r=>r.id===oid) || WINTL.data.imports.find(r=>r.id===oid);
@@ -61,7 +62,7 @@ function _wiApplyFilter() {
           // 'Reference' — there is no 'Order Number' field (CLAUDE.md name traps)
           return [f['Loading Summary'], f['Delivery Summary'], f['Reference']].filter(Boolean).join(' ');
         })
-      ].join(' ').toLowerCase();
+      ]);
       if (!blob.includes(q)) show = false;
     }
     if (show && fs) {

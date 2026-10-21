@@ -2581,6 +2581,19 @@ async function scnSearch(browser, origin) {
   await shot(page, 'search-lit-1920');
   await box.press('Enter'); await page.waitForTimeout(150);
   ok('search', 'Enter → «2/3»', (await st()).n === '2/3', await st());
+  // Pantelis 21/10: accents, case, spaces and dashes do not matter, on either side.
+  await box.fill('πελάτης β'); await page.waitForTimeout(300);
+  ok('search', 'accents/case ignored: «πελάτης β» = «ΠΕΛΑΤΗΣ Β», «1/3»', (await st()).n === '1/3', await st());
+  await box.fill('tst1017'); await page.waitForTimeout(300);
+  ok('search', 'dash ignored: «tst1017» finds TST-1017', /^1\/\d+$/.test((await st()).n), await st());
+  // Greek finds the Latin-stored places (fhSearchNorm transliterates like _fhNorm).
+  await box.fill('Κοζάνη'); await page.waitForTimeout(300);
+  ok('search', 'Greek → Latin: «Κοζάνη» finds the Kozani rows', /^1\/\d+$/.test((await st()).n), await st());
+  // Fields stay apart: truck «TST-1010» + trailer «TRL-2010» never make «tst1010trl».
+  await box.fill('tst1010trl'); await page.waitForTimeout(300);
+  ok('search', 'no match across two fields: «tst1010trl» finds nothing', (await st()).n === '0', await st());
+  await box.fill(' - '); await page.waitForTimeout(300);
+  ok('search', 'only separators = no search: nothing dimmed, no card', (await st()).dim === 0 && !(await page.evaluate(() => document.querySelectorAll('#content .wi4 .wi4-sm').length)), await st());
   await box.fill('TST-1017'); await page.waitForTimeout(300);
   ok('search', 'plate: matches the E024 row', /^1\/\d+$/.test((await st()).n), await st());
   await box.fill('REF-E019'); await page.waitForTimeout(300);
