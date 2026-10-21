@@ -8377,13 +8377,29 @@ body.wi4-on #wi-ctx .wi4-m-sec .wi4-l2, body.wi4-on #wi-ctx .wi4-m-hd .wi4-l2 { 
    full on hover, keyboard focus, or while its «+N» fold is open — an
    ancestor's opacity would make the open fold translucent and stack it under
    the next rows once the mouse leaves. */
-:is(.wi4-row.wi4-xd, .wi4-dim, .wi4-leg.wi4-xd-done, .wi4-leg.wi4-xd-half > .wi4-l-from,
+:is(.wi4-row.wi4-xd, .wi4-dim, .wi4-sm, .wi4-leg.wi4-xd-done, .wi4-leg.wi4-xd-half > .wi4-l-from,
     :is(.wi4-row, .wi4-subrow):is(:hover, :focus-within, .wi4-focus, :has(.wk3-xfold.open)))
   :is(.wi4-leg.wi4-xd-done, .wi4-leg.wi4-xd-half > .wi4-l-date, .wi4-leg.wi4-xd-half > .wi4-l-from, .wi4-pt.wi4-xd-pt),
-.wi4-row.wi4-xd:not(.wi4-dim):is(:hover, :focus-within, .wi4-focus, :has(.wk3-xfold.open)) { opacity:1; }
+.wi4-row.wi4-xd:not(.wi4-dim):is(:hover, :focus-within, .wi4-focus, .wi4-sm, :has(.wk3-xfold.open)) { opacity:1; }
 /* The search fade wins over the done fade on a whole row, hover included
    (review 21/10): .35 like every other row the filter left out. */
 .wi4-row.wi4-xd.wi4-dim { opacity:.35; }
+/* A search match is RAISED (Pantelis 21/10; owner chose this of three, «κομψό
+   και formal»): a white card with rounded corners and a soft shadow, at full
+   strength even when it was executed, over the dimmed rest. No colour fill —
+   a yellow marker was rejected, and blue would vanish on today's light-blue
+   day. The dividers around it go, so it reads as one lifted card. #wi-rows
+   outranks today's hover fill; the keyboard focus outline still shows. Only
+   while a search is typed (JS _applyDim). */
+.wi4 #wi-rows :is(.wi4-row, .wi4-subrow).wi4-sm,
+.wi4 #wi-rows :is(.wi4-row, .wi4-subrow).wi4-sm:hover {
+  background:var(--surface-card); border-radius:6px; border-bottom-color:transparent; z-index:2;
+  box-shadow:0 0 0 1px rgba(11,25,41,.07), 0 1px 2px rgba(11,25,41,.06), 0 6px 18px -6px rgba(11,25,41,.18);
+  transition:box-shadow .12s ease-out; }
+.wi4 #wi-rows :is(.wi4-row, .wi4-subrow):has(+ .wi4-sm) { border-bottom-color:transparent; }
+.wi4 #wi-rows .wi4-sm > .wi4-c-idx { background:transparent; }
+.wi4 #wi-rows .wi4-sm > .wi4-c-idx .wi4-no { color:var(--wi4-ink); font-weight:700; }
+@media (prefers-reduced-motion: reduce) { .wi4 #wi-rows .wi4-sm { transition:none; } }
 .wi4.wi4-kbd .wi4-focus { outline:2px solid var(--wi4-blue); outline-offset:-2px; }
 .wi4-hl, .wi4 .wi4-mhl { background:var(--accent-light); }
 

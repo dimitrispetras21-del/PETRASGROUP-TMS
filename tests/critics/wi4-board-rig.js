@@ -2566,6 +2566,19 @@ async function scnSearch(browser, origin) {
   await box.fill('ΠΕΛΑΤΗΣ Β'); await page.waitForTimeout(300);
   let s = await st();
   ok('search', 'client name: «1/3», the other rows dim', s.n === '1/3' && s.dim === s.rows - 3, s);
+  // Pantelis 21/10: the matches are RAISED — a white card, 6px corners, a soft
+  // shadow, the number in bold ink (owner picked this of three) — at full
+  // strength even when executed (a done match must not read like a miss).
+  const lit = () => page.evaluate(() => [...document.querySelectorAll('#content .wi4 .wi4-row.wi4-sm')].map(r => {
+    const cs = getComputedStyle(r);
+    const faded = [...r.querySelectorAll('.wi4-leg, .wi4-l-date, .wi4-l-from, .wi4-pt')].filter(x => getComputedStyle(x).opacity !== '1').length;
+    const no = r.querySelector('.wi4-c-idx .wi4-no');
+    return { bg: cs.backgroundColor, radius: cs.borderTopLeftRadius, shadow: cs.boxShadow !== 'none', no: no && getComputedStyle(no).fontWeight, op: cs.opacity, faded };
+  }));
+  const L1 = await lit();
+  ok('search', 'matches raised: 3 rows, white card, radius 6px, a shadow, number 700, opacity 1, no faded part inside',
+    L1.length === 3 && L1.every(x => x.bg === 'rgb(255, 255, 255)' && x.radius === '6px' && x.shadow && x.no === '700' && x.op === '1' && !x.faded), L1);
+  await shot(page, 'search-lit-1920');
   await box.press('Enter'); await page.waitForTimeout(150);
   ok('search', 'Enter → «2/3»', (await st()).n === '2/3', await st());
   await box.fill('TST-1017'); await page.waitForTimeout(300);
@@ -2577,6 +2590,7 @@ async function scnSearch(browser, origin) {
   await box.press('Escape'); await page.waitForTimeout(200);
   s = await st();
   ok('search', 'Esc clears: nothing dimmed', s.dim === 0, s);
+  ok('search', 'Esc clears the mark too', !(await lit()).length, await lit());
   ok('search', 'search wrote nothing, hid nothing (dims, never _wiApplyFilter)', !writes(S).length && s.rows > 20, s);
   await page.context().close();
 }

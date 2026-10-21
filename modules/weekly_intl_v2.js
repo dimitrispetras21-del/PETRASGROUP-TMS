@@ -2354,6 +2354,9 @@ function _applyDim() {
     const okQ = !q || (x && x.blob.includes(q));
     const ok = okQ && _statusOk(x && x.row);
     el.classList.toggle('wi4-dim', !ok);
+    // A typed search LIGHTS its matches (Pantelis 21/10): dimming the rest was
+    // not enough once executed rows fade too — a done match read like a miss.
+    el.classList.toggle('wi4-sm', !!q && ok);
     if (q && ok && el.classList.contains('wi4-row')) {
       const oid = el.dataset.oid;
       if (oid && !seen.has(oid)) { seen.add(oid); _sMatches.push(oid); }
