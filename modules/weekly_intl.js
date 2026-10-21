@@ -175,7 +175,8 @@ async function _wiInjectStopSummaries(allOrders) {
           .sort((a,b)=>(a.fields[F.STOP_NUMBER]||0)-(b.fields[F.STOP_NUMBER]||0))
           .map(s=>{const lid=Array.isArray(s.fields[F.STOP_LOCATION])?s.fields[F.STOP_LOCATION][0]:null;
             // p: the stop's own pallets, so a groupage row on v4 can show them per stop (item 23, 14/10).
-            return {n:lid?(_fhLocationsMap[lid]||''):'', dt:s.fields[F.STOP_DATETIME]||'', p:s.fields[F.STOP_PALLETS]};})
+            // c: the Ημερήσιο's per-stop stamp (_opsMarkStop), so v4 fades the ONE point done (owner 21/10).
+            return {n:lid?(_fhLocationsMap[lid]||''):'', dt:s.fields[F.STOP_DATETIME]||'', p:s.fields[F.STOP_PALLETS], c:s.fields['Completed At']||''};})
           .filter(x=>x.n);
         const L=namesOf('Loading'), D=namesOf('Unloading');
         if(L.length) r.fields._stopsL=L;
@@ -719,7 +720,8 @@ async function renderWeeklyIntl(){
       const parts = vsIds.map(id => `FIND("${id}",ARRAYJOIN({Source Order},","))>0`);
       const f = parts.length === 1 ? parts[0] : `OR(${parts.join(',')})`;
       const nl = await safeFetch(() => atGetAll(TABLES.NAT_LOADS, { filterByFormula: f,
-        fields: ['Source Order','Truck','Driver','Partner','Partner Truck Plates','Is Partner Trip'] }, false),
+        // Status: v4 fades a VS row whole only once its national leg is Delivered (owner 21/10).
+        fields: ['Source Order','Truck','Driver','Partner','Partner Truck Plates','Is Partner Trip','Status'] }, false),
         'weekly intl: national carriers', []);
       if (WINTL.data.nlBySrc !== nlMap) return;
       // v4 repaints through WIV2._lateLanded: at once, or — when a popover,

@@ -197,7 +197,7 @@ function _stopsOf(f, kind) {
   return L0.map((x) => {
     const src = Array.isArray(arr) && arr.length ? arr[x._i] : null;
     const raw = src ? (typeof src === 'string' ? src : src.n) : (L0.length === 1 ? I.raw(str) : x.n);
-    return { n: raw || x.n, dt: x.dt, _i: x._i, pal: src && typeof src === 'object' ? src.p : null };
+    return { n: raw || x.n, dt: x.dt, _i: x._i, pal: src && typeof src === 'object' ? src.p : null, c: !!(src && typeof src === 'object' && src.c) };
   });
 }
 // A stop name → {title, city, cc, place}. Two producers write stop names
@@ -824,8 +824,11 @@ function _ptHTML(s, d) {
   // Group member tiles: today's drag strings verbatim (§f), rowId = the
   // GROUP's own row id. Without preventDefault in ondragover the drop never
   // fires. No `wk3-seg` class: it is a global layout rule (§a.7).
-  if (s.badge == null) return `<div class="wi4-pt" style="display:block"${click}${drag}>${l1}${l2}</div>`;
-  return `<div class="wi4-pt"${click}${drag}><span class="wi4-pt-n">${_esc(s.badge)}</span>${l1}${l2}</div>`;
+  // A point done on its own (its stop stamped by the Ημερήσιο, or its side by
+  // Status) fades alone: the other points of the leg stay bold (owner 21/10).
+  const xd = s.done && !s.cx ? ' wi4-xd-pt' : '';
+  if (s.badge == null) return `<div class="wi4-pt${xd}" style="display:block"${click}${drag}>${l1}${l2}</div>`;
+  return `<div class="wi4-pt${xd}"${click}${drag}><span class="wi4-pt-n">${_esc(s.badge)}</span>${l1}${l2}</div>`;
 }
 // Stops of one end: a single order's points, or EVERY stop of every member of
 // a groupage. Until 14/10 a groupage drew one point per member (its first
@@ -848,6 +851,7 @@ function _sideOf(recs, kind, opt) {
       const f = r.fields || {};
       const L0 = _stopsOf(f, kind);
       const st = I.stFlags(f);
+      const cx = f['Status'] === 'Cancelled';
       const p = _pals([f]);
       const list = L0.length ? L0 : [{ n: I.clientName(f) || '—', _none: true }];
       const orderDt = f[kind === 'load' ? 'Loading DateTime' : 'Delivery DateTime'] || '';
@@ -856,12 +860,12 @@ function _sideOf(recs, kind, opt) {
         const own = x.pal != null && x.pal !== '' && isFinite(+x.pal) ? +x.pal : null;
         pts.push({ mi, si, dt: x.dt || orderDt, label: nm.title, place: nm.place,
           pallets: own != null ? own : (list.length === 1 && p.known ? p.n : null),
-          done: kind === 'load' ? st.loaded : st.delivered, oid: r.id,
+          done: (kind === 'load' ? st.loaded : st.delivered) || !!x.c, cx, oid: r.id,
           drag: o.dragRowId != null ? { rowId: o.dragRowId } : null });
       });
     });
     if (byDate) pts.sort((a, b) => String(a.dt || '9').slice(0, 10).localeCompare(String(b.dt || '9').slice(0, 10)) || a.mi - b.mi || a.si - b.si);
-    const stops = pts.map((s, i) => ({ n: i + 1, label: s.label, place: s.place, pallets: s.pallets, done: s.done, oid: s.oid, drag: s.drag, dt: s.dt }));
+    const stops = pts.map((s, i) => ({ n: i + 1, label: s.label, place: s.place, pallets: s.pallets, done: s.done, cx: s.cx, oid: s.oid, drag: s.drag, dt: s.dt }));
     const arr = pts.map((s) => ({ n: s.label, dt: s.dt }));
     return { stops, dateTick: kind === 'load', showPal: true, xfold: I.moreStops(arr.map((x) => x.n).join(', '), arr, kind) };
   }
@@ -878,7 +882,8 @@ function _sideOf(recs, kind, opt) {
   const one = L0.length === 1;
   const stops = (L0.length ? L0 : [{ n: I.clientName(f) || '—' }]).map((x, i) => {
     const nm = _splitName(x.n);
-    return { n: i + 1, label: nm.title, place: one ? nm.placeC : nm.place, pallets: null, done: kind === 'load' ? st.loaded : st.delivered, oid: r && r.id, lot: i === 0 ? lot : '', dt: x.dt || '' };
+    return { n: i + 1, label: nm.title, place: one ? nm.placeC : nm.place, pallets: null, done: (kind === 'load' ? st.loaded : st.delivered) || !!x.c,
+      cx: f['Status'] === 'Cancelled', oid: r && r.id, lot: i === 0 ? lot : '', dt: x.dt || '' };
   });
   return { stops, dateTick: kind === 'load', showPal: false, xfold: I.moreStops(I.placeStr(f, kind), kind === 'load' ? f._stopsL : f._stopsD, kind) };
 }
@@ -911,22 +916,27 @@ function _palHTML(fieldsList, oid, docIds) {
 }
 // Executed = dimmed (owner 21/10, Figma 2022:7736 / rule 2024:8134): what the
 // Ημερήσιο already marked done fades to 40%, so the dispatcher's eye skips past
-// work. The ONLY source is Status, which the Ημερήσιο buttons write
-// («Φορτώθηκε» → In Transit, «Παραδόθηκε» → Delivered); the board has no
-// button of its own. 'done' = EVERY member delivered (all stops of the side:
-// one Status per order today, so a 3-drop order fades at once); 'half' = every
-// member loaded → only date/ref and loadings fade, the consignee and pallets
-// stay bold because the job is still running. A leg holding a RED mark of its
-// own (red «PRE», a failed save of that order) never fades: it still needs
-// work. Red marks drawn in OTHER cells («Κενό γύρισμα», «ΠΡΟΣ ΑΝΑΘΕΣΗ») stay
-// bold there and do not hold the leg (Figma row 14: export faded, gap bold).
+// work; the board has no button of its own. A POINT is done when its stop
+// carries the Ημερήσιο's own stamp (ORDER STOPS «Completed At», _opsMarkStop:
+// one loading or delivery at a time), or — the fallback for stops never
+// stamped (19 loadings + 4 deliveries of 30 days, measured 21/10) — when its
+// order's Status says that side is done («Φορτώθηκε» → In Transit,
+// «Παραδόθηκε» → Delivered). Each done point fades alone (_ptHTML); 'half' =
+// every loading done → date/ref and loadings fade, the consignee and pallets
+// stay bold because the job is still running; 'done' = every delivery done →
+// the whole leg. A cancelled member's points never execute, so they are left
+// out (all cancelled = nothing fades). A leg holding a RED mark of its own
+// (red «PRE», a failed save of that order) never fades: it still needs work.
+// Red marks drawn in OTHER cells («Κενό γύρισμα», «ΠΡΟΣ ΑΝΑΘΕΣΗ») stay bold
+// there and do not hold the leg (Figma row 14: export faded, gap bold).
 const XD_HOLD = ['PREORDER', 'SAVE_FAILED'];
-function _xdOf(recs, rs) {
-  if (!recs || !recs.length) return '';
+function _xdOf(from, to, rs) {
   if (Object.values(rs || {}).some((r) => r.level === 'red' && XD_HOLD.includes(r.code))) return '';
-  const s = recs.map((r) => W().stFlags((r && r.fields) || {}));
-  if (s.every((x) => x.delivered)) return 'done';
-  return s.every((x) => x.loaded) ? 'half' : '';
+  const live = (side) => ((side && side.stops) || []).filter((x) => !x.cx);
+  const L0 = live(from), D0 = live(to);
+  if (!L0.length || !D0.length) return '';
+  if (D0.every((x) => x.done)) return 'done';
+  return L0.every((x) => x.done) ? 'half' : '';
 }
 function _legHTML(s, today) {
   const click = s.click ? ` onclick="event.stopPropagation();${s.click}" style="cursor:pointer"` : '';
@@ -944,20 +954,19 @@ function _legHTML(s, today) {
     `<div class="wi4-l-pal">${s.pal || ''}</div></div>`;
 }
 
-// One import load (matched in an export row, or an import-only row's own).
-// rs = the reasons of the import's own fact (_rsOf).
 // The import load's members: its import group's, else the import alone.
 function _impMembers(imp) {
   const I = W(), D = _D();
   const g = I.impGroupRowOf(imp.id);
-  return g && (g.orderIds || []).length > 1 ? I.grpOrder(g.orderIds.map((id) => D.data.imports.find((r) => r.id === id)).filter(Boolean), 'Loading DateTime') : [imp];
+  return { g, members: g && (g.orderIds || []).length > 1 ? I.grpOrder(g.orderIds.map((id) => D.data.imports.find((r) => r.id === id)).filter(Boolean), 'Loading DateTime') : [imp] };
 }
-// xdOff: the whole row already fades (_expRowHTML), so the leg adds none.
-function _impLegHTML(host, imp, today, rs, xdOff) {
+// One import load (matched in an export row, or an import-only row's own).
+// rs = the reasons of the import's own fact (_rsOf). → {html, xd}: the export
+// row needs the leg's done state to decide whether the WHOLE row fades.
+function _impLegHTML(host, imp, today, rs) {
   const I = W();
   rs = rs || {};
-  const g = I.impGroupRowOf(imp.id);
-  const members = _impMembers(imp);
+  const { g, members } = _impMembers(imp);
   const lead = members[0] || imp, f = lead.fields || {};
   const st = I.stFlags(f);
   const isGroup = members.length > 1;
@@ -976,11 +985,12 @@ function _impLegHTML(host, imp, today, rs, xdOff) {
   if (isGroup && _gtOn() && host.type === 'export' && _q(g.orderId)) {
     pal = `<span draggable="true" class="wi4-t-g2 wi4-grip" title="Σύρε ολόκληρη την ομάδα σε άλλη εξαγωγή" onclick="event.stopPropagation()" ondragstart="event.stopPropagation();_wiImpDragStart(event,'${_q(g.orderId)}',true)" ondragend="_wiImpDragEnd()">⋮⋮</span>` + pal;
   }
-  return _legHTML({
+  const xd = _xdOf(from, to, rs);
+  return { xd, html: _legHTML({
     chip: { oid: lead.id, field: 'Loading DateTime', day: _day(f['Loading DateTime']), done: st.loaded, noTruck: !host.saved, what: 'Ημερομηνία φόρτωσης εισαγωγής' },
     ref: isGroup ? _plural(members.length, 'load') : (f['Reference'] || ''),
-    from, to, pal, rs, xd: xdOff ? '' : _xdOf(members, rs), click: _q(lead.id) ? `WI_INTERNAL.edit('${_q(lead.id)}')` : '',
-  }, today);
+    from, to, pal, rs, xd, click: _q(lead.id) ? `WI_INTERNAL.edit('${_q(lead.id)}')` : '',
+  }, today) };
 }
 
 // National leg cell (§e #12). Never «ΠΡΟΣ ΑΝΑΘΕΣΗ» for an unread leg (§d.2a).
@@ -1155,17 +1165,24 @@ function _expRowHTML(e, today) {
   // ΠΡΟΣ/ΑΠΟ ΒΕΡΟΙΑ tiles too) fades only when every leg it draws is
   // delivered and nothing on it still needs work: a red rail, «ΠΡΟΣ
   // ΑΝΑΘΕΣΗ», a «Κενό γύρισμα» or an unread/failed match keep it bold, and
-  // then only the leg that was done fades. A national tile counts as done
-  // only with a carrier READ (unknown ≠ done). A split parent executes
-  // nowhere (its legs are rows of their own), so it never fades.
-  const natDone = (oid) => { const c = _natState() === 'ok' ? _carrierOf(oid) : null; return !!c && c.kind !== 'missing'; };
+  // then only the leg that was done fades. A VS row's national leg is work
+  // too (review 21/10): it counts as done only when its NATIONAL LOADS row is
+  // read and says Delivered — a carrier alone is still a delivery ahead, and
+  // unknown ≠ done. A split parent executes nowhere (its legs are rows of
+  // their own), so it never fades. A leg keeps its own fade inside a faded
+  // row; CSS resets any fade nested in a faded ancestor (never .16).
+  const natDone = (oid) => {
+    if (_natState() !== 'ok') return false;
+    const nl = (_D().data.nlBySrc || {})[oid];
+    return !!nl && ['Delivered', 'Invoiced'].includes((nl.fields || {})['Status']);
+  };
   const impShown = !!(imp && !unc);
-  const xdE = row.hasSplitLegs ? '' : _xdOf(exps, rsE);
-  const xdI = impShown ? _xdOf(_impMembers(imp), _rsAt(e, row.importId, today)) : '';
+  const xdE = row.hasSplitLegs ? '' : _xdOf(from, to, rsE);
+  const impLeg = impShown ? _impLegHTML(row, imp, today, _rsAt(e, row.importId, today)) : null;
   const xdRow = !!(row.saved && !row.hasSplitLegs && lvl !== 'red' && xdE === 'done' &&
-    (impShown ? xdI === 'done' : (!row.importId && hasPartner)) &&
+    (impShown ? impLeg.xd === 'done' : (!row.importId && hasPartner)) &&
     (!vs || isGroup || natDone(pid)) && (!impShown || !(imp.fields || {})['Veroia Switch'] || natDone(imp.id)));
-  const leg = _legHTML({ chip, ref, from, to, rs: rsE, xd: xdRow ? '' : xdE, pal: _palHTML(exps.map((r) => r.fields || {}), isGroup ? null : pid, isGroup ? exps : null),
+  const leg = _legHTML({ chip, ref, from, to, rs: rsE, xd: xdE, pal: _palHTML(exps.map((r) => r.fields || {}), isGroup ? null : pid, isGroup ? exps : null),
     click: isGroup ? `WI_INTERNAL.rota(${row.id})` : (_q(pid) ? `WI_INTERNAL.edit('${_q(pid)}')` : '') }, today);
 
   // A match (or an unmatch) that FAILED (_unconfirmed): the row keeps its
@@ -1180,7 +1197,7 @@ function _expRowHTML(e, today) {
   const mid = unc ? _srvMatch(row) : row.importId;
   let impInner;
   if (unc && mid) impInner = _notSavedHTML(row, mid);
-  else if (imp && !unc) impInner = _impLegHTML(row, imp, today, _rsAt(e, row.importId, today), xdRow);
+  else if (impShown) impInner = impLeg.html;
   else if (mid) {
     // Matched to an import this week's read does not hold (it loads outside
     // ±8 days, or it was cancelled): unknown ≠ empty (§d.2a) — never the open
@@ -1279,7 +1296,7 @@ function _impRowHTML(e, today) {
     '<div class="wi4-c-fl"></div>' +
     `<div class="wi4-c-exp">${left}</div>` +
     `<div class="wi4-c-asg">${_asgHTML(row, rs)}</div>` +
-    `<div class="wi4-c-imp">${_impLegHTML(row, imp, today, rs)}</div>` +
+    `<div class="wi4-c-imp">${_impLegHTML(row, imp, today, rs).html}</div>` +
     `<div class="wi4-c-fr">${fr}</div></div>`;
 }
 // Split frame header (§e #11): «ΣΠΑΣΜΕΝΗ ΣΕ 2 ΣΚΕΛΗ · Α → Γ · 30π · αλλαγή
@@ -1311,9 +1328,10 @@ function _legRowHTML(e, today) {
   const f = r.fields || {}, isImp = f['Direction'] === 'Import';
   const st = I.stFlags(f);
   const rs = _rsOf(e.facts[0] && e.facts[0].f, today);
+  const from = _sideOf([r], 'load'), to = _sideOf([r], 'del');
   const leg = _legHTML({
     chip: { oid, field: 'Loading DateTime', day: _day(f['Loading DateTime']), done: st.loaded, noTruck: false, what: 'Ημερομηνία φόρτωσης σκέλους' },
-    ref: f['Reference'] || '', from: _sideOf([r], 'load'), to: _sideOf([r], 'del'), pal: _palHTML([f], oid), rs, xd: _xdOf([r], rs),
+    ref: f['Reference'] || '', from, to, pal: _palHTML([f], oid), rs, xd: _xdOf(from, to, rs),
   }, today);
   // The tag sits in the OTHER column, leaning towards the assignment cell.
   // One run, «ίδιο φορτηγό» in the label's own weight (Figma 1097:3052): not

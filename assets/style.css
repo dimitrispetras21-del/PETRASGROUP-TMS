@@ -8363,21 +8363,26 @@ body.wi4-on #wi-ctx .wi4-m-sec .wi4-l2, body.wi4-on #wi-ctx .wi4-m-hd .wi4-l2 { 
 .wi4-r-amb::before { border-left:3px dashed var(--wi4-amber); }
 .wi4-dim { opacity:.35; }
 /* Executed = dimmed (owner 21/10, Figma 2022:7736; JS _xdOf). .wi4-xd = the
-   whole row; on a leg, -done = all of it, -half = loaded, not delivered: only
-   the date/ref and the loadings fade (left of the arrow), the consignee and
-   the pallets stay bold. Opacity only: every click works as before. */
+   whole row; on a leg, -done = all of it, -half = every loading done: only the
+   date/ref and the loadings fade (left of the arrow), the consignee and the
+   pallets stay bold; .wi4-xd-pt = ONE point done on its own (its stop stamped
+   by the Ημερήσιο), the leg's other points stay bold. Opacity only: every
+   click works as before. */
 .wi4-row.wi4-xd,
 .wi4-leg.wi4-xd-done,
-.wi4-leg.wi4-xd-half > :is(.wi4-l-date, .wi4-l-from) { opacity:var(--wi4-done); }
-/* Back to full on hover, keyboard focus, or while its «+N» fold is open: an
+.wi4-leg.wi4-xd-half > :is(.wi4-l-date, .wi4-l-from),
+.wi4-pt.wi4-xd-pt { opacity:var(--wi4-done); }
+/* Never a second fade (.4 × .4 = .16, or .35 × .4 under the search): a fade
+   nested in an already faded or search-dimmed ancestor stays at 1. Back to
+   full on hover, keyboard focus, or while its «+N» fold is open — an
    ancestor's opacity would make the open fold translucent and stack it under
-   the next rows once the mouse leaves. Also inside a search-dimmed row
-   (.wi4-dim): .35 × .4 would be a second fade (the rule panel: with a filter
-   on, «done» need not stand out). */
-:is(.wi4-row, .wi4-subrow):is(:hover, :focus-within, .wi4-focus, :has(.wk3-xfold.open), .wi4-dim)
-  :is(.wi4-leg.wi4-xd-done, .wi4-leg.wi4-xd-half > .wi4-l-date, .wi4-leg.wi4-xd-half > .wi4-l-from),
-.wi4-row.wi4-xd:is(:hover, :focus-within, .wi4-focus, :has(.wk3-xfold.open)) { opacity:1; }
-/* The search fade wins over the done fade on a whole row: .35, never .4. */
+   the next rows once the mouse leaves. */
+:is(.wi4-row.wi4-xd, .wi4-dim, .wi4-leg.wi4-xd-done, .wi4-leg.wi4-xd-half > .wi4-l-from,
+    :is(.wi4-row, .wi4-subrow):is(:hover, :focus-within, .wi4-focus, :has(.wk3-xfold.open)))
+  :is(.wi4-leg.wi4-xd-done, .wi4-leg.wi4-xd-half > .wi4-l-date, .wi4-leg.wi4-xd-half > .wi4-l-from, .wi4-pt.wi4-xd-pt),
+.wi4-row.wi4-xd:not(.wi4-dim):is(:hover, :focus-within, .wi4-focus, :has(.wk3-xfold.open)) { opacity:1; }
+/* The search fade wins over the done fade on a whole row, hover included
+   (review 21/10): .35 like every other row the filter left out. */
 .wi4-row.wi4-xd.wi4-dim { opacity:.35; }
 .wi4.wi4-kbd .wi4-focus { outline:2px solid var(--wi4-blue); outline-offset:-2px; }
 .wi4-hl, .wi4 .wi4-mhl { background:var(--accent-light); }
