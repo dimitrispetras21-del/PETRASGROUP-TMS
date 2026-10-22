@@ -91,7 +91,7 @@
 
 ### Task Φ0: Figma και μετρήσεις αφετηρίας
 
-> **Κατάσταση 22/10: ΕΓΚΡΙΘΗΚΕ από τον owner** (βήματα 1–6). Frames και βαθμοί κριτών στο `docs/sessions/2026-10-22-dimitris-national-v5-f0.md`· PNG στο Desktop «TMS brainstorming/Figma Εθνικών — Φ0 (22-10)». Μένει το βήμα 7 (κάτοχος αλυσίδας Worker).
+> **Κατάσταση 22/10: ΕΓΚΡΙΘΗΚΕ από τον owner** (βήματα 1–6). Frames και βαθμοί κριτών στο `docs/sessions/2026-10-22-dimitris-national-v5-f0.md`· PNG στο Desktop «TMS brainstorming/Figma Εθνικών — Φ0 (22-10)». Βήμα 7: την αλυσίδα Worker την κρατά η Petras (owner 22/10). Η Φ0 έκλεισε.
 
 **Files:**
 - Modify: Figma `KO7l2AfucR3HJEDIg1Yptr`, σελίδα `2011:7735` και τα `2035:7735`, `2036:7735`, `2036:7752`
@@ -120,7 +120,7 @@
   - md5 των `ct_v_rt_revenue`, `ct_v_rt_costs`, `ct_v_rt_pnl`, `dl_v_rt_route`, `rt_status_guard`, `rt_auto_close`, `rt_sync_legs`, `rt_sync_national_load`, `rt_create_from_order`, `rt_merge`, και των συναρτήσεων του 057 που αγγίζει η Β0
   - πλήθος triggers (B-54)
   - η αφετηρία ξανά (6 / 2 / 1 / 70 / 0 / 0)
-- [ ] **Βήμα 7:** απόφαση για τον κάτοχο της αλυσίδας Worker: εμείς ή η ValueDriven, αφού φέρει το backend και το CI στο repo. Γράφεται στο «Now».
+- [x] **Βήμα 7:** απόφαση για τον κάτοχο της αλυσίδας Worker: εμείς ή η ValueDriven, αφού φέρει το backend και το CI στο repo. Γράφεται στο «Now». **Απόφαση 22/10: εμείς.**
 
 **Αποδοχή:** όλα τα frames εγκεκριμένα, 0 αντιφάσεις, και ο πίνακας μετρήσεων στο repo.
 
