@@ -859,7 +859,10 @@ function _wiBuildRows(){
       partnerLabel:WINTL.data.partners.find(p=>p.id===partnerId)?.label||'',
       partnerPlates:f['Partner Truck Plates']||'',
       partnerRate:  f['Partner Rate']?String(f['Partner Rate']):'',
-      partnerRateImp:'',
+      // Read back from the matched import (owner 22/10, order 585): the save
+      // writes it there, but the row started empty, so the field showed blank
+      // after every reload and the next save demanded it again.
+      partnerRateImp:(importId&&impById[importId]?.fields?.['Partner Rate'])?String(impById[importId].fields['Partner Rate']):'',
       saved:!!(truckId||partnerId),
     });
   }
