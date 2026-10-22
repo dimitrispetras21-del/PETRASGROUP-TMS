@@ -63,8 +63,9 @@ export function draftGrants(file) {
 }
 export const STOCK_DRAFT = '057_stock_lots.sql';
 
-export async function createDb({ roles = false, seed = true, fixture = true } = {}) {
-  const db = new PGlite();
+export async function createDb({ roles = false, seed = true, fixture = true, extensions } = {}) {
+  // extensions: PGlite contrib modules (e.g. btree_gist for 071b); none by default, as before.
+  const db = new PGlite(extensions ? { extensions } : undefined);
   await db.exec(MOCKS);
   if (fixture) await db.exec(fs.readFileSync(FIXTURE, 'utf8'));
   await db.exec(fs.readFileSync(path.join(DRAFTS, '047_monitoring_schema.sql'), 'utf8'));
