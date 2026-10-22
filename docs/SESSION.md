@@ -15,7 +15,7 @@ What is live (commit, versions, flags) is not kept here: it goes stale within ho
 - dimitris · `docs/wn4-plan-rev6` · Weekly National v4 plan (WP-A, one Veroia day, live since 12/10 morning)
 - dimitris · `fix/wi4-*` · Weekly International v4 fixes
 - dimitris · `docs/national-v5-f0` · National v5 F0: Figma approved 22/10 (frames Δ1–Δ12, one scenario), baseline measured (`docs/sessions/2026-10-22-dimitris-national-v5-f0.md`); next: Worker-chain owner, then F1 (071) approvals
-- dimitris · `fix/invoice-from-registration` · B0 invoice from registration (all orders, lots, pre-orders); 071a DRAFT: owner runs verify → dry run → 071a → verify after 15:00, THEN merge (`docs/sessions/2026-10-22-dimitris-b0-invoice-from-registration.md`)
+- dimitris · `fix/invoice-from-registration` · B0 invoice from registration: LIVE 22/10 (071a executed, PR #69 merged, screen 48 / 30 = table). Next: drafts 057/060/069/071a out of drafts/ (rule 5)
 - dimitris · `feat/orders-week-v4` (PR #43) · Orders › «Εβδομάδα» v4, one row = one RT; after merge: live check (totals vs SELECT, 0 console errors)
 - vd-nick · `vd/session-rules-v2` (PR #40) · session rules v2: parallel work, per-session files
 - vd-nick · (not started, PR planned this week) · import the Valuedriven backend, tests and CI into this repo
