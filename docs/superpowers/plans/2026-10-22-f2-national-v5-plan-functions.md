@@ -1,0 +1,8539 @@
+# Φ2 · Εθνικά v5: κανόνες `plan_*` (072) και Worker `/plan/*` — Implementation Plan
+
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+>
+> **Τελικό πλάνο, 23/10/2026.** Συναρμολογήθηκε από τον σκελετό (αποφάσεις, αρχεία, συμβόλαια) και τις τρεις ενότητες (Α: SQL μέρος 1, Β: SQL μέρος 2, Γ: Worker, deploy, runbooks), με εφαρμοσμένα τα Critical και Important ευρήματα των δύο κριτών της 23/10 (κάλυψη/ορθότητα, ποιότητα πλάνου/ασφάλεια Worker). Οι Α και Γ πρωτοτυπήθηκαν Task προς Task (Α σε PGlite με το σχήμα παραγωγής, 77/77· Γ σε αντίγραφο του `worker/`, 226/226)· η Β σε PGlite πάνω σε αντικαταστάτες των βοηθών της Α (74/77). **Έλεγχος της συναρμολόγησης (23/10, scratch, εκτός repo):** τα code blocks του πλάνου εφαρμόστηκαν κατά γράμμα (κάθε «πρόσθεσε πάνω από…») σε αντίγραφο PGlite με `live-071.sql` + 071 + 071b + το ζωντανό 069 (`order_cd_stop_follow`), **χωρίς** την πλήρη λήψη `live-072.sql` (150 KB, μένει για το Α1): η 072 εφαρμόζεται («072 OK», 16 δημόσιες)· rules test **169 OK, 0 FAIL**· build test 12/12 και το bootstrap του Α1 6/6· verify, dry run, rollback (άρνηση με γραμμή v5, μετά επιτυχία) και ξανά apply· έξι μεταλλαγές ρίχνουν ακριβώς τις περιπτώσεις 78, 79–80, 81, B85, B79, B38. Ο έλεγχος βρήκε και διόρθωσε ένα σφάλμα (ψευδώνυμο `e` στη B77, 42702). Τα md5 του φρουρού δεν μπορούσαν να ταιριάξουν χωρίς τη λήψη (χαλαρώθηκαν μόνο στο αντίγραφο). Ο Worker (Γ) ελέγχθηκε μόνο συντακτικά μετά τις αλλαγές του. Το Task Σ1 ξανατρέχει τα πάντα με την πραγματική λήψη και τον Worker, πριν από το Κ1. **Καμία εργασία δεν ξεκινά πριν ο owner εγκρίνει τις αποφάσεις 1–34.** Πηγές: `.superpowers/f2/requirements.md`, `worker.md`, `db.md` (22/10), μετρήσεις SELECT 22/10 23:10 και 23/10 (πίνακας «Αφετηρία»).
+
+**Goal:** Να υπάρχουν στη βάση οι συναρτήσεις `plan_*` που γράφουν όλο το μοντέλο v5 (παραγγελία → αποστολή → κομμάτι → σκέλος → κύκλος) με τους κανόνες του spec, και στον Worker οι διαδρομές `/plan/*` πίσω από `PLAN_PERMS`, κλειστά για εγγραφή ως την ημέρα L, με **0** γραμμές v5 στην παραγωγή μετά το deploy.
+
+**Architecture:**
+- **Βάση (`072_plan_functions.sql`, ένα DO block, ASCII):** ~16 δημόσιες `plan_*` (`SECURITY DEFINER`, `SET search_path = public`, owner `postgres`, `RETURNS jsonb`, EXECUTE μόνο `service_role`) και εσωτερικοί βοηθοί `plan_h_*` (κλειστοί για όλους, όπως οι `*_problem` της 071). Κάθε δημόσια συνάρτηση = μία πράξη = μία συναλλαγή· τελειώνει με `SET CONSTRAINTS ALL IMMEDIATE` ώστε οι αναβαλλόμενοι κανόνες της 071/071b να σκάνε **μέσα** της, όπου μεταφράζονται σε `plan:<code>`. Κανένα νέο trigger, κανένας νέος πίνακας, καμία αλλαγή σε υπάρχουσα συνάρτηση (B-54 μένει 46).
+- **Worker (`deploy/worker-plan`):** `handlePlan` (πίνακας διαδρομών → μία RPC ανά αίτημα), `var PLAN_PERMS = {` + `planCan` (σχήμα `COSTS_PERMS`), οικογένεια `plan:` στον **ίδιο** `stockRuleError`, κείμενα `PLAN_RULE_TEXT` / `PLAN_CHECK_TEXT`, διακόπτης εγγραφών κλειστός ως το L.
+- **Tests:** PGlite (`plan-072.test.mjs` με νέο fixture `live-072.sql`), κανόνες σε TEST γραμμές (`072_plan_functions_test.sql`, 169 περιπτώσεις: 82 Α + 87 Β), έλεγχοι build (`tests/sql-072-drafts.test.js`, 12), Worker σε Node (`worker/test/plan-*.test.mjs`, `worker-guard.test.mjs`· 189 → 228).
+
+**Tech Stack:** Supabase Postgres 17.6 (plpgsql, DO blocks, deferred constraint triggers της 071, EXCLUDE της 071b, PostgREST RPC με `statement_timeout 8s`), PGlite 0.5.8 + `btree_gist` (`tms-auditor`), Cloudflare Worker (ESM, wrangler/esbuild), `node --test` (Node 24, με glob, όχι φάκελο).
+
+## Global Constraints
+
+Αντιγραμμένα από spec §2.1/§3/§9, master «Global Constraints» και CLAUDE.md· δεσμευτικά για κάθε Task.
+
+**Πηγές με σειρά ισχύος:** 1) spec `docs/superpowers/specs/2026-10-21-national-v5-design.md` (owner 21/10)· 2) `docs/DECISION_LOG.md` 21/10 και 22/10 (Εθνικά v5)· 3) master `docs/superpowers/plans/2026-10-21-national-v5-master.md` Task Φ2· 4) F1 plan Interfaces· 5) tech draft §Φ2 (μόνο όπου δεν το αλλάζει το spec §7)· 6) flows. Όπου διαφωνούν, ισχύει το spec. Οι Φ3 (χρήματα/παλέτες/DKV, 073), Φ4 (οθόνες) και Φ5 (γέφυρα VS, ημέρα L, facade Ε16/Ε18/Ε19, 074) είναι **εκτός** Φ2.
+
+**Βάση**
+- Ο agent κάνει **μόνο SELECT** στη Supabase (project `gatejgbpyodlepkvqkgf`, MCP `execute_sql`). Καμία εγγραφή, migration, `REVOKE`, ούτε το rules test, χωρίς ρητό «ναι» του Δημήτρη στη συνομιλία.
+- Κάθε migration: **dry run πρώτα**, ρητό «ναι», εκτέλεση από τον owner **μετά τις 15:00** (CLAUDE.md κανόνας 5, αρχή 7). Μόλις εκτελεστεί, τα αρχεία βγαίνουν από το `drafts/`.
+- Αρχεία SQL: **ASCII μόνο**, **ένα DO block ανά αρχείο που γράφει** (ο SQL editor δεν είναι ατομικός), `PERFORM set_config('lock_timeout', '5s', true)`. Αρχεία verify: μόνο SELECT. Ελληνικά μέσα σε SQL μόνο ως base64 (`convert_from(decode('…','base64'),'UTF8')`, πρότυπο 060).
+- Πριν βασιστείς σε υπάρχον αντικείμενο: md5 του **ζωντανού** κειμένου (φρουρός μέσα στο block· μία λίστα 23 συναρτήσεων, ίδια σε PART 0, PART 5, verify, tests και Κ2).
+- **Γεννιέται κλειστό** (αρχή 5): κάθε νέα συνάρτηση `REVOKE ALL ON FUNCTION … FROM PUBLIC, anon, authenticated` (το `pg_default_acl` του `postgres` δίνει EXECUTE σε anon/authenticated)· `GRANT EXECUTE … TO service_role` **μόνο** στις δημόσιες `plan_*`· οι `plan_h_*` κλειστές και για `service_role`. Απόδειξη μέσα στο block με `has_function_privilege`.
+- Κάθε `plan_*`: `SECURITY DEFINER`, owner `postgres`, `SET search_path = public`, παράμετροι `p_actor text`, `p_role text`, μία γραμμή `audit_log` ανά αλλαγή με actor τον χρήστη.
+- Κάθε άρνηση: `RAISE EXCEPTION 'plan rule broken: <code>:<detail ASCII>' USING ERRCODE = '23514', HINT = 'plan:<code>'`.
+- Το `ct_round_trips` δεν έχει `deleted_at`: κύκλος που «δεν έγινε» = `status = 'cancelled'`, λόγος στο `audit_log`. Οι 4 πίνακες σχεδίου μόνο soft delete (`deleted_at`/`deleted_reason`/`deleted_by` μαζί).
+- **Κανένας καθρέφτης:** ποτέ `national_orders.truck_id / partner_id / status`.
+- «Έγινε» = η ημέρα Αθήνας του `planned_to` πέρασε· διαβάζεται από τις όψεις της 071, ποτέ γραμμένο.
+- Οι νέοι πίνακες **ποτέ** στο `TABLES` του facade.
+
+**Worker** (CLAUDE.md «Ο WORKER», «Τρεις κανόνες μίας πηγής»)
+- **Μία αλυσίδα** `deploy/worker-plan` (Φ2 → Φ3 → Φ5), κάτοχος η Petras (`dimitris`, owner 22/10).
+- Deploy **μόνο μετά τις 15:00**, **μόνο από κλάδο που περιέχει την πηγή του Worker που τρέχει** (εδώ ελέγχεται σε περιεχόμενο ή με `491ea7ec`, βλ. Αφετηρία).
+- Φρουρός **πριν και μετά** (σε περιεχόμενο, ποτέ σε ισότητα byte· ξετύλιγμα multipart· μία εντολή: `worker/tools/worker-guard.mjs`, Task Γ5): dispatcher `order_stops: [..., "DELETE"]`, `"VS CD Date": "cross_dock_date"`, τα 4 πεδία WORKSHOPS, `tblStockLots: {`, `"Move Kind": "move_kind"`, και **νέο** `var PLAN_PERMS = {` (0 πριν, 1 μετά, μαζί με `var PLAN_WRITES_OPEN = false;`· μπαίνουν στη λίστα του CLAUDE.md μετά το deploy). Αν λείπει ένα: ΣΤΑΜΑΤΑ.
+- Bindings/secrets 3/3 (`JWT_SECRET`, `SUPABASE_SERVICE_KEY`, `ANTHROPIC_API_KEY`) πριν και μετά, μέσω CF API.
+- Μετά από επιτυχημένο deploy: commit «sync worker source with deployed <version>» στο main (μέσω PR).
+- **0** γραμμές στους 5 νέους πίνακες και **0** `model=2` μετά το deploy· καμία δοκιμαστική εγγραφή στην παραγωγή.
+
+**Git και ίχνος**
+- Ποτέ push στο `main`, ποτέ force push. Branch από `origin/main`, PR, το merge το κάνει ο Δημήτρης. Ο agent **δεν** κάνει commit/push/deploy χωρίς ρητή εντολή.
+- `/code-review` xhigh (Worker, βάση, χρήματα). `docs/sessions/`, γραμμή «Now» στο `docs/SESSION.md`, `docs/DECISION_LOG.md`.
+- Σχόλια κώδικα στα αγγλικά (το «γιατί»)· κείμενο προς owner στα ελληνικά.
+- Το repo είναι δημόσιο: τίποτα ασφαλείας ανοιχτό σε docs.
+
+---
+
+## Αφετηρία (μέτρηση 22/10/2026 23:10 Αθήνα και 23/10, μόνο SELECT· ο Task 0 την ξαναμετρά)
+
+| Τι | Τιμή |
+|---|---|
+| Ενεργά triggers `public` / B-54 | **46** / `46/null` |
+| Συναρτήσεις `plan_%` | **6** (`plan_chk`, `plan_rt_window_sync`, 4 × `*_problem`)· + `ct_rt_legs_v2_guard` |
+| Γραμμές `shipments+shipment_pieces+rt_stops+piece_legs+plan_notices` | **0** |
+| `ct_round_trips` / `model=2` | 202 / **0** |
+| `ct_rt_code_seq` | `1272/true` (επόμενο `RT-1273`) |
+| `local_moves` `nat_loading` | 0 |
+| `ct_cost_lines.pay_source` | `CASH, CREDIT, DKV, REVOLUT` (στήλη `rt_id` υπάρχει) |
+| `plan_config` | δεν υπάρχει (074) |
+| Worker ζωντανός | **2f2851c0** (7/10, από `deploy/worker-temp-cmr` @ `bb8ba2db`, rollback `c358f99a`). Main = ζωντανό + 24 γραμμές VD 19/10 (μη deployed). `bb8ba2db` **δεν** είναι πρόγονος του main (sync με αντιγραφή `491ea7ec`). |
+| `worker/src/index.js` @ `97798ba8` | md5 `a3117aac2170a34015f9a3a08be0e953`, 5.836 γραμμές· `grep PLAN_\|/plan/\|shipments\|rt_stops` = 0 |
+| Worker tests | `node --test worker/test/*.test.mjs worker/src/rt-rules.test.mjs` = **189/189** |
+
+**Η 072 δεν ξαναγράφει καμία υπάρχουσα συνάρτηση.** Βασίζεται όμως στη συμπεριφορά τους· ο φρουρός της 072 ελέγχει το ζωντανό md5 των **23** και ΣΤΑΜΑΤΑ αν αλλάξει ένα (τότε ξαναδιαβάζεται η συμπεριφορά). Τα 23 ξαναμετρήθηκαν 23/10: ίδια, καμία υπερφόρτωση ονόματος.
+
+| Συνάρτηση | Γιατί μας αφορά | md5 (22/10 = 23/10) |
+|---|---|---|
+| `dl_sync_from_rt()` (011) | γραμμή μισθοδοσίας στο INSERT/ακύρωση/Καθαρισμό· `needs_review` αν βρει ποσό (γι' αυτό σβήνουμε πρώτα, K-13) | `331cea3a8987b74a9b0add698df9b158` |
+| `dl_local_day_sync(bigint,date)` (071) | ΤΟΠΙΚΟ ανά ημέρα με κωδικό RT | `151dab06e2676f3c8885d7298d0ac6af` |
+| `dl_sync_from_local_move()` | καλεί το παραπάνω | `f053c478c79ef55dcc62b65a61939b9b` |
+| `local_moves_before()` | επιστρέφει νωρίς για `nat_loading` (δεν δίνει status) | `3b9f0a27c9921c63ce9fb41f09ef0462` |
+| `dl_local_line_guard()` | αρνείται ακύρωση γραμμής που πληρώνει ζωντανή `nat_loading` | `e7f0348ccc5764d29608b8701f0e83b6` |
+| `dl_cash_sync_entry()` | τρέχει στο `deleted_at` της γραμμής | `6d702bad6485f06535c6a0d5aff0bd0c` |
+| `order_cd_stop_follow()` (069) | το `plan_vs_set_day` γράφει μόνο `cross_dock_date` | `433a1a7205fceb264e77f5a0c71a1521` |
+| `ramp_follows_stop()` | αλυσίδα του παραπάνω | `6fa6a83c4191af271dbae85935d710c5` |
+| `invoice_mark_guard()` | πυροδοτείται σε INSERT `national_orders` | `dd975c4f04f95f528c7c79a80eb4d387` |
+| `stock_guard_natl()` (071a) | πυροδοτείται σε INSERT `national_orders` | `e941edbca9ff1bbeba0c89d49eb71cb3` |
+| `national_orders_soft_delete_cascade()` | σβήνει NL/`order_stops` στο `deleted_at` της εθνικής | `6c423b14397c659272b1c9256189933d` |
+| `rt_status_guard()` (071) | `model=2` → return | `d7757f99c3443ac167d5bdaf3e34b142` |
+| `plan_chk()` | κανόνες COMMIT | `8f2fa7e5541aded2dffc853a57c54c22` |
+| `plan_rt_window_sync()` | γράφει παράθυρο κύκλου | `050cbabe34493018f4335f748029761e` |
+| `plan_rt_problem(bigint)` | dry run / προέλεγχος | `f383f449d55e657cfa929bb51a9120f6` |
+| `plan_shipment_problem(bigint)` | dry run / προέλεγχος | `8dd2beb159142bf5a6a4e32688688875` |
+| `plan_leg_problem(bigint)` | dry run / προέλεγχος | `24803f176f12355faa84c07e43cb0df0` |
+| `plan_local_loading_problem(bigint)` | dry run / προέλεγχος | `4c3dbec3810121a2a585fe8b49ceadf1` |
+| `ct_rt_legs_v2_guard()` | `v1_link_on_v2` | `6240d699bc114ffd49c7d62780432c94` |
+| `stock_guard_orders()` (057) | πυροδοτείται σε **κάθε** UPDATE `orders`, άρα και στο `cross_dock_date` του `plan_h_vs_day` | `63aa751d93cc8b34afa5587912de7045` |
+| `tms_week(date)` | εβδομάδα TMS της πληρωμής στη λίστα συνεπειών (απόφαση 10) | `89c5ba44087d4293850a590c3ae4627f` |
+| `rt_sync_to_orders()` | πυροδοτείται σε κάθε αλλαγή οχήματος κύκλου (`plan_rt_update`, `plan_rt_clear`)· σε κύκλο v5 δεν βρίσκει `ct_rt_legs` | `a63234c844c2b6236b1e6dfe1410b8fc` |
+| `rt_sync_to_national_loads()` | το ίδιο, προς `national_loads` | `028efb76373a0a6517134feaea88bc2f` |
+
+---
+
+## Αποφάσεις του πλάνου που το spec δεν ορίζει (για έγκριση owner, όπως οι 9 της Φ1)
+
+Κάθε απόφαση: **πρόταση** / *απορρίπτεται*. Οι αριθμοί C-/K- παραπέμπουν στο `requirements.md`. Οι 32–34 προστέθηκαν στη συναρμολόγηση (23/10)· οι 7, 8, 11, 16, 20, 22, 27 διορθώθηκαν μετά την κριτική.
+
+1. **Ταυτότητα:** κάθε `plan_*` παίρνει `p_actor text` **και** `p_role text` (το `audit_log.role` είναι NOT NULL· ο ελεγκτής ξεχωρίζει ανθρώπους με αυτό). Ο Worker περνά `caller.sub` / `caller.role`. Η βάση αρνείται κενό actor ή ρόλο εκτός των 5 (`plan:no_actor`). Τα **δικαιώματα** ζουν μόνο στο `PLAN_PERMS`· η βάση χρησιμοποιεί τον ρόλο μόνο για το audit και για το αν δείχνει ποσά. / *GUC ταυτότητας `tms.user` (δεν υπάρχει σύμβαση, και το PostgREST δεν το κρατά)· δεύτερος έλεγχος δικαιωμάτων μέσα στη βάση (δύο πηγές, αρχή 3).*
+2. **Ένα σχήμα για όλες:** εγγραφές `plan_<x>(p jsonb, p_actor text, p_role text) RETURNS jsonb`, αναγνώσεις `RETURNS jsonb STABLE`. Ποτέ `void` (το `dbRpc` κάνει `res.json()` και θα έδινε 500 μετά από επιτυχημένη εγγραφή). Η βάση ελέγχει το σχήμα του `p` (`plan:bad_input`). / *Τυποποιημένες παράμετροι ανά συνάρτηση (πίνακες `bigint[]`/σύνθετοι τύποι μέσω PostgREST, 16 διαφορετικά σχήματα στο contract test).*
+3. **`plan_rt_create` εσωτερική** (C-05): ο κύκλος γεννιέται μόνο από ανάθεση. Δεν υπάρχει `POST /plan/rt`· οι `plan_orders_create`, `plan_put_pieces`, `plan_put_group`, `plan_move_pieces`, `plan_split_piece` δέχονται στόχο `new_rt` και φτιάχνουν κύκλο + στάσεις + κινήσεις σε μία συναλλαγή. / *Αυτόνομη διαδρομή (άδειος κύκλος ανάμεσα σε δύο συναλλαγές, ενώ «ο κύκλος γεννιέται από την ανάθεση»).*
+4. **Στάσεις χωρίς κίνηση (αφετηρία/τέλος στη Βέροια)** (C-06): η βάση **δεν** επινοεί στάσεις ούτε ώρες. Ο καλών (φόρμα Φ4) στέλνει ρητά όσες στάσεις θέλει, και με κίνηση και χωρίς (π.χ. «Βέροια · τέλος κύκλου»). Μια στάση που **έχανε την τελευταία της κίνηση σε αυτή την πράξη** σβήνεται (soft)· οι δηλωμένες χωρίς κίνηση μένουν. Κύκλος χωρίς ζωντανή κίνηση → `cancelled` με όλες τις στάσεις. Οι προεπιλεγμένες ώρες (Φ4) τις δίνει ο owner. / *Αυτόματη στάση τέλους από τη βάση με σταθερές ώρες (κανόνας χωρίς απόφαση owner, δύσκολο να διορθωθεί).*
+5. **Σειρά στάσεων (`seq`):** τη γράφει **μόνο** η βάση: επαναρίθμηση των ζωντανών στάσεων του κύκλου κατά (ΚΑΘΟΔΟΣ πριν ΑΝΟΔΟ, `planned_from`, παλιό `seq`, id) μετά από κάθε αλλαγή (K-11). Ο καλών δεν στέλνει `seq`. / *`seq` από την οθόνη (δεύτερη πηγή για τη σειρά, που ήδη ορίζουν πλευρά + ώρα).*
+6. **Αντιστοίχιση κομματιού σε στάσεις:** εξ ορισμού κατά τόπο: παραλαβή = στάση του αιτήματος στο `position_location_id` του κομματιού (ή στην αφετηρία του), παράδοση = στάση στο `nat_to_location_id` (ή στη Βέροια με `"to_hub": true`). Μία στάση ανά τόπο ανά πλευρά στο αίτημα· ρητές αναφορές (`pickup`/`drop`) μόνο ως παράκαμψη. / *Υποχρεωτικές ρητές αναφορές (η ανάθεση ομάδας VS με 3 παραδόσεις θα ήθελε 6 αναφορές από την οθόνη).*
+7. **`confirm_token` χωρίς πίνακα:** `md5('072|' || <συνάρτηση> || '|' || <κλειδί στόχου> || '|' || <πλήρης λίστα συνεπειών>::text)`. Η πλήρης λίστα **έχει πάντα τα ποσά**· στον dispatcher επιστρέφεται χωρίς ποσά, αλλά το token τα καλύπτει, άρα αλλαγή ποσού στο μεταξύ = `stale_confirm`. Η λίστα είναι ταξινομημένη (`kind`, id). Το token **δεν έχει λήξη και δεν δένεται με χρήστη** (είναι ένδειξη «η λίστα δεν άλλαξε», όχι μυστικό)· για τη Μεταφορά το κλειδί είναι κινήσεις + στόχος, άρα αλλαγή μόνο των `stops` του αιτήματος μετά το dry run δεν είναι stale. / *Πίνακας tokens (νέα κατάσταση, νέες γραμμές, καθαρισμός)· token από `updated_at` (το `national_orders` δεν έχει).*
+8. **Πότε θέλει token** (`needs_confirm`): όταν η λίστα **δεν είναι κενή**· τα είδη της είναι ακριβώς `invoiced`, `costs`, `payroll_amount` (με σημαία `paid`/`paid_week`, απόφαση 10), `local_loading`, `local_payroll` (απόφαση 33), `rt_cancelled`, `executed_leg`, `later_leg` (επόμενο σκέλος του κομματιού σε άλλον κύκλο, που φεύγει μαζί για την αλυσίδα). Αλλιώς η πράξη εκτελείται χωρίς token (π.χ. Καθαρισμός με κενή μισθοδοσία: «σβήνεται χωρίς ερώτηση»). Εκτέλεση χωρίς token όταν χρειάζεται → `plan:need_token` → **428**. **Ένας** μηχανισμός για Μεταφορά, Καθαρισμό και Διαγραφή (`plan_h_confirm`: πρώτα `stale_confirm`, μετά `need_token`). / *Token πάντα (αντίθετο με «κενή γραμμή: χωρίς ερώτηση»).*
+9. **Πού κόβονται τα ποσά** (C-03): στη βάση, με `p_role`: `amount` μόνο σε owner/accountant. Ο Worker δεν φιλτράρει (μία πηγή), αλλά το test του Worker ελέγχει ότι για dispatcher δεν περνά πεδίο `amount`. / *Φιλτράρισμα στον Worker (αν ξεχαστεί μία διαδρομή, διαρρέουν ποσά).*
+10. **«Πληρωμένη» μισθοδοσία** (C-18, η βάση δεν έχει κλειστή περίοδο): υπάρχει ζωντανή `payment_bank`/`payment_cash` του ίδιου οδηγού με `entry_date >= date_end` του κύκλου· η λίστα γράφει την εβδομάδα TMS της πρώτης τέτοιας πληρωμής (`tms_week`). **Να επιβεβαιωθεί από την Αλεξία** πριν τη Φ4. / *«Σε κλεισμένη περίοδο» (δεν υπάρχει πηγή)· χωρίς ένδειξη «πληρωμένη» (το spec τη ζητά ρητά).*
+11. **Σειρά σβησίματος** (K-09, K-13): (α) soft delete κινήσεων, (β) soft delete τοπικής φόρτωσης της στάσης, (γ) soft delete στάσεων, (δ) **ρητή** σβήση των γραμμών μισθοδοσίας **με ποσό** (`deleted_reason = '<λόγος> (<actor>)'`), (ε) `status='cancelled'` ή NULL στο όχημα. Οι γραμμές χωρίς ποσό τις σβήνει το 011 μόνο του. Αποτέλεσμα: **0** `needs_review` στη γραμμή μισθοδοσίας του κύκλου (για τη γραμμή ΤΟΠΙΚΟ ισχύει η απόφαση 33). Το 011 μένει αμετάβλητο. Όσες πράξεις αγγίζουν πολλούς κύκλους (Μεταφορά, Διαγραφή, τόπος VS) τους κλειδώνουν **κατά id, πριν διαβάσουν τη λίστα**: καμία αδιέξοδη αναμονή, και δύο ταυτόχρονες μεταφορές δεν ακυρώνουν κύκλο χωρίς token. / *Αλλαγή του 011 (ζωντανό, md5-φρουρός, εκτός Φ2).*
+12. **Καθαρισμός σε PARTNER** (C-11, CHECK `partner_needs_partner` ισχύει πάντα): ο Καθαρισμός γράφει `trip_type='OWNED'` και NULL σε `truck/trailer/driver/partner/partner_rate` (κύκλος «χωρίς ανάθεση», `has_vehicle=false`). Το `plan_rt_update` επιτρέπει αλλαγή OWNED ↔ PARTNER με τους ίδιους κανόνες. / *Αφαίρεση του `partner_needs_partner` (ζωντανός κανόνας, εκτός Φ2)· Καθαρισμός που κρατά τον συνεργάτη (δεν καθαρίζει).*
+13. **Έξοδα κύκλου που ακυρώνεται ή καθαρίζεται** (C-12): οι `ct_cost_lines` **μένουν** στο `rt_id` (ίχνος)· μπαίνουν στη λίστα (`costs`, πλήθος ανά `pay_source`, ποσά μόνο owner/accountant) και γράφεται `plan_notices` `to_desk='natl'`, `kind='costs_without_rt'`. Ο έλεγχος «DKV χωρίς δρομολόγιο» είναι Φ3. / *Αποσύνδεση `rt_id = NULL` (χάνεται το ίχνος, και το DKV ξαναταιριάζει σε λάθος κύκλο).*
+14. **`plan_delete` = μόνο εθνική παραγγελία v5** (C-10): αρνείται εθνική χωρίς αποστολή (`plan:order_not_v5`) και διεθνή. Ο κύκλος ακυρώνεται μόνο όταν αδειάζει. Η διαγραφή διεθνούς VS (Ε19) είναι Φ5. / *«παραγγελία ή RT» του tech (το design λέει «Δεν υπάρχει Διαγραφή δρομολογίου»).*
+15. **`plan_move_pieces` καλύπτει και** «πίσω σε αναμονή» (`target: {"wait": true}`, C-21) και «όλη η πλευρά» (`from: {"rt_id","side"}`, C-22). Ό,τι εκτελέστηκε μένει. Το «Στον Πίνακα Βέροιας» είναι κανονικός στόχος κύκλου με παράδοση στη Βέροια (`to_hub`), όχι ειδική περίπτωση. / *Χωριστές `plan_remove_leg` / `plan_move_side` (τις αφαίρεσε το spec §7).*
+16. **Ημέρα VS** (spec §3 VS, K-14): μετά από ανάθεση/μεταφορά/αλλαγή ημερομηνίας, αν η πράξη **ανέθεσε κομμάτι που πριν δεν ήταν απόθεμα** (`is_stock = false`) **ή την πρώτη διαδρομή της VS** (καμία ζωντανή κίνηση σε κανένα κομμάτι της πριν από την πράξη: μια VS που έσπασε στη Βέροια χωρίς στόχο έχει μόνο «απόθεμα», αλλά τίποτα δεν έχει φύγει) και το `v_vs_state.first_hub_day` ≠ `orders.cross_dock_date`, γράφεται το `cross_dock_date` με audit και ειδοποίηση `intl` `vs_day_changed`, στην ίδια συναλλαγή (εσωτερικά `plan_h_vs_day`). Ισχύει και για `plan_rt_update` (C-09). Στο σπάσιμο με στόχο, το μέρος που ανατίθεται στην ίδια πράξη μετρά ως «πρώτο». / *Ημέρα VS μόνο από ρητή κλήση `plan_vs_set_day` (το spec λέει ότι η ανάθεση τη γράφει).*
+17. **Σήμα συγγραφέα για τη Φ5** (C-09): κάθε `plan_*` που γράφει `orders` ή `order_stops` θέτει πρώτα `set_config('plan.writer', 'natl', true)`. Ο trigger γέφυρας της Φ5 θα ξεχωρίζει έτσι αλλαγή του εθνικών (δεν βγάζει το VS από το φορτηγό) από αλλαγή του διεθνών. Στη Φ2 δεν το διαβάζει κανείς· το test το επιβεβαιώνει. / *Ανίχνευση στη Φ5 από το `audit_log` (εύθραυστο, κατόπιν).*
+18. **`leave_by`** (C-14): το γράφει η βάση στο σπάσιμο: `nat_due_day − 1` (στήλη `date`)· το «22:00» είναι μόνο κείμενο οθόνης. Στο split+put το υπόλοιπο απόθεμα κληρονομεί το `leave_by` του γονέα. / *`leave_by` από την οθόνη (δεύτερη πηγή για κανόνα του owner).*
+19. **`truck_busy` / `driver_busy` με τον κωδικό του άλλου κύκλου** (C-26): προέλεγχος με SELECT επικάλυψης (ίδια συνθήκη με το EXCLUDE) πριν γραφτεί τίποτα → `plan:truck_busy` με λεπτομέρεια `RT-…`. Το EXCLUDE μένει δίχτυ· αν σκάσει (`23P01`) μέσα στο `SET CONSTRAINTS ALL IMMEDIATE`, η συνάρτηση το πιάνει κατά όνομα και το ξαναρίχνει ως `plan:truck_busy`. Επικάλυψη με σημερινό RT `model=1` του ίδιου φορτηγού = **προειδοποίηση** στο `warnings[]`, όχι άρνηση. / *Μόνο το EXCLUDE (μήνυμα χωρίς τον άλλον κύκλο).*
+20. **`national_orders` v5:** `legacy_id` το παράγει η βάση στη μορφή του Worker (`'rec'` + 14 `[A-Za-z0-9]`, από το `gen_random_uuid()` του πυρήνα· καμία επέκταση), αλλιώς κάθε οθόνη του facade δείχνει `id: null`. Πεδία σύνοψης (spec §7) = παράγωγα των αποστολών στην ίδια συναλλαγή: `pallets = Σ`, `loading_datetime = min ημέρα load_from`, `delivery_datetime = max ημέρα deliver_to`, `pickup_location_1_id = 1ης αφετηρία`, `delivery_location_1_id = τελευταίος προορισμός`. `direction`, `type` **NULL** (οι αναγνώστες της Φ4 διαβάζουν `v_shipments`). Αρνείται `stock_lot_id` (C-24). / *`legacy_id` από τον Worker (δεύτερο βήμα, ίδια μορφή σε δύο σημεία)· βελάκια `direction` από εικασία για ζεύγη που δεν ακουμπούν τη Βέροια.*
+21. **`plan_order_update`** (C-01): **προτείνεται να μπει στη Φ2** (το master δεν το έχει). Χωρίς αυτό, παλέτες/παράθυρα/τόποι εθνικής v5 δεν διορθώνονται πουθενά, ενώ το spec λέει «ο dispatcher απλώς διορθώνει την παραγγελία». Εμπορικά πεδία + αποστολές που δεν είναι γέφυρα· μείωση σε σπασμένο κομμάτι με τον κανόνα του VS («πρώτα απόθεμα, μετά πρώτη ημέρα»)· γέφυρα VS = `plan:vs_locked` (C-08). Ξαναγράφει τα πεδία σύνοψης (απόφαση 20). / *Εκτός Φ2 (κενό λειτουργίας στο L, ή εγγραφή μέσω facade που παρακάμπτει τους κανόνες).*
+22. **Εγγραφές `/plan/*` κλειστές ως το L** (C-17): σταθερά Worker `PLAN_WRITES_OPEN = false` → κάθε μη-dry-run εγγραφή γυρίζει **409** `writes_closed` («ανοίγει την ημέρα L»)· τα GET και τα dry run μένουν ανοιχτά. Η Φ5 την κάνει `true` στο ίδιο deploy με το `WN_V5`. Λόγος: μια δοκιμαστική εγγραφή πριν από το L θα ήταν «πρώτη πραγματική γραμμή v5» και θα έκλεινε την επιστροφή πίσω (spec §2.2). **Αποδεκτό και γραμμένο:** το dry run του `plan_rt_update` εκτελεί όλη την αλλαγή μέσα σε subtransaction και την αναιρεί (ένας δρόμος κώδικα, άρα η προεπισκόπηση δεν διαφωνεί με την εκτέλεση)· αφήνει κενά σε ids (`audit_log`, `plan_notices`, `dl_entries`) και κρατά κλειδαριές όσο διαρκεί· δεν γεννά κύκλο, άρα δεν καταναλώνει κωδικό RT-. / *Ανοιχτές από το deploy (κλικ δοκιμής = γραμμή v5 στην παραγωγή)· διακόπτης στη βάση (`plan_config` είναι 074).*
+23. **Μία μορφή σφάλματος για το `/plan/*`:** κάθε μη-2xx = `{ "error": { "type", "code", "message" } }` (helper `planError`), και για 401/403/404/500/503. Το `planFetch` (Φ4) διαβάζει μία. / *Ανάμειξη string (`jsonError`) και αντικειμένου.*
+24. **Χωρίς token = 401** (K-12), όπως όλος ο Worker· η αποδοχή του master «403 χωρίς token» διορθώνεται σε «401 χωρίς token, 403 με ρόλο χωρίς δικαίωμα». / *403 μόνο για το `/plan/*` (απόκλιση από `/costs/*`).*
+25. **Ειδοποιήσεις** (C-13): owner + dispatcher διαβάζουν και σημειώνουν και τα δύο γραφεία· management μόνο ανάγνωση· accountant/warehouse όχι. Το «διαβάστηκε» είναι ιδεμπότητο (δεύτερη σημείωση = 200 χωρίς αλλαγή). Το `message` γράφεται **ελληνικά από τη βάση** (base64 πρότυπα, όπως 060), ώστε ελεγκτής και οθόνη να διαβάζουν το ίδιο κείμενο. / *Ελληνικά στον Worker ανά `kind` (δεύτερος χάρτης κειμένων, και ο ελεγκτής θα έβλεπε ASCII).*
+26. **Ο accountant δεν καλεί dry run** στη Φ2 (C-04)· βλέπει ποσά στις οθόνες Μισθοδοσίας/Εξόδων. / *Δικαίωμα dry run διαγραφής (νέο resource για ρόλο χωρίς πράξη).*
+27. **`PATCH /costs/rt/:id` σε `model=2` → 409** «ο κύκλος αλλάζει από το Εβδομαδιαίο Εθνικών», πριν από τη βάση (C-15). **`"Via Hub": "via_hub"`** μπαίνει στο ORDER_STOPS τώρα (C-16, default false· η 074 το γεμίζει). Είναι εγγράψιμο από το facade από τη Φ2, άρα το `072_rollback` **δεν** το μετρά ως γραμμή v5. / *Και τα δύο στη Φ5 (το πρώτο αφήνει PATCH να παρακάμπτει EXCLUDE/`rt_v2_dates`).*
+28. **Facade DELETE/PATCH σε εθνική με αποστολή v5** (db.md §7.4): **δεν** αλλάζει στη Φ2· με τις εγγραφές κλειστές (απόφαση 22) δεν υπάρχει εθνική v5 ως το L, και το κλείσιμο είναι η Ε16 της Φ5 (ίδιο deploy με το άνοιγμα). Η Φ5 το έχει ως προϋπόθεση. / *Φρουρός Worker ή trigger τώρα (αλλαγή ρόλου πριν από απόφαση owner, νέο trigger B-54).*
+29. **Βάση του `deploy/worker-plan`** (worker.md §0): **πρώτα** χωριστό μικρό deploy των 24 γραμμών VD από το main (φρουρός, smoke, sync), **μετά** η Φ2 πάνω σε αυτό (αρχή 7: μία αλλαγή τη φορά). / *Ένα deploy με VD + Φ2 μαζί (δύο αλλαγές σε ένα, δύσκολη απόδοση αν σπάσει).*
+30. **Ένα migration 072, όχι 072a/072b:** οι συναρτήσεις αλληλοεξαρτώνται (ανάθεση → `plan_rt_create`, μεταφορά → λίστα/ακύρωση της διαγραφής, όλες → `plan_h_*`)· ένα 072a μόνο του θα έδινε μισό API με δύο «ναι» και δύο rollback, ενώ τίποτα δεν τρέχει σε δεδομένα ως το L. Η ανασκόπηση χωρίζεται με ενότητες μέσα στο αρχείο (ASCII σημάδια: PART 0 φρουροί, PART 1 βοηθοί, PART 2 Α, PART 3 Β, PART 4 ειδοποιήσεις και αναγνώσεις, PART 5 δικαιώματα/αποδείξεις). / *072a/072b.*
+31. **Αναγνώσεις ως συναρτήσεις βάσης** (`plan_board`, `plan_vs_state`, `plan_notices_list`): ένα στιγμιότυπο, μία κλήση (όριο 8 δευτ.), η βάση κόβει `price`/`partner_rate` κατά ρόλο (απόφαση 9). Εβδομάδα = Σάββατο–Παρασκευή (TmsWeek)· `GET /plan/order/:id` **δεν** μπαίνει στη Φ2 (η καρτέλα της Φ4 διαβάζει από το board). / *Ο Worker συνθέτει από 6 `dbSelectRaw` στις όψεις (6 στιγμιότυπα, ρόλοι σε δύο σημεία).*
+32. **`plan:payroll_locked`** (K-13, προστέθηκε από τη Β): στο `plan_rt_update`, αλλαγή ή αφαίρεση οδηγού όταν η γραμμή μισθοδοσίας του κύκλου έχει ήδη ποσά → άρνηση· ο δρόμος είναι «Καθαρισμός ανάθεσης» (λίστα + token, η γραμμή σβήνεται ρητά) και νέα ανάθεση. / *Αφήνουμε το 011 να βάλει `needs_review` (το spec λέει «δεν υπάρχει needs_review»).*
+33. **Γραμμή ΤΟΠΙΚΟ με ποσό** (η ημερήσια γραμμή του τοπικού οδηγού, 060/063): όταν αλλάζουν οι φορτώσεις της ημέρας της (Μεταφορά, Διαγραφή, αλλαγή ημερομηνίας, ακύρωση τοπικής φόρτωσης), το ζωντανό 060 τη στέλνει σε έλεγχο λογιστηρίου (`needs_review`, B-08)· αυτό **μένει** (ζωντανός κανόνας εγκεκριμένος από τον owner, md5-φρουρός). Οι `plan_*` το κάνουν ορατό: στις πράξεις με λίστα, είδος `local_payroll` (ποσό μόνο owner/accountant) που απαιτεί token· στο `plan_rt_update` (και στο dry run του) και στην ακύρωση του `plan_local_loading`, προειδοποίηση `local_payroll_review` στο `warnings[]`. Να επιβεβαιωθεί από την Αλεξία μαζί με την απόφαση 10. / *Άρνηση `payroll_locked` όσο η γραμμή ΤΟΠΙΚΟ έχει ποσό (μπλοκάρει κάθε διόρθωση ώσπου το λογιστήριο να μηδενίσει τη γραμμή)· ρητή σβήση της γραμμής από τις `plan_*` (το 063 την αρνείται όσο ζει κίνηση της ημέρας).*
+34. **Φρουρός ποσών στον Worker** (προσθήκη της Γ): αν η απάντηση της βάσης έχει κλειδί `amount` για ρόλο εκτός owner/accountant, ο Worker δεν τη στέλνει (500 `amount_leak` + log). Δεν φιλτράρει πεδία: η απόφαση 9 μένει, η βάση κόβει· είναι συναγερμός, όχι δεύτερος κανόνας, και χωρίς αυτόν το test «κανένα `amount` σε dispatcher» δεν αποδεικνύει τίποτα με stub βάση. / *Χωρίς φρουρό (ένα λάθος της βάσης θα έφτανε στην οθόνη).*
+
+---
+
+## Χάρτης αρχείων
+
+Δύο κλάδοι: `feat/national-v5-functions` (SQL, tests SQL, ίχνος) και `deploy/worker-plan` (μόνο Worker: κώδικας, tests, εργαλείο φρουρού, αντίγραφο της 072 για το contract test).
+
+| Αρχείο | Ευθύνη | Task |
+|---|---|---|
+| `worker/migrations/drafts/072_plan_functions.sql` | Το migration (ένα DO block): PART 0 φρουροί (23 md5), PART 1 `plan_h_*`, PART 2 Α, PART 3–4 Β, PART 5 REVOKE/GRANT/αποδείξεις/`pg_notify`, μία γραμμή αποτελέσματος | Α1 (σκελετός + PART 0/1/5), Α2–Α7, Β1–Β7 |
+| `worker/migrations/drafts/072_plan_functions_test.sql` | 169 περιπτώσεις σε TEST γραμμές (`rec072T…`, `WN072-TEST`, `TEST 072 …`, `TEST-072-…`): Α 1–82, Β 1–87 σε φωλιασμένο block· τελειώνει με σκόπιμο σφάλμα | Α1–Α8, Β1–Β9 |
+| `worker/migrations/drafts/tools/build-072-dryrun.mjs` | Γεννήτρια του dry run | Β9 |
+| `worker/migrations/drafts/072_plan_functions_dryrun.sql` | **Παράγεται**: το DO block της 072 αυτούσιο + σκόπιμο σφάλμα | Β9 |
+| `worker/migrations/drafts/072_plan_functions_verify.sql` | Μόνο SELECT, μία γραμμή | Β9 |
+| `worker/migrations/drafts/072_plan_functions_rollback.sql` | `DROP FUNCTION` κάθε `plan_%` εκτός των 6 της 071· αρνείται με γραμμή v5 ή `model=2` (όχι με `via_hub`) | Β9 |
+| `worker/migrations/071_plan_schema_fingerprint.sql` | **Επαναχρήση** (μόνο SELECT, πριν/μετά)· δεν αλλάζει | Κ2 |
+| `tests/sql-072-drafts.test.js` | Build χωρίς βάση: 6 έλεγχοι στο Α1, πλήρης (12) στη Β9: αρχεία, ASCII, ένα DO, dry run ξαναπαραγμένο, 23 md5 δύο φορές, μόνο συναρτήσεις, γεννιέται κλειστό, υπογραφές, κάθε κωδικός με περίπτωση, ≥ 80 περιπτώσεις, κανένας αποσυρμένος, κανένας καθρέφτης, base64, μητρώο warnings/ειδοποιήσεων | Α1, Β9 |
+| `tms-auditor/test/fixtures/live-072.sql` | Η **μία** λήψη από την παραγωγή (μόνο SELECT): NOT NULL, identity, UNIQUE, FK, CHECK, και οι συναρτήσεις/triggers των `national_orders` / `orders` / `order_stops` (μαζί τα 4 της λίστας φρουρού που δεν έχει το `live-071.sql`) | Α1 |
+| `tms-auditor/test/plan-072.test.mjs` | PGlite: bootstrap (Α1), πλήρης harness (Β8): fixture → dry run → apply → verify → ρόλοι API → rules → rollback → ξανά apply· μεταλλαγή B38 | Α1, Β8 |
+| `worker/src/index.js` | `PLAN_RULE_TEXT`, `PLAN_CHECK_TEXT` (πριν από το `stockRuleError`)· κλάδοι `plan:`/23P01/23505 στο `stockRuleError`· `var PLAN_PERMS`, `planCan`, `PLAN_WRITES_OPEN`, `PLAN_ROUTES`, `planError`, `handlePlan` (νέα ενότητα μετά το `handleCosts`)· δρομολόγηση μετά το `/costs/`· 409 στο `PATCH /costs/rt/:id` σε `model=2`· `"Via Hub"` στο ORDER STOPS | Γ2, Γ3, Γ4 |
+| `worker/test/plan-contract.test.mjs` | 071 + 071b + 072 ↔ κείμενα, και αντίστροφα (αρχή 8)· τυπώνει md5 των SQL | Γ2 |
+| `worker/test/plan-perms.test.mjs` | 5 ρόλοι × resource × μέθοδος· κάθε μη-✓ = 403 με 0 κλήσεις βάσης | Γ3 |
+| `worker/test/plan-tables-guard.test.mjs` | Κανένας νέος πίνακας στο `TABLES`· κανένα `"*"` στο `PLAN_PERMS`· σημάδια φρουρού ακριβώς 1· `"Via Hub"` μία φορά | Γ3, Γ4 |
+| `worker/test/plan-routes.test.mjs` | Πραγματικός Worker σε Node, stub PostgREST: διαδρομή → RPC + ορίσματα, 401/403/404/409/422/428/503/500, `busy_retry`, `amount_leak`, `PATCH /costs/rt` σε `model=2` | Γ3, Γ4 |
+| `worker/test/stock-lots.test.mjs`, `worker/test/local-relay-contract.test.mjs`, `worker/test/local-relay.test.mjs` | Τα τρία «lift» του `stockRuleError` παίρνουν και τους δύο νέους πίνακες κειμένων (αλλιώς `ReferenceError`) | Γ2 |
+| `worker/tools/worker-guard.mjs`, `worker/test/worker-guard.test.mjs` | Ο φρουρός deploy ως μία ελεγμένη εντολή (ξετύλιγμα multipart, μέτρηση σε περιεχόμενο) | Γ5 |
+| `worker/migrations/drafts/072_plan_functions.sql` στο `deploy/worker-plan` | **Αντίγραφο** για το contract test· ελέγχεται ίσο με του main πριν από το deploy (Γ7 Step 1), σβήνεται στο sync (Κ3) | Γ2, Σ1, Γ7, Κ3 |
+| `docs/DECISION_LOG.md`, `docs/sessions/<YYYY-MM-DD>-dimitris-national-v5-f2.md`, `docs/SESSION.md`, `CLAUDE.md` (λίστα φρουρού, μετά το deploy) | Ίχνος | Κ1, Κ3 |
+
+## Interfaces
+
+### Ταυτότητα και ρόλος
+- Worker → βάση: `p_actor = caller.sub` (username του JWT), `p_role = caller.role`. Ίδια σύμβαση με `dl_import(…, p_actor)` (Worker :4265).
+- Βάση: `created_by`, `deleted_by`, `split_by`, `read_by` = `p_actor`· `ct_round_trips.created_by = p_actor` (το 011 το γράφει `trigger:<actor>` στη μισθοδοσία)· `audit_log(actor = p_actor, role = p_role, action, table_name, record_id, before_data, after_data)`, μία γραμμή ανά αλλαγμένη γραμμή. `dl_entries.deleted_reason = '<λόγος> (<actor>)'` (πρότυπο `dl_cancel_batch`).
+
+### Κοινό σχήμα απάντησης (κάθε εγγραφή)
+```json
+{ "ok": true, "op": "plan_put_pieces", "dry_run": false,
+  "ids": { "rt_id": 5, "stop_ids": [..], "leg_ids": [..], "piece_ids": [..], "nat_order_ids": [..] },
+  "warnings": [ { "code": "over_33", "rt_id": 5, "side": "ANODOS", "pallets": 35 },
+                { "code": "v1_same_truck", "rt_code": "RT-1201" },
+                { "code": "mixed_temp", "delta_c": 3 } ],
+  "notice_ids": [ 12 ] }
+```
+Dry run (`"dry_run": true`, τίποτα δεν γράφεται):
+```json
+{ "ok": true, "op": "plan_delete", "dry_run": true, "needs_confirm": true, "confirm_token": "<md5>",
+  "consequences": [
+    { "kind": "rt_cancelled",   "rt_id": 5, "code": "RT-1273" },
+    { "kind": "payroll_amount", "rt_id": 5, "dl_entry_id": 99, "paid": true, "paid_week": 42, "amount": 230.00 },
+    { "kind": "costs",          "rt_id": 5, "pay_source": "DKV", "count": 3, "amount": 81.40 },
+    { "kind": "invoiced",       "nat_order_id": 17, "invoice_number": "..." },
+    { "kind": "local_loading",  "local_move_id": 4, "driver_id": 8, "move_date": "2026-10-13" },
+    { "kind": "executed_leg",   "leg_id": 31, "rt_id": 5, "stop_day": "2026-10-12" },
+    { "kind": "later_leg",      "leg_id": 32, "rt_id": 6, "code": "RT-1274" },
+    { "kind": "local_payroll",  "dl_entry_id": 120, "local_move_id": 4, "driver_id": 8, "day": "2026-10-13", "amount": 50.00 } ] }
+```
+`amount`, `advance`, `expenses` και `invoice_number` υπάρχουν μόνο όταν `p_role IN ('owner','accountant')` (απόφαση 9, `plan_h_strip_amounts`). Το token = απόφαση 7· το παίρνει πάντα το dry run, ακόμη κι όταν `needs_confirm = false`.
+
+### Κοινά υπο-σχήματα του `p`
+```text
+target   := { "rt_id": bigint, "side": "KATHODOS"|"ANODOS" }
+          | { "new_rt": newrt, "side": ... }
+          | { "wait": true }                                   -- only plan_move_pieces
+newrt    := { "trip_type": "OWNED", "truck_id": bigint, "trailer_id": bigint|null, "driver_id": bigint|null }
+          | { "trip_type": "PARTNER", "partner_id": bigint, "partner_rate": numeric|null }
+stops    := [ { "ref": text, "stop_id": bigint }                                         -- existing live stop
+            | { "ref": text, "location_id": bigint, "side": ..., "planned_from": timestamptz, "planned_to": timestamptz } ]
+piece_in := { "piece_id": bigint, "take_pallets": numeric|null,     -- only on a stock piece (split+put)
+              "to_hub": bool|null, "pickup": ref|null, "drop": ref|null }   -- refs override decision 6
+```
+
+### Δημόσιες συναρτήσεις (EXECUTE μόνο `service_role`)
+
+| Υπογραφή | `p` | Επιστρέφει (πέρα από το κοινό) | Αρνήσεις `plan:` (νέες· + COMMIT της 071) |
+|---|---|---|---|
+| `plan_orders_create(p jsonb, p_actor text, p_role text) RETURNS jsonb` | `{ "orders": [ { "client_id", "price", "reference", "goods", "temperature_c", "pallet_exchange", "notes", "shipments": [ { "origin_location_id", "dest_location_id", "pallets", "load_from", "load_to", "deliver_from", "deliver_to" } ] } ], "target": target?, "stops": stops? }` | `ids.nat_order_ids/shipment_ids/piece_ids` (+ στόχου) | `no_actor`, `bad_input`, `no_client`, `no_price`, `no_window`, `stock_lot` · CHECK `shipments_*` |
+| `plan_order_update(p, p_actor, p_role)` *(απόφαση 21)* | `{ "nat_order_id", "set": {price, reference, notes, goods, temperature_c, pallet_exchange}, "shipments": [ { "shipment_id", "pallets"?, "load_from"?, "load_to"?, "deliver_from"?, "deliver_to"?, "origin_location_id"?, "dest_location_id"? } ] }` | `ids.shipment_ids` | `order_gone`, `order_not_v5`, `vs_locked`, `no_price`, `piece_busy` (τόπος σε κομμάτι με κίνηση) |
+| `plan_put_pieces(p, …)` | `{ "pieces": [piece_in], "target": target, "stops": stops }` | `ids.rt_id/stop_ids/leg_ids/piece_ids` | `piece_busy`, `piece_split`, `not_stock`, `parts_sum`, `rt_gone`, `no_vehicle`, `truck_busy`, `driver_busy` · `chain`, `chain_time`, `leg_place`, `leg_order`, `stop_order`, `side_order`, `rt_cancelled`, `rt_not_v2`, `piece_dead`, `leg_stop_dead` |
+| `plan_put_group(p, …)` | `{ "group": { "order_id": bigint } \| { "nat_order_id": bigint }, "target": target, "stops": stops }` | όπως πάνω | όπως πάνω + `group_empty` |
+| `plan_move_pieces(p, …)` | `{ "from": { "piece_ids": [..] } \| { "rt_id", "side" }, "target": target, "stops": stops?, "dry_run": bool, "confirm_token": text? }` | dry run: συνέπειες· εκτέλεση: `ids.dropped_leg_ids`, `ids.cancelled_rt_ids` | `same_rt`, `stale_confirm`, `need_token` + του put |
+| `plan_split_piece(p, …)` | `{ "piece_id", "parts": [ { "pallets": numeric, "target": target?, "stops": stops? } ] }` | `ids.piece_ids` (παιδιά) | `parts_sum`, `not_at_hub`, `piece_split`, `not_stock` (split+put σε μη απόθεμα) · `split_not_at_hub`, `pieces_sum`, `piece_parent` |
+| `plan_rt_create(p, p_actor, p_role)` — **εσωτερική, χωρίς GRANT** | `{ "new_rt": newrt, "stops": stops }` | `rt_id`, `code` | `no_vehicle`, `truck_busy`, `driver_busy` · CHECK `rt_v2_*`, `rt_partner_rate`, `partner_needs_partner` |
+| `plan_rt_update(p, …)` | `{ "rt_id", "set": { "trip_type"?, "truck_id"?, "trailer_id"?, "driver_id"?, "partner_id"?, "partner_rate"? }, "stops": [ { "stop_id", "planned_from", "planned_to" } ]?, "shift": { "side", "delta": interval }?, "dry_run": bool }` | dry run: `preview` = `{ "before": {start_at,end_at,date_start,date_end}, "after": {...}, "next_rt": {code,start_at}?, "conflict": {code, sqlstate, detail}?, "vs_day": [ {order_id, from, to} ], "warnings": [...] }` · εκτέλεση: `warnings` (`v1_same_truck`, `local_payroll_review`), `notice_ids` | `rt_gone`, `rt_cancelled`, `truck_busy`, `driver_busy`, `payroll_locked`, `stop_gone`, `no_vehicle` · `stop_order`, `chain_time`, `leg_order`, `local_loading_day` |
+| `plan_rt_clear(p, …)` | `{ "rt_id", "dry_run": bool, "confirm_token": text? }` | dry run: συνέπειες | `rt_gone`, `stale_confirm`, `need_token` |
+| `plan_delete(p, …)` | `{ "nat_order_id", "reason": text, "dry_run": bool, "confirm_token": text? }` | dry run: συνέπειες· εκτέλεση: `ids.cancelled_rt_ids` | `order_gone`, `order_not_v5`, `stale_confirm`, `need_token`, `bad_input` (κενός λόγος) · `hard_delete` (δίχτυ) |
+| `plan_vs_set_day(p, …)` | `{ "order_id", "day": date }` | `notice_ids`, `warnings` (`vs_day_differs`: το VS είναι ήδη σε φορτηγό άλλης ημέρας· η κίνηση δεν φεύγει, αυτό είναι της γέφυρας Φ5) | `vs_not_bridge`, `order_gone` |
+| `plan_vs_set_place(p, …)` | `{ "order_stop_id", "location_id" }` | `notice_ids`, `ids.leg_ids` (διορθωμένες) | `vs_not_bridge`, `order_gone` · `leg_place`, `chain` |
+| `plan_local_loading(p, …)` | `{ "rt_stop_id", "driver_id", "truck_id", "trailer_id"?, "time_from"?, "time_to"?, "notes"? }` ή `{ "local_move_id", "cancel": true }` | `ids.local_move_id`, `already` (δεύτερη ακύρωση), `warnings` (`local_payroll_review`) | `stop_gone`, `local_exists` (23505 `local_moves_nat_loading_once`) · `local_loading_stop`, `local_loading_day`, `local_loading_gone` |
+| `plan_notice_read(p, …)` | `{ "notice_id" }` | `{ "read_at", "read_by", "already": bool }` | `notice_gone` |
+| `plan_board(p_week date, p_role text) RETURNS jsonb STABLE` | — | `{ "week": "2026-10-10", "cycles": [ {rt_id, code, trip_type, truck, trailer, driver, partner, partner_rate?, start_at, end_at, ended, stops: [...v_rt_stop_state, legs: [...]] } ], "waiting": [ ...v_piece_state + v_shipments, price? ], "hub": [ ...v_hub_bucket ], "notices": [ ...unread natl ] }` · κενά = `[]`, ποτέ απουσία | `bad_input` (όχι Σάββατο) |
+| `plan_vs_state(p_order_ids bigint[]) RETURNS jsonb STABLE` | — | `{ "<order_id>": { "carriers": [ {kind, text} ], "all_executed", "all_planned", "first_hub_day" } \| "missing" }` | — |
+| `plan_notices_list(p_desk text, p_role text) RETURNS jsonb STABLE` | — | `{ "desk", "unread": [..], "recent": [..] }` (αδιάβαστες + διαβασμένες 7 ημερών) | `bad_input` |
+
+`price` στο board: όχι για warehouse· `partner_rate`: μόνο owner/dispatcher (tech §Φ2, R-04 σημερινό).
+
+### Εσωτερικοί βοηθοί `plan_h_*` (κλειστοί για όλους, owner `postgres`, SECURITY INVOKER) — η ΜΙΑ πηγή υπογραφών
+
+Η Α τους ορίζει, η Β τους καλεί **μόνο** έτσι (κριτική 23/10: κάθε άλλη κλήση = 42883 την ώρα της κλήσης). Το Task Σ1 Step 1 ελέγχει κάθε κλήση απέναντι σε αυτόν τον πίνακα.
+
+| Βοηθός | Υπογραφή | Task | Τι εγγυάται |
+|---|---|---|---|
+| `plan_h_raise` | `(p_code text, p_detail text) RETURNS void` | Α1 | `23514`, `HINT 'plan:<code>'`, μήνυμα `plan rule broken: <code>:<detail ASCII>` |
+| `plan_h_ctx` | `(p_actor text, p_role text) RETURNS void` | Α1 | `no_actor` για κενό χρήστη ή ρόλο εκτός των 5· `SET CONSTRAINTS ALL DEFERRED` για την κλήση |
+| `plan_h_keys` | `(p jsonb, p_allowed text[], p_what text) RETURNS void` | Α1 | άγνωστο κλειδί ή όχι αντικείμενο = `bad_input`, ποτέ σιωπή |
+| `plan_h_audit` | `(p_actor text, p_role text, p_action text, p_table text, p_id text, p_before jsonb, p_after jsonb) RETURNS void` | Α1 | μία γραμμή `audit_log` (`action` ∈ create/update/delete· `record_id` = `legacy_id` για `orders`/`national_orders`) |
+| `plan_h_location` | `(p_location bigint) RETURNS bigint` | Α1 | ζωντανός τόπος ή `bad_input` |
+| `plan_h_stop_add` | `(p_rt bigint, p_location bigint, p_side text, p_from timestamptz, p_to timestamptz, p_actor text, p_role text) RETURNS bigint` | Α1 | **πάντα** νέα στάση, προσωρινό `seq` |
+| `plan_h_reseq` | `(p_rt bigint, p_actor text, p_role text) RETURNS void` | Α1 | `seq` μόνο από τη βάση (απόφαση 5), audit ανά αλλαγή |
+| `plan_h_target` | `(p_target jsonb, p_stops jsonb, p_actor text, p_role text) RETURNS jsonb` | Α1 | `{rt_id, side, stops: {ref: stop_id}}`· για `{new_rt, side}` καλεί το `plan_rt_create` (Β1) και επιστρέφει το ίδιο σχήμα + `code`, `stop_ids`, `new`, `warnings` |
+| `plan_h_stop_at` | `(p_map jsonb, p_location bigint, p_side text) RETURNS bigint` | Α1 | στάση του αιτήματος κατά τόπο (απόφαση 6) |
+| `plan_h_leg_add` | `(p_piece bigint, p_rt bigint, p_pickup bigint, p_drop bigint, p_actor text, p_role text, p_leg_no int DEFAULT NULL) RETURNS bigint` | Α1 | νέα κίνηση (`p_leg_no` κρατά τον αριθμό σε επανασύνδεση, Β5)· **σημείο αγκίστρωσης Φ3** (feeder παλετών) |
+| `plan_h_leg_drop` | `(p_leg bigint, p_reason text, p_actor text, p_role text) RETURNS void` | Α1 | soft delete **μόνο** της κίνησης |
+| `plan_h_stops_sweep` | `(p_stops bigint[], p_reason text, p_actor text, p_role text) RETURNS bigint[]` | Α1 | στάση που έχασε την τελευταία κίνηση: soft· η τοπική φόρτωση στάσης που έχασε την τελευταία φόρτωση: soft (απόφαση 4) |
+| `plan_h_token` | `(p_fn text, p_key text, p_full jsonb) RETURNS text` | Α1 | απόφαση 7 |
+| `plan_h_strip_amounts` | `(p jsonb, p_role text) RETURNS jsonb` | Α1 | κόβει `amount`, `advance`, `expenses`, `invoice_number` εκτός owner/accountant |
+| `plan_h_rt_consequences` | `(p_rt bigint) RETURNS jsonb` | Α1 | `payroll_amount` (`paid`, `paid_week`, ποσά) και `costs` ανά `pay_source`· πάντα με ποσά |
+| `plan_h_notice` | `(p_desk text, p_kind text, p_tpl_b64 text, p_args text[], p_order bigint, p_nat_order bigint, p_rt bigint, p_actor text, p_role text) RETURNS bigint` | Α1 | ελληνικό κείμενο από base64 πρότυπο, audit, id |
+| `plan_h_vs_day` | `(p_order bigint, p_day date, p_actor text, p_role text) RETURNS bigint` | Α1 | `plan.writer = 'natl'`, `cross_dock_date`, audit, ειδοποίηση `intl`/`vs_day_changed`· ίδια ημέρα = `NULL` |
+| `plan_h_vs_follow` | `(p_pieces bigint[], p_actor text, p_role text) RETURNS bigint[]` | Α1 | για τις VS των **κομματιών**: ημέρα = `v_vs_state.first_hub_day`· τα ids των ειδοποιήσεων |
+| `plan_h_rt_cancel_if_empty` | `(p_rt bigint, p_reason text, p_actor text, p_role text) RETURNS boolean` | Α1 | σειρά απόφασης 11· ειδοποίηση `natl`/`costs_without_rt` αν έχει έξοδα |
+| `plan_h_finish` | `() RETURNS void` | Α1 | `SET CONSTRAINTS ALL IMMEDIATE`· `23P01` κατά όνομα → `truck_busy` / `driver_busy` με τους κωδικούς |
+| `plan_h_ok` | `(p_op text, p_ids jsonb, p_warnings jsonb, p_notices jsonb) RETURNS jsonb` | Α1 | το κοινό σχήμα απάντησης, κενά = `[]` |
+| `plan_h_legacy_id` | `() RETURNS text` | Α2 | `'rec'` + 14 `[A-Za-z0-9]` (απόφαση 20) |
+| `plan_h_order_summary` | `(p_shipments jsonb) RETURNS jsonb` | Α2 | ο ΕΝΑΣ κανόνας των πεδίων σύνοψης (απόφαση 20) |
+| `plan_h_put` | `(p_pieces jsonb, p_tgt jsonb, p_actor text, p_role text, p_first bigint[]) RETURNS jsonb` | Α3 | ο πυρήνας κάθε ανάθεσης: `{rt_id, side, stop_ids, leg_ids, piece_ids, new_piece_ids, warnings, notice_ids}` |
+| `plan_h_confirm` | `(p_fn text, p_key text, p_full jsonb, p jsonb, p_role text) RETURNS jsonb` | Α6 | ο ΕΝΑΣ μηχανισμός δύο βημάτων (Μεταφορά, Καθαρισμός, Διαγραφή): dry run → λίστα + token· `stale_confirm` πριν από `need_token`· `NULL` = συνέχισε |
+| `plan_h_drop_consequences` | `(p_legs bigint[], p_keep_rt bigint, p_chosen_rts bigint[] DEFAULT NULL) RETURNS jsonb` | Α6 | η λίστα για κινήσεις που φεύγουν (`executed_leg`, `later_leg`, `local_loading`, `local_payroll`, `rt_cancelled` + `plan_h_rt_consequences`), ταξινομημένη, χωρίς διπλά |
+| `plan_h_resize` | `(p_shipment bigint, p_delta numeric, p_actor text, p_role text) RETURNS void` | Α7 | `pieces_sum` όταν αλλάζουν οι παλέτες εθνικής (πρώτα απόθεμα)· γέφυρες VS εκτός (`vs_locked`, ο έλεγχος είναι στο `plan_order_update`) |
+| `plan_h_busy` | `(p_kind text, p_id bigint, p_from timestamptz, p_to timestamptz, p_except bigint) RETURNS void` | Β1 | `truck_busy` / `driver_busy` με τον κωδικό του άλλου κύκλου (απόφαση 19) |
+| `plan_h_v1_warn` | `(p_truck bigint, p_from date, p_to date, p_except bigint) RETURNS jsonb` | Β1 | προειδοποιήσεις `v1_same_truck` |
+| `plan_rt_create` | `(p jsonb, p_actor text, p_role text) RETURNS jsonb` | Β1 | **εσωτερική**, SECURITY DEFINER, εκτός `v_pub`: στάσεις πρώτα, κύκλος με ακριβές παράθυρο (απόφαση 3) |
+
+### Μητρώο τιμών που βλέπει η Φ4 (ο build test της Β9 αρνείται τιμή εκτός λίστας)
+
+- **`warnings[]`** (ποτέ άρνηση): `over_33` `{rt_id, side, pallets}` (Α3, άθροισμα φορτώσεων πλευράς, όχι μέγιστο φορτίο)· `mixed_temp` `{rt_id, side, delta_c}` (Α3)· `v1_same_truck` `{rt_code}` (Β1, μέσω νέου κύκλου και `plan_rt_update`)· `vs_day_differs` `{first_hub_day}` (Β5)· `local_payroll_review` `{dl_entry_id, local_move_id}` (Β2, Β6· απόφαση 33).
+- **Είδη ειδοποίησης** (`plan_notices.kind`): `intl`/`vs_day_changed` (Α1, `plan_h_vs_day`)· `natl`/`costs_without_rt` (Α1 `plan_h_rt_cancel_if_empty`, Β3)· `intl`/`vs_place_changed` (Β5).
+- **Είδη συνεπειών** (`consequences[].kind`): `invoiced`, `costs`, `payroll_amount`, `local_loading`, `local_payroll`, `rt_cancelled`, `executed_leg`, `later_leg` (απόφαση 8).
+- **Κλειδιά `ids` ανά πράξη:** `plan_orders_create` `{nat_order_ids, shipment_ids, piece_ids, rt_id, stop_ids, leg_ids}` · `plan_put_pieces` `{rt_id, stop_ids, leg_ids, piece_ids, new_piece_ids}` · `plan_put_group` `{rt_id, stop_ids, leg_ids, piece_ids}` · `plan_split_piece` `{piece_ids, leg_ids, rt_ids}` · `plan_move_pieces` `{rt_id, stop_ids, leg_ids, piece_ids, dropped_leg_ids, cancelled_rt_ids}` · `plan_order_update` `{nat_order_id, shipment_ids}` · `plan_rt_update` `{rt_id, stop_ids}` · `plan_rt_clear` `{rt_id}` · `plan_delete` `{nat_order_ids, leg_ids, cancelled_rt_ids}` · `plan_vs_set_day` `{order_id}` · `plan_vs_set_place` `{order_stop_id, leg_ids, stop_ids}` · `plan_local_loading` `{local_move_id, rt_id?}` (+ `already`) · `plan_notice_read` `{notice_id}` (+ `read_at`, `read_by`, `already`).
+- **Σήμα για τη Φ5:** `current_setting('plan.writer')` = `natl` μετά από κάθε εγγραφή του εθνικών σε `orders` / `order_stops` (απόφαση 17).
+
+### Κωδικοί `plan:`
+- **Της 071 (26):** `pieces_alive, piece_dead, pieces_sum, piece_parent, split_not_at_hub, rt_not_v2, rt_cancelled, leg_stop_dead, leg_order, leg_place, chain, chain_time, stop_seq, stop_order, side_order, rt_window, local_loading_gone, local_loading_day, local_loading_stop, model_locked, stop_locked, leg_locked, piece_locked, shipment_locked, v1_link_on_v2, hard_delete`.
+- **Νέοι της 072 (27):** `no_actor, bad_input, no_client, no_price, no_window, stock_lot, order_gone, order_not_v5, vs_locked, piece_busy, piece_split, not_stock, parts_sum, not_at_hub, group_empty, same_rt, rt_gone, no_vehicle, truck_busy, driver_busy, stop_gone, local_exists, notice_gone, stale_confirm, need_token, vs_not_bridge, payroll_locked` (ο τελευταίος: απόφαση 32). Η 072 ρίχνει αμέσως και δύο της 071 με το κείμενό τους: `rt_cancelled`, `piece_dead`.
+- **Μόνο του Worker** (όχι `plan:`): `busy_retry` (409, χαμένη κλειδαριά `40P01`/`40001`/`55P03`), `slow` (503, `57014`), `writes_closed` (409), `schema_behind` (503), `amount_leak` (500), `plan_failed` (500), `bad_week`/`bad_order_ids`/`bad_desk`/`bad_json`/`id_mismatch` (400), `unauthorized` (401), `forbidden` (403), `no_route` (404).
+- **Αποσύρθηκαν, απαγορεύονται στο build:** `hub_endpoint, piece_planned, bridge_moved, bridge_split, legacy_nl, frozen, restore_expired, restore_conflict, partner_rate_on_owned, window_order`.
+- Μορφή μηνύματος: `plan rule broken: <code>:<detail>`· ο Worker παίρνει το `detail` (μετά το `<code>:`) και το βάζει σε παρένθεση στο ελληνικό (π.χ. `truck_busy` → «Το φορτηγό είναι ήδη σε άλλο δρομολόγιο (RT-1280)»).
+
+### Worker: διαδρομές (`handlePlan`, ένας πίνακας `PLAN_ROUTES`: method + regex → resource + RPC)
+
+| Μέθοδος + path | resource | RPC | body → `p` | 2xx |
+|---|---|---|---|---|
+| `GET /plan/board?week=YYYY-MM-DD` | `board` | `plan_board(p_week, p_role)` | — | 200 |
+| `GET /plan/vs-state?order_ids=1,2` | `vs-state` | `plan_vs_state(p_order_ids)` | — (≤ 500 ids, αλλιώς 400) | 200 |
+| `GET /plan/notices?desk=intl\|natl` | `notices` | `plan_notices_list` | — | 200 |
+| `POST /plan/notices/:id/read` | `notices-read` | `plan_notice_read` | `{notice_id: :id}` | 200 |
+| `POST /plan/orders` | `orders` | `plan_orders_create` | body | 200 |
+| `PATCH /plan/orders/:id` *(απόφ. 21)* | `orders` | `plan_order_update` | body + `nat_order_id` | 200 |
+| `POST /plan/legs` | `legs` | `plan_put_group` αν `body.group`, αλλιώς `plan_put_pieces` | body | 200 |
+| `POST /plan/move` | `move` | `plan_move_pieces` | body | 200 |
+| `POST /plan/pieces/split` | `split` | `plan_split_piece` | body | 200 |
+| `PATCH /plan/rt/:id` | `rt` | `plan_rt_update` | body + `rt_id` | 200 |
+| `POST /plan/rt/:id/clear` | `rt-clear` | `plan_rt_clear` | body + `rt_id` | 200 |
+| `POST /plan/delete` | `delete` | `plan_delete` | body | 200 |
+| `POST /plan/vs/day` | `vs-day` | `plan_vs_set_day` | body | 200 |
+| `POST /plan/vs/place` | `vs-place` | `plan_vs_set_place` | body | 200 |
+| `POST /plan/local-loading` | `local-loading` | `plan_local_loading` | body | 200 |
+
+Κανένα `POST /plan/rt`, κανένα `restore`. Status: **401** χωρίς/άκυρο token (πριν από κάθε κλήση)· **403** ρόλος χωρίς δικαίωμα (πριν από κάθε κλήση)· **404** άγνωστη διαδρομή· **400** μη έγκυρο JSON/ids· **409** `writes_closed` (απόφαση 22), `busy_retry` (ταυτόχρονη αλλαγή, τίποτα δεν γράφτηκε) και `PATCH /costs/rt` σε `model=2`· **422** `PLAN_RULE`· **428** `need_token`· **503** `schema_behind` (PostgREST `PGRST202`/404 στο rpc = λείπει η 072, πρότυπο `schemaBehind060`) και `slow` (`57014`)· **500** με όνομα διαδρομής (try/catch σε όλο το σώμα· στο `fetch` δεν υπάρχει γενικό catch). Τύποι σφάλματος: `AUTH` 401, `FORBIDDEN` 403, `NOT_FOUND` 404, `BAD_REQUEST` 400, `WRITES_CLOSED` 409, `PLAN_RULE` 409/422/428 (ή `STOCK_RULE` / `LOCAL_RELAY_RULE` αν αρνήθηκε κανόνας 057/060), `SCHEMA_BEHIND` 503, `SERVER` 500/503. Ο Worker **δεν** γράφει δικό του `audit_log` (το γράφει η βάση).
+
+### `PLAN_PERMS` (deny-by-default, κανένα `"*"`, όλα μέσα στο literal)
+
+| resource | owner | dispatcher | management | accountant | warehouse |
+|---|---|---|---|---|---|
+| `board`, `vs-state` | GET | GET | GET | GET | GET |
+| `notices` | GET | GET | GET | — | — |
+| `notices-read` | POST | POST | — | — | — |
+| `orders` | POST, PATCH | POST, PATCH | — | — | — |
+| `legs`, `move`, `split`, `rt-clear`, `delete`, `vs-day`, `vs-place`, `local-loading` | POST | POST | — | — | — |
+| `rt` | PATCH | PATCH | — | — | — |
+
+```js
+var PLAN_PERMS = { owner: {...}, dispatcher: {...}, management: {...}, accountant: {...}, warehouse: {...} };
+function planCan(role, resource, method) { const r = PLAN_PERMS[role]; return !!(r && r[resource] && r[resource].includes(method)); }
+```
+(Κλείσιμο `};` στη στήλη 0· το `PLAN_PERMS` πρέπει να χρησιμοποιείται, αλλιώς το esbuild το σβήνει και ο φρουρός δεν το βρίσκει.)
+
+### Κείμενα και ο ΕΝΑΣ χαρτογράφος
+- `const PLAN_RULE_TEXT = { <26 + 27 κωδικοί> }` — ελληνικό κείμενο ανά `plan:<code>`, η **μόνη** πηγή ελληνικών για τους κωδικούς (Task Γ2).
+- `const PLAN_CHECK_TEXT = { … }` — ανά όνομα constraint:
+  - CHECK (23514): `rt_model, rt_partner_rate, rt_v1_no_window, rt_v2_dates, rt_v2_scope, rt_v2_status, rt_v2_window, partner_needs_partner, shipments_bridge_intl, shipments_del, shipments_ends, shipments_intl_is_bridge, shipments_one_parent, shipments_pallets, shipments_shape, shipments_win, pieces_del, pieces_not_own_parent, pieces_pallets, pieces_split_pair, rt_stops_del, rt_stops_seq, rt_stops_side, rt_stops_win, piece_legs_del, piece_legs_no, piece_legs_two_stops, plan_notices_desk, plan_notices_kind, plan_notices_read_pair, order_stops_via_hub_intl, local_moves_nat_loading`
+  - UNIQUE (23505): `piece_legs_live_no, shipments_bridge_once, pl_mov_leg_once, locations_one_hub`
+  - **όχι** στο `PLAN_CHECK_TEXT`, απαντούν τον ίδιο κωδικό με την άρνηση της 072: `local_moves_nat_loading_once` (23505) → `local_exists`, EXCLUDE `rt_v2_truck_once` (23P01) → `truck_busy`, `rt_v2_driver_once` → `driver_busy`
+- Σύνδεση στο `stockRuleError` (`index.js:3184`), με τη σειρά:
+  1. `local_relay:` (όπως σήμερα)
+  2. **νέο:** `hint.startsWith("plan:")` (κάθε SQLSTATE) → `{ type: "PLAN_RULE", code, message: PLAN_RULE_TEXT[code] + detail ?? «Ο κανόνας ${code} δεν τηρήθηκε: …» }`
+  3. `23514`: `stock:` → … → regex `check constraint` → `STOCK_CHECK_TEXT` → `RELAY_CHECK_TEXT` → **νέο** `PLAN_CHECK_TEXT` (πριν από τη γενική `local_moves_*`) → γενικό `local_moves_*` → `null`. Οποιοδήποτε άλλο όνομα constraint (23514/23505/23503/23P01) γίνεται `{ type: "PLAN_RULE", code: <όνομα>, message: «Κανόνας βάσης <όνομα>» }` **μόνο μέσα στο `/plan/*`**, στο `catch` του `handlePlan` (όχι στο `stockRuleError`: στα υπάρχοντα paths μένει `null` → σημερινή συμπεριφορά, ώστε τα tests «everything else → null» να μένουν)
+  4. `23505`: υπάρχοντα + `local_moves_nat_loading_once` → `local_exists` + **νέο** `PLAN_CHECK_TEXT` κατά όνομα index
+  5. **νέο** `23P01`: κατά όνομα (`rt_v2_*_once`) → PLAN_RULE `truck_busy`/`driver_busy`
+- Απάντηση: `stockRuleResponse` (422, `{error:{type,code,message}}`)· για `need_token` ο `handlePlan` γυρίζει 428 με το ίδιο σώμα. Οι 9 υπάρχοντες callers (facade/costs) κερδίζουν αυτόματα τους κλάδους 2/4/5 (π.χ. `plan_chk_bridge_stop` σε facade PATCH `order_stops` → 422 αντί για 500).
+
+---
+
+## Εργασίες
+
+> **Σειρά εκτέλεσης:** Task 0 → **Α1–Α8** (ίδιο αρχείο 072, άρα πριν από τη Β) → **Β8 → Β1 → … → Β7 → Β9** → **Γ1–Γ5** (παράλληλα με Α/Β· εξαρτώνται μόνο από τα Interfaces, το `plan-contract` πρασινίζει μετά τη Β9) → **Σ1** (όλα ενωμένα, καθαρός εκτελεστής) → **Κ1** (2 PR) → **Γ6** (εκτός Φ2, χωριστό βράδυ) → **Κ2** (072 από τον owner) → **Γ7** (deploy Worker, χωριστό «ναι») → **Κ3**. Αν η απόφαση 21 απορριφθεί: παράλειψε την Α7, οι περιπτώσεις 78–82 της Α8 γίνονται 68–72, και το `public.plan_order_update(jsonb,text,text)` / `PATCH /plan/orders/:id` / `vs_locked` φεύγουν μαζί από `v_pub`, verify, build test, `PLAN_ROUTES`, `PLAN_PERMS`, `plan-perms`, `CODES_072`, `PLAN_RULE_TEXT` (16 → 15 δημόσιες· 169 → 159 περιπτώσεις· 27 → 26 κωδικοί).
+
+#### Task 0: Branch και επαναμέτρηση (κοινό)
+**Files:** κανένα. **Consumes:** — **Produces:** η «Αφετηρία» ισχύει, αλλιώς ΣΤΑΜΑΤΑ και ξαναγράφεται το πλάνο.
+- [ ] `git fetch origin`· `git switch -c feat/national-v5-functions origin/main`· `git log --oneline -15 origin/main -- worker/ tms-auditor tests/sql-0*`.
+- [ ] SELECT: md5 των **23** συναρτήσεων του πίνακα (το ερώτημα του Κ2 Step 1), triggers/B-54 = 46/`46/null`, `plan_%` = 6, γραμμές v5 = 0, `model=2` = 0, `pg_default_acl` συναρτήσεων.
+- [ ] Worker: `node --test worker/test/*.test.mjs worker/src/rt-rules.test.mjs` = 189/189· md5 `index.js` = `a3117aac…`· ζωντανή έκδοση μέσω CF API = 2f2851c0 (ή ο owner το επιβεβαιώνει).
+- [ ] `cd tms-auditor && npm ci`· `btree_gist` και `pgcrypto` στο PGlite (`@electric-sql/pglite/contrib/*`).
+
+### Ενότητα Α · SQL μέρος 1: θεμέλιο, παραγγελίες, ανάθεση, μεταφορά, σπάσιμο
+
+Οι Α1–Α7 **δοκιμάστηκαν 22/10 σε PGlite** (σενάριο του `plan-072.test.mjs`: `live-071.sql` + λήψη 072 → 071 → 071b → 072 → rules test), εργασία προς εργασία: σε κάθε «αποτυγχάνει» βγήκε ακριβώς το γραμμένο, σε κάθε «περνά» `N OK, 0 FAIL` και build 6/6. Μεταλλάξεις: χωρίς τη ρητή σβήση μισθοδοσίας στο `plan_h_rt_cancel_if_empty` κοκκινίζουν οι 13 και 59· χωρίς τον έλεγχο `piece_busy` η 32. Όλη η Α μαζί: 77 περιπτώσεις σε ~0,4 δευτ.
+
+**Τι άλλαξε μετά το πρωτότυπο (κριτική 23/10, συναρμολόγηση με τη Β):** η πλήρης λήψη `live-072.sql` (πρώην Β8) γίνεται στο Α1· μία λίστα φρουρού **23** συναρτήσεων σε μορφή `('<sig>', '<md5>')`· το PART 5 (δικαιώματα, αποδείξεις) γράφεται μία φορά, στο Α1, με τη μορφή της Β· το `plan_h_target` γεννά τον κύκλο για στόχο `new_rt` (late binding στο `plan_rt_create` της Β1)· το `plan_h_leg_add` δέχεται `p_leg_no` (Β5)· νέος ορισμός «πρώτου κομματιού» VS (Α3)· κλείδωμα κύκλων, `later_leg` και `local_payroll` στη Μεταφορά (Α6)· οι περιπτώσεις 78–82 (Α8). Ενωμένα, σε αντίγραφο χωρίς την πλήρη λήψη, δίνουν `Result: 169 OK, 0 FAIL` (κεφαλίδα του πλάνου)· με την πραγματική λήψη τα ξανατρέχει το Task Σ1.
+
+Ο κώδικας κάθε Task μπαίνει σε σημεία-σημάδια, ποτέ με επανεγγραφή. **Ένα σύνολο σημαδιών για Α και Β** (ASCII· τα γράφει το Α1):
+- `worker/migrations/drafts/072_plan_functions.sql`: οι συναρτήσεις της Α πάνω από `-- @A (072 section A: plan_orders_create, plan_put_pieces, plan_put_group, plan_split_piece, plan_move_pieces, plan_order_update)`· της Β (Part 3) πάνω από `  -- ===== PART 4: NOTICES AND READS (section B) =====`· οι αναγνώσεις της Β (Part 4) πάνω από `  -- ===== PART 5: RIGHTS AND PROOFS =====`· **κάθε** δημόσια συνάρτηση (Α και Β) μία γραμμή στο `v_pub` του PART 5, πάνω από `-- @pub (072 tasks add ", 'public.plan_x(<arg types>)'" lines above this marker)`.
+- `worker/migrations/drafts/072_plan_functions_test.sql`: Α: γραμμές `want` πάνω από `-- @want (...)`, κλάδοι πάνω από `-- @case (...)` και `-- @verdict (...)`. Β: φωλιασμένο block στη θέση της γραμμής `  -- [SECTION B CASES]` (Β1), μετά πάνω από `        -- [B-CASES-NEXT]` και `      ;  -- end of b_want`.
+- Τα ελληνικά κείμενα κάθε κωδικού ζουν **μόνο** στο `PLAN_RULE_TEXT` / `PLAN_CHECK_TEXT` του Worker (Task Γ2)· η βάση γράφει μόνο ASCII λεπτομέρεια.
+
+#### Task Α1: Θεμέλιο του 072, λήψη `live-072.sql`, harness PGlite, build test
+
+**Files:**
+- Create: `tms-auditor/test/fixtures/live-072.sql` (η **μία** λήψη από την παραγωγή, μόνο SELECT· η Β8 δεν την ξαναπαίρνει)
+- Create: `tms-auditor/test/plan-072.test.mjs` (bootstrap· η Β8 τον αντικαθιστά με τον πλήρη)
+- Create: `tests/sql-072-drafts.test.js` (6 έλεγχοι· η Β9 τον αντικαθιστά με τον πλήρη, που τους περιέχει)
+- Create: `worker/migrations/drafts/072_plan_functions_test.sql` (πλαίσιο + περιπτώσεις 1–15 + η γραμμή `-- [SECTION B CASES]`)
+- Create: `worker/migrations/drafts/072_plan_functions.sql` (PART 0 φρουροί, PART 1 βοηθοί, σημάδια PART 2–4, PART 5 δικαιώματα/αποδείξεις, γραμμή αποτελέσματος)
+
+**Interfaces:**
+- Consumes: Task 0 (Αφετηρία ισχύει)· F1 Interfaces (πίνακες, όψεις, `plan_*_problem`, κωδικοί)· `fixtures/live-071.sql`.
+- Produces: οι βοηθοί του πίνακα «Εσωτερικοί βοηθοί» των Interfaces με τις υπογραφές τους (μοναδική πηγή υπογραφών για Α και Β)· `plan_h_target` για `{rt_id, side}` **και** `{new_rt, side}` (το δεύτερο καλεί το `plan_rt_create` της Β1: ως τότε 42883, καμία περίπτωση της Α δεν το χρησιμοποιεί)· η λίστα φρουρού των 23 ζευγών `('<sig>', '<md5>')` στο PART 0 και ξανά στο PART 5· `v_pub` κενό μέσα στο PART 5· τα σημάδια της εισαγωγής της ενότητας· `prodShaped()` στο `plan-072.test.mjs`. Καμία δημόσια συνάρτηση ακόμη (`v_pub` κενό: το 072 της Α1 είναι κλειστό για όλους).
+
+- [ ] **Step 1: Λήψη `live-072.sql` (Supabase MCP `execute_sql`, project `gatejgbpyodlepkvqkgf`, μόνο SELECT)**
+
+Πρώτα επιβεβαίωσε ότι υπάρχουν τα αντικείμενα της λήψης:
+
+```sql
+SELECT string_agg(s || '=' || coalesce(md5((SELECT prosrc FROM pg_proc WHERE oid = to_regprocedure(s))), 'MISSING'), ' ' ORDER BY s) AS fns,
+       (SELECT string_agg(c.relname || '.' || t.tgname, ' ' ORDER BY c.relname, t.tgname) FROM pg_trigger t
+          JOIN pg_class c ON c.oid = t.tgrelid
+         WHERE NOT t.tgisinternal AND (c.relname, t.tgname) IN (('national_orders', 'national_orders_invoice_mark_guard'),
+           ('national_orders', 'stock_guard_natl'), ('national_orders', 'trg_national_orders_soft_delete_cascade'),
+           ('orders', 'order_cd_stop_follow'), ('orders', 'stock_guard_orders'), ('order_stops', 'ramp_follows_stop'))) AS trgs
+  FROM unnest(ARRAY['public.invoice_mark_guard()', 'public.stock_guard_natl()', 'public.stock_guard_orders()',
+                    'public.national_orders_soft_delete_cascade()', 'public.order_cd_stop_follow()', 'public.ramp_follows_stop()',
+                    'public.stock_raise(text,text)', 'public.stock_natl_delivered(text,date)', 'public.tms_week(date)',
+                    'public.tms_week_year(date)', 'public.rt_sync_to_orders()', 'public.rt_sync_to_national_loads()']) s;
+```
+Expected: κανένα `MISSING`· `invoice_mark_guard()=dd975c4f…`, `national_orders_soft_delete_cascade()=6c423b14…`, `order_cd_stop_follow()=433a1a72…`, `ramp_follows_stop()=6fa6a83c…`, `rt_sync_to_national_loads()=028efb76…`, `rt_sync_to_orders()=a63234c8…`, `stock_guard_natl()=e941edbc…`, `stock_guard_orders()=63aa751d…`, `tms_week(date)=89c5ba44…`· `trgs` = οι 6 triggers. Αλλιώς **ΣΤΑΜΑΤΑ** (η Αφετηρία άλλαξε).
+
+Μετά τρέξε το ερώτημα λήψης και γράψε **αυτούσιο** το μοναδικό κελί στο `tms-auditor/test/fixtures/live-072.sql` (ποτέ με το χέρι· τα ελληνικά των συναρτήσεων μένουν όπως είναι, το αρχείο δεν είναι ASCII· αν λείπει αντικείμενο, πρόσθεσέ το στις λίστες `t` / `f` / `trg` και ξαναπάρε):
+
+```sql
+WITH t(tbl) AS (VALUES ('clients'), ('partners'), ('trucks'), ('drivers'), ('trailers'), ('locations'), ('orders'),
+                       ('order_stops'), ('national_orders'), ('ct_round_trips'), ('ct_rt_legs'), ('local_moves'),
+                       ('dl_entries'), ('pl_movements'), ('audit_log'), ('ct_cost_lines'), ('national_loads'),
+                       ('stock_lots'), ('ramp')),
+-- 071 / 071b objects: never captured (the harness creates them by running 071 and 071b themselves)
+x071(tbl, col) AS (VALUES ('ct_round_trips', 'model'), ('ct_round_trips', 'start_at'), ('ct_round_trips', 'end_at'),
+                          ('ct_round_trips', 'partner_rate'), ('locations', 'is_hub'), ('order_stops', 'via_hub'),
+                          ('local_moves', 'rt_stop_id'), ('pl_movements', 'piece_leg_id')),
+f(sig) AS (VALUES ('public.invoice_mark_guard()'), ('public.stock_guard_natl()'), ('public.stock_guard_orders()'),
+                  ('public.national_orders_soft_delete_cascade()'), ('public.order_cd_stop_follow()'),
+                  ('public.ramp_follows_stop()'), ('public.stock_raise(text,text)'),
+                  ('public.stock_natl_delivered(text,date)'), ('public.tms_week(date)'), ('public.tms_week_year(date)'),
+                  ('public.rt_sync_to_orders()'), ('public.rt_sync_to_national_loads()')),
+trg(tbl, name) AS (VALUES ('national_orders', 'national_orders_invoice_mark_guard'), ('national_orders', 'stock_guard_natl'),
+                          ('national_orders', 'trg_national_orders_soft_delete_cascade'), ('orders', 'order_cd_stop_follow'),
+                          ('orders', 'stock_guard_orders'), ('order_stops', 'ramp_follows_stop')),
+cols AS (
+  SELECT c.oid AS relid, c.relname, a.attnum, a.attname, a.atttypid, a.atttypmod, a.attnotnull, a.attidentity, a.attgenerated
+    FROM t JOIN pg_class c ON c.relname = t.tbl AND c.relnamespace = 'public'::regnamespace
+    JOIN pg_attribute a ON a.attrelid = c.oid AND a.attnum > 0 AND NOT a.attisdropped
+   WHERE NOT EXISTS (SELECT 1 FROM x071 x WHERE x.tbl = c.relname AND x.col = a.attname)),
+parts AS (
+  SELECT 1 AS grp, t.tbl AS k1, '' AS k2,
+         format('CREATE TABLE IF NOT EXISTS public.%I (id bigint GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY);', t.tbl) AS stmt
+    FROM t
+  UNION ALL
+  SELECT 3, k.relname, lpad(k.attnum::text, 4, '0'),
+         format('ALTER TABLE public.%I ADD COLUMN IF NOT EXISTS %I %s%s;', k.relname, k.attname, format_type(k.atttypid, k.atttypmod),
+                CASE WHEN k.attgenerated = 's' THEN ' GENERATED ALWAYS AS (' || pg_get_expr(d.adbin, d.adrelid) || ') STORED' ELSE '' END)
+    FROM cols k LEFT JOIN pg_attrdef d ON d.adrelid = k.relid AND d.adnum = k.attnum
+   WHERE k.attname <> 'id'
+  UNION ALL
+  SELECT 4, k.relname, k.attname,
+         format('ALTER TABLE public.%I ALTER COLUMN %I SET DEFAULT %s;', k.relname, k.attname, pg_get_expr(d.adbin, d.adrelid))
+    FROM cols k JOIN pg_attrdef d ON d.adrelid = k.relid AND d.adnum = k.attnum
+   WHERE k.attidentity = '' AND k.attgenerated = ''
+  UNION ALL
+  -- NOT NULL (the 071 capture had none: an INSERT without created_by passed here and failed in production)
+  SELECT 5, k.relname, k.attname, format('ALTER TABLE public.%I ALTER COLUMN %I SET NOT NULL;', k.relname, k.attname)
+    FROM cols k WHERE k.attnotnull AND k.attname <> 'id'
+  UNION ALL
+  -- identity ALWAYS (an INSERT (id, ...) without OVERRIDING SYSTEM VALUE passes BY DEFAULT and fails 428C9 in production)
+  SELECT 6, k.relname, k.attname, format('ALTER TABLE public.%I ALTER COLUMN %I SET GENERATED ALWAYS;', k.relname, k.attname)
+    FROM cols k WHERE k.attidentity = 'a'
+  UNION ALL
+  -- CHECKs of the tables live-071.sql did not cover (ct_round_trips, ct_rt_legs, local_moves come from it and 071)
+  SELECT 7, c.relname, k.conname,
+         format('DO $c$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid = %L::regclass AND conname = %L) THEN '
+                || 'ALTER TABLE public.%I ADD CONSTRAINT %I %s; END IF; END $c$;',
+                'public.' || c.relname, k.conname, c.relname, k.conname, pg_get_constraintdef(k.oid))
+    FROM pg_constraint k JOIN pg_class c ON c.oid = k.conrelid JOIN t ON t.tbl = c.relname
+   WHERE c.relnamespace = 'public'::regnamespace AND k.contype = 'c'
+     AND c.relname NOT IN ('ct_round_trips', 'ct_rt_legs', 'local_moves')
+     AND k.conname NOT IN ('order_stops_via_hub_intl')
+  UNION ALL
+  -- UNIQUE (constraints and indexes), except 071's
+  SELECT 8, i.tablename, i.indexname,
+         regexp_replace(i.indexdef, '^CREATE UNIQUE INDEX ', 'CREATE UNIQUE INDEX IF NOT EXISTS ') || ';'
+    FROM pg_indexes i JOIN t ON t.tbl = i.tablename
+    JOIN pg_class ic ON ic.relname = i.indexname AND ic.relnamespace = 'public'::regnamespace
+    JOIN pg_index x ON x.indexrelid = ic.oid
+   WHERE i.schemaname = 'public' AND x.indisunique AND NOT x.indisprimary
+     AND i.indexname NOT IN ('locations_one_hub', 'local_moves_nat_loading_once', 'pl_mov_leg_once')
+  UNION ALL
+  SELECT 9, f.sig, '', pg_get_functiondef(to_regprocedure(f.sig)) || ';' FROM f
+  UNION ALL
+  SELECT 10, c.relname, tg.tgname, regexp_replace(pg_get_triggerdef(tg.oid), '^CREATE TRIGGER ', 'CREATE OR REPLACE TRIGGER ') || ';'
+    FROM pg_trigger tg JOIN pg_class c ON c.oid = tg.tgrelid JOIN trg ON trg.tbl = c.relname AND trg.name = tg.tgname
+   WHERE c.relnamespace = 'public'::regnamespace AND NOT tg.tgisinternal
+  UNION ALL
+  -- FOREIGN KEYs between captured tables, last (every referenced table and key exists by now)
+  SELECT 11, c.relname, k.conname,
+         format('DO $c$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid = %L::regclass AND conname = %L) THEN '
+                || 'ALTER TABLE public.%I ADD CONSTRAINT %I %s; END IF; END $c$;',
+                'public.' || c.relname, k.conname, c.relname, k.conname, pg_get_constraintdef(k.oid))
+    FROM pg_constraint k JOIN pg_class c ON c.oid = k.conrelid JOIN t ON t.tbl = c.relname
+    JOIN pg_class r ON r.oid = k.confrelid JOIN t t2 ON t2.tbl = r.relname
+   WHERE c.relnamespace = 'public'::regnamespace AND k.contype = 'f'
+)
+SELECT '-- GENERATED from production (SELECT only) for tms-auditor/test/plan-072.test.mjs, applied AFTER live-071.sql and' || E'\n'
+    || '-- BEFORE 071 / 071b. Do not edit by hand: re-run the capture query of the F2 plan, Task A1 Step 1.' || E'\n'
+    || string_agg(stmt, E'\n' ORDER BY grp, k1, k2) || E'\n'
+FROM parts;
+```
+
+Expected: κείμενο που αρχίζει από `-- GENERATED from production (SELECT only) for tms-auditor/test/plan-072.test.mjs`, περιέχει `ALTER TABLE public.ct_round_trips ALTER COLUMN id SET GENERATED ALWAYS;`, `ALTER TABLE public.audit_log ALTER COLUMN actor SET NOT NULL;`, `CREATE OR REPLACE FUNCTION public.order_cd_stop_follow()`, `CREATE OR REPLACE FUNCTION public.rt_sync_to_orders()` και `CREATE OR REPLACE TRIGGER order_cd_stop_follow AFTER UPDATE OF cross_dock_date ON public.orders`. Έλεγχος ότι δεν πέρασε τίποτα της 071:
+```bash
+grep -c -E "is_hub|via_hub|rt_stop_id|piece_leg_id|rt_v2_|locations_one_hub|plan_chk" tms-auditor/test/fixtures/live-072.sql
+```
+Expected: `0`.
+
+- [ ] **Step 2: Γράψε τα tests (αποτυγχάνουν μέχρι το Step 5)**
+
+`tms-auditor/test/plan-072.test.mjs`:
+
+```js
+// 072 (national v5 plan_* functions) on a production-shaped PGlite copy, at build time (principle 6): the owner's
+// evening run should only confirm what this file already knows. BOOTSTRAP of Task A1: Task B8 replaces this file
+// with the full harness (dry run, verify, API roles, rollback, mutation), keeping prodShaped() as it is here.
+// Production shape = the 22/9 column fixture + fixtures/live-071.sql (F1 capture) + fixtures/live-072.sql (read-only
+// capture of production, plan docs/superpowers/plans/2026-10-22-f2-national-v5-plan-functions.md Task A1 Step 1:
+// NOT NULL, identity ALWAYS, UNIQUE, FOREIGN KEY, the CHECKs of every table 072 writes, and the functions / triggers
+// its writes fire on national_orders, orders and order_stops), then 071 and 071b as executed 22/10. The money views
+// stay STUBS: what is proved here are the RULES of 072.
+import { test } from 'node:test';
+import assert from 'node:assert';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { freshDb } from './helpers.mjs';
+import { DRAFTS } from '../lib/db.mjs';
+// 071b's EXCLUDE needs btree_gist (no skip: a missing extension is a failure); pgcrypto as on production (@extensions)
+import { btree_gist } from '@electric-sql/pglite/contrib/btree_gist';
+import { pgcrypto } from '@electric-sql/pglite/contrib/pgcrypto';
+
+const HERE = path.dirname(fileURLToPath(import.meta.url));
+const read = (f) => fs.readFileSync(path.join(DRAFTS, f), 'utf8');   // 072: drafts until executed
+const readDone = (f) => fs.readFileSync(path.join(DRAFTS, '..', f), 'utf8');   // 071 / 071b: executed 22/10
+const fixture = (f) => fs.readFileSync(path.join(HERE, 'fixtures', f), 'utf8');
+
+const STUBS = `
+CREATE OR REPLACE VIEW public.ct_v_rt_revenue AS SELECT id AS rt_id, 0::numeric AS revenue, 0::numeric AS revenue_intl,
+  0::numeric AS revenue_natl FROM public.ct_round_trips;
+CREATE OR REPLACE VIEW public.ct_v_rt_costs AS SELECT id AS rt_id, 0::numeric AS lines_net, 0::numeric AS vat, 0::numeric AS wear,
+  0::numeric AS dl_trip_value, 0::numeric AS dl_expenses, 0::numeric AS driver_pay_pending, 0::bigint AS driver_pay_missing,
+  0::numeric AS partner_planned, 0::numeric AS partner_invoiced FROM public.ct_round_trips;
+CREATE OR REPLACE VIEW public.ct_v_rt_pnl AS SELECT id, 0::numeric AS cost_gross, 0::numeric AS profit_worst,
+  0::numeric AS profit_ex_vat FROM public.ct_round_trips WHERE status <> 'cancelled';
+CREATE OR REPLACE VIEW public.dl_v_rt_route AS SELECT id AS rt_id, ''::text AS route_text FROM public.ct_round_trips;
+`;
+const TRG = `SELECT count(*)::int AS n FROM pg_trigger t JOIN pg_class c ON c.oid = t.tgrelid
+  JOIN pg_namespace ns ON ns.oid = c.relnamespace WHERE NOT t.tgisinternal AND t.tgenabled <> 'D' AND ns.nspname = 'public'`;
+const V5_ROWS = `SELECT (SELECT count(*) FROM shipments) + (SELECT count(*) FROM shipment_pieces) + (SELECT count(*) FROM rt_stops)
+  + (SELECT count(*) FROM piece_legs) + (SELECT count(*) FROM plan_notices) + (SELECT count(*) FROM ct_round_trips WHERE model = 2) AS n`;
+
+async function prodShaped() {
+  const db = await freshDb({ extensions: { btree_gist, pgcrypto } });
+  await db.exec(`DO $r$ BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'anon') THEN CREATE ROLE anon NOLOGIN; END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'authenticated') THEN CREATE ROLE authenticated NOLOGIN; END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'service_role') THEN CREATE ROLE service_role NOLOGIN; END IF;
+  END $r$;`);
+  await db.exec(fixture('live-071.sql'));
+  await db.exec(fixture('live-072.sql'));
+  await db.exec(STUBS);
+  await db.exec(`CREATE SCHEMA IF NOT EXISTS extensions`);
+  await db.exec(`CREATE EXTENSION IF NOT EXISTS pgcrypto WITH SCHEMA extensions`);
+  await db.exec(`INSERT INTO public.locations (legacy_id, name) VALUES ('recJucKOhC1zh4IP3', 'CROSS-DOCK')`);
+  await db.exec(`UPDATE monitoring.checks SET red_value = (${TRG}), baseline = NULL WHERE id = 'B-54'`);
+  await db.exec(readDone('071_plan_schema.sql'));
+  await db.exec(readDone('071b_plan_one_vehicle.sql'));
+  return db;
+}
+async function errorOf(db, sql) { try { await db.exec(sql); return null; } catch (e) { return String(e.message); } }
+const count = async (db, sql) => Number((await db.query(sql)).rows[0].n);
+// the want lines of the rules test: one per case, "    , '<expected>'  -- <k> ..."
+const wantCount = (sql) => (sql.match(/^ {4}, '(ok|plan:[a-z0-9_]+|con:[a-z0-9_]+|state:[0-9A-Z]{5})'/gm) || []).length;
+// the md5 guard of 072: ('<sig>', '<md5>') pairs, each written twice (PART 0 guard, PART 5 proof)
+const guardPairs = (src) => new Map([...src.matchAll(/\('(public\.[a-z_0-9]+\([a-z,\[\]]*\))', '([0-9a-f]{32})'\)/g)]
+  .map((m) => [m[1], m[2]]));
+
+test('072 on a production-shaped PGlite copy', async (t) => {
+  const db = await prodShaped();
+  const before = await count(db, TRG);
+  const src = read('072_plan_functions.sql');
+
+  await t.test('the fixtures hold the LIVE texts 072 guards on (re-capture if this fails)', async () => {
+    const live = guardPairs(src);
+    assert.strictEqual(live.size, 23);
+    for (const [sig, m] of live) {
+      const r = (await db.query('SELECT md5(prosrc) AS m FROM pg_proc WHERE oid = to_regprocedure($1)', [sig])).rows[0];
+      assert.strictEqual(r?.m, m, sig);
+    }
+  });
+
+  await t.test('072 applies: born closed, no trigger, 0 v5 rows', async () => {
+    let res;
+    try { res = await db.exec(src); } catch (e) { assert.fail(e.message); }
+    const row = res.at(-1).rows[0];
+    assert.strictEqual(row.result, '072 OK');
+    assert.strictEqual(Number(row.public_triggers), before, '072 adds no trigger');
+    assert.strictEqual(Number(row.b54_red_value), before, 'B-54 unchanged');
+    assert.strictEqual(Number(row.v5_rows), 0);
+    assert.strictEqual(Number(row.v5_cycles), 0);
+    assert.strictEqual(await count(db, V5_ROWS), 0);
+    const pub = (src.match(/v_pub CONSTANT text\[\] := array_remove\(ARRAY\[([\s\S]*?)\]::text\[\], NULL\);/)[1]
+      .replace(/--[^\n]*/g, '').match(/'public\.plan_[a-z_]+\([a-z,\[\]]*\)'/g) || []).length;
+    assert.strictEqual(Number(row.public_functions), pub, 'service_role executes exactly v_pub');
+    assert.strictEqual(await count(db, `SELECT count(*) AS n FROM pg_proc p WHERE p.pronamespace = 'public'::regnamespace
+      AND p.proname LIKE 'plan\\_%' AND (has_function_privilege('anon', p.oid, 'EXECUTE')
+      OR has_function_privilege('authenticated', p.oid, 'EXECUTE'))`), 0, 'anon / authenticated execute nothing');
+  });
+
+  await t.test('072 rules test: every case OK, nothing kept', async () => {
+    const sql = read('072_plan_functions_test.sql');
+    const n = wantCount(sql);
+    assert.ok(n > 0, 'no want line found');
+    const msg = await errorOf(db, sql);
+    assert.match(msg ?? '', new RegExp(`RULES TEST 072 finished - EVERYTHING UNDONE, nothing kept\\. Result: ${n} OK, 0 FAIL`), msg);
+    assert.strictEqual(await count(db, V5_ROWS), 0);
+  });
+});
+```
+
+`tests/sql-072-drafts.test.js`:
+
+```js
+// tests/sql-072-drafts.test.js - run: node --test tests/sql-072-drafts.test.js
+// The 072 drafts (national v5 plan_* functions, F2) at build time, plain node, no database (principle 6: a stale
+// guard, an open function or an untested refusal should fail here, not at 15:30 on the owner's evening):
+//   - ASCII only (the owner pastes from a clipboard that has mangled Greek before); ONE DO block per file;
+//   - the md5 guards are exactly the plan's starting point (23 live functions), guarded at the top AND re-proved in
+//     PART 5, in one shape ('<sig>', '<md5>');
+//   - born closed: every non-helper plan_* is SECURITY DEFINER SET search_path = public and returns jsonb; every
+//     public writer of v_pub takes (p, p_actor, p_role), starts with plan_h_ctx and calls plan_h_finish; every
+//     plan_h_* helper is SECURITY INVOKER; EXECUTE goes to service_role on exactly the v_pub list; no other GRANT;
+// BOOTSTRAP of Task A1: Task B9 replaces this file with the full build test, which holds every check below.
+//   - 072 adds no table, column, trigger, and replaces or drops no existing function;
+//   - never a mirror (national_orders truck_id / partner_id / status), never RETURNS void, no retired code;
+//   - every plan: code 072 raises has a case in 072_plan_functions_test.sql.
+// The rules themselves are proven by 072_plan_functions_test.sql on PGlite (tms-auditor/test/plan-072.test.mjs).
+'use strict';
+const { test } = require('node:test');
+const assert = require('node:assert');
+const fs = require('node:fs');
+const path = require('node:path');
+
+const ROOT = path.join(__dirname, '..');
+const DIR = path.join(ROOT, 'worker/migrations/drafts');
+const read = (f) => fs.readFileSync(path.join(DIR, f), 'utf8');
+const strip = (s) => s.replace(/--[^\n]*/g, '');
+const DO_FILES = ['072_plan_functions.sql', '072_plan_functions_test.sql'];
+// The plan's starting point (measured 22/10/2026, SELECT only): signature -> md5 of the live prosrc.
+const LIVE = {
+  'public.dl_sync_from_rt()': '331cea3a8987b74a9b0add698df9b158',
+  'public.dl_local_day_sync(bigint,date)': '151dab06e2676f3c8885d7298d0ac6af',
+  'public.dl_sync_from_local_move()': 'f053c478c79ef55dcc62b65a61939b9b',
+  'public.local_moves_before()': '3b9f0a27c9921c63ce9fb41f09ef0462',
+  'public.dl_local_line_guard()': 'e7f0348ccc5764d29608b8701f0e83b6',
+  'public.dl_cash_sync_entry()': '6d702bad6485f06535c6a0d5aff0bd0c',
+  'public.order_cd_stop_follow()': '433a1a7205fceb264e77f5a0c71a1521',
+  'public.ramp_follows_stop()': '6fa6a83c4191af271dbae85935d710c5',
+  'public.invoice_mark_guard()': 'dd975c4f04f95f528c7c79a80eb4d387',
+  'public.stock_guard_natl()': 'e941edbca9ff1bbeba0c89d49eb71cb3',
+  'public.stock_guard_orders()': '63aa751d93cc8b34afa5587912de7045',
+  'public.national_orders_soft_delete_cascade()': '6c423b14397c659272b1c9256189933d',
+  'public.rt_status_guard()': 'd7757f99c3443ac167d5bdaf3e34b142',
+  'public.plan_chk()': '8f2fa7e5541aded2dffc853a57c54c22',
+  'public.plan_rt_window_sync()': '050cbabe34493018f4335f748029761e',
+  'public.plan_rt_problem(bigint)': 'f383f449d55e657cfa929bb51a9120f6',
+  'public.plan_shipment_problem(bigint)': '8dd2beb159142bf5a6a4e32688688875',
+  'public.plan_leg_problem(bigint)': '24803f176f12355faa84c07e43cb0df0',
+  'public.plan_local_loading_problem(bigint)': '4c3dbec3810121a2a585fe8b49ceadf1',
+  'public.ct_rt_legs_v2_guard()': '6240d699bc114ffd49c7d62780432c94',
+  'public.tms_week(date)': '89c5ba44087d4293850a590c3ae4627f',
+  'public.rt_sync_to_orders()': 'a63234c844c2b6236b1e6dfe1410b8fc',
+  'public.rt_sync_to_national_loads()': '028efb76373a0a6517134feaea88bc2f',
+};
+const RETIRED = ['hub_endpoint', 'piece_planned', 'bridge_moved', 'bridge_split', 'legacy_nl', 'frozen',
+  'restore_expired', 'restore_conflict', 'partner_rate_on_owned', 'window_order'];
+
+// Every "CREATE FUNCTION public.<name>(<args>) RETURNS <head> AS $f$ <body> $f$;" of 072.
+function functions(src) {
+  return [...src.matchAll(/CREATE FUNCTION public\.([a-z_0-9]+)\(([^)]*)\)\s+RETURNS ([\s\S]*?) AS \$f\$([\s\S]*?)\$f\$;/g)]
+    .map((m) => ({ name: m[1], args: m[2].replace(/\s+/g, ' ').trim(), head: m[3].replace(/\s+/g, ' ').trim(), body: m[4] }));
+}
+// the writers of v_pub: the (jsonb,text,text) lines (the reads of Task B7 have other signatures)
+function pubList(src) {
+  const m = src.match(/v_pub CONSTANT text\[\] := array_remove\(ARRAY\[([\s\S]*?)\]::text\[\], NULL\);/);
+  assert.ok(m, 'v_pub not found');
+  return [...strip(m[1]).matchAll(/'public\.([a-z_0-9]+)\(jsonb,text,text\)'/g)].map((x) => x[1]);
+}
+
+test('the 072 files are there, ASCII only, ONE DO block each', () => {
+  for (const f of DO_FILES) {
+    const s = read(f);
+    assert.deepStrictEqual([...s].filter((c) => c.charCodeAt(0) > 127), [], f + ' is not ASCII');
+    assert.strictEqual((s.match(/^DO \$/gm) || []).length, 1, f);
+  }
+});
+
+test('the md5 guards are exactly the plan\'s starting point, guarded at the top and re-proved in PART 5', () => {
+  const src = read('072_plan_functions.sql');
+  const pairs = [...src.matchAll(/\('(public\.[a-z_0-9]+\([a-z,\[\]]*\))', '([0-9a-f]{32})'\)/g)];
+  assert.deepStrictEqual(Object.fromEntries(pairs.map((x) => [x[1], x[2]])), LIVE);
+  for (const [sig, m] of Object.entries(LIVE)) {
+    assert.strictEqual(src.split(`('${sig}', '${m}')`).length - 1, 2, `${sig}: once in the guard, once in the proof`);
+  }
+  assert.match(src, /is not the live text read 22\/10/);
+  assert.match(src, /072 proof: % live function\(s\) changed/);
+});
+
+test('born closed: definer publics with ctx and finish, invoker helpers, EXECUTE only on v_pub', () => {
+  const src = read('072_plan_functions.sql');
+  const fns = functions(src);
+  assert.ok(fns.length >= 20, `found ${fns.length} functions`);
+  const pub = pubList(src);
+  for (const f of fns) {
+    assert.ok(f.name.startsWith('plan_'), `${f.name}: every 072 function is plan_*`);
+    assert.match(f.head, /SET search_path = public$/, `${f.name}: SET search_path = public`);
+    if (f.name.startsWith('plan_h_')) {
+      assert.doesNotMatch(f.head, /SECURITY DEFINER/, `${f.name}: helpers are invoker`);
+      continue;
+    }
+    // RETURNS jsonb, never void: the Worker's dbRpc reads the answer as JSON (a void would be a 500 after a write)
+    assert.match(f.head, /^jsonb LANGUAGE (plpgsql|sql)( STABLE)? SECURITY DEFINER SET search_path = public$/, `${f.name}: jsonb, DEFINER`);
+    if (!pub.includes(f.name)) continue;   // plan_rt_create (internal, decision 3) and the reads of Task B7
+    assert.strictEqual(f.args, 'p jsonb, p_actor text, p_role text', `${f.name}: one shape (decision 2)`);
+    assert.match(f.body, /\nbegin\n(\s*--[^\n]*\n)*\s*perform plan_h_ctx\(p_actor, p_role\);/, `${f.name}: plan_h_ctx first`);
+    assert.match(f.body, /perform plan_h_finish\(\);/, `${f.name}: plan_h_finish inside the function`);
+  }
+  const writers = fns.filter((f) => !f.name.startsWith('plan_h_') && f.name !== 'plan_rt_create'
+    && f.args === 'p jsonb, p_actor text, p_role text').map((f) => f.name);
+  assert.deepStrictEqual(pub.slice().sort(), writers.sort(), 'v_pub = every public writer (plan_rt_create is internal)');
+  const s = strip(src);
+  assert.match(s, /EXECUTE format\('REVOKE ALL ON FUNCTION %s FROM PUBLIC, anon, authenticated, service_role', v_f\.sig\);/);
+  assert.match(s, /EXECUTE format\('GRANT EXECUTE ON FUNCTION %s TO service_role', v_sig\);/);
+  assert.strictEqual((s.match(/\bGRANT\b/g) || []).length, 1, 'one GRANT: EXECUTE to service_role on v_pub');
+});
+
+test('072 adds no table, column or trigger, and replaces or drops no existing function', () => {
+  const s = strip(read('072_plan_functions.sql'));
+  assert.doesNotMatch(s, /\b(CREATE|create) (OR REPLACE |or replace )?(TABLE|VIEW|TRIGGER|CONSTRAINT TRIGGER|table|view|trigger)\b/);
+  assert.doesNotMatch(s, /\b(ALTER TABLE|alter table|DROP (FUNCTION|TABLE|VIEW|TRIGGER|INDEX)|drop (function|table|view|trigger|index)|CREATE OR REPLACE FUNCTION|create or replace function)\b/);
+  assert.match(s, /IF v_trg1 <> v_trg0 THEN/);
+  assert.doesNotMatch(s, /UPDATE monitoring\.checks/, 'B-54 stays');
+});
+
+test('never a mirror, never a retired code', () => {
+  const s = strip(read('072_plan_functions.sql'));
+  for (const m of s.matchAll(/insert into national_orders \(([^)]*)\)/gi))
+    assert.doesNotMatch(m[1], /\b(truck_id|partner_id|status|direction|type)\b/, 'INSERT national_orders');
+  for (const m of s.matchAll(/update national_orders set([\s\S]*?)where /gi))
+    assert.doesNotMatch(m[1], /\b(truck_id|partner_id|status)\s*=/, 'UPDATE national_orders');
+  for (const c of RETIRED) assert.ok(!s.includes(c), `retired code ${c} is back`);
+});
+
+test('every plan: code 072 raises has a case in the rules test', () => {
+  const s = strip(read('072_plan_functions.sql'));
+  const codes = new Set([...s.matchAll(/plan_h_raise\('([a-z0-9_]+)'/g)].map((m) => m[1]));
+  for (const m of s.matchAll(/then '([a-z0-9_]+)' else '([a-z0-9_]+)' end,\s*coalesce\(v_det/g)) { codes.add(m[1]); codes.add(m[2]); }
+  assert.ok(codes.has('truck_busy') && codes.has('driver_busy'), 'plan_h_finish maps 23P01 by constraint name');
+  const t = read('072_plan_functions_test.sql');
+  for (const c of codes) assert.ok(t.includes(`'plan:${c}'`), `plan:${c} has no case in 072_plan_functions_test.sql`);
+});
+```
+
+`worker/migrations/drafts/072_plan_functions_test.sql` (πλαίσιο + περιπτώσεις 1–15 των βοηθών):
+
+```sql
+-- RULES TEST 072 (national v5 plan_* functions): every case on TEST rows, then undone.
+-- Runs AFTER 072 said "072 OK". At build time it runs on the PGlite copy (tms-auditor/test/plan-072.test.mjs). On
+-- production it is OPTIONAL, after 15:00, with an explicit yes: it writes TEST rows (locations, clients, partners,
+-- trucks, drivers, national orders, one VS import order with its stops, v5 cycles, payroll lines, cost lines, local
+-- moves, notices, audit rows) and undoes ALL of them with a deliberate final error. Only trace: identity and code
+-- sequences advance (RT-... numbers skip the ones used here).
+-- ONE statement. The red error message IS the result:
+--   "RULES TEST 072 finished - EVERYTHING UNDONE, nothing kept. Result: <N> OK, 0 FAIL || ...".
+-- Any FAIL or ERROR = STOP, copy the panel to the coordinator.
+-- Each case: build S (two OWNED v5 cycles: R1 truck 1 / driver 1 on day D with stops A 06-08, Veroia 09-10, B 12-14;
+-- R2 truck 2 / driver 2 the same on D+1; national order N1 A->B 10 pallets with one shipment sh1 and one piece p1,
+-- written directly, waiting at A), make the case's calls, read the verdict, undo (marker exception). want[k] = 'ok' (the
+-- verdict must start with ok), 'plan:<code>' (the HINT), 'con:<constraint>' or 'state:<SQLSTATE>'.
+-- One want line per case, in the case's order: the plan's tasks append lines above "-- @want" and branches above
+-- "-- @case" and "-- @verdict".
+-- ASCII only. Test ids: legacy_id rec072T..., reference WN072-TEST, names "TEST 072 ...", plates TEST-072-..., actor
+-- test:072, day D = Athens today + 40.
+DO $t072$
+DECLARE
+  td date; d date; e date; k int;
+  hub bigint; la bigint; lb bigint; lc bigint; ld bigint; le bigint;
+  cl1 bigint; cl2 bigint; cl3 bigint; pa bigint; trk1 bigint; trk2 bigint; drv1 bigint; drv2 bigint; drvl bigint;
+  nold bigint; vso bigint; vs_ld bigint; vs_cd bigint; vs_b bigint; vs_d bigint; vs_e bigint;
+  a05 timestamptz; a06 timestamptz; a08 timestamptz; a09 timestamptz; a10 timestamptz; a12 timestamptz;
+  a13 timestamptz; a14 timestamptz; a15 timestamptz; a16 timestamptz;
+  b06 timestamptz; b07 timestamptz; b08 timestamptz; b09 timestamptz; b10 timestamptz; b11 timestamptz;
+  b12 timestamptz; b13 timestamptz; b14 timestamptz; b15 timestamptz; b16 timestamptz;
+  rt1 bigint; rt2 bigint; rt3 bigint; s1a bigint; s1h bigint; s1b bigint; s2a bigint; s2h bigint; s2b bigint;
+  n1 bigint; sh1 bigint; p1 bigint; jsh1 jsonb; jo1 jsonb;
+  x bigint; y bigint; z bigint; q bigint; c1 bigint; c2 bigint; n int; m int; t1 text; t2 text;
+  r jsonb; r2 jsonb; j jsonb; b1 boolean; b2 boolean;
+  want text[] := ARRAY[
+    NULL
+    , 'ok'               -- 1 identity accepted, one audit row with the person and the role
+    , 'plan:no_actor'    -- 2 empty actor
+    , 'plan:no_actor'    -- 3 role outside the five
+    , 'plan:bad_input'   -- 4 unknown key refused, never ignored
+    , 'ok'               -- 5 token: stable, covers amounts; amounts stripped for the dispatcher only
+    , 'plan:truck_busy'  -- 6 EXCLUDE 23P01 on the truck becomes truck_busy
+    , 'plan:driver_busy' -- 7 EXCLUDE 23P01 on the driver becomes driver_busy
+    , 'plan:rt_gone'     -- 8 target cycle does not exist
+    , 'plan:rt_cancelled' -- 9 target cycle cancelled
+    , 'plan:stop_gone'   -- 10 a stop of another cycle
+    , 'plan:bad_input'   -- 11 target side not KATHODOS / ANODOS
+    , 'ok'               -- 12 a new stop is created and the base renumbers seq by side and time
+    , 'ok'               -- 13 an empty cycle is cancelled: payroll with amount deleted, 0 needs_review, notice for costs
+    , 'ok'               -- 14 "paid": a payment of the driver after the cycle, with its TMS week
+    , 'ok'               -- 15 a cycle with a live leg is not cancelled
+    -- @want (one line per case: "    , '<ok|plan:code|con:name|state:XXXXX>'  -- <k> <what>")
+  ]::text[];
+  verdict text; got text; hint text; msg text; cname text; st text;
+  ok int := 0; bad int := 0; res text[] := '{}';
+BEGIN
+  want := want[2:];   -- drop the leading NULL that keeps every want line in the same ", '...'" shape
+  IF to_regprocedure('public.plan_h_raise(text,text)') IS NULL THEN
+    RAISE EXCEPTION 'RULES TEST 072: 072 is not applied - nothing to test';
+  END IF;
+  IF EXISTS (SELECT 1 FROM locations WHERE legacy_id LIKE 'rec072T%') OR EXISTS (SELECT 1 FROM orders WHERE legacy_id LIKE 'rec072T%')
+     OR EXISTS (SELECT 1 FROM national_orders WHERE legacy_id LIKE 'rec072T%' OR reference = 'WN072-TEST')
+     OR EXISTS (SELECT 1 FROM trucks WHERE license_plate LIKE 'TEST-072-%')
+     OR EXISTS (SELECT 1 FROM drivers WHERE full_name LIKE 'TEST 072 %')
+     OR EXISTS (SELECT 1 FROM clients WHERE company_name LIKE 'TEST 072 %')
+     OR EXISTS (SELECT 1 FROM partners WHERE company_name LIKE 'TEST 072 %') THEN
+    RAISE EXCEPTION 'RULES TEST 072: test ids (rec072T..., WN072-TEST, TEST 072 ..., TEST-072-...) already exist - stop';
+  END IF;
+
+  -- Fixture (undone by the final error).
+  td := (now() AT TIME ZONE 'Europe/Athens')::date; d := td + 40; e := d + 1;
+  a05 := (d + time '05:00') AT TIME ZONE 'Europe/Athens'; a06 := (d + time '06:00') AT TIME ZONE 'Europe/Athens';
+  a08 := (d + time '08:00') AT TIME ZONE 'Europe/Athens'; a09 := (d + time '09:00') AT TIME ZONE 'Europe/Athens';
+  a10 := (d + time '10:00') AT TIME ZONE 'Europe/Athens'; a12 := (d + time '12:00') AT TIME ZONE 'Europe/Athens';
+  a13 := (d + time '13:00') AT TIME ZONE 'Europe/Athens'; a14 := (d + time '14:00') AT TIME ZONE 'Europe/Athens';
+  a15 := (d + time '15:00') AT TIME ZONE 'Europe/Athens'; a16 := (d + time '16:00') AT TIME ZONE 'Europe/Athens';
+  b06 := (e + time '06:00') AT TIME ZONE 'Europe/Athens'; b07 := (e + time '07:00') AT TIME ZONE 'Europe/Athens';
+  b08 := (e + time '08:00') AT TIME ZONE 'Europe/Athens'; b09 := (e + time '09:00') AT TIME ZONE 'Europe/Athens';
+  b10 := (e + time '10:00') AT TIME ZONE 'Europe/Athens'; b11 := (e + time '11:00') AT TIME ZONE 'Europe/Athens';
+  b12 := (e + time '12:00') AT TIME ZONE 'Europe/Athens'; b13 := (e + time '13:00') AT TIME ZONE 'Europe/Athens';
+  b14 := (e + time '14:00') AT TIME ZONE 'Europe/Athens'; b15 := (e + time '15:00') AT TIME ZONE 'Europe/Athens';
+  b16 := (e + time '16:00') AT TIME ZONE 'Europe/Athens';
+  SELECT id INTO hub FROM locations WHERE is_hub;
+  INSERT INTO locations (legacy_id, name) VALUES ('rec072TA', 'TEST 072 A') RETURNING id INTO la;
+  INSERT INTO locations (legacy_id, name) VALUES ('rec072TB', 'TEST 072 B') RETURNING id INTO lb;
+  INSERT INTO locations (legacy_id, name) VALUES ('rec072TC', 'TEST 072 C') RETURNING id INTO lc;
+  INSERT INTO locations (legacy_id, name) VALUES ('rec072TD', 'TEST 072 D') RETURNING id INTO ld;
+  INSERT INTO locations (legacy_id, name) VALUES ('rec072TE', 'TEST 072 E') RETURNING id INTO le;
+  INSERT INTO clients (company_name) VALUES ('TEST 072 client 1') RETURNING id INTO cl1;
+  INSERT INTO clients (company_name) VALUES ('TEST 072 client 2') RETURNING id INTO cl2;
+  INSERT INTO clients (company_name) VALUES ('TEST 072 client 3') RETURNING id INTO cl3;
+  INSERT INTO partners (company_name) VALUES ('TEST 072 partner') RETURNING id INTO pa;
+  INSERT INTO trucks (license_plate) VALUES ('TEST-072-1') RETURNING id INTO trk1;
+  INSERT INTO trucks (license_plate) VALUES ('TEST-072-2') RETURNING id INTO trk2;
+  INSERT INTO drivers (full_name) VALUES ('TEST 072 driver 1') RETURNING id INTO drv1;
+  INSERT INTO drivers (full_name) VALUES ('TEST 072 driver 2') RETURNING id INTO drv2;
+  INSERT INTO drivers (full_name) VALUES ('TEST 072 local') RETURNING id INTO drvl;
+  -- a national order of today's model (no shipment): not v5
+  INSERT INTO national_orders (legacy_id, client_id, reference, price) VALUES ('rec072TN0', cl1, 'WN072-TEST', 50) RETURNING id INTO nold;
+  -- a VS import: loads abroad at C, Veroia day D, three Greek deliveries on D+1 (B 20, D 26, E 4 pallets)
+  INSERT INTO orders (legacy_id, order_type, direction, status, veroia_switch, loading_datetime, delivery_datetime,
+                      cross_dock_date, reference, client_id)
+  VALUES ('rec072TO1', 'International', 'Import', 'Pending', true, d - 3, e, d, 'WN072-TEST', cl1) RETURNING id INTO vso;
+  INSERT INTO order_stops (legacy_id, stop_type, stop_number, datetime, order_id, location_id, pallets)
+  VALUES ('rec072TS1', 'Loading', 1, d - 3, vso, lc, 50) RETURNING id INTO vs_ld;
+  INSERT INTO order_stops (legacy_id, stop_type, stop_number, datetime, order_id, location_id, pallets)
+  VALUES ('rec072TS2', 'Cross-dock', 1, d, vso, hub, 50) RETURNING id INTO vs_cd;
+  INSERT INTO order_stops (legacy_id, stop_type, stop_number, datetime, order_id, location_id, pallets)
+  VALUES ('rec072TS3', 'Unloading', 1, e, vso, lb, 20) RETURNING id INTO vs_b;
+  INSERT INTO order_stops (legacy_id, stop_type, stop_number, datetime, order_id, location_id, pallets)
+  VALUES ('rec072TS4', 'Unloading', 2, e, vso, ld, 26) RETURNING id INTO vs_d;
+  INSERT INTO order_stops (legacy_id, stop_type, stop_number, datetime, order_id, location_id, pallets)
+  VALUES ('rec072TS5', 'Unloading', 3, e, vso, le, 4) RETURNING id INTO vs_e;
+  jsh1 := jsonb_build_object('origin_location_id', la, 'dest_location_id', lb, 'pallets', 10, 'load_from', a06,
+                             'load_to', a08, 'deliver_from', a12, 'deliver_to', a14);
+  jo1 := jsonb_build_object('client_id', cl1, 'price', 100, 'reference', 'WN072-TEST', 'goods', 'TEST',
+                            'temperature_c', 2, 'shipments', jsonb_build_array(jsh1));
+
+  FOR k IN 1..coalesce(array_length(want, 1), 0) LOOP
+    verdict := NULL;
+    BEGIN
+      SET CONSTRAINTS ALL DEFERRED;
+      -- S
+      INSERT INTO ct_round_trips (model, scope, trip_type, truck_id, driver_id, date_start, date_end, start_at, end_at,
+                                  status, source, created_by)
+      VALUES (2, 'NATL', 'OWNED', trk1, drv1, d, d, a06, a14, 'planned', 'planner', 'test:072') RETURNING id INTO rt1;
+      INSERT INTO rt_stops (rt_id, seq, location_id, side, planned_from, planned_to, created_by)
+      VALUES (rt1, 1, la, 'KATHODOS', a06, a08, 'test:072') RETURNING id INTO s1a;
+      INSERT INTO rt_stops (rt_id, seq, location_id, side, planned_from, planned_to, created_by)
+      VALUES (rt1, 2, hub, 'KATHODOS', a09, a10, 'test:072') RETURNING id INTO s1h;
+      INSERT INTO rt_stops (rt_id, seq, location_id, side, planned_from, planned_to, created_by)
+      VALUES (rt1, 3, lb, 'KATHODOS', a12, a14, 'test:072') RETURNING id INTO s1b;
+      INSERT INTO ct_round_trips (model, scope, trip_type, truck_id, driver_id, date_start, date_end, start_at, end_at,
+                                  status, source, created_by)
+      VALUES (2, 'NATL', 'OWNED', trk2, drv2, e, e, b06, b14, 'planned', 'planner', 'test:072') RETURNING id INTO rt2;
+      INSERT INTO rt_stops (rt_id, seq, location_id, side, planned_from, planned_to, created_by)
+      VALUES (rt2, 1, la, 'KATHODOS', b06, b08, 'test:072') RETURNING id INTO s2a;
+      INSERT INTO rt_stops (rt_id, seq, location_id, side, planned_from, planned_to, created_by)
+      VALUES (rt2, 2, hub, 'KATHODOS', b09, b10, 'test:072') RETURNING id INTO s2h;
+      INSERT INTO rt_stops (rt_id, seq, location_id, side, planned_from, planned_to, created_by)
+      VALUES (rt2, 3, lb, 'KATHODOS', b12, b14, 'test:072') RETURNING id INTO s2b;
+      INSERT INTO national_orders (legacy_id, client_id, reference, price, pallets, goods, temperature_c)
+      VALUES ('rec072TN1', cl1, 'WN072-TEST', 100, 10, 'TEST', 2) RETURNING id INTO n1;
+      INSERT INTO shipments (nat_order_id, origin_location_id, dest_location_id, pallets, load_from, load_to,
+                             deliver_from, deliver_to, created_by)
+      VALUES (n1, la, lb, 10, a06, a08, a12, a14, 'test:072') RETURNING id INTO sh1;
+      INSERT INTO shipment_pieces (shipment_id, pallets, created_by) VALUES (sh1, 10, 'test:072') RETURNING id INTO p1;
+      SET CONSTRAINTS ALL IMMEDIATE;
+      SET CONSTRAINTS ALL DEFERRED;
+
+      IF k = 0 THEN
+        NULL;
+      ELSIF k = 1 THEN
+        PERFORM plan_h_ctx('test:072', 'dispatcher');
+        PERFORM plan_h_audit('test:072', 'dispatcher', 'update', 'ct_round_trips', rt1::text, '{"a":1}', '{"a":2}');
+      ELSIF k = 2 THEN
+        PERFORM plan_h_ctx('  ', 'owner');
+      ELSIF k = 3 THEN
+        PERFORM plan_h_ctx('test:072', 'boss');
+      ELSIF k = 4 THEN
+        PERFORM plan_h_keys('{"rt_id": 1, "truck_id": 2}', array['rt_id'], 'target');
+      ELSIF k = 5 THEN
+        j := jsonb_build_array(jsonb_build_object('kind', 'payroll_amount', 'dl_entry_id', 1, 'amount', 230),
+                               jsonb_build_object('kind', 'costs', 'nested', jsonb_build_object('amount', 3, 'invoice_number', 'X', 'count', 2)));
+        t1 := plan_h_token('plan_x', '1', j);
+        t2 := plan_h_token('plan_x', '1', jsonb_set(j, '{0,amount}', '231'));
+      ELSIF k IN (6, 7) THEN
+        INSERT INTO ct_round_trips (model, scope, trip_type, truck_id, driver_id, date_start, date_end, start_at, end_at,
+                                    status, source, created_by)
+        VALUES (2, 'NATL', 'OWNED', CASE WHEN k = 6 THEN trk1 ELSE trk2 END, CASE WHEN k = 6 THEN drv2 ELSE drv1 END,
+                d, d, a13, a15, 'planned', 'planner', 'test:072') RETURNING id INTO rt3;
+        PERFORM plan_h_finish();
+      ELSIF k = 8 THEN
+        PERFORM plan_h_target(jsonb_build_object('rt_id', -1, 'side', 'KATHODOS'), NULL, 'test:072', 'owner');
+      ELSIF k = 9 THEN
+        INSERT INTO ct_round_trips (model, scope, trip_type, partner_id, date_start, date_end, start_at, end_at,
+                                    status, source, created_by)
+        VALUES (2, 'NATL', 'PARTNER', pa, d, d, a06, a14, 'cancelled', 'planner', 'test:072') RETURNING id INTO rt3;
+        PERFORM plan_h_target(jsonb_build_object('rt_id', rt3, 'side', 'KATHODOS'), NULL, 'test:072', 'owner');
+      ELSIF k = 10 THEN
+        PERFORM plan_h_target(jsonb_build_object('rt_id', rt1, 'side', 'KATHODOS'),
+                              jsonb_build_array(jsonb_build_object('ref', 'x', 'stop_id', s2a)), 'test:072', 'owner');
+      ELSIF k = 11 THEN
+        PERFORM plan_h_target(jsonb_build_object('rt_id', rt1, 'side', 'NORTH'), NULL, 'test:072', 'owner');
+      ELSIF k = 12 THEN
+        r := plan_h_target(jsonb_build_object('rt_id', rt1, 'side', 'KATHODOS'),
+                           jsonb_build_array(jsonb_build_object('ref', 'a', 'stop_id', s1a),
+                                             jsonb_build_object('ref', 'c', 'location_id', lc, 'planned_from', a10,
+                                                                'planned_to', (d + time '11:00') AT TIME ZONE 'Europe/Athens')),
+                           'test:072', 'owner');
+        PERFORM plan_h_reseq(rt1, 'test:072', 'owner');
+        x := (r->'stops'->>'c')::bigint;
+      ELSIF k IN (13, 14) THEN
+        UPDATE dl_entries SET trip_value = 100 WHERE rt_id = rt2 AND deleted_at IS NULL;
+        INSERT INTO ct_cost_lines (rt_id, category, net, vat, alloc_status, created_by, pay_source)
+        VALUES (rt2, 'tolls', 10, 2.4, 'allocated', 'test:072', 'DKV');
+        IF k = 14 THEN
+          INSERT INTO dl_entries (driver_id, entry_type, entry_date, amount, source, created_by)
+          VALUES (drv2, 'payment_bank', e + 5, 500, 'manual', 'test:072');
+        END IF;
+        j := plan_h_rt_consequences(rt2);
+        IF k = 13 THEN b1 := plan_h_rt_cancel_if_empty(rt2, 'test cancel', 'test:072', 'owner'); END IF;
+      ELSIF k = 15 THEN
+        INSERT INTO piece_legs (piece_id, leg_no, rt_id, pickup_stop_id, drop_stop_id, created_by)
+        VALUES (p1, 1, rt1, s1a, s1b, 'test:072');
+        b1 := plan_h_rt_cancel_if_empty(rt1, 'test cancel', 'test:072', 'owner');
+      -- @case (each task adds its "ELSIF k = <n> THEN" branches above this line)
+      END IF;
+      SET CONSTRAINTS ALL IMMEDIATE;
+
+      -- Verdicts (only reached when nothing refused).
+      IF want[k] <> 'ok' THEN
+        verdict := 'FAIL no error';
+      ELSIF k = 1 THEN
+        verdict := CASE WHEN (SELECT count(*) FROM audit_log WHERE actor = 'test:072' AND role = 'dispatcher'
+                                AND table_name = 'ct_round_trips' AND record_id = rt1::text AND after_data = '{"a":2}') = 1
+                        THEN 'ok one audit row with the person and the role' ELSE 'FAIL audit row' END;
+      ELSIF k = 5 THEN
+        verdict := CASE WHEN t1 = plan_h_token('plan_x', '1', j) AND t1 <> t2 AND length(t1) = 32
+                          AND plan_h_strip_amounts(j, 'dispatcher')::text NOT LIKE '%"amount"%'
+                          AND plan_h_strip_amounts(j, 'dispatcher')::text NOT LIKE '%"invoice_number"%'
+                          AND plan_h_strip_amounts(j, 'dispatcher')->1->'nested'->>'count' = '2'
+                          AND plan_h_strip_amounts(j, 'accountant') = j AND plan_h_strip_amounts(j, 'owner') = j
+                        THEN 'ok token stable and amount-sensitive; amounts only for owner/accountant'
+                        ELSE 'FAIL token or strip' END;
+      ELSIF k = 12 THEN
+        verdict := CASE WHEN (SELECT seq FROM rt_stops WHERE id = x) = 3 AND (SELECT seq FROM rt_stops WHERE id = s1b) = 4
+                          AND (SELECT seq FROM rt_stops WHERE id = s1a) = 1 AND (SELECT created_by FROM rt_stops WHERE id = x) = 'test:072'
+                          AND (SELECT start_at = a06 AND end_at = a14 FROM ct_round_trips WHERE id = rt1)
+                          AND (r->'stops'->>'a')::bigint = s1a
+                        THEN 'ok new stop C between Veroia and B, seq by side and time, window unchanged'
+                        ELSE 'FAIL new stop / reseq' END;
+      ELSIF k = 13 THEN
+        verdict := CASE WHEN b1 AND (SELECT status FROM ct_round_trips WHERE id = rt2) = 'cancelled'
+                          AND NOT EXISTS (SELECT 1 FROM dl_entries WHERE rt_id = rt2 AND deleted_at IS NULL)
+                          AND NOT EXISTS (SELECT 1 FROM dl_entries WHERE rt_id = rt2 AND needs_review)
+                          AND (SELECT deleted_reason FROM dl_entries WHERE rt_id = rt2) = 'test cancel (test:072)'
+                          AND NOT EXISTS (SELECT 1 FROM rt_stops WHERE rt_id = rt2 AND deleted_at IS NULL)
+                          AND (SELECT count(*) FROM plan_notices WHERE rt_id = rt2 AND to_desk = 'natl' AND kind = 'costs_without_rt') = 1
+                          AND (SELECT count(*) FROM ct_cost_lines WHERE rt_id = rt2) = 1
+                          AND j @> jsonb_build_array(jsonb_build_object('kind', 'payroll_amount', 'amount', 100, 'paid', false))
+                          AND j @> jsonb_build_array(jsonb_build_object('kind', 'costs', 'pay_source', 'DKV', 'count', 1, 'amount', 12.4))
+                        THEN 'ok cancelled; payroll with amount deleted by the person, 0 needs_review; costs stay, natl notice'
+                        ELSE 'FAIL cancel_if_empty: ' || coalesce(j::text, 'null') END;
+      ELSIF k = 14 THEN
+        verdict := CASE WHEN j @> jsonb_build_array(jsonb_build_object('kind', 'payroll_amount', 'paid', true,
+                                                                       'paid_week', tms_week(e + 5)))
+                        THEN 'ok paid, with the TMS week of the payment' ELSE 'FAIL paid: ' || j::text END;
+      ELSIF k = 15 THEN
+        verdict := CASE WHEN NOT b1 AND (SELECT status FROM ct_round_trips WHERE id = rt1) = 'planned'
+                        THEN 'ok a cycle with a live leg stays' ELSE 'FAIL cancelled a cycle with a leg' END;
+      -- @verdict (each task adds its "ELSIF k = <n> THEN verdict := ..." branches above this line)
+      ELSE
+        verdict := 'FAIL no verdict for case ' || k;
+      END IF;
+      RAISE EXCEPTION 'wn072 undo' USING HINT = 'wn072_undo';
+    EXCEPTION WHEN others THEN
+      GET STACKED DIAGNOSTICS hint = PG_EXCEPTION_HINT, msg = MESSAGE_TEXT, cname = CONSTRAINT_NAME, st = RETURNED_SQLSTATE;
+      got := CASE WHEN hint = 'wn072_undo' THEN coalesce(verdict, 'FAIL no verdict')
+                  WHEN hint LIKE 'plan:%' THEN hint
+                  WHEN coalesce(cname, '') <> '' THEN 'con:' || cname
+                  ELSE 'state:' || st END;
+      IF (want[k] = 'ok' AND got LIKE 'ok%') OR got = want[k] THEN
+        ok := ok + 1; res := res || k::text;
+      ELSE
+        bad := bad + 1; res := res || (k || ' FAIL want ' || want[k] || ' got ' || got || ' (' || msg || ')');
+      END IF;
+    END;
+  END LOOP;
+
+  -- [SECTION B CASES]
+  RAISE EXCEPTION 'RULES TEST 072 finished - EVERYTHING UNDONE, nothing kept. Result: % OK, % FAIL  ||  %',
+    ok, bad, array_to_string(res, ' | ');
+END
+$t072$;
+```
+
+- [ ] **Step 3: Τρέξε, να αποτύχουν**
+
+Run: `cd tms-auditor && node --test test/plan-072.test.mjs`
+Expected: FAIL, `ENOENT: no such file or directory, open '…/worker/migrations/drafts/072_plan_functions.sql'`. Αν αποτύχει νωρίτερα στο `prodShaped()` (λείπει αντικείμενο που καλεί η λήψη, ή FK/NOT NULL της λήψης), πρόσθεσέ το στις λίστες `t`/`f`/`trg` του Step 1 και ξανάκανε τη λήψη· ποτέ διόρθωση με το χέρι.
+
+Run: `node --test tests/sql-072-drafts.test.js`
+Expected: FAIL 6/6 με `ENOENT … 072_plan_functions.sql`.
+
+- [ ] **Step 4: Γράψε το `worker/migrations/drafts/072_plan_functions.sql`**
+
+```sql
+-- 072 - NATIONAL v5, PHASE F2: THE plan_* FUNCTIONS, BORN CLOSED, 0 ROWS.
+--
+-- DRAFT. Spec docs/superpowers/specs/2026-10-21-national-v5-design.md (owner 21/10), plan
+-- docs/superpowers/plans/2026-10-22-f2-national-v5-plan-functions.md. The owner runs it in the Supabase SQL editor AFTER
+-- 15:00 (the team works 05:30-14:30), with an explicit yes, in this order:
+--   0. 071_plan_schema_fingerprint.sql    read-only (keep the row)
+--   1. 072_plan_functions_dryrun.sql      this block + a deliberate error: NOTHING kept
+--   2. 072_plan_functions.sql             (this file)
+--   3. 072_plan_functions_verify.sql      read-only, one row
+--   4. 071_plan_schema_fingerprint.sql    again: the same md5s as in step 0
+--   5. 072_plan_functions_test.sql        OPTIONAL on production (advances the RT- code sequence): the rules on
+--                                         TEST rows, ends in a deliberate error, nothing kept
+-- ASCII only (clipboard-safe; Greek notice texts are base64, as 060). ONE DO block = ONE statement: an error
+-- anywhere undoes all of it.
+--
+-- WHAT IT ADDS: functions only. No table, no column, no trigger (B-54 stays), no change to any existing function
+-- (each one 072 relies on is guarded by the md5 of its LIVE text below). Every write of the v5 model goes through
+-- a public plan_* (SECURITY DEFINER, SET search_path = public, owner postgres, p_actor + p_role, one audit_log row
+-- per changed row, RETURNS jsonb, EXECUTE to service_role only). The internal helpers plan_h_* are closed to
+-- everyone, like the *_problem helpers of 071. A refusal: SQLSTATE 23514, HINT 'plan:<code>'.
+-- Parts (ASCII markers; each task inserts above them, never rewrites): 0 guards, 1 helpers, 2 section A (orders,
+-- put, group, split, move, order update), 3 section B (cycle, delete, VS, local loading), 4 notices and reads,
+-- 5 rights and proofs.
+--
+-- REVERSE: 072_plan_functions_rollback.sql (refuses if any v5 row exists).
+-- EXPECTED: NOTICE "072 OK: ..." and ONE row: result = '072 OK', public_functions = 16 (15 without decision 21),
+--   public_triggers = 46, b54_red_value = 46, v5_rows = 0, v5_cycles = 0 (plan_functions = 6 + the 072 ones).
+
+DO $do$
+DECLARE
+  v_g record; v_trg0 int; v_trg1 int; v_rows0 bigint;
+BEGIN
+  PERFORM set_config('lock_timeout', '5s', true);
+
+  -- 0. GUARDS (read only).
+  IF to_regclass('public.shipments') IS NULL OR to_regclass('public.rt_stops') IS NULL
+     OR (SELECT count(*) FROM pg_constraint WHERE conrelid = 'public.ct_round_trips'::regclass
+          AND conname IN ('rt_v2_truck_once', 'rt_v2_driver_once')) <> 2 THEN
+    RAISE EXCEPTION '072: 071 and 071b must be applied first';
+  END IF;
+  IF to_regprocedure('public.plan_h_raise(text,text)') IS NOT NULL THEN
+    RAISE EXCEPTION '072: already applied (plan_h_raise exists) - run 072_plan_functions_verify.sql instead';
+  END IF;
+  -- Every existing function 072 relies on, as the LIVE text read 22/10 and again 23/10 (md5 of prosrc). Any
+  -- difference = stop: the behaviour the plan_* below were written against is not the one in production any more.
+  -- The SAME list is proved again in PART 5 (tests/sql-072-drafts.test.js wants every pair exactly twice).
+  FOR v_g IN SELECT * FROM (VALUES
+      ('public.dl_sync_from_rt()', '331cea3a8987b74a9b0add698df9b158'),
+      ('public.dl_local_day_sync(bigint,date)', '151dab06e2676f3c8885d7298d0ac6af'),
+      ('public.dl_sync_from_local_move()', 'f053c478c79ef55dcc62b65a61939b9b'),
+      ('public.local_moves_before()', '3b9f0a27c9921c63ce9fb41f09ef0462'),
+      ('public.dl_local_line_guard()', 'e7f0348ccc5764d29608b8701f0e83b6'),
+      ('public.dl_cash_sync_entry()', '6d702bad6485f06535c6a0d5aff0bd0c'),
+      ('public.order_cd_stop_follow()', '433a1a7205fceb264e77f5a0c71a1521'),
+      ('public.ramp_follows_stop()', '6fa6a83c4191af271dbae85935d710c5'),
+      ('public.invoice_mark_guard()', 'dd975c4f04f95f528c7c79a80eb4d387'),
+      ('public.stock_guard_natl()', 'e941edbca9ff1bbeba0c89d49eb71cb3'),
+      ('public.stock_guard_orders()', '63aa751d93cc8b34afa5587912de7045'),
+      ('public.national_orders_soft_delete_cascade()', '6c423b14397c659272b1c9256189933d'),
+      ('public.rt_status_guard()', 'd7757f99c3443ac167d5bdaf3e34b142'),
+      ('public.plan_chk()', '8f2fa7e5541aded2dffc853a57c54c22'),
+      ('public.plan_rt_window_sync()', '050cbabe34493018f4335f748029761e'),
+      ('public.plan_rt_problem(bigint)', 'f383f449d55e657cfa929bb51a9120f6'),
+      ('public.plan_shipment_problem(bigint)', '8dd2beb159142bf5a6a4e32688688875'),
+      ('public.plan_leg_problem(bigint)', '24803f176f12355faa84c07e43cb0df0'),
+      ('public.plan_local_loading_problem(bigint)', '4c3dbec3810121a2a585fe8b49ceadf1'),
+      ('public.ct_rt_legs_v2_guard()', '6240d699bc114ffd49c7d62780432c94'),
+      ('public.tms_week(date)', '89c5ba44087d4293850a590c3ae4627f'),
+      ('public.rt_sync_to_orders()', 'a63234c844c2b6236b1e6dfe1410b8fc'),
+      ('public.rt_sync_to_national_loads()', '028efb76373a0a6517134feaea88bc2f')
+    ) g(sig, m) LOOP
+    IF to_regprocedure(v_g.sig) IS NULL
+       OR (SELECT md5(prosrc) FROM pg_proc WHERE oid = to_regprocedure(v_g.sig)) IS DISTINCT FROM v_g.m THEN
+      RAISE EXCEPTION '072: % is not the live text read 22/10 (expected md5 %) - stop, re-measure', v_g.sig, v_g.m;
+    END IF;
+  END LOOP;
+  IF (SELECT count(*) FROM pg_proc WHERE pronamespace = 'public'::regnamespace AND proname LIKE 'plan\_%') <> 6 THEN
+    RAISE EXCEPTION '072: expected exactly the 6 plan_* functions of 071 - stop, re-measure';
+  END IF;
+  SELECT (SELECT count(*) FROM public.shipments) + (SELECT count(*) FROM public.shipment_pieces)
+       + (SELECT count(*) FROM public.rt_stops) + (SELECT count(*) FROM public.piece_legs)
+       + (SELECT count(*) FROM public.plan_notices) + (SELECT count(*) FROM public.ct_round_trips WHERE model = 2)
+    INTO v_rows0;
+  IF v_rows0 <> 0 THEN
+    RAISE EXCEPTION '072: % v5 row(s) exist before 072 - stop (the plan was measured on 0)', v_rows0;
+  END IF;
+  IF (SELECT count(*) FROM public.locations WHERE is_hub) <> 1 THEN
+    RAISE EXCEPTION '072: the hub is not exactly one location';
+  END IF;
+  SELECT count(*) INTO v_trg0 FROM pg_trigger t JOIN pg_class c ON c.oid = t.tgrelid
+    JOIN pg_namespace ns ON ns.oid = c.relnamespace
+   WHERE NOT t.tgisinternal AND t.tgenabled <> 'D' AND ns.nspname = 'public';
+  IF NOT EXISTS (SELECT 1 FROM monitoring.checks WHERE id = 'B-54' AND red_value = v_trg0 AND baseline IS NULL) THEN
+    RAISE EXCEPTION '072: B-54 red_value is not the live trigger count % - re-measure', v_trg0;
+  END IF;
+
+  -- 1. HELPERS (plan_h_*: closed to every API role, called only by the plan_* below, owner postgres).
+  CREATE FUNCTION public.plan_h_raise(p_code text, p_detail text) RETURNS void
+    LANGUAGE plpgsql SET search_path = public AS $f$
+begin
+  -- One shape for every refusal of plan_* (spec 2.1, the same as 071's plan_chk): SQLSTATE 23514, HINT
+  -- 'plan:<code>'. The Worker puts what follows "<code>:" in brackets after its Greek text, so the detail is
+  -- ASCII only (ids, codes, dates), never user text.
+  raise exception 'plan rule broken: %:%', p_code, coalesce(p_detail, '')
+    using errcode = '23514', hint = 'plan:' || p_code;
+end
+$f$;
+
+  CREATE FUNCTION public.plan_h_ctx(p_actor text, p_role text) RETURNS void
+    LANGUAGE plpgsql SET search_path = public AS $f$
+begin
+  -- Who (decision 1): audit_log.role is NOT NULL and the auditor tells people from machines by it. The
+  -- RIGHTS live only in the Worker's PLAN_PERMS (one source); the base uses the role for the audit row and to
+  -- decide whether money is shown (decision 9).
+  if coalesce(btrim(p_actor), '') = '' then perform plan_h_raise('no_actor', 'actor'); end if;
+  if p_role is null or p_role not in ('owner', 'dispatcher', 'management', 'accountant', 'warehouse') then
+    perform plan_h_raise('no_actor', 'role');
+  end if;
+  -- Each plan_* is one transaction of its own through PostgREST, where the 071 rules start DEFERRED. A caller
+  -- that ran an earlier plan_* in the same transaction (the rules test does) left them IMMEDIATE (plan_h_finish):
+  -- deferring again here makes every call see the same thing, whoever calls it.
+  set constraints all deferred;
+end
+$f$;
+
+  CREATE FUNCTION public.plan_h_keys(p jsonb, p_allowed text[], p_what text) RETURNS void
+    LANGUAGE plpgsql SET search_path = public AS $f$
+declare k text;
+begin
+  -- An unknown key is refused, never ignored (principle 1: the facade's silent drop of unknown fields cost 10
+  -- findings). The key is named in the detail only when it is a plain ASCII name.
+  if p is null or jsonb_typeof(p) <> 'object' then perform plan_h_raise('bad_input', p_what); end if;
+  select x into k from jsonb_object_keys(p) x where not (x = any (p_allowed)) order by x limit 1;
+  if k is not null then
+    perform plan_h_raise('bad_input', p_what || '.' || case when k ~ '^[A-Za-z0-9_]+$' then k else '?' end);
+  end if;
+end
+$f$;
+
+  CREATE FUNCTION public.plan_h_audit(p_actor text, p_role text, p_action text, p_table text, p_id text,
+                                      p_before jsonb, p_after jsonb) RETURNS void
+    LANGUAGE plpgsql SET search_path = public AS $f$
+begin
+  -- One audit_log row per changed row, the actor being the person (spec 2.1), never 'trigger:'.
+  insert into audit_log (actor, role, action, table_name, record_id, before_data, after_data, created_at)
+  values (p_actor, p_role, p_action, p_table, p_id, p_before, p_after, now());
+end
+$f$;
+
+  CREATE FUNCTION public.plan_h_location(p_location bigint) RETURNS bigint
+    LANGUAGE plpgsql SET search_path = public AS $f$
+begin
+  if p_location is null or not exists (select 1 from locations where id = p_location and deleted_at is null) then
+    perform plan_h_raise('bad_input', 'location:' || coalesce(p_location::text, 'null'));
+  end if;
+  return p_location;
+end
+$f$;
+
+  CREATE FUNCTION public.plan_h_stop_add(p_rt bigint, p_location bigint, p_side text, p_from timestamptz,
+                                         p_to timestamptz, p_actor text, p_role text) RETURNS bigint
+    LANGUAGE plpgsql SET search_path = public AS $f$
+declare s rt_stops%rowtype; v_seq int;
+begin
+  if p_side is null or p_side not in ('KATHODOS', 'ANODOS') then perform plan_h_raise('bad_input', 'stop.side'); end if;
+  if p_from is null or p_to is null then perform plan_h_raise('bad_input', 'stop.planned'); end if;
+  perform plan_h_location(p_location);
+  -- A provisional seq after the live ones; plan_h_reseq gives the final order (decision 5).
+  select coalesce(max(seq), 0) + 1 into v_seq from rt_stops where rt_id = p_rt and deleted_at is null;
+  insert into rt_stops (rt_id, seq, location_id, side, planned_from, planned_to, created_by)
+  values (p_rt, v_seq, p_location, p_side, p_from, p_to, p_actor) returning * into s;
+  perform plan_h_audit(p_actor, p_role, 'create', 'rt_stops', s.id::text, null, to_jsonb(s));
+  return s.id;
+end
+$f$;
+
+  CREATE FUNCTION public.plan_h_reseq(p_rt bigint, p_actor text, p_role text) RETURNS void
+    LANGUAGE plpgsql SET search_path = public AS $f$
+declare r record;
+begin
+  -- Decision 5: the base alone writes seq - KATHODOS before ANODOS, then by planned_from. A stop that does not
+  -- fit that order in time is refused at the end by 071 (stop_order / leg_order), never silently re-dated.
+  for r in select s.id, s.seq,
+                  row_number() over (order by (s.side = 'ANODOS'), s.planned_from, s.seq, s.id) as rn
+             from rt_stops s where s.rt_id = p_rt and s.deleted_at is null loop
+    if r.seq <> r.rn then
+      update rt_stops set seq = r.rn where id = r.id;
+      perform plan_h_audit(p_actor, p_role, 'update', 'rt_stops', r.id::text,
+                           jsonb_build_object('seq', r.seq), jsonb_build_object('seq', r.rn));
+    end if;
+  end loop;
+end
+$f$;
+
+  CREATE FUNCTION public.plan_h_target(p_target jsonb, p_stops jsonb, p_actor text, p_role text) RETURNS jsonb
+    LANGUAGE plpgsql SET search_path = public AS $f$
+declare
+  r ct_round_trips%rowtype; v_rt bigint; v_side text; s jsonb; v_ref text; v_id bigint; v_map jsonb := '{}';
+begin
+  -- Resolves a target {rt_id, side} or {new_rt, side} and the request's stops into {rt_id, side, stops: {ref:
+  -- stop_id}}: existing live stops by stop_id, new ones created (decision 4: the base invents no stop and no hour).
+  perform plan_h_keys(p_target, array['rt_id', 'side', 'new_rt'], 'target');
+  v_side := p_target->>'side';
+  if v_side is null or v_side not in ('KATHODOS', 'ANODOS') then perform plan_h_raise('bad_input', 'target.side'); end if;
+  if p_target ? 'new_rt' then
+    if p_target ? 'rt_id' then perform plan_h_raise('bad_input', 'target: rt_id and new_rt'); end if;
+    -- Decision 3: the cycle is born from this assignment only, in the caller's transaction. plan_rt_create is
+    -- section B's (Task B1) and late-bound: until B1 exists this call is 42883, and no case of section A uses it.
+    -- It answers this function's shape {rt_id, side, stops} plus code / stop_ids / new / warnings.
+    return plan_rt_create(jsonb_build_object('new_rt', p_target->'new_rt', 'side', v_side, 'stops', p_stops),
+                          p_actor, p_role);
+  end if;
+  v_rt := (p_target->>'rt_id')::bigint;
+  if v_rt is null then perform plan_h_raise('bad_input', 'target.rt_id'); end if;
+  -- One writer per cycle at a time (as rt_merge): two dispatchers on one truck queue here, not at COMMIT.
+  select * into r from ct_round_trips where id = v_rt for update;
+  if r.id is null or r.model <> 2 then perform plan_h_raise('rt_gone', v_rt::text); end if;
+  if r.status = 'cancelled' then perform plan_h_raise('rt_cancelled', v_rt::text); end if;
+  if p_stops is not null and jsonb_typeof(p_stops) <> 'array' then perform plan_h_raise('bad_input', 'stops'); end if;
+  for s in select value from jsonb_array_elements(coalesce(p_stops, '[]')) loop
+    perform plan_h_keys(s, array['ref', 'stop_id', 'location_id', 'side', 'planned_from', 'planned_to'], 'stop');
+    v_ref := s->>'ref';
+    if v_ref is null or v_map ? v_ref then perform plan_h_raise('bad_input', 'stop.ref'); end if;
+    if s ? 'stop_id' then
+      select id into v_id from rt_stops where id = (s->>'stop_id')::bigint and rt_id = v_rt and deleted_at is null;
+      if v_id is null then perform plan_h_raise('stop_gone', s->>'stop_id'); end if;
+    else
+      v_id := plan_h_stop_add(v_rt, (s->>'location_id')::bigint, coalesce(s->>'side', v_side),
+                              (s->>'planned_from')::timestamptz, (s->>'planned_to')::timestamptz, p_actor, p_role);
+    end if;
+    v_map := v_map || jsonb_build_object(v_ref, v_id);
+  end loop;
+  return jsonb_build_object('rt_id', v_rt, 'side', v_side, 'stops', v_map);
+end
+$f$;
+
+  CREATE FUNCTION public.plan_h_stop_at(p_map jsonb, p_location bigint, p_side text) RETURNS bigint
+    LANGUAGE plpgsql SET search_path = public AS $f$
+declare v_ids bigint[];
+begin
+  -- Decision 6: a piece's stop is found by place among the request's stops; on the target side first.
+  select array_agg(s.id order by (s.side <> p_side), s.id) into v_ids
+    from rt_stops s
+   where s.id in (select value::bigint from jsonb_each_text(coalesce(p_map, '{}')))
+     and s.location_id = p_location and s.deleted_at is null;
+  if v_ids is null then return null; end if;
+  if array_length(v_ids, 1) > 1
+     and (select count(*) from rt_stops where id = any (v_ids) and side = p_side) <> 1 then
+    perform plan_h_raise('bad_input', 'stop.ambiguous:' || p_location);
+  end if;
+  return v_ids[1];
+end
+$f$;
+
+  CREATE FUNCTION public.plan_h_leg_add(p_piece bigint, p_rt bigint, p_pickup bigint, p_drop bigint,
+                                        p_actor text, p_role text, p_leg_no int DEFAULT NULL) RETURNS bigint
+    LANGUAGE plpgsql SET search_path = public AS $f$
+declare l piece_legs%rowtype; v_no int;
+begin
+  -- The next live leg number of the piece (a moved leg is soft-deleted first, so its number is free again). A
+  -- re-pointed leg keeps its number (p_leg_no, plan_vs_set_place): the chain of the piece does not change.
+  v_no := p_leg_no;
+  if v_no is null then
+    select coalesce(max(leg_no), 0) + 1 into v_no from piece_legs where piece_id = p_piece and deleted_at is null;
+  end if;
+  insert into piece_legs (piece_id, leg_no, rt_id, pickup_stop_id, drop_stop_id, created_by)
+  values (p_piece, v_no, p_rt, p_pickup, p_drop, p_actor) returning * into l;
+  perform plan_h_audit(p_actor, p_role, 'create', 'piece_legs', l.id::text, null, to_jsonb(l));
+  -- F3 hook: the pallet feeder of this leg (pl_movements.piece_leg_id, 073) is written here.
+  return l.id;
+end
+$f$;
+
+  CREATE FUNCTION public.plan_h_leg_drop(p_leg bigint, p_reason text, p_actor text, p_role text) RETURNS void
+    LANGUAGE plpgsql SET search_path = public AS $f$
+declare a piece_legs%rowtype; b piece_legs%rowtype;
+begin
+  -- A leg never changes (071 leg_locked): it is soft-deleted and a new one is written.
+  select * into a from piece_legs where id = p_leg and deleted_at is null for update;
+  if a.id is null then return; end if;
+  update piece_legs set deleted_at = now(), deleted_reason = p_reason, deleted_by = p_actor
+   where id = p_leg returning * into b;
+  perform plan_h_audit(p_actor, p_role, 'delete', 'piece_legs', p_leg::text, to_jsonb(a), to_jsonb(b));
+end
+$f$;
+
+  CREATE FUNCTION public.plan_h_stops_sweep(p_stops bigint[], p_reason text, p_actor text, p_role text)
+    RETURNS bigint[]
+    LANGUAGE plpgsql SET search_path = public AS $f$
+declare s rt_stops%rowtype; s2 rt_stops%rowtype; lm local_moves%rowtype; v_out bigint[] := '{}';
+begin
+  -- Decision 4: a stop that lost its last leg in THIS operation goes (soft); a stop declared without a leg stays.
+  -- Its loading by a local driver goes with it, in the same transaction (spec 3; 071 local_loading_stop/_gone).
+  for s in select * from rt_stops where id = any (p_stops) and deleted_at is null order by id for update loop
+    if not exists (select 1 from piece_legs where pickup_stop_id = s.id and deleted_at is null) then
+      for lm in update local_moves set deleted_at = now()
+                 where rt_stop_id = s.id and move_kind = 'nat_loading' and deleted_at is null and status <> 'Cancelled'
+                returning * loop
+        perform plan_h_audit(p_actor, p_role, 'delete', 'local_moves', lm.id::text,
+                             jsonb_build_object('deleted_at', null), jsonb_build_object('deleted_at', lm.deleted_at, 'reason', p_reason));
+      end loop;
+    end if;
+    if not exists (select 1 from piece_legs where (pickup_stop_id = s.id or drop_stop_id = s.id) and deleted_at is null) then
+      update rt_stops set deleted_at = now(), deleted_reason = p_reason, deleted_by = p_actor
+       where id = s.id returning * into s2;
+      perform plan_h_audit(p_actor, p_role, 'delete', 'rt_stops', s.id::text, to_jsonb(s), to_jsonb(s2));
+      v_out := v_out || s.id;
+    end if;
+  end loop;
+  return v_out;
+end
+$f$;
+
+  CREATE FUNCTION public.plan_h_token(p_fn text, p_key text, p_full jsonb) RETURNS text
+    LANGUAGE sql IMMUTABLE SET search_path = public AS $f$
+  -- Decision 7: no token table. The FULL list (always with the amounts) is in the token, so a changed amount
+  -- between the dry run and the execution is stale_confirm even for a role that never saw the amount.
+  select md5('072|' || p_fn || '|' || p_key || '|' || p_full::text)
+$f$;
+
+  CREATE FUNCTION public.plan_h_strip_amounts(p jsonb, p_role text) RETURNS jsonb
+    LANGUAGE plpgsql IMMUTABLE SET search_path = public AS $f$
+begin
+  -- Decision 9 / spec 3 Rights: amounts only to owner and accountant; cut here, in one place, so no route can
+  -- leak them (the Worker passes the answer through as it is).
+  if p_role in ('owner', 'accountant') or p is null then return p; end if;
+  if jsonb_typeof(p) = 'object' then
+    return (select coalesce(jsonb_object_agg(k, plan_h_strip_amounts(v, p_role)), '{}'::jsonb)
+              from jsonb_each(p) t(k, v) where k not in ('amount', 'advance', 'expenses', 'invoice_number'));
+  elsif jsonb_typeof(p) = 'array' then
+    return (select coalesce(jsonb_agg(plan_h_strip_amounts(v, p_role) order by i), '[]'::jsonb)
+              from jsonb_array_elements(p) with ordinality t(v, i));
+  end if;
+  return p;
+end
+$f$;
+
+  CREATE FUNCTION public.plan_h_rt_consequences(p_rt bigint) RETURNS jsonb
+    LANGUAGE plpgsql STABLE SET search_path = public AS $f$
+declare r ct_round_trips%rowtype; v jsonb;
+begin
+  -- What leaves with a cycle's vehicle or the cycle itself: payroll lines WITH amounts (011's definition:
+  -- trip_value, advance or expenses entered) and the cost lines per pay source. Decision 10: "paid" = a live
+  -- payment of the same driver dated on or after the cycle's last day; paid_week = its TMS week. Full amounts;
+  -- the caller strips them by role.
+  select * into r from ct_round_trips where id = p_rt;
+  select coalesce(jsonb_agg(x order by x->>'kind', x::text), '[]'::jsonb) into v from (
+    select jsonb_build_object('kind', 'payroll_amount', 'rt_id', p_rt, 'dl_entry_id', e.id, 'driver_id', e.driver_id,
+             'paid', pay.d is not null, 'paid_week', tms_week(pay.d),
+             'amount', e.trip_value, 'advance', e.advance, 'expenses', e.expenses) as x
+      from dl_entries e
+      cross join lateral (select min(q.entry_date) as d from dl_entries q
+                           where q.driver_id = e.driver_id and q.entry_type in ('payment_bank', 'payment_cash')
+                             and q.deleted_at is null and q.entry_date >= coalesce(r.date_end, r.date_start)) pay
+     where e.rt_id = p_rt and e.deleted_at is null
+       and (e.trip_value is not null or e.advance is not null or e.expenses is not null)
+    union all
+    select jsonb_build_object('kind', 'costs', 'rt_id', p_rt, 'pay_source', c.pay_source, 'count', count(*),
+                              'amount', sum(c.net + c.vat))
+      from ct_cost_lines c where c.rt_id = p_rt group by c.pay_source) t;
+  return v;
+end
+$f$;
+
+  CREATE FUNCTION public.plan_h_notice(p_desk text, p_kind text, p_tpl_b64 text, p_args text[], p_order bigint,
+                                       p_nat_order bigint, p_rt bigint, p_actor text, p_role text) RETURNS bigint
+    LANGUAGE plpgsql SET search_path = public AS $f$
+declare n plan_notices%rowtype;
+begin
+  -- Decision 25: the base writes the Greek text (base64 template, this file stays ASCII), so the board and the
+  -- auditor read the same words.
+  insert into plan_notices (to_desk, kind, message, order_id, nat_order_id, rt_id, created_by)
+  values (p_desk, p_kind, format(convert_from(decode(p_tpl_b64, 'base64'), 'UTF8'), variadic p_args),
+          p_order, p_nat_order, p_rt, p_actor) returning * into n;
+  perform plan_h_audit(p_actor, p_role, 'create', 'plan_notices', n.id::text, null, to_jsonb(n));
+  return n.id;
+end
+$f$;
+
+  CREATE FUNCTION public.plan_h_vs_day(p_order bigint, p_day date, p_actor text, p_role text) RETURNS bigint
+    LANGUAGE plpgsql SET search_path = public AS $f$
+declare o orders%rowtype;
+begin
+  -- Spec 3 VS: ONE field, orders.cross_dock_date; 069 order_cd_stop_follow moves the order's Cross-dock stop and
+  -- ramp_follows_stop its Ramp line, as today. NULL = nothing changed, no notice.
+  select * into o from orders where id = p_order for update;
+  if o.id is null or o.cross_dock_date is not distinct from p_day then return null; end if;
+  -- Decision 17: F5's bridge trigger reads this to tell the national desk's write (the VS stays on its truck)
+  -- from the international desk's.
+  perform set_config('plan.writer', 'natl', true);
+  update orders set cross_dock_date = p_day where id = p_order;
+  perform plan_h_audit(p_actor, p_role, 'update', 'orders', coalesce(o.legacy_id, o.id::text),
+                       jsonb_build_object('cross_dock_date', o.cross_dock_date),
+                       jsonb_build_object('cross_dock_date', p_day, 'by', 'national desk (072)'));
+  -- "The national desk changed the Veroia day of international %s: %s -> %s"
+  return plan_h_notice('intl', 'vs_day_changed',
+    'zqTOvyDOlc64zr3Ouc66z47OvSDOrM67zrvOsc6+zrUgz4TOt869IM63zrzOrc+BzrEgzpLOrc+Bzr/Ouc6xz4Igz4TOt8+CIM60zrnOtc64zr3Ov8+Nz4IgJXM6ICVzIOKGkiAlcw==',
+    array[coalesce(o.reference, o.id::text), coalesce(to_char(o.cross_dock_date, 'DD/MM'), '-'), to_char(p_day, 'DD/MM')],
+    p_order, null, null, p_actor, p_role);
+end
+$f$;
+
+  CREATE FUNCTION public.plan_h_vs_follow(p_pieces bigint[], p_actor text, p_role text) RETURNS bigint[]
+    LANGUAGE plpgsql SET search_path = public AS $f$
+declare o record; v_out bigint[] := '{}'; v_n bigint;
+begin
+  -- Decision 16 / spec 3 VS: when this operation put on a truck a piece of a VS that was NOT stock, the
+  -- international's day becomes the FIRST hub day of all its pieces (v_vs_state, the one definition).
+  for o in select distinct ps.order_id, vv.first_hub_day
+             from v_piece_state ps join v_vs_state vv on vv.order_id = ps.order_id
+            where ps.piece_id = any (p_pieces) and ps.kind in ('vs_import', 'vs_export') loop
+    if o.first_hub_day is not null then
+      v_n := plan_h_vs_day(o.order_id, o.first_hub_day, p_actor, p_role);
+      if v_n is not null then v_out := v_out || v_n; end if;
+    end if;
+  end loop;
+  return v_out;
+end
+$f$;
+
+  CREATE FUNCTION public.plan_h_rt_cancel_if_empty(p_rt bigint, p_reason text, p_actor text, p_role text)
+    RETURNS boolean
+    LANGUAGE plpgsql SET search_path = public AS $f$
+declare r ct_round_trips%rowtype; lm local_moves%rowtype; s rt_stops%rowtype; e dl_entries%rowtype; v_n bigint;
+begin
+  -- Decision 11, in this order: (legs already off) (b) local loadings, (c) stops, (d) payroll lines WITH amounts
+  -- deleted explicitly - 011 would flag them needs_review, and the spec says there is no needs_review - (e) the
+  -- cycle cancelled (spec 2.1: no deleted_at on ct_round_trips). 011 deletes the empty payroll line by itself.
+  select * into r from ct_round_trips where id = p_rt for update;
+  if r.id is null or r.model <> 2 or r.status = 'cancelled' then return false; end if;
+  if exists (select 1 from piece_legs where rt_id = p_rt and deleted_at is null) then return false; end if;
+  for lm in update local_moves set deleted_at = now()
+             where rt_stop_id in (select id from rt_stops where rt_id = p_rt) and move_kind = 'nat_loading'
+               and deleted_at is null and status <> 'Cancelled' returning * loop
+    perform plan_h_audit(p_actor, p_role, 'delete', 'local_moves', lm.id::text,
+                         jsonb_build_object('deleted_at', null), jsonb_build_object('deleted_at', lm.deleted_at, 'reason', p_reason));
+  end loop;
+  for s in update rt_stops set deleted_at = now(), deleted_reason = p_reason, deleted_by = p_actor
+            where rt_id = p_rt and deleted_at is null returning * loop
+    perform plan_h_audit(p_actor, p_role, 'delete', 'rt_stops', s.id::text, jsonb_build_object('deleted_at', null),
+                         jsonb_build_object('deleted_at', s.deleted_at, 'reason', p_reason));
+  end loop;
+  for e in update dl_entries set deleted_at = now(), deleted_reason = p_reason || ' (' || p_actor || ')', updated_at = now()
+            where rt_id = p_rt and deleted_at is null
+              and (trip_value is not null or advance is not null or expenses is not null) returning * loop
+    perform plan_h_audit(p_actor, p_role, 'delete', 'dl_entries', e.id::text,
+                         jsonb_build_object('deleted_at', null, 'trip_value', e.trip_value, 'advance', e.advance, 'expenses', e.expenses),
+                         jsonb_build_object('deleted_at', e.deleted_at, 'deleted_reason', e.deleted_reason));
+  end loop;
+  update ct_round_trips set status = 'cancelled', updated_at = now() where id = p_rt;
+  perform plan_h_audit(p_actor, p_role, 'update', 'ct_round_trips', p_rt::text, jsonb_build_object('status', r.status),
+                       jsonb_build_object('status', 'cancelled', 'reason', p_reason));
+  -- Decision 13: cost lines stay on the cycle (the trace; DKV must not re-match a wrong cycle) and the
+  -- national desk is told.
+  select count(*) into v_n from ct_cost_lines where rt_id = p_rt;
+  if v_n > 0 then
+    -- "Cycle %s was cancelled and keeps %s cost lines: a trip is missing"
+    perform plan_h_notice('natl', 'costs_without_rt',
+      'zp8gzrrPjc66zrvOv8+CICVzIM6xzrrPhc+Bz47OuM63zrrOtSDOus6xzrkgzrrPgc6xz4TOrCAlcyDOs8+BzrHOvM68zq3PgiDOtc6+z4zOtM+Jzr06IM67zrXOr8+AzrXOuSDOtM+Bzr/OvM6/zrvPjM6zzrnOvw==',
+      array[r.code, v_n::text], null, null, p_rt, p_actor, p_role);
+  end if;
+  return true;
+end
+$f$;
+
+  CREATE FUNCTION public.plan_h_finish() RETURNS void
+    LANGUAGE plpgsql SET search_path = public AS $f$
+declare v_con text; v_det text;
+begin
+  -- Every plan_* ends here: the deferred rules of 071/071b fire INSIDE the function, where a refusal keeps its
+  -- plan:<code>, instead of at COMMIT inside PostgREST. The EXCLUDE of 071b (23P01) becomes truck_busy /
+  -- driver_busy with the codes of the cycles that collide (decision 19).
+  set constraints all immediate;
+exception when exclusion_violation then
+  get stacked diagnostics v_con = constraint_name;
+  select string_agg(distinct a.code, '/') into v_det
+    from ct_round_trips a join ct_round_trips b
+      on b.id <> a.id and b.model = 2 and b.trip_type = 'OWNED' and b.status <> 'cancelled'
+     and tstzrange(a.start_at, a.end_at, '[)') && tstzrange(b.start_at, b.end_at, '[)')
+     and case when v_con = 'rt_v2_driver_once' then a.driver_id = b.driver_id else a.truck_id = b.truck_id end
+   where a.model = 2 and a.trip_type = 'OWNED' and a.status <> 'cancelled';
+  perform plan_h_raise(case when v_con = 'rt_v2_driver_once' then 'driver_busy' else 'truck_busy' end,
+                       coalesce(v_det, v_con));
+end
+$f$;
+
+  CREATE FUNCTION public.plan_h_ok(p_op text, p_ids jsonb, p_warnings jsonb, p_notices jsonb) RETURNS jsonb
+    LANGUAGE sql IMMUTABLE SET search_path = public AS $f$
+  -- The one answer shape of every write (Interfaces): empty lists are [], never absent (facade trap 2).
+  select jsonb_build_object('ok', true, 'op', p_op, 'dry_run', false, 'ids', coalesce(p_ids, '{}'::jsonb),
+                            'warnings', coalesce(p_warnings, '[]'::jsonb), 'notice_ids', coalesce(p_notices, '[]'::jsonb))
+$f$;
+
+  -- ===== PART 2: SECTION A (each task of section A inserts its functions above the marker below) =====
+  -- @A (072 section A: plan_orders_create, plan_put_pieces, plan_put_group, plan_split_piece, plan_move_pieces, plan_order_update)
+
+  -- ===== PART 3: CYCLE, DELETE, VS, LOCAL LOADING (section B) =====
+  -- ===== PART 4: NOTICES AND READS (section B) =====
+  -- ===== PART 5: RIGHTS AND PROOFS =====
+  -- Its own block: the reviewer reads the rights in one place. Born closed (principle 5): the pg_default_acl of
+  -- postgres gives EXECUTE to anon and authenticated on every new function. Everything 072 created loses every
+  -- right, then service_role gets EXECUTE on v_pub only; plan_rt_create and every plan_h_* stay callable by nobody
+  -- but their owner (the plan_* run as it).
+  DECLARE
+    -- The functions the Worker may call (PLAN_PERMS decides who; the base checks shape and rules). Each task adds
+    -- its line above the marker; the leading NULL keeps every added line in the same ", '...'" shape and is removed.
+    -- 16 when the plan is done (15 without decision 21).
+    v_pub CONSTANT text[] := array_remove(ARRAY[
+      NULL
+    -- @pub (072 tasks add ", 'public.plan_x(<arg types>)'" lines above this marker)
+    ]::text[], NULL);
+    -- 071's own plan_* (triggers and rule readers): never touched by 072, closed for every API role
+    v_f1 CONSTANT text[] := ARRAY['plan_chk', 'plan_rt_window_sync', 'plan_rt_problem', 'plan_shipment_problem',
+                                  'plan_leg_problem', 'plan_local_loading_problem'];
+    v_sig text; v_f record; v_k int; v_all int;
+  BEGIN
+    FOREACH v_sig IN ARRAY v_pub LOOP
+      IF to_regprocedure(v_sig) IS NULL THEN
+        RAISE EXCEPTION '072: % was not created - stop', v_sig;
+      END IF;
+    END LOOP;
+    FOR v_f IN SELECT p.oid::regprocedure AS sig FROM pg_proc p
+                WHERE p.pronamespace = 'public'::regnamespace AND p.proname LIKE 'plan\_%'
+                  AND NOT (p.proname = ANY (v_f1)) ORDER BY 1 LOOP
+      EXECUTE format('REVOKE ALL ON FUNCTION %s FROM PUBLIC, anon, authenticated, service_role', v_f.sig);
+    END LOOP;
+    FOREACH v_sig IN ARRAY v_pub LOOP
+      EXECUTE format('GRANT EXECUTE ON FUNCTION %s TO service_role', v_sig);
+    END LOOP;
+
+    -- PROOFS (any difference = everything undone)
+    SELECT count(*) INTO v_all FROM pg_proc p
+     WHERE p.pronamespace = 'public'::regnamespace AND p.proname LIKE 'plan\_%' AND NOT (p.proname = ANY (v_f1));
+    SELECT count(*) INTO v_k FROM pg_proc p
+     WHERE p.pronamespace = 'public'::regnamespace AND p.proname LIKE 'plan\_%'
+       AND (has_function_privilege('anon', p.oid, 'EXECUTE') OR has_function_privilege('authenticated', p.oid, 'EXECUTE'));
+    IF v_k <> 0 THEN RAISE EXCEPTION '072 proof: % plan_* function(s) executable by anon / authenticated', v_k; END IF;
+    SELECT count(*) INTO v_k FROM pg_proc p
+     WHERE p.pronamespace = 'public'::regnamespace AND p.proname LIKE 'plan\_%'
+       AND has_function_privilege('service_role', p.oid, 'EXECUTE');
+    IF v_k <> cardinality(v_pub)
+       OR EXISTS (SELECT 1 FROM unnest(v_pub) s WHERE NOT has_function_privilege('service_role', to_regprocedure(s), 'EXECUTE')) THEN
+      RAISE EXCEPTION '072 proof: service_role executes % plan_* function(s), expected exactly the % public ones', v_k, cardinality(v_pub);
+    END IF;
+    SELECT count(*) INTO v_k FROM pg_proc p
+     WHERE p.pronamespace = 'public'::regnamespace AND p.proname LIKE 'plan\_%'
+       AND (pg_get_userbyid(p.proowner) <> 'postgres' OR p.proconfig IS DISTINCT FROM ARRAY['search_path=public']);
+    IF v_k <> 0 THEN
+      RAISE EXCEPTION '072 proof: % plan_* function(s) not owned by postgres or without SET search_path = public', v_k;
+    END IF;
+    -- every plan_h_* runs as its caller (invoker); every other 072 function as its owner (definer)
+    SELECT count(*) INTO v_k FROM pg_proc p
+     WHERE p.pronamespace = 'public'::regnamespace AND p.proname LIKE 'plan\_%' AND NOT (p.proname = ANY (v_f1))
+       AND p.prosecdef <> (p.proname NOT LIKE 'plan\_h\_%');
+    IF v_k <> 0 THEN RAISE EXCEPTION '072 proof: % function(s) with the wrong SECURITY (helpers invoker, the rest definer)', v_k; END IF;
+    -- every public one answers jsonb, never void (dbRpc reads a body: void = 500 after a write)
+    IF EXISTS (SELECT 1 FROM unnest(v_pub) s JOIN pg_proc p ON p.oid = to_regprocedure(s)
+                WHERE NOT p.prosecdef OR pg_get_function_result(p.oid) <> 'jsonb') THEN
+      RAISE EXCEPTION '072 proof: a public plan_* is not SECURITY DEFINER or does not return jsonb';
+    END IF;
+    -- the live functions 072 relies on are still the texts read 22/10 (the list of the guard in PART 0)
+    SELECT count(*) INTO v_k FROM (VALUES
+        ('public.dl_sync_from_rt()', '331cea3a8987b74a9b0add698df9b158'),
+        ('public.dl_local_day_sync(bigint,date)', '151dab06e2676f3c8885d7298d0ac6af'),
+        ('public.dl_sync_from_local_move()', 'f053c478c79ef55dcc62b65a61939b9b'),
+        ('public.local_moves_before()', '3b9f0a27c9921c63ce9fb41f09ef0462'),
+        ('public.dl_local_line_guard()', 'e7f0348ccc5764d29608b8701f0e83b6'),
+        ('public.dl_cash_sync_entry()', '6d702bad6485f06535c6a0d5aff0bd0c'),
+        ('public.order_cd_stop_follow()', '433a1a7205fceb264e77f5a0c71a1521'),
+        ('public.ramp_follows_stop()', '6fa6a83c4191af271dbae85935d710c5'),
+        ('public.invoice_mark_guard()', 'dd975c4f04f95f528c7c79a80eb4d387'),
+        ('public.stock_guard_natl()', 'e941edbca9ff1bbeba0c89d49eb71cb3'),
+        ('public.stock_guard_orders()', '63aa751d93cc8b34afa5587912de7045'),
+        ('public.national_orders_soft_delete_cascade()', '6c423b14397c659272b1c9256189933d'),
+        ('public.rt_status_guard()', 'd7757f99c3443ac167d5bdaf3e34b142'),
+        ('public.plan_chk()', '8f2fa7e5541aded2dffc853a57c54c22'),
+        ('public.plan_rt_window_sync()', '050cbabe34493018f4335f748029761e'),
+        ('public.plan_rt_problem(bigint)', 'f383f449d55e657cfa929bb51a9120f6'),
+        ('public.plan_shipment_problem(bigint)', '8dd2beb159142bf5a6a4e32688688875'),
+        ('public.plan_leg_problem(bigint)', '24803f176f12355faa84c07e43cb0df0'),
+        ('public.plan_local_loading_problem(bigint)', '4c3dbec3810121a2a585fe8b49ceadf1'),
+        ('public.ct_rt_legs_v2_guard()', '6240d699bc114ffd49c7d62780432c94'),
+        ('public.tms_week(date)', '89c5ba44087d4293850a590c3ae4627f'),
+        ('public.rt_sync_to_orders()', 'a63234c844c2b6236b1e6dfe1410b8fc'),
+        ('public.rt_sync_to_national_loads()', '028efb76373a0a6517134feaea88bc2f')
+      ) v(sig, m)
+     WHERE (SELECT md5(prosrc) FROM pg_proc WHERE oid = to_regprocedure(v.sig)) IS DISTINCT FROM v.m;
+    IF v_k <> 0 THEN RAISE EXCEPTION '072 proof: % live function(s) changed inside the block', v_k; END IF;
+    -- 072 adds no trigger: the live count is the one measured in PART 0 and still equals B-54's red_value
+    SELECT count(*) INTO v_trg1 FROM pg_trigger t JOIN pg_class c ON c.oid = t.tgrelid
+      JOIN pg_namespace ns ON ns.oid = c.relnamespace
+     WHERE NOT t.tgisinternal AND t.tgenabled <> 'D' AND ns.nspname = 'public';
+    IF v_trg1 <> v_trg0 THEN
+      RAISE EXCEPTION '072 proof: trigger count % -> % (072 adds no trigger)', v_trg0, v_trg1;
+    END IF;
+    IF v_trg1 IS DISTINCT FROM (SELECT red_value FROM monitoring.checks WHERE id = 'B-54') THEN
+      RAISE EXCEPTION '072 proof: % public triggers, B-54 red_value %', v_trg1, (SELECT red_value FROM monitoring.checks WHERE id = 'B-54');
+    END IF;
+    -- 0 v5 rows: creating the functions writes nothing (spec 2.2: the first real v5 row closes the way back)
+    IF (SELECT count(*) FROM public.shipments) + (SELECT count(*) FROM public.shipment_pieces)
+       + (SELECT count(*) FROM public.rt_stops) + (SELECT count(*) FROM public.piece_legs)
+       + (SELECT count(*) FROM public.plan_notices) + (SELECT count(*) FROM public.ct_round_trips WHERE model = 2) <> 0 THEN
+      RAISE EXCEPTION '072 proof: v5 rows exist after the block';
+    END IF;
+    -- PostgREST learns the new functions now (W-04); without it every /plan/* RPC is 404 (= 503 schema_behind)
+    PERFORM pg_notify('pgrst', 'reload schema');
+    RAISE NOTICE '072 OK: % plan_* functions (% public, EXECUTE service_role only), triggers % (B-54 unchanged), 0 v5 rows',
+      v_all, cardinality(v_pub), v_trg1;
+  END;
+END $do$;
+
+-- The result row (read-only). If the block above failed, the editor stops before this line.
+SELECT CASE WHEN to_regprocedure('public.plan_h_raise(text,text)') IS NOT NULL
+             AND NOT EXISTS (SELECT 1 FROM pg_proc p WHERE p.pronamespace = 'public'::regnamespace AND p.proname LIKE 'plan\_%'
+                              AND (has_function_privilege('anon', p.oid, 'EXECUTE')
+                                   OR has_function_privilege('authenticated', p.oid, 'EXECUTE')))
+            THEN '072 OK' ELSE '072 NOT APPLIED' END AS result,
+       (SELECT count(*) FROM pg_proc WHERE pronamespace = 'public'::regnamespace AND proname LIKE 'plan\_%') AS plan_functions,
+       (SELECT count(*) FROM pg_proc p WHERE pronamespace = 'public'::regnamespace AND proname LIKE 'plan\_%'
+          AND has_function_privilege('service_role', p.oid, 'EXECUTE')) AS public_functions,
+       (SELECT count(*) FROM pg_trigger t JOIN pg_class c ON c.oid = t.tgrelid JOIN pg_namespace ns ON ns.oid = c.relnamespace
+         WHERE NOT t.tgisinternal AND t.tgenabled <> 'D' AND ns.nspname = 'public') AS public_triggers,
+       (SELECT red_value FROM monitoring.checks WHERE id = 'B-54') AS b54_red_value,
+       (SELECT count(*) FROM public.shipments) + (SELECT count(*) FROM public.shipment_pieces) + (SELECT count(*) FROM public.rt_stops)
+         + (SELECT count(*) FROM public.piece_legs) + (SELECT count(*) FROM public.plan_notices) AS v5_rows,
+       (SELECT count(*) FROM public.ct_round_trips WHERE model = 2) AS v5_cycles;
+```
+
+- [ ] **Step 5: Τρέξε, να περάσουν**
+
+Run: `cd tms-auditor && node --test test/plan-072.test.mjs`
+Expected: `✔ the fixtures hold the LIVE texts 072 guards on`, `✔ 072 applies: born closed, no trigger, 0 v5 rows`, `✔ 072 rules test: every case OK, nothing kept` (μήνυμα του test: `Result: 15 OK, 0 FAIL`), `ℹ fail 0`.
+
+Run: `node --test tests/sql-072-drafts.test.js`
+Expected: `ℹ pass 6`, `ℹ fail 0`.
+
+Run: `cd tms-auditor && node --test test/plan-071.test.mjs`
+Expected: αμετάβλητο, `ℹ pass 8`, `ℹ fail 0` (η 072 δεν αγγίζει το 071 test ούτε το `live-071.sql`).
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add tms-auditor/test/fixtures/live-072.sql tms-auditor/test/plan-072.test.mjs tests/sql-072-drafts.test.js \
+  worker/migrations/drafts/072_plan_functions.sql worker/migrations/drafts/072_plan_functions_test.sql
+git commit -m "072 (DRAFT) foundation: guards on 23 live texts, plan_h_* helpers born closed, PART 5 rights, PGlite harness and build checks
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+```
+
+
+#### Task Α2: `plan_orders_create`
+
+**Files:** Modify `worker/migrations/drafts/072_plan_functions.sql` (PART 2 και το `v_pub` του PART 5), `worker/migrations/drafts/072_plan_functions_test.sql` (περιπτώσεις 16–29).
+
+**Interfaces:**
+- Consumes: Α1 (`plan_h_ctx`, `plan_h_keys`, `plan_h_location`, `plan_h_audit`, `plan_h_target`, `plan_h_finish`, `plan_h_ok`)· `plan_h_put` της Α3 (late binding: καλείται μόνο με `target`, η περίπτωση είναι η 45 της Α3).
+- Produces: `plan_orders_create(p jsonb, p_actor text, p_role text) RETURNS jsonb` (δημόσια)· `plan_h_legacy_id() RETURNS text`· `plan_h_order_summary(p_shipments jsonb) RETURNS jsonb` (ο ΕΝΑΣ κανόνας των πεδίων σύνοψης, απόφαση 20· τον ξαναχρησιμοποιεί η Α7). Απάντηση: `ids = {nat_order_ids, shipment_ids, piece_ids, rt_id, stop_ids, leg_ids}`.
+
+- [ ] **Step 1: Οι περιπτώσεις πρώτα (`worker/migrations/drafts/072_plan_functions_test.sql`)**
+
+Πρόσθεσε πάνω από τη γραμμή `-- @want (one line per case: "    , '<ok|plan:code|con:name|state:XXXXX>'  -- <k> <what>")`:
+
+```sql
+    , 'ok'               -- 16 groupage of 3 clients = 1 call, 3 orders, no mirror, facade id, audit by the person
+    , 'ok'               -- 17 two shipments (Veroia as B): the summary fields follow the shipments
+    , 'plan:no_price'    -- 18 price 0
+    , 'plan:no_price'    -- 19 no price
+    , 'plan:no_client'   -- 20 no client
+    , 'plan:no_window'   -- 21 a window end missing
+    , 'plan:stock_lot'   -- 22 a lot piece (057) does not enter here
+    , 'plan:bad_input'   -- 23 no orders
+    , 'plan:bad_input'   -- 24 an unknown key (a mirror field) is refused, never ignored
+    , 'con:shipments_ends' -- 25 A = B
+    , 'con:shipments_win' -- 26 delivery before loading
+    , 'con:shipments_pallets' -- 27 0 pallets
+    , 'plan:bad_input'   -- 28 a location that does not exist
+    , 'plan:bad_input'   -- 29 stops without a target
+```
+
+Πρόσθεσε πάνω από τη γραμμή `-- @case (each task adds its "ELSIF k = <n> THEN" branches above this line)`:
+
+```sql
+      ELSIF k = 16 THEN
+        r := plan_orders_create(jsonb_build_object('orders', jsonb_build_array(jo1,
+               jo1 || jsonb_build_object('client_id', cl2), jo1 || jsonb_build_object('client_id', cl3, 'price', 70))),
+               'test:072', 'dispatcher');
+      ELSIF k = 17 THEN
+        r := plan_orders_create(jsonb_build_object('orders', jsonb_build_array(jo1 || jsonb_build_object('shipments',
+               jsonb_build_array(
+                 jsonb_build_object('origin_location_id', la, 'dest_location_id', hub, 'pallets', 4, 'load_from', a06,
+                                    'load_to', a08, 'deliver_from', a09, 'deliver_to', a10),
+                 jsonb_build_object('origin_location_id', lc, 'dest_location_id', lb, 'pallets', 6, 'load_from', b06,
+                                    'load_to', b08, 'deliver_from', b12, 'deliver_to', b14))))), 'test:072', 'owner');
+      ELSIF k = 18 THEN
+        PERFORM plan_orders_create(jsonb_build_object('orders', jsonb_build_array(jo1 || '{"price": 0}')), 'test:072', 'owner');
+      ELSIF k = 19 THEN
+        PERFORM plan_orders_create(jsonb_build_object('orders', jsonb_build_array(jo1 - 'price')), 'test:072', 'owner');
+      ELSIF k = 20 THEN
+        PERFORM plan_orders_create(jsonb_build_object('orders', jsonb_build_array(jo1 - 'client_id')), 'test:072', 'owner');
+      ELSIF k = 21 THEN
+        PERFORM plan_orders_create(jsonb_build_object('orders', jsonb_build_array(jo1 || jsonb_build_object('shipments',
+                  jsonb_build_array(jsh1 - 'deliver_to')))), 'test:072', 'owner');
+      ELSIF k = 22 THEN
+        PERFORM plan_orders_create(jsonb_build_object('orders', jsonb_build_array(jo1 || '{"stock_lot_id": 1}')), 'test:072', 'owner');
+      ELSIF k = 23 THEN
+        PERFORM plan_orders_create('{"orders": []}', 'test:072', 'owner');
+      ELSIF k = 24 THEN
+        PERFORM plan_orders_create(jsonb_build_object('orders', jsonb_build_array(jo1 || jsonb_build_object('truck_id', trk1))),
+                                   'test:072', 'owner');
+      ELSIF k = 25 THEN
+        PERFORM plan_orders_create(jsonb_build_object('orders', jsonb_build_array(jo1 || jsonb_build_object('shipments',
+                  jsonb_build_array(jsh1 || jsonb_build_object('dest_location_id', la))))), 'test:072', 'owner');
+      ELSIF k = 26 THEN
+        PERFORM plan_orders_create(jsonb_build_object('orders', jsonb_build_array(jo1 || jsonb_build_object('shipments',
+                  jsonb_build_array(jsh1 || jsonb_build_object('deliver_from', a05, 'deliver_to', a05))))), 'test:072', 'owner');
+      ELSIF k = 27 THEN
+        PERFORM plan_orders_create(jsonb_build_object('orders', jsonb_build_array(jo1 || jsonb_build_object('shipments',
+                  jsonb_build_array(jsh1 || '{"pallets": 0}')))), 'test:072', 'owner');
+      ELSIF k = 28 THEN
+        PERFORM plan_orders_create(jsonb_build_object('orders', jsonb_build_array(jo1 || jsonb_build_object('shipments',
+                  jsonb_build_array(jsh1 || '{"origin_location_id": -1}')))), 'test:072', 'owner');
+      ELSIF k = 29 THEN
+        PERFORM plan_orders_create(jsonb_build_object('orders', jsonb_build_array(jo1), 'stops', '[]'::jsonb), 'test:072', 'owner');
+```
+
+Πρόσθεσε πάνω από τη γραμμή `-- @verdict (each task adds its "ELSIF k = <n> THEN verdict := ..." branches above this line)`:
+
+```sql
+      ELSIF k = 16 THEN
+        verdict := CASE WHEN jsonb_array_length(r->'ids'->'nat_order_ids') = 3
+                          AND (SELECT count(*) FROM national_orders WHERE id IN (SELECT jsonb_array_elements_text(r->'ids'->'nat_order_ids')::bigint)
+                                 AND legacy_id ~ '^rec[A-Za-z0-9]{14}$' AND truck_id IS NULL AND partner_id IS NULL
+                                 AND status IS NULL AND direction IS NULL AND type IS NULL AND pallets = 10
+                                 AND loading_datetime = d AND delivery_datetime = d AND pickup_location_1_id = la
+                                 AND delivery_location_1_id = lb AND reference = 'WN072-TEST' AND pallet_exchange = false) = 3
+                          AND (SELECT count(DISTINCT client_id) FROM national_orders WHERE id IN (SELECT jsonb_array_elements_text(r->'ids'->'nat_order_ids')::bigint)) = 3
+                          AND (SELECT count(*) FROM v_piece_state WHERE piece_id IN (SELECT jsonb_array_elements_text(r->'ids'->'piece_ids')::bigint)
+                                 AND waiting AND position_location_id = la AND kind = 'national') = 3
+                          AND (SELECT count(*) FROM audit_log WHERE actor = 'test:072' AND role = 'dispatcher' AND action = 'create'
+                                 AND table_name IN ('national_orders', 'shipments', 'shipment_pieces')) = 9
+                          AND r->>'op' = 'plan_orders_create' AND r->'warnings' = '[]'::jsonb AND r->'ids'->'leg_ids' = '[]'::jsonb
+                        THEN 'ok 3 orders in one call, no mirror, facade id, 9 audit rows by the person'
+                        ELSE 'FAIL groupage: ' || r::text END;
+      ELSIF k = 17 THEN
+        x := (r->'ids'->'nat_order_ids'->>0)::bigint;
+        verdict := CASE WHEN (SELECT pallets = 10 AND loading_datetime = d AND delivery_datetime = e AND pickup_location_1_id = la
+                                     AND delivery_location_1_id = lb FROM national_orders WHERE id = x)
+                          AND (SELECT count(*) FROM v_shipments WHERE nat_order_id = x AND live) = 2
+                          AND EXISTS (SELECT 1 FROM v_shipments WHERE nat_order_id = x AND nat_to_location_id = hub)
+                        THEN 'ok summary = 10 pallets, first load day D, last delivery day D+1, first origin A, last destination B'
+                        ELSE 'FAIL summary' END;
+```
+
+- [ ] **Step 2: Τρέξε, να αποτύχει**
+
+Run: `cd tms-auditor && node --test test/plan-072.test.mjs`
+Expected: FAIL στο `072 rules test`, με μήνυμα `Result: 15 OK, 14 FAIL` και πρώτη αποτυχία `16 FAIL want ok got state:42883 (function plan_orders_create(jsonb, unknown, unknown) does not exist)`. Το `node --test tests/sql-072-drafts.test.js` μένει πράσινο (6/6).
+
+- [ ] **Step 3: Η υλοποίηση (`worker/migrations/drafts/072_plan_functions.sql`)**
+
+Πρόσθεσε πάνω από τη γραμμή `-- @A (072 section A: plan_orders_create, plan_put_pieces, plan_put_group, plan_split_piece, plan_move_pieces, plan_order_update)`:
+
+```sql
+  CREATE FUNCTION public.plan_h_legacy_id() RETURNS text
+    LANGUAGE plpgsql SET search_path = public AS $f$
+declare
+  c CONSTANT text := 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+  b bytea; v text; i int;
+begin
+  -- Decision 20: the facade answers every row with id = legacy_id ('rec' + 14 [A-Za-z0-9], the Worker's
+  -- mintLegacyId); a national order without one would show as id null on every screen that still reads it.
+  -- gen_random_uuid is core (pg_catalog): no extension needed.
+  loop
+    b := uuid_send(gen_random_uuid());
+    v := 'rec';
+    for i in 0..13 loop v := v || substr(c, (get_byte(b, i) % 62) + 1, 1); end loop;
+    exit when not exists (select 1 from national_orders where legacy_id = v);
+  end loop;
+  return v;
+end
+$f$;
+
+  CREATE FUNCTION public.plan_h_order_summary(p_shipments jsonb) RETURNS jsonb
+    LANGUAGE sql STABLE SET search_path = public AS $f$
+  -- Decision 20: the national order's summary fields are DERIVED from its shipments, by this one rule, in the
+  -- same transaction as every change to them (plan_orders_create, plan_order_update): pallets = sum, requested
+  -- loading = first Athens day of load_from, requested delivery = last Athens day of deliver_to, first origin,
+  -- last destination (in the shipments' order).
+  select jsonb_build_object(
+           'pallets', sum((e->>'pallets')::numeric),
+           'loading_datetime', min(((e->>'load_from')::timestamptz at time zone 'Europe/Athens')::date),
+           'delivery_datetime', max(((e->>'deliver_to')::timestamptz at time zone 'Europe/Athens')::date),
+           'pickup_location_1_id', (array_agg((e->>'origin_location_id')::bigint order by i))[1],
+           'delivery_location_1_id', (array_agg((e->>'dest_location_id')::bigint order by i desc))[1])
+    from jsonb_array_elements(p_shipments) with ordinality t(e, i)
+$f$;
+
+  CREATE FUNCTION public.plan_orders_create(p jsonb, p_actor text, p_role text) RETURNS jsonb
+    LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $f$
+declare
+  o jsonb; s jsonb; v_sum jsonb; v_client bigint; v_price numeric; v_tgt jsonb; v_put jsonb;
+  n national_orders%rowtype; sh shipments%rowtype; pc shipment_pieces%rowtype;
+  v_nos bigint[] := '{}'; v_shs bigint[] := '{}'; v_pcs bigint[] := '{}';
+begin
+  perform plan_h_ctx(p_actor, p_role);
+  perform plan_h_keys(p, array['orders', 'target', 'stops'], 'p');
+  if jsonb_typeof(p->'orders') is distinct from 'array' or jsonb_array_length(p->'orders') = 0 then
+    perform plan_h_raise('bad_input', 'orders');
+  end if;
+  -- N orders in ONE call (groupage of 3 clients = one transaction, R-04).
+  for o in select value from jsonb_array_elements(p->'orders') loop
+    perform plan_h_keys(o, array['client_id', 'price', 'reference', 'goods', 'temperature_c', 'pallet_exchange',
+                                 'notes', 'shipments', 'stock_lot_id'], 'order');
+    -- C-24: a lot piece (057) never enters v5 here; its relation to v5 is F3's (E6).
+    if coalesce(o->'stock_lot_id', 'null'::jsonb) <> 'null'::jsonb then
+      perform plan_h_raise('stock_lot', o->>'stock_lot_id');
+    end if;
+    v_client := (o->>'client_id')::bigint;
+    if v_client is null or not exists (select 1 from clients where id = v_client and deleted_at is null) then
+      perform plan_h_raise('no_client', coalesce(v_client::text, 'null'));
+    end if;
+    v_price := (o->>'price')::numeric;
+    if v_price is null or v_price <= 0 then perform plan_h_raise('no_price', coalesce(v_price::text, 'null')); end if;
+    if jsonb_typeof(o->'shipments') is distinct from 'array' or jsonb_array_length(o->'shipments') = 0 then
+      perform plan_h_raise('bad_input', 'shipments');
+    end if;
+    for s in select value from jsonb_array_elements(o->'shipments') loop
+      perform plan_h_keys(s, array['origin_location_id', 'dest_location_id', 'pallets', 'load_from', 'load_to',
+                                   'deliver_from', 'deliver_to'], 'shipment');
+      -- owner #12: a window from-to everywhere; the four ends are required.
+      if s->>'load_from' is null or s->>'load_to' is null or s->>'deliver_from' is null or s->>'deliver_to' is null then
+        perform plan_h_raise('no_window', 'shipment');
+      end if;
+      perform plan_h_location((s->>'origin_location_id')::bigint);
+      perform plan_h_location((s->>'dest_location_id')::bigint);
+    end loop;
+    v_sum := plan_h_order_summary(o->'shipments');
+    -- Never truck_id / partner_id / status (spec 2.1: no mirror); direction and type stay NULL (decision 20:
+    -- the F4 readers read v_shipments).
+    insert into national_orders (legacy_id, client_id, price, reference, goods, temperature_c, pallet_exchange, notes,
+                                 pallets, loading_datetime, delivery_datetime, pickup_location_1_id, delivery_location_1_id)
+    values (plan_h_legacy_id(), v_client, v_price, o->>'reference', o->>'goods', (o->>'temperature_c')::numeric,
+            coalesce((o->>'pallet_exchange')::boolean, false), o->>'notes',
+            (v_sum->>'pallets')::numeric, (v_sum->>'loading_datetime')::date, (v_sum->>'delivery_datetime')::date,
+            (v_sum->>'pickup_location_1_id')::bigint, (v_sum->>'delivery_location_1_id')::bigint)
+    returning * into n;
+    perform plan_h_audit(p_actor, p_role, 'create', 'national_orders', n.legacy_id, null, to_jsonb(n));
+    v_nos := v_nos || n.id;
+    -- One shipment per A->B pair, one piece per shipment (Veroia may be A or B: a normal place, spec 3).
+    for s in select value from jsonb_array_elements(o->'shipments') loop
+      insert into shipments (nat_order_id, origin_location_id, dest_location_id, pallets, load_from, load_to,
+                             deliver_from, deliver_to, created_by)
+      values (n.id, (s->>'origin_location_id')::bigint, (s->>'dest_location_id')::bigint, (s->>'pallets')::numeric,
+              (s->>'load_from')::timestamptz, (s->>'load_to')::timestamptz, (s->>'deliver_from')::timestamptz,
+              (s->>'deliver_to')::timestamptz, p_actor)
+      returning * into sh;
+      perform plan_h_audit(p_actor, p_role, 'create', 'shipments', sh.id::text, null, to_jsonb(sh));
+      insert into shipment_pieces (shipment_id, pallets, created_by) values (sh.id, sh.pallets, p_actor) returning * into pc;
+      perform plan_h_audit(p_actor, p_role, 'create', 'shipment_pieces', pc.id::text, null, to_jsonb(pc));
+      v_shs := v_shs || sh.id;
+      v_pcs := v_pcs || pc.id;
+    end loop;
+  end loop;
+  -- The "+" in a row: the new pieces go on the target in the same transaction (decision 3).
+  if p ? 'target' then
+    v_tgt := plan_h_target(p->'target', p->'stops', p_actor, p_role);
+    v_put := plan_h_put((select jsonb_agg(jsonb_build_object('piece_id', x) order by x) from unnest(v_pcs) x),
+                        v_tgt, p_actor, p_role, '{}');
+  elsif p ? 'stops' then
+    perform plan_h_raise('bad_input', 'stops without target');
+  end if;
+  perform plan_h_finish();
+  return plan_h_ok('plan_orders_create',
+    jsonb_build_object('nat_order_ids', to_jsonb(v_nos), 'shipment_ids', to_jsonb(v_shs), 'piece_ids', to_jsonb(v_pcs),
+                       'rt_id', v_put->'rt_id', 'stop_ids', coalesce(v_put->'stop_ids', '[]'::jsonb),
+                       'leg_ids', coalesce(v_put->'leg_ids', '[]'::jsonb)),
+    v_put->'warnings', v_put->'notice_ids');
+exception
+  when invalid_text_representation or invalid_datetime_format or datetime_field_overflow
+       or numeric_value_out_of_range or invalid_parameter_value then
+    perform plan_h_raise('bad_input', sqlstate);
+end
+$f$;
+```
+
+Πρόσθεσε πάνω από τη γραμμή `-- @pub (072 tasks add ", 'public.plan_x(jsonb,text,text)'" lines above this marker)`:
+
+```sql
+    , 'public.plan_orders_create(jsonb,text,text)'
+```
+
+- [ ] **Step 4: Τρέξε, να περάσει**
+
+Run: `cd tms-auditor && node --test test/plan-072.test.mjs`
+Expected: `✔` και στα τρία υπο-tests, μήνυμα `Result: 29 OK, 0 FAIL`, `ℹ fail 0`.
+
+Run: `node --test tests/sql-072-drafts.test.js`
+Expected: `ℹ pass 6`, `ℹ fail 0` (το `v_pub` = κάθε δημόσια συνάρτηση, κάθε νέος κωδικός έχει περίπτωση).
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add worker/migrations/drafts/072_plan_functions.sql worker/migrations/drafts/072_plan_functions_test.sql
+git commit -m "072 plan_orders_create: N national orders in one call, no mirror, facade id, derived summary
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+```
+
+
+#### Task Α3: `plan_put_pieces` (+ split+put αποθέματος, ημέρα VS)
+
+**Files:** Modify `worker/migrations/drafts/072_plan_functions.sql` (PART 2 και το `v_pub` του PART 5), `worker/migrations/drafts/072_plan_functions_test.sql` (περιπτώσεις 30–46).
+
+**Interfaces:**
+- Consumes: Α1 (`plan_h_target`, `plan_h_stop_at`, `plan_h_leg_add`, `plan_h_reseq`, `plan_h_vs_follow` → `plan_h_vs_day` → `plan_h_notice`), Α2 (για τις περιπτώσεις 31, 38, 45).
+- Produces: `plan_h_put(p_pieces jsonb, p_tgt jsonb, p_actor text, p_role text, p_first bigint[]) RETURNS jsonb` = ο πυρήνας κάθε ανάθεσης (τον καλούν οι Α2, Α4, Α5, Α6 και η Β)· επιστρέφει `{rt_id, side, stop_ids, leg_ids, piece_ids, new_piece_ids, warnings, notice_ids}`· `plan_put_pieces(p jsonb, p_actor text, p_role text) RETURNS jsonb` (δημόσια).
+
+- [ ] **Step 1: Οι περιπτώσεις πρώτα (`worker/migrations/drafts/072_plan_functions_test.sql`)**
+
+Πρόσθεσε πάνω από τη γραμμή `-- @want (one line per case: "    , '<ok|plan:code|con:name|state:XXXXX>'  -- <k> <what>")`:
+
+```sql
+    , 'ok'               -- 30 a whole piece onto a cycle: one leg, planned to B
+    , 'ok'               -- 31 with a new stop: seq by the base, the window and the payroll day follow
+    , 'plan:piece_busy'  -- 32 the same piece again
+    , 'plan:piece_split' -- 33 a split piece
+    , 'plan:not_stock'   -- 34 a part of a piece that is not stock
+    , 'ok'               -- 35 split + put 8 of a 13 stock: 8 ride, 5 stay with the same leave_by
+    , 'ok'               -- 36 VS onto a truck of another day: the international's day, an audit row, one intl notice
+    , 'ok'               -- 37 VS stock (its other part already rides) onto a truck: the day does not move
+    , 'ok'               -- 38 over 33 pallets: a warning, not a refusal
+    , 'plan:chain'       -- 39 a pickup where the piece is not (071 at the end of the call)
+    , 'plan:stop_order'  -- 40 an ANODOS stop earlier than a KATHODOS one (071 at the end of the call)
+    , 'plan:leg_order'   -- 41 a pickup after the delivery (071 at the end of the call)
+    , 'plan:truck_busy'  -- 42 the window grows onto another cycle of the same truck
+    , 'plan:bad_input'   -- 43 no stop of the request where the piece is
+    , 'plan:piece_dead'  -- 44 a piece that does not exist
+    , 'ok'               -- 45 plan_orders_create with a target: the "+" in a row, one transaction
+    , 'plan:parts_sum'   -- 46 more than the stock holds
+```
+
+Πρόσθεσε πάνω από τη γραμμή `-- @case (each task adds its "ELSIF k = <n> THEN" branches above this line)`:
+
+```sql
+      ELSIF k IN (30, 32) THEN
+        r := plan_put_pieces(jsonb_build_object('pieces', jsonb_build_array(jsonb_build_object('piece_id', p1)),
+               'target', jsonb_build_object('rt_id', rt1, 'side', 'KATHODOS'),
+               'stops', jsonb_build_array(jsonb_build_object('ref', 'a', 'stop_id', s1a), jsonb_build_object('ref', 'b', 'stop_id', s1b))),
+               'test:072', 'owner');
+        IF k = 32 THEN
+          PERFORM plan_put_pieces(jsonb_build_object('pieces', jsonb_build_array(jsonb_build_object('piece_id', p1)),
+                    'target', jsonb_build_object('rt_id', rt2, 'side', 'KATHODOS'),
+                    'stops', jsonb_build_array(jsonb_build_object('ref', 'a', 'stop_id', s2a), jsonb_build_object('ref', 'b', 'stop_id', s2b))),
+                    'test:072', 'owner');
+        END IF;
+      ELSIF k = 31 THEN
+        r := plan_orders_create(jsonb_build_object('orders', jsonb_build_array(jo1 || jsonb_build_object('shipments',
+               jsonb_build_array(jsh1 || jsonb_build_object('dest_location_id', lc, 'pallets', 5, 'deliver_to', a16))))),
+               'test:072', 'owner');
+        x := (r->'ids'->'piece_ids'->>0)::bigint;
+        r := plan_put_pieces(jsonb_build_object('pieces', jsonb_build_array(jsonb_build_object('piece_id', x)),
+               'target', jsonb_build_object('rt_id', rt1, 'side', 'KATHODOS'),
+               'stops', jsonb_build_array(jsonb_build_object('ref', 'a', 'stop_id', s1a),
+                                          jsonb_build_object('ref', 'c', 'location_id', lc, 'planned_from', a15, 'planned_to', a16))),
+               'test:072', 'owner');
+        y := (SELECT drop_stop_id FROM piece_legs WHERE id = (r->'ids'->'leg_ids'->>0)::bigint);
+      ELSIF k = 33 THEN
+        INSERT INTO piece_legs (piece_id, leg_no, rt_id, pickup_stop_id, drop_stop_id, created_by) VALUES (p1, 1, rt1, s1a, s1h, 'test:072');
+        UPDATE shipment_pieces SET split_at = now(), split_by = 'test:072' WHERE id = p1;
+        INSERT INTO shipment_pieces (shipment_id, parent_piece_id, pallets, created_by) VALUES (sh1, p1, 4, 'test:072');
+        INSERT INTO shipment_pieces (shipment_id, parent_piece_id, pallets, created_by) VALUES (sh1, p1, 6, 'test:072');
+        PERFORM plan_put_pieces(jsonb_build_object('pieces', jsonb_build_array(jsonb_build_object('piece_id', p1)),
+                  'target', jsonb_build_object('rt_id', rt2, 'side', 'KATHODOS'),
+                  'stops', jsonb_build_array(jsonb_build_object('ref', 'h', 'stop_id', s2h), jsonb_build_object('ref', 'b', 'stop_id', s2b))),
+                  'test:072', 'owner');
+      ELSIF k = 34 THEN
+        PERFORM plan_put_pieces(jsonb_build_object('pieces', jsonb_build_array(jsonb_build_object('piece_id', p1, 'take_pallets', 5)),
+                  'target', jsonb_build_object('rt_id', rt1, 'side', 'KATHODOS'),
+                  'stops', jsonb_build_array(jsonb_build_object('ref', 'a', 'stop_id', s1a), jsonb_build_object('ref', 'b', 'stop_id', s1b))),
+                  'test:072', 'owner');
+      ELSIF k IN (35, 46) THEN   -- p1 (made 20) rode A -> Veroia on R1 and split there 7 + 13; the 13 are stock
+        UPDATE shipments SET pallets = 20 WHERE id = sh1;
+        UPDATE shipment_pieces SET pallets = 20 WHERE id = p1;
+        INSERT INTO piece_legs (piece_id, leg_no, rt_id, pickup_stop_id, drop_stop_id, created_by) VALUES (p1, 1, rt1, s1a, s1h, 'test:072');
+        UPDATE shipment_pieces SET split_at = now(), split_by = 'test:072' WHERE id = p1;
+        INSERT INTO shipment_pieces (shipment_id, parent_piece_id, pallets, created_by) VALUES (sh1, p1, 7, 'test:072') RETURNING id INTO c1;
+        INSERT INTO shipment_pieces (shipment_id, parent_piece_id, pallets, leave_by, created_by) VALUES (sh1, p1, 13, e, 'test:072') RETURNING id INTO c2;
+        r := plan_put_pieces(jsonb_build_object('pieces', jsonb_build_array(jsonb_build_object('piece_id', c2,
+               'take_pallets', CASE WHEN k = 46 THEN 20 ELSE 8 END)),
+               'target', jsonb_build_object('rt_id', rt2, 'side', 'KATHODOS'),
+               'stops', jsonb_build_array(jsonb_build_object('ref', 'h', 'stop_id', s2h), jsonb_build_object('ref', 'b', 'stop_id', s2b))),
+               'test:072', 'owner');
+      ELSIF k IN (36, 37) THEN   -- the VS bridge of the 20 pallets to B, waiting at Veroia
+        INSERT INTO shipments (order_id, order_stop_id, created_by) VALUES (vso, vs_b, 'test:072') RETURNING id INTO x;
+        INSERT INTO shipment_pieces (shipment_id, pallets, created_by) VALUES (x, 20, 'test:072') RETURNING id INTO y;
+        IF k = 37 THEN   -- split earlier at Veroia 12 + 8 and the 12 already ride on R1: the 8 are stock
+          UPDATE shipment_pieces SET split_at = now(), split_by = 'test:072' WHERE id = y;
+          INSERT INTO shipment_pieces (shipment_id, parent_piece_id, pallets, created_by) VALUES (x, y, 12, 'test:072') RETURNING id INTO z;
+          INSERT INTO piece_legs (piece_id, leg_no, rt_id, pickup_stop_id, drop_stop_id, created_by) VALUES (z, 1, rt1, s1h, s1b, 'test:072');
+          INSERT INTO shipment_pieces (shipment_id, parent_piece_id, pallets, leave_by, created_by) VALUES (x, y, 8, d, 'test:072') RETURNING id INTO y;
+        END IF;
+        r := plan_put_pieces(jsonb_build_object('pieces', jsonb_build_array(jsonb_build_object('piece_id', y)),
+               'target', jsonb_build_object('rt_id', rt2, 'side', 'KATHODOS'),
+               'stops', jsonb_build_array(jsonb_build_object('ref', 'h', 'stop_id', s2h), jsonb_build_object('ref', 'b', 'stop_id', s2b))),
+               'test:072', 'dispatcher');
+      ELSIF k = 38 THEN
+        r := plan_orders_create(jsonb_build_object('orders', jsonb_build_array(jo1 || jsonb_build_object('shipments',
+               jsonb_build_array(jsh1 || '{"pallets": 34}')))), 'test:072', 'owner');
+        r := plan_put_pieces(jsonb_build_object('pieces', jsonb_build_array(jsonb_build_object('piece_id', (r->'ids'->'piece_ids'->>0)::bigint)),
+               'target', jsonb_build_object('rt_id', rt1, 'side', 'KATHODOS'),
+               'stops', jsonb_build_array(jsonb_build_object('ref', 'a', 'stop_id', s1a), jsonb_build_object('ref', 'b', 'stop_id', s1b))),
+               'test:072', 'owner');
+      ELSIF k = 39 THEN
+        PERFORM plan_put_pieces(jsonb_build_object('pieces', jsonb_build_array(jsonb_build_object('piece_id', p1, 'pickup', 'h')),
+                  'target', jsonb_build_object('rt_id', rt1, 'side', 'KATHODOS'),
+                  'stops', jsonb_build_array(jsonb_build_object('ref', 'h', 'stop_id', s1h), jsonb_build_object('ref', 'b', 'stop_id', s1b))),
+                  'test:072', 'owner');
+      ELSIF k = 40 THEN
+        PERFORM plan_put_pieces(jsonb_build_object('pieces', jsonb_build_array(jsonb_build_object('piece_id', p1)),
+                  'target', jsonb_build_object('rt_id', rt1, 'side', 'KATHODOS'),
+                  'stops', jsonb_build_array(jsonb_build_object('ref', 'a', 'stop_id', s1a),
+                                             jsonb_build_object('ref', 'b', 'location_id', lb, 'side', 'ANODOS', 'planned_from', a05,
+                                                                'planned_to', (d + time '05:30') AT TIME ZONE 'Europe/Athens'))),
+                  'test:072', 'owner');
+      ELSIF k = 41 THEN
+        PERFORM plan_put_pieces(jsonb_build_object('pieces', jsonb_build_array(jsonb_build_object('piece_id', p1)),
+                  'target', jsonb_build_object('rt_id', rt1, 'side', 'KATHODOS'),
+                  'stops', jsonb_build_array(jsonb_build_object('ref', 'a', 'location_id', la, 'planned_from', a15, 'planned_to', a16),
+                                             jsonb_build_object('ref', 'b', 'stop_id', s1b))),
+                  'test:072', 'owner');
+      ELSIF k = 42 THEN
+        INSERT INTO ct_round_trips (model, scope, trip_type, truck_id, driver_id, date_start, date_end, start_at, end_at,
+                                    status, source, created_by)
+        VALUES (2, 'NATL', 'OWNED', trk1, drvl, e, e, b07, b12, 'planned', 'planner', 'test:072') RETURNING id INTO rt3;
+        PERFORM plan_put_pieces(jsonb_build_object('pieces', jsonb_build_array(jsonb_build_object('piece_id', p1)),
+                  'target', jsonb_build_object('rt_id', rt1, 'side', 'KATHODOS'),
+                  'stops', jsonb_build_array(jsonb_build_object('ref', 'a', 'stop_id', s1a),
+                                             jsonb_build_object('ref', 'b', 'location_id', lb, 'planned_from', b10, 'planned_to', b11))),
+                  'test:072', 'owner');
+      ELSIF k = 43 THEN
+        PERFORM plan_put_pieces(jsonb_build_object('pieces', jsonb_build_array(jsonb_build_object('piece_id', p1)),
+                  'target', jsonb_build_object('rt_id', rt1, 'side', 'KATHODOS'),
+                  'stops', jsonb_build_array(jsonb_build_object('ref', 'b', 'stop_id', s1b))), 'test:072', 'owner');
+      ELSIF k = 44 THEN
+        PERFORM plan_put_pieces(jsonb_build_object('pieces', jsonb_build_array(jsonb_build_object('piece_id', -1)),
+                  'target', jsonb_build_object('rt_id', rt1, 'side', 'KATHODOS'),
+                  'stops', jsonb_build_array(jsonb_build_object('ref', 'a', 'stop_id', s1a))), 'test:072', 'owner');
+      ELSIF k = 45 THEN
+        r := plan_orders_create(jsonb_build_object('orders', jsonb_build_array(jo1 || jsonb_build_object('shipments',
+               jsonb_build_array(jsh1 || '{"pallets": 3}'))),
+               'target', jsonb_build_object('rt_id', rt1, 'side', 'KATHODOS'),
+               'stops', jsonb_build_array(jsonb_build_object('ref', 'a', 'stop_id', s1a), jsonb_build_object('ref', 'b', 'stop_id', s1b))),
+               'test:072', 'owner');
+```
+
+Πρόσθεσε πάνω από τη γραμμή `-- @verdict (each task adds its "ELSIF k = <n> THEN verdict := ..." branches above this line)`:
+
+```sql
+      ELSIF k = 30 THEN
+        x := (r->'ids'->'leg_ids'->>0)::bigint;
+        verdict := CASE WHEN (SELECT piece_id = p1 AND rt_id = rt1 AND pickup_stop_id = s1a AND drop_stop_id = s1b AND leg_no = 1
+                                     AND created_by = 'test:072' FROM piece_legs WHERE id = x)
+                          AND (SELECT NOT waiting AND end_stop_id = s1b FROM v_piece_state WHERE piece_id = p1)
+                          AND (SELECT planned FROM v_national_order_state WHERE nat_order_id = n1)
+                          AND (SELECT count(*) FROM audit_log WHERE table_name = 'piece_legs' AND record_id = x::text AND actor = 'test:072') = 1
+                          AND (r->'ids'->>'rt_id')::bigint = rt1 AND r->'notice_ids' = '[]'::jsonb
+                        THEN 'ok one leg A -> B on R1, the order is planned' ELSE 'FAIL put: ' || r::text END;
+      ELSIF k = 31 THEN
+        verdict := CASE WHEN (SELECT seq FROM rt_stops WHERE id = y) = 4 AND (SELECT location_id FROM rt_stops WHERE id = y) = lc
+                          AND (SELECT end_at = a16 AND date_end = d FROM ct_round_trips WHERE id = rt1)
+                          AND (SELECT count(*) FROM dl_entries WHERE rt_id = rt1 AND deleted_at IS NULL AND entry_date = d AND date_end = d) = 1
+                        THEN 'ok new stop C last (seq 4), the window ends 16:00, one payroll line' ELSE 'FAIL new stop' END;
+      ELSIF k = 35 THEN
+        verdict := CASE WHEN (SELECT count(*) FROM shipment_pieces WHERE parent_piece_id = c2 AND deleted_at IS NULL) = 2
+                          AND (SELECT split_by FROM shipment_pieces WHERE id = c2) = 'test:072'
+                          AND (SELECT count(*) FROM v_piece_state WHERE shipment_id = sh1 AND pallets = 8 AND NOT waiting AND end_stop_id = s2b) = 1
+                          AND (SELECT count(*) FROM v_hub_bucket WHERE shipment_id = sh1 AND pallets = 5 AND is_stock AND leave_by = e) = 1
+                          AND (SELECT count(*) FROM v_hub_bucket WHERE shipment_id = sh1 AND pallets = 7 AND is_stock) = 1
+                          AND jsonb_array_length(r->'ids'->'new_piece_ids') = 2
+                        THEN 'ok 13 -> 8 on R2 + 5 stock (leave_by kept), in one call' ELSE 'FAIL split+put: ' || r::text END;
+      ELSIF k = 36 THEN
+        verdict := CASE WHEN (SELECT cross_dock_date FROM orders WHERE id = vso) = e
+                          AND (SELECT datetime FROM order_stops WHERE id = vs_cd) = e
+                          AND (SELECT count(*) FROM plan_notices WHERE order_id = vso AND to_desk = 'intl' AND kind = 'vs_day_changed'
+                                 AND created_by = 'test:072') = 1
+                          AND (SELECT count(*) FROM audit_log WHERE table_name = 'orders' AND record_id = 'rec072TO1' AND actor = 'test:072'
+                                 AND role = 'dispatcher' AND after_data->>'cross_dock_date' = e::text) = 1
+                          AND current_setting('plan.writer', true) = 'natl'
+                          AND jsonb_array_length(r->'notice_ids') = 1
+                        THEN 'ok VS day D -> D+1 on the international, its Cross-dock stop followed (069), one intl notice'
+                        ELSE 'FAIL VS day: ' || r::text END;
+      ELSIF k = 37 THEN
+        verdict := CASE WHEN (SELECT cross_dock_date FROM orders WHERE id = vso) = d
+                          AND NOT EXISTS (SELECT 1 FROM plan_notices WHERE order_id = vso)
+                          AND (SELECT NOT waiting FROM v_piece_state WHERE piece_id = y)
+                        THEN 'ok stock rides, the international keeps its day' ELSE 'FAIL stock moved the VS day' END;
+      ELSIF k = 38 THEN
+        verdict := CASE WHEN r->'warnings' @> '[{"code": "over_33", "side": "KATHODOS", "pallets": 34}]'
+                        THEN 'ok over 33: a warning' ELSE 'FAIL no over_33 warning: ' || r::text END;
+      ELSIF k = 45 THEN
+        verdict := CASE WHEN jsonb_array_length(r->'ids'->'leg_ids') = 1 AND (r->'ids'->>'rt_id')::bigint = rt1
+                          AND (SELECT NOT waiting FROM v_piece_state WHERE piece_id = (r->'ids'->'piece_ids'->>0)::bigint)
+                        THEN 'ok created and put in one call' ELSE 'FAIL create with target: ' || r::text END;
+```
+
+- [ ] **Step 2: Τρέξε, να αποτύχει**
+
+Run: `cd tms-auditor && node --test test/plan-072.test.mjs`
+Expected: FAIL στο `072 rules test`, με μήνυμα `Result: 29 OK, 17 FAIL` και πρώτη αποτυχία `30 FAIL want ok got state:42883 (function plan_put_pieces(jsonb, unknown, unknown) does not exist)`. Το `node --test tests/sql-072-drafts.test.js` μένει πράσινο (6/6).
+
+- [ ] **Step 3: Η υλοποίηση (`worker/migrations/drafts/072_plan_functions.sql`)**
+
+Πρόσθεσε πάνω από τη γραμμή `-- @A (072 section A: plan_orders_create, plan_put_pieces, plan_put_group, plan_split_piece, plan_move_pieces, plan_order_update)`:
+
+```sql
+  CREATE FUNCTION public.plan_h_put(p_pieces jsonb, p_tgt jsonb, p_actor text, p_role text, p_first bigint[])
+    RETURNS jsonb
+    LANGUAGE plpgsql SET search_path = public AS $f$
+declare
+  v_rt bigint := (p_tgt->>'rt_id')::bigint; v_side text := p_tgt->>'side'; v_map jsonb := p_tgt->'stops';
+  it jsonb; v_id bigint; v_take numeric; v_pick bigint; v_drop bigint; v_to bigint; v_hub bigint;
+  p shipment_pieces%rowtype; ps v_piece_state%rowtype; c1 shipment_pieces%rowtype; c2 shipment_pieces%rowtype;
+  v_legs bigint[] := '{}'; v_pcs bigint[] := '{}'; v_new bigint[] := '{}'; v_follow bigint[] := '{}';
+  v_warn jsonb; v_notices bigint[]; v_vs_first boolean;
+begin
+  -- The core of every assignment (plan_put_pieces / _group, plan_orders_create, plan_split_piece and
+  -- plan_move_pieces with a target): pieces onto ONE resolved target (plan_h_target) in one transaction.
+  if jsonb_typeof(p_pieces) is distinct from 'array' or jsonb_array_length(p_pieces) = 0 then
+    perform plan_h_raise('bad_input', 'pieces');
+  end if;
+  select id into v_hub from locations where is_hub;
+  for it in select value from jsonb_array_elements(p_pieces) loop
+    perform plan_h_keys(it, array['piece_id', 'take_pallets', 'to_hub', 'pickup', 'drop'], 'piece');
+    v_id := (it->>'piece_id')::bigint;
+    select * into p from shipment_pieces where id = v_id for update;
+    if p.id is null or p.deleted_at is not null then perform plan_h_raise('piece_dead', coalesce(v_id::text, 'null')); end if;
+    if exists (select 1 from shipment_pieces c where c.parent_piece_id = p.id and c.deleted_at is null) then
+      perform plan_h_raise('piece_split', p.id::text);
+    end if;
+    select * into ps from v_piece_state where piece_id = p.id;
+    if ps.piece_id is null then perform plan_h_raise('piece_dead', p.id::text); end if;
+    -- A piece already planned to its national end is not put again: it is moved (plan_move_pieces).
+    if not ps.waiting then perform plan_h_raise('piece_busy', p.id::text); end if;
+    -- decision 16 (critique 23/10): "first" = the international had NO live leg on any of its pieces before this
+    -- one is written. A VS split at Veroia without a target leaves only stock; the first part of it that rides
+    -- still moves the international's day ("stock" in spec 3 is what stays after a part has LEFT).
+    v_vs_first := ps.kind in ('vs_import', 'vs_export') and not exists (
+      select 1 from piece_legs l join shipment_pieces sp on sp.id = l.piece_id join shipments s on s.id = sp.shipment_id
+       where s.order_id = ps.order_id and l.deleted_at is null);
+    v_take := (it->>'take_pallets')::numeric;
+    if v_take is not null and v_take <> ps.pallets then
+      -- Spec 3 Board: the "+" takes a PART only from stock (a child without a leg of its own, at the hub); a load
+      -- that is just arriving goes whole. Split + put = one transaction (spec 7).
+      if not ps.is_stock then perform plan_h_raise('not_stock', p.id::text); end if;
+      if v_take <= 0 or v_take > ps.pallets then
+        perform plan_h_raise('parts_sum', format('%s:%s>%s', p.id, v_take, ps.pallets));
+      end if;
+      update shipment_pieces set split_at = now(), split_by = p_actor where id = p.id;
+      perform plan_h_audit(p_actor, p_role, 'update', 'shipment_pieces', p.id::text,
+                           jsonb_build_object('split_at', null), jsonb_build_object('split_at', now(), 'split_by', p_actor));
+      insert into shipment_pieces (shipment_id, parent_piece_id, pallets, created_by)
+      values (p.shipment_id, p.id, v_take, p_actor) returning * into c1;
+      -- decision 18: the stock that stays keeps the parent's "leaves by" day
+      insert into shipment_pieces (shipment_id, parent_piece_id, pallets, leave_by, created_by)
+      values (p.shipment_id, p.id, ps.pallets - v_take, p.leave_by, p_actor) returning * into c2;
+      perform plan_h_audit(p_actor, p_role, 'create', 'shipment_pieces', c1.id::text, null, to_jsonb(c1));
+      perform plan_h_audit(p_actor, p_role, 'create', 'shipment_pieces', c2.id::text, null, to_jsonb(c2));
+      v_new := v_new || c1.id || c2.id;
+      v_id := c1.id;              -- the part that rides; it sits where the parent sits, with the same end
+    end if;
+    if it ? 'pickup' then
+      v_pick := (v_map->>(it->>'pickup'))::bigint;
+      if v_pick is null then perform plan_h_raise('bad_input', 'piece.pickup'); end if;
+    else
+      v_pick := plan_h_stop_at(v_map, ps.position_location_id, v_side);
+    end if;
+    if v_pick is null then perform plan_h_raise('bad_input', format('pickup:%s@%s', p.id, ps.position_location_id)); end if;
+    v_to := case when coalesce((it->>'to_hub')::boolean, false) then v_hub
+                 else (select nat_to_location_id from v_shipments where shipment_id = p.shipment_id) end;
+    if it ? 'drop' then
+      v_drop := (v_map->>(it->>'drop'))::bigint;
+      if v_drop is null then perform plan_h_raise('bad_input', 'piece.drop'); end if;
+    else
+      v_drop := plan_h_stop_at(v_map, v_to, v_side);
+    end if;
+    if v_drop is null then perform plan_h_raise('bad_input', format('drop:%s@%s', p.id, v_to)); end if;
+    v_legs := v_legs || plan_h_leg_add(v_id, v_rt, v_pick, v_drop, p_actor, p_role);
+    v_pcs := v_pcs || v_id;
+    -- decision 16: a piece that was NOT stock, or the first ride of a VS (v_vs_first), rewrites the international's
+    -- day (p_first: the caller knows a piece counted as "first" before this operation changed it, e.g. a split part).
+    if not ps.is_stock or v_vs_first or p.id = any (p_first) or v_id = any (p_first) then
+      v_follow := v_follow || v_id;
+    end if;
+  end loop;
+  perform plan_h_reseq(v_rt, p_actor, p_role);
+  v_notices := plan_h_vs_follow(v_follow, p_actor, p_role);
+  -- Warnings, never refusals: over 33 pallets on a side (spec 3 VS; every unit counts, C-23) and temperatures
+  -- 2 C or more apart on a side (spec 7 B-87). over_33 is the SUM of the side's loadings, not the peak load on
+  -- board (a load dropped at a middle stop still counts): an indication for the screen, never a rule.
+  select coalesce(jsonb_agg(w order by w::text), '[]'::jsonb) into v_warn from (
+    select jsonb_build_object('code', 'over_33', 'rt_id', v_rt, 'side', s.side, 'pallets', sum(pp.pallets)) as w
+      from piece_legs l join rt_stops s on s.id = l.pickup_stop_id join shipment_pieces pp on pp.id = l.piece_id
+     where l.rt_id = v_rt and l.deleted_at is null group by s.side having sum(pp.pallets) > 33
+    union all
+    select jsonb_build_object('code', 'mixed_temp', 'rt_id', v_rt, 'side', s.side,
+                              'delta_c', max(vs.temperature_c) - min(vs.temperature_c))
+      from piece_legs l join rt_stops s on s.id = l.pickup_stop_id join shipment_pieces pp on pp.id = l.piece_id
+      join v_shipments vs on vs.shipment_id = pp.shipment_id
+     where l.rt_id = v_rt and l.deleted_at is null group by s.side
+    having max(vs.temperature_c) - min(vs.temperature_c) >= 2) x;
+  -- the target's own warnings (a new cycle: v1_same_truck, decision 19) travel with the answer
+  v_warn := coalesce(p_tgt->'warnings', '[]'::jsonb) || v_warn;
+  return jsonb_build_object('rt_id', v_rt, 'side', v_side,
+    'stop_ids', (select coalesce(jsonb_agg(value::bigint order by value::bigint), '[]'::jsonb) from jsonb_each_text(v_map)),
+    'leg_ids', to_jsonb(v_legs), 'piece_ids', to_jsonb(v_pcs), 'new_piece_ids', to_jsonb(v_new),
+    'warnings', v_warn, 'notice_ids', to_jsonb(v_notices));
+end
+$f$;
+
+  CREATE FUNCTION public.plan_put_pieces(p jsonb, p_actor text, p_role text) RETURNS jsonb
+    LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $f$
+declare v_tgt jsonb; v_put jsonb;
+begin
+  perform plan_h_ctx(p_actor, p_role);
+  perform plan_h_keys(p, array['pieces', 'target', 'stops'], 'p');
+  v_tgt := plan_h_target(p->'target', p->'stops', p_actor, p_role);
+  v_put := plan_h_put(p->'pieces', v_tgt, p_actor, p_role, '{}');
+  perform plan_h_finish();
+  return plan_h_ok('plan_put_pieces',
+    jsonb_build_object('rt_id', v_put->'rt_id', 'stop_ids', v_put->'stop_ids', 'leg_ids', v_put->'leg_ids',
+                       'piece_ids', v_put->'piece_ids', 'new_piece_ids', v_put->'new_piece_ids'),
+    v_put->'warnings', v_put->'notice_ids');
+exception
+  when invalid_text_representation or invalid_datetime_format or datetime_field_overflow
+       or numeric_value_out_of_range or invalid_parameter_value then
+    perform plan_h_raise('bad_input', sqlstate);
+end
+$f$;
+```
+
+Πρόσθεσε πάνω από τη γραμμή `-- @pub (072 tasks add ", 'public.plan_x(jsonb,text,text)'" lines above this marker)`:
+
+```sql
+    , 'public.plan_put_pieces(jsonb,text,text)'
+```
+
+- [ ] **Step 4: Τρέξε, να περάσει**
+
+Run: `cd tms-auditor && node --test test/plan-072.test.mjs`
+Expected: `✔` και στα τρία υπο-tests, μήνυμα `Result: 46 OK, 0 FAIL`, `ℹ fail 0`.
+
+Run: `node --test tests/sql-072-drafts.test.js`
+Expected: `ℹ pass 6`, `ℹ fail 0` (το `v_pub` = κάθε δημόσια συνάρτηση, κάθε νέος κωδικός έχει περίπτωση).
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add worker/migrations/drafts/072_plan_functions.sql worker/migrations/drafts/072_plan_functions_test.sql
+git commit -m "072 plan_put_pieces: whole pieces, split+put from stock, the VS day follows the first piece
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+```
+
+
+#### Task Α4: `plan_put_group`
+
+**Files:** Modify `worker/migrations/drafts/072_plan_functions.sql` (PART 2 και το `v_pub` του PART 5), `worker/migrations/drafts/072_plan_functions_test.sql` (περιπτώσεις 47–50).
+
+**Interfaces:**
+- Consumes: Α3 (`plan_h_put`), Α1 (`plan_h_target`).
+- Produces: `plan_put_group(p jsonb, p_actor text, p_role text) RETURNS jsonb` (δημόσια): ομάδα = τα κομμάτια σε αναμονή μιας διεθνούς VS (`order_id`) ή μιας εθνικής (`nat_order_id`), ολόκληρα.
+
+- [ ] **Step 1: Οι περιπτώσεις πρώτα (`worker/migrations/drafts/072_plan_functions_test.sql`)**
+
+Πρόσθεσε πάνω από τη γραμμή `-- @want (one line per case: "    , '<ok|plan:code|con:name|state:XXXXX>'  -- <k> <what>")`:
+
+```sql
+    , 'ok'               -- 47 a VS of 3 deliveries onto a truck of D+1 = 1 call, 3 legs, the international's day follows
+    , 'plan:group_empty' -- 48 nothing waiting in the group
+    , 'plan:bad_input'   -- 49 a group with neither order_id nor nat_order_id
+    , 'ok'               -- 50 a national order of 2 shipments as one card; no piece split
+```
+
+Πρόσθεσε πάνω από τη γραμμή `-- @case (each task adds its "ELSIF k = <n> THEN" branches above this line)`:
+
+```sql
+      ELSIF k = 47 THEN   -- three bridges (B 20, D 26, E 4), each one piece waiting at Veroia
+        INSERT INTO shipments (order_id, order_stop_id, created_by) VALUES (vso, vs_b, 'test:072') RETURNING id INTO x;
+        INSERT INTO shipment_pieces (shipment_id, pallets, created_by) VALUES (x, 20, 'test:072');
+        INSERT INTO shipments (order_id, order_stop_id, created_by) VALUES (vso, vs_d, 'test:072') RETURNING id INTO x;
+        INSERT INTO shipment_pieces (shipment_id, pallets, created_by) VALUES (x, 26, 'test:072');
+        INSERT INTO shipments (order_id, order_stop_id, created_by) VALUES (vso, vs_e, 'test:072') RETURNING id INTO x;
+        INSERT INTO shipment_pieces (shipment_id, pallets, created_by) VALUES (x, 4, 'test:072');
+        r := plan_put_group(jsonb_build_object('group', jsonb_build_object('order_id', vso),
+               'target', jsonb_build_object('rt_id', rt2, 'side', 'KATHODOS'),
+               'stops', jsonb_build_array(jsonb_build_object('ref', 'h', 'stop_id', s2h), jsonb_build_object('ref', 'b', 'stop_id', s2b),
+                                          jsonb_build_object('ref', 'd', 'location_id', ld, 'planned_from', b14, 'planned_to', b15),
+                                          jsonb_build_object('ref', 'e', 'location_id', le, 'planned_from', b15, 'planned_to', b16))),
+               'test:072', 'owner');
+      ELSIF k = 48 THEN
+        INSERT INTO piece_legs (piece_id, leg_no, rt_id, pickup_stop_id, drop_stop_id, created_by) VALUES (p1, 1, rt1, s1a, s1b, 'test:072');
+        PERFORM plan_put_group(jsonb_build_object('group', jsonb_build_object('nat_order_id', n1),
+                  'target', jsonb_build_object('rt_id', rt2, 'side', 'KATHODOS'),
+                  'stops', jsonb_build_array(jsonb_build_object('ref', 'a', 'stop_id', s2a))), 'test:072', 'owner');
+      ELSIF k = 49 THEN
+        PERFORM plan_put_group(jsonb_build_object('group', '{}'::jsonb,
+                  'target', jsonb_build_object('rt_id', rt2, 'side', 'KATHODOS')), 'test:072', 'owner');
+      ELSIF k = 50 THEN
+        r := plan_orders_create(jsonb_build_object('orders', jsonb_build_array(jo1 || jsonb_build_object('shipments',
+               jsonb_build_array(jsh1 || '{"pallets": 3}', jsh1 || jsonb_build_object('dest_location_id', lc, 'pallets', 4, 'deliver_to', a16))))),
+               'test:072', 'owner');
+        x := (r->'ids'->'nat_order_ids'->>0)::bigint;
+        r := plan_put_group(jsonb_build_object('group', jsonb_build_object('nat_order_id', x),
+               'target', jsonb_build_object('rt_id', rt1, 'side', 'KATHODOS'),
+               'stops', jsonb_build_array(jsonb_build_object('ref', 'a', 'stop_id', s1a), jsonb_build_object('ref', 'b', 'stop_id', s1b),
+                                          jsonb_build_object('ref', 'c', 'location_id', lc, 'planned_from', a15, 'planned_to', a16))),
+               'test:072', 'owner');
+```
+
+Πρόσθεσε πάνω από τη γραμμή `-- @verdict (each task adds its "ELSIF k = <n> THEN verdict := ..." branches above this line)`:
+
+```sql
+      ELSIF k = 47 THEN
+        verdict := CASE WHEN jsonb_array_length(r->'ids'->'leg_ids') = 3
+                          AND (SELECT all_planned FROM v_vs_state WHERE order_id = vso)
+                          AND (SELECT cross_dock_date FROM orders WHERE id = vso) = e
+                          AND (SELECT count(*) FROM plan_notices WHERE order_id = vso AND kind = 'vs_day_changed') = 1
+                          AND (SELECT count(*) FROM rt_stops WHERE rt_id = rt2 AND deleted_at IS NULL) = 5
+                          AND r->'warnings' @> '[{"code": "over_33"}]'
+                        THEN 'ok one call: 3 legs, all planned, the international on D+1, one notice, over 33 warned'
+                        ELSE 'FAIL VS group: ' || r::text END;
+      ELSIF k = 50 THEN
+        verdict := CASE WHEN jsonb_array_length(r->'ids'->'leg_ids') = 2
+                          AND (SELECT planned FROM v_national_order_state WHERE nat_order_id = x)
+                          AND (SELECT count(*) FROM shipment_pieces p JOIN shipments s ON s.id = p.shipment_id WHERE s.nat_order_id = x) = 2
+                        THEN 'ok 2 shipments, 2 legs, no split' ELSE 'FAIL national group: ' || r::text END;
+```
+
+- [ ] **Step 2: Τρέξε, να αποτύχει**
+
+Run: `cd tms-auditor && node --test test/plan-072.test.mjs`
+Expected: FAIL στο `072 rules test`, με μήνυμα `Result: 46 OK, 4 FAIL` και πρώτη αποτυχία `47 FAIL want ok got state:42883 (function plan_put_group(jsonb, unknown, unknown) does not exist)`. Το `node --test tests/sql-072-drafts.test.js` μένει πράσινο (6/6).
+
+- [ ] **Step 3: Η υλοποίηση (`worker/migrations/drafts/072_plan_functions.sql`)**
+
+Πρόσθεσε πάνω από τη γραμμή `-- @A (072 section A: plan_orders_create, plan_put_pieces, plan_put_group, plan_split_piece, plan_move_pieces, plan_order_update)`:
+
+```sql
+  CREATE FUNCTION public.plan_put_group(p jsonb, p_actor text, p_role text) RETURNS jsonb
+    LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $f$
+declare v_ord bigint; v_nat bigint; v_pieces jsonb; v_tgt jsonb; v_put jsonb;
+begin
+  -- Design 3 "Assign": the whole card (e.g. the 3 deliveries of a VS) in one call. It never splits a piece
+  -- (no take_pallets): a group is its waiting pieces, whole.
+  perform plan_h_ctx(p_actor, p_role);
+  perform plan_h_keys(p, array['group', 'target', 'stops'], 'p');
+  perform plan_h_keys(p->'group', array['order_id', 'nat_order_id'], 'group');
+  v_ord := (p->'group'->>'order_id')::bigint;
+  v_nat := (p->'group'->>'nat_order_id')::bigint;
+  if num_nonnulls(v_ord, v_nat) <> 1 then perform plan_h_raise('bad_input', 'group'); end if;
+  select jsonb_agg(jsonb_build_object('piece_id', ps.piece_id) order by ps.piece_id) into v_pieces
+    from v_piece_state ps
+   where ps.waiting and (ps.order_id = v_ord or ps.nat_order_id = v_nat);
+  if v_pieces is null then perform plan_h_raise('group_empty', coalesce(v_ord, v_nat)::text); end if;
+  v_tgt := plan_h_target(p->'target', p->'stops', p_actor, p_role);
+  v_put := plan_h_put(v_pieces, v_tgt, p_actor, p_role, '{}');
+  perform plan_h_finish();
+  return plan_h_ok('plan_put_group',
+    jsonb_build_object('rt_id', v_put->'rt_id', 'stop_ids', v_put->'stop_ids', 'leg_ids', v_put->'leg_ids',
+                       'piece_ids', v_put->'piece_ids'),
+    v_put->'warnings', v_put->'notice_ids');
+exception
+  when invalid_text_representation or invalid_datetime_format or datetime_field_overflow
+       or numeric_value_out_of_range or invalid_parameter_value then
+    perform plan_h_raise('bad_input', sqlstate);
+end
+$f$;
+```
+
+Πρόσθεσε πάνω από τη γραμμή `-- @pub (072 tasks add ", 'public.plan_x(jsonb,text,text)'" lines above this marker)`:
+
+```sql
+    , 'public.plan_put_group(jsonb,text,text)'
+```
+
+- [ ] **Step 4: Τρέξε, να περάσει**
+
+Run: `cd tms-auditor && node --test test/plan-072.test.mjs`
+Expected: `✔` και στα τρία υπο-tests, μήνυμα `Result: 50 OK, 0 FAIL`, `ℹ fail 0`.
+
+Run: `node --test tests/sql-072-drafts.test.js`
+Expected: `ℹ pass 6`, `ℹ fail 0` (το `v_pub` = κάθε δημόσια συνάρτηση, κάθε νέος κωδικός έχει περίπτωση).
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add worker/migrations/drafts/072_plan_functions.sql worker/migrations/drafts/072_plan_functions_test.sql
+git commit -m "072 plan_put_group: the whole card in one call, never a split
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+```
+
+
+#### Task Α5: `plan_split_piece`
+
+**Files:** Modify `worker/migrations/drafts/072_plan_functions.sql` (PART 2 και το `v_pub` του PART 5), `worker/migrations/drafts/072_plan_functions_test.sql` (περιπτώσεις 51–56).
+
+**Interfaces:**
+- Consumes: Α3 (`plan_h_put` με `p_first`), Α1.
+- Produces: `plan_split_piece(p jsonb, p_actor text, p_role text) RETURNS jsonb` (δημόσια): `ids = {piece_ids (παιδιά, με τη σειρά των parts), leg_ids, rt_ids}`.
+
+- [ ] **Step 1: Οι περιπτώσεις πρώτα (`worker/migrations/drafts/072_plan_functions_test.sql`)**
+
+Πρόσθεσε πάνω από τη γραμμή `-- @want (one line per case: "    , '<ok|plan:code|con:name|state:XXXXX>'  -- <k> <what>")`:
+
+```sql
+    , 'ok'               -- 51 26 -> 12 + 14 at Veroia: two stock pieces that leave by the evening before
+    , 'plan:parts_sum'   -- 52 12 + 13 <> 26
+    , 'plan:not_at_hub'  -- 53 a piece that is not at Veroia
+    , 'plan:piece_split' -- 54 a piece already split
+    , 'plan:bad_input'   -- 55 one part only
+    , 'ok'               -- 56 a part onto a truck in the same call: it counts as the first piece of the VS
+```
+
+Πρόσθεσε πάνω από τη γραμμή `-- @case (each task adds its "ELSIF k = <n> THEN" branches above this line)`:
+
+```sql
+      ELSIF k IN (51, 52, 54, 55, 56) THEN   -- the VS bridge of the 26 pallets to D, waiting at Veroia
+        INSERT INTO shipments (order_id, order_stop_id, created_by) VALUES (vso, vs_d, 'test:072') RETURNING id INTO x;
+        INSERT INTO shipment_pieces (shipment_id, pallets, created_by) VALUES (x, 26, 'test:072') RETURNING id INTO y;
+        IF k IN (51, 54) THEN
+          r := plan_split_piece(jsonb_build_object('piece_id', y, 'parts', '[{"pallets": 12}, {"pallets": 14}]'::jsonb), 'test:072', 'owner');
+          IF k = 54 THEN
+            PERFORM plan_split_piece(jsonb_build_object('piece_id', y, 'parts', '[{"pallets": 6}, {"pallets": 20}]'::jsonb), 'test:072', 'owner');
+          END IF;
+        ELSIF k = 52 THEN
+          PERFORM plan_split_piece(jsonb_build_object('piece_id', y, 'parts', '[{"pallets": 12}, {"pallets": 13}]'::jsonb), 'test:072', 'owner');
+        ELSIF k = 55 THEN
+          PERFORM plan_split_piece(jsonb_build_object('piece_id', y, 'parts', '[{"pallets": 26}]'::jsonb), 'test:072', 'owner');
+        ELSE
+          r := plan_split_piece(jsonb_build_object('piece_id', y, 'parts', jsonb_build_array(
+                 jsonb_build_object('pallets', 12, 'target', jsonb_build_object('rt_id', rt2, 'side', 'KATHODOS'),
+                   'stops', jsonb_build_array(jsonb_build_object('ref', 'h', 'stop_id', s2h),
+                                              jsonb_build_object('ref', 'd', 'location_id', ld, 'planned_from', b13, 'planned_to', b14))),
+                 jsonb_build_object('pallets', 14))), 'test:072', 'dispatcher');
+        END IF;
+      ELSIF k = 53 THEN
+        PERFORM plan_split_piece(jsonb_build_object('piece_id', p1, 'parts', '[{"pallets": 4}, {"pallets": 6}]'::jsonb), 'test:072', 'owner');
+```
+
+Πρόσθεσε πάνω από τη γραμμή `-- @verdict (each task adds its "ELSIF k = <n> THEN verdict := ..." branches above this line)`:
+
+```sql
+      ELSIF k = 51 THEN
+        verdict := CASE WHEN (SELECT split_at IS NOT NULL AND split_by = 'test:072' FROM shipment_pieces WHERE id = y)
+                          AND (SELECT count(*) FROM v_hub_bucket WHERE shipment_id = x AND is_stock AND leave_by = d) = 2
+                          AND (SELECT sum(pallets) FROM v_piece_state WHERE shipment_id = x) = 26
+                          AND (SELECT cross_dock_date FROM orders WHERE id = vso) = d
+                        THEN 'ok 12 + 14 stock at Veroia, leave by D (the day before D+1)' ELSE 'FAIL split' END;
+      ELSIF k = 56 THEN
+        c1 := (r->'ids'->'piece_ids'->>0)::bigint; c2 := (r->'ids'->'piece_ids'->>1)::bigint;
+        verdict := CASE WHEN (SELECT NOT waiting AND pallets = 12 FROM v_piece_state WHERE piece_id = c1)
+                          AND (SELECT leave_by FROM shipment_pieces WHERE id = c1) IS NULL
+                          AND (SELECT is_stock AND leave_by = d AND pallets = 14 FROM v_hub_bucket WHERE piece_id = c2)
+                          AND (SELECT cross_dock_date FROM orders WHERE id = vso) = e
+                          AND jsonb_array_length(r->'notice_ids') = 1 AND jsonb_array_length(r->'ids'->'leg_ids') = 1
+                        THEN 'ok the 12 ride on D+1 (first piece: the international moves), the 14 stay as stock'
+                        ELSE 'FAIL split with target: ' || r::text END;
+```
+
+- [ ] **Step 2: Τρέξε, να αποτύχει**
+
+Run: `cd tms-auditor && node --test test/plan-072.test.mjs`
+Expected: FAIL στο `072 rules test`, με μήνυμα `Result: 50 OK, 6 FAIL` και πρώτη αποτυχία `51 FAIL want ok got state:42883 (function plan_split_piece(jsonb, unknown, unknown) does not exist)`. Το `node --test tests/sql-072-drafts.test.js` μένει πράσινο (6/6).
+
+- [ ] **Step 3: Η υλοποίηση (`worker/migrations/drafts/072_plan_functions.sql`)**
+
+Πρόσθεσε πάνω από τη γραμμή `-- @A (072 section A: plan_orders_create, plan_put_pieces, plan_put_group, plan_split_piece, plan_move_pieces, plan_order_update)`:
+
+```sql
+  CREATE FUNCTION public.plan_split_piece(p jsonb, p_actor text, p_role text) RETURNS jsonb
+    LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $f$
+declare
+  v_id bigint; v_hub bigint; v_sum numeric := 0; v_n int; part jsonb; v_tgt jsonb; v_put jsonb;
+  p0 shipment_pieces%rowtype; ps v_piece_state%rowtype; c shipment_pieces%rowtype;
+  v_children bigint[] := '{}'; v_legs jsonb := '[]'; v_rts jsonb := '[]'; v_warn jsonb := '[]'; v_notices jsonb := '[]';
+begin
+  -- Spec 3 Board: a load splits only on the Veroia Board (at the hub). Each part may go onto a cycle in the same
+  -- transaction; a part without a target stays as stock that "leaves by" the evening before the requested day.
+  perform plan_h_ctx(p_actor, p_role);
+  perform plan_h_keys(p, array['piece_id', 'parts'], 'p');
+  v_id := (p->>'piece_id')::bigint;
+  select * into p0 from shipment_pieces where id = v_id for update;
+  if p0.id is null or p0.deleted_at is not null then perform plan_h_raise('piece_dead', coalesce(v_id::text, 'null')); end if;
+  if exists (select 1 from shipment_pieces c2 where c2.parent_piece_id = p0.id and c2.deleted_at is null) then
+    perform plan_h_raise('piece_split', p0.id::text);
+  end if;
+  select * into ps from v_piece_state where piece_id = p0.id;
+  if ps.piece_id is null then perform plan_h_raise('piece_dead', p0.id::text); end if;
+  select id into v_hub from locations where is_hub;
+  -- refused here with its own code, before 071's split_not_at_hub would refuse it at the end
+  if ps.position_location_id is distinct from v_hub then perform plan_h_raise('not_at_hub', p0.id::text); end if;
+  if jsonb_typeof(p->'parts') is distinct from 'array' or jsonb_array_length(p->'parts') < 2 then
+    perform plan_h_raise('bad_input', 'parts');
+  end if;
+  for part in select value from jsonb_array_elements(p->'parts') loop
+    perform plan_h_keys(part, array['pallets', 'target', 'stops'], 'part');
+    if coalesce((part->>'pallets')::numeric, 0) <= 0 then perform plan_h_raise('parts_sum', p0.id || ':part<=0'); end if;
+    v_sum := v_sum + (part->>'pallets')::numeric;
+  end loop;
+  if v_sum <> ps.pallets then perform plan_h_raise('parts_sum', format('%s:%s<>%s', p0.id, v_sum, ps.pallets)); end if;
+  update shipment_pieces set split_at = now(), split_by = p_actor where id = p0.id;
+  perform plan_h_audit(p_actor, p_role, 'update', 'shipment_pieces', p0.id::text,
+                       jsonb_build_object('split_at', null), jsonb_build_object('split_at', now(), 'split_by', p_actor));
+  for part in select value from jsonb_array_elements(p->'parts') loop
+    -- decision 18: only "leaves by" (the evening before the requested national day, as a date); "22:00" is the
+    -- screen's text. A part that rides now has no leave_by.
+    insert into shipment_pieces (shipment_id, parent_piece_id, pallets, leave_by, created_by)
+    values (p0.shipment_id, p0.id, (part->>'pallets')::numeric,
+            case when part ? 'target' then null else ps.nat_due_day - 1 end, p_actor)
+    returning * into c;
+    perform plan_h_audit(p_actor, p_role, 'create', 'shipment_pieces', c.id::text, null, to_jsonb(c));
+    v_children := v_children || c.id;
+    if part ? 'target' then
+      v_tgt := plan_h_target(part->'target', part->'stops', p_actor, p_role);
+      -- decision 16: the part put in the same operation counts as "first" when the split piece was not stock
+      v_put := plan_h_put(jsonb_build_array(jsonb_build_object('piece_id', c.id)), v_tgt, p_actor, p_role,
+                          case when ps.is_stock then '{}'::bigint[] else array[c.id] end);
+      v_legs := v_legs || (v_put->'leg_ids');
+      v_rts := v_rts || jsonb_build_array(v_put->'rt_id');
+      v_warn := v_warn || (v_put->'warnings');
+      v_notices := v_notices || (v_put->'notice_ids');
+    elsif part ? 'stops' then
+      perform plan_h_raise('bad_input', 'part.stops without target');
+    end if;
+  end loop;
+  perform plan_h_finish();
+  return plan_h_ok('plan_split_piece',
+    jsonb_build_object('piece_ids', to_jsonb(v_children), 'leg_ids', v_legs, 'rt_ids', v_rts), v_warn, v_notices);
+exception
+  when invalid_text_representation or invalid_datetime_format or datetime_field_overflow
+       or numeric_value_out_of_range or invalid_parameter_value then
+    perform plan_h_raise('bad_input', sqlstate);
+end
+$f$;
+```
+
+Πρόσθεσε πάνω από τη γραμμή `-- @pub (072 tasks add ", 'public.plan_x(jsonb,text,text)'" lines above this marker)`:
+
+```sql
+    , 'public.plan_split_piece(jsonb,text,text)'
+```
+
+- [ ] **Step 4: Τρέξε, να περάσει**
+
+Run: `cd tms-auditor && node --test test/plan-072.test.mjs`
+Expected: `✔` και στα τρία υπο-tests, μήνυμα `Result: 56 OK, 0 FAIL`, `ℹ fail 0`.
+
+Run: `node --test tests/sql-072-drafts.test.js`
+Expected: `ℹ pass 6`, `ℹ fail 0` (το `v_pub` = κάθε δημόσια συνάρτηση, κάθε νέος κωδικός έχει περίπτωση).
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add worker/migrations/drafts/072_plan_functions.sql worker/migrations/drafts/072_plan_functions_test.sql
+git commit -m "072 plan_split_piece: split only at Veroia, leave_by, a part may ride in the same call
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+```
+
+
+#### Task Α6: `plan_move_pieces`
+
+**Files:** Modify `worker/migrations/drafts/072_plan_functions.sql` (PART 2 και το `v_pub` του PART 5), `worker/migrations/drafts/072_plan_functions_test.sql` (περιπτώσεις 57–67).
+
+**Interfaces:**
+- Consumes: Α1 (`plan_h_leg_drop`, `plan_h_stops_sweep`, `plan_h_rt_consequences`, `plan_h_rt_cancel_if_empty`, `plan_h_token`, `plan_h_strip_amounts`), Α3 (`plan_h_put`).
+- Produces: `plan_h_confirm(p_fn, p_key, p_full, p, p_role) RETURNS jsonb` (dry run / `stale_confirm` / `need_token`, ο ΕΝΑΣ μηχανισμός δύο βημάτων: τον ξαναχρησιμοποιούν οι Β3 `plan_rt_clear`, Β4 `plan_delete`)· `plan_h_drop_consequences(p_legs bigint[], p_keep_rt bigint, p_chosen_rts bigint[] DEFAULT NULL) RETURNS jsonb` (η λίστα για κινήσεις που φεύγουν, με `later_leg` και `local_payroll`: τη ξαναχρησιμοποιεί η Β4 και προσθέτει `invoiced`)· η σειρά κλειδωμάτων «όλοι οι κύκλοι της πράξης, κατά id, πριν από τη λίστα»· `plan_move_pieces(p jsonb, p_actor text, p_role text) RETURNS jsonb` (δημόσια): `ids = {rt_id, stop_ids, leg_ids, piece_ids, dropped_leg_ids, cancelled_rt_ids}`.
+
+- [ ] **Step 1: Οι περιπτώσεις πρώτα (`worker/migrations/drafts/072_plan_functions_test.sql`)**
+
+Πρόσθεσε πάνω από τη γραμμή `-- @want (one line per case: "    , '<ok|plan:code|con:name|state:XXXXX>'  -- <k> <what>")`:
+
+```sql
+    , 'ok'               -- 57 one row to another cycle; the source keeps another load: no list, no token
+    , 'ok'               -- 58 the source would be left empty: the dry run lists it and writes nothing
+    , 'ok'               -- 59 with the token: source cancelled, its payroll with amount deleted, 0 needs_review
+    , 'plan:need_token'  -- 60 the same without the token
+    , 'plan:stale_confirm' -- 61 the payroll amount changed after the dry run
+    , 'plan:same_rt'     -- 62 onto the side it is already on
+    , 'ok'               -- 63 back to waiting
+    , 'ok'               -- 64 a whole side (breakdown): both rows to another truck, the source cancelled
+    , 'ok'               -- 65 the dispatcher's list has no amounts; the token is the same for every role
+    , 'ok'               -- 66 the loading by a local driver is listed and goes with its stop
+    , 'plan:piece_dead'  -- 67 one bad row: nothing moves (one transaction)
+```
+
+Πρόσθεσε πάνω από τη γραμμή `-- @case (each task adds its "ELSIF k = <n> THEN" branches above this line)`:
+
+```sql
+      ELSIF k BETWEEN 57 AND 67 THEN
+        -- p1 on R1 (A -> B); for 56, 62, 63 a second order (2 pallets, piece z) rides with it
+        PERFORM plan_put_pieces(jsonb_build_object('pieces', jsonb_build_array(jsonb_build_object('piece_id', p1)),
+                  'target', jsonb_build_object('rt_id', rt1, 'side', 'KATHODOS'),
+                  'stops', jsonb_build_array(jsonb_build_object('ref', 'a', 'stop_id', s1a), jsonb_build_object('ref', 'b', 'stop_id', s1b))),
+                  'test:072', 'owner');
+        IF k IN (57, 63, 64) THEN
+          r := plan_orders_create(jsonb_build_object('orders', jsonb_build_array(jo1 || jsonb_build_object('shipments',
+                 jsonb_build_array(jsh1 || '{"pallets": 2}'))),
+                 'target', jsonb_build_object('rt_id', rt1, 'side', 'KATHODOS'),
+                 'stops', jsonb_build_array(jsonb_build_object('ref', 'a', 'stop_id', s1a), jsonb_build_object('ref', 'b', 'stop_id', s1b))),
+                 'test:072', 'owner');
+          z := (r->'ids'->'piece_ids'->>0)::bigint;
+        END IF;
+        SET CONSTRAINTS ALL DEFERRED;
+        UPDATE dl_entries SET trip_value = 50 WHERE rt_id = rt1 AND deleted_at IS NULL;
+        IF k = 66 THEN
+          INSERT INTO local_moves (move_kind, rt_stop_id, driver_id, truck_id, move_date, status)
+          VALUES ('nat_loading', s1a, drvl, trk2, d, 'Assigned') RETURNING id INTO q;
+        END IF;
+        j := jsonb_build_object('from', jsonb_build_object('piece_ids', jsonb_build_array(p1)),
+               'target', jsonb_build_object('rt_id', rt2, 'side', 'KATHODOS'),
+               'stops', jsonb_build_array(jsonb_build_object('ref', 'a', 'stop_id', s2a), jsonb_build_object('ref', 'b', 'stop_id', s2b)));
+        SELECT count(*) INTO n FROM audit_log;
+        IF k = 57 THEN
+          r := plan_move_pieces(j, 'test:072', 'owner');
+        ELSIF k IN (58, 59, 60, 61, 65, 66) THEN
+          r := plan_move_pieces(j || '{"dry_run": true}', 'test:072', CASE WHEN k = 65 THEN 'dispatcher' ELSE 'owner' END);
+          SELECT count(*) INTO m FROM audit_log;
+          IF k = 65 THEN r2 := plan_move_pieces(j || '{"dry_run": true}', 'test:072', 'owner'); END IF;
+          IF k = 61 THEN UPDATE dl_entries SET trip_value = 60 WHERE rt_id = rt1 AND deleted_at IS NULL; END IF;
+          IF k IN (59, 61, 66) THEN
+            r2 := plan_move_pieces(j || jsonb_build_object('confirm_token', r->>'confirm_token'), 'test:072', 'owner');
+          ELSIF k = 60 THEN
+            PERFORM plan_move_pieces(j, 'test:072', 'owner');
+          END IF;
+        ELSIF k = 62 THEN
+          PERFORM plan_move_pieces(jsonb_build_object('from', jsonb_build_object('piece_ids', jsonb_build_array(p1)),
+                    'target', jsonb_build_object('rt_id', rt1, 'side', 'KATHODOS')), 'test:072', 'owner');
+        ELSIF k = 63 THEN
+          r := plan_move_pieces(jsonb_build_object('from', jsonb_build_object('piece_ids', jsonb_build_array(p1)),
+                 'target', '{"wait": true}'::jsonb), 'test:072', 'owner');
+        ELSIF k = 64 THEN
+          j := j || jsonb_build_object('from', jsonb_build_object('rt_id', rt1, 'side', 'KATHODOS'));
+          r := plan_move_pieces(j || '{"dry_run": true}', 'test:072', 'owner');
+          r2 := plan_move_pieces(j || jsonb_build_object('confirm_token', r->>'confirm_token'), 'test:072', 'owner');
+        ELSE   -- 67
+          PERFORM plan_move_pieces(j || jsonb_build_object('from', jsonb_build_object('piece_ids', jsonb_build_array(p1, -5))),
+                    'test:072', 'owner');
+        END IF;
+```
+
+Πρόσθεσε πάνω από τη γραμμή `-- @verdict (each task adds its "ELSIF k = <n> THEN verdict := ..." branches above this line)`:
+
+```sql
+      ELSIF k = 57 THEN
+        verdict := CASE WHEN r->>'dry_run' = 'false'
+                          AND (SELECT count(*) FROM piece_legs WHERE piece_id = p1 AND deleted_at IS NULL AND rt_id = rt2) = 1
+                          AND (SELECT count(*) FROM piece_legs WHERE piece_id = p1 AND deleted_at IS NOT NULL AND rt_id = rt1
+                                 AND deleted_by = 'test:072') = 1
+                          AND (SELECT status FROM ct_round_trips WHERE id = rt1) = 'planned'
+                          AND (SELECT count(*) FROM rt_stops WHERE rt_id = rt1 AND deleted_at IS NULL) = 3
+                          AND (SELECT NOT waiting AND end_stop_id = s1b FROM v_piece_state WHERE piece_id = z)
+                          AND (SELECT end_stop_id FROM v_piece_state WHERE piece_id = p1) = s2b
+                        THEN 'ok moved to R2; R1 keeps the other load and its stops' ELSE 'FAIL move: ' || r::text END;
+      ELSIF k = 58 THEN
+        verdict := CASE WHEN r->>'dry_run' = 'true' AND (r->>'needs_confirm')::boolean AND length(r->>'confirm_token') = 32
+                          AND r->'consequences' @> jsonb_build_array(jsonb_build_object('kind', 'rt_cancelled', 'rt_id', rt1))
+                          AND r->'consequences' @> jsonb_build_array(jsonb_build_object('kind', 'payroll_amount', 'amount', 50))
+                          AND m = n AND (SELECT count(*) FROM piece_legs WHERE piece_id = p1 AND deleted_at IS NULL AND rt_id = rt1) = 1
+                        THEN 'ok the dry run lists R1 cancelled and its payroll, writes nothing' ELSE 'FAIL dry run: ' || r::text END;
+      ELSIF k = 59 THEN
+        verdict := CASE WHEN (SELECT status FROM ct_round_trips WHERE id = rt1) = 'cancelled'
+                          AND NOT EXISTS (SELECT 1 FROM piece_legs WHERE rt_id = rt1 AND deleted_at IS NULL)
+                          AND NOT EXISTS (SELECT 1 FROM rt_stops WHERE rt_id = rt1 AND deleted_at IS NULL)
+                          AND NOT EXISTS (SELECT 1 FROM dl_entries WHERE rt_id = rt1 AND (deleted_at IS NULL OR needs_review))
+                          AND (SELECT deleted_reason FROM dl_entries WHERE rt_id = rt1) LIKE '%(test:072)'
+                          AND (SELECT end_stop_id FROM v_piece_state WHERE piece_id = p1) = s2b
+                          AND r2->'ids'->'cancelled_rt_ids' = jsonb_build_array(rt1)
+                        THEN 'ok R1 cancelled with its stops; payroll deleted by the person, 0 needs_review; p1 on R2'
+                        ELSE 'FAIL execute: ' || coalesce(r2::text, 'null') END;
+      ELSIF k = 63 THEN
+        verdict := CASE WHEN (SELECT waiting AND position_location_id = la FROM v_piece_state WHERE piece_id = p1)
+                          AND (SELECT status FROM ct_round_trips WHERE id = rt1) = 'planned'
+                          AND r->'ids'->'leg_ids' = '[]'::jsonb
+                        THEN 'ok p1 waits at A again; R1 keeps the other load' ELSE 'FAIL wait: ' || r::text END;
+      ELSIF k = 64 THEN
+        verdict := CASE WHEN (SELECT count(*) FROM piece_legs WHERE rt_id = rt2 AND deleted_at IS NULL) = 2
+                          AND (SELECT status FROM ct_round_trips WHERE id = rt1) = 'cancelled'
+                          AND r->'consequences' @> jsonb_build_array(jsonb_build_object('kind', 'rt_cancelled', 'rt_id', rt1))
+                        THEN 'ok the whole KATHODOS of R1 on R2, R1 cancelled' ELSE 'FAIL side: ' || coalesce(r2::text, r::text) END;
+      ELSIF k = 65 THEN
+        verdict := CASE WHEN r::text NOT LIKE '%"amount"%' AND r2::text LIKE '%"amount": 50%'
+                          AND r->>'confirm_token' = r2->>'confirm_token'
+                          AND r->'consequences' @> '[{"kind": "payroll_amount", "paid": false}]'
+                        THEN 'ok the dispatcher sees the payroll line, not its amount; one token for both'
+                        ELSE 'FAIL amounts: ' || r::text END;
+      ELSIF k = 66 THEN
+        verdict := CASE WHEN r->'consequences' @> jsonb_build_array(jsonb_build_object('kind', 'local_loading', 'local_move_id', q))
+                          AND (SELECT deleted_at IS NOT NULL FROM local_moves WHERE id = q)
+                          AND (SELECT status FROM ct_round_trips WHERE id = rt1) = 'cancelled'
+                          AND (SELECT count(*) FROM audit_log WHERE table_name = 'local_moves' AND record_id = q::text AND actor = 'test:072') = 1
+                        THEN 'ok the local loading was listed and went with its stop' ELSE 'FAIL local loading: ' || r::text END;
+```
+
+- [ ] **Step 2: Τρέξε, να αποτύχει**
+
+Run: `cd tms-auditor && node --test test/plan-072.test.mjs`
+Expected: FAIL στο `072 rules test`, με μήνυμα `Result: 56 OK, 11 FAIL` και πρώτη αποτυχία `57 FAIL want ok got state:42883 (function plan_move_pieces(jsonb, unknown, unknown) does not exist)`. Το `node --test tests/sql-072-drafts.test.js` μένει πράσινο (6/6).
+
+- [ ] **Step 3: Η υλοποίηση (`worker/migrations/drafts/072_plan_functions.sql`)**
+
+Πρόσθεσε πάνω από τη γραμμή `-- @A (072 section A: plan_orders_create, plan_put_pieces, plan_put_group, plan_split_piece, plan_move_pieces, plan_order_update)`:
+
+```sql
+  CREATE FUNCTION public.plan_h_confirm(p_fn text, p_key text, p_full jsonb, p jsonb, p_role text) RETURNS jsonb
+    LANGUAGE plpgsql SET search_path = public AS $f$
+declare v_tok text := plan_h_token(p_fn, p_key, p_full);
+begin
+  -- Two steps for what deletes (spec 2.1): the dry run returns the list and the token and writes nothing (NULL =
+  -- go on). Decision 8: an empty list needs no token; a changed list is stale_confirm before need_token.
+  if coalesce((p->>'dry_run')::boolean, false) then
+    return jsonb_build_object('ok', true, 'op', p_fn, 'dry_run', true, 'needs_confirm', jsonb_array_length(p_full) > 0,
+                              'confirm_token', v_tok, 'consequences', plan_h_strip_amounts(p_full, p_role));
+  end if;
+  if p->>'confirm_token' is not null and p->>'confirm_token' <> v_tok then
+    perform plan_h_raise('stale_confirm', p_fn);
+  end if;
+  if jsonb_array_length(p_full) > 0 and p->>'confirm_token' is null then
+    perform plan_h_raise('need_token', p_fn);
+  end if;
+  return null;
+end
+$f$;
+
+  CREATE FUNCTION public.plan_h_drop_consequences(p_legs bigint[], p_keep_rt bigint, p_chosen_rts bigint[] DEFAULT NULL)
+    RETURNS jsonb
+    LANGUAGE plpgsql STABLE SET search_path = public AS $f$
+declare v jsonb := '[]'; r record;
+begin
+  -- The list of spec 3 for legs that are about to go (move, delete): executed legs (a correction); later legs on
+  -- other cycles than the ones the user picked from (p_chosen_rts: a move takes every later leg of the piece with
+  -- it, for the chain - listed as later_leg, never dropped silently); local loadings whose stop loses its last
+  -- pickup, with the TOPIKO payroll line of that loading when it already has amounts (decision 33: 060 sends it to
+  -- accounting's review); every cycle that would be left without a live leg (except the target p_keep_rt) with its
+  -- payroll and costs. Distinct and sorted (kind, row), so the token is stable.
+  v := v || coalesce((select jsonb_agg(jsonb_build_object('kind', 'executed_leg', 'leg_id', l.id, 'rt_id', l.rt_id,
+                                                         'stop_day', ss.stop_day))
+                        from piece_legs l join v_rt_stop_state ss on ss.stop_id = l.drop_stop_id
+                       where l.id = any (p_legs) and l.deleted_at is null and ss.executed), '[]'::jsonb);
+  v := v || coalesce((select jsonb_agg(jsonb_build_object('kind', 'later_leg', 'leg_id', l.id, 'rt_id', l.rt_id,
+                                                         'code', c.code))
+                        from piece_legs l join ct_round_trips c on c.id = l.rt_id
+                       where p_chosen_rts is not null and l.id = any (p_legs) and l.deleted_at is null
+                         and not (l.rt_id = any (p_chosen_rts))), '[]'::jsonb);
+  for r in select lm.id, lm.driver_id, lm.move_date, s.rt_id
+             from local_moves lm join rt_stops s on s.id = lm.rt_stop_id
+            where lm.move_kind = 'nat_loading' and lm.deleted_at is null and lm.status <> 'Cancelled'
+              and s.deleted_at is null
+              and exists (select 1 from piece_legs l where l.id = any (p_legs) and l.pickup_stop_id = s.id
+                             and l.deleted_at is null)
+              and not exists (select 1 from piece_legs l where l.pickup_stop_id = s.id and l.deleted_at is null
+                                 and not (l.id = any (p_legs))) loop
+    v := v || jsonb_build_array(jsonb_build_object('kind', 'local_loading', 'local_move_id', r.id, 'rt_id', r.rt_id,
+                                                   'driver_id', r.driver_id, 'move_date', r.move_date));
+    -- the local driver's TOPIKO line of that day (060: one per driver and day, local_move_id set) with amounts
+    v := v || coalesce((select jsonb_agg(jsonb_build_object('kind', 'local_payroll', 'dl_entry_id', e.id,
+                                                           'local_move_id', r.id, 'driver_id', e.driver_id,
+                                                           'day', e.entry_date, 'amount', e.trip_value,
+                                                           'advance', e.advance, 'expenses', e.expenses))
+                          from dl_entries e
+                         where e.driver_id = r.driver_id and e.entry_date = r.move_date and e.local_move_id is not null
+                           and e.deleted_at is null
+                           and (e.trip_value is not null or e.advance is not null or e.expenses is not null)), '[]'::jsonb);
+  end loop;
+  for r in select distinct l.rt_id from piece_legs l
+            where l.id = any (p_legs) and l.deleted_at is null and l.rt_id is distinct from p_keep_rt loop
+    if not exists (select 1 from piece_legs l where l.rt_id = r.rt_id and l.deleted_at is null and not (l.id = any (p_legs))) then
+      v := v || jsonb_build_array(jsonb_build_object('kind', 'rt_cancelled', 'rt_id', r.rt_id,
+                                                     'code', (select code from ct_round_trips where id = r.rt_id)))
+             || plan_h_rt_consequences(r.rt_id);
+    end if;
+  end loop;
+  return (select coalesce(jsonb_agg(e order by e->>'kind', e::text), '[]'::jsonb)
+            from (select distinct e from jsonb_array_elements(v) e) x);
+end
+$f$;
+
+  CREATE FUNCTION public.plan_move_pieces(p jsonb, p_actor text, p_role text) RETURNS jsonb
+    LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $f$
+declare
+  v_from jsonb := p->'from'; v_rt bigint; v_side text; v_pieces bigint[]; v_legs bigint[]; v_wait boolean := false;
+  v_keep bigint; v_full jsonb; v_conf jsonb; v_first bigint[]; v_stops bigint[]; v_src bigint[]; v_tgt jsonb;
+  v_put jsonb; v_reason text; v_x bigint; v_gone bigint[] := '{}'; r ct_round_trips%rowtype; v_chosen bigint[];
+begin
+  -- Spec 7: "Move to..." per row, in ONE transaction; also back to waiting (decision 15, C-21) and a whole side
+  -- (C-22: a breakdown). What was executed stays when a side moves; a piece moved after execution is a correction
+  -- and is listed. A cycle left empty is cancelled with its payroll after the confirmation (owner 20/10).
+  perform plan_h_ctx(p_actor, p_role);
+  perform plan_h_keys(p, array['from', 'target', 'stops', 'dry_run', 'confirm_token'], 'p');
+  perform plan_h_keys(v_from, array['piece_ids', 'rt_id', 'side'], 'from');
+  v_rt := (v_from->>'rt_id')::bigint;
+  v_side := v_from->>'side';
+  if v_from ? 'piece_ids' then
+    if v_side is not null or jsonb_typeof(v_from->'piece_ids') is distinct from 'array' then
+      perform plan_h_raise('bad_input', 'from');
+    end if;
+    select array_agg(x::bigint order by x::bigint) into v_pieces from jsonb_array_elements_text(v_from->'piece_ids') x;
+    if v_pieces is null then perform plan_h_raise('bad_input', 'from.piece_ids'); end if;
+    for v_x in select unnest(v_pieces) loop
+      if not exists (select 1 from shipment_pieces where id = v_x and deleted_at is null) then
+        perform plan_h_raise('piece_dead', v_x::text);
+      end if;
+      if exists (select 1 from shipment_pieces where parent_piece_id = v_x and deleted_at is null) then
+        perform plan_h_raise('piece_split', v_x::text);
+      end if;
+    end loop;
+    -- the chosen legs (on from.rt_id when given) and every later leg of the same piece: they hang on them (chain)
+    select array_agg(l.id order by l.id) into v_legs
+      from piece_legs l
+     where l.deleted_at is null and l.piece_id = any (v_pieces)
+       and l.leg_no >= (select min(m.leg_no) from piece_legs m where m.piece_id = l.piece_id and m.deleted_at is null
+                          and (v_rt is null or m.rt_id = v_rt));
+  elsif v_rt is not null and v_side in ('KATHODOS', 'ANODOS') then
+    if not exists (select 1 from ct_round_trips where id = v_rt and model = 2) then perform plan_h_raise('rt_gone', v_rt::text); end if;
+    -- a leg belongs to the side of its pickup stop; an executed leg stays
+    select array_agg(distinct l.piece_id) into v_pieces
+      from piece_legs l join rt_stops s on s.id = l.pickup_stop_id
+      join v_rt_stop_state d on d.stop_id = l.drop_stop_id
+     where l.rt_id = v_rt and l.deleted_at is null and s.side = v_side and not d.executed;
+    select array_agg(l.id order by l.id) into v_legs
+      from piece_legs l
+     where l.deleted_at is null and l.piece_id = any (v_pieces)
+       and l.leg_no >= (select min(m.leg_no) from piece_legs m join rt_stops s on s.id = m.pickup_stop_id
+                         join v_rt_stop_state d on d.stop_id = m.drop_stop_id
+                        where m.piece_id = l.piece_id and m.deleted_at is null and m.rt_id = v_rt
+                          and s.side = v_side and not d.executed);
+  else
+    perform plan_h_raise('bad_input', 'from');
+  end if;
+  if v_legs is null then perform plan_h_raise('bad_input', 'from:no live leg'); end if;
+  -- the target, read only (the dry run writes nothing)
+  if p->'target' ? 'wait' then
+    perform plan_h_keys(p->'target', array['wait'], 'target');
+    if (p->'target'->>'wait')::boolean is not true or p ? 'stops' then perform plan_h_raise('bad_input', 'target.wait'); end if;
+    v_wait := true;
+  else
+    perform plan_h_keys(p->'target', array['rt_id', 'side', 'new_rt'], 'target');
+    v_keep := (p->'target'->>'rt_id')::bigint;
+    if v_keep is not null then
+      select * into r from ct_round_trips where id = v_keep;
+      if r.id is null or r.model <> 2 then perform plan_h_raise('rt_gone', v_keep::text); end if;
+      if r.status = 'cancelled' then perform plan_h_raise('rt_cancelled', v_keep::text); end if;
+      if not exists (select 1 from piece_legs l join rt_stops s on s.id = l.pickup_stop_id
+                      where l.id = any (v_legs) and (l.rt_id <> v_keep or s.side is distinct from p->'target'->>'side')) then
+        perform plan_h_raise('same_rt', v_keep::text);
+      end if;
+    end if;
+  end if;
+  -- the cycles the user picked from: the one of each moved piece's first moved leg; a later leg elsewhere is
+  -- listed as later_leg (critique 23/10)
+  select array_agg(distinct l.rt_id) into v_chosen from piece_legs l
+   where l.id = any (v_legs)
+     and l.leg_no = (select min(m.leg_no) from piece_legs m where m.id = any (v_legs) and m.piece_id = l.piece_id);
+  -- ONE lock order for every plan_* that touches several cycles (plan_delete, plan_vs_set_place): sources and
+  -- target by id, BEFORE the list is read. Two moves out of one cycle then cannot both read "it does not empty"
+  -- and cancel it without a token; two opposite moves R1 <-> R2 queue instead of deadlocking (40P01).
+  perform 1 from ct_round_trips c
+   where c.id = any (array(select l.rt_id from piece_legs l where l.id = any (v_legs)) || v_keep)
+   order by c.id for update;
+  v_full := plan_h_drop_consequences(v_legs, v_keep, v_chosen);
+  v_conf := plan_h_confirm('plan_move_pieces', array_to_string(v_legs, ',') || '>' || coalesce(p->'target', 'null'::jsonb)::text,
+                           v_full, p, p_role);
+  if v_conf is not null then return v_conf; end if;
+
+  v_reason := case when v_wait then 'plan_move_pieces: back to waiting' else 'plan_move_pieces: moved' end;
+  -- decision 16 is about the state BEFORE this operation: a piece that was not stock still counts as "first"
+  select array_agg(ps.piece_id) into v_first from v_piece_state ps where ps.piece_id = any (v_pieces) and not ps.is_stock;
+  select array_agg(distinct x) into v_stops
+    from piece_legs l, unnest(array[l.pickup_stop_id, l.drop_stop_id]) x where l.id = any (v_legs);
+  select array_agg(distinct l.rt_id) into v_src from piece_legs l where l.id = any (v_legs);
+  -- (1) the target's stops first, so a stop of the request is never swept; (2) old legs off; (3) new legs on;
+  -- (4) stops that lost their last leg; (5) cycles left empty (decision 11 order inside).
+  if not v_wait then v_tgt := plan_h_target(p->'target', p->'stops', p_actor, p_role); end if;
+  for v_x in select unnest(v_legs) loop perform plan_h_leg_drop(v_x, v_reason, p_actor, p_role); end loop;
+  if not v_wait then
+    v_put := plan_h_put((select jsonb_agg(jsonb_build_object('piece_id', x) order by x) from unnest(v_pieces) x),
+                        v_tgt, p_actor, p_role, coalesce(v_first, '{}'));
+  end if;
+  perform plan_h_stops_sweep(v_stops, v_reason, p_actor, p_role);
+  for v_x in select unnest(v_src) loop
+    if plan_h_rt_cancel_if_empty(v_x, v_reason, p_actor, p_role) then
+      v_gone := v_gone || v_x;
+    else
+      perform plan_h_reseq(v_x, p_actor, p_role);
+    end if;
+  end loop;
+  perform plan_h_finish();
+  return plan_h_ok('plan_move_pieces',
+    jsonb_build_object('rt_id', v_put->'rt_id', 'stop_ids', coalesce(v_put->'stop_ids', '[]'::jsonb),
+                       'leg_ids', coalesce(v_put->'leg_ids', '[]'::jsonb), 'piece_ids', to_jsonb(v_pieces),
+                       'dropped_leg_ids', to_jsonb(v_legs), 'cancelled_rt_ids', to_jsonb(v_gone)),
+    v_put->'warnings', v_put->'notice_ids');
+exception
+  when invalid_text_representation or invalid_datetime_format or datetime_field_overflow
+       or numeric_value_out_of_range or invalid_parameter_value then
+    perform plan_h_raise('bad_input', sqlstate);
+end
+$f$;
+```
+
+Πρόσθεσε πάνω από τη γραμμή `-- @pub (072 tasks add ", 'public.plan_x(jsonb,text,text)'" lines above this marker)`:
+
+```sql
+    , 'public.plan_move_pieces(jsonb,text,text)'
+```
+
+- [ ] **Step 4: Τρέξε, να περάσει**
+
+Run: `cd tms-auditor && node --test test/plan-072.test.mjs`
+Expected: `✔` και στα τρία υπο-tests, μήνυμα `Result: 67 OK, 0 FAIL`, `ℹ fail 0`.
+
+Run: `node --test tests/sql-072-drafts.test.js`
+Expected: `ℹ pass 6`, `ℹ fail 0` (το `v_pub` = κάθε δημόσια συνάρτηση, κάθε νέος κωδικός έχει περίπτωση).
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add worker/migrations/drafts/072_plan_functions.sql worker/migrations/drafts/072_plan_functions_test.sql
+git commit -m "072 plan_move_pieces: one transaction, back to waiting, a whole side, list + token when a cycle empties
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+```
+
+
+#### Task Α7: `plan_order_update` *(απόφαση 21)*
+
+**Files:** Modify `worker/migrations/drafts/072_plan_functions.sql` (PART 2 και το `v_pub` του PART 5), `worker/migrations/drafts/072_plan_functions_test.sql` (περιπτώσεις 68–77).
+
+**Interfaces:**
+- Consumes: Α2 (`plan_h_order_summary`), Α1. Εκτελείται **μόνο αν ο owner εγκρίνει την απόφαση 21**· αλλιώς η εργασία παραλείπεται ολόκληρη (καμία άλλη εργασία της Α δεν εξαρτάται από αυτή).
+- Produces: `plan_h_resize(p_shipment bigint, p_delta numeric, p_actor text, p_role text) RETURNS void`· `plan_order_update(p jsonb, p_actor text, p_role text) RETURNS jsonb` (δημόσια): `ids = {nat_order_id, shipment_ids}`.
+
+- [ ] **Step 1: Οι περιπτώσεις πρώτα (`worker/migrations/drafts/072_plan_functions_test.sql`)**
+
+Πρόσθεσε πάνω από τη γραμμή `-- @want (one line per case: "    , '<ok|plan:code|con:name|state:XXXXX>'  -- <k> <what>")`:
+
+```sql
+    , 'ok'               -- 68 price, reference, notes: one update, one audit row with what changed
+    , 'ok'               -- 69 10 -> 12 pallets: the piece and the summary follow
+    , 'ok'               -- 70 fewer pallets on a split shipment: off the stock first
+    , 'plan:vs_locked'   -- 71 a VS bridge is the international desk's
+    , 'plan:order_gone'  -- 72 a deleted order
+    , 'plan:order_not_v5' -- 73 an order of today's model
+    , 'plan:no_price'    -- 74 price 0
+    , 'plan:piece_busy'  -- 75 a new origin while the piece rides
+    , 'plan:bad_input'   -- 76 status is never written (no mirror): an unknown key
+    , 'ok'               -- 77 a later delivery window: the requested delivery day follows
+```
+
+Πρόσθεσε πάνω από τη γραμμή `-- @case (each task adds its "ELSIF k = <n> THEN" branches above this line)`:
+
+```sql
+      ELSIF k = 68 THEN
+        r := plan_order_update(jsonb_build_object('nat_order_id', n1, 'set', '{"price": 120, "reference": "WN072-TEST", "notes": "TEST 072 note"}'::jsonb),
+                               'test:072', 'dispatcher');
+      ELSIF k = 69 THEN
+        r := plan_order_update(jsonb_build_object('nat_order_id', n1, 'shipments', jsonb_build_array(jsonb_build_object('shipment_id', sh1, 'pallets', 12))),
+                               'test:072', 'owner');
+      ELSIF k = 70 THEN   -- p1 (made 20) rode A -> Veroia, split 7 (rides on R2) + 13 (stock); 20 -> 15 takes 5 off the stock
+        UPDATE shipments SET pallets = 20 WHERE id = sh1;
+        UPDATE shipment_pieces SET pallets = 20 WHERE id = p1;
+        INSERT INTO piece_legs (piece_id, leg_no, rt_id, pickup_stop_id, drop_stop_id, created_by) VALUES (p1, 1, rt1, s1a, s1h, 'test:072');
+        UPDATE shipment_pieces SET split_at = now(), split_by = 'test:072' WHERE id = p1;
+        INSERT INTO shipment_pieces (shipment_id, parent_piece_id, pallets, created_by) VALUES (sh1, p1, 7, 'test:072') RETURNING id INTO c1;
+        INSERT INTO shipment_pieces (shipment_id, parent_piece_id, pallets, leave_by, created_by) VALUES (sh1, p1, 13, d, 'test:072') RETURNING id INTO c2;
+        INSERT INTO piece_legs (piece_id, leg_no, rt_id, pickup_stop_id, drop_stop_id, created_by) VALUES (c1, 1, rt2, s2h, s2b, 'test:072');
+        r := plan_order_update(jsonb_build_object('nat_order_id', n1, 'shipments', jsonb_build_array(jsonb_build_object('shipment_id', sh1, 'pallets', 15))),
+                               'test:072', 'owner');
+      ELSIF k = 71 THEN
+        INSERT INTO shipments (order_id, order_stop_id, created_by) VALUES (vso, vs_b, 'test:072') RETURNING id INTO x;
+        INSERT INTO shipment_pieces (shipment_id, pallets, created_by) VALUES (x, 20, 'test:072');
+        PERFORM plan_order_update(jsonb_build_object('nat_order_id', n1, 'shipments', jsonb_build_array(jsonb_build_object('shipment_id', x, 'pallets', 18))),
+                                  'test:072', 'owner');
+      ELSIF k = 72 THEN
+        UPDATE shipment_pieces SET deleted_at = now(), deleted_reason = 'test', deleted_by = 'test:072' WHERE id = p1;
+        UPDATE shipments SET deleted_at = now(), deleted_reason = 'test', deleted_by = 'test:072' WHERE id = sh1;
+        UPDATE national_orders SET deleted_at = now() WHERE id = n1;
+        PERFORM plan_order_update(jsonb_build_object('nat_order_id', n1, 'set', '{"notes": "x"}'::jsonb), 'test:072', 'owner');
+      ELSIF k = 73 THEN
+        PERFORM plan_order_update(jsonb_build_object('nat_order_id', nold, 'set', '{"notes": "x"}'::jsonb), 'test:072', 'owner');
+      ELSIF k = 74 THEN
+        PERFORM plan_order_update(jsonb_build_object('nat_order_id', n1, 'set', '{"price": 0}'::jsonb), 'test:072', 'owner');
+      ELSIF k = 75 THEN
+        INSERT INTO piece_legs (piece_id, leg_no, rt_id, pickup_stop_id, drop_stop_id, created_by) VALUES (p1, 1, rt1, s1a, s1b, 'test:072');
+        PERFORM plan_order_update(jsonb_build_object('nat_order_id', n1, 'shipments', jsonb_build_array(jsonb_build_object('shipment_id', sh1, 'origin_location_id', lc))),
+                                  'test:072', 'owner');
+      ELSIF k = 76 THEN
+        PERFORM plan_order_update(jsonb_build_object('nat_order_id', n1, 'set', '{"status": "Delivered"}'::jsonb), 'test:072', 'owner');
+      ELSIF k = 77 THEN
+        r := plan_order_update(jsonb_build_object('nat_order_id', n1, 'shipments', jsonb_build_array(jsonb_build_object('shipment_id', sh1,
+               'deliver_from', (d + 2 + time '12:00') AT TIME ZONE 'Europe/Athens', 'deliver_to', (d + 2 + time '14:00') AT TIME ZONE 'Europe/Athens'))),
+               'test:072', 'owner');
+```
+
+Πρόσθεσε πάνω από τη γραμμή `-- @verdict (each task adds its "ELSIF k = <n> THEN verdict := ..." branches above this line)`:
+
+```sql
+      ELSIF k = 68 THEN
+        verdict := CASE WHEN (SELECT price = 120 AND notes = 'TEST 072 note' AND truck_id IS NULL AND status IS NULL FROM national_orders WHERE id = n1)
+                          AND (SELECT count(*) FROM audit_log WHERE table_name = 'national_orders' AND record_id = 'rec072TN1'
+                                 AND actor = 'test:072' AND role = 'dispatcher' AND (before_data->>'price')::numeric = 100
+                                 AND (after_data->>'price')::numeric = 120 AND NOT (after_data ? 'reference')) = 1
+                        THEN 'ok price 100 -> 120 and the note, one audit row of what changed' ELSE 'FAIL update: ' || r::text END;
+      ELSIF k = 69 THEN
+        verdict := CASE WHEN (SELECT pallets FROM shipment_pieces WHERE id = p1) = 12
+                          AND (SELECT pallets FROM national_orders WHERE id = n1) = 12
+                        THEN 'ok the piece and the summary follow to 12' ELSE 'FAIL pallets' END;
+      ELSIF k = 70 THEN
+        verdict := CASE WHEN (SELECT pallets FROM shipment_pieces WHERE id = c2) = 8 AND (SELECT pallets FROM shipment_pieces WHERE id = c1) = 7
+                          AND (SELECT pallets FROM national_orders WHERE id = n1) = 15
+                        THEN 'ok 5 off the stock (13 -> 8), the riding 7 untouched, summary 15' ELSE 'FAIL reduce on split' END;
+      ELSIF k = 77 THEN
+        verdict := CASE WHEN (SELECT delivery_datetime FROM national_orders WHERE id = n1) = d + 2
+                          AND (SELECT loading_datetime FROM national_orders WHERE id = n1) = d
+                        THEN 'ok requested delivery day D+2 from the window' ELSE 'FAIL window' END;
+```
+
+- [ ] **Step 2: Τρέξε, να αποτύχει**
+
+Run: `cd tms-auditor && node --test test/plan-072.test.mjs`
+Expected: FAIL στο `072 rules test`, με μήνυμα `Result: 67 OK, 10 FAIL` και πρώτη αποτυχία `68 FAIL want ok got state:42883 (function plan_order_update(jsonb, unknown, unknown) does not exist)`. Το `node --test tests/sql-072-drafts.test.js` μένει πράσινο (6/6).
+
+- [ ] **Step 3: Η υλοποίηση (`worker/migrations/drafts/072_plan_functions.sql`)**
+
+Πρόσθεσε πάνω από τη γραμμή `-- @A (072 section A: plan_orders_create, plan_put_pieces, plan_put_group, plan_split_piece, plan_move_pieces, plan_order_update)`:
+
+```sql
+  CREATE FUNCTION public.plan_h_resize(p_shipment bigint, p_delta numeric, p_actor text, p_role text) RETURNS void
+    LANGUAGE plpgsql SET search_path = public AS $f$
+declare
+  v_left numeric := -p_delta; v_take numeric; lf record; a shipment_pieces%rowtype; b shipment_pieces%rowtype;
+begin
+  -- Keeps 071's pieces_sum (the live leaves = the shipment) when the national order's pallets change. Unsplit:
+  -- the one piece follows. Split: a reduction comes off the stock first, then off the earliest day (C-01, as the
+  -- VS rule of spec 3); an increase goes to the stock, else to a waiting piece. A piece that rides is never
+  -- emptied here: move it first (its legs, stops and cycle have a list of their own).
+  if p_delta = 0 then return; end if;
+  if p_delta > 0 then
+    select pp.piece_id into lf from v_piece_state pp
+     where pp.shipment_id = p_shipment and pp.waiting order by pp.is_stock desc, pp.piece_id limit 1;
+    if lf.piece_id is null then perform plan_h_raise('piece_busy', 'shipment:' || p_shipment); end if;
+    select * into a from shipment_pieces where id = lf.piece_id for update;
+    update shipment_pieces set pallets = pallets + p_delta where id = a.id returning * into b;
+    perform plan_h_audit(p_actor, p_role, 'update', 'shipment_pieces', a.id::text,
+                         jsonb_build_object('pallets', a.pallets), jsonb_build_object('pallets', b.pallets));
+    return;
+  end if;
+  for lf in select pp.piece_id, pp.pallets, pp.is_stock,
+                   (select min(s.planned_from) from piece_legs l join rt_stops s on s.id = l.pickup_stop_id
+                     where l.piece_id = pp.piece_id and l.deleted_at is null) as first_at,
+                   exists (select 1 from piece_legs l where l.piece_id = pp.piece_id and l.deleted_at is null) as rides
+              from v_piece_state pp where pp.shipment_id = p_shipment
+             order by pp.is_stock desc, 4 nulls first, pp.piece_id loop
+    exit when v_left <= 0;
+    v_take := least(v_left, lf.pallets);
+    select * into a from shipment_pieces where id = lf.piece_id for update;
+    if v_take = lf.pallets then
+      if lf.rides then perform plan_h_raise('piece_busy', lf.piece_id::text); end if;
+      if a.parent_piece_id is null then perform plan_h_raise('piece_busy', lf.piece_id::text); end if;
+      update shipment_pieces set deleted_at = now(), deleted_reason = 'plan_order_update: fewer pallets',
+             deleted_by = p_actor where id = a.id returning * into b;
+      perform plan_h_audit(p_actor, p_role, 'delete', 'shipment_pieces', a.id::text, to_jsonb(a), to_jsonb(b));
+    else
+      update shipment_pieces set pallets = pallets - v_take where id = a.id returning * into b;
+      perform plan_h_audit(p_actor, p_role, 'update', 'shipment_pieces', a.id::text,
+                           jsonb_build_object('pallets', a.pallets), jsonb_build_object('pallets', b.pallets));
+    end if;
+    v_left := v_left - v_take;
+  end loop;
+end
+$f$;
+
+  CREATE FUNCTION public.plan_order_update(p jsonb, p_actor text, p_role text) RETURNS jsonb
+    LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $f$
+declare
+  v_set jsonb := coalesce(p->'set', '{}'::jsonb); s jsonb; v_sum jsonb; v_ids bigint[] := '{}';
+  n national_orders%rowtype; n2 national_orders%rowtype; a shipments%rowtype; b shipments%rowtype;
+begin
+  -- C-01 (decision 21): "the dispatcher simply corrects the order". Commercial fields and the national
+  -- shipments; a VS bridge is the international desk's (vs_locked, C-08). The summary fields follow (decision 20).
+  perform plan_h_ctx(p_actor, p_role);
+  perform plan_h_keys(p, array['nat_order_id', 'set', 'shipments'], 'p');
+  perform plan_h_keys(v_set, array['price', 'reference', 'notes', 'goods', 'temperature_c', 'pallet_exchange'], 'set');
+  select * into n from national_orders where id = (p->>'nat_order_id')::bigint for update;
+  if n.id is null or n.deleted_at is not null then perform plan_h_raise('order_gone', coalesce(p->>'nat_order_id', 'null')); end if;
+  if not exists (select 1 from shipments where nat_order_id = n.id and deleted_at is null) then
+    perform plan_h_raise('order_not_v5', n.id::text);
+  end if;
+  if v_set ? 'price' and coalesce((v_set->>'price')::numeric, 0) <= 0 then
+    perform plan_h_raise('no_price', coalesce(v_set->>'price', 'null'));
+  end if;
+  if p->'shipments' is not null and jsonb_typeof(p->'shipments') <> 'array' then perform plan_h_raise('bad_input', 'shipments'); end if;
+  for s in select value from jsonb_array_elements(coalesce(p->'shipments', '[]'::jsonb)) loop
+    perform plan_h_keys(s, array['shipment_id', 'pallets', 'load_from', 'load_to', 'deliver_from', 'deliver_to',
+                                 'origin_location_id', 'dest_location_id'], 'shipment');
+    select * into a from shipments where id = (s->>'shipment_id')::bigint for update;
+    if a.id is null then perform plan_h_raise('bad_input', 'shipment_id'); end if;
+    if a.order_stop_id is not null then perform plan_h_raise('vs_locked', a.id::text); end if;
+    if a.nat_order_id is distinct from n.id or a.deleted_at is not null then perform plan_h_raise('bad_input', 'shipment_id'); end if;
+    -- a place changes only while nothing rides from or to it
+    if ((s ? 'origin_location_id' and (s->>'origin_location_id')::bigint is distinct from a.origin_location_id)
+        or (s ? 'dest_location_id' and (s->>'dest_location_id')::bigint is distinct from a.dest_location_id))
+       and exists (select 1 from piece_legs l join shipment_pieces pp on pp.id = l.piece_id
+                    where pp.shipment_id = a.id and l.deleted_at is null) then
+      perform plan_h_raise('piece_busy', 'shipment:' || a.id);
+    end if;
+    if s ? 'origin_location_id' then perform plan_h_location((s->>'origin_location_id')::bigint); end if;
+    if s ? 'dest_location_id' then perform plan_h_location((s->>'dest_location_id')::bigint); end if;
+    update shipments set
+      pallets = case when s ? 'pallets' then (s->>'pallets')::numeric else pallets end,
+      load_from = case when s ? 'load_from' then (s->>'load_from')::timestamptz else load_from end,
+      load_to = case when s ? 'load_to' then (s->>'load_to')::timestamptz else load_to end,
+      deliver_from = case when s ? 'deliver_from' then (s->>'deliver_from')::timestamptz else deliver_from end,
+      deliver_to = case when s ? 'deliver_to' then (s->>'deliver_to')::timestamptz else deliver_to end,
+      origin_location_id = case when s ? 'origin_location_id' then (s->>'origin_location_id')::bigint else origin_location_id end,
+      dest_location_id = case when s ? 'dest_location_id' then (s->>'dest_location_id')::bigint else dest_location_id end
+     where id = a.id returning * into b;
+    if to_jsonb(b) <> to_jsonb(a) then
+      perform plan_h_audit(p_actor, p_role, 'update', 'shipments', a.id::text, to_jsonb(a), to_jsonb(b));
+    end if;
+    perform plan_h_resize(a.id, b.pallets - a.pallets, p_actor, p_role);
+    v_ids := v_ids || a.id;
+  end loop;
+  v_sum := plan_h_order_summary((select jsonb_agg(to_jsonb(x) order by x.id) from shipments x
+                                  where x.nat_order_id = n.id and x.deleted_at is null));
+  update national_orders set
+    price = case when v_set ? 'price' then (v_set->>'price')::numeric else price end,
+    reference = case when v_set ? 'reference' then v_set->>'reference' else reference end,
+    notes = case when v_set ? 'notes' then v_set->>'notes' else notes end,
+    goods = case when v_set ? 'goods' then v_set->>'goods' else goods end,
+    temperature_c = case when v_set ? 'temperature_c' then (v_set->>'temperature_c')::numeric else temperature_c end,
+    pallet_exchange = case when v_set ? 'pallet_exchange' then coalesce((v_set->>'pallet_exchange')::boolean, false)
+                           else pallet_exchange end,
+    pallets = (v_sum->>'pallets')::numeric,
+    loading_datetime = (v_sum->>'loading_datetime')::date,
+    delivery_datetime = (v_sum->>'delivery_datetime')::date,
+    pickup_location_1_id = (v_sum->>'pickup_location_1_id')::bigint,
+    delivery_location_1_id = (v_sum->>'delivery_location_1_id')::bigint
+   where id = n.id returning * into n2;
+  if to_jsonb(n2) <> to_jsonb(n) then
+    perform plan_h_audit(p_actor, p_role, 'update', 'national_orders', n.legacy_id,
+      (select jsonb_object_agg(k, v) from jsonb_each(to_jsonb(n)) t(k, v) where to_jsonb(n2)->k is distinct from v),
+      (select jsonb_object_agg(k, v) from jsonb_each(to_jsonb(n2)) t(k, v) where to_jsonb(n)->k is distinct from v));
+  end if;
+  perform plan_h_finish();
+  return plan_h_ok('plan_order_update', jsonb_build_object('nat_order_id', n.id, 'shipment_ids', to_jsonb(v_ids)), null, null);
+exception
+  when invalid_text_representation or invalid_datetime_format or datetime_field_overflow
+       or numeric_value_out_of_range or invalid_parameter_value then
+    perform plan_h_raise('bad_input', sqlstate);
+end
+$f$;
+```
+
+Πρόσθεσε πάνω από τη γραμμή `-- @pub (072 tasks add ", 'public.plan_x(jsonb,text,text)'" lines above this marker)`:
+
+```sql
+    , 'public.plan_order_update(jsonb,text,text)'
+```
+
+- [ ] **Step 4: Τρέξε, να περάσει**
+
+Run: `cd tms-auditor && node --test test/plan-072.test.mjs`
+Expected: `✔` και στα τρία υπο-tests, μήνυμα `Result: 77 OK, 0 FAIL`, `ℹ fail 0`.
+
+Run: `node --test tests/sql-072-drafts.test.js`
+Expected: `ℹ pass 6`, `ℹ fail 0` (το `v_pub` = κάθε δημόσια συνάρτηση, κάθε νέος κωδικός έχει περίπτωση).
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add worker/migrations/drafts/072_plan_functions.sql worker/migrations/drafts/072_plan_functions_test.sql
+git commit -m "072 plan_order_update: commercial fields and national shipments, summary follows, VS locked
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+```
+
+
+#### Task Α8: Περιπτώσεις της κριτικής 23/10 (78–82)
+
+**Files:** Modify `worker/migrations/drafts/072_plan_functions_test.sql` (περιπτώσεις 78–82).
+
+**Interfaces:**
+- Consumes: Α3 (`plan_h_put` με τον ορισμό «πρώτου» της απόφασης 16), Α5 (`plan_split_piece`), Α6 (`plan_h_drop_consequences` με `later_leg` / `local_payroll`).
+- Produces: οι περιπτώσεις που καρφώνουν τρία ευρήματα της κριτικής: «πρώτο κομμάτι» VS μετά από σπάσιμο χωρίς στόχο (78), επόμενο σκέλος σε άλλο κύκλο (79–80), γραμμή ΤΟΠΙΚΟ με ποσό (81–82, απόφαση 33). Ο κώδικας μπήκε ήδη στις Α3/Α6, άρα εδώ δεν υπάρχει κόκκινο πριν από τον κώδικα· στη θέση του, το Step 2 αποδεικνύει με τρεις μεταλλάξεις ότι κάθε περίπτωση **μπορεί να αποτύχει**. Αν η Α7 παραλείφθηκε (απόφαση 21), οι αριθμοί γίνονται 68–72: άλλαξε τα `k = 78…82` κατά −10.
+
+- [ ] **Step 1: Οι περιπτώσεις (`worker/migrations/drafts/072_plan_functions_test.sql`)**
+
+Πρόσθεσε πάνω από τη γραμμή `-- @want (one line per case: "    , '<ok|plan:code|con:name|state:XXXXX>'  -- <k> <what>")`:
+
+```sql
+    , 'ok'               -- 78 a VS split at Veroia with no target, then its 12 onto D+1: the first ride moves the day
+    , 'ok'               -- 79 a later leg on another cycle is listed (later_leg) and the move needs the token
+    , 'plan:need_token'  -- 80 the same move without the token
+    , 'ok'               -- 81 a local loading whose TOPIKO line has an amount: local_payroll, the amount for the owner only
+    , 'ok'               -- 82 with the token: the loading goes, its TOPIKO line waits for accounting (060 needs_review)
+```
+
+Πρόσθεσε πάνω από τη γραμμή `-- @case (each task adds its "ELSIF k = <n> THEN" branches above this line)`:
+
+```sql
+      ELSIF k = 78 THEN   -- the VS bridge of 26 to D, split 12 + 14 at Veroia (both stock), then the 12 on R2 (D+1)
+        INSERT INTO shipments (order_id, order_stop_id, created_by) VALUES (vso, vs_d, 'test:072') RETURNING id INTO x;
+        INSERT INTO shipment_pieces (shipment_id, pallets, created_by) VALUES (x, 26, 'test:072') RETURNING id INTO y;
+        r := plan_split_piece(jsonb_build_object('piece_id', y, 'parts', '[{"pallets": 12}, {"pallets": 14}]'::jsonb), 'test:072', 'owner');
+        c1 := (r->'ids'->'piece_ids'->>0)::bigint;
+        r := plan_put_pieces(jsonb_build_object('pieces', jsonb_build_array(jsonb_build_object('piece_id', c1)),
+               'target', jsonb_build_object('rt_id', rt2, 'side', 'KATHODOS'),
+               'stops', jsonb_build_array(jsonb_build_object('ref', 'h', 'stop_id', s2h),
+                                          jsonb_build_object('ref', 'd', 'location_id', ld, 'planned_from', b13, 'planned_to', b14))),
+               'test:072', 'dispatcher');
+      ELSIF k IN (79, 80) THEN   -- p1 rides A -> Veroia on R1 and Veroia -> B on R2; both cycles keep another load
+        PERFORM plan_orders_create(jsonb_build_object('orders', jsonb_build_array(jo1 || jsonb_build_object('shipments',
+                  jsonb_build_array(jsh1 || '{"pallets": 2}'))),
+                  'target', jsonb_build_object('rt_id', rt1, 'side', 'KATHODOS'),
+                  'stops', jsonb_build_array(jsonb_build_object('ref', 'a', 'stop_id', s1a), jsonb_build_object('ref', 'b', 'stop_id', s1b))),
+                  'test:072', 'owner');
+        PERFORM plan_orders_create(jsonb_build_object('orders', jsonb_build_array(jo1 || jsonb_build_object('shipments',
+                  jsonb_build_array(jsh1 || jsonb_build_object('pallets', 2, 'load_from', b06, 'load_to', b08,
+                                                               'deliver_from', b12, 'deliver_to', b14)))),
+                  'target', jsonb_build_object('rt_id', rt2, 'side', 'KATHODOS'),
+                  'stops', jsonb_build_array(jsonb_build_object('ref', 'a', 'stop_id', s2a), jsonb_build_object('ref', 'b', 'stop_id', s2b))),
+                  'test:072', 'owner');
+        INSERT INTO piece_legs (piece_id, leg_no, rt_id, pickup_stop_id, drop_stop_id, created_by)
+        VALUES (p1, 1, rt1, s1a, s1h, 'test:072');
+        INSERT INTO piece_legs (piece_id, leg_no, rt_id, pickup_stop_id, drop_stop_id, created_by)
+        VALUES (p1, 2, rt2, s2h, s2b, 'test:072') RETURNING id INTO q;
+        SET CONSTRAINTS ALL IMMEDIATE;
+        SET CONSTRAINTS ALL DEFERRED;
+        j := jsonb_build_object('from', jsonb_build_object('piece_ids', jsonb_build_array(p1)),
+               'target', jsonb_build_object('rt_id', rt2, 'side', 'KATHODOS'),
+               'stops', jsonb_build_array(jsonb_build_object('ref', 'a', 'stop_id', s2a), jsonb_build_object('ref', 'b', 'stop_id', s2b)));
+        IF k = 79 THEN
+          r := plan_move_pieces(j || '{"dry_run": true}', 'test:072', 'dispatcher');
+        ELSE
+          PERFORM plan_move_pieces(j, 'test:072', 'dispatcher');
+        END IF;
+      ELSIF k IN (81, 82) THEN   -- p1 on R1 from A; a load from Veroia keeps R1 alive; a local driver loads at A
+        PERFORM plan_put_pieces(jsonb_build_object('pieces', jsonb_build_array(jsonb_build_object('piece_id', p1)),
+                  'target', jsonb_build_object('rt_id', rt1, 'side', 'KATHODOS'),
+                  'stops', jsonb_build_array(jsonb_build_object('ref', 'a', 'stop_id', s1a), jsonb_build_object('ref', 'b', 'stop_id', s1b))),
+                  'test:072', 'owner');
+        PERFORM plan_orders_create(jsonb_build_object('orders', jsonb_build_array(jo1 || jsonb_build_object('shipments',
+                  jsonb_build_array(jsh1 || jsonb_build_object('origin_location_id', hub, 'pallets', 2, 'load_from', a09,
+                                                               'load_to', a10)))),
+                  'target', jsonb_build_object('rt_id', rt1, 'side', 'KATHODOS'),
+                  'stops', jsonb_build_array(jsonb_build_object('ref', 'h', 'stop_id', s1h), jsonb_build_object('ref', 'b', 'stop_id', s1b))),
+                  'test:072', 'owner');
+        INSERT INTO local_moves (move_kind, rt_stop_id, driver_id, truck_id, move_date, status, sequence)
+        VALUES ('nat_loading', s1a, drvl, trk2, d, 'Assigned', 1) RETURNING id INTO q;
+        -- accounting already valued the local driver's TOPIKO line of that day (060 wrote it, empty)
+        UPDATE dl_entries SET trip_value = 50 WHERE driver_id = drvl AND entry_date = d AND local_move_id IS NOT NULL
+           AND deleted_at IS NULL RETURNING id INTO x;
+        SET CONSTRAINTS ALL IMMEDIATE;
+        SET CONSTRAINTS ALL DEFERRED;
+        j := jsonb_build_object('from', jsonb_build_object('piece_ids', jsonb_build_array(p1)),
+               'target', jsonb_build_object('rt_id', rt2, 'side', 'KATHODOS'),
+               'stops', jsonb_build_array(jsonb_build_object('ref', 'a', 'stop_id', s2a), jsonb_build_object('ref', 'b', 'stop_id', s2b)));
+        r := plan_move_pieces(j || '{"dry_run": true}', 'test:072', 'owner');
+        r2 := plan_move_pieces(j || '{"dry_run": true}', 'test:072', 'dispatcher');
+        IF k = 82 THEN
+          r2 := plan_move_pieces(j || jsonb_build_object('confirm_token', r->>'confirm_token'), 'test:072', 'dispatcher');
+        END IF;
+```
+
+Πρόσθεσε πάνω από τη γραμμή `-- @verdict (each task adds its "ELSIF k = <n> THEN verdict := ..." branches above this line)`:
+
+```sql
+      ELSIF k = 78 THEN
+        verdict := CASE WHEN (SELECT cross_dock_date FROM orders WHERE id = vso) = e
+                          AND (SELECT count(*) FROM plan_notices WHERE order_id = vso AND kind = 'vs_day_changed') = 1
+                          AND jsonb_array_length(r->'notice_ids') = 1
+                        THEN 'ok the first ride after a split without target moves the international to D+1, one notice'
+                        ELSE 'FAIL first after split: ' || r::text END;
+      ELSIF k = 79 THEN
+        verdict := CASE WHEN (r->>'needs_confirm')::boolean
+                          AND r->'consequences' @> jsonb_build_array(jsonb_build_object('kind', 'later_leg', 'leg_id', q, 'rt_id', rt2))
+                          AND NOT (r->'consequences' @> '[{"kind": "rt_cancelled"}]')
+                        THEN 'ok the later leg on R2 is in the list, the move waits for the token'
+                        ELSE 'FAIL later_leg: ' || r::text END;
+      ELSIF k = 81 THEN
+        verdict := CASE WHEN (r->>'needs_confirm')::boolean
+                          AND r->'consequences' @> jsonb_build_array(jsonb_build_object('kind', 'local_payroll', 'dl_entry_id', x, 'amount', 50))
+                          AND r2->'consequences' @> jsonb_build_array(jsonb_build_object('kind', 'local_payroll', 'dl_entry_id', x))
+                          AND r2::text NOT LIKE '%"amount"%'
+                          AND r->>'confirm_token' = r2->>'confirm_token'
+                          AND (SELECT status FROM ct_round_trips WHERE id = rt1) = 'planned'
+                        THEN 'ok the TOPIKO line with 50 is listed; the dispatcher sees the line, not the amount'
+                        ELSE 'FAIL local_payroll: ' || r::text END;
+      ELSIF k = 82 THEN
+        verdict := CASE WHEN (SELECT deleted_at IS NOT NULL FROM local_moves WHERE id = q)
+                          AND (SELECT needs_review AND deleted_at IS NULL FROM dl_entries WHERE id = x)
+                          AND (SELECT status FROM ct_round_trips WHERE id = rt1) = 'planned'
+                          AND (SELECT end_stop_id FROM v_piece_state WHERE piece_id = p1) = s2b
+                        THEN 'ok moved with the token: the loading went, its TOPIKO line waits for accounting (decision 33)'
+                        ELSE 'FAIL local_payroll execute: ' || coalesce(r2::text, 'null') END;
+```
+
+- [ ] **Step 2: Τρέξε· μετά τρεις μεταλλάξεις, μία τη φορά**
+
+Run: `cd tms-auditor && node --test test/plan-072.test.mjs`
+Expected: `✔` και στα τρία υπο-tests, μήνυμα `Result: 82 OK, 0 FAIL`, `ℹ fail 0`.
+
+Μετά, για καθεμία από τις τρεις αλλαγές στο `072_plan_functions.sql` (προσωρινά, με το χέρι, **χωρίς commit**): τρέξε ξανά το ίδιο και δες το κόκκινο, μετά `git checkout -- worker/migrations/drafts/072_plan_functions.sql`:
+1. στο `plan_h_put`, σβήσε το `or v_vs_first` → `78 FAIL want ok got FAIL first after split …`·
+2. στο `plan_h_drop_consequences`, άλλαξε το `p_chosen_rts is not null and` σε `false and` → `79 FAIL …` και `80 FAIL want plan:need_token got FAIL no error`·
+3. στο ίδιο, άλλαξε το `e.local_move_id is not null` σε `false` → `81 FAIL …`.
+
+Run: `node --test tests/sql-072-drafts.test.js`
+Expected: `ℹ pass 6`, `ℹ fail 0`.
+
+- [ ] **Step 3: Commit**
+
+```bash
+git add worker/migrations/drafts/072_plan_functions_test.sql
+git commit -m "072 rules test: the critique's cases (first VS ride after a split, later_leg, TOPIKO line with an amount)
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+```
+
+
+#### Τέλος ενότητας Α: τι παραλαμβάνει η Β
+
+- Το `072_plan_functions.sql` με τις συναρτήσεις της Α (6 δημόσιες στο `v_pub` του PART 5: `plan_orders_create`, `plan_put_pieces`, `plan_put_group`, `plan_split_piece`, `plan_move_pieces`, `plan_order_update`· οι `plan_h_*` κλειστοί) και τα σημάδια PART 3, PART 4, PART 5 και `@pub`.
+- Το rules test με 82 περιπτώσεις (1–82) και τη γραμμή `  -- [SECTION B CASES]` πριν από το τελικό `RAISE`.
+- Οι βοηθοί του πίνακα «Εσωτερικοί βοηθοί» (Interfaces) με τις υπογραφές τους· η Β τους καλεί **μόνο** έτσι. Ο κλάδος `new_rt` του `plan_h_target` περιμένει το `plan_rt_create` της Β1.
+
+---
+
+### Ενότητα Β · SQL μέρος 2: κύκλος, διαγραφή, VS, τοπική, ειδοποιήσεις, αναγνώσεις, συναρμολόγηση
+
+**Σειρά εκτέλεσης της Β = Β8 → Β1 → Β2 → Β3 → Β4 → Β5 → Β6 → Β7 → Β9** (οι αριθμοί μένουν). Ο τελικός harness (Β8) πρέπει να υπάρχει πριν από την πρώτη περίπτωση της Β· η λήψη `live-072.sql` έγινε ήδη στο Α1.
+
+**Συμβόλαιο με την Α:** η Β καλεί τους βοηθούς **μόνο** με τις υπογραφές του πίνακα «Εσωτερικοί βοηθοί» των Interfaces (π.χ. `plan_h_reseq(rt, p_actor, p_role)`, `plan_h_notice(…, p_actor, p_role)`, `plan_h_vs_follow(<κομμάτια>, p_actor, p_role)`, `plan_h_leg_add(…, p_leg_no)`), και τα δύο βήματα (dry run / token) **μόνο** μέσω `plan_h_confirm` + `plan_h_drop_consequences` / `plan_h_rt_consequences` της Α. Το `plan_h_leg_drop` σβήνει μόνο την κίνηση· η στάση που άδειασε και η τοπική της φόρτωση φεύγουν με `plan_h_stops_sweep`. Κάθε δημόσια συνάρτηση της Β ξεκινά με `plan_h_ctx` και αμέσως μετά `plan_h_keys` (άγνωστο κλειδί = `plan:bad_input`, ποτέ σιωπή) και προσθέτει τη γραμμή της στο `v_pub` πάνω από το `-- @pub`.
+
+**Τι προσθέτει η Β στη βάση (στο 072, Part 3/4· το Part 5 το έγραψε το Α1):** `plan_h_busy`, `plan_h_v1_warn`, `plan_rt_create` (εσωτερικές, χωρίς GRANT)· δημόσιες `plan_rt_update`, `plan_rt_clear`, `plan_delete`, `plan_vs_set_day`, `plan_vs_set_place`, `plan_local_loading`, `plan_notice_read`, `plan_notices_list`, `plan_board`, `plan_vs_state` (μία γραμμή `v_pub` η καθεμία). Νέοι κωδικοί που σηκώνει η Β: `bad_input, no_vehicle, truck_busy, driver_busy, rt_gone, rt_cancelled, stop_gone, payroll_locked, need_token, stale_confirm, order_gone, order_not_v5, vs_not_bridge, local_exists, notice_gone` (+ ό,τι της 071 φτάνει μέσω `plan_h_finish`/`plan_shipment_problem`).
+
+Πρωτότυπο: ο κώδικας αυτής της ενότητας έτρεξε 22–23/10 σε PGlite (071 + 071b + αντικαταστάτες των `plan_h_*` της Α): **74/77** περιπτώσεις Β πράσινες· οι B16, B17, B77 περίμεναν τα `plan_put_group` / `plan_orders_create` της Α. Η μεταλλαγή «χωρίς ρητή σβήση μισθοδοσίας» έριξε ακριβώς τη B38. Μετά το πρωτότυπο (κριτική 23/10) οι κλήσεις ξαναγράφτηκαν πάνω στις υπογραφές της Α, οι Β3/Β4 χρησιμοποιούν τον ΕΝΑ μηχανισμό δύο βημάτων της Α6, μπήκαν `plan_h_keys` παντού, η Β4 σαρώνει τις στάσεις που άδειασαν, η απόφαση 33 (γραμμή ΤΟΠΙΚΟ με ποσό) και οι περιπτώσεις B78–B87. Ενωμένη εκτέλεση σε αντίγραφο (23/10): 169/169, με μία διόρθωση (B77: το ψευδώνυμο `e` συγκρουόταν με τη μεταβλητή `e` του πλαισίου της Α, 42702)· με την πραγματική λήψη: Task Σ1.
+
+---
+
+#### Task Β8: Ο πλήρης harness (εκτελείται ΠΡΩΤΟ στη Β)
+
+**Files:**
+- Replace: `tms-auditor/test/plan-072.test.mjs` (το bootstrap του Α1 γίνεται ο τελικός harness· το `live-072.sql` το πήρε το Α1 Step 1 και δεν ξαναπαίρνεται)
+
+**Interfaces:**
+- Consumes: Α1–Α8 (072 με PART 0–5, `072_plan_functions_test.sql` με τη γραμμή `[SECTION B CASES]`), `fixtures/live-071.sql`, `fixtures/live-072.sql` (Α1 Step 1).
+- Produces: ο ίδιος `prodShaped()` με το Α1· οι 8 υπο-δοκιμές που οδηγούν την υπόλοιπη Β (fixture, dry run, apply, verify, ρόλοι API, rules test ≥ 80, rollback, μεταλλαγή).
+
+- [ ] **Step 1: Γράψε τον harness (αντικαθιστά το bootstrap του Α1)**
+
+`tms-auditor/test/plan-072.test.mjs`:
+```js
+// 072 (national v5 plan_* functions) on a production-shaped PGlite copy, at build time (principle 6): the owner's
+// evening run should only confirm what this file already knows.
+// Production shape = the 22/9 column fixture + fixtures/live-071.sql (production before 071) + fixtures/live-072.sql
+// (read-only capture of 22/10+: NOT NULL, identity ALWAYS, UNIQUE, FOREIGN KEY, the CHECKs of every table 072
+// writes, and the functions / triggers its writes fire on national_orders, orders and order_stops), then 071 and
+// 071b exactly as executed 22/10. Capture query: F2 plan, Task A1 Step 1. Never edit a fixture by hand.
+// The money views stay STUBS (as in plan-071): what 072 proves here are the RULES, the rights and the reversal.
+import { test } from 'node:test';
+import assert from 'node:assert';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { freshDb } from './helpers.mjs';
+import { DRAFTS } from '../lib/db.mjs';
+import { btree_gist } from '@electric-sql/pglite/contrib/btree_gist';
+import { pgcrypto } from '@electric-sql/pglite/contrib/pgcrypto';
+
+const HERE = path.dirname(fileURLToPath(import.meta.url));
+const read = (f) => fs.readFileSync(path.join(DRAFTS, f), 'utf8');   // 072: drafts until executed
+const readDone = (f) => fs.readFileSync(path.join(DRAFTS, '..', f), 'utf8');   // 071 / 071b: executed 22/10
+const fixture = (f) => fs.readFileSync(path.join(HERE, 'fixtures', f), 'utf8');
+
+// The live functions 072 guards on (the plan's starting point, 23 functions): the fixture must hold these texts.
+const GUARDED = {
+  'public.dl_sync_from_rt()': '331cea3a8987b74a9b0add698df9b158',
+  'public.dl_local_day_sync(bigint,date)': '151dab06e2676f3c8885d7298d0ac6af',
+  'public.dl_sync_from_local_move()': 'f053c478c79ef55dcc62b65a61939b9b',
+  'public.local_moves_before()': '3b9f0a27c9921c63ce9fb41f09ef0462',
+  'public.dl_local_line_guard()': 'e7f0348ccc5764d29608b8701f0e83b6',
+  'public.dl_cash_sync_entry()': '6d702bad6485f06535c6a0d5aff0bd0c',
+  'public.order_cd_stop_follow()': '433a1a7205fceb264e77f5a0c71a1521',
+  'public.ramp_follows_stop()': '6fa6a83c4191af271dbae85935d710c5',
+  'public.invoice_mark_guard()': 'dd975c4f04f95f528c7c79a80eb4d387',
+  'public.stock_guard_natl()': 'e941edbca9ff1bbeba0c89d49eb71cb3',
+  'public.stock_guard_orders()': '63aa751d93cc8b34afa5587912de7045',
+  'public.national_orders_soft_delete_cascade()': '6c423b14397c659272b1c9256189933d',
+  'public.rt_status_guard()': 'd7757f99c3443ac167d5bdaf3e34b142',
+  'public.plan_chk()': '8f2fa7e5541aded2dffc853a57c54c22',
+  'public.plan_rt_window_sync()': '050cbabe34493018f4335f748029761e',
+  'public.plan_rt_problem(bigint)': 'f383f449d55e657cfa929bb51a9120f6',
+  'public.plan_shipment_problem(bigint)': '8dd2beb159142bf5a6a4e32688688875',
+  'public.plan_leg_problem(bigint)': '24803f176f12355faa84c07e43cb0df0',
+  'public.plan_local_loading_problem(bigint)': '4c3dbec3810121a2a585fe8b49ceadf1',
+  'public.ct_rt_legs_v2_guard()': '6240d699bc114ffd49c7d62780432c94',
+  'public.tms_week(date)': '89c5ba44087d4293850a590c3ae4627f',
+  'public.rt_sync_to_orders()': 'a63234c844c2b6236b1e6dfe1410b8fc',
+  'public.rt_sync_to_national_loads()': '028efb76373a0a6517134feaea88bc2f',
+};
+const STUBS = `
+CREATE OR REPLACE VIEW public.ct_v_rt_revenue AS SELECT id AS rt_id, 0::numeric AS revenue, 0::numeric AS revenue_intl,
+  0::numeric AS revenue_natl FROM public.ct_round_trips;
+CREATE OR REPLACE VIEW public.ct_v_rt_costs AS SELECT id AS rt_id, 0::numeric AS lines_net, 0::numeric AS vat, 0::numeric AS wear,
+  0::numeric AS dl_trip_value, 0::numeric AS dl_expenses, 0::numeric AS driver_pay_pending, 0::bigint AS driver_pay_missing,
+  0::numeric AS partner_planned, 0::numeric AS partner_invoiced FROM public.ct_round_trips;
+CREATE OR REPLACE VIEW public.ct_v_rt_pnl AS SELECT id, 0::numeric AS cost_gross, 0::numeric AS profit_worst,
+  0::numeric AS profit_ex_vat FROM public.ct_round_trips WHERE status <> 'cancelled';
+CREATE OR REPLACE VIEW public.dl_v_rt_route AS SELECT id AS rt_id, ''::text AS route_text FROM public.ct_round_trips;
+`;
+const TRG = `SELECT count(*)::int AS n FROM pg_trigger t JOIN pg_class c ON c.oid = t.tgrelid
+  JOIN pg_namespace ns ON ns.oid = c.relnamespace WHERE NOT t.tgisinternal AND t.tgenabled <> 'D' AND ns.nspname = 'public'`;
+const PLAN_FNS = `SELECT count(*)::int AS n FROM pg_proc p WHERE p.pronamespace = 'public'::regnamespace AND p.proname LIKE 'plan\\_%'`;
+const V5_ROWS = `SELECT ((SELECT count(*) FROM shipments) + (SELECT count(*) FROM shipment_pieces) + (SELECT count(*) FROM rt_stops)
+  + (SELECT count(*) FROM piece_legs) + (SELECT count(*) FROM plan_notices)
+  + (SELECT count(*) FROM ct_round_trips WHERE model = 2))::int AS n`;
+
+async function prodShaped() {
+  const db = await freshDb({ extensions: { btree_gist, pgcrypto } });
+  await db.exec(`DO $r$ BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'anon') THEN CREATE ROLE anon NOLOGIN; END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'authenticated') THEN CREATE ROLE authenticated NOLOGIN; END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'service_role') THEN CREATE ROLE service_role NOLOGIN; END IF;
+  END $r$;`);
+  await db.exec(fixture('live-071.sql'));
+  await db.exec(fixture('live-072.sql'));
+  await db.exec(STUBS);
+  await db.exec(`CREATE SCHEMA IF NOT EXISTS extensions`);
+  // plan_h_legacy_id uses extensions.gen_random_bytes, as on production (pgcrypto 1.3 @extensions)
+  await db.exec(`CREATE EXTENSION IF NOT EXISTS pgcrypto WITH SCHEMA extensions`);
+  await db.exec(`INSERT INTO public.locations (legacy_id, name) VALUES ('recJucKOhC1zh4IP3', 'CROSS-DOCK')`);
+  await db.exec(`UPDATE monitoring.checks SET red_value = (${TRG}), baseline = NULL WHERE id = 'B-54'`);
+  await db.exec(readDone('071_plan_schema.sql'));
+  await db.exec(readDone('071b_plan_one_vehicle.sql'));
+  return db;
+}
+async function errorOf(db, sql) { try { await db.exec(sql); return null; } catch (e) { return String(e.message); } }
+const count = async (db, sql) => Number((await db.query(sql)).rows[0].n);
+const md5Of = async (db, sig) => (await db.query('SELECT md5(prosrc) AS m FROM pg_proc WHERE oid = to_regprocedure($1)', [sig])).rows[0]?.m;
+const RULES = /RULES TEST 072 finished - EVERYTHING UNDONE, nothing kept\. Result: (\d+) OK, (\d+) FAIL/;
+// The mutation of Task B9: without the explicit payroll delete, clearing a cycle whose line has an amount leaves
+// 011's needs_review behind - case B38 must see it (a test that cannot fail proves nothing).
+const MUTANT = (src) => {
+  const out = src.replace(/-- mut:payroll-delete-begin[\s\S]*?-- mut:payroll-delete-end/, '-- (mutated: no explicit payroll delete)');
+  assert.notStrictEqual(out, src, 'the mutation markers are in 072');
+  return out;
+};
+
+test('072 on a production-shaped PGlite copy', async (t) => {
+  const db = await prodShaped();
+  const triggers = await count(db, TRG);
+
+  await t.test('the fixture holds the live texts 072 guards on (re-capture if this fails)', async () => {
+    for (const [sig, m] of Object.entries(GUARDED)) assert.equal(await md5Of(db, sig), m, sig);
+    assert.equal(await count(db, PLAN_FNS), 6, 'only the six plan_* of 071 before 072');
+  });
+
+  await t.test('072 dry run runs to its end and keeps nothing', async () => {
+    const msg = await errorOf(db, read('072_plan_functions_dryrun.sql'));
+    assert.match(msg ?? '', /DRY RUN 072 finished - EVERYTHING UNDONE, nothing kept\. The block ran to its end {2}\|\| {2}072 ran: plan functions \d+, public 16, service_role EXECUTE 16, open to API 0, triggers \d+, B-54 \d+, v5 rows 0/, msg);
+    const [, trg, b54] = /triggers (\d+), B-54 (\d+)/.exec(msg);
+    assert.equal(Number(trg), triggers); assert.equal(Number(b54), triggers);
+    assert.equal(await count(db, PLAN_FNS), 6, 'nothing kept');
+  });
+
+  await t.test('072 applies: functions only, B-54 unchanged, born closed', async () => {
+    assert.equal(await errorOf(db, read('072_plan_functions.sql')), null);
+    assert.equal(await count(db, TRG), triggers, 'no trigger');
+    assert.equal(await count(db, `SELECT red_value AS n FROM monitoring.checks WHERE id = 'B-54'`), triggers);
+    assert.ok(await count(db, PLAN_FNS) > 6 + 16);
+  });
+
+  await t.test('072 verify: in place, 16 public, closed, nothing changed, 0 rows', async () => {
+    const r = (await db.query(read('072_plan_functions_verify.sql'))).rows[0];
+    assert.equal(r.applied, '072 in place');
+    assert.equal(r.b54_matches, true);
+    for (const k of ['public_functions', 'service_role_execute']) assert.equal(Number(r[k]), 16, k);
+    for (const k of ['open_to_api', 'not_definer', 'bad_shape', 'f1_open', 'changed_live', 'v5_rows', 'v5_cycles'])
+      assert.equal(Number(r[k]), 0, k);
+  });
+
+  await t.test('the API roles: service_role reads the board, cannot reach an internal function; anon nothing', async () => {
+    await db.exec('SET ROLE service_role');
+    try {
+      const b = (await db.query(`SELECT public.plan_board('2026-10-03', 'owner') AS b`)).rows[0].b;
+      assert.deepStrictEqual([b.cycles, b.waiting, b.hub, b.notices], [[], [], [], []]);
+      await assert.rejects(db.query(`SELECT public.plan_rt_create('{}'::jsonb, 'x', 'owner')`), /permission denied/);
+      await assert.rejects(db.query(`SELECT public.plan_h_token('a', 'b', '[]'::jsonb)`), /permission denied/);
+    } finally { await db.exec('RESET ROLE'); }
+    await db.exec('SET ROLE anon');
+    try {
+      await assert.rejects(db.query(`SELECT public.plan_board('2026-10-03', 'owner')`), /permission denied/);
+    } finally { await db.exec('RESET ROLE'); }
+  });
+
+  await t.test('072 rules test: >= 80 OK, 0 FAIL, nothing kept', async () => {
+    const msg = await errorOf(db, read('072_plan_functions_test.sql'));
+    const m = RULES.exec(msg ?? '');
+    assert.ok(m, msg);
+    assert.equal(Number(m[2]), 0, msg);
+    assert.ok(Number(m[1]) >= 80, `${m[1]} cases`);
+    assert.equal(await count(db, V5_ROWS), 0, 'the test keeps nothing');
+  });
+
+  await t.test('072 rollback: refuses with a v5 row, then drops every 072 function; 072 applies again', async () => {
+    await db.exec(`INSERT INTO plan_notices (to_desk, kind, message, created_by) VALUES ('natl', 'test_notice', 'TEST 072', 'test:072')`);
+    assert.match(await errorOf(db, read('072_plan_functions_rollback.sql')) ?? '', /1 v5 row\(s\) exist/);
+    await db.exec(`DELETE FROM plan_notices WHERE created_by = 'test:072'`);
+    assert.equal(await errorOf(db, read('072_plan_functions_rollback.sql')), null);
+    assert.equal(await count(db, PLAN_FNS), 6);
+    assert.equal(await count(db, TRG), triggers);
+    for (const [sig, m] of Object.entries(GUARDED)) assert.equal(await md5Of(db, sig), m, sig);
+    assert.equal(await errorOf(db, read('072_plan_functions.sql')), null, 'reversible: 072 applies again');
+    assert.equal((await db.query(read('072_plan_functions_verify.sql'))).rows[0].applied, '072 in place');
+  });
+});
+
+test('072 mutation: without the explicit payroll delete, case B38 fails', async () => {
+  const db = await prodShaped();
+  assert.equal(await errorOf(db, MUTANT(read('072_plan_functions.sql'))), null);
+  const msg = await errorOf(db, read('072_plan_functions_test.sql'));
+  assert.match(msg ?? '', /B38 FAIL want ok got FAIL clear with amount: needs_review 1/, msg);
+});
+```
+
+- [ ] **Step 2: Τρέξε, να αποτύχει εκεί που πρέπει**
+
+Run: `cd tms-auditor && node --test test/plan-072.test.mjs`
+Expected (πριν από τα Β1–Β9): ✔ «the fixture holds the live texts 072 guards on» (αν ✖: λείπει ή άλλαξε συνάρτηση της λίστας `f` του Α1 Step 1 → λήψη ξανά, ποτέ με το χέρι)· ✔ «072 applies» (το 072 της Α έχει ήδη πάνω από 6 + 16 `plan_%`)· ✖ «072 dry run» `ENOENT … 072_plan_functions_dryrun.sql`· ✖ «072 verify» `ENOENT … _verify.sql`· ✖ «the API roles» `function public.plan_board(unknown, unknown) does not exist`· ✔ «072 rules test» (`Result: 82 OK, 0 FAIL`, οι 82 της Α)· ✖ «072 rollback» `ENOENT`· ✖ «072 mutation» `the mutation markers are in 072`.
+
+- [ ] **Step 3: Commit**
+
+```bash
+git add tms-auditor/test/plan-072.test.mjs
+git commit -m "072 PGlite harness: dry run, verify, API roles, rules >= 80, rollback and the payroll mutation on the production-shaped copy
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+```
+
+---
+
+#### Task Β1: `plan_rt_create` (εσωτερική) και στόχος `new_rt`
+
+**Files:**
+- Modify: `worker/migrations/drafts/072_plan_functions.sql` (Part 3: πριν από τη γραμμή `  -- ===== PART 4: NOTICES AND READS (section B) =====`)
+- Modify: `worker/migrations/drafts/072_plan_functions_test.sql` (στη θέση της γραμμής `  -- [SECTION B CASES]`)
+
+**Interfaces:**
+- Consumes: Β8· Α1 (`plan_h_ctx`, `plan_h_keys`, `plan_h_raise`, `plan_h_audit`, `plan_h_finish`, `plan_h_target`, του οποίου ο κλάδος `new_rt` καλεί ήδη το `plan_rt_create`), Α3 (`plan_h_put`), Α4 (`plan_put_group`).
+- Produces: `plan_rt_create(p jsonb, p_actor text, p_role text) RETURNS jsonb` (χωρίς GRANT) → `{rt_id, code, side, stops: {ref: stop_id}, stop_ids, new: true, warnings}`· `plan_h_busy(p_kind text, p_id bigint, p_from timestamptz, p_to timestamptz, p_except bigint) RETURNS void` (`plan:truck_busy` / `plan:driver_busy` με τον κωδικό του άλλου κύκλου)· `plan_h_v1_warn(p_truck bigint, p_from date, p_to date, p_except bigint) RETURNS jsonb`· το πλαίσιο των περιπτώσεων Β (fixture, σενάριο S, δείκτες `-- [B-CASES-NEXT]` και `      ;  -- end of b_want` που χρησιμοποιούν τα Β2–Β9).
+
+- [ ] **Step 1: Γράψε πρώτα τις περιπτώσεις B1–B17 (αποτυγχάνουν: η `plan_rt_create` δεν υπάρχει)**
+
+Στο `072_plan_functions_test.sql` αντικατέστησε τη γραμμή `  -- [SECTION B CASES]` με:
+```sql
+  -- ===== SECTION B CASES (B1-B77): cycle, delete, VS, local loading, notices, reads, the week 3-9/10 =====
+  -- Own fixture (rec072TB..., "TEST 072 B ...", TEST-072-B...), undone by the final error of the outer block;
+  -- each case undone by its marker. Results go into the outer ok / bad / res. ASCII only.
+  -- S (every case): an OWNED v5 cycle made by plan_rt_create (TEST-072-B1 / driver B1, stops A 06-08 and B 12-14
+  -- KATHODOS on day D = Athens today + 40), and a national order A -> B of 10 pallets, one piece, one leg A -> B.
+  DECLARE
+    b_td date := (now() AT TIME ZONE 'Europe/Athens')::date;
+    b_d date; b_w date; kb int; b_t0 timestamptz; b_el interval; b_n int;
+    h03 timestamptz; h04 timestamptz; h05 timestamptz; h06 timestamptz; h07 timestamptz; h08 timestamptz;
+    h09 timestamptz; h10 timestamptz; h11 timestamptz; h12 timestamptz; h13 timestamptz; h14 timestamptz;
+    h16 timestamptz; h18 timestamptz; h20 timestamptz;
+    b_hub bigint; b_la bigint; b_lb bigint; b_lc bigint; b_lx bigint; b_ln bigint; b_cl bigint; b_pa bigint;
+    b_t1 bigint; b_t2 bigint; b_d1 bigint; b_d2 bigint; b_d3 bigint;
+    b_vo bigint; b_vld bigint; b_vcd bigint; b_u1 bigint; b_u2 bigint; b_u3 bigint;
+    b_no1 bigint; b_no2 bigint; b_no3 bigint; b_sh1 bigint; b_sh2 bigint; b_p1 bigint; b_p2 bigint;
+    b_rt1 bigint; b_sa bigint; b_sb bigint; b_lg1 bigint; b_lg2 bigint;
+    b_bs1 bigint; b_bs2 bigint; b_bs3 bigint; b_q1 bigint; b_q2 bigint; b_q3 bigint;
+    b_x bigint; b_y bigint; b_z bigint; b_e1 bigint; b_e2 bigint; b_e3 bigint;
+    b_v jsonb; b_v2 jsonb; b_v3 jsonb; b_tok text; b_txt text;
+    b_want text[] := ARRAY[]::text[]
+      || ARRAY['ok', 'plan:truck_busy', 'ok', 'ok', 'plan:no_vehicle',
+               'ok', 'ok', 'con:rt_partner_rate', 'con:rt_partner_rate', 'plan:no_vehicle',
+               'ok', 'ok', 'plan:driver_busy', 'plan:bad_input', 'plan:bad_input',
+               'ok', 'plan:truck_busy']   -- B1-B17 (Task B1)
+      ;  -- end of b_want
+    b_verdict text; b_got text; b_hint text; b_msg text; b_cname text; b_st text;
+  BEGIN
+    b_d := b_td + 40;
+    h03 := (b_d + time '03:00') AT TIME ZONE 'Europe/Athens'; h04 := (b_d + time '04:00') AT TIME ZONE 'Europe/Athens';
+    h05 := (b_d + time '05:00') AT TIME ZONE 'Europe/Athens'; h06 := (b_d + time '06:00') AT TIME ZONE 'Europe/Athens';
+    h07 := (b_d + time '07:00') AT TIME ZONE 'Europe/Athens'; h08 := (b_d + time '08:00') AT TIME ZONE 'Europe/Athens';
+    h09 := (b_d + time '09:00') AT TIME ZONE 'Europe/Athens'; h10 := (b_d + time '10:00') AT TIME ZONE 'Europe/Athens';
+    h11 := (b_d + time '11:00') AT TIME ZONE 'Europe/Athens'; h12 := (b_d + time '12:00') AT TIME ZONE 'Europe/Athens';
+    h13 := (b_d + time '13:00') AT TIME ZONE 'Europe/Athens'; h14 := (b_d + time '14:00') AT TIME ZONE 'Europe/Athens';
+    h16 := (b_d + time '16:00') AT TIME ZONE 'Europe/Athens'; h18 := (b_d + time '18:00') AT TIME ZONE 'Europe/Athens';
+    h20 := (b_d + time '20:00') AT TIME ZONE 'Europe/Athens';
+    SELECT id INTO b_hub FROM locations WHERE is_hub;
+    INSERT INTO locations (legacy_id, name) VALUES ('rec072TBLA', 'TEST 072 B A') RETURNING id INTO b_la;
+    INSERT INTO locations (legacy_id, name) VALUES ('rec072TBLB', 'TEST 072 B B') RETURNING id INTO b_lb;
+    INSERT INTO locations (legacy_id, name) VALUES ('rec072TBLC', 'TEST 072 B C') RETURNING id INTO b_lc;
+    INSERT INTO locations (legacy_id, name) VALUES ('rec072TBLX', 'TEST 072 B abroad') RETURNING id INTO b_lx;
+    INSERT INTO locations (legacy_id, name) VALUES ('rec072TBLN', 'TEST 072 B new') RETURNING id INTO b_ln;
+    INSERT INTO clients (company_name) VALUES ('TEST 072 B client') RETURNING id INTO b_cl;
+    INSERT INTO partners (company_name) VALUES ('TEST 072 B partner') RETURNING id INTO b_pa;
+    INSERT INTO trucks (license_plate) VALUES ('TEST-072-B1') RETURNING id INTO b_t1;
+    INSERT INTO trucks (license_plate) VALUES ('TEST-072-B2') RETURNING id INTO b_t2;
+    INSERT INTO drivers (full_name) VALUES ('TEST 072 B driver 1') RETURNING id INTO b_d1;
+    INSERT INTO drivers (full_name) VALUES ('TEST 072 B driver 2') RETURNING id INTO b_d2;
+    INSERT INTO drivers (full_name) VALUES ('TEST 072 B local') RETURNING id INTO b_d3;
+    -- a VS import: loads abroad, crosses Veroia on D (Cross-dock stop), three Greek deliveries 4 / 6 / 10 on D
+    INSERT INTO orders (legacy_id, order_type, direction, status, veroia_switch, loading_datetime, delivery_datetime,
+                        cross_dock_date, reference, client_id)
+    VALUES ('rec072TBO1', 'International', 'Import', 'Pending', true, b_d - 3, b_d, b_d, 'WN072-TEST', b_cl) RETURNING id INTO b_vo;
+    INSERT INTO order_stops (legacy_id, stop_type, stop_number, datetime, order_id, location_id, pallets)
+    VALUES ('rec072TBS0', 'Loading', 1, b_d - 3, b_vo, b_lx, 20) RETURNING id INTO b_vld;
+    INSERT INTO order_stops (legacy_id, stop_type, stop_number, datetime, order_id, location_id)
+    VALUES ('rec072TBSH', 'Cross-dock', 1, b_d, b_vo, b_hub) RETURNING id INTO b_vcd;
+    INSERT INTO order_stops (legacy_id, stop_type, stop_number, datetime, order_id, location_id, pallets)
+    VALUES ('rec072TBS1', 'Unloading', 1, b_d, b_vo, b_la, 4) RETURNING id INTO b_u1;
+    INSERT INTO order_stops (legacy_id, stop_type, stop_number, datetime, order_id, location_id, pallets)
+    VALUES ('rec072TBS2', 'Unloading', 2, b_d, b_vo, b_lb, 6) RETURNING id INTO b_u2;
+    INSERT INTO order_stops (legacy_id, stop_type, stop_number, datetime, order_id, location_id, pallets)
+    VALUES ('rec072TBS3', 'Unloading', 3, b_d, b_vo, b_lc, 10) RETURNING id INTO b_u3;
+
+    FOR kb IN 1 .. array_length(b_want, 1) LOOP
+      b_verdict := NULL;
+      BEGIN
+        SET CONSTRAINTS ALL DEFERRED;
+        -- S
+        b_v := plan_rt_create(jsonb_build_object(
+                 'new_rt', jsonb_build_object('trip_type', 'OWNED', 'truck_id', b_t1, 'driver_id', b_d1), 'side', 'KATHODOS',
+                 'stops', jsonb_build_array(
+                   jsonb_build_object('ref', 'a', 'location_id', b_la, 'side', 'KATHODOS', 'planned_from', h06, 'planned_to', h08),
+                   jsonb_build_object('ref', 'b', 'location_id', b_lb, 'side', 'KATHODOS', 'planned_from', h12, 'planned_to', h14))),
+               'test:072b', 'dispatcher');
+        b_rt1 := (b_v->>'rt_id')::bigint; b_sa := (b_v->'stops'->>'a')::bigint; b_sb := (b_v->'stops'->>'b')::bigint;
+        INSERT INTO national_orders (legacy_id, client_id, reference, price) VALUES ('rec072TBN1', b_cl, 'WN072-TEST', 100)
+          RETURNING id INTO b_no1;
+        INSERT INTO shipments (nat_order_id, origin_location_id, dest_location_id, pallets, load_from, load_to, deliver_from,
+                               deliver_to, created_by)
+        VALUES (b_no1, b_la, b_lb, 10, h06, h08, h12, h14, 'test:072b') RETURNING id INTO b_sh1;
+        INSERT INTO shipment_pieces (shipment_id, pallets, created_by) VALUES (b_sh1, 10, 'test:072b') RETURNING id INTO b_p1;
+        INSERT INTO piece_legs (piece_id, leg_no, rt_id, pickup_stop_id, drop_stop_id, created_by)
+        VALUES (b_p1, 1, b_rt1, b_sa, b_sb, 'test:072b') RETURNING id INTO b_lg1;
+        SET CONSTRAINTS ALL IMMEDIATE;
+        SET CONSTRAINTS ALL DEFERRED;
+        -- the VS bridges (cases that need the VS): one piece per Greek stop, waiting at the hub
+        IF kb IN (16, 17, 21, 52, 55, 56, 57, 58, 60, 74) THEN
+          INSERT INTO shipments (order_id, order_stop_id, created_by) VALUES (b_vo, b_u1, 'test:072b') RETURNING id INTO b_bs1;
+          INSERT INTO shipment_pieces (shipment_id, pallets, created_by) VALUES (b_bs1, 4, 'test:072b') RETURNING id INTO b_q1;
+          INSERT INTO shipments (order_id, order_stop_id, created_by) VALUES (b_vo, b_u2, 'test:072b') RETURNING id INTO b_bs2;
+          INSERT INTO shipment_pieces (shipment_id, pallets, created_by) VALUES (b_bs2, 6, 'test:072b') RETURNING id INTO b_q2;
+          INSERT INTO shipments (order_id, order_stop_id, created_by) VALUES (b_vo, b_u3, 'test:072b') RETURNING id INTO b_bs3;
+          INSERT INTO shipment_pieces (shipment_id, pallets, created_by) VALUES (b_bs3, 10, 'test:072b') RETURNING id INTO b_q3;
+        END IF;
+
+        IF kb = 1 THEN
+          NULL;
+        -- ---- Task B1: plan_rt_create and the target new_rt ----
+        ELSIF kb IN (2, 3) THEN   -- the same truck Wed 05:00-07:00 while S runs 06:00-14:00
+          b_v2 := jsonb_build_object('new_rt', jsonb_build_object('trip_type', 'OWNED', 'truck_id', b_t1, 'driver_id', b_d2),
+                    'stops', jsonb_build_array(jsonb_build_object('ref', 'x', 'location_id', b_lc, 'side', 'KATHODOS',
+                                                                  'planned_from', h05, 'planned_to', h07)));
+          IF kb = 2 THEN
+            PERFORM plan_rt_create(b_v2, 'test:072b', 'dispatcher');
+          ELSE
+            BEGIN
+              PERFORM plan_rt_create(b_v2, 'test:072b', 'dispatcher');
+              b_verdict := 'FAIL no refusal';
+            EXCEPTION WHEN check_violation THEN
+              GET STACKED DIAGNOSTICS b_msg = MESSAGE_TEXT, b_hint = PG_EXCEPTION_HINT;
+              b_verdict := CASE WHEN b_hint = 'plan:truck_busy' AND b_msg LIKE '%' || (b_v->>'code') || '%'
+                                THEN 'ok truck_busy names the other cycle' ELSE 'FAIL message ' || b_msg END;
+            END;
+          END IF;
+        ELSIF kb = 4 THEN   -- 14:00 end and 14:00 start do not collide ([) ranges, 071b)
+          b_v2 := plan_rt_create(jsonb_build_object('new_rt', jsonb_build_object('trip_type', 'OWNED', 'truck_id', b_t1, 'driver_id', b_d2),
+                    'stops', jsonb_build_array(jsonb_build_object('ref', 'x', 'location_id', b_lc, 'side', 'KATHODOS',
+                                                                  'planned_from', h14, 'planned_to', h20))), 'test:072b', 'dispatcher');
+          PERFORM plan_h_finish();
+          b_verdict := CASE WHEN (SELECT start_at = h14 AND end_at = h20 FROM ct_round_trips WHERE id = (b_v2->>'rt_id')::bigint)
+                            THEN 'ok 14:00-20:00 after 06:00-14:00 on the same truck' ELSE 'FAIL back to back' END;
+        ELSIF kb = 5 THEN
+          PERFORM plan_rt_create(jsonb_build_object('new_rt', jsonb_build_object('trip_type', 'OWNED', 'driver_id', b_d2),
+                    'stops', jsonb_build_array(jsonb_build_object('ref', 'x', 'location_id', b_lc, 'side', 'KATHODOS',
+                                                                  'planned_from', h16, 'planned_to', h18))), 'test:072b', 'dispatcher');
+        ELSIF kb IN (6, 7, 9, 10) THEN   -- PARTNER: with rate, without rate, negative rate, without partner
+          b_v2 := plan_rt_create(jsonb_build_object('new_rt',
+                    CASE kb WHEN 6 THEN jsonb_build_object('trip_type', 'PARTNER', 'partner_id', b_pa, 'partner_rate', 250)
+                            WHEN 7 THEN jsonb_build_object('trip_type', 'PARTNER', 'partner_id', b_pa)
+                            WHEN 9 THEN jsonb_build_object('trip_type', 'PARTNER', 'partner_id', b_pa, 'partner_rate', -5)
+                            ELSE jsonb_build_object('trip_type', 'PARTNER', 'partner_rate', 250) END,
+                    'stops', jsonb_build_array(jsonb_build_object('ref', 'x', 'location_id', b_lc, 'side', 'KATHODOS',
+                                                                  'planned_from', h06, 'planned_to', h08))), 'test:072b', 'dispatcher');
+          PERFORM plan_h_finish();
+          b_x := (b_v2->>'rt_id')::bigint;
+          b_verdict := CASE WHEN (SELECT trip_type = 'PARTNER' AND partner_id = b_pa AND truck_id IS NULL AND driver_id IS NULL
+                                         AND partner_rate IS NOT DISTINCT FROM CASE kb WHEN 6 THEN 250::numeric END
+                                    FROM ct_round_trips WHERE id = b_x)
+                              AND NOT EXISTS (SELECT 1 FROM dl_entries WHERE rt_id = b_x)
+                            THEN 'ok partner cycle, rate ' || coalesce((SELECT partner_rate::text FROM ct_round_trips WHERE id = b_x), 'empty')
+                                 || ', no payroll line'
+                            ELSE 'FAIL partner cycle' END;
+        ELSIF kb = 8 THEN   -- a rate on an OWNED cycle: CHECK rt_partner_rate
+          PERFORM plan_rt_create(jsonb_build_object('new_rt', jsonb_build_object('trip_type', 'OWNED', 'truck_id', b_t2,
+                    'driver_id', b_d2, 'partner_rate', 100),
+                    'stops', jsonb_build_array(jsonb_build_object('ref', 'x', 'location_id', b_lc, 'side', 'KATHODOS',
+                                                                  'planned_from', h06, 'planned_to', h08))), 'test:072b', 'dispatcher');
+        ELSIF kb = 11 THEN   -- a cycle of ANODOS only (spec 3, Board: allowed, empty KATHODOS)
+          b_v2 := plan_rt_create(jsonb_build_object('new_rt', jsonb_build_object('trip_type', 'OWNED', 'truck_id', b_t2, 'driver_id', b_d2),
+                    'side', 'ANODOS', 'stops', jsonb_build_array(
+                      jsonb_build_object('ref', 'h', 'location_id', b_hub, 'side', 'ANODOS', 'planned_from', h16, 'planned_to', h18),
+                      jsonb_build_object('ref', 'c', 'location_id', b_lc, 'side', 'ANODOS', 'planned_from', h09, 'planned_to', h10))),
+                    'test:072b', 'dispatcher');
+          PERFORM plan_h_finish();
+          b_x := (b_v2->>'rt_id')::bigint;
+          b_verdict := CASE WHEN (SELECT string_agg(side || seq::text || ':' || location_id::text, ',' ORDER BY seq)
+                                    FROM rt_stops WHERE rt_id = b_x AND deleted_at IS NULL)
+                                 = 'ANODOS1:' || b_lc || ',ANODOS2:' || b_hub
+                              AND (SELECT start_at = h09 AND end_at = h18 FROM ct_round_trips WHERE id = b_x)
+                              AND (SELECT count(*) FROM dl_entries WHERE rt_id = b_x AND deleted_at IS NULL AND entry_date = b_d) = 1
+                            THEN 'ok ANODOS-only cycle, stops numbered by time, one payroll line'
+                            ELSE 'FAIL ANODOS-only cycle' END;
+        ELSIF kb = 12 THEN   -- a today's (model=1) round trip of the same truck the same day: a warning, not a refusal
+          INSERT INTO ct_round_trips (scope, trip_type, truck_id, date_start, status, source, created_by)
+          VALUES ('NATL', 'OWNED', b_t2, b_d, 'planned', 'manual', 'test:072b') RETURNING code INTO b_txt;
+          b_v2 := plan_rt_create(jsonb_build_object('new_rt', jsonb_build_object('trip_type', 'OWNED', 'truck_id', b_t2, 'driver_id', b_d2),
+                    'stops', jsonb_build_array(jsonb_build_object('ref', 'x', 'location_id', b_lc, 'side', 'KATHODOS',
+                                                                  'planned_from', h06, 'planned_to', h08))), 'test:072b', 'dispatcher');
+          PERFORM plan_h_finish();
+          b_verdict := CASE WHEN b_v2->'warnings' = jsonb_build_array(jsonb_build_object('code', 'v1_same_truck', 'rt_code', b_txt))
+                            THEN 'ok v1_same_truck warning with the v1 code' ELSE 'FAIL warnings ' || (b_v2->'warnings')::text END;
+        ELSIF kb = 13 THEN   -- another truck, the same driver as S, overlapping
+          PERFORM plan_rt_create(jsonb_build_object('new_rt', jsonb_build_object('trip_type', 'OWNED', 'truck_id', b_t2, 'driver_id', b_d1),
+                    'stops', jsonb_build_array(jsonb_build_object('ref', 'x', 'location_id', b_lc, 'side', 'KATHODOS',
+                                                                  'planned_from', h07, 'planned_to', h09))), 'test:072b', 'dispatcher');
+        ELSIF kb = 14 THEN
+          PERFORM plan_rt_create(jsonb_build_object('new_rt', jsonb_build_object('trip_type', 'OWNED', 'truck_id', b_t2),
+                    'stops', '[]'::jsonb), 'test:072b', 'dispatcher');
+        ELSIF kb = 15 THEN
+          PERFORM plan_rt_create(jsonb_build_object('new_rt', jsonb_build_object('trip_type', 'X', 'truck_id', b_t2),
+                    'stops', jsonb_build_array(jsonb_build_object('ref', 'x', 'location_id', b_lc, 'side', 'KATHODOS',
+                                                                  'planned_from', h06, 'planned_to', h08))), 'test:072b', 'dispatcher');
+        ELSIF kb IN (16, 17) THEN   -- the whole VS card on a free truck: 1 call, 1 cycle, 3 legs (section A's put_group)
+          b_v2 := plan_put_group(jsonb_build_object('group', jsonb_build_object('order_id', b_vo),
+                    'target', jsonb_build_object('new_rt', jsonb_build_object('trip_type', 'OWNED',
+                                'truck_id', CASE kb WHEN 16 THEN b_t2 ELSE b_t1 END, 'driver_id', b_d2), 'side', 'KATHODOS'),
+                    'stops', jsonb_build_array(
+                      jsonb_build_object('ref', 'h', 'location_id', b_hub, 'side', 'KATHODOS', 'planned_from', h06, 'planned_to', h07),
+                      jsonb_build_object('ref', '1', 'location_id', b_la, 'side', 'KATHODOS', 'planned_from', h09, 'planned_to', h10),
+                      jsonb_build_object('ref', '2', 'location_id', b_lb, 'side', 'KATHODOS', 'planned_from', h12, 'planned_to', h13),
+                      jsonb_build_object('ref', '3', 'location_id', b_lc, 'side', 'KATHODOS', 'planned_from', h14, 'planned_to', h16))),
+                  'test:072b', 'dispatcher');
+          b_x := (b_v2->'ids'->>'rt_id')::bigint;
+          b_verdict := CASE WHEN (SELECT count(*) FROM ct_round_trips WHERE model = 2 AND created_by = 'test:072b' AND id <> b_rt1) = 1
+                              AND (SELECT n_legs FROM v_rt_cycle WHERE rt_id = b_x) = 3
+                              AND (SELECT count(*) FROM dl_entries WHERE rt_id = b_x AND deleted_at IS NULL
+                                     AND trip_value IS NULL AND advance IS NULL AND expenses IS NULL) = 1
+                              AND (SELECT all_planned FROM v_vs_state WHERE order_id = b_vo)
+                              AND (SELECT cross_dock_date FROM orders WHERE id = b_vo) = b_d
+                            THEN 'ok VS of 3 deliveries on a free truck: 1 cycle, 3 legs, 1 empty payroll line, day kept'
+                            ELSE 'FAIL put_group new_rt' END;
+        -- [B-CASES-NEXT]
+        END IF;
+        SET CONSTRAINTS ALL IMMEDIATE;
+
+        IF b_want[kb] <> 'ok' THEN
+          b_verdict := 'FAIL no error';
+        ELSIF kb = 1 THEN
+          b_verdict := CASE
+            WHEN (SELECT model = 2 AND scope = 'NATL' AND status = 'planned' AND trip_type = 'OWNED' AND start_at = h06
+                         AND end_at = h14 AND date_start = b_d AND date_end = b_d AND created_by = 'test:072b' AND source = 'planner'
+                    FROM ct_round_trips WHERE id = b_rt1)
+             AND (SELECT string_agg(seq::text, ',' ORDER BY planned_from) FROM rt_stops WHERE rt_id = b_rt1) = '1,2'
+             AND (SELECT count(*) FROM dl_entries WHERE rt_id = b_rt1 AND deleted_at IS NULL AND entry_type = 'trip'
+                    AND entry_date = b_d AND driver_id = b_d1 AND trip_value IS NULL AND advance IS NULL AND expenses IS NULL
+                    AND created_by = 'trigger:test:072b') = 1
+             AND (SELECT count(*) FROM audit_log WHERE actor = 'test:072b' AND role = 'dispatcher' AND action = 'create'
+                    AND table_name IN ('rt_stops', 'ct_round_trips')) = 3
+             AND b_v->>'code' LIKE 'RT-%' AND b_v->'warnings' = '[]'::jsonb
+            THEN 'ok plan_rt_create: stops first, window exact, one empty payroll line, three audit rows'
+            ELSE 'FAIL plan_rt_create ' || b_v::text END;
+        END IF;
+        RAISE EXCEPTION 'wn072b undo' USING HINT = 'wn072b_undo';
+      EXCEPTION WHEN others THEN
+        GET STACKED DIAGNOSTICS b_hint = PG_EXCEPTION_HINT, b_msg = MESSAGE_TEXT, b_cname = CONSTRAINT_NAME,
+                                b_st = RETURNED_SQLSTATE;
+        b_got := CASE WHEN b_hint = 'wn072b_undo' THEN coalesce(b_verdict, 'FAIL no verdict')
+                      WHEN b_hint LIKE 'plan:%' THEN b_hint
+                      WHEN coalesce(b_cname, '') <> '' THEN 'con:' || b_cname
+                      ELSE 'state:' || b_st END;
+        IF (b_want[kb] = 'ok' AND b_got LIKE 'ok%') OR b_got = b_want[kb] THEN
+          ok := ok + 1; res := res || ('B' || kb);
+        ELSE
+          bad := bad + 1; res := res || ('B' || kb || ' FAIL want ' || b_want[kb] || ' got ' || b_got || ' (' || b_msg || ')');
+        END IF;
+      END;
+    END LOOP;
+  END;
+```
+
+- [ ] **Step 2: Τρέξε, να αποτύχει**
+
+Run: `cd tms-auditor && node --test test/plan-072.test.mjs`
+Expected: ✖ «072 rules test», `Result: 82 OK, 17 FAIL`, με `B1 FAIL want ok got state:42883 (function plan_rt_create(jsonb, unknown, unknown) does not exist)` και το ίδιο για B2–B17 (το σενάριο S καλεί την `plan_rt_create` σε κάθε περίπτωση).
+
+- [ ] **Step 3: Γράψε τις συναρτήσεις**
+
+Στο `072_plan_functions.sql`, ακριβώς πριν από τη γραμμή `  -- ===== PART 4: NOTICES AND READS (section B) =====`:
+```sql
+  -- B1. One truck, one driver at a time: the refusal names the other cycle (decision 19). The EXCLUDE of 071b
+  -- stays the net; this read gives the message its RT code, which the deferred 23P01 cannot carry.
+  CREATE FUNCTION public.plan_h_busy(p_kind text, p_id bigint, p_from timestamptz, p_to timestamptz, p_except bigint)
+    RETURNS void LANGUAGE plpgsql STABLE SET search_path = public AS $f$
+declare
+  v_code text;
+begin
+  if p_id is null or p_from is null or p_to is null then return; end if;
+  -- the same rows and the same [) range as rt_v2_truck_once / rt_v2_driver_once (071b): 14:00 end, 14:00 start = no clash
+  select r.code into v_code from ct_round_trips r
+   where r.model = 2 and r.trip_type = 'OWNED' and r.status <> 'cancelled' and r.id is distinct from p_except
+     and ((p_kind = 'truck' and r.truck_id = p_id) or (p_kind = 'driver' and r.driver_id = p_id))
+     and tstzrange(r.start_at, r.end_at, '[)') && tstzrange(p_from, p_to, '[)')
+   order by r.start_at, r.id limit 1;
+  if v_code is null then return; end if;
+  if p_kind = 'truck' then
+    perform plan_h_raise('truck_busy', v_code);
+  else
+    perform plan_h_raise('driver_busy', v_code);
+  end if;
+end
+$f$;
+
+  -- B1. A v5 cycle and a today's (model=1) round trip of the same truck on the same days: the base cannot refuse
+  -- it (071b sees model=2 only), so it is a warning in the answer, never a silent pass (principle 1).
+  CREATE FUNCTION public.plan_h_v1_warn(p_truck bigint, p_from date, p_to date, p_except bigint)
+    RETURNS jsonb LANGUAGE sql STABLE SET search_path = public AS $f$
+  select coalesce(jsonb_agg(jsonb_build_object('code', 'v1_same_truck', 'rt_code', r.code) order by r.code), '[]'::jsonb)
+    from ct_round_trips r
+   where r.model = 1 and p_truck is not null and r.truck_id = p_truck and r.status <> 'cancelled'
+     and r.id is distinct from p_except
+     and r.date_start <= p_to and coalesce(r.date_end, r.date_start) >= p_from
+$f$;
+
+  -- B1. The cycle is born from an assignment only (decision 3): internal, no GRANT, called by plan_h_target for a
+  -- {"new_rt": ...} target inside the caller's transaction. Stops FIRST, the cycle after them with the window
+  -- computed from them (spec 7): CHECK rt_v2_window / rt_v2_dates are plain CHECKs and hold on the INSERT, and
+  -- 011 (dl_sync_from_rt) writes the payroll line of an OWNED cycle with a driver on date_start, empty.
+  CREATE FUNCTION public.plan_rt_create(p jsonb, p_actor text, p_role text)
+    RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $f$
+declare
+  nr jsonb := p->'new_rt';
+  v_type text; v_truck bigint; v_trailer bigint; v_driver bigint; v_partner bigint; v_rate numeric;
+  v_rt bigint; v_code text; v_min timestamptz; v_max timestamptz; v_n int;
+  v_map jsonb := '{}'::jsonb; v_ids bigint[] := '{}'; v_id bigint; s record;
+begin
+  perform plan_h_ctx(p_actor, p_role);
+  set constraints all deferred;
+  -- an unknown key is refused, never ignored (principle 1)
+  perform plan_h_keys(p, array['new_rt', 'side', 'stops'], 'p');
+  perform plan_h_keys(nr, array['trip_type', 'truck_id', 'trailer_id', 'driver_id', 'partner_id', 'partner_rate'], 'new_rt');
+  if jsonb_typeof(nr) is distinct from 'object' or jsonb_typeof(p->'stops') is distinct from 'array'
+     or jsonb_array_length(p->'stops') = 0 then
+    perform plan_h_raise('bad_input', 'new_rt and stops');
+  end if;
+  begin
+    v_type := nr->>'trip_type';
+    v_truck := (nr->>'truck_id')::bigint;
+    v_trailer := (nr->>'trailer_id')::bigint;
+    v_driver := (nr->>'driver_id')::bigint;
+    v_partner := (nr->>'partner_id')::bigint;
+    v_rate := (nr->>'partner_rate')::numeric;
+    -- a new cycle has only new stops: place, side, window from-to (decision 4: the base invents no stop, no hour)
+    select count(*), min((e->>'planned_from')::timestamptz), max((e->>'planned_to')::timestamptz)
+      into v_n, v_min, v_max
+      from jsonb_array_elements(p->'stops') e
+     where jsonb_typeof(e) = 'object' and not (e ? 'stop_id') and coalesce(e->>'ref', '') <> ''
+       and e->>'side' in ('KATHODOS', 'ANODOS') and (e->>'planned_from') is not null and (e->>'planned_to') is not null
+       and exists (select 1 from locations l where l.id = (e->>'location_id')::bigint and l.deleted_at is null);
+  exception when invalid_text_representation or numeric_value_out_of_range or invalid_datetime_format
+                 or datetime_field_overflow then
+    perform plan_h_raise('bad_input', 'new_rt or stops');
+  end;
+  if v_n <> jsonb_array_length(p->'stops') then
+    perform plan_h_raise('bad_input', 'stops: ref, live location_id, side, planned_from, planned_to');
+  end if;
+  if (select count(distinct e->>'ref') from jsonb_array_elements(p->'stops') e) <> v_n then
+    perform plan_h_raise('bad_input', 'stops: ref not unique');
+  end if;
+  if v_type is null or v_type not in ('OWNED', 'PARTNER') then
+    perform plan_h_raise('bad_input', 'trip_type');
+  end if;
+  if v_type = 'OWNED' then
+    if v_partner is not null then perform plan_h_raise('bad_input', 'partner_id on OWNED'); end if;
+    if v_truck is null or not exists (select 1 from trucks t where t.id = v_truck and t.deleted_at is null) then
+      perform plan_h_raise('no_vehicle', 'truck');
+    end if;
+    if v_driver is not null and not exists (select 1 from drivers d where d.id = v_driver and d.deleted_at is null) then
+      perform plan_h_raise('bad_input', 'driver_id');
+    end if;
+    perform plan_h_busy('truck', v_truck, v_min, v_max, null);
+    perform plan_h_busy('driver', v_driver, v_min, v_max, null);
+  else
+    if v_truck is not null or v_trailer is not null or v_driver is not null then
+      perform plan_h_raise('bad_input', 'vehicle on PARTNER');
+    end if;
+    if v_partner is null or not exists (select 1 from partners x where x.id = v_partner and x.deleted_at is null) then
+      perform plan_h_raise('no_vehicle', 'partner');
+    end if;
+  end if;
+
+  v_rt := nextval(pg_get_serial_sequence('public.ct_round_trips', 'id'));
+  -- decision 5: the base numbers the stops (KATHODOS before ANODOS, then by time); the caller never sends seq
+  for s in select e.value as v,
+                  row_number() over (order by (e.value->>'side') = 'ANODOS', (e.value->>'planned_from')::timestamptz,
+                                              e.ordinality) as seq
+             from jsonb_array_elements(p->'stops') with ordinality e loop
+    insert into rt_stops (rt_id, seq, location_id, side, planned_from, planned_to, created_by)
+    values (v_rt, s.seq, (s.v->>'location_id')::bigint, s.v->>'side', (s.v->>'planned_from')::timestamptz,
+            (s.v->>'planned_to')::timestamptz, p_actor)
+    returning id into v_id;
+    v_map := v_map || jsonb_build_object(s.v->>'ref', v_id);
+    v_ids := v_ids || v_id;
+    perform plan_h_audit(p_actor, p_role, 'create', 'rt_stops', v_id::text, null,
+                         (select to_jsonb(x) from rt_stops x where x.id = v_id));
+  end loop;
+  -- created_by = the user: 011 copies it into the payroll line as 'trigger:' || created_by
+  insert into ct_round_trips (id, model, scope, trip_type, truck_id, trailer_id, driver_id, partner_id, partner_rate,
+                              date_start, date_end, start_at, end_at, status, source, created_by)
+  overriding system value
+  values (v_rt, 2, 'NATL', v_type, v_truck, v_trailer, v_driver, v_partner, v_rate,
+          (v_min at time zone 'Europe/Athens')::date, (v_max at time zone 'Europe/Athens')::date, v_min, v_max,
+          'planned', 'planner', p_actor)
+  returning code into v_code;
+  perform plan_h_audit(p_actor, p_role, 'create', 'ct_round_trips', v_rt::text, null,
+                       (select to_jsonb(x) from ct_round_trips x where x.id = v_rt));
+  return jsonb_build_object('rt_id', v_rt, 'code', v_code, 'side', p->>'side', 'stops', v_map, 'stop_ids', to_jsonb(v_ids),
+                            'new', true,
+                            'warnings', case when v_type = 'OWNED'
+                                             then plan_h_v1_warn(v_truck, (v_min at time zone 'Europe/Athens')::date,
+                                                                 (v_max at time zone 'Europe/Athens')::date, v_rt)
+                                             else '[]'::jsonb end);
+end
+$f$;
+```
+
+- [ ] **Step 4: Τρέξε, να περάσει**
+
+Run: `cd tms-auditor && node --test test/plan-072.test.mjs`
+Expected: ✔ «072 rules test», `Result: 99 OK, 0 FAIL` (82 Α + B1–B17· π.χ. `B1` = «ok plan_rt_create: stops first, window exact, one empty payroll line, three audit rows»). Αν B16/B17 αποτύχουν με «FAIL put_group new_rt», ο κλάδος `new_rt` του `plan_h_target` (Α1) δεν δίνει στο `plan_h_put` το σχήμα `{rt_id, side, stops}` που περιμένει.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add worker/migrations/drafts/072_plan_functions.sql worker/migrations/drafts/072_plan_functions_test.sql
+git commit -m "072 plan_rt_create (internal): stops first, exact window, one truck / one driver with the other RT code; B cases 1-17
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+```
+
+---
+
+#### Task Β2: `plan_rt_update`
+
+**Files:**
+- Modify: `worker/migrations/drafts/072_plan_functions.sql` (Part 3, πριν από τον δείκτη PART 4)
+- Modify: `worker/migrations/drafts/072_plan_functions_test.sql` (πριν από `        -- [B-CASES-NEXT]` και πριν από `      ;  -- end of b_want`)
+
+**Interfaces:**
+- Consumes: Β1 (`plan_h_busy`, `plan_h_v1_warn`)· Α1 (`plan_h_keys`, `plan_h_reseq(rt, p_actor, p_role)`, `plan_h_vs_follow(<κομμάτια>, p_actor, p_role)`)· όψεις 071 `v_vs_state`, `v_piece_state`.
+- Produces: `plan_rt_update(p jsonb, p_actor text, p_role text) RETURNS jsonb`· `p` = `{rt_id, set?: {trip_type, truck_id, trailer_id, driver_id, partner_id, partner_rate}, stops?: [{stop_id, planned_from, planned_to}], shift?: {side, delta}, dry_run?}`· dry run = `{ok, op, dry_run: true, preview: {before, after, next_rt, conflict, vs_day, warnings}}` (τίποτα γραμμένο, ούτε audit)· εκτέλεση = κοινό σχήμα με `ids.rt_id/stop_ids`, `warnings` (και `local_payroll_review`, απόφαση 33), `notice_ids` (αυτές που έγραψε η κλήση). Νέος κωδικός `payroll_locked` (απόφαση 32).
+
+- [ ] **Step 1: Γράψε πρώτα τις περιπτώσεις B18–B33**
+
+Στο `072_plan_functions_test.sql`, ακριβώς πριν από τη γραμμή `        -- [B-CASES-NEXT]`:
+```sql
+        -- ---- Task B2: plan_rt_update ----
+        ELSIF kb IN (18, 29) THEN   -- dry runs write nothing; a broken rule is SHOWN, not raised (Figma D4)
+          b_v2 := plan_rt_update(CASE kb WHEN 18
+                    THEN jsonb_build_object('rt_id', b_rt1, 'shift', jsonb_build_object('side', 'KATHODOS', 'delta', '1 day'), 'dry_run', true)
+                    ELSE jsonb_build_object('rt_id', b_rt1, 'stops', jsonb_build_array(jsonb_build_object('stop_id', b_sb,
+                           'planned_from', h03, 'planned_to', h04)), 'dry_run', true) END,
+                  'test:072b-dry', 'dispatcher');
+          b_verdict := CASE WHEN (SELECT start_at = h06 AND end_at = h14 AND date_start = b_d FROM ct_round_trips WHERE id = b_rt1)
+                              AND (SELECT planned_from = h12 FROM rt_stops WHERE id = b_sb)
+                              AND (SELECT count(*) FROM audit_log WHERE actor = 'test:072b-dry') = 0
+                              AND (SELECT entry_date = b_d FROM dl_entries WHERE rt_id = b_rt1 AND deleted_at IS NULL)
+                              AND (b_v2->>'dry_run')::boolean
+                              AND CASE kb WHEN 18
+                                    THEN b_v2->'preview'->'after'->>'date_start' = (b_d + 1)::text
+                                         AND b_v2->'preview'->'conflict' = 'null'::jsonb
+                                    ELSE b_v2->'preview'->'conflict'->>'code' = 'leg_order' END
+                            THEN 'ok dry run: preview ' || (b_v2->'preview'->'conflict')::text || ', 0 rows written'
+                            ELSE 'FAIL dry run ' || b_v2::text END;
+        ELSIF kb = 19 THEN   -- "change date" +1 day on KATHODOS: window, days and the payroll day follow
+          b_v2 := plan_rt_update(jsonb_build_object('rt_id', b_rt1, 'shift', jsonb_build_object('side', 'KATHODOS', 'delta', '1 day')),
+                  'test:072b', 'dispatcher');
+          b_verdict := CASE WHEN (SELECT start_at = h06 + interval '1 day' AND end_at = h14 + interval '1 day'
+                                         AND date_start = b_d + 1 AND date_end = b_d + 1 FROM ct_round_trips WHERE id = b_rt1)
+                              AND (SELECT entry_date = b_d + 1 AND date_end = b_d + 1 FROM dl_entries
+                                    WHERE rt_id = b_rt1 AND deleted_at IS NULL)
+                              AND (SELECT count(*) FROM audit_log WHERE actor = 'test:072b' AND table_name = 'rt_stops'
+                                     AND action = 'update') = 2
+                            THEN 'ok +1 day: window, days and payroll day follow' ELSE 'FAIL +1 day' END;
+        ELSIF kb = 20 THEN   -- the local loading follows its stop to the new day, with its TOPIKO line
+          b_v2 := plan_local_loading(jsonb_build_object('rt_stop_id', b_sa, 'driver_id', b_d3, 'truck_id', b_t2), 'test:072b', 'dispatcher');
+          b_x := (b_v2->'ids'->>'local_move_id')::bigint;
+          PERFORM plan_rt_update(jsonb_build_object('rt_id', b_rt1, 'shift', jsonb_build_object('side', 'KATHODOS', 'delta', '1 day')),
+                  'test:072b', 'dispatcher');
+          b_verdict := CASE WHEN (SELECT move_date FROM local_moves WHERE id = b_x) = b_d + 1
+                              AND (SELECT count(*) FROM dl_entries WHERE driver_id = b_d3 AND entry_date = b_d + 1
+                                     AND deleted_at IS NULL AND local_move_id = b_x) = 1
+                              AND (SELECT count(*) FROM dl_entries WHERE driver_id = b_d3 AND entry_date = b_d AND deleted_at IS NULL) = 0
+                            THEN 'ok local loading and its TOPIKO line moved to D+1' ELSE 'FAIL local loading did not follow' END;
+        ELSIF kb = 21 THEN   -- the cycle that carries the VS's first piece moves: the international day follows
+          b_v2 := plan_rt_create(jsonb_build_object('new_rt', jsonb_build_object('trip_type', 'OWNED', 'truck_id', b_t2, 'driver_id', b_d2),
+                    'stops', jsonb_build_array(
+                      jsonb_build_object('ref', 'h', 'location_id', b_hub, 'side', 'KATHODOS', 'planned_from', h06, 'planned_to', h07),
+                      jsonb_build_object('ref', 'u', 'location_id', b_la, 'side', 'KATHODOS', 'planned_from', h09, 'planned_to', h10))),
+                  'test:072b', 'dispatcher');
+          b_x := (b_v2->>'rt_id')::bigint;
+          INSERT INTO piece_legs (piece_id, leg_no, rt_id, pickup_stop_id, drop_stop_id, created_by)
+          VALUES (b_q1, 1, b_x, (b_v2->'stops'->>'h')::bigint, (b_v2->'stops'->>'u')::bigint, 'test:072b');
+          PERFORM plan_rt_update(jsonb_build_object('rt_id', b_x, 'shift', jsonb_build_object('side', 'KATHODOS', 'delta', '1 day')),
+                  'test:072b', 'dispatcher');
+          b_verdict := CASE WHEN (SELECT cross_dock_date FROM orders WHERE id = b_vo) = b_d + 1
+                              AND (SELECT count(*) FROM plan_notices WHERE order_id = b_vo AND to_desk = 'intl'
+                                     AND kind = 'vs_day_changed') = 1
+                              AND (SELECT datetime FROM order_stops WHERE id = b_vcd) = b_d + 1
+                              AND current_setting('plan.writer', true) = 'natl'
+                            THEN 'ok VS day follows the cycle: orders, Cross-dock stop (069), one notice, writer natl'
+                            ELSE 'FAIL VS day did not follow' END;
+        ELSIF kb = 22 THEN   -- the new truck is busy in another v5 cycle
+          PERFORM plan_rt_create(jsonb_build_object('new_rt', jsonb_build_object('trip_type', 'OWNED', 'truck_id', b_t2, 'driver_id', b_d2),
+                    'stops', jsonb_build_array(jsonb_build_object('ref', 'x', 'location_id', b_lc, 'side', 'KATHODOS',
+                                                                  'planned_from', h07, 'planned_to', h09))), 'test:072b', 'dispatcher');
+          PERFORM plan_rt_update(jsonb_build_object('rt_id', b_rt1, 'set', jsonb_build_object('truck_id', b_t2)), 'test:072b', 'dispatcher');
+        ELSIF kb = 23 THEN   -- OWNED -> PARTNER: the empty payroll line goes (011), no needs_review
+          PERFORM plan_rt_update(jsonb_build_object('rt_id', b_rt1, 'set', jsonb_build_object('trip_type', 'PARTNER',
+                    'partner_id', b_pa, 'partner_rate', 300)), 'test:072b', 'dispatcher');
+          b_verdict := CASE WHEN (SELECT trip_type = 'PARTNER' AND truck_id IS NULL AND driver_id IS NULL AND partner_id = b_pa
+                                         AND partner_rate = 300 FROM ct_round_trips WHERE id = b_rt1)
+                              AND NOT EXISTS (SELECT 1 FROM dl_entries WHERE rt_id = b_rt1 AND (deleted_at IS NULL OR needs_review))
+                            THEN 'ok OWNED -> PARTNER, empty payroll line gone' ELSE 'FAIL OWNED -> PARTNER' END;
+        ELSIF kb = 24 THEN   -- PARTNER -> OWNED: rate and partner cleared, one payroll line for the new driver
+          b_v2 := plan_rt_create(jsonb_build_object('new_rt', jsonb_build_object('trip_type', 'PARTNER', 'partner_id', b_pa,
+                    'partner_rate', 200), 'stops', jsonb_build_array(jsonb_build_object('ref', 'x', 'location_id', b_lc,
+                    'side', 'KATHODOS', 'planned_from', h16, 'planned_to', h18))), 'test:072b', 'dispatcher');
+          b_x := (b_v2->>'rt_id')::bigint;
+          PERFORM plan_rt_update(jsonb_build_object('rt_id', b_x, 'set', jsonb_build_object('trip_type', 'OWNED',
+                    'truck_id', b_t2, 'driver_id', b_d2)), 'test:072b', 'dispatcher');
+          b_verdict := CASE WHEN (SELECT trip_type = 'OWNED' AND partner_id IS NULL AND partner_rate IS NULL AND truck_id = b_t2
+                                    FROM ct_round_trips WHERE id = b_x)
+                              AND (SELECT count(*) FROM dl_entries WHERE rt_id = b_x AND deleted_at IS NULL AND driver_id = b_d2) = 1
+                            THEN 'ok PARTNER -> OWNED with one payroll line' ELSE 'FAIL PARTNER -> OWNED' END;
+        ELSIF kb = 25 THEN
+          b_v2 := plan_rt_create(jsonb_build_object('new_rt', jsonb_build_object('trip_type', 'OWNED', 'truck_id', b_t2),
+                    'stops', jsonb_build_array(jsonb_build_object('ref', 'x', 'location_id', b_lc, 'side', 'KATHODOS',
+                                                                  'planned_from', h16, 'planned_to', h18))), 'test:072b', 'dispatcher');
+          UPDATE ct_round_trips SET status = 'cancelled' WHERE id = (b_v2->>'rt_id')::bigint;
+          PERFORM plan_rt_update(jsonb_build_object('rt_id', (b_v2->>'rt_id')::bigint, 'set', jsonb_build_object('driver_id', b_d2)),
+                  'test:072b', 'dispatcher');
+        ELSIF kb = 26 THEN
+          PERFORM plan_rt_update(jsonb_build_object('rt_id', -1, 'set', jsonb_build_object('driver_id', b_d2)), 'test:072b', 'dispatcher');
+        ELSIF kb = 27 THEN   -- a driver change after amounts: through "clear assignment", never needs_review
+          UPDATE dl_entries SET trip_value = 230 WHERE rt_id = b_rt1 AND deleted_at IS NULL;
+          PERFORM plan_rt_update(jsonb_build_object('rt_id', b_rt1, 'set', jsonb_build_object('driver_id', b_d2)), 'test:072b', 'dispatcher');
+        ELSIF kb = 28 THEN   -- B moved before A: the base renumbers, the leg would run backwards
+          PERFORM plan_rt_update(jsonb_build_object('rt_id', b_rt1, 'stops', jsonb_build_array(jsonb_build_object('stop_id', b_sb,
+                    'planned_from', h03, 'planned_to', h04))), 'test:072b', 'dispatcher');
+        ELSIF kb = 30 THEN
+          PERFORM plan_rt_update(jsonb_build_object('rt_id', b_rt1, 'stops', jsonb_build_array(jsonb_build_object('stop_id', -1,
+                    'planned_from', h03, 'planned_to', h04))), 'test:072b', 'dispatcher');
+        ELSIF kb = 31 THEN   -- KATHODOS +1 day past a declared ANODOS stop of day D: time and side disagree
+          INSERT INTO rt_stops (rt_id, seq, location_id, side, planned_from, planned_to, created_by)
+          VALUES (b_rt1, 3, b_lc, 'ANODOS', h16, h18, 'test:072b');
+          SET CONSTRAINTS ALL IMMEDIATE;
+          SET CONSTRAINTS ALL DEFERRED;
+          PERFORM plan_rt_update(jsonb_build_object('rt_id', b_rt1, 'shift', jsonb_build_object('side', 'KATHODOS', 'delta', '1 day')),
+                  'test:072b', 'dispatcher');
+        ELSIF kb = 32 THEN
+          PERFORM plan_rt_update(jsonb_build_object('rt_id', b_rt1, 'shift', jsonb_build_object('side', 'X', 'delta', '1 day')),
+                  'test:072b', 'dispatcher');
+        ELSIF kb = 33 THEN
+          PERFORM plan_rt_update(jsonb_build_object('rt_id', b_rt1, 'set', jsonb_build_object('trip_type', 'PARTNER')),
+                  'test:072b', 'dispatcher');
+```
+και ακριβώς πριν από τη γραμμή `      ;  -- end of b_want`:
+```sql
+      || ARRAY['ok', 'ok', 'ok', 'ok', 'plan:truck_busy',
+               'ok', 'ok', 'plan:rt_cancelled', 'plan:rt_gone', 'plan:payroll_locked',
+               'plan:leg_order', 'ok', 'plan:stop_gone', 'plan:stop_order', 'plan:bad_input',
+               'plan:no_vehicle']   -- B18-B33 (Task B2)
+```
+
+- [ ] **Step 2: Τρέξε, να αποτύχει**
+
+Run: `cd tms-auditor && node --test test/plan-072.test.mjs`
+Expected: ✖ «072 rules test», μήνυμα όπου κάθε B18–B33 είναι `FAIL … state:42883`: `function plan_rt_update(jsonb, unknown, unknown) does not exist`, και για τη B20 `function plan_local_loading(…)` (η πρώτη της κλήση).
+
+- [ ] **Step 3: Γράψε τη συνάρτηση**
+
+Στο `072_plan_functions.sql`, πριν από τον δείκτη PART 4:
+```sql
+  -- B2. Vehicle, driver, partner, partner rate and the windows of a cycle; "change date" moves a whole side by
+  -- one delta (design 3). The window and the payroll day follow by themselves (plan_rt_window_sync -> 011), the
+  -- local loading follows its stop here (rule local_loading_day), and the international VS day follows the
+  -- cycle that carries the VS's FIRST piece (decision 16, C-09). A dry run does all of it inside a
+  -- subtransaction, reads the result and undoes it: one code path, so the preview cannot disagree with the run.
+  CREATE FUNCTION public.plan_rt_update(p jsonb, p_actor text, p_role text)
+    RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $f$
+declare
+  v_rt bigint; r ct_round_trips%rowtype; r2 ct_round_trips%rowtype;
+  v_set jsonb := coalesce(p->'set', '{}'::jsonb);
+  v_dry boolean; v_side text; v_delta interval;
+  v_sid bigint[]; v_sfrom timestamptz[]; v_sto timestamptz[]; i int;
+  v_type text; v_truck bigint; v_trailer bigint; v_driver bigint; v_partner bigint; v_rate numeric;
+  v_first bigint[]; v_vs0 jsonb; v_vs1 jsonb; v_before jsonb; v_res jsonb; v_old jsonb;
+  v_stop_ids bigint[] := '{}'; v_warn jsonb := '[]'::jsonb; v_notices bigint[] := '{}'; x record;
+  v_hint text; v_msg text; v_det text; v_cname text; v_state text; v_code text;
+begin
+  perform plan_h_ctx(p_actor, p_role);
+  set constraints all deferred;
+  -- an unknown key is refused, never ignored (principle 1): {"dryRun": true} must not run the change
+  perform plan_h_keys(p, array['rt_id', 'set', 'stops', 'shift', 'dry_run'], 'p');
+  perform plan_h_keys(v_set, array['trip_type', 'truck_id', 'trailer_id', 'driver_id', 'partner_id', 'partner_rate'], 'set');
+  if p ? 'shift' then perform plan_h_keys(p->'shift', array['side', 'delta'], 'shift'); end if;
+  if jsonb_typeof(p->'stops') = 'array' then
+    for x in select value as e from jsonb_array_elements(p->'stops') loop
+      perform plan_h_keys(x.e, array['stop_id', 'planned_from', 'planned_to'], 'stop');
+    end loop;
+  end if;
+  if p ? 'dry_run' and jsonb_typeof(p->'dry_run') <> 'boolean' then perform plan_h_raise('bad_input', 'dry_run'); end if;
+  -- parse first: a malformed body is plan:bad_input (422), never a 500
+  begin
+    v_rt := (p->>'rt_id')::bigint;
+    v_dry := coalesce((p->>'dry_run')::boolean, false);
+    select coalesce(array_agg((e->>'stop_id')::bigint order by o), '{}'),
+           coalesce(array_agg((e->>'planned_from')::timestamptz order by o), '{}'),
+           coalesce(array_agg((e->>'planned_to')::timestamptz order by o), '{}')
+      into v_sid, v_sfrom, v_sto
+      from jsonb_array_elements(case when jsonb_typeof(p->'stops') = 'array' then p->'stops' else '[]'::jsonb end)
+           with ordinality t(e, o);
+    if p ? 'shift' then
+      v_side := p->'shift'->>'side';
+      v_delta := (p->'shift'->>'delta')::interval;
+    end if;
+    v_truck := (v_set->>'truck_id')::bigint;
+    v_trailer := (v_set->>'trailer_id')::bigint;
+    v_driver := (v_set->>'driver_id')::bigint;
+    v_partner := (v_set->>'partner_id')::bigint;
+    v_rate := (v_set->>'partner_rate')::numeric;
+  exception when invalid_text_representation or numeric_value_out_of_range or invalid_datetime_format
+                 or datetime_field_overflow or interval_field_overflow then
+    perform plan_h_raise('bad_input', 'body');
+  end;
+  if array_position(v_sid, null) is not null or array_position(v_sfrom, null) is not null
+     or array_position(v_sto, null) is not null then
+    perform plan_h_raise('bad_input', 'stops: stop_id, planned_from, planned_to');
+  end if;
+  if p ? 'shift' and (v_side is null or v_side not in ('KATHODOS', 'ANODOS') or v_delta is null) then
+    perform plan_h_raise('bad_input', 'shift: side, delta');
+  end if;
+  select * into r from ct_round_trips where id = v_rt for update;
+  if r.id is null or r.model <> 2 then perform plan_h_raise('rt_gone', coalesce(v_rt::text, 'null')); end if;
+  if r.status = 'cancelled' then perform plan_h_raise('rt_cancelled', r.code); end if;
+
+  -- the vehicle after the change: a key that is present wins, even null; a type change clears what the other
+  -- type carries unless the body sets it (decision 12: OWNED <-> PARTNER with the same rules)
+  v_type := coalesce(v_set->>'trip_type', r.trip_type);
+  if v_type not in ('OWNED', 'PARTNER') then perform plan_h_raise('bad_input', 'trip_type'); end if;
+  v_truck := case when v_set ? 'truck_id' then v_truck when v_type = r.trip_type then r.truck_id end;
+  v_trailer := case when v_set ? 'trailer_id' then v_trailer when v_type = r.trip_type then r.trailer_id end;
+  v_driver := case when v_set ? 'driver_id' then v_driver when v_type = r.trip_type then r.driver_id end;
+  v_partner := case when v_set ? 'partner_id' then v_partner when v_type = r.trip_type then r.partner_id end;
+  v_rate := case when v_set ? 'partner_rate' then v_rate when v_type = r.trip_type then r.partner_rate end;
+  if v_type = 'PARTNER' and (v_truck is not null or v_trailer is not null or v_driver is not null) then
+    perform plan_h_raise('bad_input', 'vehicle on PARTNER');
+  end if;
+  if v_type = 'OWNED' and v_partner is not null then perform plan_h_raise('bad_input', 'partner_id on OWNED'); end if;
+  if v_type = 'PARTNER' and (v_partner is null
+                             or not exists (select 1 from partners pt where pt.id = v_partner and pt.deleted_at is null)) then
+    perform plan_h_raise('no_vehicle', 'partner');
+  end if;
+  if (v_truck is not null and not exists (select 1 from trucks t where t.id = v_truck and t.deleted_at is null))
+     or (v_driver is not null and not exists (select 1 from drivers d where d.id = v_driver and d.deleted_at is null)) then
+    perform plan_h_raise('bad_input', 'truck_id or driver_id');
+  end if;
+  -- K-13: 011 would put a line WITH amounts into needs_review when its driver goes or changes. The spec has no
+  -- needs_review for plan_*: such a change goes through "clear assignment" (list + token) and a new assignment.
+  if r.trip_type = 'OWNED' and r.driver_id is not null
+     and (v_type <> 'OWNED' or v_driver is distinct from r.driver_id)
+     and exists (select 1 from dl_entries e where e.rt_id = v_rt and e.deleted_at is null
+                   and (e.trip_value is not null or e.advance is not null or e.expenses is not null)) then
+    perform plan_h_raise('payroll_locked', r.code);
+  end if;
+
+  v_before := jsonb_build_object('start_at', r.start_at, 'end_at', r.end_at, 'date_start', r.date_start, 'date_end', r.date_end);
+  -- the VS orders whose first hub day this cycle carries now (v_vs_state's own definition of "first")
+  select coalesce(array_agg(distinct vs.order_id), '{}') into v_first
+    from v_vs_state vs
+    join v_piece_state ps on ps.order_id = vs.order_id
+    join piece_legs l on l.piece_id = ps.piece_id and l.deleted_at is null and l.rt_id = v_rt
+    join rt_stops pk on pk.id = l.pickup_stop_id
+    join rt_stops dr on dr.id = l.drop_stop_id
+   where (case when ps.kind = 'vs_import' then (pk.planned_from at time zone 'Europe/Athens')::date
+               else (dr.planned_to at time zone 'Europe/Athens')::date end) = vs.first_hub_day;
+  select jsonb_object_agg(o.id::text, o.cross_dock_date) into v_vs0 from orders o where o.id = any(v_first);
+
+  begin
+    -- 1. explicit stop windows
+    for i in 1 .. coalesce(array_length(v_sid, 1), 0) loop
+      select to_jsonb(s) into v_old from rt_stops s
+       where s.id = v_sid[i] and s.rt_id = v_rt and s.deleted_at is null for update;
+      if v_old is null then perform plan_h_raise('stop_gone', v_sid[i]::text); end if;
+      update rt_stops set planned_from = v_sfrom[i], planned_to = v_sto[i] where id = v_sid[i];
+      perform plan_h_audit(p_actor, p_role, 'update', 'rt_stops', v_sid[i]::text, v_old,
+                           (select to_jsonb(s) from rt_stops s where s.id = v_sid[i]));
+      v_stop_ids := v_stop_ids || v_sid[i];
+    end loop;
+    -- 2. a whole side by one delta
+    if v_side is not null then
+      for x in select s.id, to_jsonb(s) as old from rt_stops s
+                where s.rt_id = v_rt and s.side = v_side and s.deleted_at is null order by s.seq for update loop
+        update rt_stops set planned_from = planned_from + v_delta, planned_to = planned_to + v_delta where id = x.id;
+        perform plan_h_audit(p_actor, p_role, 'update', 'rt_stops', x.id::text, x.old,
+                             (select to_jsonb(s) from rt_stops s where s.id = x.id));
+        v_stop_ids := v_stop_ids || x.id;
+      end loop;
+    end if;
+    if cardinality(v_stop_ids) > 0 then perform plan_h_reseq(v_rt, p_actor, p_role); end if;
+    -- 3. a local loading follows the Athens day of its stop (071 local_loading_day); its payroll day follows by 060
+    for x in select lm.id, lm.driver_id, lm.move_date, to_jsonb(lm) as old,
+                    (s.planned_from at time zone 'Europe/Athens')::date as day
+               from local_moves lm join rt_stops s on s.id = lm.rt_stop_id
+              where s.rt_id = v_rt and s.deleted_at is null and lm.move_kind = 'nat_loading' and lm.deleted_at is null
+                and lm.status <> 'Cancelled' and lm.move_date <> (s.planned_from at time zone 'Europe/Athens')::date
+              order by lm.id loop
+      -- decision 33: a TOPIKO line that already has amounts goes to accounting's review (060, B-08) when its day's
+      -- loadings change - said in the answer (and in the dry run's preview), never silent
+      v_warn := v_warn || coalesce((select jsonb_agg(jsonb_build_object('code', 'local_payroll_review', 'dl_entry_id', e.id,
+                                                                        'local_move_id', x.id))
+                                      from dl_entries e
+                                     where e.driver_id = x.driver_id and e.entry_date = x.move_date
+                                       and e.local_move_id is not null and e.deleted_at is null
+                                       and (e.trip_value is not null or e.advance is not null or e.expenses is not null)),
+                                   '[]'::jsonb);
+      update local_moves set move_date = x.day where id = x.id;
+      perform plan_h_audit(p_actor, p_role, 'update', 'local_moves', x.id::text, x.old,
+                           (select to_jsonb(m) from local_moves m where m.id = x.id));
+    end loop;
+    -- 4. the vehicle (011 moves or ends the empty payroll line; rt_sync_to_* find no order link on a v5 cycle)
+    if (v_type, v_truck, v_trailer, v_driver, v_partner, v_rate)
+       is distinct from (r.trip_type, r.truck_id, r.trailer_id, r.driver_id, r.partner_id, r.partner_rate) then
+      select to_jsonb(c) into v_old from ct_round_trips c where c.id = v_rt;
+      update ct_round_trips set trip_type = v_type, truck_id = v_truck, trailer_id = v_trailer, driver_id = v_driver,
+             partner_id = v_partner, partner_rate = v_rate, updated_at = now()
+       where id = v_rt;
+      perform plan_h_audit(p_actor, p_role, 'update', 'ct_round_trips', v_rt::text, v_old,
+                           (select to_jsonb(c) from ct_round_trips c where c.id = v_rt));
+    end if;
+    -- 5. one truck, one driver at a time, on the window after the change
+    select * into r2 from ct_round_trips where id = v_rt;
+    if r2.trip_type = 'OWNED' then
+      perform plan_h_busy('truck', r2.truck_id, r2.start_at, r2.end_at, v_rt);
+      perform plan_h_busy('driver', r2.driver_id, r2.start_at, r2.end_at, v_rt);
+      v_warn := v_warn || plan_h_v1_warn(r2.truck_id, r2.date_start, r2.date_end, v_rt);
+    end if;
+    -- 6. the international day follows the cycle that carries the first piece (decision 16)
+    if cardinality(v_first) > 0 then
+      v_notices := plan_h_vs_follow(array(select ps.piece_id from v_piece_state ps where ps.order_id = any (v_first)),
+                                    p_actor, p_role);
+    end if;
+    perform plan_h_finish();
+    if v_dry then
+      select jsonb_object_agg(o.id::text, o.cross_dock_date) into v_vs1 from orders o where o.id = any(v_first);
+      v_res := jsonb_build_object(
+        'before', v_before,
+        'after', jsonb_build_object('start_at', r2.start_at, 'end_at', r2.end_at, 'date_start', r2.date_start,
+                                    'date_end', r2.date_end),
+        'next_rt', (select jsonb_build_object('code', n.code, 'start_at', n.start_at) from ct_round_trips n
+                     where n.model = 2 and n.status <> 'cancelled' and n.id <> v_rt and n.trip_type = 'OWNED'
+                       and ((r2.truck_id is not null and n.truck_id = r2.truck_id)
+                            or (r2.driver_id is not null and n.driver_id = r2.driver_id))
+                       and n.start_at >= r2.end_at
+                     order by n.start_at, n.id limit 1),
+        'conflict', null,
+        'vs_day', (select coalesce(jsonb_agg(jsonb_build_object('order_id', k::bigint, 'from', v_vs0->>k, 'to', v_vs1->>k)
+                                             order by k), '[]'::jsonb)
+                     from jsonb_object_keys(coalesce(v_vs1, '{}'::jsonb)) k where v_vs1->>k is distinct from v_vs0->>k),
+        'warnings', v_warn);
+      -- undo everything above: the marker carries the preview out of the rolled-back subtransaction
+      raise exception 'plan dry run' using errcode = 'P0001', hint = 'plan_dry_run', detail = v_res::text;
+    end if;
+  exception when others then
+    get stacked diagnostics v_hint = pg_exception_hint, v_msg = message_text, v_det = pg_exception_detail,
+                            v_cname = constraint_name, v_state = returned_sqlstate;
+    if v_hint = 'plan_dry_run' then
+      return jsonb_build_object('ok', true, 'op', 'plan_rt_update', 'dry_run', true, 'preview', v_det::jsonb);
+    end if;
+    if v_dry and (v_hint like 'plan:%' or coalesce(v_cname, '') <> '') then
+      -- Figma D4: the dry run SHOWS the rule the change would break; nothing was kept
+      v_code := case when v_hint like 'plan:%' then substr(v_hint, 6) else v_cname end;
+      return jsonb_build_object('ok', true, 'op', 'plan_rt_update', 'dry_run', true,
+        'preview', jsonb_build_object('before', v_before, 'after', null, 'next_rt', null, 'vs_day', '[]'::jsonb,
+                                      'warnings', '[]'::jsonb,
+                                      'conflict', jsonb_build_object('code', v_code, 'sqlstate', v_state,
+                                        'detail', case when strpos(v_msg, v_code || ':') > 0
+                                                       then substr(v_msg, strpos(v_msg, v_code || ':') + length(v_code) + 1) end)));
+    end if;
+    raise;
+  end;
+  return jsonb_build_object('ok', true, 'op', 'plan_rt_update', 'dry_run', false,
+    'ids', jsonb_build_object('rt_id', v_rt, 'stop_ids', to_jsonb(v_stop_ids)),
+    'warnings', v_warn,
+    'notice_ids', to_jsonb(v_notices));
+end
+$f$;
+```
+
+
+Πρόσθεσε στο `072_plan_functions.sql`, πάνω από τη γραμμή `    -- @pub (072 tasks add ", 'public.plan_x(<arg types>)'" lines above this marker)`:
+```sql
+    , 'public.plan_rt_update(jsonb,text,text)'
+```
+
+- [ ] **Step 4: Τρέξε, να περάσει**
+
+Run: `cd tms-auditor && node --test test/plan-072.test.mjs`
+Expected: `Result: 114 OK, 1 FAIL`· η **μόνη** αποτυχία είναι `B20 FAIL want ok got state:42883 (function plan_local_loading(jsonb, unknown, unknown) does not exist)`, που πρασινίζει στη Β6. Η B21 αποδεικνύει ότι η ημέρα VS ακολουθεί τον κύκλο (`orders.cross_dock_date`, η στάση Cross-dock από το 069 του fixture, μία ειδοποίηση, `plan.writer = natl`).
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add worker/migrations/drafts/072_plan_functions.sql worker/migrations/drafts/072_plan_functions_test.sql
+git commit -m "072 plan_rt_update: windows, side shift, vehicle, VS day follows the first piece's cycle, dry run in a rolled-back subtransaction; B cases 18-33
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+```
+
+---
+
+#### Task Β3: `plan_rt_clear`
+
+**Files:**
+- Modify: `worker/migrations/drafts/072_plan_functions.sql` (Part 3, πριν από τον δείκτη PART 4)
+- Modify: `worker/migrations/drafts/072_plan_functions_test.sql` (στους δύο δείκτες)
+
+**Interfaces:**
+- Consumes: Β1· Α1 (`plan_h_keys`, `plan_h_rt_consequences(p_rt)`, `plan_h_notice(…, p_actor, p_role)`), Α6 (`plan_h_confirm`: ο ΕΝΑΣ μηχανισμός δύο βημάτων).
+- Produces: `plan_rt_clear(p jsonb, p_actor text, p_role text) RETURNS jsonb`· `p` = `{rt_id, dry_run?, confirm_token?}`· ο κύκλος μένει `planned` με στάσεις και κινήσεις, `trip_type = 'OWNED'`, όχημα/συνεργάτης/κόμιστρο NULL (απόφαση 12)· γραμμή μισθοδοσίας με ποσό σβήνεται ρητά **πριν** φύγει ο οδηγός, με `deleted_reason = 'Καθαρισμός ανάθεσης RT-… (<actor>)'`· έξοδα μένουν + ειδοποίηση `natl` `costs_without_rt` (απόφαση 13)· οι δείκτες μεταλλαγής `-- mut:payroll-delete-begin/end`.
+
+- [ ] **Step 1: Γράψε πρώτα τις περιπτώσεις B34–B42**
+
+Πριν από `        -- [B-CASES-NEXT]`:
+```sql
+        -- ---- Task B3: plan_rt_clear ----
+        ELSIF kb = 34 THEN   -- clear with an empty payroll line: no question, the line goes (011), legs stay
+          b_v2 := plan_rt_clear(jsonb_build_object('rt_id', b_rt1), 'test:072b', 'dispatcher');
+          b_verdict := CASE WHEN (SELECT trip_type = 'OWNED' AND truck_id IS NULL AND driver_id IS NULL AND trailer_id IS NULL
+                                    FROM ct_round_trips WHERE id = b_rt1)
+                              AND NOT EXISTS (SELECT 1 FROM dl_entries WHERE rt_id = b_rt1 AND (deleted_at IS NULL OR needs_review))
+                              AND (SELECT n_legs FROM v_rt_cycle WHERE rt_id = b_rt1) = 1
+                              AND (SELECT bool_and(NOT has_vehicle) FROM v_rt_stop_state WHERE rt_id = b_rt1)
+                            THEN 'ok cleared without a token: vehicle off, empty payroll line gone, legs stay to assign'
+                            ELSE 'FAIL clear' END;
+        ELSIF kb BETWEEN 35 AND 41 THEN   -- clear with documents: payroll with an amount, paid, costs
+          UPDATE dl_entries SET trip_value = 230 WHERE rt_id = b_rt1 AND deleted_at IS NULL;
+          IF kb = 40 THEN
+            INSERT INTO dl_entries (driver_id, entry_type, entry_date, amount, source, created_by)
+            VALUES (b_d1, 'payment_bank', b_d + 3, 500, 'manual', 'test:072b');
+          ELSIF kb = 41 THEN
+            UPDATE dl_entries SET trip_value = NULL WHERE rt_id = b_rt1 AND deleted_at IS NULL;
+            INSERT INTO ct_cost_lines (rt_id, category, net, vat, pay_source, alloc_status, created_by)
+            SELECT b_rt1, 'dkv', 10, 2.4, 'DKV', 'allocated', 'test:072b' FROM generate_series(1, 3);
+          END IF;
+          IF kb = 35 THEN
+            PERFORM plan_rt_clear(jsonb_build_object('rt_id', b_rt1), 'test:072b', 'dispatcher');
+          ELSE
+            b_v := plan_rt_clear(jsonb_build_object('rt_id', b_rt1, 'dry_run', true), 'test:072b', 'owner');
+            b_v2 := plan_rt_clear(jsonb_build_object('rt_id', b_rt1, 'dry_run', true), 'test:072b', 'dispatcher');
+            IF kb = 36 THEN
+              b_verdict := CASE WHEN (b_v->>'needs_confirm')::boolean AND b_v->>'confirm_token' IS NOT NULL
+                                  AND EXISTS (SELECT 1 FROM jsonb_array_elements(b_v->'consequences') c
+                                               WHERE c->>'kind' = 'payroll_amount' AND (c->>'amount')::numeric = 230)
+                                  AND (SELECT truck_id = b_t1 FROM ct_round_trips WHERE id = b_rt1)
+                                THEN 'ok owner dry run: payroll 230 in the list, token, nothing changed'
+                                ELSE 'FAIL owner dry run ' || b_v::text END;
+            ELSIF kb = 37 THEN
+              b_verdict := CASE WHEN position('"amount"' IN b_v2::text) = 0
+                                  AND b_v2->>'confirm_token' = b_v->>'confirm_token'
+                                  AND jsonb_array_length(b_v2->'consequences') = jsonb_array_length(b_v->'consequences')
+                                THEN 'ok dispatcher: the same list and token, no amount'
+                                ELSE 'FAIL dispatcher list ' || b_v2::text END;
+            ELSIF kb = 38 THEN
+              PERFORM plan_rt_clear(jsonb_build_object('rt_id', b_rt1, 'confirm_token', b_v2->>'confirm_token'), 'test:072b', 'dispatcher');
+              b_verdict := CASE WHEN NOT EXISTS (SELECT 1 FROM dl_entries WHERE rt_id = b_rt1 AND (deleted_at IS NULL OR needs_review))
+                                  AND (SELECT count(*) FROM dl_entries WHERE rt_id = b_rt1 AND trip_value = 230
+                                         AND deleted_reason LIKE '% (test:072b)') = 1
+                                  AND (SELECT truck_id IS NULL AND driver_id IS NULL FROM ct_round_trips WHERE id = b_rt1)
+                                THEN 'ok with the token: the 230 line deleted by name, 0 needs_review'
+                                ELSE 'FAIL clear with amount: needs_review '
+                                     || (SELECT count(*) FROM dl_entries WHERE rt_id = b_rt1 AND needs_review) END;
+            ELSIF kb = 39 THEN
+              UPDATE dl_entries SET trip_value = 250 WHERE rt_id = b_rt1 AND deleted_at IS NULL;
+              PERFORM plan_rt_clear(jsonb_build_object('rt_id', b_rt1, 'confirm_token', b_v2->>'confirm_token'), 'test:072b', 'dispatcher');
+            ELSIF kb = 40 THEN
+              b_verdict := CASE WHEN EXISTS (SELECT 1 FROM jsonb_array_elements(b_v2->'consequences') c
+                                              WHERE c->>'kind' = 'payroll_amount' AND (c->>'paid')::boolean
+                                                AND (c->>'paid_week')::int = tms_week(b_d + 3) AND NOT (c ? 'amount'))
+                                THEN 'ok paid: week ' || tms_week(b_d + 3) || ', no amount for the dispatcher'
+                                ELSE 'FAIL paid ' || b_v2::text END;
+            ELSE   -- 39
+              PERFORM plan_rt_clear(jsonb_build_object('rt_id', b_rt1, 'confirm_token', b_v2->>'confirm_token'), 'test:072b', 'dispatcher');
+              b_verdict := CASE WHEN EXISTS (SELECT 1 FROM jsonb_array_elements(b_v2->'consequences') c
+                                              WHERE c->>'kind' = 'costs' AND (c->>'count')::int = 3 AND NOT (c ? 'amount'))
+                                  AND (SELECT count(*) FROM ct_cost_lines WHERE rt_id = b_rt1) = 3
+                                  AND (SELECT count(*) FROM plan_notices WHERE rt_id = b_rt1 AND to_desk = 'natl'
+                                         AND kind = 'costs_without_rt') = 1
+                                THEN 'ok costs listed (3, no amount), kept on the cycle, one notice' ELSE 'FAIL costs' END;
+            END IF;
+          END IF;
+        ELSIF kb = 42 THEN   -- clear on PARTNER: OWNED with nothing (partner_needs_partner holds)
+          b_v2 := plan_rt_create(jsonb_build_object('new_rt', jsonb_build_object('trip_type', 'PARTNER', 'partner_id', b_pa,
+                    'partner_rate', 200), 'stops', jsonb_build_array(jsonb_build_object('ref', 'x', 'location_id', b_lc,
+                    'side', 'KATHODOS', 'planned_from', h16, 'planned_to', h18))), 'test:072b', 'dispatcher');
+          b_x := (b_v2->>'rt_id')::bigint;
+          PERFORM plan_rt_clear(jsonb_build_object('rt_id', b_x), 'test:072b', 'dispatcher');
+          b_verdict := CASE WHEN (SELECT trip_type = 'OWNED' AND partner_id IS NULL AND partner_rate IS NULL FROM ct_round_trips WHERE id = b_x)
+                            THEN 'ok PARTNER cleared to OWNED without anything' ELSE 'FAIL PARTNER clear' END;
+```
+Πριν από `      ;  -- end of b_want`:
+```sql
+      || ARRAY['ok', 'plan:need_token', 'ok', 'ok', 'ok',
+               'plan:stale_confirm', 'ok', 'ok', 'ok']   -- B34-B42 (Task B3)
+```
+
+- [ ] **Step 2: Τρέξε, να αποτύχει**
+
+Run: `cd tms-auditor && node --test test/plan-072.test.mjs`
+Expected: `Result: 114 OK, 10 FAIL`: η B20 (Β6) και οι `B34 FAIL want ok got state:42883 (function plan_rt_clear(jsonb, unknown, unknown) does not exist)` ως `B42`.
+
+- [ ] **Step 3: Γράψε τη συνάρτηση**
+
+Πριν από τον δείκτη PART 4:
+```sql
+  -- B3. "Clear assignment" (design 3, spec 3): only a correction - what is cleared "did not happen". Truck,
+  -- trailer, driver, partner and rate go from the WHOLE cycle; its stops and legs stay together, so its
+  -- deliveries show as TO ASSIGN (has_vehicle = false). Two steps when the list holds a document (R-05).
+  CREATE FUNCTION public.plan_rt_clear(p jsonb, p_actor text, p_role text)
+    RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $f$
+declare
+  -- Greek kept ASCII-safe (060 pattern). "Katharismos anathesis":
+  w_clear constant text := convert_from(decode('zprOsc64zrHPgc65z4POvM+Mz4IgzrHOvc6szrjOtc+DzrfPgg==', 'base64'), 'UTF8');
+  -- "To %s emeine choris ochima kai echei %s grammes exodon: leipei dromologio":
+  b_costs constant text := 'zqTOvyAlcyDOrc68zrXOuc69zrUgz4fPic+Bzq/PgiDPjM+HzrfOvM6xIM66zrHOuSDOrc+HzrXOuSAlcyDOs8+BzrHOvM68zq3PgiDOtc6+z4zOtM+Jzr06IM67zrXOr8+AzrXOuSDOtM+Bzr/OvM6/zrvPjM6zzrnOvw==';
+  v_rt bigint; r ct_round_trips%rowtype; v_full jsonb; v_conf jsonb;
+  v_reason text; v_old jsonb; v_n int; x record; v_notices bigint[] := '{}';
+begin
+  perform plan_h_ctx(p_actor, p_role);
+  set constraints all deferred;
+  -- an unknown key is refused, never ignored (principle 1): {"dryRun": true} must not clear
+  perform plan_h_keys(p, array['rt_id', 'dry_run', 'confirm_token'], 'p');
+  if p ? 'dry_run' and jsonb_typeof(p->'dry_run') <> 'boolean' then perform plan_h_raise('bad_input', 'dry_run'); end if;
+  begin
+    v_rt := (p->>'rt_id')::bigint;
+  exception when invalid_text_representation or numeric_value_out_of_range then
+    perform plan_h_raise('bad_input', 'rt_id');
+  end;
+  select * into r from ct_round_trips where id = v_rt for update;
+  if r.id is null or r.model <> 2 then perform plan_h_raise('rt_gone', coalesce(v_rt::text, 'null')); end if;
+  if r.status = 'cancelled' then perform plan_h_raise('rt_cancelled', r.code); end if;
+  -- the full list always carries the amounts: the token covers them, the dispatcher's copy does not show them.
+  -- The ONE two-step mechanism of 072 (section A, plan_h_confirm): dry run = list + token, an empty list needs no
+  -- token ("an empty payroll line goes without a question"), a changed list = stale_confirm before need_token.
+  v_full := plan_h_rt_consequences(v_rt);
+  v_conf := plan_h_confirm('plan_rt_clear', v_rt::text, v_full, p, p_role);
+  if v_conf is not null then return v_conf; end if;
+  v_reason := w_clear || ' ' || r.code || ' (' || p_actor || ')';
+  -- mut:payroll-delete-begin
+  -- K-13 / decision 11: a payroll line WITH amounts goes explicitly, after the token, BEFORE the cycle loses its
+  -- driver; 011 (dl_sync_from_rt, unchanged) would otherwise keep it with needs_review, which the spec does not
+  -- have. A line without amounts is left to 011: it deletes it by itself when the driver goes.
+  for x in select e.id, to_jsonb(e) as old from dl_entries e
+            where e.rt_id = v_rt and e.deleted_at is null
+              and (e.trip_value is not null or e.advance is not null or e.expenses is not null)
+            order by e.id for update loop
+    update dl_entries set deleted_at = now(), deleted_reason = v_reason, updated_at = now() where id = x.id;
+    perform plan_h_audit(p_actor, p_role, 'delete', 'dl_entries', x.id::text, x.old,
+                         (select to_jsonb(e) from dl_entries e where e.id = x.id));
+  end loop;
+  -- mut:payroll-delete-end
+  -- decision 13: the costs stay on the cycle (the trace); the national desk is told it has no vehicle now
+  select count(*) into v_n from ct_cost_lines where rt_id = v_rt;
+  if v_n > 0 then
+    v_notices := v_notices || plan_h_notice('natl', 'costs_without_rt', b_costs, array[r.code, v_n::text], null, null, v_rt,
+                                            p_actor, p_role);
+  end if;
+  -- decision 12: partner_needs_partner holds always, so a cleared cycle is OWNED with nothing on it
+  select to_jsonb(c) into v_old from ct_round_trips c where c.id = v_rt;
+  update ct_round_trips set trip_type = 'OWNED', truck_id = null, trailer_id = null, driver_id = null,
+         partner_id = null, partner_rate = null, updated_at = now()
+   where id = v_rt
+     and (trip_type, truck_id, trailer_id, driver_id, partner_id, partner_rate)
+         is distinct from ('OWNED'::text, null::bigint, null::bigint, null::bigint, null::bigint, null::numeric);
+  if found then
+    perform plan_h_audit(p_actor, p_role, 'update', 'ct_round_trips', v_rt::text, v_old,
+                         (select to_jsonb(c) from ct_round_trips c where c.id = v_rt));
+  end if;
+  perform plan_h_finish();
+  return jsonb_build_object('ok', true, 'op', 'plan_rt_clear', 'dry_run', false,
+    'ids', jsonb_build_object('rt_id', v_rt), 'warnings', '[]'::jsonb, 'notice_ids', to_jsonb(v_notices));
+end
+$f$;
+```
+
+
+Πρόσθεσε στο `072_plan_functions.sql`, πάνω από τη γραμμή `    -- @pub (072 tasks add ", 'public.plan_x(<arg types>)'" lines above this marker)`:
+```sql
+    , 'public.plan_rt_clear(jsonb,text,text)'
+```
+
+- [ ] **Step 4: Τρέξε, να περάσει**
+
+Run: `cd tms-auditor && node --test test/plan-072.test.mjs`
+Expected: `Result: 123 OK, 1 FAIL` (μόνο η B20, Β6)· B34–B42 πράσινες· η B38 γράφει «ok with the token: the 230 line deleted by name, 0 needs_review».
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add worker/migrations/drafts/072_plan_functions.sql worker/migrations/drafts/072_plan_functions_test.sql
+git commit -m "072 plan_rt_clear: list + token, payroll with amounts deleted by name before the driver goes (0 needs_review), costs kept with a notice; B cases 34-42
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+```
+
+---
+
+#### Task Β4: `plan_delete`
+
+**Files:**
+- Modify: `worker/migrations/drafts/072_plan_functions.sql` (Part 3, πριν από τον δείκτη PART 4)
+- Modify: `worker/migrations/drafts/072_plan_functions_test.sql` (στους δύο δείκτες)
+
+**Interfaces:**
+- Consumes: Β1, Β3· Α1 (`plan_h_keys`, `plan_h_leg_drop`, `plan_h_stops_sweep`, `plan_h_rt_cancel_if_empty`, `plan_h_reseq(rt, p_actor, p_role)`), Α6 (`plan_h_drop_consequences`, `plan_h_confirm`).
+- Produces: `plan_delete(p jsonb, p_actor text, p_role text) RETURNS jsonb`· `p` = `{nat_order_id, reason, dry_run?, confirm_token?}`· μόνο εθνική με ζωντανή αποστολή (απόφαση 14)· λίστα = `plan_h_drop_consequences` της Α6 (κύκλοι που αδειάζουν με μισθοδοσία/έξοδα, εκτελεσμένα σκέλη, τοπικές φορτώσεις στάσεων που χάνουν την τελευταία φόρτωση και η γραμμή ΤΟΠΙΚΟ τους με ποσό) + `invoiced` (ο αριθμός μόνο για owner/accountant)· ταξινομημένη `(kind, στοιχείο)`· ο ΕΝΑΣ μηχανισμός δύο βημάτων (`plan_h_confirm`)· `ids.cancelled_rt_ids`.
+
+- [ ] **Step 1: Γράψε πρώτα τις περιπτώσεις B43–B51**
+
+Πριν από `        -- [B-CASES-NEXT]`:
+```sql
+        -- ---- Task B4: plan_delete ----
+        ELSIF kb IN (43, 46, 50, 51) THEN   -- delete: list, token, the whole chain soft, the empty cycle cancelled
+          IF kb IN (46, 50) THEN UPDATE dl_entries SET trip_value = 230 WHERE rt_id = b_rt1 AND deleted_at IS NULL; END IF;
+          b_v2 := plan_delete(jsonb_build_object('nat_order_id', b_no1, 'dry_run', true), 'test:072b', 'owner');
+          IF kb = 46 THEN UPDATE dl_entries SET trip_value = 250 WHERE rt_id = b_rt1 AND deleted_at IS NULL; END IF;
+          PERFORM plan_delete(jsonb_build_object('nat_order_id', b_no1, 'reason', CASE WHEN kb = 51 THEN '' ELSE 'TEST 072 reason' END)
+                    || CASE WHEN kb IN (43, 46) THEN jsonb_build_object('confirm_token', b_v2->>'confirm_token') ELSE '{}'::jsonb END,
+                  'test:072b', 'dispatcher');
+          b_verdict := CASE WHEN (b_v2->>'needs_confirm')::boolean
+                              AND EXISTS (SELECT 1 FROM jsonb_array_elements(b_v2->'consequences') c WHERE c->>'kind' = 'rt_cancelled')
+                              AND (SELECT deleted_at IS NOT NULL FROM national_orders WHERE id = b_no1)
+                              AND (SELECT deleted_reason = 'TEST 072 reason' AND deleted_by = 'test:072b' FROM shipments WHERE id = b_sh1)
+                              AND (SELECT deleted_reason = 'TEST 072 reason' AND deleted_by = 'test:072b' FROM shipment_pieces WHERE id = b_p1)
+                              AND (SELECT deleted_at IS NOT NULL AND deleted_by = 'test:072b' FROM piece_legs WHERE id = b_lg1)
+                              AND NOT EXISTS (SELECT 1 FROM rt_stops WHERE rt_id = b_rt1 AND deleted_at IS NULL)
+                              AND (SELECT status FROM ct_round_trips WHERE id = b_rt1) = 'cancelled'
+                              AND NOT EXISTS (SELECT 1 FROM dl_entries WHERE rt_id = b_rt1 AND (deleted_at IS NULL OR needs_review))
+                              AND (SELECT count(*) FROM audit_log WHERE actor = 'test:072b' AND role = 'dispatcher'
+                                     AND table_name = 'national_orders' AND record_id = 'rec072TBN1') = 1
+                            THEN 'ok delete: list + token, every row soft with reason and actor, cycle cancelled, 0 needs_review'
+                            ELSE 'FAIL delete' END;
+        ELSIF kb = 44 THEN
+          INSERT INTO national_orders (legacy_id, client_id, reference, price) VALUES ('rec072TBN9', b_cl, 'WN072-TEST', 50)
+            RETURNING id INTO b_x;
+          PERFORM plan_delete(jsonb_build_object('nat_order_id', b_x, 'dry_run', true), 'test:072b', 'dispatcher');
+        ELSIF kb = 45 THEN
+          UPDATE national_orders SET deleted_at = now() WHERE id = b_no1;
+          PERFORM plan_delete(jsonb_build_object('nat_order_id', b_no1, 'dry_run', true), 'test:072b', 'dispatcher');
+        ELSIF kb = 47 THEN   -- an invoiced order is in the list; its invoice number only for owner / accountant
+          UPDATE national_orders SET invoiced = true, invoice_number = 'TEST-072-TPY' WHERE id = b_no1;
+          b_v := plan_delete(jsonb_build_object('nat_order_id', b_no1, 'dry_run', true), 'test:072b', 'owner');
+          b_v2 := plan_delete(jsonb_build_object('nat_order_id', b_no1, 'dry_run', true), 'test:072b', 'dispatcher');
+          b_verdict := CASE WHEN EXISTS (SELECT 1 FROM jsonb_array_elements(b_v->'consequences') c
+                                          WHERE c->>'kind' = 'invoiced' AND c->>'invoice_number' = 'TEST-072-TPY')
+                              AND EXISTS (SELECT 1 FROM jsonb_array_elements(b_v2->'consequences') c
+                                           WHERE c->>'kind' = 'invoiced' AND NOT (c ? 'invoice_number'))
+                              AND b_v->>'confirm_token' = b_v2->>'confirm_token'
+                            THEN 'ok invoiced in the list; number for the owner only' ELSE 'FAIL invoiced' END;
+        ELSIF kb IN (48, 49) THEN   -- a second order on the same cycle: the cycle stays, only this order goes
+          INSERT INTO national_orders (legacy_id, client_id, reference, price) VALUES ('rec072TBN2', b_cl, 'WN072-TEST', 60)
+            RETURNING id INTO b_no2;
+          INSERT INTO shipments (nat_order_id, origin_location_id, dest_location_id, pallets, load_from, load_to, deliver_from,
+                                 deliver_to, created_by)
+          VALUES (b_no2, b_la, b_lb, 5, h06, h08, h12, h14, 'test:072b') RETURNING id INTO b_sh2;
+          INSERT INTO shipment_pieces (shipment_id, pallets, created_by) VALUES (b_sh2, 5, 'test:072b') RETURNING id INTO b_p2;
+          INSERT INTO piece_legs (piece_id, leg_no, rt_id, pickup_stop_id, drop_stop_id, created_by)
+          VALUES (b_p2, 1, b_rt1, b_sa, b_sb, 'test:072b') RETURNING id INTO b_lg2;
+          b_v2 := plan_delete(jsonb_build_object('nat_order_id', b_no1, 'dry_run', true), 'test:072b', 'dispatcher');
+          PERFORM plan_delete(jsonb_build_object('nat_order_id', b_no1, 'reason', 'TEST 072 reason'), 'test:072b', 'dispatcher');
+          IF kb = 49 THEN   -- the net under every path: a hard DELETE is refused (071 hard_delete)
+            DELETE FROM piece_legs WHERE id = b_lg1;
+          END IF;
+          b_verdict := CASE WHEN NOT (b_v2->>'needs_confirm')::boolean
+                              AND (SELECT status FROM ct_round_trips WHERE id = b_rt1) = 'planned'
+                              AND (SELECT deleted_at IS NULL FROM piece_legs WHERE id = b_lg2)
+                              AND (SELECT deleted_at IS NOT NULL FROM piece_legs WHERE id = b_lg1)
+                              AND (SELECT count(*) FROM rt_stops WHERE rt_id = b_rt1 AND deleted_at IS NULL) = 2
+                              AND (SELECT count(*) FROM dl_entries WHERE rt_id = b_rt1 AND deleted_at IS NULL) = 1
+                            THEN 'ok the shared cycle stays planned with the other order' ELSE 'FAIL shared cycle' END;
+```
+Πριν από `      ;  -- end of b_want`:
+```sql
+      || ARRAY['ok', 'plan:order_not_v5', 'plan:order_gone', 'plan:stale_confirm', 'ok',
+               'ok', 'plan:hard_delete', 'plan:need_token', 'plan:bad_input']   -- B43-B51 (Task B4)
+```
+
+- [ ] **Step 2: Τρέξε, να αποτύχει**
+
+Run: `cd tms-auditor && node --test test/plan-072.test.mjs`
+Expected: `Result: 123 OK, 10 FAIL`: η B20 (Β6) και οι `B43 FAIL want ok got state:42883 (function plan_delete(jsonb, unknown, unknown) does not exist)` ως `B51`.
+
+- [ ] **Step 3: Γράψε τη συνάρτηση**
+
+Πριν από τον δείκτη PART 4:
+```sql
+  -- B4. "Delete means it did not happen" (spec 3), from the order's card only, for a v5 national order
+  -- (decision 14). The whole chain is soft-deleted with reason and actor; a cycle left without a live leg is
+  -- cancelled in the order of decision 11 (plan_h_rt_cancel_if_empty); there is no restore (spec 7).
+  CREATE FUNCTION public.plan_delete(p jsonb, p_actor text, p_role text)
+    RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $f$
+declare
+  v_no bigint; n national_orders%rowtype; v_reason text; v_full jsonb; v_conf jsonb;
+  v_legs bigint[]; v_rts bigint[]; v_empty bigint[]; v_stops bigint[]; v_rt bigint; v_leg bigint;
+  v_old jsonb; x record;
+begin
+  perform plan_h_ctx(p_actor, p_role);
+  set constraints all deferred;
+  -- an unknown key is refused, never ignored (principle 1): {"dryRun": true} must not delete
+  perform plan_h_keys(p, array['nat_order_id', 'reason', 'dry_run', 'confirm_token'], 'p');
+  if p ? 'dry_run' and jsonb_typeof(p->'dry_run') <> 'boolean' then perform plan_h_raise('bad_input', 'dry_run'); end if;
+  begin
+    v_no := (p->>'nat_order_id')::bigint;
+  exception when invalid_text_representation or numeric_value_out_of_range then
+    perform plan_h_raise('bad_input', 'nat_order_id');
+  end;
+  select * into n from national_orders where id = v_no for update;
+  if n.id is null or n.deleted_at is not null then perform plan_h_raise('order_gone', coalesce(v_no::text, 'null')); end if;
+  if not exists (select 1 from shipments s where s.nat_order_id = v_no and s.deleted_at is null) then
+    perform plan_h_raise('order_not_v5', v_no::text);
+  end if;
+  -- the chain: every live leg of every live piece of the order
+  select coalesce(array_agg(l.id order by l.id), '{}') into v_legs
+    from piece_legs l join shipment_pieces sp on sp.id = l.piece_id join shipments s on s.id = sp.shipment_id
+   where s.nat_order_id = v_no and l.deleted_at is null;
+  select coalesce(array_agg(distinct l.rt_id), '{}') into v_rts from piece_legs l where l.id = any(v_legs);
+  -- ONE lock order (as plan_move_pieces): the cycles in id order, before the list: no deadlock, no stale list
+  perform 1 from ct_round_trips c where c.id = any(v_rts) order by c.id for update;
+  select coalesce(array_agg(rid order by rid), '{}') into v_empty from unnest(v_rts) rid
+   where not exists (select 1 from piece_legs l where l.rt_id = rid and l.deleted_at is null and not (l.id = any(v_legs)));
+  -- the ONE list of section A for legs that go (cycles that empty with payroll and costs, executed legs, local
+  -- loadings of stops that lose their last pickup and their TOPIKO line with amounts) + the invoice
+  v_full := plan_h_drop_consequences(v_legs, null);
+  if n.invoiced is true then
+    v_full := v_full || jsonb_build_array(jsonb_build_object('kind', 'invoiced', 'nat_order_id', v_no,
+                                                             'invoice_number', n.invoice_number));
+  end if;
+  -- one order (kind, then the item): the token does not depend on how the list was assembled
+  select coalesce(jsonb_agg(c order by c->>'kind', c::text), '[]'::jsonb) into v_full from jsonb_array_elements(v_full) c;
+  -- the reason is checked before the token: a delete without a reason is refused whatever the list holds
+  v_reason := btrim(coalesce(p->>'reason', ''));
+  if not coalesce((p->>'dry_run')::boolean, false) and v_reason = '' then perform plan_h_raise('bad_input', 'reason'); end if;
+  -- the ONE two-step mechanism of 072 (section A, plan_h_confirm)
+  v_conf := plan_h_confirm('plan_delete', v_no::text, v_full, p, p_role);
+  if v_conf is not null then return v_conf; end if;
+  select coalesce(array_agg(distinct q), '{}') into v_stops
+    from piece_legs l, unnest(array[l.pickup_stop_id, l.drop_stop_id]) q where l.id = any(v_legs);
+  -- (a) the legs; then the stops they emptied with their local loading (decision 4 / 11, plan_h_stops_sweep):
+  -- a cycle that STAYS loses them too, never a local loading left on a stop without a pickup (local_loading_stop)
+  foreach v_leg in array v_legs loop
+    perform plan_h_leg_drop(v_leg, v_reason, p_actor, p_role);
+  end loop;
+  perform plan_h_stops_sweep(v_stops, v_reason, p_actor, p_role);
+  -- pieces, shipments: soft only (071 hard_delete), every row with its reason and its actor
+  for x in select sp.id, to_jsonb(sp) as old from shipment_pieces sp join shipments s on s.id = sp.shipment_id
+            where s.nat_order_id = v_no and sp.deleted_at is null order by sp.id for update of sp loop
+    update shipment_pieces set deleted_at = now(), deleted_reason = v_reason, deleted_by = p_actor where id = x.id;
+    perform plan_h_audit(p_actor, p_role, 'delete', 'shipment_pieces', x.id::text, x.old,
+                         (select to_jsonb(q) from shipment_pieces q where q.id = x.id));
+  end loop;
+  for x in select s.id, to_jsonb(s) as old from shipments s
+            where s.nat_order_id = v_no and s.deleted_at is null order by s.id for update loop
+    update shipments set deleted_at = now(), deleted_reason = v_reason, deleted_by = p_actor where id = x.id;
+    perform plan_h_audit(p_actor, p_role, 'delete', 'shipments', x.id::text, x.old,
+                         (select to_jsonb(q) from shipments q where q.id = x.id));
+  end loop;
+  -- national_orders has no deleted_reason / deleted_by: the reason and the actor live in its audit row, keyed
+  -- like the Worker's own rows (legacy id)
+  select to_jsonb(o) into v_old from national_orders o where o.id = v_no;
+  update national_orders set deleted_at = now() where id = v_no;
+  perform plan_h_audit(p_actor, p_role, 'delete', 'national_orders', coalesce(n.legacy_id, v_no::text), v_old,
+                       jsonb_build_object('deleted_at', now(), 'reason', v_reason));
+  -- (b)-(e) the cycles: an empty one is cancelled (local loading, stops, payroll with amounts, status), the
+  -- others are renumbered
+  foreach v_rt in array v_rts loop
+    if not plan_h_rt_cancel_if_empty(v_rt, v_reason, p_actor, p_role) then
+      perform plan_h_reseq(v_rt, p_actor, p_role);
+    end if;
+  end loop;
+  perform plan_h_finish();
+  return jsonb_build_object('ok', true, 'op', 'plan_delete', 'dry_run', false,
+    'ids', jsonb_build_object('nat_order_ids', jsonb_build_array(v_no), 'leg_ids', to_jsonb(v_legs),
+                              'cancelled_rt_ids', to_jsonb(v_empty)),
+    'warnings', '[]'::jsonb,
+    -- the costs_without_rt notices of the cycles this call cancelled (plan_h_rt_cancel_if_empty)
+    'notice_ids', (select coalesce(jsonb_agg(q.id order by q.id), '[]'::jsonb) from plan_notices q
+                    where q.created_at = now() and q.created_by = p_actor and q.rt_id = any(v_empty)));
+end
+$f$;
+```
+
+
+Πρόσθεσε στο `072_plan_functions.sql`, πάνω από τη γραμμή `    -- @pub (072 tasks add ", 'public.plan_x(<arg types>)'" lines above this marker)`:
+```sql
+    , 'public.plan_delete(jsonb,text,text)'
+```
+
+- [ ] **Step 4: Τρέξε, να περάσει**
+
+Run: `cd tms-auditor && node --test test/plan-072.test.mjs`
+Expected: `Result: 132 OK, 1 FAIL` (μόνο η B20)· B43–B51 πράσινες (B49 = `plan:hard_delete`: το δίχτυ της 071 κάτω από κάθε διαδρομή).
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add worker/migrations/drafts/072_plan_functions.sql worker/migrations/drafts/072_plan_functions_test.sql
+git commit -m "072 plan_delete: v5 national order only, whole chain soft with reason and actor, empty cycle cancelled in the order of decision 11; B cases 43-51
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+```
+
+---
+
+#### Task Β5: `plan_vs_set_day`, `plan_vs_set_place`
+
+**Files:**
+- Modify: `worker/migrations/drafts/072_plan_functions.sql` (Part 3, πριν από τον δείκτη PART 4)
+- Modify: `worker/migrations/drafts/072_plan_functions_test.sql` (στους δύο δείκτες)
+
+**Interfaces:**
+- Consumes: Α1 (`plan_h_keys`, `plan_h_vs_day`, `plan_h_notice(…, p_actor, p_role)`, `plan_h_stop_add`, `plan_h_leg_drop`, `plan_h_leg_add(…, p_actor, p_role, p_leg_no)`, `plan_h_reseq(rt, p_actor, p_role)`)· 071 `plan_shipment_problem`, `v_shipments`, `v_vs_state`· 069 `order_cd_stop_follow` (από το `live-072.sql`).
+- Produces: `plan_vs_set_day(p jsonb, p_actor text, p_role text) RETURNS jsonb` (`p` = `{order_id, day}`· προειδοποίηση `vs_day_differs`)· `plan_vs_set_place(p jsonb, p_actor text, p_role text) RETURNS jsonb` (`p` = `{order_stop_id, location_id}`· K-06: στάση που εξυπηρετεί μόνο αυτό το VS μετακινείται επί τόπου, κοινή στάση → νέα στάση + επανασύνδεση του σκέλους με τον ίδιο αριθμό· ειδοποίηση `intl` `vs_place_changed`· `plan.writer = 'natl'`).
+
+- [ ] **Step 1: Γράψε πρώτα τις περιπτώσεις B52–B60**
+
+Πριν από `        -- [B-CASES-NEXT]`:
+```sql
+        -- ---- Task B5: plan_vs_set_day, plan_vs_set_place ----
+        ELSIF kb IN (52, 55) THEN   -- the national desk gives the VS day (one field, 069 moves the Cross-dock stop)
+          b_v2 := plan_vs_set_day(jsonb_build_object('order_id', b_vo, 'day', CASE kb WHEN 52 THEN b_d + 1 ELSE b_d END),
+                  'test:072b', 'dispatcher');
+          b_verdict := CASE WHEN kb = 52
+                              AND (SELECT cross_dock_date FROM orders WHERE id = b_vo) = b_d + 1
+                              AND (SELECT datetime FROM order_stops WHERE id = b_vcd) = b_d + 1
+                              AND (SELECT count(*) FROM audit_log WHERE actor = 'test:072b' AND table_name = 'orders'
+                                     AND record_id IN (b_vo::text, 'rec072TBO1')) = 1
+                              AND jsonb_array_length(b_v2->'notice_ids') = 1
+                              AND (SELECT kind = 'vs_day_changed' AND to_desk = 'intl' AND order_id = b_vo FROM plan_notices
+                                    WHERE id = (b_v2->'notice_ids'->>0)::bigint)
+                              AND current_setting('plan.writer', true) = 'natl'
+                              AND b_v2->'warnings' = '[]'::jsonb
+                            THEN 'ok VS day D -> D+1: one orders row, its audit, one notice, Cross-dock stop moved'
+                            WHEN kb = 55 AND b_v2->'notice_ids' = '[]'::jsonb
+                              AND NOT EXISTS (SELECT 1 FROM plan_notices WHERE order_id = b_vo)
+                            THEN 'ok the same day again: nothing written, nobody told'
+                            ELSE 'FAIL VS day ' || b_v2::text END;
+        ELSIF kb = 53 THEN
+          PERFORM plan_vs_set_day(jsonb_build_object('order_id', b_vo, 'day', b_d + 1), 'test:072b', 'dispatcher');
+        ELSIF kb = 54 THEN
+          PERFORM plan_vs_set_day(jsonb_build_object('order_id', -1, 'day', b_d + 1), 'test:072b', 'dispatcher');
+        ELSIF kb BETWEEN 56 AND 58 THEN   -- the VS destination after Veroia moves (K-06: national stops follow)
+          IF kb IN (57, 58) THEN
+            b_v2 := plan_rt_create(jsonb_build_object('new_rt', jsonb_build_object('trip_type', 'OWNED', 'truck_id', b_t2, 'driver_id', b_d2),
+                      'stops', jsonb_build_array(
+                        jsonb_build_object('ref', 'h', 'location_id', b_hub, 'side', 'KATHODOS', 'planned_from', h06, 'planned_to', h07),
+                        jsonb_build_object('ref', 'u', 'location_id', b_la, 'side', 'KATHODOS', 'planned_from', h09, 'planned_to', h10))),
+                    'test:072b', 'dispatcher');
+            b_x := (b_v2->>'rt_id')::bigint; b_y := (b_v2->'stops'->>'u')::bigint;
+            INSERT INTO piece_legs (piece_id, leg_no, rt_id, pickup_stop_id, drop_stop_id, created_by)
+            VALUES (b_q1, 1, b_x, (b_v2->'stops'->>'h')::bigint, b_y, 'test:072b') RETURNING id INTO b_lg2;
+            IF kb = 58 THEN   -- a national order of another client ends at the same stop
+              INSERT INTO national_orders (legacy_id, client_id, reference, price) VALUES ('rec072TBN2', b_cl, 'WN072-TEST', 60)
+                RETURNING id INTO b_no2;
+              INSERT INTO shipments (nat_order_id, origin_location_id, dest_location_id, pallets, load_from, load_to,
+                                     deliver_from, deliver_to, created_by)
+              VALUES (b_no2, b_hub, b_la, 5, h06, h07, h09, h10, 'test:072b') RETURNING id INTO b_sh2;
+              INSERT INTO shipment_pieces (shipment_id, pallets, created_by) VALUES (b_sh2, 5, 'test:072b') RETURNING id INTO b_p2;
+              INSERT INTO piece_legs (piece_id, leg_no, rt_id, pickup_stop_id, drop_stop_id, created_by)
+              VALUES (b_p2, 1, b_x, (b_v2->'stops'->>'h')::bigint, b_y, 'test:072b') RETURNING id INTO b_z;
+            END IF;
+            SET CONSTRAINTS ALL IMMEDIATE;
+            SET CONSTRAINTS ALL DEFERRED;
+          END IF;
+          b_v3 := plan_vs_set_place(jsonb_build_object('order_stop_id', b_u1, 'location_id', b_ln), 'test:072b', 'dispatcher');
+          b_verdict := CASE WHEN (SELECT location_id FROM order_stops WHERE id = b_u1) = b_ln
+                              AND (SELECT nat_to_location_id FROM v_shipments WHERE shipment_id = b_bs1) = b_ln
+                              AND plan_shipment_problem(b_bs1) IS NULL
+                              AND (SELECT count(*) FROM audit_log WHERE actor = 'test:072b' AND table_name = 'order_stops'
+                                     AND record_id = 'rec072TBS1') = 1
+                              AND (SELECT count(*) FROM plan_notices WHERE order_id = b_vo AND kind = 'vs_place_changed') = 1
+                              AND CASE kb
+                                    WHEN 56 THEN true
+                                    WHEN 57 THEN (SELECT location_id FROM rt_stops WHERE id = b_y) = b_ln
+                                                 AND (SELECT deleted_at IS NULL FROM piece_legs WHERE id = b_lg2)
+                                    ELSE (SELECT location_id FROM rt_stops WHERE id = b_y) = b_la
+                                         AND (SELECT deleted_at IS NOT NULL FROM piece_legs WHERE id = b_lg2)
+                                         AND (SELECT deleted_at IS NULL FROM piece_legs WHERE id = b_z)
+                                         AND (SELECT count(*) FROM piece_legs l JOIN rt_stops s ON s.id = l.drop_stop_id
+                                               WHERE l.piece_id = b_q1 AND l.deleted_at IS NULL AND l.leg_no = 1
+                                                 AND s.location_id = b_ln AND s.deleted_at IS NULL) = 1
+                                         AND plan_shipment_problem(b_sh2) IS NULL END
+                            THEN 'ok VS place moved: order stop, national stop and leg follow in one transaction'
+                            ELSE 'FAIL VS place ' || b_v3::text END;
+        ELSIF kb = 59 THEN   -- the loading stop abroad has no bridge
+          PERFORM plan_vs_set_place(jsonb_build_object('order_stop_id', b_vld, 'location_id', b_ln), 'test:072b', 'dispatcher');
+        ELSIF kb = 60 THEN   -- the national desk sets another day while the VS rides a truck of day D: said, not hidden
+          b_v2 := plan_rt_create(jsonb_build_object('new_rt', jsonb_build_object('trip_type', 'OWNED', 'truck_id', b_t2, 'driver_id', b_d2),
+                    'stops', jsonb_build_array(
+                      jsonb_build_object('ref', 'h', 'location_id', b_hub, 'side', 'KATHODOS', 'planned_from', h06, 'planned_to', h07),
+                      jsonb_build_object('ref', 'u', 'location_id', b_la, 'side', 'KATHODOS', 'planned_from', h09, 'planned_to', h10))),
+                  'test:072b', 'dispatcher');
+          INSERT INTO piece_legs (piece_id, leg_no, rt_id, pickup_stop_id, drop_stop_id, created_by)
+          VALUES (b_q1, 1, (b_v2->>'rt_id')::bigint, (b_v2->'stops'->>'h')::bigint, (b_v2->'stops'->>'u')::bigint, 'test:072b');
+          b_v3 := plan_vs_set_day(jsonb_build_object('order_id', b_vo, 'day', b_d + 2), 'test:072b', 'dispatcher');
+          b_verdict := CASE WHEN b_v3->'warnings' = jsonb_build_array(jsonb_build_object('code', 'vs_day_differs', 'first_hub_day', b_d))
+                              AND (SELECT cross_dock_date FROM orders WHERE id = b_vo) = b_d + 2
+                            THEN 'ok another day than the truck: written, and the answer warns vs_day_differs'
+                            ELSE 'FAIL vs_day_differs ' || b_v3::text END;
+```
+Πριν από `      ;  -- end of b_want`:
+```sql
+      || ARRAY['ok', 'plan:vs_not_bridge', 'plan:order_gone', 'ok', 'ok',
+               'ok', 'ok', 'plan:vs_not_bridge', 'ok']   -- B52-B60 (Task B5)
+```
+
+- [ ] **Step 2: Τρέξε, να αποτύχει**
+
+Run: `cd tms-auditor && node --test test/plan-072.test.mjs`
+Expected: `Result: 132 OK, 10 FAIL`: η B20 (Β6) και `B52 FAIL want ok got state:42883 (function plan_vs_set_day(jsonb, unknown, unknown) does not exist)`, `B56 … plan_vs_set_place …` ως `B60`.
+
+- [ ] **Step 3: Γράψε τις συναρτήσεις**
+
+Πριν από τον δείκτη PART 4:
+```sql
+  -- B5. One VS day in the whole system, "whoever learns first" (spec 3, VS): ONE field, orders.cross_dock_date.
+  -- 069 (order_cd_stop_follow) moves the Cross-dock stop and the ramp exactly as today.
+  CREATE FUNCTION public.plan_vs_set_day(p jsonb, p_actor text, p_role text)
+    RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $f$
+declare
+  v_order bigint; v_day date; o orders%rowtype; v_nid bigint; v_warn jsonb;
+begin
+  perform plan_h_ctx(p_actor, p_role);
+  set constraints all deferred;
+  perform plan_h_keys(p, array['order_id', 'day'], 'p');
+  begin
+    v_order := (p->>'order_id')::bigint;
+    v_day := (p->>'day')::date;
+  exception when invalid_text_representation or numeric_value_out_of_range or invalid_datetime_format
+                 or datetime_field_overflow then
+    perform plan_h_raise('bad_input', 'order_id or day');
+  end;
+  if v_order is null or v_day is null then perform plan_h_raise('bad_input', 'order_id and day'); end if;
+  select * into o from orders where id = v_order for update;
+  if o.id is null or o.deleted_at is not null or o.status = 'Cancelled' then
+    perform plan_h_raise('order_gone', v_order::text);
+  end if;
+  -- only a VS the national desk carries (a live bridge) has a national day to give
+  if not exists (select 1 from shipments s where s.order_id = v_order and s.order_stop_id is not null
+                   and s.deleted_at is null) then
+    perform plan_h_raise('vs_not_bridge', v_order::text);
+  end if;
+  -- plan_h_vs_day (section A) sets plan.writer = 'natl', writes the day with its audit row and the notice to the
+  -- international desk; the same day again changes nothing and tells nobody
+  v_nid := plan_h_vs_day(v_order, v_day, p_actor, p_role);
+  perform plan_h_finish();
+  -- a VS already on a truck of another day keeps its truck (moving it is the F5 bridge's "follows + notice"); the
+  -- answer says so instead of passing silently (principle 1)
+  select coalesce(jsonb_agg(jsonb_build_object('code', 'vs_day_differs', 'first_hub_day', v.first_hub_day)), '[]'::jsonb)
+    into v_warn from v_vs_state v where v.order_id = v_order and v.first_hub_day is distinct from v_day
+     and v.first_hub_day is not null;
+  return jsonb_build_object('ok', true, 'op', 'plan_vs_set_day', 'dry_run', false,
+    'ids', jsonb_build_object('order_id', v_order), 'warnings', v_warn,
+    'notice_ids', case when v_nid is null then '[]'::jsonb else jsonb_build_array(v_nid) end);
+end
+$f$;
+
+  -- B5. The VS destination after Veroia, "whoever learns first" (spec 3, 18/10): written on the international's
+  -- order_stops.location_id. K-06: 071 does not watch that column, so the national stops that served the old
+  -- place are corrected HERE, in the same transaction, and the shipment's rules are read before returning.
+  CREATE FUNCTION public.plan_vs_set_place(p jsonb, p_actor text, p_role text)
+    RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $f$
+declare
+  -- "O ethnikon allaxe ton proorismo tis VS #%s: %s -> %s":
+  b_place constant text := 'zp8gzrXOuM69zrnOus+Ozr0gzqzOu867zrHOvs61IM+Ezr/OvSDPgM+Bzr/Ov8+BzrnPg868z4wgz4TOt8+CIFZTICMlczogJXMg4oaSICVz';
+  -- "Allagi proorismou VS" (the reason on a re-pointed leg):
+  w_repoint constant text := convert_from(decode('zpHOu867zrHOs86uIM+Az4HOv86/z4HOuc+DzrzOv8+NIFZT', 'base64'), 'UTF8');
+  v_os bigint; v_loc bigint; st order_stops%rowtype; o orders%rowtype; v_sh bigint; v_kind text; v_old_loc bigint;
+  v_hub bigint; v_old jsonb; v_prob text; v_nid bigint; v_new_stop bigint; v_new_leg bigint;
+  v_legs bigint[] := '{}'; v_stops bigint[] := '{}'; v_moved jsonb := '{}'::jsonb; rs rt_stops%rowtype; x record;
+begin
+  perform plan_h_ctx(p_actor, p_role);
+  set constraints all deferred;
+  perform plan_h_keys(p, array['order_stop_id', 'location_id'], 'p');
+  begin
+    v_os := (p->>'order_stop_id')::bigint;
+    v_loc := (p->>'location_id')::bigint;
+  exception when invalid_text_representation or numeric_value_out_of_range then
+    perform plan_h_raise('bad_input', 'order_stop_id or location_id');
+  end;
+  select * into st from order_stops where id = v_os for update;
+  if st.id is null or st.deleted_at is not null then perform plan_h_raise('order_gone', coalesce(v_os::text, 'null')); end if;
+  select * into o from orders where id = st.order_id for update;
+  if o.id is null or o.deleted_at is not null or o.status = 'Cancelled' then
+    perform plan_h_raise('order_gone', coalesce(st.order_id::text, 'national stop'));
+  end if;
+  select s.id into v_sh from shipments s where s.order_stop_id = v_os and s.deleted_at is null;
+  if v_sh is null then perform plan_h_raise('vs_not_bridge', v_os::text); end if;
+  select l.id into v_hub from locations l where l.is_hub;
+  -- the hub is the other end of every bridge: as its own Greek end the shipment would have no national part
+  if v_loc is null or v_loc = v_hub
+     or not exists (select 1 from locations l where l.id = v_loc and l.deleted_at is null) then
+    perform plan_h_raise('bad_input', 'location_id');
+  end if;
+  v_old_loc := st.location_id;
+  if v_old_loc is distinct from v_loc then
+    select vs.kind into v_kind from v_shipments vs where vs.shipment_id = v_sh;
+    -- the cycles this place change touches, locked by id before their stops are read (the ONE lock order of
+    -- plan_move_pieces / plan_delete: no deadlock between two corrections)
+    perform 1 from ct_round_trips c
+     where c.id in (select l.rt_id from piece_legs l join shipment_pieces sp on sp.id = l.piece_id
+                     where sp.shipment_id = v_sh and l.deleted_at is null)
+     order by c.id for update;
+    -- decision 17: the F5 bridge trigger tells the national desk's write from the international desk's
+    perform set_config('plan.writer', 'natl', true);
+    select to_jsonb(s) into v_old from order_stops s where s.id = v_os;
+    update order_stops set location_id = v_loc where id = v_os;
+    perform plan_h_audit(p_actor, p_role, 'update', 'order_stops', coalesce(st.legacy_id, v_os::text), v_old,
+                         (select to_jsonb(s) from order_stops s where s.id = v_os));
+    -- the national end that moved: an import ENDS at the Greek stop, an export STARTS there
+    for x in select l.id as leg_id, l.piece_id, l.leg_no, l.rt_id, l.pickup_stop_id, l.drop_stop_id,
+                    case when v_kind = 'vs_import' then l.drop_stop_id else l.pickup_stop_id end as stop_id
+               from piece_legs l join shipment_pieces sp on sp.id = l.piece_id
+               join rt_stops s on s.id = case when v_kind = 'vs_import' then l.drop_stop_id else l.pickup_stop_id end
+              where sp.shipment_id = v_sh and l.deleted_at is null and s.location_id = v_old_loc
+              order by l.id loop
+      if x.stop_id = any(v_stops) then
+        continue;   -- already moved in place for another piece of this shipment
+      end if;
+      if not exists (select 1 from piece_legs q join shipment_pieces qp on qp.id = q.piece_id
+                      where q.deleted_at is null and qp.shipment_id <> v_sh
+                        and (q.pickup_stop_id = x.stop_id or q.drop_stop_id = x.stop_id)) then
+        -- the stop serves only this VS: it moves in place (same stop, same legs, same local loading)
+        select to_jsonb(s) into v_old from rt_stops s where s.id = x.stop_id;
+        update rt_stops set location_id = v_loc where id = x.stop_id;
+        perform plan_h_audit(p_actor, p_role, 'update', 'rt_stops', x.stop_id::text, v_old,
+                             (select to_jsonb(s) from rt_stops s where s.id = x.stop_id));
+        v_stops := v_stops || x.stop_id;
+      else
+        -- the stop also serves other orders: a new stop at the new place, same side and window; the leg is
+        -- re-pointed - a leg never changes (071 leg_locked), so soft delete + the same leg number on the new stop
+        v_new_stop := (v_moved->>x.stop_id::text)::bigint;
+        if v_new_stop is null then
+          select * into rs from rt_stops where id = x.stop_id;
+          v_new_stop := plan_h_stop_add(x.rt_id, v_loc, rs.side, rs.planned_from, rs.planned_to, p_actor, p_role);
+          v_moved := v_moved || jsonb_build_object(x.stop_id::text, v_new_stop);
+          v_stops := v_stops || v_new_stop;
+        end if;
+        perform plan_h_leg_drop(x.leg_id, w_repoint, p_actor, p_role);
+        v_new_leg := plan_h_leg_add(x.piece_id, x.rt_id,
+                                    case when v_kind = 'vs_import' then x.pickup_stop_id else v_new_stop end,
+                                    case when v_kind = 'vs_import' then v_new_stop else x.drop_stop_id end,
+                                    p_actor, p_role, x.leg_no);
+        perform plan_h_reseq(x.rt_id, p_actor, p_role);
+        v_legs := v_legs || v_new_leg;
+      end if;
+    end loop;
+    -- the shipment's own rules, now (071 plan_chk_bridge_stop does not fire on location_id)
+    v_prob := plan_shipment_problem(v_sh);
+    if v_prob is not null then
+      perform plan_h_raise(split_part(v_prob, ':', 1), substr(v_prob, strpos(v_prob, ':') + 1));
+    end if;
+    v_nid := plan_h_notice('intl', 'vs_place_changed', b_place,
+                           array[o.id::text, coalesce((select l.name from locations l where l.id = v_old_loc), '-'),
+                                 (select l.name from locations l where l.id = v_loc)],
+                           o.id, null, null, p_actor, p_role);
+  end if;
+  perform plan_h_finish();
+  return jsonb_build_object('ok', true, 'op', 'plan_vs_set_place', 'dry_run', false,
+    'ids', jsonb_build_object('order_stop_id', v_os, 'leg_ids', to_jsonb(v_legs), 'stop_ids', to_jsonb(v_stops)),
+    'warnings', '[]'::jsonb,
+    'notice_ids', case when v_nid is null then '[]'::jsonb else jsonb_build_array(v_nid) end);
+end
+$f$;
+```
+
+
+Πρόσθεσε στο `072_plan_functions.sql`, πάνω από τη γραμμή `    -- @pub (072 tasks add ", 'public.plan_x(<arg types>)'" lines above this marker)`:
+```sql
+    , 'public.plan_vs_set_day(jsonb,text,text)'
+    , 'public.plan_vs_set_place(jsonb,text,text)'
+```
+
+- [ ] **Step 4: Τρέξε, να περάσει**
+
+Run: `cd tms-auditor && node --test test/plan-072.test.mjs`
+Expected: `Result: 141 OK, 1 FAIL` (μόνο η B20)· B52–B60 πράσινες· η B52 γράφει «ok VS day D -> D+1: one orders row, its audit, one notice, Cross-dock stop moved».
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add worker/migrations/drafts/072_plan_functions.sql worker/migrations/drafts/072_plan_functions_test.sql
+git commit -m "072 plan_vs_set_day / plan_vs_set_place: one VS day and place, whoever learns first, national stops follow in the same transaction; B cases 52-60
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+```
+
+---
+
+#### Task Β6: `plan_local_loading`
+
+**Files:**
+- Modify: `worker/migrations/drafts/072_plan_functions.sql` (Part 3, πριν από τον δείκτη PART 4)
+- Modify: `worker/migrations/drafts/072_plan_functions_test.sql` (στους δύο δείκτες)
+
+**Interfaces:**
+- Consumes: Α1 (`plan_h_ctx`, `plan_h_raise`, `plan_h_audit`, `plan_h_finish`)· 060/071 `dl_sync_from_local_move` → `dl_local_day_sync` (αμετάβλητα).
+- Produces: `plan_local_loading(p jsonb, p_actor text, p_role text) RETURNS jsonb`· `p` = `{rt_stop_id, driver_id, truck_id, trailer_id?, time_from?, time_to?, notes?}` ή `{local_move_id, cancel: true}` (ιδεμπότητο: `already`· προειδοποίηση `local_payroll_review` όταν η γραμμή ΤΟΠΙΚΟ έχει ήδη ποσό, απόφαση 33)· `status = 'Assigned'`, `move_date` = ημέρα Αθήνας του `planned_from` της στάσης.
+
+- [ ] **Step 1: Γράψε πρώτα τις περιπτώσεις B61–B68**
+
+Πριν από `        -- [B-CASES-NEXT]`:
+```sql
+        -- ---- Task B6: plan_local_loading ----
+        ELSIF kb IN (61, 62, 63, 67) THEN   -- loading by a local driver
+          b_v2 := plan_local_loading(jsonb_build_object('rt_stop_id', b_sa, 'driver_id', b_d3, 'truck_id', b_t2,
+                    'time_from', '06:30', 'time_to', '07:30'), 'test:072b', 'dispatcher');
+          b_x := (b_v2->'ids'->>'local_move_id')::bigint;
+          IF kb = 62 THEN
+            PERFORM plan_local_loading(jsonb_build_object('rt_stop_id', b_sa, 'driver_id', b_d2, 'truck_id', b_t2), 'test:072b', 'dispatcher');
+          ELSIF kb IN (63, 67) THEN
+            b_v3 := plan_local_loading(jsonb_build_object('local_move_id', b_x, 'cancel', true), 'test:072b', 'dispatcher');
+            IF kb = 67 THEN
+              b_v3 := plan_local_loading(jsonb_build_object('local_move_id', b_x, 'cancel', true), 'test:072b', 'dispatcher');
+            END IF;
+          END IF;
+          b_verdict := CASE
+            WHEN kb = 61 AND (SELECT move_kind = 'nat_loading' AND status = 'Assigned' AND move_date = b_d AND rt_stop_id = b_sa
+                                     AND parent_order_id IS NULL FROM local_moves WHERE id = b_x)
+                         AND (SELECT count(*) FROM dl_entries WHERE driver_id = b_d3 AND entry_date = b_d AND deleted_at IS NULL
+                                AND local_move_id = b_x AND route LIKE '%' || (b_v->>'code')) = 1
+              THEN 'ok one local loading, one TOPIKO line named after the cycle'
+            WHEN kb = 63 AND (SELECT status FROM local_moves WHERE id = b_x) = 'Cancelled'
+                         AND NOT EXISTS (SELECT 1 FROM dl_entries WHERE driver_id = b_d3 AND deleted_at IS NULL)
+                         AND NOT (b_v3->>'already')::boolean
+              THEN 'ok cancelled: the TOPIKO line went with it'
+            WHEN kb = 67 AND (b_v3->>'already')::boolean
+                         AND (SELECT count(*) FROM audit_log WHERE actor = 'test:072b' AND table_name = 'local_moves'
+                                AND action = 'update') = 1
+              THEN 'ok a second cancel changes nothing'
+            ELSE 'FAIL local loading' END;
+        ELSIF kb = 64 THEN   -- a stop where nothing loads
+          PERFORM plan_local_loading(jsonb_build_object('rt_stop_id', b_sb, 'driver_id', b_d3, 'truck_id', b_t2), 'test:072b', 'dispatcher');
+        ELSIF kb = 65 THEN
+          PERFORM plan_local_loading(jsonb_build_object('rt_stop_id', -1, 'driver_id', b_d3, 'truck_id', b_t2), 'test:072b', 'dispatcher');
+        ELSIF kb = 66 THEN
+          PERFORM plan_local_loading(jsonb_build_object('rt_stop_id', b_sa, 'truck_id', b_t2), 'test:072b', 'dispatcher');
+        ELSIF kb = 68 THEN
+          PERFORM plan_local_loading(jsonb_build_object('rt_stop_id', b_sa, 'driver_id', b_d3, 'truck_id', b_t2), '', 'dispatcher');
+```
+Πριν από `      ;  -- end of b_want`:
+```sql
+      || ARRAY['ok', 'plan:local_exists', 'ok', 'plan:local_loading_stop', 'plan:stop_gone',
+               'plan:bad_input', 'ok', 'plan:no_actor']   -- B61-B68 (Task B6)
+```
+
+- [ ] **Step 2: Τρέξε, να αποτύχει**
+
+Run: `cd tms-auditor && node --test test/plan-072.test.mjs`
+Expected: `Result: 141 OK, 9 FAIL`: `B61 FAIL want ok got state:42883 (function plan_local_loading(jsonb, unknown, unknown) does not exist)` ως `B68`, και η B20 με τον ίδιο λόγο.
+
+- [ ] **Step 3: Γράψε τη συνάρτηση**
+
+Πριν από τον δείκτη PART 4:
+```sql
+  -- B6. "Loading with a local driver" (spec 3, Board): one local_moves row of kind nat_loading on the stop; the
+  -- local driver's TOPIKO payroll line per day comes from the existing 060/071 sync (label = the cycle's code).
+  -- {"local_move_id": n, "cancel": true} cancels it (status Cancelled: the sync takes the line away).
+  CREATE FUNCTION public.plan_local_loading(p jsonb, p_actor text, p_role text)
+    RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $f$
+declare
+  v_stop bigint; v_driver bigint; v_truck bigint; v_trailer bigint; v_lm bigint; v_cancel boolean;
+  s rt_stops%rowtype; r ct_round_trips%rowtype; lm local_moves%rowtype; v_old jsonb; v_warn jsonb;
+begin
+  perform plan_h_ctx(p_actor, p_role);
+  set constraints all deferred;
+  -- an unknown key is refused, never ignored (principle 1): {"cancle": true} must not create a loading
+  perform plan_h_keys(p, array['rt_stop_id', 'driver_id', 'truck_id', 'trailer_id', 'time_from', 'time_to', 'notes',
+                               'local_move_id', 'cancel'], 'p');
+  begin
+    v_lm := (p->>'local_move_id')::bigint;
+    v_cancel := coalesce((p->>'cancel')::boolean, false);
+    v_stop := (p->>'rt_stop_id')::bigint;
+    v_driver := (p->>'driver_id')::bigint;
+    v_truck := (p->>'truck_id')::bigint;
+    v_trailer := (p->>'trailer_id')::bigint;
+  exception when invalid_text_representation or numeric_value_out_of_range then
+    perform plan_h_raise('bad_input', 'ids');
+  end;
+  if v_lm is not null then
+    if not v_cancel then perform plan_h_raise('bad_input', 'local_move_id without cancel'); end if;
+    select * into lm from local_moves where id = v_lm for update;
+    if lm.id is null or lm.move_kind <> 'nat_loading' then perform plan_h_raise('bad_input', 'local_move_id'); end if;
+    if lm.deleted_at is not null or lm.status = 'Cancelled' then
+      -- cancelled already: the second click changes nothing (idempotent, like a notice read)
+      return jsonb_build_object('ok', true, 'op', 'plan_local_loading', 'dry_run', false, 'already', true,
+                                'ids', jsonb_build_object('local_move_id', v_lm), 'warnings', '[]'::jsonb,
+                                'notice_ids', '[]'::jsonb);
+    end if;
+    -- decision 33: cancelling a loading whose TOPIKO line already has amounts sends that line to accounting's
+    -- review (060, B-08): said in the answer, never silent
+    select coalesce(jsonb_agg(jsonb_build_object('code', 'local_payroll_review', 'dl_entry_id', e.id,
+                                                 'local_move_id', v_lm)), '[]'::jsonb)
+      into v_warn from dl_entries e
+     where e.driver_id = lm.driver_id and e.entry_date = lm.move_date and e.local_move_id is not null
+       and e.deleted_at is null and (e.trip_value is not null or e.advance is not null or e.expenses is not null);
+    v_old := to_jsonb(lm);
+    update local_moves set status = 'Cancelled' where id = v_lm;
+    perform plan_h_audit(p_actor, p_role, 'update', 'local_moves', v_lm::text, v_old,
+                         (select to_jsonb(m) from local_moves m where m.id = v_lm));
+    perform plan_h_finish();
+    return jsonb_build_object('ok', true, 'op', 'plan_local_loading', 'dry_run', false, 'already', false,
+                              'ids', jsonb_build_object('local_move_id', v_lm), 'warnings', v_warn,
+                              'notice_ids', '[]'::jsonb);
+  end if;
+  if v_stop is null or v_driver is null or v_truck is null then
+    perform plan_h_raise('bad_input', 'rt_stop_id, driver_id and truck_id');
+  end if;
+  if not exists (select 1 from drivers d where d.id = v_driver and d.deleted_at is null)
+     or not exists (select 1 from trucks t where t.id = v_truck and t.deleted_at is null)
+     or (v_trailer is not null and not exists (select 1 from trailers t where t.id = v_trailer and t.deleted_at is null)) then
+    perform plan_h_raise('bad_input', 'driver_id, truck_id or trailer_id');
+  end if;
+  select * into s from rt_stops where id = v_stop for update;
+  select * into r from ct_round_trips where id = s.rt_id;
+  if s.id is null or s.deleted_at is not null or r.model is distinct from 2 or r.status = 'cancelled' then
+    perform plan_h_raise('stop_gone', coalesce(v_stop::text, 'null'));
+  end if;
+  -- local_moves_nat_loading_once is the floor (23505); this gives the refusal its own code first
+  if exists (select 1 from local_moves m where m.rt_stop_id = v_stop and m.move_kind = 'nat_loading'
+               and m.deleted_at is null and m.status <> 'Cancelled') then
+    perform plan_h_raise('local_exists', v_stop::text);
+  end if;
+  -- status is written: local_moves_before derives none for nat_loading (K-16); the day is the stop's Athens day
+  insert into local_moves (move_kind, rt_stop_id, driver_id, truck_id, trailer_id, move_date, time_from, time_to,
+                           notes, status, sequence)
+  values ('nat_loading', v_stop, v_driver, v_truck, v_trailer, (s.planned_from at time zone 'Europe/Athens')::date,
+          nullif(btrim(p->>'time_from'), ''), nullif(btrim(p->>'time_to'), ''), nullif(btrim(p->>'notes'), ''),
+          'Assigned', 1)
+  returning id into v_lm;
+  perform plan_h_audit(p_actor, p_role, 'create', 'local_moves', v_lm::text, null,
+                       (select to_jsonb(m) from local_moves m where m.id = v_lm));
+  perform plan_h_finish();
+  return jsonb_build_object('ok', true, 'op', 'plan_local_loading', 'dry_run', false, 'already', false,
+                            'ids', jsonb_build_object('local_move_id', v_lm, 'rt_id', s.rt_id), 'warnings', '[]'::jsonb,
+                            'notice_ids', '[]'::jsonb);
+end
+$f$;
+```
+
+
+Πρόσθεσε στο `072_plan_functions.sql`, πάνω από τη γραμμή `    -- @pub (072 tasks add ", 'public.plan_x(<arg types>)'" lines above this marker)`:
+```sql
+    , 'public.plan_local_loading(jsonb,text,text)'
+```
+
+- [ ] **Step 4: Τρέξε, να περάσει**
+
+Run: `cd tms-auditor && node --test test/plan-072.test.mjs`
+Expected: `Result: 150 OK, 0 FAIL` (και η B20: «ok local loading and its TOPIKO line moved to D+1»)· B61–B68 πράσινες.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add worker/migrations/drafts/072_plan_functions.sql worker/migrations/drafts/072_plan_functions_test.sql
+git commit -m "072 plan_local_loading: one nat_loading per stop, the local driver's TOPIKO line by the existing sync, idempotent cancel; B cases 61-68
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+```
+
+---
+
+#### Task Β7: Ειδοποιήσεις και αναγνώσεις
+
+**Files:**
+- Modify: `worker/migrations/drafts/072_plan_functions.sql` (Part 4: πριν από τη γραμμή `  -- ===== PART 5: RIGHTS AND PROOFS =====`· τέσσερις γραμμές `v_pub`)
+- Modify: `worker/migrations/drafts/072_plan_functions_test.sql` (στους δύο δείκτες)
+
+**Interfaces:**
+- Consumes: όλα τα παραπάνω· όψεις 071 `v_rt_cycle`, `v_rt_stop_state`, `v_piece_state`, `v_shipments`, `v_hub_bucket`, `v_vs_state`.
+- Produces: `plan_notice_read(p jsonb, p_actor text, p_role text) RETURNS jsonb` (`{read_at, read_by, already}`)· `plan_notices_list(p_desk text, p_role text) RETURNS jsonb STABLE` (`{desk, unread, recent}`)· `plan_board(p_week date, p_role text) RETURNS jsonb STABLE` (`{week, cycles, waiting, hub, notices}`, κάθε λίστα `[]` όταν είναι άδεια· `price` ποτέ για warehouse· `partner_rate` μόνο owner/dispatcher)· `plan_vs_state(p_order_ids bigint[]) RETURNS jsonb STABLE` (`{"<id>": {carriers: [{kind, text, code, hub_day}], all_executed, all_planned, first_hub_day, n_pieces} | "missing"}`, ≤ 500 ids).
+
+- [ ] **Step 1: Γράψε πρώτα τις περιπτώσεις B69–B76**
+
+Πριν από `        -- [B-CASES-NEXT]`:
+```sql
+        -- ---- Task B7: notices and reads ----
+        ELSIF kb IN (69, 75) THEN   -- read is idempotent; the strip lists unread, then recent
+          INSERT INTO plan_notices (to_desk, kind, message, created_by) VALUES ('natl', 'test_notice', 'TEST 072 B', 'test:072b')
+            RETURNING id INTO b_x;
+          b_v := plan_notices_list('natl', 'management');
+          b_v2 := plan_notice_read(jsonb_build_object('notice_id', b_x), 'test:072b', 'dispatcher');
+          b_v3 := plan_notice_read(jsonb_build_object('notice_id', b_x), 'test:072b-2', 'owner');
+          b_verdict := CASE
+            WHEN kb = 69 AND NOT (b_v2->>'already')::boolean AND (b_v3->>'already')::boolean
+                         AND b_v3->>'read_by' = 'test:072b'
+                         AND (SELECT read_by = 'test:072b' AND read_at IS NOT NULL FROM plan_notices WHERE id = b_x)
+                         AND (SELECT count(*) FROM audit_log WHERE table_name = 'plan_notices' AND record_id = b_x::text) = 1
+              THEN 'ok read once, the second mark is 200 and changes nothing'
+            WHEN kb = 75 AND EXISTS (SELECT 1 FROM jsonb_array_elements(b_v->'unread') u WHERE (u->>'id')::bigint = b_x)
+                         AND EXISTS (SELECT 1 FROM jsonb_array_elements(plan_notices_list('natl', 'owner')->'recent') u
+                                      WHERE (u->>'id')::bigint = b_x)
+                         AND NOT EXISTS (SELECT 1 FROM jsonb_array_elements(plan_notices_list('natl', 'owner')->'unread') u
+                                          WHERE (u->>'id')::bigint = b_x)
+              THEN 'ok unread first, recent after the read'
+            ELSE 'FAIL notices' END;
+        ELSIF kb = 70 THEN
+          PERFORM plan_notice_read(jsonb_build_object('notice_id', -1), 'test:072b', 'dispatcher');
+        ELSIF kb IN (71, 72, 73) THEN   -- the board: empty week, money by role, only Saturdays
+          IF kb = 71 THEN
+            b_w := (b_td - 70) - ((extract(isodow FROM b_td - 70)::int + 1) % 7);
+            b_v := plan_board(b_w, 'owner');
+            b_verdict := CASE WHEN b_v->'cycles' = '[]'::jsonb AND b_v->'waiting' = '[]'::jsonb AND b_v->'hub' = '[]'::jsonb
+                                AND b_v->'notices' = '[]'::jsonb AND b_v->>'week' = b_w::text
+                              THEN 'ok an empty week: every list [] and present' ELSE 'FAIL empty board ' || b_v::text END;
+          ELSE
+            b_w := b_d - ((extract(isodow FROM b_d)::int + 1) % 7);
+            IF kb = 73 THEN
+              PERFORM plan_board(b_w + 4, 'owner');
+            END IF;
+            b_v2 := plan_rt_create(jsonb_build_object('new_rt', jsonb_build_object('trip_type', 'PARTNER', 'partner_id', b_pa,
+                      'partner_rate', 250), 'stops', jsonb_build_array(jsonb_build_object('ref', 'x', 'location_id', b_lc,
+                      'side', 'KATHODOS', 'planned_from', h16, 'planned_to', h18))), 'test:072b', 'dispatcher');
+            b_x := (b_v2->>'rt_id')::bigint;
+            INSERT INTO national_orders (legacy_id, client_id, reference, price) VALUES ('rec072TBN3', b_cl, 'WN072-TEST', 70)
+              RETURNING id INTO b_no3;
+            INSERT INTO shipments (nat_order_id, origin_location_id, dest_location_id, pallets, load_from, load_to, deliver_from,
+                                   deliver_to, created_by)
+            VALUES (b_no3, b_lb, b_lc, 3, h06, h08, h12, h14, 'test:072b') RETURNING id INTO b_y;
+            INSERT INTO shipment_pieces (shipment_id, pallets, created_by) VALUES (b_y, 3, 'test:072b');
+            PERFORM plan_h_finish();
+            b_v := plan_board(b_w, 'owner');
+            b_v2 := plan_board(b_w, 'management');
+            b_v3 := plan_board(b_w, 'warehouse');
+            b_verdict := CASE
+              WHEN (SELECT jsonb_array_length(c->'stops') = 2 AND jsonb_array_length(c->'stops'->0->'legs') = 1
+                           AND c->'stops'->0->'legs'->0->>'act' = 'load'
+                      FROM jsonb_array_elements(b_v->'cycles') c WHERE (c->>'rt_id')::bigint = b_rt1)
+               AND (SELECT (c->>'partner_rate')::numeric = 250 FROM jsonb_array_elements(b_v->'cycles') c
+                     WHERE (c->>'rt_id')::bigint = b_x)
+               AND (SELECT (c->>'partner_rate')::numeric = 250
+                      FROM jsonb_array_elements(plan_board(b_w, 'dispatcher')->'cycles') c WHERE (c->>'rt_id')::bigint = b_x)
+               AND NOT EXISTS (SELECT 1 FROM jsonb_array_elements(b_v2->'cycles') c WHERE c ? 'partner_rate')
+               AND NOT EXISTS (SELECT 1 FROM jsonb_array_elements(b_v3->'cycles') c WHERE c ? 'partner_rate')
+               AND (SELECT (w->>'price')::numeric = 70 FROM jsonb_array_elements(b_v->'waiting') w
+                     WHERE (w->>'nat_order_id')::bigint = b_no3)
+               AND EXISTS (SELECT 1 FROM jsonb_array_elements(b_v3->'waiting') w WHERE (w->>'nat_order_id')::bigint = b_no3)
+               AND NOT EXISTS (SELECT 1 FROM jsonb_array_elements(b_v3->'waiting') w WHERE w ? 'price')
+              THEN 'ok board: cycles with stops and legs; partner rate owner/dispatcher only; price never for warehouse'
+              ELSE 'FAIL board ' || left(b_v::text, 400) END;
+          END IF;
+        ELSIF kb = 74 THEN   -- the international board's view of a VS
+          b_v := plan_vs_state(ARRAY[b_vo, -1]::bigint[]);
+          b_verdict := CASE WHEN b_v->(b_vo::text)->'carriers' = '[]'::jsonb
+                              AND NOT (b_v->(b_vo::text)->>'all_planned')::boolean
+                              AND (b_v->(b_vo::text)->>'n_pieces')::int = 3
+                              AND b_v->'-1' = '"missing"'::jsonb
+                            THEN 'ok vs-state: waiting VS without carrier, unknown order "missing"'
+                            ELSE 'FAIL vs-state ' || b_v::text END;
+        ELSIF kb = 76 THEN
+          PERFORM plan_notices_list('xx', 'owner');
+```
+Πριν από `      ;  -- end of b_want`:
+```sql
+      || ARRAY['ok', 'plan:notice_gone', 'ok', 'ok', 'plan:bad_input',
+               'ok', 'ok', 'plan:bad_input']   -- B69-B76 (Task B7)
+```
+
+- [ ] **Step 2: Τρέξε, να αποτύχει**
+
+Run: `cd tms-auditor && node --test test/plan-072.test.mjs`
+Expected: `Result: 150 OK, 8 FAIL`: `B69 FAIL … function plan_notices_list(unknown, unknown) does not exist` και `state:42883` για B70–B76 (`plan_notice_read`, `plan_board`, `plan_vs_state`).
+
+- [ ] **Step 3: Γράψε τις συναρτήσεις**
+
+Στο `072_plan_functions.sql`, ακριβώς πριν από τη γραμμή `  -- ===== PART 5: RIGHTS AND PROOFS =====`:
+```sql
+  -- B7. "Read" is idempotent (decision 25): the second mark is 200 with already = true and the first time kept.
+  -- A notice is never deleted (plan_notices has no deleted_at): read is the only state it has.
+  CREATE FUNCTION public.plan_notice_read(p jsonb, p_actor text, p_role text)
+    RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $f$
+declare
+  v_id bigint; n plan_notices%rowtype;
+begin
+  perform plan_h_ctx(p_actor, p_role);
+  set constraints all deferred;
+  perform plan_h_keys(p, array['notice_id'], 'p');
+  begin
+    v_id := (p->>'notice_id')::bigint;
+  exception when invalid_text_representation or numeric_value_out_of_range then
+    perform plan_h_raise('bad_input', 'notice_id');
+  end;
+  select * into n from plan_notices where id = v_id for update;
+  if n.id is null then perform plan_h_raise('notice_gone', coalesce(v_id::text, 'null')); end if;
+  if n.read_at is not null then
+    return jsonb_build_object('ok', true, 'op', 'plan_notice_read', 'dry_run', false, 'already', true,
+                              'read_at', n.read_at, 'read_by', n.read_by, 'ids', jsonb_build_object('notice_id', v_id),
+                              'warnings', '[]'::jsonb, 'notice_ids', '[]'::jsonb);
+  end if;
+  update plan_notices set read_at = now(), read_by = p_actor where id = v_id;
+  perform plan_h_audit(p_actor, p_role, 'update', 'plan_notices', v_id::text,
+                       jsonb_build_object('read_at', null, 'read_by', null),
+                       jsonb_build_object('read_at', now(), 'read_by', p_actor));
+  perform plan_h_finish();
+  return jsonb_build_object('ok', true, 'op', 'plan_notice_read', 'dry_run', false, 'already', false,
+                            'read_at', now(), 'read_by', p_actor, 'ids', jsonb_build_object('notice_id', v_id),
+                            'warnings', '[]'::jsonb, 'notice_ids', '[]'::jsonb);
+end
+$f$;
+
+  -- B7. The notice strip of a desk: every unread one, and the read ones of the last 7 days.
+  CREATE FUNCTION public.plan_notices_list(p_desk text, p_role text)
+    RETURNS jsonb LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = public AS $f$
+begin
+  if p_desk is null or p_desk not in ('intl', 'natl') then perform plan_h_raise('bad_input', 'desk'); end if;
+  if p_role is null or p_role not in ('owner', 'dispatcher', 'management', 'accountant', 'warehouse') then
+    perform plan_h_raise('bad_input', 'role');
+  end if;
+  return jsonb_build_object(
+    'desk', p_desk,
+    'unread', coalesce((select jsonb_agg(to_jsonb(n) order by n.created_at desc, n.id desc) from plan_notices n
+                         where n.to_desk = p_desk and n.read_at is null), '[]'::jsonb),
+    'recent', coalesce((select jsonb_agg(to_jsonb(n) order by n.created_at desc, n.id desc) from plan_notices n
+                         where n.to_desk = p_desk and n.read_at is not null
+                           and n.created_at >= now() - interval '7 days'), '[]'::jsonb));
+end
+$f$;
+
+  -- B7. The national board of one TMS week (Saturday-Friday, TmsWeek): ONE snapshot in ONE call (decision 31).
+  -- Money is cut HERE by role (decision 9): price never for warehouse, partner_rate only for owner/dispatcher
+  -- (21/10: the dispatcher agrees the partner rate). Every list is [] when empty, never absent (facade trap 2).
+  CREATE FUNCTION public.plan_board(p_week date, p_role text)
+    RETURNS jsonb LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = public AS $f$
+declare
+  v_from timestamptz; v_to timestamptz; v_rate boolean; v_price boolean;
+begin
+  if p_week is null or extract(isodow from p_week) <> 6 then
+    perform plan_h_raise('bad_input', 'week must be a Saturday');
+  end if;
+  if p_role is null or p_role not in ('owner', 'dispatcher', 'management', 'accountant', 'warehouse') then
+    perform plan_h_raise('bad_input', 'role');
+  end if;
+  v_from := p_week::timestamp at time zone 'Europe/Athens';
+  v_to := (p_week + 7)::timestamp at time zone 'Europe/Athens';
+  v_rate := p_role in ('owner', 'dispatcher');
+  v_price := p_role <> 'warehouse';
+  return jsonb_build_object(
+    'week', p_week,
+    'cycles', coalesce((
+      select jsonb_agg(c.j order by c.start_at, c.rt_id) from (
+        select vc.rt_id, vc.start_at,
+               jsonb_build_object(
+                 'rt_id', vc.rt_id, 'code', vc.code, 'trip_type', vc.trip_type,
+                 'truck_id', vc.truck_id, 'truck', tr.license_plate, 'trailer_id', vc.trailer_id, 'trailer', tl.license_plate,
+                 'driver_id', vc.driver_id, 'driver', dv.full_name, 'partner_id', vc.partner_id, 'partner', pa.company_name,
+                 'start_at', vc.start_at, 'end_at', vc.end_at, 'date_start', vc.date_start, 'date_end', vc.date_end,
+                 'ended', vc.ended,
+                 'stops', coalesce((
+                   select jsonb_agg(jsonb_build_object(
+                            'stop_id', ss.stop_id, 'seq', ss.seq, 'side', ss.side, 'location_id', ss.location_id,
+                            'location', lo.name, 'planned_from', ss.planned_from, 'planned_to', ss.planned_to,
+                            'stop_day', ss.stop_day, 'executed', ss.executed, 'has_vehicle', ss.has_vehicle,
+                            'has_late', ss.has_late, 'dim', ss.dim, 'side_dim', ss.side_dim, 'cycle_dim', ss.cycle_dim,
+                            'local_loading', (
+                              select jsonb_build_object('local_move_id', lm.id, 'driver_id', lm.driver_id,
+                                                        'driver', d2.full_name, 'move_date', lm.move_date,
+                                                        'time_from', lm.time_from, 'time_to', lm.time_to)
+                                from local_moves lm left join drivers d2 on d2.id = lm.driver_id
+                               where lm.rt_stop_id = ss.stop_id and lm.move_kind = 'nat_loading'
+                                 and lm.deleted_at is null and lm.status <> 'Cancelled'
+                               order by lm.id limit 1),
+                            'legs', coalesce((
+                              select jsonb_agg(jsonb_build_object(
+                                       'leg_id', l.id, 'piece_id', l.piece_id,
+                                       'act', case when l.pickup_stop_id = ss.stop_id then 'load' else 'unload' end,
+                                       'pallets', sp.pallets, 'kind', vs.kind, 'order_id', vs.order_id,
+                                       'nat_order_id', vs.nat_order_id, 'reference', vs.reference,
+                                       'client_id', vs.client_id, 'client', cl.company_name,
+                                       'temperature_c', vs.temperature_c) order by l.id)
+                                from piece_legs l
+                                join shipment_pieces sp on sp.id = l.piece_id
+                                join v_shipments vs on vs.shipment_id = sp.shipment_id
+                                left join clients cl on cl.id = vs.client_id
+                               where l.deleted_at is null and (l.pickup_stop_id = ss.stop_id or l.drop_stop_id = ss.stop_id)),
+                              '[]'::jsonb)) order by ss.seq)
+                     from v_rt_stop_state ss left join locations lo on lo.id = ss.location_id
+                    where ss.rt_id = vc.rt_id), '[]'::jsonb))
+               || case when v_rate then jsonb_build_object('partner_rate', r.partner_rate) else '{}'::jsonb end as j
+          from v_rt_cycle vc
+          join ct_round_trips r on r.id = vc.rt_id
+          left join trucks tr on tr.id = vc.truck_id
+          left join trailers tl on tl.id = vc.trailer_id
+          left join drivers dv on dv.id = vc.driver_id
+          left join partners pa on pa.id = vc.partner_id
+         where vc.status <> 'cancelled' and vc.start_at < v_to and vc.end_at > v_from) c), '[]'::jsonb),
+    -- waiting = not at its national end and not at the hub; it never leaves the board until planned (spec 3)
+    'waiting', coalesce((
+      select jsonb_agg(jsonb_build_object(
+               'piece_id', ps.piece_id, 'shipment_id', ps.shipment_id, 'kind', ps.kind, 'order_id', ps.order_id,
+               'nat_order_id', ps.nat_order_id, 'order_stop_id', ps.order_stop_id, 'pallets', ps.pallets,
+               'leave_by', ps.leave_by, 'position_location_id', ps.position_location_id,
+               'nat_from_location_id', vs.nat_from_location_id, 'nat_to_location_id', vs.nat_to_location_id,
+               'nat_ready_day', ps.nat_ready_day, 'nat_due_day', ps.nat_due_day, 'overdue', ps.overdue,
+               'is_stock', ps.is_stock, 'client_id', vs.client_id, 'client', cl.company_name, 'reference', vs.reference,
+               'temperature_c', vs.temperature_c, 'pallet_exchange', vs.pallet_exchange, 'load_from', vs.load_from,
+               'load_to', vs.load_to, 'deliver_from', vs.deliver_from, 'deliver_to', vs.deliver_to)
+             || case when v_price and ps.nat_order_id is not null then jsonb_build_object('price', nor.price)
+                     else '{}'::jsonb end
+             order by ps.nat_ready_day, ps.piece_id)
+        from v_piece_state ps
+        join v_shipments vs on vs.shipment_id = ps.shipment_id
+        left join clients cl on cl.id = vs.client_id
+        left join national_orders nor on nor.id = ps.nat_order_id
+       where ps.waiting and not ps.at_hub and coalesce(ps.nat_ready_day, p_week) <= p_week + 6), '[]'::jsonb),
+    'hub', coalesce((
+      select jsonb_agg(to_jsonb(hb) || jsonb_build_object('client_id', vs.client_id, 'client', cl.company_name,
+                                                          'reference', vs.reference, 'temperature_c', vs.temperature_c)
+                       order by hb.nat_due_day, hb.piece_id)
+        from v_hub_bucket hb
+        join v_shipments vs on vs.shipment_id = hb.shipment_id
+        left join clients cl on cl.id = vs.client_id
+       where coalesce(hb.nat_ready_day, p_week) <= p_week + 6), '[]'::jsonb),
+    'notices', coalesce((select jsonb_agg(to_jsonb(n) order by n.created_at desc, n.id desc) from plan_notices n
+                          where n.to_desk = 'natl' and n.read_at is null), '[]'::jsonb));
+end
+$f$;
+
+  -- B7. What the international board shows of a VS (spec 5, E1/E20): its national carriers and whether all is
+  -- planned / executed. Internal boards only: nothing here ever goes to a client (Veroia is never shown to one).
+  CREATE FUNCTION public.plan_vs_state(p_order_ids bigint[])
+    RETURNS jsonb LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = public AS $f$
+begin
+  if p_order_ids is null then return '{}'::jsonb; end if;
+  if cardinality(p_order_ids) > 500 then perform plan_h_raise('bad_input', 'more than 500 order ids'); end if;
+  return coalesce((
+    select jsonb_object_agg(o::text, coalesce((
+             select jsonb_build_object(
+                      'carriers', coalesce((
+                        select jsonb_agg(jsonb_build_object(
+                                 'kind', case when c->>'trip_type' = 'PARTNER' then 'partner'
+                                              when c->>'truck_id' is null then 'none' else 'owned' end,
+                                 'text', case when c->>'trip_type' = 'PARTNER' then coalesce(pa.company_name, '')
+                                              else concat_ws(' / ', tr.license_plate, dv.full_name) end,
+                                 'code', c->>'code', 'hub_day', c->>'hub_day') order by c->>'hub_day', c->>'code')
+                          from jsonb_array_elements(v.carriers) c
+                          left join trucks tr on tr.id = (c->>'truck_id')::bigint
+                          left join drivers dv on dv.id = (c->>'driver_id')::bigint
+                          left join partners pa on pa.id = (c->>'partner_id')::bigint), '[]'::jsonb),
+                      'all_executed', v.all_executed, 'all_planned', v.all_planned,
+                      'first_hub_day', v.first_hub_day, 'n_pieces', v.n_pieces)
+               from v_vs_state v where v.order_id = o), '"missing"'::jsonb))
+      from unnest(p_order_ids) o), '{}'::jsonb);
+end
+$f$;
+```
+
+
+Πρόσθεσε στο `072_plan_functions.sql`, πάνω από τη γραμμή `    -- @pub (072 tasks add ", 'public.plan_x(<arg types>)'" lines above this marker)`:
+```sql
+    , 'public.plan_notice_read(jsonb,text,text)'
+    , 'public.plan_board(date,text)'
+    , 'public.plan_vs_state(bigint[])'
+    , 'public.plan_notices_list(text,text)'
+```
+
+- [ ] **Step 4: Τρέξε, να περάσει**
+
+Run: `cd tms-auditor && node --test test/plan-072.test.mjs`
+Expected: `Result: 158 OK, 0 FAIL`· B69–B76 πράσινες (B72 = «ok board: cycles with stops and legs; partner rate owner/dispatcher only; price never for warehouse»)· ✔ πλέον και «the API roles» (ο `service_role` διαβάζει το board και δεν φτάνει `plan_rt_create` / `plan_h_*`: το PART 5 του Α1 κάνει ήδη REVOKE/GRANT). Μένουν κόκκινα μόνο dry run, verify, rollback, μεταλλαγή (Β9).
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add worker/migrations/drafts/072_plan_functions.sql worker/migrations/drafts/072_plan_functions_test.sql
+git commit -m "072 reads: plan_board (one snapshot, money cut by role, [] never absent), plan_vs_state, plan_notices_list, idempotent plan_notice_read; B cases 69-76
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+```
+
+---
+
+#### Task Β9: Γεννήτρια dry run, verify, rollback, εβδομάδα-σενάριο, περιπτώσεις της κριτικής, πλήρες build test
+
+**Files:**
+- Replace: `tests/sql-072-drafts.test.js` (ο σκελετός του Α1 γίνεται πλήρης)
+- Modify: `worker/migrations/drafts/072_plan_functions_test.sql` (περιπτώσεις B77–B87)
+- Το `072_plan_functions.sql` **δεν** αλλάζει εδώ: το PART 5 το έγραψε το Α1 και το `v_pub` το συμπλήρωσε κάθε Task
+- Create: `worker/migrations/drafts/tools/build-072-dryrun.mjs`, `worker/migrations/drafts/072_plan_functions_dryrun.sql` (παράγεται), `worker/migrations/drafts/072_plan_functions_verify.sql`, `worker/migrations/drafts/072_plan_functions_rollback.sql`
+
+**Interfaces:**
+- Consumes: Α1–Α7, Β1–Β8.
+- Produces: το 072 έτοιμο για τον owner (το PART 5 του Α1: REVOKE ALL σε κάθε `plan_%` εκτός των έξι της 071, `GRANT EXECUTE … TO service_role` **μόνο** στις 16 του `v_pub`, αποδείξεις με τα 23 md5, triggers = B-54, 0 γραμμές v5, `pg_notify`, γραμμή αποτελέσματος με στήλες). Εδώ: dry run παραγόμενο, verify (μία γραμμή), rollback (αρνείται με γραμμή v5, σβήνει από τον κατάλογο κάθε `plan_%` εκτός των έξι), η εβδομάδα-σενάριο (B77) και οι περιπτώσεις της κριτικής (B78–B87). Rules test 169, 0 FAIL, και μεταλλαγή που ρίχνει τη B38.
+
+- [ ] **Step 1: Γράψε πρώτα το πλήρες build test (αποτυγχάνει)**
+
+`tests/sql-072-drafts.test.js`:
+```js
+// tests/sql-072-drafts.test.js - run: node --test tests/sql-072-drafts.test.js
+// The 072 drafts (national v5 plan_* functions, F2) at build time, plain node, no database (principle 6: a stale
+// fingerprint, a function born open or a refusal nobody tests should fail here, not at 15:30 on the owner's evening):
+//   - the five files and the dry-run builder are there; ASCII only (clipboard has mangled Greek before);
+//   - the writing files are ONE DO block; verify writes nothing; the dry run is regenerated, never hand-edited;
+//   - the live functions 072 relies on are guarded AND proved by the same md5 list (the plan's 23 functions);
+//   - 072 creates functions only: no table, column, view, index, trigger (B-54 stays), no CREATE OR REPLACE;
+//   - born closed: one REVOKE loop over every plan_*, one GRANT to service_role over the 16 public signatures;
+//   - every public writer checks the caller and ends with plan_h_finish; nothing public returns void;
+//   - every plan: code 072 raises has a case in the rules test, which has >= 80 cases; no retired code anywhere;
+//   - no mirror: national_orders.truck_id / partner_id / status are never written;
+//   - every Greek text is base64 that decodes, and every notice template takes as many %s as it is given;
+//   - every warning code and notice kind 072 writes is in the plan's registry (Interfaces), so F4 finds no surprise.
+// The rules themselves are proven by 072_plan_functions_test.sql on PGlite (tms-auditor/test/plan-072.test.mjs).
+'use strict';
+const { test } = require('node:test');
+const assert = require('node:assert');
+const fs = require('node:fs');
+const path = require('node:path');
+
+const ROOT = path.join(__dirname, '..');
+const DIR = path.join(ROOT, 'worker/migrations/drafts');   // until the owner runs 072 (then: worker/migrations)
+const read = (f) => fs.readFileSync(path.join(DIR, f), 'utf8');
+const strip = (s) => s.replace(/--[^\n]*/g, '');
+const DO_FILES = ['072_plan_functions.sql', '072_plan_functions_dryrun.sql', '072_plan_functions_test.sql',
+  '072_plan_functions_rollback.sql'];
+const READ_ONLY = ['072_plan_functions_verify.sql'];
+const PUBLIC = [
+  ['plan_orders_create', 'p jsonb, p_actor text, p_role text', 'jsonb,text,text'],
+  ['plan_order_update', 'p jsonb, p_actor text, p_role text', 'jsonb,text,text'],
+  ['plan_put_pieces', 'p jsonb, p_actor text, p_role text', 'jsonb,text,text'],
+  ['plan_put_group', 'p jsonb, p_actor text, p_role text', 'jsonb,text,text'],
+  ['plan_move_pieces', 'p jsonb, p_actor text, p_role text', 'jsonb,text,text'],
+  ['plan_split_piece', 'p jsonb, p_actor text, p_role text', 'jsonb,text,text'],
+  ['plan_rt_update', 'p jsonb, p_actor text, p_role text', 'jsonb,text,text'],
+  ['plan_rt_clear', 'p jsonb, p_actor text, p_role text', 'jsonb,text,text'],
+  ['plan_delete', 'p jsonb, p_actor text, p_role text', 'jsonb,text,text'],
+  ['plan_vs_set_day', 'p jsonb, p_actor text, p_role text', 'jsonb,text,text'],
+  ['plan_vs_set_place', 'p jsonb, p_actor text, p_role text', 'jsonb,text,text'],
+  ['plan_local_loading', 'p jsonb, p_actor text, p_role text', 'jsonb,text,text'],
+  ['plan_notice_read', 'p jsonb, p_actor text, p_role text', 'jsonb,text,text'],
+  ['plan_board', 'p_week date, p_role text', 'date,text'],
+  ['plan_vs_state', 'p_order_ids bigint[]', 'bigint[]'],
+  ['plan_notices_list', 'p_desk text, p_role text', 'text,text'],
+];
+const WRITERS = PUBLIC.filter((x) => x[2] === 'jsonb,text,text').map((x) => x[0]);
+// The live functions 072 relies on (the plan's starting point: 22/10 23:10, again 23/10).
+const GUARDED = [
+  ['public.dl_sync_from_rt()', '331cea3a8987b74a9b0add698df9b158'],
+  ['public.dl_local_day_sync(bigint,date)', '151dab06e2676f3c8885d7298d0ac6af'],
+  ['public.dl_sync_from_local_move()', 'f053c478c79ef55dcc62b65a61939b9b'],
+  ['public.local_moves_before()', '3b9f0a27c9921c63ce9fb41f09ef0462'],
+  ['public.dl_local_line_guard()', 'e7f0348ccc5764d29608b8701f0e83b6'],
+  ['public.dl_cash_sync_entry()', '6d702bad6485f06535c6a0d5aff0bd0c'],
+  ['public.order_cd_stop_follow()', '433a1a7205fceb264e77f5a0c71a1521'],
+  ['public.ramp_follows_stop()', '6fa6a83c4191af271dbae85935d710c5'],
+  ['public.invoice_mark_guard()', 'dd975c4f04f95f528c7c79a80eb4d387'],
+  ['public.stock_guard_natl()', 'e941edbca9ff1bbeba0c89d49eb71cb3'],
+  ['public.stock_guard_orders()', '63aa751d93cc8b34afa5587912de7045'],
+  ['public.national_orders_soft_delete_cascade()', '6c423b14397c659272b1c9256189933d'],
+  ['public.rt_status_guard()', 'd7757f99c3443ac167d5bdaf3e34b142'],
+  ['public.plan_chk()', '8f2fa7e5541aded2dffc853a57c54c22'],
+  ['public.plan_rt_window_sync()', '050cbabe34493018f4335f748029761e'],
+  ['public.plan_rt_problem(bigint)', 'f383f449d55e657cfa929bb51a9120f6'],
+  ['public.plan_shipment_problem(bigint)', '8dd2beb159142bf5a6a4e32688688875'],
+  ['public.plan_leg_problem(bigint)', '24803f176f12355faa84c07e43cb0df0'],
+  ['public.plan_local_loading_problem(bigint)', '4c3dbec3810121a2a585fe8b49ceadf1'],
+  ['public.ct_rt_legs_v2_guard()', '6240d699bc114ffd49c7d62780432c94'],
+  ['public.tms_week(date)', '89c5ba44087d4293850a590c3ae4627f'],
+  ['public.rt_sync_to_orders()', 'a63234c844c2b6236b1e6dfe1410b8fc'],
+  ['public.rt_sync_to_national_loads()', '028efb76373a0a6517134feaea88bc2f'],
+];
+const RETIRED = ['hub_endpoint', 'piece_planned', 'bridge_moved', 'bridge_split', 'legacy_nl', 'frozen', 'restore_expired',
+  'restore_conflict', 'partner_rate_on_owned', 'window_order'];
+
+// The body of `CREATE FUNCTION public.<name>(` up to its closing `$f$;`.
+function body(src, name) {
+  const a = src.indexOf(`CREATE FUNCTION public.${name}(`);
+  assert.ok(a >= 0, `${name} is not created by 072`);
+  const b = src.indexOf('\n$f$;', a);
+  assert.ok(b > a, `${name}: no closing $f$;`);
+  return src.slice(a, b);
+}
+// The entries of `<name> [CONSTANT] text[] := ARRAY[ ... ];` or `:= array_remove(ARRAY[ ... ]::text[], NULL);` (v_pub).
+function arrayItems(src, name) {
+  const m = new RegExp(`\\b${name}(?: CONSTANT)? text\\[\\] := (?:array_remove\\()?ARRAY\\[([\\s\\S]*?)\\](?:::text\\[\\], NULL\\))?;`).exec(src);
+  assert.ok(m, `${name} not found`);
+  return [...strip(m[1]).matchAll(/'((?:[^']|'')*)'/g)].map((x) => x[1]);
+}
+
+test('the five 072 files and the dry-run builder are there', () => {
+  const files = fs.readdirSync(DIR).filter((f) => /^072_plan_functions/.test(f));
+  assert.deepStrictEqual(files.slice().sort(), DO_FILES.concat(READ_ONLY).sort());
+  assert.ok(fs.existsSync(path.join(DIR, 'tools/build-072-dryrun.mjs')));
+});
+
+test('ASCII only: every 072 file and the builder', () => {
+  for (const f of DO_FILES.concat(READ_ONLY, ['tools/build-072-dryrun.mjs'])) {
+    const bad = [...read(f)].filter((c) => c.charCodeAt(0) > 127);
+    assert.deepStrictEqual(bad, [], f);
+  }
+});
+
+test('each writing file is ONE DO block; verify writes nothing', () => {
+  for (const f of DO_FILES) assert.strictEqual((read(f).match(/^DO \$/gm) || []).length, 1, f);
+  for (const f of READ_ONLY) {
+    const sql = strip(read(f)).replace(/'(?:[^']|'')*'/g, "''");
+    assert.doesNotMatch(sql, /\b(INSERT|UPDATE|DELETE|CREATE|DROP|ALTER|GRANT|REVOKE|TRUNCATE)\b/i, f);
+    assert.doesNotMatch(sql, /^DO \$/m, f);
+  }
+});
+
+test('the dry run is regenerated from 072 (node worker/migrations/drafts/tools/build-072-dryrun.mjs)', async () => {
+  const { PAIR, buildDryRun } = await import(path.join(DIR, 'tools/build-072-dryrun.mjs'));
+  assert.strictEqual(read(PAIR.target), buildDryRun(read(PAIR.source)), PAIR.target + ' drifted');
+});
+
+test('the live functions 072 relies on: guarded at the top AND proved at the end by the same md5 list', () => {
+  const src = read('072_plan_functions.sql');
+  for (const [sig, m] of GUARDED) {
+    const n = src.split(`('${sig}', '${m}')`).length - 1;
+    assert.ok(n >= 2, `${sig} ${m}: in the guard and in the proof (found ${n})`);
+  }
+  const verify = read('072_plan_functions_verify.sql');
+  for (const [sig, m] of GUARDED) assert.ok(verify.includes(`('${sig}', '${m}')`), `verify reads ${sig}`);
+  const pairs = [...src.matchAll(/\('public\.[a-z_0-9]+\([a-z,\[\]]*\)', '[0-9a-f]{32}'\)/g)].map((x) => x[0]);
+  for (const p of pairs) assert.ok(GUARDED.some(([s, m]) => p === `('${s}', '${m}')`), `unknown guard ${p}`);
+});
+
+test('072 creates functions only: B-54 stays, nothing existing is rewritten', () => {
+  const src = strip(read('072_plan_functions.sql'));
+  assert.doesNotMatch(src, /\bCREATE\s+(OR\s+REPLACE\s+)?(TABLE|VIEW|TRIGGER|CONSTRAINT\s+TRIGGER|INDEX|UNIQUE\s+INDEX|EXTENSION|POLICY)\b/i);
+  assert.doesNotMatch(src, /\bALTER\s+(TABLE|FUNCTION|VIEW)\b/i);
+  assert.doesNotMatch(src, /\bCREATE\s+OR\s+REPLACE\s+FUNCTION\b/i, 'never CREATE OR REPLACE: an existing function stays untouched');
+  assert.doesNotMatch(src, /UPDATE\s+monitoring\.checks/i, 'no trigger added, B-54 not bumped');
+  for (const m of src.matchAll(/\bCREATE FUNCTION public\.([a-z_0-9]+)\(/g)) {
+    assert.match(m[1], /^plan_/, `072 creates only plan_* functions (${m[1]})`);
+  }
+  const rb = strip(read('072_plan_functions_rollback.sql'));
+  assert.match(rb, /EXECUTE format\('DROP FUNCTION %s', v_f\.sig\)/);
+  assert.doesNotMatch(rb, /\bDROP\s+(TABLE|VIEW|TRIGGER|INDEX)\b/i);
+  assert.match(rb, /v5 row\(s\) exist/, 'the rollback refuses after the first v5 row');
+});
+
+test('born closed: one REVOKE over every plan_*, EXECUTE to service_role on the 16 public signatures only', () => {
+  const src = strip(read('072_plan_functions.sql'));
+  assert.match(src, /EXECUTE format\('REVOKE ALL ON FUNCTION %s FROM PUBLIC, anon, authenticated, service_role', v_f\.sig\)/);
+  const grants = src.match(/\bGRANT\b/g) || [];
+  assert.strictEqual(grants.length, 1, 'exactly one GRANT, inside the v_pub loop');
+  assert.match(src, /EXECUTE format\('GRANT EXECUTE ON FUNCTION %s TO service_role', v_sig\)/);
+  const pub = arrayItems(read('072_plan_functions.sql'), 'v_pub');
+  assert.deepStrictEqual(pub.slice().sort(), PUBLIC.map(([n, , t]) => `public.${n}(${t})`).sort());
+  const verify = read('072_plan_functions_verify.sql');
+  for (const s of pub) assert.ok(verify.includes(`'${s}'`), `verify lists ${s}`);
+  assert.doesNotMatch(src, /GRANT[^;]*\b(anon|authenticated|PUBLIC)\b/i);
+});
+
+test('the public functions: exact signatures, jsonb, SECURITY DEFINER; the writers check the caller and finish', () => {
+  const src = read('072_plan_functions.sql');
+  for (const [name, args] of PUBLIC) {
+    const b = body(src, name);
+    assert.ok(b.startsWith(`CREATE FUNCTION public.${name}(${args})`), `${name}(${args})`);
+    assert.match(b.split('$f$')[0], /RETURNS jsonb\b/, `${name} returns jsonb, never void`);
+    assert.match(b.split('$f$')[0], /SECURITY DEFINER SET search_path = public/, `${name}: definer, search_path`);
+  }
+  for (const name of WRITERS) {
+    const b = body(src, name);
+    // plan_h_ctx also sets the 071 rules DEFERRED for the call (section A)
+    assert.match(b, /perform plan_h_ctx\(p_actor, p_role\);/, `${name} checks actor and role`);
+    assert.match(b, /perform plan_h_keys\(p, array\[/, `${name} refuses unknown keys (principle 1)`);
+    assert.match(b, /perform plan_h_finish\(\);/, `${name} checks the deferred rules inside itself`);
+  }
+  for (const name of ['plan_board', 'plan_vs_state', 'plan_notices_list']) {
+    assert.match(body(src, name).split('$f$')[0], /\bSTABLE\b/, `${name} is a read`);
+  }
+  const rc = body(src, 'plan_rt_create');
+  assert.ok(rc.startsWith('CREATE FUNCTION public.plan_rt_create(p jsonb, p_actor text, p_role text)'));
+  assert.ok(!arrayItems(src, 'v_pub').some((s) => s.includes('plan_rt_create')), 'plan_rt_create is internal (decision 3)');
+});
+
+test('every plan: code 072 raises has a case; >= 80 cases; no retired code', () => {
+  const src = read('072_plan_functions.sql');
+  const testSql = read('072_plan_functions_test.sql');
+  const codes = new Set([...strip(src).matchAll(/plan_h_raise\('([a-z_0-9]+)'/g)].map((m) => m[1]));
+  assert.ok(codes.size >= 20, `found ${codes.size} codes`);
+  for (const c of codes) assert.ok(testSql.includes(`'plan:${c}'`), `plan:${c} has no case in 072_plan_functions_test.sql`);
+  // section A's cases: want ARRAY[...]; section B's: b_want, one ARRAY[...] per task, up to '-- end of b_want'
+  const bWant = /\bb_want text\[\] := ([\s\S]*?);  -- end of b_want/.exec(testSql);
+  assert.ok(bWant, 'b_want not found');
+  const nB = [...strip(bWant[1]).matchAll(/'((?:[^']|'')*)'/g)].length;
+  const n = arrayItems(testSql, 'want').length + nB;
+  assert.ok(nB >= 77, `section B has ${nB} cases`);
+  assert.ok(n >= 80, `${n} cases, at least 80`);
+  for (const r of RETIRED) {
+    assert.ok(!strip(src).includes(r), `072 must not know ${r}`);
+    assert.ok(!strip(testSql).includes(`plan:${r}`), `the test must not expect ${r}`);
+  }
+  assert.strictEqual((src.match(/-- mut:payroll-delete-begin/g) || []).length, 1, 'mutation marker begin, once');
+  assert.strictEqual((src.match(/-- mut:payroll-delete-end/g) || []).length, 1, 'mutation marker end, once');
+});
+
+test('no mirror: national_orders.truck_id / partner_id / status are never written (spec 2.1)', () => {
+  const src = strip(read('072_plan_functions.sql'));
+  for (const m of src.matchAll(/UPDATE\s+(?:public\.)?national_orders\s+SET\s+([\s\S]*?)\bwhere\b/gi)) {
+    assert.doesNotMatch(m[1], /\b(truck_id|partner_id|status)\s*=/i, 'UPDATE national_orders SET ' + m[1]);
+  }
+  for (const m of src.matchAll(/INSERT\s+INTO\s+(?:public\.)?national_orders\s*\(([^)]*)\)/gi)) {
+    assert.doesNotMatch(m[1], /\b(truck_id|partner_id|status)\b/i, 'INSERT INTO national_orders (' + m[1] + ')');
+  }
+});
+
+test('Greek is base64 that decodes; every notice template takes the %s it is given', () => {
+  const src = read('072_plan_functions.sql');
+  const b64 = [...src.matchAll(/'([A-Za-z0-9+/]{16,}={0,2})'/g)].map((m) => m[1])
+    .filter((s) => !/^[0-9a-f]{32}$/.test(s) && /[\u0370-\u03ff]/.test(Buffer.from(s, 'base64').toString('utf8')));
+  assert.ok(b64.length >= 4, `found ${b64.length} Greek base64 texts`);
+  for (const s of b64) {
+    const txt = Buffer.from(s, 'base64').toString('utf8');
+    assert.strictEqual(Buffer.from(txt, 'utf8').toString('base64'), s, 'round trip ' + s);
+    assert.match(txt, /[Ͱ-Ͽ]/, 'Greek in ' + txt);
+  }
+  // b_costs (2 args) and b_place (3 args) of part 3
+  const tpl = (name) => Buffer.from(new RegExp(`\\b${name} constant text := '([^']+)'`).exec(src)[1], 'base64').toString('utf8');
+  assert.strictEqual((tpl('b_costs').match(/%s/g) || []).length, 2);
+  assert.strictEqual((tpl('b_place').match(/%s/g) || []).length, 3);
+});
+
+test('every warning code and notice kind 072 writes is in the plan\'s registry (Interfaces)', () => {
+  const src = strip(read('072_plan_functions.sql'));
+  const WARNINGS = ['local_payroll_review', 'mixed_temp', 'over_33', 'v1_same_truck', 'vs_day_differs'];
+  const KINDS = ['costs_without_rt', 'vs_day_changed', 'vs_place_changed'];
+  const warn = [...new Set([...src.matchAll(/jsonb_build_object\('code', '([a-z_0-9]+)'/g)].map((m) => m[1]))].sort();
+  assert.deepStrictEqual(warn, WARNINGS, 'warnings[] codes');
+  const kinds = [...new Set([...src.matchAll(/plan_h_notice\('(?:intl|natl)', '([a-z_0-9]+)'/g)].map((m) => m[1]))].sort();
+  assert.deepStrictEqual(kinds, KINDS, 'plan_notices kinds');
+});
+```
+
+Run: `node --test tests/sql-072-drafts.test.js`
+Expected: ✖ κάθε test που διαβάζει `_dryrun` / `_verify` / `_rollback` / τη γεννήτρια (`ENOENT`: «the five 072 files…», «ASCII only», «each writing file is ONE DO block», «the dry run is regenerated», «the live functions …», «born closed», «072 creates functions only») και το «every plan: code … >= 80» (`section B has 76 cases`, ως το Step 2)· ✔ «the public functions», «no mirror», «Greek is base64», «registry».
+
+- [ ] **Step 2: Η εβδομάδα 3–9/10 ως κλήσεις (B77)**
+
+Στο `072_plan_functions_test.sql`, πριν από `        -- [B-CASES-NEXT]`:
+```sql
+        -- ---- Task B9: the week (the shape of 3-9/10/2026, on the TMS week AFTER day D) ----
+        ELSIF kb = 77 THEN   -- replayed as calls: ERT-1 / ERT-2 / ERT-3 = 19 / 32 / 31 pallets; Mon / Tue / Thu of week b_w
+          -- the Saturday after D: in the future (the production run's payroll guards see no past week) and clear of S
+          b_w := b_d + 7 - ((extract(isodow FROM b_d)::int + 1) % 7);
+          b_e1 := NULL;
+          INSERT INTO orders (legacy_id, order_type, direction, status, veroia_switch, loading_datetime, delivery_datetime,
+                              cross_dock_date, reference, client_id)
+          VALUES ('rec072TBW1', 'International', 'Import', 'Pending', true, b_w - 2, b_w + 2,
+                  b_w + 2, 'WN072-TEST', b_cl) RETURNING id INTO b_y;
+          INSERT INTO order_stops (legacy_id, stop_type, stop_number, datetime, order_id, location_id, pallets)
+          VALUES ('rec072TBW2', 'Unloading', 1, b_w + 2, b_y, b_la, 12) RETURNING id INTO b_z;
+          INSERT INTO shipments (order_id, order_stop_id, created_by) VALUES (b_y, b_z, 'test:072b') RETURNING id INTO b_x;
+          INSERT INTO shipment_pieces (shipment_id, pallets, created_by) VALUES (b_x, 12, 'test:072b');
+          -- ERT-1, Mon 5/10: the VS (12) to A, and a national 7 from Veroia to B in the same truck
+          b_v2 := plan_put_group(jsonb_build_object('group', jsonb_build_object('order_id', b_y),
+                    'target', jsonb_build_object('new_rt', jsonb_build_object('trip_type', 'OWNED', 'truck_id', b_t1, 'driver_id', b_d1),
+                                                 'side', 'KATHODOS'),
+                    'stops', jsonb_build_array(
+                      jsonb_build_object('ref', 'h', 'location_id', b_hub, 'side', 'KATHODOS',
+                        'planned_from', ((b_w + 2) + time '06:00') AT TIME ZONE 'Europe/Athens', 'planned_to', ((b_w + 2) + time '07:00') AT TIME ZONE 'Europe/Athens'),
+                      jsonb_build_object('ref', 'a', 'location_id', b_la, 'side', 'KATHODOS',
+                        'planned_from', ((b_w + 2) + time '09:00') AT TIME ZONE 'Europe/Athens', 'planned_to', ((b_w + 2) + time '10:00') AT TIME ZONE 'Europe/Athens'))),
+                  'test:072b', 'dispatcher');
+          b_e1 := (b_v2->'ids'->>'rt_id')::bigint;
+          PERFORM plan_orders_create(jsonb_build_object(
+                    'orders', jsonb_build_array(jsonb_build_object('client_id', b_cl, 'price', 1300, 'reference', 'WN072-TEST',
+                      'goods', 'TEST', 'temperature_c', 2, 'pallet_exchange', false, 'notes', null,
+                      'shipments', jsonb_build_array(jsonb_build_object('origin_location_id', b_hub, 'dest_location_id', b_lb,
+                        'pallets', 7, 'load_from', ((b_w + 2) + time '06:00') AT TIME ZONE 'Europe/Athens', 'load_to', ((b_w + 2) + time '07:00') AT TIME ZONE 'Europe/Athens',
+                        'deliver_from', ((b_w + 2) + time '11:00') AT TIME ZONE 'Europe/Athens', 'deliver_to', ((b_w + 2) + time '12:00') AT TIME ZONE 'Europe/Athens')))),
+                    'target', jsonb_build_object('rt_id', b_e1, 'side', 'KATHODOS'),
+                    'stops', jsonb_build_array(
+                      jsonb_build_object('ref', 'h', 'stop_id', (SELECT s.id FROM rt_stops s WHERE s.rt_id = b_e1
+                                                                   AND s.location_id = b_hub AND s.deleted_at IS NULL)),
+                      jsonb_build_object('ref', 'b', 'location_id', b_lb, 'side', 'KATHODOS',
+                        'planned_from', ((b_w + 2) + time '11:00') AT TIME ZONE 'Europe/Athens', 'planned_to', ((b_w + 2) + time '12:00') AT TIME ZONE 'Europe/Athens'))),
+                  'test:072b', 'dispatcher');
+          -- ERT-2, Tue 6/10: a groupage of two clients' orders from Veroia (20 + 12) in ONE call, on a new cycle
+          b_v2 := plan_orders_create(jsonb_build_object(
+                    'orders', jsonb_build_array(
+                      jsonb_build_object('client_id', b_cl, 'price', 820, 'reference', 'WN072-TEST', 'goods', 'TEST',
+                        'temperature_c', 2, 'pallet_exchange', false, 'notes', null,
+                        'shipments', jsonb_build_array(jsonb_build_object('origin_location_id', b_hub, 'dest_location_id', b_lc,
+                          'pallets', 20, 'load_from', ((b_w + 3) + time '05:00') AT TIME ZONE 'Europe/Athens', 'load_to', ((b_w + 3) + time '06:00') AT TIME ZONE 'Europe/Athens',
+                          'deliver_from', ((b_w + 3) + time '10:00') AT TIME ZONE 'Europe/Athens', 'deliver_to', ((b_w + 3) + time '12:00') AT TIME ZONE 'Europe/Athens'))),
+                      jsonb_build_object('client_id', b_cl, 'price', 400, 'reference', 'WN072-TEST', 'goods', 'TEST',
+                        'temperature_c', 2, 'pallet_exchange', false, 'notes', null,
+                        'shipments', jsonb_build_array(jsonb_build_object('origin_location_id', b_hub, 'dest_location_id', b_lb,
+                          'pallets', 12, 'load_from', ((b_w + 3) + time '05:00') AT TIME ZONE 'Europe/Athens', 'load_to', ((b_w + 3) + time '06:00') AT TIME ZONE 'Europe/Athens',
+                          'deliver_from', ((b_w + 3) + time '14:00') AT TIME ZONE 'Europe/Athens', 'deliver_to', ((b_w + 3) + time '15:00') AT TIME ZONE 'Europe/Athens')))),
+                    'target', jsonb_build_object('new_rt', jsonb_build_object('trip_type', 'OWNED', 'truck_id', b_t2, 'driver_id', b_d2),
+                                                 'side', 'KATHODOS'),
+                    'stops', jsonb_build_array(
+                      jsonb_build_object('ref', 'h', 'location_id', b_hub, 'side', 'KATHODOS',
+                        'planned_from', ((b_w + 3) + time '05:00') AT TIME ZONE 'Europe/Athens', 'planned_to', ((b_w + 3) + time '06:00') AT TIME ZONE 'Europe/Athens'),
+                      jsonb_build_object('ref', 'c', 'location_id', b_lc, 'side', 'KATHODOS',
+                        'planned_from', ((b_w + 3) + time '10:00') AT TIME ZONE 'Europe/Athens', 'planned_to', ((b_w + 3) + time '12:00') AT TIME ZONE 'Europe/Athens'),
+                      jsonb_build_object('ref', 'b', 'location_id', b_lb, 'side', 'KATHODOS',
+                        'planned_from', ((b_w + 3) + time '14:00') AT TIME ZONE 'Europe/Athens', 'planned_to', ((b_w + 3) + time '15:00') AT TIME ZONE 'Europe/Athens'))),
+                  'test:072b', 'dispatcher');
+          b_e2 := (b_v2->'ids'->>'rt_id')::bigint;
+          -- ERT-3, Thu 8/10: a partner brings 18 + 13 up to Veroia (ANODOS), rate 480
+          b_v2 := plan_orders_create(jsonb_build_object(
+                    'orders', jsonb_build_array(
+                      jsonb_build_object('client_id', b_cl, 'price', 300, 'reference', 'WN072-TEST', 'goods', 'TEST',
+                        'temperature_c', 2, 'pallet_exchange', false, 'notes', null,
+                        'shipments', jsonb_build_array(jsonb_build_object('origin_location_id', b_la, 'dest_location_id', b_hub,
+                          'pallets', 18, 'load_from', ((b_w + 5) + time '08:00') AT TIME ZONE 'Europe/Athens', 'load_to', ((b_w + 5) + time '09:00') AT TIME ZONE 'Europe/Athens',
+                          'deliver_from', ((b_w + 5) + time '13:00') AT TIME ZONE 'Europe/Athens', 'deliver_to', ((b_w + 5) + time '14:00') AT TIME ZONE 'Europe/Athens'))),
+                      jsonb_build_object('client_id', b_cl, 'price', 260, 'reference', 'WN072-TEST', 'goods', 'TEST',
+                        'temperature_c', 2, 'pallet_exchange', false, 'notes', null,
+                        'shipments', jsonb_build_array(jsonb_build_object('origin_location_id', b_lc, 'dest_location_id', b_hub,
+                          'pallets', 13, 'load_from', ((b_w + 5) + time '10:00') AT TIME ZONE 'Europe/Athens', 'load_to', ((b_w + 5) + time '11:00') AT TIME ZONE 'Europe/Athens',
+                          'deliver_from', ((b_w + 5) + time '13:00') AT TIME ZONE 'Europe/Athens', 'deliver_to', ((b_w + 5) + time '14:00') AT TIME ZONE 'Europe/Athens')))),
+                    'target', jsonb_build_object('new_rt', jsonb_build_object('trip_type', 'PARTNER', 'partner_id', b_pa,
+                                                 'partner_rate', 480), 'side', 'ANODOS'),
+                    'stops', jsonb_build_array(
+                      jsonb_build_object('ref', 'a', 'location_id', b_la, 'side', 'ANODOS',
+                        'planned_from', ((b_w + 5) + time '08:00') AT TIME ZONE 'Europe/Athens', 'planned_to', ((b_w + 5) + time '09:00') AT TIME ZONE 'Europe/Athens'),
+                      jsonb_build_object('ref', 'c', 'location_id', b_lc, 'side', 'ANODOS',
+                        'planned_from', ((b_w + 5) + time '10:00') AT TIME ZONE 'Europe/Athens', 'planned_to', ((b_w + 5) + time '11:00') AT TIME ZONE 'Europe/Athens'),
+                      jsonb_build_object('ref', 'h', 'location_id', b_hub, 'side', 'ANODOS',
+                        'planned_from', ((b_w + 5) + time '13:00') AT TIME ZONE 'Europe/Athens', 'planned_to', ((b_w + 5) + time '14:00') AT TIME ZONE 'Europe/Athens'))),
+                  'test:072b', 'dispatcher');
+          b_e3 := (b_v2->'ids'->>'rt_id')::bigint;
+          b_t0 := clock_timestamp();
+          b_v := plan_board(b_w, 'owner');
+          b_el := clock_timestamp() - b_t0;
+          b_verdict := CASE
+            WHEN (SELECT string_agg(coalesce((SELECT sum(sp.pallets) FROM piece_legs l JOIN shipment_pieces sp ON sp.id = l.piece_id
+                                               WHERE l.rt_id = u.rid AND l.deleted_at IS NULL), 0)::text, '/' ORDER BY u.ord)
+                    FROM unnest(ARRAY[b_e1, b_e2, b_e3]) WITH ORDINALITY u(rid, ord)) = '19.0/32.0/31.0'
+             AND (SELECT partner_rate = 480 AND trip_type = 'PARTNER' FROM ct_round_trips WHERE id = b_e3)
+             AND (SELECT count(*) FROM dl_entries WHERE rt_id IN (b_e1, b_e2, b_e3) AND deleted_at IS NULL) = 2
+             AND (SELECT count(*) FROM national_orders WHERE reference = 'WN072-TEST' AND deleted_at IS NULL
+                    AND truck_id IS NULL AND partner_id IS NULL AND status IS NULL AND legacy_id ~ '^rec[A-Za-z0-9]{14}$') = 5
+             AND (SELECT count(*) FROM jsonb_array_elements(b_v->'cycles') c WHERE (c->>'rt_id')::bigint IN (b_e1, b_e2, b_e3)) = 3
+             AND b_el < interval '1 second'
+            THEN 'ok week 3-9/10: ERT-1/2/3 = 19/32/31 pallets, two payroll lines, partner 480, board in '
+                 || round(extract(epoch FROM b_el) * 1000) || ' ms'
+            ELSE 'FAIL week 3-9/10' END;
+        -- ---- Task B9: the critique of 23/10 - unknown keys, a delete with a local loading on a cycle that stays,
+        -- ---- the TOPIKO line with an amount (decision 33) ----
+        ELSIF kb = 78 THEN   -- every function of section B refuses an unknown key, never ignores it
+          PERFORM plan_rt_update(jsonb_build_object('rt_id', b_rt1, 'set', jsonb_build_object('truk_id', b_t2)), 'test:072b', 'dispatcher');
+        ELSIF kb = 79 THEN
+          PERFORM plan_rt_clear(jsonb_build_object('rt_id', b_rt1, 'dryRun', true), 'test:072b', 'dispatcher');
+        ELSIF kb = 80 THEN
+          PERFORM plan_delete(jsonb_build_object('nat_order_id', b_no1, 'dryRun', true), 'test:072b', 'dispatcher');
+        ELSIF kb = 81 THEN
+          PERFORM plan_vs_set_day(jsonb_build_object('order_id', b_vo, 'day', b_d + 1, 'note', 'x'), 'test:072b', 'dispatcher');
+        ELSIF kb = 82 THEN
+          PERFORM plan_vs_set_place(jsonb_build_object('order_stop_id', b_u1, 'location_id', b_ln, 'loc', 1), 'test:072b', 'dispatcher');
+        ELSIF kb = 83 THEN
+          PERFORM plan_local_loading(jsonb_build_object('local_move_id', 1, 'cancle', true), 'test:072b', 'dispatcher');
+        ELSIF kb = 84 THEN
+          PERFORM plan_notice_read(jsonb_build_object('id', 1), 'test:072b', 'dispatcher');
+        ELSIF kb = 85 THEN   -- delete one of two orders: the local loading of ITS stop is listed and goes, the cycle stays
+          INSERT INTO rt_stops (rt_id, seq, location_id, side, planned_from, planned_to, created_by)
+          VALUES (b_rt1, 3, b_lc, 'KATHODOS', h16, h18, 'test:072b') RETURNING id INTO b_y;
+          INSERT INTO national_orders (legacy_id, client_id, reference, price) VALUES ('rec072TBN2', b_cl, 'WN072-TEST', 60)
+            RETURNING id INTO b_no2;
+          INSERT INTO shipments (nat_order_id, origin_location_id, dest_location_id, pallets, load_from, load_to, deliver_from,
+                                 deliver_to, created_by)
+          VALUES (b_no2, b_lb, b_lc, 5, h12, h14, h16, h18, 'test:072b') RETURNING id INTO b_sh2;
+          INSERT INTO shipment_pieces (shipment_id, pallets, created_by) VALUES (b_sh2, 5, 'test:072b') RETURNING id INTO b_p2;
+          INSERT INTO piece_legs (piece_id, leg_no, rt_id, pickup_stop_id, drop_stop_id, created_by)
+          VALUES (b_p2, 1, b_rt1, b_sb, b_y, 'test:072b') RETURNING id INTO b_lg2;
+          INSERT INTO local_moves (move_kind, rt_stop_id, driver_id, truck_id, move_date, status, sequence)
+          VALUES ('nat_loading', b_sa, b_d3, b_t2, b_d, 'Assigned', 1) RETURNING id INTO b_x;
+          SET CONSTRAINTS ALL IMMEDIATE;
+          SET CONSTRAINTS ALL DEFERRED;
+          b_v2 := plan_delete(jsonb_build_object('nat_order_id', b_no1, 'dry_run', true), 'test:072b', 'dispatcher');
+          PERFORM plan_delete(jsonb_build_object('nat_order_id', b_no1, 'reason', 'TEST 072 reason',
+                                                 'confirm_token', b_v2->>'confirm_token'), 'test:072b', 'dispatcher');
+          b_verdict := CASE WHEN (b_v2->>'needs_confirm')::boolean
+                              AND b_v2->'consequences' @> jsonb_build_array(jsonb_build_object('kind', 'local_loading', 'local_move_id', b_x))
+                              AND (SELECT deleted_at IS NOT NULL FROM local_moves WHERE id = b_x)
+                              AND (SELECT deleted_at IS NOT NULL FROM rt_stops WHERE id = b_sa)
+                              AND (SELECT deleted_at IS NULL FROM rt_stops WHERE id = b_sb)
+                              AND (SELECT status FROM ct_round_trips WHERE id = b_rt1) = 'planned'
+                              AND (SELECT deleted_at IS NULL FROM piece_legs WHERE id = b_lg2)
+                            THEN 'ok the loading of the deleted order''s stop listed and gone, its stop gone, the cycle stays'
+                            ELSE 'FAIL delete with a local loading: ' || b_v2::text END;
+        ELSIF kb IN (86, 87) THEN   -- decision 33: a TOPIKO line with an amount goes to review, and the answer says so
+          b_v2 := plan_local_loading(jsonb_build_object('rt_stop_id', b_sa, 'driver_id', b_d3, 'truck_id', b_t2), 'test:072b', 'dispatcher');
+          b_x := (b_v2->'ids'->>'local_move_id')::bigint;
+          UPDATE dl_entries SET trip_value = 50 WHERE driver_id = b_d3 AND entry_date = b_d AND local_move_id IS NOT NULL
+             AND deleted_at IS NULL RETURNING id INTO b_y;
+          IF kb = 86 THEN
+            b_v3 := plan_rt_update(jsonb_build_object('rt_id', b_rt1, 'shift', jsonb_build_object('side', 'KATHODOS', 'delta', '1 day')),
+                    'test:072b', 'dispatcher');
+          ELSE
+            b_v3 := plan_local_loading(jsonb_build_object('local_move_id', b_x, 'cancel', true), 'test:072b', 'dispatcher');
+          END IF;
+          b_verdict := CASE WHEN b_v3->'warnings' @> jsonb_build_array(jsonb_build_object('code', 'local_payroll_review', 'dl_entry_id', b_y))
+                              AND (SELECT needs_review FROM dl_entries WHERE id = b_y)
+                            THEN 'ok the TOPIKO line with 50 waits for accounting, and the answer warns local_payroll_review'
+                            ELSE 'FAIL local payroll review: ' || coalesce(b_v3::text, 'null') END;
+```
+Πριν από `      ;  -- end of b_want`:
+```sql
+      || ARRAY['ok',
+               'plan:bad_input', 'plan:bad_input', 'plan:bad_input', 'plan:bad_input', 'plan:bad_input',
+               'plan:bad_input', 'plan:bad_input', 'ok', 'ok', 'ok']   -- B77-B87 (Task B9)
+```
+
+Run: `cd tms-auditor && node --test test/plan-072.test.mjs`
+Expected: `Result: 169 OK, 0 FAIL`· η B77 γράφει «ok week 3-9/10: ERT-1/2/3 = 19/32/31 pallets, two payroll lines, partner 480, board in <N> ms»· οι B78–B84 = `plan:bad_input` (άγνωστο κλειδί σε κάθε συνάρτηση της Β)· B85 «ok the loading of the deleted order's stop listed and gone…»· B86/B87 «ok the TOPIKO line with 50 waits for accounting…». Η B77 είναι σενάριο πάνω σε έτοιμες συναρτήσεις: αν αποτύχει, το μήνυμα δείχνει ποια κλήση δεν δίνει 19/32/31. Για τις B78–B87 ο κώδικας μπήκε ήδη στις Β2–Β6· μεταλλαγή-έλεγχος (προσωρινά, χωρίς commit): σβήσε το `perform plan_h_stops_sweep(v_stops, …)` της `plan_delete` → `B85 FAIL`· σβήσε το `perform plan_h_keys(p, …)` της `plan_rt_clear` → `B79 FAIL want plan:bad_input got …`. Μετά `git checkout -- worker/migrations/drafts/072_plan_functions.sql`.
+
+- [ ] **Step 3: Το PART 5 του 072 (έλεγχος· καμία αλλαγή)**
+
+Το PART 5 (REVOKE/GRANT, αποδείξεις, `pg_notify`) και η γραμμή αποτελέσματος τα έγραψε το Α1· το `v_pub` το συμπλήρωσε κάθε Task (Α2–Α7, Β2–Β7).
+```bash
+grep -cE "^ +, 'public\.plan_[a-z_]+\(" worker/migrations/drafts/072_plan_functions.sql
+grep -c "PART 5: RIGHTS AND PROOFS" worker/migrations/drafts/072_plan_functions.sql
+```
+Expected: `16` (15 χωρίς την απόφαση 21)· `1`.
+
+- [ ] **Step 4: Η γεννήτρια και το dry run**
+
+`worker/migrations/drafts/tools/build-072-dryrun.mjs`:
+```js
+// Generates the 072 dry run FROM its source:
+//   072_plan_functions.sql -> 072_plan_functions_dryrun.sql
+//   node worker/migrations/drafts/tools/build-072-dryrun.mjs          (writes it)
+//   node worker/migrations/drafts/tools/build-072-dryrun.mjs --check  (exit 1 if the committed file drifted)
+// Why generated, never hand-copied (principle 3): a dry run is only worth anything if it runs EXACTLY the
+// statements the owner will run. tests/sql-072-drafts.test.js fails when the committed dry run differs.
+// Shape (as 069/071): ONE DO $dry$ block - 072's DO block VERBATIM as a nested block (its guards and proofs raise
+// their own messages and stop everything), a read of what it did, and a final RAISE EXCEPTION that carries the
+// result line and undoes all of it (pg_notify included: a NOTIFY is sent only at COMMIT). ASCII in, ASCII out.
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const HERE = path.dirname(fileURLToPath(import.meta.url));
+// The folder that holds the 072 files. After the owner runs them they leave drafts/ (CLAUDE.md rule 5): then
+// this becomes path.resolve(HERE, '../..') and nothing else changes.
+export const DIR = path.resolve(HERE, '..');
+const OPEN = '\nDO $do$\n';
+const CLOSE = '\nEND $do$;\n';
+
+export const PAIR = {
+  source: '072_plan_functions.sql', target: '072_plan_functions_dryrun.sql', name: 'DRY RUN 072',
+  header: `-- 072 DRY RUN - GENERATED by worker/migrations/drafts/tools/build-072-dryrun.mjs from 072_plan_functions.sql.
+-- DO NOT EDIT BY HAND: edit the source and regenerate (tests/sql-072-drafts.test.js fails on any drift).
+-- WHY ONE DO BLOCK: the Supabase SQL editor is NOT atomic across statements (lesson 056), but ONE DO block is
+--   ONE statement: its final error undoes everything inside it. ASCII only.
+-- WHAT: 072's own DO block, statement for statement (the guards, every plan_h_* and plan_*, the REVOKE / GRANT,
+--   the proofs, the PostgREST reload), then a read of the result, ENDING WITH A DELIBERATE ERROR: NOTHING is kept.
+-- WHEN: AFTER 15:00 (the team works 05:30-14:30), BEFORE 072_plan_functions.sql. Same 5 s lock timeout as 072.
+-- EXPECTED (the red ERROR is deliberate): a NOTICE "072 OK: ..." and then
+--   ERROR: P0001: DRY RUN 072 finished - EVERYTHING UNDONE, nothing kept. The block ran to its end  ||  072 ran:
+--   plan functions <6 + the 072 ones>, public 16, service_role EXECUTE 16, open to API 0, triggers 46, B-54 46, v5 rows 0
+--   Anything else (an ERROR from one of 072's guards or proofs): do NOT run 072, copy the message to the coordinator.`,
+  epilogue: `  res := format('072 ran: plan functions %s, public %s, service_role EXECUTE %s, open to API %s, triggers %s, B-54 %s, v5 rows %s',
+    (SELECT count(*) FROM pg_proc p WHERE p.pronamespace = 'public'::regnamespace AND p.proname LIKE 'plan\\_%'),
+    (SELECT count(*) FROM pg_proc p WHERE p.pronamespace = 'public'::regnamespace AND p.proname LIKE 'plan\\_%' AND p.prosecdef
+       AND has_function_privilege('service_role', p.oid, 'EXECUTE')),
+    (SELECT count(*) FROM pg_proc p WHERE p.pronamespace = 'public'::regnamespace AND p.proname LIKE 'plan\\_%'
+       AND has_function_privilege('service_role', p.oid, 'EXECUTE')),
+    (SELECT count(*) FROM pg_proc p WHERE p.pronamespace = 'public'::regnamespace AND p.proname LIKE 'plan\\_%'
+       AND (has_function_privilege('anon', p.oid, 'EXECUTE') OR has_function_privilege('authenticated', p.oid, 'EXECUTE'))),
+    (SELECT count(*) FROM pg_trigger t JOIN pg_class c ON c.oid = t.tgrelid JOIN pg_namespace ns ON ns.oid = c.relnamespace
+      WHERE NOT t.tgisinternal AND t.tgenabled <> 'D' AND ns.nspname = 'public'),
+    (SELECT red_value FROM monitoring.checks WHERE id = 'B-54'),
+    (SELECT count(*) FROM public.shipments) + (SELECT count(*) FROM public.shipment_pieces)
+      + (SELECT count(*) FROM public.rt_stops) + (SELECT count(*) FROM public.piece_legs)
+      + (SELECT count(*) FROM public.plan_notices) + (SELECT count(*) FROM public.ct_round_trips WHERE model = 2));`,
+};
+
+export function buildDryRun(src, pair = PAIR) {
+  const a = src.indexOf(OPEN);
+  const b = src.lastIndexOf(CLOSE);
+  if (a < 0 || b < 0 || b < a) throw new Error(`${pair.source}: the DO $do$ ... END $do$; block was not found`);
+  const body = src.slice(a + OPEN.length, b);   // "DECLARE ... BEGIN ... " of the source, verbatim
+  if (body.includes('$dry$')) throw new Error(`${pair.source}: contains $dry$ - choose other tags`);
+  return `${pair.header}
+
+DO $dry$
+DECLARE
+  res text;
+BEGIN
+  -- ===== ${pair.source}, verbatim =====
+${body}
+END;
+  -- ===== what it did =====
+${pair.epilogue}
+  RAISE EXCEPTION '${pair.name} finished - EVERYTHING UNDONE, nothing kept. The block ran to its end  ||  %', res;
+END
+$dry$;
+`;
+}
+
+if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  const check = process.argv.includes('--check');
+  const source = path.join(DIR, PAIR.source);
+  if (!fs.existsSync(source)) { console.error('no source: ' + PAIR.source); process.exit(1); }
+  const out = buildDryRun(fs.readFileSync(source, 'utf8'));
+  const target = path.join(DIR, PAIR.target);
+  if (check) {
+    const same = fs.existsSync(target) && fs.readFileSync(target, 'utf8') === out;
+    if (!same) console.error('drift: ' + PAIR.target);
+    process.exit(same ? 0 : 1);
+  }
+  fs.writeFileSync(target, out);
+  console.log('wrote ' + PAIR.target);
+}
+```
+
+Run: `node worker/migrations/drafts/tools/build-072-dryrun.mjs`
+Expected: `wrote 072_plan_functions_dryrun.sql`.
+
+- [ ] **Step 5: Verify και rollback**
+
+`worker/migrations/drafts/072_plan_functions_verify.sql`:
+```sql
+-- 072 VERIFY - read-only (SELECT only, writes nothing). Run after 072_plan_functions.sql and any time later.
+-- ONE row. ASCII only. Works before 072 too (then applied = '072 NOT in place').
+-- EXPECTED right after 072 (before any /plan/* write, i.e. until day L):
+--   applied = '072 in place' ; public_functions = 16 ; service_role_execute = 16 ; open_to_api = 0 ;
+--   not_definer = 0 ; bad_shape = 0 ; f1_open = 0 ; b54_matches = true ; changed_live = 0 ; v5_rows = 0 ;
+--   v5_cycles = 0 ; plan_functions = 6 (071) + the 072 ones (the dry run and 072's NOTICE print the same number)
+-- After L: v5_rows and v5_cycles grow; every other value stays as above for ever.
+SELECT
+  CASE WHEN (SELECT count(*) FROM unnest(ARRAY[
+              'public.plan_orders_create(jsonb,text,text)', 'public.plan_order_update(jsonb,text,text)',
+              'public.plan_put_pieces(jsonb,text,text)', 'public.plan_put_group(jsonb,text,text)',
+              'public.plan_move_pieces(jsonb,text,text)', 'public.plan_split_piece(jsonb,text,text)',
+              'public.plan_rt_update(jsonb,text,text)', 'public.plan_rt_clear(jsonb,text,text)',
+              'public.plan_delete(jsonb,text,text)', 'public.plan_vs_set_day(jsonb,text,text)',
+              'public.plan_vs_set_place(jsonb,text,text)', 'public.plan_local_loading(jsonb,text,text)',
+              'public.plan_notice_read(jsonb,text,text)', 'public.plan_board(date,text)',
+              'public.plan_vs_state(bigint[])', 'public.plan_notices_list(text,text)']) s
+             WHERE to_regprocedure(s) IS NOT NULL) = 16
+       THEN '072 in place' ELSE '072 NOT in place' END AS applied,
+  (SELECT count(*) FROM pg_proc p WHERE p.pronamespace = 'public'::regnamespace AND p.proname LIKE 'plan\_%') AS plan_functions,
+  (SELECT count(*) FROM unnest(ARRAY[
+     'public.plan_orders_create(jsonb,text,text)', 'public.plan_order_update(jsonb,text,text)',
+     'public.plan_put_pieces(jsonb,text,text)', 'public.plan_put_group(jsonb,text,text)',
+     'public.plan_move_pieces(jsonb,text,text)', 'public.plan_split_piece(jsonb,text,text)',
+     'public.plan_rt_update(jsonb,text,text)', 'public.plan_rt_clear(jsonb,text,text)',
+     'public.plan_delete(jsonb,text,text)', 'public.plan_vs_set_day(jsonb,text,text)',
+     'public.plan_vs_set_place(jsonb,text,text)', 'public.plan_local_loading(jsonb,text,text)',
+     'public.plan_notice_read(jsonb,text,text)', 'public.plan_board(date,text)',
+     'public.plan_vs_state(bigint[])', 'public.plan_notices_list(text,text)']) s
+    WHERE to_regprocedure(s) IS NOT NULL) AS public_functions,
+  (SELECT count(*) FROM pg_proc p WHERE p.pronamespace = 'public'::regnamespace AND p.proname LIKE 'plan\_%'
+     AND has_function_privilege('service_role', p.oid, 'EXECUTE')) AS service_role_execute,
+  (SELECT count(*) FROM pg_proc p WHERE p.pronamespace = 'public'::regnamespace AND p.proname LIKE 'plan\_%'
+     AND (has_function_privilege('anon', p.oid, 'EXECUTE') OR has_function_privilege('authenticated', p.oid, 'EXECUTE'))) AS open_to_api,
+  (SELECT count(*) FROM pg_proc p WHERE p.pronamespace = 'public'::regnamespace AND p.proname LIKE 'plan\_%'
+     AND has_function_privilege('service_role', p.oid, 'EXECUTE') AND NOT p.prosecdef) AS not_definer,
+  (SELECT count(*) FROM pg_proc p WHERE p.pronamespace = 'public'::regnamespace AND p.proname LIKE 'plan\_%'
+     AND (pg_get_userbyid(p.proowner) <> 'postgres' OR p.proconfig IS DISTINCT FROM ARRAY['search_path=public'])) AS bad_shape,
+  (SELECT count(*) FROM pg_proc p WHERE p.pronamespace = 'public'::regnamespace
+     AND p.proname IN ('plan_chk', 'plan_rt_window_sync', 'plan_rt_problem', 'plan_shipment_problem', 'plan_leg_problem',
+                       'plan_local_loading_problem')
+     AND has_function_privilege('service_role', p.oid, 'EXECUTE')) AS f1_open,
+  (SELECT red_value FROM monitoring.checks WHERE id = 'B-54') = (SELECT count(*) FROM pg_trigger t JOIN pg_class c ON c.oid = t.tgrelid
+     JOIN pg_namespace ns ON ns.oid = c.relnamespace WHERE NOT t.tgisinternal AND t.tgenabled <> 'D' AND ns.nspname = 'public') AS b54_matches,
+  (SELECT count(*) FROM (VALUES
+      ('public.dl_sync_from_rt()', '331cea3a8987b74a9b0add698df9b158'),
+      ('public.dl_local_day_sync(bigint,date)', '151dab06e2676f3c8885d7298d0ac6af'),
+      ('public.dl_sync_from_local_move()', 'f053c478c79ef55dcc62b65a61939b9b'),
+      ('public.local_moves_before()', '3b9f0a27c9921c63ce9fb41f09ef0462'),
+      ('public.dl_local_line_guard()', 'e7f0348ccc5764d29608b8701f0e83b6'),
+      ('public.dl_cash_sync_entry()', '6d702bad6485f06535c6a0d5aff0bd0c'),
+      ('public.order_cd_stop_follow()', '433a1a7205fceb264e77f5a0c71a1521'),
+      ('public.ramp_follows_stop()', '6fa6a83c4191af271dbae85935d710c5'),
+      ('public.invoice_mark_guard()', 'dd975c4f04f95f528c7c79a80eb4d387'),
+      ('public.stock_guard_natl()', 'e941edbca9ff1bbeba0c89d49eb71cb3'),
+      ('public.stock_guard_orders()', '63aa751d93cc8b34afa5587912de7045'),
+      ('public.national_orders_soft_delete_cascade()', '6c423b14397c659272b1c9256189933d'),
+      ('public.rt_status_guard()', 'd7757f99c3443ac167d5bdaf3e34b142'),
+      ('public.plan_chk()', '8f2fa7e5541aded2dffc853a57c54c22'),
+      ('public.plan_rt_window_sync()', '050cbabe34493018f4335f748029761e'),
+      ('public.plan_rt_problem(bigint)', 'f383f449d55e657cfa929bb51a9120f6'),
+      ('public.plan_shipment_problem(bigint)', '8dd2beb159142bf5a6a4e32688688875'),
+      ('public.plan_leg_problem(bigint)', '24803f176f12355faa84c07e43cb0df0'),
+      ('public.plan_local_loading_problem(bigint)', '4c3dbec3810121a2a585fe8b49ceadf1'),
+      ('public.ct_rt_legs_v2_guard()', '6240d699bc114ffd49c7d62780432c94'),
+      ('public.tms_week(date)', '89c5ba44087d4293850a590c3ae4627f'),
+      ('public.rt_sync_to_orders()', 'a63234c844c2b6236b1e6dfe1410b8fc'),
+      ('public.rt_sync_to_national_loads()', '028efb76373a0a6517134feaea88bc2f')) v(sig, m)
+    WHERE (SELECT md5(prosrc) FROM pg_proc WHERE oid = to_regprocedure(v.sig)) IS DISTINCT FROM v.m) AS changed_live,
+  (SELECT count(*) FROM public.shipments) + (SELECT count(*) FROM public.shipment_pieces) + (SELECT count(*) FROM public.rt_stops)
+    + (SELECT count(*) FROM public.piece_legs) + (SELECT count(*) FROM public.plan_notices) AS v5_rows,
+  (SELECT count(*) FROM public.ct_round_trips WHERE model = 2) AS v5_cycles;
+```
+
+`worker/migrations/drafts/072_plan_functions_rollback.sql`:
+```sql
+-- 072 ROLLBACK - every function 072 created goes; nothing else exists to undo (072 adds no table, column, view,
+-- trigger or grant on anything but its own functions). Only with an explicit yes, after 15:00.
+-- It REFUSES as soon as one v5 row exists (spec 2.2: after the first real v5 row there is no going back, only
+-- fixes forward; with the /plan/* writes closed until day L there is none before L). The Worker answers 503
+-- schema_behind on /plan/* after this (Task G4): roll the Worker back FIRST if it is already deployed.
+-- ASCII only. ONE DO block = ONE statement: an error anywhere undoes all of it.
+-- EXPECTED: NOTICE "072 ROLLBACK OK ..." and ONE row "072 ROLLED BACK | 6 | <B-54 red_value> | <same>".
+
+DO $do$
+DECLARE
+  v_f1 CONSTANT text[] := ARRAY['plan_chk', 'plan_rt_window_sync', 'plan_rt_problem', 'plan_shipment_problem',
+                                'plan_leg_problem', 'plan_local_loading_problem'];
+  v_f record; v_k bigint; v_n int := 0; v_trg0 int; v_trg1 int;
+BEGIN
+  PERFORM set_config('lock_timeout', '5s', true);
+  IF to_regprocedure('public.plan_board(date,text)') IS NULL THEN
+    RAISE EXCEPTION '072 rollback: 072 is not applied - nothing to undo';
+  END IF;
+  SELECT (SELECT count(*) FROM public.shipments) + (SELECT count(*) FROM public.shipment_pieces)
+       + (SELECT count(*) FROM public.rt_stops) + (SELECT count(*) FROM public.piece_legs)
+       + (SELECT count(*) FROM public.plan_notices)
+       + (SELECT count(*) FROM public.ct_round_trips WHERE model = 2 OR partner_rate IS NOT NULL)
+       + (SELECT count(*) FROM public.local_moves WHERE move_kind = 'nat_loading' OR rt_stop_id IS NOT NULL)
+       + (SELECT count(*) FROM public.pl_movements WHERE piece_leg_id IS NOT NULL)
+    -- order_stops.via_hub is NOT counted: the facade can write it from F2 on (decision 27), and it is not a v5 row
+    INTO v_k;
+  IF v_k <> 0 THEN
+    RAISE EXCEPTION '072 rollback: % v5 row(s) exist - after the first real v5 row there is no rollback, only fixes forward (spec 2.2)', v_k;
+  END IF;
+  SELECT count(*) INTO v_trg0 FROM pg_trigger t JOIN pg_class c ON c.oid = t.tgrelid
+    JOIN pg_namespace ns ON ns.oid = c.relnamespace
+   WHERE NOT t.tgisinternal AND t.tgenabled <> 'D' AND ns.nspname = 'public';
+
+  -- Every plan_* that is not one of 071's six: the 16 public, plan_rt_create, every plan_h_*. Read from the
+  -- catalogue, not from a list, so a helper added in review cannot be left behind.
+  FOR v_f IN SELECT p.oid::regprocedure AS sig FROM pg_proc p
+              WHERE p.pronamespace = 'public'::regnamespace AND p.proname LIKE 'plan\_%'
+                AND NOT (p.proname = ANY (v_f1)) ORDER BY 1 LOOP
+    EXECUTE format('DROP FUNCTION %s', v_f.sig);
+    v_n := v_n + 1;
+  END LOOP;
+
+  -- PROOFS
+  IF (SELECT count(*) FROM pg_proc p WHERE p.pronamespace = 'public'::regnamespace AND p.proname LIKE 'plan\_%') <> 6
+     OR (SELECT count(*) FROM pg_proc p WHERE p.pronamespace = 'public'::regnamespace AND p.proname = ANY (v_f1)) <> 6 THEN
+    RAISE EXCEPTION '072 rollback proof: the plan_* left are not exactly the six of 071';
+  END IF;
+  IF (SELECT md5(prosrc) FROM pg_proc WHERE oid = 'public.plan_chk()'::regprocedure) <> '8f2fa7e5541aded2dffc853a57c54c22'
+     OR (SELECT md5(prosrc) FROM pg_proc WHERE oid = 'public.dl_sync_from_rt()'::regprocedure) <> '331cea3a8987b74a9b0add698df9b158' THEN
+    RAISE EXCEPTION '072 rollback proof: a function 072 relies on changed';
+  END IF;
+  SELECT count(*) INTO v_trg1 FROM pg_trigger t JOIN pg_class c ON c.oid = t.tgrelid
+    JOIN pg_namespace ns ON ns.oid = c.relnamespace
+   WHERE NOT t.tgisinternal AND t.tgenabled <> 'D' AND ns.nspname = 'public';
+  IF v_trg1 <> v_trg0 OR v_trg1 IS DISTINCT FROM (SELECT red_value FROM monitoring.checks WHERE id = 'B-54') THEN
+    RAISE EXCEPTION '072 rollback proof: triggers % -> %, B-54 % (072 had none)', v_trg0, v_trg1,
+      (SELECT red_value FROM monitoring.checks WHERE id = 'B-54');
+  END IF;
+  PERFORM pg_notify('pgrst', 'reload schema');
+  RAISE NOTICE '072 ROLLBACK OK: % function(s) dropped, the six of 071 remain, triggers % (B-54 unchanged)', v_n, v_trg1;
+END $do$;
+
+SELECT CASE WHEN to_regprocedure('public.plan_board(date,text)') IS NULL THEN '072 ROLLED BACK' ELSE '072 STILL IN PLACE' END AS result,
+       (SELECT count(*) FROM pg_proc p WHERE p.pronamespace = 'public'::regnamespace AND p.proname LIKE 'plan\_%') AS plan_functions,
+       (SELECT count(*) FROM pg_trigger t JOIN pg_class c ON c.oid = t.tgrelid JOIN pg_namespace ns ON ns.oid = c.relnamespace
+         WHERE NOT t.tgisinternal AND t.tgenabled <> 'D' AND ns.nspname = 'public') AS public_triggers,
+       (SELECT red_value FROM monitoring.checks WHERE id = 'B-54') AS b54_red_value;
+```
+
+- [ ] **Step 6: Όλα πράσινα**
+
+Run: `node --test tests/sql-072-drafts.test.js`
+Expected: `ℹ pass 12`, `ℹ fail 0`.
+
+Run: `cd tms-auditor && node --test test/plan-072.test.mjs`
+Expected: `ℹ tests 9`, `ℹ pass 9`, `ℹ fail 0`· στο μήνυμα του rules test `Result: 169 OK, 0 FAIL`· το dry run `072 ran: plan functions <N>, public 16, service_role EXECUTE 16, open to API 0, triggers <T>, B-54 <T>, v5 rows 0`· η μεταλλαγή ρίχνει ακριβώς τη `B38 FAIL want ok got FAIL clear with amount: needs_review 1`.
+
+Run: `node --test worker/test/*.test.mjs worker/src/rt-rules.test.mjs && node --test tests/sql-071-drafts.test.js && cd tms-auditor && node --test test/plan-071.test.mjs`
+Expected: όπως στην Αφετηρία (189/189 Worker, 071 χωρίς αλλαγή).
+
+- [ ] **Step 7: Commit**
+
+```bash
+git add tests/sql-072-drafts.test.js worker/migrations/drafts/072_plan_functions.sql worker/migrations/drafts/072_plan_functions_test.sql worker/migrations/drafts/tools/build-072-dryrun.mjs worker/migrations/drafts/072_plan_functions_dryrun.sql worker/migrations/drafts/072_plan_functions_verify.sql worker/migrations/drafts/072_plan_functions_rollback.sql
+git commit -m "072 complete: generated dry run, verify, rollback, full build test, the week of 3-9/10 and the critique's B cases
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+```
+
+---
+
+---
+
+### Ενότητα Γ · Worker (`deploy/worker-plan`), συναρμολόγηση, deploy, ίχνος, runbook owner, μετά την εκτέλεση
+
+Αρίθμηση: Γ1 βάση · Γ2 κείμενα + χαρτογράφος · **Γ3 όλο το `/plan/*`** (δικαιώματα, εγγραφές, αναγνώσεις: ο `handlePlan` είναι μία συνάρτηση και δεν χωρίζεται σε τίμια βήματα TDD) · Γ4 παλιές διαδρομές · Γ5 φρουρός deploy ως εργαλείο · Γ6 deploy των 24 γραμμών της VD (**εκτός Φ2**, απόφαση 29) · Γ7 deploy Φ2. Ο κώδικας των Γ2–Γ5 γράφεται παράλληλα με τις Α/Β· το `plan-contract` πρασινίζει **μόνο** με την πλήρη 072 (μετά τη Β9).
+
+Συμβόλαια με Α/Β: το `plan-contract.test.mjs` βρίσκει τους κωδικούς της 072 **μόνο** από `plan_h_raise('<κωδικός>'` (σταθερό κείμενο ως 1ο όρισμα) και από `HINT = 'plan:<κωδικός>'`· κρατά μόνο όσους δεν είναι της 071 και τους συγκρίνει με τους **27** νέους των Interfaces. Μόνο οι τέσσερις RPC με dry run (`plan_move_pieces`, `plan_rt_update`, `plan_rt_clear`, `plan_delete`) περνούν τον κλειστό διακόπτη με `{"dry_run": true}`· οι άλλες αρνούνται το κλειδί `dry_run` (`plan_h_keys`), άρα ο διακόπτης δεν παρακάμπτεται ούτε από τη βάση. Στο `PLAN_CHECK_TEXT` δεν μπαίνουν τα δύο EXCLUDE και το `local_moves_nat_loading_once`: απαντούν τον ίδιο κωδικό με την άρνηση της 072 (`truck_busy`, `driver_busy`, `local_exists`). Το «άλλο CHECK → PLAN_RULE μόνο μέσα στο `/plan/*`» και οι χαμένες κλειδαριές (`busy_retry`) μπαίνουν στο `catch` του `handlePlan`, όχι στο `stockRuleError`. Το `POST /costs/rt` με `v1_link_on_v2` **δεν** μπαίνει: είναι απρόσιτο (ένα RT `model=2` δεν μπορεί να έχει `ct_rt_legs`), και ένα try/catch εκεί θα ήταν νεκρός κώδικας.
+
+> **Τι αποδείχθηκε πριν γραφτεί η ενότητα (22/10, χωρίς καμία αλλαγή στο repo):** ο κώδικας και τα tests αυτής της ενότητας εφαρμόστηκαν σε αντίγραφο του `worker/` (+ `core/dkv-parser.js`) έξω από το repo, Task προς Task. Το 072 αντικαταστάθηκε από stub με τις 26 κλήσεις `plan_h_raise`. Μετρήθηκε: αφετηρία 189/189 → Γ2 195 → Γ3 219 → Γ4 222 → Γ5 **226/226**. Κάθε νέο αρχείο test ήταν κόκκινο πριν από τον κώδικά του. Οκτώ σκόπιμες μεταλλαγές (dry run σε κάθε διαδρομή, χωρίς 23P01, χωρίς 409 στο `model=2`, λάθος ετικέτα «Via Hub», χωρίς φρουρό ποσών, κείμενο CHECK που λείπει, νεκρό κλειδί, πλατύτερο δικαίωμα) έκαναν η καθεμία κόκκινο τουλάχιστον ένα test. Bundle με το τοπικό esbuild 0.20.2: `var PLAN_PERMS = {` = 1, `var PLAN_WRITES_OPEN = false;` = 1, οι πέντε παλιοί φρουροί = 1. `worker/src/index.js` μετά το Γ4: 6.186 γραμμές, md5 `5faa633304be8f8f11c5e4f4eb241a74` (ενδεικτικό: ίδιο μόνο αν εφαρμοστεί αυτούσιο πάνω στο `a3117aac…`).
+> SELECT 22/10 23:40 (μόνο ανάγνωση): `order_stops.via_hub` boolean NOT NULL default false· `ct_round_trips.model` smallint NOT NULL default 1· CHECK `partner_needs_partner`, `owned_needs_truck` (μόνο closed/complete), `window_order` ζωντανά· `rt_v2_truck_once`/`rt_v2_driver_once` deferred· γραμμές v5 = 0, `model=2` = 0, `nat_loading` = 0, `audit_log` στους 5 πίνακες = 0, συναρτήσεις `plan_%` = 6.
+
+#### Task Γ1: Βάση της αλυσίδας `deploy/worker-plan`
+
+**Files:** κανένα (git).
+
+**Interfaces:**
+- Consumes: Αφετηρία (Worker ζωντανός 2f2851c0 = πηγή `491ea7ec`· main = αυτή + 24 γραμμές VD)· απόφαση 29.
+- Produces: τοπικό branch `deploy/worker-plan` από το `origin/main`, με αποδεδειγμένο ότι περιέχει τη ζωντανή πηγή.
+
+- [ ] **Step 1: Branch από φρέσκο main**
+
+```bash
+git fetch origin
+git switch -c deploy/worker-plan origin/main
+git log --oneline -15 origin/main -- worker/
+```
+Expected: το branch δημιουργήθηκε. Αν το `git fetch` αποτύχει: ΣΤΑΜΑΤΑ (CLAUDE.md κανόνας 8). Αν υπάρχει ήδη `origin/deploy/worker-plan`: `git switch deploy/worker-plan && git merge origin/main` αντί για το `-c`.
+
+- [ ] **Step 2: Κανόνας μίας πηγής 2, σε περιεχόμενο**
+
+Το `bb8ba2db` (από όπου ανέβηκε το 2f2851c0) δεν είναι πρόγονος του main: το sync έγινε με αντιγραφή (`491ea7ec`). Άρα ο έλεγχος γίνεται με το `491ea7ec`, που είναι byte-ίδιο στο `worker/src`:
+```bash
+git merge-base --is-ancestor 491ea7ec deploy/worker-plan && echo ANCESTOR-OK
+git diff --numstat 491ea7ec deploy/worker-plan -- worker/src
+md5 -q worker/src/index.js
+```
+Expected: `ANCESTOR-OK`· ακριβώς μία γραμμή `24	0	worker/src/index.js` (μόνο προσθήκες, οι 24 της VD 19/10)· md5 `a3117aac2170a34015f9a3a08be0e953`. Αν το `numstat` δείχνει άλλο αρχείο ή διαγραφές, το main άλλαξε τον Worker μετά τις 22/10: διάβασε το `git log 97798ba8..origin/main -- worker/src` και ξαναμέτρησε. Αν δεν εξηγείται, ΣΤΑΜΑΤΑ. Αν έχει ήδη γίνει το Γ6 (deploy VD από main @ `<VD_SHA>`), ο έλεγχος είναι `git merge-base --is-ancestor <VD_SHA> deploy/worker-plan && echo ANCESTOR-OK`.
+
+- [ ] **Step 3: Tests αφετηρίας**
+
+```bash
+node --test worker/test/*.test.mjs worker/src/rt-rules.test.mjs 2>&1 | grep -E '^ℹ (tests|pass|fail)'
+```
+Expected: `ℹ tests 189`, `ℹ pass 189`, `ℹ fail 0`. (Με glob, όχι φάκελο: το `node --test worker/test/` αποτυγχάνει στο Node 24.)
+
+---
+
+#### Task Γ2: Κείμενα `plan:` και ο ΕΝΑΣ χαρτογράφος
+
+**Files:**
+- Create: `worker/test/plan-contract.test.mjs`
+- Copy: `worker/migrations/drafts/072_plan_functions.sql` (από τον τοπικό κλάδο `feat/national-v5-functions`: τα worktrees μοιράζονται το object store· αλλιώς από το `origin/`, για το contract test)
+- Modify: `worker/src/index.js`: νέο μπλοκ πριν από το `function stockRuleError(e) {` (σήμερα :3184)· ολόκληρη η `stockRuleError` (:3184-3225)
+- Modify: `worker/test/stock-lots.test.mjs` (:34-39), `worker/test/local-relay-contract.test.mjs` (:36-43), `worker/test/local-relay.test.mjs` (:34-38)
+
+**Interfaces:**
+- Consumes: `071_plan_schema.sql`, `071b_plan_one_vehicle.sql` (`worker/migrations/`), 072 (Task Β9)· οι λίστες κωδικών των Interfaces.
+- Produces: `const PLAN_RULE_TEXT` (53 κωδικοί: 26 της 071 + 27 της 072), `const PLAN_CHECK_TEXT` (37 ονόματα), `stockRuleError(e)` με κλάδους `plan:` (κάθε SQLSTATE), `PLAN_CHECK_TEXT` στο 23514/23505, 23P01 → `truck_busy`/`driver_busy`, `local_moves_nat_loading_once` → `local_exists`· σχήμα `{ type: "PLAN_RULE", code, message }`.
+
+- [ ] **Step 1: Αντίγραφο της 072 για το contract test**
+
+```bash
+git checkout feat/national-v5-functions -- worker/migrations/drafts/072_plan_functions.sql 2>/dev/null \
+  || git checkout origin/feat/national-v5-functions -- worker/migrations/drafts/072_plan_functions.sql
+```
+Expected: το αρχείο υπάρχει (ο κλάδος του SQL γίνεται push μόνο στο Κ1, άρα πρώτα ο τοπικός). Αν το Task Β9 δεν έχει γίνει ακόμη commit, το test του Step 4 θα αποτύχει στο «parsed codes». Συνέχισε με τα Steps 2–6 και ξανάτρεξε αυτό το Step και το Step 7 όταν υπάρξει η πλήρης 072.
+
+- [ ] **Step 2: Γράψε το contract test (αποτυγχάνει)**
+
+`worker/test/plan-contract.test.mjs`:
+```js
+// 071 + 071b + 072 ↔ Worker refusal contract (national v5 F2, owner 21–22/10/2026:
+// the lower layer names the codes and constraints, αρχή 4). Pattern of
+// local-relay-contract.test.mjs: the migrations themselves are read, so a
+// rename on either side fails HERE, at build time, never on a dispatcher's
+// save (αρχή 6) — and a Worker text with no counterpart in the base fails too
+// (dead code, αρχή 8).
+//
+// The files are read from this checkout — never skipped when missing:
+//   worker/migrations/071_plan_schema.sql, 071b_plan_one_vehicle.sql (live 22/10)
+//   worker/migrations/drafts/072_plan_functions.sql  (draft, until it runs)
+//   worker/migrations/072_plan_functions.sql         (after it ran and moved)
+// On deploy/worker-plan the 072 draft is a COPY of the SQL branch's file
+// (feat/national-v5-functions); when 072 changes there, copy it again and
+// re-run this test before deploy — the diagnostic prints the md5 checked.
+//
+// 072's own refusals are parsed from `plan_h_raise('<code>'` (a literal code
+// as the first argument — the convention of the SQL plan, Task A1) and from
+// any literal HINT = 'plan:<code>'.
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { readFileSync, existsSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { fileURLToPath } from 'node:url';
+import path from 'node:path';
+
+const here = path.dirname(fileURLToPath(import.meta.url));
+const MIG = path.join(here, '..', 'migrations');
+const src = readFileSync(path.join(here, '..', 'src', 'index.js'), 'utf8');
+
+function lift(re, what) {
+  const m = src.match(re);
+  assert.ok(m, `${what} not found in worker/src/index.js`);
+  return m[0];
+}
+const table = (name) => lift(new RegExp(`const ${name} = \\{[\\s\\S]*?\\n\\};\\n`), name);
+const W = new Function([
+  table('STOCK_CHECK_TEXT'), table('RELAY_RULE_TEXT'), table('RELAY_CHECK_TEXT'),
+  table('PLAN_RULE_TEXT'), table('PLAN_CHECK_TEXT'),
+  lift(/function stockRuleError\(e\) \{[\s\S]*?\n\}\n/, 'stockRuleError'),
+].join('\n') + '\nreturn { RELAY_CHECK_TEXT, PLAN_RULE_TEXT, PLAN_CHECK_TEXT, stockRuleError };')();
+
+function readOne(names, hint) {
+  const file = names.map((n) => path.join(MIG, n)).find((f) => existsSync(f));
+  assert.ok(file, `${names.join(' / ')} not found under worker/migrations — ${hint}`);
+  return { file, sql: readFileSync(file, 'utf8') };
+}
+const f071 = () => readOne(['071_plan_schema.sql'], 'it is live since 22/10 and must be in main');
+const f071b = () => readOne(['071b_plan_one_vehicle.sql'], 'it is live since 22/10 and must be in main');
+const f072 = () => readOne(['drafts/072_plan_functions.sql', '072_plan_functions.sql'],
+  'copy it from the SQL branch: git checkout feat/national-v5-functions -- worker/migrations/drafts/072_plan_functions.sql');
+const uniq = (re, text) => [...new Set([...text.matchAll(re)].map((m) => m[1]))].sort();
+const greek = /[α-ωΑ-Ωά-ώ]/;
+
+// The codes of the F2 plan's Interfaces («Κωδικοί plan:»): the parsed sets must
+// equal these exactly, so a code added or dropped in SQL without the plan (or
+// the reverse) fails here.
+const CODES_071 = ['chain', 'chain_time', 'hard_delete', 'leg_locked', 'leg_order', 'leg_place', 'leg_stop_dead',
+  'local_loading_day', 'local_loading_gone', 'local_loading_stop', 'model_locked', 'piece_dead', 'piece_locked',
+  'piece_parent', 'pieces_alive', 'pieces_sum', 'rt_cancelled', 'rt_not_v2', 'rt_window', 'shipment_locked',
+  'side_order', 'split_not_at_hub', 'stop_locked', 'stop_order', 'stop_seq', 'v1_link_on_v2'];
+const CODES_072 = ['bad_input', 'driver_busy', 'group_empty', 'local_exists', 'need_token', 'no_actor', 'no_client',
+  'no_price', 'no_vehicle', 'no_window', 'not_at_hub', 'not_stock', 'notice_gone', 'order_gone', 'order_not_v5',
+  'parts_sum', 'payroll_locked', 'piece_busy', 'piece_split', 'rt_gone', 'same_rt', 'stale_confirm', 'stock_lot',
+  'stop_gone', 'truck_busy', 'vs_locked', 'vs_not_bridge'];
+// Retired by the spec §7 — must appear nowhere (plan Interfaces).
+const RETIRED = ['hub_endpoint', 'piece_planned', 'bridge_moved', 'bridge_split', 'legacy_nl', 'frozen',
+  'restore_expired', 'restore_conflict', 'partner_rate_on_owned', 'window_order'];
+// 071 rewrote three 060 CHECKs on local_moves (same names, nat_loading added):
+// they keep their relay texts and type.
+const RELAY_OWNED = ['local_moves_kind_chk', 'local_moves_kind_parent', 'local_moves_relay_trailer'];
+// Live before 071 (pg_constraint, SELECT 22/10/2026) and reachable by plan_*.
+const LIVE_PRE_071 = ['partner_needs_partner'];
+// 071 constraints no request can meet, each with the reason:
+const UNREACHABLE = {
+  // UNIQUE (rt_id, id) exists only as the FK target of piece_legs; id is
+  // already unique, so it can never be the one that fails.
+  rt_stops_rt_id: 'FK target, id already unique',
+};
+
+function codes071(sql) {
+  return uniq(/(?:return|prob :=|format\()\s*'([a-z_0-9]+):/g, sql)
+    .concat(uniq(/hint = 'plan:([a-z_0-9]+)'/gi, sql))
+    .filter((c, i, a) => a.indexOf(c) === i).sort();
+}
+// 072 also raises some 071 codes itself (rt_cancelled, piece_dead: refused at once, with 071's text): only the
+// codes 072 adds are compared with CODES_072.
+function codes072(sql) {
+  return uniq(/plan_h_raise\(\s*'([a-z_0-9]+)'/g, sql)
+    .concat(uniq(/HINT = 'plan:([a-z_0-9]+)'/gi, sql))
+    .filter((c, i, a) => a.indexOf(c) === i)
+    .filter((c) => !CODES_071.includes(c)).sort();
+}
+
+test('071, 071b, 072 found and fingerprinted', (t) => {
+  for (const { file, sql } of [f071(), f071b(), f072()]) {
+    t.diagnostic(`checked: ${path.relative(path.join(here, '..', '..'), file)} md5 ${createHash('md5').update(sql).digest('hex')}`);
+  }
+  assert.ok(f072().sql.includes('plan_h_raise('), '072 raises through plan_h_raise');
+});
+
+test('the parsed codes are exactly the plan\'s 26 + 27 — none missing, none extra, none retired', () => {
+  assert.deepEqual(codes071(f071().sql), CODES_071, '071 codes');
+  assert.deepEqual(codes072(f072().sql), CODES_072, '072 codes');
+  for (const sql of [f071().sql, f071b().sql, f072().sql]) {
+    for (const r of RETIRED) assert.ok(!new RegExp(`'(?:plan:)?${r}[:']`).test(sql), `retired code «${r}» appears in SQL`);
+  }
+  for (const r of RETIRED) assert.ok(!Object.prototype.hasOwnProperty.call(W.PLAN_RULE_TEXT, r), `retired code «${r}» has a Worker text`);
+});
+
+test('every plan: code has its own Greek text, the DB detail in brackets; every Worker code key is raised by 071/072', () => {
+  const all = [...CODES_071, ...CODES_072];
+  for (const code of all) {
+    assert.ok(Object.prototype.hasOwnProperty.call(W.PLAN_RULE_TEXT, code), `«${code}» has no Greek text in PLAN_RULE_TEXT`);
+    const r = W.stockRuleError({ pg: { code: '23514', hint: 'plan:' + code, message: `plan rule broken: ${code}:RT-1280` } });
+    assert.equal(r.type, 'PLAN_RULE');
+    assert.equal(r.code, code);
+    assert.equal(r.message, `${W.PLAN_RULE_TEXT[code]} (RT-1280)`);
+    assert.match(r.message, greek, `${code} text is Greek`);
+  }
+  const dead = Object.keys(W.PLAN_RULE_TEXT).filter((k) => !all.includes(k));
+  assert.deepEqual(dead, [], 'Worker plan: keys that 071/072 never raise (dead code, αρχή 8)');
+});
+
+test('every 071 CHECK and UNIQUE is mapped to Greek or classified; every PLAN_CHECK_TEXT key exists', () => {
+  const sql = f071().sql;
+  const checks = uniq(/CONSTRAINT (\w+) CHECK/g, sql);
+  const uniques = uniq(/CREATE UNIQUE INDEX (\w+)/g, sql).concat(uniq(/CONSTRAINT (\w+) UNIQUE/g, sql));
+  assert.ok(checks.includes('rt_v2_dates') && checks.includes('local_moves_nat_loading'), `071 CHECKs parsed: ${checks.join(', ')}`);
+  for (const name of [...checks, ...LIVE_PRE_071]) {
+    const r = W.stockRuleError({ pg: { code: '23514', message: `new row for relation "x" violates check constraint "${name}"` } });
+    assert.ok(r, `${name} → null (would be the 500 path)`);
+    assert.match(r.message, greek, `${name} text is Greek`);
+    assert.ok(!r.message.includes('κανόνας ' + name), `${name} has its own text, not the generic fallback`);
+    if (RELAY_OWNED.includes(name)) assert.equal(r.type, 'LOCAL_RELAY_RULE', `${name} keeps its 060 family`);
+    else assert.deepEqual(r, { type: 'PLAN_RULE', code: name, message: W.PLAN_CHECK_TEXT[name] }, name);
+  }
+  for (const name of uniques) {
+    const r = W.stockRuleError({ pg: { code: '23505', message: `duplicate key value violates unique constraint "${name}"` } });
+    if (Object.prototype.hasOwnProperty.call(UNREACHABLE, name)) { assert.equal(r, null, `${name}: ${UNREACHABLE[name]}`); continue; }
+    assert.ok(r, `${name} → null (would be the 500 path)`);
+    assert.equal(r.type, 'PLAN_RULE');
+    assert.match(r.message, greek);
+  }
+  // the race floor and 072's own refusal say the same thing
+  assert.deepEqual(W.stockRuleError({ pg: { code: '23505', message: 'duplicate key value violates unique constraint "local_moves_nat_loading_once"' } }),
+    { type: 'PLAN_RULE', code: 'local_exists', message: W.PLAN_RULE_TEXT.local_exists });
+  const known = new Set([...checks, ...uniques, ...LIVE_PRE_071]);
+  const dead = Object.keys(W.PLAN_CHECK_TEXT).filter((k) => !known.has(k));
+  assert.deepEqual(dead, [], 'PLAN_CHECK_TEXT keys with no constraint in 071 or live before it');
+  for (const k of RELAY_OWNED) assert.ok(!Object.prototype.hasOwnProperty.call(W.PLAN_CHECK_TEXT, k), `${k} stays in RELAY_CHECK_TEXT only`);
+});
+
+test('071b: each EXCLUDE (23P01, deferred) answers the same code as 072\'s pre-check', () => {
+  const ex = uniq(/CONSTRAINT (\w+) EXCLUDE/g, f071b().sql);
+  assert.deepEqual(ex, ['rt_v2_driver_once', 'rt_v2_truck_once']);
+  const want = { rt_v2_truck_once: 'truck_busy', rt_v2_driver_once: 'driver_busy' };
+  for (const name of ex) {
+    const r = W.stockRuleError({ pg: { code: '23P01', details: 'Key (truck_id, tstzrange(start_at, end_at)) conflicts', message: `conflicting key value violates exclusion constraint "${name}"` } });
+    assert.deepEqual(r, { type: 'PLAN_RULE', code: want[name], message: W.PLAN_RULE_TEXT[want[name]] }, name);
+  }
+  assert.equal(W.stockRuleError({ pg: { code: '23P01', message: 'conflicting key value violates exclusion constraint "other_excl"' } }), null);
+});
+
+test('plan: hint is the marker whatever SQLSTATE; unknown code still loud; no detail, no brackets', () => {
+  assert.equal(W.stockRuleError({ pg: { code: 'P0001', hint: 'plan:truck_busy', message: 'plan rule broken: truck_busy:RT-1290' } }).code, 'truck_busy');
+  const hard = W.stockRuleError({ pg: { code: '23514', hint: 'plan:hard_delete', message: 'plan rule broken: hard delete on rt_stops (soft delete only)' } });
+  assert.equal(hard.message, W.PLAN_RULE_TEXT.hard_delete, 'a message without «<code>:» adds no brackets');
+  const unknown = W.stockRuleError({ pg: { code: '23514', hint: 'plan:brand_new', message: 'plan rule broken: brand_new:7' } });
+  assert.equal(unknown.type, 'PLAN_RULE');
+  assert.equal(unknown.code, 'brand_new');
+  assert.match(unknown.message, /brand_new/);
+  const long = W.stockRuleError({ pg: { code: '23514', hint: 'plan:chain', message: 'plan rule broken: chain:' + 'x'.repeat(500) } });
+  assert.ok(long.message.length <= W.PLAN_RULE_TEXT.chain.length + 3 + 120, 'detail capped at 120 chars');
+  assert.equal(W.stockRuleError({ pg: { code: '23514', hint: 'plan:toString', message: 'x' } }).message.startsWith('Ο κανόνας toString'), true, 'prototype key is not a text');
+});
+```
+
+- [ ] **Step 3: Τα τρία tests που «σηκώνουν» τον χαρτογράφο παίρνουν και τους δύο νέους πίνακες**
+
+Χωρίς αυτό, κάθε CHECK που δεν είναι 057/060 (π.χ. `orders_ops_status_check` στα tests «everything else → null») θα έσκαγε με `ReferenceError: PLAN_CHECK_TEXT`.
+
+Στο `worker/test/stock-lots.test.mjs` αντικατέστησε:
+```js
+// stockRuleError is ONE mapper for the stock (057) and local-relay (060)
+// families, so it is lifted with all three text tables it reads.
+const stockRuleError = new Function(
+  liftVar('STOCK_CHECK_TEXT') + liftVar('RELAY_RULE_TEXT') + liftVar('RELAY_CHECK_TEXT') +
+```
+με:
+```js
+// stockRuleError is ONE mapper for the stock (057), local-relay (060) and
+// national v5 (071/072) families, so it is lifted with all five text tables
+// it reads.
+const stockRuleError = new Function(
+  liftVar('STOCK_CHECK_TEXT') + liftVar('RELAY_RULE_TEXT') + liftVar('RELAY_CHECK_TEXT') +
+  liftVar('PLAN_RULE_TEXT') + liftVar('PLAN_CHECK_TEXT') +
+```
+
+Στο `worker/test/local-relay-contract.test.mjs` αντικατέστησε:
+```js
+// stockRuleError is ONE mapper for the stock (057) and relay (060) families,
+// so it is lifted with all three text tables it reads.
+const W = new Function('__name', [
+  lift(/const STOCK_CHECK_TEXT = \{[\s\S]*?\n\};\n/, 'STOCK_CHECK_TEXT'),
+  lift(/const RELAY_RULE_TEXT = \{[\s\S]*?\n\};\n/, 'RELAY_RULE_TEXT'),
+  lift(/const RELAY_CHECK_TEXT = \{[\s\S]*?\n\};\n/, 'RELAY_CHECK_TEXT'),
+```
+με:
+```js
+// stockRuleError is ONE mapper for the stock (057), relay (060) and national
+// v5 (071/072) families, so it is lifted with all five text tables it reads.
+const W = new Function('__name', [
+  lift(/const STOCK_CHECK_TEXT = \{[\s\S]*?\n\};\n/, 'STOCK_CHECK_TEXT'),
+  lift(/const RELAY_RULE_TEXT = \{[\s\S]*?\n\};\n/, 'RELAY_RULE_TEXT'),
+  lift(/const RELAY_CHECK_TEXT = \{[\s\S]*?\n\};\n/, 'RELAY_CHECK_TEXT'),
+  lift(/const PLAN_RULE_TEXT = \{[\s\S]*?\n\};\n/, 'PLAN_RULE_TEXT'),
+  lift(/const PLAN_CHECK_TEXT = \{[\s\S]*?\n\};\n/, 'PLAN_CHECK_TEXT'),
+```
+
+Στο `worker/test/local-relay.test.mjs` αντικατέστησε:
+```js
+  // one mapper for the stock (057) and relay (060) families: all three tables
+  lift(/const STOCK_CHECK_TEXT = \{[\s\S]*?\n\};\n/, 'STOCK_CHECK_TEXT'),
+  lift(/const RELAY_RULE_TEXT = \{[\s\S]*?\n\};\n/, 'RELAY_RULE_TEXT'),
+  lift(/const RELAY_CHECK_TEXT = \{[\s\S]*?\n\};\n/, 'RELAY_CHECK_TEXT'),
+```
+με:
+```js
+  // one mapper for the stock (057), relay (060) and national v5 (071/072)
+  // families: all five tables
+  lift(/const STOCK_CHECK_TEXT = \{[\s\S]*?\n\};\n/, 'STOCK_CHECK_TEXT'),
+  lift(/const RELAY_RULE_TEXT = \{[\s\S]*?\n\};\n/, 'RELAY_RULE_TEXT'),
+  lift(/const RELAY_CHECK_TEXT = \{[\s\S]*?\n\};\n/, 'RELAY_CHECK_TEXT'),
+  lift(/const PLAN_RULE_TEXT = \{[\s\S]*?\n\};\n/, 'PLAN_RULE_TEXT'),
+  lift(/const PLAN_CHECK_TEXT = \{[\s\S]*?\n\};\n/, 'PLAN_CHECK_TEXT'),
+```
+
+- [ ] **Step 4: Τρέξε, να δεις την αποτυχία**
+
+```bash
+node --test worker/test/*.test.mjs worker/src/rt-rules.test.mjs 2>&1 | grep -E '^ℹ (pass|fail)|not found in worker/src/index.js'
+```
+Expected: `ℹ fail 4`. Τέσσερα αρχεία δεν φορτώνουν, με `PLAN_RULE_TEXT not found in worker/src/index.js`: `plan-contract`, `stock-lots`, `local-relay`, `local-relay-contract`.
+
+- [ ] **Step 5: Οι πίνακες κειμένων**
+
+Στο `worker/src/index.js`, αμέσως **πριν** από τη γραμμή `function stockRuleError(e) {` (σήμερα :3184, μετά το `};` του `RELAY_CHECK_TEXT`), πρόσθεσε αυτούσιο:
+```js
+// NATIONAL v5 (071 + 071b + 072, owner 21–22/10/2026): DB refusals → Greek 422.
+// The planning rules live ONLY in the base (071's deferred plan_chk triggers,
+// 071b's two EXCLUDE, 072's plan_* functions — spec §2.1, αρχή 4). Every v5
+// write is ONE plan_* RPC (handlePlan below), so a refusal arrives at that
+// RPC's COMMIT; without this mapping it would be a 500, retried three times,
+// with the reason dead in the logs (αρχή 1).
+// Same ONE mapper (stockRuleError), a third family beside 057 and 060:
+//   - every refusal carries hint «plan:<code>» (071 plan_chk, 071
+//     ct_rt_legs_v2_guard, 072 plan_h_raise), whatever SQLSTATE it rode on.
+//     The DB message is ASCII for the logs: «plan rule broken: <code>:<detail>».
+//     The Greek text per code lives here; the ASCII detail (an RT code, an id)
+//     is appended in brackets. A code this map does not know still answers
+//     422 and names the code — loud, never the 500 path;
+//   - row CHECKs and unique indexes cannot carry a hint: matched by name;
+//   - the two EXCLUDE of 071b (23P01) answer the SAME code as 072's own
+//     pre-check (truck_busy / driver_busy), so a screen reacts to one code
+//     whichever layer refused first. local_moves_nat_loading_once answers
+//     local_exists for the same reason (as local_moves_relay_once → relay_exists).
+// THE CODES AND NAMES ARE THE MIGRATIONS' (the lower layer names them, αρχή 4).
+// test/plan-contract.test.mjs reads 071, 071b and 072 and fails on a code or a
+// constraint without a text here, and on a key here with no counterpart there
+// (αρχή 8). Texts only — editing a text never changes what is allowed.
+const PLAN_RULE_TEXT = {
+  // 071 — deferred COMMIT rules (plan_chk) and the two direct raises
+  pieces_alive: "Η αποστολή σβήστηκε αλλά έχει ακόμη ζωντανά κομμάτια — ανανέωσε τη σελίδα",
+  piece_dead: "Το φορτίο ή η αποστολή του έχει σβηστεί — ανανέωσε τη σελίδα",
+  pieces_sum: "Τα κομμάτια δεν αθροίζουν στις παλέτες της αποστολής",
+  piece_parent: "Το κομμάτι δεν κρέμεται από ζωντανό κομμάτι της ίδιας αποστολής",
+  split_not_at_hub: "Ένα φορτίο σπάει μόνο στη Βέροια",
+  rt_not_v2: "Το δρομολόγιο είναι του παλιού Εβδομαδιαίου — δεν παίρνει στάσεις του νέου",
+  rt_cancelled: "Το δρομολόγιο έχει ακυρωθεί — διάλεξε άλλο ή νέο",
+  leg_stop_dead: "Η στάση της κίνησης έχει σβηστεί — ανανέωσε τη σελίδα",
+  leg_order: "Η φόρτωση γίνεται πριν από την εκφόρτωση στο ίδιο δρομολόγιο",
+  leg_place: "Το φορτίο ταξιδεύει μόνο από την αφετηρία του, μέσω Βέροιας, στον προορισμό του",
+  chain: "Η φόρτωση γίνεται εκεί όπου ξεφορτώθηκε το φορτίο την προηγούμενη φορά",
+  chain_time: "Η φόρτωση είναι πριν φτάσει το φορτίο εκεί — άλλαξε την ώρα",
+  stop_seq: "Δύο στάσεις του δρομολογίου έχουν την ίδια σειρά — ανανέωσε τη σελίδα",
+  stop_order: "Οι στάσεις του δρομολογίου δεν είναι σε χρονική σειρά",
+  side_order: "Η ΚΑΘΟΔΟΣ γίνεται πριν από την ΑΝΟΔΟ στο ίδιο δρομολόγιο",
+  rt_window: "Οι ώρες του δρομολογίου δεν συμφωνούν με τις στάσεις του — ανανέωσε τη σελίδα",
+  local_loading_gone: "Η τοπική φόρτωση έμεινε σε στάση που δεν υπάρχει πια",
+  local_loading_day: "Η τοπική φόρτωση γίνεται την ίδια ημέρα με τη στάση",
+  local_loading_stop: "Τοπική φόρτωση μπαίνει μόνο σε στάση που φορτώνει εμπόρευμα",
+  model_locked: "Ένα δρομολόγιο δεν περνά από το παλιό στο νέο Εβδομαδιαίο ή αντίστροφα",
+  stop_locked: "Μια στάση δεν μετακινείται σε άλλο δρομολόγιο — σβήνεται και μπαίνει νέα",
+  leg_locked: "Μια κίνηση δεν αλλάζει — σβήνεται και μπαίνει νέα",
+  piece_locked: "Ένα κομμάτι δεν αλλάζει αποστολή ή γονικό κομμάτι",
+  shipment_locked: "Μια αποστολή δεν αλλάζει παραγγελία",
+  v1_link_on_v2: "Το δρομολόγιο είναι του Εβδομαδιαίου Εθνικών — δεν παίρνει παραγγελίες από το παλιό",
+  hard_delete: "Στο Εβδομαδιαίο Εθνικών τίποτα δεν σβήνεται οριστικά — μόνο με ίχνος",
+  // 072 — the plan_* functions' own refusals (plan_h_raise)
+  no_actor: "Η αλλαγή δεν έχει χρήστη ή ο ρόλος είναι άγνωστος — συνδέσου ξανά",
+  bad_input: "Το αίτημα δεν έχει τη μορφή που περιμένει η βάση — ανανέωσε τη σελίδα",
+  no_client: "Λείπει ο πελάτης",
+  no_price: "Λείπει η τιμή",
+  no_window: "Λείπει το παράθυρο φόρτωσης ή παράδοσης",
+  stock_lot: "Κομμάτι παρτίδας αποθέματος δεν μπαίνει ακόμη στο Εβδομαδιαίο Εθνικών",
+  order_gone: "Η παραγγελία έχει σβηστεί ή δεν υπάρχει — ανανέωσε τη σελίδα",
+  order_not_v5: "Η παραγγελία δεν είναι του Εβδομαδιαίου Εθνικών",
+  vs_locked: "Οι παλέτες και τα παράθυρα του VS αλλάζουν μόνο από τις Διεθνείς",
+  piece_busy: "Το φορτίο έχει ήδη κίνηση — μετέφερέ το αντί να το ξαναβάλεις",
+  piece_split: "Το φορτίο έχει σπάσει — διάλεξε ένα από τα κομμάτια του",
+  not_stock: "Ποσότητα παίρνεις μόνο από φορτίο που περιμένει στη Βέροια",
+  parts_sum: "Τα μέρη δεν αθροίζουν στις παλέτες του φορτίου",
+  not_at_hub: "Το φορτίο δεν βρίσκεται στη Βέροια — σπάει μόνο εκεί",
+  group_empty: "Η ομάδα δεν έχει φορτίο σε αναμονή",
+  same_rt: "Το φορτίο είναι ήδη σε αυτό το δρομολόγιο",
+  rt_gone: "Το δρομολόγιο δεν υπάρχει ή έχει ακυρωθεί — ανανέωσε τη σελίδα",
+  no_vehicle: "Νέο δρομολόγιο θέλει φορτηγό ή συνεργάτη",
+  truck_busy: "Το φορτηγό είναι ήδη σε άλλο δρομολόγιο εκείνες τις ώρες",
+  driver_busy: "Ο οδηγός είναι ήδη σε άλλο δρομολόγιο εκείνες τις ώρες",
+  stop_gone: "Η στάση δεν υπάρχει πια — ανανέωσε τη σελίδα",
+  local_exists: "Η στάση έχει ήδη τοπική φόρτωση — άνοιξε την υπάρχουσα",
+  notice_gone: "Η ειδοποίηση δεν υπάρχει",
+  payroll_locked: "Η μισθοδοσία του δρομολογίου έχει ήδη ποσά — η αλλαγή οδηγού γίνεται με «Καθαρισμός ανάθεσης» και νέα ανάθεση",
+  stale_confirm: "Κάτι άλλαξε από τότε που είδες τη λίστα — δες τη ξανά και επιβεβαίωσε",
+  need_token: "Η πράξη θέλει επιβεβαίωση — δες πρώτα τη λίστα συνεπειών",
+  vs_not_bridge: "Η παραγγελία ή η στάση δεν περνά από τη Βέροια (VS)"
+};
+const PLAN_CHECK_TEXT = {
+  // 071 CHECKs on ct_round_trips (+ partner_needs_partner, live before 071:
+  // a PARTNER cycle written by plan_* meets it too)
+  rt_model: "Το δρομολόγιο είναι είτε του παλιού είτε του νέου Εβδομαδιαίου",
+  rt_partner_rate: "Κόμιστρο μόνο σε δρομολόγιο συνεργάτη, και όχι αρνητικό",
+  rt_v1_no_window: "Δρομολόγιο του παλιού Εβδομαδιαίου δεν έχει ώρες αρχής/τέλους",
+  rt_v2_dates: "Οι ημέρες του δρομολογίου βγαίνουν από τις ώρες του — ανανέωσε τη σελίδα",
+  rt_v2_scope: "Το Εβδομαδιαίο Εθνικών έχει μόνο εθνικά δρομολόγια",
+  rt_v2_status: "Δρομολόγιο του Εβδομαδιαίου Εθνικών είναι μόνο «προγραμματισμένο» ή «ακυρωμένο»",
+  rt_v2_window: "Το δρομολόγιο θέλει ώρα αρχής πριν από την ώρα τέλους",
+  partner_needs_partner: "Δρομολόγιο συνεργάτη θέλει συνεργάτη",
+  // shipments
+  shipments_bridge_intl: "Γέφυρα VS υπάρχει μόνο από διεθνή παραγγελία",
+  shipments_del: "Η διαγραφή αποστολής θέλει λόγο και χρήστη",
+  shipments_ends: "Η αφετηρία και ο προορισμός της αποστολής είναι ίδιοι",
+  shipments_intl_is_bridge: "Αποστολή διεθνούς υπάρχει μόνο ως γέφυρα VS",
+  shipments_one_parent: "Η αποστολή ανήκει σε μία παραγγελία",
+  shipments_pallets: "Οι παλέτες της αποστολής είναι πάνω από 0",
+  shipments_shape: "Η αποστολή θέλει αφετηρία, προορισμό, παλέτες και παράθυρα",
+  shipments_win: "Το παράθυρο της αποστολής είναι ανάποδα (τέλος πριν από αρχή)",
+  // shipment_pieces
+  pieces_del: "Η διαγραφή κομματιού θέλει λόγο και χρήστη",
+  pieces_not_own_parent: "Ένα κομμάτι δεν είναι γονικό του εαυτού του",
+  pieces_pallets: "Ένα κομμάτι έχει πάνω από 0 παλέτες",
+  pieces_split_pair: "Το σπάσιμο γράφει ώρα και χρήστη μαζί",
+  // rt_stops
+  rt_stops_del: "Η διαγραφή στάσης θέλει λόγο και χρήστη",
+  rt_stops_seq: "Η σειρά στάσης ξεκινά από 1",
+  rt_stops_side: "Η στάση είναι ΚΑΘΟΔΟΣ ή ΑΝΟΔΟΣ",
+  rt_stops_win: "Το παράθυρο της στάσης θέλει ώρα τέλους μετά την ώρα αρχής",
+  // piece_legs
+  piece_legs_del: "Η διαγραφή κίνησης θέλει λόγο και χρήστη",
+  piece_legs_no: "Ο αριθμός κίνησης ξεκινά από 1",
+  piece_legs_two_stops: "Η φόρτωση και η εκφόρτωση είναι διαφορετικές στάσεις",
+  // plan_notices
+  plan_notices_desk: "Η ειδοποίηση πάει στις Διεθνείς ή στις Εθνικές",
+  plan_notices_kind: "Άγνωστο είδος ειδοποίησης",
+  plan_notices_read_pair: "Το «διαβάστηκε» γράφει ώρα και χρήστη μαζί",
+  // order_stops / local_moves (071 additions on live tables)
+  order_stops_via_hub_intl: "Το «μέσω Βέροιας» υπάρχει μόνο σε στάση διεθνούς παραγγελίας",
+  local_moves_nat_loading: "Η τοπική φόρτωση εθνικών θέλει στάση και οδηγό, και είναι μόνο «ανατέθηκε» ή «ακυρώθηκε»",
+  // 071 unique indexes (23505); local_moves_nat_loading_once answers local_exists instead
+  piece_legs_live_no: "Το φορτίο έχει ήδη ζωντανή κίνηση με αυτόν τον αριθμό — ανανέωσε τη σελίδα",
+  shipments_bridge_once: "Η στάση της διεθνούς έχει ήδη γέφυρα VS",
+  pl_mov_leg_once: "Η κίνηση έχει ήδη γραμμή παλετών",
+  locations_one_hub: "Υπάρχει ήδη τοποθεσία-κόμβος (Βέροια)"
+};
+```
+
+- [ ] **Step 6: Ο χαρτογράφος**
+
+Στο `worker/src/index.js`, αντικατέστησε **ολόκληρη** τη συνάρτηση, από `function stockRuleError(e) {` έως και το `}` πριν από το `__name(stockRuleError, "stockRuleError");` (το `__name` μένει), με:
+```js
+function stockRuleError(e) {
+  const pg = e && e.pg;
+  if (!pg || typeof pg !== "object") return null;
+  const code = String(pg.code || "");
+  const message = String(pg.message || "");
+  const hint = typeof pg.hint === "string" ? pg.hint : "";
+  // 'local_relay:' (060): the hint is the marker, whatever SQLSTATE carried
+  // it — a relay refusal must never fall back to the 500 path because of a
+  // different errcode.
+  if (hint.startsWith("local_relay:")) {
+    const rc = hint.slice("local_relay:".length).trim();
+    return {
+      type: "LOCAL_RELAY_RULE",
+      code: rc,
+      message: Object.prototype.hasOwnProperty.call(RELAY_RULE_TEXT, rc) ? RELAY_RULE_TEXT[rc] : `Η τοπική κίνηση δεν αποθηκεύτηκε (${rc || "χωρίς κωδικό"}): ${message}`
+    };
+  }
+  // 'plan:' (071/072): same rule — the hint is the marker, whatever SQLSTATE.
+  // It must come BEFORE the 23514 branch: plan_chk raises with 23514 and a
+  // message without «check constraint», which that branch would answer null.
+  if (hint.startsWith("plan:")) {
+    const pc = hint.slice("plan:".length).trim();
+    const prefix = `plan rule broken: ${pc}:`;
+    const detail = message.startsWith(prefix) ? message.slice(prefix.length).trim().slice(0, 120) : "";
+    if (!Object.prototype.hasOwnProperty.call(PLAN_RULE_TEXT, pc)) {
+      return { type: "PLAN_RULE", code: pc, message: `Ο κανόνας ${pc || "χωρίς κωδικό"} δεν τηρήθηκε: ${message}` };
+    }
+    return { type: "PLAN_RULE", code: pc, message: detail ? `${PLAN_RULE_TEXT[pc]} (${detail})` : PLAN_RULE_TEXT[pc] };
+  }
+  if (code === "23514") {
+    // 'stock:' (057) only under 23514, as 057's stock_raise sends it — a
+    // stock hint under another SQLSTATE keeps the 500 path (pinned in
+    // stock-lots.test.mjs). Stock rules carry no `type`: stockRuleResponse
+    // answers them as STOCK_RULE.
+    if (hint.startsWith("stock:")) return { code: hint.slice(6), message };
+    const m = /check constraint "([^"]+)"/.exec(message);
+    if (!m) return null;
+    if (Object.prototype.hasOwnProperty.call(STOCK_CHECK_TEXT, m[1])) {
+      return { code: m[1], message: STOCK_CHECK_TEXT[m[1]] };
+    }
+    if (Object.prototype.hasOwnProperty.call(RELAY_CHECK_TEXT, m[1])) return { type: "LOCAL_RELAY_RULE", code: m[1], message: RELAY_CHECK_TEXT[m[1]] };
+    // Before the generic local_moves_* line: local_moves_nat_loading is 071's.
+    if (Object.prototype.hasOwnProperty.call(PLAN_CHECK_TEXT, m[1])) return { type: "PLAN_RULE", code: m[1], message: PLAN_CHECK_TEXT[m[1]] };
+    if (m[1].startsWith("local_moves_")) {
+      return { type: "LOCAL_RELAY_RULE", code: m[1], message: `Η τοπική κίνηση δεν αποθηκεύτηκε: κανόνας ${m[1]}` };
+    }
+    return null;
+  }
+  if (code === "23505" && /stock_lots_(order|nat)_live/.test(message)) {
+    return { code: "lot_exists", message: "Η παραγγελία είναι ήδη παρτίδα" };
+  }
+  if (code === "23505" && /local_moves_relay_once/.test(message)) {
+    return { type: "LOCAL_RELAY_RULE", code: "relay_exists", message: RELAY_RULE_TEXT.relay_exists };
+  }
+  if (code === "23505") {
+    const u = /unique constraint "([^"]+)"/.exec(message);
+    // the race floor under 072's own local_exists refusal: same code, same text
+    if (u && u[1] === "local_moves_nat_loading_once") return { type: "PLAN_RULE", code: "local_exists", message: PLAN_RULE_TEXT.local_exists };
+    if (u && Object.prototype.hasOwnProperty.call(PLAN_CHECK_TEXT, u[1])) return { type: "PLAN_RULE", code: u[1], message: PLAN_CHECK_TEXT[u[1]] };
+    return null;
+  }
+  if (code === "23P01") {
+    // 071b's EXCLUDE are DEFERRED: they speak at the RPC's COMMIT, without
+    // the other cycle's code (072's pre-check names it; this is the net).
+    const x = /exclusion constraint "([^"]+)"/.exec(message);
+    const pc = !x ? null : x[1] === "rt_v2_truck_once" ? "truck_busy" : x[1] === "rt_v2_driver_once" ? "driver_busy" : null;
+    if (pc) return { type: "PLAN_RULE", code: pc, message: PLAN_RULE_TEXT[pc] };
+    return null;
+  }
+  return null;
+}
+```
+
+- [ ] **Step 7: Τρέξε, πράσινο**
+
+```bash
+node --check worker/src/index.js && node --test worker/test/*.test.mjs worker/src/rt-rules.test.mjs 2>&1 | grep -E '^ℹ (tests|pass|fail)'
+node --test worker/test/plan-contract.test.mjs 2>&1 | grep -E '^# checked|^ℹ (pass|fail)'
+```
+Expected: `ℹ tests 195`, `ℹ pass 195`, `ℹ fail 0`. Στο δεύτερο, τρεις γραμμές `# checked: worker/migrations/… md5 …` (071, 071b, `drafts/072`), `ℹ pass 6`, `ℹ fail 0`. Κράτα τα τρία md5 για το PR.
+
+- [ ] **Step 8: Commit**
+
+```bash
+git add worker/src/index.js worker/test/plan-contract.test.mjs worker/test/stock-lots.test.mjs worker/test/local-relay-contract.test.mjs worker/test/local-relay.test.mjs worker/migrations/drafts/072_plan_functions.sql
+git commit -m "worker: plan: refusals (071/071b/072) -> Greek 422 in the one mapper
+
+PLAN_RULE_TEXT (26 + 27 codes) and PLAN_CHECK_TEXT (071 CHECKs/UNIQUEs +
+partner_needs_partner); hint plan: under any SQLSTATE; 23P01 of 071b and
+local_moves_nat_loading_once answer the same code as 072's own refusal.
+plan-contract.test.mjs reads 071, 071b and the 072 draft (copy of the SQL
+branch) both ways. Three lifts of stockRuleError take the two new tables.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+```
+
+---
+
+#### Task Γ3: Το `/plan/*`: `PLAN_PERMS`, `handlePlan`, διαδρομές, διακόπτης εγγραφών
+
+**Files:**
+- Create: `worker/test/plan-perms.test.mjs`, `worker/test/plan-tables-guard.test.mjs`, `worker/test/plan-routes.test.mjs`
+- Modify: `worker/src/index.js`: νέα ενότητα `// src/routes/plan.js` αμέσως μετά το `__name(handleCosts, "handleCosts");` (σήμερα :4899) και πριν από το `// src/routes/performance.js`· μία γραμμή δρομολόγησης μετά το `/costs/` (σήμερα :5802-5804)
+
+**Interfaces:**
+- Consumes: Γ2 (`stockRuleError`), `getCaller`, `dbRpc` (:348, κρατά `e.pg`), `jsonOk`· οι διαδρομές, το `PLAN_PERMS` και η μορφή σφάλματος των Interfaces· υπογραφές των `plan_*` (Α/Β).
+- Produces: `var PLAN_PERMS = {` (σημάδι φρουρού), `planCan(role, resource, method)`, `var PLAN_WRITES_OPEN = false;`, `PLAN_ROUTES`, `planBoardArgs`, `planVsStateArgs`, `planNoticesArgs`, `planError(status, type, code, message, origin, env)`, `planHasAmount(v)`, `handlePlan(request, url, origin, env)`· δρομολόγηση `/plan/` → `handlePlan`.
+  - RPC args: εγγραφές `{ p: <body + id διαδρομής>, p_actor: caller.sub, p_role: caller.role }`· `plan_board` `{ p_week, p_role }`· `plan_vs_state` `{ p_order_ids: number[] }`· `plan_notices_list` `{ p_desk, p_role }`.
+  - Status: 401 → 404 → 403 → 400 → 409 `writes_closed` → RPC → 200 | 422 | 428 | 503 | 500.
+
+- [ ] **Step 1: Test δικαιωμάτων (αποτυγχάνει)**
+
+`worker/test/plan-perms.test.mjs`:
+```js
+// National v5 F2 — PLAN_PERMS: 5 roles × every /plan/* route (spec §3
+// «Δικαιώματα», plan decisions 25–26). Two layers, both on worker/src/index.js:
+//   1. the map lifted from the source equals the plan's table, cell by cell;
+//   2. the real Worker in Node: every refused (role, route) is a 403 in the one
+//      /plan/* error shape, with ZERO calls to the DB; no token / a bad token
+//      is a 401 before anything; an unknown /plan/ path is a 404 after auth.
+import { test, beforeEach, afterEach } from 'node:test';
+import assert from 'node:assert/strict';
+import crypto from 'node:crypto';
+import path from 'node:path';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+import { register } from 'node:module';
+
+const HERE = path.dirname(fileURLToPath(import.meta.url));
+const SRC_PATH = path.resolve(HERE, '../src/index.js');
+const src = readFileSync(SRC_PATH, 'utf8');
+const m = src.match(/var PLAN_PERMS = \{[\s\S]*?\n\};\n/);
+assert.ok(m, 'PLAN_PERMS not found');
+const PLAN_PERMS = new Function(m[0] + '\nreturn PLAN_PERMS;')();
+
+const ROLES = ['owner', 'dispatcher', 'management', 'accountant', 'warehouse'];
+const DESK = ['owner', 'dispatcher'];
+// resource → method → roles allowed (the plan's PLAN_PERMS table)
+const EXPECT = {
+  board: { GET: ROLES },
+  'vs-state': { GET: ROLES },
+  notices: { GET: ['owner', 'dispatcher', 'management'] },
+  'notices-read': { POST: DESK },
+  orders: { POST: DESK, PATCH: DESK },
+  legs: { POST: DESK },
+  move: { POST: DESK },
+  split: { POST: DESK },
+  rt: { PATCH: DESK },
+  'rt-clear': { POST: DESK },
+  delete: { POST: DESK },
+  'vs-day': { POST: DESK },
+  'vs-place': { POST: DESK },
+  'local-loading': { POST: DESK }
+};
+
+test('PLAN_PERMS equals the plan\'s table, cell by cell (nothing more, nothing less)', () => {
+  for (const role of ROLES) {
+    const want = {};
+    for (const [res, byMethod] of Object.entries(EXPECT)) {
+      const methods = Object.entries(byMethod).filter(([, roles]) => roles.includes(role)).map(([mm]) => mm);
+      if (methods.length) want[res] = methods;
+    }
+    assert.deepEqual(PLAN_PERMS[role], want, role);
+  }
+});
+
+// ─────────────────────────── the real Worker ───────────────────────────
+register('data:text/javascript,' + encodeURIComponent(`
+export async function resolve(spec, ctx, next) {
+  if (spec === '@cloudflare/puppeteer') return { url: 'data:text/javascript,export default {}', shortCircuit: true };
+  return next(spec, ctx);
+}`));
+const { default: worker } = await import(pathToFileURL(SRC_PATH).href);
+const ORIGIN = 'https://dimitrispetras21-del.github.io';
+const env = { JWT_SECRET: 'test-secret-not-real', ALLOWED_ORIGIN: ORIGIN, SUPABASE_URL: 'https://db.invalid', SUPABASE_SERVICE_KEY: 'svc-test' };
+const ctx = { waitUntil() {} };
+const b64u = (b) => Buffer.from(b).toString('base64url');
+async function token(role, sub = 'tester', secret = env.JWT_SECRET) {
+  const input = `${b64u(JSON.stringify({ alg: 'HS256', typ: 'JWT' }))}.${b64u(JSON.stringify({ sub, role, exp: Math.floor(Date.now() / 1000) + 600 }))}`;
+  const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+  return `${input}.${b64u(new Uint8Array(await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(input))))}`;
+}
+async function send(method, p, { auth, body } = {}) {
+  const headers = { Origin: ORIGIN };
+  if (auth) headers.Authorization = auth;
+  if (body !== undefined) headers['Content-Type'] = 'application/json';
+  const res = await worker.fetch(new Request(`https://w.invalid${p}`, { method, headers, body: body === undefined ? undefined : JSON.stringify(body) }), env, ctx);
+  const text = await res.text();
+  let json = null;
+  try { json = JSON.parse(text); } catch {}
+  return { status: res.status, json, text };
+}
+const call = async (role, method, p, body) => send(method, p, { auth: `Bearer ${await token(role)}`, body });
+
+let calls;
+const realConsole = { log: console.log, error: console.error, warn: console.warn };
+beforeEach(() => {
+  console.log = console.error = console.warn = () => {};
+  calls = [];
+  globalThis.fetch = async (url, init = {}) => {
+    calls.push({ url: String(url), method: init.method || 'GET' });
+    throw new Error(`unmocked fetch: ${init.method || 'GET'} ${url}`);
+  };
+});
+afterEach(() => { Object.assign(console, realConsole); });
+
+// One concrete request per (resource, method) — valid query strings, so a 403
+// can only come from PLAN_PERMS.
+const REQ = {
+  'board GET': ['GET', '/plan/board?week=2026-10-10'],
+  'vs-state GET': ['GET', '/plan/vs-state?order_ids=1,2'],
+  'notices GET': ['GET', '/plan/notices?desk=natl'],
+  'notices-read POST': ['POST', '/plan/notices/12/read', {}],
+  'orders POST': ['POST', '/plan/orders', { orders: [] }],
+  'orders PATCH': ['PATCH', '/plan/orders/17', { set: {} }],
+  'legs POST': ['POST', '/plan/legs', { pieces: [] }],
+  'move POST': ['POST', '/plan/move', { from: { piece_ids: [1] }, dry_run: true }],
+  'split POST': ['POST', '/plan/pieces/split', { piece_id: 1, parts: [] }],
+  'rt PATCH': ['PATCH', '/plan/rt/5', { dry_run: true }],
+  'rt-clear POST': ['POST', '/plan/rt/5/clear', { dry_run: true }],
+  'delete POST': ['POST', '/plan/delete', { nat_order_id: 17, dry_run: true }],
+  'vs-day POST': ['POST', '/plan/vs/day', { order_id: 1, day: '2026-10-13' }],
+  'vs-place POST': ['POST', '/plan/vs/place', { order_stop_id: 1, location_id: 2 }],
+  'local-loading POST': ['POST', '/plan/local-loading', { rt_stop_id: 1, driver_id: 2, truck_id: 3 }]
+};
+
+test('every refused (role, route) → 403 in the /plan/* shape, before any DB call', async () => {
+  let refused = 0;
+  for (const [res, byMethod] of Object.entries(EXPECT)) {
+    for (const [method, allowed] of Object.entries(byMethod)) {
+      const [verb, p, body] = REQ[`${res} ${method}`];
+      for (const role of ROLES.filter((r) => !allowed.includes(r))) {
+        calls.length = 0;
+        const r = await call(role, verb, p, body);
+        assert.equal(r.status, 403, `${role} ${verb} ${p}: ${r.text}`);
+        assert.deepEqual(r.json, { error: { type: 'FORBIDDEN', code: 'forbidden', message: 'Ο ρόλος σου δεν έχει αυτή την πράξη στο Εβδομαδιαίο Εθνικών' } });
+        assert.equal(calls.length, 0, `${role} ${verb} ${p}: no DB call`);
+        refused += 1;
+      }
+    }
+  }
+  assert.equal(refused, 38, 'refused cells of the table (2 + 12 × 3)');
+});
+
+test('an unknown role (forged or stale JWT role) is refused everywhere', async () => {
+  for (const [verb, p, body] of Object.values(REQ)) {
+    calls.length = 0;
+    const r = await call('driver', verb, p, body);
+    assert.equal(r.status, 403, `${verb} ${p}`);
+    assert.equal(calls.length, 0);
+  }
+});
+
+test('no token / a token signed with another secret → 401 before anything; unknown path → 404 after auth', async () => {
+  for (const [verb, p, body] of Object.values(REQ)) {
+    let r = await send(verb, p, { body });
+    assert.equal(r.status, 401, `${verb} ${p}`);
+    assert.deepEqual(r.json.error, { type: 'AUTH', code: 'unauthorized', message: 'Η σύνδεση έληξε — συνδέσου ξανά' });
+    r = await send(verb, p, { body, auth: `Bearer ${await token('owner', 'x', 'another-secret')}` });
+    assert.equal(r.status, 401, `forged ${verb} ${p}`);
+  }
+  assert.equal((await send('GET', '/plan/nope')).status, 401, 'auth comes first');
+  for (const [verb, p] of [['GET', '/plan/nope'], ['POST', '/plan/rt'], ['DELETE', '/plan/orders/17'], ['GET', '/plan/orders'], ['POST', '/plan/restore']]) {
+    const r = await call('owner', verb, p);
+    assert.equal(r.status, 404, `${verb} ${p}`);
+    assert.equal(r.json.error.type, 'NOT_FOUND');
+  }
+  assert.equal(calls.length, 0, 'no DB call on any of these');
+});
+```
+
+- [ ] **Step 2: Test φρουρού και «γεννιέται κλειστό» (αποτυγχάνει)**
+
+`worker/test/plan-tables-guard.test.mjs`:
+```js
+// National v5 F2 — the deploy guard markers and «born closed» for /plan/*
+// (CLAUDE.md «Ο WORKER», «Τρεις κανόνες μίας πηγής» rule 3; αρχή 5).
+// Read from worker/src/index.js itself — the deploy source — never a copy.
+//   - the v5 tables never enter TABLES: the facade's "*" rows (owner all,
+//     management/accountant GET) would open them by themselves (trap 3);
+//   - PLAN_PERMS: no "*" anywhere, `var PLAN_PERMS = {` exactly once and in use
+//     (esbuild drops an unused top-level var — the live guard would then miss it);
+//   - the five older markers stay exactly once;
+//   - writes are closed in the source that is deployed (decision 22).
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import path from 'node:path';
+
+const here = path.dirname(fileURLToPath(import.meta.url));
+const src = readFileSync(path.join(here, '..', 'src', 'index.js'), 'utf8');
+const count = (needle) => src.split(needle).length - 1;
+function liftVar(name) {
+  const m = src.match(new RegExp(`(?:var|const) ${name} = \\{[\\s\\S]*?\\n\\};\\n`));
+  assert.ok(m, `${name} not found in worker/src/index.js`);
+  return m[0];
+}
+const TABLES = new Function(liftVar('TABLES') + '\nreturn TABLES;')();
+const PLAN_PERMS = new Function(liftVar('PLAN_PERMS') + '\nreturn PLAN_PERMS;')();
+const V5_TABLES = ['shipments', 'shipment_pieces', 'rt_stops', 'piece_legs', 'plan_notices', 'plan_config'];
+
+test('no v5 table is reachable through the facade (TABLES pg / readView)', () => {
+  for (const [id, cfg] of Object.entries(TABLES)) {
+    assert.ok(!V5_TABLES.includes(cfg.pg), `${id} maps a v5 table: ${cfg.pg}`);
+    assert.ok(!V5_TABLES.includes(cfg.readView), `${id} reads a v5 table: ${cfg.readView}`);
+    for (const l of Object.values(cfg.links || {})) assert.ok(!V5_TABLES.includes(l.table), `${id} links a v5 table: ${l.table}`);
+  }
+  for (const t of V5_TABLES) assert.ok(!Object.prototype.hasOwnProperty.call(TABLES, t), `TABLES key ${t}`);
+});
+
+test('PLAN_PERMS: five roles, no wildcard, only GET/POST/PATCH', () => {
+  assert.deepEqual(Object.keys(PLAN_PERMS).sort(), ['accountant', 'dispatcher', 'management', 'owner', 'warehouse']);
+  for (const [role, map] of Object.entries(PLAN_PERMS)) {
+    assert.ok(!Object.prototype.hasOwnProperty.call(map, '*'), `${role} has "*"`);
+    for (const [res, methods] of Object.entries(map)) {
+      assert.ok(!res.includes('*'), `${role}.${res}`);
+      for (const m of methods) assert.ok(['GET', 'POST', 'PATCH'].includes(m), `${role}.${res} ${m}`);
+    }
+  }
+});
+
+test('deploy guard markers: the five older ones and var PLAN_PERMS = { exactly once; PLAN_PERMS in use', () => {
+  assert.equal(count('var PLAN_PERMS = {'), 1, 'var PLAN_PERMS = {');
+  assert.match(src, /\nvar PLAN_PERMS = \{\n/, 'at column 0, alone on its line');
+  assert.match(src, /function planCan\(role, resource, method\) \{\n {2}const r = PLAN_PERMS\[role\];/, 'planCan reads PLAN_PERMS');
+  assert.match(src, /if \(!planCan\(caller\.role, route\.resource, method\)\)/, 'handlePlan calls planCan');
+  assert.match(src, /if \(url\.pathname\.startsWith\("\/plan\/"\)\) \{\n {6}return handlePlan\(request, url, origin, env\);/, 'router reaches handlePlan');
+  assert.match(src, /\n {2}dispatcher: \{\n(?:[^\n]*\n)*? {4}order_stops: \["GET", "POST", "PATCH", "DELETE"\]/, 'dispatcher order_stops DELETE');
+  assert.equal(count('"VS CD Date": "cross_dock_date"'), 1, 'VS CD Date');
+  for (const m of ['Country: "country"', 'Aliases: "aliases"', '"VAT Number": "tax_id"', '"Legal Name": "legal_name"']) {
+    assert.ok(count(m) >= 1, `WORKSHOPS ${m}`);
+  }
+  assert.equal(count('tblStockLots: {'), 1, 'tblStockLots');
+  assert.equal(count('"Move Kind": "move_kind"'), 1, 'Move Kind');
+});
+
+test('writes closed until day L, in the deployed source (decision 22); one switch, no env override', () => {
+  assert.equal(count('var PLAN_WRITES_OPEN = false;'), 1);
+  assert.equal(count('PLAN_WRITES_OPEN = true'), 0);
+  assert.ok(!/env\.PLAN_WRITES/.test(src), 'no environment switch beside the constant');
+});
+
+test('one DB-rule mapper still: no planRuleError / planRuleResponse beside stockRuleError', () => {
+  assert.equal((src.match(/^function \w+RuleError\(/gm) || []).length, 1);
+  assert.equal((src.match(/^function \w+RuleResponse\(/gm) || []).length, 1);
+});
+```
+
+- [ ] **Step 3: Test διαδρομών (αποτυγχάνει)**
+
+`worker/test/plan-routes.test.mjs`:
+```js
+// National v5 F2 — /plan/* routes against the real Worker in Node, PostgREST
+// stubbed via fetch (harness of stock-lots.test.mjs). Contract under test:
+//   - each route calls exactly ONE rpc/plan_* with {p, p_actor, p_role} (writes)
+//     or its typed args (reads) — the deferred 071 rules speak at that RPC's
+//     COMMIT, a second RPC would run after the first committed;
+//   - writes are closed until day L (409 writes_closed, zero DB calls), except
+//     {"dry_run": true} on the four RPCs that support it (decision 22);
+//   - the reply is passed through as the DB wrote it (the DB cuts by role),
+//     but an `amount` never reaches a role outside owner/accountant;
+//   - refusals: plan:<code> → 422 Greek, need_token → 428, 23P01 → truck_busy,
+//     missing 072 → 503, another named constraint → 422, anything else → 500
+//     naming the route — every one in the ONE /plan/* error shape;
+//   - the older paths: PATCH /costs/rt/:id on a v5 cycle → 409 before the DB;
+//     a facade write refused by a plan: rule → 422 instead of 500;
+//   - the Worker writes no audit_log of its own on /plan/* (the DB does).
+// Two instances of the same source: as deployed (writes closed), and one with
+// the single switch flipped by a loader hook (`?plan-writes-open`), so the
+// write routes can be exercised without a second switch in the source.
+import { test, beforeEach, afterEach } from 'node:test';
+import assert from 'node:assert/strict';
+import crypto from 'node:crypto';
+import path from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+import { register } from 'node:module';
+
+const HERE = path.dirname(fileURLToPath(import.meta.url));
+const SRC_PATH = path.resolve(HERE, '../src/index.js');
+
+register('data:text/javascript,' + encodeURIComponent(`
+export async function resolve(spec, ctx, next) {
+  if (spec === '@cloudflare/puppeteer') return { url: 'data:text/javascript,export default {}', shortCircuit: true };
+  return next(spec, ctx);
+}
+export async function load(url, ctx, next) {
+  if (!url.endsWith('/worker/src/index.js?plan-writes-open')) return next(url, ctx);
+  const r = await next(url, { ...ctx, format: 'module' });
+  const text = new TextDecoder().decode(r.source);
+  const needle = 'var PLAN_WRITES_OPEN = false;';
+  if (text.split(needle).length !== 2) throw new Error('plan-routes: the writes switch is not exactly once in index.js');
+  return { format: 'module', source: text.replace(needle, 'var PLAN_WRITES_OPEN = true;'), shortCircuit: true };
+}`));
+const { default: worker } = await import(pathToFileURL(SRC_PATH).href);
+const { default: workerOpen } = await import(pathToFileURL(SRC_PATH).href + '?plan-writes-open');
+
+const ORIGIN = 'https://dimitrispetras21-del.github.io';
+const env = { JWT_SECRET: 'test-secret-not-real', ALLOWED_ORIGIN: ORIGIN, SUPABASE_URL: 'https://db.invalid', SUPABASE_SERVICE_KEY: 'svc-test' };
+const ctx = { waitUntil() {} };
+const b64u = (b) => Buffer.from(b).toString('base64url');
+async function token(role, sub = 'tester') {
+  const input = `${b64u(JSON.stringify({ alg: 'HS256', typ: 'JWT' }))}.${b64u(JSON.stringify({ sub, role, exp: Math.floor(Date.now() / 1000) + 600 }))}`;
+  const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(env.JWT_SECRET), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+  return `${input}.${b64u(new Uint8Array(await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(input))))}`;
+}
+async function callOn(w, role, method, p, body) {
+  const headers = { Origin: ORIGIN, Authorization: `Bearer ${await token(role)}` };
+  if (body !== undefined) headers['Content-Type'] = 'application/json';
+  const raw = body === undefined ? undefined : typeof body === 'string' ? body : JSON.stringify(body);
+  const res = await w.fetch(new Request(`https://w.invalid${p}`, { method, headers, body: raw }), env, ctx);
+  const text = await res.text();
+  let json = null;
+  try { json = JSON.parse(text); } catch {}
+  return { status: res.status, json, text };
+}
+const call = (...a) => callOn(worker, ...a);       // as deployed: writes closed
+const callOpen = (...a) => callOn(workerOpen, ...a); // day L: writes open
+
+// ---- PostgREST stub ----
+const json = (rows, status = 200) => new Response(JSON.stringify(rows), { status, headers: { 'content-type': 'application/json' } });
+const pgError = (status, body) => new Response(typeof body === 'string' ? body : JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
+let routes, calls;
+const realConsole = { log: console.log, error: console.error, warn: console.warn };
+beforeEach(() => {
+  console.log = console.error = console.warn = () => {};
+  routes = [];
+  calls = [];
+  globalThis.fetch = async (url, init = {}) => {
+    const u = new URL(url);
+    const method = init.method || 'GET';
+    const table = u.pathname.replace(/^\/rest\/v1\//, '');
+    const body = init.body ? JSON.parse(init.body) : undefined;
+    calls.push({ method, table, params: u.searchParams, body });
+    for (const r of routes) {
+      if (r.method === method && r.table === table) {
+        const out = await r.handler(u, body);
+        if (out) return out;
+      }
+    }
+    if (method === 'POST' && table === 'audit_log') return json(Array.isArray(body) ? body : [body], 201);
+    if (method === 'POST' && table === 'rpc/log_unknown_field') return json(null);
+    throw new Error(`unmocked fetch: ${method} ${table}?${u.searchParams}`);
+  };
+});
+afterEach(() => { Object.assign(console, realConsole); });
+const on = (method, table, handler) => routes.push({ method, table, handler });
+const rpcCalls = () => calls.filter((c) => c.table.startsWith('rpc/'));
+const auditRows = () => calls.filter((c) => c.table === 'audit_log');
+const planReject = (code, detail, sqlstate = '23514') => pgError(400, { code: sqlstate, details: null, hint: `plan:${code}`, message: `plan rule broken: ${code}:${detail}` });
+const OK = { ok: true, op: 'stub', dry_run: false, ids: {}, warnings: [], notice_ids: [] };
+
+// ─────────────────────────────── reads ───────────────────────────────
+test('GET /plan/board?week=<Saturday>: one rpc/plan_board(p_week, p_role); the DB body is served as is (empty = [])', async () => {
+  const board = { week: '2026-10-10', cycles: [], waiting: [], hub: [], notices: [] };
+  on('POST', 'rpc/plan_board', () => json(board));
+  for (const role of ['owner', 'dispatcher', 'management', 'accountant', 'warehouse']) {
+    calls.length = 0;
+    const r = await call(role, 'GET', '/plan/board?week=2026-10-10');
+    assert.equal(r.status, 200, `${role}: ${r.text}`);
+    assert.deepEqual(r.json, board);
+    assert.deepEqual(rpcCalls().map((c) => [c.table, c.body]), [['rpc/plan_board', { p_week: '2026-10-10', p_role: role }]]);
+  }
+  assert.equal(auditRows().length, 0);
+});
+
+test('GET /plan/board: a week that is not a real Saturday → 400 bad_week before any DB call', async () => {
+  for (const q of ['', '?week=', '?week=2026-10-12', '?week=2026-02-30', '?week=10/10/2026', '?week=2026-10-10T00:00']) {
+    calls.length = 0;
+    const r = await call('owner', 'GET', `/plan/board${q}`);
+    assert.equal(r.status, 400, q);
+    assert.equal(r.json.error.code, 'bad_week');
+    assert.equal(r.json.error.type, 'BAD_REQUEST');
+    assert.equal(calls.length, 0, q);
+  }
+});
+
+test('GET /plan/vs-state: ids deduplicated into p_order_ids; 0, negative, text, empty or > 500 ids → 400', async () => {
+  on('POST', 'rpc/plan_vs_state', () => json({ 3: 'missing', 1: { carriers: [], all_executed: false, all_planned: false, first_hub_day: null } }));
+  const r = await call('warehouse', 'GET', '/plan/vs-state?order_ids=3,1,3');
+  assert.equal(r.status, 200, r.text);
+  assert.deepEqual(rpcCalls()[0].body, { p_order_ids: [3, 1] });
+  assert.equal(r.json[3], 'missing');
+  const many = Array.from({ length: 501 }, (_, i) => i + 1).join(',');
+  for (const q of ['', '?order_ids=', '?order_ids=0', '?order_ids=-1', '?order_ids=1,a', `?order_ids=${many}`]) {
+    calls.length = 0;
+    const bad = await call('owner', 'GET', `/plan/vs-state${q}`);
+    assert.equal(bad.status, 400, q.slice(0, 30));
+    assert.equal(bad.json.error.code, 'bad_order_ids');
+    assert.equal(calls.length, 0);
+  }
+  calls.length = 0;
+  on('POST', 'rpc/plan_vs_state', () => json({}));
+  assert.equal((await call('owner', 'GET', `/plan/vs-state?order_ids=${many.split(',').slice(0, 500).join(',')}`)).status, 200, '500 ids pass');
+});
+
+test('GET /plan/notices?desk=: p_desk + p_role; another desk → 400', async () => {
+  on('POST', 'rpc/plan_notices_list', () => json({ unread: [], recent: [] }));
+  const r = await call('management', 'GET', '/plan/notices?desk=natl');
+  assert.equal(r.status, 200, r.text);
+  assert.deepEqual(rpcCalls()[0].body, { p_desk: 'natl', p_role: 'management' });
+  calls.length = 0;
+  const bad = await call('owner', 'GET', '/plan/notices?desk=all');
+  assert.equal(bad.status, 400);
+  assert.equal(bad.json.error.code, 'bad_desk');
+  assert.equal(calls.length, 0);
+});
+
+// ───────────────────── writes: the closed switch (as deployed) ─────────────────────
+// [route, method, body, rpc, idKey/id merged into p]
+const WRITES = [
+  ['/plan/notices/12/read', 'POST', {}, 'plan_notice_read', { notice_id: 12 }],
+  ['/plan/orders', 'POST', { orders: [{ client_id: 1 }] }, 'plan_orders_create', {}],
+  ['/plan/orders/17', 'PATCH', { set: { price: 300 } }, 'plan_order_update', { nat_order_id: 17 }],
+  ['/plan/legs', 'POST', { pieces: [{ piece_id: 4 }], target: { rt_id: 5, side: 'ANODOS' }, stops: [] }, 'plan_put_pieces', {}],
+  ['/plan/legs', 'POST', { group: { order_id: 9 }, target: { rt_id: 5, side: 'KATHODOS' }, stops: [] }, 'plan_put_group', {}],
+  ['/plan/move', 'POST', { from: { piece_ids: [4] }, target: { wait: true } }, 'plan_move_pieces', {}],
+  ['/plan/pieces/split', 'POST', { piece_id: 4, parts: [{ pallets: 12 }, { pallets: 14 }] }, 'plan_split_piece', {}],
+  ['/plan/rt/5', 'PATCH', { set: { driver_id: 8 } }, 'plan_rt_update', { rt_id: 5 }],
+  ['/plan/rt/5/clear', 'POST', { confirm_token: 'abc' }, 'plan_rt_clear', { rt_id: 5 }],
+  ['/plan/delete', 'POST', { nat_order_id: 17, reason: 'x', confirm_token: 'abc' }, 'plan_delete', {}],
+  ['/plan/vs/day', 'POST', { order_id: 1, day: '2026-10-13' }, 'plan_vs_set_day', {}],
+  ['/plan/vs/place', 'POST', { order_stop_id: 3, location_id: 2 }, 'plan_vs_set_place', {}],
+  ['/plan/local-loading', 'POST', { rt_stop_id: 3, driver_id: 8, truck_id: 2 }, 'plan_local_loading', {}]
+];
+const DRY_CAPABLE = ['plan_move_pieces', 'plan_rt_update', 'plan_rt_clear', 'plan_delete'];
+const WRITES_CLOSED = { error: { type: 'WRITES_CLOSED', code: 'writes_closed', message: 'Οι αλλαγές στο Εβδομαδιαίο Εθνικών ανοίγουν την ημέρα της μετάβασης — ως τότε μόνο ανάγνωση και προεπισκόπηση' } };
+
+test('writes closed: every write route → 409 writes_closed with ZERO DB calls (owner and dispatcher)', async () => {
+  for (const role of ['owner', 'dispatcher']) {
+    for (const [p, method, body] of WRITES) {
+      calls.length = 0;
+      const r = await call(role, method, p, body);
+      assert.equal(r.status, 409, `${role} ${method} ${p}: ${r.text}`);
+      assert.deepEqual(r.json, WRITES_CLOSED);
+      assert.equal(calls.length, 0, `${method} ${p}: no DB call`);
+    }
+  }
+});
+
+test('writes closed: dry_run passes ONLY on the four RPCs that support it; elsewhere it is still 409', async () => {
+  for (const fn of DRY_CAPABLE) on('POST', `rpc/${fn}`, (u, b) => json({ ok: true, op: fn, dry_run: true, needs_confirm: false, confirm_token: 'tok', consequences: [], echo: b }));
+  for (const [p, method, body, fn, merged] of WRITES) {
+    calls.length = 0;
+    const r = await call('dispatcher', method, p, { ...body, dry_run: true });
+    if (DRY_CAPABLE.includes(fn)) {
+      assert.equal(r.status, 200, `${p}: ${r.text}`);
+      assert.deepEqual(rpcCalls().map((c) => c.table), [`rpc/${fn}`]);
+      assert.deepEqual(rpcCalls()[0].body, { p: { ...body, dry_run: true, ...merged }, p_actor: 'tester', p_role: 'dispatcher' });
+      assert.equal(r.json.dry_run, true);
+    } else {
+      // plan_orders_create & co. have no dry run — the flag would be ignored
+      // by the DB and the row written: the switch must not open for it.
+      assert.equal(r.status, 409, `${p} with dry_run must stay closed`);
+      assert.equal(calls.length, 0);
+    }
+  }
+  // strictly the boolean true
+  for (const v of ['true', 1, 'yes']) {
+    calls.length = 0;
+    assert.equal((await call('owner', 'POST', '/plan/delete', { nat_order_id: 17, dry_run: v })).status, 409, `dry_run ${JSON.stringify(v)}`);
+    assert.equal(calls.length, 0);
+  }
+  assert.equal(auditRows().length, 0);
+});
+
+// ───────────────────── writes: day L (switch flipped) ─────────────────────
+test('writes open: each route → exactly one rpc/plan_* with {p, p_actor = JWT sub, p_role}; reply served as is', async () => {
+  for (const [, , , fn] of WRITES) on('POST', `rpc/${fn}`, () => json({ ...OK, op: fn }));
+  for (const [p, method, body, fn, merged] of WRITES) {
+    calls.length = 0;
+    const r = await callOpen('dispatcher', method, p, body);
+    assert.equal(r.status, 200, `${method} ${p}: ${r.text}`);
+    assert.deepEqual(r.json, { ...OK, op: fn });
+    assert.equal(calls.length, 1, `${method} ${p}: one DB call, no audit of its own`);
+    assert.equal(calls[0].table, `rpc/${fn}`);
+    assert.deepEqual(calls[0].body, { p: { ...body, ...merged }, p_actor: 'tester', p_role: 'dispatcher' });
+  }
+});
+
+test('writes open: bad bodies → 400 before any DB call; a body id that contradicts the path → 400 id_mismatch', async () => {
+  for (const [p, method, raw, code] of [
+    ['/plan/orders', 'POST', '{not json', 'bad_json'],
+    ['/plan/orders', 'POST', '[1,2]', 'bad_json'],
+    ['/plan/orders', 'POST', 'null', 'bad_json'],
+    ['/plan/orders', 'POST', '"x"', 'bad_json'],
+    ['/plan/rt/5', 'PATCH', JSON.stringify({ rt_id: 6 }), 'id_mismatch'],
+    ['/plan/orders/17', 'PATCH', JSON.stringify({ nat_order_id: 18 }), 'id_mismatch']
+  ]) {
+    calls.length = 0;
+    const r = await callOpen('owner', method, p, raw);
+    assert.equal(r.status, 400, `${p} ${raw}`);
+    assert.equal(r.json.error.code, code);
+    assert.equal(calls.length, 0);
+  }
+  // the same id in body and path is fine; an empty body is {}
+  on('POST', 'rpc/plan_rt_update', () => json(OK));
+  on('POST', 'rpc/plan_notice_read', () => json({ read_at: '2026-10-22T10:00:00Z', read_by: 'tester', already: false }));
+  assert.equal((await callOpen('owner', 'PATCH', '/plan/rt/5', { rt_id: 5 })).status, 200);
+  calls.length = 0;
+  assert.equal((await callOpen('owner', 'POST', '/plan/notices/12/read')).status, 200);
+  assert.deepEqual(calls[0].body, { p: { notice_id: 12 }, p_actor: 'tester', p_role: 'owner' });
+});
+
+// ───────────────────── refusals → the one /plan/* error shape ─────────────────────
+test('plan:<code> → 422 PLAN_RULE with the Greek text + the DB detail; nothing audited by the Worker', async () => {
+  on('POST', 'rpc/plan_put_pieces', () => planReject('truck_busy', 'RT-1280'));
+  const r = await callOpen('dispatcher', 'POST', '/plan/legs', { pieces: [{ piece_id: 4 }], target: { rt_id: 5, side: 'ANODOS' }, stops: [] });
+  assert.equal(r.status, 422, r.text);
+  assert.deepEqual(r.json, { error: { type: 'PLAN_RULE', code: 'truck_busy', message: 'Το φορτηγό είναι ήδη σε άλλο δρομολόγιο εκείνες τις ώρες (RT-1280)' } });
+  assert.equal(auditRows().length, 0);
+});
+
+test('need_token → 428 (the screen opens the list), stale_confirm → 422', async () => {
+  on('POST', 'rpc/plan_delete', (u, b) => (b.p.confirm_token ? planReject('stale_confirm', '17') : planReject('need_token', '17')));
+  let r = await callOpen('owner', 'POST', '/plan/delete', { nat_order_id: 17, reason: 'x' });
+  assert.equal(r.status, 428, r.text);
+  assert.deepEqual(r.json.error, { type: 'PLAN_RULE', code: 'need_token', message: 'Η πράξη θέλει επιβεβαίωση — δες πρώτα τη λίστα συνεπειών (17)' });
+  r = await callOpen('owner', 'POST', '/plan/delete', { nat_order_id: 17, reason: 'x', confirm_token: 'old' });
+  assert.equal(r.status, 422);
+  assert.equal(r.json.error.code, 'stale_confirm');
+});
+
+test('23P01 at the RPC\'s COMMIT (071b EXCLUDE) → 422 truck_busy / driver_busy', async () => {
+  for (const [name, code] of [['rt_v2_truck_once', 'truck_busy'], ['rt_v2_driver_once', 'driver_busy']]) {
+    routes.length = 0;
+    on('POST', 'rpc/plan_rt_update', () => pgError(409, { code: '23P01', details: 'Key conflicts with existing key.', hint: null, message: `conflicting key value violates exclusion constraint "${name}"` }));
+    const r = await callOpen('dispatcher', 'PATCH', '/plan/rt/5', { set: { truck_id: 2 } });
+    assert.equal(r.status, 422, r.text);
+    assert.equal(r.json.error.code, code);
+  }
+});
+
+test('072 missing in the DB (PostgREST 404 PGRST202) → 503 schema_behind, on reads and dry runs alike', async () => {
+  const missing = () => pgError(404, { code: 'PGRST202', details: 'Searched for the function public.plan_board with parameters p_role, p_week', hint: null, message: 'Could not find the function public.plan_board(p_role, p_week) in the schema cache' });
+  on('POST', 'rpc/plan_board', missing);
+  on('POST', 'rpc/plan_delete', missing);
+  for (const [method, p, body] of [['GET', '/plan/board?week=2026-10-10'], ['POST', '/plan/delete', { nat_order_id: 1, dry_run: true }]]) {
+    const r = await call('owner', method, p, body);
+    assert.equal(r.status, 503, `${p}: ${r.text}`);
+    assert.deepEqual(r.json.error, { type: 'SCHEMA_BEHIND', code: 'schema_behind', message: 'Η βάση δεν έχει ακόμη το migration 072 (Εβδομαδιαίο Εθνικών) — ενημέρωσε τον Δημήτρη' });
+  }
+});
+
+test('another named DB constraint inside /plan/* → loud 422 naming it; an unnamed 23514 → 422 with the DB text', async () => {
+  on('POST', 'rpc/plan_rt_update', () => pgError(400, { code: '23514', hint: null, details: null, message: 'new row for relation "ct_round_trips" violates check constraint "ct_round_trips_trip_type_check"' }));
+  let r = await callOpen('owner', 'PATCH', '/plan/rt/5', { set: { trip_type: 'X' } });
+  assert.equal(r.status, 422, r.text);
+  assert.deepEqual(r.json.error, { type: 'PLAN_RULE', code: 'ct_round_trips_trip_type_check', message: 'Κανόνας βάσης ct_round_trips_trip_type_check' });
+  routes.length = 0;
+  on('POST', 'rpc/plan_orders_create', () => pgError(400, { code: '23514', hint: null, details: null, message: 'Δεν σημαίνεται τιμολογημένη χωρίς τιμή' }));
+  r = await callOpen('owner', 'POST', '/plan/orders', { orders: [] });
+  assert.equal(r.status, 422, r.text);
+  assert.deepEqual(r.json.error, { type: 'PLAN_RULE', code: 'db_rule', message: 'Κανόνας βάσης: Δεν σημαίνεται τιμολογημένη χωρίς τιμή' });
+});
+
+test('anything else → 500 in the /plan/* shape naming the route (never a CF 1101, never {})', async () => {
+  on('POST', 'rpc/plan_split_piece', () => new Response('<html>bad gateway</html>', { status: 502 }));
+  let r = await callOpen('dispatcher', 'POST', '/plan/pieces/split', { piece_id: 4, parts: [] });
+  assert.equal(r.status, 500, r.text);
+  assert.deepEqual(r.json.error, { type: 'SERVER', code: 'plan_failed', message: 'Η πράξη POST /plan/split δεν ολοκληρώθηκε — ενημέρωσε τον Δημήτρη' });
+  routes.length = 0;
+  on('POST', 'rpc/plan_board', () => new Response('not json', { status: 200 }));
+  r = await call('owner', 'GET', '/plan/board?week=2026-10-10');
+  assert.equal(r.status, 500);
+  assert.equal(r.json.error.code, 'plan_failed');
+});
+
+test('a lost lock (40P01 / 40001 / 55P03) → 409 busy_retry; statement_timeout (57014) → 503 slow; never the 500 path', async () => {
+  for (const code of ['40P01', '40001', '55P03']) {
+    routes.length = 0;
+    on('POST', 'rpc/plan_move_pieces', () => pgError(409, { code, hint: null, details: null, message: 'deadlock detected' }));
+    const r = await callOpen('dispatcher', 'POST', '/plan/move', { from: { piece_ids: [1] }, target: { rt_id: 5, side: 'KATHODOS' } });
+    assert.equal(r.status, 409, `${code}: ${r.text}`);
+    assert.deepEqual(r.json.error, { type: 'PLAN_RULE', code: 'busy_retry', message: 'Ταυτόχρονη αλλαγή από άλλον χρήστη — τίποτα δεν γράφτηκε· ξαναδοκίμασε' });
+  }
+  routes.length = 0;
+  on('POST', 'rpc/plan_board', () => pgError(500, { code: '57014', hint: null, details: null, message: 'canceling statement due to statement timeout' }));
+  const r = await call('owner', 'GET', '/plan/board?week=2026-10-10');
+  assert.equal(r.status, 503, r.text);
+  assert.equal(r.json.error.code, 'slow');
+});
+
+// ───────────────────── amounts (decision 9: the DB cuts; the Worker trips) ─────────────────────
+const WITH_AMOUNT = { ok: true, op: 'plan_delete', dry_run: true, needs_confirm: true, confirm_token: 'tok',
+  consequences: [{ kind: 'payroll_amount', rt_id: 5, dl_entry_id: 99, paid: true, paid_week: 42, amount: 230 }] };
+const WITHOUT_AMOUNT = { ...WITH_AMOUNT, consequences: [{ kind: 'payroll_amount', rt_id: 5, dl_entry_id: 99, paid: true, paid_week: 42 }] };
+
+test('an amount is served to the owner, never to a dispatcher (500 amount_leak, the number not in the body)', async () => {
+  // a DB bug answering an amount to every role — the Worker must trip on it
+  on('POST', 'rpc/plan_delete', () => json(WITH_AMOUNT));
+  let r = await call('owner', 'POST', '/plan/delete', { nat_order_id: 17, dry_run: true });
+  assert.equal(r.status, 200);
+  assert.equal(r.json.consequences[0].amount, 230);
+  r = await call('dispatcher', 'POST', '/plan/delete', { nat_order_id: 17, dry_run: true });
+  assert.equal(r.status, 500, r.text);
+  assert.equal(r.json.error.code, 'amount_leak');
+  assert.ok(!r.text.includes('230'), 'the number never leaves the Worker');
+  assert.ok(!/"amount"/.test(r.text));
+  routes.length = 0;
+  on('POST', 'rpc/plan_delete', () => json(WITHOUT_AMOUNT));
+  r = await call('dispatcher', 'POST', '/plan/delete', { nat_order_id: 17, dry_run: true });
+  assert.equal(r.status, 200);
+  assert.ok(!/"amount"/.test(r.text), 'no amount key anywhere in the body');
+  assert.equal(rpcCalls().at(-1).body.p_role, 'dispatcher', 'the role the DB cuts by');
+});
+```
+
+- [ ] **Step 4: Τρέξε, να δεις την αποτυχία**
+
+```bash
+node --test worker/test/plan-perms.test.mjs worker/test/plan-tables-guard.test.mjs worker/test/plan-routes.test.mjs 2>&1 | grep -E '^ℹ (pass|fail)|not found|exactly once'
+```
+Expected: `ℹ fail 3`, με `PLAN_PERMS not found` (perms), `PLAN_PERMS not found in worker/src/index.js` (guard), `plan-routes: the writes switch is not exactly once in index.js` (routes).
+
+- [ ] **Step 5: Η ενότητα `/plan/*`**
+
+Στο `worker/src/index.js`, αμέσως **μετά** τη γραμμή `__name(handleCosts, "handleCosts");` πρόσθεσε αυτούσιο (η κενή γραμμή πριν από το `// src/routes/performance.js` μένει):
+```js
+// src/routes/plan.js — NATIONAL v5 /plan/* (F2, owner 21–22/10/2026; spec
+// docs/superpowers/specs/2026-10-21-national-v5-design.md §2.1, §3, §7).
+// Every v5 write is ONE plan_* RPC per request: the 071/071b rules are
+// DEFERRED, so they speak at that RPC's COMMIT — a second RPC would run after
+// the first one had already committed. The DB writes the audit_log (actor =
+// caller.sub, role = caller.role); this handler writes none of its own (one
+// trace, αρχή 3). The DB also cuts amounts/prices by p_role (decision 9): this
+// handler never filters fields, it only refuses to forward an `amount` to a
+// role that must not see one (a tripwire, not a second rule).
+// Born closed (αρχή 5): deny-by-default per resource, no "*" ever — the v5
+// tables are NOT in TABLES, so the facade's wildcard rows can never reach
+// them (trap 3). The declaration below is the deploy guard marker (CLAUDE.md
+// «Ο WORKER»): exactly one, at column 0, and in use by planCan — esbuild drops
+// an unused top-level var and the guard would no longer find it in the bundle.
+var PLAN_PERMS = {
+  // owner + dispatcher: the National desk's every act (spec §3 «Δικαιώματα»).
+  owner: { board: ["GET"], "vs-state": ["GET"], notices: ["GET"], "notices-read": ["POST"], orders: ["POST", "PATCH"], legs: ["POST"], move: ["POST"], split: ["POST"], rt: ["PATCH"], "rt-clear": ["POST"], delete: ["POST"], "vs-day": ["POST"], "vs-place": ["POST"], "local-loading": ["POST"] },
+  dispatcher: { board: ["GET"], "vs-state": ["GET"], notices: ["GET"], "notices-read": ["POST"], orders: ["POST", "PATCH"], legs: ["POST"], move: ["POST"], split: ["POST"], rt: ["PATCH"], "rt-clear": ["POST"], delete: ["POST"], "vs-day": ["POST"], "vs-place": ["POST"], "local-loading": ["POST"] },
+  // management reads the board and the notices, marks nothing (decision 25).
+  management: { board: ["GET"], "vs-state": ["GET"], notices: ["GET"] },
+  // accountant: no dry run in F2 (decision 26) — amounts are on the payroll
+  // and expenses screens. warehouse: the board without prices (the DB cuts).
+  accountant: { board: ["GET"], "vs-state": ["GET"] },
+  warehouse: { board: ["GET"], "vs-state": ["GET"] }
+};
+function planCan(role, resource, method) {
+  const r = PLAN_PERMS[role];
+  return !!(r && r[resource] && r[resource].includes(method));
+}
+__name(planCan, "planCan");
+// Writes stay closed until day L (decision 22, owner 22/10): a test click
+// before L would be the first real v5 row, and the way back (spec §2.2) exists
+// only while there is none. Reads and dry runs stay open. F5 sets this to
+// true in the SAME deploy that turns WN_V5 on — nowhere else (no env var:
+// one switch, in the source that is deployed, αρχή 3).
+var PLAN_WRITES_OPEN = false;
+// One row per route: method + path → resource (PLAN_PERMS) + RPC. `dryRun`
+// marks the four RPCs that take {"dry_run": true} and write nothing then;
+// ONLY those pass the closed switch with it — any other RPC would ignore the
+// flag and write (plan_orders_create has no dry run).
+// `idKey`: the path id goes into p under that key; a different id in the body
+// is a 400, never silently overridden (αρχή 1).
+var PLAN_ROUTES = [
+  { method: "GET", re: /^\/plan\/board$/, resource: "board", rpc: "plan_board", read: planBoardArgs },
+  { method: "GET", re: /^\/plan\/vs-state$/, resource: "vs-state", rpc: "plan_vs_state", read: planVsStateArgs },
+  { method: "GET", re: /^\/plan\/notices$/, resource: "notices", rpc: "plan_notices_list", read: planNoticesArgs },
+  { method: "POST", re: /^\/plan\/notices\/(\d+)\/read$/, resource: "notices-read", rpc: "plan_notice_read", idKey: "notice_id" },
+  { method: "POST", re: /^\/plan\/orders$/, resource: "orders", rpc: "plan_orders_create" },
+  { method: "PATCH", re: /^\/plan\/orders\/(\d+)$/, resource: "orders", rpc: "plan_order_update", idKey: "nat_order_id" },
+  { method: "POST", re: /^\/plan\/legs$/, resource: "legs", rpc: (body) => body.group !== void 0 ? "plan_put_group" : "plan_put_pieces" },
+  { method: "POST", re: /^\/plan\/move$/, resource: "move", rpc: "plan_move_pieces", dryRun: true },
+  { method: "POST", re: /^\/plan\/pieces\/split$/, resource: "split", rpc: "plan_split_piece" },
+  { method: "PATCH", re: /^\/plan\/rt\/(\d+)$/, resource: "rt", rpc: "plan_rt_update", idKey: "rt_id", dryRun: true },
+  { method: "POST", re: /^\/plan\/rt\/(\d+)\/clear$/, resource: "rt-clear", rpc: "plan_rt_clear", idKey: "rt_id", dryRun: true },
+  { method: "POST", re: /^\/plan\/delete$/, resource: "delete", rpc: "plan_delete", dryRun: true },
+  { method: "POST", re: /^\/plan\/vs\/day$/, resource: "vs-day", rpc: "plan_vs_set_day" },
+  { method: "POST", re: /^\/plan\/vs\/place$/, resource: "vs-place", rpc: "plan_vs_set_place" },
+  { method: "POST", re: /^\/plan\/local-loading$/, resource: "local-loading", rpc: "plan_local_loading" }
+];
+// Reads: the query string → RPC args, or a 400 before any DB call.
+// The week is a TMS week: Saturday to Friday (TmsWeek), named by its Saturday.
+function planBoardArgs(url, caller) {
+  const week = url.searchParams.get("week") || "";
+  const d = /^\d{4}-\d{2}-\d{2}$/.test(week) ? new Date(`${week}T00:00:00Z`) : null;
+  if (!d || isNaN(d) || d.toISOString().slice(0, 10) !== week || d.getUTCDay() !== 6) {
+    return { error: "Η εβδομάδα δίνεται με το Σάββατό της (ΕΕΕΕ-ΜΜ-ΗΗ)", code: "bad_week" };
+  }
+  return { args: { p_week: week, p_role: caller.role } };
+}
+__name(planBoardArgs, "planBoardArgs");
+function planVsStateArgs(url) {
+  const raw = (url.searchParams.get("order_ids") || "").split(",").map((s) => s.trim()).filter(Boolean);
+  if (!raw.length || raw.length > 500 || raw.some((s) => !/^[1-9]\d{0,14}$/.test(s))) {
+    return { error: "order_ids: 1 έως 500 θετικοί ακέραιοι, χωρισμένοι με κόμμα", code: "bad_order_ids" };
+  }
+  return { args: { p_order_ids: [...new Set(raw.map(Number))] } };
+}
+__name(planVsStateArgs, "planVsStateArgs");
+function planNoticesArgs(url, caller) {
+  const desk = url.searchParams.get("desk") || "";
+  if (desk !== "intl" && desk !== "natl") return { error: "desk: intl ή natl", code: "bad_desk" };
+  return { args: { p_desk: desk, p_role: caller.role } };
+}
+__name(planNoticesArgs, "planNoticesArgs");
+// ONE error shape for every non-2xx of /plan/* (decision 23): the F4 client
+// (core/plan-api.js) reads error.code to react and toasts error.message.
+function planError(status, type, code, message, origin, env) {
+  return jsonOk({ error: { type, code, message } }, origin, env, status);
+}
+__name(planError, "planError");
+var PLAN_MONEY_ROLES = ["owner", "accountant"];
+function planHasAmount(v) {
+  if (Array.isArray(v)) return v.some(planHasAmount);
+  if (v && typeof v === "object") {
+    return Object.prototype.hasOwnProperty.call(v, "amount") || Object.values(v).some(planHasAmount);
+  }
+  return false;
+}
+__name(planHasAmount, "planHasAmount");
+async function handlePlan(request, url, origin, env) {
+  const caller = await getCaller(request, env);
+  if (!caller) return planError(401, "AUTH", "unauthorized", "Η σύνδεση έληξε — συνδέσου ξανά", origin, env);
+  const method = request.method;
+  let route = null;
+  let match = null;
+  for (const r of PLAN_ROUTES) {
+    if (r.method !== method) continue;
+    match = r.re.exec(url.pathname);
+    if (match) { route = r; break; }
+  }
+  if (!route) return planError(404, "NOT_FOUND", "no_route", `Άγνωστη διαδρομή: ${method} ${url.pathname}`, origin, env);
+  if (!planCan(caller.role, route.resource, method)) {
+    return planError(403, "FORBIDDEN", "forbidden", "Ο ρόλος σου δεν έχει αυτή την πράξη στο Εβδομαδιαίο Εθνικών", origin, env);
+  }
+  const name = `${method} /plan/${route.resource}`;
+  // No top-level catch in fetch(): anything thrown out of here would be a CF
+  // 1101 without CORS, which the browser reads as «network error» (αρχή 1).
+  let fn = null;
+  try {
+    let args;
+    if (route.read) {
+      const a = route.read(url, caller);
+      if (a.error) return planError(400, "BAD_REQUEST", a.code, a.error, origin, env);
+      fn = route.rpc;
+      args = a.args;
+    } else {
+      const text = await request.text();
+      let body = null;
+      try { body = text.trim() ? JSON.parse(text) : {}; } catch { body = null; }
+      if (!body || typeof body !== "object" || Array.isArray(body)) {
+        return planError(400, "BAD_REQUEST", "bad_json", "Το σώμα του αιτήματος δεν είναι αντικείμενο JSON", origin, env);
+      }
+      if (route.idKey) {
+        const id = Number(match[1]);
+        if (body[route.idKey] !== void 0 && Number(body[route.idKey]) !== id) {
+          return planError(400, "BAD_REQUEST", "id_mismatch", `Το ${route.idKey} του σώματος διαφέρει από τη διαδρομή`, origin, env);
+        }
+        body = { ...body, [route.idKey]: id };
+      }
+      const dry = route.dryRun === true && body.dry_run === true;
+      if (!PLAN_WRITES_OPEN && !dry) {
+        return planError(409, "WRITES_CLOSED", "writes_closed", "Οι αλλαγές στο Εβδομαδιαίο Εθνικών ανοίγουν την ημέρα της μετάβασης — ως τότε μόνο ανάγνωση και προεπισκόπηση", origin, env);
+      }
+      fn = typeof route.rpc === "function" ? route.rpc(body) : route.rpc;
+      args = { p: body, p_actor: caller.sub, p_role: caller.role };
+    }
+    const out = await dbRpc(env, fn, args);
+    if (!PLAN_MONEY_ROLES.includes(caller.role) && planHasAmount(out)) {
+      console.error(`PLAN ${name}: the DB answered an amount to role ${caller.role} — not forwarded`);
+      return planError(500, "SERVER", "amount_leak", "Η απάντηση της βάσης είχε ποσά για ρόλο χωρίς δικαίωμα — δεν στάλθηκε· ενημέρωσε τον Δημήτρη", origin, env);
+    }
+    return jsonOk(out, origin, env);
+  } catch (e) {
+    const rule = stockRuleError(e);
+    if (rule) {
+      // need_token: the act needs the dry-run list first — 428, so the F4
+      // client opens the list instead of toasting a refusal.
+      return planError(rule.code === "need_token" ? 428 : 422, rule.type || "STOCK_RULE", rule.code, rule.message, origin, env);
+    }
+    const pg = e && e.pg && typeof e.pg === "object" ? e.pg : null;
+    // PostgREST 404 PGRST202 = the function is not in its schema cache: this
+    // Worker is ahead of 072 (or 072 was rolled back). Named, never a 500
+    // (pattern schemaBehind060).
+    if (pg && pg.code === "PGRST202") {
+      console.error(`PLAN ${name}: ${fn} missing in the DB (072)`);
+      return planError(503, "SCHEMA_BEHIND", "schema_behind", "Η βάση δεν έχει ακόμη το migration 072 (Εβδομαδιαίο Εθνικών) — ενημέρωσε τον Δημήτρη", origin, env);
+    }
+    // A lock lost to a concurrent write (deadlock 40P01, serialization 40001,
+    // lock_timeout 55P03): nothing was kept, the same request can simply be
+    // sent again — a 409 the F4 client retries once, never the retried 500.
+    if (pg && /^(40P01|40001|55P03)$/.test(String(pg.code || ""))) {
+      console.error(`PLAN ${name}: ${pg.code} (concurrent change)`);
+      return planError(409, "PLAN_RULE", "busy_retry", "Ταυτόχρονη αλλαγή από άλλον χρήστη — τίποτα δεν γράφτηκε· ξαναδοκίμασε", origin, env);
+    }
+    // statement_timeout (PostgREST, 8 s): slow, not broken — 503, try again later.
+    if (pg && String(pg.code || "") === "57014") {
+      console.error(`PLAN ${name}: statement timeout`);
+      return planError(503, "SERVER", "slow", "Η βάση άργησε να απαντήσει — τίποτα δεν γράφτηκε· ξαναδοκίμασε σε λίγο", origin, env);
+    }
+    // Any other named DB constraint inside /plan/* is a business refusal the
+    // texts above do not know yet: a loud 422 naming it, never the retried
+    // 500. Only here — the facade/costs paths keep stockRuleError's null.
+    if (pg && /^23(514|505|503|P01)$/.test(String(pg.code || ""))) {
+      const n = /constraint "([^"]+)"/.exec(String(pg.message || ""));
+      const cname = n ? n[1] : "db_rule";
+      return planError(422, "PLAN_RULE", cname, n ? `Κανόνας βάσης ${cname}` : `Κανόνας βάσης: ${String(pg.message || "").slice(0, 200)}`, origin, env);
+    }
+    console.error(`PLAN ${name}`, e && e.message);
+    return planError(500, "SERVER", "plan_failed", `Η πράξη ${name} δεν ολοκληρώθηκε — ενημέρωσε τον Δημήτρη`, origin, env);
+  }
+}
+__name(handlePlan, "handlePlan");
+```
+
+- [ ] **Step 6: Δρομολόγηση**
+
+Στο `worker/src/index.js` (μέσα στο `fetch`), αντικατέστησε:
+```js
+    if (url.pathname.startsWith("/costs/")) {
+      return handleCosts(request, url, origin, env);
+    }
+```
+με:
+```js
+    if (url.pathname.startsWith("/costs/")) {
+      return handleCosts(request, url, origin, env);
+    }
+    if (url.pathname.startsWith("/plan/")) {
+      return handlePlan(request, url, origin, env);
+    }
+```
+
+- [ ] **Step 7: Τρέξε, πράσινο**
+
+```bash
+node --check worker/src/index.js && node --test worker/test/*.test.mjs worker/src/rt-rules.test.mjs 2>&1 | grep -E '^ℹ (tests|pass|fail)'
+```
+Expected: `ℹ tests 220`, `ℹ pass 220`, `ℹ fail 0` (195 + 4 perms + 5 guard + 16 routes).
+
+- [ ] **Step 8: Commit**
+
+```bash
+git add worker/src/index.js worker/test/plan-perms.test.mjs worker/test/plan-tables-guard.test.mjs worker/test/plan-routes.test.mjs
+git commit -m "worker: /plan/* behind PLAN_PERMS, one plan_* RPC per request, writes closed until L
+
+handlePlan: 401 -> 404 -> 403 (no DB call) -> 400 -> 409 writes_closed;
+reads (board, vs-state, notices) and the four dry runs stay open. Refusals
+through stockRuleError (422, need_token 428), missing 072 = 503
+schema_behind, lost locks = 409 busy_retry, timeout = 503 slow, any other
+named constraint = loud 422, else 500 naming the route. The DB cuts amounts by role; the Worker refuses to forward one to a
+role outside owner/accountant (500 amount_leak). No audit of its own.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+```
+
+---
+
+#### Task Γ4: Παλιές διαδρομές: `PATCH /costs/rt/:id` σε κύκλο v5, `"Via Hub"`
+
+**Files:**
+- Modify: `worker/src/index.js`: `PATCH /costs/rt/:id` (σήμερα :3835-3855)· `fields` του ORDER STOPS `tblaeY5QOHAS1gyE8` (σήμερα :1716-1720)
+- Modify: `worker/test/plan-routes.test.mjs`, `worker/test/plan-tables-guard.test.mjs` (προσθήκες στο τέλος)
+
+**Interfaces:**
+- Consumes: απόφαση 27· ο χαρτογράφος του Γ2 (ήδη στον facade PATCH :3296)· `order_stops.via_hub` (071) και CHECK `order_stops_via_hub_intl`.
+- Produces: 409 (string, γιατί το `ctFetch` δείχνει `data.error`) πριν από τη βάση για `model === 2`· ετικέτα facade `"Via Hub": "via_hub"`.
+
+- [ ] **Step 1: Tests (αποτυγχάνουν)**
+
+Στο τέλος του `worker/test/plan-routes.test.mjs` πρόσθεσε:
+```js
+// ───────────────────── the older paths ─────────────────────
+test('PATCH /costs/rt/:id on a v5 cycle (model 2) → 409 in Greek, no PATCH; a v1 cycle is patched as today', async () => {
+  on('GET', 'ct_round_trips', (u) => json([{ id: Number(u.searchParams.get('id').slice(3)), model: u.searchParams.get('id') === 'eq.5' ? 2 : 1, status: 'planned', date_start: '2026-10-12' }]));
+  on('PATCH', 'ct_round_trips', (u, b) => json([{ id: 7, model: 1, ...b }]));
+  let r = await call('dispatcher', 'PATCH', '/costs/rt/5', { date_start: '2026-10-13' });
+  assert.equal(r.status, 409, r.text);
+  assert.deepEqual(r.json, { error: 'Ο κύκλος ανήκει στο Εβδομαδιαίο Εθνικών — αλλάζει μόνο από εκεί' });
+  assert.equal(calls.filter((c) => c.method === 'PATCH').length, 0);
+  assert.equal(auditRows().length, 0);
+  calls.length = 0;
+  r = await call('dispatcher', 'PATCH', '/costs/rt/7', { date_start: '2026-10-13' });
+  assert.equal(r.status, 200, r.text);
+  assert.equal(calls.filter((c) => c.method === 'PATCH' && c.table === 'ct_round_trips').length, 1);
+  assert.equal(auditRows().length, 1);
+});
+
+test('facade PATCH ORDER STOPS refused by a plan: rule (bridge stop, 071) or by order_stops_via_hub_intl → 422, not 500', async () => {
+  const STOPS = '/v0/appTEST/tblaeY5QOHAS1gyE8';
+  on('GET', 'order_stops', (u) => (u.searchParams.get('select') === '*' ? json([{ id: 31, legacy_id: 'recSTOP1', pallets: 20, via_hub: false }]) : null));
+  on('PATCH', 'order_stops', (u, b) => (b.via_hub !== undefined
+    ? pgError(400, { code: '23514', hint: null, details: null, message: 'new row for relation "order_stops" violates check constraint "order_stops_via_hub_intl"' })
+    : planReject('pieces_sum', '12:19<>20')));
+  let r = await call('dispatcher', 'PATCH', `${STOPS}/recSTOP1`, { fields: { Pallets: 19 } });
+  assert.equal(r.status, 422, r.text);
+  assert.deepEqual(r.json, { error: { type: 'PLAN_RULE', code: 'pieces_sum', message: 'Τα κομμάτια δεν αθροίζουν στις παλέτες της αποστολής (12:19<>20)' } });
+  r = await call('dispatcher', 'PATCH', `${STOPS}/recSTOP1`, { fields: { 'Via Hub': true } });
+  assert.equal(r.status, 422, r.text);
+  assert.equal(r.json.error.code, 'order_stops_via_hub_intl');
+  const patch = calls.filter((c) => c.method === 'PATCH').at(-1);
+  assert.deepEqual(patch.body, { via_hub: true }, '"Via Hub" reaches via_hub (no silent drop)');
+  assert.equal(auditRows().length, 0);
+});
+```
+Στο τέλος του `worker/test/plan-tables-guard.test.mjs` πρόσθεσε:
+```js
+test('"Via Hub" is a writable ORDER STOPS label for via_hub — once, nowhere else', () => {
+  assert.equal(TABLES.tblaeY5QOHAS1gyE8.fields['Via Hub'], 'via_hub');
+  assert.equal(count('"Via Hub": "via_hub"'), 1);
+});
+```
+
+- [ ] **Step 2: Τρέξε, να δεις την αποτυχία**
+
+```bash
+node --test worker/test/plan-routes.test.mjs worker/test/plan-tables-guard.test.mjs 2>&1 | grep -E '^ℹ (pass|fail)'
+```
+Expected: `ℹ fail 3`: το 409 του `model=2` (σήμερα γίνεται PATCH), το `"Via Hub"` του facade (το PATCH δεν στέλνει `via_hub`) και η ετικέτα στο `TABLES`.
+
+- [ ] **Step 3: 409 πριν από τη βάση**
+
+Στο `worker/src/index.js`, μέσα στο `// ---- PATCH /costs/rt/:id`, αντικατέστησε:
+```js
+      if (!before.rows.length) return jsonError("Not found", 404, origin, env);
+      let updated;
+      try {
+        updated = await ctDbPatch(env, "ct_round_trips"
+```
+με:
+```js
+      if (!before.rows.length) return jsonError("Not found", 404, origin, env);
+      // A v5 cycle (model 2, migration 071) changes ONLY through /plan/*: its
+      // days come from its stops (plan_rt_window_sync) and its truck from the
+      // assignment, under 071b's EXCLUDE. This PATCH would bypass both and end
+      // as an English DB 409 or a generic 500 — refused before the DB, in
+      // Greek, as a plain string (ctFetch shows data.error).
+      if (before.rows[0].model === 2) {
+        return jsonError("Ο κύκλος ανήκει στο Εβδομαδιαίο Εθνικών — αλλάζει μόνο από εκεί", 409, origin, env);
+      }
+      let updated;
+      try {
+        updated = await ctDbPatch(env, "ct_round_trips"
+```
+(Το κείμενο-άγκυρα εμφανίζεται μία φορά. Το `before` διαβάζεται ήδη με `select: "*"`, άρα κανένα νέο SELECT.)
+
+- [ ] **Step 4: `"Via Hub"` στο ORDER STOPS**
+
+Στο `worker/src/index.js`, στο `tblaeY5QOHAS1gyE8`, αντικατέστησε:
+```js
+      "Completed By": "completed_by",
+      Performance: "performance"
+    },
+```
+με:
+```js
+      "Completed By": "completed_by",
+      Performance: "performance",
+      // 071 (F1 Interfaces, decision 27): «through Veroia» on an INTERNATIONAL
+      // stop — default false, CHECK order_stops_via_hub_intl; 074 fills it on
+      // day L. Mapped now so the column is never written-and-dropped (trap 1);
+      // 072's rollback does not count it as a v5 row.
+      "Via Hub": "via_hub"
+    },
+```
+
+- [ ] **Step 5: Τρέξε, πράσινο**
+
+```bash
+node --check worker/src/index.js && node --test worker/test/*.test.mjs worker/src/rt-rules.test.mjs 2>&1 | grep -E '^ℹ (tests|pass|fail)'
+```
+Expected: `ℹ tests 223`, `ℹ pass 223`, `ℹ fail 0`.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add worker/src/index.js worker/test/plan-routes.test.mjs worker/test/plan-tables-guard.test.mjs
+git commit -m "worker: PATCH /costs/rt on a v5 cycle -> 409 before the DB; \"Via Hub\" on ORDER STOPS
+
+A model=2 cycle changes only through /plan/* (its window comes from its
+stops, its truck under 071b's EXCLUDE). via_hub (071, default false) is
+mapped so the facade never drops it; its CHECK answers a Greek 422.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+```
+
+---
+
+#### Task Γ5: Ο φρουρός του deploy ως εργαλείο
+
+**Files:**
+- Create: `worker/tools/worker-guard.mjs`, `worker/test/worker-guard.test.mjs`
+
+**Interfaces:**
+- Consumes: οι φρουροί του CLAUDE.md («Ο WORKER», κανόνας μίας πηγής 3) + τα δύο σημάδια της Φ2.
+- Produces: `node worker/tools/worker-guard.mjs <αρχείο> --plan 0|1`. Γραμμή `OK`/`STOP` ανά σημάδι, τελευταία γραμμή `GUARD OK (<n> markers, plan=<p>) <αρχείο>` ή `GUARD STOP — …`, exit 0/1/2 (2 = λάθος χρήση). Δέχεται πηγή, bundle του `--dry-run` ή αυτούσια λήψη του CF API (multipart).
+
+- [ ] **Step 1: Test (αποτυγχάνει)**
+
+`worker/test/worker-guard.test.mjs`:
+```js
+// worker/tools/worker-guard.mjs — the deploy guard run before and after every
+// Worker deploy (CLAUDE.md «Ο WORKER»). Pinned against the deploy source and
+// against a CF-API-shaped multipart copy of it, so the tool that says «OK» on
+// deploy night is the one tested here (αρχή 6).
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { readFileSync, writeFileSync, mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { spawnSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
+import path from 'node:path';
+
+const here = path.dirname(fileURLToPath(import.meta.url));
+const TOOL = path.join(here, '..', 'tools', 'worker-guard.mjs');
+const SRC = path.join(here, '..', 'src', 'index.js');
+const src = readFileSync(SRC, 'utf8');
+const dir = mkdtempSync(path.join(tmpdir(), 'worker-guard-'));
+const run = (file, plan) => {
+  const r = spawnSync(process.execPath, plan === undefined ? [TOOL, file] : [TOOL, file, '--plan', String(plan)], { encoding: 'utf8' });
+  return { code: r.status, out: r.stdout + r.stderr };
+};
+const write = (name, text) => { const f = path.join(dir, name); writeFileSync(f, text); return f; };
+
+test('the deploy source passes with --plan 1 (11 markers) and fails with --plan 0', () => {
+  let r = run(SRC, 1);
+  assert.equal(r.code, 0, r.out);
+  assert.match(r.out, /GUARD OK \(11 markers, plan=1\)/);
+  r = run(SRC, 0);
+  assert.equal(r.code, 1, r.out);
+  assert.match(r.out, /STOP {2}var PLAN_PERMS = \{ = 1/);
+});
+
+test('a CF API download (multipart, CRLF, random boundary) is unwrapped and counted the same', () => {
+  const b = 'a1b2c3d4e5f6';
+  const f = write('live.txt', `--${b}\r\nContent-Disposition: form-data; name="index.js"; filename="index.js"\r\nContent-Type: application/javascript+module\r\n\r\n${src}\r\n--${b}--\r\n`);
+  const r = run(f, 1);
+  assert.equal(r.code, 0, r.out);
+  assert.match(r.out, /GUARD OK \(11 markers, plan=1\)/);
+});
+
+test('a missing marker, a doubled marker or open writes → exit 1 naming it', () => {
+  let r = run(write('no-move-kind.js', src.replace('"Move Kind": "move_kind"', '"Move Kind": "kind"')), 1);
+  assert.equal(r.code, 1);
+  assert.match(r.out, /STOP {2}"Move Kind": "move_kind" = 0/);
+  r = run(write('two-lots.js', src + '\nvar x = { tblStockLots: { } };\n'), 1);
+  assert.equal(r.code, 1);
+  assert.match(r.out, /STOP {2}tblStockLots: \{ = 2/);
+  r = run(write('open.js', src.replace('var PLAN_WRITES_OPEN = false;', 'var PLAN_WRITES_OPEN = true;')), 1);
+  assert.equal(r.code, 1);
+  assert.match(r.out, /STOP {2}var PLAN_WRITES_OPEN = false; = 0/);
+  r = run(write('no-delete.js', src.replace('    order_stops: ["GET", "POST", "PATCH", "DELETE"],\n    // LOCAL MOVES', '    order_stops: ["GET", "POST", "PATCH"],\n    // LOCAL MOVES')), 1);
+  assert.equal(r.code, 1);
+  assert.match(r.out, /STOP {2}dispatcher order_stops DELETE = 0/);
+});
+
+test('a part named only by name="….js" is unwrapped; an unreadable download → GUARD STOP, exit 1, never a stack trace', () => {
+  const b = 'f00dfeed';
+  let r = run(write('live-name.txt', `--${b}\r\nContent-Disposition: form-data; name="worker.js"\r\nContent-Type: application/javascript+module\r\n\r\n${src}\r\n--${b}--\r\n`), 1);
+  assert.equal(r.code, 0, r.out);
+  assert.match(r.out, /GUARD OK \(11 markers, plan=1\)/);
+  r = run(write('live-bad.txt', `--${b}\r\nContent-Disposition: form-data; name="metadata"\r\n\r\n{}\r\n--${b}--\r\n`), 1);
+  assert.equal(r.code, 1, r.out);
+  assert.match(r.out, /GUARD STOP — multipart: expected one \.js part, found 0/);
+  assert.doesNotMatch(r.out, /at unwrapMultipart/);
+});
+
+test('bad usage → exit 2, nothing counted', () => {
+  assert.equal(run(SRC).code, 2);
+  assert.equal(run(SRC, 2).code, 2);
+});
+```
+
+- [ ] **Step 2: Τρέξε, να δεις την αποτυχία**
+
+```bash
+node --test worker/test/worker-guard.test.mjs 2>&1 | grep -E '^ℹ (pass|fail)'
+```
+Expected: `ℹ fail 5`: το εργαλείο λείπει, άρα κάθε `spawnSync` γυρίζει exit 1 με `Cannot find module`.
+
+- [ ] **Step 3: Το εργαλείο**
+
+`worker/tools/worker-guard.mjs`:
+```js
+#!/usr/bin/env node
+// Worker deploy guard (CLAUDE.md «Ο WORKER»: the three + one marker per live
+// feature), counted in CONTENT, never by byte equality: wrangler re-bundles
+// the source, and the CF API returns the live script as multipart with a
+// random boundary per request — two downloads of the same version «differ».
+//
+// Usage:  node worker/tools/worker-guard.mjs <file> --plan 0|1
+//   <file>   worker/src/index.js, a `wrangler deploy --dry-run --outdir` bundle,
+//            or the raw CF API download (multipart is unwrapped here)
+//   --plan   expected count of the national v5 marker (0 = before F2 is live,
+//            1 = the F2 bundle / live after the F2 deploy). With 1, writes must
+//            also be closed in that bundle (decision 22).
+// Prints one line per marker and exits 1 on the first STOP condition — no
+// partial «OK» (αρχή 1).
+import { readFileSync } from 'node:fs';
+
+const [file, flag, planArg] = process.argv.slice(2);
+if (!file || flag !== '--plan' || !['0', '1'].includes(planArg)) {
+  console.error('usage: node worker/tools/worker-guard.mjs <file> --plan 0|1');
+  process.exit(2);
+}
+const plan = Number(planArg);
+
+function unwrapMultipart(raw) {
+  // A CF API script download: «--<boundary>\r\nContent-Disposition: form-data;
+  // name="index.js"; filename="index.js"\r\nContent-Type: …\r\n\r\n<js>\r\n--<boundary>--».
+  const first = raw.split(/\r?\n/, 1)[0];
+  if (!/^--\S+$/.test(first)) return raw;
+  const boundary = first.slice(2);
+  const parts = raw.split(`--${boundary}`).slice(1, -1);
+  // the script part, named by filename= or only by name= (the CF API has sent both shapes)
+  const js = parts.filter((p) => /(?:file)?name="[^"]+\.m?js"/.test(p));
+  if (js.length !== 1) throw new Error(`multipart: expected one .js part, found ${js.length}`);
+  const blank = /\r?\n\r?\n/.exec(js[0]);
+  if (!blank) throw new Error('multipart: the .js part has no header/body separator');
+  return js[0].slice(blank.index + blank[0].length).replace(/\r?\n$/, '');
+}
+
+let text;
+try {
+  text = unwrapMultipart(readFileSync(file, 'utf8'));
+} catch (e) {
+  // deploy night reads one line, never a stack trace (αρχή 1)
+  console.log(`GUARD STOP — ${e.message} (${file})`);
+  process.exit(1);
+}
+const count = (needle) => text.split(needle).length - 1;
+const rows = [
+  ['dispatcher order_stops DELETE', (text.match(/\n {2}dispatcher: \{\n(?:[^\n]*\n)*? {4}order_stops: \["GET", "POST", "PATCH", "DELETE"\]/g) || []).length, (n) => n === 1],
+  ['"VS CD Date": "cross_dock_date"', count('"VS CD Date": "cross_dock_date"'), (n) => n === 1],
+  ['WORKSHOPS Country: "country"', count('Country: "country"'), (n) => n >= 1],
+  ['WORKSHOPS Aliases: "aliases"', count('Aliases: "aliases"'), (n) => n >= 1],
+  ['WORKSHOPS "VAT Number": "tax_id"', count('"VAT Number": "tax_id"'), (n) => n >= 1],
+  ['WORKSHOPS "Legal Name": "legal_name"', count('"Legal Name": "legal_name"'), (n) => n >= 1],
+  ['tblStockLots: {', count('tblStockLots: {'), (n) => n === 1],
+  ['"Move Kind": "move_kind"', count('"Move Kind": "move_kind"'), (n) => n === 1],
+  ['var PLAN_PERMS = {', count('var PLAN_PERMS = {'), (n) => n === plan]
+];
+if (plan === 1) {
+  rows.push(['var PLAN_WRITES_OPEN = false;', count('var PLAN_WRITES_OPEN = false;'), (n) => n === 1]);
+  rows.push(['PLAN_WRITES_OPEN = true', count('PLAN_WRITES_OPEN = true'), (n) => n === 0]);
+}
+let ok = true;
+for (const [name, n, good] of rows) {
+  const pass = good(n);
+  ok = ok && pass;
+  console.log(`${pass ? 'OK  ' : 'STOP'}  ${name} = ${n}`);
+}
+console.log(ok ? `GUARD OK (${rows.length} markers, plan=${plan}) ${file}` : `GUARD STOP — do not deploy / roll back (${file})`);
+process.exit(ok ? 0 : 1);
+```
+
+- [ ] **Step 4: Τρέξε, πράσινο**
+
+```bash
+node --test worker/test/*.test.mjs worker/src/rt-rules.test.mjs 2>&1 | grep -E '^ℹ (tests|pass|fail)'
+node worker/tools/worker-guard.mjs worker/src/index.js --plan 1 | tail -1
+```
+Expected: `ℹ tests 228`, `ℹ pass 228`, `ℹ fail 0`· `GUARD OK (11 markers, plan=1) worker/src/index.js`.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add worker/tools/worker-guard.mjs worker/test/worker-guard.test.mjs
+git commit -m "worker: deploy guard as one tested command (multipart unwrap, content counts)
+
+The three + tblStockLots + Move Kind + var PLAN_PERMS (0 before F2, 1 after)
++ writes closed; exit 1 names the marker. Same tool before and after every
+deploy (CLAUDE.md, rule of one source 3).
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+```
+
+---
+
+#### Task Σ1: Συναρμολόγηση: όλα τα tests πάνω στην ενωμένη 072, μία φορά, πριν από το Κ1
+
+> Γιατί υπάρχει: οι Α και Β πρωτοτυπήθηκαν η καθεμία πάνω σε αντικαταστάτες της άλλης, και οι διορθώσεις της κριτικής 23/10 (κοινό συμβόλαιο βοηθών, ένα σύνολο σημαδιών, PART 5 στο Α1, 23 md5, Α8, B78–B87, `busy_retry`, εργαλείο φρουρού) έτρεξαν ενωμένες μόνο σε αντίγραφο **χωρίς** την πλήρη λήψη `live-072.sql` και **χωρίς** τον Worker (κεφαλίδα του πλάνου). Κανένα PR (Κ1) πριν περάσει αυτό το Task αυτούσιο, σε πραγματικό worktree, από εκτελεστή που δεν έγραψε τον κώδικα (αρχή 6).
+
+**Files:** κανένα νέο. Διορθώσεις μόνο αν ένα Expected δεν βγει (στο αρχείο που το προκάλεσε, με commit «assembly: <τι>»).
+
+**Interfaces:**
+- Consumes: Α1–Α8, Β1–Β9 στο `feat/national-v5-functions`· Γ1–Γ5 στο `deploy/worker-plan`.
+- Produces: οι αριθμοί που μπαίνουν στα δύο PR και στο DECISION_LOG (Κ1).
+
+- [ ] **Step 1: Το SQL, στο `feat/national-v5-functions`**
+
+```bash
+git fetch origin && git log --oneline HEAD..origin/main -- worker/migrations tms-auditor tests   # κενό, αλλιώς πρώτα git merge origin/main
+node worker/migrations/drafts/tools/build-072-dryrun.mjs --check && echo DRYRUN-IDIO
+node --test tests/sql-072-drafts.test.js 2>&1 | grep -E '^ℹ (tests|pass|fail)'
+node --test tests/sql-071-drafts.test.js 2>&1 | grep -E '^ℹ (pass|fail)'
+(cd tms-auditor && node --test test/plan-072.test.mjs test/plan-071.test.mjs 2>&1 | grep -E '^ℹ (tests|pass|fail)|Result:')
+grep -n "plan_h_[a-z_]*(" worker/migrations/drafts/072_plan_functions.sql | grep -v "CREATE FUNCTION" \
+  | grep -oE "plan_h_[a-z_]+" | sort | uniq -c
+```
+Expected: `DRYRUN-IDIO`· `sql-072-drafts`: `ℹ tests 12`, `ℹ pass 12`, `ℹ fail 0`· `sql-071-drafts`: αμετάβλητο, `ℹ fail 0`· `tms-auditor`: `ℹ fail 0`, με `Result: 169 OK, 0 FAIL` (159 χωρίς την απόφαση 21) στο rules test του 072 και η μεταλλαγή να ρίχνει ακριβώς τη `B38`· η τελευταία λίστα έχει μόνο ονόματα του πίνακα «Εσωτερικοί βοηθοί» των Interfaces. Κάθε κλήση `plan_h_*` με άλλο πλήθος ορισμάτων από τον πίνακα φαίνεται ως `state:42883` σε μια περίπτωση: διόρθωσε την **κλήση** (ο πίνακας είναι η πηγή), ποτέ τον βοηθό χωρίς να αλλάξει και ο πίνακας.
+
+- [ ] **Step 2: Ο Worker, στο `deploy/worker-plan`, με αντίγραφο της τελικής 072**
+
+```bash
+git checkout feat/national-v5-functions -- worker/migrations/drafts/072_plan_functions.sql
+node --test worker/test/plan-contract.test.mjs 2>&1 | grep -E '^# checked|^ℹ (pass|fail)'
+node --check worker/src/index.js && node --test worker/test/*.test.mjs worker/src/rt-rules.test.mjs 2>&1 | grep -E '^ℹ (tests|pass|fail)'
+node worker/tools/worker-guard.mjs worker/src/index.js --plan 1 | tail -1
+git status --short
+```
+Expected: τρεις γραμμές `# checked: …` (071, 071b, `drafts/072`), `ℹ pass 6`, `ℹ fail 0`· `ℹ tests 228`, `ℹ pass 228`, `ℹ fail 0`· `GUARD OK (11 markers, plan=1) worker/src/index.js`· το `git status` δείχνει μόνο το 072 αν άλλαξε από την τελευταία αντιγραφή (τότε commit «sync 072 draft copy»).
+
+- [ ] **Step 3: Ο καθαρός εκτελεστής**
+
+Τα Steps 1–2 τα τρέχει, μία φορά, agent που **δεν** έγραψε τον κώδικα (νέο worktree, `npm ci` στο `tms-auditor`), διαβάζοντας μόνο αυτό το πλάνο. Ό,τι δεν μπόρεσε να κάνει κατά γράμμα (σημάδι που λείπει, Expected που δεν βγαίνει, εντολή που δεν τρέχει) γράφεται ως εύρημα στο PR του Κ1 και διορθώνεται στο πλάνο **και** στον κώδικα πριν από το merge.
+
+- [ ] **Step 4: Commit (μόνο αν χρειάστηκε διόρθωση)**
+
+```bash
+git add <τα αρχεία της διόρθωσης>
+git commit -m "assembly: <τι διορθώθηκε>
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+```
+
+---
+
+#### Task Γ6: Πρώτα μόνο οι 24 γραμμές της VD (απόφαση 29· runbook owner, **εκτός Φ2**)
+
+> **Εκτός της αλυσίδας Φ2:** είναι deploy κώδικα της ValueDriven που ήδη υπάρχει στο main. Η Φ2 απαιτεί μόνο ότι η ζωντανή πηγή περιέχεται στο `deploy/worker-plan` (Γ1 Step 2, Γ7 Step 1)· αυτό το runbook είναι ο προτεινόμενος τρόπος να ισχύει, ως χωριστό βράδυ και χωριστό PR ίχνους. Μόνο αν εγκριθεί η απόφαση 29. Αν όχι, παράλειψε το Task: τότε το Γ7 ανεβάζει VD + Φ2 μαζί, και στο Γ7 Step 2 η αναμενόμενη ζωντανή έκδοση είναι η 2f2851c0. Μετά τις 15:00, **χωριστό «ναι»**. Ο agent δεν κάνει deploy: γράφει τις εντολές και διαβάζει με SELECT.
+
+**Files:** κανένα στο repo (τα αποδεικτικά μένουν στον φάκελο `$D`, έξω από το repo).
+
+**Interfaces:**
+- Consumes: main @ `<VD_SHA>` (το πρώτο commit του `origin/main` με `md5 worker/src/index.js` = `a3117aac…`, ή με εξηγημένη αλλαγή κατά το Γ1 Step 2)· `worker/tools/worker-guard.mjs` από το `origin/deploy/worker-plan` (Κ1).
+- Produces: ζωντανός Worker = main @ `<VD_SHA>` (έκδοση `<VD_VERSION>`)· γραμμή στο DECISION_LOG.
+
+- [ ] **Step 1 (owner, terminal): Περιβάλλον**
+
+```bash
+cd ~/PETRASGROUP-TMS && git fetch origin
+VD_SHA=$(git rev-parse origin/main)
+git worktree add --detach ~/tms-deploy-vd "$VD_SHA"
+git worktree add --detach ~/tms-guard origin/deploy/worker-plan
+cd ~/tms-deploy-vd/worker && npm ci
+set -a; . ~/PETRASGROUP-TMS/.env.local; set +a
+ACC=9dff78339915e968e5becaa9b1efff43; WN=petras-tms-backend-staging
+API="https://api.cloudflare.com/client/v4/accounts/$ACC/workers/scripts/$WN"
+D=~/tms-deploy-evidence/$(date +%Y%m%d-%H%M)-vd; mkdir -p "$D"
+G="node $HOME/tms-guard/worker/tools/worker-guard.mjs"
+md5 -q src/index.js; git -C ~/tms-deploy-vd merge-base --is-ancestor 491ea7ec "$VD_SHA" && echo ANCESTOR-OK
+git -C ~/tms-deploy-vd diff --numstat 491ea7ec "$VD_SHA" -- worker/src
+npx wrangler --version | tee "$D/wrangler-version.txt"
+```
+Expected: `npm ci` χωρίς σφάλμα· md5 `a3117aac2170a34015f9a3a08be0e953`· `ANCESTOR-OK`· μόνο `24	0	worker/src/index.js`. Αλλιώς ΣΤΑΜΑΤΑ.
+
+- [ ] **Step 2 (owner): Ζωντανή έκδοση, αντίγραφο, φρουρός πριν, bindings πριν**
+
+```bash
+CLOUDFLARE_API_TOKEN=$CF_API_TOKEN npx wrangler deployments list | tail -12 | tee "$D/deployments-before.txt"
+curl -sS -f -H "Authorization: Bearer $CF_API_TOKEN" "$API" -o "$D/live-before.txt"
+head -c 300 "$D/live-before.txt"; echo
+$G "$D/live-before.txt" --plan 0
+curl -sS -f -H "Authorization: Bearer $CF_API_TOKEN" "$API/settings" | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{console.log(JSON.parse(s).result.bindings.map(b=>b.name+':'+b.type).sort().join('\n'))})" | tee "$D/bindings-before.txt"
+PREV=<το Version ID της πιο πρόσφατης γραμμής του deployments list>; echo "$PREV" > "$D/prev.txt"
+```
+Expected: η πιο πρόσφατη έκδοση στο `deployments list` αρχίζει από `2f2851c0` (αυτό το πλήρες id γίνεται `PREV`)· η κεφαλίδα της λήψης αρχίζει από `--` και έχει `name="…js"` (αλλιώς το εργαλείο θα πει `GUARD STOP — multipart: …`· τότε στείλε τις 300 πρώτες χαρακτήρες στον συντονιστή και ΣΤΑΜΑΤΑ)· `GUARD OK (9 markers, plan=0)`· στα bindings υπάρχουν `JWT_SECRET:secret_text`, `SUPABASE_SERVICE_KEY:secret_text`, `ANTHROPIC_API_KEY:secret_text`. Αλλιώς ΣΤΑΜΑΤΑ.
+
+- [ ] **Step 3 (owner): Bundle προς ανέβασμα, φρουρός, deploy**
+
+```bash
+CLOUDFLARE_API_TOKEN=$CF_API_TOKEN npx wrangler deploy --dry-run --outdir "$D/bundle" 2>&1 | tail -5
+$G "$D/bundle/index.js" --plan 0
+CLOUDFLARE_API_TOKEN=$CF_API_TOKEN npx wrangler deploy 2>&1 | tee "$D/deploy.txt"
+```
+Expected: το dry run γράφει `$D/bundle/index.js`· `GUARD OK (9 markers, plan=0)`· το deploy τελειώνει με `Current Version ID: <VD_VERSION>`.
+
+- [ ] **Step 4 (owner): Μετά: φρουρός, bindings, smoke**
+
+```bash
+curl -sS -f -H "Authorization: Bearer $CF_API_TOKEN" "$API" -o "$D/live-after.txt"
+$G "$D/live-after.txt" --plan 0
+curl -sS -f -H "Authorization: Bearer $CF_API_TOKEN" "$API/settings" | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{console.log(JSON.parse(s).result.bindings.map(b=>b.name+':'+b.type).sort().join('\n'))})" > "$D/bindings-after.txt"
+diff "$D/bindings-before.txt" "$D/bindings-after.txt" && echo BINDINGS-IDIA
+python3 ~/PETRASGROUP-TMS/tools/ledger-import/login.py
+set -a; . ~/PETRASGROUP-TMS/.env.local; set +a
+WK=https://petras-tms-backend-staging.petrasgroup.workers.dev; O='Origin: https://dimitrispetras21-del.github.io'
+curl -sS -o /dev/null -w '%{http_code}\n' -H "$O" -H "Authorization: Bearer $TMS_JWT" "$WK/costs/rt?driver_id=abc"
+curl -sS -o /dev/null -w '%{http_code}\n' -H "$O" -H "Authorization: Bearer $TMS_JWT" "$WK/costs/rt?driver_id=1"
+```
+Expected: `GUARD OK (9 markers, plan=0)`· `BINDINGS-IDIA`· `400` (η νέα παράμετρος της VD ελέγχεται)· `200`. Μετά, στην εφαρμογή: login και μία κανονική αποθήκευση. Οποιοδήποτε άλλο αποτέλεσμα: `CLOUDFLARE_API_TOKEN=$CF_API_TOKEN npx wrangler rollback <PREV>`, μετά ξανά Step 4 για την επαναφορά, και ΣΤΑΜΑΤΑ.
+
+- [ ] **Step 5 (agent): Ίχνος (κανόνας μίας πηγής 1)**
+
+Ο Worker ανέβηκε από το ίδιο το main, άρα το `worker/src` του main **είναι** ήδη η πηγή του. Δεν χρειάζεται commit sync κώδικα, μόνο γραμμή στο DECISION_LOG. Από φρέσκο main:
+```bash
+git fetch origin && git switch -c docs/worker-vd-deployed origin/main
+```
+Στο τέλος του `docs/DECISION_LOG.md` πρόσθεσε:
+```markdown
+**Worker <VD_VERSION> (<ημερομηνία> <ώρα>):** deploy του main @ <VD_SHA> = ζωντανό 2f2851c0 + οι 24 γραμμές της VD 19/10 (`GET /costs/rt` με `driver_id`/`trailer_id`/`order_ids`)· απόφαση 29 (πρώτα μόνο αυτό, μετά η Φ2). Φρουρός πριν/μετά `GUARD OK (9 markers, plan=0)`, BINDINGS-IDIA, smoke 400/200 + αποθήκευση· επαναφορά = `wrangler rollback <PREV>`. Η πηγή του ζωντανού είναι πλέον το main @ <VD_SHA>.
+```
+```bash
+git add docs/DECISION_LOG.md
+git commit -m "docs: Worker <VD_VERSION> = main @ <VD_SHA> (VD 19/10 lines, decision 29)
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+git push -u origin docs/worker-vd-deployed && gh pr create --fill
+```
+Στο `deploy/worker-plan`: `git fetch origin && git merge origin/main`, και ξανά Γ1 Step 2 με `<VD_SHA>` (`ANCESTOR-OK`) και Γ5 Step 4 (228/228). Το `git worktree remove ~/tms-deploy-vd` γίνεται μετά.
+
+---
+
+#### Task Γ7: Deploy του Worker Φ2 (runbook, owner· μετά την εκτέλεση της 072)
+
+> Προϋποθέσεις: Κ2 ολοκληρωμένο (072 στην παραγωγή, verify «072 in place»)· το PR του `deploy/worker-plan` πέρασε `/code-review xhigh` και ο owner έδωσε **χωριστό «ναι»** για το deploy· μετά τις 15:00. Ο agent δεν κάνει deploy. Μόνο ο owner. Μετά το deploy, **καμία δοκιμαστική εγγραφή**: οι εγγραφές είναι κλειστές, και όλα τα smoke είναι αναγνώσεις, dry run ή άρνηση.
+
+**Files:** κανένα στο repo (αποδεικτικά στο `$D`).
+
+**Interfaces:**
+- Consumes: `origin/deploy/worker-plan` @ `<PLAN_SHA>` (το SHA που πέρασε το review)· η ζωντανή πηγή (main @ `<VD_SHA>` μετά το Γ6, αλλιώς `491ea7ec`)· 072 ζωντανή.
+- Produces: Worker `<PLAN_VERSION>` με `/plan/*` (εγγραφές κλειστές)· `var PLAN_PERMS = {` = 1 στο ζωντανό.
+
+- [ ] **Step 1 (owner): Περιβάλλον και κανόνας μίας πηγής 2**
+
+```bash
+cd ~/PETRASGROUP-TMS && git fetch origin
+# LIVE_SRC = the <VD_SHA> of the DECISION_LOG line of Task G6; without G6: 491ea7ec
+PLAN_SHA=$(git rev-parse origin/deploy/worker-plan); LIVE_SRC=<VD_SHA ή 491ea7ec>
+git merge-base --is-ancestor "$LIVE_SRC" "$PLAN_SHA" && echo ANCESTOR-OK
+# the 072 copy the Worker texts were tested against = the 072 that ran (one source, principle 3)
+git diff --exit-code "origin/main:worker/migrations/drafts/072_plan_functions.sql" \
+  "$PLAN_SHA:worker/migrations/drafts/072_plan_functions.sql" > /dev/null && echo SQL-IDIO
+git worktree add --detach ~/tms-deploy-plan "$PLAN_SHA"
+cd ~/tms-deploy-plan/worker && npm ci
+node --test test/*.test.mjs src/rt-rules.test.mjs 2>&1 | grep -E '^ℹ (tests|pass|fail)'
+set -a; . ~/PETRASGROUP-TMS/.env.local; set +a
+ACC=9dff78339915e968e5becaa9b1efff43; WN=petras-tms-backend-staging
+API="https://api.cloudflare.com/client/v4/accounts/$ACC/workers/scripts/$WN"
+D=~/tms-deploy-evidence/$(date +%Y%m%d-%H%M)-plan; mkdir -p "$D"
+G="node $HOME/tms-deploy-plan/worker/tools/worker-guard.mjs"
+npx wrangler --version | tee "$D/wrangler-version.txt"
+```
+Expected: `ANCESTOR-OK`· `SQL-IDIO` (αλλιώς: στο `deploy/worker-plan` ξανά το Γ2 Step 1 και `node --test worker/test/plan-contract.test.mjs`, commit «sync 072 draft copy», νέο review, και ΣΤΑΜΑΤΑ για απόψε)· `ℹ tests 228` (ή περισσότερα αν μπήκαν διορθώσεις του review), `ℹ fail 0`. Αλλιώς ΣΤΑΜΑΤΑ.
+
+- [ ] **Step 2 (owner): Ζωντανή έκδοση, αντίγραφο, φρουρός πριν, bindings πριν**
+
+```bash
+CLOUDFLARE_API_TOKEN=$CF_API_TOKEN npx wrangler deployments list | tail -12 | tee "$D/deployments-before.txt"
+curl -sS -f -H "Authorization: Bearer $CF_API_TOKEN" "$API" -o "$D/live-before.txt"
+$G "$D/live-before.txt" --plan 0
+curl -sS -f -H "Authorization: Bearer $CF_API_TOKEN" "$API/settings" | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{console.log(JSON.parse(s).result.bindings.map(b=>b.name+':'+b.type).sort().join('\n'))})" | tee "$D/bindings-before.txt"
+PREV=<το Version ID της πιο πρόσφατης γραμμής του deployments list>; echo "$PREV" > "$D/prev.txt"
+```
+Expected: η πιο πρόσφατη έκδοση = `<VD_VERSION>` του Γ6 (ή 2f2851c0 χωρίς Γ6)· αυτό το πλήρες id γίνεται `PREV`. `GUARD OK (9 markers, plan=0)`. Τα 3 secrets (`JWT_SECRET`, `SUPABASE_SERVICE_KEY`, `ANTHROPIC_API_KEY`) ως `secret_text`. Αλλιώς ΣΤΑΜΑΤΑ.
+
+- [ ] **Step 3 (agent, SELECT): Η βάση είναι έτοιμη, 0 γραμμές πριν**
+
+```sql
+SELECT (SELECT count(*) FROM shipments) sh, (SELECT count(*) FROM shipment_pieces) pc, (SELECT count(*) FROM rt_stops) st,
+       (SELECT count(*) FROM piece_legs) lg, (SELECT count(*) FROM plan_notices) nt,
+       (SELECT count(*) FROM ct_round_trips WHERE model = 2) m2,
+       (SELECT count(*) FROM local_moves WHERE move_kind = 'nat_loading') nl,
+       (SELECT count(*) FROM audit_log WHERE table_name IN ('shipments','shipment_pieces','rt_stops','piece_legs','plan_notices')) au,
+       (SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+         WHERE n.nspname = 'public' AND p.proname IN ('plan_board','plan_vs_state','plan_notices_list','plan_notice_read',
+           'plan_orders_create','plan_order_update','plan_put_pieces','plan_put_group','plan_move_pieces','plan_split_piece',
+           'plan_rt_update','plan_rt_clear','plan_delete','plan_vs_set_day','plan_vs_set_place','plan_local_loading')
+           AND has_function_privilege('service_role', p.oid, 'EXECUTE')
+           AND NOT has_function_privilege('anon', p.oid, 'EXECUTE')) callable;
+```
+Expected: `0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 16` (15 αν η απόφαση 21 απορρίφθηκε). Αλλιώς ΣΤΑΜΑΤΑ: ο Worker θα απαντούσε 503 `schema_behind` ή θα έβρισκε ήδη γραμμές.
+
+- [ ] **Step 4 (owner): Bundle προς ανέβασμα, φρουρός, deploy**
+
+```bash
+CLOUDFLARE_API_TOKEN=$CF_API_TOKEN npx wrangler deploy --dry-run --outdir "$D/bundle" 2>&1 | tail -5
+$G "$D/bundle/index.js" --plan 1
+CLOUDFLARE_API_TOKEN=$CF_API_TOKEN npx wrangler deploy 2>&1 | tee "$D/deploy.txt"
+```
+Expected: `GUARD OK (11 markers, plan=1)` στο bundle. Αλλιώς **κανένα deploy**. Το deploy τελειώνει με `Current Version ID: <PLAN_VERSION>`.
+
+- [ ] **Step 5 (owner): Μετά: φρουρός στο ζωντανό, bindings**
+
+```bash
+curl -sS -f -H "Authorization: Bearer $CF_API_TOKEN" "$API" -o "$D/live-after.txt"
+$G "$D/live-after.txt" --plan 1
+curl -sS -f -H "Authorization: Bearer $CF_API_TOKEN" "$API/settings" | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{console.log(JSON.parse(s).result.bindings.map(b=>b.name+':'+b.type).sort().join('\n'))})" > "$D/bindings-after.txt"
+diff "$D/bindings-before.txt" "$D/bindings-after.txt" && echo BINDINGS-IDIA
+```
+Expected: `GUARD OK (11 markers, plan=1)`· `BINDINGS-IDIA`. Αλλιώς: Step 8.
+
+- [ ] **Step 6 (owner): Smoke χωρίς καμία εγγραφή**
+
+```bash
+python3 ~/PETRASGROUP-TMS/tools/ledger-import/login.py
+set -a; . ~/PETRASGROUP-TMS/.env.local; set +a
+WK=https://petras-tms-backend-staging.petrasgroup.workers.dev; O='Origin: https://dimitrispetras21-del.github.io'; A="Authorization: Bearer $TMS_JWT"
+SAT=$(node -e "const d=new Date();d.setUTCDate(d.getUTCDate()-((d.getUTCDay()+1)%7));console.log(d.toISOString().slice(0,10))")
+curl -sS -o /dev/null -w '1 %{http_code}\n' -H "$O" "$WK/plan/board?week=$SAT"
+curl -sS -w '\n2 %{http_code}\n' -H "$O" -H "$A" "$WK/plan/board?week=$SAT"
+curl -sS -w '\n3 %{http_code}\n' -H "$O" -H "$A" "$WK/plan/notices?desk=natl"
+curl -sS -w '\n4 %{http_code}\n' -H "$O" -H "$A" "$WK/plan/vs-state?order_ids=999999999"
+curl -sS -w '\n5 %{http_code}\n' -H "$O" -H "$A" -H 'Content-Type: application/json' -X POST -d '{"orders":[]}' "$WK/plan/orders"
+curl -sS -w '\n6 %{http_code}\n' -H "$O" -H "$A" -H 'Content-Type: application/json' -X POST -d '{"nat_order_id":999999999,"reason":"smoke","dry_run":true}' "$WK/plan/delete"
+curl -sS -w '\n7 %{http_code}\n' -H "$O" -H "$A" "$WK/plan/board?week=2026-10-12"
+```
+Expected:
+1. `1 401` (χωρίς token)
+2. `2 200`, σώμα με `"cycles":[]`, `"waiting":[]`, `"hub":[]`, `"notices":[]` (καμία γραμμή v5)
+3. `3 200`, `{"desk":"natl","recent":[],"unread":[]}` (το jsonb ταξινομεί τα κλειδιά)
+4. `4 200`, `{"999999999":"missing"}`
+5. `5 409`, `"code":"writes_closed"` (η εγγραφή δεν έφτασε στη βάση)
+6. `6 422`, `"code":"order_gone"` (dry run μέσα από την 072 και τον χαρτογράφο, χωρίς εγγραφή)
+7. `7 400`, `"code":"bad_week"` (Δευτέρα)
+
+Προαιρετικό 2β (ο dispatcher, από την κονσόλα του browser του, όπως το 403 του Θοδωρή): `fetch(PROXY_URL+'/plan/board?week='+SAT,{headers:{Authorization:'Bearer '+localStorage.getItem('tms_jwt')}}).then(r=>r.text()).then(t=>/"amount"|"partner_rate"/.test(t))` → `false` όσο δεν υπάρχει κύκλος συνεργάτη (με κύκλο συνεργάτη: το `partner_rate` επιτρέπεται στον dispatcher, απόφαση owner 21/10). Το «κανένα `amount` για dispatcher» το αποδεικνύει κυρίως το `plan-routes.test.mjs`.
+
+Μετά, στην εφαρμογή: login και μία κανονική αποθήκευση (CLAUDE.md). Το «`POST /plan/orders` ως management = 403» της αποδοχής το αποδεικνύει το `plan-perms.test.mjs`, γιατί ο agent δεν έχει token management. Προαιρετικά το επαναλαμβάνει ο Θοδωρής από την κονσόλα του browser του: `fetch(PROXY_URL+'/plan/orders',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+localStorage.getItem('tms_jwt')},body:'{"orders":[]}'}).then(r=>r.status)` → `403`.
+
+- [ ] **Step 7 (agent, SELECT): 0 γραμμές μετά, κανένα σφάλμα εφαρμογής**
+
+Το SELECT του Step 3, ξανά. Expected: ίδιο `0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 16`. Και:
+```sql
+SELECT count(*) AS errors_since FROM app_errors WHERE created_at > '<ώρα του deploy, ISO>';
+```
+Expected: `0` (ή μόνο σφάλματα που δεν σχετίζονται, με ελεγμένο `message`/`page`).
+
+- [ ] **Step 8 (owner, μόνο αν αποτύχει το Step 5, 6 ή 7): Επαναφορά**
+
+```bash
+CLOUDFLARE_API_TOKEN=$CF_API_TOKEN npx wrangler rollback <PREV>
+curl -sS -f -H "Authorization: Bearer $CF_API_TOKEN" "$API" -o "$D/live-rollback.txt" && $G "$D/live-rollback.txt" --plan 0
+```
+Expected: `GUARD OK (9 markers, plan=0)`. Η 072 μένει (κανείς δεν την καλεί χωρίς τον Worker, και 0 γραμμές v5). Το μήνυμα στον συντονιστή γράφει ποιο βήμα απέτυχε, με το αποτέλεσμά του. ΣΤΑΜΑΤΑ.
+
+---
+
+### Κλείσιμο
+
+#### Task Κ1: Ίχνος, έλεγχος κώδικα, δύο PR
+
+**Files:**
+- Modify: `docs/DECISION_LOG.md` (στο τέλος), `docs/SESSION.md` (μόνο η γραμμή μας στο «Now»)
+- Create: `docs/sessions/<YYYY-MM-DD>-dimitris-national-v5-f2.md`
+(Και τα τρία στο `feat/national-v5-functions`. Το `deploy/worker-plan` κρατά μόνο κώδικα Worker, ώστε το PR του να γίνει αυτούσιο το sync μετά το deploy.)
+
+**Interfaces:**
+- Consumes: Α1–Β9 (SQL), Γ1–Γ5 (Worker), Σ1 (όλα πράσινα ενωμένα)· οι αποφάσεις 1–34 όπως τις ενέκρινε ο owner.
+- Produces: PR `072 (SQL, DRAFT): national v5 plan_* born closed` και **draft** PR `Worker /plan/* + PLAN_PERMS, writes closed until L`.
+
+- [ ] **Step 1: Έλεγχος κώδικα, xhigh και στα δύο** (Worker, βάση, χρήματα: owner 20/10)
+
+Στο `feat/national-v5-functions`: `/code-review xhigh`. Στο `deploy/worker-plan`: `/code-review xhigh`. Διόρθωσε τα ευρήματα με commit «review of 072» / «review of /plan/*» και ξανάτρεξε:
+```bash
+node --test tests/sql-072-drafts.test.js 2>&1 | grep -E '^ℹ (pass|fail)'
+(cd tms-auditor && node --test test/plan-072.test.mjs 2>&1 | grep -E '^ℹ (pass|fail)')
+node --test worker/test/*.test.mjs worker/src/rt-rules.test.mjs 2>&1 | grep -E '^ℹ (tests|pass|fail)'
+```
+Expected: `ℹ fail 0` σε όλα. Τα δύο πρώτα τρέχουν στο SQL branch, το τρίτο στο `deploy/worker-plan`: `ℹ tests 228`, ή περισσότερα με tests του review. Κράτα τους αριθμούς για τα PR.
+Αν το 072 άλλαξε στο review: `git checkout origin/feat/national-v5-functions -- worker/migrations/drafts/072_plan_functions.sql` στο `deploy/worker-plan`, ξανά `node --test worker/test/plan-contract.test.mjs`, commit «sync 072 draft copy».
+
+- [ ] **Step 2: DECISION_LOG** (στο `feat/national-v5-functions`, στο τέλος του αρχείου· όπου ο owner άλλαξε απόφαση, η γραμμή της γράφει την τελική επιλογή)
+
+```markdown
+### <YYYY-MM-DD> · Εθνικά v5 Φ2 · κανόνες `072 plan_*` (κλειστό) και Worker `/plan/*` (εγγραφές κλειστές ως το L)
+**Επιλογή:** Κάθε εγγραφή v5 γίνεται από μία `plan_*` (`SECURITY DEFINER`, `p_actor` + `p_role`, `RETURNS jsonb`, EXECUTE μόνο `service_role`), μία RPC ανά αίτημα, γιατί οι κανόνες της 071/071b είναι deferred και μιλούν στο COMMIT της. Ο Worker εκθέτει το `/plan/*` πίσω από το `PLAN_PERMS` (deny-by-default, κανένα `*`). Οι εγγραφές μένουν κλειστές ως την ημέρα L (`PLAN_WRITES_OPEN = false`, 409)· οι αναγνώσεις και τα τέσσερα dry run μένουν ανοιχτά. Αποφάσεις του πλάνου που το spec δεν όριζε:
+(1) ταυτότητα = `p_actor`/`p_role` από το JWT· τα δικαιώματα ζουν μόνο στο `PLAN_PERMS`·
+(2) ένα σχήμα `plan_<x>(p jsonb, p_actor, p_role) RETURNS jsonb`, ποτέ `void`·
+(3) `plan_rt_create` εσωτερική: ο κύκλος γεννιέται μόνο από ανάθεση, κανένα `POST /plan/rt`·
+(4) η βάση δεν επινοεί στάσεις· στάση που έχασε την τελευταία κίνηση σβήνεται, κύκλος χωρίς κίνηση = `cancelled`·
+(5) το `seq` το γράφει μόνο η βάση (ΚΑΘΟΔΟΣ πριν ΑΝΟΔΟ, `planned_from`)·
+(6) κομμάτι ↔ στάσεις κατά τόπο, ρητές αναφορές μόνο ως παράκαμψη·
+(7) `confirm_token` = md5 της πλήρους λίστας (με ποσά), χωρίς πίνακα, χωρίς λήξη· αλλαγή στάσεων του αιτήματος μετά το dry run δεν είναι stale·
+(8) token μόνο όταν η λίστα δεν είναι κενή (τιμολογημένη, έξοδα, μισθοδοσία με ποσό, τοπική φόρτωση, γραμμή ΤΟΠΙΚΟ με ποσό, ακύρωση κύκλου, εκτελεσμένο ή επόμενο σκέλος)· αλλιώς χωρίς ερώτηση· χωρίς token = 428· ένας μηχανισμός (`plan_h_confirm`)·
+(9) τα ποσά τα κόβει η βάση με το `p_role` (μόνο owner/accountant)· ο Worker αρνείται να προωθήσει `amount` σε άλλον ρόλο (500 `amount_leak`)·
+(10) «πληρωμένη» = `payment_bank`/`payment_cash` του οδηγού με `entry_date >= date_end`, με την εβδομάδα TMS της· να επιβεβαιωθεί από την Αλεξία πριν τη Φ4·
+(11) σειρά σβησίματος: κινήσεις → τοπική φόρτωση → στάσεις → μισθοδοσία με ποσό → κύκλος· 0 `needs_review` στη γραμμή του κύκλου· το 011 αμετάβλητο·
+(12) Καθαρισμός: `OWNED` χωρίς όχημα/συνεργάτη/κόμιστρο· OWNED ↔ PARTNER στο update·
+(13) τα έξοδα μένουν στο `rt_id`, με ειδοποίηση `costs_without_rt`·
+(14) `plan_delete` = μόνο εθνική v5· ο κύκλος ακυρώνεται μόνο όταν αδειάσει·
+(15) `plan_move_pieces` καλύπτει και «πίσω σε αναμονή» και «όλη η πλευρά»·
+(16) η ανάθεση γράφει την ημέρα VS όταν αναθέτει κομμάτι που δεν ήταν απόθεμα ή την πρώτη διαδρομή μιας VS (καμία ζωντανή κίνηση πριν)·
+(17) σήμα `plan.writer = 'natl'` πριν από κάθε εγγραφή σε `orders`/`order_stops` (για τη Φ5)·
+(18) `leave_by = nat_due_day − 1` από τη βάση·
+(19) `truck_busy`/`driver_busy` με τον κωδικό του άλλου κύκλου, με το EXCLUDE ως δίχτυ· επικάλυψη με v1 = προειδοποίηση·
+(20) `legacy_id` και πεδία σύνοψης της `national_orders` από τη βάση· `direction`/`type` NULL·
+(21) `plan_order_update` στη Φ2·
+(22) εγγραφές κλειστές ως το L·
+(23) μία μορφή σφάλματος `{error:{type,code,message}}`·
+(24) χωρίς token = 401, ρόλος χωρίς δικαίωμα = 403·
+(25) ειδοποιήσεις: owner + dispatcher διαβάζουν και σημειώνουν, management μόνο διαβάζει· ελληνικό κείμενο από τη βάση·
+(26) ο accountant δεν καλεί dry run·
+(27) `PATCH /costs/rt/:id` σε `model=2` = 409· `"Via Hub"` στο ORDER STOPS·
+(28) DELETE/PATCH facade σε εθνική v5 = Ε16 της Φ5·
+(29) πρώτα deploy μόνο των 24 γραμμών της VD, μετά η Φ2·
+(30) ένα migration 072·
+(31) οι αναγνώσεις είναι συναρτήσεις βάσης (ένα στιγμιότυπο)· εβδομάδα Σάββατο–Παρασκευή·
+(32) αλλαγή οδηγού μετά από ποσά στη μισθοδοσία του κύκλου = `plan:payroll_locked` (Καθαρισμός + νέα ανάθεση)·
+(33) γραμμή ΤΟΠΙΚΟ με ποσό: το 060 τη στέλνει σε έλεγχο λογιστηρίου (`needs_review`, B-08)· στη λίστα ως `local_payroll` (με token), αλλιώς προειδοποίηση `local_payroll_review`·
+(34) ο Worker δεν προωθεί `amount` σε ρόλο εκτός owner/accountant (500 `amount_leak`, συναγερμός, όχι δεύτερος κανόνας).
+**Εναλλακτικές:** όπως στο πλάνο (GUC ταυτότητας, tokens σε πίνακα, φιλτράρισμα ποσών στον Worker, `POST /plan/rt`, εγγραφές ανοιχτές από το deploy, διακόπτης στη βάση, 072a/072b). Απορρίφθηκαν.
+**Απόδειξη:** `072_plan_functions_test.sql` <n>/<n> σε PGlite με σχήμα παραγωγής (`tms-auditor/test/plan-072.test.mjs`)· `tests/sql-072-drafts.test.js`· Worker `node --test worker/test/*.test.mjs worker/src/rt-rules.test.mjs` = <αριθμός>/<αριθμός>, με `plan-contract` (071+071b+072 ↔ κείμενα, και αντίστροφα), `plan-perms` (5 ρόλοι × 15 διαδρομές, 403 χωρίς καμία κλήση βάσης), `plan-routes`, `plan-tables-guard`, `worker-guard`.
+**Ποιος:** πλάνο Φ2 (agent), αποφάσεις owner <ημερομηνία έγκρισης>· εκτέλεση 072 και deploy από τον owner μετά τις 15:00, με χωριστό «ναι» το καθένα.
+```
+
+- [ ] **Step 3: Session file** (στο `feat/national-v5-functions`)
+
+`docs/sessions/<YYYY-MM-DD>-dimitris-national-v5-f2.md`:
+```markdown
+# <YYYY-MM-DD> · dimitris · Εθνικά v5 Φ2: 072 plan_* + Worker /plan/* (DRAFT)
+
+- Γράφτηκαν τα `072_plan_functions*` (16 δημόσιες `plan_*` + βοηθοί `plan_h_*`, κλειστά, κανένα νέο trigger, B-54 μένει 46) και, στο `deploy/worker-plan`, το `/plan/*` (`PLAN_PERMS`, `handlePlan`, κείμενα `plan:` στον ένα χαρτογράφο, `worker/tools/worker-guard.mjs`).
+- Αποδείχθηκαν: rules test <n>/<n> σε PGlite· Worker <αριθμός>/<αριθμός> (contract 071+071b+072, 5 ρόλοι × 15 διαδρομές, εγγραφές κλειστές = 409 χωρίς κλήση βάσης).
+- Αποφάσεις πλάνου 1–34 στο DECISION_LOG <YYYY-MM-DD>· ανοιχτό για την Αλεξία: ο ορισμός «πληρωμένη μισθοδοσία» (απόφαση 10) και η γραμμή ΤΟΠΙΚΟ με ποσό (απόφαση 33).
+- Μένει: 072 από τον owner (Κ2), μετά deploy Worker (Γ7, χωριστό «ναι»)· πριν από αυτό, αν εγκρίθηκε η απόφαση 29, το deploy μόνο των 24 γραμμών της VD (Γ6).
+- Οι εγγραφές `/plan/*` ανοίγουν **μόνο** στη Φ5, στο ίδιο deploy με το `WN_V5`. Ως τότε 0 γραμμές v5.
+```
+
+- [ ] **Step 4: SESSION.md, μόνο η δική μας γραμμή** (στο `feat/national-v5-functions`)
+
+Στο `docs/SESSION.md`, κάτω από «In flight», πρόσθεσε ακριβώς αυτή τη γραμμή (δεν αγγίζεις άλλη):
+```markdown
+- dimitris · `feat/national-v5-functions` + `deploy/worker-plan` · National v5 F2: SQL draft 072 (plan_*, born closed, 0 rows) + Worker /plan/* (PLAN_PERMS, writes closed until L); waits for the owner's evening run (072, then Worker deploy, separate yes)
+```
+
+- [ ] **Step 5: Push και τα δύο PR**
+
+```bash
+git switch feat/national-v5-functions
+git add docs/DECISION_LOG.md docs/SESSION.md docs/sessions/<YYYY-MM-DD>-dimitris-national-v5-f2.md
+git commit -m "docs: national v5 F2 (072 + Worker /plan/*) decision log, session, Now line
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+git push -u origin feat/national-v5-functions
+gh pr create --base main --head feat/national-v5-functions --title "072 (SQL, DRAFT): national v5 plan_* born closed" --body "$(cat <<'EOF'
+## What
+- `072_plan_functions.sql` (one DO block): 16 public `plan_*` (SECURITY DEFINER, search_path public, RETURNS jsonb, EXECUTE service_role only) + closed `plan_h_*` helpers. No new trigger (B-54 stays 46), no new table, no change to any existing function (md5 guards on 23 live texts).
+- dry run (generated), verify, rollback (refuses with any v5 row), rules test on TEST rows.
+
+## Proof
+- PGlite, production-shaped: `cd tms-auditor && node --test test/plan-072.test.mjs`.
+- Build: `node --test tests/sql-072-drafts.test.js`.
+
+## Owner
+- Nothing runs on merge. The owner runs the SQL after 15:00 (plan Task K2). Decisions 1-34: DECISION_LOG.
+- The Worker half is the separate draft PR from `deploy/worker-plan`; it deploys only after 072 runs (plan Task G7).
+
+🤖 Generated with [Claude Code](https://claude.com/claude-code)
+EOF
+)"
+git switch deploy/worker-plan
+git push -u origin deploy/worker-plan
+gh pr create --draft --base main --head deploy/worker-plan --title "Worker /plan/* + PLAN_PERMS, writes closed until L (merge only as the post-deploy sync)" --body "$(cat <<'EOF'
+## What
+- `/plan/*` (15 routes) behind `PLAN_PERMS` (deny-by-default, no `*`); one `plan_*` RPC per request with `{p, p_actor, p_role}`; writes closed until day L (`PLAN_WRITES_OPEN = false` -> 409), reads and the four dry runs open.
+- `plan:` refusals of 071/071b/072 -> Greek 422 in the one mapper (`stockRuleError`); need_token 428; missing 072 503; 23P01 -> truck_busy/driver_busy; lost locks 409 busy_retry; timeout 503.
+- `PATCH /costs/rt/:id` on a v5 cycle -> 409 before the DB; `"Via Hub"` on ORDER STOPS.
+- `worker/tools/worker-guard.mjs`: the deploy guard as one tested command.
+
+## Proof
+- `node --test worker/test/*.test.mjs worker/src/rt-rules.test.mjs` (189 -> 228).
+- `plan-contract` reads 071, 071b and the 072 draft copy (md5 in the test diagnostics).
+
+## Owner
+- DRAFT on purpose: this branch deploys only after 072 runs (plan Task G7, after 15:00, separate yes). Merging it is the post-deploy sync of worker/src + worker/test (CLAUDE.md, rule of one source 1), plan Task K3.
+
+🤖 Generated with [Claude Code](https://claude.com/claude-code)
+EOF
+)"
+```
+Expected: δύο URL PR. Αν ένα push απορριφθεί ως «protected branch», ΣΤΑΜΑΤΑ και πες το.
+
+---
+
+#### Task Κ2: Εκτέλεση της 072 από τον owner (runbook· ο agent μόνο διαβάζει)
+
+**Files:** κανένα.
+
+**Interfaces:**
+- Consumes: merge του SQL PR από τον Δημήτρη· ρητό «ναι»· μετά τις 15:00.
+- Produces: 072 στην παραγωγή· μετά, το Γ7 με **χωριστό** «ναι».
+
+> Πριν από το «ναι», ο agent λέει ρητά στον owner: «Επιστροφή πίσω υπάρχει μόνο πριν από την πρώτη πραγματική γραμμή v5. Οι εγγραφές μένουν κλειστές ως το L, άρα μετά από απόψε δεν γράφεται καμία.»
+
+- [ ] **Step 1 (agent, SELECT): Επαναμέτρηση της Αφετηρίας**
+
+```sql
+SELECT p.proname, md5(p.prosrc) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+WHERE n.nspname = 'public' AND p.proname IN ('dl_sync_from_rt','dl_local_day_sync','dl_sync_from_local_move','local_moves_before',
+  'dl_local_line_guard','dl_cash_sync_entry','order_cd_stop_follow','ramp_follows_stop','invoice_mark_guard','stock_guard_natl',
+  'national_orders_soft_delete_cascade','rt_status_guard','plan_chk','plan_rt_window_sync','plan_rt_problem','plan_shipment_problem',
+  'plan_leg_problem','plan_local_loading_problem','ct_rt_legs_v2_guard','stock_guard_orders','tms_week',
+  'rt_sync_to_orders','rt_sync_to_national_loads') ORDER BY 1;
+SELECT count(*) FROM pg_trigger t JOIN pg_class c ON c.oid = t.tgrelid JOIN pg_namespace n ON n.oid = c.relnamespace
+WHERE n.nspname = 'public' AND NOT t.tgisinternal AND t.tgenabled <> 'D';
+```
+Expected: 23 γραμμές (μία ανά όνομα: κανένα δεν έχει υπερφόρτωση), κάθε md5 ίσο με τον πίνακα «Αφετηρία» (μετρήθηκαν ξανά 23/10, ίδια)· triggers `46`· και το SELECT του Γ7 Step 3 = `0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0` (καμία `plan_*` της 072 ακόμη). Κάθε διαφορά = ΣΤΑΜΑΤΑ (το 072 θα αρνιόταν ούτως ή άλλως, αλλά η αιτία ζητείται πριν).
+
+- [ ] **Step 2 (owner, SQL editor):** `worker/migrations/071_plan_schema_fingerprint.sql`. Κράτα τη γραμμή (`round_trips`, `rt_md5`, `dl_rows`, `dl_md5`).
+- [ ] **Step 3 (owner):** `worker/migrations/drafts/072_plan_functions_dryrun.sql`. Expected: κόκκινο `ERROR: P0001: DRY RUN 072 finished - EVERYTHING UNDONE, nothing kept.` με `triggers 46` στο ίδιο μήνυμα. Οτιδήποτε άλλο: ΣΤΑΜΑΤΑ, το μήνυμα στον συντονιστή.
+- [ ] **Step 4 (agent, SELECT): Τίποτα δεν έμεινε από το dry run.** `SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace WHERE n.nspname = 'public' AND p.proname LIKE 'plan\_%';` Expected: `6`.
+- [ ] **Step 5 (owner):** `worker/migrations/drafts/072_plan_functions.sql`. Expected: χωρίς σφάλμα, NOTICE `072 OK: …` και μία γραμμή με στήλες `result` = `072 OK`, `public_functions` = 16 (15 χωρίς την απόφαση 21), `public_triggers` = 46, `b54_red_value` = 46, `v5_rows` = 0, `v5_cycles` = 0. Σφάλμα = δεν εφαρμόστηκε τίποτα (ένα DO block): ΣΤΑΜΑΤΑ.
+- [ ] **Step 6 (owner ή agent με SELECT):** `worker/migrations/drafts/072_plan_functions_verify.sql`. Expected: μία γραμμή: `applied` = `072 in place`, `public_functions` = 16, `service_role_execute` = 16, `open_to_api` = 0, `not_definer` = 0, `bad_shape` = 0, `f1_open` = 0, `b54_matches` = true, `changed_live` = 0, `v5_rows` = 0, `v5_cycles` = 0.
+- [ ] **Step 7 (owner):** `worker/migrations/071_plan_schema_fingerprint.sql` ξανά. Expected: `rt_md5` ίδιο με το Step 2. Το `dl_md5` είναι επίσης ίδιο, εκτός αν κάποιος αποθήκευσε μισθοδοσία στο μεταξύ (`SELECT id, updated_at FROM dl_entries WHERE updated_at > '<read_at του Step 2>'`).
+- [ ] **Step 8 (agent, SELECT): PostgREST βλέπει τις συναρτήσεις, κλειστές**
+
+Το SELECT του Γ7 Step 3. Expected: `0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 16` (15 χωρίς την απόφαση 21). Και:
+```sql
+SELECT count(*) FILTER (WHERE has_function_privilege('anon', p.oid, 'EXECUTE') OR has_function_privilege('authenticated', p.oid, 'EXECUTE')) AS open_to_web,
+       count(*) FILTER (WHERE p.proname LIKE 'plan\_h\_%' AND has_function_privilege('service_role', p.oid, 'EXECUTE')) AS helpers_open
+FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace WHERE n.nspname = 'public' AND p.proname LIKE 'plan\_%';
+```
+Expected: `0 | 0`.
+- [ ] **Step 9 (προαιρετικό, χωριστό «ναι»):** `worker/migrations/drafts/072_plan_functions_test.sql`. Expected: `RULES TEST 072 finished - EVERYTHING UNDONE, nothing kept. Result: 169 OK, 0 FAIL` (159 χωρίς την απόφαση 21). Οι αριθμοί RT-/PM- προχωρούν όσο οι δοκιμαστικές γραμμές (κάθε περίπτωση Β φτιάχνει τουλάχιστον έναν κύκλο: ~110 κωδικοί RT-)· αυτό είναι το μόνο ίχνος, και ο owner το ξέρει πριν πει «ναι».
+- [ ] **Step 10:** Task Γ7 (deploy Worker), με **χωριστό** «ναι», το ίδιο βράδυ ή άλλο. Ως τότε ο ζωντανός Worker δεν ξέρει το `/plan/*` (404), και η 072 δεν καλείται από πουθενά.
+- [ ] **Step 11 (agent, SELECT, μετά την επόμενη ωριαία εκτέλεση):** `SELECT run_at, status, value FROM monitoring.results WHERE check_id = 'B-54' ORDER BY run_at DESC LIMIT 1`. Expected: `green`, `46` (η 072 δεν προσθέτει trigger), `run_at` μετά το Step 5.
+
+---
+
+#### Task Κ3: Μετά την εκτέλεση και το deploy: μία πηγή
+
+**Files:**
+- Move: `worker/migrations/drafts/072_plan_functions{,_dryrun,_verify,_test,_rollback}.sql` → `worker/migrations/`
+- Modify: `worker/migrations/drafts/tools/build-072-dryrun.mjs` (`DIR`), `tests/sql-072-drafts.test.js` (`DIR`, import γεννήτριας, λίστα ASCII), `tms-auditor/test/plan-072.test.mjs` (`read`)
+- Modify: `CLAUDE.md` (λίστα φρουρού), `docs/DECISION_LOG.md`, `docs/SESSION.md`, νέο `docs/sessions/<YYYY-MM-DD>-dimitris-national-v5-f2-executed.md`
+- `deploy/worker-plan`: delete `worker/migrations/drafts/072_plan_functions.sql` (το αντίγραφο), merge `origin/main`
+
+**Interfaces:**
+- Consumes: Κ2 (072 ζωντανή), Γ7 (Worker `<PLAN_VERSION>` ζωντανός, φρουρός 11/11).
+- Produces: CLAUDE.md κανόνας 5 (εκτός `drafts/`)· κανόνας μίας πηγής 1 (το `worker/src`/`worker/test` του main = του deploy)· κανόνας 3 (το `var PLAN_PERMS = {` στη λίστα φρουρού).
+
+- [ ] **Step 1: SQL εκτός `drafts/`** (νέο branch από φρέσκο main, αφού το SQL PR έχει γίνει merge)
+
+```bash
+git fetch origin && git switch -c docs/072-executed origin/main
+git mv worker/migrations/drafts/072_plan_functions.sql worker/migrations/drafts/072_plan_functions_dryrun.sql \
+  worker/migrations/drafts/072_plan_functions_verify.sql worker/migrations/drafts/072_plan_functions_test.sql \
+  worker/migrations/drafts/072_plan_functions_rollback.sql worker/migrations/
+```
+Στο `worker/migrations/drafts/tools/build-072-dryrun.mjs` αντικατέστησε `export const DIR = path.resolve(HERE, '..');` με `export const DIR = path.resolve(HERE, '../..');`.
+Στο `tests/sql-072-drafts.test.js` αντικατέστησε:
+```js
+const DIR = path.join(ROOT, 'worker/migrations/drafts');   // after the run: worker/migrations (CLAUDE.md rule 5)
+```
+με:
+```js
+const DIR = path.join(ROOT, 'worker/migrations');   // executed <YYYY-MM-DD>: out of drafts/ (CLAUDE.md rule 5)
+```
+Στο ίδιο αρχείο, **και οι δύο** εμφανίσεις του `path.join(DIR, 'tools/build-072-dryrun.mjs')` (στο `existsSync` και στο `import`) γίνονται `path.join(ROOT, 'worker/migrations/drafts/tools/build-072-dryrun.mjs')`, και στη λίστα του test «ASCII only» το `'tools/build-072-dryrun.mjs'` γίνεται `'drafts/tools/build-072-dryrun.mjs'`.
+Στο `tms-auditor/test/plan-072.test.mjs` αντικατέστησε την ολόκληρη γραμμή:
+```js
+const read = (f) => fs.readFileSync(path.join(DRAFTS, f), 'utf8');   // 072: drafts until executed
+```
+με:
+```js
+const read = (f) => fs.readFileSync(path.join(DRAFTS, '..', f), 'utf8');   // 072 executed <YYYY-MM-DD>: worker/migrations
+```
+Στο σχόλιο κεφαλίδας του `072_plan_functions.sql`, το `-- DRAFT. Spec …` γίνεται `-- EXECUTED <YYYY-MM-DD> by the owner. Spec …`. Ξαναπαράγαγε το dry run: `node worker/migrations/drafts/tools/build-072-dryrun.mjs`.
+```bash
+node --test tests/sql-072-drafts.test.js 2>&1 | grep -E '^ℹ (pass|fail)'
+(cd tms-auditor && node --test test/plan-072.test.mjs 2>&1 | grep -E '^ℹ (pass|fail)')
+node --test worker/test/plan-contract.test.mjs 2>&1 | grep -E '^# checked|^ℹ (pass|fail)'
+```
+Expected: `ℹ fail 0` και στα τρία· το contract test γράφει πλέον `checked: worker/migrations/072_plan_functions.sql`· `grep -rn "drafts/072" tests tms-auditor/test worker/migrations/*.sql` δεν βγάζει τίποτα πέρα από τη διαδρομή της γεννήτριας.
+
+- [ ] **Step 2: CLAUDE.md, λίστα φρουρού** (κανόνας μίας πηγής 3: το σημάδι δεν αφαιρείται ποτέ)
+
+Στο `CLAUDE.md` αντικατέστησε:
+```markdown
+   - απόθεμα παρτίδων: `tblStockLots: {`
+   - τοπικές παραδόσεις: `"Move Kind": "move_kind"`
+```
+με:
+```markdown
+   - απόθεμα παρτίδων: `tblStockLots: {`
+   - τοπικές παραδόσεις: `"Move Kind": "move_kind"`
+   - εθνικά v5, `/plan/*` (Φ2, Worker <PLAN_VERSION>): `var PLAN_PERMS = {`. Ως την ημέρα L και
+     `var PLAN_WRITES_OPEN = false;` (η Φ5 το αλλάζει μαζί με το εργαλείο).
+   Μία εντολή για όλα, πριν και μετά: `node worker/tools/worker-guard.mjs <bundle ή λήψη CF> --plan 1`
+   (ξετυλίγει το multipart· `GUARD OK (11 markers, plan=1)`).
+```
+
+- [ ] **Step 3: Ίχνος, commit, PR**
+
+Στο `docs/DECISION_LOG.md`, κάτω από την εγγραφή Φ2: `**Εκτελέστηκε:** <YYYY-MM-DD>, owner· dry run κόκκινο σκόπιμα, «072 OK», «072 in place», fingerprint ίδιο, B-54 46· rules test <n>/<n> <ή «δεν έτρεξε»>. **Worker <PLAN_VERSION>** από deploy/worker-plan @ <PLAN_SHA>: φρουρός πριν 9/9 (plan=0), μετά 11/11 (plan=1), BINDINGS-IDIA, smoke 401/200/200/200/409/422/400, 0 γραμμές v5, app_errors 0· επαναφορά = wrangler rollback <PREV>.` Νέο αρχείο `docs/sessions/<YYYY-MM-DD>-dimitris-national-v5-f2-executed.md` με τα ίδια σε έως 5 κουκκίδες. Στο «Now» του `docs/SESSION.md`, η γραμμή μας γίνεται: `- dimitris · national v5 · F2 LIVE <YYYY-MM-DD>: 072 + Worker <PLAN_VERSION> (/plan/* read-only until L, 0 v5 rows); next: F3 (073) on deploy/worker-plan`.
+```bash
+git add -A worker/migrations tests/sql-072-drafts.test.js tms-auditor/test/plan-072.test.mjs CLAUDE.md docs
+git commit -m "072 executed + Worker <PLAN_VERSION> live: files out of drafts/, guard list gains var PLAN_PERMS
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+git push -u origin docs/072-executed && gh pr create --fill
+```
+
+- [ ] **Step 4: Sync της πηγής του Worker** (κανόνας μίας πηγής 1, αφού γίνει merge το PR του Step 3)
+
+Το deploy έγινε από το `<PLAN_SHA>`. Το PR του `deploy/worker-plan` **είναι** το sync. Πριν από το merge φεύγει το αντίγραφο της 072 (το main την έχει πια στο `worker/migrations/`) και έρχεται το main:
+```bash
+git switch deploy/worker-plan && git fetch origin
+git diff --stat <PLAN_SHA> HEAD -- worker/src worker/test
+git rm worker/migrations/drafts/072_plan_functions.sql
+git commit -m "drop the 072 draft copy: main holds the executed file
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+git merge origin/main
+node --test worker/test/*.test.mjs worker/src/rt-rules.test.mjs 2>&1 | grep -E '^ℹ (tests|pass|fail)'
+git diff --stat <PLAN_SHA> HEAD -- worker/src
+git push
+gh pr edit --title "sync worker source with deployed <PLAN_VERSION>" && gh pr ready
+```
+Expected: το πρώτο `diff --stat` είναι κενό (το branch δεν άλλαξε μετά το deploy, αλλιώς ΣΤΑΜΑΤΑ: κάτι μπήκε χωρίς deploy)· `ℹ fail 0`· το δεύτερο `diff --stat` στο `worker/src` είναι κενό, εκτός αν το main άλλαξε στο μεταξύ το `worker/src`. Τότε ΣΤΑΜΑΤΑ: το main θα είχε Worker που δεν τρέχει, και θέλει δικό του deploy πριν από το sync. Το merge το κάνει ο Δημήτρης.
+
+- [ ] **Step 5 (agent, SELECT, την επόμενη μέρα εργασίας):** το SELECT του Γ7 Step 3. Expected: `0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 16`, και `SELECT count(*) FROM app_errors WHERE created_at > '<ώρα deploy>' AND message ILIKE '%/plan/%'` = 0. Αν μια γραμμή v5 υπάρχει πριν από το L, αυτό σημαίνει ότι γράφτηκε κάποια παρακάμπτοντας τον διακόπτη: ΣΤΑΜΑΤΑ και μήνυμα στον συντονιστή.
+
+---
+
+## Αν σπάσει, πώς θα το μάθουμε
+
+- **Στο build:** το `tests/sql-072-drafts.test.js` πιάνει dry run που δεν ξαναπαράχθηκε, md5 φρουρού που δεν ενημερώθηκε (23 ζεύγη, δύο φορές το καθένα), συνάρτηση που γεννήθηκε ανοιχτή, δημόσια χωρίς `plan_h_ctx` / `plan_h_keys` / `plan_h_finish`, κωδικό χωρίς περίπτωση, αποσυρμένο κωδικό, καθρέφτη στο `national_orders`, warning ή είδος ειδοποίησης εκτός μητρώου. Το `plan-072.test.mjs` πιάνει κάθε κανόνα που δεν κάνει αυτό που λέει, πάνω σε αντίγραφο με το σχήμα της παραγωγής (NOT NULL, FK, identity, triggers), και τη μεταλλαγή χωρίς ρητή σβήση μισθοδοσίας (B38). Το `plan-contract.test.mjs` πιάνει κωδικό ή constraint χωρίς ελληνικό κείμενο, και κείμενο χωρίς κωδικό· τα `plan-perms` / `plan-tables-guard` πιάνουν δικαίωμα που άνοιξε ή `"*"`· το `worker-guard.test.mjs` πιάνει φρουρό που θα έλεγε ψέματα τη νύχτα του deploy. Το Task Σ1 τα τρέχει όλα ενωμένα πριν από το PR.
+- **Το βράδυ της εκτέλεσης:** το DO block είναι όλα ή τίποτα· κάθε φρουρός του PART 0 ονομάζει τι βρήκε (συνάρτηση με άλλο md5, γραμμές v5, B-54)· το PART 5 αρνείται κάθε δικαίωμα ή owner ή `search_path` εκτός σχεδίου. Το dry run κόκκινο σκόπιμα, με `triggers 46`. Ο φρουρός του Worker είναι μία εντολή που λέει `GUARD OK (… markers, plan=…)` ή `GUARD STOP — …`, ποτέ stack trace· η κεφαλίδα της λήψης CF ελέγχεται πριν.
+- **Στη λειτουργία:** κάθε άρνηση = 422 με ελληνικό και κωδικό· άγνωστος κωδικός ή constraint = 422 που τον ονομάζει· χωρίς επιβεβαίωση = 428· ταυτόχρονη αλλαγή = 409 `busy_retry` (τίποτα δεν γράφτηκε)· αργή βάση = 503 `slow`· Worker πριν την 072 (ή μετά από rollback της) = 503 `schema_behind`· εγγραφή πριν το L = 409 `writes_closed`· ποσό προς ρόλο χωρίς δικαίωμα = 500 `amount_leak` + log. Γραμμή ΤΟΠΙΚΟ με ποσό που αλλάζει = `local_payroll` στη λίστα ή `local_payroll_review` στην απάντηση, και `needs_review` στη μισθοδοσία (απόφαση 33). Ο B-54 (ωριαίος) φωνάζει αν αλλάξει ο αριθμός των triggers· το SELECT του Γ7 Step 3 (0 γραμμές v5) ξαναμετρά την επόμενη μέρα (Κ3 Step 5).
+- **Σειρά επαναφοράς:** πρώτα ο Worker (`wrangler rollback <PREV>`), μετά, αν χρειαστεί, το `072_plan_functions_rollback.sql`· με ανάποδη σειρά κάθε `/plan/*` γίνεται 503 `schema_behind` (δεν σπάει τίποτα άλλο). Το rollback της 072 αρνείται μόλις υπάρξει μία γραμμή v5.
+- **Δεν πιάνει ακόμη η Φ2** (έλεγχοι ελεγκτή Φ3/Φ5): αδιάβαστες ειδοποιήσεις > 24 ώρες, κόμιστρο που λείπει, DKV χωρίς δρομολόγιο, άδειος κύκλος, μεικτές θερμοκρασίες (μόνο προειδοποίηση), v1 ↔ v5 στο ίδιο φορτηγό (μόνο προειδοποίηση), τοπικό φορτηγό «απασχολημένο» (C-27). **Εκτός Φ2:** ο βοηθός αναίρεσης σπασίματος / προσαρμογής κομματιών γέφυρας VS που θα καλεί ο trigger γέφυρας (K-03) τον φτιάχνει η Φ5 (`plan_h_resize` της Α7 αρνείται τις γέφυρες, ο έλεγχος `vs_locked` είναι στο `plan_order_update`)· DELETE/PATCH του facade σε εθνική v5 (απόφαση 28, Ε16 της Φ5).
+
+## Self-review (έγινε)
+
+- **Κάλυψη `requirements.md`:**
+  - F2-01 `plan_orders_create` → Α2 (16–29), Α3 (45)· F2-02 `plan_put_pieces` → Α3 (30–46), Α8 (78)· F2-03 `plan_put_group` → Α4 (47–50), B16–B17· F2-04 `plan_move_pieces` → Α6 (57–67), Α8 (79–82)· F2-05 σπάσιμο / split+put → Α3 (35, 46), Α5 (51–56)· F2-06 `plan_rt_create` → Β1 (B1–B17)· F2-07 `plan_rt_update` → Β2 (B18–B33), B78, B86· F2-08 `plan_rt_clear` → Β3 (B34–B42), B79· F2-09 `plan_delete` → Β4 (B43–B51), B80, B85· F2-10/11 VS ημέρα/τόπος → Β5 (B52–B60), B81–B82· F2-12 τοπική φόρτωση → Β6 (B61–B68), B20, B83, B87· F2-13 ειδοποιήσεις και αναγνώσεις → Β7 (B69–B76), B84· εβδομάδα-σενάριο 19/32/31 → B77.
+  - R-01…R-16 → Global Constraints, PART 5 και οι αποδείξεις του, `plan_h_ctx` / `plan_h_audit` / `plan_h_raise` / `plan_h_confirm` / `plan_h_strip_amounts`· R-12 (παράθυρο μόνο από τη βάση) → Β1, Β2· R-15 → `plan-tables-guard`.
+  - W-01…W-14 → Γ2–Γ5 (W-10: χωρίς `POST /plan/rt`, απόφαση 3· W-11 → Γ4· W-12 → Γ4)· Deploy → Γ6/Γ7, Κ2/Κ3· αποδοχή «401 χωρίς token» → απόφαση 24.
+  - C-01…C-26 → αποφάσεις 1–34 (C-07 παράθυρα στάσεων VS → απόφαση 4: τα δίνει ο καλών· C-27 εκτός Φ2)· K-01…K-17 → κώδικας και περιπτώσεις (K-03 βλ. «Εκτός Φ2» πάνω· K-13 → αποφάσεις 11, 32, 33).
+- **Τα ευρήματα των δύο κριτών** (23/10, 3 + 7 Critical, 8 + 11 Important) εφαρμόστηκαν μέσα στον κώδικα και στα βήματα, όχι ως σημειώσεις: ένα συμβόλαιο βοηθών (Interfaces), ο κλάδος `new_rt` στο Α1, ένα σύνολο σημαδιών και ένα PART 5, μία λίστα φρουρού (23), ένα πλαίσιο rules test, η μία λήψη στο Α1, `plan_h_keys` σε όλη τη Β, ο ΕΝΑΣ μηχανισμός δύο βημάτων στις Β3/Β4, σάρωση στάσεων στη Β4, κλείδωμα κύκλων και `busy_retry`, «πρώτο κομμάτι» VS, `later_leg`, απόφαση 33, `payroll_locked` ως απόφαση 32, φίλτρο 071 και 27 κωδικοί στο contract test, αντιγραφή 072 από τοπικό κλάδο και έλεγχος ίδιου αρχείου πριν από το deploy, εργαλείο φρουρού ανθεκτικό σε άλλη μορφή multipart, Task Σ1. Λεπτομέρεια, και όσα Minor δεν εφαρμόστηκαν με τον λόγο: `.superpowers/f2/final-report.md`.
+- **Σάρωση placeholders:** οι μόνες τιμές χρόνου εκτέλεσης είναι οι ρητές `<YYYY-MM-DD>`, `<VD_SHA>`, `<VD_VERSION>`, `<PLAN_SHA>`, `<PLAN_VERSION>`, `<PREV>` (με εντολή ή γραμμή που τις παράγει) και `<n>` στο DECISION_LOG· κανένα «TBD», κανένα «όπως παραπάνω» χωρίς κώδικα.
+- **Συνέπεια ονομάτων και τύπων:** υπογραφές βοηθών = πίνακας Interfaces· κωδικοί = λίστες Interfaces = `CODES_071`/`CODES_072` = `PLAN_RULE_TEXT`· `v_pub` (16) = verify = `PUBLIC` του build test = `PLAN_ROUTES`· 23 md5 ίδια σε PART 0, PART 5, verify, `sql-072-drafts`, `plan-072`, Κ2· αριθμοί: 169 περιπτώσεις (82 + 87), build 12, Worker 228.
+- **Δοκιμασμένο πριν παραδοθεί (23/10, scratch, εκτός repo):** τα code blocks εξήχθησαν από αυτό το αρχείο ακολουθώντας κατά γράμμα τις οδηγίες εισαγωγής και έτρεξαν σε PGlite 0.5.8 (`live-071.sql` + 071 + 071b + 069): «072 OK», rules test 169/169, `tests/sql-072-drafts.test.js` 12/12 (και το bootstrap του Α1 6/6 πάνω στο τελικό 072), verify, dry run, rollback με άρνηση και επιτυχία, ξανά apply· μεταλλαγές: χωρίς `v_vs_first` → 78, χωρίς `later_leg` → 79/80, χωρίς `local_payroll` → 81, χωρίς σάρωση στη `plan_delete` → B85, χωρίς `plan_h_keys` στη `plan_rt_clear` → B79, χωρίς ρητή σβήση μισθοδοσίας → B38. Βρέθηκε και διορθώθηκε η σύγκρουση ονόματος της B77. Κάθε JS block του πλάνου περνά `node --check` (εκτός από τα αποσπάσματα find/replace).
+- **Τι ΔΕΝ αποδείχθηκε ακόμη:** η εκτέλεση με την πλήρη λήψη `live-072.sql` (NOT NULL, FK, `stock_guard_*`, `invoice_mark_guard` και τα md5 των 23) και ο Worker μετά τις αλλαγές του (το `busy_retry`, το εργαλείο φρουρού, το contract test με 27 κωδικούς: μόνο συντακτικός έλεγχος). Το Task Σ1 τα τρέχει πριν από το Κ1· κάθε Expected του πλάνου που δεν βγαίνει εκεί είναι λάθος του πλάνου, όχι του εκτελεστή.
