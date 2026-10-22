@@ -91,9 +91,9 @@ test('071 + 071b on a production-shaped PGlite copy', async (t) => {
     assert.match(r.hub, / CROSS-DOCK$/);
   });
 
-  await t.test('071 rules test: 54 OK, 0 FAIL, nothing kept', async () => {
+  await t.test('071 rules test: 56 OK, 0 FAIL, nothing kept', async () => {
     const msg = await errorOf(db, read('071_plan_schema_test.sql'));
-    assert.match(msg ?? '', /RULES TEST 071 finished - EVERYTHING UNDONE, nothing kept\. Result: 54 OK, 0 FAIL/, msg);
+    assert.match(msg ?? '', /RULES TEST 071 finished - EVERYTHING UNDONE, nothing kept\. Result: 56 OK, 0 FAIL/, msg);
     assert.equal(await count(db, `SELECT (SELECT count(*) FROM shipments) + (SELECT count(*) FROM rt_stops)
       + (SELECT count(*) FROM ct_round_trips WHERE model = 2) AS n`), 0);
   });

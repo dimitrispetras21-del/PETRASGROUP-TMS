@@ -234,7 +234,9 @@ BEGIN
     CONSTRAINT rt_stops_rt_id UNIQUE (rt_id, id),
     CONSTRAINT rt_stops_seq CHECK (seq > 0),
     CONSTRAINT rt_stops_side CHECK (side IN ('KATHODOS', 'ANODOS')),
-    CONSTRAINT rt_stops_win CHECK (planned_to >= planned_from),
+    -- A stop is a window from-to, never one instant (owner #12): with planned_to = planned_from a cycle whose live
+    -- stops collapse to one instant would break rt_v2_window (end_at > start_at) inside plan_rt_window_sync.
+    CONSTRAINT rt_stops_win CHECK (planned_to > planned_from),
     CONSTRAINT rt_stops_del CHECK ((deleted_at IS NULL) = (deleted_reason IS NULL)
                                    AND (deleted_at IS NULL) = (deleted_by IS NULL))
   );
@@ -614,6 +616,12 @@ $f$;
 declare
   prob text; x bigint;
 begin
+  -- Every change leaves its trace (spec 2.2): the four plan tables are soft-deleted only. A hard DELETE would skip
+  -- every rule below (chain, pieces_sum, the local loading), so it is refused at COMMIT like any broken rule.
+  if tg_op = 'DELETE' then
+    raise exception 'plan rule broken: hard delete on % (soft delete only)', tg_table_name
+      using errcode = '23514', hint = 'plan:hard_delete';
+  end if;
   if tg_table_name = 'ct_round_trips' then
     if tg_op = 'UPDATE' and old.model is distinct from new.model then
       prob := 'model_locked:' || new.id;
@@ -712,13 +720,13 @@ $f$;
     FOR EACH ROW EXECUTE FUNCTION public.plan_rt_window_sync();
   CREATE CONSTRAINT TRIGGER plan_chk_rt AFTER INSERT OR UPDATE ON public.ct_round_trips
     DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION public.plan_chk();
-  CREATE CONSTRAINT TRIGGER plan_chk_stops AFTER INSERT OR UPDATE ON public.rt_stops
+  CREATE CONSTRAINT TRIGGER plan_chk_stops AFTER INSERT OR UPDATE OR DELETE ON public.rt_stops
     DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION public.plan_chk();
-  CREATE CONSTRAINT TRIGGER plan_chk_legs AFTER INSERT OR UPDATE ON public.piece_legs
+  CREATE CONSTRAINT TRIGGER plan_chk_legs AFTER INSERT OR UPDATE OR DELETE ON public.piece_legs
     DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION public.plan_chk();
-  CREATE CONSTRAINT TRIGGER plan_chk_pieces AFTER INSERT OR UPDATE ON public.shipment_pieces
+  CREATE CONSTRAINT TRIGGER plan_chk_pieces AFTER INSERT OR UPDATE OR DELETE ON public.shipment_pieces
     DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION public.plan_chk();
-  CREATE CONSTRAINT TRIGGER plan_chk_shipments AFTER INSERT OR UPDATE ON public.shipments
+  CREATE CONSTRAINT TRIGGER plan_chk_shipments AFTER INSERT OR UPDATE OR DELETE ON public.shipments
     DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION public.plan_chk();
   CREATE CONSTRAINT TRIGGER plan_chk_bridge_stop AFTER UPDATE OF pallets, deleted_at ON public.order_stops
     DEFERRABLE INITIALLY DEFERRED FOR EACH ROW

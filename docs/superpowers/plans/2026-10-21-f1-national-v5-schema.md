@@ -8,6 +8,8 @@
 
 **Tech Stack:** Supabase Postgres 17.6 (DO blocks, plpgsql, constraint triggers, `security_invoker` views), PGlite 0.5.8 (`tms-auditor`), node `--test`.
 
+> **Μετά την υλοποίηση (22/10):** πηγή είναι τα αρχεία στο `worker/migrations/drafts/`, όχι τα μπλοκ κώδικα αυτού του πλάνου. Ο έλεγχος κώδικα (xhigh) πρόσθεσε `plan:hard_delete` (τα 4 constraint triggers του σχεδίου ακούνε και `DELETE`) και `rt_stops_win` = `planned_to > planned_from`· το rules test έγινε 56 περιπτώσεις.
+
 ## Global Constraints
 
 - Πηγές με σειρά ισχύος: 1) `docs/superpowers/specs/2026-10-21-national-v5-design.md` (εγκεκριμένο, owner 21/10), 2) `docs/national-v5/tech-draft-2026-10-21.md` Φ1 και §0/§1, 3) spec §7 (τι αλλάζει στο προσχέδιο). Όπου διαφωνούν, ισχύει το spec. Αν το spec δεν έχει γίνει ακόμη merge, διάβασέ το από το branch `docs/national-v5-spec-plan`.
@@ -138,7 +140,7 @@
 
 **Triggers (+9, B-54 37 → 46):** `ct_rt_legs_v2_guard` (`ct_rt_legs`), `plan_rt_window_sync` (`rt_stops`), και deferred `plan_chk_rt` (`ct_round_trips`), `plan_chk_stops` (`rt_stops`), `plan_chk_legs` (`piece_legs`), `plan_chk_pieces` (`shipment_pieces`), `plan_chk_shipments` (`shipments`), `plan_chk_bridge_stop` (`order_stops`, όταν αλλάζουν `pallets`/`deleted_at`), `plan_chk_local_loading` (`local_moves`, `nat_loading`).
 
-**Κωδικοί `plan:` της Φ1** (κάθε κωδικός θέλει ελληνικό κείμενο στο `PLAN_RULE_TEXT` της Φ2): `pieces_alive`, `piece_dead`, `pieces_sum`, `piece_parent`, `split_not_at_hub`, `rt_not_v2`, `rt_cancelled`, `leg_stop_dead`, `leg_order`, `leg_place`, `chain`, `chain_time`, `stop_seq`, `stop_order`, `side_order`, `rt_window`, `local_loading_gone`, `local_loading_day`, `local_loading_stop`, `model_locked`, `stop_locked`, `leg_locked`, `piece_locked`, `shipment_locked`, `v1_link_on_v2`. Τα ονόματα CHECK/UNIQUE/EXCLUDE πάνω θέλουν κείμενο στο `PLAN_CHECK_TEXT`.
+**Κωδικοί `plan:` της Φ1** (κάθε κωδικός θέλει ελληνικό κείμενο στο `PLAN_RULE_TEXT` της Φ2): `pieces_alive`, `piece_dead`, `pieces_sum`, `piece_parent`, `split_not_at_hub`, `rt_not_v2`, `rt_cancelled`, `leg_stop_dead`, `leg_order`, `leg_place`, `chain`, `chain_time`, `stop_seq`, `stop_order`, `side_order`, `rt_window`, `local_loading_gone`, `local_loading_day`, `local_loading_stop`, `model_locked`, `stop_locked`, `leg_locked`, `piece_locked`, `shipment_locked`, `v1_link_on_v2`, `hard_delete` (έλεγχος κώδικα 22/10). Τα ονόματα CHECK/UNIQUE/EXCLUDE πάνω θέλουν κείμενο στο `PLAN_CHECK_TEXT`.
 
 **Τι ΔΕΝ κάνει η Φ1:** `plan_*` (072), Worker, οθόνες, `ct_v_rt_revenue`/`ct_v_rt_costs`/`dl_v_rt_route` (073), νέοι έλεγχοι B-xx (073/074), γέφυρα VS και `plan_config` (074), backfill `via_hub` (074).
 

@@ -1,11 +1,11 @@
--- RULES TEST 071 (national v5 schema): 54 cases on TEST rows, then undone.
+-- RULES TEST 071 (national v5 schema): 56 cases on TEST rows, then undone.
 -- Runs AFTER 071 said "071 OK". At build time it runs on the PGlite copy (tms-auditor/test/plan-071.test.mjs). On
 -- production it is OPTIONAL, after 15:00, with an explicit yes: it writes TEST rows (locations, clients, partners,
 -- trucks, drivers, two national orders, one VS import order with two stops, round trips, payroll lines, local moves,
 -- pallet movements, audit rows) and undoes ALL of them with a deliberate final error. Only trace: identity and code
 -- sequences advance (RT-... and PM-... numbers skip the ones used here).
 -- ONE statement. The red error message IS the result:
---   "RULES TEST 071 finished - EVERYTHING UNDONE, nothing kept. Result: 54 OK, 0 FAIL || ...".
+--   "RULES TEST 071 finished - EVERYTHING UNDONE, nothing kept. Result: 56 OK, 0 FAIL || ...".
 -- Any FAIL or ERROR = STOP, copy the panel to the coordinator.
 -- Each case: build S (national order A->B, 10 pallets, one piece; one OWNED v5 cycle with truck and driver, stops
 -- A 06-08, Veroia 09-10, B 12-14 on day D; one leg A->B), check it (SET CONSTRAINTS ALL IMMEDIATE), make the case's
@@ -35,7 +35,8 @@ DECLARE
     'con:order_stops_via_hub_intl', 'ok', 'plan:local_loading_day', 'plan:local_loading_stop',          -- 36-39
     'con:local_moves_nat_loading', 'plan:local_loading_stop', 'con:pl_mov_leg_once', 'plan:leg_locked', -- 40-43
     'plan:stop_locked', 'plan:piece_locked', 'ok', 'ok', 'ok', 'ok', 'state:P0001',                     -- 44-50
-    'plan:pieces_alive', 'plan:piece_parent', 'plan:local_loading_gone', 'plan:shipment_locked'];       -- 51-54
+    'plan:pieces_alive', 'plan:piece_parent', 'plan:local_loading_gone', 'plan:shipment_locked',        -- 51-54
+    'plan:hard_delete', 'con:rt_stops_win'];                                                           -- 55-56
   verdict text; got text; hint text; msg text; cname text; st text;
   ok int := 0; bad int := 0; res text[] := '{}';
 BEGIN
@@ -81,7 +82,7 @@ BEGIN
   INSERT INTO ct_round_trips (scope, trip_type, date_start, status, source, created_by)
   VALUES ('NATL', 'OWNED', d, 'planned', 'manual', 'test:071') RETURNING id INTO v1rt;
 
-  FOR k IN 1..54 LOOP
+  FOR k IN 1..56 LOOP
     verdict := NULL;
     BEGIN
       SET CONSTRAINTS ALL DEFERRED;
@@ -160,7 +161,7 @@ BEGIN
           INSERT INTO piece_legs (piece_id, leg_no, rt_id, pickup_stop_id, drop_stop_id, created_by) VALUES (p1, 1, rt1, s1, s4, 'test:071');
         END IF;
       ELSIF k = 12 THEN
-        INSERT INTO rt_stops (rt_id, seq, location_id, side, planned_from, planned_to, created_by) VALUES (rt1, 2, la, 'KATHODOS', at10, at10, 'test:071');
+        INSERT INTO rt_stops (rt_id, seq, location_id, side, planned_from, planned_to, created_by) VALUES (rt1, 2, la, 'KATHODOS', at9, at10, 'test:071');
       ELSIF k = 13 THEN
         INSERT INTO rt_stops (rt_id, seq, location_id, side, planned_from, planned_to, created_by) VALUES (rt1, 4, la, 'KATHODOS', at6, at8, 'test:071');
       ELSIF k = 14 THEN
@@ -281,6 +282,11 @@ BEGIN
         UPDATE shipments SET deleted_at = now(), deleted_reason = 'test', deleted_by = 'test:071' WHERE id = shp;
       ELSIF k = 54 THEN
         UPDATE shipments SET nat_order_id = no2 WHERE id = shp;
+      ELSIF k = 55 THEN   -- soft delete only: a hard DELETE would skip every rule
+        DELETE FROM piece_legs WHERE id = lg1;
+      ELSIF k = 56 THEN   -- a stop is a window from-to, never one instant
+        INSERT INTO rt_stops (rt_id, seq, location_id, side, planned_from, planned_to, created_by)
+        VALUES (rt1, 4, lc, 'KATHODOS', at16, at16, 'test:071');
       END IF;
       SET CONSTRAINTS ALL IMMEDIATE;
 
