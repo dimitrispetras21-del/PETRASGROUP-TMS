@@ -91,6 +91,8 @@
 
 ### Task Φ0: Figma και μετρήσεις αφετηρίας
 
+> **Κατάσταση 22/10: ΕΓΚΡΙΘΗΚΕ από τον owner** (βήματα 1–6). Frames και βαθμοί κριτών στο `docs/sessions/2026-10-22-dimitris-national-v5-f0.md`· PNG στο Desktop «TMS brainstorming/Figma Εθνικών — Φ0 (22-10)». Μένει το βήμα 7 (κάτοχος αλυσίδας Worker).
+
 **Files:**
 - Modify: Figma `KO7l2AfucR3HJEDIg1Yptr`, σελίδα `2011:7735` και τα `2035:7735`, `2036:7735`, `2036:7752`
 - Create: `docs/sessions/YYYY-MM-DD-dimitris-national-v5-f0.md` (πίνακας μετρήσεων)
