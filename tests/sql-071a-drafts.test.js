@@ -1,5 +1,5 @@
 // tests/sql-071a-drafts.test.js - run: node --test tests/sql-071a-drafts.test.js
-// The 071a drafts (worker/migrations/drafts/071a_invoice_from_registration*) at build time, plain node, no
+// The 071a drafts (worker/migrations/071a_invoice_from_registration*) at build time, plain node, no
 // database (principle 6: a stale fingerprint fails here, not at 15:30 on the owner's evening):
 //   - ASCII only (the owner pastes them; a clipboard has mangled Greek before - Greek travels as base64);
 //   - the writing files are ONE DO block (the SQL editor is not atomic across statements); verify writes nothing;
@@ -15,9 +15,10 @@ const assert = require('node:assert');
 const fs = require('node:fs');
 const path = require('node:path');
 
-const DRAFTS = path.join(__dirname, '..', 'worker/migrations/drafts');
-const read = (f) => fs.readFileSync(path.join(DRAFTS, f), 'utf8');
-const FILES = fs.readdirSync(DRAFTS).filter((f) => f.startsWith('071a_'));
+const DRAFTS = path.join(__dirname, '..', 'worker/migrations/drafts');   // only the generator tools stay here
+const DIR = path.join(__dirname, '..', 'worker/migrations');   // executed 22/10: out of drafts/ (CLAUDE.md rule 5)
+const read = (f) => fs.readFileSync(path.join(DIR, f), 'utf8');
+const FILES = fs.readdirSync(DIR).filter((f) => f.startsWith('071a_'));
 const DO_FILES = ['071a_invoice_from_registration.sql', '071a_invoice_from_registration_dryrun.sql', '071a_invoice_from_registration_rollback.sql'];
 const READ_ONLY = ['071a_invoice_from_registration_verify.sql'];
 const builder = () => import(path.join(DRAFTS, 'tools/build-071a.mjs'));

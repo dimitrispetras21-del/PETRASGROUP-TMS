@@ -1,4 +1,4 @@
--- 057 — DRAFT (NOT EXECUTED) — Stock lots Φ1: a client's lot parked in a warehouse, carried
+-- 057 — EXECUTED 5/10/2026 by the owner — Stock lots Φ1: a client's lot parked in a warehouse, carried
 --        home in pieces on our trucks, invoiced ONCE, its revenue allocated per round trip.
 --        Plan .claude/plans/stock-lots-v5.md, build contract Π8 §3. Owner decisions Ε1–Ε5 (3–4/10/2026).
 --

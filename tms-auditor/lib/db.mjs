@@ -12,6 +12,7 @@ import { loadChecks, seedSql } from '../checks/load.mjs';
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 export const ROOT = path.resolve(HERE, '../..');
 export const DRAFTS = path.join(ROOT, 'worker/migrations/drafts');
+export const MIGRATIONS = path.join(ROOT, 'worker/migrations');   // 057 executed 5/10: out of drafts/ (CLAUDE.md rule 5)
 const FIXTURE = path.join(HERE, '../test/fixtures/schema.sql');
 
 export function stripProdOnly(sql) {
@@ -54,7 +55,7 @@ CREATE VIEW vault.decrypted_secrets AS SELECT name, secret AS decrypted_secret F
 // is kept as a column grant here too — widened to the whole table, the local tms_reader could read the owner's money
 // and the roles test that proves it cannot would pass for the wrong reason.
 export function draftGrants(file) {
-  const sql = fs.readFileSync(path.join(DRAFTS, file), 'utf8').replace(/--[^\n]*/g, '');
+  const sql = fs.readFileSync(path.join(MIGRATIONS, file), 'utf8').replace(/--[^\n]*/g, '');
   return [...sql.matchAll(/\bgrant\s+select\s*(?:\(([^)]*)\)\s*)?on\s+([^;]+?)\s+to\s+([^;]+?);/gi)].map((m) => ({
     cols: m[1] ? m[1].split(',').map((x) => x.trim()) : null,
     rels: m[2].split(',').map((x) => x.trim().replace(/^public\./, '')),

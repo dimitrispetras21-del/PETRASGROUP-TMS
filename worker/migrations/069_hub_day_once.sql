@@ -1,7 +1,7 @@
 -- 069 - ONE VEROIA DAY PER VS LOAD: the cross-dock moves ONCE when its order's date moves, the order's
 --       Cross-dock stop follows the cross-dock, a Ramp line follows its stop.
 --
--- DRAFT - NOT EXECUTED. Approved by the owner 11/10 night (question E1, docs/DECISION_LOG.md entry of 11/10 night "E1 approved").
+-- EXECUTED 12/10/2026 by the owner. Approved by the owner 11/10 night (question E1, docs/DECISION_LOG.md entry of 11/10 night "E1 approved").
 -- The owner runs it in the Supabase SQL editor AFTER 15:00 (the team works 05:30-14:30), the evening
 -- of WP-A, in this order (plan docs/weekly-natl-redesign/PLAN.md sections 3.4 and 7.1 step 1):
 --   1. 069_hub_day_once_dryrun.sql          this block + a deliberate error: NOTHING kept

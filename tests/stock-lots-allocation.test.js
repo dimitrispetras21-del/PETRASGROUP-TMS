@@ -23,7 +23,7 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 
-const MIGRATION = path.join(__dirname, '..', 'worker', 'migrations', 'drafts', '057_stock_lots.sql');
+const MIGRATION = path.join(__dirname, '..', 'worker', 'migrations', '057_stock_lots.sql');
 const SQL_MD5 = '682a9e034ff63710c1c1e42720e13a69';   // Postgres 17.6 (production, SELECT on VALUES) 4/10/2026, 80 cases
 // Re-pinned 4/10 (round 2 #1): 057 now nets the price against charge_total (partner_cost + warehouse_charge)
 // instead of intake_cost. The arithmetic is the same (net = round(price − cost, 2)), so SQL_MD5 stands.

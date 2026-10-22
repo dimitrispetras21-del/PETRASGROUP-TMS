@@ -18,7 +18,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { loadChecks } from '../checks/load.mjs';
-import { DRAFTS } from '../lib/db.mjs';
+import { DRAFTS, MIGRATIONS } from '../lib/db.mjs';
 import { freshDb, one } from './helpers.mjs';
 
 const md5 = (s) => crypto.createHash('md5').update(s, 'utf8').digest('hex');
@@ -26,7 +26,7 @@ const read = (f) => fs.readFileSync(path.join(DRAFTS, f), 'utf8');
 const nonAscii = (s) => [...s].filter((c) => c.charCodeAt(0) > 127);
 const SRC = read('064_b34_session_rows.sql');
 const RB = read('064_b34_session_rows_rollback.sql');
-const R057b = read('057b_stock_monitoring.sql');
+const R057b = fs.readFileSync(path.join(MIGRATIONS, '057b_stock_monitoring.sql'), 'utf8');   // 057b executed 5/10: out of drafts/
 const catalog = (id) => loadChecks().checks.find((c) => c.id === id).sql;
 const literal = (src, name) => (src.match(new RegExp(`${name}\\s+constant text := \\$c\\$([\\s\\S]*?)\\$c\\$;`)) || [])[1];
 

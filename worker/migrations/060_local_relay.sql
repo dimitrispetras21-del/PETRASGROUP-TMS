@@ -2,7 +2,7 @@
 --       (import) or the loading (export) of an international order while the order, its round
 --       trip (RT), its trip value and its payroll line stay with the international driver.
 --
--- DRAFT - NOT EXECUTED. The owner runs it in the Supabase SQL editor AFTER 15:00 (team works
+-- EXECUTED 6/10/2026 by the owner. It was written to run in the Supabase SQL editor AFTER 15:00 (team works
 -- 05:30-14:30), with an explicit yes in the conversation. Order of the release: this SQL ->
 -- Worker (branch deploy/worker-local-relay) -> screens. The Worker and the screens must not go
 -- live before this block; the block can go live first. Its only visible effect before the
