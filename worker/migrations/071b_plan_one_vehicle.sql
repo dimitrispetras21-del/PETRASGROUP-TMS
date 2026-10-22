@@ -1,6 +1,6 @@
 -- 071b - NATIONAL v5, F1 second step: ONE TRUCK AND ONE DRIVER AT A TIME for owned v5 cycles.
 --
--- DRAFT - NOT EXECUTED. A SEPARATE yes from 071 (tech draft, "technical approvals": CREATE EXTENSION btree_gist and
+-- EXECUTED 22/10/2026 by the owner. A SEPARATE yes from 071 (tech draft, "technical approvals": CREATE EXTENSION btree_gist and
 -- two EXCLUDE). Runs AFTER 071, after 15:00, in this order:
 --   1. 071b_plan_one_vehicle_dryrun.sql   this block + a deliberate error: NOTHING kept
 --   2. 071b_plan_one_vehicle.sql          (this file)

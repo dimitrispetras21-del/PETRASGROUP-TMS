@@ -16,7 +16,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const ROOT = path.join(__dirname, '..');
-const DIR = path.join(ROOT, 'worker/migrations/drafts');   // after the run: worker/migrations (CLAUDE.md rule 5)
+const DIR = path.join(ROOT, 'worker/migrations');   // executed 22/10: out of drafts/ (CLAUDE.md rule 5)
 const read = (f) => fs.readFileSync(path.join(DIR, f), 'utf8');
 const strip = (s) => s.replace(/--[^\n]*/g, '');
 const DO_FILES = ['071_plan_schema.sql', '071_plan_schema_dryrun.sql', '071_plan_schema_test.sql', '071_plan_schema_rollback.sql',
@@ -48,7 +48,7 @@ test('the eleven 071 / 071b files are all there', () => {
 });
 
 test('ASCII only: every 071 / 071b file and the dry-run builder', () => {
-  for (const f of DO_FILES.concat(READ_ONLY, ['tools/build-071-dryruns.mjs'])) {
+  for (const f of DO_FILES.concat(READ_ONLY, ['drafts/tools/build-071-dryruns.mjs'])) {
     const bad = [...read(f)].filter((c) => c.charCodeAt(0) > 127);
     assert.deepStrictEqual(bad, [], f);
   }
@@ -65,7 +65,7 @@ test('each writing file is ONE DO block; verify and fingerprint write nothing', 
 });
 
 test('the dry runs are regenerated from their sources (node worker/migrations/drafts/tools/build-071-dryruns.mjs)', async () => {
-  const { PAIRS, buildDryRun } = await import(path.join(DIR, 'tools/build-071-dryruns.mjs'));
+  const { PAIRS, buildDryRun } = await import(path.join(ROOT, 'worker/migrations/drafts/tools/build-071-dryruns.mjs'));
   assert.strictEqual(PAIRS.length, 2);
   for (const p of PAIRS) assert.strictEqual(read(p.target), buildDryRun(read(p.source), p), p.target + ' drifted');
 });

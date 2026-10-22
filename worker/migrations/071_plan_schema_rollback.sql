@@ -1,6 +1,6 @@
 -- 071 ROLLBACK - everything 071 added goes, the four functions get their live text of 21/10 back BYTE FOR BYTE,
 -- B-54 -9. Every number of today proven unchanged inside the block.
--- DRAFT - NOT EXECUTED. Only with an explicit yes, after 15:00. ORDER: 071b_plan_one_vehicle_rollback.sql FIRST if
+-- EXECUTED 22/10/2026 by the owner. Only with an explicit yes, after 15:00. ORDER: 071b_plan_one_vehicle_rollback.sql FIRST if
 -- 071b is in place (this block refuses otherwise: dropping start_at would silently drop the EXCLUDE constraints).
 -- It REFUSES as soon as one v5 row exists (spec 2.2: after the first real v5 row there is no going back, only fixes
 -- forward). ASCII only. ONE DO block = ONE statement: an error anywhere undoes all of it.

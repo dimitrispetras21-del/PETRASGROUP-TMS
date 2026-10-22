@@ -1,6 +1,6 @@
 -- 071b ROLLBACK - the two EXCLUDE constraints go. btree_gist stays installed (harmless; DROP EXTENSION only with its
 -- own yes). Run it BEFORE 071_plan_schema_rollback.sql when both are undone.
--- DRAFT - NOT EXECUTED. Only with an explicit yes, after 15:00. ASCII only. ONE DO block.
+-- EXECUTED 22/10/2026 by the owner. Only with an explicit yes, after 15:00. ASCII only. ONE DO block.
 -- EXPECTED: NOTICE "071b ROLLBACK OK ..." and ONE row "071b ROLLED BACK".
 
 DO $do$

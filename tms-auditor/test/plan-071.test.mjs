@@ -16,7 +16,7 @@ import { freshDb } from './helpers.mjs';
 import { DRAFTS } from '../lib/db.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
-const read = (f) => fs.readFileSync(path.join(DRAFTS, f), 'utf8');
+const read = (f) => fs.readFileSync(path.join(DRAFTS, '..', f), 'utf8');   // 071 executed 22/10: worker/migrations
 const LIVE = fs.readFileSync(path.join(HERE, 'fixtures/live-071.sql'), 'utf8');
 let btreeGist = null;
 try { ({ btree_gist: btreeGist } = await import('@electric-sql/pglite/contrib/btree_gist')); } catch { btreeGist = null; }

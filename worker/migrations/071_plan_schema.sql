@@ -1,6 +1,6 @@
 -- 071 - NATIONAL v5, PHASE F1: THE SCHEMA, BORN CLOSED, 0 ROWS.
 --
--- DRAFT - NOT EXECUTED. Spec docs/superpowers/specs/2026-10-21-national-v5-design.md (owner 21/10), plan
+-- EXECUTED 22/10/2026 by the owner. Spec docs/superpowers/specs/2026-10-21-national-v5-design.md (owner 21/10), plan
 -- docs/superpowers/plans/2026-10-21-f1-national-v5-schema.md. The owner runs it in the Supabase SQL editor AFTER
 -- 15:00 (the team works 05:30-14:30), with an explicit yes, in this order:
 --   0. 071_plan_schema_fingerprint.sql   read-only: md5 of every round trip and payroll line (keep the row)
