@@ -1,7 +1,7 @@
 -- 069 REPAIR - the 7 "double moved" cross-docks take the Veroia day their national load, its Veroia stop
 -- and their own Cross-dock stop ALREADY show.
 --
--- DRAFT - NOT EXECUTED. Approved with 069 (question E1, 11/10 night). The owner runs it AFTER
+-- EXECUTED 12/10/2026 by the owner. Approved with 069 (question E1, 11/10 night). The owner runs it AFTER
 -- 069_hub_day_once.sql (and its verify), the SAME evening, after 15:00, BEFORE the push of the WP-A front:
 --   069_hub_day_once_repair_dryrun.sql -> this file -> 069_hub_day_once_repair_verify.sql -> 069_hub_day_once_verify.sql
 -- WHY AFTER 069 (first the why, then the repair): before 069 the next save of the old form would move

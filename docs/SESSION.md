@@ -16,7 +16,7 @@ What is live (commit, versions, flags) is not kept here: it goes stale within ho
 - dimitris · `fix/wi4-*` · Weekly International v4 fixes
 - dimitris · `docs/national-v5-f0` · National v5 F0: Figma approved 22/10 (frames Δ1–Δ12, one scenario), baseline measured (`docs/sessions/2026-10-22-dimitris-national-v5-f0.md`); Worker chain `deploy/worker-plan` (F2→F3→F5) owned by dimitris (owner 22/10); F0 closed
 - dimitris · `feat/national-v5-schema` · National v5 F1: SQL drafts 071 (schema, born closed, 0 rows) + 071b (one truck/driver), 071 + 071b EXECUTED 22/10 (verify in place, B-54 46, fingerprints equal, btree_gist 1.7); files out of drafts/; next: F2 (072 plan_* + Worker chain)
-- dimitris · `fix/invoice-from-registration` · B0 invoice from registration: LIVE 22/10 (071a executed, PR #69 merged, screen 48 / 30 = table). Next: drafts 057/060/069/071a out of drafts/ (rule 5)
+- dimitris · `fix/invoice-from-registration` · B0 invoice from registration: LIVE 22/10 (071a executed, PR #69 merged, screen 48 / 30 = table). drafts 057/060/069/071a out of drafts/ (rule 5): PR `chore/drafts-out-057-060-069-071a`
 - dimitris · `feat/orders-week-v4` (PR #43) · Orders › «Εβδομάδα» v4, one row = one RT; after merge: live check (totals vs SELECT, 0 console errors)
 - vd-nick · `vd/session-rules-v2` (PR #40) · session rules v2: parallel work, per-session files
 - vd-nick · (not started, PR planned this week) · import the Valuedriven backend, tests and CI into this repo
