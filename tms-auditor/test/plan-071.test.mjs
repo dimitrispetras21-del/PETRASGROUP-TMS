@@ -3,6 +3,8 @@
 // Production shape = the 22/9 column fixture + fixtures/live-071.sql (read-only capture of production, plan
 // docs/superpowers/plans/2026-10-21-f1-national-v5-schema.md Task 1 Step 2): the live columns, defaults, CHECKs,
 // indexes, and the round-trip / payroll / local-move functions and triggers 071 rewrites or fires.
+// Known limit: the fixture copies columns, defaults, CHECKs, indexes, functions and triggers only - not NOT NULL, FK or
+// UNIQUE constraints - so rules that depend on those are proven only by the production dry run.
 // The money views (ct_v_rt_revenue, ct_v_rt_costs, ct_v_rt_pnl) and dl_v_rt_route are STUBS here: their
 // before = after proof is real only on production (the dry run). Here the RULES are what is proved.
 import { test } from 'node:test';

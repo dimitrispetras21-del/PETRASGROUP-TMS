@@ -43,7 +43,7 @@
 | `tms_reader` | SELECT σε επίπεδο πίνακα στο `ct_round_trips` (βλέπει ήδη `orders.partner_rate`, `national_loads.partner_rate`, `ct_cost_lines`) |
 | `timezone(text, timestamptz)` | IMMUTABLE (επιτρέπεται σε CHECK) |
 | PGlite 0.5.8 | έχει `contrib/btree_gist` (έκδοση 1.8), δοκιμάστηκε 22/10 |
-| Ερώτημα λήψης του Task 1 Step 2 | τρέχει στην παραγωγή: 572 εντολές, 82.584 χαρακτήρες |
+| Ερώτημα λήψης του Task 1 Step 2 | τρέχει στην παραγωγή: 571 εντολές, 82.753 χαρακτήρες (22/10, μετά τη διόρθωση των generated στηλών, π.χ. `dl_entries.balance_delta`) |
 
 Ζωντανά md5 (`md5(prosrc)`) των συναρτήσεων που ξαναγράφει η 071, και τα md5 μετά την αντικατάσταση (υπολογισμένα στην παραγωγή με `replace()`, μόνο SELECT, `back_ok = true`, 1 εμφάνιση το καθένα):
 
@@ -238,9 +238,11 @@ parts AS (
      AND NOT EXISTS (SELECT 1 FROM pg_depend d WHERE d.objid = s.oid AND d.deptype IN ('a', 'i'))
   UNION ALL
   SELECT 3, c.relname, lpad(a.attnum::text, 4, '0'),
-         format('ALTER TABLE public.%I ADD COLUMN IF NOT EXISTS %I %s;', c.relname, a.attname, format_type(a.atttypid, a.atttypmod))
+         format('ALTER TABLE public.%I ADD COLUMN IF NOT EXISTS %I %s%s;', c.relname, a.attname, format_type(a.atttypid, a.atttypmod),
+                CASE WHEN a.attgenerated = 's' THEN ' GENERATED ALWAYS AS (' || pg_get_expr(d.adbin, d.adrelid) || ') STORED' ELSE '' END)
     FROM t JOIN pg_class c ON c.relname = t.tbl AND c.relnamespace = 'public'::regnamespace
     JOIN pg_attribute a ON a.attrelid = c.oid AND a.attnum > 0 AND NOT a.attisdropped
+    LEFT JOIN pg_attrdef d ON d.adrelid = c.oid AND d.adnum = a.attnum
    WHERE a.attname <> 'id'
   UNION ALL
   SELECT 4, c.relname, a.attname,
@@ -248,7 +250,7 @@ parts AS (
     FROM t JOIN pg_class c ON c.relname = t.tbl AND c.relnamespace = 'public'::regnamespace
     JOIN pg_attribute a ON a.attrelid = c.oid AND a.attnum > 0 AND NOT a.attisdropped
     JOIN pg_attrdef d ON d.adrelid = c.oid AND d.adnum = a.attnum
-   WHERE a.attidentity = ''
+   WHERE a.attidentity = '' AND a.attgenerated = ''
   UNION ALL
   SELECT 5, c.relname, k.conname,
          format('ALTER TABLE public.%I ADD CONSTRAINT %I %s;', c.relname, k.conname, pg_get_constraintdef(k.oid))
