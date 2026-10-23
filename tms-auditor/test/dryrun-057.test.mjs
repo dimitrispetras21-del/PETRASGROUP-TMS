@@ -1,4 +1,4 @@
-// The 057 dry run (worker/migrations/drafts/057_stock_lots_dryrun.sql) is GENERATED from 057 — the same idea as
+// The 057 dry run (worker/migrations/057_stock_lots_dryrun.sql) is GENERATED from 057 — the same idea as
 // the 047b seed-drift test: a hand-edited or stale copy would «prove» statements the owner will never run that
 // evening (principle 3). Its behaviour on a production-shaped database (the result line, nothing kept, a broken
 // guard speaking with its own message) is proved in the PGlite replica of 057, not here: this fixture has no

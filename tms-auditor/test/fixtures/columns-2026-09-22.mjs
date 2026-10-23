@@ -46,7 +46,7 @@ export const TABLES = {
 };
 // Synthetic, NOT from production: exists only so the role test can prove tms_reader cannot read it.
 export const SYNTHETIC = { users: [['id', 'int8!'], ['username', 'text!'], ['password_hash', 'text!'], ['role', 'text!']] };
-// SYNTHETIC from DRAFT 057 (worker/migrations/drafts/057_stock_lots.sql), until it runs: the stock-lot table, the two
+// SYNTHETIC from DRAFT 057 (worker/migrations/057_stock_lots.sql), until it runs: the stock-lot table, the two
 // piece columns and the three views the S-checks (and B-15) read. Not in the 22/9 snapshot because they do not exist
 // in production yet; without them those checks cannot run locally. Views become TABLES here, like dl_v_rt_gap above.
 // Names/types are read from the 057 text (CREATE TABLE §1, ADD COLUMN §2, view select lists §4), not from a catalog.

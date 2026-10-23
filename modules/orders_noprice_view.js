@@ -49,7 +49,8 @@ const OrdersNoPrice = (() => {
     return Number.isFinite(n) && n > 0 ? n : null;
   }
 
-  // The list: delivered, not invoiced, no price > 0 (stateOf decides), in scope.
+  // The list: registered (B0, owner 21/10/2026), not invoiced, no price > 0
+  // (stateOf decides), in scope.
   function selectNoPrice(records, stateOf, scope) {
     return (records || []).filter(r => {
       if (scope && scope !== 'all' && r._type !== scope) return false;
@@ -167,6 +168,9 @@ const OrdersNoPrice = (() => {
 
   const _role = () => (typeof ROLE !== 'undefined' ? ROLE : '');
   const _isOwner = () => _role() === 'owner';
+  // Owner 20/10/2026: the accountant (Eirini, Alexia) types prices too — the
+  // Worker already let her PATCH orders/national_orders; only this screen said no.
+  const _canPrice = () => _isOwner() || _role() === 'accountant';
   const _esc = s => escapeHtml(String(s == null ? '' : s));
   const _username = () => { try { return JSON.parse(localStorage.getItem('tms_user') || '{}').username || ''; } catch (_) { return ''; } };
   function _sessionItems() {
@@ -230,9 +234,9 @@ const OrdersNoPrice = (() => {
 
   // ── Render ──────────────────────────────────────────────────────────────
   async function render(ctx) {
-    const owner = _isOwner();
+    const owner = _canPrice();
     ctx.setSub(owner
-      ? 'Όλες οι εβδομάδες · γράψε τιμή και Enter — η παραγγελία περνά στα «Προς τιμολόγηση» της Ειρήνης'
+      ? 'Όλες οι εβδομάδες · γράψε τιμή και Enter — η παραγγελία περνά στα «Προς τιμολόγηση»'
       : 'Όλες οι εβδομάδες · παραδομένες χωρίς τιμή — τύπωσέ τη για τον owner');
     const set = await OrdersData.loadInvoicingSet();
     if (!ctx.isCurrent()) return;
@@ -247,6 +251,9 @@ const OrdersNoPrice = (() => {
     ctx.setActions(`<button type="button" class="${printCls}" onclick="OrdersNoPrice.print()">Εκτύπωση</button>`
       + '<button type="button" class="btn btn-secondary btn-sm" onclick="OrdersNoPrice.csv()">CSV</button>');
     _paint();
+    // The index can land while a price is being typed: repaint with what is
+    // typed, and give the box its focus back.
+    OrdersCommon.whenDocs(() => { if (ctx.isCurrent()) _repaintKeepingInput(); });
   }
 
   const _rawClientName = id => {
@@ -284,7 +291,9 @@ const OrdersNoPrice = (() => {
     if (!loads) return { key: 'unknown', text: '', html: '<span class="oc-adim">—</span>' };
     return OrdersCommon.assignOf(r, { load: loads.get(r.id) || null, missingLoad: !r.fields['National Groupage'] && !loads.has(r.id) });
   }
-  const _days = r => OrdersCommon.daysSinceDelivery(r);
+  // The same age as «Προς τιμολόγηση» (OrdersData.ageOf): since B0 an order not
+  // yet delivered is listed too, and it shows «—», never «-3».
+  const _days = r => OrdersData.ageOf(null, r);
   const _overdue = r => { const d = _days(r); return d !== null && d > OVERDUE_DAYS; };
   // «#1209», «Ε-427», or the reference when the national number is not served yet.
   function _label(r) {
@@ -304,12 +313,12 @@ const OrdersNoPrice = (() => {
       const type = typeOfTable(x.table);
       if (V.ctx.scope !== 'all' && V.ctx.scope !== type) continue;
       const rec = V.all.find(r => r.id === x.recordId && r._type === type);
-      // Only orders that belong to THIS list's world: delivered (in the set) and
-      // no longer missing a price. A price typed today on an order still in
-      // planning is a dispatcher's normal edit, not a «συμπλήρωση» from here.
+      // Only orders that belong to THIS list's world: registered (in the set —
+      // since B0 an order in planning and a pre-order are in it too) and no
+      // longer missing a price. A cancelled order stays out.
       if (!rec) continue;
       const st = OrdersData.stateOf(V.set, rec);
-      if (st.key === 'pending' || st.key === 'cancelled' || (st.key === 'blocked' && st.reason === 'price')) continue;
+      if (st.key === 'cancelled' || (st.key === 'blocked' && st.reason === 'price')) continue;
       out.push({ x, rec, st });
     }
     return out;
@@ -322,9 +331,8 @@ const OrdersNoPrice = (() => {
     const typed = keep || {};
     const owner = V.canWrite;
     const filled = _filledRows();
-    // Accountant: /audit is closed to her role (Worker AUDIT_READERS) and she
-    // never writes prices, so a «0» here would read as «the owner filled
-    // nothing today» — a false zero. Say «—» and why, without an error banner:
+    // Accountant: /audit is closed to her role (Worker AUDIT_READERS), so a
+    // «0» here would read as «nobody filled anything today» — a false zero. Say «—» and why, without an error banner:
     // nothing failed.
     const noHistory = !!V.audit.skipped && !filled.length;
     const oldest = V.list.reduce((m, r) => { const d = _days(r); return d !== null && (m === null || d > _days(m)) ? r : m; }, null);
@@ -346,7 +354,7 @@ const OrdersNoPrice = (() => {
       <div class="np-k"><div class="np-kl">Συμπληρώθηκαν σήμερα</div><div class="np-kv">${noHistory
         ? '<span class="np-dim" id="npFilledCount" title="Το ιστορικό αλλαγών το διαβάζουν μόνο owner και management">—</span>'
         : `<span class="${filled.length ? 'np-green' : ''}" id="npFilledCount">${filled.length}</span>`}</div></div>
-      <div class="np-knote">${owner ? 'Η Ειρήνη βλέπει την ίδια λίστα χωρίς πεδία τιμής και την τυπώνει για εσένα' : 'Ο owner συμπληρώνει τις τιμές· τύπωσε τη λίστα για εκείνον'}</div>
+      <div class="np-knote">${owner ? 'Γράψε την τιμή στο κουτάκι, ή τύπωσε τη λίστα για συμπλήρωση στο χαρτί' : 'Τις τιμές τις συμπληρώνουν ο owner και το λογιστήριο· τύπωσε τη λίστα για εκείνους'}</div>
     </div>`;
 
     const cols = ['np-c-no', 'np-c-ref', 'np-c-pl', 'np-c-pl', 'np-c-dt', 'np-c-as', 'np-c-pal', 'np-c-days', 'np-c-last'].concat(owner ? ['np-c-in'] : []).concat(['np-c-open']);
@@ -369,7 +377,7 @@ const OrdersNoPrice = (() => {
             onkeydown="OrdersNoPrice.onKey(event)" oninput="OrdersNoPrice.clearMsg(this)">
           <div class="np-msg" id="npMsg_${_esc(r._type + '_' + r.id)}"></div></td>` : '';
       return `<tr class="np-row${_overdue(r) ? ' np-late' : ''}" data-key="${_esc(key)}">
-        <td class="np-no">${_esc(OrdersCommon.numLabel(r))}</td>
+        <td class="np-no">${_esc(OrdersCommon.numLabel(r))}${OrdersCommon.docClip(r, r._type)}</td>
         <td>${f['Reference'] ? `<span class="np-ref">${_esc(f['Reference'])}</span>` : '<span class="np-dim">— χωρίς</span>'}</td>
         <td>${OrdersCommon.placeCell(OrdersCommon.placeOf(r, 'load'), { noDate: true })}</td>
         <td>${OrdersCommon.placeCell(OrdersCommon.placeOf(r, 'del'), { noDate: true })}</td>
@@ -400,12 +408,9 @@ const OrdersNoPrice = (() => {
       const next = st.key === 'ready'
         ? `→ Προς τιμολόγηση · εβδ. ${OrdersCommon.weekLabel(OrdersCommon.weekStartOf(rec))}`
         : st.key === 'invoiced' ? '→ τιμολογήθηκε'
-        : st.key === 'blocked' && st.reason === 'sheets' ? '→ περιμένει δελτία παλετών (Αλεξία)'
-        // Round 1 O5 (critic-2 E2-09): a priced lot is not ready — it waits for its pieces.
-        : st.key === 'blocked' && st.reason === 'stock' ? '→ περιμένει κομμάτια (παρτίδα)'
         : '';
       return `<tr>
-        <td class="np-no">${_esc(OrdersCommon.numLabel(rec))}</td>
+        <td class="np-no">${_esc(OrdersCommon.numLabel(rec))}${OrdersCommon.docClip(rec, rec._type)}</td>
         <td>${rec.fields['Reference'] ? `<span class="np-ref">${_esc(rec.fields['Reference'])}</span>` : '<span class="np-dim">— χωρίς</span>'}</td>
         <td>${OrdersCommon.placeCell(OrdersCommon.placeOf(rec, 'load'), { noDate: true })}</td>
         <td>${OrdersCommon.placeCell(OrdersCommon.placeOf(rec, 'del'), { noDate: true })}</td>
@@ -416,7 +421,7 @@ const OrdersNoPrice = (() => {
         <td class="np-r"><button type="button" class="np-open" onclick="OrdersHub.openOrder('${rec._type}','${_esc(rec.id)}')">Άνοιγμα →</button></td>
       </tr>`;
     }).join('') : `<tr><td colspan="${ncol}" class="np-empty np-empty-s">${noHistory
-      ? 'Οι σημερινές συμπληρώσεις του owner φαίνονται στα «Προς τιμολόγηση» — το ιστορικό αλλαγών δεν ανοίγει στον ρόλο σου.'
+      ? 'Οι σημερινές συμπληρώσεις των άλλων φαίνονται στα «Προς τιμολόγηση» — το ιστορικό αλλαγών δεν ανοίγει στον ρόλο σου.'
       : 'Καμία συμπλήρωση σήμερα.'}</td></tr>`;
 
     ctx.body.innerHTML = `
@@ -433,7 +438,7 @@ const OrdersNoPrice = (() => {
       <div class="np-foot">Σειρά: παλαιότερη πρώτα · κόκκινη γραμμή = πάνω από ${OVERDUE_DAYS} ημέρες από την παράδοση · «τελευταία τιμή» = η πιο πρόσφατη του ίδιου πελάτη για ίδια φόρτωση και παράδοση (ενδεικτική, δεν γράφεται αυτόματα)</div>`;
   }
 
-  // ── Write (owner only) ──────────────────────────────────────────────────
+  // ── Write (owner + accountant) ──────────────────────────────────────────────────
   function _msgEl(input) { return document.getElementById('npMsg_' + input.dataset.type + '_' + input.dataset.id); }
   function clearMsg(input) { const m = _msgEl(input); if (m) { m.textContent = ''; m.className = 'np-msg'; } input.classList.remove('np-in-err'); }
   function _showMsg(input, text, kind) {
@@ -448,8 +453,7 @@ const OrdersNoPrice = (() => {
   }
 
   async function save(input) {
-    // The Worker would accept a PATCH from the accountant too (she has PATCH on
-    // orders); the owner decides prices (27/9), so the screen never offers it.
+    // owner + accountant (20/10); the Worker checks the role again on PATCH.
     if (!V || !V.canWrite || input.disabled) return;
     const type = input.dataset.type, id = input.dataset.id;
     const rec = V.all.find(r => r.id === id && r._type === type);
@@ -476,12 +480,8 @@ const OrdersNoPrice = (() => {
       OrdersData.invalidate();
       OrdersHub.refreshBadges();
       const lbl = _esc(_label(rec));
-      // O5 (critic-2 E2-09): «πέρασε στα Προς τιμολόγηση» was not true for a
-      // lot — it lands there blocked until its last piece (or a close).
-      const _st = OrdersData.stateOf(V.set, rec);
-      if (_st.key === 'blocked' && _st.reason === 'stock') toast(`Η τιμή καταχωρήθηκε — η παρτίδα ${lbl} περιμένει κομμάτια πριν τιμολογηθεί`);
-      else if (OrdersData.sheetsOk(V.set, rec)) toast(`Η τιμή καταχωρήθηκε — η ${lbl} πέρασε στα Προς τιμολόγηση`);
-      else toast(`Η τιμή καταχωρήθηκε — η ${lbl} περιμένει ακόμη δελτία παλετών (Αλεξία)`, 'warn');
+      // B0 (21/10): a priced order — a lot too — is «προς κοπή» at once.
+      toast(`Η τιμή καταχωρήθηκε — η ${lbl} πέρασε στα Προς τιμολόγηση`);
       _repaintFromState();
     } catch (e) {
       input.disabled = false;
@@ -492,6 +492,17 @@ const OrdersNoPrice = (() => {
       if (e && e._ours) reportError('Η τιμή δεν αποθηκεύτηκε', e);
       input.focus();
     }
+  }
+
+  function _repaintKeepingInput() {
+    const key = i => i.dataset.type + ':' + i.dataset.id;
+    const keep = {}, a = document.activeElement;
+    const ak = a && a.classList && a.classList.contains('np-in') ? key(a) : null;
+    V.ctx.body.querySelectorAll('input.np-in').forEach(i => { if (i.value) keep[key(i)] = i.value; });
+    _paint(keep);
+    if (!ak) return;
+    const el = [...V.ctx.body.querySelectorAll('input.np-in')].find(i => key(i) === ak);
+    if (el) { el.focus(); el.setSelectionRange(el.value.length, el.value.length); }
   }
 
   // Move the saved row without a reload, keeping what the owner already typed
@@ -530,7 +541,7 @@ const OrdersNoPrice = (() => {
       const sub = [meta.vat ? 'ΑΦΜ ' + meta.vat : 'ΑΦΜ —', meta.terms ? 'όροι ' + meta.terms + ' ημ.' : '', f['Reference'] || 'χωρίς αναφορά'].filter(Boolean).join(' · ');
       const pal = _pallets(r);
       return `<tr class="${late ? 'late' : ''}">
-        <td class="no">${late ? '<i>★</i>' : ''}${esc(OrdersCommon.numLabel(r))}${_isLot(r) ? '<span>→ ΑΠΟΘΗΚΗ</span>' : ''}</td>
+        <td class="no">${late ? '<i>★</i>' : ''}${esc(OrdersCommon.numLabel(r))}${OrdersCommon.docClip(r, r._type)}${_isLot(r) ? '<span>→ ΑΠΟΘΗΚΗ</span>' : ''}</td>
         <td><b>${esc(_rawClientName(_clientId(r)))}</b><span>${esc(sub)}</span></td>
         <td>${placeA4(OrdersCommon.placeOf(r, 'load'))}</td>
         <td>${placeA4(OrdersCommon.placeOf(r, 'del'))}</td>
@@ -678,6 +689,9 @@ tr{page-break-inside:avoid}
   return {
     // view
     render, onKey, clearMsg, save, print, csv,
+    // A price typed in the «Προς τιμολόγηση» card (21/10) counts in «Συμπληρώθηκαν
+    // σήμερα» too — the accountant cannot read /audit, this list is all she has.
+    noteFilled(type, id, price) { _sessionItems().push({ recordId: id, table: tableOfType(type), price, actor: _username(), at: new Date().toISOString() }); },
     // pure (also exported for node:test below)
     parsePrice, selectNoPrice, groupByClient, routeKey, lastPriceHint, filledFromAudit, mergeFilled, OVERDUE_DAYS,
   };

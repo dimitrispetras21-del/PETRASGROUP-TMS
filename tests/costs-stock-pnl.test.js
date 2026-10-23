@@ -17,7 +17,8 @@ const vm = require('vm');
 const ROOT = path.join(__dirname, '..');
 vm.runInThisContext(fs.readFileSync(path.join(ROOT, 'core', 'data-helpers.js'), 'utf8'));
 global.TmsWeek = require('../core/tms-week.js');
-const { OrdersStock } = require('../core/orders-common.js');
+// The REAL OrdersCommon too: costs.js asks it whether a leg has a price (0 € = none, owner 13/10).
+const { OrdersStock, OrdersCommon } = require('../core/orders-common.js');
 const SRC = fs.readFileSync(path.join(ROOT, 'modules', 'costs.js'), 'utf8');
 
 const LOT = { id: 'recLOT0000000312', fields: { Direction: 'Import', Price: 3300, 'Order No': 312, 'Own Stock Lot': 'recSTOCKLOT1', Client: ['recCLIA'], 'Delivery DateTime': '2026-10-02' } };
@@ -29,7 +30,7 @@ const MONEY = { lots: [{ lot_rec: 'recSTOCKLOT1', allocation_status: 'ok', partn
 function load(fetchImpl) {
   const net = [];
   const ctx = {
-    console: { log() {}, warn() {}, error() {} }, OrdersStock, getLinkedId, Number, Math, Object, JSON, String,
+    console: { log() {}, warn() {}, error() {} }, OrdersStock, OrdersCommon, getLinkedId, Number, Math, Object, JSON, String,
     PROXY_URL: 'https://w.example', localStorage: { getItem: () => null },
     icon: () => '', fmtDate: d => String(d || ''), fhClientName: () => 'Πελάτης', orderLoadName: () => 'Αποθήκη Χ', orderDelName: () => 'Προορισμός', orderLocCountry: () => 'GR',
     fetch: async (url) => { net.push(String(url).replace('https://w.example', '')); return fetchImpl ? fetchImpl(String(url)) : { ok: true, status: 200, json: async () => MONEY }; },
@@ -190,4 +191,16 @@ test('S1: no_partner_rate — «χωρίς επιμερισμό (λείπει τ
   const h = text(ctx.ctCardHtml(t));
   assert.match(h, /παρτίδα #312 — χωρίς επιμερισμό \(λείπει το κόμιστρο συνεργάτη\): όλο το έσοδο εδώ/, h);
   assert.ok(!/δικό μας|μόνο τα κομμάτια|ανεξήγητη/.test(h), h);
+});
+
+// Owner 13/10: 0 € = no price, everywhere (OrdersCommon.hasPrice). A 0 € leg
+// reads like a missing price, never «€0» — that would look like a priced free trip.
+test('0 € leg = no price: the amount reads «—», like a missing Price', () => {
+  const { ctx } = load();
+  const t = { id: 2, code: 'RT-2', trip_type: 'OWNED', revenue: 0, status: 'closed', date_start: '2026-10-01' };
+  const ZERO = { id: 'recZERO000000001', fields: { Direction: 'Export', Price: 0, Client: ['recCLIA'], 'Loading DateTime': '2026-10-03' } };
+  const NONE = { id: 'recNONE000000001', fields: { Direction: 'Export', Client: ['recCLIA'], 'Loading DateTime': '2026-10-03' } };
+  setCard(ctx, t, [[20, ZERO, 'EXPORT'], [21, NONE, 'EXPORT']]);
+  const amts = [...ctx.ctCardHtml(t).matchAll(/class="lamt ct-mono">([\s\S]*?)<\/span><\/div>/g)].map(m => text(m[1]).trim());
+  assert.deepStrictEqual(amts, ['—', '—']);
 });

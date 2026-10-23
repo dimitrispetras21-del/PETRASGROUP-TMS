@@ -116,9 +116,12 @@ const waBeforeCmr = s => s.replace(/\n🌡 (Τήρησε τη θερμοκρασ
 // the estimate even next to a real date, through toISOString() (08:30 local →
 // «06/10/2026 05:30» in Athens). That one date is set aside for (c) and
 // asserted on its own; wa-text-rig.js checks the rule in full.
-const VS_HEAD = /^(\S+ \*(ΦΟΡΤΩΣΗ|LOADING)\* · )[^\n]*(?=\n)/;
-const vsHead = (s, name) => { const b = s.split('\n\n').find(x => x.split('\n')[1] === name); return b ? b.split('\n')[0] : ''; };
-const vsDateAside = (s, name) => s.split('\n\n').map(b => b.split('\n')[1] === name ? b.replace(VS_HEAD, '$1<cross-dock date>') : b).join('\n\n');
+// Both stop-line shapes: «1️⃣ *ΦΟΡΤΩΣΗ* · date» (before 21/10) and, under a
+// section title, «1️⃣ date» (owner 21/10).
+const VS_HEAD = /^(\S+ (?:\*(?:ΦΟΡΤΩΣΗ|LOADING)\* · )?)[^\n]*(?=\n)/;
+const noTitle = b => b.replace(/^\*[^*\n]+\*\n/, '');
+const vsHead = (s, name) => { const b = s.split('\n\n').map(noTitle).find(x => x.split('\n')[1] === name); return b ? b.split('\n')[0] : ''; };
+const vsDateAside = (s, name) => s.split('\n\n').map(noTitle).map(b => b.split('\n')[1] === name ? b.replace(VS_HEAD, '$1<cross-dock date>') : b).join('\n\n');
 
 let pass = 0, fail = 0;
 const ok = (c, m) => { if (c) { pass++; console.log('  ✓ ' + m); } else { fail++; console.log('  ✗ ' + m); } };
@@ -150,12 +153,15 @@ async function render(browser, html, fx, qs) {
   await page.waitForFunction(() => document.getElementById('doc').style.display === 'block', null, { timeout: 15000 });
   const out = await page.evaluate(() => ({
     // (feat/temp-per-cmr-front) the paper CMR line is set aside, see waBeforeCmr.
-    text: (document.querySelectorAll('#doc .cmr-keep').forEach(e => e.remove()), document.getElementById('doc').innerText),
+    // Owner 21/10: card numbers restart per section on a single sheet too; they
+    // are set aside (read from data-n) so «text» still proves nothing else moved.
+    text: (document.querySelectorAll('#doc .stop .num').forEach(e => { e.closest('.stop').dataset.n = e.innerText; e.textContent = ''; }),
+      document.querySelectorAll('#doc .cmr-keep').forEach(e => e.remove()), document.getElementById('doc').innerText),
     docs: [...document.querySelectorAll('#doc .p-doc')].map(e => e.innerText),
     cover: document.querySelectorAll('#doc .p-doc').length > 1 ? (c => ({
       route: [...c.querySelectorAll('.route2 .side')].map(x => x.querySelector('.n').innerText + ' | ' + x.querySelector('.d').innerText),
       sections: [...c.querySelectorAll('.section-title')].map(x => x.innerText),
-      tls: [...c.querySelectorAll('.tl')].map(tl => [...tl.querySelectorAll('.stop')].map(x => x.querySelector('.num').innerText + ' ' + x.querySelector('.name').innerText)),
+      tls: [...c.querySelectorAll('.tl')].map(tl => [...tl.querySelectorAll('.stop')].map(x => x.dataset.n + ' ' + x.querySelector('.name').innerText)),
     }))(document.querySelector('#doc .p-doc')) : null,
     mk: [...document.querySelectorAll('[data-mk]')].map(e => e.tagName + ':' + e.getAttribute('data-mk')),
     urls: [...document.querySelectorAll('#doc [href], #doc [src]')].map(e => e.getAttribute('href') || e.getAttribute('src')),
@@ -202,7 +208,7 @@ async function render(browser, html, fx, qs) {
       ok(JSON.stringify(c.sections) === '["ΦΟΡΤΩΣΕΙΣ","ΠΑΡΑΔΟΣΕΙΣ"]', '(d) cover headings — ' + JSON.stringify(c.sections));
       ok(JSON.stringify(c.tls) === JSON.stringify([['1 ' + ORDINARY.l2name, '2 ' + ORDINARY.l1name], ['1 ' + ORDINARY.l2name, '2 ' + ORDINARY.l3name]]),
         '(d) cover cards in groupRoute order, numbered from 1 in each section — ' + JSON.stringify(c.tls));
-      const waNames = a.wa.split('\n').map((l, i, ls) => /^\S+ \*(ΦΟΡΤΩΣΗ|ΠΑΡΑΔΟΣΗ)\* · /.test(l) ? ls[i + 1] : null).filter(Boolean);
+      const waNames = a.wa.split('\n').map((l, i, ls) => /^((?:\d\uFE0F\u20E3)+|🔟) /.test(l) && (i === 0 || ls[i - 1] === '' || /^\*[^*]+\*$/.test(ls[i - 1])) ? ls[i + 1] : null).filter(Boolean);
       ok(JSON.stringify(waNames) === JSON.stringify([].concat(...(c.tls || []).map(tl => tl.map(x => x.replace(/^\d+ /, ''))))),
         '(d) the WhatsApp text lists the same stops in the same order — ' + JSON.stringify(waNames));
     }
@@ -218,7 +224,7 @@ async function render(browser, html, fx, qs) {
     // Veroia + markup: BASE_REV's estimate parsed the markup «Loading DateTime»,
     // threw, and printed both stops as «—». The real Cross-dock Date needs no
     // parsing, so the stops (and their typed markup) now reach the text.
-    if (name === 'veroia') ok(b.wa.includes(MARKUP.notes) && b.wa.includes(MARKUP.vsname) && /^(\S+) \*ΦΟΡΤΩΣΗ\* · 06\/10\/2026$/.test(vsHead(b.wa, MARKUP.vsname)) && !/&lt;|&amp;|&quot;/.test(b.wa),
+    if (name === 'veroia') ok(b.wa.includes(MARKUP.notes) && b.wa.includes(MARKUP.vsname) && /^(\S+) 06\/10\/2026$/.test(vsHead(b.wa, MARKUP.vsname)) && !/&lt;|&amp;|&quot;/.test(b.wa),
       '(c) WhatsApp text plain (markup kept as typed), the Veroia stop named and dated by the Cross-dock Date — ' + JSON.stringify(vsHead(b.wa, MARKUP.vsname)));
     else if (!grp) ok(b.wa === b0.wa && b.wa.includes(MARKUP.notes), '(c) WhatsApp text plain and unchanged (markup kept as typed)');
     else ok(b.waN === 1 && [MARKUP.notes, MARKUP.ref, MARKUP.l1name, MARKUP.goods].every(v => b.wa.includes(v)) && !/&lt;|&amp;|&quot;/.test(b.wa),

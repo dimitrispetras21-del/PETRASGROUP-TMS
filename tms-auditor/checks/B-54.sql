@@ -3,7 +3,7 @@
 -- flows: F-14,F-26,F-30,F-33
 -- severity: P1
 -- schedule: hourly
--- red: <> 35
+-- red: <> 46
 -- baseline: 
 -- queue: no
 -- entity: 
@@ -11,7 +11,7 @@
 -- next: SELECT c.relname, t.tgname, t.tgenabled FROM pg_trigger t JOIN pg_class c ON c.oid=t.tgrelid WHERE NOT t.tgisinternal (ανάγνωση καταλόγου) και σύγκριση με baseline/2026-09-22-prod.json.
 -- exceptions: Νέα εγκεκριμένη migration που προσθέτει/αφαιρεί trigger ⇒ ο αριθμός ενημερώνεται ΜΑΖΙ με τη migration (η αλλαγή γίνεται ορατή, αυτό είναι το ζητούμενο).
 -- tolerance: 
--- source: part-z NEW-z1 · 25 ενεργοί triggers στο public μετά την 046 (μέτρηση 22/9 19:33 UTC) · 27 μετά την 034 (μέτρηση 4/10) · 27 -> 31 after 057 (executed 5/10) -> 35 after 060 (+4: local_moves_before, local_moves_follow_order, dl_sync_from_local_move, dl_local_line_guard) — η 060 ανεβάζει τον B-54 μέσα στο block της (απαιτεί red_value = 31 ζωντανά πριν)
+-- source: part-z NEW-z1 · 25 ενεργοί triggers στο public μετά την 046 (μέτρηση 22/9 19:33 UTC) · 27 μετά την 034 (μέτρηση 4/10) · 27 -> 31 after 057 (executed 5/10) -> 35 after 060 (+4: local_moves_before, local_moves_follow_order, dl_sync_from_local_move, dl_local_line_guard) — η 060 ανεβάζει τον B-54 μέσα στο block της (απαιτεί red_value = 31 ζωντανά πριν) -> 37 after 069 (+2: order_cd_stop_follow, ramp_follows_stop; mirror was left at 35) -> 46 after 071 (+9: ct_rt_legs_v2_guard, plan_rt_window_sync, plan_chk_rt, plan_chk_stops, plan_chk_legs, plan_chk_pieces, plan_chk_shipments, plan_chk_bridge_stop, plan_chk_local_loading; executed 22/10/2026 11:20 by the owner); 071b adds none
 -- enabled: yes
 SELECT count(*) FROM pg_trigger t JOIN pg_class c ON c.oid=t.tgrelid JOIN pg_namespace n ON n.oid=c.relnamespace
  WHERE NOT t.tgisinternal AND t.tgenabled <> 'D' AND n.nspname='public';

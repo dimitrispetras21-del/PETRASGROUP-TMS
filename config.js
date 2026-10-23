@@ -311,33 +311,37 @@ const F = {
   LAST_MODIFIED:    'Last Modified',
 };
 
-// ── User accounts (SHA-256 hashed passwords) ──
-// ⚠️ THREE independent rosters exist and must stay in sync MANUALLY:
+// ── User roster: usernames, roles and display names only, never password data ──
+// Logins are verified by the backend (`users` table, bcrypt). TWO rosters must
+// stay in sync MANUALLY:
 //   1. THIS array (loaded by app.html; auth.js _authRoleTampered checks it),
-//   2. index.html's own USERS copy (the login page does NOT load config.js),
-//   3. the backend `users` table (what actually authenticates in proxy mode).
+//   2. the backend `users` table (what actually authenticates).
 // The old comment here called this the "single source of truth", which it never
 // was, and that lie caused a real bug: the demo_* accounts were added to
 // index.html and the backend but NOT here, so app.html's tamper guard bounced
 // every demo login back to the login screen (found 2026-07-28 by walking the
 // live post-C2 app; the roster-mismatch class F-E3, third occurrence).
 const USERS = [
-  { username: 'dimitris',   hash: 'b7e480feeff4e9f28cde7b5f10c8b46d4e81eac0f44fc91d9b6ca20648dc75ca', role: 'owner',      name: 'Dimitris Petras' },
-  { username: 'pantelis',   hash: 'fa1db14f60e798c8f3c582586fd7d4c70cf8431249ffc7787befa93e6dbfd215', role: 'dispatcher', name: 'Pantelis Tsanaktsidis' },
-  { username: 'sotiris',    hash: 'a5b2ee26884135591d0c8213b30802060d379074e151c08d8bc07757aea77ead', role: 'dispatcher', name: 'Sotiris Koulouriotis' },
-  { username: 'thodoris',   hash: '699d7aab30ff342aa3656f63b1b72b6fcfa83ca26fa75313ec89a4b7d5fc0c10', role: 'management', name: 'Thodoris Vainas' },
-  { username: 'eirini',     hash: '172f322617cd908a2cefceab73f655b875f9f4c55cbc37d129f9072aee57512a', role: 'accountant', name: 'Eirini Papazoi' },
-  { username: 'alexia',     hash: '5db05ad60742b1618c0e30f1f4f09ae8d056e7b1108fb57bbca72c8655f4b9ee', role: 'accountant', name: 'Alexia' },
-  { username: 'kelesmitos', hash: '00ad77798c78b32aecb433e682eabecae8338ed965dafebb4d31a697974a892a', role: 'dispatcher', name: 'Dimitris Kelesmitos' },
+  { username: 'dimitris',   role: 'owner',      name: 'Dimitris Petras' },
+  { username: 'pantelis',   role: 'dispatcher', name: 'Pantelis Tsanaktsidis' },
+  { username: 'sotiris',    role: 'dispatcher', name: 'Sotiris Koulouriotis' },
+  { username: 'thodoris',   role: 'management', name: 'Thodoris Vainas' },
+  { username: 'eirini',     role: 'accountant', name: 'Eirini Papazoi' },
+  { username: 'alexia',     role: 'accountant', name: 'Alexia' },
+  { username: 'kelesmitos', role: 'dispatcher', name: 'Dimitris Kelesmitos' },
+  // Valuedriven account for reproducing issues on production (approved 12/10/2026).
+  // owner since 16/10 (Nick, to test every page incl. the owner-only ones): the
+  // delete argument of 12/10 no longer separates the roles, management and the
+  // dispatchers delete orders too (owner 22/9, 28/9). The backend `users` row is
+  // set to owner in the same release, or the tamper guard logs nick out.
+  { username: 'nick',       role: 'owner',      name: 'Nick Melistas' },
   // Demo accounts, one per role, mirroring index.html + the backend seed
-  // (ops/seed-demo-users.sh). Hashes are the shared TMS_PW_DEMO in SHA-256
-  // form; used only by direct-mode fallback, the tamper guard needs the
-  // username+role pair either way.
-  { username: 'demo_owner',      hash: '5e92d9e6a898eeaaceb1b5b6f39f22cf694706da227ebb98577a5613f6445c43', role: 'owner',      name: 'Demo Owner' },
-  { username: 'demo_management', hash: '5e92d9e6a898eeaaceb1b5b6f39f22cf694706da227ebb98577a5613f6445c43', role: 'management', name: 'Demo Management' },
-  { username: 'demo_accountant', hash: '5e92d9e6a898eeaaceb1b5b6f39f22cf694706da227ebb98577a5613f6445c43', role: 'accountant', name: 'Demo Accountant' },
-  { username: 'demo_dispatcher', hash: '5e92d9e6a898eeaaceb1b5b6f39f22cf694706da227ebb98577a5613f6445c43', role: 'dispatcher', name: 'Demo Dispatcher' },
-  { username: 'demo_warehouse',  hash: '5e92d9e6a898eeaaceb1b5b6f39f22cf694706da227ebb98577a5613f6445c43', role: 'warehouse',  name: 'Demo Warehouse' },
+  // (ops/seed-demo-users.sh). The tamper guard needs the username+role pair.
+  { username: 'demo_owner',      role: 'owner',      name: 'Demo Owner' },
+  { username: 'demo_management', role: 'management', name: 'Demo Management' },
+  { username: 'demo_accountant', role: 'accountant', name: 'Demo Accountant' },
+  { username: 'demo_dispatcher', role: 'dispatcher', name: 'Demo Dispatcher' },
+  { username: 'demo_warehouse',  role: 'warehouse',  name: 'Demo Warehouse' },
 ];
 
 // Role permission matrix
@@ -374,4 +378,22 @@ const PERMS = {
 // ON since 5/10/2026 evening: 057 + 057b executed (rules test 119/119), Worker
 // d30184c6 live, live proofs on two test orders (mark, charge, unmark, delete)
 // counted in the base and cleaned to 0 (docs/stock-lots/EXECUTION-PHI1.md step 8).
-const FEATURES = { ORDER_SPLIT: true, GROUP_TILES: true, STOCK_LOTS: true };
+// WI_V2 (Weekly International v4, docs/weekly-intl-redesign/TECH_DESIGN.md §b):
+// three states, 'off' | 'pilot' | 'on'. 'off' is the central kill switch: it
+// overrides every per-browser opt-in (?wi4=1 → localStorage tms_wi4), so the
+// owner never has to visit each browser to stop the new board. Any other value
+// (a typo, true, undefined, a cached config.js without the key) is read as
+// 'off' — unknown = closed (principle 5). Born 'off': with it the old board
+// renders byte-for-byte as before, proved by the identity rig.
+// 'on' since 11/10/2026 by the owner («α», for everyone). Rollback = set 'off'
+// again (+ config.js ?v= and SW_VERSION); each user can pick «Παλιά προβολή».
+// WI_PRESENCE: live «who else is here» heartbeats (§g). Born false: it costs
+// Worker requests on the Free plan (100k/day for the WHOLE app), so it waits
+// for the owner's 14-day Cloudflare number, SQL 068 and the presence Worker.
+const FEATURES = { ORDER_SPLIT: true, GROUP_TILES: true, STOCK_LOTS: true, WI_V2: 'on', WI_PRESENCE: false };
+// Pilot usernames for FEATURES.WI_V2 === 'pilot' (PLAN §2.1). Empty = nobody.
+const WI_V2_USERS = [];
+// Presence beat pacing in ms (§g.4): every 5 s while the user is active, 30 s
+// once idle for 2 minutes. The Worker's next_ms can only slow it down, and the
+// client never beats faster than every 2.5 s whatever these say.
+const WI_PRESENCE_MS = { active: 5000, idle: 30000, idleAfter: 120000 };

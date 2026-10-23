@@ -4,7 +4,7 @@
 // OrdersStock and getLinkedId; the facade (atGetAll/atSafePatch) and the page helpers are in-memory
 // stubs. Nothing is sent anywhere.
 //   DRIFT  the front constant OPS_DELAY = 067's CASE (every code, its responsibility) — read from
-//          worker/migrations/drafts/067_stop_delay_reason.sql (on main once 067's branch is merged), or
+//          worker/migrations/drafts/ or worker/migrations/067_stop_delay_reason.sql (on main once 067's branch is merged), or
 //          from STOP_DELAY_SQL=<path> while the branches are apart. Missing = a FAILED test, never a skip.
 //   the button is «Καθυστέρηση» on loadings AND deliveries and in the overdue zone; a lot keeps its words
 //   one PATCH on the stop: Performance 'Delayed' + Delay Reason + Delay Note, then the order as before
@@ -28,7 +28,13 @@ const dayOff = n => { const d = new Date(); d.setHours(12, 0, 0, 0); d.setDate(d
 const TODAY = dayOff(0);
 
 // ── the SQL the base runs: 067's generated CASE is THE list ─────────────────────────────────────
-const SQL_PATH = process.env.STOP_DELAY_SQL || path.join(ROOT, 'worker', 'migrations', 'drafts', '067_stop_delay_reason.sql');
+// This PR merges only after 067 has RUN, and an executed migration leaves drafts/ (CLAUDE.md, session
+// rule 5; PR #74 moved 057/060/069/071 that way) - so the executed place is looked at too, or this test
+// would turn red on main the day 067 is filed.
+const SQL_PATH = process.env.STOP_DELAY_SQL || [
+  path.join(ROOT, 'worker', 'migrations', 'drafts', '067_stop_delay_reason.sql'),
+  path.join(ROOT, 'worker', 'migrations', '067_stop_delay_reason.sql'),
+].find(p => fs.existsSync(p)) || path.join(ROOT, 'worker', 'migrations', 'drafts', '067_stop_delay_reason.sql');
 function caseOf067() {
   assert.ok(fs.existsSync(SQL_PATH), `067 not found at ${SQL_PATH} — merge branch feat/067-stop-delay first (release order 067 → Worker → front), or run with STOP_DELAY_SQL=<path to 067_stop_delay_reason.sql>`);
   const src = fs.readFileSync(SQL_PATH, 'utf8');
