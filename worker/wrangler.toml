@@ -61,6 +61,14 @@ jurisdiction = "eu"
 [vars]
 ALLOWED_ORIGIN = "https://dimitrispetras21-del.github.io"
 SUPABASE_URL = "https://gatejgbpyodlepkvqkgf.supabase.co"
+# Presence (Weekly Intl v4, SQL 068): the owner's two levers. They MUST live
+# here: a plain var set only in the dashboard is erased by the next deploy.
+# PRESENCE_OFF = "1" stops every open tab (410 {stop:true}); any other value
+# keeps presence on. PRESENCE_MS = the beat interval the tabs are told
+# (integer ms, never below 2500). A dashboard change is lost on the next
+# deploy unless it is copied here too.
+PRESENCE_OFF = "0"
+PRESENCE_MS = "5000"
 
 # Secrets (ΔΕΝ γράφονται εδώ — ζουν στο Cloudflare και επιβιώνουν των deploys):
 #   JWT_SECRET
