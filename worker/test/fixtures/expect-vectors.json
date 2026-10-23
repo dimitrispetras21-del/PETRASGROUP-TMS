@@ -1,0 +1,241 @@
+[
+  {
+    "label": "Partner Truck Plates",
+    "a": "12",
+    "b": "AB 1 2",
+    "same": false,
+    "note": "V8 Date.parse accepts both; a loose date rule would call two plates equal"
+  },
+  {
+    "label": "Loading DateTime",
+    "a": "12",
+    "b": "AB 1 2",
+    "same": false,
+    "note": "date label, but neither side is ISO-8601: plain string compare"
+  },
+  {
+    "label": "Loading DateTime",
+    "a": "2026-10-08T06:00:00Z",
+    "b": "2026-10-08T06:00:00+00:00",
+    "same": true,
+    "note": "date label, both ISO: same instant"
+  },
+  {
+    "label": "Partner Truck Plates",
+    "a": "2026-10-08T06:00:00Z",
+    "b": "2026-10-08T06:00:00+00:00",
+    "same": false,
+    "note": "same pair on a non-date label: strings differ"
+  },
+  {
+    "label": "Matched Import ID",
+    "a": "2026-10-08T06:00:00Z",
+    "b": "2026-10-08T06:00:00+00:00",
+    "same": false,
+    "note": "non-date label"
+  },
+  {
+    "label": "Delivery DateTime",
+    "a": "2026-10-08T09:00:00+03:00",
+    "b": "2026-10-08T06:00:00Z",
+    "same": true,
+    "note": "Athens offset vs UTC, same instant"
+  },
+  {
+    "label": "Delivery DateTime",
+    "a": "2026-10-08T09:00:00+0300",
+    "b": "2026-10-08T06:00:00.000Z",
+    "same": true,
+    "note": "offset without colon, milliseconds"
+  },
+  {
+    "label": "Loading DateTime",
+    "a": "2026-10-08T06:00:00.000Z",
+    "b": "2026-10-08T06:00:00Z",
+    "same": true,
+    "note": "milliseconds"
+  },
+  {
+    "label": "Loading DateTime",
+    "a": "2026-10-08T06:00",
+    "b": "2026-10-08T06:00:00+00:00",
+    "same": true,
+    "note": "a datetime without zone is UTC (as Postgres stores it), never browser-local time"
+  },
+  {
+    "label": "Loading DateTime",
+    "a": "2026-10-08T06:00:00+00:00",
+    "b": "2026-10-08T07:00:00+00:00",
+    "same": false,
+    "note": "one hour apart"
+  },
+  {
+    "label": "VS CD Date",
+    "a": "2026-10-08",
+    "b": "2026-10-08",
+    "same": true
+  },
+  {
+    "label": "VS CD Date",
+    "a": "2026-10-08",
+    "b": "2026-10-09",
+    "same": false
+  },
+  {
+    "label": "VS CD Date",
+    "a": "2026-10-08",
+    "b": "2026-10-08T00:00:00Z",
+    "same": true,
+    "note": "a date-only string is midnight UTC"
+  },
+  {
+    "label": "VS CD Date",
+    "a": "8/10/2026",
+    "b": "2026-10-08",
+    "same": false,
+    "note": "one side not ISO: string compare"
+  },
+  {
+    "label": "Is Partner Trip",
+    "a": false,
+    "same": true,
+    "note": "checkbox: false equals absent (b missing = undefined)"
+  },
+  {
+    "label": "Is Partner Trip",
+    "a": false,
+    "b": null,
+    "same": true,
+    "note": "checkbox: false equals null"
+  },
+  {
+    "label": "Is Partner Trip",
+    "a": true,
+    "b": false,
+    "same": false
+  },
+  {
+    "label": "Is Partner Trip",
+    "a": true,
+    "same": false,
+    "note": "b missing = undefined"
+  },
+  {
+    "label": "Partner Truck Plates",
+    "a": false,
+    "same": false,
+    "note": "false equals absent ONLY on checkbox labels"
+  },
+  {
+    "label": "Truck",
+    "a": [
+      "recA",
+      "recB"
+    ],
+    "b": [
+      "recB",
+      "recA"
+    ],
+    "same": true,
+    "note": "arrays compare as sorted lists"
+  },
+  {
+    "label": "Truck",
+    "a": [
+      "recAAAAAA1"
+    ],
+    "b": [
+      "recBBBBBB2"
+    ],
+    "same": false
+  },
+  {
+    "label": "Truck",
+    "a": [
+      "recAAAAAA1"
+    ],
+    "b": "recAAAAAA1",
+    "same": true,
+    "note": "a scalar is a one-item list"
+  },
+  {
+    "label": "Truck",
+    "a": [],
+    "b": null,
+    "same": true,
+    "note": "empty list, null, undefined and empty string are all empty"
+  },
+  {
+    "label": "Truck",
+    "a": [],
+    "same": true,
+    "note": "b missing = undefined"
+  },
+  {
+    "label": "Driver",
+    "a": "",
+    "b": null,
+    "same": true
+  },
+  {
+    "label": "Driver",
+    "a": [
+      "recAAAAAA1"
+    ],
+    "same": false,
+    "note": "b missing = undefined: someone cleared it"
+  },
+  {
+    "label": "Partner Rate",
+    "a": 250,
+    "b": "250.0",
+    "same": true,
+    "note": "numbers numerically"
+  },
+  {
+    "label": "Partner Rate",
+    "a": 250,
+    "b": 251,
+    "same": false
+  },
+  {
+    "label": "Partner Rate",
+    "a": 0,
+    "b": "0",
+    "same": true,
+    "note": "0 is a value, not empty"
+  },
+  {
+    "label": "Partner Rate",
+    "a": 0,
+    "b": null,
+    "same": false,
+    "note": "0 is a value, not empty"
+  },
+  {
+    "label": "Partner Truck Plates",
+    "a": "ABC1234 ",
+    "b": "ABC1234",
+    "same": true,
+    "note": "trimmed"
+  },
+  {
+    "label": "Partner Truck Plates",
+    "a": "abc1234",
+    "b": "ABC1234",
+    "same": false,
+    "note": "case-sensitive"
+  },
+  {
+    "label": "Matched Import ID",
+    "a": "recXYZ12345",
+    "b": null,
+    "same": false
+  },
+  {
+    "label": "Matched Import ID",
+    "a": "recXYZ12345",
+    "b": "recXYZ12345",
+    "same": true
+  }
+]

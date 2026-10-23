@@ -17,7 +17,8 @@
 //   PREV  ready  #1229 Alpina 3.350 · #1233 Alpina 3.350 · #1228 Baltic (import) 2.650
 //               #1230 Nordfrisch (import) 2.800 · N1 Γαλακτοκομική 560 · N2 Γαλακτοκομική 540
 //               N3 Ελαιώνες 880                                   → 7 · 14.130,00 €
-//         blocked #1240 Baltic no price · #1241 Alpina sheets (gate 1/2)
+//         blocked #1240 Baltic no price · #1241 Alpina slip missing (gate 1/2) → READY
+//         since owner 20/10/2026: a missing slip no longer blocks the invoice
 //   PREV2 invoiced #1214 Alpina ΤΠΥ 0431 3.200 · ready #1220 Nordfrisch 1.500
 //   leg of #1229 (Parent Order) — never a row
 
@@ -170,17 +171,17 @@ async function runAccountant(browser) {
 
   // week strip
   const selWk = (await txt(page, '.oiv-wk.on')).replace(/\s+/g, ' ');
-  assert(selWk.includes(weekLabel(PREV)) && /7 προς κοπή/.test(selWk), `default week = last week «${weekLabel(PREV)} · 7 προς κοπή» — got «${selWk}»`);
+  assert(selWk.includes(weekLabel(PREV)) && /8 προς κοπή/.test(selWk), `default week = last week «${weekLabel(PREV)} · 8 προς κοπή» — got «${selWk}»`);
   const curWk = (await page.locator('.oiv-wk').last().innerText()).replace(/\s+/g, ' ');
   assert(curWk.includes(weekLabel(CUR)) && /σε εξέλιξη/.test(curWk), 'current week last, «σε εξέλιξη»');
   const prev2Wk = (await page.locator('.oiv-wk', { hasText: weekLabel(PREV2) }).innerText()).replace(/\s+/g, ' ');
   assert(/1 ανοιχτή/.test(prev2Wk), 'PREV2 week: «1 ανοιχτή» — ' + prev2Wk);
-  assert(/Όλες οι ανοιχτές · 10/.test(await txt(page, '.oiv-allopen')), '«Όλες οι ανοιχτές · 10» (8 ready + 2 blocked, all weeks)');
+  assert(/Όλες οι ανοιχτές · 10/.test(await txt(page, '.oiv-allopen')), '«Όλες οι ανοιχτές · 10» (9 ready + 1 blocked, all weeks)');
 
   // KPI band
   const kpi = (await txt(page, '#oivKpis')).replace(/\s+/g, ' ');
-  assert(/Προς κοπή 14\.130,00 € 7 παραγγελίες/.test(kpi), 'KPI Προς κοπή 14.130,00 € · 7 — ' + kpi);
-  assert(/Διεθνείς 12\.150,00 € 4/.test(kpi) && /Εθνικές 1\.980,00 € 3/.test(kpi), 'KPI Διεθνείς 12.150,00/4 · Εθνικές 1.980,00/3');
+  assert(/Προς κοπή 15\.130,00 € 8 παραγγελίες/.test(kpi), 'KPI Προς κοπή 15.130,00 € · 8 — ' + kpi);
+  assert(/Διεθνείς 13\.150,00 € 5/.test(kpi) && /Εθνικές 1\.980,00 € 3/.test(kpi), 'KPI Διεθνείς 13.150,00/5 · Εθνικές 1.980,00/3');
   assert(/Τιμολογημένες 0,00 € 0/.test(kpi), 'KPI Τιμολογημένες 0 in the selected week');
   assert(/Παλαιότερη εκκρεμής \d+ ημέρες/.test(kpi), 'KPI Παλαιότερη εκκρεμής');
   const heroFont = await page.locator('.oiv-kpi.hero .n').evaluate(e => getComputedStyle(e).fontFamily);
@@ -190,25 +191,25 @@ async function runAccountant(browser) {
   assert(tok.okHi !== '', 'the delivered dot token (--panel-ok-hi) resolves');
 
   // tabs
-  assert(await tabText(page, 'ready') === 'Προς κοπή · 7', 'tab Προς κοπή · 7');
-  assert(await tabText(page, 'blocked') === 'Μπλοκαρισμένες · 2', 'tab Μπλοκαρισμένες · 2');
+  assert(await tabText(page, 'ready') === 'Προς κοπή · 8', 'tab Προς κοπή · 8');
+  assert(await tabText(page, 'blocked') === 'Μπλοκαρισμένες · 1', 'tab Μπλοκαρισμένες · 1');
   assert(await tabText(page, 'invoiced') === 'Τιμολογημένες · 0', 'tab Τιμολογημένες · 0');
   assert(await tabText(page, 'all') === 'Όλες · 9', 'tab Όλες · 9 (the split leg is not a row)');
   const badge = await txt(page, '#ohBadge_invoicing');
-  assert(badge === '8', 'hub tab badge = 8 (ready, all weeks — same OrdersData set) — ' + badge);
+  assert(badge === '9', 'hub tab badge = 9 (ready, all weeks — same OrdersData set) — ' + badge);
 
   // groups + rows
   const groups = await page.locator('#oivBody tr.oiv-g').allInnerTexts();
   assert(groups.length === 5, '5 client groups in «Προς κοπή»');
   const alp = (groups.find(g => g.includes('Alpina')) || '').replace(/\s+/g, ' ');
-  assert(/ΑΦΜ IT04211730265 · όροι 30 ημ\./.test(alp) && /2 · 6\.700,00 €/.test(alp), 'Alpina header: ΑΦΜ · όροι · «2 · 6.700,00 €» — ' + alp);
-  assert(await page.locator('#oivBody tr.oiv-r').count() === 7, '7 order rows');
+  assert(/ΑΦΜ IT04211730265 · όροι 30 ημ\./.test(alp) && /3 · 7\.700,00 €/.test(alp), 'Alpina header: ΑΦΜ · όροι · «3 · 7.700,00 €» — ' + alp);
+  assert(await page.locator('#oivBody tr.oiv-r').count() === 8, '8 order rows');
   const r1229 = (await rowOf(page, '#1229').innerText()).replace(/\s+/g, ' ');
   assert(/6100118259 Εξαγωγή/.test(r1229) && /Veria Fruit Pack/.test(r1229) && /Frigo Emilia/.test(r1229) && /3\.350,00/.test(r1229) && /προς κοπή · \d+ ημ\./.test(r1229), 'row #1229: ref+direction, places, price, «προς κοπή · N ημ.» — ' + r1229);
   const rN2 = (await rowOf(page, '4500128833').innerText()).replace(/\s+/g, ' ');
   assert(/^—/.test(rN2.trim()) && /Άνοδος/.test(rN2), 'national row: number «—» (pending backend), direction «Άνοδος» — ' + rN2);
   const foot = (await txt(page, '#oivFoot')).replace(/\s+/g, ' ');
-  assert(/7 προς κοπή · 5 πελάτες · Enter καταχωρεί/.test(foot) && /Σύνολο 14\.130,00 €/.test(foot), 'footer: 7 προς κοπή · 5 πελάτες · Enter… · Σύνολο 14.130,00 € — ' + foot);
+  assert(/8 προς κοπή · 5 πελάτες · Enter καταχωρεί/.test(foot) && /Σύνολο 15\.130,00 €/.test(foot), 'footer: 8 προς κοπή · 5 πελάτες · Enter… · Σύνολο 15.130,00 € — ' + foot);
 
   // card
   await rowOf(page, '#1229').click();
@@ -220,7 +221,7 @@ async function runAccountant(browser) {
   assert(await page.inputValue('#oivDate') === TODAY, 'date defaults to today');
   assert(await page.locator('#oivSave').isDisabled(), '«Καταχώριση» disabled while ΤΠΥ empty');
   assert(await page.evaluate(() => document.activeElement && document.activeElement.id) === 'oivNum', 'ΤΠΥ box has focus');
-  assert(/Επόμενη\s*#1233/.test(card), 'card: «Επόμενη #1233 …» (same client first)');
+  assert(/Επόμενη\s*#1241/.test(card), 'card: «Επόμενη #1241 …» (same client first — #1241 is ready since 20/10)');
   await page.screenshot({ path: shot('01-accountant-ready') });
 
   // future date = error, button disabled
@@ -238,12 +239,12 @@ async function runAccountant(browser) {
   assert(p1.length === 1 && p1[0].table === 'orders', 'Enter → one PATCH on ORDERS/recO1');
   assert(p1[0] && JSON.stringify(p1[0].fields) === JSON.stringify({ Invoiced: true, 'Invoice Number': '0434', 'Invoice Date': TODAY }), 'PATCH body = exactly {Invoiced, Invoice Number, Invoice Date} — ' + JSON.stringify(p1[0] && p1[0].fields));
   assert(/Καταχωρήθηκε ΤΠΥ 0434/.test(await txt(page, '#oivUndo')) && await page.locator('#oivUndo button', { hasText: 'Αναίρεση' }).count() === 1, 'undo bar «Καταχωρήθηκε ΤΠΥ 0434» + Αναίρεση');
-  await page.waitForFunction(() => /#1233/.test((document.querySelector('#oivCard .oiv-ch-t') || {}).innerText || ''));
-  assert(true, 'card moved to the next ready order of the same client (#1233)');
+  await page.waitForFunction(() => /#1241/.test((document.querySelector('#oivCard .oiv-ch-t') || {}).innerText || ''));
+  assert(true, 'card moved to the next ready order of the same client (#1241)');
   assert(await page.evaluate(() => document.activeElement && document.activeElement.id) === 'oivNum', 'next card: ΤΠΥ box focused (Enter → next)');
-  assert(await tabText(page, 'ready') === 'Προς κοπή · 6' && await tabText(page, 'invoiced') === 'Τιμολογημένες · 1', 'after the write: Προς κοπή 6 · Τιμολογημένες 1');
-  await page.waitForFunction(() => (document.getElementById('ohBadge_invoicing') || {}).textContent === '7', null, { timeout: 5000 }).catch(() => {});
-  assert(await txt(page, '#ohBadge_invoicing') === '7', 'hub badge re-read after the write: 7');
+  assert(await tabText(page, 'ready') === 'Προς κοπή · 7' && await tabText(page, 'invoiced') === 'Τιμολογημένες · 1', 'after the write: Προς κοπή 7 · Τιμολογημένες 1');
+  await page.waitForFunction(() => (document.getElementById('ohBadge_invoicing') || {}).textContent === '8', null, { timeout: 5000 }).catch(() => {});
+  assert(await txt(page, '#ohBadge_invoicing') === '8', 'hub badge re-read after the write: 8');
   await page.screenshot({ path: shot('02-after-write-undo-bar') });
 
   // same-client duplicate = grey note (allowed)
@@ -256,7 +257,7 @@ async function runAccountant(browser) {
   await page.waitForFunction(() => !document.getElementById('oivUndo'));
   const pu = cap.patches.filter(p => p.id === 'recO1');
   assert(pu.length === 2 && JSON.stringify(pu[1].fields) === JSON.stringify({ Invoiced: false, 'Invoice Number': null, 'Invoice Date': null }), 'Αναίρεση → PATCH {Invoiced:false, Invoice Number:null, Invoice Date:null}');
-  assert(await tabText(page, 'ready') === 'Προς κοπή · 7', 'after undo: Προς κοπή 7 again');
+  assert(await tabText(page, 'ready') === 'Προς κοπή · 8', 'after undo: Προς κοπή 8 again');
 
   // other-client duplicate → confirm dialog; cancel = no PATCH
   await rowOf(page, '#1228').click();
@@ -282,24 +283,24 @@ async function runAccountant(browser) {
   assert(pn.table === 'national_orders' && pn.id === 'recN1', 'national order PATCH goes to NATIONAL ORDERS');
   assert(/Δεν σημαίνεται τιμολογημένη χωρίς τιμή/.test(await txt(page, '#oivCard .oiv-err')), '422 → the Worker message is shown in the card');
   assert(await page.locator('#oivUndo').count() === 0 && !/Καταχωρήθηκε/.test(await page.locator('body').innerText()), '422 → no undo bar, no «Καταχωρήθηκε»');
-  assert(await tabText(page, 'ready') === 'Προς κοπή · 7', '422 → counts unchanged');
+  assert(await tabText(page, 'ready') === 'Προς κοπή · 8', '422 → counts unchanged');
   assert(await page.inputValue('#oivNum') === 'E-77', '422 → the typed ΤΠΥ is kept (no retyping)');
   await page.screenshot({ path: shot('03-worker-422') });
 
-  // blocked
-  await page.click('.oiv-seg-b[data-tab="blocked"]');
-  assert(await page.locator('#oivBody tr.oiv-r').count() === 2, 'Μπλοκαρισμένες: 2 rows');
-  const bRows = (await page.locator('#oivBody').innerText()).replace(/\s+/g, ' ');
-  assert(/τιμή → owner/.test(bRows) && /δελτίο → Αλεξία/.test(bRows), 'blocked rows name the responsible person');
+  // slip missing = ready with the red check (owner 20/10/2026), price = the one block left
+  await page.click('.oiv-seg-b[data-tab="ready"]');
   await rowOf(page, '#1241').click();
   await page.waitForFunction(() => /#1241/.test((document.getElementById('oivCard') || {}).innerText || ''));
   card = await cardText(page);
-  assert(/λείπει σε 1 από 2 φορτώσεις → Αλεξία/i.test(card) && await page.locator('#oivNum').count() === 0, 'sheets-blocked card: 1/2 stops, Αλεξία, no form');
-  assert(await page.locator('.oiv-warn-btn').count() === 0, 'accountant: no gate override (owner only)');
+  assert(/λείπει σε 1 από 2 φορτώσεις → Αλεξία/i.test(card) && /δελτίο → Αλεξία/.test(card) && await page.locator('#oivNum').count() === 1, 'slip-missing card: red check 1/2 → Αλεξία stays, AND the ΤΠΥ form is there');
+  assert(await page.locator('.oiv-warn-btn').count() === 0, 'no override button any more (nothing to override)');
+  await page.click('.oiv-seg-b[data-tab="blocked"]');
+  assert(await page.locator('#oivBody tr.oiv-r').count() === 1, 'Μπλοκαρισμένες: 1 row (#1240, no price)');
   await page.screenshot({ path: shot('04-blocked-sheets') });
   await rowOf(page, '#1240').click();
   card = await cardText(page);
-  assert(/Χωρίς τιμή — την καταχωρεί ο owner/.test(card) && /χωρίς τιμή/.test(card), 'price-blocked card: owner');
+  assert(await page.locator('#oivPrice').count() === 1 && await page.locator('#oivNum').count() === 0 && /πρώτη φορά|τελευταία τιμή/.test(card), 'price-blocked card (accountant, 21/10): a price box here, no ΤΠΥ yet');
+  assert(/χωρίς τιμή/.test(await rowOf(page, '#1240').innerText()) && !/owner/.test(await rowOf(page, '#1240').innerText()), 'price-blocked row: «χωρίς τιμή», no «→ owner»');
 
   // invoiced week
   await page.locator('.oiv-wk', { hasText: weekLabel(PREV2) }).click();
@@ -322,7 +323,7 @@ async function runAccountant(browser) {
   // all open
   await page.click('.oiv-allopen');
   await page.click('.oiv-seg-b[data-tab="ready"]');
-  assert(await tabText(page, 'ready') === 'Προς κοπή · 8' && await tabText(page, 'all') === 'Όλες · 10', '«Όλες οι ανοιχτές»: Προς κοπή 8 · Όλες 10');
+  assert(await tabText(page, 'ready') === 'Προς κοπή · 9' && await tabText(page, 'all') === 'Όλες · 10', '«Όλες οι ανοιχτές»: Προς κοπή 9 · Όλες 10');
 
   // search
   await page.fill('#oivQ', 'nordfrisch');
@@ -335,14 +336,14 @@ async function runAccountant(browser) {
   const [pop] = await Promise.all([page.waitForEvent('popup'), page.click('#ohActions button:has-text("Εκτύπωση")')]);
   await pop.waitForLoadState('domcontentloaded');
   const ptxt = (await pop.locator('body').innerText()).replace(/\s+/g, ' ');
-  assert(/Προς τιμολόγηση — Όλες οι ανοιχτές/.test(ptxt) && (await pop.locator('tbody tr').count()) === 8 + 5 && /Σύνολο 15\.630,00/.test(ptxt), 'Εκτύπωση: A4 of the current list (8 orders in 5 client groups, Σύνολο 15.630,00) — ' + ptxt.slice(0, 120));
+  assert(/Προς τιμολόγηση — Όλες οι ανοιχτές/.test(ptxt) && (await pop.locator('tbody tr').count()) === 9 + 5 && /Σύνολο 16\.630,00/.test(ptxt), 'Εκτύπωση: A4 of the current list (9 orders in 5 client groups, Σύνολο 16.630,00) — ' + ptxt.slice(0, 120));
   await pop.close();
 
   // CSV
   const [dl] = await Promise.all([page.waitForEvent('download'), page.click('#ohActions button:has-text("Φύλλο ERP")')]);
   const csv = fs.readFileSync(await dl.path(), 'utf8').replace(/^﻿/, '').split('\n');
   assert(csv[0] === '"ΑΡ.","Αναφορά","Πελάτης","ΑΦΜ","Διεύθυνση","Φόρτωση","Παράδοση","Ημ. παράδοσης","Παλέτες","Ποσό","ΤΠΥ","Ημ. ΤΠΥ"', 'CSV header = the 12 ERP columns');
-  assert(csv.length === 9 && csv.some(l => l.startsWith('"#1229","6100118259","Alpina Fresh S.r.l.","IT04211730265"') && l.includes('"3350.00"')), 'CSV: 8 rows (current list), #1229 with ΑΦΜ and amount — ' + csv.length);
+  assert(csv.length === 10 && csv.some(l => l.startsWith('"#1229","6100118259","Alpina Fresh S.r.l.","IT04211730265"') && l.includes('"3350.00"')), 'CSV: 9 rows (current list), #1229 with ΑΦΜ and amount — ' + csv.length);
 
   // scope
   await page.click('.oh-seg-b[data-scope="natl"]');
@@ -365,7 +366,7 @@ async function runDispatcher(browser) {
   const cap = page._cap;
   console.log('\n[dispatcher] Προς τιμολόγηση — μόνο ανάγνωση');
   await openView(page);
-  assert(await tabText(page, 'ready') === 'Προς κοπή · 7', 'dispatcher sees the same list (7 προς κοπή)');
+  assert(await tabText(page, 'ready') === 'Προς κοπή · 8', 'dispatcher sees the same list (8 προς κοπή)');
   await rowOf(page, '#1229').click();
   await page.waitForFunction(() => /#1229/.test((document.getElementById('oivCard') || {}).innerText || ''));
   assert(await page.locator('#oivNum').count() === 0 && await page.locator('#oivSave').count() === 0, 'dispatcher: no ΤΠΥ input, no «Καταχώριση»');
@@ -383,20 +384,31 @@ async function runDispatcher(browser) {
 async function runOwner(browser) {
   const page = await newPage(browser, 'owner');
   const cap = page._cap;
-  console.log('\n[owner] παράκαμψη πύλης δελτίων');
+  console.log('\n[owner] δελτίο λείπει → κανονική τιμολόγηση (20/10)');
   await openView(page);
-  await page.click('.oiv-seg-b[data-tab="blocked"]');
   await rowOf(page, '#1241').click();
-  await page.click('.oiv-warn-btn');
-  await page.fill('#oivOvReason', 'Δελτίο παραδόθηκε σε χαρτί, ανεβαίνει αύριο');
-  await page.fill('#oivOvNum', '0440');
-  await page.screenshot({ path: shot('08-owner-override') });
-  await page.click('.oiv-edit .oiv-primary');
+  await page.waitForSelector('#oivNum');
+  await page.fill('#oivNum', '0440'); await page.dispatchEvent('#oivNum', 'input');
+  await page.screenshot({ path: shot('08-owner-slip-missing-ready') });
+  await page.press('#oivNum', 'Enter');
   await page.waitForSelector('#oivUndo', { timeout: 5000 });
-  assert(cap.overrides.length === 1 && cap.overrides[0].order_rec === 'recO6' && /χαρτί/.test(cap.overrides[0].reason), 'owner: POST /pallets/override with the reason, BEFORE the write');
+  assert(cap.overrides.length === 0, 'no POST /pallets/override any more');
   const p = cap.patches.find(x => x.id === 'recO6');
-  assert(p && JSON.stringify(p.fields) === JSON.stringify({ Invoiced: true, 'Invoice Number': '0440', 'Invoice Date': TODAY }), 'owner: then the 3-field PATCH');
-  assert(/με παράκαμψη/.test(await txt(page, '#oivUndo')), 'undo bar says «με παράκαμψη»');
+  assert(p && JSON.stringify(p.fields) === JSON.stringify({ Invoiced: true, 'Invoice Number': '0440', 'Invoice Date': TODAY }), 'slip missing → the same 3-field PATCH');
+  // 21/10: price from the card → the same card turns into the ΤΠΥ form
+  await page.click('.oiv-seg-b[data-tab="blocked"]');
+  await rowOf(page, '#1240').click();
+  await page.waitForSelector('#oivPrice');
+  await page.screenshot({ path: shot('09a-card-price-box') });
+  await page.fill('#oivPrice', 'abc'); await page.press('#oivPrice', 'Enter');
+  assert(!cap.patches.some(x => x.id === 'recO5') && /μεγαλύτερο του 0/.test(await txt(page, '#oivCard .oiv-err')), 'card price «abc» → message, no PATCH');
+  await page.fill('#oivPrice', '2.650,00'); await page.press('#oivPrice', 'Enter');
+  await page.waitForSelector('#oivNum', { timeout: 8000 }).catch(() => {});
+  const pp = cap.patches.filter(x => x.id === 'recO5');
+  assert(pp.length === 1 && JSON.stringify(pp[0].fields) === JSON.stringify({ Price: 2650 }), 'card price → one PATCH {Price: 2650} — ' + JSON.stringify(pp.map(x => x.fields)));
+  assert(/#1240/.test(await txt(page, '#oivCard .oiv-ch-t')) && await page.locator('#oivNum').count() === 1
+    && await page.evaluate(() => document.activeElement && document.activeElement.id) === 'oivNum', 'same card, now the ΤΠΥ form, ΤΠΥ box focused');
+  await page.screenshot({ path: shot('09-card-price-then-tpy') });
   assert(cap.errors.length === 0, 'owner: no page errors ' + JSON.stringify(cap.errors));
   await page.context().close();
 }

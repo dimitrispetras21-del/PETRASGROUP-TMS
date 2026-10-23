@@ -115,11 +115,12 @@ async function readContract(page, unit, baseURL) {
       const s = sanitize(t);
       if (s) fields.add(s);
     }
-    // .notif-btn: the notification panel's Open/Snooze appear only while an
-    // expiry is due «now» — shell chrome, time-dependent, not the screen's
-    // contract. Captured once by accident (maintenance, 4/9) and flagged as a
-    // regression an hour later with zero code change.
-    for (const t of await page.locator('button:not(.notif-btn), [data-action]').allTextContents()) {
+    // .notif-x / .notif-all: the notification panel's hide button and its footer
+    // link (until 14/10 the .notif-btn Open/Snooze) are shell chrome that appears
+    // only once the bell has refreshed, so whether they are captured depends on
+    // timing, not on the screen's contract. Captured once by accident
+    // (maintenance, 4/9) and flagged as a regression an hour later with zero code change.
+    for (const t of await page.locator('button:not(.notif-x):not(.notif-all), [data-action]').allTextContents()) {
       const s = sanitize(t);
       if (s) actions.add(s);
     }

@@ -26,9 +26,12 @@ import assert from 'node:assert';
 import fs from 'node:fs';
 import vm from 'node:vm';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { webcrypto } from 'node:crypto';
 
-const ROOT = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..');
+// fileURLToPath, not .pathname: a URL keeps a space as %20, so the test failed
+// 17/17 in any clone whose path has a space (e.g. «Client Repos»).
+const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const json = (status, body) => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
 const UA_WIN = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36';
 const T0 = 1_790_000_000_000;

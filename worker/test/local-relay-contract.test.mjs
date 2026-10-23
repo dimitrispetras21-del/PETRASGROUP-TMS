@@ -63,7 +63,7 @@ const NOT_FACADE_UNIQUE = {
 
 function read060() {
   assert.ok(sqlFile, '060_local_relay.sql not found in this checkout (looked in: ' + candidates.join(', ') +
-    ') — copy it from the SQL branch: git checkout origin/feat/local-relay-sql -- worker/migrations/drafts/060_local_relay.sql');
+    ') — copy it from the SQL branch: git checkout origin/feat/local-relay-sql -- worker/migrations/060_local_relay.sql');
   return readFileSync(sqlFile, 'utf8');
 }
 const uniq = (re, text) => [...new Set([...text.matchAll(re)].map((m) => m[1]))].sort();

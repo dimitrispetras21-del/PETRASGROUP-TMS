@@ -66,7 +66,7 @@ function _wnApplyFilter() {
     if (!row) { el.style.display=''; return; }
     let show = true;
     if (q) {
-      const blob = [row.truckLabel, row.driverLabel, row.partnerLabel, row.client||'', row.route||''].join(' ').toLowerCase();
+      const blob = [row.truckLabel, row.driverLabel, row.partnerLabel, row.client||'', row.route||'', row.ref||''].join(' ').toLowerCase();
       if (!blob.includes(q)) show = false;
     }
     if (show && fs) {
@@ -199,6 +199,9 @@ async function _wnLoadAll() {
       // order source) and 'Source Order' (VS, from orders_intl) — spec national-load-source.
       'Client','Total Pallets','Goods','Status','Source Type','Source National Order','Source Order','Source Consolidated Load','Matched Load',
       'Is Partner Trip','Partner Truck Plates','Partner Rate',
+      // The search matches the load reference (walkthrough 13/10, item 14);
+      // a VS load carries its international order's reference (19 of 19, 14/10).
+      'Reference',
       // §4 #7 (4/10/2026): _wnBadges draws «PE» from this field, but it was
       // never requested — the facade answers only the fields asked for, so
       // the badge could not appear (7 loads with PE, 0 badges). Same badge
@@ -232,6 +235,9 @@ async function _wnLoadAll() {
   WNATL.data.trailers  = getRefTrailers().map(r => ({ id:r.id, label:r.fields['License Plate']||r.id }));
   WNATL.data.drivers   = getRefDrivers().filter(r=>r.fields['Active']).map(r  => ({ id:r.id, label:r.fields['Full Name']||r.id }));
   WNATL.data.partners  = getRefPartners().map(r  => ({ id:r.id, label:r.fields['Company Name']||r.id }));
+  // Assign-picker warnings (items 3, 4): work orders read in the background,
+  // only for roles that can open the assign popover.
+  if (typeof preloadOpenWorkOrders === 'function' && (typeof can !== 'function' || can('planning') === 'full')) preloadOpenWorkOrders();
   WNATL.data.clients   = [];
   WNATL.data.locations = locs;
 
@@ -334,6 +340,7 @@ function _wnBuildRow(ord, type) {
     // search + quick filters read these; the Δ6 pair (coveredBy/needsLocal)
     // is derived per paint from the local moves (see _wnPaint).
     client: f['Client'] || '',
+    ref: f['Reference'] || '',
     route: [_wnNlPickupSummary(f), _wnNlDeliverySummary(f)].join(' '),
     status: f['Status'] || '',
     // Δ2: a VS load with 2 deliveries is not Groupage — only Source Type
@@ -773,7 +780,7 @@ function _wnPaint() {
     <div class="wk3-sub">
       <div class="entity-search-wrap">
         ${_wnI('search')}
-        <input id="wn-search" class="entity-search-input" type="text" placeholder="Αναζήτηση πελάτη, φορτηγού, οδηγού" oninput="WNATL.filter=this.value.toLowerCase().trim();_wnApplyFilter()" value="${escapeHtml(WNATL.filter||'')}">
+        <input id="wn-search" class="entity-search-input" type="text" placeholder="Αναζήτηση πελάτη, φορτηγού, οδηγού, αναφοράς" oninput="WNATL.filter=this.value.toLowerCase().trim();_wnApplyFilter()" value="${escapeHtml(WNATL.filter||'')}">
       </div>
       <!-- WN-1β (Wave 1): values ΑΜΕΤΑΒΛΗΤΑ (_wnApplyFilter) — plus the two of the frame -->
       <select id="wn-status" class="svc-filter" onchange="_wnQuick(this.value)">
@@ -1129,7 +1136,7 @@ function _wnAddLocal(dateISO, parentNlId, driverId) {
       <div class="form-field"><label class="form-label">Οδηγός${parentNlId?'':' *'}</label>
         <select class="form-select" id="lm_driver"><option value="">${parentNlId?'— Χωρίς οδηγό ακόμη (χρειάζεται τοπικό) —':'— Επιλογή —'}</option>${opt(WNATL.data.drivers, driverId||'')}</select></div>
       <div class="form-field"><label class="form-label">Όχημα</label>
-        <select class="form-select" id="lm_truck"><option value="">—</option>${opt(WNATL.data.trucks,'')}</select></div>
+        <select class="form-select" id="lm_truck" data-fh-search><option value="">—</option>${opt(WNATL.data.trucks,'')}</select></div>
       <div class="form-field"><label class="form-label">Ώρα (ΩΩ:ΛΛ)</label>
         <input class="form-input" id="lm_time" placeholder="π.χ. 11:00"></div>
       <div class="form-field"><label class="form-label">Από *</label>
@@ -1143,6 +1150,7 @@ function _wnAddLocal(dateISO, parentNlId, driverId) {
     </div>`,
     `<button class="btn btn-ghost" onclick="closeModal()">Άκυρο</button>
      <button class="btn btn-success" id="lm_submit" onclick="_wnSaveLocal('${parentNlId||''}')">Καταχώρηση</button>`);
+  fhSelectSearch(document.getElementById('lm_truck')); // T33: type to find the plate
 }
 
 async function _wnSaveLocal(parentNlId) {
@@ -1199,10 +1207,11 @@ function _wnCoverLocal(moveId) {
       <div class="form-field"><label class="form-label">Οδηγός *</label>
         <select class="form-select" id="lc_driver"><option value="">— Επιλογή —</option>${opt(WNATL.data.drivers)}</select></div>
       <div class="form-field"><label class="form-label">Όχημα</label>
-        <select class="form-select" id="lc_truck"><option value="">—</option>${opt(WNATL.data.trucks)}</select></div>
+        <select class="form-select" id="lc_truck" data-fh-search><option value="">—</option>${opt(WNATL.data.trucks)}</select></div>
     </div>`,
     `<button class="btn btn-ghost" onclick="closeModal()">Άκυρο</button>
      <button class="btn btn-success" id="lc_submit" onclick="_wnSaveCover('${moveId}')">Ανάθεση</button>`);
+  fhSelectSearch(document.getElementById('lc_truck')); // T33: type to find the plate
 }
 
 async function _wnSaveCover(moveId) {
@@ -1658,7 +1667,7 @@ function _wnRowHTML(row, i) {
     <div class="wk3-assign" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click()}" role="button" tabindex="0" onclick="event.stopPropagation();_wnOpenPopover(event,${row.id})">
       <span></span>
       ${pill}
-      <span></span>
+      <span></span>${_wnCpy(row)}
     </div>
     <div class="wk3-leg${sn?'':(isOneWay?' bgap':' void')}" id="wn-ci-${row.id}"
          onclick="event.stopPropagation()"
@@ -1820,7 +1829,8 @@ function _wnGrpLines(dels, noInfo, stopLine) {
     const known = own.filter(s => s.fields[F.STOP_PALLETS] != null);
     const p = known.reduce((a, s) => a + s.fields[F.STOP_PALLETS], 0);
     const inf = noInfo[id];
-    const price = (typeof inf.price === 'number') ? ' — ' + inf.price.toLocaleString('el-GR') + ' €' : '';
+    // 0 € = no price (owner 13/10): one rule, OrdersCommon.hasPrice.
+    const price = OrdersCommon.hasPrice({ Price: inf.price }) ? ' — ' + OrdersCommon.price({ Price: inf.price }).toLocaleString('el-GR') + ' €' : '';
     html += `<div class="st"><span class="p">${known.length ? p + 'p' : '—'}</span>`
           + `<span><b>${escapeHtml(inf.client || 'πελάτης')}</b>${price}</span>`
           + `<span class="o">${own.length} σημεί${own.length===1?'ο':'α'}</span></div>`
@@ -1999,7 +2009,7 @@ function _wnSnRowHTML(row, snNo) {
     <div class="wk3-assign" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click()}" role="button" tabindex="0" onclick="event.stopPropagation();_wnOpenSnPopover(event,'${ord.id}',${row.id})">
       <span></span>
       ${pill}
-      <span></span>
+      <span></span>${_wnCpy(row)}
     </div>
     <div class="wk3-leg" style="cursor:pointer" onclick="_wnOpenRow(${row.id})">${fromCard}<span class="wn4-arrow">→</span>${toCard}</div>
   </div>`;
@@ -2146,6 +2156,23 @@ function _wnBadges(f) {
   if (f['Source Type']==='Groupage') b.push('<span class="wi-badge wi-b-grpg">GRP</span>');
   return b.join('');
 }
+
+// Copy the plates in one click (walkthrough 13/10 item 16, C5): in the cell's
+// right edge, shown on row hover; nothing when nothing is assigned.
+function _wnPlatesOf(row) {
+  const { data } = WNATL;
+  if (!row || !row.saved || typeof platesText !== 'function') return '';
+  const partner = row.partnerLabel || data.partners.find(p=>p.id===row.partnerId)?.label||'';
+  return partner ? platesText('', '', row.partnerPlates)
+    : platesText(row.truckLabel || data.trucks.find(x=>x.id===row.truckId)?.label||'', row.trailerLabel || data.trailers.find(x=>x.id===row.trailerId)?.label||'');
+}
+function _wnCpy(row) {
+  const t = _wnPlatesOf(row);
+  if (!t) return '';
+  return `<button type="button" class="wn-cpy" title="Αντιγραφή πινακίδων: ${escapeHtml(t)}" aria-label="Αντιγραφή πινακίδων ${escapeHtml(t)}" data-plates="${escapeHtml(t)}" onclick="event.stopPropagation();copyPlates(this.dataset.plates)">${typeof icon==='function'?icon('clipboard',12):'⧉'}</button>`;
+}
+
+function _wnCopyPlates(rowId) { copyPlates(_wnPlatesOf(WNATL.rows.find(r => r.id === rowId))); }
 
 function _wnPill(row) {
   const { data } = WNATL;
@@ -2449,7 +2476,10 @@ function _wnOpenPopover(e, rowId) {
       const l = (x.label||'').replace(/"/g,'&quot;');
       const b = showBusy?_busy[x.id]:null;
       const sub = b&&b.length?`<div class="wi-sdo-sub">δεσμ. ${b.length}× · ${b[0].d} → ${escapeHtml(b[0].dest)}</div>`:'';
-      return `<div class="wi-sdo${sub?' wi-sdo--busy':''}" data-id="${x.id}" data-lbl="${l}">${l}${sub}</div>`;
+      // Items 3, 4 (13/10): open work order, document expired or due in 14 days. Warning only.
+      const vw = (px==='tk'||px==='tl') && typeof vehicleWarnings==='function' ? vehicleWarnings(px==='tl'?'trailer':'truck', x.id) : [];
+      const w = vw.length ? `<div class="wi-sdo-sub wi-sdo-warn">${escapeHtml(vw.join(' · '))}</div>` : '';
+      return `<div class="wi-sdo${sub?' wi-sdo--busy':''}" data-id="${x.id}" data-lbl="${l}">${l}${sub}${w}</div>`;
     }).join('');
     return `<div class="wi-sd" id="wsd-${uid}">
       <input type="text" class="wi-pop-inp wi-sdi"
@@ -2730,6 +2760,9 @@ function _wnCtx(e, rowId) {
   if (row && row.src !== 'vs')
     items.push(`<button type="button" class="wi-ctx-item" onclick="_wnCtxClose();_wnOpenRow(${rowId})">Επεξεργασία</button>`);
   items.push(`<button type="button" class="wi-ctx-item" onclick="_wnCtxClose();_wnOpenPopover({stopPropagation:()=>{},currentTarget:document.getElementById('wn-row-${rowId}')},${rowId})">Ανάθεση</button>`);
+  // Item 16 (13/10): the same copy as the icon, where actions are looked for.
+  if (_wnPlatesOf(row))
+    items.push(`<button type="button" class="wi-ctx-item" onclick="_wnCtxClose();_wnCopyPlates(${rowId})">Αντιγραφή πινακίδων</button>`);
   if (row?.saved)
     items.push(`<button type="button" class="wi-ctx-item wi-ctx-danger" onclick="_wnCtxClose();_wnUnassign(${rowId})">Αφαίρεση ανάθεσης</button>`);
   if (row?.matchedId)
@@ -3114,6 +3147,8 @@ window._wnSegDragOver = _wnSegDragOver;
 window._wnSegDragEnd = _wnSegDragEnd;
 window._wnSegDrop = _wnSegDrop;
 window._wnSaveSegOrder = _wnSaveSegOrder;
+// Item 16 (13/10): the row menu's «Αντιγραφή πινακίδων» (inline onclick).
+window._wnCopyPlates = _wnCopyPlates;
 
 
 // ── WN-3: print the week (warehouse works on paper) ─────────

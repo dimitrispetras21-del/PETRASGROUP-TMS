@@ -208,6 +208,18 @@ function _onDF(label, valueHtml, dim) {
 }
 const _ON_NA = '— δεν έχει καταχωρηθεί';
 
+// Accountant «Διόρθωση» (owner 20/10, core/order-quick-edit.js) — same as
+// intlQuickEdit: one PATCH, then the row and the open card repaint.
+function natlQuickEdit(recId) {
+  const rec = (NATL_ORDERS.data || []).find(r => r.id === recId);
+  // Never a dead button: say it, so a missing record is heard, not guessed.
+  if (!rec) { console.error('natlQuickEdit: record not loaded', recId); toast('Η παραγγελία δεν φορτώθηκε — άνοιξε ξανά τη λίστα', 'error'); return; }
+  OrderQuickEdit.open(TABLES.NAT_ORDERS, rec, r => {
+    if (typeof OrdersCatalog !== 'undefined') OrdersCatalog.updateRecord('natl', r);
+    if (NATL_ORDERS.selectedId === r.id) selectNatlOrder(r.id);
+  });
+}
+
 function selectNatlOrder(recId) {
   const wasClosed = !NATL_ORDERS.selectedId;
   NATL_ORDERS.selectedId = recId;
@@ -272,12 +284,16 @@ function selectNatlOrder(recId) {
     pId ? routeRow(f['Loading DateTime'], 'ΠΑΡΑΛΑΒΗ', pId, palTotal) : '',
     ...delivIds.map(id => routeRow(f['Delivery DateTime'], 'ΠΑΡΑΔΟΣΗ', id, delivIds.length === 1 ? palTotal : '')),
   ].join('') || `<div class="on-row"><span class="on-row-v dim">${_ON_NA}</span></div>`;
+  // 0 € = no price (owner 13/10): OrdersCommon.hasPrice, the invoicing gate's
+  // rule — a 0 € load must read «—» here, not «0 €», while invoicing blocks it.
+  const priced = OrdersCommon.hasPrice(f);
 
   panel.innerHTML = `
     <div class="on-card-head">
       <div class="on-card-title-row">
         <div class="on-card-title">${escapeHtml(name)}${client ? ' · ' + escapeHtml(client) : ''}</div>
-        ${canEdit ? `<button type="button" class="on-head-edit" onclick="openNatlEdit('${recId}')">Επεξεργασία</button>` : ''}
+        ${canEdit ? `<button type="button" class="on-head-edit" onclick="openNatlEdit('${recId}')">Επεξεργασία</button>`
+          : typeof OrderQuickEdit !== 'undefined' && OrderQuickEdit.can() ? `<button type="button" class="on-head-edit" onclick="natlQuickEdit('${recId}')">Διόρθωση</button>` : ''}
         <button type="button" class="on-card-x" title="Κλείσιμο (Esc)" onclick="closeNatlDetail()">×</button>
       </div>
       ${subParts.length ? `<div class="on-card-sub">${escapeHtml(subParts.join(' · '))}</div>` : ''}
@@ -290,7 +306,7 @@ function selectNatlOrder(recId) {
       ${_onDF('Εμπόρευμα', f['Goods'] ? escapeHtml(f['Goods']) : _ON_NA, !f['Goods'])}
       ${_onDF('Παλέτες', f['Pallets'] != null ? escapeHtml(String(f['Pallets'])) : _ON_NA, f['Pallets'] == null)}
       ${_onDF('Θερμοκρασία', f['Temperature °C'] != null ? escapeHtml(String(f['Temperature °C'])) + ' °C' : _ON_NA, f['Temperature °C'] == null)}
-      ${can('costs')!=='none' ? _onDF('Τιμή', f['Price'] != null ? Number(f['Price']).toLocaleString('el-GR') + ' €' : _ON_NA, f['Price'] == null) : ''}
+      ${can('costs')!=='none' ? _onDF('Τιμή', priced ? Number(f['Price']).toLocaleString('el-GR') + ' €' : _ON_NA, !priced) : ''}
       ${_onDF('Τιμολογήθηκε', f['Invoiced'] ? 'Ναι' : 'Όχι')}
     </div>
     <div class="on-sec sunken">
@@ -1808,7 +1824,8 @@ function openNatlScan() {
       ondragleave="document.getElementById('natlScanDrop').style.borderColor='var(--border-dark)'"
       ondrop="_natlScanDrop(event)">
       <div style="font-size:13px;font-weight:500;color:var(--text-mid)">Σύρε το αρχείο εδώ ή κάνε κλικ για επιλογή</div>
-      <div style="font-size:12px;color:var(--text-dim);margin-top:4px">JPG · PNG · PDF — max 10MB</div>
+      <!-- T103: Word listed exactly when the input below accepts it (scan v2). -->
+      <div style="font-size:12px;color:var(--text-dim);margin-top:4px">JPG · PNG · PDF${typeof scanEngineV2On === 'function' && scanEngineV2On() ? ' · Word' : ''} — max 10MB</div>
       <button type="button" class="btn btn-ghost btn-sm" style="margin-top:12px"
         onclick="event.stopPropagation();document.getElementById('natlScanCamera').click()">
         ${(typeof icon === 'function') ? icon('camera', 14) : ''} Λήψη με κάμερα
@@ -2198,8 +2215,8 @@ async function _natlScanPreviewV2(data) {
       ${row('Client', escapeHtml(clientLabel || data.client_name || ''), fc.client_name)}
       ${data.reference ? row('Reference', escapeHtml(String(data.reference)), fc.reference) : ''}
       ${row('Direction', escapeHtml(data.direction || ''), null)}
-      ${pickup ? row('Pickup', escapeHtml(pickup.location_name || pickup.city || ''), fc.loading_stops) : ''}
-      ${deliveries.map((s, i) => row(`Delivery ${deliveries.length > 1 ? i + 1 : ''}`, escapeHtml(s.location_name || s.city || ''), fc.delivery_stops)).join('')}
+      ${pickup ? _natlScanNewPlace('P', row('Pickup', escapeHtml(pickup.location_name || pickup.city || ''), fc.loading_stops), pickup) : ''}
+      ${deliveries.map((s, i) => _natlScanNewPlace('D' + i, row(`Delivery ${deliveries.length > 1 ? i + 1 : ''}`, escapeHtml(s.location_name || s.city || ''), fc.delivery_stops), s)).join('')}
       ${row('Load Date', escapeHtml((pickup && pickup.date) || ''), fc.dates)}
       ${row('Pallets', data.pallets != null ? String(data.pallets) : '', fc.pallets)}
       ${row('Goods', escapeHtml(data.goods || ''), null)}
@@ -2235,6 +2252,22 @@ async function _natlScanPreviewV2(data) {
         </div>`);
     });
   }
+}
+
+// A stop row of the v2 preview; an unmatched stop gets the inline «νέα
+// τοποθεσία» control (T44, modules/locations.js locScanNewHTML). On save its
+// location_id is set, which is what _natlScanOpenFormV2 puts in the form, and
+// its row shows the new label with ✓.
+function _natlScanNewPlace(key, rowHtml, s) {
+  if (!rowHtml) return '';
+  if (!s || s.location_id || typeof locScanNewHTML !== 'function') return rowHtml;
+  // Unique per render: a slow save from the previous scan must repaint its own row, not this one.
+  const wrap = 'natlScanStop_' + key + '_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+  return `<div id="${wrap}">${rowHtml}</div>` + locScanNewHTML('n' + key, s, (item) => {
+    s.location_id = item.id;
+    const v = document.querySelector('#' + wrap + ' .detail-field-value');
+    if (v) v.innerHTML = `${escapeHtml(item.label)} <span style="color:var(--ok)">✓</span>`;
+  });
 }
 
 async function _natlScanOpenForm() {
@@ -2314,7 +2347,9 @@ async function _natlScanOpenFormV2(r) {
   // a blank box next to a hidden id (same trick orders_intl.js uses).
   if (matched.clientId && matched.clientLabel) _fhClientsMap[matched.clientId] = matched.clientLabel;
   const allLocs = (typeof getRefLocations === 'function' ? getRefLocations() : []) || [];
-  const labelFor = id => { const l = allLocs.find(x => x.id === id); return l ? (l.fields?.['Name'] || l.fields?.['City'] || '') : ''; };
+  // A place just created from the scan (T44) is not in the ref cache yet: keep
+  // the label its save put in _fhLocationsMap rather than blanking it.
+  const labelFor = id => { const l = allLocs.find(x => x.id === id); return l ? (l.fields?.['Name'] || l.fields?.['City'] || '') : (_fhLocationsMap[id] || ''); };
   if (pickup && pickup.location_id) _fhLocationsMap[pickup.location_id] = labelFor(pickup.location_id);
   (matched.deliveries || []).forEach(s => { if (s.location_id) _fhLocationsMap[s.location_id] = labelFor(s.location_id); });
 
@@ -2373,6 +2408,7 @@ window.openNatlCreate = openNatlCreate;
 window.openNatlCreateWith = f => _openNatlModal(null, f || {}); // 9/9: Weekly National «νέα άνοδος» prefill
 window.openNatlEdit = openNatlEdit;
 window.selectNatlOrder = selectNatlOrder;
+window.natlQuickEdit = natlQuickEdit;
 // The card's «×» is an inline onclick, so it resolves in the global scope.
 // Without this the × threw «closeNatlDetail is not defined» (app_errors 5/9
 // 17:40, 6/9 16:35).

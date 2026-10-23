@@ -4,7 +4,8 @@
 // OrdersStock (core/orders-common.js) and the real getLinkedId. The functions
 // are extracted verbatim from modules/weekly_intl.js (same technique as
 // tests/unmatch-leg-first.test.js); nothing is sent anywhere.
-//   B-05  auto-match never scores an import load that holds a piece
+//   B-05  the pieces of a load are found from any member (the auto-match
+//         scorer that also used this was removed, owner 10/10)
 //   B-19  a loose piece is not a board row while the shelf is its home
 //   B-28  no «Σπάσιμο σκέλους» on a piece or a lot
 // WI_SRC=<path> runs the same cases against another copy of weekly_intl.js
@@ -33,10 +34,10 @@ function load() {
   const src = [
     grab(/const WI_EXECUTING=\[[^\]]*\];\n/, 'WI_EXECUTING'),
     one('_wiIsPiece'), one('_wiIsLot'), one('_wiRecOf'),
-    many('_wiStockSkip'), many('_wiImpGroupRowOf'), many('_wiPieceIn'), many('_wiMatchableImp'), many('_wiLoose'), many('_wiShelved'),
+    many('_wiStockSkip'), many('_wiImpGroupRowOf'), many('_wiPieceIn'), many('_wiLoose'), many('_wiShelved'),
     many('_wiSplitCtxItems'),
   ].join('\n');
-  vm.runInContext(src + '\nObject.assign(this,{_wiPieceIn,_wiMatchableImp,_wiShelved,_wiSplitCtxItems});', ctx);
+  vm.runInContext(src + '\nObject.assign(this,{_wiPieceIn,_wiShelved,_wiSplitCtxItems});', ctx);
   return ctx;
 }
 
@@ -61,18 +62,6 @@ function world() {
   ];
   return c;
 }
-
-test('B-05: auto-match scores a plain import, never a load that holds a piece (lone or group), a loose piece or a lot', () => {
-  const c = world();
-  const ok = id => c._wiMatchableImp(c.WINTL.rows.find(r => r.id === id));
-  assert.strictEqual(ok(1), true, 'plain import');
-  assert.strictEqual(ok(2), false, 'truckless GI group holding a piece');
-  assert.strictEqual(ok(3), false, 'loose piece');
-  assert.strictEqual(ok(4), false, 'piece on a truck, unmatched');
-  assert.strictEqual(ok(6), false, 'lot');
-  c.WINTL.rows[0].matchedTo = 'recE1';
-  assert.strictEqual(ok(1), false, 'already matched');
-});
 
 test('B-05: the pieces of a load are found from ANY member the caller names', () => {
   const c = world();

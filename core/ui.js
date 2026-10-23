@@ -79,8 +79,9 @@ if (typeof window !== 'undefined') window.modalSetBusy = modalSetBusy;
  * Replaces `if (!confirm(msg)) return;` with
  * `if (!(await confirmAction(msg))) return;` so call sites keep their existing
  * control flow (one line, no split into show/do functions). Resolves true on
- * confirm, false on cancel, Escape, or overlay click (dismiss = cancel, matching
- * native confirm semantics). Reuses openModal so styling/focus-trap come for free.
+ * confirm, false on cancel or Escape. A click on the overlay does nothing (the
+ * openModal rule since 19/5, a half-filled form was lost to a stray click).
+ * Reuses openModal so styling/focus-trap come for free.
  *
  * NOTE: not a replacement for the native blocking confirm on irreversible
  * cascade deletes, those are intentionally left as native confirm() (a hard
@@ -343,18 +344,42 @@ function showComingSoon(label, opts) {
 // open/close cycles never pile listeners up on document. The listener goes on
 // synchronously: stopPropagation keeps THIS click from reaching document, and a
 // setTimeout here left a gap in which a fast second click did not close.
+// An open menu owns its keys (Figma sheets 14/15, live audit 11/10: Esc left it
+// open, ↓ stayed on the toggle, ← changed the week under it). A CAPTURE-phase
+// listener exists only while the menu is open, so it runs before the board's
+// and the week's key handlers, and close() always removes it.
 function wkMoreToggle(ev) {
   ev.stopPropagation();
   const btn = ev.currentTarget, m = btn && btn.nextElementSibling;
   if (!m) return;
   if (!m.hidden) { btn._wkClose && btn._wkClose(); return; }
+  const items = () => [...m.querySelectorAll('[role^="menuitem"]')].filter((b) => !b.disabled && b.getClientRects().length);
+  const onKey = (e) => {
+    // A repaint replaced the menu while it was open: let go, take no key.
+    if (!m.isConnected) { close(); return; }
+    if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); close(); btn.focus(); return; }
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      const its = items(); if (!its.length) return;
+      e.preventDefault(); e.stopPropagation();
+      const i = its.indexOf(document.activeElement), last = its.length - 1;
+      its[e.key === 'ArrowDown' ? (i < 0 || i === last ? 0 : i + 1) : (i <= 0 ? last : i - 1)].focus();
+      return;
+    }
+    // Tab out of the toggle + menu closes it, as a click elsewhere does.
+    if (e.key === 'Tab') setTimeout(() => { if (!m.hidden && !(m.parentElement || m).contains(document.activeElement)) close(); }, 0);
+  };
   const close = () => {
     m.hidden = true; btn.setAttribute('aria-expanded', 'false');
     document.removeEventListener('click', close);
+    document.removeEventListener('keydown', onKey, true);
   };
   btn._wkClose = close;
   m.hidden = false; btn.setAttribute('aria-expanded', 'true');
   document.addEventListener('click', close, { once: true });
+  document.addEventListener('keydown', onKey, true);
+  // Opened from the keyboard (Enter/Space → a click with detail 0): the focus
+  // goes into the menu, so ↓/↑ and Enter work at once.
+  if (ev.detail === 0) { const f = items()[0]; if (f) f.focus(); }
 }
 
 // ── Toast with success animation (A5) ───────────
@@ -389,7 +414,9 @@ function toast(msg, type = 'success') {
   const shown = colors[kind] ? kind : 'info';
   if (!colors[kind]) console.warn('toast: unknown type', type);
   el.style.background = colors[shown];
-  el.style.color = 'var(--text-on-dark)';
+  // White, not --text-on-dark (#E2E8F0): on the success green that was 4.07:1,
+  // under 4.5:1 for 13px text; white is 5.0:1 there and higher on the others.
+  el.style.color = 'var(--text-inverse)';
   el.innerHTML = icons[shown] + `<span>${msg}</span>`;
   // Animate in
   requestAnimationFrame(() => {
@@ -416,6 +443,12 @@ document.addEventListener('keydown', e => {
   }
   // Arrow left/right for week navigation (only on weekly pages)
   if ((e.key === 'ArrowLeft' || e.key === 'ArrowRight') && !e.target.closest('input,select,textarea')) {
+    // ←/→ = week ONLY when no overlay is open (owner, locked). Checked here,
+    // at the lowest level, so every menu, panel and dialog of both weekly
+    // boards is covered, also the ones added later: under an open «Προβολή»,
+    // the avatar menu or the «Όλα» panel the week changed and the menu vanished
+    // (live audit 11/10). A key another handler already took is not reused.
+    if (e.defaultPrevented || _wkOverlayOpen()) return;
     if (currentPage === 'weekly_intl' && typeof WINTL !== 'undefined') {
       WINTL.week += e.key === 'ArrowLeft' ? -1 : 1;
       renderWeeklyIntl();
@@ -428,8 +461,120 @@ document.addEventListener('keydown', e => {
     }
   }
 });
+// Visible = it has boxes and is not visibility:hidden. A closed menu is
+// [hidden], a closed #modal sits inside display:none #modalOverlay, closed
+// #wi-ctx/#wi-panel/#wi-popover (and the national #wn-*) are display:none —
+// none of them has boxes, so a closed overlay never blocks the arrows.
+const _WK_OVERLAYS = '[role="menu"],[role="dialog"],[role="alertdialog"],#wi-ctx,#wi-panel,#wi-popover,#wn-ctx,#wn-popover';
+function _wkOverlayOpen() {
+  for (const el of document.querySelectorAll(_WK_OVERLAYS)) {
+    if (el.getClientRects().length && getComputedStyle(el).visibility !== 'hidden') return true;
+  }
+  return false;
+}
+// The keys this file binds, for the board's «?» sheet (Figma 1119:2842): one
+// source per binding, so the sheet cannot list a key that does not work.
+const UI_GLOBAL_KEYS = Object.freeze([Object.freeze({ keys: '← →', label: 'προηγούμενη / επόμενη εβδομάδα' })]);
+if (typeof window !== 'undefined') window.UI_GLOBAL_KEYS = UI_GLOBAL_KEYS;
 
 // Expose empty state helper
 if (typeof window !== 'undefined') {
   window.showEmpty = showEmpty;
 }
+
+// ─── TableSort: click-to-sort for any simple table (Nick 14/10) ───────────
+// One behaviour for every plain table, copied from the entity list pages
+// (core/entity.js entitySortToggle): click a header for ▲, again for ▼, a third
+// time back to the order the page drew; Enter/Space do the same; aria-sort
+// tells a screen reader. Opt-in by markup only:
+//   <table data-sort-id="<unique id>"> … <th data-sort="text|num|date">
+//   a cell may carry data-sort-value="…" when its text is not what should sort
+//   (a severity rank, an ISO date behind a «3/10» label).
+// It sorts the rows already in the DOM. Clicks work from the markup alone; the
+// page calls TableSort.apply(root) after drawing the table so the headers get
+// keyboard focus, the ▲/▼ and aria-sort, and after every redraw to keep the
+// user's choice.
+// Parsing limits: «num» reads Greek numbers («1.234,56»), so an English decimal
+// («0.125») reads as 125; a year-less date («28/12») takes the current year, so
+// such a column sorts wrong across New Year. Boards and tables with grouped or nested
+// rows are not "simple" and should not opt in.
+const TableSort = (() => {
+  const state = {};   // sort id → { col, dir: 1 asc | 2 desc }
+
+  // «1.234,56», «12», «-3» → number; anything else → NaN
+  const num = (s) => { const t = String(s).replace(/[^\d,.\-]/g, '').replace(/\.(?=\d{3}(\D|$))/g, '').replace(',', '.'); return t === '' ? NaN : Number(t); };
+  // «14/10», «14/10/2026», «2026-10-14» → sortable number; else NaN
+  const dt = (s) => {
+    s = String(s).trim();
+    let m = s.match(/^(\d{4})-(\d{2})-(\d{2})/); if (m) return +m[1] * 1e4 + +m[2] * 100 + +m[3];
+    m = s.match(/^(\d{1,2})\/(\d{1,2})(?:\/(\d{2,4}))?/); if (m) { const y = m[3] ? (m[3].length === 2 ? 2000 + +m[3] : +m[3]) : new Date().getFullYear(); return y * 1e4 + +m[2] * 100 + +m[1]; }
+    return NaN;
+  };
+  const cellVal = (tr, i) => { const td = tr.children[i]; if (!td) return ''; return td.hasAttribute('data-sort-value') ? td.getAttribute('data-sort-value') : td.textContent.trim(); };
+
+  function sortTable(table) {
+    const id = table.getAttribute('data-sort-id');
+    const tbody = table.tBodies[0];
+    if (!id || !tbody) return;
+    const rows = [...tbody.rows];
+    rows.forEach((r, i) => { if (!r.hasAttribute('data-sort-orig')) r.setAttribute('data-sort-orig', i); });
+    const s = state[id];
+    const ths = [...table.tHead.rows[0].cells];
+    ths.forEach((th, i) => {
+      if (!th.hasAttribute('data-sort')) return;
+      const on = s && s.col === i;
+      th.setAttribute('aria-sort', on ? (s.dir === 1 ? 'ascending' : 'descending') : 'none');
+      th.classList.toggle('ts-on', !!on);
+      let ind = th.querySelector('.ts-ind');
+      if (!ind) { ind = document.createElement('span'); ind.className = 'ts-ind'; th.appendChild(ind); }
+      ind.textContent = on ? (s.dir === 1 ? ' ▲' : ' ▼') : '';
+    });
+    let ordered;
+    if (!s) ordered = rows.sort((a, b) => a.getAttribute('data-sort-orig') - b.getAttribute('data-sort-orig'));
+    else {
+      const type = ths[s.col].getAttribute('data-sort') || 'text';
+      const key = (r) => { const v = cellVal(r, s.col); return type === 'num' ? num(v) : type === 'date' ? dt(v) : v; };
+      ordered = rows.sort((a, b) => {
+        const x = key(a), y = key(b);
+        // empty / unreadable values always last, whichever direction
+        const ex = x === '' || (typeof x === 'number' && isNaN(x)), ey = y === '' || (typeof y === 'number' && isNaN(y));
+        if (ex || ey) return ex === ey ? a.getAttribute('data-sort-orig') - b.getAttribute('data-sort-orig') : ex ? 1 : -1;
+        const c = typeof x === 'number' ? x - y : String(x).localeCompare(String(y), 'el', { numeric: true, sensitivity: 'base' });
+        return (s.dir === 1 ? c : -c) || a.getAttribute('data-sort-orig') - b.getAttribute('data-sort-orig');
+      });
+    }
+    ordered.forEach(r => tbody.appendChild(r));
+  }
+
+  function toggle(th) {
+    const table = th.closest('table[data-sort-id]');
+    if (!table) return;
+    const id = table.getAttribute('data-sort-id');
+    const i = [...th.parentNode.cells].indexOf(th);
+    const s = state[id];
+    if (!s || s.col !== i) state[id] = { col: i, dir: 1 };
+    else if (s.dir === 1) s.dir = 2;
+    else delete state[id];
+    sortTable(table);
+  }
+
+  if (typeof document !== 'undefined') {
+    document.addEventListener('click', (e) => {
+      const th = e.target.closest && e.target.closest('table[data-sort-id] thead th[data-sort]');
+      if (th && !e.target.closest('input, select, button')) toggle(th);
+    });
+    document.addEventListener('keydown', (e) => {
+      if (e.key !== 'Enter' && e.key !== ' ') return;
+      // Same exemption as the click: a field inside a sortable header keeps its keys.
+      if (e.target.closest && e.target.closest('input, select, button, textarea')) return;
+      const th = e.target.closest && e.target.closest('table[data-sort-id] thead th[data-sort]');
+      if (th) { e.preventDefault(); toggle(th); }
+    });
+  }
+
+  return {
+    // Re-apply the user's choice after a page redrew its table(s).
+    apply(root) { (root || document).querySelectorAll('table[data-sort-id]').forEach(t => { t.querySelectorAll('thead th[data-sort]').forEach(th => { th.tabIndex = 0; }); sortTable(t); }); },
+  };
+})();
+if (typeof window !== 'undefined') window.TableSort = TableSort;

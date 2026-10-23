@@ -93,6 +93,11 @@ const NAV = [
     // Distinct from Metrics Audit (data-consistency checks) and Error Log (JS
     // errors): this is who-changed-what, read from the server-side trail.
     { id: 'audit_trail',   label: 'Ιστορικό Ενεργειών',  icon: 'clock' },
+    // Every role has a bell, so every role gets the page (Nick 14/10). perm:
+    // 'planning' because it is the one section every role holds (config.js
+    // PERMS); without an item perm the group's 'settings' would hide it from
+    // dispatcher, accountant and warehouse. The page shows only the user's own alerts.
+    { id: 'notifications', label: 'Ειδοποιήσεις',        icon: 'bell', perm: 'planning' },
   ]},
 ];
 
@@ -349,6 +354,11 @@ function navigate(page) {
   c.style.height = '';
   c.style.minHeight = '';
 
+  // T83 (14/10): a page module that failed to load (network drop, a broken
+  // deploy, a stale service worker) leaves its render function undefined, so
+  // the call below threw a ReferenceError and the page stayed blank with no
+  // word. Say so, offer a reload, and log it once per page and session.
+  try {
   switch (page) {
     // Planning
     case 'dashboard':      renderDashboard();            break;
@@ -427,6 +437,11 @@ function navigate(page) {
       if ((typeof ROLE !== 'undefined' ? ROLE : '') !== 'owner') { c.innerHTML = showAccessDenied(); break; }
       renderMetricsAudit();
       break;
+    case 'notifications':
+      // No can() gate: every role has a bell, and the page lists only that
+      // user's own alerts (built by _refreshNotifs from the same reads).
+      renderNotifications();
+      break;
     case 'audit_trail':
       // No can() gate here on purpose: the trail spans every table, so it is
       // not expressible in the per-section PERMS model. The module checks the
@@ -443,6 +458,12 @@ function navigate(page) {
             Ζητήθηκε: <code>${escapeHtml(String(page))}</code> — ο σύνδεσμος είναι λάθος ή η σελίδα καταργήθηκε.
           </div>`;
   }
+  } catch (e) {
+    if (!(e instanceof ReferenceError)) throw e;
+    c.innerHTML = showError(`Η σελίδα «${label}» δεν φόρτωσε σωστά: λείπει ένα αρχείο της εφαρμογής. Κάνε ανανέωση με Ctrl+Shift+R· αν μένει, το σφάλμα έχει καταγραφεί.`);
+    window._routerMissLogged = window._routerMissLogged || {};
+    if (!window._routerMissLogged[page] && typeof logError === 'function') { window._routerMissLogged[page] = true; logError(e, 'router: page module missing: ' + page); }
+  }
 
   // Inject footer after page renders (delay for async renderers)
   setTimeout(() => {
@@ -458,7 +479,6 @@ function navigate(page) {
  */
 function logout() {
   if (typeof clearApiCaches === 'function') clearApiCaches();
-  if (typeof atStopAutoRefresh === 'function') atStopAutoRefresh();
   localStorage.removeItem('tms_user'); localStorage.removeItem('tms_jwt'); localStorage.removeItem('tms_page');
   window.location.href = 'index.html';
 }

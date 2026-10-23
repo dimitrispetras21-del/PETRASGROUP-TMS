@@ -1,23 +1,25 @@
 // Proof script for the «Εβδομάδα» view of «Παραγγελίες» (modules/orders_week_view.js),
-// owner 28/9/2026, Figma 808:1011.
+// v4 (owner 13/10/2026, Figma 1514:8013 — root `.ow4`).
 //
 // Run from the MAIN repo root (its node_modules + .har), against a server that
-// serves the worktree under test:
+// serves the worktree under test, e.g.
+//   python3 -m http.server 8790 -d <worktree> &
 //   cd /Users/dimitrispetras/PETRASGROUP-TMS && \
-//   PW_BASE_URL=http://127.0.0.1:8788/.claude/worktrees/<dir>/ node <dir>/tests/critics/orders-week-proof.js
+//   PW_BASE_URL=http://127.0.0.1:8790/ node <worktree>/tests/critics/orders-week-proof.js
 //
-// Pattern of the former tests/critics/invoicing-proof.js (retired 29/9, git history): preparePage (fake session + HAR
-// replay) from tests/critics/auth.js, then page.route mocks registered AFTER it
-// so they win for every backend call the view makes. Everything is SYNTHETIC
-// demo data shaped like the Figma (no production names, no real numbers).
+// preparePage (fake session + HAR replay) from tests/critics/auth.js, then
+// page.route mocks registered AFTER it so they win for every backend call the
+// view makes. Everything is SYNTHETIC (no production names, no real numbers).
 // Dates are relative to the last complete Saturday–Friday week, so the rig does
 // not rot with the calendar.
 //
-// What is proven: totals (turnover without unpriced orders, invoiced, pending),
-// RT grouping by Weekly day, the Friday RT whose import is next week, the
-// import-only RT, «Χωρίς RT», the national block, the three scopes, the vehicle
-// grouping, the /costs/rt failure banner, the dispatcher not seeing the tab,
-// and that NO request ever reaches /costs/pnl (owner-only margins).
+// The proof is DOM numbers, not screenshots: the «Κατάσταση εβδομάδας» cells
+// must equal sums computed HERE from the mock data with an independent copy of
+// the week rule (export by delivery, import/national by loading) — never by
+// asking the code under test. Τζίρος = Τιμολογημένα + Ατιμολόγητα, without
+// unpriced (incl. 0 €, owner 13/10), other-week, cancelled and VS-type national
+// orders. Every failed read must be a visible strip and «—», never a 0.
+// Screenshots are written too, for a human, but nothing passes on them.
 
 const path = require('path');
 const fs = require('fs');
@@ -25,13 +27,13 @@ const MAIN_REPO = '/Users/dimitrispetras/PETRASGROUP-TMS';
 const { chromium } = require(path.join(MAIN_REPO, 'node_modules', 'playwright'));
 const { preparePage, gotoPage } = require(path.join(MAIN_REPO, 'tests', 'critics', 'auth.js'));
 
-const BASE_URL = process.env.PW_BASE_URL || 'http://127.0.0.1:8788/';
-const SHOT_DIR = process.env.PW_SHOT_DIR || '/private/tmp/claude-501/-Users-dimitrispetras-PETRASGROUP-TMS--claude-worktrees-sleepy-mendeleev/31d040e2-ec65-4031-a029-e7fdc70e1ac8/scratchpad/rig';
+const BASE_URL = process.env.PW_BASE_URL || 'http://127.0.0.1:8790/';
+const SHOT_DIR = process.env.PW_SHOT_DIR || '/private/tmp/claude-501/-Users-dimitrispetras-PETRASGROUP-TMS/43ae34a9-3193-40a6-ad2d-47059deb26ff/scratchpad/orders-week-proof';
 fs.mkdirSync(SHOT_DIR, { recursive: true });
 const shot = name => path.join(SHOT_DIR, 'week-' + name + '.png');
 
 const T = {
-  ORDERS: 'tblgHlNmLBH3JTdIM', NAT_ORDERS: 'tblGHCCsTMqAy4KR2', CLIENTS: 'tblFWKAQVUzAM8mCE',
+  ORDERS: 'tblgHlNmLBH3JTdIM', NAT_ORDERS: 'tblGHCCsTMqAy4KR2', NAT_LOADS: 'tblVW42cZnfC47gTb', CLIENTS: 'tblFWKAQVUzAM8mCE',
   TRUCKS: 'tblEAPExIAjiA3asD', DRIVERS: 'tbl7UGmYhc2Y82pPs', PARTNERS: 'tblLHl5m8bqONfhWv', LOCATIONS: 'tblxu8DRfTQOFRCzS',
 };
 
@@ -42,78 +44,123 @@ const now = new Date();
 const thisSat = new Date(now.getFullYear(), now.getMonth(), now.getDate() - (now.getDay() + 1) % 7);
 const W0 = new Date(thisSat.getFullYear(), thisSat.getMonth(), thisSat.getDate() - 7);
 const day = (k, hh = 9) => { const d = new Date(W0.getFullYear(), W0.getMonth(), W0.getDate() + k); return ymd(d) + `T${pad(hh)}:00:00.000Z`; };
-const dm = k => { const d = new Date(W0.getFullYear(), W0.getMonth(), W0.getDate() + k); return d.getDate() + '/' + (d.getMonth() + 1); };
+const WEEK_FROM = day(0).slice(0, 10), WEEK_TO = day(6).slice(0, 10);
 
 // ── reference data ──────────────────────────────────────────────────────────
-const CLIENTS = [
-  ['recC1', 'Alpina Fresh S.r.l.'], ['recC2', 'Danubia Market Kft.'], ['recC3', 'Nordfrisch GmbH'], ['recC4', 'Baltic Cold Foods Sp. z o.o.'],
-  ['recC5', 'Γαλακτοκομική Ηπείρου Α.Ε.'], ['recC6', 'Φρουτοποιία Νάουσας Α.Ε.'], ['recC7', 'Ανδρέου Logistics Μ.Ι.Κ.Ε.'], ['recC8', 'Ελαιώνες Μεσσηνίας Α.Ε.'],
-].map(([id, n]) => ({ id, fields: { 'Company Name': n } }));
-const TRUCKS = [['recT1', 'ΚΗΙ 5102'], ['recT2', 'ΚΗΙ 4521'], ['recT3', 'ΚΗΙ 2208'], ['recT4', 'ΚΗΙ 3310']].map(([id, p]) => ({ id, fields: { 'License Plate': p, Active: true } }));
-const DRIVERS = [['recD1', 'Σ. Κάππος'], ['recD2', 'Γ. Αλεξίου'], ['recD3', 'Π. Ράπτης'], ['recD4', 'Ν. Δήμου']].map(([id, n]) => ({ id, fields: { 'Full Name': n, Active: true } }));
-const PARTNERS = [{ id: 'recPT1', fields: { 'Company Name': 'Transfrigo Kft.' } }];
-const LOCS = [
-  ['recL1', 'Petras Cross-Dock', 'Veroia', 'GR'], ['recL2', 'Mercato Verona', 'Verona', 'IT'], ['recL3', 'DM Budapest', 'Budapest', 'HU'],
-  ['recL4', 'Baltic Poznań', 'Poznań', 'PL'], ['recL5', 'Nordfrisch Süd', 'München', 'DE'], ['recL6', 'Centro Bologna', 'Bologna', 'IT'],
-  ['recL7', 'Danubia Wien', 'Wien', 'AT'], ['recL8', 'Nordfrisch Hafen', 'Hamburg', 'DE'], ['recL9', 'Aspropyrgos Hub', 'Aspropyrgos', 'GR'],
-  ['recL10', 'Alpina Parma', 'Parma', 'IT'], ['recL11', 'Dodoni Dairy', 'Dodoni', 'GR'], ['recL12', 'Kalochori Depot', 'Kalochori', 'GR'],
-  ['recL13', 'Tripoli Yard', 'Tripoli', 'GR'], ['recL14', 'Messini Mill', 'Messini', 'GR'], ['recL15', 'Hamburg Nord', 'Hamburg', 'DE'],
-].map(([id, n, c, cc]) => ({ id, fields: { Name: n, City: c, Country: cc } }));
+const CL = ['Nordhain Frischkost GmbH', 'Alpenkern Fresh S.r.l.', 'Danubio Market Kft.', 'Pella Orchards A.E.', 'Kaltenbach Frisch GmbH', 'Vergina Fruit Coop',
+  'Kastania Fruits A.E.', 'Polderhof B.V.', 'Hellas Orchard A.E.', 'Emilia Verde S.r.l.', 'Baltrisk Cold Foods Sp. z o.o.', 'Strymon Foods A.E.',
+  'Ορεινά Γαλακτοκομικά Α.Ε.', 'Αρκαδικά Κηπευτικά Ο.Ε.', 'Λακωνικά Εσπεριδοειδή Ο.Ε.', 'Ελαιώνας Μεσογείου Α.Ε.', 'Πεδινή Φρέσκια Α.Ε.', 'Ηπειρωτική Φάρμα Α.Ε.'];
+const CLIENTS = CL.map((n, i) => ({ id: 'recC' + i, fields: { 'Company Name': n } }));
+const c = n => ['recC' + CL.indexOf(n)];
+const TRUCKS = ['ΚΗΙ 5102', 'ΙΑΒ 2133', 'ΙΑΒ 2108', 'ΚΗΙ 4521', 'ΚΗΙ 2208', 'ΙΑΒ 2150', 'ΚΗΙ 3310', 'ΙΑΒ 2177', 'ΙΑΒ 2140', 'ΚΗΙ 6001'].map((p, i) => ({ id: 'recT' + i, fields: { 'License Plate': p, Active: true } }));
+const DRIVERS = ['Σ. Κάππας', 'Κ. Πέτρου', 'Ν. Δήμου', 'Γ. Αλεξίου', 'Π. Ράπτης', 'Χ. Μάνος', 'Α. Σταμάτης', 'Σ. Ρήγας', 'Θ. Γκίκας', 'Λ. Ζήσης'].map((n, i) => ({ id: 'recD' + i, fields: { 'Full Name': n, Active: true } }));
+const own = i => ({ Truck: ['recT' + i], Driver: ['recD' + i] });
+const PARTNERS = [{ id: 'recP0', fields: { 'Company Name': 'Kryotrans Kft.' } }, { id: 'recP1', fields: { 'Company Name': 'Alpcool Logistik GmbH' } }, { id: 'recP2', fields: { 'Company Name': 'Notos Ψυκτικές Ο.Ε.' } }];
+const PL = ['Naoussa|GR', 'München|DE', 'Verona|IT', 'Veroia|GR', 'Budapest|HU', 'Edessa|GR', 'Wrocław|PL', 'Wien|AT', 'Graz|AT', 'Wels|AT', 'Linz|AT', 'Rotterdam|NL',
+  'Kraków|PL', 'Katowice|PL', 'Bologna|IT', 'Hamburg|DE', 'Aspropyrgos|GR', 'Poznań|PL', 'Kilkis|GR', 'Sofia|BG', 'Patra|GR', 'Tripoli|GR', 'Sparti|GR', 'Gytheio|GR', 'Messini|GR', 'Kalamata|GR', 'Ioannina|GR', 'Larisa|GR'];
+const LOCS = PL.map((s, i) => { const [city, cc] = s.split('|'); return { id: 'recL' + i, fields: { Name: city + ' depot', City: city, Country: cc } }; });
+const L = n => ['recL' + PL.findIndex(s => s.startsWith(n + '|'))];
 
 // ── orders ──────────────────────────────────────────────────────────────────
-const io = (id, no, dir, f) => ({ id, fields: Object.assign({ Type: 'International', Direction: dir, 'Order ID': no, 'Order No': no, Status: 'Delivered' }, f) });
-const exp = (id, no, client, to, delK, f) => io(id, no, 'Export', Object.assign({ Client: [client], 'Loading Location 1': ['recL1'], 'Unloading Location 1': [to], 'Loading DateTime': day(delK - 2), 'Delivery DateTime': day(delK) }, f));
-const imp = (id, no, client, from, to, loadK, f) => io(id, no, 'Import', Object.assign({ Client: [client], 'Loading Location 1': [from], 'Unloading Location 1': [to], 'Loading DateTime': day(loadK, 6), 'Delivery DateTime': day(loadK + 2) }, f));
-const own = (t, d) => ({ Truck: [t], Driver: [d] });
-const partner = { Partner: ['recPT1'] };
-
+const io = (id, dir, f) => ({ id: 'recO' + id, fields: Object.assign({ Type: 'International', Direction: dir, 'Order No': id, Status: 'Delivered' }, f) });
+const ex = (id, cl, ref, from, to, lk, dk, f) => io(id, 'Export', Object.assign({ Client: c(cl), Reference: ref, 'Loading Location 1': L(from), 'Unloading Location 1': L(to), 'Loading DateTime': day(lk), 'Delivery DateTime': day(dk) }, f));
+const im = (id, cl, ref, from, to, lk, dk, f) => io(id, 'Import', Object.assign({ Client: c(cl), Reference: ref, 'Loading Location 1': L(from), 'Unloading Location 1': L(to), 'Loading DateTime': day(lk, 6), 'Delivery DateTime': day(dk) }, f));
+const inv = n => ({ Invoiced: true, 'Invoice Number': n });
 const ORDERS = [
-  exp('recO1225', 1225, 'recC3', 'recL5', 1, partner),                                                                      // Sun, NO price → blocked (τιμή)
-  exp('recO1214', 1214, 'recC1', 'recL2', 2, Object.assign({ Price: 3200, Invoiced: true, 'Invoice Number': '0431', 'Invoice Date': day(4) }, own('recT1', 'recD1'))),
-  exp('recO1227', 1227, 'recC2', 'recL3', 2, Object.assign({ Price: 2900, 'Pallet Exchange': true }, own('recT2', 'recD2'))),   // gate: slip missing
-  imp('recO1228', 1228, 'recC4', 'recL4', 'recL1', 2, Object.assign({ Price: 2650 }, own('recT3', 'recD3'))),               // import-only RT
-  exp('recO1229', 1229, 'recC1', 'recL6', 5, Object.assign({ Price: 3350, 'Veroia Switch': true }, own('recT4', 'recD4'))),
-  exp('recO1232', 1232, 'recC2', 'recL7', 5, Object.assign({ Price: 2750, Invoiced: true, 'Invoice Number': '0433', 'Invoice Date': day(6) }, partner)),
-  imp('recO1230', 1230, 'recC3', 'recL8', 'recL9', 5, Object.assign({ Price: 2800 }, partner)),
-  exp('recO1233', 1233, 'recC1', 'recL10', 6, Object.assign({ Price: 3350 }, own('recT1', 'recD1'))),                        // FRIDAY
-  imp('recO1236', 1236, 'recC3', 'recL15', 'recL1', 9, Object.assign({ Price: 2000, Status: 'Assigned' }, own('recT1', 'recD1'))),   // next Monday
-  exp('recO1240', 1240, 'recC3', 'recL5', 4, Object.assign({ Price: 1500, Status: 'In Transit' }, own('recT2', 'recD2'))),   // NO RT
-  exp('recO1199', 1199, 'recC2', 'recL3', 1, { Price: 999, Status: 'Cancelled' }),                                         // cancelled: never counted
-  // previous weeks (strip + %): 21.000 € the week before
-  exp('recO1201', 1201, 'recC1', 'recL2', -5, { Price: 12000, Invoiced: true, 'Invoice Number': '0410' }),
-  exp('recO1202', 1202, 'recC2', 'recL3', -3, { Price: 9000, Invoiced: true, 'Invoice Number': '0411' }),
-  exp('recO1190', 1190, 'recC2', 'recL3', -10, { Price: 18940, Invoiced: true, 'Invoice Number': '0400' }),
-  exp('recO1180', 1180, 'recC1', 'recL2', -17, { Price: 21310 }),
-  // Split order: the leg is in this week, its priced parent 40 days back — outside
-  // the window the view reads, so it must be fetched by id (code review 28/9).
-  exp('recO1100', 1100, 'recC4', 'recL4', -40, { Price: 4000 }),
-  exp('recO1250', 1250, 'recC4', 'recL4', 3, Object.assign({ 'Parent Order': ['recO1100'], 'Leg No': 1 }, own('recT3', 'recD3'))),
+  ex(1241, 'Nordhain Frischkost GmbH', 'PO 88213', 'Naoussa', 'München', -2, 2, Object.assign({ Price: 3200 }, inv('0461'), own(0))),
+  im(1246, 'Alpenkern Fresh S.r.l.', 'AF-5521', 'Verona', 'Veroia', 3, 5, Object.assign({ Price: 2650 }, own(0))),
+  ex(1243, 'Danubio Market Kft.', 'DM-3307', 'Veroia', 'Budapest', 0, 2, { Price: 2900, 'Pallet Exchange': true, Partner: ['recP0'], 'Partner Truck Plates': 'ABC-412' }),
+  ex(1219, 'Pella Orchards A.E.', 'PO-4398', 'Edessa', 'Wrocław', -4, -2, Object.assign({ Price: 3100 }, inv('0452'), own(1))),   // previous week (guest RT)
+  im(1238, 'Kaltenbach Frisch GmbH', 'KF-0912', 'Wien', 'Veroia', 2, 4, Object.assign({ Price: 2400 }, inv('0458'), own(1))),
+  ex(1244, 'Vergina Fruit Coop', 'VF-118', 'Naoussa', 'Graz', 0, 3, Object.assign({ Price: 1150 }, inv('0463'), own(2))),
+  ex(1245, 'Vergina Fruit Coop', 'VF-119', 'Naoussa', 'Wels', 0, 3, Object.assign({ Price: 980 }, inv('0463'), own(2))),
+  ex(1247, 'Kastania Fruits A.E.', 'KS-2204', 'Veroia', 'Linz', 0, 3, Object.assign({ Price: 1240 }, own(2))),
+  im(1251, 'Polderhof B.V.', 'PH-77810', 'Rotterdam', 'Veroia', 5, 10, Object.assign({ Price: 2450, Status: 'Assigned' }, own(2))),
+  ex(1248, 'Pella Orchards A.E.', 'PO-4471', 'Edessa', 'Kraków', 0, 3, Object.assign({ Price: 3650, 'Unloading Location 2': L('Katowice') }, own(3))),
+  ex(1249, 'Hellas Orchard A.E.', 'HO-2610', 'Naoussa', 'Bologna', 1, 4, { Partner: ['recP1'], 'Partner Truck Plates': 'W-AL 4471' }),   // NO price
+  im(1253, 'Emilia Verde S.r.l.', 'EV-339', 'Bologna', 'Veroia', 5, 7, Object.assign({ Price: 2300, Partner: ['recP1'], 'Partner Truck Plates': 'W-AL 4471' }, inv('0466'))),
+  ex(1250, 'Alpenkern Fresh S.r.l.', 'AF-5530', 'Veroia', 'Verona', 2, 4, Object.assign({ Price: 3350, 'Veroia Switch': true }, own(4))),
+  im(1255, 'Nordhain Frischkost GmbH', 'NF-10422', 'Hamburg', 'Aspropyrgos', 5, 8, Object.assign({ Price: 2800 }, own(4))),
+  im(1256, 'Baltrisk Cold Foods Sp. z o.o.', 'BC-7781', 'Poznań', 'Veroia', 5, 7, Object.assign({ Price: 2650 }, own(5))),
+  ex(1252, 'Kastania Fruits A.E.', 'KS-2209', 'Veroia', 'Wien', 3, 5, Object.assign({ Price: 3100, 'Unloading Location 2': L('Linz') }, inv('0468'), own(6))),
+  im(1254, 'Kaltenbach Frisch GmbH', 'KF-0920', 'Linz', 'Veroia', 6, 10, Object.assign({ Price: 2200, Status: 'Assigned' }, own(6))),
+  ex(1257, 'Hellas Orchard A.E.', 'HO-2618', 'Veroia', 'Wien', 4, 6, { Price: 2750, Partner: ['recP0'], 'Partner Truck Plates': 'ABC-419' }),
+  im(1262, 'Kaltenbach Frisch GmbH', 'KF-0931', 'Wien', 'Veroia', 10, 12, { Price: 2500, Status: 'Assigned', Partner: ['recP0'], 'Partner Truck Plates': 'ABC-419' }),   // next week
+  ex(1259, 'Strymon Foods A.E.', 'SF-0081', 'Kilkis', 'Sofia', 5, 6, Object.assign({ Price: 1400 }, own(7))),
+  // 0 € = no price (owner 13/10): «—» on its leg, never «0,00», never summed.
+  ex(1260, 'Strymon Foods A.E.', 'SF-0090', 'Kilkis', 'Sofia', 3, 4, Object.assign({ Price: 0 }, own(9))),
+  // Cancelled in the week: never shown, never counted.
+  ex(1261, 'Danubio Market Kft.', 'DM-3399', 'Veroia', 'Budapest', 1, 3, { Price: 999, Status: 'Cancelled' }),
+  // previous weeks (strip + %)
+  ex(1201, 'Alpenkern Fresh S.r.l.', '', 'Veroia', 'Verona', -9, -5, Object.assign({ Price: 40020 }, inv('0410'))),
+  ex(1190, 'Alpenkern Fresh S.r.l.', '', 'Veroia', 'Verona', -16, -12, Object.assign({ Price: 38410 }, inv('0400'))),
 ];
-const OUT_OF_WINDOW = new Set(['recO1100']);
-const nat = (id, client, ref, from, to, k, f) => ({ id, fields: Object.assign({ Client: [client], Reference: ref, Type: 'Independent', 'Pickup Location 1': [from], 'Delivery Location 1': [to], 'Loading DateTime': day(k, 7), 'Delivery DateTime': day(k, 15) }, f) });
-const NAT = [
-  nat('recN418', 'recC5', '4500128790', 'recL11', 'recL1', 1, { Price: 560 }),
-  nat('recN420', 'recC6', 'ΠΑΡ 4466', 'recL1', 'recL12', 2, { Price: 390, Invoiced: true, 'Invoice Number': '0429', 'Invoice Date': day(5) }),
-  nat('recN421', 'recC7', '', 'recL13', 'recL1', 4, {}),
-  nat('recN423', 'recC8', 'ΔΑ 5531', 'recL1', 'recL14', 5, { Price: 880 }),
-  nat('recN425', 'recC5', '4500128833', 'recL1', 'recL11', 6, { Price: 540 }),
-];
-const GATE = [{ order_rec: 'recO1227', order_id: 1227, loading_stops: 1, covered_stops: 0, sheets_ok: false }];
-const leg = (order_id, direction, seq, extra) => Object.assign({ id: order_id * 10 + seq, order_id, direction, seq, nat_load_id: null }, extra || {});
+const leg = (id, order_id, direction, seq) => ({ id, order_id, direction, seq, nat_load_id: null });
 const RTS = [
-  { id: 1183, code: 'RT-1183', date_start: day(-1).slice(0, 10), status: 'closed', ct_rt_legs: [leg(1225, 'EXPORT', 1)] },
-  { id: 1181, code: 'RT-1181', date_start: day(0).slice(0, 10), status: 'closed', ct_rt_legs: [leg(1214, 'EXPORT', 1)] },
-  { id: 1182, code: 'RT-1182', date_start: day(0).slice(0, 10), status: 'closed', ct_rt_legs: [leg(1227, 'EXPORT', 1)] },
-  { id: 1185, code: 'RT-1185', date_start: day(1).slice(0, 10), status: 'closed', ct_rt_legs: [leg(1228, 'IMPORT', 1)] },
-  { id: 1186, code: 'RT-1186', date_start: day(3).slice(0, 10), status: 'open', ct_rt_legs: [leg(1229, 'EXPORT', 1), leg(null, 'IMPORT', 2, { order_id: null, nat_load_id: 55 })] },
-  { id: 1187, code: 'RT-1187', date_start: day(3).slice(0, 10), status: 'open', ct_rt_legs: [leg(1232, 'EXPORT', 1), leg(1230, 'IMPORT', 2)] },
-  { id: 1188, code: 'RT-1188', date_start: day(4).slice(0, 10), status: 'open', ct_rt_legs: [leg(1233, 'EXPORT', 1), leg(1236, 'IMPORT', 2)] },
-  { id: 1189, code: 'RT-1189', date_start: day(1).slice(0, 10), status: 'open', ct_rt_legs: [leg(1250, 'EXPORT', 1)] },
-  { id: 1199, code: 'RT-1199', date_start: day(3).slice(0, 10), status: 'cancelled', ct_rt_legs: [leg(1240, 'EXPORT', 1)] },
+  { id: 1201, code: 'RT-1201', status: 'open', ct_rt_legs: [leg(1, 1241, 'EXPORT', 1), leg(2, 1246, 'IMPORT', 2)] },
+  { id: 1202, code: 'RT-1202', status: 'open', ct_rt_legs: [leg(3, 1243, 'EXPORT', 1)] },
+  { id: 1176, code: 'RT-1176', status: 'open', ct_rt_legs: [leg(4, 1219, 'EXPORT', 1), leg(5, 1238, 'IMPORT', 2)] },
+  { id: 1203, code: 'RT-1203', status: 'open', ct_rt_legs: [leg(6, 1244, 'EXPORT', 1), leg(7, 1245, 'EXPORT', 2), leg(8, 1247, 'EXPORT', 3), leg(9, 1251, 'IMPORT', 4)] },
+  { id: 1204, code: 'RT-1204', status: 'open', ct_rt_legs: [leg(10, 1248, 'EXPORT', 1)] },
+  { id: 1205, code: 'RT-1205', status: 'open', ct_rt_legs: [leg(11, 1249, 'EXPORT', 1), leg(12, 1253, 'IMPORT', 2)] },
+  { id: 1206, code: 'RT-1206', status: 'open', ct_rt_legs: [leg(13, 1250, 'EXPORT', 1), leg(14, 1255, 'IMPORT', 2)] },
+  { id: 1207, code: 'RT-1207', status: 'open', ct_rt_legs: [leg(15, 1256, 'IMPORT', 1)] },
+  { id: 1208, code: 'RT-1208', status: 'open', ct_rt_legs: [leg(16, 1252, 'EXPORT', 1), leg(17, 1254, 'IMPORT', 2)] },
+  { id: 1209, code: 'RT-1209', status: 'open', ct_rt_legs: [leg(18, 1257, 'EXPORT', 1), leg(19, 1262, 'IMPORT', 2)] },
+  { id: 1210, code: 'RT-1210', status: 'open', ct_rt_legs: [leg(20, 1260, 'EXPORT', 1)] },
+  { id: 1211, code: 'RT-1211', status: 'cancelled', ct_rt_legs: [leg(21, 1261, 'EXPORT', 1)] },
+].map(r => Object.assign({ date_start: day(0).slice(0, 10) }, r));
+const nat = (id, no, dir, cl, ref, from, to, lk, dk, f) => ({ id, fields: Object.assign({ Type: 'Independent', 'Order No': no, Direction: dir, Client: c(cl), Reference: ref, 'Pickup Location 1': L(from), 'Delivery Location 1': L(to), 'Loading DateTime': day(lk, 7), 'Delivery DateTime': day(dk, 15) }, f) });
+const DOWN = 'North→South', UP = 'South→North';
+const NAT = [
+  nat('recN427', 427, DOWN, 'Ορεινά Γαλακτοκομικά Α.Ε.', '4500131207', 'Veroia', 'Patra', 2, 3, Object.assign({ Price: 620 }, inv('0462'))),
+  nat('recN431', 431, UP, 'Αρκαδικά Κηπευτικά Ο.Ε.', 'ΔΑ 5612', 'Tripoli', 'Veroia', 4, 5, { Price: 480 }),
+  nat('recN433', 433, UP, 'Λακωνικά Εσπεριδοειδή Ο.Ε.', 'ΠΑΡ 4471', 'Sparti', 'Veroia', 3, 4, Object.assign({ Price: 390, 'National Groupage': true, 'Pickup Location 2': L('Gytheio') }, inv('0465'))),
+  nat('recN429', 429, DOWN, 'Ελαιώνας Μεσογείου Α.Ε.', '4500131290', 'Veroia', 'Messini', 5, 6, {}),   // NO price
+  nat('recN434', 434, UP, 'Πεδινή Φρέσκια Α.Ε.', 'ΔΑ 5690', 'Kalamata', 'Veroia', 6, 10, { Price: 450 }),
+  nat('recN430', 430, DOWN, 'Ηπειρωτική Φάρμα Α.Ε.', '4500131302', 'Veroia', 'Ioannina', 6, 7, { Price: 560 }),
+  // Old national of Type «Veroia Switch» (decision 3, owner 13/10): shown, never summed.
+  nat('recN440', 440, DOWN, 'Ηπειρωτική Φάρμα Α.Ε.', '4500131399', 'Veroia', 'Larisa', 1, 2, { Price: 700, Type: 'Veroia Switch' }),
+  // Loaded next week: not in this week's money.
+  nat('recN441', 441, UP, 'Αρκαδικά Κηπευτικά Ο.Ε.', 'ΔΑ 5701', 'Tripoli', 'Veroia', 8, 9, { Price: 510 }),
 ];
+const NL = [
+  { id: 'nl1', fields: { 'Source National Order': ['recN427'], 'Matched Load': 'nl2', Truck: ['recT8'], Driver: ['recD8'], Direction: DOWN } },
+  { id: 'nl2', fields: { 'Source National Order': ['recN431'], 'Matched Load': 'nl1', Direction: UP } },
+  { id: 'nl3', fields: { 'Source National Order': ['recN429'], 'Matched Load': 'nl4', Partner: ['recP2'], 'Partner Truck Plates': 'ΝΚΡ 2290', Direction: DOWN } },
+  { id: 'nl4', fields: { 'Source National Order': ['recN434'], 'Matched Load': 'nl3', Direction: UP } },
+];
+const GATE = [{ order_rec: 'recO1243', sheets_ok: false }];
+
+// ── expected money: an INDEPENDENT copy of the week rule ────────────────────
+// Weekly date = export → delivery, import → loading, national → loading.
+const weeklyYmd = r => {
+  const f = r.fields;
+  const v = r._natl ? f['Loading DateTime'] : f['Direction'] === 'Export' ? f['Delivery DateTime'] : f['Loading DateTime'];
+  return v ? String(v).slice(0, 10) : null;
+};
+function expected(recs) {
+  const t = { inv: 0, open: 0 };
+  for (const r of recs) {
+    const f = r.fields, d = weeklyYmd(r);
+    if (!d || d < WEEK_FROM || d > WEEK_TO) continue;                 // other week
+    if (f['Status'] === 'Cancelled') continue;
+    if (r._natl && f['Type'] === 'Veroia Switch') continue;           // VS-type national
+    if (!(Number(f['Price']) > 0)) continue;                          // no price, 0 € included
+    if (f['Invoiced']) t.inv += Number(f['Price']); else t.open += Number(f['Price']);
+  }
+  t.sum = t.inv + t.open;
+  return t;
+}
+const EXP_I = expected(ORDERS);
+const EXP_N = expected(NAT.map(r => Object.assign({ _natl: true }, r)));
+const EXP_ALL = { inv: EXP_I.inv + EXP_N.inv, open: EXP_I.open + EXP_N.open, sum: EXP_I.sum + EXP_N.sum };
+// el-GR money, written out here (not Intl) so the expectation does not share
+// a formatter with the page.
+const eur = v => { const [i, d] = Math.abs(v).toFixed(2).split('.'); return (v < 0 ? '−' : '') + i.replace(/\B(?=(\d{3})+(?!\d))/g, '.') + ',' + d; };
+const num = s => Number(String(s).replace(/\./g, '').replace(',', '.'));
 
 // ── mocks ───────────────────────────────────────────────────────────────────
-const isInvoicingQuery = u => /Status%7D%3D%22Delivered%22|\{Status\}="Delivered"/.test(u);
 function installMocks(page, log, opts = {}) {
   const json = (route, body, status = 200) => route.fulfill({ status, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: JSON.stringify(body) });
   // Anything else on the Worker: an empty answer, never the live backend.
@@ -121,17 +168,22 @@ function installMocks(page, log, opts = {}) {
   page.route(`**/${T.ORDERS}**`, route => {
     const u = decodeURIComponent(route.request().url());
     log.push(u);
-    // OrdersData's invoicing set asks for delivered/invoiced only (all time).
     const ids = [...u.matchAll(/RECORD_ID\(\)="(rec[A-Za-z0-9]+)"/g)].map(m => m[1]);
-    const recs = ids.length ? ORDERS.filter(r => ids.includes(r.id))
-      : isInvoicingQuery(u) ? ORDERS.filter(r => ['Delivered', 'Invoiced'].includes(r.fields.Status) || r.fields.Invoiced)
-      : ORDERS.filter(r => !OUT_OF_WINDOW.has(r.id));
+    // OrdersData's invoicing set asks for delivered/invoiced only (all time).
+    const isInv = /\{Status\}="Delivered"/.test(u);
+    const recs = ids.length ? ORDERS.filter(r => ids.includes(r.id)) : isInv ? ORDERS.filter(r => r.fields.Status === 'Delivered' || r.fields.Invoiced) : ORDERS;
     return json(route, { records: recs });
   });
   page.route(`**/${T.NAT_ORDERS}**`, route => {
     log.push(decodeURIComponent(route.request().url()));
-    if (opts.natlFail) return json(route, { error: 'boom' }, 500);
-    return json(route, { records: NAT });
+    return opts.natlFail ? json(route, { error: 'boom' }, 500) : json(route, { records: NAT });
+  });
+  page.route(`**/${T.NAT_LOADS}**`, route => {
+    const u = decodeURIComponent(route.request().url());
+    log.push(u);
+    if (opts.natLoadsFail) return json(route, { error: 'boom' }, 500);
+    const recs = NL.filter(l => u.includes('"' + (l.fields['Source National Order'] || [''])[0] + '"') || u.includes(`RECORD_ID()='${l.id}'`) || (l.fields['Matched Load'] && u.includes(`{Matched Load}='${l.fields['Matched Load']}'`)));
+    return json(route, { records: recs });
   });
   page.route(`**/${T.CLIENTS}**`, route => json(route, { records: CLIENTS }));
   page.route(`**/${T.TRUCKS}**`, route => json(route, { records: TRUCKS }));
@@ -140,8 +192,7 @@ function installMocks(page, log, opts = {}) {
   page.route(`**/${T.LOCATIONS}**`, route => json(route, { records: LOCS }));
   page.route('**/costs/rt**', route => {
     log.push(route.request().url());
-    if (opts.rtFail) return json(route, { error: 'Failed to load' }, 500);
-    return json(route, { records: RTS });
+    return opts.rtFail ? json(route, { error: 'Failed to load' }, 500) : json(route, { records: RTS });
   });
   page.route('**/costs/pnl**', route => { log.push('PNL ' + route.request().url()); return json(route, { records: [] }); });
   page.route('**/pallets/gate**', route => json(route, { records: GATE }));
@@ -169,142 +220,84 @@ async function newPage(browser, role, opts = {}) {
 
 async function openWeek(page) {
   await gotoPage(page, 'orders', BASE_URL);
-  await page.waitForSelector('.owv-kpi', { timeout: 20000 });
+  await page.waitForSelector('.ow4 .ow4-state', { timeout: 30000 });
 }
 // The app scrolls inside #content, so fullPage stops at the viewport: grow the
 // viewport to the content height for the shot, then put it back.
 async function snap(page, name) {
   const h = await page.evaluate(() => { const c = document.getElementById('content'); return Math.max(960, (c ? c.scrollHeight + c.getBoundingClientRect().top : 0) + 40); });
-  await page.setViewportSize({ width: 1440, height: Math.min(h, 4000) });
+  await page.setViewportSize({ width: 1440, height: Math.min(h, 5000) });
   await page.waitForTimeout(150);
   await page.screenshot({ path: shot(name) });
   await page.setViewportSize({ width: 1440, height: 960 });
 }
-const text = (page, sel) => page.locator(sel).first().innerText();
-const rowOf = (page, code) => page.locator('.owv-t:not(.owv-tn) tr.owv-row', { hasText: code });
-// Stray errors the view cannot cause: the app's own background reads that the
-// catch-all answers with an empty list. Anything else counts.
-const realErrors = page => page._errors.filter(e => !/favicon/.test(e));
+// Errors the scenario CAUSES on purpose (the mocked 500, core/api.js logging
+// its «boom» body, the view's own console.error naming it) are expected;
+// anything else counts.
+const realErrors = (page, expect) => page._errors.filter(e => !/favicon/.test(e) && !(expect && expect.test(e)));
+
+// «Κατάσταση εβδομάδας» as numbers: { Διεθνή: [τζίρος, τιμολογ., ατιμολόγ.], … }.
+// The footnote marks (<sup> * †) are dropped: they are not part of the amount.
+async function statement(page) {
+  return page.evaluate(() => {
+    const out = {};
+    document.querySelectorAll('.ow4-st tbody tr, .ow4-st tfoot tr').forEach(tr => {
+      const th = tr.querySelector('th').textContent.trim();
+      out[th] = [...tr.querySelectorAll('td')].map(td => { const c = td.cloneNode(true); c.querySelectorAll('sup').forEach(s => s.remove()); return c.textContent.trim(); });
+    });
+    return out;
+  });
+}
+const failStrips = page => page.$$eval('.ow4-fail:not(.ow4-info) b', bs => bs.map(b => b.textContent.trim()));
+
+// The cross-cutting rules every scenario must hold on whatever is painted.
+async function commonRules(page, tag) {
+  const all = await page.locator('.ow4').innerText();
+  assert(!/ανοιχτ/i.test(all), `${tag}: no visible «ανοιχτά» anywhere in the view`);
+  assert(!/(^|[^\d.])0,00/.test(all), `${tag}: no «0,00» shown (a missing / 0 € price is «—»)`);
+  const amounts = await page.$$eval('.ow4-n, .ow4-sig, .ow4-num, .ow4-st td, .ow4-wk-v', els => els.map(e => e.textContent));
+  const paren = amounts.filter(s => s.includes('('));
+  assert(amounts.length > 0 && paren.length === 0, `${tag}: no «(» in ${amounts.length} amount cells` + (paren.length ? ': ' + JSON.stringify(paren.slice(0, 3)) : ''));
+}
+
+async function assertMoney(page, tag, rows) {
+  const st = await statement(page);
+  for (const [label, exp] of rows) {
+    const got = st[label];
+    const want = exp == null ? ['—', '—', '—'] : [eur(exp.sum), eur(exp.inv), eur(exp.open)];
+    assert(JSON.stringify(got) === JSON.stringify(want), `${tag}: «${label}» = ${want.join(' | ')} — got ${JSON.stringify(got)}`);
+    if (exp != null && got) assert(Math.abs(num(got[0]) - num(got[1]) - num(got[2])) < 0.005, `${tag}: «${label}» Τζίρος = Τιμολογημένα + Ατιμολόγητα`);
+  }
+}
 
 async function runOwner(browser) {
   console.log('\n[owner] Παραγγελίες → Εβδομάδα');
   const page = await newPage(browser, 'owner');
   await openWeek(page);
-
   const tab = page.locator('.oh-tab[data-view="week"]');
-  assert(await tab.count() === 1 && /Εβδομάδα/.test(await tab.innerText()) && (await tab.getAttribute('aria-selected')) === 'true', 'tab «Εβδομάδα» visible and selected');
-  const sub = await text(page, '#ohSub');
-  assert(/εξαγωγή κατά παράδοση, εισαγωγή κατά φόρτωση/.test(sub), 'sub-title states the Weekly rule');
+  assert(await tab.count() === 1 && (await tab.getAttribute('aria-selected')) === 'true', 'tab «Εβδομάδα» visible and selected');
 
-  const kpi = await text(page, '.owv-kpi');
-  assert(/24\.870,00 €/.test(kpi), 'hero turnover 24.870,00 € (22.500 intl + 2.370 natl; unpriced not summed as 0)');
-  assert(/\+18% από την προηγούμενη/.test(kpi) && /εκτός 2 χωρίς τιμή/.test(kpi), '«+18% … · εκτός 2 χωρίς τιμή» (prev week 21.000 €)');
-  assert(/Διεθνή · 7 RT/.test(kpi) && /22\.500,00 €/.test(kpi), 'Διεθνή · 7 RT · 22.500,00 € (the next-week import of RT-1188 is not summed here)');
-  assert(/Εθνικά · 5/.test(kpi) && /2\.370,00 €/.test(kpi), 'Εθνικά · 5 · 2.370,00 €');
-  assert(/Τιμολογημένες · 6\.340,00 €/.test(kpi) && /3 \/ 14/.test(kpi) && /εκκρεμούν 11/.test(kpi), 'Τιμολογημένες · 6.340,00 € · 3 / 14 · εκκρεμούν 11');
-  assert(/Μπλοκαρισμένες\s*3/.test(kpi), 'chip Μπλοκαρισμένες 3 (τιμή ×2, δελτίο ×1)');
-  assert(/Χωρίς τιμή\s*2 · όλες 2/.test(kpi), 'chip «Χωρίς τιμή 2 · όλες 2 →»');
+  await assertMoney(page, 'owner', [['Διεθνή', EXP_I], ['Εθνικά', EXP_N], ['Σύνολο εβδομάδας', EXP_ALL]]);
+  assert((await failStrips(page)).length === 0, 'no failure strip when every read succeeds');
 
-  const strip = await text(page, '.owv-strip');
-  assert(/21\.310,00 €/.test(strip) && /18\.940,00 €/.test(strip) && /21\.000,00 €/.test(strip) && /24\.870,00 €/.test(strip), 'week strip shows the turnover of 4 past weeks');
-  assert(/✓ όλα/.test(strip) && /1 ανοιχτό/.test(strip) && /σε εξέλιξη/.test(strip) && /11 ανοιχτά/.test(strip), 'strip statuses: ✓ όλα · 1 ανοιχτό · 11 ανοιχτά · σε εξέλιξη');
-  assert(await page.locator('.owv-wk.on').count() === 1, 'one selected week');
+  // 0 € order: its leg reads «—» like a missing price, and it is listed under †.
+  const zero = (await page.locator('.ow4-sub[data-owvopen="intl:recO1260"] .ow4-c.ow4-n').innerText()).trim();
+  assert(zero === '—', '0 € order #1260: amount cell «—» — got «' + zero + '»');
+  const noPrice = (await page.locator('.ow4-sub[data-owvopen="intl:recO1249"] .ow4-c.ow4-n').innerText()).trim();
+  assert(noPrice === '—', 'unpriced order #1249: amount cell «—» — got «' + noPrice + '»');
+  const foot = await page.locator('.ow4-foot').innerText();
+  assert(/#1260/.test(foot) && /#1249/.test(foot), '† footnote names #1260 (0 €) and #1249 (no price) as left out');
+  // VS-type national: shown, never invoiced, never summed (sums above prove the latter).
+  const vs = await page.locator('.ow4-sub[data-owvopen="natl:recN440"]').innerText();
+  assert(/δεν τιμολογείται/.test(vs), 'VS-type national #440 shown as «δεν τιμολογείται»');
+  assert(await page.locator('[data-owvopen="intl:recO1261"]').count() === 0, 'cancelled #1261 not shown');
 
-  const groups = await page.locator('.owv-t tr.owv-g').allInnerTexts();
-  const g = groups.map(s => s.replace(/\s+/g, ' ').trim());
-  assert(g.length === 5, 'five groups (4 days + Χωρίς RT): ' + JSON.stringify(g));
-  assert(g[0] === `ΚΥΡΙΑΚΗ ${dm(1)} 1 RT · χωρίς τιμή`, 'Sunday group «1 RT · χωρίς τιμή»: ' + g[0]);
-  assert(g[1] === `ΔΕΥΤΕΡΑ ${dm(2)} 3 RT · 8.750,00 €`, 'Monday «3 RT · 8.750,00 €» (incl. the import-only RT-1185): ' + g[1]);
-  assert(g[2] === `ΠΕΜΠΤΗ ${dm(5)} 2 RT · 8.900,00 €`, 'Thursday «2 RT · 8.900,00 €»: ' + g[2]);
-  assert(g[3] === `ΠΑΡΑΣΚΕΥΗ ${dm(6)} 1 RT · 3.350,00 €`, 'Friday delivery stays in this week: ' + g[3]);
-  assert(g[4] === 'ΧΩΡΙΣ RT 1 παραγγελία · 1.500,00 €', '«Χωρίς RT» group lists the order no RT counts: ' + g[4]);
-  assert(await page.locator('.owv-t:not(.owv-tn) tr.owv-row').count() === 8, '8 rows (7 RT + 1 without RT); the cancelled RT-1199 absent');
-
-  assert(/✓ ΤΠΥ 0431/.test(await rowOf(page, 'RT-1181').innerText()), 'RT-1181 → ✓ ΤΠΥ 0431');
-  assert(/δελτίο → Αλεξία/.test(await rowOf(page, 'RT-1182').innerText()), 'RT-1182 → δελτίο → Αλεξία (pallet gate)');
-  const r83 = await rowOf(page, 'RT-1183').innerText();
-  assert(/τιμή → owner/.test(r83) && /χωρίς τιμή/.test(r83) && /Transfrigo Kft\./.test(r83) && /συνεργάτης/.test(r83), 'RT-1183 → χωρίς τιμή + τιμή → owner, partner «Transfrigo Kft. · συνεργάτης»');
-  const r87 = await rowOf(page, 'RT-1187').innerText();
-  assert(/1 \/ 2 · 2\.800,00/.test(r87) && /ΤΠΥ 0433 · 2\.750,00/.test(r87) && /5\.550,00/.test(r87), 'RT-1187 partly invoiced «1 / 2 · 2.800,00», leg «✓ ΤΠΥ 0433 · 2.750,00», RT 5.550,00');
-  const r88 = await rowOf(page, 'RT-1188').innerText();
-  assert(/μετρά εκεί/.test(r88) && /#1236/.test(r88) && /3\.350,00/.test(r88) && !/5\.350,00/.test(r88), 'RT-1188: next-week import shown dimmed «μετρά εκεί», RT turnover 3.350,00 only');
-  const r85 = await rowOf(page, 'RT-1185').innerText();
-  assert(/#1228/.test(r85) && /Poznań PL → Veroia GR/.test(r85) && /Baltic Cold Foods/.test(r85), 'RT-1185 import-only: #1228 Baltic Cold Foods, «Poznań PL → Veroia GR»');
-  assert((await rowOf(page, 'RT-1186').locator('.owv-leg').count()) === 1, 'RT-1186: the VS national leg is not a leg on this screen');
-  const foot = await text(page, '.owv-t tfoot');
-  assert(/Διεθνή · 7 RT · 9 παραγγελίες · 5 με ένα μόνο σκέλος/.test(foot) && /22\.500,00 €/.test(foot) && /τιμολογ\. 5\.950,00 €/.test(foot), 'footer «Διεθνή · 7 RT · 9 παραγγελίες · 5 με ένα μόνο σκέλος» 22.500,00 € · τιμολογ. 5.950,00 €: ' + foot.replace(/\s+/g, ' '));
-
-  const natl = await text(page, '.owv-card:has(.owv-nh)');
-  assert(/ΕΘΝΙΚΕΣ ΤΗΣ ΕΒΔΟΜΑΔΑΣ/.test(natl) && /5 παραγγελίες · 2\.370,00 € · 1 χωρίς τιμή/.test(natl), 'national block header «5 παραγγελίες · 2.370,00 € · 1 χωρίς τιμή»');
-  assert(await page.locator('.owv-tn tr.owv-row').count() === 5 && /✓ ΤΠΥ 0429/.test(natl) && /Dodoni GR → Veroia GR/.test(natl), 'five national rows, ✓ ΤΠΥ 0429, route «Dodoni GR → Veroia GR»');
-  const n421 = await page.locator('.owv-tn tr', { hasText: 'Ανδρέου' }).innerText();
-  assert(/χωρίς τιμή/.test(n421) && /τιμή → owner/.test(n421), 'unpriced national: «χωρίς τιμή» + «τιμή → owner»');
-
-  const sum = (await text(page, '.owv-sum')).replace(/\s+/g, ' ');
-  assert(/Εκκρεμούν 11/.test(sum) && /7 προς κοπή \(14\.130,00 €\)/.test(sum) && /3 μπλοκαρισμένες: δελτίο → Αλεξία \(1\), τιμή → owner \(2\)/.test(sum) && /1 σε εξέλιξη/.test(sum), 'summary: Εκκρεμούν 11 · 7 προς κοπή (14.130,00 €) · 3 μπλοκαρισμένες: δελτίο → Αλεξία (1), τιμή → owner (2) · 1 σε εξέλιξη');
-  assert(/παλαιότερη εκκρεμής \d+ ημέρες/.test(sum), 'summary: «παλαιότερη εκκρεμής N ημέρες»');
-
-  // The request that feeds it: one ORDERS window, /costs/rt with overlap, never /costs/pnl.
-  const oq = page._log.find(u => u.includes(T.ORDERS) && u.includes("{Direction}='Import'"));
-  assert(!!oq && /\{Direction\}='Export'/.test(oq), 'one ORDERS read carries exports + imports of the strip window');
+  await commonRules(page, 'owner');
   assert(page._log.some(u => /\/costs\/rt\?overlap=1&from=\d{4}-\d{2}-\d{2}&to=\d{4}-\d{2}-\d{2}/.test(u)), '/costs/rt?overlap=1&from=&to= requested');
-  assert(page._log.some(u => u.includes('RECORD_ID()="recO1100"')), 'split leg in the week → its parent (outside the window) read by id');
-  assert(!/RT-1189|#1250/.test(await text(page, '#ordersBody')), 'the split leg is not shown as a «χωρίς τιμή» order: its money is the parent\'s, in the parent\'s week');
-  await snap(page, '01-owner-day');
-
-  // ── CSV: one line per order, the same numbers as the screen ──
-  const [dl] = await Promise.all([page.waitForEvent('download', { timeout: 5000 }), page.click('[data-owv="csv"]')]);
-  const csv = fs.readFileSync(await dl.path(), 'utf8').replace(/^\ufeff/, '').split('\n');
-  const sumCsv = csv.slice(1).reduce((s, l) => { const c = l.split('","'); const v = parseFloat((c[10] || '').replace(',', '.')); return s + (Number.isFinite(v) ? v : 0); }, 0);
-  assert(dl.suggestedFilename() === 'orders_week_' + ymd(W0) + '.csv' && csv.length === 15 && sumCsv === 24870, 'CSV ' + dl.suggestedFilename() + ': 14 order lines (9 intl + 5 natl), Σ price 24.870 — got ' + (csv.length - 1) + ' / ' + sumCsv);
-
-  // ── Ανά όχημα ──
-  await page.click('[data-owvmode="vehicle"]');
-  await page.waitForFunction(() => document.querySelector('[data-owvmode="vehicle"]').classList.contains('on'));
-  const vg = (await page.locator('.owv-t tr.owv-g').allInnerTexts()).map(s => s.replace(/\s+/g, ' ').trim());
-  assert(vg.includes('ΚΗΙ 5102 · Σ. Κάππος 2 RT · 6.550,00 €') && vg.includes('Transfrigo Kft. · συνεργάτης 2 RT · 5.550,00 € · 1 χωρίς τιμή'), 'vehicle groups: ΚΗΙ 5102 (2 RT · 6.550,00 €), Transfrigo (2 RT · 5.550,00 € · 1 χωρίς τιμή): ' + JSON.stringify(vg));
-  await snap(page, '02-owner-vehicle');
-  await page.click('[data-owvmode="day"]');
-
-  // ── row click → the export order in its catalog ──
-  await page.evaluate(() => { window.__opened = []; OrdersHub.openOrder = (t, id) => window.__opened.push([t, id]); });
-  await rowOf(page, 'RT-1187').locator('td').first().click();
-  await page.locator('.owv-tn tr', { hasText: 'Ελαιώνες' }).click();
-  const opened = await page.evaluate(() => window.__opened);
-  assert(JSON.stringify(opened) === JSON.stringify([['intl', 'recO1232'], ['natl', 'recN423']]), 'row click opens the export order (intl recO1232) / the national order: ' + JSON.stringify(opened));
-
-  // ── Χωρίς τιμή chip → the «noprice» view ──
-  const setViewCalls = await page.evaluate(() => { window.__views = []; const o = OrdersHub.setView; OrdersHub.setView = v => window.__views.push(v); document.querySelector('[data-owvgo="noprice"]').click(); OrdersHub.setView = o; return window.__views; });
-  assert(JSON.stringify(setViewCalls) === '["noprice"]', 'chip «Χωρίς τιμή» → OrdersHub.setView("noprice")');
-
-  // ── scopes ──
-  await page.click('.oh-seg-b[data-scope="intl"]');
-  await page.waitForFunction(() => document.querySelector('.owv-kpi') && !document.querySelector('.owv-nh') && /22\.500,00/.test(document.querySelector('.owv-hero').innerText), null, { timeout: 10000 });
-  assert(!/Εθνικά ·/.test(await text(page, '.owv-kpi')), 'Διεθνείς: no national KPI, no national block, hero 22.500,00 €');
-  await snap(page, '03-owner-intl');
-  await page.click('.oh-seg-b[data-scope="natl"]');
-  await page.waitForFunction(() => document.querySelector('.owv-nh') && !document.querySelector('.owv-t:not(.owv-tn)') && /2\.370,00/.test(document.querySelector('.owv-hero').innerText), null, { timeout: 10000 });
-  assert(!/Διεθνή ·/.test(await text(page, '.owv-kpi')) && /1 \/ 5/.test(await text(page, '.owv-kpi')), 'Εθνικές: only the national block, hero 2.370,00 €, invoiced 1 / 5');
-  assert(await page.locator('[data-owvmode]').count() === 0, 'Εθνικές: no «Ανά ημέρα | Ανά όχημα» toggle (nationals have no RT/vehicle)');
-  await snap(page, '04-owner-natl');
-  await page.click('.oh-seg-b[data-scope="all"]');
-  await page.waitForSelector('.owv-t tr.owv-row');
-
-  // ── next week: the Friday RT's import is counted there, the RT is a guest ──
-  await page.click('.owv-arr[data-owvshift="1"]');
-  await page.waitForFunction(() => /RT-1188/.test((document.querySelector('.owv-t') || {}).innerText || ''), null, { timeout: 10000 });
-  const g88 = await rowOf(page, 'RT-1188').innerText();
-  assert(/από /.test(g88) && /2\.000,00/.test(g88), 'next week: RT-1188 listed as «από <its week>» with the import 2.000,00 counted there');
-  assert(/2\.000,00 €/.test(await text(page, '.owv-hero')), 'next week hero = 2.000,00 €');
-  const nk = await text(page, '.owv-kpi');
-  assert(/Διεθνή · 0 RT \+1 άλλης εβδ\./.test(nk) && !/%/.test(nk), 'running week: «Διεθνή · 0 RT +1 άλλης εβδ.», no % against a closed week: ' + nk.replace(/\s+/g, ' '));
-  await page.evaluate(() => { window.__opened = []; OrdersHub.openOrder = (t, id) => window.__opened.push([t, id]); });
-  await rowOf(page, 'RT-1188').locator('td').first().click();
-  assert(JSON.stringify(await page.evaluate(() => window.__opened)) === '[["intl","recO1236"]]', 'guest row opens the order it counts in this week (the import)');
-  await snap(page, '05-owner-next-week');
-
+  assert(page._log.some(u => u.includes(T.NAT_LOADS)), 'NATIONAL LOADS read for the national pairs');
   assert(!page._log.some(u => /^PNL /.test(u)), 'NO request to /costs/pnl');
-  assert(realErrors(page).length === 0, 'no page/console errors: ' + JSON.stringify(realErrors(page)));
+  assert(realErrors(page).length === 0, 'owner: 0 page/console errors: ' + JSON.stringify(realErrors(page)));
+  await snap(page, '01-owner');
   await page.context().close();
 }
 
@@ -312,19 +305,13 @@ async function runAccountant(browser) {
   console.log('\n[accountant] Παραγγελίες → Εβδομάδα');
   const page = await newPage(browser, 'accountant');
   await openWeek(page);
-  const kpi = await text(page, '.owv-kpi');
   assert(await page.locator('.oh-tab[data-view="week"]').count() === 1, 'accountant sees the tab');
-  assert(/24\.870,00 €/.test(kpi) && /Διεθνή · 7 RT/.test(kpi), 'accountant: same totals as the owner');
-  assert(!/περιθώρ|κόστ|Κέρδ|margin/i.test(await text(page, '#ordersBody')), 'accountant: no cost / margin wording in the body');
-  await snap(page, '06-accountant');
+  await assertMoney(page, 'accountant', [['Διεθνή', EXP_I], ['Εθνικά', EXP_N], ['Σύνολο εβδομάδας', EXP_ALL]]);
+  assert(!/περιθώρ|κόστ|Κέρδ|margin/i.test(await page.locator('#ordersBody').innerText()), 'accountant: no cost / margin wording in the body');
+  await commonRules(page, 'accountant');
   assert(!page._log.some(u => /^PNL /.test(u)), 'accountant: NO request to /costs/pnl');
-  assert(realErrors(page).length === 0, 'accountant: no page/console errors: ' + JSON.stringify(realErrors(page)));
-  // Narrow laptop: the strip and table scroll inside their cards, the page never scrolls sideways.
-  await page.setViewportSize({ width: 1024, height: 900 });
-  await page.waitForTimeout(200);
-  const over = await page.evaluate(() => { const c = document.getElementById('content'); return c.scrollWidth - c.clientWidth; });
-  assert(over <= 1, 'at 1024px no horizontal page scroll (overflow ' + over + 'px)');
-  await page.screenshot({ path: shot('08-accountant-1024') });
+  assert(realErrors(page).length === 0, 'accountant: 0 page/console errors: ' + JSON.stringify(realErrors(page)));
+  await snap(page, '02-accountant');
   await page.context().close();
 }
 
@@ -332,13 +319,55 @@ async function runRtFailure(browser) {
   console.log('\n[owner] /costs/rt fails');
   const page = await newPage(browser, 'owner', { rtFail: true });
   await openWeek(page);
-  const body = await text(page, '#ordersBody');
-  assert(/Τα RT δεν φορτώθηκαν — οι παραγγελίες εμφανίζονται χωρίς ομαδοποίηση/.test(body), 'banner «Τα RT δεν φορτώθηκαν — οι παραγγελίες εμφανίζονται χωρίς ομαδοποίηση»');
-  assert(await page.locator('.owv-t:not(.owv-tn) tr.owv-row').count() === 9 && /22\.500,00 €/.test(await text(page, '.owv-kpi')), 'all 9 international orders listed by day, turnover unchanged 22.500,00 €');
-  assert(!/ΧΩΡΙΣ RT/.test(body), 'no misleading «Χωρίς RT» group when the RTs did not load');
-  assert(/Διεθνή · RT —/.test(await text(page, '.owv-kpi')) && /τα RT δεν φορτώθηκαν/.test(await text(page, '.owv-t tfoot')), 'RT count shown as unknown («RT —»), never «0 RT»');
-  await snap(page, '07-rt-failed');
-  // The failed /costs/rt answer itself logs one console error — that is the point.
+  const strips = await failStrips(page);
+  assert(strips.length === 1 && strips[0] === 'Δεν διαβάστηκαν τα δρομολόγια (RT).', 'one strip «Δεν διαβάστηκαν τα δρομολόγια (RT).»: ' + JSON.stringify(strips));
+  const head = await page.locator('.ow4-sec .ow4-h', { hasText: 'Διεθνείς' }).innerText();
+  assert(/δρομολόγια —/.test(head) && !/\b0 δρομολόγ/.test(head), 'RT count «δρομολόγια —», never «0 δρομολόγια»: ' + head.replace(/\s+/g, ' '));
+  assert(await page.locator('.ow4-row[data-owvopen^="intl:"]').count() === ORDERS.filter(r => { const d = weeklyYmd(r); return d >= WEEK_FROM && d <= WEEK_TO && r.fields.Status !== 'Cancelled'; }).length,
+    'every international order of the week listed on its own (ΧΩΡΙΣ RT)');
+  // The RTs only group; the money does not depend on them.
+  await assertMoney(page, 'rtFail', [['Διεθνή', EXP_I], ['Εθνικά', EXP_N], ['Σύνολο εβδομάδας', EXP_ALL]]);
+  await commonRules(page, 'rtFail');
+  const re = realErrors(page, /costs\/rt|status of 500|Failed to load|Error: boom/);
+  assert(re.length === 0 && !page._errors.some(e => /^pageerror/.test(e)), 'rtFail: 0 page errors, no console error besides the mocked /costs/rt 500: ' + JSON.stringify(re));
+  await snap(page, '03-rt-failed');
+  await page.context().close();
+}
+
+async function runNatLoadsFailure(browser) {
+  console.log('\n[owner] NATIONAL LOADS fails');
+  const page = await newPage(browser, 'owner', { natLoadsFail: true });
+  await openWeek(page);
+  const strips = await failStrips(page);
+  assert(strips.length === 1 && strips[0] === 'Δεν διαβάστηκαν τα φορτία εθνικών.', 'one strip «Δεν διαβάστηκαν τα φορτία εθνικών.»: ' + JSON.stringify(strips));
+  const nat = page.locator('.ow4-row.ow4-nat[data-owvopen]');
+  const n = await nat.count();
+  const veh = (await page.$$eval('.ow4-row.ow4-nat[data-owvopen] .ow4-veh', els => els.map(e => e.textContent.trim())));
+  assert(n > 0 && veh.length === n && veh.every(v => v === '—'), `national ΑΝΑΘΕΣΗ «—» on all ${n} rows: ` + JSON.stringify(veh));
+  // The strip itself names «εκτός φορτίου» (to say it is NOT shown), so only the rows are checked.
+  const natText = (await nat.allInnerTexts()).join(' ');
+  assert(!/εκτός φορτίου/.test(natText), 'no national row says «εκτός φορτίου» when the loads were not read');
+  // The loads only pair and assign; the national money comes from the orders.
+  await assertMoney(page, 'natLoadsFail', [['Διεθνή', EXP_I], ['Εθνικά', EXP_N], ['Σύνολο εβδομάδας', EXP_ALL]]);
+  await commonRules(page, 'natLoadsFail');
+  const re = realErrors(page, /national loads|status of 500|Failed to load|Error: boom/);
+  assert(re.length === 0 && !page._errors.some(e => /^pageerror/.test(e)), 'natLoadsFail: 0 page errors, no console error besides the mocked NATIONAL LOADS 500: ' + JSON.stringify(re));
+  await snap(page, '04-natloads-failed');
+  await page.context().close();
+}
+
+async function runNatlFailure(browser) {
+  console.log('\n[owner] NATIONAL ORDERS fails');
+  const page = await newPage(browser, 'owner', { natlFail: true });
+  await openWeek(page);
+  const strips = await failStrips(page);
+  assert(strips.includes('Δεν διαβάστηκαν οι εθνικές.'), 'strip «Δεν διαβάστηκαν οι εθνικές.»: ' + JSON.stringify(strips));
+  // Εθνικά «—», never 0; the total is the internationals only and says so.
+  await assertMoney(page, 'natlFail', [['Διεθνή', EXP_I], ['Εθνικά', null], ['Σύνολο εβδομάδας · χωρίς εθνικά', EXP_I]]);
+  await commonRules(page, 'natlFail');
+  const re = realErrors(page, /national|status of 500|Failed to load|Error: boom/);
+  assert(re.length === 0 && !page._errors.some(e => /^pageerror/.test(e)), 'natlFail: 0 page errors, no console error besides the mocked NATIONAL ORDERS 500: ' + JSON.stringify(re));
+  await snap(page, '05-natl-failed');
   await page.context().close();
 }
 
@@ -346,19 +375,25 @@ async function runDispatcher(browser) {
   console.log('\n[dispatcher]');
   const page = await newPage(browser, 'dispatcher');
   await gotoPage(page, 'orders', BASE_URL);
-  await page.waitForSelector('.oh-tabs', { timeout: 20000 });
+  await page.waitForSelector('.oh-tabs', { timeout: 30000 });
+  assert(await page.evaluate(() => can('costs')) === 'none', "dispatcher: can('costs') === 'none'");
   assert(await page.locator('.oh-tab[data-view="week"]').count() === 0, 'dispatcher: no «Εβδομάδα» tab (Client Revenue hidden)');
+  assert(await page.locator('.ow4').count() === 0, 'dispatcher: the view is not painted');
   assert(!page._log.some(u => /\/costs\/rt/.test(u)), 'dispatcher: /costs/rt never called');
+  assert(realErrors(page).length === 0, 'dispatcher: 0 page/console errors: ' + JSON.stringify(realErrors(page)));
   await page.context().close();
 }
 
 (async () => {
-  console.log('Στόχος: ' + BASE_URL + ' · εβδομάδα ' + ymd(W0));
+  console.log('Στόχος: ' + BASE_URL + ' · εβδομάδα ' + WEEK_FROM + ' – ' + WEEK_TO);
+  console.log(`Αναμενόμενα: Διεθνή ${eur(EXP_I.sum)} = ${eur(EXP_I.inv)} + ${eur(EXP_I.open)} · Εθνικά ${eur(EXP_N.sum)} = ${eur(EXP_N.inv)} + ${eur(EXP_N.open)} · Σύνολο ${eur(EXP_ALL.sum)}`);
   const browser = await chromium.launch();
   try {
     await runOwner(browser);
     await runAccountant(browser);
     await runRtFailure(browser);
+    await runNatLoadsFailure(browser);
+    await runNatlFailure(browser);
     await runDispatcher(browser);
   } catch (e) {
     failed++;

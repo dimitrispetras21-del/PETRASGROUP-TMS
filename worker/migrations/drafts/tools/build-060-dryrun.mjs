@@ -1,4 +1,4 @@
-// Generates worker/migrations/drafts/060_local_relay_dryrun.sql FROM 060_local_relay.sql.
+// Generates worker/migrations/060_local_relay_dryrun.sql FROM 060_local_relay.sql.
 //   node worker/migrations/drafts/tools/build-060-dryrun.mjs          (writes the file)
 //   node worker/migrations/drafts/tools/build-060-dryrun.mjs --check  (exit 1 if the committed file drifted)
 // Why generated, never hand-copied (principle 3): the dry run is only worth anything if it runs EXACTLY the
@@ -14,9 +14,9 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
-export const DRAFTS = path.resolve(HERE, '..');
-export const SOURCE = path.join(DRAFTS, '060_local_relay.sql');
-export const TARGET = path.join(DRAFTS, '060_local_relay_dryrun.sql');
+export const DIR = path.resolve(HERE, '../..');   // 057/060/069/071a executed: out of drafts/ (CLAUDE.md rule 5)
+export const SOURCE = path.join(DIR, '060_local_relay.sql');
+export const TARGET = path.join(DIR, '060_local_relay_dryrun.sql');
 
 const OPEN = '\nDO $do$\n';
 const CLOSE = '\nEND $do$;\n';
