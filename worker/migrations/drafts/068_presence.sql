@@ -29,6 +29,12 @@
 --     POST /presence calls it through PostgREST /rpc with service_role)
 -- NOTHING ELSE: no trigger, no audit row per beat (presence is not a data change), no change to
 -- audit_log or orders (only read), no monitoring check.
+-- RE-CHECKED ON PRODUCTION 23/10 (SELECT only, PG 17.6): presence / presence_beat do not exist; roles
+-- anon, authenticated, service_role exist (service_role member of no other role); audit_log has
+-- audit_log_table_idx (table_name, created_at DESC) and orders has orders_legacy_id_key + orders_pkey
+-- (the two joins below use them); orders.order_type is 'International' on all 438 rows; orders audit
+-- rows are 4222 legacy-keyed + 144 id::text-keyed, no order has an all-digit legacy_id. No trigger is
+-- created, so monitoring B-54 (46 enabled triggers) stays 46.
 --
 -- WHY each choice (TECH_DESIGN g.1, review round 1 findings 5, 9, 10, 25):
 --   * Key (user_sub, tab_id), not user_sub alone: two visible windows of the same user would
@@ -43,8 +49,9 @@
 --     regex-checked, role is one of the five roles, board is only 'weekly_intl'. Nothing free-text
 --     that a colleague's browser renders is stored (user_name comes from the JWT, never the body).
 --     The Worker validates the same rules first (400); these CHECKs catch every other path.
---   * RLS on, every privilege REVOKEd from anon / authenticated / PUBLIC, only service_role (the
---     Worker) granted: Supabase gives anon and authenticated full access to every new table and
+--   * RLS on, every privilege REVOKEd from anon / authenticated / PUBLIC, and from service_role (the
+--     Worker) too before it is granted exactly SELECT/INSERT/UPDATE/DELETE (review 23/10: its
+--     default ACL also carries REFERENCES/TRIGGER/MAINTAIN): Supabase gives anon and authenticated full access to every new table and
 --     EXECUTE to every new function by default (principle 5 - "what is born, is born closed").
 --     RLS has no policies, as in all of v2 (SECURITY.md): service_role bypasses it anyway; RLS on
 --     only closes the door if a grant ever reappears. Same pattern as 024 and 053.
@@ -153,6 +160,11 @@ BEGIN
   );
   ALTER TABLE public.presence ENABLE ROW LEVEL SECURITY;
   REVOKE ALL ON public.presence FROM anon, authenticated, PUBLIC;
+  -- service_role too, BEFORE its grant (review 23/10): the default ACL of tables created by postgres
+  -- gives service_role arwxtm (INSERT, SELECT, UPDATE, REFERENCES, TRIGGER, MAINTAIN - read from
+  -- pg_default_acl 23/10), and one created by supabase_admin gets TRUNCATE as well. The Worker needs
+  -- exactly the four below; the rest is born closed (principle 5).
+  REVOKE ALL ON public.presence FROM service_role;
   GRANT SELECT, INSERT, UPDATE, DELETE ON public.presence TO service_role;
 
   -- 2. THE BEAT. Thirteen arguments, always all passed by the Worker (PostgREST matches by name).
@@ -225,10 +237,27 @@ BEGIN
              GROUP BY x.user_sub) u;
 
     -- 4. changes to INTERNATIONAL orders since the tab last looked (clamped), both key styles.
+    -- Two joins, one per key style, instead of one "legacy_id = record_id OR id::text = record_id"
+    -- (review 23/10): an OR across two columns cannot use either index, so every beat would join the
+    -- window's audit rows to all of orders. Here the window comes from audit_log_table_idx
+    -- (table_name, created_at DESC) and each branch probes one unique index: orders_legacy_id_key,
+    -- and orders_pkey through the CASE (the CASE runs the cast only on all-digit ids, so 'rec...'
+    -- never raises; the id::text recheck keeps '007' from matching order 7, as the OR join did).
+    -- UNION, not UNION ALL: a row of the OR join is one (audit row, order) pair, so the set of the two
+    -- branches is exactly the OR join, also if one order ever matched by both keys.
+    -- 068_presence_test.sql S13 compares the two on every orders audit row plus probe rows.
     WITH ch AS (
       SELECT a.id, a.actor, a.role, a.created_at, o.id AS order_id
         FROM audit_log a
-        JOIN orders o ON (o.legacy_id = a.record_id OR o.id::text = a.record_id)
+        JOIN orders o ON o.legacy_id = a.record_id
+       WHERE a.table_name = 'orders'
+         AND o.order_type = 'International'
+         AND a.created_at > v_floor
+      UNION
+      SELECT a.id, a.actor, a.role, a.created_at, o.id AS order_id
+        FROM audit_log a
+        JOIN orders o ON o.id = CASE WHEN a.record_id ~ '^[0-9]{1,18}$' THEN a.record_id::bigint END
+                     AND o.id::text = a.record_id
        WHERE a.table_name = 'orders'
          AND o.order_type = 'International'
          AND a.created_at > v_floor
@@ -286,6 +315,15 @@ BEGIN
       AND has_table_privilege('service_role', 'public.presence', 'DELETE')) THEN
     RAISE EXCEPTION '068 proof: service_role lacks SELECT/INSERT/UPDATE/DELETE on public.presence';
   END IF;
+  -- and nothing more: service_role's ACL entries are exactly these four (no TRUNCATE, REFERENCES,
+  -- TRIGGER, MAINTAIN). aclexplode, not has_table_privilege: it names MAINTAIN on any PG version.
+  SELECT string_agg(e.privilege_type, ',' ORDER BY e.privilege_type) INTO bad
+    FROM pg_class c, aclexplode(coalesce(c.relacl, acldefault('r', c.relowner))) e
+   WHERE c.oid = 'public.presence'::regclass
+     AND e.grantee = (SELECT oid FROM pg_roles WHERE rolname = 'service_role');
+  IF bad IS DISTINCT FROM 'DELETE,INSERT,SELECT,UPDATE' THEN
+    RAISE EXCEPTION '068 proof: service_role holds % on public.presence, want exactly DELETE,INSERT,SELECT,UPDATE', coalesce(bad, 'nothing');
+  END IF;
   SELECT count(*) INTO n
     FROM pg_proc p, aclexplode(coalesce(p.proacl, acldefault('f', p.proowner))) e
    WHERE p.proname = 'presence_beat' AND p.pronamespace = 'public'::regnamespace
@@ -310,6 +348,6 @@ BEGIN
     RAISE EXCEPTION '068 proof: % of 8 constraints on public.presence', n;
   END IF;
 
-  RAISE NOTICE '068 OK: public.presence (RLS on, closed to anon/authenticated/PUBLIC, 8 constraints) and presence_beat (EXECUTE service_role only)';
+  RAISE NOTICE '068 OK: public.presence (RLS on, closed to anon/authenticated/PUBLIC, service_role SIUD only, 8 constraints) and presence_beat (EXECUTE service_role only)';
 END
 $do$;

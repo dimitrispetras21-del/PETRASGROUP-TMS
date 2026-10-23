@@ -99,6 +99,11 @@ BEGIN
   );
   ALTER TABLE public.presence ENABLE ROW LEVEL SECURITY;
   REVOKE ALL ON public.presence FROM anon, authenticated, PUBLIC;
+  -- service_role too, BEFORE its grant (review 23/10): the default ACL of tables created by postgres
+  -- gives service_role arwxtm (INSERT, SELECT, UPDATE, REFERENCES, TRIGGER, MAINTAIN - read from
+  -- pg_default_acl 23/10), and one created by supabase_admin gets TRUNCATE as well. The Worker needs
+  -- exactly the four below; the rest is born closed (principle 5).
+  REVOKE ALL ON public.presence FROM service_role;
   GRANT SELECT, INSERT, UPDATE, DELETE ON public.presence TO service_role;
 
   -- 2. THE BEAT. Thirteen arguments, always all passed by the Worker (PostgREST matches by name).
@@ -171,10 +176,27 @@ BEGIN
              GROUP BY x.user_sub) u;
 
     -- 4. changes to INTERNATIONAL orders since the tab last looked (clamped), both key styles.
+    -- Two joins, one per key style, instead of one "legacy_id = record_id OR id::text = record_id"
+    -- (review 23/10): an OR across two columns cannot use either index, so every beat would join the
+    -- window's audit rows to all of orders. Here the window comes from audit_log_table_idx
+    -- (table_name, created_at DESC) and each branch probes one unique index: orders_legacy_id_key,
+    -- and orders_pkey through the CASE (the CASE runs the cast only on all-digit ids, so 'rec...'
+    -- never raises; the id::text recheck keeps '007' from matching order 7, as the OR join did).
+    -- UNION, not UNION ALL: a row of the OR join is one (audit row, order) pair, so the set of the two
+    -- branches is exactly the OR join, also if one order ever matched by both keys.
+    -- 068_presence_test.sql S13 compares the two on every orders audit row plus probe rows.
     WITH ch AS (
       SELECT a.id, a.actor, a.role, a.created_at, o.id AS order_id
         FROM audit_log a
-        JOIN orders o ON (o.legacy_id = a.record_id OR o.id::text = a.record_id)
+        JOIN orders o ON o.legacy_id = a.record_id
+       WHERE a.table_name = 'orders'
+         AND o.order_type = 'International'
+         AND a.created_at > v_floor
+      UNION
+      SELECT a.id, a.actor, a.role, a.created_at, o.id AS order_id
+        FROM audit_log a
+        JOIN orders o ON o.id = CASE WHEN a.record_id ~ '^[0-9]{1,18}$' THEN a.record_id::bigint END
+                     AND o.id::text = a.record_id
        WHERE a.table_name = 'orders'
          AND o.order_type = 'International'
          AND a.created_at > v_floor
@@ -232,6 +254,15 @@ BEGIN
       AND has_table_privilege('service_role', 'public.presence', 'DELETE')) THEN
     RAISE EXCEPTION '068 proof: service_role lacks SELECT/INSERT/UPDATE/DELETE on public.presence';
   END IF;
+  -- and nothing more: service_role's ACL entries are exactly these four (no TRUNCATE, REFERENCES,
+  -- TRIGGER, MAINTAIN). aclexplode, not has_table_privilege: it names MAINTAIN on any PG version.
+  SELECT string_agg(e.privilege_type, ',' ORDER BY e.privilege_type) INTO bad
+    FROM pg_class c, aclexplode(coalesce(c.relacl, acldefault('r', c.relowner))) e
+   WHERE c.oid = 'public.presence'::regclass
+     AND e.grantee = (SELECT oid FROM pg_roles WHERE rolname = 'service_role');
+  IF bad IS DISTINCT FROM 'DELETE,INSERT,SELECT,UPDATE' THEN
+    RAISE EXCEPTION '068 proof: service_role holds % on public.presence, want exactly DELETE,INSERT,SELECT,UPDATE', coalesce(bad, 'nothing');
+  END IF;
   SELECT count(*) INTO n
     FROM pg_proc p, aclexplode(coalesce(p.proacl, acldefault('f', p.proowner))) e
    WHERE p.proname = 'presence_beat' AND p.pronamespace = 'public'::regnamespace
@@ -256,7 +287,7 @@ BEGIN
     RAISE EXCEPTION '068 proof: % of 8 constraints on public.presence', n;
   END IF;
 
-  RAISE NOTICE '068 OK: public.presence (RLS on, closed to anon/authenticated/PUBLIC, 8 constraints) and presence_beat (EXECUTE service_role only)';
+  RAISE NOTICE '068 OK: public.presence (RLS on, closed to anon/authenticated/PUBLIC, service_role SIUD only, 8 constraints) and presence_beat (EXECUTE service_role only)';
 END;
 -- ===== END 068 body =====
 
