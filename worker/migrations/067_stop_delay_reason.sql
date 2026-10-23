@@ -5,7 +5,7 @@
 --       and three CHECKs. Facade labels (branch deploy/worker-stop-delay): "Delay Reason",
 --       "Delay Note", "Delay Responsibility" (read-only).
 --
--- DRAFT - NOT EXECUTED. The owner runs it in the Supabase SQL editor AFTER 15:00 (team works
+-- EXECUTED 24/10/2026 by the owner. The owner runs it in the Supabase SQL editor AFTER 15:00 (team works
 -- 05:30-14:30), with an explicit yes in the conversation.
 -- RELEASE ORDER (binding): this block -> Worker (deploy/worker-stop-delay: the three ORDER STOPS
 -- labels) -> screens (feat/delay-reasons: Daily Ops "Kathysterisi" (delay) opens the reasons

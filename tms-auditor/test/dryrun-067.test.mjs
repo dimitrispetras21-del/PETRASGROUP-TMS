@@ -14,12 +14,12 @@ import { test } from 'node:test';
 import assert from 'node:assert';
 import fs from 'node:fs';
 import path from 'node:path';
-import { buildDryRun, SOURCE, TARGET, DRAFTS } from '../../worker/migrations/drafts/tools/build-067-dryrun.mjs';
+import { buildDryRun, SOURCE, TARGET, DIR } from '../../worker/migrations/drafts/tools/build-067-dryrun.mjs';
 import { freshDb } from './helpers.mjs';
 
 const OPEN = '\nDO $do$\n';
 const nonAscii = (s) => [...s].filter((c) => c.charCodeAt(0) > 127);
-const read = (f) => fs.readFileSync(path.join(DRAFTS, f), 'utf8');
+const read = (f) => fs.readFileSync(path.join(DIR, f), 'utf8');
 
 // The owner-approved list (9/10, Pantelis): code -> responsibility. The front constant
 // (modules/daily_ops.js OPS_DELAY) is pinned to 067's CASE by tests/daily-ops-delay.test.js.

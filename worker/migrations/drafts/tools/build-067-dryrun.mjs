@@ -1,4 +1,4 @@
-// Generates worker/migrations/drafts/067_stop_delay_reason_dryrun.sql FROM 067_stop_delay_reason.sql.
+// Generates worker/migrations/067_stop_delay_reason_dryrun.sql FROM 067_stop_delay_reason.sql.
 //   node worker/migrations/drafts/tools/build-067-dryrun.mjs          (writes the file)
 //   node worker/migrations/drafts/tools/build-067-dryrun.mjs --check  (exit 1 if the committed file drifted)
 // Why generated, never hand-copied (principle 3): the dry run is only worth anything if it runs EXACTLY the
@@ -13,9 +13,9 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
-export const DRAFTS = path.resolve(HERE, '..');
-export const SOURCE = path.join(DRAFTS, '067_stop_delay_reason.sql');
-export const TARGET = path.join(DRAFTS, '067_stop_delay_reason_dryrun.sql');
+export const DIR = path.resolve(HERE, '../..');   // executed 24/10: out of drafts/ (CLAUDE.md rule 5)
+export const SOURCE = path.join(DIR, '067_stop_delay_reason.sql');
+export const TARGET = path.join(DIR, '067_stop_delay_reason_dryrun.sql');
 
 const OPEN = '\nDO $do$\n';
 const CLOSE = '\nEND $do$;\n';
