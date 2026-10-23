@@ -13,8 +13,12 @@
 -- then clear them in their own reviewed statement (performance stays as declared).
 --
 -- EXPECTED: NOTICE "067 ROLLED BACK: order_stops without the delay columns and CHECKs; <n> stops,
---   <d> Delayed; ACL and owner unchanged; triggers 35 -> 35, B-54 = 35" and ONE row
---   "067 ROLLED BACK | 35 | 35 | <n> | <d>".
+--   <d> Delayed; ACL and owner unchanged; triggers 46 -> 46, B-54 = 46" and ONE row
+--   "067 ROLLED BACK | 46 | 46 | <n> | <d>".
+--   46 = the live count on production 23/10 (B-54 red_value 46, no baseline). The guard below does not
+--   pin a number: it requires B-54 = the live count, whatever 072+ have made it by then. DROP COLUMN
+--   fires neither trigger of order_stops (ramp_follows_stop: UPDATE OF datetime; plan_chk_bridge_stop:
+--   UPDATE OF pallets, deleted_at) - it writes no row.
 -- A red error = nothing changed (one DO block). ASCII only, ONE DO block, no temp tables, no superuser
 -- (ALTER TABLE needs ownership of order_stops). lock_timeout 5 s as 067.
 

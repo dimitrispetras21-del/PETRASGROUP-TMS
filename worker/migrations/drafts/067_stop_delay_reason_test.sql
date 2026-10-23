@@ -2,8 +2,19 @@
 --
 -- WHEN: after 067_stop_delay_reason.sql (it refuses before). Safe on production: the probes are
 -- order_stops rows with ids -6701..-6799 written with OVERRIDING SYSTEM VALUE (no sequence moves),
--- legacy_id 'recTEST067-..', no parent order; order_stops has no trigger (refused if it ever has one,
--- the probes would fire it); the final RAISE rolls every probe back. ONE DO block, ASCII only.
+-- legacy_id 'recTEST067-..', no parent order; the final RAISE rolls every probe back. ONE DO block,
+-- ASCII only.
+-- TRIGGERS: order_stops HAS two (production SELECT 23/10; this header said "none" until then, false
+-- since 069 ran 12/10): ramp_follows_stop (069, AFTER UPDATE OF datetime, row - moves the stop's Ramp
+-- line and writes audit_log) and plan_chk_bridge_stop (071, deferred constraint trigger, AFTER UPDATE
+-- OF pallets, deleted_at, row). Both are UPDATE-only with a column list, and no probe write here names
+-- datetime, pallets or deleted_at (the INSERTs and DELETEs fire neither; the UPDATEs set only
+-- performance, completed_at, completed_by, delay_reason, delay_note, delay_responsibility), so NEITHER
+-- fires: no Ramp line, no audit_log row, no deferred plan check is queued. The guard below refuses to
+-- start if order_stops ever has a trigger that is not like that (fires on INSERT/DELETE/TRUNCATE, has
+-- no column list, or lists a column a probe writes) - the probes could then fire it. Even if one
+-- fired, the final RAISE undoes it with the probes (one transaction), but its side effects would not
+-- have been measured here: re-measure first.
 -- EXPECTED (the red ERROR is deliberate):
 --   ERROR: P0001: RULES TEST 067 finished - EVERYTHING UNDONE, nothing kept. Result: 11 OK, 0 FAIL  ||  S1 ok ... | ... | S11 ok ...
 -- Anything with FAIL or ERROR in it: copy the panel to the coordinator.
@@ -30,8 +41,14 @@ BEGIN
           AND attname IN ('delay_reason', 'delay_note', 'delay_responsibility')) <> 3 THEN
     RAISE EXCEPTION 'RULES TEST 067: 067 is not applied - nothing to test';
   END IF;
-  IF EXISTS (SELECT 1 FROM pg_trigger WHERE tgrelid = 'public.order_stops'::regclass AND NOT tgisinternal) THEN
-    RAISE EXCEPTION 'RULES TEST 067: order_stops has a trigger now - the probe rows would fire it; re-measure before running this';
+  -- tgtype bits: 4 INSERT, 8 DELETE, 16 UPDATE, 32 TRUNCATE. A trigger the probes cannot fire is
+  -- UPDATE-only (16, none of 4/8/32) with a column list (tgattr) that names no column a probe writes.
+  IF EXISTS (SELECT 1 FROM pg_trigger t WHERE t.tgrelid = 'public.order_stops'::regclass AND NOT t.tgisinternal
+              AND ((t.tgtype & 44) <> 0 OR (t.tgtype & 16) = 0 OR cardinality(t.tgattr::int2[]) = 0
+                   OR EXISTS (SELECT 1 FROM pg_attribute a WHERE a.attrelid = t.tgrelid AND a.attnum = ANY (t.tgattr::int2[])
+                               AND a.attname IN ('id', 'legacy_id', 'stop_type', 'performance', 'completed_at', 'completed_by',
+                                                 'delay_reason', 'delay_note', 'delay_responsibility')))) THEN
+    RAISE EXCEPTION 'RULES TEST 067: order_stops has a trigger the probe rows could fire (on INSERT/DELETE, without a column list, or on a column the probes write) - re-measure before running this';
   END IF;
   SELECT count(*) FILTER (WHERE delay_reason IS NOT NULL OR delay_note IS NOT NULL), count(*) FILTER (WHERE performance = 'Delayed')
     INTO real_reason, real_delayed FROM public.order_stops;

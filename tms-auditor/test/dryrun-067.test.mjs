@@ -3,7 +3,7 @@
 // confirm what these tests already know.
 // 1. The 067 dry run is GENERATED from 067 (same idea as 060/063/066): a hand-edited or stale copy would
 //    «prove» statements the owner will never run (principle 3).
-// 2. 067 stays ONE DO block, ASCII only, lock_timeout 5 s, guards on 35 triggers = B-54, and names no
+// 2. 067 stays ONE DO block, ASCII only, lock_timeout 5 s, guards on 46 triggers = B-54 (production 23/10), and names no
 //    auditor id but B-54 (B-66..B-76 are 062's, B-77 is 066's).
 // 3. THE LIST: 067's CASE holds exactly the 17 codes the owner approved 9/10, each with its responsibility; the
 //    rules test expects the same list; the rollback pins the same fingerprints as 067's proofs.
@@ -63,7 +63,7 @@ test('067, its dry run, rules test and rollback: ONE DO block each, ASCII only, 
     assert.match(s, /set_config\('lock_timeout', '5s', true\)/, `${f}: lock_timeout 5 s`);
   }
   const src = read('067_stop_delay_reason.sql');
-  assert.match(src, /IF trg_before <> 35 OR b54_before IS DISTINCT FROM 35 OR b54_baseline IS NOT NULL THEN/);
+  assert.match(src, /IF trg_before <> 46 OR b54_before IS DISTINCT FROM 46 OR b54_baseline IS NOT NULL THEN/);
   assert.deepEqual([...new Set(src.slice(src.indexOf(OPEN)).match(/\bB-\d\d\b/g))].sort(), ['B-54']);
   assert.ok(!/\bGRANT\b|\bREVOKE\b/.test(src.slice(src.indexOf(OPEN))), '067 grants nothing (born closed)');
 });
@@ -83,6 +83,25 @@ test('THE LIST: 067\'s CASE = the 17 approved codes with their responsibilities;
     assert.ok(src.includes('ADD CONSTRAINT ' + n), n);
     assert.ok(read('067_stop_delay_reason_rollback.sql').includes('DROP CONSTRAINT ' + n), 'rollback drops ' + n);
   }
+});
+
+// order_stops has two triggers on production (23/10): ramp_follows_stop (AFTER UPDATE OF datetime) and
+// plan_chk_bridge_stop (071, AFTER UPDATE OF pallets, deleted_at). The rules test and the dry run write probe rows
+// on production; neither may name those columns, or a probe would move a Ramp line / queue a plan check.
+const TRIGGER_COLS = ['datetime', 'pallets', 'deleted_at'];
+test('probes on production fire no trigger of order_stops: no probe UPDATE/INSERT names datetime, pallets or deleted_at', () => {
+  for (const f of ['067_stop_delay_reason_test.sql', '067_stop_delay_reason_dryrun.sql']) {
+    const s = read(f);
+    const sets = [...s.matchAll(/UPDATE public\.order_stops SET ([\s\S]*?) WHERE/g)].map((m) => m[1]);
+    const ins = [...s.matchAll(/INSERT INTO public\.order_stops \(([^)]*)\)/g)].map((m) => m[1]);
+    assert.ok(sets.length > 0 && ins.length > 0, `${f}: probe writes not found`);
+    for (const w of [...sets, ...ins]) {
+      const cols = w.split(',').map((x) => x.trim().split(/\s|=/)[0]);
+      for (const c of TRIGGER_COLS) assert.ok(!cols.includes(c), `${f}: a probe writes ${c} - it would fire a trigger: ${w}`);
+    }
+  }
+  // the rules test refuses to start on a trigger it could fire (its guard names exactly the columns it writes)
+  assert.match(read('067_stop_delay_reason_test.sql'), /\(t\.tgtype & 44\) <> 0 OR \(t\.tgtype & 16\) = 0 OR cardinality\(t\.tgattr::int2\[\]\) = 0/);
 });
 
 test('067\'s ALTER TABLE on order_stops: the rules hold on real writes', async () => {

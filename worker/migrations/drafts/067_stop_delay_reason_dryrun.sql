@@ -10,7 +10,7 @@
 -- WHY ONE DO BLOCK: the Supabase SQL editor is NOT atomic across statements (lesson 056), but ONE DO
 --   block is ONE statement: its final error undoes everything inside it.
 -- EXPECTED (the red ERROR is deliberate):
---   ERROR: P0001: DRY RUN 067 finished - EVERYTHING UNDONE, nothing kept. Result: 4 OK, 0 FAIL  ||  A ok ... | B ok triggers 35 = 35, B-54 35 | C ok ... | D ok ...
+--   ERROR: P0001: DRY RUN 067 finished - EVERYTHING UNDONE, nothing kept. Result: 4 OK, 0 FAIL  ||  A ok ... | B ok triggers 46 = 46, B-54 46 | C ok ... | D ok ...
 --   Anything with FAIL or ERROR in it: do NOT run 067, copy the panel to the coordinator.
 --   ONE exception: "3 OK, 1 FAIL" where the FAIL is C alone (A, B, D ok). C fingerprints every order stop, the
 --   auditor rows and every public sequence while the block runs, so ONE stop saved by someone else in those
@@ -23,7 +23,9 @@
 --   equals it; C data 067 must not touch is unchanged (every order stop minus the three new keys, every
 --   auditor row, every public sequence's last_value); D one probe stop (id -6799, OVERRIDING SYSTEM VALUE: no
 --   sequence moves; undone inside D) takes "loading_wait" with responsibility "client" and refuses an unknown
---   code and "other" without a note.
+--   code and "other" without a note. D's writes name only delay_reason / delay_note, so neither trigger of
+--   order_stops fires (ramp_follows_stop: UPDATE OF datetime; plan_chk_bridge_stop: UPDATE OF pallets,
+--   deleted_at - production 23/10).
 
 DO $dry$
 DECLARE
@@ -75,14 +77,16 @@ BEGIN
     RAISE EXCEPTION '067: order_stops.performance or its CHECK (On Time / Delayed) is not what was measured - re-measure';
   END IF;
   -- B-54 counts enabled non-internal triggers in public; run_checks compares against
-  -- coalesce(baseline, red_value), so a baseline would hide a change. 35 since 057 + 060 + 063
-  -- (065 re-created one under its own name, 064/066 none).
+  -- coalesce(baseline, red_value), so a baseline would hide a change. 46 on production 23/10: 35 after
+  -- 057 + 060 + 063 (065 re-created one under its own name, 064/066 none), +2 by 069 (12/10), +9 by 071
+  -- (22/10). Any other number means something moved since this was measured: re-measure, never edit
+  -- the number to make it pass.
   SELECT count(*) INTO trg_before FROM pg_trigger t JOIN pg_class c ON c.oid = t.tgrelid
     JOIN pg_namespace ns ON ns.oid = c.relnamespace
    WHERE NOT t.tgisinternal AND t.tgenabled <> 'D' AND ns.nspname = 'public';
   SELECT red_value, baseline INTO b54_before, b54_baseline FROM monitoring.checks WHERE id = 'B-54';
-  IF trg_before <> 35 OR b54_before IS DISTINCT FROM 35 OR b54_baseline IS NOT NULL THEN
-    RAISE EXCEPTION '067: expected 35 enabled triggers in public = B-54 red_value, no baseline; found % triggers, B-54 red_value % baseline % - something changed triggers or B-54, re-measure',
+  IF trg_before <> 46 OR b54_before IS DISTINCT FROM 46 OR b54_baseline IS NOT NULL THEN
+    RAISE EXCEPTION '067: expected 46 enabled triggers in public = B-54 red_value, no baseline; found % triggers, B-54 red_value % baseline % - something changed triggers or B-54, re-measure',
       trg_before, b54_before, b54_baseline;
   END IF;
   -- what must not move: owner, table ACL, column ACLs, the existing constraints, every row

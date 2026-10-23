@@ -64,7 +64,7 @@
 --   (_opsWriteOrder, when the order write is refused) restores every key of the stamp in ONE PATCH -
 --   performance AND reason together - so it passes. A future correction screen must clear reason and
 --   note in the same write that moves the stop to 'On Time'; the base says so loudly (23514) if it
---   does not. No trigger clears them silently instead (that would be a 36th trigger and a silent
+--   does not. No trigger clears them silently instead (that would be a 47th trigger and a silent
 --   rewrite of what a dispatcher declared).
 --   NOT required the other way round: 'Delayed' without a reason stays allowed - the 2 existing
 --   Delayed stops, every stamp written by the Daily Ops of today until the new screen ships, and a
@@ -87,22 +87,30 @@
 --   run it again a little later (as 057/060/063/065/066).
 --
 -- NOT touched: performance and its CHECK (order_stops_performance_check: 'On Time'/'Delayed'),
---   orders.delivery_performance, national tables, every trigger (order_stops has none; the count
---   stays 35 = B-54, asserted, B-54 not written), every function, view and grant. The view
---   pl_v_order_gate reads order_stops with a fixed column list: unchanged.
+--   orders.delivery_performance, national tables, every trigger, every function, view and grant.
+--   order_stops HAS two triggers (production SELECT 23/10; the earlier "order_stops has none" was
+--   false since 069 ran 12/10): ramp_follows_stop (069, AFTER UPDATE OF datetime, row) and
+--   plan_chk_bridge_stop (071, constraint trigger DEFERRABLE INITIALLY DEFERRED, AFTER UPDATE OF
+--   pallets, deleted_at, row; it is also a row of pg_constraint, contype 't', so the "existing
+--   constraints unchanged" proof covers it). ALTER TABLE ... ADD COLUMN fires neither (the rewrite is
+--   not an UPDATE), and 067 writes no row. The trigger count stays 46 = B-54 (asserted, B-54 not
+--   written). Two views read order_stops, each with a fixed column list, so neither changes:
+--   pl_v_order_gate (md5 of pg_get_viewdef 7e36646e77dcf6ac7ae73c0ad45d2707 on 23/10) and v_shipments
+--   (071, md5 7474ae91e04759697daa4748e8c66f40). No function takes or returns the order_stops row type.
 --
 -- BEFORE IT: 067_stop_delay_reason_dryrun.sql - this same block, generated from this file, undone.
 -- EXPECTED (green, no red panel): NOTICE "067 OK: order_stops.delay_reason / delay_note /
 --   delay_responsibility (generated) + 3 CHECKs; <n> stops, <d> Delayed, 0 with a reason; ACL and
---   owner unchanged, new columns closed to anon/authenticated; triggers 35 -> 35, B-54 = 35"
---   and ONE result row "067 OK | 35 | 35 | <n> | <d> | 0 | 0".
---   <n> = live + deleted stops, <d> = stops marked Delayed (2 on 9/10, coordinator). The last two
---   numbers: stops with a reason (0 - nobody can have written one yet) and new columns with a
+--   owner unchanged, new columns closed to anon/authenticated; triggers 46 -> 46, B-54 = 46"
+--   and ONE result row "067 OK | 46 | 46 | <n> | <d> | 0 | 0".
+--   <n> = live + deleted stops (1420 on 23/10), <d> = stops marked Delayed (2 on 9/10 and 23/10).
+--   The last two numbers: stops with a reason (0 - nobody can have written one yet) and new columns with a
 --   column-level ACL (0).
 --   A red error = nothing changed (one DO block): stop, copy the panel to the coordinator.
 -- AFTER IT: 067_stop_delay_reason_test.sql (every rule on probe rows, then undone - safe on
 --   production: the probes use ids -6701..-6799 with OVERRIDING SYSTEM VALUE, so no sequence moves,
---   and order_stops has no trigger).
+--   and no probe write names datetime, pallets or deleted_at, so neither trigger of order_stops fires;
+--   the test refuses to start if a trigger it does not know that about appears).
 -- Reverse: 067_stop_delay_reason_rollback.sql (screens and Worker without the labels FIRST; it
 --   refuses while any stop carries a reason or a note - that answer would be lost).
 --
@@ -112,14 +120,25 @@
 -- NO SUPERUSER NEEDED (the SQL editor's postgres is rolsuper = false): ALTER TABLE and COMMENT need
 -- only ownership of order_stops (postgres, as read 4/10). The PGlite harness ran this file, its dry
 -- run, its rules test and its rollback as a NOSUPERUSER owner (NOT a member of service_role) with
--- Supabase's default privileges in place, and as superuser.
+-- Supabase's default privileges in place, and as superuser. Re-run 23/10 (review; a scratch harness on
+-- the tms-auditor PGlite, not committed) with production's 46 triggers = B-54 and the two order_stops
+-- triggers recreated as triggers that RAISE if they fire: dry run 4 OK / 0 FAIL, nothing kept; 067 OK
+-- (46 | 46); rules test 11 OK / 0 FAIL, no trigger fired; the rules test refuses on a trigger UPDATE OF
+-- performance or AFTER INSERT; 067 again refuses (already applied); rollback OK (46 | 46); 067 on 45
+-- triggers refuses.
 --
--- Measured on the PGlite copy of production (catalog read 4/10 + 057/060/063/066 as executed):
--- order_stops relacl {postgres=arwdDxtm/postgres,service_role=arwDxtm/postgres,
--- tms_check_runner=r/postgres,tms_reader=r/postgres}, no column ACL, no trigger; triggers 35 = B-54.
--- After 067 (whitespace collapsed, version-proof): md5 of the generated expression
--- d5f97f72bb703e385c95975e0241b2a8, of the three CHECKs (ordered by name, "name:def;")
--- e17368e86ebf64f8131add2eb9426615. The coordinator may re-read them on production after the run.
+-- Re-measured on PRODUCTION by SELECT 23/10 22:30 (review): order_stops relacl
+-- {postgres=arwdDxtm/postgres,service_role=arwxtm/postgres,tms_check_runner=r/postgres,
+-- tms_reader=r/postgres} (service_role has no TRUNCATE any more; 067 compares before/after, so the
+-- exact value is not pinned), owner postgres, relkind r, no column ACL; 25 columns, the last two
+-- performance text and via_hub boolean NOT NULL DEFAULT false (071; the probes get false, which its
+-- CHECK order_stops_via_hub_intl allows without an order); order_stops_performance_check text as the
+-- guard below; 46 enabled non-internal triggers in public = B-54 red_value 46, baseline NULL, B-54
+-- sql_text md5 db7435f68bd05115d2f5514742e6706d (the count query the guard below repeats); 1420 stops,
+-- 2 Delayed, 393 On Time, 1025 NULL; no stop with a negative id. postgres is rolsuper = false.
+-- Measured on the PGlite copy (catalog read 4/10), after 067 (whitespace collapsed, version-proof):
+-- md5 of the generated expression d5f97f72bb703e385c95975e0241b2a8, of the three CHECKs (ordered by
+-- name, "name:def;") e17368e86ebf64f8131add2eb9426615. The coordinator may re-read them on production after the run.
 
 DO $do$
 DECLARE
@@ -157,14 +176,16 @@ BEGIN
     RAISE EXCEPTION '067: order_stops.performance or its CHECK (On Time / Delayed) is not what was measured - re-measure';
   END IF;
   -- B-54 counts enabled non-internal triggers in public; run_checks compares against
-  -- coalesce(baseline, red_value), so a baseline would hide a change. 35 since 057 + 060 + 063
-  -- (065 re-created one under its own name, 064/066 none).
+  -- coalesce(baseline, red_value), so a baseline would hide a change. 46 on production 23/10: 35 after
+  -- 057 + 060 + 063 (065 re-created one under its own name, 064/066 none), +2 by 069 (12/10), +9 by 071
+  -- (22/10). Any other number means something moved since this was measured: re-measure, never edit
+  -- the number to make it pass.
   SELECT count(*) INTO trg_before FROM pg_trigger t JOIN pg_class c ON c.oid = t.tgrelid
     JOIN pg_namespace ns ON ns.oid = c.relnamespace
    WHERE NOT t.tgisinternal AND t.tgenabled <> 'D' AND ns.nspname = 'public';
   SELECT red_value, baseline INTO b54_before, b54_baseline FROM monitoring.checks WHERE id = 'B-54';
-  IF trg_before <> 35 OR b54_before IS DISTINCT FROM 35 OR b54_baseline IS NOT NULL THEN
-    RAISE EXCEPTION '067: expected 35 enabled triggers in public = B-54 red_value, no baseline; found % triggers, B-54 red_value % baseline % - something changed triggers or B-54, re-measure',
+  IF trg_before <> 46 OR b54_before IS DISTINCT FROM 46 OR b54_baseline IS NOT NULL THEN
+    RAISE EXCEPTION '067: expected 46 enabled triggers in public = B-54 red_value, no baseline; found % triggers, B-54 red_value % baseline % - something changed triggers or B-54, re-measure',
       trg_before, b54_before, b54_baseline;
   END IF;
   -- what must not move: owner, table ACL, column ACLs, the existing constraints, every row
