@@ -1,47 +1,108 @@
--- ΔΕΝ ΕΚΤΕΛΕΣΤΗΚΕ — owner, μετά τις 15:00
--- 068 DRY RUN - 068_presence.sql's own DO block, run and then UNDONE. Nothing it does is kept.
--- (The first line is the only non-ASCII text in this file; the rest is ASCII, clipboard-safe.)
+-- ΕΚΤΕΛΕΣΤΗΚΕ 24/10/2026 — owner
+-- 068 - PRESENCE (Weekly International v4, sheet 16, option A): who else is on the board right now,
+--       and how many changes others made to international orders since this tab last looked.
+--       An INDICATION, never a lock: nothing here refuses, blocks or delays a save.
 --
--- WHAT: ONE outer DO block that first fingerprints the data 068 must not touch (audit_log, orders),
---   then runs 068_presence.sql's DO body VERBATIM as a nested block (every guard, change and proof -
---   an error there stops everything, exactly as 068 itself would), then exercises the new function as
---   the Worker will (service_role, one beat and one leave of a synthetic tab), checks the fingerprint,
---   and ENDS WITH A DELIBERATE ERROR. The error rolls the whole block back: no table, no function, no
---   row is kept.
--- WHEN: the same evening, AFTER 15:00 (the team works 05:30-14:30), BEFORE 068_presence.sql.
--- WHY ONE DO BLOCK: the Supabase SQL editor is NOT atomic across statements (lesson 056), but ONE DO
---   block is ONE statement: its final error undoes everything inside it.
--- EXPECTED (the red ERROR is deliberate):
---   ERROR: P0001: DRY RUN 068 finished - EVERYTHING UNDONE, nothing kept. Result: 4 OK, 0 FAIL || A ok ... | B ok ... | C ok ... | D ok ...
---   Anything with FAIL in it: do NOT run 068, copy the panel to the coordinator.
---   ONE exception: "3 OK, 1 FAIL" where the FAIL is C alone. C fingerprints audit_log and orders while
---   the block runs, so ONE save by someone else in those seconds turns it red - it fails closed,
---   nothing was kept. Wait 5 minutes and run the dry run once more; if C fails again, stop.
---   A different message altogether ("068: ...", "068 proof: ...", a lock timeout) is the guard or proof
---   of 068 that stopped - exactly what 068 itself would have said. Do NOT run 068.
--- AFTER: nothing to check by hand - SELECT to_regclass('public.presence') must still be NULL.
--- Scenarios: A 068's objects exist inside the block and the table starts empty; B one beat and one
---   leave as service_role (the Worker's role): the answer has the agreed shape (others = array,
---   changes.n / changes.auto_n = numbers), and the leave removes the row; C audit_log and orders are
---   unchanged (068 only reads them); D the action whitelist refuses 'x<script>' (SQLSTATE 23514).
+-- EXECUTED 24/10/2026 by the owner. The owner runs it in the Supabase SQL editor AFTER 15:00 (team works
+-- 05:30-14:30), with an explicit yes in the conversation. Spec: docs/weekly-intl-redesign/
+-- TECH_DESIGN.md section g.1 (revision 2, 14972c2a). WP9 of the v4 build.
+-- (The first line is the only non-ASCII text in this file, on purpose: it is a comment, and the rest
+-- stays ASCII because a clipboard transfer corrupted Greek text on 27/9 - pbcopy.)
 --
--- KEEPING IT IN STEP WITH 068 (principle 3 - two copies drift): the nested block below is the text
--- between "DO $do$" and "$do$;" of 068_presence.sql, byte for byte. There is no generator file in
--- this package; check it from the repo root before running (prints "in step"):
---   node -e "const f=require('fs'),d='worker/migrations/drafts/',b=f.readFileSync(d+'068_presence.sql','utf8').split('DO \$do\$\n')[1].split('\n\$do\$;')[0],r=f.readFileSync(d+'068_presence_dryrun.sql','utf8').split('-- ===== BEGIN 068 body =====\n')[1].split('\n-- ===== END 068 body =====')[0];console.log(r===b+';'?'in step':'DRIFT - re-copy the 068 body')"
+-- ORDER OF THE RELEASE (section j): 068_presence_dryrun.sql -> THIS FILE -> 068_presence_verify.sql
+-- -> 068_presence_test.sql -> Worker deploy of branch deploy/worker-presence (POST /presence calls
+-- presence_beat). This block can go live first: nothing reads the table until the Worker route
+-- exists, and the front only beats when FEATURES.WI_PRESENCE = true (ships false). The other way
+-- round (Worker before 068) is loud, not silent: every beat gets 503 "presence unavailable" and the
+-- board shows "Zontani eikona se pafsi" - never "nobody is here" (principle 1).
+--
+-- EXPECTED: "Success. No rows returned" (the SQL editor may also show NOTICE "068 OK: ..."). A red
+-- error = nothing changed (ONE DO block: any RAISE rolls everything back): stop, copy the panel to
+-- the coordinator. Then 068_presence_verify.sql - its (deliberate) red message carries the result.
+--
+-- ONE DO block (lesson of 056/058: the SQL editor is not atomic across statements; inside ONE DO
+-- block any RAISE undoes everything, so either all of 068 exists or none of it). No temp tables.
+--
+-- WHAT IT CREATES (names checked free in the guards):
+--   table public.presence - one row per (user, browser tab), PK (user_sub, tab_id)
+--   function public.presence_beat(...) RETURNS jsonb - the ONLY writer and reader (the Worker's
+--     POST /presence calls it through PostgREST /rpc with service_role)
+-- NOTHING ELSE: no trigger, no audit row per beat (presence is not a data change), no change to
+-- audit_log or orders (only read), no monitoring check.
+-- RE-CHECKED ON PRODUCTION 23/10 (SELECT only, PG 17.6): presence / presence_beat do not exist; roles
+-- anon, authenticated, service_role exist (service_role member of no other role); audit_log has
+-- audit_log_table_idx (table_name, created_at DESC) and orders has orders_legacy_id_key + orders_pkey
+-- (the two joins below use them); orders.order_type is 'International' on all 438 rows; orders audit
+-- rows are 4222 legacy-keyed + 144 id::text-keyed, no order has an all-digit legacy_id. No trigger is
+-- created, so monitoring B-54 (46 enabled triggers) stays 46.
+--
+-- WHY each choice (TECH_DESIGN g.1, review round 1 findings 5, 9, 10, 25):
+--   * Key (user_sub, tab_id), not user_sub alone: two visible windows of the same user would
+--     otherwise overwrite each other's record/action, and one window's "leave" would erase the
+--     other. The reader dedupes by user_sub: one avatar per person, the union of his open records.
+--   * expires_at per row (seen_at + clamped TTL), not a fixed "last 15 s" window: an idle tab beats
+--     every 30 s with TTL 45 s and must never blink out between beats. The client sends 1.5 x its
+--     next interval; the server clamps it to 7.5-90 s, so a forged TTL can neither hide a user
+--     instantly nor keep a ghost for hours.
+--   * Values are born closed (principle 5): action is a whitelist (the SAME six strings as the
+--     Worker's PRESENCE_ACTIONS - a Worker test compares them), record_id and tab_id are
+--     regex-checked, role is one of the five roles, board is only 'weekly_intl'. Nothing free-text
+--     that a colleague's browser renders is stored (user_name comes from the JWT, never the body).
+--     The Worker validates the same rules first (400); these CHECKs catch every other path.
+--   * RLS on, every privilege REVOKEd from anon / authenticated / PUBLIC, and from service_role (the
+--     Worker) too before it is granted exactly SELECT/INSERT/UPDATE/DELETE (review 23/10: its
+--     default ACL also carries REFERENCES/TRIGGER/MAINTAIN): Supabase gives anon and authenticated full access to every new table and
+--     EXECUTE to every new function by default (principle 5 - "what is born, is born closed").
+--     RLS has no policies, as in all of v2 (SECURITY.md): service_role bypasses it anyway; RLS on
+--     only closes the door if a grant ever reappears. Same pattern as 024 and 053.
+--   * SECURITY INVOKER (not DEFINER): the caller is service_role, which already holds every grant
+--     it needs; a DEFINER function would be a second door with the owner's rights.
+--   * changes: international orders' audit rows since the tab last looked, clamped to at most
+--     15 minutes ago server-side (a forged or stale p_changes_since cannot force a large audit_log
+--     scan every 5 s). audit_log mixes two key styles and two kinds of actor (measured in the
+--     migrations 013/020/023/028/033: Worker rows store record_id = legacy id and actor = username
+--     with the caller's role; trigger rows store record_id = id::text, actor 'trigger:...' and role
+--     'system'; data migrations 'migration:...' with role 'system'). So the join covers BOTH key
+--     styles, and the counts are split:
+--       n / last_by / last_at - HUMAN changes by someone else: role is one of the five roles, actor
+--         is not the caller and not trigger:% / migration:%. The caller's own saves never count,
+--         so a user never sees a permanent "N changes by trigger:rt_sync" caused by himself.
+--       auto_n - role 'system' rows NOT caused by the caller. A trigger row is the caller's when he
+--         has a human row on the SAME order within 1 second of it (the trigger fires in the same
+--         transaction as his PATCH; the Worker's audit row follows with its own clock a moment
+--         later, so a +-1 s window and not date_trunc('second'), which would split a pair across a
+--         second boundary). Known limit, by the spec's rule "same order": a cascade to a SIBLING
+--         order (rt_sync on the group/pair) is counted in auto_n - shown as "N automatic updates",
+--         never under a person's name, so it is not a false accusation, only a softer number.
+--       last_by is returned only when p_names is true. The Worker sets p_names from its existing
+--         AUDIT_READERS list (owner, management - the roles that can read /audit today), so no role
+--         gains anything; every other role gets the count only. Whether dispatchers should see
+--         names is an owner question (TECH_DESIGN j.6).
+--     orders.order_type = 'International' (the spec's "o.type" is the facade label "Type"; the
+--     column is order_type - Worker map "Type: order_type", 028 filters the same way).
+--   * since (when this record/action started, shown as "apo 08:41") is kept while record_id and
+--     action are unchanged AND the old row was still live; otherwise it restarts at now(). Without
+--     the liveness part a tab that comes back hours later on the same record would claim it has
+--     been editing since the morning (principle 1).
+--   * Housekeeping inside the beat: rows expired for more than 1 day are deleted (no cron needed;
+--     expired rows are already invisible to every reader).
+--
+-- RESULT SHAPE (contract with the Worker WP8 and the client WP7 - change all three together):
+--   leave:  {"others": []}
+--   beat:   {"others": [ {"sub": text, "name": text, "seen_at": timestamptz,
+--                         "weeks": [int, ...],
+--                         "records": [ {"record": text, "part": text|null, "action": text|null,
+--                                       "since": timestamptz|null, "week": int|null}, ... ]}, ... ],
+--            "changes": {"n": int, "last_by": text|null, "last_at": timestamptz|null, "auto_n": int}}
+--   "others" = live rows (expires_at > now()) of OTHER users on the same board, one entry per user,
+--   ordered by name; "records" = only the tabs that have a record open.
+--
+-- REQUEST BUDGET: one beat = one Worker request + one RPC. Levers (Worker env PRESENCE_OFF /
+-- PRESENCE_MS) live in the Worker, not here (TECH_DESIGN g.5).
+-- Reverse: 068_presence_rollback.sql (drops both objects; presence rows are indications that
+-- expire within 90 s - nothing of value is lost).
 
-DO $dry$
-DECLARE
-  ok int := 0; bad int := 0; res text[] := '{}';
-  dry_fp_before text; dry_fp_after text; dry_j jsonb; dry_n int; dry_st text;
-BEGIN
-  -- the data 068 must leave alone (it only reads audit_log and orders)
-  SELECT (SELECT count(*) || ':' || coalesce(max(id), 0) FROM public.audit_log) || '|' ||
-         (SELECT count(*) || ':' || coalesce(max(id), 0) || ':' || md5(coalesce(string_agg(id || '=' || coalesce(legacy_id, '') || '=' || coalesce(order_type, ''), ',' ORDER BY id), ''))
-            FROM public.orders)
-    INTO dry_fp_before;
-
--- ===== BEGIN 068 body =====
+DO $do$
 DECLARE
   n int;
   bad text;
@@ -99,6 +160,11 @@ BEGIN
   );
   ALTER TABLE public.presence ENABLE ROW LEVEL SECURITY;
   REVOKE ALL ON public.presence FROM anon, authenticated, PUBLIC;
+  -- service_role too, BEFORE its grant (review 23/10): the default ACL of tables created by postgres
+  -- gives service_role arwxtm (INSERT, SELECT, UPDATE, REFERENCES, TRIGGER, MAINTAIN - read from
+  -- pg_default_acl 23/10), and one created by supabase_admin gets TRUNCATE as well. The Worker needs
+  -- exactly the four below; the rest is born closed (principle 5).
+  REVOKE ALL ON public.presence FROM service_role;
   GRANT SELECT, INSERT, UPDATE, DELETE ON public.presence TO service_role;
 
   -- 2. THE BEAT. Thirteen arguments, always all passed by the Worker (PostgREST matches by name).
@@ -171,10 +237,27 @@ BEGIN
              GROUP BY x.user_sub) u;
 
     -- 4. changes to INTERNATIONAL orders since the tab last looked (clamped), both key styles.
+    -- Two joins, one per key style, instead of one "legacy_id = record_id OR id::text = record_id"
+    -- (review 23/10): an OR across two columns cannot use either index, so every beat would join the
+    -- window's audit rows to all of orders. Here the window comes from audit_log_table_idx
+    -- (table_name, created_at DESC) and each branch probes one unique index: orders_legacy_id_key,
+    -- and orders_pkey through the CASE (the CASE runs the cast only on all-digit ids, so 'rec...'
+    -- never raises; the id::text recheck keeps '007' from matching order 7, as the OR join did).
+    -- UNION, not UNION ALL: a row of the OR join is one (audit row, order) pair, so the set of the two
+    -- branches is exactly the OR join, also if one order ever matched by both keys.
+    -- 068_presence_test.sql S13 compares the two on every orders audit row plus probe rows.
     WITH ch AS (
       SELECT a.id, a.actor, a.role, a.created_at, o.id AS order_id
         FROM audit_log a
-        JOIN orders o ON (o.legacy_id = a.record_id OR o.id::text = a.record_id)
+        JOIN orders o ON o.legacy_id = a.record_id
+       WHERE a.table_name = 'orders'
+         AND o.order_type = 'International'
+         AND a.created_at > v_floor
+      UNION
+      SELECT a.id, a.actor, a.role, a.created_at, o.id AS order_id
+        FROM audit_log a
+        JOIN orders o ON o.id = CASE WHEN a.record_id ~ '^[0-9]{1,18}$' THEN a.record_id::bigint END
+                     AND o.id::text = a.record_id
        WHERE a.table_name = 'orders'
          AND o.order_type = 'International'
          AND a.created_at > v_floor
@@ -232,6 +315,15 @@ BEGIN
       AND has_table_privilege('service_role', 'public.presence', 'DELETE')) THEN
     RAISE EXCEPTION '068 proof: service_role lacks SELECT/INSERT/UPDATE/DELETE on public.presence';
   END IF;
+  -- and nothing more: service_role's ACL entries are exactly these four (no TRUNCATE, REFERENCES,
+  -- TRIGGER, MAINTAIN). aclexplode, not has_table_privilege: it names MAINTAIN on any PG version.
+  SELECT string_agg(e.privilege_type, ',' ORDER BY e.privilege_type) INTO bad
+    FROM pg_class c, aclexplode(coalesce(c.relacl, acldefault('r', c.relowner))) e
+   WHERE c.oid = 'public.presence'::regclass
+     AND e.grantee = (SELECT oid FROM pg_roles WHERE rolname = 'service_role');
+  IF bad IS DISTINCT FROM 'DELETE,INSERT,SELECT,UPDATE' THEN
+    RAISE EXCEPTION '068 proof: service_role holds % on public.presence, want exactly DELETE,INSERT,SELECT,UPDATE', coalesce(bad, 'nothing');
+  END IF;
   SELECT count(*) INTO n
     FROM pg_proc p, aclexplode(coalesce(p.proacl, acldefault('f', p.proowner))) e
    WHERE p.proname = 'presence_beat' AND p.pronamespace = 'public'::regnamespace
@@ -256,71 +348,6 @@ BEGIN
     RAISE EXCEPTION '068 proof: % of 8 constraints on public.presence', n;
   END IF;
 
-  RAISE NOTICE '068 OK: public.presence (RLS on, closed to anon/authenticated/PUBLIC, 8 constraints) and presence_beat (EXECUTE service_role only)';
-END;
--- ===== END 068 body =====
-
-  -- A. the objects exist and the table starts empty
-  IF to_regclass('public.presence') IS NOT NULL
-     AND to_regprocedure('public.presence_beat(text,text,text,text,text,integer,text,text,text,integer,boolean,timestamptz,boolean)') IS NOT NULL
-     AND NOT EXISTS (SELECT 1 FROM public.presence) THEN
-    ok := ok + 1; res := res || 'A ok table + function, 0 rows'::text;
-  ELSE
-    bad := bad + 1; res := res || 'A FAIL objects missing or table not empty'::text;
-  END IF;
-
-  -- B. one beat and one leave, as the Worker calls it (service_role through PostgREST)
-  BEGIN
-    SET LOCAL ROLE service_role;
-    SELECT public.presence_beat('dry068a', 'dry068tab001', 'DRY 068', 'dispatcher', 'weekly_intl', 41,
-                                'recDRY068AAAA', 'truck', 'menu', 45000, false, NULL, false) INTO dry_j;
-    SELECT count(*) INTO dry_n FROM public.presence WHERE user_sub = 'dry068a';
-    PERFORM public.presence_beat('dry068a', 'dry068tab001', 'DRY 068', 'dispatcher', 'weekly_intl', 41,
-                                 NULL, NULL, NULL, 0, true, NULL, false);
-    RESET ROLE;
-    IF jsonb_typeof(dry_j -> 'others') = 'array'
-       AND jsonb_typeof(dry_j -> 'changes' -> 'n') = 'number'
-       AND jsonb_typeof(dry_j -> 'changes' -> 'auto_n') = 'number'
-       AND (dry_j -> 'changes' -> 'last_by') = 'null'::jsonb      -- p_names false: never a name
-       AND dry_n = 1
-       AND NOT EXISTS (SELECT 1 FROM public.presence WHERE user_sub = 'dry068a') THEN
-      ok := ok + 1; res := res || format('B ok beat + leave as service_role (changes n=%s auto_n=%s, others=%s)',
-                                         dry_j -> 'changes' ->> 'n', dry_j -> 'changes' ->> 'auto_n',
-                                         jsonb_array_length(dry_j -> 'others'));
-    ELSE
-      bad := bad + 1; res := res || format('B FAIL answer %s, rows after beat %s', left(dry_j::text, 300), dry_n);
-    END IF;
-  EXCEPTION WHEN others THEN
-    RESET ROLE;
-    bad := bad + 1; res := res || format('B FAIL error %s %s', SQLSTATE, SQLERRM);
-  END;
-
-  -- C. audit_log and orders unchanged
-  SELECT (SELECT count(*) || ':' || coalesce(max(id), 0) FROM public.audit_log) || '|' ||
-         (SELECT count(*) || ':' || coalesce(max(id), 0) || ':' || md5(coalesce(string_agg(id || '=' || coalesce(legacy_id, '') || '=' || coalesce(order_type, ''), ',' ORDER BY id), ''))
-            FROM public.orders)
-    INTO dry_fp_after;
-  IF dry_fp_after = dry_fp_before THEN
-    ok := ok + 1; res := res || 'C ok audit_log and orders unchanged'::text;
-  ELSE
-    bad := bad + 1; res := res || format('C FAIL fingerprint %s -> %s (someone saved meanwhile? see header)', dry_fp_before, dry_fp_after);
-  END IF;
-
-  -- D. the whitelist refuses a script string in action (the CHECK, not only the Worker)
-  BEGIN
-    SET LOCAL ROLE service_role;
-    PERFORM public.presence_beat('dry068a', 'dry068tab001', 'DRY 068', 'dispatcher', 'weekly_intl', 41,
-                                 NULL, NULL, 'x<script>', 7500, false, NULL, false);
-    RESET ROLE;
-    bad := bad + 1; res := res || 'D FAIL action x<script> was accepted'::text;
-  EXCEPTION WHEN others THEN
-    GET STACKED DIAGNOSTICS dry_st = RETURNED_SQLSTATE;
-    RESET ROLE;
-    IF dry_st = '23514' THEN ok := ok + 1; res := res || 'D ok x<script> refused (23514)'::text;
-    ELSE bad := bad + 1; res := res || format('D FAIL got %s %s', dry_st, SQLERRM); END IF;
-  END;
-
-  RAISE EXCEPTION 'DRY RUN 068 finished - EVERYTHING UNDONE, nothing kept. Result: % OK, % FAIL || %',
-    ok, bad, array_to_string(res, ' | ');
+  RAISE NOTICE '068 OK: public.presence (RLS on, closed to anon/authenticated/PUBLIC, service_role SIUD only, 8 constraints) and presence_beat (EXECUTE service_role only)';
 END
-$dry$;
+$do$;
