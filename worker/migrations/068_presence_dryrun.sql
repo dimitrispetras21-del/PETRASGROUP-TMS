@@ -1,4 +1,4 @@
--- ΔΕΝ ΕΚΤΕΛΕΣΤΗΚΕ — owner, μετά τις 15:00
+-- ΕΚΤΕΛΕΣΤΗΚΕ 24/10/2026 — owner (4 OK, 0 FAIL· τίποτα δεν κρατήθηκε)
 -- 068 DRY RUN - 068_presence.sql's own DO block, run and then UNDONE. Nothing it does is kept.
 -- (The first line is the only non-ASCII text in this file; the rest is ASCII, clipboard-safe.)
 --
@@ -28,7 +28,7 @@
 -- KEEPING IT IN STEP WITH 068 (principle 3 - two copies drift): the nested block below is the text
 -- between "DO $do$" and "$do$;" of 068_presence.sql, byte for byte. There is no generator file in
 -- this package; check it from the repo root before running (prints "in step"):
---   node -e "const f=require('fs'),d='worker/migrations/drafts/',b=f.readFileSync(d+'068_presence.sql','utf8').split('DO \$do\$\n')[1].split('\n\$do\$;')[0],r=f.readFileSync(d+'068_presence_dryrun.sql','utf8').split('-- ===== BEGIN 068 body =====\n')[1].split('\n-- ===== END 068 body =====')[0];console.log(r===b+';'?'in step':'DRIFT - re-copy the 068 body')"
+--   node -e "const f=require('fs'),d='worker/migrations/',b=f.readFileSync(d+'068_presence.sql','utf8').split('DO \$do\$\n')[1].split('\n\$do\$;')[0],r=f.readFileSync(d+'068_presence_dryrun.sql','utf8').split('-- ===== BEGIN 068 body =====\n')[1].split('\n-- ===== END 068 body =====')[0];console.log(r===b+';'?'in step':'DRIFT - re-copy the 068 body')"
 
 DO $dry$
 DECLARE

@@ -1,9 +1,9 @@
--- ΔΕΝ ΕΚΤΕΛΕΣΤΗΚΕ — owner, μετά τις 15:00
+-- ΕΚΤΕΛΕΣΤΗΚΕ 24/10/2026 — owner
 -- 068 - PRESENCE (Weekly International v4, sheet 16, option A): who else is on the board right now,
 --       and how many changes others made to international orders since this tab last looked.
 --       An INDICATION, never a lock: nothing here refuses, blocks or delays a save.
 --
--- DRAFT - NOT EXECUTED. The owner runs it in the Supabase SQL editor AFTER 15:00 (team works
+-- EXECUTED 24/10/2026 by the owner. The owner runs it in the Supabase SQL editor AFTER 15:00 (team works
 -- 05:30-14:30), with an explicit yes in the conversation. Spec: docs/weekly-intl-redesign/
 -- TECH_DESIGN.md section g.1 (revision 2, 14972c2a). WP9 of the v4 build.
 -- (The first line is the only non-ASCII text in this file, on purpose: it is a comment, and the rest

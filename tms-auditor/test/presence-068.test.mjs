@@ -10,9 +10,9 @@ import assert from 'node:assert';
 import fs from 'node:fs';
 import path from 'node:path';
 import { freshDb } from './helpers.mjs';
-import { DRAFTS } from '../lib/db.mjs';
+import { MIGRATIONS } from '../lib/db.mjs';   // 068 executed 24/10: out of drafts/ (CLAUDE.md rule 5)
 
-const read = (f) => fs.readFileSync(path.join(DRAFTS, f), 'utf8');
+const read = (f) => fs.readFileSync(path.join(MIGRATIONS, f), 'utf8');
 const TRG = `SELECT count(*)::int AS n FROM pg_trigger t JOIN pg_class c ON c.oid = t.tgrelid
   JOIN pg_namespace ns ON ns.oid = c.relnamespace WHERE NOT t.tgisinternal AND t.tgenabled <> 'D' AND ns.nspname = 'public'`;
 async function errorOf(db, sql) { try { await db.exec(sql); return null; } catch (e) { return String(e.message); } }

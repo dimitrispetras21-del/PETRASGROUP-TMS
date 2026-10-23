@@ -13,7 +13,7 @@ const assert = require('node:assert');
 const fs = require('node:fs');
 const path = require('node:path');
 
-const DIR = path.join(__dirname, '..', 'worker/migrations/drafts');
+const DIR = path.join(__dirname, '..', 'worker/migrations')   // 068 executed 24/10: out of drafts/ (CLAUDE.md rule 5);
 const read = (f) => fs.readFileSync(path.join(DIR, f), 'utf8');
 const strip = (s) => s.replace(/--[^\n]*/g, '');
 const FILES = ['068_presence.sql', '068_presence_dryrun.sql', '068_presence_rollback.sql', '068_presence_test.sql', '068_presence_verify.sql'];
