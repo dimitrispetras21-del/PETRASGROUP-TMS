@@ -19,7 +19,8 @@
 --   V1 the 12 columns, names / types / nullability exactly as 068 created them
 --   V2 primary key (user_sub, tab_id)
 --   V3 RLS enabled on public.presence
---   V4 table closed: 0 privileges for PUBLIC / anon / authenticated; service_role has SELECT/INSERT/UPDATE/DELETE
+--   V4 table closed: 0 privileges for PUBLIC / anon / authenticated; service_role has exactly
+--      SELECT/INSERT/UPDATE/DELETE (no TRUNCATE / REFERENCES / TRIGGER / MAINTAIN)
 --   V5 function: exactly one presence_beat, 13 args, SECURITY INVOKER, search_path pinned; EXECUTE for
 --      service_role only (0 entries for PUBLIC / anon / authenticated)
 --   V6 the 8 named constraints, and the whitelists inside them (6 actions, 5 roles, tab and record regex)
@@ -64,17 +65,26 @@ BEGIN
     FROM pg_class c, aclexplode(coalesce(c.relacl, acldefault('r', c.relowner))) e
    WHERE c.oid = 'public.presence'::regclass
      AND (e.grantee = 0 OR e.grantee IN (SELECT oid FROM pg_roles WHERE rolname IN ('anon', 'authenticated')));
+  -- service_role's own ACL entries: exactly the four (068 REVOKEs its default REFERENCES/TRIGGER/MAINTAIN)
+  SELECT string_agg(e.privilege_type, ',' ORDER BY e.privilege_type) INTO w
+    FROM pg_class c, aclexplode(coalesce(c.relacl, acldefault('r', c.relowner))) e
+   WHERE c.oid = 'public.presence'::regclass
+     AND e.grantee = (SELECT oid FROM pg_roles WHERE rolname = 'service_role');
   IF n = 0
+     AND w IS NOT DISTINCT FROM 'DELETE,INSERT,SELECT,UPDATE'
      AND has_table_privilege('service_role', 'public.presence', 'SELECT')
      AND has_table_privilege('service_role', 'public.presence', 'INSERT')
      AND has_table_privilege('service_role', 'public.presence', 'UPDATE')
-     AND has_table_privilege('service_role', 'public.presence', 'DELETE') THEN
-    ok := ok + 1; res := res || 'V4 ok table closed to PUBLIC/anon/authenticated, service_role SIUD'::text;
+     AND has_table_privilege('service_role', 'public.presence', 'DELETE')
+     AND NOT has_table_privilege('service_role', 'public.presence', 'TRUNCATE')
+     AND NOT has_table_privilege('service_role', 'public.presence', 'REFERENCES')
+     AND NOT has_table_privilege('service_role', 'public.presence', 'TRIGGER') THEN
+    ok := ok + 1; res := res || 'V4 ok table closed to PUBLIC/anon/authenticated, service_role exactly SIUD'::text;
   ELSE
     SELECT string_agg(e.grantee::regrole::text || ':' || e.privilege_type, ' ') INTO v
       FROM pg_class c, aclexplode(coalesce(c.relacl, acldefault('r', c.relowner))) e
      WHERE c.oid = 'public.presence'::regclass;
-    bad := bad + 1; res := res || format('V4 FAIL %s open entries; acl %s', n, v);
+    bad := bad + 1; res := res || format('V4 FAIL %s open entries; service_role %s; acl %s', n, coalesce(w, 'nothing'), v);
   END IF;
 
   -- V5 function
@@ -138,11 +148,20 @@ BEGIN
   SELECT count(*) INTO n FROM pg_policy WHERE polrelid = 'public.presence'::regclass;
   info := info || format('rows live %s / total %s', (SELECT count(*) FROM public.presence WHERE expires_at > now()), m)
                || format('policies %s', n);
-  SELECT string_agg(DISTINCT a.attname, ',') INTO v
-    FROM pg_index i
-    JOIN pg_attribute a ON a.attrelid = i.indrelid AND a.attnum = i.indkey[0]
-   WHERE i.indrelid = 'public.audit_log'::regclass AND i.indisvalid
-     AND a.attname IN ('created_at', 'record_id');
+  -- The beat filters table_name = 'orders' AND created_at > floor: an index LEADING with created_at, or
+  -- with (table_name, created_at) - production's audit_log_table_idx (read 23/10) - serves it. The first
+  -- version looked at the leading column only and would have said "NO" for audit_log_table_idx.
+  SELECT string_agg(DISTINCT k, ',') INTO v
+    FROM (SELECT CASE
+                   WHEN a0.attname = 'created_at' THEN 'created_at'
+                   WHEN a0.attname = 'table_name' AND a1.attname = 'created_at' THEN 'created_at'
+                   WHEN a0.attname = 'record_id' THEN 'record_id'
+                 END AS k
+            FROM pg_index i
+            JOIN pg_attribute a0 ON a0.attrelid = i.indrelid AND a0.attnum = i.indkey[0]
+            LEFT JOIN pg_attribute a1 ON a1.attrelid = i.indrelid AND a1.attnum = i.indkey[1]
+           WHERE i.indrelid = 'public.audit_log'::regclass AND i.indisvalid) x
+   WHERE k IS NOT NULL;
   info := info || format('audit_log created_at index: %s', CASE WHEN position('created_at' IN coalesce(v, '')) > 0 THEN 'yes' ELSE 'NO - add before presence goes live' END)
                || format('audit_log record_id index: %s', CASE WHEN position('record_id' IN coalesce(v, '')) > 0 THEN 'yes' ELSE 'no' END);
 

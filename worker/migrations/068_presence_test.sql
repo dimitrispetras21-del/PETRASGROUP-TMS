@@ -4,13 +4,13 @@
 -- AFTER 068 said "068 OK" and 068_presence_verify.sql said "0 FAIL".)
 -- ONE statement (ONE DO block). It ends with a deliberate RAISE EXCEPTION, so Postgres undoes ALL of it:
 -- no presence row and no audit row stays behind. The red error message IS the result:
---   "RULES TEST 068 finished - EVERYTHING UNDONE, nothing kept. Result: 12 OK, 0 FAIL || ...".
--- EXPECTED: "Result: 12 OK, 0 FAIL". Any FAIL or ERROR = STOP, copy the panel to the coordinator.
--- Only trace: audit_log identity numbers are skipped (the test inserts and undoes eight audit rows).
+--   "RULES TEST 068 finished - EVERYTHING UNDONE, nothing kept. Result: 13 OK, 0 FAIL || ...".
+-- EXPECTED: "Result: 13 OK, 0 FAIL". Any FAIL or ERROR = STOP, copy the panel to the coordinator.
+-- Only trace: audit_log identity numbers are skipped (the test inserts and undoes ten audit rows).
 --
 -- DRAFT - run ONLY after 068, after 15:00, with an explicit yes (it writes, then undoes). ASCII only after
 -- the first line (clipboard-safe).
--- WHAT IT TOUCHES: presence rows of the test users t068a / t068b / t068c only, and eight TEST audit_log
+-- WHAT IT TOUCHES: presence rows of the test users t068a / t068b / t068c only, and ten TEST audit_log
 -- rows (actors t068a / t068b / t068c / trigger:... with record ids of ONE real international order,
 -- picked BY QUERY - the newest one with a legacy id). That order is only REFERENCED by the test audit
 -- rows; the order itself is never written. Every presence_beat call runs as service_role (SET LOCAL
@@ -40,6 +40,10 @@
 --       the trigger row within 1 s of t068a's own save on the same order is his (not counted); a trigger
 --       row on order_stops is not an orders change (not counted); trigger rows never count in n
 --   S12 the same rows seen by t068b: +2 human (t068a, t068c), +2 auto (both trigger rows - neither is his)
+--   S13 the changes join (review 23/10: two index-friendly joins under UNION) returns exactly the rows of
+--       the old "legacy_id = record_id OR id::text = record_id" join, on EVERY orders audit row (real
+--       history + the test rows, no time window); of the test rows exactly the six on the real order
+--       match; the probes '0<id>' (zero-padded) and a 20-digit id match nothing and raise no cast error
 
 DO $tst$
 DECLARE
@@ -55,6 +59,7 @@ DECLARE
   verdict text; lbl text;
   ok int := 0; bad int := 0; res text[] := '{}';
   bad_case record;
+  tids bigint[]; n_old int; n_new int; d1 int; d2 int; n_t int;
 BEGIN
   -- 068 applied
   IF to_regprocedure(sig) IS NULL OR to_regclass('public.presence') IS NULL THEN
@@ -249,6 +254,8 @@ BEGIN
   --   r8 t068c management, legacy id, 1 min AHEAD (the newest, so last_by is deterministic) -> A: n+1, B: n+1
   --   r9 trigger:order_dates_follow system, table order_stops -> nobody (not an orders row)
   --   r10 t068b human, table orders, a record id that is no order -> nobody (the join)
+  --   r11 / r12 probes for S13: the order's id zero-padded, and a 20-digit id -> nobody, no cast error
+  WITH ins AS (
   INSERT INTO public.audit_log (actor, role, action, table_name, record_id, created_at) VALUES
     (ub, 'dispatcher', 'update', 'orders', o_leg, now() - interval '5 minutes'),
     ('trigger:rt_sync', 'system', 'update', 'orders', o_id::text, now() - interval '2 minutes'),
@@ -257,7 +264,11 @@ BEGIN
     (ub, 'dispatcher', 'update', 'orders', o_leg, now() - interval '1 hour'),
     (uc, 'management', 'update', 'orders', o_leg, now() + interval '1 minute'),
     ('trigger:order_dates_follow', 'system', 'update', 'order_stops', o_id::text, now() - interval '1 minute'),
-    (ub, 'dispatcher', 'update', 'orders', 'recT068NOTANORDER', now() - interval '1 minute');
+    (ub, 'dispatcher', 'update', 'orders', 'recT068NOTANORDER', now() - interval '1 minute'),
+    ('trigger:t068probe', 'system', 'update', 'orders', '0' || o_id::text, now() - interval '1 minute'),
+    ('trigger:t068probe', 'system', 'update', 'orders', '99999999999999999999', now() - interval '1 minute')
+  RETURNING id)
+  SELECT array_agg(id) INTO tids FROM ins;
 
   -- S9. human changes for A: clamp, own row excluded, last_by with names
   lbl := 'S9 changes A (clamp, own excluded, last_by)'; verdict := NULL;
@@ -310,6 +321,37 @@ BEGIN
     ELSE verdict := format('FAIL changes %s (want n=%s, auto_n=%s)', jb -> 'changes', nb0 + 2, ab0 + 2); END IF;
   EXCEPTION WHEN others THEN RESET ROLE; verdict := format('ERROR %s %s', SQLSTATE, SQLERRM); END;
   IF verdict = 'ok' THEN ok := ok + 1; ELSE bad := bad + 1; END IF; res := res || (lbl || ' ' || verdict);
+
+  -- S13. the UNION of the two index-friendly joins (068 section 4, same ON clauses) = the old OR join
+  lbl := 'S13 changes join = old OR join'; verdict := NULL;
+  BEGIN
+    WITH old AS (
+      SELECT a.id, a.actor, a.role, a.created_at, o.id AS order_id
+        FROM public.audit_log a
+        JOIN public.orders o ON (o.legacy_id = a.record_id OR o.id::text = a.record_id)
+       WHERE a.table_name = 'orders' AND o.order_type = 'International'
+    ), neu AS (
+      SELECT a.id, a.actor, a.role, a.created_at, o.id AS order_id
+        FROM public.audit_log a
+        JOIN public.orders o ON o.legacy_id = a.record_id
+       WHERE a.table_name = 'orders' AND o.order_type = 'International'
+      UNION
+      SELECT a.id, a.actor, a.role, a.created_at, o.id AS order_id
+        FROM public.audit_log a
+        JOIN public.orders o ON o.id = CASE WHEN a.record_id ~ '^[0-9]{1,18}$' THEN a.record_id::bigint END
+                     AND o.id::text = a.record_id
+       WHERE a.table_name = 'orders' AND o.order_type = 'International'
+    )
+    SELECT (SELECT count(*) FROM old), (SELECT count(*) FROM neu),
+           (SELECT count(*) FROM (SELECT * FROM old EXCEPT ALL SELECT * FROM neu) x),
+           (SELECT count(*) FROM (SELECT * FROM neu EXCEPT ALL SELECT * FROM old) y),
+           (SELECT count(*) FROM neu WHERE neu.id = ANY (tids))
+      INTO n_old, n_new, d1, d2, n_t;
+    IF n_old = n_new AND d1 = 0 AND d2 = 0 AND n_t = 6 AND cardinality(tids) = 10 THEN
+      verdict := format('ok %s rows both ways, 6 of 10 test rows', n_new);
+    ELSE verdict := format('FAIL old %s new %s, old-new %s, new-old %s, test rows matched %s of %s', n_old, n_new, d1, d2, n_t, cardinality(tids)); END IF;
+  EXCEPTION WHEN others THEN verdict := format('ERROR %s %s', SQLSTATE, SQLERRM); END;
+  IF verdict LIKE 'ok%' THEN ok := ok + 1; ELSE bad := bad + 1; END IF; res := res || (lbl || ' ' || verdict);
 
   RAISE EXCEPTION 'RULES TEST 068 finished - EVERYTHING UNDONE, nothing kept. Result: % OK, % FAIL || %',
     ok, bad, array_to_string(res, ' | ');
