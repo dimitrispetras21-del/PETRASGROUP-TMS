@@ -2,6 +2,8 @@
 
 > **DRAFT: depends on the F2 plan choices (pending owner approval) and on F2 being executed first.**
 >
+> **Before any F3 task (review of PR #75, 23/10):** the 7 md5s of the 072 functions in this draft come from the F2 plan TEXT (md5 `8993c2ac…`). After F2 runs, re-measure them from production (Task 0) and regenerate this plan from the live texts; any F2 decision the owner changes makes these guards refuse until then.
+>
 > **DRAFT: εξαρτάται από τις επιλογές του πλάνου Φ2 (σε αναμονή έγκρισης owner) και από το να εκτελεστεί πρώτα η Φ2** (072 από τον owner, deploy του Worker της Φ2). Καμία εργασία δεν ξεκινά πριν: (α) εγκριθούν οι αποφάσεις 1–34 της Φ2, (β) τρέξει η 072 στην παραγωγή, (γ) ο owner απαντήσει στις αποφάσεις 💶 M-1..M-7 και στις DKV-1..DKV-3 αυτού του πλάνου και εγκρίνει τις D-1..D-20.
 >
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
