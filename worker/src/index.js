@@ -3364,6 +3364,14 @@ __name(schemaBehind060Response, "schemaBehind060Response");
 // goes ahead and says `_expectChecked: "skipped"` (a failed read must never
 // block work at 06:00). Requests without `_expect` take exactly today's path.
 var EXPECT_MAX_LABELS = 12;
+// Columns that hold json/array values, per Postgres table. PostgREST has no
+// reliable eq. filter for them, so the compare-and-set below cannot include
+// them; an _expect on such a label is refused (400) at parse time instead of
+// being checked outside the atomic match while the answer says checked.
+// Measured 23/10/2026 from information_schema.columns (data_type ARRAY/json/
+// jsonb) over every facade table. A column added later and missing here is
+// still refused (400, logged) at the CAS step below, never checked silently.
+var EXPECT_NON_SCALAR = { locations: ["tags"], workshops: ["aliases"], scan_examples: ["corrected"] };
 // The comparator. It MUST stay equal to the front's WI4.sameValue: both run
 // worker/test/fixtures/expect-vectors.json (one file, principle 3).
 var EXPECT_DATE_LABELS = ["Loading DateTime", "Delivery DateTime", "VS CD Date"];
@@ -3436,6 +3444,7 @@ function expectParse(cfg, raw) {
   for (const label of labels) {
     const c = expectCanon(cfg, label);
     if (!c) return { error: `_expect: unknown label «${label}»` };
+    if ((EXPECT_NON_SCALAR[cfg.pg] || []).includes(c.column)) return { error: `_expect: label «${label}» holds a list/json value and cannot be checked` };
     canon[label] = c;
   }
   return { labels, canon };
@@ -3597,10 +3606,14 @@ async function handleFacadeUpdate(request, tableId, recId, origin, env, ctx) {
           if (casColumns.includes(col)) continue;
           if (Object.prototype.hasOwnProperty.call(bodyByColumn, col) && expectSame(l, bodyByColumn[col], cur.fields[canon[l].readLabel])) continue;
           const raw = before[col];
-          // A json/array column has no reliable eq. filter: it stays checked
-          // above but outside the atomic match. No _expect label of the
-          // Weekly board is such a column.
-          if (raw !== null && typeof raw === "object") continue;
+          // Backstop for EXPECT_NON_SCALAR drifting from the schema: a json/
+          // array value has no reliable eq. filter, and leaving it out of the
+          // match while answering _expectChecked:true would claim a check
+          // that never happened. Refused, nothing written, logged.
+          if (raw !== null && typeof raw === "object") {
+            console.error(`EXPECT non-scalar column not in EXPECT_NON_SCALAR ${cfg.pg}.${col}`);
+            return jsonError(`_expect: label «${l}» holds a list/json value and cannot be checked`, 400, origin, env);
+          }
           params.append(col, raw === null || raw === void 0 ? "is.null" : `eq.${raw}`);
           casColumns.push(col);
         }
@@ -6139,8 +6152,9 @@ var PRESENCE_NEXT_MIN_MS = 2500;
 var PRESENCE_NEXT_DEFAULT_MS = 5e3;
 var _presenceLastBeat = /* @__PURE__ */ new Map();
 // next_ms comes from the PRESENCE_MS plain var, so the owner can slow every
-// open tab (10 s, 30 s) from the Cloudflare dashboard without a Pages deploy
-// (request budget, §g.5). Never below 2.5 s; an unreadable value → default.
+// open tab (10 s, 30 s) without a Pages deploy (request budget, §g.5). The
+// var is declared in wrangler.toml [vars]: a dashboard-only value is erased by
+// the next deploy. Never below 2.5 s; an unreadable value → default.
 function presenceNextMs(env) {
   const raw = env.PRESENCE_MS;
   if (raw === void 0 || raw === null || raw === "") return PRESENCE_NEXT_DEFAULT_MS;

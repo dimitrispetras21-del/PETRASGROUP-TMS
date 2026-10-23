@@ -259,6 +259,20 @@ test('next_ms follows PRESENCE_MS (integer, never below 2500, unreadable → 500
   }
 });
 
+// A plain var missing from wrangler.toml is erased by every deploy (CLAUDE.md,
+// «Ο WORKER»): a lever set only in the dashboard would vanish silently.
+test('wrangler.toml [vars] declares PRESENCE_OFF="0" and PRESENCE_MS="5000", and those values keep presence on at 5 s', async () => {
+  const toml = readFileSync(path.resolve(HERE, '../wrangler.toml'), 'utf8');
+  const vars = toml.match(/^\[vars\]\n([\s\S]*?)(?=^\[|(?![\s\S]))/m);
+  assert.ok(vars, '[vars] section not found in worker/wrangler.toml');
+  const decl = Object.fromEntries([...vars[1].matchAll(/^([A-Z_]+)\s*=\s*"([^"]*)"\s*$/gm)].map((m) => [m[1], m[2]]));
+  assert.equal(decl.PRESENCE_OFF, '0', 'PRESENCE_OFF must be declared in [vars]');
+  assert.equal(decl.PRESENCE_MS, '5000', 'PRESENCE_MS must be declared in [vars]');
+  const r = await post(beat(), { env: { ...BASE_ENV, PRESENCE_OFF: decl.PRESENCE_OFF, PRESENCE_MS: decl.PRESENCE_MS } });
+  assert.equal(r.status, 200, r.text);
+  assert.equal(r.json.next_ms, 5000);
+});
+
 test('RPC failure → 503 «presence unavailable» + console.error, never a 200 with an empty list', async () => {
   rpcAnswer = () => jsonRes({ code: '42883', message: 'function presence_beat does not exist' }, 404);
   let r = await post(beat());

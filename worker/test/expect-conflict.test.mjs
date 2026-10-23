@@ -349,3 +349,29 @@ test('a checked label the body does not write, still unchanged → written; chan
   assert.deepEqual(r.json.error.fields, ['Delivery DateTime']);
   assert.equal(patches().length, 0);
 });
+
+test('a label on a json/array column (workshops «Aliases», locations «Tags») → 400 named at parse, before any DB call — never checked outside the atomic match', async () => {
+  for (const [tableId, label, value] of [['tblMiFxbm9ky8PCQi', 'Aliases', ['KTEO']], ['tblxu8DRfTQOFRCzS', 'Tags', ['cold']]]) {
+    calls.length = 0;
+    const req = new Request(`https://w.invalid/v0/appTEST/${tableId}/recROW000001`, {
+      method: 'PATCH',
+      headers: { Origin: ORIGIN, Authorization: `Bearer ${await token('owner', 'boss')}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ fields: { [label]: value }, _expect: { [label]: [] } })
+    });
+    const res = await worker.fetch(req, env, ctx);
+    const json = await res.json();
+    assert.equal(res.status, 400, JSON.stringify(json));
+    assert.equal(json.error, `_expect: label «${label}» holds a list/json value and cannot be checked`);
+    assert.equal(calls.length, 0, 'no DB call');
+  }
+});
+
+test('backstop: a column NOT in EXPECT_NON_SCALAR that holds a json/array value → 400 named, nothing written, logged; never _expectChecked:true', async () => {
+  DB.partner_truck_plates = ['XYZ1', 'XYZ2'];   // schema drift: the list no longer matches the table
+  const r = await patchOrder({ fields: { 'Loading DateTime': '2026-10-09T06:00:00.000Z' }, _expect: { 'Partner Truck Plates': ['XYZ1', 'XYZ2'] } });
+  assert.equal(r.status, 400, r.text);
+  assert.equal(r.json.error, '_expect: label «Partner Truck Plates» holds a list/json value and cannot be checked');
+  assert.equal(patches().length, 0, 'nothing written');
+  assert.equal(DB.loading_datetime, '2026-10-08T06:00:00+00:00');
+  assert.ok(errors.some((e) => e.includes('EXPECT non-scalar column not in EXPECT_NON_SCALAR orders.partner_truck_plates')), errors.join('\n'));
+});
