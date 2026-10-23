@@ -3,7 +3,10 @@
 // the pure parts of the Weekly International's join, extracted verbatim from
 // modules/weekly_intl.js (technique of weekly-stock-round1.test.js), plus the
 // order-docs index stall guard (core/order-docs.js) on mocked timers.
-//   PAL   the refusal states the sum: «461+463 = 24 π. + 471 = 10 π. = 34 > 33»
+//   PAL   the sum as arithmetic: «461+463 = 24 π. + 471 = 10 π. = 34 > 33»
+//   P33   33 is a warning, never a block (owner 9/10/2026): one constant, one
+//         question with the numbers (cancel = false, «Να μπει» = 'over'),
+//         the red running sum, the toast tail, no capacity filter anywhere
 //   ASG   the joining side carries NO assignment — not even the load's own
 //         truck (P1, coordinator 9/10: an assigned import already has its own
 //         round trip; joined, it left two live RTs — the 7/10 GI-MUV7FNKE
@@ -11,8 +14,8 @@
 //   INH   one inheritance builder for match and join (truck / partner / none)
 //   DND   the dragged import travels in the drag data; none = ignored (S9)
 //   CHK   the board-side refusals and their words (Cancelled, rota leg,
-//         lot, piece, matched elsewhere, split, 33, assignment) — and a
-//         fitting import passes
+//         lot, piece, matched elsewhere, split, assignment) — and a fitting
+//         import passes, and so does one past 33 (asked, not refused)
 //   DOCS  a stalled index read is dropped after 25 s and the next call asks
 //         again; a failed transport is not cached as «no documents»
 // WI_SRC=<path> runs the weekly cases against another copy of weekly_intl.js
@@ -47,8 +50,10 @@ const F = (name, kind) => ({ name, src: (kind || many)(name) });
 const rec = (id, f) => ({ id, fields: Object.assign({ Type: 'International', Direction: 'Import', Status: 'Pending' }, f) });
 const impRow = (id, ids, extra) => Object.assign({ id, type: 'import', orderId: ids[0], orderIds: ids, matchedTo: null, truckId: '', partnerId: '' }, extra || {});
 
+const PAL33 = () => [{ src: line(/const WI_PAL_CAP=\d+;\n/, 'WI_PAL_CAP') }, F('_wiPalOver', one), F('_wiRecsPals', one)];
+
 test('PAL: the sum the dispatcher reads — load, joiner, total against 33', () => {
-  const c = load([F('_wiJoinPalText')]);
+  const c = load([...PAL33(), F('_wiJoinPalText')]);
   const L = [rec('recI461', { Reference: '461', 'Total Pallets': 12 }), rec('recI463', { Reference: '463', 'Total Pallets': 12 })];
   assert.strictEqual(c._wiJoinPalText(L, [rec('recI471', { Reference: '471', 'Total Pallets': 10 })]), '461+463 = 24 π. + 471 = 10 π. = 34 > 33');
   assert.strictEqual(c._wiJoinPalText(L, [rec('recI470', { Reference: '470', 'Total Pallets': 8 })]), '461+463 = 24 π. + 470 = 8 π. = 32 ≤ 33');
@@ -117,6 +122,7 @@ test('DND: the import id comes from the drag data only — a drop without it is 
 function chkCtx() {
   const parts = [
     { src: line(/const WI_EXECUTING=\[[^\]]*\];\n/, 'WI_EXECUTING') },
+    ...PAL33(),
     F('_wiIsPiece', one), F('_wiIsLot', one), F('_wiRecOf', one), F('_wiLotHeld'), F('_wiImpGroupRowOf'), F('_wiPieceIn'),
     F('_wiGrpOrder'), F('_wiLoadRecs'), F('_wiJoinPalText'), F('_wiAssignLbl'), F('_wiAssignedText'), F('_wiVehOfF', one), F('_wiVehLbl'),
     F('_wiJoinLoadLbl'), F('_wiJoinWho'), F('_wiJoinCheck'),
@@ -163,8 +169,7 @@ test('CHK: an import that fits joins; every refusal says why, with the numbers',
   const R = id => c.WINTL.rows.find(r => r.id === id);
   const E27 = R(1), L = R(2);
   assert.strictEqual(c._wiJoinCheck(L, R(3), E27), '', '470 (8p) into 461+463 (24p) on TRK-27 → fits (32)');
-  assert.strictEqual(c._wiJoinCheck(L, R(4), E27),
-    'Δεν χωράει στο φορτίο TRK-27 (461+463 · 24 π.): 461+463 = 24 π. + 471 = 10 π. = 34 > 33 — όριο 33 παλέτες');
+  assert.strictEqual(c._wiJoinCheck(L, R(4), E27), '', '471 (10p) into 24p → 34: past 33 is asked by the action, never refused here (owner 9/10)');
   const ASG = (n, what) => `Η #${n} έχει ήδη ανάθεση (${what}) — πρώτα «Καθαρισμός ανάθεσης» στην #${n}, μετά πρόσθεσέ τη στο φορτίο`;
   assert.strictEqual(c._wiJoinCheck(L, R(5), E27), ASG('472', 'φορτηγό TRK-31'), 'another truck');
   assert.strictEqual(c._wiJoinCheck(L, R(11), E27), ASG('473', 'φορτηγό TRK-27'), 'the load\'s OWN truck too (P1: it already has its own RT)');
@@ -183,6 +188,70 @@ test('CHK: an import that fits joins; every refusal says why, with the numbers',
   assert.strictEqual(c._wiJoinCheck(L, R(5), bare), ASG('472', 'φορτηγό TRK-31'));
   // a lone piece is never made the lead of a new group (B-09)
   assert.match(c._wiJoinCheck(R(8), R(3), R(8)), /κομμάτι αποθέματος μόνο του — δεν γίνεται επικεφαλής ομάδας/);
+});
+
+test('P33: one constant, one question with the numbers, the red sum, the toast tail', async () => {
+  const asked = [];
+  let answer = false;
+  const c = load([...PAL33(), F('_wiJoinPalText'), F('_wiPalSumText', one), F('_wiPalNote', one), F('_wiPalCandNote'), F('_wiPalConfirm', asyncMany)],
+    { ctx: { escapeHtml: s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'),
+      confirmAction: async (msg, opts) => { asked.push([msg, plain(opts)]); return answer; } } });
+  assert.strictEqual(c._wiPalOver(33), false); assert.strictEqual(c._wiPalOver(34), true); assert.strictEqual(c._wiPalOver(undefined), false);
+  assert.strictEqual(c._wiPalSumText(24), '24p / 33p');
+  assert.strictEqual(c._wiPalSumText(33), '33p / 33p');
+  assert.strictEqual(c._wiPalSumText(35), '35p / 33p · > 33');
+  assert.strictEqual(c._wiPalNote(33), '');
+  assert.strictEqual(c._wiPalNote(35), ' (35 π. — πάνω από 33)');
+  const L = [rec('recI461', { Reference: '461', 'Total Pallets': 12 }), rec('recI463', { Reference: '463', 'Total Pallets': 12 })];
+  const X = [rec('recI471', { Reference: '471', 'Total Pallets': 11 })], S = [rec('recI470', { Reference: '470', 'Total Pallets': 8 })];
+  assert.strictEqual(c._wiPalCandNote(L, S), '', 'within 33: no note');
+  assert.strictEqual(c._wiPalCandNote(L, X), '<br><small class="wi-stk-warn">461+463 = 24 π. + 471 = 11 π. = 35 &gt; 33</small>', 'past 33: the sum, amber');
+  // within 33: nothing asked
+  assert.strictEqual(await c._wiPalConfirm(L, [S]), true);
+  assert.strictEqual(asked.length, 0, 'within 33 nothing is asked');
+  // past 33: ONE question with the numbers; cancel → false
+  answer = false;
+  assert.strictEqual(await c._wiPalConfirm(L, [X]), false, 'cancel = false: the caller writes nothing');
+  assert.strictEqual(asked.length, 1);
+  assert.strictEqual(asked[0][0], 'Σύνολο 24 + 11 = 35 παλέτες — πάνω από 33. Να μπει;\n\n461+463 = 24 π. + 471 = 11 π. = 35 > 33');
+  assert.deepStrictEqual(asked[0][1], { title: 'Πάνω από 33 παλέτες', confirmLabel: 'Να μπει' });
+  answer = true;
+  assert.strictEqual(await c._wiPalConfirm(L, [X]), 'over', '«Να μπει» = over (passed on as palOk)');
+  // several picks: one part each, load first
+  asked.length = 0;
+  await c._wiPalConfirm(L, [S, [rec('recI472', { Reference: '472', 'Total Pallets': 4 })]]);
+  assert.match(asked[0][0], /^Σύνολο 24 \+ 8 \+ 4 = 36 παλέτες — πάνω από 33\. Να μπει;/);
+  // the app's modal, never the browser's
+  assert.doesNotMatch(asyncMany('_wiPalConfirm'), /window\.confirm|[^A-Za-z_.]confirm\(/);
+});
+
+test('P33: no 33 decides anything outside the shared rule — candidates, sums, joins', () => {
+  // Every decision about 33 goes through WI_PAL_CAP / _wiPalOver (αρχή 3).
+  // Display colours (_wi2PalCls) and comments are not decisions.
+  const code = WI.split('\n').filter(l => !/^\s*\/\//.test(l)).join('\n');
+  assert.doesNotMatch(code, /<=\s*33\b/, 'no «≤ 33» filter left');
+  for (const fn of ['_wiJoinCheck', '_wiImpGroupCands', '_wiExpGroupCands', '_wiPanelGroupSum', '_wiPanelGroupBuild', '_wiPanelJoinLoad', '_wiJoinPalText'])
+    assert.doesNotMatch(many(fn).split('\n').filter(l => !/^\s*\/\//.test(l)).join('\n'), /\b33\b/, fn + ' has no 33 of its own');
+  for (const fn of ['_wiImpJoin', '_wiPanelGroupGo', '_wiPanelJoinGo'])
+    assert.doesNotMatch(asyncMany(fn).split('\n').filter(l => !/^\s*\/\//.test(l)).join('\n'), /\b33\b/, fn + ' has no 33 of its own');
+  assert.doesNotMatch(many('_wiPanelGroupSum'), /disabled/, 'the running sum never disables a box');
+  assert.doesNotMatch(code, /όριο 33 παλέτες/, 'no «όριο 33» refusal text left');
+  // the stock panel keeps its warning, on the same constant
+  assert.match(many('_wiStockPanel'), /free=X==null\?null:WI_PAL_CAP-X;/);
+  // the one question is asked by every write path that can pass 33
+  assert.match(asyncMany('_wiImpJoin'), /pal=palOk\?'over':await _wiPalConfirm\(lr0,\[xr0\]\)/);
+  assert.match(asyncMany('_wiPanelGroupGo'), /_wiPalConfirm\(_wiLoadRecs\(me\),rows\.map\(_wiLoadRecs\)\)/);
+  assert.match(asyncMany('_wiPanelGroupGo'), /const pal=await _wiPalConfirm\(adds\[0\],adds\.slice\(1\)\)/);
+  assert.match(asyncMany('_wiPanelJoinGo'), /_wiPalConfirm\(/);
+});
+
+test('P33: export «Ομαδοποίηση» candidates — no capacity filter, lots still out', () => {
+  const c = load([F('_wiIsPiece', one), F('_wiIsLot', one), F('_wiRecOf', one), F('_wiLotHeld'), F('_wiExpGroupCands')]);
+  c.WINTL.data.exports = [rec('recE1', { Direction: 'Export', 'Total Pallets': 33 }), rec('recE2', { Direction: 'Export', 'Total Pallets': 33 }),
+    rec('recE3', { Direction: 'Export', 'Total Pallets': 2 }), rec('recE4', { Direction: 'Export', 'Total Pallets': 5 })];
+  c.WINTL.rows = [{ id: 1, type: 'export', orderIds: ['recE1'], saved: false }, { id: 2, type: 'export', orderIds: ['recE2'], saved: false },
+    { id: 3, type: 'export', orderIds: ['recE3'], saved: true }, { id: 4, type: 'export', orderIds: ['recE4'], saved: false }];
+  assert.deepStrictEqual(plain(c._wiExpGroupCands(c.WINTL.rows[0]).map(r => r.id)), [2, 4], '33 + 33 offered; an assigned one is not');
 });
 
 test('DOCS: a stalled index read is dropped after 25 s; the next call asks again; a failed transport is not cached', async () => {

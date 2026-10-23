@@ -613,6 +613,22 @@ body {
 .sidebar.collapsed .nav-label { opacity: 0; }
 .sidebar.collapsed .nav-item { justify-content: center; padding: 8px 0; margin: 1px 6px; }
 .sidebar.collapsed .nav-item.active::before { left: -6px; }
+/* Collapsed on desktop = an icon rail (Figma 1097:2255; owner 11/10, live
+   parity). The label kept its width at opacity 0 and pushed the icon out of
+   the 44px item (overflow hidden + centred): the rail showed empty squares.
+   Section headers kept their height as invisible gaps, and a closed group hid
+   its pages with no header left to open it. Desktop only: ≤1024px has its own
+   icon bar and ≤768px turns .collapsed into the wide drawer with labels. */
+@media (min-width: 1025px) {
+  .sidebar.collapsed .nav-item > :not(.nav-icon) { display: none; }
+  .sidebar.collapsed .nav-section { display: none; }
+  .sidebar.collapsed .nav-group-items.collapsed-items { max-height: none; opacity: 1; padding: 2px 0 4px; }
+  /* The wide logo cut at 56px showed half the emblem, read as a broken image:
+     shifted so the emblem alone sits centred in the rail (logo.png keeps a
+     125px transparent margin left of it, 31px at the 84px height); the clip
+     ends right of the emblem, before the «P» of the name. */
+  .sidebar.collapsed .sidebar-logo img { margin-left: -27px; clip-path: inset(0 calc(100% - 57px) 0 0); }
+}
 
 /* Tooltip on collapsed */
 .sidebar.collapsed .nav-item:hover::after {
@@ -2063,6 +2079,20 @@ button.ecard-meta-row-btn, .ecard-meta-row button.badge {
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .linked-drop-item:hover { background: var(--bg-hover); }
+/* Searchable select (fhSelectSearch, core/form-helpers.js): looks like a
+   .form-select with its ▾, opens the whole list on click, filters as you type. */
+.fh-cb { position: relative; }
+.fh-cb-input {
+  padding-right: 34px; cursor: pointer; text-overflow: ellipsis;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath d='M2.5 4.5 6 8l3.5-3.5' fill='none' stroke='%2364748B' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat; background-position: right 12px center;
+}
+.fh-cb-input:focus { cursor: text; }
+/* At least as wide as the box, wider when the entries need it (toolbar filters). */
+.fh-cb-list { max-height: 280px; right: auto; min-width: 100%; width: max-content; max-width: min(420px, 90vw); }
+.fh-cb-opt.on { background: var(--bg-hover); }
+.fh-cb-opt.sel { font-weight: 600; }
+.fh-cb-none { padding: 8px 12px; font-size: var(--text-sm); color: var(--text-dim); }
 
 /* ═══════════════════════════════════════════════
    ORDER ACTION BUTTONS
@@ -2709,6 +2739,8 @@ button.ecard-meta-row-btn, .ecard-meta-row button.badge {
 /* Π2: second line inside truck/driver dropdown options — where the asset is
    already committed this week. 10px, no new column (density rule). */
 .wi-sdo-sub { font-size:11px; color:var(--warning); opacity:.95; margin-top:1px; }
+/* Assign-picker warnings (items 3, 4): open work order, document due; 6.5:1 on white. */
+.wi-sdo-sub.wi-sdo-warn { color:var(--danger); opacity:1; }
 .wi-sdo--busy { border-left:2px solid var(--warning-soft); }
 
 /* Ήσυχη προβολή (owner 8/8): τα per-row chips των Κυμάτων 1-2 κρύβονται από
@@ -2890,6 +2922,13 @@ button.ecard-meta-row-btn, .ecard-meta-row button.badge {
 .wk3-feed.bgap{background:var(--navy-mid,#0B1929) !important}
 .wk3-ordn{font-size:9px;font-weight:500;color:var(--text-dim);font-style:italic;margin-left:6px}
 .wk3-assign{padding:0 8px;display:flex;justify-content:center;align-self:stretch;align-items:center;gap:2px;cursor:pointer}
+/* Copy plates (item 16) at the assign cell's right edge, on row hover or focus;
+   absolute, so the pill stays centred as on rows without one. */
+.wk3-assign:has(.wn-cpy){position:relative}
+.wk3-assign .wn-cpy{position:absolute;right:2px;top:50%;margin-top:-10px;width:20px;height:20px;padding:0;display:inline-grid;place-items:center;border:1px solid #CBD5E1;border-radius:4px;background:#FFFFFF;color:#475569;cursor:pointer;visibility:hidden}
+.wk3-assign .wn-cpy svg{width:12px;height:12px}
+.wk3-row:hover .wk3-assign .wn-cpy,.wk3-assign:focus-within .wn-cpy{visibility:visible}
+.wk3-assign .wn-cpy:hover{color:#0B1929;border-color:#94A3B8}
 .wk3-pill{width:100%;max-width:100%;min-width:0;height:24px;border-radius:6px;display:flex;align-items:center;justify-content:center;
   gap:6px;font-size:10.5px;font-weight:700;color:#fff;padding:0 10px;white-space:nowrap;overflow:hidden;
   transition:transform .15s,box-shadow .15s,background .2s}
@@ -4536,6 +4575,13 @@ button.sidebar-toggle {
   transition: opacity var(--duration-fast) var(--ease-out);
 }
 .entity-table-wrap thead th.sorted .sort-indicator { opacity: 1; color: var(--accent-text); }
+
+/* TableSort (core/ui.js): the same click-to-sort look as the entity lists above,
+   for any simple table that opts in with data-sort-id / data-sort (14/10). */
+table[data-sort-id] thead th[data-sort] { cursor: pointer; user-select: none; }
+table[data-sort-id] thead th[data-sort]:hover,
+table[data-sort-id] thead th[data-sort]:focus-visible { color: var(--accent-text); background: var(--accent-light); outline: none; }
+table[data-sort-id] thead th .ts-ind { color: var(--accent-text); }
 
 /* Sticky first column for wide tables */
 .entity-table-wrap table.sticky-first th:first-child,
@@ -7100,27 +7146,37 @@ button.dash-kpi:focus-visible {
 }
 
 /* ═══════════════════════════════════════════════════════════════
-   NOTIFICATION ACTION CHIPS — small action buttons in panel cards
+   NOTIFICATION CARD HIDE BUTTON — the card itself opens its page; the ✕ only
+   hides it (T70, 14/10). It sits inside .topbar, so it opts out of the
+   44px touch floor (.topbar button) that made the old Open/Snooze 44px tall.
 ═══════════════════════════════════════════════════════════════ */
-.notif-btn {
-  font: 600 11px 'DM Sans', sans-serif;
-  padding: 4px 10px;
-  border-radius: var(--radius);
-  border: 1px solid transparent;
-  cursor: pointer;
-  transition: filter 0.12s, background 0.12s;
+.topbar .notif-x {
+  order: 3; flex: none; align-self: flex-start;
+  min-height: 0; min-width: 0; width: 22px; height: 22px;
+  display: inline-flex; align-items: center; justify-content: center;
+  font: 600 12px 'DM Sans', sans-serif; line-height: 1;
+  color: var(--text-dim); background: transparent;
+  border: 1px solid transparent; border-radius: var(--radius-sm);
+  cursor: pointer; opacity: 0; transition: opacity 0.12s, background 0.12s;
 }
-.notif-btn-primary {
-  background: var(--accent);
-  color: #fff;
+.notif-item:hover .notif-x, .notif-x:focus-visible { opacity: 1; }
+.topbar .notif-x:hover { background: var(--bg-hover); color: var(--text); border-color: var(--border); }
+@media (hover: none) { .topbar .notif-x { opacity: 1; } }
+/* The panel is a column inside its 420px cap: header, a list that takes what is
+   left and scrolls, then the footer. With block layout the list's own 420px
+   max-height filled the panel and overflow:hidden cut the footer off (T71). */
+.topbar .notif-panel { flex-direction: column; }
+.topbar .notif-panel .notif-header { flex: none; }
+.topbar .notif-panel .notif-list { flex: 1 1 auto; min-height: 0; max-height: none; }
+.topbar .notif-panel .notif-all { flex: none; }
+/* Foot of the bell: the way to the full «Ειδοποιήσεις» page (T71, 14/10). */
+.topbar .notif-all {
+  display: block; width: 100%; min-height: 0; min-width: 0;
+  padding: 10px 16px; border: none; border-top: 1px solid var(--border);
+  background: var(--surface-sunken, var(--bg)); color: var(--accent);
+  font: 600 12px 'DM Sans', sans-serif; text-align: center; cursor: pointer;
 }
-.notif-btn-primary:hover { filter: brightness(1.1); }
-.notif-btn-ghost {
-  background: transparent;
-  color: var(--text-dim);
-  border-color: var(--border);
-}
-.notif-btn-ghost:hover { background: var(--bg-hover); color: var(--text); }
+.topbar .notif-all:hover { background: var(--bg-hover); }
 .notif-item.grouped { background: rgba(2,123,189,0.04); }
 .notif-children .notif-child:hover { background: var(--bg-hover); border-radius: var(--radius-sm); }
 
@@ -7517,3 +7573,1583 @@ button.btn-icon:focus-visible { outline:2px solid var(--accent); outline-offset:
 .doc-viewer-text { margin: 0; padding: 12px; font: 13px/1.5 'DM Sans', monospace; white-space: pre-wrap; word-break: break-word; color: var(--text); }
 .doc-viewer-unsupported { padding: 24px; text-align: center; color: var(--text-mid); font-size: var(--text-sm); }
 .doc-viewer-unsupported .btn { margin-top: 12px; }
+
+/* ── Weekly Intl v4 (wi4-*) — FEATURES.WI_V2 ── */
+/* Spec: docs/weekly-intl-redesign/TECH_DESIGN.md §c (owner: WP3). Visual target:
+   Figma KO7l2AfucR3HJEDIg1Yptr, board «ΕΚΔΟΧΗ 9/10» 1097:2254, sheets 14–16.
+
+   WHY a separate block with its own prefix: the v4 board is a second renderer
+   behind FEATURES.WI_V2 (born 'off'). Every selector below starts with .wi4,
+   .wi4-*, :root (tokens) or body.wi4-on (overlays). No shared wi-*, wk3-*, wi2-*
+   rule is edited — Weekly National renders through those, and with the flag
+   off nothing here can match a single element, so the old boards stay
+   byte-identical. Φ9 cleanup deletes the old rules, never these.
+
+   Class vocabulary for the renderer (WP4) and the actions (WP5). A class used
+   by the JS that is not listed here gets no style — add it here, never as a
+   hex or inline style in the module (static ratchet: weekly_intl_v2 = 0 hex).
+     root      .wi4 (+ .wi4-fl-off/.wi4-fr-off national columns, .wi4-kbd keyboard mode)
+     bar       .wi4-bar .wi4-title .wi4-range .wi4-upd(.chg/.err/.live) .wi4-upd-l .wi4-tabs .wi4-tab(.on)
+               .wi4-tab-b(.ld) .wi4-btn(.pri/.sm) .wi4-cnt .wi4-pres(.paused/.forbidden) .wi4-av(.sm)
+               .wi4-pres-n .wi4-pres-w .wi4-pres-wl .wi4-pres-r .wi4-pres-ic
+     banner    .wi4-banner (relay/unknown source/fallback) .wi4-link
+     queue     .wi4-q .wi4-q-hd .wi4-q-n .wi4-search .wi4-search-n .wi4-key .wi4-qcard .wi4-qcard-t
+               .wi4-q-all · panel .wi4-qp .wi4-qp-h .wi4-qp-i(.on)
+     shelf     .wi4-shelf (wraps #wi-shelf from _wiShelfInner)
+     grid      .wi4-cols .wi4-ftog .wi4-n · .wi4-day(.closed/.today) .wi4-dayh .wi4-chev
+               .wi4-dayh-c .wi4-today .wi4-day-body .wi4-dayempty
+     rows      .wi4-row .wi4-subrow .wi4-splithd .wi4-msg .wi4-trace · columns .wi4-c-idx
+               .wi4-c-fl .wi4-c-exp .wi4-c-asg .wi4-c-imp .wi4-c-fr .wi4-c-span
+               · rails .wi4-r-red (solid) .wi4-r-amb (dashed) · .wi4-dim .wi4-focus .wi4-hl .wi4-mhl
+     leg       .wi4-leg · .wi4-l-date .wi4-l-from .wi4-l-arr .wi4-l-to .wi4-l-pal .wi4-l-span
+               · text .wi4-l1 .wi4-l2 .wi4-ell .wi4-ref .wi4-t-red/.wi4-t-amb/.wi4-t-blue/.wi4-t-g2
+     points    .wi4-pts(.wi4-noplace) .wi4-pt .wi4-pt-n .wi4-more .wi4-ok .wi4-delay
+               · line 2 .wi4-l2f(.wi4-l2p) .wi4-pt-pl .wi4-pt-pal
+     chips     .wi4-dc(.today/.next/.est/.done/.past/.red) .wi4-pal(.over/.unk) .wi4-pal-ic .wi4-pe .wi4-att
+     assign    .wi4-asg .wi4-box(.own/.par/.un/.split) .wi4-plate .wi4-plane .wi4-prt (+ .wk3-prt hook)
+     national  .wi4-nat .wi4-nat-day .wi4-tile(.own/.par/.un/.un.red/.unk) .wi4-natdot
+     cells     .wi4-gap(.amb) .wi4-gap-act .wi4-void .wi4-noexp .wi4-ns (failed match) · drag .wi4-dh
+     ghost     .wi4-ghost .wi4-ghost-t (a failed match's import, in its own day)
+     sub-rows  .wi4-tag .wi4-legidx .wi4-unlink · rota .wi4-sub-leg .wi4-sub-leg-t · relay .wi4-sub-rl
+               .wi4-rl-drv .wi4-rl-sep · split .wi4-split-t (+ the ↳1/↳2 connector)
+     overlays  .wi4-datep .wi4-datep-hd .wi4-seg .wi4-datep-id .wi4-cal .wi4-cal-h .wi4-cal-d
+               (.out/.today/.cur/.sel) .wi4-time .wi4-datep-note .wi4-pnote(.info) .wi4-conf .wi4-datep-ft
+               · .wi4-dlg-back .wi4-dlg .wi4-dlg-ft · .wi4-help-row
+               · menu inside #wi-ctx: .wi4-m-hd .wi4-m-plate .wi4-m-sec .wi4-m-more .wi4-m-sub(.open) .wi4-m-ic .wi4-m-l .wi4-m-k
+   Legacy class names v4 may emit are only the contract hooks of §a.7 (wi-sync,
+   wk3-prt, wi2-gapstk, wi-b-ap, wi-ctx-i) plus what old builders return
+   (_wk3MoreStops fold, _wiShelfInner); each is sized below under .wi4. */
+
+/* Tokens (§c.2). Rule «one value, one source»: a measured value equal to an
+   existing token is var(--existing) and adds no hex. A literal that equals an
+   existing token's value is kept only where the MEANING differs, and each is
+   named in docs/redesign/baseline.json styles._note_hex:
+     --wi4-own   = --bg-hover's value: an own-fleet box fill must not change when
+                   someone retunes the generic hover colour (and the reverse);
+     --wi4-amber = --p-warn/--ceo-warn's value: both are scoped to the
+                   performance/CEO wraps, unreachable from .wi4;
+     --wi4-blue  = --map-cli-1/--ceo-accent-deep's value: map and CEO palettes;
+     --wi4-chip  = --border-row's (and dark-panel --panel-text's) value: a
+                   border / text colour there, a chip fill here.
+   «Unassigned» keeps the system meaning: there is deliberately NO
+   --wi4-unassigned alias. The «ΠΡΟΣ ΑΝΑΘΕΣΗ» box is --wi4-red-bg fill +
+   --wi4-red (= --danger) border + --wi4-red-ink (= --unassigned) text. */
+:root {
+  --wi4-ink:          var(--surface-dark);
+  --wi4-grey-1:       #344054;
+  --wi4-grey-2:       #5b6b7f;   /* line 2, headers, meta — 5.3:1 on white */
+  --wi4-grey-3:       #98a2b3;   /* placeholders/disabled ONLY — 2.6:1, never information */
+  --wi4-icon:         var(--text-dim);   /* icons only, never text (2.57:1) */
+  /* Top bar (Figma 1097:2287 week switcher). --wi4-tabs-bg has --wi4-own's
+     value but another meaning (a control's well, not «own fleet»). */
+  --wi4-tabs-bg:      #eef2f6;
+  --wi4-badge-bg:     #fee4e2;   /* W+1 badge (1097:2301) */
+  --wi4-badge-ink:    #b42318;   /* 5.4:1 on --wi4-badge-bg */
+  /* Presence tints, one per person (sheet 16 A): t0/t1 are Figma's; t2/t3 avoid
+     the board's meaning colours (green = partner, red/amber = severity, navy =
+     own). Every ink ≥ 6:1 on its fill. */
+  --wi4-av-t0-bg:     #e0f2fe;  --wi4-av-t0:  #075985;
+  --wi4-av-t1-bg:     #ede9fe;  --wi4-av-t1:  #5b21b6;
+  --wi4-av-t2-bg:     #fce7f3;  --wi4-av-t2:  #9d174d;
+  --wi4-av-t3-bg:     #e2e8f0;  --wi4-av-t3:  #334155;
+  --wi4-line:         #eef1f5;
+  --wi4-line-2:       var(--border);
+  /* Parity r2: Figma's light outline / count fill (1115:2710 queue card,
+     1097:2313 Pre-order count) — --wi4-line read one shade too pale there. */
+  --wi4-line-3:       #eaecf0;
+  /* Today's card frame (Figma 1097:3592 draws it in the accent at 55%): the
+     full-strength 1px --wi4-blue hairline it replaces read heavier than Figma. */
+  --wi4-today-line:   var(--wi4-blue);
+  /* Today's whole day (walkthrough C4, Nick 14/10): a background that reads at a
+     glance while scrolling, and its own hover, darker, so a hovered row still shows.
+     SOLID (the board blue at 10% / 14% over white), not rgba: over the grey page a
+     transparent tint came out darker and took the meta grey under 4.5:1. Measured
+     with --wi4-grey-2: 4.78:1 on the day, 4.54:1 on the hover. */
+  --wi4-today-bg:     #E6F2F8;
+  --wi4-today-hover:  #DCEDF6;
+  --wi4-ctl:          #d0d5dd;
+  --wi4-slot:         #cbd5e1;
+  --wi4-red:          var(--danger);
+  --wi4-red-bg:       #fef2f2;
+  --wi4-red-ink:      var(--unassigned);
+  --wi4-amber:        #b45309;
+  --wi4-amber-bg:     #fff7ed;
+  --wi4-amber-ink:    #7c2d12;
+  /* Parity round 1 (queue-stock, Figma sheet 15): soft severity OUTLINES on
+     white — a filled chip in the band read as a second, louder alarm. Borders
+     and fills only, never text (the text keeps --wi4-red / --wi4-amber). */
+  --wi4-red-line:     #fca5a5;
+  --wi4-amber-line:   #fcd34d;
+  --wi4-sel:          #f0f9ff;   /* the keyboard-selected line («Όλα» panel) */
+  --wi4-kcap:         #f9fafb;   /* key-cap fill (Q / Esc, the «?» sheet) */
+  --wi4-delay-bg:     var(--warn-bg);
+  --wi4-own:          #eef2f6;
+  --wi4-partner:      #ddefe3;
+  --wi4-partner-line: #bfdcc9;
+  --wi4-partner-ink:  #14532d;
+  --wi4-partner-sub:  #3f6b52;
+  --wi4-blue:         #027bbd;
+  --wi4-blue-ink:     var(--accent-text);
+  --wi4-chip:         #f1f5f9;
+  --wi4-split-hd:     var(--bg-row-alt);
+  --wi4-hover:        #f6f9fc;
+  /* Executed = dimmed (owner 21/10): the SAME 40% as .ops-t / .ramp-t tr.done,
+     so «done» reads alike on the Ημερήσιο, the Ράμπα and the Weekly. */
+  --wi4-done:         .4;
+  /* «someone else has this open» is news, not a problem (Figma 1125:2885):
+     a light-blue band, ink 7.1:1 on its fill. The conflict box keeps amber
+     with a softer border (1125:2976). */
+  --wi4-info-bg:      #f0f9ff;
+  --wi4-info-line:    #bae6fd;
+  --wi4-info-ink:     #075985;
+  --wi4-conf-line:    #f5d9b8;
+}
+
+/* Root. National columns are 140px open / 18px collapsed (as today's
+   collapse); the memory stays in localStorage tms_wk3_fl/fr, read by WP4. No
+   media query collapses them: §e #20 keeps «as today, open» until the owner's
+   1440 Figma exists. Transparent (owner 11/10, decision 2; Figma 1097:2254):
+   the board sits on the grey page, only the day cards are white — a white
+   root made the whole board one sheet and the days stopped reading as cards. */
+.wi4 { --wi4-fl:136px; --wi4-fr:136px; font-family:'DM Sans',sans-serif; font-size:12px; color:var(--wi4-ink);
+  background:transparent; font-variant-numeric:tabular-nums; }
+.wi4.wi4-fl-off { --wi4-fl:18px; }
+.wi4.wi4-fr-off { --wi4-fr:18px; }
+/* :where() keeps this at (0,0,1): every class rule on a button (.btn-new-order,
+   .wi4-dc, .wi4-plane, .wi4-gap-act…) wins again. As `.wi4 button` (0,1,1) it
+   beat them all — dark text on the navy «Νέα παραγγελία», dates as loud as
+   client names (review 11/10). The overlays v4 appends to <body> (queue
+   panel, date panel, dialog backdrop) sit outside .wi4, so their buttons
+   fell back to the UA font (Arial 13.33px day cells, Arial 11px conflict
+   buttons; Figma 1125:2843 / 1125:2983 / 1117:2693 are DM Sans). Same zero
+   specificity. Not #wi-ctx (the menu sets its own 13px) nor #wi-popover /
+   #wi-panel (scnStyles holds them equal to v1). */
+:where(.wi4, .wi4-qp, .wi4-datep, .wi4-dlg-back) button { font:inherit; color:inherit; }
+/* In the overlays a button is body text even under a Syne heading: the «?»
+   sheet's Esc cap sits in its title and inherited Syne from it. This is the
+   floor only — the cap itself is a key cap, DM Mono by .wi4-help .wi4-key
+   (Figma 1119:2841). */
+:where(.wi4-qp, .wi4-datep, .wi4-dlg-back) button { font-family:'DM Sans',sans-serif; }
+/* Board geometry at 1920 = Figma 1097:2254: a 1808px surface whose rows sit
+   inside a 1px border (1806px), legs 621px. #content is 1864px wide there (the
+   collapsed sidebar is 56px, Figma's 64px), so the gutter is 28px instead of
+   today's 36px. v4 only (body.wi4-on), which leaves with the page. Top 8px:
+   the ΕΠΟΜΕΝΑ band at y = 60 + 8 (sheet 15 A 1115:2706). The grey is explicit,
+   not inherited: full screen takes .main (weekly_intl.js _wiFullscreen), where
+   a transparent board would show the black ::backdrop. */
+body.wi4-on .content { padding-left:28px; padding-right:28px; padding-top:8px; background:var(--surface-page); }
+/* ONE top bar (Figma Top bar 1097:2283; owner 11/10, live parity): the app's
+   bar stacked over the board's cost ~80px of an 800px screen. WIV2 moves the
+   board's bar into the app's bar (#wi4-top, its own .wi4 wrapper so every
+   `.wi4 …` rule still reaches it); the page title and breadcrumb give way, the
+   bar is 60px and ends with the bell and the avatar. Name, role and Sign out
+   sit behind the avatar (.wi4-umenu); the idle undo hides until there is
+   something to undo. */
+/* z-index above the board's sticky header (.wi4-cols, 30): the «Προβολή ▾»
+   menu and the bell panel open over it. Height and gutters follow wi4-on, so
+   the bar never jumps; the title, the chip and the idle undo follow
+   wi4-top-on — set only while the board's bar is IN the top bar, so a re-read
+   or a load-error card shows the app's own title and Sign out, never a stale
+   week (review 11/10). */
+/* Figma 1097:2283: one 1px #e2e8f0 line under the bar — the app-wide blue
+   shadow drew a second, tinted line at y=60 on the board (F9). Right gutter 20
+   and the 8px step between the actions, the divider, the bell and the avatar
+   (1097:2309, F11). */
+body.wi4-on .topbar { height:60px; padding:0 20px 0 28px; gap:8px; position:relative; z-index:35; box-shadow:none; }
+body.wi4-top-on #topbarTitle, body.wi4-top-on #topbarBreadcrumb { display:none; }
+body.wi4-on .topbar .wi4-top { flex:1; min-width:0; align-self:stretch; display:flex; align-items:center; background:transparent; }
+body.wi4-on .topbar .wi4-top > .wi4-bar { flex:1; min-width:0; min-height:60px; border-bottom:0; }
+/* Figma 1097:2283 centres the week switcher between the title's left edge and
+   the avatar's right edge (the bell and the avatar are INSIDE Actions 1097:2309).
+   The slot runs on under .topbar-right by its width + the top bar's gap
+   (--wi4-tr, _topFit) and the actions step back by as much, so the grid's two
+   side tracks are equal again (r2/topbar-switcher-off-centre: −41px at 1920).
+   .topbar-right stays on top of the slot for the pointer and the paint. */
+body.wi4-top-on .topbar .wi4-top { margin-right:calc(-1 * var(--wi4-tr, 0px)); }
+body.wi4-top-on .wi4-top .wi4-bar-r { margin-right:var(--wi4-tr, 0px); }
+body.wi4-top-on .topbar .topbar-right { position:relative; z-index:1; }
+/* .topbar button's 44px touch floor (SH-3) is for the app's own chrome; on the
+   board's controls it made 44px tabs in a 56px pill (Figma: 34 / 32px). */
+body.wi4-on .topbar .wi4-top button { min-height:0; min-width:0; }
+body.wi4-on .topbar-right { gap:4px; }
+/* 1440: the bell and the avatar take ~90px from the bar the board had alone;
+   the gutters give back what the longest sync token («3 αλλαγές από … ·
+   Ανανέωση») needs to stay whole (rig presence.layout.changes). */
+@media (max-width:1600px) {
+  body.wi4-on .topbar { padding:0 16px 0 20px; gap:8px; }
+  /* «Σάρωση» keeps its camera and its title; the word gives way (it is still
+     the button's accessible name — font-size, not display). */
+  body.wi4-on .wi4-top .btn-scan { font-size:0; gap:0; padding:0 9px; }
+  body.wi4-on .wi4-top .wi4-bar { column-gap:8px; }
+  body.wi4-on .wi4-top .wi4-title { font-size:16px; }
+}
+body.wi4-top-on #undoBtn.undo-btn-idle { display:none; }
+body.wi4-on .topbar .notif-wrap { margin-right:0 !important; }
+body.wi4-top-on .topbar .user-chip { padding:0; border:0; background:transparent; cursor:pointer; position:relative; min-width:44px; min-height:44px; justify-content:center; }
+body.wi4-top-on .topbar .user-chip > #userName, body.wi4-top-on .topbar .user-chip > .role-badge, body.wi4-top-on .topbar .btn-logout { display:none; }
+/* The tail of Figma 1097:2309 (F11): a 1×22 divider, the bell (15px icon,
+   #475569 — the 18px #94a3b8 bell read at 2.6:1), the 28px navy avatar. The
+   44px hit areas stay (SH-3); negative margins put the VISIBLE icons where
+   Figma has them: the avatar's edge on the 20px gutter, the bell 8px from it.
+   The two 44px boxes overlap by 8px of empty space — the avatar (later in the
+   DOM) takes it; neither icon is under the other's box. */
+body.wi4-top-on .topbar .notif-wrap { display:flex; align-items:center; margin-right:-12px !important; }
+body.wi4-top-on .topbar .notif-wrap::before { content:''; flex:none; width:1px; height:22px; margin-right:1px; background:var(--wi4-line-2); }
+body.wi4-top-on .topbar .notif-bell { color:var(--text-mid); padding:0; display:inline-flex; align-items:center; justify-content:center; }
+body.wi4-top-on .topbar .notif-bell svg { width:15px; height:15px; }
+body.wi4-top-on .topbar .notif-dot { top:11px; right:11px; }
+body.wi4-top-on .topbar .user-chip { margin-right:-8px; }   /* avatar edge = the gutter */
+body.wi4-top-on .topbar .user-avatar { width:28px; height:28px; font-size:10.5px; font-weight:600; background:var(--wi4-ink); color:var(--surface-card); }
+/* right:8px: the chip's 44px box overhangs the 28px avatar by 8px, so right:0
+   put the menu's edge 8px past the avatar's (r2/topbar-avatar-menu-keyboard). */
+.wi4-umenu { position:absolute; top:calc(100% + 4px); right:8px; min-width:200px; padding:6px 0; background:var(--surface-card); border:1px solid var(--wi4-line-2); border-radius:8px; box-shadow:0 8px 24px rgba(11,25,41,.14); z-index:40; font-family:'DM Sans',sans-serif; font-size:12px; color:var(--wi4-ink); cursor:default; }
+.wi4-umenu[hidden] { display:none; }
+.wi4-umenu-h { padding:6px 14px 8px; border-bottom:1px solid var(--wi4-line-2); margin-bottom:4px; white-space:nowrap; }
+.wi4-umenu-h span { color:var(--wi4-grey-2); }
+.wi4-umenu button { display:block; width:100%; padding:7px 14px; text-align:left; background:none; border:0; font:inherit; color:inherit; cursor:pointer; }
+.wi4-umenu button:hover, .wi4-umenu button:focus-visible { background:var(--wi4-hover); }
+/* The chat button parks in the rail on the board: bottom-right it covered the
+   pallets of the last rows (parity scan, 11/10: 3 rows at 1920). */
+/* Desktop only: ≤1024px has no rail to park in. */
+@media (min-width:1025px) {
+  /* Its own slot above the collapse toggle (44px): the nav ends 52px higher,
+     so no icon sits under the button at any scroll (live screen 11/10: at
+     scroll 0 it covered an icon in the middle of the rail). */
+  body.wi4-on .aic-btn { left:8px; right:auto; bottom:50px; width:40px; height:40px; }
+  body.wi4-on .sidebar-toggle { margin-top:52px; }
+}
+
+/* The ONE truncation rule of the block (styles.truncate +1). A visible «…»
+   instead of a silent cut (DESIGN.md Κ6): a dispatcher must see that a name
+   continues. WP4 puts the full text in `title` on every node that overflows —
+   the board rig's overflow scan fails otherwise (§h.4). */
+/* Round 2 (11/10): the presence text and the one-line identity lines of the
+   overlays (date panel, per-load menu) join THIS rule — still the one
+   truncation rule of the block, each node with its full text in `title`. */
+/* Fix round 3 (11/10): the presence names and the rest of a presence
+   sentence, the range, the «Όλα» panel's lines (it lives on <body>, outside
+   .wi4, so its items wrapped) and the menu's item labels join it too. */
+.wi4 .wi4-l1, .wi4 .wi4-l2, .wi4 .wi4-ell, .wi4 .wi4-pres-n, .wi4 .wi4-pres-r, .wi4 .wi4-range, .wi4-datep-id,
+.wi4-qp .wi4-l1, .wi4-qp .wi4-l2, body.wi4-on #wi-ctx .wi4-m-l,
+body.wi4-on #wi-ctx .wi4-m-sec .wi4-l2, body.wi4-on #wi-ctx .wi4-m-hd .wi4-l2 { min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+
+/* Title bar (§e #1). Bar, queue band, stock strip, column header and day
+   cards share ONE left edge, the gutter (Figma: everything at x=24). */
+/* Three tracks: title group · week tabs · actions. The tabs own the centre
+   track, so the presence strip appearing or leaving with a beat never moves
+   them (review 11/10: ~105px jump under the cursor). The left group cuts its
+   own text (presence first) instead of pushing the tabs. */
+/* The right track is never narrower than its buttons (max-content): at 1440
+   the actions overlapped the week tabs by ~20px (fix round 3). At 1920 both
+   side tracks are equal and the tabs stay centred. */
+.wi4-bar { display:grid; grid-template-columns:minmax(0,1fr) auto minmax(max-content,1fr); align-items:center; column-gap:12px; min-height:56px; padding:0; border-bottom:1px solid var(--wi4-line-2); }
+/* Spacing by margins, not gap: the presence strip is display:contents (its
+   pieces are items of THIS row, each with its own shrink priority). */
+.wi4-bar-l { display:flex; align-items:center; gap:0; min-width:0; overflow:hidden; }
+/* 8px between the actions (Figma 1097:2309, F11). */
+.wi4-bar-r { display:flex; align-items:center; gap:8px; justify-self:end; }
+/* Σάρωση and Νέα παραγγελία at the bar's one height (32px); Σάρωση neutral so
+   the solid navy primary is the only primary (sheet 15). The shared buttons
+   stay as they are everywhere else (owner 29/9). */
+.wi4-bar .btn-scan, .wi4-bar .btn-new-order { height:32px; min-height:32px; padding:0 12px; font-size:12px; }
+.wi4-bar .btn-scan { border-color:var(--wi4-ctl); color:var(--wi4-grey-1); }
+/* Figma 1097:2285: Syne Bold 17, tracking −0.1; the range 10px after it in
+   DM Sans 12.5 (F12). */
+.wi4-title { font:700 17px 'Syne',sans-serif; letter-spacing:-.1px; color:var(--wi4-ink); white-space:nowrap; flex:none; }
+/* Priorities in the left group (review 11/10: the presence state was cut to
+   «… · ↻ ζ…» at 1920): the rest of a paused/forbidden sentence gives way
+   first, colleagues' names go WHOLE before the range is cut (_presFit, F4),
+   then the range (shrink 1000, its whole text in title), «Ενημερώθηκε» at
+   ≤1600; a state word and the sync token never shrink. */
+.wi4-range { font-size:12.5px; color:var(--wi4-grey-2); flex:0 1000 auto; margin-left:10px; }
+/* Figma 1115:2700: a 13px refresh icon, gap 5, «Ενημερώθηκε πριν 2΄» ONE
+   DM Sans 12 text; «↻ ζωντανά» 11.5 (1123:2730). The two words are two spans
+   (the first gives way at 1440): the right margin turns the 5px flex gap
+   into a word space (r2/topbar-sync-token-type). */
+.wi4-upd { display:inline-flex; align-items:center; gap:5px; font-size:12px; color:var(--wi4-grey-2); white-space:nowrap; flex:none; margin-left:12px; }
+.wi4-upd.live { font-size:11.5px; }
+.wi4-upd:not(.chg) > .wi4-upd-l { margin-right:calc(.25em - 5px); }
+.wi4-upd svg { flex:none; }
+/* A narrow bar (1440) says «↻ μόλις τώρα»: «Ενημερώθηκε» goes whole, never
+   half-cut (its time is in the title). */
+@media (max-width:1600px) { .wi4-upd-l { display:none; } }
+.wi4-upd.chg { color:var(--wi4-amber); font-weight:600; cursor:pointer; border:none; background:none; padding:0; }
+/* A failed save, in its own slot beside the token (sheet 14 #9, 1089:8565:
+   DM Sans 12 #B91C1C, an 11px alert icon). It never shrinks: a failure is
+   never cut (F5). Empty = no failure, no box. */
+.wi4-upd-err { display:inline-flex; align-items:center; gap:5px; font-size:12px; font-weight:400; color:var(--wi4-red); white-space:nowrap; flex:none; margin-left:12px; }
+.wi4-upd-err:empty { display:none; }
+.wi4-upd-err svg { flex:none; }
+/* Figma 1097:2287 (F10): a borderless #eef2f6 well, radius 9, 34px tall;
+   tabs DM Sans Medium 12.5, past weeks quieter; the week on screen a white
+   card with a #cbd5e1 line and a soft shadow, SemiBold. */
+.wi4-tabs { display:flex; align-items:center; gap:2px; padding:3px; margin:0; border:0; border-radius:9px; background:var(--wi4-tabs-bg); }
+.wi4-tab { height:28px; padding:0 12px; border:1px solid transparent; border-radius:6px; background:none; color:var(--wi4-grey-1); font-size:12.5px; font-weight:500; cursor:pointer; display:inline-flex; align-items:center; gap:4px; }
+.wi4-tab[data-d^="-"] { color:var(--wi4-grey-2); }
+/* The ‹ › steppers (1097:2288/2307): a 15px chevron, 27px wide (F2). */
+.wi4-tab[aria-label] { padding:0 5px; color:var(--text-mid); }
+.wi4-tab:hover, .wi4-tab[aria-label]:hover { color:var(--wi4-ink); }
+.wi4-tab.on { background:var(--surface-card); border-color:var(--wi4-slot); box-shadow:0 1px 2px rgba(15,23,42,.08); color:var(--wi4-ink); font-weight:600; gap:5px; }
+/* The current week: Figma 1097:2298, a 5×5 #027BBD disc 5px after «W41» (the
+   «•» glyph was a ~3px speck, r2/topbar-current-week-dot). */
+.wi4-tab-cur { flex:none; width:5px; height:5px; border-radius:50%; background:var(--wi4-blue); }
+/* A narrow bar (1440): W−3 and W+3 go (‹ › still step a week), so the title
+   group keeps room for the presence words and the sync token (fix round 3). */
+@media (max-width:1600px) { .wi4-tab[data-d="-3"], .wi4-tab[data-d="3"] { display:none; } }
+.wi4-tab-b { min-width:16px; height:15px; padding:0 3px; border-radius:7.5px; background:var(--wi4-badge-bg); color:var(--wi4-badge-ink); font-size:10px; font-weight:600; line-height:15px; text-align:center; }
+/* W+1 read in flight: «…», neutral — never no badge, which read as zero. */
+.wi4-tab-b.ld { background:var(--wi4-chip); color:var(--wi4-grey-1); }
+.wi4-btn { height:32px; padding:0 12px; display:inline-flex; align-items:center; gap:6px; border:1px solid var(--wi4-ctl); border-radius:6px;
+  background:var(--surface-card); color:var(--wi4-grey-1); font-weight:600; cursor:pointer; white-space:nowrap; }
+.wi4-btn:hover { border-color:var(--wi4-grey-2); color:var(--wi4-ink); }
+.wi4-btn.pri { background:var(--wi4-ink); border-color:var(--wi4-ink); color:var(--surface-card); }
+.wi4-btn.pri:hover { background:var(--navy-light); }
+.wi4-btn.sm { height:24px; padding:0 8px; font-size:11px; }
+.wi4-btn:disabled { color:var(--wi4-grey-3); cursor:default; }
+.wi4-cnt { min-width:16px; height:16px; padding:0 4px; border-radius:8px; background:var(--wi4-chip); color:var(--wi4-grey-1); font-size:10px; font-weight:700; line-height:16px; text-align:center; }
+/* The bar's OWN buttons («Προβολή», «Pre-order») as Figma 1097:2310 / sheet
+   15 draws them (F3): ink text 12.5, a #e2e8f0 line, a #475569 15px icon and
+   the 8px radius of the shared Σάρωση / Νέα παραγγελία beside them (the
+   shared ones are not restyled). Bar-scoped: the base .wi4-btn/.wi4-cnt
+   serve the queue, the panels and the dialogs. */
+.wi4-bar .wi4-btn { color:var(--wi4-ink); border-color:var(--wi4-line-2); border-radius:8px; padding:0 13px 0 11px; font-size:12.5px; }
+.wi4-bar .wi4-btn:hover { border-color:var(--wi4-grey-2); }
+.wi4-bar .wi4-btn svg { flex:none; color:var(--text-mid); }
+.wi4-bar .wi4-cnt { background:var(--wi4-line-3); font-weight:600; height:15px; line-height:15px; border-radius:7.5px; }
+
+/* Presence (§e #18). Never a lock and never «κανείς»: these rules only draw
+   who IS there; an empty strip is drawn by drawing nothing. */
+/* display:contents: avatars, names, the state word and the rest of a sentence
+   are items of the title row itself, so each has its own priority — the
+   rest of a paused/forbidden sentence before the range, names (whole, F4)
+   before the range, the state word and the sync token never (review 11/10). */
+.wi4-pres { display:contents; }
+/* 14px between the pieces (sheet 16 A 1123:2720: avatars → names; A2
+   1123:2731: dot → sentence) — 6px read as one cramped run (r2/presence-gaps). */
+.wi4-pres > * { margin-left:14px; }
+.wi4-pres > :first-child { margin-left:12px; }
+/* Light tinted discs (sheet 16 A), the same look as the row's .wi4-av.sm —
+   a navy disc read as «owned» (navy = own fleet). */
+.wi4-av { width:22px; height:22px; border-radius:50%; display:inline-grid; place-items:center; background:var(--accent-light);
+  color:var(--wi4-blue-ink); font-size:10px; font-weight:700; border:2px solid var(--surface-card); flex:none; }
+.wi4-av + .wi4-av { margin-left:-6px; }
+/* The strip's discs (sheet 16 A, F4): initials SemiBold 10.5, a tint per
+   person (t0–t3, picked in _presHTML); the row's .sm disc keeps its own. */
+.wi4-pres .wi4-av { font-size:10.5px; font-weight:600; }
+.wi4-av.t0 { background:var(--wi4-av-t0-bg); color:var(--wi4-av-t0); }
+.wi4-av.t1 { background:var(--wi4-av-t1-bg); color:var(--wi4-av-t1); }
+.wi4-av.t2 { background:var(--wi4-av-t2-bg); color:var(--wi4-av-t2); }
+.wi4-av.t3 { background:var(--wi4-av-t3-bg); color:var(--wi4-av-t3); }
+.wi4-av.more { background:var(--wi4-chip); color:var(--wi4-grey-1); }
+/* In a row's index and in the conflict panel: a light tinted disc (sheet
+   16 B), lighter than anything else in the index column. */
+.wi4-av.sm { width:18px; height:18px; font-size:9px; border:none; background:var(--accent-light); color:var(--wi4-blue-ink); }
+/* The strip's words: a fixed state word (.wi4-pres-w: «· εδώ τώρα», «σε
+   παύση», «μη διαθέσιμη») that always shows, names (.wi4-pres-n) and the rest
+   of a sentence (.wi4-pres-r) that give way first; the whole is the title. */
+.wi4-pres-n, .wi4-pres-w, .wi4-pres-r { font-size:11.5px; color:var(--wi4-grey-2); white-space:nowrap; }
+.wi4-pres-n { flex:none; }
+/* «Χρήστης Α, Χρήστης Β · εδώ τώρα» is one phrase in Figma: one space before «·»,
+   not the 6px gap of the pieces. Names that do not fit go WHOLE
+   (.wi4-pres-nofit, _presFit) — never «Χρήστης Α, Χρ…»; the title keeps them. */
+.wi4-pres-n + .wi4-pres-w { margin-left:.25em; }
+.wi4-pres.wi4-pres-nofit .wi4-pres-n { display:none; }
+.wi4-pres.wi4-pres-nofit .wi4-pres-n + .wi4-pres-w { margin-left:14px; }
+/* «↻ ζωντανά» behind a 1×16 rule when someone is there (sheet 16 A, 1123:2729),
+   14px on either side of the rule like every gap of the strip (names end 552
+   → rule 566 → text 581; r2/topbar-presence-gaps). */
+.wi4-pres:not(:empty) ~ .wi4-upd.live { border-left:1px solid var(--wi4-line-2); margin-left:14px; padding-left:14px; line-height:16px; }
+/* Shrink is weighted by width: at 5000 a ~280px sentence still took ~15px
+   from the 94px range at 1920 (F13). 1e6 makes the order strict — the
+   sentence gives way whole before the range loses a pixel. */
+.wi4-pres-r { flex:0 1000000 auto; }
+.wi4-pres-w { flex:none; }
+.wi4-pres-w b { font-weight:600; }
+.wi4-pres-ic { display:inline-flex; flex:none; color:var(--wi4-grey-2); }
+.wi4-pres.paused .wi4-pres-w, .wi4-pres.paused .wi4-pres-r, .wi4-pres.paused .wi4-pres-ic { color:var(--wi4-amber); }
+/* Paused (sheet 16 A2, 1123:2731, F13): an 8px amber dot, the sentence in
+   Medium 11.5, and no «Ενημερώθηκε» beside it — that word took the room the
+   sentence needed and cut the range at 1920 (the time stays). */
+.wi4-pres.paused .wi4-pres-ic { width:8px; height:8px; border-radius:50%; background:var(--wi4-amber); }
+.wi4-pres.paused .wi4-pres-w, .wi4-pres.paused .wi4-pres-w b, .wi4-pres.paused .wi4-pres-r { font-weight:500; }
+.wi4-pres.paused ~ .wi4-upd .wi4-upd-l, .wi4-pres.forbidden ~ .wi4-upd .wi4-upd-l { display:none; }
+/* A narrow bar (1440) keeps «σε παύση» / «μη διαθέσιμη» and drops «ζωντανή
+   εικόνα» before it (the sentence stays whole in the title). */
+@media (max-width:1600px) { .wi4-pres-wl { display:none; } }
+
+/* Banner (§e #21, §d.2a unknown sources, sticky fallback). Amber + words:
+   «δεν φορτώθηκε» is an unknown, not an error the user made. */
+.wi4-banner { display:flex; align-items:center; gap:12px; margin:8px 0 0; padding:6px 12px; border:1px solid var(--warn-border);
+  border-radius:6px; background:var(--wi4-amber-bg); color:var(--wi4-amber-ink); font-size:12px; }
+.wi4-link { border:none; background:none; padding:0; color:var(--wi4-blue-ink); font-weight:600; cursor:pointer; }
+.wi4-link:hover { text-decoration:underline; }
+
+/* Queue band (§e #2) and «Όλα N ▾» panel (§e #3). No padding, no rule: the
+   bands sit on the grey page 8px apart (sheet 15 A: band y=68 h34, stock
+   y=110, column header y=146) — the white cards and chips carry the edges. */
+.wi4-q { display:flex; align-items:center; gap:8px; padding:0; border-bottom:0; margin-bottom:8px; }
+/* Parity r1 F8 (Figma 1115:2707): 10.5px / .42 in --wi4-grey-1, and a 150px
+   column so the cards start where Figma's do (search + 406px). A MIN width,
+   not a width: «… · φορτώνει…» is longer than 150px and must push the cards,
+   never paint over the first one. */
+.wi4-q-hd { display:flex; flex-direction:column; gap:2px; flex:none; min-width:150px; font-size:10.5px; font-weight:600; letter-spacing:.42px; text-transform:uppercase; color:var(--wi4-grey-1); }
+.wi4-q-n { font-size:11.5px; font-weight:400; letter-spacing:0; text-transform:none; color:var(--wi4-grey-2); white-space:nowrap; }
+/* F8 (1115:2734): 240×30, radius 7, the light #e2e8f0 outline (with the
+   control grey #d0d5dd the box was the loudest thing in the band), 9/7 insets. */
+.wi4-search { flex:none; width:240px; height:30px; display:flex; align-items:center; gap:7px; padding:0 7px 0 9px; border:1px solid var(--wi4-line-2); border-radius:7px; background:var(--surface-card); }
+/* Parity r2 (Figma 1115:2735): the magnifier is stroked #5B6B7F; inheriting
+   the box's ink it was the darkest mark in the band. */
+.wi4-search > svg { flex:none; color:var(--wi4-grey-2); }
+.wi4-search input { flex:1; min-width:0; border:0; outline:0; background:transparent; font:inherit; font-size:12.5px; color:var(--wi4-ink); }
+.wi4-search input::placeholder { color:var(--wi4-grey-3); }
+.wi4-search:focus-within { border-color:var(--wi4-blue); box-shadow:0 0 0 2px var(--accent-light); }
+.wi4-search-n { font-size:11px; color:var(--wi4-grey-2); white-space:nowrap; }
+.wi4-key { display:inline-block; min-width:16px; padding:0 4px; border:1px solid var(--wi4-ctl); border-radius:3px; font-size:10px; font-weight:600; line-height:16px; text-align:center; color:var(--wi4-grey-2); background:var(--surface-card); }
+/* F8: the «/» cap of the search box is 17×16 in Figma (the shared key is 18px). */
+.wi4-search .wi4-key { border-color:var(--wi4-line-2); border-radius:4px; padding:0 5px; font-size:10.5px; font-weight:500; line-height:14px; }
+/* F7 (Figma 1115:2710): 10 / 8 insets, 10px gaps, the light #eaecf0 outline
+   (--wi4-line-3; parity r2: --wi4-line drew #eef1f5 while this said #eaecf0). */
+.wi4-qcard { position:relative; flex:1 1 0; min-width:0; height:34px; display:flex; align-items:center; gap:10px; padding:0 8px 0 10px;
+  border:1px solid var(--wi4-line-3); border-radius:6px; background:var(--surface-card); cursor:pointer; }
+.wi4-qcard:hover { background:var(--wi4-hover); }
+/* One line per card and per panel item (sheet 15): «Alpha Dairy → Beta…»
+   then «10π · φόρτωση ήταν χθες» in grey right after it. The NAME gives way
+   (review 11/10: the reason was cut instead); the reason keeps its width up
+   to 55% of the line. */
+.wi4-qcard-t { flex:1 1 auto; min-width:0; display:flex; flex-direction:row; align-items:baseline; gap:6px; }
+.wi4-qcard-t > .wi4-l1 { flex:0 1 auto; max-width:none; }
+.wi4-qcard-t > .wi4-l2 { flex:0 0 auto; max-width:55%; }
+/* F7, band cards only (the «Όλα» panel keeps the reason right after the
+   name, sheet 15 B): the name takes the slack, so the reason sits by the
+   button as in Figma — and the name still gives way first. 8px name → reason. */
+.wi4-qcard > .wi4-qcard-t { gap:8px; }
+.wi4-qcard > .wi4-qcard-t > .wi4-l1 { flex:1 1 auto; }
+.wi4-qcard .wi4-l1 { font-size:12.5px; }
+.wi4-qcard .wi4-l2 { font-size:11px; }
+/* F7: the day chip is a fixed 70px column (text centred), so every card's
+   name starts at the same x; a «Πέμ 8/10» card and a «Σάβ 10/10» card
+   started their names at different places. Before the ≤1600 block, which
+   hides the chip there (decided 11/10). */
+.wi4-qcard > .wi4-dc { min-width:70px; justify-content:center; padding:0 6px; box-sizing:border-box; }
+.wi4-qcard > .wi4-btn.sm { font-size:12px; border-radius:4px; padding:0 10px; }
+/* F7: the severity rail covers the card's own border (Figma: x=0 of the
+   card, full height); inside it, a 1px grey sliver showed to its left. No
+   overflow:hidden on the card — it would clip this rail. */
+.wi4-qcard.wi4-r-red::before, .wi4-qcard.wi4-r-amb::before { left:-1px; top:-1px; bottom:-1px; border-top-left-radius:6px; border-bottom-left-radius:6px; }
+/* 1440 (live parity 11/10): three cards read «ΠΕΛΑΤ… 34π · φορτώ…» — no
+   name, no reason. The search box gives 80px and the card's day chip goes
+   (the reason already says «αύριο» / «ήταν χθες»; the row keeps its chip).
+   The label gives up its 150px column too (F8): the cards need the room. */
+@media (max-width:1600px) {
+  .wi4-search { width:160px; }
+  .wi4-qcard > .wi4-dc { display:none; }
+  .wi4-q-hd { min-width:0; }
+}
+/* F7: «Όλα 17 ▾» Medium 12.5 — a link, lighter than the cards' buttons. */
+.wi4-q-all { flex:none; white-space:nowrap; font-size:12.5px; font-weight:500; }
+/* Sheet 15 B (1117:2676, parity r1 F9): 640px, radius 10, the deeper
+   0 8 24 shadow, one line per item, opening under the queue band from its
+   left edge (WI4Actions.queuePanel places it). */
+.wi4-qp { position:fixed; z-index:var(--z-top); width:min(640px, calc(100vw - 32px)); max-height:70vh; overflow:auto; padding:8px 0; background:var(--surface-card);
+  border:1px solid var(--wi4-line-2); border-radius:10px; box-shadow:0 8px 24px rgba(15,23,41,.12); font-family:'DM Sans',sans-serif; font-size:12px; color:var(--wi4-ink); }
+/* Parity r2: Figma 1117:2676 has no overflow state, but 70vh holds 560 of
+   952px at 1800×800 and macOS hides the scrollbar — the panel ended mid-line
+   with nothing saying more follow. A sticky fade at the visible bottom while
+   lines remain below (.ovf, WI4Actions.queuePanel). Not mask-image: a mask
+   would clip the panel's own border and shadow. bottom −8px = the panel's
+   padding: a sticky box stops at the padding edge, and at 0 the cut line
+   showed crisp in the 8px under the fade. */
+.wi4-qp.ovf::after { content:''; display:block; position:sticky; bottom:-8px; height:24px; margin-top:-24px; background:linear-gradient(transparent,var(--surface-card)); pointer-events:none; }
+/* Q / ↑↓ bring the selected line into view with scrollIntoView(nearest): it
+   stops above the fade, not under it. */
+.wi4-qp.ovf { scroll-padding-bottom:24px; }
+/* F3 (1117:2677): the panel's first line is a sentence with key caps —
+   «ΕΠΟΜΕΝΑ · 17  [Q] επόμενο  [Esc] κλείσιμο» — not a section label: as a
+   .wi4-qp-h it was upper-cased into «[Q] ΕΠΟΜΕΝΟ [ESC] ΚΛΕΙΣΙΜΟ». */
+.wi4-qp-hd { display:flex; align-items:center; gap:8px; padding:4px 14px 8px; font:600 11px 'DM Sans',sans-serif; color:var(--wi4-grey-1); text-transform:none; }
+.wi4-qp-hn { margin-right:18px; }   /* + the 8px gap = Figma's 10px spacer between two gaps */
+.wi4-qp-kt { font-weight:400; color:var(--wi4-grey-2); }
+/* Key caps 19×18 (Figma «Key»): DM Mono on the light cap fill. */
+.wi4-qp .wi4-key { font:500 10.5px/14px 'DM Mono',monospace; background:var(--wi4-kcap); border-color:var(--wi4-ctl); border-radius:4px; padding:1px 5px; color:var(--wi4-grey-1); text-transform:none; }
+.wi4-qp-h { padding:8px 14px 4px; font-size:10.5px; font-weight:600; letter-spacing:.42px; text-transform:uppercase; color:var(--wi4-grey-2); }
+/* F9: 5 / 10 / 5 / 14 insets and a 10px gap — a line with its 23px button is 33px. */
+.wi4-qp-i { position:relative; display:flex; align-items:center; gap:10px; min-height:32px; padding:5px 10px 5px 14px; cursor:pointer; }
+.wi4-qp-i:hover { background:var(--wi4-hover); }
+.wi4-qp .wi4-l2 { font-size:11px; }
+/* F2 (1117:2693): 11.5px Medium, radius 5, 9px insets, 23px tall. */
+.wi4-qp .wi4-btn.sm { font-size:11.5px; font-weight:500; border-radius:5px; padding:0 9px; height:23px; }
+/* «Προβολή ▾»'s note that the conflict check is not live: a sentence. */
+.wi4-view-note { max-width:260px; padding:6px 14px; font-size:11px; font-weight:600; line-height:1.4; white-space:normal; }
+/* F9: the selected line is a pale blue fill (Figma #f0f9ff), not a 2px blue
+   box, which read as a second, louder focus than the row's own ring. The
+   ring is for the keyboard only (:focus-visible; focus follows the line). */
+.wi4-qp-i.on { background:var(--wi4-sel); }
+.wi4-qp-i:focus-visible { outline:2px solid var(--wi4-blue); outline-offset:-2px; }
+
+/* Stock strip (§e #4): the inner markup and its words come unchanged from
+   _wiShelfInner (global .wi-shelf-* rules). Only the frame is v4's: the
+   sticky/height part of today's strip is scoped to .wk3.wi2 and would not
+   apply here. */
+.wi4-shelf { height:28px; padding:0; border-bottom:0; margin-bottom:8px; }
+.wi4 .wi-shelf { height:28px; overflow:hidden; }
+/* Sheet 15: label and lot chips from the LEFT edge — the same x as the search
+   box and the column header — and the loose-pieces pill on the right. The
+   global strip is pushed right (max-width:75%, margin-left:auto, for today's
+   board): both are undone here, or «ΑΠΟΘΕΜΑ» started 25% in (review 11/10). */
+/* Parity r1: 2px above and below, so the 24px chips sit centred in the 28px
+   strip as in Figma (y=2); the global 2/4 split was for 22px pills. */
+.wi4 .wi-shelf-in { justify-content:flex-start; max-width:none; margin-left:0; padding:2px 0; }
+.wi4 .wi-shelf-list { flex:1 1 auto; min-width:0; }
+/* Parity r2 (Figma 1115:2746): 8px between lot chips and 16px from the
+   label's text to the first chip (label pr 8 + gap 8); the old board's 6px
+   gaps and 2px label inset packed the chips into one run. */
+.wi4 .wi-shelf-in, .wi4 .wi-shelf-list { gap:8px; }
+.wi4 .wi-shelf-loose { margin-left:auto; }
+/* F6 (1115:2777): one neutral 24px box; only «· 1 εκπρόθεσμο» is red (its own
+   span, SHELF_OPT.lateSpan). The whole sentence in red painted the plain
+   count of waiting pieces as an alarm too. */
+.wi4 .wi-shelf-loose, .wi4 .wi-shelf-loose.late { height:24px; border:1px solid var(--wi4-ctl); border-radius:4px; background:var(--surface-card); color:var(--wi4-grey-1); }
+.wi4 .wi-shelf-loose .wi-shelf-late { color:var(--wi4-red); }
+/* F4 (1115:2748/2749): a DM Sans caps label like the queue's «ΕΠΟΜΕΝΑ», not
+   the old board's Syne; «· 2 προς έλεγχο» (SHELF_OPT.flagWords, not «⚠») in amber. */
+.wi4 .wi-shelf-lbl { font:600 10.5px 'DM Sans',sans-serif; letter-spacing:.42px; color:var(--wi4-grey-1); padding-right:8px; }
+.wi4 .wi-shelf-lbl .wi-shelf-k { font-weight:500; font-size:11px; letter-spacing:0; color:var(--wi4-amber); }
+/* Chip (sheet 15): warehouse and figure bold in ink, the client in grey, a
+   light «·» between them — words from _wiShelfChip, «π» from its v4 option.
+   F5 (1115:2750/2757/2764): 24px boxes with radius 4, not 22px pills; the
+   client Regular, names and figures SemiBold. */
+.wi4 .wi-shelf-chip { height:24px; border-radius:4px; gap:5px; font-weight:400; color:var(--wi4-grey-1); }
+.wi4 .wi-shelf-chip b { color:var(--wi4-ink); }
+.wi4 .wi-shelf-chip b, .wi4 .wi-shelf-chip .fl { font-weight:600; }
+.wi4 .wi-shelf-chip .sep { color:var(--wi4-grey-2); }
+/* ▣ is a TEXT node: Figma's #98a2b3 would fail the 4.5:1 contrast scan. */
+.wi4 .wi-shelf-chip > span[aria-hidden] { font-size:10px; color:var(--wi4-grey-2); }
+/* F5: the severity is an OUTLINE on a white chip (owner 11/10: chips stay
+   white on the grey page) and the flag's words in red / amber; a filled
+   chip read as a second alarm next to the queue's red rails. */
+.wi4 .wi-shelf-chip.aging, .wi4 .wi-shelf-chip.close { background:var(--surface-card); border-color:var(--wi4-amber-line); }
+.wi4 .wi-shelf-chip.aging .fl, .wi4 .wi-shelf-chip.close .fl { color:var(--wi4-amber); }
+.wi4 .wi-shelf-chip.nointake { background:var(--surface-card); border-color:var(--wi4-red-line); }
+.wi4 .wi-shelf-chip.nointake .fl { color:var(--wi4-red); }
+
+/* Column header (§e #5) and the shared 10-track grid at 1920 (§c.2):
+   idx · ΠΡΟΣ ΒΕΡΟΙΑ · gap · ΕΞΑΓΩΓΗ · gap · ΑΝΑΘΕΣΗ · gap · ΕΙΣΑΓΩΓΗ · gap · ΑΠΟ ΒΕΡΟΙΑ.
+   Gap tracks are real tracks, so cells are placed by column class, never by
+   source order (a missing cell must not slide the next one left). */
+.wi4-cols, .wi4-row, .wi4-subrow, .wi4-splithd {
+  display:grid; grid-template-columns:64px var(--wi4-fl) 8px minmax(0,1fr) 16px 176px 16px minmax(0,1fr) 8px var(--wi4-fr); align-items:center; }
+.wi4-c-idx { grid-column:1; } .wi4-c-fl { grid-column:2; min-width:0; } .wi4-c-exp { grid-column:4; min-width:0; }
+.wi4-c-asg { grid-column:6; min-width:0; } .wi4-c-imp { grid-column:8; min-width:0; } .wi4-c-fr { grid-column:10; min-width:0; }
+/* A leg sits 10px inside its 621px track (Figma legs 1097:2658 / 2506: px 10,
+   so 207px stops), and so does everything else drawn in it — the column
+   header label, the slots, the relay text, the rota tag — one rule for all.
+   Without it the import pallets touched the ΑΠΟ name («20 Xi Fruit»). */
+.wi4 .wi4-c-exp, .wi4 .wi4-c-imp { padding:0 10px; box-sizing:border-box; }
+/* National columns: px 8 inside their 140px tracks (Figma Feed 1097:2650 /
+   2927), both sides — the ΠΡΟΣ tile ran to the export date chip, the ΑΠΟ name
+   started on the track edge. Collapsed (18px) it is a centred dot/chevron
+   with no inset. */
+.wi4 .wi4-c-fl, .wi4 .wi4-c-fr { padding:0 8px; box-sizing:border-box; }
+.wi4.wi4-fl-off .wi4-c-fl, .wi4.wi4-fr-off .wi4-c-fr { padding:0; }
+.wi4-c-span { grid-column:2 / -1; min-width:0; }
+/* The split frame's header starts at the export leg, like the relay tags
+   (board: «ΣΠΑΣΜΕΝΗ ΣΕ 2 ΣΚΕΛΗ» at the export column, not under ΠΡΟΣ ΒΕΡΟΙΑ). */
+.wi4-splithd .wi4-c-span { grid-column:4 / -1; display:flex; align-items:center; gap:8px; padding-left:10px; }
+/* Sticky header: .content (the scroller) has 8px of top padding on the board
+   (body.wi4-on .content, the one top bar), and a sticky element sticks INSIDE
+   that padding — at top:0 rows scrolled through the strip above it. top =
+   minus that padding puts it at the scroller's edge; change both together
+   (it was -32px for the old 32px padding: the header slid away, review 11/10).
+   The 1px side padding lines the tracks up with the rows inside the day card's
+   border. Figma 1097:2421: labels in a 24px band (4px above, 20px tall), no
+   fill, no rule — the page grey here is only because a sticky header must be
+   opaque. The 8px under the labels is the gap to the scroll viewport
+   (1097:2447), kept INSIDE the header so rows never show through it, and the
+   10px shadow (1097:3856 «Scrolled shadow») hangs under it only once the
+   board has scrolled (its scroll-driven animation below). Height and
+   scroll-margin-top (.wi4-day, .wi4-row) change together. */
+.wi4-cols { position:sticky; top:-8px; z-index:30; height:32px; padding:4px 1px 8px; box-sizing:border-box; background:var(--surface-page); border-bottom:0;
+  font-size:10px; font-weight:600; letter-spacing:.7px; text-transform:uppercase; color:var(--wi4-grey-2); }
+.wi4-cols::after { content:''; position:absolute; left:0; right:0; top:100%; height:10px; pointer-events:none;
+  background:linear-gradient(rgba(15,23,41,.07),rgba(15,23,41,0)); opacity:0; }
+/* Without scroll timelines the time-based fallback would end at opacity 1 —
+   a shadow on an unscrolled board. Such a browser gets no shadow instead. */
+@supports (animation-timeline: scroll()) {
+  .wi4-cols::after { animation:wi4-sh linear both; animation-timeline:scroll(nearest); animation-range:0 24px; }
+}
+@keyframes wi4-sh { to { opacity:1; } }
+/* Parity r2 (Figma 1097:2428/2439): «· 22 φορτία · ανά ημέρα εκφόρτωσης» is
+   the header's Regular span and keeps its .7px tracking; at 0 it ran ~24px
+   short of Figma's. */
+.wi4-n { font-weight:400; text-transform:none; }
+/* Parity r2 (Figma 1097:2433, px 10): «ΑΝΑΘΕΣΗ · ΕΝΤΟΛΗ» starts in line with
+   the assignment pills' text, not on the track edge 10px left of it. Header
+   only — the row pills keep their own 0 inset. */
+.wi4-cols .wi4-c-asg { padding-left:10px; box-sizing:border-box; }
+.wi4-ftog { cursor:pointer; white-space:nowrap; }
+.wi4-ftog:hover { color:var(--wi4-ink); }
+/* A collapsed national column keeps its toggle in the header as a chevron
+   (18px wide), so it reopens where it was (rules: «ανοιγοκλείνουν με κλικ
+   στην κεφαλίδα»). The label stays in aria-label/title. */
+.wi4.wi4-fl-off .wi4-cols .wi4-c-fl .wi4-ftog-t, .wi4.wi4-fr-off .wi4-cols .wi4-c-fr .wi4-ftog-t { display:none; }
+.wi4.wi4-fl-off .wi4-cols .wi4-c-fl .wi4-ftog::before { content:'▸'; font-size:13px; }
+.wi4.wi4-fr-off .wi4-cols .wi4-c-fr .wi4-ftog::before { content:'◂'; font-size:13px; }
+/* «ΑΠΟ ΒΕΡΟΙΑ ▸» left-aligned on the same edge as its tiles (Figma 1097:2445,
+   x8): right-aligned it sat ~50px right of them. SemiBold 10.5, tracking
+   .525 (Figma), on the national labels only. */
+.wi4-cols .wi4-c-fr { text-align:left; }
+.wi4-cols .wi4-c-fl, .wi4-cols .wi4-c-fr { font-size:10.5px; letter-spacing:.525px; }
+.wi4.wi4-fl-off .wi4-cols .wi4-c-fl, .wi4.wi4-fr-off .wi4-cols .wi4-c-fr { text-align:center; }
+
+/* Day (§e #6). Closed only by the user's click (owner 12/10); an empty day is
+   its header alone. scroll-margin: a day or row scrolled into view (first
+   paint, queue card, keyboard) stops BELOW the 32px sticky column header,
+   never under it. */
+.wi4-day { padding:0; scroll-margin-top:33px; }
+.wi4-row, .wi4-subrow { scroll-margin-top:33px; }
+/* Rhythm of Figma 1097:2448: card bottom → day name 14px, name 16px, name →
+   card 6px (36px per day, it was 40). The first day's name sits right under
+   the column header's own 8px gap; a closed or empty day has no card under
+   it, so no 6px either (closed days stack 30px apart, as Figma's do). The
+   name's top never moves when a day opens or closes. */
+.wi4-dayh { height:36px; box-sizing:border-box; padding:14px 0 6px 4px; display:flex; align-items:center; gap:8px; cursor:pointer; font-size:12.5px; font-weight:600; letter-spacing:.4px; color:var(--wi4-ink); }
+.wi4-day:first-child > .wi4-dayh { height:22px; padding-top:0; }
+.wi4-day:is(.closed, .empty) > .wi4-dayh { height:30px; padding-bottom:0; }
+.wi4-day:first-child:is(.closed, .empty) > .wi4-dayh { height:16px; }
+.wi4-day.empty > .wi4-dayh { cursor:default; }
+/* Figma 1097:2642: «ΤΡΙΤΗ » Syne SemiBold, tracking .8; the date in DM Sans
+   inside the same run (so the same tracking). Size and weight stay on
+   .wi4-dayh (12.5/600). */
+.wi4-dayn { font-family:'Syne',sans-serif; letter-spacing:.8px; white-space:nowrap; }
+.wi4-dayd { font-family:'DM Sans',sans-serif; }
+/* Figma 1097:2640: chevron 14px at x4, name at x26; stroke #5B6B7F — after
+   owner decision 1 it is the only sign that a day folds, so not the 2.4:1
+   icon grey. The empty day keeps the 14px as a spacer (nothing to open). */
+.wi4-chev { display:inline-grid; place-items:center; color:var(--wi4-grey-2); transition:transform var(--duration-fast) var(--ease-out); }
+.wi4-dayh-sp { flex:none; width:14px; }
+.wi4-day.closed .wi4-chev { transform:rotate(-90deg); }
+/* The closed-day marker (_dayCountHTML): hidden on an open day — its rows
+   carry the rails — and one 6px dot after the date on a closed one.
+   Red filled, amber ring: shape + colour. No grey ring: national state no
+   longer marks an intl day (owner 11/10 21:20). */
+.wi4-dayh-c { display:inline-flex; align-items:center; }
+.wi4-day:not(.closed) .wi4-dayh-c { display:none; }
+.wi4-dayh-dot { flex:none; width:6px; height:6px; box-sizing:border-box; border-radius:50%; }
+.wi4-dayh-dot.red { background:var(--wi4-red); }
+.wi4-dayh-dot.amb { border:1.5px solid var(--wi4-amber); }
+/* «· σήμερα» (owner 11/10: words, not a «ΣΗΜΕΡΑ» pill). Was Regular 12 in the
+   light blue ink; Pantelis 13/10 «Φαίνεται πολύ αχνά», so bold and dark (C4). */
+.wi4-today { font-size:12px; font-weight:700; letter-spacing:0; color:var(--text); }
+/* Today's whole header is blue (board 1097:2254), not only «σήμερα». */
+.wi4-day.today .wi4-dayh { color:var(--wi4-blue-ink); }
+/* Radius 8 (parity r2, Figma Surface 1097:2462 / 2645 / 3592). */
+.wi4-day-body { border:1px solid var(--wi4-line-2); border-radius:8px; background:var(--surface-card); margin-bottom:0; }
+/* Today's whole day (walkthrough C4, Nick 14/10): the card carries a blue
+   background and a frame (2px on top, 1px sides and bottom), the way the old
+   board framed today, so the line between past and coming days shows at any
+   scroll position. The sides stay 1px, so today's rows keep the same tracks as
+   every other card's; rows are transparent, so the background shows through,
+   and white boxes inside a row (assignment, date chips) stay white. */
+/* 8px above the first row and below the last (Nick 14/10): the rows do not touch the frame. */
+.wi4-day.today .wi4-day-body { background:var(--wi4-today-bg); border-color:var(--wi4-today-line); border-top:2px solid var(--wi4-today-line); padding:var(--space-2) 0; }
+.wi4-day.today .wi4-row:hover, .wi4-day.today .wi4-subrow:hover { background:var(--wi4-today-hover); }
+/* The amber reason text («· από σήμερα») is 4.4:1 on today's tint: one step
+   darker inside today only (6.2:1). Colour tokens stay as they are, so every
+   other use of --wi4-amber (rails, borders) is unchanged. */
+.wi4-day.today .wi4-t-amb { color:#92400e; }
+/* «+N» on click: the route table (_routeTable, Nick 14/10), number box | name |
+   place | pallets | day, 8px row padding and a line between rows. It opens in
+   the fold's place (.wk3-xfold.open, absolute under its cell). */
+.wi4 .wk3-xfold.wi4-rfold.open { display:block; max-width:520px; padding:4px 8px; }
+.wi4-rtab { border-collapse:collapse; }
+.wi4-rtab th { padding:4px 8px; font:600 11px 'DM Sans',sans-serif; text-transform:uppercase; letter-spacing:0; color:var(--wi4-grey-2); text-align:left; background:none; border:none; white-space:nowrap; }
+.wi4-rtab td { padding:8px; font-size:12px; color:var(--text); border-top:1px solid var(--wi4-line); white-space:nowrap; vertical-align:middle; }
+.wi4-rtab td.n { width:1%; }
+.wi4-rtab td.nm { font-weight:600; }
+.wi4-rtab td.pl, .wi4-rtab td.dy { color:var(--wi4-grey-2); }
+.wi4-rtab .pa { text-align:right; font-variant-numeric:tabular-nums; font-weight:600; }
+.wi4-rtab .wi4-pt-n, .wi4-rtab .wk3-stopn { display:inline-block; }
+.wi4-rtab tr.wi4-rrow[onclick] { cursor:pointer; }
+.wi4-rtab tr.wi4-rrow[draggable="true"] { cursor:grab; }
+.wi4-rtab tr.wi4-rrow:hover td { background:var(--wi4-hover); }
+.wi4-day.closed .wi4-day-body { display:none; }
+/* Rails on a card's first/last row follow the card's 7px inner curve (8px
+   radius − 1px border; Figma rail 1097:2648, the stripe clipped by the card)
+   instead of poking out square. Not overflow:hidden on the card: it would
+   clip the «+N» fold opened on a last row (.wk3-xfold.open, absolute under its
+   row) and the drag outlines. The box is 8px wide (border-box: the 3px stripe
+   + 5px transparent) so the 7px radius applies unscaled — on the bare 3px
+   stripe a radius wider than its box shrinks to fit. */
+.wi4-day-body > :is(.wi4-r-red, .wi4-r-amb):first-child::before { width:8px; border-top-left-radius:7px; }
+.wi4-day-body > :is(.wi4-r-red, .wi4-r-amb):last-child::before { width:8px; border-bottom-left-radius:7px; }
+.wi4-dayempty { height:24px; display:flex; align-items:center; padding:0 12px; font-size:11px; color:var(--wi4-grey-2); }
+
+/* Rows (§e #7). 32px is locked (owner). One separator under every row, none
+   under the last row of a day (§e #7 f). */
+/* 36px (Nick 15/10: more room per row; was 32px, Figma). */
+.wi4-row { position:relative; height:36px; border-bottom:1px solid var(--wi4-line); }
+.wi4-subrow, .wi4-splithd { position:relative; height:28px; border-bottom:1px solid var(--wi4-line); font-size:10.5px; color:var(--wi4-grey-1); }
+/* 28px (Nick 15/10; Figma 22): room for the line's ✈ button (26px). */
+.wi4-splithd { background:var(--wi4-split-hd); height:28px; }
+/* Per-kind heights (Figma 1097:2830, 1097:3046, 1097:3388): a relay is a
+   24px note line, a rota leg carries a whole leg (chip + two-line stops) in a
+   row's 32px, a split header is a 22px band. The 28px base stays only for a
+   sub-row whose record did not load (_missingHTML). */
+.wi4-subrow.wi4-sub-rl { height:24px; }
+/* Relay text (Figma 1097:2830 / 3291; parity r2, relay-subrow-*): it takes
+   the empty track beside it — a pickup the ΑΝΑΘΕΣΗ track, a delivery the ΑΠΟ
+   ΒΕΡΟΙΑ one (_relayRowHTML leaves those cells out). A flex row: tag, driver,
+   day and status never give way; the «what differs» parts (.wi4-ell) do, the
+   later ones first — a shrink weight that leaves an earlier part not even a
+   fraction of a pixel short, which would already cost it its «…». gap 3 +
+   the «·»'s own 3px margin = Figma's 6px. A part carries its «·» as ::before,
+   so a part cut to nothing takes its «·» with it. Only the read relay
+   (.wi4-rlf): the «δεν διαβάστηκε» line keeps its cells. */
+.wi4-sub-rl > .wi4-c-exp:has(> .wi4-rlf) { grid-column:4 / 7; }
+.wi4-sub-rl > .wi4-c-imp:has(> .wi4-rlf) { grid-column:8 / 11; }
+.wi4 .wi4-rlf { display:flex; align-items:center; gap:3px; min-width:0; overflow:hidden; white-space:nowrap; }
+.wi4 .wi4-rlf > * { flex:none; }
+.wi4 .wi4-rlf > .wi4-ell { flex:0 1 auto; min-width:0; }
+.wi4 .wi4-rlf > .wi4-ell ~ .wi4-ell { flex-shrink:1000000; }
+.wi4 .wi4-rlf > .wi4-ell::before { content:'·'; margin:0 6px 0 3px; color:var(--wi4-grey-2); }
+/* ✓ 10px + 4px + the word (Figma 1097:2670); a warning's icon carries the
+   colour (amber = the day differs, red = the save failed), the words stay. */
+.wi4 .wi4-rl-st { display:inline-flex; align-items:center; gap:4px; }
+.wi4 .wi4-rl-st > .wi4-ok { margin-right:0; }
+.wi4 .wi4-rl-st > svg { flex:none; color:var(--wi4-amber); }
+.wi4 .wi4-rl-st.red > svg { color:var(--wi4-red); }
+.wi4-subrow.wi4-sub-leg { height:36px; }
+/* A row that owns the sub-row under it ends on a dashed hairline (Figma
+   1097:2781 / 3243 / 2990): every row had the same solid line, so a sub-row
+   did not read as belonging to the row above it. */
+.wi4-row:has(+ .wi4-subrow) { border-bottom-style:dashed; border-bottom-color:var(--wi4-line-2); }
+.wi4-splithd .wi4-c-idx { font-size:11.5px; }
+/* Split connector (Figma 1104:4229): a 1px line down the index column from
+   the top of leg ↳1 to the middle of leg ↳2 ties the two legs to their header
+   (only leg 1 carries its rail). Read off data-no, which _idxHTML already
+   writes; the index cell is not positioned, so the line spans the 32px row. */
+.wi4-row > .wi4-c-idx[data-no="↳1"]::after, .wi4-row > .wi4-c-idx[data-no="↳2"]::after {
+  content:''; position:absolute; left:5px; top:0; bottom:-1px; border-left:1px solid var(--wi4-line-2); pointer-events:none; }
+.wi4-row > .wi4-c-idx[data-no="↳2"]::after { bottom:50%; }
+.wi4-day-body > :last-child { border-bottom:none; }
+.wi4-row:hover, .wi4-subrow:hover { background:var(--wi4-hover); }
+.wi4-c-idx { font-size:11px; font-weight:500; color:var(--wi4-grey-2); display:flex; align-items:center; justify-content:center; gap:2px; }
+/* The row's own cell (Nick 15/10): the number and the row's ✈ menu on a light
+   background, so the actions of the whole row (truck, export, import) read apart
+   from each leg's own (the printers beside the assignment). 56px wide: the 28px
+   the ✈ and its gap freed in the ΑΝΑΘΕΣΗ column (204 → 176px), so no leg and no
+   national column narrows. Rails (::before on the row) still paint over it. */
+:is(.wi4-row, .wi4-subrow, .wi4-splithd) > .wi4-c-idx { align-self:stretch; background:var(--wi4-chip); }
+/* Every line's number at the same x (12px in) and its ✈ on the right, whether or
+   not the line has one: a centred number on the lines without a ✈ (split headers,
+   sub-rows) broke the column (Nick 15/10, rows 6 and 14). */
+:is(.wi4-row, .wi4-subrow, .wi4-splithd) > .wi4-c-idx { justify-content:flex-start; padding:0 8px 0 12px; }
+.wi4 .wi4-c-idx .wi4-plane { margin-left:auto; }
+/* The line's number reads (Nick 15/10): 13px semibold ink-grey #344054, was 11px grey. */
+.wi4 :is(.wi4-row, .wi4-subrow, .wi4-splithd) > .wi4-c-idx { font-size:13px; font-weight:600; color:var(--wi4-grey-1); }
+/* 64px (Nick 15/10, «more padding, the plane more visible»): the 8px came from the
+   two national columns (140 → 136px); the legs could not give any (a lot's
+   warehouse name must keep 56px at 1440). The ✈ is a white 26px button with a
+   border on the band, ink-grey icon (#344054), so it reads as a control. */
+.wi4 .wi4-c-idx .wi4-plane { width:26px; height:26px; background:#fff; border:1px solid var(--wi4-ctl); border-radius:6px; color:var(--wi4-grey-1); box-shadow:0 1px 1px rgba(16,24,40,.06); }
+.wi4 .wi4-c-idx .wi4-plane:hover { border-color:#98A2B3; background:#fff; color:var(--wi4-ink); }
+.wi4-day.today :is(.wi4-row, .wi4-subrow, .wi4-splithd) > .wi4-c-idx { background:var(--wi4-today-hover); }
+/* contract hook: _wiSync writes into <span class="wi-sync" id="wi-sync-{row.id}"> */
+.wi4 .wi4-c-idx .wi-sync { display:inline; margin:0; min-height:0; font-size:11px; }
+/* Rails (§c.2): severity carries BOTH shape and colour — red and amber
+   measured 1.2:1 for red-green colour-blind readers (10/10). */
+.wi4-r-red::before, .wi4-r-amb::before { content:''; position:absolute; left:0; top:0; bottom:0; }
+.wi4-r-red::before { border-left:3px solid var(--wi4-red); }
+.wi4-r-amb::before { border-left:3px dashed var(--wi4-amber); }
+.wi4-dim { opacity:.35; }
+/* Executed = dimmed (owner 21/10, Figma 2022:7736; JS _xdOf). .wi4-xd = the
+   whole row; on a leg, -done = all of it, -half = every loading done: only the
+   date/ref and the loadings fade (left of the arrow), the consignee and the
+   pallets stay bold; .wi4-xd-pt = ONE point done on its own (its stop stamped
+   by the Ημερήσιο), the leg's other points stay bold. Opacity only: every
+   click works as before. */
+.wi4-row.wi4-xd,
+.wi4-leg.wi4-xd-done,
+.wi4-leg.wi4-xd-half > :is(.wi4-l-date, .wi4-l-from),
+.wi4-pt.wi4-xd-pt { opacity:var(--wi4-done); }
+/* Never a second fade (.4 × .4 = .16, or .35 × .4 under the search): a fade
+   nested in an already faded or search-dimmed ancestor stays at 1. Back to
+   full on hover, keyboard focus, or while its «+N» fold is open — an
+   ancestor's opacity would make the open fold translucent and stack it under
+   the next rows once the mouse leaves. */
+:is(.wi4-row.wi4-xd, .wi4-dim, .wi4-sm, .wi4-leg.wi4-xd-done, .wi4-leg.wi4-xd-half > .wi4-l-from,
+    :is(.wi4-row, .wi4-subrow):is(:hover, :focus-within, .wi4-focus, :has(.wk3-xfold.open)))
+  :is(.wi4-leg.wi4-xd-done, .wi4-leg.wi4-xd-half > .wi4-l-date, .wi4-leg.wi4-xd-half > .wi4-l-from, .wi4-pt.wi4-xd-pt),
+.wi4-row.wi4-xd:not(.wi4-dim):is(:hover, :focus-within, .wi4-focus, .wi4-sm, :has(.wk3-xfold.open)) { opacity:1; }
+/* The search fade wins over the done fade on a whole row, hover included
+   (review 21/10): .35 like every other row the filter left out. */
+.wi4-row.wi4-xd.wi4-dim { opacity:.35; }
+/* A search match is RAISED (Pantelis 21/10; owner chose this of three, «κομψό
+   και formal»): a white card with rounded corners and a soft shadow, at full
+   strength even when it was executed, over the dimmed rest. No colour fill —
+   a yellow marker was rejected, and blue would vanish on today's light-blue
+   day. The dividers around it go, so it reads as one lifted card. #wi-rows
+   outranks today's hover fill; the keyboard focus outline still shows. Only
+   while a search is typed (JS _applyDim). */
+/* A row and its matched ↳ sub-rows are ONE card (review 21/10): each piece
+   draws its sides; the first its top and top corners, the last its bottom,
+   bottom corners and the drop shadow — no seam, no stacked cards. */
+.wi4 #wi-rows :is(.wi4-row, .wi4-subrow).wi4-sm {
+  --sm-ring:rgba(11,25,41,.07);
+  --sm-top:0 -1px 0 0 var(--sm-ring);
+  --sm-bot:0 1px 0 0 var(--sm-ring), 0 1px 2px rgba(11,25,41,.06), 0 6px 18px -6px rgba(11,25,41,.18);
+  background:var(--surface-card); border-bottom-color:transparent; z-index:2;
+  box-shadow:-1px 0 0 0 var(--sm-ring), 1px 0 0 0 var(--sm-ring);
+  transition:box-shadow .12s ease-out, background-color .12s ease-out; }
+.wi4 #wi-rows .wi4-row.wi4-sm { border-top-left-radius:6px; border-top-right-radius:6px; }
+.wi4 #wi-rows :is(.wi4-row, .wi4-subrow).wi4-sm:not(:has(+ .wi4-subrow.wi4-sm)) { border-bottom-left-radius:6px; border-bottom-right-radius:6px; }
+.wi4 #wi-rows .wi4-row.wi4-sm:has(+ .wi4-subrow.wi4-sm) { box-shadow:-1px 0 0 0 var(--sm-ring), 1px 0 0 0 var(--sm-ring), var(--sm-top); }
+.wi4 #wi-rows .wi4-subrow.wi4-sm:not(:has(+ .wi4-subrow.wi4-sm)) { box-shadow:-1px 0 0 0 var(--sm-ring), 1px 0 0 0 var(--sm-ring), var(--sm-bot); }
+.wi4 #wi-rows .wi4-row.wi4-sm:not(:has(+ .wi4-subrow.wi4-sm)) { box-shadow:0 0 0 1px var(--sm-ring), 0 1px 2px rgba(11,25,41,.06), 0 6px 18px -6px rgba(11,25,41,.18); }
+/* A ↳ sub-row that matched while the row above did not (a rota leg found by
+   its own reference) is the card's FIRST piece: it takes the top edge too. */
+.wi4 #wi-rows .wi4-subrow.wi4-sm:not(.wi4-sm + .wi4-subrow) { border-top-left-radius:6px; border-top-right-radius:6px; box-shadow:-1px 0 0 0 var(--sm-ring), 1px 0 0 0 var(--sm-ring), var(--sm-top); }
+.wi4 #wi-rows .wi4-subrow.wi4-sm:not(.wi4-sm + .wi4-subrow):not(:has(+ .wi4-subrow.wi4-sm)) { box-shadow:0 0 0 1px var(--sm-ring), 0 1px 2px rgba(11,25,41,.06), 0 6px 18px -6px rgba(11,25,41,.18); }
+/* Hover still answers on the rows the dispatcher is about to click (review 21/10). */
+.wi4 #wi-rows :is(.wi4-row, .wi4-subrow).wi4-sm:hover { background:var(--wi4-hover); }
+.wi4 #wi-rows :is(.wi4-row, .wi4-subrow):has(+ .wi4-sm) { border-bottom-color:transparent; }
+.wi4 #wi-rows .wi4-sm > .wi4-c-idx { background:transparent; }
+.wi4 #wi-rows .wi4-sm > .wi4-c-idx .wi4-no { color:var(--wi4-ink); font-weight:700; }
+/* The red/amber rail follows the card's rounded corners instead of poking out
+   square (same 8px box as on a day's first/last row, above). */
+.wi4 #wi-rows .wi4-row.wi4-sm:is(.wi4-r-red, .wi4-r-amb)::before { width:8px; border-top-left-radius:6px; }
+.wi4 #wi-rows .wi4-row.wi4-sm:is(.wi4-r-red, .wi4-r-amb):not(:has(+ .wi4-subrow.wi4-sm))::before { border-bottom-left-radius:6px; }
+/* A «+N» fold opened from ANY row stays above a raised card: a dimmed row is
+   its own stacking context (opacity), so its fold (z 40 inside it) would
+   otherwise sit under the card's z-index 2 (review 21/10). */
+.wi4 #wi-rows :is(.wi4-row, .wi4-subrow):has(.wk3-xfold.open) { z-index:3; }
+@media (prefers-reduced-motion: reduce) { .wi4 #wi-rows .wi4-sm { transition:none; } }
+.wi4.wi4-kbd .wi4-focus { outline:2px solid var(--wi4-blue); outline-offset:-2px; }
+.wi4-hl, .wi4 .wi4-mhl { background:var(--accent-light); }
+
+/* Inside a leg (§c.2): date/ref · loadings · arrow · deliveries · pallets+PE+attachment */
+.wi4-leg { display:grid; grid-template-columns:70px 8px minmax(0,1fr) 8px 13px 8px minmax(0,1fr) 8px 72px; align-items:center; min-width:0; height:100%; }
+.wi4-l-date { grid-column:1; min-width:0; display:flex; flex-direction:column; align-items:flex-start; justify-content:center; }
+/* Chip + ΑΝΑΦ. under it = 16 + 12 = 28px inside the locked 32px row (review
+   11/10: 18 + 13 = 31px and the ref touched the next row's border). The
+   chip keeps 18px everywhere else (queue cards). */
+.wi4-l-date .wi4-dc { height:16px; line-height:14px; }
+/* Every row chip is the 70px DateChip (Figma 898:12 / 898:14: w70, px 6,
+   centred): sized to its text (51–61px) the date column looked ragged, and
+   the done chip's padding 0 put its ✓ on the cell edge. Rows only — the
+   queue's chips keep their own size. */
+.wi4-l-date .wi4-dc { width:70px; justify-content:center; padding:0 6px; box-sizing:border-box; }
+.wi4-l-date .wi4-dc.done { padding:0 6px; }
+/* ΑΝΑΦ. = Regular 10 / 11, 6px in (Figma 1097:2662): the text starts under
+   the chip's text, not its frame. Stack 16 + 11 = 27 ≤ 28. */
+.wi4-l-date .wi4-ref { padding-left:6px; font-size:10px; line-height:11px; }
+.wi4-l-from { grid-column:3; position:relative; min-width:0; }
+.wi4-l-arr  { grid-column:5; display:grid; place-items:center; color:var(--wi4-icon); }
+.wi4-l-to   { grid-column:7; position:relative; min-width:0; }
+.wi4-l-pal  { grid-column:9; display:flex; align-items:center; justify-content:flex-end; gap:4px; }
+.wi4-l-span { grid-column:1 / -1; min-width:0; }
+.wi4-l1 { display:block; font-size:12px; font-weight:500; line-height:14px; color:var(--wi4-ink); }
+.wi4-l2 { display:block; font-size:10.5px; line-height:13px; color:var(--wi4-grey-2); }
+.wi4-ref { font-size:10.5px; line-height:13px; color:var(--wi4-grey-2); }
+.wi4-t-red { color:var(--wi4-red); } .wi4-t-amb { color:var(--wi4-amber); }
+.wi4-t-blue { color:var(--wi4-blue-ink); } .wi4-t-g2 { color:var(--wi4-grey-2); }
+
+/* Points (§d.1): min 56px each, 8px gap; number box 14px; «+N» chip 34px. */
+.wi4-pts { display:flex; gap:8px; min-width:0; }
+/* Line 2 starts at x0, UNDER the number (Figma 1097:2474 / 2896): in the
+   number's column it lost 16px of every place («Mil…», «Zagre…»). The
+   number column hugs its box. */
+.wi4-pt { flex:1 1 0; min-width:56px; display:grid; grid-template-columns:auto minmax(0,1fr); column-gap:4px; }
+/* Every number of a multi-stop cell is a dark box with a white digit (owner
+   12/10, «όπως το Wels» on the Figma points sheet): as grey text the number
+   read as part of the name. 14px = line 1's line-height, so no row grows; a
+   single stop still has no number (wi4-logic points, rule 6). The «+N» fold
+   of a non-groupage cell lists the same stops with today's .wk3-stopn
+   circles (accent for delivery: white on it is 4.1:1): one rule draws both,
+   so the numbers of one cell never come in two looks. A browser print drops
+   backgrounds by default and would leave a white digit on white paper, hence
+   print-color-adjust. */
+.wi4-pt-n, .wi4 .wk3-stopn { box-sizing:border-box; width:auto; min-width:14px; height:14px; padding:0 3px; border-radius:3px;
+  background:var(--wi4-ink); color:var(--text-inverse); font-size:11px; font-weight:600; line-height:14px; text-align:center;
+  font-variant-numeric:tabular-nums; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+.wi4-pt-n { grid-row:1; align-self:start; }
+.wi4-pt > .wi4-l1 { grid-column:2; }
+.wi4-pt > .wi4-l2 { grid-column:1 / -1; }
+/* «→ ΑΠΟΘΗΚΗ» on line 1 of the delivery point: whole, the name is cut. */
+.wi4 .wi4-pt .wi4-l1f > .wi-badge { flex:none; }
+/* ≤1600 the 78px word left the warehouse name 5px of an 87px column at 1440
+   (parity r2, lot-badge-eats-name-1440; rules 985:1117: a name is cut, «όχι
+   κάτω από 56px»). The badge turns into a 22px chip with the 12px package
+   icon (core/icons.js «package»), drawn as a mask in the text colour; the
+   words stay in the DOM (font-size 0) for a screen reader, and its title
+   still explains it. _wiLotBadge (shared with the old board) is unchanged. */
+@media (max-width:1600px) {
+  .wi4 .wi4-pt .wi4-l1f > .wi-b-lot { align-self:center; display:inline-flex; align-items:center; justify-content:center; box-sizing:border-box;
+    width:22px; height:17px; padding:0; font-size:0; letter-spacing:0; }
+  .wi4 .wi4-pt .wi4-l1f > .wi-b-lot::before { content:''; flex:none; width:12px; height:12px; background:currentColor;
+    -webkit-mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.75' stroke-linecap='round' stroke-linejoin='round'%3E%3Cline x1='16.5' y1='9.4' x2='7.5' y2='4.21'/%3E%3Cpath d='M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z'/%3E%3Cpolyline points='3.27 6.96 12 12.01 20.73 6.96'/%3E%3Cline x1='12' y1='22.08' x2='12' y2='12'/%3E%3C/svg%3E") center / 12px 12px no-repeat;
+    mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.75' stroke-linecap='round' stroke-linejoin='round'%3E%3Cline x1='16.5' y1='9.4' x2='7.5' y2='4.21'/%3E%3Cpath d='M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z'/%3E%3Cpolyline points='3.27 6.96 12 12.01 20.73 6.96'/%3E%3Cline x1='12' y1='22.08' x2='12' y2='12'/%3E%3C/svg%3E") center / 12px 12px no-repeat; }
+}
+/* Line 2 of a point is a flex row: the place is cut, the pallets never
+   (review 11/10). The place is never hidden for width any more (Nick 15/10,
+   T98): under every point the same line 2, ✓ and place, cut with «…», so all
+   first stops read alike. The .wi4-noplace class is still set on narrow columns;
+   no style reads it now, only the board rig (tests/critics/wi4-board-rig.js). */
+.wi4 .wi4-l2f { display:flex; align-items:baseline; gap:4px; overflow:hidden; text-overflow:clip; }
+.wi4 .wi4-l2f > .wi4-ell { flex:0 1 auto; min-width:0; }
+.wi4 .wi4-l2f > .wi4-ok { flex:none; margin-right:0; }
+.wi4-pt-pal { flex:none; font-weight:500; color:var(--wi4-grey-1); }
+/* «+N» is a light chip, not bare text; since T98 it carries the count only (no «18π»). */
+.wi4-more { flex:0 0 34px; width:34px; height:28px; align-self:center; border:none; border-radius:3px; background:var(--wi4-chip); padding:0; text-align:center; cursor:pointer; line-height:13px; }
+.wi4-more:hover { background:var(--wi4-line-2); }
+/* Figma More 1097:2913: «+3» SemiBold 12 / 15, centred in the 28px chip. */
+.wi4-more b { display:block; font-size:12px; font-weight:600; line-height:15px; color:var(--wi4-ink); }
+/* ✓ carries meaning («done»): a graphic at ≥3:1 (grey-2), not the icon grey.
+   A visible gap before the day («✓ Σάβ 3/10», board). */
+.wi4-ok { display:inline-flex; vertical-align:-1px; margin-right:4px; color:var(--wi4-grey-2); }
+/* Done ticks green (Nick 15/10, T58 option 1; walkthrough 27 / Pantelis C8): the ✓ on
+   a done date chip and on a done point in --ok #15803D (5.0:1 on white), its line
+   heavier (2.5) so it reads at 10px; the date and the names stay grey. A tick never
+   sits inside a partner box, so it does not compete with the partner green. */
+.wi4 .wi4-ok { color:var(--ok); }
+.wi4 .wi4-ok svg { stroke-width:2.5; }
+/* A reason named on its point (P1 review 11/10): line 1 becomes a flex row,
+   so the NAME is cut and the word never is. «PRE» outlined like PE; the
+   amber words in the amber ink the rules give «προσοχή». */
+.wi4 .wi4-l1f { display:flex; align-items:baseline; gap:4px; overflow:hidden; text-overflow:clip; }
+.wi4 .wi4-l1f > .wi4-ell { flex:0 1 auto; min-width:0; }
+.wi4 .wi4-l1f > .wi4-flag, .wi4 .wi4-l1f > .wi4-delay { flex:none; }
+.wi4-flag { padding:0 3px; border:1px solid var(--wi4-ctl); border-radius:3px; font-size:9.5px; font-weight:700; line-height:12px; letter-spacing:.3px; color:var(--wi4-grey-1); white-space:nowrap; }
+.wi4-flag.amb { border:none; padding:0; font-size:10.5px; font-weight:600; letter-spacing:0; color:var(--wi4-amber); }
+/* On the own-fleet box fill the amber is 4.46:1 (contrast scan): its ink. */
+.wi4-box .wi4-flag.amb { color:var(--wi4-amber-ink); }
+/* A groupage's «+N» fold holds the hidden members as the same draggable
+   tiles, one per line. */
+.wi4 .wi4-fold.open { display:flex; flex-direction:column; gap:4px; }
+.wi4 .wi4-fold .wi4-pt { min-width:0; cursor:grab; }
+.wi4-delay { display:inline-block; padding:0 3px; border-radius:3px; background:var(--wi4-delay-bg); color:var(--warn); font-size:10px; font-weight:700; line-height:13px; }
+/* «+N» opens today's _wk3MoreStops fold. Its global rules indent 40px and cut
+   names; today's .wk3.wi2 overrides (which un-cut them) do not reach .wi4, so
+   they are restated here, and the fold floats so the row stays 32px. */
+.wi4 .wk3-xfold.open { position:absolute; z-index:40; top:100%; left:0; min-width:200px; max-width:360px; padding:6px 8px;
+  background:var(--surface-card); border:1px solid var(--wi4-line-2); border-radius:6px; box-shadow:var(--shadow-lift); }
+.wi4 .wk3-stopline, .wi4 .wk3-stopline.dl { padding-left:0; font-size:11px; line-height:1.15; }
+.wi4 .wk3-stopline .wk3-sln { white-space:normal; overflow:visible; }
+.wi4 .wk3-sld { font-size:11px; }
+
+/* Date chip (§c.2: 18px, radius 4) and pallets. A done date (✓) is plain grey
+   text with no frame; red ONLY for a day that passed with no truck (§e #7 d,
+   the frames' reading of «κόκκινη ημερομηνία μόνο χωρίς φορτηγό»). */
+.wi4-dc { height:18px; display:inline-flex; align-items:center; gap:3px; padding:0 5px; border:1px solid transparent; border-radius:4px;
+  background:none; font-size:10.5px; font-weight:500; line-height:16px; color:var(--wi4-grey-1); white-space:nowrap; cursor:pointer; }
+/* Blue = TODAY only; a future day is a neutral grey chip (board 1097:2254,
+   review 11/10: every future date in blue meant blue no longer said today). */
+.wi4-dc.today { border-color:var(--wi4-blue); color:var(--wi4-blue-ink); background:var(--surface-card); }
+.wi4-dc.next  { background:var(--wi4-chip); color:var(--wi4-grey-1); }
+.wi4-dc.est  { border:1px dashed var(--wi4-slot); background:var(--wi4-chip); color:var(--wi4-grey-1); }
+.wi4-dc.past { background:var(--wi4-chip); }
+.wi4-dc.done { padding:0; color:var(--wi4-grey-2); }
+.wi4-dc .wi4-ok { margin-right:1px; }   /* + the chip's 3px gap = the point's 4px */
+/* Late chip border = the light red line (Figma DateChip Late 898:16,
+   #fca5a5): the --danger frame read as the strongest thing on the row. */
+.wi4-dc.red  { border-color:var(--wi4-red-line); background:var(--wi4-red-bg); color:var(--wi4-red-ink); }
+/* The figure is SemiBold 12.5 (Figma 1097:2677); over 33 the same weight in
+   amber with the icon 3px before it (1097:2922) — shape + colour, as before. */
+.wi4-pal { font-size:12.5px; font-weight:600; color:var(--wi4-ink); }
+.wi4-pal.over { color:var(--wi4-amber); font-weight:600; }
+/* «ⓘ34» (Figma): a shape before the number, not colour alone. */
+.wi4-pal-ic { display:inline-flex; vertical-align:-1px; margin-right:3px; }
+/* Near 33 with members not written («30+?»): the same amber as the flag. */
+.wi4-pal.unk { color:var(--wi4-amber); font-weight:600; }
+/* PE = a white chip with the light line (Figma 1097:2879: 1px #e2e8f0,
+   px 5, tracking .4, 17px high). */
+.wi4-pe { padding:0 5px; border:1px solid var(--wi4-line-2); border-radius:3px; background:var(--surface-card); font-size:10px; font-weight:600; line-height:15px; letter-spacing:.4px; color:var(--wi4-grey-1); }
+/* Paperclip 12px, 4px after PE, stroke #5B6B7F (Figma 1097:2878; parity
+   r2, pallets-track-clip-gap): the shared .od-badge (core/order-docs.js) adds
+   its own 4px and --text-mid, which won over a colour set on .wi4-att. Its
+   hover colour (.od-badge:hover) is kept. */
+.wi4 .wi4-att .od-badge { margin-left:0; }
+.wi4 .wi4-att .od-badge:not(:hover) { color:var(--wi4-grey-2); }
+/* «→ ΑΠΟΘΗΚΗ» and the other leg badges (ΑΠ): ONE family with PE — a white
+   chip, 1px #e2e8f0, px 5, r3, 17px (Figma tag 1097:2879; parity r2,
+   lot-badge-not-like-pe) — never a solid dark chip, which out-shouted
+   «ΠΡΟΣ ΑΝΑΘΕΣΗ» (the locked strongest element). */
+.wi4 .wi-badge { font-size:10px; padding:0 5px; border-radius:3px; line-height:15px; letter-spacing:.4px;
+  background:var(--surface-card); border:1px solid var(--wi4-line-2); color:var(--wi4-grey-1); font-weight:600; }
+
+/* Assignment (§e #8): box 28px radius 5 + paper-plane 22px radius 5.
+   «ΠΡΟΣ ΑΝΑΘΕΣΗ» is the strongest element on the board: its border is 2px,
+   because a 1.5px border renders as 1px on 1x office monitors (measured in
+   Chromium) and the box would read weaker than a partner box. */
+/* Figma Assign 1097:2501 (parity r1 F7): a 176px pill (padding 0 9), 6px,
+   the 22px arrow — 204px, the cell. It shrinks only where a cell is narrower. */
+.wi4-asg { position:relative; display:flex; align-items:center; gap:6px; min-width:0; }
+.wi4-box { flex:0 1 176px; min-width:0; height:28px; display:flex; flex-direction:column; justify-content:center; padding:0 9px;
+  border:1px solid transparent; border-radius:5px; background:none; text-align:left; cursor:pointer; }
+.wi4-box.own { background:var(--wi4-own); }
+.wi4-box.par { background:var(--wi4-partner); border-color:var(--wi4-partner-line); }
+/* Type as Figma draws the pill (parity r1 F8): line 2 11/12 (own 1097:2502:
+   DM Sans; partner 1097:2772: DM Mono Medium); plates and «ΠΡΟΣ ΑΝΑΘΕΣΗ»
+   untracked, the latter SemiBold (1097:3561) — tracking added ~4px per plate
+   pair and cut names Figma shows whole. */
+.wi4-box .wi4-l2 { font-size:11px; line-height:12px; }
+/* Partner (Figma «PARTNER TEST / PRT-4410»): the name semibold in partner
+   ink, the plates in DM Mono like an own truck's — the two tiles read alike.
+   The «ίδια μέρα» word keeps the sans. */
+.wi4-box.par .wi4-l1 { color:var(--wi4-partner-ink); font-weight:600; }
+.wi4-box.par .wi4-l2 { color:var(--wi4-partner-sub); font-family:'DM Mono',ui-monospace,SFMono-Regular,Menlo,monospace; font-size:11px; font-weight:500; }
+.wi4-box.par .wi4-flag { font-family:'DM Sans',sans-serif; }
+.wi4-box.un { background:var(--wi4-red-bg); border:2px solid var(--wi4-red); color:var(--wi4-red-ink); font-size:12px; font-weight:600; letter-spacing:0; }
+.wi4-box.split { background:var(--wi4-chip); color:var(--wi4-grey-1); font-weight:600; }
+.wi4-plate { font-family:'DM Mono',ui-monospace,SFMono-Regular,Menlo,monospace; font-weight:500; font-size:12px; letter-spacing:0; color:var(--wi4-ink); }
+.wi4-plane { flex:none; width:22px; height:22px; display:inline-grid; place-items:center; border:none; border-radius:5px; background:none; color:var(--wi4-icon); cursor:pointer; }
+.wi4-plane:hover { background:var(--wi4-chip); color:var(--wi4-grey-1); }
+/* Print (contract hook .wk3-prt + data-shq: the share menu reads them). Fix
+   round 3 (11/10): drawn again — roles with planning:'view' cannot open the
+   per-load menu (_wiBlockReadOnly, as in v1), so this button is their one
+   mouse path to print, and right-click / long-press on it is the share menu
+   for everyone. Its own slot RIGHT of the paper plane, never on the box (round
+   2: on the box it sat on the red «ΠΡΟΣ ΑΝΑΘΕΣΗ» border); shown on row hover
+   or keyboard focus, always on a touch screen (visibility, not display).
+   Out of the flow, in the 12px gutter past the cell (parity r1 F7): Figma
+   draws no print slot, and the reserved 18px + 2px gaps took 16px from the
+   pill (text room 142px, now 156), cutting names Figma shows whole. 12px
+   wide with a 12px glyph: exactly the gutter, so it never sits on the import
+   cell's first chip, whatever inset that cell has. */
+.wi4 .wi4-asg .wk3-prt { position:absolute; left:100%; top:50%; margin-top:-11px; width:12px; height:22px; padding:0; display:inline-grid; place-items:center; border:none; border-radius:5px;
+  background:none; color:var(--wi4-icon); cursor:pointer; visibility:hidden; }
+.wi4 .wi4-asg .wk3-prt svg { width:12px; height:12px; }
+/* Breathing room (Nick 15/10): the gaps either side of the ΑΝΑΘΕΣΗ column are
+   16px, taken from the two outer gaps (12 → 8px, beside ΠΡΟΣ / ΑΠΟ ΒΕΡΟΙΑ), so the
+   leg cells keep their Figma width and a lot's warehouse name its 56px (his rig:
+   20px gaps taken from the legs cut it to 53px). Each printer, a 16px slot with
+   the 12px glyph centred, sits 5px off its neighbour (the arrow on the right, the
+   pill on the left) and 5px off the next cell's text, on every row at 1440 and 1920. */
+.wi4 .wi4-asg .wk3-prt { width:16px; left:calc(100% + 5px); }
+/* The export's printer: the same slot, in the gap LEFT of the pill. */
+.wi4 .wi4-asg .wk3-prt.wi4-prt-l { left:auto; right:calc(100% + 5px); }
+.wi4 .wi4-row:hover .wi4-asg .wk3-prt, .wi4 .wi4-row:focus-within .wi4-asg .wk3-prt, .wi4.wi4-kbd .wi4-focus .wi4-asg .wk3-prt { visibility:visible; }
+.wi4 .wi4-asg .wk3-prt:hover { color:var(--wi4-grey-1); background:var(--wi4-chip); }
+@media (hover:none) { .wi4 .wi4-asg .wk3-prt { visibility:visible; } }
+/* Copy plates (item 16): over the box's right end, left of the plane, on hover or
+   focus only (a touch screen uses the per-load menu: the icon would cover the text). */
+.wi4 .wi4-asg .wi4-cpy { position:absolute; right:30px; top:50%; margin-top:-10px; width:20px; height:20px; padding:0; display:inline-grid; place-items:center; border:1px solid #CBD5E1; border-radius:4px; background:#FFFFFF; color:#475569; cursor:pointer; visibility:hidden; }
+.wi4 .wi4-asg .wi4-cpy svg { width:12px; height:12px; }
+.wi4 .wi4-row:hover .wi4-asg .wi4-cpy, .wi4 .wi4-row:focus-within .wi4-asg .wi4-cpy, .wi4.wi4-kbd .wi4-focus .wi4-asg .wi4-cpy { visibility:visible; }
+.wi4 .wi4-asg .wi4-cpy:hover { color:#0B1929; border-color:#94A3B8; }
+/* With the ✈ moved to the row start, the copy button sits at the pill's own right end. */
+.wi4 .wi4-asg .wi4-cpy { right:4px; }
+
+/* National columns (§e #12). Never «ΠΡΟΣ ΑΝΑΘΕΣΗ» for an unread leg: .unk
+   is the «—» of §d.2a. Collapsed column = a dot where a leg exists, in the
+   state of its tile (below). */
+.wi4-nat { min-width:0; display:flex; flex-direction:column; gap:1px; }
+/* Line 1: the name (cut, title on it) and the day kept whole on the right.
+   Figma Feed 1097:2928: gap 6, name Medium 11.5 / 14, day Medium 10.5. */
+.wi4-nat-h { display:flex; align-items:baseline; gap:6px; min-width:0; }
+.wi4-nat-h .wi4-l1 { flex:1 1 auto; }
+.wi4-nat .wi4-l1 { font-size:11.5px; }
+.wi4-nat-day { font-size:10.5px; font-weight:500; color:var(--wi4-grey-2); flex:none; }
+/* The carrier chip: h15, px 6 (Figma 1097:3712). */
+.wi4-tile { align-self:flex-start; max-width:100%; height:15px; padding:0 6px; border:1px solid transparent; border-radius:3px; font-size:10.5px; font-weight:500; line-height:13px; }
+.wi4-tile.own { background:var(--wi4-own); color:var(--wi4-ink); font-family:'DM Mono',ui-monospace,SFMono-Regular,Menlo,monospace; }
+/* A partner reads as the carrier chip (Figma 1097:3712: its line, DM Mono),
+   not a label. */
+.wi4-tile.par { background:var(--wi4-partner); border-color:var(--wi4-partner-line); color:var(--wi4-partner-ink); font-family:'DM Mono',ui-monospace,SFMono-Regular,Menlo,monospace; }
+/* No carrier: amber text SemiBold on the dashed amber line (Figma 1097:2932),
+   at any date. Information only (owner 11/10 21:20): national work is
+   Weekly National's, so this chip never turns red on the intl board. */
+.wi4-tile.un { background:var(--wi4-amber-bg); border:1px dashed var(--wi4-amber); color:var(--wi4-amber); font-weight:600; }
+.wi4-tile.unk { color:var(--wi4-grey-2); padding:0; }
+/* Collapsed: blue = a carrier; amber ring = none yet (never red, as the
+   tile); grey ring = not read (unknown ≠ empty). */
+.wi4-natdot { display:none; width:6px; height:6px; margin:0 auto; border-radius:50%; background:var(--wi4-blue); }
+.wi4-natdot.un { background:var(--wi4-amber-bg); border:1px solid var(--wi4-amber); }
+.wi4-natdot.unk { background:none; border:1px solid var(--wi4-grey-2); }
+/* Rows only: the column header keeps its toggle (see .wi4-cols above). */
+.wi4.wi4-fl-off :is(.wi4-row, .wi4-subrow, .wi4-splithd) > .wi4-c-fl > :not(.wi4-natdot),
+.wi4.wi4-fr-off :is(.wi4-row, .wi4-subrow, .wi4-splithd) > .wi4-c-fr > :not(.wi4-natdot) { display:none; }
+.wi4.wi4-fl-off .wi4-c-fl > .wi4-natdot, .wi4.wi4-fr-off .wi4-c-fr > .wi4-natdot { display:block; }
+/* The matched group's drag grip «⋮⋮» shows on row hover / focus only (Figma
+   sheet 14 1065:2257 «Εμφανίζεται η λαβή ⋮⋮»; Row 18 1097:2921 holds only the
+   figure at rest). Opacity, not display: the track keeps its width, so the
+   figure never jumps, and the grip stays draggable. Touch has no hover. */
+.wi4 .wi4-grip { cursor:grab; opacity:0; }
+.wi4-row:hover .wi4-grip, .wi4-row:focus-within .wi4-grip { opacity:1; }
+@media (hover:none) { .wi4 .wi4-grip { opacity:1; } }
+
+/* Empty return / void cells (§e #13) — the cell is the drop target (§f). */
+/* Dashed light border and the blue «+ Νέα εισαγωγή» at the right end (board
+   1097:2254, slot 1097:2685). The stock link after it is a LIVE-ONLY
+   addition — Figma's slot has none — kept quiet pending an owner decision. */
+.wi4-gap { height:24px; display:flex; align-items:center; gap:8px; padding:0 10px; border:1px dashed var(--wi4-slot); border-radius:5px; font-size:12px; color:var(--wi4-ink); min-width:0; }
+/* «Κενό γύρισμα» is one word-group, never two lines (it wrapped at 1440);
+   the detail after it gives way, cut with «…» and whole in its title.
+   Figma 1097:2685: label Medium, detail SemiBold, action Medium + plus 12. */
+.wi4-gap > span:first-child { flex:none; white-space:nowrap; font-weight:500; }
+.wi4-gap .wi4-t-red, .wi4-gap .wi4-t-amb { font-weight:600; }
+.wi4-gap-act { margin-left:auto; flex:none; display:inline-flex; align-items:center; gap:4px; border:none; background:none; padding:0; color:var(--wi4-blue-ink); font-weight:500; cursor:pointer; white-space:nowrap; }
+.wi4 .wi4-gap .wi2-gapstk { flex:none; margin-left:8px; font-size:11px; color:var(--wi4-grey-2); }
+.wi4 .wi4-gap .wi2-gapstk:empty { display:none; }
+/* its button keeps today's words; quiet grey-2 (5.3:1) after the blue action —
+   its own accent colour measured 4.1:1 on white */
+.wi4 .wi4-gap .wi2-gapstk-b { font:500 11px 'DM Sans',sans-serif; color:var(--wi4-grey-2); }
+/* 1440: the day and the place are why the cell exists, yet they were cut to
+   «· α…» while «ή κομμάτι από ΑΠΟΘΕΜΑ» stayed whole. The stock link gives way
+   (the row's menu keeps «+ Κομμάτι από απόθεμα…»). */
+@media (max-width:1600px) { .wi4 .wi4-gap .wi2-gapstk { display:none; } }
+.wi4-gap-act:hover { text-decoration:underline; }
+.wi4-void { font-size:10.5px; color:var(--wi4-grey-2); }
+.wi4-noexp { height:24px; display:flex; align-items:center; gap:8px; padding:0 10px; border:1px dashed var(--wi4-slot); border-radius:5px; font-size:12px; color:var(--wi4-grey-1); }
+/* «Χωρίς εξαγωγή» Medium in ink, «· αυτή την εβδομάδα» quiet (Figma 1097:3555). */
+.wi4-noexp > span:first-child { font-weight:500; color:var(--wi4-ink); }
+/* Drag hover. v4's own document dragend/drop listener clears these three
+   (§f): the old handlers only clear .wk3-* classes v4 does not emit. */
+.wi4 .wi4-dh, .wi4 .dragover { outline:2px dashed var(--wi4-blue); outline-offset:-2px; background:var(--accent-light); }
+.wi4 .dragging { opacity:.4; }
+/* A failed match/unmatch (_unconfirmed) draws the table in its import cell
+   (data-unconfirmed). With no match in the table that is the empty-return
+   slot; its two actions are hidden there, because both would act on the
+   row's optimistic, unsaved match: «+ Νέα εισαγωγή» is refused by
+   _wiNewImport («έχει ήδη ταιριασμένη εισαγωγή» — row.importId is the failed
+   one) and the stock panel counts that import's pallets as on the truck
+   (_wiImpPals). «Ξαναδοκίμασε» on the line under the row is the way on, and
+   the re-read brings them back (parity r2, savefail-slot-hides-written-state). */
+.wi4 .wi4-imp[data-unconfirmed] :is(.wi4-gap-act, .wi2-gapstk) { display:none; }
+/* With another match still in the table (_notSavedHTML): the words, dashed
+   like a slot (it is still the drop target), red-bordered like the failure
+   line. */
+.wi4-ns { height:24px; display:flex; align-items:center; gap:6px; padding:0 10px; border:1px dashed var(--wi4-red); border-radius:5px; font-size:11px; font-weight:500; min-width:0; }
+.wi4-ns > svg { flex:none; color:var(--wi4-red); }
+/* Its GHOST: the import, still free in the table, as a 24px line in its own
+   loading day (in the import column), naming what that day counts for it. */
+.wi4-ghost { display:grid; grid-template-columns:64px var(--wi4-fl) 8px minmax(0,1fr) 16px 176px 16px minmax(0,1fr) 8px var(--wi4-fr); align-items:center;
+  height:24px; border-bottom:1px dashed var(--wi4-slot); font-size:11px; color:var(--wi4-ink); cursor:pointer; }
+.wi4-ghost > .wi4-c-idx > svg { color:var(--wi4-red); }
+.wi4-ghost-t { display:flex; align-items:center; gap:4px; min-width:0; white-space:nowrap; }
+.wi4-ghost-t > .wi4-ell { flex:0 1 auto; }
+.wi4-ghost-t > [data-r] { flex:none; font-weight:600; }
+
+/* Sub-rows (§e #11): relay, rota leg, split header and legs. */
+.wi4-tag { font-size:10px; font-weight:700; letter-spacing:.5px; text-transform:uppercase; color:var(--wi4-grey-1); white-space:nowrap; }
+/* Figma's «⤷» is SemiBold 12 #98a2b3; «↳» in --wi4-grey-2 is kept on purpose:
+   ⤷ may be missing from DM Sans, and 2.6:1 grey fails the contrast scan. */
+.wi4-legidx { font-size:12px; font-weight:600; color:var(--wi4-grey-2); }
+/* Figma 1097:3055: 93×22, padding 0 8, Medium 11, 4px off the assignment
+   cell's edge. «×» stays (⨯ may be missing from DM Sans). */
+.wi4-unlink { height:22px; padding:0 8px; margin-left:4px; border:1px solid var(--wi4-ctl); border-radius:4px; background:var(--surface-card); font-size:11px; font-weight:500; color:var(--wi4-grey-1); cursor:pointer; }
+.wi4-unlink:hover { border-color:var(--wi4-red); color:var(--wi4-red); }
+/* Relay (Figma 1097:2830 / 3291) and split header (1097:3388) labels:
+   SemiBold 10.5, no tracking — the 10px/700 tracked tag read louder than
+   the words it labels. The rota label is one run, «ίδιο φορτηγό» included. */
+.wi4-sub-rl .wi4-tag, .wi4-splithd .wi4-tag { font-size:10.5px; font-weight:600; letter-spacing:0; }
+.wi4-splithd .wi4-tag { flex:none; }
+.wi4-sub-leg-t { font-size:10.5px; font-weight:600; color:var(--wi4-grey-1); }
+.wi4-rl-drv { font-size:11px; font-weight:600; color:var(--wi4-ink); }
+/* Spaces + 3px ≈ Figma's 6px either side of the «·». */
+.wi4-rl-sep { margin:0 3px; color:var(--wi4-grey-2); }
+.wi4-split-t { flex:0 1 auto; min-width:0; font-size:11.5px; font-weight:500; color:var(--wi4-ink); }
+
+/* Save failure line (§e.14) and moved-row trace (§e #15): 24px. The failure
+   is one short line in red on white with an alert icon (sheet 14 #5) — no
+   band: a full-width red band read as a second error on top of the ⚠. */
+.wi4-msg, .wi4-trace { grid-column:2 / -1; height:24px; display:flex; align-items:center; gap:8px; padding:0 12px; font-size:11px; }
+/* Starts under the export leg (index 32 + ΠΡΟΣ ΒΕΡΟΙΑ + 12 gap), open or collapsed. */
+.wi4-msg { background:none; color:var(--wi4-red-ink); padding-left:calc(72px + var(--wi4-fl)); font-size:12px; }   /* row cell 64 + gap 8 */
+.wi4-msg > svg { flex:none; color:var(--wi4-red); }
+/* Figma 1089:2576: Medium 12 #B91C1C (6.5:1 on white), «Ξαναδοκίμασε» 12/600,
+   «· κλείσιμο ×» 11.5. The link keeps --wi4-blue-ink and the close grey-2
+   (Figma's #0284C7 is 4.1:1 — contrast scan). */
+.wi4-msg > .wi4-ell { flex:0 1 auto; min-width:0; font-weight:500; color:var(--wi4-red); }
+.wi4-msg .wi4-link { flex:none; }
+.wi4-msg .wi4-msg-x { color:var(--wi4-grey-2); font-weight:500; font-size:11.5px; }
+.wi4-trace { background:var(--accent-light); color:var(--wi4-blue-ink); cursor:pointer; }
+
+/* Date panel (§e #10). A v4 element anchored in #wi-panel space. 300 wide
+   with a 16px inset (Figma 1125:2799): the calendar and the time field are
+   the 266px between the insets. */
+/* Parity r2 (Figma 1125:2799): three bands, not one padded block — a head
+   closed by a full-width divider, the body, a grey footer band. So the
+   vertical padding lives in the head (14 top) and the footer (10/12), and
+   the panel keeps only the 16px side inset. Border, divider and the deeper
+   shadow are the frame's own values; local properties, not :root tokens
+   (the token block belongs to another package). */
+.wi4-datep { position:fixed; z-index:var(--z-top); width:300px; padding:0 16px; background:var(--surface-card); border:1px solid var(--wi4-datep-line);
+  border-radius:8px; box-shadow:0 12px 32px -6px rgba(15,23,41,.14); font-family:'DM Sans',sans-serif; font-size:12px; color:var(--wi4-ink);
+  --wi4-datep-line:#eaecf0; --wi4-datep-div:#f2f4f7; }
+.wi4-datep-hd { font:700 15px 'Syne',sans-serif; padding-top:14px; margin-bottom:3px; }
+.wi4-seg { display:flex; gap:2px; padding:2px; margin-bottom:8px; border:1px solid var(--wi4-line-2); border-radius:6px; background:var(--wi4-chip); }
+.wi4-seg button { flex:1; height:24px; border:1px solid transparent; border-radius:4px; background:none; color:var(--wi4-grey-1); font-weight:500; cursor:pointer; }
+.wi4-seg button.on { background:var(--surface-card); border-color:var(--wi4-line-2); color:var(--wi4-ink); font-weight:700; }
+/* One identity line (sheet 16 D), «…» + title for the rest. It closes the
+   head: the divider under it runs edge to edge (1125:2803, x1 w298), so the
+   side margins undo the panel's inset and the padding puts the text back on
+   it. Grey-2, not Figma's #667085: the contrast-safe grey of the block. */
+.wi4-datep-id { font-size:12px; color:var(--wi4-grey-2); margin:0 -16px 12px; padding:0 16px 12px; border-bottom:1px solid var(--wi4-datep-div); }
+/* «Ώρα» on its own line, the 24-hour field full width under it (16 D);
+   a tracked SemiBold 10.5 label as in 1125:2874. */
+.wi4-time-l { display:block; font-size:10.5px; letter-spacing:.525px; font-weight:600; color:var(--wi4-grey-2); margin-bottom:8px; }
+.wi4-cal { display:grid; grid-template-columns:repeat(7,1fr); gap:2px; margin-bottom:8px; }
+.wi4-cal-h { height:20px; font-size:10px; font-weight:600; text-align:center; line-height:20px; color:var(--wi4-grey-2); }
+.wi4-cal-d { height:28px; border:1px solid transparent; border-radius:4px; background:none; color:var(--wi4-ink); cursor:pointer; }
+.wi4-cal-d:hover { background:var(--wi4-hover); }
+/* Days of the next/previous month are clickable text: grey-2 (5.3:1), still
+   quieter than the month's own ink days — never the 2.6:1 placeholder grey. */
+.wi4-cal-d.out { color:var(--wi4-grey-2); }
+.wi4-cal-d.today { border-color:var(--wi4-blue); }
+.wi4-cal-d.cur { border-style:dashed; border-color:var(--wi4-slot); }
+/* Selected = navy fill; blue stays the «today» outline (sheet 16 D). */
+.wi4-cal-d.sel { background:var(--wi4-ink); border-color:var(--wi4-ink); color:var(--surface-card); font-weight:700; }
+/* 1125:2875: 12.5 text 10px in, radius 4. Its own size after font:inherit:
+   the field sits inside the 10.5 label and took the label's size. */
+.wi4-time { display:block; width:100%; height:32px; margin-top:4px; padding:0 10px; border:1px solid var(--wi4-ctl); border-radius:4px; font:inherit; font-size:12.5px; font-weight:400; color:var(--wi4-ink); font-variant-numeric:tabular-nums; }
+.wi4-time::placeholder { color:var(--wi4-grey-3); }
+.wi4-time:focus { outline:none; border-color:var(--wi4-blue); box-shadow:0 0 0 2px var(--accent-light); }
+.wi4-datep-note { font-size:11.5px; line-height:1.4; color:var(--wi4-grey-2); margin:8px 0; }
+.wi4-pnote { padding:6px 8px; margin:8px 0; border-radius:5px; background:var(--wi4-amber-bg); color:var(--wi4-amber-ink); font-size:11px; line-height:1.4; }
+/* Confirmed check: news, not a warning (Figma 1125:2885) — light blue, the
+   colleague's avatar before the sentence. */
+.wi4-pnote.info { display:flex; align-items:center; gap:8px; padding:7px 10px; border:1px solid var(--wi4-info-line); border-radius:6px;
+  background:var(--wi4-info-bg); color:var(--wi4-info-ink); font-size:11.5px; }
+/* The presence and conflict bands span the panel's inner width (Figma
+   1125:2885 / 1125:2976 at x1, w298): the side margins undo the padding.
+   Only inside the panel — in the modal the conflict box keeps its inset. */
+.wi4-datep .wi4-pnote, .wi4-datep .wi4-conf { margin-left:-16px; margin-right:-16px; }
+/* «Ποια κρατάμε;» (sheet 16 E): a calm amber panel — news that someone else
+   changed it, not an error the user made. The date panel's failure line
+   keeps the red (.wi4-conf[role=alert]). */
+/* Figma 1125:2976: border #F5D9B8, radius 6, blocks 8px apart; the lead
+   («who · from → to», 600) keeps its avatar on its first line. */
+.wi4-conf { display:flex; flex-direction:column; gap:8px; padding:8px 10px; margin:8px 0; border:1px solid var(--wi4-conf-line); border-radius:6px; background:var(--wi4-amber-bg); color:var(--wi4-amber-ink); font-size:11.5px; line-height:1.4; }
+.wi4-conf[role="alert"] { border-color:var(--wi4-red); background:var(--wi4-red-bg); color:var(--wi4-red-ink); }
+.wi4-conf-lead { display:flex; align-items:flex-start; gap:8px; font-weight:600; }
+.wi4-conf-q { font-weight:600; }
+.wi4-datep-ft, .wi4-dlg-ft { display:flex; justify-content:flex-end; gap:8px; margin-top:10px; }
+/* The date panel's footer is a band (1125:2879): #f9fafb (the key-cap fill,
+   same value) across the inner width, 10/16/12, closing the panel. Bottom
+   corners 7 = the panel's 8 minus its 1px border, so the grey follows the
+   inner curve with no white sliver. Scoped: the dialog's .wi4-dlg-ft stays. */
+.wi4-datep .wi4-datep-ft { margin:12px -16px 0; padding:10px 16px 12px; background:var(--wi4-kcap); border-radius:0 0 7px 7px; }
+.wi4-datep .wi4-datep-ft .wi4-btn { border-radius:4px; font-size:12.5px; }
+/* Left-aligned as in Figma, and wrapping: «Κράτα του άλλου χρήστη» +
+   «Γράψε τη δική μου» are wider than the box and ran out of its left edge. */
+.wi4-conf > .wi4-dlg-ft { margin-top:0; justify-content:flex-start; flex-wrap:wrap; }
+/* Buttons Medium 11.5, 25px, radius 5 (Figma 1125:2983 / 2985). */
+.wi4-conf .wi4-btn { height:25px; padding:0 10px; border-radius:5px; font-size:11.5px; font-weight:500; }
+
+/* Conflict dialog (§g.4) and «?» shortcuts sheet (§e #17) */
+.wi4-dlg-back { position:fixed; inset:0; z-index:var(--z-top); background:rgba(11,25,41,.32); display:grid; place-items:center; }
+.wi4-dlg { width:420px; max-width:calc(100vw - 32px); padding:16px; background:var(--surface-card); border:1px solid var(--wi4-line-2); border-radius:8px;
+  box-shadow:var(--shadow-lift); font-family:'DM Sans',sans-serif; font-size:12.5px; line-height:1.45; color:var(--wi4-ink); }
+.wi4-dlg-hd { display:flex; align-items:center; justify-content:space-between; gap:8px; }
+.wi4-dlg-t { font:600 15px 'Syne',sans-serif; }
+.wi4-dlg-x { font-size:18px; line-height:1; padding:0 4px; color:var(--wi4-grey-1); }
+.wi4-help-row { display:grid; grid-template-columns:80px 1fr; align-items:center; gap:8px; min-height:26px; }
+/* The «?» sheet at Figma 1119:2836's geometry (F6): 600 wide, padding 20/24,
+   radius 12, Syne Bold 17 title with the Esc cap at its right, group heads
+   SemiBold 10.5 tracked .42, a 110px key column, DM Mono caps on a light
+   fill. Its own class: the conflict dialog keeps .wi4-dlg, the queue keeps
+   .wi4-key. --wi4-kcap (#f9fafb) is the queue-stock package's token. */
+.wi4-dlg.wi4-help { width:600px; padding:20px 24px; border-radius:12px; }
+.wi4-help .wi4-dlg-t { display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:6px; font:700 17px 'Syne',sans-serif; color:var(--wi4-ink); }
+.wi4-help .wi4-qp-h { padding:8px 0 2px; font-size:10.5px; letter-spacing:.42px; }
+.wi4-help .wi4-help-row { grid-template-columns:110px 1fr; gap:10px; }
+.wi4-help .wi4-key, .wi4-khint .wi4-key { min-width:0; font:500 11px 'DM Mono',monospace; color:var(--wi4-grey-1); background:var(--wi4-kcap); border-color:var(--wi4-ctl); border-radius:4px; padding:2px 6px; line-height:normal; }
+.wi4-help .wi4-datep-note { font-size:11.5px; }
+/* Sheet 15 C (1119:2812, F8): while the keyboard is in use, the main keys at
+   the board's foot — sticky, so it stays in view, and in the flow, so at the
+   end of the scroll it sits UNDER the last row, never on it. A row brought
+   into view by ↑/↓ keeps clear of it (scroll-margin). A sticky box sticks
+   inside the scroller's padding: bottom = minus .content's 148px bottom
+   padding puts it on the window's edge (as .wi4-cols' top:-8px; change both
+   together — at bottom:0 it floated 148px above the edge over the rows).
+   pointer-events:none: a hint is never a target — a click on a row under it
+   reaches the row (and the press takes the strip away, _onMouse). */
+/* Parity r2: a pill the size of its keys (1119:2812, 719 wide, radius 6, no
+   border), not a full-width band with a rule over it. Over white day cards
+   the grey fill alone has no edge, hence the 1px ring (a shadow: no border,
+   no height change). */
+.wi4-khint { position:sticky; bottom:-148px; z-index:20; pointer-events:none; display:flex; align-items:center; gap:6px; width:max-content; max-width:100%; height:32px; padding:0 12px; margin-top:8px;
+  border-radius:6px; box-shadow:0 0 0 1px var(--wi4-line-2); background:var(--surface-page); font-size:11.5px; color:var(--wi4-grey-2); white-space:nowrap; overflow:hidden; }
+.wi4-khint > span:not(.wi4-key) { margin-right:9px; }
+/* Shown only while the keyboard is in use; hidden, not removed, so a mouse
+   press never changes the board's height under the pointer. */
+.wi4:not(.wi4-kbd) .wi4-khint { visibility:hidden; }
+.wi4.wi4-kbd .wi4-focus { scroll-margin-bottom:40px; }
+
+/* Per-load menu (§e.9) lives INSIDE #wi-ctx with .wi-ctx-i buttons, so
+   _wiCtxKeydown/_wiCtxShow/_wiCtxClose keep working. #wi-ctx sits outside
+   .wi4, hence body.wi4-on, a class v4 sets while active and removes on page
+   change. .wi-ctx-i keeps display:block (no layout change to moved nodes);
+   the key hint floats right. */
+/* The menu never runs past the window: it scrolls inside, and WI4Actions
+   moves it up when it is taller than the room under it. */
+/* Width (sheet 14: a 300px menu): a section line that named every stop with
+   its country grew the menu to ~820px, over half the board (review 11/10).
+   Section and header lines are one line, cut with «…», the whole in title;
+   item labels too. WI4Actions clamps it inside the window. The card itself
+   is Figma 1097:3858's (parity r1 F9): 300px, 1px --border, radius 10, its
+   soft slate shadow, 6px above the header and under the last item. */
+body.wi4-on #wi-ctx { width:300px; max-width:calc(100vw - 16px); max-height:calc(100vh - 16px); overflow-y:auto;
+  border-color:var(--border); border-radius:10px; box-shadow:0 12px 32px rgba(15,23,42,.18); padding:6px 0; }
+/* Header (1097:3859, parity r1 F10): 6px 12px, the two lines 15 + 1 + 14, then
+   8px + 4px down to the divider and 4px after it. */
+body.wi4-on #wi-ctx .wi4-m-hd { padding:6px 12px 12px; border-bottom:1px solid var(--wi4-line-2); margin-bottom:4px; font-size:12px; font-weight:600; line-height:15px; color:var(--wi4-ink); }
+body.wi4-on #wi-ctx .wi4-m-hd .wi4-l2 { font-weight:400; font-size:11px; line-height:14px; margin-top:1px; }
+/* A divider above every section (sheet 14): 4px · line · 4px, then the
+   section's own 6px (1097:3876, parity r1 F11). */
+body.wi4-on #wi-ctx .wi4-m-sec { padding:10px 12px 4px; margin-top:4px; border-top:1px solid var(--wi4-line-2); font-size:10px; font-weight:600; letter-spacing:.6px; text-transform:uppercase; color:var(--wi4-grey-2); }
+/* The section the pointer / keyboard focus is in carries a 6px accent dot at
+   its left (Figma 1097:3907: x 4, y 10 of a frame that starts 4px under the
+   divider = 14px under it; here the divider is .wi4-m-sec's own border-top,
+   so top counts from its inner edge; finding menu-section-dot-missing).
+   WI4Actions sets .wi4-m-on together with the row's light. */
+body.wi4-on #wi-ctx .wi4-m-sec { position:relative; }
+body.wi4-on #wi-ctx .wi4-m-sec.wi4-m-on::before { content:''; position:absolute; left:4px; top:14px; width:6px; height:6px; border-radius:50%; background:var(--accent); }
+/* A «▸» line's submenu is a flyout card beside the menu (sheet 14 1064:2376,
+   parity r1 F2): fixed, placed by WI4Actions from its line, the menu's card
+   style, 260px; its head has no divider. Its line stays lit while open. */
+body.wi4-on #wi-ctx .wi4-m-sub { display:none; }
+body.wi4-on #wi-ctx .wi4-m-sub.open { display:block; position:fixed; z-index:1; width:260px; max-width:calc(100vw - 16px); max-height:calc(100vh - 16px); overflow-y:auto;
+  padding:6px 0; background:var(--bg-card); border:1px solid var(--border); border-radius:10px; box-shadow:0 12px 32px rgba(15,23,42,.18); }
+body.wi4-on #wi-ctx .wi4-m-sub > .wi4-m-sec { border-top:none; margin-top:0; padding-top:6px; }
+body.wi4-on #wi-ctx .wi4-m-more[aria-expanded="true"] { background:var(--wi4-chip); }
+/* An item is a 3-column grid — icon · label · key/chevron — on ONE line, the
+   label cut with «…» and whole in the button's title (review 11/10: long
+   labels wrapped under the icon). Figma 1097:3864 (parity r1 F4/F5): DM Sans
+   13 regular — #wi-ctx sits outside .wi4, so the board's button reset never
+   reached it and items drew in the browser's Arial 12 — 12px sides, a 15px
+   icon 10px before the label (x 12 / 37). Top/bottom paddings stay the old
+   builders' (§c.3), so the ≤768px touch rows keep theirs. */
+body.wi4-on #wi-ctx .wi-ctx-i { display:grid; grid-template-columns:15px minmax(0,1fr) auto; column-gap:10px; align-items:center; white-space:nowrap;
+  padding-left:12px; padding-right:12px; font:400 13px/normal 'DM Sans',sans-serif; }
+/* An item without a key letter or chevron has no third track: its label
+   runs the full 249px (Figma 1097:3870/3873/3881 at x 37, w 249; finding
+   menu-item-empty-key-track — the empty auto track still took the 10px gap,
+   so «Groupage εισαγωγών · σε αυτό το φορτίο…» was cut at 239). */
+body.wi4-on #wi-ctx .wi-ctx-i:not(:has(> .wi4-m-k, > .wi4-m-chev)) { grid-template-columns:15px minmax(0,1fr); }
+/* A relay's «▸» line (_relayParts): kind · driver shrinks with «…», the day
+   after it never (board rule: names are cut, dates never; finding
+   menu-relay-line-cuts-date). */
+body.wi4-on #wi-ctx .wi4-m-l:has(> .wi4-ell) { display:flex; }
+body.wi4-on #wi-ctx .wi4-m-l > .wi4-ell { flex:0 1 auto; min-width:0; overflow:hidden; text-overflow:ellipsis; }
+body.wi4-on #wi-ctx .wi4-m-l > .wi4-ell + span { flex:none; }
+/* Icons in --text-mid, red on a red item (1097:3872 / 3932). */
+body.wi4-on #wi-ctx .wi4-m-ic { display:inline-block; width:15px; text-align:center; color:var(--text-mid); vertical-align:-2px; }
+body.wi4-on #wi-ctx .wi-ctx-i.d .wi4-m-ic { color:var(--danger); }
+/* The key hint is a plain letter at the right edge (1097:3867 «A»), not the
+   board's boxed .wi4-key chip (parity r1 F12). Only the grid's 10px gap
+   before it: «Ανάθεση…» is 231 = 249 − 8 − 10 wide (1097:3866). */
+body.wi4-on #wi-ctx .wi4-m-k { margin-left:0; border:0; background:none; padding:0; min-width:0; font-size:11px; font-weight:500; line-height:14px; color:var(--wi4-grey-2); }
+/* A «▸» line opens a submenu: its chevron at the right. */
+body.wi4-on #wi-ctx .wi4-m-chev { display:inline-flex; color:var(--wi4-grey-2); }
+/* The header's plates in DM Mono (sheet 14: «TST-1001 · Driver Test 01»):
+   an own truck's whole line, Medium 11.5 (1097:3860, parity r1 F10). */
+body.wi4-on #wi-ctx .wi4-m-plate { font-family:'DM Mono',ui-monospace,SFMono-Regular,Menlo,monospace; font-size:11.5px; font-weight:500; }
+/* Equivalent of today's `.wk3.wi2 .wi-ctx-h{font-size:11px}` (§c.3). It is
+   the only .wk3/.wk3.wi2-scoped rule that reaches #wi-ctx, #wi-panel or
+   #wi-popover content: measured 11/10 over every class emitted by the 37
+   menu/panel/popover builders of weekly_intl.js. The board rig's computed-style
+   comparison (WP10) is the proof; any further difference it finds is added
+   here, keyed the same way. */
+body.wi4-on #wi-ctx .wi-ctx-h { font-size:11px; }
+/* The reused assignment popover (§c.3) inside v4: the board's ONE primary,
+   navy (the date panel's «Αλλαγή»), never accent blue; and it never runs past
+   the window — it scrolls inside (review 11/10). The board rig's computed-
+   style comparison names these two as the intended v4 differences. */
+body.wi4-on #wi-popover { max-height:calc(100vh - 24px); overflow-y:auto; }
+body.wi4-on #wi-popover .wi-pop-save { background:var(--wi4-ink); border-color:var(--wi4-ink); }
+body.wi4-on #wi-popover .wi-pop-save:hover { background:var(--navy-light); }
+
+@media print {
+  .wi4-q, .wi4-shelf, .wi4-plane, .wi4-banner, .wi4-pres { display:none; }
+  .wi4-cols { position:static; }
+}
+
+/* ═══ Παραγγελίες › Εβδομάδα v4 (.ow4) — modules/orders_week_view.js ═════════
+   Figma 1514:8013: 1518:8013 (1440), 1518:9099 (1920), states 1519:8013.
+   One row = one RT, mirrored like Weekly v4: RT | ΕΞΑΓΩΓΗ ‖ ΑΝΑΘΕΣΗ ‖ ΕΙΣΑΓΩΓΗ.
+   The two sides are equal halves at 1440 (measured on the frame: 480 · 292 ·
+   478); every sub-row of a side uses the side's own grid, so groupage orders
+   (§02) line up under one header. Colour only where it says something (§06
+   «Χρώμα»): green only on «✓ ΤΠΥ», red only for an invoicing block (dot + 2px
+   bar) and a failed read, blue only for what is clicked. Reuses the --wi4-*
+   tokens. Numbers tabular (§12 #05). */
+/* Three widths, by the BOARD's own width (container query), not the
+   window's: the app's open sidebar (216px) turns a 1440 screen into ~1140px.
+   ≥1500 = the 1920 frame (13px, 24px gaps) · 1241–1499 = the 1440 frame (12px
+   lines, 20px gaps, §12 #06/#09) · ≤1240 = open sidebar at 1440 (12px gaps,
+   §12 #09 allows going under 20 only to keep whole words). Route/client
+   widths per row come from _fitSide (modules/orders_week_view.js). */
+.ow4 { --ow4-rt:80px; --ow4-asg:292px; --ow4-tpy:64px; --ow4-amt:68px; --ow4-gap:20px; --ow4-fs:12px;
+  container:ow4 / inline-size; display:flex; flex-direction:column; gap:14px; font-family:'DM Sans',sans-serif; font-size:12px;
+  color:var(--wi4-ink); font-variant-numeric:tabular-nums; }
+
+/* §10 strips: white, a red dot for a failed read, grey for a fact. */
+.ow4-fail { display:flex; align-items:baseline; gap:6px; background:var(--bg-card); border:1px solid var(--border);
+  border-radius:8px; padding:10px 14px; font-size:12.5px; color:var(--wi4-grey-1); }
+.ow4-fail b { color:var(--wi4-ink); font-weight:600; }
+.ow4-fail .ow4-link { margin-left:auto; }
+.ow4-info .ow4-dot { background:var(--wi4-grey-2); }
+.ow4-dot { display:inline-block; flex:none; width:6px; height:6px; border-radius:50%; background:var(--danger); margin-right:5px; vertical-align:1px; }
+.ow4-link { border:none; background:none; padding:0; font:inherit; font-weight:500; color:var(--accent-text); cursor:pointer; white-space:nowrap; }
+.ow4-link:hover { text-decoration:underline; }
+
+/* Week strip: five weeks, the selected one boxed in blue (it is clicked). */
+.ow4-strip { display:flex; align-items:center; gap:8px; background:var(--bg-card); border:1px solid var(--border); border-radius:10px; padding:6px 10px; }
+.ow4-arr { flex:0 0 28px; height:28px; border:1px solid var(--wi4-ctl); background:var(--bg-card); border-radius:6px; color:var(--wi4-grey-1); cursor:pointer; font-size:15px; }
+.ow4-wk { flex:1; min-width:0; text-align:left; border:1px solid transparent; background:transparent; border-radius:6px; padding:5px 12px;
+  cursor:pointer; display:flex; flex-direction:column; gap:2px; font:inherit; color:var(--wi4-ink); }
+.ow4-wk:hover { background:var(--wi4-hover); }
+.ow4-wk.on { border:2px solid var(--accent); padding:4px 11px; }
+.ow4-wk.on .ow4-wk-r { color:var(--accent-text); }
+.ow4-wk-r { font-size:13px; font-weight:500; }
+.ow4-wk-v { font-size:11px; color:var(--wi4-grey-1); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+
+/* The summary line (owner α — words of OrdersData.stateOf). */
+.ow4-sum { display:flex; flex-wrap:wrap; align-items:baseline; column-gap:22px; row-gap:4px; font-size:13px; color:var(--wi4-ink); padding:2px 0; }
+.ow4-sum-h { font-weight:600; }
+.ow4-sum-r { margin-left:auto; display:flex; gap:20px; align-items:baseline; }
+.ow4-num { font-variant-numeric:tabular-nums; }
+
+/* Section titles: Syne (Weekly v4 convention), meta in DM Sans grey. */
+.ow4-h { margin:6px 0 8px; font:600 15px 'Syne',sans-serif; color:var(--wi4-ink); }
+.ow4-h span { margin-left:12px; font:400 13px 'DM Sans',sans-serif; color:var(--wi4-grey-2); }
+.ow4-card { background:var(--bg-card); border:1px solid var(--border); border-radius:10px; }
+.ow4-row { display:grid; grid-template-columns:var(--ow4-rt) minmax(0,1fr) var(--ow4-asg) minmax(0,1fr); border-top:1px solid var(--wi4-line-3); }
+/* 1920 (1518:9099): the import half is the wider one and nothing is cut. */
+@container ow4 (min-width:1500px) {
+  .ow4-card { --ow4-asg:305px; --ow4-gap:24px; --ow4-fs:13px; --ow4-tpy:80px; --ow4-amt:84px; }
+  .ow4-row { grid-template-columns:var(--ow4-rt) minmax(0,1fr) var(--ow4-asg) minmax(0,1.12fr); }
+}
+.ow4-row[data-owvopen] { cursor:pointer; }
+.ow4-row[data-owvopen]:hover { background:var(--wi4-hover); }
+.ow4-blk { box-shadow:inset 2px 0 0 var(--danger); }
+.ow4-c-rt { padding:9px 4px 7px 10px; min-width:0; overflow:hidden; }
+.ow4-c-rt .ow4-l2 { overflow:hidden; text-overflow:ellipsis; }
+.ow4-side { display:flex; flex-direction:column; min-width:0; }
+.ow4-sub { display:grid; align-items:start; column-gap:var(--ow4-gap); min-height:48px; box-sizing:border-box; padding:9px 10px 7px; }
+/* --ow4-rw (route width) is set per row by _fitSide; unset (header, print
+   before a fit) the shared split applies. Declared here, on the row grid, so
+   the per-row value is the one read. */
+.ow4-l .ow4-sub { grid-template-columns:var(--ow4-rw, minmax(0,1fr)) minmax(0,1.1fr) var(--ow4-tpy) var(--ow4-amt); }
+.ow4-r .ow4-sub { grid-template-columns:var(--ow4-tpy) var(--ow4-amt) minmax(0,1.15fr) var(--ow4-rw, minmax(0,.9fr)); }
+.ow4-sub + .ow4-sub { border-top:1px solid var(--wi4-line); }
+.ow4-sub.ow4-none { display:block; }
+.ow4-c { min-width:0; overflow:hidden; }
+.ow4-n { text-align:right; }
+.ow4-asg { min-width:0; padding:9px 10px 7px; border-left:1px solid var(--wi4-line-3); border-right:1px solid var(--wi4-line-3);
+  display:flex; flex-direction:column; }
+.ow4-l1 { font-size:var(--ow4-fs); line-height:16px; white-space:nowrap; color:var(--wi4-ink); }
+.ow4-l2 { font-size:11px; line-height:14px; margin-top:2px; white-space:nowrap; color:var(--wi4-grey-2); }
+.ow4-ell { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.ow4-g { color:var(--wi4-grey-2); }
+.ow4-d { color:var(--text-dim); }
+.ow4-ar { color:var(--text-dim); margin:0 3px; }
+/* §12 #06: the route is cut first, and never below the destination's first
+   word — .ow4-rh never shrinks, only the rest (.ow4-rt) takes the «…». */
+.ow4-route { display:flex; min-width:0; }
+.ow4-rh { flex:none; }
+.ow4-rt { flex:0 1 auto; min-width:0; margin-left:.28em; overflow:hidden; }
+.ow4-rt:empty { display:none; }
+/* Points of a multi-stop end: the dark box of Weekly v4 (.wi4-pt-n, owner 12/10). */
+.ow4-pn { flex:none; display:inline-block; box-sizing:border-box; min-width:14px; height:14px; padding:0 3px; margin-left:4px; border-radius:3px;
+  background:var(--wi4-ink); color:var(--text-inverse); font-size:10px; font-weight:600; line-height:14px; text-align:center; vertical-align:1px;
+  -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+.ow4-tpy { display:block; font-size:var(--ow4-fs); line-height:16px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; color:var(--wi4-ink); }
+/* Words in the amount column («στην παρτίδα #1172», «ακυρωμένη»…): «…» + title. */
+.ow4-sub > .ow4-n > .ow4-d, .ow4-sub > .ow4-n > .ow4-l2 { display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.ow4-tpy.ok { color:var(--ok); font-weight:500; }
+.ow4-tpy.dim { color:var(--wi4-grey-2); }
+.ow4-sub > .ow4-n { font-size:var(--ow4-fs); line-height:16px; }
+.ow4-hd .ow4-sub > .ow4-n { font-size:inherit; line-height:inherit; }
+/* A leg of another week (§04): grey, its amount out of the Σ. */
+.ow4-off .ow4-l1, .ow4-off .ow4-tpy, .ow4-off .ow4-tpy.ok { color:var(--text-mid); }
+.ow4-off-amt { display:block; color:var(--text-dim); }
+.ow4-veh { display:flex; align-items:baseline; gap:8px; min-width:0; }
+/* DM Mono has no Greek: the .wi4-plate stack, so ΚΗΙ never falls to a serif. */
+.ow4-plate { flex:none; font-family:'DM Mono',ui-monospace,SFMono-Regular,Menlo,monospace; font-weight:500; font-size:12.5px; color:var(--wi4-ink); }
+.ow4-who { min-width:0; color:var(--wi4-grey-1); }
+.ow4-asg-pa { color:var(--wi4-ink); }
+.ow4-asg-none { color:var(--wi4-grey-2); }
+.ow4-asg-b { display:flex; justify-content:space-between; align-items:baseline; gap:8px; margin-top:4px; }
+.ow4-vd { flex:1 1 auto; font-size:11px; color:var(--wi4-grey-1); min-width:0; overflow:hidden; white-space:nowrap; }
+.ow4-sig { flex:none; white-space:nowrap; font-size:13px; font-weight:600; color:var(--wi4-ink); }
+.ow4-mk { font-size:10px; font-weight:400; color:var(--text-dim); margin-left:1px; }
+
+/* Column header: group label above, column labels below; sticky. */
+.ow4-hd { position:sticky; top:0; z-index:3; background:var(--bg-card); border-top:0; border-radius:10px 10px 0 0;
+  font-size:10.5px; font-weight:600; letter-spacing:.04em; text-transform:uppercase; color:var(--wi4-grey-2); }
+.ow4-hd .ow4-asg { border-color:transparent; }
+.ow4-hd i { display:block; height:14px; font-style:normal; font-weight:700; color:var(--wi4-ink); padding:0 10px; }
+.ow4-hd i span { font-weight:400; color:var(--wi4-grey-2); margin-left:4px; }
+.ow4-hd .ow4-c-rt i { padding:0; }
+.ow4-hd .ow4-asg i { padding:0; }
+.ow4-hd .ow4-c-rt, .ow4-hd .ow4-asg { padding-top:10px; padding-bottom:8px; }
+.ow4-hd .ow4-side { padding-top:10px; }
+.ow4-hd .ow4-sub { min-height:0; padding-top:6px; padding-bottom:8px; }
+.ow4-hd .ow4-c-rt b { display:block; margin-top:6px; font-weight:600; }
+.ow4-hd b { font-weight:600; }
+.ow4-asg-h { display:flex; justify-content:space-between; margin-top:6px; }
+
+/* Day sections (§01/§11): always seven; an empty day is one quiet line. */
+.ow4-day { padding:8px 12px; border-top:1px solid var(--wi4-line-3); background:var(--bg-row-alt);
+  font-size:11px; font-weight:700; letter-spacing:.04em; color:var(--wi4-ink); }
+.ow4-day span { font-weight:400; letter-spacing:0; color:var(--wi4-grey-2); margin-left:6px; }
+.ow4-day-0 { background:transparent; font-weight:400; letter-spacing:0; color:var(--wi4-grey-2); }
+
+/* «Κατάσταση εβδομάδας»: an accounting statement — single rule above the
+   total, double below; no hero numbers (DECISION_LOG 13/10). */
+.ow4-state { border-top:1px solid var(--border); padding-top:12px; }
+/* fixed: _alignState sizes the first two columns so ΤΖΙΡΟΣ ends under Σ RT. */
+.ow4-st { width:100%; border-collapse:collapse; font-size:13px; table-layout:fixed; }
+.ow4-st th, .ow4-st td { padding:7px 12px; text-align:right; font-weight:400; }
+.ow4-st th:first-child { text-align:left; padding-left:0; }
+.ow4-st thead th { background:none; font-size:10.5px; font-weight:600; letter-spacing:.04em; color:var(--wi4-grey-2); border-bottom:1px solid var(--border); padding-bottom:9px; }
+.ow4-st tbody th { font-weight:400; }
+.ow4-st tfoot th { font-weight:600; }
+.ow4-st tfoot td { font-weight:700; border-top:1px solid var(--wi4-ink); border-bottom:3px double var(--wi4-ink); padding-top:10px; padding-bottom:10px; }
+.ow4-note { margin:10px 0 0; font-size:11.5px; color:var(--wi4-grey-2); }
+.ow4-foot { margin-top:14px; font-size:11px; color:var(--wi4-grey-2); }
+.ow4-foot p { margin:0 0 3px; }
+
+/* The frames assume the 64px closed sidebar (§12 open question 5); with the
+   app's open sidebar a 1440 screen leaves ~1080px. The fixed columns tighten
+   first; if a route head still does not fit, _fitRoutes marks the card
+   .ow4-scroll and it scrolls sideways inside itself (the page never does) —
+   never a destination cut mid-word. A scrolling card cannot keep a sticky
+   header, so it is static there. */
+@container ow4 (max-width:1240px) {
+  .ow4-card { --ow4-rt:80px; --ow4-asg:266px; --ow4-tpy:62px; --ow4-amt:66px; --ow4-gap:12px; }
+  .ow4-sub, .ow4-asg { padding-left:8px; padding-right:8px; }
+}
+}
+.ow4-card.ow4-scroll { overflow-x:auto; }
+.ow4-card.ow4-scroll > .ow4-row, .ow4-card.ow4-scroll > .ow4-day { min-width:var(--ow4-minw, 1180px); }
+.ow4-card.ow4-scroll .ow4-hd { position:static; }
+@media (max-width:1279px) {
+  .ow4-strip { overflow-x:auto; }
+  .ow4-wk { min-width:140px; }
+}
+@media print {
+  .ow4-strip, .ow4-fail .ow4-link, .ow4-sum-r .ow4-link { display:none; }
+  .ow4-hd { position:static; }
+  .ow4-row { break-inside:avoid; }
+  .ow4-row[data-owvopen]:hover { background:none; }
+}
+
+/* New place from an order scan (T44, modules/locations.js locScanNewHTML): an
+   inline block under an unmatched stop of the scan preview, not a modal (the
+   modal is the preview itself). Tokens only, so it follows the active theme. */
+.loc-scan-new { margin: 0 0 var(--space-2) 0; }
+.loc-scan-new > .btn { font-size: var(--text-xs); }
+.loc-scan-form { border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface-card); padding: var(--space-3); margin-top: var(--space-1); }
+.loc-scan-form .form-grid { gap: var(--space-2); }
+.loc-scan-hint { font-size: var(--text-xs); color: var(--text-dim); margin-top: var(--space-2); }
+.loc-scan-actions { display: flex; justify-content: flex-end; gap: var(--space-2); margin-top: var(--space-2); }
+.loc-scan-done { font-size: var(--text-xs); font-weight: 600; color: var(--ok); }
+/* The pin line of the scan's new-place form (T44 follow-up): what was found, the map link, «Εύρεση ξανά». */
+.loc-scan-form .loc-scan-geo { flex-direction: row; align-items: baseline; gap: var(--space-3); flex-wrap: wrap; font-size: var(--text-xs); }
+.loc-scan-geo-msg { color: var(--text-mid); }
+.loc-scan-form .loc-geo-link { background: none; border: none; padding: 0; font: inherit; font-weight: 600; color: var(--accent); cursor: pointer; }
+.loc-scan-form .loc-geo-link:hover { text-decoration: underline; }

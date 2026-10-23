@@ -1093,6 +1093,7 @@ function exRenderPage() {
   }
   const importHtml = (tab === 'week' && !_ex.loading && !_ex.err) ? exImportDocsSectionHtml() : '';
   c.innerHTML = exStyles() + `<div class="ex-page">${head}${navHtml}${body}${importHtml}</div>`;
+  fhSelectSearchIn(c); // T33: the plate pickers (data-fh-search) take a search box
 }
 
 function exVehControlsHtml() {
@@ -1101,7 +1102,7 @@ function exVehControlsHtml() {
   const rangeOpts = EX_VEH_RANGES.map(v => `<option value="${v}"${_ex.veh.range === v ? ' selected' : ''}>Τελευταίες ${v} εβδομάδες</option>`).join('');
   const rangeTxt = (_ex.veh.from && _ex.veh.to) ? `${exDateFull(_ex.veh.from)} – ${exDateFull(_ex.veh.to)}` : '';
   return `<div class="ex-card ex-vehctl">
-    <div class="ex-field" style="width:170px"><label class="ex-flabel">Όχημα</label><select class="ex-ei" onchange="exVehSetTruck(this.value)">${opts}</select></div>
+    <div class="ex-field" style="width:170px"><label class="ex-flabel">Όχημα</label><select class="ex-ei" id="exVehTruck" data-fh-search onchange="exVehSetTruck(this.value)">${opts}</select></div>
     <div class="ex-field" style="width:200px"><label class="ex-flabel">Εύρος</label><select class="ex-ei" onchange="exVehSetRange(this.value)">${rangeOpts}</select></div>
     <span class="s dim">${escapeHtml(rangeTxt)}</span>
   </div>`;
@@ -1725,7 +1726,7 @@ function exTrailerFieldHtml(rt, state, ns) {
   const warn = !rtTrailerId;
   return `<div class="ex-field" style="width:170px">
     <label class="ex-flabel">Ρυμούλκα</label>
-    <select class="ex-ei${warn ? ' warn' : ''}" id="${idAttr}" onchange="exTrailerIdChange('${ns}', this.value)">${opts}</select>
+    <select class="ex-ei${warn ? ' warn' : ''}" id="${idAttr}" data-fh-search onchange="exTrailerIdChange('${ns}', this.value)">${opts}</select>
     ${warn ? '<span class="ex-warn-hint">Το δρομολόγιο δεν έχει ρυμούλκα — επίλεξε</span>' : ''}
   </div>`;
 }
@@ -1736,11 +1737,11 @@ function exTrailerOverrideClick(ns) {
   s.trailerOverride = true;
   if (ns === 'md') {
     const wrap = document.getElementById('exMdReeferWrap');
-    if (wrap) wrap.innerHTML = exTrailerFieldHtml(s.rt, s, 'md');
+    if (wrap) { wrap.innerHTML = exTrailerFieldHtml(s.rt, s, 'md'); fhSelectSearchIn(wrap); }
   } else {
     const wrap = document.getElementById('exQeReeferWrap');
     const rtId = exOpenRtId(); const rt = rtId != null ? exActiveRts().find(r => r.id === rtId) : null;
-    if (wrap) wrap.innerHTML = exTrailerFieldHtml(rt, s, 'qe');
+    if (wrap) { wrap.innerHTML = exTrailerFieldHtml(rt, s, 'qe'); fhSelectSearchIn(wrap); }
   }
 }
 
@@ -2069,7 +2070,7 @@ function exEditLineRowHtml(line) {
     <div class="ex-qe-break"></div>
     <span id="${p('exEdFuelSourceWrap')}">${fuelSourceOn ? exFuelSourceSelectHtml(p('exEdFuelSource'), line.fuel_source || 'DKV') : ''}</span>
     <span id="${p('exEdCountryWrap')}">${isTolls ? exCountryFieldHtml(cns, 170) : ''}</span>
-    <span id="${p('exEdTrailerWrap')}">${isReefer ? `<div class="ex-field" style="width:170px"><label class="ex-flabel">Ρυμούλκα</label><select class="ex-ei" id="${p('exEdTrailerId')}">${trailerOptsHtml}</select></div>` : ''}</span>
+    <span id="${p('exEdTrailerWrap')}">${isReefer ? `<div class="ex-field" style="width:170px"><label class="ex-flabel">Ρυμούλκα</label><select class="ex-ei" id="${p('exEdTrailerId')}" data-fh-search>${trailerOptsHtml}</select></div>` : ''}</span>
     <div class="ex-qe-break"></div>
     <span id="${p('exEdFuelFields')}" class="ex-qe-fuel" style="display:${fuelOn ? 'flex' : 'none'}">
       <div class="ex-field" style="width:90px"><label class="ex-flabel">Λίτρα</label><input class="ex-ei" type="number" step="0.01" id="${p('exEdLiters')}" value="${line.liters ?? ''}"${lk}></div>
@@ -2112,7 +2113,8 @@ function exEdCategoryChange(id, el) {
   if (tWrap) {
     const trailers = (_ex.lookups && _ex.lookups.trailers) || [];
     const trailerOptsHtml = '<option value="">Ρυμούλκα…</option>' + trailers.map(t => `<option value="${t.id}"${line.trailer_id === t.id ? ' selected' : ''}>${escapeHtml(t.license_plate)}</option>`).join('');
-    tWrap.innerHTML = el.value === 'reefer_fuel' ? `<div class="ex-field" style="width:170px"><label class="ex-flabel">Ρυμούλκα</label><select class="ex-ei" id="${p('exEdTrailerId')}">${trailerOptsHtml}</select></div>` : '';
+    tWrap.innerHTML = el.value === 'reefer_fuel' ? `<div class="ex-field" style="width:170px"><label class="ex-flabel">Ρυμούλκα</label><select class="ex-ei" id="${p('exEdTrailerId')}" data-fh-search>${trailerOptsHtml}</select></div>` : '';
+    fhSelectSearchIn(tWrap);
   }
 }
 
@@ -2288,6 +2290,7 @@ function exOpenEntryModal({ rtId, rt, onSaved, category, categories }) {
   let host = document.getElementById('exModalHost');
   if (!host) { host = document.createElement('div'); host.id = 'exModalHost'; document.body.appendChild(host); }
   host.innerHTML = exModalHtml();
+  fhSelectSearchIn(host);
   const amtEl = document.getElementById('exMdAmt');
   if (amtEl) amtEl.focus();
 }
@@ -2337,7 +2340,7 @@ function exModalCategoryChange(el) {
   const src = document.getElementById('exMdFuelSourceWrap');
   if (src) src.innerHTML = EX_FUEL_SOURCE_CATEGORIES.includes(el.value) ? exFuelSourceSelectHtml('exMdFuelSource', s.fuelSource) : '';
   const reefer = document.getElementById('exMdReeferWrap');
-  if (reefer) reefer.innerHTML = el.value === 'reefer_fuel' ? exTrailerFieldHtml(s.rt, s, 'md') : '';
+  if (reefer) { reefer.innerHTML = el.value === 'reefer_fuel' ? exTrailerFieldHtml(s.rt, s, 'md') : ''; fhSelectSearchIn(reefer); }
   const country = document.getElementById('exMdCountryWrap');
   if (country) country.innerHTML = el.value === 'tolls' ? exCountryFieldHtml('exMdCountry', 170) : '';
   // Addition A (owner 14/9) — same 'exMdCountry' ns as the tolls wrap above

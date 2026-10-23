@@ -1,4 +1,4 @@
--- 057b — DRAFT (NOT EXECUTED) — the auditor learns stock lots. SEPARATE approval from 057; run it
+-- 057b — EXECUTED 5/10/2026 by the owner — the auditor learns stock lots. SEPARATE approval from 057; run it
 -- only after 057_stock_lots_verify.sql V1–V8 pass. ONE DO block (lesson 056): the 10 new checks, the
 -- 4 changed ones and their proofs commit together or not at all.
 --

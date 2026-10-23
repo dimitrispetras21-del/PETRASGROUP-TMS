@@ -7,7 +7,7 @@
 //   - Offline banner via postMessage to all clients
 // ═══════════════════════════════════════════════════════════
 
-const SW_VERSION = '1791562432';
+const SW_VERSION = '1792652368';
 
 // Το vendor/leaflet/* ΔΕΝ μπαίνει στο APP_SHELL επίτηδες: το pre-cache στο
 // install θα κατέβαζε 228 KB σε κάθε χρήστη, ακυρώνοντας το lazy loading της
@@ -31,13 +31,23 @@ const APP_SHELL = [
   '/PETRASGROUP-TMS/core/ui.js',
   '/PETRASGROUP-TMS/core/entity.js',
   '/PETRASGROUP-TMS/core/pa-helpers.js',
+  // The Veroia day rule (WP-A): orders_intl.js and its VS sync call it — an
+  // offline shell without it would fail every order save's national sync.
+  '/PETRASGROUP-TMS/core/vs-dates.js',
   // Local relays (060): Weekly International, Daily Ops, the Drivers card and
   // the payroll card read (and the first two edit) them through it.
   '/PETRASGROUP-TMS/core/relay.js',
+  // Weekly International v4 (TECH_DESIGN §a.1): app.html loads all four on
+  // every page. A WRONG path here fails cache.addAll and with it the whole SW
+  // update, so tests/sw-app-shell.test.js checks every entry exists on disk.
+  '/PETRASGROUP-TMS/core/wi4-logic.js',
+  '/PETRASGROUP-TMS/core/wi4-presence.js',
   '/PETRASGROUP-TMS/core/ai-chat.js',
   // Modules
   '/PETRASGROUP-TMS/modules/dashboard.js',
   '/PETRASGROUP-TMS/modules/weekly_intl.js',
+  '/PETRASGROUP-TMS/modules/weekly_intl_v2.js',
+  '/PETRASGROUP-TMS/modules/wi4_actions.js',
   '/PETRASGROUP-TMS/modules/weekly_natl.js',
   '/PETRASGROUP-TMS/modules/daily_ramp.js',
   '/PETRASGROUP-TMS/modules/daily_ops.js',
@@ -47,6 +57,7 @@ const APP_SHELL = [
   // draw a list — without these the dispatchers' main screen fails offline.
   '/PETRASGROUP-TMS/core/orders-list.js',
   '/PETRASGROUP-TMS/core/orders-common.js',
+  '/PETRASGROUP-TMS/core/order-quick-edit.js',
   '/PETRASGROUP-TMS/modules/orders_hub.js',
   '/PETRASGROUP-TMS/modules/orders_catalog.js',
   '/PETRASGROUP-TMS/modules/orders_invoicing_view.js',

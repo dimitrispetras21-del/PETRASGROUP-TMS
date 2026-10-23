@@ -187,6 +187,13 @@ button.mnt-kpi:hover { background:var(--surface-sunken); }
 .mnt-bad { color:var(--danger); font-weight:500; }
 .mnt-warn { color:var(--warn); font-weight:500; }
 .mnt-ok { color:var(--ok); font-weight:700; }
+/* Expiry scale (_dueText band): solid colours, text ≥ 6.4:1 on each; printed as shown. */
+.mnt-due { display:inline-block; padding:1px 6px; border-radius:4px; font-weight:600; line-height:1.4; white-space:nowrap; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+.mnt-due-g { background:#DCFCE7; color:#166534; }
+.mnt-due-lg { background:#ECFCCB; color:#3F6212; }
+.mnt-due-o { background:#FFEDD5; color:#9A3412; }
+.mnt-due-r { background:#FEE2E2; color:#991B1B; }
+.mnt-due-x { background:#B91C1C; color:#FFFFFF; }
 .mnt-cell-edit { cursor:pointer; }
 .mnt-cell-edit:hover { text-decoration:underline dotted; }
 .mnt-section { display:flex; align-items:center; gap:var(--space-2); height:26px; }
@@ -327,12 +334,30 @@ function _relDays(dateStr) {
   if (ago < 365) return `πριν ${Math.round(ago / 30)} μήνες`;
   return `πριν ${(ago / 365).toFixed(1).replace('.', ',')} χρ.`;
 }
-// Expiry wording, one place: expired → danger, ≤30 days → warning, else dim.
-function _dueText(days) {
-  if (days === null) return { cls: 'mnt-dim', text: '—' };
-  if (days < 0) return { cls: 'mnt-bad', text: `ληγμένο ${-days} ημ.` };
-  if (days <= 30) return { cls: 'mnt-warn', text: `σε ${days} ημ.` };
-  return { cls: 'mnt-dim', text: `σε ${days} ημ.` };
+// Expiry wording, one place: expired → danger, inside the document's warning
+// window (30 days; 60 for a Bulgarian ΚΤΕΟ, _expiryWarnDays) → warning, else dim.
+// band: the background scale the users know from their Excel (walkthrough
+// 13/10, item 8: «ξεκινάει από πράσινο … κόκκινο, μέχρι να λήξει»), drawn as a
+// pill by the Λήξεις cells and the worst-6 card. Thresholds are our proposal
+// until his sheet's are known: over 60 green, 31-60 light green, 15-30 orange,
+// 0-14 red, expired dark red. The words stay, so colour never carries it alone.
+// Warning window per document (walkthrough item 12, T41, Nick 16/10): a
+// Bulgarian vehicle's ΚΤΕΟ is done in Bulgaria, so the trip there is planned
+// earlier: 60 days; every other document and every Greek vehicle stays at 30.
+// Country is trucks/trailers.country (his 7/9 rule: CB tractors, CB/E trailers).
+// Λήξεις εγγράφων and Επισκόπηση Στόλου only; the dashboard, the bell, the fleet
+// lists and the assign pickers keep their own 30 (follow-up).
+const EXPIRY_WARN_DAYS = { BG: { KTEO: 60 } };
+function _expiryWarnDays(country, label) {
+  const by = EXPIRY_WARN_DAYS[String(country || '').trim().toUpperCase()];
+  return (by && by[label]) || 30;
+}
+function _dueText(days, warn = 30) {
+  if (days === null) return { cls: 'mnt-dim', band: '', text: '—' };
+  if (days < 0) return { cls: 'mnt-bad', band: 'mnt-due mnt-due-x', text: `ληγμένο ${-days} ημ.` };
+  const band = 'mnt-due ' + (days <= 14 ? 'mnt-due-r' : days <= Math.max(30, warn) ? 'mnt-due-o' : days <= 60 ? 'mnt-due-lg' : 'mnt-due-g');
+  if (days <= warn) return { cls: 'mnt-warn', band, text: `σε ${days} ημ.` };
+  return { cls: 'mnt-dim', band, text: `σε ${days} ημ.` };
 }
 function _pctOf(n, d) { return d ? Math.round(n / d * 100) : null; }
 function _wsRec(wsArr) {
@@ -405,7 +430,7 @@ function _expiryBuildRows() {
       if (!f['Active']) continue;
       for (const ef of _expiryFieldsFor(f, fields)) {
         const d = f[ef.field] || null;
-        rows.push({ plate: f['License Plate']||'?', vType, docType: ef.label, date: d, days: _daysUntil(d), brand: f['Brand']||'' });
+        rows.push({ plate: f['License Plate']||'?', vType, docType: ef.label, date: d, days: _daysUntil(d), brand: f['Brand']||'', country: f['Country']||'' });
       }
     }
   };
@@ -434,8 +459,10 @@ function _expiryVehicleRows(vehicles, expiryFields, vType) {
         if (d.days === null) return min;
         return (min === null || d.days < min) ? d.days : min;
       }, null);
+      // soon: some document inside its own warning window (30, or 60 for a BG ΚΤΕΟ).
+      const soon = docs.some(d => d.days !== null && d.days >= 0 && d.days <= _expiryWarnDays(f['Country'], d.label));
       return { id: v.id, plate: f['License Plate']||'?', brand: f['Brand']||'', model: f['Model']||'', insurer: f['Insurance Partner']||'',
-        trailerType: f['Trailer Type']||'', country: f['Country']||'', docs, worst, vType };
+        trailerType: f['Trailer Type']||'', country: f['Country']||'', docs, worst, soon, vType };
     })
     .sort((a, b) => {
       if (a.worst === null && b.worst === null) return 0;
@@ -582,8 +609,8 @@ function _expiryGoto(tab, docType, plate) {
 function _expiryFilterRows(rows) {
   let out = rows;
   if (_expiryTab === 'expired') out = out.filter(r => r.worst !== null && r.worst < 0);
-  if (_expiryTab === 'expiring30') out = out.filter(r => r.worst !== null && r.worst >= 0 && r.worst <= 30);
-  if (_expiryTab === 'valid') out = out.filter(r => r.worst === null || r.worst > 30);
+  if (_expiryTab === 'expiring30') out = out.filter(r => r.worst !== null && r.worst >= 0 && r.soon);
+  if (_expiryTab === 'valid') out = out.filter(r => r.worst === null || (r.worst >= 0 && !r.soon));
   // Keeps only vehicles whose THAT document is expired — matches what the KPI counted.
   if (_expiryDocType) out = out.filter(r => r.docs.some(d => d.label === _expiryDocType && d.days !== null && d.days < 0));
   if (_expirySearch) { const q = _expirySearch; out = out.filter(r => r.plate.toLowerCase().includes(q) || r.brand.toLowerCase().includes(q) || r.model.toLowerCase().includes(q) || (r.insurer||'').toLowerCase().includes(q)); }
@@ -618,8 +645,8 @@ function _expiryPaint() {
   // KPIs — count per vehicle (not per document)
   const expiredTrucks = truckRows.filter(r => r.worst !== null && r.worst < 0).length;
   const expiredTrailers = trailerRows.filter(r => r.worst !== null && r.worst < 0).length;
-  const expiring30 = all.filter(r => r.worst !== null && r.worst >= 0 && r.worst <= 30).length;
-  const valid = all.filter(r => r.worst === null || r.worst > 30).length;
+  const expiring30 = all.filter(r => r.worst !== null && r.worst >= 0 && r.soon).length;
+  const valid = all.filter(r => r.worst === null || (r.worst >= 0 && !r.soon)).length;
   const expired = expiredTrucks + expiredTrailers;
   const total = all.length;
   const compliant = total - expired;
@@ -651,8 +678,8 @@ function _expiryPaint() {
   const docCell = (r, d) => {
     const editAttr = `onclick="_expInlineEdit(event,'${r.id}','${d.field}','${r.vType}')"`;
     if (!d.date) return `<td class="mnt-cell-edit" ${editAttr} title="Κλικ για καταχώρηση"><span class="mnt-dim">—</span></td>`;
-    const due = _dueText(d.days);
-    return `<td class="mnt-cell-edit mnt-num" ${editAttr} title="Κλικ για αλλαγή">${_fmtDMY(d.date)} <span class="${due.cls}" style="font-size:var(--text-sm);margin-left:4px">${due.text}</span></td>`;
+    const due = _dueText(d.days, _expiryWarnDays(r.country, d.label));
+    return `<td class="mnt-cell-edit mnt-num" ${editAttr} title="Κλικ για αλλαγή">${_fmtDMY(d.date)} <span class="${due.band || due.cls}" style="font-size:var(--text-sm);margin-left:4px">${due.text}</span></td>`;
   };
   const renewCell = (plate) => {
     const rn = renewals[String(plate).toUpperCase()];
@@ -698,7 +725,7 @@ function _expiryPaint() {
       <span class="mnt-sub">${total} ενεργά οχήματα</span>
       ${pill('all', 'όλα', total)}
       ${pill('expired', 'ληγμένα', expired, 'is-danger')}
-      ${pill('expiring30', 'λήγουν ≤30 ημ.', expiring30, 'is-warning')}
+      ${pill('expiring30', 'λήγουν σύντομα', expiring30, 'is-warning')}
       ${pill('valid', 'σε ισχύ', valid, 'is-ok')}
       ${_expiryDocType ? `<button type="button" class="mnt-pill active" onclick="_expiryDocType='';_expiryPaint()" title="Καθαρισμός φίλτρου εγγράφου">μόνο ${escapeHtml(EXPIRY_DOC_GR[_expiryDocType] || _expiryDocType)} ✕</button>` : ''}
       <span class="mnt-spacer"></span>
@@ -721,9 +748,9 @@ function _expiryPaint() {
         <span class="mnt-kpi-s">${expiredTrucks} ${expiredTrucks === 1 ? 'φορτηγό' : 'φορτηγά'} · ${expiredTrailers} ${expiredTrailers === 1 ? 'ρυμούλκα' : 'ρυμούλκες'}${expired ? ' — άμεση ανανέωση' : ''}</span>
       </button>
       <button type="button" class="mnt-kpi ${_expiryTab === 'expiring30' ? 'active' : ''}" onclick="_expiryTab='expiring30';_expiryPaint()">
-        <span class="mnt-kpi-l">Λήγουν ≤30 ημ.</span>
+        <span class="mnt-kpi-l" title="30 ημέρες· 60 για το ΚΤΕΟ βουλγαρικών οχημάτων">Λήγουν σύντομα</span>
         <span class="mnt-kpi-v ${expiring30 ? 'warn' : 'ok'}" style="font-size:var(--text-xl)">${expiring30}</span>
-        <span class="mnt-kpi-s">${expiring30 ? 'χρειάζονται προγραμματισμό' : 'τίποτα δεν λήγει μέσα σε 30 ημέρες'}</span>
+        <span class="mnt-kpi-s">${expiring30 ? 'χρειάζονται προγραμματισμό' : 'τίποτα δεν λήγει σύντομα'}</span>
       </button>
       <div class="mnt-kpi">
         <span class="mnt-kpi-l">Ανανεώθηκαν — 7 ημ.</span>
@@ -854,13 +881,13 @@ function _svcRowHtml(r, showVehicle) {
        <td>${descCell}</td>`;
   const parts = escapeHtml(f['Parts'] || '');
   return `<tr class="click" onclick="_svcOpenCard('${r.id}')">
-    <td class="mnt-num">${_fmtDMY(f['Date'])}</td>
+    <td class="mnt-num" data-sort-value="${escapeHtml(String(f['Date'] || '').slice(0, 10))}">${_fmtDMY(f['Date'])}</td>
     ${first}
     <td>${_wsCell(f['Workshop'])}</td>
     <td class="mnt-mid" style="font-size:var(--text-sm)">${parts ? `<span class="mnt-clip" title="${parts}">${parts}</span>` : '<span class="mnt-dim">—</span>'}</td>
     <td class="r mnt-num" style="font-weight:500">${_fmtCost(f['Cost'])}</td>
     <td class="r mnt-num mnt-mid">${f['Odometer km'] ? Number(f['Odometer km']).toLocaleString('el-GR') : '<span class="mnt-dim">—</span>'}</td>
-    <td><div class="mnt-cell2"><span class="mnt-mid" style="font-size:var(--text-sm)">${escapeHtml(status)}</span>${review}</div></td>
+    <td data-sort-value="${escapeHtml(status)}"><div class="mnt-cell2"><span class="mnt-mid" style="font-size:var(--text-sm)">${escapeHtml(status)}</span>${review}</div></td>
   </tr>`;
 }
 
@@ -922,10 +949,10 @@ function _svcPaint() {
       ${_mntRefreshBtn("MAINT.history=[];renderServiceRecords()")}
     </div>
 
-    <table class="mnt-table mnt-fixed" id="svc-tbl">
+    <table class="mnt-table mnt-fixed" id="svc-tbl" data-sort-id="maint_svc">
       <thead><tr>
-        <th style="width:100px">ΗΜ/ΝΙΑ</th><th style="width:150px">ΟΧΗΜΑ</th><th>ΕΡΓΑΣΙΑ</th><th style="width:200px">ΣΥΝΕΡΓΕΙΟ</th>
-        <th style="width:130px">ΑΡ. ΑΝΤ/ΚΟΥ</th><th class="r" style="width:110px">ΚΟΣΤΟΣ</th><th class="r" style="width:120px">ΟΔΟΜΕΤΡΟ</th><th style="width:140px">ΚΑΤΑΣΤΑΣΗ</th>
+        <th style="width:100px" data-sort="date">ΗΜ/ΝΙΑ</th><th style="width:150px" data-sort="text">ΟΧΗΜΑ</th><th data-sort="text">ΕΡΓΑΣΙΑ</th><th style="width:200px" data-sort="text">ΣΥΝΕΡΓΕΙΟ</th>
+        <th style="width:130px" data-sort="text">ΑΡ. ΑΝΤ/ΚΟΥ</th><th class="r" style="width:110px" data-sort="num">ΚΟΣΤΟΣ</th><th class="r" style="width:120px" data-sort="num">ΟΔΟΜΕΤΡΟ</th><th style="width:140px" data-sort="text">ΚΑΤΑΣΤΑΣΗ</th>
       </tr></thead>
       <tbody>${records.length ? records.map(r => _svcRowHtml(r, true)).join('') : `<tr><td colspan="8" style="height:auto;padding:0">${showEmpty({
             illustration: 'order',
@@ -940,6 +967,8 @@ function _svcPaint() {
   // μόνο στο 100%. Θα κρυφτούν μόνοι τους όταν ένα φίλτρο αφήσει ορατές μόνο
   // γραμμές χωρίς τιμή — εκεί όντως δεν λένε τίποτα.
   collapseEmptyColumns('svc-tbl', 'maint:svc');
+  // Click a header to sort (T73, Nick 14/10: every simple table, one way).
+  if (typeof TableSort !== 'undefined') TableSort.apply(document.getElementById('content'));
 }
 
 // ── Record card (w2-maint-service-record-card 196:754) ──────────
@@ -1010,7 +1039,7 @@ function _svcOpenForm(editId, opts) {
   const allVehicles = [
     ...MAINT.trucks.map(t => ({ plate: t.fields['License Plate']||'', type: 'Truck' })),
     ...MAINT.trailers.map(t => ({ plate: t.fields['License Plate']||'', type: 'Trailer' })),
-  ].filter(v => v.plate).sort((a,b) => a.plate.localeCompare(b.plate));
+  ].filter(v => v.plate).sort((a,b) => (a.type === b.type ? 0 : a.type === 'Truck' ? -1 : 1) || a.plate.localeCompare(b.plate));
 
   const wsOpts = MAINT.workshops
     .filter(w => w.fields['Active'])
@@ -1032,7 +1061,7 @@ function _svcOpenForm(editId, opts) {
             <span id="mf-scanstatus" class="mnt-dim">συμπληρώνει μόνο τα κενά πεδία — ο χρήστης ελέγχει πριν την αποθήκευση</span>
           </div>
           <div class="mf-row">
-            ${field('Όχημα *', `<select class="form-select" id="mf-vehicle">
+            ${field('Όχημα *', `<select class="form-select" id="mf-vehicle" data-fh-search>
                 <option value="">Επιλογή οχήματος…</option>
                 ${allVehicles.map(v => `<option value="${escapeHtml(v.plate)}|${v.type}"${vPlate===v.plate?' selected':''}>${escapeHtml(v.plate)} (${_mntTypeGr(v.type)})</option>`).join('')}
               </select>`, '<div class="ef-err" id="mf-err-vehicle"></div>')}
@@ -1065,6 +1094,8 @@ function _svcOpenForm(editId, opts) {
         </div>
       </div>
     </div>`;
+  // T33 (owner 13/10): type to find the plate; the select stays what _svcSave reads.
+  fhSelectSearch(document.getElementById('mf-vehicle'));
   if (opts && opts.scan) document.getElementById('mf-scanfile')?.click();
 }
 
@@ -1320,7 +1351,7 @@ function _historyPaint(vType) {
   document.getElementById('content').innerHTML = `
     <div class="mnt-head">
       <span class="mnt-title">${vType === 'trucks' ? 'Ιστορικό Φορτηγών' : 'Ιστορικό Ρυμουλκών'}</span>
-      <select class="mnt-select wide" title="Όχημα" onchange="_historyVehicle['${vType}']=this.value;_historyFilter['${vType}']={};_historyPaint('${vType}')">
+      <select class="mnt-select wide" id="hist-vehicle-${vType}" data-fh-search title="Όχημα" onchange="_historyVehicle['${vType}']=this.value;_historyFilter['${vType}']={};_historyPaint('${vType}')">
         <option value="">Επίλεξε ${vTypeGr}…</option>
         ${vehicleOpts}
       </select>
@@ -1408,6 +1439,7 @@ function _historyPaint(vType) {
         })}</td></tr>`}</tbody>
       </table>
     `}`;
+  fhSelectSearch(document.getElementById('hist-vehicle-' + vType)); // T33: type to find the plate
 
   // Ένα όχημα τη φορά: εδώ οι στήλες αδειάζουν πολύ πιο εύκολα από ό,τι στο
   // συνολικό Ιστορικό — γι' αυτό ο κανόνας κρίνει τις ΟΡΑΤΕΣ γραμμές και όχι
@@ -1498,7 +1530,7 @@ function _maintDashPaint() {
 
   const allExpRows = _expiryBuildRows();
   const expiredRows = allExpRows.filter(r => r.days !== null && r.days < 0);
-  const expiring30Rows = allExpRows.filter(r => r.days !== null && r.days >= 0 && r.days <= 30);
+  const expiring30Rows = allExpRows.filter(r => r.days !== null && r.days >= 0 && r.days <= _expiryWarnDays(r.country, r.docType));
   const kteoExpired = expiredRows.filter(r => r.docType === 'KTEO').length;
   const kekExpired = expiredRows.filter(r => r.docType === 'KEK').length;
   const insExpired = expiredRows.filter(r => r.docType === 'Insurance').length;
@@ -1602,9 +1634,9 @@ function _maintDashPaint() {
         <span class="mnt-kpi-s">${expiredRows.length ? `σε ${expiredVehicles} ${expiredVehicles === 1 ? 'όχημα' : 'οχήματα'} — άνοιγμα στις Λήξεις` : 'κανένα ληγμένο έγγραφο'}</span>
       </button>
       <button type="button" class="mnt-kpi" onclick="_expiryGoto('expiring30')">
-        <span class="mnt-kpi-l">Λήγουν ≤30 ημ.</span>
+        <span class="mnt-kpi-l" title="30 ημέρες· 60 για το ΚΤΕΟ βουλγαρικών οχημάτων">Λήγουν σύντομα</span>
         <span class="mnt-kpi-v ${expiring30Rows.length ? 'warn' : 'ok'}">${expiring30Rows.length}</span>
-        <span class="mnt-kpi-s">${expiring30Rows.length ? 'έγγραφα — προγραμματισμός' : 'τίποτα δεν λήγει μέσα σε 30 ημέρες'}</span>
+        <span class="mnt-kpi-s">${expiring30Rows.length ? 'έγγραφα — προγραμματισμός' : 'τίποτα δεν λήγει σύντομα'}</span>
       </button>
       <div class="mnt-kpi">
         <span class="mnt-kpi-l">Ζημιές ${year}</span>
@@ -1638,11 +1670,11 @@ function _maintDashPaint() {
         <span class="mnt-card-t">Λήξεις ανά όχημα — τα ${worst6.length} χειρότερα</span>
         ${worst6.length ? worst6.map(r => {
           const d = r.docs.filter(x => x.days !== null).sort((a, b) => a.days - b.days)[0];
-          const due = _dueText(d.days);
+          const due = _dueText(d.days, _expiryWarnDays(r.country, d.label));
           return `<div class="mnt-row click" style="height:32px" onclick="_expiryGoto(${d.days < 0 ? "'expired'" : "'all'"}, '', '${escapeHtml(r.plate)}')">
             <span class="w110">${escapeHtml(r.plate)}</span>
             <span class="w80">${EXPIRY_DOC_GR[d.label] || d.label}</span>
-            <span class="${due.cls}" style="font-weight:700">${due.text}</span>
+            <span class="${due.band || due.cls}" style="font-weight:700">${due.text}</span>
             <span class="grow"></span>
             <span class="mnt-link">άνοιγμα →</span>
           </div>`;
@@ -1688,12 +1720,63 @@ async function _mreqLoad(force) {
   }
 }
 
+// Who entered each work order (walkthrough item 5, T37, option 3): read from
+// the audit log, which holds the creator of every live work order since 13/9
+// (19 of 19 on 15/10). No column, no Worker change; GET /audit answers only
+// owner and management (AUDIT_READERS), so the other roles never call it and
+// see the list as before. A failed read shows no stamp and is logged, never a
+// wrong name. Map: record id → {actor, at}.
+const MREQ_CREATORS = { by: null, loading: false };
+async function _mreqLoadCreators() {
+  if (typeof ROLE === 'undefined' || !['owner', 'management'].includes(ROLE)) return;
+  if (MREQ_CREATORS.loading) return;
+  const token = localStorage.getItem('tms_jwt');
+  if (!token || typeof PROXY_URL === 'undefined') return;
+  MREQ_CREATORS.loading = true;
+  try {
+    const by = new Map();
+    // The route pages at 200; read until a short page (5 pages = 1,000 orders).
+    for (let off = 0, page = 0; page < 5; page++, off += 200) {
+      const res = await fetch(`${PROXY_URL}/audit?table=maint_req&action=create&limit=200&offset=${off}`, { headers: { Authorization: `Bearer ${token}` } });
+      if (!res.ok) throw new Error('audit read ' + res.status);
+      const rows = ((await res.json()) || {}).entries || [];
+      // Newest first: the oldest create of a record wins (a re-created id keeps its first author).
+      for (const e of rows) if (e && e.record_id) by.set(String(e.record_id), { actor: e.actor || '', at: e.created_at || '' });
+      if (rows.length < 200) break;
+    }
+    MREQ_CREATORS.by = by;
+    if (typeof currentPage === 'undefined' || currentPage === 'maint_req') _mreqPaint();
+  } catch (e) {
+    if (typeof logError === 'function') logError(e, 'maint_req: creators from audit');
+  } finally {
+    MREQ_CREATORS.loading = false;
+  }
+}
+// «από Thodoris · 10:48» in Athens time, or '' when unknown. The day is added
+// («· 12/10 10:48») only when it differs from «Αναφέρθηκε» right above it: the
+// 150px column cut the repeated day's time.
+function _mreqCreatorLine(recId, reported) {
+  const c = MREQ_CREATORS.by && MREQ_CREATORS.by.get(String(recId));
+  if (!c || !c.actor) return '';
+  const name = typeof userDisplayName === 'function' ? userDisplayName(c.actor) : c.actor;
+  let when = '';
+  const d = c.at ? new Date(c.at) : null;
+  if (d && !isNaN(d)) {
+    const tz = { timeZone: 'Europe/Athens' };
+    const hm = d.toLocaleTimeString('el-GR', Object.assign({ hour: '2-digit', minute: '2-digit', hour12: false }, tz));
+    const sameDay = String(reported || '').slice(0, 10) === d.toLocaleDateString('en-CA', tz);
+    when = ' · ' + (sameDay ? '' : d.toLocaleDateString('el-GR', Object.assign({ day: '2-digit', month: '2-digit' }, tz)) + ' ') + hm;
+  }
+  return 'από ' + name + when;
+}
+
 async function renderMaintRequests() {
   document.getElementById('content').innerHTML = showLoading('Φόρτωση εντολών εργασίας…');
   try {
     await _mreqLoad();
     if (!MAINT._loaded) await _maintLoad();
     _mreqPaint();
+    _mreqLoadCreators();
   } catch(e) {
     document.getElementById('content').innerHTML = _mntErrorHtml('οι εντολές εργασίας', 'δεν υπάρχουν εντολές', 'renderMaintRequests()');
     if (typeof logError === 'function') logError(e, 'maintenance requests load');
@@ -1785,15 +1868,17 @@ function _mreqPaint() {
     const isSos = _normP(f['Priority']) === 'SOS' && f['Status'] !== 'Done';
     const status = MREQ_STATUS_LABEL[f['Status']] || f['Status'] || '—';
     const desc = escapeHtml(f['Description'] || ''), notes = escapeHtml(f['Notes'] || ''), wsn = escapeHtml(f['Workshop'] || '');
+    const who = escapeHtml(_mreqCreatorLine(r.id, f['Date Reported']));
     return `<tr class="click ${isSos ? 'sos' : ''}" onclick="_mreqOpenForm('${r.id}')">
-      <td>${_mreqPrioHtml(f['Priority'])}</td>
+      <td data-sort-value="${po[_normP(f['Priority'])] ?? 2}">${_mreqPrioHtml(f['Priority'])}</td>
       <td><div class="mnt-cell2"><span class="mnt-main">${escapeHtml(f['Vehicle Plate'] || '—')}</span><span class="mnt-dim">${_mntTypeGr(vt) || 'εκτός ενεργού στόλου'}</span></div></td>
       <td><div class="mnt-cell2"><span class="mnt-clip" title="${desc}">${desc || '—'}</span>${notes ? `<span class="mnt-dim mnt-clip" title="${notes}">${notes}</span>` : ''}</div></td>
       <td class="mnt-mid">${wsn ? `<span class="mnt-clip" title="${wsn}">${wsn}</span>` : '<span class="mnt-dim" style="font-size:var(--text-sm)">δεν έχει οριστεί</span>'}</td>
-      <td class="mnt-mid mnt-num">${_fmtDMY(f['Date Reported'])}</td>
-      <td onclick="event.stopPropagation()">
+      <td class="mnt-mid mnt-num" data-sort-value="${escapeHtml(String(f['Date Reported'] || '').slice(0, 10))}">${who ? `<div class="mnt-cell2"><span>${_fmtDMY(f['Date Reported'])}</span><span class="mnt-dim mnt-clip" title="${who}">${who}</span></div>` : _fmtDMY(f['Date Reported'])}</td>
+      <td onclick="event.stopPropagation()" data-sort-value="${escapeHtml(status)}">
         <div style="display:flex;align-items:center;gap:var(--space-2)">
           <span style="font-weight:${f['Status'] === 'In Progress' ? 500 : 400}">${escapeHtml(status)}</span>
+          ${_mreqPrintBtn(r.id)}
           ${f['Status'] !== 'Done' ? `<button type="button" class="btn btn-ghost btn-sm" title="Σήμανση ως ολοκληρωμένη" onclick="_mreqQuickStatus('${r.id}','Done')">✓ Ολοκληρώθηκε</button>` : ''}
         </div>
       </td>
@@ -1815,9 +1900,9 @@ function _mreqPaint() {
       ${_mntRefreshBtn("MREQ._loaded=false;renderMaintRequests()")}
     </div>
 
-    <table class="mnt-table mnt-fixed">
+    <table class="mnt-table mnt-fixed" data-sort-id="maint_req">
       <thead><tr>
-        <th style="width:150px">ΠΡΟΤΕΡΑΙΟΤΗΤΑ</th><th style="width:170px">ΟΧΗΜΑ</th><th>ΠΕΡΙΓΡΑΦΗ</th><th style="width:200px">ΣΥΝΕΡΓΕΙΟ</th><th style="width:150px">ΑΝΑΦΕΡΘΗΚΕ</th><th style="width:250px">ΚΑΤΑΣΤΑΣΗ</th>
+        <th style="width:150px" data-sort="num">ΠΡΟΤΕΡΑΙΟΤΗΤΑ</th><th style="width:170px" data-sort="text">ΟΧΗΜΑ</th><th data-sort="text">ΠΕΡΙΓΡΑΦΗ</th><th style="width:200px" data-sort="text">ΣΥΝΕΡΓΕΙΟ</th><th style="width:150px" data-sort="date">ΑΝΑΦΕΡΘΗΚΕ</th><th style="width:250px">ΚΑΤΑΣΤΑΣΗ</th>
       </tr></thead>
       <tbody>${filtered.length ? rows : `<tr><td colspan="6" style="height:auto;padding:0">${showEmpty({
             illustration: 'truck',
@@ -1853,6 +1938,12 @@ function _mreqPaint() {
       </table>
       ${expiryAlerts.length > 10 ? `<button type="button" class="mnt-link" style="display:block;width:100%;text-align:center;padding:var(--space-2) 0" onclick="_expiryGoto('expired')">Δες και τα άλλα ${expiryAlerts.length - 10} στις Λήξεις Εγγράφων →</button>` : ''}
     </details>` : ''}`;
+  // Right-click / long-press on a row's printer: the share menu (print rule).
+  // One listener on the table, which is redrawn on every paint.
+  const tbl = document.querySelector('#content .mnt-table');
+  if (tbl && typeof shareMenuDelegate === 'function') shareMenuDelegate(tbl, '.mreq-prt', el => _mreqShareOpts(el.dataset.rec));
+  // Click a header to sort (T73); the drawn order (priority, then newest) is the third click.
+  if (typeof TableSort !== 'undefined') TableSort.apply(document.getElementById('content'));
 }
 
 async function _mreqDismissExpiry(plate, docType, desc) {
@@ -1883,6 +1974,89 @@ async function _mreqQuickStatus(recId, newStatus) {
   } catch(e) { reportError('Η αλλαγή κατάστασης απέτυχε', e); }
 }
 
+// ── Print: one A4 sheet per work order, for the workshop (T34) ───────
+// Walkthrough 13/10 item 2: «εδώ πέρα δεν υπάρχει κουμπί για εκτύπωση… να τη
+// δώσει σε κάποιον και να την αναθέσει». A document print, so it follows the
+// print rule (Nick 15/10): a printer icon beside the work order; click prints,
+// right-click / long-press is the share menu with the same order as text, for
+// WhatsApp to the workshop (no PDF: the Worker's /print/pdf knows only orders).
+// It prints the SAVED record: open edits print after «Αποθήκευση».
+function _mreqRec(recId) { return MREQ.data.find(r => r.id === recId) || null; }
+function _mreqSheetFields(f) {
+  const vt = _mntTypeGr(_mntVehicleType(f['Vehicle Plate'], f['Vehicle Type']));
+  return [
+    ['Όχημα', [f['Vehicle Plate'] || '—', vt].filter(Boolean).join(' · ')],
+    ['Προτεραιότητα', _normP(f['Priority']) || 'Κανονικό'],
+    ['Κατάσταση', MREQ_STATUS_LABEL[f['Status']] || f['Status'] || '—'],
+    ['Ημ. αναφοράς', _fmtDMY(f['Date Reported'], true)],
+    ['Συνεργείο', f['Workshop'] || '—'],
+    ['Εκτ. κόστος', _fmtCost(f['Estimated Cost'])],
+  ];
+}
+function _mreqText(recId) {
+  const r = _mreqRec(recId); if (!r) return '';
+  const f = r.fields;
+  return ['ΕΝΤΟΛΗ ΕΡΓΑΣΙΑΣ · PETRAS GROUP',
+    ..._mreqSheetFields(f).map(([k, v]) => `${k}: ${v}`),
+    `Περιγραφή: ${f['Description'] || '—'}`,
+    ...(f['Notes'] ? [`Σημειώσεις: ${f['Notes']}`] : [])].join('\n');
+}
+function _mreqPrint(recId) {
+  const r = _mreqRec(recId);
+  if (!r) { toast('Η εντολή δεν βρέθηκε: ανανέωσε τη σελίδα', 'warn'); return; }
+  const f = r.fields;
+  const sos = _normP(f['Priority']) === 'SOS';
+  const rows = _mreqSheetFields(f).map(([k, v]) => `<tr><th>${escapeHtml(k)}</th><td>${escapeHtml(String(v))}</td></tr>`).join('');
+  // Printed from a hidden frame, not a new tab (Nick 15/10: a bare HTML tab
+  // looked strange): the click opens the browser's print dialog straight over
+  // the page, where «Save as PDF» gives the PDF. One frame, reused.
+  let fr = document.getElementById('mreqPrintFrame');
+  if (fr) fr.remove();
+  fr = document.createElement('iframe');
+  fr.id = 'mreqPrintFrame';
+  fr.setAttribute('aria-hidden', 'true');
+  fr.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0;visibility:hidden';
+  document.body.appendChild(fr);
+  const win = fr.contentWindow;
+  win.document.open();
+  win.document.write(`<!DOCTYPE html><html lang="el"><head><meta charset="utf-8"><title>Εντολή εργασίας ${escapeHtml(f['Vehicle Plate'] || '')}</title>
+    <style>
+      @page { size: A4; margin: 16mm; }
+      * { -webkit-print-color-adjust: exact; print-color-adjust: exact; box-sizing: border-box; }
+      body { font: 13px/1.45 'DM Sans', Arial, sans-serif; color: #0B1929; margin: 0; }
+      .hd { display: flex; justify-content: space-between; align-items: baseline; border-bottom: 2px solid #0B1929; padding-bottom: 8px; margin-bottom: 14px; }
+      .hd h1 { font-size: 20px; margin: 0; letter-spacing: .5px; }
+      .hd .co { font-weight: 700; } .hd .pr { color: #475569; font-size: 11px; }
+      .sos { display: inline-block; background: #DC2626; color: #fff; font-weight: 700; padding: 2px 10px; border-radius: 4px; margin-left: 8px; font-size: 13px; }
+      table { border-collapse: collapse; width: 100%; margin-bottom: 14px; }
+      th, td { text-align: left; border: 1px solid #CBD5E1; padding: 7px 10px; vertical-align: top; }
+      th { width: 32%; background: #F1F5F9; font-weight: 600; }
+      h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .4px; margin: 14px 0 6px; }
+      .txt { border: 1px solid #CBD5E1; padding: 8px 10px; min-height: 56px; white-space: pre-wrap; }
+      .lines div { border-bottom: 1px solid #94A3B8; height: 28px; }
+      .sign { display: flex; gap: 24px; margin-top: 28px; }
+      .sign div { flex: 1; border-top: 1px solid #0B1929; padding-top: 4px; font-size: 11px; color: #475569; }
+    </style></head><body>
+    <div class="hd"><div><h1>ΕΝΤΟΛΗ ΕΡΓΑΣΙΑΣ${sos ? '<span class="sos">SOS</span>' : ''}</h1><span class="co">PETRAS GROUP</span></div>
+      <div class="pr">Εκτύπωση ${escapeHtml(_fmtDMY(localToday(), true))}</div></div>
+    <table>${rows}</table>
+    <h2>Περιγραφή</h2><div class="txt">${escapeHtml(f['Description'] || '—')}</div>
+    ${f['Notes'] ? `<h2>Σημειώσεις</h2><div class="txt">${escapeHtml(f['Notes'])}</div>` : ''}
+    <h2>Παρατηρήσεις συνεργείου</h2><div class="lines"><div></div><div></div><div></div><div></div><div></div></div>
+    <div class="sign"><div>Υπογραφή συνεργείου</div><div>Ημερομηνία παράδοσης</div><div>Παρέλαβε (Petras Group)</div></div>
+    </body></html>`);
+  win.document.close();
+  setTimeout(() => { win.focus(); win.print(); }, 250);
+}
+// The share menu's options for one work order (text only, see above).
+function _mreqShareOpts(recId) {
+  const r = _mreqRec(recId); if (!r) return null;
+  return { title: 'Εντολή εργασίας ' + (r.fields['Vehicle Plate'] || ''), getText: async () => _mreqText(recId), onPrint: () => _mreqPrint(recId) };
+}
+function _mreqPrintBtn(recId, withLabel) {
+  return `<button type="button" class="btn btn-ghost btn-sm mreq-prt" data-rec="${escapeHtml(recId)}" title="Εκτύπωση εντολής (δεξί κλικ: κοινή χρήση)" aria-label="Εκτύπωση εντολής" onclick="event.stopPropagation();_mreqPrint('${recId}')">${icon('printer', 14)}${withLabel ? ' Εκτύπωση' : ''}</button>`;
+}
+
 // ── Form (w2-maint-request-form 165:769) ─────────────────────────
 function _mreqOpenForm(editId) {
   const rec = editId ? MREQ.data.find(r => r.id === editId) : null;
@@ -1891,7 +2065,7 @@ function _mreqOpenForm(editId) {
   const allVehicles = [
     ...MAINT.trucks.filter(t=>t.fields['Active']).map(t => ({ plate: t.fields['License Plate']||'', type: 'Truck' })),
     ...MAINT.trailers.filter(t=>t.fields['Active']).map(t => ({ plate: t.fields['License Plate']||'', type: 'Trailer' })),
-  ].filter(v => v.plate).sort((a, b) => a.plate.localeCompare(b.plate));
+  ].filter(v => v.plate).sort((a, b) => (a.type === b.type ? 0 : a.type === 'Truck' ? -1 : 1) || a.plate.localeCompare(b.plate));
   const known = allVehicles.some(v => v.plate === f['Vehicle Plate']);
   const custom = !!(f['Vehicle Plate'] && !known);
 
@@ -1905,7 +2079,7 @@ function _mreqOpenForm(editId) {
         <button type="button" class="mnt-drawer-x" onclick="_mntCloseModal()" aria-label="Κλείσιμο">✕</button></div>
       <div class="mf-body">
         <div class="mf-row">
-          ${field('Όχημα *', `<select class="form-select" id="mreq-plate" onchange="document.getElementById('mreq-plate-custom-wrap').style.display=this.value==='__custom'?'':'none'">
+          ${field('Όχημα *', `<select class="form-select" id="mreq-plate" data-fh-search onchange="document.getElementById('mreq-plate-custom-wrap').style.display=this.value==='__custom'?'':'none'">
               <option value="">— Επιλογή —</option>
               ${allVehicles.map(v => `<option value="${escapeHtml(v.plate)}"${f['Vehicle Plate']===v.plate?' selected':''}>${escapeHtml(v.plate)} (${_mntTypeGr(v.type)})</option>`).join('')}
               <option value="__custom"${custom ? ' selected' : ''}>Άλλο όχημα (πληκτρολόγηση)</option>
@@ -1930,12 +2104,17 @@ function _mreqOpenForm(editId) {
         ${field('Σημειώσεις', `<textarea class="form-textarea" id="mreq-notes" rows="2">${escapeHtml(f['Notes']||'')}</textarea>`)}
       </div>
       <div class="mf-foot">
-        ${editId?`<button type="button" class="btn btn-ghost btn-sm" style="color:var(--danger)" onclick="_mreqDelete('${editId}')">Διαγραφή</button>`:''}
+        ${editId?`<button type="button" class="btn btn-ghost btn-sm" style="color:var(--danger)" onclick="_mreqDelete('${editId}')">Διαγραφή</button>${_mreqPrintBtn(editId, true)}`:''}
         <button type="button" class="btn btn-ghost btn-sm" onclick="_mntCloseModal()">Άκυρο</button>
         <button type="button" class="btn btn-primary btn-sm" onclick="_mreqSave('${editId||''}')">Αποθήκευση</button>
       </div>
     </div>
   </div>`;
+  const prt = editId && document.querySelector('.mf-modal .mreq-prt');
+  if (prt && typeof attachShareMenu === 'function') { const o = _mreqShareOpts(editId); if (o) attachShareMenu(prt, o); }
+  // T33 (owner 13/10): type to find the plate. «Άλλο όχημα» stays listed whatever is
+  // typed, and picking it carries the typed plate into the free-text box.
+  fhSelectSearch(document.getElementById('mreq-plate'), { keep: { __custom: 'mreq-plate-custom' } });
 }
 
 async function _mreqSave(editId) {
@@ -1977,6 +2156,7 @@ async function _mreqSave(editId) {
       const created = await atCreate(TABLES.MAINT_REQ, fields);
       MREQ.data.push(created);
       toast('Η εντολή δημιουργήθηκε ✓');
+      _mreqLoadCreators();   // the new order's own audit row names its author
     }
     _mntCloseModal();
     _mreqPaint();

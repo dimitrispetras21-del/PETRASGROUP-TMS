@@ -1,9 +1,28 @@
 # PETRAS GROUP TMS — Claude Code Context
 
+## ΚΑΝΟΝΕΣ SESSION: ισχύουν για κάθε agent (Cowork, Claude Code, Codex, ValueDriven)
+
+**Ποιος είναι ποιος:** `dimitris` για τη δουλειά της Petras, `vd-<όνομα>` για τη ValueDriven (π.χ. `vd-nick`). Τα branch της ValueDriven ξεκινούν με `vd/`· της Petras κρατούν τα σημερινά (`fix/`, `feat/`, `deploy/`, `docs/`, ...).
+
+1. **Αρχή:** πρώτα ο κανόνας 8 (φρέσκο `main`). Μετά διάβασε αυτό το αρχείο, το μπλοκ «Now» του `docs/SESSION.md` και τα 3 πιο πρόσφατα αρχεία του `docs/sessions/`, όπως είναι στο `origin/main`.
+2. **Τέλος:** γράψε το δικό σου αρχείο `docs/sessions/YYYY-MM-DD-<ποιος>-<θέμα>.md`, έως 5 κουκκίδες: τι άλλαξε, τι αποφασίστηκε, τι μένει. Στο «Now» αλλάζεις μόνο τη δική σου γραμμή.
+3. **Παράλληλη δουλειά επιτρέπεται**, ένα branch ανά θέμα. Πριν ξεκινήσεις, δες το «Now» και τα ανοιχτά PR για τα ίδια αρχεία· αν τα έχει άλλος, συνεννοηθείτε πρώτα. Δύο αλλαγές στον Worker είναι πάντα μία αλυσίδα (ενότητα «Ο WORKER»).
+4. **Η μνήμη είναι το repo.** Ό,τι πρέπει να θυμόμαστε γράφεται στο `docs/sessions/` ή στο `docs/DECISION_LOG.md`, όχι μόνο στη μνήμη του Cowork.
+5. **Αλλαγές στη βάση:** πρώτα dry run, εκτέλεση μετά τις 15:00, και μόλις εκτελεστεί το αρχείο βγαίνει από το `drafts/`. Ο έλεγχος backup πριν από κάθε αλλαγή είναι σε παύση μέχρι να υπάρξει backup που δεν ζει σε ένα laptop· ως τότε η ValueDriven κρατά νυχτερινό dump (ρώτα τον Nick).
+6. **Μόνο στο git clone ή στα worktrees του**, ποτέ σε αντίγραφο έξω από το git.
+7. **Ποτέ push στο `main`.** Νέο branch, push του branch, PR (`gh pr create`, ή ο σύνδεσμος «Create pull request» όσο δεν υπάρχει `gh`). Το merge το κάνει ο Δημήτρης. Αν το push απορριφθεί ως «protected branch», σταμάτα και πες το. Ποτέ απενεργοποίηση της προστασίας, ποτέ force push.
+8. **Κάθε νέα δουλειά ξεκινά από το πιο πρόσφατο `main`.** Το `main` αλλάζει πολλές φορές τη μέρα (merge του Δημήτρη και της ValueDriven), και το τοπικό σου αντίγραφο μένει πίσω χωρίς να το λέει. Πριν από κάθε νέα δουλειά, και μετά από κάθε merge:
+   - `git fetch origin`, και νέο branch **από το `origin/main`**: `git switch -c <branch> origin/main`. Ποτέ από το τοπικό `main`, ποτέ από το branch άλλης δουλειάς.
+   - `git log --oneline -15 origin/main`: τι μπήκε από το τελευταίο σου session. Αν άλλαξαν τα αρχεία που θα πειράξεις, διάβασέ τα από εκεί πριν γράψεις.
+   - Αν συνεχίζεις branch που υπάρχει ήδη: `git fetch origin` και `git log --oneline HEAD..origin/main -- <τα αρχεία σου>`. Αν βγάλει commits, πρώτα `git merge origin/main` και ξανά τα tests, μετά συνεχίζεις.
+   - Αν το `git fetch` αποτύχει (χωρίς δίκτυο ή πρόσβαση), σταμάτα και πες το· μη δουλέψεις πάνω σε παλιό `main`.
+
+---
+
 ## PRIME DIRECTIVE
 Ask before making performance, caching, architecture, or infrastructure changes.
 Only make the specific change requested. No unrequested improvements.
-After every file change: bump its `?v=TIMESTAMP` in app.html + git add/commit/push.
+After every file change: bump its `?v=TIMESTAMP` in app.html and SW_VERSION in sw.js, then branch, commit, push the branch and open a PR (ΚΑΝΟΝΕΣ SESSION, κανόνας 7).
 
 ---
 
@@ -248,14 +267,14 @@ const tableRule = roleMap[table] || roleMap["*"];
 - Ο Worker μιλάει στη βάση με `service_role`. Το RLS είναι ενεργό αλλά **χωρίς
   πολιτικές** — μη βασίζεσαι σε αυτό ως προστασία.
 
-## ΚΑΝΟΝΑΣ ΕΝΟΣ ΚΑΝΑΛΙΟΥ
-**Στο repo δουλεύει ΕΝΑΣ agent τη φορά** — Claude Code **ή** Cursor, όχι
-παράλληλα στο ίδιο έδαφος. Το split-brain repo/παραγωγής προήλθε ακριβώς από
-πολλαπλά κανάλια αλλαγών χωρίς ίχνος.
+## ΚΑΝΟΝΑΣ ΕΝΟΣ ΚΑΝΑΛΙΟΥ ΑΝΑ ΘΕΜΑ
+Παράλληλη δουλειά επιτρέπεται, αλλά **ένα θέμα έχει έναν κάτοχο τη φορά**, με
+ίχνος: δικό του branch και γραμμή στο «Now» (ΚΑΝΟΝΕΣ SESSION, κανόνας 3). Το
+split-brain repo/παραγωγής προήλθε από πολλαπλά κανάλια αλλαγών **χωρίς ίχνος**.
 
 ## RECORD ΚΑΘΕ SESSION
-Κάθε ουσιαστικό session αφήνει γραπτό ίχνος στο repo (`docs/data-audit/` για το
-audit, `docs/DECISION_LOG.md` για αποφάσεις). Ο owner θέλει η ValueDriven,
+Κάθε ουσιαστικό session αφήνει γραπτό ίχνος στο repo (`docs/sessions/` για το
+session, `docs/data-audit/` για το audit, `docs/DECISION_LOG.md` για αποφάσεις). Ο owner θέλει η ValueDriven,
 μπαίνοντας στο repo, να βλέπει τι έγινε χωρίς να ρωτήσει.
 ⚠️ **Το repo είναι ΔΗΜΟΣΙΟ** — ευρήματα ασφαλείας δεν ανεβαίνουν πριν κλείσουν.
 
@@ -279,7 +298,10 @@ Folder: `/ (root)` → Save, και 1-3 λεπτά rebuild.
 
 - **Dispatcher δεν βλέπει P&L** — περιθώρια, κέρδη, κόστη (`Gross Profit`,
   `Margin Percent`, `Client Revenue`, καύσιμα). Η **τιμή πώλησης** (`Price`)
-  μένει ορατή μέχρι τη φάση P&L.
+  μένει ορατή μέχρι τη φάση P&L. **Εξαίρεση (owner 21/10):** το **κόμιστρο
+  συνεργάτη** το βλέπει και το γράφει ο dispatcher, γιατί το συμφωνεί ο ίδιος.
+  Δεν είναι διαρροή, μην «διορθωθεί». Μισθοδοσία και DKV τα βλέπει μόνο ως
+  ύπαρξη, χωρίς ποσά.
 - **Τιμολόγηση: το TMS ΔΕΝ εκδίδει τιμολόγια** — το ERP τα εκδίδει. Το TMS δείχνει
   τα στοιχεία και προσφέρει checkbox «Invoiced», ώστε να μη μείνει τίποτα
   ατιμολόγητο. Ισχύει και για εθνικές: τα VS φορτία ζουν στο `national_loads`
@@ -447,11 +469,13 @@ filterByFormula = `{National Groupage}=1`   // 1, όχι TRUE()
 
 ### Deploy pattern (front end)
 ```bash
-# 1. Edit module file
-# 2. Bump ?v= στο app.html:  modules/orders_natl.js?v=TIMESTAMP
+# 1. git checkout -b <fix|feat>/<short-name> origin/main
+# 2. Edit, then bump ?v= στο app.html:  modules/orders_natl.js?v=TIMESTAMP
 #    ΚΑΙ το SW_VERSION στο sw.js με το ίδιο TIMESTAMP — αλλιώς ο service worker
 #    σερβίρει το παλιό app.html και το νέο module «δεν υπάρχει» (5/9/2026)
-# 3. git add . && git commit -m "..." && git push
+# 3. git add <files> && git commit -m "..." && git push -u origin HEAD
+# 4. gh pr create --fill
+# 5. Ο Δημήτρης κάνει merge· το GitHub Pages δημοσιεύει το main σε 1 έως 3 λεπτά
 ```
 Το `CLAUDE.md` και τα `docs/` **δεν** φορτώνονται από το app.html — δεν θέλουν
 bump.

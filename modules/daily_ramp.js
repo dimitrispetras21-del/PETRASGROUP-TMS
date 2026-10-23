@@ -863,12 +863,13 @@ function _rampAddNew(type){
       <div class="form-field"><label class="form-label">Παλέτες</label>
         <input class="form-input" id="nr_pal" type="number" min="0"></div>
       <div class="form-field"><label class="form-label">Φορτηγό</label>
-        <select class="form-select" id="nr_truck"><option value="">—</option>${trOpts}</select></div>
+        <select class="form-select" id="nr_truck" data-fh-search><option value="">—</option>${trOpts}</select></div>
       <div class="form-field"><label class="form-label">Οδηγός</label>
         <select class="form-select" id="nr_driver"><option value="">—</option>${drOpts}</select></div>
     </div>`,
     `<button class="btn btn-ghost" onclick="closeModal()">Άκυρο</button>
      <button class="btn btn-primary" onclick="_rampSaveNew('${type}')">Αποθήκευση</button>`);
+  fhSelectSearch(document.getElementById('nr_truck')); // T33: type to find the plate
 }
 
 async function _rampSaveNew(type){

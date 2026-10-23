@@ -3753,6 +3753,30 @@ async function handleCosts(request, url, origin, env) {
         if (q.get("to")) params.append("date_start", `lte.${q.get("to")}`);
       }
       if (q.get("truck_id")) params.append("truck_id", `eq.${q.get("truck_id")}`);
+      // driver_id / trailer_id (19/10): the driver and trailer cards read ALL
+      // trips and filtered in the browser, so with limit 200 over every driver
+      // (188 trips on 19/10, 15 to 22 a week) a card lost its older trips and
+      // its per-truck counts. Filtered here, the 200 is one driver's or trailer's.
+      for (const col of ["driver_id", "trailer_id"]) {
+        const v = q.get(col);
+        if (v === null) continue;
+        if (!/^\d{1,9}$/.test(v)) return jsonError(`Μη έγκυρο ${col}`, 400, origin, env);
+        params.append(col, `eq.${v}`);
+      }
+      // order_ids (19/10): the round trips that hold any of these orders. The
+      // browser's _rtFind (unlink, rejoin, cancel, delete) read the newest 200
+      // trips of everyone and searched their legs, so past 200 an older order's
+      // trip was not found and the order stayed on it. Legs first, then trips by
+      // id, so each trip still carries ALL its legs.
+      const orderIdsQ = q.get("order_ids");
+      if (orderIdsQ !== null) {
+        // 1 to 9 digits each: a longer number would fail in Postgres as a 500.
+        if (!/^\d{1,9}(,\d{1,9}){0,49}$/.test(orderIdsQ)) return jsonError("Μη έγκυρο order_ids", 400, origin, env);
+        const legRows = await dbSelectRaw(env, "ct_rt_legs", new URLSearchParams({ select: "rt_id", order_id: `in.(${orderIdsQ})` }));
+        const rtIds = [...new Set(legRows.rows.map((l) => l.rt_id).filter((x) => x != null))];
+        if (!rtIds.length) return jsonOk({ records: [] }, origin, env);
+        params.append("id", `in.(${rtIds.join(",")})`);
+      }
       if (q.get("status")) params.append("status", `eq.${q.get("status")}`);
       const { rows } = await dbSelectRaw(env, "ct_round_trips", params);
       // Route detail (leg blocks) lives in dl_v_rt_route, built for the driver

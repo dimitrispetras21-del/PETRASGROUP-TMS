@@ -83,6 +83,8 @@ function world({ imports = ['I'], exportsOnRt = ['E'], failLeg = null, lookupThr
     confirmAction: async () => true,
     reportError: (m) => log.push({ error: m }), toast: (m, k) => log.push({ toast: m, k }),
     _wiPaint() {}, _wiSync() {}, atClearCache() {}, renderWeeklyIntl: async () => {},
+    // v4 seam (§g.4): a no-op while v4 is inactive, which is this world.
+    _wiDataSet() {},
     _wiSyncGroupResidue: async () => {}, _wiRewriteGroupSuffix: async () => true,
     // «Σπάσιμο σκέλους» (_wiDoSplit): the panel inputs, the two leg POSTs, their stops
     document: { getElementById: id => ({ lv_wiSplitLoc: { value: 'recHUB' }, wiSplitDt: { value: '2026-10-05T10:00' }, wiSplitMode: { value: '' } })[id] || null },

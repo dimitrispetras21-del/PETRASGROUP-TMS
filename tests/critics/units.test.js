@@ -4,11 +4,12 @@ const assert = require('node:assert');
 const fs = require('fs');
 const UNITS = require('./units');
 
-test('exactly 13 units, matching the spec', () => {
+test('exactly 14 units, matching the spec', () => {
   // 11 code units from the spec + 'styles' (assets/style.css), added because
   // the stylesheet was covered by no unit at all — see units.js, + 'payroll'
-  // added in Κύμα 5 (5/9/2026) when the unit joined the suite at birth.
-  assert.strictEqual(UNITS.length, 13);
+  // added in Κύμα 5 (5/9/2026) when the unit joined the suite at birth,
+  // + 'weekly_intl_v2' (11/10/2026, TECH_DESIGN §c.1) for the same reason.
+  assert.strictEqual(UNITS.length, 14);
 });
 
 test('every listed file exists on disk', () => {
@@ -40,7 +41,7 @@ test('tier 1 is exactly the hard-gate units, by name', () => {
 test('tier 3 is exactly the report-only units, by name', () => {
   const tier3 = UNITS.filter(u => u.tier === 3).map(u => u.unit).sort();
   assert.deepStrictEqual(tier3,
-    ['daily_ops', 'dashboard', 'orders_intl', 'orders_natl', 'payroll', 'weekly_intl', 'weekly_natl']);
+    ['daily_ops', 'dashboard', 'orders_intl', 'orders_natl', 'payroll', 'weekly_intl', 'weekly_intl_v2', 'weekly_natl']);
 });
 
 // Every unit is either a hard gate or report-only; a typo'd tier (2, '1',
