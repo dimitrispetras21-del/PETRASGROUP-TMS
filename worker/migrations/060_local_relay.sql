@@ -118,7 +118,7 @@
 -- AND ran first (5/10: live 27 -> 31), so this branch, rebased on it, carries the final value
 -- 35 = 27 + 4 (057) + 4 (060) in B-54.sql and 047b. 047b must not be re-run before this block:
 -- it would set red_value 35 while 31 triggers are live, and this block's B-54 guard refuses - loud.
--- Reverse: worker/migrations/drafts/060_local_relay_rollback.sql (refuses once relays or local
+-- Reverse: worker/migrations/060_local_relay_rollback.sql (refuses once relays or local
 -- payroll lines exist - data would be lost).
 
 DO $do$
