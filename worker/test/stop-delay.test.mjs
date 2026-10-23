@@ -164,7 +164,7 @@ test('a write naming «Delay Responsibility» is REFUSED, named, before any data
     calls.length = 0;
     const r = await call('dispatcher', 'PATCH', `${STOPS}/recSTOP1`, { fields });
     assert.equal(r.status, 400, r.text);
-    assert.match(r.json.error.message || r.text, /Delay Responsibility/);
+    assert.equal(r.json.error, 'Το πεδίο «Delay Responsibility» το υπολογίζει η βάση και δεν γράφεται');
     assert.equal(dbCalls().length, 0, 'not even the «before» read: nothing half-applied');
     assert.equal(auditRows().length, 0, 'nothing written, nothing audited');
   }
@@ -176,7 +176,7 @@ test('… and in a batch PATCH (one record naming it refuses the batch) and on c
     { id: 'recSTOP1', fields: { Performance: 'Delayed', 'Delay Reason': 'traffic' } },
     { id: 'recSTOP2', fields: { 'Delay Responsibility': 'external' } }] });
   assert.equal(b.status, 400, b.text);
-  assert.match(b.text, /Delay Responsibility/);
+  assert.equal(b.json.error, 'Το πεδίο «Delay Responsibility» το υπολογίζει η βάση και δεν γράφεται');
   assert.equal(dbCalls().length, 0);
   calls.length = 0;
   const c = await call('dispatcher', 'POST', STOPS, { fields: { 'Stop Type': 'Unloading', 'Delay Responsibility': 'us' } });

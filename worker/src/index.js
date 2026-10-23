@@ -2656,7 +2656,10 @@ function refuseReadOnly(cfg, fieldsList, origin, env) {
     for (const label of cfg.readOnly) if (Object.prototype.hasOwnProperty.call(f, label) && !hit.includes(label)) hit.push(label);
   }
   if (!hit.length) return null;
-  return jsonError(`Read-only field (computed by the database): ${hit.join(", ")} — δεν γράφεται, το υπολογίζει η βάση`, 400, origin, env);
+  const named = hit.map((l) => `«${l}»`).join(", ");
+  return jsonError(hit.length === 1
+    ? `Το πεδίο ${named} το υπολογίζει η βάση και δεν γράφεται`
+    : `Τα πεδία ${named} τα υπολογίζει η βάση και δεν γράφονται`, 400, origin, env);
 }
 __name(refuseReadOnly, "refuseReadOnly");
 async function buildWriteRow(cfg, fields, origin, env) {
