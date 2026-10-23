@@ -12,11 +12,11 @@ import assert from 'node:assert';
 import fs from 'node:fs';
 import path from 'node:path';
 import { createDb } from '../lib/db.mjs';
-import { DRAFTS, SRC_057, TARGETS, LIVE_MD5, LIVE_B15_SQL, LIVE_B15_MD5, buildAll, md5 } from '../../worker/migrations/drafts/tools/build-071a.mjs';
+import { DIR, SRC_057, TARGETS, LIVE_MD5, LIVE_B15_SQL, LIVE_B15_MD5, buildAll, md5 } from '../../worker/migrations/drafts/tools/build-071a.mjs';
 
 const SRC = fs.readFileSync(SRC_057, 'utf8');
 const { g, a } = buildAll();
-const FILE = (k) => fs.readFileSync(path.join(DRAFTS, TARGETS[k]), 'utf8');
+const FILE = (k) => fs.readFileSync(path.join(DIR, TARGETS[k]), 'utf8');
 const FNS = Object.keys(LIVE_MD5);
 
 // One `create function public.<name>(` statement of 057, up to and including its closing `$f$;`.

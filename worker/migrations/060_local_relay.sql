@@ -2,7 +2,7 @@
 --       (import) or the loading (export) of an international order while the order, its round
 --       trip (RT), its trip value and its payroll line stay with the international driver.
 --
--- DRAFT - NOT EXECUTED. The owner runs it in the Supabase SQL editor AFTER 15:00 (team works
+-- EXECUTED 6/10/2026 by the owner. It was written to run in the Supabase SQL editor AFTER 15:00 (team works
 -- 05:30-14:30), with an explicit yes in the conversation. Order of the release: this SQL ->
 -- Worker (branch deploy/worker-local-relay) -> screens. The Worker and the screens must not go
 -- live before this block; the block can go live first. Its only visible effect before the
@@ -118,7 +118,7 @@
 -- AND ran first (5/10: live 27 -> 31), so this branch, rebased on it, carries the final value
 -- 35 = 27 + 4 (057) + 4 (060) in B-54.sql and 047b. 047b must not be re-run before this block:
 -- it would set red_value 35 while 31 triggers are live, and this block's B-54 guard refuses - loud.
--- Reverse: worker/migrations/drafts/060_local_relay_rollback.sql (refuses once relays or local
+-- Reverse: worker/migrations/060_local_relay_rollback.sql (refuses once relays or local
 -- payroll lines exist - data would be lost).
 
 DO $do$
