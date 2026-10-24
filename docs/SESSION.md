@@ -22,6 +22,7 @@ What is live (commit, versions, flags) is not kept here: it goes stale within ho
 - dimitris · `feat/067-stop-delay` (PR #78) · stop delay reason: 067 EXECUTED 24/10 + Worker c652e758 live; merge order #78 → Worker source sync PR → #77 (screens) last (`docs/sessions/2026-10-24-dimitris-stop-delay-live.md`)
 - dimitris · `fix/068-presence-review` (PR #79) · presence: 068 EXECUTED 24/10 + Worker b00d59f3 live, screen flag WI_PRESENCE still false; merge order #78 → #80 → #77 → #79 → #82 (`docs/sessions/2026-10-24-dimitris-presence-live.md`)
 - dimitris · `docs/national-v5-f3-money` · National v5 F3: owner money choices M-1..M-7 recorded 24/10 (M-1 γ, M-2 α, M-3 β, M-4 β, M-5 δ, M-6 α, M-7 wear out for now); spec §8 aligned; code applied at F3 Task 0 after F2; open: DKV-1..3, D-1..D-20 (`docs/sessions/2026-10-24-dimitris-national-v5-f3-money.md`)
+- dimitris · `feat/wo-print-list` · Εντολές Εργασίας «Εκτύπωση λίστας» (Figma approved 24/10, read-only, maintenance.js only); after merge: live check of the button → print dialog (`docs/sessions/2026-10-24-dimitris-wo-print-list.md`)
 - dimitris · `feat/orders-week-v4` (PR #43) · Orders › «Εβδομάδα» v4, one row = one RT; after merge: live check (totals vs SELECT, 0 console errors)
 - vd-nick · `vd/session-rules-v2` (PR #40) · session rules v2: parallel work, per-session files
 - vd-nick · (not started, PR planned this week) · import the Valuedriven backend, tests and CI into this repo
