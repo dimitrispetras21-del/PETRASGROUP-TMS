@@ -2069,16 +2069,17 @@ function _mreqPrintBtn(recId, withLabel) {
 // the search on purpose: a planning list that silently drops vehicles is worse
 // than none. No prices anywhere.
 const _MREQ_LEGAL_DOCS = ['KTEO', 'Insurance', 'ΤΑΧΟΓΡΑΦΟΣ'];   // expired = the vehicle may not leave
-const _mreqFold = s => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase();
+const _mreqFold = s => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase();
 const _mreqDM = s => { const p = toLocalDate(s).split('-'); return p.length === 3 ? p[2] + '/' + p[1] : '—'; };
 function _mreqShift(ymd, days) { const d = new Date(ymd + 'T00:00:00'); d.setDate(d.getDate() + days); return toLocalDate(d); }
 
-// Trips: orders + national loads + groupage, loaded in the last 30 days or the
-// next 7. Any failed read REJECTS: the sheet then prints «?» and says so in the
+// Trips: orders + national loads + groupage around today (window below). Any failed read REJECTS: the sheet then prints «?» and says so in the
 // title — a blank trip cell would read as «free».
 async function _mreqTripsLoad() {
   const t0 = localToday();
-  const rng = `AND(IS_AFTER({Loading DateTime},'${_mreqShift(t0, -30)}'),IS_BEFORE({Loading DateTime},'${_mreqShift(t0, 8)}'))`;
+  // Loaded in the last 30 days, OR still delivering from 9 days back: a long
+  // trip loaded earlier must not read as «no trip».
+  const rng = `AND(IS_BEFORE({Loading DateTime},'${_mreqShift(t0, 8)}'),OR(IS_AFTER({Loading DateTime},'${_mreqShift(t0, -30)}'),IS_AFTER({Delivery DateTime},'${_mreqShift(t0, -9)}')))`;
   const base = ['Truck', 'Trailer', 'Driver', 'Loading DateTime', 'Delivery DateTime', 'Status'];
   const [ord, nl, cl] = await Promise.all([
     atGetAll(TABLES.ORDERS, { filterByFormula: rng, fields: [...base, 'Loading Location 1', 'Unloading Location 1'] }, false),
@@ -2128,8 +2129,10 @@ function _mreqListModel(trips) {
     const v = vOf(f['Vehicle Plate'], kn ? kn[0] : (f['Vehicle Type'] === 'Trailer' ? 'trailer' : 'truck'), kn ? kn[1] : null);
     const p = _normP(f['Priority']);
     const it = { t: p === 'SOS' ? 2 : p === 'Άμεσα' ? 4 : 6, prio: p || 'Κανονικό', text: f['Description'] || '—', shop: f['Workshop'] || '', date: toLocalDate(f['Date Reported']) };
-    const desc = _mreqFold(it.text);
-    const docIx = v.items.findIndex(d => d.doc && (desc.includes(_mreqFold(d.doc)) || (d.doc === 'ΚΤΕΟ' && desc.includes('KTEO'))));
+    // Whole words only: a loose substring («ΚΕΚ» inside another word) would
+    // swallow the document's own line.
+    const words = new Set(_mreqFold(it.text).split(/[^A-Z0-9\u0391-\u03A9]+/));
+    const docIx = v.items.findIndex(d => d.doc && (words.has(_mreqFold(d.doc)) || (d.doc === 'ΚΤΕΟ' && words.has('KTEO'))));
     if (docIx >= 0) { it.withDoc = v.items[docIx]; v.items.splice(docIx, 1); }
     v.items.push(it);
   }
@@ -2148,9 +2151,16 @@ function _mreqListModel(trips) {
     v.rank = Math.min(...v.items.map(rankOf));
     v.oldest = v.docs.map(d => d.date).concat(wos.map(w => w.date)).filter(Boolean).sort()[0] || '';
     if (trips === null) { v.trip = null; continue; }
-    const mine = v.id ? trips.filter(t => (v.kind === 'trailer' ? t.trailer : t.truck) === v.id) : [];
-    // running or next: not delivered before yesterday, loading before +8 days
-    const cur = mine.filter(t => (t.dd || t.ld) >= yday && t.ld < wkFwd).sort((a, b) => a.ld.localeCompare(b.ld))[0];
+    // A plate typed on a work order that is not in the fleet cannot be matched
+    // to trips: say so, never «—» (which reads as «no trip»).
+    if (!v.id) { v.trip = { unknown: true, running: false }; continue; }
+    const mine = trips.filter(t => (v.kind === 'trailer' ? t.trailer : t.truck) === v.id);
+    // Running or next (not delivered before today, loading before +8 days)
+    // wins over a delivery of yesterday: a truck that delivered yesterday and
+    // leaves tomorrow is «φεύγει», and with an SOS it belongs on the road list.
+    const byLd = (a, b) => a.ld.localeCompare(b.ld);
+    const cur = mine.filter(t => (t.dd || t.ld) >= t0 && t.ld < wkFwd).sort(byLd)[0]
+      || mine.filter(t => (t.dd || t.ld) === yday).sort(byLd)[0];
     const last = cur ? null : mine.filter(t => t.dd && t.dd < yday && t.dd >= wkBack).sort((a, b) => b.dd.localeCompare(a.dd))[0];
     const t = cur || last;
     if (!t) { v.trip = false; continue; }
@@ -2171,7 +2181,7 @@ function _mreqListModel(trips) {
   // 4. Sections: «Στον δρόμο» = SOS or an expired document while running or
   // leaving within 7 days; the rest by vehicle kind. Within a rank, vehicles
   // running or leaving first, then a recent delivery, then the oldest.
-  const tripScore = v => !v.trip ? 0 : v.trip.running ? 2 : 1;
+  const tripScore = v => !v.trip || v.trip.unknown ? 0 : v.trip.running ? 2 : 1;
   const order = (a, b) => a.rank - b.rank || tripScore(b) - tripScore(a) || a.oldest.localeCompare(b.oldest) || a.plate.localeCompare(b.plate);
   const onRoad = vs.filter(v => v.trip && v.trip.running && v.rank <= 3).sort(order);
   const rest = vs.filter(v => !onRoad.includes(v));
@@ -2182,7 +2192,7 @@ function _mreqListModel(trips) {
   ];
   const where = {}; sections.forEach(s => s.rows.forEach(v => { where[_vwPlate(v.plate)] = s.key; }));
   const label = { road: 'στον δρόμο', truck: 'φορτηγά', trailer: 'ρυμουλκούμενα' };
-  vs.forEach(v => { if (v.trip && where[v.trip.pairKey]) v.trip.sub += ' (κι αυτό στη λίστα · ' + label[where[v.trip.pairKey]] + ')'; });
+  vs.forEach(v => { if (v.trip && v.trip.pairKey && where[v.trip.pairKey]) v.trip.sub += ' (κι αυτό στη λίστα · ' + label[where[v.trip.pairKey]] + ')'; });
   const wos = vs.flatMap(v => v.items.filter(it => !it.doc)), docs = vs.flatMap(v => v.docs);
   return { sections, failed: trips === null, total: vs.length,
     sos: wos.filter(i => i.prio === 'SOS').length, urgent: wos.filter(i => i.prio === 'Άμεσα').length,
@@ -2215,6 +2225,7 @@ function _mreqListPrintHtml(m) {
     : `<td>${badge(it)}</td><td class="${it.prio === 'SOS' ? 's' : ''}">${E(it.text)}${it.withDoc ? ` <span class="${it.withDoc.days < 0 ? 'x' : ''}">(${E(_mreqDocTxt(it.withDoc))})</span>` : ''}</td><td class="w">${it.shop ? E(it.shop) : '<span class="m">—</span>'}</td><td class="d">${it.date ? 'άν. ' + E(_mreqDM(it.date)) : ''}</td>`;
   const trip = (v, road) => m.failed ? '<b>?</b>'
     : !v.trip ? '<span class="m">—</span>'
+    : v.trip.unknown ? '<b>?</b> <span class="sub">πινακίδα εκτός στόλου · δεν ελέγχθηκε</span>'
     : `<span class="st${road ? ' b2' : ''}">${E(v.trip.state)}</span>${v.trip.route ? ' &nbsp;' + E(v.trip.route) : ''}${v.trip.sub ? `<div class="sub">${E(v.trip.sub)}</div>` : ''}`;
   const rows = s => s.rows.map(v => v.items.map((it, i) => `<tr class="${i === v.items.length - 1 ? 'end' : 'in'}">${i === 0 ? `<td class="p" rowspan="${v.items.length}">${E(v.plate)}${s.key === 'road' && v.kind === 'trailer' ? '<div class="k">ρυμ.</div>' : ''}</td>` : ''}${line(it)}${i === 0 ? `<td class="t" rowspan="${v.items.length}">${trip(v, s.key === 'road')}</td>` : ''}</tr>`).join('')).join('');
   // The section title is a header row: it repeats on every printed page the
@@ -2272,8 +2283,13 @@ function _mreqListPrintHtml(m) {
   win.document.close();
   // The frame does not inherit the app's fonts: wait for them (at most 2.5 s),
   // else the sheet prints in Arial — still complete, only plainer.
+  // fonts.ready alone can resolve before the stylesheet arrives (no face
+  // known yet), so wait for the <link> first, then the faces it declares.
   const go = () => { win.focus(); win.print(); };
-  Promise.race([win.document.fonts ? win.document.fonts.ready : Promise.resolve(), new Promise(r => setTimeout(r, 2500))]).then(() => setTimeout(go, 100));
+  const link = win.document.querySelector('link[rel=stylesheet]');
+  const css = link && !link.sheet ? new Promise(r => { link.onload = link.onerror = r; }) : Promise.resolve();
+  const faces = css.then(() => win.document.fonts ? Promise.all([...win.document.fonts].map(f => f.load().catch(() => null))).then(() => win.document.fonts.ready) : null);
+  Promise.race([faces, new Promise(r => setTimeout(r, 3000))]).then(() => setTimeout(go, 100));
 }
 // Right-click / long-press: the same list as text (WhatsApp), like one order.
 async function _mreqListText() {
@@ -2284,7 +2300,7 @@ async function _mreqListText() {
     out.push('', s.title + ' (' + s.rows.length + ')');
     for (const v of s.rows) {
       const what = v.items.map(it => it.doc ? _mreqDocTxt(it) : (it.prio !== 'Κανονικό' ? it.prio + ' ' : '') + it.text + (it.withDoc ? ' (' + _mreqDocTxt(it.withDoc) + ')' : '')).join(' · ');
-      const tr = m.failed ? ' — δρομολόγιο: ?' : v.trip ? ' — ' + v.trip.state + (v.trip.route ? ' ' + v.trip.route : '') : '';
+      const tr = m.failed || (v.trip && v.trip.unknown) ? ' — δρομολόγιο: ?' : v.trip ? ' — ' + v.trip.state + (v.trip.route ? ' ' + v.trip.route : '') : '';
       out.push(v.plate + ': ' + what + tr);
     }
   }
