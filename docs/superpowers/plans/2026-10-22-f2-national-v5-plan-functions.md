@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 >
-> **Πλάνο v2, 24/10/2026: ο κώδικας ακολουθεί τις αποφάσεις του owner (23/10).** Τα code blocks ξαναγράφτηκαν για τις αποφάσεις 10 (καμία «πληρωμένη»: `payroll_amount` με `month`, το `tms_week` έξω από τον φρουρό), 41 (όλοι οι ρόλοι: νέο `PLAN_PERMS`, ένα board για όλους, οι πράξεις τύπου διαγραφής owner/dispatcher), 44 (`request_id` στις τρεις δημιουργίες, `plan:request_reused` για ίδιο id με άλλο σώμα, ο Worker δεν ξαναστέλνει ποτέ εγγραφή) και 42 (βάση της Φ2 = main @ `639a5a50`, PR #82: ζωντανός Worker b00d59f3 με stop-delay και presence· Γ6 εκτελεσμένο). Η 36 μένει στο χωριστό spec της αλλαγής οχήματος· τίποτα εδώ δεν την αντιφάσκει (`ct_round_trips` και τα EXCLUDE της 071b μένουν όπως είναι). **Ξανα-απόδειξη κατά γράμμα (24/10, scratch εκτός repo), με την πραγματική λήψη `live-072.sql` της παραγωγής (SELECT, md5 `1df9d47d…`) και τα ζωντανά md5 χωρίς καμία χαλάρωση:** rules test **186 OK, 0 FAIL** (87 Α + 99 Β)· build 12/12, bootstrap του Α1 6/6, harness 9/9 (`changed_live 0`)· 22 μεταλλαγές ρίχνουν τις περιπτώσεις τους· Worker πάνω στο main @ `639a5a50`: 236 → 242 → 272 → 275 → **281 (280 pass + 1 skipped, ο ίδιος skip με το main)**, `GUARD OK (14 markers, plan=1)` και στο διπλό bundle. Λεπτομέρεια: `docs/national-v5/f2/fix-report-v2.md`. Το μπλοκ «Τι αλλάζει στις εργασίες» κάτω από τις αποφάσεις μένει ως ίχνος: είναι πλέον εφαρμοσμένο.
+> **Πλάνο v2, 24/10/2026: ο κώδικας ακολουθεί τις αποφάσεις του owner (23/10).** Τα code blocks ξαναγράφτηκαν για τις αποφάσεις 10 (καμία «πληρωμένη»: `payroll_amount` με `month`, το `tms_week` έξω από τον φρουρό), 41 (όλοι οι ρόλοι: νέο `PLAN_PERMS`, ένα board για όλους, οι πράξεις τύπου διαγραφής owner/dispatcher), 44 (`request_id` στις τρεις δημιουργίες, `plan:request_reused` για ίδιο id με άλλο σώμα, ο Worker δεν ξαναστέλνει ποτέ εγγραφή) και 42 (βάση της Φ2 = main @ `639a5a50`, PR #82: ζωντανός Worker b00d59f3 με stop-delay και presence· Γ6 εκτελεσμένο). Η 36 μένει στο χωριστό spec της αλλαγής οχήματος· τίποτα εδώ δεν την αντιφάσκει (`ct_round_trips` και τα EXCLUDE της 071b μένουν όπως είναι). **Ξανα-απόδειξη κατά γράμμα (24/10, scratch εκτός repo), με την πραγματική λήψη `live-072.sql` της παραγωγής (SELECT, md5 `1df9d47d…`) και τα ζωντανά md5 χωρίς καμία χαλάρωση:** rules test **191 OK, 0 FAIL** (90 Α + 101 Β)· build 12/12, bootstrap του Α1 6/6, harness 9/9 (`changed_live 0`)· 22 μεταλλαγές ρίχνουν τις περιπτώσεις τους· Worker πάνω στο main @ `639a5a50`: 236 → 242 → 272 → 275 → **281 (280 pass + 1 skipped, ο ίδιος skip με το main)**, `GUARD OK (15 markers, plan=1)` και στο διπλό bundle. Μετά την κριτική του PR #84 (υποχρεωτικό `request_id`, σύγκριση χρήστη, ακύρωση χωρίς φόρτωση, `month` στη γραμμή ΤΟΠΙΚΟ, σημάδι VD): rules **191 OK, 0 FAIL**, Worker 281, `GUARD OK (15 markers, plan=1)`. Λεπτομέρεια: `docs/national-v5/f2/fix-report-v2.md`. Το μπλοκ «Τι αλλάζει στις εργασίες» κάτω από τις αποφάσεις μένει ως ίχνος: είναι πλέον εφαρμοσμένο.
 >
 > **Τελικό πλάνο v1, 23/10/2026.** Συναρμολογήθηκε από τον σκελετό (αποφάσεις, αρχεία, συμβόλαια) και τις τρεις ενότητες (Α: SQL μέρος 1, Β: SQL μέρος 2, Γ: Worker, deploy, runbooks), με εφαρμοσμένα τα Critical και Important ευρήματα των δύο κριτών της 23/10 (κάλυψη/ορθότητα, ποιότητα πλάνου/ασφάλεια Worker). Οι Α και Γ πρωτοτυπήθηκαν Task προς Task (Α σε PGlite με το σχήμα παραγωγής, 77/77· Γ σε αντίγραφο του `worker/`, 226/226)· η Β σε PGlite πάνω σε αντικαταστάτες των βοηθών της Α (74/77). **Έλεγχος της συναρμολόγησης (23/10, scratch, εκτός repo):** τα code blocks του πλάνου εφαρμόστηκαν κατά γράμμα (κάθε «πρόσθεσε πάνω από…») σε αντίγραφο PGlite με `live-071.sql` + 071 + 071b + το ζωντανό 069 (`order_cd_stop_follow`), **χωρίς** την πλήρη λήψη `live-072.sql` (150 KB, μένει για το Α1): η 072 εφαρμόζεται («072 OK», 16 δημόσιες)· rules test **169 OK, 0 FAIL**· build test 12/12 και το bootstrap του Α1 6/6· verify, dry run, rollback (άρνηση με γραμμή v5, μετά επιτυχία) και ξανά apply· έξι μεταλλαγές ρίχνουν ακριβώς τις περιπτώσεις 78, 79–80, 81, B85, B79, B38. Ο έλεγχος βρήκε και διόρθωσε ένα σφάλμα (ψευδώνυμο `e` στη B77, 42702). Τα md5 του φρουρού δεν μπορούσαν να ταιριάξουν χωρίς τη λήψη (χαλαρώθηκαν μόνο στο αντίγραφο). Ο Worker (Γ) εφαρμόστηκε αυτούσιος σε αντίγραφο από τον κριτή Worker (23/10): 228/228 και `GUARD OK (11 markers, plan=1)`. Το Task Σ1 ξανατρέχει τα πάντα με την πραγματική λήψη και τον Worker, πριν από το Κ1. **Δεύτερη κριτική xhigh (23/10 νύχτα: SQL, Worker, εκτελεσιμότητα):** το 1 Critical και τα 14 Important εφαρμόστηκαν στον κώδικα και στα βήματα: token χωρίς ποσά (απόφαση 7), στήλες της διεθνούς στον τόπο VS, αύξηση παλετών σε ανατεθειμένη εθνική, άρνηση `piece_split` στη Μεταφορά πλευράς πριν από τη λίστα, μήνυμα του `preview.conflict`, συμβόλαιο RPC ↔ υπογραφές 072, δύο ανοιχτά branch Worker, «μόνο η Φ2 στο deploy», φρουρός WORKSHOPS μέσα στο μπλοκ, παράρτημα «απόφαση 21 = εκτός», πηγές στο repo (Task 0 Step 0), επαναφορά της βάσης (Κ2 Step 12), `drafts/` και κανόνας 5 (Γ7, Κ3). Όσα θέλουν owner έγιναν οι αποφάσεις 35–45. Ξανα-απόδειξη στο ίδιο scratch (κατά γράμμα από αυτό το αρχείο): rules test **179 OK, 0 FAIL** (82 Α + 97 Β), build 12/12 (και το bootstrap του Α1 6/6), Worker Task προς Task 189 → 195 → 223 → 226 → **232/232** και `GUARD OK (11 markers, plan=1)` (και στο διπλό bundle του esbuild) (λεπτομέρεια: `docs/national-v5/f2/fix-report.md`). **Καμία εργασία δεν ξεκινά πριν ο owner εγκρίνει τις αποφάσεις 1–45.** Πηγές: `docs/national-v5/f2/requirements.md`, `worker.md`, `db.md` (22/10· αντίγραφα του `.superpowers/f2/`, Task 0 Step 0), μετρήσεις SELECT 22/10 23:10 και 23/10 (πίνακας «Αφετηρία»).
 
@@ -11,7 +11,7 @@
 **Architecture:**
 - **Βάση (`072_plan_functions.sql`, ένα DO block, ASCII):** ~16 δημόσιες `plan_*` (`SECURITY DEFINER`, `SET search_path = public`, owner `postgres`, `RETURNS jsonb`, EXECUTE μόνο `service_role`) και εσωτερικοί βοηθοί `plan_h_*` (κλειστοί για όλους, όπως οι `*_problem` της 071). Κάθε δημόσια συνάρτηση = μία πράξη = μία συναλλαγή· τελειώνει με `SET CONSTRAINTS ALL IMMEDIATE` ώστε οι αναβαλλόμενοι κανόνες της 071/071b να σκάνε **μέσα** της, όπου μεταφράζονται σε `plan:<code>`. Κανένα νέο trigger, κανένας νέος πίνακας, καμία αλλαγή σε υπάρχουσα συνάρτηση (B-54 μένει 46).
 - **Worker (`deploy/worker-plan`):** `handlePlan` (πίνακας διαδρομών → μία RPC ανά αίτημα), `var PLAN_PERMS = {` + `planCan` (σχήμα `COSTS_PERMS`), οικογένεια `plan:` στον **ίδιο** `stockRuleError`, κείμενα `PLAN_RULE_TEXT` / `PLAN_CHECK_TEXT`, διακόπτης εγγραφών κλειστός ως το L.
-- **Tests:** PGlite (`plan-072.test.mjs` με νέο fixture `live-072.sql`), κανόνες σε TEST γραμμές (`072_plan_functions_test.sql`, 186 περιπτώσεις: 87 Α + 99 Β), έλεγχοι build (`tests/sql-072-drafts.test.js`, 12), Worker σε Node (`worker/test/plan-*.test.mjs`, `worker-guard.test.mjs`· 236 → 281, με 1 skip του main).
+- **Tests:** PGlite (`plan-072.test.mjs` με νέο fixture `live-072.sql`), κανόνες σε TEST γραμμές (`072_plan_functions_test.sql`, 191 περιπτώσεις: 90 Α + 101 Β), έλεγχοι build (`tests/sql-072-drafts.test.js`, 12), Worker σε Node (`worker/test/plan-*.test.mjs`, `worker-guard.test.mjs`· 236 → 281, με 1 skip του main).
 
 **Tech Stack:** Supabase Postgres 17.6 (plpgsql, DO blocks, deferred constraint triggers της 071, EXCLUDE της 071b, PostgREST RPC με `statement_timeout 8s`), PGlite 0.5.8 + `btree_gist` (`tms-auditor`), Cloudflare Worker (ESM, wrangler/esbuild), `node --test` (Node 24, με glob, όχι φάκελο).
 
@@ -39,7 +39,7 @@
 **Worker** (CLAUDE.md «Ο WORKER», «Τρεις κανόνες μίας πηγής»)
 - **Μία αλυσίδα** `deploy/worker-plan` (Φ2 → Φ3 → Φ5), κάτοχος η Petras (`dimitris`, owner 22/10).
 - Deploy **μόνο μετά τις 15:00**, **μόνο από κλάδο που περιέχει την πηγή του Worker που τρέχει** (εδώ: `0273aa06`, η πηγή του ζωντανού b00d59f3, πρόγονος του main @ `639a5a50`· βλ. Αφετηρία).
-- Φρουρός **πριν και μετά** (σε περιεχόμενο, ποτέ σε ισότητα byte· ξετύλιγμα multipart· μία εντολή: `worker/tools/worker-guard.mjs`, Task Γ5): dispatcher `order_stops: [..., "DELETE"]`, `"VS CD Date": "cross_dock_date"`, τα 4 πεδία WORKSHOPS, `tblStockLots: {`, `"Move Kind": "move_kind"`, τα σημάδια των λειτουργιών που ανέβηκαν 23–24/10 (`"Delay Reason": "delay_reason"`, `var PRESENCE_ROLES`, `Temp Per CMR`), και **νέο** `var PLAN_PERMS = {` (0 πριν, 1 μετά, μαζί με `var PLAN_WRITES_OPEN = false;`· μπαίνουν στη λίστα του CLAUDE.md μετά το deploy). Αν λείπει ένα: ΣΤΑΜΑΤΑ.
+- Φρουρός **πριν και μετά** (σε περιεχόμενο, ποτέ σε ισότητα byte· ξετύλιγμα multipart· μία εντολή: `worker/tools/worker-guard.mjs`, Task Γ5): dispatcher `order_stops: [..., "DELETE"]`, `"VS CD Date": "cross_dock_date"`, τα 4 πεδία WORKSHOPS, `tblStockLots: {`, `"Move Kind": "move_kind"`, τα σημάδια των λειτουργιών που ανέβηκαν 23–24/10 (`"Delay Reason": "delay_reason"`, `var PRESENCE_ROLES`, `Temp Per CMR`) και των 24 γραμμών της VD (`{0,49}$/`, 23/10), και **νέο** `var PLAN_PERMS = {` (0 πριν, 1 μετά, μαζί με `var PLAN_WRITES_OPEN = false;`· μπαίνουν στη λίστα του CLAUDE.md μετά το deploy). Αν λείπει ένα: ΣΤΑΜΑΤΑ.
 - Bindings/secrets 3/3 (`JWT_SECRET`, `SUPABASE_SERVICE_KEY`, `ANTHROPIC_API_KEY`) πριν και μετά, μέσω CF API· και τα plain vars του `wrangler.toml` (`ALLOWED_ORIGIN`, `SUPABASE_URL`, `PRESENCE_OFF`, `PRESENCE_MS`): το deploy της Φ2 δεν αγγίζει το `wrangler.toml`, άρα μένουν ίδια.
 - Μετά από επιτυχημένο deploy: commit «sync worker source with deployed <version>» στο main (μέσω PR).
 - **0** γραμμές στους 5 νέους πίνακες και **0** `model=2` μετά το deploy· καμία δοκιμαστική εγγραφή στην παραγωγή.
@@ -72,7 +72,7 @@
 | `worker/src/index.js` @ `639a5a50` | md5 `96faaea79a5a5092cd7f4f56ee8ced77`, 6.338 γραμμές· `grep PLAN_\|/plan/\|shipments\|rt_stops` = 0 |
 | `worker/wrangler.toml` @ `639a5a50` | `[vars]`: `ALLOWED_ORIGIN`, `SUPABASE_URL`, `PRESENCE_OFF = "0"`, `PRESENCE_MS = "5000"` (το deploy του presence τα έβαλε εκεί: ό,τι plain var λείπει σβήνεται) |
 | Worker tests | `node --test worker/test/*.test.mjs worker/src/rt-rules.test.mjs` = **236 tests, 235 pass, 1 skipped, 0 fail** (ο skip: «PRESENCE_ACTIONS equals the design whitelist…», το `068_presence.sql` βγήκε από το `drafts/` και το test το ψάχνει εκεί· όχι της Φ2) |
-| Σημάδια φρουρού στην πηγή | τα 3 του CLAUDE.md + `tblStockLots: {` + `"Move Kind": "move_kind"` + `"Delay Reason": "delay_reason"` + `var PRESENCE_ROLES` + `Temp Per CMR`: το καθένα 1 φορά (`GUARD OK (12 markers, plan=0)` με το εργαλείο του Γ5). Στο CLAUDE.md η λίστα «σημάδι ανά λειτουργία» έχει ακόμη μόνο τα δύο πρώτα: τα τρία νέα μπαίνουν στο Κ3 Step 2 |
+| Σημάδια φρουρού στην πηγή | τα 3 του CLAUDE.md + `tblStockLots: {` + `"Move Kind": "move_kind"` + `"Delay Reason": "delay_reason"` + `var PRESENCE_ROLES` + `Temp Per CMR` + το σημάδι της VD `{0,49}$/` (`/costs/rt` `order_ids`, :4140): το καθένα 1 φορά (`GUARD OK (13 markers, plan=0)` με το εργαλείο του Γ5). Στο CLAUDE.md η λίστα «σημάδι ανά λειτουργία» έχει ακόμη μόνο τα δύο πρώτα: τα τρία νέα μπαίνουν στο Κ3 Step 2 |
 | Branch Worker που **δεν** έχουν ανέβει | κανένα: stop-delay και presence ζωντανά (απόφαση 42) |
 | Λήψη `live-072.sql` (ερώτημα του Α1 Step 1) | 151.912 χαρακτήρες, md5 `1df9d47dbf165795b62000ede7d0c26e` (24/10)· `grep -c -E "is_hub\|via_hub\|rt_stop_id\|piece_leg_id\|rt_v2_\|locations_one_hub\|plan_chk"` = 0 |
 
@@ -111,7 +111,7 @@
 
 ### Τι αλλάζει στις εργασίες λόγω των αποφάσεων 10, 36, 41, 42, 44
 
-**Εφαρμόστηκε στο πλάνο v2 (24/10):** κάθε σημείο παρακάτω είναι πλέον μέσα στα code blocks, στα Interfaces και στα Expected, ξανα-αποδεδειγμένο (rules 186/186, Worker 281 με 1 skip του main· `docs/national-v5/f2/fix-report-v2.md`). Το Task 0 **δεν** ξαναγεννά τίποτα. Το μπλοκ μένει ως ίχνος του τι άλλαξε και γιατί.
+**Εφαρμόστηκε στο πλάνο v2 (24/10):** κάθε σημείο παρακάτω είναι πλέον μέσα στα code blocks, στα Interfaces και στα Expected, ξανα-αποδεδειγμένο (rules 191/191, Worker 281 με 1 skip του main· `docs/national-v5/f2/fix-report-v2.md`). Το Task 0 **δεν** ξαναγεννά τίποτα. Το μπλοκ μένει ως ίχνος του τι άλλαξε και γιατί.
 
 - **Απόφαση 10 (καμία «πληρωμένη»):**
   - το είδος `payroll_amount` χάνει τα `paid` / `paid_week` και παίρνει `month` (ο μήνας της γραμμής μισθοδοσίας, π.χ. `"2026-10"`)· τα ποσά μένουν μόνο για owner/accountant (απόφαση 9, αμετάβλητη)·
@@ -146,7 +146,8 @@
   - Διαδρομές `POST /plan/orders`, `POST /plan/pieces/split`, `POST /plan/local-loading`: το σώμα περνά το `request_id` όπως είναι· νέο test διαδρομής στο `plan-routes.test.mjs`.
   - Νέα περίπτωση στο rules test για καθεμία από τις τρεις: δεύτερη κλήση με το ίδιο `request_id` → ίδια ids, 0 νέες γραμμές, καμία δεύτερη γραμμή `audit_log` δημιουργίας.
   - Ο Worker **δεν** ξανακαλεί ποτέ την RPC μιας εγγραφής: μία κλήση ανά αίτημα, και στο 500, το 503 και το 409 `busy_retry` (test στο Task Γ3). Το σχόλιο του Γ3 «a 409 the F4 client retries once» αλλάζει: καμία οθόνη δεν ξαναστέλνει μόνη της εγγραφή `/plan/*`, ούτε μετά από `busy_retry`· ο χρήστης ξαναπατά. Ένα 500 εγγραφής μένει `plan_unknown`, «μπορεί να έγινε».
-  - Ίδιο `request_id` με διαφορετικό σώμα ή για άλλη πράξη: **άρνηση `plan:request_reused`** (πλάνο v2, 24/10, από τον συντονιστή· ο owner το επιβεβαιώνει στο Task 0 Step 1). Το ίχνος είναι **μία γραμμή `audit_log`** (`table_name = 'plan_request'`, `record_id` = το `request_id`, `after_data` = `{op, request_id, body_md5, answer}`), όχι νέος πίνακας: η 072 δεν προσθέτει πίνακες (build test), η γραμμή γράφεται στην ίδια συναλλαγή με τις εγγραφές (μια πράξη που αναιρείται δεν αφήνει ίχνος), βρίσκεται με το υπάρχον `audit_log_record_idx`, και το rules test τη διαβάζει (83, 85, B98). Δύο ταυτόχρονες κλήσεις με το ίδιο id σειριοποιούνται με `pg_advisory_xact_lock`.
+  - Κριτική PR #84 (24/10): το `request_id` είναι **υποχρεωτικό** στις τρεις (χωρίς = `plan:request_missing`), το `plan_h_replay` συγκρίνει και τον χρήστη, και τα κείμενα `plan_unknown` / `request_reused` δεν λένε ποτέ «ανανέωσε» ή «ξαναδοκίμασε» ως διόρθωση. **Κανόνας οθόνης (Φ4, απόφαση 44):** ένα uuid ανά **ανοιχτή φόρμα** δημιουργίας (`crypto.randomUUID()` όταν ανοίγει η φόρμα)· το **ίδιο** σε κάθε πάτημα του κουμπιού, και μετά από χαμένη απάντηση, `plan_unknown`, `busy_retry` ή `slow`· αλλάζει **μόνο** μετά από επιβεβαιωμένη επιτυχία (200) ή όταν κλείσει η φόρμα. Καμία οθόνη δεν ξαναστέλνει μόνη της. Αν μετά από `plan_unknown` ο χρήστης αλλάξει πεδίο και ξαναπατήσει, το ίδιο uuid δίνει `request_reused`: η πρώτη αποστολή **αποθηκεύτηκε**, και η οθόνη ανοίγει την εγγραφή αντί να ζητά νέα αποστολή.
+  - Ίδιο `request_id` με διαφορετικό σώμα, για άλλη πράξη ή από άλλον χρήστη: **άρνηση `plan:request_reused`** (πλάνο v2, 24/10, από τον συντονιστή· ο owner το επιβεβαιώνει στο Task 0 Step 1). Το ίχνος είναι **μία γραμμή `audit_log`** (`table_name = 'plan_request'`, `record_id` = το `request_id`, `after_data` = `{op, request_id, body_md5, answer}`), όχι νέος πίνακας: η 072 δεν προσθέτει πίνακες (build test), η γραμμή γράφεται στην ίδια συναλλαγή με τις εγγραφές (μια πράξη που αναιρείται δεν αφήνει ίχνος), βρίσκεται με το υπάρχον `audit_log_record_idx`, και το rules test τη διαβάζει (83, 85, B98). Δύο ταυτόχρονες κλήσεις με το ίδιο id σειριοποιούνται με `pg_advisory_xact_lock`.
   - Task Κ1: γραμμή (44).
 
 Κάθε απόφαση: **πρόταση** / *απορρίπτεται*. Οι αριθμοί C-/K- παραπέμπουν στο `requirements.md`. Οι 32–34 προστέθηκαν στη συναρμολόγηση (23/10)· οι 7, 8, 11, 16, 20, 22, 27 διορθώθηκαν μετά την κριτική. Οι 35–45 προστέθηκαν από τη δεύτερη κριτική (23/10 νύχτα)· η 7 ξαναγράφτηκε (το token δεν κατακερματίζει ποτέ ποσό) και οι 11, 15, 16, 20, 21, 25 συμπληρώθηκαν.
@@ -206,7 +207,7 @@
 | Αρχείο | Ευθύνη | Task |
 |---|---|---|
 | `worker/migrations/drafts/072_plan_functions.sql` | Το migration (ένα DO block): PART 0 φρουροί (22 md5), PART 1 `plan_h_*`, PART 2 Α, PART 3–4 Β, PART 5 REVOKE/GRANT/αποδείξεις/`pg_notify`, μία γραμμή αποτελέσματος | Α1 (σκελετός + PART 0/1/5), Α2–Α7, Β1–Β7 |
-| `worker/migrations/drafts/072_plan_functions_test.sql` | 186 περιπτώσεις σε TEST γραμμές (`rec072T…`, `WN072-TEST`, `TEST 072 …`, `TEST-072-…`): Α 1–87, Β 1–99 σε φωλιασμένο block· τελειώνει με σκόπιμο σφάλμα | Α1–Α8, Β1–Β9 |
+| `worker/migrations/drafts/072_plan_functions_test.sql` | 191 περιπτώσεις σε TEST γραμμές (`rec072T…`, `WN072-TEST`, `TEST 072 …`, `TEST-072-…`): Α 1–90, Β 1–101 σε φωλιασμένο block· τελειώνει με σκόπιμο σφάλμα | Α1–Α8, Β1–Β9 |
 | `worker/migrations/drafts/tools/build-072-dryrun.mjs` | Γεννήτρια του dry run | Β9 |
 | `worker/migrations/drafts/072_plan_functions_dryrun.sql` | **Παράγεται**: το DO block της 072 αυτούσιο + σκόπιμο σφάλμα | Β9 |
 | `worker/migrations/drafts/072_plan_functions_verify.sql` | Μόνο SELECT, μία γραμμή | Β9 |
@@ -252,11 +253,13 @@ Dry run (`"dry_run": true`, τίποτα δεν γράφεται):
     { "kind": "local_loading",  "local_move_id": 4, "driver_id": 8, "move_date": "2026-10-13" },
     { "kind": "executed_leg",   "leg_id": 31, "rt_id": 5, "stop_day": "2026-10-12" },
     { "kind": "later_leg",      "leg_id": 32, "rt_id": 6, "code": "RT-1274" },
-    { "kind": "local_payroll",  "dl_entry_id": 120, "local_move_id": 4, "driver_id": 8, "day": "2026-10-13", "amount": 50.00 } ] }
+    { "kind": "local_payroll",  "dl_entry_id": 120, "local_move_id": 4, "driver_id": 8, "month": "2026-10", "amount": 50.00 } ] }
 ```
 `amount`, `advance`, `expenses` και `invoice_number` υπάρχουν μόνο όταν `p_role IN ('owner','accountant')` (απόφαση 9, `plan_h_strip_amounts`). Το `month` (`'YYYY-MM'` του `dl_entries.entry_date`) είναι ο μήνας της γραμμής μισθοδοσίας· κανένα «πληρωμένη» (απόφαση 10). Το token = απόφαση 7· το παίρνει πάντα το dry run, ακόμη κι όταν `needs_confirm = false`.
 
-Επανάληψη δημιουργίας (απόφαση 44): `plan_orders_create`, `plan_split_piece` και η δημιουργία του `plan_local_loading` δέχονται προαιρετικό `"request_id": "<uuid>"`. Πρώτη κλήση: κανονική, και μία γραμμή `audit_log` (`table_name 'plan_request'`, `record_id` = το id σε πεζά, `after_data` = `{op, request_id, body_md5, answer}`). Δεύτερη με το ίδιο id και το ίδιο σώμα (ίδια πράξη): η απάντηση της πρώτης + `"replayed": true`, τίποτα δεν γράφεται. Ίδιο id με άλλο σώμα ή για άλλη πράξη: `plan:request_reused`. Όχι uuid: `plan:bad_input`. Ο Worker περνά το `request_id` όπως είναι και δεν ξανακαλεί ποτέ την RPC μιας εγγραφής.
+Επανάληψη δημιουργίας (απόφαση 44): `plan_orders_create`, `plan_split_piece` και η δημιουργία του `plan_local_loading` **απαιτούν** `"request_id": "<uuid>"` (κριτική PR #84: χωρίς αυτό μια χαμένη απάντηση ξαναστέλνεται μόνο ως δεύτερη δημιουργία)· χωρίς = `plan:request_missing`. Πρώτη κλήση: κανονική, και μία γραμμή `audit_log` (`table_name 'plan_request'`, `record_id` = το id σε πεζά, `after_data` = `{op, request_id, body_md5, answer}`). Δεύτερη με το ίδιο id και το ίδιο σώμα (ίδια πράξη): η απάντηση της πρώτης + `"replayed": true`, τίποτα δεν γράφεται. Ίδιο id με άλλο σώμα, για άλλη πράξη ή από άλλον χρήστη (`p_actor`): `plan:request_reused` (η **πρώτη** αποστολή αποθηκεύτηκε). Όχι uuid: `plan:bad_input`. `{"cancel": true}` χωρίς `local_move_id`: `plan:local_cancel_no_id`. Ο Worker περνά το `request_id` όπως είναι και δεν ξανακαλεί ποτέ την RPC μιας εγγραφής.
+
+**Κανόνας οθόνης (Φ4, απόφαση 44):** ένα uuid ανά **ανοιχτή φόρμα** δημιουργίας (`crypto.randomUUID()` όταν ανοίγει η φόρμα)· το **ίδιο** σε κάθε πάτημα του κουμπιού, και μετά από χαμένη απάντηση, `plan_unknown`, `busy_retry` ή `slow`· αλλάζει **μόνο** μετά από επιβεβαιωμένη επιτυχία (200) ή όταν κλείσει η φόρμα. Καμία οθόνη δεν ξαναστέλνει μόνη της. Αν μετά από `plan_unknown` ο χρήστης αλλάξει πεδίο και ξαναπατήσει, το ίδιο uuid δίνει `request_reused`: η πρώτη αποστολή **αποθηκεύτηκε**, και η οθόνη ανοίγει την εγγραφή αντί να ζητά νέα αποστολή.
 
 ### Κοινά υπο-σχήματα του `p`
 ```text
@@ -275,19 +278,19 @@ piece_in := { "piece_id": bigint, "take_pallets": numeric|null,     -- only on a
 
 | Υπογραφή | `p` | Επιστρέφει (πέρα από το κοινό) | Αρνήσεις `plan:` (νέες· + COMMIT της 071) |
 |---|---|---|---|
-| `plan_orders_create(p jsonb, p_actor text, p_role text) RETURNS jsonb` | `{ "orders": [ { "client_id", "price", "reference", "goods", "temperature_c", "pallet_exchange", "notes", "shipments": [ { "origin_location_id", "dest_location_id", "pallets", "load_from", "load_to", "deliver_from", "deliver_to" } ] } ], "target": target?, "stops": stops?, "request_id": uuid? }` | `ids.nat_order_ids/shipment_ids/piece_ids` (+ στόχου)· επανάληψη: η πρώτη απάντηση + `replayed` | `no_actor`, `bad_input`, `no_client`, `no_price`, `no_window`, `stock_lot`, `request_reused` · CHECK `shipments_*` |
+| `plan_orders_create(p jsonb, p_actor text, p_role text) RETURNS jsonb` | `{ "orders": [ { "client_id", "price", "reference", "goods", "temperature_c", "pallet_exchange", "notes", "shipments": [ { "origin_location_id", "dest_location_id", "pallets", "load_from", "load_to", "deliver_from", "deliver_to" } ] } ], "target": target?, "stops": stops?, "request_id": uuid }` | `ids.nat_order_ids/shipment_ids/piece_ids` (+ στόχου)· επανάληψη: η πρώτη απάντηση + `replayed` | `no_actor`, `bad_input`, `no_client`, `no_price`, `no_window`, `stock_lot`, `request_reused`, `request_missing` · CHECK `shipments_*` |
 | `plan_order_update(p, p_actor, p_role)` *(απόφαση 21)* | `{ "nat_order_id", "set": {price, reference, notes, goods, temperature_c, pallet_exchange}, "shipments": [ { "shipment_id", "pallets"?, "load_from"?, "load_to"?, "deliver_from"?, "deliver_to"?, "origin_location_id"?, "dest_location_id"? } ] }` | `ids.shipment_ids` | `order_gone`, `order_not_v5`, `vs_locked`, `no_price`, `piece_busy` (τόπος σε κομμάτι με κίνηση) |
 | `plan_put_pieces(p, …)` | `{ "pieces": [piece_in], "target": target, "stops": stops }` | `ids.rt_id/stop_ids/leg_ids/piece_ids` | `piece_busy`, `piece_split`, `not_stock`, `parts_sum`, `rt_gone`, `no_vehicle`, `truck_busy`, `driver_busy` · `chain`, `chain_time`, `leg_place`, `leg_order`, `stop_order`, `side_order`, `rt_cancelled`, `rt_not_v2`, `piece_dead`, `leg_stop_dead` |
 | `plan_put_group(p, …)` | `{ "group": { "order_id": bigint } \| { "nat_order_id": bigint }, "target": target, "stops": stops }` | όπως πάνω | όπως πάνω + `group_empty` |
 | `plan_move_pieces(p, …)` | `{ "from": { "piece_ids": [..] } \| { "rt_id", "side" }, "target": target, "stops": stops?, "dry_run": bool, "confirm_token": text? }` | dry run: συνέπειες· εκτέλεση: `ids.dropped_leg_ids`, `ids.cancelled_rt_ids` | `same_rt`, `stale_confirm`, `need_token`, `piece_split` (και στον τρόπο «πλευρά», **πριν** από τη λίστα), `bad_input` (κομμάτι του `piece_ids` χωρίς ζωντανό σκέλος στη μεταφορά) + του put |
-| `plan_split_piece(p, …)` | `{ "piece_id", "parts": [ { "pallets": numeric, "target": target?, "stops": stops? } ], "request_id": uuid? }` | `ids.piece_ids` (παιδιά)· επανάληψη: η πρώτη απάντηση + `replayed` | `parts_sum`, `not_at_hub`, `piece_split`, `not_stock` (split+put σε μη απόθεμα), `request_reused` · `split_not_at_hub`, `pieces_sum`, `piece_parent` |
+| `plan_split_piece(p, …)` | `{ "piece_id", "parts": [ { "pallets": numeric, "target": target?, "stops": stops? } ], "request_id": uuid }` | `ids.piece_ids` (παιδιά)· επανάληψη: η πρώτη απάντηση + `replayed` | `parts_sum`, `not_at_hub`, `piece_split`, `not_stock` (split+put σε μη απόθεμα), `request_reused`, `request_missing` · `split_not_at_hub`, `pieces_sum`, `piece_parent` |
 | `plan_rt_create(p, p_actor, p_role)` — **εσωτερική, χωρίς GRANT** | `{ "new_rt": newrt, "stops": stops }` | `rt_id`, `code` | `no_vehicle`, `truck_busy`, `driver_busy` · CHECK `rt_v2_*`, `rt_partner_rate`, `partner_needs_partner` |
 | `plan_rt_update(p, …)` | `{ "rt_id", "set": { "trip_type"?, "truck_id"?, "trailer_id"?, "driver_id"?, "partner_id"?, "partner_rate"? }, "stops": [ { "stop_id", "planned_from", "planned_to" } ]?, "shift": { "side", "delta": interval }?, "dry_run": bool }` | dry run: `preview` = `{ "before": {start_at,end_at,date_start,date_end}, "after": {...}, "next_rt": {code,start_at}?, "conflict": {code, sqlstate, detail, message}?, "vs_day": [ {order_id, from, to} ], "warnings": [...] }` (το `message` το προσθέτει ο Worker από το `PLAN_RULE_TEXT`/`PLAN_CHECK_TEXT`: μία πηγή ελληνικών)· εκτέλεση: `warnings` (`v1_same_truck`, `local_payroll_review`), `notice_ids` | `rt_gone`, `rt_cancelled`, `truck_busy`, `driver_busy`, `payroll_locked`, `stop_gone`, `no_vehicle`, `bad_input` (`stops` που δεν είναι πίνακας) · `stop_order`, `chain_time`, `leg_order`, `local_loading_day` |
 | `plan_rt_clear(p, …)` | `{ "rt_id", "dry_run": bool, "confirm_token": text? }` | dry run: συνέπειες | `rt_gone`, `stale_confirm`, `need_token` |
 | `plan_delete(p, …)` | `{ "nat_order_id", "reason": text, "dry_run": bool, "confirm_token": text? }` | dry run: συνέπειες· εκτέλεση: `ids.cancelled_rt_ids` | `order_gone`, `order_not_v5`, `stale_confirm`, `need_token`, `bad_input` (κενός λόγος) · `hard_delete` (δίχτυ) |
 | `plan_vs_set_day(p, …)` | `{ "order_id", "day": date }` | `notice_ids`, `warnings` (`vs_day_differs`: το VS είναι ήδη σε φορτηγό άλλης ημέρας· η κίνηση δεν φεύγει, αυτό είναι της γέφυρας Φ5) | `vs_not_bridge`, `order_gone` |
 | `plan_vs_set_place(p, …)` | `{ "order_stop_id", "location_id" }` | `notice_ids`, `ids.leg_ids` (διορθωμένες)· γράφει και το `orders.<loading|unloading>_location_<n>_id` της ίδιας θέσης (απόφαση 35) | `vs_not_bridge`, `order_gone` · `leg_place`, `chain` |
-| `plan_local_loading(p, …)` | `{ "rt_stop_id", "driver_id", "truck_id", "trailer_id"?, "time_from"?, "time_to"?, "notes"?, "request_id"? }` ή `{ "local_move_id", "cancel": true }` (εκεί `request_id` = `bad_input`) | `ids.local_move_id`, `already` (δεύτερη ακύρωση), `warnings` (`local_payroll_review`)· επανάληψη δημιουργίας: η πρώτη απάντηση + `replayed` | `stop_gone`, `request_reused`, `local_exists` (23505 `local_moves_nat_loading_once`), `driver_busy` (ο οδηγός του ίδιου κύκλου, απόφαση 38) · `local_loading_stop`, `local_loading_day`, `local_loading_gone` |
+| `plan_local_loading(p, …)` | `{ "rt_stop_id", "driver_id", "truck_id", "trailer_id"?, "time_from"?, "time_to"?, "notes"?, "request_id" }` ή `{ "local_move_id", "cancel": true }` (εκεί `request_id` = `bad_input`· `cancel` χωρίς `local_move_id` = `local_cancel_no_id`) | `ids.local_move_id`, `already` (δεύτερη ακύρωση), `warnings` (`local_payroll_review`)· επανάληψη δημιουργίας: η πρώτη απάντηση + `replayed` | `stop_gone`, `request_reused`, `request_missing`, `local_cancel_no_id`, `local_exists` (23505 `local_moves_nat_loading_once`), `driver_busy` (ο οδηγός του ίδιου κύκλου, απόφαση 38) · `local_loading_stop`, `local_loading_day`, `local_loading_gone` |
 | `plan_notice_read(p, …)` | `{ "notice_id" }` | `{ "read_at", "read_by", "already": bool }` | `notice_gone` |
 | `plan_board(p_week date, p_role text) RETURNS jsonb STABLE` | — | `{ "week": "2026-10-10", "cycles": [ {rt_id, code, trip_type, truck, trailer, driver, partner, partner_rate, start_at, end_at, ended, stops: [...v_rt_stop_state, legs: [...]] } ], "waiting": [ ...v_piece_state + v_shipments, price ], "hub": [ ...v_hub_bucket ], "notices": [ ...unread natl ] }` · ίδιο για κάθε ρόλο (αποφάσεις 40, 41)· κενά = `[]`, ποτέ απουσία | `bad_input` (όχι Σάββατο, άγνωστος ρόλος) |
 | `plan_vs_state(p_order_ids bigint[]) RETURNS jsonb STABLE` | — | `{ "<order_id>": { "carriers": [ {kind, text} ], "all_executed", "all_planned", "first_hub_day" } \| "missing" }` | — |
@@ -316,8 +319,8 @@ piece_in := { "piece_id": bigint, "take_pallets": numeric|null,     -- only on a
 | `plan_h_token` | `(p_fn text, p_key text, p_full jsonb) RETURNS text` | Α1 | απόφαση 7: η λίστα όπως τη βλέπει ο dispatcher + η έκδοση (xmin, ctid) κάθε γραμμής με ποσό· **ποτέ** ποσό |
 | `plan_h_strip_amounts` | `(p jsonb, p_role text) RETURNS jsonb` | Α1 | κόβει `amount`, `advance`, `expenses`, `invoice_number` εκτός owner/accountant |
 | `plan_h_rt_consequences` | `(p_rt bigint) RETURNS jsonb` | Α1 | `payroll_amount` (`month` της γραμμής, ποσά· κανένα `paid`, απόφαση 10) και `costs` ανά `pay_source`· πάντα με ποσά |
-| `plan_h_replay` | `(p jsonb, p_op text) RETURNS jsonb` | Α1 | απόφαση 44: χωρίς `request_id` ή πρώτη φορά = `NULL`· επανάληψη = η πρώτη απάντηση + `replayed`· άλλο σώμα/πράξη = `request_reused`· όχι uuid = `bad_input`· `pg_advisory_xact_lock` ανά id |
-| `plan_h_remember` | `(p jsonb, p_op text, p_answer jsonb, p_actor text, p_role text) RETURNS void` | Α1 | η μία γραμμή `audit_log` `plan_request` (μόνο με `request_id`), πριν από το `plan_h_finish` |
+| `plan_h_replay` | `(p jsonb, p_op text, p_actor text) RETURNS jsonb` | Α1 | απόφαση 44: χωρίς `request_id` = `request_missing`· πρώτη φορά = `NULL`· επανάληψη = η πρώτη απάντηση + `replayed`· άλλο σώμα, πράξη ή χρήστης = `request_reused`· όχι uuid = `bad_input`· `pg_advisory_xact_lock` ανά id |
+| `plan_h_remember` | `(p jsonb, p_op text, p_answer jsonb, p_actor text, p_role text) RETURNS void` | Α1 | η μία γραμμή `audit_log` `plan_request` (actor = ο χρήστης, το `plan_h_replay` τον συγκρίνει), πριν από το `plan_h_finish` |
 | `plan_h_notice` | `(p_desk text, p_kind text, p_tpl_b64 text, p_args text[], p_order bigint, p_nat_order bigint, p_rt bigint, p_actor text, p_role text) RETURNS bigint` | Α1 | ελληνικό κείμενο από base64 πρότυπο, audit, id |
 | `plan_h_vs_day` | `(p_order bigint, p_day date, p_actor text, p_role text) RETURNS bigint` | Α1 | `plan.writer = 'natl'`, `cross_dock_date`, audit, ειδοποίηση `intl`/`vs_day_changed`· ίδια ημέρα = `NULL` |
 | `plan_h_vs_follow` | `(p_pieces bigint[], p_actor text, p_role text) RETURNS bigint[]` | Α1 | για τις VS των **κομματιών**: ημέρα = `v_vs_state.first_hub_day`· τα ids των ειδοποιήσεων |
@@ -341,11 +344,11 @@ piece_in := { "piece_id": bigint, "take_pallets": numeric|null,     -- only on a
 - **Είδη συνεπειών** (`consequences[].kind`): `invoiced`, `costs`, `payroll_amount`, `local_loading`, `local_payroll`, `rt_cancelled`, `executed_leg`, `later_leg` (απόφαση 8).
 - **Κλειδιά `ids` ανά πράξη:** `plan_orders_create` `{nat_order_ids, shipment_ids, piece_ids, rt_id, stop_ids, leg_ids}` · `plan_put_pieces` `{rt_id, stop_ids, leg_ids, piece_ids, new_piece_ids}` · `plan_put_group` `{rt_id, stop_ids, leg_ids, piece_ids}` · `plan_split_piece` `{piece_ids, leg_ids, rt_ids}` · `plan_move_pieces` `{rt_id, stop_ids, leg_ids, piece_ids, dropped_leg_ids, cancelled_rt_ids}` · `plan_order_update` `{nat_order_id, shipment_ids}` · `plan_rt_update` `{rt_id, stop_ids}` · `plan_rt_clear` `{rt_id}` · `plan_delete` `{nat_order_ids, leg_ids, cancelled_rt_ids}` · `plan_vs_set_day` `{order_id}` · `plan_vs_set_place` `{order_stop_id, leg_ids, stop_ids}` · `plan_local_loading` `{local_move_id, rt_id?}` (+ `already`) · `plan_notice_read` `{notice_id}` (+ `read_at`, `read_by`, `already`).
 - **Σήμα για τη Φ5:** `current_setting('plan.writer')` = `natl` μετά από κάθε εγγραφή του εθνικών σε `orders` / `order_stops` (απόφαση 17).
-- **Επανάληψη (απόφαση 44):** κλειδί απάντησης `replayed: true` (μόνο στις τρεις δημιουργίες)· γραμμή `audit_log` με `table_name = 'plan_request'` (ο ελεγκτής και η Φ4 τη βρίσκουν με `record_id` = το `request_id`).
+- **Επανάληψη (απόφαση 44):** κλειδί απάντησης `replayed: true` (μόνο στις τρεις δημιουργίες, που απαιτούν `request_id`)· γραμμή `audit_log` με `table_name = 'plan_request'` (ο ελεγκτής και η Φ4 τη βρίσκουν με `record_id` = το `request_id`).
 
 ### Κωδικοί `plan:`
 - **Της 071 (26):** `pieces_alive, piece_dead, pieces_sum, piece_parent, split_not_at_hub, rt_not_v2, rt_cancelled, leg_stop_dead, leg_order, leg_place, chain, chain_time, stop_seq, stop_order, side_order, rt_window, local_loading_gone, local_loading_day, local_loading_stop, model_locked, stop_locked, leg_locked, piece_locked, shipment_locked, v1_link_on_v2, hard_delete`.
-- **Νέοι της 072 (28):** `no_actor, bad_input, no_client, no_price, no_window, stock_lot, order_gone, order_not_v5, vs_locked, piece_busy, piece_split, not_stock, parts_sum, not_at_hub, group_empty, same_rt, rt_gone, no_vehicle, truck_busy, driver_busy, stop_gone, local_exists, notice_gone, stale_confirm, need_token, vs_not_bridge, payroll_locked, request_reused` (`payroll_locked`: απόφαση 32· `request_reused`: απόφαση 44, πλάνο v2). Η 072 ρίχνει αμέσως και δύο της 071 με το κείμενό τους: `rt_cancelled`, `piece_dead`.
+- **Νέοι της 072 (30):** `no_actor, bad_input, no_client, no_price, no_window, stock_lot, order_gone, order_not_v5, vs_locked, piece_busy, piece_split, not_stock, parts_sum, not_at_hub, group_empty, same_rt, rt_gone, no_vehicle, truck_busy, driver_busy, stop_gone, local_exists, notice_gone, stale_confirm, need_token, vs_not_bridge, payroll_locked, request_reused, request_missing, local_cancel_no_id` (`payroll_locked`: απόφαση 32· `request_reused`, `request_missing`: απόφαση 44· `local_cancel_no_id`: κριτική PR #84). Η 072 ρίχνει αμέσως και δύο της 071 με το κείμενό τους: `rt_cancelled`, `piece_dead`.
 - **Μόνο του Worker** (όχι `plan:`): `busy_retry` (409, χαμένη κλειδαριά `40P01`/`40001`/`55P03`), `slow` (503, `57014`), `writes_closed` (409), `schema_behind` (503, `PGRST202` ή `42883` για την ίδια τη συνάρτηση), `db_grant` (503, `42501` στην ίδια τη συνάρτηση), `amount_leak` (500), `plan_failed` (500, ανάγνωση ή dry run), `plan_unknown` (500, εγγραφή: «μπορεί να έγινε», ποτέ «δεν ολοκληρώθηκε»), `bad_week`/`bad_order_ids`/`bad_desk`/`bad_json`/`id_mismatch` (400), `unauthorized` (401), `forbidden` (403), `no_route` (404).
 - **Αποσύρθηκαν, απαγορεύονται στο build:** `hub_endpoint, piece_planned, bridge_moved, bridge_split, legacy_nl, frozen, restore_expired, restore_conflict, partner_rate_on_owned, window_order`.
 - Μορφή μηνύματος: `plan rule broken: <code>:<detail>`· ο Worker παίρνει το `detail` (μετά το `<code>:`) και το βάζει σε παρένθεση στο ελληνικό (π.χ. `truck_busy` → «Το φορτηγό είναι ήδη σε άλλο δρομολόγιο (RT-1280)»).
@@ -391,7 +394,7 @@ function planCan(role, resource, method) { const r = PLAN_PERMS[role]; return !!
 (Κλείσιμο `};` στη στήλη 0· το `PLAN_PERMS` πρέπει να χρησιμοποιείται, αλλιώς το esbuild το σβήνει και ο φρουρός δεν το βρίσκει.)
 
 ### Κείμενα και ο ΕΝΑΣ χαρτογράφος
-- `const PLAN_RULE_TEXT = { <26 + 28 κωδικοί> }` — ελληνικό κείμενο ανά `plan:<code>`, η **μόνη** πηγή ελληνικών για τους κωδικούς (Task Γ2).
+- `const PLAN_RULE_TEXT = { <26 + 30 κωδικοί> }` — ελληνικό κείμενο ανά `plan:<code>`, η **μόνη** πηγή ελληνικών για τους κωδικούς (Task Γ2).
 - `planConflictMessage(conflict)`: το `message` του `preview.conflict` του `plan_rt_update` από τους ίδιους δύο πίνακες (η Φ4 δεν κρατά αντίγραφο κειμένων, αρχή 3).
 - `const PLAN_CHECK_TEXT = { … }` — ανά όνομα constraint (36: 32 CHECK + 4 UNIQUE):
   - CHECK (23514): `rt_model, rt_partner_rate, rt_v1_no_window, rt_v2_dates, rt_v2_scope, rt_v2_status, rt_v2_window, partner_needs_partner, shipments_bridge_intl, shipments_del, shipments_ends, shipments_intl_is_bridge, shipments_one_parent, shipments_pallets, shipments_shape, shipments_win, pieces_del, pieces_not_own_parent, pieces_pallets, pieces_split_pair, rt_stops_del, rt_stops_seq, rt_stops_side, rt_stops_win, piece_legs_del, piece_legs_no, piece_legs_two_stops, plan_notices_desk, plan_notices_kind, plan_notices_read_pair, order_stops_via_hub_intl, local_moves_nat_loading`
@@ -431,7 +434,7 @@ Expected: τρεις γραμμές `OK …`. Οποιοδήποτε `MISSING`: 
 
 Οι Α1–Α7 **δοκιμάστηκαν 22/10 σε PGlite** (σενάριο του `plan-072.test.mjs`: `live-071.sql` + λήψη 072 → 071 → 071b → 072 → rules test), εργασία προς εργασία: σε κάθε «αποτυγχάνει» βγήκε ακριβώς το γραμμένο, σε κάθε «περνά» `N OK, 0 FAIL` και build 6/6. Μεταλλάξεις: χωρίς τη ρητή σβήση μισθοδοσίας στο `plan_h_rt_cancel_if_empty` κοκκινίζουν οι 13 και 59· χωρίς τον έλεγχο `piece_busy` η 32. Όλη η Α μαζί: 77 περιπτώσεις σε ~0,4 δευτ.
 
-**Τι άλλαξε μετά το πρωτότυπο (κριτική 23/10, συναρμολόγηση με τη Β):** η πλήρης λήψη `live-072.sql` (πρώην Β8) γίνεται στο Α1· μία λίστα φρουρού **23** συναρτήσεων σε μορφή `('<sig>', '<md5>')`· το PART 5 (δικαιώματα, αποδείξεις) γράφεται μία φορά, στο Α1, με τη μορφή της Β· το `plan_h_target` γεννά τον κύκλο για στόχο `new_rt` (late binding στο `plan_rt_create` της Β1)· το `plan_h_leg_add` δέχεται `p_leg_no` (Β5)· νέος ορισμός «πρώτου κομματιού» VS (Α3)· κλείδωμα κύκλων, `later_leg` και `local_payroll` στη Μεταφορά (Α6)· οι περιπτώσεις 78–82 (Α8). Ενωμένα, σε αντίγραφο χωρίς την πλήρη λήψη, έδιναν `Result: 169 OK, 0 FAIL`. **Δεύτερη κριτική (23/10 νύχτα):** `plan_h_token` χωρίς ποσά (η περίπτωση 5 ξαναγράφτηκε), `piece_split` και «κομμάτι χωρίς σκέλος» πριν από τη λίστα της Μεταφοράς (Α6), αύξηση παλετών σε κομμάτι που ταξιδεύει (Α7, η περίπτωση 69 το δοκιμάζει), ένα δεκαδικό στις παλέτες (Α2, Α3, Α5, Α7), `FOR NO KEY UPDATE` και κύκλοι κατά id πριν από τις παραγγελίες (Α5, Α6)· ενωμένα: `Result: 179 OK, 0 FAIL` (οι νέες περιπτώσεις είναι B88–B97 της Β9). **Πλάνο v2 (24/10):** `request_id` (Α1 `plan_h_replay` / `plan_h_remember`, Α2, Α5, περιπτώσεις 83–87), `month` αντί για «πληρωμένη» (13, 14, 65)· με την πραγματική λήψη `live-072.sql`: `Result: 186 OK, 0 FAIL`· το Task Σ1 τα ξανατρέχει στο repo.
+**Τι άλλαξε μετά το πρωτότυπο (κριτική 23/10, συναρμολόγηση με τη Β):** η πλήρης λήψη `live-072.sql` (πρώην Β8) γίνεται στο Α1· μία λίστα φρουρού **23** συναρτήσεων σε μορφή `('<sig>', '<md5>')`· το PART 5 (δικαιώματα, αποδείξεις) γράφεται μία φορά, στο Α1, με τη μορφή της Β· το `plan_h_target` γεννά τον κύκλο για στόχο `new_rt` (late binding στο `plan_rt_create` της Β1)· το `plan_h_leg_add` δέχεται `p_leg_no` (Β5)· νέος ορισμός «πρώτου κομματιού» VS (Α3)· κλείδωμα κύκλων, `later_leg` και `local_payroll` στη Μεταφορά (Α6)· οι περιπτώσεις 78–82 (Α8). Ενωμένα, σε αντίγραφο χωρίς την πλήρη λήψη, έδιναν `Result: 169 OK, 0 FAIL`. **Δεύτερη κριτική (23/10 νύχτα):** `plan_h_token` χωρίς ποσά (η περίπτωση 5 ξαναγράφτηκε), `piece_split` και «κομμάτι χωρίς σκέλος» πριν από τη λίστα της Μεταφοράς (Α6), αύξηση παλετών σε κομμάτι που ταξιδεύει (Α7, η περίπτωση 69 το δοκιμάζει), ένα δεκαδικό στις παλέτες (Α2, Α3, Α5, Α7), `FOR NO KEY UPDATE` και κύκλοι κατά id πριν από τις παραγγελίες (Α5, Α6)· ενωμένα: `Result: 179 OK, 0 FAIL` (οι νέες περιπτώσεις είναι B88–B97 της Β9). **Πλάνο v2 (24/10):** `request_id` (Α1 `plan_h_replay` / `plan_h_remember`, Α2, Α5, περιπτώσεις 83–90), `month` αντί για «πληρωμένη» (13, 14, 65, 81)· με την πραγματική λήψη `live-072.sql`: `Result: 191 OK, 0 FAIL`· το Task Σ1 τα ξανατρέχει στο repo.
 
 Ο κώδικας κάθε Task μπαίνει σε σημεία-σημάδια, ποτέ με επανεγγραφή. **Ένα σύνολο σημαδιών για Α και Β** (ASCII· τα γράφει το Α1):
 - `worker/migrations/drafts/072_plan_functions.sql`: οι συναρτήσεις της Α πάνω από `-- @A (072 section A: plan_orders_create, plan_put_pieces, plan_put_group, plan_split_piece, plan_move_pieces, plan_order_update)`· της Β (Part 3) πάνω από `  -- ===== PART 4: NOTICES AND READS (section B) =====`· οι αναγνώσεις της Β (Part 4) πάνω από `  -- ===== PART 5: RIGHTS AND PROOFS =====`· **κάθε** δημόσια συνάρτηση (Α και Β) μία γραμμή στο `v_pub` του PART 5, πάνω από `-- @pub (072 tasks add ", 'public.plan_x(<arg types>)'" lines above this marker)`.
@@ -1251,19 +1254,21 @@ begin
 end
 $f$;
 
-  CREATE FUNCTION public.plan_h_replay(p jsonb, p_op text) RETURNS jsonb
+  CREATE FUNCTION public.plan_h_replay(p jsonb, p_op text, p_actor text) RETURNS jsonb
     LANGUAGE plpgsql SET search_path = public AS $f$
 declare v_rid text; a audit_log%rowtype;
 begin
-  -- Decision 44 (owner 23/10): a creation (plan_orders_create, plan_split_piece, plan_local_loading) may carry the
-  -- screen's request_id (a uuid). Sent again - an answer lost after the COMMIT, the button pressed once more - it
-  -- returns the FIRST call's answer (+ replayed) and writes nothing. The same request_id with another body or for
-  -- another act is refused (request_reused, plan v2 24/10): never the first answer for a request that was not the
-  -- first. The record is ONE audit_log row (table_name 'plan_request', record_id = the request_id), written in the
+  -- Decision 44 (owner 23/10): a creation (plan_orders_create, plan_split_piece, plan_local_loading) carries the
+  -- screen's request_id (a uuid, one per open form). It is REQUIRED (review of PR #84): without it a lost answer
+  -- could only be retried as a second creation, so a missing id is refused (request_missing), never a silent pass.
+  -- Sent again - an answer lost after the COMMIT, the button pressed once more - it returns the FIRST call's answer
+  -- (+ replayed) and writes nothing. The same request_id with another body, for another act or from another person
+  -- (the JWT user, p_actor) is refused (request_reused): never the first answer for a request that was not that
+  -- one, and never one person's ids to another. The record is ONE audit_log row (table_name 'plan_request', record_id = the request_id), written in the
   -- same transaction as the writes (an undone call leaves none) and found through audit_log_record_idx: no new
   -- table (072 adds none), no second trace beside the audit. Called right after plan_h_keys, before any state is
   -- read, so a repeat is never refused by what the first call did (piece_split, local_exists). NULL = go on.
-  if not (p ? 'request_id') then return null; end if;
+  if not (p ? 'request_id') then perform plan_h_raise('request_missing', p_op); end if;
   if jsonb_typeof(p->'request_id') is distinct from 'string'
      or (p->>'request_id') !~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' then
     perform plan_h_raise('bad_input', 'request_id');
@@ -1273,7 +1278,7 @@ begin
   perform pg_advisory_xact_lock(hashtextextended('plan_request:' || v_rid, 0));
   select * into a from audit_log where record_id = v_rid and table_name = 'plan_request' order by id limit 1;
   if a.id is null then return null; end if;
-  if a.after_data->>'op' is distinct from p_op
+  if a.after_data->>'op' is distinct from p_op or a.actor is distinct from p_actor
      or a.after_data->>'body_md5' is distinct from md5((p - 'request_id')::text) then
     perform plan_h_raise('request_reused', v_rid);
   end if;
@@ -1284,9 +1289,8 @@ $f$;
   CREATE FUNCTION public.plan_h_remember(p jsonb, p_op text, p_answer jsonb, p_actor text, p_role text) RETURNS void
     LANGUAGE plpgsql SET search_path = public AS $f$
 begin
-  -- Decision 44: the record plan_h_replay finds. Called after the writes and before plan_h_finish, so a rule that
-  -- refuses at the end undoes it with them. Without a request_id nothing is recorded.
-  if not (p ? 'request_id') then return; end if;
+  -- Decision 44: the record plan_h_replay finds (plan_h_replay already refused a creation without request_id).
+  -- Called after the writes and before plan_h_finish, so a rule that refuses at the end undoes it with them.
   perform plan_h_audit(p_actor, p_role, 'create', 'plan_request', lower(p->>'request_id'), null,
                        jsonb_build_object('op', p_op, 'request_id', lower(p->>'request_id'),
                                           'body_md5', md5((p - 'request_id')::text), 'answer', p_answer));
@@ -1823,7 +1827,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 
 **Interfaces:**
 - Consumes: Α1 (`plan_h_ctx`, `plan_h_keys`, `plan_h_location`, `plan_h_audit`, `plan_h_target`, `plan_h_finish`, `plan_h_ok`)· `plan_h_put` της Α3 (late binding: καλείται μόνο με `target`, η περίπτωση είναι η 45 της Α3).
-- Produces: `plan_orders_create(p jsonb, p_actor text, p_role text) RETURNS jsonb` (δημόσια, με προαιρετικό `request_id`: απόφαση 44, `plan_h_replay` / `plan_h_remember` του Α1)· `plan_h_legacy_id() RETURNS text`· `plan_h_order_summary(p_shipments jsonb) RETURNS jsonb` (ο ΕΝΑΣ κανόνας των πεδίων σύνοψης, απόφαση 20· τον ξαναχρησιμοποιεί η Α7). Απάντηση: `ids = {nat_order_ids, shipment_ids, piece_ids, rt_id, stop_ids, leg_ids}`.
+- Produces: `plan_orders_create(p jsonb, p_actor text, p_role text) RETURNS jsonb` (δημόσια, με υποχρεωτικό `request_id`: απόφαση 44, `plan_h_replay` / `plan_h_remember` του Α1)· `plan_h_legacy_id() RETURNS text`· `plan_h_order_summary(p_shipments jsonb) RETURNS jsonb` (ο ΕΝΑΣ κανόνας των πεδίων σύνοψης, απόφαση 20· τον ξαναχρησιμοποιεί η Α7). Απάντηση: `ids = {nat_order_ids, shipment_ids, piece_ids, rt_id, stop_ids, leg_ids}`.
 
 - [ ] **Step 1: Οι περιπτώσεις πρώτα (`worker/migrations/drafts/072_plan_functions_test.sql`)**
 
@@ -1850,46 +1854,46 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 
 ```sql
       ELSIF k = 16 THEN
-        r := plan_orders_create(jsonb_build_object('orders', jsonb_build_array(jo1,
-               jo1 || jsonb_build_object('client_id', cl2), jo1 || jsonb_build_object('client_id', cl3, 'price', 70))),
+        r := plan_orders_create(jsonb_build_object('request_id', gen_random_uuid()) || (jsonb_build_object('orders', jsonb_build_array(jo1,
+               jo1 || jsonb_build_object('client_id', cl2), jo1 || jsonb_build_object('client_id', cl3, 'price', 70)))),
                'test:072', 'dispatcher');
       ELSIF k = 17 THEN
-        r := plan_orders_create(jsonb_build_object('orders', jsonb_build_array(jo1 || jsonb_build_object('shipments',
+        r := plan_orders_create(jsonb_build_object('request_id', gen_random_uuid()) || (jsonb_build_object('orders', jsonb_build_array(jo1 || jsonb_build_object('shipments',
                jsonb_build_array(
                  jsonb_build_object('origin_location_id', la, 'dest_location_id', hub, 'pallets', 4, 'load_from', a06,
                                     'load_to', a08, 'deliver_from', a09, 'deliver_to', a10),
                  jsonb_build_object('origin_location_id', lc, 'dest_location_id', lb, 'pallets', 6, 'load_from', b06,
-                                    'load_to', b08, 'deliver_from', b12, 'deliver_to', b14))))), 'test:072', 'owner');
+                                    'load_to', b08, 'deliver_from', b12, 'deliver_to', b14)))))), 'test:072', 'owner');
       ELSIF k = 18 THEN
-        PERFORM plan_orders_create(jsonb_build_object('orders', jsonb_build_array(jo1 || '{"price": 0}')), 'test:072', 'owner');
+        PERFORM plan_orders_create(jsonb_build_object('request_id', gen_random_uuid()) || (jsonb_build_object('orders', jsonb_build_array(jo1 || '{"price": 0}'))), 'test:072', 'owner');
       ELSIF k = 19 THEN
-        PERFORM plan_orders_create(jsonb_build_object('orders', jsonb_build_array(jo1 - 'price')), 'test:072', 'owner');
+        PERFORM plan_orders_create(jsonb_build_object('request_id', gen_random_uuid()) || (jsonb_build_object('orders', jsonb_build_array(jo1 - 'price'))), 'test:072', 'owner');
       ELSIF k = 20 THEN
-        PERFORM plan_orders_create(jsonb_build_object('orders', jsonb_build_array(jo1 - 'client_id')), 'test:072', 'owner');
+        PERFORM plan_orders_create(jsonb_build_object('request_id', gen_random_uuid()) || (jsonb_build_object('orders', jsonb_build_array(jo1 - 'client_id'))), 'test:072', 'owner');
       ELSIF k = 21 THEN
-        PERFORM plan_orders_create(jsonb_build_object('orders', jsonb_build_array(jo1 || jsonb_build_object('shipments',
-                  jsonb_build_array(jsh1 - 'deliver_to')))), 'test:072', 'owner');
+        PERFORM plan_orders_create(jsonb_build_object('request_id', gen_random_uuid()) || (jsonb_build_object('orders', jsonb_build_array(jo1 || jsonb_build_object('shipments',
+                  jsonb_build_array(jsh1 - 'deliver_to'))))), 'test:072', 'owner');
       ELSIF k = 22 THEN
-        PERFORM plan_orders_create(jsonb_build_object('orders', jsonb_build_array(jo1 || '{"stock_lot_id": 1}')), 'test:072', 'owner');
+        PERFORM plan_orders_create(jsonb_build_object('request_id', gen_random_uuid()) || (jsonb_build_object('orders', jsonb_build_array(jo1 || '{"stock_lot_id": 1}'))), 'test:072', 'owner');
       ELSIF k = 23 THEN
-        PERFORM plan_orders_create('{"orders": []}', 'test:072', 'owner');
+        PERFORM plan_orders_create(jsonb_build_object('request_id', gen_random_uuid()) || ('{"orders": []}'), 'test:072', 'owner');
       ELSIF k = 24 THEN
-        PERFORM plan_orders_create(jsonb_build_object('orders', jsonb_build_array(jo1 || jsonb_build_object('truck_id', trk1))),
+        PERFORM plan_orders_create(jsonb_build_object('request_id', gen_random_uuid()) || (jsonb_build_object('orders', jsonb_build_array(jo1 || jsonb_build_object('truck_id', trk1)))),
                                    'test:072', 'owner');
       ELSIF k = 25 THEN
-        PERFORM plan_orders_create(jsonb_build_object('orders', jsonb_build_array(jo1 || jsonb_build_object('shipments',
-                  jsonb_build_array(jsh1 || jsonb_build_object('dest_location_id', la))))), 'test:072', 'owner');
+        PERFORM plan_orders_create(jsonb_build_object('request_id', gen_random_uuid()) || (jsonb_build_object('orders', jsonb_build_array(jo1 || jsonb_build_object('shipments',
+                  jsonb_build_array(jsh1 || jsonb_build_object('dest_location_id', la)))))), 'test:072', 'owner');
       ELSIF k = 26 THEN
-        PERFORM plan_orders_create(jsonb_build_object('orders', jsonb_build_array(jo1 || jsonb_build_object('shipments',
-                  jsonb_build_array(jsh1 || jsonb_build_object('deliver_from', a05, 'deliver_to', a05))))), 'test:072', 'owner');
+        PERFORM plan_orders_create(jsonb_build_object('request_id', gen_random_uuid()) || (jsonb_build_object('orders', jsonb_build_array(jo1 || jsonb_build_object('shipments',
+                  jsonb_build_array(jsh1 || jsonb_build_object('deliver_from', a05, 'deliver_to', a05)))))), 'test:072', 'owner');
       ELSIF k = 27 THEN
-        PERFORM plan_orders_create(jsonb_build_object('orders', jsonb_build_array(jo1 || jsonb_build_object('shipments',
-                  jsonb_build_array(jsh1 || '{"pallets": 0}')))), 'test:072', 'owner');
+        PERFORM plan_orders_create(jsonb_build_object('request_id', gen_random_uuid()) || (jsonb_build_object('orders', jsonb_build_array(jo1 || jsonb_build_object('shipments',
+                  jsonb_build_array(jsh1 || '{"pallets": 0}'))))), 'test:072', 'owner');
       ELSIF k = 28 THEN
-        PERFORM plan_orders_create(jsonb_build_object('orders', jsonb_build_array(jo1 || jsonb_build_object('shipments',
-                  jsonb_build_array(jsh1 || '{"origin_location_id": -1}')))), 'test:072', 'owner');
+        PERFORM plan_orders_create(jsonb_build_object('request_id', gen_random_uuid()) || (jsonb_build_object('orders', jsonb_build_array(jo1 || jsonb_build_object('shipments',
+                  jsonb_build_array(jsh1 || '{"origin_location_id": -1}'))))), 'test:072', 'owner');
       ELSIF k = 29 THEN
-        PERFORM plan_orders_create(jsonb_build_object('orders', jsonb_build_array(jo1), 'stops', '[]'::jsonb), 'test:072', 'owner');
+        PERFORM plan_orders_create(jsonb_build_object('request_id', gen_random_uuid()) || (jsonb_build_object('orders', jsonb_build_array(jo1), 'stops', '[]'::jsonb)), 'test:072', 'owner');
 ```
 
 Πρόσθεσε πάνω από τη γραμμή `-- @verdict (each task adds its "ELSIF k = <n> THEN verdict := ..." branches above this line)`:
@@ -1974,7 +1978,7 @@ begin
   perform plan_h_ctx(p_actor, p_role);
   perform plan_h_keys(p, array['orders', 'target', 'stops', 'request_id'], 'p');
   -- decision 44: the same request_id again = the first answer, nothing written
-  v_ans := plan_h_replay(p, 'plan_orders_create');
+  v_ans := plan_h_replay(p, 'plan_orders_create', p_actor);
   if v_ans is not null then return v_ans; end if;
   if jsonb_typeof(p->'orders') is distinct from 'array' or jsonb_array_length(p->'orders') = 0 then
     perform plan_h_raise('bad_input', 'orders');
@@ -2133,8 +2137,8 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
                     'test:072', 'owner');
         END IF;
       ELSIF k = 31 THEN
-        r := plan_orders_create(jsonb_build_object('orders', jsonb_build_array(jo1 || jsonb_build_object('shipments',
-               jsonb_build_array(jsh1 || jsonb_build_object('dest_location_id', lc, 'pallets', 5, 'deliver_to', a16))))),
+        r := plan_orders_create(jsonb_build_object('request_id', gen_random_uuid()) || (jsonb_build_object('orders', jsonb_build_array(jo1 || jsonb_build_object('shipments',
+               jsonb_build_array(jsh1 || jsonb_build_object('dest_location_id', lc, 'pallets', 5, 'deliver_to', a16)))))),
                'test:072', 'owner');
         x := (r->'ids'->'piece_ids'->>0)::bigint;
         r := plan_put_pieces(jsonb_build_object('pieces', jsonb_build_array(jsonb_build_object('piece_id', x)),
@@ -2183,8 +2187,8 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
                'stops', jsonb_build_array(jsonb_build_object('ref', 'h', 'stop_id', s2h), jsonb_build_object('ref', 'b', 'stop_id', s2b))),
                'test:072', 'dispatcher');
       ELSIF k = 38 THEN
-        r := plan_orders_create(jsonb_build_object('orders', jsonb_build_array(jo1 || jsonb_build_object('shipments',
-               jsonb_build_array(jsh1 || '{"pallets": 34}')))), 'test:072', 'owner');
+        r := plan_orders_create(jsonb_build_object('request_id', gen_random_uuid()) || (jsonb_build_object('orders', jsonb_build_array(jo1 || jsonb_build_object('shipments',
+               jsonb_build_array(jsh1 || '{"pallets": 34}'))))), 'test:072', 'owner');
         r := plan_put_pieces(jsonb_build_object('pieces', jsonb_build_array(jsonb_build_object('piece_id', (r->'ids'->'piece_ids'->>0)::bigint)),
                'target', jsonb_build_object('rt_id', rt1, 'side', 'KATHODOS'),
                'stops', jsonb_build_array(jsonb_build_object('ref', 'a', 'stop_id', s1a), jsonb_build_object('ref', 'b', 'stop_id', s1b))),
@@ -2225,10 +2229,10 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
                   'target', jsonb_build_object('rt_id', rt1, 'side', 'KATHODOS'),
                   'stops', jsonb_build_array(jsonb_build_object('ref', 'a', 'stop_id', s1a))), 'test:072', 'owner');
       ELSIF k = 45 THEN
-        r := plan_orders_create(jsonb_build_object('orders', jsonb_build_array(jo1 || jsonb_build_object('shipments',
+        r := plan_orders_create(jsonb_build_object('request_id', gen_random_uuid()) || (jsonb_build_object('orders', jsonb_build_array(jo1 || jsonb_build_object('shipments',
                jsonb_build_array(jsh1 || '{"pallets": 3}'))),
                'target', jsonb_build_object('rt_id', rt1, 'side', 'KATHODOS'),
-               'stops', jsonb_build_array(jsonb_build_object('ref', 'a', 'stop_id', s1a), jsonb_build_object('ref', 'b', 'stop_id', s1b))),
+               'stops', jsonb_build_array(jsonb_build_object('ref', 'a', 'stop_id', s1a), jsonb_build_object('ref', 'b', 'stop_id', s1b)))),
                'test:072', 'owner');
 ```
 
@@ -2487,8 +2491,8 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
         PERFORM plan_put_group(jsonb_build_object('group', '{}'::jsonb,
                   'target', jsonb_build_object('rt_id', rt2, 'side', 'KATHODOS')), 'test:072', 'owner');
       ELSIF k = 50 THEN
-        r := plan_orders_create(jsonb_build_object('orders', jsonb_build_array(jo1 || jsonb_build_object('shipments',
-               jsonb_build_array(jsh1 || '{"pallets": 3}', jsh1 || jsonb_build_object('dest_location_id', lc, 'pallets', 4, 'deliver_to', a16))))),
+        r := plan_orders_create(jsonb_build_object('request_id', gen_random_uuid()) || (jsonb_build_object('orders', jsonb_build_array(jo1 || jsonb_build_object('shipments',
+               jsonb_build_array(jsh1 || '{"pallets": 3}', jsh1 || jsonb_build_object('dest_location_id', lc, 'pallets', 4, 'deliver_to', a16)))))),
                'test:072', 'owner');
         x := (r->'ids'->'nat_order_ids'->>0)::bigint;
         r := plan_put_group(jsonb_build_object('group', jsonb_build_object('nat_order_id', x),
@@ -2588,7 +2592,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 
 **Interfaces:**
 - Consumes: Α3 (`plan_h_put` με `p_first`), Α1.
-- Produces: `plan_split_piece(p jsonb, p_actor text, p_role text) RETURNS jsonb` (δημόσια, με προαιρετικό `request_id`: απόφαση 44): `ids = {piece_ids (παιδιά, με τη σειρά των parts), leg_ids, rt_ids}`.
+- Produces: `plan_split_piece(p jsonb, p_actor text, p_role text) RETURNS jsonb` (δημόσια, με υποχρεωτικό `request_id`: απόφαση 44): `ids = {piece_ids (παιδιά, με τη σειρά των parts), leg_ids, rt_ids}`.
 
 - [ ] **Step 1: Οι περιπτώσεις πρώτα (`worker/migrations/drafts/072_plan_functions_test.sql`)**
 
@@ -2610,23 +2614,23 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
         INSERT INTO shipments (order_id, order_stop_id, created_by) VALUES (vso, vs_d, 'test:072') RETURNING id INTO x;
         INSERT INTO shipment_pieces (shipment_id, pallets, created_by) VALUES (x, 26, 'test:072') RETURNING id INTO y;
         IF k IN (51, 54) THEN
-          r := plan_split_piece(jsonb_build_object('piece_id', y, 'parts', '[{"pallets": 12}, {"pallets": 14}]'::jsonb), 'test:072', 'owner');
+          r := plan_split_piece(jsonb_build_object('request_id', gen_random_uuid()) || (jsonb_build_object('piece_id', y, 'parts', '[{"pallets": 12}, {"pallets": 14}]'::jsonb)), 'test:072', 'owner');
           IF k = 54 THEN
-            PERFORM plan_split_piece(jsonb_build_object('piece_id', y, 'parts', '[{"pallets": 6}, {"pallets": 20}]'::jsonb), 'test:072', 'owner');
+            PERFORM plan_split_piece(jsonb_build_object('request_id', gen_random_uuid()) || (jsonb_build_object('piece_id', y, 'parts', '[{"pallets": 6}, {"pallets": 20}]'::jsonb)), 'test:072', 'owner');
           END IF;
         ELSIF k = 52 THEN
-          PERFORM plan_split_piece(jsonb_build_object('piece_id', y, 'parts', '[{"pallets": 12}, {"pallets": 13}]'::jsonb), 'test:072', 'owner');
+          PERFORM plan_split_piece(jsonb_build_object('request_id', gen_random_uuid()) || (jsonb_build_object('piece_id', y, 'parts', '[{"pallets": 12}, {"pallets": 13}]'::jsonb)), 'test:072', 'owner');
         ELSIF k = 55 THEN
-          PERFORM plan_split_piece(jsonb_build_object('piece_id', y, 'parts', '[{"pallets": 26}]'::jsonb), 'test:072', 'owner');
+          PERFORM plan_split_piece(jsonb_build_object('request_id', gen_random_uuid()) || (jsonb_build_object('piece_id', y, 'parts', '[{"pallets": 26}]'::jsonb)), 'test:072', 'owner');
         ELSE
-          r := plan_split_piece(jsonb_build_object('piece_id', y, 'parts', jsonb_build_array(
+          r := plan_split_piece(jsonb_build_object('request_id', gen_random_uuid()) || (jsonb_build_object('piece_id', y, 'parts', jsonb_build_array(
                  jsonb_build_object('pallets', 12, 'target', jsonb_build_object('rt_id', rt2, 'side', 'KATHODOS'),
                    'stops', jsonb_build_array(jsonb_build_object('ref', 'h', 'stop_id', s2h),
                                               jsonb_build_object('ref', 'd', 'location_id', ld, 'planned_from', b13, 'planned_to', b14))),
-                 jsonb_build_object('pallets', 14))), 'test:072', 'dispatcher');
+                 jsonb_build_object('pallets', 14)))), 'test:072', 'dispatcher');
         END IF;
       ELSIF k = 53 THEN
-        PERFORM plan_split_piece(jsonb_build_object('piece_id', p1, 'parts', '[{"pallets": 4}, {"pallets": 6}]'::jsonb), 'test:072', 'owner');
+        PERFORM plan_split_piece(jsonb_build_object('request_id', gen_random_uuid()) || (jsonb_build_object('piece_id', p1, 'parts', '[{"pallets": 4}, {"pallets": 6}]'::jsonb)), 'test:072', 'owner');
 ```
 
 Πρόσθεσε πάνω από τη γραμμή `-- @verdict (each task adds its "ELSIF k = <n> THEN verdict := ..." branches above this line)`:
@@ -2672,7 +2676,7 @@ begin
   perform plan_h_ctx(p_actor, p_role);
   perform plan_h_keys(p, array['piece_id', 'parts', 'request_id'], 'p');
   -- decision 44: before the piece is read, so a repeat is not refused as piece_split by the first call's split
-  v_ans := plan_h_replay(p, 'plan_split_piece');
+  v_ans := plan_h_replay(p, 'plan_split_piece', p_actor);
   if v_ans is not null then return v_ans; end if;
   v_id := (p->>'piece_id')::bigint;
   select * into p0 from shipment_pieces where id = v_id for no key update;
@@ -2801,10 +2805,10 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
                   'stops', jsonb_build_array(jsonb_build_object('ref', 'a', 'stop_id', s1a), jsonb_build_object('ref', 'b', 'stop_id', s1b))),
                   'test:072', 'owner');
         IF k IN (57, 63, 64) THEN
-          r := plan_orders_create(jsonb_build_object('orders', jsonb_build_array(jo1 || jsonb_build_object('shipments',
+          r := plan_orders_create(jsonb_build_object('request_id', gen_random_uuid()) || (jsonb_build_object('orders', jsonb_build_array(jo1 || jsonb_build_object('shipments',
                  jsonb_build_array(jsh1 || '{"pallets": 2}'))),
                  'target', jsonb_build_object('rt_id', rt1, 'side', 'KATHODOS'),
-                 'stops', jsonb_build_array(jsonb_build_object('ref', 'a', 'stop_id', s1a), jsonb_build_object('ref', 'b', 'stop_id', s1b))),
+                 'stops', jsonb_build_array(jsonb_build_object('ref', 'a', 'stop_id', s1a), jsonb_build_object('ref', 'b', 'stop_id', s1b)))),
                  'test:072', 'owner');
           z := (r->'ids'->'piece_ids'->>0)::bigint;
         END IF;
@@ -2960,10 +2964,12 @@ begin
                                  and not (l.id = any (p_legs))) loop
     v := v || jsonb_build_array(jsonb_build_object('kind', 'local_loading', 'local_move_id', r.id, 'rt_id', r.rt_id,
                                                    'driver_id', r.driver_id, 'move_date', r.move_date));
-    -- the local driver's TOPIKO line of that day (060: one per driver and day, local_move_id set) with amounts
+    -- the local driver's TOPIKO line of that day (060: one per driver and day, local_move_id set) with amounts;
+    -- its month as for payroll_amount (decision 10: one date key for every payroll line of the list)
     v := v || coalesce((select jsonb_agg(jsonb_build_object('kind', 'local_payroll', 'dl_entry_id', e.id,
                                                            'local_move_id', r.id, 'driver_id', e.driver_id,
-                                                           'day', e.entry_date, 'amount', e.trip_value,
+                                                           'month', to_char(e.entry_date, 'YYYY-MM'),
+                                                           'amount', e.trip_value,
                                                            'advance', e.advance, 'expenses', e.expenses))
                           from dl_entries e
                          where e.driver_id = r.driver_id and e.entry_date = r.move_date and e.local_move_id is not null
@@ -3417,13 +3423,13 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 ```
 
 
-#### Task Α8: Περιπτώσεις της κριτικής 23/10 (78–82) και του `request_id` (83–87, απόφαση 44)
+#### Task Α8: Περιπτώσεις της κριτικής 23/10 (78–82) και του `request_id` (83–90, απόφαση 44)
 
-**Files:** Modify `worker/migrations/drafts/072_plan_functions_test.sql` (περιπτώσεις 78–87).
+**Files:** Modify `worker/migrations/drafts/072_plan_functions_test.sql` (περιπτώσεις 78–90).
 
 **Interfaces:**
 - Consumes: Α3 (`plan_h_put` με τον ορισμό «πρώτου» της απόφασης 16), Α5 (`plan_split_piece`), Α6 (`plan_h_drop_consequences` με `later_leg` / `local_payroll`).
-- Produces: οι περιπτώσεις που καρφώνουν τρία ευρήματα της κριτικής: «πρώτο κομμάτι» VS μετά από σπάσιμο χωρίς στόχο (78), επόμενο σκέλος σε άλλο κύκλο (79–80), γραμμή ΤΟΠΙΚΟ με ποσό (81–82, απόφαση 33)· και το `request_id` των δημιουργιών (83–87, απόφαση 44: επανάληψη = η πρώτη απάντηση χωρίς εγγραφή, άλλο σώμα ή άλλη πράξη = `request_reused`, όχι uuid = `bad_input`). Ο κώδικας μπήκε ήδη στις Α1/Α2/Α3/Α5/Α6, άρα εδώ δεν υπάρχει κόκκινο πριν από τον κώδικα· στη θέση του, το Step 2 αποδεικνύει με τρεις μεταλλάξεις ότι κάθε περίπτωση **μπορεί να αποτύχει**. Αν η Α7 παραλείφθηκε (απόφαση 21), οι αριθμοί γίνονται 68–77: άλλαξε τα `k = 78…87` κατά −10.
+- Produces: οι περιπτώσεις που καρφώνουν τρία ευρήματα της κριτικής: «πρώτο κομμάτι» VS μετά από σπάσιμο χωρίς στόχο (78), επόμενο σκέλος σε άλλο κύκλο (79–80), γραμμή ΤΟΠΙΚΟ με ποσό (81–82, απόφαση 33)· και το `request_id` των δημιουργιών (83–90, απόφαση 44: επανάληψη = η πρώτη απάντηση χωρίς εγγραφή, άλλο σώμα, άλλη πράξη ή άλλος χρήστης = `request_reused`, όχι uuid = `bad_input`, χωρίς `request_id` = `request_missing`). Ο κώδικας μπήκε ήδη στις Α1/Α2/Α3/Α5/Α6, άρα εδώ δεν υπάρχει κόκκινο πριν από τον κώδικα· στη θέση του, το Step 2 αποδεικνύει με τρεις μεταλλάξεις ότι κάθε περίπτωση **μπορεί να αποτύχει**. Αν η Α7 παραλείφθηκε (απόφαση 21), οι αριθμοί γίνονται 68–80: άλλαξε τα `k = 78…90` κατά −10.
 
 - [ ] **Step 1: Οι περιπτώσεις (`worker/migrations/drafts/072_plan_functions_test.sql`)**
 
@@ -3440,6 +3446,9 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
     , 'ok'               -- 85 plan_split_piece again with its request_id = the first children (no piece_split)
     , 'plan:bad_input'   -- 86 a request_id that is not a uuid
     , 'plan:request_reused' -- 87 the request_id of an order creation sent to plan_split_piece
+    , 'plan:request_reused' -- 88 another person sends the same request_id and body: never their ids
+    , 'plan:request_missing' -- 89 plan_orders_create without request_id: refused, never a silent pass
+    , 'plan:request_missing' -- 90 plan_split_piece without request_id
 ```
 
 Πρόσθεσε πάνω από τη γραμμή `-- @case (each task adds its "ELSIF k = <n> THEN" branches above this line)`:
@@ -3448,7 +3457,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
       ELSIF k = 78 THEN   -- the VS bridge of 26 to D, split 12 + 14 at Veroia (both stock), then the 12 on R2 (D+1)
         INSERT INTO shipments (order_id, order_stop_id, created_by) VALUES (vso, vs_d, 'test:072') RETURNING id INTO x;
         INSERT INTO shipment_pieces (shipment_id, pallets, created_by) VALUES (x, 26, 'test:072') RETURNING id INTO y;
-        r := plan_split_piece(jsonb_build_object('piece_id', y, 'parts', '[{"pallets": 12}, {"pallets": 14}]'::jsonb), 'test:072', 'owner');
+        r := plan_split_piece(jsonb_build_object('request_id', gen_random_uuid()) || (jsonb_build_object('piece_id', y, 'parts', '[{"pallets": 12}, {"pallets": 14}]'::jsonb)), 'test:072', 'owner');
         c1 := (r->'ids'->'piece_ids'->>0)::bigint;
         r := plan_put_pieces(jsonb_build_object('pieces', jsonb_build_array(jsonb_build_object('piece_id', c1)),
                'target', jsonb_build_object('rt_id', rt2, 'side', 'KATHODOS'),
@@ -3456,16 +3465,16 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
                                           jsonb_build_object('ref', 'd', 'location_id', ld, 'planned_from', b13, 'planned_to', b14))),
                'test:072', 'dispatcher');
       ELSIF k IN (79, 80) THEN   -- p1 rides A -> Veroia on R1 and Veroia -> B on R2; both cycles keep another load
-        PERFORM plan_orders_create(jsonb_build_object('orders', jsonb_build_array(jo1 || jsonb_build_object('shipments',
+        PERFORM plan_orders_create(jsonb_build_object('request_id', gen_random_uuid()) || (jsonb_build_object('orders', jsonb_build_array(jo1 || jsonb_build_object('shipments',
                   jsonb_build_array(jsh1 || '{"pallets": 2}'))),
                   'target', jsonb_build_object('rt_id', rt1, 'side', 'KATHODOS'),
-                  'stops', jsonb_build_array(jsonb_build_object('ref', 'a', 'stop_id', s1a), jsonb_build_object('ref', 'b', 'stop_id', s1b))),
+                  'stops', jsonb_build_array(jsonb_build_object('ref', 'a', 'stop_id', s1a), jsonb_build_object('ref', 'b', 'stop_id', s1b)))),
                   'test:072', 'owner');
-        PERFORM plan_orders_create(jsonb_build_object('orders', jsonb_build_array(jo1 || jsonb_build_object('shipments',
+        PERFORM plan_orders_create(jsonb_build_object('request_id', gen_random_uuid()) || (jsonb_build_object('orders', jsonb_build_array(jo1 || jsonb_build_object('shipments',
                   jsonb_build_array(jsh1 || jsonb_build_object('pallets', 2, 'load_from', b06, 'load_to', b08,
                                                                'deliver_from', b12, 'deliver_to', b14)))),
                   'target', jsonb_build_object('rt_id', rt2, 'side', 'KATHODOS'),
-                  'stops', jsonb_build_array(jsonb_build_object('ref', 'a', 'stop_id', s2a), jsonb_build_object('ref', 'b', 'stop_id', s2b))),
+                  'stops', jsonb_build_array(jsonb_build_object('ref', 'a', 'stop_id', s2a), jsonb_build_object('ref', 'b', 'stop_id', s2b)))),
                   'test:072', 'owner');
         INSERT INTO piece_legs (piece_id, leg_no, rt_id, pickup_stop_id, drop_stop_id, created_by)
         VALUES (p1, 1, rt1, s1a, s1h, 'test:072');
@@ -3486,11 +3495,11 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
                   'target', jsonb_build_object('rt_id', rt1, 'side', 'KATHODOS'),
                   'stops', jsonb_build_array(jsonb_build_object('ref', 'a', 'stop_id', s1a), jsonb_build_object('ref', 'b', 'stop_id', s1b))),
                   'test:072', 'owner');
-        PERFORM plan_orders_create(jsonb_build_object('orders', jsonb_build_array(jo1 || jsonb_build_object('shipments',
+        PERFORM plan_orders_create(jsonb_build_object('request_id', gen_random_uuid()) || (jsonb_build_object('orders', jsonb_build_array(jo1 || jsonb_build_object('shipments',
                   jsonb_build_array(jsh1 || jsonb_build_object('origin_location_id', hub, 'pallets', 2, 'load_from', a09,
                                                                'load_to', a10)))),
                   'target', jsonb_build_object('rt_id', rt1, 'side', 'KATHODOS'),
-                  'stops', jsonb_build_array(jsonb_build_object('ref', 'h', 'stop_id', s1h), jsonb_build_object('ref', 'b', 'stop_id', s1b))),
+                  'stops', jsonb_build_array(jsonb_build_object('ref', 'h', 'stop_id', s1h), jsonb_build_object('ref', 'b', 'stop_id', s1b)))),
                   'test:072', 'owner');
         INSERT INTO local_moves (move_kind, rt_stop_id, driver_id, truck_id, move_date, status, sequence)
         VALUES ('nat_loading', s1a, drvl, trk2, d, 'Assigned', 1) RETURNING id INTO q;
@@ -3509,13 +3518,13 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
         END IF;
       ELSIF k IN (83, 84) THEN   -- decision 44; the warehouse writes too (decision 41: the DB does not check rights)
         j := jsonb_build_object('orders', jsonb_build_array(jo1), 'request_id', '6F1C2A3E-0000-4000-8000-000000000083');
-        r := plan_orders_create(j, 'test:072', 'warehouse');
+        r := plan_orders_create(jsonb_build_object('request_id', gen_random_uuid()) || (j), 'test:072', 'warehouse');
         n := (SELECT count(*) FROM national_orders) + (SELECT count(*) FROM shipments) + (SELECT count(*) FROM shipment_pieces);
         m := (SELECT count(*) FROM audit_log);
         IF k = 83 THEN
-          r2 := plan_orders_create(j, 'test:072', 'warehouse');
+          r2 := plan_orders_create(jsonb_build_object('request_id', gen_random_uuid()) || (j), 'test:072', 'warehouse');
         ELSE
-          PERFORM plan_orders_create(j || jsonb_build_object('orders', jsonb_build_array(jo1 || '{"price": 101}')),
+          PERFORM plan_orders_create(jsonb_build_object('request_id', gen_random_uuid()) || (j || jsonb_build_object('orders', jsonb_build_array(jo1 || '{"price": 101}'))),
                                      'test:072', 'warehouse');
         END IF;
       ELSIF k = 85 THEN   -- the VS bridge of 26 to D, split at Veroia twice with the same request_id
@@ -3523,17 +3532,26 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
         INSERT INTO shipment_pieces (shipment_id, pallets, created_by) VALUES (x, 26, 'test:072') RETURNING id INTO y;
         j := jsonb_build_object('piece_id', y, 'parts', '[{"pallets": 12}, {"pallets": 14}]'::jsonb,
                                 'request_id', '6f1c2a3e-0000-4000-8000-000000000085');
-        r := plan_split_piece(j, 'test:072', 'management');
+        r := plan_split_piece(jsonb_build_object('request_id', gen_random_uuid()) || (j), 'test:072', 'management');
         n := (SELECT count(*) FROM shipment_pieces WHERE shipment_id = x);
         m := (SELECT count(*) FROM audit_log);
-        r2 := plan_split_piece(j, 'test:072', 'management');
+        r2 := plan_split_piece(jsonb_build_object('request_id', gen_random_uuid()) || (j), 'test:072', 'management');
       ELSIF k = 86 THEN
-        PERFORM plan_orders_create(jsonb_build_object('orders', jsonb_build_array(jo1), 'request_id', 'abc-123'), 'test:072', 'owner');
+        PERFORM plan_orders_create(jsonb_build_object('request_id', gen_random_uuid()) || (jsonb_build_object('orders', jsonb_build_array(jo1), 'request_id', 'abc-123')), 'test:072', 'owner');
       ELSIF k = 87 THEN
-        PERFORM plan_orders_create(jsonb_build_object('orders', jsonb_build_array(jo1),
-                                   'request_id', '6f1c2a3e-0000-4000-8000-000000000087'), 'test:072', 'owner');
-        PERFORM plan_split_piece(jsonb_build_object('piece_id', p1, 'parts', '[{"pallets": 4}, {"pallets": 6}]'::jsonb,
-                                 'request_id', '6f1c2a3e-0000-4000-8000-000000000087'), 'test:072', 'owner');
+        PERFORM plan_orders_create(jsonb_build_object('request_id', gen_random_uuid()) || (jsonb_build_object('orders', jsonb_build_array(jo1),
+                                   'request_id', '6f1c2a3e-0000-4000-8000-000000000087')), 'test:072', 'owner');
+        PERFORM plan_split_piece(jsonb_build_object('request_id', gen_random_uuid()) || (jsonb_build_object('piece_id', p1, 'parts', '[{"pallets": 4}, {"pallets": 6}]'::jsonb,
+                                 'request_id', '6f1c2a3e-0000-4000-8000-000000000087')), 'test:072', 'owner');
+      ELSIF k = 88 THEN   -- the replay compares the JWT user too (review of PR #84)
+        j := jsonb_build_object('orders', jsonb_build_array(jo1), 'request_id', '6f1c2a3e-0000-4000-8000-000000000088');
+        PERFORM plan_orders_create(jsonb_build_object('request_id', gen_random_uuid()) || (j), 'test:072', 'owner');
+        PERFORM plan_orders_create(jsonb_build_object('request_id', gen_random_uuid()) || (j), 'test:072-other', 'owner');
+      ELSIF k = 89 THEN   -- written public.plan_...: the cases that must arrive WITHOUT a request_id
+        PERFORM public.plan_orders_create(jsonb_build_object('orders', jsonb_build_array(jo1)), 'test:072', 'owner');
+      ELSIF k = 90 THEN
+        PERFORM public.plan_split_piece(jsonb_build_object('piece_id', p1, 'parts', '[{"pallets": 4}, {"pallets": 6}]'::jsonb),
+                                        'test:072', 'owner');
 ```
 
 Πρόσθεσε πάνω από τη γραμμή `-- @verdict (each task adds its "ELSIF k = <n> THEN verdict := ..." branches above this line)`:
@@ -3553,7 +3571,9 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
                         ELSE 'FAIL later_leg: ' || r::text END;
       ELSIF k = 81 THEN
         verdict := CASE WHEN (r->>'needs_confirm')::boolean
-                          AND r->'consequences' @> jsonb_build_array(jsonb_build_object('kind', 'local_payroll', 'dl_entry_id', x, 'amount', 50))
+                          AND r->'consequences' @> jsonb_build_array(jsonb_build_object('kind', 'local_payroll', 'dl_entry_id', x, 'amount', 50,
+                                                                                         'month', to_char(d, 'YYYY-MM')))
+                          AND NOT EXISTS (SELECT 1 FROM jsonb_array_elements(r->'consequences') c WHERE c ? 'day')
                           AND r2->'consequences' @> jsonb_build_array(jsonb_build_object('kind', 'local_payroll', 'dl_entry_id', x))
                           AND r2::text NOT LIKE '%"amount"%'
                           AND r->>'confirm_token' = r2->>'confirm_token'
@@ -3589,13 +3609,15 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 - [ ] **Step 2: Τρέξε· μετά τρεις μεταλλάξεις, μία τη φορά**
 
 Run: `cd tms-auditor && node --test test/plan-072.test.mjs`
-Expected: `✔` και στα τρία υπο-tests, μήνυμα `Result: 87 OK, 0 FAIL`, `ℹ fail 0`.
+Expected: `✔` και στα τρία υπο-tests, μήνυμα `Result: 90 OK, 0 FAIL`, `ℹ fail 0`.
 
-Μετά, για καθεμία από τις τέσσερις αλλαγές στο `072_plan_functions.sql` (προσωρινά, με το χέρι, **χωρίς commit**): τρέξε ξανά το ίδιο και δες το κόκκινο, μετά `git checkout -- worker/migrations/drafts/072_plan_functions.sql`:
+Μετά, για καθεμία από τις έξι αλλαγές στο `072_plan_functions.sql` (προσωρινά, με το χέρι, **χωρίς commit**): τρέξε ξανά το ίδιο και δες το κόκκινο, μετά `git checkout -- worker/migrations/drafts/072_plan_functions.sql`:
 1. στο `plan_h_put`, σβήσε το `or v_vs_first` → `78 FAIL want ok got FAIL first after split …`·
 2. στο `plan_h_drop_consequences`, άλλαξε το `p_chosen_rts is not null and` σε `false and` → `79 FAIL …` και `80 FAIL want plan:need_token got FAIL no error`·
 3. στο ίδιο, άλλαξε το `e.local_move_id is not null` σε `false` → `81 FAIL …`·
-4. στον `plan_h_replay`, άλλαξε το `if a.id is null then return null; end if;` σε `return null;` → `83 FAIL …` (ένα δεύτερο σετ γραμμών), `84 FAIL want plan:request_reused got FAIL no error`, `85 FAIL want ok got plan:piece_split`, `87 FAIL want plan:request_reused got plan:not_at_hub`.
+4. στον `plan_h_replay`, άλλαξε το `if a.id is null then return null; end if;` σε `return null;` → `83 FAIL …` (ένα δεύτερο σετ γραμμών), `84 FAIL want plan:request_reused got FAIL no error`, `85 FAIL want ok got plan:piece_split`, `87 FAIL want plan:request_reused got plan:not_at_hub`, `88 FAIL want plan:request_reused got FAIL no error`·
+5. στον ίδιο, σβήσε το `or a.actor is distinct from p_actor` → `88 FAIL want plan:request_reused got FAIL no error`·
+6. στον ίδιο, άλλαξε το `perform plan_h_raise('request_missing', p_op);` σε `return null;` → `89 FAIL …` και `90 FAIL …` (γράφουν χωρίς κωδικό αιτήματος).
 
 Run: `node --test tests/sql-072-drafts.test.js`
 Expected: `ℹ pass 6`, `ℹ fail 0`.
@@ -3613,7 +3635,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 #### Τέλος ενότητας Α: τι παραλαμβάνει η Β
 
 - Το `072_plan_functions.sql` με τις συναρτήσεις της Α (6 δημόσιες στο `v_pub` του PART 5: `plan_orders_create`, `plan_put_pieces`, `plan_put_group`, `plan_split_piece`, `plan_move_pieces`, `plan_order_update`· οι `plan_h_*` κλειστοί) και τα σημάδια PART 3, PART 4, PART 5 και `@pub`.
-- Το rules test με 87 περιπτώσεις (1–87) και τη γραμμή `  -- [SECTION B CASES]` πριν από το τελικό `RAISE`.
+- Το rules test με 90 περιπτώσεις (1–90) και τη γραμμή `  -- [SECTION B CASES]` πριν από το τελικό `RAISE`.
 - Οι βοηθοί του πίνακα «Εσωτερικοί βοηθοί» (Interfaces) με τις υπογραφές τους· η Β τους καλεί **μόνο** έτσι. Ο κλάδος `new_rt` του `plan_h_target` περιμένει το `plan_rt_create` της Β1.
 
 ---
@@ -3626,7 +3648,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 
 **Τι προσθέτει η Β στη βάση (στο 072, Part 3/4· το Part 5 το έγραψε το Α1):** `plan_h_busy`, `plan_h_v1_warn`, `plan_rt_create` (εσωτερικές, χωρίς GRANT)· δημόσιες `plan_rt_update`, `plan_rt_clear`, `plan_delete`, `plan_vs_set_day`, `plan_vs_set_place`, `plan_local_loading`, `plan_notice_read`, `plan_notices_list`, `plan_board`, `plan_vs_state` (μία γραμμή `v_pub` η καθεμία). Νέοι κωδικοί που σηκώνει η Β: `bad_input, no_vehicle, truck_busy, driver_busy, rt_gone, rt_cancelled, stop_gone, payroll_locked, need_token, stale_confirm, order_gone, order_not_v5, vs_not_bridge, local_exists, notice_gone` (+ ό,τι της 071 φτάνει μέσω `plan_h_finish`/`plan_shipment_problem`).
 
-Πρωτότυπο: ο κώδικας αυτής της ενότητας έτρεξε 22–23/10 σε PGlite (071 + 071b + αντικαταστάτες των `plan_h_*` της Α): **74/77** περιπτώσεις Β πράσινες· οι B16, B17, B77 περίμεναν τα `plan_put_group` / `plan_orders_create` της Α. Η μεταλλαγή «χωρίς ρητή σβήση μισθοδοσίας» έριξε ακριβώς τη B38. Μετά το πρωτότυπο (κριτική 23/10) οι κλήσεις ξαναγράφτηκαν πάνω στις υπογραφές της Α, οι Β3/Β4 χρησιμοποιούν τον ΕΝΑ μηχανισμό δύο βημάτων της Α6, μπήκαν `plan_h_keys` παντού, η Β4 σαρώνει τις στάσεις που άδειασαν, η απόφαση 33 (γραμμή ΤΟΠΙΚΟ με ποσό) και οι περιπτώσεις B78–B87. Ενωμένη εκτέλεση σε αντίγραφο (23/10): 169/169, με μία διόρθωση (B77: το ψευδώνυμο `e` συγκρουόταν με τη μεταβλητή `e` του πλαισίου της Α, 42702). Μετά τη δεύτερη κριτική (23/10 νύχτα: Β2 `stops` που δεν είναι πίνακας και ημέρα VS μετά το shift, Β3 μία ειδοποίηση, Β5 στήλες της διεθνούς και σειρά κλειδωμάτων, Β6 οδηγός του ίδιου κύκλου, Β7 ειδοποιήσεις κατά ρόλο και `read_at`, περιπτώσεις B88–B97): 179 OK, 0 FAIL. Πλάνο v2 (24/10: board ίδιο για όλους τους ρόλους, `month` στη B40, `request_id` στη Β6 και B98–B99), με την πραγματική λήψη: 186 OK, 0 FAIL· στο repo: Task Σ1.
+Πρωτότυπο: ο κώδικας αυτής της ενότητας έτρεξε 22–23/10 σε PGlite (071 + 071b + αντικαταστάτες των `plan_h_*` της Α): **74/77** περιπτώσεις Β πράσινες· οι B16, B17, B77 περίμεναν τα `plan_put_group` / `plan_orders_create` της Α. Η μεταλλαγή «χωρίς ρητή σβήση μισθοδοσίας» έριξε ακριβώς τη B38. Μετά το πρωτότυπο (κριτική 23/10) οι κλήσεις ξαναγράφτηκαν πάνω στις υπογραφές της Α, οι Β3/Β4 χρησιμοποιούν τον ΕΝΑ μηχανισμό δύο βημάτων της Α6, μπήκαν `plan_h_keys` παντού, η Β4 σαρώνει τις στάσεις που άδειασαν, η απόφαση 33 (γραμμή ΤΟΠΙΚΟ με ποσό) και οι περιπτώσεις B78–B87. Ενωμένη εκτέλεση σε αντίγραφο (23/10): 169/169, με μία διόρθωση (B77: το ψευδώνυμο `e` συγκρουόταν με τη μεταβλητή `e` του πλαισίου της Α, 42702). Μετά τη δεύτερη κριτική (23/10 νύχτα: Β2 `stops` που δεν είναι πίνακας και ημέρα VS μετά το shift, Β3 μία ειδοποίηση, Β5 στήλες της διεθνούς και σειρά κλειδωμάτων, Β6 οδηγός του ίδιου κύκλου, Β7 ειδοποιήσεις κατά ρόλο και `read_at`, περιπτώσεις B88–B97): 179 OK, 0 FAIL. Πλάνο v2 (24/10: board ίδιο για όλους τους ρόλους, `month` στη B40, `request_id` στη Β6 και B98–B101), με την πραγματική λήψη: 191 OK, 0 FAIL· στο repo: Task Σ1.
 
 ---
 
@@ -3823,7 +3845,7 @@ test('072 mutation: without the explicit payroll delete, case B38 fails', async 
 - [ ] **Step 2: Τρέξε, να αποτύχει εκεί που πρέπει**
 
 Run: `cd tms-auditor && node --test test/plan-072.test.mjs`
-Expected (πριν από τα Β1–Β9): ✔ «the fixture holds the live texts 072 guards on» (αν ✖: λείπει ή άλλαξε συνάρτηση της λίστας `f` του Α1 Step 1 → λήψη ξανά, ποτέ με το χέρι)· ✔ «072 applies» (το 072 της Α έχει ήδη πάνω από 6 + 16 `plan_%`)· ✖ «072 dry run» `ENOENT … 072_plan_functions_dryrun.sql`· ✖ «072 verify» `ENOENT … _verify.sql`· ✖ «the API roles» `function public.plan_board(unknown, unknown) does not exist`· ✔ «072 rules test» (`Result: 87 OK, 0 FAIL`, οι 82 της Α)· ✖ «072 rollback» `ENOENT`· ✖ «072 mutation» `the mutation markers are in 072`.
+Expected (πριν από τα Β1–Β9): ✔ «the fixture holds the live texts 072 guards on» (αν ✖: λείπει ή άλλαξε συνάρτηση της λίστας `f` του Α1 Step 1 → λήψη ξανά, ποτέ με το χέρι)· ✔ «072 applies» (το 072 της Α έχει ήδη πάνω από 6 + 16 `plan_%`)· ✖ «072 dry run» `ENOENT … 072_plan_functions_dryrun.sql`· ✖ «072 verify» `ENOENT … _verify.sql`· ✖ «the API roles» `function public.plan_board(unknown, unknown) does not exist`· ✔ «072 rules test» (`Result: 90 OK, 0 FAIL`, οι 82 της Α)· ✖ «072 rollback» `ENOENT`· ✖ «072 mutation» `the mutation markers are in 072`.
 
 - [ ] **Step 3: Commit**
 
@@ -3850,8 +3872,8 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 
 Στο `072_plan_functions_test.sql` αντικατέστησε τη γραμμή `  -- [SECTION B CASES]` με:
 ```sql
-  -- ===== SECTION B CASES (B1-B99): cycle, delete, VS, local loading, notices, reads, the week-scenario 19/32/31
-  -- (B77), the reviews' cases (B78-B97), request_id of a local loading (B98-B99, decision 44) =====
+  -- ===== SECTION B CASES (B1-B101): cycle, delete, VS, local loading, notices, reads, the week-scenario 19/32/31
+  -- (B77), the reviews' cases (B78-B97), request_id of a local loading and a cancel without id (B98-B101) =====
   -- Own fixture (rec072TB..., "TEST 072 B ...", TEST-072-B...), undone by the final error of the outer block;
   -- each case undone by its marker. Results go into the outer ok / bad / res. ASCII only.
   -- S (every case): an OWNED v5 cycle made by plan_rt_create (TEST-072-B1 / driver B1, stops A 06-08 and B 12-14
@@ -4098,7 +4120,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 - [ ] **Step 2: Τρέξε, να αποτύχει**
 
 Run: `cd tms-auditor && node --test test/plan-072.test.mjs`
-Expected: ✖ «072 rules test», `Result: 87 OK, 17 FAIL`, με `B1 FAIL want ok got state:42883 (function plan_rt_create(jsonb, unknown, unknown) does not exist)` και το ίδιο για B2–B17 (το σενάριο S καλεί την `plan_rt_create` σε κάθε περίπτωση).
+Expected: ✖ «072 rules test», `Result: 90 OK, 17 FAIL`, με `B1 FAIL want ok got state:42883 (function plan_rt_create(jsonb, unknown, unknown) does not exist)` και το ίδιο για B2–B17 (το σενάριο S καλεί την `plan_rt_create` σε κάθε περίπτωση).
 
 - [ ] **Step 3: Γράψε τις συναρτήσεις**
 
@@ -4243,7 +4265,7 @@ $f$;
 - [ ] **Step 4: Τρέξε, να περάσει**
 
 Run: `cd tms-auditor && node --test test/plan-072.test.mjs`
-Expected: ✔ «072 rules test», `Result: 104 OK, 0 FAIL` (87 Α + B1–B17· π.χ. `B1` = «ok plan_rt_create: stops first, window exact, one empty payroll line, three audit rows»). Αν B16/B17 αποτύχουν με «FAIL put_group new_rt», ο κλάδος `new_rt` του `plan_h_target` (Α1) δεν δίνει στο `plan_h_put` το σχήμα `{rt_id, side, stops}` που περιμένει.
+Expected: ✔ «072 rules test», `Result: 107 OK, 0 FAIL` (90 Α + B1–B17· π.χ. `B1` = «ok plan_rt_create: stops first, window exact, one empty payroll line, three audit rows»). Αν B16/B17 αποτύχουν με «FAIL put_group new_rt», ο κλάδος `new_rt` του `plan_h_target` (Α1) δεν δίνει στο `plan_h_put` το σχήμα `{rt_id, side, stops}` που περιμένει.
 
 - [ ] **Step 5: Commit**
 
@@ -4299,7 +4321,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
                                      AND action = 'update') = 2
                             THEN 'ok +1 day: window, days and payroll day follow' ELSE 'FAIL +1 day' END;
         ELSIF kb = 20 THEN   -- the local loading follows its stop to the new day, with its TOPIKO line
-          b_v2 := plan_local_loading(jsonb_build_object('rt_stop_id', b_sa, 'driver_id', b_d3, 'truck_id', b_t2), 'test:072b', 'dispatcher');
+          b_v2 := plan_local_loading(jsonb_build_object('request_id', gen_random_uuid()) || (jsonb_build_object('rt_stop_id', b_sa, 'driver_id', b_d3, 'truck_id', b_t2)), 'test:072b', 'dispatcher');
           b_x := (b_v2->'ids'->>'local_move_id')::bigint;
           PERFORM plan_rt_update(jsonb_build_object('rt_id', b_rt1, 'shift', jsonb_build_object('side', 'KATHODOS', 'delta', '1 day')),
                   'test:072b', 'dispatcher');
@@ -4637,7 +4659,7 @@ $f$;
 - [ ] **Step 4: Τρέξε, να περάσει**
 
 Run: `cd tms-auditor && node --test test/plan-072.test.mjs`
-Expected: `Result: 119 OK, 1 FAIL`· η **μόνη** αποτυχία είναι `B20 FAIL want ok got state:42883 (function plan_local_loading(jsonb, unknown, unknown) does not exist)`, που πρασινίζει στη Β6. Η B21 αποδεικνύει ότι η ημέρα VS ακολουθεί τον κύκλο (`orders.cross_dock_date`, η στάση Cross-dock από το 069 του fixture, μία ειδοποίηση, `plan.writer = natl`).
+Expected: `Result: 122 OK, 1 FAIL`· η **μόνη** αποτυχία είναι `B20 FAIL want ok got state:42883 (function plan_local_loading(jsonb, unknown, unknown) does not exist)`, που πρασινίζει στη Β6. Η B21 αποδεικνύει ότι η ημέρα VS ακολουθεί τον κύκλο (`orders.cross_dock_date`, η στάση Cross-dock από το 069 του fixture, μία ειδοποίηση, `plan.writer = natl`).
 
 - [ ] **Step 5: Commit**
 
@@ -4756,7 +4778,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 - [ ] **Step 2: Τρέξε, να αποτύχει**
 
 Run: `cd tms-auditor && node --test test/plan-072.test.mjs`
-Expected: `Result: 119 OK, 10 FAIL`: η B20 (Β6) και οι `B34 FAIL want ok got state:42883 (function plan_rt_clear(jsonb, unknown, unknown) does not exist)` ως `B42`.
+Expected: `Result: 122 OK, 10 FAIL`: η B20 (Β6) και οι `B34 FAIL want ok got state:42883 (function plan_rt_clear(jsonb, unknown, unknown) does not exist)` ως `B42`.
 
 - [ ] **Step 3: Γράψε τη συνάρτηση**
 
@@ -4842,7 +4864,7 @@ $f$;
 - [ ] **Step 4: Τρέξε, να περάσει**
 
 Run: `cd tms-auditor && node --test test/plan-072.test.mjs`
-Expected: `Result: 128 OK, 1 FAIL` (μόνο η B20, Β6)· B34–B42 πράσινες· η B38 γράφει «ok with the token: the 230 line deleted by name, 0 needs_review».
+Expected: `Result: 131 OK, 1 FAIL` (μόνο η B20, Β6)· B34–B42 πράσινες· η B38 γράφει «ok with the token: the 230 line deleted by name, 0 needs_review».
 
 - [ ] **Step 5: Commit**
 
@@ -4938,7 +4960,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 - [ ] **Step 2: Τρέξε, να αποτύχει**
 
 Run: `cd tms-auditor && node --test test/plan-072.test.mjs`
-Expected: `Result: 128 OK, 10 FAIL`: η B20 (Β6) και οι `B43 FAIL want ok got state:42883 (function plan_delete(jsonb, unknown, unknown) does not exist)` ως `B51`.
+Expected: `Result: 131 OK, 10 FAIL`: η B20 (Β6) και οι `B43 FAIL want ok got state:42883 (function plan_delete(jsonb, unknown, unknown) does not exist)` ως `B51`.
 
 - [ ] **Step 3: Γράψε τη συνάρτηση**
 
@@ -5048,7 +5070,7 @@ $f$;
 - [ ] **Step 4: Τρέξε, να περάσει**
 
 Run: `cd tms-auditor && node --test test/plan-072.test.mjs`
-Expected: `Result: 137 OK, 1 FAIL` (μόνο η B20)· B43–B51 πράσινες (B49 = `plan:hard_delete`: το δίχτυ της 071 κάτω από κάθε διαδρομή).
+Expected: `Result: 140 OK, 1 FAIL` (μόνο η B20)· B43–B51 πράσινες (B49 = `plan:hard_delete`: το δίχτυ της 071 κάτω από κάθε διαδρομή).
 
 - [ ] **Step 5: Commit**
 
@@ -5169,7 +5191,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 - [ ] **Step 2: Τρέξε, να αποτύχει**
 
 Run: `cd tms-auditor && node --test test/plan-072.test.mjs`
-Expected: `Result: 137 OK, 10 FAIL`: η B20 (Β6) και `B52 FAIL want ok got state:42883 (function plan_vs_set_day(jsonb, unknown, unknown) does not exist)`, `B56 … plan_vs_set_place …` ως `B60`.
+Expected: `Result: 140 OK, 10 FAIL`: η B20 (Β6) και `B52 FAIL want ok got state:42883 (function plan_vs_set_day(jsonb, unknown, unknown) does not exist)`, `B56 … plan_vs_set_place …` ως `B60`.
 
 - [ ] **Step 3: Γράψε τις συναρτήσεις**
 
@@ -5351,7 +5373,7 @@ $f$;
 - [ ] **Step 4: Τρέξε, να περάσει**
 
 Run: `cd tms-auditor && node --test test/plan-072.test.mjs`
-Expected: `Result: 146 OK, 1 FAIL` (μόνο η B20)· B52–B60 πράσινες· η B52 γράφει «ok VS day D -> D+1: one orders row, its audit, one notice, Cross-dock stop moved».
+Expected: `Result: 149 OK, 1 FAIL` (μόνο η B20)· B52–B60 πράσινες· η B52 γράφει «ok VS day D -> D+1: one orders row, its audit, one notice, Cross-dock stop moved».
 
 - [ ] **Step 5: Commit**
 
@@ -5372,7 +5394,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 
 **Interfaces:**
 - Consumes: Α1 (`plan_h_ctx`, `plan_h_raise`, `plan_h_audit`, `plan_h_finish`)· 060/071 `dl_sync_from_local_move` → `dl_local_day_sync` (αμετάβλητα).
-- Produces: `plan_local_loading(p jsonb, p_actor text, p_role text) RETURNS jsonb`· `p` = `{rt_stop_id, driver_id, truck_id, trailer_id?, time_from?, time_to?, notes?, request_id?}` (απόφαση 44· `request_id` μόνο στη δημιουργία) ή `{local_move_id, cancel: true}` (ιδεμπότητο: `already`· προειδοποίηση `local_payroll_review` όταν η γραμμή ΤΟΠΙΚΟ έχει ήδη ποσό, απόφαση 33)· `status = 'Assigned'`, `move_date` = ημέρα Αθήνας του `planned_from` της στάσης.
+- Produces: `plan_local_loading(p jsonb, p_actor text, p_role text) RETURNS jsonb`· `p` = `{rt_stop_id, driver_id, truck_id, trailer_id?, time_from?, time_to?, notes?, request_id}` (απόφαση 44· `request_id` υποχρεωτικό στη δημιουργία, απαγορευμένο στην ακύρωση· `cancel` χωρίς `local_move_id` = `local_cancel_no_id`) ή `{local_move_id, cancel: true}` (ιδεμπότητο: `already`· προειδοποίηση `local_payroll_review` όταν η γραμμή ΤΟΠΙΚΟ έχει ήδη ποσό, απόφαση 33)· `status = 'Assigned'`, `move_date` = ημέρα Αθήνας του `planned_from` της στάσης.
 
 - [ ] **Step 1: Γράψε πρώτα τις περιπτώσεις B61–B68**
 
@@ -5380,11 +5402,11 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 ```sql
         -- ---- Task B6: plan_local_loading ----
         ELSIF kb IN (61, 62, 63, 67) THEN   -- loading by a local driver
-          b_v2 := plan_local_loading(jsonb_build_object('rt_stop_id', b_sa, 'driver_id', b_d3, 'truck_id', b_t2,
-                    'time_from', '06:30', 'time_to', '07:30'), 'test:072b', 'dispatcher');
+          b_v2 := plan_local_loading(jsonb_build_object('request_id', gen_random_uuid()) || (jsonb_build_object('rt_stop_id', b_sa, 'driver_id', b_d3, 'truck_id', b_t2,
+                    'time_from', '06:30', 'time_to', '07:30')), 'test:072b', 'dispatcher');
           b_x := (b_v2->'ids'->>'local_move_id')::bigint;
           IF kb = 62 THEN
-            PERFORM plan_local_loading(jsonb_build_object('rt_stop_id', b_sa, 'driver_id', b_d2, 'truck_id', b_t2), 'test:072b', 'dispatcher');
+            PERFORM plan_local_loading(jsonb_build_object('request_id', gen_random_uuid()) || (jsonb_build_object('rt_stop_id', b_sa, 'driver_id', b_d2, 'truck_id', b_t2)), 'test:072b', 'dispatcher');
           ELSIF kb IN (63, 67) THEN
             b_v3 := plan_local_loading(jsonb_build_object('local_move_id', b_x, 'cancel', true), 'test:072b', 'dispatcher');
             IF kb = 67 THEN
@@ -5407,13 +5429,13 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
               THEN 'ok a second cancel changes nothing'
             ELSE 'FAIL local loading' END;
         ELSIF kb = 64 THEN   -- a stop where nothing loads
-          PERFORM plan_local_loading(jsonb_build_object('rt_stop_id', b_sb, 'driver_id', b_d3, 'truck_id', b_t2), 'test:072b', 'dispatcher');
+          PERFORM plan_local_loading(jsonb_build_object('request_id', gen_random_uuid()) || (jsonb_build_object('rt_stop_id', b_sb, 'driver_id', b_d3, 'truck_id', b_t2)), 'test:072b', 'dispatcher');
         ELSIF kb = 65 THEN
-          PERFORM plan_local_loading(jsonb_build_object('rt_stop_id', -1, 'driver_id', b_d3, 'truck_id', b_t2), 'test:072b', 'dispatcher');
+          PERFORM plan_local_loading(jsonb_build_object('request_id', gen_random_uuid()) || (jsonb_build_object('rt_stop_id', -1, 'driver_id', b_d3, 'truck_id', b_t2)), 'test:072b', 'dispatcher');
         ELSIF kb = 66 THEN
-          PERFORM plan_local_loading(jsonb_build_object('rt_stop_id', b_sa, 'truck_id', b_t2), 'test:072b', 'dispatcher');
+          PERFORM plan_local_loading(jsonb_build_object('request_id', gen_random_uuid()) || (jsonb_build_object('rt_stop_id', b_sa, 'truck_id', b_t2)), 'test:072b', 'dispatcher');
         ELSIF kb = 68 THEN
-          PERFORM plan_local_loading(jsonb_build_object('rt_stop_id', b_sa, 'driver_id', b_d3, 'truck_id', b_t2), '', 'dispatcher');
+          PERFORM plan_local_loading(jsonb_build_object('request_id', gen_random_uuid()) || (jsonb_build_object('rt_stop_id', b_sa, 'driver_id', b_d3, 'truck_id', b_t2)), '', 'dispatcher');
 ```
 Πριν από `      ;  -- end of b_want`:
 ```sql
@@ -5424,7 +5446,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 - [ ] **Step 2: Τρέξε, να αποτύχει**
 
 Run: `cd tms-auditor && node --test test/plan-072.test.mjs`
-Expected: `Result: 146 OK, 9 FAIL`: `B61 FAIL want ok got state:42883 (function plan_local_loading(jsonb, unknown, unknown) does not exist)` ως `B68`, και η B20 με τον ίδιο λόγο.
+Expected: `Result: 149 OK, 9 FAIL`: `B61 FAIL want ok got state:42883 (function plan_local_loading(jsonb, unknown, unknown) does not exist)` ως `B68`, και η B20 με τον ίδιο λόγο.
 
 - [ ] **Step 3: Γράψε τη συνάρτηση**
 
@@ -5482,8 +5504,11 @@ begin
                               'ids', jsonb_build_object('local_move_id', v_lm), 'warnings', v_warn,
                               'notice_ids', '[]'::jsonb);
   end if;
+  -- {"cancel": true} without local_move_id is a cancel that does not say what: refused, it must never create a
+  -- loading (principle 1; review of PR #84)
+  if v_cancel then perform plan_h_raise('local_cancel_no_id', 'local_move_id'); end if;
   -- decision 44: the same request_id again = the first answer, before local_exists would refuse the repeat
-  v_ans := plan_h_replay(p, 'plan_local_loading');
+  v_ans := plan_h_replay(p, 'plan_local_loading', p_actor);
   if v_ans is not null then return v_ans; end if;
   if v_stop is null or v_driver is null or v_truck is null then
     perform plan_h_raise('bad_input', 'rt_stop_id, driver_id and truck_id');
@@ -5534,7 +5559,7 @@ $f$;
 - [ ] **Step 4: Τρέξε, να περάσει**
 
 Run: `cd tms-auditor && node --test test/plan-072.test.mjs`
-Expected: `Result: 155 OK, 0 FAIL` (και η B20: «ok local loading and its TOPIKO line moved to D+1»)· B61–B68 πράσινες.
+Expected: `Result: 158 OK, 0 FAIL` (και η B20: «ok local loading and its TOPIKO line moved to D+1»)· B61–B68 πράσινες.
 
 - [ ] **Step 5: Commit**
 
@@ -5657,7 +5682,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 - [ ] **Step 2: Τρέξε, να αποτύχει**
 
 Run: `cd tms-auditor && node --test test/plan-072.test.mjs`
-Expected: `Result: 155 OK, 8 FAIL`: `B69 FAIL … function plan_notices_list(unknown, unknown) does not exist` και `state:42883` για B70–B76 (`plan_notice_read`, `plan_board`, `plan_vs_state`).
+Expected: `Result: 158 OK, 8 FAIL`: `B69 FAIL … function plan_notices_list(unknown, unknown) does not exist` και `state:42883` για B70–B76 (`plan_notice_read`, `plan_board`, `plan_vs_state`).
 
 - [ ] **Step 3: Γράψε τις συναρτήσεις**
 
@@ -5858,7 +5883,7 @@ $f$;
 - [ ] **Step 4: Τρέξε, να περάσει**
 
 Run: `cd tms-auditor && node --test test/plan-072.test.mjs`
-Expected: `Result: 163 OK, 0 FAIL`· B69–B76 πράσινες (B72 = «ok board: cycles with stops and legs; one board for every role: price, partner rate and notices (decisions 40, 41)»)· ✔ πλέον και «the API roles» (ο `service_role` διαβάζει το board και δεν φτάνει `plan_rt_create` / `plan_h_*`: το PART 5 του Α1 κάνει ήδη REVOKE/GRANT). Μένουν κόκκινα μόνο dry run, verify, rollback, μεταλλαγή (Β9).
+Expected: `Result: 166 OK, 0 FAIL`· B69–B76 πράσινες (B72 = «ok board: cycles with stops and legs; one board for every role: price, partner rate and notices (decisions 40, 41)»)· ✔ πλέον και «the API roles» (ο `service_role` διαβάζει το board και δεν φτάνει `plan_rt_create` / `plan_h_*`: το PART 5 του Α1 κάνει ήδη REVOKE/GRANT). Μένουν κόκκινα μόνο dry run, verify, rollback, μεταλλαγή (Β9).
 
 - [ ] **Step 5: Commit**
 
@@ -5881,7 +5906,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 
 **Interfaces:**
 - Consumes: Α1–Α7, Β1–Β8.
-- Produces: το 072 έτοιμο για τον owner (το PART 5 του Α1: REVOKE ALL σε κάθε `plan_%` εκτός των έξι της 071, `GRANT EXECUTE … TO service_role` **μόνο** στις 16 του `v_pub`, αποδείξεις με τα 22 md5, triggers = B-54, 0 γραμμές v5, `pg_notify`, γραμμή αποτελέσματος με στήλες). Εδώ: dry run παραγόμενο, verify (μία γραμμή), rollback (αρνείται με γραμμή v5, σβήνει από τον κατάλογο κάθε `plan_%` εκτός των έξι), η εβδομάδα-σενάριο (B77) και οι περιπτώσεις των δύο κριτικών (B78–B87, B88–B97) και του `request_id` της τοπικής φόρτωσης (B98–B99, απόφαση 44). Rules test 186, 0 FAIL, και μεταλλαγή που ρίχνει τη B38.
+- Produces: το 072 έτοιμο για τον owner (το PART 5 του Α1: REVOKE ALL σε κάθε `plan_%` εκτός των έξι της 071, `GRANT EXECUTE … TO service_role` **μόνο** στις 16 του `v_pub`, αποδείξεις με τα 22 md5, triggers = B-54, 0 γραμμές v5, `pg_notify`, γραμμή αποτελέσματος με στήλες). Εδώ: dry run παραγόμενο, verify (μία γραμμή), rollback (αρνείται με γραμμή v5, σβήνει από τον κατάλογο κάθε `plan_%` εκτός των έξι), η εβδομάδα-σενάριο (B77) και οι περιπτώσεις των δύο κριτικών (B78–B87, B88–B97) και του `request_id` της τοπικής φόρτωσης και της ακύρωσης χωρίς φόρτωση (B98–B101, απόφαση 44). Rules test 191, 0 FAIL, και μεταλλαγή που ρίχνει τη B38.
 
 - [ ] **Step 1: Γράψε πρώτα το πλήρες build test (αποτυγχάνει)**
 
@@ -6155,7 +6180,7 @@ Expected: ✖ κάθε test που διαβάζει `_dryrun` / `_verify` / `_ro
                         'planned_from', ((b_w + 2) + time '09:00') AT TIME ZONE 'Europe/Athens', 'planned_to', ((b_w + 2) + time '10:00') AT TIME ZONE 'Europe/Athens'))),
                   'test:072b', 'dispatcher');
           b_e1 := (b_v2->'ids'->>'rt_id')::bigint;
-          PERFORM plan_orders_create(jsonb_build_object(
+          PERFORM plan_orders_create(jsonb_build_object('request_id', gen_random_uuid()) || (jsonb_build_object(
                     'orders', jsonb_build_array(jsonb_build_object('client_id', b_cl, 'price', 1300, 'reference', 'WN072-TEST',
                       'goods', 'TEST', 'temperature_c', 2, 'pallet_exchange', false, 'notes', null,
                       'shipments', jsonb_build_array(jsonb_build_object('origin_location_id', b_hub, 'dest_location_id', b_lb,
@@ -6166,10 +6191,10 @@ Expected: ✖ κάθε test που διαβάζει `_dryrun` / `_verify` / `_ro
                       jsonb_build_object('ref', 'h', 'stop_id', (SELECT s.id FROM rt_stops s WHERE s.rt_id = b_e1
                                                                    AND s.location_id = b_hub AND s.deleted_at IS NULL)),
                       jsonb_build_object('ref', 'b', 'location_id', b_lb, 'side', 'KATHODOS',
-                        'planned_from', ((b_w + 2) + time '11:00') AT TIME ZONE 'Europe/Athens', 'planned_to', ((b_w + 2) + time '12:00') AT TIME ZONE 'Europe/Athens'))),
+                        'planned_from', ((b_w + 2) + time '11:00') AT TIME ZONE 'Europe/Athens', 'planned_to', ((b_w + 2) + time '12:00') AT TIME ZONE 'Europe/Athens')))),
                   'test:072b', 'dispatcher');
           -- ERT-2, Tue 6/10: a groupage of two clients' orders from Veroia (20 + 12) in ONE call, on a new cycle
-          b_v2 := plan_orders_create(jsonb_build_object(
+          b_v2 := plan_orders_create(jsonb_build_object('request_id', gen_random_uuid()) || (jsonb_build_object(
                     'orders', jsonb_build_array(
                       jsonb_build_object('client_id', b_cl, 'price', 820, 'reference', 'WN072-TEST', 'goods', 'TEST',
                         'temperature_c', 2, 'pallet_exchange', false, 'notes', null,
@@ -6189,11 +6214,11 @@ Expected: ✖ κάθε test που διαβάζει `_dryrun` / `_verify` / `_ro
                       jsonb_build_object('ref', 'c', 'location_id', b_lc, 'side', 'KATHODOS',
                         'planned_from', ((b_w + 3) + time '10:00') AT TIME ZONE 'Europe/Athens', 'planned_to', ((b_w + 3) + time '12:00') AT TIME ZONE 'Europe/Athens'),
                       jsonb_build_object('ref', 'b', 'location_id', b_lb, 'side', 'KATHODOS',
-                        'planned_from', ((b_w + 3) + time '14:00') AT TIME ZONE 'Europe/Athens', 'planned_to', ((b_w + 3) + time '15:00') AT TIME ZONE 'Europe/Athens'))),
+                        'planned_from', ((b_w + 3) + time '14:00') AT TIME ZONE 'Europe/Athens', 'planned_to', ((b_w + 3) + time '15:00') AT TIME ZONE 'Europe/Athens')))),
                   'test:072b', 'dispatcher');
           b_e2 := (b_v2->'ids'->>'rt_id')::bigint;
           -- ERT-3, Thu 8/10: a partner brings 18 + 13 up to Veroia (ANODOS), rate 480
-          b_v2 := plan_orders_create(jsonb_build_object(
+          b_v2 := plan_orders_create(jsonb_build_object('request_id', gen_random_uuid()) || (jsonb_build_object(
                     'orders', jsonb_build_array(
                       jsonb_build_object('client_id', b_cl, 'price', 300, 'reference', 'WN072-TEST', 'goods', 'TEST',
                         'temperature_c', 2, 'pallet_exchange', false, 'notes', null,
@@ -6213,7 +6238,7 @@ Expected: ✖ κάθε test που διαβάζει `_dryrun` / `_verify` / `_ro
                       jsonb_build_object('ref', 'c', 'location_id', b_lc, 'side', 'ANODOS',
                         'planned_from', ((b_w + 5) + time '10:00') AT TIME ZONE 'Europe/Athens', 'planned_to', ((b_w + 5) + time '11:00') AT TIME ZONE 'Europe/Athens'),
                       jsonb_build_object('ref', 'h', 'location_id', b_hub, 'side', 'ANODOS',
-                        'planned_from', ((b_w + 5) + time '13:00') AT TIME ZONE 'Europe/Athens', 'planned_to', ((b_w + 5) + time '14:00') AT TIME ZONE 'Europe/Athens'))),
+                        'planned_from', ((b_w + 5) + time '13:00') AT TIME ZONE 'Europe/Athens', 'planned_to', ((b_w + 5) + time '14:00') AT TIME ZONE 'Europe/Athens')))),
                   'test:072b', 'dispatcher');
           b_e3 := (b_v2->'ids'->>'rt_id')::bigint;
           b_t0 := clock_timestamp();
@@ -6248,7 +6273,7 @@ Expected: ✖ κάθε test που διαβάζει `_dryrun` / `_verify` / `_ro
         ELSIF kb = 82 THEN
           PERFORM plan_vs_set_place(jsonb_build_object('order_stop_id', b_u1, 'location_id', b_ln, 'loc', 1), 'test:072b', 'dispatcher');
         ELSIF kb = 83 THEN
-          PERFORM plan_local_loading(jsonb_build_object('local_move_id', 1, 'cancle', true), 'test:072b', 'dispatcher');
+          PERFORM plan_local_loading(jsonb_build_object('request_id', gen_random_uuid()) || (jsonb_build_object('local_move_id', 1, 'cancle', true)), 'test:072b', 'dispatcher');
         ELSIF kb = 84 THEN
           PERFORM plan_notice_read(jsonb_build_object('id', 1), 'test:072b', 'dispatcher');
         ELSIF kb = 85 THEN   -- delete one of two orders: the local loading of ITS stop is listed and goes, the cycle stays
@@ -6279,7 +6304,7 @@ Expected: ✖ κάθε test που διαβάζει `_dryrun` / `_verify` / `_ro
                             THEN 'ok the loading of the deleted order''s stop listed and gone, its stop gone, the cycle stays'
                             ELSE 'FAIL delete with a local loading: ' || b_v2::text END;
         ELSIF kb IN (86, 87) THEN   -- decision 33: a TOPIKO line with an amount goes to review, and the answer says so
-          b_v2 := plan_local_loading(jsonb_build_object('rt_stop_id', b_sa, 'driver_id', b_d3, 'truck_id', b_t2), 'test:072b', 'dispatcher');
+          b_v2 := plan_local_loading(jsonb_build_object('request_id', gen_random_uuid()) || (jsonb_build_object('rt_stop_id', b_sa, 'driver_id', b_d3, 'truck_id', b_t2)), 'test:072b', 'dispatcher');
           b_x := (b_v2->'ids'->>'local_move_id')::bigint;
           UPDATE dl_entries SET trip_value = 50 WHERE driver_id = b_d3 AND entry_date = b_d AND local_move_id IS NOT NULL
              AND deleted_at IS NULL RETURNING id INTO b_y;
@@ -6302,7 +6327,7 @@ Expected: ✖ κάθε test που διαβάζει `_dryrun` / `_verify` / `_ro
 ```
 
 Run: `cd tms-auditor && node --test test/plan-072.test.mjs`
-Expected: `Result: 174 OK, 0 FAIL` (ως εδώ)· η B77 γράφει «ok week 3-9/10: ERT-1/2/3 = 19/32/31 pallets, two payroll lines, partner 480, board in <N> ms»· οι B78–B84 = `plan:bad_input` (άγνωστο κλειδί σε κάθε συνάρτηση της Β)· B85 «ok the loading of the deleted order's stop listed and gone…»· B86/B87 «ok the TOPIKO line with 50 waits for accounting…». Η B77 είναι σενάριο πάνω σε έτοιμες συναρτήσεις: αν αποτύχει, το μήνυμα δείχνει ποια κλήση δεν δίνει 19/32/31. Για τις B78–B87 ο κώδικας μπήκε ήδη στις Β2–Β6· μεταλλαγή-έλεγχος (προσωρινά, χωρίς commit): σβήσε το `perform plan_h_stops_sweep(v_stops, …)` της `plan_delete` → `B85 FAIL`· σβήσε το `perform plan_h_keys(p, …)` της `plan_rt_clear` → `B79 FAIL want plan:bad_input got …`. Μετά `git checkout -- worker/migrations/drafts/072_plan_functions.sql`.
+Expected: `Result: 177 OK, 0 FAIL` (ως εδώ)· η B77 γράφει «ok week 3-9/10: ERT-1/2/3 = 19/32/31 pallets, two payroll lines, partner 480, board in <N> ms»· οι B78–B84 = `plan:bad_input` (άγνωστο κλειδί σε κάθε συνάρτηση της Β)· B85 «ok the loading of the deleted order's stop listed and gone…»· B86/B87 «ok the TOPIKO line with 50 waits for accounting…». Η B77 είναι σενάριο πάνω σε έτοιμες συναρτήσεις: αν αποτύχει, το μήνυμα δείχνει ποια κλήση δεν δίνει 19/32/31. Για τις B78–B87 ο κώδικας μπήκε ήδη στις Β2–Β6· μεταλλαγή-έλεγχος (προσωρινά, χωρίς commit): σβήσε το `perform plan_h_stops_sweep(v_stops, …)` της `plan_delete` → `B85 FAIL`· σβήσε το `perform plan_h_keys(p, …)` της `plan_rt_clear` → `B79 FAIL want plan:bad_input got …`. Μετά `git checkout -- worker/migrations/drafts/072_plan_functions.sql`.
 
 - [ ] **Step 2β: Οι περιπτώσεις της δεύτερης κριτικής (B88–B97)**
 
@@ -6346,16 +6371,16 @@ Expected: `Result: 174 OK, 0 FAIL` (ως εδώ)· η B77 γράφει «ok week
           PERFORM plan_rt_update(jsonb_build_object('rt_id', b_rt1, 'stops', jsonb_build_object('stop_id', b_sb,
                     'planned_from', h03, 'planned_to', h04)), 'test:072b', 'dispatcher');
         ELSIF kb = 91 THEN   -- decision 38: the cycle's own driver as its local driver (two payroll lines): refused
-          PERFORM plan_local_loading(jsonb_build_object('rt_stop_id', b_sa, 'driver_id', b_d1, 'truck_id', b_t2), 'test:072b', 'dispatcher');
+          PERFORM plan_local_loading(jsonb_build_object('request_id', gen_random_uuid()) || (jsonb_build_object('rt_stop_id', b_sa, 'driver_id', b_d1, 'truck_id', b_t2)), 'test:072b', 'dispatcher');
         ELSIF kb = 92 THEN   -- decision 20: 2.55 pallets would round to 2.6 in the shipment and stay 2.55 in the order
-          PERFORM plan_orders_create(jsonb_build_object('orders', jsonb_build_array(jsonb_build_object('client_id', b_cl, 'price', 100,
+          PERFORM plan_orders_create(jsonb_build_object('request_id', gen_random_uuid()) || (jsonb_build_object('orders', jsonb_build_array(jsonb_build_object('client_id', b_cl, 'price', 100,
                     'shipments', jsonb_build_array(jsonb_build_object('origin_location_id', b_la, 'dest_location_id', b_lb,
-                      'pallets', 2.55, 'load_from', h06, 'load_to', h08, 'deliver_from', h12, 'deliver_to', h14))))),
+                      'pallets', 2.55, 'load_from', h06, 'load_to', h08, 'deliver_from', h12, 'deliver_to', h14)))))),
                   'test:072b', 'dispatcher');
         ELSIF kb = 93 THEN   -- parts with two decimals (4.45 + 5.55 = 10) would be written 4.5 + 5.6 = 10.1
           INSERT INTO shipments (order_id, order_stop_id, created_by) VALUES (b_vo, b_u3, 'test:072b') RETURNING id INTO b_bs3;
           INSERT INTO shipment_pieces (shipment_id, pallets, created_by) VALUES (b_bs3, 10, 'test:072b') RETURNING id INTO b_q3;
-          PERFORM plan_split_piece(jsonb_build_object('piece_id', b_q3, 'parts', '[{"pallets": 4.45}, {"pallets": 5.55}]'::jsonb),
+          PERFORM plan_split_piece(jsonb_build_object('request_id', gen_random_uuid()) || (jsonb_build_object('piece_id', b_q3, 'parts', '[{"pallets": 4.45}, {"pallets": 5.55}]'::jsonb)),
                   'test:072b', 'dispatcher');
         ELSIF kb = 94 THEN   -- take_pallets with two decimals: refused before anything else of the split + put
           INSERT INTO national_orders (legacy_id, client_id, reference, price) VALUES ('rec072TBN2', b_cl, 'WN072-TEST', 60)
@@ -6430,11 +6455,11 @@ Expected: `Result: 174 OK, 0 FAIL` (ως εδώ)· η B77 γράφει «ok week
 ```
 
 Run: `cd tms-auditor && node --test test/plan-072.test.mjs`
-Expected: `Result: 184 OK, 0 FAIL`· B88 `plan:piece_split`, B89 `plan:bad_input` (`from:no live leg:<id>`), B90 `plan:bad_input` (`stops`), B91 `plan:driver_busy` με τον κωδικό του S, B92–B94 `plan:bad_input` (`…:one decimal`), B95 «ok the shifted cycle became the first…», B96 «ok cleared twice: one notice…», B97 «ok created 8 days ago, read today…».
+Expected: `Result: 187 OK, 0 FAIL`· B88 `plan:piece_split`, B89 `plan:bad_input` (`from:no live leg:<id>`), B90 `plan:bad_input` (`stops`), B91 `plan:driver_busy` με τον κωδικό του S, B92–B94 `plan:bad_input` (`…:one decimal`), B95 «ok the shifted cycle became the first…», B96 «ok cleared twice: one notice…», B97 «ok created 8 days ago, read today…».
 
-- [ ] **Step 2γ: Το `request_id` της τοπικής φόρτωσης (B98–B99, απόφαση 44)**
+- [ ] **Step 2γ: Το `request_id` της τοπικής φόρτωσης και η ακύρωση χωρίς φόρτωση (B98–B101, απόφαση 44, κριτική PR #84)**
 
-Ο κώδικας μπήκε ήδη στις Α1 (`plan_h_replay`, `plan_h_remember`) και Β6. Μεταλλαγή-έλεγχος (προσωρινά, χωρίς commit): στο `plan_local_loading` σβήσε τις δύο γραμμές `v_ans := plan_h_replay(p, 'plan_local_loading');` / `if v_ans is not null then return v_ans; end if;` → `B98 FAIL want ok got plan:local_exists` και `B99 FAIL want plan:request_reused got plan:local_exists`.
+Ο κώδικας μπήκε ήδη στις Α1 (`plan_h_replay`, `plan_h_remember`) και Β6. Μεταλλαγή-έλεγχος (προσωρινά, χωρίς commit): στο `plan_local_loading` σβήσε τις δύο γραμμές `v_ans := plan_h_replay(p, 'plan_local_loading', p_actor);` / `if v_ans is not null then return v_ans; end if;` → `B98 FAIL want ok got plan:local_exists`, `B99 FAIL want plan:request_reused got plan:local_exists` και `B100 FAIL want plan:request_missing got FAIL no error` (ο έλεγχος «χωρίς κωδικό» ζει στον `plan_h_replay`). Και: σβήσε τη γραμμή `if v_cancel then perform plan_h_raise('local_cancel_no_id', 'local_move_id'); end if;` → `B101 FAIL want plan:local_cancel_no_id got FAIL no error` (η «ακύρωση» δημιουργεί φόρτωση).
 
 Στο `072_plan_functions_test.sql`, πριν από `        -- [B-CASES-NEXT]`:
 ```sql
@@ -6442,10 +6467,10 @@ Expected: `Result: 184 OK, 0 FAIL`· B88 `plan:piece_split`, B89 `plan:bad_input
         ELSIF kb IN (98, 99) THEN   -- the accountant writes too (decision 41: the base does not check rights)
           b_v := jsonb_build_object('rt_stop_id', b_sa, 'driver_id', b_d3, 'truck_id', b_t2, 'time_from', '06:30',
                                     'request_id', '6f1c2a3e-0000-4000-8000-0000000000b8');
-          b_v2 := plan_local_loading(b_v, 'test:072b', 'accountant');
+          b_v2 := plan_local_loading(jsonb_build_object('request_id', gen_random_uuid()) || (b_v), 'test:072b', 'accountant');
           b_n := (SELECT count(*) FROM local_moves) + (SELECT count(*) FROM dl_entries) + (SELECT count(*) FROM audit_log);
           IF kb = 98 THEN
-            b_v3 := plan_local_loading(b_v, 'test:072b', 'accountant');
+            b_v3 := plan_local_loading(jsonb_build_object('request_id', gen_random_uuid()) || (b_v), 'test:072b', 'accountant');
             b_verdict := CASE WHEN b_v3->'ids' = b_v2->'ids' AND (b_v3->>'replayed')::boolean
                                 AND b_n = (SELECT count(*) FROM local_moves) + (SELECT count(*) FROM dl_entries)
                                           + (SELECT count(*) FROM audit_log)
@@ -6454,16 +6479,23 @@ Expected: `Result: 184 OK, 0 FAIL`· B88 `plan:piece_split`, B89 `plan:bad_input
                               THEN 'ok the same loading again: the first ids, nothing written, no local_exists'
                               ELSE 'FAIL local replay: ' || coalesce(b_v3::text, 'null') END;
           ELSE
-            PERFORM plan_local_loading(b_v || '{"time_from": "07:00"}', 'test:072b', 'accountant');
+            PERFORM plan_local_loading(jsonb_build_object('request_id', gen_random_uuid()) || (b_v || '{"time_from": "07:00"}'), 'test:072b', 'accountant');
           END IF;
+        ELSIF kb = 100 THEN   -- a creation without request_id (written public.plan_...): refused, nothing written
+          PERFORM public.plan_local_loading(jsonb_build_object('rt_stop_id', b_sa, 'driver_id', b_d3, 'truck_id', b_t2),
+                                            'test:072b', 'dispatcher');
+        ELSIF kb = 101 THEN   -- {"cancel": true} without local_move_id: refused, never a loading
+          -- with a valid request_id, so that only the cancel rule stands between this call and a new loading
+          PERFORM plan_local_loading(jsonb_build_object('rt_stop_id', b_sa, 'driver_id', b_d3, 'truck_id', b_t2, 'cancel', true,
+                                     'request_id', '6f1c2a3e-0000-4000-8000-0000000000b1'), 'test:072b', 'dispatcher');
 ```
 Πριν από `      ;  -- end of b_want`:
 ```sql
-      || ARRAY['ok', 'plan:request_reused']   -- B98-B99 (Task B9, decision 44)
+      || ARRAY['ok', 'plan:request_reused', 'plan:request_missing', 'plan:local_cancel_no_id']   -- B98-B101 (Task B9, decision 44, review of PR #84)
 ```
 
 Run: `cd tms-auditor && node --test test/plan-072.test.mjs`
-Expected: `Result: 186 OK, 0 FAIL`· B98 «ok the same loading again: the first ids, nothing written, no local_exists», B99 `plan:request_reused`.
+Expected: `Result: 191 OK, 0 FAIL`· B98 «ok the same loading again: the first ids, nothing written, no local_exists», B99 `plan:request_reused`, B100 `plan:request_missing`, B101 `plan:local_cancel_no_id`.
 
 - [ ] **Step 3: Το PART 5 του 072 (έλεγχος· καμία αλλαγή)**
 
@@ -6723,7 +6755,7 @@ Run: `node --test tests/sql-072-drafts.test.js`
 Expected: `ℹ pass 12`, `ℹ fail 0`.
 
 Run: `cd tms-auditor && node --test test/plan-072.test.mjs`
-Expected: `ℹ tests 9`, `ℹ pass 9`, `ℹ fail 0`· στο μήνυμα του rules test `Result: 186 OK, 0 FAIL`· το dry run `072 ran: plan functions <N>, public 16, service_role EXECUTE 16, open to API 0, triggers <T>, B-54 <T>, v5 rows 0`· η μεταλλαγή ρίχνει ακριβώς τη `B38 FAIL want ok got FAIL clear with amount: needs_review 1`.
+Expected: `ℹ tests 9`, `ℹ pass 9`, `ℹ fail 0`· στο μήνυμα του rules test `Result: 191 OK, 0 FAIL`· το dry run `072 ran: plan functions <N>, public 16, service_role EXECUTE 16, open to API 0, triggers <T>, B-54 <T>, v5 rows 0`· η μεταλλαγή ρίχνει ακριβώς τη `B38 FAIL want ok got FAIL clear with amount: needs_review 1`.
 
 Run: `node --test worker/test/*.test.mjs worker/src/rt-rules.test.mjs && node --test tests/sql-071-drafts.test.js && cd tms-auditor && node --test test/plan-071.test.mjs`
 Expected: όπως στην Αφετηρία (Worker `ℹ tests 236`, `ℹ pass 235`, `ℹ skipped 1`, `ℹ fail 0`· 071 χωρίς αλλαγή).
@@ -6745,10 +6777,10 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 
 Αρίθμηση: Γ1 βάση · Γ2 κείμενα + χαρτογράφος · **Γ3 όλο το `/plan/*`** (δικαιώματα, εγγραφές, αναγνώσεις: ο `handlePlan` είναι μία συνάρτηση και δεν χωρίζεται σε τίμια βήματα TDD) · Γ4 παλιές διαδρομές · Γ5 φρουρός deploy ως εργαλείο · Γ6 deploy των 24 γραμμών της VD (**εκτελέστηκε 23/10**, απόφαση 29) · Γ7 deploy Φ2. Ο κώδικας των Γ2–Γ5 γράφεται παράλληλα με τις Α/Β· το `plan-contract` πρασινίζει **μόνο** με την πλήρη 072 (μετά τη Β9).
 
-Συμβόλαια με Α/Β: το `plan-contract.test.mjs` βρίσκει τους κωδικούς της 072 **μόνο** από `plan_h_raise('<κωδικός>'` (σταθερό κείμενο ως 1ο όρισμα) και από `HINT = 'plan:<κωδικός>'`· κρατά μόνο όσους δεν είναι της 071 και τους συγκρίνει με τους **28** νέους των Interfaces. Μόνο οι τέσσερις RPC με dry run (`plan_move_pieces`, `plan_rt_update`, `plan_rt_clear`, `plan_delete`) περνούν τον κλειστό διακόπτη με `{"dry_run": true}`· οι άλλες αρνούνται το κλειδί `dry_run` (`plan_h_keys`), άρα ο διακόπτης δεν παρακάμπτεται ούτε από τη βάση. Στο `PLAN_CHECK_TEXT` δεν μπαίνουν τα δύο EXCLUDE και το `local_moves_nat_loading_once`: απαντούν τον ίδιο κωδικό με την άρνηση της 072 (`truck_busy`, `driver_busy`, `local_exists`). Το «άλλο CHECK → PLAN_RULE μόνο μέσα στο `/plan/*`» και οι χαμένες κλειδαριές (`busy_retry`) μπαίνουν στο `catch` του `handlePlan`, όχι στο `stockRuleError`. Το `POST /costs/rt` με `v1_link_on_v2` **δεν** μπαίνει: είναι απρόσιτο (ένα RT `model=2` δεν μπορεί να έχει `ct_rt_legs`), και ένα try/catch εκεί θα ήταν νεκρός κώδικας.
+Συμβόλαια με Α/Β: το `plan-contract.test.mjs` βρίσκει τους κωδικούς της 072 **μόνο** από `plan_h_raise('<κωδικός>'` (σταθερό κείμενο ως 1ο όρισμα) και από `HINT = 'plan:<κωδικός>'`· κρατά μόνο όσους δεν είναι της 071 και τους συγκρίνει με τους **30** νέους των Interfaces. Μόνο οι τέσσερις RPC με dry run (`plan_move_pieces`, `plan_rt_update`, `plan_rt_clear`, `plan_delete`) περνούν τον κλειστό διακόπτη με `{"dry_run": true}`· οι άλλες αρνούνται το κλειδί `dry_run` (`plan_h_keys`), άρα ο διακόπτης δεν παρακάμπτεται ούτε από τη βάση. Στο `PLAN_CHECK_TEXT` δεν μπαίνουν τα δύο EXCLUDE και το `local_moves_nat_loading_once`: απαντούν τον ίδιο κωδικό με την άρνηση της 072 (`truck_busy`, `driver_busy`, `local_exists`). Το «άλλο CHECK → PLAN_RULE μόνο μέσα στο `/plan/*`» και οι χαμένες κλειδαριές (`busy_retry`) μπαίνουν στο `catch` του `handlePlan`, όχι στο `stockRuleError`. Το `POST /costs/rt` με `v1_link_on_v2` **δεν** μπαίνει: είναι απρόσιτο (ένα RT `model=2` δεν μπορεί να έχει `ct_rt_legs`), και ένα try/catch εκεί θα ήταν νεκρός κώδικας.
 
 > **Τι αποδείχθηκε πριν γραφτεί η ενότητα (22/10, χωρίς καμία αλλαγή στο repo):** ο κώδικας και τα tests αυτής της ενότητας εφαρμόστηκαν σε αντίγραφο του `worker/` (+ `core/dkv-parser.js`) έξω από το repo, Task προς Task. Το 072 αντικαταστάθηκε από stub με τις 26 κλήσεις `plan_h_raise`. Μετρήθηκε: αφετηρία 189/189 → Γ2 195 → Γ3 219 → Γ4 222 → Γ5 **226/226**. Κάθε νέο αρχείο test ήταν κόκκινο πριν από τον κώδικά του. Οκτώ σκόπιμες μεταλλαγές (dry run σε κάθε διαδρομή, χωρίς 23P01, χωρίς 409 στο `model=2`, λάθος ετικέτα «Via Hub», χωρίς φρουρό ποσών, κείμενο CHECK που λείπει, νεκρό κλειδί, πλατύτερο δικαίωμα) έκαναν η καθεμία κόκκινο τουλάχιστον ένα test. Bundle με το τοπικό esbuild 0.20.2: `var PLAN_PERMS = {` = 1, `var PLAN_WRITES_OPEN = false;` = 1, οι πέντε παλιοί φρουροί = 1. Το md5 του `index.js` μετά τις διορθώσεις των κριτών **δεν** είναι κριτήριο (άλλαζε με κάθε διόρθωση: 6.186 γραμμές / `5faa6333…` στο πρωτότυπο, 6.200 / `69bd126b…` πριν από τη δεύτερη κριτική)· το αναπαραγώγιμο κριτήριο είναι τα tests και το `GUARD OK (11 markers, plan=1)`. **Δεύτερη κριτική (23/10 νύχτα):** η Γ εφαρμόστηκε αυτούσια σε αντίγραφο, 228/228· μετά τις διορθώσεις της (μήνυμα του `preview.conflict`, συμβόλαιο RPC ↔ 072, `PLAN_MONEY_KEYS`, `plan_unknown`, `42883`/`42501`, κακοσχηματισμένο Bearer, φρουρός WORKSHOPS μέσα στο μπλοκ): 189 → 195 → 223 → 226 → **232/232** και `GUARD OK (11 markers, plan=1)` (και στο διπλό bundle του esbuild).
-> **Πλάνο v2 (24/10):** η Γ εφαρμόστηκε αυτούσια, Task προς Task, σε αντίγραφο του `worker/` του main @ `639a5a50` (η πηγή του ζωντανού b00d59f3), με την τελική 072 του v2: 236 → Γ2 **242** → Γ3 **272** → Γ4 **275** → Γ5 **281** (280 pass + 1 skip του main), κάθε ενδιάμεσο «αποτυγχάνει» όπως γράφει (Γ2 Step 4 `fail 4`, Γ3 Step 4 `pass 6, fail 5`, Γ4 Step 2 `fail 3`, Γ5 Step 2 `fail 6`)· `GUARD OK (14 markers, plan=1)` στην πηγή και σε διπλό bundle του esbuild 0.20.2, `GUARD OK (12 markers, plan=0)` στην πηγή του main.
+> **Πλάνο v2 (24/10):** η Γ εφαρμόστηκε αυτούσια, Task προς Task, σε αντίγραφο του `worker/` του main @ `639a5a50` (η πηγή του ζωντανού b00d59f3), με την τελική 072 του v2: 236 → Γ2 **242** → Γ3 **272** → Γ4 **275** → Γ5 **281** (280 pass + 1 skip του main), κάθε ενδιάμεσο «αποτυγχάνει» όπως γράφει (Γ2 Step 4 `fail 4`, Γ3 Step 4 `pass 6, fail 5`, Γ4 Step 2 `fail 3`, Γ5 Step 2 `fail 6`)· `GUARD OK (15 markers, plan=1)` στην πηγή και σε διπλό bundle του esbuild 0.20.2, `GUARD OK (13 markers, plan=0)` στην πηγή του main.
 > SELECT 22/10 23:40 (μόνο ανάγνωση): `order_stops.via_hub` boolean NOT NULL default false· `ct_round_trips.model` smallint NOT NULL default 1· CHECK `partner_needs_partner`, `owned_needs_truck` (μόνο closed/complete), `window_order` ζωντανά· `rt_v2_truck_once`/`rt_v2_driver_once` deferred· γραμμές v5 = 0, `model=2` = 0, `nat_loading` = 0, `audit_log` στους 5 πίνακες = 0, συναρτήσεις `plan_%` = 6.
 
 #### Task Γ1: Βάση της αλυσίδας `deploy/worker-plan`
@@ -6799,7 +6831,7 @@ Expected: `ℹ tests 236`, `ℹ pass 235`, `ℹ skipped 1`, `ℹ fail 0` (ο ski
 
 **Interfaces:**
 - Consumes: `071_plan_schema.sql`, `071b_plan_one_vehicle.sql` (`worker/migrations/`), 072 (Task Β9)· οι λίστες κωδικών των Interfaces.
-- Produces: `const PLAN_RULE_TEXT` (54 κωδικοί: 26 της 071 + 28 της 072), `const PLAN_CHECK_TEXT` (36 ονόματα: 32 CHECK + 4 UNIQUE), `stockRuleError(e)` με κλάδους `plan:` (κάθε SQLSTATE), `PLAN_CHECK_TEXT` στο 23514/23505, 23P01 → `truck_busy`/`driver_busy`, `local_moves_nat_loading_once` → `local_exists`· σχήμα `{ type: "PLAN_RULE", code, message }`.
+- Produces: `const PLAN_RULE_TEXT` (56 κωδικοί: 26 της 071 + 30 της 072), `const PLAN_CHECK_TEXT` (36 ονόματα: 32 CHECK + 4 UNIQUE), `stockRuleError(e)` με κλάδους `plan:` (κάθε SQLSTATE), `PLAN_CHECK_TEXT` στο 23514/23505, 23P01 → `truck_busy`/`driver_busy`, `local_moves_nat_loading_once` → `local_exists`· σχήμα `{ type: "PLAN_RULE", code, message }`.
 
 - [ ] **Step 1: Αντίγραφο της 072 για το contract test**
 
@@ -6873,9 +6905,9 @@ const CODES_071 = ['chain', 'chain_time', 'hard_delete', 'leg_locked', 'leg_orde
   'local_loading_day', 'local_loading_gone', 'local_loading_stop', 'model_locked', 'piece_dead', 'piece_locked',
   'piece_parent', 'pieces_alive', 'pieces_sum', 'rt_cancelled', 'rt_not_v2', 'rt_window', 'shipment_locked',
   'side_order', 'split_not_at_hub', 'stop_locked', 'stop_order', 'stop_seq', 'v1_link_on_v2'];
-const CODES_072 = ['bad_input', 'driver_busy', 'group_empty', 'local_exists', 'need_token', 'no_actor', 'no_client',
+const CODES_072 = ['bad_input', 'driver_busy', 'group_empty', 'local_cancel_no_id', 'local_exists', 'need_token', 'no_actor', 'no_client',
   'no_price', 'no_vehicle', 'no_window', 'not_at_hub', 'not_stock', 'notice_gone', 'order_gone', 'order_not_v5',
-  'parts_sum', 'payroll_locked', 'piece_busy', 'piece_split', 'request_reused', 'rt_gone', 'same_rt', 'stale_confirm', 'stock_lot',
+  'parts_sum', 'payroll_locked', 'piece_busy', 'piece_split', 'request_missing', 'request_reused', 'rt_gone', 'same_rt', 'stale_confirm', 'stock_lot',
   'stop_gone', 'truck_busy', 'vs_locked', 'vs_not_bridge'];
 // Retired by the spec §7 — must appear nowhere (plan Interfaces).
 const RETIRED = ['hub_endpoint', 'piece_planned', 'bridge_moved', 'bridge_split', 'legacy_nl', 'frozen',
@@ -6913,7 +6945,7 @@ test('071, 071b, 072 found and fingerprinted', (t) => {
   assert.ok(f072().sql.includes('plan_h_raise('), '072 raises through plan_h_raise');
 });
 
-test('the parsed codes are exactly the plan\'s 26 + 28 — none missing, none extra, none retired', () => {
+test('the parsed codes are exactly the plan\'s 26 + 30 — none missing, none extra, none retired', () => {
   assert.deepEqual(codes071(f071().sql), CODES_071, '071 codes');
   assert.deepEqual(codes072(f072().sql), CODES_072, '072 codes');
   for (const sql of [f071().sql, f071b().sql, f072().sql]) {
@@ -7136,8 +7168,13 @@ const PLAN_RULE_TEXT = {
   local_exists: "Η στάση έχει ήδη τοπική φόρτωση — άνοιξε την υπάρχουσα",
   notice_gone: "Η ειδοποίηση δεν υπάρχει",
   payroll_locked: "Η μισθοδοσία του δρομολογίου έχει ήδη ποσά — η αλλαγή οδηγού γίνεται με «Καθαρισμός ανάθεσης» και νέα ανάθεση",
-  // decision 44: the screen's request_id came back with another body or for another act — never the first answer
-  request_reused: "Το ίδιο αίτημα ξαναστάλθηκε με άλλο περιεχόμενο — ανανέωσε τη σελίδα και ξαναδοκίμασε",
+  // decision 44: the screen's request_id came back with another body, for another act or from another person: the
+  // FIRST submission is already saved — the text must not invite a new one (review of PR #84)
+  request_reused: "Αυτό το αίτημα έχει ήδη αποθηκευτεί (με άλλο περιεχόμενο ή από άλλον χρήστη) — μην το ξαναστείλεις· βρες την εγγραφή στο Εβδομαδιαίο Εθνικών και διόρθωσέ τη από εκεί",
+  // decision 44: a creation without the screen's request_id (one per open form) is refused, never a silent pass
+  request_missing: "Η οθόνη δεν έστειλε κωδικό αιτήματος — τίποτα δεν γράφτηκε· ενημέρωσε τον Δημήτρη",
+  // {"cancel": true} without local_move_id: nothing created, nothing cancelled
+  local_cancel_no_id: "Η ακύρωση τοπικής φόρτωσης δεν λέει ποια φόρτωση — τίποτα δεν δημιουργήθηκε ούτε ακυρώθηκε",
   stale_confirm: "Κάτι άλλαξε από τότε που είδες τη λίστα — δες τη ξανά και επιβεβαίωσε",
   need_token: "Η πράξη θέλει επιβεβαίωση — δες πρώτα τη λίστα συνεπειών",
   vs_not_bridge: "Η παραγγελία ή η στάση δεν περνά από τη Βέροια (VS)"
@@ -7282,7 +7319,7 @@ Expected: `ℹ tests 242`, `ℹ pass 241`, `ℹ skipped 1`, `ℹ fail 0`. Στο
 git add worker/src/index.js worker/test/plan-contract.test.mjs worker/test/stock-lots.test.mjs worker/test/local-relay-contract.test.mjs worker/test/local-relay.test.mjs worker/migrations/drafts/072_plan_functions.sql
 git commit -m "worker: plan: refusals (071/071b/072) -> Greek 422 in the one mapper
 
-PLAN_RULE_TEXT (26 + 28 codes) and PLAN_CHECK_TEXT (071 CHECKs/UNIQUEs +
+PLAN_RULE_TEXT (26 + 30 codes) and PLAN_CHECK_TEXT (071 CHECKs/UNIQUEs +
 partner_needs_partner); hint plan: under any SQLSTATE; 23P01 of 071b and
 local_moves_nat_loading_once answer the same code as 072's own refusal.
 plan-contract.test.mjs reads 071, 071b and the 072 draft (copy of the SQL
@@ -7546,6 +7583,7 @@ test('deploy guard markers: the older ones and var PLAN_PERMS = { exactly once; 
   assert.equal(count('"Delay Reason": "delay_reason"'), 1, 'Delay Reason');
   assert.equal(count('var PRESENCE_ROLES'), 1, 'PRESENCE_ROLES');
   assert.equal(count('Temp Per CMR'), 1, 'Temp Per CMR');
+  assert.equal(count('{0,49}$/'), 1, 'VD /costs/rt order_ids (decision 29)');
 });
 
 test('writes closed until day L, in the deployed source (decision 22); one switch, no env override', () => {
@@ -7822,7 +7860,8 @@ test('decision 44: request_id rides in p as sent on the three creations; a write
     [() => new Response('<html>bad gateway</html>', { status: 502 }), 500, 'plan_unknown'],
     [() => pgError(500, { code: '57014', hint: null, details: null, message: 'canceling statement due to statement timeout' }), 503, 'slow'],
     [() => pgError(409, { code: '40P01', hint: null, details: null, message: 'deadlock detected' }), 409, 'busy_retry'],
-    [() => planReject('request_reused', RID), 422, 'request_reused']];
+    [() => planReject('request_reused', RID), 422, 'request_reused'],
+    [() => planReject('request_missing', 'plan_orders_create'), 422, 'request_missing']];
   for (const [p, body, fn] of CREATE) {
     routes.length = 0;
     // the DB's answer to a repeat (plan_h_replay): the first answer + replayed, served as is
@@ -7942,7 +7981,9 @@ test('anything else → 500 in the /plan/* shape naming the route (never a CF 11
   let r = await callOpen('dispatcher', 'POST', '/plan/pieces/split', { piece_id: 4, parts: [] });
   assert.equal(r.status, 500, r.text);
   // the link may have dropped AFTER the COMMIT: a write never says «not done» (αρχή 1, decision 44)
-  assert.deepEqual(r.json.error, { type: 'SERVER', code: 'plan_unknown', message: 'Η πράξη POST /plan/split μπορεί να έγινε ή όχι — ανανέωσε τη σελίδα πριν την ξαναδοκιμάσεις· ενημέρωσε τον Δημήτρη' });
+  assert.deepEqual(r.json.error, { type: 'SERVER', code: 'plan_unknown', message: 'Η πράξη POST /plan/split μπορεί να αποθηκεύτηκε — έλεγξε πρώτα στο Εβδομαδιαίο Εθνικών αν φαίνεται, και μόνο αν λείπει ξαναπάτησε το ίδιο κουμπί· ενημέρωσε τον Δημήτρη' });
+  // never «refresh» as the fix: a refresh closes the form, and with it its request_id (decision 44, review of PR #84)
+  assert.ok(!/ανανέωσε/.test(r.json.error.message));
   routes.length = 0;
   on('POST', 'rpc/plan_delete', () => new Response('<html>bad gateway</html>', { status: 502 }));
   r = await call('owner', 'POST', '/plan/delete', { nat_order_id: 1, dry_run: true });
@@ -8304,8 +8345,9 @@ async function handlePlan(request, url, origin, env) {
     console.error(`PLAN ${name}`, e && e.message);
     if (maybeWritten) {
       // the link may have dropped AFTER the COMMIT: a write never claims «not done» (αρχή 1); the F4 client
-      // must not send it again by itself (decision 44)
-      return planError(500, "SERVER", "plan_unknown", `Η πράξη ${name} μπορεί να έγινε ή όχι — ανανέωσε τη σελίδα πριν την ξαναδοκιμάσεις· ενημέρωσε τον Δημήτρη`, origin, env);
+      // must not send it again by itself, and the user re-presses the SAME form, so the same request_id replays
+      // (decision 44). Never «refresh»: that would close the form and mint a new id = a second creation.
+      return planError(500, "SERVER", "plan_unknown", `Η πράξη ${name} μπορεί να αποθηκεύτηκε — έλεγξε πρώτα στο Εβδομαδιαίο Εθνικών αν φαίνεται, και μόνο αν λείπει ξαναπάτησε το ίδιο κουμπί· ενημέρωσε τον Δημήτρη`, origin, env);
     }
     return planError(500, "SERVER", "plan_failed", `Η πράξη ${name} δεν ολοκληρώθηκε — ενημέρωσε τον Δημήτρη`, origin, env);
   }
@@ -8493,7 +8535,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 - Create: `worker/tools/worker-guard.mjs`, `worker/test/worker-guard.test.mjs`
 
 **Interfaces:**
-- Consumes: οι φρουροί του CLAUDE.md («Ο WORKER», κανόνας μίας πηγής 3)· τα σημάδια των λειτουργιών που ανέβηκαν 23–24/10 (`"Delay Reason": "delay_reason"` του stop-delay, `var PRESENCE_ROLES` του presence, `Temp Per CMR`), όπως τα έλεγξε ο φρουρός του deploy του presence (DECISION_LOG 24/10)· τα δύο σημάδια της Φ2.
+- Consumes: οι φρουροί του CLAUDE.md («Ο WORKER», κανόνας μίας πηγής 3)· τα σημάδια των λειτουργιών που ανέβηκαν 23–24/10 (`"Delay Reason": "delay_reason"` του stop-delay, `var PRESENCE_ROLES` του presence, `Temp Per CMR`) και των 24 γραμμών της VD (`{0,49}$/`, Worker 3439b1e3), όπως τα έλεγξαν ο φρουρός του deploy του presence (DECISION_LOG 24/10)· τα δύο σημάδια της Φ2.
 - Produces: `node worker/tools/worker-guard.mjs <αρχείο> --plan 0|1`. Γραμμή `OK`/`STOP` ανά σημάδι, τελευταία γραμμή `GUARD OK (<n> markers, plan=<p>) <αρχείο>` ή `GUARD STOP — …`, exit 0/1/2 (2 = λάθος χρήση). Δέχεται πηγή, bundle του `--dry-run` ή αυτούσια λήψη του CF API (multipart).
 
 - [ ] **Step 1: Test (αποτυγχάνει)**
@@ -8523,10 +8565,10 @@ const run = (file, plan) => {
 };
 const write = (name, text) => { const f = path.join(dir, name); writeFileSync(f, text); return f; };
 
-test('the deploy source passes with --plan 1 (14 markers) and fails with --plan 0', () => {
+test('the deploy source passes with --plan 1 (15 markers) and fails with --plan 0', () => {
   let r = run(SRC, 1);
   assert.equal(r.code, 0, r.out);
-  assert.match(r.out, /GUARD OK \(14 markers, plan=1\)/);
+  assert.match(r.out, /GUARD OK \(15 markers, plan=1\)/);
   r = run(SRC, 0);
   assert.equal(r.code, 1, r.out);
   assert.match(r.out, /STOP {2}var PLAN_PERMS = \{ = 1/);
@@ -8537,7 +8579,7 @@ test('a CF API download (multipart, CRLF, random boundary) is unwrapped and coun
   const f = write('live.txt', `--${b}\r\nContent-Disposition: form-data; name="index.js"; filename="index.js"\r\nContent-Type: application/javascript+module\r\n\r\n${src}\r\n--${b}--\r\n`);
   const r = run(f, 1);
   assert.equal(r.code, 0, r.out);
-  assert.match(r.out, /GUARD OK \(14 markers, plan=1\)/);
+  assert.match(r.out, /GUARD OK \(15 markers, plan=1\)/);
 });
 
 test('a missing marker, a doubled marker or open writes → exit 1 naming it', () => {
@@ -8560,13 +8602,16 @@ test('a missing marker, a doubled marker or open writes → exit 1 naming it', (
   r = run(write('no-delay.js', src.replace('"Delay Reason": "delay_reason"', '"Delay Reason": "reason"')), 1);
   assert.equal(r.code, 1);
   assert.match(r.out, /STOP {2}"Delay Reason": "delay_reason" = 0/);
+  r = run(write('no-vd.js', src.replace('{0,49}$/', '{0,48}$/')), 1);
+  assert.equal(r.code, 1);
+  assert.match(r.out, /STOP {2}VD \/costs\/rt order_ids \{0,49\}\$\/ = 0/);
 });
 
 test('a part named only by name="….js" is unwrapped; an unreadable download → GUARD STOP, exit 1, never a stack trace', () => {
   const b = 'f00dfeed';
   let r = run(write('live-name.txt', `--${b}\r\nContent-Disposition: form-data; name="worker.js"\r\nContent-Type: application/javascript+module\r\n\r\n${src}\r\n--${b}--\r\n`), 1);
   assert.equal(r.code, 0, r.out);
-  assert.match(r.out, /GUARD OK \(14 markers, plan=1\)/);
+  assert.match(r.out, /GUARD OK \(15 markers, plan=1\)/);
   r = run(write('live-bad.txt', `--${b}\r\nContent-Disposition: form-data; name="metadata"\r\n\r\n{}\r\n--${b}--\r\n`), 1);
   assert.equal(r.code, 1, r.out);
   assert.match(r.out, /GUARD STOP — multipart: expected one \.js part, found 0/);
@@ -8602,7 +8647,7 @@ Expected: `ℹ fail 6`: το εργαλείο λείπει, άρα κάθε `spa
 #!/usr/bin/env node
 // Worker deploy guard (CLAUDE.md «Ο WORKER»: the three + one marker per live
 // feature: stock lots, local moves, stop delay, presence, temperature per CMR,
-// and national v5), counted in CONTENT, never by byte equality: wrangler re-bundles
+// the VD /costs/rt filters, and national v5), counted in CONTENT, never by byte equality: wrangler re-bundles
 // the source, and the CF API returns the live script as multipart with a
 // random boundary per request — two downloads of the same version «differ».
 //
@@ -8666,6 +8711,8 @@ const rows = [
   ['"Delay Reason": "delay_reason"', count('"Delay Reason": "delay_reason"'), (n) => n === 1],
   ['var PRESENCE_ROLES', count('var PRESENCE_ROLES'), (n) => n === 1],
   ['Temp Per CMR', count('Temp Per CMR'), (n) => n === 1],
+  // the 24 lines of ValueDriven 19/10 (Worker 3439b1e3, decision 29): the order_ids check of GET /costs/rt
+  ['VD /costs/rt order_ids {0,49}$/', count('{0,49}$/'), (n) => n === 1],
   ['var PLAN_PERMS = {', count('var PLAN_PERMS = {'), (n) => n === plan]
 ];
 if (plan === 1) {
@@ -8688,7 +8735,7 @@ process.exit(ok ? 0 : 1);
 node --test worker/test/*.test.mjs worker/src/rt-rules.test.mjs 2>&1 | grep -E '^ℹ (tests|pass|fail)'
 node worker/tools/worker-guard.mjs worker/src/index.js --plan 1 | tail -1
 ```
-Expected: `ℹ tests 281`, `ℹ pass 280`, `ℹ skipped 1`, `ℹ fail 0`· `GUARD OK (14 markers, plan=1) worker/src/index.js`.
+Expected: `ℹ tests 281`, `ℹ pass 280`, `ℹ skipped 1`, `ℹ fail 0`· `GUARD OK (15 markers, plan=1) worker/src/index.js`.
 
 - [ ] **Step 5: Commit**
 
@@ -8697,7 +8744,7 @@ git add worker/tools/worker-guard.mjs worker/test/worker-guard.test.mjs
 git commit -m "worker: deploy guard as one tested command (multipart unwrap, content counts)
 
 The three (WORKSHOPS counted inside its block) + tblStockLots + Move Kind +
-Delay Reason + PRESENCE_ROLES + Temp Per CMR + var PLAN_PERMS (0 before F2,
+Delay Reason + PRESENCE_ROLES + Temp Per CMR + the VD {0,49}$/ + var PLAN_PERMS (0 before F2,
 1 after) + writes closed; exit 1 names the marker. Same tool before and after every
 deploy (CLAUDE.md, rule of one source 3).
 
@@ -8727,7 +8774,7 @@ node --test tests/sql-071-drafts.test.js 2>&1 | grep -E '^ℹ (pass|fail)'
 grep -n "plan_h_[a-z_]*(" worker/migrations/drafts/072_plan_functions.sql | grep -v "CREATE FUNCTION" \
   | grep -oE "plan_h_[a-z_]+" | sort | uniq -c
 ```
-Expected: `DRYRUN-IDIO`· `sql-072-drafts`: `ℹ tests 12`, `ℹ pass 12`, `ℹ fail 0`· `sql-071-drafts`: αμετάβλητο, `ℹ fail 0`· `tms-auditor`: `ℹ fail 0`, με `Result: 186 OK, 0 FAIL` (176 χωρίς την απόφαση 21) στο rules test του 072 και η μεταλλαγή να ρίχνει ακριβώς τη `B38`· η τελευταία λίστα έχει μόνο ονόματα του πίνακα «Εσωτερικοί βοηθοί» των Interfaces. Κάθε κλήση `plan_h_*` με άλλο πλήθος ορισμάτων από τον πίνακα φαίνεται ως `state:42883` σε μια περίπτωση: διόρθωσε την **κλήση** (ο πίνακας είναι η πηγή), ποτέ τον βοηθό χωρίς να αλλάξει και ο πίνακας.
+Expected: `DRYRUN-IDIO`· `sql-072-drafts`: `ℹ tests 12`, `ℹ pass 12`, `ℹ fail 0`· `sql-071-drafts`: αμετάβλητο, `ℹ fail 0`· `tms-auditor`: `ℹ fail 0`, με `Result: 191 OK, 0 FAIL` (181 χωρίς την απόφαση 21) στο rules test του 072 και η μεταλλαγή να ρίχνει ακριβώς τη `B38`· η τελευταία λίστα έχει μόνο ονόματα του πίνακα «Εσωτερικοί βοηθοί» των Interfaces. Κάθε κλήση `plan_h_*` με άλλο πλήθος ορισμάτων από τον πίνακα φαίνεται ως `state:42883` σε μια περίπτωση: διόρθωσε την **κλήση** (ο πίνακας είναι η πηγή), ποτέ τον βοηθό χωρίς να αλλάξει και ο πίνακας.
 
 - [ ] **Step 2: Ο Worker, στο `deploy/worker-plan`, με αντίγραφο της τελικής 072**
 
@@ -8738,7 +8785,7 @@ node --check worker/src/index.js && node --test worker/test/*.test.mjs worker/sr
 node worker/tools/worker-guard.mjs worker/src/index.js --plan 1 | tail -1
 git status --short
 ```
-Expected: τρεις γραμμές `ℹ checked: …` (071, 071b, `drafts/072`), `ℹ pass 8`, `ℹ fail 0`· `ℹ tests 281`, `ℹ pass 280`, `ℹ skipped 1`, `ℹ fail 0`· `GUARD OK (14 markers, plan=1) worker/src/index.js`· το `git status` δείχνει μόνο το 072 αν άλλαξε από την τελευταία αντιγραφή (τότε commit «sync 072 draft copy»).
+Expected: τρεις γραμμές `ℹ checked: …` (071, 071b, `drafts/072`), `ℹ pass 8`, `ℹ fail 0`· `ℹ tests 281`, `ℹ pass 280`, `ℹ skipped 1`, `ℹ fail 0`· `GUARD OK (15 markers, plan=1) worker/src/index.js`· το `git status` δείχνει μόνο το 072 αν άλλαξε από την τελευταία αντιγραφή (τότε commit «sync 072 draft copy»).
 
 - [ ] **Step 3: Ο καθαρός εκτελεστής**
 
@@ -8809,7 +8856,7 @@ $G "$D/live-before.txt" --plan 0
 curl -sS -f -H "Authorization: Bearer $CF_API_TOKEN" "$API/settings" | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{console.log(JSON.parse(s).result.bindings.map(b=>b.name+':'+b.type).sort().join('\n'))})" | tee "$D/bindings-before.txt"
 PREV=<το Version ID της πιο πρόσφατης γραμμής του deployments list>; echo "$PREV" > "$D/prev.txt"
 ```
-Expected: η πιο πρόσφατη έκδοση αρχίζει από `b00d59f3` (presence, 24/10)· αυτό το πλήρες id γίνεται `PREV`. Άλλη έκδοση (ανέβηκε στο μεταξύ άλλος Worker): ΣΤΑΜΑΤΑ, κανόνας μίας πηγής 2 (Γ1 Step 2 με τη δική του πηγή). `GUARD OK (12 markers, plan=0)`. Τα 3 secrets (`JWT_SECRET`, `SUPABASE_SERVICE_KEY`, `ANTHROPIC_API_KEY`) ως `secret_text`, και τα plain vars `ALLOWED_ORIGIN`, `SUPABASE_URL`, `PRESENCE_OFF`, `PRESENCE_MS` ως `plain_text`. Αλλιώς ΣΤΑΜΑΤΑ.
+Expected: η πιο πρόσφατη έκδοση αρχίζει από `b00d59f3` (presence, 24/10)· αυτό το πλήρες id γίνεται `PREV`. Άλλη έκδοση (ανέβηκε στο μεταξύ άλλος Worker): ΣΤΑΜΑΤΑ, κανόνας μίας πηγής 2 (Γ1 Step 2 με τη δική του πηγή). `GUARD OK (13 markers, plan=0)`. Τα 3 secrets (`JWT_SECRET`, `SUPABASE_SERVICE_KEY`, `ANTHROPIC_API_KEY`) ως `secret_text`, και τα plain vars `ALLOWED_ORIGIN`, `SUPABASE_URL`, `PRESENCE_OFF`, `PRESENCE_MS` ως `plain_text`. Αλλιώς ΣΤΑΜΑΤΑ.
 
 - [ ] **Step 3 (agent, SELECT): Η βάση είναι έτοιμη, 0 γραμμές πριν**
 
@@ -8835,7 +8882,7 @@ CLOUDFLARE_API_TOKEN=$CF_API_TOKEN npx wrangler deploy --dry-run --outdir "$D/bu
 $G "$D/bundle/index.js" --plan 1
 CLOUDFLARE_API_TOKEN=$CF_API_TOKEN npx wrangler deploy 2>&1 | tee "$D/deploy.txt"
 ```
-Expected: `GUARD OK (14 markers, plan=1)` στο bundle. Αλλιώς **κανένα deploy**. Το deploy τελειώνει με `Current Version ID: <PLAN_VERSION>`.
+Expected: `GUARD OK (15 markers, plan=1)` στο bundle. Αλλιώς **κανένα deploy**. Το deploy τελειώνει με `Current Version ID: <PLAN_VERSION>`.
 
 - [ ] **Step 5 (owner): Μετά: φρουρός στο ζωντανό, bindings**
 
@@ -8845,7 +8892,7 @@ $G "$D/live-after.txt" --plan 1
 curl -sS -f -H "Authorization: Bearer $CF_API_TOKEN" "$API/settings" | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{console.log(JSON.parse(s).result.bindings.map(b=>b.name+':'+b.type).sort().join('\n'))})" > "$D/bindings-after.txt"
 diff "$D/bindings-before.txt" "$D/bindings-after.txt" && echo BINDINGS-IDIA
 ```
-Expected: `GUARD OK (14 markers, plan=1)`· `BINDINGS-IDIA` (μαζί τα `PRESENCE_OFF`/`PRESENCE_MS`). Αλλιώς: Step 8.
+Expected: `GUARD OK (15 markers, plan=1)`· `BINDINGS-IDIA` (μαζί τα `PRESENCE_OFF`/`PRESENCE_MS`). Αλλιώς: Step 8.
 
 - [ ] **Step 6 (owner): Smoke χωρίς καμία εγγραφή**
 
@@ -8906,7 +8953,7 @@ Expected: `0` (ή μόνο σφάλματα που δεν σχετίζονται
 CLOUDFLARE_API_TOKEN=$CF_API_TOKEN npx wrangler rollback <PREV>
 curl -sS -f -H "Authorization: Bearer $CF_API_TOKEN" "$API" -o "$D/live-rollback.txt" && $G "$D/live-rollback.txt" --plan 0
 ```
-Expected: `GUARD OK (12 markers, plan=0)`. Η 072 μένει (κανείς δεν την καλεί χωρίς τον Worker, και 0 γραμμές v5). Το μήνυμα στον συντονιστή γράφει ποιο βήμα απέτυχε, με το αποτέλεσμά του. ΣΤΑΜΑΤΑ.
+Expected: `GUARD OK (13 markers, plan=0)`. Η 072 μένει (κανείς δεν την καλεί χωρίς τον Worker, και 0 γραμμές v5). Το μήνυμα στον συντονιστή γράφει ποιο βήμα απέτυχε, με το αποτέλεσμά του. ΣΤΑΜΑΤΑ.
 
 ---
 
@@ -8982,7 +9029,7 @@ Expected: `ℹ fail 0` σε όλα. Τα δύο πρώτα τρέχουν στο
 (41) «όλοι έχουν δικαιώματα»: οι 5 ρόλοι κάνουν κάθε πράξη του board· `rt-clear` και `delete` (και αργότερα η αφαίρεση αλλαγής οχήματος) μόνο owner/dispatcher· τιμή και κόμιστρο σε όλους· ποσά μισθοδοσίας/DKV μόνο owner/accountant·
 (42) πρώτα stop-delay (067), μετά presence (068), μετά η Φ2, πάνω στην πηγή του presence (`0273aa06`, main @ `639a5a50`)·
 (43) `search_path = public` χωρίς `pg_temp`: αποδεκτό ως κληρονομιά (κανένας ρόλος API δεν έχει RPC δυναμικού SQL ή CREATE στο `public`, 23/10)·
-(44) `request_id` (uuid) στις τρεις δημιουργίες: επανάληψη = η πρώτη απάντηση, τίποτα δεν γράφεται· ίδιο id με άλλο σώμα ή πράξη = `plan:request_reused`· ίχνος μία γραμμή `audit_log` `plan_request`· ο Worker δεν ξανακαλεί ποτέ RPC εγγραφής, καμία οθόνη δεν ξαναστέλνει μόνη της, και 500 εγγραφής = `plan_unknown`·
+(44) `request_id` (uuid, υποχρεωτικό, ένα ανά ανοιχτή φόρμα, το ίδιο σε κάθε πάτημα, νέο μόνο μετά από επιβεβαιωμένη επιτυχία ή κλείσιμο της φόρμας) στις τρεις δημιουργίες: χωρίς = `plan:request_missing`· επανάληψη = η πρώτη απάντηση, τίποτα δεν γράφεται· ίδιο id με άλλο σώμα, πράξη ή χρήστη = `plan:request_reused` (η πρώτη αποθηκεύτηκε)· ίχνος μία γραμμή `audit_log` `plan_request`· ο Worker δεν ξανακαλεί ποτέ RPC εγγραφής, καμία οθόνη δεν ξαναστέλνει μόνη της, και 500 εγγραφής = `plan_unknown`·
 (45) το rollback της 072 χωρίς δικό του dry run (εξαίρεση από τον κανόνα 5: δρόμος έκτακτης ανάγκης, αποδεδειγμένος στο PGlite).
 **Εναλλακτικές:** όπως στο πλάνο (GUC ταυτότητας, tokens σε πίνακα, φιλτράρισμα ποσών στον Worker, `POST /plan/rt`, εγγραφές ανοιχτές από το deploy, διακόπτης στη βάση, 072a/072b). Απορρίφθηκαν.
 **Απόδειξη:** `072_plan_functions_test.sql` <n>/<n> σε PGlite με σχήμα παραγωγής (`tms-auditor/test/plan-072.test.mjs`)· `tests/sql-072-drafts.test.js`· Worker `node --test worker/test/*.test.mjs worker/src/rt-rules.test.mjs` = <αριθμός>/<αριθμός>, με `plan-contract` (071+071b+072 ↔ κείμενα, και αντίστροφα), `plan-perms` (5 ρόλοι × 15 διαδρομές, 403 χωρίς καμία κλήση βάσης στις 6 απαγορευμένες), `plan-routes`, `plan-tables-guard`, `worker-guard`.
@@ -9109,11 +9156,11 @@ SELECT count(*) FILTER (WHERE has_function_privilege('anon', p.oid, 'EXECUTE') O
 FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace WHERE n.nspname = 'public' AND p.proname LIKE 'plan\_%';
 ```
 Expected: `0 | 0`.
-- [ ] **Step 9 (προαιρετικό, χωριστό «ναι»):** `worker/migrations/drafts/072_plan_functions_test.sql`. Expected: `RULES TEST 072 finished - EVERYTHING UNDONE, nothing kept. Result: 186 OK, 0 FAIL` (176 χωρίς την απόφαση 21). Οι κωδικοί RT- προχωρούν κατά ~120 (κάθε περίπτωση Β φτιάχνει τουλάχιστον έναν κύκλο) και τα ids (identity) των πινάκων που γράφει το test· τα PM- **δεν** κινούνται (η 072 και το test δεν γράφουν `pl_movements`). Αυτό είναι το μόνο ίχνος, και ο owner το ξέρει πριν πει «ναι».
+- [ ] **Step 9 (προαιρετικό, χωριστό «ναι»):** `worker/migrations/drafts/072_plan_functions_test.sql`. Expected: `RULES TEST 072 finished - EVERYTHING UNDONE, nothing kept. Result: 191 OK, 0 FAIL` (181 χωρίς την απόφαση 21). Οι κωδικοί RT- προχωρούν κατά ~120 (κάθε περίπτωση Β φτιάχνει τουλάχιστον έναν κύκλο) και τα ids (identity) των πινάκων που γράφει το test· τα PM- **δεν** κινούνται (η 072 και το test δεν γράφουν `pl_movements`). Αυτό είναι το μόνο ίχνος, και ο owner το ξέρει πριν πει «ναι».
 - [ ] **Step 10:** αμέσως το Task Κ3 Step 1 (αρχεία εκτός `drafts/`, CLAUDE.md κανόνας 5)· μετά το Task Γ7 (deploy Worker), με **χωριστό** «ναι», το ίδιο βράδυ ή άλλο (το Γ7 Step 1 βρίσκει την 072 σε όποια από τις δύο θέσεις). Ως τότε ο ζωντανός Worker δεν ξέρει το `/plan/*` (404), και η 072 δεν καλείται από πουθενά.
 - [ ] **Step 11 (agent, SELECT, μετά την επόμενη ωριαία εκτέλεση):** `SELECT run_at, status, value FROM monitoring.results WHERE check_id = 'B-54' ORDER BY run_at DESC LIMIT 1`. Expected: `green`, `46` (η 072 δεν προσθέτει trigger), `run_at` μετά το Step 5.
 - [ ] **Step 12 (owner, μόνο αν αποτύχει το Step 6 ή 8, ή αν το Γ7 αποτύχει και δεν διορθώνεται): Επαναφορά της βάσης** (κριτική 23/10 νύχτα, πλάνο 3· απόφαση 45: χωρίς δικό της dry run)
-  1. Αν έχει γίνει το Γ7: **πρώτα** ο Worker, `CLOUDFLARE_API_TOKEN=$CF_API_TOKEN npx wrangler rollback <PREV>` και ο φρουρός του Γ7 Step 8 (`GUARD OK (12 markers, plan=0)`). Με ανάποδη σειρά κάθε `/plan/*` γίνεται 503 `schema_behind` ως τότε (δεν σπάει τίποτα άλλο).
+  1. Αν έχει γίνει το Γ7: **πρώτα** ο Worker, `CLOUDFLARE_API_TOKEN=$CF_API_TOKEN npx wrangler rollback <PREV>` και ο φρουρός του Γ7 Step 8 (`GUARD OK (13 markers, plan=0)`). Με ανάποδη σειρά κάθε `/plan/*` γίνεται 503 `schema_behind` ως τότε (δεν σπάει τίποτα άλλο).
   2. Ρητό «ναι» του owner στη συνομιλία, μετά τις 15:00· SQL editor: `worker/migrations/drafts/072_plan_functions_rollback.sql` (ή `worker/migrations/…` αν έγινε ήδη το Κ3 Step 1). Expected: `NOTICE 072 ROLLBACK OK: <n> function(s) dropped, the six of 071 remain, triggers 46 (B-54 unchanged)` και μία γραμμή `072 ROLLED BACK | 6 | 46 | 46`. Αν αρνηθεί με `… v5 row(s) exist`: **δεν** υπάρχει επαναφορά, μόνο διόρθωση προς τα εμπρός (spec §2.2)· ΣΤΑΜΑΤΑ, το μήνυμα στον συντονιστή.
   3. Agent, SELECT: το `072_plan_functions_verify.sql` δίνει `applied` = `072 NOT in place`· `SELECT count(*) FROM pg_proc WHERE pronamespace = 'public'::regnamespace AND proname LIKE 'plan\_%'` = `6`· το SELECT του Γ7 Step 3 = `0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0`.
   4. Γραμμή στο DECISION_LOG (τι απέτυχε, ποιο βήμα, η επαναφορά με τα Expected της) και ξανά Task 0 πριν από νέα προσπάθεια.
@@ -9186,15 +9233,16 @@ Expected: `ℹ fail 0` και στα δύο· `grep -rn "drafts/072" tests tms-a
    - λόγος καθυστέρησης στάσης (067, Worker c652e758): `"Delay Reason": "delay_reason"`
    - παρουσία (068, Worker b00d59f3): `var PRESENCE_ROLES`
    - θερμοκρασία ανά CMR: `Temp Per CMR`
+   - οι 24 γραμμές της VD 19/10 (`/costs/rt`, Worker 3439b1e3): `{0,49}$/`
    - εθνικά v5, `/plan/*` (Φ2, Worker <PLAN_VERSION>): `var PLAN_PERMS = {`. Ως την ημέρα L και
      `var PLAN_WRITES_OPEN = false;` (η Φ5 το αλλάζει μαζί με το εργαλείο).
    Μία εντολή για όλα, πριν και μετά: `node worker/tools/worker-guard.mjs <bundle ή λήψη CF> --plan 1`
-   (ξετυλίγει το multipart· `GUARD OK (14 markers, plan=1)`).
+   (ξετυλίγει το multipart· `GUARD OK (15 markers, plan=1)`).
 ```
 
 - [ ] **Step 3: Ίχνος, commit, PR** (μετά το Γ7· νέο branch από φρέσκο main, μαζί με το Step 2: `git fetch origin && git switch -c docs/f2-worker-live origin/main`)
 
-Στο `docs/DECISION_LOG.md`, κάτω από την εγγραφή Φ2: `**Εκτελέστηκε:** <YYYY-MM-DD>, owner· dry run κόκκινο σκόπιμα, «072 OK», «072 in place», fingerprint ίδιο, B-54 46· rules test <n>/<n> <ή «δεν έτρεξε»>. **Worker <PLAN_VERSION>** από deploy/worker-plan @ <PLAN_SHA> (πάνω στον presence b00d59f3, πηγή `0273aa06`): φρουρός πριν 12/12 (plan=0), μετά 14/14 (plan=1), BINDINGS-IDIA με `PRESENCE_OFF`/`PRESENCE_MS`, smoke 11 (VD) 400, BINDINGS-IDIA, smoke 401/200/200/200/409/422/400, 0 γραμμές v5, app_errors 0· επαναφορά = wrangler rollback <PREV>.` Νέο αρχείο `docs/sessions/<YYYY-MM-DD>-dimitris-national-v5-f2-executed.md` με τα ίδια σε έως 5 κουκκίδες. Στο «Now» του `docs/SESSION.md`, η γραμμή μας γίνεται: `- dimitris · national v5 · F2 LIVE <YYYY-MM-DD>: 072 + Worker <PLAN_VERSION> (/plan/* read-only until L, 0 v5 rows); next: F3 (073) on deploy/worker-plan`.
+Στο `docs/DECISION_LOG.md`, κάτω από την εγγραφή Φ2: `**Εκτελέστηκε:** <YYYY-MM-DD>, owner· dry run κόκκινο σκόπιμα, «072 OK», «072 in place», fingerprint ίδιο, B-54 46· rules test <n>/<n> <ή «δεν έτρεξε»>. **Worker <PLAN_VERSION>** από deploy/worker-plan @ <PLAN_SHA> (πάνω στον presence b00d59f3, πηγή `0273aa06`): φρουρός πριν 13/13 (plan=0), μετά 15/15 (plan=1), BINDINGS-IDIA με `PRESENCE_OFF`/`PRESENCE_MS`, smoke 11 (VD) 400, BINDINGS-IDIA, smoke 401/200/200/200/409/422/400, 0 γραμμές v5, app_errors 0· επαναφορά = wrangler rollback <PREV>.` Νέο αρχείο `docs/sessions/<YYYY-MM-DD>-dimitris-national-v5-f2-executed.md` με τα ίδια σε έως 5 κουκκίδες. Στο «Now» του `docs/SESSION.md`, η γραμμή μας γίνεται: `- dimitris · national v5 · F2 LIVE <YYYY-MM-DD>: 072 + Worker <PLAN_VERSION> (/plan/* read-only until L, 0 v5 rows); next: F3 (073) on deploy/worker-plan`.
 ```bash
 git add CLAUDE.md docs
 git commit -m "Worker <PLAN_VERSION> live (/plan/*, writes closed until L): guard list gains var PLAN_PERMS
@@ -9228,7 +9276,7 @@ Expected: το πρώτο `diff --stat` είναι κενό (το branch δεν 
 
 ## Παράρτημα: Απόφαση 21 = εκτός (αν ο owner την απορρίψει)
 
-> **Δεν εφαρμόζεται:** η απόφαση 21 εγκρίθηκε 23/10. Οι αριθμοί παρακάτω είναι του πλάνου v1 (179 / 169 περιπτώσεις). Με το v2, αν ποτέ χρειαστεί: 186 → **176** (Α 77 + Β 99), 28 → **27** κωδικοί της 072, `refused` του `plan-perms` 6 → **6** (το `orders PATCH` είναι πλέον για όλους), και οι περιπτώσεις 78–87 γίνονται 68–77.
+> **Δεν εφαρμόζεται:** η απόφαση 21 εγκρίθηκε 23/10. Οι αριθμοί παρακάτω είναι του πλάνου v1 (179 / 169 περιπτώσεις). Με το v2, αν ποτέ χρειαστεί: 191 → **181** (Α 80 + Β 101), 30 → **29** κωδικοί της 072, `refused` του `plan-perms` 6 → **6** (το `orders PATCH` είναι πλέον για όλους), και οι περιπτώσεις 78–90 γίνονται 68–80.
 
 Κάθε σημείο που αλλάζει, ώστε ο Σ1 να πρασινίσει χωρίς να μαντέψει κανείς (κριτική 23/10 νύχτα, πλάνο 1). Οι αριθμοί: 16 → **15** δημόσιες, 179 → **169** περιπτώσεις (Α 72 + Β 97), 27 → **26** κωδικοί της 072, Worker tests **ίδιος αριθμός** (οι γραμμές που φεύγουν είναι μέσα σε βρόχους).
 
@@ -9255,13 +9303,13 @@ Expected: το πρώτο `diff --stat` είναι κενό (το branch δεν 
 
 ## Self-review (έγινε)
 
-- **Πλάνο v2 (24/10): κώδικας ↔ αποφάσεις του owner, ξανα-απόδειξη κατά γράμμα.** Ένα script ακριβών αντικαταστάσεων με έλεγχο πλήθους πάνω στο v1 (`74a315b6`)· εξαγωγή κάθε «πρόσθεσε πάνω από…» / «αντικατέστησε» από αυτό το αρχείο, όπως στο `final-report.md`, αλλά με την **πραγματική** λήψη `live-072.sql` (ερώτημα του Α1 Step 1, SELECT 24/10, md5 του κελιού `1df9d47d…` = md5 του αρχείου) και **χωρίς** καμία χαλάρωση του φρουρού md5:
+- **Πλάνο v2 (24/10): κώδικας ↔ αποφάσεις του owner, ξανα-απόδειξη κατά γράμμα** (νούμερα μετά την κριτική του PR #84, 24/10· η πρώτη ξανα-απόδειξη, 186 / 281 / 14, είναι στο `fix-report-v2.md`). Ένα script ακριβών αντικαταστάσεων με έλεγχο πλήθους πάνω στο v1 (`74a315b6`)· εξαγωγή κάθε «πρόσθεσε πάνω από…» / «αντικατέστησε» από αυτό το αρχείο, όπως στο `final-report.md`, αλλά με την **πραγματική** λήψη `live-072.sql` (ερώτημα του Α1 Step 1, SELECT 24/10, md5 του κελιού `1df9d47d…` = md5 του αρχείου) και **χωρίς** καμία χαλάρωση του φρουρού md5:
   - harness της Β8 (`plan-072.test.mjs`) **9/9**: η λήψη κρατά τα 22 ζωντανά κείμενα, dry run, apply (54 `plan_%` = 6 + 48), verify (`changed_live 0`), ρόλοι API, rules, rollback (άρνηση με γραμμή v5, μετά επιτυχία, ξανά apply), μεταλλαγή B38·
-  - rules test **`Result: 186 OK, 0 FAIL`** (87 Α + 99 Β)· `tests/sql-072-drafts.test.js` **12/12**· bootstrap του Α1 **6/6**· το bootstrap `plan-072` του Α1 περιμένει 87 στο τέλος της Α (με τη Β από πάνω δίνει 186, όπως πρέπει: το αντικαθιστά η Β8)·
-  - **22 μεταλλαγές**, μία τη φορά, ρίχνουν ακριβώς τις περιπτώσεις τους: οι νέες της v2 (χωρίς επανάληψη στον `plan_h_replay` → 83, 84, 85, 87, B98, B99· χωρίς επανάληψη στην τοπική φόρτωση → B98, B99· χωρίς έλεγχο σώματος → 84, B99· χωρίς `month` → 14, 65, B40· `partner_rate` κατά ρόλο → B72)· οι 11 της δεύτερης κριτικής (5, B88–B97, B56–B58, 69: ίδιες)· οι 5 παλιές (78, 79–80, 81, B85, B79) και η B38 του harness. Η μεταλλαγή «ειδοποιήσεις board για όλους» της v1 δεν εφαρμόζεται πια: είναι η συμπεριφορά της απόφασης 40·
-  - Worker: η Γ εφαρμόστηκε Task προς Task σε αντίγραφο του `worker/` (+ `core/dkv-parser.js`) του main @ `639a5a50`, με την 072 του v2 (md5 `ab7d7a50…`): 236 → Γ2 Step 4 `fail 4` → **242** → Γ3 Step 4 `pass 6, fail 5` → **272** → Γ4 Step 2 `pass 24, fail 3` → **275** → Γ5 Step 2 `fail 6` → **281 (280 pass + 1 skip του main)**· contract `pass 8`· `GUARD OK (14 markers, plan=1)` στην πηγή και σε διπλό bundle esbuild 0.20.2, `GUARD OK (12 markers, plan=0)` στην πηγή του main· μεταλλαγές: `delete` για management → 3 tests κόκκινα (perms ×2, «decision 41»)· χωρίς κείμενο `request_reused` → contract κόκκινο.
+  - rules test **`Result: 191 OK, 0 FAIL`** (90 Α + 101 Β)· `tests/sql-072-drafts.test.js` **12/12**· bootstrap του Α1 **6/6**· το bootstrap `plan-072` του Α1 περιμένει 90 στο τέλος της Α (με τη Β από πάνω δίνει 191, όπως πρέπει: το αντικαθιστά η Β8)·
+  - **26 μεταλλαγές**, μία τη φορά, ρίχνουν ακριβώς τις περιπτώσεις τους: οι νέες της v2 (χωρίς επανάληψη στον `plan_h_replay` → 83, 84, 85, 87, 88, B98, B99· χωρίς επανάληψη στην τοπική φόρτωση → B98, B99, B100· χωρίς έλεγχο σώματος → 84, B99· χωρίς έλεγχο χρήστη → 88· χωρίς `request_missing` → 89, 90, B100· χωρίς άρνηση ακύρωσης χωρίς φόρτωση → B101· `day` αντί για `month` στη γραμμή ΤΟΠΙΚΟ → 81· χωρίς `month` → 14, 65, B40· `partner_rate` κατά ρόλο → B72)· οι 11 της δεύτερης κριτικής (5, B88–B97, B56–B58, 69: ίδιες)· οι 5 παλιές (78, 79–80, 81, B85, B79) και η B38 του harness. Η μεταλλαγή «ειδοποιήσεις board για όλους» της v1 δεν εφαρμόζεται πια: είναι η συμπεριφορά της απόφασης 40·
+  - Worker: η Γ εφαρμόστηκε Task προς Task σε αντίγραφο του `worker/` (+ `core/dkv-parser.js`) του main @ `639a5a50`, με την 072 του v2 (md5 `138ccd08…`): 236 → Γ2 Step 4 `fail 4` → **242** → Γ3 Step 4 `pass 6, fail 5` → **272** → Γ4 Step 2 `pass 24, fail 3` → **275** → Γ5 Step 2 `fail 6` → **281 (280 pass + 1 skip του main)**· contract `pass 8`· `GUARD OK (15 markers, plan=1)` στην πηγή και σε διπλό bundle esbuild 0.20.2, `GUARD OK (13 markers, plan=0)` στην πηγή του main· μεταλλαγές: `delete` για management ή `rt-clear` για warehouse → 3 tests κόκκινα (perms ×2, «decision 41»)· χωρίς κείμενο `request_reused` ή `local_cancel_no_id` → contract κόκκινο.
   - Λεπτομέρεια και ό,τι δεν μπόρεσε να γίνει: `docs/national-v5/f2/fix-report-v2.md`.
-- **Συνέπεια ονομάτων και υπογραφών (v2):** `plan_h_replay(p jsonb, p_op text) RETURNS jsonb` και `plan_h_remember(p jsonb, p_op text, p_answer jsonb, p_actor text, p_role text) RETURNS void` = πίνακας βοηθών = κλήσεις στις Α2, Α5, Β6 (με τα ονόματα πράξης `plan_orders_create`, `plan_split_piece`, `plan_local_loading`)· `request_reused` = Interfaces (28) = `CODES_072` = `PLAN_RULE_TEXT` = περιπτώσεις 84, 87, B99· `PLAN_PERMS` literal = πίνακας Interfaces = `EXPECT` του `plan-perms` (6 απαγορευμένα κελιά)· `month` = `plan_h_rt_consequences` = περιπτώσεις 13/14, 65, B40 = `WITH_AMOUNT` του Worker = παράδειγμα dry run των Interfaces· 22 md5 ίδια σε Αφετηρία, PART 0, PART 5, verify, `sql-072-drafts`, bootstrap, `plan-072`, Κ2· σημάδια φρουρού: εργαλείο (14) = `plan-tables-guard` = Global Constraints = Κ3 Step 2. Σάρωση placeholders: μόνο οι ρητές τιμές χρόνου εκτέλεσης (`<YYYY-MM-DD>`, `<PLAN_SHA>`, `<PLAN_VERSION>`, `<PREV>`, `<n>`)· κανένα σημάδι προς συμπλήρωση, κανένα «TBD».
+- **Συνέπεια ονομάτων και υπογραφών (v2):** `plan_h_replay(p jsonb, p_op text, p_actor text) RETURNS jsonb` και `plan_h_remember(p jsonb, p_op text, p_answer jsonb, p_actor text, p_role text) RETURNS void` = πίνακας βοηθών = κλήσεις στις Α2, Α5, Β6 (με τα ονόματα πράξης `plan_orders_create`, `plan_split_piece`, `plan_local_loading`)· `request_reused`, `request_missing`, `local_cancel_no_id` = Interfaces (30) = `CODES_072` = `PLAN_RULE_TEXT` = περιπτώσεις 84, 87, 88, 89, 90, B99, B100, B101· `PLAN_PERMS` literal = πίνακας Interfaces = `EXPECT` του `plan-perms` (6 απαγορευμένα κελιά)· `month` = `plan_h_rt_consequences` = `local_payroll` του `plan_h_drop_consequences` = περιπτώσεις 13/14, 65, 81, B40 = `WITH_AMOUNT` του Worker = παράδειγμα dry run των Interfaces· 22 md5 ίδια σε Αφετηρία, PART 0, PART 5, verify, `sql-072-drafts`, bootstrap, `plan-072`, Κ2· σημάδια φρουρού: εργαλείο (15) = `plan-tables-guard` = Global Constraints = Κ3 Step 2. Σάρωση placeholders: μόνο οι ρητές τιμές χρόνου εκτέλεσης (`<YYYY-MM-DD>`, `<PLAN_SHA>`, `<PLAN_VERSION>`, `<PREV>`, `<n>`)· κανένα σημάδι προς συμπλήρωση, κανένα «TBD».
 - **Απόφαση 36 και Φ2:** η Φ2 δεν αγγίζει το EXCLUDE `rt_v2_truck_once` / `rt_v2_driver_once` (071b) ούτε το σχήμα του `ct_round_trips`· η μεταφορά τους σε τμήματα είναι του κομματιού της αλλαγής οχήματος. Το `PLAN_PERMS` δεν έχει resource αλλαγής οχήματος (το ορίζει το δικό της πλάνο, owner/dispatcher).
 
 - **Κάλυψη `requirements.md`:**
@@ -9270,9 +9318,9 @@ Expected: το πρώτο `diff --stat` είναι κενό (το branch δεν 
   - W-01…W-14 → Γ2–Γ5 (W-10: χωρίς `POST /plan/rt`, απόφαση 3· W-11 → Γ4· W-12 → Γ4)· Deploy → Γ6/Γ7, Κ2/Κ3· αποδοχή «401 χωρίς token» → απόφαση 24.
   - C-01…C-26 → αποφάσεις 1–34, και τα ευρήματα της δεύτερης κριτικής → αποφάσεις 7 και 35–45 (C-07 παράθυρα στάσεων VS → απόφαση 4: τα δίνει ο καλών· C-27 εκτός Φ2)· K-01…K-17 → κώδικας και περιπτώσεις (K-03 βλ. «Εκτός Φ2» πάνω· K-13 → αποφάσεις 11, 32, 33).
 - **Δεύτερη κριτική xhigh (23/10 νύχτα, τρεις κριτές: SQL, Worker, εκτελεσιμότητα· 1 Critical, 14 Important, 38 Minor):** κάθε Critical/Important εφαρμόστηκε στον κώδικα και στα βήματα (απόφαση 7 ξαναγραμμένη· αποφάσεις 35–45 για όσα θέλουν owner· παράρτημα απόφασης 21· Task 0 Step 0/1· Κ2 Step 12· Κ3 σε δύο χρόνους· Γ7 Step 1 με «μόνο η Φ2» και τις δύο θέσεις της 072). Από τα Minor εφαρμόστηκαν όσα διορθώνουν ψέμα ή σιωπή (μήνυμα 500 εγγραφής, ειδοποίηση μία φορά, `read_at`, κείμενο χρήστη σε λεπτομέρεια, σχόλια που έλεγαν άλλα, ένα δεκαδικό, `FOR NO KEY UPDATE`, 42883/42501, Bearer, `PLAN_MONEY_KEYS`, grep του Node 24, άγκυρα Κ3, Expected του Task 0, wrangler, `tail`)· όσα θέλουν owner έγιναν αποφάσεις· ένα δεν εφαρμόστηκε (παρένθεση λεπτομέρειας μόνο για ids, Worker 15: αλλάζει τον κοινό χαρτογράφο του 057/060 για αισθητικό όφελος). Αντιστοίχιση ένα-προς-ένα: `docs/national-v5/f2/fix-report.md`.
-- **Τα ευρήματα των δύο πρώτων κριτών** (23/10, 3 + 7 Critical, 8 + 11 Important) εφαρμόστηκαν μέσα στον κώδικα και στα βήματα, όχι ως σημειώσεις: ένα συμβόλαιο βοηθών (Interfaces), ο κλάδος `new_rt` στο Α1, ένα σύνολο σημαδιών και ένα PART 5, μία λίστα φρουρού (23), ένα πλαίσιο rules test, η μία λήψη στο Α1, `plan_h_keys` σε όλη τη Β, ο ΕΝΑΣ μηχανισμός δύο βημάτων στις Β3/Β4, σάρωση στάσεων στη Β4, κλείδωμα κύκλων και `busy_retry`, «πρώτο κομμάτι» VS, `later_leg`, απόφαση 33, `payroll_locked` ως απόφαση 32, φίλτρο 071 και 27 κωδικοί στο contract test, αντιγραφή 072 από τοπικό κλάδο και έλεγχος ίδιου αρχείου πριν από το deploy, εργαλείο φρουρού ανθεκτικό σε άλλη μορφή multipart, Task Σ1. Λεπτομέρεια, και όσα Minor δεν εφαρμόστηκαν με τον λόγο: `docs/national-v5/f2/final-report.md`.
+- **Τα ευρήματα των δύο πρώτων κριτών** (23/10, 3 + 7 Critical, 8 + 11 Important) εφαρμόστηκαν μέσα στον κώδικα και στα βήματα, όχι ως σημειώσεις: ένα συμβόλαιο βοηθών (Interfaces), ο κλάδος `new_rt` στο Α1, ένα σύνολο σημαδιών και ένα PART 5, μία λίστα φρουρού (22 στο v2), ένα πλαίσιο rules test, η μία λήψη στο Α1, `plan_h_keys` σε όλη τη Β, ο ΕΝΑΣ μηχανισμός δύο βημάτων στις Β3/Β4, σάρωση στάσεων στη Β4, κλείδωμα κύκλων και `busy_retry`, «πρώτο κομμάτι» VS, `later_leg`, απόφαση 33, `payroll_locked` ως απόφαση 32, φίλτρο 071 και 30 κωδικοί της 072 στο contract test (27 στο v1), αντιγραφή 072 από τοπικό κλάδο και έλεγχος ίδιου αρχείου πριν από το deploy, εργαλείο φρουρού ανθεκτικό σε άλλη μορφή multipart, Task Σ1. Λεπτομέρεια, και όσα Minor δεν εφαρμόστηκαν με τον λόγο: `docs/national-v5/f2/final-report.md`.
 - **Σάρωση placeholders:** οι μόνες τιμές χρόνου εκτέλεσης είναι οι ρητές `<YYYY-MM-DD>`, `<VD_SHA>`, `<VD_VERSION>`, `<PLAN_SHA>`, `<PLAN_VERSION>`, `<PREV>` (με εντολή ή γραμμή που τις παράγει) και `<n>` στο DECISION_LOG· κανένα «TBD», κανένα «όπως παραπάνω» χωρίς κώδικα.
-- **Συνέπεια ονομάτων και τύπων:** υπογραφές βοηθών = πίνακας Interfaces· κωδικοί = λίστες Interfaces = `CODES_071`/`CODES_072` = `PLAN_RULE_TEXT`· `v_pub` (16) = verify = `PUBLIC` του build test = `PLAN_ROUTES` (και test: υπογραφές της 072 ↔ ορίσματα του Worker)· `PLAN_MONEY_KEYS` = `plan_h_strip_amounts` (test)· 23 md5 ίδια σε PART 0, PART 5, verify, `sql-072-drafts`, `plan-072`, Κ2· αριθμοί: 179 περιπτώσεις (82 + 97), build 12, Worker 232 (Γ2 195 → Γ3 223 → Γ4 226 → Γ5 232).
+- **Συνέπεια ονομάτων και τύπων:** υπογραφές βοηθών = πίνακας Interfaces· κωδικοί = λίστες Interfaces = `CODES_071`/`CODES_072` = `PLAN_RULE_TEXT`· `v_pub` (16) = verify = `PUBLIC` του build test = `PLAN_ROUTES` (και test: υπογραφές της 072 ↔ ορίσματα του Worker)· `PLAN_MONEY_KEYS` = `plan_h_strip_amounts` (test)· 22 md5 ίδια σε PART 0, PART 5, verify, `sql-072-drafts`, `plan-072`, Κ2· αριθμοί (v2, μετά την κριτική του PR #84): 191 περιπτώσεις (90 + 101), build 12, Worker 281 με 1 skip του main (Γ2 242 → Γ3 272 → Γ4 275 → Γ5 281), φρουρός 15 σημάδια.
 - **Ξανα-απόδειξη μετά τη δεύτερη κριτική (23/10, scratch `.superpowers/f2rev/scratch`, εκτός repo):** τα code blocks αυτού του αρχείου εξήχθησαν κατά γράμμα (κάθε «πρόσθεσε πάνω από…», κάθε «αντικατέστησε») και έτρεξαν σε PGlite 0.5.8 (`live-071.sql` + 071 + 071b + 069, χωρίς την πλήρη λήψη): «072 OK», 16 δημόσιες· rules test **179 OK, 0 FAIL**· `tests/sql-072-drafts.test.js` 12/12 και το bootstrap του Α1 6/6· `DRYRUN-IDIO`· verify, dry run, rollback (άρνηση με γραμμή v5, μετά επιτυχία) και ξανά apply· 18 μεταλλαγές, μία τη φορά, ρίχνουν ακριβώς τις περιπτώσεις τους (οι έξι παλιές: 78, 79–80, 81, B85, B79, B38· οι δώδεκα νέες: 5, B88, B89, B90, B91, B92–B94, B95, B96, B97, B56–B58, 69, B72). Ο Worker (Γ) εφαρμόστηκε Task προς Task σε αντίγραφο του `worker/` @ `a3117aac…` με την τελική 072: Γ2 Step 4 `fail 4` → 195 → Γ3 Step 4 `pass 6, fail 5` → 223 → Γ4 Step 2 `fail 3` → 226 → Γ5 Step 2 `fail 6` → **232/232**· `GUARD OK (11 markers, plan=1)` στην πηγή και σε διπλό bundle του esbuild 0.20.2, `GUARD OK (9 markers, plan=0)` στην παλιά πηγή, `STOP  WORKSHOPS Country: "country" = 0` όταν λείπει μόνο από τα WORKSHOPS (και στο bundle)· από τα 34 JS blocks τα 23 περνούν `node --check` αυτούσια και τα 11 είναι αποσπάσματα find/replace, που περνούν μέσα στα αρχεία που συναρμολογούνται (λεπτομέρεια: `docs/national-v5/f2/fix-report.md`).
 - **Δοκιμασμένο πριν παραδοθεί (23/10, scratch, εκτός repo):** τα code blocks εξήχθησαν από αυτό το αρχείο ακολουθώντας κατά γράμμα τις οδηγίες εισαγωγής και έτρεξαν σε PGlite 0.5.8 (`live-071.sql` + 071 + 071b + 069): «072 OK», rules test 169/169, `tests/sql-072-drafts.test.js` 12/12 (και το bootstrap του Α1 6/6 πάνω στο τελικό 072), verify, dry run, rollback με άρνηση και επιτυχία, ξανά apply· μεταλλαγές: χωρίς `v_vs_first` → 78, χωρίς `later_leg` → 79/80, χωρίς `local_payroll` → 81, χωρίς σάρωση στη `plan_delete` → B85, χωρίς `plan_h_keys` στη `plan_rt_clear` → B79, χωρίς ρητή σβήση μισθοδοσίας → B38. Βρέθηκε και διορθώθηκε η σύγκρουση ονόματος της B77. Κάθε JS block του πλάνου περνά `node --check` (εκτός από τα αποσπάσματα find/replace).
 - **Τι ΔΕΝ αποδείχθηκε ακόμη (v1, 23/10· η πλήρης λήψη και τα md5 αποδείχθηκαν στο v2, 24/10, βλ. πρώτη κουκκίδα):** η εκτέλεση με την πλήρη λήψη `live-072.sql` (NOT NULL, FK, `stock_guard_*`, `invoice_mark_guard`, τα triggers της `orders` που πυροδοτεί η στήλη του τόπου VS, και τα md5 των 23)· το deploy και το smoke του Worker στο πραγματικό PostgREST (Γ7 Step 6, και τα τρία dry run που προστέθηκαν)· η «επαναδείκτηση σκέλους» της απόφασης 36 (δεν είναι γραμμένη). Το Task Σ1 τα τρέχει πριν από το Κ1· κάθε Expected του πλάνου που δεν βγαίνει εκεί είναι λάθος του πλάνου, όχι του εκτελεστή.
