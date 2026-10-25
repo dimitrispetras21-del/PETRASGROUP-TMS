@@ -6158,6 +6158,22 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
               THEN 'ok unread first, recent after the read'
             ELSE 'FAIL notices' END;
         ELSIF kb = 70 THEN
+          -- coordinator 25/10 (cross-cutting input rule): a notice_id of NaN / +-Infinity (or past bigint) is refused as
+          -- bad_input 'notice_id'; each probe is undone
+          FOR b_v3 IN SELECT value FROM jsonb_array_elements(jsonb_build_array(
+              jsonb_build_object('notice_id', 'NaN'), jsonb_build_object('notice_id', 'Infinity'),
+              jsonb_build_object('notice_id', '-Infinity'), jsonb_build_object('notice_id', 1e400::numeric)))
+          LOOP
+            BEGIN
+              PERFORM plan_notice_read(b_v3, 'test:072b', 'dispatcher');
+              RAISE EXCEPTION 'FAIL a non-finite notice_id was accepted (%)', b_v3::text;
+            EXCEPTION WHEN check_violation THEN
+              GET STACKED DIAGNOSTICS b_msg = MESSAGE_TEXT, b_hint = PG_EXCEPTION_HINT;
+              IF b_hint IS DISTINCT FROM 'plan:bad_input' OR b_msg NOT LIKE '%bad_input:notice_id' THEN
+                RAISE EXCEPTION 'FAIL non-finite notice_id probe % got % (%)', b_v3::text, coalesce(b_hint, 'no hint'), b_msg;
+              END IF;
+            END;
+          END LOOP;
           PERFORM plan_notice_read(jsonb_build_object('notice_id', -1), 'test:072b', 'dispatcher');
         ELSIF kb IN (71, 72, 73) THEN   -- the board: empty week, every role sees the same board, only Saturdays
           IF kb = 71 THEN
@@ -6169,6 +6185,19 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
           ELSE
             b_w := b_d - ((extract(isodow FROM b_d)::int + 1) % 7);
             IF kb = 73 THEN
+              -- coordinator 25/10 (cross-cutting input rule): a week of 'infinity' / '-infinity' is refused as
+              -- bad_input 'week:finite', for every role; each probe is undone
+              FOR b_txt IN SELECT unnest(ARRAY['infinity', '-infinity']) LOOP
+                BEGIN
+                  PERFORM plan_board(b_txt::date, 'warehouse');
+                  RAISE EXCEPTION 'FAIL a non-finite week was accepted (%)', b_txt;
+                EXCEPTION WHEN check_violation THEN
+                  GET STACKED DIAGNOSTICS b_msg = MESSAGE_TEXT, b_hint = PG_EXCEPTION_HINT;
+                  IF b_hint IS DISTINCT FROM 'plan:bad_input' OR b_msg NOT LIKE '%bad_input:week:finite' THEN
+                    RAISE EXCEPTION 'FAIL non-finite week probe % got % (%)', b_txt, coalesce(b_hint, 'no hint'), b_msg;
+                  END IF;
+                END;
+              END LOOP;
               PERFORM plan_board(b_w + 4, 'owner');
             END IF;
             b_v2 := plan_rt_create(jsonb_build_object('new_rt', jsonb_build_object('trip_type', 'PARTNER', 'partner_id', b_pa,
@@ -6249,6 +6278,8 @@ begin
   perform plan_h_ctx(p_actor, p_role);
   set constraints all deferred;
   perform plan_h_keys(p, array['notice_id'], 'p');
+  -- coordinator 25/10 (cross-cutting input rule): a notice_id of 'NaN' / '+-Infinity' (or past bigint) is refused by
+  -- this cast itself (a bigint has no non-finite value), as bad_input 'notice_id'
   begin
     v_id := (p->>'notice_id')::bigint;
   exception when invalid_text_representation or numeric_value_out_of_range then
@@ -6303,6 +6334,10 @@ $f$;
 declare
   v_from timestamptz; v_to timestamptz;
 begin
+  -- coordinator 25/10 (cross-cutting input rule): a week of 'infinity' / '-infinity' is refused first. Without this
+  -- the Saturday test below lets it through (extract(isodow) of an infinite date is NULL, and NULL <> 6 is not true),
+  -- and the board would read every waiting piece up to the end of time.
+  if p_week is not null and not isfinite(p_week) then perform plan_h_raise('bad_input', 'week:finite'); end if;
   if p_week is null or extract(isodow from p_week) <> 6 then
     perform plan_h_raise('bad_input', 'week must be a Saturday');
   end if;

@@ -1249,6 +1249,8 @@ BEGIN
                'ok', 'ok', 'plan:vs_not_bridge', 'ok']   -- B52-B60 (Task B5)
       || ARRAY['ok', 'plan:local_exists', 'ok', 'plan:local_loading_stop', 'plan:stop_gone',
                'plan:bad_input', 'ok', 'plan:no_actor']   -- B61-B68 (Task B6)
+      || ARRAY['ok', 'plan:notice_gone', 'ok', 'ok', 'plan:bad_input',
+               'ok', 'ok', 'plan:bad_input']   -- B69-B76 (Task B7)
       ;  -- end of b_want
     b_verdict text; b_got text; b_hint text; b_msg text; b_cname text; b_st text;
   BEGIN
@@ -1978,6 +1980,121 @@ BEGIN
           PERFORM plan_local_loading(jsonb_build_object('request_id', gen_random_uuid()) || (jsonb_build_object('rt_stop_id', b_sa, 'truck_id', b_t2)), 'test:072b', 'dispatcher');
         ELSIF kb = 68 THEN
           PERFORM plan_local_loading(jsonb_build_object('request_id', gen_random_uuid()) || (jsonb_build_object('rt_stop_id', b_sa, 'driver_id', b_d3, 'truck_id', b_t2)), '', 'dispatcher');
+        -- ---- Task B7: notices and reads ----
+        ELSIF kb IN (69, 75) THEN   -- read is idempotent; the strip lists unread, then recent
+          INSERT INTO plan_notices (to_desk, kind, message, created_by) VALUES ('natl', 'test_notice', 'TEST 072 B', 'test:072b')
+            RETURNING id INTO b_x;
+          b_v := plan_notices_list('natl', 'management');
+          b_v2 := plan_notice_read(jsonb_build_object('notice_id', b_x), 'test:072b', 'dispatcher');
+          b_v3 := plan_notice_read(jsonb_build_object('notice_id', b_x), 'test:072b-2', 'owner');
+          b_verdict := CASE
+            WHEN kb = 69 AND NOT (b_v2->>'already')::boolean AND (b_v3->>'already')::boolean
+                         AND b_v3->>'read_by' = 'test:072b'
+                         AND (SELECT read_by = 'test:072b' AND read_at IS NOT NULL FROM plan_notices WHERE id = b_x)
+                         AND (SELECT count(*) FROM audit_log WHERE table_name = 'plan_notices' AND record_id = b_x::text) = 1
+              THEN 'ok read once, the second mark is 200 and changes nothing'
+            WHEN kb = 75 AND EXISTS (SELECT 1 FROM jsonb_array_elements(b_v->'unread') u WHERE (u->>'id')::bigint = b_x)
+                         AND EXISTS (SELECT 1 FROM jsonb_array_elements(plan_notices_list('natl', 'owner')->'recent') u
+                                      WHERE (u->>'id')::bigint = b_x)
+                         AND NOT EXISTS (SELECT 1 FROM jsonb_array_elements(plan_notices_list('natl', 'owner')->'unread') u
+                                          WHERE (u->>'id')::bigint = b_x)
+              THEN 'ok unread first, recent after the read'
+            ELSE 'FAIL notices' END;
+        ELSIF kb = 70 THEN
+          -- coordinator 25/10 (cross-cutting input rule): a notice_id of NaN / +-Infinity (or past bigint) is refused as
+          -- bad_input 'notice_id'; each probe is undone
+          FOR b_v3 IN SELECT value FROM jsonb_array_elements(jsonb_build_array(
+              jsonb_build_object('notice_id', 'NaN'), jsonb_build_object('notice_id', 'Infinity'),
+              jsonb_build_object('notice_id', '-Infinity'), jsonb_build_object('notice_id', 1e400::numeric)))
+          LOOP
+            BEGIN
+              PERFORM plan_notice_read(b_v3, 'test:072b', 'dispatcher');
+              RAISE EXCEPTION 'FAIL a non-finite notice_id was accepted (%)', b_v3::text;
+            EXCEPTION WHEN check_violation THEN
+              GET STACKED DIAGNOSTICS b_msg = MESSAGE_TEXT, b_hint = PG_EXCEPTION_HINT;
+              IF b_hint IS DISTINCT FROM 'plan:bad_input' OR b_msg NOT LIKE '%bad_input:notice_id' THEN
+                RAISE EXCEPTION 'FAIL non-finite notice_id probe % got % (%)', b_v3::text, coalesce(b_hint, 'no hint'), b_msg;
+              END IF;
+            END;
+          END LOOP;
+          PERFORM plan_notice_read(jsonb_build_object('notice_id', -1), 'test:072b', 'dispatcher');
+        ELSIF kb IN (71, 72, 73) THEN   -- the board: empty week, every role sees the same board, only Saturdays
+          IF kb = 71 THEN
+            b_w := (b_td - 70) - ((extract(isodow FROM b_td - 70)::int + 1) % 7);
+            b_v := plan_board(b_w, 'owner');
+            b_verdict := CASE WHEN b_v->'cycles' = '[]'::jsonb AND b_v->'waiting' = '[]'::jsonb AND b_v->'hub' = '[]'::jsonb
+                                AND b_v->'notices' = '[]'::jsonb AND b_v->>'week' = b_w::text
+                              THEN 'ok an empty week: every list [] and present' ELSE 'FAIL empty board ' || b_v::text END;
+          ELSE
+            b_w := b_d - ((extract(isodow FROM b_d)::int + 1) % 7);
+            IF kb = 73 THEN
+              -- coordinator 25/10 (cross-cutting input rule): a week of 'infinity' / '-infinity' is refused as
+              -- bad_input 'week:finite', for every role; each probe is undone
+              FOR b_txt IN SELECT unnest(ARRAY['infinity', '-infinity']) LOOP
+                BEGIN
+                  PERFORM plan_board(b_txt::date, 'warehouse');
+                  RAISE EXCEPTION 'FAIL a non-finite week was accepted (%)', b_txt;
+                EXCEPTION WHEN check_violation THEN
+                  GET STACKED DIAGNOSTICS b_msg = MESSAGE_TEXT, b_hint = PG_EXCEPTION_HINT;
+                  IF b_hint IS DISTINCT FROM 'plan:bad_input' OR b_msg NOT LIKE '%bad_input:week:finite' THEN
+                    RAISE EXCEPTION 'FAIL non-finite week probe % got % (%)', b_txt, coalesce(b_hint, 'no hint'), b_msg;
+                  END IF;
+                END;
+              END LOOP;
+              PERFORM plan_board(b_w + 4, 'owner');
+            END IF;
+            b_v2 := plan_rt_create(jsonb_build_object('new_rt', jsonb_build_object('trip_type', 'PARTNER', 'partner_id', b_pa,
+                      'partner_rate', 250), 'stops', jsonb_build_array(jsonb_build_object('ref', 'x', 'location_id', b_lc,
+                      'side', 'KATHODOS', 'planned_from', h16, 'planned_to', h18))), 'test:072b', 'dispatcher');
+            b_x := (b_v2->>'rt_id')::bigint;
+            INSERT INTO national_orders (legacy_id, client_id, reference, price) VALUES ('rec072TBN3', b_cl, 'WN072-TEST', 70)
+              RETURNING id INTO b_no3;
+            INSERT INTO shipments (nat_order_id, origin_location_id, dest_location_id, pallets, load_from, load_to, deliver_from,
+                                   deliver_to, created_by)
+            VALUES (b_no3, b_lb, b_lc, 3, h06, h08, h12, h14, 'test:072b') RETURNING id INTO b_y;
+            INSERT INTO shipment_pieces (shipment_id, pallets, created_by) VALUES (b_y, 3, 'test:072b');
+            PERFORM plan_h_finish();
+            INSERT INTO plan_notices (to_desk, kind, message, created_by) VALUES ('natl', 'test_notice', 'TEST 072 B board', 'test:072b')
+              RETURNING id INTO b_z;
+            b_v := plan_board(b_w, 'owner');
+            b_v2 := plan_board(b_w, 'management');
+            b_v3 := plan_board(b_w, 'warehouse');
+            b_verdict := CASE
+              WHEN (SELECT jsonb_array_length(c->'stops') = 2 AND jsonb_array_length(c->'stops'->0->'legs') = 1
+                           AND c->'stops'->0->'legs'->0->>'act' = 'load'
+                      FROM jsonb_array_elements(b_v->'cycles') c WHERE (c->>'rt_id')::bigint = b_rt1)
+               AND (SELECT (c->>'partner_rate')::numeric = 250 FROM jsonb_array_elements(b_v->'cycles') c
+                     WHERE (c->>'rt_id')::bigint = b_x)
+               AND (SELECT (c->>'partner_rate')::numeric = 250
+                      FROM jsonb_array_elements(plan_board(b_w, 'dispatcher')->'cycles') c WHERE (c->>'rt_id')::bigint = b_x)
+               -- decision 41 (owner 23/10): price and partner rate for every role; decision 40: the notices too
+               AND (SELECT (c->>'partner_rate')::numeric = 250 FROM jsonb_array_elements(b_v2->'cycles') c
+                     WHERE (c->>'rt_id')::bigint = b_x)
+               AND (SELECT (c->>'partner_rate')::numeric = 250 FROM jsonb_array_elements(b_v3->'cycles') c
+                     WHERE (c->>'rt_id')::bigint = b_x)
+               AND (SELECT (w->>'price')::numeric = 70 FROM jsonb_array_elements(b_v->'waiting') w
+                     WHERE (w->>'nat_order_id')::bigint = b_no3)
+               AND (SELECT (w->>'price')::numeric = 70 FROM jsonb_array_elements(b_v3->'waiting') w
+                     WHERE (w->>'nat_order_id')::bigint = b_no3)
+               AND EXISTS (SELECT 1 FROM jsonb_array_elements(b_v->'notices') nt WHERE (nt->>'id')::bigint = b_z)
+               AND EXISTS (SELECT 1 FROM jsonb_array_elements(b_v2->'notices') nt WHERE (nt->>'id')::bigint = b_z)
+               AND EXISTS (SELECT 1 FROM jsonb_array_elements(b_v3->'notices') nt WHERE (nt->>'id')::bigint = b_z)
+               AND EXISTS (SELECT 1 FROM jsonb_array_elements(plan_board(b_w, 'accountant')->'notices') nt
+                            WHERE (nt->>'id')::bigint = b_z)
+               AND b_v2 - 'notices' = b_v - 'notices' AND b_v3 = b_v2
+              THEN 'ok board: cycles with stops and legs; one board for every role: price, partner rate and notices (decisions 40, 41)'
+              ELSE 'FAIL board ' || left(b_v::text, 400) END;
+          END IF;
+        ELSIF kb = 74 THEN   -- the international board's view of a VS
+          b_v := plan_vs_state(ARRAY[b_vo, -1]::bigint[]);
+          b_verdict := CASE WHEN b_v->(b_vo::text)->'carriers' = '[]'::jsonb
+                              AND NOT (b_v->(b_vo::text)->>'all_planned')::boolean
+                              AND (b_v->(b_vo::text)->>'n_pieces')::int = 3
+                              AND b_v->'-1' = '"missing"'::jsonb
+                            THEN 'ok vs-state: waiting VS without carrier, unknown order "missing"'
+                            ELSE 'FAIL vs-state ' || b_v::text END;
+        ELSIF kb = 76 THEN
+          PERFORM plan_notices_list('xx', 'owner');
         -- [B-CASES-NEXT]
         END IF;
         SET CONSTRAINTS ALL IMMEDIATE;

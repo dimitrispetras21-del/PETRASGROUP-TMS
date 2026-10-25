@@ -2166,6 +2166,193 @@ begin
 end
 $f$;
   -- ===== PART 4: NOTICES AND READS (section B) =====
+  -- B7. "Read" is idempotent (decision 25): the second mark is 200 with already = true and the first time kept.
+  -- A notice is never deleted (plan_notices has no deleted_at): read is the only state it has.
+  CREATE FUNCTION public.plan_notice_read(p jsonb, p_actor text, p_role text)
+    RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $f$
+declare
+  v_id bigint; n plan_notices%rowtype;
+begin
+  perform plan_h_ctx(p_actor, p_role);
+  set constraints all deferred;
+  perform plan_h_keys(p, array['notice_id'], 'p');
+  -- coordinator 25/10 (cross-cutting input rule): a notice_id of 'NaN' / '+-Infinity' (or past bigint) is refused by
+  -- this cast itself (a bigint has no non-finite value), as bad_input 'notice_id'
+  begin
+    v_id := (p->>'notice_id')::bigint;
+  exception when invalid_text_representation or numeric_value_out_of_range then
+    perform plan_h_raise('bad_input', 'notice_id');
+  end;
+  select * into n from plan_notices where id = v_id for no key update;
+  if n.id is null then perform plan_h_raise('notice_gone', coalesce(v_id::text, 'null')); end if;
+  if n.read_at is not null then
+    return jsonb_build_object('ok', true, 'op', 'plan_notice_read', 'dry_run', false, 'already', true,
+                              'read_at', n.read_at, 'read_by', n.read_by, 'ids', jsonb_build_object('notice_id', v_id),
+                              'warnings', '[]'::jsonb, 'notice_ids', '[]'::jsonb);
+  end if;
+  update plan_notices set read_at = now(), read_by = p_actor where id = v_id;
+  perform plan_h_audit(p_actor, p_role, 'update', 'plan_notices', v_id::text,
+                       jsonb_build_object('read_at', null, 'read_by', null),
+                       jsonb_build_object('read_at', now(), 'read_by', p_actor));
+  perform plan_h_finish();
+  return jsonb_build_object('ok', true, 'op', 'plan_notice_read', 'dry_run', false, 'already', false,
+                            'read_at', now(), 'read_by', p_actor, 'ids', jsonb_build_object('notice_id', v_id),
+                            'warnings', '[]'::jsonb, 'notice_ids', '[]'::jsonb);
+end
+$f$;
+
+  -- B7. The notice strip of a desk: every unread one, and the read ones of the last 7 days. Every role reads both
+  -- desks (decisions 25 and 41); the role is validated only.
+  CREATE FUNCTION public.plan_notices_list(p_desk text, p_role text)
+    RETURNS jsonb LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = public AS $f$
+begin
+  if p_desk is null or p_desk not in ('intl', 'natl') then perform plan_h_raise('bad_input', 'desk'); end if;
+  if p_role is null or p_role not in ('owner', 'dispatcher', 'management', 'accountant', 'warehouse') then
+    perform plan_h_raise('bad_input', 'role');
+  end if;
+  return jsonb_build_object(
+    'desk', p_desk,
+    'unread', coalesce((select jsonb_agg(to_jsonb(n) order by n.created_at desc, n.id desc) from plan_notices n
+                         where n.to_desk = p_desk and n.read_at is null), '[]'::jsonb),
+    -- "recent" = read in the last 7 days (an 8-day-old notice read today is recent: review 23/10)
+    'recent', coalesce((select jsonb_agg(to_jsonb(n) order by n.created_at desc, n.id desc) from plan_notices n
+                         where n.to_desk = p_desk and n.read_at is not null
+                           and n.read_at >= now() - interval '7 days'), '[]'::jsonb));
+end
+$f$;
+
+  -- B7. The national board of one TMS week (Saturday-Friday, TmsWeek): ONE snapshot in ONE call (decision 31).
+  -- One board for every role (decision 41, owner 23/10: "everyone has rights"): the price, the partner rate (every
+  -- role that writes the board agrees it) and the notices (decision 40) for all five. The board carries no payroll or
+  -- DKV amount at all - those stay owner/accountant through plan_h_strip_amounts (decision 9), on the dry runs.
+  -- p_role stays in the signature: it is validated (an unknown role is a bad_input, as everywhere in 072), and a
+  -- later cut by role needs no new contract with the Worker. Every list is [] when empty, never absent (trap 2).
+  CREATE FUNCTION public.plan_board(p_week date, p_role text)
+    RETURNS jsonb LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = public AS $f$
+declare
+  v_from timestamptz; v_to timestamptz;
+begin
+  -- coordinator 25/10 (cross-cutting input rule): a week of 'infinity' / '-infinity' is refused first. Without this
+  -- the Saturday test below lets it through (extract(isodow) of an infinite date is NULL, and NULL <> 6 is not true),
+  -- and the board would read every waiting piece up to the end of time.
+  if p_week is not null and not isfinite(p_week) then perform plan_h_raise('bad_input', 'week:finite'); end if;
+  if p_week is null or extract(isodow from p_week) <> 6 then
+    perform plan_h_raise('bad_input', 'week must be a Saturday');
+  end if;
+  if p_role is null or p_role not in ('owner', 'dispatcher', 'management', 'accountant', 'warehouse') then
+    perform plan_h_raise('bad_input', 'role');
+  end if;
+  v_from := p_week::timestamp at time zone 'Europe/Athens';
+  v_to := (p_week + 7)::timestamp at time zone 'Europe/Athens';
+  return jsonb_build_object(
+    'week', p_week,
+    'cycles', coalesce((
+      select jsonb_agg(c.j order by c.start_at, c.rt_id) from (
+        select vc.rt_id, vc.start_at,
+               jsonb_build_object(
+                 'rt_id', vc.rt_id, 'code', vc.code, 'trip_type', vc.trip_type,
+                 'truck_id', vc.truck_id, 'truck', tr.license_plate, 'trailer_id', vc.trailer_id, 'trailer', tl.license_plate,
+                 'driver_id', vc.driver_id, 'driver', dv.full_name, 'partner_id', vc.partner_id, 'partner', pa.company_name,
+                 'start_at', vc.start_at, 'end_at', vc.end_at, 'date_start', vc.date_start, 'date_end', vc.date_end,
+                 'ended', vc.ended,
+                 'stops', coalesce((
+                   select jsonb_agg(jsonb_build_object(
+                            'stop_id', ss.stop_id, 'seq', ss.seq, 'side', ss.side, 'location_id', ss.location_id,
+                            'location', lo.name, 'planned_from', ss.planned_from, 'planned_to', ss.planned_to,
+                            'stop_day', ss.stop_day, 'executed', ss.executed, 'has_vehicle', ss.has_vehicle,
+                            'has_late', ss.has_late, 'dim', ss.dim, 'side_dim', ss.side_dim, 'cycle_dim', ss.cycle_dim,
+                            'local_loading', (
+                              select jsonb_build_object('local_move_id', lm.id, 'driver_id', lm.driver_id,
+                                                        'driver', d2.full_name, 'move_date', lm.move_date,
+                                                        'time_from', lm.time_from, 'time_to', lm.time_to)
+                                from local_moves lm left join drivers d2 on d2.id = lm.driver_id
+                               where lm.rt_stop_id = ss.stop_id and lm.move_kind = 'nat_loading'
+                                 and lm.deleted_at is null and lm.status <> 'Cancelled'
+                               order by lm.id limit 1),
+                            'legs', coalesce((
+                              select jsonb_agg(jsonb_build_object(
+                                       'leg_id', l.id, 'piece_id', l.piece_id,
+                                       'act', case when l.pickup_stop_id = ss.stop_id then 'load' else 'unload' end,
+                                       'pallets', sp.pallets, 'kind', vs.kind, 'order_id', vs.order_id,
+                                       'nat_order_id', vs.nat_order_id, 'reference', vs.reference,
+                                       'client_id', vs.client_id, 'client', cl.company_name,
+                                       'temperature_c', vs.temperature_c) order by l.id)
+                                from piece_legs l
+                                join shipment_pieces sp on sp.id = l.piece_id
+                                join v_shipments vs on vs.shipment_id = sp.shipment_id
+                                left join clients cl on cl.id = vs.client_id
+                               where l.deleted_at is null and (l.pickup_stop_id = ss.stop_id or l.drop_stop_id = ss.stop_id)),
+                              '[]'::jsonb)) order by ss.seq)
+                     from v_rt_stop_state ss left join locations lo on lo.id = ss.location_id
+                    where ss.rt_id = vc.rt_id), '[]'::jsonb))
+               || jsonb_build_object('partner_rate', r.partner_rate) as j
+          from v_rt_cycle vc
+          join ct_round_trips r on r.id = vc.rt_id
+          left join trucks tr on tr.id = vc.truck_id
+          left join trailers tl on tl.id = vc.trailer_id
+          left join drivers dv on dv.id = vc.driver_id
+          left join partners pa on pa.id = vc.partner_id
+         where vc.status <> 'cancelled' and vc.start_at < v_to and vc.end_at > v_from) c), '[]'::jsonb),
+    -- waiting = not at its national end and not at the hub; it never leaves the board until planned (spec 3)
+    'waiting', coalesce((
+      select jsonb_agg(jsonb_build_object(
+               'piece_id', ps.piece_id, 'shipment_id', ps.shipment_id, 'kind', ps.kind, 'order_id', ps.order_id,
+               'nat_order_id', ps.nat_order_id, 'order_stop_id', ps.order_stop_id, 'pallets', ps.pallets,
+               'leave_by', ps.leave_by, 'position_location_id', ps.position_location_id,
+               'nat_from_location_id', vs.nat_from_location_id, 'nat_to_location_id', vs.nat_to_location_id,
+               'nat_ready_day', ps.nat_ready_day, 'nat_due_day', ps.nat_due_day, 'overdue', ps.overdue,
+               'is_stock', ps.is_stock, 'client_id', vs.client_id, 'client', cl.company_name, 'reference', vs.reference,
+               'temperature_c', vs.temperature_c, 'pallet_exchange', vs.pallet_exchange, 'load_from', vs.load_from,
+               'load_to', vs.load_to, 'deliver_from', vs.deliver_from, 'deliver_to', vs.deliver_to)
+             || case when ps.nat_order_id is not null then jsonb_build_object('price', nor.price)
+                     else '{}'::jsonb end
+             order by ps.nat_ready_day, ps.piece_id)
+        from v_piece_state ps
+        join v_shipments vs on vs.shipment_id = ps.shipment_id
+        left join clients cl on cl.id = vs.client_id
+        left join national_orders nor on nor.id = ps.nat_order_id
+       where ps.waiting and not ps.at_hub and coalesce(ps.nat_ready_day, p_week) <= p_week + 6), '[]'::jsonb),
+    'hub', coalesce((
+      select jsonb_agg(to_jsonb(hb) || jsonb_build_object('client_id', vs.client_id, 'client', cl.company_name,
+                                                          'reference', vs.reference, 'temperature_c', vs.temperature_c)
+                       order by hb.nat_due_day, hb.piece_id)
+        from v_hub_bucket hb
+        join v_shipments vs on vs.shipment_id = hb.shipment_id
+        left join clients cl on cl.id = vs.client_id
+       where coalesce(hb.nat_ready_day, p_week) <= p_week + 6), '[]'::jsonb),
+    -- decision 40 (changed with 41): the unread natl notices for every role, as PLAN_PERMS notices
+    'notices', coalesce((select jsonb_agg(to_jsonb(n) order by n.created_at desc, n.id desc) from plan_notices n
+                          where n.to_desk = 'natl' and n.read_at is null), '[]'::jsonb));
+end
+$f$;
+
+  -- B7. What the international board shows of a VS (spec 5, E1/E20): its national carriers and whether all is
+  -- planned / executed. Internal boards only: nothing here ever goes to a client (Veroia is never shown to one).
+  CREATE FUNCTION public.plan_vs_state(p_order_ids bigint[])
+    RETURNS jsonb LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = public AS $f$
+begin
+  if p_order_ids is null then return '{}'::jsonb; end if;
+  if cardinality(p_order_ids) > 500 then perform plan_h_raise('bad_input', 'more than 500 order ids'); end if;
+  return coalesce((
+    select jsonb_object_agg(o::text, coalesce((
+             select jsonb_build_object(
+                      'carriers', coalesce((
+                        select jsonb_agg(jsonb_build_object(
+                                 'kind', case when c->>'trip_type' = 'PARTNER' then 'partner'
+                                              when c->>'truck_id' is null then 'none' else 'owned' end,
+                                 'text', case when c->>'trip_type' = 'PARTNER' then coalesce(pa.company_name, '')
+                                              else concat_ws(' / ', tr.license_plate, dv.full_name) end,
+                                 'code', c->>'code', 'hub_day', c->>'hub_day') order by c->>'hub_day', c->>'code')
+                          from jsonb_array_elements(v.carriers) c
+                          left join trucks tr on tr.id = (c->>'truck_id')::bigint
+                          left join drivers dv on dv.id = (c->>'driver_id')::bigint
+                          left join partners pa on pa.id = (c->>'partner_id')::bigint), '[]'::jsonb),
+                      'all_executed', v.all_executed, 'all_planned', v.all_planned,
+                      'first_hub_day', v.first_hub_day, 'n_pieces', v.n_pieces)
+               from v_vs_state v where v.order_id = o), '"missing"'::jsonb))
+      from unnest(p_order_ids) o), '{}'::jsonb);
+end
+$f$;
   -- ===== PART 5: RIGHTS AND PROOFS =====
   -- Its own block: the reviewer reads the rights in one place. Born closed (principle 5): the pg_default_acl of
   -- postgres gives EXECUTE to anon and authenticated on every new function. Everything 072 created loses every
@@ -2189,6 +2376,10 @@ $f$;
     , 'public.plan_vs_set_day(jsonb,text,text)'
     , 'public.plan_vs_set_place(jsonb,text,text)'
     , 'public.plan_local_loading(jsonb,text,text)'
+    , 'public.plan_notice_read(jsonb,text,text)'
+    , 'public.plan_board(date,text)'
+    , 'public.plan_vs_state(bigint[])'
+    , 'public.plan_notices_list(text,text)'
     -- @pub (072 tasks add ", 'public.plan_x(<arg types>)'" lines above this marker)
     ]::text[], NULL);
     -- 071's own plan_* (triggers and rule readers): never touched by 072, closed for every API role
