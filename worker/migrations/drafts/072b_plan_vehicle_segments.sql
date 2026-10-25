@@ -351,7 +351,10 @@ BEGIN
     CONSTRAINT seg_partner_needs_partner CHECK (trip_type <> 'PARTNER' OR partner_id IS NOT NULL),
     CONSTRAINT seg_partner_no_vehicle CHECK (trip_type <> 'PARTNER' OR (truck_id IS NULL AND trailer_id IS NULL AND driver_id IS NULL)),
     CONSTRAINT seg_owned_no_partner CHECK (trip_type <> 'OWNED' OR (partner_id IS NULL AND partner_rate IS NULL)),
-    CONSTRAINT seg_partner_rate CHECK (partner_rate IS NULL OR partner_rate >= 0),
+    -- B2b (26/10): NaN sorts above every number in Postgres, so "partner_rate >= 0" alone let it in (numeric(10,2)
+    -- keeps NaN, and plan_seg_copy would carry it onto the cycle). The acts refuse it first (plan_h_seg_vehicle_ok, as
+    -- 072's K1 input rule); this is the net for any other write. +-Infinity cannot be stored in numeric(10,2).
+    CONSTRAINT seg_partner_rate CHECK (partner_rate IS NULL OR (partner_rate >= 0 AND partner_rate <> 'NaN')),
     -- spec 4: the eight reasons, fixed in the base; a new reason = a new migration, never the screen. The codes
     -- vehicle_breakdown and driver_hours are 067's delay codes for the same event (one fault, one code).
     CONSTRAINT seg_reason_list CHECK (reason IS NULL OR reason IN ('vehicle_breakdown', 'reefer_breakdown', 'accident',
@@ -779,6 +782,13 @@ $f$;
 begin
   -- The shape of a segment's vehicle, before the CHECKs (one refusal code per mistake, never a 23514 the screen
   -- cannot place). Existence only: a soft-deleted truck, trailer, driver or partner is not offered.
+  -- B2b (26/10), 072's K1 input rule (coordinator 25/10, the words of plan_rt_create / plan_rt_update): NaN sorts above
+  -- every number, so it passed CHECK seg_partner_rate (>= 0) and was kept; +-Infinity and a finite rate past
+  -- numeric(10,2) ended as a raw 22003 at the write (a 500, in a dry run too). A rate is a finite number the column holds.
+  if p_rate is not null and not (abs(p_rate) < 'Infinity'::numeric) then
+    perform plan_h_raise('bad_input', 'partner_rate:finite');
+  end if;
+  if p_rate is not null and abs(round(p_rate, 2)) >= 100000000 then perform plan_h_raise('bad_input', 'partner_rate:range'); end if;
   if p_type is null or p_type not in ('OWNED', 'PARTNER') then perform plan_h_raise('bad_input', 'trip_type'); end if;
   if p_type = 'OWNED' and (p_partner is not null or p_rate is not null) then
     perform plan_h_raise('bad_input', 'partner on OWNED');
@@ -1175,6 +1185,12 @@ begin
   if p ? 'dry_run' and jsonb_typeof(p->'dry_run') <> 'boolean' then perform plan_h_raise('bad_input', 'dry_run'); end if;
   if p ? 'same_driver' and jsonb_typeof(p->'same_driver') <> 'boolean' then perform plan_h_raise('bad_input', 'same_driver'); end if;
   if jsonb_typeof(p->'vehicle') is distinct from 'object' then perform plan_h_raise('bad_input', 'vehicle'); end if;
+  -- B2b (26/10), as 072's K1 review r1 (plan_delete's reason, plan_order_update's set:text): an object / array /
+  -- boolean point or note was kept as its JSON text on the segment and in the card's history
+  if exists (select 1 from unnest(array['place_note', 'reason', 'reason_note']) f
+              where jsonb_typeof(p->f) in ('object', 'array', 'boolean')) then
+    perform plan_h_raise('bad_input', 'text');
+  end if;
   v_veh := p->'vehicle';
   perform plan_h_keys(v_veh, array['trip_type', 'truck_id', 'trailer_id', 'driver_id', 'partner_id', 'partner_rate'], 'vehicle');
   v_dry := coalesce((p->>'dry_run')::boolean, false);
@@ -1194,10 +1210,15 @@ begin
     v_driver := (v_veh->>'driver_id')::bigint;
     v_partner := (v_veh->>'partner_id')::bigint;
     v_rate := (v_veh->>'partner_rate')::numeric;
+  -- invalid_parameter_value: a time with an unknown zone ('... Mars/Base') is 22023, which 072's exception blocks
+  -- map to bad_input too (B2b, 26/10: it was a raw 22023)
   exception when invalid_text_representation or numeric_value_out_of_range or invalid_datetime_format
-                 or datetime_field_overflow then
+                 or datetime_field_overflow or invalid_parameter_value then
     perform plan_h_raise('bad_input', 'body');
   end;
+  -- B2b (26/10), 072's K1 input rule (coordinator 25/10): 'infinity' / '-infinity' are valid timestamptz input; it
+  -- was refused only as seg_time (another rule's code). A handover time is a finite time.
+  if v_at is not null and not isfinite(v_at) then perform plan_h_raise('bad_input', 'at:finite'); end if;
   -- the reason's VALUE is the CHECK's (seg_reason_list, one list): only its presence is checked here
   if v_rt is null or v_at is null or coalesce(p->>'reason', '') = '' or coalesce(p->>'place_note', '') !~ '[^[:space:]]' then
     perform plan_h_raise('bad_input', 'rt_id, at, place_note and reason');
@@ -1300,6 +1321,11 @@ begin
   perform plan_h_keys(v_set, array['at', 'place_note', 'reason', 'reason_note', 'trip_type', 'truck_id', 'trailer_id',
                                    'driver_id', 'partner_id', 'partner_rate'], 'set');
   if p ? 'dry_run' and jsonb_typeof(p->'dry_run') <> 'boolean' then perform plan_h_raise('bad_input', 'dry_run'); end if;
+  -- B2b (26/10), as plan_seg_change and 072's plan_order_update (set:text): no JSON text kept as a point or a note
+  if exists (select 1 from unnest(array['place_note', 'reason', 'reason_note']) f
+              where jsonb_typeof(v_set->f) in ('object', 'array', 'boolean')) then
+    perform plan_h_raise('bad_input', 'set:text');
+  end if;
   begin
     v_seg := (p->>'segment_id')::bigint;
     v_dry := coalesce((p->>'dry_run')::boolean, false);
@@ -1309,10 +1335,13 @@ begin
     v_driver := (v_set->>'driver_id')::bigint;
     v_partner := (v_set->>'partner_id')::bigint;
     v_rate := (v_set->>'partner_rate')::numeric;
+  -- invalid_parameter_value: an unknown time zone (22023), as plan_seg_change (B2b, 26/10)
   exception when invalid_text_representation or numeric_value_out_of_range or invalid_datetime_format
-                 or datetime_field_overflow then
+                 or datetime_field_overflow or invalid_parameter_value then
     perform plan_h_raise('bad_input', 'body');
   end;
+  -- B2b (26/10): a handover time is finite, as plan_seg_change (it was refused only as seg_time)
+  if v_at is not null and not isfinite(v_at) then perform plan_h_raise('bad_input', 'at:finite'); end if;
   -- one order of locks in every plan_*: the cycle first, then its segments
   select rt_id into v_rt from rt_vehicle_segments where id = v_seg;
   select * into r from ct_round_trips where id = v_rt for no key update;

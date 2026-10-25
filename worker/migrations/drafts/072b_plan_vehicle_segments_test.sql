@@ -164,6 +164,20 @@ DECLARE
     -- review R6 (DB findings 1, 2): the list follows the stops the put really uses; the narrowing from the start too
     , 'ok'               -- 119 the Move of 117 that also names the old C by stop_id, which the put does not use (the new C wins on the target side): swept, so listed and removed after the token - never a token the net refuses
     , 'ok'               -- 120 Move (management) of the KATHODOS load to the ANODOS of its OWN cycle, narrowing from the START past the handover: the ARCHIKO listed and removed, the next becomes the ARCHIKO, the copy and the payroll line follow driver 2, 0 needs_review
+    -- B2b (26/10): the three acts on the implemented 072's input rule (K1, coordinator 25/10): a non-finite number or
+    -- time, a free text that is not text and a cast error 072 maps are plan:bad_input with 072's detail, never a value
+    -- written, a raw SQLSTATE or another rule's code (each case: the refusal and its detail)
+    , 'ok'               -- 121 a handover to PARTNER with partner_rate NaN (NaN >= 0 is true: it passed CHECK seg_partner_rate and was kept)
+    , 'ok'               -- 122 the dry run of a handover with partner_rate Infinity (a raw 22003 at the write)
+    , 'ok'               -- 123 a correction of a PARTNER segment's partner_rate to NaN
+    , 'ok'               -- 124 a handover with a finite partner_rate past numeric(10,2) (a raw 22003 at the write)
+    , 'ok'               -- 125 a handover at 'infinity' (seg_time before: the refusal of another rule)
+    , 'ok'               -- 126 a correction of the time to '-infinity'
+    , 'ok'               -- 127 a handover at a time with an unknown time zone (a raw 22023, which 072 maps to bad_input)
+    , 'ok'               -- 128 a correction of the time with an unknown time zone
+    , 'ok'               -- 129 a handover whose point is a JSON object (kept as its JSON text before)
+    , 'ok'               -- 130 a correction whose reason_note is a JSON array
+    , 'con:seg_partner_rate' -- 131 a NaN partner_rate written past plan_* (the CHECK is the net, principle 4)
     -- @want (one line per case: "    , '<ok|plan:code|con:name|state:XXXXX>'  -- <k> <what>")
   ]::text[];
   verdict text; got text; hint text; msg text; cname text; st text;
@@ -1432,6 +1446,51 @@ BEGIN
                                  AND action = 'delete' AND role = 'management') = 1
                         THEN 'ok own cycle from the start: the ARCHIKO listed and removed, the copy and the line on driver 2'
                         ELSE 'FAIL own cycle start ' || r::text || ' ' || r2::text END;
+      ELSIF k BETWEEN 121 AND 130 THEN
+        -- a handover to correct (123: to a partner, so the segment has a rate; the others: truck 2 / Nikos at 14:30)
+        IF k IN (123, 126, 128, 130) THEN
+          r := plan_seg_change(jsonb_build_object('request_id', gen_random_uuid(), 'rt_id', rt1, 'at', t1430,
+                 'place_note', 'Lamia', 'reason', 'vehicle_breakdown',
+                 'vehicle', CASE WHEN k = 123 THEN jsonb_build_object('trip_type', 'PARTNER', 'partner_id', pa, 'partner_rate', 100)
+                                 ELSE veh2 END), 'test:072b', 'dispatcher');
+          g2 := (r->'ids'->>'segment_id')::bigint;
+        END IF;
+        j1 := jsonb_build_object('request_id', gen_random_uuid(), 'rt_id', rt1, 'at', t1430, 'place_note', 'Lamia',
+                                 'reason', 'vehicle_breakdown', 'vehicle', veh2);
+        m := CASE WHEN k IN (121, 122, 123) THEN 'bad_input:partner_rate:finite' WHEN k = 124 THEN 'bad_input:partner_rate:range'
+                  WHEN k IN (125, 126) THEN 'bad_input:at:finite' WHEN k IN (127, 128) THEN 'bad_input:body'
+                  WHEN k = 129 THEN 'bad_input:text' ELSE 'bad_input:set:text' END;
+        BEGIN
+          IF k IN (121, 122, 124) THEN
+            r := plan_seg_change(j1 || jsonb_build_object('vehicle', jsonb_build_object('trip_type', 'PARTNER', 'partner_id', pa,
+                   'partner_rate', CASE k WHEN 121 THEN to_jsonb('NaN'::text) WHEN 122 THEN to_jsonb('Infinity'::text)
+                                          ELSE to_jsonb(123456789) END))
+                   || CASE WHEN k = 122 THEN jsonb_build_object('dry_run', true) ELSE '{}'::jsonb END, 'test:072b', 'owner');
+          ELSIF k = 125 THEN
+            r := plan_seg_change(j1 || jsonb_build_object('at', 'infinity'), 'test:072b', 'owner');
+          ELSIF k = 127 THEN
+            r := plan_seg_change(j1 || jsonb_build_object('at', to_char(d, 'YYYY-MM-DD') || ' 14:30 Mars/Base'), 'test:072b', 'owner');
+          ELSIF k = 129 THEN
+            r := plan_seg_change(j1 || jsonb_build_object('place_note', jsonb_build_object('city', 'Lamia')), 'test:072b', 'owner');
+          ELSE
+            r := plan_seg_fix(jsonb_build_object('segment_id', g2, 'set', CASE k
+                   WHEN 123 THEN jsonb_build_object('partner_rate', 'NaN')
+                   WHEN 126 THEN jsonb_build_object('at', '-infinity')
+                   WHEN 128 THEN jsonb_build_object('at', to_char(d, 'YYYY-MM-DD') || ' 13:00 Mars/Base')
+                   ELSE jsonb_build_object('reason_note', jsonb_build_array('flat tyre')) END), 'test:072b', 'owner');
+          END IF;
+          verdict := 'FAIL accepted ' || r::text;
+        EXCEPTION WHEN others THEN
+          GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT, rl = RETURNED_SQLSTATE;
+          verdict := CASE WHEN msg = 'plan rule broken: ' || m THEN 'ok refused as ' || m
+                          ELSE 'FAIL ' || rl || ' ' || msg || ' (want ' || m || ')' END;
+        END;
+      ELSIF k = 131 THEN
+        r := plan_seg_change(jsonb_build_object('request_id', gen_random_uuid(), 'rt_id', rt1, 'at', t1430,
+               'place_note', 'Lamia', 'reason', 'vehicle_breakdown',
+               'vehicle', jsonb_build_object('trip_type', 'PARTNER', 'partner_id', pa, 'partner_rate', 100)), 'test:072b', 'dispatcher');
+        UPDATE rt_vehicle_segments SET partner_rate = 'NaN' WHERE id = (r->'ids'->>'segment_id')::bigint;
+        verdict := 'ok written';
       -- @case (each task adds its "ELSIF k = <n> THEN" branches above this line)
       END IF;
       SET CONSTRAINTS ALL IMMEDIATE;
