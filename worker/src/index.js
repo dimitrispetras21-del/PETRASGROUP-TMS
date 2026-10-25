@@ -389,6 +389,8 @@ async function dbRpc(env, fn, args) {
     // Same as dbInsert: keep the parsed PostgREST error for stockRuleError()
     // (delete_order_cascade soft-deletes the order, which the 057 guard may refuse).
     try { err.pg = JSON.parse(detail); } catch {}
+    // and the HTTP status: handlePlan tells an answer that proves the RPC never ran (401/403) from a lost one
+    err.status = res.status;
     throw err;
   }
   return res.json();
@@ -5720,6 +5722,18 @@ async function handlePlan(request, url, origin, env) {
     // happened before the link dropped: no answer (the fetch threw), a gateway page, or a JSON body without a
     // SQLSTATE - the gateway's 502 / 504 {"message": …}, PostgREST's PGRST000 «connection lost» (K1 review r2).
     const rolledBack = !!pg && /^(?!08)[0-9A-Z]{5}$/.test(String(pg.code || ""));
+    // K1 review r3 m1: some answers without a SQLSTATE prove the RPC never ran, so nothing was kept and «μπορεί να
+    // αποθηκεύτηκε» would only send the user to look for nothing: a 401 / 403 (the gateway refused the service key,
+    // e.g. after a rotation; any body, a page too) and PGRST003 (no pool connection within the wait: the request never
+    // reached Postgres). PGRST000 / PGRST001 and the 502 / 504 stay plan_unknown: a link can drop AFTER the COMMIT.
+    if (!rolledBack && (e && (e.status === 401 || e.status === 403))) {
+      console.error(`PLAN ${name}: the DB gateway refused the call (${e.status})`);
+      return planError(503, "SERVER", "db_refused", `Η βάση αρνήθηκε την κλήση (${e.status}) — η πράξη ${name} δεν αποθηκεύτηκε· ενημέρωσε τον Δημήτρη`, origin, env);
+    }
+    if (!rolledBack && pg && String(pg.code || "") === "PGRST003") {
+      console.error(`PLAN ${name}: PGRST003 (no pool connection)`);
+      return planError(503, "SERVER", "slow", "Η βάση δεν είχε ελεύθερη σύνδεση — τίποτα δεν αποθηκεύτηκε· ξαναδοκίμασε σε λίγο", origin, env);
+    }
     if (maybeWritten && !rolledBack) {
       // the link may have dropped AFTER the COMMIT: a write never claims «not done» (αρχή 1); the F4 client
       // must not send it again by itself, and the user re-presses the SAME form, so the same request_id replays

@@ -613,3 +613,34 @@ test('plan_rt_update dry run: a constraint with a 072 code of its own is preview
     assert.deepEqual(dry.json.preview.conflict, { code, sqlstate, detail: null, message: exec.json.error.message }, name);
   }
 });
+
+// ───────────────────── K1 review r3 m1: an answer that proves the RPC never ran ─────────────────────
+test('a write the gateway refused (401 / 403, any body) or PostgREST never ran (PGRST003) → 503 «δεν αποθηκεύτηκε», never plan_unknown', async () => {
+  const NOT_RUN = [
+    [401, { message: 'Invalid API key' }, 'db_refused'],
+    [401, { code: 'PGRST301', details: null, hint: null, message: 'JWSError (CompactDecodeError Invalid number of parts: Expected 3 parts; got 1)' }, 'db_refused'],
+    [403, { message: 'Forbidden' }, 'db_refused'],
+    [403, '<html><body>403 Forbidden</body></html>', 'db_refused'],
+    [504, { code: 'PGRST003', details: null, hint: null, message: 'Timed out acquiring connection from connection pool.' }, 'slow']];
+  for (const [status, body, code] of NOT_RUN) {
+    const label = `${status} ${typeof body === 'string' ? 'page' : body.code || body.message}`;
+    routes.length = 0;
+    on('POST', 'rpc/plan_move_pieces', () => pgError(status, body));
+    calls.length = 0;
+    let r = await callOpen('dispatcher', 'POST', '/plan/move', { from: { piece_ids: [1] }, target: { rt_id: 5, side: 'KATHODOS' } });
+    assert.equal(r.status, 503, `${label}: ${r.text}`);
+    assert.equal(r.json.error.code, code, label);
+    assert.equal(r.json.error.message, code === 'slow'
+      ? 'Η βάση δεν είχε ελεύθερη σύνδεση — τίποτα δεν αποθηκεύτηκε· ξαναδοκίμασε σε λίγο'
+      : `Η βάση αρνήθηκε την κλήση (${status}) — η πράξη POST /plan/move δεν αποθηκεύτηκε· ενημέρωσε τον Δημήτρη`, label);
+    assert.equal(rpcCalls().length, 1, `${label}: one RPC, never a second`);
+    r = await call('dispatcher', 'POST', '/plan/move', MOVE_DRY);
+    assert.equal(r.json.error.code, code, `${label}: a dry run says the same`);
+  }
+  // a 403 that carries a real SQLSTATE stays with it: an inner 42501 rolled back (plan_failed), the RPC's own is db_grant
+  routes.length = 0;
+  on('POST', 'rpc/plan_move_pieces', () => pgError(403, { code: '42501', details: null, hint: null, message: 'permission denied for table piece_legs' }));
+  const r = await callOpen('dispatcher', 'POST', '/plan/move', { from: { piece_ids: [1] }, target: { rt_id: 5, side: 'KATHODOS' } });
+  assert.equal(r.status, 500, r.text);
+  assert.equal(r.json.error.code, 'plan_failed');
+});
