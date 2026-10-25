@@ -1895,6 +1895,7 @@ function _mreqPaint() {
       ${pill('all', 'όλες', all.length, 'is-dim')}
       <span class="mnt-spacer"></span>
       <input id="mreq-q" class="mnt-search" style="width:200px" placeholder="Αναζήτηση πινακίδας…" value="${escapeHtml(_mreqSearch)}" oninput="_mreqSetSearch(this.value)">
+      <button type="button" id="mreq-list-prt" class="btn btn-ghost btn-sm" title="Όλες οι ανοιχτές εντολές και λήξεις, με το δρομολόγιο κάθε οχήματος (δεξί κλικ: κοινή χρήση)" onclick="_mreqPrintList(this)">${icon('printer', 14)} <span class="mreq-list-lbl">Εκτύπωση λίστας</span></button>
       <button type="button" class="btn btn-ghost btn-sm" onclick="navigate('maint_svc')" title="MS-2">Ιστορικό Service</button>
       <button type="button" class="btn btn-primary btn-sm" onclick="_mreqOpenForm()">Νέα εντολή</button>
       ${_mntRefreshBtn("MREQ._loaded=false;renderMaintRequests()")}
@@ -1942,6 +1943,8 @@ function _mreqPaint() {
   // One listener on the table, which is redrawn on every paint.
   const tbl = document.querySelector('#content .mnt-table');
   if (tbl && typeof shareMenuDelegate === 'function') shareMenuDelegate(tbl, '.mreq-prt', el => _mreqShareOpts(el.dataset.rec));
+  const listBtn = document.getElementById('mreq-list-prt');
+  if (listBtn && typeof attachShareMenu === 'function') attachShareMenu(listBtn, { title: 'Οχήματα με εκκρεμότητα', getText: _mreqListText, onPrint: () => _mreqPrintList(listBtn) });
   // Click a header to sort (T73); the drawn order (priority, then newest) is the third click.
   if (typeof TableSort !== 'undefined') TableSort.apply(document.getElementById('content'));
 }
@@ -2055,6 +2058,253 @@ function _mreqShareOpts(recId) {
 }
 function _mreqPrintBtn(recId, withLabel) {
   return `<button type="button" class="btn btn-ghost btn-sm mreq-prt" data-rec="${escapeHtml(recId)}" title="Εκτύπωση εντολής (δεξί κλικ: κοινή χρήση)" aria-label="Εκτύπωση εντολής" onclick="event.stopPropagation();_mreqPrint('${recId}')">${icon('printer', 14)}${withLabel ? ' Εκτύπωση' : ''}</button>`;
+}
+
+// ── Print the whole list, for the dispatchers' plan (owner 24/10/2026) ──
+// Figma «Εντολές Εργασίας · Εκτύπωση λίστας (24-10)», approved 24/10. One
+// sheet answering «which vehicle can I not send, what is wrong with it, where
+// is it»: every open work order + every document expired or due within 14 days
+// (the SAME rule as the assign-picker warnings, vehicleWarnings in utils.js),
+// one row per vehicle, with its trip of the next 7 days. It ignores the tab and
+// the search on purpose: a planning list that silently drops vehicles is worse
+// than none. No prices anywhere.
+const _MREQ_LEGAL_DOCS = ['KTEO', 'Insurance', 'ΤΑΧΟΓΡΑΦΟΣ'];   // expired = the vehicle may not leave
+const _mreqFold = s => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase();
+const _mreqDM = s => { const p = toLocalDate(s).split('-'); return p.length === 3 ? p[2] + '/' + p[1] : '—'; };
+function _mreqShift(ymd, days) { const d = new Date(ymd + 'T00:00:00'); d.setDate(d.getDate() + days); return toLocalDate(d); }
+
+// Trips: orders + national loads + groupage around today (window below). Any failed read REJECTS: the sheet then prints «?» and says so in the
+// title — a blank trip cell would read as «free».
+async function _mreqTripsLoad() {
+  const t0 = localToday();
+  // Loaded in the last 30 days, OR still delivering from 9 days back: a long
+  // trip loaded earlier must not read as «no trip».
+  const rng = `AND(IS_BEFORE({Loading DateTime},'${_mreqShift(t0, 8)}'),OR(IS_AFTER({Loading DateTime},'${_mreqShift(t0, -30)}'),IS_AFTER({Delivery DateTime},'${_mreqShift(t0, -9)}')))`;
+  const base = ['Truck', 'Trailer', 'Driver', 'Loading DateTime', 'Delivery DateTime', 'Status'];
+  const [ord, nl, cl] = await Promise.all([
+    atGetAll(TABLES.ORDERS, { filterByFormula: rng, fields: [...base, 'Loading Location 1', 'Unloading Location 1'] }, false),
+    atGetAll(TABLES.NAT_LOADS, { filterByFormula: rng, fields: [...base, 'Pickup Location 1', 'Delivery Location 1'] }, false),
+    atGetAll(TABLES.CONS_LOADS, { filterByFormula: rng, fields: [...base, 'Loading Location 1', 'Delivery Location 1'] }, false),
+  ]);
+  const one = (f, k) => (f[k] || [])[0] || '';
+  const map = (recs, from, to) => (recs || []).filter(r => (r.fields['Status'] || '') !== 'Cancelled').map(r => {
+    const f = r.fields;
+    return { truck: one(f, 'Truck'), trailer: one(f, 'Trailer'), driver: one(f, 'Driver'),
+      ld: toLocalDate(f['Loading DateTime']), dd: toLocalDate(f['Delivery DateTime']), from: one(f, from), to: one(f, to) };
+  }).filter(t => t.ld);
+  return [...map(ord, 'Loading Location 1', 'Unloading Location 1'), ...map(nl, 'Pickup Location 1', 'Delivery Location 1'), ...map(cl, 'Loading Location 1', 'Delivery Location 1')];
+}
+
+// The model the sheet and the shared text are built from. trips === null means
+// the trip read failed («?» everywhere, no «Στον δρόμο» section).
+function _mreqListModel(trips) {
+  const t0 = localToday(), yday = _mreqShift(t0, -1), wkBack = _mreqShift(t0, -8), wkFwd = _mreqShift(t0, 8);
+  const locName = id => { const l = getRefLocations().find(x => x.id === id); return l ? (l.fields['City'] || l.fields['Name'] || '') : ''; };
+  const drvName = id => { const d = getRefDrivers().find(x => x.id === id); return d ? (d.fields['Full Name'] || '') : ''; };
+  const veh = new Map();   // plate key → vehicle
+  const vOf = (plate, kind, id) => {
+    const k = _vwPlate(plate); if (!k) return null;
+    if (!veh.has(k)) veh.set(k, { plate: String(plate).trim(), kind, id: id || null, items: [] });
+    const v = veh.get(k); if (id && !v.id) { v.id = id; v.kind = kind; } return v;
+  };
+  // 1. Documents (active vehicles only, same window as the bell and the pickers).
+  [[MAINT.trucks, TRUCK_EXPIRY_FIELDS, 'truck'], [MAINT.trailers, TRAILER_EXPIRY_FIELDS, 'trailer']].forEach(([list, fields, kind]) => {
+    for (const r of list || []) {
+      const f = r.fields || {}; if (!f['Active'] || !f['License Plate']) continue;
+      for (const ef of _expiryFieldsFor(f, fields)) {
+        const days = f[ef.field] ? _daysUntil(f[ef.field]) : null;
+        if (days === null || days > 14) continue;
+        vOf(f['License Plate'], kind, r.id).items.push({ t: days < 0 ? (_MREQ_LEGAL_DOCS.includes(ef.label) ? 1 : 3) : 5, doc: _VW_DOC_GR[ef.label] || ef.label, days, date: toLocalDate(f[ef.field]) });
+      }
+    }
+  });
+  // 2. Open work orders. A work order that names a document carries that
+  // document's line inside it, so «ΚΤΕΟ» is not listed twice.
+  const known = new Map();
+  (MAINT.trucks || []).forEach(r => known.set(_vwPlate(r.fields['License Plate']), ['truck', r.id]));
+  (MAINT.trailers || []).forEach(r => known.set(_vwPlate(r.fields['License Plate']), ['trailer', r.id]));
+  for (const r of MREQ.data) {
+    const f = r.fields || {}; if ((f['Status'] || '') === 'Done' || !f['Vehicle Plate']) continue;
+    const kn = known.get(_vwPlate(f['Vehicle Plate']));
+    const v = vOf(f['Vehicle Plate'], kn ? kn[0] : (f['Vehicle Type'] === 'Trailer' ? 'trailer' : 'truck'), kn ? kn[1] : null);
+    const p = _normP(f['Priority']);
+    const it = { t: p === 'SOS' ? 2 : p === 'Άμεσα' ? 4 : 6, prio: p || 'Κανονικό', text: f['Description'] || '—', shop: f['Workshop'] || '', date: toLocalDate(f['Date Reported']) };
+    // Whole words only: a loose substring («ΚΕΚ» inside another word) would
+    // swallow the document's own line.
+    const words = new Set(_mreqFold(it.text).split(/[^A-Z0-9\u0391-\u03A9]+/));
+    const docIx = v.items.findIndex(d => d.doc && (words.has(_mreqFold(d.doc)) || (d.doc === 'ΚΤΕΟ' && words.has('KTEO'))));
+    if (docIx >= 0) { it.withDoc = v.items[docIx]; v.items.splice(docIx, 1); }
+    v.items.push(it);
+  }
+  const vs = [...veh.values()].filter(v => v.items.length);
+  // 3. Rank = the worst item: expired KTEO/insurance/tacho 1 · SOS 2 · other
+  // expired document 3 · Άμεσα 4 · due 5 · normal 6.
+  const rankOf = it => it.withDoc && it.withDoc.t < it.t ? it.withDoc.t : it.t;
+  for (const v of vs) {
+    // Work orders first (SOS, then Άμεσα), then ONE line with all the
+    // vehicle's documents, the ones that stop it first (ΚΤΕΟ / insurance /
+    // tacho), then the most overdue — as approved in Figma.
+    const docs = v.items.filter(it => it.doc).sort((a, b) => a.t - b.t || a.days - b.days);
+    const wos = v.items.filter(it => !it.doc).sort((a, b) => rankOf(a) - rankOf(b) || a.date.localeCompare(b.date));
+    v.docs = docs.concat(wos.filter(w => w.withDoc).map(w => w.withDoc));   // every document, for the counts
+    v.items = docs.length ? wos.concat([{ doc: true, list: docs, t: Math.min(...docs.map(d => d.t)), days: docs[0].days, date: docs[0].date }]) : wos;
+    v.rank = Math.min(...v.items.map(rankOf));
+    v.oldest = v.docs.map(d => d.date).concat(wos.map(w => w.date)).filter(Boolean).sort()[0] || '';
+    if (trips === null) { v.trip = null; continue; }
+    // A plate typed on a work order that is not in the fleet cannot be matched
+    // to trips: say so, never «—» (which reads as «no trip»).
+    if (!v.id) { v.trip = { unknown: true, running: false }; continue; }
+    const mine = trips.filter(t => (v.kind === 'trailer' ? t.trailer : t.truck) === v.id);
+    // Running or next (not delivered before today, loading before +8 days)
+    // wins over a delivery of yesterday: a truck that delivered yesterday and
+    // leaves tomorrow is «φεύγει», and with an SOS it belongs on the road list.
+    const byLd = (a, b) => a.ld.localeCompare(b.ld);
+    const cur = mine.filter(t => (t.dd || t.ld) >= t0 && t.ld < wkFwd).sort(byLd)[0]
+      || mine.filter(t => (t.dd || t.ld) === yday).sort(byLd)[0];
+    const last = cur ? null : mine.filter(t => t.dd && t.dd < yday && t.dd >= wkBack).sort((a, b) => b.dd.localeCompare(a.dd))[0];
+    const t = cur || last;
+    if (!t) { v.trip = false; continue; }
+    const pairId = v.kind === 'trailer' ? t.truck : t.trailer;
+    const pairRef = (v.kind === 'trailer' ? getRefTrucks() : getRefTrailers()).find(x => x.id === pairId);
+    const route = [locName(t.from), locName(t.to)];
+    let state, past = false;
+    if (!cur || (t.dd && t.dd < t0)) { state = 'παρέδωσε ' + _mreqDM(t.dd) + (route[1] ? ' · ' + route[1] : ''); past = true; }
+    else if (t.ld > t0) state = 'φεύγει ' + _mreqDM(t.ld);
+    else if (!t.dd) state = 'φόρτωσε ' + _mreqDM(t.ld);
+    else if (t.dd === t0) state = 'παραδίδει ' + _mreqDM(t.dd);
+    else state = 'στον δρόμο ως ' + _mreqDM(t.dd);
+    v.trip = { state, past, running: !past,
+      route: past ? '' : (route[0] || route[1] ? (route[0] || 'τόπος —') + ' → ' + (route[1] || 'τόπος —') : 'τόπος —'),
+      sub: [past && route[0] ? 'από ' + route[0] : '', drvName(t.driver), pairRef ? 'με ' + pairRef.fields['License Plate'] : '', !past && !t.dd ? 'χωρίς ημ. παράδοσης' : ''].filter(Boolean).join(' · '),
+      pairKey: pairRef ? _vwPlate(pairRef.fields['License Plate']) : '' };
+  }
+  // 4. Sections: «Στον δρόμο» = SOS or an expired document while running or
+  // leaving within 7 days; the rest by vehicle kind. Within a rank, vehicles
+  // running or leaving first, then a recent delivery, then the oldest.
+  const tripScore = v => !v.trip || v.trip.unknown ? 0 : v.trip.running ? 2 : 1;
+  const order = (a, b) => a.rank - b.rank || tripScore(b) - tripScore(a) || a.oldest.localeCompare(b.oldest) || a.plate.localeCompare(b.plate);
+  const onRoad = vs.filter(v => v.trip && v.trip.running && v.rank <= 3).sort(order);
+  const rest = vs.filter(v => !onRoad.includes(v));
+  const sections = [
+    ...(trips === null ? [] : [{ key: 'road', title: 'ΣΤΟΝ ΔΡΟΜΟ', rows: onRoad }]),
+    { key: 'truck', title: 'ΦΟΡΤΗΓΑ', rows: rest.filter(v => v.kind !== 'trailer').sort(order) },
+    { key: 'trailer', title: 'ΡΥΜΟΥΛΚΟΥΜΕΝΑ', rows: rest.filter(v => v.kind === 'trailer').sort(order) },
+  ];
+  const where = {}; sections.forEach(s => s.rows.forEach(v => { where[_vwPlate(v.plate)] = s.key; }));
+  const label = { road: 'στον δρόμο', truck: 'φορτηγά', trailer: 'ρυμουλκούμενα' };
+  vs.forEach(v => { if (v.trip && v.trip.pairKey && where[v.trip.pairKey]) v.trip.sub += ' (κι αυτό στη λίστα · ' + label[where[v.trip.pairKey]] + ')'; });
+  const wos = vs.flatMap(v => v.items.filter(it => !it.doc)), docs = vs.flatMap(v => v.docs);
+  return { sections, failed: trips === null, total: vs.length,
+    sos: wos.filter(i => i.prio === 'SOS').length, urgent: wos.filter(i => i.prio === 'Άμεσα').length,
+    expired: docs.filter(d => d.days < 0).length, due: docs.filter(d => d.days >= 0).length };
+}
+const _mreqDocTxt = d => d.list ? d.list.map(_mreqDocTxt).join(' · ')
+  : d.doc + (d.days < 0 ? ' έληξε πριν ' + (-d.days) + ' ημ.' : d.days === 0 ? ' λήγει σήμερα' : ' λήγει σε ' + d.days + ' ημ.');
+
+let _mreqListBusy = false;
+async function _mreqListBuild() {
+  await preloadReferenceData();
+  let trips = null;
+  try { trips = await _mreqTripsLoad(); }
+  catch (e) { if (typeof logError === 'function') logError(e, 'maint_req: print list trips'); }
+  return _mreqListModel(trips);
+}
+async function _mreqPrintList(btn) {
+  if (_mreqListBusy) return;
+  _mreqListBusy = true;
+  const lbl = btn && btn.querySelector('.mreq-list-lbl'); if (lbl) lbl.textContent = 'Ετοιμάζεται…'; if (btn) btn.disabled = true;
+  try { _mreqListPrintHtml(await _mreqListBuild()); }
+  catch (e) { toast('Η λίστα δεν τυπώθηκε: ' + (e.message || 'σφάλμα'), 'error'); if (typeof logError === 'function') logError(e, 'maint_req: print list'); }
+  finally { _mreqListBusy = false; if (lbl) lbl.textContent = 'Εκτύπωση λίστας'; if (btn) btn.disabled = false; }
+}
+function _mreqListPrintHtml(m) {
+  const E = s => escapeHtml(String(s ?? ''));
+  const badge = it => it.prio === 'SOS' ? '<span class="b sos">SOS</span>' : it.prio === 'Άμεσα' ? '<span class="b urg">Άμεσα</span>' : '';
+  const line = it => it.doc
+    ? `<td></td><td class="${it.list.some(d => d.days < 0) ? 'x' : ''}">${E(_mreqDocTxt(it))}</td><td></td><td class="d">λ. ${E(_mreqDM(it.date))}</td>`
+    : `<td>${badge(it)}</td><td class="${it.prio === 'SOS' ? 's' : ''}">${E(it.text)}${it.withDoc ? ` <span class="${it.withDoc.days < 0 ? 'x' : ''}">(${E(_mreqDocTxt(it.withDoc))})</span>` : ''}</td><td class="w">${it.shop ? E(it.shop) : '<span class="m">—</span>'}</td><td class="d">${it.date ? 'άν. ' + E(_mreqDM(it.date)) : ''}</td>`;
+  const trip = (v, road) => m.failed ? '<b>?</b>'
+    : !v.trip ? '<span class="m">—</span>'
+    : v.trip.unknown ? '<b>?</b> <span class="sub">πινακίδα εκτός στόλου · δεν ελέγχθηκε</span>'
+    : `<span class="st${road ? ' b2' : ''}">${E(v.trip.state)}</span>${v.trip.route ? ' &nbsp;' + E(v.trip.route) : ''}${v.trip.sub ? `<div class="sub">${E(v.trip.sub)}</div>` : ''}`;
+  const rows = s => s.rows.map(v => v.items.map((it, i) => `<tr class="${i === v.items.length - 1 ? 'end' : 'in'}">${i === 0 ? `<td class="p" rowspan="${v.items.length}">${E(v.plate)}${s.key === 'road' && v.kind === 'trailer' ? '<div class="k">ρυμ.</div>' : ''}</td>` : ''}${line(it)}${i === 0 ? `<td class="t" rowspan="${v.items.length}">${trip(v, s.key === 'road')}</td>` : ''}</tr>`).join('')).join('');
+  // The section title is a header row: it repeats on every printed page the
+  // section runs onto and can never stay alone at the foot of a page.
+  const sec = s => !s.rows.length ? '' : `<section class="${s.key === 'road' ? 'road' : ''}">
+    <table><colgroup><col style="width:8%"><col style="width:5.5%"><col style="width:30%"><col style="width:19%"><col style="width:7%"><col></colgroup>
+    <thead><tr class="cap"><td colspan="6"><h2>${s.title} <small>${s.rows.length} οχήματα</small></h2></td></tr><tr><th>ΟΧΗΜΑ</th><th></th><th>ΤΙ ΕΧΕΙ</th><th>ΣΥΝΕΡΓΕΙΟ</th><th class="d">ΗΜ/ΝΙΑ</th><th class="tr">${m.failed ? 'ΔΡΟΜΟΛΟΓΙΟ — ΔΕΝ ΕΛΕΓΧΘΗΚΕ' : 'ΔΡΟΜΟΛΟΓΙΟ 7 ΗΜ.'}</th></tr></thead>
+    <tbody>${rows(s)}</tbody></table></section>`;
+  const now = new Date();
+  const stamp = now.toLocaleDateString('el-GR', { weekday: 'short', day: '2-digit', month: '2-digit', year: 'numeric' }) + ' ' + now.toLocaleTimeString('el-GR', { hour: '2-digit', minute: '2-digit', hour12: false });
+  // Hidden frame, like the single work-order print (Nick 15/10): the click
+  // opens the browser's print dialog over the page; «Save as PDF» is there.
+  let fr = document.getElementById('mreqListFrame'); if (fr) fr.remove();
+  fr = document.createElement('iframe'); fr.id = 'mreqListFrame'; fr.setAttribute('aria-hidden', 'true');
+  fr.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0;visibility:hidden';
+  document.body.appendChild(fr);
+  const win = fr.contentWindow;
+  win.document.open();
+  win.document.write(`<!DOCTYPE html><html lang="el"><head><meta charset="utf-8"><title>Οχήματα με εκκρεμότητα ${E(localToday())}</title>
+    <link href="https://fonts.googleapis.com/css2?family=Syne:wght@700&family=DM+Sans:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <style>
+      @page { size: A4 landscape; margin: 11mm 11mm 12mm; @bottom-right { content: "σελ. " counter(page) " / " counter(pages); font: 7pt 'DM Sans', Arial, sans-serif; color: #475569; } }
+      * { -webkit-print-color-adjust: exact; print-color-adjust: exact; box-sizing: border-box; }
+      body { font: 8pt/1.3 'DM Sans', Arial, sans-serif; color: #0B1929; margin: 0; }
+      .hd { display: flex; justify-content: space-between; align-items: flex-end; border-bottom: 2px solid #0B1929; padding-bottom: 5px; margin-bottom: 7px; }
+      .hd h1 { font: 700 15pt 'Syne', 'DM Sans', Arial, sans-serif; margin: 0; } .hd h1 span { font: 700 8pt 'DM Sans', Arial, sans-serif; letter-spacing: .06em; margin-left: 8px; }
+      .hd .when { font-weight: 500; margin-top: 2px; } .hd .co { font-weight: 700; letter-spacing: .06em; font-size: 8pt; }
+      .note { border: 1.5px solid #0B1929; padding: 5px 9px; font-weight: 600; margin-bottom: 7px; }
+      .kpi { margin-bottom: 8px; }
+      h2 { font: 700 8.5pt 'Syne', 'DM Sans', Arial, sans-serif; letter-spacing: .06em; margin: 0; } tr.cap td { padding: 8px 0 3px; } section + section { margin-top: 2px; } h2 small { font: 400 7pt 'DM Sans', Arial, sans-serif; color: #64748B; letter-spacing: 0; margin-left: 6px; }
+      table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+      thead { display: table-header-group; }
+      th { background: #F1F5F9; border-bottom: 1.5px solid #0B1929; font-size: 5.8pt; font-weight: 700; letter-spacing: .06em; color: #475569; text-align: left; padding: 2.5px 5px; }
+      th.tr { color: #0B1929; } th.d, td.d { text-align: right; }
+      td { padding: 2.5px 5px; vertical-align: top; } tr { break-inside: avoid; } tr.end td, td.p, td.t { border-bottom: 1px solid #CBD5E1; }
+      section.road tbody tr:last-child td { border-bottom: 2px solid #0B1929; }
+      section.road tbody td.p { border-left: 2px solid #0B1929; } section.road tbody td.t { border-right: 2px solid #0B1929; }
+      section.road tbody tr:first-child td { border-top: 2px solid #0B1929; }
+      td.p { font: 500 8.2pt 'DM Mono', ui-monospace, monospace; } td.p .k { font: 6.5pt 'DM Sans', Arial, sans-serif; color: #475569; }
+      td.d { font: 7.3pt 'DM Mono', ui-monospace, monospace; color: #334155; white-space: nowrap; }
+      td.w { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 7.6pt; }
+      .s { font-weight: 600; } .x { color: #B91C1C; font-weight: 600; } .m { color: #64748B; }
+      .b { display: inline-block; width: 32px; text-align: center; font-size: 6pt; font-weight: 700; border-radius: 2px; padding: 1px 0; }
+      .b.sos { background: #B91C1C; color: #fff; letter-spacing: .06em; } .b.urg { border: 1px solid #0B1929; }
+      .st { font-weight: 600; } .st.b2 { font-weight: 700; } .sub { font-size: 6.6pt; color: #64748B; }
+      .ft { margin-top: 10px; border-top: 1px solid #CBD5E1; padding-top: 4px; font-size: 6.2pt; color: #475569; }
+    </style></head><body>
+    <div class="hd"><div><h1>Οχήματα με εκκρεμότητα${m.failed ? '<span>ΔΡΟΜΟΛΟΓΙΑ ΔΕΝ ΕΛΕΓΧΘΗΚΑΝ</span>' : ''}</h1><div class="when">Κατάσταση ${E(stamp)}</div></div><div class="co">PETRAS GROUP</div></div>
+    ${m.failed ? '<div class="note">Τα δρομολόγια δεν φορτώθηκαν. Κενό ή «?» στη στήλη Δρομολόγιο δεν σημαίνει ελεύθερο.</div>' : ''}
+    <div class="kpi">${m.total} οχήματα · ${m.sos} SOS · ${m.urgent} Άμεσα · ${m.expired} έγγραφα ληγμένα · ${m.due} λήγουν σε ≤14 ημ.</div>
+    ${m.total ? m.sections.map(sec).join('') : '<p>Καμία ανοιχτή εντολή και κανένα έγγραφο που λήγει σε 14 ημέρες.</p>'}
+    <div class="ft">Σειρά: ληγμένο ΚΤΕΟ / ασφάλεια / ταχογράφος → SOS → ληγμένο ΚΕΚ / FRC → Άμεσα → λήγει σε ≤14 ημ.· στην ίδια βαθμίδα πρώτα όσα κινούνται, μετά όσα παρέδωσαν πρόσφατα. «Στον δρόμο» = SOS ή ληγμένο έγγραφο ενώ εκτελεί ή φεύγει μέσα σε 7 ημ.<br>
+    Πηγή: TMS · ανοιχτή εντολή = κατάσταση όχι «Ολοκληρώθηκε» · έγγραφα: έληξε ή λήγει σε ≤14 ημ. (ίδιος κανόνας με την ανάθεση) · δρομολόγιο: διεθνή, εθνικά και groupage, από χθες έως +7 ημ., αλλιώς η τελευταία παράδοση έως 7 ημ. πίσω · άν. = άνοιξε η εντολή · λ. = λήξη</div>
+    </body></html>`);
+  win.document.close();
+  // The frame does not inherit the app's fonts: wait for them (at most 2.5 s),
+  // else the sheet prints in Arial — still complete, only plainer.
+  // fonts.ready alone can resolve before the stylesheet arrives (no face
+  // known yet), so wait for the <link> first, then the faces it declares.
+  const go = () => { win.focus(); win.print(); };
+  const link = win.document.querySelector('link[rel=stylesheet]');
+  const css = link && !link.sheet ? new Promise(r => { link.onload = link.onerror = r; }) : Promise.resolve();
+  const faces = css.then(() => win.document.fonts ? Promise.all([...win.document.fonts].map(f => f.load().catch(() => null))).then(() => win.document.fonts.ready) : null);
+  Promise.race([faces, new Promise(r => setTimeout(r, 3000))]).then(() => setTimeout(go, 100));
+}
+// Right-click / long-press: the same list as text (WhatsApp), like one order.
+async function _mreqListText() {
+  const m = await _mreqListBuild();
+  const out = ['ΟΧΗΜΑΤΑ ΜΕ ΕΚΚΡΕΜΟΤΗΤΑ · PETRAS GROUP · ' + _mreqDM(localToday()), m.failed ? 'ΔΡΟΜΟΛΟΓΙΑ ΔΕΝ ΕΛΕΓΧΘΗΚΑΝ' : ''].filter(Boolean);
+  for (const s of m.sections) {
+    if (!s.rows.length) continue;
+    out.push('', s.title + ' (' + s.rows.length + ')');
+    for (const v of s.rows) {
+      const what = v.items.map(it => it.doc ? _mreqDocTxt(it) : (it.prio !== 'Κανονικό' ? it.prio + ' ' : '') + it.text + (it.withDoc ? ' (' + _mreqDocTxt(it.withDoc) + ')' : '')).join(' · ');
+      const tr = m.failed || (v.trip && v.trip.unknown) ? ' — δρομολόγιο: ?' : v.trip ? ' — ' + v.trip.state + (v.trip.route ? ' ' + v.trip.route : '') : '';
+      out.push(v.plate + ': ' + what + tr);
+    }
+  }
+  return out.join('\n');
 }
 
 // ── Form (w2-maint-request-form 165:769) ─────────────────────────
