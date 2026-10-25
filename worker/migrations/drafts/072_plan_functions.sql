@@ -870,6 +870,92 @@ exception
     perform plan_h_raise('bad_input', sqlstate);
 end
 $f$;
+
+  CREATE FUNCTION public.plan_split_piece(p jsonb, p_actor text, p_role text) RETURNS jsonb
+    LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $f$
+declare
+  v_id bigint; v_hub bigint; v_sum numeric := 0; v_n int; part jsonb; v_tgt jsonb; v_put jsonb;
+  p0 shipment_pieces%rowtype; ps v_piece_state%rowtype; c shipment_pieces%rowtype;
+  v_children bigint[] := '{}'; v_legs jsonb := '[]'; v_rts jsonb := '[]'; v_warn jsonb := '[]'; v_notices jsonb := '[]';
+  v_ans jsonb;
+begin
+  -- Spec 3 Board: a load splits only on the Veroia Board (at the hub). Each part may go onto a cycle in the same
+  -- transaction; a part without a target stays as stock that "leaves by" the evening before the requested day.
+  perform plan_h_ctx(p_actor, p_role);
+  perform plan_h_keys(p, array['piece_id', 'parts', 'request_id'], 'p');
+  -- decision 44: before the piece is read, so a repeat is not refused as piece_split by the first call's split
+  v_ans := plan_h_replay(p, 'plan_split_piece', p_actor);
+  if v_ans is not null then return v_ans; end if;
+  v_id := (p->>'piece_id')::bigint;
+  select * into p0 from shipment_pieces where id = v_id for no key update;
+  if p0.id is null or p0.deleted_at is not null then perform plan_h_raise('piece_dead', coalesce(v_id::text, 'null')); end if;
+  if exists (select 1 from shipment_pieces c2 where c2.parent_piece_id = p0.id and c2.deleted_at is null) then
+    perform plan_h_raise('piece_split', p0.id::text);
+  end if;
+  select * into ps from v_piece_state where piece_id = p0.id;
+  if ps.piece_id is null then perform plan_h_raise('piece_dead', p0.id::text); end if;
+  select id into v_hub from locations where is_hub;
+  -- refused here with its own code, before 071's split_not_at_hub would refuse it at the end
+  if ps.position_location_id is distinct from v_hub then perform plan_h_raise('not_at_hub', p0.id::text); end if;
+  if jsonb_typeof(p->'parts') is distinct from 'array' or jsonb_array_length(p->'parts') < 2 then
+    perform plan_h_raise('bad_input', 'parts');
+  end if;
+  for part in select value from jsonb_array_elements(p->'parts') loop
+    perform plan_h_keys(part, array['pallets', 'target', 'stops'], 'part');
+    -- coordinator 25/10: 'NaN' / 'Infinity' / '-Infinity' are valid numeric texts; refused as input here, before
+    -- they would read as a part <= 0 or a sum that does not match (parts_sum, the wrong code)
+    if not (abs(coalesce((part->>'pallets')::numeric, 0)) < 'Infinity'::numeric) then
+      perform plan_h_raise('bad_input', 'parts:finite');
+    end if;
+    if coalesce((part->>'pallets')::numeric, 0) <= 0 then perform plan_h_raise('parts_sum', p0.id || ':part<=0'); end if;
+    -- one decimal at most (decision 20): the parts are numeric(6,1) and the sum is checked on what is written
+    if (part->>'pallets')::numeric <> round((part->>'pallets')::numeric, 1) then
+      perform plan_h_raise('bad_input', 'parts:one decimal');
+    end if;
+    v_sum := v_sum + (part->>'pallets')::numeric;
+  end loop;
+  if v_sum <> ps.pallets then perform plan_h_raise('parts_sum', format('%s:%s<>%s', p0.id, v_sum, ps.pallets)); end if;
+  -- ONE lock order (as plan_move_pieces): every target cycle of the parts, by id, before anything is written
+  perform 1 from ct_round_trips rt
+   where rt.id in (select (q->'target'->>'rt_id')::bigint from jsonb_array_elements(p->'parts') q
+                    where jsonb_typeof(q->'target') = 'object' and q->'target' ? 'rt_id')
+   order by rt.id for no key update;
+  update shipment_pieces set split_at = now(), split_by = p_actor where id = p0.id;
+  perform plan_h_audit(p_actor, p_role, 'update', 'shipment_pieces', p0.id::text,
+                       jsonb_build_object('split_at', null), jsonb_build_object('split_at', now(), 'split_by', p_actor));
+  for part in select value from jsonb_array_elements(p->'parts') loop
+    -- decision 18: only "leaves by" (the evening before the requested national day, as a date); "22:00" is the
+    -- screen's text. A part that rides now has no leave_by.
+    insert into shipment_pieces (shipment_id, parent_piece_id, pallets, leave_by, created_by)
+    values (p0.shipment_id, p0.id, (part->>'pallets')::numeric,
+            case when part ? 'target' then null else ps.nat_due_day - 1 end, p_actor)
+    returning * into c;
+    perform plan_h_audit(p_actor, p_role, 'create', 'shipment_pieces', c.id::text, null, to_jsonb(c));
+    v_children := v_children || c.id;
+    if part ? 'target' then
+      v_tgt := plan_h_target(part->'target', part->'stops', p_actor, p_role);
+      -- decision 16: the part put in the same operation counts as "first" when the split piece was not stock
+      v_put := plan_h_put(jsonb_build_array(jsonb_build_object('piece_id', c.id)), v_tgt, p_actor, p_role,
+                          case when ps.is_stock then '{}'::bigint[] else array[c.id] end);
+      v_legs := v_legs || (v_put->'leg_ids');
+      v_rts := v_rts || jsonb_build_array(v_put->'rt_id');
+      v_warn := v_warn || (v_put->'warnings');
+      v_notices := v_notices || (v_put->'notice_ids');
+    elsif part ? 'stops' then
+      perform plan_h_raise('bad_input', 'part.stops without target');
+    end if;
+  end loop;
+  v_ans := plan_h_ok('plan_split_piece',
+    jsonb_build_object('piece_ids', to_jsonb(v_children), 'leg_ids', v_legs, 'rt_ids', v_rts), v_warn, v_notices);
+  perform plan_h_remember(p, 'plan_split_piece', v_ans, p_actor, p_role);
+  perform plan_h_finish();
+  return v_ans;
+exception
+  when invalid_text_representation or invalid_datetime_format or datetime_field_overflow
+       or numeric_value_out_of_range or invalid_parameter_value then
+    perform plan_h_raise('bad_input', sqlstate);
+end
+$f$;
   -- @A (072 section A: plan_orders_create, plan_put_pieces, plan_put_group, plan_split_piece, plan_move_pieces, plan_order_update)
 
   -- ===== PART 3: CYCLE, DELETE, VS, LOCAL LOADING (section B) =====
@@ -888,6 +974,7 @@ $f$;
     , 'public.plan_orders_create(jsonb,text,text)'
     , 'public.plan_put_pieces(jsonb,text,text)'
     , 'public.plan_put_group(jsonb,text,text)'
+    , 'public.plan_split_piece(jsonb,text,text)'
     -- @pub (072 tasks add ", 'public.plan_x(<arg types>)'" lines above this marker)
     ]::text[], NULL);
     -- 071's own plan_* (triggers and rule readers): never touched by 072, closed for every API role

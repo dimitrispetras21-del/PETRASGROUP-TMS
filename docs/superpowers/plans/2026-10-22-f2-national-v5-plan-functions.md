@@ -2780,7 +2780,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 
 ```sql
     , 'ok'               -- 51 26 -> 12 + 14 at Veroia: two stock pieces that leave by the evening before
-    , 'plan:parts_sum'   -- 52 12 + 13 <> 26
+    , 'plan:parts_sum'   -- 52 12 + 13 <> 26 (after the non-finite input probes: bad_input, nothing written)
     , 'plan:not_at_hub'  -- 53 a piece that is not at Veroia
     , 'plan:piece_split' -- 54 a piece already split
     , 'plan:bad_input'   -- 55 one part only
@@ -2799,6 +2799,38 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
             PERFORM plan_split_piece(jsonb_build_object('request_id', gen_random_uuid()) || (jsonb_build_object('piece_id', y, 'parts', '[{"pallets": 6}, {"pallets": 20}]'::jsonb)), 'test:072', 'owner');
           END IF;
         ELSIF k = 52 THEN
+          -- coordinator 25/10 (cross-cutting input rule): a part of 'NaN' / 'Infinity' / '-Infinity' pallets is refused
+          -- as bad_input 'parts:finite' (never as parts_sum), a piece_id 'NaN' as bad_input (the bigint cast, 22P02),
+          -- and a part riding to a new stop with an infinite end as bad_input 'stop.planned:finite'; nothing is written
+          FOR j IN SELECT value FROM jsonb_array_elements(jsonb_build_array(
+                     jsonb_build_object('piece_id', y, 'parts', '[{"pallets": "NaN"}, {"pallets": 26}]'::jsonb),
+                     jsonb_build_object('piece_id', y, 'parts', '[{"pallets": 12}, {"pallets": "Infinity"}]'::jsonb),
+                     jsonb_build_object('piece_id', y, 'parts', '[{"pallets": "-Infinity"}, {"pallets": 26}]'::jsonb),
+                     jsonb_build_object('piece_id', 'NaN', 'parts', '[{"pallets": 12}, {"pallets": 14}]'::jsonb),
+                     jsonb_build_object('piece_id', y, 'parts', jsonb_build_array(
+                       jsonb_build_object('pallets', 12, 'target', jsonb_build_object('rt_id', rt2, 'side', 'KATHODOS'),
+                         'stops', jsonb_build_array(jsonb_build_object('ref', 'h', 'stop_id', s2h),
+                                                    jsonb_build_object('ref', 'd', 'location_id', ld, 'planned_from', b13, 'planned_to', 'infinity'))),
+                       jsonb_build_object('pallets', 14))))) LOOP
+            msg := NULL;
+            BEGIN
+              PERFORM plan_split_piece(jsonb_build_object('request_id', gen_random_uuid()) || j, 'test:072', 'owner');
+              t2 := 'accepted';
+            EXCEPTION WHEN others THEN
+              GET STACKED DIAGNOSTICS t2 = PG_EXCEPTION_HINT, msg = MESSAGE_TEXT;
+            END;
+            IF t2 IS DISTINCT FROM 'plan:bad_input'
+               OR msg NOT LIKE (CASE WHEN j->>'piece_id' = 'NaN' THEN '%bad_input:22P02%'
+                                     WHEN j->'parts'->0 ? 'target' THEN '%stop.planned:finite%'
+                                     ELSE '%parts:finite%' END) THEN
+              RAISE EXCEPTION 'FAIL % got % (%)', j::text, coalesce(t2, 'no hint'), coalesce(msg, '-');
+            END IF;
+          END LOOP;
+          IF EXISTS (SELECT 1 FROM shipment_pieces WHERE id = y AND split_at IS NOT NULL)
+             OR EXISTS (SELECT 1 FROM shipment_pieces WHERE parent_piece_id = y)
+             OR EXISTS (SELECT 1 FROM rt_stops WHERE rt_id = rt2 AND location_id = ld) THEN
+            RAISE EXCEPTION 'FAIL a split with a non-finite input was written';
+          END IF;
           PERFORM plan_split_piece(jsonb_build_object('request_id', gen_random_uuid()) || (jsonb_build_object('piece_id', y, 'parts', '[{"pallets": 12}, {"pallets": 13}]'::jsonb)), 'test:072', 'owner');
         ELSIF k = 55 THEN
           PERFORM plan_split_piece(jsonb_build_object('request_id', gen_random_uuid()) || (jsonb_build_object('piece_id', y, 'parts', '[{"pallets": 26}]'::jsonb)), 'test:072', 'owner');
@@ -2836,7 +2868,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 - [ ] **Step 2: Τρέξε, να αποτύχει**
 
 Run: `cd tms-auditor && node --test test/plan-072.test.mjs`
-Expected: FAIL στο `072 rules test`, με μήνυμα `Result: 50 OK, 6 FAIL` και πρώτη αποτυχία `51 FAIL want ok got state:42883 (function plan_split_piece(jsonb, unknown, unknown) does not exist)`. Το `node --test tests/sql-072-drafts.test.js` μένει πράσινο (6/6).
+Expected: FAIL στο `072 rules test`, με μήνυμα `Result: 50 OK, 6 FAIL` και πρώτη αποτυχία `51 FAIL want ok got state:42883 (function plan_split_piece(jsonb, unknown, unknown) does not exist)`. Το `node --test tests/sql-072-drafts.test.js` δίνει `ℹ pass 5`, `ℹ fail 1`, με μόνη αποτυχία `plan:request_missing has no case in 072_plan_functions_test.sql` (κωδικοί του `plan_h_replay` του Α1· οι περιπτώσεις 83–90 μπαίνουν στην Α8).
 
 - [ ] **Step 3: Η υλοποίηση (`worker/migrations/drafts/072_plan_functions.sql`)**
 
@@ -2874,6 +2906,11 @@ begin
   end if;
   for part in select value from jsonb_array_elements(p->'parts') loop
     perform plan_h_keys(part, array['pallets', 'target', 'stops'], 'part');
+    -- coordinator 25/10: 'NaN' / 'Infinity' / '-Infinity' are valid numeric texts; refused as input here, before
+    -- they would read as a part <= 0 or a sum that does not match (parts_sum, the wrong code)
+    if not (abs(coalesce((part->>'pallets')::numeric, 0)) < 'Infinity'::numeric) then
+      perform plan_h_raise('bad_input', 'parts:finite');
+    end if;
     if coalesce((part->>'pallets')::numeric, 0) <= 0 then perform plan_h_raise('parts_sum', p0.id || ':part<=0'); end if;
     -- one decimal at most (decision 20): the parts are numeric(6,1) and the sum is checked on what is written
     if (part->>'pallets')::numeric <> round((part->>'pallets')::numeric, 1) then
@@ -2937,7 +2974,7 @@ Run: `cd tms-auditor && node --test test/plan-072.test.mjs`
 Expected: `✔` και στα τρία υπο-tests, μήνυμα `Result: 56 OK, 0 FAIL`, `ℹ fail 0`.
 
 Run: `node --test tests/sql-072-drafts.test.js`
-Expected: `ℹ pass 6`, `ℹ fail 0` (το `v_pub` = κάθε δημόσια συνάρτηση, κάθε νέος κωδικός έχει περίπτωση).
+Expected: `ℹ pass 5`, `ℹ fail 1`, με μόνη αποτυχία `plan:request_missing has no case in 072_plan_functions_test.sql` (ως την Α8· το `v_pub` = κάθε δημόσια συνάρτηση, οι κωδικοί `parts_sum`, `not_at_hub`, `piece_split` έχουν περίπτωση, 52–54). Έλεγξε το μήνυμα, όχι μόνο το πλήθος.
 
 - [ ] **Step 5: Commit**
 
