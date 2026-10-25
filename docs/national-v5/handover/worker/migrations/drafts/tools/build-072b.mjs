@@ -115,6 +115,7 @@ export function buildRollback(src) {
 DO $do$
 DECLARE
   v_fn record; v_src text; v_old text; v_oid oid; v_acl text; v_def boolean; v_vol "char"; v_f text;
+  v_lang oid; v_cfg text[];
   v_trg0 int; v_trg1 int; v_k bigint; v_n int := 0;
 ${consts}
 BEGIN
@@ -125,6 +126,10 @@ BEGIN
   IF EXISTS (SELECT 1 FROM pg_proc WHERE pronamespace = 'public'::regnamespace AND proname = 'plan_h_pallet_sync') THEN
     RAISE EXCEPTION '072b rollback: 073 is applied - run the rollback of 073 first (order 073 -> 072b -> 072)';
   END IF;
+  -- review R3 (DB finding 4, as 072b's PART 0): the count and the drop under ONE lock - no v5 row or segment can
+  -- commit between the check and the DROP TABLE below
+  LOCK TABLE public.ct_round_trips, public.rt_stops, public.shipments, public.shipment_pieces, public.piece_legs,
+    public.plan_notices, public.rt_vehicle_segments IN SHARE ROW EXCLUSIVE MODE;
   SELECT (SELECT count(*) FROM public.shipments) + (SELECT count(*) FROM public.shipment_pieces)
        + (SELECT count(*) FROM public.rt_stops) + (SELECT count(*) FROM public.piece_legs)
        + (SELECT count(*) FROM public.plan_notices) + (SELECT count(*) FROM public.ct_round_trips WHERE model = 2)
@@ -140,7 +145,8 @@ BEGIN
   -- 1. the 10 hooks out, LAST FIRST (a function with several hooks returns through each text it had): back to 072's
 ${hooks}) v(k, sig, a, b, m0, m1) ORDER BY k DESC LOOP
     v_oid := to_regprocedure(v_fn.sig);
-    SELECT prosrc, proacl::text, prosecdef, provolatile INTO v_src, v_acl, v_def, v_vol FROM pg_proc WHERE oid = v_oid;
+    SELECT prosrc, proacl::text, prosecdef, provolatile, prolang, proconfig
+      INTO v_src, v_acl, v_def, v_vol, v_lang, v_cfg FROM pg_proc WHERE oid = v_oid;
     IF md5(v_src) <> v_fn.m1 THEN
       RAISE EXCEPTION '072b rollback: % is not the text 072b wrote after hook % (md5 %) - stop, re-measure', v_fn.sig, v_fn.k, md5(v_src);
     END IF;
@@ -156,7 +162,9 @@ ${hooks}) v(k, sig, a, b, m0, m1) ORDER BY k DESC LOOP
       CASE v_vol WHEN 's' THEN 'STABLE' WHEN 'i' THEN 'IMMUTABLE' ELSE 'VOLATILE' END,
       CASE WHEN v_def THEN 'SECURITY DEFINER' ELSE 'SECURITY INVOKER' END, v_old);
     IF (SELECT md5(prosrc) FROM pg_proc WHERE oid = v_oid) <> v_fn.m0
-       OR (SELECT proacl::text FROM pg_proc WHERE oid = v_oid) IS DISTINCT FROM v_acl THEN
+       OR (SELECT proacl::text FROM pg_proc WHERE oid = v_oid) IS DISTINCT FROM v_acl
+       OR (SELECT prolang FROM pg_proc WHERE oid = v_oid) IS DISTINCT FROM v_lang
+       OR (SELECT proconfig FROM pg_proc WHERE oid = v_oid) IS DISTINCT FROM v_cfg THEN
       RAISE EXCEPTION '072b rollback proof: % is not back to its text before hook % with its rights', v_fn.sig, v_fn.k;
     END IF;
     v_n := v_n + 1;

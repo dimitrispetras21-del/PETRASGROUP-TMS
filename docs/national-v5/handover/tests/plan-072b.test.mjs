@@ -3,14 +3,14 @@
 // Production shape = the same as plan-072.test.mjs (the 22/9 columns + live-071.sql + live-072.sql, 071 and 071b as
 // executed 22/10) + 072 from drafts/ (or worker/migrations/ after F2's K3), then 072b. Never edit a fixture by hand.
 // What it proves: the guards hold the texts 072b was written against; the dry run keeps nothing; 072b applies with
-// +4 triggers and B-54 following; the verify row; born closed for the API roles; the 102 rules; F2's 203 rules, 071's
+// +4 triggers and B-54 following; the verify row; born closed for the API roles; the 108 rules; F2's 203 rules, 071's
 // 56 and 071b's 8 still pass ON TOP of 072b (the EXCLUDE moved, the 10 hooks changed nothing F2 decided); the three
 // auditor checks, run AS tms_check_runner through 072b's own policy (no policy made by the test, review R1
 // finding 4), see the segments, 0 on the copy and red on a forced violation - also when the copy rt_cancelled drifts
 // and blinds the EXCLUDE (review R2, DB finding 3); 071b's verify finds the EXCLUDE on the segments (review R2,
 // spec E2); the rollback refuses (a v5 row, 073
 // present), then undoes the 10 hooks in reverse and returns every hooked function and both EXCLUDE byte for byte;
-// six mutations that each make one case fail.
+// eight mutations that each make one case fail.
 // Limits (as plan-072): money views are STUBS; the capture holds only the functions of its f/trg lists.
 import { test } from 'node:test';
 import assert from 'node:assert';
@@ -152,12 +152,12 @@ test('072b on a production-shaped PGlite copy', async (t) => {
     } finally { await db.exec('RESET ROLE'); }
   });
 
-  await t.test('072b rules test: 102 OK, 0 FAIL, nothing kept', async () => {
+  await t.test('072b rules test: 108 OK, 0 FAIL, nothing kept', async () => {
     const msg = await errorOf(db, read('072b_plan_vehicle_segments_test.sql'));
     const m = rules('072b').exec(msg ?? '');
     assert.ok(m, msg);
     assert.equal(Number(m[2]), 0, msg);
-    assert.equal(Number(m[1]), 102);
+    assert.equal(Number(m[1]), 108);
     assert.equal(await count(db, `SELECT count(*)::int AS n FROM rt_vehicle_segments`), 0, 'the test keeps nothing');
   });
 
@@ -268,6 +268,12 @@ for (const [name, from, to, want] of [
   // review R2, DB finding 2: the payroll lock without "the driver leaves the cycle" refuses the same-driver correction
   ['the payroll lock ignores a driver who stays', /-- mut:leaves-begin[\s\S]*?-- mut:leaves-end/, '-- (mutated: no leaves)',
    /92 FAIL want ok got plan:payroll_locked/],
+  // review R3, DB finding 2: every segment that holds the old end follows it - a swap through the handover time breaks the chain
+  ['the end takes every segment that holds it', /-- mut:oneedge-begin[\s\S]*?-- mut:oneedge-end/,
+   'where rt_id = new.id and deleted_at is null and to_at = old.end_at', /103 FAIL want ok got plan:seg_cover/],
+  // re-proof of review R3: the copy takes the LATER of two segments at the start - the TELIKO's driver for a moment
+  ['the copy takes the later segment at the start', /-- mut:copyfirst-begin[\s\S]*?-- mut:copyfirst-end/,
+   'order by s.to_at desc, s.id limit 1;', /104 FAIL want ok got FAIL start edge/],
 ]) {
   test(`072b mutation: ${name}`, async () => {
     const db = await prodShaped072();

@@ -138,6 +138,16 @@ DECLARE
     , 'plan:bad_input'   -- 100 R-19: no vehicle
     , 'ok'               -- 101 R-40: the accountant's list has the amounts (the dispatcher's has none: case 64)
     , 'ok'               -- 102 R-47 [B]: revenue, km and the P&L row of the cycle are the same before and after handover, correction, removal
+    -- review R3 (25/10), DB finding 2: ONE segment per edge (an edge that passes exactly through a handover time in one call)
+    , 'ok'               -- 103 the two ANODOS stops swapped in one plan_rt_update: the end is the handover time for a moment; ok, said
+    , 'ok'               -- 104 the first stop and the hub swapped in one plan_rt_update: the start is the handover time for a moment; ok,
+                         --     and the copy never flips to the TELIKO's driver (no false needs_review on a line with an amount)
+    -- DB finding 1: a side shift never moves a handover (fixed in time, plan H-23)
+    , 'ok'               -- 105 ANODOS +1 day after a planned change: the handover stays, the stop before it passes to the TELIKO, said
+    , 'plan:seg_outside' -- 106 ANODOS -6 hours: the cycle would end before the handover (-1 day here = stop_order: ANODOS before KATHODOS)
+    , 'ok'               -- 107 ANODOS +3 hours: the handover stays, the stop before it passes to the TELIKO, said
+    -- DB finding 5: seg_outside names EVERY handover left outside
+    , 'ok'               -- 108 a stop move that ends the cycle before two handovers: one refusal with both times
     -- @want (one line per case: "    , '<ok|plan:code|con:name|state:XXXXX>'  -- <k> <what>")
   ]::text[];
   verdict text; got text; hint text; msg text; cname text; st text;
@@ -972,6 +982,92 @@ BEGIN
                                 (SELECT count(*) FROM ct_v_rt_pnl v WHERE v.id = rt1)) = j1
                           AND (j1->>2)::int = 1
                         THEN 'ok revenue, km and one P&L row unchanged' ELSE 'FAIL R-47 ' || j1::text || j2::text END;
+      ELSIF k IN (103, 105, 106, 107) THEN
+        -- the ANODOS of review R3's probe B: X = stop C at D+1 07:00-08:00, Y = a new stop D+1 12:00-14:00 (written
+        -- directly, as S), and a PLANNED change of truck and driver at D+1 09:00, between them
+        UPDATE rt_stops SET planned_from = (e + time '07:00') AT TIME ZONE 'Europe/Athens',
+                            planned_to = (e + time '08:00') AT TIME ZONE 'Europe/Athens' WHERE id = s1c;
+        INSERT INTO rt_stops (rt_id, seq, location_id, side, planned_from, planned_to, created_by)
+        VALUES (rt1, 5, ld, 'ANODOS', (e + time '12:00') AT TIME ZONE 'Europe/Athens', (e + time '14:00') AT TIME ZONE 'Europe/Athens',
+                'test:072b') RETURNING id INTO z;
+        r := plan_seg_change(jsonb_build_object('request_id', gen_random_uuid(), 'rt_id', rt1, 'at', e0900,
+               'place_note', 'Lamia', 'reason', 'planned_driver', 'vehicle', veh3), 'test:072b', 'dispatcher');
+        g1 := (r->'ids'->>'cut_segment_id')::bigint; g2 := (r->'ids'->>'segment_id')::bigint;
+        IF k = 103 THEN
+          -- the dispatcher swaps the two deliveries, Y first: after Y the end is D+1 09:00 = the handover time (both
+          -- segments end there for a moment), after X D+1 14:00 again
+          r2 := plan_rt_update(jsonb_build_object('rt_id', rt1, 'stops', jsonb_build_array(
+                  jsonb_build_object('stop_id', z, 'planned_from', (e + time '08:00') AT TIME ZONE 'Europe/Athens', 'planned_to', e0900),
+                  jsonb_build_object('stop_id', s1c, 'planned_from', (e + time '12:00') AT TIME ZONE 'Europe/Athens',
+                                     'planned_to', (e + time '14:00') AT TIME ZONE 'Europe/Athens'))), 'test:072b', 'dispatcher');
+          SET CONSTRAINTS ALL IMMEDIATE;
+          verdict := CASE WHEN (SELECT from_at = (d + time '06:00') AT TIME ZONE 'Europe/Athens' AND to_at = e0900 FROM rt_vehicle_segments WHERE id = g1)
+                            AND (SELECT from_at = e0900 AND to_at = (e + time '14:00') AT TIME ZONE 'Europe/Athens' FROM rt_vehicle_segments WHERE id = g2)
+                            AND r2->'warnings' @> jsonb_build_array(
+                                  jsonb_build_object('code', 'seg_stop_moved', 'stop_id', s1c, 'from_segment_id', g1, 'to_segment_id', g2),
+                                  jsonb_build_object('code', 'seg_stop_moved', 'stop_id', z, 'from_segment_id', g2, 'to_segment_id', g1))
+                          THEN 'ok one segment per edge, the swap said' ELSE 'FAIL end edge ' || r2::text END;
+        ELSE
+          r2 := plan_rt_update(jsonb_build_object('rt_id', rt1, 'shift', jsonb_build_object('side', 'ANODOS',
+                  'delta', CASE k WHEN 105 THEN '1 day' WHEN 106 THEN '-6 hours' ELSE '3 hours' END)), 'test:072b', 'dispatcher');
+          SET CONSTRAINTS ALL IMMEDIATE;
+          -- H-23: the handover stays at D+1 09:00; X now comes after it and passes to the TELIKO (said); the TELIKO
+          -- follows the new end
+          verdict := CASE WHEN (SELECT from_at = (d + time '06:00') AT TIME ZONE 'Europe/Athens' AND to_at = e0900 AND truck_id = trk1
+                                  FROM rt_vehicle_segments WHERE id = g1)
+                            AND (SELECT g.from_at = e0900 AND g.to_at = c.end_at AND g.truck_id = trk3
+                                   FROM rt_vehicle_segments g JOIN ct_round_trips c ON c.id = g.rt_id WHERE g.id = g2)
+                            AND (SELECT end_at FROM ct_round_trips WHERE id = rt1)
+                                = CASE k WHEN 105 THEN (f + time '14:00') AT TIME ZONE 'Europe/Athens' ELSE (e + time '17:00') AT TIME ZONE 'Europe/Athens' END
+                            AND r2->'warnings' @> jsonb_build_array(jsonb_build_object('code', 'seg_stop_moved', 'stop_id', s1c,
+                                  'from_segment_id', g1, 'to_segment_id', g2))
+                            AND jsonb_array_length(r2->'warnings') = 1
+                          THEN 'ok the handover stays at its time, X changes hands, said' ELSE 'FAIL shift ' || r2::text END;
+        END IF;
+      ELSIF k = 104 THEN
+        -- [A 06:00-08:30][T 08:30-...]; the dispatcher swaps stop A and the hub stop, A first: after A the start is
+        -- 08:30 = the handover time (both segments start there for a moment), after the hub 06:00 again
+        r := plan_seg_change(jsonb_build_object('request_id', gen_random_uuid(), 'rt_id', rt1, 'at', t0830,
+               'place_note', 'Lamia', 'reason', 'planned_truck', 'vehicle', veh3), 'test:072b', 'dispatcher');
+        g1 := (r->'ids'->>'cut_segment_id')::bigint; g2 := (r->'ids'->>'segment_id')::bigint;
+        -- accounting wrote an amount on Giorgos' line: a copy that flips to driver 3 for a moment would leave it in
+        -- needs_review "driver changed 3 -> 1" (011, K-13) - found re-proving review R3 (plan_seg_copy, H-2)
+        UPDATE dl_entries SET trip_value = 100 WHERE rt_id = rt1 AND deleted_at IS NULL;
+        j1 := (SELECT coalesce(jsonb_agg(to_jsonb(x0) - 'updated_at' ORDER BY x0.id), '[]'::jsonb) FROM dl_entries x0 WHERE x0.rt_id = rt1);
+        r2 := plan_rt_update(jsonb_build_object('rt_id', rt1, 'stops', jsonb_build_array(
+                jsonb_build_object('stop_id', s1a, 'planned_from', t0830, 'planned_to', (d + time '08:45') AT TIME ZONE 'Europe/Athens'),
+                jsonb_build_object('stop_id', s1h, 'planned_from', (d + time '06:00') AT TIME ZONE 'Europe/Athens', 'planned_to', t0800))),
+              'test:072b', 'dispatcher');
+        SET CONSTRAINTS ALL IMMEDIATE;
+        verdict := CASE WHEN (SELECT from_at = (d + time '06:00') AT TIME ZONE 'Europe/Athens' AND to_at = t0830 AND truck_id = trk1
+                                FROM rt_vehicle_segments WHERE id = g1)
+                          AND (SELECT from_at = t0830 AND to_at = (e + time '14:00') AT TIME ZONE 'Europe/Athens' AND truck_id = trk3
+                                 FROM rt_vehicle_segments WHERE id = g2)
+                          AND (SELECT truck_id = trk1 AND driver_id = drv1 FROM ct_round_trips WHERE id = rt1)
+                          AND (SELECT coalesce(jsonb_agg(to_jsonb(x0) - 'updated_at' ORDER BY x0.id), '[]'::jsonb) FROM dl_entries x0 WHERE x0.rt_id = rt1) = j1
+                          AND jsonb_array_length(j1) = 1
+                        THEN 'ok one segment per edge at the start, the copy and the payroll line unchanged'
+                        ELSE 'FAIL start edge ' || r2::text || ' ' || j1::text || ' ' || (SELECT coalesce(jsonb_agg(to_jsonb(x0) - 'updated_at' ORDER BY x0.id), '[]'::jsonb) FROM dl_entries x0 WHERE x0.rt_id = rt1)::text END;
+      ELSIF k = 108 THEN
+        -- [A 2104 to D 14:30][E 2108 to D+1 10:00][T 3 to the end]; C moves to D 14:00-14:10: the cycle would end before
+        -- BOTH handovers. One refusal names both, so the user moves or removes both at once (not two refusals in a row)
+        PERFORM plan_seg_change(jsonb_build_object('request_id', gen_random_uuid(), 'rt_id', rt1, 'at', t1430,
+                  'place_note', 'Lamia', 'reason', 'vehicle_breakdown', 'vehicle', veh2), 'test:072b', 'owner');
+        PERFORM plan_seg_change(jsonb_build_object('request_id', gen_random_uuid(), 'rt_id', rt1, 'at', e1000,
+                  'place_note', 'Larisa', 'reason', 'driver_hours', 'vehicle', veh3), 'test:072b', 'owner');
+        BEGIN
+          PERFORM plan_rt_update(jsonb_build_object('rt_id', rt1, 'stops', jsonb_build_array(jsonb_build_object('stop_id', s1c,
+                    'planned_from', (d + time '14:00') AT TIME ZONE 'Europe/Athens', 'planned_to', (d + time '14:10') AT TIME ZONE 'Europe/Athens'))),
+                    'test:072b', 'owner');
+          verdict := 'FAIL no error';
+        EXCEPTION WHEN others THEN
+          GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT, hint = PG_EXCEPTION_HINT;
+          verdict := CASE WHEN hint = 'plan:seg_outside'
+                            AND msg LIKE '%seg_outside:' || (SELECT code FROM ct_round_trips WHERE id = rt1) || ' '
+                                         || to_char(t1430 AT TIME ZONE 'Europe/Athens', 'DD/MM HH24:MI') || ', '
+                                         || to_char(e1000 AT TIME ZONE 'Europe/Athens', 'DD/MM HH24:MI')
+                          THEN 'ok both handovers named' ELSE 'FAIL two handovers ' || coalesce(hint, '') || ' ' || msg END;
+        END;
       -- @case (each task adds its "ELSIF k = <n> THEN" branches above this line)
       END IF;
       SET CONSTRAINTS ALL IMMEDIATE;

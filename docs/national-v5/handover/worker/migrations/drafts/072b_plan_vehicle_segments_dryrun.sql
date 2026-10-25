@@ -18,6 +18,7 @@ BEGIN
   -- ===== 072b_plan_vehicle_segments.sql, verbatim =====
 DECLARE
   v_g record; v_fn record; v_src text; v_new text; v_oid oid; v_acl text; v_def boolean; v_vol "char";
+  v_lang oid; v_cfg text[];
   v_trg0 int; v_trg1 int; v_k bigint; v_n int := 0;
   -- the 071b definitions, as pg_get_constraintdef prints them (production 25/10 = PGlite 0.5.8): the move happens
   -- only from exactly these, and the rollback puts exactly these back
@@ -145,6 +146,11 @@ BEGIN
   END IF;
   -- The move of the two EXCLUDE is only safe while there is no v5 cycle: with 0 cycles there is nothing to carry
   -- over, so the rule never has a moment without a net (spec 3; DL 22/10 "only while 0 v5 cycles").
+  -- Review R3 (DB finding 4): the count and the move under ONE lock - no v5 row can commit between this check and
+  -- the ALTER TABLE of PART 2 (which takes ACCESS EXCLUSIVE only there). Writes wait; a busy table = the 5 s
+  -- lock timeout = stop, nothing done.
+  LOCK TABLE public.ct_round_trips, public.rt_stops, public.shipments, public.shipment_pieces, public.piece_legs,
+    public.plan_notices IN SHARE ROW EXCLUSIVE MODE;
   SELECT (SELECT count(*) FROM public.shipments) + (SELECT count(*) FROM public.shipment_pieces)
        + (SELECT count(*) FROM public.rt_stops) + (SELECT count(*) FROM public.piece_legs)
        + (SELECT count(*) FROM public.plan_notices) + (SELECT count(*) FROM public.ct_round_trips WHERE model = 2)
@@ -325,16 +331,23 @@ begin
     if exists (select 1 from rt_vehicle_segments where rt_id = p_rt) then return 'seg_not_v2:' || p_rt; end if;
     return null;
   end if;
-  -- review R2 (DB finding 1): an act of 072 that narrows the window (plan_rt_update of the first / last stop, or a
-  -- Move / Delete whose sweep takes them away) carries an EDGE segment past a handover: the edge follows
-  -- (plan_seg_follow) and that segment ends before it starts. Its own code, with the handover time in the detail,
-  -- so the screen says what to do (move or remove the handover first) - never seg_time, which is the acts' own
-  -- "time not inside the cycle / between its neighbours". Plan decision H-6, owner question 7 (refuse or remove).
+  -- review R2 (DB finding 1): an act of 072 that narrows or moves the window (plan_rt_update of the first / last
+  -- stop or a side shift, or a Move / Delete whose sweep takes them away) carries an EDGE segment past a handover:
+  -- the edge follows (plan_seg_follow), the handover stays at its time (plan H-23), and that segment ends before
+  -- it starts. Its own code, with the handover time in the detail, so the screen says what to do (move or remove
+  -- the handover first) - never seg_time, which is the acts' own "time not inside the cycle / between its
+  -- neighbours". Plan decision H-6, owner question 7 (refuse or remove).
+  -- Review R3 (DB finding 5): the detail names EVERY handover left outside, in time order (a later segment's
+  -- from_at; it carries the reason, seg_reason), so one refusal says all that must move - not one refusal each.
   -- mut:outside-begin
   for g in select * from rt_vehicle_segments where rt_id = p_rt and deleted_at is null and to_at <= from_at
               and (to_at = r.end_at or from_at = r.start_at) order by from_at, id limit 1 loop
-    return 'seg_outside:' || r.code || ' ' || to_char((case when g.to_at = r.end_at then g.from_at else g.to_at end)
-                                                      at time zone 'Europe/Athens', 'DD/MM HH24:MI');
+    return 'seg_outside:' || r.code || ' ' || coalesce(
+      (select string_agg(to_char(h.from_at at time zone 'Europe/Athens', 'DD/MM HH24:MI'), ', ' order by h.from_at, h.id)
+         from rt_vehicle_segments h
+        where h.rt_id = p_rt and h.deleted_at is null and h.reason is not null
+          and (h.from_at >= r.end_at or h.from_at <= r.start_at)),
+      to_char((case when g.to_at = r.end_at then g.from_at else g.to_at end) at time zone 'Europe/Athens', 'DD/MM HH24:MI'));
   end loop;
   -- mut:outside-end
   for g in select * from rt_vehicle_segments where rt_id = p_rt and deleted_at is null order by from_at, id loop
@@ -412,14 +425,23 @@ begin
   -- The edges follow the window (spec 3, like plan_rt_window_sync): the segment that STARTED at the old start_at,
   -- the one that ENDED at the old end_at. Matched by the old edge, never by order: a stop move inside one call can
   -- pass through a transient window, and an order by from_at would then pick the wrong segment.
+  -- Review R3 (DB finding 2): ONE segment per edge. When an edge passes EXACTLY through a handover time inside one
+  -- call (two stops swapped: for a moment the end is the handover time), two segments hold that edge; both would
+  -- follow and the chain would break (a false seg_cover). The end: the one that starts last; the start: the one
+  -- that ends first. A handover never moves with the window (plan H-23).
   -- mut:edges-begin
   if old.start_at is distinct from new.start_at then
     update rt_vehicle_segments set from_at = new.start_at, updated_at = now()
-     where rt_id = new.id and deleted_at is null and from_at = old.start_at;
+     where id = (select s.id from rt_vehicle_segments s where s.rt_id = new.id and s.deleted_at is null
+                    and s.from_at = old.start_at order by s.to_at, s.id limit 1);
   end if;
   if old.end_at is distinct from new.end_at then
     update rt_vehicle_segments set to_at = new.end_at, updated_at = now()
-     where rt_id = new.id and deleted_at is null and to_at = old.end_at;
+     -- mut:oneedge-begin
+     where id = (select s.id from rt_vehicle_segments s where s.rt_id = new.id and s.deleted_at is null
+                    and s.to_at = old.end_at order by s.from_at desc, s.id desc limit 1)
+     -- mut:oneedge-end
+     ;
   end if;
   -- mut:edges-end
   if old.status is distinct from new.status then
@@ -437,10 +459,15 @@ begin
   -- The ONE writer of the cycle's vehicle fields (spec 3: "a copy of the ARCHIKO that only the base writes"), for
   -- the readers of today (Expenses screen, /costs/rt) and for 011, which writes the payroll line from them as
   -- before. The first segment = the live one that starts at the cycle's start_at; if none does (a transient state
-  -- inside a call) nothing is copied and the COMMIT rule seg_copy speaks if it stays so.
+  -- inside a call) nothing is copied and the COMMIT rule seg_copy speaks if it stays so. If two do (the start passes
+  -- exactly through a handover time inside one call: the ARCHIKO is of zero length for a moment), the one that ENDS
+  -- first: the ARCHIKO. The later one would copy the TELIKO's driver onto the cycle for a moment, and 011 would leave
+  -- a line with an amount in needs_review (re-proof of review R3, rules test 104; the same rule as plan_seg_follow).
   select s.* into g from rt_vehicle_segments s join ct_round_trips r on r.id = s.rt_id
    where s.rt_id = new.rt_id and s.deleted_at is null and r.model = 2 and s.from_at = r.start_at
-   order by s.to_at desc, s.id limit 1;
+  -- mut:copyfirst-begin
+   order by s.to_at, s.id limit 1;
+  -- mut:copyfirst-end
   if g.id is null then return null; end if;
   update ct_round_trips set trip_type = g.trip_type, truck_id = g.truck_id, trailer_id = g.trailer_id,
          driver_id = g.driver_id, partner_id = g.partner_id, partner_rate = g.partner_rate, updated_at = now()
@@ -563,7 +590,8 @@ $f$;
   --                      a handover changes truck and driver: the driver sheet, the local loading check, F3's
   --                      payroll days and DKV follow it);
   --   seg_stop_straddles a handover time strictly inside a stop's window: the stop stays with the segment of its
-  --                      arrival (H-9). Owner question 2 (plan): a warning, or a refusal at COMMIT.
+  --                      arrival (H-9). A warning, never a refusal (plan H-24, coordinator 25/10: an
+  --                      indication, never a lock).
   select coalesce(jsonb_agg(w order by w->>'code', (w->>'stop_id')::bigint), '[]'::jsonb) from (
     select jsonb_build_object('code', 'seg_stop_moved', 'stop_id', s.id,
                               'from_segment_id', (p_before->>(s.id::text))::bigint, 'to_segment_id', plan_h_seg_of_stop(s.id)) as w
@@ -735,7 +763,8 @@ $f$;
        'd3107f05bf6ed170e673cccda48b4cb6', '6c56db094458841598db079ad7844515')
     ) v(k, sig, a, b, m0, m1) ORDER BY k LOOP
     v_oid := to_regprocedure(v_fn.sig);
-    SELECT prosrc, proacl::text, prosecdef, provolatile INTO v_src, v_acl, v_def, v_vol FROM pg_proc WHERE oid = v_oid;
+    SELECT prosrc, proacl::text, prosecdef, provolatile, prolang, proconfig
+      INTO v_src, v_acl, v_def, v_vol, v_lang, v_cfg FROM pg_proc WHERE oid = v_oid;
     IF md5(v_src) <> v_fn.m0 THEN
       RAISE EXCEPTION '072b: % is not the text expected before hook % (md5 %) - stop', v_fn.sig, v_fn.k, md5(v_src);
     END IF;
@@ -755,7 +784,11 @@ $f$;
     IF (SELECT md5(prosrc) FROM pg_proc WHERE oid = v_oid) <> v_fn.m1
        OR (SELECT proacl::text FROM pg_proc WHERE oid = v_oid) IS DISTINCT FROM v_acl
        OR (SELECT prosecdef FROM pg_proc WHERE oid = v_oid) IS DISTINCT FROM v_def
-       OR (SELECT provolatile FROM pg_proc WHERE oid = v_oid) IS DISTINCT FROM v_vol THEN
+       OR (SELECT provolatile FROM pg_proc WHERE oid = v_oid) IS DISTINCT FROM v_vol
+       -- review R3 (DB finding 6): the CREATE above says plpgsql and search_path = public; a live function with
+       -- another language or other settings would change silently - compared, never assumed
+       OR (SELECT prolang FROM pg_proc WHERE oid = v_oid) IS DISTINCT FROM v_lang
+       OR (SELECT proconfig FROM pg_proc WHERE oid = v_oid) IS DISTINCT FROM v_cfg THEN
       RAISE EXCEPTION '072b proof: % does not hold the generated text with its old rights and shape', v_fn.sig;
     END IF;
     v_n := v_n + 1;
@@ -856,7 +889,7 @@ begin
     -- the same warnings as plan_rt_update, per segment: v1_same_truck; seg_stop_moved for every stop that the new
     -- vehicle now executes (the driver sheet, the local loading check and F3's payroll days and DKV follow it);
     -- seg_stop_straddles for a stop whose window holds the handover time (it stays with the segment of its
-    -- arrival, H-9; owner question 2)
+    -- arrival, H-9; a warning, plan H-24)
     v_warn := plan_h_seg_v1_warn(v_rt) || plan_h_seg_stop_warn(v_rt, v_seg0);
     if not v_dry then
       v_ans := plan_h_ok('plan_seg_change', jsonb_build_object('rt_id', v_rt, 'segment_id', v_new, 'cut_segment_id', g.id),
