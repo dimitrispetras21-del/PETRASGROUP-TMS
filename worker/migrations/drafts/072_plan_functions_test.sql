@@ -87,6 +87,17 @@ DECLARE
     , 'plan:piece_split' -- 54 a piece already split
     , 'plan:bad_input'   -- 55 one part only
     , 'ok'               -- 56 a part onto a truck in the same call: it counts as the first piece of the VS
+    , 'ok'               -- 57 one row to another cycle; the source keeps another load: no list, no token
+    , 'ok'               -- 58 the source would be left empty: the dry run lists it and writes nothing
+    , 'ok'               -- 59 with the token: source cancelled, its payroll with amount deleted, 0 needs_review
+    , 'plan:need_token'  -- 60 the same without the token
+    , 'plan:stale_confirm' -- 61 the payroll amount changed after the dry run
+    , 'plan:same_rt'     -- 62 onto the side it is already on
+    , 'ok'               -- 63 back to waiting
+    , 'ok'               -- 64 a whole side (breakdown): both rows to another truck, the source cancelled
+    , 'ok'               -- 65 the dispatcher's list has no amounts; the token is the same for every role
+    , 'ok'               -- 66 the loading by a local driver is listed and goes with its stop
+    , 'plan:piece_dead'  -- 67 one bad row: nothing moves (one transaction) (after the non-finite input probes: bad_input, nothing moved)
     -- @want (one line per case: "    , '<ok|plan:code|con:name|state:XXXXX>'  -- <k> <what>")
   ]::text[];
   verdict text; got text; hint text; msg text; cname text; st text;
@@ -614,6 +625,93 @@ BEGIN
         END IF;
       ELSIF k = 53 THEN
         PERFORM plan_split_piece(jsonb_build_object('request_id', gen_random_uuid()) || (jsonb_build_object('piece_id', p1, 'parts', '[{"pallets": 4}, {"pallets": 6}]'::jsonb)), 'test:072', 'owner');
+      ELSIF k BETWEEN 57 AND 67 THEN
+        -- p1 on R1 (A -> B); for 56, 62, 63 a second order (2 pallets, piece z) rides with it
+        PERFORM plan_put_pieces(jsonb_build_object('pieces', jsonb_build_array(jsonb_build_object('piece_id', p1)),
+                  'target', jsonb_build_object('rt_id', rt1, 'side', 'KATHODOS'),
+                  'stops', jsonb_build_array(jsonb_build_object('ref', 'a', 'stop_id', s1a), jsonb_build_object('ref', 'b', 'stop_id', s1b))),
+                  'test:072', 'owner');
+        IF k IN (57, 63, 64) THEN
+          r := plan_orders_create(jsonb_build_object('request_id', gen_random_uuid()) || (jsonb_build_object('orders', jsonb_build_array(jo1 || jsonb_build_object('shipments',
+                 jsonb_build_array(jsh1 || '{"pallets": 2}'))),
+                 'target', jsonb_build_object('rt_id', rt1, 'side', 'KATHODOS'),
+                 'stops', jsonb_build_array(jsonb_build_object('ref', 'a', 'stop_id', s1a), jsonb_build_object('ref', 'b', 'stop_id', s1b)))),
+                 'test:072', 'owner');
+          z := (r->'ids'->'piece_ids'->>0)::bigint;
+        END IF;
+        SET CONSTRAINTS ALL DEFERRED;
+        UPDATE dl_entries SET trip_value = 50 WHERE rt_id = rt1 AND deleted_at IS NULL;
+        IF k = 66 THEN
+          INSERT INTO local_moves (move_kind, rt_stop_id, driver_id, truck_id, move_date, status)
+          VALUES ('nat_loading', s1a, drvl, trk2, d, 'Assigned') RETURNING id INTO q;
+        END IF;
+        j := jsonb_build_object('from', jsonb_build_object('piece_ids', jsonb_build_array(p1)),
+               'target', jsonb_build_object('rt_id', rt2, 'side', 'KATHODOS'),
+               'stops', jsonb_build_array(jsonb_build_object('ref', 'a', 'stop_id', s2a), jsonb_build_object('ref', 'b', 'stop_id', s2b)));
+        SELECT count(*) INTO n FROM audit_log;
+        IF k = 57 THEN
+          r := plan_move_pieces(j, 'test:072', 'owner');
+        ELSIF k IN (58, 59, 60, 61, 65, 66) THEN
+          r := plan_move_pieces(j || '{"dry_run": true}', 'test:072', CASE WHEN k = 65 THEN 'dispatcher' ELSE 'owner' END);
+          SELECT count(*) INTO m FROM audit_log;
+          IF k = 65 THEN r2 := plan_move_pieces(j || '{"dry_run": true}', 'test:072', 'owner'); END IF;
+          IF k = 61 THEN UPDATE dl_entries SET trip_value = 60 WHERE rt_id = rt1 AND deleted_at IS NULL; END IF;
+          IF k IN (59, 61, 66) THEN
+            r2 := plan_move_pieces(j || jsonb_build_object('confirm_token', r->>'confirm_token'), 'test:072', 'owner');
+          ELSIF k = 60 THEN
+            PERFORM plan_move_pieces(j, 'test:072', 'owner');
+          END IF;
+        ELSIF k = 62 THEN
+          PERFORM plan_move_pieces(jsonb_build_object('from', jsonb_build_object('piece_ids', jsonb_build_array(p1)),
+                    'target', jsonb_build_object('rt_id', rt1, 'side', 'KATHODOS')), 'test:072', 'owner');
+        ELSIF k = 63 THEN
+          r := plan_move_pieces(jsonb_build_object('from', jsonb_build_object('piece_ids', jsonb_build_array(p1)),
+                 'target', '{"wait": true}'::jsonb), 'test:072', 'owner');
+        ELSIF k = 64 THEN
+          j := j || jsonb_build_object('from', jsonb_build_object('rt_id', rt1, 'side', 'KATHODOS'));
+          r := plan_move_pieces(j || '{"dry_run": true}', 'test:072', 'owner');
+          r2 := plan_move_pieces(j || jsonb_build_object('confirm_token', r->>'confirm_token'), 'test:072', 'owner');
+        ELSE   -- 67
+          -- coordinator 25/10 (cross-cutting input rule): a piece id, a from.rt_id or a target.rt_id of 'NaN' /
+          -- 'Infinity' / '-Infinity' is refused as bad_input (the bigint cast, 22P02) before the list; a new target stop
+          -- with an infinite end is refused at execution (after the token) as bad_input 'stop.planned:finite'
+          -- (plan_h_stop_add, the one guard); nothing moves
+          FOR r2 IN SELECT value FROM jsonb_array_elements(jsonb_build_array(
+                      j || jsonb_build_object('from', jsonb_build_object('piece_ids', '["NaN"]'::jsonb)),
+                      j || jsonb_build_object('from', jsonb_build_object('piece_ids', jsonb_build_array(p1, 'Infinity'))),
+                      j || jsonb_build_object('from', jsonb_build_object('rt_id', '-Infinity', 'side', 'KATHODOS')),
+                      j || jsonb_build_object('target', jsonb_build_object('rt_id', 'NaN', 'side', 'KATHODOS')),
+                      j || jsonb_build_object('stops', jsonb_build_array(jsonb_build_object('ref', 'a', 'stop_id', s2a),
+                             jsonb_build_object('ref', 'b', 'location_id', lb, 'planned_from', b12, 'planned_to', 'infinity'))),
+                      j || jsonb_build_object('stops', jsonb_build_array(jsonb_build_object('ref', 'a', 'stop_id', s2a),
+                             jsonb_build_object('ref', 'b', 'location_id', lb, 'planned_from', '-infinity', 'planned_to', b14))))) LOOP
+            msg := NULL;
+            BEGIN
+              IF r2->'stops'->1 ? 'location_id' THEN
+                r := plan_move_pieces(r2 || '{"dry_run": true}', 'test:072', 'owner');
+                PERFORM plan_move_pieces(r2 || jsonb_build_object('confirm_token', r->>'confirm_token'), 'test:072', 'owner');
+              ELSE
+                PERFORM plan_move_pieces(r2, 'test:072', 'owner');
+              END IF;
+              t2 := 'accepted';
+            EXCEPTION WHEN others THEN
+              GET STACKED DIAGNOSTICS t2 = PG_EXCEPTION_HINT, msg = MESSAGE_TEXT;
+            END;
+            IF t2 IS DISTINCT FROM 'plan:bad_input'
+               OR msg NOT LIKE (CASE WHEN r2->'stops'->1 ? 'location_id' THEN '%stop.planned:finite%'
+                                     ELSE '%bad_input:22P02%' END) THEN
+              RAISE EXCEPTION 'FAIL % got % (%)', r2::text, coalesce(t2, 'no hint'), coalesce(msg, '-');
+            END IF;
+          END LOOP;
+          IF NOT EXISTS (SELECT 1 FROM piece_legs WHERE piece_id = p1 AND rt_id = rt1 AND deleted_at IS NULL)
+             OR EXISTS (SELECT 1 FROM piece_legs WHERE rt_id = rt2)
+             OR EXISTS (SELECT 1 FROM rt_stops WHERE rt_id = rt2 AND location_id = lb AND id <> s2b)
+             OR (SELECT status FROM ct_round_trips WHERE id = rt1) <> 'planned' THEN
+            RAISE EXCEPTION 'FAIL a move with a non-finite input was written';
+          END IF;
+          PERFORM plan_move_pieces(j || jsonb_build_object('from', jsonb_build_object('piece_ids', jsonb_build_array(p1, -5))),
+                    'test:072', 'owner');
+        END IF;
       -- @case (each task adds its "ELSIF k = <n> THEN" branches above this line)
       END IF;
       SET CONSTRAINTS ALL IMMEDIATE;
@@ -766,6 +864,55 @@ BEGIN
                           AND jsonb_array_length(r->'notice_ids') = 1 AND jsonb_array_length(r->'ids'->'leg_ids') = 1
                         THEN 'ok the 12 ride on D+1 (first piece: the international moves), the 14 stay as stock'
                         ELSE 'FAIL split with target: ' || r::text END;
+      ELSIF k = 57 THEN
+        verdict := CASE WHEN r->>'dry_run' = 'false'
+                          AND (SELECT count(*) FROM piece_legs WHERE piece_id = p1 AND deleted_at IS NULL AND rt_id = rt2) = 1
+                          AND (SELECT count(*) FROM piece_legs WHERE piece_id = p1 AND deleted_at IS NOT NULL AND rt_id = rt1
+                                 AND deleted_by = 'test:072') = 1
+                          AND (SELECT status FROM ct_round_trips WHERE id = rt1) = 'planned'
+                          AND (SELECT count(*) FROM rt_stops WHERE rt_id = rt1 AND deleted_at IS NULL) = 3
+                          AND (SELECT NOT waiting AND end_stop_id = s1b FROM v_piece_state WHERE piece_id = z)
+                          AND (SELECT end_stop_id FROM v_piece_state WHERE piece_id = p1) = s2b
+                        THEN 'ok moved to R2; R1 keeps the other load and its stops' ELSE 'FAIL move: ' || r::text END;
+      ELSIF k = 58 THEN
+        verdict := CASE WHEN r->>'dry_run' = 'true' AND (r->>'needs_confirm')::boolean AND length(r->>'confirm_token') = 32
+                          AND r->'consequences' @> jsonb_build_array(jsonb_build_object('kind', 'rt_cancelled', 'rt_id', rt1))
+                          AND r->'consequences' @> jsonb_build_array(jsonb_build_object('kind', 'payroll_amount', 'amount', 50))
+                          AND m = n AND (SELECT count(*) FROM piece_legs WHERE piece_id = p1 AND deleted_at IS NULL AND rt_id = rt1) = 1
+                        THEN 'ok the dry run lists R1 cancelled and its payroll, writes nothing' ELSE 'FAIL dry run: ' || r::text END;
+      ELSIF k = 59 THEN
+        verdict := CASE WHEN (SELECT status FROM ct_round_trips WHERE id = rt1) = 'cancelled'
+                          AND NOT EXISTS (SELECT 1 FROM piece_legs WHERE rt_id = rt1 AND deleted_at IS NULL)
+                          AND NOT EXISTS (SELECT 1 FROM rt_stops WHERE rt_id = rt1 AND deleted_at IS NULL)
+                          AND NOT EXISTS (SELECT 1 FROM dl_entries WHERE rt_id = rt1 AND (deleted_at IS NULL OR needs_review))
+                          AND (SELECT deleted_reason FROM dl_entries WHERE rt_id = rt1) LIKE '%(test:072)'
+                          AND (SELECT end_stop_id FROM v_piece_state WHERE piece_id = p1) = s2b
+                          AND r2->'ids'->'cancelled_rt_ids' = jsonb_build_array(rt1)
+                        THEN 'ok R1 cancelled with its stops; payroll deleted by the person, 0 needs_review; p1 on R2'
+                        ELSE 'FAIL execute: ' || coalesce(r2::text, 'null') END;
+      ELSIF k = 63 THEN
+        verdict := CASE WHEN (SELECT waiting AND position_location_id = la FROM v_piece_state WHERE piece_id = p1)
+                          AND (SELECT status FROM ct_round_trips WHERE id = rt1) = 'planned'
+                          AND r->'ids'->'leg_ids' = '[]'::jsonb
+                        THEN 'ok p1 waits at A again; R1 keeps the other load' ELSE 'FAIL wait: ' || r::text END;
+      ELSIF k = 64 THEN
+        verdict := CASE WHEN (SELECT count(*) FROM piece_legs WHERE rt_id = rt2 AND deleted_at IS NULL) = 2
+                          AND (SELECT status FROM ct_round_trips WHERE id = rt1) = 'cancelled'
+                          AND r->'consequences' @> jsonb_build_array(jsonb_build_object('kind', 'rt_cancelled', 'rt_id', rt1))
+                        THEN 'ok the whole KATHODOS of R1 on R2, R1 cancelled' ELSE 'FAIL side: ' || coalesce(r2::text, r::text) END;
+      ELSIF k = 65 THEN
+        verdict := CASE WHEN r::text NOT LIKE '%"amount"%' AND r2::text LIKE '%"amount": 50%'
+                          AND r->>'confirm_token' = r2->>'confirm_token'
+                          AND EXISTS (SELECT 1 FROM jsonb_array_elements(r->'consequences') c WHERE c->>'kind' = 'payroll_amount'
+                                        AND c->>'month' ~ '^[0-9]{4}-[0-9]{2}$' AND NOT (c ? 'paid') AND NOT (c ? 'paid_week'))
+                        THEN 'ok the dispatcher sees the payroll line, not its amount; one token for both'
+                        ELSE 'FAIL amounts: ' || r::text END;
+      ELSIF k = 66 THEN
+        verdict := CASE WHEN r->'consequences' @> jsonb_build_array(jsonb_build_object('kind', 'local_loading', 'local_move_id', q))
+                          AND (SELECT deleted_at IS NOT NULL FROM local_moves WHERE id = q)
+                          AND (SELECT status FROM ct_round_trips WHERE id = rt1) = 'cancelled'
+                          AND (SELECT count(*) FROM audit_log WHERE table_name = 'local_moves' AND record_id = q::text AND actor = 'test:072') = 1
+                        THEN 'ok the local loading was listed and went with its stop' ELSE 'FAIL local loading: ' || r::text END;
       -- @verdict (each task adds its "ELSIF k = <n> THEN verdict := ..." branches above this line)
       ELSE
         verdict := 'FAIL no verdict for case ' || k;

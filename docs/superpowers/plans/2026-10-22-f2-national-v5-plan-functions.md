@@ -3009,7 +3009,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
     , 'ok'               -- 64 a whole side (breakdown): both rows to another truck, the source cancelled
     , 'ok'               -- 65 the dispatcher's list has no amounts; the token is the same for every role
     , 'ok'               -- 66 the loading by a local driver is listed and goes with its stop
-    , 'plan:piece_dead'  -- 67 one bad row: nothing moves (one transaction)
+    , 'plan:piece_dead'  -- 67 one bad row: nothing moves (one transaction) (after the non-finite input probes: bad_input, nothing moved)
 ```
 
 Πρόσθεσε πάνω από τη γραμμή `-- @case (each task adds its "ELSIF k = <n> THEN" branches above this line)`:
@@ -3062,6 +3062,43 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
           r := plan_move_pieces(j || '{"dry_run": true}', 'test:072', 'owner');
           r2 := plan_move_pieces(j || jsonb_build_object('confirm_token', r->>'confirm_token'), 'test:072', 'owner');
         ELSE   -- 67
+          -- coordinator 25/10 (cross-cutting input rule): a piece id, a from.rt_id or a target.rt_id of 'NaN' /
+          -- 'Infinity' / '-Infinity' is refused as bad_input (the bigint cast, 22P02) before the list; a new target stop
+          -- with an infinite end is refused at execution (after the token) as bad_input 'stop.planned:finite'
+          -- (plan_h_stop_add, the one guard); nothing moves
+          FOR r2 IN SELECT value FROM jsonb_array_elements(jsonb_build_array(
+                      j || jsonb_build_object('from', jsonb_build_object('piece_ids', '["NaN"]'::jsonb)),
+                      j || jsonb_build_object('from', jsonb_build_object('piece_ids', jsonb_build_array(p1, 'Infinity'))),
+                      j || jsonb_build_object('from', jsonb_build_object('rt_id', '-Infinity', 'side', 'KATHODOS')),
+                      j || jsonb_build_object('target', jsonb_build_object('rt_id', 'NaN', 'side', 'KATHODOS')),
+                      j || jsonb_build_object('stops', jsonb_build_array(jsonb_build_object('ref', 'a', 'stop_id', s2a),
+                             jsonb_build_object('ref', 'b', 'location_id', lb, 'planned_from', b12, 'planned_to', 'infinity'))),
+                      j || jsonb_build_object('stops', jsonb_build_array(jsonb_build_object('ref', 'a', 'stop_id', s2a),
+                             jsonb_build_object('ref', 'b', 'location_id', lb, 'planned_from', '-infinity', 'planned_to', b14))))) LOOP
+            msg := NULL;
+            BEGIN
+              IF r2->'stops'->1 ? 'location_id' THEN
+                r := plan_move_pieces(r2 || '{"dry_run": true}', 'test:072', 'owner');
+                PERFORM plan_move_pieces(r2 || jsonb_build_object('confirm_token', r->>'confirm_token'), 'test:072', 'owner');
+              ELSE
+                PERFORM plan_move_pieces(r2, 'test:072', 'owner');
+              END IF;
+              t2 := 'accepted';
+            EXCEPTION WHEN others THEN
+              GET STACKED DIAGNOSTICS t2 = PG_EXCEPTION_HINT, msg = MESSAGE_TEXT;
+            END;
+            IF t2 IS DISTINCT FROM 'plan:bad_input'
+               OR msg NOT LIKE (CASE WHEN r2->'stops'->1 ? 'location_id' THEN '%stop.planned:finite%'
+                                     ELSE '%bad_input:22P02%' END) THEN
+              RAISE EXCEPTION 'FAIL % got % (%)', r2::text, coalesce(t2, 'no hint'), coalesce(msg, '-');
+            END IF;
+          END LOOP;
+          IF NOT EXISTS (SELECT 1 FROM piece_legs WHERE piece_id = p1 AND rt_id = rt1 AND deleted_at IS NULL)
+             OR EXISTS (SELECT 1 FROM piece_legs WHERE rt_id = rt2)
+             OR EXISTS (SELECT 1 FROM rt_stops WHERE rt_id = rt2 AND location_id = lb AND id <> s2b)
+             OR (SELECT status FROM ct_round_trips WHERE id = rt1) <> 'planned' THEN
+            RAISE EXCEPTION 'FAIL a move with a non-finite input was written';
+          END IF;
           PERFORM plan_move_pieces(j || jsonb_build_object('from', jsonb_build_object('piece_ids', jsonb_build_array(p1, -5))),
                     'test:072', 'owner');
         END IF;
@@ -3124,7 +3161,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 - [ ] **Step 2: Τρέξε, να αποτύχει**
 
 Run: `cd tms-auditor && node --test test/plan-072.test.mjs`
-Expected: FAIL στο `072 rules test`, με μήνυμα `Result: 56 OK, 11 FAIL` και πρώτη αποτυχία `57 FAIL want ok got state:42883 (function plan_move_pieces(jsonb, unknown, unknown) does not exist)`. Το `node --test tests/sql-072-drafts.test.js` μένει πράσινο (6/6).
+Expected: FAIL στο `072 rules test`, με μήνυμα `Result: 56 OK, 11 FAIL` και πρώτη αποτυχία `57 FAIL want ok got state:42883 (function plan_move_pieces(jsonb, unknown, unknown) does not exist)`. Το `node --test tests/sql-072-drafts.test.js` δίνει `ℹ pass 5`, `ℹ fail 1`, με μόνη αποτυχία `plan:request_missing has no case in 072_plan_functions_test.sql` (κωδικοί του `plan_h_replay` του Α1· οι περιπτώσεις 83–90 μπαίνουν στην Α8).
 
 - [ ] **Step 3: Η υλοποίηση (`worker/migrations/drafts/072_plan_functions.sql`)**
 
@@ -3221,6 +3258,9 @@ begin
   perform plan_h_keys(v_from, array['piece_ids', 'rt_id', 'side'], 'from');
   v_rt := (v_from->>'rt_id')::bigint;
   v_side := v_from->>'side';
+  -- Finite inputs (coordinator 25/10): every id is bigint, so 'NaN' / 'Infinity' fail their cast (bad_input 22P02,
+  -- before the list); a new target stop's window is refused in plan_h_stop_add ('stop.planned:finite', the one
+  -- guard), at execution: the dry run does not read the stops.
   if v_from ? 'piece_ids' then
     if v_side is not null or jsonb_typeof(v_from->'piece_ids') is distinct from 'array' then
       perform plan_h_raise('bad_input', 'from');
@@ -3356,7 +3396,7 @@ Run: `cd tms-auditor && node --test test/plan-072.test.mjs`
 Expected: `✔` και στα τρία υπο-tests, μήνυμα `Result: 67 OK, 0 FAIL`, `ℹ fail 0`.
 
 Run: `node --test tests/sql-072-drafts.test.js`
-Expected: `ℹ pass 6`, `ℹ fail 0` (το `v_pub` = κάθε δημόσια συνάρτηση, κάθε νέος κωδικός έχει περίπτωση).
+Expected: `ℹ pass 5`, `ℹ fail 1`, με μόνη αποτυχία `plan:request_missing has no case in 072_plan_functions_test.sql` (ως την Α8· το `v_pub` = κάθε δημόσια συνάρτηση, οι κωδικοί `same_rt`, `stale_confirm`, `need_token` έχουν περίπτωση, 60–62). Έλεγξε το μήνυμα, όχι μόνο το πλήθος.
 
 - [ ] **Step 5: Commit**
 

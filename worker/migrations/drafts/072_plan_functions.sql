@@ -956,6 +956,221 @@ exception
     perform plan_h_raise('bad_input', sqlstate);
 end
 $f$;
+
+  CREATE FUNCTION public.plan_h_confirm(p_fn text, p_key text, p_full jsonb, p jsonb, p_role text) RETURNS jsonb
+    LANGUAGE plpgsql SET search_path = public AS $f$
+declare v_tok text := plan_h_token(p_fn, p_key, p_full);
+begin
+  -- Two steps for what deletes (spec 2.1): the dry run returns the list and the token and writes nothing (NULL =
+  -- go on). Decision 8: an empty list needs no token; a changed list is stale_confirm before need_token.
+  if coalesce((p->>'dry_run')::boolean, false) then
+    return jsonb_build_object('ok', true, 'op', p_fn, 'dry_run', true, 'needs_confirm', jsonb_array_length(p_full) > 0,
+                              'confirm_token', v_tok, 'consequences', plan_h_strip_amounts(p_full, p_role));
+  end if;
+  if p->>'confirm_token' is not null and p->>'confirm_token' <> v_tok then
+    perform plan_h_raise('stale_confirm', p_fn);
+  end if;
+  if jsonb_array_length(p_full) > 0 and p->>'confirm_token' is null then
+    perform plan_h_raise('need_token', p_fn);
+  end if;
+  return null;
+end
+$f$;
+
+  CREATE FUNCTION public.plan_h_drop_consequences(p_legs bigint[], p_keep_rt bigint, p_chosen_rts bigint[] DEFAULT NULL)
+    RETURNS jsonb
+    LANGUAGE plpgsql STABLE SET search_path = public AS $f$
+declare v jsonb := '[]'; r record;
+begin
+  -- The list of spec 3 for legs that are about to go (move, delete): executed legs (a correction); later legs on
+  -- other cycles than the ones the user picked from (p_chosen_rts: a move takes every later leg of the piece with
+  -- it, for the chain - listed as later_leg, never dropped silently); local loadings whose stop loses its last
+  -- pickup, with the TOPIKO payroll line of that loading when it already has amounts (decision 33: 060 sends it to
+  -- accounting's review); every cycle that would be left without a live leg (except the target p_keep_rt) with its
+  -- payroll and costs. Distinct and sorted (kind, row), so the token is stable.
+  v := v || coalesce((select jsonb_agg(jsonb_build_object('kind', 'executed_leg', 'leg_id', l.id, 'rt_id', l.rt_id,
+                                                         'stop_day', ss.stop_day))
+                        from piece_legs l join v_rt_stop_state ss on ss.stop_id = l.drop_stop_id
+                       where l.id = any (p_legs) and l.deleted_at is null and ss.executed), '[]'::jsonb);
+  v := v || coalesce((select jsonb_agg(jsonb_build_object('kind', 'later_leg', 'leg_id', l.id, 'rt_id', l.rt_id,
+                                                         'code', c.code))
+                        from piece_legs l join ct_round_trips c on c.id = l.rt_id
+                       where p_chosen_rts is not null and l.id = any (p_legs) and l.deleted_at is null
+                         and not (l.rt_id = any (p_chosen_rts))), '[]'::jsonb);
+  for r in select lm.id, lm.driver_id, lm.move_date, s.rt_id
+             from local_moves lm join rt_stops s on s.id = lm.rt_stop_id
+            where lm.move_kind = 'nat_loading' and lm.deleted_at is null and lm.status <> 'Cancelled'
+              and s.deleted_at is null
+              and exists (select 1 from piece_legs l where l.id = any (p_legs) and l.pickup_stop_id = s.id
+                             and l.deleted_at is null)
+              and not exists (select 1 from piece_legs l where l.pickup_stop_id = s.id and l.deleted_at is null
+                                 and not (l.id = any (p_legs))) loop
+    v := v || jsonb_build_array(jsonb_build_object('kind', 'local_loading', 'local_move_id', r.id, 'rt_id', r.rt_id,
+                                                   'driver_id', r.driver_id, 'move_date', r.move_date));
+    -- the local driver's TOPIKO line of that day (060: one per driver and day, local_move_id set) with amounts;
+    -- its month as for payroll_amount (decision 10: one date key for every payroll line of the list)
+    v := v || coalesce((select jsonb_agg(jsonb_build_object('kind', 'local_payroll', 'dl_entry_id', e.id,
+                                                           'local_move_id', r.id, 'driver_id', e.driver_id,
+                                                           'month', to_char(e.entry_date, 'YYYY-MM'),
+                                                           'amount', e.trip_value,
+                                                           'advance', e.advance, 'expenses', e.expenses))
+                          from dl_entries e
+                         where e.driver_id = r.driver_id and e.entry_date = r.move_date and e.local_move_id is not null
+                           and e.deleted_at is null
+                           and (e.trip_value is not null or e.advance is not null or e.expenses is not null)), '[]'::jsonb);
+  end loop;
+  for r in select distinct l.rt_id from piece_legs l
+            where l.id = any (p_legs) and l.deleted_at is null and l.rt_id is distinct from p_keep_rt loop
+    if not exists (select 1 from piece_legs l where l.rt_id = r.rt_id and l.deleted_at is null and not (l.id = any (p_legs))) then
+      v := v || jsonb_build_array(jsonb_build_object('kind', 'rt_cancelled', 'rt_id', r.rt_id,
+                                                     'code', (select code from ct_round_trips where id = r.rt_id)))
+             || plan_h_rt_consequences(r.rt_id);
+    end if;
+  end loop;
+  return (select coalesce(jsonb_agg(e order by e->>'kind', e::text), '[]'::jsonb)
+            from (select distinct e from jsonb_array_elements(v) e) x);
+end
+$f$;
+
+  CREATE FUNCTION public.plan_move_pieces(p jsonb, p_actor text, p_role text) RETURNS jsonb
+    LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $f$
+declare
+  v_from jsonb := p->'from'; v_rt bigint; v_side text; v_pieces bigint[]; v_legs bigint[]; v_wait boolean := false;
+  v_keep bigint; v_full jsonb; v_conf jsonb; v_first bigint[]; v_stops bigint[]; v_src bigint[]; v_tgt jsonb;
+  v_put jsonb; v_reason text; v_x bigint; v_gone bigint[] := '{}'; r ct_round_trips%rowtype; v_chosen bigint[];
+begin
+  -- Spec 7: "Move to..." per row, in ONE transaction; also back to waiting (decision 15, C-21) and a whole side
+  -- (C-22: a breakdown). What was executed stays when a side moves; a piece moved after execution is a correction
+  -- and is listed. A cycle left empty is cancelled with its payroll after the confirmation (owner 20/10).
+  perform plan_h_ctx(p_actor, p_role);
+  perform plan_h_keys(p, array['from', 'target', 'stops', 'dry_run', 'confirm_token'], 'p');
+  perform plan_h_keys(v_from, array['piece_ids', 'rt_id', 'side'], 'from');
+  v_rt := (v_from->>'rt_id')::bigint;
+  v_side := v_from->>'side';
+  -- Finite inputs (coordinator 25/10): every id is bigint, so 'NaN' / 'Infinity' fail their cast (bad_input 22P02,
+  -- before the list); a new target stop's window is refused in plan_h_stop_add ('stop.planned:finite', the one
+  -- guard), at execution: the dry run does not read the stops.
+  if v_from ? 'piece_ids' then
+    if v_side is not null or jsonb_typeof(v_from->'piece_ids') is distinct from 'array' then
+      perform plan_h_raise('bad_input', 'from');
+    end if;
+    select array_agg(x::bigint order by x::bigint) into v_pieces from jsonb_array_elements_text(v_from->'piece_ids') x;
+    if v_pieces is null then perform plan_h_raise('bad_input', 'from.piece_ids'); end if;
+    for v_x in select unnest(v_pieces) loop
+      if not exists (select 1 from shipment_pieces where id = v_x and deleted_at is null) then
+        perform plan_h_raise('piece_dead', v_x::text);
+      end if;
+      if exists (select 1 from shipment_pieces where parent_piece_id = v_x and deleted_at is null) then
+        perform plan_h_raise('piece_split', v_x::text);
+      end if;
+    end loop;
+    -- the chosen legs (on from.rt_id when given) and every later leg of the same piece: they hang on them (chain)
+    select array_agg(l.id order by l.id) into v_legs
+      from piece_legs l
+     where l.deleted_at is null and l.piece_id = any (v_pieces)
+       and l.leg_no >= (select min(m.leg_no) from piece_legs m where m.piece_id = l.piece_id and m.deleted_at is null
+                          and (v_rt is null or m.rt_id = v_rt));
+  elsif v_rt is not null and v_side in ('KATHODOS', 'ANODOS') then
+    if not exists (select 1 from ct_round_trips where id = v_rt and model = 2) then perform plan_h_raise('rt_gone', v_rt::text); end if;
+    -- a leg belongs to the side of its pickup stop; an executed leg stays
+    select array_agg(distinct l.piece_id) into v_pieces
+      from piece_legs l join rt_stops s on s.id = l.pickup_stop_id
+      join v_rt_stop_state d on d.stop_id = l.drop_stop_id
+     where l.rt_id = v_rt and l.deleted_at is null and s.side = v_side and not d.executed;
+    select array_agg(l.id order by l.id) into v_legs
+      from piece_legs l
+     where l.deleted_at is null and l.piece_id = any (v_pieces)
+       and l.leg_no >= (select min(m.leg_no) from piece_legs m join rt_stops s on s.id = m.pickup_stop_id
+                         join v_rt_stop_state d on d.stop_id = m.drop_stop_id
+                        where m.piece_id = l.piece_id and m.deleted_at is null and m.rt_id = v_rt
+                          and s.side = v_side and not d.executed);
+  else
+    perform plan_h_raise('bad_input', 'from');
+  end if;
+  if v_legs is null then perform plan_h_raise('bad_input', 'from:no live leg'); end if;
+  -- every chosen piece moves FROM a live leg of this move: a piece without one (e.g. not on from.rt_id) would be
+  -- put below as if it were waiting - an assignment nobody asked for (principle 1, review 23/10)
+  select x into v_x from unnest(v_pieces) x
+   where not exists (select 1 from piece_legs l where l.id = any (v_legs) and l.piece_id = x) limit 1;
+  if v_x is not null then perform plan_h_raise('bad_input', 'from:no live leg:' || v_x); end if;
+  -- a piece split at Veroia is never put again whole (plan_h_put: piece_split) - in the side mode too (a
+  -- breakdown): refused BEFORE the list, so a dry run never hands out a token for a move its execution refuses
+  -- (review 23/10; keeping the transshipment at Veroia is decision 36)
+  select l.piece_id into v_x from piece_legs l
+   where l.id = any (v_legs)
+     and exists (select 1 from shipment_pieces c where c.parent_piece_id = l.piece_id and c.deleted_at is null) limit 1;
+  if v_x is not null then perform plan_h_raise('piece_split', v_x::text); end if;
+  -- the target, read only (the dry run writes nothing)
+  if p->'target' ? 'wait' then
+    perform plan_h_keys(p->'target', array['wait'], 'target');
+    if (p->'target'->>'wait')::boolean is not true or p ? 'stops' then perform plan_h_raise('bad_input', 'target.wait'); end if;
+    v_wait := true;
+  else
+    perform plan_h_keys(p->'target', array['rt_id', 'side', 'new_rt'], 'target');
+    v_keep := (p->'target'->>'rt_id')::bigint;
+    if v_keep is not null then
+      select * into r from ct_round_trips where id = v_keep;
+      if r.id is null or r.model <> 2 then perform plan_h_raise('rt_gone', v_keep::text); end if;
+      if r.status = 'cancelled' then perform plan_h_raise('rt_cancelled', v_keep::text); end if;
+      if not exists (select 1 from piece_legs l join rt_stops s on s.id = l.pickup_stop_id
+                      where l.id = any (v_legs) and (l.rt_id <> v_keep or s.side is distinct from p->'target'->>'side')) then
+        perform plan_h_raise('same_rt', v_keep::text);
+      end if;
+    end if;
+  end if;
+  -- the cycles the user picked from: the one of each moved piece's first moved leg; a later leg elsewhere is
+  -- listed as later_leg (critique 23/10)
+  select array_agg(distinct l.rt_id) into v_chosen from piece_legs l
+   where l.id = any (v_legs)
+     and l.leg_no = (select min(m.leg_no) from piece_legs m where m.id = any (v_legs) and m.piece_id = l.piece_id);
+  -- ONE lock order for every plan_* (plan_delete, plan_vs_set_place, plan_split_piece too): the cycles first, by id,
+  -- BEFORE the list is read and before any order (plan_h_put -> plan_h_vs_day locks orders after its cycle). Two
+  -- moves out of one cycle then cannot both read "it does not empty" and cancel it without a token; two opposite
+  -- moves R1 <-> R2 queue. A deadlock that slips through anyway (40P01) is a 409 busy_retry: nothing kept.
+  -- NO KEY UPDATE: 072 never changes a key, and a FOR UPDATE would also block the FK reads of concurrent inserts
+  -- (a DKV import into ct_cost_lines) - the rule of 057.
+  perform 1 from ct_round_trips c
+   where c.id = any (array(select l.rt_id from piece_legs l where l.id = any (v_legs)) || v_keep)
+   order by c.id for no key update;
+  v_full := plan_h_drop_consequences(v_legs, v_keep, v_chosen);
+  v_conf := plan_h_confirm('plan_move_pieces', array_to_string(v_legs, ',') || '>' || coalesce(p->'target', 'null'::jsonb)::text,
+                           v_full, p, p_role);
+  if v_conf is not null then return v_conf; end if;
+
+  v_reason := case when v_wait then 'plan_move_pieces: back to waiting' else 'plan_move_pieces: moved' end;
+  -- decision 16 is about the state BEFORE this operation: a piece that was not stock still counts as "first"
+  select array_agg(ps.piece_id) into v_first from v_piece_state ps where ps.piece_id = any (v_pieces) and not ps.is_stock;
+  select array_agg(distinct x) into v_stops
+    from piece_legs l, unnest(array[l.pickup_stop_id, l.drop_stop_id]) x where l.id = any (v_legs);
+  select array_agg(distinct l.rt_id) into v_src from piece_legs l where l.id = any (v_legs);
+  -- (1) the target's stops first, so a stop of the request is never swept; (2) old legs off; (3) new legs on;
+  -- (4) stops that lost their last leg; (5) cycles left empty (decision 11 order inside).
+  if not v_wait then v_tgt := plan_h_target(p->'target', p->'stops', p_actor, p_role); end if;
+  for v_x in select unnest(v_legs) loop perform plan_h_leg_drop(v_x, v_reason, p_actor, p_role); end loop;
+  if not v_wait then
+    v_put := plan_h_put((select jsonb_agg(jsonb_build_object('piece_id', x) order by x) from unnest(v_pieces) x),
+                        v_tgt, p_actor, p_role, coalesce(v_first, '{}'));
+  end if;
+  perform plan_h_stops_sweep(v_stops, v_reason, p_actor, p_role);
+  for v_x in select unnest(v_src) loop
+    if plan_h_rt_cancel_if_empty(v_x, v_reason, p_actor, p_role) then
+      v_gone := v_gone || v_x;
+    else
+      perform plan_h_reseq(v_x, p_actor, p_role);
+    end if;
+  end loop;
+  perform plan_h_finish();
+  return plan_h_ok('plan_move_pieces',
+    jsonb_build_object('rt_id', v_put->'rt_id', 'stop_ids', coalesce(v_put->'stop_ids', '[]'::jsonb),
+                       'leg_ids', coalesce(v_put->'leg_ids', '[]'::jsonb), 'piece_ids', to_jsonb(v_pieces),
+                       'dropped_leg_ids', to_jsonb(v_legs), 'cancelled_rt_ids', to_jsonb(v_gone)),
+    v_put->'warnings', v_put->'notice_ids');
+exception
+  when invalid_text_representation or invalid_datetime_format or datetime_field_overflow
+       or numeric_value_out_of_range or invalid_parameter_value then
+    perform plan_h_raise('bad_input', sqlstate);
+end
+$f$;
   -- @A (072 section A: plan_orders_create, plan_put_pieces, plan_put_group, plan_split_piece, plan_move_pieces, plan_order_update)
 
   -- ===== PART 3: CYCLE, DELETE, VS, LOCAL LOADING (section B) =====
@@ -975,6 +1190,7 @@ $f$;
     , 'public.plan_put_pieces(jsonb,text,text)'
     , 'public.plan_put_group(jsonb,text,text)'
     , 'public.plan_split_piece(jsonb,text,text)'
+    , 'public.plan_move_pieces(jsonb,text,text)'
     -- @pub (072 tasks add ", 'public.plan_x(<arg types>)'" lines above this marker)
     ]::text[], NULL);
     -- 071's own plan_* (triggers and rule readers): never touched by 072, closed for every API role
