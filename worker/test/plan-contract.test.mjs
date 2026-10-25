@@ -10,8 +10,10 @@
 //   worker/migrations/drafts/072_plan_functions.sql  (draft, until it runs)
 //   worker/migrations/072_plan_functions.sql         (after it ran and moved)
 // On deploy/worker-plan the 072 draft is a COPY of the SQL branch's file
-// (feat/national-v5-functions); when 072 changes there, copy it again and
+// (feat/national-v5-f2); when 072 changes there, copy it again and
 // re-run this test before deploy — the diagnostic prints the md5 checked.
+// The copy is also compared with the SQL branch's file through git (final
+// review 25/10, finding 4): a review fix there without a recopy fails HERE.
 //
 // 072's own refusals are parsed from `plan_h_raise('<code>'` (a literal code
 // as the first argument — the convention of the SQL plan, Task A1) and from
@@ -20,6 +22,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, existsSync } from 'node:fs';
 import { createHash } from 'node:crypto';
+import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 
@@ -47,7 +50,7 @@ function readOne(names, hint) {
 const f071 = () => readOne(['071_plan_schema.sql'], 'it is live since 22/10 and must be in main');
 const f071b = () => readOne(['071b_plan_one_vehicle.sql'], 'it is live since 22/10 and must be in main');
 const f072 = () => readOne(['drafts/072_plan_functions.sql', '072_plan_functions.sql'],
-  'copy it from the SQL branch: git checkout feat/national-v5-functions -- worker/migrations/drafts/072_plan_functions.sql');
+  'copy it from the SQL branch: git checkout feat/national-v5-f2 -- worker/migrations/drafts/072_plan_functions.sql');
 const uniq = (re, text) => [...new Set([...text.matchAll(re)].map((m) => m[1]))].sort();
 const greek = /[α-ωΑ-Ωά-ώ]/;
 
@@ -96,6 +99,26 @@ test('071, 071b, 072 found and fingerprinted', (t) => {
     t.diagnostic(`checked: ${path.relative(path.join(here, '..', '..'), file)} md5 ${createHash('md5').update(sql).digest('hex')}`);
   }
   assert.ok(f072().sql.includes('plan_h_raise('), '072 raises through plan_h_raise');
+});
+
+// Two copies of 072, one source (principle 3): the SQL branch owns the file, this branch carries a copy. The first
+// ref that has the file is the source: the SQL branch, its origin copy, then origin/main (after the SQL PR merged).
+// No ref with the file = a visible skip, never a silent pass.
+const SQL_BRANCH = 'feat/national-v5-f2';
+test('the 072 copy is byte-identical to the SQL branch file', (t) => {
+  const { file, sql } = f072();
+  const rel = path.relative(path.join(here, '..', '..'), file).split(path.sep).join('/');
+  const md5 = (x) => createHash('md5').update(x).digest('hex');
+  for (const ref of [SQL_BRANCH, `origin/${SQL_BRANCH}`, 'origin/main']) {
+    let theirs;
+    try {
+      theirs = execFileSync('git', ['show', `${ref}:${rel}`], { cwd: here, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
+    } catch { continue; }
+    assert.equal(md5(sql), md5(theirs), `${rel} differs from ${ref}: git checkout ${ref} -- ${rel}`);
+    t.diagnostic(`copy: ${rel} = ${ref} (md5 ${md5(sql)})`);
+    return;
+  }
+  t.skip(`no ref holds ${rel} (${SQL_BRANCH} merged and deleted, or not fetched): the copy is not compared`);
 });
 
 test('the parsed codes are exactly the plan\'s 26 + 31 — none missing, none extra, none retired', () => {
