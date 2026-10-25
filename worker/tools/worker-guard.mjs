@@ -1,11 +1,11 @@
 #!/usr/bin/env node
 // Worker deploy guard (CLAUDE.md «Ο WORKER»: the three + one marker per live
 // feature: stock lots, local moves, stop delay, presence, temperature per CMR,
-// the VD /costs/rt filters, and national v5), counted in CONTENT, never by byte equality: wrangler re-bundles
+// the VD /costs/rt filters, national v5 and its vehicle handover), counted in CONTENT, never by byte equality: wrangler re-bundles
 // the source, and the CF API returns the live script as multipart with a
 // random boundary per request — two downloads of the same version «differ».
 //
-// Usage:  node worker/tools/worker-guard.mjs <file> --plan 0|1
+// Usage:  node worker/tools/worker-guard.mjs <file> --plan 0|1 --handover 0|1
 //   <file>   worker/src/index.js, a `wrangler deploy --dry-run --outdir` bundle,
 //            or the raw CF API download (multipart is unwrapped here)
 //   --plan   expected count of the national v5 marker (0 = before F2 is live,
@@ -15,16 +15,22 @@
 //            switch: that chain adds the day-L mode here (e.g. --plan 2 = open,
 //            the same 13 markers + PLAN_PERMS) with its test, never a deploy
 //            that skips the guard (K1 review r2; plan K3 Step 2).
+//   --handover expected count of the vehicle handover marker (072b routes,
+//            `rpc: "plan_seg_change"`): 0 before that deploy, 1 after it, and
+//            1 needs --plan 1. Never a default: a forgotten flag is a usage
+//            error, not an «OK» (handover plan H-18).
 // Prints one line per marker and exits 1 on the first STOP condition — no
 // partial «OK» (αρχή 1).
 import { readFileSync } from 'node:fs';
 
-const [file, flag, planArg] = process.argv.slice(2);
-if (!file || flag !== '--plan' || !['0', '1'].includes(planArg)) {
-  console.error('usage: node worker/tools/worker-guard.mjs <file> --plan 0|1');
+const [file, flag, planArg, hflag, handoverArg] = process.argv.slice(2);
+if (!file || flag !== '--plan' || !['0', '1'].includes(planArg) || hflag !== '--handover' || !['0', '1'].includes(handoverArg)
+    || (planArg === '0' && handoverArg === '1')) {
+  console.error('usage: node worker/tools/worker-guard.mjs <file> --plan 0|1 --handover 0|1 (handover 1 needs plan 1)');
   process.exit(2);
 }
 const plan = Number(planArg);
+const handover = Number(handoverArg);
 
 function unwrapMultipart(raw) {
   // A CF API script download: «--<boundary>\r\nContent-Disposition: form-data;
@@ -71,7 +77,9 @@ const rows = [
   ['Temp Per CMR', count('Temp Per CMR'), (n) => n === 1],
   // the 24 lines of ValueDriven 19/10 (Worker 3439b1e3, decision 29): the order_ids check of GET /costs/rt
   ['VD /costs/rt order_ids {0,49}$/', count('{0,49}$/'), (n) => n === 1],
-  ['var PLAN_PERMS = {', count('var PLAN_PERMS = {'), (n) => n === plan]
+  ['var PLAN_PERMS = {', count('var PLAN_PERMS = {'), (n) => n === plan],
+  // the vehicle handover (072b): its route row, once live never removed (CLAUDE.md rule of one source 3)
+  ['rpc: "plan_seg_change"', count('rpc: "plan_seg_change"'), (n) => n === handover]
 ];
 if (plan === 1) {
   rows.push(['var PLAN_WRITES_OPEN = false;', count('var PLAN_WRITES_OPEN = false;'), (n) => n === 1]);
@@ -83,5 +91,5 @@ for (const [name, n, good] of rows) {
   ok = ok && pass;
   console.log(`${pass ? 'OK  ' : 'STOP'}  ${name} = ${n}`);
 }
-console.log(ok ? `GUARD OK (${rows.length} markers, plan=${plan}) ${file}` : `GUARD STOP — do not deploy / roll back (${file})`);
+console.log(ok ? `GUARD OK (${rows.length} markers, plan=${plan}, handover=${handover}) ${file}` : `GUARD STOP — do not deploy / roll back (${file})`);
 process.exit(ok ? 0 : 1);

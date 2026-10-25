@@ -15,19 +15,32 @@ const TOOL = path.join(here, '..', 'tools', 'worker-guard.mjs');
 const SRC = path.join(here, '..', 'src', 'index.js');
 const src = readFileSync(SRC, 'utf8');
 const dir = mkdtempSync(path.join(tmpdir(), 'worker-guard-'));
-const run = (file, plan) => {
-  const r = spawnSync(process.execPath, plan === undefined ? [TOOL, file] : [TOOL, file, '--plan', String(plan)], { encoding: 'utf8' });
+// handover: the vehicle handover marker (072b routes); this source carries them, so 1 unless a test says otherwise
+const run = (file, plan, handover = 1) => {
+  const args = plan === undefined ? [TOOL, file] : [TOOL, file, '--plan', String(plan), '--handover', String(handover)];
+  const r = spawnSync(process.execPath, args, { encoding: 'utf8' });
   return { code: r.status, out: r.stdout + r.stderr };
 };
 const write = (name, text) => { const f = path.join(dir, name); writeFileSync(f, text); return f; };
 
-test('the deploy source passes with --plan 1 (15 markers) and fails with --plan 0', () => {
+test('the deploy source passes with --plan 1 --handover 1 (16 markers) and fails with --handover 0 or --plan 0', () => {
   let r = run(SRC, 1);
   assert.equal(r.code, 0, r.out);
-  assert.match(r.out, /GUARD OK \(15 markers, plan=1\)/);
-  r = run(SRC, 0);
+  assert.match(r.out, /GUARD OK \(16 markers, plan=1, handover=1\)/);
+  r = run(SRC, 1, 0);
+  assert.equal(r.code, 1, r.out);
+  assert.match(r.out, /STOP {2}rpc: "plan_seg_change" = 1/);
+  r = run(SRC, 0, 0);
   assert.equal(r.code, 1, r.out);
   assert.match(r.out, /STOP {2}var PLAN_PERMS = \{ = 1/);
+  // the bundle of F2 alone (live before the handover deploy): its routes are not there yet
+  r = run(write('f2-only.js', src.replace('rpc: "plan_seg_change"', 'rpc: "plan_seg_changeX"')), 1, 0);
+  assert.equal(r.code, 0, r.out);
+  assert.match(r.out, /GUARD OK \(16 markers, plan=1, handover=0\)/);
+  // once live, the handover marker gone = STOP (never removed, CLAUDE.md rule of one source 3)
+  r = run(write('no-handover.js', src.replace('rpc: "plan_seg_change"', 'rpc: "plan_seg_changeX"')), 1, 1);
+  assert.equal(r.code, 1, r.out);
+  assert.match(r.out, /STOP {2}rpc: "plan_seg_change" = 0/);
 });
 
 test('a CF API download (multipart, CRLF, random boundary) is unwrapped and counted the same', () => {
@@ -35,7 +48,7 @@ test('a CF API download (multipart, CRLF, random boundary) is unwrapped and coun
   const f = write('live.txt', `--${b}\r\nContent-Disposition: form-data; name="index.js"; filename="index.js"\r\nContent-Type: application/javascript+module\r\n\r\n${src}\r\n--${b}--\r\n`);
   const r = run(f, 1);
   assert.equal(r.code, 0, r.out);
-  assert.match(r.out, /GUARD OK \(15 markers, plan=1\)/);
+  assert.match(r.out, /GUARD OK \(16 markers, plan=1, handover=1\)/);
 });
 
 test('a missing marker, a doubled marker or open writes → exit 1 naming it', () => {
@@ -67,7 +80,7 @@ test('a part named only by name="….js" is unwrapped; an unreadable download �
   const b = 'f00dfeed';
   let r = run(write('live-name.txt', `--${b}\r\nContent-Disposition: form-data; name="worker.js"\r\nContent-Type: application/javascript+module\r\n\r\n${src}\r\n--${b}--\r\n`), 1);
   assert.equal(r.code, 0, r.out);
-  assert.match(r.out, /GUARD OK \(15 markers, plan=1\)/);
+  assert.match(r.out, /GUARD OK \(16 markers, plan=1, handover=1\)/);
   r = run(write('live-bad.txt', `--${b}\r\nContent-Disposition: form-data; name="metadata"\r\n\r\n{}\r\n--${b}--\r\n`), 1);
   assert.equal(r.code, 1, r.out);
   assert.match(r.out, /GUARD STOP — multipart: expected one \.js part, found 0/);
@@ -90,4 +103,9 @@ test('bad usage → exit 2, nothing counted', () => {
   assert.equal(run(SRC, 'NaN').code, 2);
   assert.equal(run(SRC, 'Infinity').code, 2);
   assert.equal(run(SRC, '-Infinity').code, 2);
+  // no default for --handover: a forgotten flag is a usage error, never an «OK» (handover plan H-18)
+  assert.equal(spawnSync(process.execPath, [TOOL, SRC, '--plan', '1'], { encoding: 'utf8' }).status, 2);
+  assert.equal(run(SRC, 0, 1).code, 2, 'handover 1 without plan 1');
+  assert.equal(run(SRC, 1, 2).code, 2, 'handover is 0 or 1');
+  assert.equal(run(SRC, 1, 'NaN').code, 2, 'a non-finite --handover is bad usage too');
 });
