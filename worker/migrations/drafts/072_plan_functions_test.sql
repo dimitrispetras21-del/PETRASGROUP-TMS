@@ -108,6 +108,19 @@ DECLARE
     , 'plan:piece_busy'  -- 75 a new origin while the piece rides
     , 'plan:bad_input'   -- 76 status is never written (no mirror): an unknown key
     , 'ok'               -- 77 a later delivery window: the requested delivery day follows
+    , 'ok'               -- 78 a VS split at Veroia with no target, then its 12 onto D+1: the first ride moves the day
+    , 'ok'               -- 79 a later leg on another cycle is listed (later_leg) and the move needs the token
+    , 'plan:need_token'  -- 80 the same move without the token
+    , 'ok'               -- 81 a local loading whose TOPIKO line has an amount: local_payroll, the amount for the owner only
+    , 'ok'               -- 82 with the token: the loading goes, its TOPIKO line waits for accounting (060 needs_review)
+    , 'ok'               -- 83 decision 44: plan_orders_create again with its request_id = the first ids, nothing written
+    , 'plan:request_reused' -- 84 the same request_id with another body: refused, never the first answer
+    , 'ok'               -- 85 plan_split_piece again with its request_id = the first children (no piece_split)
+    , 'plan:bad_input'   -- 86 a request_id that is not a uuid
+    , 'plan:request_reused' -- 87 the request_id of an order creation sent to plan_split_piece
+    , 'plan:request_reused' -- 88 another person sends the same request_id and body: never their ids
+    , 'plan:request_missing' -- 89 plan_orders_create without request_id: refused, never a silent pass
+    , 'plan:request_missing' -- 90 plan_split_piece without request_id
     -- @want (one line per case: "    , '<ok|plan:code|con:name|state:XXXXX>'  -- <k> <what>")
   ]::text[];
   verdict text; got text; hint text; msg text; cname text; st text;
@@ -813,6 +826,104 @@ BEGIN
         r := plan_order_update(jsonb_build_object('nat_order_id', n1, 'shipments', jsonb_build_array(jsonb_build_object('shipment_id', sh1,
                'deliver_from', (d + 2 + time '12:00') AT TIME ZONE 'Europe/Athens', 'deliver_to', (d + 2 + time '14:00') AT TIME ZONE 'Europe/Athens'))),
                'test:072', 'owner');
+      ELSIF k = 78 THEN   -- the VS bridge of 26 to D, split 12 + 14 at Veroia (both stock), then the 12 on R2 (D+1)
+        INSERT INTO shipments (order_id, order_stop_id, created_by) VALUES (vso, vs_d, 'test:072') RETURNING id INTO x;
+        INSERT INTO shipment_pieces (shipment_id, pallets, created_by) VALUES (x, 26, 'test:072') RETURNING id INTO y;
+        r := plan_split_piece(jsonb_build_object('request_id', gen_random_uuid()) || (jsonb_build_object('piece_id', y, 'parts', '[{"pallets": 12}, {"pallets": 14}]'::jsonb)), 'test:072', 'owner');
+        c1 := (r->'ids'->'piece_ids'->>0)::bigint;
+        r := plan_put_pieces(jsonb_build_object('pieces', jsonb_build_array(jsonb_build_object('piece_id', c1)),
+               'target', jsonb_build_object('rt_id', rt2, 'side', 'KATHODOS'),
+               'stops', jsonb_build_array(jsonb_build_object('ref', 'h', 'stop_id', s2h),
+                                          jsonb_build_object('ref', 'd', 'location_id', ld, 'planned_from', b13, 'planned_to', b14))),
+               'test:072', 'dispatcher');
+      ELSIF k IN (79, 80) THEN   -- p1 rides A -> Veroia on R1 and Veroia -> B on R2; both cycles keep another load
+        PERFORM plan_orders_create(jsonb_build_object('request_id', gen_random_uuid()) || (jsonb_build_object('orders', jsonb_build_array(jo1 || jsonb_build_object('shipments',
+                  jsonb_build_array(jsh1 || '{"pallets": 2}'))),
+                  'target', jsonb_build_object('rt_id', rt1, 'side', 'KATHODOS'),
+                  'stops', jsonb_build_array(jsonb_build_object('ref', 'a', 'stop_id', s1a), jsonb_build_object('ref', 'b', 'stop_id', s1b)))),
+                  'test:072', 'owner');
+        PERFORM plan_orders_create(jsonb_build_object('request_id', gen_random_uuid()) || (jsonb_build_object('orders', jsonb_build_array(jo1 || jsonb_build_object('shipments',
+                  jsonb_build_array(jsh1 || jsonb_build_object('pallets', 2, 'load_from', b06, 'load_to', b08,
+                                                               'deliver_from', b12, 'deliver_to', b14)))),
+                  'target', jsonb_build_object('rt_id', rt2, 'side', 'KATHODOS'),
+                  'stops', jsonb_build_array(jsonb_build_object('ref', 'a', 'stop_id', s2a), jsonb_build_object('ref', 'b', 'stop_id', s2b)))),
+                  'test:072', 'owner');
+        INSERT INTO piece_legs (piece_id, leg_no, rt_id, pickup_stop_id, drop_stop_id, created_by)
+        VALUES (p1, 1, rt1, s1a, s1h, 'test:072');
+        INSERT INTO piece_legs (piece_id, leg_no, rt_id, pickup_stop_id, drop_stop_id, created_by)
+        VALUES (p1, 2, rt2, s2h, s2b, 'test:072') RETURNING id INTO q;
+        SET CONSTRAINTS ALL IMMEDIATE;
+        SET CONSTRAINTS ALL DEFERRED;
+        j := jsonb_build_object('from', jsonb_build_object('piece_ids', jsonb_build_array(p1)),
+               'target', jsonb_build_object('rt_id', rt2, 'side', 'KATHODOS'),
+               'stops', jsonb_build_array(jsonb_build_object('ref', 'a', 'stop_id', s2a), jsonb_build_object('ref', 'b', 'stop_id', s2b)));
+        IF k = 79 THEN
+          r := plan_move_pieces(j || '{"dry_run": true}', 'test:072', 'dispatcher');
+        ELSE
+          PERFORM plan_move_pieces(j, 'test:072', 'dispatcher');
+        END IF;
+      ELSIF k IN (81, 82) THEN   -- p1 on R1 from A; a load from Veroia keeps R1 alive; a local driver loads at A
+        PERFORM plan_put_pieces(jsonb_build_object('pieces', jsonb_build_array(jsonb_build_object('piece_id', p1)),
+                  'target', jsonb_build_object('rt_id', rt1, 'side', 'KATHODOS'),
+                  'stops', jsonb_build_array(jsonb_build_object('ref', 'a', 'stop_id', s1a), jsonb_build_object('ref', 'b', 'stop_id', s1b))),
+                  'test:072', 'owner');
+        PERFORM plan_orders_create(jsonb_build_object('request_id', gen_random_uuid()) || (jsonb_build_object('orders', jsonb_build_array(jo1 || jsonb_build_object('shipments',
+                  jsonb_build_array(jsh1 || jsonb_build_object('origin_location_id', hub, 'pallets', 2, 'load_from', a09,
+                                                               'load_to', a10)))),
+                  'target', jsonb_build_object('rt_id', rt1, 'side', 'KATHODOS'),
+                  'stops', jsonb_build_array(jsonb_build_object('ref', 'h', 'stop_id', s1h), jsonb_build_object('ref', 'b', 'stop_id', s1b)))),
+                  'test:072', 'owner');
+        INSERT INTO local_moves (move_kind, rt_stop_id, driver_id, truck_id, move_date, status, sequence)
+        VALUES ('nat_loading', s1a, drvl, trk2, d, 'Assigned', 1) RETURNING id INTO q;
+        -- accounting already valued the local driver's TOPIKO line of that day (060 wrote it, empty)
+        UPDATE dl_entries SET trip_value = 50 WHERE driver_id = drvl AND entry_date = d AND local_move_id IS NOT NULL
+           AND deleted_at IS NULL RETURNING id INTO x;
+        SET CONSTRAINTS ALL IMMEDIATE;
+        SET CONSTRAINTS ALL DEFERRED;
+        j := jsonb_build_object('from', jsonb_build_object('piece_ids', jsonb_build_array(p1)),
+               'target', jsonb_build_object('rt_id', rt2, 'side', 'KATHODOS'),
+               'stops', jsonb_build_array(jsonb_build_object('ref', 'a', 'stop_id', s2a), jsonb_build_object('ref', 'b', 'stop_id', s2b)));
+        r := plan_move_pieces(j || '{"dry_run": true}', 'test:072', 'owner');
+        r2 := plan_move_pieces(j || '{"dry_run": true}', 'test:072', 'dispatcher');
+        IF k = 82 THEN
+          r2 := plan_move_pieces(j || jsonb_build_object('confirm_token', r->>'confirm_token'), 'test:072', 'dispatcher');
+        END IF;
+      ELSIF k IN (83, 84) THEN   -- decision 44; the warehouse writes too (decision 41: the DB does not check rights)
+        j := jsonb_build_object('orders', jsonb_build_array(jo1), 'request_id', '6F1C2A3E-0000-4000-8000-000000000083');
+        r := plan_orders_create(jsonb_build_object('request_id', gen_random_uuid()) || (j), 'test:072', 'warehouse');
+        n := (SELECT count(*) FROM national_orders) + (SELECT count(*) FROM shipments) + (SELECT count(*) FROM shipment_pieces);
+        m := (SELECT count(*) FROM audit_log);
+        IF k = 83 THEN
+          r2 := plan_orders_create(jsonb_build_object('request_id', gen_random_uuid()) || (j), 'test:072', 'warehouse');
+        ELSE
+          PERFORM plan_orders_create(jsonb_build_object('request_id', gen_random_uuid()) || (j || jsonb_build_object('orders', jsonb_build_array(jo1 || '{"price": 101}'))),
+                                     'test:072', 'warehouse');
+        END IF;
+      ELSIF k = 85 THEN   -- the VS bridge of 26 to D, split at Veroia twice with the same request_id
+        INSERT INTO shipments (order_id, order_stop_id, created_by) VALUES (vso, vs_d, 'test:072') RETURNING id INTO x;
+        INSERT INTO shipment_pieces (shipment_id, pallets, created_by) VALUES (x, 26, 'test:072') RETURNING id INTO y;
+        j := jsonb_build_object('piece_id', y, 'parts', '[{"pallets": 12}, {"pallets": 14}]'::jsonb,
+                                'request_id', '6f1c2a3e-0000-4000-8000-000000000085');
+        r := plan_split_piece(jsonb_build_object('request_id', gen_random_uuid()) || (j), 'test:072', 'management');
+        n := (SELECT count(*) FROM shipment_pieces WHERE shipment_id = x);
+        m := (SELECT count(*) FROM audit_log);
+        r2 := plan_split_piece(jsonb_build_object('request_id', gen_random_uuid()) || (j), 'test:072', 'management');
+      ELSIF k = 86 THEN
+        PERFORM plan_orders_create(jsonb_build_object('request_id', gen_random_uuid()) || (jsonb_build_object('orders', jsonb_build_array(jo1), 'request_id', 'abc-123')), 'test:072', 'owner');
+      ELSIF k = 87 THEN
+        PERFORM plan_orders_create(jsonb_build_object('request_id', gen_random_uuid()) || (jsonb_build_object('orders', jsonb_build_array(jo1),
+                                   'request_id', '6f1c2a3e-0000-4000-8000-000000000087')), 'test:072', 'owner');
+        PERFORM plan_split_piece(jsonb_build_object('request_id', gen_random_uuid()) || (jsonb_build_object('piece_id', p1, 'parts', '[{"pallets": 4}, {"pallets": 6}]'::jsonb,
+                                 'request_id', '6f1c2a3e-0000-4000-8000-000000000087')), 'test:072', 'owner');
+      ELSIF k = 88 THEN   -- the replay compares the JWT user too (review of PR #84)
+        j := jsonb_build_object('orders', jsonb_build_array(jo1), 'request_id', '6f1c2a3e-0000-4000-8000-000000000088');
+        PERFORM plan_orders_create(jsonb_build_object('request_id', gen_random_uuid()) || (j), 'test:072', 'owner');
+        PERFORM plan_orders_create(jsonb_build_object('request_id', gen_random_uuid()) || (j), 'test:072-other', 'owner');
+      ELSIF k = 89 THEN   -- written public.plan_...: the cases that must arrive WITHOUT a request_id
+        PERFORM public.plan_orders_create(jsonb_build_object('orders', jsonb_build_array(jo1)), 'test:072', 'owner');
+      ELSIF k = 90 THEN
+        PERFORM public.plan_split_piece(jsonb_build_object('piece_id', p1, 'parts', '[{"pallets": 4}, {"pallets": 6}]'::jsonb),
+                                        'test:072', 'owner');
       -- @case (each task adds its "ELSIF k = <n> THEN" branches above this line)
       END IF;
       SET CONSTRAINTS ALL IMMEDIATE;
@@ -1034,6 +1145,53 @@ BEGIN
         verdict := CASE WHEN (SELECT delivery_datetime FROM national_orders WHERE id = n1) = d + 2
                           AND (SELECT loading_datetime FROM national_orders WHERE id = n1) = d
                         THEN 'ok requested delivery day D+2 from the window' ELSE 'FAIL window' END;
+      ELSIF k = 78 THEN
+        verdict := CASE WHEN (SELECT cross_dock_date FROM orders WHERE id = vso) = e
+                          AND (SELECT count(*) FROM plan_notices WHERE order_id = vso AND kind = 'vs_day_changed') = 1
+                          AND jsonb_array_length(r->'notice_ids') = 1
+                        THEN 'ok the first ride after a split without target moves the international to D+1, one notice'
+                        ELSE 'FAIL first after split: ' || r::text END;
+      ELSIF k = 79 THEN
+        verdict := CASE WHEN (r->>'needs_confirm')::boolean
+                          AND r->'consequences' @> jsonb_build_array(jsonb_build_object('kind', 'later_leg', 'leg_id', q, 'rt_id', rt2))
+                          AND NOT (r->'consequences' @> '[{"kind": "rt_cancelled"}]')
+                        THEN 'ok the later leg on R2 is in the list, the move waits for the token'
+                        ELSE 'FAIL later_leg: ' || r::text END;
+      ELSIF k = 81 THEN
+        verdict := CASE WHEN (r->>'needs_confirm')::boolean
+                          AND r->'consequences' @> jsonb_build_array(jsonb_build_object('kind', 'local_payroll', 'dl_entry_id', x, 'amount', 50,
+                                                                                         'month', to_char(d, 'YYYY-MM')))
+                          AND NOT EXISTS (SELECT 1 FROM jsonb_array_elements(r->'consequences') c WHERE c ? 'day')
+                          AND r2->'consequences' @> jsonb_build_array(jsonb_build_object('kind', 'local_payroll', 'dl_entry_id', x))
+                          AND r2::text NOT LIKE '%"amount"%'
+                          AND r->>'confirm_token' = r2->>'confirm_token'
+                          AND (SELECT status FROM ct_round_trips WHERE id = rt1) = 'planned'
+                        THEN 'ok the TOPIKO line with 50 is listed; the dispatcher sees the line, not the amount'
+                        ELSE 'FAIL local_payroll: ' || r::text END;
+      ELSIF k = 82 THEN
+        verdict := CASE WHEN (SELECT deleted_at IS NOT NULL FROM local_moves WHERE id = q)
+                          AND (SELECT needs_review AND deleted_at IS NULL FROM dl_entries WHERE id = x)
+                          AND (SELECT status FROM ct_round_trips WHERE id = rt1) = 'planned'
+                          AND (SELECT end_stop_id FROM v_piece_state WHERE piece_id = p1) = s2b
+                        THEN 'ok moved with the token: the loading went, its TOPIKO line waits for accounting (decision 33)'
+                        ELSE 'FAIL local_payroll execute: ' || coalesce(r2::text, 'null') END;
+      ELSIF k = 83 THEN
+        verdict := CASE WHEN r2->'ids' = r->'ids' AND (r2->>'replayed')::boolean AND NOT (r ? 'replayed')
+                          AND n = (SELECT count(*) FROM national_orders) + (SELECT count(*) FROM shipments)
+                                  + (SELECT count(*) FROM shipment_pieces)
+                          AND m = (SELECT count(*) FROM audit_log)
+                          AND (SELECT count(*) FROM audit_log WHERE table_name = 'plan_request'
+                                 AND record_id = '6f1c2a3e-0000-4000-8000-000000000083' AND role = 'warehouse'
+                                 AND after_data->>'op' = 'plan_orders_create' AND after_data->'answer'->'ids' = r->'ids') = 1
+                        THEN 'ok the same request_id again: the first ids, 0 new rows, no second audit row'
+                        ELSE 'FAIL replay orders: ' || coalesce(r2::text, 'null') END;
+      ELSIF k = 85 THEN
+        verdict := CASE WHEN r2->'ids'->'piece_ids' = r->'ids'->'piece_ids' AND (r2->>'replayed')::boolean
+                          AND jsonb_array_length(r->'ids'->'piece_ids') = 2
+                          AND n = 3 AND (SELECT count(*) FROM shipment_pieces WHERE shipment_id = x) = 3
+                          AND m = (SELECT count(*) FROM audit_log)
+                        THEN 'ok the same split again: the first two children, nothing written, no piece_split'
+                        ELSE 'FAIL replay split: ' || coalesce(r2::text, 'null') END;
       -- @verdict (each task adds its "ELSIF k = <n> THEN verdict := ..." branches above this line)
       ELSE
         verdict := 'FAIL no verdict for case ' || k;
