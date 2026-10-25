@@ -4707,7 +4707,7 @@ test('bad --f3 usage → exit 2; without --f3 the F2 answer is unchanged', () =>
 node --check worker/src/index.js
 node --test worker/test/*.test.mjs worker/src/rt-rules.test.mjs 2>&1 | grep -E '^ℹ (tests|pass|fail)'
 node tests/dkv/run-import-rules.js | tail -1
-node worker/tools/worker-guard.mjs worker/src/index.js --plan 1 --f3 1 | tail -1
+node worker/tools/worker-guard.mjs worker/src/index.js --plan 1 --handover 1 --f3 1 | tail -1
 ```
 Expected: `ℹ fail 0`, tests = της Φ2 + 21 (στο `main` @ `9f98208d`: 189 → **210**, δοκιμασμένο 23/10 με `--plan 0`· στην αλυσίδα κατά το πλάνο Φ2: 232 → 253)· `214 passed, 0 failed`· `GUARD OK (12 markers, plan=1, f3=1) worker/src/index.js`.
 
@@ -4809,9 +4809,9 @@ gh pr create --base main --head deploy/worker-plan --title "Worker Φ3 (αλυσ
 
 ### Task 14: Deploy του Worker της Φ3 (χωριστό «ναι», μετά τις 15:00, μετά την 073)
 
-- [ ] **Step 1: Πριν:** `git merge-base --is-ancestor <ζωντανή πηγή Φ2> deploy/worker-plan && echo OK`· λήψη του ζωντανού script από το CF API (όπως στο Γ7 της Φ2) και `node worker/tools/worker-guard.mjs "$D/live-before.txt" --plan 1 --f3 0` → `GUARD OK (12 markers, plan=1, f3=0)`· `npx wrangler deploy --dry-run --outdir "$D/bundle"` και `node worker/tools/worker-guard.mjs "$D/bundle/index.js" --plan 1 --f3 1` → `GUARD OK (12 markers, plan=1, f3=1)`· bindings 3/3· αντίγραφο του τρέχοντος bundle· το αντίγραφο `drafts/073_plan_money.sql` = του main (`git diff origin/main -- worker/migrations/drafts/073_plan_money.sql` κενό, ή η εκτελεσμένη `worker/migrations/073_plan_money.sql`).
+- [ ] **Step 1: Πριν:** `git merge-base --is-ancestor <ζωντανή πηγή Φ2> deploy/worker-plan && echo OK`· λήψη του ζωντανού script από το CF API (όπως στο Γ7 της Φ2) και `node worker/tools/worker-guard.mjs "$D/live-before.txt" --plan 1 --handover 1 --f3 0` → `GUARD OK (12 markers, plan=1, f3=0)`· `npx wrangler deploy --dry-run --outdir "$D/bundle"` και `node worker/tools/worker-guard.mjs "$D/bundle/index.js" --plan 1 --handover 1 --f3 1` → `GUARD OK (12 markers, plan=1, f3=1)`· bindings 3/3· αντίγραφο του τρέχοντος bundle· το αντίγραφο `drafts/073_plan_money.sql` = του main (`git diff origin/main -- worker/migrations/drafts/073_plan_money.sql` κενό, ή η εκτελεσμένη `worker/migrations/073_plan_money.sql`).
 - [ ] **Step 2:** `cd worker && CLOUDFLARE_API_TOKEN=$CF_API_TOKEN npx wrangler deploy` → η νέα έκδοση.
-- [ ] **Step 3: Μετά:** νέα λήψη και `node worker/tools/worker-guard.mjs "$D/live-after.txt" --plan 1 --f3 1` → `GUARD OK (12 markers, plan=1, f3=1)` (το εργαλείο ξετυλίγει το multipart)· bindings 3/3· smoke: `GET /costs/rt?from=<Δευτέρα>&to=<Κυριακή>` (owner) 200, γραμμές RT ίδιες με πριν, κανένα `ended` (0 κύκλοι v5)· `GET /costs/pnl` owner 200 με στήλη `partner_rate_missing` (false παντού), dispatcher 403· `GET /pallets/movements?limit=5` 200· `POST /costs/import/parse` δεν τρέχει (θα έγραφε μόνο προεπισκόπηση, αλλά θέλει αρχείο DKV — όχι στο smoke).
+- [ ] **Step 3: Μετά:** νέα λήψη και `node worker/tools/worker-guard.mjs "$D/live-after.txt" --plan 1 --handover 1 --f3 1` → `GUARD OK (12 markers, plan=1, f3=1)` (το εργαλείο ξετυλίγει το multipart)· bindings 3/3· smoke: `GET /costs/rt?from=<Δευτέρα>&to=<Κυριακή>` (owner) 200, γραμμές RT ίδιες με πριν, κανένα `ended` (0 κύκλοι v5)· `GET /costs/pnl` owner 200 με στήλη `partner_rate_missing` (false παντού), dispatcher 403· `GET /pallets/movements?limit=5` 200· `POST /costs/import/parse` δεν τρέχει (θα έγραφε μόνο προεπισκόπηση, αλλά θέλει αρχείο DKV — όχι στο smoke).
 - [ ] **Step 4:** sync στο main («sync worker source with deployed <version>», PR)· στο CLAUDE.md, στη λίστα σημαδιών λειτουργίας: `"v_rt_cycle"` (Ε21, Φ3).
 - [ ] **Rollback:** `wrangler rollback <έκδοση της Φ2>`, φρουρός, smoke. Η 073 μένει (ο Worker της Φ2 δεν διαβάζει τίποτα από αυτήν: μόνο τα νέα πεδία λείπουν).
 
