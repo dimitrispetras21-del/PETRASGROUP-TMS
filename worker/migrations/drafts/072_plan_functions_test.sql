@@ -1245,6 +1245,8 @@ BEGIN
                'plan:stale_confirm', 'ok', 'ok', 'ok']   -- B34-B42 (Task B3)
       || ARRAY['ok', 'plan:order_not_v5', 'plan:order_gone', 'plan:stale_confirm', 'ok',
                'ok', 'plan:hard_delete', 'plan:need_token', 'plan:bad_input']   -- B43-B51 (Task B4)
+      || ARRAY['ok', 'plan:vs_not_bridge', 'plan:order_gone', 'ok', 'ok',
+               'ok', 'ok', 'plan:vs_not_bridge', 'ok']   -- B52-B60 (Task B5)
       ;  -- end of b_want
     b_verdict text; b_got text; b_hint text; b_msg text; b_cname text; b_st text;
   BEGIN
@@ -1789,6 +1791,132 @@ BEGIN
                               AND (SELECT count(*) FROM rt_stops WHERE rt_id = b_rt1 AND deleted_at IS NULL) = 2
                               AND (SELECT count(*) FROM dl_entries WHERE rt_id = b_rt1 AND deleted_at IS NULL) = 1
                             THEN 'ok the shared cycle stays planned with the other order' ELSE 'FAIL shared cycle' END;
+        -- ---- Task B5: plan_vs_set_day, plan_vs_set_place ----
+        ELSIF kb IN (52, 55) THEN   -- the national desk gives the VS day (one field, 069 moves the Cross-dock stop)
+          b_v2 := plan_vs_set_day(jsonb_build_object('order_id', b_vo, 'day', CASE kb WHEN 52 THEN b_d + 1 ELSE b_d END),
+                  'test:072b', 'dispatcher');
+          b_verdict := CASE WHEN kb = 52
+                              AND (SELECT cross_dock_date FROM orders WHERE id = b_vo) = b_d + 1
+                              AND (SELECT datetime FROM order_stops WHERE id = b_vcd) = b_d + 1
+                              AND (SELECT count(*) FROM audit_log WHERE actor = 'test:072b' AND table_name = 'orders'
+                                     AND record_id IN (b_vo::text, 'rec072TBO1')) = 1
+                              AND jsonb_array_length(b_v2->'notice_ids') = 1
+                              AND (SELECT kind = 'vs_day_changed' AND to_desk = 'intl' AND order_id = b_vo FROM plan_notices
+                                    WHERE id = (b_v2->'notice_ids'->>0)::bigint)
+                              AND current_setting('plan.writer', true) = 'natl'
+                              AND b_v2->'warnings' = '[]'::jsonb
+                            THEN 'ok VS day D -> D+1: one orders row, its audit, one notice, Cross-dock stop moved'
+                            WHEN kb = 55 AND b_v2->'notice_ids' = '[]'::jsonb
+                              AND NOT EXISTS (SELECT 1 FROM plan_notices WHERE order_id = b_vo)
+                            THEN 'ok the same day again: nothing written, nobody told'
+                            ELSE 'FAIL VS day ' || b_v2::text END;
+        ELSIF kb = 53 THEN
+          PERFORM plan_vs_set_day(jsonb_build_object('order_id', b_vo, 'day', b_d + 1), 'test:072b', 'dispatcher');
+        ELSIF kb = 54 THEN
+          -- coordinator 25/10 (cross-cutting input rule): an order_id of NaN / +-Infinity (or past bigint) is refused as
+          -- bad_input 'order_id or day', a day of 'infinity' / '-infinity' as bad_input 'day:finite'; each probe is undone
+          FOR b_v3 IN SELECT value FROM jsonb_array_elements(jsonb_build_array(
+              jsonb_build_object('order_id', 'NaN', 'day', b_d + 1),
+              jsonb_build_object('order_id', 'Infinity', 'day', b_d + 1),
+              jsonb_build_object('order_id', '-Infinity', 'day', b_d + 1),
+              jsonb_build_object('order_id', 1e400::numeric, 'day', b_d + 1),
+              jsonb_build_object('order_id', b_vo, 'day', 'infinity'),
+              jsonb_build_object('order_id', b_vo, 'day', '-infinity')))
+          LOOP
+            BEGIN
+              PERFORM plan_vs_set_day(b_v3, 'test:072b', 'dispatcher');
+              RAISE EXCEPTION 'FAIL a non-finite VS day input was accepted (%)', b_v3::text;
+            EXCEPTION WHEN check_violation THEN
+              GET STACKED DIAGNOSTICS b_msg = MESSAGE_TEXT, b_hint = PG_EXCEPTION_HINT;
+              IF b_hint IS DISTINCT FROM 'plan:bad_input'
+                 OR b_msg NOT LIKE (CASE WHEN b_v3->>'day' LIKE '%infinity' THEN '%bad_input:day:finite'
+                                         ELSE '%bad_input:order_id or day' END) THEN
+                RAISE EXCEPTION 'FAIL non-finite VS day probe % got % (%)', b_v3::text, coalesce(b_hint, 'no hint'), b_msg;
+              END IF;
+            END;
+          END LOOP;
+          PERFORM plan_vs_set_day(jsonb_build_object('order_id', -1, 'day', b_d + 1), 'test:072b', 'dispatcher');
+        ELSIF kb BETWEEN 56 AND 58 THEN   -- the VS destination after Veroia moves (K-06: national stops follow)
+          IF kb IN (57, 58) THEN
+            b_v2 := plan_rt_create(jsonb_build_object('new_rt', jsonb_build_object('trip_type', 'OWNED', 'truck_id', b_t2, 'driver_id', b_d2),
+                      'stops', jsonb_build_array(
+                        jsonb_build_object('ref', 'h', 'location_id', b_hub, 'side', 'KATHODOS', 'planned_from', h06, 'planned_to', h07),
+                        jsonb_build_object('ref', 'u', 'location_id', b_la, 'side', 'KATHODOS', 'planned_from', h09, 'planned_to', h10))),
+                    'test:072b', 'dispatcher');
+            b_x := (b_v2->>'rt_id')::bigint; b_y := (b_v2->'stops'->>'u')::bigint;
+            INSERT INTO piece_legs (piece_id, leg_no, rt_id, pickup_stop_id, drop_stop_id, created_by)
+            VALUES (b_q1, 1, b_x, (b_v2->'stops'->>'h')::bigint, b_y, 'test:072b') RETURNING id INTO b_lg2;
+            IF kb = 58 THEN   -- a national order of another client ends at the same stop
+              INSERT INTO national_orders (legacy_id, client_id, reference, price) VALUES ('rec072TBN2', b_cl, 'WN072-TEST', 60)
+                RETURNING id INTO b_no2;
+              INSERT INTO shipments (nat_order_id, origin_location_id, dest_location_id, pallets, load_from, load_to,
+                                     deliver_from, deliver_to, created_by)
+              VALUES (b_no2, b_hub, b_la, 5, h06, h07, h09, h10, 'test:072b') RETURNING id INTO b_sh2;
+              INSERT INTO shipment_pieces (shipment_id, pallets, created_by) VALUES (b_sh2, 5, 'test:072b') RETURNING id INTO b_p2;
+              INSERT INTO piece_legs (piece_id, leg_no, rt_id, pickup_stop_id, drop_stop_id, created_by)
+              VALUES (b_p2, 1, b_x, (b_v2->'stops'->>'h')::bigint, b_y, 'test:072b') RETURNING id INTO b_z;
+            END IF;
+            SET CONSTRAINTS ALL IMMEDIATE;
+            SET CONSTRAINTS ALL DEFERRED;
+          END IF;
+          b_v3 := plan_vs_set_place(jsonb_build_object('order_stop_id', b_u1, 'location_id', b_ln), 'test:072b', 'dispatcher');
+          b_verdict := CASE WHEN (SELECT location_id FROM order_stops WHERE id = b_u1) = b_ln
+                              AND (SELECT nat_to_location_id FROM v_shipments WHERE shipment_id = b_bs1) = b_ln
+                              AND plan_shipment_problem(b_bs1) IS NULL
+                              AND (SELECT count(*) FROM audit_log WHERE actor = 'test:072b' AND table_name = 'order_stops'
+                                     AND record_id = 'rec072TBS1') = 1
+                              AND (SELECT count(*) FROM plan_notices WHERE order_id = b_vo AND kind = 'vs_place_changed') = 1
+                              AND (SELECT message FROM plan_notices WHERE order_id = b_vo AND kind = 'vs_place_changed') LIKE '%WN072-TEST%'
+                              AND (SELECT unloading_location_1_id FROM orders WHERE id = b_vo) = b_ln
+                              AND (SELECT unloading_location_2_id FROM orders WHERE id = b_vo) = b_lb
+                              AND CASE kb
+                                    WHEN 56 THEN true
+                                    WHEN 57 THEN (SELECT location_id FROM rt_stops WHERE id = b_y) = b_ln
+                                                 AND (SELECT deleted_at IS NULL FROM piece_legs WHERE id = b_lg2)
+                                    ELSE (SELECT location_id FROM rt_stops WHERE id = b_y) = b_la
+                                         AND (SELECT deleted_at IS NOT NULL FROM piece_legs WHERE id = b_lg2)
+                                         AND (SELECT deleted_at IS NULL FROM piece_legs WHERE id = b_z)
+                                         AND (SELECT count(*) FROM piece_legs l JOIN rt_stops s ON s.id = l.drop_stop_id
+                                               WHERE l.piece_id = b_q1 AND l.deleted_at IS NULL AND l.leg_no = 1
+                                                 AND s.location_id = b_ln AND s.deleted_at IS NULL) = 1
+                                         AND plan_shipment_problem(b_sh2) IS NULL END
+                            THEN 'ok VS place moved: order stop, the order column, national stop and leg follow in one transaction'
+                            ELSE 'FAIL VS place ' || b_v3::text END;
+        ELSIF kb = 59 THEN   -- the loading stop abroad has no bridge
+          -- coordinator 25/10 (cross-cutting input rule): an order_stop_id or location_id of NaN / +-Infinity (or past
+          -- bigint) is refused as bad_input 'order_stop_id or location_id'; each probe is undone
+          FOR b_v3 IN SELECT value FROM jsonb_array_elements(jsonb_build_array(
+              jsonb_build_object('order_stop_id', 'NaN', 'location_id', b_ln),
+              jsonb_build_object('order_stop_id', 'Infinity', 'location_id', b_ln),
+              jsonb_build_object('order_stop_id', '-Infinity', 'location_id', b_ln),
+              jsonb_build_object('order_stop_id', 1e400::numeric, 'location_id', b_ln),
+              jsonb_build_object('order_stop_id', b_vld, 'location_id', 'NaN'),
+              jsonb_build_object('order_stop_id', b_vld, 'location_id', '-Infinity')))
+          LOOP
+            BEGIN
+              PERFORM plan_vs_set_place(b_v3, 'test:072b', 'dispatcher');
+              RAISE EXCEPTION 'FAIL a non-finite VS place input was accepted (%)', b_v3::text;
+            EXCEPTION WHEN check_violation THEN
+              GET STACKED DIAGNOSTICS b_msg = MESSAGE_TEXT, b_hint = PG_EXCEPTION_HINT;
+              IF b_hint IS DISTINCT FROM 'plan:bad_input' OR b_msg NOT LIKE '%bad_input:order_stop_id or location_id' THEN
+                RAISE EXCEPTION 'FAIL non-finite VS place probe % got % (%)', b_v3::text, coalesce(b_hint, 'no hint'), b_msg;
+              END IF;
+            END;
+          END LOOP;
+          PERFORM plan_vs_set_place(jsonb_build_object('order_stop_id', b_vld, 'location_id', b_ln), 'test:072b', 'dispatcher');
+        ELSIF kb = 60 THEN   -- the national desk sets another day while the VS rides a truck of day D: said, not hidden
+          b_v2 := plan_rt_create(jsonb_build_object('new_rt', jsonb_build_object('trip_type', 'OWNED', 'truck_id', b_t2, 'driver_id', b_d2),
+                    'stops', jsonb_build_array(
+                      jsonb_build_object('ref', 'h', 'location_id', b_hub, 'side', 'KATHODOS', 'planned_from', h06, 'planned_to', h07),
+                      jsonb_build_object('ref', 'u', 'location_id', b_la, 'side', 'KATHODOS', 'planned_from', h09, 'planned_to', h10))),
+                  'test:072b', 'dispatcher');
+          INSERT INTO piece_legs (piece_id, leg_no, rt_id, pickup_stop_id, drop_stop_id, created_by)
+          VALUES (b_q1, 1, (b_v2->>'rt_id')::bigint, (b_v2->'stops'->>'h')::bigint, (b_v2->'stops'->>'u')::bigint, 'test:072b');
+          b_v3 := plan_vs_set_day(jsonb_build_object('order_id', b_vo, 'day', b_d + 2), 'test:072b', 'dispatcher');
+          b_verdict := CASE WHEN b_v3->'warnings' = jsonb_build_array(jsonb_build_object('code', 'vs_day_differs', 'first_hub_day', b_d))
+                              AND (SELECT cross_dock_date FROM orders WHERE id = b_vo) = b_d + 2
+                            THEN 'ok another day than the truck: written, and the answer warns vs_day_differs'
+                            ELSE 'FAIL vs_day_differs ' || b_v3::text END;
         -- [B-CASES-NEXT]
         END IF;
         SET CONSTRAINTS ALL IMMEDIATE;

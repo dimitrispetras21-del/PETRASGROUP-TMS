@@ -1896,6 +1896,177 @@ begin
                     where q.created_at = now() and q.created_by = p_actor and q.rt_id = any(v_empty)));
 end
 $f$;
+  -- B5. One VS day in the whole system, "whoever learns first" (spec 3, VS): ONE field, orders.cross_dock_date.
+  -- 069 (order_cd_stop_follow) moves the Cross-dock stop and the ramp exactly as today.
+  CREATE FUNCTION public.plan_vs_set_day(p jsonb, p_actor text, p_role text)
+    RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $f$
+declare
+  v_order bigint; v_day date; o orders%rowtype; v_nid bigint; v_warn jsonb;
+begin
+  perform plan_h_ctx(p_actor, p_role);
+  set constraints all deferred;
+  perform plan_h_keys(p, array['order_id', 'day'], 'p');
+  -- coordinator 25/10 (cross-cutting input rule): an order_id of 'NaN' / '+-Infinity' is refused by this cast itself
+  -- (a bigint has no non-finite value), as bad_input 'order_id or day' - never through numeric (a raw 0A000)
+  begin
+    v_order := (p->>'order_id')::bigint;
+    v_day := (p->>'day')::date;
+  exception when invalid_text_representation or numeric_value_out_of_range or invalid_datetime_format
+                 or datetime_field_overflow then
+    perform plan_h_raise('bad_input', 'order_id or day');
+  end;
+  if v_order is null or v_day is null then perform plan_h_raise('bad_input', 'order_id and day'); end if;
+  -- 'infinity' / '-infinity' are valid date input but no day: refused here, never written to orders.cross_dock_date
+  -- (069 would move the Cross-dock stop and the ramp to it)
+  if not isfinite(v_day) then perform plan_h_raise('bad_input', 'day:finite'); end if;
+  select * into o from orders where id = v_order for no key update;
+  if o.id is null or o.deleted_at is not null or o.status = 'Cancelled' then
+    perform plan_h_raise('order_gone', v_order::text);
+  end if;
+  -- only a VS the national desk carries (a live bridge) has a national day to give
+  if not exists (select 1 from shipments s where s.order_id = v_order and s.order_stop_id is not null
+                   and s.deleted_at is null) then
+    perform plan_h_raise('vs_not_bridge', v_order::text);
+  end if;
+  -- plan_h_vs_day (section A) sets plan.writer = 'natl', writes the day with its audit row and the notice to the
+  -- international desk; the same day again changes nothing and tells nobody
+  v_nid := plan_h_vs_day(v_order, v_day, p_actor, p_role);
+  perform plan_h_finish();
+  -- a VS already on a truck of another day keeps its truck (moving it is the F5 bridge's "follows + notice"); the
+  -- answer says so instead of passing silently (principle 1)
+  select coalesce(jsonb_agg(jsonb_build_object('code', 'vs_day_differs', 'first_hub_day', v.first_hub_day)), '[]'::jsonb)
+    into v_warn from v_vs_state v where v.order_id = v_order and v.first_hub_day is distinct from v_day
+     and v.first_hub_day is not null;
+  return jsonb_build_object('ok', true, 'op', 'plan_vs_set_day', 'dry_run', false,
+    'ids', jsonb_build_object('order_id', v_order), 'warnings', v_warn,
+    'notice_ids', case when v_nid is null then '[]'::jsonb else jsonb_build_array(v_nid) end);
+end
+$f$;
+
+  -- B5. The VS destination after Veroia, "whoever learns first" (spec 3, 18/10): written on the international's
+  -- order_stops.location_id. K-06: 071 does not watch that column, so the national stops that served the old
+  -- place are corrected HERE, in the same transaction, and the shipment's rules are read before returning.
+  CREATE FUNCTION public.plan_vs_set_place(p jsonb, p_actor text, p_role text)
+    RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $f$
+declare
+  -- "O ethnikon allaxe ton proorismo tis VS #%s: %s -> %s":
+  b_place constant text := 'zp8gzrXOuM69zrnOus+Ozr0gzqzOu867zrHOvs61IM+Ezr/OvSDPgM+Bzr/Ov8+BzrnPg868z4wgz4TOt8+CIFZTICMlczogJXMg4oaSICVz';
+  -- "Allagi proorismou VS" (the reason on a re-pointed leg):
+  w_repoint constant text := convert_from(decode('zpHOu867zrHOs86uIM+Az4HOv86/z4HOuc+DzrzOv8+NIFZT', 'base64'), 'UTF8');
+  v_os bigint; v_loc bigint; st order_stops%rowtype; o orders%rowtype; v_sh bigint; v_kind text; v_old_loc bigint;
+  v_hub bigint; v_old jsonb; v_prob text; v_nid bigint; v_new_stop bigint; v_new_leg bigint; v_col text; v_prev bigint;
+  v_legs bigint[] := '{}'; v_stops bigint[] := '{}'; v_moved jsonb := '{}'::jsonb; rs rt_stops%rowtype; x record;
+begin
+  perform plan_h_ctx(p_actor, p_role);
+  set constraints all deferred;
+  perform plan_h_keys(p, array['order_stop_id', 'location_id'], 'p');
+  -- coordinator 25/10 (cross-cutting input rule): 'NaN' / '+-Infinity' are refused by these casts themselves (a
+  -- bigint has no non-finite value), as bad_input 'order_stop_id or location_id' - never through numeric
+  begin
+    v_os := (p->>'order_stop_id')::bigint;
+    v_loc := (p->>'location_id')::bigint;
+  exception when invalid_text_representation or numeric_value_out_of_range then
+    perform plan_h_raise('bad_input', 'order_stop_id or location_id');
+  end;
+  -- ONE lock order (as plan_move_pieces): the cycles this change may touch, by id, BEFORE the order stop and the
+  -- order (plan_h_put -> plan_h_vs_day locks its cycle, then the order): a dispatcher shifting the cycle and
+  -- another moving the place queue instead of deadlocking (review 23/10)
+  perform 1 from ct_round_trips c
+   where c.id in (select l.rt_id from piece_legs l join shipment_pieces sp on sp.id = l.piece_id
+                   join shipments sh on sh.id = sp.shipment_id
+                  where sh.order_stop_id = v_os and sh.deleted_at is null and l.deleted_at is null)
+   order by c.id for no key update;
+  select * into st from order_stops where id = v_os for no key update;
+  if st.id is null or st.deleted_at is not null then perform plan_h_raise('order_gone', coalesce(v_os::text, 'null')); end if;
+  select * into o from orders where id = st.order_id for no key update;
+  if o.id is null or o.deleted_at is not null or o.status = 'Cancelled' then
+    perform plan_h_raise('order_gone', coalesce(st.order_id::text, 'national stop'));
+  end if;
+  select s.id into v_sh from shipments s where s.order_stop_id = v_os and s.deleted_at is null;
+  if v_sh is null then perform plan_h_raise('vs_not_bridge', v_os::text); end if;
+  select l.id into v_hub from locations l where l.is_hub;
+  -- the hub is the other end of every bridge: as its own Greek end the shipment would have no national part
+  if v_loc is null or v_loc = v_hub
+     or not exists (select 1 from locations l where l.id = v_loc and l.deleted_at is null) then
+    perform plan_h_raise('bad_input', 'location_id');
+  end if;
+  v_old_loc := st.location_id;
+  if v_old_loc is distinct from v_loc then
+    select vs.kind into v_kind from v_shipments vs where vs.shipment_id = v_sh;
+    -- decision 17: the F5 bridge trigger tells the national desk's write from the international desk's
+    perform set_config('plan.writer', 'natl', true);
+    select to_jsonb(s) into v_old from order_stops s where s.id = v_os;
+    update order_stops set location_id = v_loc where id = v_os;
+    perform plan_h_audit(p_actor, p_role, 'update', 'order_stops', coalesce(st.legacy_id, v_os::text), v_old,
+                         (select to_jsonb(s) from order_stops s where s.id = v_os));
+    -- decision 35: the international order's own columns mirror its stops (production 23/10: 71/71 Unloading and
+    -- 63/63 Loading stops of the VS orders of 60 days equal orders.<kind>_location_<n>_id; orders_intl.js writes
+    -- both). A stop moved alone would leave the Weekly, the order form and the CMR on the old place (principle 3).
+    -- Only when the column still shows the old place: a column someone already changed is not overwritten.
+    if st.stop_type in ('Loading', 'Unloading') and st.stop_number between 1 and 10 and st.stop_number = trunc(st.stop_number) then
+      v_col := lower(st.stop_type) || '_location_' || st.stop_number::int || '_id';
+      execute format('select %I from orders where id = $1', v_col) into v_prev using o.id;
+      if v_prev is not distinct from v_old_loc then
+        execute format('update orders set %I = $1 where id = $2', v_col) using v_loc, o.id;
+        perform plan_h_audit(p_actor, p_role, 'update', 'orders', coalesce(o.legacy_id, o.id::text),
+                             jsonb_build_object(v_col, v_old_loc), jsonb_build_object(v_col, v_loc, 'by', 'national desk (072)'));
+      end if;
+    end if;
+    -- the national end that moved: an import ENDS at the Greek stop, an export STARTS there
+    for x in select l.id as leg_id, l.piece_id, l.leg_no, l.rt_id, l.pickup_stop_id, l.drop_stop_id,
+                    case when v_kind = 'vs_import' then l.drop_stop_id else l.pickup_stop_id end as stop_id
+               from piece_legs l join shipment_pieces sp on sp.id = l.piece_id
+               join rt_stops s on s.id = case when v_kind = 'vs_import' then l.drop_stop_id else l.pickup_stop_id end
+              where sp.shipment_id = v_sh and l.deleted_at is null and s.location_id = v_old_loc
+              order by l.id loop
+      if x.stop_id = any(v_stops) then
+        continue;   -- already moved in place for another piece of this shipment
+      end if;
+      if not exists (select 1 from piece_legs q join shipment_pieces qp on qp.id = q.piece_id
+                      where q.deleted_at is null and qp.shipment_id <> v_sh
+                        and (q.pickup_stop_id = x.stop_id or q.drop_stop_id = x.stop_id)) then
+        -- the stop serves only this VS: it moves in place (same stop, same legs, same local loading)
+        select to_jsonb(s) into v_old from rt_stops s where s.id = x.stop_id;
+        update rt_stops set location_id = v_loc where id = x.stop_id;
+        perform plan_h_audit(p_actor, p_role, 'update', 'rt_stops', x.stop_id::text, v_old,
+                             (select to_jsonb(s) from rt_stops s where s.id = x.stop_id));
+        v_stops := v_stops || x.stop_id;
+      else
+        -- the stop also serves other orders: a new stop at the new place, same side and window; the leg is
+        -- re-pointed - a leg never changes (071 leg_locked), so soft delete + the same leg number on the new stop
+        v_new_stop := (v_moved->>x.stop_id::text)::bigint;
+        if v_new_stop is null then
+          select * into rs from rt_stops where id = x.stop_id;
+          v_new_stop := plan_h_stop_add(x.rt_id, v_loc, rs.side, rs.planned_from, rs.planned_to, p_actor, p_role);
+          v_moved := v_moved || jsonb_build_object(x.stop_id::text, v_new_stop);
+          v_stops := v_stops || v_new_stop;
+        end if;
+        perform plan_h_leg_drop(x.leg_id, w_repoint, p_actor, p_role);
+        v_new_leg := plan_h_leg_add(x.piece_id, x.rt_id,
+                                    case when v_kind = 'vs_import' then x.pickup_stop_id else v_new_stop end,
+                                    case when v_kind = 'vs_import' then v_new_stop else x.drop_stop_id end,
+                                    p_actor, p_role, x.leg_no);
+        perform plan_h_reseq(x.rt_id, p_actor, p_role);
+        v_legs := v_legs || v_new_leg;
+      end if;
+    end loop;
+    -- the shipment's own rules, now (071 plan_chk_bridge_stop does not fire on location_id)
+    v_prob := plan_shipment_problem(v_sh);
+    if v_prob is not null then
+      perform plan_h_raise(split_part(v_prob, ':', 1), substr(v_prob, strpos(v_prob, ':') + 1));
+    end if;
+    v_nid := plan_h_notice('intl', 'vs_place_changed', b_place,
+                           array[coalesce(o.reference, o.id::text), coalesce((select l.name from locations l where l.id = v_old_loc), '-'),
+                                 (select l.name from locations l where l.id = v_loc)],
+                           o.id, null, null, p_actor, p_role);
+  end if;
+  perform plan_h_finish();
+  return jsonb_build_object('ok', true, 'op', 'plan_vs_set_place', 'dry_run', false,
+    'ids', jsonb_build_object('order_stop_id', v_os, 'leg_ids', to_jsonb(v_legs), 'stop_ids', to_jsonb(v_stops)),
+    'warnings', '[]'::jsonb,
+    'notice_ids', case when v_nid is null then '[]'::jsonb else jsonb_build_array(v_nid) end);
+end
+$f$;
   -- ===== PART 4: NOTICES AND READS (section B) =====
   -- ===== PART 5: RIGHTS AND PROOFS =====
   -- Its own block: the reviewer reads the rights in one place. Born closed (principle 5): the pg_default_acl of
@@ -1917,6 +2088,8 @@ $f$;
     , 'public.plan_rt_update(jsonb,text,text)'
     , 'public.plan_rt_clear(jsonb,text,text)'
     , 'public.plan_delete(jsonb,text,text)'
+    , 'public.plan_vs_set_day(jsonb,text,text)'
+    , 'public.plan_vs_set_place(jsonb,text,text)'
     -- @pub (072 tasks add ", 'public.plan_x(<arg types>)'" lines above this marker)
     ]::text[], NULL);
     -- 071's own plan_* (triggers and rule readers): never touched by 072, closed for every API role

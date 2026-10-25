@@ -5596,6 +5596,28 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
         ELSIF kb = 53 THEN
           PERFORM plan_vs_set_day(jsonb_build_object('order_id', b_vo, 'day', b_d + 1), 'test:072b', 'dispatcher');
         ELSIF kb = 54 THEN
+          -- coordinator 25/10 (cross-cutting input rule): an order_id of NaN / +-Infinity (or past bigint) is refused as
+          -- bad_input 'order_id or day', a day of 'infinity' / '-infinity' as bad_input 'day:finite'; each probe is undone
+          FOR b_v3 IN SELECT value FROM jsonb_array_elements(jsonb_build_array(
+              jsonb_build_object('order_id', 'NaN', 'day', b_d + 1),
+              jsonb_build_object('order_id', 'Infinity', 'day', b_d + 1),
+              jsonb_build_object('order_id', '-Infinity', 'day', b_d + 1),
+              jsonb_build_object('order_id', 1e400::numeric, 'day', b_d + 1),
+              jsonb_build_object('order_id', b_vo, 'day', 'infinity'),
+              jsonb_build_object('order_id', b_vo, 'day', '-infinity')))
+          LOOP
+            BEGIN
+              PERFORM plan_vs_set_day(b_v3, 'test:072b', 'dispatcher');
+              RAISE EXCEPTION 'FAIL a non-finite VS day input was accepted (%)', b_v3::text;
+            EXCEPTION WHEN check_violation THEN
+              GET STACKED DIAGNOSTICS b_msg = MESSAGE_TEXT, b_hint = PG_EXCEPTION_HINT;
+              IF b_hint IS DISTINCT FROM 'plan:bad_input'
+                 OR b_msg NOT LIKE (CASE WHEN b_v3->>'day' LIKE '%infinity' THEN '%bad_input:day:finite'
+                                         ELSE '%bad_input:order_id or day' END) THEN
+                RAISE EXCEPTION 'FAIL non-finite VS day probe % got % (%)', b_v3::text, coalesce(b_hint, 'no hint'), b_msg;
+              END IF;
+            END;
+          END LOOP;
           PERFORM plan_vs_set_day(jsonb_build_object('order_id', -1, 'day', b_d + 1), 'test:072b', 'dispatcher');
         ELSIF kb BETWEEN 56 AND 58 THEN   -- the VS destination after Veroia moves (K-06: national stops follow)
           IF kb IN (57, 58) THEN
@@ -5644,6 +5666,26 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
                             THEN 'ok VS place moved: order stop, the order column, national stop and leg follow in one transaction'
                             ELSE 'FAIL VS place ' || b_v3::text END;
         ELSIF kb = 59 THEN   -- the loading stop abroad has no bridge
+          -- coordinator 25/10 (cross-cutting input rule): an order_stop_id or location_id of NaN / +-Infinity (or past
+          -- bigint) is refused as bad_input 'order_stop_id or location_id'; each probe is undone
+          FOR b_v3 IN SELECT value FROM jsonb_array_elements(jsonb_build_array(
+              jsonb_build_object('order_stop_id', 'NaN', 'location_id', b_ln),
+              jsonb_build_object('order_stop_id', 'Infinity', 'location_id', b_ln),
+              jsonb_build_object('order_stop_id', '-Infinity', 'location_id', b_ln),
+              jsonb_build_object('order_stop_id', 1e400::numeric, 'location_id', b_ln),
+              jsonb_build_object('order_stop_id', b_vld, 'location_id', 'NaN'),
+              jsonb_build_object('order_stop_id', b_vld, 'location_id', '-Infinity')))
+          LOOP
+            BEGIN
+              PERFORM plan_vs_set_place(b_v3, 'test:072b', 'dispatcher');
+              RAISE EXCEPTION 'FAIL a non-finite VS place input was accepted (%)', b_v3::text;
+            EXCEPTION WHEN check_violation THEN
+              GET STACKED DIAGNOSTICS b_msg = MESSAGE_TEXT, b_hint = PG_EXCEPTION_HINT;
+              IF b_hint IS DISTINCT FROM 'plan:bad_input' OR b_msg NOT LIKE '%bad_input:order_stop_id or location_id' THEN
+                RAISE EXCEPTION 'FAIL non-finite VS place probe % got % (%)', b_v3::text, coalesce(b_hint, 'no hint'), b_msg;
+              END IF;
+            END;
+          END LOOP;
           PERFORM plan_vs_set_place(jsonb_build_object('order_stop_id', b_vld, 'location_id', b_ln), 'test:072b', 'dispatcher');
         ELSIF kb = 60 THEN   -- the national desk sets another day while the VS rides a truck of day D: said, not hidden
           b_v2 := plan_rt_create(jsonb_build_object('new_rt', jsonb_build_object('trip_type', 'OWNED', 'truck_id', b_t2, 'driver_id', b_d2),
@@ -5684,6 +5726,8 @@ begin
   perform plan_h_ctx(p_actor, p_role);
   set constraints all deferred;
   perform plan_h_keys(p, array['order_id', 'day'], 'p');
+  -- coordinator 25/10 (cross-cutting input rule): an order_id of 'NaN' / '+-Infinity' is refused by this cast itself
+  -- (a bigint has no non-finite value), as bad_input 'order_id or day' - never through numeric (a raw 0A000)
   begin
     v_order := (p->>'order_id')::bigint;
     v_day := (p->>'day')::date;
@@ -5692,6 +5736,9 @@ begin
     perform plan_h_raise('bad_input', 'order_id or day');
   end;
   if v_order is null or v_day is null then perform plan_h_raise('bad_input', 'order_id and day'); end if;
+  -- 'infinity' / '-infinity' are valid date input but no day: refused here, never written to orders.cross_dock_date
+  -- (069 would move the Cross-dock stop and the ramp to it)
+  if not isfinite(v_day) then perform plan_h_raise('bad_input', 'day:finite'); end if;
   select * into o from orders where id = v_order for no key update;
   if o.id is null or o.deleted_at is not null or o.status = 'Cancelled' then
     perform plan_h_raise('order_gone', v_order::text);
@@ -5733,6 +5780,8 @@ begin
   perform plan_h_ctx(p_actor, p_role);
   set constraints all deferred;
   perform plan_h_keys(p, array['order_stop_id', 'location_id'], 'p');
+  -- coordinator 25/10 (cross-cutting input rule): 'NaN' / '+-Infinity' are refused by these casts themselves (a
+  -- bigint has no non-finite value), as bad_input 'order_stop_id or location_id' - never through numeric
   begin
     v_os := (p->>'order_stop_id')::bigint;
     v_loc := (p->>'location_id')::bigint;
@@ -5850,7 +5899,7 @@ $f$;
 - [ ] **Step 4: Τρέξε, να περάσει**
 
 Run: `cd tms-auditor && node --test test/plan-072.test.mjs`
-Expected: `Result: 149 OK, 1 FAIL` (μόνο η B20)· B52–B60 πράσινες· η B52 γράφει «ok VS day D -> D+1: one orders row, its audit, one notice, Cross-dock stop moved».
+Expected: `Result: 149 OK, 1 FAIL` (μόνο η B20)· B52–B60 πράσινες· η B52 γράφει «ok VS day D -> D+1: one orders row, its audit, one notice, Cross-dock stop moved»· οι B54 και B59 αρνούνται πρώτα τις μη πεπερασμένες τιμές (NaN / ±Infinity στα ids, 'infinity' / '-infinity' στην ημέρα) ως `bad_input`, χωρίς εγγραφή.
 
 - [ ] **Step 5: Commit**
 
