@@ -1211,9 +1211,9 @@ BEGIN
     END;
   END LOOP;
 
-  -- ===== SECTION B CASES (B1-B124): cycle, delete, VS, local loading, notices, reads, the week-scenario 19/32/31
+  -- ===== SECTION B CASES (B1-B130): cycle, delete, VS, local loading, notices, reads, the week-scenario 19/32/31
   -- (B77), the reviews' cases (B78-B97), request_id of a local loading and a cancel without id (B98-B101), the
-  -- vehicle never emptied by plan_rt_update (B102-B113, owner 25/10), the K1 review's cases (B114-B124) =====
+  -- vehicle never emptied by plan_rt_update (B102-B113, owner 25/10), the K1 review's cases (B114-B130) =====
   -- Own fixture (rec072TB..., "TEST 072 B ...", TEST-072-B...), undone by the final error of the outer block;
   -- each case undone by its marker. Results go into the outer ok / bad / res. ASCII only.
   -- S (every case): an OWNED v5 cycle made by plan_rt_create (TEST-072-B1 / driver B1, stops A 06-08 and B 12-14
@@ -1262,6 +1262,7 @@ BEGIN
                'plan:vehicle_clear_use_clear']   -- B102-B113 (Task B9, owner 25/10, review 84b)
       || ARRAY['ok', 'ok', 'plan:need_token', 'ok', 'plan:stale_confirm', 'plan:stale_confirm', 'ok',
                'ok', 'ok', 'ok', 'ok']   -- B114-B124 (K1 review r1: executed, the token's row versions, unproven rules)
+      || ARRAY['ok', 'ok', 'ok', 'ok', 'ok', 'ok']   -- B125-B130 (K1 review r2: the re-reads pass a chain nobody changed; rt_id null)
       ;  -- end of b_want
     b_verdict text; b_got text; b_hint text; b_msg text; b_cname text; b_st text;
   BEGIN
@@ -1328,7 +1329,7 @@ BEGIN
         SET CONSTRAINTS ALL IMMEDIATE;
         SET CONSTRAINTS ALL DEFERRED;
         -- the VS bridges (cases that need the VS): one piece per Greek stop, waiting at the hub
-        IF kb IN (16, 17, 21, 52, 55, 56, 57, 58, 60, 74) THEN
+        IF kb IN (16, 17, 21, 52, 55, 56, 57, 58, 60, 74, 129) THEN
           INSERT INTO shipments (order_id, order_stop_id, created_by) VALUES (b_vo, b_u1, 'test:072b') RETURNING id INTO b_bs1;
           INSERT INTO shipment_pieces (shipment_id, pallets, created_by) VALUES (b_bs1, 4, 'test:072b') RETURNING id INTO b_q1;
           INSERT INTO shipments (order_id, order_stop_id, created_by) VALUES (b_vo, b_u2, 'test:072b') RETURNING id INTO b_bs2;
@@ -2645,6 +2646,122 @@ BEGIN
                               THEN 'ok a move dry run refuses a target without side, rt_id with new_rt, and a dry_run that is not a boolean'
                               ELSE 'FAIL move dry run: ' || b_v3::text END;
           END IF;
+        ELSIF kb BETWEEN 125 AND 127 THEN   -- K1 review r2: the re-reads after the locks pass a chain nobody changed
+          -- a piece over Veroia: A -> hub on one cycle (D), hub -> B on a second (D+1); leg 1 = b_e1, leg 2 = b_e2
+          INSERT INTO national_orders (legacy_id, client_id, reference, price) VALUES ('rec072TBN2', b_cl, 'WN072-TEST', 100)
+            RETURNING id INTO b_no2;
+          INSERT INTO shipments (nat_order_id, origin_location_id, dest_location_id, pallets, load_from, load_to, deliver_from,
+                                 deliver_to, created_by)
+          VALUES (b_no2, b_la, b_lb, 10, h06, h08, ((b_d + 1) + time '10:00') AT TIME ZONE 'Europe/Athens',
+                  ((b_d + 1) + time '12:00') AT TIME ZONE 'Europe/Athens', 'test:072b') RETURNING id INTO b_sh2;
+          INSERT INTO shipment_pieces (shipment_id, pallets, created_by) VALUES (b_sh2, 10, 'test:072b') RETURNING id INTO b_p2;
+          SET CONSTRAINTS ALL IMMEDIATE;
+          SET CONSTRAINTS ALL DEFERRED;
+          b_v2 := plan_put_pieces(jsonb_build_object('pieces', jsonb_build_array(jsonb_build_object('piece_id', b_p2, 'to_hub', true)),
+                    'target', jsonb_build_object('side', 'KATHODOS', 'new_rt', jsonb_build_object('trip_type', 'OWNED',
+                                                 'truck_id', b_t2, 'driver_id', b_d2)),
+                    'stops', jsonb_build_array(
+                      jsonb_build_object('ref', 'a', 'location_id', b_la, 'side', 'KATHODOS', 'planned_from', h06, 'planned_to', h08),
+                      jsonb_build_object('ref', 'h', 'location_id', b_hub, 'side', 'KATHODOS', 'planned_from', h10, 'planned_to', h11))),
+                  'test:072b', 'dispatcher');
+          b_x := (b_v2->'ids'->>'rt_id')::bigint; b_e1 := (b_v2->'ids'->'leg_ids'->>0)::bigint;
+          b_v2 := plan_put_pieces(jsonb_build_object('pieces', jsonb_build_array(jsonb_build_object('piece_id', b_p2)),
+                    'target', jsonb_build_object('side', 'KATHODOS', 'new_rt', jsonb_build_object('trip_type', 'OWNED',
+                                                 'truck_id', b_t1, 'driver_id', b_d1)),
+                    'stops', jsonb_build_array(
+                      jsonb_build_object('ref', 'h', 'location_id', b_hub, 'side', 'KATHODOS',
+                                         'planned_from', ((b_d + 1) + time '06:00') AT TIME ZONE 'Europe/Athens',
+                                         'planned_to', ((b_d + 1) + time '07:00') AT TIME ZONE 'Europe/Athens'),
+                      jsonb_build_object('ref', 'b', 'location_id', b_lb, 'side', 'KATHODOS',
+                                         'planned_from', ((b_d + 1) + time '10:00') AT TIME ZONE 'Europe/Athens',
+                                         'planned_to', ((b_d + 1) + time '12:00') AT TIME ZONE 'Europe/Athens'))),
+                  'test:072b', 'dispatcher');
+          b_y := (b_v2->'ids'->>'rt_id')::bigint; b_e2 := (b_v2->'ids'->'leg_ids'->>0)::bigint;
+          IF (SELECT string_agg(id::text || ':' || leg_no || ':' || rt_id, ',' ORDER BY leg_no) FROM piece_legs
+               WHERE piece_id = b_p2 AND deleted_at IS NULL) IS DISTINCT FROM (b_e1 || ':1:' || b_x || ',' || b_e2 || ':2:' || b_y)
+             OR b_e1 >= b_e2 THEN
+            b_verdict := 'FAIL fixture: two live legs, leg 1 on the first cycle, leg 2 on the second';
+          ELSIF kb IN (125, 126) THEN   -- the second leg back to waiting: leg 1 is outside the move and before it
+            b_v3 := plan_move_pieces(jsonb_build_object('from', jsonb_build_object('piece_ids', jsonb_build_array(b_p2), 'rt_id', b_y),
+                      'target', '{"wait": true}'::jsonb, 'dry_run', true), 'test:072b', 'dispatcher');
+            PERFORM plan_move_pieces(jsonb_build_object('from', jsonb_build_object('piece_ids', jsonb_build_array(b_p2), 'rt_id', b_y),
+                      'target', '{"wait": true}'::jsonb, 'confirm_token', b_v3->>'confirm_token'), 'test:072b', 'dispatcher');
+            IF kb = 125 THEN
+              b_verdict := CASE WHEN (b_v3->>'needs_confirm')::boolean
+                                  AND b_v3->'consequences' @> jsonb_build_array(jsonb_build_object('kind', 'rt_cancelled', 'rt_id', b_y))
+                                  AND (SELECT deleted_at IS NOT NULL FROM piece_legs WHERE id = b_e2)
+                                  AND (SELECT deleted_at IS NULL FROM piece_legs WHERE id = b_e1)
+                                  AND (SELECT status FROM ct_round_trips WHERE id = b_y) = 'cancelled'
+                                  AND (SELECT status FROM ct_round_trips WHERE id = b_x) <> 'cancelled'
+                                THEN 'ok the leg after Veroia back to waiting: leg 1 stays, the second cycle is cancelled'
+                                ELSE 'FAIL move of leg 2: ' || coalesce(b_v3::text, 'null') END;
+            ELSE   -- 126: then the order is deleted: one live leg, one already dropped
+              b_v3 := plan_delete(jsonb_build_object('nat_order_id', b_no2, 'dry_run', true), 'test:072b', 'dispatcher');
+              PERFORM plan_delete(jsonb_build_object('nat_order_id', b_no2, 'reason', 'TEST 072 reason',
+                        'confirm_token', b_v3->>'confirm_token'), 'test:072b', 'dispatcher');
+              b_verdict := CASE WHEN (SELECT deleted_at IS NOT NULL FROM national_orders WHERE id = b_no2)
+                                  AND (SELECT count(*) FROM piece_legs WHERE piece_id = b_p2 AND deleted_at IS NULL) = 0
+                                  AND (SELECT status FROM ct_round_trips WHERE id = b_x) = 'cancelled'
+                                THEN 'ok delete after a move: the dropped leg is not part of the chain'
+                                ELSE 'FAIL delete after move: ' || coalesce(b_v3::text, 'null') END;
+            END IF;
+          ELSE   -- 127: the order deleted with its two live legs
+            b_v3 := plan_delete(jsonb_build_object('nat_order_id', b_no2, 'dry_run', true), 'test:072b', 'dispatcher');
+            PERFORM plan_delete(jsonb_build_object('nat_order_id', b_no2, 'reason', 'TEST 072 reason',
+                      'confirm_token', b_v3->>'confirm_token'), 'test:072b', 'dispatcher');
+            b_verdict := CASE WHEN (SELECT deleted_at IS NOT NULL FROM national_orders WHERE id = b_no2)
+                                AND (SELECT count(*) FROM piece_legs WHERE piece_id = b_p2 AND deleted_at IS NULL) = 0
+                                AND (SELECT count(*) FROM ct_round_trips WHERE id IN (b_x, b_y) AND status = 'cancelled') = 2
+                              THEN 'ok delete with two live legs: both go, both cycles are cancelled'
+                              ELSE 'FAIL delete with two legs: ' || coalesce(b_v3::text, 'null') END;
+          END IF;
+        ELSIF kb = 128 THEN   -- K1 review r2: a target {"rt_id": null} is refused by the dry run, as by the execution
+          b_txt := '';
+          BEGIN
+            PERFORM plan_move_pieces(jsonb_build_object('from', jsonb_build_object('piece_ids', jsonb_build_array(b_p1)),
+                      'target', jsonb_build_object('rt_id', null, 'side', 'KATHODOS'), 'dry_run', true), 'test:072b', 'dispatcher');
+          EXCEPTION WHEN others THEN GET STACKED DIAGNOSTICS b_txt = MESSAGE_TEXT;
+          END;
+          b_verdict := CASE WHEN b_txt = 'plan rule broken: bad_input:target.rt_id'
+                            THEN 'ok a move dry run refuses rt_id null (no token for it)' ELSE 'FAIL rt_id null: ' || b_txt END;
+        ELSIF kb = 129 THEN   -- K1 review r2: the VS place re-read passes two live legs and a dropped one
+          b_v2 := plan_rt_create(jsonb_build_object('new_rt', jsonb_build_object('trip_type', 'OWNED', 'truck_id', b_t2, 'driver_id', b_d2),
+                    'stops', jsonb_build_array(
+                      jsonb_build_object('ref', 'h', 'location_id', b_hub, 'side', 'KATHODOS', 'planned_from', h06, 'planned_to', h07),
+                      jsonb_build_object('ref', 'u', 'location_id', b_la, 'side', 'KATHODOS', 'planned_from', h09, 'planned_to', h10))),
+                  'test:072b', 'dispatcher');
+          b_x := (b_v2->>'rt_id')::bigint; b_y := (b_v2->'stops'->>'u')::bigint;
+          UPDATE shipment_pieces SET pallets = 2 WHERE id = b_q1;
+          INSERT INTO shipment_pieces (shipment_id, pallets, created_by) VALUES (b_bs1, 2, 'test:072b') RETURNING id INTO b_z;
+          INSERT INTO piece_legs (piece_id, leg_no, rt_id, pickup_stop_id, drop_stop_id, created_by)
+          VALUES (b_q1, 1, b_x, (b_v2->'stops'->>'h')::bigint, b_y, 'test:072b') RETURNING id INTO b_e1;
+          UPDATE piece_legs SET deleted_at = now(), deleted_reason = 'TEST 072 moved', deleted_by = 'test:072b' WHERE id = b_e1;
+          INSERT INTO piece_legs (piece_id, leg_no, rt_id, pickup_stop_id, drop_stop_id, created_by)
+          VALUES (b_q1, 1, b_x, (b_v2->'stops'->>'h')::bigint, b_y, 'test:072b') RETURNING id INTO b_e2;
+          INSERT INTO piece_legs (piece_id, leg_no, rt_id, pickup_stop_id, drop_stop_id, created_by)
+          VALUES (b_z, 1, b_x, (b_v2->'stops'->>'h')::bigint, b_y, 'test:072b') RETURNING id INTO b_e3;
+          SET CONSTRAINTS ALL IMMEDIATE;
+          SET CONSTRAINTS ALL DEFERRED;
+          b_v3 := plan_vs_set_place(jsonb_build_object('order_stop_id', b_u1, 'location_id', b_ln), 'test:072b', 'dispatcher');
+          b_verdict := CASE WHEN (SELECT location_id FROM order_stops WHERE id = b_u1) = b_ln
+                              AND (SELECT location_id FROM rt_stops WHERE id = b_y) = b_ln
+                              AND (SELECT count(*) FROM piece_legs WHERE id IN (b_e2, b_e3) AND deleted_at IS NULL) = 2
+                              AND b_e1 < b_e2 AND b_e2 < b_e3
+                            THEN 'ok VS place with two live legs and a dropped one: the re-read after the locks passes'
+                            ELSE 'FAIL VS place two legs: ' || coalesce(b_v3::text, 'null') END;
+        ELSIF kb = 130 THEN   -- K1 review r2: a moved piece whose split part was deleted is not split (the re-read too)
+          INSERT INTO shipment_pieces (shipment_id, parent_piece_id, pallets, created_by) VALUES (b_sh1, b_p1, 10, 'test:072b')
+            RETURNING id INTO b_z;
+          UPDATE shipment_pieces SET deleted_at = now(), deleted_reason = 'TEST 072 part gone', deleted_by = 'test:072b' WHERE id = b_z;
+          SET CONSTRAINTS ALL IMMEDIATE;
+          SET CONSTRAINTS ALL DEFERRED;
+          b_v3 := plan_move_pieces(jsonb_build_object('from', jsonb_build_object('piece_ids', jsonb_build_array(b_p1)),
+                    'target', '{"wait": true}'::jsonb, 'dry_run', true), 'test:072b', 'dispatcher');
+          PERFORM plan_move_pieces(jsonb_build_object('from', jsonb_build_object('piece_ids', jsonb_build_array(b_p1)),
+                    'target', '{"wait": true}'::jsonb, 'confirm_token', b_v3->>'confirm_token'), 'test:072b', 'dispatcher');
+          b_verdict := CASE WHEN (SELECT deleted_at IS NOT NULL FROM piece_legs WHERE id = b_lg1)
+                            THEN 'ok a piece with a deleted part moves (the part is not a split)'
+                            ELSE 'FAIL dead part: ' || coalesce(b_v3::text, 'null') END;
         -- [B-CASES-NEXT]
         END IF;
         SET CONSTRAINTS ALL IMMEDIATE;

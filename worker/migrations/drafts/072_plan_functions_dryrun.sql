@@ -1110,13 +1110,17 @@ begin
     v_wait := true;
   else
     perform plan_h_keys(p->'target', array['rt_id', 'side', 'new_rt'], 'target');
-    -- K1 review r1: the target's shape as plan_h_target checks it at execution (side; rt_id or new_rt, one of them),
-    -- so a dry run never hands out a token for a target its execution refuses
+    -- K1 review r1 / r2: the target's SHAPE as plan_h_target checks it at execution (side; rt_id or new_rt, one of
+    -- them; an rt_id that is not null), so a dry run hands out no token for a shape its execution refuses. Not every
+    -- refusal: the vehicle of a new_rt is checked at execution only (its busy check needs the new stops' windows,
+    -- which the dry run does not read; deferred, plan K1)
     if p->'target'->>'side' is null or p->'target'->>'side' not in ('KATHODOS', 'ANODOS') then
       perform plan_h_raise('bad_input', 'target.side');
     end if;
     if (p->'target' ? 'new_rt') = (p->'target' ? 'rt_id') then perform plan_h_raise('bad_input', 'target: rt_id or new_rt'); end if;
     v_keep := (p->'target'->>'rt_id')::bigint;
+    -- {"rt_id": null} passes the ? test above (the key is there): plan_h_target refuses it at execution
+    if not (p->'target' ? 'new_rt') and v_keep is null then perform plan_h_raise('bad_input', 'target.rt_id'); end if;
     if v_keep is not null then
       select * into r from ct_round_trips where id = v_keep;
       if r.id is null or r.model <> 2 then perform plan_h_raise('rt_gone', v_keep::text); end if;
@@ -1143,13 +1147,17 @@ begin
    order by c.id for no key update;
   -- K1 review r1: the legs were read BEFORE these locks. The pieces too, by id (a put locks its cycle, then the
   -- piece), then the chain again: a leg of a moved piece added since (a put onto a cycle not locked here) or dropped
-  -- since (another move) is a lost race - 40001, the Worker's 409 busy_retry, nothing kept - never a list or a drop
-  -- on a stale chain. One PGlite session cannot show it (as the cycle locks): K2 is the gate.
+  -- since (another move), or a moved piece split or deleted since (plan_split_piece / plan_delete, K1 review r2: the
+  -- piece_split / piece_dead tests above ran before the locks), is a lost race - 40001, the Worker's 409
+  -- busy_retry, nothing kept - never a list or a drop on a stale chain. One PGlite session cannot show the race (as
+  -- the cycle locks): K2 is the gate; B125-B127 and B130 show that a chain nobody changed passes.
   perform 1 from shipment_pieces sp where sp.id = any (v_pieces) order by sp.id for no key update;
   if exists (select 1 from piece_legs l where l.id = any (v_legs) and l.deleted_at is not null)
      or exists (select 1 from piece_legs l
                  where l.piece_id = any (v_pieces) and l.deleted_at is null and not (l.id = any (v_legs))
-                   and l.leg_no > (select min(m.leg_no) from piece_legs m where m.id = any (v_legs) and m.piece_id = l.piece_id)) then
+                   and l.leg_no > (select min(m.leg_no) from piece_legs m where m.id = any (v_legs) and m.piece_id = l.piece_id))
+     or exists (select 1 from shipment_pieces sp where sp.id = any (v_pieces) and sp.deleted_at is not null)
+     or exists (select 1 from shipment_pieces c where c.parent_piece_id = any (v_pieces) and c.deleted_at is null) then
     raise exception 'plan_move_pieces: the legs changed while the cycles were locked' using errcode = '40001';
   end if;
   v_full := plan_h_drop_consequences(v_legs, v_keep, v_chosen);
@@ -1866,7 +1874,8 @@ begin
     perform plan_h_raise('order_not_v5', v_no::text);
   end if;
   -- K1 review r1: the chain was read BEFORE the locks. The pieces too (after the order), then the chain again: a leg
-  -- added or dropped since is a lost race (40001 = 409 busy_retry, nothing kept), never a delete on a stale list
+  -- added or dropped since is a lost race (40001 = 409 busy_retry, nothing kept), never a delete on a stale list.
+  -- Both reads sort by id and take live legs only: B126 / B127 (two legs, one dropped by an earlier move) pass.
   perform 1 from shipment_pieces sp join shipments s on s.id = sp.shipment_id
    where s.nat_order_id = v_no and sp.deleted_at is null order by sp.id for no key update of sp;
   if v_legs <> (select coalesce(array_agg(l.id order by l.id), '{}') from piece_legs l
@@ -1995,6 +2004,7 @@ declare
   v_os bigint; v_loc bigint; st order_stops%rowtype; o orders%rowtype; v_sh bigint; v_kind text; v_old_loc bigint;
   v_hub bigint; v_old jsonb; v_prob text; v_nid bigint; v_new_stop bigint; v_new_leg bigint; v_col text; v_prev bigint;
   v_legs bigint[] := '{}'; v_stops bigint[] := '{}'; v_moved jsonb := '{}'::jsonb; rs rt_stops%rowtype; x record;
+  v_chain bigint[];
 begin
   perform plan_h_ctx(p_actor, p_role);
   set constraints all deferred;
@@ -2010,11 +2020,24 @@ begin
   -- ONE lock order (as plan_move_pieces): the cycles this change may touch, by id, BEFORE the order stop and the
   -- order (plan_h_put -> plan_h_vs_day locks its cycle, then the order): a dispatcher shifting the cycle and
   -- another moving the place queue instead of deadlocking (review 23/10)
+  select coalesce(array_agg(l.id order by l.id), '{}') into v_chain
+    from piece_legs l join shipment_pieces sp on sp.id = l.piece_id join shipments sh on sh.id = sp.shipment_id
+   where sh.order_stop_id = v_os and sh.deleted_at is null and l.deleted_at is null;
   perform 1 from ct_round_trips c
-   where c.id in (select l.rt_id from piece_legs l join shipment_pieces sp on sp.id = l.piece_id
-                   join shipments sh on sh.id = sp.shipment_id
-                  where sh.order_stop_id = v_os and sh.deleted_at is null and l.deleted_at is null)
+   where c.id in (select l.rt_id from piece_legs l where l.id = any (v_chain))
    order by c.id for no key update;
+  -- K1 review r2 (as plan_move_pieces / plan_delete): the legs were read BEFORE these locks. The pieces too (a leg
+  -- is added under its piece's lock: plan_h_put, plan_split_piece), then the legs again: a leg put since onto a
+  -- cycle not locked here is a lost race - 40001, the Worker's 409 busy_retry, nothing kept - never an rt_stops row
+  -- changed or a plan_h_reseq on a cycle this change does not hold. One PGlite session cannot show the race: K2 is
+  -- the gate; B56-B58 and B129 (two live legs and a dropped one) show that legs nobody changed pass.
+  perform 1 from shipment_pieces sp join shipments sh on sh.id = sp.shipment_id
+   where sh.order_stop_id = v_os and sh.deleted_at is null and sp.deleted_at is null order by sp.id for no key update of sp;
+  if v_chain <> (select coalesce(array_agg(l.id order by l.id), '{}') from piece_legs l
+                   join shipment_pieces sp on sp.id = l.piece_id join shipments sh on sh.id = sp.shipment_id
+                  where sh.order_stop_id = v_os and sh.deleted_at is null and l.deleted_at is null) then
+    raise exception 'plan_vs_set_place: the legs changed while the cycles were locked' using errcode = '40001';
+  end if;
   select * into st from order_stops where id = v_os for no key update;
   if st.id is null or st.deleted_at is not null then perform plan_h_raise('order_gone', coalesce(v_os::text, 'null')); end if;
   select * into o from orders where id = st.order_id for no key update;
