@@ -4,7 +4,7 @@
 //     or its typed args (reads) — the deferred 071 rules speak at that RPC's
 //     COMMIT, a second RPC would run after the first committed;
 //   - writes are closed until day L (409 writes_closed, zero DB calls), except
-//     {"dry_run": true} on the four RPCs that support it (decision 22);
+//     {"dry_run": true} on the seven RPCs that support it (072's four, 072b's three; decision 22);
 //   - the reply is passed through as the DB wrote it (the DB cuts by role),
 //     but an `amount` never reaches a role outside owner/accountant;
 //   - refusals: plan:<code> → 422 Greek, need_token → 428, 23P01 → truck_busy,
@@ -164,15 +164,24 @@ const WRITES = [
   ['/plan/move', 'POST', { from: { piece_ids: [4] }, target: { wait: true } }, 'plan_move_pieces', {}],
   ['/plan/pieces/split', 'POST', { piece_id: 4, parts: [{ pallets: 12 }, { pallets: 14 }] }, 'plan_split_piece', {}],
   ['/plan/rt/5', 'PATCH', { set: { driver_id: 8 } }, 'plan_rt_update', { rt_id: 5 }],
+  // 072b, owner question 7 = (b): a stop change that removes a handover carries the token of its list, as sent
+  ['/plan/rt/5', 'PATCH', { stops: [{ stop_id: 3, planned_from: '2026-10-27T14:05:00+02:00', planned_to: '2026-10-27T14:20:00+02:00' }],
+    confirm_token: 'abc' }, 'plan_rt_update', { rt_id: 5 }],
   ['/plan/rt/5/clear', 'POST', { confirm_token: 'abc' }, 'plan_rt_clear', { rt_id: 5 }],
   ['/plan/delete', 'POST', { nat_order_id: 17, reason: 'x', confirm_token: 'abc' }, 'plan_delete', {}],
   ['/plan/vs/day', 'POST', { order_id: 1, day: '2026-10-13' }, 'plan_vs_set_day', {}],
   ['/plan/vs/place', 'POST', { order_stop_id: 3, location_id: 2 }, 'plan_vs_set_place', {}],
-  ['/plan/local-loading', 'POST', { rt_stop_id: 3, driver_id: 8, truck_id: 2 }, 'plan_local_loading', {}]
+  ['/plan/local-loading', 'POST', { rt_stop_id: 3, driver_id: 8, truck_id: 2 }, 'plan_local_loading', {}],
+  // 072b — vehicle handover at a point (H-17)
+  ['/plan/rt/5/handover', 'POST', { at: '2026-10-27T14:30:00+02:00', place_note: 'Λαμία', reason: 'vehicle_breakdown',
+    vehicle: { trip_type: 'OWNED', truck_id: 2, driver_id: 8 }, request_id: '6f1c2a3e-0000-4000-8000-00000000072b' }, 'plan_seg_change', { rt_id: 5 }],
+  ['/plan/segments/9', 'PATCH', { set: { place_note: 'Λαμία' } }, 'plan_seg_fix', { segment_id: 9 }],
+  ['/plan/segments/9/remove', 'POST', { confirm_token: 'abc' }, 'plan_seg_remove', { segment_id: 9 }]
 ];
-const DRY_CAPABLE = ['plan_move_pieces', 'plan_rt_update', 'plan_rt_clear', 'plan_delete'];
-// decision 41 (b): the delete-type acts stay owner + dispatcher; every other write is every role's
-const DELETE_TYPE = ['plan_rt_clear', 'plan_delete'];
+const DRY_CAPABLE = ['plan_move_pieces', 'plan_rt_update', 'plan_rt_clear', 'plan_delete', 'plan_seg_change', 'plan_seg_fix', 'plan_seg_remove'];
+// decision 41 (b): the delete-type acts stay owner + dispatcher (the removal of a handover among them); every
+// other write is every role's
+const DELETE_TYPE = ['plan_rt_clear', 'plan_delete', 'plan_seg_remove'];
 const ALL_ROLES = ['owner', 'dispatcher', 'management', 'accountant', 'warehouse'];
 const WRITES_CLOSED = { error: { type: 'WRITES_CLOSED', code: 'writes_closed', message: 'Οι αλλαγές στο Εβδομαδιαίο Εθνικών ανοίγουν την ημέρα της μετάβασης — ως τότε μόνο ανάγνωση και προεπισκόπηση' } };
 
@@ -189,7 +198,7 @@ test('writes closed: every write route → 409 writes_closed with ZERO DB calls,
   }
 });
 
-test('writes closed: dry_run passes ONLY on the four RPCs that support it; elsewhere it is still 409', async () => {
+test('writes closed: dry_run passes ONLY on the seven RPCs that support it; elsewhere it is still 409', async () => {
   for (const fn of DRY_CAPABLE) on('POST', `rpc/${fn}`, (u, b) => json({ ok: true, op: fn, dry_run: true, needs_confirm: false, confirm_token: 'tok', consequences: [], echo: b }));
   for (const [p, method, body, fn, merged] of WRITES) {
     calls.length = 0;
@@ -247,25 +256,29 @@ test('decision 41: management, accountant, warehouse write every non-delete rout
   }
 });
 
-test('decision 44: request_id rides in p as sent on the three creations; a write is never sent twice (500, 503, 409)', async () => {
+test('decision 44: request_id rides in p as sent on the four creations; a write is never sent twice (500, 503, 409)', async () => {
   const RID = '6f1c2a3e-0000-4000-8000-000000000044';
   const CREATE = [['/plan/orders', { orders: [{ client_id: 1 }] }, 'plan_orders_create'],
     ['/plan/pieces/split', { piece_id: 4, parts: [{ pallets: 12 }, { pallets: 14 }] }, 'plan_split_piece'],
-    ['/plan/local-loading', { rt_stop_id: 3, driver_id: 8, truck_id: 2 }, 'plan_local_loading']];
+    ['/plan/local-loading', { rt_stop_id: 3, driver_id: 8, truck_id: 2 }, 'plan_local_loading'],
+    // 072b: a handover creates a segment (plan decision H-5 = decision 44 applied); the path id merges into p.
+    // Its deadlock is the 40P01 row of FAILS below: 409 busy_retry, one RPC (H-14)
+    ['/plan/rt/5/handover', { at: '2026-10-27T14:30:00+02:00', place_note: 'Λαμία', reason: 'vehicle_breakdown',
+      vehicle: { trip_type: 'OWNED', truck_id: 2 } }, 'plan_seg_change', { rt_id: 5 }]];
   const FAILS = [
     [() => new Response('<html>bad gateway</html>', { status: 502 }), 500, 'plan_unknown'],
     [() => pgError(500, { code: '57014', hint: null, details: null, message: 'canceling statement due to statement timeout' }), 503, 'slow'],
     [() => pgError(409, { code: '40P01', hint: null, details: null, message: 'deadlock detected' }), 409, 'busy_retry'],
     [() => planReject('request_reused', RID), 422, 'request_reused'],
     [() => planReject('request_missing', 'plan_orders_create'), 422, 'request_missing']];
-  for (const [p, body, fn] of CREATE) {
+  for (const [p, body, fn, merged = {}] of CREATE) {
     routes.length = 0;
     // the DB's answer to a repeat (plan_h_replay): the first answer + replayed, served as is
     on('POST', `rpc/${fn}`, () => json({ ...OK, op: fn, replayed: true }));
     calls.length = 0;
     const r = await callOpen('warehouse', 'POST', p, { ...body, request_id: RID });
     assert.equal(r.status, 200, `${p}: ${r.text}`);
-    assert.deepEqual(rpcCalls().map((c) => c.body), [{ p: { ...body, request_id: RID }, p_actor: 'tester', p_role: 'warehouse' }]);
+    assert.deepEqual(rpcCalls().map((c) => c.body), [{ p: { ...body, request_id: RID, ...merged }, p_actor: 'tester', p_role: 'warehouse' }]);
     assert.equal(r.json.replayed, true);
     for (const [fail, status, code] of FAILS) {
       routes.length = 0;
@@ -350,6 +363,27 @@ test('need_token → 428 (the screen opens the list), stale_confirm → 422', as
   r = await callOpen('owner', 'POST', '/plan/delete', { nat_order_id: 17, reason: 'x', confirm_token: 'old' });
   assert.equal(r.status, 422);
   assert.equal(r.json.error.code, 'stale_confirm');
+});
+
+// 072b, owner question 7 = (b) (review R5, DB finding 6): PATCH /plan/rt/:id has a token only since 072b - the same
+// mapping as plan_delete, pinned on this route too: no token → 428 (the screen opens the list), another → 422
+test('072b: PATCH /plan/rt/:id need_token → 428, stale_confirm → 422; the token reaches p as sent', async () => {
+  on('POST', 'rpc/plan_rt_update', (u, b) => (b.p.confirm_token ? planReject('stale_confirm', 'plan_rt_update') : planReject('need_token', 'plan_rt_update')));
+  const stops = [{ stop_id: 3, planned_from: '2026-10-27T14:05:00+02:00', planned_to: '2026-10-27T14:20:00+02:00' }];
+  let r = await callOpen('warehouse', 'PATCH', '/plan/rt/5', { stops });
+  assert.equal(r.status, 428, r.text);
+  assert.deepEqual(r.json.error, { type: 'PLAN_RULE', code: 'need_token', message: 'Η πράξη θέλει επιβεβαίωση — δες πρώτα τη λίστα συνεπειών (plan_rt_update)' });
+  calls.length = 0;
+  r = await callOpen('warehouse', 'PATCH', '/plan/rt/5', { stops, confirm_token: 'old' });
+  assert.equal(r.status, 422, r.text);
+  assert.equal(r.json.error.code, 'stale_confirm');
+  assert.deepEqual(rpcCalls().map((c) => c.body), [{ p: { stops, confirm_token: 'old', rt_id: 5 }, p_actor: 'tester', p_role: 'warehouse' }]);
+  // writes closed (as deployed): the same body is a 409 with zero DB calls, the token changes nothing
+  calls.length = 0;
+  r = await call('warehouse', 'PATCH', '/plan/rt/5', { stops, confirm_token: 'old' });
+  assert.equal(r.status, 409, r.text);
+  assert.deepEqual(r.json, WRITES_CLOSED);
+  assert.equal(calls.length, 0);
 });
 
 test('23P01 at the RPC\'s COMMIT (071b EXCLUDE) → 422 truck_busy / driver_busy', async () => {
@@ -525,6 +559,54 @@ test('plan_rt_update dry run: preview.conflict gets its message from PLAN_RULE_T
   on('POST', 'rpc/plan_rt_update', () => json(preview(null)));
   r = await call('dispatcher', 'PATCH', '/plan/rt/5', { dry_run: true });
   assert.equal(r.json.preview.conflict, null, 'no conflict: untouched');
+});
+
+// 072b: the three handover previews carry preview.conflict in the same shape (review R1 finding 7: the removal's
+// preview runs the busy check) and get the same Greek, through the same one table
+test('072b dry runs: preview.conflict of handover, correction and removal get their message; a refused 072b CHECK is Greek', async () => {
+  const conflict = { code: 'truck_busy', sqlstate: '23514', detail: 'RT-1290' };
+  on('POST', 'rpc/plan_seg_change', () => json({ ok: true, op: 'plan_seg_change', dry_run: true, preview: { segments: null, warnings: [], conflict } }));
+  on('POST', 'rpc/plan_seg_fix', () => json({ ok: true, op: 'plan_seg_fix', dry_run: true, preview: { segments: null, warnings: [], conflict } }));
+  on('POST', 'rpc/plan_seg_remove', () => json({ ok: true, op: 'plan_seg_remove', dry_run: true, needs_confirm: false, confirm_token: 't',
+    consequences: [], preview: { segments: null, warnings: [], conflict } }));
+  for (const [method, p, body] of [['POST', '/plan/rt/5/handover', { dry_run: true }], ['PATCH', '/plan/segments/9', { set: {}, dry_run: true }],
+    ['POST', '/plan/segments/9/remove', { dry_run: true }]]) {
+    const r = await call('dispatcher', method, p, body);
+    assert.equal(r.status, 200, `${p}: ${r.text}`);
+    assert.equal(r.json.preview.conflict.message, 'Το φορτηγό είναι ήδη σε άλλο δρομολόγιο εκείνες τις ώρες (RT-1290)', p);
+  }
+  // the reason's value is 072b's CHECK (one list): «Άλλο» without its note is a 422 in Greek, never the 500 path
+  routes.length = 0;
+  on('POST', 'rpc/plan_seg_change', () => pgError(400, { code: '23514', hint: null, details: null,
+    message: 'new row for relation "rt_vehicle_segments" violates check constraint "seg_other_note"' }));
+  const r = await callOpen('warehouse', 'POST', '/plan/rt/5/handover', { request_id: 'x', reason: 'other' });
+  assert.equal(r.status, 422, r.text);
+  assert.deepEqual(r.json.error, { type: 'PLAN_RULE', code: 'seg_other_note', message: 'Με λόγο «Άλλο» η σημείωση είναι υποχρεωτική' });
+});
+
+// H-22 (review R2 of the handover plan, DB finding 5): a 503 names the migration that brings the RPC - after a
+// rollback of 072b alone (or a deploy before it) «072 is missing» would be false; 072's routes keep 072
+test('schema_behind names 072b on the three handover routes and 072 elsewhere; seg_outside is Greek with its detail', async () => {
+  const missing = (fn) => () => pgError(404, { code: 'PGRST202', details: null, hint: null, message: `Could not find the function public.${fn}(p, p_actor, p_role) in the schema cache` });
+  for (const fn of ['plan_seg_change', 'plan_seg_fix', 'plan_seg_remove', 'plan_rt_update']) on('POST', `rpc/${fn}`, missing(fn));
+  for (const [method, p, body, mig] of [['POST', '/plan/rt/5/handover', { dry_run: true }, '072b'], ['PATCH', '/plan/segments/9', { set: {}, dry_run: true }, '072b'],
+    ['POST', '/plan/segments/9/remove', { dry_run: true }, '072b'], ['PATCH', '/plan/rt/5', { set: {}, dry_run: true }, '072']]) {
+    const r = await call('owner', method, p, body);
+    assert.equal(r.status, 503, `${p}: ${r.text}`);
+    assert.deepEqual(r.json.error, { type: 'SCHEMA_BEHIND', code: 'schema_behind', message: `Η βάση δεν έχει ακόμη το migration ${mig} (Εβδομαδιαίο Εθνικών) — ενημέρωσε τον Δημήτρη` }, p);
+  }
+  // PLAN_ROUTES is not exported: read the deployed source (one source), as plan-contract does
+  const { readFileSync } = await import('node:fs');
+  const src = readFileSync(SRC_PATH, 'utf8').match(/var PLAN_ROUTES = \[[\s\S]*?\n\];\n/)[0];
+  assert.deepEqual([...src.matchAll(/rpc: "(plan_\w+)"[^\n]*migration: "(\w+)"/g)].map((m) => [m[1], m[2]]),
+    [['plan_seg_change', '072b'], ['plan_seg_fix', '072b'], ['plan_seg_remove', '072b']], 'only the three handover routes name another migration');
+  // the Move that would narrow a cycle past a handover with the list bypassed: 422, the RT and the time in brackets
+  routes.length = 0;
+  on('POST', 'rpc/plan_move_pieces', () => planReject('seg_outside', 'RT-1290 26/10 09:00'));
+  const r = await callOpen('warehouse', 'POST', '/plan/move', { from: { piece_ids: [4] }, target: { wait: true } });
+  assert.equal(r.status, 422, r.text);
+  assert.deepEqual(r.json.error, { type: 'PLAN_RULE', code: 'seg_outside',
+    message: 'Η πράξη θα άφηνε μια αλλαγή οχήματος έξω από τις ώρες του δρομολογίου — μετακίνησε ή αφαίρεσε πρώτα την αλλαγή (RT-1290 26/10 09:00)' });
 });
 
 // ───────────────────── the older paths ─────────────────────

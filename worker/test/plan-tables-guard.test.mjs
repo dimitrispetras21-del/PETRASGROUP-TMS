@@ -23,7 +23,9 @@ function liftVar(name) {
 }
 const TABLES = new Function(liftVar('TABLES') + '\nreturn TABLES;')();
 const PLAN_PERMS = new Function(liftVar('PLAN_PERMS') + '\nreturn PLAN_PERMS;')();
-const V5_TABLES = ['shipments', 'shipment_pieces', 'rt_stops', 'piece_legs', 'plan_notices', 'plan_config'];
+// + 072b: the segments table and its two views (vehicle handover) - reached only through /plan/*, never the facade
+const V5_TABLES = ['shipments', 'shipment_pieces', 'rt_stops', 'piece_legs', 'plan_notices', 'plan_config',
+  'rt_vehicle_segments', 'v_rt_segments', 'v_rt_vehicle_windows'];
 
 test('no v5 table is reachable through the facade (TABLES pg / readView)', () => {
   for (const [id, cfg] of Object.entries(TABLES)) {
@@ -67,6 +69,8 @@ test('deploy guard markers: the older ones and var PLAN_PERMS = { exactly once; 
   assert.equal(count('var PRESENCE_ROLES'), 1, 'PRESENCE_ROLES');
   assert.equal(count('Temp Per CMR'), 1, 'Temp Per CMR');
   assert.equal(count('{0,49}$/'), 1, 'VD /costs/rt order_ids (decision 29)');
+  // the vehicle handover (072b): its route row is the deploy marker (worker-guard --handover 1)
+  assert.equal(count('rpc: "plan_seg_change"'), 1, 'handover route marker');
 });
 
 test('writes closed until day L, in the deployed source (decision 22); one switch, no env override', () => {

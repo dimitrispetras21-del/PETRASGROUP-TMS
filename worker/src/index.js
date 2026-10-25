@@ -3306,7 +3306,7 @@ const RELAY_CHECK_TEXT = {
 //     whichever layer refused first. local_moves_nat_loading_once answers
 //     local_exists for the same reason (as local_moves_relay_once → relay_exists).
 // THE CODES AND NAMES ARE THE MIGRATIONS' (the lower layer names them, αρχή 4).
-// test/plan-contract.test.mjs reads 071, 071b and 072 and fails on a code or a
+// test/plan-contract.test.mjs reads 071, 071b, 072 and 072b and fails on a code or a
 // constraint without a text here, and on a key here with no counterpart there
 // (αρχή 8). Texts only — editing a text never changes what is allowed.
 const PLAN_RULE_TEXT = {
@@ -3373,7 +3373,28 @@ const PLAN_RULE_TEXT = {
   local_cancel_no_id: "Η ακύρωση τοπικής φόρτωσης δεν λέει ποια φόρτωση — τίποτα δεν δημιουργήθηκε ούτε ακυρώθηκε",
   stale_confirm: "Κάτι άλλαξε από τότε που είδες τη λίστα — δες τη ξανά και επιβεβαίωσε",
   need_token: "Η πράξη θέλει επιβεβαίωση — δες πρώτα τη λίστα συνεπειών",
-  vs_not_bridge: "Η παραγγελία ή η στάση δεν περνά από τη Βέροια (VS)"
+  vs_not_bridge: "Η παραγγελία ή η στάση δεν περνά από τη Βέροια (VS)",
+  // 072b — vehicle handover at a point (segments ΑΡΧΙΚΟ / ΕΝΔΙΑΜΕΣΟ / ΤΕΛΙΚΟ; spec
+  // 2026-10-23-national-v5-vehicle-handover-design.md). Without these a refusal
+  // would reach the screen as raw English (review R1 of the plan, finding 1).
+  seg_not_v2: "Αλλαγή οχήματος γίνεται μόνο σε δρομολόγιο του Εβδομαδιαίου Εθνικών",
+  seg_time: "Η ώρα της αλλαγής οχήματος είναι μέσα στο δρομολόγιο και ανάμεσα στις άλλες αλλαγές του",
+  // a Move, Delete or stop change that narrows the cycle past a handover (review R2 of the plan, DB finding 1);
+  // since owner question 7 = (b) only the net under the consequence list. The DB detail in brackets = the RT and
+  // the handover time
+  seg_outside: "Η πράξη θα άφηνε μια αλλαγή οχήματος έξω από τις ώρες του δρομολογίου — μετακίνησε ή αφαίρεσε πρώτα την αλλαγή",
+  seg_cover: "Τα τμήματα οχήματος δεν καλύπτουν όλες τις ώρες του δρομολογίου — ανανέωσε τη σελίδα",
+  seg_first: "Το ΑΡΧΙΚΟ τμήμα ξεκινά με το δρομολόγιο: δεν έχει ώρα, σημείο ή λόγο και δεν αφαιρείται — διόρθωσε το όχημά του",
+  seg_copy: "Το όχημα του δρομολογίου αλλάζει μόνο από την ανάθεση ή την αλλαγή οχήματος — ανανέωσε τη σελίδα",
+  seg_reason: "Η αλλαγή οχήματος θέλει λόγο",
+  seg_cancel: "Τα τμήματα οχήματος δεν συμφωνούν με την ακύρωση του δρομολογίου — ανανέωσε τη σελίδα",
+  seg_none: "Το δρομολόγιο έμεινε χωρίς τμήμα οχήματος — ανανέωσε τη σελίδα",
+  seg_unassigned: "Δρομολόγιο με αλλαγή οχήματος έχει όχημα σε κάθε τμήμα — ανάθεσε πρώτα όχημα, ή χρησιμοποίησε «Καθαρισμός ανάθεσης»",
+  seg_locked: "Ένα τμήμα οχήματος δεν πάει σε άλλο δρομολόγιο, και ένα που αφαιρέθηκε δεν αλλάζει",
+  seg_many: "Το δρομολόγιο έχει αλλαγή οχήματος — άλλαξε το όχημα στο συγκεκριμένο τμήμα (ΑΡΧΙΚΟ, ΕΝΔΙΑΜΕΣΟ ή ΤΕΛΙΚΟ)",
+  seg_gone: "Η αλλαγή οχήματος δεν υπάρχει πια — ανανέωσε τη σελίδα",
+  seg_same: "Το νέο όχημα είναι το ίδιο με αυτό που ήδη εκτελεί — διάλεξε άλλο",
+  seg_no_vehicle: "Η αλλαγή οχήματος θέλει φορτηγό ή συνεργάτη"
 };
 const PLAN_CHECK_TEXT = {
   // 071 CHECKs on ct_round_trips (+ partner_needs_partner, live before 071:
@@ -3420,7 +3441,19 @@ const PLAN_CHECK_TEXT = {
   piece_legs_live_no: "Το φορτίο έχει ήδη ζωντανή κίνηση με αυτόν τον αριθμό — ανανέωσε τη σελίδα",
   shipments_bridge_once: "Η στάση της διεθνούς έχει ήδη γέφυρα VS",
   pl_mov_leg_once: "Η κίνηση έχει ήδη γραμμή παλετών",
-  locations_one_hub: "Υπάρχει ήδη τοποθεσία-κόμβος (Βέροια)"
+  locations_one_hub: "Υπάρχει ήδη τοποθεσία-κόμβος (Βέροια)",
+  // 072b CHECKs on rt_vehicle_segments (the reason's VALUE is the CHECK's: an
+  // unknown reason or «Άλλο» without its note reach the screen here)
+  seg_type: "Το τμήμα είναι δικό μας φορτηγό ή συνεργάτης",
+  seg_partner_needs_partner: "Τμήμα συνεργάτη θέλει συνεργάτη",
+  seg_partner_no_vehicle: "Τμήμα συνεργάτη δεν έχει δικό μας φορτηγό, ρυμουλκούμενο ή οδηγό",
+  seg_owned_no_partner: "Τμήμα με δικό μας φορτηγό δεν έχει συνεργάτη ή κόμιστρο",
+  seg_partner_rate: "Το κόμιστρο του τμήματος δεν είναι αρνητικό",
+  seg_reason_list: "Άγνωστος λόγος αλλαγής οχήματος — διάλεξε από τη λίστα",
+  seg_change_pair: "Η αλλαγή οχήματος θέλει σημείο και λόγο μαζί",
+  seg_place_text: "Γράψε το σημείο της αλλαγής (π.χ. «Λαμία»)",
+  seg_other_note: "Με λόγο «Άλλο» η σημείωση είναι υποχρεωτική",
+  seg_del: "Η αφαίρεση τμήματος θέλει λόγο και χρήστη"
 };
 // 071/071b constraints that are the race floor under a 072 refusal of their own: they answer that refusal's code
 // and text, whichever layer refused first (072's pre-check, the constraint at COMMIT, or the plan_rt_update dry
@@ -5471,15 +5504,17 @@ var PLAN_PERMS = {
   // Decision 41 (owner 23/10, «everyone has rights»; the locked rule of 23/8:
   // «all roles edit broadly for now, DELETE stays narrow»): every role reads
   // and writes every act of the board, with its dry run (decision 26). The
-  // delete-type acts — rt-clear and delete, and later the removal of a vehicle
-  // handover (its own plan) — stay owner + dispatcher. No money here: the DB
+  // delete-type acts — rt-clear, delete and the removal of a vehicle handover
+  // (segment-remove, 072b, decision 41 (b)) — stay owner + dispatcher. The
+  // handover and its correction (handover, segment) are board acts: every
+  // role (handover plan H-17). No money here: the DB
   // cuts payroll/DKV amounts by role (decision 9), the tripwire below refuses
   // to forward one; price and partner rate are for every role (decision 41).
-  owner: { board: ["GET"], "vs-state": ["GET"], notices: ["GET"], "notices-read": ["POST"], orders: ["POST", "PATCH"], legs: ["POST"], move: ["POST"], split: ["POST"], rt: ["PATCH"], "rt-clear": ["POST"], delete: ["POST"], "vs-day": ["POST"], "vs-place": ["POST"], "local-loading": ["POST"] },
-  dispatcher: { board: ["GET"], "vs-state": ["GET"], notices: ["GET"], "notices-read": ["POST"], orders: ["POST", "PATCH"], legs: ["POST"], move: ["POST"], split: ["POST"], rt: ["PATCH"], "rt-clear": ["POST"], delete: ["POST"], "vs-day": ["POST"], "vs-place": ["POST"], "local-loading": ["POST"] },
-  management: { board: ["GET"], "vs-state": ["GET"], notices: ["GET"], "notices-read": ["POST"], orders: ["POST", "PATCH"], legs: ["POST"], move: ["POST"], split: ["POST"], rt: ["PATCH"], "vs-day": ["POST"], "vs-place": ["POST"], "local-loading": ["POST"] },
-  accountant: { board: ["GET"], "vs-state": ["GET"], notices: ["GET"], "notices-read": ["POST"], orders: ["POST", "PATCH"], legs: ["POST"], move: ["POST"], split: ["POST"], rt: ["PATCH"], "vs-day": ["POST"], "vs-place": ["POST"], "local-loading": ["POST"] },
-  warehouse: { board: ["GET"], "vs-state": ["GET"], notices: ["GET"], "notices-read": ["POST"], orders: ["POST", "PATCH"], legs: ["POST"], move: ["POST"], split: ["POST"], rt: ["PATCH"], "vs-day": ["POST"], "vs-place": ["POST"], "local-loading": ["POST"] }
+  owner: { board: ["GET"], "vs-state": ["GET"], notices: ["GET"], "notices-read": ["POST"], orders: ["POST", "PATCH"], legs: ["POST"], move: ["POST"], split: ["POST"], rt: ["PATCH"], "rt-clear": ["POST"], delete: ["POST"], "vs-day": ["POST"], "vs-place": ["POST"], "local-loading": ["POST"], handover: ["POST"], segment: ["PATCH"], "segment-remove": ["POST"] },
+  dispatcher: { board: ["GET"], "vs-state": ["GET"], notices: ["GET"], "notices-read": ["POST"], orders: ["POST", "PATCH"], legs: ["POST"], move: ["POST"], split: ["POST"], rt: ["PATCH"], "rt-clear": ["POST"], delete: ["POST"], "vs-day": ["POST"], "vs-place": ["POST"], "local-loading": ["POST"], handover: ["POST"], segment: ["PATCH"], "segment-remove": ["POST"] },
+  management: { board: ["GET"], "vs-state": ["GET"], notices: ["GET"], "notices-read": ["POST"], orders: ["POST", "PATCH"], legs: ["POST"], move: ["POST"], split: ["POST"], rt: ["PATCH"], "vs-day": ["POST"], "vs-place": ["POST"], "local-loading": ["POST"], handover: ["POST"], segment: ["PATCH"] },
+  accountant: { board: ["GET"], "vs-state": ["GET"], notices: ["GET"], "notices-read": ["POST"], orders: ["POST", "PATCH"], legs: ["POST"], move: ["POST"], split: ["POST"], rt: ["PATCH"], "vs-day": ["POST"], "vs-place": ["POST"], "local-loading": ["POST"], handover: ["POST"], segment: ["PATCH"] },
+  warehouse: { board: ["GET"], "vs-state": ["GET"], notices: ["GET"], "notices-read": ["POST"], orders: ["POST", "PATCH"], legs: ["POST"], move: ["POST"], split: ["POST"], rt: ["PATCH"], "vs-day": ["POST"], "vs-place": ["POST"], "local-loading": ["POST"], handover: ["POST"], segment: ["PATCH"] }
 };
 function planCan(role, resource, method) {
   const r = PLAN_PERMS[role];
@@ -5493,9 +5528,13 @@ __name(planCan, "planCan");
 // one switch, in the source that is deployed, αρχή 3).
 var PLAN_WRITES_OPEN = false;
 // One row per route: method + path → resource (PLAN_PERMS) + RPC. `dryRun`
-// marks the four RPCs that take {"dry_run": true} and write nothing then;
+// marks the seven RPCs that take {"dry_run": true} and write nothing then
+// (072's four, 072b's three);
 // ONLY those pass the closed switch with it — any other RPC would ignore the
 // flag and write (plan_orders_create has no dry run).
+// `migration`: the migration that brings the RPC, when it is not 072 (the 503
+// schema_behind names it: after a rollback of 072b alone, «072 is missing» would
+// send the owner to the wrong file; handover plan H-22).
 // `idKey`: the path id goes into p under that key; a different id in the body
 // is a 400, never silently overridden (αρχή 1).
 var PLAN_ROUTES = [
@@ -5513,7 +5552,13 @@ var PLAN_ROUTES = [
   { method: "POST", re: /^\/plan\/delete$/, resource: "delete", rpc: "plan_delete", dryRun: true },
   { method: "POST", re: /^\/plan\/vs\/day$/, resource: "vs-day", rpc: "plan_vs_set_day" },
   { method: "POST", re: /^\/plan\/vs\/place$/, resource: "vs-place", rpc: "plan_vs_set_place" },
-  { method: "POST", re: /^\/plan\/local-loading$/, resource: "local-loading", rpc: "plan_local_loading" }
+  { method: "POST", re: /^\/plan\/local-loading$/, resource: "local-loading", rpc: "plan_local_loading" },
+  // 072b — vehicle handover at a point (H-17). The handover CREATES a segment:
+  // request_id in the body (decision 44, the DB replays it); its preview needs
+  // none. The first row is the deploy guard marker (worker-guard --handover).
+  { method: "POST", re: /^\/plan\/rt\/(\d+)\/handover$/, resource: "handover", rpc: "plan_seg_change", idKey: "rt_id", dryRun: true, migration: "072b" },
+  { method: "PATCH", re: /^\/plan\/segments\/(\d+)$/, resource: "segment", rpc: "plan_seg_fix", idKey: "segment_id", dryRun: true, migration: "072b" },
+  { method: "POST", re: /^\/plan\/segments\/(\d+)\/remove$/, resource: "segment-remove", rpc: "plan_seg_remove", idKey: "segment_id", dryRun: true, migration: "072b" }
 ];
 // Reads: the query string → RPC args, or a 400 before any DB call.
 // The week is a TMS week: Saturday to Friday (TmsWeek), named by its Saturday.
@@ -5686,8 +5731,9 @@ async function handlePlan(request, url, origin, env) {
     // of an inner function is a bug of 072 and stays the 500 path below).
     const own = !!(pg && fn && new RegExp(`\\bfunction (?:public\\.)?${fn}\\b`).test(String(pg.message || "")));
     if (pg && (pg.code === "PGRST202" || (pg.code === "42883" && own))) {
-      console.error(`PLAN ${name}: ${fn} missing in the DB (072)`);
-      return planError(503, "SCHEMA_BEHIND", "schema_behind", "Η βάση δεν έχει ακόμη το migration 072 (Εβδομαδιαίο Εθνικών) — ενημέρωσε τον Δημήτρη", origin, env);
+      const mig = route.migration || "072";
+      console.error(`PLAN ${name}: ${fn} missing in the DB (${mig})`);
+      return planError(503, "SCHEMA_BEHIND", "schema_behind", `Η βάση δεν έχει ακόμη το migration ${mig} (Εβδομαδιαίο Εθνικών) — ενημέρωσε τον Δημήτρη`, origin, env);
     }
     // 42501 on the RPC itself: 072 is there but the GRANT of its PART 5 is not (a manual REVOKE would do it)
     if (pg && pg.code === "42501" && own) {

@@ -39,7 +39,12 @@ const EXPECT = {
   delete: { POST: DESK },
   'vs-day': { POST: ROLES },
   'vs-place': { POST: ROLES },
-  'local-loading': { POST: ROLES }
+  'local-loading': { POST: ROLES },
+  // 072b, vehicle handover (decision 41, H-17): the handover and its correction are board acts (every role); the
+  // removal is delete-type (41 (b) names it): owner + dispatcher, its dry run too (decision 26)
+  handover: { POST: ROLES },
+  segment: { PATCH: ROLES },
+  'segment-remove': { POST: DESK }
 };
 
 test('PLAN_PERMS equals the plan\'s table, cell by cell (nothing more, nothing less)', () => {
@@ -110,7 +115,10 @@ const REQ = {
   'delete POST': ['POST', '/plan/delete', { nat_order_id: 17, dry_run: true }],
   'vs-day POST': ['POST', '/plan/vs/day', { order_id: 1, day: '2026-10-13' }],
   'vs-place POST': ['POST', '/plan/vs/place', { order_stop_id: 1, location_id: 2 }],
-  'local-loading POST': ['POST', '/plan/local-loading', { rt_stop_id: 1, driver_id: 2, truck_id: 3 }]
+  'local-loading POST': ['POST', '/plan/local-loading', { rt_stop_id: 1, driver_id: 2, truck_id: 3 }],
+  'handover POST': ['POST', '/plan/rt/5/handover', { at: '2026-10-27T14:30:00+02:00', dry_run: true }],
+  'segment PATCH': ['PATCH', '/plan/segments/9', { set: {}, dry_run: true }],
+  'segment-remove POST': ['POST', '/plan/segments/9/remove', { dry_run: true }]
 };
 
 test('every refused (role, route) → 403 in the /plan/* shape, before any DB call', async () => {
@@ -128,7 +136,7 @@ test('every refused (role, route) → 403 in the /plan/* shape, before any DB ca
       }
     }
   }
-  assert.equal(refused, 6, 'refused cells of the table (2 delete-type resources × 3 roles, decision 41)');
+  assert.equal(refused, 9, 'refused cells of the table (3 delete-type resources × 3 roles, decision 41)');
 });
 
 test('an unknown role (forged or stale JWT role) is refused everywhere', async () => {
