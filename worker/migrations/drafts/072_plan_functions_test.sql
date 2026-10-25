@@ -46,6 +46,20 @@ DECLARE
     , 'ok'               -- 13 an empty cycle is cancelled: payroll with amount deleted, 0 needs_review, notice for costs
     , 'ok'               -- 14 decision 10: the payroll line's month, never "paid" (even with a payment after the cycle)
     , 'ok'               -- 15 a cycle with a live leg is not cancelled
+    , 'ok'               -- 16 groupage of 3 clients = 1 call, 3 orders, no mirror, facade id, audit by the person
+    , 'ok'               -- 17 two shipments (Veroia as B): the summary fields follow the shipments
+    , 'plan:no_price'    -- 18 price 0
+    , 'plan:no_price'    -- 19 no price
+    , 'plan:no_client'   -- 20 no client
+    , 'plan:no_window'   -- 21 a window end missing
+    , 'plan:stock_lot'   -- 22 a lot piece (057) does not enter here
+    , 'plan:bad_input'   -- 23 no orders
+    , 'plan:bad_input'   -- 24 an unknown key (a mirror field) is refused, never ignored
+    , 'con:shipments_ends' -- 25 A = B
+    , 'con:shipments_win' -- 26 delivery before loading
+    , 'con:shipments_pallets' -- 27 0 pallets
+    , 'plan:bad_input'   -- 28 a location that does not exist
+    , 'plan:bad_input'   -- 29 stops without a target
     -- @want (one line per case: "    , '<ok|plan:code|con:name|state:XXXXX>'  -- <k> <what>")
   ]::text[];
   verdict text; got text; hint text; msg text; cname text; st text;
@@ -201,6 +215,47 @@ BEGIN
         INSERT INTO piece_legs (piece_id, leg_no, rt_id, pickup_stop_id, drop_stop_id, created_by)
         VALUES (p1, 1, rt1, s1a, s1b, 'test:072');
         b1 := plan_h_rt_cancel_if_empty(rt1, 'test cancel', 'test:072', 'owner');
+      ELSIF k = 16 THEN
+        r := plan_orders_create(jsonb_build_object('request_id', gen_random_uuid()) || (jsonb_build_object('orders', jsonb_build_array(jo1,
+               jo1 || jsonb_build_object('client_id', cl2), jo1 || jsonb_build_object('client_id', cl3, 'price', 70)))),
+               'test:072', 'dispatcher');
+      ELSIF k = 17 THEN
+        r := plan_orders_create(jsonb_build_object('request_id', gen_random_uuid()) || (jsonb_build_object('orders', jsonb_build_array(jo1 || jsonb_build_object('shipments',
+               jsonb_build_array(
+                 jsonb_build_object('origin_location_id', la, 'dest_location_id', hub, 'pallets', 4, 'load_from', a06,
+                                    'load_to', a08, 'deliver_from', a09, 'deliver_to', a10),
+                 jsonb_build_object('origin_location_id', lc, 'dest_location_id', lb, 'pallets', 6, 'load_from', b06,
+                                    'load_to', b08, 'deliver_from', b12, 'deliver_to', b14)))))), 'test:072', 'owner');
+      ELSIF k = 18 THEN
+        PERFORM plan_orders_create(jsonb_build_object('request_id', gen_random_uuid()) || (jsonb_build_object('orders', jsonb_build_array(jo1 || '{"price": 0}'))), 'test:072', 'owner');
+      ELSIF k = 19 THEN
+        PERFORM plan_orders_create(jsonb_build_object('request_id', gen_random_uuid()) || (jsonb_build_object('orders', jsonb_build_array(jo1 - 'price'))), 'test:072', 'owner');
+      ELSIF k = 20 THEN
+        PERFORM plan_orders_create(jsonb_build_object('request_id', gen_random_uuid()) || (jsonb_build_object('orders', jsonb_build_array(jo1 - 'client_id'))), 'test:072', 'owner');
+      ELSIF k = 21 THEN
+        PERFORM plan_orders_create(jsonb_build_object('request_id', gen_random_uuid()) || (jsonb_build_object('orders', jsonb_build_array(jo1 || jsonb_build_object('shipments',
+                  jsonb_build_array(jsh1 - 'deliver_to'))))), 'test:072', 'owner');
+      ELSIF k = 22 THEN
+        PERFORM plan_orders_create(jsonb_build_object('request_id', gen_random_uuid()) || (jsonb_build_object('orders', jsonb_build_array(jo1 || '{"stock_lot_id": 1}'))), 'test:072', 'owner');
+      ELSIF k = 23 THEN
+        PERFORM plan_orders_create(jsonb_build_object('request_id', gen_random_uuid()) || ('{"orders": []}'), 'test:072', 'owner');
+      ELSIF k = 24 THEN
+        PERFORM plan_orders_create(jsonb_build_object('request_id', gen_random_uuid()) || (jsonb_build_object('orders', jsonb_build_array(jo1 || jsonb_build_object('truck_id', trk1)))),
+                                   'test:072', 'owner');
+      ELSIF k = 25 THEN
+        PERFORM plan_orders_create(jsonb_build_object('request_id', gen_random_uuid()) || (jsonb_build_object('orders', jsonb_build_array(jo1 || jsonb_build_object('shipments',
+                  jsonb_build_array(jsh1 || jsonb_build_object('dest_location_id', la)))))), 'test:072', 'owner');
+      ELSIF k = 26 THEN
+        PERFORM plan_orders_create(jsonb_build_object('request_id', gen_random_uuid()) || (jsonb_build_object('orders', jsonb_build_array(jo1 || jsonb_build_object('shipments',
+                  jsonb_build_array(jsh1 || jsonb_build_object('deliver_from', a05, 'deliver_to', a05)))))), 'test:072', 'owner');
+      ELSIF k = 27 THEN
+        PERFORM plan_orders_create(jsonb_build_object('request_id', gen_random_uuid()) || (jsonb_build_object('orders', jsonb_build_array(jo1 || jsonb_build_object('shipments',
+                  jsonb_build_array(jsh1 || '{"pallets": 0}'))))), 'test:072', 'owner');
+      ELSIF k = 28 THEN
+        PERFORM plan_orders_create(jsonb_build_object('request_id', gen_random_uuid()) || (jsonb_build_object('orders', jsonb_build_array(jo1 || jsonb_build_object('shipments',
+                  jsonb_build_array(jsh1 || '{"origin_location_id": -1}'))))), 'test:072', 'owner');
+      ELSIF k = 29 THEN
+        PERFORM plan_orders_create(jsonb_build_object('request_id', gen_random_uuid()) || (jsonb_build_object('orders', jsonb_build_array(jo1), 'stops', '[]'::jsonb)), 'test:072', 'owner');
       -- @case (each task adds its "ELSIF k = <n> THEN" branches above this line)
       END IF;
       SET CONSTRAINTS ALL IMMEDIATE;
@@ -253,6 +308,29 @@ BEGIN
       ELSIF k = 15 THEN
         verdict := CASE WHEN NOT b1 AND (SELECT status FROM ct_round_trips WHERE id = rt1) = 'planned'
                         THEN 'ok a cycle with a live leg stays' ELSE 'FAIL cancelled a cycle with a leg' END;
+      ELSIF k = 16 THEN
+        verdict := CASE WHEN jsonb_array_length(r->'ids'->'nat_order_ids') = 3
+                          AND (SELECT count(*) FROM national_orders WHERE id IN (SELECT jsonb_array_elements_text(r->'ids'->'nat_order_ids')::bigint)
+                                 AND legacy_id ~ '^rec[A-Za-z0-9]{14}$' AND truck_id IS NULL AND partner_id IS NULL
+                                 AND status IS NULL AND direction IS NULL AND type IS NULL AND pallets = 10
+                                 AND loading_datetime = d AND delivery_datetime = d AND pickup_location_1_id = la
+                                 AND delivery_location_1_id = lb AND reference = 'WN072-TEST' AND pallet_exchange = false) = 3
+                          AND (SELECT count(DISTINCT client_id) FROM national_orders WHERE id IN (SELECT jsonb_array_elements_text(r->'ids'->'nat_order_ids')::bigint)) = 3
+                          AND (SELECT count(*) FROM v_piece_state WHERE piece_id IN (SELECT jsonb_array_elements_text(r->'ids'->'piece_ids')::bigint)
+                                 AND waiting AND position_location_id = la AND kind = 'national') = 3
+                          AND (SELECT count(*) FROM audit_log WHERE actor = 'test:072' AND role = 'dispatcher' AND action = 'create'
+                                 AND table_name IN ('national_orders', 'shipments', 'shipment_pieces')) = 9
+                          AND r->>'op' = 'plan_orders_create' AND r->'warnings' = '[]'::jsonb AND r->'ids'->'leg_ids' = '[]'::jsonb
+                        THEN 'ok 3 orders in one call, no mirror, facade id, 9 audit rows by the person'
+                        ELSE 'FAIL groupage: ' || r::text END;
+      ELSIF k = 17 THEN
+        x := (r->'ids'->'nat_order_ids'->>0)::bigint;
+        verdict := CASE WHEN (SELECT pallets = 10 AND loading_datetime = d AND delivery_datetime = e AND pickup_location_1_id = la
+                                     AND delivery_location_1_id = lb FROM national_orders WHERE id = x)
+                          AND (SELECT count(*) FROM v_shipments WHERE nat_order_id = x AND live) = 2
+                          AND EXISTS (SELECT 1 FROM v_shipments WHERE nat_order_id = x AND nat_to_location_id = hub)
+                        THEN 'ok summary = 10 pallets, first load day D, last delivery day D+1, first origin A, last destination B'
+                        ELSE 'FAIL summary' END;
       -- @verdict (each task adds its "ELSIF k = <n> THEN verdict := ..." branches above this line)
       ELSE
         verdict := 'FAIL no verdict for case ' || k;

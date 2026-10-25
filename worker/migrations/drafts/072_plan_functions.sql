@@ -548,6 +548,136 @@ $f$;
 $f$;
 
   -- ===== PART 2: SECTION A (each task of section A inserts its functions above the marker below) =====
+  CREATE FUNCTION public.plan_h_legacy_id() RETURNS text
+    LANGUAGE plpgsql SET search_path = public AS $f$
+declare
+  c CONSTANT text := 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+  b bytea; v text; i int;
+begin
+  -- Decision 20: the facade answers every row with id = legacy_id ('rec' + 14 [A-Za-z0-9], the Worker's
+  -- mintLegacyId); a national order without one would show as id null on every screen that still reads it.
+  -- gen_random_uuid is core (pg_catalog): no extension needed.
+  loop
+    b := uuid_send(gen_random_uuid());
+    v := 'rec';
+    for i in 0..13 loop v := v || substr(c, (get_byte(b, i) % 62) + 1, 1); end loop;
+    exit when not exists (select 1 from national_orders where legacy_id = v);
+  end loop;
+  return v;
+end
+$f$;
+
+  CREATE FUNCTION public.plan_h_order_summary(p_shipments jsonb) RETURNS jsonb
+    LANGUAGE sql STABLE SET search_path = public AS $f$
+  -- Decision 20: the national order's summary fields are DERIVED from its shipments, by this one rule, in the
+  -- same transaction as every change to them (plan_orders_create, plan_order_update): pallets = sum, requested
+  -- loading = first Athens day of load_from, requested delivery = last Athens day of deliver_to, first origin,
+  -- last destination (in the shipments' order).
+  select jsonb_build_object(
+           'pallets', sum((e->>'pallets')::numeric),
+           'loading_datetime', min(((e->>'load_from')::timestamptz at time zone 'Europe/Athens')::date),
+           'delivery_datetime', max(((e->>'deliver_to')::timestamptz at time zone 'Europe/Athens')::date),
+           'pickup_location_1_id', (array_agg((e->>'origin_location_id')::bigint order by i))[1],
+           'delivery_location_1_id', (array_agg((e->>'dest_location_id')::bigint order by i desc))[1])
+    from jsonb_array_elements(p_shipments) with ordinality t(e, i)
+$f$;
+
+  CREATE FUNCTION public.plan_orders_create(p jsonb, p_actor text, p_role text) RETURNS jsonb
+    LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $f$
+declare
+  o jsonb; s jsonb; v_sum jsonb; v_client bigint; v_price numeric; v_tgt jsonb; v_put jsonb;
+  n national_orders%rowtype; sh shipments%rowtype; pc shipment_pieces%rowtype;
+  v_nos bigint[] := '{}'; v_shs bigint[] := '{}'; v_pcs bigint[] := '{}'; v_ans jsonb;
+begin
+  perform plan_h_ctx(p_actor, p_role);
+  perform plan_h_keys(p, array['orders', 'target', 'stops', 'request_id'], 'p');
+  -- decision 44: the same request_id again = the first answer, nothing written
+  v_ans := plan_h_replay(p, 'plan_orders_create', p_actor);
+  if v_ans is not null then return v_ans; end if;
+  if jsonb_typeof(p->'orders') is distinct from 'array' or jsonb_array_length(p->'orders') = 0 then
+    perform plan_h_raise('bad_input', 'orders');
+  end if;
+  -- N orders in ONE call (groupage of 3 clients = one transaction, R-04).
+  for o in select value from jsonb_array_elements(p->'orders') loop
+    perform plan_h_keys(o, array['client_id', 'price', 'reference', 'goods', 'temperature_c', 'pallet_exchange',
+                                 'notes', 'shipments', 'stock_lot_id'], 'order');
+    -- C-24: a lot piece (057) never enters v5 here; its relation to v5 is F3's (E6).
+    if coalesce(o->'stock_lot_id', 'null'::jsonb) <> 'null'::jsonb then
+      perform plan_h_raise('stock_lot', 'order');   -- never the caller's text in the detail (plan_h_raise)
+    end if;
+    v_client := (o->>'client_id')::bigint;
+    if v_client is null or not exists (select 1 from clients where id = v_client and deleted_at is null) then
+      perform plan_h_raise('no_client', coalesce(v_client::text, 'null'));
+    end if;
+    v_price := (o->>'price')::numeric;
+    if v_price is null or v_price <= 0 then perform plan_h_raise('no_price', coalesce(v_price::text, 'null')); end if;
+    if jsonb_typeof(o->'shipments') is distinct from 'array' or jsonb_array_length(o->'shipments') = 0 then
+      perform plan_h_raise('bad_input', 'shipments');
+    end if;
+    for s in select value from jsonb_array_elements(o->'shipments') loop
+      perform plan_h_keys(s, array['origin_location_id', 'dest_location_id', 'pallets', 'load_from', 'load_to',
+                                   'deliver_from', 'deliver_to'], 'shipment');
+      -- owner #12: a window from-to everywhere; the four ends are required.
+      if s->>'load_from' is null or s->>'load_to' is null or s->>'deliver_from' is null or s->>'deliver_to' is null then
+        perform plan_h_raise('no_window', 'shipment');
+      end if;
+      perform plan_h_location((s->>'origin_location_id')::bigint);
+      perform plan_h_location((s->>'dest_location_id')::bigint);
+      -- one decimal at most (decision 20): shipments / shipment_pieces are numeric(6,1) and would round 2.55
+      -- silently, while the order's summary kept 2.55 (review 23/10)
+      if (s->>'pallets')::numeric <> round((s->>'pallets')::numeric, 1) then
+        perform plan_h_raise('bad_input', 'pallets:one decimal');
+      end if;
+    end loop;
+    v_sum := plan_h_order_summary(o->'shipments');
+    -- Never truck_id / partner_id / status (spec 2.1: no mirror); direction and type stay NULL (decision 20:
+    -- the F4 readers read v_shipments).
+    insert into national_orders (legacy_id, client_id, price, reference, goods, temperature_c, pallet_exchange, notes,
+                                 pallets, loading_datetime, delivery_datetime, pickup_location_1_id, delivery_location_1_id)
+    values (plan_h_legacy_id(), v_client, v_price, o->>'reference', o->>'goods', (o->>'temperature_c')::numeric,
+            coalesce((o->>'pallet_exchange')::boolean, false), o->>'notes',
+            (v_sum->>'pallets')::numeric, (v_sum->>'loading_datetime')::date, (v_sum->>'delivery_datetime')::date,
+            (v_sum->>'pickup_location_1_id')::bigint, (v_sum->>'delivery_location_1_id')::bigint)
+    returning * into n;
+    perform plan_h_audit(p_actor, p_role, 'create', 'national_orders', n.legacy_id, null, to_jsonb(n));
+    v_nos := v_nos || n.id;
+    -- One shipment per A->B pair, one piece per shipment (Veroia may be A or B: a normal place, spec 3).
+    for s in select value from jsonb_array_elements(o->'shipments') loop
+      insert into shipments (nat_order_id, origin_location_id, dest_location_id, pallets, load_from, load_to,
+                             deliver_from, deliver_to, created_by)
+      values (n.id, (s->>'origin_location_id')::bigint, (s->>'dest_location_id')::bigint, (s->>'pallets')::numeric,
+              (s->>'load_from')::timestamptz, (s->>'load_to')::timestamptz, (s->>'deliver_from')::timestamptz,
+              (s->>'deliver_to')::timestamptz, p_actor)
+      returning * into sh;
+      perform plan_h_audit(p_actor, p_role, 'create', 'shipments', sh.id::text, null, to_jsonb(sh));
+      insert into shipment_pieces (shipment_id, pallets, created_by) values (sh.id, sh.pallets, p_actor) returning * into pc;
+      perform plan_h_audit(p_actor, p_role, 'create', 'shipment_pieces', pc.id::text, null, to_jsonb(pc));
+      v_shs := v_shs || sh.id;
+      v_pcs := v_pcs || pc.id;
+    end loop;
+  end loop;
+  -- The "+" in a row: the new pieces go on the target in the same transaction (decision 3).
+  if p ? 'target' then
+    v_tgt := plan_h_target(p->'target', p->'stops', p_actor, p_role);
+    v_put := plan_h_put((select jsonb_agg(jsonb_build_object('piece_id', x) order by x) from unnest(v_pcs) x),
+                        v_tgt, p_actor, p_role, '{}');
+  elsif p ? 'stops' then
+    perform plan_h_raise('bad_input', 'stops without target');
+  end if;
+  v_ans := plan_h_ok('plan_orders_create',
+    jsonb_build_object('nat_order_ids', to_jsonb(v_nos), 'shipment_ids', to_jsonb(v_shs), 'piece_ids', to_jsonb(v_pcs),
+                       'rt_id', v_put->'rt_id', 'stop_ids', coalesce(v_put->'stop_ids', '[]'::jsonb),
+                       'leg_ids', coalesce(v_put->'leg_ids', '[]'::jsonb)),
+    v_put->'warnings', v_put->'notice_ids');
+  perform plan_h_remember(p, 'plan_orders_create', v_ans, p_actor, p_role);
+  perform plan_h_finish();
+  return v_ans;
+exception
+  when invalid_text_representation or invalid_datetime_format or datetime_field_overflow
+       or numeric_value_out_of_range or invalid_parameter_value then
+    perform plan_h_raise('bad_input', sqlstate);
+end
+$f$;
   -- @A (072 section A: plan_orders_create, plan_put_pieces, plan_put_group, plan_split_piece, plan_move_pieces, plan_order_update)
 
   -- ===== PART 3: CYCLE, DELETE, VS, LOCAL LOADING (section B) =====
@@ -563,6 +693,7 @@ $f$;
     -- 16 when the plan is done (15 without decision 21).
     v_pub CONSTANT text[] := array_remove(ARRAY[
       NULL
+    , 'public.plan_orders_create(jsonb,text,text)'
     -- @pub (072 tasks add ", 'public.plan_x(<arg types>)'" lines above this marker)
     ]::text[], NULL);
     -- 071's own plan_* (triggers and rule readers): never touched by 072, closed for every API role
