@@ -1,6 +1,6 @@
 -- 072 - NATIONAL v5, PHASE F2: THE plan_* FUNCTIONS, BORN CLOSED, 0 ROWS.
 --
--- DRAFT. Spec docs/superpowers/specs/2026-10-21-national-v5-design.md (owner 21/10), plan
+-- EXECUTED 2026-10-26 by the owner. Spec docs/superpowers/specs/2026-10-21-national-v5-design.md (owner 21/10), plan
 -- docs/superpowers/plans/2026-10-22-f2-national-v5-plan-functions.md. The owner runs it in the Supabase SQL editor AFTER
 -- 15:00 (the team works 05:30-14:30), with an explicit yes, in this order:
 --   0. 071_plan_schema_fingerprint.sql    read-only (keep the row)
