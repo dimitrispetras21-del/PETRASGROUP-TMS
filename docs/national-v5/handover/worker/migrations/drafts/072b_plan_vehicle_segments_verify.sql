@@ -6,13 +6,14 @@
 --   auditor_policy = 1 ; other_policies = 0 ; new_triggers = 4 ; b54_matches = true ; segments = 0 ; v5_cycles = 0 ;
 --   seg_problems = 0 ; overlaps = 0 ; cancel_copy_drift = 0
 -- hooks_in_place counts the 10 hooked functions at their FINAL text (plan_rt_update carries 6 hooks, chained; the
--- three of owner question 7 = b: plan_h_drop_consequences, plan_move_pieces, plan_delete, one each).
+-- three of owner question 7 = b: plan_h_drop_consequences and plan_delete one each, plan_move_pieces two - the second
+-- for a side moved within its own cycle, review R5).
 -- After L: segments and v5_cycles grow (every v5 cycle has >= 1 segment); seg_problems, overlaps and
 -- cancel_copy_drift stay 0 for ever (the base refuses them at COMMIT - these are independent counts that read the
 -- cycle's status, not the copy rt_cancelled the EXCLUDE filters on). auditor_policy = the
 -- one policy of 072b (monitor_read: SELECT, tms_check_runner + tms_reader only); the PGlite test runs B-91..B-93
 -- as tms_check_runner on a cycle with segments to prove the auditor sees them.
--- 072's verify after 072b, by design (plan "Interfaces"): plan_functions = 78, service_role_execute = 19,
+-- 072's verify after 072b, by design (plan "Interfaces"): plan_functions = 79, service_role_execute = 19,
 --   changed_live = 0 (072b changes none of 072's 22), every other value as before. 071b's verify finds the two
 --   EXCLUDE wherever they live: after 072b truck_once = true, exclude_on = 'rt_vehicle_segments', and its cycle
 --   overlap counts are NULL (they live here: overlaps).
@@ -32,7 +33,7 @@ SELECT
       ('public.plan_vs_state(bigint[])', '99175b659207c5019f1599ed389f1895'),
       ('public.plan_local_loading(jsonb,text,text)', '6c56db094458841598db079ad7844515'),
       ('public.plan_h_drop_consequences(bigint[],bigint,bigint[])', 'ce5de5793080e0c5be1e886defcb0b0e'),
-      ('public.plan_move_pieces(jsonb,text,text)', 'b67eafc88f2b3a1cbad41776c57d6f38'),
+      ('public.plan_move_pieces(jsonb,text,text)', '042246d94fcdd1df628edd5840de1330'),
       ('public.plan_delete(jsonb,text,text)', '7b5c7a31f19d1d38ef1fc115cc3701ec')) v(sig, m)
     WHERE (SELECT md5(prosrc) FROM pg_proc WHERE oid = to_regprocedure(v.sig)) = v.m) AS hooks_in_place,
   (SELECT count(*) FROM (VALUES

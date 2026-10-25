@@ -127,7 +127,7 @@ index 5c91621..931de6a 100644
      // 42501 on the RPC itself: 072 is there but the GRANT of its PART 5 is not (a manual REVOKE would do it)
      if (pg && pg.code === "42501" && own) {
 diff --git a/worker/test/plan-contract.test.mjs b/worker/test/plan-contract.test.mjs
-index a43833b..84b9e9a 100644
+index a43833b..b7c7a19 100644
 --- a/worker/test/plan-contract.test.mjs
 +++ b/worker/test/plan-contract.test.mjs
 @@ -9,6 +9,7 @@
@@ -300,7 +300,7 @@ index 153ef68..06a269c 100644
  
  test('an unknown role (forged or stale JWT role) is refused everywhere', async () => {
 diff --git a/worker/test/plan-routes.test.mjs b/worker/test/plan-routes.test.mjs
-index a2ab95d..95e443b 100644
+index a2ab95d..80429e0 100644
 --- a/worker/test/plan-routes.test.mjs
 +++ b/worker/test/plan-routes.test.mjs
 @@ -4,7 +4,7 @@
@@ -312,7 +312,14 @@ index a2ab95d..95e443b 100644
  //   - the reply is passed through as the DB wrote it (the DB cuts by role),
  //     but an `amount` never reaches a role outside owner/accountant;
  //   - refusals: plan:<code> → 422 Greek, need_token → 428, 23P01 → truck_busy,
-@@ -168,11 +168,17 @@ const WRITES = [
+@@ -164,15 +164,24 @@ const WRITES = [
+   ['/plan/move', 'POST', { from: { piece_ids: [4] }, target: { wait: true } }, 'plan_move_pieces', {}],
+   ['/plan/pieces/split', 'POST', { piece_id: 4, parts: [{ pallets: 12 }, { pallets: 14 }] }, 'plan_split_piece', {}],
+   ['/plan/rt/5', 'PATCH', { set: { driver_id: 8 } }, 'plan_rt_update', { rt_id: 5 }],
++  // 072b, owner question 7 = (b): a stop change that removes a handover carries the token of its list, as sent
++  ['/plan/rt/5', 'PATCH', { stops: [{ stop_id: 3, planned_from: '2026-10-27T14:05:00+02:00', planned_to: '2026-10-27T14:20:00+02:00' }],
++    confirm_token: 'abc' }, 'plan_rt_update', { rt_id: 5 }],
+   ['/plan/rt/5/clear', 'POST', { confirm_token: 'abc' }, 'plan_rt_clear', { rt_id: 5 }],
    ['/plan/delete', 'POST', { nat_order_id: 17, reason: 'x', confirm_token: 'abc' }, 'plan_delete', {}],
    ['/plan/vs/day', 'POST', { order_id: 1, day: '2026-10-13' }, 'plan_vs_set_day', {}],
    ['/plan/vs/place', 'POST', { order_stop_id: 3, location_id: 2 }, 'plan_vs_set_place', {}],
@@ -334,7 +341,7 @@ index a2ab95d..95e443b 100644
  const ALL_ROLES = ['owner', 'dispatcher', 'management', 'accountant', 'warehouse'];
  const WRITES_CLOSED = { error: { type: 'WRITES_CLOSED', code: 'writes_closed', message: 'Οι αλλαγές στο Εβδομαδιαίο Εθνικών ανοίγουν την ημέρα της μετάβασης — ως τότε μόνο ανάγνωση και προεπισκόπηση' } };
  
-@@ -189,7 +195,7 @@ test('writes closed: every write route → 409 writes_closed with ZERO DB calls,
+@@ -189,7 +198,7 @@ test('writes closed: every write route → 409 writes_closed with ZERO DB calls,
    }
  });
  
@@ -343,7 +350,7 @@ index a2ab95d..95e443b 100644
    for (const fn of DRY_CAPABLE) on('POST', `rpc/${fn}`, (u, b) => json({ ok: true, op: fn, dry_run: true, needs_confirm: false, confirm_token: 'tok', consequences: [], echo: b }));
    for (const [p, method, body, fn, merged] of WRITES) {
      calls.length = 0;
-@@ -247,25 +253,28 @@ test('decision 41: management, accountant, warehouse write every non-delete rout
+@@ -247,25 +256,28 @@ test('decision 41: management, accountant, warehouse write every non-delete rout
    }
  });
  
@@ -376,7 +383,29 @@ index a2ab95d..95e443b 100644
      assert.equal(r.json.replayed, true);
      for (const [fail, status, code] of FAILS) {
        routes.length = 0;
-@@ -484,6 +493,54 @@ test('plan_rt_update dry run: preview.conflict gets its message from PLAN_RULE_T
+@@ -322,6 +334,21 @@ test('need_token → 428 (the screen opens the list), stale_confirm → 422', as
+   assert.equal(r.json.error.code, 'stale_confirm');
+ });
+ 
++// 072b, owner question 7 = (b) (review R5, DB finding 6): PATCH /plan/rt/:id has a token only since 072b - the same
++// mapping as plan_delete, pinned on this route too: no token → 428 (the screen opens the list), another → 422
++test('072b: PATCH /plan/rt/:id need_token → 428, stale_confirm → 422; the token reaches p as sent', async () => {
++  on('POST', 'rpc/plan_rt_update', (u, b) => (b.p.confirm_token ? planReject('stale_confirm', 'plan_rt_update') : planReject('need_token', 'plan_rt_update')));
++  const stops = [{ stop_id: 3, planned_from: '2026-10-27T14:05:00+02:00', planned_to: '2026-10-27T14:20:00+02:00' }];
++  let r = await callOpen('warehouse', 'PATCH', '/plan/rt/5', { stops });
++  assert.equal(r.status, 428, r.text);
++  assert.deepEqual(r.json.error, { type: 'PLAN_RULE', code: 'need_token', message: 'Η πράξη θέλει επιβεβαίωση — δες πρώτα τη λίστα συνεπειών (plan_rt_update)' });
++  calls.length = 0;
++  r = await callOpen('warehouse', 'PATCH', '/plan/rt/5', { stops, confirm_token: 'old' });
++  assert.equal(r.status, 422, r.text);
++  assert.equal(r.json.error.code, 'stale_confirm');
++  assert.deepEqual(rpcCalls().map((c) => c.body), [{ p: { stops, confirm_token: 'old', rt_id: 5 }, p_actor: 'tester', p_role: 'warehouse' }]);
++});
++
+ test('23P01 at the RPC\'s COMMIT (071b EXCLUDE) → 422 truck_busy / driver_busy', async () => {
+   for (const [name, code] of [['rt_v2_truck_once', 'truck_busy'], ['rt_v2_driver_once', 'driver_busy']]) {
+     routes.length = 0;
+@@ -484,6 +511,54 @@ test('plan_rt_update dry run: preview.conflict gets its message from PLAN_RULE_T
    assert.equal(r.json.preview.conflict, null, 'no conflict: untouched');
  });
  

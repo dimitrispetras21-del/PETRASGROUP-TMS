@@ -3,15 +3,15 @@
 // Production shape = the same as plan-072.test.mjs (the 22/9 columns + live-071.sql + live-072.sql, 071 and 071b as
 // executed 22/10) + 072 from drafts/ (or worker/migrations/ after F2's K3), then 072b. Never edit a fixture by hand.
 // What it proves: the guards hold the texts 072b was written against; the dry run keeps nothing; 072b applies with
-// +4 triggers and B-54 following; the verify row; born closed for the API roles; the 116 rules; F2's 203 rules, 071's
-// 56 and 071b's 8 still pass ON TOP of 072b (the EXCLUDE moved, the 15 hooks changed nothing F2 decided); the three
+// +4 triggers and B-54 following; the verify row; born closed for the API roles; the 118 rules; F2's 203 rules, 071's
+// 56 and 071b's 8 still pass ON TOP of 072b (the EXCLUDE moved, the 16 hooks changed nothing F2 decided); the three
 // auditor checks go the PRODUCTION path (review R4, finding 1): each passes the repo lint (lintSql) and the in-DB
 // guard (monitoring.check_sql_guard), is seeded as 073b will seed it and run by monitoring.run_checks as
 // tms_check_runner through 072b's own policy (no policy made by the test, review R1 finding 4): green on the copy,
 // red on a forced violation - also when the copy rt_cancelled drifts and blinds the EXCLUDE (review R2, DB finding
 // 3); a lag() put back into B-91 is refused by both guards (a mutation); 071b's verify finds the EXCLUDE on the
-// segments (review R2, spec E2); the rollback refuses (a v5 row, 073 present), then undoes the 15 hooks in reverse
-// and returns every hooked function and both EXCLUDE byte for byte; ten mutations that each make one case fail.
+// segments (review R2, spec E2); the rollback refuses (a v5 row, 073 present), then undoes the 16 hooks in reverse
+// and returns every hooked function and both EXCLUDE byte for byte; twelve mutations that each make one case fail.
 // The checks live in tms-auditor/checks-072b/ until 073b moves them into the catalog (plan: the handover to F3, P3-6): in checks/ they
 // would enter the 047b seed and the catalog tests before the fixture and the grants know rt_vehicle_segments.
 // Limits (as plan-072): money views are STUBS; the capture holds only the functions of its f/trg lists.
@@ -151,7 +151,7 @@ test('072b on a production-shaped PGlite copy', async (t) => {
     assert.equal(await errorOf(db, src), null);
     assert.equal(await count(db, TRG), triggers + 4);
     assert.equal(await count(db, `SELECT red_value AS n FROM monitoring.checks WHERE id = 'B-54'`), triggers + 4);
-    assert.equal(await count(db, PLAN_FNS), 54 + 24);
+    assert.equal(await count(db, PLAN_FNS), 54 + 25);
     assert.deepEqual((await db.query(EXCL)).rows.map((r) => r.d.split(':')[0]), ['rt_vehicle_segments', 'rt_vehicle_segments']);
     assert.match(await errorOf(db, src) ?? '', /072b: already applied/, 'a second run refuses');
     assert.deepEqual(await fingerprint(), fp0, 'the fingerprint row is the same after 072b');
@@ -164,12 +164,12 @@ test('072b on a production-shaped PGlite copy', async (t) => {
     for (const [k, v] of [['exclude_on_segments', 2], ['hooks_in_place', 10], ['public_acts', 3], ['new_triggers', 4], ['auditor_policy', 1]]) assert.equal(Number(r[k]), v, k);
     for (const k of ['exclude_on_cycles', 'changed_live', 'open_to_api', 'open_relations', 'rls_off', 'other_policies', 'segments',
       'v5_cycles', 'seg_problems', 'overlaps', 'cancel_copy_drift']) assert.equal(Number(r[k]), 0, k);
-    // 072's own verify after 072b, as the plan writes it (Interfaces): changed_live 0, 19 executable plan_*, 78 plan_*
+    // 072's own verify after 072b, as the plan writes it (Interfaces): changed_live 0, 19 executable plan_*, 79 plan_*
     const v = (await db.query(read('072_plan_functions_verify.sql'))).rows[0];
     assert.equal(v.applied, '072 in place');
     assert.equal(Number(v.changed_live), 0);
     assert.equal(Number(v.service_role_execute), 19);
-    assert.equal(Number(v.plan_functions), 78);
+    assert.equal(Number(v.plan_functions), 79);
     // 071b's verify after 072b (review R2, spec E2): the rule is in place, on the segments; the cycle counts are NULL
     const w = (await db.query(readDone('071b_plan_one_vehicle_verify.sql'))).rows[0];
     assert.deepEqual([w.truck_once, w.driver_once, w.exclude_on, w.truck_overlaps, w.driver_overlaps],
@@ -191,12 +191,12 @@ test('072b on a production-shaped PGlite copy', async (t) => {
     } finally { await db.exec('RESET ROLE'); }
   });
 
-  await t.test('072b rules test: 116 OK, 0 FAIL, nothing kept', async () => {
+  await t.test('072b rules test: 118 OK, 0 FAIL, nothing kept', async () => {
     const msg = await errorOf(db, read('072b_plan_vehicle_segments_test.sql'));
     const m = rules('072b').exec(msg ?? '');
     assert.ok(m, msg);
     assert.equal(Number(m[2]), 0, msg);
-    assert.equal(Number(m[1]), 116);
+    assert.equal(Number(m[1]), 118);
     assert.equal(await count(db, `SELECT count(*)::int AS n FROM rt_vehicle_segments`), 0, 'the test keeps nothing');
   });
 
@@ -266,7 +266,7 @@ test('072b on a production-shaped PGlite copy', async (t) => {
     for (const id of Object.keys(q)) assert.equal(await asRunner(db, q[id]), 0, `${id} green again`);
   });
 
-  await t.test('072b rollback: refuses with a v5 row and with 073; then the 15 hooks out in reverse, both EXCLUDE back; 072b again', async () => {
+  await t.test('072b rollback: refuses with a v5 row and with 073; then the 16 hooks out in reverse, both EXCLUDE back; 072b again', async () => {
     const rb = read('072b_plan_vehicle_segments_rollback.sql');
     await db.exec(`INSERT INTO plan_notices (to_desk, kind, message, created_by) VALUES ('natl', 'test_notice', 'TEST 072b', 'test:072b')`);
     assert.match(await errorOf(db, rb) ?? '', /1 v5 row\(s\) or segment\(s\) exist/);
@@ -329,6 +329,13 @@ for (const [name, from, to, want] of [
   // re-proof of review R3: the copy takes the LATER of two segments at the start - the TELIKO's driver for a moment
   ['the copy takes the later segment at the start', /-- mut:copyfirst-begin[\s\S]*?-- mut:copyfirst-end/,
    'order by s.to_at desc, s.id limit 1;', /104 FAIL want ok got FAIL start edge/],
+  // review R5 (both critics): a side moved within its own cycle, the target not read as a source - the net refuses
+  // the Move the owner's answer says to list (the exception (b) does not have)
+  ['the target that is also a source is not read', /-- mut:keep-begin[\s\S]*?-- mut:keep-end/,
+   'v_s := null;', /117 FAIL want ok got plan:seg_outside/],
+  // review R5 (DB finding 3): a stop named twice reaches the list again - the dry run answers without a refusal
+  ['a stop named twice is not refused', /-- mut:twice-begin[\s\S]*?-- mut:twice-end/, '-- (mutated: twice allowed)',
+   /118 FAIL want plan:bad_input got FAIL no error/],
 ]) {
   test(`072b mutation: ${name}`, async () => {
     const db = await prodShaped072();

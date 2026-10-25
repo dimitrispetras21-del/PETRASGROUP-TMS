@@ -158,6 +158,9 @@ DECLARE
     , 'ok'               -- 114 Delete by owner and dispatcher (decision 26): the same
     , 'ok'               -- 115 a plan_rt_update that leaves every handover inside: 072's dry-run answer (no list keys), no token needed
     , 'ok'               -- 116 Move of a cycle's last load while a stop without a leg stays: the cycle is cancelled, its handover listed and removed
+    -- review R5 (both critics): no exception to the owner's answer, and the list = the execution
+    , 'ok'               -- 117 Move (warehouse) of the ANODOS load to the KATHODOS of its OWN cycle: the target is a source too, listed, removed after the token
+    , 'plan:bad_input'   -- 118 plan_rt_update that names one stop twice ([narrow, restore]): refused before the list, never a list the execution breaks
     -- @want (one line per case: "    , '<ok|plan:code|con:name|state:XXXXX>'  -- <k> <what>")
   ]::text[];
   verdict text; got text; hint text; msg text; cname text; st text;
@@ -1285,6 +1288,59 @@ BEGIN
                           AND (SELECT deleted_at IS NOT NULL FROM rt_vehicle_segments WHERE id = g1)
                           AND (SELECT rt_cancelled AND reason IS NULL AND deleted_at IS NULL FROM rt_vehicle_segments WHERE id = g2)
                         THEN 'ok cancelled, the handover listed and removed' ELSE 'FAIL emptied cut ' || r::text || ' ' || r2::text END;
+      ELSIF k = 117 THEN
+        -- K on the KATHODOS, N on the ANODOS (C -> a new stop D), the breakdown at D+1 09:00 (the TELIKO holds C and D).
+        -- N moves to the KATHODOS of the SAME cycle (072: same_rt only when the side does not change), on two new
+        -- stops C and D on D 10:15 - 11:45: the old C and D are swept, the cycle ends D 14:00 - past the handover. The
+        -- target is a source, so its list is read with the request's stops (plan_h_seg_cut_keep); before review R5 this
+        -- Move was refused at COMMIT by the net (seg_outside), the exception the owner's answer does not have.
+        PERFORM plan_put_pieces(jsonb_build_object('pieces', jsonb_build_array(jsonb_build_object('piece_id', pk)),
+                  'target', jsonb_build_object('rt_id', rt1, 'side', 'KATHODOS'),
+                  'stops', jsonb_build_array(jsonb_build_object('ref', 'a', 'stop_id', s1a), jsonb_build_object('ref', 'b', 'stop_id', s1b))),
+                  'test:072b', 'owner');
+        PERFORM plan_put_pieces(jsonb_build_object('pieces', jsonb_build_array(jsonb_build_object('piece_id', pn)),
+                  'target', jsonb_build_object('rt_id', rt1, 'side', 'ANODOS'),
+                  'stops', jsonb_build_array(jsonb_build_object('ref', 'c', 'stop_id', s1c),
+                                             jsonb_build_object('ref', 'd', 'location_id', ld, 'planned_from', e1500, 'planned_to', e1600))),
+                  'test:072b', 'owner');
+        r := plan_seg_change(jsonb_build_object('request_id', gen_random_uuid(), 'rt_id', rt1, 'at', e0900,
+               'place_note', 'Lamia', 'reason', 'vehicle_breakdown', 'vehicle', veh2), 'test:072b', 'dispatcher');
+        g2 := (r->'ids'->>'segment_id')::bigint; g1 := (r->'ids'->>'cut_segment_id')::bigint;
+        j2 := jsonb_build_object('from', jsonb_build_object('piece_ids', jsonb_build_array(pn)),
+                'target', jsonb_build_object('rt_id', rt1, 'side', 'KATHODOS'),
+                'stops', jsonb_build_array(
+                  jsonb_build_object('ref', 'c2', 'location_id', lc, 'side', 'KATHODOS',
+                                     'planned_from', (d + time '10:15') AT TIME ZONE 'Europe/Athens',
+                                     'planned_to', (d + time '10:45') AT TIME ZONE 'Europe/Athens'),
+                  jsonb_build_object('ref', 'd2', 'location_id', ld, 'side', 'KATHODOS',
+                                     'planned_from', (d + time '11:00') AT TIME ZONE 'Europe/Athens',
+                                     'planned_to', (d + time '11:45') AT TIME ZONE 'Europe/Athens')));
+        r := plan_move_pieces(j2 || jsonb_build_object('dry_run', true), 'test:072b', 'warehouse');
+        r2 := plan_move_pieces(j2 || jsonb_build_object('confirm_token', r->>'confirm_token'), 'test:072b', 'warehouse');
+        SET CONSTRAINTS ALL IMMEDIATE;
+        verdict := CASE WHEN (r->>'needs_confirm')::boolean
+                          AND r->'consequences' @> jsonb_build_array(jsonb_build_object('kind', 'seg_removed', 'rt_id', rt1,
+                                'segment_id', g2, 'place_note', 'Lamia', 'at_athens', to_char(e0900 AT TIME ZONE 'Europe/Athens', 'DD/MM HH24:MI')))
+                          AND (r2->>'ok')::boolean AND r2->'ids'->>'rt_id' = rt1::text
+                          AND (SELECT deleted_at IS NOT NULL AND deleted_reason LIKE '%(test:072b, plan_move_pieces)' FROM rt_vehicle_segments WHERE id = g2)
+                          AND (SELECT g.to_at = c.end_at AND c.end_at = (d + time '14:00') AT TIME ZONE 'Europe/Athens' AND g.deleted_at IS NULL
+                                 FROM rt_vehicle_segments g JOIN ct_round_trips c ON c.id = g.rt_id WHERE g.id = g1)
+                          AND (SELECT count(*) FROM v_rt_segments WHERE rt_id = rt1) = 1
+                          AND (SELECT count(*) FROM audit_log WHERE table_name = 'rt_vehicle_segments' AND record_id = g2::text
+                                 AND action = 'delete' AND role = 'warehouse') = 1
+                        THEN 'ok own cycle: listed, removed after the token' ELSE 'FAIL own cycle ' || r::text || ' ' || r2::text END;
+      ELSIF k = 118 THEN
+        -- the handover at D+1 09:00; C named twice: first narrowed to D 14:05 - 14:20 (the cycle would end before
+        -- the handover), then back to its own window. 072's step 1 applies both in order (nothing would be cut), the
+        -- list read only the first: a stale_confirm nobody can clear (and in the other order, seg_outside)
+        r := plan_seg_change(jsonb_build_object('request_id', gen_random_uuid(), 'rt_id', rt1, 'at', e0900,
+               'place_note', 'Lamia', 'reason', 'vehicle_breakdown', 'vehicle', veh2), 'test:072b', 'dispatcher');
+        r := plan_rt_update(jsonb_build_object('rt_id', rt1, 'dry_run', true, 'stops', jsonb_build_array(
+               jsonb_build_object('stop_id', s1c, 'planned_from', (d + time '14:05') AT TIME ZONE 'Europe/Athens',
+                                  'planned_to', (d + time '14:20') AT TIME ZONE 'Europe/Athens'),
+               jsonb_build_object('stop_id', s1c, 'planned_from', (e + time '12:00') AT TIME ZONE 'Europe/Athens',
+                                  'planned_to', (e + time '14:00') AT TIME ZONE 'Europe/Athens'))), 'test:072b', 'dispatcher');
+        verdict := 'ok no refusal ' || r::text;
       -- @case (each task adds its "ELSIF k = <n> THEN" branches above this line)
       END IF;
       SET CONSTRAINTS ALL IMMEDIATE;

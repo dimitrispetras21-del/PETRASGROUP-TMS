@@ -25,7 +25,7 @@ DECLARE
   x_truck CONSTANT text := 'EXCLUDE USING gist (truck_id WITH =, tstzrange(start_at, end_at, ''[)''::text) WITH &&) WHERE (((model = 2) AND (trip_type = ''OWNED''::text) AND (truck_id IS NOT NULL) AND (status <> ''cancelled''::text))) DEFERRABLE INITIALLY DEFERRED';
   x_driver CONSTANT text := 'EXCLUDE USING gist (driver_id WITH =, tstzrange(start_at, end_at, ''[)''::text) WITH &&) WHERE (((model = 2) AND (trip_type = ''OWNED''::text) AND (driver_id IS NOT NULL) AND (status <> ''cancelled''::text))) DEFERRABLE INITIALLY DEFERRED';
 
-  -- ===== the 15 hooks in 10 functions of 072: (text before -> 072b text), each exactly once in its function =====
+  -- ===== the 16 hooks in 10 functions of 072: (text before -> 072b text), each exactly once in its function =====
   h_busy_a CONSTANT text := $h$  select r.code into v_code from ct_round_trips r
    where r.model = 2 and r.trip_type = 'OWNED' and r.status <> 'cancelled' and r.id is distinct from p_except
      and ((p_kind = 'truck' and r.truck_id = p_id) or (p_kind = 'driver' and r.driver_id = p_id))
@@ -173,6 +173,15 @@ $h$;
   h_mv_b CONSTANT text := $h$  perform plan_h_stops_sweep(v_stops, v_reason, p_actor, p_role);
   -- 072b: the handovers the list named go after the token, on the narrowed window (owner question 7 = b)
   perform plan_h_seg_cut(v_full, 'plan_move_pieces', p_actor, p_role);
+$h$;
+  -- review R5 (both critics): a side moved within its own cycle - the target is a source too; listed with the
+  -- request's stops, cut after the token by hook 14 (owner question 7 = b, no exception)
+  h_mv_list_a CONSTANT text := $h$  v_full := plan_h_drop_consequences(v_legs, v_keep, v_chosen);
+$h$;
+  h_mv_list_b CONSTANT text := $h$  v_full := plan_h_drop_consequences(v_legs, v_keep, v_chosen);
+  -- 072b: a side moved within its own cycle narrows that cycle too: the target is then a source, listed with the
+  -- request's stops (owner question 7 = b; review R5) and cut after the token by the same plan_h_seg_cut (hook 14)
+  v_full := v_full || plan_h_seg_cut_keep(v_legs, v_keep, p->'stops');
 $h$;
   h_del_b CONSTANT text := $h$  perform plan_h_stops_sweep(v_stops, v_reason, p_actor, p_role);
   -- 072b: the handovers the list named go after the token, on the narrowed window (owner question 7 = b)
@@ -387,7 +396,8 @@ begin
   -- the handover first) - never seg_time, which is the acts' own "time not inside the cycle / between its
   -- neighbours". Plan decision H-6. Owner question 7 = (b), 25/10: Move, Delete and plan_rt_update LIST such a
   -- handover (seg_removed) and remove it after the token (plan_h_seg_cut), so this rule is now the NET: it speaks only
-  -- when a narrowing bypassed the list (a write outside plan_*, or a Move whose target is its own source cycle).
+  -- when a narrowing bypassed the list (a write outside plan_*; a Move to the other side of its own cycle is listed
+  -- too since review R5, plan_h_seg_cut_keep).
   -- Review R3 (DB finding 5): the detail names EVERY handover left outside, in time order (a later segment's
   -- from_at; it carries the reason, seg_reason), so one refusal says all that must move - not one refusal each.
   -- mut:outside-begin
@@ -897,8 +907,8 @@ begin
   -- planned_to of the live stops), read BEFORE any write so the token covers the list. A cycle that empties is
   -- read too: it is cancelled after the sweep (072 lists it as rt_cancelled), but a stop declared without a leg
   -- stays until then (decision 4), so its window can still narrow past a handover (rules test 116). The target
-  -- p_keep only gains stops: not read. A target that is also a source and narrows anyway is left to seg_outside at
-  -- COMMIT (the net, never a silent loss).
+  -- p_keep gains stops, so its window needs the request's stops: when it is also a source (a side moved within its
+  -- own cycle) plan_h_seg_cut_keep reads it, from plan_move_pieces (hook 16).
   for r in select c.id from ct_round_trips c
             where c.id in (select l.rt_id from piece_legs l where l.id = any (p_legs) and l.deleted_at is null)
               and c.id is distinct from p_keep and c.model = 2 and c.status <> 'cancelled'
@@ -916,6 +926,45 @@ begin
 end
 $f$;
 
+  CREATE FUNCTION public.plan_h_seg_cut_keep(p_legs bigint[], p_keep bigint, p_stops jsonb) RETURNS jsonb
+    LANGUAGE plpgsql STABLE SET search_path = public AS $f$
+declare v_s timestamptz; v_e timestamptz; v_ref bigint[];
+begin
+  -- Review R5 (both critics): 072 lets a Move take a side to the OTHER side of its own cycle (same_rt only when every
+  -- leg is already on the target side). That target is a source too: its old stops are swept, and its window can
+  -- narrow past a handover. The owner's answer to question 7 = (b) has no exception for it, so it is listed and
+  -- removed after the token like any source cycle, by the same plan_h_seg_cut. The window after the move, read
+  -- BEFORE any write (071's rule, as plan_h_seg_cut_legs): the live stops that stay - not swept, because another
+  -- leg keeps them or the request names them by stop_id (plan_h_put puts on those) - and the request's new stops
+  -- with their planned_from / planned_to. A named stop that the put leaves without a leg is swept anyway: the window
+  -- is then narrower than read here, and a handover left outside unlisted is seg_outside at COMMIT (loud, never a
+  -- removal nobody was shown).
+  if p_keep is null
+     or not exists (select 1 from piece_legs l where l.id = any (p_legs) and l.deleted_at is null and l.rt_id = p_keep)
+     or not exists (select 1 from ct_round_trips c where c.id = p_keep and c.model = 2 and c.status <> 'cancelled') then
+    return '[]'::jsonb;
+  end if;
+  select array_agg((x->>'stop_id')::bigint) into v_ref
+    from jsonb_array_elements(coalesce(p_stops, '[]'::jsonb)) x where x ? 'stop_id';
+  -- mut:keep-begin
+  select min(t.f), max(t.t) into v_s, v_e from (
+    select s.planned_from as f, s.planned_to as t
+      from rt_stops s
+     where s.rt_id = p_keep and s.deleted_at is null
+       and (s.id = any (coalesce(v_ref, '{}'))
+            or not (exists (select 1 from piece_legs l where l.id = any (p_legs) and l.deleted_at is null
+                              and s.id in (l.pickup_stop_id, l.drop_stop_id))
+                    and not exists (select 1 from piece_legs l where s.id in (l.pickup_stop_id, l.drop_stop_id)
+                                      and l.deleted_at is null and not (l.id = any (p_legs)))))
+    union all
+    select (x->>'planned_from')::timestamptz, (x->>'planned_to')::timestamptz
+      from jsonb_array_elements(coalesce(p_stops, '[]'::jsonb)) x where not (x ? 'stop_id')) t;
+  -- mut:keep-end
+  if v_s is null then return '[]'::jsonb; end if;
+  return plan_h_seg_cut_list(p_keep, v_s, v_e);
+end
+$f$;
+
   CREATE FUNCTION public.plan_h_seg_rt_cut(p_rt bigint, p_sid bigint[], p_sfrom timestamptz[], p_sto timestamptz[],
                                            p_side text, p_delta interval) RETURNS jsonb
     LANGUAGE plpgsql STABLE SET search_path = public AS $f$
@@ -924,6 +973,15 @@ begin
   -- plan_rt_update (072): the window after its step 1 (explicit stop windows) and step 2 (a whole side by one
   -- delta), read BEFORE any write with 071's rule (plan_rt_window_sync): the list and the token of owner question
   -- 7 = (b). A handover never moves with the side (plan H-23): the list says which ones the new window leaves out.
+  -- Review R5 (DB finding 3): the list reads a stop's FIRST entry in p_sid, while 072's step 1 applies every entry in
+  -- order, so a stop named twice ([narrow, restore] or [restore, narrow]) made the list and the execution disagree
+  -- (a stale_confirm nobody can clear, or seg_outside). 072 never needs a stop twice in one call: refused here,
+  -- before the list and before any write.
+  -- mut:twice-begin
+  if cardinality(p_sid) <> (select count(distinct x) from unnest(p_sid) x) then
+    perform plan_h_raise('bad_input', 'stops: stop_id twice');
+  end if;
+  -- mut:twice-end
   select min(t.f), max(t.t) into v_s, v_e from (
     select coalesce(p_sfrom[array_position(p_sid, s.id)], s.planned_from)
              + case when s.side = p_side then p_delta else interval '0' end as f,
@@ -973,8 +1031,8 @@ begin
 end
 $f$;
 
-  -- ===== PART 6: THE 15 HOOKS IN 10 FUNCTIONS OF 072 (the live text + one replacement each; generated, proved
-  -- reversible). Applied in order k; a function with several hooks (plan_rt_update: 6) chains them - the "before"
+  -- ===== PART 6: THE 16 HOOKS IN 10 FUNCTIONS OF 072 (the live text + one replacement each; generated, proved
+  -- reversible). Applied in order k; a function with several hooks (plan_rt_update: 6, plan_move_pieces: 2) chains them - the "before"
   -- of each is the "after" of the one before it - and the rollback undoes them in reverse order (k desc). =====
   FOR v_fn IN SELECT * FROM (VALUES
       (1, 'public.plan_h_busy(text,bigint,timestamptz,timestamptz,bigint)', h_busy_a, h_busy_b,
@@ -1006,7 +1064,9 @@ $f$;
       (14, 'public.plan_move_pieces(jsonb,text,text)', h_sweep_a, h_mv_b,
        'b6b939f4f7a63d5a464b45082e83f2d7', 'b67eafc88f2b3a1cbad41776c57d6f38'),
       (15, 'public.plan_delete(jsonb,text,text)', h_sweep_a, h_del_b,
-       'c85450e28813d48023cb7f149949639c', '7b5c7a31f19d1d38ef1fc115cc3701ec')
+       'c85450e28813d48023cb7f149949639c', '7b5c7a31f19d1d38ef1fc115cc3701ec'),
+      (16, 'public.plan_move_pieces(jsonb,text,text)', h_mv_list_a, h_mv_list_b,
+       'b67eafc88f2b3a1cbad41776c57d6f38', '042246d94fcdd1df628edd5840de1330')
     ) v(k, sig, a, b, m0, m1) ORDER BY k LOOP
     v_oid := to_regprocedure(v_fn.sig);
     SELECT prosrc, proacl::text, prosecdef, provolatile, prolang, proconfig
@@ -1413,7 +1473,7 @@ $f$;
     public.plan_h_seg_stop_warn(bigint,jsonb), public.plan_h_seg_v1_warn(bigint), public.plan_h_seg_next_rt(bigint),
     public.plan_h_seg_vehicle_ok(text,bigint,bigint,bigint,bigint,numeric), public.plan_h_seg_consequences(bigint[]),
     public.plan_h_seg_drop(bigint,bigint[],bigint[],text,text,text), public.plan_h_seg_cut_list(bigint,timestamptz,timestamptz),
-    public.plan_h_seg_cut_legs(bigint[],bigint),
+    public.plan_h_seg_cut_legs(bigint[],bigint), public.plan_h_seg_cut_keep(bigint[],bigint,jsonb),
     public.plan_h_seg_rt_cut(bigint,bigint[],timestamptz[],timestamptz[],text,interval),
     public.plan_h_seg_cut(jsonb,text,text,text),
     public.plan_seg_change(jsonb,text,text), public.plan_seg_fix(jsonb,text,text), public.plan_seg_remove(jsonb,text,text)
@@ -1426,7 +1486,7 @@ $f$;
   CREATE POLICY monitor_read ON public.rt_vehicle_segments FOR SELECT TO tms_check_runner, tms_reader USING (true);
 
   -- ===== PART 9: PROOFS =====
-  IF v_n <> 15 THEN RAISE EXCEPTION '072b proof: % hooks applied (expected 15)', v_n; END IF;
+  IF v_n <> 16 THEN RAISE EXCEPTION '072b proof: % hooks applied (expected 16)', v_n; END IF;
   -- the functions 072b relies on and did NOT change are still the texts of PART 0 (the hooked 10 are proved above)
   FOR v_g IN SELECT * FROM (VALUES
       ('public.dl_sync_from_rt()', '331cea3a8987b74a9b0add698df9b158'),
@@ -1505,8 +1565,8 @@ $f$;
      AND p.prosecdef AND has_function_privilege('service_role', p.oid, 'EXECUTE')
      AND NOT has_function_privilege('anon', p.oid, 'EXECUTE') AND NOT has_function_privilege('authenticated', p.oid, 'EXECUTE');
   IF v_k <> 3 THEN RAISE EXCEPTION '072b proof: the three public acts are not definer + service_role only (% of 3)', v_k; END IF;
-  IF (SELECT count(*) FROM pg_proc WHERE pronamespace = 'public'::regnamespace AND proname LIKE 'plan\_%') <> 54 + 24 THEN
-    RAISE EXCEPTION '072b proof: plan_* count is not 54 + 24';
+  IF (SELECT count(*) FROM pg_proc WHERE pronamespace = 'public'::regnamespace AND proname LIKE 'plan\_%') <> 54 + 25 THEN
+    RAISE EXCEPTION '072b proof: plan_* count is not 54 + 25';
   END IF;
   -- B-54: exactly four triggers more
   SELECT count(*) INTO v_trg1 FROM pg_trigger t JOIN pg_class c ON c.oid = t.tgrelid
@@ -1520,7 +1580,7 @@ $f$;
   IF v_k <> 1 THEN RAISE EXCEPTION '072b: B-54 not updated (% rows)', v_k; END IF;
 
   PERFORM pg_notify('pgrst', 'reload schema');
-  RAISE NOTICE '072b OK: segments table, 2 EXCLUDE moved, 2 views, 15 hooks in 10 functions of 072, 3 acts, auditor policy; triggers % -> %, B-54 = %',
+  RAISE NOTICE '072b OK: segments table, 2 EXCLUDE moved, 2 views, 16 hooks in 10 functions of 072, 3 acts, auditor policy; triggers % -> %, B-54 = %',
     v_trg0, v_trg1, v_trg1;
 END;
   -- ===== what it did =====
