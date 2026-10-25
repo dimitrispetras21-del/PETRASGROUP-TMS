@@ -9480,7 +9480,7 @@ process.exit(ok ? 0 : 1);
 node --test worker/test/*.test.mjs worker/src/rt-rules.test.mjs 2>&1 | grep -E '^ℹ (tests|pass|fail)'
 node worker/tools/worker-guard.mjs worker/src/index.js --plan 1 | tail -1
 ```
-Expected: `ℹ tests 282`, `ℹ pass 281`, `ℹ skipped 1`, `ℹ fail 0`· `GUARD OK (15 markers, plan=1) worker/src/index.js`.
+Expected: `ℹ tests 283`, `ℹ pass 282`, `ℹ skipped 1`, `ℹ fail 0` (+1 = the input-rule test of Γ3; measured 25/10)· `GUARD OK (15 markers, plan=1) worker/src/index.js`.
 
 - [ ] **Step 5: Commit**
 
