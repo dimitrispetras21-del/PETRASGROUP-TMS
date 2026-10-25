@@ -4377,6 +4377,43 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
           PERFORM plan_rt_create(jsonb_build_object('new_rt', jsonb_build_object('trip_type', 'OWNED', 'truck_id', b_t2),
                     'stops', '[]'::jsonb), 'test:072b', 'dispatcher');
         ELSIF kb = 15 THEN
+          -- coordinator 25/10 (cross-cutting input rule): a partner_rate of NaN (it sorts above every number, so it
+          -- passes CHECK rt_partner_rate) or +-Infinity is refused as bad_input 'partner_rate:finite', a stop end of
+          -- 'infinity' / '-infinity' as bad_input 'stop.planned:finite', an id of 'NaN' as bad_input (the bigint
+          -- cast, 'new_rt or stops'); nothing is written. Then the case itself: an unknown trip_type.
+          FOR b_v3 IN SELECT value FROM jsonb_array_elements(jsonb_build_array(
+              jsonb_build_object('want', 'partner_rate:finite', 'f', h16, 't', h18,
+                                 'nr', jsonb_build_object('trip_type', 'PARTNER', 'partner_id', b_pa, 'partner_rate', 'NaN')),
+              jsonb_build_object('want', 'partner_rate:finite', 'f', h16, 't', h18,
+                                 'nr', jsonb_build_object('trip_type', 'PARTNER', 'partner_id', b_pa, 'partner_rate', 'Infinity')),
+              jsonb_build_object('want', 'partner_rate:finite', 'f', h16, 't', h18,
+                                 'nr', jsonb_build_object('trip_type', 'PARTNER', 'partner_id', b_pa, 'partner_rate', '-Infinity')),
+              jsonb_build_object('want', 'stop.planned:finite', 'f', h16, 't', 'infinity',
+                                 'nr', jsonb_build_object('trip_type', 'OWNED', 'truck_id', b_t2, 'driver_id', b_d2)),
+              jsonb_build_object('want', 'stop.planned:finite', 'f', '-infinity', 't', h18,
+                                 'nr', jsonb_build_object('trip_type', 'OWNED', 'truck_id', b_t2, 'driver_id', b_d2)),
+              jsonb_build_object('want', 'stop.planned:finite', 'f', h16, 't', 'infinity',
+                                 'nr', jsonb_build_object('trip_type', 'PARTNER', 'partner_id', b_pa)),
+              jsonb_build_object('want', 'new_rt or stops', 'f', h16, 't', h18,
+                                 'nr', jsonb_build_object('trip_type', 'OWNED', 'truck_id', 'NaN', 'driver_id', b_d2))))
+          LOOP
+            BEGIN
+              PERFORM plan_rt_create(jsonb_build_object('new_rt', b_v3->'nr',
+                        'stops', jsonb_build_array(jsonb_build_object('ref', 'x', 'location_id', b_lc, 'side', 'KATHODOS',
+                                                                      'planned_from', b_v3->'f', 'planned_to', b_v3->'t'))),
+                      'test:072b', 'dispatcher');
+              RAISE EXCEPTION 'FAIL a non-finite input was accepted (%)', b_v3->>'want';
+            EXCEPTION WHEN check_violation THEN
+              GET STACKED DIAGNOSTICS b_msg = MESSAGE_TEXT, b_hint = PG_EXCEPTION_HINT;
+              IF b_hint IS DISTINCT FROM 'plan:bad_input' OR b_msg NOT LIKE '%' || (b_v3->>'want') || '%' THEN
+                RAISE EXCEPTION 'FAIL non-finite probe % got % (%)', b_v3->>'want', coalesce(b_hint, 'no hint'), b_msg;
+              END IF;
+            END;
+          END LOOP;
+          IF (SELECT count(*) FROM ct_round_trips WHERE created_by = 'test:072b' AND model = 2) <> 1
+             OR (SELECT count(*) FROM rt_stops WHERE created_by = 'test:072b') <> 2 THEN
+            RAISE EXCEPTION 'FAIL a create with a non-finite input was written';
+          END IF;
           PERFORM plan_rt_create(jsonb_build_object('new_rt', jsonb_build_object('trip_type', 'X', 'truck_id', b_t2),
                     'stops', jsonb_build_array(jsonb_build_object('ref', 'x', 'location_id', b_lc, 'side', 'KATHODOS',
                                                                   'planned_from', h06, 'planned_to', h08))), 'test:072b', 'dispatcher');
@@ -4526,8 +4563,21 @@ begin
   if (select count(distinct e->>'ref') from jsonb_array_elements(p->'stops') e) <> v_n then
     perform plan_h_raise('bad_input', 'stops: ref not unique');
   end if;
+  -- coordinator 25/10 (cross-cutting input rule): 'infinity' / '-infinity' are valid timestamptz input and pass the
+  -- tests above and CHECK rt_v2_window; the cycle was written with an endless window (date_end 'infinity') and fell
+  -- out of every day read. A stop end is a finite time (the same refusal as plan_h_stop_add).
+  if exists (select 1 from jsonb_array_elements(p->'stops') e
+              where not (isfinite((e->>'planned_from')::timestamptz) and isfinite((e->>'planned_to')::timestamptz))) then
+    perform plan_h_raise('bad_input', 'stop.planned:finite');
+  end if;
   if v_type is null or v_type not in ('OWNED', 'PARTNER') then
     perform plan_h_raise('bad_input', 'trip_type');
+  end if;
+  -- coordinator 25/10: NaN sorts above every number in Postgres, so it passes CHECK rt_partner_rate (>= 0) and was
+  -- stored as it is (numeric(10,2) keeps NaN); +-Infinity ended as a raw numeric overflow at the INSERT. A rate is a
+  -- finite number.
+  if v_rate is not null and not (abs(v_rate) < 'Infinity'::numeric) then
+    perform plan_h_raise('bad_input', 'partner_rate:finite');
   end if;
   if v_type = 'OWNED' then
     if v_partner is not null then perform plan_h_raise('bad_input', 'partner_id on OWNED'); end if;
@@ -4586,7 +4636,7 @@ $f$;
 - [ ] **Step 4: Τρέξε, να περάσει**
 
 Run: `cd tms-auditor && node --test test/plan-072.test.mjs`
-Expected: ✔ «072 rules test», `Result: 107 OK, 0 FAIL` (90 Α + B1–B17· π.χ. `B1` = «ok plan_rt_create: stops first, window exact, one empty payroll line, three audit rows»). Αν B16/B17 αποτύχουν με «FAIL put_group new_rt», ο κλάδος `new_rt` του `plan_h_target` (Α1) δεν δίνει στο `plan_h_put` το σχήμα `{rt_id, side, stops}` που περιμένει.
+Expected: ✔ «072 rules test», `Result: 107 OK, 0 FAIL` (90 Α + B1–B17· π.χ. `B1` = «ok plan_rt_create: stops first, window exact, one empty payroll line, three audit rows»). Η B15 τρέχει πρώτα επτά δοκιμές μη πεπερασμένης εισόδου (κανόνας συντονιστή 25/10: `partner_rate` NaN / ±Infinity → `bad_input 'partner_rate:finite'`, άκρο στάσης `infinity` / `-infinity` → `bad_input 'stop.planned:finite'`, id `NaN` → `bad_input`, τίποτα γραμμένο)· χωρίς τους δύο ελέγχους της `plan_rt_create` πέφτει με «FAIL a non-finite input was accepted». Αν B16/B17 αποτύχουν με «FAIL put_group new_rt», ο κλάδος `new_rt` του `plan_h_target` (Α1) δεν δίνει στο `plan_h_put` το σχήμα `{rt_id, side, stops}` που περιμένει.
 
 - [ ] **Step 5: Commit**
 

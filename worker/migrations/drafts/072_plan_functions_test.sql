@@ -1211,7 +1211,287 @@ BEGIN
     END;
   END LOOP;
 
-  -- [SECTION B CASES]
+  -- ===== SECTION B CASES (B1-B113): cycle, delete, VS, local loading, notices, reads, the week-scenario 19/32/31
+  -- (B77), the reviews' cases (B78-B97), request_id of a local loading and a cancel without id (B98-B101), the
+  -- vehicle never emptied by plan_rt_update (B102-B113, owner 25/10) =====
+  -- Own fixture (rec072TB..., "TEST 072 B ...", TEST-072-B...), undone by the final error of the outer block;
+  -- each case undone by its marker. Results go into the outer ok / bad / res. ASCII only.
+  -- S (every case): an OWNED v5 cycle made by plan_rt_create (TEST-072-B1 / driver B1, stops A 06-08 and B 12-14
+  -- KATHODOS on day D = Athens today + 40), and a national order A -> B of 10 pallets, one piece, one leg A -> B.
+  DECLARE
+    b_td date := (now() AT TIME ZONE 'Europe/Athens')::date;
+    b_d date; b_w date; kb int; b_t0 timestamptz; b_el interval; b_n int;
+    h03 timestamptz; h04 timestamptz; h05 timestamptz; h06 timestamptz; h07 timestamptz; h08 timestamptz;
+    h09 timestamptz; h10 timestamptz; h11 timestamptz; h12 timestamptz; h13 timestamptz; h14 timestamptz;
+    h16 timestamptz; h18 timestamptz; h20 timestamptz;
+    b_hub bigint; b_la bigint; b_lb bigint; b_lc bigint; b_lx bigint; b_ln bigint; b_cl bigint; b_pa bigint;
+    b_t1 bigint; b_t2 bigint; b_d1 bigint; b_d2 bigint; b_d3 bigint;
+    b_vo bigint; b_vld bigint; b_vcd bigint; b_u1 bigint; b_u2 bigint; b_u3 bigint;
+    b_no1 bigint; b_no2 bigint; b_no3 bigint; b_sh1 bigint; b_sh2 bigint; b_p1 bigint; b_p2 bigint;
+    b_rt1 bigint; b_sa bigint; b_sb bigint; b_lg1 bigint; b_lg2 bigint;
+    b_bs1 bigint; b_bs2 bigint; b_bs3 bigint; b_q1 bigint; b_q2 bigint; b_q3 bigint;
+    b_x bigint; b_y bigint; b_z bigint; b_e1 bigint; b_e2 bigint; b_e3 bigint;
+    b_v jsonb; b_v2 jsonb; b_v3 jsonb; b_tok text; b_txt text;
+    b_want text[] := ARRAY[]::text[]
+      || ARRAY['ok', 'plan:truck_busy', 'ok', 'ok', 'plan:no_vehicle',
+               'ok', 'ok', 'con:rt_partner_rate', 'con:rt_partner_rate', 'plan:no_vehicle',
+               'ok', 'ok', 'plan:driver_busy', 'plan:bad_input', 'plan:bad_input',
+               'ok', 'plan:truck_busy']   -- B1-B17 (Task B1)
+      ;  -- end of b_want
+    b_verdict text; b_got text; b_hint text; b_msg text; b_cname text; b_st text;
+  BEGIN
+    b_d := b_td + 40;
+    h03 := (b_d + time '03:00') AT TIME ZONE 'Europe/Athens'; h04 := (b_d + time '04:00') AT TIME ZONE 'Europe/Athens';
+    h05 := (b_d + time '05:00') AT TIME ZONE 'Europe/Athens'; h06 := (b_d + time '06:00') AT TIME ZONE 'Europe/Athens';
+    h07 := (b_d + time '07:00') AT TIME ZONE 'Europe/Athens'; h08 := (b_d + time '08:00') AT TIME ZONE 'Europe/Athens';
+    h09 := (b_d + time '09:00') AT TIME ZONE 'Europe/Athens'; h10 := (b_d + time '10:00') AT TIME ZONE 'Europe/Athens';
+    h11 := (b_d + time '11:00') AT TIME ZONE 'Europe/Athens'; h12 := (b_d + time '12:00') AT TIME ZONE 'Europe/Athens';
+    h13 := (b_d + time '13:00') AT TIME ZONE 'Europe/Athens'; h14 := (b_d + time '14:00') AT TIME ZONE 'Europe/Athens';
+    h16 := (b_d + time '16:00') AT TIME ZONE 'Europe/Athens'; h18 := (b_d + time '18:00') AT TIME ZONE 'Europe/Athens';
+    h20 := (b_d + time '20:00') AT TIME ZONE 'Europe/Athens';
+    SELECT id INTO b_hub FROM locations WHERE is_hub;
+    INSERT INTO locations (legacy_id, name) VALUES ('rec072TBLA', 'TEST 072 B A') RETURNING id INTO b_la;
+    INSERT INTO locations (legacy_id, name) VALUES ('rec072TBLB', 'TEST 072 B B') RETURNING id INTO b_lb;
+    INSERT INTO locations (legacy_id, name) VALUES ('rec072TBLC', 'TEST 072 B C') RETURNING id INTO b_lc;
+    INSERT INTO locations (legacy_id, name) VALUES ('rec072TBLX', 'TEST 072 B abroad') RETURNING id INTO b_lx;
+    INSERT INTO locations (legacy_id, name) VALUES ('rec072TBLN', 'TEST 072 B new') RETURNING id INTO b_ln;
+    INSERT INTO clients (company_name) VALUES ('TEST 072 B client') RETURNING id INTO b_cl;
+    INSERT INTO partners (company_name) VALUES ('TEST 072 B partner') RETURNING id INTO b_pa;
+    INSERT INTO trucks (license_plate) VALUES ('TEST-072-B1') RETURNING id INTO b_t1;
+    INSERT INTO trucks (license_plate) VALUES ('TEST-072-B2') RETURNING id INTO b_t2;
+    INSERT INTO drivers (full_name) VALUES ('TEST 072 B driver 1') RETURNING id INTO b_d1;
+    INSERT INTO drivers (full_name) VALUES ('TEST 072 B driver 2') RETURNING id INTO b_d2;
+    INSERT INTO drivers (full_name) VALUES ('TEST 072 B local') RETURNING id INTO b_d3;
+    -- a VS import: loads abroad, crosses Veroia on D (Cross-dock stop), three Greek deliveries 4 / 6 / 10 on D; the
+    -- order's own location columns mirror its stops, as orders_intl.js writes them (decision 35)
+    INSERT INTO orders (legacy_id, order_type, direction, status, veroia_switch, loading_datetime, delivery_datetime,
+                        cross_dock_date, reference, client_id, loading_location_1_id, unloading_location_1_id,
+                        unloading_location_2_id, unloading_location_3_id)
+    VALUES ('rec072TBO1', 'International', 'Import', 'Pending', true, b_d - 3, b_d, b_d, 'WN072-TEST', b_cl,
+            b_lx, b_la, b_lb, b_lc) RETURNING id INTO b_vo;
+    INSERT INTO order_stops (legacy_id, stop_type, stop_number, datetime, order_id, location_id, pallets)
+    VALUES ('rec072TBS0', 'Loading', 1, b_d - 3, b_vo, b_lx, 20) RETURNING id INTO b_vld;
+    INSERT INTO order_stops (legacy_id, stop_type, stop_number, datetime, order_id, location_id)
+    VALUES ('rec072TBSH', 'Cross-dock', 1, b_d, b_vo, b_hub) RETURNING id INTO b_vcd;
+    INSERT INTO order_stops (legacy_id, stop_type, stop_number, datetime, order_id, location_id, pallets)
+    VALUES ('rec072TBS1', 'Unloading', 1, b_d, b_vo, b_la, 4) RETURNING id INTO b_u1;
+    INSERT INTO order_stops (legacy_id, stop_type, stop_number, datetime, order_id, location_id, pallets)
+    VALUES ('rec072TBS2', 'Unloading', 2, b_d, b_vo, b_lb, 6) RETURNING id INTO b_u2;
+    INSERT INTO order_stops (legacy_id, stop_type, stop_number, datetime, order_id, location_id, pallets)
+    VALUES ('rec072TBS3', 'Unloading', 3, b_d, b_vo, b_lc, 10) RETURNING id INTO b_u3;
+
+    FOR kb IN 1 .. array_length(b_want, 1) LOOP
+      b_verdict := NULL;
+      BEGIN
+        SET CONSTRAINTS ALL DEFERRED;
+        -- S
+        b_v := plan_rt_create(jsonb_build_object(
+                 'new_rt', jsonb_build_object('trip_type', 'OWNED', 'truck_id', b_t1, 'driver_id', b_d1), 'side', 'KATHODOS',
+                 'stops', jsonb_build_array(
+                   jsonb_build_object('ref', 'a', 'location_id', b_la, 'side', 'KATHODOS', 'planned_from', h06, 'planned_to', h08),
+                   jsonb_build_object('ref', 'b', 'location_id', b_lb, 'side', 'KATHODOS', 'planned_from', h12, 'planned_to', h14))),
+               'test:072b', 'dispatcher');
+        b_rt1 := (b_v->>'rt_id')::bigint; b_sa := (b_v->'stops'->>'a')::bigint; b_sb := (b_v->'stops'->>'b')::bigint;
+        INSERT INTO national_orders (legacy_id, client_id, reference, price) VALUES ('rec072TBN1', b_cl, 'WN072-TEST', 100)
+          RETURNING id INTO b_no1;
+        INSERT INTO shipments (nat_order_id, origin_location_id, dest_location_id, pallets, load_from, load_to, deliver_from,
+                               deliver_to, created_by)
+        VALUES (b_no1, b_la, b_lb, 10, h06, h08, h12, h14, 'test:072b') RETURNING id INTO b_sh1;
+        INSERT INTO shipment_pieces (shipment_id, pallets, created_by) VALUES (b_sh1, 10, 'test:072b') RETURNING id INTO b_p1;
+        INSERT INTO piece_legs (piece_id, leg_no, rt_id, pickup_stop_id, drop_stop_id, created_by)
+        VALUES (b_p1, 1, b_rt1, b_sa, b_sb, 'test:072b') RETURNING id INTO b_lg1;
+        SET CONSTRAINTS ALL IMMEDIATE;
+        SET CONSTRAINTS ALL DEFERRED;
+        -- the VS bridges (cases that need the VS): one piece per Greek stop, waiting at the hub
+        IF kb IN (16, 17, 21, 52, 55, 56, 57, 58, 60, 74) THEN
+          INSERT INTO shipments (order_id, order_stop_id, created_by) VALUES (b_vo, b_u1, 'test:072b') RETURNING id INTO b_bs1;
+          INSERT INTO shipment_pieces (shipment_id, pallets, created_by) VALUES (b_bs1, 4, 'test:072b') RETURNING id INTO b_q1;
+          INSERT INTO shipments (order_id, order_stop_id, created_by) VALUES (b_vo, b_u2, 'test:072b') RETURNING id INTO b_bs2;
+          INSERT INTO shipment_pieces (shipment_id, pallets, created_by) VALUES (b_bs2, 6, 'test:072b') RETURNING id INTO b_q2;
+          INSERT INTO shipments (order_id, order_stop_id, created_by) VALUES (b_vo, b_u3, 'test:072b') RETURNING id INTO b_bs3;
+          INSERT INTO shipment_pieces (shipment_id, pallets, created_by) VALUES (b_bs3, 10, 'test:072b') RETURNING id INTO b_q3;
+        END IF;
+
+        IF kb = 1 THEN
+          NULL;
+        -- ---- Task B1: plan_rt_create and the target new_rt ----
+        ELSIF kb IN (2, 3) THEN   -- the same truck Wed 05:00-07:00 while S runs 06:00-14:00
+          b_v2 := jsonb_build_object('new_rt', jsonb_build_object('trip_type', 'OWNED', 'truck_id', b_t1, 'driver_id', b_d2),
+                    'stops', jsonb_build_array(jsonb_build_object('ref', 'x', 'location_id', b_lc, 'side', 'KATHODOS',
+                                                                  'planned_from', h05, 'planned_to', h07)));
+          IF kb = 2 THEN
+            PERFORM plan_rt_create(b_v2, 'test:072b', 'dispatcher');
+          ELSE
+            BEGIN
+              PERFORM plan_rt_create(b_v2, 'test:072b', 'dispatcher');
+              b_verdict := 'FAIL no refusal';
+            EXCEPTION WHEN check_violation THEN
+              GET STACKED DIAGNOSTICS b_msg = MESSAGE_TEXT, b_hint = PG_EXCEPTION_HINT;
+              b_verdict := CASE WHEN b_hint = 'plan:truck_busy' AND b_msg LIKE '%' || (b_v->>'code') || '%'
+                                THEN 'ok truck_busy names the other cycle' ELSE 'FAIL message ' || b_msg END;
+            END;
+          END IF;
+        ELSIF kb = 4 THEN   -- 14:00 end and 14:00 start do not collide ([) ranges, 071b)
+          b_v2 := plan_rt_create(jsonb_build_object('new_rt', jsonb_build_object('trip_type', 'OWNED', 'truck_id', b_t1, 'driver_id', b_d2),
+                    'stops', jsonb_build_array(jsonb_build_object('ref', 'x', 'location_id', b_lc, 'side', 'KATHODOS',
+                                                                  'planned_from', h14, 'planned_to', h20))), 'test:072b', 'dispatcher');
+          PERFORM plan_h_finish();
+          b_verdict := CASE WHEN (SELECT start_at = h14 AND end_at = h20 FROM ct_round_trips WHERE id = (b_v2->>'rt_id')::bigint)
+                            THEN 'ok 14:00-20:00 after 06:00-14:00 on the same truck' ELSE 'FAIL back to back' END;
+        ELSIF kb = 5 THEN
+          PERFORM plan_rt_create(jsonb_build_object('new_rt', jsonb_build_object('trip_type', 'OWNED', 'driver_id', b_d2),
+                    'stops', jsonb_build_array(jsonb_build_object('ref', 'x', 'location_id', b_lc, 'side', 'KATHODOS',
+                                                                  'planned_from', h16, 'planned_to', h18))), 'test:072b', 'dispatcher');
+        ELSIF kb IN (6, 7, 9, 10) THEN   -- PARTNER: with rate, without rate, negative rate, without partner
+          b_v2 := plan_rt_create(jsonb_build_object('new_rt',
+                    CASE kb WHEN 6 THEN jsonb_build_object('trip_type', 'PARTNER', 'partner_id', b_pa, 'partner_rate', 250)
+                            WHEN 7 THEN jsonb_build_object('trip_type', 'PARTNER', 'partner_id', b_pa)
+                            WHEN 9 THEN jsonb_build_object('trip_type', 'PARTNER', 'partner_id', b_pa, 'partner_rate', -5)
+                            ELSE jsonb_build_object('trip_type', 'PARTNER', 'partner_rate', 250) END,
+                    'stops', jsonb_build_array(jsonb_build_object('ref', 'x', 'location_id', b_lc, 'side', 'KATHODOS',
+                                                                  'planned_from', h06, 'planned_to', h08))), 'test:072b', 'dispatcher');
+          PERFORM plan_h_finish();
+          b_x := (b_v2->>'rt_id')::bigint;
+          b_verdict := CASE WHEN (SELECT trip_type = 'PARTNER' AND partner_id = b_pa AND truck_id IS NULL AND driver_id IS NULL
+                                         AND partner_rate IS NOT DISTINCT FROM CASE kb WHEN 6 THEN 250::numeric END
+                                    FROM ct_round_trips WHERE id = b_x)
+                              AND NOT EXISTS (SELECT 1 FROM dl_entries WHERE rt_id = b_x)
+                            THEN 'ok partner cycle, rate ' || coalesce((SELECT partner_rate::text FROM ct_round_trips WHERE id = b_x), 'empty')
+                                 || ', no payroll line'
+                            ELSE 'FAIL partner cycle' END;
+        ELSIF kb = 8 THEN   -- a rate on an OWNED cycle: CHECK rt_partner_rate
+          PERFORM plan_rt_create(jsonb_build_object('new_rt', jsonb_build_object('trip_type', 'OWNED', 'truck_id', b_t2,
+                    'driver_id', b_d2, 'partner_rate', 100),
+                    'stops', jsonb_build_array(jsonb_build_object('ref', 'x', 'location_id', b_lc, 'side', 'KATHODOS',
+                                                                  'planned_from', h06, 'planned_to', h08))), 'test:072b', 'dispatcher');
+        ELSIF kb = 11 THEN   -- a cycle of ANODOS only (spec 3, Board: allowed, empty KATHODOS)
+          b_v2 := plan_rt_create(jsonb_build_object('new_rt', jsonb_build_object('trip_type', 'OWNED', 'truck_id', b_t2, 'driver_id', b_d2),
+                    'side', 'ANODOS', 'stops', jsonb_build_array(
+                      jsonb_build_object('ref', 'h', 'location_id', b_hub, 'side', 'ANODOS', 'planned_from', h16, 'planned_to', h18),
+                      jsonb_build_object('ref', 'c', 'location_id', b_lc, 'side', 'ANODOS', 'planned_from', h09, 'planned_to', h10))),
+                    'test:072b', 'dispatcher');
+          PERFORM plan_h_finish();
+          b_x := (b_v2->>'rt_id')::bigint;
+          b_verdict := CASE WHEN (SELECT string_agg(side || seq::text || ':' || location_id::text, ',' ORDER BY seq)
+                                    FROM rt_stops WHERE rt_id = b_x AND deleted_at IS NULL)
+                                 = 'ANODOS1:' || b_lc || ',ANODOS2:' || b_hub
+                              AND (SELECT start_at = h09 AND end_at = h18 FROM ct_round_trips WHERE id = b_x)
+                              AND (SELECT count(*) FROM dl_entries WHERE rt_id = b_x AND deleted_at IS NULL AND entry_date = b_d) = 1
+                            THEN 'ok ANODOS-only cycle, stops numbered by time, one payroll line'
+                            ELSE 'FAIL ANODOS-only cycle' END;
+        ELSIF kb = 12 THEN   -- a today's (model=1) round trip of the same truck the same day: a warning, not a refusal
+          INSERT INTO ct_round_trips (scope, trip_type, truck_id, date_start, status, source, created_by)
+          VALUES ('NATL', 'OWNED', b_t2, b_d, 'planned', 'manual', 'test:072b') RETURNING code INTO b_txt;
+          b_v2 := plan_rt_create(jsonb_build_object('new_rt', jsonb_build_object('trip_type', 'OWNED', 'truck_id', b_t2, 'driver_id', b_d2),
+                    'stops', jsonb_build_array(jsonb_build_object('ref', 'x', 'location_id', b_lc, 'side', 'KATHODOS',
+                                                                  'planned_from', h06, 'planned_to', h08))), 'test:072b', 'dispatcher');
+          PERFORM plan_h_finish();
+          b_verdict := CASE WHEN b_v2->'warnings' = jsonb_build_array(jsonb_build_object('code', 'v1_same_truck', 'rt_code', b_txt))
+                            THEN 'ok v1_same_truck warning with the v1 code' ELSE 'FAIL warnings ' || (b_v2->'warnings')::text END;
+        ELSIF kb = 13 THEN   -- another truck, the same driver as S, overlapping
+          PERFORM plan_rt_create(jsonb_build_object('new_rt', jsonb_build_object('trip_type', 'OWNED', 'truck_id', b_t2, 'driver_id', b_d1),
+                    'stops', jsonb_build_array(jsonb_build_object('ref', 'x', 'location_id', b_lc, 'side', 'KATHODOS',
+                                                                  'planned_from', h07, 'planned_to', h09))), 'test:072b', 'dispatcher');
+        ELSIF kb = 14 THEN
+          PERFORM plan_rt_create(jsonb_build_object('new_rt', jsonb_build_object('trip_type', 'OWNED', 'truck_id', b_t2),
+                    'stops', '[]'::jsonb), 'test:072b', 'dispatcher');
+        ELSIF kb = 15 THEN
+          -- coordinator 25/10 (cross-cutting input rule): a partner_rate of NaN (it sorts above every number, so it
+          -- passes CHECK rt_partner_rate) or +-Infinity is refused as bad_input 'partner_rate:finite', a stop end of
+          -- 'infinity' / '-infinity' as bad_input 'stop.planned:finite', an id of 'NaN' as bad_input (the bigint
+          -- cast, 'new_rt or stops'); nothing is written. Then the case itself: an unknown trip_type.
+          FOR b_v3 IN SELECT value FROM jsonb_array_elements(jsonb_build_array(
+              jsonb_build_object('want', 'partner_rate:finite', 'f', h16, 't', h18,
+                                 'nr', jsonb_build_object('trip_type', 'PARTNER', 'partner_id', b_pa, 'partner_rate', 'NaN')),
+              jsonb_build_object('want', 'partner_rate:finite', 'f', h16, 't', h18,
+                                 'nr', jsonb_build_object('trip_type', 'PARTNER', 'partner_id', b_pa, 'partner_rate', 'Infinity')),
+              jsonb_build_object('want', 'partner_rate:finite', 'f', h16, 't', h18,
+                                 'nr', jsonb_build_object('trip_type', 'PARTNER', 'partner_id', b_pa, 'partner_rate', '-Infinity')),
+              jsonb_build_object('want', 'stop.planned:finite', 'f', h16, 't', 'infinity',
+                                 'nr', jsonb_build_object('trip_type', 'OWNED', 'truck_id', b_t2, 'driver_id', b_d2)),
+              jsonb_build_object('want', 'stop.planned:finite', 'f', '-infinity', 't', h18,
+                                 'nr', jsonb_build_object('trip_type', 'OWNED', 'truck_id', b_t2, 'driver_id', b_d2)),
+              jsonb_build_object('want', 'stop.planned:finite', 'f', h16, 't', 'infinity',
+                                 'nr', jsonb_build_object('trip_type', 'PARTNER', 'partner_id', b_pa)),
+              jsonb_build_object('want', 'new_rt or stops', 'f', h16, 't', h18,
+                                 'nr', jsonb_build_object('trip_type', 'OWNED', 'truck_id', 'NaN', 'driver_id', b_d2))))
+          LOOP
+            BEGIN
+              PERFORM plan_rt_create(jsonb_build_object('new_rt', b_v3->'nr',
+                        'stops', jsonb_build_array(jsonb_build_object('ref', 'x', 'location_id', b_lc, 'side', 'KATHODOS',
+                                                                      'planned_from', b_v3->'f', 'planned_to', b_v3->'t'))),
+                      'test:072b', 'dispatcher');
+              RAISE EXCEPTION 'FAIL a non-finite input was accepted (%)', b_v3->>'want';
+            EXCEPTION WHEN check_violation THEN
+              GET STACKED DIAGNOSTICS b_msg = MESSAGE_TEXT, b_hint = PG_EXCEPTION_HINT;
+              IF b_hint IS DISTINCT FROM 'plan:bad_input' OR b_msg NOT LIKE '%' || (b_v3->>'want') || '%' THEN
+                RAISE EXCEPTION 'FAIL non-finite probe % got % (%)', b_v3->>'want', coalesce(b_hint, 'no hint'), b_msg;
+              END IF;
+            END;
+          END LOOP;
+          IF (SELECT count(*) FROM ct_round_trips WHERE created_by = 'test:072b' AND model = 2) <> 1
+             OR (SELECT count(*) FROM rt_stops WHERE created_by = 'test:072b') <> 2 THEN
+            RAISE EXCEPTION 'FAIL a create with a non-finite input was written';
+          END IF;
+          PERFORM plan_rt_create(jsonb_build_object('new_rt', jsonb_build_object('trip_type', 'X', 'truck_id', b_t2),
+                    'stops', jsonb_build_array(jsonb_build_object('ref', 'x', 'location_id', b_lc, 'side', 'KATHODOS',
+                                                                  'planned_from', h06, 'planned_to', h08))), 'test:072b', 'dispatcher');
+        ELSIF kb IN (16, 17) THEN   -- the whole VS card on a free truck: 1 call, 1 cycle, 3 legs (section A's put_group)
+          b_v2 := plan_put_group(jsonb_build_object('group', jsonb_build_object('order_id', b_vo),
+                    'target', jsonb_build_object('new_rt', jsonb_build_object('trip_type', 'OWNED',
+                                'truck_id', CASE kb WHEN 16 THEN b_t2 ELSE b_t1 END, 'driver_id', b_d2), 'side', 'KATHODOS'),
+                    'stops', jsonb_build_array(
+                      jsonb_build_object('ref', 'h', 'location_id', b_hub, 'side', 'KATHODOS', 'planned_from', h06, 'planned_to', h07),
+                      jsonb_build_object('ref', '1', 'location_id', b_la, 'side', 'KATHODOS', 'planned_from', h09, 'planned_to', h10),
+                      jsonb_build_object('ref', '2', 'location_id', b_lb, 'side', 'KATHODOS', 'planned_from', h12, 'planned_to', h13),
+                      jsonb_build_object('ref', '3', 'location_id', b_lc, 'side', 'KATHODOS', 'planned_from', h14, 'planned_to', h16))),
+                  'test:072b', 'dispatcher');
+          b_x := (b_v2->'ids'->>'rt_id')::bigint;
+          b_verdict := CASE WHEN (SELECT count(*) FROM ct_round_trips WHERE model = 2 AND created_by = 'test:072b' AND id <> b_rt1) = 1
+                              AND (SELECT n_legs FROM v_rt_cycle WHERE rt_id = b_x) = 3
+                              AND (SELECT count(*) FROM dl_entries WHERE rt_id = b_x AND deleted_at IS NULL
+                                     AND trip_value IS NULL AND advance IS NULL AND expenses IS NULL) = 1
+                              AND (SELECT all_planned FROM v_vs_state WHERE order_id = b_vo)
+                              AND (SELECT cross_dock_date FROM orders WHERE id = b_vo) = b_d
+                            THEN 'ok VS of 3 deliveries on a free truck: 1 cycle, 3 legs, 1 empty payroll line, day kept'
+                            ELSE 'FAIL put_group new_rt' END;
+        -- [B-CASES-NEXT]
+        END IF;
+        SET CONSTRAINTS ALL IMMEDIATE;
+
+        IF b_want[kb] <> 'ok' THEN
+          b_verdict := 'FAIL no error';
+        ELSIF kb = 1 THEN
+          b_verdict := CASE
+            WHEN (SELECT model = 2 AND scope = 'NATL' AND status = 'planned' AND trip_type = 'OWNED' AND start_at = h06
+                         AND end_at = h14 AND date_start = b_d AND date_end = b_d AND created_by = 'test:072b' AND source = 'planner'
+                    FROM ct_round_trips WHERE id = b_rt1)
+             AND (SELECT string_agg(seq::text, ',' ORDER BY planned_from) FROM rt_stops WHERE rt_id = b_rt1) = '1,2'
+             AND (SELECT count(*) FROM dl_entries WHERE rt_id = b_rt1 AND deleted_at IS NULL AND entry_type = 'trip'
+                    AND entry_date = b_d AND driver_id = b_d1 AND trip_value IS NULL AND advance IS NULL AND expenses IS NULL
+                    AND created_by = 'trigger:test:072b') = 1
+             AND (SELECT count(*) FROM audit_log WHERE actor = 'test:072b' AND role = 'dispatcher' AND action = 'create'
+                    AND table_name IN ('rt_stops', 'ct_round_trips')) = 3
+             AND b_v->>'code' LIKE 'RT-%' AND b_v->'warnings' = '[]'::jsonb
+            THEN 'ok plan_rt_create: stops first, window exact, one empty payroll line, three audit rows'
+            ELSE 'FAIL plan_rt_create ' || b_v::text END;
+        END IF;
+        RAISE EXCEPTION 'wn072b undo' USING HINT = 'wn072b_undo';
+      EXCEPTION WHEN others THEN
+        GET STACKED DIAGNOSTICS b_hint = PG_EXCEPTION_HINT, b_msg = MESSAGE_TEXT, b_cname = CONSTRAINT_NAME,
+                                b_st = RETURNED_SQLSTATE;
+        b_got := CASE WHEN b_hint = 'wn072b_undo' THEN coalesce(b_verdict, 'FAIL no verdict')
+                      WHEN b_hint LIKE 'plan:%' THEN b_hint
+                      WHEN coalesce(b_cname, '') <> '' THEN 'con:' || b_cname
+                      ELSE 'state:' || b_st END;
+        IF (b_want[kb] = 'ok' AND b_got LIKE 'ok%') OR b_got = b_want[kb] THEN
+          ok := ok + 1; res := res || ('B' || kb);
+        ELSE
+          bad := bad + 1; res := res || ('B' || kb || ' FAIL want ' || b_want[kb] || ' got ' || b_got || ' (' || b_msg || ')');
+        END IF;
+      END;
+    END LOOP;
+  END;
   RAISE EXCEPTION 'RULES TEST 072 finished - EVERYTHING UNDONE, nothing kept. Result: % OK, % FAIL  ||  %',
     ok, bad, array_to_string(res, ' | ');
 END

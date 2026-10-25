@@ -1328,6 +1328,153 @@ $f$;
   -- @A (072 section A: plan_orders_create, plan_put_pieces, plan_put_group, plan_split_piece, plan_move_pieces, plan_order_update)
 
   -- ===== PART 3: CYCLE, DELETE, VS, LOCAL LOADING (section B) =====
+  -- B1. One truck, one driver at a time: the refusal names the other cycle (decision 19). The EXCLUDE of 071b
+  -- stays the net; this read gives the message its RT code, which the deferred 23P01 cannot carry.
+  CREATE FUNCTION public.plan_h_busy(p_kind text, p_id bigint, p_from timestamptz, p_to timestamptz, p_except bigint)
+    RETURNS void LANGUAGE plpgsql STABLE SET search_path = public AS $f$
+declare
+  v_code text;
+begin
+  if p_id is null or p_from is null or p_to is null then return; end if;
+  -- the same rows and the same [) range as rt_v2_truck_once / rt_v2_driver_once (071b): 14:00 end, 14:00 start = no clash
+  select r.code into v_code from ct_round_trips r
+   where r.model = 2 and r.trip_type = 'OWNED' and r.status <> 'cancelled' and r.id is distinct from p_except
+     and ((p_kind = 'truck' and r.truck_id = p_id) or (p_kind = 'driver' and r.driver_id = p_id))
+     and tstzrange(r.start_at, r.end_at, '[)') && tstzrange(p_from, p_to, '[)')
+   order by r.start_at, r.id limit 1;
+  if v_code is null then return; end if;
+  if p_kind = 'truck' then
+    perform plan_h_raise('truck_busy', v_code);
+  else
+    perform plan_h_raise('driver_busy', v_code);
+  end if;
+end
+$f$;
+
+  -- B1. A v5 cycle and a today's (model=1) round trip of the same truck on the same days: the base cannot refuse
+  -- it (071b sees model=2 only), so it is a warning in the answer, never a silent pass (principle 1).
+  CREATE FUNCTION public.plan_h_v1_warn(p_truck bigint, p_from date, p_to date, p_except bigint)
+    RETURNS jsonb LANGUAGE sql STABLE SET search_path = public AS $f$
+  select coalesce(jsonb_agg(jsonb_build_object('code', 'v1_same_truck', 'rt_code', r.code) order by r.code), '[]'::jsonb)
+    from ct_round_trips r
+   where r.model = 1 and p_truck is not null and r.truck_id = p_truck and r.status <> 'cancelled'
+     and r.id is distinct from p_except
+     and r.date_start <= p_to and coalesce(r.date_end, r.date_start) >= p_from
+$f$;
+
+  -- B1. The cycle is born from an assignment only (decision 3): internal, no GRANT, called by plan_h_target for a
+  -- {"new_rt": ...} target inside the caller's transaction. Stops FIRST, the cycle after them with the window
+  -- computed from them (spec 7): CHECK rt_v2_window / rt_v2_dates are plain CHECKs and hold on the INSERT, and
+  -- 011 (dl_sync_from_rt) writes the payroll line of an OWNED cycle with a driver on date_start, empty.
+  CREATE FUNCTION public.plan_rt_create(p jsonb, p_actor text, p_role text)
+    RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $f$
+declare
+  nr jsonb := p->'new_rt';
+  v_type text; v_truck bigint; v_trailer bigint; v_driver bigint; v_partner bigint; v_rate numeric;
+  v_rt bigint; v_code text; v_min timestamptz; v_max timestamptz; v_n int;
+  v_map jsonb := '{}'::jsonb; v_ids bigint[] := '{}'; v_id bigint; s record;
+begin
+  perform plan_h_ctx(p_actor, p_role);
+  set constraints all deferred;
+  -- an unknown key is refused, never ignored (principle 1)
+  perform plan_h_keys(p, array['new_rt', 'side', 'stops'], 'p');
+  perform plan_h_keys(nr, array['trip_type', 'truck_id', 'trailer_id', 'driver_id', 'partner_id', 'partner_rate'], 'new_rt');
+  if jsonb_typeof(nr) is distinct from 'object' or jsonb_typeof(p->'stops') is distinct from 'array'
+     or jsonb_array_length(p->'stops') = 0 then
+    perform plan_h_raise('bad_input', 'new_rt and stops');
+  end if;
+  begin
+    v_type := nr->>'trip_type';
+    v_truck := (nr->>'truck_id')::bigint;
+    v_trailer := (nr->>'trailer_id')::bigint;
+    v_driver := (nr->>'driver_id')::bigint;
+    v_partner := (nr->>'partner_id')::bigint;
+    v_rate := (nr->>'partner_rate')::numeric;
+    -- a new cycle has only new stops: place, side, window from-to (decision 4: the base invents no stop, no hour)
+    select count(*), min((e->>'planned_from')::timestamptz), max((e->>'planned_to')::timestamptz)
+      into v_n, v_min, v_max
+      from jsonb_array_elements(p->'stops') e
+     where jsonb_typeof(e) = 'object' and not (e ? 'stop_id') and coalesce(e->>'ref', '') <> ''
+       and e->>'side' in ('KATHODOS', 'ANODOS') and (e->>'planned_from') is not null and (e->>'planned_to') is not null
+       and exists (select 1 from locations l where l.id = (e->>'location_id')::bigint and l.deleted_at is null);
+  exception when invalid_text_representation or numeric_value_out_of_range or invalid_datetime_format
+                 or datetime_field_overflow then
+    perform plan_h_raise('bad_input', 'new_rt or stops');
+  end;
+  if v_n <> jsonb_array_length(p->'stops') then
+    perform plan_h_raise('bad_input', 'stops: ref, live location_id, side, planned_from, planned_to');
+  end if;
+  if (select count(distinct e->>'ref') from jsonb_array_elements(p->'stops') e) <> v_n then
+    perform plan_h_raise('bad_input', 'stops: ref not unique');
+  end if;
+  -- coordinator 25/10 (cross-cutting input rule): 'infinity' / '-infinity' are valid timestamptz input and pass the
+  -- tests above and CHECK rt_v2_window; the cycle was written with an endless window (date_end 'infinity') and fell
+  -- out of every day read. A stop end is a finite time (the same refusal as plan_h_stop_add).
+  if exists (select 1 from jsonb_array_elements(p->'stops') e
+              where not (isfinite((e->>'planned_from')::timestamptz) and isfinite((e->>'planned_to')::timestamptz))) then
+    perform plan_h_raise('bad_input', 'stop.planned:finite');
+  end if;
+  if v_type is null or v_type not in ('OWNED', 'PARTNER') then
+    perform plan_h_raise('bad_input', 'trip_type');
+  end if;
+  -- coordinator 25/10: NaN sorts above every number in Postgres, so it passes CHECK rt_partner_rate (>= 0) and was
+  -- stored as it is (numeric(10,2) keeps NaN); +-Infinity ended as a raw numeric overflow at the INSERT. A rate is a
+  -- finite number.
+  if v_rate is not null and not (abs(v_rate) < 'Infinity'::numeric) then
+    perform plan_h_raise('bad_input', 'partner_rate:finite');
+  end if;
+  if v_type = 'OWNED' then
+    if v_partner is not null then perform plan_h_raise('bad_input', 'partner_id on OWNED'); end if;
+    if v_truck is null or not exists (select 1 from trucks t where t.id = v_truck and t.deleted_at is null) then
+      perform plan_h_raise('no_vehicle', 'truck');
+    end if;
+    if v_driver is not null and not exists (select 1 from drivers d where d.id = v_driver and d.deleted_at is null) then
+      perform plan_h_raise('bad_input', 'driver_id');
+    end if;
+    perform plan_h_busy('truck', v_truck, v_min, v_max, null);
+    perform plan_h_busy('driver', v_driver, v_min, v_max, null);
+  else
+    if v_truck is not null or v_trailer is not null or v_driver is not null then
+      perform plan_h_raise('bad_input', 'vehicle on PARTNER');
+    end if;
+    if v_partner is null or not exists (select 1 from partners x where x.id = v_partner and x.deleted_at is null) then
+      perform plan_h_raise('no_vehicle', 'partner');
+    end if;
+  end if;
+
+  v_rt := nextval(pg_get_serial_sequence('public.ct_round_trips', 'id'));
+  -- decision 5: the base numbers the stops (KATHODOS before ANODOS, then by time); the caller never sends seq
+  for s in select e.value as v,
+                  row_number() over (order by (e.value->>'side') = 'ANODOS', (e.value->>'planned_from')::timestamptz,
+                                              e.ordinality) as seq
+             from jsonb_array_elements(p->'stops') with ordinality e loop
+    insert into rt_stops (rt_id, seq, location_id, side, planned_from, planned_to, created_by)
+    values (v_rt, s.seq, (s.v->>'location_id')::bigint, s.v->>'side', (s.v->>'planned_from')::timestamptz,
+            (s.v->>'planned_to')::timestamptz, p_actor)
+    returning id into v_id;
+    v_map := v_map || jsonb_build_object(s.v->>'ref', v_id);
+    v_ids := v_ids || v_id;
+    perform plan_h_audit(p_actor, p_role, 'create', 'rt_stops', v_id::text, null,
+                         (select to_jsonb(x) from rt_stops x where x.id = v_id));
+  end loop;
+  -- created_by = the user: 011 copies it into the payroll line as 'trigger:' || created_by
+  insert into ct_round_trips (id, model, scope, trip_type, truck_id, trailer_id, driver_id, partner_id, partner_rate,
+                              date_start, date_end, start_at, end_at, status, source, created_by)
+  overriding system value
+  values (v_rt, 2, 'NATL', v_type, v_truck, v_trailer, v_driver, v_partner, v_rate,
+          (v_min at time zone 'Europe/Athens')::date, (v_max at time zone 'Europe/Athens')::date, v_min, v_max,
+          'planned', 'planner', p_actor)
+  returning code into v_code;
+  perform plan_h_audit(p_actor, p_role, 'create', 'ct_round_trips', v_rt::text, null,
+                       (select to_jsonb(x) from ct_round_trips x where x.id = v_rt));
+  return jsonb_build_object('rt_id', v_rt, 'code', v_code, 'side', p->>'side', 'stops', v_map, 'stop_ids', to_jsonb(v_ids),
+                            'new', true,
+                            'warnings', case when v_type = 'OWNED'
+                                             then plan_h_v1_warn(v_truck, (v_min at time zone 'Europe/Athens')::date,
+                                                                 (v_max at time zone 'Europe/Athens')::date, v_rt)
+                                             else '[]'::jsonb end);
+end
+$f$;
   -- ===== PART 4: NOTICES AND READS (section B) =====
   -- ===== PART 5: RIGHTS AND PROOFS =====
   -- Its own block: the reviewer reads the rights in one place. Born closed (principle 5): the pg_default_acl of
