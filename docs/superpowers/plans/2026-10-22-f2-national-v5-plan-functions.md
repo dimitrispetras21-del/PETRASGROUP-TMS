@@ -1894,6 +1894,22 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
       ELSIF k = 20 THEN
         PERFORM plan_orders_create(jsonb_build_object('request_id', gen_random_uuid()) || (jsonb_build_object('orders', jsonb_build_array(jo1 - 'client_id'))), 'test:072', 'owner');
       ELSIF k = 21 THEN
+        -- review A2 r2: 'infinity' / '-infinity' are valid timestamptz input and pass the 071 CHECK shipments_win;
+        -- such an order would exist but fall out of every week / day read. Each end alone is refused as no_window.
+        FOR j IN SELECT value FROM jsonb_array_elements(jsonb_build_array(
+                   jsh1 || '{"load_from": "-infinity"}', jsh1 || '{"load_to": "infinity"}',
+                   jsh1 || '{"deliver_from": "infinity"}', jsh1 || '{"deliver_to": "infinity"}')) LOOP
+          BEGIN
+            PERFORM plan_orders_create(jsonb_build_object('request_id', gen_random_uuid()) || (jsonb_build_object('orders', jsonb_build_array(jo1 || jsonb_build_object('shipments',
+                      jsonb_build_array(j))))), 'test:072', 'owner');
+            t2 := 'accepted';
+          EXCEPTION WHEN others THEN
+            GET STACKED DIAGNOSTICS t2 = PG_EXCEPTION_HINT;
+          END;
+          IF t2 IS DISTINCT FROM 'plan:no_window' THEN
+            RAISE EXCEPTION 'FAIL % got %', j::text, coalesce(t2, 'no hint');
+          END IF;
+        END LOOP;
         PERFORM plan_orders_create(jsonb_build_object('request_id', gen_random_uuid()) || (jsonb_build_object('orders', jsonb_build_array(jo1 || jsonb_build_object('shipments',
                   jsonb_build_array(jsh1 - 'deliver_to'))))), 'test:072', 'owner');
       ELSIF k = 22 THEN
@@ -1971,7 +1987,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 - [ ] **Step 2: Τρέξε, να αποτύχει**
 
 Run: `cd tms-auditor && node --test test/plan-072.test.mjs`
-Expected: FAIL στο `072 rules test`, με μήνυμα `Result: 15 OK, 14 FAIL` και πρώτη αποτυχία `16 FAIL want ok got state:42883 (function plan_orders_create(jsonb, unknown, unknown) does not exist)`. Το `node --test tests/sql-072-drafts.test.js` μένει πράσινο (6/6).
+Expected: FAIL στο `072 rules test`, με μήνυμα `Result: 15 OK, 14 FAIL` και πρώτη αποτυχία `16 FAIL want ok got state:42883 (function plan_orders_create(jsonb, unknown, unknown) does not exist)`. Το `node --test tests/sql-072-drafts.test.js` δίνει `ℹ pass 5`, `ℹ fail 1`, με μόνη αποτυχία `plan:request_missing has no case in 072_plan_functions_test.sql` (κωδικοί του `plan_h_replay` του Α1· οι περιπτώσεις 83–90 μπαίνουν στην Α8).
 
 - [ ] **Step 3: Η υλοποίηση (`worker/migrations/drafts/072_plan_functions.sql`)**
 
@@ -2065,6 +2081,13 @@ begin
       if s->>'load_from' is null or s->>'load_to' is null or s->>'deliver_from' is null or s->>'deliver_to' is null then
         perform plan_h_raise('no_window', 'shipment');
       end if;
+      -- review A2 r2 (coordinator 25/10: every timestamptz input): 'infinity' / '-infinity' pass the null test above
+      -- and the 071 CHECK shipments_win; the order would exist but fall out of every week / day read and show as
+      -- Invalid Date on the screens. A window end is a finite time.
+      if not (isfinite((s->>'load_from')::timestamptz) and isfinite((s->>'load_to')::timestamptz)
+              and isfinite((s->>'deliver_from')::timestamptz) and isfinite((s->>'deliver_to')::timestamptz)) then
+        perform plan_h_raise('no_window', 'shipment:finite');
+      end if;
       perform plan_h_location((s->>'origin_location_id')::bigint);
       perform plan_h_location((s->>'dest_location_id')::bigint);
       -- one decimal at most (decision 20): shipments / shipment_pieces are numeric(6,1) and would round 2.55
@@ -2141,7 +2164,7 @@ Run: `cd tms-auditor && node --test test/plan-072.test.mjs`
 Expected: `✔` και στα τρία υπο-tests, μήνυμα `Result: 29 OK, 0 FAIL`, `ℹ fail 0`.
 
 Run: `node --test tests/sql-072-drafts.test.js`
-Expected: `ℹ pass 6`, `ℹ fail 0` (το `v_pub` = κάθε δημόσια συνάρτηση, κάθε νέος κωδικός έχει περίπτωση).
+Expected: `ℹ pass 5`, `ℹ fail 1`, με μόνη αποτυχία `plan:request_missing has no case in 072_plan_functions_test.sql` (ως την Α8· το `v_pub` = κάθε δημόσια συνάρτηση, κάθε κωδικός της Α2 έχει περίπτωση). Έλεγξε το μήνυμα, όχι μόνο το πλήθος: νέος κωδικός χωρίς περίπτωση θα έκρυβε εδώ.
 
 - [ ] **Step 5: Commit**
 

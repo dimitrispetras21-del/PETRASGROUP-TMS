@@ -635,6 +635,13 @@ begin
       if s->>'load_from' is null or s->>'load_to' is null or s->>'deliver_from' is null or s->>'deliver_to' is null then
         perform plan_h_raise('no_window', 'shipment');
       end if;
+      -- review A2 r2 (coordinator 25/10: every timestamptz input): 'infinity' / '-infinity' pass the null test above
+      -- and the 071 CHECK shipments_win; the order would exist but fall out of every week / day read and show as
+      -- Invalid Date on the screens. A window end is a finite time.
+      if not (isfinite((s->>'load_from')::timestamptz) and isfinite((s->>'load_to')::timestamptz)
+              and isfinite((s->>'deliver_from')::timestamptz) and isfinite((s->>'deliver_to')::timestamptz)) then
+        perform plan_h_raise('no_window', 'shipment:finite');
+      end if;
       perform plan_h_location((s->>'origin_location_id')::bigint);
       perform plan_h_location((s->>'dest_location_id')::bigint);
       -- one decimal at most (decision 20): shipments / shipment_pieces are numeric(6,1) and would round 2.55

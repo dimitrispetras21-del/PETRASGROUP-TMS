@@ -253,6 +253,22 @@ BEGIN
       ELSIF k = 20 THEN
         PERFORM plan_orders_create(jsonb_build_object('request_id', gen_random_uuid()) || (jsonb_build_object('orders', jsonb_build_array(jo1 - 'client_id'))), 'test:072', 'owner');
       ELSIF k = 21 THEN
+        -- review A2 r2: 'infinity' / '-infinity' are valid timestamptz input and pass the 071 CHECK shipments_win;
+        -- such an order would exist but fall out of every week / day read. Each end alone is refused as no_window.
+        FOR j IN SELECT value FROM jsonb_array_elements(jsonb_build_array(
+                   jsh1 || '{"load_from": "-infinity"}', jsh1 || '{"load_to": "infinity"}',
+                   jsh1 || '{"deliver_from": "infinity"}', jsh1 || '{"deliver_to": "infinity"}')) LOOP
+          BEGIN
+            PERFORM plan_orders_create(jsonb_build_object('request_id', gen_random_uuid()) || (jsonb_build_object('orders', jsonb_build_array(jo1 || jsonb_build_object('shipments',
+                      jsonb_build_array(j))))), 'test:072', 'owner');
+            t2 := 'accepted';
+          EXCEPTION WHEN others THEN
+            GET STACKED DIAGNOSTICS t2 = PG_EXCEPTION_HINT;
+          END;
+          IF t2 IS DISTINCT FROM 'plan:no_window' THEN
+            RAISE EXCEPTION 'FAIL % got %', j::text, coalesce(t2, 'no hint');
+          END IF;
+        END LOOP;
         PERFORM plan_orders_create(jsonb_build_object('request_id', gen_random_uuid()) || (jsonb_build_object('orders', jsonb_build_array(jo1 || jsonb_build_object('shipments',
                   jsonb_build_array(jsh1 - 'deliver_to'))))), 'test:072', 'owner');
       ELSIF k = 22 THEN
