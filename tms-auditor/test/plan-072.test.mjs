@@ -145,10 +145,11 @@ test('072 on a production-shaped PGlite copy', async (t) => {
     } finally { await db.exec('RESET ROLE'); }
   });
 
-  await t.test('072 rules test: >= 80 OK, 0 FAIL, nothing kept', async () => {
+  await t.test('072 rules test: >= 80 OK, 0 FAIL, nothing kept', async (st) => {
     const msg = await errorOf(db, read('072_plan_functions_test.sql'));
     const m = RULES.exec(msg ?? '');
     assert.ok(m, msg);
+    st.diagnostic(m[0]);   // the count (203) must be visible on success too: Task S1 greps 'Result:' (assembly 25/10)
     assert.equal(Number(m[2]), 0, msg);
     assert.ok(Number(m[1]) >= 80, `${m[1]} cases`);
     assert.equal(await count(db, V5_ROWS), 0, 'the test keeps nothing');
@@ -167,9 +168,14 @@ test('072 on a production-shaped PGlite copy', async (t) => {
   });
 });
 
-test('072 mutation: without the explicit payroll delete, case B38 fails', async () => {
+test('072 mutation: without the explicit payroll delete, case B38 fails', async (t) => {
   const db = await prodShaped();
   assert.equal(await errorOf(db, MUTANT(read('072_plan_functions.sql'))), null);
   const msg = await errorOf(db, read('072_plan_functions_test.sql'));
   assert.match(msg ?? '', /B38 FAIL want ok got FAIL clear with amount: needs_review 1/, msg);
+  // exactly B38: a mutation that also breaks other cases would hide which rule the delete protects
+  const m = RULES.exec(msg ?? '');
+  assert.ok(m, msg);
+  assert.equal(Number(m[2]), 1, msg);
+  t.diagnostic(`mutation: ${m[0]}`);
 });

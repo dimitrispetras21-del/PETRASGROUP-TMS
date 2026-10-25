@@ -4132,10 +4132,11 @@ test('072 on a production-shaped PGlite copy', async (t) => {
     } finally { await db.exec('RESET ROLE'); }
   });
 
-  await t.test('072 rules test: >= 80 OK, 0 FAIL, nothing kept', async () => {
+  await t.test('072 rules test: >= 80 OK, 0 FAIL, nothing kept', async (st) => {
     const msg = await errorOf(db, read('072_plan_functions_test.sql'));
     const m = RULES.exec(msg ?? '');
     assert.ok(m, msg);
+    st.diagnostic(m[0]);   // the count (203) must be visible on success too: Task S1 greps 'Result:' (assembly 25/10)
     assert.equal(Number(m[2]), 0, msg);
     assert.ok(Number(m[1]) >= 80, `${m[1]} cases`);
     assert.equal(await count(db, V5_ROWS), 0, 'the test keeps nothing');
@@ -4154,11 +4155,16 @@ test('072 on a production-shaped PGlite copy', async (t) => {
   });
 });
 
-test('072 mutation: without the explicit payroll delete, case B38 fails', async () => {
+test('072 mutation: without the explicit payroll delete, case B38 fails', async (t) => {
   const db = await prodShaped();
   assert.equal(await errorOf(db, MUTANT(read('072_plan_functions.sql'))), null);
   const msg = await errorOf(db, read('072_plan_functions_test.sql'));
   assert.match(msg ?? '', /B38 FAIL want ok got FAIL clear with amount: needs_review 1/, msg);
+  // exactly B38: a mutation that also breaks other cases would hide which rule the delete protects
+  const m = RULES.exec(msg ?? '');
+  assert.ok(m, msg);
+  assert.equal(Number(m[2]), 1, msg);
+  t.diagnostic(`mutation: ${m[0]}`);
 });
 ```
 
@@ -9520,10 +9526,10 @@ node worker/migrations/drafts/tools/build-072-dryrun.mjs --check && echo DRYRUN-
 node --test tests/sql-072-drafts.test.js 2>&1 | grep -E '^ℹ (tests|pass|fail)'
 node --test tests/sql-071-drafts.test.js 2>&1 | grep -E '^ℹ (pass|fail)'
 (cd tms-auditor && node --test test/plan-072.test.mjs test/plan-071.test.mjs 2>&1 | grep -E '^ℹ (tests|pass|fail)|Result:')
-grep -n "plan_h_[a-z_]*(" worker/migrations/drafts/072_plan_functions.sql | grep -v "CREATE FUNCTION" \
-  | grep -oE "plan_h_[a-z_]+" | sort | uniq -c
+grep -n "plan_h_[a-z0-9_]*(" worker/migrations/drafts/072_plan_functions.sql | grep -v "CREATE FUNCTION" \
+  | grep -oE "plan_h_[a-z0-9_]+" | sort | uniq -c
 ```
-Expected: `DRYRUN-IDIO`· `sql-072-drafts`: `ℹ tests 12`, `ℹ pass 12`, `ℹ fail 0`· `sql-071-drafts`: αμετάβλητο, `ℹ fail 0`· `tms-auditor`: `ℹ fail 0`, με `Result: 203 OK, 0 FAIL` (193 χωρίς την απόφαση 21) στο rules test του 072 και η μεταλλαγή να ρίχνει ακριβώς τη `B38`· η τελευταία λίστα έχει μόνο ονόματα του πίνακα «Εσωτερικοί βοηθοί» των Interfaces. Κάθε κλήση `plan_h_*` με άλλο πλήθος ορισμάτων από τον πίνακα φαίνεται ως `state:42883` σε μια περίπτωση: διόρθωσε την **κλήση** (ο πίνακας είναι η πηγή), ποτέ τον βοηθό χωρίς να αλλάξει και ο πίνακας.
+Expected: `DRYRUN-IDIO`· `sql-072-drafts`: `ℹ tests 12`, `ℹ pass 12`, `ℹ fail 0`· `sql-071-drafts`: αμετάβλητο, `ℹ fail 0`· `tms-auditor`: `ℹ fail 0`, με `Result: 203 OK, 0 FAIL` (193 χωρίς την απόφαση 21) στο rules test του 072 και η μεταλλαγή να ρίχνει ακριβώς τη `B38` (`ℹ mutation: … Result: 202 OK, 1 FAIL`· assembly 25/10: πριν, το test δεν τύπωνε τη γραμμή `Result:` όταν περνούσε, άρα το grep δεν έβγαζε τίποτα)· η τελευταία λίστα (31 ονόματα· assembly 25/10: το `[a-z0-9_]` πιάνει και το `plan_h_v1_warn`, που το `[a-z_]` έχανε) έχει μόνο ονόματα του πίνακα «Εσωτερικοί βοηθοί» των Interfaces. Κάθε κλήση `plan_h_*` με άλλο πλήθος ορισμάτων από τον πίνακα φαίνεται ως `state:42883` σε μια περίπτωση: διόρθωσε την **κλήση** (ο πίνακας είναι η πηγή), ποτέ τον βοηθό χωρίς να αλλάξει και ο πίνακας.
 
 - [ ] **Step 2: Ο Worker, στο `deploy/worker-plan`, με αντίγραφο της τελικής 072**
 
@@ -9534,7 +9540,7 @@ node --check worker/src/index.js && node --test worker/test/*.test.mjs worker/sr
 node worker/tools/worker-guard.mjs worker/src/index.js --plan 1 | tail -1
 git status --short
 ```
-Expected: τρεις γραμμές `ℹ checked: …` (071, 071b, `drafts/072`), `ℹ pass 8`, `ℹ fail 0`· `ℹ tests 282`, `ℹ pass 281`, `ℹ skipped 1`, `ℹ fail 0`· `GUARD OK (15 markers, plan=1) worker/src/index.js`· το `git status` δείχνει μόνο το 072 αν άλλαξε από την τελευταία αντιγραφή (τότε commit «sync 072 draft copy»).
+Expected: τρεις γραμμές `ℹ checked: …` (071, 071b, `drafts/072`), `ℹ pass 8`, `ℹ fail 0`· `ℹ tests 283`, `ℹ pass 282`, `ℹ skipped 1`, `ℹ fail 0` (+1 = the input-rule test of Γ3, as in Γ5; measured 25/10)· `GUARD OK (15 markers, plan=1) worker/src/index.js`· το `git status` δείχνει μόνο το 072 αν άλλαξε από την τελευταία αντιγραφή (τότε commit «sync 072 draft copy»).
 
 - [ ] **Step 3: Ο καθαρός εκτελεστής**
 
