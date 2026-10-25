@@ -584,6 +584,51 @@ test('072b dry runs: preview.conflict of handover, correction and removal get th
   assert.deepEqual(r.json.error, { type: 'PLAN_RULE', code: 'seg_other_note', message: 'Με λόγο «Άλλο» η σημείωση είναι υποχρεωτική' });
 });
 
+// Fix round 1 of the handover Worker review: the removal's list carries the payroll and cost amounts in full
+// (072b plan_h_seg_consequences, cut by role only in plan_h_confirm), and dispatcher - a role without money -
+// is allowed on that route. The tripwire is generic today; this pins it per 072b route, so a route-specific
+// bypass (e.g. skipping plan_seg_*) fails here instead of passing a suite that only tested /plan/move.
+test('072b dry runs: an amount trips amount_leak for dispatcher, management and warehouse; owner and accountant get it; dry_run must be the boolean true', async () => {
+  const leak = (op) => () => json({ ok: true, op, dry_run: true, needs_confirm: true, confirm_token: 't',
+    consequences: [{ kind: 'payroll_amount', rt_id: 5, dl_entry_id: 99, driver_id: 3, amount: 230, advance: 50, expenses: 20 },
+      { kind: 'costs', rt_id: 5, pay_source: 'company', count: 2, amount: 412 }],
+    preview: { segments: null, warnings: [], conflict: null } });
+  on('POST', 'rpc/plan_seg_change', leak('plan_seg_change'));
+  on('POST', 'rpc/plan_seg_fix', leak('plan_seg_fix'));
+  on('POST', 'rpc/plan_seg_remove', leak('plan_seg_remove'));
+  const ROUTES = [['POST', '/plan/rt/5/handover', { dry_run: true }, ['dispatcher', 'management', 'warehouse']],
+    ['PATCH', '/plan/segments/9', { set: {}, dry_run: true }, ['dispatcher', 'management', 'warehouse']],
+    // the removal: owner + dispatcher only (decision 41 (b)), so dispatcher is the one role to trip on it
+    ['POST', '/plan/segments/9/remove', { dry_run: true }, ['dispatcher']]];
+  for (const [method, p, body, noMoney] of ROUTES) {
+    for (const role of noMoney) {
+      calls.length = 0;
+      const r = await call(role, method, p, body);
+      assert.equal(r.status, 500, `${role} ${p}: ${r.text}`);
+      assert.equal(r.json.error.code, 'amount_leak', `${role} ${p}`);
+      assert.equal(r.json.error.message, 'Η απάντηση της βάσης είχε ποσά για ρόλο χωρίς δικαίωμα — δεν στάλθηκε· ενημέρωσε τον Δημήτρη', `${role} ${p}: a dry run wrote nothing`);
+      assert.ok(!/230|412/.test(r.text), `${role} ${p}: the number never leaves the Worker`);
+      assert.equal(rpcCalls().length, 1, `${role} ${p}: the tripwire runs on the DB's answer`);
+    }
+    const r = await call('owner', method, p, body);
+    assert.equal(r.status, 200, `owner ${p}: ${r.text}`);
+    assert.equal(r.json.consequences[0].amount, 230, `owner ${p}`);
+  }
+  const r = await call('accountant', 'PATCH', '/plan/segments/9', { set: {}, dry_run: true });
+  assert.equal(r.status, 200, r.text);
+  assert.equal(r.json.consequences[1].amount, 412);
+  // strictly the boolean true on the 072b routes too (the same rule as /plan/delete): anything else is a write, closed
+  for (const [method, p, body] of ROUTES) {
+    for (const v of ['true', 1, 'yes']) {
+      calls.length = 0;
+      const w = await call('owner', method, p, { ...body, dry_run: v });
+      assert.equal(w.status, 409, `${p} dry_run ${JSON.stringify(v)}: ${w.text}`);
+      assert.equal(w.json.error.code, 'writes_closed', p);
+      assert.equal(calls.length, 0, `${p} dry_run ${JSON.stringify(v)}: zero DB calls`);
+    }
+  }
+});
+
 // H-22 (review R2 of the handover plan, DB finding 5): a 503 names the migration that brings the RPC - after a
 // rollback of 072b alone (or a deploy before it) «072 is missing» would be false; 072's routes keep 072
 test('schema_behind names 072b on the three handover routes and 072 elsewhere; seg_outside is Greek with its detail', async () => {
