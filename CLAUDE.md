@@ -153,7 +153,8 @@ cd worker && CLOUDFLARE_API_TOKEN=$CF_API_TOKEN npx wrangler deploy
    - λόγος καθυστέρησης στάσης (067, Worker c652e758, ζωντανό 24/10): `"Delay Reason": "delay_reason"`
    - παρουσία (068, Worker b00d59f3, ζωντανό 24/10): `var PRESENCE_ROLES`
    - εθνικά v5, `/plan/*` (Φ2, 072 + Worker 39842d18, ζωντανό 26/10): `var PLAN_PERMS = {`. Ως την
-     ημέρα L και `var PLAN_WRITES_OPEN = false;` (η Φ5 το αλλάζει μαζί με το εργαλείο).
+     ημέρα L και `var PLAN_WRITES_OPEN = false;`: το μόνο σημάδι που **αλλάζει** σκόπιμα. Την ημέρα L το
+     αντικαθιστά ο έλεγχος «ανοιχτό» του εργαλείου (`--plan 2`, Φ5), στο ίδιο deploy· ως τότε, αν λείπει: ΣΤΑΜΑΤΑ.
    Μία εντολή για όλα, πριν και μετά: `node worker/tools/worker-guard.mjs <bundle ή λήψη CF> --plan 1`
    (ξετυλίγει το multipart· `GUARD OK (15 markers, plan=1)`).
    Αν λείπει έστω ένα σημάδι λειτουργίας που ήταν ζωντανή: **ΣΤΑΜΑΤΑ**, όπως
