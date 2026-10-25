@@ -1,0 +1,613 @@
+diff --git a/worker/src/index.js b/worker/src/index.js
+index 5c91621..931de6a 100644
+--- a/worker/src/index.js
++++ b/worker/src/index.js
+@@ -3304,7 +3304,7 @@ const RELAY_CHECK_TEXT = {
+ //     whichever layer refused first. local_moves_nat_loading_once answers
+ //     local_exists for the same reason (as local_moves_relay_once → relay_exists).
+ // THE CODES AND NAMES ARE THE MIGRATIONS' (the lower layer names them, αρχή 4).
+-// test/plan-contract.test.mjs reads 071, 071b and 072 and fails on a code or a
++// test/plan-contract.test.mjs reads 071, 071b, 072 and 072b and fails on a code or a
+ // constraint without a text here, and on a key here with no counterpart there
+ // (αρχή 8). Texts only — editing a text never changes what is allowed.
+ const PLAN_RULE_TEXT = {
+@@ -3371,7 +3371,27 @@ const PLAN_RULE_TEXT = {
+   local_cancel_no_id: "Η ακύρωση τοπικής φόρτωσης δεν λέει ποια φόρτωση — τίποτα δεν δημιουργήθηκε ούτε ακυρώθηκε",
+   stale_confirm: "Κάτι άλλαξε από τότε που είδες τη λίστα — δες τη ξανά και επιβεβαίωσε",
+   need_token: "Η πράξη θέλει επιβεβαίωση — δες πρώτα τη λίστα συνεπειών",
+-  vs_not_bridge: "Η παραγγελία ή η στάση δεν περνά από τη Βέροια (VS)"
++  vs_not_bridge: "Η παραγγελία ή η στάση δεν περνά από τη Βέροια (VS)",
++  // 072b — vehicle handover at a point (segments ΑΡΧΙΚΟ / ΕΝΔΙΑΜΕΣΟ / ΤΕΛΙΚΟ; spec
++  // 2026-10-23-national-v5-vehicle-handover-design.md). Without these a refusal
++  // would reach the screen as raw English (review R1 of the plan, finding 1).
++  seg_not_v2: "Αλλαγή οχήματος γίνεται μόνο σε δρομολόγιο του Εβδομαδιαίου Εθνικών",
++  seg_time: "Η ώρα της αλλαγής οχήματος είναι μέσα στο δρομολόγιο και ανάμεσα στις άλλες αλλαγές του",
++  // a Move, Delete or stop change that narrows the cycle past a handover (review R2 of the plan, DB finding 1);
++  // the DB detail in brackets = the RT and the handover time
++  seg_outside: "Η πράξη θα άφηνε μια αλλαγή οχήματος έξω από τις ώρες του δρομολογίου — μετακίνησε ή αφαίρεσε πρώτα την αλλαγή",
++  seg_cover: "Τα τμήματα οχήματος δεν καλύπτουν όλες τις ώρες του δρομολογίου — ανανέωσε τη σελίδα",
++  seg_first: "Το ΑΡΧΙΚΟ τμήμα ξεκινά με το δρομολόγιο: δεν έχει ώρα, σημείο ή λόγο και δεν αφαιρείται — διόρθωσε το όχημά του",
++  seg_copy: "Το όχημα του δρομολογίου αλλάζει μόνο από την ανάθεση ή την αλλαγή οχήματος — ανανέωσε τη σελίδα",
++  seg_reason: "Η αλλαγή οχήματος θέλει λόγο",
++  seg_cancel: "Τα τμήματα οχήματος δεν συμφωνούν με την ακύρωση του δρομολογίου — ανανέωσε τη σελίδα",
++  seg_none: "Το δρομολόγιο έμεινε χωρίς τμήμα οχήματος — ανανέωσε τη σελίδα",
++  seg_unassigned: "Δρομολόγιο με αλλαγή οχήματος έχει όχημα σε κάθε τμήμα — ανάθεσε πρώτα όχημα, ή χρησιμοποίησε «Καθαρισμός ανάθεσης»",
++  seg_locked: "Ένα τμήμα οχήματος δεν πάει σε άλλο δρομολόγιο, και ένα που αφαιρέθηκε δεν αλλάζει",
++  seg_many: "Το δρομολόγιο έχει αλλαγή οχήματος — άλλαξε το όχημα στο συγκεκριμένο τμήμα (ΑΡΧΙΚΟ, ΕΝΔΙΑΜΕΣΟ ή ΤΕΛΙΚΟ)",
++  seg_gone: "Η αλλαγή οχήματος δεν υπάρχει πια — ανανέωσε τη σελίδα",
++  seg_same: "Το νέο όχημα είναι το ίδιο με αυτό που ήδη εκτελεί — διάλεξε άλλο",
++  seg_no_vehicle: "Η αλλαγή οχήματος θέλει φορτηγό ή συνεργάτη"
+ };
+ const PLAN_CHECK_TEXT = {
+   // 071 CHECKs on ct_round_trips (+ partner_needs_partner, live before 071:
+@@ -3418,7 +3438,19 @@ const PLAN_CHECK_TEXT = {
+   piece_legs_live_no: "Το φορτίο έχει ήδη ζωντανή κίνηση με αυτόν τον αριθμό — ανανέωσε τη σελίδα",
+   shipments_bridge_once: "Η στάση της διεθνούς έχει ήδη γέφυρα VS",
+   pl_mov_leg_once: "Η κίνηση έχει ήδη γραμμή παλετών",
+-  locations_one_hub: "Υπάρχει ήδη τοποθεσία-κόμβος (Βέροια)"
++  locations_one_hub: "Υπάρχει ήδη τοποθεσία-κόμβος (Βέροια)",
++  // 072b CHECKs on rt_vehicle_segments (the reason's VALUE is the CHECK's: an
++  // unknown reason or «Άλλο» without its note reach the screen here)
++  seg_type: "Το τμήμα είναι δικό μας φορτηγό ή συνεργάτης",
++  seg_partner_needs_partner: "Τμήμα συνεργάτη θέλει συνεργάτη",
++  seg_partner_no_vehicle: "Τμήμα συνεργάτη δεν έχει δικό μας φορτηγό, ρυμουλκούμενο ή οδηγό",
++  seg_owned_no_partner: "Τμήμα με δικό μας φορτηγό δεν έχει συνεργάτη ή κόμιστρο",
++  seg_partner_rate: "Το κόμιστρο του τμήματος δεν είναι αρνητικό",
++  seg_reason_list: "Άγνωστος λόγος αλλαγής οχήματος — διάλεξε από τη λίστα",
++  seg_change_pair: "Η αλλαγή οχήματος θέλει σημείο και λόγο μαζί",
++  seg_place_text: "Γράψε το σημείο της αλλαγής (π.χ. «Λαμία»)",
++  seg_other_note: "Με λόγο «Άλλο» η σημείωση είναι υποχρεωτική",
++  seg_del: "Η αφαίρεση τμήματος θέλει λόγο και χρήστη"
+ };
+ function stockRuleError(e) {
+   const pg = e && e.pg;
+@@ -5460,15 +5492,16 @@ var PLAN_PERMS = {
+   // Decision 41 (owner 23/10, «everyone has rights»; the locked rule of 23/8:
+   // «all roles edit broadly for now, DELETE stays narrow»): every role reads
+   // and writes every act of the board, with its dry run (decision 26). The
+-  // delete-type acts — rt-clear and delete, and later the removal of a vehicle
+-  // handover (its own plan) — stay owner + dispatcher. No money here: the DB
++  // delete-type acts — rt-clear, delete and the removal of a vehicle handover
++  // (segment-remove, 072b, decision 41 (b)) — stay owner + dispatcher. The
++  // handover and its correction (handover, segment) are board acts: every role. No money here: the DB
+   // cuts payroll/DKV amounts by role (decision 9), the tripwire below refuses
+   // to forward one; price and partner rate are for every role (decision 41).
+-  owner: { board: ["GET"], "vs-state": ["GET"], notices: ["GET"], "notices-read": ["POST"], orders: ["POST", "PATCH"], legs: ["POST"], move: ["POST"], split: ["POST"], rt: ["PATCH"], "rt-clear": ["POST"], delete: ["POST"], "vs-day": ["POST"], "vs-place": ["POST"], "local-loading": ["POST"] },
+-  dispatcher: { board: ["GET"], "vs-state": ["GET"], notices: ["GET"], "notices-read": ["POST"], orders: ["POST", "PATCH"], legs: ["POST"], move: ["POST"], split: ["POST"], rt: ["PATCH"], "rt-clear": ["POST"], delete: ["POST"], "vs-day": ["POST"], "vs-place": ["POST"], "local-loading": ["POST"] },
+-  management: { board: ["GET"], "vs-state": ["GET"], notices: ["GET"], "notices-read": ["POST"], orders: ["POST", "PATCH"], legs: ["POST"], move: ["POST"], split: ["POST"], rt: ["PATCH"], "vs-day": ["POST"], "vs-place": ["POST"], "local-loading": ["POST"] },
+-  accountant: { board: ["GET"], "vs-state": ["GET"], notices: ["GET"], "notices-read": ["POST"], orders: ["POST", "PATCH"], legs: ["POST"], move: ["POST"], split: ["POST"], rt: ["PATCH"], "vs-day": ["POST"], "vs-place": ["POST"], "local-loading": ["POST"] },
+-  warehouse: { board: ["GET"], "vs-state": ["GET"], notices: ["GET"], "notices-read": ["POST"], orders: ["POST", "PATCH"], legs: ["POST"], move: ["POST"], split: ["POST"], rt: ["PATCH"], "vs-day": ["POST"], "vs-place": ["POST"], "local-loading": ["POST"] }
++  owner: { board: ["GET"], "vs-state": ["GET"], notices: ["GET"], "notices-read": ["POST"], orders: ["POST", "PATCH"], legs: ["POST"], move: ["POST"], split: ["POST"], rt: ["PATCH"], "rt-clear": ["POST"], delete: ["POST"], "vs-day": ["POST"], "vs-place": ["POST"], "local-loading": ["POST"], handover: ["POST"], segment: ["PATCH"], "segment-remove": ["POST"] },
++  dispatcher: { board: ["GET"], "vs-state": ["GET"], notices: ["GET"], "notices-read": ["POST"], orders: ["POST", "PATCH"], legs: ["POST"], move: ["POST"], split: ["POST"], rt: ["PATCH"], "rt-clear": ["POST"], delete: ["POST"], "vs-day": ["POST"], "vs-place": ["POST"], "local-loading": ["POST"], handover: ["POST"], segment: ["PATCH"], "segment-remove": ["POST"] },
++  management: { board: ["GET"], "vs-state": ["GET"], notices: ["GET"], "notices-read": ["POST"], orders: ["POST", "PATCH"], legs: ["POST"], move: ["POST"], split: ["POST"], rt: ["PATCH"], "vs-day": ["POST"], "vs-place": ["POST"], "local-loading": ["POST"], handover: ["POST"], segment: ["PATCH"] },
++  accountant: { board: ["GET"], "vs-state": ["GET"], notices: ["GET"], "notices-read": ["POST"], orders: ["POST", "PATCH"], legs: ["POST"], move: ["POST"], split: ["POST"], rt: ["PATCH"], "vs-day": ["POST"], "vs-place": ["POST"], "local-loading": ["POST"], handover: ["POST"], segment: ["PATCH"] },
++  warehouse: { board: ["GET"], "vs-state": ["GET"], notices: ["GET"], "notices-read": ["POST"], orders: ["POST", "PATCH"], legs: ["POST"], move: ["POST"], split: ["POST"], rt: ["PATCH"], "vs-day": ["POST"], "vs-place": ["POST"], "local-loading": ["POST"], handover: ["POST"], segment: ["PATCH"] }
+ };
+ function planCan(role, resource, method) {
+   const r = PLAN_PERMS[role];
+@@ -5482,9 +5515,13 @@ __name(planCan, "planCan");
+ // one switch, in the source that is deployed, αρχή 3).
+ var PLAN_WRITES_OPEN = false;
+ // One row per route: method + path → resource (PLAN_PERMS) + RPC. `dryRun`
+-// marks the four RPCs that take {"dry_run": true} and write nothing then;
++// marks the seven RPCs that take {"dry_run": true} and write nothing then
++// (072's four, 072b's three);
+ // ONLY those pass the closed switch with it — any other RPC would ignore the
+ // flag and write (plan_orders_create has no dry run).
++// `migration`: the migration that brings the RPC, when it is not 072 (the 503
++// schema_behind names it: after a rollback of 072b alone, «072 is missing» would
++// send the owner to the wrong file; review R2 of the handover plan, DB finding 5).
+ // `idKey`: the path id goes into p under that key; a different id in the body
+ // is a 400, never silently overridden (αρχή 1).
+ var PLAN_ROUTES = [
+@@ -5502,7 +5539,12 @@ var PLAN_ROUTES = [
+   { method: "POST", re: /^\/plan\/delete$/, resource: "delete", rpc: "plan_delete", dryRun: true },
+   { method: "POST", re: /^\/plan\/vs\/day$/, resource: "vs-day", rpc: "plan_vs_set_day" },
+   { method: "POST", re: /^\/plan\/vs\/place$/, resource: "vs-place", rpc: "plan_vs_set_place" },
+-  { method: "POST", re: /^\/plan\/local-loading$/, resource: "local-loading", rpc: "plan_local_loading" }
++  { method: "POST", re: /^\/plan\/local-loading$/, resource: "local-loading", rpc: "plan_local_loading" },
++  // 072b — vehicle handover at a point. The handover CREATES a segment: request_id
++  // in the body (decision 44, the DB replays it); its preview needs none.
++  { method: "POST", re: /^\/plan\/rt\/(\d+)\/handover$/, resource: "handover", rpc: "plan_seg_change", idKey: "rt_id", dryRun: true, migration: "072b" },
++  { method: "PATCH", re: /^\/plan\/segments\/(\d+)$/, resource: "segment", rpc: "plan_seg_fix", idKey: "segment_id", dryRun: true, migration: "072b" },
++  { method: "POST", re: /^\/plan\/segments\/(\d+)\/remove$/, resource: "segment-remove", rpc: "plan_seg_remove", idKey: "segment_id", dryRun: true, migration: "072b" }
+ ];
+ // Reads: the query string → RPC args, or a 400 before any DB call.
+ // The week is a TMS week: Saturday to Friday (TmsWeek), named by its Saturday.
+@@ -5636,8 +5678,9 @@ async function handlePlan(request, url, origin, env) {
+     // of an inner function is a bug of 072 and stays the 500 path below).
+     const own = !!(pg && fn && new RegExp(`\\bfunction (?:public\\.)?${fn}\\b`).test(String(pg.message || "")));
+     if (pg && (pg.code === "PGRST202" || (pg.code === "42883" && own))) {
+-      console.error(`PLAN ${name}: ${fn} missing in the DB (072)`);
+-      return planError(503, "SCHEMA_BEHIND", "schema_behind", "Η βάση δεν έχει ακόμη το migration 072 (Εβδομαδιαίο Εθνικών) — ενημέρωσε τον Δημήτρη", origin, env);
++      const mig = route.migration || "072";
++      console.error(`PLAN ${name}: ${fn} missing in the DB (${mig})`);
++      return planError(503, "SCHEMA_BEHIND", "schema_behind", `Η βάση δεν έχει ακόμη το migration ${mig} (Εβδομαδιαίο Εθνικών) — ενημέρωσε τον Δημήτρη`, origin, env);
+     }
+     // 42501 on the RPC itself: 072 is there but the GRANT of its PART 5 is not (a manual REVOKE would do it)
+     if (pg && pg.code === "42501" && own) {
+diff --git a/worker/test/plan-contract.test.mjs b/worker/test/plan-contract.test.mjs
+index a43833b..b7c7a19 100644
+--- a/worker/test/plan-contract.test.mjs
++++ b/worker/test/plan-contract.test.mjs
+@@ -9,6 +9,7 @@
+ //   worker/migrations/071_plan_schema.sql, 071b_plan_one_vehicle.sql (live 22/10)
+ //   worker/migrations/drafts/072_plan_functions.sql  (draft, until it runs)
+ //   worker/migrations/072_plan_functions.sql         (after it ran and moved)
++//   worker/migrations/drafts/072b_plan_vehicle_segments.sql (vehicle handover; then worker/migrations/)
+ // On deploy/worker-plan the 072 draft is a COPY of the SQL branch's file
+ // (feat/national-v5-functions); when 072 changes there, copy it again and
+ // re-run this test before deploy — the diagnostic prints the md5 checked.
+@@ -48,6 +49,8 @@ const f071 = () => readOne(['071_plan_schema.sql'], 'it is live since 22/10 and
+ const f071b = () => readOne(['071b_plan_one_vehicle.sql'], 'it is live since 22/10 and must be in main');
+ const f072 = () => readOne(['drafts/072_plan_functions.sql', '072_plan_functions.sql'],
+   'copy it from the SQL branch: git checkout feat/national-v5-functions -- worker/migrations/drafts/072_plan_functions.sql');
++const f072b = () => readOne(['drafts/072b_plan_vehicle_segments.sql', '072b_plan_vehicle_segments.sql'],
++  'it comes from main: git merge origin/main (Task W1 Step 1; drafts/ after the PR of Task B4, worker/migrations/ after Task K-H2 Step 7)');
+ const uniq = (re, text) => [...new Set([...text.matchAll(re)].map((m) => m[1]))].sort();
+ const greek = /[α-ωΑ-Ωά-ώ]/;
+ 
+@@ -62,6 +65,10 @@ const CODES_072 = ['bad_input', 'driver_busy', 'group_empty', 'local_cancel_no_i
+   'no_price', 'no_vehicle', 'no_window', 'not_at_hub', 'not_stock', 'notice_gone', 'order_gone', 'order_not_v5',
+   'parts_sum', 'payroll_locked', 'piece_busy', 'piece_split', 'request_missing', 'request_reused', 'rt_gone', 'same_rt', 'stale_confirm', 'stock_lot',
+   'stop_gone', 'truck_busy', 'vehicle_clear_use_clear', 'vs_locked', 'vs_not_bridge'];
++// 072b's own codes (vehicle handover plan, Interfaces): its COMMIT rules (plan_seg_problem / plan_chk_seg) and its
++// direct raises, minus the 071 / 072 codes it reuses (truck_busy, rt_gone, need_token, ...).
++const CODES_072B = ['seg_cancel', 'seg_copy', 'seg_cover', 'seg_first', 'seg_gone', 'seg_locked', 'seg_many', 'seg_no_vehicle',
++  'seg_none', 'seg_not_v2', 'seg_outside', 'seg_reason', 'seg_same', 'seg_time', 'seg_unassigned'];
+ // Retired by the spec §7 — must appear nowhere (plan Interfaces).
+ const RETIRED = ['hub_endpoint', 'piece_planned', 'bridge_moved', 'bridge_split', 'legacy_nl', 'frozen',
+   'restore_expired', 'restore_conflict', 'partner_rate_on_owned', 'window_order'];
+@@ -84,6 +91,13 @@ function codes071(sql) {
+ }
+ // 072 also raises some 071 codes itself (rt_cancelled, piece_dead: refused at once, with 071's text): only the
+ // codes 072 adds are compared with CODES_072.
++function codes072b(sql) {
++  return uniq(/plan_h_raise\(\s*'([a-z_0-9]+)'/g, sql)
++    .concat(uniq(/(?:return|prob :=)\s*'([a-z_0-9]+):/g, sql))
++    .concat(uniq(/HINT = 'plan:([a-z_0-9]+)'/gi, sql))
++    .filter((c, i, a) => a.indexOf(c) === i)
++    .filter((c) => !CODES_071.includes(c) && !CODES_072.includes(c)).sort();
++}
+ function codes072(sql) {
+   return uniq(/plan_h_raise\(\s*'([a-z_0-9]+)'/g, sql)
+     .concat(uniq(/HINT = 'plan:([a-z_0-9]+)'/gi, sql))
+@@ -91,24 +105,25 @@ function codes072(sql) {
+     .filter((c) => !CODES_071.includes(c)).sort();
+ }
+ 
+-test('071, 071b, 072 found and fingerprinted', (t) => {
+-  for (const { file, sql } of [f071(), f071b(), f072()]) {
++test('071, 071b, 072, 072b found and fingerprinted', (t) => {
++  for (const { file, sql } of [f071(), f071b(), f072(), f072b()]) {
+     t.diagnostic(`checked: ${path.relative(path.join(here, '..', '..'), file)} md5 ${createHash('md5').update(sql).digest('hex')}`);
+   }
+   assert.ok(f072().sql.includes('plan_h_raise('), '072 raises through plan_h_raise');
+ });
+ 
+-test('the parsed codes are exactly the plan\'s 26 + 31 — none missing, none extra, none retired', () => {
++test('the parsed codes are exactly the plans\' 26 + 31 + 15 — none missing, none extra, none retired', () => {
+   assert.deepEqual(codes071(f071().sql), CODES_071, '071 codes');
+   assert.deepEqual(codes072(f072().sql), CODES_072, '072 codes');
+-  for (const sql of [f071().sql, f071b().sql, f072().sql]) {
++  assert.deepEqual(codes072b(f072b().sql), CODES_072B, '072b codes');
++  for (const sql of [f071().sql, f071b().sql, f072().sql, f072b().sql]) {
+     for (const r of RETIRED) assert.ok(!new RegExp(`'(?:plan:)?${r}[:']`).test(sql), `retired code «${r}» appears in SQL`);
+   }
+   for (const r of RETIRED) assert.ok(!Object.prototype.hasOwnProperty.call(W.PLAN_RULE_TEXT, r), `retired code «${r}» has a Worker text`);
+ });
+ 
+-test('every plan: code has its own Greek text, the DB detail in brackets; every Worker code key is raised by 071/072', () => {
+-  const all = [...CODES_071, ...CODES_072];
++test('every plan: code has its own Greek text, the DB detail in brackets; every Worker code key is raised by 071/072/072b', () => {
++  const all = [...CODES_071, ...CODES_072, ...CODES_072B];
+   for (const code of all) {
+     assert.ok(Object.prototype.hasOwnProperty.call(W.PLAN_RULE_TEXT, code), `«${code}» has no Greek text in PLAN_RULE_TEXT`);
+     const r = W.stockRuleError({ pg: { code: '23514', hint: 'plan:' + code, message: `plan rule broken: ${code}:RT-1280` } });
+@@ -118,7 +133,7 @@ test('every plan: code has its own Greek text, the DB detail in brackets; every
+     assert.match(r.message, greek, `${code} text is Greek`);
+   }
+   const dead = Object.keys(W.PLAN_RULE_TEXT).filter((k) => !all.includes(k));
+-  assert.deepEqual(dead, [], 'Worker plan: keys that 071/072 never raise (dead code, αρχή 8)');
++  assert.deepEqual(dead, [], 'Worker plan: keys that 071/072/072b never raise (dead code, αρχή 8)');
+ });
+ 
+ test('every 071 CHECK and UNIQUE is mapped to Greek or classified; every PLAN_CHECK_TEXT key exists', () => {
+@@ -144,9 +159,19 @@ test('every 071 CHECK and UNIQUE is mapped to Greek or classified; every PLAN_CH
+   // the race floor and 072's own refusal say the same thing
+   assert.deepEqual(W.stockRuleError({ pg: { code: '23505', message: 'duplicate key value violates unique constraint "local_moves_nat_loading_once"' } }),
+     { type: 'PLAN_RULE', code: 'local_exists', message: W.PLAN_RULE_TEXT.local_exists });
+-  const known = new Set([...checks, ...uniques, ...LIVE_PRE_071]);
++  // 072b's CHECKs on rt_vehicle_segments: each one Greek, its own text (the reason's value IS a CHECK)
++  const checks072b = uniq(/CONSTRAINT (\w+) CHECK/g, f072b().sql);
++  assert.ok(checks072b.includes('seg_reason_list') && checks072b.includes('seg_other_note'), `072b CHECKs parsed: ${checks072b.join(', ')}`);
++  for (const name of checks072b) {
++    const r = W.stockRuleError({ pg: { code: '23514', message: `new row for relation "rt_vehicle_segments" violates check constraint "${name}"` } });
++    assert.deepEqual(r, { type: 'PLAN_RULE', code: name, message: W.PLAN_CHECK_TEXT[name] }, name);
++    assert.match(r.message, greek, `${name} text is Greek`);
++  }
++  assert.deepEqual(uniq(/CREATE UNIQUE INDEX (\w+)/g, f072b().sql).concat(uniq(/CONSTRAINT (\w+) UNIQUE/g, f072b().sql)), [],
++    '072b adds no UNIQUE (else: a text here)');
++  const known = new Set([...checks, ...uniques, ...LIVE_PRE_071, ...checks072b]);
+   const dead = Object.keys(W.PLAN_CHECK_TEXT).filter((k) => !known.has(k));
+-  assert.deepEqual(dead, [], 'PLAN_CHECK_TEXT keys with no constraint in 071 or live before it');
++  assert.deepEqual(dead, [], 'PLAN_CHECK_TEXT keys with no constraint in 071, 072b or live before 071');
+   for (const k of RELAY_OWNED) assert.ok(!Object.prototype.hasOwnProperty.call(W.PLAN_CHECK_TEXT, k), `${k} stays in RELAY_CHECK_TEXT only`);
+ });
+ 
+@@ -159,6 +184,10 @@ test('071b: each EXCLUDE (23P01, deferred) answers the same code as 072\'s pre-c
+     assert.deepEqual(r, { type: 'PLAN_RULE', code: want[name], message: W.PLAN_RULE_TEXT[want[name]] }, name);
+   }
+   assert.equal(W.stockRuleError({ pg: { code: '23P01', message: 'conflicting key value violates exclusion constraint "other_excl"' } }), null);
++  // 072b MOVES them to rt_vehicle_segments with the SAME names: this map, 072's plan_h_finish and the texts stay
++  const sql = f072b().sql;
++  assert.deepEqual(uniq(/DROP CONSTRAINT (rt_v2_\w+)/g, sql), ['rt_v2_driver_once', 'rt_v2_truck_once'], '072b drops exactly 071b\'s two');
++  assert.deepEqual(uniq(/ADD CONSTRAINT (\w+) EXCLUDE/g, sql), ['rt_v2_driver_once', 'rt_v2_truck_once'], '072b adds them back by the same names');
+ });
+ 
+ test('plan: hint is the marker whatever SQLSTATE; unknown code still loud; no detail, no brackets', () => {
+@@ -177,9 +206,10 @@ test('plan: hint is the marker whatever SQLSTATE; unknown code still loud; no de
+ // ─────────────── Γ3: the Worker's RPC calls and money keys ↔ 072 (review 23/10) ───────────────
+ // PostgREST finds a function by its name AND its argument names: a rename on one side would pass every stub test
+ // of plan-routes and fail only on day L, as a misdiagnosed 503 schema_behind. Both sides are read from the sources.
+-test('every PLAN_ROUTES rpc exists in 072 with the argument names the Worker sends; every public plan_* is routed', () => {
+-  const sigs = Object.fromEntries([...f072().sql.matchAll(/CREATE FUNCTION public\.(plan_[a-z_]+)\(([^)]*)\)/g)]
+-    .filter((m) => !m[1].startsWith('plan_h_'))
++test('every PLAN_ROUTES rpc exists in 072 / 072b with the argument names the Worker sends; every public plan_* is routed', () => {
++  const sigs = Object.fromEntries([...(f072().sql + f072b().sql).matchAll(/CREATE FUNCTION public\.(plan_[a-z_]+)\(([^)]*)\)/g)]
++    // 072b's trigger functions and its COMMIT rule are not RPCs (closed to service_role, PART 8)
++    .filter((m) => !m[1].startsWith('plan_h_') && !['plan_seg_problem', 'plan_chk_seg', 'plan_seg_follow', 'plan_seg_copy'].includes(m[1]))
+     .map((m) => [m[1], m[2].split(',').map((a) => a.trim().split(/\s+/)[0]).filter(Boolean)]));
+   const WRITE = ['p', 'p_actor', 'p_role'];
+   const want = { plan_board: ['p_week', 'p_role'], plan_vs_state: ['p_order_ids'], plan_notices_list: ['p_desk', 'p_role'] };
+diff --git a/worker/test/plan-perms.test.mjs b/worker/test/plan-perms.test.mjs
+index 153ef68..06a269c 100644
+--- a/worker/test/plan-perms.test.mjs
++++ b/worker/test/plan-perms.test.mjs
+@@ -39,7 +39,12 @@ const EXPECT = {
+   delete: { POST: DESK },
+   'vs-day': { POST: ROLES },
+   'vs-place': { POST: ROLES },
+-  'local-loading': { POST: ROLES }
++  'local-loading': { POST: ROLES },
++  // 072b, vehicle handover (decision 41): the handover and its correction are board acts (every role); the
++  // removal is delete-type (41 (b) names it): owner + dispatcher, its dry run too (decision 26)
++  handover: { POST: ROLES },
++  segment: { PATCH: ROLES },
++  'segment-remove': { POST: DESK }
+ };
+ 
+ test('PLAN_PERMS equals the plan\'s table, cell by cell (nothing more, nothing less)', () => {
+@@ -110,7 +115,10 @@ const REQ = {
+   'delete POST': ['POST', '/plan/delete', { nat_order_id: 17, dry_run: true }],
+   'vs-day POST': ['POST', '/plan/vs/day', { order_id: 1, day: '2026-10-13' }],
+   'vs-place POST': ['POST', '/plan/vs/place', { order_stop_id: 1, location_id: 2 }],
+-  'local-loading POST': ['POST', '/plan/local-loading', { rt_stop_id: 1, driver_id: 2, truck_id: 3 }]
++  'local-loading POST': ['POST', '/plan/local-loading', { rt_stop_id: 1, driver_id: 2, truck_id: 3 }],
++  'handover POST': ['POST', '/plan/rt/5/handover', { at: '2026-10-27T14:30:00+02:00', dry_run: true }],
++  'segment PATCH': ['PATCH', '/plan/segments/9', { set: {}, dry_run: true }],
++  'segment-remove POST': ['POST', '/plan/segments/9/remove', { dry_run: true }]
+ };
+ 
+ test('every refused (role, route) → 403 in the /plan/* shape, before any DB call', async () => {
+@@ -128,7 +136,7 @@ test('every refused (role, route) → 403 in the /plan/* shape, before any DB ca
+       }
+     }
+   }
+-  assert.equal(refused, 6, 'refused cells of the table (2 delete-type resources × 3 roles, decision 41)');
++  assert.equal(refused, 9, 'refused cells of the table (3 delete-type resources × 3 roles, decision 41)');
+ });
+ 
+ test('an unknown role (forged or stale JWT role) is refused everywhere', async () => {
+diff --git a/worker/test/plan-routes.test.mjs b/worker/test/plan-routes.test.mjs
+index a2ab95d..80429e0 100644
+--- a/worker/test/plan-routes.test.mjs
++++ b/worker/test/plan-routes.test.mjs
+@@ -4,7 +4,7 @@
+ //     or its typed args (reads) — the deferred 071 rules speak at that RPC's
+ //     COMMIT, a second RPC would run after the first committed;
+ //   - writes are closed until day L (409 writes_closed, zero DB calls), except
+-//     {"dry_run": true} on the four RPCs that support it (decision 22);
++//     {"dry_run": true} on the seven RPCs that support it (072's four, 072b's three; decision 22);
+ //   - the reply is passed through as the DB wrote it (the DB cuts by role),
+ //     but an `amount` never reaches a role outside owner/accountant;
+ //   - refusals: plan:<code> → 422 Greek, need_token → 428, 23P01 → truck_busy,
+@@ -164,15 +164,24 @@ const WRITES = [
+   ['/plan/move', 'POST', { from: { piece_ids: [4] }, target: { wait: true } }, 'plan_move_pieces', {}],
+   ['/plan/pieces/split', 'POST', { piece_id: 4, parts: [{ pallets: 12 }, { pallets: 14 }] }, 'plan_split_piece', {}],
+   ['/plan/rt/5', 'PATCH', { set: { driver_id: 8 } }, 'plan_rt_update', { rt_id: 5 }],
++  // 072b, owner question 7 = (b): a stop change that removes a handover carries the token of its list, as sent
++  ['/plan/rt/5', 'PATCH', { stops: [{ stop_id: 3, planned_from: '2026-10-27T14:05:00+02:00', planned_to: '2026-10-27T14:20:00+02:00' }],
++    confirm_token: 'abc' }, 'plan_rt_update', { rt_id: 5 }],
+   ['/plan/rt/5/clear', 'POST', { confirm_token: 'abc' }, 'plan_rt_clear', { rt_id: 5 }],
+   ['/plan/delete', 'POST', { nat_order_id: 17, reason: 'x', confirm_token: 'abc' }, 'plan_delete', {}],
+   ['/plan/vs/day', 'POST', { order_id: 1, day: '2026-10-13' }, 'plan_vs_set_day', {}],
+   ['/plan/vs/place', 'POST', { order_stop_id: 3, location_id: 2 }, 'plan_vs_set_place', {}],
+-  ['/plan/local-loading', 'POST', { rt_stop_id: 3, driver_id: 8, truck_id: 2 }, 'plan_local_loading', {}]
++  ['/plan/local-loading', 'POST', { rt_stop_id: 3, driver_id: 8, truck_id: 2 }, 'plan_local_loading', {}],
++  // 072b — vehicle handover at a point
++  ['/plan/rt/5/handover', 'POST', { at: '2026-10-27T14:30:00+02:00', place_note: 'Λαμία', reason: 'vehicle_breakdown',
++    vehicle: { trip_type: 'OWNED', truck_id: 2, driver_id: 8 }, request_id: '6f1c2a3e-0000-4000-8000-00000000072b' }, 'plan_seg_change', { rt_id: 5 }],
++  ['/plan/segments/9', 'PATCH', { set: { place_note: 'Λαμία' } }, 'plan_seg_fix', { segment_id: 9 }],
++  ['/plan/segments/9/remove', 'POST', { confirm_token: 'abc' }, 'plan_seg_remove', { segment_id: 9 }]
+ ];
+-const DRY_CAPABLE = ['plan_move_pieces', 'plan_rt_update', 'plan_rt_clear', 'plan_delete'];
+-// decision 41 (b): the delete-type acts stay owner + dispatcher; every other write is every role's
+-const DELETE_TYPE = ['plan_rt_clear', 'plan_delete'];
++const DRY_CAPABLE = ['plan_move_pieces', 'plan_rt_update', 'plan_rt_clear', 'plan_delete', 'plan_seg_change', 'plan_seg_fix', 'plan_seg_remove'];
++// decision 41 (b): the delete-type acts stay owner + dispatcher (the removal of a handover among them); every
++// other write is every role's
++const DELETE_TYPE = ['plan_rt_clear', 'plan_delete', 'plan_seg_remove'];
+ const ALL_ROLES = ['owner', 'dispatcher', 'management', 'accountant', 'warehouse'];
+ const WRITES_CLOSED = { error: { type: 'WRITES_CLOSED', code: 'writes_closed', message: 'Οι αλλαγές στο Εβδομαδιαίο Εθνικών ανοίγουν την ημέρα της μετάβασης — ως τότε μόνο ανάγνωση και προεπισκόπηση' } };
+ 
+@@ -189,7 +198,7 @@ test('writes closed: every write route → 409 writes_closed with ZERO DB calls,
+   }
+ });
+ 
+-test('writes closed: dry_run passes ONLY on the four RPCs that support it; elsewhere it is still 409', async () => {
++test('writes closed: dry_run passes ONLY on the seven RPCs that support it; elsewhere it is still 409', async () => {
+   for (const fn of DRY_CAPABLE) on('POST', `rpc/${fn}`, (u, b) => json({ ok: true, op: fn, dry_run: true, needs_confirm: false, confirm_token: 'tok', consequences: [], echo: b }));
+   for (const [p, method, body, fn, merged] of WRITES) {
+     calls.length = 0;
+@@ -247,25 +256,28 @@ test('decision 41: management, accountant, warehouse write every non-delete rout
+   }
+ });
+ 
+-test('decision 44: request_id rides in p as sent on the three creations; a write is never sent twice (500, 503, 409)', async () => {
++test('decision 44: request_id rides in p as sent on the four creations; a write is never sent twice (500, 503, 409)', async () => {
+   const RID = '6f1c2a3e-0000-4000-8000-000000000044';
+   const CREATE = [['/plan/orders', { orders: [{ client_id: 1 }] }, 'plan_orders_create'],
+     ['/plan/pieces/split', { piece_id: 4, parts: [{ pallets: 12 }, { pallets: 14 }] }, 'plan_split_piece'],
+-    ['/plan/local-loading', { rt_stop_id: 3, driver_id: 8, truck_id: 2 }, 'plan_local_loading']];
++    ['/plan/local-loading', { rt_stop_id: 3, driver_id: 8, truck_id: 2 }, 'plan_local_loading'],
++    // 072b: a handover creates a segment (plan decision H-5 = decision 44 applied); the path id merges into p
++    ['/plan/rt/5/handover', { at: '2026-10-27T14:30:00+02:00', place_note: 'Λαμία', reason: 'vehicle_breakdown',
++      vehicle: { trip_type: 'OWNED', truck_id: 2 } }, 'plan_seg_change', { rt_id: 5 }]];
+   const FAILS = [
+     [() => new Response('<html>bad gateway</html>', { status: 502 }), 500, 'plan_unknown'],
+     [() => pgError(500, { code: '57014', hint: null, details: null, message: 'canceling statement due to statement timeout' }), 503, 'slow'],
+     [() => pgError(409, { code: '40P01', hint: null, details: null, message: 'deadlock detected' }), 409, 'busy_retry'],
+     [() => planReject('request_reused', RID), 422, 'request_reused'],
+     [() => planReject('request_missing', 'plan_orders_create'), 422, 'request_missing']];
+-  for (const [p, body, fn] of CREATE) {
++  for (const [p, body, fn, merged = {}] of CREATE) {
+     routes.length = 0;
+     // the DB's answer to a repeat (plan_h_replay): the first answer + replayed, served as is
+     on('POST', `rpc/${fn}`, () => json({ ...OK, op: fn, replayed: true }));
+     calls.length = 0;
+     const r = await callOpen('warehouse', 'POST', p, { ...body, request_id: RID });
+     assert.equal(r.status, 200, `${p}: ${r.text}`);
+-    assert.deepEqual(rpcCalls().map((c) => c.body), [{ p: { ...body, request_id: RID }, p_actor: 'tester', p_role: 'warehouse' }]);
++    assert.deepEqual(rpcCalls().map((c) => c.body), [{ p: { ...body, request_id: RID, ...merged }, p_actor: 'tester', p_role: 'warehouse' }]);
+     assert.equal(r.json.replayed, true);
+     for (const [fail, status, code] of FAILS) {
+       routes.length = 0;
+@@ -322,6 +334,21 @@ test('need_token → 428 (the screen opens the list), stale_confirm → 422', as
+   assert.equal(r.json.error.code, 'stale_confirm');
+ });
+ 
++// 072b, owner question 7 = (b) (review R5, DB finding 6): PATCH /plan/rt/:id has a token only since 072b - the same
++// mapping as plan_delete, pinned on this route too: no token → 428 (the screen opens the list), another → 422
++test('072b: PATCH /plan/rt/:id need_token → 428, stale_confirm → 422; the token reaches p as sent', async () => {
++  on('POST', 'rpc/plan_rt_update', (u, b) => (b.p.confirm_token ? planReject('stale_confirm', 'plan_rt_update') : planReject('need_token', 'plan_rt_update')));
++  const stops = [{ stop_id: 3, planned_from: '2026-10-27T14:05:00+02:00', planned_to: '2026-10-27T14:20:00+02:00' }];
++  let r = await callOpen('warehouse', 'PATCH', '/plan/rt/5', { stops });
++  assert.equal(r.status, 428, r.text);
++  assert.deepEqual(r.json.error, { type: 'PLAN_RULE', code: 'need_token', message: 'Η πράξη θέλει επιβεβαίωση — δες πρώτα τη λίστα συνεπειών (plan_rt_update)' });
++  calls.length = 0;
++  r = await callOpen('warehouse', 'PATCH', '/plan/rt/5', { stops, confirm_token: 'old' });
++  assert.equal(r.status, 422, r.text);
++  assert.equal(r.json.error.code, 'stale_confirm');
++  assert.deepEqual(rpcCalls().map((c) => c.body), [{ p: { stops, confirm_token: 'old', rt_id: 5 }, p_actor: 'tester', p_role: 'warehouse' }]);
++});
++
+ test('23P01 at the RPC\'s COMMIT (071b EXCLUDE) → 422 truck_busy / driver_busy', async () => {
+   for (const [name, code] of [['rt_v2_truck_once', 'truck_busy'], ['rt_v2_driver_once', 'driver_busy']]) {
+     routes.length = 0;
+@@ -484,6 +511,54 @@ test('plan_rt_update dry run: preview.conflict gets its message from PLAN_RULE_T
+   assert.equal(r.json.preview.conflict, null, 'no conflict: untouched');
+ });
+ 
++// 072b: the three handover previews carry preview.conflict in the same shape (review R1 finding 7: the removal's
++// preview runs the busy check) and get the same Greek, through the same one table
++test('072b dry runs: preview.conflict of handover, correction and removal get their message; a refused 072b CHECK is Greek', async () => {
++  const conflict = { code: 'truck_busy', sqlstate: '23514', detail: 'RT-1290' };
++  on('POST', 'rpc/plan_seg_change', () => json({ ok: true, op: 'plan_seg_change', dry_run: true, preview: { segments: null, warnings: [], conflict } }));
++  on('POST', 'rpc/plan_seg_fix', () => json({ ok: true, op: 'plan_seg_fix', dry_run: true, preview: { segments: null, warnings: [], conflict } }));
++  on('POST', 'rpc/plan_seg_remove', () => json({ ok: true, op: 'plan_seg_remove', dry_run: true, needs_confirm: false, confirm_token: 't',
++    consequences: [], preview: { segments: null, warnings: [], conflict } }));
++  for (const [method, p, body] of [['POST', '/plan/rt/5/handover', { dry_run: true }], ['PATCH', '/plan/segments/9', { set: {}, dry_run: true }],
++    ['POST', '/plan/segments/9/remove', { dry_run: true }]]) {
++    const r = await call('dispatcher', method, p, body);
++    assert.equal(r.status, 200, `${p}: ${r.text}`);
++    assert.equal(r.json.preview.conflict.message, 'Το φορτηγό είναι ήδη σε άλλο δρομολόγιο εκείνες τις ώρες (RT-1290)', p);
++  }
++  // the reason's value is 072b's CHECK (one list): «Άλλο» without its note is a 422 in Greek, never the 500 path
++  routes.length = 0;
++  on('POST', 'rpc/plan_seg_change', () => pgError(400, { code: '23514', hint: null, details: null,
++    message: 'new row for relation "rt_vehicle_segments" violates check constraint "seg_other_note"' }));
++  const r = await callOpen('warehouse', 'POST', '/plan/rt/5/handover', { request_id: 'x', reason: 'other' });
++  assert.equal(r.status, 422, r.text);
++  assert.deepEqual(r.json.error, { type: 'PLAN_RULE', code: 'seg_other_note', message: 'Με λόγο «Άλλο» η σημείωση είναι υποχρεωτική' });
++});
++
++// review R2 of the handover plan (DB finding 5): a 503 names the migration that brings the RPC - after a rollback of
++// 072b alone (or a deploy before it) «072 is missing» would be false; 072's routes keep 072
++test('schema_behind names 072b on the three handover routes and 072 elsewhere; seg_outside is Greek with its detail', async () => {
++  const missing = (fn) => () => pgError(404, { code: 'PGRST202', details: null, hint: null, message: `Could not find the function public.${fn}(p, p_actor, p_role) in the schema cache` });
++  for (const fn of ['plan_seg_change', 'plan_seg_fix', 'plan_seg_remove', 'plan_rt_update']) on('POST', `rpc/${fn}`, missing(fn));
++  for (const [method, p, body, mig] of [['POST', '/plan/rt/5/handover', { dry_run: true }, '072b'], ['PATCH', '/plan/segments/9', { set: {}, dry_run: true }, '072b'],
++    ['POST', '/plan/segments/9/remove', { dry_run: true }, '072b'], ['PATCH', '/plan/rt/5', { set: {}, dry_run: true }, '072']]) {
++    const r = await call('owner', method, p, body);
++    assert.equal(r.status, 503, `${p}: ${r.text}`);
++    assert.deepEqual(r.json.error, { type: 'SCHEMA_BEHIND', code: 'schema_behind', message: `Η βάση δεν έχει ακόμη το migration ${mig} (Εβδομαδιαίο Εθνικών) — ενημέρωσε τον Δημήτρη` }, p);
++  }
++  // PLAN_ROUTES is not exported: read the deployed source (one source), as plan-contract does
++  const { readFileSync } = await import('node:fs');
++  const src = readFileSync(SRC_PATH, 'utf8').match(/var PLAN_ROUTES = \[[\s\S]*?\n\];\n/)[0];
++  assert.deepEqual([...src.matchAll(/rpc: "(plan_\w+)"[^\n]*migration: "(\w+)"/g)].map((m) => [m[1], m[2]]),
++    [['plan_seg_change', '072b'], ['plan_seg_fix', '072b'], ['plan_seg_remove', '072b']], 'only the three handover routes name another migration');
++  // the Move that would narrow a cycle past a handover: 422, the RT and the time in brackets
++  routes.length = 0;
++  on('POST', 'rpc/plan_move_pieces', () => planReject('seg_outside', 'RT-1290 26/10 09:00'));
++  const r = await callOpen('warehouse', 'POST', '/plan/move', { from: { piece_ids: [4] }, target: { wait: true } });
++  assert.equal(r.status, 422, r.text);
++  assert.deepEqual(r.json.error, { type: 'PLAN_RULE', code: 'seg_outside',
++    message: 'Η πράξη θα άφηνε μια αλλαγή οχήματος έξω από τις ώρες του δρομολογίου — μετακίνησε ή αφαίρεσε πρώτα την αλλαγή (RT-1290 26/10 09:00)' });
++});
++
+ // ───────────────────── the older paths ─────────────────────
+ test('PATCH /costs/rt/:id on a v5 cycle (model 2) → 409 in Greek, no PATCH; a v1 cycle is patched as today', async () => {
+   on('GET', 'ct_round_trips', (u) => json([{ id: Number(u.searchParams.get('id').slice(3)), model: u.searchParams.get('id') === 'eq.5' ? 2 : 1, status: 'planned', date_start: '2026-10-12' }]));
+diff --git a/worker/test/plan-tables-guard.test.mjs b/worker/test/plan-tables-guard.test.mjs
+index 70c2140..bfde0be 100644
+--- a/worker/test/plan-tables-guard.test.mjs
++++ b/worker/test/plan-tables-guard.test.mjs
+@@ -23,7 +23,9 @@ function liftVar(name) {
+ }
+ const TABLES = new Function(liftVar('TABLES') + '\nreturn TABLES;')();
+ const PLAN_PERMS = new Function(liftVar('PLAN_PERMS') + '\nreturn PLAN_PERMS;')();
+-const V5_TABLES = ['shipments', 'shipment_pieces', 'rt_stops', 'piece_legs', 'plan_notices', 'plan_config'];
++// + 072b: the segments table and its two views (vehicle handover) - reached only through /plan/*, never the facade
++const V5_TABLES = ['shipments', 'shipment_pieces', 'rt_stops', 'piece_legs', 'plan_notices', 'plan_config',
++  'rt_vehicle_segments', 'v_rt_segments', 'v_rt_vehicle_windows'];
+ 
+ test('no v5 table is reachable through the facade (TABLES pg / readView)', () => {
+   for (const [id, cfg] of Object.entries(TABLES)) {
+@@ -67,6 +69,8 @@ test('deploy guard markers: the older ones and var PLAN_PERMS = { exactly once;
+   assert.equal(count('var PRESENCE_ROLES'), 1, 'PRESENCE_ROLES');
+   assert.equal(count('Temp Per CMR'), 1, 'Temp Per CMR');
+   assert.equal(count('{0,49}$/'), 1, 'VD /costs/rt order_ids (decision 29)');
++  // the vehicle handover (072b): its route row is the deploy marker (worker-guard --handover 1)
++  assert.equal(count('rpc: "plan_seg_change"'), 1, 'handover route marker');
+ });
+ 
+ test('writes closed until day L, in the deployed source (decision 22); one switch, no env override', () => {
+diff --git a/worker/test/worker-guard.test.mjs b/worker/test/worker-guard.test.mjs
+index 616b1e0..c1d54bd 100644
+--- a/worker/test/worker-guard.test.mjs
++++ b/worker/test/worker-guard.test.mjs
+@@ -15,19 +15,32 @@ const TOOL = path.join(here, '..', 'tools', 'worker-guard.mjs');
+ const SRC = path.join(here, '..', 'src', 'index.js');
+ const src = readFileSync(SRC, 'utf8');
+ const dir = mkdtempSync(path.join(tmpdir(), 'worker-guard-'));
+-const run = (file, plan) => {
+-  const r = spawnSync(process.execPath, plan === undefined ? [TOOL, file] : [TOOL, file, '--plan', String(plan)], { encoding: 'utf8' });
++// handover: the vehicle handover marker (072b routes); this source carries them, so 1 unless a test says otherwise
++const run = (file, plan, handover = 1) => {
++  const args = plan === undefined ? [TOOL, file] : [TOOL, file, '--plan', String(plan), '--handover', String(handover)];
++  const r = spawnSync(process.execPath, args, { encoding: 'utf8' });
+   return { code: r.status, out: r.stdout + r.stderr };
+ };
+ const write = (name, text) => { const f = path.join(dir, name); writeFileSync(f, text); return f; };
+ 
+-test('the deploy source passes with --plan 1 (15 markers) and fails with --plan 0', () => {
++test('the deploy source passes with --plan 1 --handover 1 (16 markers) and fails with --handover 0', () => {
+   let r = run(SRC, 1);
+   assert.equal(r.code, 0, r.out);
+-  assert.match(r.out, /GUARD OK \(15 markers, plan=1\)/);
+-  r = run(SRC, 0);
++  assert.match(r.out, /GUARD OK \(16 markers, plan=1, handover=1\)/);
++  r = run(SRC, 1, 0);
++  assert.equal(r.code, 1, r.out);
++  assert.match(r.out, /STOP {2}rpc: "plan_seg_change" = 1/);
++  r = run(SRC, 0, 0);
+   assert.equal(r.code, 1, r.out);
+   assert.match(r.out, /STOP {2}var PLAN_PERMS = \{ = 1/);
++  // the bundle of F2 alone (before the handover deploy): its routes are not there yet
++  r = run(write('f2-only.js', src.replace('rpc: "plan_seg_change"', 'rpc: "plan_seg_changeX"')), 1, 0);
++  assert.equal(r.code, 0, r.out);
++  assert.match(r.out, /GUARD OK \(16 markers, plan=1, handover=0\)/);
++  // once live, the handover marker gone = STOP (never removed, CLAUDE.md rule of one source 3)
++  r = run(write('no-handover.js', src.replace('rpc: "plan_seg_change"', 'rpc: "plan_seg_changeX"')), 1, 1);
++  assert.equal(r.code, 1, r.out);
++  assert.match(r.out, /STOP {2}rpc: "plan_seg_change" = 0/);
+ });
+ 
+ test('a CF API download (multipart, CRLF, random boundary) is unwrapped and counted the same', () => {
+@@ -35,7 +48,7 @@ test('a CF API download (multipart, CRLF, random boundary) is unwrapped and coun
+   const f = write('live.txt', `--${b}\r\nContent-Disposition: form-data; name="index.js"; filename="index.js"\r\nContent-Type: application/javascript+module\r\n\r\n${src}\r\n--${b}--\r\n`);
+   const r = run(f, 1);
+   assert.equal(r.code, 0, r.out);
+-  assert.match(r.out, /GUARD OK \(15 markers, plan=1\)/);
++  assert.match(r.out, /GUARD OK \(16 markers, plan=1, handover=1\)/);
+ });
+ 
+ test('a missing marker, a doubled marker or open writes → exit 1 naming it', () => {
+@@ -67,7 +80,7 @@ test('a part named only by name="….js" is unwrapped; an unreadable download 
+   const b = 'f00dfeed';
+   let r = run(write('live-name.txt', `--${b}\r\nContent-Disposition: form-data; name="worker.js"\r\nContent-Type: application/javascript+module\r\n\r\n${src}\r\n--${b}--\r\n`), 1);
+   assert.equal(r.code, 0, r.out);
+-  assert.match(r.out, /GUARD OK \(15 markers, plan=1\)/);
++  assert.match(r.out, /GUARD OK \(16 markers, plan=1, handover=1\)/);
+   r = run(write('live-bad.txt', `--${b}\r\nContent-Disposition: form-data; name="metadata"\r\n\r\n{}\r\n--${b}--\r\n`), 1);
+   assert.equal(r.code, 1, r.out);
+   assert.match(r.out, /GUARD STOP — multipart: expected one \.js part, found 0/);
+@@ -86,4 +99,7 @@ test('WORKSHOPS fields are counted inside the WORKSHOPS block: Country missing t
+ test('bad usage → exit 2, nothing counted', () => {
+   assert.equal(run(SRC).code, 2);
+   assert.equal(run(SRC, 2).code, 2);
++  // no default for --handover: a forgotten flag is a usage error, never an «OK»
++  assert.equal(spawnSync(process.execPath, [TOOL, SRC, '--plan', '1'], { encoding: 'utf8' }).status, 2);
++  assert.equal(run(SRC, 0, 1).code, 2, 'handover 1 without plan 1');
+ });
+diff --git a/worker/tools/worker-guard.mjs b/worker/tools/worker-guard.mjs
+index 7eac6de..f8174f7 100644
+--- a/worker/tools/worker-guard.mjs
++++ b/worker/tools/worker-guard.mjs
+@@ -1,26 +1,31 @@
+ #!/usr/bin/env node
+ // Worker deploy guard (CLAUDE.md «Ο WORKER»: the three + one marker per live
+ // feature: stock lots, local moves, stop delay, presence, temperature per CMR,
+-// the VD /costs/rt filters, and national v5), counted in CONTENT, never by byte equality: wrangler re-bundles
++// the VD /costs/rt filters, national v5 and its vehicle handover), counted in CONTENT, never by byte equality: wrangler re-bundles
+ // the source, and the CF API returns the live script as multipart with a
+ // random boundary per request — two downloads of the same version «differ».
+ //
+-// Usage:  node worker/tools/worker-guard.mjs <file> --plan 0|1
++// Usage:  node worker/tools/worker-guard.mjs <file> --plan 0|1 --handover 0|1
+ //   <file>   worker/src/index.js, a `wrangler deploy --dry-run --outdir` bundle,
+ //            or the raw CF API download (multipart is unwrapped here)
+ //   --plan   expected count of the national v5 marker (0 = before F2 is live,
+ //            1 = the F2 bundle / live after the F2 deploy). With 1, writes must
+ //            also be closed in that bundle (decision 22).
++//   --handover expected count of the vehicle handover marker (072b routes,
++//            `rpc: "plan_seg_change"`): 0 before that deploy, 1 after it. Never
++//            a default: a forgotten flag is a usage error, not an «OK».
+ // Prints one line per marker and exits 1 on the first STOP condition — no
+ // partial «OK» (αρχή 1).
+ import { readFileSync } from 'node:fs';
+ 
+-const [file, flag, planArg] = process.argv.slice(2);
+-if (!file || flag !== '--plan' || !['0', '1'].includes(planArg)) {
+-  console.error('usage: node worker/tools/worker-guard.mjs <file> --plan 0|1');
++const [file, flag, planArg, hflag, handoverArg] = process.argv.slice(2);
++if (!file || flag !== '--plan' || !['0', '1'].includes(planArg) || hflag !== '--handover' || !['0', '1'].includes(handoverArg)
++    || (planArg === '0' && handoverArg === '1')) {
++  console.error('usage: node worker/tools/worker-guard.mjs <file> --plan 0|1 --handover 0|1 (handover 1 needs plan 1)');
+   process.exit(2);
+ }
+ const plan = Number(planArg);
++const handover = Number(handoverArg);
+ 
+ function unwrapMultipart(raw) {
+   // A CF API script download: «--<boundary>\r\nContent-Disposition: form-data;
+@@ -67,7 +72,9 @@ const rows = [
+   ['Temp Per CMR', count('Temp Per CMR'), (n) => n === 1],
+   // the 24 lines of ValueDriven 19/10 (Worker 3439b1e3, decision 29): the order_ids check of GET /costs/rt
+   ['VD /costs/rt order_ids {0,49}$/', count('{0,49}$/'), (n) => n === 1],
+-  ['var PLAN_PERMS = {', count('var PLAN_PERMS = {'), (n) => n === plan]
++  ['var PLAN_PERMS = {', count('var PLAN_PERMS = {'), (n) => n === plan],
++  // the vehicle handover (072b): its route row, once live never removed (CLAUDE.md rule of one source 3)
++  ['rpc: "plan_seg_change"', count('rpc: "plan_seg_change"'), (n) => n === handover]
+ ];
+ if (plan === 1) {
+   rows.push(['var PLAN_WRITES_OPEN = false;', count('var PLAN_WRITES_OPEN = false;'), (n) => n === 1]);
+@@ -79,5 +86,5 @@ for (const [name, n, good] of rows) {
+   ok = ok && pass;
+   console.log(`${pass ? 'OK  ' : 'STOP'}  ${name} = ${n}`);
+ }
+-console.log(ok ? `GUARD OK (${rows.length} markers, plan=${plan}) ${file}` : `GUARD STOP — do not deploy / roll back (${file})`);
++console.log(ok ? `GUARD OK (${rows.length} markers, plan=${plan}, handover=${handover}) ${file}` : `GUARD STOP — do not deploy / roll back (${file})`);
+ process.exit(ok ? 0 : 1);
