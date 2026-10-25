@@ -177,14 +177,20 @@ test('the public functions: exact signatures, jsonb, SECURITY DEFINER; the write
   assert.ok(!arrayItems(src, 'v_pub').some((s) => s.includes('plan_rt_create')), 'plan_rt_create is internal (decision 3)');
   // ONE lock order (final review 25/10): the cycles first, by id, then the order / piece. A single PGlite session
   // cannot show a deadlock, so the order is checked here, on the text: the first cycle lock comes before the first
-  // lock on national_orders / shipment_pieces in every function that takes both.
-  for (const name of ['plan_move_pieces', 'plan_split_piece', 'plan_delete']) {
+  // lock on national_orders / shipment_pieces / orders / order_stops / rt_stops in every function that takes both.
+  // One statement each ([^;]*, K1 review r1): a lazy match across statements could start at a read without a lock.
+  for (const name of ['plan_move_pieces', 'plan_split_piece', 'plan_delete', 'plan_vs_set_place', 'plan_rt_update']) {
     const b = strip(body(src, name));
-    const cyc = b.search(/from ct_round_trips [\s\S]*?for no key update/);
-    const other = b.search(/from (?:national_orders|shipment_pieces) [^;]*for no key update/);
+    const cyc = b.search(/from ct_round_trips [^;]*for no key update/);
+    const other = b.search(/from (?:national_orders|shipment_pieces|orders|order_stops|rt_stops) [^;]*for no key update/);
     assert.ok(cyc >= 0, `${name} locks its cycles`);
-    assert.ok(other < 0 || cyc < other, `${name}: the cycles are locked before the order / piece`);
+    assert.ok(other < 0 || cyc < other, `${name}: the cycles are locked before the order / piece / stop`);
   }
+  // plan_put_pieces: its cycle in plan_h_target, then the pieces by id (K1 review r1), never in the caller's order
+  const put = strip(body(src, 'plan_put_pieces'));
+  const pcs = put.search(/from shipment_pieces [^;]*order by sp\.id for no key update/);
+  assert.ok(pcs >= 0 && put.indexOf('plan_h_target(') < pcs && pcs < put.indexOf('plan_h_put('),
+    'plan_put_pieces locks its pieces by id, after the cycle and before plan_h_put');
 });
 
 test('every plan: code 072 raises has a case; >= 80 cases; no retired code', () => {

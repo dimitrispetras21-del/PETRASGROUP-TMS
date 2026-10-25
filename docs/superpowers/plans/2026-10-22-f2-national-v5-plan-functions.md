@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 >
-> **Πλάνο v2, 24/10/2026: ο κώδικας ακολουθεί τις αποφάσεις του owner (23/10).** Τα code blocks ξαναγράφτηκαν για τις αποφάσεις 10 (καμία «πληρωμένη»: `payroll_amount` με `month`, το `tms_week` έξω από τον φρουρό), 41 (όλοι οι ρόλοι: νέο `PLAN_PERMS`, ένα board για όλους, οι πράξεις τύπου διαγραφής owner/dispatcher), 44 (`request_id` στις τρεις δημιουργίες, `plan:request_reused` για ίδιο id με άλλο σώμα, ο Worker δεν ξαναστέλνει ποτέ εγγραφή) και 42 (βάση της Φ2 = main @ `639a5a50`, PR #82: ζωντανός Worker b00d59f3 με stop-delay και presence· Γ6 εκτελεσμένο). Η 36 μένει στο χωριστό spec της αλλαγής οχήματος· τίποτα εδώ δεν την αντιφάσκει (`ct_round_trips` και τα EXCLUDE της 071b μένουν όπως είναι). **Ξανα-απόδειξη κατά γράμμα (μία τελική εκτέλεση, 25/10, μετά τις δύο κριτικές του PR #84· scratch εκτός repo), με την πραγματική λήψη `live-072.sql` της παραγωγής (SELECT, md5 `1df9d47d…`) και τα ζωντανά md5 χωρίς καμία χαλάρωση:** rules test **203 OK, 0 FAIL** (90 Α + 113 Β)· build 12/12, bootstrap του Α1 6/6, harness 9/9 (`changed_live 0`)· 28 μεταλλαγές ρίχνουν τις περιπτώσεις τους· 072 md5 `16d04b38…` (υλοποιημένη 072, 25/10· η απόδειξη του πλάνου είχε `483ffd6e…`: άλλαξε με τις διορθώσεις εισόδου NaN/Infinity/isfinite του Α2 και τη σειρά κλειδωμάτων του Κ1)· Worker πάνω στο main @ `639a5a50`: 236 → 242 → 273 → 276 → **282 (281 pass + 1 skipped, ο ίδιος skip με το main)**, `GUARD OK (15 markers, plan=1)` και στο διπλό bundle. Οι κριτικές του PR #84 έφεραν: υποχρεωτικό `request_id`, σύγκριση χρήστη, ακύρωση χωρίς φόρτωση, `month` στη γραμμή ΤΟΠΙΚΟ, σημάδι VD, και (owner 25/10) `vehicle_clear_use_clear`. Λεπτομέρεια: `docs/national-v5/f2/fix-report-v2.md`. Το μπλοκ «Τι αλλάζει στις εργασίες» κάτω από τις αποφάσεις μένει ως ίχνος: είναι πλέον εφαρμοσμένο.
+> **Πλάνο v2, 24/10/2026: ο κώδικας ακολουθεί τις αποφάσεις του owner (23/10).** Τα code blocks ξαναγράφτηκαν για τις αποφάσεις 10 (καμία «πληρωμένη»: `payroll_amount` με `month`, το `tms_week` έξω από τον φρουρό), 41 (όλοι οι ρόλοι: νέο `PLAN_PERMS`, ένα board για όλους, οι πράξεις τύπου διαγραφής owner/dispatcher), 44 (`request_id` στις τρεις δημιουργίες, `plan:request_reused` για ίδιο id με άλλο σώμα, ο Worker δεν ξαναστέλνει ποτέ εγγραφή) και 42 (βάση της Φ2 = main @ `639a5a50`, PR #82: ζωντανός Worker b00d59f3 με stop-delay και presence· Γ6 εκτελεσμένο). Η 36 μένει στο χωριστό spec της αλλαγής οχήματος· τίποτα εδώ δεν την αντιφάσκει (`ct_round_trips` και τα EXCLUDE της 071b μένουν όπως είναι). **Ξανα-απόδειξη κατά γράμμα (μία τελική εκτέλεση, 25/10, μετά τις δύο κριτικές του PR #84· scratch εκτός repo), με την πραγματική λήψη `live-072.sql` της παραγωγής (SELECT, md5 `1df9d47d…`) και τα ζωντανά md5 χωρίς καμία χαλάρωση:** rules test **203 OK, 0 FAIL** (90 Α + 113 Β· μετά την κριτική του Κ1 **214 OK, 0 FAIL**, 90 Α + 124 Β)· build 12/12, bootstrap του Α1 6/6, harness 9/9 (`changed_live 0`)· 28 μεταλλαγές ρίχνουν τις περιπτώσεις τους· 072 md5 `235da364…` (υλοποιημένη 072, 25/10· η απόδειξη του πλάνου είχε `483ffd6e…`: άλλαξε με τις διορθώσεις εισόδου NaN/Infinity/isfinite του Α2, τη σειρά κλειδωμάτων του Κ1 και την κριτική xhigh του Κ1)· Worker πάνω στο main @ `639a5a50`: 236 → 242 → 273 → 276 → **282 (281 pass + 1 skipped, ο ίδιος skip με το main)**, `GUARD OK (15 markers, plan=1)` και στο διπλό bundle· μετά το Κ1 (αντίγραφο 072 και κριτική) **286 (285 pass + 1 skipped)**. Οι κριτικές του PR #84 έφεραν: υποχρεωτικό `request_id`, σύγκριση χρήστη, ακύρωση χωρίς φόρτωση, `month` στη γραμμή ΤΟΠΙΚΟ, σημάδι VD, και (owner 25/10) `vehicle_clear_use_clear`. Λεπτομέρεια: `docs/national-v5/f2/fix-report-v2.md`. Το μπλοκ «Τι αλλάζει στις εργασίες» κάτω από τις αποφάσεις μένει ως ίχνος: είναι πλέον εφαρμοσμένο.
 >
 > **Τελικό πλάνο v1, 23/10/2026.** Συναρμολογήθηκε από τον σκελετό (αποφάσεις, αρχεία, συμβόλαια) και τις τρεις ενότητες (Α: SQL μέρος 1, Β: SQL μέρος 2, Γ: Worker, deploy, runbooks), με εφαρμοσμένα τα Critical και Important ευρήματα των δύο κριτών της 23/10 (κάλυψη/ορθότητα, ποιότητα πλάνου/ασφάλεια Worker). Οι Α και Γ πρωτοτυπήθηκαν Task προς Task (Α σε PGlite με το σχήμα παραγωγής, 77/77· Γ σε αντίγραφο του `worker/`, 226/226)· η Β σε PGlite πάνω σε αντικαταστάτες των βοηθών της Α (74/77). **Έλεγχος της συναρμολόγησης (23/10, scratch, εκτός repo):** τα code blocks του πλάνου εφαρμόστηκαν κατά γράμμα (κάθε «πρόσθεσε πάνω από…») σε αντίγραφο PGlite με `live-071.sql` + 071 + 071b + το ζωντανό 069 (`order_cd_stop_follow`), **χωρίς** την πλήρη λήψη `live-072.sql` (150 KB, μένει για το Α1): η 072 εφαρμόζεται («072 OK», 16 δημόσιες)· rules test **169 OK, 0 FAIL**· build test 12/12 και το bootstrap του Α1 6/6· verify, dry run, rollback (άρνηση με γραμμή v5, μετά επιτυχία) και ξανά apply· έξι μεταλλαγές ρίχνουν ακριβώς τις περιπτώσεις 78, 79–80, 81, B85, B79, B38. Ο έλεγχος βρήκε και διόρθωσε ένα σφάλμα (ψευδώνυμο `e` στη B77, 42702). Τα md5 του φρουρού δεν μπορούσαν να ταιριάξουν χωρίς τη λήψη (χαλαρώθηκαν μόνο στο αντίγραφο). Ο Worker (Γ) εφαρμόστηκε αυτούσιος σε αντίγραφο από τον κριτή Worker (23/10): 228/228 και `GUARD OK (11 markers, plan=1)`. Το Task Σ1 ξανατρέχει τα πάντα με την πραγματική λήψη και τον Worker, πριν από το Κ1. **Δεύτερη κριτική xhigh (23/10 νύχτα: SQL, Worker, εκτελεσιμότητα):** το 1 Critical και τα 14 Important εφαρμόστηκαν στον κώδικα και στα βήματα: token χωρίς ποσά (απόφαση 7), στήλες της διεθνούς στον τόπο VS, αύξηση παλετών σε ανατεθειμένη εθνική, άρνηση `piece_split` στη Μεταφορά πλευράς πριν από τη λίστα, μήνυμα του `preview.conflict`, συμβόλαιο RPC ↔ υπογραφές 072, δύο ανοιχτά branch Worker, «μόνο η Φ2 στο deploy», φρουρός WORKSHOPS μέσα στο μπλοκ, παράρτημα «απόφαση 21 = εκτός», πηγές στο repo (Task 0 Step 0), επαναφορά της βάσης (Κ2 Step 12), `drafts/` και κανόνας 5 (Γ7, Κ3). Όσα θέλουν owner έγιναν οι αποφάσεις 35–45. Ξανα-απόδειξη στο ίδιο scratch (κατά γράμμα από αυτό το αρχείο): rules test **179 OK, 0 FAIL** (82 Α + 97 Β), build 12/12 (και το bootstrap του Α1 6/6), Worker Task προς Task 189 → 195 → 223 → 226 → **232/232** και `GUARD OK (11 markers, plan=1)` (και στο διπλό bundle του esbuild) (λεπτομέρεια: `docs/national-v5/f2/fix-report.md`). **Καμία εργασία δεν ξεκινά πριν ο owner εγκρίνει τις αποφάσεις 1–45.** Πηγές: `docs/national-v5/f2/requirements.md`, `worker.md`, `db.md` (22/10· αντίγραφα του `.superpowers/f2/`, Task 0 Step 0), μετρήσεις SELECT 22/10 23:10 και 23/10 (πίνακας «Αφετηρία»).
 
@@ -11,7 +11,7 @@
 **Architecture:**
 - **Βάση (`072_plan_functions.sql`, ένα DO block, ASCII):** ~16 δημόσιες `plan_*` (`SECURITY DEFINER`, `SET search_path = public`, owner `postgres`, `RETURNS jsonb`, EXECUTE μόνο `service_role`) και εσωτερικοί βοηθοί `plan_h_*` (κλειστοί για όλους, όπως οι `*_problem` της 071). Κάθε δημόσια συνάρτηση = μία πράξη = μία συναλλαγή· τελειώνει με `SET CONSTRAINTS ALL IMMEDIATE` ώστε οι αναβαλλόμενοι κανόνες της 071/071b να σκάνε **μέσα** της, όπου μεταφράζονται σε `plan:<code>`. Κανένα νέο trigger, κανένας νέος πίνακας, καμία αλλαγή σε υπάρχουσα συνάρτηση (B-54 μένει 46).
 - **Worker (`deploy/worker-plan`):** `handlePlan` (πίνακας διαδρομών → μία RPC ανά αίτημα), `var PLAN_PERMS = {` + `planCan` (σχήμα `COSTS_PERMS`), οικογένεια `plan:` στον **ίδιο** `stockRuleError`, κείμενα `PLAN_RULE_TEXT` / `PLAN_CHECK_TEXT`, διακόπτης εγγραφών κλειστός ως το L.
-- **Tests:** PGlite (`plan-072.test.mjs` με νέο fixture `live-072.sql`), κανόνες σε TEST γραμμές (`072_plan_functions_test.sql`, 203 περιπτώσεις: 90 Α + 113 Β), έλεγχοι build (`tests/sql-072-drafts.test.js`, 12), Worker σε Node (`worker/test/plan-*.test.mjs`, `worker-guard.test.mjs`· 236 → 282, με 1 skip του main).
+- **Tests:** PGlite (`plan-072.test.mjs` με νέο fixture `live-072.sql`), κανόνες σε TEST γραμμές (`072_plan_functions_test.sql`, 214 περιπτώσεις: 90 Α + 124 Β, με τις 11 της κριτικής του Κ1), έλεγχοι build (`tests/sql-072-drafts.test.js`, 12), Worker σε Node (`worker/test/plan-*.test.mjs`, `worker-guard.test.mjs`· 236 → 282 → Κ1 286, με 1 skip του main).
 
 **Tech Stack:** Supabase Postgres 17.6 (plpgsql, DO blocks, deferred constraint triggers της 071, EXCLUDE της 071b, PostgREST RPC με `statement_timeout 8s`), PGlite 0.5.8 + `btree_gist` (`tms-auditor`), Cloudflare Worker (ESM, wrangler/esbuild), `node --test` (Node 24, με glob, όχι φάκελο).
 
@@ -208,7 +208,7 @@
 | Αρχείο | Ευθύνη | Task |
 |---|---|---|
 | `worker/migrations/drafts/072_plan_functions.sql` | Το migration (ένα DO block): PART 0 φρουροί (22 md5), PART 1 `plan_h_*`, PART 2 Α, PART 3–4 Β, PART 5 REVOKE/GRANT/αποδείξεις/`pg_notify`, μία γραμμή αποτελέσματος | Α1 (σκελετός + PART 0/1/5), Α2–Α7, Β1–Β7 |
-| `worker/migrations/drafts/072_plan_functions_test.sql` | 203 περιπτώσεις σε TEST γραμμές (`rec072T…`, `WN072-TEST`, `TEST 072 …`, `TEST-072-…`): Α 1–90, Β 1–113 σε φωλιασμένο block· τελειώνει με σκόπιμο σφάλμα | Α1–Α8, Β1–Β9 |
+| `worker/migrations/drafts/072_plan_functions_test.sql` | 214 περιπτώσεις σε TEST γραμμές (`rec072T…`, `WN072-TEST`, `TEST 072 …`, `TEST-072-…`): Α 1–90, Β 1–124 σε φωλιασμένο block· τελειώνει με σκόπιμο σφάλμα | Α1–Α8, Β1–Β9, Κ1 |
 | `worker/migrations/drafts/tools/build-072-dryrun.mjs` | Γεννήτρια του dry run | Β9 |
 | `worker/migrations/drafts/072_plan_functions_dryrun.sql` | **Παράγεται**: το DO block της 072 αυτούσιο + σκόπιμο σφάλμα | Β9 |
 | `worker/migrations/drafts/072_plan_functions_verify.sql` | Μόνο SELECT, μία γραμμή | Β9 |
@@ -2099,8 +2099,9 @@ begin
         perform plan_h_raise('bad_input', 'pallets:one decimal');
       end if;
       -- review A2 r1: NaN sorts above every number, so it passes the line above AND the 071 CHECK pallets > 0, and
-      -- would be written to shipments, pieces and the summary. Not below Infinity = refused (NaN and Infinity).
-      if not ((s->>'pallets')::numeric < 'Infinity'::numeric) then
+      -- would be written to shipments, pieces and the summary. Not below Infinity = refused (NaN and Infinity);
+      -- abs(): -Infinity too, under this code and not a later 22003 / pallets CHECK (K1 review r1, as plan_order_update)
+      if not (abs((s->>'pallets')::numeric) < 'Infinity'::numeric) then
         perform plan_h_raise('bad_input', 'pallets:finite');
       end if;
     end loop;
@@ -2557,6 +2558,13 @@ begin
   perform plan_h_ctx(p_actor, p_role);
   perform plan_h_keys(p, array['pieces', 'target', 'stops'], 'p');
   v_tgt := plan_h_target(p->'target', p->'stops', p_actor, p_role);
+  -- ONE lock order (K1 review r1): after the cycle (plan_h_target), the pieces by id, as plan_put_group and
+  -- plan_move_pieces; plan_h_put takes them in the caller's order, so [P1,P2] and [P2,P1] at once could deadlock
+  perform 1 from shipment_pieces sp
+   where sp.id in (select (x->>'piece_id')::bigint
+                     from jsonb_array_elements(case when jsonb_typeof(p->'pieces') = 'array' then p->'pieces'
+                                                    else '[]'::jsonb end) x)
+   order by sp.id for no key update;
   v_put := plan_h_put(p->'pieces', v_tgt, p_actor, p_role, '{}');
   perform plan_h_finish();
   return plan_h_ok('plan_put_pieces',
@@ -3259,6 +3267,9 @@ begin
   -- and is listed. A cycle left empty is cancelled with its payroll after the confirmation (owner 20/10).
   perform plan_h_ctx(p_actor, p_role);
   perform plan_h_keys(p, array['from', 'target', 'stops', 'dry_run', 'confirm_token'], 'p');
+  -- K1 review r1 (as plan_delete / plan_rt_clear / plan_rt_update): "dry_run": 1 was a dry run here but a write for
+  -- the Worker's gate, and "yes" a raw 22P02
+  if p ? 'dry_run' and jsonb_typeof(p->'dry_run') <> 'boolean' then perform plan_h_raise('bad_input', 'dry_run'); end if;
   perform plan_h_keys(v_from, array['piece_ids', 'rt_id', 'side'], 'from');
   v_rt := (v_from->>'rt_id')::bigint;
   v_side := v_from->>'side';
@@ -3322,6 +3333,12 @@ begin
     v_wait := true;
   else
     perform plan_h_keys(p->'target', array['rt_id', 'side', 'new_rt'], 'target');
+    -- K1 review r1: the target's shape as plan_h_target checks it at execution (side; rt_id or new_rt, one of them),
+    -- so a dry run never hands out a token for a target its execution refuses
+    if p->'target'->>'side' is null or p->'target'->>'side' not in ('KATHODOS', 'ANODOS') then
+      perform plan_h_raise('bad_input', 'target.side');
+    end if;
+    if (p->'target' ? 'new_rt') = (p->'target' ? 'rt_id') then perform plan_h_raise('bad_input', 'target: rt_id or new_rt'); end if;
     v_keep := (p->'target'->>'rt_id')::bigint;
     if v_keep is not null then
       select * into r from ct_round_trips where id = v_keep;
@@ -3347,6 +3364,17 @@ begin
   perform 1 from ct_round_trips c
    where c.id = any (array(select l.rt_id from piece_legs l where l.id = any (v_legs)) || v_keep)
    order by c.id for no key update;
+  -- K1 review r1: the legs were read BEFORE these locks. The pieces too, by id (a put locks its cycle, then the
+  -- piece), then the chain again: a leg of a moved piece added since (a put onto a cycle not locked here) or dropped
+  -- since (another move) is a lost race - 40001, the Worker's 409 busy_retry, nothing kept - never a list or a drop
+  -- on a stale chain. One PGlite session cannot show it (as the cycle locks): K2 is the gate.
+  perform 1 from shipment_pieces sp where sp.id = any (v_pieces) order by sp.id for no key update;
+  if exists (select 1 from piece_legs l where l.id = any (v_legs) and l.deleted_at is not null)
+     or exists (select 1 from piece_legs l
+                 where l.piece_id = any (v_pieces) and l.deleted_at is null and not (l.id = any (v_legs))
+                   and l.leg_no > (select min(m.leg_no) from piece_legs m where m.id = any (v_legs) and m.piece_id = l.piece_id)) then
+    raise exception 'plan_move_pieces: the legs changed while the cycles were locked' using errcode = '40001';
+  end if;
   v_full := plan_h_drop_consequences(v_legs, v_keep, v_chosen);
   v_conf := plan_h_confirm('plan_move_pieces', array_to_string(v_legs, ',') || '>' || coalesce(p->'target', 'null'::jsonb)::text,
                            v_full, p, p_role);
@@ -3644,6 +3672,12 @@ begin
   -- temperature_c is unconstrained numeric: NaN / +-Infinity would be stored as they are (A2)
   if abs((v_set->>'temperature_c')::numeric) >= 'Infinity'::numeric then
     perform plan_h_raise('bad_input', 'temperature_c:finite');
+  end if;
+  -- K1 review r1 (the rule of plan_orders_create): an object / array / boolean in a text field would be stored as its
+  -- JSON text, silently
+  if exists (select 1 from unnest(array['reference', 'goods', 'notes']) f
+              where jsonb_typeof(v_set->f) in ('object', 'array', 'boolean')) then
+    perform plan_h_raise('bad_input', 'set:text');
   end if;
   if p->'shipments' is not null and jsonb_typeof(p->'shipments') <> 'array' then perform plan_h_raise('bad_input', 'shipments'); end if;
   for s in select value from jsonb_array_elements(coalesce(p->'shipments', '[]'::jsonb)) loop
@@ -4202,9 +4236,9 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 
 Στο `072_plan_functions_test.sql` αντικατέστησε τη γραμμή `  -- [SECTION B CASES]` με:
 ```sql
-  -- ===== SECTION B CASES (B1-B113): cycle, delete, VS, local loading, notices, reads, the week-scenario 19/32/31
+  -- ===== SECTION B CASES (B1-B124): cycle, delete, VS, local loading, notices, reads, the week-scenario 19/32/31
   -- (B77), the reviews' cases (B78-B97), request_id of a local loading and a cancel without id (B98-B101), the
-  -- vehicle never emptied by plan_rt_update (B102-B113, owner 25/10) =====
+  -- vehicle never emptied by plan_rt_update (B102-B113, owner 25/10), the K1 review's cases (B114-B124) =====
   -- Own fixture (rec072TB..., "TEST 072 B ...", TEST-072-B...), undone by the final error of the outer block;
   -- each case undone by its marker. Results go into the outer ok / bad / res. ASCII only.
   -- S (every case): an OWNED v5 cycle made by plan_rt_create (TEST-072-B1 / driver B1, stops A 06-08 and B 12-14
@@ -5466,6 +5500,8 @@ begin
   -- an unknown key is refused, never ignored (principle 1): {"dryRun": true} must not delete
   perform plan_h_keys(p, array['nat_order_id', 'reason', 'dry_run', 'confirm_token'], 'p');
   if p ? 'dry_run' and jsonb_typeof(p->'dry_run') <> 'boolean' then perform plan_h_raise('bad_input', 'dry_run'); end if;
+  -- K1 review r1: an object / array / boolean reason would be kept as its JSON text on every deleted row
+  if jsonb_typeof(p->'reason') in ('object', 'array', 'boolean') then perform plan_h_raise('bad_input', 'reason'); end if;
   -- coordinator 25/10 (cross-cutting input rule): 'NaN' / '+-Infinity' are refused by this cast itself (a bigint has
   -- no non-finite value), as bad_input 'nat_order_id' - never through numeric, where NaN would end as a raw 0A000
   begin
@@ -5486,6 +5522,15 @@ begin
   if n.id is null or n.deleted_at is not null then perform plan_h_raise('order_gone', coalesce(v_no::text, 'null')); end if;
   if not exists (select 1 from shipments s where s.nat_order_id = v_no and s.deleted_at is null) then
     perform plan_h_raise('order_not_v5', v_no::text);
+  end if;
+  -- K1 review r1: the chain was read BEFORE the locks. The pieces too (after the order), then the chain again: a leg
+  -- added or dropped since is a lost race (40001 = 409 busy_retry, nothing kept), never a delete on a stale list
+  perform 1 from shipment_pieces sp join shipments s on s.id = sp.shipment_id
+   where s.nat_order_id = v_no and sp.deleted_at is null order by sp.id for no key update of sp;
+  if v_legs <> (select coalesce(array_agg(l.id order by l.id), '{}') from piece_legs l
+                  join shipment_pieces sp on sp.id = l.piece_id join shipments s on s.id = sp.shipment_id
+                 where s.nat_order_id = v_no and l.deleted_at is null) then
+    raise exception 'plan_delete: the chain changed while the cycles were locked' using errcode = '40001';
   end if;
   select coalesce(array_agg(rid order by rid), '{}') into v_empty from unnest(v_rts) rid
    where not exists (select 1 from piece_legs l where l.rt_id = rid and l.deleted_at is null and not (l.id = any(v_legs)));
@@ -6039,6 +6084,12 @@ begin
   exception when invalid_text_representation or numeric_value_out_of_range then
     perform plan_h_raise('bad_input', 'ids');
   end;
+  -- K1 review r1 (the rule of plan_orders_create): an object / array / boolean in a text field would be stored as its
+  -- JSON text, silently
+  if exists (select 1 from unnest(array['time_from', 'time_to', 'notes']) f
+              where jsonb_typeof(p->f) in ('object', 'array', 'boolean')) then
+    perform plan_h_raise('bad_input', 'text');
+  end if;
   if v_lm is not null then
     if not v_cancel then perform plan_h_raise('bad_input', 'local_move_id without cancel'); end if;
     -- decision 44: request_id is for the creation; a second cancel is already harmless (already = true)
@@ -6689,14 +6740,20 @@ test('the public functions: exact signatures, jsonb, SECURITY DEFINER; the write
   assert.ok(!arrayItems(src, 'v_pub').some((s) => s.includes('plan_rt_create')), 'plan_rt_create is internal (decision 3)');
   // ONE lock order (final review 25/10): the cycles first, by id, then the order / piece. A single PGlite session
   // cannot show a deadlock, so the order is checked here, on the text: the first cycle lock comes before the first
-  // lock on national_orders / shipment_pieces in every function that takes both.
-  for (const name of ['plan_move_pieces', 'plan_split_piece', 'plan_delete']) {
+  // lock on national_orders / shipment_pieces / orders / order_stops / rt_stops in every function that takes both.
+  // One statement each ([^;]*, K1 review r1): a lazy match across statements could start at a read without a lock.
+  for (const name of ['plan_move_pieces', 'plan_split_piece', 'plan_delete', 'plan_vs_set_place', 'plan_rt_update']) {
     const b = strip(body(src, name));
-    const cyc = b.search(/from ct_round_trips [\s\S]*?for no key update/);
-    const other = b.search(/from (?:national_orders|shipment_pieces) [^;]*for no key update/);
+    const cyc = b.search(/from ct_round_trips [^;]*for no key update/);
+    const other = b.search(/from (?:national_orders|shipment_pieces|orders|order_stops|rt_stops) [^;]*for no key update/);
     assert.ok(cyc >= 0, `${name} locks its cycles`);
-    assert.ok(other < 0 || cyc < other, `${name}: the cycles are locked before the order / piece`);
+    assert.ok(other < 0 || cyc < other, `${name}: the cycles are locked before the order / piece / stop`);
   }
+  // plan_put_pieces: its cycle in plan_h_target, then the pieces by id (K1 review r1), never in the caller's order
+  const put = strip(body(src, 'plan_put_pieces'));
+  const pcs = put.search(/from shipment_pieces [^;]*order by sp\.id for no key update/);
+  assert.ok(pcs >= 0 && put.indexOf('plan_h_target(') < pcs && pcs < put.indexOf('plan_h_put('),
+    'plan_put_pieces locks its pieces by id, after the cycle and before plan_h_put');
 });
 
 test('every plan: code 072 raises has a case; >= 80 cases; no retired code', () => {
@@ -9056,7 +9113,10 @@ async function handlePlan(request, url, origin, env) {
     const out = await dbRpc(env, fn, args);
     if (!PLAN_MONEY_ROLES.includes(caller.role) && planHasAmount(out)) {
       console.error(`PLAN ${name}: the DB answered an amount to role ${caller.role} — not forwarded`);
-      return planError(500, "SERVER", "amount_leak", "Η απάντηση της βάσης είχε ποσά για ρόλο χωρίς δικαίωμα — δεν στάλθηκε· ενημέρωσε τον Δημήτρη", origin, env);
+      // a write answered: its COMMIT is done, so the text says it was kept and must not be pressed again (K1 review r1)
+      return planError(500, "SERVER", "amount_leak", maybeWritten
+        ? "Η πράξη αποθηκεύτηκε, αλλά η απάντηση της βάσης είχε ποσά για ρόλο χωρίς δικαίωμα — δεν στάλθηκε· μην την ξαναπατήσεις· ενημέρωσε τον Δημήτρη"
+        : "Η απάντηση της βάσης είχε ποσά για ρόλο χωρίς δικαίωμα — δεν στάλθηκε· ενημέρωσε τον Δημήτρη", origin, env);
     }
     if (out && out.preview && out.preview.conflict && typeof out.preview.conflict === "object") {
       out.preview.conflict.message = planConflictMessage(out.preview.conflict);
@@ -9107,7 +9167,10 @@ async function handlePlan(request, url, origin, env) {
       return planError(422, "PLAN_RULE", cname, n ? `Κανόνας βάσης ${cname}` : `Κανόνας βάσης: ${String(pg.message || "").slice(0, 200)}`, origin, env);
     }
     console.error(`PLAN ${name}`, e && e.message);
-    if (maybeWritten) {
+    // Only an answer that never came (no e.pg: the fetch threw, or a gateway page) leaves the outcome unknown. A
+    // PostgREST error answer carries a SQLSTATE and means the RPC's transaction rolled back: nothing was kept, so
+    // it is plan_failed, never «may have been saved» (K1 review r1: 22P02, 23502, an inner 42883, P0001 without hint).
+    if (maybeWritten && !pg) {
       // the link may have dropped AFTER the COMMIT: a write never claims «not done» (αρχή 1); the F4 client
       // must not send it again by itself, and the user re-presses the SAME form, so the same request_id replays
       // (decision 44). Never «refresh»: that would close the form and mint a new id = a second creation.
@@ -9782,6 +9845,239 @@ test('the 072 copy is byte-identical to the SQL branch file', (t) => {
 ```
 Expected στο `deploy/worker-plan`: `node --test worker/test/plan-contract.test.mjs` = `ℹ pass 9`, `ℹ fail 0`, με γραμμή `ℹ copy: worker/migrations/drafts/072_plan_functions.sql = feat/national-v5-f2 (md5 …)`· όλη η σουίτα `ℹ tests 284`, `ℹ pass 283`, `ℹ skipped 1`, `ℹ fail 0`.
 
+**Η κριτική xhigh του Κ1, γύρος 1 (25/10): SQL Critical 0 · Important 2 · Minor 9· Worker Critical 0 · Important 0 · Minor 5.** Τα δύο Important ήταν κενά απόδειξης (κανόνες της 072 που το rules test δεν μπορούσε να ρίξει: 6 μεταλλαγές επιβίωναν). Οι αλλαγές κώδικα μπήκαν **στα code blocks των Tasks όπου ζει ο κώδικας** (σχόλια `K1 review r1`), ώστε το πλάνο να μένει η μία πηγή:
+- Α2 `plan_orders_create`: `abs()` στο `pallets:finite` (το `-Infinity` περνούσε και έπεφτε αργότερα ως `22003`)·
+- Α3 `plan_put_pieces`: τα κομμάτια κλειδώνονται κατά id μετά τον κύκλο (όπως `plan_put_group` / `plan_move_pieces`)·
+- Α6 `plan_move_pieces`: `dry_run` μόνο boolean· το σχήμα του στόχου (side, ένα από `rt_id` / `new_rt`) ελέγχεται και στο dry run· μετά τα κλειδώματα των κύκλων κλειδώνονται τα κομμάτια και ξαναδιαβάζεται η αλυσίδα: σκέλος που προστέθηκε ή σβήστηκε στο μεταξύ = `40001` (ο Worker: 409 `busy_retry`, τίποτα δεν κρατήθηκε)·
+- Α7 `plan_order_update`, Β4 `plan_delete` (`reason`), Β6 `plan_local_loading`: αντικείμενο / πίνακας / boolean σε πεδίο κειμένου = `bad_input` (ο κανόνας του Α2)· Β4: ξανα-ανάγνωση της αλυσίδας μετά τα κλειδώματα, όπως στο Α6·
+- Β9 build test: ο έλεγχος σειράς κλειδωμάτων κοιτά **μία** εντολή (`[^;]*`, όχι `[\s\S]*?`), καλύπτει και `plan_vs_set_place` / `plan_rt_update`, και ελέγχει τα κομμάτια κατά id στο `plan_put_pieces` (12 tests, ίδιος αριθμός)·
+- Γ3 `handlePlan`: σφάλμα PostgREST με SQLSTATE (`e.pg`) = η συναλλαγή γύρισε πίσω = `plan_failed`· `plan_unknown` μόνο χωρίς απάντηση· το `amount_leak` μετά από εγγραφή λέει «Η πράξη αποθηκεύτηκε… μην την ξαναπατήσεις».
+
+Περιπτώσεις του rules test (B114–B124): εκτελεσμένο σκέλος (κύκλος από προχθές ως αύριο) στη Μεταφορά πλευράς, στη Μεταφορά του ίδιου του σκέλους (λίστα `executed_leg`, token) και στη Διαγραφή· `stale_confirm` όταν αλλάζει γραμμή κόστους (DKV) ή ο αριθμός ΤΠΥ μετά το dry run· `mixed_temp`· διπλό `ref` σε νέο κύκλο· `-Infinity`· πεδία κειμένου· στόχος και `dry_run` στο dry run της Μεταφοράς. Στο `072_plan_functions_test.sql`, πριν από `        -- [B-CASES-NEXT]`:
+```sql
+        -- ---- K1 review r1: what was executed stays (spec 7); the token's row versions; rules no case proved ----
+        -- Executed = the Athens day of a leg's drop stop has passed (071 v_rt_stop_state). The cycle b_x runs from two
+        -- days ago to tomorrow: L2 = b_lg2 (order N2, A -> B two days ago) is executed, L3 = b_e1 (order N3, A -> C
+        -- tomorrow) is not; the cycle never empties in these cases, so the list holds only what the case is about.
+        ELSIF kb BETWEEN 114 AND 117 THEN
+          b_v2 := plan_rt_create(jsonb_build_object('new_rt', jsonb_build_object('trip_type', 'OWNED', 'truck_id', b_t2,
+                    'driver_id', b_d2), 'side', 'KATHODOS', 'stops', jsonb_build_array(
+                    jsonb_build_object('ref', 'a', 'location_id', b_la, 'side', 'KATHODOS',
+                                       'planned_from', ((b_td - 2) + time '06:00') AT TIME ZONE 'Europe/Athens',
+                                       'planned_to', ((b_td - 2) + time '08:00') AT TIME ZONE 'Europe/Athens'),
+                    jsonb_build_object('ref', 'b', 'location_id', b_lb, 'side', 'KATHODOS',
+                                       'planned_from', ((b_td - 2) + time '12:00') AT TIME ZONE 'Europe/Athens',
+                                       'planned_to', ((b_td - 2) + time '14:00') AT TIME ZONE 'Europe/Athens'),
+                    jsonb_build_object('ref', 'c', 'location_id', b_lc, 'side', 'KATHODOS',
+                                       'planned_from', ((b_td + 1) + time '12:00') AT TIME ZONE 'Europe/Athens',
+                                       'planned_to', ((b_td + 1) + time '14:00') AT TIME ZONE 'Europe/Athens'))),
+                  'test:072b', 'dispatcher');
+          b_x := (b_v2->>'rt_id')::bigint;
+          INSERT INTO national_orders (legacy_id, client_id, reference, price) VALUES ('rec072TBN2', b_cl, 'WN072-TEST', 100)
+            RETURNING id INTO b_no2;
+          INSERT INTO shipments (nat_order_id, origin_location_id, dest_location_id, pallets, load_from, load_to, deliver_from,
+                                 deliver_to, created_by)
+          VALUES (b_no2, b_la, b_lb, 10, ((b_td - 2) + time '06:00') AT TIME ZONE 'Europe/Athens',
+                  ((b_td - 2) + time '08:00') AT TIME ZONE 'Europe/Athens', ((b_td - 2) + time '12:00') AT TIME ZONE 'Europe/Athens',
+                  ((b_td - 2) + time '14:00') AT TIME ZONE 'Europe/Athens', 'test:072b') RETURNING id INTO b_sh2;
+          INSERT INTO shipment_pieces (shipment_id, pallets, created_by) VALUES (b_sh2, 10, 'test:072b') RETURNING id INTO b_p2;
+          INSERT INTO piece_legs (piece_id, leg_no, rt_id, pickup_stop_id, drop_stop_id, created_by)
+          VALUES (b_p2, 1, b_x, (b_v2->'stops'->>'a')::bigint, (b_v2->'stops'->>'b')::bigint, 'test:072b') RETURNING id INTO b_lg2;
+          INSERT INTO national_orders (legacy_id, client_id, reference, price) VALUES ('rec072TBN3', b_cl, 'WN072-TEST', 100)
+            RETURNING id INTO b_no3;
+          INSERT INTO shipments (nat_order_id, origin_location_id, dest_location_id, pallets, load_from, load_to, deliver_from,
+                                 deliver_to, created_by)
+          VALUES (b_no3, b_la, b_lc, 6, ((b_td - 2) + time '06:00') AT TIME ZONE 'Europe/Athens',
+                  ((b_td - 2) + time '08:00') AT TIME ZONE 'Europe/Athens', ((b_td + 1) + time '12:00') AT TIME ZONE 'Europe/Athens',
+                  ((b_td + 1) + time '14:00') AT TIME ZONE 'Europe/Athens', 'test:072b') RETURNING id INTO b_y;
+          INSERT INTO shipment_pieces (shipment_id, pallets, created_by) VALUES (b_y, 6, 'test:072b') RETURNING id INTO b_z;
+          INSERT INTO piece_legs (piece_id, leg_no, rt_id, pickup_stop_id, drop_stop_id, created_by)
+          VALUES (b_z, 1, b_x, (b_v2->'stops'->>'a')::bigint, (b_v2->'stops'->>'c')::bigint, 'test:072b') RETURNING id INTO b_e1;
+          SET CONSTRAINTS ALL IMMEDIATE;
+          SET CONSTRAINTS ALL DEFERRED;
+          IF NOT (SELECT executed FROM v_rt_stop_state WHERE stop_id = (b_v2->'stops'->>'b')::bigint)
+             OR (SELECT executed FROM v_rt_stop_state WHERE stop_id = (b_v2->'stops'->>'c')::bigint) THEN
+            b_verdict := 'FAIL fixture: B must be executed and C not';
+          ELSIF kb = 114 THEN   -- a breakdown: the side moves, its executed leg stays where it was delivered
+            b_v3 := plan_move_pieces(jsonb_build_object('from', jsonb_build_object('rt_id', b_x, 'side', 'KATHODOS'),
+                      'target', '{"wait": true}'::jsonb), 'test:072b', 'dispatcher');
+            b_verdict := CASE WHEN (SELECT deleted_at IS NULL FROM piece_legs WHERE id = b_lg2)
+                                AND (SELECT deleted_at IS NOT NULL FROM piece_legs WHERE id = b_e1)
+                                AND b_v3->'ids'->'dropped_leg_ids' = jsonb_build_array(b_e1)
+                                AND (SELECT status FROM ct_round_trips WHERE id = b_x) <> 'cancelled'
+                              THEN 'ok a side move takes only what is not executed: L2 stays, L3 back to waiting, no token'
+                              ELSE 'FAIL side move with an executed leg: ' || coalesce(b_v3::text, 'null') END;
+          ELSIF kb IN (115, 116) THEN   -- the executed leg itself moved: a correction, listed, with the token
+            b_v3 := plan_move_pieces(jsonb_build_object('from', jsonb_build_object('piece_ids', jsonb_build_array(b_p2)),
+                      'target', '{"wait": true}'::jsonb, 'dry_run', true), 'test:072b', 'dispatcher');
+            IF kb = 115 THEN
+              PERFORM plan_move_pieces(jsonb_build_object('from', jsonb_build_object('piece_ids', jsonb_build_array(b_p2)),
+                        'target', '{"wait": true}'::jsonb, 'confirm_token', b_v3->>'confirm_token'), 'test:072b', 'dispatcher');
+              b_verdict := CASE WHEN (b_v3->>'needs_confirm')::boolean
+                                  AND jsonb_array_length(b_v3->'consequences') = 1
+                                  AND b_v3->'consequences' @> jsonb_build_array(jsonb_build_object('kind', 'executed_leg',
+                                        'leg_id', b_lg2, 'rt_id', b_x))
+                                  AND (SELECT deleted_at IS NOT NULL FROM piece_legs WHERE id = b_lg2)
+                                  AND (SELECT deleted_at IS NULL FROM piece_legs WHERE id = b_e1)
+                                THEN 'ok an executed leg moved is listed (executed_leg) and goes only with the token'
+                                ELSE 'FAIL executed leg: ' || coalesce(b_v3::text, 'null') END;
+            ELSE   -- 116: the same move without the token
+              PERFORM plan_move_pieces(jsonb_build_object('from', jsonb_build_object('piece_ids', jsonb_build_array(b_p2)),
+                        'target', '{"wait": true}'::jsonb), 'test:072b', 'dispatcher');
+            END IF;
+          ELSE   -- 117: deleting an order with an executed leg lists it
+            b_v3 := plan_delete(jsonb_build_object('nat_order_id', b_no2, 'dry_run', true), 'test:072b', 'owner');
+            b_verdict := CASE WHEN (b_v3->>'needs_confirm')::boolean
+                                AND b_v3->'consequences' @> jsonb_build_array(jsonb_build_object('kind', 'executed_leg',
+                                      'leg_id', b_lg2, 'rt_id', b_x))
+                              THEN 'ok plan_delete lists the executed leg of the order'
+                              ELSE 'FAIL delete executed: ' || coalesce(b_v3::text, 'null') END;
+          END IF;
+        ELSIF kb = 118 THEN   -- a cost line corrected between the dry run and the confirm (a DKV import): stale
+          INSERT INTO ct_cost_lines (rt_id, category, net, vat, pay_source, alloc_status, created_by)
+          VALUES (b_rt1, 'dkv', 10, 2.4, 'DKV', 'allocated', 'test:072b');
+          b_v2 := plan_rt_clear(jsonb_build_object('rt_id', b_rt1, 'dry_run', true), 'test:072b', 'dispatcher');
+          UPDATE ct_cost_lines SET net = 11 WHERE rt_id = b_rt1;
+          PERFORM plan_rt_clear(jsonb_build_object('rt_id', b_rt1, 'confirm_token', b_v2->>'confirm_token'), 'test:072b', 'dispatcher');
+        ELSIF kb = 119 THEN   -- the invoice number corrected between the dry run and the confirm: stale
+          UPDATE national_orders SET invoiced = true, invoice_number = 'TEST-072-TPY' WHERE id = b_no1;
+          b_v2 := plan_delete(jsonb_build_object('nat_order_id', b_no1, 'dry_run', true), 'test:072b', 'dispatcher');
+          UPDATE national_orders SET invoice_number = 'TEST-072-TPY2' WHERE id = b_no1;
+          PERFORM plan_delete(jsonb_build_object('nat_order_id', b_no1, 'reason', 'TEST 072 reason',
+                    'confirm_token', b_v2->>'confirm_token'), 'test:072b', 'dispatcher');
+        ELSIF kb = 120 THEN   -- 2 C and 6 C on one side: the mixed_temp warning (spec 7 B-87), never a refusal
+          UPDATE national_orders SET temperature_c = 2 WHERE id = b_no1;
+          INSERT INTO national_orders (legacy_id, client_id, reference, price, temperature_c)
+          VALUES ('rec072TBN2', b_cl, 'WN072-TEST', 100, 6) RETURNING id INTO b_no2;
+          INSERT INTO shipments (nat_order_id, origin_location_id, dest_location_id, pallets, load_from, load_to, deliver_from,
+                                 deliver_to, created_by)
+          VALUES (b_no2, b_la, b_lb, 4, h06, h08, h12, h14, 'test:072b') RETURNING id INTO b_sh2;
+          INSERT INTO shipment_pieces (shipment_id, pallets, created_by) VALUES (b_sh2, 4, 'test:072b') RETURNING id INTO b_p2;
+          b_v2 := plan_put_pieces(jsonb_build_object('pieces', jsonb_build_array(jsonb_build_object('piece_id', b_p2)),
+                    'target', jsonb_build_object('rt_id', b_rt1, 'side', 'KATHODOS'),
+                    'stops', jsonb_build_array(jsonb_build_object('ref', 'a', 'stop_id', b_sa),
+                                               jsonb_build_object('ref', 'b', 'stop_id', b_sb))), 'test:072b', 'dispatcher');
+          b_verdict := CASE WHEN b_v2->'warnings' @> jsonb_build_array(jsonb_build_object('code', 'mixed_temp', 'rt_id', b_rt1,
+                                   'side', 'KATHODOS', 'delta_c', 4))
+                            THEN 'ok 2 C and 6 C on one side: warned (mixed_temp 4), put anyway'
+                            ELSE 'FAIL mixed_temp: ' || coalesce(b_v2::text, 'null') END;
+        ELSIF kb BETWEEN 121 AND 124 THEN   -- refused under their own detail (the HINT alone is bad_input everywhere)
+          b_txt := '';
+          IF kb = 121 THEN   -- two stops of a new cycle with one ref: the first would be a stop without a leg, kept silently
+            BEGIN
+              PERFORM plan_rt_create(jsonb_build_object('new_rt', jsonb_build_object('trip_type', 'OWNED', 'truck_id', b_t2,
+                        'driver_id', b_d2), 'side', 'KATHODOS', 'stops', jsonb_build_array(
+                        jsonb_build_object('ref', 'x', 'location_id', b_lc, 'side', 'KATHODOS', 'planned_from', h16, 'planned_to', h18),
+                        jsonb_build_object('ref', 'x', 'location_id', b_la, 'side', 'KATHODOS', 'planned_from', h18, 'planned_to', h20))),
+                      'test:072b', 'dispatcher');
+            EXCEPTION WHEN others THEN GET STACKED DIAGNOSTICS b_txt = MESSAGE_TEXT;
+            END;
+            b_verdict := CASE WHEN b_txt = 'plan rule broken: bad_input:stops: ref not unique'
+                              THEN 'ok one ref twice in a new cycle: refused' ELSE 'FAIL ref unique: ' || b_txt END;
+          ELSIF kb = 122 THEN   -- -Infinity pallets: pallets:finite, as plan_order_update (never a later 22003)
+            BEGIN
+              PERFORM plan_orders_create(jsonb_build_object('request_id', gen_random_uuid(), 'orders', jsonb_build_array(
+                        jsonb_build_object('client_id', b_cl, 'price', 100, 'shipments', jsonb_build_array(
+                          jsonb_build_object('origin_location_id', b_la, 'dest_location_id', b_lb, 'pallets', '-Infinity',
+                                             'load_from', h06, 'load_to', h08, 'deliver_from', h12, 'deliver_to', h14))))),
+                      'test:072b', 'dispatcher');
+            EXCEPTION WHEN others THEN GET STACKED DIAGNOSTICS b_txt = MESSAGE_TEXT;
+            END;
+            b_verdict := CASE WHEN b_txt = 'plan rule broken: bad_input:pallets:finite'
+                              THEN 'ok -Infinity pallets: pallets:finite' ELSE 'FAIL -Infinity: ' || b_txt END;
+          ELSIF kb = 123 THEN   -- an object / array in a text field: refused, never stored as its JSON text
+            BEGIN
+              PERFORM plan_order_update(jsonb_build_object('nat_order_id', b_no1, 'set', '{"notes": {"a": 1}}'::jsonb),
+                                        'test:072b', 'dispatcher');
+            EXCEPTION WHEN others THEN GET STACKED DIAGNOSTICS b_txt = MESSAGE_TEXT;
+            END;
+            b_v3 := to_jsonb(b_txt);
+            BEGIN
+              PERFORM plan_delete(jsonb_build_object('nat_order_id', b_no1, 'reason', '["x"]'::jsonb), 'test:072b', 'dispatcher');
+            EXCEPTION WHEN others THEN GET STACKED DIAGNOSTICS b_txt = MESSAGE_TEXT;
+            END;
+            b_v3 := b_v3 || to_jsonb(b_txt);
+            BEGIN
+              PERFORM plan_local_loading(jsonb_build_object('rt_stop_id', b_sa, 'driver_id', b_d3, 'truck_id', b_t2,
+                        'notes', '{"a": 1}'::jsonb, 'request_id', gen_random_uuid()), 'test:072b', 'dispatcher');
+            EXCEPTION WHEN others THEN GET STACKED DIAGNOSTICS b_txt = MESSAGE_TEXT;
+            END;
+            b_v3 := b_v3 || to_jsonb(b_txt);
+            b_verdict := CASE WHEN b_v3 = '["plan rule broken: bad_input:set:text", "plan rule broken: bad_input:reason",
+                                            "plan rule broken: bad_input:text"]'::jsonb
+                                AND (SELECT notes IS NULL FROM national_orders WHERE id = b_no1)
+                              THEN 'ok notes / reason / notes as JSON: refused in update, delete and local loading'
+                              ELSE 'FAIL text fields: ' || b_v3::text END;
+          ELSE   -- 124: the dry run of a move refuses what its execution would (a token is never handed out for it)
+            BEGIN
+              PERFORM plan_move_pieces(jsonb_build_object('from', jsonb_build_object('piece_ids', jsonb_build_array(b_p1)),
+                        'target', jsonb_build_object('rt_id', b_rt1), 'dry_run', true), 'test:072b', 'dispatcher');
+            EXCEPTION WHEN others THEN GET STACKED DIAGNOSTICS b_txt = MESSAGE_TEXT;
+            END;
+            b_v3 := to_jsonb(b_txt);
+            BEGIN
+              PERFORM plan_move_pieces(jsonb_build_object('from', jsonb_build_object('piece_ids', jsonb_build_array(b_p1)),
+                        'target', jsonb_build_object('rt_id', b_rt1, 'side', 'KATHODOS', 'new_rt', '{}'::jsonb), 'dry_run', true),
+                      'test:072b', 'dispatcher');
+            EXCEPTION WHEN others THEN GET STACKED DIAGNOSTICS b_txt = MESSAGE_TEXT;
+            END;
+            b_v3 := b_v3 || to_jsonb(b_txt);
+            BEGIN   -- "dry_run": 1 was a dry run in the base and a write for the Worker's gate
+              PERFORM plan_move_pieces(jsonb_build_object('from', jsonb_build_object('piece_ids', jsonb_build_array(b_p1)),
+                        'target', '{"wait": true}'::jsonb, 'dry_run', 1), 'test:072b', 'dispatcher');
+            EXCEPTION WHEN others THEN GET STACKED DIAGNOSTICS b_txt = MESSAGE_TEXT;
+            END;
+            b_v3 := b_v3 || to_jsonb(b_txt);
+            b_verdict := CASE WHEN b_v3 = '["plan rule broken: bad_input:target.side",
+                                            "plan rule broken: bad_input:target: rt_id or new_rt",
+                                            "plan rule broken: bad_input:dry_run"]'::jsonb
+                              THEN 'ok a move dry run refuses a target without side, rt_id with new_rt, and a dry_run that is not a boolean'
+                              ELSE 'FAIL move dry run: ' || b_v3::text END;
+          END IF;
+```
+Πριν από `      ;  -- end of b_want`:
+```sql
+      || ARRAY['ok', 'ok', 'plan:need_token', 'ok', 'plan:stale_confirm', 'plan:stale_confirm', 'ok',
+               'ok', 'ok', 'ok', 'ok']   -- B114-B124 (K1 review r1: executed, the token's row versions, unproven rules)
+```
+Και η κεφαλίδα της ενότητας Β (Task Β1) γράφει `(B1-B124)` και `the K1 review's cases (B114-B124)`.
+
+Στο τέλος του `worker/test/plan-routes.test.mjs` (στο `deploy/worker-plan`):
+```js
+// ───────────────────── K1 review r1: what a write's failure says ─────────────────────
+test('a write the DB answered with an unmapped SQLSTATE rolled back → 500 plan_failed «δεν ολοκληρώθηκε», never plan_unknown', async () => {
+  for (const pg of [{ code: '22P02', message: 'invalid input syntax for type bigint: "abc"' },
+    { code: '23502', message: 'null value in column "rt_id" violates not-null constraint' },
+    { code: '42883', message: 'function public.plan_h_missing(bigint) does not exist' },
+    { code: 'P0001', message: 'raise without a plan: hint' }]) {
+    routes.length = 0;
+    on('POST', 'rpc/plan_move_pieces', () => pgError(400, { ...pg, hint: null, details: null }));
+    calls.length = 0;
+    const r = await callOpen('dispatcher', 'POST', '/plan/move', { from: { piece_ids: [1] }, target: { rt_id: 5, side: 'KATHODOS' } });
+    assert.equal(r.status, 500, `${pg.code}: ${r.text}`);
+    assert.deepEqual(r.json.error, { type: 'SERVER', code: 'plan_failed', message: 'Η πράξη POST /plan/move δεν ολοκληρώθηκε — ενημέρωσε τον Δημήτρη' }, pg.code);
+    assert.equal(rpcCalls().length, 1, `${pg.code}: one RPC, never a second`);
+  }
+});
+
+test('amount_leak after a write says the act was kept and must not be pressed again; a dry run keeps the plain text', async () => {
+  on('POST', 'rpc/plan_move_pieces', () => json({ ...WITH_AMOUNT, dry_run: false, needs_confirm: undefined }));
+  let r = await callOpen('warehouse', 'POST', '/plan/move', { from: { piece_ids: [4] }, target: { wait: true } });
+  assert.equal(r.status, 500, r.text);
+  assert.equal(r.json.error.code, 'amount_leak');
+  assert.match(r.json.error.message, /^Η πράξη αποθηκεύτηκε, .*μην την ξαναπατήσεις/);
+  assert.ok(!r.text.includes('230'), 'the number never leaves the Worker');
+  r = await call('warehouse', 'POST', '/plan/move', MOVE_DRY);
+  assert.equal(r.status, 500, r.text);
+  assert.equal(r.json.error.message, 'Η απάντηση της βάσης είχε ποσά για ρόλο χωρίς δικαίωμα — δεν στάλθηκε· ενημέρωσε τον Δημήτρη');
+});
+```
+
+Run (SQL branch): `cd tms-auditor && node --test test/plan-072.test.mjs`· (Worker) `node --test worker/test/*.test.mjs worker/src/rt-rules.test.mjs`
+Expected: `Result: 214 OK, 0 FAIL` (90 Α + 124 Β), μεταλλαγή B38 `213 OK, 1 FAIL`· Worker `ℹ tests 286`, `ℹ pass 285`, `ℹ skipped 1`, `ℹ fail 0`. Μεταλλαγές-έλεγχος (προσωρινά, μία τη φορά): χωρίς τη λίστα `executed_leg` → B115–B117· η Μεταφορά πλευράς παίρνει και εκτελεσμένα → B114· το token χωρίς την έκδοση γραμμών κόστους → B118, χωρίς την έκδοση της τιμολογημένης → B119· χωρίς `mixed_temp` → B120· χωρίς τη μοναδικότητα `ref` → B121· χωρίς `abs()` → B122· χωρίς τους τρεις ελέγχους κειμένου → B123· χωρίς τους τρεις ελέγχους του dry run της Μεταφοράς → B124. Η ταξινόμηση κομματιών και οι δύο ξανα-αναγνώσεις **δεν** φαίνονται σε μία συνεδρία PGlite (όπως τα κλειδώματα κύκλων)· την πρώτη την κρατά το build test, τις άλλες δύο η εκτέλεση του Κ2.
+
+Μένουν (Minor, απόφαση owner ή επόμενη φάση, όχι κώδικας τώρα): ο τόπος VS (`plan_vs_set_place`) αλλάζει εκτελεσμένη εθνική στάση χωρίς λίστα (άρνηση ή προειδοποίηση `executed_changed`;)· το `plan_order_update` αλλάζει τιμή / παλέτες τιμολογημένης εθνικής χωρίς προειδοποίηση (`invoiced_changed`;)· τα `order_parent_to_legs` / `order_legs_to_parent` (020) δεν είναι στον φρουρό md5 (θέλει νέα λήψη `live-072.sql`)· το dry run της Μεταφοράς σε `new_rt` δεν ελέγχει ακόμη αν το όχημα είναι πιασμένο (θέλει τα παράθυρα των στάσεων)· Φ4: το `core/plan-api.js` να μη βάζει **ποτέ** `_atRetry` σε εγγραφή `/plan/*` (με test)· Φ5: ο φρουρός θέλει λειτουργία ημέρας L (`--plan 2` = ανοιχτό) στην ίδια αλυσίδα με το άνοιγμα των εγγραφών, και το facade NATIONAL ORDERS να μην αλλάζει / σβήνει εθνική v5 (409 ή φρουρός βάσης).
+
 - [ ] **Step 2: DECISION_LOG** (στο `feat/national-v5-f2`, στο τέλος του αρχείου· όπου ο owner άλλαξε απόφαση, η γραμμή της γράφει την τελική επιλογή)
 
 ```markdown
@@ -9904,7 +10200,7 @@ gh pr create --draft --base main --head deploy/worker-plan --title "Worker /plan
 - `worker/tools/worker-guard.mjs`: the deploy guard as one tested command.
 
 ## Proof
-- `node --test worker/test/*.test.mjs worker/src/rt-rules.test.mjs` (236 -> 282, the one skip is main's).
+- `node --test worker/test/*.test.mjs worker/src/rt-rules.test.mjs` (236 -> 282 -> 286 after the K1 review, the one skip is main's).
 - `plan-contract` reads 071, 071b and the 072 draft copy (md5 in the test diagnostics).
 
 ## Owner
@@ -9957,7 +10253,7 @@ SELECT count(*) FILTER (WHERE has_function_privilege('anon', p.oid, 'EXECUTE') O
 FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace WHERE n.nspname = 'public' AND p.proname LIKE 'plan\_%';
 ```
 Expected: `0 | 0`.
-- [ ] **Step 9 (προαιρετικό, χωριστό «ναι»):** `worker/migrations/drafts/072_plan_functions_test.sql`. Expected: `RULES TEST 072 finished - EVERYTHING UNDONE, nothing kept. Result: 203 OK, 0 FAIL` (193 χωρίς την απόφαση 21). Οι κωδικοί RT- προχωρούν κατά ~120 (κάθε περίπτωση Β φτιάχνει τουλάχιστον έναν κύκλο) και τα ids (identity) των πινάκων που γράφει το test· τα PM- **δεν** κινούνται (η 072 και το test δεν γράφουν `pl_movements`). Αυτό είναι το μόνο ίχνος, και ο owner το ξέρει πριν πει «ναι».
+- [ ] **Step 9 (προαιρετικό, χωριστό «ναι»):** `worker/migrations/drafts/072_plan_functions_test.sql`. Expected: `RULES TEST 072 finished - EVERYTHING UNDONE, nothing kept. Result: 214 OK, 0 FAIL` (με τις B114–B124 του Κ1· χωρίς την απόφαση 21 λείπουν και οι περιπτώσεις της). Οι κωδικοί RT- προχωρούν κατά ~120 (κάθε περίπτωση Β φτιάχνει τουλάχιστον έναν κύκλο) και τα ids (identity) των πινάκων που γράφει το test· τα PM- **δεν** κινούνται (η 072 και το test δεν γράφουν `pl_movements`). Αυτό είναι το μόνο ίχνος, και ο owner το ξέρει πριν πει «ναι».
 - [ ] **Step 10:** αμέσως το Task Κ3 Step 1 (αρχεία εκτός `drafts/`, CLAUDE.md κανόνας 5)· μετά το Task Γ7 (deploy Worker), με **χωριστό** «ναι», το ίδιο βράδυ ή άλλο (το Γ7 Step 1 βρίσκει την 072 σε όποια από τις δύο θέσεις). Ως τότε ο ζωντανός Worker δεν ξέρει το `/plan/*` (404), και η 072 δεν καλείται από πουθενά.
 - [ ] **Step 11 (agent, SELECT, μετά την επόμενη ωριαία εκτέλεση):** `SELECT run_at, status, value FROM monitoring.results WHERE check_id = 'B-54' ORDER BY run_at DESC LIMIT 1`. Expected: `green`, `46` (η 072 δεν προσθέτει trigger), `run_at` μετά το Step 5.
 - [ ] **Step 12 (owner, μόνο αν αποτύχει το Step 6 ή 8, ή αν το Γ7 αποτύχει και δεν διορθώνεται): Επαναφορά της βάσης** (κριτική 23/10 νύχτα, πλάνο 3· απόφαση 45: χωρίς δικό της dry run)
@@ -10106,13 +10402,13 @@ Expected: το πρώτο `diff --stat` είναι κενό (το branch δεν 
 
 - **Πλάνο v2 (24/10): κώδικας ↔ αποφάσεις του owner, ξανα-απόδειξη κατά γράμμα** (τα νούμερα της μίας τελικής εκτέλεσης, 25/10· οι ενδιάμεσες είναι στο `fix-report-v2.md`). Ένα script ακριβών αντικαταστάσεων με έλεγχο πλήθους πάνω στο v1 (`74a315b6`)· εξαγωγή κάθε «πρόσθεσε πάνω από…» / «αντικατέστησε» από αυτό το αρχείο, όπως στο `final-report.md`, αλλά με την **πραγματική** λήψη `live-072.sql` (ερώτημα του Α1 Step 1, SELECT 24/10, md5 του κελιού `1df9d47d…` = md5 του αρχείου) και **χωρίς** καμία χαλάρωση του φρουρού md5:
   - harness της Β8 (`plan-072.test.mjs`) **9/9**: η λήψη κρατά τα 22 ζωντανά κείμενα, dry run, apply (54 `plan_%` = 6 + 48), verify (`changed_live 0`), ρόλοι API, rules, rollback (άρνηση με γραμμή v5, μετά επιτυχία, ξανά apply), μεταλλαγή B38·
-  - rules test **`Result: 203 OK, 0 FAIL`** (90 Α + 113 Β)· `tests/sql-072-drafts.test.js` **12/12**· bootstrap του Α1 **6/6**· το bootstrap `plan-072` του Α1 περιμένει 90 στο τέλος της Α (με τη Β από πάνω δίνει 203, όπως πρέπει: το αντικαθιστά η Β8)·
+  - rules test **`Result: 203 OK, 0 FAIL`** (90 Α + 113 Β· μετά την κριτική του Κ1: **214 OK**, 90 Α + 124 Β)· `tests/sql-072-drafts.test.js` **12/12**· bootstrap του Α1 **6/6**· το bootstrap `plan-072` του Α1 περιμένει 90 στο τέλος της Α (με τη Β από πάνω δίνει 203, όπως πρέπει: το αντικαθιστά η Β8)·
   - **28 μεταλλαγές**, μία τη φορά, ρίχνουν ακριβώς τις περιπτώσεις τους:
     - `request_id` και συνέπειες (v2): χωρίς επανάληψη στον `plan_h_replay` → 83, 84, 85, 87, 88, B98, B99· χωρίς επανάληψη στην τοπική φόρτωση → B98, B99, B100· χωρίς έλεγχο σώματος → 84, B99· χωρίς έλεγχο χρήστη → 88· χωρίς `request_missing` → 89, 90, B100· χωρίς άρνηση ακύρωσης χωρίς φόρτωση → B101· `day` αντί για `month` στη γραμμή ΤΟΠΙΚΟ → 81· χωρίς `month` → 14, 65, B40· `partner_rate` κατά ρόλο → B72·
     - κανόνας οχήματος (owner 25/10): χωρίς τον κανόνα → B102, B103, B104, B105, B107, B113· ο κανόνας «άρνηση στο κλειδί `null`» (η πρώτη μορφή) → B107, B108, B109, B110·
     - της δεύτερης κριτικής του v1 (11): 5, B88, B89, B90, B91, B92–B94, B95, B96, B97, B56–B58, 69· οι 5 πρώτες: 78, 79–80, 81, B85, B79· και η B38 του harness·
     - η μεταλλαγή «ειδοποιήσεις board για όλους» του v1 δεν εφαρμόζεται πια (είναι η απόφαση 40)·
-  - Worker: η Γ εφαρμόστηκε Task προς Task σε αντίγραφο του `worker/` (+ `core/dkv-parser.js`) του main @ `639a5a50`, με την τελική 072 (md5 `483ffd6e…` τότε· η υλοποιημένη είναι `16d04b38…`, άλλαξε με τις διορθώσεις εισόδου NaN/Infinity/isfinite του Α2 και τη σειρά κλειδωμάτων του Κ1): 236 → Γ2 Step 4 `fail 4` → **242** → Γ3 Step 4 `pass 6, fail 5` → **273** → Γ4 Step 2 `pass 25, fail 3` → **276** → Γ5 Step 2 `fail 6` → **282 (281 pass + 1 skip του main)**· contract `pass 8`· `GUARD OK (15 markers, plan=1)` στην πηγή και σε διπλό bundle esbuild 0.20.2, `GUARD OK (13 markers, plan=0)` στην πηγή του main· μεταλλαγές Worker: `delete` για management ή `rt-clear` για warehouse → 3 κόκκινα (perms ×2, «decision 41»)· χωρίς κείμενο `request_reused`, `local_cancel_no_id` ή `vehicle_clear_use_clear` → contract κόκκινο (το τελευταίο και το test αντιστοίχισης)·
+  - Worker: η Γ εφαρμόστηκε Task προς Task σε αντίγραφο του `worker/` (+ `core/dkv-parser.js`) του main @ `639a5a50`, με την τελική 072 (md5 `483ffd6e…` τότε· η υλοποιημένη είναι `235da364…`, άλλαξε με τις διορθώσεις εισόδου NaN/Infinity/isfinite του Α2, τη σειρά κλειδωμάτων του Κ1 και την κριτική xhigh του Κ1): 236 → Γ2 Step 4 `fail 4` → **242** → Γ3 Step 4 `pass 6, fail 5` → **273** → Γ4 Step 2 `pass 25, fail 3` → **276** → Γ5 Step 2 `fail 6` → **282 (281 pass + 1 skip του main)**· contract `pass 8`· `GUARD OK (15 markers, plan=1)` στην πηγή και σε διπλό bundle esbuild 0.20.2, `GUARD OK (13 markers, plan=0)` στην πηγή του main· μεταλλαγές Worker: `delete` για management ή `rt-clear` για warehouse → 3 κόκκινα (perms ×2, «decision 41»)· χωρίς κείμενο `request_reused`, `local_cancel_no_id` ή `vehicle_clear_use_clear` → contract κόκκινο (το τελευταίο και το test αντιστοίχισης)·
   - Λεπτομέρεια και ό,τι δεν μπόρεσε να γίνει: `docs/national-v5/f2/fix-report-v2.md`.
 - **Συνέπεια ονομάτων και υπογραφών (v2):** `plan_h_replay(p jsonb, p_op text, p_actor text) RETURNS jsonb` και `plan_h_remember(p jsonb, p_op text, p_answer jsonb, p_actor text, p_role text) RETURNS void` = πίνακας βοηθών = κλήσεις στις Α2, Α5, Β6 (με τα ονόματα πράξης `plan_orders_create`, `plan_split_piece`, `plan_local_loading`)· `request_reused`, `request_missing`, `local_cancel_no_id`, `vehicle_clear_use_clear` = Interfaces (31) = `CODES_072` = `PLAN_RULE_TEXT` = περιπτώσεις 84, 87, 88, 89, 90, B99, B100, B101, B102–B105, B107, B113· `PLAN_PERMS` literal = πίνακας Interfaces = `EXPECT` του `plan-perms` (6 απαγορευμένα κελιά)· `month` = `plan_h_rt_consequences` = `local_payroll` του `plan_h_drop_consequences` = περιπτώσεις 13/14, 65, 81, B40 = `WITH_AMOUNT` του Worker = παράδειγμα dry run των Interfaces· 22 md5 ίδια σε Αφετηρία, PART 0, PART 5, verify, `sql-072-drafts`, bootstrap, `plan-072`, Κ2· σημάδια φρουρού: εργαλείο (15) = `plan-tables-guard` = Global Constraints = Κ3 Step 2. Σάρωση placeholders: μόνο οι ρητές τιμές χρόνου εκτέλεσης (`<YYYY-MM-DD>`, `<PLAN_SHA>`, `<PLAN_VERSION>`, `<PREV>`, `<n>`)· κανένα σημάδι προς συμπλήρωση, κανένα «TBD».
 - **Απόφαση 36 και Φ2:** η Φ2 δεν αγγίζει το EXCLUDE `rt_v2_truck_once` / `rt_v2_driver_once` (071b) ούτε το σχήμα του `ct_round_trips`· η μεταφορά τους σε τμήματα είναι του κομματιού της αλλαγής οχήματος. Το `PLAN_PERMS` δεν έχει resource αλλαγής οχήματος (το ορίζει το δικό της πλάνο, owner/dispatcher).
@@ -10125,7 +10421,7 @@ Expected: το πρώτο `diff --stat` είναι κενό (το branch δεν 
 - **Δεύτερη κριτική xhigh (23/10 νύχτα, τρεις κριτές: SQL, Worker, εκτελεσιμότητα· 1 Critical, 14 Important, 38 Minor):** κάθε Critical/Important εφαρμόστηκε στον κώδικα και στα βήματα (απόφαση 7 ξαναγραμμένη· αποφάσεις 35–45 για όσα θέλουν owner· παράρτημα απόφασης 21· Task 0 Step 0/1· Κ2 Step 12· Κ3 σε δύο χρόνους· Γ7 Step 1 με «μόνο η Φ2» και τις δύο θέσεις της 072). Από τα Minor εφαρμόστηκαν όσα διορθώνουν ψέμα ή σιωπή (μήνυμα 500 εγγραφής, ειδοποίηση μία φορά, `read_at`, κείμενο χρήστη σε λεπτομέρεια, σχόλια που έλεγαν άλλα, ένα δεκαδικό, `FOR NO KEY UPDATE`, 42883/42501, Bearer, `PLAN_MONEY_KEYS`, grep του Node 24, άγκυρα Κ3, Expected του Task 0, wrangler, `tail`)· όσα θέλουν owner έγιναν αποφάσεις· ένα δεν εφαρμόστηκε (παρένθεση λεπτομέρειας μόνο για ids, Worker 15: αλλάζει τον κοινό χαρτογράφο του 057/060 για αισθητικό όφελος). Αντιστοίχιση ένα-προς-ένα: `docs/national-v5/f2/fix-report.md`.
 - **Τα ευρήματα των δύο πρώτων κριτών** (23/10, 3 + 7 Critical, 8 + 11 Important) εφαρμόστηκαν μέσα στον κώδικα και στα βήματα, όχι ως σημειώσεις: ένα συμβόλαιο βοηθών (Interfaces), ο κλάδος `new_rt` στο Α1, ένα σύνολο σημαδιών και ένα PART 5, μία λίστα φρουρού (22 στο v2), ένα πλαίσιο rules test, η μία λήψη στο Α1, `plan_h_keys` σε όλη τη Β, ο ΕΝΑΣ μηχανισμός δύο βημάτων στις Β3/Β4, σάρωση στάσεων στη Β4, κλείδωμα κύκλων και `busy_retry`, «πρώτο κομμάτι» VS, `later_leg`, απόφαση 33, `payroll_locked` ως απόφαση 32, φίλτρο 071 και 31 κωδικοί της 072 στο contract test (27 στο v1), αντιγραφή 072 από τοπικό κλάδο και έλεγχος ίδιου αρχείου πριν από το deploy, εργαλείο φρουρού ανθεκτικό σε άλλη μορφή multipart, Task Σ1. Λεπτομέρεια, και όσα Minor δεν εφαρμόστηκαν με τον λόγο: `docs/national-v5/f2/final-report.md`.
 - **Σάρωση placeholders:** οι μόνες τιμές χρόνου εκτέλεσης είναι οι ρητές `<YYYY-MM-DD>`, `<VD_SHA>`, `<VD_VERSION>`, `<PLAN_SHA>`, `<PLAN_VERSION>`, `<PREV>` (με εντολή ή γραμμή που τις παράγει) και `<n>` στο DECISION_LOG· κανένα «TBD», κανένα «όπως παραπάνω» χωρίς κώδικα.
-- **Συνέπεια ονομάτων και τύπων:** υπογραφές βοηθών = πίνακας Interfaces· κωδικοί = λίστες Interfaces = `CODES_071`/`CODES_072` = `PLAN_RULE_TEXT`· `v_pub` (16) = verify = `PUBLIC` του build test = `PLAN_ROUTES` (και test: υπογραφές της 072 ↔ ορίσματα του Worker)· `PLAN_MONEY_KEYS` = `plan_h_strip_amounts` (test)· 22 md5 ίδια σε PART 0, PART 5, verify, `sql-072-drafts`, `plan-072`, Κ2· αριθμοί (v2, μετά την κριτική του PR #84): 203 περιπτώσεις (90 + 113), build 12, Worker 282 με 1 skip του main (Γ2 242 → Γ3 273 → Γ4 276 → Γ5 282), φρουρός 15 σημάδια.
+- **Συνέπεια ονομάτων και τύπων:** υπογραφές βοηθών = πίνακας Interfaces· κωδικοί = λίστες Interfaces = `CODES_071`/`CODES_072` = `PLAN_RULE_TEXT`· `v_pub` (16) = verify = `PUBLIC` του build test = `PLAN_ROUTES` (και test: υπογραφές της 072 ↔ ορίσματα του Worker)· `PLAN_MONEY_KEYS` = `plan_h_strip_amounts` (test)· 22 md5 ίδια σε PART 0, PART 5, verify, `sql-072-drafts`, `plan-072`, Κ2· αριθμοί (v2, μετά την κριτική του PR #84): 203 περιπτώσεις (90 + 113), build 12, Worker 282 με 1 skip του main (Γ2 242 → Γ3 273 → Γ4 276 → Γ5 282), φρουρός 15 σημάδια· μετά το Κ1: 214 περιπτώσεις (90 + 124), Worker 286 (285 pass + 1 skip).
 - **Ξανα-απόδειξη μετά τη δεύτερη κριτική (23/10, scratch `.superpowers/f2rev/scratch`, εκτός repo):** τα code blocks αυτού του αρχείου εξήχθησαν κατά γράμμα (κάθε «πρόσθεσε πάνω από…», κάθε «αντικατέστησε») και έτρεξαν σε PGlite 0.5.8 (`live-071.sql` + 071 + 071b + 069, χωρίς την πλήρη λήψη): «072 OK», 16 δημόσιες· rules test **179 OK, 0 FAIL**· `tests/sql-072-drafts.test.js` 12/12 και το bootstrap του Α1 6/6· `DRYRUN-IDIO`· verify, dry run, rollback (άρνηση με γραμμή v5, μετά επιτυχία) και ξανά apply· 18 μεταλλαγές, μία τη φορά, ρίχνουν ακριβώς τις περιπτώσεις τους (οι έξι παλιές: 78, 79–80, 81, B85, B79, B38· οι δώδεκα νέες: 5, B88, B89, B90, B91, B92–B94, B95, B96, B97, B56–B58, 69, B72). Ο Worker (Γ) εφαρμόστηκε Task προς Task σε αντίγραφο του `worker/` @ `a3117aac…` με την τελική 072: Γ2 Step 4 `fail 4` → 195 → Γ3 Step 4 `pass 6, fail 5` → 223 → Γ4 Step 2 `fail 3` → 226 → Γ5 Step 2 `fail 6` → **232/232**· `GUARD OK (11 markers, plan=1)` στην πηγή και σε διπλό bundle του esbuild 0.20.2, `GUARD OK (9 markers, plan=0)` στην παλιά πηγή, `STOP  WORKSHOPS Country: "country" = 0` όταν λείπει μόνο από τα WORKSHOPS (και στο bundle)· από τα 34 JS blocks τα 23 περνούν `node --check` αυτούσια και τα 11 είναι αποσπάσματα find/replace, που περνούν μέσα στα αρχεία που συναρμολογούνται (λεπτομέρεια: `docs/national-v5/f2/fix-report.md`).
 - **Δοκιμασμένο πριν παραδοθεί (23/10, scratch, εκτός repo):** τα code blocks εξήχθησαν από αυτό το αρχείο ακολουθώντας κατά γράμμα τις οδηγίες εισαγωγής και έτρεξαν σε PGlite 0.5.8 (`live-071.sql` + 071 + 071b + 069): «072 OK», rules test 169/169, `tests/sql-072-drafts.test.js` 12/12 (και το bootstrap του Α1 6/6 πάνω στο τελικό 072), verify, dry run, rollback με άρνηση και επιτυχία, ξανά apply· μεταλλαγές: χωρίς `v_vs_first` → 78, χωρίς `later_leg` → 79/80, χωρίς `local_payroll` → 81, χωρίς σάρωση στη `plan_delete` → B85, χωρίς `plan_h_keys` στη `plan_rt_clear` → B79, χωρίς ρητή σβήση μισθοδοσίας → B38. Βρέθηκε και διορθώθηκε η σύγκρουση ονόματος της B77. Κάθε JS block του πλάνου περνά `node --check` (εκτός από τα αποσπάσματα find/replace).
 - **Τι ΔΕΝ αποδείχθηκε ακόμη (v1, 23/10· η πλήρης λήψη και τα md5 αποδείχθηκαν στο v2, 24/10, βλ. πρώτη κουκκίδα):** η εκτέλεση με την πλήρη λήψη `live-072.sql` (NOT NULL, FK, `stock_guard_*`, `invoice_mark_guard`, τα triggers της `orders` που πυροδοτεί η στήλη του τόπου VS, και τα md5 των 23)· το deploy και το smoke του Worker στο πραγματικό PostgREST (Γ7 Step 6, και τα τρία dry run που προστέθηκαν)· η «επαναδείκτηση σκέλους» της απόφασης 36 (δεν είναι γραμμένη). Το Task Σ1 τα τρέχει πριν από το Κ1· κάθε Expected του πλάνου που δεν βγαίνει εκεί είναι λάθος του πλάνου, όχι του εκτελεστή.

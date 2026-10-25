@@ -641,8 +641,9 @@ begin
         perform plan_h_raise('bad_input', 'pallets:one decimal');
       end if;
       -- review A2 r1: NaN sorts above every number, so it passes the line above AND the 071 CHECK pallets > 0, and
-      -- would be written to shipments, pieces and the summary. Not below Infinity = refused (NaN and Infinity).
-      if not ((s->>'pallets')::numeric < 'Infinity'::numeric) then
+      -- would be written to shipments, pieces and the summary. Not below Infinity = refused (NaN and Infinity);
+      -- abs(): -Infinity too, under this code and not a later 22003 / pallets CHECK (K1 review r1, as plan_order_update)
+      if not (abs((s->>'pallets')::numeric) < 'Infinity'::numeric) then
         perform plan_h_raise('bad_input', 'pallets:finite');
       end if;
     end loop;
@@ -814,6 +815,13 @@ begin
   perform plan_h_ctx(p_actor, p_role);
   perform plan_h_keys(p, array['pieces', 'target', 'stops'], 'p');
   v_tgt := plan_h_target(p->'target', p->'stops', p_actor, p_role);
+  -- ONE lock order (K1 review r1): after the cycle (plan_h_target), the pieces by id, as plan_put_group and
+  -- plan_move_pieces; plan_h_put takes them in the caller's order, so [P1,P2] and [P2,P1] at once could deadlock
+  perform 1 from shipment_pieces sp
+   where sp.id in (select (x->>'piece_id')::bigint
+                     from jsonb_array_elements(case when jsonb_typeof(p->'pieces') = 'array' then p->'pieces'
+                                                    else '[]'::jsonb end) x)
+   order by sp.id for no key update;
   v_put := plan_h_put(p->'pieces', v_tgt, p_actor, p_role, '{}');
   perform plan_h_finish();
   return plan_h_ok('plan_put_pieces',
@@ -1036,6 +1044,9 @@ begin
   -- and is listed. A cycle left empty is cancelled with its payroll after the confirmation (owner 20/10).
   perform plan_h_ctx(p_actor, p_role);
   perform plan_h_keys(p, array['from', 'target', 'stops', 'dry_run', 'confirm_token'], 'p');
+  -- K1 review r1 (as plan_delete / plan_rt_clear / plan_rt_update): "dry_run": 1 was a dry run here but a write for
+  -- the Worker's gate, and "yes" a raw 22P02
+  if p ? 'dry_run' and jsonb_typeof(p->'dry_run') <> 'boolean' then perform plan_h_raise('bad_input', 'dry_run'); end if;
   perform plan_h_keys(v_from, array['piece_ids', 'rt_id', 'side'], 'from');
   v_rt := (v_from->>'rt_id')::bigint;
   v_side := v_from->>'side';
@@ -1099,6 +1110,12 @@ begin
     v_wait := true;
   else
     perform plan_h_keys(p->'target', array['rt_id', 'side', 'new_rt'], 'target');
+    -- K1 review r1: the target's shape as plan_h_target checks it at execution (side; rt_id or new_rt, one of them),
+    -- so a dry run never hands out a token for a target its execution refuses
+    if p->'target'->>'side' is null or p->'target'->>'side' not in ('KATHODOS', 'ANODOS') then
+      perform plan_h_raise('bad_input', 'target.side');
+    end if;
+    if (p->'target' ? 'new_rt') = (p->'target' ? 'rt_id') then perform plan_h_raise('bad_input', 'target: rt_id or new_rt'); end if;
     v_keep := (p->'target'->>'rt_id')::bigint;
     if v_keep is not null then
       select * into r from ct_round_trips where id = v_keep;
@@ -1124,6 +1141,17 @@ begin
   perform 1 from ct_round_trips c
    where c.id = any (array(select l.rt_id from piece_legs l where l.id = any (v_legs)) || v_keep)
    order by c.id for no key update;
+  -- K1 review r1: the legs were read BEFORE these locks. The pieces too, by id (a put locks its cycle, then the
+  -- piece), then the chain again: a leg of a moved piece added since (a put onto a cycle not locked here) or dropped
+  -- since (another move) is a lost race - 40001, the Worker's 409 busy_retry, nothing kept - never a list or a drop
+  -- on a stale chain. One PGlite session cannot show it (as the cycle locks): K2 is the gate.
+  perform 1 from shipment_pieces sp where sp.id = any (v_pieces) order by sp.id for no key update;
+  if exists (select 1 from piece_legs l where l.id = any (v_legs) and l.deleted_at is not null)
+     or exists (select 1 from piece_legs l
+                 where l.piece_id = any (v_pieces) and l.deleted_at is null and not (l.id = any (v_legs))
+                   and l.leg_no > (select min(m.leg_no) from piece_legs m where m.id = any (v_legs) and m.piece_id = l.piece_id)) then
+    raise exception 'plan_move_pieces: the legs changed while the cycles were locked' using errcode = '40001';
+  end if;
   v_full := plan_h_drop_consequences(v_legs, v_keep, v_chosen);
   v_conf := plan_h_confirm('plan_move_pieces', array_to_string(v_legs, ',') || '>' || coalesce(p->'target', 'null'::jsonb)::text,
                            v_full, p, p_role);
@@ -1240,6 +1268,12 @@ begin
   -- temperature_c is unconstrained numeric: NaN / +-Infinity would be stored as they are (A2)
   if abs((v_set->>'temperature_c')::numeric) >= 'Infinity'::numeric then
     perform plan_h_raise('bad_input', 'temperature_c:finite');
+  end if;
+  -- K1 review r1 (the rule of plan_orders_create): an object / array / boolean in a text field would be stored as its
+  -- JSON text, silently
+  if exists (select 1 from unnest(array['reference', 'goods', 'notes']) f
+              where jsonb_typeof(v_set->f) in ('object', 'array', 'boolean')) then
+    perform plan_h_raise('bad_input', 'set:text');
   end if;
   if p->'shipments' is not null and jsonb_typeof(p->'shipments') <> 'array' then perform plan_h_raise('bad_input', 'shipments'); end if;
   for s in select value from jsonb_array_elements(coalesce(p->'shipments', '[]'::jsonb)) loop
@@ -1808,6 +1842,8 @@ begin
   -- an unknown key is refused, never ignored (principle 1): {"dryRun": true} must not delete
   perform plan_h_keys(p, array['nat_order_id', 'reason', 'dry_run', 'confirm_token'], 'p');
   if p ? 'dry_run' and jsonb_typeof(p->'dry_run') <> 'boolean' then perform plan_h_raise('bad_input', 'dry_run'); end if;
+  -- K1 review r1: an object / array / boolean reason would be kept as its JSON text on every deleted row
+  if jsonb_typeof(p->'reason') in ('object', 'array', 'boolean') then perform plan_h_raise('bad_input', 'reason'); end if;
   -- coordinator 25/10 (cross-cutting input rule): 'NaN' / '+-Infinity' are refused by this cast itself (a bigint has
   -- no non-finite value), as bad_input 'nat_order_id' - never through numeric, where NaN would end as a raw 0A000
   begin
@@ -1828,6 +1864,15 @@ begin
   if n.id is null or n.deleted_at is not null then perform plan_h_raise('order_gone', coalesce(v_no::text, 'null')); end if;
   if not exists (select 1 from shipments s where s.nat_order_id = v_no and s.deleted_at is null) then
     perform plan_h_raise('order_not_v5', v_no::text);
+  end if;
+  -- K1 review r1: the chain was read BEFORE the locks. The pieces too (after the order), then the chain again: a leg
+  -- added or dropped since is a lost race (40001 = 409 busy_retry, nothing kept), never a delete on a stale list
+  perform 1 from shipment_pieces sp join shipments s on s.id = sp.shipment_id
+   where s.nat_order_id = v_no and sp.deleted_at is null order by sp.id for no key update of sp;
+  if v_legs <> (select coalesce(array_agg(l.id order by l.id), '{}') from piece_legs l
+                  join shipment_pieces sp on sp.id = l.piece_id join shipments s on s.id = sp.shipment_id
+                 where s.nat_order_id = v_no and l.deleted_at is null) then
+    raise exception 'plan_delete: the chain changed while the cycles were locked' using errcode = '40001';
   end if;
   select coalesce(array_agg(rid order by rid), '{}') into v_empty from unnest(v_rts) rid
    where not exists (select 1 from piece_legs l where l.rt_id = rid and l.deleted_at is null and not (l.id = any(v_legs)));
@@ -2087,6 +2132,12 @@ begin
   exception when invalid_text_representation or numeric_value_out_of_range then
     perform plan_h_raise('bad_input', 'ids');
   end;
+  -- K1 review r1 (the rule of plan_orders_create): an object / array / boolean in a text field would be stored as its
+  -- JSON text, silently
+  if exists (select 1 from unnest(array['time_from', 'time_to', 'notes']) f
+              where jsonb_typeof(p->f) in ('object', 'array', 'boolean')) then
+    perform plan_h_raise('bad_input', 'text');
+  end if;
   if v_lm is not null then
     if not v_cancel then perform plan_h_raise('bad_input', 'local_move_id without cancel'); end if;
     -- decision 44: request_id is for the creation; a second cancel is already harmless (already = true)
