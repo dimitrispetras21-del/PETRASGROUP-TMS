@@ -4,15 +4,17 @@
 --   applied = '072b in place' ; exclude_on_segments = 2 ; exclude_on_cycles = 0 ; hooks_in_place = 7 ;
 --   changed_live = 0 ; public_acts = 3 ; open_to_api = 0 ; open_relations = 0 ; rls_off = 0 ;
 --   auditor_policy = 1 ; other_policies = 0 ; new_triggers = 4 ; b54_matches = true ; segments = 0 ; v5_cycles = 0 ;
---   seg_problems = 0 ; overlaps = 0
+--   seg_problems = 0 ; overlaps = 0 ; cancel_copy_drift = 0
 -- hooks_in_place counts the 7 hooked functions at their FINAL text (plan_rt_update carries 4 hooks, chained).
--- After L: segments and v5_cycles grow (every v5 cycle has >= 1 segment); seg_problems and overlaps stay 0 for
--- ever (the base refuses both at COMMIT - this is an independent count, like 071b's verify). auditor_policy = the
+-- After L: segments and v5_cycles grow (every v5 cycle has >= 1 segment); seg_problems, overlaps and
+-- cancel_copy_drift stay 0 for ever (the base refuses them at COMMIT - these are independent counts that read the
+-- cycle's status, not the copy rt_cancelled the EXCLUDE filters on). auditor_policy = the
 -- one policy of 072b (monitor_read: SELECT, tms_check_runner + tms_reader only); the PGlite test runs B-91..B-93
 -- as tms_check_runner on a cycle with segments to prove the auditor sees them.
 -- 072's verify after 072b, by design (plan "Interfaces"): plan_functions = 73, service_role_execute = 19,
---   changed_live = 0 (072b changes none of 072's 22), every other value as before. 071b's verify reads the EXCLUDE
---   on ct_round_trips: after 072b it answers truck_once = false / driver_once = false (they live on the segments).
+--   changed_live = 0 (072b changes none of 072's 22), every other value as before. 071b's verify finds the two
+--   EXCLUDE wherever they live: after 072b truck_once = true, exclude_on = 'rt_vehicle_segments', and its cycle
+--   overlap counts are NULL (they live here: overlaps).
 SELECT
   CASE WHEN to_regclass('public.rt_vehicle_segments') IS NOT NULL
         AND to_regprocedure('public.plan_seg_change(jsonb,text,text)') IS NOT NULL
@@ -96,9 +98,15 @@ SELECT
   (SELECT count(*) FROM public.ct_round_trips WHERE model = 2) AS v5_cycles,
   -- every v5 cycle against the COMMIT rules (run by the owner as postgres; the function is closed to the API)
   (SELECT count(*) FROM public.ct_round_trips r WHERE r.model = 2 AND public.plan_seg_problem(r.id) IS NOT NULL) AS seg_problems,
-  -- an independent count of what the two EXCLUDE forbid (truck or driver in two live segments at once)
+  -- an independent count of what the two EXCLUDE forbid (truck or driver in two live segments at once). It reads
+  -- the cycle's STATUS, never the copy rt_cancelled the EXCLUDE filters on (review R2, DB finding 3): a copy that
+  -- drifted to true would blind the EXCLUDE and this count together (principle 3: the net reads the source).
   (SELECT count(*) FROM public.rt_vehicle_segments a JOIN public.rt_vehicle_segments b ON a.id < b.id
      AND (a.truck_id = b.truck_id OR a.driver_id = b.driver_id)
      AND tstzrange(a.from_at, greatest(a.from_at, a.to_at), '[)') && tstzrange(b.from_at, greatest(b.from_at, b.to_at), '[)')
+     JOIN public.ct_round_trips ra ON ra.id = a.rt_id JOIN public.ct_round_trips rb ON rb.id = b.rt_id
    WHERE a.trip_type = 'OWNED' AND b.trip_type = 'OWNED' AND a.deleted_at IS NULL AND b.deleted_at IS NULL
-     AND NOT a.rt_cancelled AND NOT b.rt_cancelled) AS overlaps;
+     AND ra.status <> 'cancelled' AND rb.status <> 'cancelled') AS overlaps,
+  -- the copy against its source (the COMMIT rule seg_cancel catches it only through the trigger)
+  (SELECT count(*) FROM public.rt_vehicle_segments g JOIN public.ct_round_trips r ON r.id = g.rt_id
+    WHERE g.deleted_at IS NULL AND g.rt_cancelled IS DISTINCT FROM (r.status = 'cancelled')) AS cancel_copy_drift;

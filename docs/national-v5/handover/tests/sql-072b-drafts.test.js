@@ -13,7 +13,8 @@
 //     for the two auditor roles only (review R1 finding 4);
 //   - every plan: code 072b raises or returns has a case in the rules test; every con: of the rules test is a
 //     CHECK of 072b; the eight reasons are the spec's; Greek only as base64 that decodes;
-//   - the order 072 -> 072b -> 073 is guarded both ways (073 present = stop, here and in the rollback).
+//   - the order 072 -> 072b -> 073 is guarded both ways (073 present = stop, here and in the rollback);
+//   - the hook diff the code review reads (build-072b.mjs --hooks, review R2 DB finding 7) covers the ten hooks.
 // The rules themselves are proven on PGlite (tms-auditor/test/plan-072b.test.mjs).
 'use strict';
 const { test } = require('node:test');
@@ -141,6 +142,18 @@ test('every plan: code of 072b has a case; every con: of the rules test is a CHE
   for (const c of ['vehicle_breakdown', 'driver_hours']) assert.ok(fs.readFileSync(f067, 'utf8').includes(`'${c}'`), `067 has ${c}`);
   const n = (tst.match(/^\s+, '(?:ok|plan:[a-z_]+|con:[a-z_]+|state:\w+)'\s+-- \d+ /gm) || []).length;
   assert.ok(n >= 60, `${n} cases`);
+});
+
+test('the hook diff (--hooks, read by the code review of Task B4): ten hooks, each puts a 072b line in', async () => {
+  const { hookDiffs } = await import(BUILDER);
+  const h = hookDiffs(read(SRC));
+  assert.deepStrictEqual(h.map((x) => x.k), [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+  for (const x of h) {
+    assert.ok(x.diff.some((l) => l.startsWith('+ ') && /072b/.test(l)), `hook ${x.k}: no "072b" line put in`);
+    assert.ok(x.diff.length > 0);
+  }
+  const out = execFileSync(process.execPath, [BUILDER, '--hooks'], { encoding: 'utf8' });
+  assert.strictEqual((out.match(/^=== hook \d+ /gm) || []).length, 10);
 });
 
 test('Greek only as base64 that decodes to Greek; the notice template takes three %s', () => {

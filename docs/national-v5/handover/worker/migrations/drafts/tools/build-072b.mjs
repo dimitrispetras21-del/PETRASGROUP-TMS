@@ -2,6 +2,7 @@
 //   072b_plan_vehicle_segments.sql -> 072b_plan_vehicle_segments_dryrun.sql, 072b_plan_vehicle_segments_rollback.sql
 //   node worker/migrations/drafts/tools/build-072b.mjs          (writes both)
 //   node worker/migrations/drafts/tools/build-072b.mjs --check  (exit 1 if a committed file drifted)
+//   node worker/migrations/drafts/tools/build-072b.mjs --hooks  (prints each hook's lines out / in; writes nothing)
 // Why generated, never hand-copied (principle 3): the dry run is only worth anything if it runs EXACTLY the
 // statements the owner will run, and the rollback only undoes the hooks byte for byte if it holds EXACTLY the hook
 // texts the migration put in (the same DECLARE lines, copied by this tool). tests/sql-072b-drafts.test.js fails on
@@ -214,21 +215,58 @@ SELECT CASE WHEN to_regclass('public.rt_vehicle_segments') IS NULL THEN '072b RO
 `;
 }
 
-if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+// Review R2 of the plan (DB finding 7): the "after" md5 of a hook is measured by generating it (Task B2 Step 3).
+// That proves the text is deterministic and reversible, not that a person read it. --hooks prints, per hook k, the
+// lines it takes out of its function (-) and puts in (+), from the migration's own constants (one source); the code
+// review of Task B4 reads this output before the commit, after every re-measurement.
+function lineDiff(a, b) {
+  const x = a.replace(/\n$/, '').split('\n');
+  const y = b.replace(/\n$/, '').split('\n');
+  const L = Array.from({ length: x.length + 1 }, () => new Array(y.length + 1).fill(0));
+  for (let i = x.length - 1; i >= 0; i--) for (let j = y.length - 1; j >= 0; j--) {
+    L[i][j] = x[i] === y[j] ? L[i + 1][j + 1] + 1 : Math.max(L[i + 1][j], L[i][j + 1]);
+  }
+  const out = [];
+  let i = 0; let j = 0;
+  while (i < x.length || j < y.length) {
+    if (i < x.length && j < y.length && x[i] === y[j]) { out.push('  ' + x[i]); i++; j++; }
+    else if (j < y.length && (i === x.length || L[i][j + 1] >= L[i + 1][j])) { out.push('+ ' + y[j]); j++; }
+    else { out.push('- ' + x[i]); i++; }
+  }
+  return out;
+}
+
+export function hookDiffs(src) {
+  const consts = Object.fromEntries([...src.matchAll(/^  (h_\w+) CONSTANT text := \$h\$([\s\S]*?)\$h\$;/gm)].map((m) => [m[1], m[2]]));
+  const list = between(src, '  FOR v_fn IN SELECT * FROM (VALUES\n', ') v(k, sig, a, b, m0, m1) ORDER BY k LOOP', 'the hook list');
+  return [...list.matchAll(/\((\d+), '(public\.[^']+)', (h_\w+), (h_\w+),/g)].map((m) => {
+    if (!(m[3] in consts) || !(m[4] in consts)) throw new Error(`${SOURCE}: hook ${m[1]} names a text that is not declared`);
+    return { k: Number(m[1]), sig: m[2], a: m[3], b: m[4], diff: lineDiff(consts[m[3]], consts[m[4]]) };
+  });
+}
+
+// realpath: run through a symlink, path.resolve would differ from the module's own (resolved) path and the tool would
+// do NOTHING and exit 0 - a --check that cannot fail (principle 1; found while re-proving review R2 on a linked copy)
+if (process.argv[1] && fs.realpathSync(path.resolve(process.argv[1])) === fileURLToPath(import.meta.url)) {
   const check = process.argv.includes('--check');
   const source = path.join(DIR, SOURCE);
   if (!fs.existsSync(source)) { console.error('no source: ' + SOURCE); process.exit(1); }
   const src = fs.readFileSync(source, 'utf8');
-  let drift = false;
-  for (const [name, text] of [[DRYRUN, buildDryRun(src)], [ROLLBACK, buildRollback(src)]]) {
-    const target = path.join(DIR, name);
-    if (check) {
-      const same = fs.existsSync(target) && fs.readFileSync(target, 'utf8') === text;
-      if (!same) { console.error('drift: ' + name); drift = true; }
-    } else {
-      fs.writeFileSync(target, text);
-      console.log('wrote ' + name);
+  if (process.argv.includes('--hooks')) {
+    // one write, no process.exit: a pipe on macOS is asynchronous and an exit would cut the output short
+    process.stdout.write(hookDiffs(src).map((h) => `=== hook ${h.k}  ${h.sig}  (${h.a} -> ${h.b})\n${h.diff.join('\n')}\n`).join('\n'));
+  } else {
+    let drift = false;
+    for (const [name, text] of [[DRYRUN, buildDryRun(src)], [ROLLBACK, buildRollback(src)]]) {
+      const target = path.join(DIR, name);
+      if (check) {
+        const same = fs.existsSync(target) && fs.readFileSync(target, 'utf8') === text;
+        if (!same) { console.error('drift: ' + name); drift = true; }
+      } else {
+        fs.writeFileSync(target, text);
+        console.log('wrote ' + name);
+      }
     }
+    process.exitCode = drift ? 1 : 0;
   }
-  process.exit(drift ? 1 : 0);
 }

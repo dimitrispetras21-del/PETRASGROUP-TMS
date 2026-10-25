@@ -325,9 +325,21 @@ begin
     if exists (select 1 from rt_vehicle_segments where rt_id = p_rt) then return 'seg_not_v2:' || p_rt; end if;
     return null;
   end if;
+  -- review R2 (DB finding 1): an act of 072 that narrows the window (plan_rt_update of the first / last stop, or a
+  -- Move / Delete whose sweep takes them away) carries an EDGE segment past a handover: the edge follows
+  -- (plan_seg_follow) and that segment ends before it starts. Its own code, with the handover time in the detail,
+  -- so the screen says what to do (move or remove the handover first) - never seg_time, which is the acts' own
+  -- "time not inside the cycle / between its neighbours". Plan decision H-6, owner question 7 (refuse or remove).
+  -- mut:outside-begin
+  for g in select * from rt_vehicle_segments where rt_id = p_rt and deleted_at is null and to_at <= from_at
+              and (to_at = r.end_at or from_at = r.start_at) order by from_at, id limit 1 loop
+    return 'seg_outside:' || r.code || ' ' || to_char((case when g.to_at = r.end_at then g.from_at else g.to_at end)
+                                                      at time zone 'Europe/Athens', 'DD/MM HH24:MI');
+  end loop;
+  -- mut:outside-end
   for g in select * from rt_vehicle_segments where rt_id = p_rt and deleted_at is null order by from_at, id loop
     v_n := v_n + 1;
-    -- a handover on or outside the cycle's edge leaves a segment of zero length (a stop moved past it)
+    -- a segment of zero length that is not an edge carried past a handover (seg_outside above)
     if g.to_at <= g.from_at then return 'seg_time:' || r.code; end if;
     if v_n = 1 then
       if g.from_at <> r.start_at then return 'seg_cover:' || r.code; end if;
@@ -755,7 +767,7 @@ $f$;
 declare
   v_rt bigint; r ct_round_trips%rowtype; g rt_vehicle_segments%rowtype; v_at timestamptz; v_dry boolean;
   v_veh jsonb; v_type text; v_truck bigint; v_trailer bigint; v_driver bigint; v_partner bigint; v_rate numeric;
-  v_same boolean; v_new bigint; v_old jsonb; v_ans jsonb; v_warn jsonb := '[]'::jsonb; v_res jsonb;
+  v_same boolean; v_new bigint; v_old jsonb; v_ans jsonb; v_warn jsonb := '[]'::jsonb; v_res jsonb; v_seg0 jsonb;
   v_hint text; v_msg text; v_det text; v_cname text; v_state text; v_code text;
 begin
   -- "Vehicle handover" on the cycle's card (spec 5): from a time inside the cycle, at a point (a note), for a
@@ -822,6 +834,9 @@ begin
      is not distinct from (g.trip_type, g.truck_id, g.trailer_id, g.driver_id, g.partner_id, g.partner_rate) then
     perform plan_h_raise('seg_same', r.code);
   end if;
+  -- the executing segment of each stop before the cut (review R2, DB finding 4: the stops from the handover on
+  -- change hands, and the answer and the preview say which)
+  v_seg0 := plan_h_seg_stops(v_rt);
 
   begin
     v_old := to_jsonb(g);
@@ -838,9 +853,11 @@ begin
                          (select to_jsonb(s) from rt_vehicle_segments s where s.id = v_new));
     -- the new truck and driver are free from the handover to the end of their segment (spec 5)
     perform plan_h_seg_busy(v_rt);
-    -- the same warnings as plan_rt_update, per segment: v1_same_truck, and a stop whose window holds the handover
-    -- time (it stays with the segment of its arrival, H-9; owner question 2). No stop moves here: no seg_stop_moved.
-    v_warn := plan_h_seg_v1_warn(v_rt) || plan_h_seg_stop_warn(v_rt, null);
+    -- the same warnings as plan_rt_update, per segment: v1_same_truck; seg_stop_moved for every stop that the new
+    -- vehicle now executes (the driver sheet, the local loading check and F3's payroll days and DKV follow it);
+    -- seg_stop_straddles for a stop whose window holds the handover time (it stays with the segment of its
+    -- arrival, H-9; owner question 2)
+    v_warn := plan_h_seg_v1_warn(v_rt) || plan_h_seg_stop_warn(v_rt, v_seg0);
     if not v_dry then
       v_ans := plan_h_ok('plan_seg_change', jsonb_build_object('rt_id', v_rt, 'segment_id', v_new, 'cut_segment_id', g.id),
                          v_warn, '[]'::jsonb);
@@ -931,8 +948,16 @@ begin
   end if;
   perform plan_h_seg_vehicle_ok(v_type, v_truck, v_trailer, v_driver, v_partner, v_rate);
   -- decision 32 per segment: the driver of THIS segment changes while his payroll line has amounts = refused; a
-  -- change "from a time on" is a handover (plan_seg_change), which keeps his line and its amount
+  -- change "from a time on" is a handover (plan_seg_change), which keeps his line and its amount.
+  -- Review R2 (DB finding 2): his line is at risk only if he LEAVES the cycle. A later segment's driver who still
+  -- drives another segment (a "same driver" handover: [1/1][1/2]) keeps his line, so the correction passes - the
+  -- same predicate as plan_h_seg_consequences. The FIRST segment keeps the plain rule: before 073 its driver is the
+  -- cycle's copy and 011 moves the line when the copy's driver changes. (F3, P3-2: one shared predicate.)
   if g.trip_type = 'OWNED' and g.driver_id is not null and (v_type <> 'OWNED' or v_driver is distinct from g.driver_id)
+     -- mut:leaves-begin
+     and (v_first or not exists (select 1 from rt_vehicle_segments o where o.rt_id = v_rt and o.id <> g.id
+                                   and o.deleted_at is null and o.trip_type = 'OWNED' and o.driver_id = g.driver_id))
+     -- mut:leaves-end
      and exists (select 1 from dl_entries e where e.rt_id = v_rt and e.driver_id = g.driver_id and e.deleted_at is null
                    and (e.trip_value is not null or e.advance is not null or e.expenses is not null)) then
     perform plan_h_raise('payroll_locked', r.code);
@@ -1009,7 +1034,7 @@ declare
   b_costs constant text := 'zqPPhM6/ICVzIM6xz4bOsc65z4HOrc64zrfOus61IM63IM6xzrvOu86xzrPOriDOv8+Hzq7OvM6xz4TOv8+COiAlcyDOs8+BzrHOvM68zq3PgiDOtc6+z4zOtM+Jzr0gz4TOv8+FIM+Gzr/Pgc+EzrfOs86/z40gJXMgzq3OvM61zrnOvc6xzr0gz4PPhM6/zr0gzrrPjc66zrvOvyDPh8+Jz4HOr8+CIM+EzrzOrs68zrEgz4TOv8+FIM+Gzr/Pgc+EzrfOs86/z40=';
   v_seg bigint; v_rt bigint; r ct_round_trips%rowtype; g rt_vehicle_segments%rowtype; pv rt_vehicle_segments%rowtype;
   v_full jsonb; v_conf jsonb; v_reason text; v_old jsonb; x record; v_n bigint; v_notices bigint[] := '{}';
-  v_dry boolean; v_warn jsonb := '[]'::jsonb; v_prev jsonb;
+  v_dry boolean; v_warn jsonb := '[]'::jsonb; v_prev jsonb; v_seg0 jsonb;
   v_hint text; v_msg text; v_det text; v_cname text; v_state text; v_code text;
 begin
   -- "Remove a handover" (spec 5): the segment goes (soft, with reason and actor) and the one before it goes on to
@@ -1043,6 +1068,9 @@ begin
   -- the ARCHIKO is not a handover: nothing comes before it (plan decision H-4); its vehicle is corrected instead
   if pv.id is null then perform plan_h_raise('seg_first', r.code); end if;
   v_full := plan_h_seg_consequences(g.id);
+  -- the executing segment of each stop before the removal (review R2, DB finding 4): the stops of the removed
+  -- segment pass to the vehicle before it, and the preview (H4) and the answer say which (seg_stop_moved)
+  v_seg0 := plan_h_seg_stops(v_rt);
   if v_dry then
     -- review R1 finding 7: the preview runs the removal itself (undone by the marker) so that it SHOWS what the
     -- token would meet - the vehicle before can be busy on its longer window (truck_busy / driver_busy with the
@@ -1052,7 +1080,7 @@ begin
        where id = g.id;
       update rt_vehicle_segments set to_at = g.to_at, updated_at = now() where id = pv.id;
       perform plan_h_seg_busy(v_rt);
-      v_warn := plan_h_seg_v1_warn(v_rt);
+      v_warn := plan_h_seg_v1_warn(v_rt) || plan_h_seg_stop_warn(v_rt, v_seg0);
       perform plan_h_finish();
       raise exception 'plan dry run' using errcode = 'P0001', hint = 'plan_dry_run',
         detail = jsonb_build_object('segments', plan_h_seg_json(v_rt), 'warnings', v_warn, 'conflict', null)::text;
@@ -1095,9 +1123,10 @@ begin
   update rt_vehicle_segments set to_at = g.to_at, updated_at = now() where id = pv.id;
   perform plan_h_audit(p_actor, p_role, 'update', 'rt_vehicle_segments', pv.id::text, v_old,
                        (select to_jsonb(s) from rt_vehicle_segments s where s.id = pv.id));
-  -- the vehicle before now drives longer: free on its new window? and its v1 warning on the longer days
+  -- the vehicle before now drives longer: free on its new window? its v1 warning on the longer days, and the
+  -- stops it takes back (seg_stop_moved)
   perform plan_h_seg_busy(v_rt);
-  v_warn := plan_h_seg_v1_warn(v_rt);
+  v_warn := plan_h_seg_v1_warn(v_rt) || plan_h_seg_stop_warn(v_rt, v_seg0);
   -- decision 13: the cost lines stay on the cycle (the trace); the national desk is told that a truck's lines now
   -- sit on a cycle where that truck drives no segment (the kind of 072: costs without their trip)
   select count(*) into v_n from ct_cost_lines c where c.rt_id = v_rt and c.truck_id = g.truck_id

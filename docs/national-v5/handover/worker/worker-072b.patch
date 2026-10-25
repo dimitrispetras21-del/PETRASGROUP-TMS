@@ -1,5 +1,5 @@
 diff --git a/worker/src/index.js b/worker/src/index.js
-index 5c91621..fa784e5 100644
+index 5c91621..931de6a 100644
 --- a/worker/src/index.js
 +++ b/worker/src/index.js
 @@ -3304,7 +3304,7 @@ const RELAY_CHECK_TEXT = {
@@ -11,7 +11,7 @@ index 5c91621..fa784e5 100644
  // constraint without a text here, and on a key here with no counterpart there
  // (αρχή 8). Texts only — editing a text never changes what is allowed.
  const PLAN_RULE_TEXT = {
-@@ -3371,7 +3371,24 @@ const PLAN_RULE_TEXT = {
+@@ -3371,7 +3371,27 @@ const PLAN_RULE_TEXT = {
    local_cancel_no_id: "Η ακύρωση τοπικής φόρτωσης δεν λέει ποια φόρτωση — τίποτα δεν δημιουργήθηκε ούτε ακυρώθηκε",
    stale_confirm: "Κάτι άλλαξε από τότε που είδες τη λίστα — δες τη ξανά και επιβεβαίωσε",
    need_token: "Η πράξη θέλει επιβεβαίωση — δες πρώτα τη λίστα συνεπειών",
@@ -22,6 +22,9 @@ index 5c91621..fa784e5 100644
 +  // would reach the screen as raw English (review R1 of the plan, finding 1).
 +  seg_not_v2: "Αλλαγή οχήματος γίνεται μόνο σε δρομολόγιο του Εβδομαδιαίου Εθνικών",
 +  seg_time: "Η ώρα της αλλαγής οχήματος είναι μέσα στο δρομολόγιο και ανάμεσα στις άλλες αλλαγές του",
++  // a Move, Delete or stop change that narrows the cycle past a handover (review R2 of the plan, DB finding 1);
++  // the DB detail in brackets = the RT and the handover time
++  seg_outside: "Η πράξη θα άφηνε μια αλλαγή οχήματος έξω από τις ώρες του δρομολογίου — μετακίνησε ή αφαίρεσε πρώτα την αλλαγή",
 +  seg_cover: "Τα τμήματα οχήματος δεν καλύπτουν όλες τις ώρες του δρομολογίου — ανανέωσε τη σελίδα",
 +  seg_first: "Το ΑΡΧΙΚΟ τμήμα ξεκινά με το δρομολόγιο: δεν έχει ώρα, σημείο ή λόγο και δεν αφαιρείται — διόρθωσε το όχημά του",
 +  seg_copy: "Το όχημα του δρομολογίου αλλάζει μόνο από την ανάθεση ή την αλλαγή οχήματος — ανανέωσε τη σελίδα",
@@ -37,7 +40,7 @@ index 5c91621..fa784e5 100644
  };
  const PLAN_CHECK_TEXT = {
    // 071 CHECKs on ct_round_trips (+ partner_needs_partner, live before 071:
-@@ -3418,7 +3435,19 @@ const PLAN_CHECK_TEXT = {
+@@ -3418,7 +3438,19 @@ const PLAN_CHECK_TEXT = {
    piece_legs_live_no: "Το φορτίο έχει ήδη ζωντανή κίνηση με αυτόν τον αριθμό — ανανέωσε τη σελίδα",
    shipments_bridge_once: "Η στάση της διεθνούς έχει ήδη γέφυρα VS",
    pl_mov_leg_once: "Η κίνηση έχει ήδη γραμμή παλετών",
@@ -58,7 +61,7 @@ index 5c91621..fa784e5 100644
  };
  function stockRuleError(e) {
    const pg = e && e.pg;
-@@ -5460,15 +5489,16 @@ var PLAN_PERMS = {
+@@ -5460,15 +5492,16 @@ var PLAN_PERMS = {
    // Decision 41 (owner 23/10, «everyone has rights»; the locked rule of 23/8:
    // «all roles edit broadly for now, DELETE stays narrow»): every role reads
    // and writes every act of the board, with its dry run (decision 26). The
@@ -82,7 +85,7 @@ index 5c91621..fa784e5 100644
  };
  function planCan(role, resource, method) {
    const r = PLAN_PERMS[role];
-@@ -5482,7 +5512,8 @@ __name(planCan, "planCan");
+@@ -5482,9 +5515,13 @@ __name(planCan, "planCan");
  // one switch, in the source that is deployed, αρχή 3).
  var PLAN_WRITES_OPEN = false;
  // One row per route: method + path → resource (PLAN_PERMS) + RPC. `dryRun`
@@ -91,8 +94,13 @@ index 5c91621..fa784e5 100644
 +// (072's four, 072b's three);
  // ONLY those pass the closed switch with it — any other RPC would ignore the
  // flag and write (plan_orders_create has no dry run).
++// `migration`: the migration that brings the RPC, when it is not 072 (the 503
++// schema_behind names it: after a rollback of 072b alone, «072 is missing» would
++// send the owner to the wrong file; review R2 of the handover plan, DB finding 5).
  // `idKey`: the path id goes into p under that key; a different id in the body
-@@ -5502,7 +5533,12 @@ var PLAN_ROUTES = [
+ // is a 400, never silently overridden (αρχή 1).
+ var PLAN_ROUTES = [
+@@ -5502,7 +5539,12 @@ var PLAN_ROUTES = [
    { method: "POST", re: /^\/plan\/delete$/, resource: "delete", rpc: "plan_delete", dryRun: true },
    { method: "POST", re: /^\/plan\/vs\/day$/, resource: "vs-day", rpc: "plan_vs_set_day" },
    { method: "POST", re: /^\/plan\/vs\/place$/, resource: "vs-place", rpc: "plan_vs_set_place" },
@@ -100,14 +108,26 @@ index 5c91621..fa784e5 100644
 +  { method: "POST", re: /^\/plan\/local-loading$/, resource: "local-loading", rpc: "plan_local_loading" },
 +  // 072b — vehicle handover at a point. The handover CREATES a segment: request_id
 +  // in the body (decision 44, the DB replays it); its preview needs none.
-+  { method: "POST", re: /^\/plan\/rt\/(\d+)\/handover$/, resource: "handover", rpc: "plan_seg_change", idKey: "rt_id", dryRun: true },
-+  { method: "PATCH", re: /^\/plan\/segments\/(\d+)$/, resource: "segment", rpc: "plan_seg_fix", idKey: "segment_id", dryRun: true },
-+  { method: "POST", re: /^\/plan\/segments\/(\d+)\/remove$/, resource: "segment-remove", rpc: "plan_seg_remove", idKey: "segment_id", dryRun: true }
++  { method: "POST", re: /^\/plan\/rt\/(\d+)\/handover$/, resource: "handover", rpc: "plan_seg_change", idKey: "rt_id", dryRun: true, migration: "072b" },
++  { method: "PATCH", re: /^\/plan\/segments\/(\d+)$/, resource: "segment", rpc: "plan_seg_fix", idKey: "segment_id", dryRun: true, migration: "072b" },
++  { method: "POST", re: /^\/plan\/segments\/(\d+)\/remove$/, resource: "segment-remove", rpc: "plan_seg_remove", idKey: "segment_id", dryRun: true, migration: "072b" }
  ];
  // Reads: the query string → RPC args, or a 400 before any DB call.
  // The week is a TMS week: Saturday to Friday (TmsWeek), named by its Saturday.
+@@ -5636,8 +5678,9 @@ async function handlePlan(request, url, origin, env) {
+     // of an inner function is a bug of 072 and stays the 500 path below).
+     const own = !!(pg && fn && new RegExp(`\\bfunction (?:public\\.)?${fn}\\b`).test(String(pg.message || "")));
+     if (pg && (pg.code === "PGRST202" || (pg.code === "42883" && own))) {
+-      console.error(`PLAN ${name}: ${fn} missing in the DB (072)`);
+-      return planError(503, "SCHEMA_BEHIND", "schema_behind", "Η βάση δεν έχει ακόμη το migration 072 (Εβδομαδιαίο Εθνικών) — ενημέρωσε τον Δημήτρη", origin, env);
++      const mig = route.migration || "072";
++      console.error(`PLAN ${name}: ${fn} missing in the DB (${mig})`);
++      return planError(503, "SCHEMA_BEHIND", "schema_behind", `Η βάση δεν έχει ακόμη το migration ${mig} (Εβδομαδιαίο Εθνικών) — ενημέρωσε τον Δημήτρη`, origin, env);
+     }
+     // 42501 on the RPC itself: 072 is there but the GRANT of its PART 5 is not (a manual REVOKE would do it)
+     if (pg && pg.code === "42501" && own) {
 diff --git a/worker/test/plan-contract.test.mjs b/worker/test/plan-contract.test.mjs
-index a43833b..47a53d7 100644
+index a43833b..84b9e9a 100644
 --- a/worker/test/plan-contract.test.mjs
 +++ b/worker/test/plan-contract.test.mjs
 @@ -9,6 +9,7 @@
@@ -134,7 +154,7 @@ index a43833b..47a53d7 100644
 +// 072b's own codes (vehicle handover plan, Interfaces): its COMMIT rules (plan_seg_problem / plan_chk_seg) and its
 +// direct raises, minus the 071 / 072 codes it reuses (truck_busy, rt_gone, need_token, ...).
 +const CODES_072B = ['seg_cancel', 'seg_copy', 'seg_cover', 'seg_first', 'seg_gone', 'seg_locked', 'seg_many', 'seg_no_vehicle',
-+  'seg_none', 'seg_not_v2', 'seg_reason', 'seg_same', 'seg_time', 'seg_unassigned'];
++  'seg_none', 'seg_not_v2', 'seg_outside', 'seg_reason', 'seg_same', 'seg_time', 'seg_unassigned'];
  // Retired by the spec §7 — must appear nowhere (plan Interfaces).
  const RETIRED = ['hub_endpoint', 'piece_planned', 'bridge_moved', 'bridge_split', 'legacy_nl', 'frozen',
    'restore_expired', 'restore_conflict', 'partner_rate_on_owned', 'window_order'];
@@ -166,7 +186,7 @@ index a43833b..47a53d7 100644
  });
  
 -test('the parsed codes are exactly the plan\'s 26 + 31 — none missing, none extra, none retired', () => {
-+test('the parsed codes are exactly the plans\' 26 + 31 + 14 — none missing, none extra, none retired', () => {
++test('the parsed codes are exactly the plans\' 26 + 31 + 15 — none missing, none extra, none retired', () => {
    assert.deepEqual(codes071(f071().sql), CODES_071, '071 codes');
    assert.deepEqual(codes072(f072().sql), CODES_072, '072 codes');
 -  for (const sql of [f071().sql, f071b().sql, f072().sql]) {
@@ -280,7 +300,7 @@ index 153ef68..06a269c 100644
  
  test('an unknown role (forged or stale JWT role) is refused everywhere', async () => {
 diff --git a/worker/test/plan-routes.test.mjs b/worker/test/plan-routes.test.mjs
-index a2ab95d..ba78713 100644
+index a2ab95d..95e443b 100644
 --- a/worker/test/plan-routes.test.mjs
 +++ b/worker/test/plan-routes.test.mjs
 @@ -4,7 +4,7 @@
@@ -356,7 +376,7 @@ index a2ab95d..ba78713 100644
      assert.equal(r.json.replayed, true);
      for (const [fail, status, code] of FAILS) {
        routes.length = 0;
-@@ -484,6 +493,29 @@ test('plan_rt_update dry run: preview.conflict gets its message from PLAN_RULE_T
+@@ -484,6 +493,54 @@ test('plan_rt_update dry run: preview.conflict gets its message from PLAN_RULE_T
    assert.equal(r.json.preview.conflict, null, 'no conflict: untouched');
  });
  
@@ -381,6 +401,31 @@ index a2ab95d..ba78713 100644
 +  const r = await callOpen('warehouse', 'POST', '/plan/rt/5/handover', { request_id: 'x', reason: 'other' });
 +  assert.equal(r.status, 422, r.text);
 +  assert.deepEqual(r.json.error, { type: 'PLAN_RULE', code: 'seg_other_note', message: 'Με λόγο «Άλλο» η σημείωση είναι υποχρεωτική' });
++});
++
++// review R2 of the handover plan (DB finding 5): a 503 names the migration that brings the RPC - after a rollback of
++// 072b alone (or a deploy before it) «072 is missing» would be false; 072's routes keep 072
++test('schema_behind names 072b on the three handover routes and 072 elsewhere; seg_outside is Greek with its detail', async () => {
++  const missing = (fn) => () => pgError(404, { code: 'PGRST202', details: null, hint: null, message: `Could not find the function public.${fn}(p, p_actor, p_role) in the schema cache` });
++  for (const fn of ['plan_seg_change', 'plan_seg_fix', 'plan_seg_remove', 'plan_rt_update']) on('POST', `rpc/${fn}`, missing(fn));
++  for (const [method, p, body, mig] of [['POST', '/plan/rt/5/handover', { dry_run: true }, '072b'], ['PATCH', '/plan/segments/9', { set: {}, dry_run: true }, '072b'],
++    ['POST', '/plan/segments/9/remove', { dry_run: true }, '072b'], ['PATCH', '/plan/rt/5', { set: {}, dry_run: true }, '072']]) {
++    const r = await call('owner', method, p, body);
++    assert.equal(r.status, 503, `${p}: ${r.text}`);
++    assert.deepEqual(r.json.error, { type: 'SCHEMA_BEHIND', code: 'schema_behind', message: `Η βάση δεν έχει ακόμη το migration ${mig} (Εβδομαδιαίο Εθνικών) — ενημέρωσε τον Δημήτρη` }, p);
++  }
++  // PLAN_ROUTES is not exported: read the deployed source (one source), as plan-contract does
++  const { readFileSync } = await import('node:fs');
++  const src = readFileSync(SRC_PATH, 'utf8').match(/var PLAN_ROUTES = \[[\s\S]*?\n\];\n/)[0];
++  assert.deepEqual([...src.matchAll(/rpc: "(plan_\w+)"[^\n]*migration: "(\w+)"/g)].map((m) => [m[1], m[2]]),
++    [['plan_seg_change', '072b'], ['plan_seg_fix', '072b'], ['plan_seg_remove', '072b']], 'only the three handover routes name another migration');
++  // the Move that would narrow a cycle past a handover: 422, the RT and the time in brackets
++  routes.length = 0;
++  on('POST', 'rpc/plan_move_pieces', () => planReject('seg_outside', 'RT-1290 26/10 09:00'));
++  const r = await callOpen('warehouse', 'POST', '/plan/move', { from: { piece_ids: [4] }, target: { wait: true } });
++  assert.equal(r.status, 422, r.text);
++  assert.deepEqual(r.json.error, { type: 'PLAN_RULE', code: 'seg_outside',
++    message: 'Η πράξη θα άφηνε μια αλλαγή οχήματος έξω από τις ώρες του δρομολογίου — μετακίνησε ή αφαίρεσε πρώτα την αλλαγή (RT-1290 26/10 09:00)' });
 +});
 +
  // ───────────────────── the older paths ─────────────────────

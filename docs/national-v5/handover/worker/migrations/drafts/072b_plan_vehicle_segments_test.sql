@@ -1,7 +1,8 @@
 -- RULES TEST 072b (vehicle handover at a point): every case on TEST rows, then undone.
 -- Runs AFTER 072b said "072b OK". At build time on the PGlite copy (tms-auditor/test/plan-072b.test.mjs). On
 -- production it is OPTIONAL, after 15:00, with an explicit yes: it writes TEST rows (locations, partners, trucks,
--- drivers, one VS import order with its stops, v5 cycles, segments, payroll lines, cost lines, notices, audit rows)
+-- drivers, a client, one VS import order with its stops, two national orders with their shipments and pieces, v5
+-- cycles, segments, payroll lines, cost lines, notices, audit rows)
 -- and undoes ALL of them with a deliberate final error. Only trace: identity and code sequences advance.
 -- ONE statement. The red error message IS the result:
 --   "RULES TEST 072b finished - EVERYTHING UNDONE, nothing kept. Result: <N> OK, 0 FAIL || ...".
@@ -23,6 +24,8 @@ DECLARE
   t1600 timestamptz; e1000 timestamptz;
   g1 bigint; g2 bigint; g3 bigint; n0 bigint; n1 bigint; j0 jsonb; j1 jsonb; r jsonb; r2 jsonb; tok text; m text;
   veh2 jsonb; veh3 jsonb; t1300 timestamptz; t1100 timestamptz; t1200 timestamptz;
+  ld bigint; cl1 bigint; nk bigint; na bigint; pk bigint; pn bigint; e0900 timestamptz; e1500 timestamptz; e1600 timestamptz;
+  j2 jsonb;
   want text[] := ARRAY[
     NULL
     , 'ok'               -- 1 the INSERT of a cycle seeds ONE segment over its window; the copy = it; no label
@@ -49,7 +52,7 @@ DECLARE
     , 'plan:hard_delete' -- 22 a hard DELETE of a segment
     , 'plan:seg_first'   -- 23 a reason on the first segment
     , 'ok'               -- 24 the first and last stop move: the edges of the first and last segment follow in the same call
-    , 'plan:seg_time'    -- 25 a stop move that would end the cycle before a handover
+    , 'plan:seg_outside' -- 25 a stop move that would end the cycle before a handover (review R2: its own code)
     , 'ok'               -- 26 four segments (three handovers) pass every rule
     , 'ok'               -- 27 a handover yesterday, now and tomorrow (recorded after, on time, planned)
     , 'ok'               -- 28 OWNED -> PARTNER -> PARTNER -> OWNED, each with its own rate
@@ -115,6 +118,26 @@ DECLARE
     , 'plan:seg_gone'    -- 85 another person removes a removed segment
     -- finding 5 (the stop at the handover time belongs to the new segment, one rule)
     , 'plan:driver_busy' -- 86 a local loading by the new driver at a stop that starts at the handover time
+    -- review R2 (25/10), DB finding 1: a 072 act that narrows the cycle past a handover has its own code (H-6, owner q. 7)
+    , 'plan:seg_outside' -- 87 Move (plan_move_pieces) of the ANODOS load to waiting: the cycle would end before the handover
+    , 'ok'               -- 88 Delete (plan_delete) of that order: the dry run answers ok with a token, the execution seg_outside with the time
+    , 'ok'               -- 89 plan_order_update of the order on a cycle with a handover: no stop moves, passes
+    , 'ok'               -- 90 plan_put_pieces that widens the cycle past its end: the TELIKO follows to the new end
+    , 'plan:seg_outside' -- 91 a first stop moved later than the handover (the start side)
+    -- DB finding 2: the payroll lock per segment = the driver LEAVES the cycle (one predicate with the removal's list)
+    , 'ok'               -- 92 same driver: the TELIKO's driver corrected while the ARCHIKO's line has an amount: passes, the line stays
+    -- DB finding 4: the stops that change hands are said by the removal too (the change: case 2)
+    , 'ok'               -- 93 removal: the preview and the answer name the stops that pass to the vehicle before (seg_stop_moved)
+    -- spec review R2, E3 / E6: gaps of the checks
+    , 'ok'               -- 94 R-34: the three acts refuse without a person (plan:no_actor)
+    , 'ok'               -- 95 R-25/R-29: a correction to a truck busy in another cycle = truck_busy with its RT code
+    , 'ok'               -- 96 R-25/R-29: a correction to a driver busy in another cycle = driver_busy with its RT code
+    , 'ok'               -- 97 R-29: a handover to a busy driver = driver_busy with the other cycle's RT code
+    , 'plan:bad_input'   -- 98 R-19: no time (at)
+    , 'plan:bad_input'   -- 99 R-19: no reason
+    , 'plan:bad_input'   -- 100 R-19: no vehicle
+    , 'ok'               -- 101 R-40: the accountant's list has the amounts (the dispatcher's has none: case 64)
+    , 'ok'               -- 102 R-47 [B]: revenue, km and the P&L row of the cycle are the same before and after handover, correction, removal
     -- @want (one line per case: "    , '<ok|plan:code|con:name|state:XXXXX>'  -- <k> <what>")
   ]::text[];
   verdict text; got text; hint text; msg text; cname text; st text;
@@ -127,7 +150,9 @@ BEGIN
   IF EXISTS (SELECT 1 FROM locations WHERE legacy_id LIKE 'rec072bT%') OR EXISTS (SELECT 1 FROM orders WHERE legacy_id LIKE 'rec072bT%')
      OR EXISTS (SELECT 1 FROM trucks WHERE license_plate LIKE 'TEST-072b-%')
      OR EXISTS (SELECT 1 FROM drivers WHERE full_name LIKE 'TEST 072b %')
-     OR EXISTS (SELECT 1 FROM partners WHERE company_name LIKE 'TEST 072b %') THEN
+     OR EXISTS (SELECT 1 FROM partners WHERE company_name LIKE 'TEST 072b %')
+     OR EXISTS (SELECT 1 FROM clients WHERE company_name LIKE 'TEST 072b %')
+     OR EXISTS (SELECT 1 FROM national_orders WHERE legacy_id LIKE 'rec072bT%') THEN
     RAISE EXCEPTION 'RULES TEST 072b: test ids (rec072bT..., TEST 072b ..., TEST-072b-...) already exist - stop';
   END IF;
 
@@ -139,10 +164,14 @@ BEGIN
   t1600 := (d + time '16:00') AT TIME ZONE 'Europe/Athens'; e1000 := (e + time '10:00') AT TIME ZONE 'Europe/Athens';
   t1300 := (d + time '13:00') AT TIME ZONE 'Europe/Athens'; t1100 := (d + time '11:00') AT TIME ZONE 'Europe/Athens';
   t1200 := (d + time '12:00') AT TIME ZONE 'Europe/Athens';
+  e0900 := (e + time '09:00') AT TIME ZONE 'Europe/Athens'; e1500 := (e + time '15:00') AT TIME ZONE 'Europe/Athens';
+  e1600 := (e + time '16:00') AT TIME ZONE 'Europe/Athens';
   SELECT id INTO hub FROM locations WHERE is_hub;
   INSERT INTO locations (legacy_id, name) VALUES ('rec072bTA', 'TEST 072b A') RETURNING id INTO la;
   INSERT INTO locations (legacy_id, name) VALUES ('rec072bTB', 'TEST 072b B') RETURNING id INTO lb;
   INSERT INTO locations (legacy_id, name) VALUES ('rec072bTC', 'TEST 072b C') RETURNING id INTO lc;
+  INSERT INTO locations (legacy_id, name) VALUES ('rec072bTD', 'TEST 072b D') RETURNING id INTO ld;
+  INSERT INTO clients (company_name) VALUES ('TEST 072b client') RETURNING id INTO cl1;
   INSERT INTO partners (company_name) VALUES ('TEST 072b partner 1') RETURNING id INTO pa;
   INSERT INTO partners (company_name) VALUES ('TEST 072b partner 2') RETURNING id INTO pa2;
   INSERT INTO trucks (license_plate) VALUES ('TEST-072b-2104') RETURNING id INTO trk1;
@@ -162,6 +191,22 @@ BEGIN
   VALUES ('rec072bTS2', 'Cross-dock', 1, d, vso, hub, 10);
   INSERT INTO order_stops (legacy_id, stop_type, stop_number, datetime, order_id, location_id, pallets)
   VALUES ('rec072bTS3', 'Unloading', 1, d, vso, lb, 10) RETURNING id INTO vs_b;
+  -- two national orders (review R2, DB finding 1): K = A -> B on D (KATHODOS of R1), N = C -> D on D+1 (ANODOS of
+  -- R1, a new stop D 15:00-16:00). Their pieces wait; a case puts them on R1 with plan_put_pieces.
+  INSERT INTO national_orders (legacy_id, client_id, reference, price, pallets, goods, temperature_c)
+  VALUES ('rec072bTN1', cl1, 'WN072b-TEST', 100, 10, 'TEST', 2) RETURNING id INTO nk;
+  INSERT INTO shipments (nat_order_id, origin_location_id, dest_location_id, pallets, load_from, load_to,
+                         deliver_from, deliver_to, created_by)
+  VALUES (nk, la, lb, 10, (d + time '06:00') AT TIME ZONE 'Europe/Athens', t0800, t1200,
+          (d + time '14:00') AT TIME ZONE 'Europe/Athens', 'test:072b') RETURNING id INTO x;
+  INSERT INTO shipment_pieces (shipment_id, pallets, created_by) VALUES (x, 10, 'test:072b') RETURNING id INTO pk;
+  INSERT INTO national_orders (legacy_id, client_id, reference, price, pallets, goods, temperature_c)
+  VALUES ('rec072bTN2', cl1, 'WN072b-TEST', 100, 8, 'TEST', 2) RETURNING id INTO na;
+  INSERT INTO shipments (nat_order_id, origin_location_id, dest_location_id, pallets, load_from, load_to,
+                         deliver_from, deliver_to, created_by)
+  VALUES (na, lc, ld, 8, (e + time '12:00') AT TIME ZONE 'Europe/Athens', (e + time '14:00') AT TIME ZONE 'Europe/Athens',
+          e1500, e1600, 'test:072b') RETURNING id INTO x;
+  INSERT INTO shipment_pieces (shipment_id, pallets, created_by) VALUES (x, 8, 'test:072b') RETURNING id INTO pn;
   veh2 := jsonb_build_object('trip_type', 'OWNED', 'truck_id', trk2, 'driver_id', drv2);
   veh3 := jsonb_build_object('trip_type', 'OWNED', 'truck_id', trk3, 'driver_id', drv3);
 
@@ -223,8 +268,10 @@ BEGIN
                                    AND after_data->>'reason' = 'vehicle_breakdown' AND after_data->>'place_note' = 'Lamia'
                                    AND (after_data->>'from_at')::timestamptz = t1430) = 1
                             AND (SELECT count(*) FROM locations) = n0
-                            AND r->>'ok' = 'true' AND r->'warnings' = '[]'::jsonb
-                          THEN 'ok handover: [A][T], copy = A, one create row' ELSE 'FAIL handover ' || r::text END;
+                            -- review R2, DB finding 4: stop C (D+1 12:00) passes to the TELIKO, and the answer says so
+                            AND r->>'ok' = 'true' AND r->'warnings' = jsonb_build_array(jsonb_build_object('code', 'seg_stop_moved',
+                                  'stop_id', s1c, 'from_segment_id', g1, 'to_segment_id', g2))
+                          THEN 'ok handover: [A][T], copy = A, one create row, stop C said' ELSE 'FAIL handover ' || r::text END;
         ELSIF k = 3 THEN
           j1 := (SELECT to_jsonb(s) FROM rt_vehicle_segments s WHERE id = g2);
           r2 := plan_seg_change(jsonb_build_object('request_id', gen_random_uuid(), 'rt_id', rt1, 'at', t1000,
@@ -732,15 +779,199 @@ BEGIN
       ELSIF k = 79 THEN
         r := plan_seg_change(jsonb_build_object('request_id', gen_random_uuid(), 'rt_id', rt1, 'at', t1300,
                'place_note', 'Lamia', 'reason', 'vehicle_breakdown', 'vehicle', veh2), 'test:072b', 'owner');
-        verdict := CASE WHEN r->'warnings' = jsonb_build_array(jsonb_build_object('code', 'seg_stop_straddles', 'stop_id', s1b,
-                               'segment_id', (r->'ids'->>'segment_id')::bigint))
-                        THEN 'ok a handover inside stop B is said' ELSE 'FAIL change straddles ' || r::text END;
+        verdict := CASE WHEN r->'warnings' = jsonb_build_array(
+                               jsonb_build_object('code', 'seg_stop_moved', 'stop_id', s1c,
+                                 'from_segment_id', (r->'ids'->>'cut_segment_id')::bigint, 'to_segment_id', (r->'ids'->>'segment_id')::bigint),
+                               jsonb_build_object('code', 'seg_stop_straddles', 'stop_id', s1b,
+                                 'segment_id', (r->'ids'->>'segment_id')::bigint))
+                        THEN 'ok a handover inside stop B is said (and stop C that passes)' ELSE 'FAIL change straddles ' || r::text END;
       ELSIF k = 86 THEN
         -- stop B starts at 12:00 = the handover time: it is the new segment's (Nikos), by the one rule
         PERFORM plan_seg_change(jsonb_build_object('request_id', gen_random_uuid(), 'rt_id', rt1, 'at', t1200,
                   'place_note', 'Lamia', 'reason', 'vehicle_breakdown', 'vehicle', veh2), 'test:072b', 'owner');
         PERFORM plan_local_loading(jsonb_build_object('request_id', gen_random_uuid(), 'rt_stop_id', s1b, 'driver_id', drv2,
                   'truck_id', trk3), 'test:072b', 'owner');
+      ELSIF k IN (87, 88, 89) THEN
+        -- K on the KATHODOS (A -> B), N on the ANODOS (C -> a new stop D at D+1 15:00-16:00): the window is D 06:00 -> D+1 16:00
+        PERFORM plan_put_pieces(jsonb_build_object('pieces', jsonb_build_array(jsonb_build_object('piece_id', pk)),
+                  'target', jsonb_build_object('rt_id', rt1, 'side', 'KATHODOS'),
+                  'stops', jsonb_build_array(jsonb_build_object('ref', 'a', 'stop_id', s1a), jsonb_build_object('ref', 'b', 'stop_id', s1b))),
+                  'test:072b', 'owner');
+        PERFORM plan_put_pieces(jsonb_build_object('pieces', jsonb_build_array(jsonb_build_object('piece_id', pn)),
+                  'target', jsonb_build_object('rt_id', rt1, 'side', 'ANODOS'),
+                  'stops', jsonb_build_array(jsonb_build_object('ref', 'c', 'stop_id', s1c),
+                                             jsonb_build_object('ref', 'd', 'location_id', ld, 'planned_from', e1500, 'planned_to', e1600))),
+                  'test:072b', 'owner');
+        -- the breakdown: 2108 / Nikos from D+1 09:00 (the TELIKO holds C and D)
+        r := plan_seg_change(jsonb_build_object('request_id', gen_random_uuid(), 'rt_id', rt1, 'at', e0900,
+               'place_note', 'Lamia', 'reason', 'vehicle_breakdown', 'vehicle', veh2), 'test:072b', 'dispatcher');
+        g2 := (r->'ids'->>'segment_id')::bigint;
+        IF k = 87 THEN
+          -- the rest of the broken truck's loads go back to waiting: C and D are swept, the cycle would end D 14:00
+          PERFORM plan_move_pieces(jsonb_build_object('from', jsonb_build_object('piece_ids', jsonb_build_array(pn)),
+                    'target', jsonb_build_object('wait', true)), 'test:072b', 'warehouse');
+        ELSIF k = 88 THEN
+          r := plan_delete(jsonb_build_object('nat_order_id', na, 'dry_run', true), 'test:072b', 'owner');
+          BEGIN
+            PERFORM plan_delete(jsonb_build_object('nat_order_id', na, 'reason', 'TEST 072b', 'confirm_token', r->>'confirm_token'),
+                      'test:072b', 'owner');
+            verdict := 'FAIL no error';
+          EXCEPTION WHEN others THEN
+            GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT, hint = PG_EXCEPTION_HINT;
+            -- option (a) of owner question 7: the dry run cannot see a rule of the COMMIT (no hook in 072's
+            -- plan_delete), so the refusal comes at the execution - with its own code and the handover time
+            verdict := CASE WHEN (r->>'ok')::boolean AND (r->>'dry_run')::boolean AND NOT (r->>'needs_confirm')::boolean
+                              AND hint = 'plan:seg_outside'
+                              AND msg LIKE '%seg_outside:' || (SELECT code FROM ct_round_trips WHERE id = rt1) || ' '
+                                           || to_char(e0900 AT TIME ZONE 'Europe/Athens', 'DD/MM HH24:MI') || '%'
+                              AND (SELECT deleted_at IS NULL FROM national_orders WHERE id = na)
+                            THEN 'ok dry run ok, execution seg_outside at ' || to_char(e0900 AT TIME ZONE 'Europe/Athens', 'DD/MM HH24:MI')
+                            ELSE 'FAIL delete ' || hint || ' ' || msg || ' ' || r::text END;
+          END;
+        ELSE
+          j1 := (SELECT to_jsonb(s) - 'updated_at' FROM rt_vehicle_segments s WHERE id = g2);
+          r2 := plan_order_update(jsonb_build_object('nat_order_id', na, 'set', jsonb_build_object('price', 120)), 'test:072b', 'accountant');
+          SET CONSTRAINTS ALL IMMEDIATE;
+          verdict := CASE WHEN (r2->>'ok')::boolean AND (SELECT to_jsonb(s) - 'updated_at' FROM rt_vehicle_segments s WHERE id = g2) = j1
+                            AND (SELECT price FROM national_orders WHERE id = na) = 120
+                          THEN 'ok order update, the segments unchanged' ELSE 'FAIL order update ' || r2::text END;
+        END IF;
+      ELSIF k = 90 THEN
+        PERFORM plan_put_pieces(jsonb_build_object('pieces', jsonb_build_array(jsonb_build_object('piece_id', pk)),
+                  'target', jsonb_build_object('rt_id', rt1, 'side', 'KATHODOS'),
+                  'stops', jsonb_build_array(jsonb_build_object('ref', 'a', 'stop_id', s1a), jsonb_build_object('ref', 'b', 'stop_id', s1b))),
+                  'test:072b', 'owner');
+        r := plan_seg_change(jsonb_build_object('request_id', gen_random_uuid(), 'rt_id', rt1, 'at', e0900,
+               'place_note', 'Lamia', 'reason', 'vehicle_breakdown', 'vehicle', veh2), 'test:072b', 'dispatcher');
+        g2 := (r->'ids'->>'segment_id')::bigint;
+        -- the TELIKO (2108) takes one more load to D at 15:00-16:00: the cycle grows past its end, the TELIKO follows
+        PERFORM plan_put_pieces(jsonb_build_object('pieces', jsonb_build_array(jsonb_build_object('piece_id', pn)),
+                  'target', jsonb_build_object('rt_id', rt1, 'side', 'ANODOS'),
+                  'stops', jsonb_build_array(jsonb_build_object('ref', 'c', 'stop_id', s1c),
+                                             jsonb_build_object('ref', 'd', 'location_id', ld, 'planned_from', e1500, 'planned_to', e1600))),
+                  'test:072b', 'warehouse');
+        SET CONSTRAINTS ALL IMMEDIATE;
+        verdict := CASE WHEN (SELECT end_at FROM ct_round_trips WHERE id = rt1) = e1600
+                          AND (SELECT from_at = e0900 AND to_at = e1600 FROM rt_vehicle_segments WHERE id = g2)
+                        THEN 'ok the TELIKO follows the wider window' ELSE 'FAIL widen' END;
+      ELSIF k = 91 THEN
+        -- [A 06:00-08:30][T 08:30-...]; stop A moves to 08:45: the cycle would start after the handover
+        PERFORM plan_seg_change(jsonb_build_object('request_id', gen_random_uuid(), 'rt_id', rt1, 'at', t0830,
+                  'place_note', 'Lamia', 'reason', 'vehicle_breakdown', 'vehicle', veh2), 'test:072b', 'owner');
+        PERFORM plan_rt_update(jsonb_build_object('rt_id', rt1, 'stops', jsonb_build_array(jsonb_build_object('stop_id', s1a,
+                  'planned_from', (d + time '08:45') AT TIME ZONE 'Europe/Athens', 'planned_to', (d + time '08:50') AT TIME ZONE 'Europe/Athens'))),
+                  'test:072b', 'owner');
+      ELSIF k = 92 THEN
+        -- same driver: [A 2104/Giorgos][T 2108/Giorgos]; accounting wrote an amount on Giorgos' line (011, the cycle's)
+        r := plan_seg_change(jsonb_build_object('request_id', gen_random_uuid(), 'rt_id', rt1, 'at', t1430,
+               'place_note', 'Lamia', 'reason', 'vehicle_breakdown', 'same_driver', true,
+               'vehicle', jsonb_build_object('trip_type', 'OWNED', 'truck_id', trk2)), 'test:072b', 'owner');
+        g2 := (r->'ids'->>'segment_id')::bigint;
+        UPDATE dl_entries SET trip_value = 100 WHERE rt_id = rt1 AND deleted_at IS NULL;
+        SELECT id INTO x FROM dl_entries WHERE rt_id = rt1 AND deleted_at IS NULL;
+        r := plan_seg_fix(jsonb_build_object('segment_id', g2, 'set', jsonb_build_object('driver_id', drv2), 'dry_run', true), 'test:072b', 'owner');
+        r2 := plan_seg_fix(jsonb_build_object('segment_id', g2, 'set', jsonb_build_object('driver_id', drv2)), 'test:072b', 'owner');
+        SET CONSTRAINTS ALL IMMEDIATE;
+        verdict := CASE WHEN r->'preview'->'conflict' = 'null'::jsonb AND (r2->>'ok')::boolean
+                          AND (SELECT driver_id FROM rt_vehicle_segments WHERE id = g2) = drv2
+                          AND (SELECT driver_id = drv1 AND trip_value = 100 AND deleted_at IS NULL FROM dl_entries WHERE id = x)
+                        THEN 'ok Giorgos still drives the ARCHIKO: his line stays, the correction passes'
+                        ELSE 'FAIL same driver fix ' || r::text || r2::text END;
+      ELSIF k = 93 THEN
+        r := plan_seg_change(jsonb_build_object('request_id', gen_random_uuid(), 'rt_id', rt1, 'at', t1430,
+               'place_note', 'Lamia', 'reason', 'vehicle_breakdown', 'vehicle', veh2), 'test:072b', 'owner');
+        g2 := (r->'ids'->>'segment_id')::bigint; g1 := (r->'ids'->>'cut_segment_id')::bigint;
+        r := plan_seg_remove(jsonb_build_object('segment_id', g2, 'dry_run', true), 'test:072b', 'dispatcher');
+        r2 := plan_seg_remove(jsonb_build_object('segment_id', g2), 'test:072b', 'dispatcher');
+        j1 := jsonb_build_object('code', 'seg_stop_moved', 'stop_id', s1c, 'from_segment_id', g2, 'to_segment_id', g1);
+        verdict := CASE WHEN r->'preview'->'warnings' @> jsonb_build_array(j1) AND r2->'warnings' @> jsonb_build_array(j1)
+                        THEN 'ok stop C back to 2104, said before and after' ELSE 'FAIL remove moved ' || r::text || r2::text END;
+      ELSIF k = 94 THEN
+        r := plan_seg_change(jsonb_build_object('request_id', gen_random_uuid(), 'rt_id', rt1, 'at', t1430,
+               'place_note', 'Lamia', 'reason', 'vehicle_breakdown', 'vehicle', veh2), 'test:072b', 'owner');
+        g2 := (r->'ids'->>'segment_id')::bigint;
+        m := '';
+        FOR x IN 1..3 LOOP
+          BEGIN
+            IF x = 1 THEN
+              PERFORM plan_seg_change(jsonb_build_object('request_id', gen_random_uuid(), 'rt_id', rt1, 'at', t1000,
+                        'place_note', 'Lamia', 'reason', 'vehicle_breakdown', 'vehicle', veh3), ' ', 'owner');
+            ELSIF x = 2 THEN
+              PERFORM plan_seg_fix(jsonb_build_object('segment_id', g2, 'set', jsonb_build_object('place_note', 'x')), '', 'owner');
+            ELSE
+              PERFORM plan_seg_remove(jsonb_build_object('segment_id', g2), NULL, 'owner');
+            END IF;
+            m := m || ' no error';
+          EXCEPTION WHEN others THEN
+            GET STACKED DIAGNOSTICS hint = PG_EXCEPTION_HINT;
+            m := m || ' ' || hint;
+          END;
+        END LOOP;
+        verdict := CASE WHEN m = ' plan:no_actor plan:no_actor plan:no_actor' THEN 'ok no_actor x3' ELSE 'FAIL no_actor' || m END;
+      ELSIF k IN (95, 96, 97) THEN
+        -- truck 3 / driver 3 in another cycle on D+1 12:00-16:00 (as cases 10-12)
+        INSERT INTO ct_round_trips (model, scope, trip_type, truck_id, driver_id, date_start, date_end, start_at, end_at,
+                                    status, source, created_by)
+        VALUES (2, 'NATL', 'OWNED', trk3, drv3, e, e, (e + time '12:00') AT TIME ZONE 'Europe/Athens',
+                e1600, 'planned', 'planner', 'test:072b') RETURNING id INTO rt3;
+        INSERT INTO rt_stops (rt_id, seq, location_id, side, planned_from, planned_to, created_by)
+        VALUES (rt3, 1, la, 'KATHODOS', (e + time '12:00') AT TIME ZONE 'Europe/Athens', e1600, 'test:072b');
+        BEGIN
+          IF k = 97 THEN
+            PERFORM plan_seg_change(jsonb_build_object('request_id', gen_random_uuid(), 'rt_id', rt1, 'at', e1000,
+                      'place_note', 'Lamia', 'reason', 'vehicle_breakdown',
+                      'vehicle', jsonb_build_object('trip_type', 'OWNED', 'truck_id', trk2, 'driver_id', drv3)), 'test:072b', 'owner');
+          ELSE
+            r := plan_seg_change(jsonb_build_object('request_id', gen_random_uuid(), 'rt_id', rt1, 'at', t1430,
+                   'place_note', 'Lamia', 'reason', 'vehicle_breakdown', 'vehicle', veh2), 'test:072b', 'owner');
+            PERFORM plan_seg_fix(jsonb_build_object('segment_id', (r->'ids'->>'segment_id')::bigint,
+                      'set', CASE WHEN k = 95 THEN jsonb_build_object('truck_id', trk3) ELSE jsonb_build_object('driver_id', drv3) END),
+                      'test:072b', 'owner');
+          END IF;
+          verdict := 'FAIL no error';
+        EXCEPTION WHEN others THEN
+          GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT, hint = PG_EXCEPTION_HINT;
+          verdict := CASE WHEN hint = CASE WHEN k = 95 THEN 'plan:truck_busy' ELSE 'plan:driver_busy' END
+                            AND msg LIKE '%' || (SELECT code FROM ct_round_trips WHERE id = rt3)
+                          THEN 'ok ' || substr(hint, 6) || ' names ' || (SELECT code FROM ct_round_trips WHERE id = rt3)
+                          ELSE 'FAIL ' || coalesce(hint, '') || ' ' || msg END;
+        END;
+      ELSIF k IN (98, 99, 100) THEN
+        PERFORM plan_seg_change(jsonb_build_object('request_id', gen_random_uuid(), 'rt_id', rt1, 'at', t1430,
+                  'place_note', 'Lamia', 'reason', 'vehicle_breakdown', 'vehicle', veh2)
+                  - CASE k WHEN 98 THEN 'at' WHEN 99 THEN 'reason' ELSE 'vehicle' END, 'test:072b', 'owner');
+      ELSIF k = 101 THEN
+        r := plan_seg_change(jsonb_build_object('request_id', gen_random_uuid(), 'rt_id', rt1, 'at', t1430, 'place_note', 'Lamia',
+               'reason', 'vehicle_breakdown', 'vehicle', veh2), 'test:072b', 'owner');
+        g2 := (r->'ids'->>'segment_id')::bigint;
+        -- as case 36: Nikos (T) gets a line with an amount (what 073's per-driver line will do)
+        UPDATE dl_entries SET deleted_at = now(), deleted_reason = 'TEST 072b' WHERE rt_id = rt1 AND deleted_at IS NULL;
+        INSERT INTO dl_entries (driver_id, entry_type, entry_date, rt_id, trip_value, source, created_by)
+        VALUES (drv2, 'trip', e, rt1, 100, 'manual', 'test:072b') RETURNING id INTO x;
+        r := plan_seg_remove(jsonb_build_object('segment_id', g2, 'dry_run', true), 'test:072b', 'accountant');
+        r2 := plan_seg_remove(jsonb_build_object('segment_id', g2, 'dry_run', true), 'test:072b', 'owner');
+        verdict := CASE WHEN r->'consequences' @> jsonb_build_array(jsonb_build_object('kind', 'payroll_amount', 'dl_entry_id', x, 'amount', 100))
+                          AND r->>'confirm_token' = r2->>'confirm_token'
+                        THEN 'ok the accountant sees the amount' ELSE 'FAIL accountant ' || r::text END;
+      ELSIF k = 102 THEN
+        UPDATE ct_round_trips SET total_km = 900 WHERE id = rt1;
+        j1 := jsonb_build_array((SELECT total_km FROM ct_round_trips WHERE id = rt1),
+                                (SELECT to_jsonb(v) FROM ct_v_rt_revenue v WHERE v.rt_id = rt1),
+                                (SELECT count(*) FROM ct_v_rt_pnl v WHERE v.id = rt1));
+        r := plan_seg_change(jsonb_build_object('request_id', gen_random_uuid(), 'rt_id', rt1, 'at', t1430, 'place_note', 'Lamia',
+               'reason', 'vehicle_breakdown', 'vehicle', veh2), 'test:072b', 'owner');
+        g2 := (r->'ids'->>'segment_id')::bigint;
+        j2 := jsonb_build_array((SELECT total_km FROM ct_round_trips WHERE id = rt1),
+                                (SELECT to_jsonb(v) FROM ct_v_rt_revenue v WHERE v.rt_id = rt1),
+                                (SELECT count(*) FROM ct_v_rt_pnl v WHERE v.id = rt1));
+        PERFORM plan_seg_fix(jsonb_build_object('segment_id', g2, 'set', jsonb_build_object('truck_id', trk3)), 'test:072b', 'owner');
+        PERFORM plan_seg_remove(jsonb_build_object('segment_id', g2), 'test:072b', 'owner');
+        SET CONSTRAINTS ALL IMMEDIATE;
+        verdict := CASE WHEN j2 = j1 AND jsonb_build_array((SELECT total_km FROM ct_round_trips WHERE id = rt1),
+                                (SELECT to_jsonb(v) FROM ct_v_rt_revenue v WHERE v.rt_id = rt1),
+                                (SELECT count(*) FROM ct_v_rt_pnl v WHERE v.id = rt1)) = j1
+                          AND (j1->>2)::int = 1
+                        THEN 'ok revenue, km and one P&L row unchanged' ELSE 'FAIL R-47 ' || j1::text || j2::text END;
       -- @case (each task adds its "ELSIF k = <n> THEN" branches above this line)
       END IF;
       SET CONSTRAINTS ALL IMMEDIATE;
