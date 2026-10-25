@@ -33,7 +33,7 @@ SELECT
       ('public.plan_vs_state(bigint[])', '99175b659207c5019f1599ed389f1895'),
       ('public.plan_local_loading(jsonb,text,text)', '6c56db094458841598db079ad7844515'),
       ('public.plan_h_drop_consequences(bigint[],bigint,bigint[])', 'ce5de5793080e0c5be1e886defcb0b0e'),
-      ('public.plan_move_pieces(jsonb,text,text)', '042246d94fcdd1df628edd5840de1330'),
+      ('public.plan_move_pieces(jsonb,text,text)', '856da644f07ea356c2ecb5dd909fcc8d'),
       ('public.plan_delete(jsonb,text,text)', '7b5c7a31f19d1d38ef1fc115cc3701ec')) v(sig, m)
     WHERE (SELECT md5(prosrc) FROM pg_proc WHERE oid = to_regprocedure(v.sig)) = v.m) AS hooks_in_place,
   (SELECT count(*) FROM (VALUES

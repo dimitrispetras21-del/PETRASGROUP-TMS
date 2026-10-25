@@ -174,8 +174,9 @@ $h$;
 $h$;
   h_mv_list_b CONSTANT text := $h$  v_full := plan_h_drop_consequences(v_legs, v_keep, v_chosen);
   -- 072b: a side moved within its own cycle narrows that cycle too: the target is then a source, listed with the
-  -- request's stops (owner question 7 = b; review R5) and cut after the token by the same plan_h_seg_cut (hook 14)
-  v_full := v_full || plan_h_seg_cut_keep(v_legs, v_keep, p->'stops');
+  -- request's target and stops (owner question 7 = b; reviews R5, R6) and cut after the token by the same
+  -- plan_h_seg_cut (hook 14)
+  v_full := v_full || plan_h_seg_cut_keep(v_legs, v_keep, p);
 $h$;
   h_del_b CONSTANT text := $h$  perform plan_h_stops_sweep(v_stops, v_reason, p_actor, p_role);
   -- 072b: the handovers the list named go after the token, on the narrowed window (owner question 7 = b)
@@ -238,7 +239,7 @@ BEGIN
       (15, 'public.plan_delete(jsonb,text,text)', h_sweep_a, h_del_b,
        'c85450e28813d48023cb7f149949639c', '7b5c7a31f19d1d38ef1fc115cc3701ec'),
       (16, 'public.plan_move_pieces(jsonb,text,text)', h_mv_list_a, h_mv_list_b,
-       'b67eafc88f2b3a1cbad41776c57d6f38', '042246d94fcdd1df628edd5840de1330')
+       'b67eafc88f2b3a1cbad41776c57d6f38', '856da644f07ea356c2ecb5dd909fcc8d')
     ) v(k, sig, a, b, m0, m1) ORDER BY k DESC LOOP
     v_oid := to_regprocedure(v_fn.sig);
     SELECT prosrc, proacl::text, prosecdef, provolatile, prolang, proconfig

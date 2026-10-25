@@ -204,8 +204,9 @@ $h$;
 $h$;
   h_mv_list_b CONSTANT text := $h$  v_full := plan_h_drop_consequences(v_legs, v_keep, v_chosen);
   -- 072b: a side moved within its own cycle narrows that cycle too: the target is then a source, listed with the
-  -- request's stops (owner question 7 = b; review R5) and cut after the token by the same plan_h_seg_cut (hook 14)
-  v_full := v_full || plan_h_seg_cut_keep(v_legs, v_keep, p->'stops');
+  -- request's target and stops (owner question 7 = b; reviews R5, R6) and cut after the token by the same
+  -- plan_h_seg_cut (hook 14)
+  v_full := v_full || plan_h_seg_cut_keep(v_legs, v_keep, p);
 $h$;
   h_del_b CONSTANT text := $h$  perform plan_h_stops_sweep(v_stops, v_reason, p_actor, p_role);
   -- 072b: the handovers the list named go after the token, on the narrowed window (owner question 7 = b)
@@ -421,7 +422,7 @@ begin
   -- neighbours". Plan decision H-6. Owner question 7 = (b), 25/10: Move, Delete and plan_rt_update LIST such a
   -- handover (seg_removed) and remove it after the token (plan_h_seg_cut), so this rule is now the NET: it speaks only
   -- when a narrowing bypassed the list (a write outside plan_*; a Move to the other side of its own cycle is listed
-  -- too since review R5, plan_h_seg_cut_keep).
+  -- too since review R5, plan_h_seg_cut_keep, and since review R6 with the stops the put really uses).
   -- Review R3 (DB finding 5): the detail names EVERY handover left outside, in time order (a later segment's
   -- from_at; it carries the reason, seg_reason), so one refusal says all that must move - not one refusal each.
   -- mut:outside-begin
@@ -950,39 +951,66 @@ begin
 end
 $f$;
 
-  CREATE FUNCTION public.plan_h_seg_cut_keep(p_legs bigint[], p_keep bigint, p_stops jsonb) RETURNS jsonb
+  CREATE FUNCTION public.plan_h_seg_cut_keep(p_legs bigint[], p_keep bigint, p_req jsonb) RETURNS jsonb
     LANGUAGE plpgsql STABLE SET search_path = public AS $f$
-declare v_s timestamptz; v_e timestamptz; v_ref bigint[];
+declare v_s timestamptz; v_e timestamptz; v_used bigint[];
+        v_side text := p_req->'target'->>'side'; v_stops jsonb := coalesce(p_req->'stops', '[]'::jsonb);
 begin
   -- Review R5 (both critics): 072 lets a Move take a side to the OTHER side of its own cycle (same_rt only when every
   -- leg is already on the target side). That target is a source too: its old stops are swept, and its window can
   -- narrow past a handover. The owner's answer to question 7 = (b) has no exception for it, so it is listed and
   -- removed after the token like any source cycle, by the same plan_h_seg_cut. The window after the move, read
   -- BEFORE any write (071's rule, as plan_h_seg_cut_legs): the live stops that stay - not swept, because another
-  -- leg keeps them or the request names them by stop_id (plan_h_put puts on those) - and the request's new stops
-  -- with their planned_from / planned_to. A named stop that the put leaves without a leg is swept anyway: the window
-  -- is then narrower than read here, and a handover left outside unlisted is seg_outside at COMMIT (loud, never a
-  -- removal nobody was shown).
+  -- leg keeps them or the put will put a new leg on them - and the request's new stops with their planned_from /
+  -- planned_to.
   if p_keep is null
      or not exists (select 1 from piece_legs l where l.id = any (p_legs) and l.deleted_at is null and l.rt_id = p_keep)
      or not exists (select 1 from ct_round_trips c where c.id = p_keep and c.model = 2 and c.status <> 'cancelled') then
     return '[]'::jsonb;
   end if;
-  select array_agg((x->>'stop_id')::bigint) into v_ref
-    from jsonb_array_elements(coalesce(p_stops, '[]'::jsonb)) x where x ? 'stop_id';
+  -- Review R6 (DB finding 1): a stop the request names by stop_id stays only if the put USES it. A named stop the
+  -- put leaves without a leg is swept like any other, and counting it as kept gave a dry run with no list and a
+  -- token whose execution was refused by the net (seg_outside) - against 072's own rule that a dry run never hands
+  -- out a token for a move its execution refuses. Which stops the put uses is 072's choice, read here with 072's
+  -- own rules, never a second one: plan_h_put asks plan_h_stop_at for each moved piece at its pickup (where the
+  -- piece sits once these legs are dropped: v_piece_pos - the drop of its last leg that stays, else where its parent
+  -- sits, else its origin) and at its drop (its national end); plan_h_stop_at takes, among the request's stops at
+  -- that place, the target side first, then the lowest id - a new stop of the request is created after every
+  -- existing one, so it wins only on the target side over a named stop of the other side (rules test 119).
+  -- mut:used-begin
+  select array_agg(distinct w.id) into v_used from (
+    select (select c.id from (
+              select n.id, n.side from rt_stops n
+               where n.rt_id = p_keep and n.deleted_at is null and n.location_id = u.loc
+                 and n.id in (select (x->>'stop_id')::bigint from jsonb_array_elements(v_stops) x where x ? 'stop_id')
+              union all
+              select null::bigint, coalesce(x->>'side', v_side) from jsonb_array_elements(v_stops) x
+               where not (x ? 'stop_id') and (x->>'location_id')::bigint = u.loc) c
+            order by (c.side <> v_side), c.id nulls last limit 1) as id
+      from (select coalesce(
+                     (select ds.location_id from piece_legs l join rt_stops ds on ds.id = l.drop_stop_id
+                       where l.piece_id = sp.id and l.deleted_at is null and not (l.id = any (p_legs))
+                       order by l.leg_no desc limit 1),
+                     (select pp.position_location_id from v_piece_pos pp where pp.piece_id = sp.parent_piece_id),
+                     vs.nat_from_location_id) as pick, vs.nat_to_location_id as dest
+              from shipment_pieces sp join v_shipments vs on vs.shipment_id = sp.shipment_id
+             where sp.id in (select l.piece_id from piece_legs l where l.id = any (p_legs) and l.deleted_at is null)) y
+     cross join lateral (values (y.pick), (y.dest)) u(loc)) w
+   where w.id is not null;
+  -- mut:used-end
   -- mut:keep-begin
   select min(t.f), max(t.t) into v_s, v_e from (
     select s.planned_from as f, s.planned_to as t
       from rt_stops s
      where s.rt_id = p_keep and s.deleted_at is null
-       and (s.id = any (coalesce(v_ref, '{}'))
+       and (s.id = any (coalesce(v_used, '{}'))
             or not (exists (select 1 from piece_legs l where l.id = any (p_legs) and l.deleted_at is null
                               and s.id in (l.pickup_stop_id, l.drop_stop_id))
                     and not exists (select 1 from piece_legs l where s.id in (l.pickup_stop_id, l.drop_stop_id)
                                       and l.deleted_at is null and not (l.id = any (p_legs)))))
     union all
     select (x->>'planned_from')::timestamptz, (x->>'planned_to')::timestamptz
-      from jsonb_array_elements(coalesce(p_stops, '[]'::jsonb)) x where not (x ? 'stop_id')) t;
+      from jsonb_array_elements(v_stops) x where not (x ? 'stop_id')) t;
   -- mut:keep-end
   if v_s is null then return '[]'::jsonb; end if;
   return plan_h_seg_cut_list(p_keep, v_s, v_e);
@@ -1090,7 +1118,7 @@ $f$;
       (15, 'public.plan_delete(jsonb,text,text)', h_sweep_a, h_del_b,
        'c85450e28813d48023cb7f149949639c', '7b5c7a31f19d1d38ef1fc115cc3701ec'),
       (16, 'public.plan_move_pieces(jsonb,text,text)', h_mv_list_a, h_mv_list_b,
-       'b67eafc88f2b3a1cbad41776c57d6f38', '042246d94fcdd1df628edd5840de1330')
+       'b67eafc88f2b3a1cbad41776c57d6f38', '856da644f07ea356c2ecb5dd909fcc8d')
     ) v(k, sig, a, b, m0, m1) ORDER BY k LOOP
     v_oid := to_regprocedure(v_fn.sig);
     SELECT prosrc, proacl::text, prosecdef, provolatile, prolang, proconfig

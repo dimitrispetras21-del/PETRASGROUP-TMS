@@ -3,7 +3,7 @@
 // Production shape = the same as plan-072.test.mjs (the 22/9 columns + live-071.sql + live-072.sql, 071 and 071b as
 // executed 22/10) + 072 from drafts/ (or worker/migrations/ after F2's K3), then 072b. Never edit a fixture by hand.
 // What it proves: the guards hold the texts 072b was written against; the dry run keeps nothing; 072b applies with
-// +4 triggers and B-54 following; the verify row; born closed for the API roles; the 118 rules; F2's 203 rules, 071's
+// +4 triggers and B-54 following; the verify row; born closed for the API roles; the 120 rules; F2's 203 rules, 071's
 // 56 and 071b's 8 still pass ON TOP of 072b (the EXCLUDE moved, the 16 hooks changed nothing F2 decided); the three
 // auditor checks go the PRODUCTION path (review R4, finding 1): each passes the repo lint (lintSql) and the in-DB
 // guard (monitoring.check_sql_guard), is seeded as 073b will seed it and run by monitoring.run_checks as
@@ -11,7 +11,7 @@
 // red on a forced violation - also when the copy rt_cancelled drifts and blinds the EXCLUDE (review R2, DB finding
 // 3); a lag() put back into B-91 is refused by both guards (a mutation); 071b's verify finds the EXCLUDE on the
 // segments (review R2, spec E2); the rollback refuses (a v5 row, 073 present), then undoes the 16 hooks in reverse
-// and returns every hooked function and both EXCLUDE byte for byte; twelve mutations that each make one case fail.
+// and returns every hooked function and both EXCLUDE byte for byte; fourteen mutations that each make one case fail.
 // The checks live in tms-auditor/checks-072b/ until 073b moves them into the catalog (plan: the handover to F3, P3-6): in checks/ they
 // would enter the 047b seed and the catalog tests before the fixture and the grants know rt_vehicle_segments.
 // Limits (as plan-072): money views are STUBS; the capture holds only the functions of its f/trg lists.
@@ -191,12 +191,12 @@ test('072b on a production-shaped PGlite copy', async (t) => {
     } finally { await db.exec('RESET ROLE'); }
   });
 
-  await t.test('072b rules test: 118 OK, 0 FAIL, nothing kept', async () => {
+  await t.test('072b rules test: 120 OK, 0 FAIL, nothing kept', async () => {
     const msg = await errorOf(db, read('072b_plan_vehicle_segments_test.sql'));
     const m = rules('072b').exec(msg ?? '');
     assert.ok(m, msg);
     assert.equal(Number(m[2]), 0, msg);
-    assert.equal(Number(m[1]), 118);
+    assert.equal(Number(m[1]), 120);
     assert.equal(await count(db, `SELECT count(*)::int AS n FROM rt_vehicle_segments`), 0, 'the test keeps nothing');
   });
 
@@ -336,6 +336,15 @@ for (const [name, from, to, want] of [
   // review R5 (DB finding 3): a stop named twice reaches the list again - the dry run answers without a refusal
   ['a stop named twice is not refused', /-- mut:twice-begin[\s\S]*?-- mut:twice-end/, '-- (mutated: twice allowed)',
    /118 FAIL want plan:bad_input got FAIL no error/],
+  // review R6 (DB finding 1): every named stop counted as kept again - the dry run gives a token without the list, and
+  // the net refuses the execution (the stop the put does not use is swept)
+  ['a named stop the put does not use counts as kept', /-- mut:used-begin[\s\S]*?-- mut:used-end/,
+   "v_used := (select array_agg((x->>'stop_id')::bigint) from jsonb_array_elements(v_stops) x where x ? 'stop_id');",
+   /119 FAIL want ok got plan:seg_outside/],
+  // review R6 (DB finding 2): the target that is also a source read only at its end - the narrowing from the start
+  // is not listed, and the net refuses it
+  ['the target that is also a source is read only at its end', /return plan_h_seg_cut_list\(p_keep, v_s, v_e\);/,
+   "return plan_h_seg_cut_list(p_keep, '-infinity', v_e);", /120 FAIL want ok got plan:seg_outside/],
 ]) {
   test(`072b mutation: ${name}`, async () => {
     const db = await prodShaped072();
