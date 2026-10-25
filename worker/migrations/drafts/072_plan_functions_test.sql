@@ -1211,9 +1211,9 @@ BEGIN
     END;
   END LOOP;
 
-  -- ===== SECTION B CASES (B1-B142): cycle, delete, VS, local loading, notices, reads, the week-scenario 19/32/31
+  -- ===== SECTION B CASES (B1-B147): cycle, delete, VS, local loading, notices, reads, the week-scenario 19/32/31
   -- (B77), the reviews' cases (B78-B97), request_id of a local loading and a cancel without id (B98-B101), the
-  -- vehicle never emptied by plan_rt_update (B102-B113, owner 25/10), the K1 review's cases (B114-B142) =====
+  -- vehicle never emptied by plan_rt_update (B102-B113, owner 25/10), the K1 review's cases (B114-B147) =====
   -- Own fixture (rec072TB..., "TEST 072 B ...", TEST-072-B...), undone by the final error of the outer block;
   -- each case undone by its marker. Results go into the outer ok / bad / res. ASCII only.
   -- S (every case): an OWNED v5 cycle made by plan_rt_create (TEST-072-B1 / driver B1, stops A 06-08 and B 12-14
@@ -1265,6 +1265,8 @@ BEGIN
       || ARRAY['ok', 'ok', 'ok', 'ok', 'ok', 'ok']   -- B125-B130 (K1 review r2: the re-reads pass a chain nobody changed; rt_id null)
       || ARRAY['ok', 'ok', 'plan:piece_busy', 'ok', 'ok', 'ok', 'ok', 'ok', 'ok']   -- B131-B139 (K1 review r3: three unproven rules; gap E: the move's stops)
       || ARRAY['ok', 'ok', 'ok']   -- B140-B142 (polish review 2: gap E's drop, a new stop's own side, stops not an array)
+      || ARRAY['ok', 'ok', 'ok', 'ok', 'ok']   -- B143-B147 (polish review 2 r2: three stops at A, a new stop without a side,
+                                               -- stops null or a string, one stop named twice on the other side)
       ;  -- end of b_want
     b_verdict text; b_got text; b_hint text; b_msg text; b_cname text; b_st text;
   BEGIN
@@ -2817,11 +2819,11 @@ BEGIN
           -- 20 -> 13: no stock to take from, so the first part that rides (7) would be emptied whole: refused
           PERFORM plan_order_update(jsonb_build_object('nat_order_id', b_no2, 'shipments', jsonb_build_array(
                     jsonb_build_object('shipment_id', b_sh2, 'pallets', 13))), 'test:072b', 'dispatcher');
-        ELSIF kb BETWEEN 134 AND 138 OR kb BETWEEN 140 AND 142 THEN   -- K1 gap E: the dry run of a move refuses the
+        ELSIF kb BETWEEN 134 AND 138 OR kb BETWEEN 140 AND 147 THEN   -- K1 gap E: the dry run of a move refuses the
           -- request's stops as its execution does and as the real resolver does: the move's dry run and execution both
           -- meet the copy of the rule in plan_move_pieces, so the same stops also go through plan_put_pieces
           -- (plan_h_target -> plan_h_stop_at, polish review I1), with a waiting piece at A going to B; a change to the
-          -- resolver alone, or to one rule of the copy alone, turns this red (B140-B141: polish review 2 I1, both halves)
+          -- resolver alone, or to one rule of the copy alone, turns this red (B140-B141, B143-B144: polish review 2 I1, r1 and r2)
           b_v2 := plan_rt_create(jsonb_build_object('new_rt', jsonb_build_object('trip_type', 'OWNED', 'truck_id', b_t2, 'driver_id', b_d2),
                     'stops', jsonb_build_array(
                       jsonb_build_object('ref', 'a', 'location_id', b_la, 'side', 'KATHODOS', 'planned_from', h06, 'planned_to', h07),
@@ -2838,9 +2840,13 @@ BEGIN
           -- 134: a stop of another cycle (S) named on the target; 135: two stops at A, neither on the target side;
           -- 136: no stop at A (where the piece waits); 137: one ref twice; 138: an unknown key in a stop;
           -- 140: no stop at B (the drop); 141 (accepted by all three): A named on the target side plus a new A on the
-          -- other side - the copy must count a new stop on its OWN side; 142: stops not an array (polish review 2 M1)
+          -- other side - the copy must count a new stop on its OWN side; 142: stops not an array (polish review 2 M1);
+          -- 143: A named and a new A on the target side plus a new A on the other: two on the target side, so the copy
+          -- must count the target side, not the other (r2 I1); 144: a new A with no side counts on the target side (r2 I1);
+          -- 145 / 146: stops null / a string, not only {} (r2 M1); 147 (accepted by all three): onto the ANODOS side, A and B
+          -- KATHODOS, A named twice: one stop, not two, as plan_h_stop_at counts it (r2 Info 1: v_n 1, v_m 0)
           b_v3 := jsonb_build_object('from', jsonb_build_object('piece_ids', jsonb_build_array(b_p1)),
-                    'target', jsonb_build_object('rt_id', b_x, 'side', 'KATHODOS'),
+                    'target', jsonb_build_object('rt_id', b_x, 'side', CASE WHEN kb = 147 THEN 'ANODOS' ELSE 'KATHODOS' END),
                     'stops', CASE kb
                                WHEN 134 THEN jsonb_build_array(
                                  jsonb_build_object('ref', 'a', 'stop_id', (b_v2->'stops'->>'a')::bigint),
@@ -2859,6 +2865,21 @@ BEGIN
                                  jsonb_build_object('ref', 'a2', 'location_id', b_la, 'side', 'ANODOS', 'planned_from', h16, 'planned_to', h18),
                                  jsonb_build_object('ref', 'b', 'stop_id', (b_v2->'stops'->>'b')::bigint))
                                WHEN 142 THEN '{}'::jsonb
+                               WHEN 143 THEN jsonb_build_array(
+                                 jsonb_build_object('ref', 'a', 'stop_id', (b_v2->'stops'->>'a')::bigint),
+                                 jsonb_build_object('ref', 'a3', 'location_id', b_la, 'side', 'KATHODOS', 'planned_from', h18, 'planned_to', h20),
+                                 jsonb_build_object('ref', 'a2', 'location_id', b_la, 'side', 'ANODOS', 'planned_from', h16, 'planned_to', h18),
+                                 jsonb_build_object('ref', 'b', 'stop_id', (b_v2->'stops'->>'b')::bigint))
+                               WHEN 144 THEN jsonb_build_array(
+                                 jsonb_build_object('ref', 'a', 'stop_id', (b_v2->'stops'->>'a')::bigint),
+                                 jsonb_build_object('ref', 'a2', 'location_id', b_la, 'planned_from', h16, 'planned_to', h18),
+                                 jsonb_build_object('ref', 'b', 'stop_id', (b_v2->'stops'->>'b')::bigint))
+                               WHEN 145 THEN 'null'::jsonb
+                               WHEN 146 THEN '"x"'::jsonb
+                               WHEN 147 THEN jsonb_build_array(
+                                 jsonb_build_object('ref', 'a', 'stop_id', (b_v2->'stops'->>'a')::bigint),
+                                 jsonb_build_object('ref', 'a2', 'stop_id', (b_v2->'stops'->>'a')::bigint),
+                                 jsonb_build_object('ref', 'b', 'stop_id', (b_v2->'stops'->>'b')::bigint))
                                ELSE jsonb_build_array(
                                  jsonb_build_object('ref', 'a', 'stop_id', (b_v2->'stops'->>'a')::bigint, 'seq', 1),
                                  jsonb_build_object('ref', 'b', 'stop_id', (b_v2->'stops'->>'b')::bigint)) END);
@@ -2892,14 +2913,20 @@ BEGIN
                                                   WHEN 140 THEN 'plan rule broken: bad_input:drop:' || b_p1 || '@' || b_lb
                                                   WHEN 141 THEN 'no refusal'
                                                   WHEN 142 THEN 'plan rule broken: bad_input:stops'
+                                                  WHEN 143 THEN 'plan rule broken: bad_input:stop.ambiguous:' || b_la
+                                                  WHEN 144 THEN 'plan rule broken: bad_input:stop.ambiguous:' || b_la
+                                                  WHEN 145 THEN 'plan rule broken: bad_input:stops'
+                                                  WHEN 146 THEN 'plan rule broken: bad_input:stops'
+                                                  WHEN 147 THEN 'no refusal'
                                                   ELSE 'plan rule broken: bad_input:stop.seq' END
                               AND b_put = CASE kb WHEN 136 THEN 'plan rule broken: bad_input:pickup:' || b_p2 || '@' || b_la
                                                   WHEN 140 THEN 'plan rule broken: bad_input:drop:' || b_p2 || '@' || b_lb
                                                   WHEN 141 THEN 'resolver accepted'
+                                                  WHEN 147 THEN 'resolver accepted'
                                                   ELSE b_txt END
-                              -- a refusal keeps S's leg; 141 moved it: off S, onto the target
-                              AND (SELECT deleted_at IS NULL FROM piece_legs WHERE id = b_lg1) = (kb <> 141)
-                              AND (kb <> 141 OR EXISTS (SELECT 1 FROM piece_legs WHERE piece_id = b_p1 AND rt_id = b_x
+                              -- a refusal keeps S's leg; 141 and 147 moved it: off S, onto the target
+                              AND (SELECT deleted_at IS NULL FROM piece_legs WHERE id = b_lg1) = (kb NOT IN (141, 147))
+                              AND (kb NOT IN (141, 147) OR EXISTS (SELECT 1 FROM piece_legs WHERE piece_id = b_p1 AND rt_id = b_x
                                                           AND deleted_at IS NULL))
                             THEN 'ok the move dry run answers its stops as the execution and the resolver do: ' || b_txt
                             ELSE 'FAIL dry run ' || b_txt || ' / execution ' || b_tok || ' / resolver ' || b_put END;

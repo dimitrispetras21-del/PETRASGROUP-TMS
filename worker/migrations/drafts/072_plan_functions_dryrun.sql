@@ -1169,8 +1169,9 @@ begin
   -- once its moved legs are off) and its drop at its national end, among those stops - more than one there and not
   -- exactly one on the target side = stop.ambiguous, none = pickup / drop. The rule of plan_h_stop_at is repeated on
   -- (stop, place, side) because the new stops do not exist yet: a change to one is a change to both. The execution
-  -- meets this copy too, so the guard is B134-B138 and B140-B142 (a drop with no stop, a new stop on its own side,
-  -- stops not an array) sending the same stops through plan_put_pieces as well, whose answer comes from
+  -- meets this copy too, so the guard is B134-B138 and B140-B147 (a drop with no stop, a new stop on its own side
+  -- or on none, three stops at one place, stops not an array or null, one stop named twice) sending the same stops
+  -- through plan_put_pieces as well, whose answer comes from
   -- plan_h_target / plan_h_stop_at: the dry run, the execution and the resolver must give the same message, or all
   -- three accept. Still at execution only (decision 39): a new stop's side, window and place (plan_h_stop_add;
   -- a side that is not KATHODOS / ANODOS is counted here as given), and a new_rt's stops and vehicle (plan_rt_create).
@@ -1199,7 +1200,7 @@ begin
           (2, 'drop', (select vs.nat_to_location_id from shipment_pieces sp join v_shipments vs on vs.shipment_id = sp.shipment_id
                         where sp.id = v_x))) t(o, w, loc)
          order by t.o loop
-        -- one stop named twice (two refs, one stop_id) is one stop, as in plan_h_stop_at
+        -- one stop named twice (two refs, one stop_id) is one stop, as in plan_h_stop_at (B147)
         select count(distinct coalesce('i' || (c->>'id'), 'r' || (c->>'ref'))),
                count(distinct coalesce('i' || (c->>'id'), 'r' || (c->>'ref'))) filter (where c->>'side' = p->'target'->>'side')
           into v_n, v_m
