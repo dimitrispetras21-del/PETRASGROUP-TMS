@@ -5662,11 +5662,25 @@ __name(planRefusal, "planRefusal");
 // for the former (what follows «<code>:» in plan_h_raise's message). Rebuilt here into the error its execution
 // would raise and read by planRefusal, so the two never drift (finding 4): F4 keeps no copy of the texts (αρχή 3).
 var PLAN_CONSTRAINT_KIND = { "23514": "check", "23505": "unique", "23P01": "exclusion" };
+// The SQLSTATEs that speak of the request's OWN input (review of PR #90 r2, finding 2): a text that is not a
+// number or a date (22P02, 22007), a number or a date out of range (22003, 22008), a required field left null
+// (23502). The statement failed, so its transaction rolled back and nothing was kept: a 422, the same answer on
+// every attempt. Every other class-22 code (22012 division by zero, 22004, a 22023 without a plan: hint, 22001
+// from stored text) is a fault inside 072 that no refresh can cure, so it stays plan_failed «ενημέρωσε τον
+// Δημήτρη». A 23502 can also come from a NULL the function computed from DB state, so the text keeps the same
+// line (αρχή 1). Only on a write route or its dry run: a read's arguments are the Worker's own, checked above.
+var PLAN_DB_INPUT_STATE = new Set(["22P02", "22003", "22007", "22008", "23502"]);
+function planDbInput(state) {
+  return { status: 422, type: "BAD_REQUEST", code: "bad_input", message: `${PLAN_RULE_TEXT.bad_input}· αν ξανασυμβεί, ενημέρωσε τον Δημήτρη (${state})` };
+}
+__name(planDbInput, "planDbInput");
 function planConflictRule(c) {
   const code = String((c && c.code) || "");
   const state = String((c && c.sqlstate) || "");
   const detail = c && c.detail !== null && c.detail !== void 0 ? String(c.detail) : null;
   const hinted = Object.prototype.hasOwnProperty.call(PLAN_RULE_TEXT, code) || detail !== null;
+  // a NOT NULL with a name (PG 18 names them) is still bad_input at execution, never «Κανόνας βάσης» (finding 9 r2)
+  if (!hinted && PLAN_DB_INPUT_STATE.has(state)) return planDbInput(state);
   const kind = Object.prototype.hasOwnProperty.call(PLAN_CONSTRAINT_KIND, state) ? `${PLAN_CONSTRAINT_KIND[state]} ` : "";
   const pg = hinted
     ? { code: state || "23514", hint: `plan:${code}`, message: `plan rule broken: ${code}:${detail || ""}` }
@@ -5738,9 +5752,10 @@ async function handlePlan(request, url, origin, env) {
       }
       if (route.idKey) {
         const id = Number(match[1]);
-        // a path id of 400 digits is Infinity (or an unsafe integer): the same rule, never a rounded id
+        // a path id of 400 digits is Infinity (or an unsafe integer): the same rule and the same names as a
+        // body id in planBadNumber — `finite` for Infinity, `safe_integer` for a rounded one (r2 finding 7)
         if (!Number.isSafeInteger(id)) {
-          return planError(400, "BAD_REQUEST", "bad_input", `${PLAN_RULE_TEXT.bad_input} (${route.idKey}:finite)`, origin, env);
+          return planError(400, "BAD_REQUEST", "bad_input", `${PLAN_RULE_TEXT.bad_input} (${route.idKey}:${Number.isFinite(id) ? "safe_integer" : "finite"})`, origin, env);
         }
         if (body[route.idKey] !== void 0 && Number(body[route.idKey]) !== id) {
           return planError(400, "BAD_REQUEST", "id_mismatch", `Το ${route.idKey} του σώματος διαφέρει από τη διαδρομή`, origin, env);
@@ -5793,8 +5808,11 @@ async function handlePlan(request, url, origin, env) {
     }
     // A lock lost to a concurrent write (deadlock 40P01, serialization 40001,
     // lock_timeout 55P03): nothing was kept — a 409, never the 500 path. The
-    // user presses again: no screen re-sends a /plan/* write by itself and
-    // this handler never calls the RPC twice (decision 44, owner 23/10).
+    // user presses again; this handler never calls the RPC twice (decision 44,
+    // owner 23/10). The legacy core/api.js _atRetry WOULD send this 409 (and the
+    // 503s and the 500 plan_failed) twice more by itself — harmless, because
+    // nothing was kept — which is why no /plan/* write may go through it
+    // (tests/api-plan-no-resend.test.mjs pins both; r2 findings 1 and 6).
     // Type SERVER, as `slow`, never PLAN_RULE (finding 13): it is transient, and PLAN_RULE is the family of
     // the business refusals a client must treat as final.
     if (pg && /^(40P01|40001|55P03)$/.test(String(pg.code || ""))) {
@@ -5807,13 +5825,12 @@ async function handlePlan(request, url, origin, env) {
       console.error(`PLAN ${name}: statement timeout`);
       return planError(503, "SERVER", "slow", `Η βάση άργησε να απαντήσει — ${route.read ? `η πράξη ${name} δεν ολοκληρώθηκε` : "τίποτα δεν γράφτηκε"}· ξαναδοκίμασε σε λίγο`, origin, env);
     }
-    // Input the DB cannot take (finding 5): class 22 (data exception: 22P02 a bigint that is text, 22003 out of
-    // range, …) and 23502 (a required field null). The statement failed, so the transaction rolled back and
-    // nothing was kept; the same request fails the same way every time, so a 422 — never a 5xx the legacy
-    // client would send twice more.
-    if (pg && /^(22[0-9A-Z]{3}|23502)$/.test(String(pg.code || ""))) {
+    // Input the DB cannot take (finding 5, narrowed in r2 finding 2: PLAN_DB_INPUT_STATE), on a write or its dry
+    // run. Any other class-22 code, and any on a read, falls to plan_failed below.
+    if (pg && !route.read && PLAN_DB_INPUT_STATE.has(String(pg.code || ""))) {
       console.error(`PLAN ${name}: ${pg.code} (input the DB cannot take)`, String(pg.message || "").slice(0, 200));
-      return planError(422, "BAD_REQUEST", "bad_input", `${PLAN_RULE_TEXT.bad_input} (${pg.code})`, origin, env);
+      const bad = planDbInput(pg.code);
+      return planError(bad.status, bad.type, bad.code, bad.message, origin, env);
     }
     console.error(`PLAN ${name}`, e && e.message);
     // Only a real Postgres SQLSTATE (five characters) outside the connection class 08 and the FATAL terminations

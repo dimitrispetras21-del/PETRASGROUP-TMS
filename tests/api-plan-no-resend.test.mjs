@@ -63,3 +63,71 @@ test('why not a 5xx or a 409: the legacy _atRetry sends those three times by its
     assert.strictEqual(planCalls(s), 3, `${status}: sent three times`);
   }
 });
+
+// Review r2, finding 1: the Worker can only choose the status of an answer it SENDS. When that answer is lost —
+// the fetch throws, or the CF edge answers a 5xx / 1101 page after the RPC committed — the legacy _atRetry sends
+// the write again by itself, and PATCH /plan/rt/:id {shift: {side, delta}} is a relative delta: a second send
+// moves the stops twice. Pinned here as the reason, together with the rule that follows from it.
+test('r2 finding 1: a lost answer (the fetch throws, an edge 5xx page) is sent again by the legacy _atRetry — the reason the rule below exists', async () => {
+  const thrown = sandbox(() => { throw new TypeError('Failed to fetch'); });
+  assert.strictEqual(await thrown.run(SEND), 'threw: Failed to fetch');
+  assert.strictEqual(planCalls(thrown), 3, 'a thrown fetch: three sends');
+  const edge = sandbox(() => new Response('<html>Error 1101</html>', { status: 502, headers: { 'content-type': 'text/html' } }));
+  await edge.run(SEND);
+  assert.strictEqual(planCalls(edge), 3, 'an edge page: three sends');
+});
+
+// The rule (decision 44, note 5 of the F2 plan for F4): no /plan/* request goes through core/api.js _atRetry.
+// F4's core/plan-api.js sends each write with ONE fetch of its own, and a lost answer reads «μπορεί να έγινε».
+// A build-time check (αρχή 6): every _atRetry(...) call in the client — core/, modules/, the root .js / .html —
+// is read, and none may name a /plan/ path or a plan* helper. Today no client file sends /plan/* at all; this
+// fails the day one is written on top of _atRetry, before it can move a cycle twice.
+function clientFiles() {
+  const out = [];
+  const walk = (dir) => {
+    for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+      const f = path.join(dir, e.name);
+      if (e.isDirectory()) walk(f);
+      else if (/\.(m?js|html)$/.test(e.name)) out.push(f);
+    }
+  };
+  for (const d of ['core', 'modules']) walk(path.join(ROOT, d));
+  for (const e of fs.readdirSync(ROOT)) if (/\.(m?js|html)$/.test(e)) out.push(path.join(ROOT, e));
+  return out;
+}
+// the text of each call's arguments: parentheses counted outside strings and comments
+function atRetryCalls(src) {
+  const out = [];
+  const re = /\b_atRetry\s*\(/g;
+  let m;
+  while ((m = re.exec(src)) !== null) {
+    if (/function\s+$/.test(src.slice(Math.max(0, m.index - 12), m.index))) continue; // its definition
+    let depth = 1, i = re.lastIndex, q = null;
+    for (; i < src.length && depth > 0; i++) {
+      const c = src[i];
+      if (q) { if (c === '\\') i++; else if (c === q) q = null; continue; }
+      if (c === '/' && src[i + 1] === '/') { i = src.indexOf('\n', i); if (i < 0) break; continue; }
+      if (c === '/' && src[i + 1] === '*') { i = src.indexOf('*/', i + 2) + 1; if (i <= 0) break; continue; }
+      if (c === "'" || c === '"' || c === '`') q = c;
+      else if (c === '(') depth++;
+      else if (c === ')') depth--;
+    }
+    out.push(src.slice(re.lastIndex, i));
+  }
+  return out;
+}
+test('r2 finding 1: no client _atRetry(...) call sends a /plan/* request (decision 44: F4 sends each /plan/* write once)', () => {
+  let seen = 0;
+  for (const f of clientFiles()) {
+    const src = fs.readFileSync(f, 'utf8');
+    for (const args of atRetryCalls(src)) {
+      seen++;
+      assert.ok(!/\/plan\/|\bplan[A-Z_]|PLAN_/.test(args), `${path.relative(ROOT, f)}: _atRetry(${args.slice(0, 160)}…) names a /plan/* request`);
+    }
+  }
+  // the scanner itself must see the calls it judges (today: core/api.js, 13), or it would pass on nothing
+  assert.ok(seen >= 10, `only ${seen} _atRetry calls read`);
+  // and it would catch one: the shape F4 would most likely write
+  assert.strictEqual(atRetryCalls("x = _atRetry((_r) => fetch(_apiUrl('/plan/rt/' + id), { method: 'PATCH' }))").length, 1);
+  assert.ok(/\/plan\//.test(atRetryCalls("_atRetry((_r) => fetch(_apiUrl('/plan/rt/' + id), { method: 'PATCH' }))")[0]));
+});

@@ -9,7 +9,7 @@
 //     but an `amount` never reaches a role outside owner/accountant;
 //   - refusals: plan:<code> → 422 Greek, need_token → 428, 23P01 → truck_busy,
 //     missing 072 → 503, another named constraint → 422, input the DB cannot
-//     take (class 22, 23502) → 422, anything else → 500 naming the route, and a
+//     take (22P02/22003/22007/22008, 23502, on a write) → 422, anything else → 500 naming the route, and a
 //     write whose outcome is unknown → 422 plan_unknown (a status the legacy
 //     client never sends again by itself) — every one in the ONE /plan/* error shape;
 //   - the older paths: PATCH /costs/rt/:id on a v5 cycle → 409 before the DB;
@@ -93,7 +93,8 @@ beforeEach(() => {
     throw new Error(`unmocked fetch: ${method} ${table}?${u.searchParams}`);
   };
 });
-// the real fetch back after each test (review of PR #90, finding 14): a later file in the same process never meets the stub
+// the real fetch back after each test (review of PR #90, finding 14): hygiene inside this file only — node --test
+// runs each file in its own process, so no other file could meet the stub (r2 finding 10)
 afterEach(() => { Object.assign(console, realConsole); globalThis.fetch = realFetch; });
 const on = (method, table, handler) => routes.push({ method, table, handler });
 const rpcCalls = () => calls.filter((c) => c.table.startsWith('rpc/'));
@@ -317,7 +318,8 @@ test('a non-finite number in the body or the path id → 400 bad_input <field>:f
     ['/plan/pieces/split', 'POST', '{"piece_id":4,"parts":[{"pallets":12},{"pallets":1e400}]}', 'parts[1].pallets'],
     ['/plan/move', 'POST', '{"from":{"piece_ids":[1e999]},"target":{"wait":true},"dry_run":true}', 'from.piece_ids[0]'],
     [`/plan/rt/${nines}`, 'PATCH', '{"dry_run":true}', 'rt_id'],
-    ['/plan/notices/99999999999999999999/read', 'POST', '{}', 'notice_id']
+    // 1e20 is finite but not a safe integer: the name a body id gets too (r2 finding 7)
+    ['/plan/notices/99999999999999999999/read', 'POST', '{}', 'notice_id:safe_integer']
   ]) {
     for (const fetchOn of [call, callOpen]) {
       calls.length = 0;
@@ -325,7 +327,7 @@ test('a non-finite number in the body or the path id → 400 bad_input <field>:f
       assert.equal(r.status, 400, `${p.slice(0, 30)} ${raw}: ${r.text}`);
       assert.equal(r.json.error.type, 'BAD_REQUEST');
       assert.equal(r.json.error.code, 'bad_input');
-      assert.ok(r.json.error.message.endsWith(`(${field}:finite)`), r.json.error.message);
+      assert.ok(r.json.error.message.endsWith(`(${field.includes(':') ? field : `${field}:finite`})`), r.json.error.message);
       assert.equal(calls.length, 0, `${p.slice(0, 30)}: no DB call`);
     }
   }
@@ -587,8 +589,10 @@ test('facade PATCH ORDER STOPS refused by a plan: rule (bridge stop, 071) → 42
 
 // ───────────────────── K1 review r1: what a write's failure says ─────────────────────
 test('a write the DB answered with an unmapped SQLSTATE rolled back → 500 plan_failed «δεν ολοκληρώθηκε», never plan_unknown', async () => {
-  // 22P02 / 23502 moved to the 422 bad_input test below (finding 5)
+  // 22P02 / 23502 moved to the 422 bad_input test below (finding 5); a class-22 fault of 072 itself stays here (r2 finding 2)
   for (const pg of [{ code: '42883', message: 'function public.plan_h_missing(bigint) does not exist' },
+    { code: '22012', message: 'division by zero' }, { code: '22004', message: 'null value not allowed' },
+    { code: '22023', message: 'invalid parameter value' }, { code: '22001', message: 'value too long for type character varying(20)' },
     { code: 'P0001', message: 'raise without a plan: hint' },
     // polish review 2 r2 m1: idle-in-transaction fires only while the session is idle, before any COMMIT
     { code: '25P03', message: 'terminating connection due to idle-in-transaction timeout' }]) {
@@ -720,23 +724,25 @@ test('finding 1: plan_unknown / amount_leak use a status the legacy _atRetry nev
   }
 });
 
-test('finding 5: input the DB cannot take (class 22, 23502) → 422 bad_input with the SQLSTATE, one RPC, write and read alike', async () => {
+test('finding 5 (narrowed in r2 finding 2): input the DB cannot take → 422 bad_input with the SQLSTATE and «ενημέρωσε τον Δημήτρη», one RPC; on a read → 500 plan_failed', async () => {
   for (const pg of [{ code: '22P02', message: 'invalid input syntax for type bigint: "abc"' },
     { code: '22003', message: 'value "99999999999" is out of range for type integer' },
     { code: '22007', message: 'invalid input syntax for type timestamp with time zone: "x"' },
+    { code: '22008', message: 'date/time field value out of range: "2026-13-45"' },
     { code: '23502', message: 'null value in column "rt_id" violates not-null constraint' }]) {
     routes.length = 0;
     on('POST', 'rpc/plan_move_pieces', () => pgError(400, { ...pg, hint: null, details: null }));
     calls.length = 0;
     let r = await callOpen('dispatcher', 'POST', '/plan/move', { from: { piece_ids: [1] }, target: { rt_id: 5, side: 'KATHODOS' } });
     assert.equal(r.status, 422, `${pg.code}: ${r.text}`);
-    assert.deepEqual(r.json.error, { type: 'BAD_REQUEST', code: 'bad_input', message: `Το αίτημα δεν έχει τη μορφή που περιμένει η βάση — ανανέωσε τη σελίδα (${pg.code})` }, pg.code);
+    assert.deepEqual(r.json.error, { type: 'BAD_REQUEST', code: 'bad_input', message: `Το αίτημα δεν έχει τη μορφή που περιμένει η βάση — ανανέωσε τη σελίδα· αν ξανασυμβεί, ενημέρωσε τον Δημήτρη (${pg.code})` }, pg.code);
     assert.equal(rpcCalls().length, 1, `${pg.code}: one RPC`);
+    // a read's arguments are the Worker's own (checked before the DB): the same SQLSTATE there is a fault of 072
     routes.length = 0;
     on('POST', 'rpc/plan_board', () => pgError(400, { ...pg, hint: null, details: null }));
     r = await call('owner', 'GET', '/plan/board?week=2026-10-10');
-    assert.equal(r.status, 422, `${pg.code} read: ${r.text}`);
-    assert.equal(r.json.error.code, 'bad_input');
+    assert.equal(r.status, 500, `${pg.code} read: ${r.text}`);
+    assert.deepEqual(r.json.error, { type: 'SERVER', code: 'plan_failed', message: 'Η πράξη GET /plan/board δεν ολοκληρώθηκε — ενημέρωσε τον Δημήτρη' }, pg.code);
   }
   // a plan: hint on a class-22 SQLSTATE is still the rule it names (the hint is the marker, whatever SQLSTATE)
   routes.length = 0;
@@ -795,7 +801,9 @@ test('finding 4: a dry run previews every family as its execution answers it (re
     // a known plan: code with an empty detail
     [{ code: 'rt_window', sqlstate: '23514', detail: '' }, { code: '23514', hint: 'plan:rt_window', details: null, message: 'plan rule broken: rt_window:' }],
     // a foreign key nobody names
-    [{ code: 'rt_stops_location_id_fkey', sqlstate: '23503', detail: null }, { code: '23503', hint: null, details: null, message: 'insert or update on table "rt_stops" violates foreign key constraint "rt_stops_location_id_fkey"' }]];
+    [{ code: 'rt_stops_location_id_fkey', sqlstate: '23503', detail: null }, { code: '23503', hint: null, details: null, message: 'insert or update on table "rt_stops" violates foreign key constraint "rt_stops_location_id_fkey"' }],
+    // a NOT NULL with a name (PG 18 names them, so 072's dry run fills `code`): bad_input on both sides (r2 finding 9)
+    [{ code: 'rt_stops_planned_from_not_null', sqlstate: '23502', detail: null }, { code: '23502', hint: null, details: null, message: 'null value in column "planned_from" of relation "rt_stops" violates not-null constraint' }]];
   for (const [conflict, pg] of CASES) {
     routes.length = 0;
     on('POST', 'rpc/plan_rt_update', (u, b) => (b.p.dry_run === true ? json(preview({ ...conflict })) : pgError(409, pg)));
