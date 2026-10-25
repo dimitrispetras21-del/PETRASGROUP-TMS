@@ -2636,6 +2636,36 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
                   'target', jsonb_build_object('rt_id', rt2, 'side', 'KATHODOS'),
                   'stops', jsonb_build_array(jsonb_build_object('ref', 'a', 'stop_id', s2a))), 'test:072', 'owner');
       ELSIF k = 49 THEN
+        -- coordinator 25/10 (cross-cutting input rule): a group id 'NaN' / 'Infinity' / '-Infinity' is refused as
+        -- bad_input (the bigint cast, 22P02), never read as "no group"; a new stop with an infinite end is refused as
+        -- bad_input 'stop.planned:finite' on this path too, never written to rt_stops
+        FOR j IN SELECT value FROM jsonb_array_elements(jsonb_build_array(
+                   jsonb_build_object('group', jsonb_build_object('order_id', 'NaN')),
+                   jsonb_build_object('group', jsonb_build_object('order_id', 'Infinity')),
+                   jsonb_build_object('group', jsonb_build_object('nat_order_id', '-Infinity')),
+                   jsonb_build_object('group', jsonb_build_object('nat_order_id', 'NaN')),
+                   jsonb_build_object('group', jsonb_build_object('nat_order_id', n1), 'stops', jsonb_build_array(
+                     jsonb_build_object('ref', 'a', 'location_id', la, 'planned_from', b06, 'planned_to', 'infinity'),
+                     jsonb_build_object('ref', 'b', 'stop_id', s2b))),
+                   jsonb_build_object('group', jsonb_build_object('nat_order_id', n1), 'stops', jsonb_build_array(
+                     jsonb_build_object('ref', 'a', 'location_id', la, 'planned_from', '-infinity', 'planned_to', b07),
+                     jsonb_build_object('ref', 'b', 'stop_id', s2b))))) LOOP
+          msg := NULL;
+          BEGIN
+            PERFORM plan_put_group(j || jsonb_build_object('target', jsonb_build_object('rt_id', rt2, 'side', 'KATHODOS')),
+                      'test:072', 'owner');
+            t2 := 'accepted';
+          EXCEPTION WHEN others THEN
+            GET STACKED DIAGNOSTICS t2 = PG_EXCEPTION_HINT, msg = MESSAGE_TEXT;
+          END;
+          IF t2 IS DISTINCT FROM 'plan:bad_input'
+             OR msg NOT LIKE (CASE WHEN j->'stops' IS NOT NULL THEN '%stop.planned:finite%' ELSE '%bad_input:22P02%' END) THEN
+            RAISE EXCEPTION 'FAIL % got % (%)', j::text, coalesce(t2, 'no hint'), coalesce(msg, '-');
+          END IF;
+        END LOOP;
+        IF EXISTS (SELECT 1 FROM rt_stops WHERE rt_id = rt2 AND location_id = la AND id <> s2a) THEN
+          RAISE EXCEPTION 'FAIL an infinite stop was written to rt_stops';
+        END IF;
         PERFORM plan_put_group(jsonb_build_object('group', '{}'::jsonb,
                   'target', jsonb_build_object('rt_id', rt2, 'side', 'KATHODOS')), 'test:072', 'owner');
       ELSIF k = 50 THEN
@@ -2672,7 +2702,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 - [ ] **Step 2: Τρέξε, να αποτύχει**
 
 Run: `cd tms-auditor && node --test test/plan-072.test.mjs`
-Expected: FAIL στο `072 rules test`, με μήνυμα `Result: 46 OK, 4 FAIL` και πρώτη αποτυχία `47 FAIL want ok got state:42883 (function plan_put_group(jsonb, unknown, unknown) does not exist)`. Το `node --test tests/sql-072-drafts.test.js` μένει πράσινο (6/6).
+Expected: FAIL στο `072 rules test`, με μήνυμα `Result: 46 OK, 4 FAIL` και πρώτη αποτυχία `47 FAIL want ok got state:42883 (function plan_put_group(jsonb, unknown, unknown) does not exist)`. Το `node --test tests/sql-072-drafts.test.js` δίνει `ℹ pass 5`, `ℹ fail 1`, με μόνη αποτυχία `plan:request_missing has no case in 072_plan_functions_test.sql` (κωδικοί του `plan_h_replay` του Α1· οι περιπτώσεις 83–90 μπαίνουν στην Α8).
 
 - [ ] **Step 3: Η υλοποίηση (`worker/migrations/drafts/072_plan_functions.sql`)**
 
@@ -2690,6 +2720,8 @@ begin
   perform plan_h_keys(p->'group', array['order_id', 'nat_order_id'], 'group');
   v_ord := (p->'group'->>'order_id')::bigint;
   v_nat := (p->'group'->>'nat_order_id')::bigint;
+  -- Finite inputs (coordinator 25/10): the group ids are bigint, so 'NaN' / 'Infinity' fail the cast above (bad_input
+  -- 22P02, never read as "no group"); the stop windows are refused in plan_h_stop_add ('stop.planned:finite').
   if num_nonnulls(v_ord, v_nat) <> 1 then perform plan_h_raise('bad_input', 'group'); end if;
   select jsonb_agg(jsonb_build_object('piece_id', ps.piece_id) order by ps.piece_id) into v_pieces
     from v_piece_state ps
@@ -2722,7 +2754,7 @@ Run: `cd tms-auditor && node --test test/plan-072.test.mjs`
 Expected: `✔` και στα τρία υπο-tests, μήνυμα `Result: 50 OK, 0 FAIL`, `ℹ fail 0`.
 
 Run: `node --test tests/sql-072-drafts.test.js`
-Expected: `ℹ pass 6`, `ℹ fail 0` (το `v_pub` = κάθε δημόσια συνάρτηση, κάθε νέος κωδικός έχει περίπτωση).
+Expected: `ℹ pass 5`, `ℹ fail 1`, με μόνη αποτυχία `plan:request_missing has no case in 072_plan_functions_test.sql` (ως την Α8· το `v_pub` = κάθε δημόσια συνάρτηση, ο νέος κωδικός `group_empty` έχει περίπτωση, την 48). Έλεγξε το μήνυμα, όχι μόνο το πλήθος.
 
 - [ ] **Step 5: Commit**
 

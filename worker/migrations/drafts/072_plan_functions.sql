@@ -838,6 +838,38 @@ exception
     perform plan_h_raise('bad_input', sqlstate);
 end
 $f$;
+
+  CREATE FUNCTION public.plan_put_group(p jsonb, p_actor text, p_role text) RETURNS jsonb
+    LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $f$
+declare v_ord bigint; v_nat bigint; v_pieces jsonb; v_tgt jsonb; v_put jsonb;
+begin
+  -- Design 3 "Assign": the whole card (e.g. the 3 deliveries of a VS) in one call. It never splits a piece
+  -- (no take_pallets): a group is its waiting pieces, whole.
+  perform plan_h_ctx(p_actor, p_role);
+  perform plan_h_keys(p, array['group', 'target', 'stops'], 'p');
+  perform plan_h_keys(p->'group', array['order_id', 'nat_order_id'], 'group');
+  v_ord := (p->'group'->>'order_id')::bigint;
+  v_nat := (p->'group'->>'nat_order_id')::bigint;
+  -- Finite inputs (coordinator 25/10): the group ids are bigint, so 'NaN' / 'Infinity' fail the cast above (bad_input
+  -- 22P02, never read as "no group"); the stop windows are refused in plan_h_stop_add ('stop.planned:finite').
+  if num_nonnulls(v_ord, v_nat) <> 1 then perform plan_h_raise('bad_input', 'group'); end if;
+  select jsonb_agg(jsonb_build_object('piece_id', ps.piece_id) order by ps.piece_id) into v_pieces
+    from v_piece_state ps
+   where ps.waiting and (ps.order_id = v_ord or ps.nat_order_id = v_nat);
+  if v_pieces is null then perform plan_h_raise('group_empty', coalesce(v_ord, v_nat)::text); end if;
+  v_tgt := plan_h_target(p->'target', p->'stops', p_actor, p_role);
+  v_put := plan_h_put(v_pieces, v_tgt, p_actor, p_role, '{}');
+  perform plan_h_finish();
+  return plan_h_ok('plan_put_group',
+    jsonb_build_object('rt_id', v_put->'rt_id', 'stop_ids', v_put->'stop_ids', 'leg_ids', v_put->'leg_ids',
+                       'piece_ids', v_put->'piece_ids'),
+    v_put->'warnings', v_put->'notice_ids');
+exception
+  when invalid_text_representation or invalid_datetime_format or datetime_field_overflow
+       or numeric_value_out_of_range or invalid_parameter_value then
+    perform plan_h_raise('bad_input', sqlstate);
+end
+$f$;
   -- @A (072 section A: plan_orders_create, plan_put_pieces, plan_put_group, plan_split_piece, plan_move_pieces, plan_order_update)
 
   -- ===== PART 3: CYCLE, DELETE, VS, LOCAL LOADING (section B) =====
@@ -855,6 +887,7 @@ $f$;
       NULL
     , 'public.plan_orders_create(jsonb,text,text)'
     , 'public.plan_put_pieces(jsonb,text,text)'
+    , 'public.plan_put_group(jsonb,text,text)'
     -- @pub (072 tasks add ", 'public.plan_x(<arg types>)'" lines above this marker)
     ]::text[], NULL);
     -- 071's own plan_* (triggers and rule readers): never touched by 072, closed for every API role

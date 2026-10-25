@@ -77,6 +77,10 @@ DECLARE
     , 'plan:piece_dead'  -- 44 a piece that does not exist
     , 'ok'               -- 45 plan_orders_create with a target: the "+" in a row, one transaction
     , 'plan:parts_sum'   -- 46 more than the stock holds
+    , 'ok'               -- 47 a VS of 3 deliveries onto a truck of D+1 = 1 call, 3 legs, the international's day follows
+    , 'plan:group_empty' -- 48 nothing waiting in the group
+    , 'plan:bad_input'   -- 49 a group with neither order_id nor nat_order_id
+    , 'ok'               -- 50 a national order of 2 shipments as one card; no piece split
     -- @want (one line per case: "    , '<ok|plan:code|con:name|state:XXXXX>'  -- <k> <what>")
   ]::text[];
   verdict text; got text; hint text; msg text; cname text; st text;
@@ -490,6 +494,67 @@ BEGIN
                'target', jsonb_build_object('rt_id', rt1, 'side', 'KATHODOS'),
                'stops', jsonb_build_array(jsonb_build_object('ref', 'a', 'stop_id', s1a), jsonb_build_object('ref', 'b', 'stop_id', s1b)))),
                'test:072', 'owner');
+      ELSIF k = 47 THEN   -- three bridges (B 20, D 26, E 4), each one piece waiting at Veroia
+        INSERT INTO shipments (order_id, order_stop_id, created_by) VALUES (vso, vs_b, 'test:072') RETURNING id INTO x;
+        INSERT INTO shipment_pieces (shipment_id, pallets, created_by) VALUES (x, 20, 'test:072');
+        INSERT INTO shipments (order_id, order_stop_id, created_by) VALUES (vso, vs_d, 'test:072') RETURNING id INTO x;
+        INSERT INTO shipment_pieces (shipment_id, pallets, created_by) VALUES (x, 26, 'test:072');
+        INSERT INTO shipments (order_id, order_stop_id, created_by) VALUES (vso, vs_e, 'test:072') RETURNING id INTO x;
+        INSERT INTO shipment_pieces (shipment_id, pallets, created_by) VALUES (x, 4, 'test:072');
+        r := plan_put_group(jsonb_build_object('group', jsonb_build_object('order_id', vso),
+               'target', jsonb_build_object('rt_id', rt2, 'side', 'KATHODOS'),
+               'stops', jsonb_build_array(jsonb_build_object('ref', 'h', 'stop_id', s2h), jsonb_build_object('ref', 'b', 'stop_id', s2b),
+                                          jsonb_build_object('ref', 'd', 'location_id', ld, 'planned_from', b14, 'planned_to', b15),
+                                          jsonb_build_object('ref', 'e', 'location_id', le, 'planned_from', b15, 'planned_to', b16))),
+               'test:072', 'owner');
+      ELSIF k = 48 THEN
+        INSERT INTO piece_legs (piece_id, leg_no, rt_id, pickup_stop_id, drop_stop_id, created_by) VALUES (p1, 1, rt1, s1a, s1b, 'test:072');
+        PERFORM plan_put_group(jsonb_build_object('group', jsonb_build_object('nat_order_id', n1),
+                  'target', jsonb_build_object('rt_id', rt2, 'side', 'KATHODOS'),
+                  'stops', jsonb_build_array(jsonb_build_object('ref', 'a', 'stop_id', s2a))), 'test:072', 'owner');
+      ELSIF k = 49 THEN
+        -- coordinator 25/10 (cross-cutting input rule): a group id 'NaN' / 'Infinity' / '-Infinity' is refused as
+        -- bad_input (the bigint cast, 22P02), never read as "no group"; a new stop with an infinite end is refused as
+        -- bad_input 'stop.planned:finite' on this path too, never written to rt_stops
+        FOR j IN SELECT value FROM jsonb_array_elements(jsonb_build_array(
+                   jsonb_build_object('group', jsonb_build_object('order_id', 'NaN')),
+                   jsonb_build_object('group', jsonb_build_object('order_id', 'Infinity')),
+                   jsonb_build_object('group', jsonb_build_object('nat_order_id', '-Infinity')),
+                   jsonb_build_object('group', jsonb_build_object('nat_order_id', 'NaN')),
+                   jsonb_build_object('group', jsonb_build_object('nat_order_id', n1), 'stops', jsonb_build_array(
+                     jsonb_build_object('ref', 'a', 'location_id', la, 'planned_from', b06, 'planned_to', 'infinity'),
+                     jsonb_build_object('ref', 'b', 'stop_id', s2b))),
+                   jsonb_build_object('group', jsonb_build_object('nat_order_id', n1), 'stops', jsonb_build_array(
+                     jsonb_build_object('ref', 'a', 'location_id', la, 'planned_from', '-infinity', 'planned_to', b07),
+                     jsonb_build_object('ref', 'b', 'stop_id', s2b))))) LOOP
+          msg := NULL;
+          BEGIN
+            PERFORM plan_put_group(j || jsonb_build_object('target', jsonb_build_object('rt_id', rt2, 'side', 'KATHODOS')),
+                      'test:072', 'owner');
+            t2 := 'accepted';
+          EXCEPTION WHEN others THEN
+            GET STACKED DIAGNOSTICS t2 = PG_EXCEPTION_HINT, msg = MESSAGE_TEXT;
+          END;
+          IF t2 IS DISTINCT FROM 'plan:bad_input'
+             OR msg NOT LIKE (CASE WHEN j->'stops' IS NOT NULL THEN '%stop.planned:finite%' ELSE '%bad_input:22P02%' END) THEN
+            RAISE EXCEPTION 'FAIL % got % (%)', j::text, coalesce(t2, 'no hint'), coalesce(msg, '-');
+          END IF;
+        END LOOP;
+        IF EXISTS (SELECT 1 FROM rt_stops WHERE rt_id = rt2 AND location_id = la AND id <> s2a) THEN
+          RAISE EXCEPTION 'FAIL an infinite stop was written to rt_stops';
+        END IF;
+        PERFORM plan_put_group(jsonb_build_object('group', '{}'::jsonb,
+                  'target', jsonb_build_object('rt_id', rt2, 'side', 'KATHODOS')), 'test:072', 'owner');
+      ELSIF k = 50 THEN
+        r := plan_orders_create(jsonb_build_object('request_id', gen_random_uuid()) || (jsonb_build_object('orders', jsonb_build_array(jo1 || jsonb_build_object('shipments',
+               jsonb_build_array(jsh1 || '{"pallets": 3}', jsh1 || jsonb_build_object('dest_location_id', lc, 'pallets', 4, 'deliver_to', a16)))))),
+               'test:072', 'owner');
+        x := (r->'ids'->'nat_order_ids'->>0)::bigint;
+        r := plan_put_group(jsonb_build_object('group', jsonb_build_object('nat_order_id', x),
+               'target', jsonb_build_object('rt_id', rt1, 'side', 'KATHODOS'),
+               'stops', jsonb_build_array(jsonb_build_object('ref', 'a', 'stop_id', s1a), jsonb_build_object('ref', 'b', 'stop_id', s1b),
+                                          jsonb_build_object('ref', 'c', 'location_id', lc, 'planned_from', a15, 'planned_to', a16))),
+               'test:072', 'owner');
       -- @case (each task adds its "ELSIF k = <n> THEN" branches above this line)
       END IF;
       SET CONSTRAINTS ALL IMMEDIATE;
@@ -613,6 +678,20 @@ BEGIN
         verdict := CASE WHEN jsonb_array_length(r->'ids'->'leg_ids') = 1 AND (r->'ids'->>'rt_id')::bigint = rt1
                           AND (SELECT NOT waiting FROM v_piece_state WHERE piece_id = (r->'ids'->'piece_ids'->>0)::bigint)
                         THEN 'ok created and put in one call' ELSE 'FAIL create with target: ' || r::text END;
+      ELSIF k = 47 THEN
+        verdict := CASE WHEN jsonb_array_length(r->'ids'->'leg_ids') = 3
+                          AND (SELECT all_planned FROM v_vs_state WHERE order_id = vso)
+                          AND (SELECT cross_dock_date FROM orders WHERE id = vso) = e
+                          AND (SELECT count(*) FROM plan_notices WHERE order_id = vso AND kind = 'vs_day_changed') = 1
+                          AND (SELECT count(*) FROM rt_stops WHERE rt_id = rt2 AND deleted_at IS NULL) = 5
+                          AND r->'warnings' @> '[{"code": "over_33"}]'
+                        THEN 'ok one call: 3 legs, all planned, the international on D+1, one notice, over 33 warned'
+                        ELSE 'FAIL VS group: ' || r::text END;
+      ELSIF k = 50 THEN
+        verdict := CASE WHEN jsonb_array_length(r->'ids'->'leg_ids') = 2
+                          AND (SELECT planned FROM v_national_order_state WHERE nat_order_id = x)
+                          AND (SELECT count(*) FROM shipment_pieces p JOIN shipments s ON s.id = p.shipment_id WHERE s.nat_order_id = x) = 2
+                        THEN 'ok 2 shipments, 2 legs, no split' ELSE 'FAIL national group: ' || r::text END;
       -- @verdict (each task adds its "ELSIF k = <n> THEN verdict := ..." branches above this line)
       ELSE
         verdict := 'FAIL no verdict for case ' || k;
