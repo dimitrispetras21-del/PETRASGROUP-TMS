@@ -1327,6 +1327,9 @@ declare s rt_stops%rowtype; v_seq int;
 begin
   if p_side is null or p_side not in ('KATHODOS', 'ANODOS') then perform plan_h_raise('bad_input', 'stop.side'); end if;
   if p_from is null or p_to is null then perform plan_h_raise('bad_input', 'stop.planned'); end if;
+  -- coordinator 25/10 (cross-cutting input rule): 'infinity' / '-infinity' are valid timestamptz input and were
+  -- written as they are (a stop without end stretches its cycle's window and falls out of every day read)
+  if not (isfinite(p_from) and isfinite(p_to)) then perform plan_h_raise('bad_input', 'stop.planned:finite'); end if;
   perform plan_h_location(p_location);
   -- A provisional seq after the live ones; plan_h_reseq gives the final order (decision 5).
   select coalesce(max(seq), 0) + 1 into v_seq from rt_stops where rt_id = p_rt and deleted_at is null;
@@ -2243,6 +2246,21 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
                   'stops', jsonb_build_array(jsonb_build_object('ref', 'h', 'stop_id', s2h), jsonb_build_object('ref', 'b', 'stop_id', s2b))),
                   'test:072', 'owner');
       ELSIF k = 34 THEN
+        -- coordinator 25/10 (cross-cutting input rule): a NaN part of a piece that is not stock is bad_input
+        -- 'take_pallets:finite' (the size is refused before the stock test; case 46 proves the stock side)
+        BEGIN
+          msg := NULL;
+          PERFORM plan_put_pieces(jsonb_build_object('pieces', jsonb_build_array(jsonb_build_object('piece_id', p1, 'take_pallets', 'NaN')),
+                    'target', jsonb_build_object('rt_id', rt1, 'side', 'KATHODOS'),
+                    'stops', jsonb_build_array(jsonb_build_object('ref', 'a', 'stop_id', s1a), jsonb_build_object('ref', 'b', 'stop_id', s1b))),
+                    'test:072', 'owner');
+          t2 := 'accepted';
+        EXCEPTION WHEN others THEN
+          GET STACKED DIAGNOSTICS t2 = PG_EXCEPTION_HINT, msg = MESSAGE_TEXT;
+        END;
+        IF t2 IS DISTINCT FROM 'plan:bad_input' OR msg NOT LIKE '%take_pallets:finite%' THEN
+          RAISE EXCEPTION 'FAIL take_pallets NaN on a piece that is not stock got % (%)', coalesce(t2, 'no hint'), coalesce(msg, '-');
+        END IF;
         PERFORM plan_put_pieces(jsonb_build_object('pieces', jsonb_build_array(jsonb_build_object('piece_id', p1, 'take_pallets', 5)),
                   'target', jsonb_build_object('rt_id', rt1, 'side', 'KATHODOS'),
                   'stops', jsonb_build_array(jsonb_build_object('ref', 'a', 'stop_id', s1a), jsonb_build_object('ref', 'b', 'stop_id', s1b))),
@@ -2254,6 +2272,27 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
         UPDATE shipment_pieces SET split_at = now(), split_by = 'test:072' WHERE id = p1;
         INSERT INTO shipment_pieces (shipment_id, parent_piece_id, pallets, created_by) VALUES (sh1, p1, 7, 'test:072') RETURNING id INTO c1;
         INSERT INTO shipment_pieces (shipment_id, parent_piece_id, pallets, leave_by, created_by) VALUES (sh1, p1, 13, e, 'test:072') RETURNING id INTO c2;
+        IF k = 46 THEN
+          -- coordinator 25/10 (cross-cutting input rule): NaN (sorts above every number) and +-Infinity are refused
+          -- as bad_input 'take_pallets:finite', never read as a size (here on stock; case 34 on a piece that is not)
+          FOR j IN SELECT value FROM jsonb_array_elements(jsonb_build_array(
+                     jsonb_build_object('piece_id', c2, 'take_pallets', 'NaN'), jsonb_build_object('piece_id', c2, 'take_pallets', 'Infinity'),
+                     jsonb_build_object('piece_id', c2, 'take_pallets', '-Infinity'))) LOOP
+            msg := NULL;
+            BEGIN
+              PERFORM plan_put_pieces(jsonb_build_object('pieces', jsonb_build_array(j),
+                        'target', jsonb_build_object('rt_id', rt2, 'side', 'KATHODOS'),
+                        'stops', jsonb_build_array(jsonb_build_object('ref', 'h', 'stop_id', s2h), jsonb_build_object('ref', 'b', 'stop_id', s2b))),
+                        'test:072', 'owner');
+              t2 := 'accepted';
+            EXCEPTION WHEN others THEN
+              GET STACKED DIAGNOSTICS t2 = PG_EXCEPTION_HINT, msg = MESSAGE_TEXT;
+            END;
+            IF t2 IS DISTINCT FROM 'plan:bad_input' OR msg NOT LIKE '%take_pallets:finite%' THEN
+              RAISE EXCEPTION 'FAIL % got % (%)', j::text, coalesce(t2, 'no hint'), coalesce(msg, '-');
+            END IF;
+          END LOOP;
+        END IF;
         r := plan_put_pieces(jsonb_build_object('pieces', jsonb_build_array(jsonb_build_object('piece_id', c2,
                'take_pallets', CASE WHEN k = 46 THEN 20 ELSE 8 END)),
                'target', jsonb_build_object('rt_id', rt2, 'side', 'KATHODOS'),
@@ -2307,6 +2346,24 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
                                              jsonb_build_object('ref', 'b', 'location_id', lb, 'planned_from', b10, 'planned_to', b11))),
                   'test:072', 'owner');
       ELSIF k = 43 THEN
+        -- coordinator 25/10 (cross-cutting input rule): a new stop with an infinite end ('infinity' / '-infinity'
+        -- are valid timestamptz input) is refused as bad_input 'stop.planned:finite', never written to rt_stops
+        FOR j IN SELECT value FROM jsonb_array_elements(jsonb_build_array(
+                   jsonb_build_object('ref', 'b', 'location_id', lb, 'planned_from', a15, 'planned_to', 'infinity'),
+                   jsonb_build_object('ref', 'b', 'location_id', lb, 'planned_from', '-infinity', 'planned_to', a16))) LOOP
+          msg := NULL;
+          BEGIN
+            PERFORM plan_put_pieces(jsonb_build_object('pieces', jsonb_build_array(jsonb_build_object('piece_id', p1)),
+                      'target', jsonb_build_object('rt_id', rt1, 'side', 'KATHODOS'),
+                      'stops', jsonb_build_array(jsonb_build_object('ref', 'a', 'stop_id', s1a), j)), 'test:072', 'owner');
+            t2 := 'accepted';
+          EXCEPTION WHEN others THEN
+            GET STACKED DIAGNOSTICS t2 = PG_EXCEPTION_HINT, msg = MESSAGE_TEXT;
+          END;
+          IF t2 IS DISTINCT FROM 'plan:bad_input' OR msg NOT LIKE '%stop.planned:finite%' THEN
+            RAISE EXCEPTION 'FAIL % got % (%)', j::text, coalesce(t2, 'no hint'), coalesce(msg, '-');
+          END IF;
+        END LOOP;
         PERFORM plan_put_pieces(jsonb_build_object('pieces', jsonb_build_array(jsonb_build_object('piece_id', p1)),
                   'target', jsonb_build_object('rt_id', rt1, 'side', 'KATHODOS'),
                   'stops', jsonb_build_array(jsonb_build_object('ref', 'b', 'stop_id', s1b))), 'test:072', 'owner');
@@ -2375,7 +2432,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 - [ ] **Step 2: Τρέξε, να αποτύχει**
 
 Run: `cd tms-auditor && node --test test/plan-072.test.mjs`
-Expected: FAIL στο `072 rules test`, με μήνυμα `Result: 29 OK, 17 FAIL` και πρώτη αποτυχία `30 FAIL want ok got state:42883 (function plan_put_pieces(jsonb, unknown, unknown) does not exist)`. Το `node --test tests/sql-072-drafts.test.js` μένει πράσινο (6/6).
+Expected: FAIL στο `072 rules test`, με μήνυμα `Result: 29 OK, 17 FAIL` και πρώτη αποτυχία `30 FAIL want ok got state:42883 (function plan_put_pieces(jsonb, unknown, unknown) does not exist)`. Το `node --test tests/sql-072-drafts.test.js` δίνει `ℹ pass 5`, `ℹ fail 1`, με μόνη αποτυχία `plan:request_missing has no case in 072_plan_functions_test.sql` (κωδικοί του `plan_h_replay` του Α1· οι περιπτώσεις 83–90 μπαίνουν στην Α8).
 
 - [ ] **Step 3: Η υλοποίηση (`worker/migrations/drafts/072_plan_functions.sql`)**
 
@@ -2417,6 +2474,11 @@ begin
       select 1 from piece_legs l join shipment_pieces sp on sp.id = l.piece_id join shipments s on s.id = sp.shipment_id
        where s.order_id = ps.order_id and l.deleted_at is null);
     v_take := (it->>'take_pallets')::numeric;
+    -- coordinator 25/10 (cross-cutting input rule): NaN sorts above every number and +-Infinity passes the size
+    -- tests below; neither is a size (it would only ever be refused under a wrong code, parts_sum / not_stock)
+    if v_take is not null and not (abs(v_take) < 'Infinity'::numeric) then
+      perform plan_h_raise('bad_input', 'take_pallets:finite');
+    end if;
     -- one decimal at most (decision 20): the split rows are numeric(6,1)
     if v_take is not null and v_take <> round(v_take, 1) then perform plan_h_raise('bad_input', 'take_pallets:one decimal'); end if;
     if v_take is not null and v_take <> ps.pallets then
@@ -2521,7 +2583,7 @@ Run: `cd tms-auditor && node --test test/plan-072.test.mjs`
 Expected: `✔` και στα τρία υπο-tests, μήνυμα `Result: 46 OK, 0 FAIL`, `ℹ fail 0`.
 
 Run: `node --test tests/sql-072-drafts.test.js`
-Expected: `ℹ pass 6`, `ℹ fail 0` (το `v_pub` = κάθε δημόσια συνάρτηση, κάθε νέος κωδικός έχει περίπτωση).
+Expected: `ℹ pass 5`, `ℹ fail 1`, με μόνη αποτυχία `plan:request_missing has no case in 072_plan_functions_test.sql` (ως την Α8· το `v_pub` = κάθε δημόσια συνάρτηση, κάθε κωδικός της Α3 έχει περίπτωση). Έλεγξε το μήνυμα, όχι μόνο το πλήθος.
 
 - [ ] **Step 5: Commit**
 

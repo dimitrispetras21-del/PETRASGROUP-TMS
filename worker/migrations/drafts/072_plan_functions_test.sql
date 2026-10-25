@@ -60,6 +60,23 @@ DECLARE
     , 'con:shipments_pallets' -- 27 0 pallets
     , 'plan:bad_input'   -- 28 a location that does not exist
     , 'plan:bad_input'   -- 29 stops without a target
+    , 'ok'               -- 30 a whole piece onto a cycle: one leg, planned to B
+    , 'ok'               -- 31 with a new stop: seq by the base, the window and the payroll day follow
+    , 'plan:piece_busy'  -- 32 the same piece again
+    , 'plan:piece_split' -- 33 a split piece
+    , 'plan:not_stock'   -- 34 a part of a piece that is not stock
+    , 'ok'               -- 35 split + put 8 of a 13 stock: 8 ride, 5 stay with the same leave_by
+    , 'ok'               -- 36 VS onto a truck of another day: the international's day, an audit row, one intl notice
+    , 'ok'               -- 37 VS stock (its other part already rides) onto a truck: the day does not move
+    , 'ok'               -- 38 over 33 pallets: a warning, not a refusal
+    , 'plan:chain'       -- 39 a pickup where the piece is not (071 at the end of the call)
+    , 'plan:stop_order'  -- 40 an ANODOS stop earlier than a KATHODOS one (071 at the end of the call)
+    , 'plan:leg_order'   -- 41 a pickup after the delivery (071 at the end of the call)
+    , 'plan:truck_busy'  -- 42 the window grows onto another cycle of the same truck
+    , 'plan:bad_input'   -- 43 no stop of the request where the piece is
+    , 'plan:piece_dead'  -- 44 a piece that does not exist
+    , 'ok'               -- 45 plan_orders_create with a target: the "+" in a row, one transaction
+    , 'plan:parts_sum'   -- 46 more than the stock holds
     -- @want (one line per case: "    , '<ok|plan:code|con:name|state:XXXXX>'  -- <k> <what>")
   ]::text[];
   verdict text; got text; hint text; msg text; cname text; st text;
@@ -310,6 +327,169 @@ BEGIN
                   jsonb_build_array(jsh1 || '{"origin_location_id": -1}'))))), 'test:072', 'owner');
       ELSIF k = 29 THEN
         PERFORM plan_orders_create(jsonb_build_object('request_id', gen_random_uuid()) || (jsonb_build_object('orders', jsonb_build_array(jo1), 'stops', '[]'::jsonb)), 'test:072', 'owner');
+      ELSIF k IN (30, 32) THEN
+        r := plan_put_pieces(jsonb_build_object('pieces', jsonb_build_array(jsonb_build_object('piece_id', p1)),
+               'target', jsonb_build_object('rt_id', rt1, 'side', 'KATHODOS'),
+               'stops', jsonb_build_array(jsonb_build_object('ref', 'a', 'stop_id', s1a), jsonb_build_object('ref', 'b', 'stop_id', s1b))),
+               'test:072', 'owner');
+        IF k = 32 THEN
+          PERFORM plan_put_pieces(jsonb_build_object('pieces', jsonb_build_array(jsonb_build_object('piece_id', p1)),
+                    'target', jsonb_build_object('rt_id', rt2, 'side', 'KATHODOS'),
+                    'stops', jsonb_build_array(jsonb_build_object('ref', 'a', 'stop_id', s2a), jsonb_build_object('ref', 'b', 'stop_id', s2b))),
+                    'test:072', 'owner');
+        END IF;
+      ELSIF k = 31 THEN
+        r := plan_orders_create(jsonb_build_object('request_id', gen_random_uuid()) || (jsonb_build_object('orders', jsonb_build_array(jo1 || jsonb_build_object('shipments',
+               jsonb_build_array(jsh1 || jsonb_build_object('dest_location_id', lc, 'pallets', 5, 'deliver_to', a16)))))),
+               'test:072', 'owner');
+        x := (r->'ids'->'piece_ids'->>0)::bigint;
+        r := plan_put_pieces(jsonb_build_object('pieces', jsonb_build_array(jsonb_build_object('piece_id', x)),
+               'target', jsonb_build_object('rt_id', rt1, 'side', 'KATHODOS'),
+               'stops', jsonb_build_array(jsonb_build_object('ref', 'a', 'stop_id', s1a),
+                                          jsonb_build_object('ref', 'c', 'location_id', lc, 'planned_from', a15, 'planned_to', a16))),
+               'test:072', 'owner');
+        y := (SELECT drop_stop_id FROM piece_legs WHERE id = (r->'ids'->'leg_ids'->>0)::bigint);
+      ELSIF k = 33 THEN
+        INSERT INTO piece_legs (piece_id, leg_no, rt_id, pickup_stop_id, drop_stop_id, created_by) VALUES (p1, 1, rt1, s1a, s1h, 'test:072');
+        UPDATE shipment_pieces SET split_at = now(), split_by = 'test:072' WHERE id = p1;
+        INSERT INTO shipment_pieces (shipment_id, parent_piece_id, pallets, created_by) VALUES (sh1, p1, 4, 'test:072');
+        INSERT INTO shipment_pieces (shipment_id, parent_piece_id, pallets, created_by) VALUES (sh1, p1, 6, 'test:072');
+        PERFORM plan_put_pieces(jsonb_build_object('pieces', jsonb_build_array(jsonb_build_object('piece_id', p1)),
+                  'target', jsonb_build_object('rt_id', rt2, 'side', 'KATHODOS'),
+                  'stops', jsonb_build_array(jsonb_build_object('ref', 'h', 'stop_id', s2h), jsonb_build_object('ref', 'b', 'stop_id', s2b))),
+                  'test:072', 'owner');
+      ELSIF k = 34 THEN
+        -- coordinator 25/10 (cross-cutting input rule): a NaN part of a piece that is not stock is bad_input
+        -- 'take_pallets:finite' (the size is refused before the stock test; case 46 proves the stock side)
+        BEGIN
+          msg := NULL;
+          PERFORM plan_put_pieces(jsonb_build_object('pieces', jsonb_build_array(jsonb_build_object('piece_id', p1, 'take_pallets', 'NaN')),
+                    'target', jsonb_build_object('rt_id', rt1, 'side', 'KATHODOS'),
+                    'stops', jsonb_build_array(jsonb_build_object('ref', 'a', 'stop_id', s1a), jsonb_build_object('ref', 'b', 'stop_id', s1b))),
+                    'test:072', 'owner');
+          t2 := 'accepted';
+        EXCEPTION WHEN others THEN
+          GET STACKED DIAGNOSTICS t2 = PG_EXCEPTION_HINT, msg = MESSAGE_TEXT;
+        END;
+        IF t2 IS DISTINCT FROM 'plan:bad_input' OR msg NOT LIKE '%take_pallets:finite%' THEN
+          RAISE EXCEPTION 'FAIL take_pallets NaN on a piece that is not stock got % (%)', coalesce(t2, 'no hint'), coalesce(msg, '-');
+        END IF;
+        PERFORM plan_put_pieces(jsonb_build_object('pieces', jsonb_build_array(jsonb_build_object('piece_id', p1, 'take_pallets', 5)),
+                  'target', jsonb_build_object('rt_id', rt1, 'side', 'KATHODOS'),
+                  'stops', jsonb_build_array(jsonb_build_object('ref', 'a', 'stop_id', s1a), jsonb_build_object('ref', 'b', 'stop_id', s1b))),
+                  'test:072', 'owner');
+      ELSIF k IN (35, 46) THEN   -- p1 (made 20) rode A -> Veroia on R1 and split there 7 + 13; the 13 are stock
+        UPDATE shipments SET pallets = 20 WHERE id = sh1;
+        UPDATE shipment_pieces SET pallets = 20 WHERE id = p1;
+        INSERT INTO piece_legs (piece_id, leg_no, rt_id, pickup_stop_id, drop_stop_id, created_by) VALUES (p1, 1, rt1, s1a, s1h, 'test:072');
+        UPDATE shipment_pieces SET split_at = now(), split_by = 'test:072' WHERE id = p1;
+        INSERT INTO shipment_pieces (shipment_id, parent_piece_id, pallets, created_by) VALUES (sh1, p1, 7, 'test:072') RETURNING id INTO c1;
+        INSERT INTO shipment_pieces (shipment_id, parent_piece_id, pallets, leave_by, created_by) VALUES (sh1, p1, 13, e, 'test:072') RETURNING id INTO c2;
+        IF k = 46 THEN
+          -- coordinator 25/10 (cross-cutting input rule): NaN (sorts above every number) and +-Infinity are refused
+          -- as bad_input 'take_pallets:finite', never read as a size (here on stock; case 34 on a piece that is not)
+          FOR j IN SELECT value FROM jsonb_array_elements(jsonb_build_array(
+                     jsonb_build_object('piece_id', c2, 'take_pallets', 'NaN'), jsonb_build_object('piece_id', c2, 'take_pallets', 'Infinity'),
+                     jsonb_build_object('piece_id', c2, 'take_pallets', '-Infinity'))) LOOP
+            msg := NULL;
+            BEGIN
+              PERFORM plan_put_pieces(jsonb_build_object('pieces', jsonb_build_array(j),
+                        'target', jsonb_build_object('rt_id', rt2, 'side', 'KATHODOS'),
+                        'stops', jsonb_build_array(jsonb_build_object('ref', 'h', 'stop_id', s2h), jsonb_build_object('ref', 'b', 'stop_id', s2b))),
+                        'test:072', 'owner');
+              t2 := 'accepted';
+            EXCEPTION WHEN others THEN
+              GET STACKED DIAGNOSTICS t2 = PG_EXCEPTION_HINT, msg = MESSAGE_TEXT;
+            END;
+            IF t2 IS DISTINCT FROM 'plan:bad_input' OR msg NOT LIKE '%take_pallets:finite%' THEN
+              RAISE EXCEPTION 'FAIL % got % (%)', j::text, coalesce(t2, 'no hint'), coalesce(msg, '-');
+            END IF;
+          END LOOP;
+        END IF;
+        r := plan_put_pieces(jsonb_build_object('pieces', jsonb_build_array(jsonb_build_object('piece_id', c2,
+               'take_pallets', CASE WHEN k = 46 THEN 20 ELSE 8 END)),
+               'target', jsonb_build_object('rt_id', rt2, 'side', 'KATHODOS'),
+               'stops', jsonb_build_array(jsonb_build_object('ref', 'h', 'stop_id', s2h), jsonb_build_object('ref', 'b', 'stop_id', s2b))),
+               'test:072', 'owner');
+      ELSIF k IN (36, 37) THEN   -- the VS bridge of the 20 pallets to B, waiting at Veroia
+        INSERT INTO shipments (order_id, order_stop_id, created_by) VALUES (vso, vs_b, 'test:072') RETURNING id INTO x;
+        INSERT INTO shipment_pieces (shipment_id, pallets, created_by) VALUES (x, 20, 'test:072') RETURNING id INTO y;
+        IF k = 37 THEN   -- split earlier at Veroia 12 + 8 and the 12 already ride on R1: the 8 are stock
+          UPDATE shipment_pieces SET split_at = now(), split_by = 'test:072' WHERE id = y;
+          INSERT INTO shipment_pieces (shipment_id, parent_piece_id, pallets, created_by) VALUES (x, y, 12, 'test:072') RETURNING id INTO z;
+          INSERT INTO piece_legs (piece_id, leg_no, rt_id, pickup_stop_id, drop_stop_id, created_by) VALUES (z, 1, rt1, s1h, s1b, 'test:072');
+          INSERT INTO shipment_pieces (shipment_id, parent_piece_id, pallets, leave_by, created_by) VALUES (x, y, 8, d, 'test:072') RETURNING id INTO y;
+        END IF;
+        r := plan_put_pieces(jsonb_build_object('pieces', jsonb_build_array(jsonb_build_object('piece_id', y)),
+               'target', jsonb_build_object('rt_id', rt2, 'side', 'KATHODOS'),
+               'stops', jsonb_build_array(jsonb_build_object('ref', 'h', 'stop_id', s2h), jsonb_build_object('ref', 'b', 'stop_id', s2b))),
+               'test:072', 'dispatcher');
+      ELSIF k = 38 THEN
+        r := plan_orders_create(jsonb_build_object('request_id', gen_random_uuid()) || (jsonb_build_object('orders', jsonb_build_array(jo1 || jsonb_build_object('shipments',
+               jsonb_build_array(jsh1 || '{"pallets": 34}'))))), 'test:072', 'owner');
+        r := plan_put_pieces(jsonb_build_object('pieces', jsonb_build_array(jsonb_build_object('piece_id', (r->'ids'->'piece_ids'->>0)::bigint)),
+               'target', jsonb_build_object('rt_id', rt1, 'side', 'KATHODOS'),
+               'stops', jsonb_build_array(jsonb_build_object('ref', 'a', 'stop_id', s1a), jsonb_build_object('ref', 'b', 'stop_id', s1b))),
+               'test:072', 'owner');
+      ELSIF k = 39 THEN
+        PERFORM plan_put_pieces(jsonb_build_object('pieces', jsonb_build_array(jsonb_build_object('piece_id', p1, 'pickup', 'h')),
+                  'target', jsonb_build_object('rt_id', rt1, 'side', 'KATHODOS'),
+                  'stops', jsonb_build_array(jsonb_build_object('ref', 'h', 'stop_id', s1h), jsonb_build_object('ref', 'b', 'stop_id', s1b))),
+                  'test:072', 'owner');
+      ELSIF k = 40 THEN
+        PERFORM plan_put_pieces(jsonb_build_object('pieces', jsonb_build_array(jsonb_build_object('piece_id', p1)),
+                  'target', jsonb_build_object('rt_id', rt1, 'side', 'KATHODOS'),
+                  'stops', jsonb_build_array(jsonb_build_object('ref', 'a', 'stop_id', s1a),
+                                             jsonb_build_object('ref', 'b', 'location_id', lb, 'side', 'ANODOS', 'planned_from', a05,
+                                                                'planned_to', (d + time '05:30') AT TIME ZONE 'Europe/Athens'))),
+                  'test:072', 'owner');
+      ELSIF k = 41 THEN
+        PERFORM plan_put_pieces(jsonb_build_object('pieces', jsonb_build_array(jsonb_build_object('piece_id', p1)),
+                  'target', jsonb_build_object('rt_id', rt1, 'side', 'KATHODOS'),
+                  'stops', jsonb_build_array(jsonb_build_object('ref', 'a', 'location_id', la, 'planned_from', a15, 'planned_to', a16),
+                                             jsonb_build_object('ref', 'b', 'stop_id', s1b))),
+                  'test:072', 'owner');
+      ELSIF k = 42 THEN
+        INSERT INTO ct_round_trips (model, scope, trip_type, truck_id, driver_id, date_start, date_end, start_at, end_at,
+                                    status, source, created_by)
+        VALUES (2, 'NATL', 'OWNED', trk1, drvl, e, e, b07, b12, 'planned', 'planner', 'test:072') RETURNING id INTO rt3;
+        PERFORM plan_put_pieces(jsonb_build_object('pieces', jsonb_build_array(jsonb_build_object('piece_id', p1)),
+                  'target', jsonb_build_object('rt_id', rt1, 'side', 'KATHODOS'),
+                  'stops', jsonb_build_array(jsonb_build_object('ref', 'a', 'stop_id', s1a),
+                                             jsonb_build_object('ref', 'b', 'location_id', lb, 'planned_from', b10, 'planned_to', b11))),
+                  'test:072', 'owner');
+      ELSIF k = 43 THEN
+        -- coordinator 25/10 (cross-cutting input rule): a new stop with an infinite end ('infinity' / '-infinity'
+        -- are valid timestamptz input) is refused as bad_input 'stop.planned:finite', never written to rt_stops
+        FOR j IN SELECT value FROM jsonb_array_elements(jsonb_build_array(
+                   jsonb_build_object('ref', 'b', 'location_id', lb, 'planned_from', a15, 'planned_to', 'infinity'),
+                   jsonb_build_object('ref', 'b', 'location_id', lb, 'planned_from', '-infinity', 'planned_to', a16))) LOOP
+          msg := NULL;
+          BEGIN
+            PERFORM plan_put_pieces(jsonb_build_object('pieces', jsonb_build_array(jsonb_build_object('piece_id', p1)),
+                      'target', jsonb_build_object('rt_id', rt1, 'side', 'KATHODOS'),
+                      'stops', jsonb_build_array(jsonb_build_object('ref', 'a', 'stop_id', s1a), j)), 'test:072', 'owner');
+            t2 := 'accepted';
+          EXCEPTION WHEN others THEN
+            GET STACKED DIAGNOSTICS t2 = PG_EXCEPTION_HINT, msg = MESSAGE_TEXT;
+          END;
+          IF t2 IS DISTINCT FROM 'plan:bad_input' OR msg NOT LIKE '%stop.planned:finite%' THEN
+            RAISE EXCEPTION 'FAIL % got % (%)', j::text, coalesce(t2, 'no hint'), coalesce(msg, '-');
+          END IF;
+        END LOOP;
+        PERFORM plan_put_pieces(jsonb_build_object('pieces', jsonb_build_array(jsonb_build_object('piece_id', p1)),
+                  'target', jsonb_build_object('rt_id', rt1, 'side', 'KATHODOS'),
+                  'stops', jsonb_build_array(jsonb_build_object('ref', 'b', 'stop_id', s1b))), 'test:072', 'owner');
+      ELSIF k = 44 THEN
+        PERFORM plan_put_pieces(jsonb_build_object('pieces', jsonb_build_array(jsonb_build_object('piece_id', -1)),
+                  'target', jsonb_build_object('rt_id', rt1, 'side', 'KATHODOS'),
+                  'stops', jsonb_build_array(jsonb_build_object('ref', 'a', 'stop_id', s1a))), 'test:072', 'owner');
+      ELSIF k = 45 THEN
+        r := plan_orders_create(jsonb_build_object('request_id', gen_random_uuid()) || (jsonb_build_object('orders', jsonb_build_array(jo1 || jsonb_build_object('shipments',
+               jsonb_build_array(jsh1 || '{"pallets": 3}'))),
+               'target', jsonb_build_object('rt_id', rt1, 'side', 'KATHODOS'),
+               'stops', jsonb_build_array(jsonb_build_object('ref', 'a', 'stop_id', s1a), jsonb_build_object('ref', 'b', 'stop_id', s1b)))),
+               'test:072', 'owner');
       -- @case (each task adds its "ELSIF k = <n> THEN" branches above this line)
       END IF;
       SET CONSTRAINTS ALL IMMEDIATE;
@@ -388,6 +568,51 @@ BEGIN
                                 WHERE id = (r2->'ids'->'nat_order_ids'->>0)::bigint)
                         THEN 'ok summary = 10 pallets, first load day D, last delivery day D+1, first origin A, last destination B; swapped: C, Veroia'
                         ELSE 'FAIL summary' END;
+      ELSIF k = 30 THEN
+        x := (r->'ids'->'leg_ids'->>0)::bigint;
+        verdict := CASE WHEN (SELECT piece_id = p1 AND rt_id = rt1 AND pickup_stop_id = s1a AND drop_stop_id = s1b AND leg_no = 1
+                                     AND created_by = 'test:072' FROM piece_legs WHERE id = x)
+                          AND (SELECT NOT waiting AND end_stop_id = s1b FROM v_piece_state WHERE piece_id = p1)
+                          AND (SELECT planned FROM v_national_order_state WHERE nat_order_id = n1)
+                          AND (SELECT count(*) FROM audit_log WHERE table_name = 'piece_legs' AND record_id = x::text AND actor = 'test:072') = 1
+                          AND (r->'ids'->>'rt_id')::bigint = rt1 AND r->'notice_ids' = '[]'::jsonb
+                        THEN 'ok one leg A -> B on R1, the order is planned' ELSE 'FAIL put: ' || r::text END;
+      ELSIF k = 31 THEN
+        verdict := CASE WHEN (SELECT seq FROM rt_stops WHERE id = y) = 4 AND (SELECT location_id FROM rt_stops WHERE id = y) = lc
+                          AND (SELECT end_at = a16 AND date_end = d FROM ct_round_trips WHERE id = rt1)
+                          AND (SELECT count(*) FROM dl_entries WHERE rt_id = rt1 AND deleted_at IS NULL AND entry_date = d AND date_end = d) = 1
+                        THEN 'ok new stop C last (seq 4), the window ends 16:00, one payroll line' ELSE 'FAIL new stop' END;
+      ELSIF k = 35 THEN
+        verdict := CASE WHEN (SELECT count(*) FROM shipment_pieces WHERE parent_piece_id = c2 AND deleted_at IS NULL) = 2
+                          AND (SELECT split_by FROM shipment_pieces WHERE id = c2) = 'test:072'
+                          AND (SELECT count(*) FROM v_piece_state WHERE shipment_id = sh1 AND pallets = 8 AND NOT waiting AND end_stop_id = s2b) = 1
+                          AND (SELECT count(*) FROM v_hub_bucket WHERE shipment_id = sh1 AND pallets = 5 AND is_stock AND leave_by = e) = 1
+                          AND (SELECT count(*) FROM v_hub_bucket WHERE shipment_id = sh1 AND pallets = 7 AND is_stock) = 1
+                          AND jsonb_array_length(r->'ids'->'new_piece_ids') = 2
+                        THEN 'ok 13 -> 8 on R2 + 5 stock (leave_by kept), in one call' ELSE 'FAIL split+put: ' || r::text END;
+      ELSIF k = 36 THEN
+        verdict := CASE WHEN (SELECT cross_dock_date FROM orders WHERE id = vso) = e
+                          AND (SELECT datetime FROM order_stops WHERE id = vs_cd) = e
+                          AND (SELECT count(*) FROM plan_notices WHERE order_id = vso AND to_desk = 'intl' AND kind = 'vs_day_changed'
+                                 AND created_by = 'test:072') = 1
+                          AND (SELECT count(*) FROM audit_log WHERE table_name = 'orders' AND record_id = 'rec072TO1' AND actor = 'test:072'
+                                 AND role = 'dispatcher' AND after_data->>'cross_dock_date' = e::text) = 1
+                          AND current_setting('plan.writer', true) = 'natl'
+                          AND jsonb_array_length(r->'notice_ids') = 1
+                        THEN 'ok VS day D -> D+1 on the international, its Cross-dock stop followed (069), one intl notice'
+                        ELSE 'FAIL VS day: ' || r::text END;
+      ELSIF k = 37 THEN
+        verdict := CASE WHEN (SELECT cross_dock_date FROM orders WHERE id = vso) = d
+                          AND NOT EXISTS (SELECT 1 FROM plan_notices WHERE order_id = vso)
+                          AND (SELECT NOT waiting FROM v_piece_state WHERE piece_id = y)
+                        THEN 'ok stock rides, the international keeps its day' ELSE 'FAIL stock moved the VS day' END;
+      ELSIF k = 38 THEN
+        verdict := CASE WHEN r->'warnings' @> '[{"code": "over_33", "side": "KATHODOS", "pallets": 34}]'
+                        THEN 'ok over 33: a warning' ELSE 'FAIL no over_33 warning: ' || r::text END;
+      ELSIF k = 45 THEN
+        verdict := CASE WHEN jsonb_array_length(r->'ids'->'leg_ids') = 1 AND (r->'ids'->>'rt_id')::bigint = rt1
+                          AND (SELECT NOT waiting FROM v_piece_state WHERE piece_id = (r->'ids'->'piece_ids'->>0)::bigint)
+                        THEN 'ok created and put in one call' ELSE 'FAIL create with target: ' || r::text END;
       -- @verdict (each task adds its "ELSIF k = <n> THEN verdict := ..." branches above this line)
       ELSE
         verdict := 'FAIL no verdict for case ' || k;

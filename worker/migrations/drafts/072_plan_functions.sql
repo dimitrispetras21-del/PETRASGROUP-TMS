@@ -206,6 +206,9 @@ declare s rt_stops%rowtype; v_seq int;
 begin
   if p_side is null or p_side not in ('KATHODOS', 'ANODOS') then perform plan_h_raise('bad_input', 'stop.side'); end if;
   if p_from is null or p_to is null then perform plan_h_raise('bad_input', 'stop.planned'); end if;
+  -- coordinator 25/10 (cross-cutting input rule): 'infinity' / '-infinity' are valid timestamptz input and were
+  -- written as they are (a stop without end stretches its cycle's window and falls out of every day read)
+  if not (isfinite(p_from) and isfinite(p_to)) then perform plan_h_raise('bad_input', 'stop.planned:finite'); end if;
   perform plan_h_location(p_location);
   -- A provisional seq after the live ones; plan_h_reseq gives the final order (decision 5).
   select coalesce(max(seq), 0) + 1 into v_seq from rt_stops where rt_id = p_rt and deleted_at is null;
@@ -704,6 +707,137 @@ exception
     perform plan_h_raise('bad_input', sqlstate);
 end
 $f$;
+
+  CREATE FUNCTION public.plan_h_put(p_pieces jsonb, p_tgt jsonb, p_actor text, p_role text, p_first bigint[])
+    RETURNS jsonb
+    LANGUAGE plpgsql SET search_path = public AS $f$
+declare
+  v_rt bigint := (p_tgt->>'rt_id')::bigint; v_side text := p_tgt->>'side'; v_map jsonb := p_tgt->'stops';
+  it jsonb; v_id bigint; v_take numeric; v_pick bigint; v_drop bigint; v_to bigint; v_hub bigint;
+  p shipment_pieces%rowtype; ps v_piece_state%rowtype; c1 shipment_pieces%rowtype; c2 shipment_pieces%rowtype;
+  v_legs bigint[] := '{}'; v_pcs bigint[] := '{}'; v_new bigint[] := '{}'; v_follow bigint[] := '{}';
+  v_warn jsonb; v_notices bigint[]; v_vs_first boolean;
+begin
+  -- The core of every assignment (plan_put_pieces / _group, plan_orders_create, plan_split_piece and
+  -- plan_move_pieces with a target): pieces onto ONE resolved target (plan_h_target) in one transaction.
+  if jsonb_typeof(p_pieces) is distinct from 'array' or jsonb_array_length(p_pieces) = 0 then
+    perform plan_h_raise('bad_input', 'pieces');
+  end if;
+  select id into v_hub from locations where is_hub;
+  for it in select value from jsonb_array_elements(p_pieces) loop
+    perform plan_h_keys(it, array['piece_id', 'take_pallets', 'to_hub', 'pickup', 'drop'], 'piece');
+    v_id := (it->>'piece_id')::bigint;
+    select * into p from shipment_pieces where id = v_id for no key update;
+    if p.id is null or p.deleted_at is not null then perform plan_h_raise('piece_dead', coalesce(v_id::text, 'null')); end if;
+    if exists (select 1 from shipment_pieces c where c.parent_piece_id = p.id and c.deleted_at is null) then
+      perform plan_h_raise('piece_split', p.id::text);
+    end if;
+    select * into ps from v_piece_state where piece_id = p.id;
+    if ps.piece_id is null then perform plan_h_raise('piece_dead', p.id::text); end if;
+    -- A piece already planned to its national end is not put again: it is moved (plan_move_pieces).
+    if not ps.waiting then perform plan_h_raise('piece_busy', p.id::text); end if;
+    -- decision 16 (critique 23/10): "first" = the international had NO live leg on any of its pieces before this
+    -- one is written. A VS split at Veroia without a target leaves only stock; the first part of it that rides
+    -- still moves the international's day ("stock" in spec 3 is what stays after a part has LEFT).
+    v_vs_first := ps.kind in ('vs_import', 'vs_export') and not exists (
+      select 1 from piece_legs l join shipment_pieces sp on sp.id = l.piece_id join shipments s on s.id = sp.shipment_id
+       where s.order_id = ps.order_id and l.deleted_at is null);
+    v_take := (it->>'take_pallets')::numeric;
+    -- coordinator 25/10 (cross-cutting input rule): NaN sorts above every number and +-Infinity passes the size
+    -- tests below; neither is a size (it would only ever be refused under a wrong code, parts_sum / not_stock)
+    if v_take is not null and not (abs(v_take) < 'Infinity'::numeric) then
+      perform plan_h_raise('bad_input', 'take_pallets:finite');
+    end if;
+    -- one decimal at most (decision 20): the split rows are numeric(6,1)
+    if v_take is not null and v_take <> round(v_take, 1) then perform plan_h_raise('bad_input', 'take_pallets:one decimal'); end if;
+    if v_take is not null and v_take <> ps.pallets then
+      -- Spec 3 Board: the "+" takes a PART only from stock (a child without a leg of its own, at the hub); a load
+      -- that is just arriving goes whole. Split + put = one transaction (spec 7).
+      if not ps.is_stock then perform plan_h_raise('not_stock', p.id::text); end if;
+      if v_take <= 0 or v_take > ps.pallets then
+        perform plan_h_raise('parts_sum', format('%s:%s>%s', p.id, v_take, ps.pallets));
+      end if;
+      update shipment_pieces set split_at = now(), split_by = p_actor where id = p.id;
+      perform plan_h_audit(p_actor, p_role, 'update', 'shipment_pieces', p.id::text,
+                           jsonb_build_object('split_at', null), jsonb_build_object('split_at', now(), 'split_by', p_actor));
+      insert into shipment_pieces (shipment_id, parent_piece_id, pallets, created_by)
+      values (p.shipment_id, p.id, v_take, p_actor) returning * into c1;
+      -- decision 18: the stock that stays keeps the parent's "leaves by" day
+      insert into shipment_pieces (shipment_id, parent_piece_id, pallets, leave_by, created_by)
+      values (p.shipment_id, p.id, ps.pallets - v_take, p.leave_by, p_actor) returning * into c2;
+      perform plan_h_audit(p_actor, p_role, 'create', 'shipment_pieces', c1.id::text, null, to_jsonb(c1));
+      perform plan_h_audit(p_actor, p_role, 'create', 'shipment_pieces', c2.id::text, null, to_jsonb(c2));
+      v_new := v_new || c1.id || c2.id;
+      v_id := c1.id;              -- the part that rides; it sits where the parent sits, with the same end
+    end if;
+    if it ? 'pickup' then
+      v_pick := (v_map->>(it->>'pickup'))::bigint;
+      if v_pick is null then perform plan_h_raise('bad_input', 'piece.pickup'); end if;
+    else
+      v_pick := plan_h_stop_at(v_map, ps.position_location_id, v_side);
+    end if;
+    if v_pick is null then perform plan_h_raise('bad_input', format('pickup:%s@%s', p.id, ps.position_location_id)); end if;
+    v_to := case when coalesce((it->>'to_hub')::boolean, false) then v_hub
+                 else (select nat_to_location_id from v_shipments where shipment_id = p.shipment_id) end;
+    if it ? 'drop' then
+      v_drop := (v_map->>(it->>'drop'))::bigint;
+      if v_drop is null then perform plan_h_raise('bad_input', 'piece.drop'); end if;
+    else
+      v_drop := plan_h_stop_at(v_map, v_to, v_side);
+    end if;
+    if v_drop is null then perform plan_h_raise('bad_input', format('drop:%s@%s', p.id, v_to)); end if;
+    v_legs := v_legs || plan_h_leg_add(v_id, v_rt, v_pick, v_drop, p_actor, p_role);
+    v_pcs := v_pcs || v_id;
+    -- decision 16: a piece that was NOT stock, or the first ride of a VS (v_vs_first), rewrites the international's
+    -- day (p_first: the caller knows a piece counted as "first" before this operation changed it, e.g. a split part).
+    if not ps.is_stock or v_vs_first or p.id = any (p_first) or v_id = any (p_first) then
+      v_follow := v_follow || v_id;
+    end if;
+  end loop;
+  perform plan_h_reseq(v_rt, p_actor, p_role);
+  v_notices := plan_h_vs_follow(v_follow, p_actor, p_role);
+  -- Warnings, never refusals: over 33 pallets on a side (spec 3 VS; every unit counts, C-23) and temperatures
+  -- 2 C or more apart on a side (spec 7 B-87). over_33 is the SUM of the side's loadings, not the peak load on
+  -- board (a load dropped at a middle stop still counts): an indication for the screen, never a rule.
+  select coalesce(jsonb_agg(w order by w::text), '[]'::jsonb) into v_warn from (
+    select jsonb_build_object('code', 'over_33', 'rt_id', v_rt, 'side', s.side, 'pallets', sum(pp.pallets)) as w
+      from piece_legs l join rt_stops s on s.id = l.pickup_stop_id join shipment_pieces pp on pp.id = l.piece_id
+     where l.rt_id = v_rt and l.deleted_at is null group by s.side having sum(pp.pallets) > 33
+    union all
+    select jsonb_build_object('code', 'mixed_temp', 'rt_id', v_rt, 'side', s.side,
+                              'delta_c', max(vs.temperature_c) - min(vs.temperature_c))
+      from piece_legs l join rt_stops s on s.id = l.pickup_stop_id join shipment_pieces pp on pp.id = l.piece_id
+      join v_shipments vs on vs.shipment_id = pp.shipment_id
+     where l.rt_id = v_rt and l.deleted_at is null group by s.side
+    having max(vs.temperature_c) - min(vs.temperature_c) >= 2) x;
+  -- the target's own warnings (a new cycle: v1_same_truck, decision 19) travel with the answer
+  v_warn := coalesce(p_tgt->'warnings', '[]'::jsonb) || v_warn;
+  return jsonb_build_object('rt_id', v_rt, 'side', v_side,
+    'stop_ids', (select coalesce(jsonb_agg(value::bigint order by value::bigint), '[]'::jsonb) from jsonb_each_text(v_map)),
+    'leg_ids', to_jsonb(v_legs), 'piece_ids', to_jsonb(v_pcs), 'new_piece_ids', to_jsonb(v_new),
+    'warnings', v_warn, 'notice_ids', to_jsonb(v_notices));
+end
+$f$;
+
+  CREATE FUNCTION public.plan_put_pieces(p jsonb, p_actor text, p_role text) RETURNS jsonb
+    LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $f$
+declare v_tgt jsonb; v_put jsonb;
+begin
+  perform plan_h_ctx(p_actor, p_role);
+  perform plan_h_keys(p, array['pieces', 'target', 'stops'], 'p');
+  v_tgt := plan_h_target(p->'target', p->'stops', p_actor, p_role);
+  v_put := plan_h_put(p->'pieces', v_tgt, p_actor, p_role, '{}');
+  perform plan_h_finish();
+  return plan_h_ok('plan_put_pieces',
+    jsonb_build_object('rt_id', v_put->'rt_id', 'stop_ids', v_put->'stop_ids', 'leg_ids', v_put->'leg_ids',
+                       'piece_ids', v_put->'piece_ids', 'new_piece_ids', v_put->'new_piece_ids'),
+    v_put->'warnings', v_put->'notice_ids');
+exception
+  when invalid_text_representation or invalid_datetime_format or datetime_field_overflow
+       or numeric_value_out_of_range or invalid_parameter_value then
+    perform plan_h_raise('bad_input', sqlstate);
+end
+$f$;
   -- @A (072 section A: plan_orders_create, plan_put_pieces, plan_put_group, plan_split_piece, plan_move_pieces, plan_order_update)
 
   -- ===== PART 3: CYCLE, DELETE, VS, LOCAL LOADING (section B) =====
@@ -720,6 +854,7 @@ $f$;
     v_pub CONSTANT text[] := array_remove(ARRAY[
       NULL
     , 'public.plan_orders_create(jsonb,text,text)'
+    , 'public.plan_put_pieces(jsonb,text,text)'
     -- @pub (072 tasks add ", 'public.plan_x(<arg types>)'" lines above this marker)
     ]::text[], NULL);
     -- 071's own plan_* (triggers and rule readers): never touched by 072, closed for every API role
