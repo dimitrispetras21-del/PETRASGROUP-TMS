@@ -574,3 +574,42 @@ test('amount_leak after a write says the act was kept and must not be pressed ag
   assert.equal(r.status, 500, r.text);
   assert.equal(r.json.error.message, 'Η απάντηση της βάσης είχε ποσά για ρόλο χωρίς δικαίωμα — δεν στάλθηκε· ενημέρωσε τον Δημήτρη');
 });
+
+// ───────────────────── K1 review r2: a lost answer with a JSON body; the preview's code ─────────────────────
+test('a write answered by a JSON body without a SQLSTATE (gateway 502 / 504, PGRST000, class 08) → plan_unknown; a dry run → plan_failed', async () => {
+  const LOST = [[502, { message: 'An invalid response was received from the upstream server' }],
+    [504, { message: 'The upstream server is timing out' }],
+    [503, { code: 'PGRST000', details: 'connection to server failed', hint: null, message: 'Could not connect with the database' }],
+    [500, { code: '08006', details: null, hint: null, message: 'terminating connection due to administrator command' }]];
+  for (const [status, body] of LOST) {
+    routes.length = 0;
+    on('POST', 'rpc/plan_move_pieces', () => pgError(status, body));
+    calls.length = 0;
+    let r = await callOpen('dispatcher', 'POST', '/plan/move', { from: { piece_ids: [1] }, target: { rt_id: 5, side: 'KATHODOS' } });
+    assert.equal(r.status, 500, `${status} ${body.code || ''}: ${r.text}`);
+    // the COMMIT may have happened before the link dropped: never «δεν ολοκληρώθηκε» (decision 44, αρχή 1)
+    assert.equal(r.json.error.code, 'plan_unknown', `${status} ${body.code || ''}`);
+    assert.equal(rpcCalls().length, 1, `${status}: one RPC, never a second`);
+    r = await call('dispatcher', 'POST', '/plan/move', MOVE_DRY);
+    assert.equal(r.json.error.code, 'plan_failed', `${status}: a dry run wrote nothing`);
+  }
+});
+
+test('plan_rt_update dry run: a constraint with a 072 code of its own is previewed under that code and text, as its execution answers', async () => {
+  const preview = (conflict) => ({ ok: true, op: 'plan_rt_update', dry_run: true,
+    preview: { before: {}, after: null, next_rt: null, vs_day: [], warnings: [], conflict } });
+  for (const [name, sqlstate, code] of [['rt_v2_truck_once', '23P01', 'truck_busy'], ['rt_v2_driver_once', '23P01', 'driver_busy'],
+    ['local_moves_nat_loading_once', '23505', 'local_exists']]) {
+    routes.length = 0;
+    const message = sqlstate === '23P01' ? `conflicting key value violates exclusion constraint "${name}"`
+      : `duplicate key value violates unique constraint "${name}"`;
+    on('POST', 'rpc/plan_rt_update', (u, b) => (b.p.dry_run === true ? json(preview({ code: name, sqlstate, detail: null }))
+      : pgError(409, { code: sqlstate, details: null, hint: null, message })));
+    const exec = await callOpen('dispatcher', 'PATCH', '/plan/rt/5', { set: { truck_id: 2 } });
+    assert.equal(exec.status, 422, `${name}: ${exec.text}`);
+    assert.equal(exec.json.error.code, code, name);
+    const dry = await call('dispatcher', 'PATCH', '/plan/rt/5', { set: { truck_id: 2 }, dry_run: true });
+    assert.equal(dry.status, 200, `${name}: ${dry.text}`);
+    assert.deepEqual(dry.json.preview.conflict, { code, sqlstate, detail: null, message: exec.json.error.message }, name);
+  }
+});

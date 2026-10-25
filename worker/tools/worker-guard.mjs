@@ -10,7 +10,11 @@
 //            or the raw CF API download (multipart is unwrapped here)
 //   --plan   expected count of the national v5 marker (0 = before F2 is live,
 //            1 = the F2 bundle / live after the F2 deploy). With 1, writes must
-//            also be closed in that bundle (decision 22).
+//            also be closed in that bundle (decision 22). F5 (day L) opens the
+//            writes in the same deploy as WN_V5, and --plan 1 STOPs on an open
+//            switch: that chain adds the day-L mode here (e.g. --plan 2 = open,
+//            the same 13 markers + PLAN_PERMS) with its test, never a deploy
+//            that skips the guard (K1 review r2; plan K3 Step 2).
 // Prints one line per marker and exits 1 on the first STOP condition — no
 // partial «OK» (αρχή 1).
 import { readFileSync } from 'node:fs';

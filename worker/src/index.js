@@ -3420,6 +3420,14 @@ const PLAN_CHECK_TEXT = {
   pl_mov_leg_once: "Η κίνηση έχει ήδη γραμμή παλετών",
   locations_one_hub: "Υπάρχει ήδη τοποθεσία-κόμβος (Βέροια)"
 };
+// 071/071b constraints that are the race floor under a 072 refusal of their own: they answer that refusal's code
+// and text, whichever layer refused first (072's pre-check, the constraint at COMMIT, or the plan_rt_update dry
+// run's preview.conflict). ONE table for stockRuleError and planConflictMessage (K1 review r2, αρχή 3).
+const PLAN_CONSTRAINT_CODE = {
+  rt_v2_truck_once: "truck_busy",
+  rt_v2_driver_once: "driver_busy",
+  local_moves_nat_loading_once: "local_exists"
+};
 function stockRuleError(e) {
   const pg = e && e.pg;
   if (!pg || typeof pg !== "object") return null;
@@ -3476,8 +3484,10 @@ function stockRuleError(e) {
   }
   if (code === "23505") {
     const u = /unique constraint "([^"]+)"/.exec(message);
-    // the race floor under 072's own local_exists refusal: same code, same text
-    if (u && u[1] === "local_moves_nat_loading_once") return { type: "PLAN_RULE", code: "local_exists", message: PLAN_RULE_TEXT.local_exists };
+    // the race floor under 072's own local_exists refusal: same code, same text (PLAN_CONSTRAINT_CODE)
+    if (u && u[1] === "local_moves_nat_loading_once") {
+      return { type: "PLAN_RULE", code: PLAN_CONSTRAINT_CODE[u[1]], message: PLAN_RULE_TEXT[PLAN_CONSTRAINT_CODE[u[1]]] };
+    }
     if (u && Object.prototype.hasOwnProperty.call(PLAN_CHECK_TEXT, u[1])) return { type: "PLAN_RULE", code: u[1], message: PLAN_CHECK_TEXT[u[1]] };
     return null;
   }
@@ -3485,7 +3495,7 @@ function stockRuleError(e) {
     // 071b's EXCLUDE are DEFERRED: they speak at the RPC's COMMIT, without
     // the other cycle's code (072's pre-check names it; this is the net).
     const x = /exclusion constraint "([^"]+)"/.exec(message);
-    const pc = !x ? null : x[1] === "rt_v2_truck_once" ? "truck_busy" : x[1] === "rt_v2_driver_once" ? "driver_busy" : null;
+    const pc = x && /^rt_v2_(truck|driver)_once$/.test(x[1]) ? PLAN_CONSTRAINT_CODE[x[1]] : null;
     if (pc) return { type: "PLAN_RULE", code: pc, message: PLAN_RULE_TEXT[pc] };
     return null;
   }
@@ -5572,7 +5582,10 @@ __name(planNonFinite, "planNonFinite");
 // (Figma D4, a 200). Its Greek lives only in the two tables above, so it is added here: F4 keeps no copy of
 // the texts (αρχή 3), and a rule the tables do not know is still named.
 function planConflictMessage(c) {
-  const code = String((c && c.code) || "");
+  // stockRuleError's aliases first (K1 review r2): a preview of rt_v2_truck_once speaks as truck_busy, as the
+  // execution does; handlePlan sends the same code on in conflict.code
+  const raw = String((c && c.code) || "");
+  const code = Object.prototype.hasOwnProperty.call(PLAN_CONSTRAINT_CODE, raw) ? PLAN_CONSTRAINT_CODE[raw] : raw;
   if (Object.prototype.hasOwnProperty.call(PLAN_RULE_TEXT, code)) {
     const detail = c.detail ? String(c.detail).trim().slice(0, 120) : "";
     return detail ? `${PLAN_RULE_TEXT[code]} (${detail})` : PLAN_RULE_TEXT[code];
@@ -5650,7 +5663,10 @@ async function handlePlan(request, url, origin, env) {
         : "Η απάντηση της βάσης είχε ποσά για ρόλο χωρίς δικαίωμα — δεν στάλθηκε· ενημέρωσε τον Δημήτρη", origin, env);
     }
     if (out && out.preview && out.preview.conflict && typeof out.preview.conflict === "object") {
-      out.preview.conflict.message = planConflictMessage(out.preview.conflict);
+      const c = out.preview.conflict;
+      c.message = planConflictMessage(c);
+      // one code per rule for a screen, whichever layer refused first (PLAN_CONSTRAINT_CODE, K1 review r2)
+      if (Object.prototype.hasOwnProperty.call(PLAN_CONSTRAINT_CODE, String(c.code || ""))) c.code = PLAN_CONSTRAINT_CODE[c.code];
     }
     return jsonOk(out, origin, env);
   } catch (e) {
@@ -5698,10 +5714,13 @@ async function handlePlan(request, url, origin, env) {
       return planError(422, "PLAN_RULE", cname, n ? `Κανόνας βάσης ${cname}` : `Κανόνας βάσης: ${String(pg.message || "").slice(0, 200)}`, origin, env);
     }
     console.error(`PLAN ${name}`, e && e.message);
-    // Only an answer that never came (no e.pg: the fetch threw, or a gateway page) leaves the outcome unknown. A
-    // PostgREST error answer carries a SQLSTATE and means the RPC's transaction rolled back: nothing was kept, so
-    // it is plan_failed, never «may have been saved» (K1 review r1: 22P02, 23502, an inner 42883, P0001 without hint).
-    if (maybeWritten && !pg) {
+    // Only a real Postgres SQLSTATE (five characters) outside the connection class 08 means the RPC's transaction
+    // rolled back: nothing was kept, so it is plan_failed, never «may have been saved» (K1 review r1: 22P02, 23502,
+    // an inner 42883, P0001 without hint). Anything else leaves the outcome unknown, because the COMMIT may have
+    // happened before the link dropped: no answer (the fetch threw), a gateway page, or a JSON body without a
+    // SQLSTATE - the gateway's 502 / 504 {"message": …}, PostgREST's PGRST000 «connection lost» (K1 review r2).
+    const rolledBack = !!pg && /^(?!08)[0-9A-Z]{5}$/.test(String(pg.code || ""));
+    if (maybeWritten && !rolledBack) {
       // the link may have dropped AFTER the COMMIT: a write never claims «not done» (αρχή 1); the F4 client
       // must not send it again by itself, and the user re-presses the SAME form, so the same request_id replays
       // (decision 44). Never «refresh»: that would close the form and mint a new id = a second creation.

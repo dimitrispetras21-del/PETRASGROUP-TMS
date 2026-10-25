@@ -38,7 +38,7 @@ function lift(re, what) {
 const table = (name) => lift(new RegExp(`const ${name} = \\{[\\s\\S]*?\\n\\};\\n`), name);
 const W = new Function([
   table('STOCK_CHECK_TEXT'), table('RELAY_RULE_TEXT'), table('RELAY_CHECK_TEXT'),
-  table('PLAN_RULE_TEXT'), table('PLAN_CHECK_TEXT'),
+  table('PLAN_RULE_TEXT'), table('PLAN_CHECK_TEXT'), table('PLAN_CONSTRAINT_CODE'),
   lift(/function stockRuleError\(e\) \{[\s\S]*?\n\}\n/, 'stockRuleError'),
 ].join('\n') + '\nreturn { RELAY_CHECK_TEXT, PLAN_RULE_TEXT, PLAN_CHECK_TEXT, stockRuleError };')();
 
