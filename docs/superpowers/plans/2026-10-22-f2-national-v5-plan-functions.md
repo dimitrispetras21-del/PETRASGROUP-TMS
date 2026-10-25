@@ -288,7 +288,7 @@ piece_in := { "piece_id": bigint, "take_pallets": numeric|null,     -- only on a
 | `plan_move_pieces(p, …)` | `{ "from": { "piece_ids": [..] } \| { "rt_id", "side" }, "target": target, "stops": stops?, "dry_run": bool, "confirm_token": text? }` | dry run: συνέπειες· εκτέλεση: `ids.dropped_leg_ids`, `ids.cancelled_rt_ids` | `same_rt`, `stale_confirm`, `need_token`, `piece_split` (και στον τρόπο «πλευρά», **πριν** από τη λίστα), `bad_input` (κομμάτι του `piece_ids` χωρίς ζωντανό σκέλος στη μεταφορά) + του put |
 | `plan_split_piece(p, …)` | `{ "piece_id", "parts": [ { "pallets": numeric, "target": target?, "stops": stops? } ], "request_id": uuid }` | `ids.piece_ids` (παιδιά)· επανάληψη: η πρώτη απάντηση + `replayed` | `parts_sum`, `not_at_hub`, `piece_split`, `not_stock` (split+put σε μη απόθεμα), `request_reused`, `request_missing` · `split_not_at_hub`, `pieces_sum`, `piece_parent` |
 | `plan_rt_create(p, p_actor, p_role)` — **εσωτερική, χωρίς GRANT** | `{ "new_rt": newrt, "stops": stops }` | `rt_id`, `code` | `no_vehicle`, `truck_busy`, `driver_busy` · CHECK `rt_v2_*`, `rt_partner_rate`, `partner_needs_partner` |
-| `plan_rt_update(p, …)` | `{ "rt_id", "set": { "trip_type"?, "truck_id"?, "trailer_id"?, "driver_id"?, "partner_id"?, "partner_rate"? }, "stops": [ { "stop_id", "planned_from", "planned_to" } ]?, "shift": { "side", "delta": interval }?, "dry_run": bool }` | dry run: `preview` = `{ "before": {start_at,end_at,date_start,date_end}, "after": {...}, "next_rt": {code,start_at}?, "conflict": {code, sqlstate, detail, message}?, "vs_day": [ {order_id, from, to} ], "warnings": [...] }` (το `message` το προσθέτει ο Worker από το `PLAN_RULE_TEXT`/`PLAN_CHECK_TEXT`: μία πηγή ελληνικών)· εκτέλεση: `warnings` (`v1_same_truck`, `local_payroll_review`), `notice_ids` | `rt_gone`, `rt_cancelled`, `truck_busy`, `driver_busy`, `payroll_locked`, `stop_gone`, `no_vehicle`, `vehicle_clear_use_clear` (τιμή οχήματος που υπάρχει και θα άδειαζε, ή κύκλος που είχε όχημα και μένει χωρίς: owner 25/10), `bad_input` (`stops` που δεν είναι πίνακας) · `stop_order`, `chain_time`, `leg_order`, `local_loading_day` |
+| `plan_rt_update(p, …)` | `{ "rt_id", "set": { "trip_type"?, "truck_id"?, "trailer_id"?, "driver_id"?, "partner_id"?, "partner_rate"? }, "stops": [ { "stop_id", "planned_from", "planned_to" } ]?, "shift": { "side", "delta": interval }?, "dry_run": bool }` | dry run: `preview` = `{ "before": {start_at,end_at,date_start,date_end}, "after": {...}, "next_rt": {code,start_at}?, "conflict": {code, sqlstate, detail, message}?, "vs_day": [ {order_id, from, to} ], "warnings": [...] }` (το `message` το προσθέτει ο Worker από το `PLAN_RULE_TEXT`/`PLAN_CHECK_TEXT`: μία πηγή ελληνικών)· εκτέλεση: `warnings` (`v1_same_truck`, `local_payroll_review`), `notice_ids` | `rt_gone`, `rt_cancelled`, `truck_busy`, `driver_busy`, `payroll_locked`, `stop_gone`, `no_vehicle`, `vehicle_clear_use_clear` (τιμή οχήματος που υπάρχει και θα άδειαζε, ή κύκλος που είχε όχημα και μένει χωρίς: owner 25/10), `bad_input` (`stops` που δεν είναι πίνακας· `partner_rate` NaN ή ±Infinity, άκρο στάσης ή `shift.delta` `infinity`: κανόνας συντονιστή 25/10) · `stop_order`, `chain_time`, `leg_order`, `local_loading_day` |
 | `plan_rt_clear(p, …)` | `{ "rt_id", "dry_run": bool, "confirm_token": text? }` | dry run: συνέπειες | `rt_gone`, `stale_confirm`, `need_token` |
 | `plan_delete(p, …)` | `{ "nat_order_id", "reason": text, "dry_run": bool, "confirm_token": text? }` | dry run: συνέπειες· εκτέλεση: `ids.cancelled_rt_ids` | `order_gone`, `order_not_v5`, `stale_confirm`, `need_token`, `bad_input` (κενός λόγος) · `hard_delete` (δίχτυ) |
 | `plan_vs_set_day(p, …)` | `{ "order_id", "day": date }` | `notice_ids`, `warnings` (`vs_day_differs`: το VS είναι ήδη σε φορτηγό άλλης ημέρας· η κίνηση δεν φεύγει, αυτό είναι της γέφυρας Φ5) | `vs_not_bridge`, `order_gone` |
@@ -4768,6 +4768,46 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
           PERFORM plan_rt_update(jsonb_build_object('rt_id', b_rt1, 'shift', jsonb_build_object('side', 'KATHODOS', 'delta', '1 day')),
                   'test:072b', 'dispatcher');
         ELSIF kb = 32 THEN
+          -- coordinator 25/10 (cross-cutting input rule): a partner_rate of NaN / +-Infinity, a stop end of 'infinity' /
+          -- '-infinity' and a shift delta of 'infinity' / '-infinity' are refused as bad_input '<field>:finite', in a
+          -- dry run too (a malformed body is raised, not previewed). Then the case itself: an unknown side.
+          b_v2 := plan_rt_create(jsonb_build_object('new_rt', jsonb_build_object('trip_type', 'PARTNER', 'partner_id', b_pa,
+                    'partner_rate', 200), 'stops', jsonb_build_array(jsonb_build_object('ref', 'x', 'location_id', b_lc,
+                    'side', 'KATHODOS', 'planned_from', h16, 'planned_to', h18))), 'test:072b', 'dispatcher');
+          b_x := (b_v2->>'rt_id')::bigint;
+          FOR b_v3 IN SELECT value FROM jsonb_array_elements(jsonb_build_array(
+              jsonb_build_object('want', 'partner_rate:finite', 'p', jsonb_build_object('rt_id', b_x,
+                                 'set', jsonb_build_object('partner_rate', 'NaN'))),
+              jsonb_build_object('want', 'partner_rate:finite', 'p', jsonb_build_object('rt_id', b_x,
+                                 'set', jsonb_build_object('partner_rate', 'Infinity'))),
+              jsonb_build_object('want', 'partner_rate:finite', 'p', jsonb_build_object('rt_id', b_x,
+                                 'set', jsonb_build_object('partner_rate', '-Infinity'))),
+              jsonb_build_object('want', 'partner_rate:finite', 'p', jsonb_build_object('rt_id', b_x, 'dry_run', true,
+                                 'set', jsonb_build_object('partner_rate', 'NaN'))),
+              jsonb_build_object('want', 'stop.planned:finite', 'p', jsonb_build_object('rt_id', b_rt1,
+                                 'stops', jsonb_build_array(jsonb_build_object('stop_id', b_sa, 'planned_from', h06,
+                                                                               'planned_to', 'infinity')))),
+              jsonb_build_object('want', 'stop.planned:finite', 'p', jsonb_build_object('rt_id', b_rt1,
+                                 'stops', jsonb_build_array(jsonb_build_object('stop_id', b_sa, 'planned_from', '-infinity',
+                                                                               'planned_to', h08)))),
+              jsonb_build_object('want', 'stop.planned:finite', 'p', jsonb_build_object('rt_id', b_rt1, 'dry_run', true,
+                                 'stops', jsonb_build_array(jsonb_build_object('stop_id', b_sa, 'planned_from', h06,
+                                                                               'planned_to', 'infinity')))),
+              jsonb_build_object('want', 'shift.delta:finite', 'p', jsonb_build_object('rt_id', b_rt1,
+                                 'shift', jsonb_build_object('side', 'KATHODOS', 'delta', 'infinity'))),
+              jsonb_build_object('want', 'shift.delta:finite', 'p', jsonb_build_object('rt_id', b_rt1,
+                                 'shift', jsonb_build_object('side', 'KATHODOS', 'delta', '-infinity')))))
+          LOOP
+            BEGIN
+              PERFORM plan_rt_update(b_v3->'p', 'test:072b', 'dispatcher');
+              RAISE EXCEPTION 'FAIL a non-finite input was accepted (%)', b_v3->>'want';
+            EXCEPTION WHEN check_violation THEN
+              GET STACKED DIAGNOSTICS b_msg = MESSAGE_TEXT, b_hint = PG_EXCEPTION_HINT;
+              IF b_hint IS DISTINCT FROM 'plan:bad_input' OR b_msg NOT LIKE '%' || (b_v3->>'want') || '%' THEN
+                RAISE EXCEPTION 'FAIL non-finite probe % got % (%)', b_v3->>'want', coalesce(b_hint, 'no hint'), b_msg;
+              END IF;
+            END;
+          END LOOP;
           PERFORM plan_rt_update(jsonb_build_object('rt_id', b_rt1, 'shift', jsonb_build_object('side', 'X', 'delta', '1 day')),
                   'test:072b', 'dispatcher');
         ELSIF kb = 33 THEN
@@ -4851,6 +4891,18 @@ begin
   end if;
   if p ? 'shift' and (v_side is null or v_side not in ('KATHODOS', 'ANODOS') or v_delta is null) then
     perform plan_h_raise('bad_input', 'shift: side, delta');
+  end if;
+  -- coordinator 25/10 (cross-cutting input rule): a stop end of 'infinity' / '-infinity' was written as an endless
+  -- window (and a dry run previewed it); a delta of 'infinity' (PG 17+) ended as a raw CHECK rt_stops_win; a
+  -- partner_rate of NaN sorts above every number, so it passes CHECK rt_partner_rate and was written, and
+  -- +-Infinity ended as a raw numeric overflow. Each is refused here, before anything is read or written, in a dry
+  -- run too: a malformed body is not a rule the preview shows. Same codes and details as plan_rt_create.
+  if exists (select 1 from unnest(v_sfrom, v_sto) u(f, t) where not (isfinite(u.f) and isfinite(u.t))) then
+    perform plan_h_raise('bad_input', 'stop.planned:finite');
+  end if;
+  if v_delta is not null and not isfinite(v_delta) then perform plan_h_raise('bad_input', 'shift.delta:finite'); end if;
+  if v_rate is not null and not (abs(v_rate) < 'Infinity'::numeric) then
+    perform plan_h_raise('bad_input', 'partner_rate:finite');
   end if;
   select * into r from ct_round_trips where id = v_rt for no key update;
   if r.id is null or r.model <> 2 then perform plan_h_raise('rt_gone', coalesce(v_rt::text, 'null')); end if;
@@ -5045,7 +5097,7 @@ $f$;
 - [ ] **Step 4: Τρέξε, να περάσει**
 
 Run: `cd tms-auditor && node --test test/plan-072.test.mjs`
-Expected: `Result: 122 OK, 1 FAIL`· η **μόνη** αποτυχία είναι `B20 FAIL want ok got state:42883 (function plan_local_loading(jsonb, unknown, unknown) does not exist)`, που πρασινίζει στη Β6. Η B21 αποδεικνύει ότι η ημέρα VS ακολουθεί τον κύκλο (`orders.cross_dock_date`, η στάση Cross-dock από το 069 του fixture, μία ειδοποίηση, `plan.writer = natl`).
+Expected: `Result: 122 OK, 1 FAIL`· η **μόνη** αποτυχία είναι `B20 FAIL want ok got state:42883 (function plan_local_loading(jsonb, unknown, unknown) does not exist)`, που πρασινίζει στη Β6. Η B21 αποδεικνύει ότι η ημέρα VS ακολουθεί τον κύκλο (`orders.cross_dock_date`, η στάση Cross-dock από το 069 του fixture, μία ειδοποίηση, `plan.writer = natl`). Η B32 ελέγχει πρώτα τον κανόνα του συντονιστή (25/10): `partner_rate` NaN/±Infinity, άκρο στάσης `infinity`/`-infinity` και `shift.delta` `infinity`/`-infinity` = `bad_input '<πεδίο>:finite'`, και σε dry run.
 
 - [ ] **Step 5: Commit**
 

@@ -1475,6 +1475,261 @@ begin
                                              else '[]'::jsonb end);
 end
 $f$;
+  -- B2. Vehicle, driver, partner, partner rate and the windows of a cycle; "change date" moves a whole side by
+  -- one delta (design 3). The window and the payroll day follow by themselves (plan_rt_window_sync -> 011), the
+  -- local loading follows its stop here (rule local_loading_day), and the international VS day follows the
+  -- cycle that carries the VS's FIRST piece (decision 16, C-09). A dry run does all of it inside a
+  -- subtransaction, reads the result and undoes it: one code path, so the preview cannot disagree with the run.
+  CREATE FUNCTION public.plan_rt_update(p jsonb, p_actor text, p_role text)
+    RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $f$
+declare
+  v_rt bigint; r ct_round_trips%rowtype; r2 ct_round_trips%rowtype;
+  v_set jsonb := coalesce(p->'set', '{}'::jsonb);
+  v_dry boolean; v_side text; v_delta interval;
+  v_sid bigint[]; v_sfrom timestamptz[]; v_sto timestamptz[]; i int;
+  v_type text; v_truck bigint; v_trailer bigint; v_driver bigint; v_partner bigint; v_rate numeric;
+  v_first bigint[]; v_first2 bigint[]; v_vs0 jsonb; v_vs1 jsonb; v_before jsonb; v_res jsonb; v_old jsonb;
+  v_stop_ids bigint[] := '{}'; v_warn jsonb := '[]'::jsonb; v_notices bigint[] := '{}'; x record;
+  v_hint text; v_msg text; v_det text; v_cname text; v_state text; v_code text;
+begin
+  perform plan_h_ctx(p_actor, p_role);
+  set constraints all deferred;
+  -- an unknown key is refused, never ignored (principle 1): {"dryRun": true} must not run the change
+  perform plan_h_keys(p, array['rt_id', 'set', 'stops', 'shift', 'dry_run'], 'p');
+  perform plan_h_keys(v_set, array['trip_type', 'truck_id', 'trailer_id', 'driver_id', 'partner_id', 'partner_rate'], 'set');
+  if p ? 'shift' then perform plan_h_keys(p->'shift', array['side', 'delta'], 'shift'); end if;
+  -- "stops" that is not an array is refused, never read as "no stops" with a 200 (review 23/10)
+  if p ? 'stops' and jsonb_typeof(p->'stops') <> 'array' then perform plan_h_raise('bad_input', 'stops'); end if;
+  if jsonb_typeof(p->'stops') = 'array' then
+    for x in select value as e from jsonb_array_elements(p->'stops') loop
+      perform plan_h_keys(x.e, array['stop_id', 'planned_from', 'planned_to'], 'stop');
+    end loop;
+  end if;
+  if p ? 'dry_run' and jsonb_typeof(p->'dry_run') <> 'boolean' then perform plan_h_raise('bad_input', 'dry_run'); end if;
+  -- parse first: a malformed body is plan:bad_input (422), never a 500
+  begin
+    v_rt := (p->>'rt_id')::bigint;
+    v_dry := coalesce((p->>'dry_run')::boolean, false);
+    select coalesce(array_agg((e->>'stop_id')::bigint order by o), '{}'),
+           coalesce(array_agg((e->>'planned_from')::timestamptz order by o), '{}'),
+           coalesce(array_agg((e->>'planned_to')::timestamptz order by o), '{}')
+      into v_sid, v_sfrom, v_sto
+      from jsonb_array_elements(case when jsonb_typeof(p->'stops') = 'array' then p->'stops' else '[]'::jsonb end)
+           with ordinality t(e, o);
+    if p ? 'shift' then
+      v_side := p->'shift'->>'side';
+      v_delta := (p->'shift'->>'delta')::interval;
+    end if;
+    v_truck := (v_set->>'truck_id')::bigint;
+    v_trailer := (v_set->>'trailer_id')::bigint;
+    v_driver := (v_set->>'driver_id')::bigint;
+    v_partner := (v_set->>'partner_id')::bigint;
+    v_rate := (v_set->>'partner_rate')::numeric;
+  exception when invalid_text_representation or numeric_value_out_of_range or invalid_datetime_format
+                 or datetime_field_overflow or interval_field_overflow then
+    perform plan_h_raise('bad_input', 'body');
+  end;
+  if array_position(v_sid, null) is not null or array_position(v_sfrom, null) is not null
+     or array_position(v_sto, null) is not null then
+    perform plan_h_raise('bad_input', 'stops: stop_id, planned_from, planned_to');
+  end if;
+  if p ? 'shift' and (v_side is null or v_side not in ('KATHODOS', 'ANODOS') or v_delta is null) then
+    perform plan_h_raise('bad_input', 'shift: side, delta');
+  end if;
+  -- coordinator 25/10 (cross-cutting input rule): a stop end of 'infinity' / '-infinity' was written as an endless
+  -- window (and a dry run previewed it); a delta of 'infinity' (PG 17+) ended as a raw CHECK rt_stops_win; a
+  -- partner_rate of NaN sorts above every number, so it passes CHECK rt_partner_rate and was written, and
+  -- +-Infinity ended as a raw numeric overflow. Each is refused here, before anything is read or written, in a dry
+  -- run too: a malformed body is not a rule the preview shows. Same codes and details as plan_rt_create.
+  if exists (select 1 from unnest(v_sfrom, v_sto) u(f, t) where not (isfinite(u.f) and isfinite(u.t))) then
+    perform plan_h_raise('bad_input', 'stop.planned:finite');
+  end if;
+  if v_delta is not null and not isfinite(v_delta) then perform plan_h_raise('bad_input', 'shift.delta:finite'); end if;
+  if v_rate is not null and not (abs(v_rate) < 'Infinity'::numeric) then
+    perform plan_h_raise('bad_input', 'partner_rate:finite');
+  end if;
+  select * into r from ct_round_trips where id = v_rt for no key update;
+  if r.id is null or r.model <> 2 then perform plan_h_raise('rt_gone', coalesce(v_rt::text, 'null')); end if;
+  if r.status = 'cancelled' then perform plan_h_raise('rt_cancelled', r.code); end if;
+
+  -- the vehicle after the change: a key that is present wins, even null; a type change clears what the other
+  -- type carries unless the body sets it (decision 12: OWNED <-> PARTNER with the same rules)
+  v_type := coalesce(v_set->>'trip_type', r.trip_type);
+  if v_type not in ('OWNED', 'PARTNER') then perform plan_h_raise('bad_input', 'trip_type'); end if;
+  v_truck := case when v_set ? 'truck_id' then v_truck when v_type = r.trip_type then r.truck_id end;
+  v_trailer := case when v_set ? 'trailer_id' then v_trailer when v_type = r.trip_type then r.trailer_id end;
+  v_driver := case when v_set ? 'driver_id' then v_driver when v_type = r.trip_type then r.driver_id end;
+  v_partner := case when v_set ? 'partner_id' then v_partner when v_type = r.trip_type then r.partner_id end;
+  v_rate := case when v_set ? 'partner_rate' then v_rate when v_type = r.trip_type then r.partner_rate end;
+  if v_type = 'PARTNER' and (v_truck is not null or v_trailer is not null or v_driver is not null) then
+    perform plan_h_raise('bad_input', 'vehicle on PARTNER');
+  end if;
+  if v_type = 'OWNED' and v_partner is not null then perform plan_h_raise('bad_input', 'partner_id on OWNED'); end if;
+  -- Owner 25/10 (review of PR #84, finding 1, choice alpha: "the cycle's vehicle is never emptied" here): refused
+  -- only what EMPTIES - a truck, driver, trailer or partner that is there NOW and would become null under the same
+  -- trip type, or a cycle that had a vehicle (truck or partner) ending without one, a trip_type switch included.
+  -- A null that empties nothing passes: {trailer_id: null} on a cycle without a trailer, a full form that swaps the
+  -- truck, OWNED -> PARTNER with explicit nulls and a partner (review 84b). Emptying goes only through plan_rt_clear:
+  -- owner/dispatcher, the consequence list, the token and the costs_without_rt notice (decision 13); here it would
+  -- happen with none of them, by any role. Another truck, driver or trailer stays open to every role (decision 41).
+  -- Before no_vehicle, so {partner_id: null} on a PARTNER cycle shows the owner's text too. OWNED -> PARTNER that
+  -- names no partner stays no_vehicle (B33): the switch is incomplete, there is nothing to send to Clear. No detail.
+  if (v_type = r.trip_type
+      and ((r.truck_id is not null and v_truck is null) or (r.driver_id is not null and v_driver is null)
+           or (r.trailer_id is not null and v_trailer is null) or (r.partner_id is not null and v_partner is null)))
+     or ((r.truck_id is not null or r.partner_id is not null) and v_type = 'OWNED' and v_truck is null) then
+    perform plan_h_raise('vehicle_clear_use_clear', '');
+  end if;
+  if v_type = 'PARTNER' and (v_partner is null
+                             or not exists (select 1 from partners pt where pt.id = v_partner and pt.deleted_at is null)) then
+    perform plan_h_raise('no_vehicle', 'partner');
+  end if;
+  if (v_truck is not null and not exists (select 1 from trucks t where t.id = v_truck and t.deleted_at is null))
+     or (v_driver is not null and not exists (select 1 from drivers d where d.id = v_driver and d.deleted_at is null)) then
+    perform plan_h_raise('bad_input', 'truck_id or driver_id');
+  end if;
+  -- K-13: 011 would put a line WITH amounts into needs_review when its driver goes or changes. The spec has no
+  -- needs_review for plan_*: such a change goes through "clear assignment" (list + token) and a new assignment.
+  if r.trip_type = 'OWNED' and r.driver_id is not null
+     and (v_type <> 'OWNED' or v_driver is distinct from r.driver_id)
+     and exists (select 1 from dl_entries e where e.rt_id = v_rt and e.deleted_at is null
+                   and (e.trip_value is not null or e.advance is not null or e.expenses is not null)) then
+    perform plan_h_raise('payroll_locked', r.code);
+  end if;
+
+  v_before := jsonb_build_object('start_at', r.start_at, 'end_at', r.end_at, 'date_start', r.date_start, 'date_end', r.date_end);
+  -- the VS orders whose first hub day this cycle carries now (v_vs_state's own definition of "first")
+  select coalesce(array_agg(distinct vs.order_id), '{}') into v_first
+    from v_vs_state vs
+    join v_piece_state ps on ps.order_id = vs.order_id
+    join piece_legs l on l.piece_id = ps.piece_id and l.deleted_at is null and l.rt_id = v_rt
+    join rt_stops pk on pk.id = l.pickup_stop_id
+    join rt_stops dr on dr.id = l.drop_stop_id
+   where (case when ps.kind = 'vs_import' then (pk.planned_from at time zone 'Europe/Athens')::date
+               else (dr.planned_to at time zone 'Europe/Athens')::date end) = vs.first_hub_day;
+  select jsonb_object_agg(o.id::text, o.cross_dock_date) into v_vs0 from orders o where o.id = any(v_first);
+
+  begin
+    -- 1. explicit stop windows
+    for i in 1 .. coalesce(array_length(v_sid, 1), 0) loop
+      select to_jsonb(s) into v_old from rt_stops s
+       where s.id = v_sid[i] and s.rt_id = v_rt and s.deleted_at is null for no key update;
+      if v_old is null then perform plan_h_raise('stop_gone', v_sid[i]::text); end if;
+      update rt_stops set planned_from = v_sfrom[i], planned_to = v_sto[i] where id = v_sid[i];
+      perform plan_h_audit(p_actor, p_role, 'update', 'rt_stops', v_sid[i]::text, v_old,
+                           (select to_jsonb(s) from rt_stops s where s.id = v_sid[i]));
+      v_stop_ids := v_stop_ids || v_sid[i];
+    end loop;
+    -- 2. a whole side by one delta
+    if v_side is not null then
+      for x in select s.id, to_jsonb(s) as old from rt_stops s
+                where s.rt_id = v_rt and s.side = v_side and s.deleted_at is null order by s.seq for no key update loop
+        update rt_stops set planned_from = planned_from + v_delta, planned_to = planned_to + v_delta where id = x.id;
+        perform plan_h_audit(p_actor, p_role, 'update', 'rt_stops', x.id::text, x.old,
+                             (select to_jsonb(s) from rt_stops s where s.id = x.id));
+        v_stop_ids := v_stop_ids || x.id;
+      end loop;
+    end if;
+    if cardinality(v_stop_ids) > 0 then perform plan_h_reseq(v_rt, p_actor, p_role); end if;
+    -- 3. a local loading follows the Athens day of its stop (071 local_loading_day); its payroll day follows by 060
+    for x in select lm.id, lm.driver_id, lm.move_date, to_jsonb(lm) as old,
+                    (s.planned_from at time zone 'Europe/Athens')::date as day
+               from local_moves lm join rt_stops s on s.id = lm.rt_stop_id
+              where s.rt_id = v_rt and s.deleted_at is null and lm.move_kind = 'nat_loading' and lm.deleted_at is null
+                and lm.status <> 'Cancelled' and lm.move_date <> (s.planned_from at time zone 'Europe/Athens')::date
+              order by lm.id loop
+      -- decision 33: a TOPIKO line that already has amounts goes to accounting's review (060, B-08) when its day's
+      -- loadings change - said in the answer (and in the dry run's preview), never silent
+      v_warn := v_warn || coalesce((select jsonb_agg(jsonb_build_object('code', 'local_payroll_review', 'dl_entry_id', e.id,
+                                                                        'local_move_id', x.id))
+                                      from dl_entries e
+                                     where e.driver_id = x.driver_id and e.entry_date = x.move_date
+                                       and e.local_move_id is not null and e.deleted_at is null
+                                       and (e.trip_value is not null or e.advance is not null or e.expenses is not null)),
+                                   '[]'::jsonb);
+      update local_moves set move_date = x.day where id = x.id;
+      perform plan_h_audit(p_actor, p_role, 'update', 'local_moves', x.id::text, x.old,
+                           (select to_jsonb(m) from local_moves m where m.id = x.id));
+    end loop;
+    -- 4. the vehicle (011 moves or ends the empty payroll line; rt_sync_to_* find no order link on a v5 cycle)
+    if (v_type, v_truck, v_trailer, v_driver, v_partner, v_rate)
+       is distinct from (r.trip_type, r.truck_id, r.trailer_id, r.driver_id, r.partner_id, r.partner_rate) then
+      select to_jsonb(c) into v_old from ct_round_trips c where c.id = v_rt;
+      update ct_round_trips set trip_type = v_type, truck_id = v_truck, trailer_id = v_trailer, driver_id = v_driver,
+             partner_id = v_partner, partner_rate = v_rate, updated_at = now()
+       where id = v_rt;
+      perform plan_h_audit(p_actor, p_role, 'update', 'ct_round_trips', v_rt::text, v_old,
+                           (select to_jsonb(c) from ct_round_trips c where c.id = v_rt));
+    end if;
+    -- 5. one truck, one driver at a time, on the window after the change
+    select * into r2 from ct_round_trips where id = v_rt;
+    if r2.trip_type = 'OWNED' then
+      perform plan_h_busy('truck', r2.truck_id, r2.start_at, r2.end_at, v_rt);
+      perform plan_h_busy('driver', r2.driver_id, r2.start_at, r2.end_at, v_rt);
+      v_warn := v_warn || plan_h_v1_warn(r2.truck_id, r2.date_start, r2.date_end, v_rt);
+    end if;
+    -- 6. the international day follows the cycle that carries the first piece (decision 16), read again AFTER the
+    -- change: a shift can make this cycle the VS's first (decision 37, review 23/10)
+    select coalesce(array_agg(distinct vs.order_id), '{}') into v_first2
+      from v_vs_state vs
+      join v_piece_state ps on ps.order_id = vs.order_id
+      join piece_legs l on l.piece_id = ps.piece_id and l.deleted_at is null and l.rt_id = v_rt
+      join rt_stops pk on pk.id = l.pickup_stop_id
+      join rt_stops dr on dr.id = l.drop_stop_id
+     where (case when ps.kind = 'vs_import' then (pk.planned_from at time zone 'Europe/Athens')::date
+                 else (dr.planned_to at time zone 'Europe/Athens')::date end) = vs.first_hub_day;
+    v_first := array(select distinct u from unnest(v_first || v_first2) u order by u);
+    -- the days before the follow (steps 1-5 never write cross_dock_date): the preview's "from"
+    select jsonb_object_agg(o.id::text, o.cross_dock_date) into v_vs0 from orders o where o.id = any(v_first);
+    if cardinality(v_first) > 0 then
+      v_notices := plan_h_vs_follow(array(select ps.piece_id from v_piece_state ps where ps.order_id = any (v_first)),
+                                    p_actor, p_role);
+    end if;
+    perform plan_h_finish();
+    if v_dry then
+      select jsonb_object_agg(o.id::text, o.cross_dock_date) into v_vs1 from orders o where o.id = any(v_first);
+      v_res := jsonb_build_object(
+        'before', v_before,
+        'after', jsonb_build_object('start_at', r2.start_at, 'end_at', r2.end_at, 'date_start', r2.date_start,
+                                    'date_end', r2.date_end),
+        'next_rt', (select jsonb_build_object('code', n.code, 'start_at', n.start_at) from ct_round_trips n
+                     where n.model = 2 and n.status <> 'cancelled' and n.id <> v_rt and n.trip_type = 'OWNED'
+                       and ((r2.truck_id is not null and n.truck_id = r2.truck_id)
+                            or (r2.driver_id is not null and n.driver_id = r2.driver_id))
+                       and n.start_at >= r2.end_at
+                     order by n.start_at, n.id limit 1),
+        'conflict', null,
+        'vs_day', (select coalesce(jsonb_agg(jsonb_build_object('order_id', k::bigint, 'from', v_vs0->>k, 'to', v_vs1->>k)
+                                             order by k), '[]'::jsonb)
+                     from jsonb_object_keys(coalesce(v_vs1, '{}'::jsonb)) k where v_vs1->>k is distinct from v_vs0->>k),
+        'warnings', v_warn);
+      -- undo everything above: the marker carries the preview out of the rolled-back subtransaction
+      raise exception 'plan dry run' using errcode = 'P0001', hint = 'plan_dry_run', detail = v_res::text;
+    end if;
+  exception when others then
+    get stacked diagnostics v_hint = pg_exception_hint, v_msg = message_text, v_det = pg_exception_detail,
+                            v_cname = constraint_name, v_state = returned_sqlstate;
+    if v_hint = 'plan_dry_run' then
+      return jsonb_build_object('ok', true, 'op', 'plan_rt_update', 'dry_run', true, 'preview', v_det::jsonb);
+    end if;
+    if v_dry and (v_hint like 'plan:%' or coalesce(v_cname, '') <> '') then
+      -- Figma D4: the dry run SHOWS the rule the change would break; nothing was kept
+      v_code := case when v_hint like 'plan:%' then substr(v_hint, 6) else v_cname end;
+      return jsonb_build_object('ok', true, 'op', 'plan_rt_update', 'dry_run', true,
+        'preview', jsonb_build_object('before', v_before, 'after', null, 'next_rt', null, 'vs_day', '[]'::jsonb,
+                                      'warnings', '[]'::jsonb,
+                                      'conflict', jsonb_build_object('code', v_code, 'sqlstate', v_state,
+                                        'detail', case when strpos(v_msg, v_code || ':') > 0
+                                                       then substr(v_msg, strpos(v_msg, v_code || ':') + length(v_code) + 1) end)));
+    end if;
+    raise;
+  end;
+  return jsonb_build_object('ok', true, 'op', 'plan_rt_update', 'dry_run', false,
+    'ids', jsonb_build_object('rt_id', v_rt, 'stop_ids', to_jsonb(v_stop_ids)),
+    'warnings', v_warn,
+    'notice_ids', to_jsonb(v_notices));
+end
+$f$;
   -- ===== PART 4: NOTICES AND READS (section B) =====
   -- ===== PART 5: RIGHTS AND PROOFS =====
   -- Its own block: the reviewer reads the rights in one place. Born closed (principle 5): the pg_default_acl of
@@ -1493,6 +1748,7 @@ $f$;
     , 'public.plan_split_piece(jsonb,text,text)'
     , 'public.plan_move_pieces(jsonb,text,text)'
     , 'public.plan_order_update(jsonb,text,text)'
+    , 'public.plan_rt_update(jsonb,text,text)'
     -- @pub (072 tasks add ", 'public.plan_x(<arg types>)'" lines above this marker)
     ]::text[], NULL);
     -- 071's own plan_* (triggers and rule readers): never touched by 072, closed for every API role

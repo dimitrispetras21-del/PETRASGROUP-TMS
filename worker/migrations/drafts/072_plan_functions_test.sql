@@ -1237,6 +1237,10 @@ BEGIN
                'ok', 'ok', 'con:rt_partner_rate', 'con:rt_partner_rate', 'plan:no_vehicle',
                'ok', 'ok', 'plan:driver_busy', 'plan:bad_input', 'plan:bad_input',
                'ok', 'plan:truck_busy']   -- B1-B17 (Task B1)
+      || ARRAY['ok', 'ok', 'ok', 'ok', 'plan:truck_busy',
+               'ok', 'ok', 'plan:rt_cancelled', 'plan:rt_gone', 'plan:payroll_locked',
+               'plan:leg_order', 'ok', 'plan:stop_gone', 'plan:stop_order', 'plan:bad_input',
+               'plan:no_vehicle']   -- B18-B33 (Task B2)
       ;  -- end of b_want
     b_verdict text; b_got text; b_hint text; b_msg text; b_cname text; b_st text;
   BEGIN
@@ -1455,6 +1459,156 @@ BEGIN
                               AND (SELECT cross_dock_date FROM orders WHERE id = b_vo) = b_d
                             THEN 'ok VS of 3 deliveries on a free truck: 1 cycle, 3 legs, 1 empty payroll line, day kept'
                             ELSE 'FAIL put_group new_rt' END;
+        -- ---- Task B2: plan_rt_update ----
+        ELSIF kb IN (18, 29) THEN   -- dry runs write nothing; a broken rule is SHOWN, not raised (Figma D4)
+          b_v2 := plan_rt_update(CASE kb WHEN 18
+                    THEN jsonb_build_object('rt_id', b_rt1, 'shift', jsonb_build_object('side', 'KATHODOS', 'delta', '1 day'), 'dry_run', true)
+                    ELSE jsonb_build_object('rt_id', b_rt1, 'stops', jsonb_build_array(jsonb_build_object('stop_id', b_sb,
+                           'planned_from', h03, 'planned_to', h04)), 'dry_run', true) END,
+                  'test:072b-dry', 'dispatcher');
+          b_verdict := CASE WHEN (SELECT start_at = h06 AND end_at = h14 AND date_start = b_d FROM ct_round_trips WHERE id = b_rt1)
+                              AND (SELECT planned_from = h12 FROM rt_stops WHERE id = b_sb)
+                              AND (SELECT count(*) FROM audit_log WHERE actor = 'test:072b-dry') = 0
+                              AND (SELECT entry_date = b_d FROM dl_entries WHERE rt_id = b_rt1 AND deleted_at IS NULL)
+                              AND (b_v2->>'dry_run')::boolean
+                              AND CASE kb WHEN 18
+                                    THEN b_v2->'preview'->'after'->>'date_start' = (b_d + 1)::text
+                                         AND b_v2->'preview'->'conflict' = 'null'::jsonb
+                                    ELSE b_v2->'preview'->'conflict'->>'code' = 'leg_order' END
+                            THEN 'ok dry run: preview ' || (b_v2->'preview'->'conflict')::text || ', 0 rows written'
+                            ELSE 'FAIL dry run ' || b_v2::text END;
+        ELSIF kb = 19 THEN   -- "change date" +1 day on KATHODOS: window, days and the payroll day follow
+          b_v2 := plan_rt_update(jsonb_build_object('rt_id', b_rt1, 'shift', jsonb_build_object('side', 'KATHODOS', 'delta', '1 day')),
+                  'test:072b', 'dispatcher');
+          b_verdict := CASE WHEN (SELECT start_at = h06 + interval '1 day' AND end_at = h14 + interval '1 day'
+                                         AND date_start = b_d + 1 AND date_end = b_d + 1 FROM ct_round_trips WHERE id = b_rt1)
+                              AND (SELECT entry_date = b_d + 1 AND date_end = b_d + 1 FROM dl_entries
+                                    WHERE rt_id = b_rt1 AND deleted_at IS NULL)
+                              AND (SELECT count(*) FROM audit_log WHERE actor = 'test:072b' AND table_name = 'rt_stops'
+                                     AND action = 'update') = 2
+                            THEN 'ok +1 day: window, days and payroll day follow' ELSE 'FAIL +1 day' END;
+        ELSIF kb = 20 THEN   -- the local loading follows its stop to the new day, with its TOPIKO line
+          b_v2 := plan_local_loading(jsonb_build_object('request_id', gen_random_uuid()) || (jsonb_build_object('rt_stop_id', b_sa, 'driver_id', b_d3, 'truck_id', b_t2)), 'test:072b', 'dispatcher');
+          b_x := (b_v2->'ids'->>'local_move_id')::bigint;
+          PERFORM plan_rt_update(jsonb_build_object('rt_id', b_rt1, 'shift', jsonb_build_object('side', 'KATHODOS', 'delta', '1 day')),
+                  'test:072b', 'dispatcher');
+          b_verdict := CASE WHEN (SELECT move_date FROM local_moves WHERE id = b_x) = b_d + 1
+                              AND (SELECT count(*) FROM dl_entries WHERE driver_id = b_d3 AND entry_date = b_d + 1
+                                     AND deleted_at IS NULL AND local_move_id = b_x) = 1
+                              AND (SELECT count(*) FROM dl_entries WHERE driver_id = b_d3 AND entry_date = b_d AND deleted_at IS NULL) = 0
+                            THEN 'ok local loading and its TOPIKO line moved to D+1' ELSE 'FAIL local loading did not follow' END;
+        ELSIF kb = 21 THEN   -- the cycle that carries the VS's first piece moves: the international day follows
+          b_v2 := plan_rt_create(jsonb_build_object('new_rt', jsonb_build_object('trip_type', 'OWNED', 'truck_id', b_t2, 'driver_id', b_d2),
+                    'stops', jsonb_build_array(
+                      jsonb_build_object('ref', 'h', 'location_id', b_hub, 'side', 'KATHODOS', 'planned_from', h06, 'planned_to', h07),
+                      jsonb_build_object('ref', 'u', 'location_id', b_la, 'side', 'KATHODOS', 'planned_from', h09, 'planned_to', h10))),
+                  'test:072b', 'dispatcher');
+          b_x := (b_v2->>'rt_id')::bigint;
+          INSERT INTO piece_legs (piece_id, leg_no, rt_id, pickup_stop_id, drop_stop_id, created_by)
+          VALUES (b_q1, 1, b_x, (b_v2->'stops'->>'h')::bigint, (b_v2->'stops'->>'u')::bigint, 'test:072b');
+          PERFORM plan_rt_update(jsonb_build_object('rt_id', b_x, 'shift', jsonb_build_object('side', 'KATHODOS', 'delta', '1 day')),
+                  'test:072b', 'dispatcher');
+          b_verdict := CASE WHEN (SELECT cross_dock_date FROM orders WHERE id = b_vo) = b_d + 1
+                              AND (SELECT count(*) FROM plan_notices WHERE order_id = b_vo AND to_desk = 'intl'
+                                     AND kind = 'vs_day_changed') = 1
+                              AND (SELECT datetime FROM order_stops WHERE id = b_vcd) = b_d + 1
+                              AND current_setting('plan.writer', true) = 'natl'
+                            THEN 'ok VS day follows the cycle: orders, Cross-dock stop (069), one notice, writer natl'
+                            ELSE 'FAIL VS day did not follow' END;
+        ELSIF kb = 22 THEN   -- the new truck is busy in another v5 cycle
+          PERFORM plan_rt_create(jsonb_build_object('new_rt', jsonb_build_object('trip_type', 'OWNED', 'truck_id', b_t2, 'driver_id', b_d2),
+                    'stops', jsonb_build_array(jsonb_build_object('ref', 'x', 'location_id', b_lc, 'side', 'KATHODOS',
+                                                                  'planned_from', h07, 'planned_to', h09))), 'test:072b', 'dispatcher');
+          PERFORM plan_rt_update(jsonb_build_object('rt_id', b_rt1, 'set', jsonb_build_object('truck_id', b_t2)), 'test:072b', 'dispatcher');
+        ELSIF kb = 23 THEN   -- OWNED -> PARTNER: the empty payroll line goes (011), no needs_review
+          PERFORM plan_rt_update(jsonb_build_object('rt_id', b_rt1, 'set', jsonb_build_object('trip_type', 'PARTNER',
+                    'partner_id', b_pa, 'partner_rate', 300)), 'test:072b', 'dispatcher');
+          b_verdict := CASE WHEN (SELECT trip_type = 'PARTNER' AND truck_id IS NULL AND driver_id IS NULL AND partner_id = b_pa
+                                         AND partner_rate = 300 FROM ct_round_trips WHERE id = b_rt1)
+                              AND NOT EXISTS (SELECT 1 FROM dl_entries WHERE rt_id = b_rt1 AND (deleted_at IS NULL OR needs_review))
+                            THEN 'ok OWNED -> PARTNER, empty payroll line gone' ELSE 'FAIL OWNED -> PARTNER' END;
+        ELSIF kb = 24 THEN   -- PARTNER -> OWNED: rate and partner cleared, one payroll line for the new driver
+          b_v2 := plan_rt_create(jsonb_build_object('new_rt', jsonb_build_object('trip_type', 'PARTNER', 'partner_id', b_pa,
+                    'partner_rate', 200), 'stops', jsonb_build_array(jsonb_build_object('ref', 'x', 'location_id', b_lc,
+                    'side', 'KATHODOS', 'planned_from', h16, 'planned_to', h18))), 'test:072b', 'dispatcher');
+          b_x := (b_v2->>'rt_id')::bigint;
+          PERFORM plan_rt_update(jsonb_build_object('rt_id', b_x, 'set', jsonb_build_object('trip_type', 'OWNED',
+                    'truck_id', b_t2, 'driver_id', b_d2)), 'test:072b', 'dispatcher');
+          b_verdict := CASE WHEN (SELECT trip_type = 'OWNED' AND partner_id IS NULL AND partner_rate IS NULL AND truck_id = b_t2
+                                    FROM ct_round_trips WHERE id = b_x)
+                              AND (SELECT count(*) FROM dl_entries WHERE rt_id = b_x AND deleted_at IS NULL AND driver_id = b_d2) = 1
+                            THEN 'ok PARTNER -> OWNED with one payroll line' ELSE 'FAIL PARTNER -> OWNED' END;
+        ELSIF kb = 25 THEN
+          b_v2 := plan_rt_create(jsonb_build_object('new_rt', jsonb_build_object('trip_type', 'OWNED', 'truck_id', b_t2),
+                    'stops', jsonb_build_array(jsonb_build_object('ref', 'x', 'location_id', b_lc, 'side', 'KATHODOS',
+                                                                  'planned_from', h16, 'planned_to', h18))), 'test:072b', 'dispatcher');
+          UPDATE ct_round_trips SET status = 'cancelled' WHERE id = (b_v2->>'rt_id')::bigint;
+          PERFORM plan_rt_update(jsonb_build_object('rt_id', (b_v2->>'rt_id')::bigint, 'set', jsonb_build_object('driver_id', b_d2)),
+                  'test:072b', 'dispatcher');
+        ELSIF kb = 26 THEN
+          PERFORM plan_rt_update(jsonb_build_object('rt_id', -1, 'set', jsonb_build_object('driver_id', b_d2)), 'test:072b', 'dispatcher');
+        ELSIF kb = 27 THEN   -- a driver change after amounts: through "clear assignment", never needs_review
+          UPDATE dl_entries SET trip_value = 230 WHERE rt_id = b_rt1 AND deleted_at IS NULL;
+          PERFORM plan_rt_update(jsonb_build_object('rt_id', b_rt1, 'set', jsonb_build_object('driver_id', b_d2)), 'test:072b', 'dispatcher');
+        ELSIF kb = 28 THEN   -- B moved before A: the base renumbers, the leg would run backwards
+          PERFORM plan_rt_update(jsonb_build_object('rt_id', b_rt1, 'stops', jsonb_build_array(jsonb_build_object('stop_id', b_sb,
+                    'planned_from', h03, 'planned_to', h04))), 'test:072b', 'dispatcher');
+        ELSIF kb = 30 THEN
+          PERFORM plan_rt_update(jsonb_build_object('rt_id', b_rt1, 'stops', jsonb_build_array(jsonb_build_object('stop_id', -1,
+                    'planned_from', h03, 'planned_to', h04))), 'test:072b', 'dispatcher');
+        ELSIF kb = 31 THEN   -- KATHODOS +1 day past a declared ANODOS stop of day D: time and side disagree
+          INSERT INTO rt_stops (rt_id, seq, location_id, side, planned_from, planned_to, created_by)
+          VALUES (b_rt1, 3, b_lc, 'ANODOS', h16, h18, 'test:072b');
+          SET CONSTRAINTS ALL IMMEDIATE;
+          SET CONSTRAINTS ALL DEFERRED;
+          PERFORM plan_rt_update(jsonb_build_object('rt_id', b_rt1, 'shift', jsonb_build_object('side', 'KATHODOS', 'delta', '1 day')),
+                  'test:072b', 'dispatcher');
+        ELSIF kb = 32 THEN
+          -- coordinator 25/10 (cross-cutting input rule): a partner_rate of NaN / +-Infinity, a stop end of 'infinity' /
+          -- '-infinity' and a shift delta of 'infinity' / '-infinity' are refused as bad_input '<field>:finite', in a
+          -- dry run too (a malformed body is raised, not previewed). Then the case itself: an unknown side.
+          b_v2 := plan_rt_create(jsonb_build_object('new_rt', jsonb_build_object('trip_type', 'PARTNER', 'partner_id', b_pa,
+                    'partner_rate', 200), 'stops', jsonb_build_array(jsonb_build_object('ref', 'x', 'location_id', b_lc,
+                    'side', 'KATHODOS', 'planned_from', h16, 'planned_to', h18))), 'test:072b', 'dispatcher');
+          b_x := (b_v2->>'rt_id')::bigint;
+          FOR b_v3 IN SELECT value FROM jsonb_array_elements(jsonb_build_array(
+              jsonb_build_object('want', 'partner_rate:finite', 'p', jsonb_build_object('rt_id', b_x,
+                                 'set', jsonb_build_object('partner_rate', 'NaN'))),
+              jsonb_build_object('want', 'partner_rate:finite', 'p', jsonb_build_object('rt_id', b_x,
+                                 'set', jsonb_build_object('partner_rate', 'Infinity'))),
+              jsonb_build_object('want', 'partner_rate:finite', 'p', jsonb_build_object('rt_id', b_x,
+                                 'set', jsonb_build_object('partner_rate', '-Infinity'))),
+              jsonb_build_object('want', 'partner_rate:finite', 'p', jsonb_build_object('rt_id', b_x, 'dry_run', true,
+                                 'set', jsonb_build_object('partner_rate', 'NaN'))),
+              jsonb_build_object('want', 'stop.planned:finite', 'p', jsonb_build_object('rt_id', b_rt1,
+                                 'stops', jsonb_build_array(jsonb_build_object('stop_id', b_sa, 'planned_from', h06,
+                                                                               'planned_to', 'infinity')))),
+              jsonb_build_object('want', 'stop.planned:finite', 'p', jsonb_build_object('rt_id', b_rt1,
+                                 'stops', jsonb_build_array(jsonb_build_object('stop_id', b_sa, 'planned_from', '-infinity',
+                                                                               'planned_to', h08)))),
+              jsonb_build_object('want', 'stop.planned:finite', 'p', jsonb_build_object('rt_id', b_rt1, 'dry_run', true,
+                                 'stops', jsonb_build_array(jsonb_build_object('stop_id', b_sa, 'planned_from', h06,
+                                                                               'planned_to', 'infinity')))),
+              jsonb_build_object('want', 'shift.delta:finite', 'p', jsonb_build_object('rt_id', b_rt1,
+                                 'shift', jsonb_build_object('side', 'KATHODOS', 'delta', 'infinity'))),
+              jsonb_build_object('want', 'shift.delta:finite', 'p', jsonb_build_object('rt_id', b_rt1,
+                                 'shift', jsonb_build_object('side', 'KATHODOS', 'delta', '-infinity')))))
+          LOOP
+            BEGIN
+              PERFORM plan_rt_update(b_v3->'p', 'test:072b', 'dispatcher');
+              RAISE EXCEPTION 'FAIL a non-finite input was accepted (%)', b_v3->>'want';
+            EXCEPTION WHEN check_violation THEN
+              GET STACKED DIAGNOSTICS b_msg = MESSAGE_TEXT, b_hint = PG_EXCEPTION_HINT;
+              IF b_hint IS DISTINCT FROM 'plan:bad_input' OR b_msg NOT LIKE '%' || (b_v3->>'want') || '%' THEN
+                RAISE EXCEPTION 'FAIL non-finite probe % got % (%)', b_v3->>'want', coalesce(b_hint, 'no hint'), b_msg;
+              END IF;
+            END;
+          END LOOP;
+          PERFORM plan_rt_update(jsonb_build_object('rt_id', b_rt1, 'shift', jsonb_build_object('side', 'X', 'delta', '1 day')),
+                  'test:072b', 'dispatcher');
+        ELSIF kb = 33 THEN
+          PERFORM plan_rt_update(jsonb_build_object('rt_id', b_rt1, 'set', jsonb_build_object('trip_type', 'PARTNER')),
+                  'test:072b', 'dispatcher');
         -- [B-CASES-NEXT]
         END IF;
         SET CONSTRAINTS ALL IMMEDIATE;
