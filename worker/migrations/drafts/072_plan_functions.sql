@@ -1801,6 +1801,101 @@ begin
     'ids', jsonb_build_object('rt_id', v_rt), 'warnings', '[]'::jsonb, 'notice_ids', to_jsonb(v_notices));
 end
 $f$;
+  -- B4. "Delete means it did not happen" (spec 3), from the order's card only, for a v5 national order
+  -- (decision 14). The whole chain is soft-deleted with reason and actor; a cycle left without a live leg is
+  -- cancelled in the order of decision 11 (plan_h_rt_cancel_if_empty); there is no restore (spec 7).
+  CREATE FUNCTION public.plan_delete(p jsonb, p_actor text, p_role text)
+    RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $f$
+declare
+  v_no bigint; n national_orders%rowtype; v_reason text; v_full jsonb; v_conf jsonb;
+  v_legs bigint[]; v_rts bigint[]; v_empty bigint[]; v_stops bigint[]; v_rt bigint; v_leg bigint;
+  v_old jsonb; x record;
+begin
+  perform plan_h_ctx(p_actor, p_role);
+  set constraints all deferred;
+  -- an unknown key is refused, never ignored (principle 1): {"dryRun": true} must not delete
+  perform plan_h_keys(p, array['nat_order_id', 'reason', 'dry_run', 'confirm_token'], 'p');
+  if p ? 'dry_run' and jsonb_typeof(p->'dry_run') <> 'boolean' then perform plan_h_raise('bad_input', 'dry_run'); end if;
+  -- coordinator 25/10 (cross-cutting input rule): 'NaN' / '+-Infinity' are refused by this cast itself (a bigint has
+  -- no non-finite value), as bad_input 'nat_order_id' - never through numeric, where NaN would end as a raw 0A000
+  begin
+    v_no := (p->>'nat_order_id')::bigint;
+  exception when invalid_text_representation or numeric_value_out_of_range then
+    perform plan_h_raise('bad_input', 'nat_order_id');
+  end;
+  select * into n from national_orders where id = v_no for no key update;
+  if n.id is null or n.deleted_at is not null then perform plan_h_raise('order_gone', coalesce(v_no::text, 'null')); end if;
+  if not exists (select 1 from shipments s where s.nat_order_id = v_no and s.deleted_at is null) then
+    perform plan_h_raise('order_not_v5', v_no::text);
+  end if;
+  -- the chain: every live leg of every live piece of the order
+  select coalesce(array_agg(l.id order by l.id), '{}') into v_legs
+    from piece_legs l join shipment_pieces sp on sp.id = l.piece_id join shipments s on s.id = sp.shipment_id
+   where s.nat_order_id = v_no and l.deleted_at is null;
+  select coalesce(array_agg(distinct l.rt_id), '{}') into v_rts from piece_legs l where l.id = any(v_legs);
+  -- ONE lock order (as plan_move_pieces): the cycles in id order, before the list: no deadlock, no stale list
+  perform 1 from ct_round_trips c where c.id = any(v_rts) order by c.id for no key update;
+  select coalesce(array_agg(rid order by rid), '{}') into v_empty from unnest(v_rts) rid
+   where not exists (select 1 from piece_legs l where l.rt_id = rid and l.deleted_at is null and not (l.id = any(v_legs)));
+  -- the ONE list of section A for legs that go (cycles that empty with payroll and costs, executed legs, local
+  -- loadings of stops that lose their last pickup and their TOPIKO line with amounts) + the invoice
+  v_full := plan_h_drop_consequences(v_legs, null);
+  if n.invoiced is true then
+    v_full := v_full || jsonb_build_array(jsonb_build_object('kind', 'invoiced', 'nat_order_id', v_no,
+                                                             'invoice_number', n.invoice_number));
+  end if;
+  -- one order (kind, then the item): the token does not depend on how the list was assembled
+  select coalesce(jsonb_agg(c order by c->>'kind', c::text), '[]'::jsonb) into v_full from jsonb_array_elements(v_full) c;
+  -- the reason is checked before the token: a delete without a reason is refused whatever the list holds
+  v_reason := btrim(coalesce(p->>'reason', ''));
+  if not coalesce((p->>'dry_run')::boolean, false) and v_reason = '' then perform plan_h_raise('bad_input', 'reason'); end if;
+  -- the ONE two-step mechanism of 072 (section A, plan_h_confirm)
+  v_conf := plan_h_confirm('plan_delete', v_no::text, v_full, p, p_role);
+  if v_conf is not null then return v_conf; end if;
+  select coalesce(array_agg(distinct q), '{}') into v_stops
+    from piece_legs l, unnest(array[l.pickup_stop_id, l.drop_stop_id]) q where l.id = any(v_legs);
+  -- (a) the legs; then the stops they emptied with their local loading (decision 4 / 11, plan_h_stops_sweep):
+  -- a cycle that STAYS loses them too, never a local loading left on a stop without a pickup (local_loading_stop)
+  foreach v_leg in array v_legs loop
+    perform plan_h_leg_drop(v_leg, v_reason, p_actor, p_role);
+  end loop;
+  perform plan_h_stops_sweep(v_stops, v_reason, p_actor, p_role);
+  -- pieces, shipments: soft only (071 hard_delete), every row with its reason and its actor
+  for x in select sp.id, to_jsonb(sp) as old from shipment_pieces sp join shipments s on s.id = sp.shipment_id
+            where s.nat_order_id = v_no and sp.deleted_at is null order by sp.id for no key update of sp loop
+    update shipment_pieces set deleted_at = now(), deleted_reason = v_reason, deleted_by = p_actor where id = x.id;
+    perform plan_h_audit(p_actor, p_role, 'delete', 'shipment_pieces', x.id::text, x.old,
+                         (select to_jsonb(q) from shipment_pieces q where q.id = x.id));
+  end loop;
+  for x in select s.id, to_jsonb(s) as old from shipments s
+            where s.nat_order_id = v_no and s.deleted_at is null order by s.id for no key update loop
+    update shipments set deleted_at = now(), deleted_reason = v_reason, deleted_by = p_actor where id = x.id;
+    perform plan_h_audit(p_actor, p_role, 'delete', 'shipments', x.id::text, x.old,
+                         (select to_jsonb(q) from shipments q where q.id = x.id));
+  end loop;
+  -- national_orders has no deleted_reason / deleted_by: the reason and the actor live in its audit row, keyed
+  -- like the Worker's own rows (legacy id)
+  select to_jsonb(o) into v_old from national_orders o where o.id = v_no;
+  update national_orders set deleted_at = now() where id = v_no;
+  perform plan_h_audit(p_actor, p_role, 'delete', 'national_orders', coalesce(n.legacy_id, v_no::text), v_old,
+                       jsonb_build_object('deleted_at', now(), 'reason', v_reason));
+  -- (b)-(e) the cycles: an empty one is cancelled (local loading, stops, payroll with amounts, status), the
+  -- others are renumbered
+  foreach v_rt in array v_rts loop
+    if not plan_h_rt_cancel_if_empty(v_rt, v_reason, p_actor, p_role) then
+      perform plan_h_reseq(v_rt, p_actor, p_role);
+    end if;
+  end loop;
+  perform plan_h_finish();
+  return jsonb_build_object('ok', true, 'op', 'plan_delete', 'dry_run', false,
+    'ids', jsonb_build_object('nat_order_ids', jsonb_build_array(v_no), 'leg_ids', to_jsonb(v_legs),
+                              'cancelled_rt_ids', to_jsonb(v_empty)),
+    'warnings', '[]'::jsonb,
+    -- the costs_without_rt notices of the cycles this call cancelled (plan_h_rt_cancel_if_empty)
+    'notice_ids', (select coalesce(jsonb_agg(q.id order by q.id), '[]'::jsonb) from plan_notices q
+                    where q.created_at = now() and q.created_by = p_actor and q.rt_id = any(v_empty)));
+end
+$f$;
   -- ===== PART 4: NOTICES AND READS (section B) =====
   -- ===== PART 5: RIGHTS AND PROOFS =====
   -- Its own block: the reviewer reads the rights in one place. Born closed (principle 5): the pg_default_acl of
@@ -1821,6 +1916,7 @@ $f$;
     , 'public.plan_order_update(jsonb,text,text)'
     , 'public.plan_rt_update(jsonb,text,text)'
     , 'public.plan_rt_clear(jsonb,text,text)'
+    , 'public.plan_delete(jsonb,text,text)'
     -- @pub (072 tasks add ", 'public.plan_x(<arg types>)'" lines above this marker)
     ]::text[], NULL);
     -- 071's own plan_* (triggers and rule readers): never touched by 072, closed for every API role

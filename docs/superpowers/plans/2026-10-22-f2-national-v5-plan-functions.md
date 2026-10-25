@@ -5369,6 +5369,25 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
                             THEN 'ok delete: list + token, every row soft with reason and actor, cycle cancelled, 0 needs_review'
                             ELSE 'FAIL delete' END;
         ELSIF kb = 44 THEN
+          -- coordinator 25/10 (cross-cutting input rule): a nat_order_id of NaN / +-Infinity (or past bigint) is refused
+          -- as bad_input 'nat_order_id', in a dry run too; each probe is undone, nothing is deleted
+          FOR b_v3 IN SELECT value FROM jsonb_array_elements(jsonb_build_array(
+              jsonb_build_object('nat_order_id', 'NaN', 'reason', 'TEST 072 reason'),
+              jsonb_build_object('nat_order_id', 'Infinity', 'reason', 'TEST 072 reason'),
+              jsonb_build_object('nat_order_id', '-Infinity', 'reason', 'TEST 072 reason'),
+              jsonb_build_object('nat_order_id', 1e400::numeric, 'reason', 'TEST 072 reason'),
+              jsonb_build_object('nat_order_id', 'NaN', 'dry_run', true)))
+          LOOP
+            BEGIN
+              PERFORM plan_delete(b_v3, 'test:072b', 'dispatcher');
+              RAISE EXCEPTION 'FAIL a non-finite nat_order_id was accepted (%)', b_v3::text;
+            EXCEPTION WHEN check_violation THEN
+              GET STACKED DIAGNOSTICS b_msg = MESSAGE_TEXT, b_hint = PG_EXCEPTION_HINT;
+              IF b_hint IS DISTINCT FROM 'plan:bad_input' OR b_msg NOT LIKE '%bad_input:nat_order_id' THEN
+                RAISE EXCEPTION 'FAIL non-finite nat_order_id probe % got % (%)', b_v3::text, coalesce(b_hint, 'no hint'), b_msg;
+              END IF;
+            END;
+          END LOOP;
           INSERT INTO national_orders (legacy_id, client_id, reference, price) VALUES ('rec072TBN9', b_cl, 'WN072-TEST', 50)
             RETURNING id INTO b_x;
           PERFORM plan_delete(jsonb_build_object('nat_order_id', b_x, 'dry_run', true), 'test:072b', 'dispatcher');
@@ -5437,6 +5456,8 @@ begin
   -- an unknown key is refused, never ignored (principle 1): {"dryRun": true} must not delete
   perform plan_h_keys(p, array['nat_order_id', 'reason', 'dry_run', 'confirm_token'], 'p');
   if p ? 'dry_run' and jsonb_typeof(p->'dry_run') <> 'boolean' then perform plan_h_raise('bad_input', 'dry_run'); end if;
+  -- coordinator 25/10 (cross-cutting input rule): 'NaN' / '+-Infinity' are refused by this cast itself (a bigint has
+  -- no non-finite value), as bad_input 'nat_order_id' - never through numeric, where NaN would end as a raw 0A000
   begin
     v_no := (p->>'nat_order_id')::bigint;
   exception when invalid_text_representation or numeric_value_out_of_range then
@@ -5526,7 +5547,7 @@ $f$;
 - [ ] **Step 4: Τρέξε, να περάσει**
 
 Run: `cd tms-auditor && node --test test/plan-072.test.mjs`
-Expected: `Result: 140 OK, 1 FAIL` (μόνο η B20)· B43–B51 πράσινες (B49 = `plan:hard_delete`: το δίχτυ της 071 κάτω από κάθε διαδρομή).
+Expected: `Result: 140 OK, 1 FAIL` (μόνο η B20)· B43–B51 πράσινες (B49 = `plan:hard_delete`: το δίχτυ της 071 κάτω από κάθε διαδρομή)· στη B44 οι 5 δοκιμές `nat_order_id` = 'NaN' / 'Infinity' / '-Infinity' / 1e400 / 'NaN' με dry_run απορρίπτονται ως `bad_input:nat_order_id` (κανόνας συντονιστή 25/10).
 
 - [ ] **Step 5: Commit**
 

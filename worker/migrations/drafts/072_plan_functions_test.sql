@@ -1243,6 +1243,8 @@ BEGIN
                'plan:no_vehicle']   -- B18-B33 (Task B2)
       || ARRAY['ok', 'plan:need_token', 'ok', 'ok', 'ok',
                'plan:stale_confirm', 'ok', 'ok', 'ok']   -- B34-B42 (Task B3)
+      || ARRAY['ok', 'plan:order_not_v5', 'plan:order_gone', 'plan:stale_confirm', 'ok',
+               'ok', 'plan:hard_delete', 'plan:need_token', 'plan:bad_input']   -- B43-B51 (Task B4)
       ;  -- end of b_want
     b_verdict text; b_got text; b_hint text; b_msg text; b_cname text; b_st text;
   BEGIN
@@ -1709,6 +1711,84 @@ BEGIN
           PERFORM plan_rt_clear(jsonb_build_object('rt_id', b_x), 'test:072b', 'dispatcher');
           b_verdict := CASE WHEN (SELECT trip_type = 'OWNED' AND partner_id IS NULL AND partner_rate IS NULL FROM ct_round_trips WHERE id = b_x)
                             THEN 'ok PARTNER cleared to OWNED without anything' ELSE 'FAIL PARTNER clear' END;
+        -- ---- Task B4: plan_delete ----
+        ELSIF kb IN (43, 46, 50, 51) THEN   -- delete: list, token, the whole chain soft, the empty cycle cancelled
+          IF kb IN (46, 50) THEN UPDATE dl_entries SET trip_value = 230 WHERE rt_id = b_rt1 AND deleted_at IS NULL; END IF;
+          b_v2 := plan_delete(jsonb_build_object('nat_order_id', b_no1, 'dry_run', true), 'test:072b', 'owner');
+          IF kb = 46 THEN UPDATE dl_entries SET trip_value = 250 WHERE rt_id = b_rt1 AND deleted_at IS NULL; END IF;
+          PERFORM plan_delete(jsonb_build_object('nat_order_id', b_no1, 'reason', CASE WHEN kb = 51 THEN '' ELSE 'TEST 072 reason' END)
+                    || CASE WHEN kb IN (43, 46) THEN jsonb_build_object('confirm_token', b_v2->>'confirm_token') ELSE '{}'::jsonb END,
+                  'test:072b', 'dispatcher');
+          b_verdict := CASE WHEN (b_v2->>'needs_confirm')::boolean
+                              AND EXISTS (SELECT 1 FROM jsonb_array_elements(b_v2->'consequences') c WHERE c->>'kind' = 'rt_cancelled')
+                              AND (SELECT deleted_at IS NOT NULL FROM national_orders WHERE id = b_no1)
+                              AND (SELECT deleted_reason = 'TEST 072 reason' AND deleted_by = 'test:072b' FROM shipments WHERE id = b_sh1)
+                              AND (SELECT deleted_reason = 'TEST 072 reason' AND deleted_by = 'test:072b' FROM shipment_pieces WHERE id = b_p1)
+                              AND (SELECT deleted_at IS NOT NULL AND deleted_by = 'test:072b' FROM piece_legs WHERE id = b_lg1)
+                              AND NOT EXISTS (SELECT 1 FROM rt_stops WHERE rt_id = b_rt1 AND deleted_at IS NULL)
+                              AND (SELECT status FROM ct_round_trips WHERE id = b_rt1) = 'cancelled'
+                              AND NOT EXISTS (SELECT 1 FROM dl_entries WHERE rt_id = b_rt1 AND (deleted_at IS NULL OR needs_review))
+                              AND (SELECT count(*) FROM audit_log WHERE actor = 'test:072b' AND role = 'dispatcher'
+                                     AND table_name = 'national_orders' AND record_id = 'rec072TBN1') = 1
+                            THEN 'ok delete: list + token, every row soft with reason and actor, cycle cancelled, 0 needs_review'
+                            ELSE 'FAIL delete' END;
+        ELSIF kb = 44 THEN
+          -- coordinator 25/10 (cross-cutting input rule): a nat_order_id of NaN / +-Infinity (or past bigint) is refused
+          -- as bad_input 'nat_order_id', in a dry run too; each probe is undone, nothing is deleted
+          FOR b_v3 IN SELECT value FROM jsonb_array_elements(jsonb_build_array(
+              jsonb_build_object('nat_order_id', 'NaN', 'reason', 'TEST 072 reason'),
+              jsonb_build_object('nat_order_id', 'Infinity', 'reason', 'TEST 072 reason'),
+              jsonb_build_object('nat_order_id', '-Infinity', 'reason', 'TEST 072 reason'),
+              jsonb_build_object('nat_order_id', 1e400::numeric, 'reason', 'TEST 072 reason'),
+              jsonb_build_object('nat_order_id', 'NaN', 'dry_run', true)))
+          LOOP
+            BEGIN
+              PERFORM plan_delete(b_v3, 'test:072b', 'dispatcher');
+              RAISE EXCEPTION 'FAIL a non-finite nat_order_id was accepted (%)', b_v3::text;
+            EXCEPTION WHEN check_violation THEN
+              GET STACKED DIAGNOSTICS b_msg = MESSAGE_TEXT, b_hint = PG_EXCEPTION_HINT;
+              IF b_hint IS DISTINCT FROM 'plan:bad_input' OR b_msg NOT LIKE '%bad_input:nat_order_id' THEN
+                RAISE EXCEPTION 'FAIL non-finite nat_order_id probe % got % (%)', b_v3::text, coalesce(b_hint, 'no hint'), b_msg;
+              END IF;
+            END;
+          END LOOP;
+          INSERT INTO national_orders (legacy_id, client_id, reference, price) VALUES ('rec072TBN9', b_cl, 'WN072-TEST', 50)
+            RETURNING id INTO b_x;
+          PERFORM plan_delete(jsonb_build_object('nat_order_id', b_x, 'dry_run', true), 'test:072b', 'dispatcher');
+        ELSIF kb = 45 THEN
+          UPDATE national_orders SET deleted_at = now() WHERE id = b_no1;
+          PERFORM plan_delete(jsonb_build_object('nat_order_id', b_no1, 'dry_run', true), 'test:072b', 'dispatcher');
+        ELSIF kb = 47 THEN   -- an invoiced order is in the list; its invoice number only for owner / accountant
+          UPDATE national_orders SET invoiced = true, invoice_number = 'TEST-072-TPY' WHERE id = b_no1;
+          b_v := plan_delete(jsonb_build_object('nat_order_id', b_no1, 'dry_run', true), 'test:072b', 'owner');
+          b_v2 := plan_delete(jsonb_build_object('nat_order_id', b_no1, 'dry_run', true), 'test:072b', 'dispatcher');
+          b_verdict := CASE WHEN EXISTS (SELECT 1 FROM jsonb_array_elements(b_v->'consequences') c
+                                          WHERE c->>'kind' = 'invoiced' AND c->>'invoice_number' = 'TEST-072-TPY')
+                              AND EXISTS (SELECT 1 FROM jsonb_array_elements(b_v2->'consequences') c
+                                           WHERE c->>'kind' = 'invoiced' AND NOT (c ? 'invoice_number'))
+                              AND b_v->>'confirm_token' = b_v2->>'confirm_token'
+                            THEN 'ok invoiced in the list; number for the owner only' ELSE 'FAIL invoiced' END;
+        ELSIF kb IN (48, 49) THEN   -- a second order on the same cycle: the cycle stays, only this order goes
+          INSERT INTO national_orders (legacy_id, client_id, reference, price) VALUES ('rec072TBN2', b_cl, 'WN072-TEST', 60)
+            RETURNING id INTO b_no2;
+          INSERT INTO shipments (nat_order_id, origin_location_id, dest_location_id, pallets, load_from, load_to, deliver_from,
+                                 deliver_to, created_by)
+          VALUES (b_no2, b_la, b_lb, 5, h06, h08, h12, h14, 'test:072b') RETURNING id INTO b_sh2;
+          INSERT INTO shipment_pieces (shipment_id, pallets, created_by) VALUES (b_sh2, 5, 'test:072b') RETURNING id INTO b_p2;
+          INSERT INTO piece_legs (piece_id, leg_no, rt_id, pickup_stop_id, drop_stop_id, created_by)
+          VALUES (b_p2, 1, b_rt1, b_sa, b_sb, 'test:072b') RETURNING id INTO b_lg2;
+          b_v2 := plan_delete(jsonb_build_object('nat_order_id', b_no1, 'dry_run', true), 'test:072b', 'dispatcher');
+          PERFORM plan_delete(jsonb_build_object('nat_order_id', b_no1, 'reason', 'TEST 072 reason'), 'test:072b', 'dispatcher');
+          IF kb = 49 THEN   -- the net under every path: a hard DELETE is refused (071 hard_delete)
+            DELETE FROM piece_legs WHERE id = b_lg1;
+          END IF;
+          b_verdict := CASE WHEN NOT (b_v2->>'needs_confirm')::boolean
+                              AND (SELECT status FROM ct_round_trips WHERE id = b_rt1) = 'planned'
+                              AND (SELECT deleted_at IS NULL FROM piece_legs WHERE id = b_lg2)
+                              AND (SELECT deleted_at IS NOT NULL FROM piece_legs WHERE id = b_lg1)
+                              AND (SELECT count(*) FROM rt_stops WHERE rt_id = b_rt1 AND deleted_at IS NULL) = 2
+                              AND (SELECT count(*) FROM dl_entries WHERE rt_id = b_rt1 AND deleted_at IS NULL) = 1
+                            THEN 'ok the shared cycle stays planned with the other order' ELSE 'FAIL shared cycle' END;
         -- [B-CASES-NEXT]
         END IF;
         SET CONSTRAINTS ALL IMMEDIATE;
