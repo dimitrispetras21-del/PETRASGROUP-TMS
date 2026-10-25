@@ -31,10 +31,13 @@ const parts = [
   fn('preResolveLinkTerms'), fn('resolveLinksOnWrite'),
   fn('authorizeWrite'), fn('refuseReadOnly'), fn('buildWriteRow'), fn('buildWriteRows'),
   fn('invoiceMarkError'), fn('invoiceNeedsBefore'),
-  // one mapper for the stock (057) and relay (060) families: all three tables
+  // one mapper for the stock (057), relay (060) and national v5 (071/072)
+  // families: all five tables
   lift(/const STOCK_CHECK_TEXT = \{[\s\S]*?\n\};\n/, 'STOCK_CHECK_TEXT'),
   lift(/const RELAY_RULE_TEXT = \{[\s\S]*?\n\};\n/, 'RELAY_RULE_TEXT'),
   lift(/const RELAY_CHECK_TEXT = \{[\s\S]*?\n\};\n/, 'RELAY_CHECK_TEXT'),
+  lift(/const PLAN_RULE_TEXT = \{[\s\S]*?\n\};\n/, 'PLAN_RULE_TEXT'),
+  lift(/const PLAN_CHECK_TEXT = \{[\s\S]*?\n\};\n/, 'PLAN_CHECK_TEXT'),
   fn('stockRuleError'), fn('stockRuleResponse'),
   fn('dbInsert'), fn('dbInsertMany'), fn('dbUpdate'),
   fn('handleFacadeCreate'), fn('facadeBatchCreate'), fn('handleFacadeUpdate'), fn('handleFacadeBatchUpdate'),

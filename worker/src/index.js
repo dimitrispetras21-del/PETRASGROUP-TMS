@@ -3280,6 +3280,141 @@ const RELAY_CHECK_TEXT = {
   local_moves_time_from_fmt: "Ώρα σε μορφή ΩΩ:ΛΛ (π.χ. 07:00)",
   local_moves_time_to_fmt: "Ώρα σε μορφή ΩΩ:ΛΛ (π.χ. 07:00)"
 };
+// NATIONAL v5 (071 + 071b + 072, owner 21–22/10/2026): DB refusals → Greek 422.
+// The planning rules live ONLY in the base (071's deferred plan_chk triggers,
+// 071b's two EXCLUDE, 072's plan_* functions — spec §2.1, αρχή 4). Every v5
+// write is ONE plan_* RPC (handlePlan below), so a refusal arrives at that
+// RPC's COMMIT; without this mapping it would be a 500, retried three times,
+// with the reason dead in the logs (αρχή 1).
+// Same ONE mapper (stockRuleError), a third family beside 057 and 060:
+//   - every refusal carries hint «plan:<code>» (071 plan_chk, 071
+//     ct_rt_legs_v2_guard, 072 plan_h_raise), whatever SQLSTATE it rode on.
+//     The DB message is ASCII for the logs: «plan rule broken: <code>:<detail>».
+//     The Greek text per code lives here; the ASCII detail (an RT code, an id)
+//     is appended in brackets. A code this map does not know still answers
+//     422 and names the code — loud, never the 500 path;
+//   - row CHECKs and unique indexes cannot carry a hint: matched by name;
+//   - the two EXCLUDE of 071b (23P01) answer the SAME code as 072's own
+//     pre-check (truck_busy / driver_busy), so a screen reacts to one code
+//     whichever layer refused first. local_moves_nat_loading_once answers
+//     local_exists for the same reason (as local_moves_relay_once → relay_exists).
+// THE CODES AND NAMES ARE THE MIGRATIONS' (the lower layer names them, αρχή 4).
+// test/plan-contract.test.mjs reads 071, 071b and 072 and fails on a code or a
+// constraint without a text here, and on a key here with no counterpart there
+// (αρχή 8). Texts only — editing a text never changes what is allowed.
+const PLAN_RULE_TEXT = {
+  // 071 — deferred COMMIT rules (plan_chk) and the two direct raises
+  pieces_alive: "Η αποστολή σβήστηκε αλλά έχει ακόμη ζωντανά κομμάτια — ανανέωσε τη σελίδα",
+  piece_dead: "Το φορτίο ή η αποστολή του έχει σβηστεί — ανανέωσε τη σελίδα",
+  pieces_sum: "Τα κομμάτια δεν αθροίζουν στις παλέτες της αποστολής",
+  piece_parent: "Το κομμάτι δεν κρέμεται από ζωντανό κομμάτι της ίδιας αποστολής",
+  split_not_at_hub: "Ένα φορτίο σπάει μόνο στη Βέροια",
+  rt_not_v2: "Το δρομολόγιο είναι του παλιού Εβδομαδιαίου — δεν παίρνει στάσεις του νέου",
+  rt_cancelled: "Το δρομολόγιο έχει ακυρωθεί — διάλεξε άλλο ή νέο",
+  leg_stop_dead: "Η στάση της κίνησης έχει σβηστεί — ανανέωσε τη σελίδα",
+  leg_order: "Η φόρτωση γίνεται πριν από την εκφόρτωση στο ίδιο δρομολόγιο",
+  leg_place: "Το φορτίο ταξιδεύει μόνο από την αφετηρία του, μέσω Βέροιας, στον προορισμό του",
+  chain: "Η φόρτωση γίνεται εκεί όπου ξεφορτώθηκε το φορτίο την προηγούμενη φορά",
+  chain_time: "Η φόρτωση είναι πριν φτάσει το φορτίο εκεί — άλλαξε την ώρα",
+  stop_seq: "Δύο στάσεις του δρομολογίου έχουν την ίδια σειρά — ανανέωσε τη σελίδα",
+  stop_order: "Οι στάσεις του δρομολογίου δεν είναι σε χρονική σειρά",
+  side_order: "Η ΚΑΘΟΔΟΣ γίνεται πριν από την ΑΝΟΔΟ στο ίδιο δρομολόγιο",
+  rt_window: "Οι ώρες του δρομολογίου δεν συμφωνούν με τις στάσεις του — ανανέωσε τη σελίδα",
+  local_loading_gone: "Η τοπική φόρτωση έμεινε σε στάση που δεν υπάρχει πια",
+  local_loading_day: "Η τοπική φόρτωση γίνεται την ίδια ημέρα με τη στάση",
+  local_loading_stop: "Τοπική φόρτωση μπαίνει μόνο σε στάση που φορτώνει εμπόρευμα",
+  model_locked: "Ένα δρομολόγιο δεν περνά από το παλιό στο νέο Εβδομαδιαίο ή αντίστροφα",
+  stop_locked: "Μια στάση δεν μετακινείται σε άλλο δρομολόγιο — σβήνεται και μπαίνει νέα",
+  leg_locked: "Μια κίνηση δεν αλλάζει — σβήνεται και μπαίνει νέα",
+  piece_locked: "Ένα κομμάτι δεν αλλάζει αποστολή ή γονικό κομμάτι",
+  shipment_locked: "Μια αποστολή δεν αλλάζει παραγγελία",
+  v1_link_on_v2: "Το δρομολόγιο είναι του Εβδομαδιαίου Εθνικών — δεν παίρνει παραγγελίες από το παλιό",
+  hard_delete: "Στο Εβδομαδιαίο Εθνικών τίποτα δεν σβήνεται οριστικά — μόνο με ίχνος",
+  // 072 — the plan_* functions' own refusals (plan_h_raise)
+  no_actor: "Η αλλαγή δεν έχει χρήστη ή ο ρόλος είναι άγνωστος — συνδέσου ξανά",
+  bad_input: "Το αίτημα δεν έχει τη μορφή που περιμένει η βάση — ανανέωσε τη σελίδα",
+  no_client: "Λείπει ο πελάτης",
+  no_price: "Λείπει η τιμή",
+  no_window: "Λείπει το παράθυρο φόρτωσης ή παράδοσης",
+  stock_lot: "Κομμάτι παρτίδας αποθέματος δεν μπαίνει ακόμη στο Εβδομαδιαίο Εθνικών",
+  order_gone: "Η παραγγελία έχει σβηστεί ή δεν υπάρχει — ανανέωσε τη σελίδα",
+  order_not_v5: "Η παραγγελία δεν είναι του Εβδομαδιαίου Εθνικών",
+  vs_locked: "Οι παλέτες και τα παράθυρα του VS αλλάζουν μόνο από τις Διεθνείς",
+  piece_busy: "Το φορτίο έχει ήδη κίνηση — μετέφερέ το αντί να το ξαναβάλεις",
+  piece_split: "Το φορτίο έχει σπάσει — διάλεξε ένα από τα κομμάτια του",
+  not_stock: "Ποσότητα παίρνεις μόνο από φορτίο που περιμένει στη Βέροια",
+  parts_sum: "Τα μέρη δεν αθροίζουν στις παλέτες του φορτίου",
+  not_at_hub: "Το φορτίο δεν βρίσκεται στη Βέροια — σπάει μόνο εκεί",
+  group_empty: "Η ομάδα δεν έχει φορτίο σε αναμονή",
+  same_rt: "Το φορτίο είναι ήδη σε αυτό το δρομολόγιο",
+  rt_gone: "Το δρομολόγιο δεν υπάρχει ή έχει ακυρωθεί — ανανέωσε τη σελίδα",
+  no_vehicle: "Νέο δρομολόγιο θέλει φορτηγό ή συνεργάτη",
+  truck_busy: "Το φορτηγό είναι ήδη σε άλλο δρομολόγιο εκείνες τις ώρες",
+  driver_busy: "Ο οδηγός είναι ήδη σε άλλο δρομολόγιο εκείνες τις ώρες",
+  stop_gone: "Η στάση δεν υπάρχει πια — ανανέωσε τη σελίδα",
+  local_exists: "Η στάση έχει ήδη τοπική φόρτωση — άνοιξε την υπάρχουσα",
+  notice_gone: "Η ειδοποίηση δεν υπάρχει",
+  payroll_locked: "Η μισθοδοσία του δρομολογίου έχει ήδη ποσά — η αλλαγή οδηγού γίνεται με «Καθαρισμός ανάθεσης» και νέα ανάθεση",
+  // decision 44: the screen's request_id came back with another body, for another act or from another person: the
+  // FIRST submission is already saved — the text must not invite a new one (review of PR #84)
+  request_reused: "Αυτό το αίτημα έχει ήδη αποθηκευτεί (με άλλο περιεχόμενο ή από άλλον χρήστη) — μην το ξαναστείλεις· βρες την εγγραφή στο Εβδομαδιαίο Εθνικών και διόρθωσέ τη από εκεί",
+  // decision 44: a creation without the screen's request_id (one per open form) is refused, never a silent pass
+  request_missing: "Η οθόνη δεν έστειλε κωδικό αιτήματος — τίποτα δεν γράφτηκε· ενημέρωσε τον Δημήτρη",
+  // owner 25/10 (review of PR #84, finding 1): plan_rt_update never empties a cycle's vehicle; the owner's text
+  vehicle_clear_use_clear: "Για να βγει το όχημα, χρησιμοποίησε «Καθαρισμός ανάθεσης».",
+  // {"cancel": true} without local_move_id: nothing created, nothing cancelled
+  local_cancel_no_id: "Η ακύρωση τοπικής φόρτωσης δεν λέει ποια φόρτωση — τίποτα δεν δημιουργήθηκε ούτε ακυρώθηκε",
+  stale_confirm: "Κάτι άλλαξε από τότε που είδες τη λίστα — δες τη ξανά και επιβεβαίωσε",
+  need_token: "Η πράξη θέλει επιβεβαίωση — δες πρώτα τη λίστα συνεπειών",
+  vs_not_bridge: "Η παραγγελία ή η στάση δεν περνά από τη Βέροια (VS)"
+};
+const PLAN_CHECK_TEXT = {
+  // 071 CHECKs on ct_round_trips (+ partner_needs_partner, live before 071:
+  // a PARTNER cycle written by plan_* meets it too)
+  rt_model: "Το δρομολόγιο είναι είτε του παλιού είτε του νέου Εβδομαδιαίου",
+  rt_partner_rate: "Κόμιστρο μόνο σε δρομολόγιο συνεργάτη, και όχι αρνητικό",
+  rt_v1_no_window: "Δρομολόγιο του παλιού Εβδομαδιαίου δεν έχει ώρες αρχής/τέλους",
+  rt_v2_dates: "Οι ημέρες του δρομολογίου βγαίνουν από τις ώρες του — ανανέωσε τη σελίδα",
+  rt_v2_scope: "Το Εβδομαδιαίο Εθνικών έχει μόνο εθνικά δρομολόγια",
+  rt_v2_status: "Δρομολόγιο του Εβδομαδιαίου Εθνικών είναι μόνο «προγραμματισμένο» ή «ακυρωμένο»",
+  rt_v2_window: "Το δρομολόγιο θέλει ώρα αρχής πριν από την ώρα τέλους",
+  partner_needs_partner: "Δρομολόγιο συνεργάτη θέλει συνεργάτη",
+  // shipments
+  shipments_bridge_intl: "Γέφυρα VS υπάρχει μόνο από διεθνή παραγγελία",
+  shipments_del: "Η διαγραφή αποστολής θέλει λόγο και χρήστη",
+  shipments_ends: "Η αφετηρία και ο προορισμός της αποστολής είναι ίδιοι",
+  shipments_intl_is_bridge: "Αποστολή διεθνούς υπάρχει μόνο ως γέφυρα VS",
+  shipments_one_parent: "Η αποστολή ανήκει σε μία παραγγελία",
+  shipments_pallets: "Οι παλέτες της αποστολής είναι πάνω από 0",
+  shipments_shape: "Η αποστολή θέλει αφετηρία, προορισμό, παλέτες και παράθυρα",
+  shipments_win: "Το παράθυρο της αποστολής είναι ανάποδα (τέλος πριν από αρχή)",
+  // shipment_pieces
+  pieces_del: "Η διαγραφή κομματιού θέλει λόγο και χρήστη",
+  pieces_not_own_parent: "Ένα κομμάτι δεν είναι γονικό του εαυτού του",
+  pieces_pallets: "Ένα κομμάτι έχει πάνω από 0 παλέτες",
+  pieces_split_pair: "Το σπάσιμο γράφει ώρα και χρήστη μαζί",
+  // rt_stops
+  rt_stops_del: "Η διαγραφή στάσης θέλει λόγο και χρήστη",
+  rt_stops_seq: "Η σειρά στάσης ξεκινά από 1",
+  rt_stops_side: "Η στάση είναι ΚΑΘΟΔΟΣ ή ΑΝΟΔΟΣ",
+  rt_stops_win: "Το παράθυρο της στάσης θέλει ώρα τέλους μετά την ώρα αρχής",
+  // piece_legs
+  piece_legs_del: "Η διαγραφή κίνησης θέλει λόγο και χρήστη",
+  piece_legs_no: "Ο αριθμός κίνησης ξεκινά από 1",
+  piece_legs_two_stops: "Η φόρτωση και η εκφόρτωση είναι διαφορετικές στάσεις",
+  // plan_notices
+  plan_notices_desk: "Η ειδοποίηση πάει στις Διεθνείς ή στις Εθνικές",
+  plan_notices_kind: "Άγνωστο είδος ειδοποίησης",
+  plan_notices_read_pair: "Το «διαβάστηκε» γράφει ώρα και χρήστη μαζί",
+  // order_stops / local_moves (071 additions on live tables)
+  order_stops_via_hub_intl: "Το «μέσω Βέροιας» υπάρχει μόνο σε στάση διεθνούς παραγγελίας",
+  local_moves_nat_loading: "Η τοπική φόρτωση εθνικών θέλει στάση και οδηγό, και είναι μόνο «ανατέθηκε» ή «ακυρώθηκε»",
+  // 071 unique indexes (23505); local_moves_nat_loading_once answers local_exists instead
+  piece_legs_live_no: "Το φορτίο έχει ήδη ζωντανή κίνηση με αυτόν τον αριθμό — ανανέωσε τη σελίδα",
+  shipments_bridge_once: "Η στάση της διεθνούς έχει ήδη γέφυρα VS",
+  pl_mov_leg_once: "Η κίνηση έχει ήδη γραμμή παλετών",
+  locations_one_hub: "Υπάρχει ήδη τοποθεσία-κόμβος (Βέροια)"
+};
 function stockRuleError(e) {
   const pg = e && e.pg;
   if (!pg || typeof pg !== "object") return null;
@@ -3297,6 +3432,18 @@ function stockRuleError(e) {
       message: Object.prototype.hasOwnProperty.call(RELAY_RULE_TEXT, rc) ? RELAY_RULE_TEXT[rc] : `Η τοπική κίνηση δεν αποθηκεύτηκε (${rc || "χωρίς κωδικό"}): ${message}`
     };
   }
+  // 'plan:' (071/072): same rule — the hint is the marker, whatever SQLSTATE.
+  // It must come BEFORE the 23514 branch: plan_chk raises with 23514 and a
+  // message without «check constraint», which that branch would answer null.
+  if (hint.startsWith("plan:")) {
+    const pc = hint.slice("plan:".length).trim();
+    const prefix = `plan rule broken: ${pc}:`;
+    const detail = message.startsWith(prefix) ? message.slice(prefix.length).trim().slice(0, 120) : "";
+    if (!Object.prototype.hasOwnProperty.call(PLAN_RULE_TEXT, pc)) {
+      return { type: "PLAN_RULE", code: pc, message: `Ο κανόνας ${pc || "χωρίς κωδικό"} δεν τηρήθηκε: ${message}` };
+    }
+    return { type: "PLAN_RULE", code: pc, message: detail ? `${PLAN_RULE_TEXT[pc]} (${detail})` : PLAN_RULE_TEXT[pc] };
+  }
   if (code === "23514") {
     // 'stock:' (057) only under 23514, as 057's stock_raise sends it — a
     // stock hint under another SQLSTATE keeps the 500 path (pinned in
@@ -3309,6 +3456,8 @@ function stockRuleError(e) {
       return { code: m[1], message: STOCK_CHECK_TEXT[m[1]] };
     }
     if (Object.prototype.hasOwnProperty.call(RELAY_CHECK_TEXT, m[1])) return { type: "LOCAL_RELAY_RULE", code: m[1], message: RELAY_CHECK_TEXT[m[1]] };
+    // Before the generic local_moves_* line: local_moves_nat_loading is 071's.
+    if (Object.prototype.hasOwnProperty.call(PLAN_CHECK_TEXT, m[1])) return { type: "PLAN_RULE", code: m[1], message: PLAN_CHECK_TEXT[m[1]] };
     if (m[1].startsWith("local_moves_")) {
       return { type: "LOCAL_RELAY_RULE", code: m[1], message: `Η τοπική κίνηση δεν αποθηκεύτηκε: κανόνας ${m[1]}` };
     }
@@ -3319,6 +3468,21 @@ function stockRuleError(e) {
   }
   if (code === "23505" && /local_moves_relay_once/.test(message)) {
     return { type: "LOCAL_RELAY_RULE", code: "relay_exists", message: RELAY_RULE_TEXT.relay_exists };
+  }
+  if (code === "23505") {
+    const u = /unique constraint "([^"]+)"/.exec(message);
+    // the race floor under 072's own local_exists refusal: same code, same text
+    if (u && u[1] === "local_moves_nat_loading_once") return { type: "PLAN_RULE", code: "local_exists", message: PLAN_RULE_TEXT.local_exists };
+    if (u && Object.prototype.hasOwnProperty.call(PLAN_CHECK_TEXT, u[1])) return { type: "PLAN_RULE", code: u[1], message: PLAN_CHECK_TEXT[u[1]] };
+    return null;
+  }
+  if (code === "23P01") {
+    // 071b's EXCLUDE are DEFERRED: they speak at the RPC's COMMIT, without
+    // the other cycle's code (072's pre-check names it; this is the net).
+    const x = /exclusion constraint "([^"]+)"/.exec(message);
+    const pc = !x ? null : x[1] === "rt_v2_truck_once" ? "truck_busy" : x[1] === "rt_v2_driver_once" ? "driver_busy" : null;
+    if (pc) return { type: "PLAN_RULE", code: pc, message: PLAN_RULE_TEXT[pc] };
+    return null;
   }
   return null;
 }
