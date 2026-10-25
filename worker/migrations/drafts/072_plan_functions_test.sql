@@ -1211,9 +1211,9 @@ BEGIN
     END;
   END LOOP;
 
-  -- ===== SECTION B CASES (B1-B130): cycle, delete, VS, local loading, notices, reads, the week-scenario 19/32/31
+  -- ===== SECTION B CASES (B1-B139): cycle, delete, VS, local loading, notices, reads, the week-scenario 19/32/31
   -- (B77), the reviews' cases (B78-B97), request_id of a local loading and a cancel without id (B98-B101), the
-  -- vehicle never emptied by plan_rt_update (B102-B113, owner 25/10), the K1 review's cases (B114-B130) =====
+  -- vehicle never emptied by plan_rt_update (B102-B113, owner 25/10), the K1 review's cases (B114-B139) =====
   -- Own fixture (rec072TB..., "TEST 072 B ...", TEST-072-B...), undone by the final error of the outer block;
   -- each case undone by its marker. Results go into the outer ok / bad / res. ASCII only.
   -- S (every case): an OWNED v5 cycle made by plan_rt_create (TEST-072-B1 / driver B1, stops A 06-08 and B 12-14
@@ -1263,6 +1263,7 @@ BEGIN
       || ARRAY['ok', 'ok', 'plan:need_token', 'ok', 'plan:stale_confirm', 'plan:stale_confirm', 'ok',
                'ok', 'ok', 'ok', 'ok']   -- B114-B124 (K1 review r1: executed, the token's row versions, unproven rules)
       || ARRAY['ok', 'ok', 'ok', 'ok', 'ok', 'ok']   -- B125-B130 (K1 review r2: the re-reads pass a chain nobody changed; rt_id null)
+      || ARRAY['ok', 'ok', 'plan:piece_busy', 'ok', 'ok', 'ok', 'ok', 'ok', 'ok']   -- B131-B139 (K1 review r3: three unproven rules; gap E: the move's stops)
       ;  -- end of b_want
     b_verdict text; b_got text; b_hint text; b_msg text; b_cname text; b_st text;
   BEGIN
@@ -1329,7 +1330,7 @@ BEGIN
         SET CONSTRAINTS ALL IMMEDIATE;
         SET CONSTRAINTS ALL DEFERRED;
         -- the VS bridges (cases that need the VS): one piece per Greek stop, waiting at the hub
-        IF kb IN (16, 17, 21, 52, 55, 56, 57, 58, 60, 74, 129) THEN
+        IF kb IN (16, 17, 21, 52, 55, 56, 57, 58, 60, 74, 129, 131) THEN
           INSERT INTO shipments (order_id, order_stop_id, created_by) VALUES (b_vo, b_u1, 'test:072b') RETURNING id INTO b_bs1;
           INSERT INTO shipment_pieces (shipment_id, pallets, created_by) VALUES (b_bs1, 4, 'test:072b') RETURNING id INTO b_q1;
           INSERT INTO shipments (order_id, order_stop_id, created_by) VALUES (b_vo, b_u2, 'test:072b') RETURNING id INTO b_bs2;
@@ -2762,6 +2763,131 @@ BEGIN
           b_verdict := CASE WHEN (SELECT deleted_at IS NOT NULL FROM piece_legs WHERE id = b_lg1)
                             THEN 'ok a piece with a deleted part moves (the part is not a split)'
                             ELSE 'FAIL dead part: ' || coalesce(b_v3::text, 'null') END;
+        ELSIF kb = 131 THEN   -- K1 review r3 #1 (decision 35): an order column someone already changed is not overwritten
+          -- the international desk had set the column of Unloading stop 1 to C by hand; the national desk moves the stop
+          UPDATE orders SET unloading_location_1_id = b_lc WHERE id = b_vo;
+          b_v3 := plan_vs_set_place(jsonb_build_object('order_stop_id', b_u1, 'location_id', b_ln), 'test:072b', 'dispatcher');
+          b_verdict := CASE WHEN (SELECT location_id FROM order_stops WHERE id = b_u1) = b_ln
+                              AND (SELECT unloading_location_1_id FROM orders WHERE id = b_vo) = b_lc
+                              AND NOT EXISTS (SELECT 1 FROM audit_log WHERE actor = 'test:072b' AND table_name = 'orders'
+                                                AND after_data ? 'unloading_location_1_id')
+                            THEN 'ok VS place: the stop moved, the column the international desk changed stays'
+                            ELSE 'FAIL order column overwritten: ' || coalesce(b_v3::text, 'null') END;
+        ELSIF kb = 132 THEN   -- K1 review r3 #2 (decision 9): advance and expenses reach owner / accountant only
+          UPDATE dl_entries SET trip_value = 230, advance = 40, expenses = 15 WHERE rt_id = b_rt1 AND deleted_at IS NULL;
+          b_v := plan_rt_clear(jsonb_build_object('rt_id', b_rt1, 'dry_run', true), 'test:072b', 'owner');
+          b_v2 := plan_rt_clear(jsonb_build_object('rt_id', b_rt1, 'dry_run', true), 'test:072b', 'dispatcher');
+          b_verdict := CASE WHEN b_v->'consequences' @> jsonb_build_array(jsonb_build_object('kind', 'payroll_amount',
+                                   'amount', 230, 'advance', 40, 'expenses', 15))
+                              AND EXISTS (SELECT 1 FROM jsonb_array_elements(b_v2->'consequences') c WHERE c->>'kind' = 'payroll_amount')
+                              AND position('"amount"' IN b_v2::text) = 0 AND position('"advance"' IN b_v2::text) = 0
+                              AND position('"expenses"' IN b_v2::text) = 0
+                              AND b_v2->>'confirm_token' = b_v->>'confirm_token'
+                            THEN 'ok the payroll line: amount, advance and expenses for the owner; none of them for the dispatcher'
+                            ELSE 'FAIL strip: ' || b_v2::text END;
+        ELSIF kb = 133 THEN   -- K1 review r3 #3: fewer pallets never empty a part that rides (plan_h_resize)
+          -- a national order A -> B of 20 over Veroia: A -> Veroia, split 7 + 13 there, both parts ride Veroia -> B
+          INSERT INTO national_orders (legacy_id, client_id, reference, price) VALUES ('rec072TBN2', b_cl, 'WN072-TEST', 100)
+            RETURNING id INTO b_no2;
+          INSERT INTO shipments (nat_order_id, origin_location_id, dest_location_id, pallets, load_from, load_to, deliver_from,
+                                 deliver_to, created_by)
+          VALUES (b_no2, b_la, b_lb, 20, h06, h07, h12, h14, 'test:072b') RETURNING id INTO b_sh2;
+          INSERT INTO shipment_pieces (shipment_id, pallets, created_by) VALUES (b_sh2, 20, 'test:072b') RETURNING id INTO b_p2;
+          b_v2 := plan_rt_create(jsonb_build_object('new_rt', jsonb_build_object('trip_type', 'OWNED', 'truck_id', b_t2, 'driver_id', b_d2),
+                    'stops', jsonb_build_array(
+                      jsonb_build_object('ref', 'a', 'location_id', b_la, 'side', 'KATHODOS', 'planned_from', h06, 'planned_to', h07),
+                      jsonb_build_object('ref', 'h', 'location_id', b_hub, 'side', 'KATHODOS', 'planned_from', h09, 'planned_to', h10),
+                      jsonb_build_object('ref', 'b', 'location_id', b_lb, 'side', 'KATHODOS', 'planned_from', h12, 'planned_to', h13))),
+                  'test:072b', 'dispatcher');
+          b_x := (b_v2->>'rt_id')::bigint;
+          INSERT INTO piece_legs (piece_id, leg_no, rt_id, pickup_stop_id, drop_stop_id, created_by)
+          VALUES (b_p2, 1, b_x, (b_v2->'stops'->>'a')::bigint, (b_v2->'stops'->>'h')::bigint, 'test:072b');
+          UPDATE shipment_pieces SET split_at = now(), split_by = 'test:072b' WHERE id = b_p2;
+          INSERT INTO shipment_pieces (shipment_id, parent_piece_id, pallets, created_by) VALUES (b_sh2, b_p2, 7, 'test:072b')
+            RETURNING id INTO b_y;
+          INSERT INTO shipment_pieces (shipment_id, parent_piece_id, pallets, created_by) VALUES (b_sh2, b_p2, 13, 'test:072b')
+            RETURNING id INTO b_z;
+          INSERT INTO piece_legs (piece_id, leg_no, rt_id, pickup_stop_id, drop_stop_id, created_by)
+          VALUES (b_y, 1, b_x, (b_v2->'stops'->>'h')::bigint, (b_v2->'stops'->>'b')::bigint, 'test:072b');
+          INSERT INTO piece_legs (piece_id, leg_no, rt_id, pickup_stop_id, drop_stop_id, created_by)
+          VALUES (b_z, 1, b_x, (b_v2->'stops'->>'h')::bigint, (b_v2->'stops'->>'b')::bigint, 'test:072b');
+          SET CONSTRAINTS ALL IMMEDIATE;
+          SET CONSTRAINTS ALL DEFERRED;
+          -- 20 -> 13: no stock to take from, so the first part that rides (7) would be emptied whole: refused
+          PERFORM plan_order_update(jsonb_build_object('nat_order_id', b_no2, 'shipments', jsonb_build_array(
+                    jsonb_build_object('shipment_id', b_sh2, 'pallets', 13))), 'test:072b', 'dispatcher');
+        ELSIF kb BETWEEN 134 AND 138 THEN   -- K1 gap E: the dry run of a move refuses the request's stops as its execution does
+          b_v2 := plan_rt_create(jsonb_build_object('new_rt', jsonb_build_object('trip_type', 'OWNED', 'truck_id', b_t2, 'driver_id', b_d2),
+                    'stops', jsonb_build_array(
+                      jsonb_build_object('ref', 'a', 'location_id', b_la, 'side', 'KATHODOS', 'planned_from', h06, 'planned_to', h07),
+                      jsonb_build_object('ref', 'b', 'location_id', b_lb, 'side', 'KATHODOS', 'planned_from', h12, 'planned_to', h13))),
+                  'test:072b', 'dispatcher');
+          b_x := (b_v2->>'rt_id')::bigint;
+          -- a second load on S, so S is not emptied: no token, the execution reaches the stops
+          INSERT INTO national_orders (legacy_id, client_id, reference, price) VALUES ('rec072TBN2', b_cl, 'WN072-TEST', 100)
+            RETURNING id INTO b_no2;
+          INSERT INTO shipments (nat_order_id, origin_location_id, dest_location_id, pallets, load_from, load_to, deliver_from,
+                                 deliver_to, created_by)
+          VALUES (b_no2, b_la, b_lb, 4, h06, h08, h12, h14, 'test:072b') RETURNING id INTO b_sh2;
+          INSERT INTO shipment_pieces (shipment_id, pallets, created_by) VALUES (b_sh2, 4, 'test:072b') RETURNING id INTO b_p2;
+          INSERT INTO piece_legs (piece_id, leg_no, rt_id, pickup_stop_id, drop_stop_id, created_by)
+          VALUES (b_p2, 1, b_rt1, b_sa, b_sb, 'test:072b');
+          SET CONSTRAINTS ALL IMMEDIATE;
+          SET CONSTRAINTS ALL DEFERRED;
+          -- 134: a stop of another cycle (S) named on the target; 135: two stops at A, neither on the target side;
+          -- 136: no stop at A (where the piece waits); 137: one ref twice; 138: an unknown key in a stop
+          b_v3 := jsonb_build_object('from', jsonb_build_object('piece_ids', jsonb_build_array(b_p1)),
+                    'target', jsonb_build_object('rt_id', b_x, 'side', 'KATHODOS'),
+                    'stops', CASE kb
+                               WHEN 134 THEN jsonb_build_array(
+                                 jsonb_build_object('ref', 'a', 'stop_id', (b_v2->'stops'->>'a')::bigint),
+                                 jsonb_build_object('ref', 'x', 'stop_id', b_sb))
+                               WHEN 135 THEN jsonb_build_array(
+                                 jsonb_build_object('ref', 'a1', 'location_id', b_la, 'side', 'ANODOS', 'planned_from', h16, 'planned_to', h18),
+                                 jsonb_build_object('ref', 'a2', 'location_id', b_la, 'side', 'ANODOS', 'planned_from', h18, 'planned_to', h20),
+                                 jsonb_build_object('ref', 'b', 'stop_id', (b_v2->'stops'->>'b')::bigint))
+                               WHEN 136 THEN jsonb_build_array(jsonb_build_object('ref', 'b', 'stop_id', (b_v2->'stops'->>'b')::bigint))
+                               WHEN 137 THEN jsonb_build_array(
+                                 jsonb_build_object('ref', 'a', 'stop_id', (b_v2->'stops'->>'a')::bigint),
+                                 jsonb_build_object('ref', 'a', 'stop_id', (b_v2->'stops'->>'b')::bigint))
+                               ELSE jsonb_build_array(
+                                 jsonb_build_object('ref', 'a', 'stop_id', (b_v2->'stops'->>'a')::bigint, 'seq', 1),
+                                 jsonb_build_object('ref', 'b', 'stop_id', (b_v2->'stops'->>'b')::bigint)) END);
+          b_txt := 'no refusal'; b_tok := 'no refusal';
+          BEGIN
+            PERFORM plan_move_pieces(b_v3 || '{"dry_run": true}'::jsonb, 'test:072b', 'dispatcher');
+          EXCEPTION WHEN others THEN GET STACKED DIAGNOSTICS b_txt = MESSAGE_TEXT;
+          END;
+          BEGIN
+            PERFORM plan_move_pieces(b_v3, 'test:072b', 'dispatcher');
+          EXCEPTION WHEN others THEN GET STACKED DIAGNOSTICS b_tok = MESSAGE_TEXT;
+          END;
+          b_verdict := CASE WHEN b_txt = b_tok
+                              AND b_txt = CASE kb WHEN 134 THEN 'plan rule broken: stop_gone:' || b_sb
+                                                  WHEN 135 THEN 'plan rule broken: bad_input:stop.ambiguous:' || b_la
+                                                  WHEN 136 THEN 'plan rule broken: bad_input:pickup:' || b_p1 || '@' || b_la
+                                                  WHEN 137 THEN 'plan rule broken: bad_input:stop.ref'
+                                                  ELSE 'plan rule broken: bad_input:stop.seq' END
+                              AND (SELECT deleted_at IS NULL FROM piece_legs WHERE id = b_lg1)
+                            THEN 'ok the move dry run refuses its stops as the execution does: ' || b_txt
+                            ELSE 'FAIL dry run ' || b_txt || ' / execution ' || b_tok END;
+        ELSIF kb = 139 THEN   -- K1 gap E: the answer's stop_ids never list a named stop the same move swept
+          -- S's piece from KATHODOS to the ANODOS side of S: the request names A (KATHODOS), the pickup is the new A
+          -- on the target side, so the named A loses its last leg and goes
+          b_v3 := plan_move_pieces(jsonb_build_object('from', jsonb_build_object('piece_ids', jsonb_build_array(b_p1)),
+                    'target', jsonb_build_object('rt_id', b_rt1, 'side', 'ANODOS'),
+                    'stops', jsonb_build_array(
+                      jsonb_build_object('ref', 'a', 'stop_id', b_sa),
+                      jsonb_build_object('ref', 'a2', 'location_id', b_la, 'side', 'ANODOS', 'planned_from', h16, 'planned_to', h18),
+                      jsonb_build_object('ref', 'b2', 'location_id', b_lb, 'side', 'ANODOS', 'planned_from', h18, 'planned_to', h20))),
+                  'test:072b', 'dispatcher');
+          b_verdict := CASE WHEN (SELECT deleted_at IS NOT NULL FROM rt_stops WHERE id = b_sa)
+                              AND NOT (b_v3->'ids'->'stop_ids' @> to_jsonb(b_sa))
+                              AND jsonb_array_length(b_v3->'ids'->'stop_ids') = 2
+                              AND (SELECT count(*) FROM rt_stops s WHERE s.deleted_at IS NULL
+                                     AND s.id IN (SELECT (js.v #>> '{}')::bigint FROM jsonb_array_elements(b_v3->'ids'->'stop_ids') js(v))) = 2
+                            THEN 'ok stop_ids: the two live stops of the move, not the named stop it swept'
+                            ELSE 'FAIL stop_ids ' || coalesce(b_v3::text, 'null') END;
         -- [B-CASES-NEXT]
         END IF;
         SET CONSTRAINTS ALL IMMEDIATE;

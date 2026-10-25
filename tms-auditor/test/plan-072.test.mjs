@@ -74,6 +74,11 @@ async function prodShaped() {
     IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'authenticated') THEN CREATE ROLE authenticated NOLOGIN; END IF;
     IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'service_role') THEN CREATE ROLE service_role NOLOGIN; END IF;
   END $r$;`);
+  // Supabase's default privileges, as production has them (pg_default_acl of postgres on public functions, read
+  // 25/10: EXECUTE to anon, authenticated, service_role). Without them PGlite grants a new function to PUBLIC only,
+  // and a REVOKE that 072 forgot for anon, authenticated or service_role passed here and failed first on
+  // production (K1 review r3 #4). Before every fixture: 071 met the same defaults live.
+  await db.exec(`ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public GRANT EXECUTE ON FUNCTIONS TO anon, authenticated, service_role`);
   await db.exec(fixture('live-071.sql'));
   await db.exec(fixture('live-072.sql'));
   await db.exec(STUBS);
@@ -166,6 +171,26 @@ test('072 on a production-shaped PGlite copy', async (t) => {
     assert.equal(await errorOf(db, read('072_plan_functions.sql')), null, 'reversible: 072 applies again');
     assert.equal((await db.query(read('072_plan_functions_verify.sql'))).rows[0].applied, '072 in place');
   });
+});
+
+test('072 born closed under Supabase\'s default grants: a REVOKE it forgets refuses the whole block', async (t) => {
+  // K1 review r3 #4: each mutant drops ONE role from 072's REVOKE; the default privileges above keep that role's
+  // EXECUTE on every plan_h_*, and PART 5's proof must refuse the block (nothing kept)
+  const REVOKE = "FROM PUBLIC, anon, authenticated, service_role', v_f.sig);";
+  for (const [drop, want] of [
+    ['service_role', /072 proof: service_role executes \d+ plan_\* function\(s\), expected exactly the 16 public ones/],
+    ['anon', /072 proof: \d+ plan_\* function\(s\) executable by anon \/ authenticated/],
+    ['authenticated', /072 proof: \d+ plan_\* function\(s\) executable by anon \/ authenticated/]]) {
+    const db = await prodShaped();
+    const src = read('072_plan_functions.sql');
+    assert.equal(src.split(REVOKE).length, 2, 'the REVOKE line is in 072 once');
+    const mutant = src.replace(REVOKE, REVOKE.replace(drop === 'service_role' ? ', service_role' : `, ${drop}`, ''));
+    assert.notStrictEqual(mutant, src);
+    const msg = await errorOf(db, mutant);
+    assert.match(msg ?? 'applied', want, `without ${drop} in the REVOKE`);
+    assert.equal(await count(db, PLAN_FNS), 6, 'nothing kept');
+    t.diagnostic(`without ${drop}: ${msg}`);
+  }
 });
 
 test('072 mutation: without the explicit payroll delete, case B38 fails', async (t) => {

@@ -1038,6 +1038,7 @@ declare
   v_from jsonb := p->'from'; v_rt bigint; v_side text; v_pieces bigint[]; v_legs bigint[]; v_wait boolean := false;
   v_keep bigint; v_full jsonb; v_conf jsonb; v_first bigint[]; v_stops bigint[]; v_src bigint[]; v_tgt jsonb;
   v_put jsonb; v_reason text; v_x bigint; v_gone bigint[] := '{}'; r ct_round_trips%rowtype; v_chosen bigint[];
+  v_s jsonb; v_c jsonb; v_cand jsonb := '[]'; v_loc bigint; v_what text; v_n int; v_m int; v_swept bigint[];
 begin
   -- Spec 7: "Move to..." per row, in ONE transaction; also back to waiting (decision 15, C-21) and a whole side
   -- (C-22: a breakdown). What was executed stays when a side moves; a piece moved after execution is a correction
@@ -1052,7 +1053,7 @@ begin
   v_side := v_from->>'side';
   -- Finite inputs (coordinator 25/10): every id is bigint, so 'NaN' / 'Infinity' fail their cast (bad_input 22P02,
   -- before the list); a new target stop's window is refused in plan_h_stop_add ('stop.planned:finite', the one
-  -- guard), at execution: the dry run does not read the stops.
+  -- guard), at execution: the dry run reads the request's stops (K1 gap E, below), never their windows.
   if v_from ? 'piece_ids' then
     if v_side is not null or jsonb_typeof(v_from->'piece_ids') is distinct from 'array' then
       perform plan_h_raise('bad_input', 'from');
@@ -1160,6 +1161,51 @@ begin
      or exists (select 1 from shipment_pieces c where c.parent_piece_id = any (v_pieces) and c.deleted_at is null) then
     raise exception 'plan_move_pieces: the legs changed while the cycles were locked' using errcode = '40001';
   end if;
+  -- K1 gap E (handover r7 probe E, 25/10): the dry run gave a token for a move whose execution then refused its
+  -- stops. The request's stops onto an existing cycle are now resolved here as the execution resolves them, read
+  -- only and under the cycle locks, for the dry run and the execution alike: plan_h_target (keys, a ref present and
+  -- unique, a named stop_id = a live stop of the target cycle, else stop_gone), then plan_h_put -> plan_h_stop_at
+  -- for every moved piece in its order: its pickup where its first moved leg picks up (the chain: it waits there
+  -- once its moved legs are off) and its drop at its national end, among those stops - more than one there and not
+  -- exactly one on the target side = stop.ambiguous, none = pickup / drop. The rule of plan_h_stop_at is repeated on
+  -- (stop, place, side) because the new stops do not exist yet: a change to one is a change to both (B134 / B135
+  -- compare the dry run's refusal with the execution's). Still at execution only (decision 39): a new stop's
+  -- window and place (plan_h_stop_add), and a new_rt's stops and vehicle (plan_rt_create).
+  if not v_wait and v_keep is not null then
+    if p ? 'stops' and jsonb_typeof(p->'stops') <> 'array' then perform plan_h_raise('bad_input', 'stops'); end if;
+    for v_s in select value from jsonb_array_elements(coalesce(p->'stops', '[]')) loop
+      perform plan_h_keys(v_s, array['ref', 'stop_id', 'location_id', 'side', 'planned_from', 'planned_to'], 'stop');
+      if v_s->>'ref' is null or exists (select 1 from jsonb_array_elements(v_cand) c where c->>'ref' = v_s->>'ref') then
+        perform plan_h_raise('bad_input', 'stop.ref');
+      end if;
+      if v_s ? 'stop_id' then
+        select jsonb_build_object('ref', v_s->>'ref', 'id', s.id, 'location_id', s.location_id, 'side', s.side) into v_c
+          from rt_stops s where s.id = (v_s->>'stop_id')::bigint and s.rt_id = v_keep and s.deleted_at is null;
+        if v_c is null then perform plan_h_raise('stop_gone', v_s->>'stop_id'); end if;
+      else
+        v_c := jsonb_build_object('ref', v_s->>'ref', 'location_id', (v_s->>'location_id')::bigint,
+                                  'side', coalesce(v_s->>'side', p->'target'->>'side'));
+      end if;
+      v_cand := v_cand || jsonb_build_array(v_c);
+    end loop;
+    for v_x in select unnest(v_pieces) loop
+      for v_what, v_loc in
+        select t.w, t.loc from (values
+          (1, 'pickup', (select s.location_id from piece_legs l join rt_stops s on s.id = l.pickup_stop_id
+                          where l.id = any (v_legs) and l.piece_id = v_x order by l.leg_no limit 1)),
+          (2, 'drop', (select vs.nat_to_location_id from shipment_pieces sp join v_shipments vs on vs.shipment_id = sp.shipment_id
+                        where sp.id = v_x))) t(o, w, loc)
+         order by t.o loop
+        -- one stop named twice (two refs, one stop_id) is one stop, as in plan_h_stop_at
+        select count(distinct coalesce('i' || (c->>'id'), 'r' || (c->>'ref'))),
+               count(distinct coalesce('i' || (c->>'id'), 'r' || (c->>'ref'))) filter (where c->>'side' = p->'target'->>'side')
+          into v_n, v_m
+          from jsonb_array_elements(v_cand) c where (c->>'location_id')::bigint = v_loc;
+        if v_n > 1 and v_m <> 1 then perform plan_h_raise('bad_input', 'stop.ambiguous:' || v_loc); end if;
+        if v_n = 0 then perform plan_h_raise('bad_input', format('%s:%s@%s', v_what, v_x, v_loc)); end if;
+      end loop;
+    end loop;
+  end if;
   v_full := plan_h_drop_consequences(v_legs, v_keep, v_chosen);
   v_conf := plan_h_confirm('plan_move_pieces', array_to_string(v_legs, ',') || '>' || coalesce(p->'target', 'null'::jsonb)::text,
                            v_full, p, p_role);
@@ -1179,7 +1225,7 @@ begin
     v_put := plan_h_put((select jsonb_agg(jsonb_build_object('piece_id', x) order by x) from unnest(v_pieces) x),
                         v_tgt, p_actor, p_role, coalesce(v_first, '{}'));
   end if;
-  perform plan_h_stops_sweep(v_stops, v_reason, p_actor, p_role);
+  v_swept := plan_h_stops_sweep(v_stops, v_reason, p_actor, p_role);
   for v_x in select unnest(v_src) loop
     if plan_h_rt_cancel_if_empty(v_x, v_reason, p_actor, p_role) then
       v_gone := v_gone || v_x;
@@ -1189,7 +1235,11 @@ begin
   end loop;
   perform plan_h_finish();
   return plan_h_ok('plan_move_pieces',
-    jsonb_build_object('rt_id', v_put->'rt_id', 'stop_ids', coalesce(v_put->'stop_ids', '[]'::jsonb),
+    -- K1 gap E: a named stop that this move swept (it lost its last leg here) is not listed as one of its stops
+    jsonb_build_object('rt_id', v_put->'rt_id',
+                       'stop_ids', (select coalesce(jsonb_agg(js.v order by (js.v #>> '{}')::bigint), '[]'::jsonb)
+                                      from jsonb_array_elements(coalesce(v_put->'stop_ids', '[]'::jsonb)) js(v)
+                                     where not ((js.v #>> '{}')::bigint = any (v_swept))),
                        'leg_ids', coalesce(v_put->'leg_ids', '[]'::jsonb), 'piece_ids', to_jsonb(v_pieces),
                        'dropped_leg_ids', to_jsonb(v_legs), 'cancelled_rt_ids', to_jsonb(v_gone)),
     v_put->'warnings', v_put->'notice_ids');
