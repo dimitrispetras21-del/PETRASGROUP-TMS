@@ -3,7 +3,7 @@
 // Production shape = the same as plan-072.test.mjs (the 22/9 columns + live-071.sql + live-072.sql, 071 and 071b as
 // executed 22/10) + 072 from drafts/ (or worker/migrations/ after F2's K3), then 072b. Never edit a fixture by hand.
 // What it proves: the guards hold the texts 072b was written against; the dry run keeps nothing; 072b applies with
-// +4 triggers and B-54 following; the verify row; born closed for the API roles; the 120 rules; F2's 203 rules, 071's
+// +4 triggers and B-54 following; the verify row; born closed for the API roles; the 120 rules; F2's 237 rules, 071's
 // 56 and 071b's 8 still pass ON TOP of 072b (the EXCLUDE moved, the 16 hooks changed nothing F2 decided); the three
 // auditor checks go the PRODUCTION path (review R4, finding 1): each passes the repo lint (lintSql) and the in-DB
 // guard (monitoring.check_sql_guard), is seeded as 073b will seed it and run by monitoring.run_checks as
@@ -200,8 +200,8 @@ test('072b on a production-shaped PGlite copy', async (t) => {
     assert.equal(await count(db, `SELECT count(*)::int AS n FROM rt_vehicle_segments`), 0, 'the test keeps nothing');
   });
 
-  await t.test('F2 still holds ON TOP of 072b: 072 rules 203, 071 rules 56, 071b rules 8', async () => {
-    for (const [file, name, n, own] of [['072_plan_functions_test.sql', '072', 203, read], ['071_plan_schema_test.sql', '071', 56, readDone],
+  await t.test('F2 still holds ON TOP of 072b: 072 rules 237, 071 rules 56, 071b rules 8', async () => {
+    for (const [file, name, n, own] of [['072_plan_functions_test.sql', '072', 237, read], ['071_plan_schema_test.sql', '071', 56, readDone],
       ['071b_plan_one_vehicle_test.sql', '071b', 8, readDone]]) {
       const msg = await errorOf(db, own(file));
       const m = rules(name).exec(msg ?? '');
@@ -282,7 +282,7 @@ test('072b on a production-shaped PGlite copy', async (t) => {
     assert.equal(await count(db, `SELECT red_value AS n FROM monitoring.checks WHERE id = 'B-54'`), triggers);
     assert.equal(await count(db, `SELECT count(*)::int AS n FROM pg_class WHERE relname = 'rt_vehicle_segments'`), 0);
     const m = rules('072').exec(await errorOf(db, read('072_plan_functions_test.sql')) ?? '');
-    assert.deepEqual([Number(m[1]), Number(m[2])], [203, 0], 'F2 rules after the rollback');
+    assert.deepEqual([Number(m[1]), Number(m[2])], [237, 0], 'F2 rules after the rollback');
     assert.equal(await errorOf(db, src), null, 'reversible: 072b applies again');
     assert.equal((await db.query(read('072b_plan_vehicle_segments_verify.sql'))).rows[0].applied, '072b in place');
   });

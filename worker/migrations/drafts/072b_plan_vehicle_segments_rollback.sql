@@ -164,7 +164,11 @@ $h$;
 $h$;
   h_sweep_a CONSTANT text := $h$  perform plan_h_stops_sweep(v_stops, v_reason, p_actor, p_role);
 $h$;
-  h_mv_b CONSTANT text := $h$  perform plan_h_stops_sweep(v_stops, v_reason, p_actor, p_role);
+  -- the implemented 072 (83bb1076, K1 gap E) keeps what the sweep removed (v_swept) in plan_move_pieces; plan_delete
+  -- still PERFORMs it, so hook 14 has its own place
+  h_mv_sweep_a CONSTANT text := $h$  v_swept := plan_h_stops_sweep(v_stops, v_reason, p_actor, p_role);
+$h$;
+  h_mv_b CONSTANT text := $h$  v_swept := plan_h_stops_sweep(v_stops, v_reason, p_actor, p_role);
   -- 072b: the handovers the list named go after the token, on the narrowed window (owner question 7 = b)
   perform plan_h_seg_cut(v_full, 'plan_move_pieces', p_actor, p_role);
 $h$;
@@ -213,33 +217,33 @@ BEGIN
       (2, 'public.plan_h_finish()', h_fin_a, h_fin_b,
        'c398052b091723cdd9f7ae47516f8aa2', '59d88ec85661d3ef2ac957aecd0e0fcd'),
       (3, 'public.plan_rt_update(jsonb,text,text)', h_upd_decl_a, h_upd_decl_b,
-       'e1aa3e103d3bbf4abd5b4a37b1a79829', '11210d4b90f18b6c9182c17852b04491'),
+       '0cce9dd2a29dd9ea35ac633f6338fca1', '77e5bd7c11153bb3eda260b844b6eccf'),
       (4, 'public.plan_rt_update(jsonb,text,text)', h_upd_keys_a, h_upd_keys_b,
-       '11210d4b90f18b6c9182c17852b04491', '31c03a0afb1b148f2193406e20392a62'),
+       '77e5bd7c11153bb3eda260b844b6eccf', 'ee540138e1e2291febacba46a392b73e'),
       (5, 'public.plan_rt_update(jsonb,text,text)', h_upd_bef_a, h_upd_bef_b,
-       '31c03a0afb1b148f2193406e20392a62', 'cf96ade3c2061d3ba3c82ab39cb95da3'),
+       'ee540138e1e2291febacba46a392b73e', '1f7b330728422745d3fb76530be6c3f7'),
       (6, 'public.plan_rt_update(jsonb,text,text)', h_upd_a, h_upd_b,
-       'cf96ade3c2061d3ba3c82ab39cb95da3', 'cc2047f9e750aa2702f5c116af54df2f'),
+       '1f7b330728422745d3fb76530be6c3f7', '79bc338029a7a7284e9b09c4c331e44b'),
       (7, 'public.plan_rt_update(jsonb,text,text)', h_upd_next_a, h_upd_next_b,
-       'cc2047f9e750aa2702f5c116af54df2f', '284f032e67e4a6db0234430515b415fb'),
+       '79bc338029a7a7284e9b09c4c331e44b', '4e93cd9e1dffee25cab15b0811e1eeff'),
       (8, 'public.plan_rt_update(jsonb,text,text)', h_upd_dry_a, h_upd_dry_b,
-       '284f032e67e4a6db0234430515b415fb', 'cb791820d156677263083e6d97aef6f5'),
+       '4e93cd9e1dffee25cab15b0811e1eeff', 'ed441ff30d14b5aca00d2655b84b24fd'),
       (9, 'public.plan_rt_clear(jsonb,text,text)', h_clr_a, h_clr_b,
-       'a46aae29841808f39b83b7737e7c6315', 'ecead9245b3e4dc90d31a357f2d8c4ef'),
+       'f33127a05d3df00f850e78eb40bab4aa', '07452fbac4ac9fe8c4dddd0d35b256f3'),
       (10, 'public.plan_board(date,text)', h_brd_a, h_brd_b,
-       '2a600c21f1aa75d84d35bb69235350cc', '93ebc7aa9dd6b4a1eee1f9b916738807'),
+       'ec6634b5daf4f4145df417cc282f2741', '2e030bfc158de8a26d5814f618d1f5ac'),
       (11, 'public.plan_vs_state(bigint[])', h_vss_a, h_vss_b,
        '8e50d9518eeed0ef688b0d8e13f6dff4', '99175b659207c5019f1599ed389f1895'),
       (12, 'public.plan_local_loading(jsonb,text,text)', h_ll_a, h_ll_b,
-       'd3107f05bf6ed170e673cccda48b4cb6', '6c56db094458841598db079ad7844515'),
+       '26ba9a989ed0d8ec36799086f36bfb2e', 'f40c4a548ec192af781ef8e62d3227a5'),
       (13, 'public.plan_h_drop_consequences(bigint[],bigint,bigint[])', h_drop_a, h_drop_b,
        'f5641bb97562310cbbc57d71e9894c26', 'ce5de5793080e0c5be1e886defcb0b0e'),
-      (14, 'public.plan_move_pieces(jsonb,text,text)', h_sweep_a, h_mv_b,
-       'b6b939f4f7a63d5a464b45082e83f2d7', 'b67eafc88f2b3a1cbad41776c57d6f38'),
+      (14, 'public.plan_move_pieces(jsonb,text,text)', h_mv_sweep_a, h_mv_b,
+       'c053d6aa934e21f4c8411c7974a81a8e', '7b1efcedc150f6fd6e44c064541b09a0'),
       (15, 'public.plan_delete(jsonb,text,text)', h_sweep_a, h_del_b,
-       'c85450e28813d48023cb7f149949639c', '7b5c7a31f19d1d38ef1fc115cc3701ec'),
+       '5fc0d0fca96fd8854bb8bb4faaa0145a', '5aed6ae2fd3bf8f41f85744951beeee8'),
       (16, 'public.plan_move_pieces(jsonb,text,text)', h_mv_list_a, h_mv_list_b,
-       'b67eafc88f2b3a1cbad41776c57d6f38', '856da644f07ea356c2ecb5dd909fcc8d')
+       '7b1efcedc150f6fd6e44c064541b09a0', '31df6bcb964a602edb13ea7febeefe22')
     ) v(k, sig, a, b, m0, m1) ORDER BY k DESC LOOP
     v_oid := to_regprocedure(v_fn.sig);
     SELECT prosrc, proacl::text, prosecdef, provolatile, prolang, proconfig

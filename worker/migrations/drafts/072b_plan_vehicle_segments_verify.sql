@@ -27,14 +27,14 @@ SELECT
   (SELECT count(*) FROM (VALUES
       ('public.plan_h_busy(text,bigint,timestamptz,timestamptz,bigint)', '99d86d5c59c88264b4825b5410c09a59'),
       ('public.plan_h_finish()', '59d88ec85661d3ef2ac957aecd0e0fcd'),
-      ('public.plan_rt_update(jsonb,text,text)', 'cb791820d156677263083e6d97aef6f5'),
-      ('public.plan_rt_clear(jsonb,text,text)', 'ecead9245b3e4dc90d31a357f2d8c4ef'),
-      ('public.plan_board(date,text)', '93ebc7aa9dd6b4a1eee1f9b916738807'),
+      ('public.plan_rt_update(jsonb,text,text)', 'ed441ff30d14b5aca00d2655b84b24fd'),
+      ('public.plan_rt_clear(jsonb,text,text)', '07452fbac4ac9fe8c4dddd0d35b256f3'),
+      ('public.plan_board(date,text)', '2e030bfc158de8a26d5814f618d1f5ac'),
       ('public.plan_vs_state(bigint[])', '99175b659207c5019f1599ed389f1895'),
-      ('public.plan_local_loading(jsonb,text,text)', '6c56db094458841598db079ad7844515'),
+      ('public.plan_local_loading(jsonb,text,text)', 'f40c4a548ec192af781ef8e62d3227a5'),
       ('public.plan_h_drop_consequences(bigint[],bigint,bigint[])', 'ce5de5793080e0c5be1e886defcb0b0e'),
-      ('public.plan_move_pieces(jsonb,text,text)', '856da644f07ea356c2ecb5dd909fcc8d'),
-      ('public.plan_delete(jsonb,text,text)', '7b5c7a31f19d1d38ef1fc115cc3701ec')) v(sig, m)
+      ('public.plan_move_pieces(jsonb,text,text)', '31df6bcb964a602edb13ea7febeefe22'),
+      ('public.plan_delete(jsonb,text,text)', '5aed6ae2fd3bf8f41f85744951beeee8')) v(sig, m)
     WHERE (SELECT md5(prosrc) FROM pg_proc WHERE oid = to_regprocedure(v.sig)) = v.m) AS hooks_in_place,
   (SELECT count(*) FROM (VALUES
       ('public.dl_sync_from_rt()', '331cea3a8987b74a9b0add698df9b158'),
@@ -73,7 +73,7 @@ SELECT
       ('public.plan_h_v1_warn(bigint,date,date,bigint)', 'a99553e279628b5795990c08bcb01db6'),
       ('public.plan_h_rt_cancel_if_empty(bigint,text,text,text)', '2f3cdfe09caa8c548e5a30e0f06c84fa'),
       ('public.plan_h_rt_consequences(bigint)', 'cddea3a5fb20a563283a16db3b50f133'),
-      ('public.plan_rt_create(jsonb,text,text)', '8a6f19ff9d3c400eb2a31722226332fa')
+      ('public.plan_rt_create(jsonb,text,text)', '37c04d5803944fdeaf9d0534a0b83506')
     ) v(sig, m)
     WHERE (SELECT md5(prosrc) FROM pg_proc WHERE oid = to_regprocedure(v.sig)) IS DISTINCT FROM v.m) AS changed_live,
   (SELECT count(*) FROM pg_proc p WHERE p.pronamespace = 'public'::regnamespace
