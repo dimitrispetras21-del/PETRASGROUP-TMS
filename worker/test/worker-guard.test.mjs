@@ -86,4 +86,8 @@ test('WORKSHOPS fields are counted inside the WORKSHOPS block: Country missing t
 test('bad usage → exit 2, nothing counted', () => {
   assert.equal(run(SRC).code, 2);
   assert.equal(run(SRC, 2).code, 2);
+  // the cross-cutting input rule (coordinator 25/10): a non-finite --plan is bad usage too
+  assert.equal(run(SRC, 'NaN').code, 2);
+  assert.equal(run(SRC, 'Infinity').code, 2);
+  assert.equal(run(SRC, '-Infinity').code, 2);
 });
