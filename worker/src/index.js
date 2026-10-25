@@ -5427,6 +5427,271 @@ async function handleCosts(request, url, origin, env) {
   }
 }
 __name(handleCosts, "handleCosts");
+// src/routes/plan.js — NATIONAL v5 /plan/* (F2, owner 21–22/10/2026; spec
+// docs/superpowers/specs/2026-10-21-national-v5-design.md §2.1, §3, §7).
+// Every v5 write is ONE plan_* RPC per request: the 071/071b rules are
+// DEFERRED, so they speak at that RPC's COMMIT — a second RPC would run after
+// the first one had already committed. The DB writes the audit_log (actor =
+// caller.sub, role = caller.role); this handler writes none of its own (one
+// trace, αρχή 3). The DB also cuts amounts by p_role (decision 9; price and
+// partner rate are for every role, decision 41): this handler never filters
+// fields, it only refuses to forward an `amount` to a role that must not see
+// one (a tripwire, not a second rule).
+// Born closed (αρχή 5): deny-by-default per resource, no "*" ever — the v5
+// tables are NOT in TABLES, so the facade's wildcard rows can never reach
+// them (trap 3). The declaration below is the deploy guard marker (CLAUDE.md
+// «Ο WORKER»): exactly one, at column 0, and in use by planCan — esbuild drops
+// an unused top-level var and the guard would no longer find it in the bundle.
+var PLAN_PERMS = {
+  // Decision 41 (owner 23/10, «everyone has rights»; the locked rule of 23/8:
+  // «all roles edit broadly for now, DELETE stays narrow»): every role reads
+  // and writes every act of the board, with its dry run (decision 26). The
+  // delete-type acts — rt-clear and delete, and later the removal of a vehicle
+  // handover (its own plan) — stay owner + dispatcher. No money here: the DB
+  // cuts payroll/DKV amounts by role (decision 9), the tripwire below refuses
+  // to forward one; price and partner rate are for every role (decision 41).
+  owner: { board: ["GET"], "vs-state": ["GET"], notices: ["GET"], "notices-read": ["POST"], orders: ["POST", "PATCH"], legs: ["POST"], move: ["POST"], split: ["POST"], rt: ["PATCH"], "rt-clear": ["POST"], delete: ["POST"], "vs-day": ["POST"], "vs-place": ["POST"], "local-loading": ["POST"] },
+  dispatcher: { board: ["GET"], "vs-state": ["GET"], notices: ["GET"], "notices-read": ["POST"], orders: ["POST", "PATCH"], legs: ["POST"], move: ["POST"], split: ["POST"], rt: ["PATCH"], "rt-clear": ["POST"], delete: ["POST"], "vs-day": ["POST"], "vs-place": ["POST"], "local-loading": ["POST"] },
+  management: { board: ["GET"], "vs-state": ["GET"], notices: ["GET"], "notices-read": ["POST"], orders: ["POST", "PATCH"], legs: ["POST"], move: ["POST"], split: ["POST"], rt: ["PATCH"], "vs-day": ["POST"], "vs-place": ["POST"], "local-loading": ["POST"] },
+  accountant: { board: ["GET"], "vs-state": ["GET"], notices: ["GET"], "notices-read": ["POST"], orders: ["POST", "PATCH"], legs: ["POST"], move: ["POST"], split: ["POST"], rt: ["PATCH"], "vs-day": ["POST"], "vs-place": ["POST"], "local-loading": ["POST"] },
+  warehouse: { board: ["GET"], "vs-state": ["GET"], notices: ["GET"], "notices-read": ["POST"], orders: ["POST", "PATCH"], legs: ["POST"], move: ["POST"], split: ["POST"], rt: ["PATCH"], "vs-day": ["POST"], "vs-place": ["POST"], "local-loading": ["POST"] }
+};
+function planCan(role, resource, method) {
+  const r = PLAN_PERMS[role];
+  return !!(r && r[resource] && r[resource].includes(method));
+}
+__name(planCan, "planCan");
+// Writes stay closed until day L (decision 22, owner 22/10): a test click
+// before L would be the first real v5 row, and the way back (spec §2.2) exists
+// only while there is none. Reads and dry runs stay open. F5 sets this to
+// true in the SAME deploy that turns WN_V5 on — nowhere else (no env var:
+// one switch, in the source that is deployed, αρχή 3).
+var PLAN_WRITES_OPEN = false;
+// One row per route: method + path → resource (PLAN_PERMS) + RPC. `dryRun`
+// marks the four RPCs that take {"dry_run": true} and write nothing then;
+// ONLY those pass the closed switch with it — any other RPC would ignore the
+// flag and write (plan_orders_create has no dry run).
+// `idKey`: the path id goes into p under that key; a different id in the body
+// is a 400, never silently overridden (αρχή 1).
+var PLAN_ROUTES = [
+  { method: "GET", re: /^\/plan\/board$/, resource: "board", rpc: "plan_board", read: planBoardArgs },
+  { method: "GET", re: /^\/plan\/vs-state$/, resource: "vs-state", rpc: "plan_vs_state", read: planVsStateArgs },
+  { method: "GET", re: /^\/plan\/notices$/, resource: "notices", rpc: "plan_notices_list", read: planNoticesArgs },
+  { method: "POST", re: /^\/plan\/notices\/(\d+)\/read$/, resource: "notices-read", rpc: "plan_notice_read", idKey: "notice_id" },
+  { method: "POST", re: /^\/plan\/orders$/, resource: "orders", rpc: "plan_orders_create" },
+  { method: "PATCH", re: /^\/plan\/orders\/(\d+)$/, resource: "orders", rpc: "plan_order_update", idKey: "nat_order_id" },
+  { method: "POST", re: /^\/plan\/legs$/, resource: "legs", rpc: (body) => body.group !== void 0 ? "plan_put_group" : "plan_put_pieces" },
+  { method: "POST", re: /^\/plan\/move$/, resource: "move", rpc: "plan_move_pieces", dryRun: true },
+  { method: "POST", re: /^\/plan\/pieces\/split$/, resource: "split", rpc: "plan_split_piece" },
+  { method: "PATCH", re: /^\/plan\/rt\/(\d+)$/, resource: "rt", rpc: "plan_rt_update", idKey: "rt_id", dryRun: true },
+  { method: "POST", re: /^\/plan\/rt\/(\d+)\/clear$/, resource: "rt-clear", rpc: "plan_rt_clear", idKey: "rt_id", dryRun: true },
+  { method: "POST", re: /^\/plan\/delete$/, resource: "delete", rpc: "plan_delete", dryRun: true },
+  { method: "POST", re: /^\/plan\/vs\/day$/, resource: "vs-day", rpc: "plan_vs_set_day" },
+  { method: "POST", re: /^\/plan\/vs\/place$/, resource: "vs-place", rpc: "plan_vs_set_place" },
+  { method: "POST", re: /^\/plan\/local-loading$/, resource: "local-loading", rpc: "plan_local_loading" }
+];
+// Reads: the query string → RPC args, or a 400 before any DB call.
+// The week is a TMS week: Saturday to Friday (TmsWeek), named by its Saturday.
+function planBoardArgs(url, caller) {
+  const week = url.searchParams.get("week") || "";
+  const d = /^\d{4}-\d{2}-\d{2}$/.test(week) ? new Date(`${week}T00:00:00Z`) : null;
+  if (!d || isNaN(d) || d.toISOString().slice(0, 10) !== week || d.getUTCDay() !== 6) {
+    return { error: "Η εβδομάδα δίνεται με το Σάββατό της (ΕΕΕΕ-ΜΜ-ΗΗ)", code: "bad_week" };
+  }
+  return { args: { p_week: week, p_role: caller.role } };
+}
+__name(planBoardArgs, "planBoardArgs");
+function planVsStateArgs(url) {
+  const raw = (url.searchParams.get("order_ids") || "").split(",").map((s) => s.trim()).filter(Boolean);
+  if (!raw.length || raw.length > 500 || raw.some((s) => !/^[1-9]\d{0,14}$/.test(s))) {
+    return { error: "order_ids: 1 έως 500 θετικοί ακέραιοι, χωρισμένοι με κόμμα", code: "bad_order_ids" };
+  }
+  return { args: { p_order_ids: [...new Set(raw.map(Number))] } };
+}
+__name(planVsStateArgs, "planVsStateArgs");
+function planNoticesArgs(url, caller) {
+  const desk = url.searchParams.get("desk") || "";
+  if (desk !== "intl" && desk !== "natl") return { error: "desk: intl ή natl", code: "bad_desk" };
+  return { args: { p_desk: desk, p_role: caller.role } };
+}
+__name(planNoticesArgs, "planNoticesArgs");
+// ONE error shape for every non-2xx of /plan/* (decision 23): the F4 client
+// (core/plan-api.js) reads error.code to react and toasts error.message.
+function planError(status, type, code, message, origin, env) {
+  return jsonOk({ error: { type, code, message } }, origin, env, status);
+}
+__name(planError, "planError");
+var PLAN_MONEY_ROLES = ["owner", "accountant"];
+// The keys the DB cuts for every other role (072 plan_h_strip_amounts) - the SAME list, held equal by
+// test/plan-contract.test.mjs: an advance or an invoice number is money too (decision 34).
+var PLAN_MONEY_KEYS = ["amount", "advance", "expenses", "invoice_number"];
+function planHasAmount(v) {
+  if (Array.isArray(v)) return v.some(planHasAmount);
+  if (v && typeof v === "object") {
+    return PLAN_MONEY_KEYS.some((k) => Object.prototype.hasOwnProperty.call(v, k)) || Object.values(v).some(planHasAmount);
+  }
+  return false;
+}
+__name(planHasAmount, "planHasAmount");
+// Cross-cutting input rule (coordinator 25/10): JSON.parse reads 1e999 as Infinity, and JSON.stringify then
+// sends it to the DB as null: a silent change of meaning (a partner rate «cleared», a price «missing») that
+// no isfinite() in 072 can see any more. So the Worker refuses it, before any DB call (αρχή 1). It returns
+// the path of the first non-finite number, or null.
+function planNonFinite(v, at) {
+  if (typeof v === "number") return Number.isFinite(v) ? null : at || "body";
+  if (Array.isArray(v)) {
+    for (let i = 0; i < v.length; i++) {
+      const r = planNonFinite(v[i], `${at}[${i}]`);
+      if (r !== null) return r;
+    }
+    return null;
+  }
+  if (v && typeof v === "object") {
+    for (const [k, x] of Object.entries(v)) {
+      const r = planNonFinite(x, at ? `${at}.${k}` : k);
+      if (r !== null) return r;
+    }
+  }
+  return null;
+}
+__name(planNonFinite, "planNonFinite");
+// plan_rt_update's dry run SHOWS the rule a change would break as preview.conflict {code, sqlstate, detail}
+// (Figma D4, a 200). Its Greek lives only in the two tables above, so it is added here: F4 keeps no copy of
+// the texts (αρχή 3), and a rule the tables do not know is still named.
+function planConflictMessage(c) {
+  const code = String((c && c.code) || "");
+  if (Object.prototype.hasOwnProperty.call(PLAN_RULE_TEXT, code)) {
+    const detail = c.detail ? String(c.detail).trim().slice(0, 120) : "";
+    return detail ? `${PLAN_RULE_TEXT[code]} (${detail})` : PLAN_RULE_TEXT[code];
+  }
+  if (Object.prototype.hasOwnProperty.call(PLAN_CHECK_TEXT, code)) return PLAN_CHECK_TEXT[code];
+  return `Κανόνας βάσης ${code || "χωρίς κωδικό"}`;
+}
+__name(planConflictMessage, "planConflictMessage");
+async function handlePlan(request, url, origin, env) {
+  // a malformed token makes jwtVerify throw (atob): a 401 in the /plan/* shape, never a CF 1101 without CORS
+  let caller = null;
+  try { caller = await getCaller(request, env); } catch { caller = null; }
+  if (!caller) return planError(401, "AUTH", "unauthorized", "Η σύνδεση έληξε — συνδέσου ξανά", origin, env);
+  const method = request.method;
+  let route = null;
+  let match = null;
+  for (const r of PLAN_ROUTES) {
+    if (r.method !== method) continue;
+    match = r.re.exec(url.pathname);
+    if (match) { route = r; break; }
+  }
+  if (!route) return planError(404, "NOT_FOUND", "no_route", `Άγνωστη διαδρομή: ${method} ${url.pathname}`, origin, env);
+  if (!planCan(caller.role, route.resource, method)) {
+    return planError(403, "FORBIDDEN", "forbidden", "Ο ρόλος σου δεν έχει αυτή την πράξη στο Εβδομαδιαίο Εθνικών", origin, env);
+  }
+  const name = `${method} /plan/${route.resource}`;
+  // No top-level catch in fetch(): anything thrown out of here would be a CF
+  // 1101 without CORS, which the browser reads as «network error» (αρχή 1).
+  let fn = null;
+  // true once a write (not a read, not a dry run) is sent: if its answer is lost, its outcome is unknown
+  let maybeWritten = false;
+  try {
+    let args;
+    if (route.read) {
+      const a = route.read(url, caller);
+      if (a.error) return planError(400, "BAD_REQUEST", a.code, a.error, origin, env);
+      fn = route.rpc;
+      args = a.args;
+    } else {
+      const text = await request.text();
+      let body = null;
+      try { body = text.trim() ? JSON.parse(text) : {}; } catch { body = null; }
+      if (!body || typeof body !== "object" || Array.isArray(body)) {
+        return planError(400, "BAD_REQUEST", "bad_json", "Το σώμα του αιτήματος δεν είναι αντικείμενο JSON", origin, env);
+      }
+      const nonFinite = planNonFinite(body, "");
+      if (nonFinite !== null) {
+        return planError(400, "BAD_REQUEST", "bad_input", `${PLAN_RULE_TEXT.bad_input} (${nonFinite.slice(0, 80)}:finite)`, origin, env);
+      }
+      if (route.idKey) {
+        const id = Number(match[1]);
+        // a path id of 400 digits is Infinity (or an unsafe integer): the same rule, never a rounded id
+        if (!Number.isSafeInteger(id)) {
+          return planError(400, "BAD_REQUEST", "bad_input", `${PLAN_RULE_TEXT.bad_input} (${route.idKey}:finite)`, origin, env);
+        }
+        if (body[route.idKey] !== void 0 && Number(body[route.idKey]) !== id) {
+          return planError(400, "BAD_REQUEST", "id_mismatch", `Το ${route.idKey} του σώματος διαφέρει από τη διαδρομή`, origin, env);
+        }
+        body = { ...body, [route.idKey]: id };
+      }
+      const dry = route.dryRun === true && body.dry_run === true;
+      if (!PLAN_WRITES_OPEN && !dry) {
+        return planError(409, "WRITES_CLOSED", "writes_closed", "Οι αλλαγές στο Εβδομαδιαίο Εθνικών ανοίγουν την ημέρα της μετάβασης — ως τότε μόνο ανάγνωση και προεπισκόπηση", origin, env);
+      }
+      fn = typeof route.rpc === "function" ? route.rpc(body) : route.rpc;
+      args = { p: body, p_actor: caller.sub, p_role: caller.role };
+      maybeWritten = !dry;
+    }
+    const out = await dbRpc(env, fn, args);
+    if (!PLAN_MONEY_ROLES.includes(caller.role) && planHasAmount(out)) {
+      console.error(`PLAN ${name}: the DB answered an amount to role ${caller.role} — not forwarded`);
+      return planError(500, "SERVER", "amount_leak", "Η απάντηση της βάσης είχε ποσά για ρόλο χωρίς δικαίωμα — δεν στάλθηκε· ενημέρωσε τον Δημήτρη", origin, env);
+    }
+    if (out && out.preview && out.preview.conflict && typeof out.preview.conflict === "object") {
+      out.preview.conflict.message = planConflictMessage(out.preview.conflict);
+    }
+    return jsonOk(out, origin, env);
+  } catch (e) {
+    const rule = stockRuleError(e);
+    if (rule) {
+      // need_token: the act needs the dry-run list first — 428, so the F4
+      // client opens the list instead of toasting a refusal.
+      return planError(rule.code === "need_token" ? 428 : 422, rule.type || "STOCK_RULE", rule.code, rule.message, origin, env);
+    }
+    const pg = e && e.pg && typeof e.pg === "object" ? e.pg : null;
+    // PostgREST 404 PGRST202 = the function is not in its schema cache: this
+    // Worker is ahead of 072 (or 072 was rolled back). Named, never a 500
+    // (pattern schemaBehind060).
+    // A 42883 naming the RPC itself is the same, between a rollback of 072 and PostgREST's cache reload (a 42883
+    // of an inner function is a bug of 072 and stays the 500 path below).
+    const own = !!(pg && fn && new RegExp(`\\bfunction (?:public\\.)?${fn}\\b`).test(String(pg.message || "")));
+    if (pg && (pg.code === "PGRST202" || (pg.code === "42883" && own))) {
+      console.error(`PLAN ${name}: ${fn} missing in the DB (072)`);
+      return planError(503, "SCHEMA_BEHIND", "schema_behind", "Η βάση δεν έχει ακόμη το migration 072 (Εβδομαδιαίο Εθνικών) — ενημέρωσε τον Δημήτρη", origin, env);
+    }
+    // 42501 on the RPC itself: 072 is there but the GRANT of its PART 5 is not (a manual REVOKE would do it)
+    if (pg && pg.code === "42501" && own) {
+      console.error(`PLAN ${name}: no EXECUTE on ${fn}`);
+      return planError(503, "SCHEMA_BEHIND", "db_grant", `Η βάση δεν δίνει δικαίωμα κλήσης στο ${fn} — ενημέρωσε τον Δημήτρη`, origin, env);
+    }
+    // A lock lost to a concurrent write (deadlock 40P01, serialization 40001,
+    // lock_timeout 55P03): nothing was kept — a 409, never the 500 path. The
+    // user presses again: no screen re-sends a /plan/* write by itself and
+    // this handler never calls the RPC twice (decision 44, owner 23/10).
+    if (pg && /^(40P01|40001|55P03)$/.test(String(pg.code || ""))) {
+      console.error(`PLAN ${name}: ${pg.code} (concurrent change)`);
+      return planError(409, "PLAN_RULE", "busy_retry", "Ταυτόχρονη αλλαγή από άλλον χρήστη — τίποτα δεν γράφτηκε· ξαναδοκίμασε", origin, env);
+    }
+    // statement_timeout (PostgREST, 8 s): slow, not broken — 503, try again later.
+    if (pg && String(pg.code || "") === "57014") {
+      console.error(`PLAN ${name}: statement timeout`);
+      return planError(503, "SERVER", "slow", "Η βάση άργησε να απαντήσει — τίποτα δεν γράφτηκε· ξαναδοκίμασε σε λίγο", origin, env);
+    }
+    // Any other named DB constraint inside /plan/* is a business refusal the
+    // texts above do not know yet: a loud 422 naming it, never the retried
+    // 500. Only here — the facade/costs paths keep stockRuleError's null.
+    if (pg && /^23(514|505|503|P01)$/.test(String(pg.code || ""))) {
+      const n = /constraint "([^"]+)"/.exec(String(pg.message || ""));
+      const cname = n ? n[1] : "db_rule";
+      return planError(422, "PLAN_RULE", cname, n ? `Κανόνας βάσης ${cname}` : `Κανόνας βάσης: ${String(pg.message || "").slice(0, 200)}`, origin, env);
+    }
+    console.error(`PLAN ${name}`, e && e.message);
+    if (maybeWritten) {
+      // the link may have dropped AFTER the COMMIT: a write never claims «not done» (αρχή 1); the F4 client
+      // must not send it again by itself, and the user re-presses the SAME form, so the same request_id replays
+      // (decision 44). Never «refresh»: that would close the form and mint a new id = a second creation.
+      return planError(500, "SERVER", "plan_unknown", `Η πράξη ${name} μπορεί να αποθηκεύτηκε — έλεγξε πρώτα στο Εβδομαδιαίο Εθνικών αν φαίνεται, και μόνο αν λείπει ξαναπάτησε το ίδιο κουμπί· ενημέρωσε τον Δημήτρη`, origin, env);
+    }
+    return planError(500, "SERVER", "plan_failed", `Η πράξη ${name} δεν ολοκληρώθηκε — ενημέρωσε τον Δημήτρη`, origin, env);
+  }
+}
+__name(handlePlan, "handlePlan");
 
 // src/routes/performance.js — ΕΠΙΔΟΣΗ ΠΑΡΑΔΟΣΗΣ (3/9/2026)
 // Read-only διαδρομή προς τα τρία views του 2026-08-30_delivery_views.sql.
@@ -6464,6 +6729,9 @@ var index_default = {
     }
     if (url.pathname.startsWith("/costs/")) {
       return handleCosts(request, url, origin, env);
+    }
+    if (url.pathname.startsWith("/plan/")) {
+      return handlePlan(request, url, origin, env);
     }
     if (url.pathname.startsWith("/pallets/")) {
       return handlePallets(request, url, origin, env);

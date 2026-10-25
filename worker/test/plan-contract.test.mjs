@@ -173,3 +173,27 @@ test('plan: hint is the marker whatever SQLSTATE; unknown code still loud; no de
   assert.ok(long.message.length <= W.PLAN_RULE_TEXT.chain.length + 3 + 120, 'detail capped at 120 chars');
   assert.equal(W.stockRuleError({ pg: { code: '23514', hint: 'plan:toString', message: 'x' } }).message.startsWith('Ο κανόνας toString'), true, 'prototype key is not a text');
 });
+// ─────────────── Γ3: the Worker's RPC calls and money keys ↔ 072 (review 23/10) ───────────────
+// PostgREST finds a function by its name AND its argument names: a rename on one side would pass every stub test
+// of plan-routes and fail only on day L, as a misdiagnosed 503 schema_behind. Both sides are read from the sources.
+test('every PLAN_ROUTES rpc exists in 072 with the argument names the Worker sends; every public plan_* is routed', () => {
+  const sigs = Object.fromEntries([...f072().sql.matchAll(/CREATE FUNCTION public\.(plan_[a-z_]+)\(([^)]*)\)/g)]
+    .filter((m) => !m[1].startsWith('plan_h_'))
+    .map((m) => [m[1], m[2].split(',').map((a) => a.trim().split(/\s+/)[0]).filter(Boolean)]));
+  const WRITE = ['p', 'p_actor', 'p_role'];
+  const want = { plan_board: ['p_week', 'p_role'], plan_vs_state: ['p_order_ids'], plan_notices_list: ['p_desk', 'p_role'] };
+  const routes = src.match(/var PLAN_ROUTES = \[[\s\S]*?\n\];\n/);
+  assert.ok(routes, 'PLAN_ROUTES not found in worker/src/index.js');
+  const routed = new Set([...routes[0].matchAll(/"(plan_[a-z_]+)"/g)].map((m) => m[1]));
+  for (const fn of routed) assert.deepEqual(sigs[fn], want[fn] || WRITE, `${fn}: 072 signature vs the Worker's args`);
+  assert.deepEqual([...routed].sort(), Object.keys(sigs).filter((x) => x !== 'plan_rt_create').sort(),
+    'every public plan_* routed once; plan_rt_create internal (decision 3)');
+});
+
+test('PLAN_MONEY_KEYS of the Worker = the keys plan_h_strip_amounts cuts (one list, two layers)', () => {
+  const m = src.match(/var PLAN_MONEY_KEYS = (\[[^\]]*\]);/);
+  assert.ok(m, 'PLAN_MONEY_KEYS not found in worker/src/index.js');
+  const strip = /CREATE FUNCTION public\.plan_h_strip_amounts\([\s\S]*?k not in \(([^)]*)\)/.exec(f072().sql);
+  assert.ok(strip, 'plan_h_strip_amounts key list not found in 072');
+  assert.deepEqual(JSON.parse(m[1]).slice().sort(), [...strip[1].matchAll(/'([a-z_]+)'/g)].map((x) => x[1]).sort());
+});
