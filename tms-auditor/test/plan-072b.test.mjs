@@ -3,7 +3,7 @@
 // Production shape = the same as plan-072.test.mjs (the 22/9 columns + live-071.sql + live-072.sql, 071 and 071b as
 // executed 22/10) + 072 from drafts/ (or worker/migrations/ after F2's K3), then 072b. Never edit a fixture by hand.
 // What it proves: the guards hold the texts 072b was written against; the dry run keeps nothing; 072b applies with
-// +4 triggers and B-54 following; the verify row; born closed for the API roles; the 135 rules; F2's 237 rules, 071's
+// +4 triggers and B-54 following; the verify row; born closed for the API roles; the 139 rules; F2's 237 rules, 071's
 // 56 and 071b's 8 still pass ON TOP of 072b (the EXCLUDE moved, the 18 hooks changed nothing F2 decided); the three
 // auditor checks go the PRODUCTION path (review R4, finding 1): each passes the repo lint (lintSql) and the in-DB
 // guard (monitoring.check_sql_guard), is seeded as 073b will seed it and run by monitoring.run_checks as
@@ -11,7 +11,8 @@
 // red on a forced violation - also when the copy rt_cancelled drifts and blinds the EXCLUDE (review R2, DB finding
 // 3); a lag() put back into B-91 is refused by both guards (a mutation); 071b's verify finds the EXCLUDE on the
 // segments (review R2, spec E2); the rollback refuses (a v5 row, 073 present), then undoes the 18 hooks in reverse
-// and returns every hooked function and both EXCLUDE byte for byte; fourteen mutations that each make one case fail.
+// and returns every hooked function and both EXCLUDE byte for byte; fifteen mutations that each make one case fail,
+// and two on the live hooked functions (a hook's own text is pinned by its md5, so it cannot be mutated in the source).
 // The checks live in tms-auditor/checks-072b/ until 073b moves them into the catalog (plan: the handover to F3, P3-6): in checks/ they
 // would enter the 047b seed and the catalog tests before the fixture and the grants know rt_vehicle_segments.
 // Limits (as plan-072): money views are STUBS; the capture holds only the functions of its f/trg lists.
@@ -191,12 +192,12 @@ test('072b on a production-shaped PGlite copy', async (t) => {
     } finally { await db.exec('RESET ROLE'); }
   });
 
-  await t.test('072b rules test: 135 OK, 0 FAIL, nothing kept', async () => {
+  await t.test('072b rules test: 139 OK, 0 FAIL, nothing kept', async () => {
     const msg = await errorOf(db, read('072b_plan_vehicle_segments_test.sql'));
     const m = rules('072b').exec(msg ?? '');
     assert.ok(m, msg);
     assert.equal(Number(m[2]), 0, msg);
-    assert.equal(Number(m[1]), 135);
+    assert.equal(Number(m[1]), 139);
     assert.equal(await count(db, `SELECT count(*)::int AS n FROM rt_vehicle_segments`), 0, 'the test keeps nothing');
   });
 
@@ -345,6 +346,10 @@ for (const [name, from, to, want] of [
   // is not listed, and the net refuses it
   ['the target that is also a source is read only at its end', /return plan_h_seg_cut_list\(p_keep, v_s, v_e\);/,
    "return plan_h_seg_cut_list(p_keep, '-infinity', v_e);", /120 FAIL want ok got plan:seg_outside/],
+  // fix round 2 (26/10): the cut of a cycle the same act cancels writes its costs notice again - the desk reads the
+  // same DKV line twice (the cancellation's notice already counts it)
+  ['the cut tells the desk again about a cycle the act cancels', /-- mut:cancelnote-begin[\s\S]*?-- mut:cancelnote-end/, 'true',
+   /136 FAIL want ok got FAIL notices/],
 ]) {
   test(`072b mutation: ${name}`, async () => {
     const db = await prodShaped072();
@@ -352,6 +357,27 @@ for (const [name, from, to, want] of [
     const mutant = src.replace(from, to);
     assert.notStrictEqual(mutant, src, 'the mutation markers are in 072b');
     assert.equal(await errorOf(db, mutant), null);
+    const msg = await errorOf(db, read('072b_plan_vehicle_segments_test.sql'));
+    assert.match(msg ?? '', want, msg);
+  });
+}
+
+// Fix round 2 (26/10): hooks 14 and 17 carry 072's OWN notice ids (the put's VS notice in a Move, the VS day's in
+// plan_rt_update's step 6) beside the cut's. No case read them until 138 / 139: a broken hook that dropped them
+// passed all 135 + 237 rules. A hook's text is pinned by its md5 (072b refuses a changed hook), so these break the LIVE
+// function after 072b, as a hand edit would, and exactly that case must fail.
+for (const [name, sig, from, to, want] of [
+  ['a Move drops the put\'s own notice ids (hook 14)', 'public.plan_move_pieces(jsonb,text,text)',
+   "coalesce(v_put->'notice_ids', '[]'::jsonb)", "'[]'::jsonb", /139 FAIL want ok got FAIL notice ids/],
+  ['plan_rt_update drops the VS day\'s notice ids (hook 17)', 'public.plan_rt_update(jsonb,text,text)',
+   'v_notices := v_notices || plan_h_vs_follow(', 'perform plan_h_vs_follow(', /138 FAIL want ok got FAIL notice ids/],
+]) {
+  test(`072b live mutation: ${name}`, async () => {
+    const db = await prodShaped072();
+    assert.equal(await errorOf(db, read('072b_plan_vehicle_segments.sql')), null);
+    const def = (await db.query('SELECT pg_get_functiondef(to_regprocedure($1)) AS d', [sig])).rows[0].d;
+    assert.equal(def.split(from).length, 2, `the hooked text is in ${sig} exactly once`);
+    assert.equal(await errorOf(db, def.split(from).join(to)), null);
     const msg = await errorOf(db, read('072b_plan_vehicle_segments_test.sql'));
     assert.match(msg ?? '', want, msg);
   });

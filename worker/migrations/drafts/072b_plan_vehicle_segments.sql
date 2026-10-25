@@ -863,7 +863,7 @@ end
 $f$;
 
   CREATE FUNCTION public.plan_h_seg_drop(p_rt bigint, p_segs bigint[], p_payroll bigint[], p_reason text,
-                                         p_actor text, p_role text) RETURNS bigint[]
+                                         p_actor text, p_role text, p_costs_notice boolean DEFAULT true) RETURNS bigint[]
     LANGUAGE plpgsql SET search_path = public AS $f$
 declare
   -- "Sto %s afairethike i allagi ochimatos: %s grammes exodon tou fortigou %s emeinan ston kyklo choris tmima tou fortigou":
@@ -877,6 +877,8 @@ begin
   -- no reason, seg_first), the last to its end - and (4) decision 13: a removed truck's cost lines stay on the cycle,
   -- and the national desk is told when that truck drives no kept segment (costs_without_rt). The order matters: the
   -- lines go before the copy changes driver, so 011 never leaves a line with an amount in needs_review.
+  -- p_costs_notice false: the caller's own act cancels this cycle and 072's cancellation tells the desk about every
+  -- cost line of it; a second notice for the same lines would be noise (plan_h_seg_cut, fix round 2, 26/10).
   select * into r from ct_round_trips where id = p_rt;
   for x in select e.id, to_jsonb(e) as old from dl_entries e where e.id = any (p_payroll) and e.deleted_at is null
             order by e.id for no key update loop
@@ -915,7 +917,7 @@ begin
             where not exists (select 1 from rt_vehicle_segments o where o.rt_id = p_rt and o.deleted_at is null
                                 and o.trip_type = 'OWNED' and o.truck_id = t.truck_id)
             order by t.truck_id loop
-    if x.n > 0 then
+    if x.n > 0 and p_costs_notice then
       v_notices := v_notices || plan_h_notice('natl', 'costs_without_rt', b_costs,
         array[r.code, x.n::text, coalesce((select license_plate from trucks where id = x.truck_id), x.truck_id::text)],
         null, null, p_rt, p_actor, p_role);
@@ -1111,7 +1113,18 @@ begin
              where i->>'kind' = 'payroll_amount' and (i->>'rt_id')::bigint = r.id
                and i->>'dl_entry_id' in (select c->>'dl_entry_id' from jsonb_array_elements(plan_h_seg_consequences(v_listed)) c
                                           where c->>'kind' = 'payroll_amount')),
-      w_cut || ' ' || r.code || ' (' || p_actor || ', ' || p_why || ')', p_actor, p_role);
+      w_cut || ' ' || r.code || ' (' || p_actor || ', ' || p_why || ')', p_actor, p_role,
+      -- fix round 2 (26/10): ONE costs notice per fact. A cycle this same act cancels - its list names it
+      -- rt_cancelled (only Move / Delete list that, 072's plan_h_drop_consequences) and no live leg is left, so 072's
+      -- plan_h_rt_cancel_if_empty cancels it right after this - is told by that cancellation, which counts EVERY cost
+      -- line of the cycle, the removed truck's too. Without this the desk read the same lines twice, and Move answered
+      -- one of the two notices while Delete answered both. Both halves, never one: plan_rt_update lists no
+      -- rt_cancelled and cancels nothing, and a cycle without legs that stays (plan_rt_create makes them) keeps its notice.
+      -- mut:cancelnote-begin
+      not (exists (select 1 from jsonb_array_elements(p_full) i where i->>'kind' = 'rt_cancelled' and (i->>'rt_id')::bigint = r.id)
+           and not exists (select 1 from piece_legs l where l.rt_id = r.id and l.deleted_at is null))
+      -- mut:cancelnote-end
+      );
     -- mut:cutapply-end
   end loop;
   return v_notices;
@@ -1582,7 +1595,7 @@ $f$;
     public.plan_h_vs_carriers(bigint,jsonb), public.plan_h_seg_of_stop(bigint), public.plan_h_seg_stops(bigint),
     public.plan_h_seg_stop_warn(bigint,jsonb), public.plan_h_seg_v1_warn(bigint), public.plan_h_seg_next_rt(bigint),
     public.plan_h_seg_vehicle_ok(text,bigint,bigint,bigint,bigint,numeric), public.plan_h_seg_consequences(bigint[]),
-    public.plan_h_seg_drop(bigint,bigint[],bigint[],text,text,text), public.plan_h_seg_cut_list(bigint,timestamptz,timestamptz),
+    public.plan_h_seg_drop(bigint,bigint[],bigint[],text,text,text,boolean), public.plan_h_seg_cut_list(bigint,timestamptz,timestamptz),
     public.plan_h_seg_cut_legs(bigint[],bigint), public.plan_h_seg_cut_keep(bigint[],bigint,jsonb),
     public.plan_h_seg_rt_cut(bigint,bigint[],timestamptz[],timestamptz[],text,interval),
     public.plan_h_seg_cut(jsonb,text,text,text),

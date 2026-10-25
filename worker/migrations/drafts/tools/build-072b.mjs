@@ -62,7 +62,7 @@ export const CREATED = [
   'public.plan_h_seg_of_stop(bigint)', 'public.plan_h_seg_stops(bigint)', 'public.plan_h_seg_stop_warn(bigint,jsonb)',
   'public.plan_h_seg_v1_warn(bigint)', 'public.plan_h_seg_next_rt(bigint)',
   'public.plan_h_seg_vehicle_ok(text,bigint,bigint,bigint,bigint,numeric)',
-  'public.plan_h_seg_consequences(bigint[])', 'public.plan_h_seg_drop(bigint,bigint[],bigint[],text,text,text)',
+  'public.plan_h_seg_consequences(bigint[])', 'public.plan_h_seg_drop(bigint,bigint[],bigint[],text,text,text,boolean)',
   'public.plan_h_seg_cut_list(bigint,timestamptz,timestamptz)', 'public.plan_h_seg_cut_legs(bigint[],bigint)',
   'public.plan_h_seg_cut_keep(bigint[],bigint,jsonb)',
   'public.plan_h_seg_rt_cut(bigint,bigint[],timestamptz[],timestamptz[],text,interval)',
