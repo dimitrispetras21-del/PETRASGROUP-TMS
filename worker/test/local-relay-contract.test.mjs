@@ -41,6 +41,8 @@ const W = new Function('__name', [
   lift(/const RELAY_CHECK_TEXT = \{[\s\S]*?\n\};\n/, 'RELAY_CHECK_TEXT'),
   lift(/const PLAN_RULE_TEXT = \{[\s\S]*?\n\};\n/, 'PLAN_RULE_TEXT'),
   lift(/const PLAN_CHECK_TEXT = \{[\s\S]*?\n\};\n/, 'PLAN_CHECK_TEXT'),
+  // read by the 23505 / 23P01 branches (review of PR #90, finding 10): without it every unique refusal threw
+  lift(/const PLAN_CONSTRAINT_CODE = \{[\s\S]*?\n\};\n/, 'PLAN_CONSTRAINT_CODE'),
   fn('stockRuleError'),
 ].join('\n') + '\nreturn { RELAY_RULE_TEXT, RELAY_CHECK_TEXT, stockRuleError };')(() => {});
 

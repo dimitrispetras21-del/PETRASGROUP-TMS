@@ -213,6 +213,17 @@ test('every PLAN_ROUTES rpc exists in 072 with the argument names the Worker sen
     'every public plan_* routed once; plan_rt_create internal (decision 3)');
 });
 
+// review of PR #90, finding 7: the roles that SEE amounts, held equal the same way. If the Worker's list were
+// wider than 072's, its tripwire would go blind for a role the DB cuts for; if narrower, every answer to a
+// role the DB serves amounts to would become a 422 amount_leak.
+test('PLAN_MONEY_ROLES of the Worker = the roles plan_h_strip_amounts serves amounts to (one list, two layers)', () => {
+  const m = src.match(/var PLAN_MONEY_ROLES = (\[[^\]]*\]);/);
+  assert.ok(m, 'PLAN_MONEY_ROLES not found in worker/src/index.js');
+  const strip = /CREATE FUNCTION public\.plan_h_strip_amounts\([\s\S]*?if p_role in \(([^)]*)\) or p is null then return p;/.exec(f072().sql);
+  assert.ok(strip, 'plan_h_strip_amounts role list not found in 072');
+  assert.deepEqual(JSON.parse(m[1]).slice().sort(), [...strip[1].matchAll(/'([a-z_]+)'/g)].map((x) => x[1]).sort());
+});
+
 test('PLAN_MONEY_KEYS of the Worker = the keys plan_h_strip_amounts cuts (one list, two layers)', () => {
   const m = src.match(/var PLAN_MONEY_KEYS = (\[[^\]]*\]);/);
   assert.ok(m, 'PLAN_MONEY_KEYS not found in worker/src/index.js');

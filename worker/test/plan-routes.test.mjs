@@ -8,8 +8,10 @@
 //   - the reply is passed through as the DB wrote it (the DB cuts by role),
 //     but an `amount` never reaches a role outside owner/accountant;
 //   - refusals: plan:<code> → 422 Greek, need_token → 428, 23P01 → truck_busy,
-//     missing 072 → 503, another named constraint → 422, anything else → 500
-//     naming the route — every one in the ONE /plan/* error shape;
+//     missing 072 → 503, another named constraint → 422, input the DB cannot
+//     take (class 22, 23502) → 422, anything else → 500 naming the route, and a
+//     write whose outcome is unknown → 422 plan_unknown (a status the legacy
+//     client never sends again by itself) — every one in the ONE /plan/* error shape;
 //   - the older paths: PATCH /costs/rt/:id on a v5 cycle → 409 before the DB;
 //     a facade write refused by a plan: rule → 422 instead of 500;
 //   - the Worker writes no audit_log of its own on /plan/* (the DB does).
@@ -69,6 +71,7 @@ const json = (rows, status = 200) => new Response(JSON.stringify(rows), { status
 const pgError = (status, body) => new Response(typeof body === 'string' ? body : JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
 let routes, calls;
 const realConsole = { log: console.log, error: console.error, warn: console.warn };
+const realFetch = globalThis.fetch;
 beforeEach(() => {
   console.log = console.error = console.warn = () => {};
   routes = [];
@@ -90,7 +93,8 @@ beforeEach(() => {
     throw new Error(`unmocked fetch: ${method} ${table}?${u.searchParams}`);
   };
 });
-afterEach(() => { Object.assign(console, realConsole); });
+// the real fetch back after each test (review of PR #90, finding 14): a later file in the same process never meets the stub
+afterEach(() => { Object.assign(console, realConsole); globalThis.fetch = realFetch; });
 const on = (method, table, handler) => routes.push({ method, table, handler });
 const rpcCalls = () => calls.filter((c) => c.table.startsWith('rpc/'));
 const auditRows = () => calls.filter((c) => c.table === 'audit_log');
@@ -247,13 +251,13 @@ test('decision 41: management, accountant, warehouse write every non-delete rout
   }
 });
 
-test('decision 44: request_id rides in p as sent on the three creations; a write is never sent twice (500, 503, 409)', async () => {
+test('decision 44: request_id rides in p as sent on the three creations; a write is never sent twice (422 plan_unknown, 503, 409)', async () => {
   const RID = '6f1c2a3e-0000-4000-8000-000000000044';
   const CREATE = [['/plan/orders', { orders: [{ client_id: 1 }] }, 'plan_orders_create'],
     ['/plan/pieces/split', { piece_id: 4, parts: [{ pallets: 12 }, { pallets: 14 }] }, 'plan_split_piece'],
     ['/plan/local-loading', { rt_stop_id: 3, driver_id: 8, truck_id: 2 }, 'plan_local_loading']];
   const FAILS = [
-    [() => new Response('<html>bad gateway</html>', { status: 502 }), 500, 'plan_unknown'],
+    [() => new Response('<html>bad gateway</html>', { status: 502 }), 422, 'plan_unknown'],
     [() => pgError(500, { code: '57014', hint: null, details: null, message: 'canceling statement due to statement timeout' }), 503, 'slow'],
     [() => pgError(409, { code: '40P01', hint: null, details: null, message: 'deadlock detected' }), 409, 'busy_retry'],
     [() => planReject('request_reused', RID), 422, 'request_reused'],
@@ -414,12 +418,14 @@ test('another named DB constraint inside /plan/* → loud 422 naming it; an unna
   assert.deepEqual(r.json.error, { type: 'PLAN_RULE', code: 'db_rule', message: 'Κανόνας βάσης: Δεν σημαίνεται τιμολογημένη χωρίς τιμή' });
 });
 
-test('anything else → 500 in the /plan/* shape naming the route (never a CF 1101, never {}); a write says it may have happened', async () => {
+test('anything else → 500 in the /plan/* shape naming the route (never a CF 1101, never {}); a write says it may have happened (422)', async () => {
   on('POST', 'rpc/plan_split_piece', () => new Response('<html>bad gateway</html>', { status: 502 }));
   let r = await callOpen('dispatcher', 'POST', '/plan/pieces/split', { piece_id: 4, parts: [] });
-  assert.equal(r.status, 500, r.text);
-  // the link may have dropped AFTER the COMMIT: a write never says «not done» (αρχή 1, decision 44)
-  assert.deepEqual(r.json.error, { type: 'SERVER', code: 'plan_unknown', message: 'Η πράξη POST /plan/split μπορεί να αποθηκεύτηκε — έλεγξε πρώτα στο Εβδομαδιαίο Εθνικών αν φαίνεται, και μόνο αν λείπει ξαναπάτησε το ίδιο κουμπί· ενημέρωσε τον Δημήτρη' });
+  // 422, never a 5xx: core/api.js _atRetry would send it twice more by itself (review of PR #90, finding 1)
+  assert.equal(r.status, 422, r.text);
+  // the link may have dropped AFTER the COMMIT: a write never says «not done» (αρχή 1, decision 44); the route is
+  // named by its path (finding 12), never by its resource («POST /plan/split» does not exist)
+  assert.deepEqual(r.json.error, { type: 'OUTCOME_UNKNOWN', code: 'plan_unknown', message: 'Η πράξη POST /plan/pieces/split μπορεί να αποθηκεύτηκε — έλεγξε πρώτα στο Εβδομαδιαίο Εθνικών αν φαίνεται, και μόνο αν λείπει ξαναπάτησε το ίδιο κουμπί· ενημέρωσε τον Δημήτρη' });
   // never «refresh» as the fix: a refresh closes the form, and with it its request_id (decision 44, review of PR #84)
   assert.ok(!/ανανέωσε/.test(r.json.error.message));
   routes.length = 0;
@@ -440,7 +446,8 @@ test('a lost lock (40P01 / 40001 / 55P03) → 409 busy_retry; statement_timeout 
     on('POST', 'rpc/plan_move_pieces', () => pgError(409, { code, hint: null, details: null, message: 'deadlock detected' }));
     const r = await callOpen('dispatcher', 'POST', '/plan/move', { from: { piece_ids: [1] }, target: { rt_id: 5, side: 'KATHODOS' } });
     assert.equal(r.status, 409, `${code}: ${r.text}`);
-    assert.deepEqual(r.json.error, { type: 'PLAN_RULE', code: 'busy_retry', message: 'Ταυτόχρονη αλλαγή από άλλον χρήστη — τίποτα δεν γράφτηκε· ξαναδοκίμασε' });
+    // SERVER, as `slow`: transient, never the business-refusal family PLAN_RULE (finding 13)
+    assert.deepEqual(r.json.error, { type: 'SERVER', code: 'busy_retry', message: 'Ταυτόχρονη αλλαγή από άλλον χρήστη — τίποτα δεν γράφτηκε· ξαναδοκίμασε' });
   }
   // a write's statement_timeout: rolled back, and its text says so (polish review 2 r2 m1)
   routes.length = 0;
@@ -459,7 +466,7 @@ test('a lost lock (40P01 / 40001 / 55P03) → 409 busy_retry; statement_timeout 
   on('POST', 'rpc/plan_board', () => pgError(409, { code: '40001', hint: null, details: null, message: 'could not serialize access due to concurrent update' }));
   const b = await call('owner', 'GET', '/plan/board?week=2026-10-10');
   assert.equal(b.status, 409, b.text);
-  assert.deepEqual(b.json.error, { type: 'PLAN_RULE', code: 'busy_retry', message: 'Ταυτόχρονη αλλαγή από άλλον χρήστη — η πράξη GET /plan/board δεν ολοκληρώθηκε· ξαναδοκίμασε' });
+  assert.deepEqual(b.json.error, { type: 'SERVER', code: 'busy_retry', message: 'Ταυτόχρονη αλλαγή από άλλον χρήστη — η πράξη GET /plan/board δεν ολοκληρώθηκε· ξαναδοκίμασε' });
 });
 
 // ───────────────────── amounts (decision 9: the DB cuts; the Worker trips) ─────────────────────
@@ -470,7 +477,7 @@ const WITHOUT_AMOUNT = { ...WITH_AMOUNT, consequences: [{ kind: 'payroll_amount'
 // the move's dry run: an act every role has (decision 41), so the tripwire is tested for each of them
 const MOVE_DRY = { from: { piece_ids: [4] }, target: { wait: true }, dry_run: true };
 
-test('an amount is served to owner and accountant, never to dispatcher, management or warehouse (500 amount_leak, the number not in the body)', async () => {
+test('an amount is served to owner and accountant, never to dispatcher, management or warehouse (422 amount_leak, the number not in the body)', async () => {
   // a DB bug answering an amount to every role — the Worker must trip on it
   on('POST', 'rpc/plan_move_pieces', () => json(WITH_AMOUNT));
   let r;
@@ -481,7 +488,7 @@ test('an amount is served to owner and accountant, never to dispatcher, manageme
   }
   for (const role of ['dispatcher', 'management', 'warehouse']) {
     r = await call(role, 'POST', '/plan/move', MOVE_DRY);
-    assert.equal(r.status, 500, `${role}: ${r.text}`);
+    assert.equal(r.status, 422, `${role}: ${r.text}`);
     assert.equal(r.json.error.code, 'amount_leak');
     assert.ok(!r.text.includes('230'), 'the number never leaves the Worker');
     assert.ok(!/"amount"/.test(r.text));
@@ -499,7 +506,7 @@ test('an amount is served to owner and accountant, never to dispatcher, manageme
     routes.length = 0;
     on('POST', 'rpc/plan_move_pieces', () => json({ ...WITHOUT_AMOUNT, consequences: [{ kind: 'local_payroll', dl_entry_id: 1, [k]: 20 }] }));
     r = await call('warehouse', 'POST', '/plan/move', MOVE_DRY);
-    assert.equal(r.status, 500, `${k}: ${r.text}`);
+    assert.equal(r.status, 422, `${k}: ${r.text}`);
     assert.equal(r.json.error.code, 'amount_leak');
   }
 });
@@ -543,7 +550,7 @@ test('PATCH /costs/rt/:id on a v5 cycle (model 2) → 409 in Greek, no PATCH; a 
   assert.equal(auditRows().length, 1);
 });
 
-test('facade PATCH ORDER STOPS refused by a plan: rule (bridge stop, 071) or by order_stops_via_hub_intl → 422, not 500', async () => {
+test('facade PATCH ORDER STOPS refused by a plan: rule (bridge stop, 071) → 422; «Via Hub» born closed until day L, then order_stops_via_hub_intl → 422', async () => {
   const STOPS = '/v0/appTEST/tblaeY5QOHAS1gyE8';
   on('GET', 'order_stops', (u) => (u.searchParams.get('select') === '*' ? json([{ id: 31, legacy_id: 'recSTOP1', pallets: 20, via_hub: false }]) : null));
   on('PATCH', 'order_stops', (u, b) => (b.via_hub !== undefined
@@ -552,19 +559,36 @@ test('facade PATCH ORDER STOPS refused by a plan: rule (bridge stop, 071) or by 
   let r = await call('dispatcher', 'PATCH', `${STOPS}/recSTOP1`, { fields: { Pallets: 19 } });
   assert.equal(r.status, 422, r.text);
   assert.deepEqual(r.json, { error: { type: 'PLAN_RULE', code: 'pieces_sum', message: 'Τα κομμάτια δεν αθροίζουν στις παλέτες της αποστολής (12:19<>20)' } });
-  r = await call('dispatcher', 'PATCH', `${STOPS}/recSTOP1`, { fields: { 'Via Hub': true } });
+  // before day L (finding 8, αρχή 5): a write naming «Via Hub» — alone, beside another field, single or batch —
+  // is refused before any DB call, never dropped with a 200
+  for (const [method, p, body] of [['PATCH', `${STOPS}/recSTOP1`, { fields: { 'Via Hub': true } }],
+    ['PATCH', `${STOPS}/recSTOP1`, { fields: { Pallets: 19, 'Via Hub': false } }],
+    ['PATCH', STOPS, { records: [{ id: 'recSTOP1', fields: { 'Via Hub': true } }] }],
+    ['POST', STOPS, { fields: { 'Via Hub': true } }]]) {
+    calls.length = 0;
+    r = await call('owner', method, p, body);
+    assert.equal(r.status, 400, `${method} ${JSON.stringify(body)}: ${r.text}`);
+    assert.match(r.json.error.message || r.json.error, /«Via Hub»: γράφεται από την ημέρα της μετάβασης/);
+    assert.equal(calls.filter((c) => c.method !== 'GET').length, 0, 'nothing written');
+  }
+  // day L (the one switch flipped): the label reaches via_hub (no silent drop) and the CHECK speaks Greek
+  calls.length = 0;
+  r = await callOpen('dispatcher', 'PATCH', `${STOPS}/recSTOP1`, { fields: { 'Via Hub': true } });
   assert.equal(r.status, 422, r.text);
   assert.equal(r.json.error.code, 'order_stops_via_hub_intl');
   const patch = calls.filter((c) => c.method === 'PATCH').at(-1);
   assert.deepEqual(patch.body, { via_hub: true }, '"Via Hub" reaches via_hub (no silent drop)');
+  // and it is still read by every path
+  r = await call('dispatcher', 'GET', `${STOPS}/recSTOP1`);
+  assert.equal(r.status, 200, r.text);
+  assert.equal(r.json.fields['Via Hub'], false, 'read as the DB holds it');
   assert.equal(auditRows().length, 0);
 });
 
 // ───────────────────── K1 review r1: what a write's failure says ─────────────────────
 test('a write the DB answered with an unmapped SQLSTATE rolled back → 500 plan_failed «δεν ολοκληρώθηκε», never plan_unknown', async () => {
-  for (const pg of [{ code: '22P02', message: 'invalid input syntax for type bigint: "abc"' },
-    { code: '23502', message: 'null value in column "rt_id" violates not-null constraint' },
-    { code: '42883', message: 'function public.plan_h_missing(bigint) does not exist' },
+  // 22P02 / 23502 moved to the 422 bad_input test below (finding 5)
+  for (const pg of [{ code: '42883', message: 'function public.plan_h_missing(bigint) does not exist' },
     { code: 'P0001', message: 'raise without a plan: hint' },
     // polish review 2 r2 m1: idle-in-transaction fires only while the session is idle, before any COMMIT
     { code: '25P03', message: 'terminating connection due to idle-in-transaction timeout' }]) {
@@ -581,12 +605,14 @@ test('a write the DB answered with an unmapped SQLSTATE rolled back → 500 plan
 test('amount_leak after a write says the act was kept and must not be pressed again; a dry run keeps the plain text', async () => {
   on('POST', 'rpc/plan_move_pieces', () => json({ ...WITH_AMOUNT, dry_run: false, needs_confirm: undefined }));
   let r = await callOpen('warehouse', 'POST', '/plan/move', { from: { piece_ids: [4] }, target: { wait: true } });
-  assert.equal(r.status, 500, r.text);
+  // the COMMIT is done: a status the legacy client never sends again (finding 1), one RPC
+  assert.equal(r.status, 422, r.text);
   assert.equal(r.json.error.code, 'amount_leak');
+  assert.equal(rpcCalls().length, 1);
   assert.match(r.json.error.message, /^Η πράξη αποθηκεύτηκε, .*μην την ξαναπατήσεις/);
   assert.ok(!r.text.includes('230'), 'the number never leaves the Worker');
   r = await call('warehouse', 'POST', '/plan/move', MOVE_DRY);
-  assert.equal(r.status, 500, r.text);
+  assert.equal(r.status, 422, r.text);
   assert.equal(r.json.error.message, 'Η απάντηση της βάσης είχε ποσά για ρόλο χωρίς δικαίωμα — δεν στάλθηκε· ενημέρωσε τον Δημήτρη');
 });
 
@@ -609,7 +635,8 @@ test('a write answered by a JSON body without a SQLSTATE (gateway 502 / 504, PGR
     on('POST', 'rpc/plan_move_pieces', () => pgError(status, body));
     calls.length = 0;
     let r = await callOpen('dispatcher', 'POST', '/plan/move', { from: { piece_ids: [1] }, target: { rt_id: 5, side: 'KATHODOS' } });
-    assert.equal(r.status, 500, `${status} ${body.code || ''}: ${r.text}`);
+    assert.equal(r.status, 422, `${status} ${body.code || ''}: ${r.text}`);
+    assert.equal(r.json.error.type, 'OUTCOME_UNKNOWN');
     // the COMMIT may have happened before the link dropped: never «δεν ολοκληρώθηκε» (decision 44, αρχή 1)
     assert.equal(r.json.error.code, 'plan_unknown', `${status} ${body.code || ''}`);
     assert.equal(rpcCalls().length, 1, `${status}: one RPC, never a second`);
@@ -675,4 +702,190 @@ test('a write the gateway refused (401 / 403, any body) or PostgREST never ran (
   const r = await callOpen('dispatcher', 'POST', '/plan/move', { from: { piece_ids: [1] }, target: { rt_id: 5, side: 'KATHODOS' } });
   assert.equal(r.status, 500, r.text);
   assert.equal(r.json.error.code, 'plan_failed');
+});
+
+// ───────────────────── review of PR #90 (Worker 39842d18), round 1 ─────────────────────
+// finding 1, the Worker's side of the pin (the client's side: tests/api-plan-no-resend.test.mjs): the status of
+// an answer whose write may be kept is one core/api.js _atRetry answers at once, never sends again by itself.
+test('finding 1: plan_unknown / amount_leak use a status the legacy _atRetry never retries (read from core/api.js)', async () => {
+  const { readFileSync } = await import('node:fs');
+  const api = readFileSync(path.resolve(HERE, '../../core/api.js'), 'utf8');
+  const noRetry = /if \(res\.status === 400 \|\| res\.status === 422\) \{[\s\S]*?_e\._noRetry = true;/.exec(api);
+  assert.ok(noRetry, 'core/api.js: the 400/422 branch that throws _noRetry is gone — PLAN_NO_RESEND must follow it');
+  const src = readFileSync(SRC_PATH, 'utf8');
+  assert.equal((src.match(/^var PLAN_NO_RESEND = (\d+);$/m) || [])[1], '422');
+  for (const code of ['plan_unknown', 'amount_leak']) {
+    assert.ok(new RegExp(`planError\\(PLAN_NO_RESEND, "[A-Z_]+", "${code}"`).test(src), `${code} answers PLAN_NO_RESEND`);
+    assert.ok(!new RegExp(`planError\\(5\\d\\d, "[A-Z_]+", "${code}"`).test(src), `${code} never a 5xx`);
+  }
+});
+
+test('finding 5: input the DB cannot take (class 22, 23502) → 422 bad_input with the SQLSTATE, one RPC, write and read alike', async () => {
+  for (const pg of [{ code: '22P02', message: 'invalid input syntax for type bigint: "abc"' },
+    { code: '22003', message: 'value "99999999999" is out of range for type integer' },
+    { code: '22007', message: 'invalid input syntax for type timestamp with time zone: "x"' },
+    { code: '23502', message: 'null value in column "rt_id" violates not-null constraint' }]) {
+    routes.length = 0;
+    on('POST', 'rpc/plan_move_pieces', () => pgError(400, { ...pg, hint: null, details: null }));
+    calls.length = 0;
+    let r = await callOpen('dispatcher', 'POST', '/plan/move', { from: { piece_ids: [1] }, target: { rt_id: 5, side: 'KATHODOS' } });
+    assert.equal(r.status, 422, `${pg.code}: ${r.text}`);
+    assert.deepEqual(r.json.error, { type: 'BAD_REQUEST', code: 'bad_input', message: `Το αίτημα δεν έχει τη μορφή που περιμένει η βάση — ανανέωσε τη σελίδα (${pg.code})` }, pg.code);
+    assert.equal(rpcCalls().length, 1, `${pg.code}: one RPC`);
+    routes.length = 0;
+    on('POST', 'rpc/plan_board', () => pgError(400, { ...pg, hint: null, details: null }));
+    r = await call('owner', 'GET', '/plan/board?week=2026-10-10');
+    assert.equal(r.status, 422, `${pg.code} read: ${r.text}`);
+    assert.equal(r.json.error.code, 'bad_input');
+  }
+  // a plan: hint on a class-22 SQLSTATE is still the rule it names (the hint is the marker, whatever SQLSTATE)
+  routes.length = 0;
+  on('POST', 'rpc/plan_move_pieces', () => planReject('parts_sum', '4', '22023'));
+  const r = await callOpen('dispatcher', 'POST', '/plan/move', { from: { piece_ids: [1] }, target: { wait: true } });
+  assert.equal(r.json.error.code, 'parts_sum');
+});
+
+test('finding 6: a PostgREST code that proves the RPC never ran → 503 «δεν αποθηκεύτηκε»; one that may follow the SQL stays plan_unknown', async () => {
+  const MOVE = { from: { piece_ids: [1] }, target: { rt_id: 5, side: 'KATHODOS' } };
+  for (const [status, code, want, text] of [
+    [300, 'PGRST203', 'db_refused', 'Η βάση αρνήθηκε την κλήση (PGRST203) — η πράξη POST /plan/move δεν αποθηκεύτηκε· ενημέρωσε τον Δημήτρη'],
+    [400, 'PGRST102', 'db_refused', 'Η βάση αρνήθηκε την κλήση (PGRST102) — η πράξη POST /plan/move δεν αποθηκεύτηκε· ενημέρωσε τον Δημήτρη'],
+    [415, 'PGRST107', 'db_refused', 'Η βάση αρνήθηκε την κλήση (PGRST107) — η πράξη POST /plan/move δεν αποθηκεύτηκε· ενημέρωσε τον Δημήτρη'],
+    [404, 'PGRST205', 'db_refused', 'Η βάση αρνήθηκε την κλήση (PGRST205) — η πράξη POST /plan/move δεν αποθηκεύτηκε· ενημέρωσε τον Δημήτρη'],
+    [503, 'PGRST002', 'slow', 'Η βάση δεν ήταν έτοιμη (PGRST002) — τίποτα δεν αποθηκεύτηκε· ξαναδοκίμασε σε λίγο'],
+    [504, 'PGRST003', 'slow', 'Η βάση δεν είχε ελεύθερη σύνδεση — τίποτα δεν αποθηκεύτηκε· ξαναδοκίμασε σε λίγο']]) {
+    routes.length = 0;
+    on('POST', 'rpc/plan_move_pieces', () => pgError(status, { code, details: null, hint: null, message: 'x' }));
+    calls.length = 0;
+    const r = await callOpen('dispatcher', 'POST', '/plan/move', MOVE);
+    assert.equal(r.status, 503, `${code}: ${r.text}`);
+    assert.deepEqual(r.json.error, { type: 'SERVER', code: want, message: text }, code);
+    assert.equal(rpcCalls().length, 1);
+    routes.length = 0;
+    on('POST', 'rpc/plan_board', () => pgError(status, { code, details: null, hint: null, message: 'x' }));
+    const rd = await call('owner', 'GET', '/plan/board?week=2026-10-10');
+    assert.equal(rd.json.error.code, want, `${code} read`);
+    assert.ok(!/αποθηκεύτηκε/.test(rd.json.error.message), `${code} read: a read never speaks of saving`);
+  }
+  // after the SQL ran (or may have): the outcome stays unknown
+  for (const [status, code] of [[503, 'PGRST000'], [503, 'PGRST001'], [500, 'PGRST111'], [500, 'PGRST112'], [406, 'PGRST116'],
+    [500, 'PGRST121'], [400, 'PGRST124'], [400, 'PGRST128'], [500, 'PGRSTX00'], [400, 'PGRST999']]) {
+    routes.length = 0;
+    on('POST', 'rpc/plan_move_pieces', () => pgError(status, { code, details: null, hint: null, message: 'x' }));
+    const r = await callOpen('dispatcher', 'POST', '/plan/move', MOVE);
+    assert.equal(r.status, 422, `${code}: ${r.text}`);
+    assert.equal(r.json.error.code, 'plan_unknown', code);
+  }
+});
+
+test('finding 4: a dry run previews every family as its execution answers it (relay, stock, unknown plan code, unknown constraint)', async () => {
+  const preview = (conflict) => ({ ok: true, op: 'plan_rt_update', dry_run: true,
+    preview: { before: {}, after: null, next_rt: null, vs_day: [], warnings: [], conflict } });
+  const CASES = [
+    // a 060 CHECK the trigger of plan_rt_update can meet (relay family, its own type and text)
+    [{ code: 'local_moves_relay_points', sqlstate: '23514', detail: null }, { code: '23514', hint: null, details: null, message: 'new row for relation "local_moves" violates check constraint "local_moves_relay_points"' }],
+    // a 060 unique index: its code is relay_exists, not the index name
+    [{ code: 'local_moves_relay_once', sqlstate: '23505', detail: null }, { code: '23505', hint: null, details: null, message: 'duplicate key value violates unique constraint "local_moves_relay_once"' }],
+    // a 057 unique index: lot_exists
+    [{ code: 'stock_lots_order_live', sqlstate: '23505', detail: null }, { code: '23505', hint: null, details: null, message: 'duplicate key value violates unique constraint "stock_lots_order_live"' }],
+    // a 057 CHECK
+    [{ code: 'stock_lots_one_source', sqlstate: '23514', detail: null }, { code: '23514', hint: null, details: null, message: 'new row for relation "stock_lots" violates check constraint "stock_lots_one_source"' }],
+    // a plan: code the Worker does not know yet, with its detail
+    [{ code: 'brand_new', sqlstate: '23514', detail: 'RT-7' }, { code: '23514', hint: 'plan:brand_new', details: null, message: 'plan rule broken: brand_new:RT-7' }],
+    // a known plan: code with an empty detail
+    [{ code: 'rt_window', sqlstate: '23514', detail: '' }, { code: '23514', hint: 'plan:rt_window', details: null, message: 'plan rule broken: rt_window:' }],
+    // a foreign key nobody names
+    [{ code: 'rt_stops_location_id_fkey', sqlstate: '23503', detail: null }, { code: '23503', hint: null, details: null, message: 'insert or update on table "rt_stops" violates foreign key constraint "rt_stops_location_id_fkey"' }]];
+  for (const [conflict, pg] of CASES) {
+    routes.length = 0;
+    on('POST', 'rpc/plan_rt_update', (u, b) => (b.p.dry_run === true ? json(preview({ ...conflict })) : pgError(409, pg)));
+    const exec = await callOpen('dispatcher', 'PATCH', '/plan/rt/5', { set: { truck_id: 2 } });
+    assert.equal(exec.status, 422, `${conflict.code}: ${exec.text}`);
+    const dry = await call('dispatcher', 'PATCH', '/plan/rt/5', { set: { truck_id: 2 }, dry_run: true });
+    assert.equal(dry.status, 200, `${conflict.code}: ${dry.text}`);
+    assert.equal(dry.json.preview.conflict.code, exec.json.error.code, `${conflict.code}: the same code`);
+    assert.equal(dry.json.preview.conflict.message, exec.json.error.message, `${conflict.code}: the same text`);
+  }
+});
+
+test('finding 9: a body id that is not a safe integer → 400 bad_input <path>:safe_integer before any DB call; an amount is not an id', async () => {
+  for (const [p, method, raw, field] of [
+    ['/plan/move', 'POST', '{"from":{"piece_ids":[4,9007199254740993]},"target":{"wait":true},"dry_run":true}', 'from.piece_ids[1]'],
+    ['/plan/rt/5', 'PATCH', '{"set":{"truck_id":9007199254740993},"dry_run":true}', 'set.truck_id'],
+    ['/plan/delete', 'POST', '{"nat_order_id":1.5,"dry_run":true}', 'nat_order_id'],
+    ['/plan/legs', 'POST', '{"pieces":[{"id":12345678901234567890}],"target":{"rt_id":5}}', 'pieces[0].id']
+  ]) {
+    for (const fetchOn of [call, callOpen]) {
+      calls.length = 0;
+      const r = await fetchOn('owner', method, p, raw);
+      assert.equal(r.status, 400, `${p} ${raw}: ${r.text}`);
+      assert.equal(r.json.error.code, 'bad_input');
+      assert.ok(r.json.error.message.endsWith(`(${field}:safe_integer)`), r.json.error.message);
+      assert.equal(calls.length, 0, `${p}: no DB call`);
+    }
+  }
+  // a safe id and a large amount still reach the DB as sent
+  on('POST', 'rpc/plan_rt_update', () => json(OK));
+  calls.length = 0;
+  const r = await callOpen('owner', 'PATCH', '/plan/rt/5', '{"set":{"truck_id":9007199254740991,"partner_rate":1e300}}');
+  assert.equal(r.status, 200, r.text);
+  assert.deepEqual(rpcCalls()[0].body.p.set, { truck_id: 9007199254740991, partner_rate: 1e300 });
+});
+
+test('finding 12: the route is named by its path, record id included', async () => {
+  on('POST', 'rpc/plan_rt_update', () => new Response('<html>bad gateway</html>', { status: 502 }));
+  let r = await callOpen('dispatcher', 'PATCH', '/plan/rt/42', { set: { truck_id: 2 } });
+  assert.equal(r.json.error.code, 'plan_unknown');
+  assert.match(r.json.error.message, /^Η πράξη PATCH \/plan\/rt\/42 μπορεί να αποθηκεύτηκε/);
+  routes.length = 0;
+  on('POST', 'rpc/plan_notice_read', () => pgError(400, { code: 'P0001', hint: null, details: null, message: 'x' }));
+  r = await callOpen('owner', 'POST', '/plan/notices/7/read', {});
+  assert.equal(r.json.error.message, 'Η πράξη POST /plan/notices/7/read δεν ολοκληρώθηκε — ενημέρωσε τον Δημήτρη');
+});
+
+test('finding 2: a v5 LOCAL MOVES row (nat_loading) is never changed or deleted through the facade — 422 plan_owned, nothing written', async () => {
+  const LM = '/v0/appTEST/local_moves';
+  const ROWS = {
+    recNAT: { id: 1, legacy_id: 'recNAT', move_kind: 'nat_loading', rt_stop_id: 3, status: 'Assigned', driver_id: null },
+    recLOC: { id: 2, legacy_id: 'recLOC', move_kind: 'local', rt_stop_id: null, status: 'Assigned', driver_id: null }
+  };
+  let readFails = false;
+  on('GET', 'local_moves', (u) => {
+    if (readFails) return pgError(500, { message: 'down' });
+    const eq = (u.searchParams.get('legacy_id') || '').replace(/^eq\./, '');
+    const ids = eq.startsWith('in.(') ? eq.slice(4, -1).split(',').map((x) => x.replace(/"/g, '')) : [eq];
+    return json(ids.map((id) => ROWS[id]).filter(Boolean));
+  });
+  on('PATCH', 'local_moves', (u, b) => json([{ ...ROWS[u.searchParams.get('legacy_id').slice(3)], ...b }]));
+  const writes = () => calls.filter((c) => c.table === 'local_moves' && c.method === 'PATCH').length;
+  const owned = (r, label) => {
+    assert.equal(r.status, 422, `${label}: ${r.text}`);
+    assert.equal(r.json.error.type, 'PLAN_RULE');
+    assert.equal(r.json.error.code, 'plan_owned');
+    assert.match(r.json.error.message, /Εβδομαδιαίο Εθνικών.*\/plan\/local-loading/);
+  };
+  for (const role of ['owner', 'dispatcher']) {
+    calls.length = 0;
+    owned(await call(role, 'PATCH', `${LM}/recNAT`, { fields: { Notes: 'x' } }), `${role} PATCH`);
+    owned(await call(role, 'PATCH', `${LM}/recNAT`, { fields: { Status: 'Cancelled' } }), `${role} cancel`);
+    owned(await call(role, 'PATCH', LM, { records: [{ id: 'recLOC', fields: { Notes: 'x' } }, { id: 'recNAT', fields: { Notes: 'x' } }] }), `${role} batch`);
+    owned(await call(role, 'DELETE', `${LM}/recNAT`), `${role} DELETE`);
+    assert.equal(writes(), 0, `${role}: nothing written, not even the batch's first (plain) row`);
+    assert.equal(auditRows().length, 0);
+  }
+  // a plain local move is changed and deleted as today
+  calls.length = 0;
+  let r = await call('dispatcher', 'PATCH', `${LM}/recLOC`, { fields: { Notes: 'x' } });
+  assert.equal(r.status, 200, r.text);
+  r = await call('dispatcher', 'DELETE', `${LM}/recLOC`);
+  assert.equal(r.status, 200, r.text);
+  assert.equal(writes(), 2);
+  // the row could not be read: nothing written (fail closed), a 503 the user may press again
+  readFails = true;
+  calls.length = 0;
+  for (const [method, p, body] of [['PATCH', `${LM}/recLOC`, { fields: { Notes: 'x' } }], ['PATCH', LM, { records: [{ id: 'recLOC', fields: { Notes: 'x' } }] }], ['DELETE', `${LM}/recLOC`]]) {
+    r = await call('dispatcher', method, p, body);
+    assert.equal(r.status, 503, `${method} ${p}: ${r.text}`);
+  }
+  assert.equal(writes(), 0);
 });
