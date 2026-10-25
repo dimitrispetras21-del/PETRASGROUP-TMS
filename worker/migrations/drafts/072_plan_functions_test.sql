@@ -1241,6 +1241,8 @@ BEGIN
                'ok', 'ok', 'plan:rt_cancelled', 'plan:rt_gone', 'plan:payroll_locked',
                'plan:leg_order', 'ok', 'plan:stop_gone', 'plan:stop_order', 'plan:bad_input',
                'plan:no_vehicle']   -- B18-B33 (Task B2)
+      || ARRAY['ok', 'plan:need_token', 'ok', 'ok', 'ok',
+               'plan:stale_confirm', 'ok', 'ok', 'ok']   -- B34-B42 (Task B3)
       ;  -- end of b_want
     b_verdict text; b_got text; b_hint text; b_msg text; b_cname text; b_st text;
   BEGIN
@@ -1609,6 +1611,104 @@ BEGIN
         ELSIF kb = 33 THEN
           PERFORM plan_rt_update(jsonb_build_object('rt_id', b_rt1, 'set', jsonb_build_object('trip_type', 'PARTNER')),
                   'test:072b', 'dispatcher');
+        -- ---- Task B3: plan_rt_clear ----
+        ELSIF kb = 34 THEN   -- clear with an empty payroll line: no question, the line goes (011), legs stay
+          -- coordinator 25/10 (cross-cutting input rule): an rt_id of NaN / +-Infinity is refused as bad_input 'rt_id',
+          -- in a dry run too (a malformed body is raised, not previewed); each probe is undone, nothing is cleared
+          FOR b_v3 IN SELECT value FROM jsonb_array_elements(jsonb_build_array(
+              jsonb_build_object('rt_id', 'NaN'), jsonb_build_object('rt_id', 'Infinity'),
+              jsonb_build_object('rt_id', '-Infinity'), jsonb_build_object('rt_id', 'NaN', 'dry_run', true)))
+          LOOP
+            BEGIN
+              PERFORM plan_rt_clear(b_v3, 'test:072b', 'dispatcher');
+              RAISE EXCEPTION 'FAIL a non-finite rt_id was accepted (%)', b_v3::text;
+            EXCEPTION WHEN check_violation THEN
+              GET STACKED DIAGNOSTICS b_msg = MESSAGE_TEXT, b_hint = PG_EXCEPTION_HINT;
+              IF b_hint IS DISTINCT FROM 'plan:bad_input' OR b_msg NOT LIKE '%bad_input:rt_id' THEN
+                RAISE EXCEPTION 'FAIL non-finite rt_id probe % got % (%)', b_v3::text, coalesce(b_hint, 'no hint'), b_msg;
+              END IF;
+            END;
+          END LOOP;
+          b_v2 := plan_rt_clear(jsonb_build_object('rt_id', b_rt1), 'test:072b', 'dispatcher');
+          b_verdict := CASE WHEN (SELECT trip_type = 'OWNED' AND truck_id IS NULL AND driver_id IS NULL AND trailer_id IS NULL
+                                    FROM ct_round_trips WHERE id = b_rt1)
+                              AND NOT EXISTS (SELECT 1 FROM dl_entries WHERE rt_id = b_rt1 AND (deleted_at IS NULL OR needs_review))
+                              AND (SELECT n_legs FROM v_rt_cycle WHERE rt_id = b_rt1) = 1
+                              AND (SELECT bool_and(NOT has_vehicle) FROM v_rt_stop_state WHERE rt_id = b_rt1)
+                            THEN 'ok cleared without a token: vehicle off, empty payroll line gone, legs stay to assign'
+                            ELSE 'FAIL clear' END;
+        ELSIF kb BETWEEN 35 AND 41 THEN   -- clear with documents: payroll with an amount, its month, costs
+          UPDATE dl_entries SET trip_value = 230 WHERE rt_id = b_rt1 AND deleted_at IS NULL;
+          IF kb = 40 THEN
+            INSERT INTO dl_entries (driver_id, entry_type, entry_date, amount, source, created_by)
+            VALUES (b_d1, 'payment_bank', b_d + 3, 500, 'manual', 'test:072b');
+          ELSIF kb = 41 THEN
+            UPDATE dl_entries SET trip_value = NULL WHERE rt_id = b_rt1 AND deleted_at IS NULL;
+            INSERT INTO ct_cost_lines (rt_id, category, net, vat, pay_source, alloc_status, created_by)
+            SELECT b_rt1, 'dkv', 10, 2.4, 'DKV', 'allocated', 'test:072b' FROM generate_series(1, 3);
+          END IF;
+          IF kb = 35 THEN
+            PERFORM plan_rt_clear(jsonb_build_object('rt_id', b_rt1), 'test:072b', 'dispatcher');
+          ELSE
+            b_v := plan_rt_clear(jsonb_build_object('rt_id', b_rt1, 'dry_run', true), 'test:072b', 'owner');
+            b_v2 := plan_rt_clear(jsonb_build_object('rt_id', b_rt1, 'dry_run', true), 'test:072b', 'dispatcher');
+            IF kb = 36 THEN
+              b_verdict := CASE WHEN (b_v->>'needs_confirm')::boolean AND b_v->>'confirm_token' IS NOT NULL
+                                  AND EXISTS (SELECT 1 FROM jsonb_array_elements(b_v->'consequences') c
+                                               WHERE c->>'kind' = 'payroll_amount' AND (c->>'amount')::numeric = 230)
+                                  AND (SELECT truck_id = b_t1 FROM ct_round_trips WHERE id = b_rt1)
+                                THEN 'ok owner dry run: payroll 230 in the list, token, nothing changed'
+                                ELSE 'FAIL owner dry run ' || b_v::text END;
+            ELSIF kb = 37 THEN
+              b_verdict := CASE WHEN position('"amount"' IN b_v2::text) = 0
+                                  AND b_v2->>'confirm_token' = b_v->>'confirm_token'
+                                  AND jsonb_array_length(b_v2->'consequences') = jsonb_array_length(b_v->'consequences')
+                                THEN 'ok dispatcher: the same list and token, no amount'
+                                ELSE 'FAIL dispatcher list ' || b_v2::text END;
+            ELSIF kb = 38 THEN
+              PERFORM plan_rt_clear(jsonb_build_object('rt_id', b_rt1, 'confirm_token', b_v2->>'confirm_token'), 'test:072b', 'dispatcher');
+              b_verdict := CASE WHEN NOT EXISTS (SELECT 1 FROM dl_entries WHERE rt_id = b_rt1 AND (deleted_at IS NULL OR needs_review))
+                                  AND (SELECT count(*) FROM dl_entries WHERE rt_id = b_rt1 AND trip_value = 230
+                                         AND deleted_reason LIKE '% (test:072b)') = 1
+                                  AND (SELECT truck_id IS NULL AND driver_id IS NULL FROM ct_round_trips WHERE id = b_rt1)
+                                THEN 'ok with the token: the 230 line deleted by name, 0 needs_review'
+                                ELSE 'FAIL clear with amount: needs_review '
+                                     || (SELECT count(*) FROM dl_entries WHERE rt_id = b_rt1 AND needs_review) END;
+            ELSIF kb = 39 THEN
+              UPDATE dl_entries SET trip_value = 250 WHERE rt_id = b_rt1 AND deleted_at IS NULL;
+              PERFORM plan_rt_clear(jsonb_build_object('rt_id', b_rt1, 'confirm_token', b_v2->>'confirm_token'), 'test:072b', 'dispatcher');
+            ELSIF kb = 40 THEN
+              -- decision 10: the line's month, no "paid" even with a payment of the driver after the cycle; decision 41:
+              -- the base cuts the amount for every role outside owner/accountant (PLAN_PERMS decides who may clear)
+              b_v3 := plan_rt_clear(jsonb_build_object('rt_id', b_rt1, 'dry_run', true), 'test:072b', 'warehouse');
+              b_verdict := CASE WHEN EXISTS (SELECT 1 FROM jsonb_array_elements(b_v2->'consequences') c
+                                              WHERE c->>'kind' = 'payroll_amount' AND NOT (c ? 'amount')
+                                                AND c->>'month' = (SELECT to_char(entry_date, 'YYYY-MM') FROM dl_entries
+                                                                    WHERE rt_id = b_rt1 AND deleted_at IS NULL AND trip_value = 230))
+                                  AND NOT EXISTS (SELECT 1 FROM jsonb_array_elements(b_v->'consequences') c WHERE c ? 'paid' OR c ? 'paid_week')
+                                  AND position('"amount"' IN b_v3::text) = 0
+                                  AND position('"amount"' IN plan_rt_clear(jsonb_build_object('rt_id', b_rt1, 'dry_run', true),
+                                                                           'test:072b', 'management')::text) = 0
+                                THEN 'ok the payroll line with its month, never paid; no amount for dispatcher, management, warehouse'
+                                ELSE 'FAIL month ' || b_v2::text END;
+            ELSE   -- 41 (costs)
+              PERFORM plan_rt_clear(jsonb_build_object('rt_id', b_rt1, 'confirm_token', b_v2->>'confirm_token'), 'test:072b', 'dispatcher');
+              b_verdict := CASE WHEN EXISTS (SELECT 1 FROM jsonb_array_elements(b_v2->'consequences') c
+                                              WHERE c->>'kind' = 'costs' AND (c->>'count')::int = 3 AND NOT (c ? 'amount'))
+                                  AND (SELECT count(*) FROM ct_cost_lines WHERE rt_id = b_rt1) = 3
+                                  AND (SELECT count(*) FROM plan_notices WHERE rt_id = b_rt1 AND to_desk = 'natl'
+                                         AND kind = 'costs_without_rt') = 1
+                                THEN 'ok costs listed (3, no amount), kept on the cycle, one notice' ELSE 'FAIL costs' END;
+            END IF;
+          END IF;
+        ELSIF kb = 42 THEN   -- clear on PARTNER: OWNED with nothing (partner_needs_partner holds)
+          b_v2 := plan_rt_create(jsonb_build_object('new_rt', jsonb_build_object('trip_type', 'PARTNER', 'partner_id', b_pa,
+                    'partner_rate', 200), 'stops', jsonb_build_array(jsonb_build_object('ref', 'x', 'location_id', b_lc,
+                    'side', 'KATHODOS', 'planned_from', h16, 'planned_to', h18))), 'test:072b', 'dispatcher');
+          b_x := (b_v2->>'rt_id')::bigint;
+          PERFORM plan_rt_clear(jsonb_build_object('rt_id', b_x), 'test:072b', 'dispatcher');
+          b_verdict := CASE WHEN (SELECT trip_type = 'OWNED' AND partner_id IS NULL AND partner_rate IS NULL FROM ct_round_trips WHERE id = b_x)
+                            THEN 'ok PARTNER cleared to OWNED without anything' ELSE 'FAIL PARTNER clear' END;
         -- [B-CASES-NEXT]
         END IF;
         SET CONSTRAINTS ALL IMMEDIATE;

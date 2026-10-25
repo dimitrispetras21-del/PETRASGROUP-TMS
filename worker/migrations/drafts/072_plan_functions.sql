@@ -1730,6 +1730,77 @@ begin
     'notice_ids', to_jsonb(v_notices));
 end
 $f$;
+  -- B3. "Clear assignment" (design 3, spec 3): only a correction - what is cleared "did not happen". Truck,
+  -- trailer, driver, partner and rate go from the WHOLE cycle; its stops and legs stay together, so its
+  -- deliveries show as TO ASSIGN (has_vehicle = false). Two steps when the list holds a document (R-05).
+  CREATE FUNCTION public.plan_rt_clear(p jsonb, p_actor text, p_role text)
+    RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $f$
+declare
+  -- Greek kept ASCII-safe (060 pattern). "Katharismos anathesis":
+  w_clear constant text := convert_from(decode('zprOsc64zrHPgc65z4POvM+Mz4IgzrHOvc6szrjOtc+DzrfPgg==', 'base64'), 'UTF8');
+  -- "To %s emeine choris ochima kai echei %s grammes exodon: leipei dromologio":
+  b_costs constant text := 'zqTOvyAlcyDOrc68zrXOuc69zrUgz4fPic+Bzq/PgiDPjM+HzrfOvM6xIM66zrHOuSDOrc+HzrXOuSAlcyDOs8+BzrHOvM68zq3PgiDOtc6+z4zOtM+Jzr06IM67zrXOr8+AzrXOuSDOtM+Bzr/OvM6/zrvPjM6zzrnOvw==';
+  v_rt bigint; r ct_round_trips%rowtype; v_full jsonb; v_conf jsonb;
+  v_reason text; v_old jsonb; v_n int; x record; v_notices bigint[] := '{}';
+begin
+  perform plan_h_ctx(p_actor, p_role);
+  set constraints all deferred;
+  -- an unknown key is refused, never ignored (principle 1): {"dryRun": true} must not clear
+  perform plan_h_keys(p, array['rt_id', 'dry_run', 'confirm_token'], 'p');
+  if p ? 'dry_run' and jsonb_typeof(p->'dry_run') <> 'boolean' then perform plan_h_raise('bad_input', 'dry_run'); end if;
+  -- coordinator 25/10 (cross-cutting input rule): 'NaN' / '+-Infinity' are refused by this cast itself (a bigint has
+  -- no non-finite value), as bad_input 'rt_id' - never through numeric, where NaN would end as a raw 0A000
+  begin
+    v_rt := (p->>'rt_id')::bigint;
+  exception when invalid_text_representation or numeric_value_out_of_range then
+    perform plan_h_raise('bad_input', 'rt_id');
+  end;
+  select * into r from ct_round_trips where id = v_rt for no key update;
+  if r.id is null or r.model <> 2 then perform plan_h_raise('rt_gone', coalesce(v_rt::text, 'null')); end if;
+  if r.status = 'cancelled' then perform plan_h_raise('rt_cancelled', r.code); end if;
+  -- the full list always carries the amounts: the token covers them, the dispatcher's copy does not show them.
+  -- The ONE two-step mechanism of 072 (section A, plan_h_confirm): dry run = list + token, an empty list needs no
+  -- token ("an empty payroll line goes without a question"), a changed list = stale_confirm before need_token.
+  v_full := plan_h_rt_consequences(v_rt);
+  v_conf := plan_h_confirm('plan_rt_clear', v_rt::text, v_full, p, p_role);
+  if v_conf is not null then return v_conf; end if;
+  v_reason := w_clear || ' ' || r.code || ' (' || p_actor || ')';
+  -- mut:payroll-delete-begin
+  -- K-13 / decision 11: a payroll line WITH amounts goes explicitly, after the token, BEFORE the cycle loses its
+  -- driver; 011 (dl_sync_from_rt, unchanged) would otherwise keep it with needs_review, which the spec does not
+  -- have. A line without amounts is left to 011: it deletes it by itself when the driver goes.
+  for x in select e.id, to_jsonb(e) as old from dl_entries e
+            where e.rt_id = v_rt and e.deleted_at is null
+              and (e.trip_value is not null or e.advance is not null or e.expenses is not null)
+            order by e.id for no key update loop
+    update dl_entries set deleted_at = now(), deleted_reason = v_reason, updated_at = now() where id = x.id;
+    perform plan_h_audit(p_actor, p_role, 'delete', 'dl_entries', x.id::text, x.old,
+                         (select to_jsonb(e) from dl_entries e where e.id = x.id));
+  end loop;
+  -- mut:payroll-delete-end
+  -- decision 12: partner_needs_partner holds always, so a cleared cycle is OWNED with nothing on it
+  select to_jsonb(c) into v_old from ct_round_trips c where c.id = v_rt;
+  update ct_round_trips set trip_type = 'OWNED', truck_id = null, trailer_id = null, driver_id = null,
+         partner_id = null, partner_rate = null, updated_at = now()
+   where id = v_rt
+     and (trip_type, truck_id, trailer_id, driver_id, partner_id, partner_rate)
+         is distinct from ('OWNED'::text, null::bigint, null::bigint, null::bigint, null::bigint, null::numeric);
+  if found then
+    perform plan_h_audit(p_actor, p_role, 'update', 'ct_round_trips', v_rt::text, v_old,
+                         (select to_jsonb(c) from ct_round_trips c where c.id = v_rt));
+    -- decision 13: the costs stay on the cycle (the trace); the national desk is told it has no vehicle now - once:
+    -- clearing a cycle that has no vehicle any more tells nobody again (review 23/10)
+    select count(*) into v_n from ct_cost_lines where rt_id = v_rt;
+    if v_n > 0 then
+      v_notices := v_notices || plan_h_notice('natl', 'costs_without_rt', b_costs, array[r.code, v_n::text], null, null, v_rt,
+                                              p_actor, p_role);
+    end if;
+  end if;
+  perform plan_h_finish();
+  return jsonb_build_object('ok', true, 'op', 'plan_rt_clear', 'dry_run', false,
+    'ids', jsonb_build_object('rt_id', v_rt), 'warnings', '[]'::jsonb, 'notice_ids', to_jsonb(v_notices));
+end
+$f$;
   -- ===== PART 4: NOTICES AND READS (section B) =====
   -- ===== PART 5: RIGHTS AND PROOFS =====
   -- Its own block: the reviewer reads the rights in one place. Born closed (principle 5): the pg_default_acl of
@@ -1749,6 +1820,7 @@ $f$;
     , 'public.plan_move_pieces(jsonb,text,text)'
     , 'public.plan_order_update(jsonb,text,text)'
     , 'public.plan_rt_update(jsonb,text,text)'
+    , 'public.plan_rt_clear(jsonb,text,text)'
     -- @pub (072 tasks add ", 'public.plan_x(<arg types>)'" lines above this marker)
     ]::text[], NULL);
     -- 071's own plan_* (triggers and rule readers): never touched by 072, closed for every API role

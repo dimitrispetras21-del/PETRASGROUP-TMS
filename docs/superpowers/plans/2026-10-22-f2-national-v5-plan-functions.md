@@ -5126,6 +5126,22 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 ```sql
         -- ---- Task B3: plan_rt_clear ----
         ELSIF kb = 34 THEN   -- clear with an empty payroll line: no question, the line goes (011), legs stay
+          -- coordinator 25/10 (cross-cutting input rule): an rt_id of NaN / +-Infinity is refused as bad_input 'rt_id',
+          -- in a dry run too (a malformed body is raised, not previewed); each probe is undone, nothing is cleared
+          FOR b_v3 IN SELECT value FROM jsonb_array_elements(jsonb_build_array(
+              jsonb_build_object('rt_id', 'NaN'), jsonb_build_object('rt_id', 'Infinity'),
+              jsonb_build_object('rt_id', '-Infinity'), jsonb_build_object('rt_id', 'NaN', 'dry_run', true)))
+          LOOP
+            BEGIN
+              PERFORM plan_rt_clear(b_v3, 'test:072b', 'dispatcher');
+              RAISE EXCEPTION 'FAIL a non-finite rt_id was accepted (%)', b_v3::text;
+            EXCEPTION WHEN check_violation THEN
+              GET STACKED DIAGNOSTICS b_msg = MESSAGE_TEXT, b_hint = PG_EXCEPTION_HINT;
+              IF b_hint IS DISTINCT FROM 'plan:bad_input' OR b_msg NOT LIKE '%bad_input:rt_id' THEN
+                RAISE EXCEPTION 'FAIL non-finite rt_id probe % got % (%)', b_v3::text, coalesce(b_hint, 'no hint'), b_msg;
+              END IF;
+            END;
+          END LOOP;
           b_v2 := plan_rt_clear(jsonb_build_object('rt_id', b_rt1), 'test:072b', 'dispatcher');
           b_verdict := CASE WHEN (SELECT trip_type = 'OWNED' AND truck_id IS NULL AND driver_id IS NULL AND trailer_id IS NULL
                                     FROM ct_round_trips WHERE id = b_rt1)
@@ -5240,6 +5256,8 @@ begin
   -- an unknown key is refused, never ignored (principle 1): {"dryRun": true} must not clear
   perform plan_h_keys(p, array['rt_id', 'dry_run', 'confirm_token'], 'p');
   if p ? 'dry_run' and jsonb_typeof(p->'dry_run') <> 'boolean' then perform plan_h_raise('bad_input', 'dry_run'); end if;
+  -- coordinator 25/10 (cross-cutting input rule): 'NaN' / '+-Infinity' are refused by this cast itself (a bigint has
+  -- no non-finite value), as bad_input 'rt_id' - never through numeric, where NaN would end as a raw 0A000
   begin
     v_rt := (p->>'rt_id')::bigint;
   exception when invalid_text_representation or numeric_value_out_of_range then
@@ -5302,7 +5320,7 @@ $f$;
 - [ ] **Step 4: Τρέξε, να περάσει**
 
 Run: `cd tms-auditor && node --test test/plan-072.test.mjs`
-Expected: `Result: 131 OK, 1 FAIL` (μόνο η B20, Β6)· B34–B42 πράσινες· η B38 γράφει «ok with the token: the 230 line deleted by name, 0 needs_review».
+Expected: `Result: 131 OK, 1 FAIL` (μόνο η B20, Β6)· B34–B42 πράσινες· η B38 γράφει «ok with the token: the 230 line deleted by name, 0 needs_review»· η B34 ελέγχει πρώτα ότι `rt_id` NaN / ±Infinity (και σε dry run) γυρίζει `bad_input:rt_id` (κανόνας εισόδου, συντονιστής 25/10).
 
 - [ ] **Step 5: Commit**
 
