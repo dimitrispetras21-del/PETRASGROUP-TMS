@@ -875,6 +875,15 @@ begin
   v_ans := plan_h_replay(p, 'plan_split_piece', p_actor);
   if v_ans is not null then return v_ans; end if;
   v_id := (p->>'piece_id')::bigint;
+  -- ONE lock order (as plan_move_pieces): every target cycle of the parts, by id, BEFORE the piece and before
+  -- anything is written (final review 25/10: the piece first could deadlock with a move of its legs to the same
+  -- cycle). 'parts' is only checked below: here a non-array locks nothing and is refused there as bad_input.
+  perform 1 from ct_round_trips rt
+   where rt.id in (select (q->'target'->>'rt_id')::bigint
+                     from jsonb_array_elements(case when jsonb_typeof(p->'parts') = 'array' then p->'parts'
+                                                    else '[]'::jsonb end) q
+                    where jsonb_typeof(q->'target') = 'object' and q->'target' ? 'rt_id')
+   order by rt.id for no key update;
   select * into p0 from shipment_pieces where id = v_id for no key update;
   if p0.id is null or p0.deleted_at is not null then perform plan_h_raise('piece_dead', coalesce(v_id::text, 'null')); end if;
   if exists (select 1 from shipment_pieces c2 where c2.parent_piece_id = p0.id and c2.deleted_at is null) then
@@ -903,11 +912,6 @@ begin
     v_sum := v_sum + (part->>'pallets')::numeric;
   end loop;
   if v_sum <> ps.pallets then perform plan_h_raise('parts_sum', format('%s:%s<>%s', p0.id, v_sum, ps.pallets)); end if;
-  -- ONE lock order (as plan_move_pieces): every target cycle of the parts, by id, before anything is written
-  perform 1 from ct_round_trips rt
-   where rt.id in (select (q->'target'->>'rt_id')::bigint from jsonb_array_elements(p->'parts') q
-                    where jsonb_typeof(q->'target') = 'object' and q->'target' ? 'rt_id')
-   order by rt.id for no key update;
   update shipment_pieces set split_at = now(), split_by = p_actor where id = p0.id;
   perform plan_h_audit(p_actor, p_role, 'update', 'shipment_pieces', p0.id::text,
                        jsonb_build_object('split_at', null), jsonb_build_object('split_at', now(), 'split_by', p_actor));
@@ -1811,18 +1815,20 @@ begin
   exception when invalid_text_representation or numeric_value_out_of_range then
     perform plan_h_raise('bad_input', 'nat_order_id');
   end;
-  select * into n from national_orders where id = v_no for no key update;
-  if n.id is null or n.deleted_at is not null then perform plan_h_raise('order_gone', coalesce(v_no::text, 'null')); end if;
-  if not exists (select 1 from shipments s where s.nat_order_id = v_no and s.deleted_at is null) then
-    perform plan_h_raise('order_not_v5', v_no::text);
-  end if;
   -- the chain: every live leg of every live piece of the order
   select coalesce(array_agg(l.id order by l.id), '{}') into v_legs
     from piece_legs l join shipment_pieces sp on sp.id = l.piece_id join shipments s on s.id = sp.shipment_id
    where s.nat_order_id = v_no and l.deleted_at is null;
   select coalesce(array_agg(distinct l.rt_id), '{}') into v_rts from piece_legs l where l.id = any(v_legs);
-  -- ONE lock order (as plan_move_pieces): the cycles in id order, before the list: no deadlock, no stale list
+  -- ONE lock order (as plan_move_pieces): the cycles in id order, BEFORE the order and before the list: no
+  -- deadlock, no stale list (final review 25/10: the order was locked first). A gone or non-v5 order has no live
+  -- leg, so it locks no cycle and is refused just below.
   perform 1 from ct_round_trips c where c.id = any(v_rts) order by c.id for no key update;
+  select * into n from national_orders where id = v_no for no key update;
+  if n.id is null or n.deleted_at is not null then perform plan_h_raise('order_gone', coalesce(v_no::text, 'null')); end if;
+  if not exists (select 1 from shipments s where s.nat_order_id = v_no and s.deleted_at is null) then
+    perform plan_h_raise('order_not_v5', v_no::text);
+  end if;
   select coalesce(array_agg(rid order by rid), '{}') into v_empty from unnest(v_rts) rid
    where not exists (select 1 from piece_legs l where l.rt_id = rid and l.deleted_at is null and not (l.id = any(v_legs)));
   -- the ONE list of section A for legs that go (cycles that empty with payroll and costs, executed legs, local

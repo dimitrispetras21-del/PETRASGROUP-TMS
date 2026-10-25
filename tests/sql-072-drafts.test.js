@@ -175,6 +175,16 @@ test('the public functions: exact signatures, jsonb, SECURITY DEFINER; the write
   const rc = body(src, 'plan_rt_create');
   assert.ok(rc.startsWith('CREATE FUNCTION public.plan_rt_create(p jsonb, p_actor text, p_role text)'));
   assert.ok(!arrayItems(src, 'v_pub').some((s) => s.includes('plan_rt_create')), 'plan_rt_create is internal (decision 3)');
+  // ONE lock order (final review 25/10): the cycles first, by id, then the order / piece. A single PGlite session
+  // cannot show a deadlock, so the order is checked here, on the text: the first cycle lock comes before the first
+  // lock on national_orders / shipment_pieces in every function that takes both.
+  for (const name of ['plan_move_pieces', 'plan_split_piece', 'plan_delete']) {
+    const b = strip(body(src, name));
+    const cyc = b.search(/from ct_round_trips [\s\S]*?for no key update/);
+    const other = b.search(/from (?:national_orders|shipment_pieces) [^;]*for no key update/);
+    assert.ok(cyc >= 0, `${name} locks its cycles`);
+    assert.ok(other < 0 || cyc < other, `${name}: the cycles are locked before the order / piece`);
+  }
 });
 
 test('every plan: code 072 raises has a case; >= 80 cases; no retired code', () => {
