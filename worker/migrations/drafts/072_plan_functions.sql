@@ -2067,6 +2067,104 @@ begin
     'notice_ids', case when v_nid is null then '[]'::jsonb else jsonb_build_array(v_nid) end);
 end
 $f$;
+  -- B6. "Loading with a local driver" (spec 3, Board): one local_moves row of kind nat_loading on the stop; the
+  -- local driver's TOPIKO payroll line per day comes from the existing 060/071 sync (label = the cycle's code).
+  -- {"local_move_id": n, "cancel": true} cancels it (status Cancelled: the sync takes the line away).
+  CREATE FUNCTION public.plan_local_loading(p jsonb, p_actor text, p_role text)
+    RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $f$
+declare
+  v_stop bigint; v_driver bigint; v_truck bigint; v_trailer bigint; v_lm bigint; v_cancel boolean;
+  s rt_stops%rowtype; r ct_round_trips%rowtype; lm local_moves%rowtype; v_old jsonb; v_warn jsonb; v_ans jsonb;
+begin
+  perform plan_h_ctx(p_actor, p_role);
+  set constraints all deferred;
+  -- an unknown key is refused, never ignored (principle 1): {"cancle": true} must not create a loading
+  perform plan_h_keys(p, array['rt_stop_id', 'driver_id', 'truck_id', 'trailer_id', 'time_from', 'time_to', 'notes',
+                               'local_move_id', 'cancel', 'request_id'], 'p');
+  -- coordinator 25/10 (cross-cutting input rule): an id of 'NaN' / '+-Infinity' is refused by these casts themselves
+  -- (a bigint has no non-finite value), as bad_input 'ids'; this function takes no numeric or timestamptz input
+  begin
+    v_lm := (p->>'local_move_id')::bigint;
+    v_cancel := coalesce((p->>'cancel')::boolean, false);
+    v_stop := (p->>'rt_stop_id')::bigint;
+    v_driver := (p->>'driver_id')::bigint;
+    v_truck := (p->>'truck_id')::bigint;
+    v_trailer := (p->>'trailer_id')::bigint;
+  exception when invalid_text_representation or numeric_value_out_of_range then
+    perform plan_h_raise('bad_input', 'ids');
+  end;
+  if v_lm is not null then
+    if not v_cancel then perform plan_h_raise('bad_input', 'local_move_id without cancel'); end if;
+    -- decision 44: request_id is for the creation; a second cancel is already harmless (already = true)
+    if p ? 'request_id' then perform plan_h_raise('bad_input', 'request_id on cancel'); end if;
+    select * into lm from local_moves where id = v_lm for no key update;
+    if lm.id is null or lm.move_kind <> 'nat_loading' then perform plan_h_raise('bad_input', 'local_move_id'); end if;
+    if lm.deleted_at is not null or lm.status = 'Cancelled' then
+      -- cancelled already: the second click changes nothing (idempotent, like a notice read)
+      return jsonb_build_object('ok', true, 'op', 'plan_local_loading', 'dry_run', false, 'already', true,
+                                'ids', jsonb_build_object('local_move_id', v_lm), 'warnings', '[]'::jsonb,
+                                'notice_ids', '[]'::jsonb);
+    end if;
+    -- decision 33: cancelling a loading whose TOPIKO line already has amounts sends that line to accounting's
+    -- review (060, B-08): said in the answer, never silent
+    select coalesce(jsonb_agg(jsonb_build_object('code', 'local_payroll_review', 'dl_entry_id', e.id,
+                                                 'local_move_id', v_lm)), '[]'::jsonb)
+      into v_warn from dl_entries e
+     where e.driver_id = lm.driver_id and e.entry_date = lm.move_date and e.local_move_id is not null
+       and e.deleted_at is null and (e.trip_value is not null or e.advance is not null or e.expenses is not null);
+    v_old := to_jsonb(lm);
+    update local_moves set status = 'Cancelled' where id = v_lm;
+    perform plan_h_audit(p_actor, p_role, 'update', 'local_moves', v_lm::text, v_old,
+                         (select to_jsonb(m) from local_moves m where m.id = v_lm));
+    perform plan_h_finish();
+    return jsonb_build_object('ok', true, 'op', 'plan_local_loading', 'dry_run', false, 'already', false,
+                              'ids', jsonb_build_object('local_move_id', v_lm), 'warnings', v_warn,
+                              'notice_ids', '[]'::jsonb);
+  end if;
+  -- {"cancel": true} without local_move_id is a cancel that does not say what: refused, it must never create a
+  -- loading (principle 1; review of PR #84)
+  if v_cancel then perform plan_h_raise('local_cancel_no_id', 'local_move_id'); end if;
+  -- decision 44: the same request_id again = the first answer, before local_exists would refuse the repeat
+  v_ans := plan_h_replay(p, 'plan_local_loading', p_actor);
+  if v_ans is not null then return v_ans; end if;
+  if v_stop is null or v_driver is null or v_truck is null then
+    perform plan_h_raise('bad_input', 'rt_stop_id, driver_id and truck_id');
+  end if;
+  if not exists (select 1 from drivers d where d.id = v_driver and d.deleted_at is null)
+     or not exists (select 1 from trucks t where t.id = v_truck and t.deleted_at is null)
+     or (v_trailer is not null and not exists (select 1 from trailers t where t.id = v_trailer and t.deleted_at is null)) then
+    perform plan_h_raise('bad_input', 'driver_id, truck_id or trailer_id');
+  end if;
+  select * into s from rt_stops where id = v_stop for no key update;
+  select * into r from ct_round_trips where id = s.rt_id;
+  if s.id is null or s.deleted_at is not null or r.model is distinct from 2 or r.status = 'cancelled' then
+    perform plan_h_raise('stop_gone', coalesce(v_stop::text, 'null'));
+  end if;
+  -- decision 38: the cycle's own driver is not also its local driver - two payroll lines (011 trip + 060 TOPIKO)
+  -- for one person on one stop; 060 refuses the same for a relay (local_relay:same_driver)
+  if r.driver_id is not null and r.driver_id = v_driver then perform plan_h_raise('driver_busy', r.code); end if;
+  -- local_moves_nat_loading_once is the floor (23505); this gives the refusal its own code first
+  if exists (select 1 from local_moves m where m.rt_stop_id = v_stop and m.move_kind = 'nat_loading'
+               and m.deleted_at is null and m.status <> 'Cancelled') then
+    perform plan_h_raise('local_exists', v_stop::text);
+  end if;
+  -- status is written: local_moves_before derives none for nat_loading (K-16); the day is the stop's Athens day
+  insert into local_moves (move_kind, rt_stop_id, driver_id, truck_id, trailer_id, move_date, time_from, time_to,
+                           notes, status, sequence)
+  values ('nat_loading', v_stop, v_driver, v_truck, v_trailer, (s.planned_from at time zone 'Europe/Athens')::date,
+          nullif(btrim(p->>'time_from'), ''), nullif(btrim(p->>'time_to'), ''), nullif(btrim(p->>'notes'), ''),
+          'Assigned', 1)
+  returning id into v_lm;
+  perform plan_h_audit(p_actor, p_role, 'create', 'local_moves', v_lm::text, null,
+                       (select to_jsonb(m) from local_moves m where m.id = v_lm));
+  v_ans := jsonb_build_object('ok', true, 'op', 'plan_local_loading', 'dry_run', false, 'already', false,
+                              'ids', jsonb_build_object('local_move_id', v_lm, 'rt_id', s.rt_id), 'warnings', '[]'::jsonb,
+                              'notice_ids', '[]'::jsonb);
+  perform plan_h_remember(p, 'plan_local_loading', v_ans, p_actor, p_role);
+  perform plan_h_finish();
+  return v_ans;
+end
+$f$;
   -- ===== PART 4: NOTICES AND READS (section B) =====
   -- ===== PART 5: RIGHTS AND PROOFS =====
   -- Its own block: the reviewer reads the rights in one place. Born closed (principle 5): the pg_default_acl of
@@ -2090,6 +2188,7 @@ $f$;
     , 'public.plan_delete(jsonb,text,text)'
     , 'public.plan_vs_set_day(jsonb,text,text)'
     , 'public.plan_vs_set_place(jsonb,text,text)'
+    , 'public.plan_local_loading(jsonb,text,text)'
     -- @pub (072 tasks add ", 'public.plan_x(<arg types>)'" lines above this marker)
     ]::text[], NULL);
     -- 071's own plan_* (triggers and rule readers): never touched by 072, closed for every API role

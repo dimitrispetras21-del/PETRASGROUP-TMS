@@ -5959,6 +5959,29 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
         ELSIF kb = 65 THEN
           PERFORM plan_local_loading(jsonb_build_object('request_id', gen_random_uuid()) || (jsonb_build_object('rt_stop_id', -1, 'driver_id', b_d3, 'truck_id', b_t2)), 'test:072b', 'dispatcher');
         ELSIF kb = 66 THEN
+          -- coordinator 25/10 (cross-cutting input rule): an id of NaN / +-Infinity (or past bigint) is refused as
+          -- bad_input 'ids', on the creation and on the cancel; each probe is undone
+          FOR b_v3 IN SELECT value FROM jsonb_array_elements(jsonb_build_array(
+              jsonb_build_object('request_id', gen_random_uuid(), 'rt_stop_id', 'NaN', 'driver_id', b_d3, 'truck_id', b_t2),
+              jsonb_build_object('request_id', gen_random_uuid(), 'rt_stop_id', 'Infinity', 'driver_id', b_d3, 'truck_id', b_t2),
+              jsonb_build_object('request_id', gen_random_uuid(), 'rt_stop_id', '-Infinity', 'driver_id', b_d3, 'truck_id', b_t2),
+              jsonb_build_object('request_id', gen_random_uuid(), 'rt_stop_id', 1e400::numeric, 'driver_id', b_d3, 'truck_id', b_t2),
+              jsonb_build_object('request_id', gen_random_uuid(), 'rt_stop_id', b_sa, 'driver_id', 'NaN', 'truck_id', b_t2),
+              jsonb_build_object('request_id', gen_random_uuid(), 'rt_stop_id', b_sa, 'driver_id', b_d3, 'truck_id', 'Infinity'),
+              jsonb_build_object('request_id', gen_random_uuid(), 'rt_stop_id', b_sa, 'driver_id', b_d3, 'truck_id', b_t2,
+                                 'trailer_id', '-Infinity'),
+              jsonb_build_object('local_move_id', 'NaN', 'cancel', true)))
+          LOOP
+            BEGIN
+              PERFORM plan_local_loading(b_v3, 'test:072b', 'dispatcher');
+              RAISE EXCEPTION 'FAIL a non-finite local loading id was accepted (%)', b_v3::text;
+            EXCEPTION WHEN check_violation THEN
+              GET STACKED DIAGNOSTICS b_msg = MESSAGE_TEXT, b_hint = PG_EXCEPTION_HINT;
+              IF b_hint IS DISTINCT FROM 'plan:bad_input' OR b_msg NOT LIKE '%bad_input:ids' THEN
+                RAISE EXCEPTION 'FAIL non-finite local loading probe % got % (%)', b_v3::text, coalesce(b_hint, 'no hint'), b_msg;
+              END IF;
+            END;
+          END LOOP;
           PERFORM plan_local_loading(jsonb_build_object('request_id', gen_random_uuid()) || (jsonb_build_object('rt_stop_id', b_sa, 'truck_id', b_t2)), 'test:072b', 'dispatcher');
         ELSIF kb = 68 THEN
           PERFORM plan_local_loading(jsonb_build_object('request_id', gen_random_uuid()) || (jsonb_build_object('rt_stop_id', b_sa, 'driver_id', b_d3, 'truck_id', b_t2)), '', 'dispatcher');
@@ -5992,6 +6015,8 @@ begin
   -- an unknown key is refused, never ignored (principle 1): {"cancle": true} must not create a loading
   perform plan_h_keys(p, array['rt_stop_id', 'driver_id', 'truck_id', 'trailer_id', 'time_from', 'time_to', 'notes',
                                'local_move_id', 'cancel', 'request_id'], 'p');
+  -- coordinator 25/10 (cross-cutting input rule): an id of 'NaN' / '+-Infinity' is refused by these casts themselves
+  -- (a bigint has no non-finite value), as bad_input 'ids'; this function takes no numeric or timestamptz input
   begin
     v_lm := (p->>'local_move_id')::bigint;
     v_cancel := coalesce((p->>'cancel')::boolean, false);

@@ -1247,6 +1247,8 @@ BEGIN
                'ok', 'plan:hard_delete', 'plan:need_token', 'plan:bad_input']   -- B43-B51 (Task B4)
       || ARRAY['ok', 'plan:vs_not_bridge', 'plan:order_gone', 'ok', 'ok',
                'ok', 'ok', 'plan:vs_not_bridge', 'ok']   -- B52-B60 (Task B5)
+      || ARRAY['ok', 'plan:local_exists', 'ok', 'plan:local_loading_stop', 'plan:stop_gone',
+               'plan:bad_input', 'ok', 'plan:no_actor']   -- B61-B68 (Task B6)
       ;  -- end of b_want
     b_verdict text; b_got text; b_hint text; b_msg text; b_cname text; b_st text;
   BEGIN
@@ -1917,6 +1919,65 @@ BEGIN
                               AND (SELECT cross_dock_date FROM orders WHERE id = b_vo) = b_d + 2
                             THEN 'ok another day than the truck: written, and the answer warns vs_day_differs'
                             ELSE 'FAIL vs_day_differs ' || b_v3::text END;
+        -- ---- Task B6: plan_local_loading ----
+        ELSIF kb IN (61, 62, 63, 67) THEN   -- loading by a local driver
+          b_v2 := plan_local_loading(jsonb_build_object('request_id', gen_random_uuid()) || (jsonb_build_object('rt_stop_id', b_sa, 'driver_id', b_d3, 'truck_id', b_t2,
+                    'time_from', '06:30', 'time_to', '07:30')), 'test:072b', 'dispatcher');
+          b_x := (b_v2->'ids'->>'local_move_id')::bigint;
+          IF kb = 62 THEN
+            PERFORM plan_local_loading(jsonb_build_object('request_id', gen_random_uuid()) || (jsonb_build_object('rt_stop_id', b_sa, 'driver_id', b_d2, 'truck_id', b_t2)), 'test:072b', 'dispatcher');
+          ELSIF kb IN (63, 67) THEN
+            b_v3 := plan_local_loading(jsonb_build_object('local_move_id', b_x, 'cancel', true), 'test:072b', 'dispatcher');
+            IF kb = 67 THEN
+              b_v3 := plan_local_loading(jsonb_build_object('local_move_id', b_x, 'cancel', true), 'test:072b', 'dispatcher');
+            END IF;
+          END IF;
+          b_verdict := CASE
+            WHEN kb = 61 AND (SELECT move_kind = 'nat_loading' AND status = 'Assigned' AND move_date = b_d AND rt_stop_id = b_sa
+                                     AND parent_order_id IS NULL FROM local_moves WHERE id = b_x)
+                         AND (SELECT count(*) FROM dl_entries WHERE driver_id = b_d3 AND entry_date = b_d AND deleted_at IS NULL
+                                AND local_move_id = b_x AND route LIKE '%' || (b_v->>'code')) = 1
+              THEN 'ok one local loading, one TOPIKO line named after the cycle'
+            WHEN kb = 63 AND (SELECT status FROM local_moves WHERE id = b_x) = 'Cancelled'
+                         AND NOT EXISTS (SELECT 1 FROM dl_entries WHERE driver_id = b_d3 AND deleted_at IS NULL)
+                         AND NOT (b_v3->>'already')::boolean
+              THEN 'ok cancelled: the TOPIKO line went with it'
+            WHEN kb = 67 AND (b_v3->>'already')::boolean
+                         AND (SELECT count(*) FROM audit_log WHERE actor = 'test:072b' AND table_name = 'local_moves'
+                                AND action = 'update') = 1
+              THEN 'ok a second cancel changes nothing'
+            ELSE 'FAIL local loading' END;
+        ELSIF kb = 64 THEN   -- a stop where nothing loads
+          PERFORM plan_local_loading(jsonb_build_object('request_id', gen_random_uuid()) || (jsonb_build_object('rt_stop_id', b_sb, 'driver_id', b_d3, 'truck_id', b_t2)), 'test:072b', 'dispatcher');
+        ELSIF kb = 65 THEN
+          PERFORM plan_local_loading(jsonb_build_object('request_id', gen_random_uuid()) || (jsonb_build_object('rt_stop_id', -1, 'driver_id', b_d3, 'truck_id', b_t2)), 'test:072b', 'dispatcher');
+        ELSIF kb = 66 THEN
+          -- coordinator 25/10 (cross-cutting input rule): an id of NaN / +-Infinity (or past bigint) is refused as
+          -- bad_input 'ids', on the creation and on the cancel; each probe is undone
+          FOR b_v3 IN SELECT value FROM jsonb_array_elements(jsonb_build_array(
+              jsonb_build_object('request_id', gen_random_uuid(), 'rt_stop_id', 'NaN', 'driver_id', b_d3, 'truck_id', b_t2),
+              jsonb_build_object('request_id', gen_random_uuid(), 'rt_stop_id', 'Infinity', 'driver_id', b_d3, 'truck_id', b_t2),
+              jsonb_build_object('request_id', gen_random_uuid(), 'rt_stop_id', '-Infinity', 'driver_id', b_d3, 'truck_id', b_t2),
+              jsonb_build_object('request_id', gen_random_uuid(), 'rt_stop_id', 1e400::numeric, 'driver_id', b_d3, 'truck_id', b_t2),
+              jsonb_build_object('request_id', gen_random_uuid(), 'rt_stop_id', b_sa, 'driver_id', 'NaN', 'truck_id', b_t2),
+              jsonb_build_object('request_id', gen_random_uuid(), 'rt_stop_id', b_sa, 'driver_id', b_d3, 'truck_id', 'Infinity'),
+              jsonb_build_object('request_id', gen_random_uuid(), 'rt_stop_id', b_sa, 'driver_id', b_d3, 'truck_id', b_t2,
+                                 'trailer_id', '-Infinity'),
+              jsonb_build_object('local_move_id', 'NaN', 'cancel', true)))
+          LOOP
+            BEGIN
+              PERFORM plan_local_loading(b_v3, 'test:072b', 'dispatcher');
+              RAISE EXCEPTION 'FAIL a non-finite local loading id was accepted (%)', b_v3::text;
+            EXCEPTION WHEN check_violation THEN
+              GET STACKED DIAGNOSTICS b_msg = MESSAGE_TEXT, b_hint = PG_EXCEPTION_HINT;
+              IF b_hint IS DISTINCT FROM 'plan:bad_input' OR b_msg NOT LIKE '%bad_input:ids' THEN
+                RAISE EXCEPTION 'FAIL non-finite local loading probe % got % (%)', b_v3::text, coalesce(b_hint, 'no hint'), b_msg;
+              END IF;
+            END;
+          END LOOP;
+          PERFORM plan_local_loading(jsonb_build_object('request_id', gen_random_uuid()) || (jsonb_build_object('rt_stop_id', b_sa, 'truck_id', b_t2)), 'test:072b', 'dispatcher');
+        ELSIF kb = 68 THEN
+          PERFORM plan_local_loading(jsonb_build_object('request_id', gen_random_uuid()) || (jsonb_build_object('rt_stop_id', b_sa, 'driver_id', b_d3, 'truck_id', b_t2)), '', 'dispatcher');
         -- [B-CASES-NEXT]
         END IF;
         SET CONSTRAINTS ALL IMMEDIATE;
