@@ -1231,7 +1231,7 @@ BEGIN
     b_rt1 bigint; b_sa bigint; b_sb bigint; b_lg1 bigint; b_lg2 bigint;
     b_bs1 bigint; b_bs2 bigint; b_bs3 bigint; b_q1 bigint; b_q2 bigint; b_q3 bigint;
     b_x bigint; b_y bigint; b_z bigint; b_e1 bigint; b_e2 bigint; b_e3 bigint;
-    b_v jsonb; b_v2 jsonb; b_v3 jsonb; b_tok text; b_txt text;
+    b_v jsonb; b_v2 jsonb; b_v3 jsonb; b_tok text; b_txt text; b_put text;
     b_want text[] := ARRAY[]::text[]
       || ARRAY['ok', 'plan:truck_busy', 'ok', 'ok', 'plan:no_vehicle',
                'ok', 'ok', 'con:rt_partner_rate', 'con:rt_partner_rate', 'plan:no_vehicle',
@@ -2817,6 +2817,9 @@ BEGIN
           PERFORM plan_order_update(jsonb_build_object('nat_order_id', b_no2, 'shipments', jsonb_build_array(
                     jsonb_build_object('shipment_id', b_sh2, 'pallets', 13))), 'test:072b', 'dispatcher');
         ELSIF kb BETWEEN 134 AND 138 THEN   -- K1 gap E: the dry run of a move refuses the request's stops as its execution does
+          -- and as the real resolver does: the move's dry run and execution both meet the copy of the rule in
+          -- plan_move_pieces, so the same stops also go through plan_put_pieces (plan_h_target -> plan_h_stop_at,
+          -- polish review I1), with a waiting piece at A going to B; a change to the resolver alone turns this red
           b_v2 := plan_rt_create(jsonb_build_object('new_rt', jsonb_build_object('trip_type', 'OWNED', 'truck_id', b_t2, 'driver_id', b_d2),
                     'stops', jsonb_build_array(
                       jsonb_build_object('ref', 'a', 'location_id', b_la, 'side', 'KATHODOS', 'planned_from', h06, 'planned_to', h07),
@@ -2830,10 +2833,6 @@ BEGIN
                                  deliver_to, created_by)
           VALUES (b_no2, b_la, b_lb, 4, h06, h08, h12, h14, 'test:072b') RETURNING id INTO b_sh2;
           INSERT INTO shipment_pieces (shipment_id, pallets, created_by) VALUES (b_sh2, 4, 'test:072b') RETURNING id INTO b_p2;
-          INSERT INTO piece_legs (piece_id, leg_no, rt_id, pickup_stop_id, drop_stop_id, created_by)
-          VALUES (b_p2, 1, b_rt1, b_sa, b_sb, 'test:072b');
-          SET CONSTRAINTS ALL IMMEDIATE;
-          SET CONSTRAINTS ALL DEFERRED;
           -- 134: a stop of another cycle (S) named on the target; 135: two stops at A, neither on the target side;
           -- 136: no stop at A (where the piece waits); 137: one ref twice; 138: an unknown key in a stop
           b_v3 := jsonb_build_object('from', jsonb_build_object('piece_ids', jsonb_build_array(b_p1)),
@@ -2853,6 +2852,17 @@ BEGIN
                                ELSE jsonb_build_array(
                                  jsonb_build_object('ref', 'a', 'stop_id', (b_v2->'stops'->>'a')::bigint, 'seq', 1),
                                  jsonb_build_object('ref', 'b', 'stop_id', (b_v2->'stops'->>'b')::bigint)) END);
+          -- the real resolver first, while b_p2 still waits at A (its put is undone with its refusal)
+          b_put := 'no refusal';
+          BEGIN
+            PERFORM plan_put_pieces(jsonb_build_object('pieces', jsonb_build_array(jsonb_build_object('piece_id', b_p2)),
+                      'target', b_v3->'target', 'stops', b_v3->'stops'), 'test:072b', 'dispatcher');
+          EXCEPTION WHEN others THEN GET STACKED DIAGNOSTICS b_put = MESSAGE_TEXT;
+          END;
+          INSERT INTO piece_legs (piece_id, leg_no, rt_id, pickup_stop_id, drop_stop_id, created_by)
+          VALUES (b_p2, 1, b_rt1, b_sa, b_sb, 'test:072b');
+          SET CONSTRAINTS ALL IMMEDIATE;
+          SET CONSTRAINTS ALL DEFERRED;
           b_txt := 'no refusal'; b_tok := 'no refusal';
           BEGIN
             PERFORM plan_move_pieces(b_v3 || '{"dry_run": true}'::jsonb, 'test:072b', 'dispatcher');
@@ -2868,9 +2878,11 @@ BEGIN
                                                   WHEN 136 THEN 'plan rule broken: bad_input:pickup:' || b_p1 || '@' || b_la
                                                   WHEN 137 THEN 'plan rule broken: bad_input:stop.ref'
                                                   ELSE 'plan rule broken: bad_input:stop.seq' END
+                              AND b_put = CASE kb WHEN 136 THEN 'plan rule broken: bad_input:pickup:' || b_p2 || '@' || b_la
+                                                  ELSE b_txt END
                               AND (SELECT deleted_at IS NULL FROM piece_legs WHERE id = b_lg1)
-                            THEN 'ok the move dry run refuses its stops as the execution does: ' || b_txt
-                            ELSE 'FAIL dry run ' || b_txt || ' / execution ' || b_tok END;
+                            THEN 'ok the move dry run refuses its stops as the execution and the resolver do: ' || b_txt
+                            ELSE 'FAIL dry run ' || b_txt || ' / execution ' || b_tok || ' / resolver ' || b_put END;
         ELSIF kb = 139 THEN   -- K1 gap E: the answer's stop_ids never list a named stop the same move swept
           -- S's piece from KATHODOS to the ANODOS side of S: the request names A (KATHODOS), the pickup is the new A
           -- on the target side, so the named A loses its last leg and goes

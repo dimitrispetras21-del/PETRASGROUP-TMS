@@ -354,7 +354,7 @@ piece_in := { "piece_id": bigint, "take_pallets": numeric|null,     -- only on a
 ### Κωδικοί `plan:`
 - **Της 071 (26):** `pieces_alive, piece_dead, pieces_sum, piece_parent, split_not_at_hub, rt_not_v2, rt_cancelled, leg_stop_dead, leg_order, leg_place, chain, chain_time, stop_seq, stop_order, side_order, rt_window, local_loading_gone, local_loading_day, local_loading_stop, model_locked, stop_locked, leg_locked, piece_locked, shipment_locked, v1_link_on_v2, hard_delete`.
 - **Νέοι της 072 (31):** `no_actor, bad_input, no_client, no_price, no_window, stock_lot, order_gone, order_not_v5, vs_locked, piece_busy, piece_split, not_stock, parts_sum, not_at_hub, group_empty, same_rt, rt_gone, no_vehicle, truck_busy, driver_busy, stop_gone, local_exists, notice_gone, stale_confirm, need_token, vs_not_bridge, payroll_locked, request_reused, request_missing, local_cancel_no_id, vehicle_clear_use_clear` (`payroll_locked`: απόφαση 32· `request_reused`, `request_missing`: απόφαση 44· `local_cancel_no_id`: κριτική PR #84· `vehicle_clear_use_clear`: owner 25/10). Η 072 ρίχνει αμέσως και δύο της 071 με το κείμενό τους: `rt_cancelled`, `piece_dead`.
-- **Μόνο του Worker** (όχι `plan:`): `busy_retry` (409, χαμένη κλειδαριά `40P01`/`40001`/`55P03`), `slow` (503, `57014`, ή `PGRST003`: καμία σύνδεση της δεξαμενής, η RPC δεν έτρεξε), `db_refused` (503, 401 / 403 της πύλης: η RPC δεν έτρεξε, «δεν αποθηκεύτηκε», κριτική Κ1 γ3), `writes_closed` (409), `schema_behind` (503, `PGRST202` ή `42883` για την ίδια τη συνάρτηση), `db_grant` (503, `42501` στην ίδια τη συνάρτηση), `amount_leak` (500), `plan_failed` (500, ανάγνωση ή dry run), `plan_unknown` (500, εγγραφή: «μπορεί να έγινε», ποτέ «δεν ολοκληρώθηκε»), `bad_week`/`bad_order_ids`/`bad_desk`/`bad_json`/`id_mismatch` (400), και `bad_input` με `'<πεδίο>:finite'` (400, πριν από τη βάση: αριθμός σώματος που δεν είναι πεπερασμένος, π.χ. JSON `1e999` = Infinity που το `JSON.stringify` θα έστελνε ως `null`, ή id διαδρομής που δεν είναι ασφαλής ακέραιος· κανόνας συντονιστή 25/10), `unauthorized` (401), `forbidden` (403), `no_route` (404).
+- **Μόνο του Worker** (όχι `plan:`): `busy_retry` (409, χαμένη κλειδαριά `40P01`/`40001`/`55P03`), `slow` (503, `57014`, ή `PGRST003`: καμία σύνδεση της δεξαμενής, η RPC δεν έτρεξε), `db_refused` (503, 401 / 403 της πύλης: η RPC δεν έτρεξε, «δεν αποθηκεύτηκε» σε εγγραφή, «δεν εκτελέστηκε» σε ανάγνωση, κριτική Κ1 γ3 και polish), `writes_closed` (409), `schema_behind` (503, `PGRST202` ή `42883` για την ίδια τη συνάρτηση), `db_grant` (503, `42501` στην ίδια τη συνάρτηση), `amount_leak` (500), `plan_failed` (500, ανάγνωση ή dry run), `plan_unknown` (500, εγγραφή: «μπορεί να έγινε», ποτέ «δεν ολοκληρώθηκε»· και στα FATAL `57P01` / `57P02`, που μπορεί να έρθουν μετά το COMMIT, κριτική polish), `bad_week`/`bad_order_ids`/`bad_desk`/`bad_json`/`id_mismatch` (400), και `bad_input` με `'<πεδίο>:finite'` (400, πριν από τη βάση: αριθμός σώματος που δεν είναι πεπερασμένος, π.χ. JSON `1e999` = Infinity που το `JSON.stringify` θα έστελνε ως `null`, ή id διαδρομής που δεν είναι ασφαλής ακέραιος· κανόνας συντονιστή 25/10), `unauthorized` (401), `forbidden` (403), `no_route` (404).
 - **Αποσύρθηκαν, απαγορεύονται στο build:** `hub_endpoint, piece_planned, bridge_moved, bridge_split, legacy_nl, frozen, restore_expired, restore_conflict, partner_rate_on_owned, window_order`.
 - Μορφή μηνύματος: `plan rule broken: <code>:<detail>`· ο Worker παίρνει το `detail` (μετά το `<code>:`) και το βάζει σε παρένθεση στο ελληνικό (π.χ. `truck_busy` → «Το φορτηγό είναι ήδη σε άλλο δρομολόγιο (RT-1280)»).
 
@@ -378,7 +378,7 @@ piece_in := { "piece_id": bigint, "take_pallets": numeric|null,     -- only on a
 | `POST /plan/vs/place` | `vs-place` | `plan_vs_set_place` | body | 200 |
 | `POST /plan/local-loading` | `local-loading` | `plan_local_loading` | body | 200 |
 
-Κανένα `POST /plan/rt`, κανένα `restore`. Status: **401** χωρίς/άκυρο/κακοσχηματισμένο token (πριν από κάθε κλήση· ποτέ CF 1101)· **403** ρόλος χωρίς δικαίωμα (πριν από κάθε κλήση)· **404** άγνωστη διαδρομή· **400** μη έγκυρο JSON/ids· **409** `writes_closed` (απόφαση 22), `busy_retry` (ταυτόχρονη αλλαγή, τίποτα δεν γράφτηκε· ο Worker δεν ξανακαλεί την RPC και καμία οθόνη δεν ξαναστέλνει μόνη της: απόφαση 44) και `PATCH /costs/rt` σε `model=2`· **422** `PLAN_RULE`· **428** `need_token`· **503** `schema_behind` (PostgREST `PGRST202`/404 στο rpc, ή `42883` που ονομάζει την ίδια τη συνάρτηση = λείπει η 072, πρότυπο `schemaBehind060`), `db_grant` (`42501` στην ίδια τη συνάρτηση: λείπει το GRANT), `slow` (`57014` ή `PGRST003`) και `db_refused` (401 / 403 της πύλης χωρίς SQLSTATE: η RPC δεν έτρεξε)· **500** με όνομα διαδρομής (try/catch σε όλο το σώμα· στο `fetch` δεν υπάρχει γενικό catch): `plan_failed` σε ανάγνωση ή dry run, `plan_unknown` σε εγγραφή (η σύνδεση μπορεί να κόπηκε μετά το COMMIT). Τύποι σφάλματος: `AUTH` 401, `FORBIDDEN` 403, `NOT_FOUND` 404, `BAD_REQUEST` 400, `WRITES_CLOSED` 409, `PLAN_RULE` 409/422/428 (ή `STOCK_RULE` / `LOCAL_RELAY_RULE` αν αρνήθηκε κανόνας 057/060), `SCHEMA_BEHIND` 503, `SERVER` 500/503. Ο Worker **δεν** γράφει δικό του `audit_log` (το γράφει η βάση).
+Κανένα `POST /plan/rt`, κανένα `restore`. Status: **401** χωρίς/άκυρο/κακοσχηματισμένο token (πριν από κάθε κλήση· ποτέ CF 1101)· **403** ρόλος χωρίς δικαίωμα (πριν από κάθε κλήση)· **404** άγνωστη διαδρομή· **400** μη έγκυρο JSON/ids· **409** `writes_closed` (απόφαση 22), `busy_retry` (ταυτόχρονη αλλαγή, τίποτα δεν γράφτηκε· ο Worker δεν ξανακαλεί την RPC και καμία οθόνη δεν ξαναστέλνει μόνη της: απόφαση 44) και `PATCH /costs/rt` σε `model=2`· **422** `PLAN_RULE`· **428** `need_token`· **503** `schema_behind` (PostgREST `PGRST202`/404 στο rpc, ή `42883` που ονομάζει την ίδια τη συνάρτηση = λείπει η 072, πρότυπο `schemaBehind060`), `db_grant` (`42501` στην ίδια τη συνάρτηση: λείπει το GRANT), `slow` (`57014` ή `PGRST003`) και `db_refused` (401 / 403 της πύλης χωρίς SQLSTATE: η RPC δεν έτρεξε)· **500** με όνομα διαδρομής (try/catch σε όλο το σώμα· στο `fetch` δεν υπάρχει γενικό catch): `plan_failed` σε ανάγνωση ή dry run, `plan_unknown` σε εγγραφή (η σύνδεση μπορεί να κόπηκε μετά το COMMIT· και `57P01` / `57P02`). Τύποι σφάλματος: `AUTH` 401, `FORBIDDEN` 403, `NOT_FOUND` 404, `BAD_REQUEST` 400, `WRITES_CLOSED` 409, `PLAN_RULE` 409/422/428 (ή `STOCK_RULE` / `LOCAL_RELAY_RULE` αν αρνήθηκε κανόνας 057/060), `SCHEMA_BEHIND` 503, `SERVER` 500/503. Ο Worker **δεν** γράφει δικό του `audit_log` (το γράφει η βάση).
 
 ### `PLAN_PERMS` (deny-by-default, κανένα `"*"`, όλα μέσα στο literal· απόφαση 41, owner 23/10)
 
@@ -3278,7 +3278,7 @@ begin
   v_side := v_from->>'side';
   -- Finite inputs (coordinator 25/10): every id is bigint, so 'NaN' / 'Infinity' fail their cast (bad_input 22P02,
   -- before the list); a new target stop's window is refused in plan_h_stop_add ('stop.planned:finite', the one
-  -- guard), at execution: the dry run reads the request's stops (K1 gap E, below), never their windows.
+  -- guard), at execution: the dry run reads the request's stops (K1 gap E, below), never a new stop's side or window.
   if v_from ? 'piece_ids' then
     if v_side is not null or jsonb_typeof(v_from->'piece_ids') is distinct from 'array' then
       perform plan_h_raise('bad_input', 'from');
@@ -3393,9 +3393,11 @@ begin
   -- for every moved piece in its order: its pickup where its first moved leg picks up (the chain: it waits there
   -- once its moved legs are off) and its drop at its national end, among those stops - more than one there and not
   -- exactly one on the target side = stop.ambiguous, none = pickup / drop. The rule of plan_h_stop_at is repeated on
-  -- (stop, place, side) because the new stops do not exist yet: a change to one is a change to both (B134 / B135
-  -- compare the dry run's refusal with the execution's). Still at execution only (decision 39): a new stop's
-  -- window and place (plan_h_stop_add), and a new_rt's stops and vehicle (plan_rt_create).
+  -- (stop, place, side) because the new stops do not exist yet: a change to one is a change to both. The execution
+  -- meets this copy too, so the guard is B134-B138 sending the same stops through plan_put_pieces as well, whose
+  -- refusal comes from plan_h_target / plan_h_stop_at: the dry run, the execution and the resolver must give the
+  -- same message. Still at execution only (decision 39): a new stop's side, window and place (plan_h_stop_add;
+  -- a side that is not KATHODOS / ANODOS is counted here as given), and a new_rt's stops and vehicle (plan_rt_create).
   if not v_wait and v_keep is not null then
     if p ? 'stops' and jsonb_typeof(p->'stops') <> 'array' then perform plan_h_raise('bad_input', 'stops'); end if;
     for v_s in select value from jsonb_array_elements(coalesce(p->'stops', '[]')) loop
@@ -3442,7 +3444,8 @@ begin
   select array_agg(distinct x) into v_stops
     from piece_legs l, unnest(array[l.pickup_stop_id, l.drop_stop_id]) x where l.id = any (v_legs);
   select array_agg(distinct l.rt_id) into v_src from piece_legs l where l.id = any (v_legs);
-  -- (1) the target's stops first, so a stop of the request is never swept; (2) old legs off; (3) new legs on;
+  -- (1) the target's stops first, so a stop the request creates is never swept (a named stop that loses its last
+  -- leg here is swept, and left out of stop_ids, B139); (2) old legs off; (3) new legs on;
   -- (4) stops that lost their last leg; (5) cycles left empty (decision 11 order inside).
   if not v_wait then v_tgt := plan_h_target(p->'target', p->'stops', p_actor, p_role); end if;
   for v_x in select unnest(v_legs) loop perform plan_h_leg_drop(v_x, v_reason, p_actor, p_role); end loop;
@@ -4341,7 +4344,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
     b_rt1 bigint; b_sa bigint; b_sb bigint; b_lg1 bigint; b_lg2 bigint;
     b_bs1 bigint; b_bs2 bigint; b_bs3 bigint; b_q1 bigint; b_q2 bigint; b_q3 bigint;
     b_x bigint; b_y bigint; b_z bigint; b_e1 bigint; b_e2 bigint; b_e3 bigint;
-    b_v jsonb; b_v2 jsonb; b_v3 jsonb; b_tok text; b_txt text;
+    b_v jsonb; b_v2 jsonb; b_v3 jsonb; b_tok text; b_txt text; b_put text;
     b_want text[] := ARRAY[]::text[]
       || ARRAY['ok', 'plan:truck_busy', 'ok', 'ok', 'plan:no_vehicle',
                'ok', 'ok', 'con:rt_partner_rate', 'con:rt_partner_rate', 'plan:no_vehicle',
@@ -9283,23 +9286,27 @@ async function handlePlan(request, url, origin, env) {
       return planError(422, "PLAN_RULE", cname, n ? `Κανόνας βάσης ${cname}` : `Κανόνας βάσης: ${String(pg.message || "").slice(0, 200)}`, origin, env);
     }
     console.error(`PLAN ${name}`, e && e.message);
-    // Only a real Postgres SQLSTATE (five characters) outside the connection class 08 means the RPC's transaction
-    // rolled back: nothing was kept, so it is plan_failed, never «may have been saved» (K1 review r1: 22P02, 23502,
-    // an inner 42883, P0001 without hint). Anything else leaves the outcome unknown, because the COMMIT may have
-    // happened before the link dropped: no answer (the fetch threw), a gateway page, or a JSON body without a
-    // SQLSTATE - the gateway's 502 / 504 {"message": …}, PostgREST's PGRST000 «connection lost» (K1 review r2).
-    const rolledBack = !!pg && /^(?!08)[0-9A-Z]{5}$/.test(String(pg.code || ""));
+    // Only a real Postgres SQLSTATE (five characters) outside the connection class 08 and the FATAL terminations 57P
+    // means the RPC's transaction rolled back: nothing was kept, so it is plan_failed, never «may have been saved»
+    // (K1 review r1: 22P02, 23502, an inner 42883, P0001 without hint). Anything else leaves the outcome unknown,
+    // because the COMMIT may have happened before the link dropped: no answer (the fetch threw), a gateway page, or
+    // a JSON body without a SQLSTATE - the gateway's 502 / 504 {"message": …}, PostgREST's PGRST000 «connection lost»
+    // (K1 review r2) - and a 57P01 / 57P02 (polish review I1: pg_terminate_backend, a fast shutdown, or a crash of
+    // another backend can end the session after its commit record is flushed and before the client hears of it).
+    // 57014 (statement_timeout) is not FATAL and is answered above as slow.
+    const rolledBack = !!pg && /^(?!08|57P)[0-9A-Z]{5}$/.test(String(pg.code || ""));
     // K1 review r3 m1: some answers without a SQLSTATE prove the RPC never ran, so nothing was kept and «μπορεί να
     // αποθηκεύτηκε» would only send the user to look for nothing: a 401 / 403 (the gateway refused the service key,
     // e.g. after a rotation; any body, a page too) and PGRST003 (no pool connection within the wait: the request never
     // reached Postgres). PGRST000 / PGRST001 and the 502 / 504 stay plan_unknown: a link can drop AFTER the COMMIT.
+    // A read saves nothing, so its text never says «δεν αποθηκεύτηκε» (polish review m1): it was not run.
     if (!rolledBack && (e && (e.status === 401 || e.status === 403))) {
       console.error(`PLAN ${name}: the DB gateway refused the call (${e.status})`);
-      return planError(503, "SERVER", "db_refused", `Η βάση αρνήθηκε την κλήση (${e.status}) — η πράξη ${name} δεν αποθηκεύτηκε· ενημέρωσε τον Δημήτρη`, origin, env);
+      return planError(503, "SERVER", "db_refused", `Η βάση αρνήθηκε την κλήση (${e.status}) — η πράξη ${name} ${route.read ? "δεν εκτελέστηκε" : "δεν αποθηκεύτηκε"}· ενημέρωσε τον Δημήτρη`, origin, env);
     }
     if (!rolledBack && pg && String(pg.code || "") === "PGRST003") {
       console.error(`PLAN ${name}: PGRST003 (no pool connection)`);
-      return planError(503, "SERVER", "slow", "Η βάση δεν είχε ελεύθερη σύνδεση — τίποτα δεν αποθηκεύτηκε· ξαναδοκίμασε σε λίγο", origin, env);
+      return planError(503, "SERVER", "slow", `Η βάση δεν είχε ελεύθερη σύνδεση — ${route.read ? `η πράξη ${name} δεν εκτελέστηκε` : "τίποτα δεν αποθηκεύτηκε"}· ξαναδοκίμασε σε λίγο`, origin, env);
     }
     if (maybeWritten && !rolledBack) {
       // the link may have dropped AFTER the COMMIT: a write never claims «not done» (αρχή 1); the F4 client
@@ -10216,7 +10223,7 @@ Expected (072 `235da364…` του γύρου 1· μετά τον γύρο 2 ι�
 **Η κριτική xhigh του Κ1, γύρος 2 (25/10): SQL Critical 0 · Important 1 · Minor 4· Worker Critical 0 · Important 1 · Minor 3.** Το SQL Important ήταν πάλι κενό απόδειξης: οι νέες ξανα-αναγνώσεις μετά τα κλειδώματα δεν είχαν περίπτωση για την «καλή» πλευρά τους (μια λάθος κατεύθυνση `leg_no`, ταξινόμηση ή φίλτρο `deleted_at` θα έκανε κάθε Μεταφορά του σκέλους Βέροια → Β και κάθε Διαγραφή με 2 σκέλη μόνιμο 409 «ταυτόχρονη αλλαγή»). Το Worker Important: απάντηση JSON **χωρίς** SQLSTATE (502 / 504 της πύλης, `PGRST000`) σε εγγραφή έλεγε «δεν ολοκληρώθηκε» ενώ η πράξη μπορεί να έγινε. Οι αλλαγές κώδικα μπήκαν στα code blocks των Tasks (σχόλια `K1 review r2`):
 - Α6 `plan_move_pieces`: η ξανα-ανάγνωση βλέπει και κομμάτι που σπάστηκε ή σβήστηκε στο μεταξύ (40001, όχι `split_not_at_hub` αργότερα)· το dry run αρνείται `{"rt_id": null}` (`bad_input target.rt_id`, όπως η εκτέλεση) και το σχόλιο λέει «το σχήμα», όχι «κάθε άρνηση»: το πιασμένο όχημα ενός `new_rt` ελέγχεται μόνο στην εκτέλεση·
 - Β5 `plan_vs_set_place`: διαβάζει τα σκέλη, κλειδώνει τους κύκλους τους, μετά τα κομμάτια της αποστολής, και ξαναδιαβάζει τα σκέλη: διαφορά = 40001 (όπως Μεταφορά / Διαγραφή), ποτέ αλλαγή `rt_stops` ή `plan_h_reseq` σε κύκλο που δεν κρατά·
-- Γ3 `handlePlan`: «γύρισε πίσω» (`plan_failed`) **μόνο** με πραγματικό SQLSTATE πέντε χαρακτήρων εκτός της κλάσης 08 (`/^(?!08)[0-9A-Z]{5}$/`)· όλα τα άλλα σε εγγραφή = `plan_unknown`. Ένας πίνακας `PLAN_CONSTRAINT_CODE` (`rt_v2_truck_once` → `truck_busy`, `rt_v2_driver_once` → `driver_busy`, `local_moves_nat_loading_once` → `local_exists`) για το `stockRuleError` **και** το `planConflictMessage`: η προεπισκόπηση του `plan_rt_update` δίνει τον ίδιο κωδικό και το ίδιο κείμενο με την εκτέλεση· το contract test τον «σηκώνει» μαζί με τα άλλα (`table('PLAN_CONSTRAINT_CODE')`)·
+- Γ3 `handlePlan`: «γύρισε πίσω» (`plan_failed`) **μόνο** με πραγματικό SQLSTATE πέντε χαρακτήρων εκτός της κλάσης 08 (`/^(?!08)[0-9A-Z]{5}$/`· από την κριτική polish και εκτός των FATAL `57P`, `/^(?!08|57P)[0-9A-Z]{5}$/`)· όλα τα άλλα σε εγγραφή = `plan_unknown`. Ένας πίνακας `PLAN_CONSTRAINT_CODE` (`rt_v2_truck_once` → `truck_busy`, `rt_v2_driver_once` → `driver_busy`, `local_moves_nat_loading_once` → `local_exists`) για το `stockRuleError` **και** το `planConflictMessage`: η προεπισκόπηση του `plan_rt_update` δίνει τον ίδιο κωδικό και το ίδιο κείμενο με την εκτέλεση· το contract test τον «σηκώνει» μαζί με τα άλλα (`table('PLAN_CONSTRAINT_CODE')`)·
 - Γ5 `worker-guard.mjs`: σημείωση στην κεφαλίδα: το `--plan 1` σταματά σε ανοιχτό διακόπτη, άρα η Φ5 (ημέρα L) προσθέτει εδώ τη λειτουργία της (π.χ. `--plan 2`) με το test της, στην ίδια αλυσίδα (Κ3 Step 2).
 
 Περιπτώσεις του rules test (B125–B130): κομμάτι μέσω Βέροιας σε δύο κύκλους (A → Βέροια, Βέροια → Β): Μεταφορά του 2ου σκέλους σε αναμονή (dry run + token), Διαγραφή μετά από αυτή, Διαγραφή με 2 ζωντανά σκέλη· `{"rt_id": null}` στο dry run· τόπος VS με 2 ζωντανά σκέλη κι ένα σβησμένο· Μεταφορά κομματιού με σβησμένο κομμάτι-παιδί. Στο `072_plan_functions_test.sql`, πριν από `        -- [B-CASES-NEXT]`:
@@ -10347,11 +10354,14 @@ Expected (072 `235da364…` του γύρου 1· μετά τον γύρο 2 ι�
 Στο τέλος του `worker/test/plan-routes.test.mjs` (στο `deploy/worker-plan`):
 ```js
 // ───────────────────── K1 review r2: a lost answer with a JSON body; the preview's code ─────────────────────
-test('a write answered by a JSON body without a SQLSTATE (gateway 502 / 504, PGRST000, class 08) → plan_unknown; a dry run → plan_failed', async () => {
+test('a write answered by a JSON body without a SQLSTATE (gateway 502 / 504, PGRST000), class 08 or a FATAL 57P → plan_unknown; a dry run → plan_failed', async () => {
   const LOST = [[502, { message: 'An invalid response was received from the upstream server' }],
     [504, { message: 'The upstream server is timing out' }],
     [503, { code: 'PGRST000', details: 'connection to server failed', hint: null, message: 'Could not connect with the database' }],
-    [500, { code: '08006', details: null, hint: null, message: 'terminating connection due to administrator command' }]];
+    [500, { code: '08006', details: null, hint: null, message: 'could not send data to client: Broken pipe' }],
+    // polish review I1: these FATAL terminations can follow the COMMIT, so they prove no rollback
+    [503, { code: '57P01', details: null, hint: null, message: 'terminating connection due to administrator command' }],
+    [503, { code: '57P02', details: null, hint: null, message: 'terminating connection because of crash of another server process' }]];
   for (const [status, body] of LOST) {
     routes.length = 0;
     on('POST', 'rpc/plan_move_pieces', () => pgError(status, body));
@@ -10392,9 +10402,9 @@ Expected (072 `a5c8c82d…` του γύρου 2· μετά τον γύρο 3 ι�
 Μένουν από τον γύρο 2 (όχι κώδικας τώρα): οι αριθμοί κάθε απόδειξης γράφονται δίπλα στο md5 στο οποίο μετρήθηκαν (DECISION_LOG, fix-report)· το Φ4 / Φ5 / owner του γύρου 1 ισχύουν όπως είναι.
 
 **Η κριτική xhigh του Κ1, γύρος 3 (25/10): SQL Critical 0 · Important 0 · Minor 4 · Info 5· Worker Critical 0 · Important 0 · Minor 3 · Notes 5**, και το κενό Ε του probe r7 της παράδοσης οχήματος (25/10). Τα Minor του SQL ήταν κενά απόδειξης (ο κώδικας σωστός, μια μελλοντική αλλαγή θα περνούσε πράσινη): οι περιπτώσεις B131–B133 τα κλείνουν, και ο harness κάνει πια ό,τι η Supabase στις νέες συναρτήσεις. Οι αλλαγές κώδικα μπήκαν στα code blocks των Tasks (σχόλια `K1 gap E`, `K1 review r3`):
-- Α6 `plan_move_pieces` (κενό Ε): το dry run έδινε token για Μεταφορά που η εκτέλεσή της αρνιόταν στις στάσεις της (`stop_gone` για στάση άλλου κύκλου, `stop.ambiguous`). Τώρα, σε υπάρχοντα κύκλο, οι στάσεις του αιτήματος λύνονται όπως στην εκτέλεση, μόνο ανάγνωση και κάτω από τα κλειδώματα των κύκλων, για dry run και εκτέλεση: κλειδιά, `ref` παρόν και μοναδικό, `stop_id` = ζωντανή στάση του κύκλου-στόχου (αλλιώς `stop_gone`), και για κάθε κομμάτι η παραλαβή του (εκεί που παραλαμβάνει το πρώτο μετακινούμενο σκέλος του) και η εθνική του κατάληξη ανάμεσά τους: δύο εκεί και όχι ακριβώς μία στην πλευρά-στόχο = `stop.ambiguous`, καμία = `pickup` / `drop`. Ο κανόνας του `plan_h_stop_at` επαναλαμβάνεται σε (στάση, τόπος, πλευρά), γιατί οι νέες στάσεις δεν υπάρχουν ακόμη· οι B134–B135 συγκρίνουν την άρνηση του dry run με της εκτέλεσης. Η απάντηση της εκτέλεσης δεν βάζει πια στα `stop_ids` στάση του αιτήματος που η ίδια Μεταφορά σάρωσε (`plan_h_stops_sweep` επιστρέφει τις σβησμένες). Στενεύει την απόφαση 39 μόνο για τις στάσεις του αιτήματος· μένουν στην εκτέλεση το παράθυρο / ο τόπος νέας στάσης (`plan_h_stop_add`) και οι στάσεις / το όχημα ενός `new_rt` (`plan_rt_create`)·
+- Α6 `plan_move_pieces` (κενό Ε): το dry run έδινε token για Μεταφορά που η εκτέλεσή της αρνιόταν στις στάσεις της (`stop_gone` για στάση άλλου κύκλου, `stop.ambiguous`). Τώρα, σε υπάρχοντα κύκλο, οι στάσεις του αιτήματος λύνονται όπως στην εκτέλεση, μόνο ανάγνωση και κάτω από τα κλειδώματα των κύκλων, για dry run και εκτέλεση: κλειδιά, `ref` παρόν και μοναδικό, `stop_id` = ζωντανή στάση του κύκλου-στόχου (αλλιώς `stop_gone`), και για κάθε κομμάτι η παραλαβή του (εκεί που παραλαμβάνει το πρώτο μετακινούμενο σκέλος του) και η εθνική του κατάληξη ανάμεσά τους: δύο εκεί και όχι ακριβώς μία στην πλευρά-στόχο = `stop.ambiguous`, καμία = `pickup` / `drop`. Ο κανόνας του `plan_h_stop_at` επαναλαμβάνεται σε (στάση, τόπος, πλευρά), γιατί οι νέες στάσεις δεν υπάρχουν ακόμη· οι B134–B138 συγκρίνουν την άρνηση του dry run με της εκτέλεσης (και, από την κριτική polish, με του `plan_put_pieces` στις ίδιες στάσεις: η εκτέλεση συναντά το ίδιο αντίγραφο, μόνο ο πραγματικός λύτης `plan_h_target` / `plan_h_stop_at` το φρουρεί). Η απάντηση της εκτέλεσης δεν βάζει πια στα `stop_ids` στάση του αιτήματος που η ίδια Μεταφορά σάρωσε (`plan_h_stops_sweep` επιστρέφει τις σβησμένες). Στενεύει την απόφαση 39 μόνο για τις στάσεις του αιτήματος· μένουν στην εκτέλεση η πλευρά / το παράθυρο / ο τόπος νέας στάσης (`plan_h_stop_add`· πλευρά εκτός KATHODOS / ANODOS μετριέται στο dry run όπως δόθηκε) και οι στάσεις / το όχημα ενός `new_rt` (`plan_rt_create`)·
 - harness `tms-auditor/test/plan-072.test.mjs` (το τελικό του Task που τον αντικαθιστά): πριν από κάθε fixture `ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public GRANT EXECUTE ON FUNCTIONS TO anon, authenticated, service_role` (το `pg_default_acl` της παραγωγής, 25/10), και ένα test: χωρίς `service_role`, `anon` ή `authenticated` στο REVOKE της 072, η απόδειξη του PART 5 αρνείται όλο το block και δεν μένει τίποτα. Χωρίς τη γραμμή των προεπιλογών το ίδιο test αποτυγχάνει (`actual: 'applied'`)·
-- Γ3 `handlePlan`: απάντηση που **αποδεικνύει** ότι η RPC δεν έτρεξε, 401 / 403 της πύλης (κάθε σώμα, και σελίδα) ή `PGRST003` (καμία σύνδεση της δεξαμενής), είναι 503 «δεν αποθηκεύτηκε» (`db_refused`, ή `slow` για το `PGRST003`), όχι `plan_unknown`· ό,τι είναι αμφίβολο (502 / 504, `PGRST000`, κλάση 08, χωρίς απάντηση) μένει `plan_unknown` (απόφαση 44). Ένα 403 με πραγματικό SQLSTATE μένει στον δρόμο του SQLSTATE (`42501` εσωτερικό = `plan_failed`, της ίδιας της RPC = `db_grant`). Το `dbRpc` κρατά το HTTP status:
+- Γ3 `handlePlan`: απάντηση που **αποδεικνύει** ότι η RPC δεν έτρεξε, 401 / 403 της πύλης (κάθε σώμα, και σελίδα) ή `PGRST003` (καμία σύνδεση της δεξαμενής), είναι 503 «δεν αποθηκεύτηκε» (`db_refused`, ή `slow` για το `PGRST003`), όχι `plan_unknown`· ό,τι είναι αμφίβολο (502 / 504, `PGRST000`, κλάση 08, χωρίς απάντηση, και από την κριτική polish τα FATAL `57P01` / `57P02`) μένει `plan_unknown` (απόφαση 44). Ένα 403 με πραγματικό SQLSTATE μένει στον δρόμο του SQLSTATE (`42501` εσωτερικό = `plan_failed`, της ίδιας της RPC = `db_grant`). Το `dbRpc` κρατά το HTTP status:
 ```js
     // and the HTTP status: handlePlan tells an answer that proves the RPC never ran (401/403) from a lost one
     err.status = res.status;
@@ -10457,6 +10467,9 @@ Expected (072 `a5c8c82d…` του γύρου 2· μετά τον γύρο 3 ι�
           PERFORM plan_order_update(jsonb_build_object('nat_order_id', b_no2, 'shipments', jsonb_build_array(
                     jsonb_build_object('shipment_id', b_sh2, 'pallets', 13))), 'test:072b', 'dispatcher');
         ELSIF kb BETWEEN 134 AND 138 THEN   -- K1 gap E: the dry run of a move refuses the request's stops as its execution does
+          -- and as the real resolver does: the move's dry run and execution both meet the copy of the rule in
+          -- plan_move_pieces, so the same stops also go through plan_put_pieces (plan_h_target -> plan_h_stop_at,
+          -- polish review I1), with a waiting piece at A going to B; a change to the resolver alone turns this red
           b_v2 := plan_rt_create(jsonb_build_object('new_rt', jsonb_build_object('trip_type', 'OWNED', 'truck_id', b_t2, 'driver_id', b_d2),
                     'stops', jsonb_build_array(
                       jsonb_build_object('ref', 'a', 'location_id', b_la, 'side', 'KATHODOS', 'planned_from', h06, 'planned_to', h07),
@@ -10470,10 +10483,6 @@ Expected (072 `a5c8c82d…` του γύρου 2· μετά τον γύρο 3 ι�
                                  deliver_to, created_by)
           VALUES (b_no2, b_la, b_lb, 4, h06, h08, h12, h14, 'test:072b') RETURNING id INTO b_sh2;
           INSERT INTO shipment_pieces (shipment_id, pallets, created_by) VALUES (b_sh2, 4, 'test:072b') RETURNING id INTO b_p2;
-          INSERT INTO piece_legs (piece_id, leg_no, rt_id, pickup_stop_id, drop_stop_id, created_by)
-          VALUES (b_p2, 1, b_rt1, b_sa, b_sb, 'test:072b');
-          SET CONSTRAINTS ALL IMMEDIATE;
-          SET CONSTRAINTS ALL DEFERRED;
           -- 134: a stop of another cycle (S) named on the target; 135: two stops at A, neither on the target side;
           -- 136: no stop at A (where the piece waits); 137: one ref twice; 138: an unknown key in a stop
           b_v3 := jsonb_build_object('from', jsonb_build_object('piece_ids', jsonb_build_array(b_p1)),
@@ -10493,6 +10502,17 @@ Expected (072 `a5c8c82d…` του γύρου 2· μετά τον γύρο 3 ι�
                                ELSE jsonb_build_array(
                                  jsonb_build_object('ref', 'a', 'stop_id', (b_v2->'stops'->>'a')::bigint, 'seq', 1),
                                  jsonb_build_object('ref', 'b', 'stop_id', (b_v2->'stops'->>'b')::bigint)) END);
+          -- the real resolver first, while b_p2 still waits at A (its put is undone with its refusal)
+          b_put := 'no refusal';
+          BEGIN
+            PERFORM plan_put_pieces(jsonb_build_object('pieces', jsonb_build_array(jsonb_build_object('piece_id', b_p2)),
+                      'target', b_v3->'target', 'stops', b_v3->'stops'), 'test:072b', 'dispatcher');
+          EXCEPTION WHEN others THEN GET STACKED DIAGNOSTICS b_put = MESSAGE_TEXT;
+          END;
+          INSERT INTO piece_legs (piece_id, leg_no, rt_id, pickup_stop_id, drop_stop_id, created_by)
+          VALUES (b_p2, 1, b_rt1, b_sa, b_sb, 'test:072b');
+          SET CONSTRAINTS ALL IMMEDIATE;
+          SET CONSTRAINTS ALL DEFERRED;
           b_txt := 'no refusal'; b_tok := 'no refusal';
           BEGIN
             PERFORM plan_move_pieces(b_v3 || '{"dry_run": true}'::jsonb, 'test:072b', 'dispatcher');
@@ -10508,9 +10528,11 @@ Expected (072 `a5c8c82d…` του γύρου 2· μετά τον γύρο 3 ι�
                                                   WHEN 136 THEN 'plan rule broken: bad_input:pickup:' || b_p1 || '@' || b_la
                                                   WHEN 137 THEN 'plan rule broken: bad_input:stop.ref'
                                                   ELSE 'plan rule broken: bad_input:stop.seq' END
+                              AND b_put = CASE kb WHEN 136 THEN 'plan rule broken: bad_input:pickup:' || b_p2 || '@' || b_la
+                                                  ELSE b_txt END
                               AND (SELECT deleted_at IS NULL FROM piece_legs WHERE id = b_lg1)
-                            THEN 'ok the move dry run refuses its stops as the execution does: ' || b_txt
-                            ELSE 'FAIL dry run ' || b_txt || ' / execution ' || b_tok END;
+                            THEN 'ok the move dry run refuses its stops as the execution and the resolver do: ' || b_txt
+                            ELSE 'FAIL dry run ' || b_txt || ' / execution ' || b_tok || ' / resolver ' || b_put END;
         ELSIF kb = 139 THEN   -- K1 gap E: the answer's stop_ids never list a named stop the same move swept
           -- S's piece from KATHODOS to the ANODOS side of S: the request names A (KATHODOS), the pickup is the new A
           -- on the target side, so the named A loses its last leg and goes
@@ -10538,7 +10560,7 @@ Expected (072 `a5c8c82d…` του γύρου 2· μετά τον γύρο 3 ι�
 Στο τέλος του `worker/test/plan-routes.test.mjs` (στο `deploy/worker-plan`):
 ```js
 // ───────────────────── K1 review r3 m1: an answer that proves the RPC never ran ─────────────────────
-test('a write the gateway refused (401 / 403, any body) or PostgREST never ran (PGRST003) → 503 «δεν αποθηκεύτηκε», never plan_unknown', async () => {
+test('a write the gateway refused (401 / 403, any body) or PostgREST never ran (PGRST003) → 503 «δεν αποθηκεύτηκε», never plan_unknown; a read → «δεν εκτελέστηκε»', async () => {
   const NOT_RUN = [
     [401, { message: 'Invalid API key' }, 'db_refused'],
     [401, { code: 'PGRST301', details: null, hint: null, message: 'JWSError (CompactDecodeError Invalid number of parts: Expected 3 parts; got 1)' }, 'db_refused'],
@@ -10559,6 +10581,15 @@ test('a write the gateway refused (401 / 403, any body) or PostgREST never ran (
     assert.equal(rpcCalls().length, 1, `${label}: one RPC, never a second`);
     r = await call('dispatcher', 'POST', '/plan/move', MOVE_DRY);
     assert.equal(r.json.error.code, code, `${label}: a dry run says the same`);
+    // a read saves nothing: the same code, a text that never says «αποθηκεύτηκε» (polish review m1)
+    routes.length = 0;
+    on('POST', 'rpc/plan_board', () => pgError(status, body));
+    r = await call('dispatcher', 'GET', '/plan/board?week=2026-10-10');
+    assert.equal(r.status, 503, `${label} read: ${r.text}`);
+    assert.equal(r.json.error.code, code, `${label} read`);
+    assert.equal(r.json.error.message, code === 'slow'
+      ? 'Η βάση δεν είχε ελεύθερη σύνδεση — η πράξη GET /plan/board δεν εκτελέστηκε· ξαναδοκίμασε σε λίγο'
+      : `Η βάση αρνήθηκε την κλήση (${status}) — η πράξη GET /plan/board δεν εκτελέστηκε· ενημέρωσε τον Δημήτρη`, `${label} read`);
   }
   // a 403 that carries a real SQLSTATE stays with it: an inner 42501 rolled back (plan_failed), the RPC's own is db_grant
   routes.length = 0;
