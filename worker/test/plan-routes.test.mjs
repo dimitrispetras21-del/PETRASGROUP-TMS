@@ -546,3 +546,31 @@ test('facade PATCH ORDER STOPS refused by a plan: rule (bridge stop, 071) or by 
   assert.deepEqual(patch.body, { via_hub: true }, '"Via Hub" reaches via_hub (no silent drop)');
   assert.equal(auditRows().length, 0);
 });
+
+// ───────────────────── K1 review r1: what a write's failure says ─────────────────────
+test('a write the DB answered with an unmapped SQLSTATE rolled back → 500 plan_failed «δεν ολοκληρώθηκε», never plan_unknown', async () => {
+  for (const pg of [{ code: '22P02', message: 'invalid input syntax for type bigint: "abc"' },
+    { code: '23502', message: 'null value in column "rt_id" violates not-null constraint' },
+    { code: '42883', message: 'function public.plan_h_missing(bigint) does not exist' },
+    { code: 'P0001', message: 'raise without a plan: hint' }]) {
+    routes.length = 0;
+    on('POST', 'rpc/plan_move_pieces', () => pgError(400, { ...pg, hint: null, details: null }));
+    calls.length = 0;
+    const r = await callOpen('dispatcher', 'POST', '/plan/move', { from: { piece_ids: [1] }, target: { rt_id: 5, side: 'KATHODOS' } });
+    assert.equal(r.status, 500, `${pg.code}: ${r.text}`);
+    assert.deepEqual(r.json.error, { type: 'SERVER', code: 'plan_failed', message: 'Η πράξη POST /plan/move δεν ολοκληρώθηκε — ενημέρωσε τον Δημήτρη' }, pg.code);
+    assert.equal(rpcCalls().length, 1, `${pg.code}: one RPC, never a second`);
+  }
+});
+
+test('amount_leak after a write says the act was kept and must not be pressed again; a dry run keeps the plain text', async () => {
+  on('POST', 'rpc/plan_move_pieces', () => json({ ...WITH_AMOUNT, dry_run: false, needs_confirm: undefined }));
+  let r = await callOpen('warehouse', 'POST', '/plan/move', { from: { piece_ids: [4] }, target: { wait: true } });
+  assert.equal(r.status, 500, r.text);
+  assert.equal(r.json.error.code, 'amount_leak');
+  assert.match(r.json.error.message, /^Η πράξη αποθηκεύτηκε, .*μην την ξαναπατήσεις/);
+  assert.ok(!r.text.includes('230'), 'the number never leaves the Worker');
+  r = await call('warehouse', 'POST', '/plan/move', MOVE_DRY);
+  assert.equal(r.status, 500, r.text);
+  assert.equal(r.json.error.message, 'Η απάντηση της βάσης είχε ποσά για ρόλο χωρίς δικαίωμα — δεν στάλθηκε· ενημέρωσε τον Δημήτρη');
+});

@@ -5644,7 +5644,10 @@ async function handlePlan(request, url, origin, env) {
     const out = await dbRpc(env, fn, args);
     if (!PLAN_MONEY_ROLES.includes(caller.role) && planHasAmount(out)) {
       console.error(`PLAN ${name}: the DB answered an amount to role ${caller.role} — not forwarded`);
-      return planError(500, "SERVER", "amount_leak", "Η απάντηση της βάσης είχε ποσά για ρόλο χωρίς δικαίωμα — δεν στάλθηκε· ενημέρωσε τον Δημήτρη", origin, env);
+      // a write answered: its COMMIT is done, so the text says it was kept and must not be pressed again (K1 review r1)
+      return planError(500, "SERVER", "amount_leak", maybeWritten
+        ? "Η πράξη αποθηκεύτηκε, αλλά η απάντηση της βάσης είχε ποσά για ρόλο χωρίς δικαίωμα — δεν στάλθηκε· μην την ξαναπατήσεις· ενημέρωσε τον Δημήτρη"
+        : "Η απάντηση της βάσης είχε ποσά για ρόλο χωρίς δικαίωμα — δεν στάλθηκε· ενημέρωσε τον Δημήτρη", origin, env);
     }
     if (out && out.preview && out.preview.conflict && typeof out.preview.conflict === "object") {
       out.preview.conflict.message = planConflictMessage(out.preview.conflict);
@@ -5695,7 +5698,10 @@ async function handlePlan(request, url, origin, env) {
       return planError(422, "PLAN_RULE", cname, n ? `Κανόνας βάσης ${cname}` : `Κανόνας βάσης: ${String(pg.message || "").slice(0, 200)}`, origin, env);
     }
     console.error(`PLAN ${name}`, e && e.message);
-    if (maybeWritten) {
+    // Only an answer that never came (no e.pg: the fetch threw, or a gateway page) leaves the outcome unknown. A
+    // PostgREST error answer carries a SQLSTATE and means the RPC's transaction rolled back: nothing was kept, so
+    // it is plan_failed, never «may have been saved» (K1 review r1: 22P02, 23502, an inner 42883, P0001 without hint).
+    if (maybeWritten && !pg) {
       // the link may have dropped AFTER the COMMIT: a write never claims «not done» (αρχή 1); the F4 client
       // must not send it again by itself, and the user re-presses the SAME form, so the same request_id replays
       // (decision 44). Never «refresh»: that would close the form and mint a new id = a second creation.
