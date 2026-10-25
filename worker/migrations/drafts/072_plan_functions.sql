@@ -1065,7 +1065,7 @@ begin
   v_side := v_from->>'side';
   -- Finite inputs (coordinator 25/10): every id is bigint, so 'NaN' / 'Infinity' fail their cast (bad_input 22P02,
   -- before the list); a new target stop's window is refused in plan_h_stop_add ('stop.planned:finite', the one
-  -- guard), at execution: the dry run reads the request's stops (K1 gap E, below), never a new stop's side or window.
+  -- guard), at execution: the dry run reads the request's stops (K1 gap E, below), never checks a new stop's side or window.
   if v_from ? 'piece_ids' then
     if v_side is not null or jsonb_typeof(v_from->'piece_ids') is distinct from 'array' then
       perform plan_h_raise('bad_input', 'from');
@@ -1181,9 +1181,10 @@ begin
   -- once its moved legs are off) and its drop at its national end, among those stops - more than one there and not
   -- exactly one on the target side = stop.ambiguous, none = pickup / drop. The rule of plan_h_stop_at is repeated on
   -- (stop, place, side) because the new stops do not exist yet: a change to one is a change to both. The execution
-  -- meets this copy too, so the guard is B134-B138 sending the same stops through plan_put_pieces as well, whose
-  -- refusal comes from plan_h_target / plan_h_stop_at: the dry run, the execution and the resolver must give the
-  -- same message. Still at execution only (decision 39): a new stop's side, window and place (plan_h_stop_add;
+  -- meets this copy too, so the guard is B134-B138 and B140-B142 (a drop with no stop, a new stop on its own side,
+  -- stops not an array) sending the same stops through plan_put_pieces as well, whose answer comes from
+  -- plan_h_target / plan_h_stop_at: the dry run, the execution and the resolver must give the same message, or all
+  -- three accept. Still at execution only (decision 39): a new stop's side, window and place (plan_h_stop_add;
   -- a side that is not KATHODOS / ANODOS is counted here as given), and a new_rt's stops and vehicle (plan_rt_create).
   if not v_wait and v_keep is not null then
     if p ? 'stops' and jsonb_typeof(p->'stops') <> 'array' then perform plan_h_raise('bad_input', 'stops'); end if;

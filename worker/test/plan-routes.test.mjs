@@ -434,7 +434,7 @@ test('anything else → 500 in the /plan/* shape naming the route (never a CF 11
   assert.equal(r.json.error.code, 'plan_failed');
 });
 
-test('a lost lock (40P01 / 40001 / 55P03) → 409 busy_retry; statement_timeout (57014) → 503 slow; never the 500 path', async () => {
+test('a lost lock (40P01 / 40001 / 55P03) → 409 busy_retry; statement_timeout (57014) → 503 slow; never the 500 path; a read never speaks of writing', async () => {
   for (const code of ['40P01', '40001', '55P03']) {
     routes.length = 0;
     on('POST', 'rpc/plan_move_pieces', () => pgError(409, { code, hint: null, details: null, message: 'deadlock detected' }));
@@ -447,6 +447,13 @@ test('a lost lock (40P01 / 40001 / 55P03) → 409 busy_retry; statement_timeout 
   const r = await call('owner', 'GET', '/plan/board?week=2026-10-10');
   assert.equal(r.status, 503, r.text);
   assert.equal(r.json.error.code, 'slow');
+  // a read writes nothing: its text never speaks of writing (polish review 2 M2)
+  assert.equal(r.json.error.message, 'Η βάση άργησε να απαντήσει — η πράξη GET /plan/board δεν ολοκληρώθηκε· ξαναδοκίμασε σε λίγο');
+  routes.length = 0;
+  on('POST', 'rpc/plan_board', () => pgError(409, { code: '40001', hint: null, details: null, message: 'could not serialize access due to concurrent update' }));
+  const b = await call('owner', 'GET', '/plan/board?week=2026-10-10');
+  assert.equal(b.status, 409, b.text);
+  assert.deepEqual(b.json.error, { type: 'PLAN_RULE', code: 'busy_retry', message: 'Ταυτόχρονη αλλαγή από άλλον χρήστη — η πράξη GET /plan/board δεν ολοκληρώθηκε· ξαναδοκίμασε' });
 });
 
 // ───────────────────── amounts (decision 9: the DB cuts; the Worker trips) ─────────────────────
@@ -576,14 +583,16 @@ test('amount_leak after a write says the act was kept and must not be pressed ag
 });
 
 // ───────────────────── K1 review r2: a lost answer with a JSON body; the preview's code ─────────────────────
-test('a write answered by a JSON body without a SQLSTATE (gateway 502 / 504, PGRST000), class 08 or a FATAL 57P → plan_unknown; a dry run → plan_failed', async () => {
+test('a write answered by a JSON body without a SQLSTATE (gateway 502 / 504, PGRST000), class 08 or a FATAL (57P, 25P04) → plan_unknown; a dry run → plan_failed', async () => {
   const LOST = [[502, { message: 'An invalid response was received from the upstream server' }],
     [504, { message: 'The upstream server is timing out' }],
     [503, { code: 'PGRST000', details: 'connection to server failed', hint: null, message: 'Could not connect with the database' }],
     [500, { code: '08006', details: null, hint: null, message: 'could not send data to client: Broken pipe' }],
     // polish review I1: these FATAL terminations can follow the COMMIT, so they prove no rollback
     [503, { code: '57P01', details: null, hint: null, message: 'terminating connection due to administrator command' }],
-    [503, { code: '57P02', details: null, hint: null, message: 'terminating connection because of crash of another server process' }]];
+    [503, { code: '57P02', details: null, hint: null, message: 'terminating connection because of crash of another server process' }],
+    // polish review 2 M1: transaction_timeout (PG 17) is FATAL as well
+    [503, { code: '25P04', details: null, hint: null, message: 'terminating connection due to transaction timeout' }]];
   for (const [status, body] of LOST) {
     routes.length = 0;
     on('POST', 'rpc/plan_move_pieces', () => pgError(status, body));

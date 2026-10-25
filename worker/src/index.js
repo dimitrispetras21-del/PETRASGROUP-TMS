@@ -5700,12 +5700,13 @@ async function handlePlan(request, url, origin, env) {
     // this handler never calls the RPC twice (decision 44, owner 23/10).
     if (pg && /^(40P01|40001|55P03)$/.test(String(pg.code || ""))) {
       console.error(`PLAN ${name}: ${pg.code} (concurrent change)`);
-      return planError(409, "PLAN_RULE", "busy_retry", "Ταυτόχρονη αλλαγή από άλλον χρήστη — τίποτα δεν γράφτηκε· ξαναδοκίμασε", origin, env);
+      // a read writes nothing, so its text never speaks of writing (polish review 2 M2)
+      return planError(409, "PLAN_RULE", "busy_retry", `Ταυτόχρονη αλλαγή από άλλον χρήστη — ${route.read ? `η πράξη ${name} δεν ολοκληρώθηκε` : "τίποτα δεν γράφτηκε"}· ξαναδοκίμασε`, origin, env);
     }
     // statement_timeout (PostgREST, 8 s): slow, not broken — 503, try again later.
     if (pg && String(pg.code || "") === "57014") {
       console.error(`PLAN ${name}: statement timeout`);
-      return planError(503, "SERVER", "slow", "Η βάση άργησε να απαντήσει — τίποτα δεν γράφτηκε· ξαναδοκίμασε σε λίγο", origin, env);
+      return planError(503, "SERVER", "slow", `Η βάση άργησε να απαντήσει — ${route.read ? `η πράξη ${name} δεν ολοκληρώθηκε` : "τίποτα δεν γράφτηκε"}· ξαναδοκίμασε σε λίγο`, origin, env);
     }
     // Any other named DB constraint inside /plan/* is a business refusal the
     // texts above do not know yet: a loud 422 naming it, never the retried
@@ -5716,15 +5717,18 @@ async function handlePlan(request, url, origin, env) {
       return planError(422, "PLAN_RULE", cname, n ? `Κανόνας βάσης ${cname}` : `Κανόνας βάσης: ${String(pg.message || "").slice(0, 200)}`, origin, env);
     }
     console.error(`PLAN ${name}`, e && e.message);
-    // Only a real Postgres SQLSTATE (five characters) outside the connection class 08 and the FATAL terminations 57P
-    // means the RPC's transaction rolled back: nothing was kept, so it is plan_failed, never «may have been saved»
+    // Only a real Postgres SQLSTATE (five characters) outside the connection class 08 and the FATAL terminations
+    // (57P, 25P04) means the RPC's transaction rolled back: nothing was kept, so it is plan_failed, never «may have been saved»
     // (K1 review r1: 22P02, 23502, an inner 42883, P0001 without hint). Anything else leaves the outcome unknown,
     // because the COMMIT may have happened before the link dropped: no answer (the fetch threw), a gateway page, or
     // a JSON body without a SQLSTATE - the gateway's 502 / 504 {"message": …}, PostgREST's PGRST000 «connection lost»
     // (K1 review r2) - and a 57P01 / 57P02 (polish review I1: pg_terminate_backend, a fast shutdown, or a crash of
-    // another backend can end the session after its commit record is flushed and before the client hears of it).
-    // 57014 (statement_timeout) is not FATAL and is answered above as slow.
-    const rolledBack = !!pg && /^(?!08|57P)[0-9A-Z]{5}$/.test(String(pg.code || ""));
+    // another backend can end the session after its commit record is flushed and before the client hears of it), and
+    // a 25P04 (polish review 2 M1: transaction_timeout of PG 17, FATAL; it can fire while the COMMIT holds interrupts
+    // and be served after the commit record. Off today, transaction_timeout = 0, so nothing else would warn the day it
+    // is set). 57014 (statement_timeout) is not FATAL and is answered above as slow; 25P03 (idle in transaction) fires
+    // only while the session is idle, before any COMMIT, and stays plan_failed.
+    const rolledBack = !!pg && /^(?!08|57P|25P04)[0-9A-Z]{5}$/.test(String(pg.code || ""));
     // K1 review r3 m1: some answers without a SQLSTATE prove the RPC never ran, so nothing was kept and «μπορεί να
     // αποθηκεύτηκε» would only send the user to look for nothing: a 401 / 403 (the gateway refused the service key,
     // e.g. after a rotation; any body, a page too) and PGRST003 (no pool connection within the wait: the request never
