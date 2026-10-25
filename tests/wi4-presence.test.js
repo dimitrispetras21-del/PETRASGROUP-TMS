@@ -127,7 +127,7 @@ test('FEATURES.WI_PRESENCE false → start() is a no-op: nothing sent, nothing i
 });
 
 test('the 6 whitelisted actions are the SAME strings as the SQL CHECK of 068', () => {
-  const sql = fs.readFileSync(path.join(ROOT, 'worker/migrations/drafts/068_presence.sql'), 'utf8');
+  const sql = fs.readFileSync(path.join(ROOT, 'worker/migrations/068_presence.sql'), 'utf8');
   const m = /action\s+text\s+CONSTRAINT\s+\w+\s+CHECK\s*\(action\s+IN\s*\(([^)]*)\)\)/i.exec(sql) || /action[^\n]*CHECK\s*\(action\s+IN\s*\(([^)]*)\)/i.exec(sql);
   assert.ok(m, 'action CHECK not found in 068_presence.sql');
   const list = m[1].split(',').map((s) => s.trim().replace(/^'|'$/g, ''));
