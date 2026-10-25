@@ -1867,7 +1867,27 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
                                     'load_to', a08, 'deliver_from', a09, 'deliver_to', a10),
                  jsonb_build_object('origin_location_id', lc, 'dest_location_id', lb, 'pallets', 6, 'load_from', b06,
                                     'load_to', b08, 'deliver_from', b12, 'deliver_to', b14)))))), 'test:072', 'owner');
+        -- review A2 r1: the same two shipments in the other order prove the rule "in the shipments' order" (first
+        -- origin C, last destination Veroia), not "the origin of the earliest load / the destination of the latest"
+        r2 := plan_orders_create(jsonb_build_object('request_id', gen_random_uuid()) || (jsonb_build_object('orders', jsonb_build_array(jo1 || jsonb_build_object('shipments',
+               jsonb_build_array(
+                 jsonb_build_object('origin_location_id', lc, 'dest_location_id', lb, 'pallets', 6, 'load_from', b06,
+                                    'load_to', b08, 'deliver_from', b12, 'deliver_to', b14),
+                 jsonb_build_object('origin_location_id', la, 'dest_location_id', hub, 'pallets', 4, 'load_from', a06,
+                                    'load_to', a08, 'deliver_from', a09, 'deliver_to', a10)))))), 'test:072', 'owner');
       ELSIF k = 18 THEN
+        -- review A2 r1: NaN sorts above every number in Postgres and Infinity passes "> 0": both are refused like 0
+        FOREACH t1 IN ARRAY ARRAY['NaN', 'Infinity'] LOOP
+          BEGIN
+            PERFORM plan_orders_create(jsonb_build_object('request_id', gen_random_uuid()) || (jsonb_build_object('orders', jsonb_build_array(jo1 || jsonb_build_object('price', t1)))), 'test:072', 'owner');
+            t2 := 'accepted';
+          EXCEPTION WHEN others THEN
+            GET STACKED DIAGNOSTICS t2 = PG_EXCEPTION_HINT;
+          END;
+          IF t2 IS DISTINCT FROM 'plan:no_price' THEN
+            RAISE EXCEPTION 'FAIL price % got %', t1, coalesce(t2, 'no hint');
+          END IF;
+        END LOOP;
         PERFORM plan_orders_create(jsonb_build_object('request_id', gen_random_uuid()) || (jsonb_build_object('orders', jsonb_build_array(jo1 || '{"price": 0}'))), 'test:072', 'owner');
       ELSIF k = 19 THEN
         PERFORM plan_orders_create(jsonb_build_object('request_id', gen_random_uuid()) || (jsonb_build_object('orders', jsonb_build_array(jo1 - 'price'))), 'test:072', 'owner');
@@ -1881,6 +1901,24 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
       ELSIF k = 23 THEN
         PERFORM plan_orders_create(jsonb_build_object('request_id', gen_random_uuid()) || ('{"orders": []}'), 'test:072', 'owner');
       ELSIF k = 24 THEN
+        -- review A2 r1: a non-finite number (NaN passes the 071 CHECK pallets > 0) or a text field that is not text
+        -- is refused as bad_input, never written
+        FOR j IN SELECT value FROM jsonb_array_elements(jsonb_build_array(
+                   jsonb_build_object('temperature_c', 'NaN'), jsonb_build_object('temperature_c', '-Infinity'),
+                   jsonb_build_object('reference', jsonb_build_object('x', 1)), jsonb_build_object('notes', jsonb_build_array(1)),
+                   jsonb_build_object('goods', true),
+                   jsonb_build_object('shipments', jsonb_build_array(jsh1 || '{"pallets": "NaN"}')),
+                   jsonb_build_object('shipments', jsonb_build_array(jsh1 || '{"pallets": "Infinity"}')))) LOOP
+          BEGIN
+            PERFORM plan_orders_create(jsonb_build_object('request_id', gen_random_uuid()) || (jsonb_build_object('orders', jsonb_build_array(jo1 || j))), 'test:072', 'owner');
+            t2 := 'accepted';
+          EXCEPTION WHEN others THEN
+            GET STACKED DIAGNOSTICS t2 = PG_EXCEPTION_HINT;
+          END;
+          IF t2 IS DISTINCT FROM 'plan:bad_input' THEN
+            RAISE EXCEPTION 'FAIL % got %', j::text, coalesce(t2, 'no hint');
+          END IF;
+        END LOOP;
         PERFORM plan_orders_create(jsonb_build_object('request_id', gen_random_uuid()) || (jsonb_build_object('orders', jsonb_build_array(jo1 || jsonb_build_object('truck_id', trk1)))),
                                    'test:072', 'owner');
       ELSIF k = 25 THEN
@@ -1923,7 +1961,10 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
                                      AND delivery_location_1_id = lb FROM national_orders WHERE id = x)
                           AND (SELECT count(*) FROM v_shipments WHERE nat_order_id = x AND live) = 2
                           AND EXISTS (SELECT 1 FROM v_shipments WHERE nat_order_id = x AND nat_to_location_id = hub)
-                        THEN 'ok summary = 10 pallets, first load day D, last delivery day D+1, first origin A, last destination B'
+                          AND (SELECT pallets = 10 AND loading_datetime = d AND delivery_datetime = e AND pickup_location_1_id = lc
+                                      AND delivery_location_1_id = hub FROM national_orders
+                                WHERE id = (r2->'ids'->'nat_order_ids'->>0)::bigint)
+                        THEN 'ok summary = 10 pallets, first load day D, last delivery day D+1, first origin A, last destination B; swapped: C, Veroia'
                         ELSE 'FAIL summary' END;
 ```
 
@@ -1999,7 +2040,21 @@ begin
       perform plan_h_raise('no_client', coalesce(v_client::text, 'null'));
     end if;
     v_price := (o->>'price')::numeric;
-    if v_price is null or v_price <= 0 then perform plan_h_raise('no_price', coalesce(v_price::text, 'null')); end if;
+    -- review A2 r1: NaN sorts above every number in Postgres (so "<= 0" is false) and Infinity passes "> 0"; either
+    -- would be written to the unconstrained national_orders.price and poison every revenue sum. One comparison
+    -- refuses both: a price is a finite number above 0.
+    if v_price is null or not (v_price > 0 and v_price < 'Infinity'::numeric) then
+      perform plan_h_raise('no_price', coalesce(v_price::text, 'null'));
+    end if;
+    -- review A2 r1: temperature_c is unconstrained numeric: NaN / +-Infinity would be stored as they are
+    if abs((o->>'temperature_c')::numeric) >= 'Infinity'::numeric then
+      perform plan_h_raise('bad_input', 'temperature_c:finite');
+    end if;
+    -- review A2 r1: an object / array / boolean in a text field would be stored as its JSON text, silently
+    if exists (select 1 from unnest(array['reference', 'goods', 'notes']) f
+                where jsonb_typeof(o->f) in ('object', 'array', 'boolean')) then
+      perform plan_h_raise('bad_input', 'order:text');
+    end if;
     if jsonb_typeof(o->'shipments') is distinct from 'array' or jsonb_array_length(o->'shipments') = 0 then
       perform plan_h_raise('bad_input', 'shipments');
     end if;
@@ -2016,6 +2071,11 @@ begin
       -- silently, while the order's summary kept 2.55 (review 23/10)
       if (s->>'pallets')::numeric <> round((s->>'pallets')::numeric, 1) then
         perform plan_h_raise('bad_input', 'pallets:one decimal');
+      end if;
+      -- review A2 r1: NaN sorts above every number, so it passes the line above AND the 071 CHECK pallets > 0, and
+      -- would be written to shipments, pieces and the summary. Not below Infinity = refused (NaN and Infinity).
+      if not ((s->>'pallets')::numeric < 'Infinity'::numeric) then
+        perform plan_h_raise('bad_input', 'pallets:finite');
       end if;
     end loop;
     v_sum := plan_h_order_summary(o->'shipments');

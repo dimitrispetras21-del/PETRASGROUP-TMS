@@ -610,7 +610,21 @@ begin
       perform plan_h_raise('no_client', coalesce(v_client::text, 'null'));
     end if;
     v_price := (o->>'price')::numeric;
-    if v_price is null or v_price <= 0 then perform plan_h_raise('no_price', coalesce(v_price::text, 'null')); end if;
+    -- review A2 r1: NaN sorts above every number in Postgres (so "<= 0" is false) and Infinity passes "> 0"; either
+    -- would be written to the unconstrained national_orders.price and poison every revenue sum. One comparison
+    -- refuses both: a price is a finite number above 0.
+    if v_price is null or not (v_price > 0 and v_price < 'Infinity'::numeric) then
+      perform plan_h_raise('no_price', coalesce(v_price::text, 'null'));
+    end if;
+    -- review A2 r1: temperature_c is unconstrained numeric: NaN / +-Infinity would be stored as they are
+    if abs((o->>'temperature_c')::numeric) >= 'Infinity'::numeric then
+      perform plan_h_raise('bad_input', 'temperature_c:finite');
+    end if;
+    -- review A2 r1: an object / array / boolean in a text field would be stored as its JSON text, silently
+    if exists (select 1 from unnest(array['reference', 'goods', 'notes']) f
+                where jsonb_typeof(o->f) in ('object', 'array', 'boolean')) then
+      perform plan_h_raise('bad_input', 'order:text');
+    end if;
     if jsonb_typeof(o->'shipments') is distinct from 'array' or jsonb_array_length(o->'shipments') = 0 then
       perform plan_h_raise('bad_input', 'shipments');
     end if;
@@ -627,6 +641,11 @@ begin
       -- silently, while the order's summary kept 2.55 (review 23/10)
       if (s->>'pallets')::numeric <> round((s->>'pallets')::numeric, 1) then
         perform plan_h_raise('bad_input', 'pallets:one decimal');
+      end if;
+      -- review A2 r1: NaN sorts above every number, so it passes the line above AND the 071 CHECK pallets > 0, and
+      -- would be written to shipments, pieces and the summary. Not below Infinity = refused (NaN and Infinity).
+      if not ((s->>'pallets')::numeric < 'Infinity'::numeric) then
+        perform plan_h_raise('bad_input', 'pallets:finite');
       end if;
     end loop;
     v_sum := plan_h_order_summary(o->'shipments');
