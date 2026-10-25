@@ -98,6 +98,16 @@ DECLARE
     , 'ok'               -- 65 the dispatcher's list has no amounts; the token is the same for every role
     , 'ok'               -- 66 the loading by a local driver is listed and goes with its stop
     , 'plan:piece_dead'  -- 67 one bad row: nothing moves (one transaction) (after the non-finite input probes: bad_input, nothing moved)
+    , 'ok'               -- 68 price, reference, notes: one update, one audit row with what changed
+    , 'ok'               -- 69 10 -> 12 waiting, then 12 -> 14 on a truck: the piece and the summary follow
+    , 'ok'               -- 70 fewer pallets on a split shipment: off the stock first
+    , 'plan:vs_locked'   -- 71 a VS bridge is the international desk's
+    , 'plan:order_gone'  -- 72 a deleted order
+    , 'plan:order_not_v5' -- 73 an order of today's model
+    , 'plan:no_price'    -- 74 price 0 (after the non-finite input probes: no_price / bad_input / no_window, nothing written)
+    , 'plan:piece_busy'  -- 75 a new origin while the piece rides
+    , 'plan:bad_input'   -- 76 status is never written (no mirror): an unknown key
+    , 'ok'               -- 77 a later delivery window: the requested delivery day follows
     -- @want (one line per case: "    , '<ok|plan:code|con:name|state:XXXXX>'  -- <k> <what>")
   ]::text[];
   verdict text; got text; hint text; msg text; cname text; st text;
@@ -712,6 +722,97 @@ BEGIN
           PERFORM plan_move_pieces(j || jsonb_build_object('from', jsonb_build_object('piece_ids', jsonb_build_array(p1, -5))),
                     'test:072', 'owner');
         END IF;
+      ELSIF k = 68 THEN
+        r := plan_order_update(jsonb_build_object('nat_order_id', n1, 'set', '{"price": 120, "reference": "WN072-TEST", "notes": "TEST 072 note"}'::jsonb),
+                               'test:072', 'dispatcher');
+      ELSIF k = 69 THEN
+        r := plan_order_update(jsonb_build_object('nat_order_id', n1, 'shipments', jsonb_build_array(jsonb_build_object('shipment_id', sh1, 'pallets', 12))),
+                               'test:072', 'owner');
+        -- review 23/10: an order already on a truck grows too - the riding piece takes it, never piece_busy
+        PERFORM plan_put_pieces(jsonb_build_object('pieces', jsonb_build_array(jsonb_build_object('piece_id', p1)),
+                  'target', jsonb_build_object('rt_id', rt1, 'side', 'KATHODOS'),
+                  'stops', jsonb_build_array(jsonb_build_object('ref', 'a', 'stop_id', s1a), jsonb_build_object('ref', 'b', 'stop_id', s1b))),
+                  'test:072', 'owner');
+        r := plan_order_update(jsonb_build_object('nat_order_id', n1, 'shipments', jsonb_build_array(jsonb_build_object('shipment_id', sh1, 'pallets', 14))),
+                               'test:072', 'owner');
+      ELSIF k = 70 THEN   -- p1 (made 20) rode A -> Veroia, split 7 (rides on R2) + 13 (stock); 20 -> 15 takes 5 off the stock
+        UPDATE shipments SET pallets = 20 WHERE id = sh1;
+        UPDATE shipment_pieces SET pallets = 20 WHERE id = p1;
+        INSERT INTO piece_legs (piece_id, leg_no, rt_id, pickup_stop_id, drop_stop_id, created_by) VALUES (p1, 1, rt1, s1a, s1h, 'test:072');
+        UPDATE shipment_pieces SET split_at = now(), split_by = 'test:072' WHERE id = p1;
+        INSERT INTO shipment_pieces (shipment_id, parent_piece_id, pallets, created_by) VALUES (sh1, p1, 7, 'test:072') RETURNING id INTO c1;
+        INSERT INTO shipment_pieces (shipment_id, parent_piece_id, pallets, leave_by, created_by) VALUES (sh1, p1, 13, d, 'test:072') RETURNING id INTO c2;
+        INSERT INTO piece_legs (piece_id, leg_no, rt_id, pickup_stop_id, drop_stop_id, created_by) VALUES (c1, 1, rt2, s2h, s2b, 'test:072');
+        r := plan_order_update(jsonb_build_object('nat_order_id', n1, 'shipments', jsonb_build_array(jsonb_build_object('shipment_id', sh1, 'pallets', 15))),
+                               'test:072', 'owner');
+      ELSIF k = 71 THEN
+        INSERT INTO shipments (order_id, order_stop_id, created_by) VALUES (vso, vs_b, 'test:072') RETURNING id INTO x;
+        INSERT INTO shipment_pieces (shipment_id, pallets, created_by) VALUES (x, 20, 'test:072');
+        PERFORM plan_order_update(jsonb_build_object('nat_order_id', n1, 'shipments', jsonb_build_array(jsonb_build_object('shipment_id', x, 'pallets', 18))),
+                                  'test:072', 'owner');
+      ELSIF k = 72 THEN
+        UPDATE shipment_pieces SET deleted_at = now(), deleted_reason = 'test', deleted_by = 'test:072' WHERE id = p1;
+        UPDATE shipments SET deleted_at = now(), deleted_reason = 'test', deleted_by = 'test:072' WHERE id = sh1;
+        UPDATE national_orders SET deleted_at = now() WHERE id = n1;
+        PERFORM plan_order_update(jsonb_build_object('nat_order_id', n1, 'set', '{"notes": "x"}'::jsonb), 'test:072', 'owner');
+      ELSIF k = 73 THEN
+        PERFORM plan_order_update(jsonb_build_object('nat_order_id', nold, 'set', '{"notes": "x"}'::jsonb), 'test:072', 'owner');
+      ELSIF k = 74 THEN
+        -- coordinator 25/10 (cross-cutting input rule): a price of 'NaN' / 'Infinity' / '-Infinity' is refused as
+        -- no_price, a temperature_c or a shipment's pallets of the same as bad_input '<field>:finite', a window end of
+        -- 'infinity' / '-infinity' as no_window 'shipment:finite', and an id of 'NaN' / 'Infinity' as bad_input (the
+        -- bigint cast, 22P02); nothing is written
+        FOR j IN SELECT value FROM jsonb_array_elements(jsonb_build_array(
+                   jsonb_build_object('want', 'no_price:', 'p', jsonb_build_object('nat_order_id', n1, 'set', '{"price": "NaN"}'::jsonb)),
+                   jsonb_build_object('want', 'no_price:', 'p', jsonb_build_object('nat_order_id', n1, 'set', '{"price": "Infinity"}'::jsonb)),
+                   jsonb_build_object('want', 'no_price:', 'p', jsonb_build_object('nat_order_id', n1, 'set', '{"price": "-Infinity"}'::jsonb)),
+                   jsonb_build_object('want', 'bad_input:temperature_c:finite', 'p', jsonb_build_object('nat_order_id', n1, 'set', '{"temperature_c": "NaN"}'::jsonb)),
+                   jsonb_build_object('want', 'bad_input:temperature_c:finite', 'p', jsonb_build_object('nat_order_id', n1, 'set', '{"temperature_c": "Infinity"}'::jsonb)),
+                   jsonb_build_object('want', 'bad_input:temperature_c:finite', 'p', jsonb_build_object('nat_order_id', n1, 'set', '{"temperature_c": "-Infinity"}'::jsonb)),
+                   jsonb_build_object('want', 'bad_input:pallets:finite', 'p', jsonb_build_object('nat_order_id', n1,
+                     'shipments', jsonb_build_array(jsonb_build_object('shipment_id', sh1, 'pallets', 'NaN')))),
+                   jsonb_build_object('want', 'bad_input:pallets:finite', 'p', jsonb_build_object('nat_order_id', n1,
+                     'shipments', jsonb_build_array(jsonb_build_object('shipment_id', sh1, 'pallets', 'Infinity')))),
+                   jsonb_build_object('want', 'bad_input:pallets:finite', 'p', jsonb_build_object('nat_order_id', n1,
+                     'shipments', jsonb_build_array(jsonb_build_object('shipment_id', sh1, 'pallets', '-Infinity')))),
+                   jsonb_build_object('want', 'no_window:shipment:finite', 'p', jsonb_build_object('nat_order_id', n1,
+                     'shipments', jsonb_build_array(jsonb_build_object('shipment_id', sh1, 'deliver_to', 'infinity')))),
+                   jsonb_build_object('want', 'no_window:shipment:finite', 'p', jsonb_build_object('nat_order_id', n1,
+                     'shipments', jsonb_build_array(jsonb_build_object('shipment_id', sh1, 'load_from', '-infinity')))),
+                   jsonb_build_object('want', 'bad_input:22P02', 'p', jsonb_build_object('nat_order_id', 'NaN', 'set', '{"notes": "x"}'::jsonb)),
+                   jsonb_build_object('want', 'bad_input:22P02', 'p', jsonb_build_object('nat_order_id', n1,
+                     'shipments', jsonb_build_array(jsonb_build_object('shipment_id', 'Infinity', 'pallets', 12)))),
+                   jsonb_build_object('want', 'bad_input:22P02', 'p', jsonb_build_object('nat_order_id', n1,
+                     'shipments', jsonb_build_array(jsonb_build_object('shipment_id', sh1, 'dest_location_id', '-Infinity')))))) LOOP
+          msg := NULL;
+          BEGIN
+            PERFORM plan_order_update(j->'p', 'test:072', 'owner');
+            t2 := 'accepted';
+          EXCEPTION WHEN others THEN
+            GET STACKED DIAGNOSTICS t2 = PG_EXCEPTION_HINT, msg = MESSAGE_TEXT;
+          END;
+          IF t2 IS DISTINCT FROM 'plan:' || split_part(j->>'want', ':', 1) OR msg NOT LIKE '%rule broken: ' || (j->>'want') || '%' THEN
+            RAISE EXCEPTION 'FAIL % got % (%)', (j->'p')::text, coalesce(t2, 'no hint'), coalesce(msg, '-');
+          END IF;
+        END LOOP;
+        IF (SELECT price IS DISTINCT FROM 100 OR temperature_c IS DISTINCT FROM 2 OR pallets IS DISTINCT FROM 10 FROM national_orders WHERE id = n1)
+           OR (SELECT pallets IS DISTINCT FROM 10 OR load_from IS DISTINCT FROM a06 OR deliver_to IS DISTINCT FROM a14 FROM shipments WHERE id = sh1)
+           OR (SELECT pallets FROM shipment_pieces WHERE id = p1) IS DISTINCT FROM 10
+           OR EXISTS (SELECT 1 FROM audit_log WHERE actor = 'test:072' AND table_name IN ('national_orders', 'shipments', 'shipment_pieces')
+                        AND action = 'update') THEN
+          RAISE EXCEPTION 'FAIL an update with a non-finite input was written';
+        END IF;
+        PERFORM plan_order_update(jsonb_build_object('nat_order_id', n1, 'set', '{"price": 0}'::jsonb), 'test:072', 'owner');
+      ELSIF k = 75 THEN
+        INSERT INTO piece_legs (piece_id, leg_no, rt_id, pickup_stop_id, drop_stop_id, created_by) VALUES (p1, 1, rt1, s1a, s1b, 'test:072');
+        PERFORM plan_order_update(jsonb_build_object('nat_order_id', n1, 'shipments', jsonb_build_array(jsonb_build_object('shipment_id', sh1, 'origin_location_id', lc))),
+                                  'test:072', 'owner');
+      ELSIF k = 76 THEN
+        PERFORM plan_order_update(jsonb_build_object('nat_order_id', n1, 'set', '{"status": "Delivered"}'::jsonb), 'test:072', 'owner');
+      ELSIF k = 77 THEN
+        r := plan_order_update(jsonb_build_object('nat_order_id', n1, 'shipments', jsonb_build_array(jsonb_build_object('shipment_id', sh1,
+               'deliver_from', (d + 2 + time '12:00') AT TIME ZONE 'Europe/Athens', 'deliver_to', (d + 2 + time '14:00') AT TIME ZONE 'Europe/Athens'))),
+               'test:072', 'owner');
       -- @case (each task adds its "ELSIF k = <n> THEN" branches above this line)
       END IF;
       SET CONSTRAINTS ALL IMMEDIATE;
@@ -913,6 +1014,26 @@ BEGIN
                           AND (SELECT status FROM ct_round_trips WHERE id = rt1) = 'cancelled'
                           AND (SELECT count(*) FROM audit_log WHERE table_name = 'local_moves' AND record_id = q::text AND actor = 'test:072') = 1
                         THEN 'ok the local loading was listed and went with its stop' ELSE 'FAIL local loading: ' || r::text END;
+      ELSIF k = 68 THEN
+        verdict := CASE WHEN (SELECT price = 120 AND notes = 'TEST 072 note' AND truck_id IS NULL AND status IS NULL FROM national_orders WHERE id = n1)
+                          AND (SELECT count(*) FROM audit_log WHERE table_name = 'national_orders' AND record_id = 'rec072TN1'
+                                 AND actor = 'test:072' AND role = 'dispatcher' AND (before_data->>'price')::numeric = 100
+                                 AND (after_data->>'price')::numeric = 120 AND NOT (after_data ? 'reference')) = 1
+                        THEN 'ok price 100 -> 120 and the note, one audit row of what changed' ELSE 'FAIL update: ' || r::text END;
+      ELSIF k = 69 THEN
+        verdict := CASE WHEN (SELECT pallets FROM shipment_pieces WHERE id = p1) = 14
+                          AND (SELECT pallets FROM national_orders WHERE id = n1) = 14
+                          AND (SELECT NOT waiting AND end_stop_id = s1b FROM v_piece_state WHERE piece_id = p1)
+                        THEN 'ok 10 -> 12 waiting, then 12 -> 14 on the truck: the piece and the summary follow'
+                        ELSE 'FAIL pallets: ' || coalesce((SELECT pallets::text FROM shipment_pieces WHERE id = p1), 'null') END;
+      ELSIF k = 70 THEN
+        verdict := CASE WHEN (SELECT pallets FROM shipment_pieces WHERE id = c2) = 8 AND (SELECT pallets FROM shipment_pieces WHERE id = c1) = 7
+                          AND (SELECT pallets FROM national_orders WHERE id = n1) = 15
+                        THEN 'ok 5 off the stock (13 -> 8), the riding 7 untouched, summary 15' ELSE 'FAIL reduce on split' END;
+      ELSIF k = 77 THEN
+        verdict := CASE WHEN (SELECT delivery_datetime FROM national_orders WHERE id = n1) = d + 2
+                          AND (SELECT loading_datetime FROM national_orders WHERE id = n1) = d
+                        THEN 'ok requested delivery day D+2 from the window' ELSE 'FAIL window' END;
       -- @verdict (each task adds its "ELSIF k = <n> THEN verdict := ..." branches above this line)
       ELSE
         verdict := 'FAIL no verdict for case ' || k;

@@ -282,7 +282,7 @@ piece_in := { "piece_id": bigint, "take_pallets": numeric|null,     -- only on a
 | Υπογραφή | `p` | Επιστρέφει (πέρα από το κοινό) | Αρνήσεις `plan:` (νέες· + COMMIT της 071) |
 |---|---|---|---|
 | `plan_orders_create(p jsonb, p_actor text, p_role text) RETURNS jsonb` | `{ "orders": [ { "client_id", "price", "reference", "goods", "temperature_c", "pallet_exchange", "notes", "shipments": [ { "origin_location_id", "dest_location_id", "pallets", "load_from", "load_to", "deliver_from", "deliver_to" } ] } ], "target": target?, "stops": stops?, "request_id": uuid }` | `ids.nat_order_ids/shipment_ids/piece_ids` (+ στόχου)· επανάληψη: η πρώτη απάντηση + `replayed` | `no_actor`, `bad_input`, `no_client`, `no_price`, `no_window`, `stock_lot`, `request_reused`, `request_missing` · CHECK `shipments_*` |
-| `plan_order_update(p, p_actor, p_role)` *(απόφαση 21)* | `{ "nat_order_id", "set": {price, reference, notes, goods, temperature_c, pallet_exchange}, "shipments": [ { "shipment_id", "pallets"?, "load_from"?, "load_to"?, "deliver_from"?, "deliver_to"?, "origin_location_id"?, "dest_location_id"? } ] }` | `ids.shipment_ids` | `order_gone`, `order_not_v5`, `vs_locked`, `no_price`, `piece_busy` (τόπος σε κομμάτι με κίνηση) |
+| `plan_order_update(p, p_actor, p_role)` *(απόφαση 21)* | `{ "nat_order_id", "set": {price, reference, notes, goods, temperature_c, pallet_exchange}, "shipments": [ { "shipment_id", "pallets"?, "load_from"?, "load_to"?, "deliver_from"?, "deliver_to"?, "origin_location_id"?, "dest_location_id"? } ] }` | `ids.shipment_ids` | `order_gone`, `order_not_v5`, `vs_locked`, `no_price`, `piece_busy` (τόπος σε κομμάτι με κίνηση), `no_window` (άκρο παραθύρου `infinity`), `bad_input` (`temperature_c` / `pallets` NaN ή ±Infinity· κανόνας συντονιστή 25/10) |
 | `plan_put_pieces(p, …)` | `{ "pieces": [piece_in], "target": target, "stops": stops }` | `ids.rt_id/stop_ids/leg_ids/piece_ids` | `piece_busy`, `piece_split`, `not_stock`, `parts_sum`, `rt_gone`, `no_vehicle`, `truck_busy`, `driver_busy` · `chain`, `chain_time`, `leg_place`, `leg_order`, `stop_order`, `side_order`, `rt_cancelled`, `rt_not_v2`, `piece_dead`, `leg_stop_dead` |
 | `plan_put_group(p, …)` | `{ "group": { "order_id": bigint } \| { "nat_order_id": bigint }, "target": target, "stops": stops }` | όπως πάνω | όπως πάνω + `group_empty` |
 | `plan_move_pieces(p, …)` | `{ "from": { "piece_ids": [..] } \| { "rt_id", "side" }, "target": target, "stops": stops?, "dry_run": bool, "confirm_token": text? }` | dry run: συνέπειες· εκτέλεση: `ids.dropped_leg_ids`, `ids.cancelled_rt_ids` | `same_rt`, `stale_confirm`, `need_token`, `piece_split` (και στον τρόπο «πλευρά», **πριν** από τη λίστα), `bad_input` (κομμάτι του `piece_ids` χωρίς ζωντανό σκέλος στη μεταφορά) + του put |
@@ -3427,7 +3427,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
     , 'plan:vs_locked'   -- 71 a VS bridge is the international desk's
     , 'plan:order_gone'  -- 72 a deleted order
     , 'plan:order_not_v5' -- 73 an order of today's model
-    , 'plan:no_price'    -- 74 price 0
+    , 'plan:no_price'    -- 74 price 0 (after the non-finite input probes: no_price / bad_input / no_window, nothing written)
     , 'plan:piece_busy'  -- 75 a new origin while the piece rides
     , 'plan:bad_input'   -- 76 status is never written (no mirror): an unknown key
     , 'ok'               -- 77 a later delivery window: the requested delivery day follows
@@ -3472,6 +3472,50 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
       ELSIF k = 73 THEN
         PERFORM plan_order_update(jsonb_build_object('nat_order_id', nold, 'set', '{"notes": "x"}'::jsonb), 'test:072', 'owner');
       ELSIF k = 74 THEN
+        -- coordinator 25/10 (cross-cutting input rule): a price of 'NaN' / 'Infinity' / '-Infinity' is refused as
+        -- no_price, a temperature_c or a shipment's pallets of the same as bad_input '<field>:finite', a window end of
+        -- 'infinity' / '-infinity' as no_window 'shipment:finite', and an id of 'NaN' / 'Infinity' as bad_input (the
+        -- bigint cast, 22P02); nothing is written
+        FOR j IN SELECT value FROM jsonb_array_elements(jsonb_build_array(
+                   jsonb_build_object('want', 'no_price:', 'p', jsonb_build_object('nat_order_id', n1, 'set', '{"price": "NaN"}'::jsonb)),
+                   jsonb_build_object('want', 'no_price:', 'p', jsonb_build_object('nat_order_id', n1, 'set', '{"price": "Infinity"}'::jsonb)),
+                   jsonb_build_object('want', 'no_price:', 'p', jsonb_build_object('nat_order_id', n1, 'set', '{"price": "-Infinity"}'::jsonb)),
+                   jsonb_build_object('want', 'bad_input:temperature_c:finite', 'p', jsonb_build_object('nat_order_id', n1, 'set', '{"temperature_c": "NaN"}'::jsonb)),
+                   jsonb_build_object('want', 'bad_input:temperature_c:finite', 'p', jsonb_build_object('nat_order_id', n1, 'set', '{"temperature_c": "Infinity"}'::jsonb)),
+                   jsonb_build_object('want', 'bad_input:temperature_c:finite', 'p', jsonb_build_object('nat_order_id', n1, 'set', '{"temperature_c": "-Infinity"}'::jsonb)),
+                   jsonb_build_object('want', 'bad_input:pallets:finite', 'p', jsonb_build_object('nat_order_id', n1,
+                     'shipments', jsonb_build_array(jsonb_build_object('shipment_id', sh1, 'pallets', 'NaN')))),
+                   jsonb_build_object('want', 'bad_input:pallets:finite', 'p', jsonb_build_object('nat_order_id', n1,
+                     'shipments', jsonb_build_array(jsonb_build_object('shipment_id', sh1, 'pallets', 'Infinity')))),
+                   jsonb_build_object('want', 'bad_input:pallets:finite', 'p', jsonb_build_object('nat_order_id', n1,
+                     'shipments', jsonb_build_array(jsonb_build_object('shipment_id', sh1, 'pallets', '-Infinity')))),
+                   jsonb_build_object('want', 'no_window:shipment:finite', 'p', jsonb_build_object('nat_order_id', n1,
+                     'shipments', jsonb_build_array(jsonb_build_object('shipment_id', sh1, 'deliver_to', 'infinity')))),
+                   jsonb_build_object('want', 'no_window:shipment:finite', 'p', jsonb_build_object('nat_order_id', n1,
+                     'shipments', jsonb_build_array(jsonb_build_object('shipment_id', sh1, 'load_from', '-infinity')))),
+                   jsonb_build_object('want', 'bad_input:22P02', 'p', jsonb_build_object('nat_order_id', 'NaN', 'set', '{"notes": "x"}'::jsonb)),
+                   jsonb_build_object('want', 'bad_input:22P02', 'p', jsonb_build_object('nat_order_id', n1,
+                     'shipments', jsonb_build_array(jsonb_build_object('shipment_id', 'Infinity', 'pallets', 12)))),
+                   jsonb_build_object('want', 'bad_input:22P02', 'p', jsonb_build_object('nat_order_id', n1,
+                     'shipments', jsonb_build_array(jsonb_build_object('shipment_id', sh1, 'dest_location_id', '-Infinity')))))) LOOP
+          msg := NULL;
+          BEGIN
+            PERFORM plan_order_update(j->'p', 'test:072', 'owner');
+            t2 := 'accepted';
+          EXCEPTION WHEN others THEN
+            GET STACKED DIAGNOSTICS t2 = PG_EXCEPTION_HINT, msg = MESSAGE_TEXT;
+          END;
+          IF t2 IS DISTINCT FROM 'plan:' || split_part(j->>'want', ':', 1) OR msg NOT LIKE '%rule broken: ' || (j->>'want') || '%' THEN
+            RAISE EXCEPTION 'FAIL % got % (%)', (j->'p')::text, coalesce(t2, 'no hint'), coalesce(msg, '-');
+          END IF;
+        END LOOP;
+        IF (SELECT price IS DISTINCT FROM 100 OR temperature_c IS DISTINCT FROM 2 OR pallets IS DISTINCT FROM 10 FROM national_orders WHERE id = n1)
+           OR (SELECT pallets IS DISTINCT FROM 10 OR load_from IS DISTINCT FROM a06 OR deliver_to IS DISTINCT FROM a14 FROM shipments WHERE id = sh1)
+           OR (SELECT pallets FROM shipment_pieces WHERE id = p1) IS DISTINCT FROM 10
+           OR EXISTS (SELECT 1 FROM audit_log WHERE actor = 'test:072' AND table_name IN ('national_orders', 'shipments', 'shipment_pieces')
+                        AND action = 'update') THEN
+          RAISE EXCEPTION 'FAIL an update with a non-finite input was written';
+        END IF;
         PERFORM plan_order_update(jsonb_build_object('nat_order_id', n1, 'set', '{"price": 0}'::jsonb), 'test:072', 'owner');
       ELSIF k = 75 THEN
         INSERT INTO piece_legs (piece_id, leg_no, rt_id, pickup_stop_id, drop_stop_id, created_by) VALUES (p1, 1, rt1, s1a, s1b, 'test:072');
@@ -3513,7 +3557,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 - [ ] **Step 2: Τρέξε, να αποτύχει**
 
 Run: `cd tms-auditor && node --test test/plan-072.test.mjs`
-Expected: FAIL στο `072 rules test`, με μήνυμα `Result: 67 OK, 10 FAIL` και πρώτη αποτυχία `68 FAIL want ok got state:42883 (function plan_order_update(jsonb, unknown, unknown) does not exist)`. Το `node --test tests/sql-072-drafts.test.js` μένει πράσινο (6/6).
+Expected: FAIL στο `072 rules test`, με μήνυμα `Result: 67 OK, 10 FAIL` και πρώτη αποτυχία `68 FAIL want ok got state:42883 (function plan_order_update(jsonb, unknown, unknown) does not exist)`. Το `node --test tests/sql-072-drafts.test.js` δίνει `ℹ pass 5`, `ℹ fail 1`, με μόνη αποτυχία `plan:request_missing has no case in 072_plan_functions_test.sql` (κωδικοί του `plan_h_replay` του Α1· οι περιπτώσεις 83–90 μπαίνουν στην Α8).
 
 - [ ] **Step 3: Η υλοποίηση (`worker/migrations/drafts/072_plan_functions.sql`)**
 
@@ -3586,8 +3630,16 @@ begin
   if not exists (select 1 from shipments where nat_order_id = n.id and deleted_at is null) then
     perform plan_h_raise('order_not_v5', n.id::text);
   end if;
-  if v_set ? 'price' and coalesce((v_set->>'price')::numeric, 0) <= 0 then
+  -- coordinator 25/10 (cross-cutting input rule, as A2): NaN sorts above every number (so "<= 0" is false) and
+  -- Infinity passes "> 0"; either would be written to the unconstrained national_orders.price. A price is a finite
+  -- number above 0.
+  if v_set ? 'price' and not (coalesce((v_set->>'price')::numeric, 0) > 0
+                              and (v_set->>'price')::numeric < 'Infinity'::numeric) then
     perform plan_h_raise('no_price', coalesce(v_set->>'price', 'null'));
+  end if;
+  -- temperature_c is unconstrained numeric: NaN / +-Infinity would be stored as they are (A2)
+  if abs((v_set->>'temperature_c')::numeric) >= 'Infinity'::numeric then
+    perform plan_h_raise('bad_input', 'temperature_c:finite');
   end if;
   if p->'shipments' is not null and jsonb_typeof(p->'shipments') <> 'array' then perform plan_h_raise('bad_input', 'shipments'); end if;
   for s in select value from jsonb_array_elements(coalesce(p->'shipments', '[]'::jsonb)) loop
@@ -3600,6 +3652,17 @@ begin
     -- one decimal at most (decision 20)
     if s ? 'pallets' and (s->>'pallets')::numeric <> round((s->>'pallets')::numeric, 1) then
       perform plan_h_raise('bad_input', 'pallets:one decimal');
+    end if;
+    -- coordinator 25/10: NaN passes the line above and the 071 CHECK pallets > 0 and would reach the pieces and the
+    -- summary through plan_h_resize; +-Infinity would end as a raw numeric overflow. A count is a finite number.
+    if s ? 'pallets' and not (abs((s->>'pallets')::numeric) < 'Infinity'::numeric) then
+      perform plan_h_raise('bad_input', 'pallets:finite');
+    end if;
+    -- coordinator 25/10 (as A2): 'infinity' / '-infinity' pass the 071 CHECK shipments_win; the order would fall out
+    -- of every week / day read and show as Invalid Date. A window end is a finite time.
+    if exists (select 1 from unnest(array['load_from', 'load_to', 'deliver_from', 'deliver_to']) f
+                where s ? f and not isfinite((s->>f)::timestamptz)) then
+      perform plan_h_raise('no_window', 'shipment:finite');
     end if;
     -- a place changes only while nothing rides from or to it
     if ((s ? 'origin_location_id' and (s->>'origin_location_id')::bigint is distinct from a.origin_location_id)
@@ -3668,7 +3731,7 @@ Run: `cd tms-auditor && node --test test/plan-072.test.mjs`
 Expected: `✔` και στα τρία υπο-tests, μήνυμα `Result: 77 OK, 0 FAIL`, `ℹ fail 0`.
 
 Run: `node --test tests/sql-072-drafts.test.js`
-Expected: `ℹ pass 6`, `ℹ fail 0` (το `v_pub` = κάθε δημόσια συνάρτηση, κάθε νέος κωδικός έχει περίπτωση).
+Expected: `ℹ pass 5`, `ℹ fail 1`, με μόνη αποτυχία `plan:request_missing has no case in 072_plan_functions_test.sql` (ως την Α8· το `v_pub` = κάθε δημόσια συνάρτηση, οι κωδικοί `order_gone`, `order_not_v5`, `vs_locked` έχουν περίπτωση, 71–73). Έλεγξε το μήνυμα, όχι μόνο το πλήθος.
 
 - [ ] **Step 5: Commit**
 

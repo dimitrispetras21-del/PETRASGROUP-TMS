@@ -1171,6 +1171,160 @@ exception
     perform plan_h_raise('bad_input', sqlstate);
 end
 $f$;
+
+  CREATE FUNCTION public.plan_h_resize(p_shipment bigint, p_delta numeric, p_actor text, p_role text) RETURNS void
+    LANGUAGE plpgsql SET search_path = public AS $f$
+declare
+  v_left numeric := -p_delta; v_take numeric; lf record; a shipment_pieces%rowtype; b shipment_pieces%rowtype;
+begin
+  -- Keeps 071's pieces_sum (the live leaves = the shipment) when the national order's pallets change. Unsplit:
+  -- the one piece follows. Split: a reduction comes off the stock first, then off the earliest day (C-01, as the
+  -- VS rule of spec 3); an increase goes to the stock, else to a waiting piece, else to the first day's riding
+  -- piece, on the same truck (spec 3; never refused: "the dispatcher simply corrects the order", review 23/10).
+  -- A piece that rides is never emptied here: move it first (its legs, stops and cycle have a list of their own).
+  if p_delta = 0 then return; end if;
+  if p_delta > 0 then
+    select pp.piece_id into lf from v_piece_state pp
+     where pp.shipment_id = p_shipment
+     order by pp.is_stock desc, pp.waiting desc,
+              (select min(s.planned_from) from piece_legs l join rt_stops s on s.id = l.pickup_stop_id
+                where l.piece_id = pp.piece_id and l.deleted_at is null) nulls first, pp.piece_id
+     limit 1;
+    if lf.piece_id is null then perform plan_h_raise('piece_dead', 'shipment:' || p_shipment); end if;
+    select * into a from shipment_pieces where id = lf.piece_id for no key update;
+    update shipment_pieces set pallets = pallets + p_delta where id = a.id returning * into b;
+    perform plan_h_audit(p_actor, p_role, 'update', 'shipment_pieces', a.id::text,
+                         jsonb_build_object('pallets', a.pallets), jsonb_build_object('pallets', b.pallets));
+    return;
+  end if;
+  for lf in select pp.piece_id, pp.pallets, pp.is_stock,
+                   (select min(s.planned_from) from piece_legs l join rt_stops s on s.id = l.pickup_stop_id
+                     where l.piece_id = pp.piece_id and l.deleted_at is null) as first_at,
+                   exists (select 1 from piece_legs l where l.piece_id = pp.piece_id and l.deleted_at is null) as rides
+              from v_piece_state pp where pp.shipment_id = p_shipment
+             order by pp.is_stock desc, 4 nulls first, pp.piece_id loop
+    exit when v_left <= 0;
+    v_take := least(v_left, lf.pallets);
+    select * into a from shipment_pieces where id = lf.piece_id for no key update;
+    if v_take = lf.pallets then
+      if lf.rides then perform plan_h_raise('piece_busy', lf.piece_id::text); end if;
+      if a.parent_piece_id is null then perform plan_h_raise('piece_busy', lf.piece_id::text); end if;
+      update shipment_pieces set deleted_at = now(), deleted_reason = 'plan_order_update: fewer pallets',
+             deleted_by = p_actor where id = a.id returning * into b;
+      perform plan_h_audit(p_actor, p_role, 'delete', 'shipment_pieces', a.id::text, to_jsonb(a), to_jsonb(b));
+    else
+      update shipment_pieces set pallets = pallets - v_take where id = a.id returning * into b;
+      perform plan_h_audit(p_actor, p_role, 'update', 'shipment_pieces', a.id::text,
+                           jsonb_build_object('pallets', a.pallets), jsonb_build_object('pallets', b.pallets));
+    end if;
+    v_left := v_left - v_take;
+  end loop;
+end
+$f$;
+
+  CREATE FUNCTION public.plan_order_update(p jsonb, p_actor text, p_role text) RETURNS jsonb
+    LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $f$
+declare
+  v_set jsonb := coalesce(p->'set', '{}'::jsonb); s jsonb; v_sum jsonb; v_ids bigint[] := '{}';
+  n national_orders%rowtype; n2 national_orders%rowtype; a shipments%rowtype; b shipments%rowtype;
+begin
+  -- C-01 (decision 21): "the dispatcher simply corrects the order". Commercial fields and the national
+  -- shipments; a VS bridge is the international desk's (vs_locked, C-08). The summary fields follow (decision 20).
+  perform plan_h_ctx(p_actor, p_role);
+  perform plan_h_keys(p, array['nat_order_id', 'set', 'shipments'], 'p');
+  perform plan_h_keys(v_set, array['price', 'reference', 'notes', 'goods', 'temperature_c', 'pallet_exchange'], 'set');
+  select * into n from national_orders where id = (p->>'nat_order_id')::bigint for no key update;
+  if n.id is null or n.deleted_at is not null then perform plan_h_raise('order_gone', coalesce(p->>'nat_order_id', 'null')); end if;
+  if not exists (select 1 from shipments where nat_order_id = n.id and deleted_at is null) then
+    perform plan_h_raise('order_not_v5', n.id::text);
+  end if;
+  -- coordinator 25/10 (cross-cutting input rule, as A2): NaN sorts above every number (so "<= 0" is false) and
+  -- Infinity passes "> 0"; either would be written to the unconstrained national_orders.price. A price is a finite
+  -- number above 0.
+  if v_set ? 'price' and not (coalesce((v_set->>'price')::numeric, 0) > 0
+                              and (v_set->>'price')::numeric < 'Infinity'::numeric) then
+    perform plan_h_raise('no_price', coalesce(v_set->>'price', 'null'));
+  end if;
+  -- temperature_c is unconstrained numeric: NaN / +-Infinity would be stored as they are (A2)
+  if abs((v_set->>'temperature_c')::numeric) >= 'Infinity'::numeric then
+    perform plan_h_raise('bad_input', 'temperature_c:finite');
+  end if;
+  if p->'shipments' is not null and jsonb_typeof(p->'shipments') <> 'array' then perform plan_h_raise('bad_input', 'shipments'); end if;
+  for s in select value from jsonb_array_elements(coalesce(p->'shipments', '[]'::jsonb)) loop
+    perform plan_h_keys(s, array['shipment_id', 'pallets', 'load_from', 'load_to', 'deliver_from', 'deliver_to',
+                                 'origin_location_id', 'dest_location_id'], 'shipment');
+    select * into a from shipments where id = (s->>'shipment_id')::bigint for no key update;
+    if a.id is null then perform plan_h_raise('bad_input', 'shipment_id'); end if;
+    if a.order_stop_id is not null then perform plan_h_raise('vs_locked', a.id::text); end if;
+    if a.nat_order_id is distinct from n.id or a.deleted_at is not null then perform plan_h_raise('bad_input', 'shipment_id'); end if;
+    -- one decimal at most (decision 20)
+    if s ? 'pallets' and (s->>'pallets')::numeric <> round((s->>'pallets')::numeric, 1) then
+      perform plan_h_raise('bad_input', 'pallets:one decimal');
+    end if;
+    -- coordinator 25/10: NaN passes the line above and the 071 CHECK pallets > 0 and would reach the pieces and the
+    -- summary through plan_h_resize; +-Infinity would end as a raw numeric overflow. A count is a finite number.
+    if s ? 'pallets' and not (abs((s->>'pallets')::numeric) < 'Infinity'::numeric) then
+      perform plan_h_raise('bad_input', 'pallets:finite');
+    end if;
+    -- coordinator 25/10 (as A2): 'infinity' / '-infinity' pass the 071 CHECK shipments_win; the order would fall out
+    -- of every week / day read and show as Invalid Date. A window end is a finite time.
+    if exists (select 1 from unnest(array['load_from', 'load_to', 'deliver_from', 'deliver_to']) f
+                where s ? f and not isfinite((s->>f)::timestamptz)) then
+      perform plan_h_raise('no_window', 'shipment:finite');
+    end if;
+    -- a place changes only while nothing rides from or to it
+    if ((s ? 'origin_location_id' and (s->>'origin_location_id')::bigint is distinct from a.origin_location_id)
+        or (s ? 'dest_location_id' and (s->>'dest_location_id')::bigint is distinct from a.dest_location_id))
+       and exists (select 1 from piece_legs l join shipment_pieces pp on pp.id = l.piece_id
+                    where pp.shipment_id = a.id and l.deleted_at is null) then
+      perform plan_h_raise('piece_busy', 'shipment:' || a.id);
+    end if;
+    if s ? 'origin_location_id' then perform plan_h_location((s->>'origin_location_id')::bigint); end if;
+    if s ? 'dest_location_id' then perform plan_h_location((s->>'dest_location_id')::bigint); end if;
+    update shipments set
+      pallets = case when s ? 'pallets' then (s->>'pallets')::numeric else pallets end,
+      load_from = case when s ? 'load_from' then (s->>'load_from')::timestamptz else load_from end,
+      load_to = case when s ? 'load_to' then (s->>'load_to')::timestamptz else load_to end,
+      deliver_from = case when s ? 'deliver_from' then (s->>'deliver_from')::timestamptz else deliver_from end,
+      deliver_to = case when s ? 'deliver_to' then (s->>'deliver_to')::timestamptz else deliver_to end,
+      origin_location_id = case when s ? 'origin_location_id' then (s->>'origin_location_id')::bigint else origin_location_id end,
+      dest_location_id = case when s ? 'dest_location_id' then (s->>'dest_location_id')::bigint else dest_location_id end
+     where id = a.id returning * into b;
+    if to_jsonb(b) <> to_jsonb(a) then
+      perform plan_h_audit(p_actor, p_role, 'update', 'shipments', a.id::text, to_jsonb(a), to_jsonb(b));
+    end if;
+    perform plan_h_resize(a.id, b.pallets - a.pallets, p_actor, p_role);
+    v_ids := v_ids || a.id;
+  end loop;
+  v_sum := plan_h_order_summary((select jsonb_agg(to_jsonb(x) order by x.id) from shipments x
+                                  where x.nat_order_id = n.id and x.deleted_at is null));
+  update national_orders set
+    price = case when v_set ? 'price' then (v_set->>'price')::numeric else price end,
+    reference = case when v_set ? 'reference' then v_set->>'reference' else reference end,
+    notes = case when v_set ? 'notes' then v_set->>'notes' else notes end,
+    goods = case when v_set ? 'goods' then v_set->>'goods' else goods end,
+    temperature_c = case when v_set ? 'temperature_c' then (v_set->>'temperature_c')::numeric else temperature_c end,
+    pallet_exchange = case when v_set ? 'pallet_exchange' then coalesce((v_set->>'pallet_exchange')::boolean, false)
+                           else pallet_exchange end,
+    pallets = (v_sum->>'pallets')::numeric,
+    loading_datetime = (v_sum->>'loading_datetime')::date,
+    delivery_datetime = (v_sum->>'delivery_datetime')::date,
+    pickup_location_1_id = (v_sum->>'pickup_location_1_id')::bigint,
+    delivery_location_1_id = (v_sum->>'delivery_location_1_id')::bigint
+   where id = n.id returning * into n2;
+  if to_jsonb(n2) <> to_jsonb(n) then
+    perform plan_h_audit(p_actor, p_role, 'update', 'national_orders', n.legacy_id,
+      (select jsonb_object_agg(k, v) from jsonb_each(to_jsonb(n)) t(k, v) where to_jsonb(n2)->k is distinct from v),
+      (select jsonb_object_agg(k, v) from jsonb_each(to_jsonb(n2)) t(k, v) where to_jsonb(n)->k is distinct from v));
+  end if;
+  perform plan_h_finish();
+  return plan_h_ok('plan_order_update', jsonb_build_object('nat_order_id', n.id, 'shipment_ids', to_jsonb(v_ids)), null, null);
+exception
+  when invalid_text_representation or invalid_datetime_format or datetime_field_overflow
+       or numeric_value_out_of_range or invalid_parameter_value then
+    perform plan_h_raise('bad_input', sqlstate);
+end
+$f$;
   -- @A (072 section A: plan_orders_create, plan_put_pieces, plan_put_group, plan_split_piece, plan_move_pieces, plan_order_update)
 
   -- ===== PART 3: CYCLE, DELETE, VS, LOCAL LOADING (section B) =====
@@ -1191,6 +1345,7 @@ $f$;
     , 'public.plan_put_group(jsonb,text,text)'
     , 'public.plan_split_piece(jsonb,text,text)'
     , 'public.plan_move_pieces(jsonb,text,text)'
+    , 'public.plan_order_update(jsonb,text,text)'
     -- @pub (072 tasks add ", 'public.plan_x(<arg types>)'" lines above this marker)
     ]::text[], NULL);
     -- 071's own plan_* (triggers and rule readers): never touched by 072, closed for every API role
