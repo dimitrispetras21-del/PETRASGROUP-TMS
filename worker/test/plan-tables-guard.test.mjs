@@ -79,3 +79,8 @@ test('one DB-rule mapper still: no planRuleError / planRuleResponse beside stock
   assert.equal((src.match(/^function \w+RuleError\(/gm) || []).length, 1);
   assert.equal((src.match(/^function \w+RuleResponse\(/gm) || []).length, 1);
 });
+
+test('"Via Hub" is a writable ORDER STOPS label for via_hub — once, nowhere else', () => {
+  assert.equal(TABLES.tblaeY5QOHAS1gyE8.fields['Via Hub'], 'via_hub');
+  assert.equal(count('"Via Hub": "via_hub"'), 1);
+});

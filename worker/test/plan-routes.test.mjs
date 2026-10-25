@@ -513,3 +513,36 @@ test('plan_rt_update dry run: preview.conflict gets its message from PLAN_RULE_T
   r = await call('dispatcher', 'PATCH', '/plan/rt/5', { dry_run: true });
   assert.equal(r.json.preview.conflict, null, 'no conflict: untouched');
 });
+
+// ───────────────────── the older paths ─────────────────────
+test('PATCH /costs/rt/:id on a v5 cycle (model 2) → 409 in Greek, no PATCH; a v1 cycle is patched as today', async () => {
+  on('GET', 'ct_round_trips', (u) => json([{ id: Number(u.searchParams.get('id').slice(3)), model: u.searchParams.get('id') === 'eq.5' ? 2 : 1, status: 'planned', date_start: '2026-10-12' }]));
+  on('PATCH', 'ct_round_trips', (u, b) => json([{ id: 7, model: 1, ...b }]));
+  let r = await call('dispatcher', 'PATCH', '/costs/rt/5', { date_start: '2026-10-13' });
+  assert.equal(r.status, 409, r.text);
+  assert.deepEqual(r.json, { error: 'Ο κύκλος ανήκει στο Εβδομαδιαίο Εθνικών — αλλάζει μόνο από εκεί' });
+  assert.equal(calls.filter((c) => c.method === 'PATCH').length, 0);
+  assert.equal(auditRows().length, 0);
+  calls.length = 0;
+  r = await call('dispatcher', 'PATCH', '/costs/rt/7', { date_start: '2026-10-13' });
+  assert.equal(r.status, 200, r.text);
+  assert.equal(calls.filter((c) => c.method === 'PATCH' && c.table === 'ct_round_trips').length, 1);
+  assert.equal(auditRows().length, 1);
+});
+
+test('facade PATCH ORDER STOPS refused by a plan: rule (bridge stop, 071) or by order_stops_via_hub_intl → 422, not 500', async () => {
+  const STOPS = '/v0/appTEST/tblaeY5QOHAS1gyE8';
+  on('GET', 'order_stops', (u) => (u.searchParams.get('select') === '*' ? json([{ id: 31, legacy_id: 'recSTOP1', pallets: 20, via_hub: false }]) : null));
+  on('PATCH', 'order_stops', (u, b) => (b.via_hub !== undefined
+    ? pgError(400, { code: '23514', hint: null, details: null, message: 'new row for relation "order_stops" violates check constraint "order_stops_via_hub_intl"' })
+    : planReject('pieces_sum', '12:19<>20')));
+  let r = await call('dispatcher', 'PATCH', `${STOPS}/recSTOP1`, { fields: { Pallets: 19 } });
+  assert.equal(r.status, 422, r.text);
+  assert.deepEqual(r.json, { error: { type: 'PLAN_RULE', code: 'pieces_sum', message: 'Τα κομμάτια δεν αθροίζουν στις παλέτες της αποστολής (12:19<>20)' } });
+  r = await call('dispatcher', 'PATCH', `${STOPS}/recSTOP1`, { fields: { 'Via Hub': true } });
+  assert.equal(r.status, 422, r.text);
+  assert.equal(r.json.error.code, 'order_stops_via_hub_intl');
+  const patch = calls.filter((c) => c.method === 'PATCH').at(-1);
+  assert.deepEqual(patch.body, { via_hub: true }, '"Via Hub" reaches via_hub (no silent drop)');
+  assert.equal(auditRows().length, 0);
+});
