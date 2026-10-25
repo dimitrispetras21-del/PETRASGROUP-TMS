@@ -5716,23 +5716,27 @@ async function handlePlan(request, url, origin, env) {
       return planError(422, "PLAN_RULE", cname, n ? `Κανόνας βάσης ${cname}` : `Κανόνας βάσης: ${String(pg.message || "").slice(0, 200)}`, origin, env);
     }
     console.error(`PLAN ${name}`, e && e.message);
-    // Only a real Postgres SQLSTATE (five characters) outside the connection class 08 means the RPC's transaction
-    // rolled back: nothing was kept, so it is plan_failed, never «may have been saved» (K1 review r1: 22P02, 23502,
-    // an inner 42883, P0001 without hint). Anything else leaves the outcome unknown, because the COMMIT may have
-    // happened before the link dropped: no answer (the fetch threw), a gateway page, or a JSON body without a
-    // SQLSTATE - the gateway's 502 / 504 {"message": …}, PostgREST's PGRST000 «connection lost» (K1 review r2).
-    const rolledBack = !!pg && /^(?!08)[0-9A-Z]{5}$/.test(String(pg.code || ""));
+    // Only a real Postgres SQLSTATE (five characters) outside the connection class 08 and the FATAL terminations 57P
+    // means the RPC's transaction rolled back: nothing was kept, so it is plan_failed, never «may have been saved»
+    // (K1 review r1: 22P02, 23502, an inner 42883, P0001 without hint). Anything else leaves the outcome unknown,
+    // because the COMMIT may have happened before the link dropped: no answer (the fetch threw), a gateway page, or
+    // a JSON body without a SQLSTATE - the gateway's 502 / 504 {"message": …}, PostgREST's PGRST000 «connection lost»
+    // (K1 review r2) - and a 57P01 / 57P02 (polish review I1: pg_terminate_backend, a fast shutdown, or a crash of
+    // another backend can end the session after its commit record is flushed and before the client hears of it).
+    // 57014 (statement_timeout) is not FATAL and is answered above as slow.
+    const rolledBack = !!pg && /^(?!08|57P)[0-9A-Z]{5}$/.test(String(pg.code || ""));
     // K1 review r3 m1: some answers without a SQLSTATE prove the RPC never ran, so nothing was kept and «μπορεί να
     // αποθηκεύτηκε» would only send the user to look for nothing: a 401 / 403 (the gateway refused the service key,
     // e.g. after a rotation; any body, a page too) and PGRST003 (no pool connection within the wait: the request never
     // reached Postgres). PGRST000 / PGRST001 and the 502 / 504 stay plan_unknown: a link can drop AFTER the COMMIT.
+    // A read saves nothing, so its text never says «δεν αποθηκεύτηκε» (polish review m1): it was not run.
     if (!rolledBack && (e && (e.status === 401 || e.status === 403))) {
       console.error(`PLAN ${name}: the DB gateway refused the call (${e.status})`);
-      return planError(503, "SERVER", "db_refused", `Η βάση αρνήθηκε την κλήση (${e.status}) — η πράξη ${name} δεν αποθηκεύτηκε· ενημέρωσε τον Δημήτρη`, origin, env);
+      return planError(503, "SERVER", "db_refused", `Η βάση αρνήθηκε την κλήση (${e.status}) — η πράξη ${name} ${route.read ? "δεν εκτελέστηκε" : "δεν αποθηκεύτηκε"}· ενημέρωσε τον Δημήτρη`, origin, env);
     }
     if (!rolledBack && pg && String(pg.code || "") === "PGRST003") {
       console.error(`PLAN ${name}: PGRST003 (no pool connection)`);
-      return planError(503, "SERVER", "slow", "Η βάση δεν είχε ελεύθερη σύνδεση — τίποτα δεν αποθηκεύτηκε· ξαναδοκίμασε σε λίγο", origin, env);
+      return planError(503, "SERVER", "slow", `Η βάση δεν είχε ελεύθερη σύνδεση — ${route.read ? `η πράξη ${name} δεν εκτελέστηκε` : "τίποτα δεν αποθηκεύτηκε"}· ξαναδοκίμασε σε λίγο`, origin, env);
     }
     if (maybeWritten && !rolledBack) {
       // the link may have dropped AFTER the COMMIT: a write never claims «not done» (αρχή 1); the F4 client

@@ -576,11 +576,14 @@ test('amount_leak after a write says the act was kept and must not be pressed ag
 });
 
 // ───────────────────── K1 review r2: a lost answer with a JSON body; the preview's code ─────────────────────
-test('a write answered by a JSON body without a SQLSTATE (gateway 502 / 504, PGRST000, class 08) → plan_unknown; a dry run → plan_failed', async () => {
+test('a write answered by a JSON body without a SQLSTATE (gateway 502 / 504, PGRST000), class 08 or a FATAL 57P → plan_unknown; a dry run → plan_failed', async () => {
   const LOST = [[502, { message: 'An invalid response was received from the upstream server' }],
     [504, { message: 'The upstream server is timing out' }],
     [503, { code: 'PGRST000', details: 'connection to server failed', hint: null, message: 'Could not connect with the database' }],
-    [500, { code: '08006', details: null, hint: null, message: 'terminating connection due to administrator command' }]];
+    [500, { code: '08006', details: null, hint: null, message: 'could not send data to client: Broken pipe' }],
+    // polish review I1: these FATAL terminations can follow the COMMIT, so they prove no rollback
+    [503, { code: '57P01', details: null, hint: null, message: 'terminating connection due to administrator command' }],
+    [503, { code: '57P02', details: null, hint: null, message: 'terminating connection because of crash of another server process' }]];
   for (const [status, body] of LOST) {
     routes.length = 0;
     on('POST', 'rpc/plan_move_pieces', () => pgError(status, body));
@@ -615,7 +618,7 @@ test('plan_rt_update dry run: a constraint with a 072 code of its own is preview
 });
 
 // ───────────────────── K1 review r3 m1: an answer that proves the RPC never ran ─────────────────────
-test('a write the gateway refused (401 / 403, any body) or PostgREST never ran (PGRST003) → 503 «δεν αποθηκεύτηκε», never plan_unknown', async () => {
+test('a write the gateway refused (401 / 403, any body) or PostgREST never ran (PGRST003) → 503 «δεν αποθηκεύτηκε», never plan_unknown; a read → «δεν εκτελέστηκε»', async () => {
   const NOT_RUN = [
     [401, { message: 'Invalid API key' }, 'db_refused'],
     [401, { code: 'PGRST301', details: null, hint: null, message: 'JWSError (CompactDecodeError Invalid number of parts: Expected 3 parts; got 1)' }, 'db_refused'],
@@ -636,6 +639,15 @@ test('a write the gateway refused (401 / 403, any body) or PostgREST never ran (
     assert.equal(rpcCalls().length, 1, `${label}: one RPC, never a second`);
     r = await call('dispatcher', 'POST', '/plan/move', MOVE_DRY);
     assert.equal(r.json.error.code, code, `${label}: a dry run says the same`);
+    // a read saves nothing: the same code, a text that never says «αποθηκεύτηκε» (polish review m1)
+    routes.length = 0;
+    on('POST', 'rpc/plan_board', () => pgError(status, body));
+    r = await call('dispatcher', 'GET', '/plan/board?week=2026-10-10');
+    assert.equal(r.status, 503, `${label} read: ${r.text}`);
+    assert.equal(r.json.error.code, code, `${label} read`);
+    assert.equal(r.json.error.message, code === 'slow'
+      ? 'Η βάση δεν είχε ελεύθερη σύνδεση — η πράξη GET /plan/board δεν εκτελέστηκε· ξαναδοκίμασε σε λίγο'
+      : `Η βάση αρνήθηκε την κλήση (${status}) — η πράξη GET /plan/board δεν εκτελέστηκε· ενημέρωσε τον Δημήτρη`, `${label} read`);
   }
   // a 403 that carries a real SQLSTATE stays with it: an inner 42501 rolled back (plan_failed), the RPC's own is db_grant
   routes.length = 0;

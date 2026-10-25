@@ -1065,7 +1065,7 @@ begin
   v_side := v_from->>'side';
   -- Finite inputs (coordinator 25/10): every id is bigint, so 'NaN' / 'Infinity' fail their cast (bad_input 22P02,
   -- before the list); a new target stop's window is refused in plan_h_stop_add ('stop.planned:finite', the one
-  -- guard), at execution: the dry run reads the request's stops (K1 gap E, below), never their windows.
+  -- guard), at execution: the dry run reads the request's stops (K1 gap E, below), never a new stop's side or window.
   if v_from ? 'piece_ids' then
     if v_side is not null or jsonb_typeof(v_from->'piece_ids') is distinct from 'array' then
       perform plan_h_raise('bad_input', 'from');
@@ -1180,9 +1180,11 @@ begin
   -- for every moved piece in its order: its pickup where its first moved leg picks up (the chain: it waits there
   -- once its moved legs are off) and its drop at its national end, among those stops - more than one there and not
   -- exactly one on the target side = stop.ambiguous, none = pickup / drop. The rule of plan_h_stop_at is repeated on
-  -- (stop, place, side) because the new stops do not exist yet: a change to one is a change to both (B134 / B135
-  -- compare the dry run's refusal with the execution's). Still at execution only (decision 39): a new stop's
-  -- window and place (plan_h_stop_add), and a new_rt's stops and vehicle (plan_rt_create).
+  -- (stop, place, side) because the new stops do not exist yet: a change to one is a change to both. The execution
+  -- meets this copy too, so the guard is B134-B138 sending the same stops through plan_put_pieces as well, whose
+  -- refusal comes from plan_h_target / plan_h_stop_at: the dry run, the execution and the resolver must give the
+  -- same message. Still at execution only (decision 39): a new stop's side, window and place (plan_h_stop_add;
+  -- a side that is not KATHODOS / ANODOS is counted here as given), and a new_rt's stops and vehicle (plan_rt_create).
   if not v_wait and v_keep is not null then
     if p ? 'stops' and jsonb_typeof(p->'stops') <> 'array' then perform plan_h_raise('bad_input', 'stops'); end if;
     for v_s in select value from jsonb_array_elements(coalesce(p->'stops', '[]')) loop
@@ -1229,7 +1231,8 @@ begin
   select array_agg(distinct x) into v_stops
     from piece_legs l, unnest(array[l.pickup_stop_id, l.drop_stop_id]) x where l.id = any (v_legs);
   select array_agg(distinct l.rt_id) into v_src from piece_legs l where l.id = any (v_legs);
-  -- (1) the target's stops first, so a stop of the request is never swept; (2) old legs off; (3) new legs on;
+  -- (1) the target's stops first, so a stop the request creates is never swept (a named stop that loses its last
+  -- leg here is swept, and left out of stop_ids, B139); (2) old legs off; (3) new legs on;
   -- (4) stops that lost their last leg; (5) cycles left empty (decision 11 order inside).
   if not v_wait then v_tgt := plan_h_target(p->'target', p->'stops', p_actor, p_role); end if;
   for v_x in select unnest(v_legs) loop perform plan_h_leg_drop(v_x, v_reason, p_actor, p_role); end loop;
