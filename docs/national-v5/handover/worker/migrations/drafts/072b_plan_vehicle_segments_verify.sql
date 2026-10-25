@@ -1,17 +1,18 @@
 -- 072b VERIFY - read-only (SELECT only, writes nothing). Run after 072b_plan_vehicle_segments.sql and any time later.
 -- ONE row. ASCII only. It errors before 072b (rt_vehicle_segments does not exist yet) - that is expected.
 -- EXPECTED right after 072b (before day L):
---   applied = '072b in place' ; exclude_on_segments = 2 ; exclude_on_cycles = 0 ; hooks_in_place = 7 ;
+--   applied = '072b in place' ; exclude_on_segments = 2 ; exclude_on_cycles = 0 ; hooks_in_place = 10 ;
 --   changed_live = 0 ; public_acts = 3 ; open_to_api = 0 ; open_relations = 0 ; rls_off = 0 ;
 --   auditor_policy = 1 ; other_policies = 0 ; new_triggers = 4 ; b54_matches = true ; segments = 0 ; v5_cycles = 0 ;
 --   seg_problems = 0 ; overlaps = 0 ; cancel_copy_drift = 0
--- hooks_in_place counts the 7 hooked functions at their FINAL text (plan_rt_update carries 4 hooks, chained).
+-- hooks_in_place counts the 10 hooked functions at their FINAL text (plan_rt_update carries 6 hooks, chained; the
+-- three of owner question 7 = b: plan_h_drop_consequences, plan_move_pieces, plan_delete, one each).
 -- After L: segments and v5_cycles grow (every v5 cycle has >= 1 segment); seg_problems, overlaps and
 -- cancel_copy_drift stay 0 for ever (the base refuses them at COMMIT - these are independent counts that read the
 -- cycle's status, not the copy rt_cancelled the EXCLUDE filters on). auditor_policy = the
 -- one policy of 072b (monitor_read: SELECT, tms_check_runner + tms_reader only); the PGlite test runs B-91..B-93
 -- as tms_check_runner on a cycle with segments to prove the auditor sees them.
--- 072's verify after 072b, by design (plan "Interfaces"): plan_functions = 73, service_role_execute = 19,
+-- 072's verify after 072b, by design (plan "Interfaces"): plan_functions = 78, service_role_execute = 19,
 --   changed_live = 0 (072b changes none of 072's 22), every other value as before. 071b's verify finds the two
 --   EXCLUDE wherever they live: after 072b truck_once = true, exclude_on = 'rt_vehicle_segments', and its cycle
 --   overlap counts are NULL (they live here: overlaps).
@@ -25,11 +26,14 @@ SELECT
   (SELECT count(*) FROM (VALUES
       ('public.plan_h_busy(text,bigint,timestamptz,timestamptz,bigint)', '99d86d5c59c88264b4825b5410c09a59'),
       ('public.plan_h_finish()', '59d88ec85661d3ef2ac957aecd0e0fcd'),
-      ('public.plan_rt_update(jsonb,text,text)', '14305bebe49df1629cd1a47788028b08'),
+      ('public.plan_rt_update(jsonb,text,text)', 'cb791820d156677263083e6d97aef6f5'),
       ('public.plan_rt_clear(jsonb,text,text)', 'ecead9245b3e4dc90d31a357f2d8c4ef'),
       ('public.plan_board(date,text)', '93ebc7aa9dd6b4a1eee1f9b916738807'),
       ('public.plan_vs_state(bigint[])', '99175b659207c5019f1599ed389f1895'),
-      ('public.plan_local_loading(jsonb,text,text)', '6c56db094458841598db079ad7844515')) v(sig, m)
+      ('public.plan_local_loading(jsonb,text,text)', '6c56db094458841598db079ad7844515'),
+      ('public.plan_h_drop_consequences(bigint[],bigint,bigint[])', 'ce5de5793080e0c5be1e886defcb0b0e'),
+      ('public.plan_move_pieces(jsonb,text,text)', 'b67eafc88f2b3a1cbad41776c57d6f38'),
+      ('public.plan_delete(jsonb,text,text)', '7b5c7a31f19d1d38ef1fc115cc3701ec')) v(sig, m)
     WHERE (SELECT md5(prosrc) FROM pg_proc WHERE oid = to_regprocedure(v.sig)) = v.m) AS hooks_in_place,
   (SELECT count(*) FROM (VALUES
       ('public.dl_sync_from_rt()', '331cea3a8987b74a9b0add698df9b158'),
@@ -68,9 +72,7 @@ SELECT
       ('public.plan_h_v1_warn(bigint,date,date,bigint)', 'a99553e279628b5795990c08bcb01db6'),
       ('public.plan_h_rt_cancel_if_empty(bigint,text,text,text)', '2f3cdfe09caa8c548e5a30e0f06c84fa'),
       ('public.plan_h_rt_consequences(bigint)', 'cddea3a5fb20a563283a16db3b50f133'),
-      ('public.plan_rt_create(jsonb,text,text)', '8a6f19ff9d3c400eb2a31722226332fa'),
-      ('public.plan_move_pieces(jsonb,text,text)', 'b6b939f4f7a63d5a464b45082e83f2d7'),
-      ('public.plan_delete(jsonb,text,text)', 'c85450e28813d48023cb7f149949639c')
+      ('public.plan_rt_create(jsonb,text,text)', '8a6f19ff9d3c400eb2a31722226332fa')
     ) v(sig, m)
     WHERE (SELECT md5(prosrc) FROM pg_proc WHERE oid = to_regprocedure(v.sig)) IS DISTINCT FROM v.m) AS changed_live,
   (SELECT count(*) FROM pg_proc p WHERE p.pronamespace = 'public'::regnamespace

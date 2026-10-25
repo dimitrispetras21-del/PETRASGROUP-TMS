@@ -143,7 +143,7 @@ index a43833b..84b9e9a 100644
  const f072 = () => readOne(['drafts/072_plan_functions.sql', '072_plan_functions.sql'],
    'copy it from the SQL branch: git checkout feat/national-v5-functions -- worker/migrations/drafts/072_plan_functions.sql');
 +const f072b = () => readOne(['drafts/072b_plan_vehicle_segments.sql', '072b_plan_vehicle_segments.sql'],
-+  'copy it from the SQL branch: git checkout feat/national-v5-handover -- worker/migrations/drafts/072b_plan_vehicle_segments.sql');
++  'it comes from main: git merge origin/main (Task W1 Step 1; drafts/ after the PR of Task B4, worker/migrations/ after Task K-H2 Step 7)');
  const uniq = (re, text) => [...new Set([...text.matchAll(re)].map((m) => m[1]))].sort();
  const greek = /[α-ωΑ-Ωά-ώ]/;
  

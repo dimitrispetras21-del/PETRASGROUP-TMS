@@ -14,6 +14,9 @@ SELECT
   -- the functions of today: every rt_* / dl_* / ct_* text (072b changes none of them)
   (SELECT md5(string_agg(p.proname || ':' || md5(p.prosrc), ',' ORDER BY p.oid::regprocedure::text)) FROM pg_proc p
     WHERE p.pronamespace = 'public'::regnamespace AND (p.proname LIKE 'rt\_%' OR p.proname LIKE 'dl\_%' OR p.proname LIKE 'ct\_%')) AS today_fn_md5,
-  -- plan_move_pieces: the "Move" of F2 stays as it is (spec 8: decision 36 closes without touching it)
-  (SELECT md5(prosrc) FROM pg_proc WHERE oid = to_regprocedure('public.plan_move_pieces(jsonb,text,text)')) AS move_md5,
+  -- plan_move_pieces is NOT read here any more: owner question 7 = (b), 25/10, gives it (and plan_delete, and
+  -- plan_rt_update) one hook - a handover the Move leaves outside the cycle is listed and removed after the token.
+  -- Its text before and after is proved inside 072b (PART 6, md5 at every hook), in the verify (hooks_in_place)
+  -- and by the rollback (byte for byte back); a move_md5 here would differ by design and teach the owner to ignore
+  -- a difference in this row (principle 1).
   now() AT TIME ZONE 'Europe/Athens' AS read_at_athens;

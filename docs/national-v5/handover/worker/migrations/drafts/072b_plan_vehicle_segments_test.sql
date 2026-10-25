@@ -25,7 +25,7 @@ DECLARE
   g1 bigint; g2 bigint; g3 bigint; n0 bigint; n1 bigint; j0 jsonb; j1 jsonb; r jsonb; r2 jsonb; tok text; m text;
   veh2 jsonb; veh3 jsonb; t1300 timestamptz; t1100 timestamptz; t1200 timestamptz;
   ld bigint; cl1 bigint; nk bigint; na bigint; pk bigint; pn bigint; e0900 timestamptz; e1500 timestamptz; e1600 timestamptz;
-  j2 jsonb;
+  j2 jsonb; rl text;
   want text[] := ARRAY[
     NULL
     , 'ok'               -- 1 the INSERT of a cycle seeds ONE segment over its window; the copy = it; no label
@@ -52,7 +52,7 @@ DECLARE
     , 'plan:hard_delete' -- 22 a hard DELETE of a segment
     , 'plan:seg_first'   -- 23 a reason on the first segment
     , 'ok'               -- 24 the first and last stop move: the edges of the first and last segment follow in the same call
-    , 'plan:seg_outside' -- 25 a stop move that would end the cycle before a handover (review R2: its own code)
+    , 'plan:need_token'  -- 25 a stop move that would end the cycle before a handover, without the token (owner q. 7 = b): refused before any write
     , 'ok'               -- 26 four segments (three handovers) pass every rule
     , 'ok'               -- 27 a handover yesterday, now and tomorrow (recorded after, on time, planned)
     , 'ok'               -- 28 OWNED -> PARTNER -> PARTNER -> OWNED, each with its own rate
@@ -118,12 +118,13 @@ DECLARE
     , 'plan:seg_gone'    -- 85 another person removes a removed segment
     -- finding 5 (the stop at the handover time belongs to the new segment, one rule)
     , 'plan:driver_busy' -- 86 a local loading by the new driver at a stop that starts at the handover time
-    -- review R2 (25/10), DB finding 1: a 072 act that narrows the cycle past a handover has its own code (H-6, owner q. 7)
-    , 'plan:seg_outside' -- 87 Move (plan_move_pieces) of the ANODOS load to waiting: the cycle would end before the handover
-    , 'ok'               -- 88 Delete (plan_delete) of that order: the dry run answers ok with a token, the execution seg_outside with the time
+    -- review R2 (25/10), DB finding 1, and owner question 7 = (b), 25/10: an act that narrows the cycle past a handover
+    -- lists it (seg_removed) and removes it after the token
+    , 'ok'               -- 87 Move (warehouse) of the ANODOS load to waiting: the dry run lists the handover, the token removes it, the ARCHIKO to the new end
+    , 'ok'               -- 88 Delete (dispatcher) of that order: the dry run lists the handover with the token, the execution removes it
     , 'ok'               -- 89 plan_order_update of the order on a cycle with a handover: no stop moves, passes
     , 'ok'               -- 90 plan_put_pieces that widens the cycle past its end: the TELIKO follows to the new end
-    , 'plan:seg_outside' -- 91 a first stop moved later than the handover (the start side)
+    , 'ok'               -- 91 a first stop moved later than the handover (owner, the start side): the ARCHIKO goes, the next becomes it
     -- DB finding 2: the payroll lock per segment = the driver LEAVES the cycle (one predicate with the removal's list)
     , 'ok'               -- 92 same driver: the TELIKO's driver corrected while the ARCHIKO's line has an amount: passes, the line stays
     -- DB finding 4: the stops that change hands are said by the removal too (the change: case 2)
@@ -144,10 +145,19 @@ DECLARE
                          --     and the copy never flips to the TELIKO's driver (no false needs_review on a line with an amount)
     -- DB finding 1: a side shift never moves a handover (fixed in time, plan H-23)
     , 'ok'               -- 105 ANODOS +1 day after a planned change: the handover stays, the stop before it passes to the TELIKO, said
-    , 'plan:seg_outside' -- 106 ANODOS -6 hours: the cycle would end before the handover (-1 day here = stop_order: ANODOS before KATHODOS)
+    , 'ok'               -- 106 ANODOS -6 hours (management): the cycle ends before the handover: listed, removed with the token (-1 day here = stop_order)
     , 'ok'               -- 107 ANODOS +3 hours: the handover stays, the stop before it passes to the TELIKO, said
-    -- DB finding 5: seg_outside names EVERY handover left outside
-    , 'ok'               -- 108 a stop move that ends the cycle before two handovers: one refusal with both times
+    -- DB finding 5: every handover left outside, in time order
+    , 'ok'               -- 108 a stop move that ends the cycle before two handovers (accountant): two lines, both removed with one token
+    -- owner question 7 = (b), 25/10: the token, the roles, the payroll line, the net
+    , 'plan:stale_confirm' -- 109 plan_rt_update with the token of another change
+    , 'ok'               -- 110 Move of the KATHODOS load (the start side): the ARCHIKO's line with an amount listed (no amount for the dispatcher), gone after the token, 0 needs_review
+    , 'plan:seg_outside' -- 111 the net: a write outside plan_* that ends the cycle before two handovers = seg_outside with both times
+    , 'ok'               -- 112 Move (the start side) by each of the 5 roles: the line, amounts only to owner / accountant, one token, removed with the role in the history
+    , 'ok'               -- 113 plan_rt_update by each of the 5 roles: the same
+    , 'ok'               -- 114 Delete by owner and dispatcher (decision 26): the same
+    , 'ok'               -- 115 a plan_rt_update that leaves every handover inside: 072's dry-run answer (no list keys), no token needed
+    , 'ok'               -- 116 Move of a cycle's last load while a stop without a leg stays: the cycle is cancelled, its handover listed and removed
     -- @want (one line per case: "    , '<ok|plan:code|con:name|state:XXXXX>'  -- <k> <what>")
   ]::text[];
   verdict text; got text; hint text; msg text; cname text; st text;
@@ -815,29 +825,38 @@ BEGIN
         -- the breakdown: 2108 / Nikos from D+1 09:00 (the TELIKO holds C and D)
         r := plan_seg_change(jsonb_build_object('request_id', gen_random_uuid(), 'rt_id', rt1, 'at', e0900,
                'place_note', 'Lamia', 'reason', 'vehicle_breakdown', 'vehicle', veh2), 'test:072b', 'dispatcher');
-        g2 := (r->'ids'->>'segment_id')::bigint;
-        IF k = 87 THEN
-          -- the rest of the broken truck's loads go back to waiting: C and D are swept, the cycle would end D 14:00
-          PERFORM plan_move_pieces(jsonb_build_object('from', jsonb_build_object('piece_ids', jsonb_build_array(pn)),
-                    'target', jsonb_build_object('wait', true)), 'test:072b', 'warehouse');
-        ELSIF k = 88 THEN
-          r := plan_delete(jsonb_build_object('nat_order_id', na, 'dry_run', true), 'test:072b', 'owner');
-          BEGIN
-            PERFORM plan_delete(jsonb_build_object('nat_order_id', na, 'reason', 'TEST 072b', 'confirm_token', r->>'confirm_token'),
-                      'test:072b', 'owner');
-            verdict := 'FAIL no error';
-          EXCEPTION WHEN others THEN
-            GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT, hint = PG_EXCEPTION_HINT;
-            -- option (a) of owner question 7: the dry run cannot see a rule of the COMMIT (no hook in 072's
-            -- plan_delete), so the refusal comes at the execution - with its own code and the handover time
-            verdict := CASE WHEN (r->>'ok')::boolean AND (r->>'dry_run')::boolean AND NOT (r->>'needs_confirm')::boolean
-                              AND hint = 'plan:seg_outside'
-                              AND msg LIKE '%seg_outside:' || (SELECT code FROM ct_round_trips WHERE id = rt1) || ' '
-                                           || to_char(e0900 AT TIME ZONE 'Europe/Athens', 'DD/MM HH24:MI') || '%'
-                              AND (SELECT deleted_at IS NULL FROM national_orders WHERE id = na)
-                            THEN 'ok dry run ok, execution seg_outside at ' || to_char(e0900 AT TIME ZONE 'Europe/Athens', 'DD/MM HH24:MI')
-                            ELSE 'FAIL delete ' || hint || ' ' || msg || ' ' || r::text END;
-          END;
+        g2 := (r->'ids'->>'segment_id')::bigint; g1 := (r->'ids'->>'cut_segment_id')::bigint;
+        -- the line the screen shows: "the handover Lamia DD/MM 09:00 will be removed" (owner question 7 = b)
+        j1 := jsonb_build_array(jsonb_build_object('kind', 'seg_removed', 'rt_id', rt1, 'segment_id', g2, 'place_note', 'Lamia',
+                'reason', 'vehicle_breakdown', 'at_athens', to_char(e0900 AT TIME ZONE 'Europe/Athens', 'DD/MM HH24:MI'),
+                'code', (SELECT code FROM ct_round_trips WHERE id = rt1)));
+        IF k IN (87, 88) THEN
+          IF k = 87 THEN
+            -- the rest of the broken truck's loads go back to waiting: C and D are swept, the cycle ends D 14:00
+            r := plan_move_pieces(jsonb_build_object('from', jsonb_build_object('piece_ids', jsonb_build_array(pn)),
+                   'target', jsonb_build_object('wait', true), 'dry_run', true), 'test:072b', 'warehouse');
+            r2 := plan_move_pieces(jsonb_build_object('from', jsonb_build_object('piece_ids', jsonb_build_array(pn)),
+                    'target', jsonb_build_object('wait', true), 'confirm_token', r->>'confirm_token'), 'test:072b', 'warehouse');
+          ELSE
+            r := plan_delete(jsonb_build_object('nat_order_id', na, 'dry_run', true), 'test:072b', 'dispatcher');
+            r2 := plan_delete(jsonb_build_object('nat_order_id', na, 'reason', 'TEST 072b', 'confirm_token', r->>'confirm_token'),
+                    'test:072b', 'dispatcher');
+          END IF;
+          SET CONSTRAINTS ALL IMMEDIATE;
+          verdict := CASE WHEN (r->>'ok')::boolean AND (r->>'dry_run')::boolean AND (r->>'needs_confirm')::boolean
+                            AND r->'consequences' @> j1 AND (r2->>'ok')::boolean
+                            AND (SELECT deleted_at IS NOT NULL AND deleted_by = 'test:072b'
+                                        AND deleted_reason LIKE '%(test:072b, ' || CASE k WHEN 87 THEN 'plan_move_pieces' ELSE 'plan_delete' END || ')'
+                                   FROM rt_vehicle_segments WHERE id = g2)
+                            AND (SELECT g.to_at = c.end_at AND c.end_at = (d + time '14:00') AT TIME ZONE 'Europe/Athens' AND g.deleted_at IS NULL
+                                   FROM rt_vehicle_segments g JOIN ct_round_trips c ON c.id = g.rt_id WHERE g.id = g1)
+                            AND (SELECT count(*) FROM v_rt_segments WHERE rt_id = rt1) = 1
+                            AND (SELECT label FROM v_rt_segments WHERE rt_id = rt1) IS NULL
+                            AND (SELECT count(*) FROM audit_log WHERE table_name = 'rt_vehicle_segments' AND record_id = g2::text
+                                   AND action = 'delete' AND role = CASE k WHEN 87 THEN 'warehouse' ELSE 'dispatcher' END) = 1
+                            AND (k = 87 OR (SELECT deleted_at IS NOT NULL FROM national_orders WHERE id = na))
+                          THEN 'ok listed, removed after the token, the ARCHIKO to the new end'
+                          ELSE 'FAIL cut ' || r::text || ' ' || r2::text END;
         ELSE
           j1 := (SELECT to_jsonb(s) - 'updated_at' FROM rt_vehicle_segments s WHERE id = g2);
           r2 := plan_order_update(jsonb_build_object('nat_order_id', na, 'set', jsonb_build_object('price', 120)), 'test:072b', 'accountant');
@@ -865,12 +884,29 @@ BEGIN
                           AND (SELECT from_at = e0900 AND to_at = e1600 FROM rt_vehicle_segments WHERE id = g2)
                         THEN 'ok the TELIKO follows the wider window' ELSE 'FAIL widen' END;
       ELSIF k = 91 THEN
-        -- [A 06:00-08:30][T 08:30-...]; stop A moves to 08:45: the cycle would start after the handover
-        PERFORM plan_seg_change(jsonb_build_object('request_id', gen_random_uuid(), 'rt_id', rt1, 'at', t0830,
-                  'place_note', 'Lamia', 'reason', 'vehicle_breakdown', 'vehicle', veh2), 'test:072b', 'owner');
-        PERFORM plan_rt_update(jsonb_build_object('rt_id', rt1, 'stops', jsonb_build_array(jsonb_build_object('stop_id', s1a,
-                  'planned_from', (d + time '08:45') AT TIME ZONE 'Europe/Athens', 'planned_to', (d + time '08:50') AT TIME ZONE 'Europe/Athens'))),
-                  'test:072b', 'owner');
+        -- [A 06:00-08:30][T 08:30-...]; stop A moves to 08:45: the cycle starts after the handover. The handover goes:
+        -- the ARCHIKO is removed, the TELIKO becomes the ARCHIKO from 08:45 (no point, no reason), the copy and 011 follow
+        r := plan_seg_change(jsonb_build_object('request_id', gen_random_uuid(), 'rt_id', rt1, 'at', t0830,
+               'place_note', 'Lamia', 'reason', 'vehicle_breakdown', 'vehicle', veh2), 'test:072b', 'owner');
+        g1 := (r->'ids'->>'cut_segment_id')::bigint; g2 := (r->'ids'->>'segment_id')::bigint;
+        j2 := jsonb_build_object('rt_id', rt1, 'stops', jsonb_build_array(jsonb_build_object('stop_id', s1a,
+                'planned_from', (d + time '08:45') AT TIME ZONE 'Europe/Athens', 'planned_to', (d + time '08:50') AT TIME ZONE 'Europe/Athens')));
+        r := plan_rt_update(j2 || jsonb_build_object('dry_run', true), 'test:072b', 'owner');
+        r2 := plan_rt_update(j2 || jsonb_build_object('confirm_token', r->>'confirm_token'), 'test:072b', 'owner');
+        SET CONSTRAINTS ALL IMMEDIATE;
+        verdict := CASE WHEN (r->>'needs_confirm')::boolean AND r->'preview'->'conflict' = 'null'::jsonb
+                          AND r->'consequences' @> jsonb_build_array(jsonb_build_object('kind', 'seg_removed', 'segment_id', g1,
+                                'place_note', 'Lamia', 'at_athens', to_char(t0830 AT TIME ZONE 'Europe/Athens', 'DD/MM HH24:MI')))
+                          AND (r2->>'ok')::boolean
+                          AND (SELECT deleted_at IS NOT NULL FROM rt_vehicle_segments WHERE id = g1)
+                          AND (SELECT from_at = (d + time '08:45') AT TIME ZONE 'Europe/Athens' AND reason IS NULL AND place_note IS NULL
+                                 AND deleted_at IS NULL FROM rt_vehicle_segments WHERE id = g2)
+                          AND (SELECT count(*) FROM v_rt_segments WHERE rt_id = rt1) = 1
+                          AND (SELECT truck_id = trk2 AND driver_id = drv2 FROM ct_round_trips WHERE id = rt1)
+                          AND (SELECT count(*) FROM dl_entries WHERE rt_id = rt1 AND deleted_at IS NULL AND driver_id = drv2 AND NOT needs_review) = 1
+                          AND (SELECT count(*) FROM dl_entries WHERE rt_id = rt1 AND deleted_at IS NULL) = 1
+                        THEN 'ok the start side: the ARCHIKO removed, the next is the ARCHIKO, copy and payroll follow'
+                        ELSE 'FAIL start cut ' || r::text || ' ' || r2::text END;
       ELSIF k = 92 THEN
         -- same driver: [A 2104/Giorgos][T 2108/Giorgos]; accounting wrote an amount on Giorgos' line (011, the cycle's)
         r := plan_seg_change(jsonb_build_object('request_id', gen_random_uuid(), 'rt_id', rt1, 'at', t1430,
@@ -1007,9 +1043,23 @@ BEGIN
                                   jsonb_build_object('code', 'seg_stop_moved', 'stop_id', s1c, 'from_segment_id', g1, 'to_segment_id', g2),
                                   jsonb_build_object('code', 'seg_stop_moved', 'stop_id', z, 'from_segment_id', g2, 'to_segment_id', g1))
                           THEN 'ok one segment per edge, the swap said' ELSE 'FAIL end edge ' || r2::text END;
+        ELSIF k = 106 THEN
+          -- -6 hours: X D+1 01:00-02:00, Y 06:00-08:00: the cycle ends D+1 08:00, before the handover of 09:00 (H-23: it
+          -- never moves with the side) - listed for management (decision 41: every role shifts), removed with the token
+          j2 := jsonb_build_object('rt_id', rt1, 'shift', jsonb_build_object('side', 'ANODOS', 'delta', '-6 hours'));
+          r := plan_rt_update(j2 || jsonb_build_object('dry_run', true), 'test:072b', 'management');
+          r2 := plan_rt_update(j2 || jsonb_build_object('confirm_token', r->>'confirm_token'), 'test:072b', 'management');
+          SET CONSTRAINTS ALL IMMEDIATE;
+          verdict := CASE WHEN (r->>'needs_confirm')::boolean
+                            AND r->'consequences' @> jsonb_build_array(jsonb_build_object('kind', 'seg_removed', 'segment_id', g2,
+                                  'reason', 'planned_driver', 'at_athens', to_char(e0900 AT TIME ZONE 'Europe/Athens', 'DD/MM HH24:MI')))
+                            AND (r2->>'ok')::boolean AND (SELECT deleted_at IS NOT NULL FROM rt_vehicle_segments WHERE id = g2)
+                            AND (SELECT g.to_at = c.end_at AND c.end_at = (e + time '08:00') AT TIME ZONE 'Europe/Athens'
+                                   FROM rt_vehicle_segments g JOIN ct_round_trips c ON c.id = g.rt_id WHERE g.id = g1)
+                          THEN 'ok shift back past the handover: listed, removed' ELSE 'FAIL shift cut ' || r::text || ' ' || r2::text END;
         ELSE
           r2 := plan_rt_update(jsonb_build_object('rt_id', rt1, 'shift', jsonb_build_object('side', 'ANODOS',
-                  'delta', CASE k WHEN 105 THEN '1 day' WHEN 106 THEN '-6 hours' ELSE '3 hours' END)), 'test:072b', 'dispatcher');
+                  'delta', CASE k WHEN 105 THEN '1 day' ELSE '3 hours' END)), 'test:072b', 'dispatcher');
           SET CONSTRAINTS ALL IMMEDIATE;
           -- H-23: the handover stays at D+1 09:00; X now comes after it and passes to the TELIKO (said); the TELIKO
           -- follows the new end
@@ -1048,26 +1098,193 @@ BEGIN
                           AND jsonb_array_length(j1) = 1
                         THEN 'ok one segment per edge at the start, the copy and the payroll line unchanged'
                         ELSE 'FAIL start edge ' || r2::text || ' ' || j1::text || ' ' || (SELECT coalesce(jsonb_agg(to_jsonb(x0) - 'updated_at' ORDER BY x0.id), '[]'::jsonb) FROM dl_entries x0 WHERE x0.rt_id = rt1)::text END;
-      ELSIF k = 108 THEN
-        -- [A 2104 to D 14:30][E 2108 to D+1 10:00][T 3 to the end]; C moves to D 14:00-14:10: the cycle would end before
-        -- BOTH handovers. One refusal names both, so the user moves or removes both at once (not two refusals in a row)
-        PERFORM plan_seg_change(jsonb_build_object('request_id', gen_random_uuid(), 'rt_id', rt1, 'at', t1430,
-                  'place_note', 'Lamia', 'reason', 'vehicle_breakdown', 'vehicle', veh2), 'test:072b', 'owner');
-        PERFORM plan_seg_change(jsonb_build_object('request_id', gen_random_uuid(), 'rt_id', rt1, 'at', e1000,
-                  'place_note', 'Larisa', 'reason', 'driver_hours', 'vehicle', veh3), 'test:072b', 'owner');
-        BEGIN
-          PERFORM plan_rt_update(jsonb_build_object('rt_id', rt1, 'stops', jsonb_build_array(jsonb_build_object('stop_id', s1c,
-                    'planned_from', (d + time '14:00') AT TIME ZONE 'Europe/Athens', 'planned_to', (d + time '14:10') AT TIME ZONE 'Europe/Athens'))),
+      ELSIF k IN (108, 111) THEN
+        -- [A 2104 to D 14:30][E 2108 to D+1 10:00][T 3 to the end]; C moves to D 14:00-14:10: the cycle ends before BOTH
+        -- handovers
+        r := plan_seg_change(jsonb_build_object('request_id', gen_random_uuid(), 'rt_id', rt1, 'at', t1430,
+               'place_note', 'Lamia', 'reason', 'vehicle_breakdown', 'vehicle', veh2), 'test:072b', 'owner');
+        g1 := (r->'ids'->>'cut_segment_id')::bigint; g2 := (r->'ids'->>'segment_id')::bigint;
+        r := plan_seg_change(jsonb_build_object('request_id', gen_random_uuid(), 'rt_id', rt1, 'at', e1000,
+               'place_note', 'Larisa', 'reason', 'driver_hours', 'vehicle', veh3), 'test:072b', 'owner');
+        g3 := (r->'ids'->>'segment_id')::bigint;
+        IF k = 108 THEN
+          -- the accountant (decision 41): one list with BOTH lines in time order, one token, both removed
+          j2 := jsonb_build_object('rt_id', rt1, 'stops', jsonb_build_array(jsonb_build_object('stop_id', s1c,
+                  'planned_from', (d + time '14:00') AT TIME ZONE 'Europe/Athens', 'planned_to', (d + time '14:10') AT TIME ZONE 'Europe/Athens')));
+          r := plan_rt_update(j2 || jsonb_build_object('dry_run', true), 'test:072b', 'accountant');
+          r2 := plan_rt_update(j2 || jsonb_build_object('confirm_token', r->>'confirm_token'), 'test:072b', 'accountant');
+          SET CONSTRAINTS ALL IMMEDIATE;
+          verdict := CASE WHEN (SELECT string_agg(c->>'at_athens', ', ' ORDER BY (c->>'at')::timestamptz) FROM jsonb_array_elements(r->'consequences') c
+                                 WHERE c->>'kind' = 'seg_removed')
+                                 = to_char(t1430 AT TIME ZONE 'Europe/Athens', 'DD/MM HH24:MI') || ', ' || to_char(e1000 AT TIME ZONE 'Europe/Athens', 'DD/MM HH24:MI')
+                            AND (r2->>'ok')::boolean
+                            AND (SELECT count(*) FROM rt_vehicle_segments WHERE id IN (g2, g3) AND deleted_at IS NOT NULL) = 2
+                            AND (SELECT g.to_at = c.end_at AND c.end_at = (d + time '14:10') AT TIME ZONE 'Europe/Athens'
+                                   FROM rt_vehicle_segments g JOIN ct_round_trips c ON c.id = g.rt_id WHERE g.id = g1)
+                          THEN 'ok both handovers listed and removed' ELSE 'FAIL two handovers ' || r::text || ' ' || r2::text END;
+        ELSE
+          -- the net (review R3, DB finding 5): a write outside plan_* bypasses the list - seg_outside names both times
+          BEGIN
+            -- the last stop C (no leg) taken away directly: the cycle ends D 14:00, before both handovers (deferred, as
+            -- inside any plan_*: the window follows the stop before the rules look)
+            SET CONSTRAINTS ALL DEFERRED;
+            UPDATE rt_stops SET deleted_at = now(), deleted_reason = 'TEST 072b', deleted_by = 'test:072b' WHERE id = s1c;
+            SET CONSTRAINTS ALL IMMEDIATE;
+          EXCEPTION WHEN others THEN
+            GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT, hint = PG_EXCEPTION_HINT;
+            -- the refusal goes on as it came (want plan:seg_outside) only with BOTH times in its detail
+            IF hint = 'plan:seg_outside'
+               AND msg LIKE '%seg_outside:' || (SELECT code FROM ct_round_trips WHERE id = rt1) || ' '
+                            || to_char(t1430 AT TIME ZONE 'Europe/Athens', 'DD/MM HH24:MI') || ', '
+                            || to_char(e1000 AT TIME ZONE 'Europe/Athens', 'DD/MM HH24:MI') THEN
+              RAISE;
+            END IF;
+            RAISE EXCEPTION 'net: % %', coalesce(hint, ''), msg USING HINT = 'plan:net_detail_wrong';
+          END;
+        END IF;
+      ELSIF k IN (109, 115) THEN
+        r := plan_seg_change(jsonb_build_object('request_id', gen_random_uuid(), 'rt_id', rt1, 'at', e1000,
+               'place_note', 'Lamia', 'reason', 'vehicle_breakdown', 'vehicle', veh2), 'test:072b', 'owner');
+        IF k = 109 THEN
+          -- the token belongs to the change it was shown for: another stop window is another list
+          r := plan_rt_update(jsonb_build_object('rt_id', rt1, 'dry_run', true, 'stops', jsonb_build_array(
+                 jsonb_build_object('stop_id', s1c, 'planned_from', t1500, 'planned_to', t1600))), 'test:072b', 'owner');
+          PERFORM plan_rt_update(jsonb_build_object('rt_id', rt1, 'confirm_token', r->>'confirm_token', 'stops', jsonb_build_array(
+                    jsonb_build_object('stop_id', s1c, 'planned_from', (d + time '14:00') AT TIME ZONE 'Europe/Athens',
+                                       'planned_to', (d + time '14:10') AT TIME ZONE 'Europe/Athens'))), 'test:072b', 'owner');
+        ELSE
+          -- C later (D+1 12:00-15:00): every handover stays inside - the dry run is 072's, the change needs no token
+          j2 := jsonb_build_object('rt_id', rt1, 'stops', jsonb_build_array(jsonb_build_object('stop_id', s1c,
+                  'planned_from', (e + time '12:00') AT TIME ZONE 'Europe/Athens', 'planned_to', e1500)));
+          r := plan_rt_update(j2 || jsonb_build_object('dry_run', true), 'test:072b', 'warehouse');
+          r2 := plan_rt_update(j2, 'test:072b', 'warehouse');
+          SET CONSTRAINTS ALL IMMEDIATE;
+          verdict := CASE WHEN NOT (r ? 'needs_confirm') AND NOT (r ? 'confirm_token') AND NOT (r ? 'consequences')
+                            AND r->'preview'->'conflict' = 'null'::jsonb AND (r2->>'ok')::boolean
+                            AND (SELECT count(*) FROM v_rt_segments WHERE rt_id = rt1) = 2
+                          THEN 'ok nothing removed, no list, no token' ELSE 'FAIL no cut ' || r::text END;
+        END IF;
+      ELSIF k = 110 THEN
+        -- the start side by a Move: K (A -> B) goes back to waiting, A and B are swept, the cycle starts at the hub 09:00,
+        -- after the handover of 08:30. Giorgos (the ARCHIKO) leaves the cycle, his line has an amount. N stays (ANODOS).
+        PERFORM plan_put_pieces(jsonb_build_object('pieces', jsonb_build_array(jsonb_build_object('piece_id', pk)),
+                  'target', jsonb_build_object('rt_id', rt1, 'side', 'KATHODOS'),
+                  'stops', jsonb_build_array(jsonb_build_object('ref', 'a', 'stop_id', s1a), jsonb_build_object('ref', 'b', 'stop_id', s1b))),
+                  'test:072b', 'owner');
+        PERFORM plan_put_pieces(jsonb_build_object('pieces', jsonb_build_array(jsonb_build_object('piece_id', pn)),
+                  'target', jsonb_build_object('rt_id', rt1, 'side', 'ANODOS'),
+                  'stops', jsonb_build_array(jsonb_build_object('ref', 'c', 'stop_id', s1c),
+                                             jsonb_build_object('ref', 'd', 'location_id', ld, 'planned_from', e1500, 'planned_to', e1600))),
+                  'test:072b', 'owner');
+        r := plan_seg_change(jsonb_build_object('request_id', gen_random_uuid(), 'rt_id', rt1, 'at', t0830,
+               'place_note', 'Lamia', 'reason', 'vehicle_breakdown', 'vehicle', veh2), 'test:072b', 'owner');
+        g1 := (r->'ids'->>'cut_segment_id')::bigint; g2 := (r->'ids'->>'segment_id')::bigint;
+        UPDATE dl_entries SET trip_value = 100 WHERE rt_id = rt1 AND deleted_at IS NULL;
+        SELECT id INTO x FROM dl_entries WHERE rt_id = rt1 AND deleted_at IS NULL;
+        j2 := jsonb_build_object('from', jsonb_build_object('piece_ids', jsonb_build_array(pk)), 'target', jsonb_build_object('wait', true));
+        r := plan_move_pieces(j2 || jsonb_build_object('dry_run', true), 'test:072b', 'owner');
+        r2 := plan_move_pieces(j2 || jsonb_build_object('dry_run', true), 'test:072b', 'dispatcher');
+        j1 := plan_move_pieces(j2 || jsonb_build_object('confirm_token', r2->>'confirm_token'), 'test:072b', 'dispatcher');
+        SET CONSTRAINTS ALL IMMEDIATE;
+        verdict := CASE WHEN r->'consequences' @> jsonb_build_array(
+                               jsonb_build_object('kind', 'seg_removed', 'segment_id', g1, 'at_athens', to_char(t0830 AT TIME ZONE 'Europe/Athens', 'DD/MM HH24:MI')),
+                               jsonb_build_object('kind', 'payroll_amount', 'dl_entry_id', x, 'amount', 100, 'month', to_char(d, 'YYYY-MM')))
+                          AND r2::text NOT LIKE '%"amount"%' AND r2->>'confirm_token' = r->>'confirm_token'
+                          AND (j1->>'ok')::boolean
+                          AND (SELECT deleted_at IS NOT NULL AND deleted_reason LIKE '%(test:072b, plan_move_pieces)' FROM dl_entries WHERE id = x)
+                          AND (SELECT count(*) FROM dl_entries WHERE rt_id = rt1 AND needs_review) = 0
+                          AND (SELECT count(*) FROM dl_entries WHERE rt_id = rt1 AND deleted_at IS NULL AND driver_id = drv2) = 1
+                          AND (SELECT from_at = (d + time '09:00') AT TIME ZONE 'Europe/Athens' AND reason IS NULL FROM rt_vehicle_segments WHERE id = g2)
+                          AND (SELECT driver_id = drv2 FROM ct_round_trips WHERE id = rt1)
+                        THEN 'ok the ARCHIKO and its line with an amount go after the token, 0 needs_review'
+                        ELSE 'FAIL start cut payroll ' || r::text || ' ' || j1::text END;
+      ELSIF k IN (112, 113, 114) THEN
+        -- one act, each role that may do it (decision 41; Delete owner + dispatcher, decision 26), each undone after
+        IF k IN (112, 114) THEN
+          PERFORM plan_put_pieces(jsonb_build_object('pieces', jsonb_build_array(jsonb_build_object('piece_id', pk)),
+                    'target', jsonb_build_object('rt_id', rt1, 'side', 'KATHODOS'),
+                    'stops', jsonb_build_array(jsonb_build_object('ref', 'a', 'stop_id', s1a), jsonb_build_object('ref', 'b', 'stop_id', s1b))),
                     'test:072b', 'owner');
-          verdict := 'FAIL no error';
-        EXCEPTION WHEN others THEN
-          GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT, hint = PG_EXCEPTION_HINT;
-          verdict := CASE WHEN hint = 'plan:seg_outside'
-                            AND msg LIKE '%seg_outside:' || (SELECT code FROM ct_round_trips WHERE id = rt1) || ' '
-                                         || to_char(t1430 AT TIME ZONE 'Europe/Athens', 'DD/MM HH24:MI') || ', '
-                                         || to_char(e1000 AT TIME ZONE 'Europe/Athens', 'DD/MM HH24:MI')
-                          THEN 'ok both handovers named' ELSE 'FAIL two handovers ' || coalesce(hint, '') || ' ' || msg END;
-        END;
+          PERFORM plan_put_pieces(jsonb_build_object('pieces', jsonb_build_array(jsonb_build_object('piece_id', pn)),
+                    'target', jsonb_build_object('rt_id', rt1, 'side', 'ANODOS'),
+                    'stops', jsonb_build_array(jsonb_build_object('ref', 'c', 'stop_id', s1c),
+                                               jsonb_build_object('ref', 'd', 'location_id', ld, 'planned_from', e1500, 'planned_to', e1600))),
+                    'test:072b', 'owner');
+        END IF;
+        -- the start side, with what is real before 073: the cycle's ONE payroll line is the ARCHIKO's (Giorgos), with an
+        -- amount; the handover at 08:30 and the act takes the stops before it (A, B), so Giorgos leaves the cycle
+        r := plan_seg_change(jsonb_build_object('request_id', gen_random_uuid(), 'rt_id', rt1, 'at', t0830,
+               'place_note', 'Lamia', 'reason', 'vehicle_breakdown', 'vehicle', veh2), 'test:072b', 'owner');
+        g1 := (r->'ids'->>'cut_segment_id')::bigint; g2 := g1;
+        UPDATE dl_entries SET trip_value = 100 WHERE rt_id = rt1 AND deleted_at IS NULL;
+        SELECT id INTO x FROM dl_entries WHERE rt_id = rt1 AND deleted_at IS NULL;
+        j2 := CASE k WHEN 112 THEN jsonb_build_object('from', jsonb_build_object('piece_ids', jsonb_build_array(pk)),
+                                                       'target', jsonb_build_object('wait', true))
+                     WHEN 113 THEN jsonb_build_object('rt_id', rt1, 'stops', jsonb_build_array(jsonb_build_object('stop_id', s1a,
+                                     'planned_from', (d + time '08:45') AT TIME ZONE 'Europe/Athens',
+                                     'planned_to', (d + time '08:50') AT TIME ZONE 'Europe/Athens')))
+                     ELSE jsonb_build_object('nat_order_id', nk, 'reason', 'TEST 072b') END;
+        m := ''; tok := NULL;
+        FOREACH rl IN ARRAY CASE WHEN k = 114 THEN ARRAY['owner', 'dispatcher']
+                                 ELSE ARRAY['owner', 'dispatcher', 'management', 'accountant', 'warehouse'] END LOOP
+          BEGIN
+            SET CONSTRAINTS ALL DEFERRED;
+            IF k = 112 THEN
+              r := plan_move_pieces(j2 || jsonb_build_object('dry_run', true), 'test:072b', rl);
+              r2 := plan_move_pieces(j2 || jsonb_build_object('confirm_token', r->>'confirm_token'), 'test:072b', rl);
+            ELSIF k = 113 THEN
+              r := plan_rt_update(j2 || jsonb_build_object('dry_run', true), 'test:072b', rl);
+              r2 := plan_rt_update(j2 || jsonb_build_object('confirm_token', r->>'confirm_token'), 'test:072b', rl);
+            ELSE
+              r := plan_delete(j2 || jsonb_build_object('dry_run', true), 'test:072b', rl);
+              r2 := plan_delete(j2 || jsonb_build_object('confirm_token', r->>'confirm_token'), 'test:072b', rl);
+            END IF;
+            SET CONSTRAINTS ALL IMMEDIATE;
+            m := m || ' ' || rl || CASE WHEN (r->>'needs_confirm')::boolean
+                                          AND r->'consequences' @> jsonb_build_array(jsonb_build_object('kind', 'seg_removed', 'segment_id', g2,
+                                                'place_note', 'Lamia', 'at_athens', to_char(t0830 AT TIME ZONE 'Europe/Athens', 'DD/MM HH24:MI')))
+                                          AND CASE WHEN rl IN ('owner', 'accountant') THEN r::text LIKE '%"amount": 100%'
+                                                   ELSE r::text NOT LIKE '%"amount"%' END
+                                          AND (r2->>'ok')::boolean
+                                          AND (SELECT deleted_at IS NOT NULL FROM rt_vehicle_segments WHERE id = g2)
+                                          AND (SELECT deleted_at IS NOT NULL FROM dl_entries WHERE id = x)
+                                          AND (SELECT count(*) FROM audit_log WHERE table_name = 'rt_vehicle_segments' AND record_id = g2::text
+                                                 AND action = 'delete' AND role = rl) = 1
+                                        THEN ':ok' ELSE ':FAIL ' || r::text || ' ' || r2::text END;
+            IF tok IS NULL THEN tok := r->>'confirm_token';
+            ELSIF tok IS DISTINCT FROM r->>'confirm_token' THEN m := m || ' (another token)'; END IF;
+            RAISE EXCEPTION 'role undo' USING HINT = 'wn072b_role_undo';
+          EXCEPTION WHEN others THEN
+            GET STACKED DIAGNOSTICS hint = PG_EXCEPTION_HINT, msg = MESSAGE_TEXT;
+            IF hint IS DISTINCT FROM 'wn072b_role_undo' THEN m := m || ' ' || rl || ':ERROR ' || coalesce(hint, '') || ' ' || msg; END IF;
+          END;
+        END LOOP;
+        SET CONSTRAINTS ALL DEFERRED;
+        verdict := CASE WHEN m = CASE WHEN k = 114 THEN ' owner:ok dispatcher:ok'
+                                      ELSE ' owner:ok dispatcher:ok management:ok accountant:ok warehouse:ok' END
+                        THEN 'ok every role:' || m ELSE 'FAIL roles' || m END;
+      ELSIF k = 116 THEN
+        -- only K (A -> B) on R1; the hub stop and C have no leg (written directly, as S). The handover at 08:30; K goes
+        -- back to waiting: A and B are swept, the window narrows to the hub (09:00) - past the handover - and the cycle,
+        -- left without a leg, is cancelled. The list names both; the token does both (before (b): seg_outside)
+        PERFORM plan_put_pieces(jsonb_build_object('pieces', jsonb_build_array(jsonb_build_object('piece_id', pk)),
+                  'target', jsonb_build_object('rt_id', rt1, 'side', 'KATHODOS'),
+                  'stops', jsonb_build_array(jsonb_build_object('ref', 'a', 'stop_id', s1a), jsonb_build_object('ref', 'b', 'stop_id', s1b))),
+                  'test:072b', 'owner');
+        r := plan_seg_change(jsonb_build_object('request_id', gen_random_uuid(), 'rt_id', rt1, 'at', t0830,
+               'place_note', 'Lamia', 'reason', 'vehicle_breakdown', 'vehicle', veh2), 'test:072b', 'owner');
+        g1 := (r->'ids'->>'cut_segment_id')::bigint; g2 := (r->'ids'->>'segment_id')::bigint;
+        j2 := jsonb_build_object('from', jsonb_build_object('piece_ids', jsonb_build_array(pk)), 'target', jsonb_build_object('wait', true));
+        r := plan_move_pieces(j2 || jsonb_build_object('dry_run', true), 'test:072b', 'dispatcher');
+        r2 := plan_move_pieces(j2 || jsonb_build_object('confirm_token', r->>'confirm_token'), 'test:072b', 'dispatcher');
+        SET CONSTRAINTS ALL IMMEDIATE;
+        verdict := CASE WHEN r->'consequences' @> jsonb_build_array(jsonb_build_object('kind', 'rt_cancelled', 'rt_id', rt1),
+                               jsonb_build_object('kind', 'seg_removed', 'segment_id', g1))
+                          AND (r2->>'ok')::boolean AND r2->'ids'->'cancelled_rt_ids' = jsonb_build_array(rt1)
+                          AND (SELECT status = 'cancelled' FROM ct_round_trips WHERE id = rt1)
+                          AND (SELECT deleted_at IS NOT NULL FROM rt_vehicle_segments WHERE id = g1)
+                          AND (SELECT rt_cancelled AND reason IS NULL AND deleted_at IS NULL FROM rt_vehicle_segments WHERE id = g2)
+                        THEN 'ok cancelled, the handover listed and removed' ELSE 'FAIL emptied cut ' || r::text || ' ' || r2::text END;
       -- @case (each task adds its "ELSIF k = <n> THEN" branches above this line)
       END IF;
       SET CONSTRAINTS ALL IMMEDIATE;

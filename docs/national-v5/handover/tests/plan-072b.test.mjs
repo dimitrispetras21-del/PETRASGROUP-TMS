@@ -1,24 +1,28 @@
 // 072b (national v5 vehicle handover: segments) on a production-shaped PGlite copy, at build time (principle 6).
-// Lives in tms-auditor/test/ (Task B1 copies it there from docs/national-v5/handover/tests/).
+// Lives in tms-auditor/test/ (Task B1 moves it there from docs/national-v5/handover/tests/, git mv).
 // Production shape = the same as plan-072.test.mjs (the 22/9 columns + live-071.sql + live-072.sql, 071 and 071b as
 // executed 22/10) + 072 from drafts/ (or worker/migrations/ after F2's K3), then 072b. Never edit a fixture by hand.
 // What it proves: the guards hold the texts 072b was written against; the dry run keeps nothing; 072b applies with
-// +4 triggers and B-54 following; the verify row; born closed for the API roles; the 108 rules; F2's 203 rules, 071's
-// 56 and 071b's 8 still pass ON TOP of 072b (the EXCLUDE moved, the 10 hooks changed nothing F2 decided); the three
-// auditor checks, run AS tms_check_runner through 072b's own policy (no policy made by the test, review R1
-// finding 4), see the segments, 0 on the copy and red on a forced violation - also when the copy rt_cancelled drifts
-// and blinds the EXCLUDE (review R2, DB finding 3); 071b's verify finds the EXCLUDE on the segments (review R2,
-// spec E2); the rollback refuses (a v5 row, 073
-// present), then undoes the 10 hooks in reverse and returns every hooked function and both EXCLUDE byte for byte;
-// eight mutations that each make one case fail.
+// +4 triggers and B-54 following; the verify row; born closed for the API roles; the 116 rules; F2's 203 rules, 071's
+// 56 and 071b's 8 still pass ON TOP of 072b (the EXCLUDE moved, the 15 hooks changed nothing F2 decided); the three
+// auditor checks go the PRODUCTION path (review R4, finding 1): each passes the repo lint (lintSql) and the in-DB
+// guard (monitoring.check_sql_guard), is seeded as 073b will seed it and run by monitoring.run_checks as
+// tms_check_runner through 072b's own policy (no policy made by the test, review R1 finding 4): green on the copy,
+// red on a forced violation - also when the copy rt_cancelled drifts and blinds the EXCLUDE (review R2, DB finding
+// 3); a lag() put back into B-91 is refused by both guards (a mutation); 071b's verify finds the EXCLUDE on the
+// segments (review R2, spec E2); the rollback refuses (a v5 row, 073 present), then undoes the 15 hooks in reverse
+// and returns every hooked function and both EXCLUDE byte for byte; ten mutations that each make one case fail.
+// The checks live in tms-auditor/checks-072b/ until 073b moves them into the catalog (plan: the handover to F3, P3-6): in checks/ they
+// would enter the 047b seed and the catalog tests before the fixture and the grants know rt_vehicle_segments.
 // Limits (as plan-072): money views are STUBS; the capture holds only the functions of its f/trg lists.
 import { test } from 'node:test';
 import assert from 'node:assert';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { freshDb } from './helpers.mjs';
+import { freshDb, onlyChecks } from './helpers.mjs';
 import { DRAFTS } from '../lib/db.mjs';
+import { parseCheck, seedSql } from '../checks/load.mjs';
 import { btree_gist } from '@electric-sql/pglite/contrib/btree_gist';
 import { pgcrypto } from '@electric-sql/pglite/contrib/pgcrypto';
 
@@ -26,7 +30,9 @@ const HERE = path.dirname(fileURLToPath(import.meta.url));
 const read = (f) => fs.readFileSync(path.join(DRAFTS, f), 'utf8');          // 072 and 072b: drafts until executed
 const readDone = (f) => fs.readFileSync(path.join(DRAFTS, '..', f), 'utf8'); // 071 / 071b: executed 22/10
 const fixture = (f) => fs.readFileSync(path.join(HERE, 'fixtures', f), 'utf8');
-const CHECKS = process.env.HANDOVER_CHECKS || path.join(HERE, '..', 'checks');   // B-91..B-93 (after Task B1)
+// B-91..B-93: tms-auditor/checks-072b/ after Task B1, OUT of the catalog until 073b (review R4, finding 1);
+// HANDOVER_CHECKS=docs/national-v5/handover/checks before it
+const CHECKS = process.env.HANDOVER_CHECKS || path.join(HERE, '..', 'checks-072b');
 
 const STUBS = `
 CREATE OR REPLACE VIEW public.ct_v_rt_revenue AS SELECT id AS rt_id, 0::numeric AS revenue, 0::numeric AS revenue_intl,
@@ -45,7 +51,9 @@ const EXCL = `SELECT conrelid::regclass::text || ':' || pg_get_constraintdef(oid
   WHERE conname IN ('rt_v2_truck_once', 'rt_v2_driver_once') ORDER BY conname`;
 const HOOKED = ['public.plan_h_busy(text,bigint,timestamptz,timestamptz,bigint)', 'public.plan_h_finish()',
   'public.plan_rt_update(jsonb,text,text)', 'public.plan_rt_clear(jsonb,text,text)', 'public.plan_board(date,text)',
-  'public.plan_vs_state(bigint[])', 'public.plan_local_loading(jsonb,text,text)'];
+  'public.plan_vs_state(bigint[])', 'public.plan_local_loading(jsonb,text,text)',
+  'public.plan_h_drop_consequences(bigint[],bigint,bigint[])', 'public.plan_move_pieces(jsonb,text,text)',
+  'public.plan_delete(jsonb,text,text)'];
 
 async function prodShaped072(with072 = true) {
   const db = await freshDb({ extensions: { btree_gist, pgcrypto } });
@@ -80,6 +88,33 @@ async function asRunner(db, sql) {
   await db.exec('SET ROLE tms_check_runner');
   try { return Number((await db.query(sql)).rows[0].count); } finally { await db.exec('RESET ROLE'); }
 }
+// Review R4 (finding 1): a check reaches production only through the repo lint (load.mjs), the 047b seed and
+// monitoring.run_checks, which calls monitoring.check_sql_guard and runs it as tms_check_runner. The raw SELECT
+// skipped all of that and proved a lag() / tstzrange() check that production would never run. This is that path.
+async function viaAuditor(db, files) {
+  const checks = files.map(([id, text]) => {
+    const { check, errs } = parseCheck(`${id}.sql`, text);
+    assert.deepEqual(errs, [], `${id}: the repo lint (load.mjs): ${errs.join('; ')}`);
+    return check;
+  });
+  for (const c of checks) {
+    await db.query('SELECT monitoring.check_sql_guard($1)', [c.sql]);
+    if (c.ids_sql) await db.query('SELECT monitoring.check_sql_guard($1)', [c.ids_sql]);
+  }
+  await db.exec(seedSql(checks));
+  await onlyChecks(db, checks.map((c) => c.id));
+}
+async function runAuditor(db) {
+  const out = {};
+  for (const tag of ['hourly', 'daily']) {
+    const run = (await db.query('SELECT monitoring.run_checks($1) AS r', [tag])).rows[0].r;
+    for (const x of (await db.query('SELECT check_id, status, value, err FROM monitoring.results WHERE run_id = $1', [run])).rows) {
+      out[x.check_id] = x;
+    }
+  }
+  return out;
+}
+const CHECK_TEXT = (id) => fs.readFileSync(path.join(CHECKS, `${id}.sql`), 'utf8');
 
 test('072b on a production-shaped PGlite copy', async (t) => {
   const db = await prodShaped072();
@@ -87,10 +122,13 @@ test('072b on a production-shaped PGlite copy', async (t) => {
   const src = read('072b_plan_vehicle_segments.sql');
   const md5Before = Object.fromEntries(await Promise.all(HOOKED.map(async (s) => [s, await md5Of(db, s)])));
   const exclBefore = (await db.query(EXCL)).rows.map((r) => r.d);
+  // the owner's eye (K-H2 Steps 1 and 5): the fingerprint row is the same before and after 072b, read_at aside
+  const fingerprint = async () => { const f = (await db.query(read('072b_plan_vehicle_segments_fingerprint.sql'))).rows[0]; delete f.read_at_athens; return f; };
+  const fp0 = await fingerprint();
 
   await t.test('the copy holds every text 072b guards on (re-capture or re-measure if this fails)', async () => {
     const pairs = guardPairs(src);
-    assert.equal(pairs.length, 46, '22 of 072 + 24 of 072 that 072b hooks, calls or relies on');
+    assert.equal(pairs.length, 47, '22 of 072 + 25 of 072 that 072b hooks (10), calls or relies on (15)');
     for (const [sig, m] of pairs) assert.equal(await md5Of(db, sig), m, sig);
     assert.equal(await count(db, PLAN_FNS), 54, '6 of 071 + 48 of 072');
     assert.deepEqual(exclBefore.map((d) => d.split(':')[0]), ['ct_round_trips', 'ct_round_trips']);
@@ -101,7 +139,7 @@ test('072b on a production-shaped PGlite copy', async (t) => {
 
   await t.test('072b dry run runs to its end and keeps nothing', async () => {
     const msg = await errorOf(db, read('072b_plan_vehicle_segments_dryrun.sql'));
-    assert.match(msg ?? '', /DRY RUN 072b finished - EVERYTHING UNDONE, nothing kept\. The block ran to its end {2}\|\| {2}072b ran: segments table yes, exclude on segments 2, on cycles 0, hooked functions 7, acts 3, open to API 0, auditor policy 1, triggers \d+, B-54 \d+, v5 rows 0/, msg);
+    assert.match(msg ?? '', /DRY RUN 072b finished - EVERYTHING UNDONE, nothing kept\. The block ran to its end {2}\|\| {2}072b ran: segments table yes, exclude on segments 2, on cycles 0, hooked functions 10, acts 3, open to API 0, auditor policy 1, triggers \d+, B-54 \d+, v5 rows 0/, msg);
     const [, trg, b54] = /triggers (\d+), B-54 (\d+)/.exec(msg);
     assert.equal(Number(trg), triggers + 4); assert.equal(Number(b54), triggers + 4);
     assert.equal(await count(db, PLAN_FNS), 54, 'nothing kept');
@@ -113,24 +151,25 @@ test('072b on a production-shaped PGlite copy', async (t) => {
     assert.equal(await errorOf(db, src), null);
     assert.equal(await count(db, TRG), triggers + 4);
     assert.equal(await count(db, `SELECT red_value AS n FROM monitoring.checks WHERE id = 'B-54'`), triggers + 4);
-    assert.equal(await count(db, PLAN_FNS), 54 + 19);
+    assert.equal(await count(db, PLAN_FNS), 54 + 24);
     assert.deepEqual((await db.query(EXCL)).rows.map((r) => r.d.split(':')[0]), ['rt_vehicle_segments', 'rt_vehicle_segments']);
     assert.match(await errorOf(db, src) ?? '', /072b: already applied/, 'a second run refuses');
+    assert.deepEqual(await fingerprint(), fp0, 'the fingerprint row is the same after 072b');
   });
 
-  await t.test('072b verify: in place, 7 hooked functions at their final text, 0 changed, closed, the auditor policy, 0 rows', async () => {
+  await t.test('072b verify: in place, 10 hooked functions at their final text, 0 changed, closed, the auditor policy, 0 rows', async () => {
     const r = (await db.query(read('072b_plan_vehicle_segments_verify.sql'))).rows[0];
     assert.equal(r.applied, '072b in place');
     assert.equal(r.b54_matches, true);
-    for (const [k, v] of [['exclude_on_segments', 2], ['hooks_in_place', 7], ['public_acts', 3], ['new_triggers', 4], ['auditor_policy', 1]]) assert.equal(Number(r[k]), v, k);
+    for (const [k, v] of [['exclude_on_segments', 2], ['hooks_in_place', 10], ['public_acts', 3], ['new_triggers', 4], ['auditor_policy', 1]]) assert.equal(Number(r[k]), v, k);
     for (const k of ['exclude_on_cycles', 'changed_live', 'open_to_api', 'open_relations', 'rls_off', 'other_policies', 'segments',
       'v5_cycles', 'seg_problems', 'overlaps', 'cancel_copy_drift']) assert.equal(Number(r[k]), 0, k);
-    // 072's own verify after 072b, as the plan writes it (Interfaces): changed_live 0, 19 executable plan_*, 73 plan_*
+    // 072's own verify after 072b, as the plan writes it (Interfaces): changed_live 0, 19 executable plan_*, 78 plan_*
     const v = (await db.query(read('072_plan_functions_verify.sql'))).rows[0];
     assert.equal(v.applied, '072 in place');
     assert.equal(Number(v.changed_live), 0);
     assert.equal(Number(v.service_role_execute), 19);
-    assert.equal(Number(v.plan_functions), 73);
+    assert.equal(Number(v.plan_functions), 78);
     // 071b's verify after 072b (review R2, spec E2): the rule is in place, on the segments; the cycle counts are NULL
     const w = (await db.query(readDone('071b_plan_one_vehicle_verify.sql'))).rows[0];
     assert.deepEqual([w.truck_once, w.driver_once, w.exclude_on, w.truck_overlaps, w.driver_overlaps],
@@ -152,12 +191,12 @@ test('072b on a production-shaped PGlite copy', async (t) => {
     } finally { await db.exec('RESET ROLE'); }
   });
 
-  await t.test('072b rules test: 108 OK, 0 FAIL, nothing kept', async () => {
+  await t.test('072b rules test: 116 OK, 0 FAIL, nothing kept', async () => {
     const msg = await errorOf(db, read('072b_plan_vehicle_segments_test.sql'));
     const m = rules('072b').exec(msg ?? '');
     assert.ok(m, msg);
     assert.equal(Number(m[2]), 0, msg);
-    assert.equal(Number(m[1]), 108);
+    assert.equal(Number(m[1]), 116);
     assert.equal(await count(db, `SELECT count(*)::int AS n FROM rt_vehicle_segments`), 0, 'the test keeps nothing');
   });
 
@@ -171,12 +210,18 @@ test('072b on a production-shaped PGlite copy', async (t) => {
     }
   });
 
-  await t.test('the auditor checks B-91..B-93 as tms_check_runner through 072b\'s own policy: it sees the segments; 0 on the copy, red on a forced violation', async () => {
+  await t.test('the auditor checks B-91..B-93 the production way (lint, guard, seed, run_checks as tms_check_runner) through 072b\'s own policy: green on the copy, red on a forced violation', async () => {
     // NO policy made here (review R1 finding 4): 072b's monitor_read is the only door; without it the runner would
     // see 0 segments, B-91 would be red on every v5 cycle and B-92 / B-93 silently green
     assert.equal(await count(db, `SELECT count(*)::int AS n FROM pg_policies WHERE tablename = 'rt_vehicle_segments'`), 1);
-    const q = Object.fromEntries(['B-91', 'B-92', 'B-93'].map((id) => [id, firstSelect(fs.readFileSync(path.join(CHECKS, `${id}.sql`), 'utf8'))]));
-    for (const id of Object.keys(q)) assert.equal(await asRunner(db, q[id]), 0, `${id} green`);
+    const ids = ['B-91', 'B-92', 'B-93'];
+    const q = Object.fromEntries(ids.map((id) => [id, firstSelect(CHECK_TEXT(id))]));
+    await db.exec('BEGIN');
+    try {
+      await viaAuditor(db, ids.map((id) => [id, CHECK_TEXT(id)]));
+      const res = await runAuditor(db);
+      for (const id of ids) assert.deepEqual([res[id]?.status, Number(res[id]?.value), res[id]?.err ?? null], ['green', 0, null], `${id} green through run_checks`);
+    } finally { await db.exec('ROLLBACK'); }
     const seed = `
       INSERT INTO trucks (license_plate) VALUES ('TEST-CHK-1'); INSERT INTO drivers (full_name) VALUES ('TEST CHK');
       INSERT INTO ct_round_trips (model, scope, trip_type, truck_id, driver_id, date_start, date_end, start_at, end_at, status, source, created_by)
@@ -206,19 +251,22 @@ test('072b on a production-shaped PGlite copy', async (t) => {
                 SELECT rt_id, from_at, to_at, 'OWNED', truck_id, 'test:chk2' FROM rt_vehicle_segments WHERE created_by = 'test:chk';`]]) {
       await db.exec('BEGIN');
       try {
+        await viaAuditor(db, ids.map((x) => [x, CHECK_TEXT(x)]));
         await db.exec(seed);
         await db.exec('SET CONSTRAINTS ALL IMMEDIATE');
         // the runner sees the seeded cycle's segment, and B-91 is green on it before the violation
         assert.equal(await asRunner(db, `SELECT count(*) FROM rt_vehicle_segments WHERE created_by = 'test:chk'`), 1, 'the runner sees the segment');
-        assert.equal(await asRunner(db, q['B-91']), 0, 'B-91 green on a cycle with its segment');
+        assert.equal((await runAuditor(db))['B-91'].status, 'green', 'B-91 green on a cycle with its segment');
         await db.exec(broken);
-        assert.ok(await asRunner(db, q[id]) > 0, `${id} red on its violation`);
+        const res = await runAuditor(db);
+        assert.ok(res[id].status === 'red' && Number(res[id].value) > 0, `${id} red on its violation through run_checks: ${JSON.stringify(res[id])}`);
+        assert.ok(await asRunner(db, q[id]) > 0, `${id} red on its violation (the raw SELECT agrees)`);
       } finally { await db.exec('ROLLBACK'); }
     }
     for (const id of Object.keys(q)) assert.equal(await asRunner(db, q[id]), 0, `${id} green again`);
   });
 
-  await t.test('072b rollback: refuses with a v5 row and with 073; then the 10 hooks out in reverse, both EXCLUDE back; 072b again', async () => {
+  await t.test('072b rollback: refuses with a v5 row and with 073; then the 15 hooks out in reverse, both EXCLUDE back; 072b again', async () => {
     const rb = read('072b_plan_vehicle_segments_rollback.sql');
     await db.exec(`INSERT INTO plan_notices (to_desk, kind, message, created_by) VALUES ('natl', 'test_notice', 'TEST 072b', 'test:072b')`);
     assert.match(await errorOf(db, rb) ?? '', /1 v5 row\(s\) or segment\(s\) exist/);
@@ -262,9 +310,16 @@ for (const [name, from, to, want] of [
   // review R1 finding 3: the stop rule read on the departure (planned_to) instead of the arrival
   ['the stop rule reads the departure', /-- mut:stop-begin[\s\S]*?-- mut:stop-end/,
    'and g.from_at <= s.planned_to and g.to_at > s.planned_to', /54 FAIL want ok/],
-  // review R2, DB finding 1: without its own code the narrowed cycle is a bare seg_time again
+  // review R2, DB finding 1: without its own code the narrowed cycle is a bare seg_time again (now the net, case 111)
   ['a narrowed cycle is not seg_outside', /-- mut:outside-begin[\s\S]*?-- mut:outside-end/, '-- (mutated: no seg_outside)',
-   /87 FAIL want plan:seg_outside/],
+   /111 FAIL want plan:seg_outside got plan:net_detail_wrong \(net: plan:seg_time/],
+  // owner question 7 = (b): without the seg_removed lines there is nothing to confirm - the change runs without a
+  // token and the net refuses it at the end
+  ['the list names no handover', /-- mut:cutlist-begin[\s\S]*?-- mut:cutlist-end/, 'and false',
+   /25 FAIL want plan:need_token got plan:seg_outside/],
+  // ... and with the lines but no removal after the token, the act the user confirmed is refused
+  ['the token removes nothing', /-- mut:cutapply-begin[\s\S]*?-- mut:cutapply-end/, '-- (mutated: no removal)',
+   /87 FAIL want ok got plan:seg_outside/],
   // review R2, DB finding 2: the payroll lock without "the driver leaves the cycle" refuses the same-driver correction
   ['the payroll lock ignores a driver who stays', /-- mut:leaves-begin[\s\S]*?-- mut:leaves-end/, '-- (mutated: no leaves)',
    /92 FAIL want ok got plan:payroll_locked/],
@@ -285,3 +340,29 @@ for (const [name, from, to, want] of [
     assert.match(msg ?? '', want, msg);
   });
 }
+
+// Review R4 (finding 1): the v3 B-91 used lag() and B-92 tstzrange(); production's monitoring.check_sql_guard (and
+// the repo lint) refuse both, so the two nets would have stood in run_checks as 'error' for ever while every proof
+// was green on the raw SELECT. Put lag() back: the auditor path above must refuse it, at both guards.
+test('auditor mutation: a lag() back in B-91 is refused by the repo lint and by the in-DB guard (run_checks: error)', async () => {
+  const db = await prodShaped072();
+  assert.equal(await errorOf(db, read('072b_plan_vehicle_segments.sql')), null);
+  const text = CHECK_TEXT('B-91');
+  const gap = /     OR \(g\.to_at <> r\.end_at AND NOT EXISTS \(SELECT 1 FROM rt_vehicle_segments h WHERE h\.rt_id = r\.id AND h\.deleted_at IS NULL\n\s+AND h\.from_at = g\.to_at\)\)\n/g;
+  const mutant = text.replace(gap, '     OR g.from_at <> coalesce(lag(g.to_at) OVER (ORDER BY g.from_at, g.id), g.from_at)\n');
+  assert.notStrictEqual(mutant, text, 'the gap clause of B-91 is where the mutation puts lag()');
+  assert.deepEqual(parseCheck('B-91.sql', text).errs, [], 'the committed B-91 passes the lint');
+  assert.match(parseCheck('B-91.sql', mutant).errs.join('; '), /function \u00ablag\(\)\u00bb not in allowlist/);
+  await assert.rejects(viaAuditor(db, [['B-91', mutant]]), /lag/);
+  const c = parseCheck('B-91.sql', mutant).check;
+  await assert.rejects(db.query('SELECT monitoring.check_sql_guard($1)', [c.sql]), /function lag\(\) not allowed/);
+  // seeded past the lint (as a hand-edited 047b would be), run_checks records it as an error, never a number
+  await db.exec('BEGIN');
+  try {
+    await db.exec(seedSql([c]));
+    await onlyChecks(db, ['B-91']);
+    const res = await runAuditor(db);
+    assert.deepEqual([res['B-91'].status, res['B-91'].value], ['error', null]);
+    assert.match(res['B-91'].err, /lag\(\) not allowed/);
+  } finally { await db.exec('ROLLBACK'); }
+});

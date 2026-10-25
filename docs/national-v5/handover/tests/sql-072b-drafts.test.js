@@ -5,7 +5,7 @@
 //     fingerprint write nothing; the dry run and the rollback are regenerated, never hand-edited;
 //   - every function 072b relies on is guarded in PART 0; each one it does NOT change is proved again in PART 9 and
 //     counted in the verify; each hooked one has its PART 0 md5 as the hook's "before" (one list, never two);
-//   - the 10 hooks in 7 functions, ordered by k: the first hook of a function starts from 072's text (PART 0), each
+//   - the 15 hooks in 10 functions, ordered by k: the first hook of a function starts from 072's text (PART 0), each
 //     next one from the text the one before it left (a chain), the last one's text is the verify's; the rollback
 //     holds the same texts (generated) and undoes them in reverse order;
 //   - born closed: every function 072b creates is in the REVOKE, only the three acts get EXECUTE, the builder's
@@ -14,7 +14,8 @@
 //   - every plan: code 072b raises or returns has a case in the rules test; every con: of the rules test is a
 //     CHECK of 072b; the eight reasons are the spec's; Greek only as base64 that decodes;
 //   - the order 072 -> 072b -> 073 is guarded both ways (073 present = stop, here and in the rollback);
-//   - the hook diff the code review reads (build-072b.mjs --hooks, review R2 DB finding 7) covers the ten hooks.
+//   - the hook diff the code review reads (build-072b.mjs --hooks, review R2 DB finding 7) covers the fifteen hooks;
+//   - the auditor checks B-91..B-93 sit OUTSIDE the catalog until 073b (tms-auditor/checks-072b/, review R4 finding 1).
 // The rules themselves are proven on PGlite (tms-auditor/test/plan-072b.test.mjs).
 'use strict';
 const { test } = require('node:test');
@@ -63,11 +64,11 @@ test('guards: PART 0 holds every relied-on function; the unchanged ones again in
   const p9 = pairsOf(part(src, '===== PART 9', 'END $do$;'));
   const hooks = [...part(src, '===== PART 6', '===== PART 7').matchAll(/\((\d+), '(public\.[^']+)', h_\w+, h_\w+,\n\s+'([0-9a-f]{32})', '([0-9a-f]{32})'\)/g)]
     .map((m) => ({ k: Number(m[1]), sig: m[2], before: m[3], after: m[4] }));
-  assert.strictEqual(p0.length, 46, 'PART 0: 22 of 072 + 24 of 072 (17 relied on + 7 hooked)');
-  assert.strictEqual(hooks.length, 10, 'ten hooks');
-  assert.deepStrictEqual(hooks.map((h) => h.k), [1, 2, 3, 4, 5, 6, 7, 8, 9, 10], 'k = 1..10 in order');
+  assert.strictEqual(p0.length, 47, 'PART 0: 22 of 072 + 25 of 072 (15 relied on + 10 hooked)');
+  assert.strictEqual(hooks.length, 15, 'fifteen hooks');
+  assert.deepStrictEqual(hooks.map((h) => h.k), Array.from({ length: 15 }, (_, i) => i + 1), 'k = 1..15 in order');
   const fns = [...new Set(hooks.map((h) => h.sig))];
-  assert.strictEqual(fns.length, 7, 'seven hooked functions');
+  assert.strictEqual(fns.length, 10, 'ten hooked functions');
   assert.strictEqual(new Set(p0).size, p0.length, 'no pair twice in PART 0');
   const last = {};
   for (const h of hooks) {
@@ -96,7 +97,7 @@ test('guards: PART 0 holds every relied-on function; the unchanged ones again in
 test('born closed: every created function revoked, EXECUTE only on the three acts; the drop list = the created', async () => {
   const src = read(SRC);
   const created = [...src.matchAll(/CREATE FUNCTION (public\.\w+)\(([^)]*)\)/g)].map((m) => m[1]);
-  assert.strictEqual(created.length, 19);
+  assert.strictEqual(created.length, 24);
   const revoke = /REVOKE ALL ON FUNCTION ([\s\S]*?)\n\s+FROM PUBLIC, anon, authenticated, service_role;/.exec(src);
   assert.ok(revoke, 'one REVOKE over the functions');
   for (const f of created) assert.ok(revoke[1].includes(f + '('), `${f} is revoked`);
@@ -144,16 +145,26 @@ test('every plan: code of 072b has a case; every con: of the rules test is a CHE
   assert.ok(n >= 60, `${n} cases`);
 });
 
-test('the hook diff (--hooks, read by the code review of Task B4): ten hooks, each puts a 072b line in', async () => {
+test('the hook diff (--hooks, read by the code review of Task B4): fifteen hooks, each puts a 072b line in', async () => {
   const { hookDiffs } = await import(BUILDER);
   const h = hookDiffs(read(SRC));
-  assert.deepStrictEqual(h.map((x) => x.k), [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+  assert.deepStrictEqual(h.map((x) => x.k), Array.from({ length: 15 }, (_, i) => i + 1));
   for (const x of h) {
     assert.ok(x.diff.some((l) => l.startsWith('+ ') && /072b/.test(l)), `hook ${x.k}: no "072b" line put in`);
     assert.ok(x.diff.length > 0);
   }
   const out = execFileSync(process.execPath, [BUILDER, '--hooks'], { encoding: 'utf8' });
-  assert.strictEqual((out.match(/^=== hook \d+ /gm) || []).length, 10);
+  assert.strictEqual((out.match(/^=== hook \d+ /gm) || []).length, 15);
+});
+
+// Review R4 (finding 1): B-91..B-93 enter the catalog only with 073b (its seed, fixture and grants know
+// rt_vehicle_segments). In tms-auditor/checks/ now, every seeded tms-auditor test and the catalog test would go red.
+test('the auditor checks of 072b are not in the catalog yet (tms-auditor/checks-072b/ until 073b)', () => {
+  const cat = path.join(ROOT, 'tms-auditor/checks');
+  if (!fs.existsSync(cat)) return;   // the docs/ layout before Task B1
+  for (const id of ['B-91', 'B-92', 'B-93']) assert.ok(!fs.existsSync(path.join(cat, `${id}.sql`)), `${id} is in tms-auditor/checks/ before 073b`);
+  const own = path.join(ROOT, 'tms-auditor/checks-072b');
+  if (fs.existsSync(own)) assert.deepStrictEqual(fs.readdirSync(own).sort(), ['B-91.sql', 'B-92.sql', 'B-93.sql']);
 });
 
 test('Greek only as base64 that decodes to Greek; the notice template takes three %s', () => {
