@@ -9206,7 +9206,7 @@ test('"Via Hub" is a writable ORDER STOPS label for via_hub — once, nowhere el
 ```bash
 node --test worker/test/plan-routes.test.mjs worker/test/plan-tables-guard.test.mjs 2>&1 | grep -E '^ℹ (pass|fail)'
 ```
-Expected: `ℹ pass 25`, `ℹ fail 3`: το 409 του `model=2` (σήμερα γίνεται PATCH), το `"Via Hub"` του facade (το PATCH δεν στέλνει `via_hub`) και η ετικέτα στο `TABLES`.
+Expected: `ℹ pass 26`, `ℹ fail 3` (26 = 25 + the input-rule test of Γ3): το 409 του `model=2` (σήμερα γίνεται PATCH), το `"Via Hub"` του facade (το PATCH δεν στέλνει `via_hub`) και η ετικέτα στο `TABLES`.
 
 - [ ] **Step 3: 409 πριν από τη βάση**
 
@@ -9257,7 +9257,7 @@ Expected: `ℹ pass 25`, `ℹ fail 3`: το 409 του `model=2` (σήμερα �
 ```bash
 node --check worker/src/index.js && node --test worker/test/*.test.mjs worker/src/rt-rules.test.mjs 2>&1 | grep -E '^ℹ (tests|pass|fail)'
 ```
-Expected: `ℹ tests 276`, `ℹ pass 275`, `ℹ skipped 1`, `ℹ fail 0`.
+Expected: `ℹ tests 277`, `ℹ pass 276`, `ℹ skipped 1`, `ℹ fail 0` (+1 = the input-rule test of Γ3; measured 25/10).
 
 - [ ] **Step 6: Commit**
 
