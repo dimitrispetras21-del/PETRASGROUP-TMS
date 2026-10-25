@@ -3,14 +3,14 @@
 // Production shape = the same as plan-072.test.mjs (the 22/9 columns + live-071.sql + live-072.sql, 071 and 071b as
 // executed 22/10) + 072 from drafts/ (or worker/migrations/ after F2's K3), then 072b. Never edit a fixture by hand.
 // What it proves: the guards hold the texts 072b was written against; the dry run keeps nothing; 072b applies with
-// +4 triggers and B-54 following; the verify row; born closed for the API roles; the 131 rules; F2's 237 rules, 071's
-// 56 and 071b's 8 still pass ON TOP of 072b (the EXCLUDE moved, the 16 hooks changed nothing F2 decided); the three
+// +4 triggers and B-54 following; the verify row; born closed for the API roles; the 135 rules; F2's 237 rules, 071's
+// 56 and 071b's 8 still pass ON TOP of 072b (the EXCLUDE moved, the 18 hooks changed nothing F2 decided); the three
 // auditor checks go the PRODUCTION path (review R4, finding 1): each passes the repo lint (lintSql) and the in-DB
 // guard (monitoring.check_sql_guard), is seeded as 073b will seed it and run by monitoring.run_checks as
 // tms_check_runner through 072b's own policy (no policy made by the test, review R1 finding 4): green on the copy,
 // red on a forced violation - also when the copy rt_cancelled drifts and blinds the EXCLUDE (review R2, DB finding
 // 3); a lag() put back into B-91 is refused by both guards (a mutation); 071b's verify finds the EXCLUDE on the
-// segments (review R2, spec E2); the rollback refuses (a v5 row, 073 present), then undoes the 16 hooks in reverse
+// segments (review R2, spec E2); the rollback refuses (a v5 row, 073 present), then undoes the 18 hooks in reverse
 // and returns every hooked function and both EXCLUDE byte for byte; fourteen mutations that each make one case fail.
 // The checks live in tms-auditor/checks-072b/ until 073b moves them into the catalog (plan: the handover to F3, P3-6): in checks/ they
 // would enter the 047b seed and the catalog tests before the fixture and the grants know rt_vehicle_segments.
@@ -191,12 +191,12 @@ test('072b on a production-shaped PGlite copy', async (t) => {
     } finally { await db.exec('RESET ROLE'); }
   });
 
-  await t.test('072b rules test: 131 OK, 0 FAIL, nothing kept', async () => {
+  await t.test('072b rules test: 135 OK, 0 FAIL, nothing kept', async () => {
     const msg = await errorOf(db, read('072b_plan_vehicle_segments_test.sql'));
     const m = rules('072b').exec(msg ?? '');
     assert.ok(m, msg);
     assert.equal(Number(m[2]), 0, msg);
-    assert.equal(Number(m[1]), 131);
+    assert.equal(Number(m[1]), 135);
     assert.equal(await count(db, `SELECT count(*)::int AS n FROM rt_vehicle_segments`), 0, 'the test keeps nothing');
   });
 
@@ -266,7 +266,7 @@ test('072b on a production-shaped PGlite copy', async (t) => {
     for (const id of Object.keys(q)) assert.equal(await asRunner(db, q[id]), 0, `${id} green again`);
   });
 
-  await t.test('072b rollback: refuses with a v5 row and with 073; then the 16 hooks out in reverse, both EXCLUDE back; 072b again', async () => {
+  await t.test('072b rollback: refuses with a v5 row and with 073; then the 18 hooks out in reverse, both EXCLUDE back; 072b again', async () => {
     const rb = read('072b_plan_vehicle_segments_rollback.sql');
     await db.exec(`INSERT INTO plan_notices (to_desk, kind, message, created_by) VALUES ('natl', 'test_notice', 'TEST 072b', 'test:072b')`);
     assert.match(await errorOf(db, rb) ?? '', /1 v5 row\(s\) or segment\(s\) exist/);

@@ -178,6 +178,12 @@ DECLARE
     , 'ok'               -- 129 a handover whose point is a JSON object (kept as its JSON text before)
     , 'ok'               -- 130 a correction whose reason_note is a JSON array
     , 'con:seg_partner_rate' -- 131 a NaN partner_rate written past plan_* (the CHECK is the net, principle 4)
+    -- fix round 1 (26/10): a handover an act removes after its token takes its truck's DKV lines off every kept
+    -- segment; the costs_without_rt notice it writes is named in THAT act's notice_ids (as plan_seg_remove, case 39)
+    , 'ok'               -- 132 plan_rt_update (dispatcher) that ends the cycle before the handover: the notice is in its answer
+    , 'ok'               -- 133 the same with a VS bridge on the cycle (the VS day follows, unchanged): the notice still in it
+    , 'ok'               -- 134 Move (warehouse) of the ANODOS load to waiting: the notice is in its answer
+    , 'ok'               -- 135 Delete (dispatcher) of that order, the cycle stays: the notice is in its answer
     -- @want (one line per case: "    , '<ok|plan:code|con:name|state:XXXXX>'  -- <k> <what>")
   ]::text[];
   verdict text; got text; hint text; msg text; cname text; st text;
@@ -1491,6 +1497,64 @@ BEGIN
                'vehicle', jsonb_build_object('trip_type', 'PARTNER', 'partner_id', pa, 'partner_rate', 100)), 'test:072b', 'dispatcher');
         UPDATE rt_vehicle_segments SET partner_rate = 'NaN' WHERE id = (r->'ids'->>'segment_id')::bigint;
         verdict := 'ok written';
+      ELSIF k BETWEEN 132 AND 135 THEN
+        IF k IN (132, 133) THEN
+          IF k = 133 THEN
+            -- the VS bridge rides R1 from the Veroia stop: plan_rt_update follows the VS day after the stops move
+            INSERT INTO shipments (order_id, order_stop_id, created_by) VALUES (vso, vs_b, 'test:072b') RETURNING id INTO x;
+            INSERT INTO shipment_pieces (shipment_id, pallets, created_by) VALUES (x, 10, 'test:072b') RETURNING id INTO y;
+            INSERT INTO piece_legs (piece_id, leg_no, rt_id, pickup_stop_id, drop_stop_id, created_by) VALUES (y, 1, rt1, s1h, s1b, 'test:072b');
+          END IF;
+          r := plan_seg_change(jsonb_build_object('request_id', gen_random_uuid(), 'rt_id', rt1, 'at', t1430,
+                 'place_note', 'Lamia', 'reason', 'vehicle_breakdown', 'vehicle', veh2), 'test:072b', 'dispatcher');
+          g2 := (r->'ids'->>'segment_id')::bigint;
+          INSERT INTO ct_cost_lines (rt_id, category, net, vat, line_date, truck_id, alloc_status, created_by, pay_source)
+          VALUES (rt1, 'tolls', 10, 2.4, e, trk2, 'allocated', 'test:072b', 'DKV');
+          -- stop C onto day D 14:10-14:20: the cycle ends before the handover at 14:30
+          j2 := jsonb_build_object('rt_id', rt1, 'stops', jsonb_build_array(jsonb_build_object('stop_id', s1c,
+                  'planned_from', (d + time '14:10') AT TIME ZONE 'Europe/Athens', 'planned_to', (d + time '14:20') AT TIME ZONE 'Europe/Athens')));
+          r := plan_rt_update(j2 || jsonb_build_object('dry_run', true), 'test:072b', 'dispatcher');
+          SELECT count(*) INTO n0 FROM plan_notices;
+          r2 := plan_rt_update(j2 || jsonb_build_object('confirm_token', r->>'confirm_token'), 'test:072b', 'dispatcher');
+        ELSE
+          -- the setup of cases 87 / 88: K on the KATHODOS, N on the ANODOS (C, D), the handover at D+1 09:00
+          PERFORM plan_put_pieces(jsonb_build_object('pieces', jsonb_build_array(jsonb_build_object('piece_id', pk)),
+                    'target', jsonb_build_object('rt_id', rt1, 'side', 'KATHODOS'),
+                    'stops', jsonb_build_array(jsonb_build_object('ref', 'a', 'stop_id', s1a), jsonb_build_object('ref', 'b', 'stop_id', s1b))),
+                    'test:072b', 'owner');
+          PERFORM plan_put_pieces(jsonb_build_object('pieces', jsonb_build_array(jsonb_build_object('piece_id', pn)),
+                    'target', jsonb_build_object('rt_id', rt1, 'side', 'ANODOS'),
+                    'stops', jsonb_build_array(jsonb_build_object('ref', 'c', 'stop_id', s1c),
+                                               jsonb_build_object('ref', 'd', 'location_id', ld, 'planned_from', e1500, 'planned_to', e1600))),
+                    'test:072b', 'owner');
+          r := plan_seg_change(jsonb_build_object('request_id', gen_random_uuid(), 'rt_id', rt1, 'at', e0900,
+                 'place_note', 'Lamia', 'reason', 'vehicle_breakdown', 'vehicle', veh2), 'test:072b', 'dispatcher');
+          g2 := (r->'ids'->>'segment_id')::bigint;
+          INSERT INTO ct_cost_lines (rt_id, category, net, vat, line_date, truck_id, alloc_status, created_by, pay_source)
+          VALUES (rt1, 'tolls', 10, 2.4, e, trk2, 'allocated', 'test:072b', 'DKV');
+          IF k = 134 THEN
+            j2 := jsonb_build_object('from', jsonb_build_object('piece_ids', jsonb_build_array(pn)), 'target', jsonb_build_object('wait', true));
+            r := plan_move_pieces(j2 || jsonb_build_object('dry_run', true), 'test:072b', 'warehouse');
+            SELECT count(*) INTO n0 FROM plan_notices;
+            r2 := plan_move_pieces(j2 || jsonb_build_object('confirm_token', r->>'confirm_token'), 'test:072b', 'warehouse');
+          ELSE
+            r := plan_delete(jsonb_build_object('nat_order_id', na, 'dry_run', true), 'test:072b', 'dispatcher');
+            SELECT count(*) INTO n0 FROM plan_notices;
+            r2 := plan_delete(jsonb_build_object('nat_order_id', na, 'reason', 'TEST 072b', 'confirm_token', r->>'confirm_token'),
+                    'test:072b', 'dispatcher');
+          END IF;
+        END IF;
+        SET CONSTRAINTS ALL IMMEDIATE;
+        -- every notice the act wrote is in its answer, and one of them is the removed truck's costs notice on R1
+        verdict := CASE WHEN (r->>'needs_confirm')::boolean AND (r2->>'ok')::boolean
+                          AND (SELECT deleted_at IS NOT NULL FROM rt_vehicle_segments WHERE id = g2)
+                          AND (SELECT status <> 'cancelled' FROM ct_round_trips WHERE id = rt1)
+                          AND jsonb_array_length(r2->'notice_ids') = (SELECT count(*) FROM plan_notices) - n0
+                          AND (SELECT count(*) FROM plan_notices
+                                WHERE id IN (SELECT (v #>> '{}')::bigint FROM jsonb_array_elements(r2->'notice_ids') v)
+                                  AND kind = 'costs_without_rt' AND rt_id = rt1 AND message LIKE '%TEST-072b-2108%') = 1
+                        THEN 'ok the removed handover''s costs notice is in the act''s notice_ids'
+                        ELSE 'FAIL notice ids ' || coalesce(r2::text, 'null') || ' written ' || ((SELECT count(*) FROM plan_notices) - n0) END;
       -- @case (each task adds its "ELSIF k = <n> THEN" branches above this line)
       END IF;
       SET CONSTRAINTS ALL IMMEDIATE;
