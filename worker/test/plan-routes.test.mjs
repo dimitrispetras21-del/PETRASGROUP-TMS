@@ -442,6 +442,12 @@ test('a lost lock (40P01 / 40001 / 55P03) → 409 busy_retry; statement_timeout 
     assert.equal(r.status, 409, `${code}: ${r.text}`);
     assert.deepEqual(r.json.error, { type: 'PLAN_RULE', code: 'busy_retry', message: 'Ταυτόχρονη αλλαγή από άλλον χρήστη — τίποτα δεν γράφτηκε· ξαναδοκίμασε' });
   }
+  // a write's statement_timeout: rolled back, and its text says so (polish review 2 r2 m1)
+  routes.length = 0;
+  on('POST', 'rpc/plan_move_pieces', () => pgError(500, { code: '57014', hint: null, details: null, message: 'canceling statement due to statement timeout' }));
+  const w = await callOpen('dispatcher', 'POST', '/plan/move', { from: { piece_ids: [1] }, target: { rt_id: 5, side: 'KATHODOS' } });
+  assert.equal(w.status, 503, w.text);
+  assert.deepEqual(w.json.error, { type: 'SERVER', code: 'slow', message: 'Η βάση άργησε να απαντήσει — τίποτα δεν γράφτηκε· ξαναδοκίμασε σε λίγο' });
   routes.length = 0;
   on('POST', 'rpc/plan_board', () => pgError(500, { code: '57014', hint: null, details: null, message: 'canceling statement due to statement timeout' }));
   const r = await call('owner', 'GET', '/plan/board?week=2026-10-10');
@@ -559,7 +565,9 @@ test('a write the DB answered with an unmapped SQLSTATE rolled back → 500 plan
   for (const pg of [{ code: '22P02', message: 'invalid input syntax for type bigint: "abc"' },
     { code: '23502', message: 'null value in column "rt_id" violates not-null constraint' },
     { code: '42883', message: 'function public.plan_h_missing(bigint) does not exist' },
-    { code: 'P0001', message: 'raise without a plan: hint' }]) {
+    { code: 'P0001', message: 'raise without a plan: hint' },
+    // polish review 2 r2 m1: idle-in-transaction fires only while the session is idle, before any COMMIT
+    { code: '25P03', message: 'terminating connection due to idle-in-transaction timeout' }]) {
     routes.length = 0;
     on('POST', 'rpc/plan_move_pieces', () => pgError(400, { ...pg, hint: null, details: null }));
     calls.length = 0;
@@ -583,7 +591,7 @@ test('amount_leak after a write says the act was kept and must not be pressed ag
 });
 
 // ───────────────────── K1 review r2: a lost answer with a JSON body; the preview's code ─────────────────────
-test('a write answered by a JSON body without a SQLSTATE (gateway 502 / 504, PGRST000), class 08 or a FATAL (57P, 25P04) → plan_unknown; a dry run → plan_failed', async () => {
+test('a write answered by a JSON body without a SQLSTATE (gateway 502 / 504, PGRST000), class 08, a FATAL (57P, 25P04) or a class a PANIC carries (58, XX) → plan_unknown; a dry run → plan_failed', async () => {
   const LOST = [[502, { message: 'An invalid response was received from the upstream server' }],
     [504, { message: 'The upstream server is timing out' }],
     [503, { code: 'PGRST000', details: 'connection to server failed', hint: null, message: 'Could not connect with the database' }],
@@ -592,7 +600,10 @@ test('a write answered by a JSON body without a SQLSTATE (gateway 502 / 504, PGR
     [503, { code: '57P01', details: null, hint: null, message: 'terminating connection due to administrator command' }],
     [503, { code: '57P02', details: null, hint: null, message: 'terminating connection because of crash of another server process' }],
     // polish review 2 M1: transaction_timeout (PG 17) is FATAL as well
-    [503, { code: '25P04', details: null, hint: null, message: 'terminating connection due to transaction timeout' }]];
+    [503, { code: '25P04', details: null, hint: null, message: 'terminating connection due to transaction timeout' }],
+    // polish review 2 r2 m3: PostgREST forwards no severity, and these PANICs can follow the commit record
+    [500, { code: '58030', details: null, hint: null, message: 'could not fsync file "pg_wal/000000010000000000000001": Input/output error' }],
+    [500, { code: 'XX000', details: null, hint: null, message: 'cannot abort transaction 1234, it was already committed' }]];
   for (const [status, body] of LOST) {
     routes.length = 0;
     on('POST', 'rpc/plan_move_pieces', () => pgError(status, body));

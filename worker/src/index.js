@@ -5727,8 +5727,13 @@ async function handlePlan(request, url, origin, env) {
     // a 25P04 (polish review 2 M1: transaction_timeout of PG 17, FATAL; it can fire while the COMMIT holds interrupts
     // and be served after the commit record. Off today, transaction_timeout = 0, so nothing else would warn the day it
     // is set). 57014 (statement_timeout) is not FATAL and is answered above as slow; 25P03 (idle in transaction) fires
-    // only while the session is idle, before any COMMIT, and stays plan_failed.
-    const rolledBack = !!pg && /^(?!08|57P|25P04)[0-9A-Z]{5}$/.test(String(pg.code || ""));
+    // only while the session is idle, before any COMMIT, and stays plan_failed. The classes 58 and XX are not proof
+    // either (polish review 2 r2 m3): PostgREST forwards no severity, so a PANIC reads as an ERROR, and two can follow
+    // the commit record - 58030 «could not fsync» on the WAL at COMMIT (the record may be replayed after the crash
+    // restart) and XX000 «cannot abort transaction …, it was already committed». Accepted, not covered: a PANIC on a
+    // WAL file carries its errno's code, so ENOSPC is 53100 and EACCES 42501, and those stay plan_failed (the PANIC
+    // restarts the whole DB, which everyone notices; the three creations replay by request_id).
+    const rolledBack = !!pg && /^(?!08|57P|25P04|58|XX)[0-9A-Z]{5}$/.test(String(pg.code || ""));
     // K1 review r3 m1: some answers without a SQLSTATE prove the RPC never ran, so nothing was kept and «μπορεί να
     // αποθηκεύτηκε» would only send the user to look for nothing: a 401 / 403 (the gateway refused the service key,
     // e.g. after a rotation; any body, a page too) and PGRST003 (no pool connection within the wait: the request never
