@@ -352,7 +352,7 @@ piece_in := { "piece_id": bigint, "take_pallets": numeric|null,     -- only on a
 ### Κωδικοί `plan:`
 - **Της 071 (26):** `pieces_alive, piece_dead, pieces_sum, piece_parent, split_not_at_hub, rt_not_v2, rt_cancelled, leg_stop_dead, leg_order, leg_place, chain, chain_time, stop_seq, stop_order, side_order, rt_window, local_loading_gone, local_loading_day, local_loading_stop, model_locked, stop_locked, leg_locked, piece_locked, shipment_locked, v1_link_on_v2, hard_delete`.
 - **Νέοι της 072 (31):** `no_actor, bad_input, no_client, no_price, no_window, stock_lot, order_gone, order_not_v5, vs_locked, piece_busy, piece_split, not_stock, parts_sum, not_at_hub, group_empty, same_rt, rt_gone, no_vehicle, truck_busy, driver_busy, stop_gone, local_exists, notice_gone, stale_confirm, need_token, vs_not_bridge, payroll_locked, request_reused, request_missing, local_cancel_no_id, vehicle_clear_use_clear` (`payroll_locked`: απόφαση 32· `request_reused`, `request_missing`: απόφαση 44· `local_cancel_no_id`: κριτική PR #84· `vehicle_clear_use_clear`: owner 25/10). Η 072 ρίχνει αμέσως και δύο της 071 με το κείμενό τους: `rt_cancelled`, `piece_dead`.
-- **Μόνο του Worker** (όχι `plan:`): `busy_retry` (409, χαμένη κλειδαριά `40P01`/`40001`/`55P03`), `slow` (503, `57014`), `writes_closed` (409), `schema_behind` (503, `PGRST202` ή `42883` για την ίδια τη συνάρτηση), `db_grant` (503, `42501` στην ίδια τη συνάρτηση), `amount_leak` (500), `plan_failed` (500, ανάγνωση ή dry run), `plan_unknown` (500, εγγραφή: «μπορεί να έγινε», ποτέ «δεν ολοκληρώθηκε»), `bad_week`/`bad_order_ids`/`bad_desk`/`bad_json`/`id_mismatch` (400), `unauthorized` (401), `forbidden` (403), `no_route` (404).
+- **Μόνο του Worker** (όχι `plan:`): `busy_retry` (409, χαμένη κλειδαριά `40P01`/`40001`/`55P03`), `slow` (503, `57014`), `writes_closed` (409), `schema_behind` (503, `PGRST202` ή `42883` για την ίδια τη συνάρτηση), `db_grant` (503, `42501` στην ίδια τη συνάρτηση), `amount_leak` (500), `plan_failed` (500, ανάγνωση ή dry run), `plan_unknown` (500, εγγραφή: «μπορεί να έγινε», ποτέ «δεν ολοκληρώθηκε»), `bad_week`/`bad_order_ids`/`bad_desk`/`bad_json`/`id_mismatch` (400), και `bad_input` με `'<πεδίο>:finite'` (400, πριν από τη βάση: αριθμός σώματος που δεν είναι πεπερασμένος, π.χ. JSON `1e999` = Infinity που το `JSON.stringify` θα έστελνε ως `null`, ή id διαδρομής που δεν είναι ασφαλής ακέραιος· κανόνας συντονιστή 25/10), `unauthorized` (401), `forbidden` (403), `no_route` (404).
 - **Αποσύρθηκαν, απαγορεύονται στο build:** `hub_endpoint, piece_planned, bridge_moved, bridge_split, legacy_nl, frozen, restore_expired, restore_conflict, partner_rate_on_owned, window_order`.
 - Μορφή μηνύματος: `plan rule broken: <code>:<detail>`· ο Worker παίρνει το `detail` (μετά το `<code>:`) και το βάζει σε παρένθεση στο ελληνικό (π.χ. `truck_busy` → «Το φορτηγό είναι ήδη σε άλλο δρομολόγιο (RT-1280)»).
 
@@ -8007,7 +8007,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 
 **Interfaces:**
 - Consumes: Γ2 (`stockRuleError`), `getCaller`, `dbRpc` (:348, κρατά `e.pg`), `jsonOk`· οι διαδρομές, το `PLAN_PERMS` και η μορφή σφάλματος των Interfaces· υπογραφές των `plan_*` (Α/Β).
-- Produces: `var PLAN_PERMS = {` (σημάδι φρουρού), `planCan(role, resource, method)`, `var PLAN_WRITES_OPEN = false;`, `PLAN_ROUTES`, `planBoardArgs`, `planVsStateArgs`, `planNoticesArgs`, `planError(status, type, code, message, origin, env)`, `PLAN_MONEY_KEYS` (= τα κλειδιά του `plan_h_strip_amounts`), `planHasAmount(v)`, `planConflictMessage(conflict)`, `handlePlan(request, url, origin, env)`· δρομολόγηση `/plan/` → `handlePlan`.
+- Produces: `var PLAN_PERMS = {` (σημάδι φρουρού), `planCan(role, resource, method)`, `var PLAN_WRITES_OPEN = false;`, `PLAN_ROUTES`, `planBoardArgs`, `planVsStateArgs`, `planNoticesArgs`, `planError(status, type, code, message, origin, env)`, `PLAN_MONEY_KEYS` (= τα κλειδιά του `plan_h_strip_amounts`), `planHasAmount(v)`, `planNonFinite(v, at)`, `planConflictMessage(conflict)`, `handlePlan(request, url, origin, env)`· δρομολόγηση `/plan/` → `handlePlan`.
   - RPC args: εγγραφές `{ p: <body + id διαδρομής>, p_actor: caller.sub, p_role: caller.role }`· `plan_board` `{ p_week, p_role }`· `plan_vs_state` `{ p_order_ids: number[] }`· `plan_notices_list` `{ p_desk, p_role }`.
   - Status: 401 → 404 → 403 → 400 → 409 `writes_closed` → RPC → 200 | 422 | 428 | 503 | 500 (`plan_failed` σε ανάγνωση/dry run, `plan_unknown` σε εγγραφή).
 
@@ -8575,6 +8575,36 @@ test('writes open: bad bodies → 400 before any DB call; a body id that contrad
   assert.deepEqual(calls[0].body, { p: { notice_id: 12 }, p_actor: 'tester', p_role: 'owner' });
 });
 
+// cross-cutting input rule (coordinator 25/10): JSON.parse reads 1e999 as Infinity and JSON.stringify would send
+// it as null — a rate «cleared» in silence. Refused as bad_input '<field>:finite' before the DB, closed or open.
+test('a non-finite number in the body or the path id → 400 bad_input <field>:finite, before any DB call', async () => {
+  const nines = '9'.repeat(400);
+  for (const [p, method, raw, field] of [
+    ['/plan/rt/5', 'PATCH', '{"set":{"partner_rate":1e999}}', 'set.partner_rate'],
+    ['/plan/orders', 'POST', '{"orders":[{"client_id":1,"price":-1e999}]}', 'orders[0].price'],
+    ['/plan/pieces/split', 'POST', '{"piece_id":4,"parts":[{"pallets":12},{"pallets":1e400}]}', 'parts[1].pallets'],
+    ['/plan/move', 'POST', '{"from":{"piece_ids":[1e999]},"target":{"wait":true},"dry_run":true}', 'from.piece_ids[0]'],
+    [`/plan/rt/${nines}`, 'PATCH', '{"dry_run":true}', 'rt_id'],
+    ['/plan/notices/99999999999999999999/read', 'POST', '{}', 'notice_id']
+  ]) {
+    for (const fetchOn of [call, callOpen]) {
+      calls.length = 0;
+      const r = await fetchOn('owner', method, p, raw);
+      assert.equal(r.status, 400, `${p.slice(0, 30)} ${raw}: ${r.text}`);
+      assert.equal(r.json.error.type, 'BAD_REQUEST');
+      assert.equal(r.json.error.code, 'bad_input');
+      assert.ok(r.json.error.message.endsWith(`(${field}:finite)`), r.json.error.message);
+      assert.equal(calls.length, 0, `${p.slice(0, 30)}: no DB call`);
+    }
+  }
+  // the largest finite number still reaches the DB as sent (the DB's own checks judge it)
+  on('POST', 'rpc/plan_rt_update', () => json(OK));
+  calls.length = 0;
+  const r = await callOpen('owner', 'PATCH', '/plan/rt/5', '{"set":{"partner_rate":1e308}}');
+  assert.equal(r.status, 200, r.text);
+  assert.deepEqual(rpcCalls()[0].body, { p: { set: { partner_rate: 1e308 }, rt_id: 5 }, p_actor: 'tester', p_role: 'owner' });
+});
+
 // ───────────────────── refusals → the one /plan/* error shape ─────────────────────
 test('plan:<code> → 422 PLAN_RULE with the Greek text + the DB detail; nothing audited by the Worker', async () => {
   on('POST', 'rpc/plan_put_pieces', () => planReject('truck_busy', 'RT-1280'));
@@ -8904,6 +8934,28 @@ function planHasAmount(v) {
   return false;
 }
 __name(planHasAmount, "planHasAmount");
+// Cross-cutting input rule (coordinator 25/10): JSON.parse reads 1e999 as Infinity, and JSON.stringify then
+// sends it to the DB as null: a silent change of meaning (a partner rate «cleared», a price «missing») that
+// no isfinite() in 072 can see any more. So the Worker refuses it, before any DB call (αρχή 1). It returns
+// the path of the first non-finite number, or null.
+function planNonFinite(v, at) {
+  if (typeof v === "number") return Number.isFinite(v) ? null : at || "body";
+  if (Array.isArray(v)) {
+    for (let i = 0; i < v.length; i++) {
+      const r = planNonFinite(v[i], `${at}[${i}]`);
+      if (r !== null) return r;
+    }
+    return null;
+  }
+  if (v && typeof v === "object") {
+    for (const [k, x] of Object.entries(v)) {
+      const r = planNonFinite(x, at ? `${at}.${k}` : k);
+      if (r !== null) return r;
+    }
+  }
+  return null;
+}
+__name(planNonFinite, "planNonFinite");
 // plan_rt_update's dry run SHOWS the rule a change would break as preview.conflict {code, sqlstate, detail}
 // (Figma D4, a 200). Its Greek lives only in the two tables above, so it is added here: F4 keeps no copy of
 // the texts (αρχή 3), and a rule the tables do not know is still named.
@@ -8954,8 +9006,16 @@ async function handlePlan(request, url, origin, env) {
       if (!body || typeof body !== "object" || Array.isArray(body)) {
         return planError(400, "BAD_REQUEST", "bad_json", "Το σώμα του αιτήματος δεν είναι αντικείμενο JSON", origin, env);
       }
+      const nonFinite = planNonFinite(body, "");
+      if (nonFinite !== null) {
+        return planError(400, "BAD_REQUEST", "bad_input", `${PLAN_RULE_TEXT.bad_input} (${nonFinite.slice(0, 80)}:finite)`, origin, env);
+      }
       if (route.idKey) {
         const id = Number(match[1]);
+        // a path id of 400 digits is Infinity (or an unsafe integer): the same rule, never a rounded id
+        if (!Number.isSafeInteger(id)) {
+          return planError(400, "BAD_REQUEST", "bad_input", `${PLAN_RULE_TEXT.bad_input} (${route.idKey}:finite)`, origin, env);
+        }
         if (body[route.idKey] !== void 0 && Number(body[route.idKey]) !== id) {
           return planError(400, "BAD_REQUEST", "id_mismatch", `Το ${route.idKey} του σώματος διαφέρει από τη διαδρομή`, origin, env);
         }
@@ -9058,7 +9118,7 @@ __name(handlePlan, "handlePlan");
 ```bash
 node --check worker/src/index.js && node --test worker/test/*.test.mjs worker/src/rt-rules.test.mjs 2>&1 | grep -E '^ℹ (tests|pass|fail)'
 ```
-Expected: `ℹ tests 273`, `ℹ pass 272`, `ℹ skipped 1`, `ℹ fail 0` (242 + 4 perms + 5 guard + 20 routes + 2 contract).
+Expected: `ℹ tests 274`, `ℹ pass 273`, `ℹ skipped 1`, `ℹ fail 0` (242 + 4 perms + 5 guard + 21 routes + 2 contract· το 21ο routes test είναι ο κανόνας συντονιστή 25/10 για αριθμούς που δεν είναι πεπερασμένοι, υλοποίηση 25/10).
 
 - [ ] **Step 8: Commit**
 
@@ -9075,6 +9135,11 @@ The DB cuts amounts by role; the Worker refuses to forward any money key
 (PLAN_MONEY_KEYS = the DB's list) to a role outside owner/accountant (500
 amount_leak). preview.conflict gets its Greek here. plan-contract: every
 routed RPC exists in 072 with the argument names sent. No audit of its own.
+
+Cross-cutting input rule (coordinator 25/10): a non-finite number in the
+body (JSON 1e999 = Infinity, which JSON.stringify would send as null) or a
+path id that is not a safe integer -> 400 bad_input '<field>:finite' before
+any DB call (planNonFinite), with its test case.
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 ```
