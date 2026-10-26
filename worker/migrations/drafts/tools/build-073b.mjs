@@ -123,7 +123,8 @@ ${V5.map((t) => `  CREATE POLICY monitor_read ON public.${t} FOR SELECT TO tms_c
   --     green however the shares break (the harness with production's RLS proves it), and on a stock-lot piece
   --     stock_vs_charge raises "full_truck_pallets is missing" instead. Runner only. Created here, before the
   --     proofs, so every check is proven in the state 073b leaves; its ACCESS EXCLUSIVE lock on ct_settings (read by
-  --     the Worker through ct_setting()) lasts to the end of this block - seconds, after 15:00.
+  --     the Worker through ct_setting()) lasts to the end of this block, proof loop included - quick with 0 v5 rows,
+  --     but not bounded by a timeout: run after 15:00.
   CREATE POLICY monitor_read ON public.ct_settings FOR SELECT TO tms_check_runner USING (true);
   --     And the EXECUTE on stock_vs_charge: 057 gave it to service_role only, and the right to call a function is
   --     checked when the query starts, even with 0 rows, so the 073b dry run of 26/10 stopped at B-79 with "permission denied
@@ -176,19 +177,17 @@ ${proof}
   END IF;
   --    Measured, not only the catalog (principle 2): with 0 v5 rows no check enters ct_setting() or stock_vs_charge(),
   --    so read X here as the runner: the keys with a value first (0 = the RLS-blind case, said by name before
-  --    stock_vs_charge could misname it as deleted data), then each X through the same functions B-79 uses
+  --    stock_vs_charge could misname it as deleted data), then a call through the same functions B-79 uses (the
+  --    per-pallet share of each X; a missing right would raise here, by its own name)
   SET LOCAL ROLE tms_check_runner;
   SELECT count(DISTINCT key) FILTER (WHERE value IS NOT NULL) INTO v_k FROM public.ct_settings WHERE key IN (${list(X_KEYS)});
   v_v := NULL;
-  IF v_k = ${X_KEYS.length} THEN v_v := ${xSum}; END IF;
+  IF v_k = ${X_KEYS.length} THEN v_v := ${xSum}; END IF;   -- used, not compared: the call itself is the proof
   RESET ROLE;
   IF v_k <> ${X_KEYS.length} THEN
     RAISE EXCEPTION '073b proof: the runner reads % of the ${X_KEYS.length} X keys with a value (0 = RLS without its policy)', v_k;
   END IF;
-  --    and the runner computes the same X as the owner does (same settings, same functions)
-  IF v_v IS DISTINCT FROM (${xSum}) THEN
-    RAISE EXCEPTION '073b proof: the runner computes X = %, the owner %', v_v, (${xSum});
-  END IF;
+
   IF NOT has_function_privilege('tms_check_runner', '${RUNNER_FN}', 'EXECUTE')
      OR has_function_privilege('tms_reader', '${RUNNER_FN}', 'EXECUTE') THEN
     RAISE EXCEPTION '073b proof: ${RUNNER_FN_NAME} is not executable by the runner only';

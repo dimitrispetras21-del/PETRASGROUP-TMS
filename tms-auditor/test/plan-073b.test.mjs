@@ -43,7 +43,9 @@ async function values(db, ids = IDS) {   // each check as the auditor's role, as
     try {
       out[id] = Number(Object.values((await db.query(sql)).rows[0])[0]);
       if (idsSql) {   // run_checks runs it as the same role: a right missing there fails here
-        const named = Object.values((await db.query(idsSql)).rows[0])[0];
+        const row = (await db.query(idsSql)).rows[0];
+        if (!row) throw new Error(`${id}: ids_sql returned no row`);
+        const named = Object.values(row)[0];
         // run_checks turns NULL ids into '{}' (047): a red incident that names nothing, silently (principle 1)
         if (!Array.isArray(named)) throw new Error(`${id}: ids_sql returned ${JSON.stringify(named)}, not a list`);
         if (out[id] > 0 && named.length === 0) throw new Error(`${id}: value ${out[id]} but no ids`);
