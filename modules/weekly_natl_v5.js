@@ -56,6 +56,9 @@ let _okAt = null;        // when the board arrived (display only)
 let _lastErr = null;     // the PlanError (or local error) of the last read
 let _closed = null;      // the first writes_closed answer of the session (Ε-6; set by markClosed)
 let _qAll = false;       // «Όλα N ▾» of the ΕΠΟΜΕΝΑ band
+let _qRaw = '';          // the search text, memory only; cleared when the week changes (Ε-25)
+let _sIdx = 0;           // the match Enter is on («1/2»)
+const _qi = new Map();   // row key → search text of the last paint (fhSearchBlob: the fields of a row kept apart)
 let _installed = false, _bannerShown = false, _warned = false;
 const _closedDays = new Set();   // days the USER folded; the board never folds a day itself (owner 12/10)
 const _errLogged = new Set();    // shape lines already logged (one row per distinct line per session)
@@ -110,7 +113,7 @@ function _week(n) {
   window.WNATL.week = v;
   window.renderWeeklyNatl();
 }
-function _onWeekChange() { _closedDays.clear(); _qAll = false; }
+function _onWeekChange() { _closedDays.clear(); _qAll = false; _qRaw = ''; _sIdx = 0; }
 
 // ═══ Load ═══
 async function render() {
@@ -207,6 +210,8 @@ function _paint() {
   document.body.classList.add('wn5-on');
   _install();
   _logShape(_m);
+  _buildIndex(_m);
+  _applySearch(false);
 }
 function _today() { return typeof localToday === 'function' ? localToday() : ''; }
 // The day words come from ONE place (core/wi4-logic.js dayLabel): «Τρί 13/10» / «Τρί».
@@ -301,12 +306,13 @@ function _boardHTML(m, known) {
     + `<div id="wn5-rows">${m.days.map((d) => _dayHTML(d, m, known, no)).join('')}</div>`;
 }
 function _qbandHTML(m, known) {
-  if (!known) return `<div class="wi4-q wn5-q"><div class="wi4-q-hd"><span>ΕΠΟΜΕΝΑ · ${_state === 'loading' ? '…' : '—'}</span></div></div>`;
+  const search = _searchHTML(known);
+  if (!known) return `<div class="wi4-q wn5-q">${search}<div class="wi4-q-hd"><span>ΕΠΟΜΕΝΑ · ${_state === 'loading' ? '…' : '—'}</span></div></div>`;
   const q = m.queue;
-  if (!q.length) return '<div class="wi4-q wn5-q"><div class="wi4-q-hd"><span>ΕΠΟΜΕΝΑ · <span class="wn5-lc">κανένα</span></span></div></div>';
+  if (!q.length) return `<div class="wi4-q wn5-q">${search}<div class="wi4-q-hd"><span>ΕΠΟΜΕΝΑ · <span class="wn5-lc">κανένα</span></span></div></div>`;
   const shown = _qAll ? q : q.slice(0, 3);
   const more = q.length > 3 ? `<button type="button" class="wi4-link wi4-q-all" onclick="WN5._qMore()">${_qAll ? 'Λιγότερα ▴' : `Όλα ${q.length} ▾`}</button>` : '';
-  return `<div class="wi4-q wn5-q"><div class="wi4-q-hd"><span>ΕΠΟΜΕΝΑ · ${q.length}</span><span class="wi4-q-n">${_esc(_qSub(q, m.today))}</span></div>`
+  return `<div class="wi4-q wn5-q">${search}<div class="wi4-q-hd"><span>ΕΠΟΜΕΝΑ · ${q.length}</span><span class="wi4-q-n">${_esc(_qSub(q, m.today))}</span></div>`
     + `<div class="wn5-qcards">${shown.map((it) => _qcardHTML(it, m.today)).join('')}</div>${more}</div>`;
 }
 // «2 VS σήμερα · 1 Παρ»: how many of the queue fall on each day.
@@ -591,12 +597,92 @@ function _install() {
 }
 function _onKey(e) {
   if (!active() || !document.querySelector('#content .wn5')) return;
-  if (e.key === 'Escape' && document.getElementById('wn5-menu')) { _closeMenu(); e.preventDefault(); e.stopPropagation(); }
+  if (e.key === 'Escape' && document.getElementById('wn5-menu')) { _closeMenu(); e.preventDefault(); e.stopPropagation(); return; }
+  // «/» focuses the search, as on the Weekly International — never while typing in a field.
+  if (e.key === '/' && !e.ctrlKey && !e.metaKey && !e.altKey
+      && !(e.target && e.target.closest && e.target.closest('input, textarea, select, [contenteditable="true"]'))) {
+    e.preventDefault();
+    searchFocus();
+  }
 }
 function _cleanup() {
   try { document.body.classList.remove('wn5-on'); } catch (_) {}
   // Every body-level overlay of v5 carries data-wn5-overlay: one rule removes them all when the board leaves.
   try { document.querySelectorAll('body > [data-wn5-overlay]').forEach((el) => el.remove()); } catch (_) {}
+}
+
+// ═══ Search (Pantelis/owner 21/10, Figma 2036:7752) ═══
+// ONE rule with the Weekly boards: fhSearchNorm / fhSearchBlob of core/form-helpers.js. Rows that do not match fade
+// to .35, matches are raised — nothing is hidden while something matches; with no match at all the table hides until
+// «Καθάρισμα ×» (Δ12 tile 6, Ε-29). Day heads, the notices strip, the ΕΠΟΜΕΝΑ band and the Veroia line
+// carry no data-qi and never fade; a «↳» sub-row carries its row's key and goes with it.
+const SEARCH_ICON = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>';
+function _searchHTML(known) {
+  return `<label class="wi4-search wn5-search">${SEARCH_ICON}<input id="wn5-search" type="search" placeholder="Αναζήτηση" autocomplete="off" aria-label="Αναζήτηση στον πίνακα"`
+    + `${known ? '' : ' disabled'} value="${_esc(_qRaw)}" oninput="WN5.search(this.value)" onkeydown="WN5._searchKey(event)">`
+    + '<span id="wn5-search-n" class="wi4-search-n"><span class="wi4-key">/</span></span></label>'
+    + '<span id="wn5-snone" class="wn5-snone" role="status" hidden></span>';
+}
+function _buildIndex(m) {
+  _qi.clear();
+  if (!m || typeof fhSearchBlob !== 'function') return;
+  for (const d of m.days) for (const r of d.rows) _qi.set(r.key, fhSearchBlob(L().searchParts(r)));
+}
+function _applySearch(scroll) {
+  const root = document.querySelector('#content .wn5');
+  if (!root) return;
+  const nq = _qRaw && typeof fhSearchNorm === 'function' ? fhSearchNorm(_qRaw) : '';
+  const hits = [];
+  root.querySelectorAll('[data-qi]').forEach((el) => {
+    const hit = !!nq && (_qi.get(el.getAttribute('data-qi')) || '').includes(nq);
+    el.classList.toggle('wi4-dim', !!nq && !hit);
+    el.classList.toggle('wi4-sm', hit);
+    if (hit && el.classList.contains('wn5-row')) hits.push(el);
+  });
+  if (_sIdx >= hits.length) _sIdx = 0;
+  const n = document.getElementById('wn5-search-n');
+  // no query → the «/» key cap; no match → «—» (never «0/0», Δ12 πλακ. 1), the words go to the line below
+  if (n) n.innerHTML = !nq ? '<span class="wi4-key">/</span>' : hits.length ? `${_sIdx + 1}/${hits.length}` : '—';
+  const none = document.getElementById('wn5-snone');
+  const empty = !!nq && !hits.length;
+  // Δ12 tile 6 (approved 22/10, Ε-29): with no match the table hides until «Καθάρισμα ×»; the line says why. A
+  // query with matches never hides anything (faded at .35 only).
+  const rowsEl = document.getElementById('wn5-rows');
+  if (rowsEl) rowsEl.hidden = empty;
+  if (none) {
+    none.hidden = !empty;
+    none.innerHTML = empty
+      ? `<b>ΑΝΑΖΗΤΗΣΗ</b> · Κανένα αποτέλεσμα για «${_esc(_qRaw)}» στη W${_esc(String(window.WNATL && window.WNATL.week))} <button type="button" class="wi4-link" onclick="WN5.search('')">Καθάρισμα ×</button>`
+      : '';
+  }
+  if (scroll && hits[_sIdx]) hits[_sIdx].scrollIntoView({ block: 'center' });
+}
+function search(q) {
+  _qRaw = String(q == null ? '' : q);
+  _sIdx = 0;
+  const inp = document.getElementById('wn5-search');
+  if (inp && inp.value !== _qRaw) inp.value = _qRaw;
+  _applySearch(true);
+}
+function searchFocus() {
+  const inp = document.getElementById('wn5-search');
+  if (inp && !inp.disabled) { inp.focus(); inp.select(); }
+}
+function _searchKey(ev) {
+  if (!ev) return;
+  if (ev.key === 'Enter') {
+    ev.preventDefault();
+    const n = document.querySelectorAll('#content .wn5 .wn5-row.wi4-sm').length;
+    if (!n) return;
+    _sIdx = (_sIdx + 1) % n;
+    _applySearch(true);
+  } else if (ev.key === 'Escape') {
+    // stop here: core/ui.js would otherwise take the same Esc for the modal
+    ev.preventDefault();
+    ev.stopPropagation();
+    search('');
+    if (ev.target && ev.target.blur) ev.target.blur();
+  }
 }
 
 // ═══ Exports ═══
@@ -612,6 +698,9 @@ const WN5 = {
   weekParam,
   rowMenu,
   copyPlates: copyPlatesOf,
+  search,
+  searchFocus,
+  _searchKey,
   MENU_ITEMS: [{ id: 'plates', order: 70, label: 'Αντιγραφή πινακίδων', run: (rtId) => copyPlatesOf(rtId) }],
   // The board HTML of a model, for tests/wn5-board-html.test.js (pure: model in, string out).
   _html: (m) => _boardHTML(m, true),

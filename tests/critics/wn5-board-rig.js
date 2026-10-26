@@ -377,6 +377,57 @@ SCN.dim = async (browser, origin) => {
   await shot(page, 'dim');
   await page.context().close();
 };
+// Figma 2036:7752: «/» focuses, matches raised, the rest at .35, nothing hidden; Δ12 πλακ. 6: no match said in words, the table hidden until «Καθάρισμα».
+SCN.search = async (browser, origin) => {
+  const scn = 'search';
+  const { page, S } = await openBoard(browser, origin, { board: fixture() });
+  await page.evaluate(() => document.activeElement && document.activeElement.blur && document.activeElement.blur());
+  await page.keyboard.press('/');
+  ok(scn, '«/» focuses #wn5-search', await page.evaluate(() => !!document.activeElement && document.activeElement.id === 'wn5-search'));
+  await page.keyboard.type('τστ 2104');
+  const st = await page.evaluate(() => {
+    const r = document.querySelector('#content .wn5');
+    if (!r) return null;
+    const op = (el) => Number(getComputedStyle(el).opacity);
+    const rows = [...r.querySelectorAll('.wn5-row')];
+    return { sm: rows.filter((e) => e.classList.contains('wi4-sm')).map((e) => e.dataset.key),
+      dimmed: rows.filter((e) => e.classList.contains('wi4-dim')).length, total: rows.length,
+      r101: op(r.querySelector('.wn5-row[data-key="rt:101"]')), other: op(r.querySelector('.wn5-row[data-key="rt:102"]')),
+      still: [...r.querySelectorAll('.wn5-dayh, .wn5-q, .wn5-qcard, #wn5-notices, #wn5-hub')].filter((e) => e.classList.contains('wi4-dim') || op(e) < 1).length,
+      n: (document.getElementById('wn5-search-n') || { textContent: '' }).textContent.trim() };
+  });
+  ok(scn, '«τστ 2104» raises the two cycles of TST-2104 (Greek → Latin, no dash)', !!st && JSON.stringify(st.sm) === '["rt:101","rt:107"]', st && st.sm);
+  ok(scn, 'every other row fades (.wi4-dim), none is hidden', !!st && st.dimmed === st.total - 2 && st.total === 12, st && { dimmed: st.dimmed, total: st.total });
+  ok(scn, 'the executed row 1 is raised to full strength; a faded row is at .35', !!st && st.r101 === 1 && Math.abs(st.other - 0.35) < 0.01, st && { r101: st.r101, other: st.other });
+  ok(scn, 'day heads, ΕΠΟΜΕΝΑ, notices and the Veroia line do not fade', !!st && st.still === 0, st && st.still);
+  ok(scn, 'the counter says «1/2»', !!st && st.n === '1/2', st && st.n);
+  await page.keyboard.press('Enter');
+  ok(scn, 'Enter → «2/2»', (await page.evaluate(() => (document.getElementById('wn5-search-n') || { textContent: '' }).textContent.trim())) === '2/2');
+  await page.keyboard.press('Escape');
+  const cleared = await page.evaluate(() => ({ v: (document.getElementById('wn5-search') || {}).value, dim: document.querySelectorAll('#content .wn5 .wi4-dim, #content .wn5 .wi4-sm').length }));
+  ok(scn, 'Esc clears the text and every fade', cleared.v === '' && cleared.dim === 0, cleared);
+  await page.evaluate(() => { const i = document.getElementById('wn5-search'); if (i) i.focus(); });
+  await page.keyboard.type('pelagoss');
+  const none = await page.evaluate(() => ({ t: (document.getElementById('wn5-snone') || { textContent: '' }).textContent.replace(/\s+/g, ' ').trim(),
+    shown: [...document.querySelectorAll('#content .wn5 .wn5-row')].filter((e) => e.getClientRects().length).length,
+    inDom: document.querySelectorAll('#content .wn5 .wn5-row').length }));
+  ok(scn, 'no match: «ΑΝΑΖΗΤΗΣΗ · Κανένα αποτέλεσμα για «pelagoss» στη W42 Καθάρισμα ×»', none.t === 'ΑΝΑΖΗΤΗΣΗ · Κανένα αποτέλεσμα για «pelagoss» στη W42 Καθάρισμα ×', none.t);
+  ok(scn, 'no match: the table hides until «Καθάρισμα ×» (Δ12 tile 6, Ε-29) — the 12 rows are still in the page', none.shown === 0 && none.inDom === 12, none);
+  await page.evaluate(() => { const b = document.querySelector('#wn5-snone button'); if (b) b.click(); });
+  ok(scn, '«Καθάρισμα ×» clears and the 12 rows are back', await page.evaluate(() => (document.getElementById('wn5-search') || {}).value === '' && !document.querySelector('#content .wn5 .wi4-dim')
+    && [...document.querySelectorAll('#content .wn5 .wn5-row')].filter((e) => e.getClientRects().length).length === 12));
+  await page.evaluate(() => { const i = document.getElementById('wn5-search'); if (i) { i.focus(); } });
+  await page.keyboard.type('τστ');
+  await page.evaluate(() => document.activeElement && document.activeElement.blur && document.activeElement.blur());
+  await page.keyboard.press('ArrowRight');
+  const moved = await until(page, () => { const r = document.querySelector('#content .wn5'); return r && r.dataset.week === '2026-10-17' && r.dataset.state !== 'loading'; });
+  const after = await page.evaluate(() => ({ v: (document.getElementById('wn5-search') || {}).value, dim: document.querySelectorAll('#content .wn5 .wi4-dim').length }));
+  ok(scn, 'a week change clears the search (Ε-25)', moved && after.v === '' && after.dim === 0, { moved, after });
+  ok(scn, 'no page errors', !S.pageErrors.length, S.pageErrors);
+  await shot(page, 'search');
+  await page.context().close();
+};
+
 // ── scenarios end (each Task adds its own above this line) ──
 
 // ── fixture check (T4): plain node, no browser ──
