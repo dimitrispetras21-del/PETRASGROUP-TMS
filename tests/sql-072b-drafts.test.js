@@ -89,8 +89,10 @@ test('guards: PART 0 holds every relied-on function; the unchanged ones again in
   assert.match(rb, /\) v\(k, sig, a, b, m0, m1\) ORDER BY k DESC LOOP/, 'the rollback undoes the hooks last first');
   // the 22 of 072 are all among them: 072b changes none of 072's guarded functions
   // 072 was executed 26/10 and left drafts/ (PR #91); a missing 072 is a failure, never a skipped check (principle 1)
-  const f072 = [path.join(DIR, '072_plan_functions.sql'), path.join(DIR, 'drafts', '072_plan_functions.sql')].find((f) => fs.existsSync(f));
-  assert.ok(f072, '072_plan_functions.sql is in worker/migrations/ (or drafts/)');
+  // one copy only (as migrationFile in tms-auditor/lib/db.mjs): a stale drafts/ copy beside it is a failure too
+  const f072 = path.join(DIR, '072_plan_functions.sql');
+  assert.ok(fs.existsSync(f072), '072_plan_functions.sql is in worker/migrations/');
+  assert.ok(!fs.existsSync(path.join(DIR, 'drafts', '072_plan_functions.sql')), '072_plan_functions.sql is not also in drafts/');
   const g072 = pairsOf(part(fs.readFileSync(f072, 'utf8'), '0. GUARDS', '1. HELPERS'));
   assert.ok(g072.length >= 22, `072's guard list read (${g072.length} pairs)`);
   for (const x of g072) assert.ok(unchanged.includes(x), `072's ${x} is guarded and unchanged by 072b`);
