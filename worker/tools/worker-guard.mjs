@@ -1,11 +1,11 @@
 #!/usr/bin/env node
 // Worker deploy guard (CLAUDE.md «Ο WORKER»: the three + one marker per live
 // feature: stock lots, local moves, stop delay, presence, temperature per CMR,
-// the VD /costs/rt filters, national v5 and its vehicle handover), counted in CONTENT, never by byte equality: wrangler re-bundles
+// the VD /costs/rt filters, national v5, its vehicle handover and its F3), counted in CONTENT, never by byte equality: wrangler re-bundles
 // the source, and the CF API returns the live script as multipart with a
 // random boundary per request — two downloads of the same version «differ».
 //
-// Usage:  node worker/tools/worker-guard.mjs <file> --plan 0|1 --handover 0|1
+// Usage:  node worker/tools/worker-guard.mjs <file> --plan 0|1 --handover 0|1 [--f3 0|1]
 //   <file>   worker/src/index.js, a `wrangler deploy --dry-run --outdir` bundle,
 //            or the raw CF API download (multipart is unwrapped here)
 //   --plan   expected count of the national v5 marker (0 = before F2 is live,
@@ -19,17 +19,28 @@
 //            `rpc: "plan_seg_change"`): 0 before that deploy, 1 after it, and
 //            1 needs --plan 1. Never a default: a forgotten flag is a usage
 //            error, not an «OK» (handover plan H-18).
+//   --f3     optional (national v5 F3): expected presence of the F3 markers,
+//            ONE PER FEATURE (CLAUDE.md, three rules of one source, rule 3;
+//            final review 26/10, W-8): "v_rt_cycle" (E21, the end of a v5
+//            cycle read by GET /costs/rt), review_cycles (E10, DKV lines
+//            matched to v5 cycles), pl_mov_stop_once (E11, the pallet rows of
+//            the plan and the one-writer index) and ctPartnerLineCheck (Q6-1,
+//            a partner invoice line names its partner). 0 = before the F3
+//            deploy (none of them), 1 = the F3 bundle / live after it (each at
+//            least once: later phases may use them again); 1 needs
+//            --handover 1 (F3 is built on it, one chain). Without it: as before.
 // Prints one line per marker and exits 1 on the first STOP condition — no
 // partial «OK» (αρχή 1).
 import { readFileSync } from 'node:fs';
 
 const args = process.argv.slice(2);
-const [file, flag, planArg, hflag, handoverArg] = args;
-// exactly these five: an extra flag (e.g. a later chain's --f3 1 before its guard knows it) would be ignored and the
-// tool would print OK without checking it - a usage error instead (code review xhigh 26/10, principle 1)
-if (args.length !== 5 || !file || flag !== '--plan' || !['0', '1'].includes(planArg) || hflag !== '--handover'
-    || !['0', '1'].includes(handoverArg) || (planArg === '0' && handoverArg === '1')) {
-  console.error('usage: node worker/tools/worker-guard.mjs <file> --plan 0|1 --handover 0|1 (handover 1 needs plan 1)');
+const [file, flag, planArg, hflag, handoverArg, f3Flag, f3Arg] = args;
+// exactly these five, or seven with --f3: an extra flag (e.g. a later phase's before its guard knows it) would be
+// ignored and the tool would print OK without checking it - a usage error instead (code review xhigh 26/10, principle 1)
+if (![5, 7].includes(args.length) || !file || flag !== '--plan' || !['0', '1'].includes(planArg) || hflag !== '--handover'
+    || !['0', '1'].includes(handoverArg) || (planArg === '0' && handoverArg === '1')
+    || (args.length === 7 && (f3Flag !== '--f3' || !['0', '1'].includes(f3Arg) || (f3Arg === '1' && handoverArg !== '1')))) {
+  console.error('usage: node worker/tools/worker-guard.mjs <file> --plan 0|1 --handover 0|1 [--f3 0|1] (handover 1 needs plan 1, f3 1 needs handover 1)');
   process.exit(2);
 }
 const plan = Number(planArg);
@@ -88,11 +99,19 @@ if (plan === 1) {
   rows.push(['var PLAN_WRITES_OPEN = false;', count('var PLAN_WRITES_OPEN = false;'), (n) => n === 1]);
   rows.push(['PLAN_WRITES_OPEN = true', count('PLAN_WRITES_OPEN = true'), (n) => n === 0]);
 }
+const f3 = f3Flag === undefined ? null : Number(f3Arg);
+if (f3 !== null) {
+  // names, not declarations: at least one each after F3 (never 0), none before it
+  for (const [name, mark] of [['"v_rt_cycle" (F3, E21)', '"v_rt_cycle"'], ['review_cycles (F3, E10)', 'review_cycles'],
+    ['pl_mov_stop_once (F3, E11)', 'pl_mov_stop_once'], ['ctPartnerLineCheck (F3, Q6-1)', 'ctPartnerLineCheck']]) {
+    rows.push([name, count(mark), (n) => (f3 === 1 ? n >= 1 : n === 0)]);
+  }
+}
 let ok = true;
 for (const [name, n, good] of rows) {
   const pass = good(n);
   ok = ok && pass;
   console.log(`${pass ? 'OK  ' : 'STOP'}  ${name} = ${n}`);
 }
-console.log(ok ? `GUARD OK (${rows.length} markers, plan=${plan}, handover=${handover}) ${file}` : `GUARD STOP — do not deploy / roll back (${file})`);
+console.log(ok ? `GUARD OK (${rows.length} markers, plan=${plan}, handover=${handover}${f3 !== null ? `, f3=${f3}` : ''}) ${file}` : `GUARD STOP — do not deploy / roll back (${file})`);
 process.exit(ok ? 0 : 1);
