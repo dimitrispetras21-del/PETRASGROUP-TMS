@@ -3,7 +3,7 @@
 // Production shape = the same as plan-072.test.mjs (the 22/9 columns + live-071.sql + live-072.sql, 071 and 071b as
 // executed 22/10) + 072 as executed 26/10 (worker/migrations/), then 072b. Never edit a fixture by hand.
 // What it proves: the guards hold the texts 072b was written against; the dry run keeps nothing; 072b applies with
-// +4 triggers and B-54 following; the verify row; born closed for the API roles; the 153 rules; F2's 237 rules, 071's
+// +4 triggers and B-54 following; the verify row; born closed for the API roles; the 156 rules; F2's 237 rules, 071's
 // 56 and 071b's 8 still pass ON TOP of 072b (the EXCLUDE moved, the 20 hooks changed nothing F2 decided); the three
 // auditor checks go the PRODUCTION path (review R4, finding 1): each passes the repo lint (lintSql) and the in-DB
 // guard (monitoring.check_sql_guard), is seeded as 073b will seed it and run by monitoring.run_checks as
@@ -12,7 +12,7 @@
 // 3); a lag() put back into B-91 is refused by both guards (a mutation); 071b's verify finds the EXCLUDE on the
 // segments (review R2, spec E2); the rollback refuses (a v5 row, 073 present), then undoes the 20 hooks in reverse
 // and returns every hooked function and both EXCLUDE byte for byte; fifteen mutations that each make one case fail,
-// and six on the live hooked functions (a hook's own text is pinned by its md5, so it cannot be mutated in the source).
+// and eight on the live hooked functions (a hook's own text is pinned by its md5, so it cannot be mutated in the source).
 // The checks live in tms-auditor/checks-072b/ until 073b moves them into the catalog (plan: the handover to F3, P3-6): in checks/ they
 // would enter the 047b seed and the catalog tests before the fixture and the grants know rt_vehicle_segments.
 // Limits (as plan-072): money views are STUBS; the capture holds only the functions of its f/trg lists.
@@ -164,12 +164,12 @@ test('072b on a production-shaped PGlite copy', async (t) => {
     } finally { await db.exec('RESET ROLE'); }
   });
 
-  await t.test('072b rules test: 153 OK, 0 FAIL, nothing kept', async () => {
+  await t.test('072b rules test: 156 OK, 0 FAIL, nothing kept', async () => {
     const msg = await errorOf(db, read('072b_plan_vehicle_segments_test.sql'));
     const m = rules('072b').exec(msg ?? '');
     assert.ok(m, msg);
     assert.equal(Number(m[2]), 0, msg);
-    assert.equal(Number(m[1]), 153);
+    assert.equal(Number(m[1]), 156);
     assert.equal(await count(db, `SELECT count(*)::int AS n FROM rt_vehicle_segments`), 0, 'the test keeps nothing');
   });
 
@@ -354,6 +354,13 @@ for (const [name, sig, from, to, want] of [
   ['a listed payroll line still locks the driver change (hook 20)', 'public.plan_rt_update(jsonb,text,text)',
    "and not (e.id::text in (select c->>'dl_entry_id'", "and not (false and e.id::text in (select c->>'dl_entry_id'",
    /148 FAIL want ok got plan:payroll_locked/],
+  // independent review 26/10 (survivors of the first run): the token must cover the rate, and r must carry the
+  // partner fields of the segment left
+  ['the vehicle line forgets the partner rate (hook 5)', 'public.plan_rt_update(jsonb,text,text)',
+   "'partner_id', v_partner, 'partner_rate', v_rate));", "'partner_id', v_partner));", /154 FAIL want ok/],
+  ['r does not carry the partner of the segment left (hook 19)', 'public.plan_rt_update(jsonb,text,text)',
+   'g.driver_id, g.partner_id, g.partner_rate\n      into r.trip_type, r.truck_id, r.trailer_id, r.driver_id, r.partner_id, r.partner_rate',
+   'g.driver_id\n      into r.trip_type, r.truck_id, r.trailer_id, r.driver_id', /154 FAIL want ok/],
 ]) {
   test(`072b live mutation: ${name}`, async () => {
     const db = await prodShaped072();

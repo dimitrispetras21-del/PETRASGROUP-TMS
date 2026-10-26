@@ -8,7 +8,8 @@
 -- hooks_in_place counts the 10 hooked functions at their FINAL text (plan_rt_update carries 9 hooks, chained; the
 -- three of owner question 7 = b: plan_h_drop_consequences one, plan_delete two, plan_move_pieces two - the second
 -- for a side moved within its own cycle, review R5; plan_rt_update's 7th and plan_delete's 2nd put the notices of a
--- removed handover in the act's answer, fix round 1 26/10).
+-- removed handover in the act's answer, fix round 1 26/10; its 8th and 9th make a narrowing plus a new vehicle ONE step,
+-- owner 26/10).
 -- After L: segments and v5_cycles grow (every v5 cycle has >= 1 segment); seg_problems, overlaps and
 -- cancel_copy_drift stay 0 for ever (the base refuses them at COMMIT - these are independent counts that read the
 -- cycle's status, not the copy rt_cancelled the EXCLUDE filters on). auditor_policy = the
