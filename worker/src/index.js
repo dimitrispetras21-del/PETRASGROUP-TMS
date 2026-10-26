@@ -4114,17 +4114,30 @@ async function ctDbPatch(env, table, filter, patch) {
 // partner ({ partner_id } back to the caller, written with the line). Left unnamed, the view read it as that partner's
 // only while the cycle had one: a later handover to a second partner turned it into an unmatched row - counted on top
 // of the first partner's rate (300 + 280 + 200 instead of 480) - and nothing said so. Refusals come back as
-// { status, message }; null = nothing to do.
-async function ctPartnerLineCheck(env, line) {
-  if (line.partner_id != null) {
+// { status, message }; { partner_id } = write this value (null clears it); null = nothing to do.
+// Final round 3 (26/10, review finding 1): the name already ON the row (opts.stored - the PATCH body sent none) is
+// derived, not sticky. No screen sends partner_id, so a stored name that no longer fits made every later edit 400/409
+// (recategorise, move to another cycle, even a note after the segment's partner was corrected 7 -> 9) and the only
+// way out was SQL. A stored name is kept while it is still one of the cycle's partners (a valid name is never asked
+// for again: no screen can give it); otherwise it is derived again - the single partner of a one-partner cycle, null
+// off partner_rate or (on a move, opts.moved) off a v5 cycle, the same 409 «pick one» on a cycle with two or more.
+// A v5 cycle with no PARTNER segment keeps it: the line is unmatched either way and B-94 names the cycle.
+async function ctPartnerLineCheck(env, line, opts = {}) {
+  const stored = !!opts.stored && line.partner_id != null;
+  if (stored && line.category !== "partner_rate") return { partner_id: null };
+  if (line.partner_id != null && !stored) {
     if (!Number.isSafeInteger(line.partner_id) || line.partner_id <= 0) return { status: 400, message: "partner_id: ο συνεργάτης θέλει ακέραιο id" };
     if (line.category !== "partner_rate") return { status: 400, message: "partner_id μόνο σε γραμμή «Κόμιστρο συνεργάτη» (partner_rate)" };
   }
-  if (line.category !== "partner_rate" || line.rt_id == null) return null;
+  if (line.category !== "partner_rate" || line.rt_id == null) return stored && opts.moved ? { partner_id: null } : null;
   const rt = (await dbSelectRaw(env, "ct_round_trips", new URLSearchParams({ select: "id,model", id: `eq.${line.rt_id}` }))).rows[0];
-  if (!rt || rt.model !== 2) return null;
+  if (!rt || rt.model !== 2) return stored && opts.moved ? { partner_id: null } : null;
   const segs = (await dbSelectRaw(env, "rt_vehicle_segments", new URLSearchParams({ select: "partner_id", rt_id: `eq.${rt.id}`, trip_type: "eq.PARTNER", deleted_at: "is.null" }))).rows;
   const partners = [...new Set(segs.map((g) => g.partner_id))];
+  if (stored) {
+    if (partners.includes(line.partner_id) || partners.length === 0) return null;
+    line = { ...line, partner_id: null };
+  }
   if (line.partner_id != null && !partners.includes(line.partner_id)) {
     return { status: 409, message: "Ο συνεργάτης της γραμμής δεν εκτελεί τμήμα αυτού του κύκλου — διάλεξε τον σωστό συνεργάτη ή κύκλο" };
   }
@@ -4730,11 +4743,15 @@ async function handleCosts(request, url, origin, env) {
       }
       {
         // Q6-1: the EFFECTIVE line (a PATCH that moves the line to another cycle, or changes its category, is
-        // checked as the line it leaves behind)
-        const eff = { ...before.rows[0], ...patch };
-        const chk = await ctPartnerLineCheck(env, eff);
+        // checked as the line it leaves behind). Round 3: a partner_id the body does not send is the stored one,
+        // derived again when it no longer fits (ctPartnerLineCheck). «moved» compares VALUES: the edit screen
+        // (exSaveEdit) always sends category, unchanged on most edits.
+        const prev = before.rows[0];
+        const eff = { ...prev, ...patch };
+        const moved = ("rt_id" in patch && patch.rt_id !== prev.rt_id) || ("category" in patch && patch.category !== prev.category);
+        const chk = await ctPartnerLineCheck(env, eff, { stored: !("partner_id" in patch), moved });
         if (chk && chk.status) return jsonError(chk.message, chk.status, origin, env);
-        if (chk && chk.partner_id != null) patch.partner_id = chk.partner_id;
+        if (chk && "partner_id" in chk && chk.partner_id !== (prev.partner_id ?? null)) patch.partner_id = chk.partner_id;
       }
       if ("rt_id" in patch) patch.alloc_status = patch.rt_id ? "allocated" : "unallocated";
       const updated = await ctDbPatch(env, "ct_cost_lines", `id=eq.${encodeURIComponent(recId)}`, patch);

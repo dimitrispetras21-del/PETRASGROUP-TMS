@@ -39,16 +39,20 @@ async function call(method, pathAndQuery, body, role = 'accountant') {
   return { status: res.status, json, text };
 }
 
-// cycle 40: v5, partners 7 (segment 1) and 8 (segment 2); cycle 41: v5, one partner 7; trip 5: today's model
-const TRIPS = { 40: { id: 40, model: 2 }, 41: { id: 41, model: 2 }, 5: { id: 5, model: 1 } };
-const SEGS = { 40: [{ partner_id: 7 }, { partner_id: 8 }], 41: [{ partner_id: 7 }] };
+// cycle 40: v5, partners 7 (segment 1) and 8 (segment 2); cycle 41: v5, one partner 7; trip 5: today's model;
+// round 3: cycle 42 v5 one partner 8, cycle 44 v5 partners 8 and 9, cycle 45 v5 with no PARTNER segment
+const TRIPS = { 40: { id: 40, model: 2 }, 41: { id: 41, model: 2 }, 42: { id: 42, model: 2 }, 44: { id: 44, model: 2 }, 45: { id: 45, model: 2 }, 5: { id: 5, model: 1 } };
+const SEGS0 = { 40: [{ partner_id: 7 }, { partner_id: 8 }], 41: [{ partner_id: 7 }], 42: [{ partner_id: 8 }], 44: [{ partner_id: 8 }, { partner_id: 9 }] };
+let SEGS;
 const LINE = { id: 900, rt_id: 41, category: 'partner_rate', net: 280, vat: 0, pay_source: 'CREDIT', doc_id: null, partner_id: null };
+let row900;
 const json = (rows, status = 200) => new Response(JSON.stringify(rows), { status, headers: { 'content-type': 'application/json' } });
 let calls; let insertError;
 const realConsole = { log: console.log, error: console.error, warn: console.warn };
 beforeEach(() => {
   console.log = console.error = console.warn = () => {};
   calls = []; insertError = null;
+  SEGS = structuredClone(SEGS0); row900 = { ...LINE };
   globalThis.fetch = async (url, init = {}) => {
     const u = new URL(url);
     const method = init.method || 'GET';
@@ -57,12 +61,12 @@ beforeEach(() => {
     const eq = (k) => (u.searchParams.get(k) || '').replace(/^eq\./, '');
     if (method === 'GET' && table === 'ct_round_trips') return json(TRIPS[eq('id')] ? [TRIPS[eq('id')]] : []);
     if (method === 'GET' && table === 'rt_vehicle_segments') return json(SEGS[eq('rt_id')] || []);
-    if (method === 'GET' && table === 'ct_cost_lines') return json(eq('id') === '900' ? [LINE] : []);
+    if (method === 'GET' && table === 'ct_cost_lines') return json(eq('id') === '900' ? [row900] : []);
     if (method === 'POST' && table === 'ct_cost_lines') {
       if (insertError) return json(insertError, 400);
       return json([{ id: 901, ...JSON.parse(init.body) }], 201);
     }
-    if (method === 'PATCH' && table === 'ct_cost_lines') return json([{ ...LINE, ...JSON.parse(init.body) }]);
+    if (method === 'PATCH' && table === 'ct_cost_lines') return json([{ ...row900, ...JSON.parse(init.body) }]);
     if (table === 'audit_log') return json([], 201);
     throw new Error(`unmocked fetch: ${method} ${table}?${u.searchParams}`);
   };
@@ -129,6 +133,60 @@ test('PATCH (final round 2, finding 2): an unnamed line of a one-partner cycle i
   assert.equal(r.status, 200, r.text);
   const w = calls.find((c) => c.method === 'PATCH' && c.table === 'ct_cost_lines');
   assert.equal(w.body.partner_id, 7);
+});
+
+// Final round 3 (review finding 1): a stamped name is derived, not sticky. No screen sends partner_id, so each case
+// below was a 400/409 with no way out but SQL (probe rv-r2/probe-sticky.test.mjs) and is now written.
+const written = () => calls.find((c) => c.method === 'PATCH' && c.table === 'ct_cost_lines');
+
+test('PATCH round 3: a stamped line recategorised away from partner_rate is written, and its partner cleared', async () => {
+  row900 = { ...LINE, partner_id: 7 };
+  const r = await call('PATCH', '/costs/lines/900', { category: 'other', reason: 'TEST' });
+  assert.equal(r.status, 200, r.text);
+  assert.equal(written().body.partner_id, null);
+});
+
+test('PATCH round 3: a stamped line moved to a one-partner cycle of another partner takes that partner', async () => {
+  row900 = { ...LINE, partner_id: 7 };
+  const r = await call('PATCH', '/costs/lines/900', { rt_id: 42, reason: 'TEST' });
+  assert.equal(r.status, 200, r.text);
+  assert.equal(written().body.partner_id, 8);
+});
+
+test('PATCH round 3: the segment\'s partner corrected 7 -> 9, a note edit re-derives the stamp (the invoice follows the new partner)', async () => {
+  row900 = { ...LINE, partner_id: 7 };
+  SEGS[41] = [{ partner_id: 9 }];
+  const r = await call('PATCH', '/costs/lines/900', { note: 'x', reason: 'TEST' });
+  assert.equal(r.status, 200, r.text);
+  assert.equal(written().body.partner_id, 9);
+});
+
+test('PATCH round 3: a stored name that still fits is kept - the screen\'s edit (category re-sent unchanged), and a move to a cycle it still drives', async () => {
+  row900 = { ...LINE, partner_id: 7 };
+  const edit = await call('PATCH', '/costs/lines/900', { category: 'partner_rate', net: 300, reason: 'TEST' });
+  assert.equal(edit.status, 200, edit.text);
+  assert.equal('partner_id' in written().body, false, 'nothing re-written');
+  calls = [];
+  const move = await call('PATCH', '/costs/lines/900', { rt_id: 40, reason: 'TEST' });
+  assert.equal(move.status, 200, move.text);
+  assert.equal('partner_id' in written().body, false, '7 drives a segment of cycle 40: kept, no name asked');
+});
+
+test('PATCH round 3: a stale stored name on a two-partner cycle is refused like an unnamed line; a move to today\'s model clears it; a v5 cycle with no PARTNER segment keeps it', async () => {
+  row900 = { ...LINE, partner_id: 7 };
+  const two = await call('PATCH', '/costs/lines/900', { rt_id: 44, reason: 'TEST' });
+  assert.equal(two.status, 409, two.text);
+  assert.match(two.json.error, /διάλεξε ποιανού είναι το τιμολόγιο/);
+  assert.equal(written(), undefined, 'nothing written');
+  calls = [];
+  const v1 = await call('PATCH', '/costs/lines/900', { rt_id: 5, reason: 'TEST' });
+  assert.equal(v1.status, 200, v1.text);
+  assert.equal(written().body.partner_id, null);
+  calls = [];
+  row900 = { ...LINE, rt_id: 45, partner_id: 7 };
+  const none = await call('PATCH', '/costs/lines/900', { note: 'x', reason: 'TEST' });
+  assert.equal(none.status, 200, none.text);
+  assert.equal('partner_id' in written().body, false, 'kept: unmatched either way, B-94 names the cycle');
 });
 
 test('deploy order: a Worker that meets no ct_cost_lines.partner_id (073 not run) says so by name', async () => {
