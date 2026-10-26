@@ -1,4 +1,4 @@
-// 071 + 071b + 072 ↔ Worker refusal contract (national v5 F2, owner 21–22/10/2026:
+// 071 + 071b + 072 + 072b ↔ Worker refusal contract (national v5 F2, owner 21–22/10/2026:
 // the lower layer names the codes and constraints, αρχή 4). Pattern of
 // local-relay-contract.test.mjs: the migrations themselves are read, so a
 // rename on either side fails HERE, at build time, never on a dispatcher's
@@ -9,11 +9,17 @@
 //   worker/migrations/071_plan_schema.sql, 071b_plan_one_vehicle.sql (live 22/10)
 //   worker/migrations/drafts/072_plan_functions.sql  (draft, until it runs)
 //   worker/migrations/072_plan_functions.sql         (after it ran and moved)
+//   worker/migrations/drafts/072b_plan_vehicle_segments.sql (vehicle handover; then worker/migrations/)
 // On deploy/worker-plan the 072 draft is a COPY of the SQL branch's file
 // (feat/national-v5-f2); when 072 changes there, copy it again and
 // re-run this test before deploy — the diagnostic prints the md5 checked.
 // The copy is also compared with the SQL branch's file through git (final
 // review 25/10, finding 4): a review fix there without a recopy fails HERE.
+// The same for 072b on deploy/worker-plan-handover: a copy of
+// feat/national-v5-handover-prev-rate's file (owner 26/10: one step, #100, then the previous partner's rate on top; #96 merged the first one), re-synced with ONE command
+//   git checkout feat/national-v5-handover-prev-rate -- worker/migrations/drafts/072b_plan_vehicle_segments.sql
+// and, so this branch never mixes a new 072b with older generated files and tests (code review xhigh 26/10), the set:
+//   git checkout feat/national-v5-handover-prev-rate -- 'worker/migrations/drafts/072b_*' worker/migrations/drafts/tools/build-072b.mjs tests/sql-072b-drafts.test.js tms-auditor/test/plan-072b.test.mjs
 //
 // 072's own refusals are parsed from `plan_h_raise('<code>'` (a literal code
 // as the first argument — the convention of the SQL plan, Task A1) and from
@@ -51,6 +57,8 @@ const f071 = () => readOne(['071_plan_schema.sql'], 'it is live since 22/10 and 
 const f071b = () => readOne(['071b_plan_one_vehicle.sql'], 'it is live since 22/10 and must be in main');
 const f072 = () => readOne(['drafts/072_plan_functions.sql', '072_plan_functions.sql'],
   'copy it from the SQL branch: git checkout feat/national-v5-f2 -- worker/migrations/drafts/072_plan_functions.sql');
+const f072b = () => readOne(['drafts/072b_plan_vehicle_segments.sql', '072b_plan_vehicle_segments.sql'],
+  'copy it from the SQL branch: git checkout feat/national-v5-handover-prev-rate -- worker/migrations/drafts/072b_plan_vehicle_segments.sql');
 const uniq = (re, text) => [...new Set([...text.matchAll(re)].map((m) => m[1]))].sort();
 const greek = /[α-ωΑ-Ωά-ώ]/;
 
@@ -65,6 +73,10 @@ const CODES_072 = ['bad_input', 'driver_busy', 'group_empty', 'local_cancel_no_i
   'no_price', 'no_vehicle', 'no_window', 'not_at_hub', 'not_stock', 'notice_gone', 'order_gone', 'order_not_v5',
   'parts_sum', 'payroll_locked', 'piece_busy', 'piece_split', 'request_missing', 'request_reused', 'rt_gone', 'same_rt', 'stale_confirm', 'stock_lot',
   'stop_gone', 'truck_busy', 'vehicle_clear_use_clear', 'vs_locked', 'vs_not_bridge'];
+// 072b's own codes (vehicle handover plan, Interfaces «Κωδικοί plan: της 072b»): its COMMIT rules (plan_seg_problem /
+// plan_chk_seg) and its direct raises, minus the 071 / 072 codes it reuses (truck_busy, rt_gone, need_token, ...).
+const CODES_072B = ['seg_cancel', 'seg_copy', 'seg_cover', 'seg_first', 'seg_gone', 'seg_locked', 'seg_many', 'seg_no_vehicle',
+  'seg_none', 'seg_not_v2', 'seg_outside', 'seg_reason', 'seg_same', 'seg_time', 'seg_unassigned'];
 // Retired by the spec §7 — must appear nowhere (plan Interfaces).
 const RETIRED = ['hub_endpoint', 'piece_planned', 'bridge_moved', 'bridge_split', 'legacy_nl', 'frozen',
   'restore_expired', 'restore_conflict', 'partner_rate_on_owned', 'window_order'];
@@ -93,9 +105,18 @@ function codes072(sql) {
     .filter((c, i, a) => a.indexOf(c) === i)
     .filter((c) => !CODES_071.includes(c)).sort();
 }
+// 072b raises through plan_h_raise AND has COMMIT rules of its own ('<code>:<RT>', as 071's): both shapes, minus the
+// 071 / 072 codes it reuses.
+function codes072b(sql) {
+  return uniq(/plan_h_raise\(\s*'([a-z_0-9]+)'/g, sql)
+    .concat(uniq(/(?:return|prob :=)\s*'([a-z_0-9]+):/g, sql))
+    .concat(uniq(/HINT = 'plan:([a-z_0-9]+)'/gi, sql))
+    .filter((c, i, a) => a.indexOf(c) === i)
+    .filter((c) => !CODES_071.includes(c) && !CODES_072.includes(c)).sort();
+}
 
-test('071, 071b, 072 found and fingerprinted', (t) => {
-  for (const { file, sql } of [f071(), f071b(), f072()]) {
+test('071, 071b, 072, 072b found and fingerprinted', (t) => {
+  for (const { file, sql } of [f071(), f071b(), f072(), f072b()]) {
     t.diagnostic(`checked: ${path.relative(path.join(here, '..', '..'), file)} md5 ${createHash('md5').update(sql).digest('hex')}`);
   }
   assert.ok(f072().sql.includes('plan_h_raise('), '072 raises through plan_h_raise');
@@ -104,12 +125,10 @@ test('071, 071b, 072 found and fingerprinted', (t) => {
 // Two copies of 072, one source (principle 3): the SQL branch owns the file, this branch carries a copy. The first
 // ref that has the file is the source: the SQL branch, its origin copy, then origin/main (after the SQL PR merged).
 // No ref with the file = a visible skip, never a silent pass.
-const SQL_BRANCH = 'feat/national-v5-f2';
-test('the 072 copy is byte-identical to the SQL branch file', (t) => {
-  const { file, sql } = f072();
+function sameAsSqlBranch(t, { file, sql }, sqlBranch) {
   const rel = path.relative(path.join(here, '..', '..'), file).split(path.sep).join('/');
   const md5 = (x) => createHash('md5').update(x).digest('hex');
-  for (const ref of [SQL_BRANCH, `origin/${SQL_BRANCH}`, 'origin/main']) {
+  for (const ref of [sqlBranch, `origin/${sqlBranch}`, 'origin/main']) {
     let theirs;
     try {
       theirs = execFileSync('git', ['show', `${ref}:${rel}`], { cwd: here, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
@@ -118,20 +137,24 @@ test('the 072 copy is byte-identical to the SQL branch file', (t) => {
     t.diagnostic(`copy: ${rel} = ${ref} (md5 ${md5(sql)})`);
     return;
   }
-  t.skip(`no ref holds ${rel} (${SQL_BRANCH} merged and deleted, or not fetched): the copy is not compared`);
-});
+  t.skip(`no ref holds ${rel} (${sqlBranch} merged and deleted, or not fetched): the copy is not compared`);
+}
+test('the 072 copy is byte-identical to the SQL branch file', (t) => sameAsSqlBranch(t, f072(), 'feat/national-v5-f2'));
+// 072b: the same rule, its own SQL branch (vehicle handover plan, Task B4)
+test('the 072b copy is byte-identical to the SQL branch file', (t) => sameAsSqlBranch(t, f072b(), 'feat/national-v5-handover-prev-rate'));
 
-test('the parsed codes are exactly the plan\'s 26 + 31 — none missing, none extra, none retired', () => {
+test('the parsed codes are exactly the plans\' 26 + 31 + 15 — none missing, none extra, none retired', () => {
   assert.deepEqual(codes071(f071().sql), CODES_071, '071 codes');
   assert.deepEqual(codes072(f072().sql), CODES_072, '072 codes');
-  for (const sql of [f071().sql, f071b().sql, f072().sql]) {
+  assert.deepEqual(codes072b(f072b().sql), CODES_072B, '072b codes');
+  for (const sql of [f071().sql, f071b().sql, f072().sql, f072b().sql]) {
     for (const r of RETIRED) assert.ok(!new RegExp(`'(?:plan:)?${r}[:']`).test(sql), `retired code «${r}» appears in SQL`);
   }
   for (const r of RETIRED) assert.ok(!Object.prototype.hasOwnProperty.call(W.PLAN_RULE_TEXT, r), `retired code «${r}» has a Worker text`);
 });
 
-test('every plan: code has its own Greek text, the DB detail in brackets; every Worker code key is raised by 071/072', () => {
-  const all = [...CODES_071, ...CODES_072];
+test('every plan: code has its own Greek text, the DB detail in brackets; every Worker code key is raised by 071/072/072b', () => {
+  const all = [...CODES_071, ...CODES_072, ...CODES_072B];
   for (const code of all) {
     assert.ok(Object.prototype.hasOwnProperty.call(W.PLAN_RULE_TEXT, code), `«${code}» has no Greek text in PLAN_RULE_TEXT`);
     const r = W.stockRuleError({ pg: { code: '23514', hint: 'plan:' + code, message: `plan rule broken: ${code}:RT-1280` } });
@@ -141,7 +164,7 @@ test('every plan: code has its own Greek text, the DB detail in brackets; every 
     assert.match(r.message, greek, `${code} text is Greek`);
   }
   const dead = Object.keys(W.PLAN_RULE_TEXT).filter((k) => !all.includes(k));
-  assert.deepEqual(dead, [], 'Worker plan: keys that 071/072 never raise (dead code, αρχή 8)');
+  assert.deepEqual(dead, [], 'Worker plan: keys that 071/072/072b never raise (dead code, αρχή 8)');
 });
 
 test('every 071 CHECK and UNIQUE is mapped to Greek or classified; every PLAN_CHECK_TEXT key exists', () => {
@@ -167,9 +190,19 @@ test('every 071 CHECK and UNIQUE is mapped to Greek or classified; every PLAN_CH
   // the race floor and 072's own refusal say the same thing
   assert.deepEqual(W.stockRuleError({ pg: { code: '23505', message: 'duplicate key value violates unique constraint "local_moves_nat_loading_once"' } }),
     { type: 'PLAN_RULE', code: 'local_exists', message: W.PLAN_RULE_TEXT.local_exists });
-  const known = new Set([...checks, ...uniques, ...LIVE_PRE_071]);
+  // 072b's CHECKs on rt_vehicle_segments: each one Greek, its own text (the reason's value IS a CHECK)
+  const checks072b = uniq(/CONSTRAINT (\w+) CHECK/g, f072b().sql);
+  assert.equal(checks072b.length, 10, `072b CHECKs parsed: ${checks072b.join(', ')}`);
+  for (const name of checks072b) {
+    const r = W.stockRuleError({ pg: { code: '23514', message: `new row for relation "rt_vehicle_segments" violates check constraint "${name}"` } });
+    assert.deepEqual(r, { type: 'PLAN_RULE', code: name, message: W.PLAN_CHECK_TEXT[name] }, name);
+    assert.match(r.message, greek, `${name} text is Greek`);
+  }
+  assert.deepEqual(uniq(/CREATE UNIQUE INDEX (\w+)/g, f072b().sql).concat(uniq(/CONSTRAINT (\w+) UNIQUE/g, f072b().sql)), [],
+    '072b adds no UNIQUE (else: a text here)');
+  const known = new Set([...checks, ...uniques, ...LIVE_PRE_071, ...checks072b]);
   const dead = Object.keys(W.PLAN_CHECK_TEXT).filter((k) => !known.has(k));
-  assert.deepEqual(dead, [], 'PLAN_CHECK_TEXT keys with no constraint in 071 or live before it');
+  assert.deepEqual(dead, [], 'PLAN_CHECK_TEXT keys with no constraint in 071, 072b or live before 071');
   for (const k of RELAY_OWNED) assert.ok(!Object.prototype.hasOwnProperty.call(W.PLAN_CHECK_TEXT, k), `${k} stays in RELAY_CHECK_TEXT only`);
 });
 
@@ -182,6 +215,10 @@ test('071b: each EXCLUDE (23P01, deferred) answers the same code as 072\'s pre-c
     assert.deepEqual(r, { type: 'PLAN_RULE', code: want[name], message: W.PLAN_RULE_TEXT[want[name]] }, name);
   }
   assert.equal(W.stockRuleError({ pg: { code: '23P01', message: 'conflicting key value violates exclusion constraint "other_excl"' } }), null);
+  // 072b MOVES them to rt_vehicle_segments with the SAME names: this map, 072's plan_h_finish and the texts stay
+  const sql = f072b().sql;
+  assert.deepEqual(uniq(/DROP CONSTRAINT (rt_v2_\w+)/g, sql), ['rt_v2_driver_once', 'rt_v2_truck_once'], '072b drops exactly 071b\'s two');
+  assert.deepEqual(uniq(/ADD CONSTRAINT (\w+) EXCLUDE/g, sql), ['rt_v2_driver_once', 'rt_v2_truck_once'], '072b adds them back by the same names');
 });
 
 test('plan: hint is the marker whatever SQLSTATE; unknown code still loud; no detail, no brackets', () => {
@@ -199,9 +236,10 @@ test('plan: hint is the marker whatever SQLSTATE; unknown code still loud; no de
 // ─────────────── Γ3: the Worker's RPC calls and money keys ↔ 072 (review 23/10) ───────────────
 // PostgREST finds a function by its name AND its argument names: a rename on one side would pass every stub test
 // of plan-routes and fail only on day L, as a misdiagnosed 503 schema_behind. Both sides are read from the sources.
-test('every PLAN_ROUTES rpc exists in 072 with the argument names the Worker sends; every public plan_* is routed', () => {
-  const sigs = Object.fromEntries([...f072().sql.matchAll(/CREATE FUNCTION public\.(plan_[a-z_]+)\(([^)]*)\)/g)]
-    .filter((m) => !m[1].startsWith('plan_h_'))
+test('every PLAN_ROUTES rpc exists in 072 / 072b with the argument names the Worker sends; every public plan_* is routed', () => {
+  const sigs = Object.fromEntries([...(f072().sql + f072b().sql).matchAll(/CREATE FUNCTION public\.(plan_[a-z_]+)\(([^)]*)\)/g)]
+    // 072b's COMMIT rule and its trigger functions are not RPCs (EXECUTE for no API role, its PART 8)
+    .filter((m) => !m[1].startsWith('plan_h_') && !['plan_seg_problem', 'plan_chk_seg', 'plan_seg_follow', 'plan_seg_copy'].includes(m[1]))
     .map((m) => [m[1], m[2].split(',').map((a) => a.trim().split(/\s+/)[0]).filter(Boolean)]));
   const WRITE = ['p', 'p_actor', 'p_role'];
   const want = { plan_board: ['p_week', 'p_role'], plan_vs_state: ['p_order_ids'], plan_notices_list: ['p_desk', 'p_role'] };
@@ -211,6 +249,17 @@ test('every PLAN_ROUTES rpc exists in 072 with the argument names the Worker sen
   for (const fn of routed) assert.deepEqual(sigs[fn], want[fn] || WRITE, `${fn}: 072 signature vs the Worker's args`);
   assert.deepEqual([...routed].sort(), Object.keys(sigs).filter((x) => x !== 'plan_rt_create').sort(),
     'every public plan_* routed once; plan_rt_create internal (decision 3)');
+});
+
+// review of PR #90, finding 7: the roles that SEE amounts, held equal the same way. If the Worker's list were
+// wider than 072's, its tripwire would go blind for a role the DB cuts for; if narrower, every answer to a
+// role the DB serves amounts to would become a 422 amount_leak.
+test('PLAN_MONEY_ROLES of the Worker = the roles plan_h_strip_amounts serves amounts to (one list, two layers)', () => {
+  const m = src.match(/var PLAN_MONEY_ROLES = (\[[^\]]*\]);/);
+  assert.ok(m, 'PLAN_MONEY_ROLES not found in worker/src/index.js');
+  const strip = /CREATE FUNCTION public\.plan_h_strip_amounts\([\s\S]*?if p_role in \(([^)]*)\) or p is null then return p;/.exec(f072().sql);
+  assert.ok(strip, 'plan_h_strip_amounts role list not found in 072');
+  assert.deepEqual(JSON.parse(m[1]).slice().sort(), [...strip[1].matchAll(/'([a-z_]+)'/g)].map((x) => x[1]).sort());
 });
 
 test('PLAN_MONEY_KEYS of the Worker = the keys plan_h_strip_amounts cuts (one list, two layers)', () => {

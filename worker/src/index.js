@@ -1764,6 +1764,11 @@ var TABLES = {
       // 072's rollback does not count it as a v5 row.
       "Via Hub": "via_hub"
     },
+    // Born closed (review of PR #90, finding 8; αρχή 5): «Via Hub» is read by every path, but a write naming
+    // it is refused (400, named, no DB call) while PLAN_WRITES_OPEN is false — a stray true set before day L
+    // would survive 074 and count as «through Veroia» in v5. No screen writes it today (grep 26/10: none).
+    // It opens by itself with the ONE switch of /plan/* (refuseReadOnly reads PLAN_WRITES_OPEN at request time).
+    closedUntilPlan: ["Via Hub"],
     // Labels the base computes. Mapped in `fields` so every read path (select,
     // filter, sort, the PATCH answer the screen reads back) carries them with
     // no extra request; `fields` is also the write allow-list, so a write
@@ -1932,6 +1937,12 @@ var TABLES = {
       // 'local'), so Weekly National can keep only its own 'local' rows.
       "Move Kind": "move_kind"
     },
+    // v5 rows (071: move_kind 'nat_loading' ⟺ rt_stop_id set, CHECK local_moves_nat_loading) belong to /plan/*:
+    // plan_local_loading checks payroll_locked, writes the notices and the audit. A facade PATCH / DELETE of
+    // one would skip all three, so it is refused (422, nothing written; review of PR #90, finding 2). The kind is
+    // fixed for life (060 kind_locked) and rt_stop_id is not a facade field, so the row read before the write
+    // decides for good. A facade POST cannot make one: without rt_stop_id 071's CHECK refuses it.
+    planOwned: (row) => row.move_kind === "nat_loading" || row.rt_stop_id != null,
     links: {
       Driver: { column: "driver_id", table: "drivers" },
       Truck: { column: "truck_id", table: "trucks" },
@@ -2683,6 +2694,16 @@ __name(authorizeWrite, "authorizeWrite");
 // is refused as a whole, before any database call, naming the label — the
 // caller fixes its request instead of reading «saved» over a half-applied one.
 function refuseReadOnly(cfg, fieldsList, origin, env) {
+  if (cfg.closedUntilPlan && !PLAN_WRITES_OPEN) {
+    const shut = [];
+    for (const f of fieldsList) {
+      if (!f || typeof f !== "object") continue;
+      for (const label of cfg.closedUntilPlan) if (Object.prototype.hasOwnProperty.call(f, label) && !shut.includes(label)) shut.push(label);
+    }
+    if (shut.length) {
+      return jsonError(`${shut.map((l) => `«${l}»`).join(", ")}: γράφεται από την ημέρα της μετάβασης στο Εβδομαδιαίο Εθνικών — ως τότε μόνο ανάγνωση`, 400, origin, env);
+    }
+  }
   if (!cfg.readOnly) return null;
   const hit = [];
   for (const f of fieldsList) {
@@ -3038,6 +3059,20 @@ async function readRowBefore(env, table, recId) {
   }
 }
 __name(readRowBefore, "readRowBefore");
+// cfg.planOwned (LOCAL MOVES, finding 2): a row the v5 board owns is changed only through /plan/*. `before`
+// is the row read before the write: undefined = the read failed, so nothing is written (fail closed, a 503
+// the user may press again); null = no such row, the write's own 404 answers.
+function planOwnedRefusal(cfg, before, origin, env) {
+  if (!cfg.planOwned) return null;
+  if (before === void 0) {
+    return jsonError("Η τοπική κίνηση δεν επαληθεύτηκε (δεν διαβάστηκε) — τίποτα δεν γράφτηκε· ξαναδοκίμασε", 503, origin, env);
+  }
+  if (before && cfg.planOwned(before)) {
+    return stockRuleResponse({ type: "PLAN_RULE", code: "plan_owned", message: "Η τοπική φόρτωση εθνικών ανήκει στο Εβδομαδιαίο Εθνικών — αλλάζει ή ακυρώνεται μόνο από εκεί (/plan/local-loading)· τίποτα δεν γράφτηκε" }, origin, env);
+  }
+  return null;
+}
+__name(planOwnedRefusal, "planOwnedRefusal");
 async function handleFacadeBatchUpdate(request, tableId, origin, env, ctx) {
   const { res, caller, cfg } = await authorizeWrite(request, tableId, "PATCH", origin, env);
   if (res) return res;
@@ -3077,11 +3112,18 @@ async function handleFacadeBatchUpdate(request, tableId, origin, env, ctx) {
   }
   // Το «πριν» για όλες τις γραμμές σε ΜΙΑ ανάγνωση — τεκμηρίωση, όχι προϋπόθεση.
   let beforeBy = /* @__PURE__ */ new Map();
+  let beforeFailed = false;
   try {
     const rowsBefore = await dbSelectManyByLegacy(env, cfg.pg, patches.map((p) => p.recId));
     beforeBy = new Map(rowsBefore.map((r) => [r.legacy_id, r]));
   } catch (e) {
+    beforeFailed = true;
     console.error(`AUDIT before-read failed ${cfg.pg} (batch)`, e.message);
+  }
+  // before the first row is written: a batch with one v5 row writes none (finding 2)
+  for (const { recId } of patches) {
+    const owned = planOwnedRefusal(cfg, beforeFailed ? void 0 : beforeBy.get(recId) || null, origin, env);
+    if (owned) return owned;
   }
   const updatedRows = [];
   const auditEntries = [];
@@ -3306,7 +3348,7 @@ const RELAY_CHECK_TEXT = {
 //     whichever layer refused first. local_moves_nat_loading_once answers
 //     local_exists for the same reason (as local_moves_relay_once → relay_exists).
 // THE CODES AND NAMES ARE THE MIGRATIONS' (the lower layer names them, αρχή 4).
-// test/plan-contract.test.mjs reads 071, 071b and 072 and fails on a code or a
+// test/plan-contract.test.mjs reads 071, 071b, 072 and 072b and fails on a code or a
 // constraint without a text here, and on a key here with no counterpart there
 // (αρχή 8). Texts only — editing a text never changes what is allowed.
 const PLAN_RULE_TEXT = {
@@ -3373,7 +3415,28 @@ const PLAN_RULE_TEXT = {
   local_cancel_no_id: "Η ακύρωση τοπικής φόρτωσης δεν λέει ποια φόρτωση — τίποτα δεν δημιουργήθηκε ούτε ακυρώθηκε",
   stale_confirm: "Κάτι άλλαξε από τότε που είδες τη λίστα — δες τη ξανά και επιβεβαίωσε",
   need_token: "Η πράξη θέλει επιβεβαίωση — δες πρώτα τη λίστα συνεπειών",
-  vs_not_bridge: "Η παραγγελία ή η στάση δεν περνά από τη Βέροια (VS)"
+  vs_not_bridge: "Η παραγγελία ή η στάση δεν περνά από τη Βέροια (VS)",
+  // 072b — vehicle handover at a point (segments ΑΡΧΙΚΟ / ΕΝΔΙΑΜΕΣΟ / ΤΕΛΙΚΟ; spec
+  // 2026-10-23-national-v5-vehicle-handover-design.md). Without these a refusal
+  // would reach the screen as raw English (review R1 of the plan, finding 1).
+  seg_not_v2: "Αλλαγή οχήματος γίνεται μόνο σε δρομολόγιο του Εβδομαδιαίου Εθνικών",
+  seg_time: "Η ώρα της αλλαγής οχήματος είναι μέσα στο δρομολόγιο και ανάμεσα στις άλλες αλλαγές του",
+  // a Move, Delete or stop change that narrows the cycle past a handover (review R2 of the plan, DB finding 1);
+  // since owner question 7 = (b) only the net under the consequence list. The DB detail in brackets = the RT and
+  // the handover time
+  seg_outside: "Η πράξη θα άφηνε μια αλλαγή οχήματος έξω από τις ώρες του δρομολογίου — μετακίνησε ή αφαίρεσε πρώτα την αλλαγή",
+  seg_cover: "Τα τμήματα οχήματος δεν καλύπτουν όλες τις ώρες του δρομολογίου — ανανέωσε τη σελίδα",
+  seg_first: "Το ΑΡΧΙΚΟ τμήμα ξεκινά με το δρομολόγιο: δεν έχει ώρα, σημείο ή λόγο και δεν αφαιρείται — διόρθωσε το όχημά του",
+  seg_copy: "Το όχημα του δρομολογίου αλλάζει μόνο από την ανάθεση ή την αλλαγή οχήματος — ανανέωσε τη σελίδα",
+  seg_reason: "Η αλλαγή οχήματος θέλει λόγο",
+  seg_cancel: "Τα τμήματα οχήματος δεν συμφωνούν με την ακύρωση του δρομολογίου — ανανέωσε τη σελίδα",
+  seg_none: "Το δρομολόγιο έμεινε χωρίς τμήμα οχήματος — ανανέωσε τη σελίδα",
+  seg_unassigned: "Δρομολόγιο με αλλαγή οχήματος έχει όχημα σε κάθε τμήμα — ανάθεσε πρώτα όχημα, ή χρησιμοποίησε «Καθαρισμός ανάθεσης»",
+  seg_locked: "Ένα τμήμα οχήματος δεν πάει σε άλλο δρομολόγιο, και ένα που αφαιρέθηκε δεν αλλάζει",
+  seg_many: "Το δρομολόγιο έχει αλλαγή οχήματος — άλλαξε το όχημα στο συγκεκριμένο τμήμα (ΑΡΧΙΚΟ, ΕΝΔΙΑΜΕΣΟ ή ΤΕΛΙΚΟ)",
+  seg_gone: "Η αλλαγή οχήματος δεν υπάρχει πια — ανανέωσε τη σελίδα",
+  seg_same: "Το νέο όχημα είναι το ίδιο με αυτό που ήδη εκτελεί — διάλεξε άλλο",
+  seg_no_vehicle: "Η αλλαγή οχήματος θέλει φορτηγό ή συνεργάτη"
 };
 const PLAN_CHECK_TEXT = {
   // 071 CHECKs on ct_round_trips (+ partner_needs_partner, live before 071:
@@ -3420,11 +3483,23 @@ const PLAN_CHECK_TEXT = {
   piece_legs_live_no: "Το φορτίο έχει ήδη ζωντανή κίνηση με αυτόν τον αριθμό — ανανέωσε τη σελίδα",
   shipments_bridge_once: "Η στάση της διεθνούς έχει ήδη γέφυρα VS",
   pl_mov_leg_once: "Η κίνηση έχει ήδη γραμμή παλετών",
-  locations_one_hub: "Υπάρχει ήδη τοποθεσία-κόμβος (Βέροια)"
+  locations_one_hub: "Υπάρχει ήδη τοποθεσία-κόμβος (Βέροια)",
+  // 072b CHECKs on rt_vehicle_segments (the reason's VALUE is the CHECK's: an
+  // unknown reason or «Άλλο» without its note reach the screen here)
+  seg_type: "Το τμήμα είναι δικό μας φορτηγό ή συνεργάτης",
+  seg_partner_needs_partner: "Τμήμα συνεργάτη θέλει συνεργάτη",
+  seg_partner_no_vehicle: "Τμήμα συνεργάτη δεν έχει δικό μας φορτηγό, ρυμουλκούμενο ή οδηγό",
+  seg_owned_no_partner: "Τμήμα με δικό μας φορτηγό δεν έχει συνεργάτη ή κόμιστρο",
+  seg_partner_rate: "Το κόμιστρο του τμήματος δεν είναι αρνητικό",
+  seg_reason_list: "Άγνωστος λόγος αλλαγής οχήματος — διάλεξε από τη λίστα",
+  seg_change_pair: "Η αλλαγή οχήματος θέλει σημείο και λόγο μαζί",
+  seg_place_text: "Γράψε το σημείο της αλλαγής (π.χ. «Λαμία»)",
+  seg_other_note: "Με λόγο «Άλλο» η σημείωση είναι υποχρεωτική",
+  seg_del: "Η αφαίρεση τμήματος θέλει λόγο και χρήστη"
 };
 // 071/071b constraints that are the race floor under a 072 refusal of their own: they answer that refusal's code
 // and text, whichever layer refused first (072's pre-check, the constraint at COMMIT, or the plan_rt_update dry
-// run's preview.conflict). ONE table for stockRuleError and planConflictMessage (K1 review r2, αρχή 3).
+// run's preview.conflict). ONE table for stockRuleError, which planConflictRule reads too (K1 review r2, αρχή 3).
 const PLAN_CONSTRAINT_CODE = {
   rt_v2_truck_once: "truck_busy",
   rt_v2_driver_once: "driver_busy",
@@ -3487,17 +3562,17 @@ function stockRuleError(e) {
   if (code === "23505") {
     const u = /unique constraint "([^"]+)"/.exec(message);
     // the race floor under 072's own local_exists refusal: same code, same text (PLAN_CONSTRAINT_CODE)
-    if (u && u[1] === "local_moves_nat_loading_once") {
-      return { type: "PLAN_RULE", code: PLAN_CONSTRAINT_CODE[u[1]], message: PLAN_RULE_TEXT[PLAN_CONSTRAINT_CODE[u[1]]] };
-    }
+    const pc = u && Object.prototype.hasOwnProperty.call(PLAN_CONSTRAINT_CODE, u[1]) ? PLAN_CONSTRAINT_CODE[u[1]] : null;
+    if (pc) return { type: "PLAN_RULE", code: pc, message: PLAN_RULE_TEXT[pc] };
     if (u && Object.prototype.hasOwnProperty.call(PLAN_CHECK_TEXT, u[1])) return { type: "PLAN_RULE", code: u[1], message: PLAN_CHECK_TEXT[u[1]] };
     return null;
   }
   if (code === "23P01") {
     // 071b's EXCLUDE are DEFERRED: they speak at the RPC's COMMIT, without
     // the other cycle's code (072's pre-check names it; this is the net).
+    // The same one lookup as 23505 above (review of PR #90, finding 11): no second copy of the names.
     const x = /exclusion constraint "([^"]+)"/.exec(message);
-    const pc = x && /^rt_v2_(truck|driver)_once$/.test(x[1]) ? PLAN_CONSTRAINT_CODE[x[1]] : null;
+    const pc = x && Object.prototype.hasOwnProperty.call(PLAN_CONSTRAINT_CODE, x[1]) ? PLAN_CONSTRAINT_CODE[x[1]] : null;
     if (pc) return { type: "PLAN_RULE", code: pc, message: PLAN_RULE_TEXT[pc] };
     return null;
   }
@@ -3739,6 +3814,8 @@ async function handleFacadeUpdate(request, tableId, recId, origin, env, ctx) {
   }
   // Διαβάζεται ΠΡΙΝ το dbUpdate — μετά δεν υπάρχει τρόπος να ανακτηθεί.
   const before = await readRowBefore(env, cfg.pg, recId);
+  const owned = planOwnedRefusal(cfg, before, origin, env);
+  if (owned) return owned;
   if (before === void 0 && invoiceNeedsBefore(cfg.pg, patch)) {
     return jsonError("Η τιμολόγηση δεν επαληθεύτηκε (η παραγγελία δεν διαβάστηκε) — ξαναδοκίμασε", 503, origin, env);
   }
@@ -3884,6 +3961,11 @@ __name(authorizeScopedDelete, "authorizeScopedDelete");
 async function handleFacadeDelete(request, tableId, recId, origin, env) {
   const { res, caller, cfg } = await authorizeScopedDelete(request, tableId, recId, origin, env);
   if (res) return res;
+  // read only for a table with v5 rows (finding 2): every other DELETE keeps its one request
+  if (cfg.planOwned) {
+    const owned = planOwnedRefusal(cfg, await readRowBefore(env, cfg.pg, recId), origin, env);
+    if (owned) return owned;
+  }
   let deleted;
   try {
     deleted = await dbUpdate(env, cfg.pg, "legacy_id", recId, {
@@ -5471,15 +5553,17 @@ var PLAN_PERMS = {
   // Decision 41 (owner 23/10, «everyone has rights»; the locked rule of 23/8:
   // «all roles edit broadly for now, DELETE stays narrow»): every role reads
   // and writes every act of the board, with its dry run (decision 26). The
-  // delete-type acts — rt-clear and delete, and later the removal of a vehicle
-  // handover (its own plan) — stay owner + dispatcher. No money here: the DB
+  // delete-type acts — rt-clear, delete and the removal of a vehicle handover
+  // (segment-remove, 072b, decision 41 (b)) — stay owner + dispatcher. The
+  // handover and its correction (handover, segment) are board acts: every
+  // role (handover plan H-17). No money here: the DB
   // cuts payroll/DKV amounts by role (decision 9), the tripwire below refuses
   // to forward one; price and partner rate are for every role (decision 41).
-  owner: { board: ["GET"], "vs-state": ["GET"], notices: ["GET"], "notices-read": ["POST"], orders: ["POST", "PATCH"], legs: ["POST"], move: ["POST"], split: ["POST"], rt: ["PATCH"], "rt-clear": ["POST"], delete: ["POST"], "vs-day": ["POST"], "vs-place": ["POST"], "local-loading": ["POST"] },
-  dispatcher: { board: ["GET"], "vs-state": ["GET"], notices: ["GET"], "notices-read": ["POST"], orders: ["POST", "PATCH"], legs: ["POST"], move: ["POST"], split: ["POST"], rt: ["PATCH"], "rt-clear": ["POST"], delete: ["POST"], "vs-day": ["POST"], "vs-place": ["POST"], "local-loading": ["POST"] },
-  management: { board: ["GET"], "vs-state": ["GET"], notices: ["GET"], "notices-read": ["POST"], orders: ["POST", "PATCH"], legs: ["POST"], move: ["POST"], split: ["POST"], rt: ["PATCH"], "vs-day": ["POST"], "vs-place": ["POST"], "local-loading": ["POST"] },
-  accountant: { board: ["GET"], "vs-state": ["GET"], notices: ["GET"], "notices-read": ["POST"], orders: ["POST", "PATCH"], legs: ["POST"], move: ["POST"], split: ["POST"], rt: ["PATCH"], "vs-day": ["POST"], "vs-place": ["POST"], "local-loading": ["POST"] },
-  warehouse: { board: ["GET"], "vs-state": ["GET"], notices: ["GET"], "notices-read": ["POST"], orders: ["POST", "PATCH"], legs: ["POST"], move: ["POST"], split: ["POST"], rt: ["PATCH"], "vs-day": ["POST"], "vs-place": ["POST"], "local-loading": ["POST"] }
+  owner: { board: ["GET"], "vs-state": ["GET"], notices: ["GET"], "notices-read": ["POST"], orders: ["POST", "PATCH"], legs: ["POST"], move: ["POST"], split: ["POST"], rt: ["PATCH"], "rt-clear": ["POST"], delete: ["POST"], "vs-day": ["POST"], "vs-place": ["POST"], "local-loading": ["POST"], handover: ["POST"], segment: ["PATCH"], "segment-remove": ["POST"] },
+  dispatcher: { board: ["GET"], "vs-state": ["GET"], notices: ["GET"], "notices-read": ["POST"], orders: ["POST", "PATCH"], legs: ["POST"], move: ["POST"], split: ["POST"], rt: ["PATCH"], "rt-clear": ["POST"], delete: ["POST"], "vs-day": ["POST"], "vs-place": ["POST"], "local-loading": ["POST"], handover: ["POST"], segment: ["PATCH"], "segment-remove": ["POST"] },
+  management: { board: ["GET"], "vs-state": ["GET"], notices: ["GET"], "notices-read": ["POST"], orders: ["POST", "PATCH"], legs: ["POST"], move: ["POST"], split: ["POST"], rt: ["PATCH"], "vs-day": ["POST"], "vs-place": ["POST"], "local-loading": ["POST"], handover: ["POST"], segment: ["PATCH"] },
+  accountant: { board: ["GET"], "vs-state": ["GET"], notices: ["GET"], "notices-read": ["POST"], orders: ["POST", "PATCH"], legs: ["POST"], move: ["POST"], split: ["POST"], rt: ["PATCH"], "vs-day": ["POST"], "vs-place": ["POST"], "local-loading": ["POST"], handover: ["POST"], segment: ["PATCH"] },
+  warehouse: { board: ["GET"], "vs-state": ["GET"], notices: ["GET"], "notices-read": ["POST"], orders: ["POST", "PATCH"], legs: ["POST"], move: ["POST"], split: ["POST"], rt: ["PATCH"], "vs-day": ["POST"], "vs-place": ["POST"], "local-loading": ["POST"], handover: ["POST"], segment: ["PATCH"] }
 };
 function planCan(role, resource, method) {
   const r = PLAN_PERMS[role];
@@ -5493,9 +5577,13 @@ __name(planCan, "planCan");
 // one switch, in the source that is deployed, αρχή 3).
 var PLAN_WRITES_OPEN = false;
 // One row per route: method + path → resource (PLAN_PERMS) + RPC. `dryRun`
-// marks the four RPCs that take {"dry_run": true} and write nothing then;
+// marks the seven RPCs that take {"dry_run": true} and write nothing then
+// (072's four, 072b's three);
 // ONLY those pass the closed switch with it — any other RPC would ignore the
 // flag and write (plan_orders_create has no dry run).
+// `migration`: the migration that brings the RPC, when it is not 072 (the 503
+// schema_behind names it: after a rollback of 072b alone, «072 is missing» would
+// send the owner to the wrong file; handover plan H-22).
 // `idKey`: the path id goes into p under that key; a different id in the body
 // is a 400, never silently overridden (αρχή 1).
 var PLAN_ROUTES = [
@@ -5513,7 +5601,13 @@ var PLAN_ROUTES = [
   { method: "POST", re: /^\/plan\/delete$/, resource: "delete", rpc: "plan_delete", dryRun: true },
   { method: "POST", re: /^\/plan\/vs\/day$/, resource: "vs-day", rpc: "plan_vs_set_day" },
   { method: "POST", re: /^\/plan\/vs\/place$/, resource: "vs-place", rpc: "plan_vs_set_place" },
-  { method: "POST", re: /^\/plan\/local-loading$/, resource: "local-loading", rpc: "plan_local_loading" }
+  { method: "POST", re: /^\/plan\/local-loading$/, resource: "local-loading", rpc: "plan_local_loading" },
+  // 072b — vehicle handover at a point (H-17). The handover CREATES a segment:
+  // request_id in the body (decision 44, the DB replays it); its preview needs
+  // none. The first row is the deploy guard marker (worker-guard --handover).
+  { method: "POST", re: /^\/plan\/rt\/(\d+)\/handover$/, resource: "handover", rpc: "plan_seg_change", idKey: "rt_id", dryRun: true, migration: "072b" },
+  { method: "PATCH", re: /^\/plan\/segments\/(\d+)$/, resource: "segment", rpc: "plan_seg_fix", idKey: "segment_id", dryRun: true, migration: "072b" },
+  { method: "POST", re: /^\/plan\/segments\/(\d+)\/remove$/, resource: "segment-remove", rpc: "plan_seg_remove", idKey: "segment_id", dryRun: true, migration: "072b" }
 ];
 // Reads: the query string → RPC args, or a 400 before any DB call.
 // The week is a TMS week: Saturday to Friday (TmsWeek), named by its Saturday.
@@ -5560,42 +5654,116 @@ function planHasAmount(v) {
 __name(planHasAmount, "planHasAmount");
 // Cross-cutting input rule (coordinator 25/10): JSON.parse reads 1e999 as Infinity, and JSON.stringify then
 // sends it to the DB as null: a silent change of meaning (a partner rate «cleared», a price «missing») that
-// no isfinite() in 072 can see any more. So the Worker refuses it, before any DB call (αρχή 1). It returns
-// the path of the first non-finite number, or null.
-function planNonFinite(v, at) {
-  if (typeof v === "number") return Number.isFinite(v) ? null : at || "body";
+// no isfinite() in 072 can see any more. So the Worker refuses it, before any DB call (αρχή 1).
+// The same for an id (review of PR #90, finding 9): JSON.parse rounds 9007199254740993 to ...992 without a
+// word, so a body id that is not a safe integer would reach ANOTHER row and come back a 200. An id is a number
+// under a key `id`, `ids`, `*_id` or `*_ids` (or an element of such an array); an amount or a rate is not one,
+// so 1e308 there still reaches the DB as sent. It returns { at, rule } for the first bad number, or null.
+var PLAN_ID_KEY = /^(?:ids?|.+_ids?)$/;
+function planBadNumber(v, at, isId) {
+  if (typeof v === "number") {
+    if (!Number.isFinite(v)) return { at: at || "body", rule: "finite" };
+    return isId && !Number.isSafeInteger(v) ? { at, rule: "safe_integer" } : null;
+  }
   if (Array.isArray(v)) {
     for (let i = 0; i < v.length; i++) {
-      const r = planNonFinite(v[i], `${at}[${i}]`);
+      const r = planBadNumber(v[i], `${at}[${i}]`, isId);
       if (r !== null) return r;
     }
     return null;
   }
   if (v && typeof v === "object") {
     for (const [k, x] of Object.entries(v)) {
-      const r = planNonFinite(x, at ? `${at}.${k}` : k);
+      const r = planBadNumber(x, at ? `${at}.${k}` : k, PLAN_ID_KEY.test(k));
       if (r !== null) return r;
     }
   }
   return null;
 }
-__name(planNonFinite, "planNonFinite");
-// plan_rt_update's dry run SHOWS the rule a change would break as preview.conflict {code, sqlstate, detail}
-// (Figma D4, a 200). Its Greek lives only in the two tables above, so it is added here: F4 keeps no copy of
-// the texts (αρχή 3), and a rule the tables do not know is still named.
-function planConflictMessage(c) {
-  // stockRuleError's aliases first (K1 review r2): a preview of rt_v2_truck_once speaks as truck_busy, as the
-  // execution does; handlePlan sends the same code on in conflict.code
-  const raw = String((c && c.code) || "");
-  const code = Object.prototype.hasOwnProperty.call(PLAN_CONSTRAINT_CODE, raw) ? PLAN_CONSTRAINT_CODE[raw] : raw;
-  if (Object.prototype.hasOwnProperty.call(PLAN_RULE_TEXT, code)) {
-    const detail = c.detail ? String(c.detail).trim().slice(0, 120) : "";
-    return detail ? `${PLAN_RULE_TEXT[code]} (${detail})` : PLAN_RULE_TEXT[code];
+__name(planBadNumber, "planBadNumber");
+// The ONE translation of a DB refusal inside /plan/* (review of PR #90, finding 4): the catch of handlePlan and
+// plan_rt_update's dry-run preview.conflict both go through it, so a preview says what its execution would
+// say, code and text, for every family stockRuleError knows (stock 057, relay 060, plan 071/072) and for a
+// constraint none of them knows (a loud 422 naming it, never the retried 500; only here — the facade/costs
+// paths keep stockRuleError's null). Returns { status, type, code, message } or null.
+function planRefusal(e) {
+  const rule = stockRuleError(e);
+  // Every bad_input inside /plan/* has ONE type, BAD_REQUEST, whatever its detail and whichever RPC (review r4 of
+  // PR #90, finding 1): 072 raises plan:bad_input with a field ('body', 'target.side') or with the SQLSTATE it
+  // caught ('22P02', in the six RPCs that catch per statement), and the seven others catch their casts as a field
+  // ('body', 'rt_id') - so the same typing mistake comes back with either detail. Splitting by detail gave one fault
+  // two types (r3); the Worker's own pre-checks already answer 400 BAD_REQUEST bad_input. The detail stays in brackets.
+  if (rule && rule.type === "PLAN_RULE" && rule.code === "bad_input") {
+    const d = /^plan rule broken: bad_input:([\s\S]*)$/.exec(String(e.pg.message || ""));
+    return planDbInput(d ? d[1].trim().slice(0, 120) : "");
   }
-  if (Object.prototype.hasOwnProperty.call(PLAN_CHECK_TEXT, code)) return PLAN_CHECK_TEXT[code];
-  return `Κανόνας βάσης ${code || "χωρίς κωδικό"}`;
+  if (rule) {
+    // need_token: the act needs the dry-run list first — 428, so the F4 client opens the list instead of
+    // toasting a refusal.
+    return { status: rule.code === "need_token" ? 428 : 422, type: rule.type || "STOCK_RULE", code: rule.code, message: rule.message };
+  }
+  const pg = e && e.pg && typeof e.pg === "object" ? e.pg : null;
+  if (pg && /^23(514|505|503|P01)$/.test(String(pg.code || ""))) {
+    const n = /constraint "([^"]+)"/.exec(String(pg.message || ""));
+    const cname = n ? n[1] : "db_rule";
+    return { status: 422, type: "PLAN_RULE", code: cname, message: n ? `Κανόνας βάσης ${cname}` : `Κανόνας βάσης: ${String(pg.message || "").slice(0, 200)}` };
+  }
+  return null;
 }
-__name(planConflictMessage, "planConflictMessage");
+__name(planRefusal, "planRefusal");
+// plan_rt_update's dry run SHOWS the rule a change would break as preview.conflict {code, sqlstate, detail}
+// (Figma D4, a 200). 072 fills `code` with the plan: hint's code or the constraint's name, and `detail` only
+// for the former (what follows «<code>:» in plan_h_raise's message). Rebuilt here into the error its execution
+// would raise and read by planRefusal, so the two never drift (finding 4): F4 keeps no copy of the texts (αρχή 3).
+var PLAN_CONSTRAINT_KIND = { "23514": "check", "23505": "unique", "23P01": "exclusion" };
+// The SQLSTATEs that speak of the request's OWN input (review of PR #90 r2, finding 2): a text that is not a
+// number or a date (22P02, 22007), a number or a date out of range (22003, 22008), a JSON value of the wrong
+// shape (22023, e.g. jsonb_array_elements on a scalar), a required field left null (23502). The first five are
+// the very list 072's six write RPCs catch as plan:bad_input '<SQLSTATE>' (a raw one reaches here only past 072's
+// cast blocks, e.g. a 22023 of a jsonb function or a 23502). The statement failed, so its transaction rolled back and nothing was kept: a
+// 422, the same answer on every attempt. Every other class-22 code (22012 division by zero, 22004, 22001 from
+// stored text) is a fault inside 072 that no refresh can cure, so it stays plan_failed «ενημέρωσε τον
+// Δημήτρη». A 23502 or a 22023 can also come from DB state the function read, so the text keeps the same line
+// (αρχή 1). Only on a write route or its dry run: a read's arguments are the Worker's own, checked above.
+var PLAN_DB_INPUT_STATE = new Set(["22P02", "22003", "22007", "22008", "22023", "23502"]);
+function planDbInput(detail) {
+  return { status: 422, type: "BAD_REQUEST", code: "bad_input", message: `${PLAN_RULE_TEXT.bad_input}· αν ξανασυμβεί, ενημέρωσε τον Δημήτρη${detail ? ` (${detail})` : ""}` };
+}
+__name(planDbInput, "planDbInput");
+function planConflictRule(c) {
+  const code = String((c && c.code) || "");
+  const state = String((c && c.sqlstate) || "");
+  const detail = c && c.detail !== null && c.detail !== void 0 ? String(c.detail) : null;
+  const hinted = Object.prototype.hasOwnProperty.call(PLAN_RULE_TEXT, code) || detail !== null;
+  // a NOT NULL with a name (PG 18 names them) is still bad_input at execution, never «Κανόνας βάσης» (finding 9 r2)
+  if (!hinted && PLAN_DB_INPUT_STATE.has(state)) return planDbInput(state);
+  const kind = Object.prototype.hasOwnProperty.call(PLAN_CONSTRAINT_KIND, state) ? `${PLAN_CONSTRAINT_KIND[state]} ` : "";
+  const pg = hinted
+    ? { code: state || "23514", hint: `plan:${code}`, message: `plan rule broken: ${code}:${detail || ""}` }
+    : { code: state, hint: null, message: `violates ${kind}constraint "${code}"` };
+  return planRefusal({ pg }) || { code: code || "db_rule", message: `Κανόνας βάσης ${code || "χωρίς κωδικό"}` };
+}
+__name(planConflictRule, "planConflictRule");
+// PostgREST codes that prove the RPC never ran (review of PR #90, finding 6): the request was refused before
+// any SQL was sent — no pool connection (003), the schema cache not ready (002), a request PostgREST could not
+// parse or route (1xx), a schema-cache lookup that failed (2xx: 203 = two overloads of one name), a JWT it would
+// not take (3xx). Nothing was kept, so a write says «δεν αποθηκεύτηκε». An explicit list, never a pattern: a code
+// not named here stays unknown (plan_unknown on a write). Left out on purpose, because they come AFTER the SQL
+// ran: PGRST000 / PGRST001 (the link can drop after the COMMIT), PGRST111 / PGRST112 (response.headers /
+// response.status set by the function), PGRST116 (singular answer), PGRST121 (RAISE SQLSTATE 'PGRST'),
+// PGRST124 / PGRST128 (max-affected), PGRSTX00. PGRST202 is schema_behind above.
+var PLAN_PGRST_NOT_RUN = new Set(["PGRST002", "PGRST003", "PGRST100", "PGRST101", "PGRST102", "PGRST103", "PGRST105",
+  "PGRST106", "PGRST107", "PGRST108", "PGRST114", "PGRST115", "PGRST117", "PGRST118", "PGRST120", "PGRST122",
+  "PGRST123", "PGRST125", "PGRST126", "PGRST127", "PGRST200", "PGRST201", "PGRST203", "PGRST204", "PGRST205",
+  "PGRST300", "PGRST301", "PGRST302", "PGRST303"]);
+// The status of an answer whose write may be kept (plan_unknown) or IS kept (amount_leak after a write):
+// 422, because core/api.js _atRetry sends again by itself, up to three times, every thrown fetch and every
+// non-ok status except 400 / 401 / 403 / 422 (so every 5xx, 404, 428, 429 and every 409 without opts.conflict),
+// and a lost answer after the COMMIT would then move the stops twice (review of PR #90, finding 1; decision
+// 44: no screen re-sends a /plan/* write; r3 finding 8: the full list). 401 and 403 mean something else, 400 a
+// malformed request. Pinned on both sides: worker/test/plan-routes.test.mjs
+// and tests/api-plan-no-resend.test.mjs (the real _atRetry: exactly one fetch).
+var PLAN_NO_RESEND = 422;
 async function handlePlan(request, url, origin, env) {
   // a malformed token makes jwtVerify throw (atob): a 401 in the /plan/* shape, never a CF 1101 without CORS
   let caller = null;
@@ -5613,7 +5781,9 @@ async function handlePlan(request, url, origin, env) {
   if (!planCan(caller.role, route.resource, method)) {
     return planError(403, "FORBIDDEN", "forbidden", "Ο ρόλος σου δεν έχει αυτή την πράξη στο Εβδομαδιαίο Εθνικών", origin, env);
   }
-  const name = `${method} /plan/${route.resource}`;
+  // the path as requested (finding 12): /plan/pieces/split, /plan/rt/42 — never the resource name, which
+  // dropped the record id and named a route that does not exist. The route regex has matched it: digits only.
+  const name = `${method} ${url.pathname}`;
   // No top-level catch in fetch(): anything thrown out of here would be a CF
   // 1101 without CORS, which the browser reads as «network error» (αρχή 1).
   let fn = null;
@@ -5633,15 +5803,16 @@ async function handlePlan(request, url, origin, env) {
       if (!body || typeof body !== "object" || Array.isArray(body)) {
         return planError(400, "BAD_REQUEST", "bad_json", "Το σώμα του αιτήματος δεν είναι αντικείμενο JSON", origin, env);
       }
-      const nonFinite = planNonFinite(body, "");
-      if (nonFinite !== null) {
-        return planError(400, "BAD_REQUEST", "bad_input", `${PLAN_RULE_TEXT.bad_input} (${nonFinite.slice(0, 80)}:finite)`, origin, env);
+      const bad = planBadNumber(body, "", false);
+      if (bad !== null) {
+        return planError(400, "BAD_REQUEST", "bad_input", `${PLAN_RULE_TEXT.bad_input} (${bad.at.slice(0, 80)}:${bad.rule})`, origin, env);
       }
       if (route.idKey) {
         const id = Number(match[1]);
-        // a path id of 400 digits is Infinity (or an unsafe integer): the same rule, never a rounded id
+        // a path id of 400 digits is Infinity (or an unsafe integer): the same rule and the same names as a
+        // body id in planBadNumber — `finite` for Infinity, `safe_integer` for a rounded one (r2 finding 7)
         if (!Number.isSafeInteger(id)) {
-          return planError(400, "BAD_REQUEST", "bad_input", `${PLAN_RULE_TEXT.bad_input} (${route.idKey}:finite)`, origin, env);
+          return planError(400, "BAD_REQUEST", "bad_input", `${PLAN_RULE_TEXT.bad_input} (${route.idKey}:${Number.isFinite(id) ? "safe_integer" : "finite"})`, origin, env);
         }
         if (body[route.idKey] !== void 0 && Number(body[route.idKey]) !== id) {
           return planError(400, "BAD_REQUEST", "id_mismatch", `Το ${route.idKey} του σώματος διαφέρει από τη διαδρομή`, origin, env);
@@ -5659,25 +5830,23 @@ async function handlePlan(request, url, origin, env) {
     const out = await dbRpc(env, fn, args);
     if (!PLAN_MONEY_ROLES.includes(caller.role) && planHasAmount(out)) {
       console.error(`PLAN ${name}: the DB answered an amount to role ${caller.role} — not forwarded`);
-      // a write answered: its COMMIT is done, so the text says it was kept and must not be pressed again (K1 review r1)
-      return planError(500, "SERVER", "amount_leak", maybeWritten
+      // a write answered: its COMMIT is done, so the text says it was kept and must not be pressed again (K1 review r1),
+      // and the status is one the legacy client never sends again by itself (PLAN_NO_RESEND, finding 1)
+      return planError(PLAN_NO_RESEND, "SERVER", "amount_leak", maybeWritten
         ? "Η πράξη αποθηκεύτηκε, αλλά η απάντηση της βάσης είχε ποσά για ρόλο χωρίς δικαίωμα — δεν στάλθηκε· μην την ξαναπατήσεις· ενημέρωσε τον Δημήτρη"
         : "Η απάντηση της βάσης είχε ποσά για ρόλο χωρίς δικαίωμα — δεν στάλθηκε· ενημέρωσε τον Δημήτρη", origin, env);
     }
     if (out && out.preview && out.preview.conflict && typeof out.preview.conflict === "object") {
       const c = out.preview.conflict;
-      c.message = planConflictMessage(c);
-      // one code per rule for a screen, whichever layer refused first (PLAN_CONSTRAINT_CODE, K1 review r2)
-      if (Object.prototype.hasOwnProperty.call(PLAN_CONSTRAINT_CODE, String(c.code || ""))) c.code = PLAN_CONSTRAINT_CODE[c.code];
+      // one code and one text per rule for a screen, whichever layer refused first (planRefusal, finding 4)
+      const rule = planConflictRule(c);
+      c.code = rule.code;
+      c.message = rule.message;
     }
     return jsonOk(out, origin, env);
   } catch (e) {
-    const rule = stockRuleError(e);
-    if (rule) {
-      // need_token: the act needs the dry-run list first — 428, so the F4
-      // client opens the list instead of toasting a refusal.
-      return planError(rule.code === "need_token" ? 428 : 422, rule.type || "STOCK_RULE", rule.code, rule.message, origin, env);
-    }
+    const refusal = planRefusal(e);
+    if (refusal) return planError(refusal.status, refusal.type, refusal.code, refusal.message, origin, env);
     const pg = e && e.pg && typeof e.pg === "object" ? e.pg : null;
     // PostgREST 404 PGRST202 = the function is not in its schema cache: this
     // Worker is ahead of 072 (or 072 was rolled back). Named, never a 500
@@ -5686,8 +5855,9 @@ async function handlePlan(request, url, origin, env) {
     // of an inner function is a bug of 072 and stays the 500 path below).
     const own = !!(pg && fn && new RegExp(`\\bfunction (?:public\\.)?${fn}\\b`).test(String(pg.message || "")));
     if (pg && (pg.code === "PGRST202" || (pg.code === "42883" && own))) {
-      console.error(`PLAN ${name}: ${fn} missing in the DB (072)`);
-      return planError(503, "SCHEMA_BEHIND", "schema_behind", "Η βάση δεν έχει ακόμη το migration 072 (Εβδομαδιαίο Εθνικών) — ενημέρωσε τον Δημήτρη", origin, env);
+      const mig = route.migration || "072";
+      console.error(`PLAN ${name}: ${fn} missing in the DB (${mig})`);
+      return planError(503, "SCHEMA_BEHIND", "schema_behind", `Η βάση δεν έχει ακόμη το migration ${mig} (Εβδομαδιαίο Εθνικών) — ενημέρωσε τον Δημήτρη`, origin, env);
     }
     // 42501 on the RPC itself: 072 is there but the GRANT of its PART 5 is not (a manual REVOKE would do it)
     if (pg && pg.code === "42501" && own) {
@@ -5696,30 +5866,34 @@ async function handlePlan(request, url, origin, env) {
     }
     // A lock lost to a concurrent write (deadlock 40P01, serialization 40001,
     // lock_timeout 55P03): nothing was kept — a 409, never the 500 path. The
-    // user presses again: no screen re-sends a /plan/* write by itself and
-    // this handler never calls the RPC twice (decision 44, owner 23/10).
+    // user presses again; this handler never calls the RPC twice (decision 44,
+    // owner 23/10). The legacy core/api.js _atRetry WOULD send this 409 (and the
+    // 503s and the 500 plan_failed) twice more by itself — harmless, because
+    // nothing was kept — which is why no /plan/* write may go through it
+    // (tests/api-plan-no-resend.test.mjs pins both; r2 findings 1 and 6).
+    // Type SERVER, as `slow`, never PLAN_RULE (finding 13): it is transient, and PLAN_RULE is the family of
+    // the business refusals a client must treat as final.
     if (pg && /^(40P01|40001|55P03)$/.test(String(pg.code || ""))) {
       console.error(`PLAN ${name}: ${pg.code} (concurrent change)`);
       // a read writes nothing, so its text never speaks of writing (polish review 2 M2)
-      return planError(409, "PLAN_RULE", "busy_retry", `Ταυτόχρονη αλλαγή από άλλον χρήστη — ${route.read ? `η πράξη ${name} δεν ολοκληρώθηκε` : "τίποτα δεν γράφτηκε"}· ξαναδοκίμασε`, origin, env);
+      return planError(409, "SERVER", "busy_retry", `Ταυτόχρονη αλλαγή από άλλον χρήστη — ${route.read ? `η πράξη ${name} δεν ολοκληρώθηκε` : "τίποτα δεν γράφτηκε"}· ξαναδοκίμασε`, origin, env);
     }
     // statement_timeout (PostgREST, 8 s): slow, not broken — 503, try again later.
     if (pg && String(pg.code || "") === "57014") {
       console.error(`PLAN ${name}: statement timeout`);
       return planError(503, "SERVER", "slow", `Η βάση άργησε να απαντήσει — ${route.read ? `η πράξη ${name} δεν ολοκληρώθηκε` : "τίποτα δεν γράφτηκε"}· ξαναδοκίμασε σε λίγο`, origin, env);
     }
-    // Any other named DB constraint inside /plan/* is a business refusal the
-    // texts above do not know yet: a loud 422 naming it, never the retried
-    // 500. Only here — the facade/costs paths keep stockRuleError's null.
-    if (pg && /^23(514|505|503|P01)$/.test(String(pg.code || ""))) {
-      const n = /constraint "([^"]+)"/.exec(String(pg.message || ""));
-      const cname = n ? n[1] : "db_rule";
-      return planError(422, "PLAN_RULE", cname, n ? `Κανόνας βάσης ${cname}` : `Κανόνας βάσης: ${String(pg.message || "").slice(0, 200)}`, origin, env);
+    // Input the DB cannot take (finding 5, narrowed in r2 finding 2: PLAN_DB_INPUT_STATE), on a write or its dry
+    // run. Any other class-22 code, and any on a read, falls to plan_failed below.
+    if (pg && !route.read && PLAN_DB_INPUT_STATE.has(String(pg.code || ""))) {
+      console.error(`PLAN ${name}: ${pg.code} (input the DB cannot take)`, String(pg.message || "").slice(0, 200));
+      const bad = planDbInput(pg.code);
+      return planError(bad.status, bad.type, bad.code, bad.message, origin, env);
     }
     console.error(`PLAN ${name}`, e && e.message);
     // Only a real Postgres SQLSTATE (five characters) outside the connection class 08 and the FATAL terminations
     // (57P, 25P04) means the RPC's transaction rolled back: nothing was kept, so it is plan_failed, never «may have been saved»
-    // (K1 review r1: 22P02, 23502, an inner 42883, P0001 without hint). Anything else leaves the outcome unknown,
+    // (K1 review r1: an inner 42883, P0001 without hint). Anything else leaves the outcome unknown,
     // because the COMMIT may have happened before the link dropped: no answer (the fetch threw), a gateway page, or
     // a JSON body without a SQLSTATE - the gateway's 502 / 504 {"message": …}, PostgREST's PGRST000 «connection lost»
     // (K1 review r2) - and a 57P01 / 57P02 (polish review I1: pg_terminate_backend, a fast shutdown, or a crash of
@@ -5736,22 +5910,31 @@ async function handlePlan(request, url, origin, env) {
     const rolledBack = !!pg && /^(?!08|57P|25P04|58|XX)[0-9A-Z]{5}$/.test(String(pg.code || ""));
     // K1 review r3 m1: some answers without a SQLSTATE prove the RPC never ran, so nothing was kept and «μπορεί να
     // αποθηκεύτηκε» would only send the user to look for nothing: a 401 / 403 (the gateway refused the service key,
-    // e.g. after a rotation; any body, a page too) and PGRST003 (no pool connection within the wait: the request never
-    // reached Postgres). PGRST000 / PGRST001 and the 502 / 504 stay plan_unknown: a link can drop AFTER the COMMIT.
+    // e.g. after a rotation; any body, a page too) and the PostgREST codes of PLAN_PGRST_NOT_RUN (finding 6).
+    // PGRST000 / PGRST001 and the 502 / 504 stay plan_unknown: a link can drop AFTER the COMMIT.
     // A read saves nothing, so its text never says «δεν αποθηκεύτηκε» (polish review m1): it was not run.
     if (!rolledBack && (e && (e.status === 401 || e.status === 403))) {
       console.error(`PLAN ${name}: the DB gateway refused the call (${e.status})`);
       return planError(503, "SERVER", "db_refused", `Η βάση αρνήθηκε την κλήση (${e.status}) — η πράξη ${name} ${route.read ? "δεν εκτελέστηκε" : "δεν αποθηκεύτηκε"}· ενημέρωσε τον Δημήτρη`, origin, env);
     }
-    if (!rolledBack && pg && String(pg.code || "") === "PGRST003") {
-      console.error(`PLAN ${name}: PGRST003 (no pool connection)`);
-      return planError(503, "SERVER", "slow", `Η βάση δεν είχε ελεύθερη σύνδεση — ${route.read ? `η πράξη ${name} δεν εκτελέστηκε` : "τίποτα δεν αποθηκεύτηκε"}· ξαναδοκίμασε σε λίγο`, origin, env);
+    const pgrst = pg ? String(pg.code || "") : "";
+    if (!rolledBack && PLAN_PGRST_NOT_RUN.has(pgrst)) {
+      console.error(`PLAN ${name}: ${pgrst} (PostgREST did not run it)`);
+      // 002 / 003 pass by themselves (the pool, the schema cache): «ξαναδοκίμασε σε λίγο»; the others are a
+      // Worker ↔ DB mismatch that pressing again cannot cure
+      if (pgrst === "PGRST003" || pgrst === "PGRST002") {
+        const what = pgrst === "PGRST003" ? "Η βάση δεν είχε ελεύθερη σύνδεση" : "Η βάση δεν ήταν έτοιμη (PGRST002)";
+        return planError(503, "SERVER", "slow", `${what} — ${route.read ? `η πράξη ${name} δεν εκτελέστηκε` : "τίποτα δεν αποθηκεύτηκε"}· ξαναδοκίμασε σε λίγο`, origin, env);
+      }
+      return planError(503, "SERVER", "db_refused", `Η βάση αρνήθηκε την κλήση (${pgrst}) — η πράξη ${name} ${route.read ? "δεν εκτελέστηκε" : "δεν αποθηκεύτηκε"}· ενημέρωσε τον Δημήτρη`, origin, env);
     }
     if (maybeWritten && !rolledBack) {
       // the link may have dropped AFTER the COMMIT: a write never claims «not done» (αρχή 1); the F4 client
       // must not send it again by itself, and the user re-presses the SAME form, so the same request_id replays
       // (decision 44). Never «refresh»: that would close the form and mint a new id = a second creation.
-      return planError(500, "SERVER", "plan_unknown", `Η πράξη ${name} μπορεί να αποθηκεύτηκε — έλεγξε πρώτα στο Εβδομαδιαίο Εθνικών αν φαίνεται, και μόνο αν λείπει ξαναπάτησε το ίδιο κουμπί· ενημέρωσε τον Δημήτρη`, origin, env);
+      // PLAN_NO_RESEND, not 500: the legacy client would send it again by itself (finding 1). Its own type, so
+      // a screen never reads it as a refusal (PLAN_RULE) or as «not done» (SERVER).
+      return planError(PLAN_NO_RESEND, "OUTCOME_UNKNOWN", "plan_unknown", `Η πράξη ${name} μπορεί να αποθηκεύτηκε — έλεγξε πρώτα στο Εβδομαδιαίο Εθνικών αν φαίνεται, και μόνο αν λείπει ξαναπάτησε το ίδιο κουμπί· ενημέρωσε τον Δημήτρη`, origin, env);
     }
     return planError(500, "SERVER", "plan_failed", `Η πράξη ${name} δεν ολοκληρώθηκε — ενημέρωσε τον Δημήτρη`, origin, env);
   }
