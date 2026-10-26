@@ -1,6 +1,6 @@
 // 073b (the auditor learns v5, spec 8) on the production-shaped PGlite copy of plan-073.test.mjs (ONE builder,
 // prod-shaped-072.mjs with the live money views and 072b; then the v1 money fixture and 073): every check 073b seeds
-// (F3's B-78..B-90 and 072b's B-91..B-93, handover P3-6) is 0 on today's data (no false alarm before day L), and
+// (F3's B-78..B-90 + B-94 and 072b's B-91..B-93, handover P3-6) is 0 on today's data (no false alarm before day L), and
 // each enabled F3 check is RED in a scenario that breaks its rule. The owner's answers: B-79 compares with the X of
 // the order (M-4 beta), so a change of X in the settings keeps it green and only a broken share rule turns it red;
 // B-80 is DISABLED (M-5 delta) and is counted as such, never as red; B-90 stays (M-6 alpha). B-91..B-93 stay 0
@@ -25,7 +25,7 @@ async function prodShaped() {
   const db = await prodShaped072(true, { money: 'live', with072b: true });
   await db.exec(fixture('v1-money-073.sql'));
   await db.exec(read('073_plan_money.sql'));
-  // the seed of the local catalog already holds the 16 (047b is generated from the files): take them out, as production
+  // the seed of the local catalog already holds the 17 (047b is generated from the files): take them out, as production
   await db.query('DELETE FROM monitoring.checks WHERE id = ANY($1)', [IDS]);
   return db;
 }
@@ -51,7 +51,7 @@ async function runAll(db) {   // the production path: monitoring.run_checks for 
 // One scenario that breaks every enabled F3 rule once (written with the plan_* where a rule allows it, directly where
 // only a bypass can break it - that is what the check is for).
 const SCENARIO = `DO $s$
-DECLARE td date := (now() AT TIME ZONE 'Europe/Athens')::date; d date; hub bigint; la bigint; lb bigint; cl bigint; pa bigint; trk bigint; trk2 bigint;
+DECLARE td date := (now() AT TIME ZONE 'Europe/Athens')::date; d date; hub bigint; la bigint; lb bigint; cl bigint; pa bigint; pa2 bigint; trk bigint; trk2 bigint;
   r jsonb; rtp bigint; nn bigint; lg bigint; vso bigint; vsb bigint; vsh bigint;
   f timestamptz; t timestamptz; lot_o bigint; lot bigint; nn2 bigint; sh2 bigint;
 BEGIN
@@ -63,12 +63,18 @@ BEGIN
   INSERT INTO partners (company_name) VALUES ('S073b partner') RETURNING id INTO pa;
   INSERT INTO trucks (license_plate) VALUES ('S073B-1') RETURNING id INTO trk;
   INSERT INTO trucks (license_plate) VALUES ('S073B-2') RETURNING id INTO trk2;
-  -- B-82 an empty cycle (plan_rt_create alone, never through a plan_* that cancels it) ; B-83 a partner without a rate
+  -- B-82 an empty cycle (plan_rt_create alone, never through a plan_* that cancels it) ; B-83 a partner without a rate ;
+  -- B-94 an invoice on that cycle naming a partner who drives none of its segments (only a bypass: the Worker refuses
+  -- it, final review 26/10) - counted, replaces no rate, so the cycle stays B-83 too
   r := plan_rt_create(jsonb_build_object('new_rt', jsonb_build_object('trip_type', 'OWNED', 'truck_id', trk),
          'stops', jsonb_build_array(jsonb_build_object('ref', 'a', 'location_id', la, 'side', 'KATHODOS', 'planned_from', f, 'planned_to', t))), 's073b', 'owner');
   r := plan_rt_create(jsonb_build_object('new_rt', jsonb_build_object('trip_type', 'PARTNER', 'partner_id', pa),
          'stops', jsonb_build_array(jsonb_build_object('ref', 'a', 'location_id', la, 'side', 'KATHODOS', 'planned_from', f, 'planned_to', t))), 's073b', 'owner');
-  rtp := (r->'ids'->>'rt_id')::bigint;
+  rtp := (r->>'rt_id')::bigint;   -- plan_rt_create answers {rt_id} at the top (r->'ids' was null: never used before B-94)
+  IF rtp IS NULL THEN RAISE EXCEPTION 'scenario: no rt_id from plan_rt_create'; END IF;
+  INSERT INTO partners (company_name) VALUES ('S073b partner 2') RETURNING id INTO pa2;
+  INSERT INTO ct_cost_lines (rt_id, category, net, vat, alloc_status, pay_source, line_date, created_by, partner_id)
+  VALUES (rtp, 'partner_rate', 280, 0, 'allocated', 'CREDIT', td, 's073b', pa2);
   PERFORM plan_h_finish();
   -- B-84 a cost line left on a cancelled trip
   INSERT INTO ct_cost_lines (rt_id, category, net, vat, alloc_status, pay_source, line_date, created_by)
@@ -180,7 +186,7 @@ test('073b on the production-shaped copy', async (t) => {
     assert.strictEqual(Number((await db.query(readDone('071_plan_schema_verify.sql'))).rows[0].policies), 5);
     assert.strictEqual(Number((await db.query(read('072b_plan_vehicle_segments_verify.sql'))).rows[0].auditor_policy), 1);
     // order 073b -> 073 on the way back: 073's rollback refuses while 073b's checks read its view
-    assert.match(await errorOf(db, read('073_plan_money_rollback.sql')) ?? '', /073 rollback: 073b's checks \(B-78\.\.B-90\) exist - run 073b's rollback first/);
+    assert.match(await errorOf(db, read('073_plan_money_rollback.sql')) ?? '', /073 rollback: 073b's checks \(B-78\.\.B-90, B-94\) exist - run 073b's rollback first/);
   });
 
   await t.test('the scenario turns every enabled F3 check red but B-79 (M-4 beta); B-80 counts as disabled; 072b\'s stay 0', async () => {
@@ -197,6 +203,9 @@ test('073b on the production-shaped copy', async (t) => {
     // Q6-1 / principle 3: B-83 and the P&L flag read the same rule (ct_v_rt_partner_cost) - they agree on the scenario
     assert.strictEqual(v['B-83'], await n(db, `SELECT count(*) AS n FROM ct_v_rt_pnl WHERE partner_rate_missing`), 'B-83 = the P&L\'s partner_rate_missing');
     assert.strictEqual(v['B-83'], 1, 'B-83: the partner cycle without a rate');
+    // final round 2 (finding 2): the invoice no partner of the cycle owns is counted (cost 280 on top), and said
+    assert.strictEqual(v['B-94'], await n(db, `SELECT count(DISTINCT rt_id) AS n FROM ct_v_rt_partner_cost WHERE unmatched`), 'B-94 = the view\'s unmatched cycles');
+    assert.strictEqual(v['B-94'], 1, 'B-94: the invoice of a partner who drives no segment of the cycle');
     // written out, not taken from the builder: a builder that stopped seeding 072b's checks must fail here too
     for (const id of ['B-91', 'B-92', 'B-93']) assert.strictEqual(v[id], 0, `${id}: seeded by 073b, and every cycle of the scenario went through the plan_*`);
     const res = await runAll(db);
@@ -232,7 +241,7 @@ test('073b on the production-shaped copy', async (t) => {
     } finally { await db.exec('ROLLBACK'); }
   });
 
-  await t.test('the rollback takes out the 16 checks, the 5 policies and the grant, closes their open incidents; 072b\'s policy stays; with v5 rows 073b refuses by name', async () => {
+  await t.test('the rollback takes out the 17 checks, the 5 policies and the grant, closes their open incidents; 072b\'s policy stays; with v5 rows 073b refuses by name', async () => {
     // incidents has no FK to checks (047): a removed check's open incident would stay red in the report for ever
     const open = `SELECT count(*) AS n FROM monitoring.incidents WHERE state IN ('new','confirmed','recurred')
                    AND (check_id = ANY($1) OR incident_key = ANY($2))`;

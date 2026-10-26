@@ -109,7 +109,7 @@
 |---|---|---|
 | `plan_%` / δημόσιες (`service_role` EXECUTE) | **54** / 16 (το «52» του πλάνου ήταν του κειμένου Φ2· η υλοποιημένη 072 έχει 48, DECISION_LOG 26/10) | **79** / **19** (+ `plan_seg_change`, `plan_seg_fix`, `plan_seg_remove`): το PART 5 της 073 ελέγχει 19, όχι 16 |
 | 12 όψεις | 12/12 ίδια με τον πίνακα πιο πάνω | η 072b δεν αγγίζει καμία (οι 4 `v_*` ίδιες στο PGlite· οι όψεις χρημάτων εκεί είναι stubs, η πηγή τους είναι η λήψη του Task 1) |
-| 10 συναρτήσεις | 7/10 ίδιες· διαφέρουν οι 3 της 072 που άλλαξαν στην υλοποίηση (`plan_h_drop_consequences` `f5641bb9…`, `plan_order_update` `3ce41ac4…`, `plan_rt_update` `0cce9dd2…`) | η 072b αλλάζει 2: `plan_h_drop_consequences` → `80b789fc…`, `plan_rt_update` → `e918ef7c…` (τιμές στον πίνακα πιο πάνω) |
+| 10 συναρτήσεις | 7/10 ίδιες· διαφέρουν οι 3 της 072 που άλλαξαν στην υλοποίηση (`plan_h_drop_consequences` `f5641bb9…`, `plan_order_update` `3ce41ac4…`, `plan_rt_update` `0cce9dd2…`) | η 072b αλλάζει 2: `plan_h_drop_consequences` → `80b789fc…`, `plan_rt_update` → ~~`e918ef7c…`~~ **`e427e7a2…`** (072b one-step, #100· τιμές στον πίνακα πιο πάνω) |
 | Θέσεις αγκίστρου της 073 (5) | 5/5 ακριβώς μία φορά | 5/5 ακριβώς μία φορά (η 072b δεν τις αγγίζει) |
 | `plan_order_update` (K-23) | υπάρχει | υπάρχει: η 073 μένει με 5 άγκιστρα |
 | γραμμές v5 / `dup_stop_event` (όλα / στενό D-9) | 0 / 0 / 0 | — |
@@ -649,6 +649,10 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 ---
 
 ### Task 2: Το migration `073_plan_money.sql`
+
+> **Τελικός γύρος 2 (26/10):** τα md5 στα μπλοκ κώδικα αυτού του Task είναι τα προσχέδια της ώρας τους. Ισχύουν μόνο
+> όσα γράφει το ίδιο το `worker/migrations/drafts/073_plan_money.sql` (PART 0 / PART 2 / PART 5, μετρημένα με
+> `tms-auditor/test/tools/md5-073.mjs`) και ο πίνακας φρουρών/md5 στην αρχή του πλάνου. Μην αντιγράψεις τιμή από εδώ.
 
 **Files:**
 - Create: `worker/migrations/drafts/073_plan_money.sql`
@@ -2976,7 +2980,7 @@ SELECT CASE WHEN to_regprocedure('public.plan_h_pallet_sync(bigint[],text,text)'
 
 > **Υλοποίηση Task 4 (26/10/2026, κλάδος `feat/national-v5-f3`).** Τα τέσσερα αρχεία ξεκινούν από τα Steps 1–4 κατά γράμμα, με τις εξής αλλαγές:
 > 1. Το verify ελέγχει τα md5 που **αποδεικνύει** η 073, όχι τα προσχέδια του κειμένου: PART 5 `ct_v_v5_revenue` `c9dc289a…`, `ct_v_rt_revenue` `ad3c2b61…`· PART 2 `plan_h_drop_consequences` `e370e52c…`, `plan_order_update` `114a6555…`, `plan_rt_update` `b7acd8a0…`. Το `stop_once` απαιτεί και τη στενή D-9 (`LOADING`/`DELIVERY`).
-> 2. Το rollback επιστρέφει τις 5 συναρτήσεις στα md5 του PART 0 (072 + 072b: `80b789fc…`, `3ce41ac4…`, `e918ef7c…`) και ελέγχει το md5 μετά από κάθε συνάρτηση. Αρνείται όσο υπάρχουν οι έλεγχοι του 073b (B-78..B-90). Σειρά: 073b → 073 → 072b → 072.
+> 2. Το rollback επιστρέφει τις 5 συναρτήσεις στα md5 του PART 0 (072 + 072b: `80b789fc…`, `3ce41ac4…`, ~~`e918ef7c…`~~ **`e427e7a2…`**) και ελέγχει το md5 μετά από κάθε συνάρτηση. Αρνείται όσο υπάρχουν οι έλεγχοι του 073b (B-78..B-90, B-94). Σειρά: 073b → 073 → 072b → 072.
 > 3. **Δικαιώματα του `ct_v_rt_pnl`.** Μετρήθηκε στην παραγωγή (SELECT 26/10): οι 5 όψεις έχουν `service_role=arwDxtm/postgres`, και μια νέα όψη του postgres στο `public` παίρνει από τα default privileges `service_role=arwxtm`. Το κείμενο του Step 4 (REVOKE μόνο από PUBLIC/anon/authenticated) περνούσε σήμερα κατά σύμπτωση· με ευρύτερα defaults θα σταματούσε στην απόδειξη acl. Γι' αυτό το rollback αφαιρεί πρώτα **κάθε** δικαίωμα που έδωσε το CREATE και μετά δίνει ακριβώς τα αποθηκευμένα (με `WITH GRANT OPTION` όπου υπήρχε). Το `plan-073.test.mjs` στήνει τα δικαιώματα της παραγωγής και συγκρίνει το acl των 6 όψεων πριν και μετά.
 > 4. Το αποτύπωμα κρατά **τις ίδιες** 16 λίστες με το `snap_sql` της 073 (+ μισθοδοσία), όχι υποσύνολο: μία λίστα ανά γεγονός.
 > 5. Η κεφαλίδα του dry run λέει «μετά την 072 και την 072b».
@@ -4830,6 +4834,20 @@ Expected: `DRYRUN-IDIO`, `073B-IDIO`· `ℹ fail 0`· τα md5 = PART 2/PART 5/v
 >    Q9-2 (ίση τιμή σε πεδίο του σχεδίου δεκτή, διαφορετική 409).
 > Μετρήσεις: βλ. την αναφορά του γύρου και το DECISION_LOG 26/10 «Εθνικά v5 Φ3 · τελικός γύρος 1».
 
+> **Τελικός γύρος 2 (26/10, μετά την κριτική των διορθώσεων του γύρου 1).**
+> 1. **Βάση:** `feat/national-v5-f3` ← `origin/main` (το merge του #100, χωρίς αλλαγή περιεχομένου)· `deploy/worker-plan-f3` ← η κορυφή του
+>    `origin/deploy/worker-plan-handover` (`371da5aa`, περιπτώσεις 165–166 της 072b). Οι δύο κλάδοι περιέχουν ξανά τη βάση τους.
+> 2. **Διόδια DKV σε αλλαγή οχήματος (εύρημα 1):** τα διόδια ομαδοποιούνται και ανά φορτηγό (`doc_no|rt_id|χώρα|φορτηγό`). Πριν, δύο φορτηγά του
+>    ίδιου κύκλου στην ίδια χώρα γίνονταν μία γραμμή με το φορτηγό της πρώτης και την ημερομηνία της τελευταίας διέλευσης, και ο έλεγχος W-9
+>    απέρριπτε όλη την κατάσταση DKV. Σημερινά δρομολόγια: ίδιες ομάδες, ίδια κλειδιά AGG.
+> 3. **Τιμολόγιο συνεργάτη χωρίς όνομα (εύρημα 2):** ο Worker γράφει τον συνεργάτη στη γραμμή `partner_rate` όταν ο κύκλος v5 έχει έναν
+>    (POST και κάθε PATCH)· νέος έλεγχος **B-94** (073b) για ό,τι μένει `unmatched` στην `ct_v_rt_partner_cost`. Ο B-83 μετρά κύκλους (εύρημα 6).
+>    Η 073b φέρνει πλέον **17** ελέγχους (14 της Φ3 + 3 της 072b, 16 ενεργοί)· το rollback της 073 αρνείται και για το B-94. Η 073 δεν άλλαξε (md5 `bcd1bd76…`).
+> 4. **Ανοιχτά για τον owner (εύρημα 4, PRIME DIRECTIVE):** η απάντηση στο Q9-1 (πλευρές παλετών) και η νέα στήλη `ct_cost_lines.partner_id`,
+>    **πριν τρέξει η 073**. Δεν άλλαξαν: εύρημα 5 (διόρθωση `taken` σε DELIVERY 10→8→9), 7 (`ctPartnerLineCheck` μπλοκάρει επεξεργασία μετά από
+>    αφαίρεση τμήματος), 9 (τρία αρχεία δοκιμών της 072b διαβάζουν μόνο από drafts/· ανήκουν στον κλάδο της 072b), 10 (δύο αντίγραφα 072b ως το merge
+>    του prev-rate), 11 (W-9: ημερομηνία σταθμού έναντι ημέρας Αθήνας), 10 του γύρου 1 (απόδοση `ct_v_v5_revenue`).
+
 ---
 
 ### Task 11: Ίχνος, έλεγχος κώδικα, δύο PR
@@ -4887,7 +4905,7 @@ gh pr create --base main --head deploy/worker-plan --title "Worker Φ3 (αλυσ
 
 | # | Αρχείο | Αναμενόμενο |
 |---|---|---|
-| 1 | `073b_plan_monitoring_dryrun.sql` | NOTICE `073b OK: 13 checks, 5 read policies, X readable by the runner, every check 0 today` και το σκόπιμο ERROR `DRY RUN 073b finished - EVERYTHING UNDONE, nothing kept.` |
+| 1 | `073b_plan_monitoring_dryrun.sql` | NOTICE `073b OK: 17 checks (14 of F3 + 3 of 072b, 16 enabled), 5 read policies, X readable by the runner, every check 0 today` και το σκόπιμο ERROR `DRY RUN 073b finished - EVERYTHING UNDONE, nothing kept.` |
 | 2 | `073b_plan_monitoring.sql` | NOTICE `073b OK …`, κανένα σφάλμα |
 | 3 | SELECT | `SELECT id, severity, enabled FROM monitoring.checks WHERE id BETWEEN 'B-78' AND 'B-90' ORDER BY id;` → 13 γραμμές, `enabled` true |
 | 4 | `071_plan_schema_verify.sql` | όπως μετά την 071 με **`policies = 5`** (αναμενόμενο από το 073b, K-15) |

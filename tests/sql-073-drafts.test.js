@@ -13,7 +13,7 @@
 //   - D-9 NARROW (owner 25/10): the one index 073 adds is unique only for LOADING / DELIVERY;
 //   - the money choices M-1..M-3 are marked with the owner's answer (M-1 gamma, M-2 alpha, M-3 beta, 24/10), so a
 //     review finds them.
-//   - 073b (Task 6) is the one generated from the check files (B-78..B-90 of F3, B-91..B-93 of 072b), ASCII, born
+//   - 073b (Task 6) is the one generated from the check files (B-78..B-90 + B-94 of F3, B-91..B-93 of 072b), ASCII, born
 //     closed, B-80 disabled (M-5 delta), and 073's rollback refuses on exactly its F3 checks.
 // The rules are proven by 073_plan_money_test.sql on PGlite (tms-auditor/test/plan-073.test.mjs), 073b by
 // tms-auditor/test/plan-073b.test.mjs.
@@ -137,8 +137,9 @@ test('073b is the generated one, ASCII, one DO block each, and holds exactly the
     assert.ok(!/[^\x00-\x7f]/.test(read(f)), `${f}: non-ASCII`);
     assert.strictEqual((strip(read(f)).match(/^DO \$/gm) || []).length, 1, `${f}: one DO block`);
   }
-  // the 13 of spec 8 that do not need day L (M-6 alpha keeps B-90) + 072b's 3 (handover P3-6), each md5-proven
-  assert.deepStrictEqual(B073.f3, ['B-78', 'B-79', 'B-80', 'B-81', 'B-82', 'B-83', 'B-84', 'B-85', 'B-86', 'B-87', 'B-88', 'B-89', 'B-90']);
+  // the 13 of spec 8 that do not need day L (M-6 alpha keeps B-90) + B-94 (final round 2: Q6-1's unmatched partner
+  // invoice) + 072b's 3 (handover P3-6), each md5-proven
+  assert.deepStrictEqual(B073.f3, ['B-78', 'B-79', 'B-80', 'B-81', 'B-82', 'B-83', 'B-84', 'B-85', 'B-86', 'B-87', 'B-88', 'B-89', 'B-90', 'B-94']);
   assert.deepStrictEqual(B073.all, [...B073.f3, 'B-91', 'B-92', 'B-93']);
   const proof = [...read('073b_plan_monitoring.sql').matchAll(/\('(B-\d+)', '[0-9a-f]{32}', '[0-9a-f]{32}', (true|false)\)/g)];
   assert.deepStrictEqual(proof.map((m) => m[1]), B073.all);

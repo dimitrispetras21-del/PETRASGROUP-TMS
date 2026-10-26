@@ -1,0 +1,19 @@
+-- id: B-94
+-- title: Τιμολόγιο συνεργάτη που δεν ανήκει σε συνεργάτη του κύκλου
+-- flows: F-23,F-36
+-- severity: P2
+-- schedule: daily
+-- red: > 0
+-- baseline:
+-- queue: yes
+-- entity: ct_round_trips
+-- impact: Η γραμμή «Κόμιστρο συνεργάτη» μετριέται ως κόστος χωρίς να αντικαθιστά κανένα κόμιστρο: ο κύκλος πληρώνει δύο φορές τον ίδιο συνεργάτη (κόμιστρο + τιμολόγιο) και το P&L του φαίνεται ζημιογόνο.
+-- next: Λογιστήριο: στη γραμμή κόστους διάλεξε τον συνεργάτη του τιμολογίου (ή τον σωστό κύκλο). Dispatcher: αν άλλαξε ο συνεργάτης, έλεγξε τα τμήματα PARTNER του κύκλου.
+-- exceptions: Από την ίδια όψη με το B-83 και το P&L, ct_v_rt_partner_cost.unmatched (073, Q6-1 owner 26/10, αρχή 3): γραμμή partner_rate κύκλου v5 που δεν ανήκει σε συνεργάτη ζωντανού τμήματος PARTNER (ονομάζει άλλον, ή κανέναν σε κύκλο με κανέναν ή δύο συνεργάτες)· ο κύκλος όχι ακυρωμένος. Ο Worker γράφει τον συνεργάτη στη γραμμή όταν ο κύκλος έχει έναν, άρα εδώ φτάνει ό,τι άλλαξε μετά την εγγραφή.
+-- tolerance: 
+-- source: DRAFT 073b (plan F3) · final round 2 26/10 (finding 2): an unnamed invoice became unmatched after a later handover to a second partner and nothing said so · PGlite 26/10 (072 + 072b + 073): 0 on the production copy, red in the scenario of plan-073b.test.mjs
+-- enabled: yes
+SELECT count(DISTINCT p.rt_id) FROM ct_v_rt_partner_cost p JOIN ct_round_trips r ON r.id = p.rt_id WHERE p.unmatched AND r.status <> 'cancelled';
+-- @ids
+SELECT coalesce(array_agg(x ORDER BY x), '{}') FROM (SELECT DISTINCT r.code AS x FROM ct_v_rt_partner_cost p JOIN ct_round_trips r ON r.id = p.rt_id
+ WHERE p.unmatched AND r.status <> 'cancelled' ORDER BY r.code LIMIT 50) s

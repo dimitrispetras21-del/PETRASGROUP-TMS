@@ -37,10 +37,11 @@ BEGIN
   IF v_k <> 0 THEN
     RAISE EXCEPTION '073 rollback: % v5 row(s) exist - after the first real v5 row there is no rollback, only fixes forward (spec 2.2)', v_k;
   END IF;
-  -- 073b's checks (B-78..B-90) read ct_v_v5_revenue and the v5 rows: without the view they would fail at every run
+  -- 073b's checks (B-78..B-90, B-94) read ct_v_v5_revenue, ct_v_rt_partner_cost and the v5 rows: without the views
+  -- they would fail at every run
   IF EXISTS (SELECT 1 FROM monitoring.checks WHERE id IN ('B-78', 'B-79', 'B-80', 'B-81', 'B-82', 'B-83', 'B-84', 'B-85',
-                                                          'B-86', 'B-87', 'B-88', 'B-89', 'B-90')) THEN
-    RAISE EXCEPTION '073 rollback: 073b''s checks (B-78..B-90) exist - run 073b''s rollback first';
+                                                          'B-86', 'B-87', 'B-88', 'B-89', 'B-90', 'B-94')) THEN
+    RAISE EXCEPTION '073 rollback: 073b''s checks (B-78..B-90, B-94) exist - run 073b''s rollback first';
   END IF;
   SELECT count(*) INTO v_k FROM public.ct_cost_lines WHERE partner_id IS NOT NULL;
   IF v_k <> 0 THEN
