@@ -99,7 +99,7 @@
 | `plan_h_leg_drop(bigint,text,text,text)` | `4533385f7284c9ba5af52cf585a03250` | 072, άγκιστρο |
 | `plan_h_drop_consequences(bigint[],bigint,bigint[])` | ~~`1dc5f3d8…`~~ → **`80b789fcdfc3fb6dad2b1d2f8b83b487`** (072 ζωντανή `f5641bb97562310cbbc57d71e9894c26` + άγκιστρο της 072b, Task 0 26/10) | 072 + 072b, άγκιστρο |
 | `plan_order_update(jsonb,text,text)` | ~~`bf69fe4b…`~~ → **`3ce41ac45650910c1024cb0a8846176f`** (072 ζωντανή· η 072b δεν την αγγίζει, Task 0 26/10) | 072, άγκιστρο |
-| `plan_rt_update(jsonb,text,text)` | ~~`ed900488…`~~ → **`e918ef7cb61693c941a4e755e7e5f94f`** (072 ζωντανή `0cce9dd2a29dd9ea35ac633f6338fca1` + άγκιστρο 17 της 072b, Task 0 26/10) | 072 + 072b, άγκιστρο |
+| `plan_rt_update(jsonb,text,text)` | ~~`ed900488…`~~ → ~~`e918ef7c…`~~ (072b του #96) → **`e427e7a24ef6e88d83555c98d4bc7622`** (072 ζωντανή `0cce9dd2a29dd9ea35ac633f6338fca1` + τα άγκιστρα της 072b «σε ένα βήμα», owner 26/10, PR #100, md5 αρχείου `137a6574…`· μετρημένο στο PGlite, τελικός γύρος 1) | 072 + 072b, άγκιστρο |
 
 Τα 7 md5 της 072 είναι του κειμένου του πλάνου Φ2 μετά τη δεύτερη κριτική του (αρχείο 23/10 02:06, md5 `8993c2ac…`, K-22)· το `prosrc` είναι ακριβώς το κείμενο ανάμεσα στα `$f$`, άρα ίδιο στην παραγωγή αν η 072 τρέξει όπως γράφτηκε. **Αν η Φ2 αλλάξει στην έγκριση**, ο Task 0 τα ξαναμετρά και ο Task 2 Step 3 ξαναβγάζει τα md5 «μετά» με την εντολή του.
 
@@ -135,7 +135,9 @@
 2. **Πώς η 073 αγγίζει την 072** (C-03): ένας νέος βοηθός `plan_h_pallet_sync` και **ένα άγκιστρο** σε καθεμία από 5 συναρτήσεις της 072 (`plan_h_leg_add`, `plan_h_leg_drop`, `plan_h_drop_consequences`, `plan_order_update`, `plan_rt_update`), με `replace()` πάνω στο ζωντανό κείμενο, md5 πριν και μετά, όπως η 071 στα 4 ζωντανά της. Το rollback βγάζει το άγκιστρο και ελέγχει ότι επιστρέφει το md5 της 072. / *Πλήρης επαναγραφή των συναρτήσεων της 072 μέσα στην 073 (δύο κείμενα της ίδιας συνάρτησης σε δύο migrations, αρχή 3).*
 3. **Ε6 απόθεμα** (C-02, K-02): το `stock_v_pieces` παίρνει κλάδο για εθνικό κομμάτι παρτίδας **με αποστολές v5** (παραδόθηκε = όλα τα φύλλα εκτελεσμένα κατά `v_national_order_state`· σε φορτηγό = ζωντανή κίνηση)· χωρίς αποστολές, ό,τι σήμερα. Ο δρόμος εισόδου μένει κλειστός (η Φ2 αρνείται `stock_lot` στο `plan_orders_create`, C-24) ως να αποφασίσει ο owner. **Ένταση με την αρχή 8:** ο κλάδος δεν τρέχει σε πραγματικά δεδομένα πριν ανοίξει ο δρόμος· τον κρατά ζωντανό η περίπτωση 30 του rules test. / *(α) Ο δρόμος ανοίγει τώρα (αλλαγή στην 072 και στους φρουρούς 057 που ενέκρινε ο owner)· (γ) η Ε6 αναβάλλεται ολόκληρη (η παρτίδα εθνικού κομματιού v5 δεν θα κλείνει ποτέ, όταν ανοίξει ο δρόμος).*
 4. **Κόμιστρο που λείπει στο P&L** (C-07): νέα **τελευταία** στήλη `ct_v_rt_pnl.partner_rate_missing` (μόνο `model=2`, PARTNER, χωρίς κόμιστρο και χωρίς τιμολόγιο συνεργάτη) + έλεγχος B-83. Οι στήλες του `ct_v_rt_costs` δεν αλλάζουν (μόνο ο κλάδος `partner_planned` = `ct_round_trips.partner_rate`, που τον ορίζει το spec). / *Μόνο έλεγχος (το spec λέει «και στο P&L»).*
+   **Q6-1 (owner 26/10, 💶):** κύκλος με δύο τμήματα PARTNER κοστίζει το **άθροισμα** των κομίστρων τους· το τιμολόγιο ενός συνεργάτη αντικαθιστά **μόνο** το δικό του κόμιστρο. Άρα: νέα όψη `ct_v_rt_partner_cost` (μία γραμμή ανά κύκλο v5 και συνεργάτη των τμημάτων του: planned = Σ κομίστρων του, invoiced = Σ γραμμών που τον ονομάζουν, cost, `rate_missing`) και **μία** στήλη `ct_cost_lines.partner_id` (FK `partners`, `ON DELETE RESTRICT`): ένα τιμολόγιο πρέπει να λέει ποιανού είναι. Γραμμή χωρίς όνομα = του συνεργάτη του κύκλου όταν είναι ένας (το σημερινό μοναδικό τιμολόγιο)· αλλιώς μετρά στο κόστος και δεν αντικαθιστά κανένα κόμιστρο (το P&L γέρνει προς το κόστος, ποτέ προς το κέρδος). Το `ct_v_rt_costs` (partner_planned, lines_net), το `ct_v_rt_pnl.partner_rate_missing` **και** ο B-83 διαβάζουν την ίδια όψη (αρχή 3). Ο Worker (`/costs/lines`) δέχεται `partner_id` μόνο σε `partner_rate`, και σε κύκλο v5 με ≥ 2 συνεργάτες ζητά όνομα (409).
 5. **DELIVERY του v5** (C-15 i): ο feeder γράφει **εκκρεμή** DELIVERY με `taken = given = παλέτες` (spec §3: «ο χρήστης απλώς επιβεβαιώνει»). Μια επιβεβαιωμένη DELIVERY τη στιγμή του **σχεδιασμού** θα ισχυριζόταν γεγονός πριν συμβεί (spec §2.1: «έγινε» υπολογίζεται, δεν γράφεται). LOADING: εκκρεμής, `taken = παλέτες`, `given = 0` (όπως ο feeder του browser). **Ένας συγγραφέας ανά πεδίο** (κριτική 23/10): το `taken` ακολουθεί πάντα τις παλέτες του κομματιού (όπως ο feeder του browser κρατά σήμερα το `taken` μιας εκκρεμούς LOADING)· το `given` είναι του χρήστη μόλις διαφέρει από την προσυμπλήρωση (DELIVERY: `given = taken`, LOADING: 0) και ο feeder δεν το ξαναγράφει ποτέ (spec §3 «διορθώνει μόνο αν δεν τις πήραμε»: μια μετάθεση ώρας του κύκλου μετακινεί τη γραμμή, δεν σβήνει τη διόρθωση· περίπτωση 33). Τίποτα στη Βέροια (κλειδωμένη περίπτωση #6). Αντισυμβαλλόμενος ο πελάτης της εθνικής, και σε κύκλο **συνεργάτη** (§2.1 «η ανταλλαγή ακολουθεί το φορτίο»: εμείς χρωστάμε στον πελάτη· ο κρίκος με τον συνεργάτη #4/#5 μένει χειροκίνητος, όπως σήμερα στις εθνικές) (C-15 ii). / *Επιβεβαιωμένη DELIVERY αυτόματα (#2 κατά γράμμα)· τίποτα για κύκλους συνεργάτη· PARTNER_PICKUP/DROPOFF αυτόματα στη Βέροια.*
+   **Q9-1 (συντονιστής 26/10, αντικαθιστά το «ένας συγγραφέας ανά πεδίο» πιο πάνω):** ανά είδος, το σχέδιο κρατά την πλευρά που φορτώθηκε/παραδόθηκε και ο χρήστης την ανταλλαγή: LOADING `taken` = σχέδιο, `given` = χρήστης· DELIVERY `given` = σχέδιο (οι παλέτες που παραδόθηκαν), `taken` = χρήστης («δεν τις πήραμε πίσω», το σημερινό plvDoFix· υπόλοιπο = Σ(given − taken), 003). Με το παλιό κείμενο μια διόρθωση του `given` σε DELIVERY θα κινούσε το υπόλοιπο του πελάτη ανάποδα.
 6. **Γέφυρα VS** (C-15 iii, K-08): ο feeder v5 **δεν γράφει ποτέ** για αποστολή γέφυρας· η ελληνική στάση της VS έχει ήδη συγγραφέα, τους feeders της διεθνούς (`plOnOrderSaved`, `plOnDelivered`). Ένας συγγραφέας ανά στάση, καμία αλλαγή στον browser. Δίχτυ: ο έλεγχος B-89. / *Ο feeder v5 γράφει και για τις γέφυρες και ο browser παραλείπει τις στάσεις τους (αλλαγή οθόνης στη Φ4, δύο συγγραφείς στη μετάβαση).*
 7. **Τίποτα δεν σβήνεται:** μια γραμμή που το σχέδιο αποσύρει γίνεται `reversed` με λόγο «Αποσύρθηκε από τον προγραμματισμό εθνικών (<χρήστης>)». Έτσι το B-18b («το πλήθος δεν μειώνεται ποτέ», P1) μένει αληθές και το ιστορικό μένει (K-11). Μια εκκρεμής **ενημερώνεται** όταν αλλάζει η κίνηση (ημέρα, παλέτες, τόπος· το `given` του χρήστη μένει, D-5)· μια επιβεβαιωμένη δεν ξαναγράφεται ποτέ (§6). / *Σκληρή διαγραφή της εκκρεμούς, όπως ο browser σήμερα (το B-18b θα κοκκίνιζε σε κάθε Διαγραφή: ψευδής P1).*
 8. **Επιβεβαιωμένη γραμμή σε κίνηση που φεύγει** (C-15 v, F3-08): μπαίνει στη λίστα συνεπειών ως νέο είδος **`pallets_confirmed`** (`leg_id`, `pl_movement_id`, `event_type`, `taken`, `given`: πλήθη, όχι ποσά, άρα τα βλέπει και ο dispatcher), ζητά token, και **αντιλογίζεται μετά το token**· η νέα κίνηση γράφει νέα εκκρεμή για επιβεβαίωση. / *Άρνηση ως να γίνει χειροκίνητος αντιλογισμός (μπλοκάρει κάθε διόρθωση μετά την εκτέλεση)· να μένει (διπλή οφειλή).*
@@ -250,15 +252,17 @@
 ### Παράγει (για Φ4, Φ5, ελεγκτή)
 - **`ct_v_v5_revenue`** (όψη χρημάτων, όχι `security_invoker`, SELECT: `service_role`, `tms_check_runner`): μία γραμμή ανά ζωντανό φύλλο (ανά φύλλο και κίνηση στο M-1 γ): `kind` (`'price'` εθνική | `'x'` VS), `order_id` (VS), `nat_order_id`, `piece_id`, `leg_id`, `rt_id` (NULL = δεν ανατέθηκε ακόμη), `pallets`, `total` (τιμή ή X της παραγγελίας), `amount`. Μία πηγή για το έσοδο v5: το διαβάζουν το `ct_v_rt_revenue` και οι B-79/B-80.
 - **`ct_v_rt_revenue`**: ίδιες στήλες· `revenue_natl` κύκλου v5 = Σ `amount` με `rt_id` αυτού· `revenue = revenue_intl + revenue_natl` ισχύει· εθνική ή VS με αποστολές v5 δεν πιστώνει τίποτα μέσω NL του σημερινού μοντέλου (τιμή ή X μία φορά).
-- **`ct_v_rt_costs`**: ίδιες στήλες· `partner_planned` κύκλου v5 PARTNER = `ct_round_trips.partner_rate`.
-- **`ct_v_rt_pnl`**: ίδιες στήλες + **`partner_rate_missing boolean`** (τελευταία).
+- **`ct_v_rt_partner_cost`** (νέα, όψη χρημάτων, SELECT: `service_role`, `tms_check_runner`· Q6-1): `rt_id, partner_id, planned, invoiced, cost, unmatched, rate_missing`.
+- **`ct_cost_lines.partner_id`** (νέα στήλη, Q6-1): ο συνεργάτης ενός τιμολογίου `partner_rate`.
+- **`ct_v_rt_costs`**: ίδιες στήλες· κύκλος v5: `partner_planned` = Σ κομίστρων των τμημάτων PARTNER, κόστος συνεργάτη = Σ `cost` της `ct_v_rt_partner_cost` (Q6-1).
+- **`ct_v_rt_pnl`**: ίδιες στήλες + **`partner_rate_missing boolean`** (τελευταία· από την `ct_v_rt_partner_cost`).
 - **`dl_v_rt_route`**: ίδιο σχήμα `rt_id, route_text, route_legs[]`· για κύκλο v5 ένα στοιχείο ανά πλευρά με ζωντανές στάσεις, ΚΑΘΟΔΟΣ πρώτα: `{dir: 'KATHODOS'|'ANODOS', load: ημέρα Αθήνας planned_from της πρώτης, deliv: ημέρα Αθήνας planned_to της τελευταίας, from/to: {name, city, country}, extra_stops: n − 2}`.
 - **`ct_v_rt_pallet_gate`**: ίδιο σχήμα· κύκλος v5: κινήσεις εθνικών με ανταλλαγή, δελτίο = επιβεβαιωμένη γραμμή της κίνησης.
 - **`stock_v_pieces`**: ίδιο σχήμα· εθνικό κομμάτι με αποστολές v5: `delivered` = `v_national_order_state.executed`, `delivered_on` = max `end_day`, `on_truck` = ζωντανή κίνηση σε κύκλο όχι ακυρωμένο.
-- **Γραμμές παλετών του σχεδίου** (`pl_movements.piece_leg_id` γεμάτο, μόνο από `plan_h_pallet_sync`): εθνική με ανταλλαγή· LOADING εκκρεμής (`taken` = παλέτες, `given` 0) όπου η κίνηση φορτώνει στην αφετηρία· DELIVERY εκκρεμής (`taken = given` = παλέτες) όπου ξεφορτώνει στον προορισμό· `counterparty_type 'CLIENT'`, `client_id` της εθνικής, `location_id` της στάσης, `movement_date` = ημέρα Αθήνας του `planned_to` της στάσης, `order_id`/`order_stop_id` NULL, `created_by` = ο χρήστης· αποσυρμένη = `reversed` με λόγο· σε εκκρεμή, το `taken` ακολουθεί το σχέδιο και το `given` του χρήστη μένει (D-5).
+- **Γραμμές παλετών του σχεδίου** (`pl_movements.piece_leg_id` γεμάτο, μόνο από `plan_h_pallet_sync`): εθνική με ανταλλαγή· LOADING εκκρεμής (`taken` = παλέτες, `given` 0) όπου η κίνηση φορτώνει στην αφετηρία· DELIVERY εκκρεμής (`taken = given` = παλέτες) όπου ξεφορτώνει στον προορισμό· `counterparty_type 'CLIENT'`, `client_id` της εθνικής, `location_id` της στάσης, `movement_date` = ημέρα Αθήνας του `planned_to` της στάσης, `order_id`/`order_stop_id` NULL, `created_by` = ο χρήστης· αποσυρμένη = `reversed` με λόγο· σε εκκρεμή, **Q9-1 (συντονιστής 26/10):** το σχέδιο κρατά την πλευρά που φορτώθηκε/παραδόθηκε (LOADING `taken`, DELIVERY `given`) και η διόρθωση του χρήστη στην άλλη πλευρά μένει (LOADING `given`, DELIVERY `taken`: «δεν τις πήραμε πίσω», όπως το σημερινό plvDoFix)· οι παλέτες ενός κομματιού που χωρίστηκε = των ζωντανών φύλλων του (η εκκρεμής LOADING του γονέα ακολουθεί τη διόρθωση).
 - **Είδος συνέπειας** `pallets_confirmed` `{leg_id, pl_movement_id, event_type, taken, given}` (μητρώο: τα 8 της Φ2 + αυτό).
 - **Κωδικός** `plan:pallet_fraction` (detail `piece:<id>`)· κείμενο στο `PLAN_RULE_TEXT`.
-- **Worker:** `GET /costs/rt` → `ended` (+ `ended_unknown`) στις γραμμές `model=2`· `POST /costs/import/parse` → `none_reason: 'review_cycles'` + `alternatives`· `GET /pallets/movements` → `nat_order_id` (+ `nat_order_unknown`) στις γραμμές του σχεδίου· `PATCH /pallets/movements/:id` σε γραμμή σχεδίου: μόνο `given, sheet_url, sheet_source, notes` (αλλιώς 409)· `POST /pallets/movements/:id/reverse` σε γραμμή σχεδίου: η αντικατάσταση κρατά `piece_leg_id`, είδος, πελάτη, τόπο, ημέρα, `taken`· `DELETE` γραμμής σχεδίου 409· `POST` που σκάει στο `pl_mov_stop_once` 409.
+- **Worker:** `GET /costs/rt` → `ended` (+ `ended_unknown`) στις γραμμές `model=2`· `POST /costs/import/parse` → `none_reason: 'review_cycles'` + `alternatives`· `GET /pallets/movements` → `nat_order_id` (+ `nat_order_unknown`) στις γραμμές του σχεδίου· `PATCH /pallets/movements/:id` σε γραμμή σχεδίου: μόνο η πλευρά του χρήστη (Q9-1: LOADING `given`, DELIVERY `taken`), `sheet_url, sheet_source, notes` (ίση τιμή σε πεδίο του σχεδίου γίνεται δεκτή και δεν γράφεται, διαφορετική 409: Q9-2)· `POST /pallets/movements/:id/reverse` σε γραμμή σχεδίου: **μόνο με αντικατάσταση** (μόνος του 409, όπως το DELETE: αλλιώς το σχέδιο την ξαναγράφει), η αντικατάσταση κρατά `piece_leg_id`, είδος, πελάτη, τόπο, ημέρα και την πλευρά του σχεδίου· `DELETE` γραμμής σχεδίου 409· `POST`/`PATCH`/αντικατάσταση που σκάει στο `pl_mov_stop_once` ή `pl_mov_leg_once` 409 στα ελληνικά· `/costs/lines` δέχεται `partner_id` (Q6-1)· χωρίς την 072b/073 στη βάση, `/costs/*` απαντά 503 `f3_missing`.
 - **Ελεγκτής:** B-78..B-90 (πίνακας στο τέλος), πολιτικές `monitor_read` στους 5 πίνακες v5, `ct_settings` στον `tms_check_runner`.
 
 ---
@@ -4757,7 +4761,7 @@ test('bad --f3 usage → exit 2; without --f3 the F2 answer is unchanged', () =>
 node --check worker/src/index.js
 node --test worker/test/*.test.mjs worker/src/rt-rules.test.mjs 2>&1 | grep -E '^ℹ (tests|pass|fail)'
 node tests/dkv/run-import-rules.js | tail -1
-node worker/tools/worker-guard.mjs worker/src/index.js --plan 1 --f3 1 | tail -1
+node worker/tools/worker-guard.mjs worker/src/index.js --plan 1 --handover 1 --f3 1 | tail -1
 ```
 Expected: `ℹ fail 0`, tests = της Φ2 + 21 (στο `main` @ `9f98208d`: 189 → **210**, δοκιμασμένο 23/10 με `--plan 0`· στην αλυσίδα κατά το πλάνο Φ2: 232 → 253)· `214 passed, 0 failed`· `GUARD OK (12 markers, plan=1, f3=1) worker/src/index.js`.
 
@@ -4806,6 +4810,26 @@ Expected: `DRYRUN-IDIO`, `073B-IDIO`· `ℹ fail 0`· τα md5 = PART 2/PART 5/v
 >    Με δύο σταθερές (πριν `e918ef7c…` → `e427e7a2…`, μετά `b7acd8a0…` → `be70612f…`, στα 073 / rollback / verify, + ξαναπαραγωγή dry run) όλος ο ελεγκτής
 >    περνά πάνω του (136/136). Γίνεται στους δύο κλάδους μαζί όταν το one-step μπει στο main.
 
+> **Τελικός γύρος 1 (26/10, μετά την τελική κριτική xhigh και τις απαντήσεις owner/συντονιστή).**
+> 1. **Βάση:** `feat/national-v5-f3` ← `origin/feat/national-v5-handover-one-step` (PR #100, 072b md5 `137a6574…`)· `deploy/worker-plan-f3` ←
+>    η κορυφή του `origin/deploy/worker-plan-handover` (#97, `b0bd049d`: κουβαλά ήδη το 072b του `feat/national-v5-handover-prev-rate`, md5 `8fb9917c…`,
+>    που αλλάζει μόνο τις `plan_seg_change`/`plan_seg_fix`, όχι κάτι που φρουρεί η 073). Το «πριν» του `plan_rt_update` `e918ef7c…` → **`e427e7a2…`**
+>    (073 + rollback), το «μετά» `b7acd8a0…` → **`be70612f…`** (073 + rollback + verify, μετρημένο με το `md5-073.mjs`). **Και τα δύο ξαναπαίρνονται από
+>    την παραγωγή (SELECT) αφού τρέξει η 072b.**
+> 2. **Q6-1 (owner 26/10, 💶):** άθροισμα κομίστρων ανά τμήμα PARTNER· τιμολόγιο ενός συνεργάτη αντικαθιστά μόνο το δικό του (απόφαση D-4 πιο πάνω):
+>    `ct_v_rt_partner_cost` + `ct_cost_lines.partner_id`· ο B-83 διαβάζει την ίδια όψη. Περιπτώσεις 39–40.
+> 3. **Q9-1 (συντονιστής 26/10):** DELIVERY: το σχέδιο κρατά το `given`, ο χρήστης διορθώνει το `taken`· LOADING ανάποδα. `plan_h_pallet_sync` και
+>    Worker (`PL_PLAN_USER_SIDE`)· το σημερινό plvDoFix δουλεύει σε γραμμή v5. Περιπτώσεις 33 (ξαναγραμμένη) και 37.
+> 4. **Ευρήματα κριτικής:** γονέας κομματιού που χωρίστηκε: η εκκρεμής LOADING ακολουθεί τα φύλλα (περ. 38)· B-90 χωρίς τις εθνικές παρτίδας·
+>    X παιδιού παραγγελίας με την κατεύθυνση του γονέα (περ. 41)· πύλη παλετών: σκέλος με φύλλο μόνο όταν καμία γραμμή του δεν είναι εκκρεμής (περ. 29)·
+>    ο ελεγκτής διαβάζει 072b/073 από drafts/ ή ένα πάνω (`migrationFile`)· Worker: αντιλογισμός γραμμής σχεδίου χωρίς αντικατάσταση 409, 23505 στα
+>    ελληνικά σε POST/PATCH/αντικατάσταση, DKV: EL = GR και `toll_country` όταν λείπει η χώρα του εγγράφου, commit v5: η ημέρα της γραμμής μέσα στις ημέρες
+>    του τμήματος του φορτηγού, 503 `f3_missing` όταν η βάση είναι πίσω, ένα σημάδι φρουρού ανά λειτουργία (20), αντίγραφο σε drafts/ χωρίς πηγή = αποτυχία.
+>    Δεν άλλαξε (ρωτάμε πρώτα, PRIME DIRECTIVE): η απόδοση του αναδρομικού `ct_v_v5_revenue` (0 γραμμές v5 σήμερα).
+> 5. **Αποφάσεις συντονιστή που μένουν όπως προτάθηκαν:** Q6-2 (ο B-79 μένει ενεργός), Q7-1 (το τέλος DKV στο φορτηγό του πρώτου τμήματος),
+>    Q9-2 (ίση τιμή σε πεδίο του σχεδίου δεκτή, διαφορετική 409).
+> Μετρήσεις: βλ. την αναφορά του γύρου και το DECISION_LOG 26/10 «Εθνικά v5 Φ3 · τελικός γύρος 1».
+
 ---
 
 ### Task 11: Ίχνος, έλεγχος κώδικα, δύο PR
@@ -4849,12 +4873,12 @@ gh pr create --base main --head deploy/worker-plan --title "Worker Φ3 (αλυσ
 |---|---|---|
 | 0 | `073_plan_money_verify.sql` | `applied = '073 NOT in place'` (και ό,τι άλλο δείχνει 0/NULL) |
 | 1 | `073_plan_money_fingerprint.sql` | μία γραμμή· **κράτα την** (screenshot ή αντιγραφή) |
-| 2 | `073_plan_money_dryrun.sql` | NOTICE `073 OK: 7 views (1 new), 1 helper, 5 hooks in 072, 1 index; …` και μετά το **σκόπιμο** ERROR `DRY RUN 073 finished - EVERYTHING UNDONE, nothing kept. … 073 ran: v5 revenue view yes, helper yes, stop index yes, pnl rows <όσα το βήμα 1>, route rows <όσα>, v5 rows 0, triggers 46` |
+| 2 | `073_plan_money_dryrun.sql` | NOTICE `073 OK: 8 views (2 new), 1 column, 1 helper, 5 hooks in 072, 1 index; …` και μετά το **σκόπιμο** ERROR `DRY RUN 073 finished - EVERYTHING UNDONE, nothing kept. … 073 ran: v5 revenue view yes, helper yes, stop index yes, pnl rows <όσα το βήμα 1>, route rows <όσα>, v5 rows 0, triggers 46` |
 | 3 | `073_plan_money.sql` | NOTICE `073 OK …` και μία γραμμή: `result = '073 OK'`, `revenue_md5 = 6dc1e56a…` (ή το μετρημένο της επιλογής), `route_md5 = b21405a7…`, `leg_add_md5 = 0d95758b…`, `pnl_rows`/`route_rows` = του βήματος 1, `v5_rows = 0` |
 | 4 | `073_plan_money_verify.sql` | `applied = '073 in place'`, `views_changed = 0`, `functions_changed = 0`, `invoker_lost = 0`, `open_money = 0`, `open_helper = 0`, `stop_once = true`, `b54_matches = true`, `v5_rows = 0` |
 | 5 | `073_plan_money_fingerprint.sql` | **ίδια** γραμμή με το βήμα 1 (εκτός `athens_now`) |
 | 6 | `072_plan_functions_verify.sql` | όπως μετά την 072, με `plan_functions = 53` (+ `plan_h_pallet_sync`, K-18) και `changed_live = 0` |
-| 7 (προαιρετικό) | `073_plan_money_test.sql` | το σκόπιμο ERROR `RULES TEST 073 finished - EVERYTHING UNDONE, nothing kept. Result: 36 OK, 0 FAIL …` (προχωρά τους μετρητές RT-/PM-· η περίπτωση 30 κρίνεται και από τους φρουρούς 057 της παραγωγής) |
+| 7 (προαιρετικό) | `073_plan_money_test.sql` | το σκόπιμο ERROR `RULES TEST 073 finished - EVERYTHING UNDONE, nothing kept. Result: 41 OK, 0 FAIL …` (προχωρά τους μετρητές RT-/PM-· η περίπτωση 30 κρίνεται και από τους φρουρούς 057 της παραγωγής) |
 
 **Σε σφάλμα του βήματος 2 ή 3:** τίποτα δεν κρατήθηκε (ένα DO block). Αντιγραφή του μηνύματος στον συντονιστή, όχι επανάληψη. «lock timeout»: ξανά αργότερα.
 **Rollback** (μόνο με «ναι», πριν από την πρώτη γραμμή v5): `073_plan_money_rollback.sql` → `073 ROLLED BACK | 7bd4c2b3206af115a5cfff5478dfdfc9 | aa9645fa495976bbca7c7de0635f4c22`· μετά το αποτύπωμα = βήμα 1. Αν έχει τρέξει το 073b: **πρώτα** `073b_plan_monitoring_rollback.sql`. Πριν από rollback της 072: πρώτα της 073 (K-18).
@@ -4873,15 +4897,15 @@ gh pr create --base main --head deploy/worker-plan --title "Worker Φ3 (αλυσ
 
 ### Task 14: Deploy του Worker της Φ3 (χωριστό «ναι», μετά τις 15:00, μετά την 073)
 
-- [ ] **Step 1: Πριν:** `git merge-base --is-ancestor <ζωντανή πηγή Φ2> deploy/worker-plan && echo OK`· λήψη του ζωντανού script από το CF API (όπως στο Γ7 της Φ2) και `node worker/tools/worker-guard.mjs "$D/live-before.txt" --plan 1 --f3 0` → `GUARD OK (12 markers, plan=1, f3=0)`· `npx wrangler deploy --dry-run --outdir "$D/bundle"` και `node worker/tools/worker-guard.mjs "$D/bundle/index.js" --plan 1 --f3 1` → `GUARD OK (12 markers, plan=1, f3=1)`· bindings 3/3· αντίγραφο του τρέχοντος bundle· το αντίγραφο `drafts/073_plan_money.sql` = του main (`git diff origin/main -- worker/migrations/drafts/073_plan_money.sql` κενό, ή η εκτελεσμένη `worker/migrations/073_plan_money.sql`).
+- [ ] **Step 1: Πριν:** `git merge-base --is-ancestor <ζωντανή πηγή Φ2> deploy/worker-plan && echo OK`· λήψη του ζωντανού script από το CF API (όπως στο Γ7 της Φ2) και `node worker/tools/worker-guard.mjs "$D/live-before.txt" --plan 1 --handover 1 --f3 0` → `GUARD OK (20 markers, plan=1, handover=1, f3=0)`· `npx wrangler deploy --dry-run --outdir "$D/bundle"` και `node worker/tools/worker-guard.mjs "$D/bundle/index.js" --plan 1 --handover 1 --f3 1` → `GUARD OK (20 markers, plan=1, handover=1, f3=1)`· **πριν από το deploy: η 072b και η 073 στη βάση** (`SELECT to_regclass('public.v_rt_vehicle_windows') IS NOT NULL AND to_regclass('public.ct_v_rt_partner_cost') IS NOT NULL` = true: αλλιώς ο Worker απαντά 503 `f3_missing` στο `/costs/*`)· bindings 3/3· αντίγραφο του τρέχοντος bundle· το αντίγραφο `drafts/073_plan_money.sql` = του main (`git diff origin/main -- worker/migrations/drafts/073_plan_money.sql` κενό, ή η εκτελεσμένη `worker/migrations/073_plan_money.sql`).
 - [ ] **Step 2:** `cd worker && CLOUDFLARE_API_TOKEN=$CF_API_TOKEN npx wrangler deploy` → η νέα έκδοση.
-- [ ] **Step 3: Μετά:** νέα λήψη και `node worker/tools/worker-guard.mjs "$D/live-after.txt" --plan 1 --f3 1` → `GUARD OK (12 markers, plan=1, f3=1)` (το εργαλείο ξετυλίγει το multipart)· bindings 3/3· smoke: `GET /costs/rt?from=<Δευτέρα>&to=<Κυριακή>` (owner) 200, γραμμές RT ίδιες με πριν, κανένα `ended` (0 κύκλοι v5)· `GET /costs/pnl` owner 200 με στήλη `partner_rate_missing` (false παντού), dispatcher 403· `GET /pallets/movements?limit=5` 200· `POST /costs/import/parse` δεν τρέχει (θα έγραφε μόνο προεπισκόπηση, αλλά θέλει αρχείο DKV — όχι στο smoke).
-- [ ] **Step 4:** sync στο main («sync worker source with deployed <version>», PR)· στο CLAUDE.md, στη λίστα σημαδιών λειτουργίας: `"v_rt_cycle"` (Ε21, Φ3).
+- [ ] **Step 3: Μετά:** νέα λήψη και `node worker/tools/worker-guard.mjs "$D/live-after.txt" --plan 1 --handover 1 --f3 1` → `GUARD OK (20 markers, plan=1, handover=1, f3=1)` (το εργαλείο ξετυλίγει το multipart)· bindings 3/3· smoke: `GET /costs/rt?from=<Δευτέρα>&to=<Κυριακή>` (owner) 200, γραμμές RT ίδιες με πριν, κανένα `ended` (0 κύκλοι v5)· `GET /costs/pnl` owner 200 με στήλη `partner_rate_missing` (false παντού), dispatcher 403· `GET /pallets/movements?limit=5` 200· `POST /costs/import/parse` δεν τρέχει (θα έγραφε μόνο προεπισκόπηση, αλλά θέλει αρχείο DKV — όχι στο smoke).
+- [ ] **Step 4:** sync στο main («sync worker source with deployed <version>», PR)· στο CLAUDE.md, στη λίστα σημαδιών λειτουργίας, ένα ανά λειτουργία: `"v_rt_cycle"` (Ε21), `review_cycles` (Ε10), `pl_mov_stop_once` (Ε11), `ctPartnerLineCheck` (Q6-1).
 - [ ] **Rollback:** `wrangler rollback <έκδοση της Φ2>`, φρουρός, smoke. Η 073 μένει (ο Worker της Φ2 δεν διαβάζει τίποτα από αυτήν: μόνο τα νέα πεδία λείπουν).
 
 ### Task 15: Μετά την εκτέλεση
 
-- [ ] **Step 1:** `git mv worker/migrations/drafts/073_plan_money*.sql worker/migrations/` και τα `073b_*` (κανόνας 5)· στα `build-073-dryrun.mjs`/`build-073b.mjs` `DIR = path.resolve(HERE, '../..')`· στο `tms-auditor/lib/db.mjs` `V5_MONEY = '../073_plan_money.sql'`· τα tests ξανά (`tests/sql-073-drafts.test.js` με `DIR` = `worker/migrations`).
+- [ ] **Step 1:** `git mv worker/migrations/drafts/073_plan_money*.sql worker/migrations/` και τα `073b_*` (κανόνας 5)· στα `build-073-dryrun.mjs`/`build-073b.mjs` `DIR = path.resolve(HERE, '../..')`· το `tms-auditor/lib/db.mjs` βρίσκει μόνο του τη θέση (`migrationFile`: drafts/ ή ένα πάνω, σταματά αν είναι και στα δύο ή σε κανένα)· τα tests ξανά (`tests/sql-073-drafts.test.js` με `DIR` = `worker/migrations`).
 - [ ] **Step 2:** μέτρηση στη session (SELECT): `ct_v_rt_pnl` και `dl_v_rt_route` γραμμές = του βήματος 1 του Task 12 (αποδοχή του master)· γραμμές v5 = 0· B-54 = 46· οι 13 έλεγχοι 0.
 - [ ] **Step 3:** DECISION_LOG: «Εκτελέστηκε: <ημερομηνία>, owner» με τις γραμμές των βημάτων.
 
@@ -4896,14 +4920,14 @@ gh pr create --base main --head deploy/worker-plan --title "Worker Φ3 (αλυσ
 | B-80 💶 M-5 | Σ μεριδίων τιμής ≠ τιμή εθνικής (ανοχή 0,01) | P2 | όχι | 0 | **ποτέ** με M-3 β: απενεργοποιημένος ως το L (M-5 δ, owner 24/10) |
 | B-81 | κομμάτι που δεν έφυγε στην ώρα του (`v_piece_state.overdue`) | P2 | ναι | 0 | εθνική 50 ημέρες πίσω |
 | B-82 | άδειος κύκλος v5 (όχι ακυρωμένος) | P2 | όχι | 0 | `plan_rt_create` μόνο του |
-| B-83 | κύκλος συνεργάτη χωρίς κόμιστρο ούτε τιμολόγιο | P2 | ναι | 0 | PARTNER χωρίς rate |
+| B-83 | τμήμα PARTNER χωρίς κόμιστρο και χωρίς τιμολόγιο **του ίδιου** συνεργάτη (Q6-1· διαβάζει την `ct_v_rt_partner_cost`, τον ίδιο κανόνα με το `partner_rate_missing`) | P2 | ναι | 0 | PARTNER χωρίς rate |
 | B-84 | έξοδα σε δρομολόγιο `cancelled` («λείπει δρομολόγιο») | P3 | ναι | 0 | γραμμή σε ακυρωμένο RT |
 | B-85 | μεικτές θερμοκρασίες ≥ 2 °C στην ίδια πλευρά | P3 | ναι | 0 | 2 °C και 6 °C στον ίδιο κύκλο |
 | B-86 | ειδοποίηση αδιάβαστη > 24 ώρες | P2 | όχι | 0 | ειδοποίηση 25 ωρών |
 | B-87 | κύκλος OWNED που τελείωσε χωρίς km (Ε8) | P3 | ναι | 0 | κύκλος πριν 3 ημέρες |
 | B-88 | εκκρεμής γραμμή παλετών σε σβησμένη κίνηση | P2 | όχι | 0 | κίνηση σβησμένη έξω από το σχέδιο |
 | B-89 | γραμμή του σχεδίου σε στάση VS (δεύτερος συγγραφέας) | P1 | όχι | 0 | γραμμή με `piece_leg_id` γέφυρας |
-| B-90 💶 M-6 | εθνική v5 χωρίς τιμή | P2 | ναι | 0 | τιμή 0 με PATCH |
+| B-90 💶 M-6 | εθνική v5 χωρίς τιμή (όχι οι εθνικές παρτίδας αποθέματος: η 057 τους κρατά την τιμή κενή σκόπιμα) | P2 | ναι | 0 | τιμή 0 με PATCH (και όχι η εθνική παρτίδας του σεναρίου) |
 
 «Ποιος το μαθαίνει» = η ειδοποίηση 048 του ελεγκτή (P1 αμέσως, P2 στη σύνοψη των 17:00), όπως κάθε έλεγχος. Οι P1 (B-78, B-79, B-89) δεν μπορούν να κοκκινίσουν πριν από την πρώτη γραμμή v5.
 
@@ -4911,7 +4935,7 @@ gh pr create --base main --head deploy/worker-plan --title "Worker Φ3 (αλυσ
 
 - **Στην εκτέλεση:** κάθε φρουρός και απόδειξη της 073 είναι `RAISE` μέσα σε ένα block: ένα λάθος md5, ένα νούμερο του σήμερα που άλλαξε, ένα `security_invoker` που χάθηκε, ένα grant παραπάνω → τίποτα δεν κρατιέται. Αποτύπωμα πριν/μετά από τον owner.
 - **Αργότερα στη βάση:** το `073_plan_money_verify.sql` (views_changed, functions_changed, invoker_lost, open_money, open_helper) και οι 13 έλεγχοι· ο B-54 πιάνει trigger που δεν ανήκει.
-- **Στον Worker:** αποτυχία ανάγνωσης = `ended_unknown` / `nat_order_unknown`, ποτέ σιωπηλό «σε εξέλιξη» ή «Χειροκίνητη»· το 409 του `pl_mov_stop_once` λέει στα ελληνικά ότι υπάρχει ήδη κίνηση· ο φρουρός του deploy με το σημάδι `"v_rt_cycle"`.
+- **Στον Worker:** αποτυχία ανάγνωσης = `ended_unknown` / `nat_order_unknown`, ποτέ σιωπηλό «σε εξέλιξη» ή «Χειροκίνητη»· το 409 του `pl_mov_stop_once` / `pl_mov_leg_once` λέει στα ελληνικά ότι υπάρχει ήδη κίνηση· 503 `f3_missing` αν ο Worker μπει πριν από την 072b/073· ο φρουρός του deploy με ένα σημάδι ανά λειτουργία (`"v_rt_cycle"`, `review_cycles`, `pl_mov_stop_once`, `ctPartnerLineCheck`).
 - **Στα χρήματα:** B-79/B-80 (μερίδια ≠ σύνολο), B-83 (κόμιστρο που λείπει), B-90 (τιμή που χάθηκε), B-84 (έξοδα που έμειναν σε ακυρωμένο κύκλο).
 - **Στις παλέτες:** B-88 (εκκρεμής σε σβησμένη κίνηση), B-89 (δεύτερος συγγραφέας), B-18b (το πλήθος δεν μειώνεται: ο feeder δεν σβήνει ποτέ), B-17 (εκκρεμείς > 7 ημέρες).
 
