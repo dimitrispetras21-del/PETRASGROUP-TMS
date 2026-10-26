@@ -498,7 +498,11 @@ async function _atRetry(fn, retries = 3, opts) {
         // auditor's B-34/B-34b («σφάλματα εφαρμογής» / «νέο μήνυμα») exclude it
         // with `message NOT LIKE '_atRetry 422 rule%'`; otherwise every refused
         // delete of a different order trips B-34b (impact map 4/10 AU-07).
-        const _rule = res.status === 422 && errData.error && typeof errData.error === 'object' && errData.error.type === 'STOCK_RULE'
+        // Since 071/060 the facade has two more such answers (F4α T2, S-13): PLAN_RULE (e.g. an ORDER STOPS PATCH
+        // refused by a 071 rule) and LOCAL_RELAY_RULE (060). Same kind of «no», same prefix; every other 422 stays
+        // «_atRetry 422» and is still counted.
+        const _ruleType = res.status === 422 && errData.error && typeof errData.error === 'object' ? errData.error.type : null;
+        const _rule = _ruleType === 'STOCK_RULE' || _ruleType === 'PLAN_RULE' || _ruleType === 'LOCAL_RELAY_RULE'
           ? String(errData.error.code || 'rule') : null;
         if (typeof logError === 'function') logError(_lv, _rule ? '_atRetry 422 rule' : `_atRetry ${res.status}`);
         if (typeof showErrorToast === 'function') showErrorToast(mapped, 'error');
