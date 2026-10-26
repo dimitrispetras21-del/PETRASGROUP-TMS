@@ -221,7 +221,9 @@ function functionsOf(bare) {
 function callsOf(code, bare, names, defs) {
   const out = [];
   const defAt = new Set(defs.map((f) => f.at));
-  for (const m of bare.matchAll(/(?<![\w$.])([A-Za-z_$][\w$]*)\s*\(/g)) {
+  // `window._atRetry(` / `self._atRetry(` is the same call (review r3 #3, P5); other qualified names are methods
+  for (const m of bare.matchAll(/(?<![\w$])(?:(?<=\.\s*)_atRetry|(?<!\.\s*)[A-Za-z_$][\w$]*)\s*\(/g)) {
+    m[1] = m[0].replace(/\s*\($/, '');
     if (!names.has(m[1]) || defAt.has(m.index)) continue;
     if (/\bfunction\s*\*?\s*$/.test(bare.slice(Math.max(0, m.index - 12), m.index))) continue;
     const p = m.index + m[0].length - 1;
@@ -241,7 +243,12 @@ function planResendOffences(files) {
   // The senders, to a fixed point: a top-level function whose body calls _atRetry or another sender (atGetAll →
   // _atFetch → _atRetry). Top-level only, and calls only: a nested helper or a method named `map` / `e` would
   // otherwise make every `.map(` or `catch (e)` a sender and fail a correct F4 helper.
-  const calls = (text) => { const out = new Set(); for (const m of text.matchAll(/(?<![\w$.])([A-Za-z_$][\w$]*)\s*\(/g)) out.add(m[1]); return out; };
+  const calls = (text) => {
+    const out = new Set();
+    for (const m of text.matchAll(/(?<![\w$.])([A-Za-z_$][\w$]*)\s*\(/g)) out.add(m[1]);
+    if (/\.\s*_atRetry\s*\(/.test(text)) out.add('_atRetry'); // window._atRetry(…) (review r3 #3, P5)
+    return out;
+  };
   const senders = new Set();
   const top = views.flatMap((v) => v.defs.filter((f) => f.name !== '_atRetry' && v.depth[f.at] === 0).map((f) => ({ name: f.name, uses: calls(v.bare.slice(...f.body)) })));
   for (let grew = true; grew;) {
@@ -253,7 +260,8 @@ function planResendOffences(files) {
   let retryCalls = 0;
   for (const v of views) {
     // A
-    if ((/\/plan\//.test(v.code) || /^plan/i.test(path.basename(v.name))) && RETRY.test(v.bare)) offences.push(`${v.name}: names /plan/ and _atRetry (rule A)`);
+    // `/plan\b`, not `/plan/`: a base held apart (`const BASE = '/plan'`, review r3 #3, P1) names it too
+    if ((/\/plan\b/.test(v.code) || /^plan/i.test(path.basename(v.name))) && RETRY.test(v.bare)) offences.push(`${v.name}: names /plan/ and _atRetry (rule A)`);
     // B
     for (const f of v.defs) if (PLAN_FN.test(f.name) && reaches(v.bare.slice(...f.body))) offences.push(`${v.name}: ${f.name}() reaches _atRetry (rule B)`);
     // C and D
@@ -283,6 +291,9 @@ test('r3 finding 1: the scan catches the helper shapes round 2 missed, and lets 
     'a generic wrapper called with a /plan/ path': [{ name: 'core/api.js', src: API.src + 'function sendRetry(p, init) { return _atRetry(() => fetch(_apiUrl(p), init)); }\n' }, { name: 'modules/weekly_natl.js', src: "function shiftRt(id) { return sendRetry(`/plan/rt/${id}`, { method: 'PATCH' }); }" }],
     'a plan* helper on top of a sender': [API, { name: 'modules/weekly_natl.js', src: 'async function planMove(b) { return atPatch(T, 1, b); }' }],
     'the round-2 shape': [{ name: 'modules/x.js', src: "x = _atRetry((_r) => fetch(_apiUrl('/plan/rt/' + id), { method: 'PATCH' }));" }],
+    // review r3 #3: the two shapes r3 still let through
+    'P1: a /plan base held apart, under a name without plan': [{ name: 'core/api.js', src: API.src + "const BASE = '/plan';\nfunction nationalWrite(p, i) { return _atRetry(() => fetch(_apiUrl(BASE + p), i)); }\n" }, { name: 'modules/weekly_natl.js', src: "function shiftRt(id) { return nationalWrite('/rt/' + id, { method: 'PATCH' }); }" }],
+    'P5: window._atRetry in one file, the /plan/ path in another': [{ name: 'core/api.js', src: API.src + 'function sendRetry(p, init) { return window._atRetry(() => fetch(_apiUrl(p), init)); }\n' }, { name: 'modules/weekly_natl.js', src: "function shiftRt(id) { return sendRetry(`/plan/rt/${id}`, { method: 'PATCH' }); }" }],
   };
   for (const [label, files] of Object.entries(bad)) assert.ok(planResendOffences(files).offences.length > 0, `missed: ${label}`);
   // F4 as decided: core/plan-api.js sends with one fetch of its own, and a module calls it

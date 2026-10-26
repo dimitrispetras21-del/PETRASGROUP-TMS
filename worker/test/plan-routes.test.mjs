@@ -753,38 +753,38 @@ test('finding 5 (narrowed in r2 finding 2): input the DB cannot take → 422 bad
   assert.equal(r.json.error.code, 'parts_sum');
 });
 
-// Review r3, finding 5: 072's six write RPCs (orders_create, put_pieces, put_group, split_piece, move_pieces,
-// order_update) catch the input SQLSTATEs themselves and raise plan:bad_input '<SQLSTATE>'; the other seven
-// (rt_update, rt_clear, delete, vs_set_day, vs_set_place, local_loading, notice_read) let them reach the Worker raw.
-// One SQLSTATE, one answer — code, type, status and text — whichever RPC, and the dry-run preview says the same.
-test('r3 finding 5: an input SQLSTATE answers the same whether 072 caught it (plan:bad_input) or not; a structural bad_input stays PLAN_RULE', async () => {
-  for (const state of ['22P02', '22003', '22007', '22008', '22023']) {
+// Review r4 of PR #90, finding 1: ONE type for every bad_input inside /plan/*, whatever the RPC and whatever the
+// detail. The fixtures are what 072 really sends: plan_rt_update catches its input casts as plan:bad_input 'body'
+// (072_plan_functions.sql l.1611-1631), plan_move_pieces catches the same SQLSTATEs per statement as
+// plan:bad_input '<SQLSTATE>' (l.1263-1266), and 'target.side' is a structural one (l.249). rt_update raises its
+// bad_input BEFORE its dry-run block (l.1713), so a dry run answers the same error, never a preview.conflict.
+test('r4 finding 1: every plan:bad_input → 422 BAD_REQUEST bad_input «ενημέρωσε τον Δημήτρη (<detail>)», whichever RPC, dry run too', async () => {
+  const TEXT = 'Το αίτημα δεν έχει τη μορφή που περιμένει η βάση — ανανέωσε τη σελίδα· αν ξανασυμβεί, ενημέρωσε τον Δημήτρη';
+  const MOVE = { from: { piece_ids: [1] }, target: { rt_id: 5, side: 'KATHODOS' } };
+  const cases = [
+    ['rpc/plan_rt_update', 'body', () => callOpen('dispatcher', 'PATCH', '/plan/rt/5', { set: { truck_id: 2 } })],
+    ['rpc/plan_rt_update', 'body', () => call('dispatcher', 'PATCH', '/plan/rt/5', { set: { truck_id: 2 }, dry_run: true })],
+    ['rpc/plan_move_pieces', '22P02', () => callOpen('dispatcher', 'POST', '/plan/move', MOVE)],
+    ['rpc/plan_move_pieces', '22023', () => callOpen('dispatcher', 'POST', '/plan/move', MOVE)],
+    ['rpc/plan_move_pieces', 'target.side', () => callOpen('dispatcher', 'POST', '/plan/move', MOVE)]];
+  const types = new Set();
+  for (const [rpc, detail, send] of cases) {
     routes.length = 0;
-    on('POST', 'rpc/plan_move_pieces', () => planReject('bad_input', state));
-    on('POST', 'rpc/plan_rt_update', () => pgError(400, { code: state, details: null, hint: null, message: 'x' }));
+    on('POST', rpc, () => planReject('bad_input', detail));
     calls.length = 0;
-    const caught = await callOpen('dispatcher', 'POST', '/plan/move', { from: { piece_ids: [1] }, target: { rt_id: 5, side: 'KATHODOS' } });
-    const raw = await callOpen('dispatcher', 'PATCH', '/plan/rt/5', { set: { truck_id: 2 } });
-    assert.equal(caught.status, 422, `${state}: ${caught.text}`);
-    assert.equal(raw.status, 422, `${state}: ${raw.text}`);
-    assert.deepEqual(caught.json.error, raw.json.error, `${state}: one answer`);
-    assert.deepEqual(caught.json.error, { type: 'BAD_REQUEST', code: 'bad_input', message: `Το αίτημα δεν έχει τη μορφή που περιμένει η βάση — ανανέωσε τη σελίδα· αν ξανασυμβεί, ενημέρωσε τον Δημήτρη (${state})` }, state);
-    assert.equal(rpcCalls().length, 2, `${state}: one RPC each`);
-    // the preview of plan_rt_update carries 072's hinted form: the same answer again
-    routes.length = 0;
-    on('POST', 'rpc/plan_rt_update', () => json({ ok: true, op: 'plan_rt_update', dry_run: true,
-      preview: { before: {}, after: null, next_rt: null, vs_day: [], warnings: [], conflict: { code: 'bad_input', sqlstate: '23514', detail: state } } }));
-    const dry = await call('dispatcher', 'PATCH', '/plan/rt/5', { set: { truck_id: 2 }, dry_run: true });
-    assert.equal(dry.status, 200, dry.text);
-    assert.equal(dry.json.preview.conflict.code, 'bad_input');
-    assert.equal(dry.json.preview.conflict.message, raw.json.error.message, `${state}: the preview says what the execution says`);
+    const r = await send();
+    assert.equal(r.status, 422, `${rpc} ${detail}: ${r.text}`);
+    assert.deepEqual(r.json.error, { type: 'BAD_REQUEST', code: 'bad_input', message: `${TEXT} (${detail})` }, `${rpc} ${detail}`);
+    assert.equal(rpcCalls().length, 1, `${rpc} ${detail}: one RPC`);
+    types.add(r.json.error.type);
   }
-  // a bad_input whose detail names a field is 072's own structural refusal: PLAN_RULE, unchanged
+  // a raw input SQLSTATE that gets past 072's cast blocks (a 23502 of a NOT NULL) has the same type and text shape
   routes.length = 0;
-  on('POST', 'rpc/plan_move_pieces', () => planReject('bad_input', 'target.side'));
-  const r = await callOpen('dispatcher', 'POST', '/plan/move', { from: { piece_ids: [1] }, target: { rt_id: 5, side: 'KATHODOS' } });
-  assert.equal(r.status, 422, r.text);
-  assert.deepEqual(r.json.error, { type: 'PLAN_RULE', code: 'bad_input', message: 'Το αίτημα δεν έχει τη μορφή που περιμένει η βάση — ανανέωσε τη σελίδα (target.side)' });
+  on('POST', 'rpc/plan_rt_update', () => pgError(400, { code: '23502', details: null, hint: null, message: 'null value in column "rt_id" violates not-null constraint' }));
+  const raw = await callOpen('dispatcher', 'PATCH', '/plan/rt/5', { set: { truck_id: 2 } });
+  assert.deepEqual(raw.json.error, { type: 'BAD_REQUEST', code: 'bad_input', message: `${TEXT} (23502)` });
+  types.add(raw.json.error.type);
+  assert.deepEqual([...types], ['BAD_REQUEST'], 'one type for every bad_input');
 });
 
 test('finding 6: a PostgREST code that proves the RPC never ran → 503 «δεν αποθηκεύτηκε»; one that may follow the SQL stays plan_unknown', async () => {
