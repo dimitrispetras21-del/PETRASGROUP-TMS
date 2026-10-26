@@ -1,0 +1,692 @@
+kind,id,formula,rules,flags,link
+national_load,51,∅[Lg·H],K1+K2,E2:no-executor(past),of:#153
+national_load,52,∅[Lg·H],K1+K2,E2:no-executor(past),of:#156
+national_load,53,∅[H·Dg],K1+K2,E2:no-executor(past),of:#166
+national_load,54,∅[Lg·H],K1+K2,E2:no-executor(past),of:#173
+national_load,55,∅[Lg·H],K1+K2,E2:no-executor(past),of:#175
+national_load,56,∅[Lg·H],K1+K2,E2:no-executor(past),of:#179
+national_load,57,∅[H·Dg],K1+K2,E2:no-executor(past),of:#191
+national_load,58,∅[H·Dg],K1+K2,E2:no-executor(past),of:#193
+national_load,60,∅[H·Dg],K1+K2,E2:no-executor(past),of:#197
+national_load,61,∅[H·Dg],K1+K2,E2:no-executor(past),of:#199
+national_load,62,∅[H·Dg],K1+K2,E2:no-executor(past),of:#201
+national_load,63,∅[H·Dg],K1+K2,E2:no-executor(past),of:#202
+national_load,64,∅[H·Dg],K1+K2,E2:no-executor(past),of:#204
+national_load,65,∅[H·Dg],K1+K2,E2:no-executor(past),of:#205
+national_load,66,∅[H·Dg],K1+K2,E2:no-executor(past),of:#211
+national_load,67,∅[H·Dg],K1+K2,E2:no-executor(past),of:#226
+national_load,69,∅[Lg·H],K1+K2,E2:no-executor(past),of:#228
+national_load,72,∅[H·Dg],K1+K2,E2:no-executor(past),of:#245
+national_load,73,O[H·Dg],K1+K2,E4:own-truck-leg-in-no-RT,of:#257
+national_load,74,O[Lg·H],K1+K2,E4:own-truck-leg-in-no-RT,of:#263
+national_load,75,∅[H·Dg],K1+K2,E2:no-executor(past),of:#259
+national_load,76,O[H·Dg],K1+K2,E4:own-truck-leg-in-no-RT,of:#273
+national_load,77,O[H·Dg3],K1+K2,E4:own-truck-leg-in-no-RT,of:#275
+national_load,80,O[H·Dg],K1+K2,E4:own-truck-leg-in-no-RT,of:#283
+national_load,82,O[H·Dg],K1+K2,E4:own-truck-leg-in-no-RT,of:#281
+national_load,83,O[H·Dg],K1+K2,E4:own-truck-leg-in-no-RT,of:#302
+national_load,84,O[H·Dg],K1+K2,E4:own-truck-leg-in-no-RT,of:#306
+national_load,85,∅[H·Dg],K1+K2,E2:no-executor(past),of:#307
+national_load,87,O[H·Dg],K1+K2,E4:own-truck-leg-in-no-RT,of:#309
+national_load,88,∅[H·Dg],K1+K2,E2:no-executor(past),of:#313
+national_load,89,O[Lg·H],K1+K2,E4:own-truck-leg-in-no-RT,of:#317
+national_load,90,∅[H·Dg3],K1+K2,E2:no-executor(past),of:#318
+national_load,93,O[Lg·Dg2] ⊕,K1+K4,E4:own-truck-leg-in-no-RT E10:source-deleted T:test-row-deleted-on-L,groupage
+national_load,94,∅[H·Dg],K1+K2,E2:no-executor(past),of:#324
+national_load,96,∅[Lg·Dg],K1,E2:no-executor(past) T:test-row-deleted-on-L,natorder:5
+national_load,97,∅[Lg·Vd],K1,E2:no-executor(past) T:test-row-deleted-on-L,natorder:6
+national_load,98,∅[Lg·Vd],K1,E2:no-executor(past) T:test-row-deleted-on-L,natorder:7
+national_load,99,O[Lg·Dg],K1,E4:own-truck-leg-in-no-RT T:test-row-deleted-on-L,natorder:8
+national_load,100,∅[H·Dg],K1+K2,E2:no-executor(past),of:#334
+national_load,101,∅[H·Dg3],K1+K2,E2:no-executor(past),of:#335
+national_load,102,O[Lg·Dg],K1,E4:own-truck-leg-in-no-RT T:test-row-deleted-on-L,natorder:13
+national_load,103,O[Lg·Dg],K1,E4:own-truck-leg-in-no-RT T:test-row-deleted-on-L,natorder:14
+national_load,106,∅[H·Dg2],K1+K2,E2:no-executor(past),of:#341
+national_load,107,∅[H·Dg],K1+K2,E2:no-executor(past),of:#344
+national_load,108,∅[H·Dg],K1+K2,E2:no-executor(past),of:#345
+national_load,109,∅[Lg·H],K1+K2,E2:no-executor(past),of:#348
+national_load,110,∅[H·Dg],K1+K2,E2:no-executor(past),of:#349
+national_load,111,∅[Lg·H],K1+K2,E2:no-executor(past),of:#363
+national_load,112,∅[H·Dg],K1+K2,E2:no-executor(past),of:#365
+national_load,113,∅[Lg·H],K1+K2,E2:no-executor(past),of:#368
+national_load,114,∅[Lg·H],K1+K2,E2:no-executor(past),of:#369
+national_load,115,∅[H·Dg],K1+K2,E2:no-executor(past),of:#381
+national_load,116,∅[H·Dg],K1+K2,E2:no-executor(past),of:#388
+national_load,117,∅[H·Dg],K1+K2,E2:no-executor(past),of:#405
+national_load,118,∅[H·Dg],K1+K2,E2:no-executor(past),of:#409
+national_load,119,∅[Lg·H],K1+K2,E2:no-executor(past),of:#417
+national_load,120,∅[H·Dg],K1+K2,E2:no-executor(past),of:#418
+national_load,121,∅[H·Dg],K1+K2,E2:no-executor(past),of:#427
+national_load,122,∅[H·Dg],K1+K2,E2:no-executor(past),of:#430
+national_load,129,∅[Lg·H],K1+K2,E2:no-executor(past),of:#444
+national_load,130,∅[H·Dg4],K1+K2,E2:no-executor(past),of:#458
+national_load,131,∅[H·Dg],K1+K2,E2:no-executor(past),of:#460
+national_load,132,∅[H·Dg2],K1+K2,E2:no-executor(past),of:#462
+national_load,133,∅[H·Dg],K1+K2,E2:no-executor(past),of:#466
+national_load,134,∅[H·Dg2],K1+K2,E2:no-executor(past),of:#467
+national_load,135,∅[H·Dg],K1+K2,E2:no-executor(past),of:#476
+national_load,136,∅[H·Dg],K1+K2,E2:no-executor(future),of:#485
+national_load,137,∅[H·Dg],K1+K2,E2:no-executor(past),of:#484
+national_load,139,∅[H·Dg3],K1+K2,E2:no-executor(past),of:#487
+national_load,149,∅[Lg·H],K1+K2,E2:no-executor(past),of:#475
+national_load,152,∅[Lg·H],K1+K2,E2:no-executor(past),of:#532
+national_load,154,∅[H·Dg],K1+K2,E2:no-executor(past),of:#541
+national_load,155,∅[H·Dg],K1+K2,E2:no-executor(past),of:#542
+national_load,156,∅[Lg·H],K1+K2,E2:no-executor(past),of:#544
+national_load,157,∅[H·Dg],K1+K2,E2:no-executor(past),of:#529
+national_load,158,∅[H·Dg3],K1+K2,E2:no-executor(future),of:#554
+national_load,159,∅[H·Dg3],K1+K2,E2:no-executor(future),of:#553
+national_load,162,∅[Lg·H],K1+K2,E2:no-executor(past),of:#591
+national_load,163,∅[H·Dg],K1+K2,E2:no-executor(future),of:#603
+national_load,164,∅[H·Dg3],K1+K2,E2:no-executor(future),of:#604
+national_load,165,∅[Lg·H],K1+K2,E2:no-executor(future),of:#607
+order,152,O[Lg·D],K1+K7,,RT-1086
+order,153,O[Lg·H·D] H›∅,K1+K2+K7,E2:national-leg-no-executor,RT-1087
+order,154,P[Lg·D],K1+K7,,RT-1017
+order,156,O[Lg·H·D] H›∅,K1+K2+K7,E2:national-leg-no-executor,RT-1088
+order,157,O[Lg·D2],K1+K7,,RT-1089
+order,158,P[Lg·D],K1+K7,,RT-1141
+order,159,O[Lg·D],K1+K7,,RT-1090
+order,160,O[Lg2·D3],K1+K7,,RT-1091
+order,161,O[Lg·D],K1+K7,,RT-1092
+order,162,O[Lg·D],K1+K7,,RT-1007
+order,163,O[Lg·D],K1+K7,,RT-1016
+order,164,O[Lg·D],K1+K7,,RT-1093
+order,165,P[L·D],K1+K7,,RT-1139
+order,166,O[L·H·Dg] H›∅,K1+K2+K7,E2:national-leg-no-executor,RT-1088
+order,167,O[L·D],K1+K7,,RT-1092
+order,168,O[Lg2·D],K1+K7,,RT-1094
+order,169,O[Lg·D],K1+K7,,RT-1095
+order,170,O[L·D],K1+K7,,RT-1095
+order,171,P[Lg·D],K1+K7,,RT-1146
+order,172,O[Lg·D],K1+K7,,RT-1096
+order,173,O[Lg·H·D] H›∅,K1+K2+K7,E2:national-leg-no-executor,RT-1097
+order,174,P[Lg·D],K1+K7,,RT-1144
+order,175,P[Lg·H·D] H›∅,K1+K2+K7,E2:national-leg-no-executor,RT-1140
+order,176,P[Lg·D],K1+K7,,RT-1143
+order,177,O[Lg·D2],K1+K7,,RT-1098
+order,178,O[Lg·D],K1+K7,,RT-1099
+order,179,O[Lg·H·D] H›∅,K1+K2+K7,E2:national-leg-no-executor,RT-1100
+order,180,P[Lg·D],K1+K7,,RT-1142
+order,181,O[Lg·D],K1+K7,,RT-1101
+order,182,O[Lg·D],K1+K7,,RT-1102
+order,183,O[Lg2·D],K1+K7,,RT-1009
+order,184,O[Lg·D],K1+K7,,RT-1008
+order,185,P[Lg·D],K1+K7,,RT-1145
+order,186,O[Lg·D],K1+K7,,RT-1103
+order,187,O[Lg·D],K1+K7,,RT-1104
+order,188,O[L5·L?·Dg],K1+K7,N2:place-without-country,RT-1095
+order,189,O[L·Dg],K1+K7,,RT-1101
+order,190,O[L2·Dg2],K1+K7,,RT-1104
+order,191,O[L·H·Dg] H›∅,K1+K2+K7,E2:national-leg-no-executor,RT-1102
+order,192,O[L·Dg],K1+K7,,RT-1103
+order,193,O[L·H·Dg] H›∅,K1+K2+K7,E2:national-leg-no-executor,RT-1096
+order,195,O[L2·Dg],K1+K7,,RT-1008
+order,196,O[L·Dg],K1+K7,,RT-1098
+order,197,O[L·H·Dg] H›∅,K1+K2+K7,E2:national-leg-no-executor,RT-1099
+order,198,O[L·Dg],K1+K7,,RT-1097
+order,199,O[L2·H·Dg] H›∅,K1+K2+K7,E2:national-leg-no-executor E8:stop-without-date,RT-1100
+order,201,O[L·H·Dg] H›∅,K1+K2+K7,E2:national-leg-no-executor,RT-1094
+order,202,O[L·H·Dg] H›∅,K1+K2+K7,E2:national-leg-no-executor,RT-1089
+order,203,O[L·D?],K1+K7,N2:place-without-country,RT-1093
+order,204,O[L·H·Dg] H›∅,K1+K2+K7,E2:national-leg-no-executor,RT-1091
+order,205,O[L·H·Dg] H›∅,K1+K2+K7,E2:national-leg-no-executor,RT-1087
+order,206,P[L·D2],K1+K7,,RT-1149
+order,207,O[L2·Dg],K1+K7,,RT-1086
+order,209,O[Lg·D] ⊕,K1+K4+K7,,RT-1105
+order,210,O[Lg2·D] ⊕,K1+K4+K7,,RT-1105
+order,211,O[L·H·Dg] H›∅,K1+K2+K7,E2:national-leg-no-executor,RT-1092
+order,212,P[Lg·D],K1+K7,,RT-1015
+order,214,O[Lg·D],K1+K7,,RT-1132
+order,215,P[Lg·D],K1+K7,,RT-1147
+order,216,O[Lg·D2],K1+K7,,RT-1011
+order,217,O[Lg·D],K1+K7,,RT-1004
+order,218,O[L·Vd],K1+K7,,RT-1090
+order,219,O[Lg·D],K1+K7,,RT-1106
+order,221,O[Lg·D],K1+K7,,RT-1010
+order,222,P[Lg·D],K1+K7,,RT-1148
+order,223,O[Lg·D],K1+K7,,RT-1107
+order,224,O[Lg·D],K1+K7,,RT-1006
+order,225,P[L·D],K1+K7,,RT-1005
+order,226,O[L·H·Dg] H›∅,K1+K2+K7,E2:national-leg-no-executor,RT-1016
+order,227,P[Lg·D],K1+K7,,RT-1150
+order,228,O[Lg·H·D] H›∅,K1+K2+K7,E2:national-leg-no-executor,RT-1108
+order,231,O[Lg·D2],K1+K7,,RT-1013
+order,232,O[L·D·Dg],K1+K7,,RT-1007
+order,233,P[L·D],K1+K7,,RT-1152
+order,234,O[Lg·D2],K1+K7,,RT-1012
+order,235,P[Lg·D2],K1+K7,,RT-1154
+order,236,O[Lg·D],K1+K7,,RT-1014
+order,237,P[Lg·D],K1+K7,,RT-1155
+order,238,O[L·Dg] ⊕,K1+K4+K7,,RT-1105
+order,239,O[L·Dg] ⊕,K1+K4+K7,,RT-1105
+order,240,P[L2·Dg],K1+K7,,RT-1151
+order,241,O[L·Dg],K1+K7,,RT-1106
+order,242,O[L·D],K1+K7,,RT-1006
+order,243,O[L·D],K1+K7,,RT-1012
+order,244,O[L·Dg],K1+K7,,RT-1011
+order,245,O[L·H·Dg] H›∅,K1+K2+K7,E2:national-leg-no-executor,RT-1004
+order,246,O[L·Dg],K1+K7,,RT-1010
+order,247,O[Lg·D],K1+K7,,RT-1020
+order,248,O[Lg·D],K1+K7,,RT-1109
+order,249,O[Lg·D],K1+K7,,RT-1023
+order,250,O[Lg·D],K1+K7,,RT-1110
+order,251,O[Lg·D],K1+K7,,RT-1021
+order,252,O[Lg·D],K1+K7,,RT-1122
+order,253,P[L·D],K1+K7,,RT-1153
+order,254,O[L·Dg],K1+K7,,RT-1108
+order,255,O[L·Dg],K1+K7,,RT-1107
+order,256,O[L·D],K1+K7,,RT-1014
+order,257,O[L2·H·Dg] H›O,K1+K2+K7,,RT-1013
+order,258,O[L·D],K1+K7,,RT-1020
+order,259,O[L·H·Dg] H›∅,K1+K2+K7,E2:national-leg-no-executor E9:RT-leg-direction-differs,RT-1022
+order,260,O[Lg·D],K1+K7,,RT-1018
+order,261,P[L·D],K1+K7,,RT-1156
+order,262,O[Lg·D],K1+K7,,RT-1112
+order,263,O[Lg·H·D2] H›O,K1+K2+K7,,RT-1113
+order,265,O[Lg·D],K1+K7,,RT-1019
+order,266,O[Lg2·D2],K1+K7,,RT-1121
+order,267,O[L·Dg],K1+K7,,RT-1109
+order,268,O[L·D],K1+K7,,RT-1018
+order,269,O→P[Lg·D],K1+K2,E1b:split-legs-do-not-join,
+order,270,O[Lg·D],K1+K7,,RT-1120
+order,271,O→P[Lg2·D2],K1+K2,,
+order,272,O[Lg3·D],K1+K7,,RT-1115
+order,273,O[L·H·Dg] H›O,K1+K2+K7,,RT-1023
+order,274,O[L·Dg],K1+K7,,RT-1019
+order,275,O[L2·H·Dg3] H›O,K1+K2+K7,,RT-1112
+order,276,O[L·Dg],K1+K7,,RT-1110
+order,277,O[L·D] ⊕,K1+K4+K7,,RT-1021
+order,278,O[L·Dg],K1+K7,,RT-1113
+order,279,O[Lg·D],K1+K7,,RT-1129
+order,280,O[Lg·D],K1+K7,,RT-1126
+order,281,O[L·H·Dg] H›O,K1+K2+K7,,RT-1121
+order,282,O[Lg·D],K1+K7,,RT-1133
+order,283,O[L·H·Dg] H›O,K1+K2+K7,,RT-1115
+order,284,O[Lg·D],K1+K7,,RT-1135
+order,286,O[L·D] ⊕,K1+K4+K7,,RT-1122
+order,287,leg1:O[∅],K0+K7,E0:no-nodes,parent:#269 RT-1136
+order,288,leg2:P[∅],K0+K7,E0:no-nodes,parent:#269 RT-1158
+order,295,leg1:O[Lg2·D],K1+K7,,parent:#271 RT-1119
+order,296,leg2:P[L·D2],K1+K7,,parent:#271 RT-1157
+order,301,O[L·Dg] ⊕,K1+K4+K7,,RT-1021
+order,302,O[L·H·Dg] H›O,K1+K2+K7,,RT-1134
+order,303,O[L2·Dg2],K1+K7,,RT-1135
+order,304,O[L·Dg] ⊕,K1+K4+K7,,RT-1162
+order,305,O[L·D] ⊕,K1+K4+K7,,RT-1162
+order,306,O[L·H·Dg] H›O,K1+K2+K7,,RT-1136
+order,307,O[L·H·Dg] H›∅ ⊕,K1+K2+K4+K7,E2:national-leg-no-executor,RT-1119
+order,308,O[L2·Vd] ⊕,K1+K4+K7,,RT-1119
+order,309,O[L·H·Dg] H›O ⊕,K1+K2+K4+K7,,RT-1122
+order,310,K→O[X@V·D],K1+K2+K7,N:node-only-in-notes,RT-1163
+order,311,O[Lg·D],K1+K7,,RT-1128
+order,312,K→O[X@V·D],K1+K2+K7,N:node-only-in-notes,RT-1130
+order,313,O[L·H·Dg] H›∅,K1+K2+K7,E2:national-leg-no-executor,RT-1137
+order,314,O[L?+C·C·D+C],K1+K2+K7,N2:place-without-country N:node-only-in-notes,RT-1123
+order,315,O[L?·D],K1+K7,N2:place-without-country,RT-1124
+order,316,O[Lg·D],K1+K7,,RT-1125
+order,317,O[Lg·H·D] H›O,K1+K2+K7,,RT-1127
+order,318,O[L·H·Dg2] H›∅ ⊕,K1+K2+K4+K7,E2:national-leg-no-executor,RT-1164
+order,319,O[Lg·D3],K1+K7,,RT-1161
+order,320,O[L·D·Dg] ⊕,K1+K4+K7,,RT-1164
+order,321,O[L·Dg],K1+K7,,RT-1128
+order,322,O[L·D] ⊕,K1+K4+K7,,RT-1123
+order,323,O[L2·W↓·Vd] ⊕,K1+K2+K3+K4+K7,N:node-only-in-notes,RT-1123
+order,324,O[L·H·Dg] H›∅,K1+K2+K7,E2:national-leg-no-executor,RT-1124
+order,325,O[L·Dg],K1+K7,,RT-1127
+order,326,O[Lg·D],K1+K7,,RT-1160
+order,327,O[Lg·D],K1+K7,,RT-1168
+order,328,O[Lg·D] ⊕,K1+K4+K7,,RT-1165
+order,329,O[Lg·D] ⊕,K1+K4+K7,,RT-1165
+order,330,O[L·Dg],K1+K7,,RT-1129
+order,331,O[L·Dg],K1+K7,,RT-1120
+order,332,O[Vl·D],K1+K7,,RT-1138
+order,333,O[L2·D?],K1+K7,N2:place-without-country,RT-1126
+order,334,O[L·H·Dg] H›∅,K1+K2+K7,E2:national-leg-no-executor,RT-1166
+order,335,O[L?·L4·H·Dg3] H›∅,K1+K2+K7,E2:national-leg-no-executor N2:place-without-country,RT-1138
+order,339,O[L·Dg],K1+K7,,RT-1133
+order,340,O[Lg·D],K1+K7,,RT-1167
+order,341,O[L·H·Dg] H›∅ ⊕,K1+K2+K4+K7,E2:national-leg-no-executor,RT-1125
+order,342,O[L·Vd] ⊕,K1+K4+K7,,RT-1125
+order,343,O[L·D·Dg] ⊕,K1+K4+K7,,RT-1167
+order,344,O[L·H·Dg] H›∅,K1+K2+K7,E2:national-leg-no-executor,RT-1130
+order,345,O[L·H·Dg] H›∅,K1+K2+K7,E2:national-leg-no-executor,RT-1161
+order,346,O[L·Dg] ⊕,K1+K4+K7,,RT-1167
+order,347,O[L5·Dg2],K1+K7,,RT-1163
+order,348,O[Lg·H·D] H›∅ ↩,K1+K2+K6,E2:national-leg-no-executor E3:no-RT(past),
+order,349,O[L·H·Dg] H›∅,K1+K2+K7,E2:national-leg-no-executor,RT-1169
+order,350,O[Lg·D],K1+K7,,RT-1170
+order,351,O[L·D] ⊕,K1+K4+K7,,RT-1160
+order,352,O[L·Dg] ⊕,K1+K4+K7,,RT-1160
+order,353,O[L·Dg],K1+K7,,RT-1170
+order,354,O[L·Dg],K1+K7,,RT-1168
+order,355,O[L·Dg],K1+K7,,RT-1165
+order,356,O[L?+C·C·D+C],K1+K2+K7,N2:place-without-country N:node-only-in-notes,RT-1176
+order,357,O[L?+C·C·D+C],K1+K2+K7,N2:place-without-country N:node-only-in-notes,RT-1177
+order,358,O[L?+C·C·D+C],K1+K2+K7,N2:place-without-country N:node-only-in-notes,RT-1184
+order,359,O[L?+C·C·D+C],K1+K2+K7,N2:place-without-country N:node-only-in-notes,RT-1186
+order,360,O[Lg·D],K1+K7,,RT-1178
+order,361,O[Lg2·D],K1+K7,,RT-1171
+order,362,O[Lg·D],K1+K7,,RT-1172
+order,363,O[Lg·H·D] H›∅,K1+K2+K7,E2:national-leg-no-executor,RT-1173
+order,364,O[L·D],K1+K7,,RT-1171
+order,365,O[L·H·Dg] H›∅,K1+K2+K7,E2:national-leg-no-executor,RT-1174
+order,366,O[L·D],K1+K7,,RT-1175
+order,367,O[L·Dg],K1+K7,,RT-1171
+order,368,O[Lg·H·D] H›∅,K1+K2+K7,E2:national-leg-no-executor,RT-1179
+order,369,O[Lg·H·D] H›∅,K1+K2+K7,E2:national-leg-no-executor,RT-1183
+order,370,O[Lg·D],K1+K7,,RT-1180
+order,371,O[Lg·Dg],K1+K7,E11:international-without-foreign-node,RT-1181
+order,372,O[Lg·D] ⊕,K1+K4+K7,,RT-1182
+order,373,O[Lg·D] ⊕,K1+K4+K7,,RT-1182
+order,374,O[Lg·D] ⊕,K1+K4+K7,,RT-1182
+order,375,O[L·D],K1+K7,,RT-1172
+order,376,O[L·L?·D?·Dg2],K1+K7,N2:place-without-country,RT-1173
+order,377,O[Lg·D],K1+K7,,RT-1188
+order,378,O[L·D] ⊕,K1+K4+K7,,RT-1185
+order,379,O[L·Dg],K1+K7,,RT-1179
+order,380,O[L·Dg] ⊕,K1+K4+K7,,RT-1185
+order,381,O[L·H·Dg] H›∅,K1+K2+K7,E2:national-leg-no-executor,RT-1177
+order,382,O[L·Dg],K1+K7,,RT-1176
+order,383,O[Lg·D] ⊕,K1+K4+K7,,RT-1190
+order,384,O[Lg·D],K1+K7,,RT-1194
+order,385,O[L·D],K1+K7,,RT-1187
+order,386,O[Lg·D],K1+K7,,RT-1196
+order,388,O[L·H·Dg] H›∅,K1+K2+K7,E2:national-leg-no-executor,RT-1183
+order,389,O[L·Dg],K1+K7,,RT-1180
+order,390,O[L·Dg],K1+K7,,RT-1178
+order,391,O[L·Dg2],K1+K7,,RT-1181
+order,392,O[L?·D],K1+K7,N2:place-without-country,RT-1189
+order,393,O[Lg·D] ⊕,K1+K4+K7,,RT-1190
+order,395,O[Lg·D],K1+K7,,RT-1191
+order,396,O[Lg·D2] ⊕,K1+K4+K7,,RT-1192
+order,397,O[Lg·D2] ⊕,K1+K4+K7,,RT-1192
+order,398,O[Lg·D],K1+K7,,RT-1193
+order,399,O[L·D2] ⊕,K1+K4+K7,,RT-1184
+order,401,O[L·Dg] ⊕,K1+K4+K7,,RT-1184
+order,402,O[L·Dg3],K1+K7,,RT-1182
+order,403,O[Lg·Dg],K1+K7,E11:international-without-foreign-node,RT-1191
+order,404,O[L·Dg],K1+K7,,RT-1190
+order,405,O[L·H·Dg] H›∅,K1+K2+K7,E2:national-leg-no-executor,RT-1184
+order,406,O[Lg3·D],K1+K7,,RT-1197
+order,407,O[L?+C·C·D+C],K1+K2+K7,N2:place-without-country N:node-only-in-notes,RT-1198
+order,408,O[L?+C·C·D+C],K1+K2+K7,N2:place-without-country N:node-only-in-notes,RT-1199
+order,409,O[L·H·Dg] H›∅,K1+K2+K7,E2:national-leg-no-executor,RT-1186
+order,410,O[Lg·D4·+L],K1+K7,N:node-only-in-notes,RT-1212
+order,411,O[Lg·D2],K1+K7,,RT-1209
+order,412,O[Lg·D2],K1+K7,,RT-1210
+order,413,O[L3·L?·Dg],K1+K7,N2:place-without-country,RT-1189
+order,414,O[L2·D],K1+K7,,RT-1187
+order,415,O[L·Dg],K1+K7,,RT-1187
+order,416,O[L3·Dg2],K1+K7,,RT-1192
+order,417,O[Lg·H·D] H›∅,K1+K2+K7,E2:national-leg-no-executor,RT-1214
+order,418,O[L2·H·Dg] H›∅,K1+K2+K7,E2:national-leg-no-executor,RT-1188
+order,419,O[L·D2],K1+K7,,RT-1193
+order,422,O[L·Dg],K1+K7,,RT-1198
+order,424,P[L4·Dg],K1+K7,,RT-1203
+order,426,O[Lg·D],K1+K7,,RT-1215
+order,427,O[L·H·Dg] H›∅,K1+K2+K7,E2:national-leg-no-executor,RT-1196
+order,428,O[L·Dg],K1+K7,,RT-1199
+order,429,O[Lg3·D3],K1+K7,,RT-1204
+order,430,O[L·H·Dg] H›∅,K1+K2+K7,E2:national-leg-no-executor,RT-1197
+order,431,O[Lg·D],K1+K7,,RT-1211
+order,433,O[Lg·D],K1+K7,,RT-1213
+order,434,O[Lg·D],K1+K7,,RT-1216
+order,436,O[L·Dg] ⊕,K1+K4+K7,,RT-1194
+order,437,O[L·Dg] ⊕,K1+K4+K7,,RT-1194
+order,438,O[Lg2·D],K1+K7,,RT-1217
+order,439,O[Lg·D],K1+K7,,RT-1218
+order,441,O[Lg·D],K1+K7,,RT-1219
+order,442,O[Lg·D] ⊕,K1+K4+K7,,RT-1223
+order,443,O[Lg·D],K1+K7,,RT-1221
+order,444,O[Lg·H·D] H›∅ ⊕,K1+K2+K4+K7,E2:national-leg-no-executor,RT-1222
+order,445,O[L5·Dg],K1+K7,,RT-1204
+order,446,O[L·D],K1+K7,,RT-1209
+order,447,O[L·D2],K1+K7,,RT-1210
+order,448,O[Lg·D],K1+K7,,RT-1224
+order,449,O[L·W↓·Dg] ⊕,K1+K2+K3+K4+K7,N:node-only-in-notes,RT-1217
+order,451,O[L·D2] ⊕,K1+K4+K7,,RT-1217
+order,453,O[L·Dg],K1+K7,,RT-1213
+order,454,O[L·Dg],K1+K7,,RT-1212
+order,455,O[Lg2·D] ⊕,K1+K4+K7,,RT-1222
+order,457,O[L2·L?·L·Dg5],K1+K7,N2:place-without-country,RT-1211
+order,458,O[L·H·Dg4] H›∅ ⊕,K1+K2+K4+K7,E2:national-leg-no-executor,RT-1215
+order,459,O[L·W↓·D] ⊕,K1+K2+K3+K4+K7,N:node-only-in-notes,RT-1215
+order,460,O[L·H·Dg] H›∅,K1+K2+K7,E2:national-leg-no-executor,RT-1216
+order,461,O[L·Dg2] ⊕,K1+K4+K7,,RT-1219
+order,462,O[L2·H·Dg2] H›∅ ⊕,K1+K2+K4+K7,E2:national-leg-no-executor,RT-1218
+order,463,O[L·D2] ⊕,K1+K4+K7,,RT-1219
+order,464,O[Lg·D] ⊕,K1+K4+K7,,RT-1223
+order,465,O[Lg·D] ⊕,K1+K4+K7,,RT-1222
+order,466,O[L·H·Dg] H›∅,K1+K2+K7,E2:national-leg-no-executor,RT-1222
+order,467,O[L·H·D?·Dg] H›∅,K1+K2+K7,E2:national-leg-no-executor N2:place-without-country,RT-1217
+order,469,O[Lg·D],K1+K7,,RT-1231
+order,471,O[L·Dg] ⊕,K1+K4+K7,,RT-1218
+order,472,O[Lg·D],K1+K7,,RT-1225
+order,473,O[Lg·D],K1+K7,,RT-1226
+order,474,O[L·D?],K1+K7,N2:place-without-country,RT-1221
+order,475,O[Lg·H·D] H›∅,K1+K2+K7,E2:national-leg-no-executor,RT-1232
+order,476,O[L·H·Dg] H›∅,K1+K2+K7,E2:national-leg-no-executor,RT-1225
+order,477,O[L·W↓·D2] ⊕,K1+K2+K3+K4+K7,N:node-only-in-notes,RT-1229
+order,478,P→O[L·D2],K1+K2,,
+order,479,O[L·D],K1+K7,,RT-1230
+order,480,O[L·D2] ⊕,K1+K4+K7,,RT-1236
+order,481,P[L·Dg],K1+K7,,RT-1239
+order,482,O[L·Dg] ⊕,K1+K4+K7,,RT-1224
+order,483,O[L·Dg] ⊕,K1+K4+K7,,RT-1224
+order,484,O[L·H·Dg] H›∅,K1+K2+K7,E2:national-leg-no-executor,RT-1241
+order,485,O[L·W↓·H·Dg] H›∅ ⊕,K1+K2+K3+K4+K7,E2:national-leg-no-executor N:node-only-in-notes,RT-1236
+order,487,O[L2·H·Dg3] H›∅,K1+K2+K7,E2:national-leg-no-executor,RT-1231
+order,488,O[Lg·D],K1+K7,,RT-1230
+order,489,O[L·D?·Dg],K1+K7,N2:place-without-country,RT-1214
+order,490,P[L·Dg],K1+K7,,RT-1227
+order,491,O[Lg·D] ⊕,K1+K4+K7,,RT-1229
+order,492,O[Lg·Vl·D] ⊕,K1+K4+K7,,RT-1229
+order,493,O[Lg·D] ⊕ ↩,K1+K4+K6+K7,,RT-1229
+order,494,O[L·Dg] ⊕,K1+K4+K7,,RT-1229
+order,504,O[L3·Dg3],K1+K7,,RT-1226
+order,505,O[L5·L?·L4·Dg3],K1+K7,N2:place-without-country,RT-1223
+order,507,O[Lg·D?] ⊕,K1+K4+K7,N2:place-without-country,RT-1233
+order,508,O[Lg·D] ⊕,K1+K4+K7,,RT-1233
+order,509,O→P[Vl·D],K1+K2,,
+order,511,leg1:P[L·D],K1,E3:no-RT(past),parent:#478
+order,512,leg2:O[L·D2],K1+K7,,parent:#478 RT-1258
+order,514,P[L·D·S↑],K1+K2+K7,,RT-1246
+order,515,O[S↓·L·Dg],K1+K2,E3:no-RT(past),
+order,516,leg1:O[Vl·D],K1+K7,,parent:#509 RT-1236
+order,517,leg2:P[L·D],K1,E3:no-RT(past),parent:#509
+order,518,O[Lg·D] ⊕,K1+K4+K7,,RT-1237
+order,519,O[Lg·D],K1+K7,E1:split-leg-missing E1b:split-legs-do-not-join E7:parent-and-leg-both-in-RT,RT-1247
+order,520,leg1:O[Lg·D],K1+K7,,parent:#519 RT-1241
+order,522,O[Lg·D],K1+K7,,RT-1238
+order,523,O[Lg·D] ⊕,K1+K4+K7,,RT-1237
+order,524,O[Lg·D] ⊕,K1+K4+K7,,RT-1237
+order,525,O[Lg·D],K1+K7,,RT-1240
+order,526,O[Lg·D] ↩,K1+K6+K7,,RT-1263
+order,528,O[L·Dg],K1+K7,,RT-1242
+order,529,O[L·H·Dg] H›∅,K1+K2+K7,E2:national-leg-no-executor,RT-1243
+order,530,O[L·D],K1+K7,,RT-1232
+order,531,O[Lg·D3],K1+K7,,RT-1250
+order,532,O[Lg·H·D] H›∅,K1+K2+K7,E2:national-leg-no-executor,RT-1254
+order,533,O[L·Dg] ⊕,K1+K4+K7,,RT-1249
+order,534,O[Lg·D],K1+K7,,RT-1248
+order,535,O→P[Lg·D],K1+K2,,
+order,536,leg1:O[Lg·D],K1+K7,,parent:#535 RT-1249
+order,537,leg2:P[L·D],K1,E3:no-RT(past),parent:#535
+order,538,O[Lg·D] ⊕,K1+K4+K7,,RT-1257
+order,539,P[L·D·S↑],K1+K2+K7,,RT-1245
+order,540,O[L·Dg·D?],K1+K7,N2:place-without-country,RT-1237
+order,541,O[L·H·Dg] H›∅,K1+K2+K7,E2:national-leg-no-executor,RT-1238
+order,542,O[L·H·Dg] H›∅,K1+K2+K7,E2:national-leg-no-executor,RT-1230
+order,544,O[Lg·H·D2] H›∅,K1+K2+K7,E2:national-leg-no-executor,RT-1256
+order,548,O[L·W↑·D2],K1+K2+K7,N:node-only-in-notes,RT-1232
+order,549,O[L·D2],K1+K7,,RT-1248
+order,550,O[L·D2],K1+K7,,RT-1267
+order,551,P[L·Dg],K1+K7,,RT-1260
+order,552,O[L·Dg],K1+K7,,RT-1256
+order,553,O[L·H·Dg3] H›∅,K1+K2+K7,E2:national-leg-no-executor,RT-1257
+order,554,O[L2·H·Dg3] H›∅,K1+K2+K7,E2:national-leg-no-executor,RT-1253
+order,555,O[L3·Dg4],K1+K7,,RT-1254
+order,556,O[Lg·D],K1+K7,,RT-1251
+order,557,O[L?·D],K1+K7,N2:place-without-country,RT-1252
+order,558,O[Lg·D],K1+K7,,RT-1253
+order,559,O[Lg·D2],K1+K7,,RT-1255
+order,563,O[Lg·D] ⊕ ↩,K1+K4+K6+K7,,RT-1257
+order,564,O[Lg·D] ⊕,K1+K4+K7,,RT-1257
+order,565,O[L·Dg] ⊕,K1+K4+K7,,RT-1249
+order,566,O[Lg·D],K1+K7,,RT-1259
+order,567,O[L·Dg],K1+K7,,RT-1259
+order,568,O[L·Dg],K1+K7,,RT-1261
+order,569,O[Lg·D],K1+K7,,RT-1262
+order,570,O[L·Dg],K1+K7,,RT-1262
+order,572,O[L3·Dg],K1+K7,,RT-1250
+order,573,O[L3·Vd],K1+K7,,RT-1251
+order,574,O[L·D2],K1+K7,,RT-1254
+order,575,O[∅],K0+K7,E0:no-nodes,RT-1255
+order,576,O[∅],K0+K7,E0:no-nodes,RT-1252
+order,577,O[Lg·D],K1+K7,,RT-1277
+order,578,O[Lg2·D2],K1+K7,,RT-1275
+order,579,O[Lg·D],K1+K7,,RT-1282
+order,580,O[L·Dg],K1+K7,,RT-1265
+order,581,O[L·Dg],K1+K7,,RT-1266
+order,582,O[Lg·D],K1+K7,,RT-1268
+order,583,O[L·Dg],K1+K7,,RT-1268
+order,584,P[Lg·D],K1+K7,,RT-1269
+order,585,P[L·Dg],K1+K7,,RT-1269
+order,586,P[L?·Dg],K1+K7,N2:place-without-country,RT-1270
+order,587,O[Lg·D] ⊕,K1+K4+K7,,RT-1271
+order,588,O[Lg2·D] ⊕,K1+K4+K7,,RT-1271
+order,589,O[Lg·D] ⊕,K1+K4+K7,,RT-1271
+order,590,O[Lg·D2] ⊕,K1+K4+K7,,RT-1271
+order,591,O[Lg·H·D] H›∅ ⊕,K1+K2+K4+K7,E2:national-leg-no-executor,RT-1271
+order,593,P[L?·D],K1+K7,N2:place-without-country,RT-1273
+order,594,P[L·Dg],K1+K7,,RT-1274
+order,595,O[L·Dg],K1,S:unassigned-yet,
+order,596,O[L·D2],K1+K7,,RT-1271
+order,597,O[L·D],K1+K7,,RT-1277
+order,598,O[L·D],K1,S:unassigned-yet,
+order,599,O[Vl·D3],K1+K7,,RT-1276
+order,600,O[∅],K0+K7,E0:no-nodes,RT-1276
+order,601,O[L·Dg],K1+K7,,RT-1275
+order,602,O[Vl·D],K1+K7,,RT-1278
+order,603,O[L·H·Dg] H›∅,K1+K2,E2:national-leg-no-executor S:unassigned-yet,
+order,604,O[L·H·Dg3] H›∅,K1+K2,E2:national-leg-no-executor S:unassigned-yet,
+order,605,O[L·Dg],K1,S:unassigned-yet,
+order,606,O[L·Dg],K1,S:unassigned-yet,
+order,607,O[Lg·H·D] H›∅,K1+K2,E2:national-leg-no-executor S:unassigned-yet,
+order,608,P[L·D2],K1+K7,,RT-1279
+order,609,O[Lg2·D],K1+K7,,RT-1280
+order,610,O[Lg2·D3],K1,S:unassigned-yet,
+order,611,P[L·Dg],K1+K7,,RT-1281
+rt,RT-1004,O[E+Iv],K7+K8,E5:overlap>=2days,
+rt,RT-1005,P[E],K7,,
+rt,RT-1006,O[E+I],K7+K8,E5:overlap>=2days,
+rt,RT-1007,O[E+I],K7+K8,E5:overlap>=2days,
+rt,RT-1008,O[E+I],K7+K8,E5:overlap>=2days,
+rt,RT-1009,O[E],K7,,
+rt,RT-1010,O[E+I],K7,,
+rt,RT-1011,O[E+I],K7+K8,E5:overlap>=2days,
+rt,RT-1012,O[E+I],K7+K8,E5:overlap>=2days,
+rt,RT-1013,O[E+Iv],K7,,
+rt,RT-1014,O[E+I],K7+K8,E5:overlap>=2days,
+rt,RT-1015,P[E],K7,,
+rt,RT-1016,O[E+Iv],K7+K8,E5:overlap>=2days,
+rt,RT-1017,P[E],K7,,
+rt,RT-1018,O[E+I],K7,,
+rt,RT-1019,O[E+I],K7,,
+rt,RT-1020,O[E+I],K7,,
+rt,RT-1021,O[E+I[2]],K4+K7+K8,E5:overlap>=2days,
+rt,RT-1022,O[Ev],K7,E9:leg-direction-differs-from-order,
+rt,RT-1023,O[E+Iv],K7,,
+rt,RT-1086,O[E+I],K7+K8,E5:overlap>=2days,
+rt,RT-1087,O[Ev+Iv],K7+K8,E5:overlap>=2days,
+rt,RT-1088,O[Ev+Iv],K7+K8,E5:overlap>=2days,
+rt,RT-1089,O[E+Iv],K7+K8,E5:overlap>=2days,
+rt,RT-1090,O[E+I],K7+K8,E5:overlap>=2days,
+rt,RT-1091,O[E+Iv],K7+K8,E5:overlap>=2days,
+rt,RT-1092,O[E+E+Iv],K7+K8,E5:overlap>=2days,
+rt,RT-1093,O[E+I],K7+K8,E5:overlap>=2days,
+rt,RT-1094,O[E+Iv],K7+K8,E5:overlap>=2days,
+rt,RT-1095,O[E+E+I],K7,,
+rt,RT-1096,O[E+Iv],K7+K8,E5:overlap>=2days E6:owned-without-truck-or-driver,
+rt,RT-1097,O[Ev+I],K7+K8,E5:overlap>=2days,
+rt,RT-1098,O[E+I],K7+K8,E5:overlap>=2days,
+rt,RT-1099,O[E+Iv],K7+K8,E5:overlap>=2days,
+rt,RT-1100,O[Ev+Iv],K7,,
+rt,RT-1101,O[E+I],K7,,
+rt,RT-1102,O[E+Iv],K7+K8,E5:overlap>=2days,
+rt,RT-1103,O[E+I],K7,,
+rt,RT-1104,O[E+I],K7,,
+rt,RT-1105,O[E[2]+I[2]],K4+K7+K8,E5:overlap>=2days,
+rt,RT-1106,O[E+I],K7+K8,E5:overlap>=2days,
+rt,RT-1107,O[E+I],K7+K8,E5:overlap>=2days,
+rt,RT-1108,O[Ev+I],K7+K8,E5:overlap>=2days,
+rt,RT-1109,O[E+I],K7+K8,E5:overlap>=2days,
+rt,RT-1110,O[E+I],K7,,
+rt,RT-1111,O[x] cancelled,K7,,
+rt,RT-1112,O[E+Iv],K7,,
+rt,RT-1113,O[Ev+I],K7+K8,E5:overlap>=2days,
+rt,RT-1114,O[∅] cancelled,K7,,
+rt,RT-1115,O[E+Iv],K7,,
+rt,RT-1116,O[∅] cancelled,K7,,
+rt,RT-1117,O[∅] cancelled,K7,,
+rt,RT-1118,O[∅] cancelled,K7,,
+rt,RT-1119,O[Es+I[2]v],K4+K7+K8,E5:overlap>=2days,
+rt,RT-1120,O[E+I],K7,,
+rt,RT-1121,O[E+Iv],K7+K8,E5:overlap>=2days,
+rt,RT-1122,O[E+I[2]v],K4+K7+K8,E5:overlap>=2days,
+rt,RT-1123,O[E+I[2]],K4+K7,,
+rt,RT-1124,O[E+Iv],K7+K8,E5:overlap>=2days,
+rt,RT-1125,O[E+I[2]v],K4+K7+K8,E5:overlap>=2days,
+rt,RT-1126,O[E+I],K7+K8,E5:overlap>=2days,
+rt,RT-1127,O[Ev+I],K7+K8,E5:overlap>=2days,
+rt,RT-1128,O[E+I],K7+K8,E5:overlap>=2days,
+rt,RT-1129,O[E+I],K7,,
+rt,RT-1130,O[E+Iv],K7,,
+rt,RT-1132,O[E],K7,,
+rt,RT-1133,O[E+I],K7,,
+rt,RT-1134,O[Iv],K7+K8,E5:overlap>=2days,
+rt,RT-1135,O[I+E],K7+K8,E5:overlap>=2days,
+rt,RT-1136,O[Iv+Es],K7+K8,E5:overlap>=2days,
+rt,RT-1137,O[Iv],K7,,
+rt,RT-1138,O[E+Iv],K7+K8,E5:overlap>=2days,
+rt,RT-1139,P[E],K7,,
+rt,RT-1140,P[Ev],K7,,
+rt,RT-1141,P[E],K7,,
+rt,RT-1142,P[E],K7,,
+rt,RT-1143,P[E],K7,,
+rt,RT-1144,P[E],K7,,
+rt,RT-1145,P[E],K7,,
+rt,RT-1146,P[E],K7,,
+rt,RT-1147,P[E],K7,,
+rt,RT-1148,P[E],K7,,
+rt,RT-1149,P[E],K7,,
+rt,RT-1150,P[E],K7,,
+rt,RT-1151,P[I],K7,,
+rt,RT-1152,P[E],K7,,
+rt,RT-1153,P[E],K7,,
+rt,RT-1154,P[E],K7,,
+rt,RT-1155,P[E],K7,,
+rt,RT-1156,P[E],K7,,
+rt,RT-1157,P[Es],K7,,
+rt,RT-1158,P[Es],K7,,
+rt,RT-1159,O[∅] cancelled,K7,,
+rt,RT-1160,O[E+I[2]],K4+K7,,
+rt,RT-1161,O[E+Iv],K7+K8,E5:overlap>=2days,
+rt,RT-1162,O[I[2]],K4+K7,,
+rt,RT-1163,O[E+I],K7,,
+rt,RT-1164,O[I[2]v],K4+K7+K8,E5:overlap>=2days,
+rt,RT-1165,O[E[2]+I],K4+K7+K8,E5:overlap>=2days,
+rt,RT-1166,O[Iv],K7,,
+rt,RT-1167,O[E+I[2]],K4+K7,,
+rt,RT-1168,O[E+I],K7+K8,E5:overlap>=2days,
+rt,RT-1169,O[Iv],K7+K8,E5:overlap>=2days,
+rt,RT-1170,O[E+I],K7,,
+rt,RT-1171,O[E+I+I],K7+K8,E5:overlap>=2days,
+rt,RT-1172,O[E+I],K7,,
+rt,RT-1173,O[Ev+I],K7+K8,E5:overlap>=2days,
+rt,RT-1174,O[Iv],K7,,
+rt,RT-1175,O[I],K7,,
+rt,RT-1176,O[E+I],K7,,
+rt,RT-1177,O[E+Iv],K7,,
+rt,RT-1178,O[E+I],K7,,
+rt,RT-1179,O[Ev+I],K7+K8,E5:overlap>=2days,
+rt,RT-1180,O[E+I],K7,,
+rt,RT-1181,O[E+I],K7,,
+rt,RT-1182,O[E[3]+I],K4+K7+K8,E5:overlap>=2days,
+rt,RT-1183,O[Ev+Iv],K7+K8,E5:overlap>=2days,
+rt,RT-1184,O[E+I[2]+Iv],K4+K7,,
+rt,RT-1185,O[I[2]],K4+K7+K8,E5:overlap>=2days,
+rt,RT-1186,O[E+Iv],K7,,
+rt,RT-1187,O[E+I+I],K7,,
+rt,RT-1188,O[E+Iv],K7+K8,E5:overlap>=2days,
+rt,RT-1189,O[E+I],K7+K8,E5:overlap>=2days,
+rt,RT-1190,O[E[2]+I],K4+K7,,
+rt,RT-1191,O[E+I],K7+K8,E5:overlap>=2days,
+rt,RT-1192,O[E[2]+I],K4+K7,,
+rt,RT-1193,O[E+I],K7+K8,E5:overlap>=2days,
+rt,RT-1194,O[E+I[2]],K4+K7+K8,E5:overlap>=2days,
+rt,RT-1195,O[∅] cancelled,K7,,
+rt,RT-1196,O[E+Iv],K7+K8,E5:overlap>=2days,
+rt,RT-1197,O[E+Iv],K7,,
+rt,RT-1198,O[E+I],K7,,
+rt,RT-1199,O[E+I],K7,,
+rt,RT-1200,O[∅] cancelled,K7,,
+rt,RT-1201,O[∅] cancelled,K7,,
+rt,RT-1202,O[∅] cancelled,K7,,
+rt,RT-1203,P[I],K7,,
+rt,RT-1204,O[E+I],K7,,
+rt,RT-1209,O[E+I],K7+K8,E5:overlap>=2days,
+rt,RT-1210,O[E+I],K7+K8,E5:overlap>=2days,
+rt,RT-1211,O[E+I],K7,,
+rt,RT-1212,O[E+I],K7+K8,E5:overlap>=2days,
+rt,RT-1213,O[E+I],K7,,
+rt,RT-1214,O[Ev+I],K7,,
+rt,RT-1215,O[E+I[2]v],K4+K7+K8,E5:overlap>=2days,
+rt,RT-1216,O[E+Iv],K7,,
+rt,RT-1217,O[E+Iv+I[2]],K4+K7,,
+rt,RT-1218,O[E+I[2]v],K4+K7,,
+rt,RT-1219,O[E+I[2]],K4+K7+K8,E5:overlap>=2days,
+rt,RT-1220,O[∅] cancelled,K7,,
+rt,RT-1221,O[E+I],K7,,
+rt,RT-1222,O[E[3]v+Iv],K4+K7,,
+rt,RT-1223,O[E[2]+I],K4+K7,,
+rt,RT-1224,O[E+I[2]],K4+K7,,
+rt,RT-1225,O[E+Iv],K7,,
+rt,RT-1226,O[E+I],K7,,
+rt,RT-1227,P[I],K7,,
+rt,RT-1228,O[∅] cancelled,K7,,
+rt,RT-1229,O[E[3]+I[2]],K4+K7,,
+rt,RT-1230,O[E+Iv+I],K7+K8,E5:overlap>=2days,
+rt,RT-1231,O[E+Iv],K7+K8,E5:overlap>=2days,
+rt,RT-1232,O[Ev+E+I],K7,,
+rt,RT-1233,O[E[2]],K4+K7+K8,E5:overlap>=2days,
+rt,RT-1234,O[∅] cancelled,K7,,
+rt,RT-1235,P[∅] cancelled,K7,,
+rt,RT-1236,O[Es+I[2]v],K4+K7+K8,E5:overlap>=2days,
+rt,RT-1237,O[E[3]+I],K4+K7,,
+rt,RT-1238,O[E+Iv],K7,,
+rt,RT-1239,P[I],K7,,
+rt,RT-1240,O[E],K7,,
+rt,RT-1241,O[Es+Iv],K7+K8,E5:overlap>=2days,
+rt,RT-1242,O[I],K7,,
+rt,RT-1243,O[Iv],K7,,
+rt,RT-1244,O[∅] cancelled,K7,,
+rt,RT-1245,P[I],K7,,
+rt,RT-1246,P[I],K7,,
+rt,RT-1247,O[E],K7,E6:owned-without-truck-or-driver,
+rt,RT-1248,O[E+I],K7+K8,E5:overlap>=2days,
+rt,RT-1249,O[Es+I[2]],K4+K7,,
+rt,RT-1250,O[E+I],K7,,
+rt,RT-1251,O[E+I],K7,,
+rt,RT-1252,O[E+I],K7,,
+rt,RT-1253,O[E+Iv],K7+K8,E5:overlap>=2days,
+rt,RT-1254,O[Ev+I+I],K7,,
+rt,RT-1255,O[E+I],K7+K8,E5:overlap>=2days,
+rt,RT-1256,O[Ev+I],K7,,
+rt,RT-1257,O[E[3]+Iv],K4+K7+K8,E5:overlap>=2days,
+rt,RT-1258,O[Is],K7+K8,E5:overlap>=2days,
+rt,RT-1259,O[E+I],K7+K8,E5:overlap>=2days,
+rt,RT-1260,P[I],K7,,
+rt,RT-1261,O[I],K7+K8,E5:overlap>=2days,
+rt,RT-1262,O[E+I],K7,,
+rt,RT-1263,O[E],K7+K8,E5:overlap>=2days,
+rt,RT-1264,O[∅] cancelled,K7,,
+rt,RT-1265,O[I],K7,,
+rt,RT-1266,O[I],K7,,
+rt,RT-1267,O[I],K7+K8,E5:overlap>=2days,
+rt,RT-1268,O[E+I],K7,,
+rt,RT-1269,P[E+I],K7,,
+rt,RT-1270,P[I],K7,,
+rt,RT-1271,O[E[5]v+I],K4+K7+K8,E5:overlap>=2days,
+rt,RT-1272,O[∅] cancelled,K7,,
+rt,RT-1273,P[E],K7,,
+rt,RT-1274,P[I],K7,,
+rt,RT-1275,O[E+I],K7+K8,E5:overlap>=2days,
+rt,RT-1276,O[E+I],K7,,
+rt,RT-1277,O[E+I],K7,,
+rt,RT-1278,O[E],K7,,
+rt,RT-1279,P[I],K7,,
+rt,RT-1280,O[E],K7,,
+rt,RT-1281,P[I],K7,,
+rt,RT-1282,O[E],K7,,
