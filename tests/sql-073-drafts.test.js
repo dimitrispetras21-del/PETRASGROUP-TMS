@@ -13,7 +13,10 @@
 //   - D-9 NARROW (owner 25/10): the one index 073 adds is unique only for LOADING / DELIVERY;
 //   - the money choices M-1..M-3 are marked with the owner's answer (M-1 gamma, M-2 alpha, M-3 beta, 24/10), so a
 //     review finds them.
-// The rules are proven by 073_plan_money_test.sql on PGlite (tms-auditor/test/plan-073.test.mjs).
+//   - 073b (Task 6) is the one generated from the check files (B-78..B-90 of F3, B-91..B-93 of 072b), ASCII, born
+//     closed, B-80 disabled (M-5 delta), and 073's rollback refuses on exactly its F3 checks.
+// The rules are proven by 073_plan_money_test.sql on PGlite (tms-auditor/test/plan-073.test.mjs), 073b by
+// tms-auditor/test/plan-073b.test.mjs.
 'use strict';
 const { test } = require('node:test');
 const assert = require('node:assert');
@@ -116,4 +119,42 @@ test('073: no mirror and no write outside the plan', () => {
   assert.ok(!/update\s+national_orders/.test(s), 'national_orders is never written (spec 2.1)');
   assert.ok(!/update\s+ct_round_trips/.test(s));
   assert.ok(!/delete\s+from\s+pl_movements/.test(s), 'a pallet row is withdrawn (reversed), never deleted (D-7)');
+});
+
+// 073b (F3 Task 6): generated from the check files, so this only proves it is the generated one and holds what the
+// plan says. Its ids come from the builder (one list; never typed twice here, principle 3).
+const B073 = JSON.parse(execFileSync(process.execPath, ['--input-type=module', '-e',
+  `import(${JSON.stringify(path.join(DIR, 'tools/build-073b.mjs'))}).then((m) => console.log(JSON.stringify({ f3: m.F3_IDS, all: m.IDS, files: m.FILES })))`],
+  { encoding: 'utf8' }));
+test('073b is the generated one, ASCII, one DO block each, and holds exactly the check files of F3 and 072b', () => {
+  execFileSync(process.execPath, [path.join(DIR, 'tools/build-073b.mjs'), '--check']);
+  assert.deepStrictEqual(B073.files, ['073b_plan_monitoring.sql', '073b_plan_monitoring_dryrun.sql', '073b_plan_monitoring_rollback.sql']);
+  for (const f of B073.files) {
+    assert.ok(!/[^\x00-\x7f]/.test(read(f)), `${f}: non-ASCII`);
+    assert.strictEqual((strip(read(f)).match(/^DO \$/gm) || []).length, 1, `${f}: one DO block`);
+  }
+  // the 13 of spec 8 that do not need day L (M-6 alpha keeps B-90) + 072b's 3 (handover P3-6), each md5-proven
+  assert.deepStrictEqual(B073.f3, ['B-78', 'B-79', 'B-80', 'B-81', 'B-82', 'B-83', 'B-84', 'B-85', 'B-86', 'B-87', 'B-88', 'B-89', 'B-90']);
+  assert.deepStrictEqual(B073.all, [...B073.f3, 'B-91', 'B-92', 'B-93']);
+  const proof = [...read('073b_plan_monitoring.sql').matchAll(/\('(B-\d+)', '[0-9a-f]{32}', '[0-9a-f]{32}', (true|false)\)/g)];
+  assert.deepStrictEqual(proof.map((m) => m[1]), B073.all);
+  // M-5 delta (owner 24/10): B-80 goes to production DISABLED, and it is the only one
+  assert.deepStrictEqual(proof.filter((m) => m[2] === 'false').map((m) => m[1]), ['B-80']);
+  // born closed: X for the runner only, the policies read-only for the two auditor roles, nothing for tms_reader
+  const main = read('073b_plan_monitoring.sql');
+  assert.match(main, /GRANT SELECT ON public\.ct_settings TO tms_check_runner;/);
+  assert.strictEqual((strip(main).match(/\bGRANT\b/g) || []).length, 1, 'one GRANT only');
+  assert.strictEqual((main.match(/CREATE POLICY monitor_read ON public\.[a-z_]+ FOR SELECT TO tms_check_runner, tms_reader USING \(true\);/g) || []).length, 5);
+  assert.strictEqual((strip(main).match(/CREATE POLICY/g) || []).length, 5);
+  assert.ok(!/tms_reader;/.test(main.replace(/TO tms_check_runner, tms_reader USING/g, '')), 'no grant to tms_reader');
+});
+
+// Task 4 review (minor 2): 073's rollback refuses while 073b's checks exist. Its list is the builder's F3 list - the
+// checks that read 073's objects (072b's B-91..B-93 read only the segments) - so a change of numbers in 073b cannot
+// silently stop the guard.
+test('073 rollback refuses on exactly 073b\'s F3 checks', () => {
+  const rb = read('073_plan_money_rollback.sql');
+  const m = rb.match(/IF EXISTS \(SELECT 1 FROM monitoring\.checks WHERE id IN \(([^)]*)\)\) THEN\s+RAISE EXCEPTION '073 rollback: 073b''s checks/);
+  assert.ok(m, '073 rollback has the 073b refusal');
+  assert.deepStrictEqual([...m[1].matchAll(/'(B-\d+)'/g)].map((x) => x[1]), B073.f3);
 });

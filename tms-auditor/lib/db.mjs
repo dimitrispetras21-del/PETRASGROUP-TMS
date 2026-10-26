@@ -14,6 +14,7 @@ export const ROOT = path.resolve(HERE, '../..');
 export const DRAFTS = path.join(ROOT, 'worker/migrations/drafts');
 export const MIGRATIONS = path.join(ROOT, 'worker/migrations');   // 057 executed 5/10: out of drafts/ (CLAUDE.md rule 5)
 const FIXTURE = path.join(HERE, '../test/fixtures/schema.sql');
+const FIXTURE_V5 = path.join(HERE, '../test/fixtures/schema-v5.sql');
 
 export function stripProdOnly(sql) {
   const removed = [];
@@ -63,12 +64,20 @@ export function draftGrants(file) {
   }));
 }
 export const STOCK_DRAFT = '057_stock_lots.sql';
+// 071 (executed 22/10), DRAFT 072b and DRAFT 073 grant their own relations, like 057: the F3 checks (B-78..B-93) read
+// them. Paths under worker/migrations/ (draftGrants' base); a draft moves one folder up once the owner runs it.
+export const V5_SCHEMA = '071_plan_schema.sql';
+export const V5_SEGMENTS = 'drafts/072b_plan_vehicle_segments.sql';
+export const V5_MONEY = 'drafts/073_plan_money.sql';
+export const OWN_GRANTS = [STOCK_DRAFT, V5_SCHEMA, V5_SEGMENTS, V5_MONEY];
 
-export async function createDb({ roles = false, seed = true, fixture = true, extensions } = {}) {
+export async function createDb({ roles = false, seed = true, fixture = true, extensions, v5 = true } = {}) {
+  // v5: the stand-ins of the 071 / 072b / 073 relations (schema-v5.sql); false for a harness that applies 071 itself.
   // extensions: PGlite contrib modules (e.g. btree_gist for 071b); none by default, as before.
   const db = new PGlite(extensions ? { extensions } : undefined);
   await db.exec(MOCKS);
   if (fixture) await db.exec(fs.readFileSync(FIXTURE, 'utf8'));
+  if (fixture && v5) await db.exec(fs.readFileSync(FIXTURE_V5, 'utf8'));
   await db.exec(fs.readFileSync(path.join(DRAFTS, '047_monitoring_schema.sql'), 'utf8'));
   await db.exec(stripProdOnly(fs.readFileSync(path.join(DRAFTS, '048_monitoring_notify.sql'), 'utf8')).sql);
   if (seed) {
@@ -77,9 +86,10 @@ export async function createDb({ roles = false, seed = true, fixture = true, ext
     await db.exec(seedSql(checks));
   }
   if (roles) await db.exec(fs.readFileSync(path.join(DRAFTS, '050_monitor_roles.sql'), 'utf8'));
-  // 057's grants, only on what exists here: relations it creates that no check reads (stock_v_lot_alloc,
-  // stock_v_rt_amounts) are not in the fixture, service_role is not a local role, tms_reader exists only with 050.
-  if (fixture) for (const g of draftGrants(STOCK_DRAFT)) for (const rel of g.rels) for (const role of g.roles) {
+  // 057's grants (and 071's, 072b's, 073's), only on what exists here: relations they create that no check reads
+  // (stock_v_lot_alloc, stock_v_rt_amounts, v_piece_pos, ...) are not in the fixture, service_role is not a local
+  // role, tms_reader exists only with 050.
+  if (fixture) for (const g of OWN_GRANTS.flatMap((f) => draftGrants(f))) for (const rel of g.rels) for (const role of g.roles) {
     const ok = (await db.query(`SELECT to_regclass($1) IS NOT NULL AND EXISTS (SELECT 1 FROM pg_roles WHERE rolname = $2) AS ok`,
       ['public.' + rel, role])).rows[0].ok;
     if (ok) await db.exec(`GRANT SELECT ${g.cols ? `(${g.cols.join(', ')}) ` : ''}ON public.${rel} TO ${role}`);

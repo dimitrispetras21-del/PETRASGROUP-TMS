@@ -35,7 +35,7 @@ export const TRG = `SELECT count(*)::int AS n FROM pg_trigger t JOIN pg_class c 
 export async function prodShaped072(with072 = true, { money = 'stubs', with072b = false } = {}) {
   if (money !== 'stubs' && money !== 'live') throw new Error(`prodShaped072: money must be 'stubs' or 'live', not ${money}`);
   if (with072b && !with072) throw new Error('prodShaped072: 072b needs 072');
-  const db = await freshDb({ extensions: { btree_gist, pgcrypto } });
+  const db = await freshDb({ v5: false, extensions: { btree_gist, pgcrypto } });   // 071 itself, not the stand-ins
   await db.exec(`DO $r$ BEGIN
     IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'anon') THEN CREATE ROLE anon NOLOGIN; END IF;
     IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'authenticated') THEN CREATE ROLE authenticated NOLOGIN; END IF;

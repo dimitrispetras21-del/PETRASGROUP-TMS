@@ -13,8 +13,8 @@
 // segments (review R2, spec E2); the rollback refuses (a v5 row, 073 present), then undoes the 18 hooks in reverse
 // and returns every hooked function and both EXCLUDE byte for byte; fifteen mutations that each make one case fail,
 // and two on the live hooked functions (a hook's own text is pinned by its md5, so it cannot be mutated in the source).
-// The checks live in tms-auditor/checks-072b/ until 073b moves them into the catalog (plan: the handover to F3, P3-6): in checks/ they
-// would enter the 047b seed and the catalog tests before the fixture and the grants know rt_vehicle_segments.
+// The checks lived in tms-auditor/checks-072b/ until 073b moved them into the catalog (plan: the handover to F3, P3-6;
+// F3 Task 6): tms-auditor/checks/, with the fixture (schema-v5.sql) and the grants that know rt_vehicle_segments.
 // Limits (as plan-072): money views are STUBS; the capture holds only the functions of its f/trg lists.
 import { test } from 'node:test';
 import assert from 'node:assert';
@@ -29,9 +29,9 @@ import { parseCheck, seedSql } from '../checks/load.mjs';
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const read = (f) => fs.readFileSync(path.join(DRAFTS, f), 'utf8');          // 072b: drafts until executed
 const readDone = (f) => fs.readFileSync(path.join(DRAFTS, '..', f), 'utf8'); // 071 / 071b executed 22/10, 072 26/10
-// B-91..B-93: tms-auditor/checks-072b/ after Task B1, OUT of the catalog until 073b (review R4, finding 1);
-// HANDOVER_CHECKS=docs/national-v5/handover/checks before it
-const CHECKS = process.env.HANDOVER_CHECKS || path.join(HERE, '..', 'checks-072b');
+// B-91..B-93: in the catalog (tms-auditor/checks/) since 073b (F3 Task 6, P3-6); OUT of it in checks-072b/ before
+// (review R4, finding 1). HANDOVER_CHECKS=<folder> reads them from elsewhere.
+const CHECKS = process.env.HANDOVER_CHECKS || path.join(HERE, '..', 'checks');
 
 const PLAN_FNS = `SELECT count(*)::int AS n FROM pg_proc p WHERE p.pronamespace = 'public'::regnamespace AND p.proname LIKE 'plan\\_%'`;
 const EXCL = `SELECT conrelid::regclass::text || ':' || pg_get_constraintdef(oid) AS d FROM pg_constraint

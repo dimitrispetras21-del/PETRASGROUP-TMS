@@ -14,6 +14,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { prodShaped072, TRG } from './prod-shaped-072.mjs';
 import { DRAFTS } from '../lib/db.mjs';
+import { IDS as IDS_073B } from '../../worker/migrations/drafts/tools/build-073b.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const read = (f) => fs.readFileSync(path.join(DRAFTS, f), 'utf8');             // 073: drafts until executed
@@ -50,6 +51,9 @@ async function prodShaped() {
   const db = await prodShaped072(true, { money: 'live', with072b: true });
   await db.exec(fixture('v1-money-073.sql'));
   await db.exec(PROD_RIGHTS);
+  // the local seed (047b, generated from every check file) already holds 073b's checks; production has none of them
+  // before 073b (Task 6), and 073's rollback refuses while they exist: take them out, as production
+  await db.query('DELETE FROM monitoring.checks WHERE id = ANY($1)', [IDS_073B]);
   return db;
 }
 async function errorOf(db, sql) { try { await db.exec(sql); return null; } catch (e) { return String(e.message); } }
