@@ -3541,8 +3541,8 @@ ${V5.map((t) => `  CREATE POLICY monitor_read ON public.${t} FOR SELECT TO tms_c
   --     fail with "permission denied for table ct_settings" as soon as one v5 row exists (measured on PGlite 23/10).
   --     The auditor's runner only (it already reads money: stock_v_lot_money, 057); never tms_reader.
   GRANT SELECT ON public.ct_settings TO tms_check_runner;
-  -- (26/10, production dry run, PR #105: 073b also grants EXECUTE on stock_vs_charge to tms_check_runner - see
-  --  build-073b.mjs, the source of 073b; this plan block is the 23/10 sketch)
+  -- 26/10, production dry run (PR #105): 057 gave stock_vs_charge to service_role only; build-073b.mjs is the source
+  GRANT EXECUTE ON FUNCTION public.stock_vs_charge(numeric, numeric) TO tms_check_runner;
 
   -- 2. THE 13 CHECKS (text = tms-auditor/checks/<id>.sql, generated; md5-proven below)
   INSERT INTO monitoring.checks (id, title, flows, sql_text, ids_sql, entity_table, red_op, red_value, baseline, severity,

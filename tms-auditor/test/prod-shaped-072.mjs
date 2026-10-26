@@ -75,8 +75,10 @@ export async function assertFnAcl(db, live) {
   const { rows } = await db.query(`SELECT f.sig, (SELECT array_agg(DISTINCT CASE WHEN a.grantee = 0 THEN 'public' ELSE a.grantee::regrole::text END)
       FROM pg_proc p, aclexplode(coalesce(p.proacl, acldefault('f', p.proowner))) a
      WHERE p.oid = f.sig::regprocedure AND a.grantee <> p.proowner) AS got FROM unnest($1::text[]) f(sig)`, [want.map(([sig]) => sig)]);
-  for (const [i, [sig, to]] of want.entries()) {
-    const got = [...(rows[i].got || [])].sort().join(',');
+  const bySig = new Map(rows.map((r) => [r.sig, r.got]));   // matched by signature, never by row order
+  for (const [sig, to] of want) {
+    if (!bySig.has(sig)) throw new Error(`prodShaped072: ${sig} not read back`);
+    const got = [...(bySig.get(sig) || [])].sort().join(',');
     if (got !== [...to].sort().join(',')) throw new Error(`prodShaped072: ${sig} EXECUTE to {${got}}, production {${to.join(',')}}`);
   }
 }
