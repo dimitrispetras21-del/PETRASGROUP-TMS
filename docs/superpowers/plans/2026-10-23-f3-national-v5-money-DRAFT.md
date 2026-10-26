@@ -4792,6 +4792,20 @@ Expected: `DRYRUN-IDIO`, `073B-IDIO`· `ℹ fail 0`· τα md5 = PART 2/PART 5/v
 
 - [ ] **Step 3: Ο καθαρός εκτελεστής**: τα Steps 1–2 από νέο worktree (`npm ci` στο `tms-auditor`), διαβάζοντας μόνο το πλάνο. Ό,τι δεν έγινε κατά γράμμα = εύρημα στο PR (Task 11) και διόρθωση στο πλάνο **και** στον κώδικα πριν το merge.
 
+> **Αποτέλεσμα 26/10 (καθαρός εκτελεστής, worktrees detached στο `feat/national-v5-f3` 3d82563a και στο `deploy/worker-plan-f3` dd2cab8e, `npm ci`):**
+> όλα πράσινα. SQL: `DRYRUN-IDIO`, `073B-IDIO`, `sql-073`+`sql-072` 21/21· τα 12 md5 του `md5-073.mjs` = PART 2/PART 5 της 073 και το verify (12/12)·
+> ελεγκτής 132/132 (073: 36 περιπτώσεις, όλες OK· 072 `237 OK, 0 FAIL`). Worker: 345 tests, 344 pass, 0 fail, 1 skip (το παλιό του 068)· DKV 214/0·
+> φρουρός `GUARD OK (17 markers, plan=1, handover=1, f3=1)`. Ευρήματα «όχι κατά γράμμα» (για το PR του Task 11):
+> 1. Ο κλάδος SQL λέγεται `feat/national-v5-f3`, όχι `feat/national-v5-money` (εδώ, στον Task 0, 9 Step 2, 11 Step 4)· ο Worker `deploy/worker-plan-f3`
+>    πάνω στο `deploy/worker-plan-handover` (072b), όχι `deploy/worker-plan`.
+> 2. Το `git log HEAD..origin/main` δεν ήταν κενό (#93: μόνο σχόλια στα build-071/072, #94/#99 docs, #96 = το 072b που ήδη είχαμε): `git merge origin/main`.
+> 3. Ο φρουρός της αλυσίδας θέλει `--handover`: η εντολή του πλάνου `--plan 1 --f3 1` δίνει exit 2. Σωστή: `--plan 1 --handover 1 --f3 1` → 17 σημάδια (όχι 12).
+> 4. Το `grep Result:` δεν δείχνει γραμμή της 073 (το test τη βεβαιώνει μέσα του: 36 = `wantCount`)· η Φ2 δίνει `237 OK`, όχι `179 OK`. Worker 345 (όχι 210/253).
+> 5. **Ανοιχτό:** το 072b «σε ένα βήμα» (owner 26/10, `feat/national-v5-handover-one-step`, χωρίς PR ακόμη, md5 137a6574) αλλάζει το `plan_rt_update`·
+>    η αλυσίδα `origin/deploy/worker-plan-handover` το έχει ήδη (0672df3d). Η 073 όπως είναι σταματά στο PART 0 πάνω του (μετρήθηκε: «plan_rt_update ... expected md5 e918ef7c»).
+>    Με δύο σταθερές (πριν `e918ef7c…` → `e427e7a2…`, μετά `b7acd8a0…` → `be70612f…`, στα 073 / rollback / verify, + ξαναπαραγωγή dry run) όλος ο ελεγκτής
+>    περνά πάνω του (136/136). Γίνεται στους δύο κλάδους μαζί όταν το one-step μπει στο main.
+
 ---
 
 ### Task 11: Ίχνος, έλεγχος κώδικα, δύο PR
