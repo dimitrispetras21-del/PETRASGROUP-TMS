@@ -5,7 +5,7 @@
 --   changed_live = 0 ; public_acts = 3 ; open_to_api = 0 ; open_relations = 0 ; rls_off = 0 ;
 --   auditor_policy = 1 ; other_policies = 0 ; new_triggers = 4 ; b54_matches = true ; segments = 0 ; v5_cycles = 0 ;
 --   seg_problems = 0 ; overlaps = 0 ; cancel_copy_drift = 0
--- hooks_in_place counts the 10 hooked functions at their FINAL text (plan_rt_update carries 7 hooks, chained; the
+-- hooks_in_place counts the 10 hooked functions at their FINAL text (plan_rt_update carries 9 hooks, chained; the
 -- three of owner question 7 = b: plan_h_drop_consequences one, plan_delete two, plan_move_pieces two - the second
 -- for a side moved within its own cycle, review R5; plan_rt_update's 7th and plan_delete's 2nd put the notices of a
 -- removed handover in the act's answer, fix round 1 26/10).
@@ -28,7 +28,7 @@ SELECT
   (SELECT count(*) FROM (VALUES
       ('public.plan_h_busy(text,bigint,timestamptz,timestamptz,bigint)', '99d86d5c59c88264b4825b5410c09a59'),
       ('public.plan_h_finish()', '59d88ec85661d3ef2ac957aecd0e0fcd'),
-      ('public.plan_rt_update(jsonb,text,text)', 'e918ef7cb61693c941a4e755e7e5f94f'),
+      ('public.plan_rt_update(jsonb,text,text)', 'e427e7a24ef6e88d83555c98d4bc7622'),
       ('public.plan_rt_clear(jsonb,text,text)', '07452fbac4ac9fe8c4dddd0d35b256f3'),
       ('public.plan_board(date,text)', '2e030bfc158de8a26d5814f618d1f5ac'),
       ('public.plan_vs_state(bigint[])', '99175b659207c5019f1599ed389f1895'),

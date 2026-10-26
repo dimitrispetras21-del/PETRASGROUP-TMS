@@ -201,6 +201,13 @@ DECLARE
     , 'ok'               -- 144 the removal of 39 pressed again by the same person: replayed, the SAME notice_ids
     , 'plan:bad_input'   -- 145 correction of a later segment's point to blanks (was a raw 23514 seg_place_text)
     , 'plan:bad_input'   -- 146 correction of a later segment's reason to null (was a raw 23514 seg_change_pair)
+    -- owner 26/10 ("in one step"): plan_rt_update that narrows past a handover AND changes the vehicle
+    , 'ok'               -- 147 the end side + another truck, each of the 5 roles: ONE list (seg_removed + seg_vehicle), ONE token, both applied
+    , 'ok'               -- 148 the start side + another driver, the ARCHIKO's line with an amount: listed (no amount for the dispatcher), no payroll_locked, 0 needs_review
+    , 'plan:need_token'  -- 149 147's change without the token: refused before any write
+    , 'plan:stale_confirm' -- 150 the token of the dry run with truck 3, sent with truck 4: the list named another vehicle
+    , 'ok'               -- 151 two segments would stay: the dry run shows seg_many and hands out NO token
+    , 'plan:payroll_locked' -- 152 the end side + another driver for the ARCHIKO whose line has an amount: 072's lock stays (he leaves)
     -- @want (one line per case: "    , '<ok|plan:code|con:name|state:XXXXX>'  -- <k> <what>")
   ]::text[];
   verdict text; got text; hint text; msg text; cname text; st text;
@@ -1729,6 +1736,100 @@ BEGIN
         PERFORM plan_seg_fix(jsonb_build_object('segment_id', (r->'ids'->>'segment_id')::bigint,
                   'set', CASE WHEN k = 145 THEN '{"place_note": "   "}'::jsonb ELSE '{"reason": null}'::jsonb END),
                 'test:072b', 'dispatcher');
+      ELSIF k IN (147, 149, 150, 152) THEN
+        -- [A 2104/Giorgos ... D+1 10:00][T 2108/Nikos]; stop C moves to D 15:00-16:00 (the cycle ends before the
+        -- handover: the TELIKO goes) and the same form sets another truck on what is left (owner 26/10: one step)
+        r := plan_seg_change(jsonb_build_object('request_id', gen_random_uuid(), 'rt_id', rt1, 'at', e1000,
+               'place_note', 'Lamia', 'reason', 'vehicle_breakdown', 'vehicle', veh2), 'test:072b', 'owner');
+        g1 := (r->'ids'->>'cut_segment_id')::bigint; g2 := (r->'ids'->>'segment_id')::bigint;
+        j2 := jsonb_build_object('rt_id', rt1, 'stops', jsonb_build_array(jsonb_build_object('stop_id', s1c,
+                'planned_from', t1500, 'planned_to', t1600)),
+                'set', CASE WHEN k = 152 THEN jsonb_build_object('driver_id', drv3) ELSE jsonb_build_object('truck_id', trk3) END);
+        IF k = 149 THEN
+          PERFORM plan_rt_update(j2, 'test:072b', 'dispatcher');
+        ELSIF k = 150 THEN
+          r := plan_rt_update(j2 || jsonb_build_object('dry_run', true), 'test:072b', 'dispatcher');
+          PERFORM plan_rt_update(jsonb_set(j2, '{set,truck_id}', to_jsonb(trk4)) || jsonb_build_object('confirm_token', r->>'confirm_token'),
+                    'test:072b', 'dispatcher');
+        ELSIF k = 152 THEN
+          UPDATE dl_entries SET trip_value = 100 WHERE rt_id = rt1 AND deleted_at IS NULL;
+          PERFORM plan_rt_update(j2 || jsonb_build_object('dry_run', true), 'test:072b', 'dispatcher');
+        ELSE
+          m := ''; tok := NULL;
+          FOREACH rl IN ARRAY ARRAY['owner', 'dispatcher', 'management', 'accountant', 'warehouse'] LOOP
+            BEGIN
+              SET CONSTRAINTS ALL DEFERRED;
+              r := plan_rt_update(j2 || jsonb_build_object('dry_run', true), 'test:072b', rl);
+              r2 := plan_rt_update(j2 || jsonb_build_object('confirm_token', r->>'confirm_token'), 'test:072b', rl);
+              SET CONSTRAINTS ALL IMMEDIATE;
+              m := m || ' ' || rl || CASE WHEN (r->>'needs_confirm')::boolean AND r->'preview'->'conflict' = 'null'::jsonb
+                                            AND r->'consequences' @> jsonb_build_array(
+                                                  jsonb_build_object('kind', 'seg_removed', 'segment_id', g2, 'place_note', 'Lamia'),
+                                                  jsonb_build_object('kind', 'seg_vehicle', 'segment_id', g1, 'truck_id', trk3,
+                                                                     'driver_id', drv1, 'trip_type', 'OWNED'))
+                                            AND (r2->>'ok')::boolean
+                                            AND (SELECT deleted_at IS NOT NULL FROM rt_vehicle_segments WHERE id = g2)
+                                            AND (SELECT count(*) FROM rt_vehicle_segments WHERE rt_id = rt1 AND deleted_at IS NULL) = 1
+                                            AND (SELECT truck_id = trk3 AND driver_id = drv1 AND to_at = t1600 AND reason IS NULL
+                                                   FROM rt_vehicle_segments WHERE id = g1)
+                                            AND (SELECT truck_id = trk3 AND driver_id = drv1 AND end_at = t1600 FROM ct_round_trips WHERE id = rt1)
+                                            AND (SELECT count(*) FROM audit_log WHERE table_name = 'rt_vehicle_segments' AND record_id = g1::text
+                                                   AND action = 'update' AND role = rl AND after_data->>'truck_id' = trk3::text) = 1
+                                          THEN ':ok' ELSE ':FAIL ' || r::text || ' ' || coalesce(r2::text, 'null') END;
+              IF tok IS NULL THEN tok := r->>'confirm_token';
+              ELSIF tok IS DISTINCT FROM r->>'confirm_token' THEN m := m || ' (another token)'; END IF;
+              RAISE EXCEPTION 'role undo' USING HINT = 'wn072b_role_undo';
+            EXCEPTION WHEN others THEN
+              GET STACKED DIAGNOSTICS hint = PG_EXCEPTION_HINT, msg = MESSAGE_TEXT;
+              IF hint IS DISTINCT FROM 'wn072b_role_undo' THEN m := m || ' ' || rl || ':ERROR ' || coalesce(hint, '') || ' ' || msg; END IF;
+            END;
+          END LOOP;
+          verdict := CASE WHEN m = ' owner:ok dispatcher:ok management:ok accountant:ok warehouse:ok'
+                          THEN 'ok one list, one token, removal and vehicle in one step, every role' ELSE 'FAIL' || m END;
+        END IF;
+      ELSIF k = 148 THEN
+        -- [A 2104/Giorgos 06:00-08:30][T 2108/Nikos]; Giorgos' line (the cycle's, 011) has an amount. Stop A moves to
+        -- 08:45 (the ARCHIKO goes) and the same form gives the segment left another driver: Giorgos leaves with the
+        -- removed handover, so his line is listed and goes after the token - 072's payroll lock does not stop it
+        r := plan_seg_change(jsonb_build_object('request_id', gen_random_uuid(), 'rt_id', rt1, 'at', t0830,
+               'place_note', 'Lamia', 'reason', 'vehicle_breakdown', 'vehicle', veh2), 'test:072b', 'owner');
+        g1 := (r->'ids'->>'cut_segment_id')::bigint; g2 := (r->'ids'->>'segment_id')::bigint;
+        UPDATE dl_entries SET trip_value = 100 WHERE rt_id = rt1 AND deleted_at IS NULL;
+        SELECT id INTO x FROM dl_entries WHERE rt_id = rt1 AND deleted_at IS NULL;
+        j2 := jsonb_build_object('rt_id', rt1, 'stops', jsonb_build_array(jsonb_build_object('stop_id', s1a,
+                'planned_from', (d + time '08:45') AT TIME ZONE 'Europe/Athens', 'planned_to', (d + time '08:50') AT TIME ZONE 'Europe/Athens')),
+                'set', jsonb_build_object('driver_id', drv3));
+        r := plan_rt_update(j2 || jsonb_build_object('dry_run', true), 'test:072b', 'dispatcher');
+        r2 := plan_rt_update(j2 || jsonb_build_object('confirm_token', r->>'confirm_token'), 'test:072b', 'dispatcher');
+        SET CONSTRAINTS ALL IMMEDIATE;
+        verdict := CASE WHEN (r->>'needs_confirm')::boolean AND r->'preview'->'conflict' = 'null'::jsonb
+                          AND r->'consequences' @> jsonb_build_array(
+                                jsonb_build_object('kind', 'seg_removed', 'segment_id', g1),
+                                jsonb_build_object('kind', 'payroll_amount', 'dl_entry_id', x),
+                                -- the vehicle of the segment that is LEFT (2108), with the driver the form set
+                                jsonb_build_object('kind', 'seg_vehicle', 'segment_id', g2, 'truck_id', trk2, 'driver_id', drv3))
+                          AND r::text NOT LIKE '%"amount"%'
+                          AND (r2->>'ok')::boolean
+                          AND (SELECT deleted_at IS NOT NULL FROM rt_vehicle_segments WHERE id = g1)
+                          AND (SELECT truck_id = trk2 AND driver_id = drv3 AND reason IS NULL AND place_note IS NULL
+                                 AND from_at = (d + time '08:45') AT TIME ZONE 'Europe/Athens' FROM rt_vehicle_segments WHERE id = g2)
+                          AND (SELECT count(*) FROM rt_vehicle_segments WHERE rt_id = rt1 AND deleted_at IS NULL) = 1
+                          AND (SELECT truck_id = trk2 AND driver_id = drv3 FROM ct_round_trips WHERE id = rt1)
+                          AND (SELECT deleted_at IS NOT NULL FROM dl_entries WHERE id = x)
+                          AND (SELECT count(*) FROM dl_entries WHERE rt_id = rt1 AND needs_review) = 0
+                        THEN 'ok the start side and another driver in one step: the old line listed and gone, 0 needs_review'
+                        ELSE 'FAIL start + driver ' || r::text || ' ' || coalesce(r2::text, 'null') END;
+      ELSIF k = 151 THEN
+        -- [A][E 2108 from 14:30][T 2104b from D+1 10:00]: stop C moves to D 15:00-16:00, the TELIKO goes but A and E
+        -- stay - two vehicles, so "another truck" has no single segment: seg_many, shown in the dry run, no token
+        PERFORM plan_seg_change(jsonb_build_object('request_id', gen_random_uuid(), 'rt_id', rt1, 'at', t1430,
+                  'place_note', 'Lamia', 'reason', 'vehicle_breakdown', 'vehicle', veh2), 'test:072b', 'owner');
+        PERFORM plan_seg_change(jsonb_build_object('request_id', gen_random_uuid(), 'rt_id', rt1, 'at', e1000,
+                  'place_note', 'Larisa', 'reason', 'planned_truck', 'vehicle', veh3), 'test:072b', 'owner');
+        r := plan_rt_update(jsonb_build_object('rt_id', rt1, 'dry_run', true, 'stops', jsonb_build_array(jsonb_build_object('stop_id', s1c,
+               'planned_from', t1500, 'planned_to', t1600)), 'set', jsonb_build_object('truck_id', trk4)), 'test:072b', 'dispatcher');
+        verdict := CASE WHEN r->'preview'->'conflict'->>'code' = 'seg_many' AND NOT (r ? 'confirm_token')
+                        THEN 'ok two stay: seg_many in the dry run, no token' ELSE 'FAIL two stay ' || r::text END;
       -- @case (each task adds its "ELSIF k = <n> THEN" branches above this line)
       END IF;
       SET CONSTRAINTS ALL IMMEDIATE;
