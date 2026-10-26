@@ -14,6 +14,7 @@ const read = (f) => fs.readFileSync(path.join(ROOT, f), 'utf8');
 // file · the globals it may add (sorted) · the app.html tag it must follow
 const V5 = [
   { file: 'core/plan-api.js', globals: ['PlanApi', 'PlanError', 'planFetch'], after: 'core/api.js' },
+  { file: 'modules/weekly_natl_v5.js', globals: ['WN5'], after: 'modules/orders_natl.js' },
 ];
 
 function loadV5() {

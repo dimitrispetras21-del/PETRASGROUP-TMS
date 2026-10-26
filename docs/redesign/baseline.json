@@ -56,5 +56,9 @@
   "weekly_intl_v2": {
     "hex": 0,
     "truncate": 0
+  },
+  "weekly_natl_v5": {
+    "hex": 0,
+    "truncate": 0
   }
 }

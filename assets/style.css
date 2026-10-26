@@ -8966,6 +8966,41 @@ body.wi4-on #wi-popover .wi-pop-save:hover { background:var(--navy-light); }
   .wi4-cols { position:static; }
 }
 
+/* ── Weekly National v5 (wn5-*) — FEATURES.WN_V5 ── */
+/* Plan docs/superpowers/plans/2026-10-26-f4a-national-v5-screens.md. Figma KO7l2AfucR3HJEDIg1Yptr 2011:7745 with
+   the owner changes of 25/10 (H1 2120:7738), states Δ12 2069:8579.
+   WHY here and like this: the v5 root is class="wi4 wn5" (Ε-15), so it inherits the Weekly International look from
+   the wi4 block above — one source for bar, tabs, days, boxes, chips. Everything only national lives below, every
+   selector starting with .wn5, .wn5-*, :root (tokens --wn5-*) or body.wn5-on. With the flag off nothing here can
+   match an element. No text-overflow anywhere: names are never cut (DESIGN.md #6). */
+:root {
+  --wn5-note-bg:   #fff7eb;   /* notices strip (Figma 2011:7745 «ΕΙΔΟΠΟΙΗΣΕΙΣ») */
+  --wn5-note-line: #fad199;
+  --wn5-note-ink:  #b5540a;   /* 4.9:1 on --wn5-note-bg */
+  --wn5-err-line:  #fecaca;   /* refusal / error strip border (Δ12) */
+  --wn5-info-bg:   #eff6ff;   /* «preview» strip: writes closed until day L (H7 πλακ. 4) */
+  --wn5-info-line: #bfdbfe;
+}
+/* The same page frame as v4 (body.wi4-on .content), while the v5 board is on screen. */
+body.wn5-on .content { padding-left:28px; padding-right:28px; padding-top:8px; background:var(--surface-page); }
+.wn5 .wn5-lc { text-transform:none; letter-spacing:0; }
+.wn5-bar { margin-bottom:8px; }
+.wn5 .wn5-upd { margin-left:10px; border:0; background:none; padding:0; font:inherit; font-size:12px; color:var(--wi4-grey-2); cursor:pointer; white-space:nowrap; }
+.wn5 .wn5-upd:hover { color:var(--wi4-ink); }
+/* Result strips (Δ12): refusal/error red, warning amber, «preview» blue. The text is the Worker's message. */
+.wn5-strip { display:flex; flex-wrap:wrap; align-items:center; gap:6px 10px; margin:0 0 8px; padding:6px 12px; border:1px solid var(--wn5-err-line);
+  border-radius:6px; background:var(--wi4-red-bg); color:var(--wi4-red-ink); font-size:12px; line-height:1.4; }
+.wn5-strip > b { font-weight:600; color:var(--wi4-red); }
+.wn5-strip[data-kind="warning"] { border-color:var(--wn5-note-line); background:var(--wn5-note-bg); color:var(--wi4-grey-1); }
+.wn5-strip[data-kind="warning"] > b { color:var(--wn5-note-ink); }
+.wn5-strip:is([data-kind="closed"], [data-kind="preview"]) { border-color:var(--wn5-info-line); background:var(--wn5-info-bg); color:var(--wi4-grey-1); }
+.wn5-strip:is([data-kind="closed"], [data-kind="preview"]) > b { color:var(--wi4-blue-ink); }
+.wn5-strip-sub { color:var(--wi4-grey-2); }
+.wn5-strip > .wi4-btn { margin-left:auto; }
+.wn5 .wn5-q .wi4-q-hd > span:first-child { white-space:nowrap; }
+.wn5-dayx { font-weight:400; letter-spacing:0; color:var(--wi4-grey-2); }
+/* ── wn5 end ── */
+
 /* ═══ Παραγγελίες › Εβδομάδα v4 (.ow4) — modules/orders_week_view.js ═════════
    Figma 1514:8013: 1518:8013 (1440), 1518:9099 (1920), states 1519:8013.
    One row = one RT, mirrored like Weekly v4: RT | ΕΞΑΓΩΓΗ ‖ ΑΝΑΘΕΣΗ ‖ ΕΙΣΑΓΩΓΗ.

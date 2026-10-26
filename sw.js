@@ -7,7 +7,7 @@
 //   - Offline banner via postMessage to all clients
 // ═══════════════════════════════════════════════════════════
 
-const SW_VERSION = '1793047770';
+const SW_VERSION = '1793048102';
 
 // Το vendor/leaflet/* ΔΕΝ μπαίνει στο APP_SHELL επίτηδες: το pre-cache στο
 // install θα κατέβαζε 228 KB σε κάθε χρήστη, ακυρώνοντας το lazy loading της
@@ -51,6 +51,7 @@ const APP_SHELL = [
   '/PETRASGROUP-TMS/modules/weekly_intl_v2.js',
   '/PETRASGROUP-TMS/modules/wi4_actions.js',
   '/PETRASGROUP-TMS/modules/weekly_natl.js',
+  '/PETRASGROUP-TMS/modules/weekly_natl_v5.js',
   '/PETRASGROUP-TMS/modules/daily_ramp.js',
   '/PETRASGROUP-TMS/modules/daily_ops.js',
   '/PETRASGROUP-TMS/modules/orders_intl.js',
