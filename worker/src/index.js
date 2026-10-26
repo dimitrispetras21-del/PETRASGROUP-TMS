@@ -4424,6 +4424,27 @@ async function handleCosts(request, url, origin, env) {
           r.route_text = rr ? rr.route_text : null;
           r.route_legs = rr ? rr.route_legs : null;
         }
+        // 073 / E21 (spec 2.3): ONE end of a cycle - the Athens day of its last stop has passed - read from
+        // v_rt_cycle.ended for a v5 cycle (model 2: its status is planned or cancelled for ever, 071 rt_v2_status).
+        // [D-13] a field of its own, never a made-up status. A failed read says so (ended: null + ended_unknown),
+        // it never reads as "still running". Today's trips (model 1) are returned exactly as before.
+        const v2Ids = rows.filter((r) => r.model === 2).map((r) => r.id);
+        if (v2Ids.length) {
+          try {
+            const { rows: cyc } = await dbSelectRaw(env, "v_rt_cycle", new URLSearchParams({ select: "rt_id,ended", rt_id: `in.(${v2Ids.join(",")})` }));
+            // Only a boolean is an answer: ended is NULL in the view when end_at is NULL (rt_v2_window lets a NULL
+            // through), and a cycle missing from the answer is not known either - both are said, never read as false.
+            const endedBy = new Map(cyc.filter((c) => typeof c.ended === "boolean").map((c) => [c.rt_id, c.ended]));
+            for (const r of rows) {
+              if (r.model !== 2) continue;
+              if (endedBy.has(r.id)) r.ended = endedBy.get(r.id);
+              else { r.ended = null; r.ended_unknown = true; }
+            }
+          } catch (e) {
+            console.error("COSTS rt ended lookup failed", e.message);
+            for (const r of rows) if (r.model === 2) { r.ended = null; r.ended_unknown = true; }
+          }
+        }
         // ledger_entry (owner 13/9, fuel-collection-program spec §2.Β task):
         // «Έξοδα Μ = έξοδα Μισθοδοσίας, ένα σημείο» — the weekly/vehicle
         // expenses sheet reads the trip's dl_entries.expenses instead of
