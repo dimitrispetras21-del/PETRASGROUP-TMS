@@ -13422,7 +13422,7 @@ EOF
 - Produces: `WN5Hand.cycleCard(rtId)` (ΤΜΗΜΑΤΑ, «Φύλλα οδηγών (n)», «Καθαρισμός ανάθεσης», ιστορικό Ε-11)· `WN5Hand.change(rtId)` → `POST /plan/rt/:id/handover` `{at, place_note, reason, reason_note?, vehicle{…}, same_driver?}` + dry run (προεπισκόπηση τμημάτων) + `requestId` μόνο στην εκτέλεση· `WN5Hand.fix(segmentId)` → `PATCH /plan/segments/:id` `{set, dry_run?}` (χωρίς `request_id`)· `WN5Hand.historyGroups(rows)`
 
 **Tests:**
-- `wn5-handover.test.js`: `F4α-T25: historyGroups groups one change (create+update) and one removal (delete+update+delete) by actor+created_at; the cut segment's update is not a separate row`· `F4α-T25: «Άλλο» without note → save disabled (seg_other_note never reaches the Worker)`· `F4α-T25: request_id on the change execution only, never on its dry run`
+- `wn5-handover.test.js`: `F4α-T25: historyGroups groups one change (create+update) and one removal (delete+update+delete) by actor+created_at; the cut segment's update is not a separate row`· `F4α-T25: «Άλλο» without note → save disabled (seg_other_note never reaches the Worker)`· `F4α-T25: request_id on the change execution only, never on its dry run`· `F4α-T25: HISTORY_PENDING stays true only while the Worker has no GET /plan/rt/:id/history (Ε-11)` (και, όταν υπάρξει η διαδρομή, `PLAN_PERMS['rt-history']` GET = ακριβώς owner, management, dispatcher)
 - `wn5-plan-api-worker.test.mjs`: drift των νέων διαδρομών προς τα `PLAN_ROUTES` της 072b (todo ως να υπάρχει)
 - rig: `change` προεπισκόπηση από dry run, λωρίδα «preview» πριν το L (H7 πλακ. 4)· `h7`: `truck_busy`, `driver_busy`, `payroll_locked`, `seg_outside`, `seg_many`, `writes_closed` με το μήνυμα του Worker· 404 `no_route` πριν από τη 072b → λωρίδα «client» που λέει ότι η λειτουργία δεν έχει ανέβει· στο main ✗.
 
@@ -13437,7 +13437,7 @@ EOF
 - «Πού *» υποχρεωτικό **πάντα**: η 072b `plan_seg_change` αρνείται χωρίς `place_note` (`bad_input`) — το Figma H2 το δείχνει υποχρεωτικό μόνο με «Άλλο»· η οθόνη ακολουθεί τη βάση και το λέει στο PR (Doubts). Η σημείωση του λόγου (`reason_note`) είναι υποχρεωτική μόνο με «Άλλο» (`seg_other_note`).
 - «ίδιος οδηγός» = `same_driver: true` **χωρίς** `driver_id` (072b: `same_driver` με `driver_id` = `bad_input`).
 - Στις λίστες (καρτέλα, προεπισκόπηση, H7) το σήμα τμήματος είναι **ίσια** γραμμή 3px (R-55)· η πλάγια πλευρά μόνο στα πλακίδια του board (T24).
-- Ιστορικό (Ε-11, owner 26/10 «α»): το βλέπουν **μόνο** owner, management και dispatcher· σε warehouse και accountant η ενότητα **δεν υπάρχει** (καμία ανάγνωση). **Ποτέ ποσό:** τα κλειδιά χρημάτων μιας γραμμής (`partner_rate` κ.λπ.) γράφονται «άλλαξε», χωρίς τιμή. Η ανάγνωση για τους τρεις είναι το `GET /plan/rt/:id/history`, **αίτημα στην αλυσίδα του Worker** (Ε-11: οι γραμμές `audit_log` των `rt_vehicle_segments` του κύκλου, `{entries:[…]}` με το σχήμα του `/audit`, χωρίς κλειδιά χρημάτων, `PLAN_PERMS` GET για τους τρεις)· ως τότε (`HISTORY_PENDING`, drift test πάνω στο `worker/src/index.js`) ο dispatcher βλέπει ορατή γραμμή «θα φαίνεται μόλις…» και owner/management διαβάζουν `GET /audit?table=rt_vehicle_segments`, **μία ανάγνωση ανά ζωντανό τμήμα** (`&record_id=<segment_id>`) και μία για τις διαγραφές (`&action=delete`, τμήματα που δεν είναι πια στο board): το `/audit` δίνει τις 200 νεότερες γραμμές όλου του πίνακα, άρα μία ανάγνωση του πίνακα θα έχανε τις γραμμές ενός παλιότερου κύκλου και θα έλεγε ψέματα «καμία αλλαγή». Ανάγνωση γεμάτη (`count = 200`) → «Ενδέχεται να λείπουν παλαιότερες αλλαγές — όλο το ιστορικό στο Audit Trail», ποτέ «καμία αλλαγή»· 401 → `tmsSessionExpired`, όπως κάθε ανάγνωση· άλλος ρόλος → 403 → γραμμή που λέει ποιος το βλέπει, ποτέ «κανένα ιστορικό». Ομαδοποίηση: ίδιος `actor` + ίδιο `created_at` = μία πράξη· το `update` του τμήματος που κόπηκε ανήκει στην «Αλλαγή», δεν είναι δική του γραμμή.
+- Ιστορικό (Ε-11, owner 26/10 «α»): το βλέπουν **μόνο** owner, management και dispatcher· σε warehouse και accountant η ενότητα **δεν υπάρχει** (καμία ανάγνωση). **Ποτέ ποσό:** τα κλειδιά χρημάτων μιας γραμμής (`partner_rate` κ.λπ.) γράφονται «άλλαξε», χωρίς τιμή. Η ανάγνωση για τους τρεις είναι το `GET /plan/rt/:id/history`, **αίτημα στην αλυσίδα του Worker** (Ε-11: οι γραμμές `audit_log` των `rt_vehicle_segments` του κύκλου, `{entries:[…]}` με το σχήμα του `/audit`, χωρίς κλειδιά χρημάτων, resource `rt-history` στο `PLAN_PERMS` με GET μόνο για τους τρεις)· ως τότε (`HISTORY_PENDING`, drift test πάνω στο `worker/src/index.js`) ο dispatcher βλέπει ορατή γραμμή «θα φαίνεται μόλις…» και owner/management διαβάζουν `GET /audit?table=rt_vehicle_segments`, **μία ανάγνωση ανά ζωντανό τμήμα** (`&record_id=<segment_id>`) και μία για τις διαγραφές (`&action=delete`, τμήματα που δεν είναι πια στο board): το `/audit` δίνει τις 200 νεότερες γραμμές όλου του πίνακα, άρα μία ανάγνωση του πίνακα θα έχανε τις γραμμές ενός παλιότερου κύκλου και θα έλεγε ψέματα «καμία αλλαγή». Ανάγνωση γεμάτη (`count = 200`) → «Ενδέχεται να λείπουν παλαιότερες αλλαγές — όλο το ιστορικό στο Audit Trail», ποτέ «καμία αλλαγή»· 401 → `tmsSessionExpired`, όπως κάθε ανάγνωση· άλλος ρόλος → 403 → γραμμή που λέει ποιος το βλέπει, ποτέ «κανένα ιστορικό». Ομαδοποίηση: ίδιος `actor` + ίδιο `created_at` = μία πράξη· το `update` του τμήματος που κόπηκε ανήκει στην «Αλλαγή», δεν είναι δική του γραμμή.
 - Πριν τη 072b οι διαδρομές απαντούν 404 `no_route`: λωρίδα `client` με το μήνυμα του Worker + «Η αλλαγή οχήματος δεν έχει ανέβει ακόμη (072b)».
 
 - [ ] **Step 0: Η εξάρτηση είναι ζωντανή**
@@ -13504,6 +13504,15 @@ test('F4α-T25: HISTORY_PENDING stays true only while the Worker has no GET /pla
     ? 'the Worker serves /plan/rt/:id/history now: set HISTORY_PENDING = false (the dispatcher reads it too)'
     : 'HISTORY_PENDING must stay true while the Worker has no history read');
   assert.ok(/const HIST_ROLES = Object\.freeze\(\['owner', 'management', 'dispatcher'\]\);/.test(SRC), 'Ε-11: exactly the three roles');
+  if (has) {
+    // principle 3: once the route exists, the roles the card shows it to = the roles PLAN_PERMS lets read it
+    // (resource 'rt-history', the name the Worker request Ε-11 gives the route)
+    const m = /var PLAN_PERMS = (\{[\s\S]*?\n\});/.exec(W);
+    assert.ok(m, 'PLAN_PERMS not found in worker/src/index.js');
+    const perms = vm.runInNewContext('(' + m[1] + ')');
+    const readers = Object.keys(perms).filter((r) => (perms[r]['rt-history'] || []).includes('GET')).sort();
+    assert.deepStrictEqual(readers, ['dispatcher', 'management', 'owner'], 'PLAN_PERMS rt-history GET must be exactly owner, management, dispatcher (Ε-11)');
+  }
   assert.ok(/MONEY_KEY\.test\(k\) \? `\$\{k\}: άλλαξε`/.test(grab('_history')), 'a money key of a history row never shows its value');
 });
 
@@ -13613,7 +13622,8 @@ Create `modules/wn5_handover.js`:
 //     and a disabled save, the dry run stays open (H7 tile 4, Ε-6);
 //   - in lists the segment mark is a straight line (R-55): the slant lives on the board tiles only;
 //   - history (H6) = audit_log rows of rt_vehicle_segments, one line per act (same actor + same created_at);
-//   - no role guard (owner 10/10): every button is there, the Worker answers 403 where PLAN_PERMS says so;
+//   - no role guard on buttons (owner 10/10): every button is there, the Worker answers 403 where PLAN_PERMS says
+//     so; the ONE role rule here is the history section (Ε-11, owner 26/10): owner, management, dispatcher only;
 //   - nothing at load: listeners and the preview timer exist only while a dialog is open.
 (function () {
   'use strict';
