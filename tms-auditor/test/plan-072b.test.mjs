@@ -3,7 +3,7 @@
 // Production shape = the same as plan-072.test.mjs (the 22/9 columns + live-071.sql + live-072.sql, 071 and 071b as
 // executed 22/10) + 072 as executed 26/10 (worker/migrations/), then 072b. Never edit a fixture by hand.
 // What it proves: the guards hold the texts 072b was written against; the dry run keeps nothing; 072b applies with
-// +4 triggers and B-54 following; the verify row; born closed for the API roles; the 156 rules; F2's 237 rules, 071's
+// +4 triggers and B-54 following; the verify row; born closed for the API roles; the 164 rules; F2's 237 rules, 071's
 // 56 and 071b's 8 still pass ON TOP of 072b (the EXCLUDE moved, the 20 hooks changed nothing F2 decided); the three
 // auditor checks go the PRODUCTION path (review R4, finding 1): each passes the repo lint (lintSql) and the in-DB
 // guard (monitoring.check_sql_guard), is seeded as 073b will seed it and run by monitoring.run_checks as
@@ -11,7 +11,7 @@
 // red on a forced violation - also when the copy rt_cancelled drifts and blinds the EXCLUDE (review R2, DB finding
 // 3); a lag() put back into B-91 is refused by both guards (a mutation); 071b's verify finds the EXCLUDE on the
 // segments (review R2, spec E2); the rollback refuses (a v5 row, 073 present), then undoes the 20 hooks in reverse
-// and returns every hooked function and both EXCLUDE byte for byte; fifteen mutations that each make one case fail,
+// and returns every hooked function and both EXCLUDE byte for byte; seventeen mutations that each make one case fail,
 // and eight on the live hooked functions (a hook's own text is pinned by its md5, so it cannot be mutated in the source).
 // The checks live in tms-auditor/checks-072b/ until 073b moves them into the catalog (plan: the handover to F3, P3-6): in checks/ they
 // would enter the 047b seed and the catalog tests before the fixture and the grants know rt_vehicle_segments.
@@ -164,12 +164,12 @@ test('072b on a production-shaped PGlite copy', async (t) => {
     } finally { await db.exec('RESET ROLE'); }
   });
 
-  await t.test('072b rules test: 156 OK, 0 FAIL, nothing kept', async () => {
+  await t.test('072b rules test: 164 OK, 0 FAIL, nothing kept', async () => {
     const msg = await errorOf(db, read('072b_plan_vehicle_segments_test.sql'));
     const m = rules('072b').exec(msg ?? '');
     assert.ok(m, msg);
     assert.equal(Number(m[2]), 0, msg);
-    assert.equal(Number(m[1]), 156);
+    assert.equal(Number(m[1]), 164);
     assert.equal(await count(db, `SELECT count(*)::int AS n FROM rt_vehicle_segments`), 0, 'the test keeps nothing');
   });
 
@@ -322,6 +322,11 @@ for (const [name, from, to, want] of [
   // same DKV line twice (the cancellation's notice already counts it)
   ['the cut tells the desk again about a cycle the act cancels', /-- mut:cancelnote-begin[\s\S]*?-- mut:cancelnote-end/, 'true',
    /136 FAIL want ok got FAIL notices/],
+  // owner 26/10 (money): the previous partner's rate in a handover is listed (one token) and written in the same act
+  ['the previous partner rate is neither checked nor listed', /-- mut:prevrate-begin[\s\S]*?-- mut:prevrate-end/,
+   '-- (mutated: no previous rate)', /157 FAIL want ok got FAIL prev rate/],
+  ['the previous partner rate is listed but not written', /-- mut:prevwrite-begin[\s\S]*?-- mut:prevwrite-end/,
+   '-- (mutated: rate not written)', /157 FAIL want ok got FAIL prev rate/],
 ]) {
   test(`072b mutation: ${name}`, async () => {
     const db = await prodShaped072();
