@@ -217,8 +217,15 @@ test('073b on the production-shaped copy', async (t) => {
     } finally { await db.exec('ROLLBACK'); }
   });
 
-  await t.test('the rollback takes out the 16 checks, the 5 policies and the grant; 072b\'s policy stays; with v5 rows 073b refuses by name', async () => {
+  await t.test('the rollback takes out the 16 checks, the 5 policies and the grant, closes their open incidents; 072b\'s policy stays; with v5 rows 073b refuses by name', async () => {
+    // incidents has no FK to checks (047): a removed check's open incident would stay red in the report for ever
+    const open = `SELECT count(*) AS n FROM monitoring.incidents WHERE state IN ('new','confirmed','recurred')
+                   AND (check_id = ANY($1) OR incident_key = ANY($2))`;
+    const keys = IDS.flatMap((id) => [`MECH:check:${id}`, `MECH:stale:${id}`]);
+    assert.ok(await n(db, open, [IDS, keys]) > 0, 'the scenario left red incidents of 073b\'s checks (the case the rollback must close)');
     assert.strictEqual(await errorOf(db, read('073b_plan_monitoring_rollback.sql')), null);
+    assert.strictEqual(await n(db, open, [IDS, keys]), 0, 'no open incident of a removed check');
+    assert.ok(await n(db, `SELECT count(*) AS n FROM monitoring.incidents WHERE check_id = ANY($1) AND state = 'resolved' AND state_changed_by = '073b rollback (check removed)'`, [IDS]) > 0);
     assert.strictEqual(await n(db, 'SELECT count(*) AS n FROM monitoring.checks WHERE id = ANY($1)', [IDS]), 0);
     assert.strictEqual(await n(db, 'SELECT count(*) AS n FROM monitoring.results WHERE check_id = ANY($1)', [IDS]), 0);
     assert.strictEqual(await n(db, `SELECT count(*) AS n FROM pg_policies WHERE schemaname = 'public' AND tablename = ANY($1)`, [V5]), 0);
