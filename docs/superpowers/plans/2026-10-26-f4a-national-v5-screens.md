@@ -55,6 +55,7 @@
 - Ό,τι αγγίζει φόρμες ή εγγραφές v5 ανοίγει και δοκιμάζεται (rig) πριν το push· στην παραγωγή μόνο dry runs και αναγνώσεις.
 
 **Tests και rigs**
+- **Σύνολα της σουίτας:** οι απόλυτοι αριθμοί στα Expected (`ℹ tests 783`, `811`, …) μετρήθηκαν πάνω στο main `8ba71d84` (βάση 763). Δεσμεύει το **«βάση του T0 Step 4 + n»** του κάθε Task και το `ℹ fail 0`· αν το φρέσκο main έχει άλλη βάση, κάθε σύνολο μετατοπίζεται κατά την ίδια διαφορά. Διαφορά στο **n** είναι αποτυχία, διαφορά μόνο στη βάση δεν είναι.
 - Κάθε node test και κάθε rig **αποτυγχάνει στο σκέτο main** για λόγο συμπεριφοράς, με το ακριβές μήνυμα γραμμένο στο Task (ENOENT, `<name> not found`, `✗ <scn> <check>`). Τα rigs: preflight τυπώνει `✗` και **συνεχίζει**, τέλος `NO-GO: N check(s) failed`, exit 1· στον κλάδο `GO: …`, exit 0. Η απόδειξη main γίνεται με `git archive origin/main | tar -x -C <scratch>/main-base` και `WN5_TREE=<scratch>/main-base` / `TMS_ROOT=<scratch>/main-base`.
 - Μόνο συνθετικά δεδομένα στα fixtures (το repo είναι δημόσιο).
 - **Ένας κανόνας για τα gated Tasks (T24–T27: 072b, T28: 073):** **δεν** εκτελούνται στον κλάδο της Φ4α. Εκτελούνται μόνο σε δικό τους κλάδο από φρέσκο `origin/main` **μετά** το merge της Φ4α (T29 Step 10), και μόνο όταν περάσει το Step 0 τους (η εξάρτηση ζωντανή: SQL εκτελεσμένο και εκτός `drafts/`, Worker με τις διαδρομές και τον φρουρό της)· αλλιώς **ΣΤΑΜΑΤΑ**. Στη σειρά του batch C ο executor πηγαίνει από τον T23 κατευθείαν στον T29. Τα `t.todo('<dep> not in tree')` μέσα στα tests τους δεν είναι δεύτερος δρόμος: είναι μόνο φρουρός για όποιον τρέξει όλη τη σουίτα σε δέντρο όπου το SQL της εξάρτησης λείπει ή είναι ακόμη στο `drafts/`, ώστε να μην κοκκινίσει μια άσχετη αλλαγή.
@@ -151,7 +152,7 @@ SELECT
 | Αρχείο | Αλλαγή | Task |
 |---|---|---|
 | `config.js` | `WN_V5: 'off'` στο `FEATURES` + `WN_V5_USERS = []` + σχόλιο «γεννιέται κλειστό, ανοίγει στη Φ5 μαζί με το `PLAN_WRITES_OPEN = true`» | T3 |
-| `modules/weekly_natl.js:141` | **μία** γραμμή στην αρχή του `renderWeeklyNatl()`: `if (typeof WN5 !== 'undefined' && WN5.active()) return WN5.render();` | T3 |
+| `modules/weekly_natl.js:141` | **μία** γραμμή στην αρχή του `renderWeeklyNatl()`: `if (typeof WN5 !== 'undefined' && WN5.active()) { ++_wnLoadId; return WN5.render(); }` (το `++_wnLoadId` κάνει μπαγιάτικη μια φόρτωση του παλιού board που τρέχει ήδη) | T3 |
 | `core/api.js:495-503` | `PLAN_RULE` και `LOCAL_RELAY_RULE` όπως το `STOCK_RULE` | T2 |
 | `core/ai-chat.js:140` | υπό v5 το πλαίσιο του `weekly_natl` λέει «δεν διαθέσιμο στη νέα προβολή», όχι τα παλιά `WNATL.rows` | T3 |
 | `modules/audit_trail.js:371-408` | ετικέτα «κωδικός αιτήματος» για `plan_request`, ετικέτες των 5 πινάκων v5 | T9 |
@@ -1694,7 +1695,7 @@ function grab(src, name, file) {
   }
   throw new Error('unbalanced ' + name);
 }
-const SEAM = "if (typeof WN5 !== 'undefined' && WN5.active()) return WN5.render();";
+const SEAM = "if (typeof WN5 !== 'undefined' && WN5.active()) { ++_wnLoadId; return WN5.render(); }";
 
 test("F4α-T3: FEATURES.WN_V5 is 'off' until day L (F5 changes this line with the flag)", () => {
   const v = config();
@@ -2273,7 +2274,9 @@ async function renderWeeklyNatl() {
 async function renderWeeklyNatl() {
   // National v5 (F4α, FEATURES.WN_V5 — off until day L): the new board owns its load (GET /plan/board), so it takes
   // over BEFORE _wnLoadAll; with the switch off this is false and nothing below runs differently (identity rig).
-  if (typeof WN5 !== 'undefined' && WN5.active()) return WN5.render();
+  // The id still moves: an old-board load already in flight (opened before a switch to v5) must see itself stale
+  // and not paint over the v5 board when it resolves.
+  if (typeof WN5 !== 'undefined' && WN5.active()) { ++_wnLoadId; return WN5.render(); }
   const loadId = ++_wnLoadId;
 ```
 
@@ -2973,7 +2976,10 @@ test('F4α-T4: the hub id from base facts; a week with no VS on a truck still sa
   assert.deepStrictEqual(rowOf(mh, 'rt:102').kath.veroia, { stopId: 1101, from: '16:00', to: '18:00' }, 'opts.hubId (PlanIds.hub) names it');
   assert.deepStrictEqual(mh.errors, [], 'with opts.hubId the line goes');
   const be = fix(); be.cycles = [];
-  assert.deepStrictEqual([M(be).hubId, M(be).errors], [null, []], 'no cycle on the board: nothing to place, no line');
+  assert.deepStrictEqual([M(be).hubId, M(be).errors], [null, [L.HUB_UNKNOWN]],
+    'no cycle but a waiting national: its side needs the hub, so the line stays');
+  const bn = fix(); bn.cycles = []; bn.waiting = bn.waiting.filter((w) => w.kind !== 'national');
+  assert.deepStrictEqual([M(bn).hubId, M(bn).errors], [null, []], 'no cycle and no waiting national: nothing to place, no line');
 });
 
 test('F4α-T4: WN5L.CAP = the over_33 threshold of 072', () => {
@@ -3515,9 +3521,11 @@ function model(board, opts) {
   const week = board.week, last = _addDays(week, 6);
   const today = DAY_RE.test(String(o.today || '')) ? o.today : null;
   const hubId = o.hubId != null ? Number(o.hubId) : hubFromBoard(board, errors);
-  // hubFromBoard already wrote a line when the facts disagree (two hubs); a week with cycles and no id at all gets
-  // its own (Ε-44). An empty week has nothing to place.
-  if (hubId == null && board.cycles.length && !errors.length) errors.push(HUB_UNKNOWN);
+  // hubFromBoard already wrote a line when the facts disagree (two hubs); a week with cycles, or with a waiting
+  // national (its ΑΝΟΔΟΣ/ΚΑΘΟΔΟΣ side depends on whether it ends at Veroia), and no id at all gets its own (Ε-44).
+  // A week with neither has nothing to place.
+  const needsHub = board.cycles.length > 0 || board.waiting.some((w) => w && w.kind === 'national');
+  if (hubId == null && needsHub && !errors.length) errors.push(HUB_UNKNOWN);
   const nums = cycleNumbers(board.cycles);
   const rows = board.cycles.map((c) => _cycleRow(c, hubId, nums, errors));
   const groups = new Map();
@@ -15043,7 +15051,7 @@ EOF
 - `wn5-versions.test.js`: `F4α-T29: every file changed vs origin/main that app.html loads has a ?v= different from main, and SW_VERSION changed`· `F4α-T29: no file outside core/plan-api.js contains fetch( toward /plan/`· `F4α-T29: no wn5 file calls atCreate/atPatch/atDelete on NAT_LOADS, GROUPAGE LINES, CONSOLIDATED LOADS, ORDER STOPS`· στο main: `core/plan-api.js` λείπει.
 - Όλα τα rigs: `wn5-board-rig.js`, `wn5-form-rig.js`, `wn5-identity-rig.js` → `GO`, 0 page errors / console errors· στο `<scratch>/main-base` → `NO-GO`, exit 1.
 - Το SQL της «Αφετηρίας» ξανά → 0 παντού.
-- Στην παραγωγή (μετά το merge, διακόπτης `'off'`): το παλιό board ανοίγει ίδιο· με `?wn5=1` σε χρήστη pilot (αν ο owner δώσει όνομα): ανάγνωση board και ένα dry run, 0 σφάλματα κονσόλας, 0 γραμμές.
+- Στην παραγωγή (μετά το merge, διακόπτης `'off'`): το παλιό board ανοίγει ίδιο, 0 σφάλματα κονσόλας, 0 γραμμές. Με `'off'` το `?wn5=1` **δεν** ανοίγει το v5 (`v2Decide`: το `'off'` νικά κάθε opt-in)· ανάγνωση του v5 στην παραγωγή γίνεται μόνο αν ο owner δώσει όνομα **και** εγκρίνει `WN_V5: 'pilot'` με αυτό στο `WN_V5_USERS` (Ε-1, χωριστό PR), και τότε χωρίς dry run (0 κύκλοι v5).
 
 **Acceptance:** suite = 763 + νέα, 0 fail· `check-fail-open` 0· PR ανοιχτό με όλα τα παραπάνω· `/code-review` high έτρεξε στην τελική κορυφή.
 
@@ -15278,7 +15286,7 @@ gh pr create --base main --head feat/national-v5-f4a --title "Εθνικά v5 Φ
 
 - [ ] **Step 11: Στην παραγωγή, μετά το merge (ο Δημήτρης κάνει το merge)**
 
-Με το `FEATURES.WN_V5 = 'off'`: το παλιό Εβδομαδιαίο Εθνικών ανοίγει ίδιο (το `wn5-identity-rig.js` το απέδειξε στο δέντρο· στην παραγωγή μία ματιά και 0 σφάλματα κονσόλας). Αν ο owner δώσει όνομα pilot (Ε-1): `?wn5=1` σε εκείνον τον χρήστη → ανάγνωση `GET /plan/board` (0 κύκλοι v5 = κενή εβδομάδα με «καμία φόρτωση», Δ12 πλακ. 1· κανένα dry run, γιατί δεν υπάρχει κύκλος να προεπισκοπηθεί), 0 σφάλματα κονσόλας, και ξανά το SQL του Step 6 → όλα `0`.
+Με το `FEATURES.WN_V5 = 'off'`: το παλιό Εβδομαδιαίο Εθνικών ανοίγει ίδιο (το `wn5-identity-rig.js` το απέδειξε στο δέντρο· στην παραγωγή μία ματιά και 0 σφάλματα κονσόλας). Με `'off'` το `?wn5=1` δεν αλλάζει τίποτα (`v2Decide`: το `'off'` νικά κάθε opt-in), άρα η ανάγνωση του v5 στην παραγωγή **παραλείπεται** εδώ, εκτός αν ο owner έχει δώσει όνομα pilot **και** εγκρίνει `WN_V5: 'pilot'` με αυτό στο `WN_V5_USERS` (Ε-1, χωριστό PR). Τότε, σε εκείνον τον χρήστη → ανάγνωση `GET /plan/board` (0 κύκλοι v5 = κενή εβδομάδα με «καμία φόρτωση», Δ12 πλακ. 1· κανένα dry run, γιατί δεν υπάρχει κύκλος να προεπισκοπηθεί), 0 σφάλματα κονσόλας, και ξανά το SQL του Step 6 → όλα `0`.
 
 ---
 
