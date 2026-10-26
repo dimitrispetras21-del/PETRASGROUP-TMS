@@ -6,7 +6,8 @@
 --   2. 073b_plan_monitoring.sql          (this file)
 -- ASCII only (Greek texts are base64). ONE DO block.
 -- Since 073b the runner executes stock_vs_charge and reads ct_settings (its own policy): 057's comment "only
--- service_role gets it" and 073's "reads ct_settings as its owner" describe the state before 073b (PR #105).
+-- service_role gets it" describes the state before 073b, and 073's "reads ct_settings as its owner" is wrong - the
+-- functions inside a view that is not security_invoker run as the CALLER (PR #105). Executed files stay as run.
 -- After it: 071_plan_schema_verify.sql shows policies = 5 (expected from 073b on; it was 0 by design of 071), and
 -- 072b's verify still shows auditor_policy = 1 (rt_vehicle_segments keeps its own policy, untouched here).
 -- REVERSE: 073b_plan_monitoring_rollback.sql (before 073's rollback: 073's refuses while B-78..B-90, B-94 exist).

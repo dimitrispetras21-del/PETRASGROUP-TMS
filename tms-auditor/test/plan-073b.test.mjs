@@ -41,7 +41,10 @@ async function values(db, ids = IDS) {   // each check as the auditor's role, as
     const { sql_text: sql, ids_sql: idsSql } = (await db.query(`SELECT sql_text, ids_sql FROM monitoring.checks WHERE id = $1`, [id])).rows[0];
     await db.exec('SET ROLE tms_check_runner');
     try {
-      out[id] = Number(Object.values((await db.query(sql)).rows[0])[0]);
+      const raw = Object.values((await db.query(sql)).rows[0])[0];
+      // run_checks: "check returned NULL - absence is not green"; Number(null) would read it as 0
+      if (raw == null) throw new Error(`${id}: the check returned NULL`);
+      out[id] = Number(raw);
       if (idsSql) {   // run_checks runs it as the same role: a right missing there fails here
         const row = (await db.query(idsSql)).rows[0];
         if (!row) throw new Error(`${id}: ids_sql returned no row`);
