@@ -23,11 +23,11 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { onlyChecks } from './helpers.mjs';
 import { prodShaped072, TRG } from './prod-shaped-072.mjs';
-import { DRAFTS } from '../lib/db.mjs';
+import { DRAFTS, migrationFile } from '../lib/db.mjs';
 import { parseCheck, seedSql } from '../checks/load.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
-const read = (f) => fs.readFileSync(path.join(DRAFTS, f), 'utf8');          // 072b: drafts until executed
+const read = (f) => fs.readFileSync(migrationFile(f), 'utf8');            // 072b: executed 26/10, out of drafts/
 const readDone = (f) => fs.readFileSync(path.join(DRAFTS, '..', f), 'utf8'); // 071 / 071b executed 22/10, 072 26/10
 // B-91..B-93: in the catalog (tms-auditor/checks/) since 073b (F3 Task 6, P3-6); OUT of it in checks-072b/ before
 // (review R4, finding 1). HANDOVER_CHECKS=<folder> reads them from elsewhere.

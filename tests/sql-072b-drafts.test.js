@@ -26,7 +26,7 @@ const path = require('node:path');
 const { execFileSync } = require('node:child_process');
 
 const ROOT = path.join(__dirname, '..');
-const DIR = path.join(ROOT, 'worker/migrations/drafts');   // until the owner runs 072b (then: worker/migrations)
+const DIR = path.join(ROOT, 'worker/migrations');   // 072b executed 26/10: out of drafts/ (CLAUDE.md rule 5)
 const read = (f) => fs.readFileSync(path.join(DIR, f), 'utf8');
 const strip = (s) => s.replace(/--[^\n]*/g, '');
 const noStrings = (s) => strip(s).replace(/'[^']*'/g, "''");
@@ -34,7 +34,7 @@ const SRC = '072b_plan_vehicle_segments.sql';
 const DO_FILES = [SRC, '072b_plan_vehicle_segments_dryrun.sql', '072b_plan_vehicle_segments_test.sql',
   '072b_plan_vehicle_segments_rollback.sql'];
 const READ_ONLY = ['072b_plan_vehicle_segments_verify.sql', '072b_plan_vehicle_segments_fingerprint.sql'];
-const BUILDER = path.join(DIR, 'tools/build-072b.mjs');
+const BUILDER = path.join(DIR, 'drafts/tools/build-072b.mjs');
 const REASONS = ['vehicle_breakdown', 'reefer_breakdown', 'accident', 'driver_hours', 'driver_unavailable',
   'planned_driver', 'planned_truck', 'other'];
 const pairsOf = (s) => [...s.matchAll(/\('(public\.[^']+)', '([0-9a-f]{32})'\)/g)].map((m) => `${m[1]}=${m[2]}`);
@@ -89,7 +89,7 @@ test('guards: PART 0 holds every relied-on function; the unchanged ones again in
   assert.match(rb, /\) v\(k, sig, a, b, m0, m1\) ORDER BY k DESC LOOP/, 'the rollback undoes the hooks last first');
   // the 22 of 072 are all among them: 072b changes none of 072's guarded functions
   // 072 was executed 26/10 and left drafts/ (PR #91); a missing 072 is a failure, never a skipped check (principle 1)
-  const f072 = [path.join(DIR, '..', '072_plan_functions.sql'), path.join(DIR, '072_plan_functions.sql')].find((f) => fs.existsSync(f));
+  const f072 = [path.join(DIR, '072_plan_functions.sql'), path.join(DIR, 'drafts', '072_plan_functions.sql')].find((f) => fs.existsSync(f));
   assert.ok(f072, '072_plan_functions.sql is in worker/migrations/ (or drafts/)');
   const g072 = pairsOf(part(fs.readFileSync(f072, 'utf8'), '0. GUARDS', '1. HELPERS'));
   assert.ok(g072.length >= 22, `072's guard list read (${g072.length} pairs)`);
@@ -140,7 +140,7 @@ test('every plan: code of 072b has a case; every con: of the rules test is a CHE
   assert.ok(table && !/\blabel\b/.test(strip(table[1])), 'no label column on rt_vehicle_segments');
   // R-16: the two codes 067 uses for the same events are in 067's delay CHECK too (one fault, one code)
   // code review xhigh 26/10: one place only (the old fallback reached above the checkout, from docs/ before B1)
-  const f067 = path.join(DIR, '..', '067_stop_delay_reason.sql');
+  const f067 = path.join(DIR, '067_stop_delay_reason.sql');
   assert.ok(fs.existsSync(f067), '067_stop_delay_reason.sql not found (it is live since 24/10: worker/migrations/)');
   for (const c of ['vehicle_breakdown', 'driver_hours']) assert.ok(fs.readFileSync(f067, 'utf8').includes(`'${c}'`), `067 has ${c}`);
   const n = (tst.match(/^\s+, '(?:ok|plan:[a-z_]+|con:[a-z_]+|state:\w+)'\s+-- \d+ /gm) || []).length;
