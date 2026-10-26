@@ -8972,7 +8972,8 @@ body.wi4-on #wi-popover .wi-pop-save:hover { background:var(--navy-light); }
    WHY here and like this: the v5 root is class="wi4 wn5" (Ε-15), so it inherits the Weekly International look from
    the wi4 block above — one source for bar, tabs, days, boxes, chips. Everything only national lives below, every
    selector starting with .wn5, .wn5-*, :root (tokens --wn5-*) or body.wn5-on. With the flag off nothing here can
-   match an element. No text-overflow anywhere: names are never cut (DESIGN.md #6). */
+   match an element. Names are never cut (DESIGN.md #6) — the one exception, as on the Weekly International, is the
+   28px queue card, whose whole line is in title (.wn5-qc-cl below). */
 :root {
   --wn5-note-bg:   #fff7eb;   /* notices strip (Figma 2011:7745 «ΕΙΔΟΠΟΙΗΣΕΙΣ») */
   --wn5-note-line: #fad199;
@@ -9011,6 +9012,10 @@ body.wn5-on .content { padding-left:28px; padding-right:28px; padding-top:8px; b
 .wn5-skel { display:flex; align-items:center; gap:24px; height:36px; padding:0 20px; box-sizing:border-box; border-top:1px solid var(--wi4-line); }
 .wn5-skel:first-child { border-top:0; }
 .wn5-skel > span { height:8px; border-radius:4px; background:var(--wi4-line-3); flex:0 0 40px; }
+/* Δ12 πλακ. 2 draws the bars on the plain white card under «ΔΕΥΤΕΡΑ 12/10 · σήμερα», not inside the blue today frame. */
+.wn5 .wi4-day.today .wn5-skel-b { background:var(--surface-card); border:1px solid var(--wi4-line-2); padding:0; }
+/* Δ12 πλακ. 1: the «›» of a day in an empty week (folded, nothing inside). */
+.wn5 .wn5-day.empty .wi4-chev { transform:rotate(-90deg); }
 .wn5-skel > span:nth-child(3) { flex-basis:150px; } .wn5-skel > span:nth-child(4) { flex-basis:240px; } .wn5-skel > span:nth-child(6) { flex:1 1 auto; }
 /* Board grid (Figma H1 2120:7738 at 1920: one 1803px row from x=88). Twelve tracks:
    # · gap · ΚΑΘΟΔΟΣ day · ΦΟΡΤΩΣΗ · ΠΑΡΑΔΟΣΗ · ΠΑΛ. · ΑΝΑΘΕΣΗ · gap · ΑΝΟΔΟΣ day · ΦΟΡΤΩΣΗ · ΠΡΟΣ · ΠΑΛ.
@@ -9050,6 +9055,11 @@ body.wn5-on .content { padding-left:28px; padding-right:28px; padding-top:8px; b
   color:var(--wi4-grey-1); box-shadow:0 1px 1px rgba(16,24,40,.06); }
 .wn5 .wn5-c-idx .wi4-plane:hover { border-color:var(--wn5-ctl-hover); background:var(--surface-card); color:var(--wi4-ink); }
 .wn5 .wn5-kd, .wn5 .wn5-ad { display:flex; flex-direction:column; align-items:flex-start; gap:2px; }
+/* Day chips of the rows (Figma H1 2120:7738): a ΚΑΘΟΔΟΣ day that has come (today or before) is the blue outlined
+   chip — it fades with its head when the base dims it — unless its whole row is executed (Figma 7745 row 1, plain);
+   a day still to come and every ΑΝΟΔΟΣ day are plain text. The classes stay WI4's (past/today/next: wn5-dim test). */
+.wn5 :is(.wn5-kd, .wn5-ad) .wi4-dc { background:none; border-color:transparent; color:var(--wi4-grey-1); }
+.wn5 .wn5-row:not(.wn5-dim) .wn5-kd .wi4-dc:is(.past, .today) { border-color:var(--wi4-blue); color:var(--wi4-blue-ink); background:var(--surface-card); }
 .wn5-dc2 { font-size:10px; color:var(--wi4-grey-2); white-space:nowrap; }
 /* ΦΟΡΤΩΣΗ: «Βέροια» and, under it, its loading window — on every row that loads there (owner 25/10). */
 .wn5 .wn5-fl { display:flex; flex-direction:column; gap:2px; }
@@ -9063,6 +9073,10 @@ body.wn5-on .content { padding-left:28px; padding-right:28px; padding-top:8px; b
 /* 164px: two stops + the 34px «+N» fit the 386px of a point column at 1920 (Figma: stops 178px apart, gap included). */
 .wn5 .wn5-pt { flex:0 1 164px; }
 .wn5-city { font-weight:400; color:var(--wi4-grey-2); }
+/* «client · place» breaks between the two, never inside a name when the name fits a line by itself. */
+.wn5 .wn5-who, .wn5 .wn5-pt .wi4-l1 > .wn5-city { display:inline-block; max-width:100%; }
+/* «+N» (Figma H1): a 22px chip, its figure centred, in the middle of the stop. */
+.wn5 .wn5-pts .wi4-more { flex:0 0 24px; width:24px; height:22px; display:grid; place-items:center; }
 .wn5 .wn5-late .wi4-l2 { color:var(--wi4-amber); }
 .wn5 .wn5-missing { color:var(--wi4-amber-ink); }
 .wn5-none { color:var(--wi4-grey-3); }
@@ -9077,14 +9091,30 @@ body.wn5-on .content { padding-left:28px; padding-right:28px; padding-top:8px; b
 .wn5-end { display:flex; flex-direction:column; }
 /* «↳ Φόρτωση με τοπικό» (Figma row 3): a 28px sub-row, text from the ΚΑΘΟΔΟΣ day column to the end. */
 .wn5-sub { min-height:28px; border-top:1px solid var(--wi4-line); }
-.wn5-sub-t { grid-column:3 / -1; font-size:11.5px; color:var(--wi4-grey-1); }
+.wn5-sub-t { grid-column:3 / -1; font-size:11px; color:var(--wi4-grey-2); }
 .wn5-sub-t b { font-weight:600; color:var(--wi4-grey-1); }
+/* The «destination did not come» line of a waiting VS (plan T5, Ε-26) belongs to its row: no rule between them, the
+   red rail runs on through it (Figma H1: one continuous bar over the waiting VS rows), 22px, small grey text. */
+.wn5 .wn5-row + .wn5-miss { min-height:22px; border-top:0; margin-top:-4px; }
+.wn5 .wn5-row.wi4-r-red + .wn5-miss { position:relative; }
+.wn5 .wn5-row.wi4-r-red + .wn5-miss::before { content:''; position:absolute; left:0; top:0; bottom:0; border-left:3px solid var(--wi4-red); }
 .wn5-qcards { display:flex; gap:8px; flex:1 1 auto; min-width:0; }
+/* Queue card (Figma H1): the day chip first, grey, at every width — on the national board no other word of the card
+   says the day (the Weekly International hides it ≤1600 because its reason does). Then «VS-118 → Rentis +2»: only
+   the client gives way. */
+.wn5 .wn5-qcard > .wi4-dc { display:inline-flex; min-width:0; flex:none; background:var(--wi4-chip); border-color:transparent; color:var(--wi4-grey-1); }
+.wn5 .wn5-qcard { gap:8px; }
+.wn5 .wn5-qc-l1 { display:flex; gap:4px; }
+.wn5 .wn5-qc-k, .wn5 .wn5-qc-n { flex:none; }
+.wn5 .wn5-qc-cl { min-width:0; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; }
 /* Narrower than the Figma 1920 frame (1440 with the sidebar open): the fixed tracks give way so the point columns keep
    one whole stop + «+N» (ΑΝΑΘΕΣΗ stays 266px, owner 25/10); the long column notes go, the column names stay. */
 @media (max-width:1600px) {
   .wn5-cols, .wn5-row, .wn5-sub { grid-template-columns:48px 6px 70px 120px minmax(0,1fr) 50px 266px 16px 70px minmax(0,1fr) 156px 50px; }
-  .wn5-h-sub { display:none; }
+  .wn5-h-long { display:none; }
+  /* one stop per point column here (_visPts): it takes the column */
+  .wn5 .wn5-pts { flex-wrap:nowrap; }
+  .wn5 .wn5-pt { flex:1 1 auto; }
   /* 48px band: the number and the 26px ✈ fit with 8px in front */
   .wn5 .wn5-c-idx { padding:0 4px 0 8px; }
   /* the range of the week is whole (it is the page's subject); the «Ενημερώθηκε» time gives way first */

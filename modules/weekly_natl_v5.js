@@ -316,7 +316,8 @@ function _boardHTML(m, known) {
   return _qbandHTML(m, known)
     + (known ? _noticesHTML(m) : '')
     + (known && typeof WN5Hub !== 'undefined' && typeof WN5Hub.shelfHTML === 'function' ? WN5Hub.shelfHTML(m) : '')
-    + _colsHTML(cycles, known)
+    // Δ12 (empty / loading / error frames): no column heads over a board with no row — they head nothing.
+    + (m.days.some((d) => d.rows.length) ? _colsHTML(cycles, known) : '')
     + `<div id="wn5-rows">${m.days.map((d) => _dayHTML(d, m, known, no)).join('')}</div>`;
 }
 function _qbandHTML(m, known) {
@@ -324,8 +325,12 @@ function _qbandHTML(m, known) {
   if (!known) return `<div class="wi4-q wn5-q">${search}<div class="wi4-q-hd"><span>ΕΠΟΜΕΝΑ · ${_state === 'loading' ? '…' : '—'}</span></div></div>`;
   const q = m.queue;
   if (!q.length) return `<div class="wi4-q wn5-q">${search}<div class="wi4-q-hd"><span>ΕΠΟΜΕΝΑ · <span class="wn5-lc">κανένα</span></span></div></div>`;
-  const shown = _qAll ? q : q.slice(0, 3);
-  const more = q.length > 3 ? `<button type="button" class="wi4-link wi4-q-all" onclick="WN5._qMore()">${_qAll ? 'Λιγότερα ▴' : `Όλα ${q.length} ▾`}</button>` : '';
+  // Three cards at 1920 (Figma 2011:7745 / H1). At ≤1600 three cards of ~350px cut the client and its «+N» away
+  // (fidelity T5 r2), so two show and «Όλα 3 ▾» — Figma's own link at the end of the band — opens the rest. The same
+  // query and the same one repaint on crossing 1600 as the stops (_visPts).
+  const max = _visPts() === 1 ? 2 : 3;
+  const shown = _qAll ? q : q.slice(0, max);
+  const more = q.length > max ? `<button type="button" class="wi4-link wi4-q-all" onclick="WN5._qMore()">${_qAll ? 'Λιγότερα ▴' : `Όλα ${q.length} ▾`}</button>` : '';
   return `<div class="wi4-q wn5-q">${search}<div class="wi4-q-hd"><span>ΕΠΟΜΕΝΑ · ${q.length}</span><span class="wi4-q-n">${_esc(_qSub(q, m.today))}</span></div>`
     + `<div class="wn5-qcards">${shown.map((it) => _qcardHTML(it, m)).join('')}</div>${more}</div>`;
 }
@@ -345,10 +350,13 @@ function _qcardHTML(it, m) {
   let row = null;
   for (const d of m.days) for (const r of d.rows) if (!row && r.kind === 'unassigned' && r.pieceIds[0] === it.pieceId) row = r;
   const cl = row ? row.clients : [];
-  const short = `${it.code || '—'} → ${cl[0] || '—'}${cl.length > 1 ? ` +${cl.length - 1}` : ''}`;
+  // Three spans (fidelity T5 r2): at 1440 the card is ~350px and the client is what gives way — the code and «+N»
+  // stay whole, so «+2» is never cut away with the name (the whole line is in title).
+  const short = `<span class="wn5-qc-k">${_esc(it.code || '—')} →</span><span class="wn5-qc-cl">${_esc(cl[0] || '—')}</span>`
+    + (cl.length > 1 ? `<span class="wn5-qc-n">+${cl.length - 1}</span>` : '');
   return `<div class="wi4-qcard wi4-r-red wn5-qcard" data-piece="${_id(it.pieceId)}">`
     + `<span class="wi4-dc ${_chipCls(it.day, today)}">${_esc(_dl(it.day))}</span>`
-    + `<span class="wi4-qcard-t"><span class="wi4-l1" title="${_esc(it.title)}">${_esc(short)}</span><span class="wi4-l2">${_esc(_pal(it.pallets))} · ${why}</span></span>`
+    + `<span class="wi4-qcard-t"><span class="wi4-l1 wn5-qc-l1" title="${_esc(it.title)}">${short}</span><span class="wi4-l2">${_esc(_pal(it.pallets))} · ${why}</span></span>`
     + '<button type="button" class="wi4-btn sm" data-act="assign">Ανάθεση</button></div>';
 }
 function _qMore() {
@@ -363,7 +371,7 @@ function _colsHTML(cycles, known) {
   const cnt = (n) => (known ? ` · ${n} ${n === 1 ? 'κύκλος' : 'κύκλοι'}` : '');
   return '<div class="wn5-cols" role="row">'
     + '<span class="wn5-c-idx"></span><span class="wn5-c-kd">ΚΑΘΟΔΟΣ</span><span class="wn5-c-kfl">ΦΟΡΤΩΣΗ</span>'
-    + `<span class="wn5-c-kto">ΠΑΡΑΔΟΣΗ<span class="wn5-h-sub">${cnt(kn)}${known ? ' · ανά ημέρα φόρτωσης Βέροιας' : ''}</span></span>`
+    + `<span class="wn5-c-kto">ΠΑΡΑΔΟΣΗ<span class="wn5-h-sub">${cnt(kn)}${known ? '<span class="wn5-h-long"> · ανά ημέρα φόρτωσης Βέροιας</span>' : ''}</span></span>`
     + '<span class="wn5-c-kpal">ΠΑΛ.</span><span class="wn5-c-asg wn5-h-asg">ΑΝΑΘΕΣΗ</span>'
     + `<span class="wn5-c-ad">ΑΝΟΔΟΣ</span><span class="wn5-c-afl">ΦΟΡΤΩΣΗ<span class="wn5-h-sub">${cnt(an)}</span></span>`
     + '<span class="wn5-c-ato">ΠΡΟΣ</span><span class="wn5-c-apal">ΠΑΛ.</span></div>';
@@ -376,11 +384,14 @@ function _dayHTML(d, m, known, no) {
   // Δ12 πλακ. 2: while the week is read, today's day shows two grey bars — shape only, no number, no row (the rigs and
   // snapshot() count .wn5-row; a bar is never one).
   const skel = !known && _state === 'loading' && today;
+  // Δ12 πλακ. 1: in a week with no load at all every day shows a «›» (folded, nothing inside); in a week with loads
+  // an empty day has none (Figma H1 «ΤΡΙΤΗ 13/10 · σήμερα · καμία φόρτωση»). Not a button: there is nothing to open.
+  const allEmpty = empty && m.days.every((x) => x.empty);
   const [name, date] = d.head.split(' ');
   const tail = (today ? '<span class="wi4-today"> · σήμερα</span>' : '')
     + (!known ? `<span class="wn5-dayx"> · ${_state === 'loading' ? '…' : '—'}</span>` : empty ? '<span class="wn5-dayx"> · καμία φόρτωση</span>' : '');
   const head = `<div class="wi4-dayh wn5-dayh"${fold ? ` role="button" tabindex="0" aria-expanded="${!closed}" onclick="WN5._dayTog('${d.date}')"` : ''}>`
-    + (fold || skel ? `<span class="wi4-chev">${CHEV}</span>` : '<span class="wi4-dayh-sp"></span>')
+    + (fold || skel || allEmpty ? `<span class="wi4-chev">${CHEV}</span>` : '<span class="wi4-dayh-sp"></span>')
     + `<span class="wi4-dayn">${_esc(name)} <span class="wi4-dayd">${_esc(date)}</span></span>${tail}</div>`;
   const body = fold ? `<div class="wi4-day-body">${d.rows.map((r) => _rowHTML(r, m, no)).join('')}</div>`
     : skel ? `<div class="wi4-day-body wn5-skel-b" aria-hidden="true">${'<div class="wn5-skel"><span></span><span></span><span></span><span></span><span></span><span></span></div>'.repeat(2)}</div>` : '';
@@ -482,7 +493,8 @@ function _ptsHTML(pts, ok, start, placeOnly) {
     : '';
   return `<span class="wi4-pts wn5-pts">${pts.slice(0, vis).map((p, i) => _ptHTML(p, num(p, i), ok, placeOnly)).join('')}${more}</span>`;
 }
-// Who, then where (Figma H1 «Omega Market · Rentis»): the client in bold, the place in grey. A waiting load's point
+// Who, then where (Figma H1 «Omega Market · Rentis»): the client in bold, the place in grey. Two runs that break
+// between them, the «·» staying on the first line («ΠΕΛΑΤΗΣ Δ ·» / «Aspropyrgos»), never inside a name that fits. A waiting load's point
 // IS its client (the board names no place for it, Ε-26): drawn once, never «ΠΕΛΑΤΗΣ Β · ΠΕΛΑΤΗΣ Β».
 function _ptWho(p) {
   const cl = Array.isArray(p.clients) ? p.clients : [];
@@ -494,7 +506,7 @@ function _ptHTML(p, n, ok, placeOnly) {
   const who = placeOnly ? null : _ptWho(p);
   return `<span class="wi4-pt wn5-pt${p.late ? ' wn5-late' : ''}${_dc(ok && p.dim && !p.late)}" data-stop="${_id(p.stopId)}">`
     + (n == null ? '' : `<span class="wi4-pt-n">${n}</span>`)
-    + `<span class="wi4-l1">${who ? `${_esc(who)}<span class="wn5-city"> · ${_esc(p.name)}</span>` : _esc(p.name)}</span>`
+    + `<span class="wi4-l1">${who ? `<span class="wn5-who">${_esc(who)}<span class="wn5-city">&nbsp;·</span></span> <span class="wn5-city">${_esc(p.name)}</span>` : _esc(p.name)}</span>`
     + `<span class="wi4-l2${p.late ? ' wi4-t-amb' : ''}">${_win(p.from, p.to)} · ${_esc(_pal(p.pallets))}</span></span>`;
 }
 function _palHTML(s) {
