@@ -21,7 +21,7 @@ import { btree_gist } from '@electric-sql/pglite/contrib/btree_gist';
 import { pgcrypto } from '@electric-sql/pglite/contrib/pgcrypto';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
-const read = (f) => fs.readFileSync(path.join(DRAFTS, f), 'utf8');   // 072: drafts until executed
+const read = (f) => fs.readFileSync(path.join(DRAFTS, '..', f), 'utf8');   // 072 executed 2026-10-26: worker/migrations
 const readDone = (f) => fs.readFileSync(path.join(DRAFTS, '..', f), 'utf8');   // 071 / 071b: executed 22/10
 const fixture = (f) => fs.readFileSync(path.join(HERE, 'fixtures', f), 'utf8');
 

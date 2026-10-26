@@ -31,10 +31,12 @@ function liftFn(re, name) {
   assert.ok(m, `${name} not found in worker/src/index.js`);
   return m[0];
 }
-// stockRuleError is ONE mapper for the stock (057) and local-relay (060)
-// families, so it is lifted with all three text tables it reads.
+// stockRuleError is ONE mapper for the stock (057), local-relay (060) and
+// national v5 (071/072) families, so it is lifted with all five text tables
+// it reads.
 const stockRuleError = new Function(
   liftVar('STOCK_CHECK_TEXT') + liftVar('RELAY_RULE_TEXT') + liftVar('RELAY_CHECK_TEXT') +
+  liftVar('PLAN_RULE_TEXT') + liftVar('PLAN_CHECK_TEXT') +
   liftFn(/function stockRuleError\(e\) \{[\s\S]*?\n\}\n/, 'stockRuleError') + '\nreturn stockRuleError;'
 )();
 const { PERMISSIONS, can } = new Function(
