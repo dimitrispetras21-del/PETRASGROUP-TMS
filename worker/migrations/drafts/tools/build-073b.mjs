@@ -69,7 +69,7 @@ export function build() {
     c.is_queue, txt(c.impact), txt(c.next_step), txt(c.exceptions), txt(c.tolerance), c.enabled, txt(c.disabled_reason)].join(',\n     ')})`);
   const proof = mine.map((c) => `      ('${c.id}', '${md5(c.sql)}', '${md5(c.ids_sql || '')}', ${c.enabled})`).join(',\n');
   const nOn = mine.filter((c) => c.enabled).length;
-  const done = `073b OK: ${IDS.length} checks (${F3_IDS.length} of F3 + ${HANDOVER_IDS.length} of 072b, ${nOn} enabled), ${V5.length} read policies, X readable and computable by the runner, every check 0 today`;
+  const done = `073b OK: ${IDS.length} checks (${F3_IDS.length} of F3 + ${HANDOVER_IDS.length} of 072b, ${nOn} enabled), ${V5.length} read policies on v5 + 1 on ct_settings, X read by the runner, every check 0 today`;
   const body = `DECLARE
   v_k int; v_trg0 int; v_g record; v_v numeric; v_sql text; v_ids text; v_a text[];
 BEGIN
@@ -164,6 +164,15 @@ ${proof}
                       AND qual = 'true' AND with_check IS NULL) THEN
     RAISE EXCEPTION '073b proof: ct_settings has not exactly the runner''s read policy';
   END IF;
+  --    Measured, not only the catalog (principle 2): with 0 v5 rows no check enters ct_setting() or stock_vs_charge(),
+  --    so read X here as the runner, through the same functions B-79 uses (NULL = the RLS-blind case)
+  SET LOCAL ROLE tms_check_runner;
+  SELECT count(*) INTO v_k FROM public.ct_settings WHERE key IN ('x_import', 'x_export', 'full_truck_pallets');
+  v_v := public.stock_vs_charge(public.ct_setting('x_import'), 1);
+  RESET ROLE;
+  IF v_k <> 3 OR v_v IS NULL THEN
+    RAISE EXCEPTION '073b proof: the runner reads % of the 3 X keys, stock_vs_charge gives % (expected 3 and a number)', v_k, v_v;
+  END IF;
   IF NOT has_function_privilege('tms_check_runner', '${RUNNER_FN}', 'EXECUTE')
      OR has_function_privilege('tms_reader', '${RUNNER_FN}', 'EXECUTE') THEN
     RAISE EXCEPTION '073b proof: ${RUNNER_FN_NAME} is not executable by the runner only';
@@ -243,8 +252,8 @@ ${V5.map((t) => `  DROP POLICY IF EXISTS monitor_read ON public.${t};`).join('\n
   IF has_table_privilege('tms_check_runner', 'public.ct_settings', 'SELECT') THEN
     RAISE EXCEPTION '073b rollback proof: the runner still reads ct_settings';
   END IF;
-  IF EXISTS (SELECT 1 FROM pg_policies WHERE schemaname = 'public' AND tablename = 'ct_settings') THEN
-    RAISE EXCEPTION '073b rollback proof: a policy is left on ct_settings';
+  IF EXISTS (SELECT 1 FROM pg_policies WHERE schemaname = 'public' AND tablename = 'ct_settings' AND policyname = 'monitor_read') THEN
+    RAISE EXCEPTION '073b rollback proof: 073b''s policy is left on ct_settings';
   END IF;
   IF has_function_privilege('tms_check_runner', '${RUNNER_FN}', 'EXECUTE') THEN
     RAISE EXCEPTION '073b rollback proof: the runner still executes ${RUNNER_FN_NAME}';

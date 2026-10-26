@@ -91,8 +91,9 @@ const RLS_MONITOR_READ = ['app_errors', 'audit_log', 'consolidated_loads', 'ct_c
   'ct_rt_legs', 'dl_entries', 'drivers', 'facade_unknown_fields', 'groupage_lines', 'local_moves', 'locations',
   'national_loads', 'national_orders', 'order_stops', 'orders', 'pl_movements', 'ramp', 'stock_lots', 'trailers', 'trucks'];
 const RLS_NO_POLICY = ['clients', 'ct_settings', 'maint_history', 'partner_assignments', 'partners', 'users'];
-// A table the stubs copy does not create (ct_settings comes only with live-073.sql) is skipped here, and read back
-// as missing only where it must exist.
+// Three tables come only with live-073.sql: missing from the stubs copy, required in the live one; any other
+// missing table is an error (a typo or a rename must not leave a table with RLS off, silently).
+const RLS_ONLY_LIVE = ['ct_settings', 'maint_history', 'partner_assignments'];
 const rlsSql = () => [...RLS_MONITOR_READ, ...RLS_NO_POLICY].map((t) => `DO $p$ BEGIN IF to_regclass('public.${t}') IS NOT NULL THEN
     ALTER TABLE public.${t} ENABLE ROW LEVEL SECURITY;${RLS_MONITOR_READ.includes(t) ? `
     IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE schemaname = 'public' AND tablename = '${t}' AND policyname = 'monitor_read') THEN
@@ -108,7 +109,7 @@ async function assertRls(db, live) {
   for (const t of [...RLS_MONITOR_READ, ...RLS_NO_POLICY]) {
     const want = RLS_MONITOR_READ.includes(t) ? 'monitor_read:SELECT:tms_check_runner+tms_reader:true' : null;
     const r = by.get(t);
-    if (!r && !(live && t === 'ct_settings')) continue;
+    if (!r && !live && RLS_ONLY_LIVE.includes(t)) continue;
     if (!r || r.rls !== true || (r.pol ?? null) !== want) throw new Error(`prodShaped072: ${t} row security ${JSON.stringify(r)}, production RLS on + ${want}`);
   }
 }
@@ -124,6 +125,9 @@ export async function prodShaped072(with072 = true, { money = 'stubs', with072b 
     IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'authenticated') THEN CREATE ROLE authenticated NOLOGIN; END IF;
     IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'service_role') THEN CREATE ROLE service_role NOLOGIN; END IF;
   END $r$;`);
+  // production's service_role bypasses RLS (pg_roles.rolbypassrls, 26/10): with production's RLS below, a read as
+  // service_role here must see what the Worker sees
+  await db.exec('ALTER ROLE service_role BYPASSRLS');
   await db.exec(fixture('live-071.sql'));
   await db.exec(fixture('live-072.sql'));
   await db.exec(money === 'live' ? fixture('live-073.sql') : STUBS);

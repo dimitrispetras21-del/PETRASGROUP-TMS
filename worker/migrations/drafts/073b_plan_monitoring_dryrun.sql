@@ -495,6 +495,15 @@ BEGIN
                       AND qual = 'true' AND with_check IS NULL) THEN
     RAISE EXCEPTION '073b proof: ct_settings has not exactly the runner''s read policy';
   END IF;
+  --    Measured, not only the catalog (principle 2): with 0 v5 rows no check enters ct_setting() or stock_vs_charge(),
+  --    so read X here as the runner, through the same functions B-79 uses (NULL = the RLS-blind case)
+  SET LOCAL ROLE tms_check_runner;
+  SELECT count(*) INTO v_k FROM public.ct_settings WHERE key IN ('x_import', 'x_export', 'full_truck_pallets');
+  v_v := public.stock_vs_charge(public.ct_setting('x_import'), 1);
+  RESET ROLE;
+  IF v_k <> 3 OR v_v IS NULL THEN
+    RAISE EXCEPTION '073b proof: the runner reads % of the 3 X keys, stock_vs_charge gives % (expected 3 and a number)', v_k, v_v;
+  END IF;
   IF NOT has_function_privilege('tms_check_runner', 'public.stock_vs_charge(numeric, numeric)', 'EXECUTE')
      OR has_function_privilege('tms_reader', 'public.stock_vs_charge(numeric, numeric)', 'EXECUTE') THEN
     RAISE EXCEPTION '073b proof: stock_vs_charge is not executable by the runner only';
@@ -509,7 +518,7 @@ BEGIN
        WHERE NOT t.tgisinternal AND t.tgenabled <> 'D' AND ns.nspname = 'public') <> v_trg0 THEN
     RAISE EXCEPTION '073b proof: a trigger appeared';
   END IF;
-  RAISE NOTICE '073b OK: 17 checks (14 of F3 + 3 of 072b, 16 enabled), 5 read policies, X readable and computable by the runner, every check 0 today';
+  RAISE NOTICE '073b OK: 17 checks (14 of F3 + 3 of 072b, 16 enabled), 5 read policies on v5 + 1 on ct_settings, X read by the runner, every check 0 today';
   RAISE EXCEPTION 'DRY RUN 073b finished - EVERYTHING UNDONE, nothing kept.';
 END
 $dry$;

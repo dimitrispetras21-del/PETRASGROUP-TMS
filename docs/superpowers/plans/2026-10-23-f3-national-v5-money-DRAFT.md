@@ -4955,7 +4955,7 @@ gh pr create --base main --head deploy/worker-plan --title "Worker Φ3 (αλυσ
 
 | # | Αρχείο | Αναμενόμενο |
 |---|---|---|
-| 1 | `073b_plan_monitoring_dryrun.sql` | NOTICE `073b OK: 17 checks (14 of F3 + 3 of 072b, 16 enabled), 5 read policies, X readable and computable by the runner, every check 0 today` και το σκόπιμο ERROR `DRY RUN 073b finished - EVERYTHING UNDONE, nothing kept.` |
+| 1 | `073b_plan_monitoring_dryrun.sql` | NOTICE `073b OK: 17 checks (14 of F3 + 3 of 072b, 16 enabled), 5 read policies on v5 + 1 on ct_settings, X read by the runner, every check 0 today` και το σκόπιμο ERROR `DRY RUN 073b finished - EVERYTHING UNDONE, nothing kept.` |
 | 2 | `073b_plan_monitoring.sql` | NOTICE `073b OK …`, κανένα σφάλμα |
 | 3 | SELECT | `SELECT id, severity, enabled FROM monitoring.checks WHERE id BETWEEN 'B-78' AND 'B-94' ORDER BY id;` → 17 γραμμές, `enabled` true εκτός από το B-80 (false, M-5 δ) |
 | 4 | `071_plan_schema_verify.sql` | όπως μετά την 071 με **`policies = 5`** (αναμενόμενο από το 073b, K-15) |

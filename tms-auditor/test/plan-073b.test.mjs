@@ -193,6 +193,12 @@ test('073b on the production-shaped copy', async (t) => {
     const without = read('073b_plan_monitoring_dryrun.sql').replace(grant, '');
     assert.notStrictEqual(without, read('073b_plan_monitoring_dryrun.sql'), 'the GRANT is where the mutation goes');
     assert.match(await errorOf(db, without) ?? '', /permission denied for function stock_vs_charge/);
+    // the proof READS X as the runner (not only the catalog): a missing key is refused by name
+    await db.exec('BEGIN');
+    try {
+      await db.exec(`DELETE FROM ct_settings WHERE key = 'x_export'`);
+      assert.match(await errorOf(db, read('073b_plan_monitoring_dryrun.sql')) ?? '', /073b proof: the runner reads 2 of the 3 X keys/);
+    } finally { await db.exec('ROLLBACK'); }
   });
 
   await t.test('dry run keeps nothing; 073b applies; every check it seeds is 0 today, B-80 seeded disabled', async () => {
@@ -207,7 +213,7 @@ test('073b on the production-shaped copy', async (t) => {
     assert.strictEqual(await canExec(db, 'tms_reader'), false, 'never tms_reader (D-15)');
     // ct_settings has RLS on (production): the GRANT alone would give the runner 0 rows; its policy gives it X
     await db.exec('SET ROLE tms_check_runner');
-    try { assert.ok(await n(db, `SELECT count(*) AS n FROM ct_settings WHERE key IN ('x_import', 'x_export', 'full_truck_pallets')`) === 3); }
+    try { assert.strictEqual(await n(db, `SELECT count(*) AS n FROM ct_settings WHERE key IN ('x_import', 'x_export', 'full_truck_pallets')`), 3); }
     finally { await db.exec('RESET ROLE'); }
     assert.deepStrictEqual((await db.query('SELECT id FROM monitoring.checks WHERE id = ANY($1) AND NOT enabled ORDER BY id', [IDS])).rows.map((r) => r.id), DISABLED);
     assert.match((await db.query(`SELECT disabled_reason AS r FROM monitoring.checks WHERE id = 'B-80'`)).rows[0].r, /owner 24\/10, M-5/);

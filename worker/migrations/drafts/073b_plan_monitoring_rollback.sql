@@ -42,8 +42,8 @@ BEGIN
   IF has_table_privilege('tms_check_runner', 'public.ct_settings', 'SELECT') THEN
     RAISE EXCEPTION '073b rollback proof: the runner still reads ct_settings';
   END IF;
-  IF EXISTS (SELECT 1 FROM pg_policies WHERE schemaname = 'public' AND tablename = 'ct_settings') THEN
-    RAISE EXCEPTION '073b rollback proof: a policy is left on ct_settings';
+  IF EXISTS (SELECT 1 FROM pg_policies WHERE schemaname = 'public' AND tablename = 'ct_settings' AND policyname = 'monitor_read') THEN
+    RAISE EXCEPTION '073b rollback proof: 073b''s policy is left on ct_settings';
   END IF;
   IF has_function_privilege('tms_check_runner', 'public.stock_vs_charge(numeric, numeric)', 'EXECUTE') THEN
     RAISE EXCEPTION '073b rollback proof: the runner still executes stock_vs_charge';
