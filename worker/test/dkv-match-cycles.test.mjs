@@ -202,6 +202,15 @@ test('P3-3 / Q7-1: a fee on a cycle with two trucks is filed under the FIRST seg
   // two rows whose start cannot be compared: no truck (a review), never whichever came last
   const blind = aggregateLines([fee], { statementDocNo: 'S1', rts: [{ ...S1, start_at: null }, S2], trucks });
   assert.equal(blind.lines[0].truck_id, null);
+  // review r2: the truck comes back (9 -> 10 -> 9). The first segment is the smallest start over ALL rows, in every
+  // order of the rows (the view has no ORDER BY; time order used to give 10)
+  const S3 = { ...S1, date_start: '2026-10-15', date_end: '2026-10-16', start_at: '2026-10-15T17:00:00+00:00', end_at: '2026-10-16T17:00:00+00:00' };
+  for (const rts of [[S1, S2, S3], [S1, S3, S2], [S2, S1, S3], [S2, S3, S1], [S3, S1, S2], [S3, S2, S1]]) {
+    assert.equal(aggregateLines([fee], { statementDocNo: 'S1', rts, trucks }).lines[0].truck_id, 9, rts.map((r) => r.truck_id).join('>'));
+  }
+  // two trucks sharing the earliest start, or an unreadable start on a later row: no truck
+  assert.equal(aggregateLines([fee], { statementDocNo: 'S1', rts: [S1, { ...S2, start_at: S1.start_at }], trucks }).lines[0].truck_id, null);
+  assert.equal(aggregateLines([fee], { statementDocNo: 'S1', rts: [S1, S2, { ...S3, start_at: 'not a time' }], trucks }).lines[0].truck_id, null);
   // one truck on both rows (or a cycle of today's model): that truck, as today
   const one = aggregateLines([fee], { statementDocNo: 'S1', rts: [S1, { ...S2, truck_id: 9 }], trucks });
   assert.equal(one.lines[0].truck_id, 9);

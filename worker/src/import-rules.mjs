@@ -823,18 +823,25 @@ function isoDayDiff(a, b) {
 export function aggregateLines(lines, opts = {}) {
   const statementDocNo = opts.statementDocNo || null;
   const rtById = new Map((opts.rts || []).map((r) => [r.id, r]));
-  // 073 / P3-3 (Q7-1, review r1): a v5 cycle can be several rows (one per OWNED segment of v_rt_vehicle_windows).
-  // A fee line spread onto it is filed under the FIRST segment's truck (smallest start_at), never under whichever
-  // row came last. The preview sets that truck on the line and the commit keeps a truck the line already carries,
-  // so the screen and the stored row agree (before: preview «no truck», commit filled ct_round_trips.truck_id).
-  // Two rows whose start cannot be compared (not a v5 window) give no truck - a review, never a pick.
-  // Rows of today's model are unique per id and unchanged.
+  // 073 / P3-3 (Q7-1, reviews r1 + r2): a v5 cycle can be several rows (one per OWNED segment of
+  // v_rt_vehicle_windows), and a truck can come back (9 -> 10 -> 9 after a breakdown). A fee line spread onto it is
+  // filed under the truck of the FIRST OWNED segment: the smallest start_at over ALL the cycle's rows, never the row
+  // that came last nor the first one that differs. The preview passes every OWNED row of a fee's cycle (index.js
+  // reads them by id, not by the trucks of the batch) and the commit keeps a truck the line already carries, so the
+  // screen and the stored row agree. That truck is not always ct_round_trips.truck_id (the first segment's copy,
+  // null when the first segment is a partner's). A start that cannot be read, or two trucks sharing the earliest
+  // start, gives no truck - a review, never a pick. Rows of today's model are unique per id and unchanged.
+  const rowsById = new Map();
   for (const r of opts.rts || []) {
-    const seen = rtById.get(r.id);
-    if (seen === r || seen.truck_id === r.truck_id) continue;
-    const a = instantMs(seen.start_at), b = instantMs(r.start_at);
-    if (a == null || b == null || a === b) rtById.set(r.id, { ...seen, truck_id: null });
-    else if (b < a) rtById.set(r.id, r);
+    if (!rowsById.has(r.id)) rowsById.set(r.id, []);
+    rowsById.get(r.id).push(r);
+  }
+  for (const [id, rows] of rowsById) {
+    if (rows.every((x) => x.truck_id === rows[0].truck_id)) continue;
+    const ms = rows.map((x) => instantMs(x.start_at));
+    const min = ms.some((m) => m == null) ? null : Math.min(...ms);
+    const first = min == null ? [] : rows.filter((_, i) => ms[i] === min);
+    rtById.set(id, first.length && first.every((x) => x.truck_id === first[0].truck_id) ? first[0] : { ...rows[0], truck_id: null });
   }
   // opts.trucks [{id, plate}] (parse only): the fee line takes the plate of its
   // RT's truck, so the preview files it under that vehicle — a fee that has a

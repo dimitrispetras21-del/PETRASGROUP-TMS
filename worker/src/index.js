@@ -5131,7 +5131,18 @@ async function handleCosts(request, url, origin, env) {
       // «Τέλη DKV» per RT. The commit re-runs the same function on what the
       // accountant sends, so a toll she assigns in the preview joins its group.
       const summaryDocNoEarly = (parsed.docs.find((d) => d.doc_type === "summary") || {}).doc_no || null;
-      const aggregation = aggregateLines(lines, { statementDocNo: summaryDocNoEarly, rts, trucks });
+      // Q7-1 (review r2): a fee spread onto a v5 cycle is filed under the cycle's FIRST OWNED segment
+      // (aggregateLines). `rts` holds only the rows of the trucks with lines in this statement, so after a handover
+      // 9 -> 10 with only truck 10 on the statement the first segment would be missing, and the money would follow
+      // whichever trucks happened to have lines that month. Every OWNED row of those cycles is read by id instead.
+      const feeCycleIds = [...new Set(lines.filter((l) => l.category === "dkv" && l.rt_id != null).map((l) => l.rt_id))]
+        .filter((id) => rts.some((r) => r.id === id && r.model === 2));
+      let rtsForFees = rts;
+      if (feeCycleIds.length) {
+        const cycleRows = (await dbSelectRaw(env, "v_rt_vehicle_windows", new URLSearchParams({ select: "id,truck_id,status,date_start,date_end,model,start_at,end_at", id: `in.(${feeCycleIds.join(",")})`, status: "neq.cancelled" }))).rows;
+        rtsForFees = rts.filter((r) => !feeCycleIds.includes(r.id)).concat(cycleRows);
+      }
+      const aggregation = aggregateLines(lines, { statementDocNo: summaryDocNoEarly, rts: rtsForFees, trucks });
       lines = aggregation.lines;
 
       // w11 θέμα 0 (owner 21/9): manual lines the statement repeats — the

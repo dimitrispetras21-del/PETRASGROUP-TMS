@@ -68,6 +68,9 @@ WINDOWS.push(
     start_at: '2026-09-02T11:00:00+00:00', end_at: '2026-09-03T17:00:00+00:00' },
 );
 const DOC = { id: 1, status: 'draft', total_gross: 60, invoice_no: 'S1' };
+// per-test overrides (review r2): the trucks table and the view's rows
+let TRUCKS = null;
+let VIEW = null;
 const json = (rows, status = 200) => new Response(JSON.stringify(rows), { status, headers: { 'content-type': 'application/json' } });
 let calls;
 const realConsole = { log: console.log, error: console.error, warn: console.warn };
@@ -81,11 +84,14 @@ beforeEach(() => {
     calls.push({ method, table, params: u.searchParams });
     if (method === 'GET' && table === 'ct_cost_docs' && u.searchParams.get('id') === 'eq.1') return json([DOC]);
     if (method === 'GET' && ['ct_import_rules', 'ct_cost_docs', 'ct_plate_aliases'].includes(table)) return json([]);
-    if (method === 'GET' && table === 'trucks') return json([{ id: 7, license_plate: 'XX1234' }, { id: 9, license_plate: 'XX5678' }]);
+    if (method === 'GET' && table === 'trucks') return json(TRUCKS || [{ id: 7, license_plate: 'XX1234' }, { id: 9, license_plate: 'XX5678' }]);
     if (method === 'GET' && table === 'v_rt_vehicle_windows') {
       const inSet = (col) => (u.searchParams.get(col) || '').replace(/^in\.\(|\)$/g, '').split(',');
-      if (u.searchParams.get('id')) return json(WINDOWS.filter((r) => inSet('id').includes(String(r.id))).map(({ id, truck_id }) => ({ id, truck_id })));
-      return json(WINDOWS.filter((r) => inSet('truck_id').includes(String(r.truck_id))));
+      const cols = (u.searchParams.get('select') || '').split(',');
+      const pick = (r) => Object.fromEntries(cols.map((c) => [c, r[c]]));
+      const rows = VIEW || WINDOWS;
+      if (u.searchParams.get('id')) return json(rows.filter((r) => inSet('id').includes(String(r.id))).map(pick));
+      return json(rows.filter((r) => inSet('truck_id').includes(String(r.truck_id))).map(pick));
     }
     if (method === 'GET' && table === 'ct_round_trips') {
       const set = (u.searchParams.get('id') || '').replace(/^in\.\(|\)$/g, '').split(',');
@@ -99,17 +105,52 @@ beforeEach(() => {
     throw new Error(`unmocked fetch: ${method} ${table}?${u.searchParams}`);
   };
 });
-afterEach(() => { Object.assign(console, realConsole); });
+afterEach(() => { Object.assign(console, realConsole); TRUCKS = null; VIEW = null; DOC.total_gross = 60; });
 
 test('the preview reads v_rt_vehicle_windows with the v5 columns, and never ct_round_trips', async () => {
   const r = await parse('9999999_20260930_DE_E-INVOICE_1.pdf');
   assert.equal(r.status, 200, r.text);
   const reads = calls.filter((c) => c.table === 'v_rt_vehicle_windows');
-  assert.equal(reads.length, 1);
-  assert.equal(reads[0].params.get('select'), 'id,truck_id,status,date_start,date_end,model,start_at,end_at');
-  assert.equal(reads[0].params.get('status'), 'neq.cancelled');
+  // one read by the batch's trucks, then (review r2) one by id for the v5 cycle the fixture's fee is spread onto
+  assert.equal(reads.length, 2);
+  for (const rd of reads) {
+    assert.equal(rd.params.get('select'), 'id,truck_id,status,date_start,date_end,model,start_at,end_at');
+    assert.equal(rd.params.get('status'), 'neq.cancelled');
+  }
   assert.equal(reads[0].params.get('truck_id'), 'in.(7,9)');
+  assert.equal(reads[1].params.get('id'), 'in.(22)');
+  assert.equal(reads[1].params.get('truck_id'), null);
   assert.equal(calls.filter((c) => c.table === 'ct_round_trips').length, 0);
+});
+
+test('Q7-1 (review r2): a statement with only the SECOND truck of a handover still files the cycle\'s fee under the FIRST truck, through the commit', async () => {
+  // cycle 23: truck 12 until 02/09 00:00Z, then truck 13. The statement's XX5678 is truck 13; truck 12 has no line.
+  TRUCKS = [{ id: 7, license_plate: 'XX1234' }, { id: 12, license_plate: 'XX0012' }, { id: 13, license_plate: 'XX5678' }];
+  VIEW = [
+    WINDOWS[0],
+    { id: 23, truck_id: 12, status: 'planned', date_start: '2026-09-01', date_end: '2026-09-02', model: 2,
+      start_at: '2026-09-01T20:00:00+00:00', end_at: '2026-09-02T00:00:00+00:00' },
+    { id: 23, truck_id: 13, status: 'planned', date_start: '2026-09-02', date_end: '2026-09-03', model: 2,
+      start_at: '2026-09-02T00:00:00+00:00', end_at: '2026-09-03T17:00:00+00:00' },
+  ];
+  const r = await parse('9999999_20260930_DE_E-INVOICE_1.pdf');
+  assert.equal(r.status, 200, r.text);
+  const fuel = r.json.lines.find((l) => l.plate === 'XX5678' && l.category === 'fuel');
+  assert.equal(fuel.rt_id, 23);
+  assert.equal(fuel.truck_id, 13);
+  const byTruck = calls.filter((c) => c.table === 'v_rt_vehicle_windows' && c.params.get('truck_id'));
+  assert.equal(byTruck[0].params.get('truck_id'), 'in.(7,13)');
+  const fee = r.json.lines.find((l) => l.category === 'dkv' && l.rt_id === 23);
+  assert.ok(fee, 'the fee was spread onto cycle 23');
+  assert.equal(fee.truck_id, 12);
+  assert.equal(fee.plate, 'XX0012');
+  // the commit stores the fee line under truck 12 (an OWNED segment's truck, so the commit check accepts it)
+  calls = [];
+  DOC.total_gross = fee.gross_eur != null ? fee.gross_eur : fee.gross;
+  const c = await commit([fee]);
+  assert.equal(c.status, 201, c.text);
+  const ins = calls.find((x) => x.method === 'POST' && x.table === 'ct_cost_lines');
+  assert.ok(ins, 'the line was inserted');
 });
 
 test('a German station\'s 03:15 is the v5 cycle B (04:15 Athens); today\'s trip of truck 7 is matched as before', async () => {
