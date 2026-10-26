@@ -189,6 +189,20 @@ test('PATCH round 3: a stale stored name on a two-partner cycle is refused like 
   assert.equal('partner_id' in written().body, false, 'kept: unmatched either way, B-94 names the cycle');
 });
 
+// Final round 4 (review r3 finding 3, probes A and B): on a cycle with two or more partners, ANY edit of a line that
+// names nobody, or names a partner who drives none of its segments, is refused - a note or an amount fix too, not only
+// a move. Latent while PLAN_WRITES_OPEN = false; the way out is F4's partner picker (plan D-17), never a guessed name.
+test('PATCH round 4: a two-partner cycle refuses a note or an amount fix on an unnamed line, and on a stale name; nothing is written', async () => {
+  for (const [stored, body] of [[null, { note: 'x' }], [null, { net: 300 }], [7, { note: 'x' }], [7, { category: 'partner_rate', net: 300 }]]) {
+    calls = [];
+    row900 = { ...LINE, rt_id: stored == null ? 40 : 44, partner_id: stored };
+    const r = await call('PATCH', '/costs/lines/900', { ...body, reason: 'TEST' });
+    assert.equal(r.status, 409, `${JSON.stringify({ stored, body })}: ${r.text}`);
+    assert.match(r.json.error, /διάλεξε ποιανού είναι το τιμολόγιο/);
+    assert.equal(written(), undefined, 'nothing written');
+  }
+});
+
 test('deploy order: a Worker that meets no ct_cost_lines.partner_id (073 not run) says so by name', async () => {
   insertError = { code: 'PGRST204', message: "Could not find the 'partner_id' column of 'ct_cost_lines' in the schema cache" };
   const r = await call('POST', '/costs/lines', line({ rt_id: 5, partner_id: 7 }));

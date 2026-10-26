@@ -4122,6 +4122,13 @@ async function ctDbPatch(env, table, filter, patch) {
 // for again: no screen can give it); otherwise it is derived again - the single partner of a one-partner cycle, null
 // off partner_rate or (on a move, opts.moved) off a v5 cycle, the same 409 «pick one» on a cycle with two or more.
 // A v5 cycle with no PARTNER segment keeps it: the line is unmatched either way and B-94 names the cycle.
+// Limit (final round 4, review r3 finding 1): this treats EVERY stored name as a Worker stamp - true only while no
+// screen sends partner_id. It cannot tell a stamp from a name a person gave, nor a partner corrected 7 -> 9 from a
+// partner 7 who was removed but still invoices (a cancellation fee): either way the next edit makes the invoice the
+// remaining partner's, which replaces that partner's rate and understates the cost with B-94 green. So B-94's next
+// asks whose the invoice is first (a removed partner's goes to «Λοιπά», never saved as a rate), and plan D-17 makes
+// F4's partner picker mark a given name as given - never derived again here - and let partner_id through the
+// doc_id lock of PATCH, before the plan writes open (the guard counts that switch's literal, so it is not named here).
 async function ctPartnerLineCheck(env, line, opts = {}) {
   const stored = !!opts.stored && line.partner_id != null;
   if (stored && line.category !== "partner_rate") return { partner_id: null };
