@@ -159,6 +159,9 @@ cd worker && CLOUDFLARE_API_TOKEN=$CF_API_TOKEN npx wrangler deploy
    (ξετυλίγει το multipart· `--handover 0` πριν από το deploy της αλλαγής οχήματος, 072b, `--handover 1` μετά:
    `GUARD OK (16 markers, plan=1, handover=1)`). Χωρίς `--handover`, ή με όρισμα που δεν ξέρει, το εργαλείο
    σταματά με exit 2, ποτέ «OK» (πλάνο αλλαγής οχήματος H-18).
+   Με `--plan 1` ΣΤΑΜΑΤΑ και αν βρει `PLAN_WRITES_OPEN = true` οπουδήποτε στο bundle (ως την ημέρα L).
+   Μετά από επείγουσα επαναφορά `wrangler rollback b00d59f3-332d-4e7c-9590-2de97cc235f6` (χωρίς `/plan/*`):
+   `--plan 0 --handover 0`, και το αναμενόμενο είναι `GUARD OK (14 markers, plan=0, handover=0)`.
    Αν λείπει έστω ένα σημάδι λειτουργίας που ήταν ζωντανή: **ΣΤΑΜΑΤΑ**, όπως
    με τα τρία.
 
