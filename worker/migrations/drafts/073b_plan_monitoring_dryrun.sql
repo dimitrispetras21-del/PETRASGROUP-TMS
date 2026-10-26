@@ -49,8 +49,9 @@ BEGIN
   --     The auditor's runner only (it already reads money: stock_v_lot_money, 057); never tms_reader.
   GRANT SELECT ON public.ct_settings TO tms_check_runner;
   --     ct_settings has RLS on in production with no policy (measured 26/10; only service_role, which bypasses RLS,
-  --     read it): the GRANT alone gives the runner 0 rows, ct_setting() answers NULL, X is NULL and B-79 stays green
-  --     however the shares break (the harness with production's RLS proves it). A read policy for the runner only.
+  --     read it): the GRANT alone gives the runner 0 rows and ct_setting() answers NULL - X is NULL, so B-79 stays
+  --     green however the shares break (the harness with production's RLS proves it), and on a stock-lot piece
+  --     stock_vs_charge raises "full_truck_pallets is missing" instead. A read policy for the runner only.
   CREATE POLICY monitor_read ON public.ct_settings FOR SELECT TO tms_check_runner USING (true);
   --     And the EXECUTE on stock_vs_charge: 057 gave it to service_role only, and the right to call a function is
   --     checked when the query starts, even with 0 rows, so the 073b dry run of 26/10 stopped at B-79 with "permission denied
@@ -496,14 +497,18 @@ BEGIN
     RAISE EXCEPTION '073b proof: ct_settings has not exactly the runner''s read policy';
   END IF;
   --    Measured, not only the catalog (principle 2): with 0 v5 rows no check enters ct_setting() or stock_vs_charge(),
-  --    so read X here as the runner, through the same functions B-79 uses (NULL = the RLS-blind case)
+  --    so read X here as the runner: the keys first (0 = the RLS-blind case, said by name before stock_vs_charge
+  --    could misname it as deleted data), then through the same functions B-79 uses
   SET LOCAL ROLE tms_check_runner;
   SELECT count(*) INTO v_k FROM public.ct_settings WHERE key IN ('x_import', 'x_export', 'full_truck_pallets');
+  RESET ROLE;
+  IF v_k <> 3 THEN
+    RAISE EXCEPTION '073b proof: the runner reads % of the 3 X keys (0 = RLS without its policy)', v_k;
+  END IF;
+  SET LOCAL ROLE tms_check_runner;
   v_v := public.stock_vs_charge(public.ct_setting('x_import'), 1);
   RESET ROLE;
-  IF v_k <> 3 OR v_v IS NULL THEN
-    RAISE EXCEPTION '073b proof: the runner reads % of the 3 X keys, stock_vs_charge gives % (expected 3 and a number)', v_k, v_v;
-  END IF;
+  IF v_v IS NULL THEN RAISE EXCEPTION '073b proof: stock_vs_charge(x_import, 1) is NULL for the runner'; END IF;
   IF NOT has_function_privilege('tms_check_runner', 'public.stock_vs_charge(numeric, numeric)', 'EXECUTE')
      OR has_function_privilege('tms_reader', 'public.stock_vs_charge(numeric, numeric)', 'EXECUTE') THEN
     RAISE EXCEPTION '073b proof: stock_vs_charge is not executable by the runner only';

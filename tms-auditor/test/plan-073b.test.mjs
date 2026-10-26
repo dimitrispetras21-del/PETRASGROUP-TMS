@@ -13,7 +13,8 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { prodShaped072, assertFnAcl } from './prod-shaped-072.mjs';
 import { DRAFTS, migrationFile } from '../lib/db.mjs';
-import { IDS, F3_IDS, V5, RUNNER_FN } from '../../worker/migrations/drafts/tools/build-073b.mjs';
+import { IDS, F3_IDS, V5, RUNNER_FN, X_KEYS } from '../../worker/migrations/drafts/tools/build-073b.mjs';
+import { loadChecks } from '../checks/load.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const read = (f) => fs.readFileSync(migrationFile(f), 'utf8');                  // 072b / 073 / 073b: drafts/ until executed, then one up
@@ -193,11 +194,16 @@ test('073b on the production-shaped copy', async (t) => {
     const without = read('073b_plan_monitoring_dryrun.sql').replace(grant, '');
     assert.notStrictEqual(without, read('073b_plan_monitoring_dryrun.sql'), 'the GRANT is where the mutation goes');
     assert.match(await errorOf(db, without) ?? '', /permission denied for function stock_vs_charge/);
+    // and it is B-79 itself (the check text, as the runner, 0 v5 rows) that is refused, as on 26/10 - not only the
+    // proof's own call further down
+    const b79 = loadChecks().checks.find((c) => c.id === 'B-79').sql;
+    await db.exec('SET ROLE tms_check_runner');
+    try { assert.match(await errorOf(db, b79) ?? '', /permission denied for function stock_vs_charge/); } finally { await db.exec('RESET ROLE'); }
     // the proof READS X as the runner (not only the catalog): a missing key is refused by name
     await db.exec('BEGIN');
     try {
       await db.exec(`DELETE FROM ct_settings WHERE key = 'x_export'`);
-      assert.match(await errorOf(db, read('073b_plan_monitoring_dryrun.sql')) ?? '', /073b proof: the runner reads 2 of the 3 X keys/);
+      assert.match(await errorOf(db, read('073b_plan_monitoring_dryrun.sql')) ?? '', /073b proof: the runner reads 2 of the 3 X keys \(0 = RLS without its policy\)/);
     } finally { await db.exec('ROLLBACK'); }
   });
 
@@ -213,7 +219,7 @@ test('073b on the production-shaped copy', async (t) => {
     assert.strictEqual(await canExec(db, 'tms_reader'), false, 'never tms_reader (D-15)');
     // ct_settings has RLS on (production): the GRANT alone would give the runner 0 rows; its policy gives it X
     await db.exec('SET ROLE tms_check_runner');
-    try { assert.strictEqual(await n(db, `SELECT count(*) AS n FROM ct_settings WHERE key IN ('x_import', 'x_export', 'full_truck_pallets')`), 3); }
+    try { assert.strictEqual(await n(db, `SELECT count(*) AS n FROM ct_settings WHERE key = ANY($1)`, [X_KEYS]), X_KEYS.length); }
     finally { await db.exec('RESET ROLE'); }
     assert.deepStrictEqual((await db.query('SELECT id FROM monitoring.checks WHERE id = ANY($1) AND NOT enabled ORDER BY id', [IDS])).rows.map((r) => r.id), DISABLED);
     assert.match((await db.query(`SELECT disabled_reason AS r FROM monitoring.checks WHERE id = 'B-80'`)).rows[0].r, /owner 24\/10, M-5/);
