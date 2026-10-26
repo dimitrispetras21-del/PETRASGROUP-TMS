@@ -255,7 +255,8 @@ BEGIN
        AND conname = 'rt_v2_driver_once') IS DISTINCT FROM x_driver THEN
     RAISE EXCEPTION '072b: the two EXCLUDE of 071b are not on ct_round_trips exactly as executed 22/10 - stop, re-measure';
   END IF;
-  -- Every function 072b relies on, as the text measured 25/10 (072 md5 483ffd6e; RE-MEASURE after F2's K2):
+  -- Every function 072b relies on, as executed in production 26/10 (072 md5 83bb1076; the 47 pairs re-derived on it
+  -- and compared with production by SELECT, plan Task B2):
   -- the 22 that 072 guards and the 072 functions 072b hooks, calls or relies on. Any difference = stop.
   -- tests/sql-072b-drafts.test.js: each unchanged pair is here once and in PART 9 once; each hooked one is here
   -- and in the hook list of PART 6 once.
@@ -310,7 +311,7 @@ BEGIN
     ) g(sig, m) LOOP
     IF to_regprocedure(v_g.sig) IS NULL
        OR (SELECT md5(prosrc) FROM pg_proc WHERE oid = to_regprocedure(v_g.sig)) IS DISTINCT FROM v_g.m THEN
-      RAISE EXCEPTION '072b: % is not the text measured 25/10 (expected md5 %) - stop, re-measure', v_g.sig, v_g.m;
+      RAISE EXCEPTION '072b: % is not the text of the executed 072 (expected md5 %) - stop, re-measure', v_g.sig, v_g.m;
     END IF;
   END LOOP;
   IF (SELECT count(*) FROM pg_proc WHERE pronamespace = 'public'::regnamespace AND proname LIKE 'plan\_%') <> 54 THEN

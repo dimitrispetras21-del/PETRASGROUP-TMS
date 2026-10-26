@@ -195,6 +195,8 @@ DECLARE
     -- once (072's row per pay source over every line), never again as the removed truck's row
     , 'ok'               -- 140 the Delete of 137 with a DKV line on BOTH trucks: ONE costs row (rt, DKV), count 2, no amount (dispatcher)
     , 'ok'               -- 141 the same by Move (owner): ONE costs row (rt, DKV), count 2, amount 24.80
+    , 'plan:seg_copy'    -- 142 a direct UPDATE of the cycle's driver on model=2 is refused at COMMIT (principle 4)
+    , 'plan:seg_copy'    -- 143 the same on a cycle whose payroll line has an amount: refused, the line stays
     -- @want (one line per case: "    , '<ok|plan:code|con:name|state:XXXXX>'  -- <k> <what>")
   ]::text[];
   verdict text; got text; hint text; msg text; cname text; st text;
@@ -1696,6 +1698,14 @@ BEGIN
                           AND (SELECT deleted_at IS NOT NULL FROM rt_vehicle_segments WHERE id = g1)
                         THEN 'ok one costs row for the cycle and its pay source, over both lines'
                         ELSE 'FAIL costs rows ' || coalesce(r::text, 'null') || ' ' || coalesce(r2::text, 'null') END;
+      ELSIF k IN (142, 143) THEN
+        -- coordinator 26/10 (review of the live F2 Worker, finding 3): "a model-2 cycle changes its vehicle only through
+        -- plan_*" must hold in the database for every path, not only on PATCH /costs/rt. The cycle's vehicle columns
+        -- are the copy of the ARCHIKO (H-2), so any write that bypasses the segments breaks seg_copy at COMMIT - for the
+        -- driver as for the truck (case 18), and also when the payroll line already has an amount (143: never a quiet
+        -- driver swap behind payroll_locked)
+        IF k = 143 THEN UPDATE dl_entries SET trip_value = 100 WHERE rt_id = rt1 AND deleted_at IS NULL; END IF;
+        UPDATE ct_round_trips SET driver_id = drv3 WHERE id = rt1;
       -- @case (each task adds its "ELSIF k = <n> THEN" branches above this line)
       END IF;
       SET CONSTRAINTS ALL IMMEDIATE;

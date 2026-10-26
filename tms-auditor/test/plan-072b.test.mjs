@@ -1,9 +1,9 @@
 // 072b (national v5 vehicle handover: segments) on a production-shaped PGlite copy, at build time (principle 6).
 // Lives in tms-auditor/test/ (Task B1 moves it there from docs/national-v5/handover/tests/, git mv).
 // Production shape = the same as plan-072.test.mjs (the 22/9 columns + live-071.sql + live-072.sql, 071 and 071b as
-// executed 22/10) + 072 from drafts/ (or worker/migrations/ after F2's K3), then 072b. Never edit a fixture by hand.
+// executed 22/10) + 072 as executed 26/10 (worker/migrations/), then 072b. Never edit a fixture by hand.
 // What it proves: the guards hold the texts 072b was written against; the dry run keeps nothing; 072b applies with
-// +4 triggers and B-54 following; the verify row; born closed for the API roles; the 141 rules; F2's 237 rules, 071's
+// +4 triggers and B-54 following; the verify row; born closed for the API roles; the 143 rules; F2's 237 rules, 071's
 // 56 and 071b's 8 still pass ON TOP of 072b (the EXCLUDE moved, the 18 hooks changed nothing F2 decided); the three
 // auditor checks go the PRODUCTION path (review R4, finding 1): each passes the repo lint (lintSql) and the in-DB
 // guard (monitoring.check_sql_guard), is seeded as 073b will seed it and run by monitoring.run_checks as
@@ -28,8 +28,8 @@ import { btree_gist } from '@electric-sql/pglite/contrib/btree_gist';
 import { pgcrypto } from '@electric-sql/pglite/contrib/pgcrypto';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
-const read = (f) => fs.readFileSync(path.join(DRAFTS, f), 'utf8');          // 072 and 072b: drafts until executed
-const readDone = (f) => fs.readFileSync(path.join(DRAFTS, '..', f), 'utf8'); // 071 / 071b: executed 22/10
+const read = (f) => fs.readFileSync(path.join(DRAFTS, f), 'utf8');          // 072b: drafts until executed
+const readDone = (f) => fs.readFileSync(path.join(DRAFTS, '..', f), 'utf8'); // 071 / 071b executed 22/10, 072 26/10
 const fixture = (f) => fs.readFileSync(path.join(HERE, 'fixtures', f), 'utf8');
 // B-91..B-93: tms-auditor/checks-072b/ after Task B1, OUT of the catalog until 073b (review R4, finding 1);
 // HANDOVER_CHECKS=docs/national-v5/handover/checks before it
@@ -72,7 +72,7 @@ async function prodShaped072(with072 = true) {
   await db.exec(`UPDATE monitoring.checks SET red_value = (${TRG}), baseline = NULL WHERE id = 'B-54'`);
   await db.exec(readDone('071_plan_schema.sql'));
   await db.exec(readDone('071b_plan_one_vehicle.sql'));
-  if (with072) await db.exec(read('072_plan_functions.sql'));
+  if (with072) await db.exec(readDone('072_plan_functions.sql'));
   return db;
 }
 async function errorOf(db, sql) { try { await db.exec(sql); return null; } catch (e) { return String(e.message); } }
@@ -166,7 +166,7 @@ test('072b on a production-shaped PGlite copy', async (t) => {
     for (const k of ['exclude_on_cycles', 'changed_live', 'open_to_api', 'open_relations', 'rls_off', 'other_policies', 'segments',
       'v5_cycles', 'seg_problems', 'overlaps', 'cancel_copy_drift']) assert.equal(Number(r[k]), 0, k);
     // 072's own verify after 072b, as the plan writes it (Interfaces): changed_live 0, 19 executable plan_*, 79 plan_*
-    const v = (await db.query(read('072_plan_functions_verify.sql'))).rows[0];
+    const v = (await db.query(readDone('072_plan_functions_verify.sql'))).rows[0];
     assert.equal(v.applied, '072 in place');
     assert.equal(Number(v.changed_live), 0);
     assert.equal(Number(v.service_role_execute), 19);
@@ -192,17 +192,17 @@ test('072b on a production-shaped PGlite copy', async (t) => {
     } finally { await db.exec('RESET ROLE'); }
   });
 
-  await t.test('072b rules test: 141 OK, 0 FAIL, nothing kept', async () => {
+  await t.test('072b rules test: 143 OK, 0 FAIL, nothing kept', async () => {
     const msg = await errorOf(db, read('072b_plan_vehicle_segments_test.sql'));
     const m = rules('072b').exec(msg ?? '');
     assert.ok(m, msg);
     assert.equal(Number(m[2]), 0, msg);
-    assert.equal(Number(m[1]), 141);
+    assert.equal(Number(m[1]), 143);
     assert.equal(await count(db, `SELECT count(*)::int AS n FROM rt_vehicle_segments`), 0, 'the test keeps nothing');
   });
 
   await t.test('F2 still holds ON TOP of 072b: 072 rules 237, 071 rules 56, 071b rules 8', async () => {
-    for (const [file, name, n, own] of [['072_plan_functions_test.sql', '072', 237, read], ['071_plan_schema_test.sql', '071', 56, readDone],
+    for (const [file, name, n, own] of [['072_plan_functions_test.sql', '072', 237, readDone], ['071_plan_schema_test.sql', '071', 56, readDone],
       ['071b_plan_one_vehicle_test.sql', '071b', 8, readDone]]) {
       const msg = await errorOf(db, own(file));
       const m = rules(name).exec(msg ?? '');
@@ -282,7 +282,7 @@ test('072b on a production-shaped PGlite copy', async (t) => {
     assert.equal(await count(db, TRG), triggers);
     assert.equal(await count(db, `SELECT red_value AS n FROM monitoring.checks WHERE id = 'B-54'`), triggers);
     assert.equal(await count(db, `SELECT count(*)::int AS n FROM pg_class WHERE relname = 'rt_vehicle_segments'`), 0);
-    const m = rules('072').exec(await errorOf(db, read('072_plan_functions_test.sql')) ?? '');
+    const m = rules('072').exec(await errorOf(db, readDone('072_plan_functions_test.sql')) ?? '');
     assert.deepEqual([Number(m[1]), Number(m[2])], [237, 0], 'F2 rules after the rollback');
     assert.equal(await errorOf(db, src), null, 'reversible: 072b applies again');
     assert.equal((await db.query(read('072b_plan_vehicle_segments_verify.sql'))).rows[0].applied, '072b in place');
