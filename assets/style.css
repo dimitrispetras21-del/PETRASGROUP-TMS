@@ -9068,10 +9068,13 @@ body.wn5-on .content { padding-left:28px; padding-right:28px; padding-top:8px; b
 .wn5 .wn5-kd, .wn5 .wn5-ad { display:flex; flex-direction:column; align-items:flex-start; gap:2px; }
 /* Day chips of the rows (Figma H1 2120:7738): a ΚΑΘΟΔΟΣ day that has come (today or before) is the blue outlined
    chip — it fades with its head when the base dims it — unless its whole row is executed (Figma 7745 row 1, plain);
-   a ΚΑΘΟΔΟΣ day still to come is plain text; every ΑΝΟΔΟΣ day is the light grey chip (H1 «Τρί 13/10», «Πέμ 15/10»).
+   a ΚΑΘΟΔΟΣ day still to come is plain text; an ΑΝΟΔΟΣ day of today or later is the light grey chip (H1 «Τρί 13/10»,
+   «Πέμ 15/10»); an ΑΝΟΔΟΣ day that has passed is the blue outlined chip, also in an executed row, where it fades
+   with the row (2035:7735 and 7745 row 1 — H1 shows no past ΑΝΟΔΟΣ day).
    The classes stay WI4's (past/today/next: wn5-dim test). */
 .wn5 :is(.wn5-kd, .wn5-ad) .wi4-dc { background:none; border-color:transparent; color:var(--wi4-grey-1); }
 .wn5 .wn5-ad .wi4-dc { background:var(--wi4-chip); }
+.wn5 .wn5-ad .wi4-dc.past { border-color:var(--wi4-blue); color:var(--wi4-blue-ink); background:var(--surface-card); }
 .wn5 .wn5-row:not(.wn5-dim) .wn5-kd .wi4-dc:is(.past, .today) { border-color:var(--wi4-blue); color:var(--wi4-blue-ink); background:var(--surface-card); }
 .wn5-dc2 { font-size:10px; line-height:12px; color:var(--wi4-grey-2); white-space:nowrap; }
 /* ΦΟΡΤΩΣΗ: «Βέροια» and, under it, its loading window — on every row that loads there (owner 25/10). */

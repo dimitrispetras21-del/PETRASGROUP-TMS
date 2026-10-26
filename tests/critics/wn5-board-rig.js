@@ -379,6 +379,14 @@ SCN.dim = async (browser, origin) => {
       work: ['wait:4101', 'wait:4103', 'rt:108'].map((k) => ({ k, n: dimIn(row(k)) })),
       late: op(document.querySelector('#content .wn5 .wn5-pt[data-stop="1303"]')),
       future: dimIn(row('rt:105')) + dimIn(row('rt:106')) + dimIn(row('rt:107')),
+      ad: [...document.querySelectorAll('#content .wn5 .wn5-ad .wi4-dc')].map((el) => {
+        const cs = getComputedStyle(el);
+        return { cls: el.classList.contains('past') ? 'past' : el.classList.contains('today') ? 'today' : 'next', bd: cs.borderTopColor, bg: cs.backgroundColor, fg: cs.color };
+      }),
+      tok: (() => { const cs = getComputedStyle(document.querySelector('#content .wn5'));
+        const probe = (prop, v) => { const d = document.createElement('i'); d.style[prop] = v; document.body.appendChild(d); const c = getComputedStyle(d)[prop]; d.remove(); return c; };
+        return { blue: probe('color', cs.getPropertyValue('--wi4-blue')), ink: probe('color', cs.getPropertyValue('--wi4-blue-ink')),
+          card: probe('backgroundColor', cs.getPropertyValue('--surface-card')), chip: probe('backgroundColor', cs.getPropertyValue('--wi4-chip')) }; })(),
     };
   });
   ok(scn, 'row 1 (RT-T101, Σάβ → Δευ, ended Δευ 22:00) dimmed whole, computed opacity 0.4', st.r101.cls && Math.abs(st.r101.op - 0.4) < 0.01, st.r101);
@@ -388,6 +396,12 @@ SCN.dim = async (browser, origin) => {
   ok(scn, 'ΠΡΟΣ ΑΝΑΘΕΣΗ (VS-T118, VS-T121) and the cycle without a vehicle never dim', st.work.every((w) => w.n === 0), st.work);
   ok(scn, 'the late stop (RT-T104 Larisa) stays bold', st.late === 1, st.late);
   ok(scn, 'nothing of Wednesday–Friday is dimmed', st.future === 0, st.future);
+  // Figma 2035:7735 / 7745 row 1: an ΑΝΟΔΟΣ day that has passed is the blue outlined chip (fading with its row); today
+  // and later ΑΝΟΔΟΣ days keep the light grey chip (H1 2120:7738).
+  const adPast = st.ad.filter((c) => c.cls === 'past'), adRest = st.ad.filter((c) => c.cls !== 'past');
+  ok(scn, 'a past ΑΝΟΔΟΣ day is the outlined chip (blue border and ink, card fill)', adPast.length > 0
+    && adPast.every((c) => c.bd === st.tok.blue && c.fg === st.tok.ink && c.bg === st.tok.card), { adPast, tok: st.tok });
+  ok(scn, 'today / later ΑΝΟΔΟΣ days keep the light grey chip', adRest.length > 0 && adRest.every((c) => c.bg === st.tok.chip), { adRest, tok: st.tok });
   ok(scn, 'no page errors', !S.pageErrors.length, S.pageErrors);
   await shot(page, 'dim');
   await page.context().close();
