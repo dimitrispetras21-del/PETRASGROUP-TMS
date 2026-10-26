@@ -12,11 +12,11 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { prodShaped072 } from './prod-shaped-072.mjs';
-import { DRAFTS } from '../lib/db.mjs';
+import { DRAFTS, migrationFile } from '../lib/db.mjs';
 import { IDS, F3_IDS, V5 } from '../../worker/migrations/drafts/tools/build-073b.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
-const read = (f) => fs.readFileSync(path.join(DRAFTS, f), 'utf8');             // 072b / 073 / 073b: drafts until executed
+const read = (f) => fs.readFileSync(migrationFile(f), 'utf8');                  // 072b / 073 / 073b: drafts/ until executed, then one up
 const readDone = (f) => fs.readFileSync(path.join(DRAFTS, '..', f), 'utf8');    // 071: executed 22/10
 const fixture = (f) => fs.readFileSync(path.join(HERE, 'fixtures', f), 'utf8');
 const DISABLED = ['B-80'];   // M-5 delta (owner 24/10): a tautology until day L
@@ -53,7 +53,7 @@ async function runAll(db) {   // the production path: monitoring.run_checks for 
 const SCENARIO = `DO $s$
 DECLARE td date := (now() AT TIME ZONE 'Europe/Athens')::date; d date; hub bigint; la bigint; lb bigint; cl bigint; pa bigint; trk bigint; trk2 bigint;
   r jsonb; rtp bigint; nn bigint; lg bigint; vso bigint; vsb bigint; vsh bigint;
-  f timestamptz; t timestamptz;
+  f timestamptz; t timestamptz; lot_o bigint; lot bigint; nn2 bigint; sh2 bigint;
 BEGIN
   d := td + 40; f := (d + time '06:00') AT TIME ZONE 'Europe/Athens'; t := (d + time '08:00') AT TIME ZONE 'Europe/Athens';
   SELECT id INTO hub FROM locations WHERE is_hub;
@@ -110,6 +110,17 @@ BEGIN
   INSERT INTO shipments (order_id, order_stop_id, created_by) VALUES (vso, vsb, 's073b') RETURNING id INTO vsh;
   INSERT INTO shipment_pieces (shipment_id, pallets, created_by) VALUES (vsh, 6, 's073b'), (vsh, 4, 's073b');
   INSERT INTO national_loads (legacy_id, source_type, source_order_id, status) VALUES ('rec073bNL', 'Direct', vso, 'Pending');
+  -- NOT B-90 (final review 26/10, finding 5): a national piece of a stock lot has no price by 057's own rule
+  -- (stock_piece_no_money; its money is the lot's) - with v5 shipments it must never read as "without a price"
+  INSERT INTO orders (legacy_id, order_type, direction, status, client_id, price, loading_datetime, delivery_datetime,
+                      unloading_location_1_id, loading_pallets_1, reference)
+  VALUES ('rec073bO2', 'International', 'Import', 'Delivered', cl, 900, td - 9, td - 6, la, 33, 'S073b') RETURNING id INTO lot_o;
+  INSERT INTO stock_lots (legacy_id, order_id) VALUES ('rec073bL1', lot_o) RETURNING id INTO lot;
+  INSERT INTO national_orders (legacy_id, client_id, reference, price, pallets, stock_lot_id, pickup_location_1_id)
+  VALUES ('rec073bN2', cl, 'S073b', NULL, 4, lot, la) RETURNING id INTO nn2;
+  INSERT INTO shipments (nat_order_id, origin_location_id, dest_location_id, pallets, load_from, load_to, deliver_from, deliver_to, created_by)
+  VALUES (nn2, la, lb, 4, f, t, f + interval '4 hours', t + interval '4 hours', 's073b') RETURNING id INTO sh2;
+  INSERT INTO shipment_pieces (shipment_id, pallets, created_by) VALUES (sh2, 4, 's073b');
 END $s$;`;
 const SCENARIO2 = `DO $s$
 DECLARE hub bigint; lb bigint; vpc bigint; r jsonb; lg bigint; cl bigint; d date := (now() AT TIME ZONE 'Europe/Athens')::date + 40;
@@ -182,6 +193,10 @@ test('073b on the production-shaped copy', async (t) => {
     assert.strictEqual(v['B-79'], 0, 'B-79 stays 0 when X changes in the settings: it compares with the X of the order (M-4 beta)');
     assert.strictEqual(v['B-80'], 0, 'B-80: the shares add up to the price by construction (M-3 beta), why it is disabled (M-5 delta)');
     assert.strictEqual(v['B-78'], 2, 'B-78 names the VS with a Direct NL AND the national order with a load of today');
+    assert.strictEqual(v['B-90'], 1, 'B-90: the national whose price was wiped, never the stock-lot national without a price (finding 5)');
+    // Q6-1 / principle 3: B-83 and the P&L flag read the same rule (ct_v_rt_partner_cost) - they agree on the scenario
+    assert.strictEqual(v['B-83'], await n(db, `SELECT count(*) AS n FROM ct_v_rt_pnl WHERE partner_rate_missing`), 'B-83 = the P&L\'s partner_rate_missing');
+    assert.strictEqual(v['B-83'], 1, 'B-83: the partner cycle without a rate');
     // written out, not taken from the builder: a builder that stopped seeding 072b's checks must fail here too
     for (const id of ['B-91', 'B-92', 'B-93']) assert.strictEqual(v[id], 0, `${id}: seeded by 073b, and every cycle of the scenario went through the plan_*`);
     const res = await runAll(db);

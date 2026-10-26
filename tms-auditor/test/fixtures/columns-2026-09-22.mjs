@@ -105,7 +105,11 @@ export const V5_073 = {
       ['n_legs', 'int8'], ['ended', 'bool']],
     ct_v_v5_revenue: [['kind', 'text'], ['order_id', 'int8'], ['nat_order_id', 'int8'], ['piece_id', 'int8'], ['leg_id', 'int8'], ['rt_id', 'int8'],
       ['pallets', 'numeric'], ['total', 'numeric'], ['amount', 'numeric']],
+    // 073 (Q6-1, owner 26/10): the partner cost of a v5 cycle per partner of its segments, read by B-83
+    ct_v_rt_partner_cost: [['rt_id', 'int8'], ['partner_id', 'int8'], ['planned', 'numeric'], ['invoiced', 'numeric'], ['cost', 'numeric'],
+      ['unmatched', 'bool'], ['rate_missing', 'bool']],
   },
   columns: { ct_round_trips: [['model', 'int2'], ['start_at', 'timestamptz'], ['end_at', 'timestamptz'], ['partner_rate', 'numeric']],
-             pl_movements: [['piece_leg_id', 'int8']] },
+             pl_movements: [['piece_leg_id', 'int8']],
+             ct_cost_lines: [['partner_id', 'int8']] },
 };

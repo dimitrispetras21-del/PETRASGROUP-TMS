@@ -64,11 +64,21 @@ export function draftGrants(file) {
   }));
 }
 export const STOCK_DRAFT = '057_stock_lots.sql';
-// 071 (executed 22/10), DRAFT 072b and DRAFT 073 grant their own relations, like 057: the F3 checks (B-78..B-93) read
-// them. Paths under worker/migrations/ (draftGrants' base); a draft moves one folder up once the owner runs it.
+// A migration is a draft until the owner runs it; then it leaves drafts/ (CLAUDE.md rule 5) - before the next one
+// runs (072b leaves before 073 does: final review 26/10, finding 9). Read it from where it is: from both folders is two
+// copies that will disagree (principle 3), from neither is a missing file - both loud, never a silent fallback.
+export function migrationFile(name) {
+  const d = path.join(DRAFTS, name), m = path.join(MIGRATIONS, name);
+  const inD = fs.existsSync(d), inM = fs.existsSync(m);
+  if (inD && inM) throw new Error(`${name} is in worker/migrations/drafts/ AND worker/migrations/: keep one copy`);
+  if (!inD && !inM) throw new Error(`${name} is in neither worker/migrations/drafts/ nor worker/migrations/`);
+  return inD ? d : m;
+}
+// 071 (executed 22/10), 072b and 073 grant their own relations, like 057: the F3 checks (B-78..B-93) read them. Paths
+// under worker/migrations/ (draftGrants' base), wherever the file is today.
 export const V5_SCHEMA = '071_plan_schema.sql';
-export const V5_SEGMENTS = 'drafts/072b_plan_vehicle_segments.sql';
-export const V5_MONEY = 'drafts/073_plan_money.sql';
+export const V5_SEGMENTS = path.relative(MIGRATIONS, migrationFile('072b_plan_vehicle_segments.sql'));
+export const V5_MONEY = path.relative(MIGRATIONS, migrationFile('073_plan_money.sql'));
 export const OWN_GRANTS = [STOCK_DRAFT, V5_SCHEMA, V5_SEGMENTS, V5_MONEY];
 
 export async function createDb({ roles = false, seed = true, fixture = true, extensions, v5 = true } = {}) {

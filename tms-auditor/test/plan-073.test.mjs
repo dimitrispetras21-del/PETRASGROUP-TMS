@@ -13,11 +13,11 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { prodShaped072, TRG } from './prod-shaped-072.mjs';
-import { DRAFTS } from '../lib/db.mjs';
+import { migrationFile, DRAFTS, MIGRATIONS } from '../lib/db.mjs';
 import { IDS as IDS_073B } from '../../worker/migrations/drafts/tools/build-073b.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
-const read = (f) => fs.readFileSync(path.join(DRAFTS, f), 'utf8');             // 073: drafts until executed
+const read = (f) => fs.readFileSync(migrationFile(f), 'utf8');                  // 073: drafts/ until executed, then one up
 const fixture = (f) => fs.readFileSync(path.join(HERE, 'fixtures', f), 'utf8');
 
 const V5_ROWS = `SELECT (SELECT count(*) FROM shipments) + (SELECT count(*) FROM shipment_pieces) + (SELECT count(*) FROM rt_stops)
@@ -65,6 +65,24 @@ const part0 = (src) => src.slice(src.indexOf('PART 0'), src.indexOf('PART 1'));
 const viewPairs = (src) => [...part0(src).matchAll(/\('(public\.[a-z0-9_]+)', '([0-9a-f]{32})'\)/g)];
 const fnPairs = (src) => [...part0(src).matchAll(/\('(public\.[a-z0-9_]+\([a-z0-9_,[\]]*\))', '([0-9a-f]{32})'\)/g)];
 const fnMd5 = async (db, sig) => (await db.query('SELECT md5(prosrc) AS m FROM pg_proc WHERE oid = to_regprocedure($1)', [sig])).rows[0]?.m;
+
+// final review 26/10 (finding 9): 072b leaves drafts/ when the owner runs it, before 073 runs - the harness reads a
+// migration from where it is, and stops when it is in both folders or in neither
+test('migrationFile: drafts/ or one up, never both, never neither', () => {
+  const name = `zz_${process.pid}_migration_file_probe.sql`;
+  const d = path.join(DRAFTS, name), m = path.join(MIGRATIONS, name);
+  try {
+    assert.throws(() => migrationFile(name), /in neither/);
+    fs.writeFileSync(d, '-- probe');
+    assert.strictEqual(migrationFile(name), d);
+    fs.writeFileSync(m, '-- probe');
+    assert.throws(() => migrationFile(name), /AND worker\/migrations\/: keep one copy/);
+    fs.unlinkSync(d);
+    assert.strictEqual(migrationFile(name), m);
+  } finally {
+    for (const f of [d, m]) if (fs.existsSync(f)) fs.unlinkSync(f);
+  }
+});
 
 test('073 on a production-shaped PGlite copy', async (t) => {
   const db = await prodShaped();

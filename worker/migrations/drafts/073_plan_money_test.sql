@@ -21,7 +21,7 @@
 DO $t073$
 DECLARE
   td date; d date; e date; k int;
-  hub bigint; la bigint; lb bigint; lc bigint; cl1 bigint; cl2 bigint; pa bigint;
+  hub bigint; la bigint; lb bigint; lc bigint; cl1 bigint; cl2 bigint; pa bigint; pb bigint;
   trk1 bigint; trk2 bigint; trk3 bigint; drv1 bigint; drv2 bigint;
   a06 timestamptz; a08 timestamptz; a09 timestamptz; a10 timestamptz; a12 timestamptz; a14 timestamptz;
   a15 timestamptz; a16 timestamptz; a17 timestamptz; a18 timestamptz;
@@ -60,15 +60,21 @@ DECLARE
     , 'ok'               -- 26 route: one block per side, KATHODOS first, first and last stop, + stops
     , 'ok'               -- 27 route of an ANODOS-only cycle
     , 'ok'               -- 28 a cancelled v5 cycle has no route
-    , 'ok'               -- 29 partner pallet gate: a v5 leg needs its sheet; a confirmed row is the sheet
+    , 'ok'               -- 29 partner pallet gate: a direct v5 leg has its sheet only when LOADING AND DELIVERY are confirmed
     , 'ok'               -- 30 stock 057: a national lot piece with v5 shipments is delivered when its leg executed
     , 'ok'               -- 31 wear: a v5 cycle without km adds nothing to the truck's km and its wear is 0 (E8)
     , 'ok'               -- 32 the dispatcher's list shows the confirmed pallet rows (counts), never an amount
-    , 'ok'               -- 33 the user's given on a pending DELIVERY survives a later change of the leg (spec 3)
+    , 'ok'               -- 33 Q9-1: the user's taken on a pending DELIVERY ("not got back") survives a later change of the leg
     , 'ok'               -- 34 a national order with v5 shipments AND an old home NL on a trip: its price counts once
     -- cross-cutting input rule (coordinator 25/10): the feeder refuses by name what would reach the ledger endless
     , 'ok'               -- 35 a riding piece whose pallets became NaN: bad_input piece:<id>:finite, no pallet row written
     , 'ok'               -- 36 a stop whose window ends at 'infinity': bad_input leg:<id>:finite, no pallet row written
+    -- final round 1 (26/10): owner Q6-1, coordinator Q9-1, final review finding 3
+    , 'ok'               -- 37 Q9-1, 10 -> 8 pallets: LOADING taken follows, the user's given stays; DELIVERY given follows, the user's taken stays
+    , 'ok'               -- 38 a split parent's pending LOADING follows the order's correction (its leaves' pallets now)
+    , 'ok'               -- 39 Q6-1, two partners with rates: planned = the sum; one partner's invoice replaces only its own rate
+    , 'ok'               -- 40 Q6-1, two partners, one without a rate: pending until THAT partner invoices; an unnamed line is counted, replaces nothing
+    , 'ok'               -- 41 the X shared for a child order uses its parent's direction, as the international deducts it
     -- @want (one line per case: "    , '<ok|plan:code|con:name|state:XXXXX>'  -- <k> <what>")
   ]::text[];
   verdict text; got text; hint text; msg text; cname text; st text;
@@ -106,6 +112,7 @@ BEGIN
   INSERT INTO clients (company_name) VALUES ('TEST 073 client 1') RETURNING id INTO cl1;
   INSERT INTO clients (company_name) VALUES ('TEST 073 client 2') RETURNING id INTO cl2;
   INSERT INTO partners (company_name) VALUES ('TEST 073 partner') RETURNING id INTO pa;
+  INSERT INTO partners (company_name) VALUES ('TEST 073 partner 2') RETURNING id INTO pb;
   INSERT INTO trucks (license_plate) VALUES ('TEST-073-1') RETURNING id INTO trk1;
   INSERT INTO trucks (license_plate) VALUES ('TEST-073-2') RETURNING id INTO trk2;
   INSERT INTO trucks (license_plate) VALUES ('TEST-073-3') RETURNING id INTO trk3;
@@ -218,6 +225,10 @@ BEGIN
           SELECT legs_needing_sheet, legs_with_sheet INTO n, m FROM ct_v_rt_pallet_gate WHERE rt_id = rt1;
           UPDATE pl_movements SET status = 'confirmed', confirmed_by = 'test:073', confirmed_at = now(), sheet_source = 'MANUAL'
            WHERE piece_leg_id = x AND event_type = 'LOADING';
+          -- the LOADING alone is not the leg's sheet (final review 26/10, finding 7)
+          SELECT legs_with_sheet::text || '/' || sheets_ok::text INTO t1 FROM ct_v_rt_pallet_gate WHERE rt_id = rt1;
+          UPDATE pl_movements SET status = 'confirmed', confirmed_by = 'test:073', confirmed_at = now()
+           WHERE piece_leg_id = x AND event_type = 'DELIVERY';
         END IF;
       ELSIF k = 10 THEN
         PERFORM plan_orders_create(jsonb_build_object('request_id', gen_random_uuid()) || jsonb_build_object('orders', jsonb_build_array(jo1 || jsonb_build_object('pallet_exchange', true,
@@ -351,8 +362,8 @@ BEGIN
                'target', tgt1, 'stops', st1), 'test:073', 'owner');
         x := (r->'ids'->'leg_ids'->>0)::bigint;
         IF k = 33 THEN
-          -- the user corrects given (8 of 10 came back) before confirming, as PATCH /pallets/movements does
-          UPDATE pl_movements SET given = 8 WHERE piece_leg_id = x AND event_type = 'DELIVERY';
+          -- Q9-1: the user corrects taken (8 of 10 came back) before confirming, as PATCH /pallets/movements does
+          UPDATE pl_movements SET taken = 8 WHERE piece_leg_id = x AND event_type = 'DELIVERY';
           r := plan_rt_update(jsonb_build_object('rt_id', rt1, 'shift', jsonb_build_object('side', 'KATHODOS', 'delta', '1 day')),
                               'test:073', 'dispatcher');
         ELSE
@@ -387,6 +398,70 @@ BEGIN
         -- back as it was, so the verdict reads the feeder alone: 071's COMMIT rules refuse the same rows too
         -- (pieces_sum for the NaN piece, rt_window for the endless stop), one layer lower
         IF k = 35 THEN UPDATE shipment_pieces SET pallets = 10 WHERE id = p1; ELSE UPDATE rt_stops SET planned_to = a14 WHERE id = s1b; END IF;
+      ELSIF k = 37 THEN
+        r := plan_put_pieces(jsonb_build_object('pieces', jsonb_build_array(jsonb_build_object('piece_id', p1)),
+               'target', tgt1, 'stops', st1), 'test:073', 'owner');
+        x := (r->'ids'->'leg_ids'->>0)::bigint;
+        -- the user's sides, before confirming (PATCH /pallets/movements): we gave back 3 at loading, got back 7 at delivery
+        UPDATE pl_movements SET given = 3 WHERE piece_leg_id = x AND event_type = 'LOADING';
+        UPDATE pl_movements SET taken = 7 WHERE piece_leg_id = x AND event_type = 'DELIVERY';
+        r := plan_order_update(jsonb_build_object('nat_order_id', n1, 'shipments',
+               jsonb_build_array(jsonb_build_object('shipment_id', sh1, 'pallets', 8))), 'test:073', 'dispatcher');
+      ELSIF k = 38 THEN
+        -- p1 to Veroia on R1 (LOADING 10 at A), split 6 + 4 there, the 6 on R2 to B; the 4 stay in stock
+        r := plan_put_pieces(jsonb_build_object('pieces', jsonb_build_array(jsonb_build_object('piece_id', p1, 'to_hub', true)),
+               'target', tgt1, 'stops', jsonb_build_array(jsonb_build_object('ref', 'a', 'stop_id', s1a),
+                                                          jsonb_build_object('ref', 'h', 'stop_id', s1h))), 'test:073', 'owner');
+        x := (r->'ids'->'leg_ids'->>0)::bigint;
+        r := plan_split_piece(jsonb_build_object('request_id', gen_random_uuid()) || jsonb_build_object('piece_id', p1, 'parts', '[{"pallets": 6}, {"pallets": 4}]'::jsonb), 'test:073', 'owner');
+        y := (SELECT id FROM shipment_pieces WHERE parent_piece_id = p1 AND pallets = 6 AND deleted_at IS NULL);
+        r := plan_put_pieces(jsonb_build_object('pieces', jsonb_build_array(jsonb_build_object('piece_id', y)),
+               'target', tgt2, 'stops', jsonb_build_array(jsonb_build_object('ref', 'h', 'stop_id', s2h),
+                                                          jsonb_build_object('ref', 'b', 'stop_id', s2b))), 'test:073', 'owner');
+        q := (r->'ids'->'leg_ids'->>0)::bigint;
+        -- 10 -> 8: the 2 come off the stock (plan_h_resize), the parent's own row keeps 10
+        r := plan_order_update(jsonb_build_object('nat_order_id', n1, 'shipments',
+               jsonb_build_array(jsonb_build_object('shipment_id', sh1, 'pallets', 8))), 'test:073', 'dispatcher');
+      ELSIF k IN (39, 40) THEN
+        r := plan_rt_create(jsonb_build_object('new_rt', jsonb_build_object('trip_type', 'PARTNER', 'partner_id', pa, 'partner_rate', 300),
+               'stops', jsonb_build_array(jsonb_build_object('ref', 'c', 'location_id', lc, 'side', 'ANODOS',
+                                                             'planned_from', a15, 'planned_to', a16))), 'test:073', 'owner');
+        rt3 := (r->>'rt_id')::bigint;
+        PERFORM plan_h_finish();
+        SET CONSTRAINTS ALL DEFERRED;
+        -- a handover inside the cycle to a second partner (072b): rate 200, or none (40)
+        PERFORM plan_seg_change(jsonb_build_object('request_id', gen_random_uuid(), 'rt_id', rt3, 'at', a15 + interval '30 minutes',
+                  'place_note', 'TEST 073', 'reason', 'planned_truck',
+                  'vehicle', jsonb_build_object('trip_type', 'PARTNER', 'partner_id', pb)
+                             || CASE WHEN k = 39 THEN '{"partner_rate": 200}'::jsonb ELSE '{}'::jsonb END), 'test:073', 'dispatcher');
+        SET CONSTRAINTS ALL DEFERRED;
+        SELECT partner_planned::text || '/' || lines_net::text INTO t1 FROM ct_v_rt_costs WHERE rt_id = rt3;
+        n := (SELECT CASE WHEN partner_rate_missing THEN 1 ELSE 0 END FROM ct_v_rt_pnl WHERE id = rt3);
+        -- the first partner's invoice: 280, naming it
+        INSERT INTO ct_cost_lines (rt_id, category, net, vat, alloc_status, pay_source, line_date, created_by, partner_id)
+        VALUES (rt3, 'partner_rate', 280, 0, 'allocated', 'CREDIT', d, 'test:073', pa);
+        m := (SELECT CASE WHEN partner_rate_missing THEN 1 ELSE 0 END FROM ct_v_rt_pnl WHERE id = rt3);
+        SELECT lines_net INTO q FROM ct_v_rt_costs WHERE rt_id = rt3;
+        IF k = 40 THEN
+          -- then the second partner's own invoice (150), and a line that names nobody on a two-partner cycle (50)
+          INSERT INTO ct_cost_lines (rt_id, category, net, vat, alloc_status, pay_source, line_date, created_by, partner_id)
+          VALUES (rt3, 'partner_rate', 150, 0, 'allocated', 'CREDIT', d, 'test:073', pb),
+                 (rt3, 'partner_rate', 50, 0, 'allocated', 'CREDIT', d, 'test:073', NULL);
+        END IF;
+      ELSIF k = 41 THEN
+        -- an Export with its Greek leg as a child order (034: leg 2, no direction of its own, the parent's VS switch)
+        INSERT INTO orders (legacy_id, order_type, direction, status, veroia_switch, loading_datetime, delivery_datetime,
+                            cross_dock_date, reference, client_id, price)
+        VALUES ('rec073TO3', 'International', 'Export', 'Pending', true, d, d + 4, e, 'WN073-TEST', cl2, 3000) RETURNING id INTO q;
+        INSERT INTO orders (legacy_id, order_type, status, loading_datetime, delivery_datetime, cross_dock_date, reference,
+                            client_id, parent_order_id, leg_no)
+        VALUES ('rec073TO4', 'International', 'Pending', d, d + 4, e, 'WN073-TEST', cl2, q, 2) RETURNING id INTO vso;
+        INSERT INTO order_stops (legacy_id, stop_type, stop_number, datetime, order_id, location_id, pallets)
+        VALUES ('rec073TS4', 'Loading', 1, d, vso, la, 10) RETURNING id INTO vs_b;
+        INSERT INTO shipments (order_id, order_stop_id, created_by) VALUES (vso, vs_b, 'test:073') RETURNING id INTO y;
+        INSERT INTO shipment_pieces (shipment_id, pallets, created_by) VALUES (y, 10, 'test:073');
+        SET CONSTRAINTS ALL IMMEDIATE;
+        SET CONSTRAINTS ALL DEFERRED;
       -- @case (each task adds its "ELSIF k = <n> THEN" branches above this line)
       END IF;
       SET CONSTRAINTS ALL IMMEDIATE;
@@ -529,9 +604,10 @@ BEGIN
                           AND NOT EXISTS (SELECT 1 FROM dl_v_rt_route WHERE rt_id = rt1)
                         THEN 'ok a cancelled cycle has no route' ELSE 'FAIL cancelled route' END;
       ELSIF k = 29 THEN
-        verdict := CASE WHEN n = 1 AND m = 0
+        verdict := CASE WHEN n = 1 AND m = 0 AND t1 = '0/false'
                           AND (SELECT legs_needing_sheet = 1 AND legs_with_sheet = 1 AND sheets_ok FROM ct_v_rt_pallet_gate WHERE rt_id = rt1)
-                        THEN 'ok 1 leg needs a sheet; the confirmed LOADING is the sheet' ELSE 'FAIL v5 gate' END;
+                        THEN 'ok 1 leg needs a sheet; LOADING alone is not it, LOADING + DELIVERY confirmed is'
+                        ELSE 'FAIL v5 gate: ' || n || '/' || m || ' ' || coalesce(t1, 'null') END;
       ELSIF k = 30 THEN
         verdict := CASE WHEN t1 = 'false/false'
                           AND (SELECT delivered AND on_truck AND delivered_on = td - 2 FROM stock_v_pieces WHERE piece_kind = 'natl' AND piece_id = x)
@@ -547,12 +623,12 @@ BEGIN
                           AND strpos(r::text, '"amount"') = 0
                         THEN 'ok the dispatcher sees the confirmed pallet row, no amount' ELSE 'FAIL dispatcher list: ' || r::text END;
       ELSIF k = 33 THEN
-        verdict := CASE WHEN (SELECT movement_date = e AND taken = 10 AND given = 8 FROM pl_movements
+        verdict := CASE WHEN (SELECT movement_date = e AND taken = 8 AND given = 10 FROM pl_movements
                                WHERE piece_leg_id = x AND event_type = 'DELIVERY' AND status = 'pending')
                           AND (SELECT movement_date = e AND taken = 10 AND given = 0 FROM pl_movements
                                WHERE piece_leg_id = x AND event_type = 'LOADING' AND status = 'pending')
-                        THEN 'ok the row moved to D+1 and kept the user''s 8 (the plan never undoes a correction)'
-                        ELSE 'FAIL given overwritten: ' || coalesce((SELECT string_agg(to_jsonb(pm)::text, ' ') FROM pl_movements pm WHERE pm.piece_leg_id = x), 'none') END;
+                        THEN 'ok the row moved to D+1 and kept the user''s taken 8 (the plan never undoes a correction)'
+                        ELSE 'FAIL taken overwritten: ' || coalesce((SELECT string_agg(to_jsonb(pm)::text, ' ') FROM pl_movements pm WHERE pm.piece_leg_id = x), 'none') END;
       ELSIF k = 34 THEN
         verdict := CASE WHEN (SELECT revenue_natl FROM ct_v_rt_revenue WHERE rt_id = rt3) = 0
                           AND (SELECT revenue_natl FROM ct_v_rt_revenue WHERE rt_id = rt1) = 400
@@ -565,6 +641,37 @@ BEGIN
                           AND n = 2
                         THEN 'ok refused by name, the two pending rows unchanged'
                         ELSE 'FAIL finite: ' || coalesce(msg, 'null') END;
+      ELSIF k = 37 THEN
+        verdict := CASE WHEN (SELECT taken = 8 AND given = 3 FROM pl_movements WHERE piece_leg_id = x AND event_type = 'LOADING' AND status = 'pending')
+                          AND (SELECT taken = 7 AND given = 8 FROM pl_movements WHERE piece_leg_id = x AND event_type = 'DELIVERY' AND status = 'pending')
+                        THEN 'ok LOADING 8 loaded / the user''s 3; DELIVERY 8 delivered / the user''s 7'
+                        ELSE 'FAIL Q9-1: ' || coalesce((SELECT string_agg(to_jsonb(pm)::text, ' ') FROM pl_movements pm WHERE pm.piece_leg_id = x), 'none') END;
+      ELSIF k = 38 THEN
+        verdict := CASE WHEN (SELECT count(*) = 1 AND min(taken) = 8 AND min(given) = 0 FROM pl_movements
+                               WHERE piece_leg_id = x AND event_type = 'LOADING' AND status = 'pending')
+                          AND (SELECT taken = 6 AND given = 6 FROM pl_movements WHERE piece_leg_id = q AND event_type = 'DELIVERY' AND status = 'pending')
+                          AND (SELECT sum(pallets) FROM v_piece_state WHERE shipment_id = sh1) = 8
+                        THEN 'ok the parent''s LOADING 10 -> 8 with its leaves, the 6 delivered as before'
+                        ELSE 'FAIL split parent: ' || coalesce((SELECT string_agg(to_jsonb(pm)::text, ' ') FROM pl_movements pm WHERE pm.piece_leg_id IN (x, q)), 'none') END;
+      ELSIF k = 39 THEN
+        verdict := CASE WHEN t1 = '500.00/500.00' AND n = 0 AND m = 0 AND q = 480
+                          AND (SELECT partner_planned = 500 AND partner_invoiced = 280 FROM ct_v_rt_costs WHERE rt_id = rt3)
+                          AND (SELECT count(*) = 2 AND NOT bool_or(unmatched) FROM ct_v_rt_partner_cost WHERE rt_id = rt3)
+                        THEN 'ok 300 + 200 planned; the first partner''s 280 replaces its 300 only: 480'
+                        ELSE 'FAIL two partners: ' || coalesce(t1, 'null') || ' ' || n || '/' || m || ' ' || coalesce(q::text, 'null') END;
+      ELSIF k = 40 THEN
+        verdict := CASE WHEN t1 = '300.00/300.00' AND n = 1 AND m = 1 AND q = 280
+                          AND (SELECT NOT partner_rate_missing FROM ct_v_rt_pnl WHERE id = rt3)
+                          AND (SELECT lines_net = 480 AND partner_planned = 300 AND partner_invoiced = 480 FROM ct_v_rt_costs WHERE rt_id = rt3)
+                          AND (SELECT count(*) = 1 FROM ct_v_rt_partner_cost WHERE rt_id = rt3 AND unmatched AND partner_id IS NULL AND cost = 50)
+                        THEN 'ok missing until the second partner invoices (the first one''s invoice does not cover it); 280 + 150 + 50 unnamed = 480'
+                        ELSE 'FAIL one rate missing: ' || coalesce(t1, 'null') || ' ' || n || '/' || m || ' ' || coalesce(q::text, 'null') || ' '
+                             || coalesce((SELECT string_agg(to_jsonb(v)::text, ' ') FROM ct_v_rt_partner_cost v WHERE rt_id = rt3), 'none') END;
+      ELSIF k = 41 THEN
+        verdict := CASE WHEN (SELECT count(*) = 1 AND min(total) = ct_setting('x_export') AND sum(amount) = ct_setting('x_export')
+                                FROM ct_v_v5_revenue WHERE order_id = vso AND kind = 'x')
+                        THEN 'ok the X of the child order is the parent''s Export X'
+                        ELSE 'FAIL child X: ' || coalesce((SELECT string_agg(to_jsonb(v)::text, ' ') FROM ct_v_v5_revenue v WHERE order_id = vso), 'none') END;
       -- @verdict (each task adds its "ELSIF k = <n> THEN verdict := ..." branches above this line)
       END IF;
       RAISE EXCEPTION 'wn073 undo' USING HINT = 'wn073_undo';

@@ -73,12 +73,16 @@ test('073: one md5 list per fact - guards, proofs, verify and rollback agree', (
   for (const h of hooks) assert.ok(rb.includes(h.split('=')[1]), `rollback reads the 073 text of ${h}`);
 });
 
-test('073: no table, no column, no trigger; born closed; security_invoker kept', () => {
+test('073: no table, one column (Q6-1), no trigger; born closed; security_invoker kept', () => {
   const s = strip(read('073_plan_money.sql'));
-  assert.ok(!/create\s+(table|trigger)|alter\s+table|add\s+column|create\s+constraint\s+trigger/i.test(s));
+  assert.ok(!/create\s+(table|trigger)|create\s+constraint\s+trigger/i.test(s));
+  // Q6-1 (owner 26/10): the ONE schema change - a partner invoice line names its partner; nothing else is altered
+  assert.deepStrictEqual([...s.matchAll(/alter\s+table[^;]*;/gi)].map((m) => m[0]),
+    ['ALTER TABLE public.ct_cost_lines ADD COLUMN partner_id bigint REFERENCES public.partners (id) ON DELETE RESTRICT;']);
+  assert.match(strip(read('073_plan_money_rollback.sql')), /DROP VIEW public\.ct_v_rt_partner_cost;\s+ALTER TABLE public\.ct_cost_lines DROP COLUMN partner_id;/);
   assert.match(s, /REVOKE ALL ON FUNCTION public\.plan_h_pallet_sync\(bigint\[\],text,text\) FROM PUBLIC, anon, authenticated, service_role;/);
-  assert.match(s, /REVOKE ALL ON public\.ct_v_v5_revenue FROM PUBLIC, anon, authenticated, service_role, tms_reader;/);
-  assert.match(s, /GRANT SELECT ON public\.ct_v_v5_revenue TO service_role, tms_check_runner;/);
+  assert.match(s, /REVOKE ALL ON public\.ct_v_v5_revenue, public\.ct_v_rt_partner_cost FROM PUBLIC, anon, authenticated, service_role, tms_reader;/);
+  assert.match(s, /GRANT SELECT ON public\.ct_v_v5_revenue, public\.ct_v_rt_partner_cost TO service_role, tms_check_runner;/);
   for (const v of ['dl_v_rt_route', 'ct_v_rt_pallet_gate']) {
     assert.match(s, new RegExp(`CREATE OR REPLACE VIEW public\\.${v} WITH \\(security_invoker = true\\) AS`), v);
     assert.match(strip(read('073_plan_money_rollback.sql')), new RegExp(`CREATE OR REPLACE VIEW public\\.${v} WITH \\(security_invoker = true\\) AS`), `rollback ${v}`);

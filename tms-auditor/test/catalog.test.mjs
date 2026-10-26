@@ -15,10 +15,10 @@ const HERE = path.dirname(new URL(import.meta.url).pathname);
 // count in the two grant tests below, parsed by the same function that applies them to the local database.
 const grantedOwn = (role) => new Set(OWN_GRANTS.flatMap((f) => draftGrants(f)).filter((g) => g.roles.includes(role)).flatMap((g) => g.rels));
 // The deliberate holes: tms_reader gets no money view («tms_reader: no money», 057 §7 and 073). stock_v_lot_money is
-// read only by S-09 (ids) and S-11, ct_v_v5_revenue only by B-79 / B-80; they run as tms_check_runner inside
-// run_checks, and an interactive tms_reader session re-running them gets «permission denied» — loud, never a silent 0.
-// Asserted below: runner yes, reader no.
-const READER_NO_MONEY = ['stock_v_lot_money', 'ct_v_v5_revenue'];
+// read only by S-09 (ids) and S-11, ct_v_v5_revenue only by B-79 / B-80, ct_v_rt_partner_cost (073, Q6-1) only by
+// B-83; they run as tms_check_runner inside run_checks, and an interactive tms_reader session re-running them gets
+// «permission denied» — loud, never a silent 0. Asserted below: runner yes, reader no.
+const READER_NO_MONEY = ['stock_v_lot_money', 'ct_v_v5_revenue', 'ct_v_rt_partner_cost'];
 
 test('every check file lints clean', () => {
   const { checks, errors } = loadChecks();

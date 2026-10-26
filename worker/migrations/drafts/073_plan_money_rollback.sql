@@ -1,11 +1,12 @@
 -- 073 ROLLBACK - puts back exactly what 073 changed: the 5 functions of 072 + 072b (their text before 073, byte for
 -- byte: the md5s of 073's PART 0), the 6 views (their live text, measured on production 23/10 and 26/10: the same
--- rows, options and rights), and removes ct_v_v5_revenue, plan_h_pallet_sync and pl_mov_stop_once. Only with an
--- explicit yes, after 15:00.
+-- rows, options and rights), and removes ct_v_v5_revenue, ct_v_rt_partner_cost, ct_cost_lines.partner_id (Q6-1),
+-- plan_h_pallet_sync and pl_mov_stop_once. Only with an explicit yes, after 15:00.
 -- ORDER (K-18 + 072b): 073b's rollback first (its checks read ct_v_v5_revenue), then THIS, then 072b's (it refuses
 --   while 073 is applied: it guards its hooked texts, which 073 changes), then 072's (it drops every plan_*).
 -- It REFUSES as soon as one v5 row exists (spec 2.2: after the first real v5 row there is no going back, only fixes
--- forward; with the /plan/* writes closed until day L there is none before L), and while 073b's checks exist.
+-- forward; with the /plan/* writes closed until day L there is none before L), while 073b's checks exist, and while a
+-- cost line names its partner (ct_cost_lines.partner_id: dropping it would lose whose invoice it is, Q6-1).
 -- plan_h_drop_consequences and plan_rt_update hold 072b's hooks: their "before 073" md5 is derived on the
 -- production-shaped PGlite copy from 072 + the 072b draft and is re-derived from production after 072b runs.
 -- ASCII only (the arrows of the route are U&'' escapes). ONE DO block = ONE statement: an error anywhere undoes all of it.
@@ -40,6 +41,10 @@ BEGIN
   IF EXISTS (SELECT 1 FROM monitoring.checks WHERE id IN ('B-78', 'B-79', 'B-80', 'B-81', 'B-82', 'B-83', 'B-84', 'B-85',
                                                           'B-86', 'B-87', 'B-88', 'B-89', 'B-90')) THEN
     RAISE EXCEPTION '073 rollback: 073b''s checks (B-78..B-90) exist - run 073b''s rollback first';
+  END IF;
+  SELECT count(*) INTO v_k FROM public.ct_cost_lines WHERE partner_id IS NOT NULL;
+  IF v_k <> 0 THEN
+    RAISE EXCEPTION '073 rollback: % cost line(s) name their partner (ct_cost_lines.partner_id, Q6-1) - the column would take it with it; stop, show them to the owner', v_k;
   END IF;
   SELECT count(*) INTO v_trg0 FROM pg_trigger t JOIN pg_class c ON c.oid = t.tgrelid
     JOIN pg_namespace ns ON ns.oid = c.relnamespace
@@ -385,6 +390,9 @@ UNION ALL
    FROM national_orders n
   WHERE n.deleted_at IS NULL AND n.stock_lot_id IS NOT NULL;
   DROP VIEW public.ct_v_v5_revenue;
+  -- after ct_v_rt_costs and ct_v_rt_pnl stopped reading them (above)
+  DROP VIEW public.ct_v_rt_partner_cost;
+  ALTER TABLE public.ct_cost_lines DROP COLUMN partner_id;
   DROP FUNCTION public.plan_h_pallet_sync(bigint[],text,text);
   DROP INDEX public.pl_mov_stop_once;
 
@@ -415,10 +423,14 @@ UNION ALL
     RAISE EXCEPTION '073 rollback proof: service_role does not execute exactly the 19 public plan_* of 072 + 072b';
   END IF;
   PERFORM pg_notify('pgrst', 'reload schema');
-  RAISE NOTICE '073 ROLLBACK OK: 5 functions back to 072 + 072b, 6 views back to their live text, the money view, the helper and the index gone; numbers %', v_snap1;
+  IF to_regclass('public.ct_v_rt_partner_cost') IS NOT NULL OR EXISTS (SELECT 1 FROM pg_attribute WHERE attrelid = 'public.ct_cost_lines'::regclass
+       AND attname = 'partner_id' AND NOT attisdropped) THEN
+    RAISE EXCEPTION '073 rollback proof: ct_v_rt_partner_cost or ct_cost_lines.partner_id still there';
+  END IF;
+  RAISE NOTICE '073 ROLLBACK OK: 5 functions back to 072 + 072b, 6 views back to their live text, the two money views, the partner column, the helper and the index gone; numbers %', v_snap1;
 END $do$;
 
 SELECT CASE WHEN to_regprocedure('public.plan_h_pallet_sync(bigint[],text,text)') IS NULL AND to_regclass('public.ct_v_v5_revenue') IS NULL
-             AND to_regclass('public.pl_mov_stop_once') IS NULL THEN '073 ROLLED BACK' ELSE '073 STILL IN PLACE' END AS result,
+             AND to_regclass('public.ct_v_rt_partner_cost') IS NULL AND to_regclass('public.pl_mov_stop_once') IS NULL THEN '073 ROLLED BACK' ELSE '073 STILL IN PLACE' END AS result,
        md5(pg_get_viewdef('public.ct_v_rt_revenue'::regclass, true)) AS revenue_md5,
        (SELECT md5(prosrc) FROM pg_proc WHERE oid = 'public.plan_h_leg_add(bigint,bigint,bigint,bigint,text,text,integer)'::regprocedure) AS leg_add_md5;

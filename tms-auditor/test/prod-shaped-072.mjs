@@ -11,7 +11,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { freshDb } from './helpers.mjs';
-import { DRAFTS } from '../lib/db.mjs';
+import { DRAFTS, migrationFile } from '../lib/db.mjs';
 import { btree_gist } from '@electric-sql/pglite/contrib/btree_gist';
 import { pgcrypto } from '@electric-sql/pglite/contrib/pgcrypto';
 
@@ -51,7 +51,7 @@ export async function prodShaped072(with072 = true, { money = 'stubs', with072b 
   await db.exec(readDone('071_plan_schema.sql'));
   await db.exec(readDone('071b_plan_one_vehicle.sql'));
   if (with072) await db.exec(readDone('072_plan_functions.sql'));
-  // 072b: a draft until the owner runs it (then it leaves drafts/ and this line reads it from worker/migrations/)
-  if (with072b) await db.exec(fs.readFileSync(path.join(DRAFTS, '072b_plan_vehicle_segments.sql'), 'utf8'));
+  // 072b: a draft until the owner runs it; then it leaves drafts/ and this line reads it from worker/migrations/
+  if (with072b) await db.exec(fs.readFileSync(migrationFile('072b_plan_vehicle_segments.sql'), 'utf8'));
   return db;
 }

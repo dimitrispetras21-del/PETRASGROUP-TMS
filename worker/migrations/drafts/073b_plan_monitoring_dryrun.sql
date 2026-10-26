@@ -161,10 +161,9 @@ BEGIN
     ($m$B-83$m$,
      convert_from(decode('zpXOuM69zrnOus+Mz4IgzrrPjc66zrvOv8+CIM+Dz4XOvc61z4HOs86sz4TOtyDPh8+Jz4HOr8+CIM66z4zOvM65z4PPhM+Bzr8=', 'base64'), 'UTF8'),
      ARRAY[$m$F-23$m$,$m$F-36$m$]::text[],
-     $m$SELECT count(*) FROM ct_round_trips r WHERE r.model = 2 AND r.trip_type = 'PARTNER' AND r.status <> 'cancelled' AND r.partner_rate IS NULL
- AND NOT EXISTS (SELECT 1 FROM ct_cost_lines c WHERE c.rt_id = r.id AND c.category = 'partner_rate')$m$,
-     $m$SELECT coalesce(array_agg(x ORDER BY x), '{}') FROM (SELECT r.code AS x FROM ct_round_trips r WHERE r.model = 2 AND r.trip_type = 'PARTNER' AND r.status <> 'cancelled'
- AND r.partner_rate IS NULL AND NOT EXISTS (SELECT 1 FROM ct_cost_lines c WHERE c.rt_id = r.id AND c.category = 'partner_rate') ORDER BY r.code LIMIT 50) s$m$,
+     $m$SELECT count(*) FROM ct_v_rt_partner_cost p JOIN ct_round_trips r ON r.id = p.rt_id WHERE p.rate_missing AND r.status <> 'cancelled'$m$,
+     $m$SELECT coalesce(array_agg(x ORDER BY x), '{}') FROM (SELECT DISTINCT r.code AS x FROM ct_v_rt_partner_cost p JOIN ct_round_trips r ON r.id = p.rt_id
+ WHERE p.rate_missing AND r.status <> 'cancelled' ORDER BY r.code LIMIT 50) s$m$,
      $m$ct_round_trips$m$,
      $m$>$m$,
      0,
@@ -174,7 +173,7 @@ BEGIN
      true,
      convert_from(decode('zqTOvyDOus+Mz4PPhM6/z4Igz4TOv8+FIM+Dz4XOvc61z4HOs86sz4TOtyDOu861zq/PgM61zrk6IM+Ezr8gUCZMIM+Ezr/PhSDOus+NzrrOu86/z4Ugz4bOsc6vzr3Otc+EzrHOuSDOus61z4HOtM6/z4bPjM+Bzr8gKHNwZWMgMzogwqvPhs6xzq/Ovc61z4TOsc65IM+Jz4IgzrXOus66z4HOtc68z4zPhM63z4TOsSwgzrrOsc65IM+Dz4TOvyBQJkzCuyku', 'base64'), 'UTF8'),
      convert_from(decode('RGlzcGF0Y2hlcjogzrrPjM68zrnPg8+Ez4HOvyDPg8+Ezr/OvSDOus+NzrrOu86/ICjOlc6yzrTOv868zrHOtM65zrHOr86/IM6VzrjOvc65zrrPjs69KSwgzq4gzrvOv86zzrnPg8+Ezq7Pgc65zr86IM+EzrnOvM6/zrvPjM6zzrnOvyDPg8+Fzr3Otc+BzrPOrM+Ezrcgz4nPgiDOs8+BzrHOvM68zq4gzrrPjM+Dz4TOv8+Fz4Iu', 'base64'), 'UTF8'),
-     convert_from(decode('zorOtM65zr/PgiDOus6xzr3PjM69zrHPgiDOvM61IM+Ezr8gY3Rfdl9ydF9wbmwucGFydG5lcl9yYXRlX21pc3Npbmc6IG1vZGVsIDIsIFBBUlRORVIsIM+Mz4fOuSDOsc66z4XPgc+JzrzOrc69zr/Pgiwgz4fPic+Bzq/PgiDOus+MzrzOuc+Dz4TPgc6/IM66zrHOuSDPh8+Jz4HOr8+CIM6zz4HOsc68zrzOriBwYXJ0bmVyX3JhdGUu', 'base64'), 'UTF8'),
+     convert_from(decode('zp8gzpnOlM6Zzp/OoyDOus6xzr3PjM69zrHPgiDOvM61IM+Ezr8gY3Rfdl9ydF9wbmwucGFydG5lcl9yYXRlX21pc3NpbmcsIM60zrnOsc6yzrHPg868zq3Ovc6/z4IgzrHPgM+MIM+EzrfOvSDOr860zrnOsSDPjM+IzrcgY3Rfdl9ydF9wYXJ0bmVyX2Nvc3QgKDA3MywgUTYtMSBvd25lciAyNi8xMCwgzrHPgc+Hzq4gMyk6IM6xzr3OrCDPg8+Fzr3Otc+BzrPOrM+Ezrcgz4TPic69IM+EzrzOt868zqzPhM+Jzr0gUEFSVE5FUiDOtc69z4zPgiDOus+NzrrOu86/z4UgdjUsIM+EzrzOrs68zrEgz4fPic+Bzq/PgiDOus+MzrzOuc+Dz4TPgc6/IM66zrHOuSDOus6xzr3Orc69zrEgz4TOuc68zr/Ou8+MzrPOuc6/IM6xz4XPhM6/z40gz4TOv8+FIM+Dz4XOvc61z4HOs86sz4TOt8K3IM6/IM66z43Ous67zr/PgiDPjM+HzrkgzrHOus+Fz4HPic68zq3Ovc6/z4Iu', 'base64'), 'UTF8'),
      NULL,
      true,
      NULL),
@@ -295,9 +294,9 @@ BEGIN
     ($m$B-90$m$,
      convert_from(decode('zpXOuM69zrnOus6uIHY1IM+Hz4nPgc6vz4Igz4TOuc68zq4=', 'base64'), 'UTF8'),
      ARRAY[$m$F-23$m$,$m$F-36$m$]::text[],
-     $m$SELECT count(*) FROM national_orders n WHERE n.deleted_at IS NULL AND coalesce(n.price, 0) <= 0
+     $m$SELECT count(*) FROM national_orders n WHERE n.deleted_at IS NULL AND n.stock_lot_id IS NULL AND coalesce(n.price, 0) <= 0
  AND EXISTS (SELECT 1 FROM shipments s WHERE s.nat_order_id = n.id AND s.deleted_at IS NULL)$m$,
-     $m$SELECT coalesce(array_agg(x ORDER BY x), '{}') FROM (SELECT n.legacy_id AS x FROM national_orders n WHERE n.deleted_at IS NULL AND coalesce(n.price, 0) <= 0
+     $m$SELECT coalesce(array_agg(x ORDER BY x), '{}') FROM (SELECT n.legacy_id AS x FROM national_orders n WHERE n.deleted_at IS NULL AND n.stock_lot_id IS NULL AND coalesce(n.price, 0) <= 0
  AND EXISTS (SELECT 1 FROM shipments s WHERE s.nat_order_id = n.id AND s.deleted_at IS NULL) ORDER BY n.legacy_id LIMIT 50) s$m$,
      $m$national_orders$m$,
      $m$>$m$,
@@ -308,7 +307,7 @@ BEGIN
      true,
      convert_from(decode('zpcgcGxhbl8qIM6xz4HOvc61zq/PhM6xzrkgwqvOp8+Jz4HOr8+CIM+EzrnOvM6uwrsgz4PPhM63IM60zrfOvM65zr/Phc+BzrPOr86xwrcgzrzOuc6xIM+EzrnOvM6uIM+Azr/PhSDPg86yzq7Pg8+EzrfOus61IM6xz4HOs8+Mz4TOtc+BzrEgKFBBVENIIM+Ezr/PhSDOu86/zrPOuc+Dz4TOt8+Bzq/Ov8+FKSDOtM6vzr3Otc65IM6tz4POv860zr8gMCDPg8+Ezr/Phc+CIM66z43Ous67zr/Phc+CIM+EzrfPgi4=', 'base64'), 'UTF8'),
      convert_from(decode('zpvOv86zzrnPg8+Ezq7Pgc65zr86IM+EzrnOvM6uIM+Dz4TOt869IM61zrjOvc65zrrOriAozq4gMSDigqwgzrPOuc6xIM+EzrnPgiDOrM60zrXOuc61z4Igz4DOsc67zq3PhM61z4IsIHNwZWMgMyku', 'base64'), 'UTF8'),
-     convert_from(decode('W00tNiDOsSwgb3duZXIgMjQvMTBdIM6VzrjOvc65zrrOrc+CIM68zrUgzrbPic69z4TOsc69zq4gzrHPgM6/z4PPhM6/zrvOriB2NSDOus6xzrkgz4TOuc68zq4gzrrOtc69zq4gzq4gPD0gMC4=', 'base64'), 'UTF8'),
+     convert_from(decode('W00tNiDOsSwgb3duZXIgMjQvMTBdIM6VzrjOvc65zrrOrc+CIM68zrUgzrbPic69z4TOsc69zq4gzrHPgM6/z4PPhM6/zrvOriB2NSDOus6xzrkgz4TOuc68zq4gzrrOtc69zq4gzq4gPD0gMC4gzozPh865IM6/zrkgzrXOuM69zrnOus6tz4Igz4DOsc+Bz4TOr860zrHPgiDOsc+Azr/OuM6tzrzOsc+Ezr/PgiAoc3RvY2tfbG90X2lkKTogzrcgMDU3IM+Ezr/Phc+CIM66z4HOsc+Ezqwgz4TOt869IM+EzrnOvM6uIM66zrXOvc6uIM+DzrrPjM+AzrnOvM6xIChzdG9ja19waWVjZV9ub19tb25leSksIM+Ezr8gzq3Pg86/zrTPjCDPhM6/z4XPgiDOtc6vzr3Osc65IM+EzrfPgiDPgM6xz4HPhM6vzrTOsc+CICjPhM61zrvOuc66zq4gzrrPgc65z4TOuc66zq4gMjYvMTAsIM61z43Pgc63zrzOsSA1KS4=', 'base64'), 'UTF8'),
      NULL,
      true,
      NULL),
@@ -418,14 +417,14 @@ BEGIN
       ('B-80', '4cd3dc09b38b087c6f32567ea11bfcbf', '637d71af4377e09cb022ed24f86af772', false),
       ('B-81', 'ebb3ee7b6d27f78fe2720e89d26d4d6d', '5af14c3eed0edf4b09f17d04681af5e4', true),
       ('B-82', '5380bc6be21c19ed6b0fa9335296d160', '3bf18847bb14a954a1bfacfca4436f38', true),
-      ('B-83', '883c0763c410f1c80e65620cb5c9d90d', '3a5825fac0b7d397cb5030ddbbf7e103', true),
+      ('B-83', '0e81406660dfd3ddb1ee50cbd7175a48', '29a0583013a95f10dcc9f8800c60823f', true),
       ('B-84', 'd17b616aa5013dd2b3020080f68e16e8', '9f596817c0ee7044bf80ad798f7a9e66', true),
       ('B-85', '12fddd73ef0aadb02f81c5febf55b5eb', 'd41d8cd98f00b204e9800998ecf8427e', true),
       ('B-86', '98cbd5b90a7e0b8cf68c0032974a3f98', 'd41d8cd98f00b204e9800998ecf8427e', true),
       ('B-87', '94af86e0d0ec74078da1d231a1e4d1f8', 'd41d8cd98f00b204e9800998ecf8427e', true),
       ('B-88', 'eb1239a47306725df165188da5fcf4d7', '10208742081adf3630c722637b07de06', true),
       ('B-89', 'd61bc60845f54574e204f80480890d0d', 'd41d8cd98f00b204e9800998ecf8427e', true),
-      ('B-90', '1eaba989e6821223c61594da4d545b47', '5e485162c1c7b7ad891963535bc187c2', true),
+      ('B-90', '0e54fea8e537b6bf45b2160276bd20cd', 'ae9c736373c7acc79db0034ede69179c', true),
       ('B-91', '0d9beb07b3894732998d5af2750bac15', '7d136a2ffa2c63818205d4bf13b18ece', true),
       ('B-92', '3a96740d6e9a6e91e57a8a615fa16ced', '9d8247bedf2368e1fbaf3752818e8ba3', true),
       ('B-93', '759b98ba2f07218448d82a79eef73ed7', '0036a4daadad585e73bc745fc081ebf5', true)

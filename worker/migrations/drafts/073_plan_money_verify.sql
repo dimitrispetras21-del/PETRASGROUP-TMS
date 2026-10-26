@@ -9,14 +9,16 @@
 SELECT
   CASE WHEN to_regprocedure('public.plan_h_pallet_sync(bigint[],text,text)') IS NOT NULL
         AND to_regclass('public.ct_v_v5_revenue') IS NOT NULL AND to_regclass('public.pl_mov_stop_once') IS NOT NULL
+        AND to_regclass('public.ct_v_rt_partner_cost') IS NOT NULL
        THEN '073 in place' ELSE '073 NOT in place' END AS applied,
   (SELECT count(*) FROM (VALUES
-      ('public.ct_v_v5_revenue', 'c9dc289ac9effdcff38a5a4847ca3e70'),
+      ('public.ct_v_v5_revenue', '38ad088375678a7d72e50d9481a350b5'),
+      ('public.ct_v_rt_partner_cost', '41031bfc167feb86a8d7370ee798cf49'),
       ('public.ct_v_rt_revenue', 'ad3c2b619ee826b3c8250a07011807da'),
-      ('public.ct_v_rt_costs', 'ffd8d8191117b0833fb656faa10d3fa2'),
-      ('public.ct_v_rt_pnl', '26e49204998a386c22f45ebf1746b177'),
+      ('public.ct_v_rt_costs', '5b069a9d07765a85d0ceab48dbc497d3'),
+      ('public.ct_v_rt_pnl', '7ee495c2c2be7baa65464ec755c34ff4'),
       ('public.dl_v_rt_route', 'b21405a7856b912d2ea697235461cbd6'),
-      ('public.ct_v_rt_pallet_gate', '92daf0df9d41c2028880fac7be0167c5'),
+      ('public.ct_v_rt_pallet_gate', '5756bb1aaf5afe9b1d8312bba39bcb6f'),
       ('public.stock_v_pieces', 'db95036d7dcc8cb02d32843ee0b2fb7c')) g(rel, m)
     WHERE to_regclass(g.rel) IS NULL OR md5(pg_get_viewdef(to_regclass(g.rel), true)) <> g.m) AS views_changed,
   (SELECT count(*) FROM (VALUES
@@ -29,7 +31,8 @@ SELECT
   (SELECT count(*) FROM pg_class c WHERE c.oid IN ('public.dl_v_rt_route'::regclass, 'public.ct_v_rt_pallet_gate'::regclass)
      AND c.reloptions IS DISTINCT FROM ARRAY['security_invoker=true']) AS invoker_lost,
   (SELECT count(*) FROM unnest(ARRAY['anon', 'authenticated', 'tms_reader']) r(role)
-    WHERE to_regclass('public.ct_v_v5_revenue') IS NOT NULL AND has_table_privilege(r.role, 'public.ct_v_v5_revenue', 'SELECT')) AS open_money,
+     CROSS JOIN unnest(ARRAY['public.ct_v_v5_revenue', 'public.ct_v_rt_partner_cost']) v(rel)
+    WHERE to_regclass(v.rel) IS NOT NULL AND has_table_privilege(r.role, v.rel, 'SELECT')) AS open_money,
   (SELECT count(*) FROM unnest(ARRAY['anon', 'authenticated', 'service_role']) r(role)
     WHERE to_regprocedure('public.plan_h_pallet_sync(bigint[],text,text)') IS NOT NULL
       AND has_function_privilege(r.role, 'public.plan_h_pallet_sync(bigint[],text,text)', 'EXECUTE')) AS open_helper,

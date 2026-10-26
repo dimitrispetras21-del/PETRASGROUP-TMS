@@ -133,6 +133,7 @@ declare
   -- "Aposyrthike apo ton programmatismo ethnikon" (the reason of a row the plan withdraws):
   w_reason constant text := convert_from(decode('zpHPgM6/z4PPjc+BzrjOt866zrUgzrHPgM+MIM+Ezr/OvSDPgM+Bzr/Os8+BzrHOvM68zrHPhM65z4POvM+MIM61zrjOvc65zrrPjs69', 'base64'), 'UTF8');
   v_leg bigint; w record; m pl_movements%rowtype; m2 pl_movements%rowtype; v_want jsonb; v_ev text; x jsonb; v_given int;
+  v_taken int;
 begin
   -- The ONE writer of pl_movements rows with piece_leg_id (F2 interface I-05): what a leg should have written is
   -- computed from the plan every time, and the leg's rows follow it. Pending rows follow; a confirmed row is history
@@ -143,7 +144,18 @@ begin
     select l.id, l.deleted_at is not null as dropped,
            (l.deleted_at is null and sp.deleted_at is null and vs.live and vs.kind = 'national' and vs.pallet_exchange)
              is true as feeds,
-           sp.id as piece_id, sp.pallets, vs.client_id, vs.nat_from_location_id as nat_from,
+           sp.id as piece_id,
+           -- final review 26/10 (finding 3): a split piece's own pallets keep the count of the day it was split, while
+           -- plan_h_resize changes only its live leaves; its leg carried what those leaves are now, so a pending LOADING
+           -- of the parent follows the order's correction like any other (a confirmed one stays history)
+           coalesce((with recursive d as (
+                       select c.id, c.pallets from shipment_pieces c where c.parent_piece_id = sp.id and c.deleted_at is null
+                       union all
+                       select c.id, c.pallets from shipment_pieces c join d on c.parent_piece_id = d.id where c.deleted_at is null)
+                     select sum(d.pallets) from d
+                      where not exists (select 1 from shipment_pieces g where g.parent_piece_id = d.id and g.deleted_at is null)),
+                    sp.pallets) as pallets,
+           vs.client_id, vs.nat_from_location_id as nat_from,
            vs.nat_to_location_id as nat_to, pk.location_id as pick_loc,
            (pk.planned_to at time zone 'Europe/Athens')::date as pick_day,
            dr.location_id as drop_loc, (dr.planned_to at time zone 'Europe/Athens')::date as drop_day, hub.id as hub_id
@@ -185,18 +197,25 @@ begin
     for m in select * from pl_movements where piece_leg_id = v_leg and status <> 'reversed' order by id for update loop
       x := v_want -> m.event_type;
       if x is not null then
-        -- given belongs to the user once it differs from the prefill (spec 3: "the user only confirms, and corrects
-        -- only if we did not get them back"): a later change of the leg moves the row, never undoes the correction.
-        -- taken stays the plan's (the piece's pallets), as the browser feeder keeps a pending LOADING's taken today.
-        v_given := case when m.given = (case m.event_type when 'DELIVERY' then m.taken else 0 end)
-                        then (x->>'given')::numeric::int else m.given end;
+        -- Q9-1 (coordinator 26/10): per event, the plan owns the LOADED side and the user the EXCHANGE side. LOADING:
+        -- taken = the pallets loaded (plan), given = what we gave back there (user). DELIVERY: given = the pallets
+        -- delivered (plan), taken = what came back (user: "we did not get them back", today's plvDoFix; the ledger's
+        -- balance is sum(given - taken), 003). The user's side is the user's once it differs from the prefill
+        -- (LOADING given 0, DELIVERY taken = given): a later change of the leg moves the row, never undoes it.
+        if m.event_type = 'DELIVERY' then
+          v_given := (x->>'given')::numeric::int;
+          v_taken := case when m.taken = m.given then (x->>'taken')::numeric::int else m.taken end;
+        else
+          v_taken := (x->>'taken')::numeric::int;
+          v_given := case when m.given = 0 then (x->>'given')::numeric::int else m.given end;
+        end if;
         if m.status = 'pending'
            and (m.location_id, m.movement_date, m.taken, m.given, m.client_id, m.counterparty_type)
-               is distinct from ((x->>'location_id')::bigint, (x->>'movement_date')::date, (x->>'taken')::numeric::int,
+               is distinct from ((x->>'location_id')::bigint, (x->>'movement_date')::date, v_taken,
                                  v_given, w.client_id, 'CLIENT') then
           update pl_movements
              set location_id = (x->>'location_id')::bigint, movement_date = (x->>'movement_date')::date,
-                 taken = (x->>'taken')::numeric::int, given = v_given,
+                 taken = v_taken, given = v_given,
                  counterparty_type = 'CLIENT', client_id = w.client_id, partner_id = null
            where id = m.id returning * into m2;
           perform plan_h_audit(p_actor, p_role, 'update', 'pl_movements', m.id::text, to_jsonb(m), to_jsonb(m2));
@@ -305,11 +324,15 @@ $f$;
            CASE WHEN ps.kind = 'national' THEN 'price' ELSE 'x' END AS share_of,
            CASE WHEN ps.kind = 'national' THEN 'n' || ps.nat_order_id ELSE 'o' || ps.order_id END AS share_key,
            CASE WHEN ps.kind = 'national' THEN COALESCE(n.price, 0::numeric)
-                ELSE public.stock_vs_charge(CASE WHEN o.direction = 'Export' THEN public.ct_setting('x_export')
+                -- final review 26/10 (finding 6): the direction ct_v_rt_revenue deducts with - the parent's for a child
+                -- order (034) - or the shares and the deduction use two different X and B-79 cannot see it
+                ELSE public.stock_vs_charge(CASE WHEN CASE WHEN o.parent_order_id IS NOT NULL THEN po.direction
+                                                           ELSE o.direction END = 'Export' THEN public.ct_setting('x_export')
                                                  ELSE public.ct_setting('x_import') END, vp.pallets) END AS total
       FROM public.v_piece_state ps
       LEFT JOIN public.national_orders n ON n.id = ps.nat_order_id
       LEFT JOIN public.orders o ON o.id = ps.order_id
+      LEFT JOIN public.orders po ON po.id = o.parent_order_id
       LEFT JOIN public.stock_v_pieces vp ON vp.piece_kind = 'intl' AND vp.piece_id = o.id
   ), share AS (
     -- spec 3: per pallet, over EVERY pallet of the order's live shipments, whatever the goods (IFCO is a client)
@@ -446,7 +469,47 @@ $f$;
    FROM allr
   GROUP BY rt_id;
 
-  -- E7. Costs: a v5 PARTNER cycle's planned rate is its one ct_round_trips.partner_rate (spec 3). Columns unchanged.
+  -- E7 / Q6-1 (owner 26/10, money): "a cycle with two PARTNER segments costs the SUM of the segments' partner rates;
+  -- a partner's invoice replaces ONLY that partner's own rate". An invoice line has to say whose it is, so a line of
+  -- category partner_rate may name its partner (NULL = today's lines, every one of them; the Worker's /costs/lines
+  -- writes it). ON DELETE RESTRICT: a partner with an invoice line is never deleted from under it.
+  ALTER TABLE public.ct_cost_lines ADD COLUMN partner_id bigint REFERENCES public.partners (id) ON DELETE RESTRICT;
+  -- ONE rule for the P&L (ct_v_rt_costs, ct_v_rt_pnl) and the auditor (B-83), principle 3: one row per v5 cycle and
+  -- partner of its live PARTNER segments - planned = the sum of that partner's segment rates, invoiced = the sum of
+  -- the lines that name that partner (or name none, when the cycle has exactly one partner: today's single invoice),
+  -- cost = invoiced when it is not 0, else planned (as today's NULLIF), rate_missing = a segment of that partner
+  -- without a rate and no invoice of its own. A line no partner of the cycle owns (it names another partner, or none
+  -- on a cycle with two partners or none) is a row of its own (unmatched): its money is counted, never dropped, and
+  -- replaces no rate - the P&L errs towards cost, never towards profit. Money: as ct_v_v5_revenue (owner's rights;
+  -- service_role and the auditor's runner only, PART 5).
+  CREATE VIEW public.ct_v_rt_partner_cost AS
+  WITH seg AS (
+    SELECT s.rt_id, s.partner_id, sum(s.partner_rate) AS planned, count(*) FILTER (WHERE s.partner_rate IS NULL) AS no_rate
+      FROM public.rt_vehicle_segments s
+      JOIN public.ct_round_trips r ON r.id = s.rt_id AND r.model = 2
+     WHERE s.deleted_at IS NULL AND s.trip_type = 'PARTNER'
+     GROUP BY s.rt_id, s.partner_id
+  ), one AS (
+    SELECT seg.rt_id, min(seg.partner_id) AS partner_id FROM seg GROUP BY seg.rt_id HAVING count(*) = 1
+  ), inv AS (
+    SELECT c.rt_id, COALESCE(c.partner_id, one.partner_id) AS partner_id, sum(c.net) AS invoiced
+      FROM public.ct_cost_lines c
+      JOIN public.ct_round_trips r ON r.id = c.rt_id AND r.model = 2
+      LEFT JOIN one ON one.rt_id = c.rt_id AND c.partner_id IS NULL
+     WHERE c.category = 'partner_rate'
+     GROUP BY c.rt_id, COALESCE(c.partner_id, one.partner_id)
+  )
+  SELECT COALESCE(g.rt_id, i.rt_id) AS rt_id, COALESCE(g.partner_id, i.partner_id) AS partner_id,
+         g.planned, COALESCE(i.invoiced, 0::numeric) AS invoiced,
+         CASE WHEN g.rt_id IS NULL OR COALESCE(i.invoiced, 0::numeric) <> 0::numeric THEN i.invoiced
+              ELSE COALESCE(g.planned, 0::numeric) END AS cost,
+         g.rt_id IS NULL AS unmatched,
+         COALESCE(g.no_rate > 0 AND COALESCE(i.invoiced, 0::numeric) = 0::numeric, false) AS rate_missing
+    FROM seg g
+    FULL JOIN inv i ON i.rt_id = g.rt_id AND i.partner_id = g.partner_id;
+
+  -- E7. Costs: a v5 cycle's partner cost and planned rate are the sums of ct_v_rt_partner_cost (Q6-1); today's round
+  -- trips (model 1) exactly as before. Columns unchanged.
   CREATE OR REPLACE VIEW public.ct_v_rt_costs AS
   WITH lines AS (
          SELECT ct_cost_lines.rt_id,
@@ -489,14 +552,23 @@ $f$;
                      JOIN national_loads nl ON nl.id = l.nat_load_id
                   WHERE nl.deleted_at IS NULL AND COALESCE(nl.is_partner_trip, false) AND nl.partner_rate IS NOT NULL
                 UNION ALL
-                 SELECT r5.id,
-                    r5.partner_rate
-                   FROM ct_round_trips r5
-                  WHERE r5.model = 2 AND r5.trip_type = 'PARTNER'::text AND r5.partner_rate IS NOT NULL) x
+                 SELECT pc.rt_id,
+                    pc.planned
+                   FROM ct_v_rt_partner_cost pc
+                  WHERE pc.planned IS NOT NULL) x
           GROUP BY x.rt_id
+        ), v5cost AS (
+         SELECT pc.rt_id,
+            sum(pc.cost) AS partner_cost
+           FROM ct_v_rt_partner_cost pc
+          GROUP BY pc.rt_id
         )
  SELECT rt.id AS rt_id,
-    COALESCE(li.net_other, 0::numeric) + COALESCE(NULLIF(li.partner_invoiced, 0::numeric), pl.partner_planned, 0::numeric) + COALESCE(dl.trip_value, 0::numeric) + COALESCE(dl.expenses, 0::numeric) AS lines_net,
+    COALESCE(li.net_other, 0::numeric) +
+        CASE
+            WHEN rt.model = 2 THEN COALESCE(v5c.partner_cost, 0::numeric)
+            ELSE COALESCE(NULLIF(li.partner_invoiced, 0::numeric), pl.partner_planned, 0::numeric)
+        END + COALESCE(dl.trip_value, 0::numeric) + COALESCE(dl.expenses, 0::numeric) AS lines_net,
     COALESCE(li.vat, 0::numeric) AS vat,
         CASE
             WHEN rt.trip_type = 'OWNED'::text AND rt.total_km IS NOT NULL THEN round(COALESCE(w.eur_per_km, ct_setting('wear_fallback_eur_km'::text)) * rt.total_km::numeric, 2)
@@ -511,11 +583,13 @@ $f$;
    FROM ct_round_trips rt
      LEFT JOIN lines li ON li.rt_id = rt.id
      LEFT JOIN planned pl ON pl.rt_id = rt.id
+     LEFT JOIN v5cost v5c ON v5c.rt_id = rt.id
      LEFT JOIN dl_entries dl ON dl.rt_id = rt.id AND dl.deleted_at IS NULL
      LEFT JOIN ct_v_wear_rate w ON w.truck_id = rt.truck_id;
 
-  -- E7 / D-4 (C-07). The P&L: today's columns, then partner_rate_missing - a v5 PARTNER trip whose rate was left
-  -- empty and was not invoiced either: a pending item (spec 3), never a silent cost of 0 (principle 1).
+  -- E7 / D-4 (C-07). The P&L: today's columns, then partner_rate_missing - a v5 cycle with a PARTNER segment whose
+  -- rate was left empty while its partner sent no invoice either (Q6-1: per partner, ct_v_rt_partner_cost - the rule
+  -- B-83 reads too): a pending item (spec 3), never a silent cost of 0 (principle 1).
   CREATE OR REPLACE VIEW public.ct_v_rt_pnl AS
   SELECT rt.id,
     rt.code,
@@ -550,7 +624,9 @@ $f$;
     c.partner_invoiced,
     r.revenue_intl,
     r.revenue_natl,
-    rt.model = 2 AND rt.trip_type = 'PARTNER'::text AND rt.partner_rate IS NULL AND c.partner_invoiced = 0::numeric AS partner_rate_missing
+    rt.model = 2 AND (EXISTS ( SELECT 1
+           FROM ct_v_rt_partner_cost pc
+          WHERE pc.rt_id = rt.id AND pc.rate_missing)) AS partner_rate_missing
    FROM ct_round_trips rt
      JOIN ct_v_rt_revenue r ON r.rt_id = rt.id
      JOIN ct_v_rt_costs c ON c.rt_id = rt.id
@@ -617,7 +693,10 @@ UNION ALL
   GROUP BY side.rt_id;
 
   -- E11 / D-12. The partner pallet gate (PALLETS_ARCHITECTURE 4.2): today's rows, plus every v5 cycle with legs of
-  -- national shipments with pallet exchange; the sheet of a v5 leg = a confirmed pallet row of that leg.
+  -- national shipments with pallet exchange. Which events a leg needs is the feeder's rule (plan_h_pallet_sync: a
+  -- direct leg LOADING and DELIVERY, a leg to the hub LOADING only, a leg between hubs nothing), read from the rows it
+  -- wrote, never repeated here (final review 26/10, finding 7: one confirmed row of two was taken as the sheet): a leg
+  -- needs a sheet when it has a live pallet row, and has it when none of those rows is pending.
   CREATE OR REPLACE VIEW public.ct_v_rt_pallet_gate WITH (security_invoker = true) AS
   WITH rt_orders AS (
          SELECT l.rt_id,
@@ -632,14 +711,17 @@ UNION ALL
         ), v5 AS (
          SELECT l.rt_id,
             count(*) AS legs_needing_sheet,
-            count(*) FILTER (WHERE (EXISTS ( SELECT 1
+            count(*) FILTER (WHERE NOT (EXISTS ( SELECT 1
                    FROM pl_movements m
-                  WHERE m.piece_leg_id = l.id AND m.status = 'confirmed'::text))) AS legs_with_sheet
+                  WHERE m.piece_leg_id = l.id AND m.status = 'pending'::text))) AS legs_with_sheet
            FROM piece_legs l
              JOIN shipment_pieces sp ON sp.id = l.piece_id
              JOIN v_shipments vs ON vs.shipment_id = sp.shipment_id
              JOIN ct_round_trips r ON r.id = l.rt_id
           WHERE l.deleted_at IS NULL AND r.model = 2 AND r.status <> 'cancelled'::text AND vs.live AND vs.kind = 'national'::text AND vs.pallet_exchange
+            AND (EXISTS ( SELECT 1
+                   FROM pl_movements m
+                  WHERE m.piece_leg_id = l.id AND m.status <> 'reversed'::text))
           GROUP BY l.rt_id
         )
  SELECT ro.rt_id,
@@ -732,8 +814,8 @@ UNION ALL
 
   -- ===== PART 5: RIGHTS AND PROOFS =====
   REVOKE ALL ON FUNCTION public.plan_h_pallet_sync(bigint[],text,text) FROM PUBLIC, anon, authenticated, service_role;
-  REVOKE ALL ON public.ct_v_v5_revenue FROM PUBLIC, anon, authenticated, service_role, tms_reader;
-  GRANT SELECT ON public.ct_v_v5_revenue TO service_role, tms_check_runner;
+  REVOKE ALL ON public.ct_v_v5_revenue, public.ct_v_rt_partner_cost FROM PUBLIC, anon, authenticated, service_role, tms_reader;
+  GRANT SELECT ON public.ct_v_v5_revenue, public.ct_v_rt_partner_cost TO service_role, tms_check_runner;
 
   -- the numbers of today: every view, row for row, the same as before (0 v5 rows: no branch above has a row)
   EXECUTE snap_sql INTO v_snap1;
@@ -747,12 +829,13 @@ UNION ALL
   -- the new texts are the ones of the plan (md5 of pg_get_viewdef(oid, true), measured with tms-auditor/test/tools/
   -- md5-073.mjs on the production-shaped PGlite 17 copy = production 17; M-1 gamma, M-2 alpha, M-3 beta)
   FOR v_g IN SELECT * FROM (VALUES
-      ('public.ct_v_v5_revenue', 'c9dc289ac9effdcff38a5a4847ca3e70'),
+      ('public.ct_v_v5_revenue', '38ad088375678a7d72e50d9481a350b5'),
+      ('public.ct_v_rt_partner_cost', '41031bfc167feb86a8d7370ee798cf49'),
       ('public.ct_v_rt_revenue', 'ad3c2b619ee826b3c8250a07011807da'),
-      ('public.ct_v_rt_costs', 'ffd8d8191117b0833fb656faa10d3fa2'),
-      ('public.ct_v_rt_pnl', '26e49204998a386c22f45ebf1746b177'),
+      ('public.ct_v_rt_costs', '5b069a9d07765a85d0ceab48dbc497d3'),
+      ('public.ct_v_rt_pnl', '7ee495c2c2be7baa65464ec755c34ff4'),
       ('public.dl_v_rt_route', 'b21405a7856b912d2ea697235461cbd6'),
-      ('public.ct_v_rt_pallet_gate', '92daf0df9d41c2028880fac7be0167c5'),
+      ('public.ct_v_rt_pallet_gate', '5756bb1aaf5afe9b1d8312bba39bcb6f'),
       ('public.stock_v_pieces', 'db95036d7dcc8cb02d32843ee0b2fb7c')
     ) g(rel, m) LOOP
     IF md5(pg_get_viewdef(to_regclass(v_g.rel), true)) <> v_g.m THEN
@@ -768,12 +851,14 @@ UNION ALL
            FROM pg_proc WHERE oid = 'public.plan_h_pallet_sync(bigint[],text,text)'::regprocedure) THEN
     RAISE EXCEPTION '073 proof: plan_h_pallet_sync is open, SECURITY DEFINER, not owned by postgres or without search_path';
   END IF;
-  IF has_table_privilege('anon', 'public.ct_v_v5_revenue', 'SELECT') OR has_table_privilege('authenticated', 'public.ct_v_v5_revenue', 'SELECT')
-     OR has_table_privilege('tms_reader', 'public.ct_v_v5_revenue', 'SELECT')
-     OR NOT has_table_privilege('service_role', 'public.ct_v_v5_revenue', 'SELECT')
-     OR NOT has_table_privilege('tms_check_runner', 'public.ct_v_v5_revenue', 'SELECT') THEN
-    RAISE EXCEPTION '073 proof: ct_v_v5_revenue rights are not service_role + tms_check_runner only';
-  END IF;
+  FOR v_g IN SELECT * FROM (VALUES ('public.ct_v_v5_revenue'), ('public.ct_v_rt_partner_cost')) g(rel) LOOP
+    IF has_table_privilege('anon', v_g.rel, 'SELECT') OR has_table_privilege('authenticated', v_g.rel, 'SELECT')
+       OR has_table_privilege('tms_reader', v_g.rel, 'SELECT')
+       OR NOT has_table_privilege('service_role', v_g.rel, 'SELECT')
+       OR NOT has_table_privilege('tms_check_runner', v_g.rel, 'SELECT') THEN
+      RAISE EXCEPTION '073 proof: % rights are not SELECT for service_role + tms_check_runner only', v_g.rel;
+    END IF;
+  END LOOP;
   -- the public functions of 072 (16) and 072b (+ plan_seg_change, plan_seg_fix, plan_seg_remove) are still exactly the
   -- 19 that service_role executes (073 adds a closed helper only)
   IF (SELECT count(*) FROM pg_proc p WHERE p.pronamespace = 'public'::regnamespace AND p.proname LIKE 'plan\_%'
@@ -789,7 +874,7 @@ UNION ALL
   END IF;
   -- PostgREST learns the new column of ct_v_rt_pnl now (GET /costs/pnl selects *)
   PERFORM pg_notify('pgrst', 'reload schema');
-  RAISE NOTICE '073 OK: 7 views (1 new), 1 helper, 5 hooks in 072, 1 index; numbers of today unchanged (%); triggers %',
+  RAISE NOTICE '073 OK: 8 views (2 new), 1 column, 1 helper, 5 hooks in 072, 1 index; numbers of today unchanged (%); triggers %',
     v_snap1, v_trg1;
 END;
   -- ===== what it did =====

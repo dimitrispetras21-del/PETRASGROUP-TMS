@@ -172,8 +172,18 @@ CREATE TABLE public.ct_v_v5_revenue (
   total numeric,
   amount numeric
 );
+CREATE TABLE public.ct_v_rt_partner_cost (
+  rt_id bigint,
+  partner_id bigint,
+  planned numeric,
+  invoiced numeric,
+  cost numeric,
+  unmatched boolean,
+  rate_missing boolean
+);
 ALTER TABLE public.ct_round_trips ADD COLUMN model smallint;
 ALTER TABLE public.ct_round_trips ADD COLUMN start_at timestamptz;
 ALTER TABLE public.ct_round_trips ADD COLUMN end_at timestamptz;
 ALTER TABLE public.ct_round_trips ADD COLUMN partner_rate numeric;
 ALTER TABLE public.pl_movements ADD COLUMN piece_leg_id bigint;
+ALTER TABLE public.ct_cost_lines ADD COLUMN partner_id bigint;
