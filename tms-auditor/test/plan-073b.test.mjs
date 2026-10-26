@@ -11,7 +11,7 @@ import assert from 'node:assert';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { prodShaped072 } from './prod-shaped-072.mjs';
+import { prodShaped072, assertFnAcl } from './prod-shaped-072.mjs';
 import { DRAFTS, migrationFile } from '../lib/db.mjs';
 import { IDS, F3_IDS, V5, RUNNER_FN } from '../../worker/migrations/drafts/tools/build-073b.mjs';
 
@@ -25,6 +25,7 @@ async function prodShaped() {
   const db = await prodShaped072(true, { money: 'live', with072b: true });
   await db.exec(fixture('v1-money-073.sql'));
   await db.exec(read('073_plan_money.sql'));
+  await assertFnAcl(db, true);   // the function rights are production's in the state the 073b tests run on (after 073)
   // the seed of the local catalog already holds the 17 (047b is generated from the files): take them out, as production
   await db.query('DELETE FROM monitoring.checks WHERE id = ANY($1)', [IDS]);
   return db;
@@ -40,10 +41,10 @@ async function values(db, ids = IDS) {   // each check as the auditor's role, as
     try {
       out[id] = Number(Object.values((await db.query(sql)).rows[0])[0]);
       if (idsSql) {   // run_checks runs it as the same role: a right missing there fails here
-        const ids = Object.values((await db.query(idsSql)).rows[0])[0];
-        // NULL ids would reach raise_incident's NOT NULL entity_ids and abort the whole run on the first red day
-        if (!Array.isArray(ids)) throw new Error(`${id}: ids_sql returned ${JSON.stringify(ids)}, not a list`);
-        if (out[id] > 0 && ids.length === 0) throw new Error(`${id}: value ${out[id]} but no ids`);
+        const named = Object.values((await db.query(idsSql)).rows[0])[0];
+        // run_checks turns NULL ids into '{}' (047): a red incident that names nothing, silently (principle 1)
+        if (!Array.isArray(named)) throw new Error(`${id}: ids_sql returned ${JSON.stringify(named)}, not a list`);
+        if (out[id] > 0 && named.length === 0) throw new Error(`${id}: value ${out[id]} but no ids`);
       }
     } finally { await db.exec('RESET ROLE'); }
   }

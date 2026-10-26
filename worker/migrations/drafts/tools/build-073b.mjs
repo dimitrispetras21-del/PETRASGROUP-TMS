@@ -122,7 +122,8 @@ ${rows.join(',\n')};
   -- 3. PROOFS: the text and the on/off are the file's; each check (the disabled B-80 too) passes the same guard as
   --    monitoring.run_checks, runs as the auditor's role and says 0 today (no v5 row before day L). Its ids_sql runs
   --    too, under the same role as in run_checks: a right missing only on the ids path would otherwise pass here
-  --    and fail the first red run (review high, 26/10). NULL ids is an error, as in 057b's proof
+  --    and fail the first red run (review high, 26/10). NULL ids is an error, as in 057b's proof: run_checks would
+  --    turn it into '{}', a red incident that names nothing
   FOR v_g IN SELECT * FROM (VALUES
 ${proof}
     ) p(id, m_sql, m_ids, on_) LOOP

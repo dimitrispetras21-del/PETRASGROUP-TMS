@@ -70,7 +70,7 @@ const fnAcl = (live) => fnAclOf(live).map(([sig, to]) => `DO $a$ DECLARE g text;
   END LOOP;
   REVOKE ALL ON FUNCTION ${sig} FROM PUBLIC;
 END $a$;` + (to.length ? `\nGRANT EXECUTE ON FUNCTION ${sig} TO ${to.join(', ')};` : '')).join('\n');
-async function assertFnAcl(db, live) {
+export async function assertFnAcl(db, live) {
   const want = fnAclOf(live);
   const { rows } = await db.query(`SELECT f.sig, (SELECT array_agg(DISTINCT CASE WHEN a.grantee = 0 THEN 'public' ELSE a.grantee::regrole::text END)
       FROM pg_proc p, aclexplode(coalesce(p.proacl, acldefault('f', p.proowner))) a
