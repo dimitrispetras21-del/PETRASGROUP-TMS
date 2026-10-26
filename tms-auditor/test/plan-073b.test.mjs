@@ -167,7 +167,7 @@ END $s$;`;
 test('073b on the production-shaped copy', async (t) => {
   const db = await prodShaped();
 
-  await t.test('the guards: 073b refuses before 073, without 072b\'s policy on the segments, and when the runner already executes stock_vs_charge', async () => {
+  await t.test('the guards: 073b refuses before 073, without 072b\'s policy on the segments, when the runner already executes stock_vs_charge, and when ct_settings has a policy', async () => {
     await db.exec('BEGIN');
     try {
       await db.exec('DROP POLICY monitor_read ON public.rt_vehicle_segments');
@@ -182,6 +182,11 @@ test('073b on the production-shaped copy', async (t) => {
     try {
       await db.exec(`GRANT EXECUTE ON FUNCTION ${RUNNER_FN} TO tms_check_runner`);
       assert.match(await errorOf(db, read('073b_plan_monitoring.sql')) ?? '', /the runner already executes stock_vs_charge \(a grant, PUBLIC or a membership\) - stop, re-measure/);
+    } finally { await db.exec('ROLLBACK'); }
+    await db.exec('BEGIN');
+    try {
+      await db.exec(`CREATE POLICY someone_else ON public.ct_settings FOR SELECT TO tms_reader USING (true)`);
+      assert.match(await errorOf(db, read('073b_plan_monitoring.sql')) ?? '', /073b: a policy already exists on ct_settings - stop, re-measure/);
     } finally { await db.exec('ROLLBACK'); }
   });
 

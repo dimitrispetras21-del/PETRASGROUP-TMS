@@ -151,7 +151,7 @@ test('073b is the generated one, ASCII, one DO block each, and holds exactly the
   const main = read('073b_plan_monitoring.sql');
   assert.match(main, /GRANT SELECT ON public\.ct_settings TO tms_check_runner;/);
   // the 073b dry run of 26/10 refused B-79 in production: stock_vs_charge (inside ct_v_v5_revenue) runs as the runner
-  const fnRe = B073.fn.replace(/[.()]/g, '\\$&');
+  const fnRe = B073.fn.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   assert.match(main, new RegExp(`GRANT EXECUTE ON FUNCTION ${fnRe} TO tms_check_runner;`));
   assert.strictEqual((strip(main).match(/\bGRANT\b/g) || []).length, 2, 'two GRANTs only');
   const rb = read('073b_plan_monitoring_rollback.sql');

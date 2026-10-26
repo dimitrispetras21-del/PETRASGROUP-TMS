@@ -58,7 +58,13 @@ BEGIN
   --     fail with "permission denied for table ct_settings" as soon as one v5 row exists (measured on PGlite).
   --     The auditor's runner only (it already reads money: stock_v_lot_money, 057); never tms_reader.
   GRANT SELECT ON public.ct_settings TO tms_check_runner;
-  --     (its read policy: section 4, last)
+  --     ct_settings has RLS on in production with no policy (measured 26/10; only service_role, which bypasses RLS,
+  --     read it): the GRANT alone gives the runner 0 rows and ct_setting() answers NULL - X is NULL, so B-79 stays
+  --     green however the shares break (the harness with production's RLS proves it), and on a stock-lot piece
+  --     stock_vs_charge raises "full_truck_pallets is missing" instead. Runner only. Created here, before the
+  --     proofs, so every check is proven in the state 073b leaves; its ACCESS EXCLUSIVE lock on ct_settings (read by
+  --     the Worker through ct_setting()) lasts to the end of this block - seconds, after 15:00.
+  CREATE POLICY monitor_read ON public.ct_settings FOR SELECT TO tms_check_runner USING (true);
   --     And the EXECUTE on stock_vs_charge: 057 gave it to service_role only, and the right to call a function is
   --     checked when the query starts, even with 0 rows, so the 073b dry run of 26/10 stopped at B-79 with "permission denied
   --     for function stock_vs_charge". Runner only, as above (ct_setting is already PUBLIC in production).
@@ -492,13 +498,6 @@ BEGIN
   IF (SELECT count(*) FROM monitoring.checks WHERE id IN ('B-78', 'B-79', 'B-80', 'B-81', 'B-82', 'B-83', 'B-84', 'B-85', 'B-86', 'B-87', 'B-88', 'B-89', 'B-90', 'B-94', 'B-91', 'B-92', 'B-93') AND enabled) <> 16 THEN
     RAISE EXCEPTION '073b proof: the enabled checks are not 16';
   END IF;
-  -- 4. LAST: the runner's read policy on ct_settings. ct_settings has RLS on in production with no policy (measured
-  --    26/10; only service_role, which bypasses RLS, read it): the GRANT alone gives the runner 0 rows and
-  --    ct_setting() answers NULL - X is NULL, so B-79 stays green however the shares break (the harness with
-  --    production's RLS proves it), and on a stock-lot piece stock_vs_charge raises "full_truck_pallets is missing"
-  --    instead. Runner only. Created last: CREATE POLICY holds an ACCESS EXCLUSIVE lock on ct_settings, which the
-  --    Worker reads through ct_setting(), until this block ends - only the proofs below are left.
-  CREATE POLICY monitor_read ON public.ct_settings FOR SELECT TO tms_check_runner USING (true);
   IF NOT has_table_privilege('tms_check_runner', 'public.ct_settings', 'SELECT')
      OR has_table_privilege('tms_reader', 'public.ct_settings', 'SELECT') THEN
     RAISE EXCEPTION '073b proof: ct_settings is not readable by the runner only';
@@ -515,14 +514,15 @@ BEGIN
   SET LOCAL ROLE tms_check_runner;
   SELECT count(DISTINCT key) FILTER (WHERE value IS NOT NULL) INTO v_k FROM public.ct_settings WHERE key IN ('x_import', 'x_export', 'full_truck_pallets');
   v_v := NULL;
-  IF v_k = 3 THEN
-    v_v := public.stock_vs_charge(public.ct_setting('x_import'), 1) + public.stock_vs_charge(public.ct_setting('x_export'), 1);
-  END IF;
+  IF v_k = 3 THEN v_v := public.stock_vs_charge(public.ct_setting('x_import'), 1) + public.stock_vs_charge(public.ct_setting('x_export'), 1); END IF;
   RESET ROLE;
   IF v_k <> 3 THEN
     RAISE EXCEPTION '073b proof: the runner reads % of the 3 X keys with a value (0 = RLS without its policy)', v_k;
   END IF;
-  IF v_v IS NULL THEN RAISE EXCEPTION '073b proof: stock_vs_charge of an X is NULL for the runner'; END IF;
+  --    and the runner computes the same X as the owner does (same settings, same functions)
+  IF v_v IS DISTINCT FROM (public.stock_vs_charge(public.ct_setting('x_import'), 1) + public.stock_vs_charge(public.ct_setting('x_export'), 1)) THEN
+    RAISE EXCEPTION '073b proof: the runner computes X = %, the owner %', v_v, (public.stock_vs_charge(public.ct_setting('x_import'), 1) + public.stock_vs_charge(public.ct_setting('x_export'), 1));
+  END IF;
   IF NOT has_function_privilege('tms_check_runner', 'public.stock_vs_charge(numeric, numeric)', 'EXECUTE')
      OR has_function_privilege('tms_reader', 'public.stock_vs_charge(numeric, numeric)', 'EXECUTE') THEN
     RAISE EXCEPTION '073b proof: stock_vs_charge is not executable by the runner only';

@@ -40,7 +40,9 @@ export const FILES = ['073b_plan_monitoring.sql', '073b_plan_monitoring_dryrun.s
 export const RUNNER_FN = 'public.stock_vs_charge(numeric, numeric)';
 // The ct_settings keys X is made of (ct_v_v5_revenue: x_import / x_export, stock_vs_charge: full_truck_pallets); the
 // proof reads them as the runner.
-export const X_KEYS = ['x_import', 'x_export', 'full_truck_pallets'];
+export const X_VALUE_KEYS = ['x_import', 'x_export'];   // the X of an import / export VS
+export const X_DENOM_KEY = 'full_truck_pallets';          // the denominator of a stock piece's share
+export const X_KEYS = [...X_VALUE_KEYS, X_DENOM_KEY];
 const RUNNER_FN_QUAL = RUNNER_FN.replace(/\(.*$/, '');               // public.stock_vs_charge, for the call
 const RUNNER_FN_NAME = RUNNER_FN_QUAL.replace(/^public\./, '');       // the messages name the function the SQL guards
 const md5 = (s) => crypto.createHash('md5').update(s, 'utf8').digest('hex');
@@ -73,6 +75,7 @@ export function build() {
     c.is_queue, txt(c.impact), txt(c.next_step), txt(c.exceptions), txt(c.tolerance), c.enabled, txt(c.disabled_reason)].join(',\n     ')})`);
   const proof = mine.map((c) => `      ('${c.id}', '${md5(c.sql)}', '${md5(c.ids_sql || '')}', ${c.enabled})`).join(',\n');
   const nOn = mine.filter((c) => c.enabled).length;
+  const xSum = X_VALUE_KEYS.map((k) => `${RUNNER_FN_QUAL}(public.ct_setting('${k}'), 1)`).join(' + ');
   const done = `073b OK: ${IDS.length} checks (${F3_IDS.length} of F3 + ${HANDOVER_IDS.length} of 072b, ${nOn} enabled), ${V5.length} read policies on v5 + 1 on ct_settings, X read by the runner, every check 0 today`;
   const body = `DECLARE
   v_k int; v_trg0 int; v_g record; v_v numeric; v_sql text; v_ids text; v_a text[];
@@ -115,7 +118,13 @@ ${V5.map((t) => `  CREATE POLICY monitor_read ON public.${t} FOR SELECT TO tms_c
   --     fail with "permission denied for table ct_settings" as soon as one v5 row exists (measured on PGlite).
   --     The auditor's runner only (it already reads money: stock_v_lot_money, 057); never tms_reader.
   GRANT SELECT ON public.ct_settings TO tms_check_runner;
-  --     (its read policy: section 4, last)
+  --     ct_settings has RLS on in production with no policy (measured 26/10; only service_role, which bypasses RLS,
+  --     read it): the GRANT alone gives the runner 0 rows and ct_setting() answers NULL - X is NULL, so B-79 stays
+  --     green however the shares break (the harness with production's RLS proves it), and on a stock-lot piece
+  --     stock_vs_charge raises "full_truck_pallets is missing" instead. Runner only. Created here, before the
+  --     proofs, so every check is proven in the state 073b leaves; its ACCESS EXCLUSIVE lock on ct_settings (read by
+  --     the Worker through ct_setting()) lasts to the end of this block - seconds, after 15:00.
+  CREATE POLICY monitor_read ON public.ct_settings FOR SELECT TO tms_check_runner USING (true);
   --     And the EXECUTE on stock_vs_charge: 057 gave it to service_role only, and the right to call a function is
   --     checked when the query starts, even with 0 rows, so the 073b dry run of 26/10 stopped at B-79 with "permission denied
   --     for function stock_vs_charge". Runner only, as above (ct_setting is already PUBLIC in production).
@@ -155,13 +164,6 @@ ${proof}
   IF (SELECT count(*) FROM monitoring.checks WHERE id IN (${list(IDS)}) AND enabled) <> ${nOn} THEN
     RAISE EXCEPTION '073b proof: the enabled checks are not ${nOn}';
   END IF;
-  -- 4. LAST: the runner's read policy on ct_settings. ct_settings has RLS on in production with no policy (measured
-  --    26/10; only service_role, which bypasses RLS, read it): the GRANT alone gives the runner 0 rows and
-  --    ct_setting() answers NULL - X is NULL, so B-79 stays green however the shares break (the harness with
-  --    production's RLS proves it), and on a stock-lot piece stock_vs_charge raises "full_truck_pallets is missing"
-  --    instead. Runner only. Created last: CREATE POLICY holds an ACCESS EXCLUSIVE lock on ct_settings, which the
-  --    Worker reads through ct_setting(), until this block ends - only the proofs below are left.
-  CREATE POLICY monitor_read ON public.ct_settings FOR SELECT TO tms_check_runner USING (true);
   IF NOT has_table_privilege('tms_check_runner', 'public.ct_settings', 'SELECT')
      OR has_table_privilege('tms_reader', 'public.ct_settings', 'SELECT') THEN
     RAISE EXCEPTION '073b proof: ct_settings is not readable by the runner only';
@@ -178,14 +180,15 @@ ${proof}
   SET LOCAL ROLE tms_check_runner;
   SELECT count(DISTINCT key) FILTER (WHERE value IS NOT NULL) INTO v_k FROM public.ct_settings WHERE key IN (${list(X_KEYS)});
   v_v := NULL;
-  IF v_k = ${X_KEYS.length} THEN
-    v_v := ${X_KEYS.filter((k) => k.startsWith('x_')).map((k) => `${RUNNER_FN_QUAL}(public.ct_setting('${k}'), 1)`).join(' + ')};
-  END IF;
+  IF v_k = ${X_KEYS.length} THEN v_v := ${xSum}; END IF;
   RESET ROLE;
   IF v_k <> ${X_KEYS.length} THEN
     RAISE EXCEPTION '073b proof: the runner reads % of the ${X_KEYS.length} X keys with a value (0 = RLS without its policy)', v_k;
   END IF;
-  IF v_v IS NULL THEN RAISE EXCEPTION '073b proof: ${RUNNER_FN_NAME} of an X is NULL for the runner'; END IF;
+  --    and the runner computes the same X as the owner does (same settings, same functions)
+  IF v_v IS DISTINCT FROM (${xSum}) THEN
+    RAISE EXCEPTION '073b proof: the runner computes X = %, the owner %', v_v, (${xSum});
+  END IF;
   IF NOT has_function_privilege('tms_check_runner', '${RUNNER_FN}', 'EXECUTE')
      OR has_function_privilege('tms_reader', '${RUNNER_FN}', 'EXECUTE') THEN
     RAISE EXCEPTION '073b proof: ${RUNNER_FN_NAME} is not executable by the runner only';
