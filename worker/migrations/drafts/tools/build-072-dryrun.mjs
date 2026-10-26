@@ -12,8 +12,8 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
-// The folder that holds the 072 files. After the owner runs them they leave drafts/ (CLAUDE.md rule 5): then
-// this becomes path.resolve(HERE, '../..') and nothing else changes.
+// The folder that holds the 072 files: executed by the owner 2026-10-26, so they left drafts/ (CLAUDE.md rule 5) and
+// DIR moved to path.resolve(HERE, '../..') the same day; nothing else changed.
 export const DIR = path.resolve(HERE, '../..');
 const OPEN = '\nDO $do$\n';
 const CLOSE = '\nEND $do$;\n';
