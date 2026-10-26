@@ -112,6 +112,13 @@ export async function assertRls(db, live) {
     if (!r && !live && RLS_ONLY_LIVE.includes(t)) continue;
     if (!r || r.rls !== true || (r.pol ?? null) !== want) throw new Error(`prodShaped072: ${t} row security ${JSON.stringify(r)}, production RLS on + ${want}`);
   }
+  // and no table of the live copy is left with RLS off: production has none (0 of 46 public tables, 26/10), so a
+  // table a later fixture adds without being listed above fails here instead of reading every row as the runner
+  // (the stubs copy holds tables standing in for production's stock/gate views, so it is not held to this)
+  if (!live) return;
+  const off = (await db.query(`SELECT string_agg(relname, ',') AS t FROM pg_class
+    WHERE relnamespace = 'public'::regnamespace AND relkind IN ('r', 'p') AND NOT relrowsecurity`)).rows[0].t;
+  if (off) throw new Error(`prodShaped072: RLS off on ${off}; production has RLS on every public table`);
 }
 export const TRG = `SELECT count(*)::int AS n FROM pg_trigger t JOIN pg_class c ON c.oid = t.tgrelid
   JOIN pg_namespace ns ON ns.oid = c.relnamespace WHERE NOT t.tgisinternal AND t.tgenabled <> 'D' AND ns.nspname = 'public'`;

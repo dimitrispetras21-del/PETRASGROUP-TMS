@@ -51,7 +51,7 @@ async function values(db, ids = IDS) {   // each check as the auditor's role, as
         const named = Object.values(row)[0];
         // run_checks turns NULL ids into '{}' (047): a red incident that names nothing, silently (principle 1)
         if (!Array.isArray(named)) throw new Error(`${id}: ids_sql returned ${JSON.stringify(named)}, not a list`);
-        if (out[id] > 0 && named.length === 0) throw new Error(`${id}: value ${out[id]} but no ids`);
+        if (out[id] !== 0 && named.length === 0) throw new Error(`${id}: value ${out[id]} but no ids`);
         if (out[id] === 0 && named.length > 0) throw new Error(`${id}: value 0 but ids ${named.join(',')}`);
       }
     } finally { await db.exec('RESET ROLE'); }
