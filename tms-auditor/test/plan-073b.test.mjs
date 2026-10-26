@@ -11,7 +11,7 @@ import assert from 'node:assert';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { prodShaped072, assertFnAcl } from './prod-shaped-072.mjs';
+import { prodShaped072, assertFnAcl, assertRls } from './prod-shaped-072.mjs';
 import { DRAFTS, migrationFile } from '../lib/db.mjs';
 import { IDS, F3_IDS, V5, RUNNER_FN, X_KEYS } from '../../worker/migrations/drafts/tools/build-073b.mjs';
 import { loadChecks } from '../checks/load.mjs';
@@ -26,7 +26,8 @@ async function prodShaped() {
   const db = await prodShaped072(true, { money: 'live', with072b: true });
   await db.exec(fixture('v1-money-073.sql'));
   await db.exec(read('073_plan_money.sql'));
-  await assertFnAcl(db, true);   // the function rights are production's in the state the 073b tests run on (after 073)
+  await assertFnAcl(db, true);   // the function and row rights are production's in the state the 073b tests run on (after 073)
+  await assertRls(db, true);
   // the seed of the local catalog already holds the 17 (047b is generated from the files): take them out, as production
   await db.query('DELETE FROM monitoring.checks WHERE id = ANY($1)', [IDS]);
   return db;
@@ -203,7 +204,7 @@ test('073b on the production-shaped copy', async (t) => {
     await db.exec('BEGIN');
     try {
       await db.exec(`DELETE FROM ct_settings WHERE key = 'x_export'`);
-      assert.match(await errorOf(db, read('073b_plan_monitoring_dryrun.sql')) ?? '', /073b proof: the runner reads 2 of the 3 X keys \(0 = RLS without its policy\)/);
+      assert.match(await errorOf(db, read('073b_plan_monitoring_dryrun.sql')) ?? '', /073b proof: the runner reads 2 of the 3 X keys with a value \(0 = RLS without its policy\)/);
     } finally { await db.exec('ROLLBACK'); }
   });
 

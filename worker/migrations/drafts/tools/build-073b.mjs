@@ -41,7 +41,8 @@ export const RUNNER_FN = 'public.stock_vs_charge(numeric, numeric)';
 // The ct_settings keys X is made of (ct_v_v5_revenue: x_import / x_export, stock_vs_charge: full_truck_pallets); the
 // proof reads them as the runner.
 export const X_KEYS = ['x_import', 'x_export', 'full_truck_pallets'];
-const RUNNER_FN_NAME = RUNNER_FN.replace(/^public\.|\(.*$/g, '');   // the messages name the function the SQL guards
+const RUNNER_FN_QUAL = RUNNER_FN.replace(/\(.*$/, '');               // public.stock_vs_charge, for the call
+const RUNNER_FN_NAME = RUNNER_FN_QUAL.replace(/^public\./, '');       // the messages name the function the SQL guards
 const md5 = (s) => crypto.createHash('md5').update(s, 'utf8').digest('hex');
 const b64 = (s) => Buffer.from(s, 'utf8').toString('base64');
 const txt = (s) => (s == null ? 'NULL' : /^[\x20-\x7e\n]*$/.test(s) && !s.includes('$m$') ? `$m$${s}$m$`
@@ -114,11 +115,7 @@ ${V5.map((t) => `  CREATE POLICY monitor_read ON public.${t} FOR SELECT TO tms_c
   --     fail with "permission denied for table ct_settings" as soon as one v5 row exists (measured on PGlite).
   --     The auditor's runner only (it already reads money: stock_v_lot_money, 057); never tms_reader.
   GRANT SELECT ON public.ct_settings TO tms_check_runner;
-  --     ct_settings has RLS on in production with no policy (measured 26/10; only service_role, which bypasses RLS,
-  --     read it): the GRANT alone gives the runner 0 rows and ct_setting() answers NULL - X is NULL, so B-79 stays
-  --     green however the shares break (the harness with production's RLS proves it), and on a stock-lot piece
-  --     stock_vs_charge raises "full_truck_pallets is missing" instead. A read policy for the runner only.
-  CREATE POLICY monitor_read ON public.ct_settings FOR SELECT TO tms_check_runner USING (true);
+  --     (its read policy: section 4, last)
   --     And the EXECUTE on stock_vs_charge: 057 gave it to service_role only, and the right to call a function is
   --     checked when the query starts, even with 0 rows, so the 073b dry run of 26/10 stopped at B-79 with "permission denied
   --     for function stock_vs_charge". Runner only, as above (ct_setting is already PUBLIC in production).
@@ -158,6 +155,13 @@ ${proof}
   IF (SELECT count(*) FROM monitoring.checks WHERE id IN (${list(IDS)}) AND enabled) <> ${nOn} THEN
     RAISE EXCEPTION '073b proof: the enabled checks are not ${nOn}';
   END IF;
+  -- 4. LAST: the runner's read policy on ct_settings. ct_settings has RLS on in production with no policy (measured
+  --    26/10; only service_role, which bypasses RLS, read it): the GRANT alone gives the runner 0 rows and
+  --    ct_setting() answers NULL - X is NULL, so B-79 stays green however the shares break (the harness with
+  --    production's RLS proves it), and on a stock-lot piece stock_vs_charge raises "full_truck_pallets is missing"
+  --    instead. Runner only. Created last: CREATE POLICY holds an ACCESS EXCLUSIVE lock on ct_settings, which the
+  --    Worker reads through ct_setting(), until this block ends - only the proofs below are left.
+  CREATE POLICY monitor_read ON public.ct_settings FOR SELECT TO tms_check_runner USING (true);
   IF NOT has_table_privilege('tms_check_runner', 'public.ct_settings', 'SELECT')
      OR has_table_privilege('tms_reader', 'public.ct_settings', 'SELECT') THEN
     RAISE EXCEPTION '073b proof: ct_settings is not readable by the runner only';
@@ -169,18 +173,19 @@ ${proof}
     RAISE EXCEPTION '073b proof: ct_settings has not exactly the runner''s read policy';
   END IF;
   --    Measured, not only the catalog (principle 2): with 0 v5 rows no check enters ct_setting() or stock_vs_charge(),
-  --    so read X here as the runner: the keys first (0 = the RLS-blind case, said by name before stock_vs_charge
-  --    could misname it as deleted data), then through the same functions B-79 uses
+  --    so read X here as the runner: the keys with a value first (0 = the RLS-blind case, said by name before
+  --    stock_vs_charge could misname it as deleted data), then each X through the same functions B-79 uses
   SET LOCAL ROLE tms_check_runner;
-  SELECT count(*) INTO v_k FROM public.ct_settings WHERE key IN (${list(X_KEYS)});
+  SELECT count(DISTINCT key) FILTER (WHERE value IS NOT NULL) INTO v_k FROM public.ct_settings WHERE key IN (${list(X_KEYS)});
+  v_v := NULL;
+  IF v_k = ${X_KEYS.length} THEN
+    v_v := ${X_KEYS.filter((k) => k.startsWith('x_')).map((k) => `${RUNNER_FN_QUAL}(public.ct_setting('${k}'), 1)`).join(' + ')};
+  END IF;
   RESET ROLE;
   IF v_k <> ${X_KEYS.length} THEN
-    RAISE EXCEPTION '073b proof: the runner reads % of the ${X_KEYS.length} X keys (0 = RLS without its policy)', v_k;
+    RAISE EXCEPTION '073b proof: the runner reads % of the ${X_KEYS.length} X keys with a value (0 = RLS without its policy)', v_k;
   END IF;
-  SET LOCAL ROLE tms_check_runner;
-  v_v := ${RUNNER_FN.replace(/\(.*$/, '')}(public.ct_setting('x_import'), 1);
-  RESET ROLE;
-  IF v_v IS NULL THEN RAISE EXCEPTION '073b proof: ${RUNNER_FN_NAME}(x_import, 1) is NULL for the runner'; END IF;
+  IF v_v IS NULL THEN RAISE EXCEPTION '073b proof: ${RUNNER_FN_NAME} of an X is NULL for the runner'; END IF;
   IF NOT has_function_privilege('tms_check_runner', '${RUNNER_FN}', 'EXECUTE')
      OR has_function_privilege('tms_reader', '${RUNNER_FN}', 'EXECUTE') THEN
     RAISE EXCEPTION '073b proof: ${RUNNER_FN_NAME} is not executable by the runner only';
@@ -204,6 +209,8 @@ ${proof}
 --   1. 073b_plan_monitoring_dryrun.sql   (this block + a deliberate error: NOTHING kept)
 --   2. 073b_plan_monitoring.sql          (this file)
 -- ASCII only (Greek texts are base64). ONE DO block.
+-- Since 073b the runner executes stock_vs_charge and reads ct_settings (its own policy): 057's comment "only
+-- service_role gets it" and 073's "reads ct_settings as its owner" describe the state before 073b (PR #105).
 -- After it: 071_plan_schema_verify.sql shows policies = 5 (expected from 073b on; it was 0 by design of 071), and
 -- 072b's verify still shows auditor_policy = 1 (rt_vehicle_segments keeps its own policy, untouched here).
 -- REVERSE: 073b_plan_monitoring_rollback.sql (before 073's rollback: 073's refuses while ${runs(F3_IDS)} exist).

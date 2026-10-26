@@ -100,7 +100,7 @@ const rlsSql = () => [...RLS_MONITOR_READ, ...RLS_NO_POLICY].map((t) => `DO $p$ 
       CREATE POLICY monitor_read ON public.${t} FOR SELECT TO tms_check_runner, tms_reader USING (true);
     END IF;` : ''}
   END IF; END $p$;`).join('\n');
-async function assertRls(db, live) {
+export async function assertRls(db, live) {
   const { rows } = await db.query(`SELECT c.relname, c.relrowsecurity AS rls, (SELECT string_agg(p.policyname || ':' || p.cmd || ':'
       || array_to_string(p.roles, '+') || ':' || p.qual, ',' ORDER BY p.policyname) FROM pg_policies p
       WHERE p.schemaname = 'public' AND p.tablename = c.relname) AS pol
