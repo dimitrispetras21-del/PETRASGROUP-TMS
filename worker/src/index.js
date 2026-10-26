@@ -5643,6 +5643,11 @@ __name(planBadNumber, "planBadNumber");
 // paths keep stockRuleError's null). Returns { status, type, code, message } or null.
 function planRefusal(e) {
   const rule = stockRuleError(e);
+  // 072's six write RPCs catch the input SQLSTATEs themselves and raise plan:bad_input with the SQLSTATE as the
+  // detail; the other seven let the same SQLSTATE reach handlePlan raw. One SQLSTATE, one answer, whichever RPC
+  // (review r3 of PR #90, finding 5): both go through planDbInput. A structural detail ('stop.side') stays PLAN_RULE.
+  const fromDb = rule && rule.code === "bad_input" ? /^plan rule broken: bad_input:([0-9A-Z]{5})$/.exec(String(e.pg.message || "")) : null;
+  if (fromDb && PLAN_DB_INPUT_STATE.has(fromDb[1])) return planDbInput(fromDb[1]);
   if (rule) {
     // need_token: the act needs the dry-run list first — 428, so the F4 client opens the list instead of
     // toasting a refusal.
@@ -5663,13 +5668,15 @@ __name(planRefusal, "planRefusal");
 // would raise and read by planRefusal, so the two never drift (finding 4): F4 keeps no copy of the texts (αρχή 3).
 var PLAN_CONSTRAINT_KIND = { "23514": "check", "23505": "unique", "23P01": "exclusion" };
 // The SQLSTATEs that speak of the request's OWN input (review of PR #90 r2, finding 2): a text that is not a
-// number or a date (22P02, 22007), a number or a date out of range (22003, 22008), a required field left null
-// (23502). The statement failed, so its transaction rolled back and nothing was kept: a 422, the same answer on
-// every attempt. Every other class-22 code (22012 division by zero, 22004, a 22023 without a plan: hint, 22001
-// from stored text) is a fault inside 072 that no refresh can cure, so it stays plan_failed «ενημέρωσε τον
-// Δημήτρη». A 23502 can also come from a NULL the function computed from DB state, so the text keeps the same
-// line (αρχή 1). Only on a write route or its dry run: a read's arguments are the Worker's own, checked above.
-var PLAN_DB_INPUT_STATE = new Set(["22P02", "22003", "22007", "22008", "23502"]);
+// number or a date (22P02, 22007), a number or a date out of range (22003, 22008), a JSON value of the wrong
+// shape (22023, e.g. jsonb_array_elements on a scalar), a required field left null (23502). The first five are
+// the very list 072's six write RPCs catch as plan:bad_input (r3 finding 5: the same list here, so the other seven
+// RPCs answer them the same way). The statement failed, so its transaction rolled back and nothing was kept: a
+// 422, the same answer on every attempt. Every other class-22 code (22012 division by zero, 22004, 22001 from
+// stored text) is a fault inside 072 that no refresh can cure, so it stays plan_failed «ενημέρωσε τον
+// Δημήτρη». A 23502 or a 22023 can also come from DB state the function read, so the text keeps the same line
+// (αρχή 1). Only on a write route or its dry run: a read's arguments are the Worker's own, checked above.
+var PLAN_DB_INPUT_STATE = new Set(["22P02", "22003", "22007", "22008", "22023", "23502"]);
 function planDbInput(state) {
   return { status: 422, type: "BAD_REQUEST", code: "bad_input", message: `${PLAN_RULE_TEXT.bad_input}· αν ξανασυμβεί, ενημέρωσε τον Δημήτρη (${state})` };
 }
@@ -5701,10 +5708,11 @@ var PLAN_PGRST_NOT_RUN = new Set(["PGRST002", "PGRST003", "PGRST100", "PGRST101"
   "PGRST123", "PGRST125", "PGRST126", "PGRST127", "PGRST200", "PGRST201", "PGRST203", "PGRST204", "PGRST205",
   "PGRST300", "PGRST301", "PGRST302", "PGRST303"]);
 // The status of an answer whose write may be kept (plan_unknown) or IS kept (amount_leak after a write):
-// 422, because core/api.js _atRetry sends every 5xx — and a 409 without opts.conflict — again by itself, up to
-// three times, and a lost answer after the COMMIT would then move the stops twice (review of PR #90, finding 1;
-// decision 44: no screen re-sends a /plan/* write). _atRetry never repeats a 400 / 401 / 403 / 422; 401 and
-// 403 mean something else, 400 a malformed request. Pinned on both sides: worker/test/plan-routes.test.mjs
+// 422, because core/api.js _atRetry sends again by itself, up to three times, every thrown fetch and every
+// non-ok status except 400 / 401 / 403 / 422 (so every 5xx, 404, 428, 429 and every 409 without opts.conflict),
+// and a lost answer after the COMMIT would then move the stops twice (review of PR #90, finding 1; decision
+// 44: no screen re-sends a /plan/* write; r3 finding 8: the full list). 401 and 403 mean something else, 400 a
+// malformed request. Pinned on both sides: worker/test/plan-routes.test.mjs
 // and tests/api-plan-no-resend.test.mjs (the real _atRetry: exactly one fetch).
 var PLAN_NO_RESEND = 422;
 async function handlePlan(request, url, origin, env) {

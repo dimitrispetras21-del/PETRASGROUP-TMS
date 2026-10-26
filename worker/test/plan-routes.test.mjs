@@ -9,7 +9,7 @@
 //     but an `amount` never reaches a role outside owner/accountant;
 //   - refusals: plan:<code> → 422 Greek, need_token → 428, 23P01 → truck_busy,
 //     missing 072 → 503, another named constraint → 422, input the DB cannot
-//     take (22P02/22003/22007/22008, 23502, on a write) → 422, anything else → 500 naming the route, and a
+//     take (22P02/22003/22007/22008/22023, 23502, on a write) → 422, anything else → 500 naming the route, and a
 //     write whose outcome is unknown → 422 plan_unknown (a status the legacy
 //     client never sends again by itself) — every one in the ONE /plan/* error shape;
 //   - the older paths: PATCH /costs/rt/:id on a v5 cycle → 409 before the DB;
@@ -589,10 +589,11 @@ test('facade PATCH ORDER STOPS refused by a plan: rule (bridge stop, 071) → 42
 
 // ───────────────────── K1 review r1: what a write's failure says ─────────────────────
 test('a write the DB answered with an unmapped SQLSTATE rolled back → 500 plan_failed «δεν ολοκληρώθηκε», never plan_unknown', async () => {
-  // 22P02 / 23502 moved to the 422 bad_input test below (finding 5); a class-22 fault of 072 itself stays here (r2 finding 2)
+  // 22P02 / 23502 moved to the 422 bad_input test below (finding 5); a class-22 fault of 072 itself stays here (r2 finding 2);
+  // 22023 moved too (r3 finding 5): 072 catches it as input in six RPCs, so the other seven answer it the same way
   for (const pg of [{ code: '42883', message: 'function public.plan_h_missing(bigint) does not exist' },
     { code: '22012', message: 'division by zero' }, { code: '22004', message: 'null value not allowed' },
-    { code: '22023', message: 'invalid parameter value' }, { code: '22001', message: 'value too long for type character varying(20)' },
+    { code: '22001', message: 'value too long for type character varying(20)' },
     { code: 'P0001', message: 'raise without a plan: hint' },
     // polish review 2 r2 m1: idle-in-transaction fires only while the session is idle, before any COMMIT
     { code: '25P03', message: 'terminating connection due to idle-in-transaction timeout' }]) {
@@ -729,6 +730,7 @@ test('finding 5 (narrowed in r2 finding 2): input the DB cannot take → 422 bad
     { code: '22003', message: 'value "99999999999" is out of range for type integer' },
     { code: '22007', message: 'invalid input syntax for type timestamp with time zone: "x"' },
     { code: '22008', message: 'date/time field value out of range: "2026-13-45"' },
+    { code: '22023', message: 'cannot extract elements from a scalar' },
     { code: '23502', message: 'null value in column "rt_id" violates not-null constraint' }]) {
     routes.length = 0;
     on('POST', 'rpc/plan_move_pieces', () => pgError(400, { ...pg, hint: null, details: null }));
@@ -749,6 +751,40 @@ test('finding 5 (narrowed in r2 finding 2): input the DB cannot take → 422 bad
   on('POST', 'rpc/plan_move_pieces', () => planReject('parts_sum', '4', '22023'));
   const r = await callOpen('dispatcher', 'POST', '/plan/move', { from: { piece_ids: [1] }, target: { wait: true } });
   assert.equal(r.json.error.code, 'parts_sum');
+});
+
+// Review r3, finding 5: 072's six write RPCs (orders_create, put_pieces, put_group, split_piece, move_pieces,
+// order_update) catch the input SQLSTATEs themselves and raise plan:bad_input '<SQLSTATE>'; the other seven
+// (rt_update, rt_clear, delete, vs_set_day, vs_set_place, local_loading, notice_read) let them reach the Worker raw.
+// One SQLSTATE, one answer — code, type, status and text — whichever RPC, and the dry-run preview says the same.
+test('r3 finding 5: an input SQLSTATE answers the same whether 072 caught it (plan:bad_input) or not; a structural bad_input stays PLAN_RULE', async () => {
+  for (const state of ['22P02', '22003', '22007', '22008', '22023']) {
+    routes.length = 0;
+    on('POST', 'rpc/plan_move_pieces', () => planReject('bad_input', state));
+    on('POST', 'rpc/plan_rt_update', () => pgError(400, { code: state, details: null, hint: null, message: 'x' }));
+    calls.length = 0;
+    const caught = await callOpen('dispatcher', 'POST', '/plan/move', { from: { piece_ids: [1] }, target: { rt_id: 5, side: 'KATHODOS' } });
+    const raw = await callOpen('dispatcher', 'PATCH', '/plan/rt/5', { set: { truck_id: 2 } });
+    assert.equal(caught.status, 422, `${state}: ${caught.text}`);
+    assert.equal(raw.status, 422, `${state}: ${raw.text}`);
+    assert.deepEqual(caught.json.error, raw.json.error, `${state}: one answer`);
+    assert.deepEqual(caught.json.error, { type: 'BAD_REQUEST', code: 'bad_input', message: `Το αίτημα δεν έχει τη μορφή που περιμένει η βάση — ανανέωσε τη σελίδα· αν ξανασυμβεί, ενημέρωσε τον Δημήτρη (${state})` }, state);
+    assert.equal(rpcCalls().length, 2, `${state}: one RPC each`);
+    // the preview of plan_rt_update carries 072's hinted form: the same answer again
+    routes.length = 0;
+    on('POST', 'rpc/plan_rt_update', () => json({ ok: true, op: 'plan_rt_update', dry_run: true,
+      preview: { before: {}, after: null, next_rt: null, vs_day: [], warnings: [], conflict: { code: 'bad_input', sqlstate: '23514', detail: state } } }));
+    const dry = await call('dispatcher', 'PATCH', '/plan/rt/5', { set: { truck_id: 2 }, dry_run: true });
+    assert.equal(dry.status, 200, dry.text);
+    assert.equal(dry.json.preview.conflict.code, 'bad_input');
+    assert.equal(dry.json.preview.conflict.message, raw.json.error.message, `${state}: the preview says what the execution says`);
+  }
+  // a bad_input whose detail names a field is 072's own structural refusal: PLAN_RULE, unchanged
+  routes.length = 0;
+  on('POST', 'rpc/plan_move_pieces', () => planReject('bad_input', 'target.side'));
+  const r = await callOpen('dispatcher', 'POST', '/plan/move', { from: { piece_ids: [1] }, target: { rt_id: 5, side: 'KATHODOS' } });
+  assert.equal(r.status, 422, r.text);
+  assert.deepEqual(r.json.error, { type: 'PLAN_RULE', code: 'bad_input', message: 'Το αίτημα δεν έχει τη μορφή που περιμένει η βάση — ανανέωσε τη σελίδα (target.side)' });
 });
 
 test('finding 6: a PostgREST code that proves the RPC never ran → 503 «δεν αποθηκεύτηκε»; one that may follow the SQL stays plan_unknown', async () => {
