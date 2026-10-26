@@ -225,7 +225,7 @@
 | `tms-auditor/test/fixtures/v1-money-073.sql` | Συνθετικά RT του σημερινού μοντέλου: μία γραμμή σε κάθε κλάδο που ξαναγράφει η 073 | 1 |
 | `tms-auditor/test/plan-073.test.mjs` | PGlite: λήψεις → 071/071b/072 → v1 → dry run → apply → verify → rules → rollback → ξανά apply → μεταλλαγή | 1 |
 | `worker/migrations/drafts/073_plan_money.sql` | Το migration (ένα DO block): PART 0 φρουροί, PART 1 feeder, PART 2 άγκιστρα 072, PART 3 όψεις, PART 4 UNIQUE, PART 5 δικαιώματα/αποδείξεις | 2 |
-| `worker/migrations/drafts/073_plan_money_test.sql` | 34 περιπτώσεις σε TEST γραμμές, σκόπιμο σφάλμα στο τέλος | 3 |
+| `worker/migrations/drafts/073_plan_money_test.sql` | 36 περιπτώσεις σε TEST γραμμές, σκόπιμο σφάλμα στο τέλος | 3 |
 | `worker/migrations/drafts/tools/build-073-dryrun.mjs` + `073_plan_money_dryrun.sql` (παράγεται) | dry run | 4 |
 | `worker/migrations/drafts/073_plan_money_verify.sql`, `_fingerprint.sql`, `_rollback.sql` | verify (μία γραμμή), αποτύπωμα πριν/μετά, αναίρεση byte προς byte | 4 |
 | `tests/sql-073-drafts.test.js` | Build χωρίς βάση (7 έλεγχοι) | 5 |
@@ -1568,7 +1568,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 
 ---
 
-### Task 3: Οι κανόνες σε TEST γραμμές: `073_plan_money_test.sql` (34 περιπτώσεις)
+### Task 3: Οι κανόνες σε TEST γραμμές: `073_plan_money_test.sql` (36 περιπτώσεις)
 
 **Files:** Create: `worker/migrations/drafts/073_plan_money_test.sql`
 **Interfaces:** Consumes: Task 2. Produces: η απόδειξη κάθε κανόνα (παλέτες 1–15, χρήματα 16–25, διαδρομή 26–28, πύλη 29, απόθεμα 30, φθορά 31, λίστα dispatcher 32).
@@ -2129,7 +2129,7 @@ $t073$;
 - [ ] **Step 2: Τρέξε στο αντίγραφο (με τους Task 4 έτοιμους, μέσα από το `plan-073.test.mjs`)**
 
 Run: `cd tms-auditor && node --test test/plan-073.test.mjs 2>&1 | grep -E '✔|✖|ℹ (pass|fail)'`
-Expected (μετά τον Task 4): `ℹ pass 8`, `ℹ fail 0`, με το υπο-test «073 rules test: every case OK, nothing kept» να διαβάζει `Result: 34 OK, 0 FAIL`.
+Expected (μετά τον Task 4): `ℹ pass 8`, `ℹ fail 0`, με το υπο-test «073 rules test: every case OK, nothing kept» να διαβάζει `Result: 36 OK, 0 FAIL`.
 
 - [ ] **Step 3: Οι επιλογές 💶 (μόνο αν ο owner διάλεξε άλλη από το προσχέδιο)**
 
@@ -2969,6 +2969,15 @@ SELECT CASE WHEN to_regprocedure('public.plan_h_pallet_sync(bigint[],text,text)'
        md5(pg_get_viewdef('public.ct_v_rt_revenue'::regclass, true)) AS revenue_md5,
        (SELECT md5(prosrc) FROM pg_proc WHERE oid = 'public.plan_h_leg_add(bigint,bigint,bigint,bigint,text,text,integer)'::regprocedure) AS leg_add_md5;
 ```
+
+> **Υλοποίηση Task 4 (26/10/2026, κλάδος `feat/national-v5-f3`).** Τα τέσσερα αρχεία ξεκινούν από τα Steps 1–4 κατά γράμμα, με τις εξής αλλαγές:
+> 1. Το verify ελέγχει τα md5 που **αποδεικνύει** η 073, όχι τα προσχέδια του κειμένου: PART 5 `ct_v_v5_revenue` `c9dc289a…`, `ct_v_rt_revenue` `ad3c2b61…`· PART 2 `plan_h_drop_consequences` `e370e52c…`, `plan_order_update` `114a6555…`, `plan_rt_update` `b7acd8a0…`. Το `stop_once` απαιτεί και τη στενή D-9 (`LOADING`/`DELIVERY`).
+> 2. Το rollback επιστρέφει τις 5 συναρτήσεις στα md5 του PART 0 (072 + 072b: `80b789fc…`, `3ce41ac4…`, `e918ef7c…`) και ελέγχει το md5 μετά από κάθε συνάρτηση. Αρνείται όσο υπάρχουν οι έλεγχοι του 073b (B-78..B-90). Σειρά: 073b → 073 → 072b → 072.
+> 3. **Δικαιώματα του `ct_v_rt_pnl`.** Μετρήθηκε στην παραγωγή (SELECT 26/10): οι 5 όψεις έχουν `service_role=arwDxtm/postgres`, και μια νέα όψη του postgres στο `public` παίρνει από τα default privileges `service_role=arwxtm`. Το κείμενο του Step 4 (REVOKE μόνο από PUBLIC/anon/authenticated) περνούσε σήμερα κατά σύμπτωση· με ευρύτερα defaults θα σταματούσε στην απόδειξη acl. Γι' αυτό το rollback αφαιρεί πρώτα **κάθε** δικαίωμα που έδωσε το CREATE και μετά δίνει ακριβώς τα αποθηκευμένα (με `WITH GRANT OPTION` όπου υπήρχε). Το `plan-073.test.mjs` στήνει τα δικαιώματα της παραγωγής και συγκρίνει το acl των 6 όψεων πριν και μετά.
+> 4. Το αποτύπωμα κρατά **τις ίδιες** 16 λίστες με το `snap_sql` της 073 (+ μισθοδοσία), όχι υποσύνολο: μία λίστα ανά γεγονός.
+> 5. Η κεφαλίδα του dry run λέει «μετά την 072 και την 072b».
+>
+> Αποτέλεσμα: `plan-073.test.mjs` **8/8**. Ο έλεγχος του Task 5 όπως γράφτηκε θέλει μία προσαρμογή: η 073 σηκώνει και `bad_input` (ο κανόνας μη πεπερασμένων τιμών του Task 2, περιπτώσεις 35–36), όχι μόνο `pallet_fraction`.
 
 - [ ] **Step 5: Όλο το αντίγραφο**
 
@@ -4758,7 +4767,7 @@ node worker/migrations/drafts/tools/build-073b.mjs --check && echo 073B-IDIO
 node --test tests/sql-073-drafts.test.js tests/sql-072-drafts.test.js 2>&1 | grep -E '^ℹ (pass|fail)'
 (cd tms-auditor && node test/tools/md5-073.mjs && node --test test/*.test.mjs 2>&1 | grep -E '^ℹ (tests|pass|fail)|Result:')
 ```
-Expected: `DRYRUN-IDIO`, `073B-IDIO`· `ℹ fail 0`· τα md5 = PART 2/PART 5/verify· ο ελεγκτής `ℹ fail 0` με `Result: 34 OK, 0 FAIL` (073) και της Φ2 (`179 OK` κατά το πλάνο της μετά τη δεύτερη κριτική· ό,τι γράφει μετά την έγκριση).
+Expected: `DRYRUN-IDIO`, `073B-IDIO`· `ℹ fail 0`· τα md5 = PART 2/PART 5/verify· ο ελεγκτής `ℹ fail 0` με `Result: 36 OK, 0 FAIL` (073) και της Φ2 (`179 OK` κατά το πλάνο της μετά τη δεύτερη κριτική· ό,τι γράφει μετά την έγκριση).
 
 - [ ] **Step 2: Worker** (`deploy/worker-plan`): ο Task 9 Step 5, αυτούσιος.
 
@@ -4775,7 +4784,7 @@ Expected: `DRYRUN-IDIO`, `073B-IDIO`· `ℹ fail 0`· τα md5 = PART 2/PART 5/v
 **Επιλογή:** <οι απαντήσεις του owner: M-1 <α|β|γ>, M-2 <α|β>, M-3 <α|β|γ>, M-4 <α|β>, M-5 <α|β|γ>, M-6 <α|β|γ>, M-7 <α|β>; DKV-1..3; D-1..D-20 (εγκρίθηκαν / αλλαγές)>.
 Η 073 δεν αλλάζει κανένα νούμερο σήμερα (αποδείχθηκε μέσα στο block, πριν/μετά, και με το αποτύπωμα). Οι οθόνες Ε7/Ε11/Ε21 μπαίνουν στη λίστα της Φ4 (D-17).
 **Εναλλακτικές:** όσες γράφει το πλάνο σε κάθε απόφαση.
-**Απόδειξη:** μετρήσεις 23/10 (SELECT)· PGlite: 073 dry run/apply/verify/rules 34 OK/rollback/ξανά apply· 073b 0 σήμερα, κόκκινο στο σενάριο· Worker <N>/<N>· `tests/sql-073-drafts.test.js` 8/8.
+**Απόδειξη:** μετρήσεις 23/10 (SELECT)· PGlite: 073 dry run/apply/verify/rules 36 OK/rollback/ξανά apply· 073b 0 σήμερα, κόκκινο στο σενάριο· Worker <N>/<N>· `tests/sql-073-drafts.test.js` 8/8.
 **Ποιος:** πλάνο Φ3 (agent)· οι αποφάσεις 💶/DKV/D από τον owner <ημερομηνία>.
 ```
 
@@ -4812,7 +4821,7 @@ gh pr create --base main --head deploy/worker-plan --title "Worker Φ3 (αλυσ
 | 4 | `073_plan_money_verify.sql` | `applied = '073 in place'`, `views_changed = 0`, `functions_changed = 0`, `invoker_lost = 0`, `open_money = 0`, `open_helper = 0`, `stop_once = true`, `b54_matches = true`, `v5_rows = 0` |
 | 5 | `073_plan_money_fingerprint.sql` | **ίδια** γραμμή με το βήμα 1 (εκτός `athens_now`) |
 | 6 | `072_plan_functions_verify.sql` | όπως μετά την 072, με `plan_functions = 53` (+ `plan_h_pallet_sync`, K-18) και `changed_live = 0` |
-| 7 (προαιρετικό) | `073_plan_money_test.sql` | το σκόπιμο ERROR `RULES TEST 073 finished - EVERYTHING UNDONE, nothing kept. Result: 34 OK, 0 FAIL …` (προχωρά τους μετρητές RT-/PM-· η περίπτωση 30 κρίνεται και από τους φρουρούς 057 της παραγωγής) |
+| 7 (προαιρετικό) | `073_plan_money_test.sql` | το σκόπιμο ERROR `RULES TEST 073 finished - EVERYTHING UNDONE, nothing kept. Result: 36 OK, 0 FAIL …` (προχωρά τους μετρητές RT-/PM-· η περίπτωση 30 κρίνεται και από τους φρουρούς 057 της παραγωγής) |
 
 **Σε σφάλμα του βήματος 2 ή 3:** τίποτα δεν κρατήθηκε (ένα DO block). Αντιγραφή του μηνύματος στον συντονιστή, όχι επανάληψη. «lock timeout»: ξανά αργότερα.
 **Rollback** (μόνο με «ναι», πριν από την πρώτη γραμμή v5): `073_plan_money_rollback.sql` → `073 ROLLED BACK | 7bd4c2b3206af115a5cfff5478dfdfc9 | aa9645fa495976bbca7c7de0635f4c22`· μετά το αποτύπωμα = βήμα 1. Αν έχει τρέξει το 073b: **πρώτα** `073b_plan_monitoring_rollback.sql`. Πριν από rollback της 072: πρώτα της 073 (K-18).

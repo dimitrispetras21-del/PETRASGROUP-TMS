@@ -32,9 +32,24 @@ const SNAP = `SELECT concat_ws(' ',
   (SELECT count(*) || ':' || md5(coalesce(string_agg(to_jsonb(v)::text, '|' ORDER BY v.piece_kind, v.piece_id), '')) FROM stock_v_pieces v),
   (SELECT count(*) || ':' || md5(coalesce(string_agg(to_jsonb(v)::text, '|' ORDER BY v.id), '')) FROM stock_v_lots v)) AS s`;
 
+// The rights as production holds them (SELECT on production 26/10, F3 Task 4): the capture keeps only who may SELECT,
+// but the five money / route views give service_role arwDxtm, and a NEW table or view of postgres in public gets
+// service_role=arwxtm from the default privileges. 073's rollback drops and re-creates ct_v_rt_pnl, so its acl proof
+// is only worth anything with both in place.
+const PROD_RIGHTS = `
+  GRANT INSERT, SELECT, UPDATE, TRUNCATE, REFERENCES, TRIGGER, MAINTAIN
+    ON public.ct_v_rt_revenue, public.ct_v_rt_costs, public.ct_v_rt_pnl, public.dl_v_rt_route, public.ct_v_rt_pallet_gate
+    TO service_role;
+  ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public
+    GRANT INSERT, SELECT, UPDATE, REFERENCES, TRIGGER, MAINTAIN ON TABLES TO service_role;`;
+const ACL = `SELECT string_agg(c.relname || '=' || coalesce(c.relacl::text, '-'), ' ' ORDER BY c.relname) AS s FROM pg_class c
+  WHERE c.relnamespace = 'public'::regnamespace AND c.relname IN ('ct_v_rt_revenue', 'ct_v_rt_costs', 'ct_v_rt_pnl',
+    'dl_v_rt_route', 'ct_v_rt_pallet_gate', 'stock_v_pieces')`;
+
 async function prodShaped() {
   const db = await prodShaped072(true, { money: 'live', with072b: true });
   await db.exec(fixture('v1-money-073.sql'));
+  await db.exec(PROD_RIGHTS);
   return db;
 }
 async function errorOf(db, sql) { try { await db.exec(sql); return null; } catch (e) { return String(e.message); } }
@@ -51,6 +66,7 @@ test('073 on a production-shaped PGlite copy', async (t) => {
   const db = await prodShaped();
   const before = await count(db, TRG);
   const snap0 = (await one(db, SNAP)).s;
+  const acl0 = (await one(db, ACL)).s;
 
   await t.test('the fixtures hold the LIVE texts 073 guards on (re-capture if this fails)', async () => {
     const src = read('073_plan_money.sql');
@@ -104,6 +120,8 @@ test('073 on a production-shaped PGlite copy', async (t) => {
       assert.strictEqual((await one(db, `SELECT md5(pg_get_viewdef('${rel}'::regclass, true)) AS m`)).m, m, rel);
     for (const [, sig, m] of fnPairs(src)) assert.strictEqual(await fnMd5(db, sig), m, sig);
     assert.strictEqual((await one(db, SNAP)).s, snap0);
+    assert.strictEqual((await one(db, ACL)).s, acl0, 'the rights of the six views, ct_v_rt_pnl re-created included');
+    assert.match(acl0, /ct_v_rt_pnl=\{[^}]*service_role=arwDxtm\//, 'the copy holds production\'s rights');
     assert.strictEqual((await one(db, read('073_plan_money_verify.sql'))).applied, '073 NOT in place');
     const again = await db.exec(read('073_plan_money.sql'));
     assert.strictEqual(again.at(-1).rows[0].result, '073 OK');
