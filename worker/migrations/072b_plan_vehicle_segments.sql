@@ -1,6 +1,6 @@
 -- 072b - NATIONAL v5: VEHICLE HANDOVER AT A POINT (segments ARCHIKO / ENDIAMESO / TELIKO), BORN CLOSED, 0 ROWS.
 --
--- DRAFT. Spec docs/superpowers/specs/2026-10-23-national-v5-vehicle-handover-design.md (owner 23/10 + 25/10), plan
+-- EXECUTED 2026-10-26 by the owner. Spec docs/superpowers/specs/2026-10-23-national-v5-vehicle-handover-design.md (owner 23/10 + 25/10), plan
 -- docs/superpowers/plans/2026-10-25-national-v5-vehicle-handover.md. ORDER 072 -> 072b -> 073 (plan decision H-0,
 -- coordinator 25/10; guarded here and in the rollback: 073 present = stop).
 -- The owner runs it in the Supabase SQL editor AFTER 15:00 (the team works 05:30-14:30), with an explicit yes:

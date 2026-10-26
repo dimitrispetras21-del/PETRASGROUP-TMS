@@ -155,13 +155,14 @@ cd worker && CLOUDFLARE_API_TOKEN=$CF_API_TOKEN npx wrangler deploy
    - εθνικά v5, `/plan/*` (Φ2, 072 + Worker 39842d18, ζωντανό 26/10): `var PLAN_PERMS = {`. Ως την
      ημέρα L και `var PLAN_WRITES_OPEN = false;`: το μόνο σημάδι που **αλλάζει** σκόπιμα. Την ημέρα L το
      αντικαθιστά ο έλεγχος «ανοιχτό» του εργαλείου (`--plan 2`, Φ5), στο ίδιο deploy· ως τότε, αν λείπει: ΣΤΑΜΑΤΑ.
-   Μία εντολή για όλα, πριν και μετά: `node worker/tools/worker-guard.mjs <bundle ή λήψη CF> --plan 1 --handover 0|1`
-   (ξετυλίγει το multipart· `--handover 0` πριν από το deploy της αλλαγής οχήματος, 072b, `--handover 1` μετά:
-   `GUARD OK (16 markers, plan=1, handover=1)`). Χωρίς `--handover`, ή με όρισμα που δεν ξέρει, το εργαλείο
-   σταματά με exit 2, ποτέ «OK» (πλάνο αλλαγής οχήματος H-18).
+   - αλλαγή οχήματος σε σημείο (072b + Worker 2ca70af1, ζωντανό 26/10): `rpc: "plan_seg_change"`
+   Μία εντολή για όλα, πριν και μετά: `node worker/tools/worker-guard.mjs <bundle ή λήψη CF> --plan 1 --handover 1`
+   (ξετυλίγει το multipart· `GUARD OK (16 markers, plan=1, handover=1)`). Χωρίς `--handover`, ή με όρισμα που
+   δεν ξέρει, το εργαλείο σταματά με exit 2, ποτέ «OK».
    Με `--plan 1` ΣΤΑΜΑΤΑ και αν βρει `PLAN_WRITES_OPEN = true` οπουδήποτε στο bundle (ως την ημέρα L).
-   Μετά από επείγουσα επαναφορά `wrangler rollback b00d59f3-332d-4e7c-9590-2de97cc235f6` (χωρίς `/plan/*`):
-   `--plan 0 --handover 0`, και το αναμενόμενο είναι `GUARD OK (14 markers, plan=0, handover=0)`.
+   Μετά από επείγουσα επαναφορά `wrangler rollback 39842d18-b662-4fec-aa76-4ba12cccab5c` (Φ2, χωρίς την αλλαγή
+   οχήματος): `--plan 1 --handover 0`, `GUARD OK (16 markers, plan=1, handover=0)`· με `wrangler rollback
+   b00d59f3-332d-4e7c-9590-2de97cc235f6` (χωρίς `/plan/*`): `--plan 0 --handover 0`, `GUARD OK (14 markers, plan=0, handover=0)`.
    Αν λείπει έστω ένα σημάδι λειτουργίας που ήταν ζωντανή: **ΣΤΑΜΑΤΑ**, όπως
    με τα τρία.
 
