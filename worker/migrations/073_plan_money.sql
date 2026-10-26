@@ -1,6 +1,6 @@
 -- 073 - NATIONAL v5, PHASE F3: MONEY, ROUTE, PALLETS. NO NUMBER OF TODAY CHANGES.
 --
--- DRAFT. Spec docs/superpowers/specs/2026-10-21-national-v5-design.md (owner 21/10, sections 3 Money, 5 E6-E11),
+-- EXECUTED 2026-10-26 by the owner. Spec docs/superpowers/specs/2026-10-21-national-v5-design.md (owner 21/10, sections 3 Money, 5 E6-E11),
 -- plan docs/superpowers/plans/2026-10-23-f3-national-v5-money-DRAFT.md (decisions D-1..D-20 as proposed with D-9
 -- NARROW, owner choices M-1 gamma, M-2 alpha, M-3 beta - DECISION_LOG 24/10 and 25/10).
 -- Runs ONLY after 072 (F2, executed 26/10) AND 072b (vehicle handover) - order 072 -> 072b -> 073; its guard reads the

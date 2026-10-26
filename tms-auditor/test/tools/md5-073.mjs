@@ -2,7 +2,7 @@
 // (prod-shaped-072.mjs with { money: 'live', with072b: true } + fixtures/v1-money-073.sql: one builder, principle 3;
 // F3 Task 1 review, minor 1). Usage, from tms-auditor/:
 //   node test/tools/md5-073.mjs
-// Prints, for the 073 text in drafts/ as it stands: the md5 of each of its 5 hooked 072 functions after the hook
+// Prints, for the 073 text as it stands (worker/migrations/): the md5 of each of its 5 hooked 072 functions after the hook
 // (computed exactly as the block computes it: replace() of the hook place in the LIVE prosrc) and of each of its 8
 // views after it ran (pg_get_viewdef(oid, true)). Use it after every change of 073 (an owner choice M-x, a review
 // fix, a re-measured 072 / 072b): paste the numbers into 073 PART 2 / PART 5 and 073_plan_money_verify.sql;
