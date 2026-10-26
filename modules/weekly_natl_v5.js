@@ -3,10 +3,11 @@
 // ─────────────────────────────────────────────────────────────────────
 // Plan: docs/superpowers/plans/2026-10-26-f4a-national-v5-screens.md (Tasks T3, T5–T8, T10). Spec:
 // docs/superpowers/specs/2026-10-21-national-v5-design.md §3. Figma KO7l2AfucR3HJEDIg1Yptr: board 2011:7745 with
-// the owner changes of 25/10 (H1 2120:7738), states Δ12 2069:8579. Behind FEATURES.WN_V5 ('off' until day L).
+// the owner changes of 25/10 (H1 2120:7738), menu 2011:8858, states Δ12 2069:8579. Behind FEATURES.WN_V5.
 //
 // Unlike Weekly International v4 (a second renderer over WINTL), v5 OWNS its data: one read, GET /plan/board
-// ?week=<Saturday>, through planFetch (core/plan-api.js) — never the facade. The week stays ONE: WNATL.week
+// ?week=<Saturday>, through planFetch (core/plan-api.js) — never the facade. The rows come from WN5L.model
+// (core/wn5-logic.js): this file draws, it decides nothing the base decides. The week stays ONE: WNATL.week
 // (core/ui.js ←/→ and the tabs move it, then renderWeeklyNatl() hands over through its one seam line).
 //
 // Rules this file keeps (each one a past incident of this project, as in modules/weekly_intl_v2.js):
@@ -14,24 +15,33 @@
 //   - paint() never throws. A failure is STICKY for the session (_broken): the old board is drawn, with one
 //     banner, until the next load — every hook then routes to the old board against the old board's DOM.
 //   - Unknown ≠ empty: a board that did not arrive shows «—» and the Worker's message, never «καμία φόρτωση» or 0.
-//   - The screen computes no rule of the base: dimming, lateness and days come from the board JSON.
+//   - The screen computes no rule of the base: dimming, lateness and days come from the board JSON (WN5L copies).
+//   - No time in the ΑΝΑΘΕΣΗ column, the Veroia loading time under «Βέροια» in ΦΟΡΤΩΣΗ (owner 25/10).
 //   - No Greek text of the Worker or the DB is copied here (principle 3): their messages are shown as they come.
 //   - No role gate (owner 10/10, decision 41): buttons are not hidden, the Worker's 403 speaks.
+//   - Rows are found by rt_id / piece_id at the moment of a click, never by a DOM index.
+//   - Cells hold spans and buttons only (no nested div): tests/wn5-board-html.test.js reads the HTML by cell.
 //   - No hex (static ratchet, unit weekly_natl_v5 = 0): every colour is a class of the wn5 / wi4 blocks of
 //     assets/style.css.
 // ═══════════════════════════════════════════════════════════════════════
 (function () {
 'use strict';
 
+const L = () => (typeof WN5L !== 'undefined' ? WN5L : null);
 const DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
-// Upper case is TYPED, never CSS text-transform: a transformed «Δευτέρα» keeps its tonos in some browsers.
-const DOW_HEAD = Object.freeze(['ΚΥΡΙΑΚΗ', 'ΔΕΥΤΕΡΑ', 'ΤΡΙΤΗ', 'ΤΕΤΑΡΤΗ', 'ΠΕΜΠΤΗ', 'ΠΑΡΑΣΚΕΥΗ', 'ΣΑΒΒΑΤΟ']);
+const ID_RE = /^[1-9]\d{0,14}$/;
 const MONTH_GEN = Object.freeze(['Ιανουαρίου', 'Φεβρουαρίου', 'Μαρτίου', 'Απριλίου', 'Μαΐου', 'Ιουνίου', 'Ιουλίου',
   'Αυγούστου', 'Σεπτεμβρίου', 'Οκτωβρίου', 'Νοεμβρίου', 'Δεκεμβρίου']);
+// Two stops per point column at 1920 (Figma 2011:7745: two ~178px stops), the rest behind «+N».
+const VISIBLE_POINTS = 2;
+// Inline SVG with currentColor: core/icons.js has no plane, and a colour literal here would break the ratchet.
+const PLANE = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4 20-7z"/></svg>';
+const CHEV = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>';
 
 const _esc = (s) => (typeof escapeHtml === 'function'
   ? escapeHtml(String(s == null ? '' : s))
   : String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;'));
+const _id = (x) => (ID_RE.test(String(x)) ? String(x) : '');   // safe to embed in an inline handler
 function _logErr(e, where) { try { if (typeof logError === 'function') logError(e instanceof Error ? e : new Error(String(e)), where); } catch (_) {} }
 function _ls(k) { try { return localStorage.getItem(k); } catch (_) { return null; } }
 function _lsSet(k, v) { try { localStorage.setItem(k, v); return true; } catch (_) { return false; } }
@@ -41,11 +51,14 @@ let _seq = 0;            // load sequence: an older answer never paints over a n
 let _state = 'loading';  // 'loading' | 'ok' | 'empty' | 'err'
 let _sat = null;         // the Saturday on screen
 let _board = null;       // the last board that ARRIVED for _sat (kept through a failed re-read: «ό,τι ήρθε μένει»)
-let _okAt = null;        // when it arrived (display only)
+let _m = null;           // WN5L.model(_board) of the last paint
+let _okAt = null;        // when the board arrived (display only)
 let _lastErr = null;     // the PlanError (or local error) of the last read
 let _closed = null;      // the first writes_closed answer of the session (Ε-6; set by markClosed)
+let _qAll = false;       // «Όλα N ▾» of the ΕΠΟΜΕΝΑ band
 let _installed = false, _bannerShown = false, _warned = false;
 const _closedDays = new Set();   // days the USER folded; the board never folds a day itself (owner 12/10)
+const _errLogged = new Set();    // shape lines already logged (one row per distinct line per session)
 
 // ═══ Flag, opt-in (Ε-1: three states like WI_V2) ═══
 // ?wn5= is read once at load and dropped from the address, so a copied link does not spread an opt-in.
@@ -97,14 +110,14 @@ function _week(n) {
   window.WNATL.week = v;
   window.renderWeeklyNatl();
 }
-function _onWeekChange() { _closedDays.clear(); }
+function _onWeekChange() { _closedDays.clear(); _qAll = false; }
 
 // ═══ Load ═══
 async function render() {
   const seq = ++_seq;
   let week;
   try { week = weekParam(window.WNATL.week); } catch (e) { _fail(e); return _fallback(); }
-  if (week !== _sat) { _board = null; _okAt = null; _onWeekChange(); }
+  if (week !== _sat) { _board = null; _m = null; _okAt = null; _onWeekChange(); }
   _sat = week; _state = 'loading'; _lastErr = null;
   if (!_board && !paint()) return _fallback();
   let board = null, err = null;
@@ -119,7 +132,7 @@ async function render() {
   else { _board = board; _okAt = new Date(); _state = _isEmpty(board) ? 'empty' : 'ok'; }
   if (!paint()) return _fallback();
 }
-// Empty = the three lists that make rows came back empty (a malformed list is not «empty»: paint refuses it).
+// Empty = the three lists that make rows came back empty (a malformed list is not «empty»: WN5L.model refuses it).
 function _isEmpty(b) {
   const n = (k) => (Array.isArray(b[k]) ? b[k].length : 1);
   return n('cycles') === 0 && n('waiting') === 0 && n('hub') === 0;
@@ -128,7 +141,7 @@ function _isEmpty(b) {
 async function reload(reason) {
   void reason;
   await render();
-  return _state === 'ok' || _state === 'empty' ? _model() : null;
+  return _state === 'ok' || _state === 'empty' ? _m : null;
 }
 // request_reused (F2 note 1): the first send WAS saved but no ids came back — read the board again and find it.
 // pred receives the WHOLE re-read board JSON ({week, cycles, waiting, hub, notices}) and returns the found
@@ -181,57 +194,57 @@ function _fail(e) {
 function _paint() {
   const content = document.getElementById('content');
   if (!content) throw new Error('#content missing');
-  if (_board) _checkShape(_board);
+  const lg = L();
+  if (!lg) throw new Error('WN5L missing (core/wn5-logic.js)');
+  // A board that cannot be drawn (WN5L.ShapeError) throws here: the old board, loudly — never half a v5 board.
+  // The 072 board names no hub stop: the catalogue's hub id (PlanIds.hub(), T12) when it is loaded, else WN5L reads
+  // it from base facts (Ε-27). A hub[] row is at Veroia either way (071 at_hub). Neither → WN5L.HUB_UNKNOWN in
+  // m.errors, which _shapeHTML shows and _logShape logs once (Ε-44): never Veroia as an ordinary stop in silence.
+  const hubId = typeof PlanIds !== 'undefined' && typeof PlanIds.hub === 'function' ? PlanIds.hub() : null;
+  _m = _board ? lg.model(_board, hubId != null ? { today: _today(), hubId } : { today: _today() }) : null;
+  _closeMenu();
   content.innerHTML = _rootHTML();
   document.body.classList.add('wn5-on');
   _install();
-}
-
-// ═══ Model and body (T3: the week's days only; T5 draws the rows from WN5L.model) ═══
-// A list that is not a list cannot be drawn: a loud paint failure (old board + banner), never a silent skip.
-function _checkShape(b) {
-  for (const k of ['cycles', 'waiting', 'hub', 'notices']) if (!Array.isArray(b[k])) throw new Error('plan_board shape: ' + k + ' is not a list');
-}
-function _model() {
-  const [y, mo, d] = _sat.split('-').map(Number);
-  const days = [];
-  for (let i = 0; i < 7; i++) {
-    const t = new Date(Date.UTC(y, mo - 1, d + i));
-    days.push({ date: t.toISOString().slice(0, 10), head: `${DOW_HEAD[t.getUTCDay()]} ${t.getUTCDate()}/${t.getUTCMonth() + 1}`, rows: [], empty: true });
-  }
-  return { week: _sat, days, queue: [] };
+  _logShape(_m);
 }
 function _today() { return typeof localToday === 'function' ? localToday() : ''; }
-function _rootHTML() {
-  const m = _model();
-  const known = _state === 'ok' || _state === 'empty' || (_state === 'err' && !!_board);
-  return `<div class="wi4 wn5" data-week="${_esc(_sat)}" data-state="${_esc(_state)}">`
-    + _barHTML() + _errHTML() + _qbandHTML(m, known)
-    + `<div id="wn5-rows">${m.days.map((d) => _dayHTML(d, known)).join('')}</div></div>`;
+// The day words come from ONE place (core/wi4-logic.js dayLabel): «Τρί 13/10» / «Τρί».
+const _dl = (d) => (d && typeof WI4 !== 'undefined' ? WI4.dayLabel(d) : d || '—');
+const _dow = (d) => _dl(d).split(' ')[0];
+const _pal = (n) => String(n == null ? '—' : n).replace('.', ',') + 'π';
+function _chipCls(day, today) { return !day || !today ? 'next' : day === today ? 'today' : day < today ? 'past' : 'next'; }
+function _rowOf(rtId) {
+  if (!_m) return null;
+  const id = Number(rtId);
+  for (const d of _m.days) for (const r of d.rows) if (r.rtId === id) return r;
+  return null;
 }
-function _qbandHTML(m, known) {
-  const n = !known ? (_state === 'loading' ? '…' : '—') : m.queue.length ? String(m.queue.length) : '<span class="wn5-lc">κανένα</span>';
-  return `<div class="wi4-q wn5-q"><div class="wi4-q-hd"><span>ΕΠΟΜΕΝΑ · ${n}</span></div></div>`;
-}
-function _dayHTML(d, known) {
-  const today = d.date === _today();
-  const empty = known && d.empty;
-  const [name, date] = d.head.split(' ');
-  const tail = (today ? '<span class="wi4-today"> · σήμερα</span>' : '')
-    + (!known ? `<span class="wn5-dayx"> · ${_state === 'loading' ? '…' : '—'}</span>` : empty ? '<span class="wn5-dayx"> · καμία φόρτωση</span>' : '');
-  return `<section class="wi4-day wn5-day${today ? ' today' : ''}${empty ? ' empty' : ''}" data-date="${d.date}">`
-    + `<div class="wi4-dayh wn5-dayh"><span class="wi4-dayh-sp"></span><span class="wi4-dayn">${_esc(name)} <span class="wi4-dayd">${_esc(date)}</span></span>${tail}</div></section>`;
-}
-// ═══ end of model and body ═══
+function _cycleOf(rtId) { return _board ? _board.cycles.find((c) => c.rt_id === Number(rtId)) || null : null; }
 
+// ═══ Root, bar, states ═══
+function _rootHTML() {
+  // While loading, or when the read failed with nothing before it, the days come from an empty board of the week:
+  // the counters say «…» / «—» (known = false), never «καμία φόρτωση» or 0 (Δ12 πλακ. 2–3).
+  const m = _m || L().model({ week: _sat, cycles: [], waiting: [], hub: [], notices: [] }, { today: _today() });
+  const known = !!_m;
+  return `<div class="wi4 wn5" data-week="${_esc(_sat)}" data-state="${_esc(_state)}">`
+    + _barHTML() + _errHTML() + (known ? _shapeHTML(m) : '') + _boardHTML(m, known) + '</div>';
+}
 function _barHTML() {
   const w = Number(window.WNATL && window.WNATL.week);
   const upd = _state === 'loading' ? 'Διαβάζει…' : _okAt ? 'Ενημερώθηκε ' + _hhmm(_okAt) : '—';
   return '<div class="wi4-bar wn5-bar"><div class="wi4-bar-l"><span class="wi4-title">Εβδομαδιαίο Εθνικών</span>'
-    + `<span class="wi4-range">${_esc(_rangeText(_sat))}</span>`
+    + `<span class="wi4-range" title="${_esc(_rangeText(_sat))}">${_esc(_rangeText(_sat))}</span>`
     + `<button type="button" class="wn5-upd" data-act="reload" title="Ανανέωση" onclick="WN5.reload('user')">↻ ${_esc(upd)}</button></div>`
     + `<nav class="wi4-tabs" aria-label="Εβδομάδες">${_tabsHTML(w)}</nav>`
-    + '<div class="wi4-bar-r"><button type="button" class="wi4-btn sm" title="Το παλιό Εβδομαδιαίο Εθνικών" onclick="WN5._switch(\'0\')">Παλιά προβολή</button></div></div>';
+    // Figma 7745 / H1 right group: «Προβολή ▾» · «Σάρωση» · «+ Νέα παραγγελία». «Προβολή ▾» and «Σάρωση» wait for
+    // Φ4β (Ε-42, Ε-38): the scan creates an order of the OLD model, which this board never shows (principle 1).
+    // «+ Νέα παραγγελία» comes with the v5 form (T20): never a button that opens nothing, never the old form here.
+    + '<div class="wi4-bar-r">'
+    + (typeof WN5Form !== 'undefined' && typeof OrdersCommon !== 'undefined' && OrdersCommon.newOrderButton
+      ? OrdersCommon.newOrderButton('WN5Form.openOrder({})', '+ Νέα παραγγελία', 'Νέα εθνική παραγγελία v5 — χωρίς έξοδο από το εβδομαδιαίο') : '')
+    + '<button type="button" class="wi4-btn sm" title="Το παλιό Εβδομαδιαίο Εθνικών" onclick="WN5._switch(\'0\')">Παλιά προβολή</button></div></div>';
 }
 function _tabsHTML(w) {
   if (!Number.isInteger(w)) return '';
@@ -263,6 +276,289 @@ function _errHTML() {
     + `<span class="wn5-strip-sub">${_board ? 'Ό,τι ήρθε πριν μένει στην οθόνη' : 'Η εβδομάδα δεν διαβάστηκε — δεν σημαίνει ότι είναι άδεια'}${last}</span>`
     + '<button type="button" class="wi4-btn sm" data-act="reload" onclick="WN5.reload(\'user\')">Ανανέωση ↻</button></div>';
 }
+// A part of the board WN5L could not place (a stop with an unknown side, two hubs): said on screen and logged once
+// per distinct line — never dropped in silence (principle 1).
+function _shapeHTML(m) {
+  if (!m.errors.length) return '';
+  return `<div class="wn5-strip" data-kind="client" role="alert"><b>ΔΕΔΟΜΕΝΑ ΠΟΥ ΔΕΝ ΣΧΕΔΙΑΣΤΗΚΑΝ</b><span>${_esc(m.errors.join(' · '))}</span></div>`;
+}
+function _logShape(m) {
+  if (!m) return;
+  for (const line of m.errors) {
+    if (_errLogged.has(line)) continue;
+    _errLogged.add(line);
+    _logErr(new Error(line), 'weekly natl v5: board shape');
+  }
+}
+
+// ═══ Board body ═══
+function _boardHTML(m, known) {
+  const no = { n: 0 };
+  const cycles = m.days.flatMap((d) => d.rows).filter((r) => r.kind === 'cycle');
+  return _qbandHTML(m, known)
+    + (known && typeof WN5Hub !== 'undefined' && typeof WN5Hub.shelfHTML === 'function' ? WN5Hub.shelfHTML(m) : '')
+    + _colsHTML(cycles, known)
+    + `<div id="wn5-rows">${m.days.map((d) => _dayHTML(d, m, known, no)).join('')}</div>`;
+}
+function _qbandHTML(m, known) {
+  if (!known) return `<div class="wi4-q wn5-q"><div class="wi4-q-hd"><span>ΕΠΟΜΕΝΑ · ${_state === 'loading' ? '…' : '—'}</span></div></div>`;
+  const q = m.queue;
+  if (!q.length) return '<div class="wi4-q wn5-q"><div class="wi4-q-hd"><span>ΕΠΟΜΕΝΑ · <span class="wn5-lc">κανένα</span></span></div></div>';
+  const shown = _qAll ? q : q.slice(0, 3);
+  const more = q.length > 3 ? `<button type="button" class="wi4-link wi4-q-all" onclick="WN5._qMore()">${_qAll ? 'Λιγότερα ▴' : `Όλα ${q.length} ▾`}</button>` : '';
+  return `<div class="wi4-q wn5-q"><div class="wi4-q-hd"><span>ΕΠΟΜΕΝΑ · ${q.length}</span><span class="wi4-q-n">${_esc(_qSub(q, m.today))}</span></div>`
+    + `<div class="wn5-qcards">${shown.map((it) => _qcardHTML(it, m.today)).join('')}</div>${more}</div>`;
+}
+// «2 VS σήμερα · 1 Παρ»: how many of the queue fall on each day.
+function _qSub(q, today) {
+  const by = new Map();
+  for (const it of q) by.set(it.day, (by.get(it.day) || 0) + 1);
+  return [...by.entries()].map(([d, n]) => `${n} VS ${d && d === today ? 'σήμερα' : _dow(d)}`).join(' · ');
+}
+function _qcardHTML(it, today) {
+  const why = it.reason === 'late' ? 'καθυστερεί' : 'χωρίς φορτηγό';
+  return `<div class="wi4-qcard wi4-r-red wn5-qcard" data-piece="${_id(it.pieceId)}">`
+    + `<span class="wi4-dc ${_chipCls(it.day, today)}">${_esc(_dl(it.day))}</span>`
+    + `<span class="wi4-qcard-t"><span class="wi4-l1" title="${_esc(it.title)}">${_esc(it.title)}</span><span class="wi4-l2">${_esc(_pal(it.pallets))} · ${why}</span></span>`
+    + '<button type="button" class="wi4-btn sm" data-act="assign">Ανάθεση</button></div>';
+}
+function _qMore() {
+  _qAll = !_qAll;
+  const q = document.querySelector('#content .wn5 .wn5-q');
+  if (q && _m) q.outerHTML = _qbandHTML(_m, true);
+}
+// Column heads of Figma H1 2120:7738: «ΑΝΑΘΕΣΗ» alone (owner 25/10), no Veroia-time column anywhere.
+function _colsHTML(cycles, known) {
+  const kn = cycles.filter((r) => r.kath).length;
+  const an = cycles.filter((r) => r.anod && !r.anod.gap).length;
+  const cnt = (n) => (known ? ` · ${n} ${n === 1 ? 'κύκλος' : 'κύκλοι'}` : '');
+  return '<div class="wn5-cols" role="row">'
+    + '<span class="wn5-c-idx"></span><span class="wn5-c-kd">ΚΑΘΟΔΟΣ</span><span class="wn5-c-kfl">ΦΟΡΤΩΣΗ</span>'
+    + `<span class="wn5-c-kto">ΠΑΡΑΔΟΣΗ<span class="wn5-h-sub">${cnt(kn)}${known ? ' · ανά ημέρα φόρτωσης Βέροιας' : ''}</span></span>`
+    + '<span class="wn5-c-kpal">ΠΑΛ.</span><span class="wn5-c-asg wn5-h-asg">ΑΝΑΘΕΣΗ</span>'
+    + `<span class="wn5-c-ad">ΑΝΟΔΟΣ</span><span class="wn5-c-afl">ΦΟΡΤΩΣΗ<span class="wn5-h-sub">${cnt(an)}</span></span>`
+    + '<span class="wn5-c-ato">ΠΡΟΣ</span><span class="wn5-c-apal">ΠΑΛ.</span></div>';
+}
+function _dayHTML(d, m, known, no) {
+  const today = d.date === m.today;
+  const empty = known && d.empty;
+  const fold = known && !empty;
+  const closed = fold && _closedDays.has(d.date);
+  const [name, date] = d.head.split(' ');
+  const tail = (today ? '<span class="wi4-today"> · σήμερα</span>' : '')
+    + (!known ? `<span class="wn5-dayx"> · ${_state === 'loading' ? '…' : '—'}</span>` : empty ? '<span class="wn5-dayx"> · καμία φόρτωση</span>' : '');
+  const head = `<div class="wi4-dayh wn5-dayh"${fold ? ` role="button" tabindex="0" aria-expanded="${!closed}" onclick="WN5._dayTog('${d.date}')"` : ''}>`
+    + (fold ? `<span class="wi4-chev">${CHEV}</span>` : '<span class="wi4-dayh-sp"></span>')
+    + `<span class="wi4-dayn">${_esc(name)} <span class="wi4-dayd">${_esc(date)}</span></span>${tail}</div>`;
+  const body = fold ? `<div class="wi4-day-body">${d.rows.map((r) => _rowHTML(r, m, no)).join('')}</div>` : '';
+  return `<section class="wi4-day wn5-day${today ? ' today' : ''}${empty ? ' empty' : ''}${closed ? ' closed' : ''}" data-date="${d.date}">${head}${body}</section>`;
+}
+// Days are folded only by the user's click (owner 12/10), and stay as the user left them until the week changes.
+function _dayTog(date) {
+  if (!DAY_RE.test(String(date || ''))) return;
+  const sec = document.querySelector(`#content .wn5 .wn5-day[data-date="${date}"]`);
+  if (!sec || sec.classList.contains('empty')) return;
+  if (_closedDays.has(date)) _closedDays.delete(date); else _closedDays.add(date);
+  const closed = _closedDays.has(date);
+  sec.classList.toggle('closed', closed);
+  const h = sec.querySelector('.wn5-dayh');
+  if (h) h.setAttribute('aria-expanded', String(!closed));
+}
+
+// ═══ Rows ═══
+// A window the board did not send (hub[] of 072, Ε-26) is «—», never «null–null» and never a guess.
+const _win = (f, t) => (f && t ? `${_esc(f)}–${_esc(t)}` : '—');
+// «ΠΡΟΣ ΑΝΑΘΕΣΗ» whose destination / windows the 072 board does not send (hub[], Ε-26): said under the row, never
+// hidden and never guessed (principle 1); the assignment window says the same and keeps «Ένωση» closed (T12).
+function _missHTML(r) {
+  return `<div class="wn5-sub wn5-miss" data-qi="${_esc(r.key)}" data-key="miss:${_esc(r.key)}"><span class="wn5-c-idx"></span><span class="wn5-sub-t">${_esc(r.miss)}</span></div>`;
+}
+function _rowHTML(r, m, no) {
+  const n = r.kind === 'cycle' ? ++no.n : null;
+  const rail = r.rail === 'red' ? ' wi4-r-red' : r.late ? ' wi4-r-amb' : '';
+  const ids = r.rtId != null ? ` data-rt="${_id(r.rtId)}"` : ` data-piece="${_id(r.pieceIds[0])}"`;
+  let h = `<div class="wn5-row${rail}" data-key="${_esc(r.key)}" data-qi="${_esc(r.key)}"${ids}>`
+    + `<div class="wn5-c-idx"><span class="wi4-no">${n == null ? '' : n}</span>`
+    + (r.rtId != null ? `<button type="button" class="wi4-plane" title="Ενέργειες σειράς" aria-haspopup="menu" onclick="WN5.rowMenu(event, ${_id(r.rtId)})">${PLANE}</button>` : '')
+    + '</div>'
+    + _kathHTML(r, m)
+    + `<div class="wn5-asg">${r.tiles.map((t) => _boxHTML(t)).join('')}</div>`
+    + _anodHTML(r, m)
+    + '</div>';
+  for (const lm of r.local) h += _localHTML(r, lm);
+  if (r.miss) h += _missHTML(r);
+  return h;
+}
+function _kathHTML(r, m) {
+  const s = r.kath;
+  if (!s) return r.kind === 'cycle' ? '<div class="wn5-kspan"><span class="wn5-gapbox">Χωρίς κάθοδο</span></div>' : '<div class="wn5-kspan"><span class="wn5-none">—</span></div>';
+  const toDay = s.toDay && s.toDay !== s.day ? `<span class="wn5-dc2">→ ${_esc(_dl(s.toDay))}</span>` : '';
+  return `<div class="wn5-kd"><span class="wi4-dc ${_chipCls(s.day, m.today)}">${_esc(_dl(s.day))}</span>${toDay}</div>`
+    + `<div class="wn5-fl">${s.veroia ? `<span class="wn5-vh">Βέροια</span><span class="wn5-vtime">${_win(s.veroia.from, s.veroia.to)}</span>` : ''}${_ptsHTML(s.from)}</div>`
+    + `<div class="wn5-kto">${_ptsHTML(s.to)}</div>`
+    + `<div class="wn5-kpal">${_palHTML(s)}</div>`;
+}
+function _anodHTML(r, m) {
+  const s = r.anod;
+  if (!s) return '<div class="wn5-aspan"><span class="wn5-none">—</span></div>';
+  if (s.gap) return `<div class="wn5-aspan"><span class="wn5-gapbox">${_esc(s.gap.text)}</span></div>`;
+  const n = s.from.length;
+  const end = r.end ? `<span class="wn5-end"><span class="wi4-l1">Βέροια · τέλος κύκλου</span><span class="wi4-l2">ως ${_esc(_dow(L().athensDay(r.end.by)))} ${_esc(L().athensTime(r.end.by))}</span></span>` : '';
+  return `<div class="wn5-ad"><span class="wi4-dc ${_chipCls(s.day, m.today)}">${_esc(_dl(s.day))}</span><span class="wn5-dc2">${n} ${n === 1 ? 'φορτίο' : 'φορτία'}</span></div>`
+    + `<div class="wn5-afl">${_ptsHTML(s.from)}</div>`
+    + `<div class="wn5-ato">${_ptsHTML(s.to)}${end}</div>`
+    + `<div class="wn5-apal">${_palHTML(s)}</div>`;
+}
+function _ptsHTML(pts) {
+  if (!pts.length) return '';
+  const one = pts.length === 1;
+  const rest = pts.slice(VISIBLE_POINTS);
+  const more = rest.length
+    ? `<span class="wi4-more" title="${_esc(rest.map((p) => `${p.n}. ${p.name} · ${p.from && p.to ? p.from + '–' + p.to : '—'} · ${_pal(p.pallets)}`).join('\n'))}"><b>+${rest.length}</b></span>`
+    : '';
+  return `<span class="wi4-pts wn5-pts">${pts.slice(0, VISIBLE_POINTS).map((p) => _ptHTML(p, one)).join('')}${more}</span>`;
+}
+function _ptHTML(p, one) {
+  return `<span class="wi4-pt wn5-pt${p.late ? ' wn5-late' : ''}" data-stop="${_id(p.stopId)}">`
+    + (one ? '' : `<span class="wi4-pt-n">${p.n}</span>`)
+    + `<span class="wi4-l1">${_esc(p.name)}${p.city ? `<span class="wn5-city"> · ${_esc(p.city)}</span>` : ''}</span>`
+    + `<span class="wi4-l2${p.late ? ' wi4-t-amb' : ''}">${_win(p.from, p.to)} · ${_esc(_pal(p.pallets))}</span></span>`;
+}
+function _palHTML(s) {
+  return `<span class="wi4-pal${s.over ? ' over' : ''}"${s.over ? ` title="υπέρβαση ${_esc(_pal(s.over))}"` : ''}>${_esc(String(s.pallets).replace('.', ','))}</span>`;
+}
+function _boxHTML(t) {
+  // «ΠΡΟΣ ΑΝΑΘΕΣΗ» opens the assignment window (wired by the actions file, Task T12).
+  if (t.type === 'un') return '<button type="button" class="wi4-box un" data-act="assign"><span class="wi4-l1">ΠΡΟΣ ΑΝΑΘΕΣΗ</span></button>';
+  // The tile is 28px high: a long name is cut by the wi4 rule with a visible «…» and stays whole in title.
+  return `<span class="wi4-box ${t.type}"><span class="wi4-l1${t.type === 'own' ? ' wi4-plate' : ''}" title="${_esc(t.line1)}">${_esc(t.line1)}</span>`
+    + `<span class="wi4-l2${t.missing ? ' wn5-missing' : ''}" title="${_esc(t.line2)}">${_esc(t.line2)}</span></span>`;
+}
+// «↳ Φόρτωση με τοπικό» under its row (Figma 2011:7745 row 3): who, when, for which stop.
+function _localHTML(r, lm) {
+  const time = [lm.time_from, lm.time_to].filter(Boolean).map((t) => String(t).slice(0, 5)).join('–');
+  return `<div class="wn5-sub" data-qi="${_esc(r.key)}" data-key="local:${_id(lm.local_move_id)}" data-stop="${_id(lm.stopId)}">`
+    + '<span class="wn5-c-idx"></span>'
+    + `<span class="wn5-sub-t">↳ <b>Φόρτωση με τοπικό</b> · ${_esc(lm.driver || 'χωρίς οδηγό')} · ${_esc(_dl(lm.move_date))}${time ? ' ' + _esc(time) : ''}`
+    + `${lm.stopName ? ` · για ${_esc(lm.stopName)}${lm.stopN ? ` (στάση ${lm.stopN})` : ''}` : ''}</span></div>`;
+}
+// ═══ end of rows ═══
+
+// ═══ ✈ row menu (Figma 2011:8858) ═══
+// Each Task appends its line to WN5.MENU_ITEMS; `order` keeps the Figma order whatever the order of the Tasks:
+// 10 Άνοιγμα παραγγελιών · 20 Ανάθεση · 30 Νέα παραγγελία · 40 Φόρτωση με τοπικό · 50 Σπάσιμο · 60 Εκτύπωση ·
+// 70 Αντιγραφή πινακίδων · 90 Καθαρισμός (danger, after a separator).
+function rowMenu(ev, rtId) {
+  try { if (ev && ev.stopPropagation) ev.stopPropagation(); } catch (_) {}
+  _closeMenu();
+  if (!active() || !ID_RE.test(String(rtId))) return;
+  const row = _rowOf(rtId);
+  if (!row) return;
+  const items = WN5.MENU_ITEMS.slice().sort((a, b) => (a.order || 0) - (b.order || 0));
+  const el = document.createElement('div');
+  el.id = 'wn5-menu';
+  el.className = 'wn5-menu';
+  el.setAttribute('role', 'menu');               // core/ui.js: ←/→ never change the week under an open menu
+  el.setAttribute('data-wn5-overlay', 'menu');
+  el.innerHTML = `<div class="wn5-m-hd"><span class="wi4-l1">${_esc(_menuTitle(row))}</span><span class="wi4-l2">${_esc(_menuSub(row))}</span></div>`
+    + items.map((it) => (it.danger ? '<div class="wn5-m-sep" role="separator"></div>' : '') + _menuItemHTML(it, rtId)).join('');
+  document.body.appendChild(el);
+  el.addEventListener('click', (e) => {
+    const b = e.target.closest('[data-item]');
+    if (!b) return;
+    const id = b.getAttribute('data-item');
+    if (b.getAttribute('aria-haspopup') === 'menu') { _subToggle(el, id); return; }   // a «›» line opens its submenu
+    const it = _menuFind(items, id);
+    _closeMenu();
+    if (it && typeof it.run === 'function') { try { it.run(Number(rtId), e); } catch (err) { _logErr(err, 'weekly natl v5: menu ' + it.id); } }
+  });
+  // → opens the submenu of a «›» line, ← closes it and goes back to its line (Figma 2011:8858). Stopped here, so the
+  // week never moves under an open menu (core/ui.js also checks role=menu).
+  el.addEventListener('keydown', (e) => {
+    const b = e.target && e.target.closest ? e.target.closest('[data-item]') : null;
+    if (!b) return;
+    if (e.key === 'ArrowRight' && b.getAttribute('aria-haspopup') === 'menu') { e.preventDefault(); e.stopPropagation(); _subToggle(el, b.getAttribute('data-item'), true); }
+    else if (e.key === 'ArrowLeft' && b.closest('[data-sub]')) {
+      e.preventDefault(); e.stopPropagation();
+      const id = b.closest('[data-sub]').getAttribute('data-sub');
+      _subToggle(el, id, false);
+      const pb = el.querySelector(`[data-item="${id}"]`);
+      if (pb) pb.focus();
+    }
+  });
+  const a = ev && ev.currentTarget && ev.currentTarget.getBoundingClientRect ? ev.currentTarget.getBoundingClientRect() : { left: 120, bottom: 120 };
+  el.style.left = Math.max(8, Math.min(a.left, window.innerWidth - el.offsetWidth - 8)) + 'px';
+  el.style.top = Math.max(8, Math.min(a.bottom + 4, window.innerHeight - el.offsetHeight - 8)) + 'px';
+  const first = el.querySelector('[role="menuitem"]');
+  if (first) first.focus();
+}
+// One line per Figma item (2011:8858, 8 lines under the head): a line with `children` is «label ›» and its submenu (role=menu,
+// hidden until opened), so the same label is never drawn twice; `count` is the number on the right.
+function _menuItemHTML(it, rtId) {
+  let n = null;
+  if (typeof it.count === 'function') { try { n = it.count(rtId); } catch (err) { _logErr(err, 'weekly natl v5: menu count ' + it.id); } }
+  const kids = Array.isArray(it.children) && it.children.length > 0;
+  const tail = (it.sub ? `<span class="wi4-l2">${_esc(it.sub)}</span>` : '') + (Number.isFinite(n) ? `<span class="wn5-m-n">${n}</span>` : '')
+    + (kids ? '<span class="wn5-m-ar" aria-hidden="true">›</span>' : '');
+  let h = `<button type="button" role="menuitem" class="wn5-m-i${it.danger ? ' danger' : ''}" data-item="${_esc(it.id)}"${kids ? ' aria-haspopup="menu" aria-expanded="false"' : ''}>`
+    + `<span class="wi4-l1">${_esc(it.label)}</span>${tail}</button>`;
+  if (kids) {
+    h += `<div class="wn5-m-sub" role="menu" data-sub="${_esc(it.id)}" hidden>`
+      + it.children.map((c) => `<button type="button" role="menuitem" class="wn5-m-i" data-item="${_esc(c.id)}"><span class="wi4-l1">${_esc(c.label)}</span></button>`).join('')
+      + '</div>';
+  }
+  return h;
+}
+function _menuFind(items, id) {
+  for (const it of items) {
+    if (it.id === id) return it;
+    for (const c of it.children || []) if (c.id === id) return c;
+  }
+  return null;
+}
+// Open (true) / close (false) / toggle one submenu; any other open one closes. The flyout sits beside its line.
+function _subToggle(menu, id, open) {
+  const sub = menu.querySelector(`[data-sub="${id}"]`);
+  const btn = menu.querySelector(`[data-item="${id}"]`);
+  if (!sub || !btn) return;
+  const on = open === undefined ? sub.hidden : open;
+  for (const o of menu.querySelectorAll('[data-sub]')) {
+    if (o === sub) continue;
+    o.hidden = true;
+    const ob = menu.querySelector(`[data-item="${o.getAttribute('data-sub')}"]`);
+    if (ob) ob.setAttribute('aria-expanded', 'false');
+  }
+  sub.hidden = !on;
+  btn.setAttribute('aria-expanded', String(on));
+  if (on) {
+    sub.style.top = btn.offsetTop + 'px';
+    const f = sub.querySelector('[role="menuitem"]');
+    if (f) f.focus();
+  }
+}
+// The labels of the ✈ menu of a row, in order, «›» lines with their children — what the rigs hold to Figma.
+function _menuItems(rtId) {
+  return WN5.MENU_ITEMS.slice().sort((a, b) => (a.order || 0) - (b.order || 0))
+    .map((it) => ({ id: it.id, label: it.label, children: (it.children || []).map((c) => c.label) }));
+}
+function _menuTitle(row) {
+  const c = _cycleOf(row.rtId);
+  const who = (c && (c.truck || c.partner)) || (c && c.code) || '';
+  return who + (row.cycleNo ? ` · κύκλος ${row.cycleNo.m > 1 ? `${row.cycleNo.n}/${row.cycleNo.m}` : '1'}` : '');
+}
+function _menuSub(row) {
+  const s = row.kath || row.anod;
+  if (!s || !s.day) return '';
+  return _dl(s.day) + (row.kath && row.kath.veroia ? ` · Βέροια ${row.kath.veroia.from}–${row.kath.veroia.to}` : '');
+}
+function _closeMenu() { const m = document.getElementById('wn5-menu'); if (m) m.remove(); }
+// Ε-22: only the cycle's truck and trailer — nothing of the hub, nothing of a VS (Veroia is never shown to a
+// client). A partner's cycle has no plates on the board: copyPlates says so instead of copying nothing.
+function copyPlatesOf(rtId) {
+  const c = _cycleOf(rtId);
+  const text = c && typeof platesText === 'function' ? platesText(c.truck, c.trailer, null) : '';
+  return typeof copyPlates === 'function' ? copyPlates(text) : false;
+}
 
 // ═══ Session hooks (installed once, at the first paint; every one starts with the v5 guard) ═══
 function _install() {
@@ -273,6 +569,17 @@ function _install() {
   if (content && typeof MutationObserver === 'function') {
     new MutationObserver(() => { if (!content.querySelector('.wn5')) _cleanup(); }).observe(content, { childList: true });
   }
+  // A click outside the open ✈ menu closes it (capture: before any other handler acts on the click).
+  document.addEventListener('click', (e) => {
+    if (!document.getElementById('wn5-menu')) return;
+    if (e.target && e.target.closest && e.target.closest('#wn5-menu, .wi4-plane')) return;
+    _closeMenu();
+  }, true);
+  document.addEventListener('keydown', _onKey, true);
+}
+function _onKey(e) {
+  if (!active() || !document.querySelector('#content .wn5')) return;
+  if (e.key === 'Escape' && document.getElementById('wn5-menu')) { _closeMenu(); e.preventDefault(); e.stopPropagation(); }
 }
 function _cleanup() {
   try { document.body.classList.remove('wn5-on'); } catch (_) {}
@@ -280,6 +587,7 @@ function _cleanup() {
   try { document.querySelectorAll('body > [data-wn5-overlay]').forEach((el) => el.remove()); } catch (_) {}
 }
 
+// ═══ Exports ═══
 const WN5 = {
   _broken: false,
   active,
@@ -290,7 +598,14 @@ const WN5 = {
   snapshot,
   markClosed,
   weekParam,
-  MENU_ITEMS: [],
+  rowMenu,
+  copyPlates: copyPlatesOf,
+  MENU_ITEMS: [{ id: 'plates', order: 70, label: 'Αντιγραφή πινακίδων', run: (rtId) => copyPlatesOf(rtId) }],
+  // The board HTML of a model, for tests/wn5-board-html.test.js (pure: model in, string out).
+  _html: (m) => _boardHTML(m, true),
+  _menuItems,
+  _dayTog,
+  _qMore,
   _week,
   _switch,
 };

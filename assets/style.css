@@ -8999,6 +8999,87 @@ body.wn5-on .content { padding-left:28px; padding-right:28px; padding-top:8px; b
 .wn5-strip > .wi4-btn { margin-left:auto; }
 .wn5 .wn5-q .wi4-q-hd > span:first-child { white-space:nowrap; }
 .wn5-dayx { font-weight:400; letter-spacing:0; color:var(--wi4-grey-2); }
+/* Board grid (Figma H1 2120:7738 at 1920: one 1803px row from x=88). Twelve tracks:
+   # · gap · ΚΑΘΟΔΟΣ day · ΦΟΡΤΩΣΗ · ΠΑΡΑΔΟΣΗ · ΠΑΛ. · ΑΝΑΘΕΣΗ · gap · ΑΝΟΔΟΣ day · ΦΟΡΤΩΣΗ · ΠΡΟΣ · ΠΑΛ.
+   ΑΝΑΘΕΣΗ is 266px and no Veroia-time column exists (owner 25/10: +16px taken from the ΑΝΟΔΟΣ points), so ΑΝΟΔΟΣ
+   starts 266 + 16 = 282px after ΑΝΑΘΕΣΗ. The two point columns share what is left (403.5px each at 1920 = two
+   ~178px stops + «+N»; 165px at 1440 = one stop + «+N»). Cells shrink, never overlap, and wrap names (no cut). */
+.wn5-cols, .wn5-row, .wn5-sub {
+  display:grid; grid-template-columns:64px 8px 78px 169px minmax(0,1fr) 86px 266px 16px 78px minmax(0,1fr) 154px 77px; align-items:center; }
+.wn5 .wn5-c-idx { grid-column:1; }
+.wn5 :is(.wn5-c-kd, .wn5-kd) { grid-column:3; }
+.wn5 :is(.wn5-c-kfl, .wn5-fl) { grid-column:4; }
+.wn5 :is(.wn5-c-kto, .wn5-kto) { grid-column:5; }
+.wn5 :is(.wn5-c-kpal, .wn5-kpal) { grid-column:6; }
+.wn5 :is(.wn5-c-asg, .wn5-asg) { grid-column:7; }
+.wn5 :is(.wn5-c-ad, .wn5-ad) { grid-column:9; }
+.wn5 :is(.wn5-c-afl, .wn5-afl) { grid-column:10; }
+.wn5 :is(.wn5-c-ato, .wn5-ato) { grid-column:11; }
+.wn5 :is(.wn5-c-apal, .wn5-apal) { grid-column:12; }
+.wn5 .wn5-kspan { grid-column:3 / 7; }
+.wn5 .wn5-aspan { grid-column:9 / 13; }
+.wn5-cols { position:sticky; top:-8px; z-index:30; min-height:32px; padding:4px 1px 8px; box-sizing:border-box; background:var(--surface-page);
+  font-size:10px; font-weight:600; letter-spacing:.5px; line-height:1.2; color:var(--wi4-grey-2); align-items:end; }
+.wn5-cols > span { min-width:0; padding:0 9px; box-sizing:border-box; }
+.wn5-cols > .wn5-h-asg { padding-left:9px; }
+.wn5-h-sub { font-weight:400; letter-spacing:0; }
+.wn5-row { position:relative; min-height:36px; padding:4px 0; box-sizing:border-box; border-top:1px solid var(--wi4-line); }
+.wn5 .wi4-day-body > :first-child { border-top:0; }
+.wn5-row > div, .wn5-sub > span { min-width:0; padding:0 9px; box-sizing:border-box; }
+.wn5-row > .wn5-asg { padding:0; display:flex; gap:4px; }
+.wn5 .wn5-asg .wi4-box { flex:1 1 0; max-width:none; }
+.wn5 .wn5-c-idx { align-self:stretch; display:flex; align-items:center; gap:2px; padding:0 6px 0 12px; font-size:13px; font-weight:600; color:var(--wi4-grey-1); }
+.wn5-row > .wn5-c-idx { background:var(--wi4-chip); }
+.wn5 .wi4-day.today .wn5-row > .wn5-c-idx { background:var(--wi4-today-hover); }
+.wn5 .wn5-kd, .wn5 .wn5-ad { display:flex; flex-direction:column; align-items:flex-start; gap:2px; }
+.wn5-dc2 { font-size:10px; color:var(--wi4-grey-2); white-space:nowrap; }
+/* ΦΟΡΤΩΣΗ: «Βέροια» and, under it, its loading window — on every row that loads there (owner 25/10). */
+.wn5 .wn5-fl { display:flex; flex-direction:column; gap:2px; }
+.wn5-vh { display:block; font-size:12px; font-weight:500; color:var(--wi4-ink); }
+.wn5-vtime { display:block; font-size:10.5px; color:var(--wi4-grey-2); }
+/* At 1920 two stops fit side by side; narrower (1440: 147px) they wrap to a second line instead of spilling. */
+.wn5 .wn5-pts { flex-wrap:wrap; row-gap:4px; }
+/* Stops and the end of the cycle WRAP (DESIGN.md #6: a place is never cut). The wi4 block cuts .wi4-l1/.wi4-l2 with a visible «…»
+   (its one truncation rule); here that rule stays only on the 28px vehicle tile and the queue cards, whose full text is in title. */
+.wn5 :is(.wn5-pts, .wn5-end) :is(.wi4-l1, .wi4-l2) { white-space:normal; overflow:visible; text-overflow:clip; overflow-wrap:break-word; }
+/* 164px: two stops + the 34px «+N» fit the 386px of a point column at 1920 (Figma: stops 178px apart, gap included). */
+.wn5 .wn5-pt { flex:0 1 164px; }
+.wn5-city { font-weight:400; color:var(--wi4-grey-2); }
+.wn5 .wn5-late .wi4-l2 { color:var(--wi4-amber); }
+.wn5 .wn5-missing { color:var(--wi4-amber-ink); }
+.wn5-none { color:var(--wi4-grey-3); }
+.wn5-gapbox { display:flex; align-items:center; min-height:24px; padding:2px 10px; box-sizing:border-box; border:1px dashed var(--wi4-slot);
+  border-radius:5px; font-size:11.5px; color:var(--wi4-grey-2); }
+.wn5-end { display:flex; flex-direction:column; }
+/* «↳ Φόρτωση με τοπικό» (Figma row 3): a 28px sub-row, text from the ΚΑΘΟΔΟΣ day column to the end. */
+.wn5-sub { min-height:28px; border-top:1px solid var(--wi4-line); }
+.wn5-sub > .wn5-c-idx { background:var(--wi4-today-hover); }
+.wn5-sub-t { grid-column:3 / -1; font-size:11.5px; color:var(--wi4-grey-1); }
+.wn5-sub-t b { font-weight:600; color:var(--wi4-grey-1); }
+.wn5-qcards { display:flex; gap:8px; flex:1 1 auto; min-width:0; }
+/* Narrower than the Figma 1920 frame (1440 with the sidebar open): the fixed tracks give way so the point columns keep
+   one whole stop + «+N» (ΑΝΑΘΕΣΗ stays 266px, owner 25/10); the long column notes go, the column names stay. */
+@media (max-width:1600px) {
+  .wn5-cols, .wn5-row, .wn5-sub { grid-template-columns:48px 6px 70px 120px minmax(0,1fr) 50px 266px 16px 70px minmax(0,1fr) 120px 50px; }
+  .wn5-h-sub { display:none; }
+}
+/* ✈ menu (Figma 2011:8858): 300px, white, the board's line colour; it lives on <body>, outside .wn5. */
+.wn5-menu { position:fixed; z-index:var(--z-top); width:300px; padding:6px 0; background:var(--surface-card); border:1px solid var(--wi4-line-2);
+  border-radius:8px; box-shadow:var(--shadow-lift); font-family:'DM Sans',sans-serif; font-size:12.5px; color:var(--wi4-ink); }
+.wn5-m-hd { display:flex; flex-direction:column; gap:2px; padding:6px 12px 8px; border-bottom:1px solid var(--wi4-line); }
+.wn5-m-i { display:flex; justify-content:space-between; align-items:baseline; gap:8px; width:100%; padding:7px 12px; border:0; background:none;
+  text-align:left; font:inherit; color:inherit; cursor:pointer; }
+.wn5-m-i:hover, .wn5-m-i:focus { background:var(--wi4-sel); outline:none; }
+.wn5-m-i.danger > .wi4-l1 { color:var(--wi4-red); }
+.wn5-m-sep { height:1px; margin:4px 0; background:var(--wi4-line); }
+.wn5-m-n { margin-left:auto; font-weight:600; color:var(--wi4-grey-1); }
+.wn5-m-ar { margin-left:auto; color:var(--wi4-grey-1); }
+.wn5-m-i > .wi4-l2 + .wn5-m-ar, .wn5-m-i > .wi4-l2 + .wn5-m-n { margin-left:6px; }
+.wn5-m-i[aria-expanded="true"] { background:var(--wi4-sel); }
+/* the submenu of a «›» line (Figma 2011:8858, 200px) opens beside it */
+.wn5-m-sub { position:absolute; left:calc(100% - 4px); width:200px; padding:4px 0; background:var(--surface-card);
+  border:1px solid var(--wi4-line-2); border-radius:8px; box-shadow:var(--shadow-lift); }
+.wn5-m-sub[hidden] { display:none; }
 /* ── wn5 end ── */
 
 /* ═══ Παραγγελίες › Εβδομάδα v4 (.ow4) — modules/orders_week_view.js ═════════

@@ -246,6 +246,107 @@ SCN.week = async (browser, origin) => {
   await page.context().close();
 };
 
+// Figma H1 2120:7738 (owner 25/10) on the synthetic W42: geometry, words, days, ✈ menu, plates.
+SCN.paint = async (browser, origin) => {
+  const scn = 'paint';
+  const { page, S } = await openBoard(browser, origin, { board: fixture() });
+  const st = await page.evaluate(() => {
+    const r = document.querySelector('#content .wn5');
+    if (!r) return null;
+    const box = (el) => { const b = el.getBoundingClientRect(); return { l: b.left, r: b.right, w: b.width }; };
+    const hAsg = r.querySelector('.wn5-cols .wn5-h-asg'), hAd = r.querySelector('.wn5-cols .wn5-c-ad');
+    return { state: r.dataset.state, rows: r.querySelectorAll('.wn5-row').length,
+      asgW: [...r.querySelectorAll('.wn5-row > .wn5-asg')].map((e) => Math.round(box(e).w)),
+      anodShift: hAsg && hAd ? Math.round(box(hAd).l - box(hAsg).l) : null,
+      asgTimes: [...r.querySelectorAll('.wn5-asg')].map((e) => e.textContent).filter((t) => /\d{1,2}:\d{2}/.test(t)),
+      vtime: [...r.querySelectorAll('.wn5-vtime')].map((e) => ({ inFl: !!e.closest('.wn5-fl'), row: e.closest('.wn5-row').dataset.key, t: e.textContent })),
+      days: [...r.querySelectorAll('.wn5-day')].map((d) => ({ date: d.dataset.date, closed: d.classList.contains('closed'), rows: d.querySelectorAll('.wn5-row').length })),
+      head: (r.querySelector('.wn5-cols .wn5-h-asg') || {}).textContent,
+      q: (r.querySelector('.wn5-q .wi4-q-hd') || { textContent: '' }).textContent.replace(/\s+/g, ' ').trim(),
+      qcards: [...r.querySelectorAll('.wn5-qcard[data-piece]')].map((c) => ({ piece: c.dataset.piece, assign: !!c.querySelector('[data-act="assign"]') })),
+      p104: ((r.querySelector('.wn5-row[data-key="rt:104"] .wn5-asg') || {}).textContent || '').replace(/\s+/g, ' ').trim(),
+      miss: ((r.querySelector('.wn5-miss[data-qi="wait:4101"]') || {}).textContent || '').trim(),
+      text: r.textContent.replace(/\s+/g, ' ') };
+  });
+  ok(scn, 'state ok, 12 rows (8 cycles + 4 loads waiting for a vehicle)', !!st && st.state === 'ok' && st.rows === 12, st && { state: st.state, rows: st.rows });
+  ok(scn, 'ΑΝΑΘΕΣΗ is 266px on every row (owner 25/10)', !!st && st.asgW.length === 12 && st.asgW.every((w) => Math.abs(w - 266) <= 1), st && st.asgW);
+  ok(scn, 'ΑΝΟΔΟΣ starts 282px after ΑΝΑΘΕΣΗ (266 + 16, Figma §Σ2: 1172 → 1188)', !!st && st.anodShift !== null && Math.abs(st.anodShift - 282) <= 1, st && st.anodShift);
+  ok(scn, 'the head is «ΑΝΑΘΕΣΗ» alone', !!st && st.head === 'ΑΝΑΘΕΣΗ', st && st.head);
+  ok(scn, 'no hh:mm anywhere in ΑΝΑΘΕΣΗ', !!st && !st.asgTimes.length, st && st.asgTimes);
+  ok(scn, 'the Veroia time sits under «Βέροια» in ΦΟΡΤΩΣΗ on all 9 rows that load there', !!st && st.vtime.length === 9 && st.vtime.every((v) => v.inFl), st && st.vtime);
+  ok(scn, 'every day with rows is open at paint (never folded by the board)', !!st && st.days.filter((d) => d.rows).every((d) => !d.closed), st && st.days);
+  for (const w of ['Χωρίς κάθοδο', 'Κενό γύρισμα · ελεύθερο από Τρί 11:00', 'Μόνο κάθοδος · συνεργάτης', '↳ Φόρτωση με τοπικό · Driver Test 11', 'ως Δευ 22:00']) {
+    ok(scn, `shows «${w}»`, !!st && st.text.includes(w));
+  }
+  ok(scn, 'a one-segment partner tile = «Partner Test Pelagos» / «—», never the rate (F0 7745 / H1, Ε-36)', !!st && st.p104 === 'Partner Test Pelagos—', st && st.p104);
+  ok(scn, 'VS-T118 (hub[] of the live 072) is a ΠΡΟΣ ΑΝΑΘΕΣΗ row that says its destination did not come (Ε-26)', !!st && /δεν ήρθαν με τον πίνακα/.test(st.miss), st && st.miss);
+  ok(scn, '«ΕΠΟΜΕΝΑ · 3», three cards, each with «Ανάθεση» (data-act=assign)', !!st && /^ΕΠΟΜΕΝΑ · 3/.test(st.q) && st.qcards.length === 3 && st.qcards.every((c) => c.assign), st && { q: st.q, cards: st.qcards });
+  // A day folds only by the user's click, and only that day.
+  await page.evaluate(() => { const h = document.querySelector('#content .wn5 .wn5-day[data-date="2026-10-12"] .wn5-dayh'); if (h) h.click(); });
+  const fold = await page.evaluate(() => [...document.querySelectorAll('#content .wn5 .wn5-day')].map((d) => [d.dataset.date, d.classList.contains('closed')]));
+  ok(scn, 'a click folds ΔΕΥΤΕΡΑ 12/10 only', fold.length === 7 && fold.every(([d, c]) => c === (d === '2026-10-12')), fold);
+  await page.evaluate(() => { const h = document.querySelector('#content .wn5 .wn5-day[data-date="2026-10-12"] .wn5-dayh'); if (h) h.click(); });
+  // ✈ menu: role=menu, ←/→ do not move the week while it is open, Esc closes it.
+  const reads = boardReads(S).length;
+  const opened = await page.evaluate(() => { const b = document.querySelector('#content .wn5 .wn5-row[data-rt="102"] .wi4-plane'); if (b) b.click(); return !!b; });
+  const menu = opened && await page.evaluate(() => { const m = document.getElementById('wn5-menu'); return m ? { role: m.getAttribute('role'), hd: m.querySelector('.wn5-m-hd').textContent.replace(/\s+/g, ' ').trim(), items: [...m.querySelectorAll('[data-item]')].map((i) => i.getAttribute('data-item')) } : null; });
+  ok(scn, '✈ opens #wn5-menu[role=menu] with «Αντιγραφή πινακίδων»', !!menu && menu.role === 'menu' && menu.items.includes('plates'), menu);
+  ok(scn, 'menu head «TST-2106 · κύκλος 1/2» / «Δευ 12/10 · Βέροια 16:00–18:00»', !!menu && menu.hd === 'TST-2106 · κύκλος 1/2Δευ 12/10 · Βέροια 16:00–18:00', menu && menu.hd);
+  await page.keyboard.press('ArrowRight');
+  await page.waitForTimeout(600);
+  ok(scn, '→ under the open menu changes no week (no new read)', boardReads(S).length === reads && (await page.evaluate(() => { const r = document.querySelector('#content .wn5'); return r ? r.dataset.week : null; })) === WEEK, { reads, after: boardReads(S).length });
+  await page.keyboard.press('Escape');
+  ok(scn, 'Esc closes the menu', !(await page.$('#wn5-menu')));
+  // A «›» line (T20/T23 add the real ones, Figma 2011:8858): → opens its submenu (role=menu), ← closes it.
+  // typeof guard: on plain main there is no WN5, and a ReferenceError here would end the scenario before the checks
+  // below run — the plain-main proof must reach every line (each then fails or holds by itself).
+  await page.evaluate(() => { if (typeof WN5 !== 'undefined') WN5.MENU_ITEMS.push({ id: 'rig-sub', order: 65, label: 'rig submenu', children: [{ id: 'rig-sub-a', label: 'A', run: () => {} }] }); });
+  await page.evaluate(() => { const b = document.querySelector('#content .wn5 .wn5-row[data-rt="102"] .wi4-plane'); if (b) b.click(); });
+  await page.focus('#wn5-menu [data-item="rig-sub"]').catch(() => {});
+  await page.keyboard.press('ArrowRight');
+  const subOpen = await page.evaluate(() => { const x = document.querySelector('#wn5-menu [data-sub="rig-sub"]'); return !!x && !x.hidden && x.getAttribute('role') === 'menu' && document.activeElement === x.querySelector('[data-item="rig-sub-a"]'); });
+  await page.keyboard.press('ArrowLeft');
+  const subShut = await page.evaluate(() => { const x = document.querySelector('#wn5-menu [data-sub="rig-sub"]'); return !!x && x.hidden && !!document.activeElement && document.activeElement.getAttribute('data-item') === 'rig-sub'; });
+  ok(scn, 'a «›» line: → opens its submenu (role=menu, focus inside), ← closes it back to its line, and no week moves', subOpen && subShut && boardReads(S).length === reads,
+    { subOpen, subShut, reads, after: boardReads(S).length });
+  await page.keyboard.press('Escape');
+  await page.evaluate(() => { if (typeof WN5 === 'undefined') return; const i = WN5.MENU_ITEMS.findIndex((x) => x.id === 'rig-sub'); if (i >= 0) WN5.MENU_ITEMS.splice(i, 1); });
+  await page.evaluate(() => { const b = document.querySelector('#content .wn5 .wn5-row[data-rt="102"] .wi4-plane'); if (b) b.click(); });
+  await page.evaluate(() => { const i = document.querySelector('#wn5-menu [data-item="plates"]'); if (i) i.click(); });
+  const copied = (await page.evaluate(() => window.__ev || [])).filter((e) => e.k === 'copy').map((e) => e.a[0]);
+  ok(scn, '«Αντιγραφή πινακίδων» copies the cycle truck and trailer only', copied.length === 1 && copied[0] === 'TST-2106 / TRL-5101', copied);
+  ok(scn, 'nothing was sent to /plan/* but the board read', S.plan.every((x) => x.m === 'GET' && x.path === '/plan/board'), S.plan.map((x) => x.m + ' ' + x.path));
+  ok(scn, 'no page errors', !S.pageErrors.length, S.pageErrors);
+  await shot(page, 'paint-1920');
+  await page.context().close();
+  // 1440: the point columns shrink, nothing spills out of its cell.
+  const narrow = await openBoard(browser, origin, { board: fixture(), viewport: { width: 1440, height: 900 } });
+  const spill = await narrow.page.evaluate(() => {
+    const out = [];
+    for (const row of document.querySelectorAll('#content .wn5 .wn5-row')) {
+      for (const cell of row.children) {
+        const c = cell.getBoundingClientRect();
+        for (const el of cell.querySelectorAll('.wi4-pt, .wi4-box, .wi4-more, .wn5-gapbox, .wn5-vtime')) {
+          const b = el.getBoundingClientRect();
+          if (b.left < c.left - 1 || b.right > c.right + 1) out.push(row.dataset.key + ' ' + cell.className + ' ' + el.className);
+        }
+      }
+    }
+    return { out, rows: document.querySelectorAll('#content .wn5 .wn5-row').length };
+  });
+  ok(scn, '1440: 12 rows, no stop / tile spills out of its column', spill.rows === 12 && !spill.out.length, spill);
+  ok(scn, '1440: no page errors', !narrow.S.pageErrors.length, narrow.S.pageErrors);
+  await shot(narrow.page, 'paint-1440');
+  await narrow.page.context().close();
+  // Ε-27/Ε-44: a week with no VS leg and no PlanIds.hub() (live: GET /plan/lookups is 404) cannot place Veroia —
+  // the board says so in a strip, never Veroia as an ordinary stop in silence.
+  const hubless = fixture();
+  for (const c of hubless.cycles) for (const s of c.stops) for (const l of s.legs) if (String(l.kind).startsWith('vs_')) l.kind = 'national';
+  const hl = await openBoard(browser, origin, { board: hubless });
+  const hlText = await hl.page.evaluate(() => { const x = document.querySelector('#content .wn5 .wn5-strip[data-kind="client"]'); return x ? x.textContent : null; });
+  ok(scn, 'a week whose Veroia is not identified shows the WN5L.HUB_UNKNOWN strip', !!hlText && hlText.includes('Η Βέροια δεν αναγνωρίστηκε'), hlText);
+  await hl.page.context().close();
+};
 // ── scenarios end (each Task adds its own above this line) ──
 
 // ── fixture check (T4): plain node, no browser ──
