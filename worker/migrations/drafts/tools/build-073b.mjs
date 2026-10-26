@@ -32,7 +32,10 @@ export const V5 = ['shipments', 'shipment_pieces', 'rt_stops', 'piece_legs', 'pl
 export const FILES = ['073b_plan_monitoring.sql', '073b_plan_monitoring_dryrun.sql', '073b_plan_monitoring_rollback.sql'];
 // The one function under ct_v_v5_revenue the runner cannot execute in production (measured 26/10 with
 // has_function_privilege over every function the 17 checks reach through their views: ct_setting is granted to
-// PUBLIC, order_pallets and stock_natl_delivered to the runner by 057; stock_vs_charge to service_role only).
+// PUBLIC, order_pallets and stock_natl_delivered to the runner by 057; stock_vs_charge to service_role only). Their
+// bodies, which pg_depend does not see and a 0-row run never enters: stock_vs_charge calls ct_setting, ct_setting
+// reads ct_settings (D-15's GRANT above), order_pallets and stock_natl_delivered touch nothing; the harness runs
+// them with v5 rows under production's ACLs (plan-073b.test.mjs, prod-shaped-072.mjs FN_ACL).
 export const RUNNER_FN = 'public.stock_vs_charge(numeric, numeric)';
 const RUNNER_FN_NAME = RUNNER_FN.replace(/^public\.|\(.*$/g, '');   // the messages name the function the SQL guards
 const md5 = (s) => crypto.createHash('md5').update(s, 'utf8').digest('hex');
@@ -67,7 +70,7 @@ export function build() {
   const nOn = mine.filter((c) => c.enabled).length;
   const done = `073b OK: ${IDS.length} checks (${F3_IDS.length} of F3 + ${HANDOVER_IDS.length} of 072b, ${nOn} enabled), ${V5.length} read policies, X readable and computable by the runner, every check 0 today`;
   const body = `DECLARE
-  v_k int; v_trg0 int; v_g record; v_v numeric; v_sql text;
+  v_k int; v_trg0 int; v_g record; v_v numeric; v_sql text; v_ids text; v_a text[];
 BEGIN
   PERFORM set_config('lock_timeout', '5s', true);
   -- 0. GUARDS (order 072 -> 072b -> 073 -> 073b)
@@ -117,7 +120,9 @@ ${rows.join(',\n')};
   IF v_k <> ${IDS.length} THEN RAISE EXCEPTION '073b: % checks inserted, expected ${IDS.length}', v_k; END IF;
 
   -- 3. PROOFS: the text and the on/off are the file's; each check (the disabled B-80 too) passes the same guard as
-  --    monitoring.run_checks, runs as the auditor's role and says 0 today (no v5 row before day L)
+  --    monitoring.run_checks, runs as the auditor's role and says 0 today (no v5 row before day L). Its ids_sql runs
+  --    too, as run_checks runs it (same role, same transaction): a right missing only on the ids path would
+  --    otherwise pass here and fail the first red run (review high, 26/10)
   FOR v_g IN SELECT * FROM (VALUES
 ${proof}
     ) p(id, m_sql, m_ids, on_) LOOP
@@ -125,12 +130,16 @@ ${proof}
           FROM monitoring.checks WHERE id = v_g.id) THEN
       RAISE EXCEPTION '073b proof: % is not the text (or the on/off) of its file', v_g.id;
     END IF;
-    SELECT sql_text INTO v_sql FROM monitoring.checks WHERE id = v_g.id;
+    SELECT sql_text, ids_sql INTO v_sql, v_ids FROM monitoring.checks WHERE id = v_g.id;
     PERFORM monitoring.check_sql_guard(v_sql);
+    IF v_ids IS NOT NULL THEN PERFORM monitoring.check_sql_guard(v_ids); END IF;
     SET LOCAL ROLE tms_check_runner;
     EXECUTE v_sql INTO v_v;
+    v_a := '{}';
+    IF v_ids IS NOT NULL THEN EXECUTE v_ids INTO v_a; END IF;
     RESET ROLE;
     IF v_v IS DISTINCT FROM 0 THEN RAISE EXCEPTION '073b proof: % gives % today, expected 0 before day L', v_g.id, v_v; END IF;
+    IF cardinality(v_a) IS DISTINCT FROM 0 THEN RAISE EXCEPTION '073b proof: % names % today, expected none', v_g.id, v_a; END IF;
   END LOOP;
   IF (SELECT count(*) FROM monitoring.checks WHERE id IN (${list(IDS)}) AND enabled) <> ${nOn} THEN
     RAISE EXCEPTION '073b proof: the enabled checks are not ${nOn}';

@@ -35,9 +35,12 @@ const canExec = async (db, role) => (await db.query(`SELECT has_function_privile
 async function values(db, ids = IDS) {   // each check as the auditor's role, as run_checks does (the disabled one too)
   const out = {};
   for (const id of ids) {
-    const { sql_text: sql } = (await db.query(`SELECT sql_text FROM monitoring.checks WHERE id = $1`, [id])).rows[0];
+    const { sql_text: sql, ids_sql: idsSql } = (await db.query(`SELECT sql_text, ids_sql FROM monitoring.checks WHERE id = $1`, [id])).rows[0];
     await db.exec('SET ROLE tms_check_runner');
-    try { out[id] = Number(Object.values((await db.query(sql)).rows[0])[0]); } finally { await db.exec('RESET ROLE'); }
+    try {
+      out[id] = Number(Object.values((await db.query(sql)).rows[0])[0]);
+      if (idsSql) await db.query(idsSql);   // run_checks runs it as the same role: a right missing there fails here
+    } finally { await db.exec('RESET ROLE'); }
   }
   return out;
 }

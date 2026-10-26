@@ -30,8 +30,8 @@ CREATE OR REPLACE VIEW public.ct_v_rt_pnl AS SELECT id, 0::numeric AS cost_gross
 CREATE OR REPLACE VIEW public.dl_v_rt_route AS SELECT id AS rt_id, ''::text AS route_text FROM public.ct_round_trips;
 `;
 // EXECUTE rights as production holds them, for every function of live-071/072/073.sql that production has taken
-// from PUBLIC (SELECT on pg_proc.proacl, 26/10 ~23:15; the owner postgres is left out, the other functions of the
-// fixtures are EXECUTE to PUBLIC in production too). The captures carry the views' grants but not these, so every
+// from PUBLIC (SELECT on pg_proc.proacl, 26/10 ~23:15: each list below is the WHOLE ACL minus the owner postgres -
+// no anon, no authenticated; the other functions of the fixtures are EXECUTE to PUBLIC in production too). The captures carry the views' grants but not these, so every
 // function here kept PostgreSQL's default (EXECUTE to PUBLIC): the 073b dry run passed on this copy while production
 // refused it with "permission denied for function stock_vs_charge" as tms_check_runner (a view checks the functions
 // it calls as its CALLER). Hand-kept until the capture query emits function ACLs too; re-measure with
