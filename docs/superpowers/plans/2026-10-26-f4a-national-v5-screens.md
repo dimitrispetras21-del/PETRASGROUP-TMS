@@ -21,6 +21,7 @@
 - `FEATURES.WN_V5` γεννιέται `'off'` (τριών τιμών `'off'|'pilot'|'on'` όπως το `WI_V2`, Ε-1) και μένει `'off'` στην παραγωγή ως την ημέρα L (Φ5)· ένα test το καρφώνει.
 - Με το διακόπτη κλειστό: το παλιό Εβδομαδιαίο Εθνικών byte-προς-byte ίδιο, και τα νέα αρχεία δεν κάνουν τίποτα στη φόρτωση (κανένας listener, timer, observer, fetch).
 - Καμία εγγραφή στην παραγωγή από κανέναν agent: Supabase **μόνο SELECT**· καμία δοκιμαστική πράξη `/plan/*` εκτός από dry runs· 0 γραμμές στους νέους πίνακες στο τέλος.
+- **Πρώτα τα εθνικά (owner 26/10):** υλοποιείται μόνο το National v5. Κανένα αρχείο του Weekly Διεθνών δεν αλλάζει (S-161, T29)· τα διεθνή της Φ4β (πάνελ, «ακολουθεί» H8, S-109, S-159, αλλαγή οχήματος σε `model=1`) περιμένουν να αποδειχθούν τα εθνικά στην παραγωγή.
 - Το `worker/` και το `worker/migrations/` **δεν αλλάζουν** στη Φ4α (ανάγνωση μόνο). Ό,τι χρειάζεται νέο Worker πάει ως αίτημα στην αλυσίδα του Worker (Ε-2, Ε-11) και η Φ4α γράφεται πάνω σε stub.
 
 **`/plan/*` και `planFetch` (F2 σημειώσεις, απόφαση 44)**
@@ -13436,7 +13437,7 @@ EOF
 - «Πού *» υποχρεωτικό **πάντα**: η 072b `plan_seg_change` αρνείται χωρίς `place_note` (`bad_input`) — το Figma H2 το δείχνει υποχρεωτικό μόνο με «Άλλο»· η οθόνη ακολουθεί τη βάση και το λέει στο PR (Doubts). Η σημείωση του λόγου (`reason_note`) είναι υποχρεωτική μόνο με «Άλλο» (`seg_other_note`).
 - «ίδιος οδηγός» = `same_driver: true` **χωρίς** `driver_id` (072b: `same_driver` με `driver_id` = `bad_input`).
 - Στις λίστες (καρτέλα, προεπισκόπηση, H7) το σήμα τμήματος είναι **ίσια** γραμμή 3px (R-55)· η πλάγια πλευρά μόνο στα πλακίδια του board (T24).
-- Ιστορικό (Ε-11): `GET /audit?table=rt_vehicle_segments` (owner + management σήμερα), **μία ανάγνωση ανά ζωντανό τμήμα** (`&record_id=<segment_id>`) και μία για τις διαγραφές (`&action=delete`, τμήματα που δεν είναι πια στο board): το `/audit` δίνει τις 200 νεότερες γραμμές όλου του πίνακα, άρα μία ανάγνωση του πίνακα θα έχανε τις γραμμές ενός παλιότερου κύκλου και θα έλεγε ψέματα «καμία αλλαγή». Ανάγνωση γεμάτη (`count = 200`) → «Ενδέχεται να λείπουν παλαιότερες αλλαγές — όλο το ιστορικό στο Audit Trail», ποτέ «καμία αλλαγή»· 401 → `tmsSessionExpired`, όπως κάθε ανάγνωση· άλλος ρόλος → 403 → γραμμή που λέει ποιος το βλέπει, ποτέ «κανένα ιστορικό». Ομαδοποίηση: ίδιος `actor` + ίδιο `created_at` = μία πράξη· το `update` του τμήματος που κόπηκε ανήκει στην «Αλλαγή», δεν είναι δική του γραμμή.
+- Ιστορικό (Ε-11, owner 26/10 «α»): το βλέπουν **μόνο** owner, management και dispatcher· σε warehouse και accountant η ενότητα **δεν υπάρχει** (καμία ανάγνωση). **Ποτέ ποσό:** τα κλειδιά χρημάτων μιας γραμμής (`partner_rate` κ.λπ.) γράφονται «άλλαξε», χωρίς τιμή. Η ανάγνωση για τους τρεις είναι το `GET /plan/rt/:id/history`, **αίτημα στην αλυσίδα του Worker** (Ε-11: οι γραμμές `audit_log` των `rt_vehicle_segments` του κύκλου, `{entries:[…]}` με το σχήμα του `/audit`, χωρίς κλειδιά χρημάτων, `PLAN_PERMS` GET για τους τρεις)· ως τότε (`HISTORY_PENDING`, drift test πάνω στο `worker/src/index.js`) ο dispatcher βλέπει ορατή γραμμή «θα φαίνεται μόλις…» και owner/management διαβάζουν `GET /audit?table=rt_vehicle_segments`, **μία ανάγνωση ανά ζωντανό τμήμα** (`&record_id=<segment_id>`) και μία για τις διαγραφές (`&action=delete`, τμήματα που δεν είναι πια στο board): το `/audit` δίνει τις 200 νεότερες γραμμές όλου του πίνακα, άρα μία ανάγνωση του πίνακα θα έχανε τις γραμμές ενός παλιότερου κύκλου και θα έλεγε ψέματα «καμία αλλαγή». Ανάγνωση γεμάτη (`count = 200`) → «Ενδέχεται να λείπουν παλαιότερες αλλαγές — όλο το ιστορικό στο Audit Trail», ποτέ «καμία αλλαγή»· 401 → `tmsSessionExpired`, όπως κάθε ανάγνωση· άλλος ρόλος → 403 → γραμμή που λέει ποιος το βλέπει, ποτέ «κανένα ιστορικό». Ομαδοποίηση: ίδιος `actor` + ίδιο `created_at` = μία πράξη· το `update` του τμήματος που κόπηκε ανήκει στην «Αλλαγή», δεν είναι δική του γραμμή.
 - Πριν τη 072b οι διαδρομές απαντούν 404 `no_route`: λωρίδα `client` με το μήνυμα του Worker + «Η αλλαγή οχήματος δεν έχει ανέβει ακόμη (072b)».
 
 - [ ] **Step 0: Η εξάρτηση είναι ζωντανή**
@@ -13494,6 +13495,16 @@ test('F4α-T25: wn5_handover.js adds exactly WN5Hand and acts zero times at load
   const r = load();
   assert.deepStrictEqual(J(r.added), ['WN5Hand']);
   assert.deepStrictEqual(J(r.acts), []);
+});
+
+test('F4α-T25: HISTORY_PENDING stays true only while the Worker has no GET /plan/rt/:id/history (Ε-11)', () => {
+  const W = fs.readFileSync(path.join(ROOT, 'worker/src/index.js'), 'utf8');
+  const has = W.includes('\\/history$/');
+  assert.strictEqual(/const HISTORY_PENDING = true;/.test(SRC), !has, has
+    ? 'the Worker serves /plan/rt/:id/history now: set HISTORY_PENDING = false (the dispatcher reads it too)'
+    : 'HISTORY_PENDING must stay true while the Worker has no history read');
+  assert.ok(/const HIST_ROLES = Object\.freeze\(\['owner', 'management', 'dispatcher'\]\);/.test(SRC), 'Ε-11: exactly the three roles');
+  assert.ok(/MONEY_KEY\.test\(k\) \? `\$\{k\}: άλλαξε`/.test(grab('_history')), 'a money key of a history row never shows its value');
 });
 
 test('F4α-T25: app.html loads wn5_handover.js once, right after wn5_sheet.js, with ?v=', () => {
@@ -13784,7 +13795,16 @@ Create `modules/wn5_handover.js`:
     _history(d, c);
     return true;
   }
-  // Ε-11: /audit is owner + management today; another role gets 403 and the card says who sees it.
+  // Ε-11 (owner 26/10, «α»): the change history is for owner, management and dispatcher only; warehouse and
+  // accountant do not get the section at all (no read either). It never shows an amount: money keys of a row
+  // (partner_rate and the like) are named as «άλλαξε», never with their value. The read meant for all three roles is
+  // GET /plan/rt/:id/history (a Worker-chain request, Ε-11: this cycle's rt_vehicle_segments audit rows, money keys
+  // stripped, PLAN_PERMS GET for the three roles). Until the Worker has it (HISTORY_PENDING, held to
+  // worker/src/index.js by tests/wn5-handover.test.js) owner and management read /audit as below, and the dispatcher
+  // gets a visible line, never «καμία αλλαγή».
+  const HIST_ROLES = Object.freeze(['owner', 'management', 'dispatcher']);
+  const HISTORY_PENDING = true;
+  const MONEY_KEY = /rate|amount|price|cost/i;
   // /audit returns the NEWEST rows of the whole table (worker/src/index.js handleAuditGet, MAX_LIMIT 200): one read
   // of the table would lose an older cycle's rows once the table passes 200 and then say «καμία αλλαγή» — false.
   // So: one read per live segment of this cycle (record_id = its id: complete for the segments the board shows,
@@ -13811,10 +13831,30 @@ Create `modules/wn5_handover.js`:
   }
   async function _history(d, c) {
     const box = d.el.querySelector('[data-hist]');
+    const role = (typeof user !== 'undefined' && user && user.role) || '';
+    if (!HIST_ROLES.includes(role)) { d.el.querySelectorAll('[data-histh], [data-hist]').forEach((x) => x.remove()); return; }
+    if (HISTORY_PENDING && role === 'dispatcher') {
+      box.textContent = 'Το ιστορικό αλλαγών θα φαίνεται εδώ μόλις ο Worker αποκτήσει την ανάγνωσή του (Ε-11) — δεν σημαίνει ότι δεν υπάρχουν αλλαγές.';
+      return;
+    }
     const segIds = (c.segments || []).map((g) => g.segment_id).filter((x) => x != null);
-    const reads = await Promise.all([...segIds.map((id) => _auditRead('&record_id=' + encodeURIComponent(String(id)))), _auditRead('&action=delete')]);
+    let reads;
+    if (HISTORY_PENDING) {
+      reads = await Promise.all([...segIds.map((id) => _auditRead('&record_id=' + encodeURIComponent(String(id)))), _auditRead('&action=delete')]);
+    } else {
+      // the Worker's own read (Ε-11): one call, already this cycle's rows, already without money values
+      try {
+        const a = await planFetch('GET', `/plan/rt/${c.rt_id}/history`);
+        const rows = a && Array.isArray(a.entries) ? a.entries : null;
+        if (!rows) { _log(new Error('history: no entries list'), 'WN5Hand history'); reads = [{ fail: true }]; } else reads = [{ rows, full: false }];
+      } catch (e) {
+        if (e && e._sessionGone) return;
+        reads = [{ fail: true }];   // planFetch already logged what is not a designed answer
+      }
+    }
     if (reads.some((r) => r.gone)) return;
-    if (reads.some((r) => r.forbidden)) { box.textContent = 'Το ιστορικό αλλαγών το βλέπουν owner και management (Audit Trail).'; return; }
+    // the three roles are the ones allowed: a 403 here is a fault, said and logged, not a role line
+    if (reads.some((r) => r.forbidden)) { _log(new Error('history 403 for ' + role), 'WN5Hand history'); box.textContent = 'Το ιστορικό δεν διαβάστηκε (δικαίωμα) — ενημέρωσε τον Δημήτρη.'; return; }
     if (reads.some((r) => r.fail)) { box.textContent = 'Το ιστορικό δεν διαβάστηκε — δεν σημαίνει ότι δεν υπάρχουν αλλαγές.'; return; }
     const seen = new Set();
     const all = [];
@@ -13831,7 +13871,7 @@ Create `modules/wn5_handover.js`:
     box.innerHTML = `<div class="wn5h-hrow wn5h-hhead"><span>ΓΡΑΦΤΗΚΕ · ΠΟΙΟΣ</span><span>ΠΡΑΞΗ</span><span>ΟΧΗΜΑ</span><span>ΣΗΜΕΙΟ · ΩΡΑ</span><span>ΛΟΓΟΣ</span></div>`
       + groups.map((g) => {
         const a = g.after || {}, b = g.before || {};
-        const vehicle = g.kind === 'change' ? `${veh(b)} → ${veh(a)}` : g.kind === 'remove' ? veh(b) : Object.keys(a).filter((k) => !/_at$|_by$/.test(k) || k === 'from_at').map((k) => `${k}: ${b[k] == null ? 'κενή' : b[k]} → ${a[k] == null ? 'κενή' : a[k]}`).join(' · ');
+        const vehicle = g.kind === 'change' ? `${veh(b)} → ${veh(a)}` : g.kind === 'remove' ? veh(b) : Object.keys(a).filter((k) => !/_at$|_by$/.test(k) || k === 'from_at').map((k) => (MONEY_KEY.test(k) ? `${k}: άλλαξε` : `${k}: ${b[k] == null ? 'κενή' : b[k]} → ${a[k] == null ? 'κενή' : a[k]}`)).join(' · ');
         const point = g.kind === 'change' ? `${a.place_note || '—'} · ${_when(a.from_at)}` : '—';
         return `<div class="wn5h-hrow" data-kind="${g.kind}"><span>${_whenD(g.at)} · ${_esc(g.actor)}</span><span>${ACT_GR[g.kind]}</span>`
           + `<span>${_esc(vehicle)}</span><span>${_esc(point)}</span><span>${_esc(g.kind === 'change' ? _reason(a.reason) : '—')}</span></div>`;
@@ -14145,11 +14185,30 @@ async function scnCard({ browser, origin, ok, scn }) {
     ok(scn, `${role}: «Φύλλα οδηγών (2)» and «Καθαρισμός ανάθεσης» are there (no role guard)`, (await K.text(page, '.wi4-dlg[data-wn5="cycle"] .wn5h-acts')).includes('Φύλλα οδηγών (2)') && (await K.text(page, '.wi4-dlg[data-wn5="cycle"] .wn5h-acts')).includes('Καθαρισμός ανάθεσης'));
     await page.waitForTimeout(800);
     const hist = await K.text(page, '.wi4-dlg[data-wn5="cycle"] [data-hist]');
-    if (role === 'dispatcher') ok(scn, 'dispatcher: /audit 403 → the card says who sees the history (Ε-11), never «καμία αλλαγή»', /owner και management/.test(hist), hist);
+    if (role === 'dispatcher') ok(scn, 'dispatcher: the history waits for the Worker read (Ε-11) — a visible line, no /audit read, never «καμία αλλαγή»', /μόλις ο Worker/.test(hist) && !/Καμία αλλαγή/.test(hist) && !S.facade.some((x) => x.path === '/audit'), hist);
     else ok(scn, 'owner: ONE history line for the change (update + create grouped), «Λαμία», «Βλάβη φορτηγού»', (await K.count(page, '.wi4-dlg[data-wn5="cycle"] .wn5h-hrow[data-kind]')) === 1 && hist.includes('Λαμία') && hist.includes('Βλάβη φορτηγού'), hist);
     await page.click('.wi4-dlg[data-wn5="cycle"] [data-act="change"]');
     await page.waitForSelector(HDLG, { timeout: 6000 }).catch(() => {});
     ok(scn, `${role}: «Αλλαγή οχήματος» opens the change form`, await K.count(page, HDLG) === 1);
+    await page.context().close();
+  }
+  for (const role of ['warehouse', 'accountant']) { // Ε-11: no history section and no read for these two roles
+    const { page, S } = await K.openApp(browser, origin, { board: handWeek(false), role });
+    await page.evaluate(() => WN5Hand.cycleCard(101));
+    await page.waitForSelector('.wi4-dlg[data-wn5="cycle"]', { timeout: 6000 }).catch(() => {});
+    await page.waitForTimeout(600);
+    ok(scn, `${role}: the cycle card has no «ΙΣΤΟΡΙΚΟ ΑΛΛΑΓΩΝ» and reads no history (Ε-11)`,
+      (await K.count(page, '.wi4-dlg[data-wn5="cycle"] [data-hist], .wi4-dlg[data-wn5="cycle"] [data-histh]')) === 0 && !S.facade.some((x) => x.path === '/audit'));
+    await page.context().close();
+  }
+  { // Ε-11: never an amount — a fix that changed the partner rate says «άλλαξε», not the value
+    const money = () => [200, { entries: [{ id: 1, actor: 'demo_owner', role: 'owner', created_at: '2026-10-13T08:00:00Z', table_name: 'rt_vehicle_segments', action: 'update',
+      record_id: '701', before_data: { rt_id: 101, partner_rate: 31415 }, after_data: { rt_id: 101, partner_rate: 27182 } }], count: 1 }];
+    const { page } = await K.openApp(browser, origin, { board: handWeek(false), role: 'owner', audit: money });
+    await page.evaluate(() => WN5Hand.cycleCard(101));
+    await page.waitForTimeout(1000);
+    const hist = await K.text(page, '.wi4-dlg[data-wn5="cycle"] [data-hist]');
+    ok(scn, 'owner: a partner_rate fix reads «partner_rate: άλλαξε», never its values (Ε-11)', /partner_rate: άλλαξε/.test(hist) && !/31415|27182/.test(hist), hist);
     await page.context().close();
   }
   { // /audit gives the newest 200 rows of the whole table: a full read may miss this cycle's older rows — said, never «καμία αλλαγή»
@@ -14295,7 +14354,7 @@ EOF
 - Produces: `WN5Hand.remove(segmentId)` → `POST /plan/segments/:id/remove` `{dry_run?, confirm_token?}`· Δ4 με 072b: `confirm_token` όταν το dry run φέρει `needs_confirm`, πετιέται σε κάθε αλλαγή μετά το dry run· dry run με `preview.conflict` **δεν** σημαίνει «τίποτα δεν αφαιρείται»· «θα αφαιρεθεί η αλλαγή οχήματος <σημείο> <ώρα>» στις λίστες Μεταφοράς/Διαγραφής/Δ4 (👤7 = β)
 
 **Tests:**
-- `wn5-twostep.test.mjs`: `F4α-T26: an edit after the rt dry run drops the token; the next save runs a new dry run`· `F4α-T26: conflict without needs_confirm → no save, no inferred «nothing removed»`
+- `wn5-twostep.test.mjs`: `F4α-T26: an edit after the rt dry run drops the token; the next save runs a new dry run`· `F4α-T26: narrowing past a handover AND changing the vehicle is ONE act — one body, one token (owner 26/10)`· `F4α-T26: conflict without needs_confirm → no save, no inferred «nothing removed»`
 - `wn5-labels.test.js`: `F4α-T26: seg_removed / seg_stop_moved / seg_stop_straddles labelled; drift vs 072b` (todo ως να υπάρχει)
 - rig: `remove` λίστα H4 χωρίς ποσά για dispatcher, `seg_first` → μήνυμα, `replayed:true` → ίδια επιτυχία· `clear-seg` → «ο κύκλος μένει με ένα τμήμα χωρίς ανάθεση»· στο main ✗.
 
@@ -14308,6 +14367,7 @@ EOF
 **Αποφάσεις του Task:**
 - Αφαίρεση: πρώτα ένα dry run της ίδιας της `remove` για το `preview.conflict` (H4: «αν όχι, η αφαίρεση αρνείται με truck_busy / driver_busy και η λίστα δεν βγαίνει»)· μόνο χωρίς conflict ανοίγει το κοινό `WN5Act.twoStep` (λίστα, token, 428, `stale_confirm`). Δύο αναγνώσεις πριν την εκτέλεση· καμία εγγραφή χωρίς token.
 - Η αφαίρεση δεν έχει `request_id` (H-15: το ξαναπάτημα δίνει `replayed:true` από τη βάση)· `replayed:true` = ίδια επιτυχία.
+- **Ένα βήμα (owner 26/10, 072b):** ένα `plan_rt_update` που στενεύει τον κύκλο πέρα από αλλαγή οχήματος **και** αλλάζει όχημα είναι **μία** πράξη: ένα dry run, μία λίστα συνεπειών, ένα token, μία εκτέλεση. Η οθόνη δεν το χωρίζει ποτέ σε δύο `PATCH` (πρώτα στάσεις, μετά όχημα ή ανάποδα)· το `rtSaveBody` κρατά μαζί `set` και `stops`/`shift` (test «ONE act»). Οι T24, T25 και T27 δεν στέλνουν `plan_rt_update` με όχημα· η αλλαγή οχήματος σε σημείο μένει `plan_seg_change` (H2).
 - `WN5Act.rtSaveBody(dryBody, dryAnswer)` = ο **ένας** κανόνας του σώματος εκτέλεσης του Δ4 (καθαρή συνάρτηση): χωρίς `dry_run`, με `confirm_token` μόνο όταν `needs_confirm`· `null` όταν το dry run έχει `preview.conflict` (τότε **δεν** συμπεραίνεται «τίποτα δεν αφαιρείται», HPLAN §Παράδοση (ii)).
 - Καθαρισμός κύκλου με ≥ 2 τμήματα: η καρτέλα δείχνει πρώτα «Τι θα γίνει» (σβήνονται και τα n τμήματα, ο κύκλος μένει με ένα τμήμα χωρίς ανάθεση, φορτία/στάσεις ίδια) και μόνο με «Συνέχεια» καλεί το `WN5Act.clear` του T15, που φέρνει τη λίστα παραστατικών της βάσης. Κύκλος ενός τμήματος: όπως σήμερα (✈ → καθαρισμός).
 
@@ -14317,7 +14377,7 @@ EOF
 ```bash
 grep -c "'confirm_token'" worker/migrations/072b_plan_vehicle_segments.sql
 ```
-Expected: ≥ 1. Και (SQL, μόνο ανάγνωση) `SELECT position('confirm_token' in (SELECT prosrc FROM pg_proc WHERE proname = 'plan_rt_update')) > 0 AS rt_token;` → `true`. Αλλιώς ΣΤΑΜΑΤΑ.
+Expected: ≥ 1. Και (SQL, μόνο ανάγνωση) `SELECT position('confirm_token' in (SELECT prosrc FROM pg_proc WHERE proname = 'plan_rt_update')) > 0 AS rt_token;` → `true`. Επιπλέον, η 072b που εκτελέστηκε έχει τον κανόνα «ένα βήμα» του owner (26/10): στένεμα πέρα από αλλαγή οχήματος **και** αλλαγή οχήματος σε ένα `plan_rt_update` = μία λίστα, ένα token. Απόδειξη: η εγγραφή του στο `docs/DECISION_LOG.md` και η περίπτωσή του στα rules της 072b (`tests/sql-072b-drafts.test.js` ή το αρχείο rules που ονομάζει εκείνη η εγγραφή). Αλλιώς ΣΤΑΜΑΤΑ και ρώτα τον συντονιστή.
 
 - [ ] **Step 1: Γράψε τα tests (αποτυγχάνουν)**
 
@@ -14359,6 +14419,16 @@ test('F4α-T26: an rt dry run with needs_confirm → the execution sends the tok
   assert.deepStrictEqual(J(A.rtSaveBody(dryBody, ans)), { shift: { side: 'KATHODOS', delta: '1 day' }, confirm_token: 'tok-1' });
   assert.deepStrictEqual(J(A.rtSaveBody(dryBody, Object.assign({}, ans, { needs_confirm: false, confirm_token: undefined, consequences: [] }))), { shift: { side: 'KATHODOS', delta: '1 day' } });
 });
+test('F4α-T26: narrowing past a handover AND changing the vehicle is ONE act — one body, one token (owner 26/10)', () => {
+  // 072b (owner 26/10): plan_rt_update that narrows the cycle past a handover and changes its vehicle answers ONE
+  // consequences list and ONE token. The screen never splits it into two PATCHes: the execution body is the dry-run
+  // body (set + stops/shift together) plus that one token.
+  const A = loadActs();
+  const dryBody = { set: { trip_type: 'OWNED', truck_id: 14 }, stops: [{ stop_id: 1005, planned_from: '2026-10-13T08:00:00+03:00', planned_to: '2026-10-13T09:00:00+03:00' }], dry_run: true };
+  const ans = { ok: true, op: 'plan_rt_update', dry_run: true, needs_confirm: true, confirm_token: 'tok-2', consequences: [{ kind: 'seg_removed' }], preview: { conflict: null } };
+  const body = J(A.rtSaveBody(dryBody, ans));
+  assert.deepStrictEqual(body, { set: { trip_type: 'OWNED', truck_id: 14 }, stops: dryBody.stops, confirm_token: 'tok-2' });
+});
 test('F4α-T26: conflict without needs_confirm → no save, and no inferred «nothing removed»', () => {
   const A = loadActs();
   const ans = { ok: true, op: 'plan_rt_update', dry_run: true, preview: { conflict: { code: 'truck_busy', message: 'x' } } };
@@ -14373,7 +14443,7 @@ test('F4α-T26: conflict without needs_confirm → no save, and no inferred «no
 ```bash
 node --test tests/wn5-labels.test.js tests/wn5-handover.test.js 2>&1 | grep -E '^ℹ (tests|pass|fail|todo)|^✖' | head
 ```
-Expected: `✖ F4α-T26: seg_removed / …` (`unknown: true`), `✖ … needs_confirm …` και `✖ … conflict without needs_confirm …` (`A.rtSaveBody is not a function`)· τα υπόλοιπα πράσινα.
+Expected: `✖ F4α-T26: seg_removed / …` (`unknown: true`), `✖ … needs_confirm …`, `✖ … ONE act …` και `✖ … conflict without needs_confirm …` (`A.rtSaveBody is not a function`)· τα υπόλοιπα πράσινα.
 
 - [ ] **Step 3: Ετικέτες στο `core/wn5-labels.js`**
 
@@ -15404,7 +15474,7 @@ gh pr create --base main --head feat/national-v5-f4a --title "Εθνικά v5 Φ
 | S-106 | αλλαγές παλετών της διεθνούς = διόρθωση | Φ5 (trigger γέφυρας)· καμία οθόνη στη Φ4α |
 | S-107 | αλλαγή προορισμού VS | T22 |
 | S-108 | VS κλειδωμένο στη φόρμα σκέλους | T21 |
-| S-109 | VS σε δύο ημέρες: ένδειξη στη διεθνή | Φ4β (οθόνη Weekly Διεθνών, Ε1)· η ακολουθία ημέρας μένει στη βάση |
+| S-109 | VS σε δύο ημέρες: ένδειξη στη διεθνή | Φ4β, μετά την απόδειξη των εθνικών στην παραγωγή (owner 26/10· οθόνη Weekly Διεθνών, Ε1)· η ακολουθία ημέρας μένει στη βάση |
 | S-110 | VS χωρίς ημέρα κόμβου | εκτός (ελεγκτής P1, Φ3/Φ5) |
 | S-111 | σπάσιμο μόνο στον Πίνακα Βέροιας | T19 |
 | S-112 | `POST /plan/pieces/split` | T19 |
@@ -15429,7 +15499,7 @@ gh pr create --base main --head feat/national-v5-f4a --title "Εθνικά v5 Φ
 | S-131 | φύλλο A4 ανά κύκλο | T23 |
 | S-132 | ανά στάση: διεύθυνση, τηλέφωνο, αναφορά, PE, παράθυρα | T23 (Ε-2, Ε-34), T28 (PE, Ε-12) |
 | S-133 | είσοδος, WhatsApp | T23 |
-| S-134 | frames H1–H8 | T24 (H1), T25 (H2, H3, H6, H7), T26 (H4, Καθαρισμός `2147:7746`), T27 (H5)· H8: Φ4β |
+| S-134 | frames H1–H8 | T24 (H1), T25 (H2, H3, H6, H7), T26 (H4, Καθαρισμός `2147:7746`), T27 (H5)· H8: Φ4β, μετά την απόδειξη των εθνικών (owner 26/10) |
 | S-135 | χρώματα ετικέτας τμήματος, WCAG AA | T24 |
 | S-136 | πλακίδιο ανά τμήμα, πλάγια πλευρά | T24 |
 | S-137 | πλάγια μόνο στο board | T24 |
@@ -15454,7 +15524,7 @@ gh pr create --base main --head feat/national-v5-f4a --title "Εθνικά v5 Φ
 | S-156 | Καθαρισμός με τμήματα | T26 |
 | S-157 | όχημα δεν αδειάζει ανά τμήμα, `seg_many` | T25, T26 |
 | S-158 | ελεύθερο όχημα/οδηγός, `payroll_locked` | T25 |
-| S-159 | «ακολουθεί» στο Weekly Διεθνών (H8) | Φ4β (αρχεία WI + Ε1, OPEN-7) |
+| S-159 | «ακολουθεί» στο Weekly Διεθνών (H8) | Φ4β, μετά την απόδειξη των εθνικών στην παραγωγή (owner 26/10· αρχεία WI + Ε1, OPEN-7) |
 | S-160 | R-66 μικρές ερωτήσεις | T29 (λίστα R-66 στο PR) |
 | S-161 | κανένα αρχείο του Weekly Διεθνών δεν αλλάζει | Global Constraints, T29 (diff έναντι main) |
 | S-162 | όλοι οι ρόλοι γράφουν το board | T12 (rig: warehouse πατά), T14, T17, T22, κανένας φύλακας |
@@ -15480,54 +15550,61 @@ gh pr create --base main --head feat/national-v5-f4a --title "Εθνικά v5 Φ
 
 ---
 
-## Ερωτήσεις προς τον owner
+## Ερωτήσεις προς τον owner (απαντήθηκαν 26/10)
 
-Καμία δεν σταματά την υλοποίηση· το πλάνο ακολουθεί την Πρόταση και ο owner τη γυρίζει αν διαφωνεί.
+**Απαντήσεις 26/10** (`docs/DECISION_LOG.md`, «Εθνικά v5 Φ4α: απαντήσεις Ε-1..Ε-44»):
+- **Ε-11:** owner «α». Ιστορικό καρτέλας κύκλου μόνο για owner, management, dispatcher, ποτέ ποσά (T25).
+- **Ε-18:** ανοιχτή· ο owner ρωτά την Αλεξία, η επιβεβαίωση στο DECISION_LOG πριν από το merge της υλοποίησης.
+- **Όλες οι άλλες (Ε-1..Ε-10, Ε-12..Ε-17, Ε-19..Ε-44):** εγκρίθηκε η Πρόταση, από τον συντονιστή κατ' εντολή του owner (οι τεχνικές επιλογές αποφασίζονται χωρίς αυτόν). Ε-1: το όνομα pilot το δίνει ο owner αργότερα.
+- **Αιτήματα στην αλυσίδα του Worker που εμποδίζουν την ημέρα L, όχι τη Φ4α:** Ε-2 / Ε-27 / Ε-44 (`GET /plan/lookups` ή `is_hub`), Ε-11 (`GET /plan/rt/:id/history`), Ε-26 (κλειδιά του `hub[]`), Ε-34 (ό,τι λείπει από τα `legs[]` και τους οδηγούς), Ε-41 / Ε-43 (`hub[].for_split`).
+- **Δύο αποφάσεις owner 26/10 που ακολουθεί το πλάνο:** (1) **πρώτα τα εθνικά:** υλοποιείται μόνο το National v5· τα διεθνή (πάνελ, αλλαγή οχήματος σε `model=1`, H8, S-109, S-159) περιμένουν να αποδειχθούν τα εθνικά στην παραγωγή (Global Constraints)· (2) **072b, ένα βήμα:** `plan_rt_update` που στενεύει πέρα από αλλαγή οχήματος **και** αλλάζει όχημα = μία λίστα, ένα token (T26).
 
-1. **Ε-1 · Μορφή του `WN_V5`:** απλό on/off ή τρεις τιμές `'off'|'pilot'|'on'` με `WN_V5_USERS` και `?wn5=1`, όπως το `WI_V2`; **Πρόταση:** τρεις τιμές, `'off'` στην παραγωγή, pilot μόνο για όνομα που θα δώσεις (μόνο ανάγνωση και προεπισκόπηση ως το L).
-2. **Ε-2 · Αριθμητικά ids και διευθύνσεις:** οι επιλογείς δίνουν `rec…`, το `/plan/*` θέλει αριθμούς, και ο ρόλος warehouse δεν έχει `/costs/lookups`· να μπει μία ανάγνωση `GET /plan/lookups` (τοποθεσίες με διεύθυνση/τηλέφωνο, πελάτες, φορτηγά, ρυμούλκες, οδηγοί, συνεργάτες, για τους 5 ρόλους) στην αλυσίδα του Worker; **Πρόταση:** ναι, στο ίδιο deploy με τη 072b (μία αλυσίδα)· η Φ4α γράφεται πάνω σε stub και ως τότε οι εγγραφές που θέλουν ids δείχνουν ότι οι κατάλογοι λείπουν.
-3. **Ε-3 · «ενημερώνει τη διεθνή» και «Μεικτές θερμοκρασίες» πριν την αποθήκευση:** η ανάθεση και η νέα παραγγελία δεν έχουν dry run, άρα η πρόβλεψη στην οθόνη θα αντέγραφε κανόνες της βάσης. **Πρόταση:** εμφάνιση μετά την αποθήκευση από τις ειδοποιήσεις/προειδοποιήσεις της απάντησης· στην αλλαγή ημερομηνίας (Δ4) πριν, γιατί εκεί υπάρχει προεπισκόπηση.
-4. **Ε-4 · «Μία Αποθήκευση = μία συναλλαγή» στη φόρμα σκέλους:** οι αλλαγές παραγγελίας, ωρών και προορισμού VS είναι τρεις διαφορετικές πράξεις. **Πρόταση:** μία «Αποθήκευση» στέλνει μία πράξη, ενεργή όταν άλλαξε ένα μπλοκ παραγγελίας· ώρες από το chip ημέρας (Δ4), ημέρα/προορισμός VS με δικό τους κουμπί στο μπλοκ VS.
-5. **Ε-5 · Ώρες στάσεων χωρίς κίνηση** («Βέροια · τέλος κύκλου», φόρτωση Βέροιας): η βάση δεν τις επινοεί. **Πρόταση:** χωρίς προεπιλογές· υποχρεωτικά πεδία όπως στο Figma («Παράθυρο φόρτωσης Βέροιας *», «Άφιξη ως *»).
-6. **Ε-6 · Κλειστές εγγραφές ως το L:** το Figma το σχεδιάζει μόνο για την αλλαγή οχήματος (H7 πλακ. 4). **Πρόταση:** το ίδιο σε όλες τις εγγραφές της Φ4α: μετά το πρώτο 409, μπλε λωρίδα «ΠΡΟΕΠΙΣΚΟΠΗΣΗ» με το κείμενο του Worker και απενεργή αποθήκευση· οι προεπισκοπήσεις μένουν.
-7. **Ε-7 · Καταστάσεις χωρίς frame** (`plan_unknown`, `busy_retry`, αργή απάντηση, `request_reused`): **Πρόταση:** λωρίδα ανά κατάσταση με το κείμενο του Worker όπως είναι· στο «μπορεί να αποθηκεύτηκε» πορτοκαλί λωρίδα με «Έλεγχος στο board» και το ίδιο κουμπί ξανά· ο έλεγχος πάνω στην εφαρμογή στη λίστα R-66.
-8. **Ε-8 · Κείμενο Δ5 «Βλάβη: «Μεταφορά σε…»»:** μετά την αλλαγή οχήματος η βλάβη είναι «Αλλαγή οχήματος». **Πρόταση:** μένει ως να ζήσει η 072b, μετά «Βλάβη: «Αλλαγή οχήματος» στην καρτέλα κύκλου».
-9. **Ε-9 · Καρτέλα για παραγγελία άλλης εβδομάδας** (από ειδοποίηση): η καρτέλα διαβάζει το board μιας εβδομάδας. **Πρόταση:** μόνο από τη φορτωμένη εβδομάδα· αλλιώς γραμμή «σε άλλη εβδομάδα», χωρίς καρτέλα.
-10. **Ε-10 · «Διαγραμμένες · ίχνος» (`2011:10613`):** δεν υπάρχει διαδρομή που να διαβάζει διαγραμμένες v5. **Πρόταση:** Φ4β, μαζί με μια ανάγνωση στον Worker· η Φ4α κάνει μόνο τη διαγραφή.
-11. **Ε-11 · Ιστορικό αλλαγών κύκλου (H6) για όλους τους ρόλους:** σήμερα το `audit_log` διαβάζεται μόνο από owner/management (`/audit`). **Πρόταση:** μία ανάγνωση ιστορικού στο `/plan/*` στην αλυσίδα της 072b· ως τότε η καρτέλα δείχνει ιστορικό μόνο όπου επιτρέπει το `/audit` και το λέει.
-12. **Ε-12 · «Επιστροφή παλετών» στο φύλλο οδηγού:** τα σκέλη του board δεν φέρνουν PE. **Πρόταση:** «—» ως να το φέρει η 073 (T28).
-13. **Ε-13 · Κόμιστρο πάνω στο πλακίδιο συνεργάτη** («300 €», H3): ο κριτής 1 πρότεινε να φύγει. **Πρόταση:** μένει (απόφαση 41, όψη dispatcher με κόμιστρο).
-14. **Ε-14 · Σκούρο κείμενο ετικέτας τμήματος** (`#475569`, `#92400E`, `#0369A1`, frame `2140:7735` «για απόφαση owner»): **Πρόταση:** το σκούρο, όπως ήδη στα H1–H7 της έγκρισης 25/10.
-15. **Ε-15 · Ρίζα `class="wi4 wn5"`:** κληρονομεί όλη την εμφάνιση του Weekly Διεθνών (μία πηγή), αλλά μια αλλαγή εκεί αλλάζει και το Εθνικών. **Πρόταση:** ναι, κληρονομεί· ό,τι είναι μόνο εθνικό στο μπλοκ `wn5`.
-16. **Ε-16 · Παλιά σημεία εισόδου φόρμας εθνικής** (κατάλογος παραγγελιών, `orders_natl.js`): **Πρόταση:** μένουν στην παλιά φόρμα στη Φ4α· αλλάζουν στη Φ4β/ημέρα L.
-17. **Ε-17 · Μετρητής x/33 με κιβώτια IFCO:** **Πρόταση:** άθροισμα παλετών φόρτωσης της πλευράς, χωρίς κανόνα για κιβώτια (όπως το `over_33` της βάσης).
-18. **Ε-18 · Επιβεβαίωση της Αλεξίας για την απόφαση 33** (γραμμή τοπικού `needs_review`, `local_payroll` στις λίστες), «πριν από τη Φ4»: **Πρόταση:** η υλοποίηση προχωρά όπως η απόφαση· η επιβεβαίωση γράφεται στο DECISION_LOG πριν το merge.
-19. **Ε-19 · Ζεύγη αποστολών στη φόρμα groupage** («3 παραγγελίες → 4 αποστολές»): **Πρόταση:** N φορτώσεις × 1 παράδοση ή 1 φόρτωση × N παραδόσεις γίνονται ζεύγη αυτόματα· N×M δεν επιτρέπεται («ένα ζεύγος ανά γραμμή»).
-20. **Ε-20 · Ειδοποιήσεις v5 και στο καμπανάκι:** **Πρόταση:** όχι στη Φ4α (μόνο λωρίδα στο board).
-21. **Ε-21 · Άγνωστη επίπτωση σε λίστα επιβεβαίωσης:** **Πρόταση:** γραμμή «άλλη επίπτωση · <κωδικός>», το «Επιβεβαίωση» μένει ενεργό, μία καταγραφή σφάλματος.
-22. **Ε-22 · Αντιγραφή πινακίδων σε VS:** **Πρόταση:** αντιγράφονται μόνο φορτηγό και ρυμούλκα του κύκλου· τίποτα του κόμβου.
-23. **Ε-23 · `app.prod.html` και `build.sh`** είναι νεκρά (από `b756433f`): **Πρόταση:** σβήσιμο σε χωριστό PR μετά τη Φ4α· η Φ4α δεν τα αγγίζει.
-24. **Ε-24 · Ημέρα L και διακόπτης:** το `WN_V5` ανοίγει στο ίδιο deploy με το `PLAN_WRITES_OPEN = true` (Φ5). **Πρόταση:** ναι, ένας διακόπτης ανά πλευρά, ίδια μέρα.
-25. **Ε-25 · Αναζήτηση στην αλλαγή εβδομάδας:** **Πρόταση:** καθαρίζει (όπως στο Weekly Διεθνών).
-26. **Ε-26 · Κλειδιά του `hub[]` (αίτημα στην αλυσίδα του Worker, όχι επιλογή· εμποδίζει την ημέρα L):** το `hub[]` της 072 δεν φέρνει `nat_to_location_id`, `load_from/to`, `deliver_from/to` (072:2450, 071:470), άρα η ανάθεση ενός κομματιού της Βέροιας δεν χτίζει τη στάση παράδοσης. **Πρόταση:** στο deploy της 072b· ως τότε «—», ορατή γραμμή και κλειστή «Ένωση» (T4, T12, T19)· τα rigs τα βάζουν στον stub και το λένε. (Το πού ζει ένα VS χωρίς φορτηγό δεν είναι πια ερώτηση: είναι το `hub[]`, 071:369-420 / 072:2443, και το πλάνο το ακολουθεί· η επιλογή εμφάνισης είναι το Ε-40.)
-27. **Ε-27 · Ποια τοποθεσία είναι η Βέροια στο board:** το `plan_board` δεν έχει σημαία κόμβου στις στάσεις· το `WN5L.hubFromBoard` τη βρίσκει από ενδείξεις VS, και σε εβδομάδα χωρίς VS οι στάσεις δείχνουν το όνομα που έχουν, με την ορατή γραμμή `WN5L.HUB_UNKNOWN` πάνω στο board (Ε-44). **Πρόταση:** `is_hub` ανά στάση στην αλυσίδα του Worker (ή το id από το `PlanIds.hub()`, Ε-2)· ένα από τα δύο είναι προαπαιτούμενο της ημέρας L (Ε-44).
-28. **Ε-28 · Σβήσιμο της γραμμής ↳ «Φόρτωση με τοπικό»:** το Figma τη σβήνει με την ημέρα της τοπικής κίνησης (Δευ), το board δεν φέρνει σημαία· ο T6 τη σβήνει μαζί με τη στάση που εξυπηρετεί. **Πρόταση:** `local_loading.dim` στην αλυσίδα του Worker· κανόνας ημερομηνίας στην οθόνη αποκλείεται (Global Constraints).
-29. **Ε-29 · Αναζήτηση με 0 αποτελέσματα:** **Πρόταση:** όπως το εγκεκριμένο Δ12 πλακ. 6 (22/10): η γραμμή «Κανένα αποτέλεσμα…» και ο πίνακας κρυμμένος ως το «Καθάρισμα» (T7)· με έστω ένα ταίριασμα τίποτα δεν κρύβεται. Γύρνα το αν θέλεις τον πίνακα σβηστό αντί για κρυφό.
-30. **Ε-30 · Νέος κύκλος μόνο ΚΑΘΟΔΟΥ:** η ανάθεση/μεταφορά σε νέο φορτηγό στέλνει μόνο τις στάσεις φόρτωσης/παράδοσης (και το παράθυρο Βέροιας που έγραψε ο χρήστης, Ε-5)· **δεν** προστίθεται στάση «Βέροια · τέλος κύκλου». **Πρόταση:** μένει έτσι.
-31. **Ε-31 · Παράθυρο νέας στάσης που μοιράζονται πολλά κομμάτια:** **Πρόταση:** η ένωση (νωρίτερη αρχή, αργότερο τέλος) των παραθύρων τους (ανάγνωση των αποφάσεων 4/6)· εναλλακτικά ρητό πεδίο.
-32. **Ε-32 · «Πού» στην αλλαγή οχήματος:** η `plan_seg_change` της 072b θέλει `place_note` πάντα (`bad_input`), ενώ το H2 το δείχνει υποχρεωτικό μόνο με «Άλλο». **Πρόταση:** η οθόνη ακολουθεί τη βάση (`place_note` πάντα υποχρεωτικό, `reason_note` με «Άλλο»)· στη λίστα R-66.
-33. **Ε-33 · Κουμπί «Παλιά προβολή» στη μπάρα v5** (δεν είναι στο Figma): **Πρόταση:** μένει για τους χρήστες pilot (Ε-1) και φεύγει την ημέρα L.
-34. **Ε-34 · Ό,τι λείπει από το board για φόρμες και φύλλο (αίτημα στην αλυσίδα του Worker, δίπλα στο Ε-2):** `legs[]` χωρίς `price`, `shipment_id`, `order_stop_id`, `pallet_exchange`, `goods`, `notes`· οδηγοί του `GET /plan/lookups` χωρίς τηλέφωνο. **Πρόταση:** μπαίνουν στην ίδια αλυσίδα· ως τότε η οθόνη δείχνει «—» και κλειστά κουμπιά με λόγο (τιμή φόρμας σκέλους κενή, «Αλλαγή προορισμού» ανενεργό, «Τηλ. —», τιμή/«τιμολογήθηκε» «—» στην καρτέλα ανατεθειμένης).
-35. **Ε-35 · Κείμενα ETA του F0** («φτάνει 14:00», «αργό VS 09:42», «πλάνο 07:40», «+3 ώρες») και πινακίδες συνεργάτη: δεν υπάρχουν στο board της 072, άρα δεν ζωγραφίζονται· στο ΕΠΟΜΕΝΑ «αργό» = VS σε αναμονή με `overdue=true`. **Πρόταση:** μένουν έξω ως να φέρει ο Worker τα δεδομένα.
-36. **Ε-36 · Πλακίδιο συνεργάτη σε κύκλο χωρίς τμήματα:** το board δεν φέρνει την πινακίδα του συνεργάτη (Ε-35). **Πρόταση:** «—» στη θέση της, ποτέ το κόμιστρο (F0 7745/H1 δείχνουν πινακίδα)· το κόμιστρο μένει στο Δ1, στη λίστα μεταφοράς και στα πλακίδια τμημάτων H3 (Ε-13).
-37. **Ε-37 · ✈ «Νέα παραγγελία σε αυτό το σκέλος ›» και «Εκτύπωση / WhatsApp ›»:** **Πρόταση:** υπο-μενού όπως το Figma `2011:8858` (μία γραμμή ανά στοιχείο, 8 γραμμές), όχι επίπεδες διπλές γραμμές.
-38. **Ε-38 · «Σάρωση» στη μπάρα v5 πριν την ημέρα L:** η παλιά `_wnScan` γράφει παραγγελία του **παλιού** μοντέλου, που το board v5 δεν δείχνει ποτέ. **Πρόταση:** κρυφή ως τη Φ4β (σάρωση προς τη φόρμα v5)· από την «Παλιά προβολή» η σάρωση μένει διαθέσιμη.
-39. **Ε-39 · «+ Άδειες παλέτες · 1 €» (9624) και ΠΡΟΡΥΘΜΙΣΗ του «+» της ΑΝΟΔΟΥ (10022) στη Φ4α:** **Πρόταση:** ναι, ως προσυμπλήρωση της φόρμας του T20 (είδος «Άδειες παλέτες», τιμή 1, Βέροια σημείο φόρτωσης στην ΚΑΘΟΔΟ / παράδοσης στην ΑΝΟΔΟ), χωρίς νέα διαδρομή.
-40. **Ε-40 · Κομμάτια στη Βέροια που δεν πήραν ποτέ φορτηγό (`hub[]` της 072: import VS, εθνική με αφετηρία τη Βέροια):** **Πρόταση:** σειρά ΠΡΟΣ ΑΝΑΘΕΣΗ (και κάρτα ΕΠΟΜΕΝΑ αν είναι VS) με «—» και ορατή γραμμή ως το Ε-26, **όχι** στο «για μοίρασμα» του Πίνακα Βέροιας (κανόνας: `is_stock` όχι, `inbound_rt_id = null`, χωρίς `for_split`)· ο Πίνακας κρατά ό,τι ξεφόρτωσε εκεί εθνικό φορτηγό και το απόθεμα.
-41. **Ε-41 · Τι έστειλε το ✈ «Σπάσιμο παραγγελιών → Βέροια» (αίτημα στην αλυσίδα του Worker, όχι επιλογή· εμποδίζει την ημέρα L, Ε-43):** στη 072 ένα κομμάτι που γύρισε στη Βέροια χωρίς προηγούμενη ξεφόρτωση έχει κι αυτό `inbound_rt_id = null`, άρα δεν ξεχωρίζει από ένα που δεν πήρε ποτέ φορτηγό. **Πρόταση:** αίτημα στην αλυσίδα του Worker για `hub[].for_split: boolean` (το `WN5L` το διαβάζει ήδη όταν υπάρχει → «ΓΙΑ ΜΟΙΡΑΣΜΑ»)· ως τότε τα κομμάτια εμφανίζονται ΠΡΟΣ ΑΝΑΘΕΣΗ και η λωρίδα επιτυχίας το λέει («… ως ΠΡΟΣ ΑΝΑΘΕΣΗ»), ποτέ «για μοίρασμα».
-42. **Ε-42 · «Προβολή ▾» της μπάρας (7745/H1):** στο v5 δεν έχει οριστεί τι περιέχει (στο παλιό board: Εκτύπωση · CSV · Ανανέωση). **Πρόταση:** εκτός Φ4α (Φ4β)· η Ανανέωση είναι ήδη το «↻» της μπάρας, η εκτύπωση το ✈ «Εκτύπωση / WhatsApp ›».
-43. **Ε-43 · Το `hub[].for_split` (Ε-41) ως προαπαιτούμενο της ημέρας L, όπως τα κλειδιά του Ε-26:** χωρίς αυτό, στη ζωντανή 072 ό,τι έστειλε το ✈ «Σπάσιμο» γυρίζει ΠΡΟΣ ΑΝΑΘΕΣΗ (σωστό και τίμιο), αλλά το «Σπάσε…» του Πίνακα Βέροιας για ένα VS που ήρθε από εκεί (Figma `2011:8744`, VS-125) δεν φτάνεται ποτέ σε ζωντανά δεδομένα — μία ροή του spec §3 που δεν τρέχει. **Πρόταση:** ναι, εμποδίζει την ημέρα L και μπαίνει στην ίδια αλυσίδα του Worker με τα κλειδιά του Ε-26· ο T19 το ελέγχει πριν το merge (`grep -c "'for_split'" worker/migrations/072b*.sql`) και, αν λείπει, το PR το γράφει.
-44. **Ε-44 · Η Βέροια αναγνωρισμένη σε κάθε εβδομάδα (Ε-27 / Ε-2) ως όρος go/no-go της ημέρας L:** ως να υπάρξει `GET /plan/lookups` (Ε-2, σήμερα 404) ή `is_hub` στις στάσεις του board (Ε-27), μια εβδομάδα χωρίς VS σε κύκλο δεν μπορεί να βρει τη Βέροια: η ώρα της χάνεται κάτω από «Βέροια» και η Βέροια δείχνεται ως απλή στάση. **Πρόταση:** ένα από τα δύο είναι προαπαιτούμενο της ημέρας L· ως τότε το board δείχνει ορατή γραμμή όταν ο κόμβος δεν αναγνωρίστηκε (`WN5L.HUB_UNKNOWN` στο `model.errors`, λωρίδα «ΔΕΔΟΜΕΝΑ ΠΟΥ ΔΕΝ ΣΧΕΔΙΑΣΤΗΚΑΝ» του T5 και μία καταγραφή `logError`), ποτέ σιωπηλά τη Βέροια ως απλή στάση.
+Το κείμενο κάθε ερώτησης μένει όπως γράφτηκε, με την απάντηση στο τέλος.
+
+1. **Ε-1 · Μορφή του `WN_V5`:** απλό on/off ή τρεις τιμές `'off'|'pilot'|'on'` με `WN_V5_USERS` και `?wn5=1`, όπως το `WI_V2`; **Πρόταση:** τρεις τιμές, `'off'` στην παραγωγή, pilot μόνο για όνομα που θα δώσεις (μόνο ανάγνωση και προεπισκόπηση ως το L). **→ 26/10: εγκρίθηκε η Πρόταση** (συντονιστής, κατ' εντολή του owner)· το όνομα pilot το δίνει ο owner αργότερα.
+2. **Ε-2 · Αριθμητικά ids και διευθύνσεις:** οι επιλογείς δίνουν `rec…`, το `/plan/*` θέλει αριθμούς, και ο ρόλος warehouse δεν έχει `/costs/lookups`· να μπει μία ανάγνωση `GET /plan/lookups` (τοποθεσίες με διεύθυνση/τηλέφωνο, πελάτες, φορτηγά, ρυμούλκες, οδηγοί, συνεργάτες, για τους 5 ρόλους) στην αλυσίδα του Worker; **Πρόταση:** ναι, στο ίδιο deploy με τη 072b (μία αλυσίδα)· η Φ4α γράφεται πάνω σε stub και ως τότε οι εγγραφές που θέλουν ids δείχνουν ότι οι κατάλογοι λείπουν. **→ 26/10: εγκρίθηκε η Πρόταση** (συντονιστής). **Αίτημα στην αλυσίδα του Worker· εμποδίζει την ημέρα L, όχι τη Φ4α.**
+3. **Ε-3 · «ενημερώνει τη διεθνή» και «Μεικτές θερμοκρασίες» πριν την αποθήκευση:** η ανάθεση και η νέα παραγγελία δεν έχουν dry run, άρα η πρόβλεψη στην οθόνη θα αντέγραφε κανόνες της βάσης. **Πρόταση:** εμφάνιση μετά την αποθήκευση από τις ειδοποιήσεις/προειδοποιήσεις της απάντησης· στην αλλαγή ημερομηνίας (Δ4) πριν, γιατί εκεί υπάρχει προεπισκόπηση. **→ 26/10: εγκρίθηκε η Πρόταση** (συντονιστής, κατ' εντολή του owner: οι τεχνικές επιλογές αποφασίζονται χωρίς αυτόν).
+4. **Ε-4 · «Μία Αποθήκευση = μία συναλλαγή» στη φόρμα σκέλους:** οι αλλαγές παραγγελίας, ωρών και προορισμού VS είναι τρεις διαφορετικές πράξεις. **Πρόταση:** μία «Αποθήκευση» στέλνει μία πράξη, ενεργή όταν άλλαξε ένα μπλοκ παραγγελίας· ώρες από το chip ημέρας (Δ4), ημέρα/προορισμός VS με δικό τους κουμπί στο μπλοκ VS. **→ 26/10: εγκρίθηκε η Πρόταση** (συντονιστής, κατ' εντολή του owner: οι τεχνικές επιλογές αποφασίζονται χωρίς αυτόν).
+5. **Ε-5 · Ώρες στάσεων χωρίς κίνηση** («Βέροια · τέλος κύκλου», φόρτωση Βέροιας): η βάση δεν τις επινοεί. **Πρόταση:** χωρίς προεπιλογές· υποχρεωτικά πεδία όπως στο Figma («Παράθυρο φόρτωσης Βέροιας *», «Άφιξη ως *»). **→ 26/10: εγκρίθηκε η Πρόταση** (συντονιστής, κατ' εντολή του owner: οι τεχνικές επιλογές αποφασίζονται χωρίς αυτόν).
+6. **Ε-6 · Κλειστές εγγραφές ως το L:** το Figma το σχεδιάζει μόνο για την αλλαγή οχήματος (H7 πλακ. 4). **Πρόταση:** το ίδιο σε όλες τις εγγραφές της Φ4α: μετά το πρώτο 409, μπλε λωρίδα «ΠΡΟΕΠΙΣΚΟΠΗΣΗ» με το κείμενο του Worker και απενεργή αποθήκευση· οι προεπισκοπήσεις μένουν. **→ 26/10: εγκρίθηκε η Πρόταση** (συντονιστής, κατ' εντολή του owner: οι τεχνικές επιλογές αποφασίζονται χωρίς αυτόν).
+7. **Ε-7 · Καταστάσεις χωρίς frame** (`plan_unknown`, `busy_retry`, αργή απάντηση, `request_reused`): **Πρόταση:** λωρίδα ανά κατάσταση με το κείμενο του Worker όπως είναι· στο «μπορεί να αποθηκεύτηκε» πορτοκαλί λωρίδα με «Έλεγχος στο board» και το ίδιο κουμπί ξανά· ο έλεγχος πάνω στην εφαρμογή στη λίστα R-66. **→ 26/10: εγκρίθηκε η Πρόταση** (συντονιστής, κατ' εντολή του owner: οι τεχνικές επιλογές αποφασίζονται χωρίς αυτόν).
+8. **Ε-8 · Κείμενο Δ5 «Βλάβη: «Μεταφορά σε…»»:** μετά την αλλαγή οχήματος η βλάβη είναι «Αλλαγή οχήματος». **Πρόταση:** μένει ως να ζήσει η 072b, μετά «Βλάβη: «Αλλαγή οχήματος» στην καρτέλα κύκλου». **→ 26/10: εγκρίθηκε η Πρόταση** (συντονιστής, κατ' εντολή του owner: οι τεχνικές επιλογές αποφασίζονται χωρίς αυτόν).
+9. **Ε-9 · Καρτέλα για παραγγελία άλλης εβδομάδας** (από ειδοποίηση): η καρτέλα διαβάζει το board μιας εβδομάδας. **Πρόταση:** μόνο από τη φορτωμένη εβδομάδα· αλλιώς γραμμή «σε άλλη εβδομάδα», χωρίς καρτέλα. **→ 26/10: εγκρίθηκε η Πρόταση** (συντονιστής, κατ' εντολή του owner: οι τεχνικές επιλογές αποφασίζονται χωρίς αυτόν).
+10. **Ε-10 · «Διαγραμμένες · ίχνος» (`2011:10613`):** δεν υπάρχει διαδρομή που να διαβάζει διαγραμμένες v5. **Πρόταση:** Φ4β, μαζί με μια ανάγνωση στον Worker· η Φ4α κάνει μόνο τη διαγραφή. **→ 26/10: εγκρίθηκε η Πρόταση** (συντονιστής, κατ' εντολή του owner: οι τεχνικές επιλογές αποφασίζονται χωρίς αυτόν).
+11. **Ε-11 · Ιστορικό αλλαγών κύκλου (H6) για όλους τους ρόλους:** σήμερα το `audit_log` διαβάζεται μόνο από owner/management (`/audit`). **Πρόταση:** μία ανάγνωση ιστορικού στο `/plan/*` στην αλυσίδα της 072b· ως τότε η καρτέλα δείχνει ιστορικό μόνο όπου επιτρέπει το `/audit` και το λέει. **→ Απάντηση owner 26/10: «α».** Το ιστορικό αλλαγών της καρτέλας κύκλου (όχημα, αλλαγή οχήματος, ώρες· ποιος, πότε, λόγος· **ποτέ ποσά**) το βλέπουν μόνο owner, management και dispatcher· warehouse και accountant δεν το βλέπουν στην καρτέλα. Θέλει ανάγνωση στο `/plan/*` (`GET /plan/rt/:id/history`): **αίτημα στην αλυσίδα του Worker· εμποδίζει την ημέρα L, όχι τη Φ4α.** Υλοποίηση: T25 (`HIST_ROLES`, `HISTORY_PENDING`, `MONEY_KEY`).
+12. **Ε-12 · «Επιστροφή παλετών» στο φύλλο οδηγού:** τα σκέλη του board δεν φέρνουν PE. **Πρόταση:** «—» ως να το φέρει η 073 (T28). **→ 26/10: εγκρίθηκε η Πρόταση** (συντονιστής, κατ' εντολή του owner: οι τεχνικές επιλογές αποφασίζονται χωρίς αυτόν).
+13. **Ε-13 · Κόμιστρο πάνω στο πλακίδιο συνεργάτη** («300 €», H3): ο κριτής 1 πρότεινε να φύγει. **Πρόταση:** μένει (απόφαση 41, όψη dispatcher με κόμιστρο). **→ 26/10: εγκρίθηκε η Πρόταση** (συντονιστής, κατ' εντολή του owner: οι τεχνικές επιλογές αποφασίζονται χωρίς αυτόν).
+14. **Ε-14 · Σκούρο κείμενο ετικέτας τμήματος** (`#475569`, `#92400E`, `#0369A1`, frame `2140:7735` «για απόφαση owner»): **Πρόταση:** το σκούρο, όπως ήδη στα H1–H7 της έγκρισης 25/10. **→ 26/10: εγκρίθηκε η Πρόταση** (συντονιστής, κατ' εντολή του owner: οι τεχνικές επιλογές αποφασίζονται χωρίς αυτόν).
+15. **Ε-15 · Ρίζα `class="wi4 wn5"`:** κληρονομεί όλη την εμφάνιση του Weekly Διεθνών (μία πηγή), αλλά μια αλλαγή εκεί αλλάζει και το Εθνικών. **Πρόταση:** ναι, κληρονομεί· ό,τι είναι μόνο εθνικό στο μπλοκ `wn5`. **→ 26/10: εγκρίθηκε η Πρόταση** (συντονιστής, κατ' εντολή του owner: οι τεχνικές επιλογές αποφασίζονται χωρίς αυτόν).
+16. **Ε-16 · Παλιά σημεία εισόδου φόρμας εθνικής** (κατάλογος παραγγελιών, `orders_natl.js`): **Πρόταση:** μένουν στην παλιά φόρμα στη Φ4α· αλλάζουν στη Φ4β/ημέρα L. **→ 26/10: εγκρίθηκε η Πρόταση** (συντονιστής, κατ' εντολή του owner: οι τεχνικές επιλογές αποφασίζονται χωρίς αυτόν).
+17. **Ε-17 · Μετρητής x/33 με κιβώτια IFCO:** **Πρόταση:** άθροισμα παλετών φόρτωσης της πλευράς, χωρίς κανόνα για κιβώτια (όπως το `over_33` της βάσης). **→ 26/10: εγκρίθηκε η Πρόταση** (συντονιστής, κατ' εντολή του owner: οι τεχνικές επιλογές αποφασίζονται χωρίς αυτόν).
+18. **Ε-18 · Επιβεβαίωση της Αλεξίας για την απόφαση 33** (γραμμή τοπικού `needs_review`, `local_payroll` στις λίστες), «πριν από τη Φ4»: **Πρόταση:** η υλοποίηση προχωρά όπως η απόφαση· η επιβεβαίωση γράφεται στο DECISION_LOG πριν το merge. **→ 26/10: μένει ανοιχτή.** Ο owner ρωτά την Αλεξία· η επιβεβαίωση γράφεται στο `docs/DECISION_LOG.md` πριν από το merge της υλοποίησης Φ4 (η Πρόταση).
+19. **Ε-19 · Ζεύγη αποστολών στη φόρμα groupage** («3 παραγγελίες → 4 αποστολές»): **Πρόταση:** N φορτώσεις × 1 παράδοση ή 1 φόρτωση × N παραδόσεις γίνονται ζεύγη αυτόματα· N×M δεν επιτρέπεται («ένα ζεύγος ανά γραμμή»). **→ 26/10: εγκρίθηκε η Πρόταση** (συντονιστής, κατ' εντολή του owner: οι τεχνικές επιλογές αποφασίζονται χωρίς αυτόν).
+20. **Ε-20 · Ειδοποιήσεις v5 και στο καμπανάκι:** **Πρόταση:** όχι στη Φ4α (μόνο λωρίδα στο board). **→ 26/10: εγκρίθηκε η Πρόταση** (συντονιστής, κατ' εντολή του owner: οι τεχνικές επιλογές αποφασίζονται χωρίς αυτόν).
+21. **Ε-21 · Άγνωστη επίπτωση σε λίστα επιβεβαίωσης:** **Πρόταση:** γραμμή «άλλη επίπτωση · <κωδικός>», το «Επιβεβαίωση» μένει ενεργό, μία καταγραφή σφάλματος. **→ 26/10: εγκρίθηκε η Πρόταση** (συντονιστής, κατ' εντολή του owner: οι τεχνικές επιλογές αποφασίζονται χωρίς αυτόν).
+22. **Ε-22 · Αντιγραφή πινακίδων σε VS:** **Πρόταση:** αντιγράφονται μόνο φορτηγό και ρυμούλκα του κύκλου· τίποτα του κόμβου. **→ 26/10: εγκρίθηκε η Πρόταση** (συντονιστής, κατ' εντολή του owner: οι τεχνικές επιλογές αποφασίζονται χωρίς αυτόν).
+23. **Ε-23 · `app.prod.html` και `build.sh`** είναι νεκρά (από `b756433f`): **Πρόταση:** σβήσιμο σε χωριστό PR μετά τη Φ4α· η Φ4α δεν τα αγγίζει. **→ 26/10: εγκρίθηκε η Πρόταση** (συντονιστής, κατ' εντολή του owner: οι τεχνικές επιλογές αποφασίζονται χωρίς αυτόν).
+24. **Ε-24 · Ημέρα L και διακόπτης:** το `WN_V5` ανοίγει στο ίδιο deploy με το `PLAN_WRITES_OPEN = true` (Φ5). **Πρόταση:** ναι, ένας διακόπτης ανά πλευρά, ίδια μέρα. **→ 26/10: εγκρίθηκε η Πρόταση** (συντονιστής, κατ' εντολή του owner: οι τεχνικές επιλογές αποφασίζονται χωρίς αυτόν).
+25. **Ε-25 · Αναζήτηση στην αλλαγή εβδομάδας:** **Πρόταση:** καθαρίζει (όπως στο Weekly Διεθνών). **→ 26/10: εγκρίθηκε η Πρόταση** (συντονιστής, κατ' εντολή του owner: οι τεχνικές επιλογές αποφασίζονται χωρίς αυτόν).
+26. **Ε-26 · Κλειδιά του `hub[]` (αίτημα στην αλυσίδα του Worker, όχι επιλογή· εμποδίζει την ημέρα L):** το `hub[]` της 072 δεν φέρνει `nat_to_location_id`, `load_from/to`, `deliver_from/to` (072:2450, 071:470), άρα η ανάθεση ενός κομματιού της Βέροιας δεν χτίζει τη στάση παράδοσης. **Πρόταση:** στο deploy της 072b· ως τότε «—», ορατή γραμμή και κλειστή «Ένωση» (T4, T12, T19)· τα rigs τα βάζουν στον stub και το λένε. (Το πού ζει ένα VS χωρίς φορτηγό δεν είναι πια ερώτηση: είναι το `hub[]`, 071:369-420 / 072:2443, και το πλάνο το ακολουθεί· η επιλογή εμφάνισης είναι το Ε-40.) **→ 26/10: εγκρίθηκε η Πρόταση** (συντονιστής). **Αίτημα στην αλυσίδα του Worker· εμποδίζει την ημέρα L, όχι τη Φ4α.**
+27. **Ε-27 · Ποια τοποθεσία είναι η Βέροια στο board:** το `plan_board` δεν έχει σημαία κόμβου στις στάσεις· το `WN5L.hubFromBoard` τη βρίσκει από ενδείξεις VS, και σε εβδομάδα χωρίς VS οι στάσεις δείχνουν το όνομα που έχουν, με την ορατή γραμμή `WN5L.HUB_UNKNOWN` πάνω στο board (Ε-44). **Πρόταση:** `is_hub` ανά στάση στην αλυσίδα του Worker (ή το id από το `PlanIds.hub()`, Ε-2)· ένα από τα δύο είναι προαπαιτούμενο της ημέρας L (Ε-44). **→ 26/10: εγκρίθηκε η Πρόταση** (συντονιστής). **Αίτημα στην αλυσίδα του Worker· εμποδίζει την ημέρα L, όχι τη Φ4α.**
+28. **Ε-28 · Σβήσιμο της γραμμής ↳ «Φόρτωση με τοπικό»:** το Figma τη σβήνει με την ημέρα της τοπικής κίνησης (Δευ), το board δεν φέρνει σημαία· ο T6 τη σβήνει μαζί με τη στάση που εξυπηρετεί. **Πρόταση:** `local_loading.dim` στην αλυσίδα του Worker· κανόνας ημερομηνίας στην οθόνη αποκλείεται (Global Constraints). **→ 26/10: εγκρίθηκε η Πρόταση** (συντονιστής, κατ' εντολή του owner: οι τεχνικές επιλογές αποφασίζονται χωρίς αυτόν).
+29. **Ε-29 · Αναζήτηση με 0 αποτελέσματα:** **Πρόταση:** όπως το εγκεκριμένο Δ12 πλακ. 6 (22/10): η γραμμή «Κανένα αποτέλεσμα…» και ο πίνακας κρυμμένος ως το «Καθάρισμα» (T7)· με έστω ένα ταίριασμα τίποτα δεν κρύβεται. Γύρνα το αν θέλεις τον πίνακα σβηστό αντί για κρυφό. **→ 26/10: εγκρίθηκε η Πρόταση** (συντονιστής, κατ' εντολή του owner: οι τεχνικές επιλογές αποφασίζονται χωρίς αυτόν).
+30. **Ε-30 · Νέος κύκλος μόνο ΚΑΘΟΔΟΥ:** η ανάθεση/μεταφορά σε νέο φορτηγό στέλνει μόνο τις στάσεις φόρτωσης/παράδοσης (και το παράθυρο Βέροιας που έγραψε ο χρήστης, Ε-5)· **δεν** προστίθεται στάση «Βέροια · τέλος κύκλου». **Πρόταση:** μένει έτσι. **→ 26/10: εγκρίθηκε η Πρόταση** (συντονιστής, κατ' εντολή του owner: οι τεχνικές επιλογές αποφασίζονται χωρίς αυτόν).
+31. **Ε-31 · Παράθυρο νέας στάσης που μοιράζονται πολλά κομμάτια:** **Πρόταση:** η ένωση (νωρίτερη αρχή, αργότερο τέλος) των παραθύρων τους (ανάγνωση των αποφάσεων 4/6)· εναλλακτικά ρητό πεδίο. **→ 26/10: εγκρίθηκε η Πρόταση** (συντονιστής, κατ' εντολή του owner: οι τεχνικές επιλογές αποφασίζονται χωρίς αυτόν).
+32. **Ε-32 · «Πού» στην αλλαγή οχήματος:** η `plan_seg_change` της 072b θέλει `place_note` πάντα (`bad_input`), ενώ το H2 το δείχνει υποχρεωτικό μόνο με «Άλλο». **Πρόταση:** η οθόνη ακολουθεί τη βάση (`place_note` πάντα υποχρεωτικό, `reason_note` με «Άλλο»)· στη λίστα R-66. **→ 26/10: εγκρίθηκε η Πρόταση** (συντονιστής, κατ' εντολή του owner: οι τεχνικές επιλογές αποφασίζονται χωρίς αυτόν).
+33. **Ε-33 · Κουμπί «Παλιά προβολή» στη μπάρα v5** (δεν είναι στο Figma): **Πρόταση:** μένει για τους χρήστες pilot (Ε-1) και φεύγει την ημέρα L. **→ 26/10: εγκρίθηκε η Πρόταση** (συντονιστής, κατ' εντολή του owner: οι τεχνικές επιλογές αποφασίζονται χωρίς αυτόν).
+34. **Ε-34 · Ό,τι λείπει από το board για φόρμες και φύλλο (αίτημα στην αλυσίδα του Worker, δίπλα στο Ε-2):** `legs[]` χωρίς `price`, `shipment_id`, `order_stop_id`, `pallet_exchange`, `goods`, `notes`· οδηγοί του `GET /plan/lookups` χωρίς τηλέφωνο. **Πρόταση:** μπαίνουν στην ίδια αλυσίδα· ως τότε η οθόνη δείχνει «—» και κλειστά κουμπιά με λόγο (τιμή φόρμας σκέλους κενή, «Αλλαγή προορισμού» ανενεργό, «Τηλ. —», τιμή/«τιμολογήθηκε» «—» στην καρτέλα ανατεθειμένης). **→ 26/10: εγκρίθηκε η Πρόταση** (συντονιστής). **Αίτημα στην αλυσίδα του Worker· εμποδίζει την ημέρα L, όχι τη Φ4α.**
+35. **Ε-35 · Κείμενα ETA του F0** («φτάνει 14:00», «αργό VS 09:42», «πλάνο 07:40», «+3 ώρες») και πινακίδες συνεργάτη: δεν υπάρχουν στο board της 072, άρα δεν ζωγραφίζονται· στο ΕΠΟΜΕΝΑ «αργό» = VS σε αναμονή με `overdue=true`. **Πρόταση:** μένουν έξω ως να φέρει ο Worker τα δεδομένα. **→ 26/10: εγκρίθηκε η Πρόταση** (συντονιστής, κατ' εντολή του owner: οι τεχνικές επιλογές αποφασίζονται χωρίς αυτόν).
+36. **Ε-36 · Πλακίδιο συνεργάτη σε κύκλο χωρίς τμήματα:** το board δεν φέρνει την πινακίδα του συνεργάτη (Ε-35). **Πρόταση:** «—» στη θέση της, ποτέ το κόμιστρο (F0 7745/H1 δείχνουν πινακίδα)· το κόμιστρο μένει στο Δ1, στη λίστα μεταφοράς και στα πλακίδια τμημάτων H3 (Ε-13). **→ 26/10: εγκρίθηκε η Πρόταση** (συντονιστής, κατ' εντολή του owner: οι τεχνικές επιλογές αποφασίζονται χωρίς αυτόν).
+37. **Ε-37 · ✈ «Νέα παραγγελία σε αυτό το σκέλος ›» και «Εκτύπωση / WhatsApp ›»:** **Πρόταση:** υπο-μενού όπως το Figma `2011:8858` (μία γραμμή ανά στοιχείο, 8 γραμμές), όχι επίπεδες διπλές γραμμές. **→ 26/10: εγκρίθηκε η Πρόταση** (συντονιστής, κατ' εντολή του owner: οι τεχνικές επιλογές αποφασίζονται χωρίς αυτόν).
+38. **Ε-38 · «Σάρωση» στη μπάρα v5 πριν την ημέρα L:** η παλιά `_wnScan` γράφει παραγγελία του **παλιού** μοντέλου, που το board v5 δεν δείχνει ποτέ. **Πρόταση:** κρυφή ως τη Φ4β (σάρωση προς τη φόρμα v5)· από την «Παλιά προβολή» η σάρωση μένει διαθέσιμη. **→ 26/10: εγκρίθηκε η Πρόταση** (συντονιστής, κατ' εντολή του owner: οι τεχνικές επιλογές αποφασίζονται χωρίς αυτόν).
+39. **Ε-39 · «+ Άδειες παλέτες · 1 €» (9624) και ΠΡΟΡΥΘΜΙΣΗ του «+» της ΑΝΟΔΟΥ (10022) στη Φ4α:** **Πρόταση:** ναι, ως προσυμπλήρωση της φόρμας του T20 (είδος «Άδειες παλέτες», τιμή 1, Βέροια σημείο φόρτωσης στην ΚΑΘΟΔΟ / παράδοσης στην ΑΝΟΔΟ), χωρίς νέα διαδρομή. **→ 26/10: εγκρίθηκε η Πρόταση** (συντονιστής, κατ' εντολή του owner: οι τεχνικές επιλογές αποφασίζονται χωρίς αυτόν).
+40. **Ε-40 · Κομμάτια στη Βέροια που δεν πήραν ποτέ φορτηγό (`hub[]` της 072: import VS, εθνική με αφετηρία τη Βέροια):** **Πρόταση:** σειρά ΠΡΟΣ ΑΝΑΘΕΣΗ (και κάρτα ΕΠΟΜΕΝΑ αν είναι VS) με «—» και ορατή γραμμή ως το Ε-26, **όχι** στο «για μοίρασμα» του Πίνακα Βέροιας (κανόνας: `is_stock` όχι, `inbound_rt_id = null`, χωρίς `for_split`)· ο Πίνακας κρατά ό,τι ξεφόρτωσε εκεί εθνικό φορτηγό και το απόθεμα. **→ 26/10: εγκρίθηκε η Πρόταση** (συντονιστής, κατ' εντολή του owner: οι τεχνικές επιλογές αποφασίζονται χωρίς αυτόν).
+41. **Ε-41 · Τι έστειλε το ✈ «Σπάσιμο παραγγελιών → Βέροια» (αίτημα στην αλυσίδα του Worker, όχι επιλογή· εμποδίζει την ημέρα L, Ε-43):** στη 072 ένα κομμάτι που γύρισε στη Βέροια χωρίς προηγούμενη ξεφόρτωση έχει κι αυτό `inbound_rt_id = null`, άρα δεν ξεχωρίζει από ένα που δεν πήρε ποτέ φορτηγό. **Πρόταση:** αίτημα στην αλυσίδα του Worker για `hub[].for_split: boolean` (το `WN5L` το διαβάζει ήδη όταν υπάρχει → «ΓΙΑ ΜΟΙΡΑΣΜΑ»)· ως τότε τα κομμάτια εμφανίζονται ΠΡΟΣ ΑΝΑΘΕΣΗ και η λωρίδα επιτυχίας το λέει («… ως ΠΡΟΣ ΑΝΑΘΕΣΗ»), ποτέ «για μοίρασμα». **→ 26/10: εγκρίθηκε η Πρόταση** (συντονιστής). **Αίτημα στην αλυσίδα του Worker· εμποδίζει την ημέρα L, όχι τη Φ4α.**
+42. **Ε-42 · «Προβολή ▾» της μπάρας (7745/H1):** στο v5 δεν έχει οριστεί τι περιέχει (στο παλιό board: Εκτύπωση · CSV · Ανανέωση). **Πρόταση:** εκτός Φ4α (Φ4β)· η Ανανέωση είναι ήδη το «↻» της μπάρας, η εκτύπωση το ✈ «Εκτύπωση / WhatsApp ›». **→ 26/10: εγκρίθηκε η Πρόταση** (συντονιστής, κατ' εντολή του owner: οι τεχνικές επιλογές αποφασίζονται χωρίς αυτόν).
+43. **Ε-43 · Το `hub[].for_split` (Ε-41) ως προαπαιτούμενο της ημέρας L, όπως τα κλειδιά του Ε-26:** χωρίς αυτό, στη ζωντανή 072 ό,τι έστειλε το ✈ «Σπάσιμο» γυρίζει ΠΡΟΣ ΑΝΑΘΕΣΗ (σωστό και τίμιο), αλλά το «Σπάσε…» του Πίνακα Βέροιας για ένα VS που ήρθε από εκεί (Figma `2011:8744`, VS-125) δεν φτάνεται ποτέ σε ζωντανά δεδομένα — μία ροή του spec §3 που δεν τρέχει. **Πρόταση:** ναι, εμποδίζει την ημέρα L και μπαίνει στην ίδια αλυσίδα του Worker με τα κλειδιά του Ε-26· ο T19 το ελέγχει πριν το merge (`grep -c "'for_split'" worker/migrations/072b*.sql`) και, αν λείπει, το PR το γράφει. **→ 26/10: εγκρίθηκε η Πρόταση** (συντονιστής). **Αίτημα στην αλυσίδα του Worker· εμποδίζει την ημέρα L, όχι τη Φ4α.**
+44. **Ε-44 · Η Βέροια αναγνωρισμένη σε κάθε εβδομάδα (Ε-27 / Ε-2) ως όρος go/no-go της ημέρας L:** ως να υπάρξει `GET /plan/lookups` (Ε-2, σήμερα 404) ή `is_hub` στις στάσεις του board (Ε-27), μια εβδομάδα χωρίς VS σε κύκλο δεν μπορεί να βρει τη Βέροια: η ώρα της χάνεται κάτω από «Βέροια» και η Βέροια δείχνεται ως απλή στάση. **Πρόταση:** ένα από τα δύο είναι προαπαιτούμενο της ημέρας L· ως τότε το board δείχνει ορατή γραμμή όταν ο κόμβος δεν αναγνωρίστηκε (`WN5L.HUB_UNKNOWN` στο `model.errors`, λωρίδα «ΔΕΔΟΜΕΝΑ ΠΟΥ ΔΕΝ ΣΧΕΔΙΑΣΤΗΚΑΝ» του T5 και μία καταγραφή `logError`), ποτέ σιωπηλά τη Βέροια ως απλή στάση. **→ 26/10: εγκρίθηκε η Πρόταση** (συντονιστής). **Αίτημα στην αλυσίδα του Worker· εμποδίζει την ημέρα L, όχι τη Φ4α.**
 
 ## Σημειώσεις των writers για τον executor
 
