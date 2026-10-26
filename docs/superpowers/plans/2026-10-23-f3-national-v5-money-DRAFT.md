@@ -97,11 +97,29 @@
 | `plan_h_audit(text,text,text,text,text,jsonb,jsonb)` | `5eb6ede8180b8f4d4c3982de2b29bb8c` | 072 |
 | `plan_h_leg_add(…,integer)` | `aa9645fa495976bbca7c7de0635f4c22` | 072, άγκιστρο |
 | `plan_h_leg_drop(bigint,text,text,text)` | `4533385f7284c9ba5af52cf585a03250` | 072, άγκιστρο |
-| `plan_h_drop_consequences(bigint[],bigint,bigint[])` | `1dc5f3d8da4939a2ed6137621b5b9bfd` | 072, άγκιστρο |
-| `plan_order_update(jsonb,text,text)` | `bf69fe4bfc46730ed53b0e850d172d9e` | 072, άγκιστρο |
-| `plan_rt_update(jsonb,text,text)` | `ed90048867c25110d8dee3cf6400aca1` | 072, άγκιστρο |
+| `plan_h_drop_consequences(bigint[],bigint,bigint[])` | ~~`1dc5f3d8…`~~ → **`80b789fcdfc3fb6dad2b1d2f8b83b487`** (072 ζωντανή `f5641bb97562310cbbc57d71e9894c26` + άγκιστρο της 072b, Task 0 26/10) | 072 + 072b, άγκιστρο |
+| `plan_order_update(jsonb,text,text)` | ~~`bf69fe4b…`~~ → **`3ce41ac45650910c1024cb0a8846176f`** (072 ζωντανή· η 072b δεν την αγγίζει, Task 0 26/10) | 072, άγκιστρο |
+| `plan_rt_update(jsonb,text,text)` | ~~`ed900488…`~~ → **`e918ef7cb61693c941a4e755e7e5f94f`** (072 ζωντανή `0cce9dd2a29dd9ea35ac633f6338fca1` + άγκιστρο 17 της 072b, Task 0 26/10) | 072 + 072b, άγκιστρο |
 
 Τα 7 md5 της 072 είναι του κειμένου του πλάνου Φ2 μετά τη δεύτερη κριτική του (αρχείο 23/10 02:06, md5 `8993c2ac…`, K-22)· το `prosrc` είναι ακριβώς το κείμενο ανάμεσα στα `$f$`, άρα ίδιο στην παραγωγή αν η 072 τρέξει όπως γράφτηκε. **Αν η Φ2 αλλάξει στην έγκριση**, ο Task 0 τα ξαναμετρά και ο Task 2 Step 3 ξαναβγάζει τα md5 «μετά» με την εντολή του.
+
+**Επαναμέτρηση Task 0 (26/10/2026, κλάδος `feat/national-v5-f3`).** Παραγωγή μόνο SELECT (project `gatejgbpyodlepkvqkgf`), μετά την εκτέλεση της 072 (`83bb1076…`) και **πριν** την 072b (draft, PR #96, αρχείο md5 `da904cb4…`). Η 073 χτίζεται πάνω στην 072b (σειρά 072 → 072b → 073), άρα τα «πριν» της 073 βγαίνουν στο PGlite από την 072 + τα drafts της 072b (`prod-shaped-072.mjs` + `072b_plan_vehicle_segments.sql`) και **ξαναμετριούνται από την παραγωγή μόλις τρέξει η 072b**.
+
+| Τι | Παραγωγή 26/10 (072, χωρίς 072b) | PGlite 072 + 072b (= «πριν» της 073) |
+|---|---|---|
+| `plan_%` / δημόσιες (`service_role` EXECUTE) | **54** / 16 (το «52» του πλάνου ήταν του κειμένου Φ2· η υλοποιημένη 072 έχει 48, DECISION_LOG 26/10) | **79** / **19** (+ `plan_seg_change`, `plan_seg_fix`, `plan_seg_remove`): το PART 5 της 073 ελέγχει 19, όχι 16 |
+| 12 όψεις | 12/12 ίδια με τον πίνακα πιο πάνω | η 072b δεν αγγίζει καμία (οι 4 `v_*` ίδιες στο PGlite· οι όψεις χρημάτων εκεί είναι stubs, η πηγή τους είναι η λήψη του Task 1) |
+| 10 συναρτήσεις | 7/10 ίδιες· διαφέρουν οι 3 της 072 που άλλαξαν στην υλοποίηση (`plan_h_drop_consequences` `f5641bb9…`, `plan_order_update` `3ce41ac4…`, `plan_rt_update` `0cce9dd2…`) | η 072b αλλάζει 2: `plan_h_drop_consequences` → `80b789fc…`, `plan_rt_update` → `e918ef7c…` (τιμές στον πίνακα πιο πάνω) |
+| Θέσεις αγκίστρου της 073 (5) | 5/5 ακριβώς μία φορά | 5/5 ακριβώς μία φορά (η 072b δεν τις αγγίζει) |
+| `plan_order_update` (K-23) | υπάρχει | υπάρχει: η 073 μένει με 5 άγκιστρα |
+| γραμμές v5 / `dup_stop_event` (όλα / στενό D-9) | 0 / 0 / 0 | — |
+| πολιτικές στους 5 πίνακες v5 / `tms_check_runner` σε `ct_settings` | 0 / false | 0 (η 072b βάζει `monitor_read` μόνο στο `rt_vehicle_segments`) / — |
+| triggers / B-54 | 46 / `46/null` | **+4** (`50/null` στην παραγωγή μετά την 072b): η 073 δεν προσθέτει trigger, άρα ο φρουρός της περιμένει 50 |
+| `monitoring.checks` / τελευταίο B- / B-78..B-90 / B-91..B-93 | 89 / B-77 / 0 / 0 | η 072b κρατά τα B-91..B-93 (`tms-auditor/checks-072b`)· τα B-78..B-90 μένουν ελεύθερα |
+| έξοδα σε `cancelled` / `ct_round_trips` / `pl_movements` | 0 / 208 / 270 | — |
+| Worker | 39842d18 (deploy/worker-plan @ `a13148f4`)· main πηγή = `a13148f4`, `var PLAN_PERMS = {` = 1 | αλυσίδα Φ3 = `deploy/worker-plan-f3` από `origin/deploy/worker-plan-handover` `741429dc` (PR #97: Φ2 ζωντανή + #95 + 072b)· φρουρός `GUARD OK (16 markers, plan=1, handover=1)`· tests 303 / 302 pass / 1 skip / 0 fail |
+
+**Σειρά rollback (K-18 + 072b):** πρώτα 073, μετά 072b, μετά 072· το rollback της 072b φρουρεί τα md5 των αγκίστρων της στο `plan_h_drop_consequences` και `plan_rt_update`, που η 073 αλλάζει.
 
 ---
 
