@@ -16,8 +16,10 @@
 // The copy is also compared with the SQL branch's file through git (final
 // review 25/10, finding 4): a review fix there without a recopy fails HERE.
 // The same for 072b on deploy/worker-plan-handover: a copy of
-// feat/national-v5-handover's file, re-synced with ONE command
-//   git checkout feat/national-v5-handover -- worker/migrations/drafts/072b_plan_vehicle_segments.sql
+// feat/national-v5-handover-prev-rate's file (owner 26/10: one step, #100, then the previous partner's rate on top; #96 merged the first one), re-synced with ONE command
+//   git checkout feat/national-v5-handover-prev-rate -- worker/migrations/drafts/072b_plan_vehicle_segments.sql
+// and, so this branch never mixes a new 072b with older generated files and tests (code review xhigh 26/10), the set:
+//   git checkout feat/national-v5-handover-prev-rate -- 'worker/migrations/drafts/072b_*' worker/migrations/drafts/tools/build-072b.mjs tests/sql-072b-drafts.test.js tms-auditor/test/plan-072b.test.mjs
 // And 073 (national v5 F3, money) on deploy/worker-plan-f3: a copy of feat/national-v5-f3's file
 //   git checkout feat/national-v5-f3 -- worker/migrations/drafts/073_plan_money.sql
 //
@@ -58,7 +60,7 @@ const f071b = () => readOne(['071b_plan_one_vehicle.sql'], 'it is live since 22/
 const f072 = () => readOne(['drafts/072_plan_functions.sql', '072_plan_functions.sql'],
   'copy it from the SQL branch: git checkout feat/national-v5-f2 -- worker/migrations/drafts/072_plan_functions.sql');
 const f072b = () => readOne(['drafts/072b_plan_vehicle_segments.sql', '072b_plan_vehicle_segments.sql'],
-  'copy it from the SQL branch: git checkout feat/national-v5-handover -- worker/migrations/drafts/072b_plan_vehicle_segments.sql');
+  'copy it from the SQL branch: git checkout feat/national-v5-handover-prev-rate -- worker/migrations/drafts/072b_plan_vehicle_segments.sql');
 const f073 = () => readOne(['drafts/073_plan_money.sql', '073_plan_money.sql'],
   'copy it from the SQL branch: git checkout feat/national-v5-f3 -- worker/migrations/drafts/073_plan_money.sql');
 const uniq = (re, text) => [...new Set([...text.matchAll(re)].map((m) => m[1]))].sort();
@@ -153,7 +155,7 @@ function sameAsSqlBranch(t, { file, sql }, sqlBranch) {
 }
 test('the 072 copy is byte-identical to the SQL branch file', (t) => sameAsSqlBranch(t, f072(), 'feat/national-v5-f2'));
 // 072b: the same rule, its own SQL branch (vehicle handover plan, Task B4)
-test('the 072b copy is byte-identical to the SQL branch file', (t) => sameAsSqlBranch(t, f072b(), 'feat/national-v5-handover'));
+test('the 072b copy is byte-identical to the SQL branch file', (t) => sameAsSqlBranch(t, f072b(), 'feat/national-v5-handover-prev-rate'));
 // 073: the same rule, the F3 SQL branch
 test('the 073 copy is byte-identical to the SQL branch file', (t) => sameAsSqlBranch(t, f073(), 'feat/national-v5-f3'));
 

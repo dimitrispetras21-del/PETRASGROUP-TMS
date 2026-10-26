@@ -5,6 +5,8 @@
 --   not_definer = 0 ; bad_shape = 0 ; f1_open = 0 ; b54_matches = true ; changed_live = 0 ; v5_rows = 0 ;
 --   v5_cycles = 0 ; plan_functions = 6 (071) + the 072 ones (the dry run and 072's NOTICE print the same number)
 -- After L: v5_rows and v5_cycles grow; every other value stays as above for ever.
+-- After 072b (vehicle handover, plan 2026-10-25): plan_functions = 79 and service_role_execute = 19 (072b adds 25
+-- plan_*, three of them executable); public_functions stays 16 and changed_live 0 (072b changes none of these).
 SELECT
   CASE WHEN (SELECT count(*) FROM unnest(ARRAY[
               'public.plan_orders_create(jsonb,text,text)', 'public.plan_order_update(jsonb,text,text)',

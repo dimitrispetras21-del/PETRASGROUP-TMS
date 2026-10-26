@@ -25,7 +25,7 @@ DECLARE
   x_truck CONSTANT text := 'EXCLUDE USING gist (truck_id WITH =, tstzrange(start_at, end_at, ''[)''::text) WITH &&) WHERE (((model = 2) AND (trip_type = ''OWNED''::text) AND (truck_id IS NOT NULL) AND (status <> ''cancelled''::text))) DEFERRABLE INITIALLY DEFERRED';
   x_driver CONSTANT text := 'EXCLUDE USING gist (driver_id WITH =, tstzrange(start_at, end_at, ''[)''::text) WITH &&) WHERE (((model = 2) AND (trip_type = ''OWNED''::text) AND (driver_id IS NOT NULL) AND (status <> ''cancelled''::text))) DEFERRABLE INITIALLY DEFERRED';
 
-  -- ===== the 16 hooks in 10 functions of 072: (text before -> 072b text), each exactly once in its function =====
+  -- ===== the 20 hooks in 10 functions of 072: (text before -> 072b text), each exactly once in its function =====
   h_busy_a CONSTANT text := $h$  select r.code into v_code from ct_round_trips r
    where r.model = 2 and r.trip_type = 'OWNED' and r.status <> 'cancelled' and r.id is distinct from p_except
      and ((p_kind = 'truck' and r.truck_id = p_id) or (p_kind = 'driver' and r.driver_id = p_id))
@@ -69,7 +69,12 @@ $h$;
       v_warn := v_warn || plan_h_v1_warn(r2.truck_id, r2.date_start, r2.date_end, v_rt);
     end if;
 $h$;
-  h_upd_b CONSTANT text := $h$      -- 072b: the vehicle is the segments' (one source). A cycle with ONE segment: that segment, the copy
+  h_upd_b CONSTANT text := $h$      -- 072b, owner 26/10 ("in one step, it is easier for the user"): the handovers the list named go FIRST,
+      -- so a change that narrows past a handover AND sets a vehicle lands on the one segment that is left; seg_many
+      -- only when two or more stay. Cut once: the line after this block then finds nothing left to do.
+      v_notices := v_notices || plan_h_seg_cut(v_cut, 'plan_rt_update', p_actor, p_role);
+      v_cut := null;
+      -- 072b: the vehicle is the segments' (one source). A cycle with ONE segment: that segment, the copy
       -- trigger writes the cycle and 011 follows as before. A cycle with a handover: seg_many, corrected per segment.
       perform plan_h_seg_set_only(v_rt, v_type, v_truck, v_trailer, v_driver, v_partner, v_rate, p_actor, p_role);
       perform plan_h_audit(p_actor, p_role, 'update', 'ct_round_trips', v_rt::text, v_old,
@@ -77,8 +82,9 @@ $h$;
     end if;
     -- 072b: owner question 7 = (b): the handovers the list named (seg_removed, before the token) go now that the
     -- stops have moved - in the dry run too, undone with it (plan_h_seg_cut; a handover outside that the list did not
-    -- name stays, and seg_outside refuses at the end: the net)
-    perform plan_h_seg_cut(v_cut, 'plan_rt_update', p_actor, p_role);
+    -- name stays, and seg_outside refuses at the end: the net). The costs_without_rt notices it writes go into this
+    -- act's notice_ids, as plan_seg_remove's do (fix round 1, 26/10: they reached the desk but not the answer)
+    v_notices := v_notices || plan_h_seg_cut(v_cut, 'plan_rt_update', p_actor, p_role);
     -- 5. one truck, one driver at a time, on the window after the change
     select * into r2 from ct_round_trips where id = v_rt;
     -- 072b: every segment on its own window (the truck of the first is free after its handover); the v1 warning
@@ -93,6 +99,7 @@ $h$;
   h_upd_decl_b CONSTANT text := $h$  v_stop_ids bigint[] := '{}'; v_warn jsonb := '[]'::jsonb; v_notices bigint[] := '{}'; x record;
   v_seg0 jsonb;  -- 072b: stop -> segment before the change
   v_cut jsonb; v_conf jsonb;  -- 072b: the handovers this change removes (owner question 7 = b) and their token
+  v_keep bigint;  -- 072b: the ONE segment such a removal leaves, where a vehicle change of the same call lands
 $h$;
   -- owner question 7 = (b), 25/10: plan_rt_update takes the token of a change that removes a handover (072's
   -- unknown-key rule stays: any other key is refused)
@@ -107,8 +114,16 @@ $h$;
   v_seg0 := plan_h_seg_stops(v_rt);  -- 072b: the executing segment of each stop, before the stops move
   -- 072b: owner question 7 = (b), 25/10: a change that leaves a handover outside the new window lists it
   -- (seg_removed, with what leaves with it) and removes it after the token, for every role that may make the change.
-  -- Read BEFORE any write (the window of steps 1-2, 071's rule), so the dry run and the execution hold one token.
-  v_cut := plan_h_seg_rt_cut(v_rt, v_sid, v_sfrom, v_sto, v_side, v_delta);
+  -- Read BEFORE any write (the window of steps 1-2, 071's rule; v_cut is read right after the lock, hook 19), so the
+  -- dry run and the execution hold one token. Owner 26/10 ("in one step"): a vehicle change of the SAME call is a
+  -- line of the same list (seg_vehicle: the segment it lands on and the vehicle it gets), under the same token.
+  if jsonb_array_length(v_cut) > 0 and v_keep is not null
+     and (v_type, v_truck, v_trailer, v_driver, v_partner, v_rate)
+         is distinct from (r.trip_type, r.truck_id, r.trailer_id, r.driver_id, r.partner_id, r.partner_rate) then
+    v_cut := v_cut || jsonb_build_array(jsonb_build_object('kind', 'seg_vehicle', 'rt_id', v_rt, 'segment_id', v_keep,
+               'trip_type', v_type, 'truck_id', v_truck, 'trailer_id', v_trailer, 'driver_id', v_driver,
+               'partner_id', v_partner, 'partner_rate', v_rate));
+  end if;
   v_conf := plan_h_confirm('plan_rt_update', v_rt::text || '>' || coalesce(p->'stops', 'null'::jsonb)::text || '>'
                            || coalesce(p->'shift', 'null'::jsonb)::text, v_cut, p, p_role);
 $h$;
@@ -163,16 +178,32 @@ $h$;
             from (select distinct e from jsonb_array_elements(v) e) x);
 $h$;
   h_drop_b CONSTANT text := $h$  -- 072b: a cycle that stays but narrows past a handover lists it (seg_removed) with what leaves with it
-  -- (owner question 7 = b); Move and Delete remove it after the token (plan_h_seg_cut)
-  v := v || plan_h_seg_cut_legs(p_legs, p_keep_rt);
+  -- (owner question 7 = b); Move and Delete remove it after the token (plan_h_seg_cut). Fix round 3 (26/10): ONE
+  -- costs row per fact, as plan_h_seg_cut's costs notice. A cycle this list names rt_cancelled already carries 072's
+  -- costs row per pay source over EVERY line of it (the removed truck's too): the cut's row for that truck is the
+  -- same lines again, and DISTINCT merges it only when that truck has all the lines ("1" beside "2" for one cycle and
+  -- one pay source, owner and accountant read its amount twice). Its seg_removed and payroll_amount lines stay
+  -- (payroll rows are byte-identical to 072's, so DISTINCT merges them); the token still covers every cost line
+  v := v || (select coalesce(jsonb_agg(c), '[]'::jsonb) from jsonb_array_elements(plan_h_seg_cut_legs(p_legs, p_keep_rt)) c
+              where not (c->>'kind' = 'costs'
+                         and exists (select 1 from jsonb_array_elements(v) i
+                                      where i->>'kind' = 'rt_cancelled' and i->>'rt_id' = c->>'rt_id')));
   return (select coalesce(jsonb_agg(e order by e->>'kind', e::text), '[]'::jsonb)
             from (select distinct e from jsonb_array_elements(v) e) x);
 $h$;
   h_sweep_a CONSTANT text := $h$  perform plan_h_stops_sweep(v_stops, v_reason, p_actor, p_role);
 $h$;
-  h_mv_b CONSTANT text := $h$  perform plan_h_stops_sweep(v_stops, v_reason, p_actor, p_role);
-  -- 072b: the handovers the list named go after the token, on the narrowed window (owner question 7 = b)
-  perform plan_h_seg_cut(v_full, 'plan_move_pieces', p_actor, p_role);
+  -- the implemented 072 (83bb1076, K1 gap E) keeps what the sweep removed (v_swept) in plan_move_pieces; plan_delete
+  -- still PERFORMs it, so hook 14 has its own place
+  h_mv_sweep_a CONSTANT text := $h$  v_swept := plan_h_stops_sweep(v_stops, v_reason, p_actor, p_role);
+$h$;
+  h_mv_b CONSTANT text := $h$  v_swept := plan_h_stops_sweep(v_stops, v_reason, p_actor, p_role);
+  -- 072b: the handovers the list named go after the token, on the narrowed window (owner question 7 = b). Their
+  -- costs_without_rt notices join the put's notice_ids, which the answer returns (fix round 1, 26/10: written but
+  -- not answered). Back to waiting has no put: an object with notice_ids only - its rt_id, stop_ids, leg_ids and
+  -- warnings read null exactly as before.
+  v_put := coalesce(v_put, '{}'::jsonb) || jsonb_build_object('notice_ids', coalesce(v_put->'notice_ids', '[]'::jsonb)
+             || to_jsonb(plan_h_seg_cut(v_full, 'plan_move_pieces', p_actor, p_role)));
 $h$;
   -- review R5 (both critics): a side moved within its own cycle - the target is a source too; listed with the
   -- request's stops, cut after the token by hook 14 (owner question 7 = b, no exception)
@@ -187,6 +218,54 @@ $h$;
   h_del_b CONSTANT text := $h$  perform plan_h_stops_sweep(v_stops, v_reason, p_actor, p_role);
   -- 072b: the handovers the list named go after the token, on the narrowed window (owner question 7 = b)
   perform plan_h_seg_cut(v_full, 'plan_delete', p_actor, p_role);
+$h$;
+  -- fix round 1 (26/10): the costs_without_rt notice of a handover an act removed is in that act's notice_ids.
+  -- plan_rt_update: 072's step 6 ASSIGNED the VS follow's notices (nothing came before it in 072); after hook 6 it
+  -- would wipe the cut's notices whenever the cycle carries a VS's first piece, so it appends
+  h_upd_vs_a CONSTANT text := $h$      v_notices := plan_h_vs_follow(array(select ps.piece_id from v_piece_state ps where ps.order_id = any (v_first)),
+$h$;
+  h_upd_vs_b CONSTANT text := $h$      -- 072b: after the notices of the handovers this change removed (hook 6), never over them
+      v_notices := v_notices || plan_h_vs_follow(array(select ps.piece_id from v_piece_state ps where ps.order_id = any (v_first)),
+$h$;
+  -- plan_delete answers the notices it wrote by reading them back on its cycles: 072 read only the cancelled ones
+  -- (no other notice existed there). A cycle that stays but lost a handover's truck (hook 15) gets one too; it is
+  -- one of the order's cycles, and no other 072 / 072b path writes a notice on a cycle that stays here
+  h_del_ret_a CONSTANT text := $h$                    where q.created_at = now() and q.created_by = p_actor and q.rt_id = any(v_empty)));
+$h$;
+  h_del_ret_b CONSTANT text := $h$                    -- 072b: and the costs notices of the cycles that stay but lost a handover (plan_h_seg_cut)
+                    where q.created_at = now() and q.created_by = p_actor and q.rt_id = any(v_rts)));
+$h$;
+  -- owner 26/10 ("in one step"): plan_rt_update that narrows past a handover AND sets a vehicle. The list is read
+  -- right after the lock, BEFORE 072 derives and checks the new vehicle against the cycle's copy r (the ARCHIKO):
+  -- when the removal leaves ONE segment, that segment is the one the change lands on, so r carries ITS vehicle from
+  -- here on - 072's own rules (a present key wins, a type change clears, vehicle_clear_use_clear, no_vehicle, the
+  -- payroll lock) then judge the segment that will really change, with no second copy of them.
+  h_upd_lock_a CONSTANT text := $h$  if r.status = 'cancelled' then perform plan_h_raise('rt_cancelled', r.code); end if;
+$h$;
+  h_upd_lock_b CONSTANT text := $h$  if r.status = 'cancelled' then perform plan_h_raise('rt_cancelled', r.code); end if;
+  -- 072b: the handovers this change removes (owner question 7 = b), and the one segment they leave (owner 26/10)
+  v_cut := plan_h_seg_rt_cut(v_rt, v_sid, v_sfrom, v_sto, v_side, v_delta);
+  select min(g.id) into v_keep from rt_vehicle_segments g
+   where g.rt_id = v_rt and g.deleted_at is null
+     and not (g.id = any (array(select (c->>'segment_id')::bigint from jsonb_array_elements(v_cut) c
+                                 where c->>'kind' = 'seg_removed')))
+  having count(*) = 1;
+  if v_keep is not null then
+    select g.trip_type, g.truck_id, g.trailer_id, g.driver_id, g.partner_id, g.partner_rate
+      into r.trip_type, r.truck_id, r.trailer_id, r.driver_id, r.partner_id, r.partner_rate
+      from rt_vehicle_segments g where g.id = v_keep;
+  end if;
+$h$;
+  -- K-13 (072): a driver change with amounts on the cycle's payroll = payroll_locked. A line the list already removes
+  -- (its driver leaves with a removed handover, deleted after the token by plan_h_seg_drop) locks nothing (owner 26/10)
+  h_upd_k13_a CONSTANT text := $h$                   and (e.trip_value is not null or e.advance is not null or e.expenses is not null)) then
+    perform plan_h_raise('payroll_locked', r.code);
+$h$;
+  h_upd_k13_b CONSTANT text := $h$                   and (e.trip_value is not null or e.advance is not null or e.expenses is not null)
+                   -- 072b: a line this change's list removes locks nothing (owner 26/10, one step)
+                   and not (e.id::text in (select c->>'dl_entry_id' from jsonb_array_elements(v_cut) c
+                                            where c->>'kind' = 'payroll_amount'))) then
+    perform plan_h_raise('payroll_locked', r.code);
 $h$;
 BEGIN
   PERFORM set_config('lock_timeout', '5s', true);
@@ -222,7 +301,8 @@ BEGIN
        AND conname = 'rt_v2_driver_once') IS DISTINCT FROM x_driver THEN
     RAISE EXCEPTION '072b: the two EXCLUDE of 071b are not on ct_round_trips exactly as executed 22/10 - stop, re-measure';
   END IF;
-  -- Every function 072b relies on, as the text measured 25/10 (072 md5 483ffd6e; RE-MEASURE after F2's K2):
+  -- Every function 072b relies on, as executed in production 26/10 (072 md5 83bb1076; the 47 pairs re-derived on it
+  -- and compared with production by SELECT, plan Task B2):
   -- the 22 that 072 guards and the 072 functions 072b hooks, calls or relies on. Any difference = stop.
   -- tests/sql-072b-drafts.test.js: each unchanged pair is here once and in PART 9 once; each hooked one is here
   -- and in the hook list of PART 6 once.
@@ -263,21 +343,21 @@ BEGIN
       ('public.plan_h_v1_warn(bigint,date,date,bigint)', 'a99553e279628b5795990c08bcb01db6'),
       ('public.plan_h_rt_cancel_if_empty(bigint,text,text,text)', '2f3cdfe09caa8c548e5a30e0f06c84fa'),
       ('public.plan_h_rt_consequences(bigint)', 'cddea3a5fb20a563283a16db3b50f133'),
-      ('public.plan_rt_create(jsonb,text,text)', '8a6f19ff9d3c400eb2a31722226332fa'),
-      ('public.plan_move_pieces(jsonb,text,text)', 'b6b939f4f7a63d5a464b45082e83f2d7'),
-      ('public.plan_delete(jsonb,text,text)', 'c85450e28813d48023cb7f149949639c'),
+      ('public.plan_rt_create(jsonb,text,text)', '37c04d5803944fdeaf9d0534a0b83506'),
+      ('public.plan_move_pieces(jsonb,text,text)', 'c053d6aa934e21f4c8411c7974a81a8e'),
+      ('public.plan_delete(jsonb,text,text)', '5fc0d0fca96fd8854bb8bb4faaa0145a'),
       ('public.plan_h_busy(text,bigint,timestamptz,timestamptz,bigint)', '3083076df503307b097472b99b121e23'),
       ('public.plan_h_finish()', 'c398052b091723cdd9f7ae47516f8aa2'),
-      ('public.plan_rt_update(jsonb,text,text)', 'e1aa3e103d3bbf4abd5b4a37b1a79829'),
-      ('public.plan_rt_clear(jsonb,text,text)', 'a46aae29841808f39b83b7737e7c6315'),
-      ('public.plan_board(date,text)', '2a600c21f1aa75d84d35bb69235350cc'),
+      ('public.plan_rt_update(jsonb,text,text)', '0cce9dd2a29dd9ea35ac633f6338fca1'),
+      ('public.plan_rt_clear(jsonb,text,text)', 'f33127a05d3df00f850e78eb40bab4aa'),
+      ('public.plan_board(date,text)', 'ec6634b5daf4f4145df417cc282f2741'),
       ('public.plan_vs_state(bigint[])', '8e50d9518eeed0ef688b0d8e13f6dff4'),
-      ('public.plan_local_loading(jsonb,text,text)', 'd3107f05bf6ed170e673cccda48b4cb6'),
+      ('public.plan_local_loading(jsonb,text,text)', '26ba9a989ed0d8ec36799086f36bfb2e'),
       ('public.plan_h_drop_consequences(bigint[],bigint,bigint[])', 'f5641bb97562310cbbc57d71e9894c26')
     ) g(sig, m) LOOP
     IF to_regprocedure(v_g.sig) IS NULL
        OR (SELECT md5(prosrc) FROM pg_proc WHERE oid = to_regprocedure(v_g.sig)) IS DISTINCT FROM v_g.m THEN
-      RAISE EXCEPTION '072b: % is not the text measured 25/10 (expected md5 %) - stop, re-measure', v_g.sig, v_g.m;
+      RAISE EXCEPTION '072b: % is not the text of the executed 072 (expected md5 %) - stop, re-measure', v_g.sig, v_g.m;
     END IF;
   END LOOP;
   IF (SELECT count(*) FROM pg_proc WHERE pronamespace = 'public'::regnamespace AND proname LIKE 'plan\_%') <> 54 THEN
@@ -323,7 +403,10 @@ BEGIN
     CONSTRAINT seg_partner_needs_partner CHECK (trip_type <> 'PARTNER' OR partner_id IS NOT NULL),
     CONSTRAINT seg_partner_no_vehicle CHECK (trip_type <> 'PARTNER' OR (truck_id IS NULL AND trailer_id IS NULL AND driver_id IS NULL)),
     CONSTRAINT seg_owned_no_partner CHECK (trip_type <> 'OWNED' OR (partner_id IS NULL AND partner_rate IS NULL)),
-    CONSTRAINT seg_partner_rate CHECK (partner_rate IS NULL OR partner_rate >= 0),
+    -- B2b (26/10): NaN sorts above every number in Postgres, so "partner_rate >= 0" alone let it in (numeric(10,2)
+    -- keeps NaN, and plan_seg_copy would carry it onto the cycle). The acts refuse it first (plan_h_seg_vehicle_ok, as
+    -- 072's K1 input rule); this is the net for any other write. +-Infinity cannot be stored in numeric(10,2).
+    CONSTRAINT seg_partner_rate CHECK (partner_rate IS NULL OR (partner_rate >= 0 AND partner_rate <> 'NaN')),
     -- spec 4: the eight reasons, fixed in the base; a new reason = a new migration, never the screen. The codes
     -- vehicle_breakdown and driver_hours are 067's delay codes for the same event (one fault, one code).
     CONSTRAINT seg_reason_list CHECK (reason IS NULL OR reason IN ('vehicle_breakdown', 'reefer_breakdown', 'accident',
@@ -751,6 +834,13 @@ $f$;
 begin
   -- The shape of a segment's vehicle, before the CHECKs (one refusal code per mistake, never a 23514 the screen
   -- cannot place). Existence only: a soft-deleted truck, trailer, driver or partner is not offered.
+  -- B2b (26/10), 072's K1 input rule (coordinator 25/10, the words of plan_rt_create / plan_rt_update): NaN sorts above
+  -- every number, so it passed CHECK seg_partner_rate (>= 0) and was kept; +-Infinity and a finite rate past
+  -- numeric(10,2) ended as a raw 22003 at the write (a 500, in a dry run too). A rate is a finite number the column holds.
+  if p_rate is not null and not (abs(p_rate) < 'Infinity'::numeric) then
+    perform plan_h_raise('bad_input', 'partner_rate:finite');
+  end if;
+  if p_rate is not null and abs(round(p_rate, 2)) >= 100000000 then perform plan_h_raise('bad_input', 'partner_rate:range'); end if;
   if p_type is null or p_type not in ('OWNED', 'PARTNER') then perform plan_h_raise('bad_input', 'trip_type'); end if;
   if p_type = 'OWNED' and (p_partner is not null or p_rate is not null) then
     perform plan_h_raise('bad_input', 'partner on OWNED');
@@ -804,7 +894,7 @@ end
 $f$;
 
   CREATE FUNCTION public.plan_h_seg_drop(p_rt bigint, p_segs bigint[], p_payroll bigint[], p_reason text,
-                                         p_actor text, p_role text) RETURNS bigint[]
+                                         p_actor text, p_role text, p_costs_notice boolean DEFAULT true) RETURNS bigint[]
     LANGUAGE plpgsql SET search_path = public AS $f$
 declare
   -- "Sto %s afairethike i allagi ochimatos: %s grammes exodon tou fortigou %s emeinan ston kyklo choris tmima tou fortigou":
@@ -818,6 +908,8 @@ begin
   -- no reason, seg_first), the last to its end - and (4) decision 13: a removed truck's cost lines stay on the cycle,
   -- and the national desk is told when that truck drives no kept segment (costs_without_rt). The order matters: the
   -- lines go before the copy changes driver, so 011 never leaves a line with an amount in needs_review.
+  -- p_costs_notice false: the caller's own act cancels this cycle and 072's cancellation tells the desk about every
+  -- cost line of it; a second notice for the same lines would be noise (plan_h_seg_cut, fix round 2, 26/10).
   select * into r from ct_round_trips where id = p_rt;
   for x in select e.id, to_jsonb(e) as old from dl_entries e where e.id = any (p_payroll) and e.deleted_at is null
             order by e.id for no key update loop
@@ -856,7 +948,7 @@ begin
             where not exists (select 1 from rt_vehicle_segments o where o.rt_id = p_rt and o.deleted_at is null
                                 and o.trip_type = 'OWNED' and o.truck_id = t.truck_id)
             order by t.truck_id loop
-    if x.n > 0 then
+    if x.n > 0 and p_costs_notice then
       v_notices := v_notices || plan_h_notice('natl', 'costs_without_rt', b_costs,
         array[r.code, x.n::text, coalesce((select license_plate from trucks where id = x.truck_id), x.truck_id::text)],
         null, null, p_rt, p_actor, p_role);
@@ -1052,15 +1144,26 @@ begin
              where i->>'kind' = 'payroll_amount' and (i->>'rt_id')::bigint = r.id
                and i->>'dl_entry_id' in (select c->>'dl_entry_id' from jsonb_array_elements(plan_h_seg_consequences(v_listed)) c
                                           where c->>'kind' = 'payroll_amount')),
-      w_cut || ' ' || r.code || ' (' || p_actor || ', ' || p_why || ')', p_actor, p_role);
+      w_cut || ' ' || r.code || ' (' || p_actor || ', ' || p_why || ')', p_actor, p_role,
+      -- fix round 2 (26/10): ONE costs notice per fact. A cycle this same act cancels - its list names it
+      -- rt_cancelled (only Move / Delete list that, 072's plan_h_drop_consequences) and no live leg is left, so 072's
+      -- plan_h_rt_cancel_if_empty cancels it right after this - is told by that cancellation, which counts EVERY cost
+      -- line of the cycle, the removed truck's too. Without this the desk read the same lines twice, and Move answered
+      -- one of the two notices while Delete answered both. Both halves, never one: plan_rt_update lists no
+      -- rt_cancelled and cancels nothing, and a cycle without legs that stays (plan_rt_create makes them) keeps its notice.
+      -- mut:cancelnote-begin
+      not (exists (select 1 from jsonb_array_elements(p_full) i where i->>'kind' = 'rt_cancelled' and (i->>'rt_id')::bigint = r.id)
+           and not exists (select 1 from piece_legs l where l.rt_id = r.id and l.deleted_at is null))
+      -- mut:cancelnote-end
+      );
     -- mut:cutapply-end
   end loop;
   return v_notices;
 end
 $f$;
 
-  -- ===== PART 6: THE 16 HOOKS IN 10 FUNCTIONS OF 072 (the live text + one replacement each; generated, proved
-  -- reversible). Applied in order k; a function with several hooks (plan_rt_update: 6, plan_move_pieces: 2) chains them - the "before"
+  -- ===== PART 6: THE 20 HOOKS IN 10 FUNCTIONS OF 072 (the live text + one replacement each; generated, proved
+  -- reversible). Applied in order k; a function with several hooks (plan_rt_update: 9, plan_move_pieces: 2, plan_delete: 2) chains them - the "before"
   -- of each is the "after" of the one before it - and the rollback undoes them in reverse order (k desc). =====
   FOR v_fn IN SELECT * FROM (VALUES
       (1, 'public.plan_h_busy(text,bigint,timestamptz,timestamptz,bigint)', h_busy_a, h_busy_b,
@@ -1068,33 +1171,41 @@ $f$;
       (2, 'public.plan_h_finish()', h_fin_a, h_fin_b,
        'c398052b091723cdd9f7ae47516f8aa2', '59d88ec85661d3ef2ac957aecd0e0fcd'),
       (3, 'public.plan_rt_update(jsonb,text,text)', h_upd_decl_a, h_upd_decl_b,
-       'e1aa3e103d3bbf4abd5b4a37b1a79829', '11210d4b90f18b6c9182c17852b04491'),
+       '0cce9dd2a29dd9ea35ac633f6338fca1', '855e6188c7b7d81ef20efdfd8921b2f8'),
       (4, 'public.plan_rt_update(jsonb,text,text)', h_upd_keys_a, h_upd_keys_b,
-       '11210d4b90f18b6c9182c17852b04491', '31c03a0afb1b148f2193406e20392a62'),
+       '855e6188c7b7d81ef20efdfd8921b2f8', '929c8de4a5c4e4dbbc1fc6ca29b788c9'),
       (5, 'public.plan_rt_update(jsonb,text,text)', h_upd_bef_a, h_upd_bef_b,
-       '31c03a0afb1b148f2193406e20392a62', 'cf96ade3c2061d3ba3c82ab39cb95da3'),
+       '929c8de4a5c4e4dbbc1fc6ca29b788c9', '8b25e8499deb5517bb5f471aadd2dca3'),
       (6, 'public.plan_rt_update(jsonb,text,text)', h_upd_a, h_upd_b,
-       'cf96ade3c2061d3ba3c82ab39cb95da3', 'cc2047f9e750aa2702f5c116af54df2f'),
+       '8b25e8499deb5517bb5f471aadd2dca3', '09fcb64337a989d3a4d40c6f181b14c2'),
       (7, 'public.plan_rt_update(jsonb,text,text)', h_upd_next_a, h_upd_next_b,
-       'cc2047f9e750aa2702f5c116af54df2f', '284f032e67e4a6db0234430515b415fb'),
+       '09fcb64337a989d3a4d40c6f181b14c2', '6bc9d4c9a95782307f61237d0dd012b6'),
       (8, 'public.plan_rt_update(jsonb,text,text)', h_upd_dry_a, h_upd_dry_b,
-       '284f032e67e4a6db0234430515b415fb', 'cb791820d156677263083e6d97aef6f5'),
+       '6bc9d4c9a95782307f61237d0dd012b6', '67c16675c7e1d4bb161cbe2ad4538b1c'),
       (9, 'public.plan_rt_clear(jsonb,text,text)', h_clr_a, h_clr_b,
-       'a46aae29841808f39b83b7737e7c6315', 'ecead9245b3e4dc90d31a357f2d8c4ef'),
+       'f33127a05d3df00f850e78eb40bab4aa', '07452fbac4ac9fe8c4dddd0d35b256f3'),
       (10, 'public.plan_board(date,text)', h_brd_a, h_brd_b,
-       '2a600c21f1aa75d84d35bb69235350cc', '93ebc7aa9dd6b4a1eee1f9b916738807'),
+       'ec6634b5daf4f4145df417cc282f2741', '2e030bfc158de8a26d5814f618d1f5ac'),
       (11, 'public.plan_vs_state(bigint[])', h_vss_a, h_vss_b,
        '8e50d9518eeed0ef688b0d8e13f6dff4', '99175b659207c5019f1599ed389f1895'),
       (12, 'public.plan_local_loading(jsonb,text,text)', h_ll_a, h_ll_b,
-       'd3107f05bf6ed170e673cccda48b4cb6', '6c56db094458841598db079ad7844515'),
+       '26ba9a989ed0d8ec36799086f36bfb2e', 'f40c4a548ec192af781ef8e62d3227a5'),
       (13, 'public.plan_h_drop_consequences(bigint[],bigint,bigint[])', h_drop_a, h_drop_b,
-       'f5641bb97562310cbbc57d71e9894c26', 'ce5de5793080e0c5be1e886defcb0b0e'),
-      (14, 'public.plan_move_pieces(jsonb,text,text)', h_sweep_a, h_mv_b,
-       'b6b939f4f7a63d5a464b45082e83f2d7', 'b67eafc88f2b3a1cbad41776c57d6f38'),
+       'f5641bb97562310cbbc57d71e9894c26', '80b789fcdfc3fb6dad2b1d2f8b83b487'),
+      (14, 'public.plan_move_pieces(jsonb,text,text)', h_mv_sweep_a, h_mv_b,
+       'c053d6aa934e21f4c8411c7974a81a8e', 'ae275e73f32e0c5eb1069e87f20e0239'),
       (15, 'public.plan_delete(jsonb,text,text)', h_sweep_a, h_del_b,
-       'c85450e28813d48023cb7f149949639c', '7b5c7a31f19d1d38ef1fc115cc3701ec'),
+       '5fc0d0fca96fd8854bb8bb4faaa0145a', '5aed6ae2fd3bf8f41f85744951beeee8'),
       (16, 'public.plan_move_pieces(jsonb,text,text)', h_mv_list_a, h_mv_list_b,
-       'b67eafc88f2b3a1cbad41776c57d6f38', '856da644f07ea356c2ecb5dd909fcc8d')
+       'ae275e73f32e0c5eb1069e87f20e0239', '97984f7500dead965ddcba0d2c3360ab'),
+      (17, 'public.plan_rt_update(jsonb,text,text)', h_upd_vs_a, h_upd_vs_b,
+       '67c16675c7e1d4bb161cbe2ad4538b1c', 'f6a529f94df045e1f3689f0df95a2d7c'),
+      (18, 'public.plan_delete(jsonb,text,text)', h_del_ret_a, h_del_ret_b,
+       '5aed6ae2fd3bf8f41f85744951beeee8', 'abda0d8b5d0bf32766e4ecb46367420c'),
+      (19, 'public.plan_rt_update(jsonb,text,text)', h_upd_lock_a, h_upd_lock_b,
+       'f6a529f94df045e1f3689f0df95a2d7c', '2f5e62feffd8c9f6bb5e10945a9dd556'),
+      (20, 'public.plan_rt_update(jsonb,text,text)', h_upd_k13_a, h_upd_k13_b,
+       '2f5e62feffd8c9f6bb5e10945a9dd556', 'e427e7a24ef6e88d83555c98d4bc7622')
     ) v(k, sig, a, b, m0, m1) ORDER BY k LOOP
     v_oid := to_regprocedure(v_fn.sig);
     SELECT prosrc, proacl::text, prosecdef, provolatile, prolang, proconfig
@@ -1136,6 +1247,7 @@ declare
   v_veh jsonb; v_type text; v_truck bigint; v_trailer bigint; v_driver bigint; v_partner bigint; v_rate numeric;
   v_same boolean; v_new bigint; v_old jsonb; v_ans jsonb; v_warn jsonb := '[]'::jsonb; v_res jsonb; v_seg0 jsonb;
   v_hint text; v_msg text; v_det text; v_cname text; v_state text; v_code text;
+  v_prev_rate numeric; v_list jsonb := '[]'::jsonb; v_conf jsonb;
 begin
   -- "Vehicle handover" on the cycle's card (spec 5): from a time inside the cycle, at a point (a note), for a
   -- reason, another vehicle - ours or a partner's - takes over. The segment holding that time is cut in two; the
@@ -1143,10 +1255,16 @@ begin
   -- time (planned, a breakdown, recorded afterwards): the base does not compare with now().
   perform plan_h_ctx(p_actor, p_role);
   perform plan_h_keys(p, array['rt_id', 'at', 'place_note', 'reason', 'reason_note', 'vehicle', 'same_driver',
-                               'request_id', 'dry_run'], 'p');
+                               'request_id', 'dry_run', 'prev_partner_rate', 'confirm_token'], 'p');
   if p ? 'dry_run' and jsonb_typeof(p->'dry_run') <> 'boolean' then perform plan_h_raise('bad_input', 'dry_run'); end if;
   if p ? 'same_driver' and jsonb_typeof(p->'same_driver') <> 'boolean' then perform plan_h_raise('bad_input', 'same_driver'); end if;
   if jsonb_typeof(p->'vehicle') is distinct from 'object' then perform plan_h_raise('bad_input', 'vehicle'); end if;
+  -- B2b (26/10), as 072's K1 review r1 (plan_delete's reason, plan_order_update's set:text): an object / array /
+  -- boolean point or note was kept as its JSON text on the segment and in the card's history
+  if exists (select 1 from unnest(array['place_note', 'reason', 'reason_note']) f
+              where jsonb_typeof(p->f) in ('object', 'array', 'boolean')) then
+    perform plan_h_raise('bad_input', 'text');
+  end if;
   v_veh := p->'vehicle';
   perform plan_h_keys(v_veh, array['trip_type', 'truck_id', 'trailer_id', 'driver_id', 'partner_id', 'partner_rate'], 'vehicle');
   v_dry := coalesce((p->>'dry_run')::boolean, false);
@@ -1166,10 +1284,16 @@ begin
     v_driver := (v_veh->>'driver_id')::bigint;
     v_partner := (v_veh->>'partner_id')::bigint;
     v_rate := (v_veh->>'partner_rate')::numeric;
+    v_prev_rate := (p->>'prev_partner_rate')::numeric;
+  -- invalid_parameter_value: a time with an unknown zone ('... Mars/Base') is 22023, which 072's exception blocks
+  -- map to bad_input too (B2b, 26/10: it was a raw 22023)
   exception when invalid_text_representation or numeric_value_out_of_range or invalid_datetime_format
-                 or datetime_field_overflow then
+                 or datetime_field_overflow or invalid_parameter_value then
     perform plan_h_raise('bad_input', 'body');
   end;
+  -- B2b (26/10), 072's K1 input rule (coordinator 25/10): 'infinity' / '-infinity' are valid timestamptz input; it
+  -- was refused only as seg_time (another rule's code). A handover time is a finite time.
+  if v_at is not null and not isfinite(v_at) then perform plan_h_raise('bad_input', 'at:finite'); end if;
   -- the reason's VALUE is the CHECK's (seg_reason_list, one list): only its presence is checked here
   if v_rt is null or v_at is null or coalesce(p->>'reason', '') = '' or coalesce(p->>'place_note', '') !~ '[^[:space:]]' then
     perform plan_h_raise('bad_input', 'rt_id, at, place_note and reason');
@@ -1201,13 +1325,37 @@ begin
      is not distinct from (g.trip_type, g.truck_id, g.trailer_id, g.driver_id, g.partner_id, g.partner_rate) then
     perform plan_h_raise('seg_same', r.code);
   end if;
+  -- owner 26/10 (money): a cycle with two partner segments costs the SUM of their rates, so a handover from one
+  -- partner to a NEW partner may lower the previous partner's rate in the same act ("perhaps the first one's price
+  -- must come down"). The form prefills it with its current value; a changed rate is a line of the act's list
+  -- ("rate <partner>: 300 -> 250") under one token (the ONE two-step mechanism, plan_h_confirm). The rate is for
+  -- every role that writes (decision 41): not an amount, never stripped. Same checks as a segment's own rate.
+  -- mut:prevrate-begin
+  if p ? 'prev_partner_rate' then
+    if g.trip_type <> 'PARTNER' or v_type is distinct from 'PARTNER' or v_prev_rate is null then
+      perform plan_h_raise('bad_input', 'prev_partner_rate');
+    end if;
+    perform plan_h_seg_vehicle_ok('PARTNER', null, null, null, g.partner_id, v_prev_rate);
+    if v_prev_rate is distinct from g.partner_rate then
+      v_list := jsonb_build_array(jsonb_build_object('kind', 'partner_rate', 'rt_id', v_rt, 'segment_id', g.id,
+                  'partner_id', g.partner_id, 'partner', (select x.company_name from partners x where x.id = g.partner_id),
+                  'rate_from', g.partner_rate, 'rate_to', v_prev_rate));
+    end if;
+  end if;
+  -- mut:prevrate-end
+  v_conf := plan_h_confirm('plan_seg_change', v_rt::text || '>' || g.id::text, v_list, p, p_role);
   -- the executing segment of each stop before the cut (review R2, DB finding 4: the stops from the handover on
   -- change hands, and the answer and the preview say which)
   v_seg0 := plan_h_seg_stops(v_rt);
 
   begin
     v_old := to_jsonb(g);
-    update rt_vehicle_segments set to_at = v_at, updated_at = now() where id = g.id;
+    -- the previous partner's new rate rides in the same update (owner 26/10, money), so one history row says both
+    update rt_vehicle_segments set to_at = v_at,
+           -- mut:prevwrite-begin
+           partner_rate = case when jsonb_array_length(v_list) > 0 then v_prev_rate else partner_rate end,
+           -- mut:prevwrite-end
+           updated_at = now() where id = g.id;
     perform plan_h_audit(p_actor, p_role, 'update', 'rt_vehicle_segments', g.id::text, v_old,
                          (select to_jsonb(s) from rt_vehicle_segments s where s.id = g.id));
     insert into rt_vehicle_segments (rt_id, from_at, to_at, trip_type, truck_id, trailer_id, driver_id, partner_id,
@@ -1239,7 +1387,9 @@ begin
     get stacked diagnostics v_hint = pg_exception_hint, v_msg = message_text, v_det = pg_exception_detail,
                             v_cname = constraint_name, v_state = returned_sqlstate;
     if v_hint = 'plan_dry_run' then
-      return jsonb_build_object('ok', true, 'op', 'plan_seg_change', 'dry_run', true, 'preview', v_det::jsonb);
+      -- with a changed previous rate: the list and the token beside the preview (plan_seg_remove's shape)
+      return jsonb_build_object('ok', true, 'op', 'plan_seg_change', 'dry_run', true, 'preview', v_det::jsonb)
+        || case when coalesce((v_conf->>'needs_confirm')::boolean, false) then v_conf - 'ok' - 'op' - 'dry_run' else '{}'::jsonb end;
     end if;
     if v_dry and (v_hint like 'plan:%' or coalesce(v_cname, '') <> '') then
       -- the preview SHOWS the rule the handover would break (pattern plan_rt_update, Figma H7); nothing was kept
@@ -1264,14 +1414,20 @@ declare
   v_type text; v_truck bigint; v_trailer bigint; v_driver bigint; v_partner bigint; v_rate numeric;
   v_old jsonb; v_res jsonb; v_ids bigint[] := '{}'; v_seg0 jsonb; v_warn jsonb := '[]'::jsonb;
   v_hint text; v_msg text; v_det text; v_cname text; v_state text; v_code text;
+  v_prev_rate numeric; v_list jsonb := '[]'::jsonb; v_conf jsonb;
 begin
   -- "Correction" of one segment (spec 5): its time, point, reason or vehicle, under the same rules as a handover.
   perform plan_h_ctx(p_actor, p_role);
-  perform plan_h_keys(p, array['segment_id', 'set', 'dry_run'], 'p');
+  perform plan_h_keys(p, array['segment_id', 'set', 'dry_run', 'prev_partner_rate', 'confirm_token'], 'p');
   if jsonb_typeof(v_set) <> 'object' then perform plan_h_raise('bad_input', 'set'); end if;
   perform plan_h_keys(v_set, array['at', 'place_note', 'reason', 'reason_note', 'trip_type', 'truck_id', 'trailer_id',
                                    'driver_id', 'partner_id', 'partner_rate'], 'set');
   if p ? 'dry_run' and jsonb_typeof(p->'dry_run') <> 'boolean' then perform plan_h_raise('bad_input', 'dry_run'); end if;
+  -- B2b (26/10), as plan_seg_change and 072's plan_order_update (set:text): no JSON text kept as a point or a note
+  if exists (select 1 from unnest(array['place_note', 'reason', 'reason_note']) f
+              where jsonb_typeof(v_set->f) in ('object', 'array', 'boolean')) then
+    perform plan_h_raise('bad_input', 'set:text');
+  end if;
   begin
     v_seg := (p->>'segment_id')::bigint;
     v_dry := coalesce((p->>'dry_run')::boolean, false);
@@ -1281,10 +1437,14 @@ begin
     v_driver := (v_set->>'driver_id')::bigint;
     v_partner := (v_set->>'partner_id')::bigint;
     v_rate := (v_set->>'partner_rate')::numeric;
+    v_prev_rate := (p->>'prev_partner_rate')::numeric;
+  -- invalid_parameter_value: an unknown time zone (22023), as plan_seg_change (B2b, 26/10)
   exception when invalid_text_representation or numeric_value_out_of_range or invalid_datetime_format
-                 or datetime_field_overflow then
+                 or datetime_field_overflow or invalid_parameter_value then
     perform plan_h_raise('bad_input', 'body');
   end;
+  -- B2b (26/10): a handover time is finite, as plan_seg_change (it was refused only as seg_time)
+  if v_at is not null and not isfinite(v_at) then perform plan_h_raise('bad_input', 'at:finite'); end if;
   -- one order of locks in every plan_*: the cycle first, then its segments
   select rt_id into v_rt from rt_vehicle_segments where id = v_seg;
   select * into r from ct_round_trips where id = v_rt for no key update;
@@ -1296,6 +1456,13 @@ begin
   -- the first segment starts with the cycle and has no point or reason: its time is the stops'
   if v_first and (v_set ? 'at' or v_set ? 'place_note' or v_set ? 'reason' or v_set ? 'reason_note') then
     perform plan_h_raise('seg_first', r.code);
+  end if;
+  -- code review xhigh 26/10: a later segment's point and reason are refused as plan_seg_change refuses them
+  -- (bad_input), not left to the CHECKs (seg_place_text / seg_change_pair): one rule, one refusal shape. The
+  -- reason's VALUE stays the CHECK's (seg_reason_list, one list), as in plan_seg_change.
+  if (v_set ? 'place_note' and coalesce(v_set->>'place_note', '') !~ '[^[:space:]]')
+     or (v_set ? 'reason' and coalesce(v_set->>'reason', '') = '') then
+    perform plan_h_raise('bad_input', 'place_note and reason');
   end if;
   -- the vehicle after the correction: a present key wins, even null; a type change clears the other type's fields
   -- unless the body sets them (decision 12, the same rule as plan_rt_update)
@@ -1336,13 +1503,33 @@ begin
     -- the handover stays strictly inside the cycle and between its neighbours (no segment of zero length)
     if pv.id is null or not (v_at > pv.from_at and v_at < g.to_at) then perform plan_h_raise('seg_time', r.code); end if;
   end if;
+  -- owner 26/10 (money), as plan_seg_change: a correction to a NEW partner may lower the PREVIOUS partner segment's
+  -- rate in the same act, as a line of its list under one token. The first segment has no previous one.
+  if p ? 'prev_partner_rate' then
+    if pv.id is null then
+      select * into pv from rt_vehicle_segments
+       where rt_id = v_rt and deleted_at is null and to_at = g.from_at for no key update;
+    end if;
+    if v_first or pv.id is null or pv.trip_type <> 'PARTNER' or v_type is distinct from 'PARTNER' or v_prev_rate is null then
+      perform plan_h_raise('bad_input', 'prev_partner_rate');
+    end if;
+    perform plan_h_seg_vehicle_ok('PARTNER', null, null, null, pv.partner_id, v_prev_rate);
+    if v_prev_rate is distinct from pv.partner_rate then
+      v_list := jsonb_build_array(jsonb_build_object('kind', 'partner_rate', 'rt_id', v_rt, 'segment_id', pv.id,
+                  'partner_id', pv.partner_id, 'partner', (select x.company_name from partners x where x.id = pv.partner_id),
+                  'rate_from', pv.partner_rate, 'rate_to', v_prev_rate));
+    end if;
+  end if;
+  v_conf := plan_h_confirm('plan_seg_fix', g.id::text, v_list, p, p_role);
   -- the executing segment of each stop before the correction (a moved handover time moves stops between segments)
   v_seg0 := plan_h_seg_stops(v_rt);
 
   begin
-    if v_set ? 'at' and v_at <> g.from_at then
+    if (v_set ? 'at' and v_at <> g.from_at) or jsonb_array_length(v_list) > 0 then
       v_old := to_jsonb(pv);
-      update rt_vehicle_segments set to_at = v_at, updated_at = now() where id = pv.id;
+      update rt_vehicle_segments set to_at = case when v_set ? 'at' then v_at else to_at end,
+             partner_rate = case when jsonb_array_length(v_list) > 0 then v_prev_rate else partner_rate end,
+             updated_at = now() where id = pv.id;
       perform plan_h_audit(p_actor, p_role, 'update', 'rt_vehicle_segments', pv.id::text, v_old,
                            (select to_jsonb(s) from rt_vehicle_segments s where s.id = pv.id));
       v_ids := v_ids || pv.id;
@@ -1376,7 +1563,8 @@ begin
     get stacked diagnostics v_hint = pg_exception_hint, v_msg = message_text, v_det = pg_exception_detail,
                             v_cname = constraint_name, v_state = returned_sqlstate;
     if v_hint = 'plan_dry_run' then
-      return jsonb_build_object('ok', true, 'op', 'plan_seg_fix', 'dry_run', true, 'preview', v_det::jsonb);
+      return jsonb_build_object('ok', true, 'op', 'plan_seg_fix', 'dry_run', true, 'preview', v_det::jsonb)
+        || case when coalesce((v_conf->>'needs_confirm')::boolean, false) then v_conf - 'ok' - 'op' - 'dry_run' else '{}'::jsonb end;
     end if;
     if v_dry and (v_hint like 'plan:%' or coalesce(v_cname, '') <> '') then
       v_code := case when v_hint like 'plan:%' then substr(v_hint, 6) else v_cname end;
@@ -1421,10 +1609,15 @@ begin
   -- (the same ok, "replayed"), never a false "gone". Someone else's removal stays seg_gone (look again first).
   if g.id is not null and g.deleted_at is not null and g.deleted_by = p_actor and not v_dry
      and g.deleted_reason like w_rm || ' %' then
+    -- code review xhigh 26/10: the replay names the costs notice the first call wrote (same transaction as the
+    -- removal: its created_at is the segment's deleted_at), so a lost answer pressed again still links its notice
     return plan_h_ok('plan_seg_remove', jsonb_build_object('rt_id', v_rt, 'segment_id', g.id,
              'prev_segment_id', (select o.id from rt_vehicle_segments o where o.rt_id = v_rt and o.deleted_at is null
                                     and o.from_at < g.from_at and o.to_at >= g.to_at order by o.from_at desc limit 1)),
-             '[]'::jsonb, '[]'::jsonb) || jsonb_build_object('replayed', true);
+             '[]'::jsonb,
+             (select coalesce(jsonb_agg(q.id order by q.id), '[]'::jsonb) from plan_notices q
+               where q.rt_id = v_rt and q.kind = 'costs_without_rt' and q.created_by = p_actor
+                 and q.created_at = g.deleted_at)) || jsonb_build_object('replayed', true);
   end if;
   if g.id is null or g.deleted_at is not null then perform plan_h_raise('seg_gone', coalesce(v_seg::text, 'null')); end if;
   if r.status = 'cancelled' then perform plan_h_raise('rt_cancelled', r.code); end if;
@@ -1500,7 +1693,7 @@ $f$;
     public.plan_h_vs_carriers(bigint,jsonb), public.plan_h_seg_of_stop(bigint), public.plan_h_seg_stops(bigint),
     public.plan_h_seg_stop_warn(bigint,jsonb), public.plan_h_seg_v1_warn(bigint), public.plan_h_seg_next_rt(bigint),
     public.plan_h_seg_vehicle_ok(text,bigint,bigint,bigint,bigint,numeric), public.plan_h_seg_consequences(bigint[]),
-    public.plan_h_seg_drop(bigint,bigint[],bigint[],text,text,text), public.plan_h_seg_cut_list(bigint,timestamptz,timestamptz),
+    public.plan_h_seg_drop(bigint,bigint[],bigint[],text,text,text,boolean), public.plan_h_seg_cut_list(bigint,timestamptz,timestamptz),
     public.plan_h_seg_cut_legs(bigint[],bigint), public.plan_h_seg_cut_keep(bigint[],bigint,jsonb),
     public.plan_h_seg_rt_cut(bigint,bigint[],timestamptz[],timestamptz[],text,interval),
     public.plan_h_seg_cut(jsonb,text,text,text),
@@ -1514,7 +1707,7 @@ $f$;
   CREATE POLICY monitor_read ON public.rt_vehicle_segments FOR SELECT TO tms_check_runner, tms_reader USING (true);
 
   -- ===== PART 9: PROOFS =====
-  IF v_n <> 16 THEN RAISE EXCEPTION '072b proof: % hooks applied (expected 16)', v_n; END IF;
+  IF v_n <> 20 THEN RAISE EXCEPTION '072b proof: % hooks applied (expected 20)', v_n; END IF;
   -- the functions 072b relies on and did NOT change are still the texts of PART 0 (the hooked 10 are proved above)
   FOR v_g IN SELECT * FROM (VALUES
       ('public.dl_sync_from_rt()', '331cea3a8987b74a9b0add698df9b158'),
@@ -1553,7 +1746,7 @@ $f$;
       ('public.plan_h_v1_warn(bigint,date,date,bigint)', 'a99553e279628b5795990c08bcb01db6'),
       ('public.plan_h_rt_cancel_if_empty(bigint,text,text,text)', '2f3cdfe09caa8c548e5a30e0f06c84fa'),
       ('public.plan_h_rt_consequences(bigint)', 'cddea3a5fb20a563283a16db3b50f133'),
-      ('public.plan_rt_create(jsonb,text,text)', '8a6f19ff9d3c400eb2a31722226332fa')
+      ('public.plan_rt_create(jsonb,text,text)', '37c04d5803944fdeaf9d0534a0b83506')
     ) g(sig, m) LOOP
     IF (SELECT md5(prosrc) FROM pg_proc WHERE oid = to_regprocedure(v_g.sig)) IS DISTINCT FROM v_g.m THEN
       RAISE EXCEPTION '072b proof: % changed', v_g.sig;
@@ -1608,7 +1801,7 @@ $f$;
   IF v_k <> 1 THEN RAISE EXCEPTION '072b: B-54 not updated (% rows)', v_k; END IF;
 
   PERFORM pg_notify('pgrst', 'reload schema');
-  RAISE NOTICE '072b OK: segments table, 2 EXCLUDE moved, 2 views, 16 hooks in 10 functions of 072, 3 acts, auditor policy; triggers % -> %, B-54 = %',
+  RAISE NOTICE '072b OK: segments table, 2 EXCLUDE moved, 2 views, 20 hooks in 10 functions of 072, 3 acts, auditor policy; triggers % -> %, B-54 = %',
     v_trg0, v_trg1, v_trg1;
 END;
   -- ===== what it did =====
