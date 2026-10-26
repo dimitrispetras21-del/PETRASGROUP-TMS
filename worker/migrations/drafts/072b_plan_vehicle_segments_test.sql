@@ -208,6 +208,7 @@ DECLARE
     , 'plan:stale_confirm' -- 150 the token of the dry run with truck 3, sent with truck 4: the list named another vehicle
     , 'ok'               -- 151 two segments would stay: the dry run shows seg_many and hands out NO token
     , 'plan:payroll_locked' -- 152 the end side + another driver for the ARCHIKO whose line has an amount: 072's lock stays (he leaves)
+    , 'ok'               -- 153 148 by the accountant: the same list WITH the amount, the same token (code review xhigh 26/10)
     -- @want (one line per case: "    , '<ok|plan:code|con:name|state:XXXXX>'  -- <k> <what>")
   ]::text[];
   verdict text; got text; hint text; msg text; cname text; st text;
@@ -1787,7 +1788,7 @@ BEGIN
           verdict := CASE WHEN m = ' owner:ok dispatcher:ok management:ok accountant:ok warehouse:ok'
                           THEN 'ok one list, one token, removal and vehicle in one step, every role' ELSE 'FAIL' || m END;
         END IF;
-      ELSIF k = 148 THEN
+      ELSIF k IN (148, 153) THEN
         -- [A 2104/Giorgos 06:00-08:30][T 2108/Nikos]; Giorgos' line (the cycle's, 011) has an amount. Stop A moves to
         -- 08:45 (the ARCHIKO goes) and the same form gives the segment left another driver: Giorgos leaves with the
         -- removed handover, so his line is listed and goes after the token - 072's payroll lock does not stop it
@@ -1799,8 +1800,9 @@ BEGIN
         j2 := jsonb_build_object('rt_id', rt1, 'stops', jsonb_build_array(jsonb_build_object('stop_id', s1a,
                 'planned_from', (d + time '08:45') AT TIME ZONE 'Europe/Athens', 'planned_to', (d + time '08:50') AT TIME ZONE 'Europe/Athens')),
                 'set', jsonb_build_object('driver_id', drv3));
-        r := plan_rt_update(j2 || jsonb_build_object('dry_run', true), 'test:072b', 'dispatcher');
-        r2 := plan_rt_update(j2 || jsonb_build_object('confirm_token', r->>'confirm_token'), 'test:072b', 'dispatcher');
+        rl := CASE k WHEN 148 THEN 'dispatcher' ELSE 'accountant' END;
+        r := plan_rt_update(j2 || jsonb_build_object('dry_run', true), 'test:072b', rl);
+        r2 := plan_rt_update(j2 || jsonb_build_object('confirm_token', r->>'confirm_token'), 'test:072b', rl);
         SET CONSTRAINTS ALL IMMEDIATE;
         verdict := CASE WHEN (r->>'needs_confirm')::boolean AND r->'preview'->'conflict' = 'null'::jsonb
                           AND r->'consequences' @> jsonb_build_array(
@@ -1808,7 +1810,9 @@ BEGIN
                                 jsonb_build_object('kind', 'payroll_amount', 'dl_entry_id', x),
                                 -- the vehicle of the segment that is LEFT (2108), with the driver the form set
                                 jsonb_build_object('kind', 'seg_vehicle', 'segment_id', g2, 'truck_id', trk2, 'driver_id', drv3))
-                          AND r::text NOT LIKE '%"amount"%'
+                          AND CASE WHEN rl = 'accountant' THEN r->'consequences' @> jsonb_build_array(
+                                     jsonb_build_object('kind', 'payroll_amount', 'dl_entry_id', x, 'amount', 100))
+                                   ELSE r::text NOT LIKE '%"amount"%' END
                           AND (r2->>'ok')::boolean
                           AND (SELECT deleted_at IS NOT NULL FROM rt_vehicle_segments WHERE id = g1)
                           AND (SELECT truck_id = trk2 AND driver_id = drv3 AND reason IS NULL AND place_note IS NULL
