@@ -96,7 +96,7 @@ BEGIN
       ('public.plan_h_leg_drop(bigint,text,text,text)', '4533385f7284c9ba5af52cf585a03250'),
       ('public.plan_h_drop_consequences(bigint[],bigint,bigint[])', '80b789fcdfc3fb6dad2b1d2f8b83b487'),
       ('public.plan_order_update(jsonb,text,text)', '3ce41ac45650910c1024cb0a8846176f'),
-      ('public.plan_rt_update(jsonb,text,text)', 'e918ef7cb61693c941a4e755e7e5f94f')
+      ('public.plan_rt_update(jsonb,text,text)', 'e427e7a24ef6e88d83555c98d4bc7622')
     ) g(sig, m) LOOP
     IF to_regprocedure(v_g.sig) IS NULL
        OR (SELECT md5(prosrc) FROM pg_proc WHERE oid = to_regprocedure(v_g.sig)) IS DISTINCT FROM v_g.m THEN
@@ -260,7 +260,7 @@ $f$;
        || E'    perform plan_h_pallet_sync(array(select l.id from piece_legs l where l.rt_id = v_rt and l.deleted_at is null),\n'
        || E'                               p_actor, p_role);\n'
        || E'    -- 6. the international day follows the cycle that carries the first piece (decision 16)',
-       'b7acd8a07c9e45ea7c51f29e8c3a190b')
+       'be70612fb940356278c7c66705c8ee33')
     ) v(sig, a, b, m) LOOP
     SELECT prosrc INTO v_src FROM pg_proc WHERE oid = to_regprocedure(v_g.sig);
     IF (length(v_src) - length(replace(v_src, v_g.a, ''))) <> length(v_g.a) THEN

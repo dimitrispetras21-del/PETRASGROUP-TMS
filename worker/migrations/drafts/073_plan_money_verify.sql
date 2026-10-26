@@ -24,7 +24,7 @@ SELECT
       ('public.plan_h_leg_drop(bigint,text,text,text)', 'cb48e1aeba2d8e78191b9fc47eae6d67'),
       ('public.plan_h_drop_consequences(bigint[],bigint,bigint[])', 'e370e52c9dd96d7e4e152b3ce348736e'),
       ('public.plan_order_update(jsonb,text,text)', '114a6555848062a18b7f7fe8e57d70d6'),
-      ('public.plan_rt_update(jsonb,text,text)', 'b7acd8a07c9e45ea7c51f29e8c3a190b')) f(sig, m)
+      ('public.plan_rt_update(jsonb,text,text)', 'be70612fb940356278c7c66705c8ee33')) f(sig, m)
     WHERE to_regprocedure(f.sig) IS NULL OR (SELECT md5(prosrc) FROM pg_proc WHERE oid = to_regprocedure(f.sig)) <> f.m) AS functions_changed,
   (SELECT count(*) FROM pg_class c WHERE c.oid IN ('public.dl_v_rt_route'::regclass, 'public.ct_v_rt_pallet_gate'::regclass)
      AND c.reloptions IS DISTINCT FROM ARRAY['security_invoker=true']) AS invoker_lost,

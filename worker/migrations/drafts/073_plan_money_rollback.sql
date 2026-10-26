@@ -92,7 +92,7 @@ BEGIN
        || E'                               p_actor, p_role);\n'
        || E'    -- 6. the international day follows the cycle that carries the first piece (decision 16)',
        E'    -- 6. the international day follows the cycle that carries the first piece (decision 16)',
-       'b7acd8a07c9e45ea7c51f29e8c3a190b', 'e918ef7cb61693c941a4e755e7e5f94f')
+       'be70612fb940356278c7c66705c8ee33', 'e427e7a24ef6e88d83555c98d4bc7622')
     ) v(sig, a, b, m073, m072) LOOP
     SELECT prosrc INTO v_src FROM pg_proc WHERE oid = to_regprocedure(v_g.sig);
     IF v_src IS NULL OR md5(v_src) <> v_g.m073 THEN
