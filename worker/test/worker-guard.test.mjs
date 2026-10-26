@@ -108,4 +108,7 @@ test('bad usage → exit 2, nothing counted', () => {
   assert.equal(run(SRC, 0, 1).code, 2, 'handover 1 without plan 1');
   assert.equal(run(SRC, 1, 2).code, 2, 'handover is 0 or 1');
   assert.equal(run(SRC, 1, 'NaN').code, 2, 'a non-finite --handover is bad usage too');
+  // an argument the guard does not know is never ignored (an OK that checked less than asked)
+  assert.equal(spawnSync(process.execPath, [TOOL, SRC, '--plan', '1', '--handover', '1', '--f3', '1'], { encoding: 'utf8' }).status, 2,
+    'an unknown extra flag is bad usage');
 });

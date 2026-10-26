@@ -23,9 +23,12 @@
 // partial «OK» (αρχή 1).
 import { readFileSync } from 'node:fs';
 
-const [file, flag, planArg, hflag, handoverArg] = process.argv.slice(2);
-if (!file || flag !== '--plan' || !['0', '1'].includes(planArg) || hflag !== '--handover' || !['0', '1'].includes(handoverArg)
-    || (planArg === '0' && handoverArg === '1')) {
+const args = process.argv.slice(2);
+const [file, flag, planArg, hflag, handoverArg] = args;
+// exactly these five: an extra flag (e.g. a later chain's --f3 1 before its guard knows it) would be ignored and the
+// tool would print OK without checking it - a usage error instead (code review xhigh 26/10, principle 1)
+if (args.length !== 5 || !file || flag !== '--plan' || !['0', '1'].includes(planArg) || hflag !== '--handover'
+    || !['0', '1'].includes(handoverArg) || (planArg === '0' && handoverArg === '1')) {
   console.error('usage: node worker/tools/worker-guard.mjs <file> --plan 0|1 --handover 0|1 (handover 1 needs plan 1)');
   process.exit(2);
 }
