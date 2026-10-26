@@ -1,11 +1,11 @@
 // tests/sql-072b-drafts.test.js - run: node --test tests/sql-072b-drafts.test.js
-// (Task B1 copies it from docs/national-v5/handover/tests/ to tests/.)
+// (Task B1 moved it here from docs/national-v5/handover/tests/, git mv.)
 // The 072b drafts (national v5 vehicle handover) at build time, plain node, no database (principle 6):
 //   - the six files and the builder are there; ASCII only; the writing files are ONE DO block; verify and
 //     fingerprint write nothing; the dry run and the rollback are regenerated, never hand-edited;
 //   - every function 072b relies on is guarded in PART 0; each one it does NOT change is proved again in PART 9 and
 //     counted in the verify; each hooked one has its PART 0 md5 as the hook's "before" (one list, never two);
-//   - the 16 hooks in 10 functions, ordered by k: the first hook of a function starts from 072's text (PART 0), each
+//   - the 18 hooks in 10 functions, ordered by k: the first hook of a function starts from 072's text (PART 0), each
 //     next one from the text the one before it left (a chain), the last one's text is the verify's; the rollback
 //     holds the same texts (generated) and undoes them in reverse order;
 //   - born closed: every function 072b creates is in the REVOKE, only the three acts get EXECUTE, the builder's
@@ -14,7 +14,7 @@
 //   - every plan: code 072b raises or returns has a case in the rules test; every con: of the rules test is a
 //     CHECK of 072b; the eight reasons are the spec's; Greek only as base64 that decodes;
 //   - the order 072 -> 072b -> 073 is guarded both ways (073 present = stop, here and in the rollback);
-//   - the hook diff the code review reads (build-072b.mjs --hooks, review R2 DB finding 7) covers the sixteen hooks;
+//   - the hook diff the code review reads (build-072b.mjs --hooks, review R2 DB finding 7) covers the eighteen hooks;
 //   - the auditor checks B-91..B-93 sit OUTSIDE the catalog until 073b (tms-auditor/checks-072b/, review R4 finding 1).
 // The rules themselves are proven on PGlite (tms-auditor/test/plan-072b.test.mjs).
 'use strict';
@@ -65,8 +65,8 @@ test('guards: PART 0 holds every relied-on function; the unchanged ones again in
   const hooks = [...part(src, '===== PART 6', '===== PART 7').matchAll(/\((\d+), '(public\.[^']+)', h_\w+, h_\w+,\n\s+'([0-9a-f]{32})', '([0-9a-f]{32})'\)/g)]
     .map((m) => ({ k: Number(m[1]), sig: m[2], before: m[3], after: m[4] }));
   assert.strictEqual(p0.length, 47, 'PART 0: 22 of 072 + 25 of 072 (15 relied on + 10 hooked)');
-  assert.strictEqual(hooks.length, 16, 'sixteen hooks');
-  assert.deepStrictEqual(hooks.map((h) => h.k), Array.from({ length: 16 }, (_, i) => i + 1), 'k = 1..16 in order');
+  assert.strictEqual(hooks.length, 18, 'eighteen hooks');
+  assert.deepStrictEqual(hooks.map((h) => h.k), Array.from({ length: 18 }, (_, i) => i + 1), 'k = 1..18 in order');
   const fns = [...new Set(hooks.map((h) => h.sig))];
   assert.strictEqual(fns.length, 10, 'ten hooked functions');
   assert.strictEqual(new Set(p0).size, p0.length, 'no pair twice in PART 0');
@@ -87,11 +87,12 @@ test('guards: PART 0 holds every relied-on function; the unchanged ones again in
   const rb = read('072b_plan_vehicle_segments_rollback.sql');
   assert.match(rb, /\) v\(k, sig, a, b, m0, m1\) ORDER BY k DESC LOOP/, 'the rollback undoes the hooks last first');
   // the 22 of 072 are all among them: 072b changes none of 072's guarded functions
-  const f072 = path.join(DIR, '072_plan_functions.sql');
-  if (fs.existsSync(f072)) {
-    const g072 = pairsOf(part(fs.readFileSync(f072, 'utf8'), '0. GUARDS', '1. HELPERS'));
-    for (const x of g072) assert.ok(unchanged.includes(x), `072's ${x} is guarded and unchanged by 072b`);
-  }
+  // 072 was executed 26/10 and left drafts/ (PR #91); a missing 072 is a failure, never a skipped check (principle 1)
+  const f072 = [path.join(DIR, '..', '072_plan_functions.sql'), path.join(DIR, '072_plan_functions.sql')].find((f) => fs.existsSync(f));
+  assert.ok(f072, '072_plan_functions.sql is in worker/migrations/ (or drafts/)');
+  const g072 = pairsOf(part(fs.readFileSync(f072, 'utf8'), '0. GUARDS', '1. HELPERS'));
+  assert.ok(g072.length >= 22, `072's guard list read (${g072.length} pairs)`);
+  for (const x of g072) assert.ok(unchanged.includes(x), `072's ${x} is guarded and unchanged by 072b`);
 });
 
 test('born closed: every created function revoked, EXECUTE only on the three acts; the drop list = the created', async () => {
@@ -137,34 +138,35 @@ test('every plan: code of 072b has a case; every con: of the rules test is a CHE
   const table = /CREATE TABLE public\.rt_vehicle_segments \(([\s\S]*?)\n  \);/.exec(src);
   assert.ok(table && !/\blabel\b/.test(strip(table[1])), 'no label column on rt_vehicle_segments');
   // R-16: the two codes 067 uses for the same events are in 067's delay CHECK too (one fault, one code)
-  const f067 = [path.join(DIR, '..', '067_stop_delay_reason.sql'), path.join(ROOT, '..', '..', '..', 'worker/migrations/067_stop_delay_reason.sql')]
-    .find((f) => fs.existsSync(f));
-  assert.ok(f067, '067_stop_delay_reason.sql not found (it is live since 24/10: worker/migrations/)');
+  // code review xhigh 26/10: one place only (the old fallback reached above the checkout, from docs/ before B1)
+  const f067 = path.join(DIR, '..', '067_stop_delay_reason.sql');
+  assert.ok(fs.existsSync(f067), '067_stop_delay_reason.sql not found (it is live since 24/10: worker/migrations/)');
   for (const c of ['vehicle_breakdown', 'driver_hours']) assert.ok(fs.readFileSync(f067, 'utf8').includes(`'${c}'`), `067 has ${c}`);
   const n = (tst.match(/^\s+, '(?:ok|plan:[a-z_]+|con:[a-z_]+|state:\w+)'\s+-- \d+ /gm) || []).length;
   assert.ok(n >= 60, `${n} cases`);
 });
 
-test('the hook diff (--hooks, read by the code review of Task B4): sixteen hooks, each puts a 072b line in', async () => {
+test('the hook diff (--hooks, read by the code review of Task B4): eighteen hooks, each puts a 072b line in', async () => {
   const { hookDiffs } = await import(BUILDER);
   const h = hookDiffs(read(SRC));
-  assert.deepStrictEqual(h.map((x) => x.k), Array.from({ length: 16 }, (_, i) => i + 1));
+  assert.deepStrictEqual(h.map((x) => x.k), Array.from({ length: 18 }, (_, i) => i + 1));
   for (const x of h) {
     assert.ok(x.diff.some((l) => l.startsWith('+ ') && /072b/.test(l)), `hook ${x.k}: no "072b" line put in`);
     assert.ok(x.diff.length > 0);
   }
   const out = execFileSync(process.execPath, [BUILDER, '--hooks'], { encoding: 'utf8' });
-  assert.strictEqual((out.match(/^=== hook \d+ /gm) || []).length, 16);
+  assert.strictEqual((out.match(/^=== hook \d+ /gm) || []).length, 18);
 });
 
 // Review R4 (finding 1): B-91..B-93 enter the catalog only with 073b (its seed, fixture and grants know
 // rt_vehicle_segments). In tms-auditor/checks/ now, every seeded tms-auditor test and the catalog test would go red.
 test('the auditor checks of 072b are not in the catalog yet (tms-auditor/checks-072b/ until 073b)', () => {
   const cat = path.join(ROOT, 'tms-auditor/checks');
-  if (!fs.existsSync(cat)) return;   // the docs/ layout before Task B1
+  // after Task B1 the catalog is always there: a missing folder is a failure, never a silent pass (principle 1)
+  assert.ok(fs.existsSync(cat), 'tms-auditor/checks/ exists');
   for (const id of ['B-91', 'B-92', 'B-93']) assert.ok(!fs.existsSync(path.join(cat, `${id}.sql`)), `${id} is in tms-auditor/checks/ before 073b`);
   const own = path.join(ROOT, 'tms-auditor/checks-072b');
-  if (fs.existsSync(own)) assert.deepStrictEqual(fs.readdirSync(own).sort(), ['B-91.sql', 'B-92.sql', 'B-93.sql']);
+  assert.deepStrictEqual(fs.existsSync(own) && fs.readdirSync(own).sort(), ['B-91.sql', 'B-92.sql', 'B-93.sql'], 'tms-auditor/checks-072b/ holds B-91..B-93');
 });
 
 test('Greek only as base64 that decodes to Greek; the notice template takes three %s', () => {
