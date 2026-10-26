@@ -823,12 +823,18 @@ function isoDayDiff(a, b) {
 export function aggregateLines(lines, opts = {}) {
   const statementDocNo = opts.statementDocNo || null;
   const rtById = new Map((opts.rts || []).map((r) => [r.id, r]));
-  // 073 / P3-3: a v5 cycle can be several rows (one per segment of v_rt_vehicle_windows). When they name different
-  // trucks the cycle has no ONE truck, so a fee line spread onto it is not filed under whichever row came last;
-  // rows of today's model are unique per id and unchanged.
+  // 073 / P3-3 (Q7-1, review r1): a v5 cycle can be several rows (one per OWNED segment of v_rt_vehicle_windows).
+  // A fee line spread onto it is filed under the FIRST segment's truck (smallest start_at), never under whichever
+  // row came last. The preview sets that truck on the line and the commit keeps a truck the line already carries,
+  // so the screen and the stored row agree (before: preview «no truck», commit filled ct_round_trips.truck_id).
+  // Two rows whose start cannot be compared (not a v5 window) give no truck - a review, never a pick.
+  // Rows of today's model are unique per id and unchanged.
   for (const r of opts.rts || []) {
     const seen = rtById.get(r.id);
-    if (seen.truck_id !== r.truck_id) rtById.set(r.id, { ...seen, truck_id: null });
+    if (seen === r || seen.truck_id === r.truck_id) continue;
+    const a = instantMs(seen.start_at), b = instantMs(r.start_at);
+    if (a == null || b == null || a === b) rtById.set(r.id, { ...seen, truck_id: null });
+    else if (b < a) rtById.set(r.id, r);
   }
   // opts.trucks [{id, plate}] (parse only): the fee line takes the plate of its
   // RT's truck, so the preview files it under that vehicle — a fee that has a

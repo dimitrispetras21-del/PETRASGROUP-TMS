@@ -186,14 +186,22 @@ test('P3-3: a fee is spread over a cycle ONCE when the view has two rows for it 
   assert.deepEqual(once.lines.filter((l) => l.category === 'dkv').map((k) => [k.rt_id, k.net]), [[23, 5], [5, 5]]);
 });
 
-test('P3-3: a fee on a cycle with two trucks is not filed under one of them by chance (aggregateLines)', () => {
+test('P3-3 / Q7-1: a fee on a cycle with two trucks is filed under the FIRST segment\'s truck, in preview and commit (aggregateLines)', () => {
   const fee = { doc_no: 'D1', seq: 3, plate: null, truck_id: null, service_date: '2026-10-14', category: 'dkv', net: 5, gross: 6, rt_id: 23, match: 'sure' };
   const trucks = [{ id: 9, plate: 'XX3' }, { id: 10, plate: 'XX5' }];
   for (const rts of [[S1, S2], [S2, S1]]) {
     const two = aggregateLines([fee], { statementDocNo: 'S1', rts, trucks });
-    assert.equal(two.lines[0].truck_id, null);
-    assert.equal(two.lines[0].plate, null);
+    assert.equal(two.lines[0].truck_id, 9);
+    assert.equal(two.lines[0].plate, 'XX3');
+    // the commit re-aggregates the preview's line with ct_round_trips rows: the truck it carries is kept
+    const commit = aggregateLines(two.lines, { statementDocNo: 'S1', rts: [{ id: 23, truck_id: 9 }] });
+    assert.equal(commit.lines[0].truck_id, 9);
+    const commitOther = aggregateLines(two.lines, { statementDocNo: 'S1', rts: [{ id: 23, truck_id: null }] });
+    assert.equal(commitOther.lines[0].truck_id, 9);
   }
+  // two rows whose start cannot be compared: no truck (a review), never whichever came last
+  const blind = aggregateLines([fee], { statementDocNo: 'S1', rts: [{ ...S1, start_at: null }, S2], trucks });
+  assert.equal(blind.lines[0].truck_id, null);
   // one truck on both rows (or a cycle of today's model): that truck, as today
   const one = aggregateLines([fee], { statementDocNo: 'S1', rts: [S1, { ...S2, truck_id: 9 }], trucks });
   assert.equal(one.lines[0].truck_id, 9);
